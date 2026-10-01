@@ -175,6 +175,8 @@ const english: Record<string, string> = {
   "（将于 {time} 重置）": " (resets {time})",
   "取消置顶": "Unpin",
   "刷新会话": "Refresh conversation",
+  "已刷新": "Refreshed",
+  "刷新失败，请重试": "Failed to refresh. Try again",
   "重命名": "Rename",
   "归档": "Archive",
   "关闭会话操作": "Close conversation menu",

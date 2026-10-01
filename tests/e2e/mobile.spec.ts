@@ -150,6 +150,15 @@ test("移动端选择器、线程恢复、Markdown、折叠与吸顶", async ({ 
               })),
             ],
           },
+          "thread/read": {
+            thread: {
+              id: "existing-thread",
+              preview: "Markdown 会话",
+              cwd: "/tmp/project",
+              updatedAt: now - 120,
+              status: { type: "active", activeFlags: [] },
+            },
+          },
           "thread/resume": {
             thread: {
               id: "existing-thread",
@@ -397,6 +406,45 @@ test("移动端选择器、线程恢复、Markdown、折叠与吸顶", async ({ 
   await expect(page.getByText("2 分钟", { exact: true }).first()).toBeVisible();
   await expect(page.getByLabel("正在加载会话")).toHaveCount(0);
   await expect(page.getByLabel("进行中", { exact: true }).first()).toBeVisible();
+  const markdownThreadRow = page.getByRole("button", {
+    name: /Markdown 会话/,
+  }).first();
+  await markdownThreadRow.dispatchEvent("pointerdown", {
+    pointerId: 1,
+    pointerType: "touch",
+    isPrimary: true,
+    button: 0,
+    clientX: 40,
+    clientY: 180,
+  });
+  await page.waitForTimeout(550);
+  await markdownThreadRow.dispatchEvent("pointerup", {
+    pointerId: 1,
+    pointerType: "touch",
+    isPrimary: true,
+    button: 0,
+    clientX: 40,
+    clientY: 180,
+  });
+  await expect(page.getByLabel("会话操作")).toBeVisible();
+  await expect(page.getByRole("button", { name: "刷新会话" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "复制会话 ID" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "重命名" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "归档" })).toBeVisible();
+  await page.getByRole("button", { name: "刷新会话" }).click();
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        (window as any).__rpcMessages.some(
+          (message: any) =>
+            message.method === "thread/read" &&
+            message.params?.threadId === "existing-thread" &&
+            message.params?.includeTurns === false,
+        ),
+      ),
+    )
+    .toBe(true);
+  await expect(page.getByLabel("会话操作")).toHaveCount(0);
   const listHeader = page.locator(".list-header");
   const listSticky = page.locator(".thread-list-sticky");
   await expect(listSticky).toHaveCSS("position", "sticky");
@@ -437,7 +485,7 @@ test("移动端选择器、线程恢复、Markdown、折叠与吸顶", async ({ 
       ),
     )
     .toBeGreaterThan(1);
-  await page.getByRole("button", { name: /Markdown 会话/ }).first().click();
+  await markdownThreadRow.click();
   await expect
     .poll(() =>
       page.locator(".conversation-scroll").evaluate(

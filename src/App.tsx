@@ -51,7 +51,10 @@ import {
   type ConversationLoadState,
   type QueuedFollowUpPreview,
 } from "./features/conversation/ConversationPage";
-import { ThreadListPage } from "./features/threads/ThreadListPage";
+import {
+  ThreadListPage,
+  type ThreadManagementAction,
+} from "./features/threads/ThreadListPage";
 import { ApprovalSheet } from "./features/approvals/ApprovalSheet";
 import {
   ComposerSettings,
@@ -172,12 +175,15 @@ interface BackendThreadSnapshot {
 interface WorkspaceCommand {
   id: number;
   backendId: string;
-  type: "new" | "open" | "load-project" | "retry-project";
+  type: "new" | "open" | "load-project" | "retry-project" | "manage";
   thread?: AnyRecord;
   cwd?: string | null;
   draft?: string;
   draftImages?: DraftImage[];
   draftFiles?: DraftFile[];
+  managementAction?: ThreadManagementAction;
+  name?: string;
+  onComplete?: (completed: boolean) => void;
 }
 
 interface BackendWorkspaceProps {
@@ -1728,6 +1734,123 @@ function BackendWorkspace({
     );
   }
 
+  async function manageListedThread(
+    thread: AnyRecord,
+    action: ThreadManagementAction,
+    name?: string,
+  ) {
+    const client = clientRef.current;
+    const threadId = String(thread.id ?? "");
+    if (!threadId || pendingAction) return false;
+    if (!client) {
+      setError(t("设备尚未连接，请稍后重试"));
+      return false;
+    }
+    setPendingAction(action);
+    setError("");
+    try {
+      if (action === "pin") {
+        const nextPinned = thread.isPinned !== true;
+        const refreshed = await setThreadPinned(client, threadId, nextPinned);
+        setThreads((current) =>
+          current.map((entry) =>
+            String(entry.id) === threadId
+              ? { ...entry, isPinned: refreshed.isPinned }
+              : entry,
+          ),
+        );
+        setActive((current) =>
+          String(current?.id ?? "") === threadId
+            ? { ...current, isPinned: refreshed.isPinned }
+            : current,
+        );
+        showNotice(refreshed.isPinned ? t("已置顶") : t("已取消置顶"));
+        return true;
+      }
+      if (action === "refresh") {
+        const result = await client.request<{ thread: AnyRecord }>(
+          "thread/read",
+          { threadId, includeTurns: false },
+        );
+        if (!result.thread?.id) {
+          throw new Error(t("会话详情返回无效，请重试"));
+        }
+        const { turns: _turns, ...metadata } = result.thread;
+        setThreads((current) =>
+          current.map((entry) =>
+            String(entry.id) === threadId
+              ? {
+                  ...entry,
+                  ...metadata,
+                  isPinned: metadata.isPinned === true,
+                }
+              : entry,
+          ),
+        );
+        setActive((current) =>
+          String(current?.id ?? "") === threadId
+            ? {
+                ...current,
+                ...metadata,
+                isPinned: metadata.isPinned === true,
+              }
+            : current,
+        );
+        showNotice(t("已刷新"));
+        return true;
+      }
+      if (action === "rename") {
+        if (!name) return false;
+        await client.request("thread/name/set", { threadId, name });
+        setThreads((current) =>
+          current.map((entry) =>
+            String(entry.id) === threadId ? { ...entry, name } : entry,
+          ),
+        );
+        setActive((current) =>
+          String(current?.id ?? "") === threadId
+            ? { ...current, name }
+            : current,
+        );
+        showNotice(t("已重命名"));
+        return true;
+      }
+      await client.request("thread/archive", { threadId });
+      markThreadRead(threadId);
+      setThreads((current) =>
+        current.filter((entry) => String(entry.id) !== threadId),
+      );
+      const archivedThreadStillOpen =
+        String(activeThreadTargetRef.current ?? activeRef.current?.id ?? "") ===
+        threadId;
+      setActive((current) => activeThreadAfterArchive(current, threadId));
+      if (archivedThreadStillOpen) {
+        activeThreadTargetRef.current = null;
+        setConversationLoadState("idle");
+        onOpenSidebar();
+      }
+      showNotice(t("已归档"));
+      return true;
+    } catch (reason) {
+      setError(
+        reason instanceof Error
+          ? reason.message
+          : action === "archive"
+            ? t("归档失败，请重试")
+            : action === "rename"
+              ? t("重命名失败，请重试")
+              : action === "refresh"
+                ? t("刷新失败，请重试")
+                : thread.isPinned === true
+                  ? t("取消置顶失败，请重试")
+                  : t("置顶失败，请重试"),
+      );
+      return false;
+    } finally {
+      setPendingAction("");
+    }
+  }
+
   async function togglePinned() {
     const client = clientRef.current;
     const thread = activeRef.current;
@@ -2086,6 +2209,16 @@ function BackendWorkspace({
           void threadListLoaderRef.current!.loadProject(client, command.cwd);
         }
       }
+    } else if (
+      command.type === "manage" &&
+      command.thread &&
+      command.managementAction
+    ) {
+      void manageListedThread(
+        command.thread,
+        command.managementAction,
+        command.name,
+      ).then((completed) => command.onComplete?.(completed));
     }
   }, [backend.id, command, projectOptions, projectlessThreadIds]);
 
@@ -2668,6 +2801,33 @@ function ConfiguredApp({
     [closeSidebar, selectBackend],
   );
 
+  const manageThread = useCallback(
+    (item: AggregatedThreadItem, action: ThreadManagementAction) => {
+      let name: string | undefined;
+      if (action === "rename") {
+        name = window.prompt(
+          t("输入新的会话名称"),
+          titleOf(item.thread),
+        )?.trim();
+        if (!name || name === titleOf(item.thread)) {
+          return Promise.resolve(false);
+        }
+      }
+      return new Promise<boolean>((resolve) => {
+        setCommand({
+          id: ++commandIdRef.current,
+          backendId: item.backendId,
+          type: "manage",
+          thread: item.thread,
+          managementAction: action,
+          name,
+          onComplete: resolve,
+        });
+      });
+    },
+    [],
+  );
+
   const startNewChat = useCallback(() => {
     const savedBackendId = window.localStorage.getItem(
       "codex-mobile:new-chat-backend",
@@ -2780,6 +2940,7 @@ function ConfiguredApp({
             error={listError}
             onQueryChange={setQuery}
             onOpenThread={openThread}
+            onManageThread={manageThread}
             onNewChat={startNewChat}
             onSelectBackend={selectListBackend}
             onManageBackends={() => setManagerOpen(true)}

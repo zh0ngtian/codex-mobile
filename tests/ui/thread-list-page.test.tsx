@@ -1,4 +1,4 @@
-import { fireEvent, render, within } from "@testing-library/react";
+import { act, fireEvent, render, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { ThreadListPage } from "../../src/features/threads/ThreadListPage";
 import { aggregateThreads } from "../../src/features/threads/thread-list-model";
@@ -58,6 +58,8 @@ function renderList(
     query = "",
     onRetryProject = () => undefined,
     onToggleProjectCollapsed = () => undefined,
+    onOpenThread = () => undefined,
+    onManageThread = async () => true,
   }: {
     collapsedProjectKeys?: Set<string>;
     loadingBackendIds?: Set<string>;
@@ -70,6 +72,11 @@ function renderList(
     query?: string;
     onRetryProject?: (backendId: string, cwd: string) => void;
     onToggleProjectCollapsed?: (backendId: string, cwd: string) => void;
+    onOpenThread?: (thread: (typeof threads)[number]) => void;
+    onManageThread?: (
+      thread: (typeof threads)[number],
+      action: "pin" | "refresh" | "rename" | "archive",
+    ) => Promise<boolean>;
   } = {},
 ) {
   return render(
@@ -93,7 +100,8 @@ function renderList(
       query={query}
       error=""
       onQueryChange={() => undefined}
-      onOpenThread={() => undefined}
+      onOpenThread={onOpenThread}
+      onManageThread={onManageThread}
       onNewChat={() => undefined}
       onSelectBackend={() => undefined}
       onManageBackends={() => undefined}
@@ -106,6 +114,59 @@ function renderList(
 }
 
 describe("会话侧边栏列表", () => {
+  it("长按会话打开与会话内一致的管理菜单且不会误开会话", async () => {
+    vi.useFakeTimers();
+    const onOpenThread = vi.fn();
+    const onManageThread = vi.fn(async () => true);
+    const { container } = renderList("all", {
+      onOpenThread,
+      onManageThread,
+    });
+    const view = within(container);
+    const row = view.getByRole("button", { name: /置顶会话/ });
+
+    fireEvent.pointerDown(row, { button: 0, clientX: 20, clientY: 20 });
+    act(() => vi.advanceTimersByTime(550));
+    fireEvent.pointerUp(row, { button: 0, clientX: 20, clientY: 20 });
+    fireEvent.click(row);
+
+    expect(onOpenThread).not.toHaveBeenCalled();
+    expect(view.getByRole("button", { name: "取消置顶" })).not.toBeNull();
+    expect(view.getByRole("button", { name: "刷新会话" })).not.toBeNull();
+    expect(view.getByRole("button", { name: "复制会话 ID" })).not.toBeNull();
+    expect(view.getByRole("button", { name: "重命名" })).not.toBeNull();
+    expect(view.getByRole("button", { name: "归档" })).not.toBeNull();
+
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "取消置顶" }));
+      await Promise.resolve();
+    });
+    expect(onManageThread).toHaveBeenCalledWith(
+      expect.objectContaining({ backendId: "mini", threadId: "pinned" }),
+      "pin",
+    );
+    expect(view.queryByLabelText("会话操作")).toBeNull();
+    vi.useRealTimers();
+  });
+
+  it("滚动手势会取消长按并保留普通点击打开会话", () => {
+    vi.useFakeTimers();
+    const onOpenThread = vi.fn();
+    const { container } = renderList("all", { onOpenThread });
+    const view = within(container);
+    const row = view.getByRole("button", { name: /最近会话/ });
+
+    fireEvent.pointerDown(row, { button: 0, clientX: 20, clientY: 20 });
+    fireEvent.pointerMove(row, { clientX: 20, clientY: 40 });
+    act(() => vi.advanceTimersByTime(550));
+    fireEvent.pointerUp(row, { button: 0, clientX: 20, clientY: 40 });
+    fireEvent.click(row);
+
+    expect(view.queryByLabelText("会话操作")).toBeNull();
+    expect(onOpenThread).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
+  });
+
   it("头部和机器选项位于同一个吸顶容器", () => {
     const { container } = renderList("mini");
     const sticky = container.querySelector(".thread-list-sticky");
@@ -338,6 +399,7 @@ describe("会话侧边栏列表", () => {
         error=""
         onQueryChange={() => undefined}
         onOpenThread={() => undefined}
+        onManageThread={async () => true}
         onNewChat={() => undefined}
         onSelectBackend={() => undefined}
         onManageBackends={() => undefined}

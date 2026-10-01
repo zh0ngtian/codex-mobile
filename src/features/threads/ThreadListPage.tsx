@@ -1,4 +1,10 @@
 import {
+  useEffect,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
+import {
   isThreadRunning,
   relativeTime,
 } from "../../ui/conversation";
@@ -15,6 +21,7 @@ import type {
 import type { ProjectThreadLoadState } from "../../app-server/thread-list-loader";
 import { PROJECTLESS_GROUP_ID } from "../../app-server/thread-list-loader";
 import { BackendSwitcher } from "../backends/BackendSwitcher";
+import { ConversationActionMenu } from "../conversation/ConversationControls";
 import {
   groupThreadsByProject,
   splitAllThreads,
@@ -22,6 +29,15 @@ import {
 } from "./thread-list-model";
 import { projectCollapseKey } from "./project-collapse";
 import { t } from "../../i18n";
+
+export type ThreadManagementAction =
+  | "pin"
+  | "refresh"
+  | "rename"
+  | "archive";
+
+const LONG_PRESS_DELAY_MS = 500;
+const LONG_PRESS_MOVE_TOLERANCE_PX = 10;
 
 export function ThreadListPage({
   backends,
@@ -44,6 +60,7 @@ export function ThreadListPage({
   error,
   onQueryChange,
   onOpenThread,
+  onManageThread,
   onNewChat,
   onSelectBackend,
   onManageBackends,
@@ -72,6 +89,10 @@ export function ThreadListPage({
   error: string;
   onQueryChange: (value: string) => void;
   onOpenThread: (thread: AggregatedThreadItem) => void | Promise<void>;
+  onManageThread: (
+    thread: AggregatedThreadItem,
+    action: ThreadManagementAction,
+  ) => Promise<boolean>;
   onNewChat: () => void;
   onSelectBackend: (backendId: string) => void;
   onManageBackends: () => void;
@@ -80,6 +101,16 @@ export function ThreadListPage({
   onToggleProject: (backendId: string, cwd: string) => void;
   onToggleProjectCollapsed: (backendId: string, cwd: string) => void;
 }) {
+  const [managedThread, setManagedThread] =
+    useState<AggregatedThreadItem | null>(null);
+  const [pendingThreadAction, setPendingThreadAction] = useState("");
+  const longPressRef = useRef<{
+    timer: number;
+    key: string;
+    x: number;
+    y: number;
+  } | null>(null);
+  const suppressClickRef = useRef<{ key: string; until: number } | null>(null);
   const enabledBackends = backends.filter((backend) => backend.enabled);
   const onlineCount = enabledBackends.filter(
     (backend) => summaries[backend.id]?.connection === "online",
@@ -96,17 +127,86 @@ export function ThreadListPage({
     ...projectDirectories,
   ]);
   const renderNow = Math.floor(Date.now() / 1000);
+  const clearLongPress = () => {
+    if (longPressRef.current) {
+      window.clearTimeout(longPressRef.current.timer);
+      longPressRef.current = null;
+    }
+  };
+  useEffect(() => clearLongPress, []);
+
+  const managementKey = (thread: AggregatedThreadItem) =>
+    `${thread.backendId}:${thread.threadId}`;
+  const startLongPress = (
+    event: ReactPointerEvent<HTMLButtonElement>,
+    thread: AggregatedThreadItem,
+  ) => {
+    if (event.button !== 0) return;
+    clearLongPress();
+    const key = managementKey(thread);
+    const timer = window.setTimeout(() => {
+      suppressClickRef.current = { key, until: Date.now() + 1_000 };
+      setManagedThread(thread);
+      longPressRef.current = null;
+    }, LONG_PRESS_DELAY_MS);
+    longPressRef.current = {
+      timer,
+      key,
+      x: event.clientX,
+      y: event.clientY,
+    };
+  };
+  const moveLongPress = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    const press = longPressRef.current;
+    if (
+      press &&
+      (Math.abs(event.clientX - press.x) > LONG_PRESS_MOVE_TOLERANCE_PX ||
+        Math.abs(event.clientY - press.y) > LONG_PRESS_MOVE_TOLERANCE_PX)
+    ) {
+      clearLongPress();
+    }
+  };
+  const runThreadAction = async (action: ThreadManagementAction) => {
+    const thread = managedThread;
+    if (!thread || pendingThreadAction) return;
+    setPendingThreadAction(action);
+    try {
+      if (await onManageThread(thread, action)) setManagedThread(null);
+    } finally {
+      setPendingThreadAction("");
+    }
+  };
   const renderRow = (
     thread: AggregatedThreadItem,
     showSource: boolean,
-  ) => (
-    <button
-      key={`${thread.backendId}:${thread.threadId}`}
-      className={`thread-row${showSource ? " with-source" : ""}`}
-      disabled={openingThreadId === `${thread.backendId}:${thread.threadId}`}
-      aria-busy={openingThreadId === `${thread.backendId}:${thread.threadId}`}
-      onClick={() => void onOpenThread(thread)}
-    >
+  ) => {
+    const key = managementKey(thread);
+    return (
+      <button
+        key={key}
+        className={`thread-row${showSource ? " with-source" : ""}`}
+        disabled={openingThreadId === `${thread.backendId}:${thread.threadId}`}
+        aria-busy={openingThreadId === `${thread.backendId}:${thread.threadId}`}
+        onClick={(event) => {
+          const suppressed = suppressClickRef.current;
+          suppressClickRef.current = null;
+          if (suppressed?.key === key && Date.now() <= suppressed.until) {
+            event.preventDefault();
+            return;
+          }
+          void onOpenThread(thread);
+        }}
+        onContextMenu={(event) => {
+          event.preventDefault();
+          clearLongPress();
+          setManagedThread(thread);
+        }}
+        onPointerDown={(event) => startLongPress(event, thread)}
+        onPointerMove={moveLongPress}
+        onPointerUp={clearLongPress}
+        onPointerCancel={clearLongPress}
+        onPointerLeave={clearLongPress}
+      >
       <span className="thread-row-title">
         <span>{titleOf(thread.thread)}</span>
       </span>
@@ -129,7 +229,8 @@ export function ThreadListPage({
         </small>
       )}
     </button>
-  );
+    );
+  };
 
   return (
     <section className="thread-list-page">
@@ -351,6 +452,28 @@ export function ThreadListPage({
         )}
       </div>
       <ErrorBanner message={error} />
+      <ConversationActionMenu
+        open={managedThread !== null}
+        readOnly={
+          managedThread
+            ? summaries[managedThread.backendId]?.connection !== "online"
+            : false
+        }
+        thread={managedThread?.thread ?? {}}
+        pendingAction={pendingThreadAction}
+        onClose={() => {
+          if (!pendingThreadAction) setManagedThread(null);
+        }}
+        onPin={() => void runThreadAction("pin")}
+        onRefresh={() => void runThreadAction("refresh")}
+        onCopy={() => {
+          if (!managedThread) return;
+          void navigator.clipboard?.writeText(managedThread.threadId);
+          setManagedThread(null);
+        }}
+        onRename={() => void runThreadAction("rename")}
+        onArchive={() => void runThreadAction("archive")}
+      />
       <footer className="list-actions">
         <label className="search-box"><AppIcon name="search" /><input value={query} onChange={(event) => onQueryChange(event.target.value)} placeholder={t("搜索聊天")} /></label>
         <button
