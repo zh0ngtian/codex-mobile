@@ -25,7 +25,8 @@ describe("会话列表派生", () => {
         id: "book-recent",
         preview: "查看 Docker 配置",
         cwd: "/Users/me/infra",
-        updatedAt: 20,
+        recencyAt: 20,
+        updatedAt: 50,
       },
     ],
     mini: [

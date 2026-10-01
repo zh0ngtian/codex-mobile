@@ -14,6 +14,34 @@ function deferred<T>() {
 }
 
 describe("会话列表轮询加载器", () => {
+  it("使用会话活动时间排序，不把单纯打开导致的更新时间当成最新活动", () => {
+    expect(
+      dedupeThreadsById([
+        {
+          id: "opened-history",
+          recencyAt: 10,
+          updatedAt: 100,
+        },
+        {
+          id: "recent-activity",
+          recencyAt: 20,
+          updatedAt: 20,
+        },
+      ]),
+    ).toEqual([
+      {
+        id: "recent-activity",
+        recencyAt: 20,
+        updatedAt: 20,
+      },
+      {
+        id: "opened-history",
+        recencyAt: 10,
+        updatedAt: 100,
+      },
+    ]);
+  });
+
   it("按逻辑 thread id 合并续接日志并保留更新时间最新的记录", () => {
     expect(
       dedupeThreadsById([
@@ -77,12 +105,12 @@ describe("会话列表轮询加载器", () => {
     expect(client.request).toHaveBeenNthCalledWith(1, "thread/list", {
       limit: 50,
       cwd: "/project/a",
-      sortKey: "updated_at",
+      sortKey: "recency_at",
     });
     expect(client.request).toHaveBeenNthCalledWith(2, "thread/list", {
       limit: 50,
       cwd: "/project/a",
-      sortKey: "updated_at",
+      sortKey: "recency_at",
       cursor: "older-page",
     });
   });
@@ -116,7 +144,7 @@ describe("会话列表轮询加载器", () => {
     expect(client.request).toHaveBeenNthCalledWith(1, "thread/list", {
       limit: 5,
       cwd: "/project/a",
-      sortKey: "updated_at",
+      sortKey: "recency_at",
     });
     expect(onProjectStart).toHaveBeenCalledWith("/project/a");
     expect(onProjectStart).toHaveBeenCalledWith("/project/b");
