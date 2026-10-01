@@ -715,6 +715,28 @@ test("移动端选择器、线程恢复、Markdown、折叠与吸顶", async ({ 
   await expect(page.locator(".conversation-header")).toHaveCSS("position", "sticky");
   await expect(page.locator(".conversation-header")).toHaveCSS("top", "0px");
 
+  const viewport = page.viewportSize()!;
+  const composerShell = page.locator(".composer");
+  const normalComposerBox = await composerShell.boundingBox();
+  expect(normalComposerBox!.x).toBeLessThanOrEqual(12);
+  expect(
+    viewport.width - normalComposerBox!.x - normalComposerBox!.width,
+  ).toBeLessThanOrEqual(12);
+  await page.getByRole("button", { name: "最大化输入框" }).click();
+  const expandedComposer = page.locator(".composer-wrap-maximized");
+  await expect(expandedComposer).toBeVisible();
+  const expandedPanelBox = await expandedComposer.boundingBox();
+  const expandedComposerBox = await composerShell.boundingBox();
+  expect(expandedPanelBox!.height).toBeGreaterThanOrEqual(viewport.height * .48);
+  expect(expandedPanelBox!.height).toBeLessThanOrEqual(viewport.height * .54);
+  expect(expandedPanelBox!.y).toBeGreaterThan(viewport.height * .4);
+  expect(expandedComposerBox!.x).toBeLessThanOrEqual(12);
+  expect(
+    viewport.width - expandedComposerBox!.x - expandedComposerBox!.width,
+  ).toBeLessThanOrEqual(12);
+  await page.getByRole("button", { name: "还原输入框" }).click();
+  await expect(expandedComposer).toHaveCount(0);
+
   await previousMessages.click();
   await expect(previousMessages).toHaveAttribute("aria-expanded", "false");
   await expect(previousChevron).toHaveClass(/direction-right/);

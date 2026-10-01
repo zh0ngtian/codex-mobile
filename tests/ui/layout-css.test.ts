@@ -273,7 +273,7 @@ describe("悬浮状态布局", () => {
     expect(listActionsRule).toContain("inset: auto 0 var(--browser-edge-bottom)");
     expect(listActionsRule).toContain("padding: 8px 16px 0");
     expect(composerRule).toContain("bottom: var(--browser-edge-bottom)");
-    expect(composerRule).toContain("padding: 8px 22px 0");
+    expect(composerRule).toContain("padding: 8px 10px 0");
   });
 
   it("侧边栏面板与遮罩使用同一套展开动效", () => {

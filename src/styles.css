@@ -366,10 +366,10 @@ button, a, summary, [role="button"] { -webkit-tap-highlight-color: transparent; 
 .file-diff-line.deletion { border-left: 3px solid #e86767; background: #fff0f0; }
 .file-diff-line.meta { color: #777; background: #f5f5f5; }
 .file-diff-empty { padding: 24px; color: #888; text-align: center; font-size: 13px; }
-.composer-wrap { position: fixed; left: 50%; bottom: var(--browser-edge-bottom); transform: translateX(-50%); z-index: 4; width: min(100%, 720px); padding: 8px 22px 0; background: linear-gradient(transparent, #fff 17%, #fff); }
-.composer-wrap-maximized { inset: 0 auto auto 50%; z-index: 30; height: 100dvh; padding: calc(var(--safe-area-top) + 12px) 16px max(12px, env(safe-area-inset-bottom), var(--browser-edge-bottom)); background: #fff; display: flex; flex-direction: column; overflow: hidden; }
-.composer-wrap-maximized > .pending-steer-message { position: static; max-width: none; margin: 0 8px 8px; }
-.composer-wrap-maximized .composer-follow-up-stack { position: static; width: auto; max-height: 132px; margin: 0 8px 8px; }
+.composer-wrap { position: fixed; left: 50%; bottom: var(--browser-edge-bottom); transform: translateX(-50%); z-index: 4; width: min(100%, 720px); padding: 8px 10px 0; background: linear-gradient(transparent, #fff 17%, #fff); }
+.composer-wrap-maximized { inset: auto auto var(--browser-edge-bottom) 50%; z-index: 30; height: min(52dvh, 520px); padding: 10px 10px max(10px, env(safe-area-inset-bottom), var(--browser-edge-bottom)); border: 1px solid rgba(0,0,0,.06); border-bottom: 0; border-radius: 24px 24px 0 0; background: #fff; box-shadow: 0 -16px 44px rgba(0,0,0,.12); display: flex; flex-direction: column; overflow: hidden; }
+.composer-wrap-maximized > .pending-steer-message { position: static; max-width: none; margin: 0 0 8px; }
+.composer-wrap-maximized .composer-follow-up-stack { position: static; width: auto; max-height: 132px; margin: 0 0 8px; }
 .composer-wrap-maximized .draft-images, .composer-wrap-maximized .draft-files { flex: 0 0 auto; max-height: 132px; }
 .readonly-thread-banner { min-height: 44px; margin: 0 8px 7px; border-radius: 18px; background: rgba(239,239,239,.97); color: #555; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 7px 6px 14px; box-shadow: 0 5px 18px rgba(0,0,0,.05); font-size: 12px; line-height: 1.35; }
 .readonly-thread-banner span { min-width: 0; }
@@ -388,7 +388,7 @@ button, a, summary, [role="button"] { -webkit-tap-highlight-color: transparent; 
 .realtime-pulse { width: 10px; height: 10px; flex: 0 0 auto; border-radius: 50%; background: #2388f5; box-shadow: 0 0 0 0 rgba(35,136,245,.28); animation: realtime-pulse 1.6s ease-out infinite; }
 @keyframes realtime-pulse { 55%,100% { box-shadow: 0 0 0 8px transparent; } }
 .realtime-error { display: block; width: calc(100% - 16px); margin: 0 8px 8px; border: 0; border-radius: 16px; background: #f5eeee; padding: 9px 12px; color: #8b2525; text-align: left; font-size: 13px; }
-.composer-follow-up-stack { position: absolute; right: 22px; bottom: calc(100% + 3px); width: min(calc(100% - 44px), 430px); max-height: 176px; overflow-y: auto; display: grid; gap: 6px; scrollbar-width: none; }
+.composer-follow-up-stack { position: absolute; right: 10px; bottom: calc(100% + 3px); width: min(calc(100% - 20px), 430px); max-height: 176px; overflow-y: auto; display: grid; gap: 6px; scrollbar-width: none; }
 .composer-follow-up-stack::-webkit-scrollbar { display: none; }
 .pending-steer-message { min-width: 0; overflow: hidden; border-radius: 16px; background: rgba(239,239,239,.96); padding: 8px 13px; color: #555; box-shadow: 0 4px 16px rgba(0,0,0,.06); text-overflow: ellipsis; white-space: nowrap; font-size: 13px; line-height: 1.35; pointer-events: none; animation: pending-steer-in .16s ease-out; }
 @keyframes pending-steer-in { from { opacity: 0; transform: translateY(4px); } }
@@ -421,7 +421,7 @@ button, a, summary, [role="button"] { -webkit-tap-highlight-color: transparent; 
 .chips { display: flex; gap: 7px; padding: 0 10px 7px; overflow: hidden; }
 .chips button { min-width: 0; max-width: 52%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border: 0; border-radius: 18px; background: #e9e9e9; padding: 7px 11px; font-size: 12px; font-weight: 650; }
 .chips button:disabled { opacity: .45; }
-.skill-mention-menu { position: absolute; z-index: 6; right: 22px; bottom: calc(100% - 8px); width: min(calc(100% - 44px), 460px); max-height: min(52dvh, 420px); overflow-y: auto; border: 1px solid rgba(0,0,0,.06); border-radius: 22px; background: rgba(255,255,255,.98); padding: 8px; box-shadow: 0 16px 44px rgba(0,0,0,.16); overscroll-behavior: contain; }
+.skill-mention-menu { position: absolute; z-index: 6; right: 10px; bottom: calc(100% - 8px); width: min(calc(100% - 20px), 460px); max-height: min(52dvh, 420px); overflow-y: auto; border: 1px solid rgba(0,0,0,.06); border-radius: 22px; background: rgba(255,255,255,.98); padding: 8px; box-shadow: 0 16px 44px rgba(0,0,0,.16); overscroll-behavior: contain; }
 .skill-mention-menu > p { margin: 0; padding: 6px 10px 8px; color: #888; font-size: 12px; font-weight: 650; }
 .skill-mention-menu > button { width: 100%; min-height: 58px; border: 0; border-radius: 15px; background: transparent; display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: center; gap: 12px; padding: 8px 10px; text-align: left; }
 .skill-mention-menu > button.selected { background: #f1f1f1; }
@@ -431,7 +431,7 @@ button, a, summary, [role="button"] { -webkit-tap-highlight-color: transparent; 
 .skill-mention-menu small { color: #777; font-size: 12px; }
 .skill-mention-menu code { max-width: 42%; overflow: hidden; border-radius: 9px; background: #e8e8e8; padding: 5px 7px; color: #444; text-overflow: ellipsis; white-space: nowrap; font: 11px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; }
 .skill-mention-status { min-height: 52px; color: #777; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 13px; }
-.composer-wrap-maximized .skill-mention-menu { position: static; flex: 0 0 auto; width: auto; max-height: min(38dvh, 360px); margin: 0 8px 8px; }
+.composer-wrap-maximized .skill-mention-menu { position: static; flex: 0 0 auto; width: auto; max-height: min(22dvh, 180px); margin: 0 0 8px; }
 .composer { min-height: 60px; border-radius: 31px; background: #f4f4f4; display: grid; grid-template-columns: 46px minmax(0,1fr) 34px 44px; align-items: center; padding: 5px 8px; }
 .composer textarea { border: 0; resize: none; outline: none; background: transparent; padding: 11px 7px; max-height: 120px; font-size: 16px; }
 .composer textarea:disabled { color: #888; opacity: .65; }
