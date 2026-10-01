@@ -321,11 +321,22 @@ export function ThreadListPage({
         )}
         {threadListState !== "loading" && selectedBackendId !== "all" && (
           <>
+            {!!allGroups.pinned.length && (
+              <section className="thread-section">
+                <h2>{t("置顶")}</h2>
+                {allGroups.pinned.map((thread) => renderRow(thread, false))}
+              </section>
+            )}
             {projectGroups
               .filter(
-                (group) => !query.trim() || group.threads.length > 0,
+                (group) =>
+                  !query.trim() ||
+                  group.threads.some((thread) => !thread.pinned),
               )
               .map((group) => {
+                const recentThreads = group.threads.filter(
+                  (thread) => !thread.pinned,
+                );
                 const projectKey = projectCollapseKey(
                   selectedBackendId,
                   group.cwd,
@@ -370,7 +381,7 @@ export function ThreadListPage({
                     </h2>
                     {isExpanded && (
                       <>
-                        {group.threads
+                        {recentThreads
                           .slice(0, visibleCount)
                           .map((thread) => renderRow(thread, false))}
                         {showInitialLoading && (

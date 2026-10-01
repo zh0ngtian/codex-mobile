@@ -205,11 +205,12 @@ describe("会话侧边栏列表", () => {
     expect(refresh.querySelector("svg")).toBeNull();
   });
 
-  it("单机视图只按项目分组且行内不重复机器项目", () => {
+  it("单机视图把置顶独立展示且行内不重复机器项目", () => {
     const { container } = renderList("mini");
     const view = within(container);
 
-    expect(view.queryByRole("heading", { name: "置顶" })).toBeNull();
+    expect(view.getByRole("heading", { name: "置顶" })).not.toBeNull();
+    expect(view.getAllByText("置顶会话")).toHaveLength(1);
     expect(view.getByRole("heading", { name: /project-a/ })).not.toBeNull();
     expect(view.getByRole("heading", { name: /project-b/ })).not.toBeNull();
     expect(view.queryByText("Mac mini · project-a")).toBeNull();
@@ -347,7 +348,7 @@ describe("会话侧边栏列表", () => {
 
     expect(projectButton.getAttribute("aria-expanded")).toBe("false");
     expect(projectButton.querySelector('[data-icon="folder"]')).not.toBeNull();
-    expect(view.queryByText("置顶会话")).toBeNull();
+    expect(view.getByText("置顶会话")).not.toBeNull();
     expect(view.getByText("最近会话")).not.toBeNull();
 
     fireEvent.click(projectButton);
@@ -357,18 +358,17 @@ describe("会话侧边栏列表", () => {
     );
   });
 
-  it("搜索期间临时展开匹配项目但不改变缓存状态", () => {
+  it("搜索置顶会话时只保留置顶区且不改变项目折叠缓存", () => {
     const collapsedProjectKeys = new Set(["mini:/tmp/project-a"]);
     const { container } = renderList("mini", {
       collapsedProjectKeys,
       query: "置顶",
     });
     const view = within(container);
-    const projectButton = view.getByRole("button", { name: /project-a/ });
 
-    expect(projectButton.getAttribute("aria-expanded")).toBe("true");
-    expect(projectButton.querySelector('[data-icon="folder-open"]')).not.toBeNull();
+    expect(view.getByRole("heading", { name: "置顶" })).not.toBeNull();
     expect(view.getByText("置顶会话")).not.toBeNull();
+    expect(view.queryByRole("button", { name: /project-a/ })).toBeNull();
     expect(collapsedProjectKeys.has("mini:/tmp/project-a")).toBe(true);
   });
 
