@@ -2,6 +2,7 @@ import { createRef, useState } from "react";
 import { fireEvent, render, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import type { InstalledSkill } from "../../src/app-server/skills";
+import type { InstalledPlugin } from "../../src/app-server/plugins";
 import { ConversationPage } from "../../src/features/conversation/ConversationPage";
 
 const skills: InstalledSkill[] = [
@@ -32,6 +33,20 @@ const skills: InstalledSkill[] = [
     interface: {
       displayName: "Artifact Template Builder",
       shortDescription: "Build reusable artifact templates",
+    },
+  },
+];
+
+const plugins: InstalledPlugin[] = [
+  {
+    id: "creative-production@openai-curated",
+    name: "creative-production",
+    installed: true,
+    enabled: true,
+    availability: "AVAILABLE",
+    interface: {
+      displayName: "Creative Production",
+      shortDescription: "Create polished visual assets",
     },
   },
 ];
@@ -75,6 +90,7 @@ function SkillComposer({ loading = false }: { loading?: boolean }) {
       selectedEffort={null}
       selectedPermissionLabel="工作区"
       skills={skills}
+      plugins={plugins}
       skillsLoading={loading}
       imageInputRef={createRef<HTMLInputElement>()}
       onBack={() => undefined}
@@ -107,14 +123,16 @@ describe("输入框 Skill 选择器", () => {
 
     fireEvent.change(input, { target: { value: "请用 @creator" } });
 
-    const list = view.getByRole("listbox", { name: "已安装 Skill" });
+    const list = view.getByRole("listbox", { name: "已安装 Skill 和插件" });
     expect(within(list).getAllByRole("option")).toHaveLength(1);
     fireEvent.click(within(list).getByRole("option"));
 
     expect((input as HTMLTextAreaElement).value).toBe(
       "请用 $skill-creator ",
     );
-    expect(view.queryByRole("listbox", { name: "已安装 Skill" })).toBeNull();
+    expect(
+      view.queryByRole("listbox", { name: "已安装 Skill 和插件" }),
+    ).toBeNull();
   });
 
   it("支持键盘切换并选择 Skill", () => {
@@ -144,6 +162,24 @@ describe("输入框 Skill 选择器", () => {
       "$openai-templates:artifact-template-builder-with-a-very-long-name",
     );
     expect(within(option).getByText("Artifact Template Builder")).toBeTruthy();
+  });
+
+  it("在同一个 @ 选择器中展示并插入已安装插件", () => {
+    const { container } = render(<SkillComposer />);
+    const view = within(container);
+    const input = view.getByRole("textbox", { name: "向 Codex 提问" });
+
+    fireEvent.change(input, { target: { value: "请用 @production" } });
+
+    const list = view.getByRole("listbox", { name: "已安装 Skill 和插件" });
+    const option = within(list).getByRole("option");
+    expect(within(option).getByText("@creative-production")).toBeTruthy();
+    expect(within(option).getByText("插件")).toBeTruthy();
+    fireEvent.click(option);
+
+    expect((input as HTMLTextAreaElement).value).toBe(
+      "请用 @creative-production ",
+    );
   });
 
   it("Skill 尚在加载时显示局部加载状态", () => {

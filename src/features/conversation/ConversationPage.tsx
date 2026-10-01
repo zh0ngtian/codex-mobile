@@ -20,6 +20,13 @@ import {
   type InstalledSkill,
   type SkillMentionQuery,
 } from "../../app-server/skills";
+import {
+  filterInstalledPlugins,
+  insertPluginMention,
+  pluginDescription,
+  pluginDisplayName,
+  type InstalledPlugin,
+} from "../../app-server/plugins";
 import type { OlderTurnsLoadState } from "../../app-server/thread-session";
 import type { BackendConfig } from "../../backends/types";
 import { type DraftFile, type DraftImage } from "../../ui/attachments";
@@ -158,7 +165,9 @@ export function ConversationPage({
   selectedEffort,
   selectedPermissionLabel,
   skills = [],
+  plugins = [],
   skillsLoading = false,
+  pluginsLoading = false,
   imageInputRef,
   onBack,
   onNewChatBackendChange,
@@ -213,7 +222,9 @@ export function ConversationPage({
   selectedEffort: string | null;
   selectedPermissionLabel: string;
   skills?: InstalledSkill[];
+  plugins?: InstalledPlugin[];
   skillsLoading?: boolean;
+  pluginsLoading?: boolean;
   imageInputRef: RefObject<HTMLInputElement | null>;
   onBack: () => void;
   onNewChatBackendChange: (backendId: string) => void;
@@ -285,12 +296,19 @@ export function ConversationPage({
   }, [composerMaximized]);
   useEffect(() => {
     setActiveSkillIndex(0);
-  }, [skillMention?.query, skills]);
+  }, [skillMention?.query, skills, plugins]);
   useEffect(() => {
     if (!draft) setSkillMention(null);
   }, [draft]);
-  const matchingSkills = skillMention
-    ? filterInstalledSkills(skills, skillMention.query).slice(0, 8)
+  const matchingMentions = skillMention
+    ? [
+        ...filterInstalledSkills(skills, skillMention.query)
+          .slice(0, 8)
+          .map((skill) => ({ kind: "skill" as const, skill })),
+        ...filterInstalledPlugins(plugins, skillMention.query)
+          .slice(0, 8)
+          .map((plugin) => ({ kind: "plugin" as const, plugin })),
+      ]
     : [];
   const syncSkillMention = (value: string, cursor: number | null) => {
     setSkillMention(skillMentionAt(value, cursor ?? value.length));
@@ -303,6 +321,21 @@ export function ConversationPage({
     );
     if (!mention) return;
     const next = insertSkillMention(draft, mention, skill);
+    onDraftChange(next.text);
+    setSkillMention(null);
+    window.requestAnimationFrame(() => {
+      composerInputRef.current?.focus({ preventScroll: true });
+      composerInputRef.current?.setSelectionRange(next.cursor, next.cursor);
+    });
+  };
+  const choosePlugin = (plugin: InstalledPlugin) => {
+    const input = composerInputRef.current;
+    const mention = skillMentionAt(
+      draft,
+      input?.selectionStart ?? skillMention?.end ?? draft.length,
+    );
+    if (!mention) return;
+    const next = insertPluginMention(draft, mention, plugin);
     onDraftChange(next.text);
     setSkillMention(null);
     window.requestAnimationFrame(() => {
@@ -776,41 +809,65 @@ export function ConversationPage({
         </div>
         {skillMention && (
           <section
-            id="installed-skill-options"
+            id="installed-mention-options"
             className="skill-mention-menu"
             role="listbox"
-            aria-label={t("已安装 Skill")}
+            aria-label={t("已安装 Skill 和插件")}
           >
-            <p>{t("选择 Skill")}</p>
-            {skillsLoading ? (
+            <p>{t("选择 Skill 或插件")}</p>
+            {skillsLoading || pluginsLoading ? (
               <div className="skill-mention-status" role="status">
                 <i className="action-spinner" aria-hidden="true" />
-                {t("正在加载 Skill…")}
+                {t("正在加载 Skill 和插件…")}
               </div>
-            ) : matchingSkills.length ? (
-              matchingSkills.map((skill, index) => (
+            ) : matchingMentions.length ? (
+              matchingMentions.map((option, index) => (
                 <button
-                  id={`installed-skill-option-${index}`}
+                  id={`installed-mention-option-${index}`}
                   type="button"
                   role="option"
                   aria-selected={index === activeSkillIndex}
                   className={index === activeSkillIndex ? "selected" : ""}
-                  key={skill.path}
+                  key={
+                    option.kind === "skill"
+                      ? `skill:${option.skill.path}`
+                      : `plugin:${option.plugin.id}`
+                  }
                   onPointerDown={(event) => event.preventDefault()}
-                  onClick={() => chooseSkill(skill)}
+                  onClick={() =>
+                    option.kind === "skill"
+                      ? chooseSkill(option.skill)
+                      : choosePlugin(option.plugin)
+                  }
                 >
-                  <span>
-                    <code title={`$${skill.name}`}>${skill.name}</code>
-                    {skillDisplayName(skill) !== skill.name && (
-                      <strong>{skillDisplayName(skill)}</strong>
-                    )}
-                    <small>{skillDescription(skill)}</small>
-                  </span>
+                  {option.kind === "skill" ? (
+                    <span>
+                      <code title={`$${option.skill.name}`}>
+                        ${option.skill.name}
+                      </code>
+                      {skillDisplayName(option.skill) !== option.skill.name && (
+                        <strong>{skillDisplayName(option.skill)}</strong>
+                      )}
+                      <small>{skillDescription(option.skill)}</small>
+                      <i className="skill-mention-kind">Skill</i>
+                    </span>
+                  ) : (
+                    <span>
+                      <code title={`@${option.plugin.name}`}>
+                        @{option.plugin.name}
+                      </code>
+                      {pluginDisplayName(option.plugin) !== option.plugin.name && (
+                        <strong>{pluginDisplayName(option.plugin)}</strong>
+                      )}
+                      <small>{pluginDescription(option.plugin)}</small>
+                      <i className="skill-mention-kind">{t("插件")}</i>
+                    </span>
+                  )}
                 </button>
               ))
             ) : (
               <div className="skill-mention-status">
-                {t("没有匹配的 Skill")}
+                {t("没有匹配的 Skill 或插件")}
               </div>
             )}
           </section>
@@ -849,11 +906,11 @@ export function ConversationPage({
             aria-label={t("向 Codex 提问")}
             value={draft}
             disabled={!interactive || steering || realtimeActive}
-            aria-controls={skillMention ? "installed-skill-options" : undefined}
+            aria-controls={skillMention ? "installed-mention-options" : undefined}
             aria-expanded={Boolean(skillMention)}
             aria-activedescendant={
-              skillMention && matchingSkills.length
-                ? `installed-skill-option-${activeSkillIndex}`
+              skillMention && matchingMentions.length
+                ? `installed-mention-option-${activeSkillIndex}`
                 : undefined
             }
             onChange={(event) => {
@@ -872,24 +929,27 @@ export function ConversationPage({
             onBlur={() => setSkillMention(null)}
             onKeyDown={(event) => {
               if (!skillMention || event.nativeEvent.isComposing) return;
-              if (event.key === "ArrowDown" && matchingSkills.length) {
+              if (event.key === "ArrowDown" && matchingMentions.length) {
                 event.preventDefault();
                 setActiveSkillIndex(
-                  (current) => (current + 1) % matchingSkills.length,
+                  (current) => (current + 1) % matchingMentions.length,
                 );
-              } else if (event.key === "ArrowUp" && matchingSkills.length) {
+              } else if (event.key === "ArrowUp" && matchingMentions.length) {
                 event.preventDefault();
                 setActiveSkillIndex(
                   (current) =>
-                    (current - 1 + matchingSkills.length) %
-                    matchingSkills.length,
+                    (current - 1 + matchingMentions.length) %
+                    matchingMentions.length,
                 );
               } else if (
                 (event.key === "Enter" || event.key === "Tab") &&
-                matchingSkills[activeSkillIndex]
+                matchingMentions[activeSkillIndex]
               ) {
                 event.preventDefault();
-                chooseSkill(matchingSkills[activeSkillIndex]);
+                const option = matchingMentions[activeSkillIndex];
+                option.kind === "skill"
+                  ? chooseSkill(option.skill)
+                  : choosePlugin(option.plugin);
               } else if (event.key === "Escape") {
                 event.preventDefault();
                 event.stopPropagation();

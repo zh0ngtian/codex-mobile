@@ -232,4 +232,33 @@ describe("图片输入", () => {
       },
     ]);
   });
+
+  it("把已选择插件作为 plugin:// 结构化提及附在文本之后", () => {
+    expect(
+      buildTurnInput("@creative-production 制作海报", [], [], [], [
+        {
+          id: "creative-production@openai-curated",
+          name: "creative-production",
+          installed: true,
+          enabled: true,
+          availability: "AVAILABLE",
+          interface: {
+            displayName: "Creative Production",
+            shortDescription: "Create polished visual assets",
+          },
+        },
+      ]),
+    ).toEqual([
+      {
+        type: "text",
+        text: "@creative-production 制作海报",
+        text_elements: [],
+      },
+      {
+        type: "mention",
+        name: "Creative Production",
+        path: "plugin://creative-production@openai-curated",
+      },
+    ]);
+  });
 });

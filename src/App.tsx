@@ -19,6 +19,12 @@ import {
   type InstalledSkill,
 } from "./app-server/skills";
 import {
+  listInstalledPlugins,
+  pluginMentionInput,
+  pluginsReferencedInText,
+  type InstalledPlugin,
+} from "./app-server/plugins";
+import {
   createLatestThreadListLoader,
   loadAllProjectlessThreadRecords,
   loadAllProjectThreadRecords,
@@ -174,6 +180,7 @@ interface QueuedFollowUp extends QueuedFollowUpPreview {
   images: DraftImage[];
   files: DraftFile[];
   skills: InstalledSkill[];
+  plugins: InstalledPlugin[];
 }
 
 interface HistoricalMessageEditState {
@@ -313,6 +320,11 @@ function BackendWorkspace({
     skills: InstalledSkill[];
     loading: boolean;
   }>({ cwd: null, skills: [], loading: false });
+  const [pluginCatalog, setPluginCatalog] = useState<{
+    cwd: string | null;
+    plugins: InstalledPlugin[];
+    loading: boolean;
+  }>({ cwd: null, plugins: [], loading: false });
   const clientRef = useRef<AppServerClient | null>(null);
   const connectionManagerRef = useRef<BackendConnectionManager | null>(null);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
@@ -333,6 +345,7 @@ function BackendWorkspace({
   const queuedFollowUpsRef = useRef<QueuedFollowUp[]>([]);
   const queuedFollowUpDispatchingRef = useRef(false);
   const skillLoadSequenceRef = useRef(0);
+  const pluginLoadSequenceRef = useRef(0);
   const readLocalUnread = () =>
     readUnreadThreadIds(localStorage, backend.id);
   const readLocalPinned = () =>
@@ -454,6 +467,7 @@ function BackendWorkspace({
     const client = clientRef.current;
     if (connection !== "online" || !client || !active) return;
     void loadSkillsForCwd(client, active.cwd ?? null);
+    void loadPluginsForCwd(client, active.cwd ?? null);
   }, [active?.cwd, connection]);
 
   useEffect(
@@ -662,7 +676,9 @@ function BackendWorkspace({
         if (status === "offline") {
           clientRef.current = null;
           skillLoadSequenceRef.current += 1;
+          pluginLoadSequenceRef.current += 1;
           setSkillCatalog({ cwd: null, skills: [], loading: false });
+          setPluginCatalog({ cwd: null, plugins: [], loading: false });
           setRefreshing(false);
           setBusy(false);
           setSteering(false);
@@ -690,6 +706,7 @@ function BackendWorkspace({
               activeRef.current?.cwd ?? null,
               true,
             );
+            void loadPluginsForCwd(client, activeRef.current?.cwd ?? null);
           }
           if (
             params.threadId &&
@@ -931,6 +948,7 @@ function BackendWorkspace({
         const client = source as AppServerClient;
         clientRef.current = client;
         void loadSkillsForCwd(client, activeRef.current?.cwd ?? null);
+        void loadPluginsForCwd(client, activeRef.current?.cwd ?? null);
         void (async () => {
           try {
             if (!disposed && manager.client(backend.id) === source) {
@@ -1134,6 +1152,36 @@ function BackendWorkspace({
         (activeRef.current?.cwd ?? null) === cwd
       ) {
         setSkillCatalog({ cwd, skills: [], loading: false });
+      }
+    }
+  }
+
+  async function loadPluginsForCwd(
+    client: AppServerClient,
+    cwd: string | null,
+  ) {
+    const sequence = ++pluginLoadSequenceRef.current;
+    setPluginCatalog((current) => ({
+      cwd,
+      plugins: current.cwd === cwd ? current.plugins : [],
+      loading: true,
+    }));
+    try {
+      const plugins = await listInstalledPlugins(client, cwd);
+      if (
+        sequence === pluginLoadSequenceRef.current &&
+        client === clientRef.current &&
+        (activeRef.current?.cwd ?? null) === cwd
+      ) {
+        setPluginCatalog({ cwd, plugins, loading: false });
+      }
+    } catch {
+      if (
+        sequence === pluginLoadSequenceRef.current &&
+        client === clientRef.current &&
+        (activeRef.current?.cwd ?? null) === cwd
+      ) {
+        setPluginCatalog({ cwd, plugins: [], loading: false });
       }
     }
   }
@@ -1386,6 +1434,7 @@ function BackendWorkspace({
     pendingImages,
     pendingFiles,
     pendingSkills,
+    pendingPlugins,
     draftContext,
     onFailure,
   }: {
@@ -1393,6 +1442,7 @@ function BackendWorkspace({
     pendingImages: DraftImage[];
     pendingFiles: DraftFile[];
     pendingSkills: InstalledSkill[];
+    pendingPlugins: InstalledPlugin[];
     draftContext: number;
     onFailure: () => void;
   }) {
@@ -1528,6 +1578,7 @@ function BackendWorkspace({
           pendingImages,
           uploadedFiles,
           pendingSkills,
+          pendingPlugins,
         ),
         ...(shouldSendSettings && selectedModel ? { model: selectedModel } : {}),
         ...(shouldSendSettings && selectedEffort
@@ -1599,6 +1650,10 @@ function BackendWorkspace({
       text,
       skillCatalog.cwd === (active?.cwd ?? null) ? skillCatalog.skills : [],
     );
+    const pendingPlugins = pluginsReferencedInText(
+      text,
+      pluginCatalog.cwd === (active?.cwd ?? null) ? pluginCatalog.plugins : [],
+    );
     if (
       imageReading ||
       (!text && !pendingImages.length && !pendingFiles.length) ||
@@ -1625,6 +1680,7 @@ function BackendWorkspace({
         images: pendingImages,
         files: pendingFiles,
         skills: pendingSkills,
+        plugins: pendingPlugins,
       };
       requestRunCompletionNotificationPermission();
       invalidateImageReads();
@@ -1649,6 +1705,7 @@ function BackendWorkspace({
       pendingImages,
       pendingFiles,
       pendingSkills,
+      pendingPlugins,
       draftContext,
       onFailure: () => {
         setDraft((current) => current || text);
@@ -1771,6 +1828,21 @@ function BackendWorkspace({
         )
       ) {
         input.push({ type: "skill", name: skill.name, path: skill.path });
+      }
+    }
+    const referencedPlugins = pluginsReferencedInText(
+      text,
+      pluginCatalog.cwd === (thread.cwd ?? null) ? pluginCatalog.plugins : [],
+    );
+    for (const plugin of referencedPlugins) {
+      const mention = pluginMentionInput(plugin);
+      if (
+        !input.some(
+          (part) =>
+            part.type === "mention" && String(part.path ?? "") === mention.path,
+        )
+      ) {
+        input.push(mention);
       }
     }
     if (!input.length) {
@@ -1968,6 +2040,7 @@ function BackendWorkspace({
             followUp.images,
             uploadedFiles,
             followUp.skills,
+            followUp.plugins,
           ),
           clientUserMessageId,
         }),
@@ -2020,6 +2093,7 @@ function BackendWorkspace({
       pendingImages: followUp.images,
       pendingFiles: followUp.files,
       pendingSkills: followUp.skills,
+      pendingPlugins: followUp.plugins,
       draftContext: followUp.draftContext,
       onFailure: () => {
         replaceQueuedFollowUps([
@@ -2700,6 +2774,14 @@ function BackendWorkspace({
           }
           skillsLoading={
             skillCatalog.cwd === (active.cwd ?? null) && skillCatalog.loading
+          }
+          plugins={
+            pluginCatalog.cwd === (active.cwd ?? null)
+              ? pluginCatalog.plugins
+              : []
+          }
+          pluginsLoading={
+            pluginCatalog.cwd === (active.cwd ?? null) && pluginCatalog.loading
           }
           imageInputRef={imageInputRef}
           onBack={onOpenSidebar}

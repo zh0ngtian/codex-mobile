@@ -1,4 +1,8 @@
 import type { InstalledSkill } from "../app-server/skills";
+import {
+  pluginMentionInput,
+  type InstalledPlugin,
+} from "../app-server/plugins";
 
 export const MAX_DRAFT_IMAGES = 4;
 export const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
@@ -207,6 +211,7 @@ export function buildTurnInput(
   images: DraftImage[],
   files: UploadedFile[] = [],
   skills: InstalledSkill[] = [],
+  plugins: InstalledPlugin[] = [],
 ) {
   return [
     ...(text
@@ -226,6 +231,7 @@ export function buildTurnInput(
       name: skill.name,
       path: skill.path,
     })),
+    ...plugins.map(pluginMentionInput),
   ];
 }
 
