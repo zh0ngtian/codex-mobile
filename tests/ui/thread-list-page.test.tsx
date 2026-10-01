@@ -52,6 +52,8 @@ function renderList(
     refreshing = false,
     projectDirectories = ["/tmp/project-a", "/tmp/project-b"],
     projectThreadStates = {},
+    projectHasMore = {},
+    projectVisibleCounts = {},
     query = "",
     onRetryProject = () => undefined,
     onToggleProjectCollapsed = () => undefined,
@@ -61,6 +63,8 @@ function renderList(
     refreshing?: boolean;
     projectDirectories?: string[];
     projectThreadStates?: Record<string, "loading" | "ready" | "error">;
+    projectHasMore?: Record<string, boolean>;
+    projectVisibleCounts?: Record<string, number>;
     query?: string;
     onRetryProject?: (backendId: string, cwd: string) => void;
     onToggleProjectCollapsed?: (backendId: string, cwd: string) => void;
@@ -75,7 +79,8 @@ function renderList(
       visibleThreads={threads}
       totalThreadCount={threads.length}
       projectDirectories={projectDirectories}
-      projectVisibleCounts={{}}
+      projectHasMore={projectHasMore}
+      projectVisibleCounts={projectVisibleCounts}
       collapsedProjectKeys={collapsedProjectKeys}
       loadingProjectKeys={new Set()}
       loadingBackendIds={loadingBackendIds}
@@ -227,6 +232,33 @@ describe("会话侧边栏列表", () => {
     ).not.toBeNull();
   });
 
+  it("项目首屏去重后不足 5 条但服务端仍有下一页时显示更多", () => {
+    const { container } = renderList("mini", {
+      projectHasMore: { "/tmp/project-a": true },
+    });
+    const projectA = within(
+      within(container).getByRole("heading", { name: /project-a/ })
+        .parentElement as HTMLElement,
+    );
+
+    expect(projectA.getByRole("button", { name: "更多" })).not.toBeNull();
+  });
+
+  it("项目历史已经完整加载时不再显示更多", () => {
+    const { container } = renderList("mini", {
+      projectHasMore: {
+        "/tmp/project-a": false,
+        "/tmp/project-b": false,
+      },
+      projectVisibleCounts: {
+        "mini:/tmp/project-a": Number.MAX_SAFE_INTEGER,
+        "mini:/tmp/project-b": Number.MAX_SAFE_INTEGER,
+      },
+    });
+
+    expect(within(container).queryByRole("button", { name: "更多" })).toBeNull();
+  });
+
   it("点击项目标题切换折叠状态并显示对应文件夹图标", () => {
     const onToggleProjectCollapsed = vi.fn();
     const { container } = renderList("mini", {
@@ -277,6 +309,7 @@ describe("会话侧边栏列表", () => {
         visibleThreads={unreadThreads}
         totalThreadCount={unreadThreads.length}
         projectDirectories={["/tmp/project-a", "/tmp/project-b"]}
+        projectHasMore={{}}
         projectVisibleCounts={{}}
         collapsedProjectKeys={new Set()}
         loadingProjectKeys={new Set()}

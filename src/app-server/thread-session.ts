@@ -5,9 +5,17 @@ import type {
 
 type AnyRecord = Record<string, any>;
 const initialTurnsLimit = 10;
+const threadHistoryRequestTimeoutMs = 60_000;
+const threadHistoryRequestOptions = {
+  timeoutMs: threadHistoryRequestTimeoutMs,
+};
 
 interface Requester {
-  request(method: string, params: unknown): Promise<any>;
+  request(
+    method: string,
+    params: unknown,
+    options?: { timeoutMs?: number },
+  ): Promise<any>;
 }
 
 export interface ResumedThreadSession {
@@ -65,13 +73,17 @@ export async function loadOlderThreadTurns(
   threadId: string,
   cursor: string,
 ): Promise<ThreadTurnsPage> {
-  const response = await client.request("thread/turns/list", {
-    threadId,
-    cursor,
-    limit: initialTurnsLimit,
-    sortDirection: "desc",
-    itemsView: "full",
-  });
+  const response = await client.request(
+    "thread/turns/list",
+    {
+      threadId,
+      cursor,
+      limit: initialTurnsLimit,
+      sortDirection: "desc",
+      itemsView: "summary",
+    },
+    threadHistoryRequestOptions,
+  );
   return {
     turns: chronologicalTurns(response.data),
     nextCursor: response.nextCursor ?? null,
@@ -82,12 +94,16 @@ export async function loadRecentThreadTurns(
   client: Requester,
   threadId: string,
 ): Promise<AnyRecord[]> {
-  const response = await client.request("thread/turns/list", {
-    threadId,
-    limit: initialTurnsLimit,
-    sortDirection: "desc",
-    itemsView: "full",
-  });
+  const response = await client.request(
+    "thread/turns/list",
+    {
+      threadId,
+      limit: initialTurnsLimit,
+      sortDirection: "desc",
+      itemsView: "summary",
+    },
+    threadHistoryRequestOptions,
+  );
   return chronologicalTurns(response.data);
 }
 
@@ -136,15 +152,19 @@ export async function resumeThreadSession(
   threadId: string,
 ): Promise<ResumedThreadSession> {
   try {
-    const response = await client.request("thread/resume", {
-      threadId,
-      excludeTurns: true,
-      initialTurnsPage: {
-        limit: initialTurnsLimit,
-        sortDirection: "desc",
-        itemsView: "full",
+    const response = await client.request(
+      "thread/resume",
+      {
+        threadId,
+        excludeTurns: true,
+        initialTurnsPage: {
+          limit: initialTurnsLimit,
+          sortDirection: "desc",
+          itemsView: "summary",
+        },
       },
-    });
+      threadHistoryRequestOptions,
+    );
     const initialTurnsPage = response.initialTurnsPage;
     return {
       thread: {
@@ -170,12 +190,16 @@ export async function resumeThreadSession(
       threadId,
       includeTurns: false,
     });
-    const turnsPage = await client.request("thread/turns/list", {
-      threadId,
-      limit: initialTurnsLimit,
-      sortDirection: "desc",
-      itemsView: "full",
-    });
+    const turnsPage = await client.request(
+      "thread/turns/list",
+      {
+        threadId,
+        limit: initialTurnsLimit,
+        sortDirection: "desc",
+        itemsView: "summary",
+      },
+      threadHistoryRequestOptions,
+    );
     return {
       thread: {
         ...response.thread,

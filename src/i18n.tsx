@@ -70,6 +70,7 @@ const english: Record<string, string> = {
   "重试加载 {name} 会话": "Retry loading conversations for {name}",
   "加载失败，点击重试": "Loading failed. Tap to retry",
   "加载中": "Loading",
+  "更多": "More",
   "展开显示": "Show more",
   "没有匹配的对话": "No matching conversations",
   "暂无对话": "No conversations",

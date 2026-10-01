@@ -9,6 +9,7 @@ import {
 import { AppServerClient, type RpcMessage } from "./app-server/client";
 import {
   createLatestThreadListLoader,
+  loadAllProjectThreadRecords,
   type ProjectThreadLoadState,
 } from "./app-server/thread-list-loader";
 import {
@@ -140,6 +141,7 @@ interface BackendThreadSnapshot {
   threads: AnyRecord[];
   projects: string[];
   projectThreadStates: Record<string, ProjectThreadLoadState>;
+  projectHasMore: Record<string, boolean>;
   loadingProjectCwd: string;
   refreshing: boolean;
   threadListState: ThreadListState;
@@ -193,6 +195,9 @@ function BackendWorkspace({
   const [projects, setProjects] = useState<string[]>([]);
   const [projectThreadStates, setProjectThreadStates] = useState<
     Record<string, ProjectThreadLoadState>
+  >({});
+  const [projectHasMore, setProjectHasMore] = useState<
+    Record<string, boolean>
   >({});
   const [loadingProjectCwd, setLoadingProjectCwd] = useState("");
   const [refreshing, setRefreshing] = useState(false);
@@ -291,15 +296,15 @@ function BackendWorkspace({
   const threadListLoaderRef = useRef<ReturnType<
     typeof createLatestThreadListLoader
   > | null>(null);
+  const decorateThreads = (data: AnyRecord[]): AnyRecord[] => {
+    const localUnread = readLocalUnread();
+    return data.map((thread) => ({
+      ...thread,
+      isPinned: thread.isPinned === true,
+      isUnread: localUnread.has(String(thread.id)),
+    }));
+  };
   if (!threadListLoaderRef.current) {
-    const decorateThreads = (data: AnyRecord[]): AnyRecord[] => {
-      const localUnread = readLocalUnread();
-      return data.map((thread) => ({
-        ...thread,
-        isPinned: thread.isPinned === true,
-        isUnread: localUnread.has(String(thread.id)),
-      }));
-    };
     threadListLoaderRef.current = createLatestThreadListLoader({
       onData(data) {
         setThreads(decorateThreads(data));
@@ -311,8 +316,12 @@ function BackendWorkspace({
           [cwd]: "loading",
         }));
       },
-      onProjectData(cwd, data) {
+      onProjectData(cwd, data, hasMore) {
         const nextProjectThreads = decorateThreads(data);
+        setProjectHasMore((current) => ({
+          ...current,
+          [cwd]: fullyLoadedProjectCwdsRef.current.has(cwd) ? false : hasMore,
+        }));
         setThreads((current) => {
           const currentProjectThreads = current.filter(
             (thread) => thread.cwd === cwd,
@@ -484,6 +493,7 @@ function BackendWorkspace({
       threads,
       projects,
       projectThreadStates,
+      projectHasMore,
       loadingProjectCwd,
       refreshing,
       threadListState,
@@ -499,6 +509,7 @@ function BackendWorkspace({
     threads,
     projects,
     projectThreadStates,
+    projectHasMore,
     loadingProjectCwd,
     refreshing,
   ]);
@@ -1726,23 +1737,12 @@ function BackendWorkspace({
     if (!client) return;
     setLoadingProjectCwd(cwd);
     try {
-      const all: AnyRecord[] = [];
-      let cursor: string | null = null;
-      do {
-        const result: { data: AnyRecord[]; nextCursor?: string | null } =
-          await client.request("thread/list", {
-            limit: 50,
-            cwd,
-            sortKey: "updated_at",
-            ...(cursor ? { cursor } : {}),
-          });
-        all.push(...result.data);
-        cursor = result.nextCursor ?? null;
-      } while (cursor);
+      const all = await loadAllProjectThreadRecords(client, cwd);
       fullyLoadedProjectCwdsRef.current.add(cwd);
+      setProjectHasMore((current) => ({ ...current, [cwd]: false }));
       setThreads((current) => [
         ...current.filter((thread) => thread.cwd !== cwd),
-        ...all,
+        ...decorateThreads(all),
       ]);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
@@ -2019,13 +2019,11 @@ function ConfiguredApp({
   const [collapsedProjectKeys, setCollapsedProjectKeys] = useState(() =>
     readCollapsedProjectKeys(window.localStorage),
   );
-  const loadedProjectsRef = useRef(new Set<string>());
   const [command, setCommand] = useState<WorkspaceCommand | null>(null);
   const commandIdRef = useRef(0);
   const edgeTouchStartRef = useRef<{ x: number; y: number } | null>(null);
   const resetListExpansion = useCallback(() => {
     setProjectVisibleCounts({});
-    loadedProjectsRef.current.clear();
   }, []);
   const {
     sidebarOpen,
@@ -2195,6 +2193,7 @@ function ConfiguredApp({
         previous.threads === snapshot.threads &&
         previous.projects === snapshot.projects &&
         previous.projectThreadStates === snapshot.projectThreadStates &&
+        previous.projectHasMore === snapshot.projectHasMore &&
         previous.loadingProjectCwd === snapshot.loadingProjectCwd &&
         previous.refreshing === snapshot.refreshing &&
         previous.threadListState === snapshot.threadListState &&
@@ -2270,6 +2269,10 @@ function ConfiguredApp({
     listBackendId === "all"
       ? {}
       : snapshots[listBackendId]?.projectThreadStates ?? {};
+  const projectHasMore =
+    listBackendId === "all"
+      ? {}
+      : snapshots[listBackendId]?.projectHasMore ?? {};
   const loadingBackendIds = new Set(
     Object.values(snapshots)
       .filter((snapshot) =>
@@ -2296,17 +2299,14 @@ function ConfiguredApp({
       const key = `${backendId}:${cwd}`;
       setProjectVisibleCounts((current) => ({
         ...current,
-        [key]: (current[key] ?? 5) + 10,
+        [key]: Number.MAX_SAFE_INTEGER,
       }));
-      if (!loadedProjectsRef.current.has(key)) {
-        loadedProjectsRef.current.add(key);
-        setCommand({
-          id: ++commandIdRef.current,
-          backendId,
-          type: "load-project",
-          cwd,
-        });
-      }
+      setCommand({
+        id: ++commandIdRef.current,
+        backendId,
+        type: "load-project",
+        cwd,
+      });
     },
     [],
   );
@@ -2453,6 +2453,7 @@ function ConfiguredApp({
             totalThreadCount={scopedThreadCount}
             projectDirectories={projectDirectories}
             projectThreadStates={projectThreadStates}
+            projectHasMore={projectHasMore}
             projectVisibleCounts={projectVisibleCounts}
             collapsedProjectKeys={collapsedProjectKeys}
             loadingProjectKeys={loadingProjectKeys}

@@ -4,14 +4,69 @@ interface ThreadListClient {
   request(method: string, params: unknown): Promise<any>;
 }
 
+interface ThreadListResponse {
+  data: ThreadRecord[];
+  nextCursor?: string | null;
+}
+
 export type ProjectThreadLoadState = "idle" | "loading" | "ready" | "error";
 
 interface ThreadListLoaderCallbacks {
   onData?: (threads: ThreadRecord[]) => void;
   onProjectStart?: (cwd: string) => void;
-  onProjectData?: (cwd: string, threads: ThreadRecord[]) => void;
+  onProjectData?: (
+    cwd: string,
+    threads: ThreadRecord[],
+    hasMore: boolean,
+  ) => void;
   onProjectError?: (cwd: string, reason: Error) => void;
   onSettled?: () => void;
+}
+
+function threadTimestamp(thread: ThreadRecord) {
+  return Number(thread.updatedAt ?? thread.createdAt ?? 0);
+}
+
+export function dedupeThreadsById(threads: ThreadRecord[]) {
+  const unique = new Map<string, ThreadRecord>();
+  const unidentified: ThreadRecord[] = [];
+  for (const thread of threads) {
+    const id = String(thread.id ?? "").trim();
+    if (!id) {
+      unidentified.push(thread);
+      continue;
+    }
+    const current = unique.get(id);
+    if (!current || threadTimestamp(thread) > threadTimestamp(current)) {
+      unique.set(id, thread);
+    }
+  }
+  return [...unique.values(), ...unidentified].sort(
+    (left, right) => threadTimestamp(right) - threadTimestamp(left),
+  );
+}
+
+export async function loadAllProjectThreadRecords(
+  client: ThreadListClient,
+  cwd: string,
+) {
+  const all: ThreadRecord[] = [];
+  const seenCursors = new Set<string>();
+  let cursor: string | null = null;
+  do {
+    const result: ThreadListResponse = await client.request("thread/list", {
+      limit: 50,
+      cwd,
+      sortKey: "updated_at",
+      ...(cursor ? { cursor } : {}),
+    });
+    all.push(...result.data);
+    const nextCursor = result.nextCursor ?? null;
+    if (!nextCursor || seenCursors.has(nextCursor)) break;
+    seenCursors.add(nextCursor);
+    cursor = nextCursor;
+  } while (cursor);
+  return dedupeThreadsById(all);
 }
 
 export function createLatestThreadListLoader(
@@ -42,12 +97,21 @@ export function createLatestThreadListLoader(
         cwd,
         sortKey: "updated_at",
       })
-      .then((result: { data: ThreadRecord[] }) => {
+      .then((result: ThreadListResponse) => {
         if (
           sequence === latestSequence &&
           projectAttempts.get(cwd) === attempt
         ) {
-          callbacks.onProjectData?.(cwd, result.data);
+          const hasMore = result.nextCursor
+            ? true
+            : result.nextCursor === null
+              ? false
+              : result.data.length >= 5;
+          callbacks.onProjectData?.(
+            cwd,
+            dedupeThreadsById(result.data),
+            hasMore,
+          );
         }
       })
       .catch((reason: unknown) => {
@@ -75,8 +139,10 @@ export function createLatestThreadListLoader(
               limit: 50,
               sortKey: "updated_at",
             })
-            .then((result: { data: ThreadRecord[] }) => {
-              if (sequence === latestSequence) callbacks.onData?.(result.data);
+            .then((result: ThreadListResponse) => {
+              if (sequence === latestSequence) {
+                callbacks.onData?.(dedupeThreadsById(result.data));
+              }
             });
       const promise = request
         .then(() => {

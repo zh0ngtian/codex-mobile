@@ -33,6 +33,7 @@ export function ThreadListPage({
   totalThreadCount,
   projectDirectories,
   projectThreadStates,
+  projectHasMore,
   projectVisibleCounts,
   collapsedProjectKeys,
   loadingProjectKeys,
@@ -59,6 +60,7 @@ export function ThreadListPage({
   totalThreadCount: number;
   projectDirectories: string[];
   projectThreadStates: Record<string, ProjectThreadLoadState>;
+  projectHasMore: Record<string, boolean>;
   projectVisibleCounts: Record<string, number>;
   collapsedProjectKeys: Set<string>;
   loadingProjectKeys: Set<string>;
@@ -230,6 +232,9 @@ export function ThreadListPage({
                 const projectThreadState =
                   projectThreadStates[group.cwd] ??
                   (group.threads.length ? "ready" : "idle");
+                const hasMore =
+                  projectHasMore[group.cwd] ??
+                  group.threads.length >= visibleCount;
                 const showInitialLoading =
                   projectThreadState === "loading" &&
                   group.threads.length === 0;
@@ -292,7 +297,8 @@ export function ThreadListPage({
                         {!showInitialLoading &&
                           !showInitialError &&
                           (isLoadingMore ||
-                            group.threads.length >= visibleCount) && (
+                            hasMore ||
+                            group.threads.length > visibleCount) && (
                           <button
                             type="button"
                             className="project-more"
@@ -314,7 +320,7 @@ export function ThreadListPage({
                                 {t("加载中")}
                               </>
                             ) : (
-                              t("展开显示")
+                              t("更多")
                             )}
                           </button>
                         )}

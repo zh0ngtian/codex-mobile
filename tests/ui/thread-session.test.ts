@@ -30,15 +30,19 @@ describe("恢复已有 app-server 会话", () => {
     const result = await resumeThreadSession({ request }, "thread-1");
 
     expect(request).toHaveBeenCalledOnce();
-    expect(request).toHaveBeenCalledWith("thread/resume", {
-      threadId: "thread-1",
-      excludeTurns: true,
-      initialTurnsPage: {
-        limit: 10,
-        sortDirection: "desc",
-        itemsView: "full",
+    expect(request).toHaveBeenCalledWith(
+      "thread/resume",
+      {
+        threadId: "thread-1",
+        excludeTurns: true,
+        initialTurnsPage: {
+          limit: 10,
+          sortDirection: "desc",
+          itemsView: "summary",
+        },
       },
-    });
+      { timeoutMs: 60_000 },
+    );
     expect(result.thread.turns.map((turn: { id: string }) => turn.id)).toEqual([
       "turn-1",
       "turn-2",
@@ -75,12 +79,17 @@ describe("恢复已有 app-server 会话", () => {
       threadId: "thread-1",
       includeTurns: false,
     });
-    expect(request).toHaveBeenNthCalledWith(3, "thread/turns/list", {
-      threadId: "thread-1",
-      limit: 10,
-      sortDirection: "desc",
-      itemsView: "full",
-    });
+    expect(request).toHaveBeenNthCalledWith(
+      3,
+      "thread/turns/list",
+      {
+        threadId: "thread-1",
+        limit: 10,
+        sortDirection: "desc",
+        itemsView: "summary",
+      },
+      { timeoutMs: 60_000 },
+    );
     expect(result.settingsSynchronized).toBe(false);
     expect(result.thread.id).toBe("thread-1");
     expect(result.thread.turns.map((turn: { id: string }) => turn.id)).toEqual([
@@ -120,13 +129,17 @@ describe("恢复已有 app-server 会话", () => {
       "older-cursor",
     );
 
-    expect(request).toHaveBeenCalledWith("thread/turns/list", {
-      threadId: "thread-1",
-      cursor: "older-cursor",
-      limit: 10,
-      sortDirection: "desc",
-      itemsView: "full",
-    });
+    expect(request).toHaveBeenCalledWith(
+      "thread/turns/list",
+      {
+        threadId: "thread-1",
+        cursor: "older-cursor",
+        limit: 10,
+        sortDirection: "desc",
+        itemsView: "summary",
+      },
+      { timeoutMs: 60_000 },
+    );
     expect(result.turns.map((turn) => String(turn.id))).toEqual([
       "turn-1",
       "turn-2",
@@ -134,7 +147,7 @@ describe("恢复已有 app-server 会话", () => {
     expect(result.nextCursor).toBe("next-older");
   });
 
-  it("获取最新完整 turns 用于回到前台后的增量对账", async () => {
+  it("获取最新轻量 turns 用于回到前台后的增量对账", async () => {
     const request = vi.fn().mockResolvedValue({
       data: [
         { id: "turn-3", status: "completed" },
@@ -148,12 +161,16 @@ describe("恢复已有 app-server 会话", () => {
       "thread-1",
     );
 
-    expect(request).toHaveBeenCalledWith("thread/turns/list", {
-      threadId: "thread-1",
-      limit: 10,
-      sortDirection: "desc",
-      itemsView: "full",
-    });
+    expect(request).toHaveBeenCalledWith(
+      "thread/turns/list",
+      {
+        threadId: "thread-1",
+        limit: 10,
+        sortDirection: "desc",
+        itemsView: "summary",
+      },
+      { timeoutMs: 60_000 },
+    );
     expect(result.map((turn) => turn.id)).toEqual(["turn-2", "turn-3"]);
   });
 

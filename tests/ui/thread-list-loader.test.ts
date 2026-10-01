@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import { createLatestThreadListLoader } from "../../src/app-server/thread-list-loader";
+import {
+  createLatestThreadListLoader,
+  dedupeThreadsById,
+  loadAllProjectThreadRecords,
+} from "../../src/app-server/thread-list-loader";
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -10,9 +14,88 @@ function deferred<T>() {
 }
 
 describe("会话列表轮询加载器", () => {
+  it("按逻辑 thread id 合并续接日志并保留更新时间最新的记录", () => {
+    expect(
+      dedupeThreadsById([
+        {
+          id: "continued-thread",
+          path: "/sessions/original.jsonl",
+          updatedAt: 10,
+        },
+        {
+          id: "other-thread",
+          path: "/sessions/other.jsonl",
+          updatedAt: 20,
+        },
+        {
+          id: "continued-thread",
+          path: "/sessions/continued.jsonl",
+          updatedAt: 30,
+        },
+      ]),
+    ).toEqual([
+      {
+        id: "continued-thread",
+        path: "/sessions/continued.jsonl",
+        updatedAt: 30,
+      },
+      {
+        id: "other-thread",
+        path: "/sessions/other.jsonl",
+        updatedAt: 20,
+      },
+    ]);
+  });
+
+  it("沿 nextCursor 读取项目全部历史并跨页去重", async () => {
+    const client = {
+      request: vi
+        .fn()
+        .mockResolvedValueOnce({
+          data: [
+            { id: "same", updatedAt: 30 },
+            { id: "first-page", updatedAt: 20 },
+          ],
+          nextCursor: "older-page",
+        })
+        .mockResolvedValueOnce({
+          data: [
+            { id: "same", updatedAt: 10 },
+            { id: "second-page", updatedAt: 5 },
+          ],
+          nextCursor: null,
+        }),
+    };
+
+    await expect(
+      loadAllProjectThreadRecords(client, "/project/a"),
+    ).resolves.toEqual([
+      { id: "same", updatedAt: 30 },
+      { id: "first-page", updatedAt: 20 },
+      { id: "second-page", updatedAt: 5 },
+    ]);
+    expect(client.request).toHaveBeenNthCalledWith(1, "thread/list", {
+      limit: 50,
+      cwd: "/project/a",
+      sortKey: "updated_at",
+    });
+    expect(client.request).toHaveBeenNthCalledWith(2, "thread/list", {
+      limit: 50,
+      cwd: "/project/a",
+      sortKey: "updated_at",
+      cursor: "older-page",
+    });
+  });
+
   it("按配置项目分别获取最新 5 条会话并独立提交结果", async () => {
-    const projectA = deferred<{ data: Array<{ id: string; cwd: string }> }>();
-    const projectB = deferred<{ data: Array<{ id: string; cwd: string }> }>();
+    const projectA = deferred<{
+      data: Array<{ id: string; cwd: string; updatedAt?: number }>;
+      nextCursor: string | null;
+    }>();
+    const projectB = deferred<{
+      data: Array<{ id: string; cwd: string }>;
+      nextCursor: string | null;
+    }>();
     const client = {
       request: vi.fn((_method: string, params: { cwd: string }) =>
         params.cwd === "/project/a" ? projectA.promise : projectB.promise,
@@ -40,23 +123,32 @@ describe("会话列表轮询加载器", () => {
 
     projectB.resolve({
       data: [{ id: "thread-b", cwd: "/project/b" }],
+      nextCursor: null,
     });
     await Promise.resolve();
 
     expect(onProjectData).toHaveBeenCalledOnce();
-    expect(onProjectData).toHaveBeenLastCalledWith("/project/b", [
-      { id: "thread-b", cwd: "/project/b" },
-    ]);
+    expect(onProjectData).toHaveBeenLastCalledWith(
+      "/project/b",
+      [{ id: "thread-b", cwd: "/project/b" }],
+      false,
+    );
     expect(onSettled).not.toHaveBeenCalled();
 
     projectA.resolve({
-      data: [{ id: "thread-a", cwd: "/project/a" }],
+      data: [
+        { id: "thread-a", cwd: "/project/a", updatedAt: 20 },
+        { id: "thread-a", cwd: "/project/a", updatedAt: 10 },
+      ],
+      nextCursor: "older-project-a",
     });
     await loading;
 
-    expect(onProjectData).toHaveBeenLastCalledWith("/project/a", [
-      { id: "thread-a", cwd: "/project/a" },
-    ]);
+    expect(onProjectData).toHaveBeenLastCalledWith(
+      "/project/a",
+      [{ id: "thread-a", cwd: "/project/a", updatedAt: 20 }],
+      true,
+    );
     expect(onSettled).toHaveBeenCalledOnce();
   });
 
@@ -87,9 +179,11 @@ describe("会话列表轮询加载器", () => {
       "/project/a",
       expect.objectContaining({ message: "project a failed" }),
     );
-    expect(onProjectData).toHaveBeenCalledWith("/project/b", [
-      { id: "thread-b", cwd: "/project/b" },
-    ]);
+    expect(onProjectData).toHaveBeenCalledWith(
+      "/project/b",
+      [{ id: "thread-b", cwd: "/project/b" }],
+      false,
+    );
     expect(onSettled).toHaveBeenCalledOnce();
   });
 
@@ -119,9 +213,11 @@ describe("会话列表轮询加载器", () => {
     await first;
 
     expect(onProjectData).toHaveBeenCalledOnce();
-    expect(onProjectData).toHaveBeenCalledWith("/project/a", [
-      { id: "retry", cwd: "/project/a" },
-    ]);
+    expect(onProjectData).toHaveBeenCalledWith(
+      "/project/a",
+      [{ id: "retry", cwd: "/project/a" }],
+      false,
+    );
   });
 
   it("同一客户端的慢请求只保留一个在途请求", async () => {
