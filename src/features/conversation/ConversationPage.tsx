@@ -229,8 +229,7 @@ export function ConversationPage({
   });
   const interactive =
     loadState === "ready" &&
-    accessMode === "interactive" &&
-    (!isNewChat || !!active.cwd);
+    accessMode === "interactive";
   const requestOlderTurns = () => {
     if (!["idle", "error"].includes(olderTurnsState)) return;
     beginPrependPreservation();
@@ -261,7 +260,9 @@ export function ConversationPage({
           <strong>{titleOf(active)}</strong>
           <span>
             <i className={`status-dot ${connection}`} />
-            {backendName} · {active.cwd?.split("/").pop() || t("未选择项目")} ·{" "}
+            {backendName} · {active.isProjectless
+              ? t("无项目")
+              : active.cwd?.split("/").pop() || t("无项目")} ·{" "}
             {connection === "online" ? t("已连接") : t("连接中")}
           </span>
         </div>
@@ -339,20 +340,17 @@ export function ConversationPage({
                   <strong>
                     {projectOptions.find(
                       (project) => project.cwd === active.cwd,
-                    )?.name ?? t("请选择项目")}
+                    )?.name ?? t("无项目")}
                   </strong>
                 </span>
                 <select
                   aria-label={t("选择项目")}
                   value={active.cwd ?? ""}
-                  disabled={!projectOptions.length}
                   onChange={(event) =>
                     onNewChatProjectChange(event.currentTarget.value)
                   }
                 >
-                  {!projectOptions.length && (
-                    <option value="">{t("没有可用项目")}</option>
-                  )}
+                  <option value="">{t("无项目")}</option>
                   {projectOptions.map((project) => (
                     <option value={project.cwd} key={project.cwd}>
                       {project.name}
@@ -380,9 +378,6 @@ export function ConversationPage({
                   ))}
                 </select>
               </label>
-              {!projectOptions.length && (
-                <p role="alert">{t("没有可用项目，暂时无法启动新聊天。")}</p>
-              )}
             </section>
           )}
           <div className="timeline" aria-busy={loadState === "loading"}>

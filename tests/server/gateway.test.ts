@@ -191,6 +191,30 @@ describe("透明网关", () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({
       projects: ["/workspace/one", "/workspace/two"],
+      projectlessThreadIds: [],
+    });
+  });
+
+  it("项目接口返回无项目会话 ID", async () => {
+    const gateway = await createGateway({
+      host: "127.0.0.1",
+      port: 0,
+      mode: "external",
+      upstreamUrl: "ws://127.0.0.1:9",
+      staticDir: null,
+      readProjectState: async () => ({
+        projects: ["/workspace/one"],
+        projectlessThreadIds: ["thread-projectless"],
+      }),
+    });
+    cleanups.push(async () => gateway.close());
+
+    const response = await fetch(
+      `http://127.0.0.1:${gateway.port}/api/projects`,
+    );
+    expect(await response.json()).toEqual({
+      projects: ["/workspace/one"],
+      projectlessThreadIds: ["thread-projectless"],
     });
   });
 

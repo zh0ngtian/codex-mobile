@@ -5,6 +5,7 @@ import {
   groupThreadsByProject,
   splitAllThreads,
 } from "../../src/features/threads/thread-list-model";
+import { PROJECTLESS_GROUP_ID } from "../../src/app-server/thread-list-loader";
 
 const backends = [
   { id: "book", name: "MacBook" },
@@ -45,8 +46,9 @@ describe("会话列表派生", () => {
       },
       {
         id: "mini-unknown",
-        preview: "未知目录",
+        preview: "无项目任务",
         cwd: null,
+        isProjectless: true,
         createdAt: 5,
       },
     ],
@@ -66,7 +68,7 @@ describe("会话列表派生", () => {
       projectName: "home-assistant",
       pinned: true,
     });
-    expect(items.at(-1)?.projectName).toBe("未识别项目");
+    expect(items.at(-1)?.projectName).toBe("无项目");
   });
 
   it("全部视图把置顶和最近拆分且不重复", () => {
@@ -89,7 +91,7 @@ describe("会话列表派生", () => {
     expect(groups.map((group) => group.projectName)).toEqual([
       "home-assistant",
       "sub2api",
-      "未识别项目",
+      "无项目",
     ]);
     expect(groups[0].threads.map((item) => item.threadId)).toEqual([
       "mini-pinned",
@@ -112,7 +114,7 @@ describe("会话列表派生", () => {
     expect(groups.map((group) => group.cwd)).toEqual([
       "/srv/sub2api/",
       "/srv/home-assistant",
-      "",
+      PROJECTLESS_GROUP_ID,
     ]);
     expect(groups[0].threads.map((item) => item.threadId)).toEqual([
       "mini-recent",

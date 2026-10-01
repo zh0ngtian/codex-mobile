@@ -120,6 +120,7 @@ const english: Record<string, string> = {
   "打开会话列表": "Open conversation list",
   "关闭会话列表": "Close conversation list",
   "未选择项目": "No project selected",
+  "无项目": "No project",
   "会话详情操作": "Conversation actions",
   "会话操作": "Conversation menu",
   "新聊天目标": "New chat target",

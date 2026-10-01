@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { parseCodexProjectDirectories } from "../../server/codex-projects.js";
+import {
+  parseCodexProjectDirectories,
+  parseCodexProjectState,
+} from "../../server/codex-projects.js";
 
 describe("Codex 项目目录", () => {
   it("按桌面端 project-order 读取本地项目，未排序项目在前并去重目录", () => {
@@ -50,5 +53,18 @@ describe("Codex 项目目录", () => {
 
   it("没有 local-projects 时返回空列表", () => {
     expect(parseCodexProjectDirectories("{}")).toEqual([]);
+  });
+
+  it("读取并去重桌面端无项目会话 ID", () => {
+    expect(
+      parseCodexProjectState(
+        JSON.stringify({
+          "projectless-thread-ids": ["thread-1", "", 42, "thread-1", "thread-2"],
+        }),
+      ),
+    ).toEqual({
+      projects: [],
+      projectlessThreadIds: ["thread-1", "thread-2"],
+    });
   });
 });

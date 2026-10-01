@@ -18,6 +18,7 @@ function renderConversation(
     draftImages?: DraftImage[];
     draftFiles?: DraftFile[];
     onSubmit?: (event: FormEvent) => void;
+    newChat?: boolean;
   } = {},
   onRetry = vi.fn(),
 ) {
@@ -25,10 +26,10 @@ function renderConversation(
   const result = render(
     <ConversationPage
       active={{
-        id: "thread-1",
-        cwd: "/tmp/project",
-        preview: "分页会话",
-        turns: [{ id: "turn-10", items: [] }],
+        id: composer.newChat ? "" : "thread-1",
+        cwd: composer.newChat ? null : "/tmp/project",
+        preview: composer.newChat ? "新对话" : "分页会话",
+        turns: composer.newChat ? [] : [{ id: "turn-10", items: [] }],
       }}
       backendId="mini"
       backendName="Mac mini"
@@ -80,6 +81,29 @@ function renderConversation(
 }
 
 describe("会话详情历史分页", () => {
+  it("无项目时仍可创建并发送新聊天", () => {
+    const onSubmit = vi.fn((event: FormEvent) => event.preventDefault());
+    const { container } = renderConversation(
+      "exhausted",
+      undefined,
+      { newChat: true, draft: "处理这个任务", onSubmit },
+    );
+    const view = within(container);
+
+    expect(
+      (view.getByRole("combobox", { name: "选择项目" }) as HTMLSelectElement)
+        .value,
+    ).toBe("");
+    expect(view.getByRole("option", { name: "无项目" })).not.toBeNull();
+    expect(
+      view
+        .getByRole("textbox", { name: "向 Codex 提问" })
+        .hasAttribute("disabled"),
+    ).toBe(false);
+    fireEvent.click(view.getByRole("button", { name: "发送" }));
+    expect(onSubmit).toHaveBeenCalledOnce();
+  });
+
   it("右上角两个操作入口位于同一个按钮组", () => {
     const { container } = renderConversation("exhausted");
     const view = within(container);

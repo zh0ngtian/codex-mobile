@@ -2,7 +2,9 @@ import { describe, expect, it, vi } from "vitest";
 import {
   createLatestThreadListLoader,
   dedupeThreadsById,
+  loadAllProjectlessThreadRecords,
   loadAllProjectThreadRecords,
+  PROJECTLESS_GROUP_ID,
 } from "../../src/app-server/thread-list-loader";
 
 function deferred<T>() {
@@ -115,6 +117,34 @@ describe("会话列表轮询加载器", () => {
     });
   });
 
+  it("沿全局列表分页读取全部无项目历史并过滤其他会话", async () => {
+    const client = {
+      request: vi
+        .fn()
+        .mockResolvedValueOnce({
+          data: [
+            { id: "projectless-1", updatedAt: 30 },
+            { id: "project-1", updatedAt: 20 },
+          ],
+          nextCursor: "older-page",
+        })
+        .mockResolvedValueOnce({
+          data: [{ id: "projectless-2", updatedAt: 10 }],
+          nextCursor: null,
+        }),
+    };
+
+    await expect(
+      loadAllProjectlessThreadRecords(client, [
+        "projectless-1",
+        "projectless-2",
+      ]),
+    ).resolves.toEqual([
+      { id: "projectless-1", updatedAt: 30, isProjectless: true },
+      { id: "projectless-2", updatedAt: 10, isProjectless: true },
+    ]);
+  });
+
   it("按配置项目分别获取最新 5 条会话并独立提交结果", async () => {
     const projectA = deferred<{
       data: Array<{ id: string; cwd: string; updatedAt?: number }>;
@@ -178,6 +208,74 @@ describe("会话列表轮询加载器", () => {
       true,
     );
     expect(onSettled).toHaveBeenCalledOnce();
+  });
+
+  it("读取桌面端标记的无项目会话并从项目分组排除", async () => {
+    const client = {
+      request: vi.fn((_method: string, params: { cwd?: string }) => {
+        if (!params.cwd) {
+          return Promise.resolve({
+            data: [{
+              id: "projectless-thread",
+              cwd: "/workspace/project",
+              updatedAt: 30,
+            }],
+            nextCursor: null,
+          });
+        }
+        return Promise.resolve({
+          data: [
+            {
+              id: "project-thread",
+              cwd: "/workspace/project",
+              updatedAt: 20,
+            },
+            {
+              id: "projectless-thread",
+              cwd: "/workspace/project",
+              updatedAt: 30,
+            },
+          ],
+          nextCursor: null,
+        });
+      }),
+    };
+    const onProjectData = vi.fn();
+    const loader = createLatestThreadListLoader({ onProjectData });
+
+    await loader.load(
+      client,
+      ["/workspace/project"],
+      ["projectless-thread"],
+    );
+
+    expect(client.request).toHaveBeenCalledWith("thread/list", {
+      limit: 50,
+      sortKey: "recency_at",
+    });
+    expect(onProjectData).toHaveBeenCalledWith(
+      "/workspace/project",
+      [
+        {
+          id: "project-thread",
+          cwd: "/workspace/project",
+          updatedAt: 20,
+        },
+      ],
+      false,
+    );
+    expect(onProjectData).toHaveBeenCalledWith(
+      PROJECTLESS_GROUP_ID,
+      [
+        {
+          id: "projectless-thread",
+          cwd: "/workspace/project",
+          updatedAt: 30,
+          isProjectless: true,
+        },
+      ],
+      false,
+    );
   });
 
   it("单个项目失败不阻塞其他项目并在整轮结束后收口", async () => {

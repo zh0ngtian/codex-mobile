@@ -50,6 +50,7 @@ function renderList(
     collapsedProjectKeys = new Set<string>(),
     loadingBackendIds = new Set<string>(),
     refreshing = false,
+    hasProjectlessThreads = false,
     projectDirectories = ["/tmp/project-a", "/tmp/project-b"],
     projectThreadStates = {},
     projectHasMore = {},
@@ -61,6 +62,7 @@ function renderList(
     collapsedProjectKeys?: Set<string>;
     loadingBackendIds?: Set<string>;
     refreshing?: boolean;
+    hasProjectlessThreads?: boolean;
     projectDirectories?: string[];
     projectThreadStates?: Record<string, "loading" | "ready" | "error">;
     projectHasMore?: Record<string, boolean>;
@@ -79,6 +81,7 @@ function renderList(
       visibleThreads={threads}
       totalThreadCount={threads.length}
       projectDirectories={projectDirectories}
+      hasProjectlessThreads={hasProjectlessThreads}
       projectHasMore={projectHasMore}
       projectVisibleCounts={projectVisibleCounts}
       collapsedProjectKeys={collapsedProjectKeys}
@@ -149,6 +152,19 @@ describe("会话侧边栏列表", () => {
     expect(view.getByRole("heading", { name: /project-a/ })).not.toBeNull();
     expect(view.getByRole("heading", { name: /project-b/ })).not.toBeNull();
     expect(view.queryByText("Mac mini · project-a")).toBeNull();
+  });
+
+  it("单机视图展示无项目会话分组", () => {
+    const { container } = renderList("mini", {
+      hasProjectlessThreads: true,
+      projectThreadStates: {
+        "codex-mobile://projectless": "ready",
+      },
+    });
+
+    expect(
+      within(container).getByRole("heading", { name: /无项目/ }),
+    ).not.toBeNull();
   });
 
   it("目录先返回时立即展示全部项目并为未加载项目显示局部骨架", () => {
@@ -309,6 +325,7 @@ describe("会话侧边栏列表", () => {
         visibleThreads={unreadThreads}
         totalThreadCount={unreadThreads.length}
         projectDirectories={["/tmp/project-a", "/tmp/project-b"]}
+        hasProjectlessThreads={false}
         projectHasMore={{}}
         projectVisibleCounts={{}}
         collapsedProjectKeys={new Set()}

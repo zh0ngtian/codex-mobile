@@ -9,7 +9,9 @@ import {
 import { AppServerClient, type RpcMessage } from "./app-server/client";
 import {
   createLatestThreadListLoader,
+  loadAllProjectlessThreadRecords,
   loadAllProjectThreadRecords,
+  PROJECTLESS_GROUP_ID,
   type ProjectThreadLoadState,
 } from "./app-server/thread-list-loader";
 import {
@@ -98,7 +100,10 @@ import {
   reconnectAndWaitUntilReady,
   recoverBackendConnection,
 } from "./backends/connection-recovery";
-import { fetchBackendHostInfo, fetchBackendProjects } from "./backends/probe";
+import {
+  fetchBackendHostInfo,
+  fetchBackendProjectState,
+} from "./backends/probe";
 import type {
   BackendConfig,
   BackendRegistry,
@@ -121,6 +126,11 @@ import {
   readCollapsedProjectKeys,
   writeCollapsedProjectKeys,
 } from "./features/threads/project-collapse";
+import {
+  mergeProjectlessThreadIds,
+  readLocalProjectlessThreadIds,
+  writeLocalProjectlessThreadIds,
+} from "./features/threads/projectless-threads";
 import { useSidebarRefresh } from "./features/threads/sidebar-refresh";
 import {
   readUnreadThreadIds,
@@ -140,6 +150,7 @@ interface BackendThreadSnapshot {
   backendId: string;
   threads: AnyRecord[];
   projects: string[];
+  projectlessThreadIds: string[];
   projectThreadStates: Record<string, ProjectThreadLoadState>;
   projectHasMore: Record<string, boolean>;
   loadingProjectCwd: string;
@@ -193,6 +204,9 @@ function BackendWorkspace({
   const [connection, setConnection] = useState<ConnectionState>("connecting");
   const [threads, setThreads] = useState<AnyRecord[]>([]);
   const [projects, setProjects] = useState<string[]>([]);
+  const [projectlessThreadIds, setProjectlessThreadIds] = useState<string[]>(
+    () => readLocalProjectlessThreadIds(window.localStorage, backend.id),
+  );
   const [projectThreadStates, setProjectThreadStates] = useState<
     Record<string, ProjectThreadLoadState>
   >({});
@@ -304,6 +318,10 @@ function BackendWorkspace({
       isUnread: localUnread.has(String(thread.id)),
     }));
   };
+  const projectGroupIdOf = (thread: AnyRecord) =>
+    thread.isProjectless === true
+      ? PROJECTLESS_GROUP_ID
+      : String(thread.cwd ?? "");
   if (!threadListLoaderRef.current) {
     threadListLoaderRef.current = createLatestThreadListLoader({
       onData(data) {
@@ -324,7 +342,7 @@ function BackendWorkspace({
         }));
         setThreads((current) => {
           const currentProjectThreads = current.filter(
-            (thread) => thread.cwd === cwd,
+            (thread) => projectGroupIdOf(thread) === cwd,
           );
           const retainedExpandedThreads =
             fullyLoadedProjectCwdsRef.current.has(cwd)
@@ -336,7 +354,7 @@ function BackendWorkspace({
                 )
               : [];
           return [
-            ...current.filter((thread) => thread.cwd !== cwd),
+            ...current.filter((thread) => projectGroupIdOf(thread) !== cwd),
             ...nextProjectThreads,
             ...retainedExpandedThreads,
           ];
@@ -373,16 +391,33 @@ function BackendWorkspace({
   async function loadThreads(client = clientRef.current) {
     if (!client || client !== clientRef.current) return;
     try {
-      let directories: string[] = [];
+      let directories = projects;
+      let nextProjectlessThreadIds = mergeProjectlessThreadIds(
+        projectlessThreadIds,
+        readLocalProjectlessThreadIds(window.localStorage, backend.id),
+      );
       try {
-        directories = await fetchBackendProjects(backend);
+        const projectState = await fetchBackendProjectState(backend);
+        directories = projectState.projects;
+        nextProjectlessThreadIds = mergeProjectlessThreadIds(
+          projectState.projectlessThreadIds,
+          readLocalProjectlessThreadIds(window.localStorage, backend.id),
+        );
         setProjects(directories);
-        if (directories.length) setThreadListState("ready");
+        setProjectlessThreadIds(nextProjectlessThreadIds);
+        if (directories.length || nextProjectlessThreadIds.length) {
+          setThreadListState("ready");
+        }
       } catch {
-        directories = projects;
-        if (directories.length) setThreadListState("ready");
+        if (directories.length || nextProjectlessThreadIds.length) {
+          setThreadListState("ready");
+        }
       }
-      await threadListLoaderRef.current!.load(client, directories);
+      await threadListLoaderRef.current!.load(
+        client,
+        directories,
+        nextProjectlessThreadIds,
+      );
     } catch (reason) {
       setThreadListState((current) =>
         current === "loading" ? "error" : current,
@@ -492,6 +527,7 @@ function BackendWorkspace({
       backendId: backend.id,
       threads,
       projects,
+      projectlessThreadIds,
       projectThreadStates,
       projectHasMore,
       loadingProjectCwd,
@@ -508,6 +544,7 @@ function BackendWorkspace({
     threadListState,
     threads,
     projects,
+    projectlessThreadIds,
     projectThreadStates,
     projectHasMore,
     loadingProjectCwd,
@@ -518,7 +555,9 @@ function BackendWorkspace({
     if (!refreshVersion) return;
     const sequence = ++refreshSequenceRef.current;
     fullyLoadedProjectCwdsRef.current.clear();
-    setThreadListState((current) => (projects.length ? current : "loading"));
+    setThreadListState((current) =>
+      projects.length || projectlessThreadIds.length ? current : "loading",
+    );
     setRefreshing(true);
     if (!clientRef.current) {
       connectionManagerRef.current?.reconnect(backend.id);
@@ -897,6 +936,9 @@ function BackendWorkspace({
                 setActive({
                   ...resumed.thread,
                   isPinned: resumed.thread.isPinned === true,
+                  ...(currentThread.isProjectless === true
+                    ? { isProjectless: true }
+                    : {}),
                 });
                 resetOlderTurns(resumed.nextTurnsCursor);
                 setConversationLoadState("ready");
@@ -1058,6 +1100,9 @@ function BackendWorkspace({
       setActive({
         ...session.thread,
         isPinned: session.thread.isPinned === true,
+        ...(activeRef.current?.isProjectless === true
+          ? { isProjectless: true }
+          : {}),
       });
       resetOlderTurns(session.nextTurnsCursor);
       setActiveSettingsSynchronized(session.settingsSynchronized);
@@ -1110,7 +1155,19 @@ function BackendWorkspace({
   const projectOptions = useMemo(() => {
     const seen = new Set<string>();
     const options: Array<{ cwd: string; name: string }> = [];
+    for (const cwd of projects) {
+      const normalized = cwd.trim();
+      if (!normalized || seen.has(normalized)) continue;
+      seen.add(normalized);
+      options.push({
+        cwd: normalized,
+        name:
+          normalized.replace(/\/+$/, "").split("/").filter(Boolean).at(-1) ||
+          normalized,
+      });
+    }
     for (const thread of threads) {
+      if (thread.isProjectless === true) continue;
       const cwd =
         typeof thread.cwd === "string" ? thread.cwd.trim() : "";
       if (!cwd || seen.has(cwd)) continue;
@@ -1121,7 +1178,7 @@ function BackendWorkspace({
       });
     }
     return options;
-  }, [threads]);
+  }, [projects, threads]);
 
   function openThread(thread: AnyRecord) {
     const sequence = ++openSequenceRef.current;
@@ -1256,6 +1313,7 @@ function BackendWorkspace({
     if (!active?.id) setStartingThreadContext(draftContext);
     const pendingTurnId = `pending-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     let thread = active;
+    const startingProjectless = !thread?.id && !thread?.cwd;
     let sent = false;
     try {
       setImageReading(Boolean(pendingFiles.length));
@@ -1292,7 +1350,28 @@ function BackendWorkspace({
           approvalPolicy: effectiveApprovalPolicy,
           approvalsReviewer: effectiveApprovalsReviewer,
         });
-        thread = started.thread;
+        thread = startingProjectless
+          ? { ...started.thread, isProjectless: true }
+          : started.thread;
+        if (startingProjectless) {
+          setProjectlessThreadIds((current) => {
+            const next = mergeProjectlessThreadIds(current, [String(thread!.id)]);
+            writeLocalProjectlessThreadIds(
+              window.localStorage,
+              backend.id,
+              next,
+            );
+            return next;
+          });
+          setProjectThreadStates((current) => ({
+            ...current,
+            [PROJECTLESS_GROUP_ID]: "ready",
+          }));
+          setProjectHasMore((current) => ({
+            ...current,
+            [PROJECTLESS_GROUP_ID]: false,
+          }));
+        }
         activeThreadTargetRef.current = thread.id;
         setThreads((current) => [
           { ...thread!, status: { type: "active" } },
@@ -1682,10 +1761,13 @@ function BackendWorkspace({
       `codex-mobile:new-chat-project:${backend.id}`,
     );
     const selectedCwd =
-      cwd ||
-      projectOptions.find((project) => project.cwd === savedCwd)?.cwd ||
-      projectOptions[0]?.cwd ||
-      null;
+      (typeof cwd === "string"
+        ? cwd || null
+        : savedCwd === ""
+          ? null
+          : projectOptions.find((project) => project.cwd === savedCwd)?.cwd ||
+            projectOptions[0]?.cwd ||
+            null);
     openSequenceRef.current += 1;
     activeThreadTargetRef.current = null;
     resetDraftContext();
@@ -1728,7 +1810,7 @@ function BackendWorkspace({
       cwd,
     );
     setActive((current) =>
-      current && !current.id ? { ...current, cwd } : current,
+      current && !current.id ? { ...current, cwd: cwd || null } : current,
     );
   };
 
@@ -1742,12 +1824,44 @@ function BackendWorkspace({
       setProjectHasMore((current) => ({ ...current, [cwd]: false }));
       setThreads((current) => [
         ...current.filter((thread) => thread.cwd !== cwd),
-        ...decorateThreads(all),
+        ...decorateThreads(
+          all.filter(
+            (thread) => !projectlessThreadIds.includes(String(thread.id)),
+          ),
+        ),
       ]);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
     } finally {
       setLoadingProjectCwd((current) => (current === cwd ? "" : current));
+    }
+  }
+
+  async function loadAllProjectlessThreads() {
+    const client = clientRef.current;
+    if (!client) return;
+    setLoadingProjectCwd(PROJECTLESS_GROUP_ID);
+    try {
+      const all = await loadAllProjectlessThreadRecords(
+        client,
+        projectlessThreadIds,
+      );
+      setProjectHasMore((current) => ({
+        ...current,
+        [PROJECTLESS_GROUP_ID]: false,
+      }));
+      setThreads((current) => [
+        ...current.filter(
+          (thread) => projectGroupIdOf(thread) !== PROJECTLESS_GROUP_ID,
+        ),
+        ...decorateThreads(all),
+      ]);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setLoadingProjectCwd((current) =>
+        current === PROJECTLESS_GROUP_ID ? "" : current,
+      );
     }
   }
 
@@ -1771,14 +1885,25 @@ function BackendWorkspace({
         command.draftFiles ?? [],
       );
     } else if (command.type === "load-project" && command.cwd) {
-      void loadAllProjectThreads(command.cwd);
+      if (command.cwd === PROJECTLESS_GROUP_ID) {
+        void loadAllProjectlessThreads();
+      } else {
+        void loadAllProjectThreads(command.cwd);
+      }
     } else if (command.type === "retry-project" && command.cwd) {
       const client = clientRef.current;
       if (client) {
-        void threadListLoaderRef.current!.loadProject(client, command.cwd);
+        if (command.cwd === PROJECTLESS_GROUP_ID) {
+          void threadListLoaderRef.current!.loadProjectless(
+            client,
+            projectlessThreadIds,
+          );
+        } else {
+          void threadListLoaderRef.current!.loadProject(client, command.cwd);
+        }
       }
     }
-  }, [backend.id, command, projectOptions]);
+  }, [backend.id, command, projectOptions, projectlessThreadIds]);
 
   const conversationBusy = active?.id
     ? busy
@@ -2192,6 +2317,7 @@ function ConfiguredApp({
         previous &&
         previous.threads === snapshot.threads &&
         previous.projects === snapshot.projects &&
+        previous.projectlessThreadIds === snapshot.projectlessThreadIds &&
         previous.projectThreadStates === snapshot.projectThreadStates &&
         previous.projectHasMore === snapshot.projectHasMore &&
         previous.loadingProjectCwd === snapshot.loadingProjectCwd &&
@@ -2265,6 +2391,9 @@ function ConfiguredApp({
       )[0] ?? "";
   const projectDirectories =
     listBackendId === "all" ? [] : snapshots[listBackendId]?.projects ?? [];
+  const hasProjectlessThreads =
+    listBackendId !== "all" &&
+    Boolean(snapshots[listBackendId]?.projectlessThreadIds.length);
   const projectThreadStates =
     listBackendId === "all"
       ? {}
@@ -2452,6 +2581,7 @@ function ConfiguredApp({
             visibleThreads={scopedThreads}
             totalThreadCount={scopedThreadCount}
             projectDirectories={projectDirectories}
+            hasProjectlessThreads={hasProjectlessThreads}
             projectThreadStates={projectThreadStates}
             projectHasMore={projectHasMore}
             projectVisibleCounts={projectVisibleCounts}

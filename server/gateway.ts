@@ -4,6 +4,7 @@ import { mkdir, open, readFile, rm, stat } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { extname, isAbsolute, join, normalize } from "node:path";
 import WebSocket, { WebSocketServer } from "ws";
+import type { CodexProjectState } from "./codex-projects.js";
 
 export interface GatewayOptions {
   host: string;
@@ -18,6 +19,7 @@ export interface GatewayOptions {
   gatewayVersion?: string;
   appServerReady?: () => Promise<boolean>;
   readProjectDirectories?: () => Promise<string[]>;
+  readProjectState?: () => Promise<CodexProjectState>;
   uploadDir?: string;
 }
 
@@ -156,11 +158,16 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
     }
     if (url.pathname === "/api/projects") {
       try {
-        const projects = options.readProjectDirectories
-          ? await options.readProjectDirectories()
-          : [];
+        const projectState = options.readProjectState
+          ? await options.readProjectState()
+          : {
+              projects: options.readProjectDirectories
+                ? await options.readProjectDirectories()
+                : [],
+              projectlessThreadIds: [],
+            };
         response.setHeader("content-type", "application/json; charset=utf-8");
-        response.end(JSON.stringify({ projects }));
+        response.end(JSON.stringify(projectState));
       } catch {
         response.statusCode = 500;
         response.end("无法读取 Codex 本地项目");

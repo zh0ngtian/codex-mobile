@@ -10,6 +10,7 @@ interface ThreadListResponse {
 }
 
 export type ProjectThreadLoadState = "idle" | "loading" | "ready" | "error";
+export const PROJECTLESS_GROUP_ID = "codex-mobile://projectless";
 
 interface ThreadListLoaderCallbacks {
   onData?: (threads: ThreadRecord[]) => void;
@@ -48,6 +49,70 @@ export function dedupeThreadsById(threads: ThreadRecord[]) {
   );
 }
 
+function markProjectlessThreads(
+  threads: ThreadRecord[],
+  projectlessThreadIds: Set<string>,
+) {
+  return threads.map((thread) =>
+    projectlessThreadIds.has(String(thread.id))
+      ? { ...thread, isProjectless: true }
+      : thread,
+  );
+}
+
+function projectlessThreadsFromPage(
+  threads: ThreadRecord[],
+  threadIds: Set<string>,
+) {
+  return threads.flatMap((thread) =>
+    threadIds.has(String(thread.id ?? ""))
+      ? [{ ...thread, isProjectless: true }]
+      : [],
+  );
+}
+
+async function loadProjectlessThreadPage(
+  client: ThreadListClient,
+  threadIds: string[],
+) {
+  const targetIds = new Set(threadIds);
+  const result: ThreadListResponse = await client.request("thread/list", {
+    limit: 50,
+    sortKey: "recency_at",
+  });
+  return {
+    threads: dedupeThreadsById(
+      projectlessThreadsFromPage(result.data, targetIds),
+    ),
+    hasMore: Boolean(result.nextCursor),
+  };
+}
+
+export async function loadAllProjectlessThreadRecords(
+  client: ThreadListClient,
+  threadIds: string[],
+) {
+  const targetIds = new Set(threadIds);
+  const found: ThreadRecord[] = [];
+  const seenCursors = new Set<string>();
+  let cursor: string | null = null;
+  do {
+    const result: ThreadListResponse = await client.request("thread/list", {
+      limit: 50,
+      sortKey: "recency_at",
+      ...(cursor ? { cursor } : {}),
+    });
+    found.push(...projectlessThreadsFromPage(result.data, targetIds));
+    const nextCursor = result.nextCursor ?? null;
+    if (!nextCursor || seenCursors.has(nextCursor)) {
+      break;
+    }
+    seenCursors.add(nextCursor);
+    cursor = nextCursor;
+  } while (cursor);
+  return dedupeThreadsById(found);
+}
+
 export async function loadAllProjectThreadRecords(
   client: ThreadListClient,
   cwd: string,
@@ -79,6 +144,7 @@ export function createLatestThreadListLoader(
     | null = null;
   let latestSequence = 0;
   const projectAttempts = new Map<string, number>();
+  let currentProjectlessThreadIds = new Set<string>();
 
   const nextProjectAttempt = (cwd: string) => {
     const attempt = (projectAttempts.get(cwd) ?? 0) + 1;
@@ -109,9 +175,13 @@ export function createLatestThreadListLoader(
             : result.nextCursor === null
               ? false
               : result.data.length >= 5;
+          const projectThreads = dedupeThreadsById(result.data).filter(
+            (thread) =>
+              !currentProjectlessThreadIds.has(String(thread.id)),
+          );
           callbacks.onProjectData?.(
             cwd,
-            dedupeThreadsById(result.data),
+            projectThreads,
             hasMore,
           );
         }
@@ -129,24 +199,72 @@ export function createLatestThreadListLoader(
       });
   };
 
+  const loadProjectless = (
+    client: ThreadListClient,
+    threadIds: string[],
+    sequence = latestSequence,
+  ) => {
+    const attempt = nextProjectAttempt(PROJECTLESS_GROUP_ID);
+    callbacks.onProjectStart?.(PROJECTLESS_GROUP_ID);
+    return loadProjectlessThreadPage(client, threadIds)
+      .then(({ threads, hasMore }) => {
+        if (
+          sequence === latestSequence &&
+          projectAttempts.get(PROJECTLESS_GROUP_ID) === attempt
+        ) {
+          callbacks.onProjectData?.(
+            PROJECTLESS_GROUP_ID,
+            threads,
+            hasMore,
+          );
+        }
+      })
+      .catch((reason: unknown) => {
+        if (
+          sequence === latestSequence &&
+          projectAttempts.get(PROJECTLESS_GROUP_ID) === attempt
+        ) {
+          callbacks.onProjectError?.(
+            PROJECTLESS_GROUP_ID,
+            reason instanceof Error ? reason : new Error(String(reason)),
+          );
+        }
+      });
+  };
+
   return {
-    load(client: ThreadListClient, projects: string[] = []) {
+    load(
+      client: ThreadListClient,
+      projects: string[] = [],
+      projectlessThreadIds: string[] = [],
+    ) {
       if (pending?.client === client) return pending.promise;
 
       const sequence = ++latestSequence;
-      const request = projects.length
-        ? Promise.all(projects.map((cwd) => loadProject(client, cwd, sequence)))
-        : client
+      currentProjectlessThreadIds = new Set(projectlessThreadIds);
+      const projectRequests = projects.length
+        ? projects.map((cwd) => loadProject(client, cwd, sequence))
+        : [client
             .request("thread/list", {
               limit: 50,
               sortKey: "recency_at",
             })
             .then((result: ThreadListResponse) => {
               if (sequence === latestSequence) {
-                callbacks.onData?.(dedupeThreadsById(result.data));
+                callbacks.onData?.(
+                  markProjectlessThreads(
+                    dedupeThreadsById(result.data),
+                    currentProjectlessThreadIds,
+                  ),
+                );
               }
-            });
-      const promise = request
+            })];
+      if (projectlessThreadIds.length) {
+        projectRequests.push(
+          loadProjectless(client, projectlessThreadIds, sequence),
+        );
+      }
+      const promise = Promise.all(projectRequests)
         .then(() => {
           if (sequence === latestSequence) callbacks.onSettled?.();
         })
@@ -159,6 +277,10 @@ export function createLatestThreadListLoader(
     },
     loadProject(client: ThreadListClient, cwd: string) {
       return loadProject(client, cwd);
+    },
+    loadProjectless(client: ThreadListClient, threadIds: string[]) {
+      currentProjectlessThreadIds = new Set(threadIds);
+      return loadProjectless(client, threadIds);
     },
   };
 }

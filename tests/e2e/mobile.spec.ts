@@ -1070,25 +1070,14 @@ test("移动端可连接真实 app-server 并校验新聊天目标", async ({ pa
     page.getByRole("button", { name: "选择审批与权限模式" }),
   ).toBeVisible();
   await expect(page.getByRole("combobox", { name: "选择机器" })).toBeVisible();
-  const noProjects = page.getByText(
-    "没有可用项目，暂时无法启动新聊天。",
+  await expect(page.getByRole("option", { name: "无项目" })).toBeAttached();
+  await page.getByRole("textbox", { name: "向 Codex 提问" }).fill(
+    "只回复 E2E_OK，不要调用任何工具。",
   );
-  if (await noProjects.isVisible()) {
-    await expect(
-      page.getByRole("textbox", { name: "向 Codex 提问" }),
-    ).toBeDisabled();
-    await expect(
-      page.getByRole("button", { name: "发送", exact: true }),
-    ).toBeDisabled();
-  } else {
-    await page.getByRole("textbox", { name: "向 Codex 提问" }).fill(
-      "只回复 E2E_OK，不要调用任何工具。",
-    );
-    await page.getByRole("button", { name: "发送", exact: true }).click();
-    await expect(page.getByText("E2E_OK", { exact: true })).toBeVisible({
-      timeout: 120_000,
-    });
-  }
+  await page.getByRole("button", { name: "发送", exact: true }).click();
+  await expect(page.getByText("E2E_OK", { exact: true })).toBeVisible({
+    timeout: 120_000,
+  });
 });
 
 test("多个协议 turn 在同一用户任务中只显示一个统一折叠区", async ({

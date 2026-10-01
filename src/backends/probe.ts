@@ -11,16 +11,39 @@ export interface GatewayHostInfo {
   appServerReady: boolean;
 }
 
-export async function fetchBackendProjects(config: BackendConfig) {
+export interface BackendProjectState {
+  projects: string[];
+  projectlessThreadIds: string[];
+}
+
+export async function fetchBackendProjectState(
+  config: BackendConfig,
+): Promise<BackendProjectState> {
   const response = await fetch(
     withToken(config.baseUrl, "/api/projects", config.token),
     { method: "GET", mode: "cors" },
   );
   if (!response.ok) throw new Error(t("项目目录接口返回 {status}", { status: response.status }));
-  const payload = (await response.json()) as { projects?: unknown };
-  return Array.isArray(payload.projects)
-    ? payload.projects.filter((project): project is string => typeof project === "string")
-    : [];
+  const payload = (await response.json()) as {
+    projects?: unknown;
+    projectlessThreadIds?: unknown;
+  };
+  return {
+    projects: Array.isArray(payload.projects)
+      ? payload.projects.filter(
+          (project): project is string => typeof project === "string",
+        )
+      : [],
+    projectlessThreadIds: Array.isArray(payload.projectlessThreadIds)
+      ? payload.projectlessThreadIds.filter(
+          (threadId): threadId is string => typeof threadId === "string",
+        )
+      : [],
+  };
+}
+
+export async function fetchBackendProjects(config: BackendConfig) {
+  return (await fetchBackendProjectState(config)).projects;
 }
 
 function withToken(baseUrl: string, path: string, token: string) {

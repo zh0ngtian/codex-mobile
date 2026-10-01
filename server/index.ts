@@ -8,7 +8,7 @@ import {
   resolveRuntimeConfig,
   startManagedAppServer,
 } from "./app-server-manager.js";
-import { readCodexProjectDirectories } from "./codex-projects.js";
+import { readCodexProjectState } from "./codex-projects.js";
 import { writeRuntimeAccess } from "./runtime-access.js";
 
 const runtime = resolveRuntimeConfig();
@@ -48,8 +48,8 @@ try {
         process.env.CODEX_HOME || join(process.env.HOME || "", ".codex"),
         "codex-mobile-uploads",
       ),
-    readProjectDirectories: () =>
-      readCodexProjectDirectories(
+    readProjectState: () =>
+      readCodexProjectState(
         join(
           process.env.CODEX_HOME || join(process.env.HOME || "", ".codex"),
           ".codex-global-state.json",

@@ -13,6 +13,7 @@ import type {
   BackendRuntimeSummary,
 } from "../../backends/types";
 import type { ProjectThreadLoadState } from "../../app-server/thread-list-loader";
+import { PROJECTLESS_GROUP_ID } from "../../app-server/thread-list-loader";
 import { BackendSwitcher } from "../backends/BackendSwitcher";
 import {
   groupThreadsByProject,
@@ -32,6 +33,7 @@ export function ThreadListPage({
   visibleThreads,
   totalThreadCount,
   projectDirectories,
+  hasProjectlessThreads,
   projectThreadStates,
   projectHasMore,
   projectVisibleCounts,
@@ -59,6 +61,7 @@ export function ThreadListPage({
   visibleThreads: AggregatedThreadItem[];
   totalThreadCount: number;
   projectDirectories: string[];
+  hasProjectlessThreads: boolean;
   projectThreadStates: Record<string, ProjectThreadLoadState>;
   projectHasMore: Record<string, boolean>;
   projectVisibleCounts: Record<string, number>;
@@ -88,7 +91,10 @@ export function ThreadListPage({
     ? summaries[selectedBackend.id]
     : undefined;
   const allGroups = splitAllThreads(visibleThreads);
-  const projectGroups = groupThreadsByProject(visibleThreads, projectDirectories);
+  const projectGroups = groupThreadsByProject(visibleThreads, [
+    ...(hasProjectlessThreads ? [PROJECTLESS_GROUP_ID] : []),
+    ...projectDirectories,
+  ]);
   const renderNow = Math.floor(Date.now() / 1000);
   const renderRow = (
     thread: AggregatedThreadItem,

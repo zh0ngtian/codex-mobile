@@ -1,5 +1,6 @@
 import { titleOf, type DisplayRecord } from "../../ui/app-display";
 import { t } from "../../i18n";
+import { PROJECTLESS_GROUP_ID } from "../../app-server/thread-list-loader";
 
 export interface ThreadSource {
   id: string;
@@ -24,6 +25,9 @@ export interface ProjectThreadGroup {
 }
 
 export function projectNameOf(thread: DisplayRecord) {
+  if (thread.isProjectless === true || thread.cwd === PROJECTLESS_GROUP_ID) {
+    return t("无项目");
+  }
   const cwd = typeof thread.cwd === "string" ? thread.cwd.trim() : "";
   const normalized = cwd.replace(/\/+$/, "");
   return normalized.split("/").filter(Boolean).at(-1) || t("未识别项目");
@@ -98,7 +102,9 @@ export function groupThreadsByProject(
   const groups = new Map<string, AggregatedThreadItem[]>();
   for (const cwd of projectDirectories) groups.set(cwd, []);
   for (const thread of threads) {
-    const cwd = String(thread.cwd ?? "");
+    const cwd = thread.isProjectless
+      ? PROJECTLESS_GROUP_ID
+      : String(thread.cwd ?? "");
     const group = groups.get(cwd) ?? [];
     group.push(thread);
     groups.set(cwd, group);
