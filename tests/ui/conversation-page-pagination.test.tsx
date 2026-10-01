@@ -2,6 +2,10 @@ import { createRef, type FormEvent } from "react";
 import { fireEvent, render, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { ConversationPage } from "../../src/features/conversation/ConversationPage";
+import {
+  createHistoricalMessageEditTarget,
+  type HistoricalMessageEditTarget,
+} from "../../src/app-server/history-edit";
 import type { DraftFile, DraftImage } from "../../src/ui/attachments";
 
 function renderConversation(
@@ -24,8 +28,15 @@ function renderConversation(
     draftFiles?: DraftFile[];
     onSubmit?: (event: FormEvent) => void;
     historyText?: string;
+    turns?: Array<Record<string, any>>;
     onDraftChange?: (value: string) => void;
-    onResendUserMessage?: (value: string) => void;
+    onEditUserMessage?: (target: Record<string, any>) => void;
+    historyEdit?: {
+      target: HistoricalMessageEditTarget;
+      submitting: boolean;
+    } | null;
+    onCancelHistoryEdit?: () => void;
+    onSubmitHistoryEdit?: () => void;
     newChat?: boolean;
   } = {},
   onRetry = vi.fn(),
@@ -39,7 +50,7 @@ function renderConversation(
         preview: composer.newChat ? "新对话" : "分页会话",
         turns: composer.newChat
           ? []
-          : [{
+          : composer.turns ?? [{
               id: "turn-10",
               status: "completed",
               items: composer.historyText
@@ -96,7 +107,10 @@ function renderConversation(
       onOpenAgentSettings={() => undefined}
       onOpenPermissionSettings={() => undefined}
       onDraftChange={composer.onDraftChange ?? (() => undefined)}
-      onResendUserMessage={composer.onResendUserMessage}
+      historyEdit={composer.historyEdit ?? null}
+      onEditUserMessage={composer.onEditUserMessage}
+      onCancelHistoryEdit={composer.onCancelHistoryEdit ?? (() => undefined)}
+      onSubmitHistoryEdit={composer.onSubmitHistoryEdit ?? (() => undefined)}
       onInterrupt={() => undefined}
       onQueuedFollowUpAction={() => undefined}
     />,
@@ -342,28 +356,125 @@ describe("会话详情历史分页", () => {
     expect(onSubmit).toHaveBeenCalledOnce();
   });
 
-  it("历史消息可以回填编辑或直接重发", () => {
-    const onDraftChange = vi.fn();
-    const onResendUserMessage = vi.fn();
+  it("空闲且没有排队消息时可以进入历史编辑", () => {
+    const onEditUserMessage = vi.fn();
     const { container } = renderConversation(
       "exhausted",
       undefined,
       {
         historyText: "重新检查这段实现",
-        onDraftChange,
-        onResendUserMessage,
+        onEditUserMessage,
       },
     );
     const view = within(container);
 
     fireEvent.click(view.getByRole("button", { name: "编辑历史消息" }));
-    expect(onDraftChange).toHaveBeenCalledWith("重新检查这段实现");
-    expect(document.activeElement).toBe(
-      view.getByRole("textbox", { name: "向 Codex 提问" }),
+    expect(onEditUserMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        turnId: "turn-10",
+        messageId: "user-history",
+        text: "重新检查这段实现",
+      }),
+    );
+    expect(view.queryByRole("button", { name: "重发历史消息" })).toBeNull();
+  });
+
+  it("有排队消息时不提供历史编辑入口", () => {
+    const { container } = renderConversation(
+      "exhausted",
+      undefined,
+      {
+        historyText: "不能编辑",
+        onEditUserMessage: vi.fn(),
+        queuedFollowUps: [{ id: "queue-1", text: "等待发送" }],
+      },
     );
 
-    fireEvent.click(view.getByRole("button", { name: "重发历史消息" }));
-    expect(onResendUserMessage).toHaveBeenCalledWith("重新检查这段实现");
+    expect(
+      within(container).queryByRole("button", { name: "编辑历史消息" }),
+    ).toBeNull();
+  });
+
+  it("编辑态保留附件提示并使用保存并重发提交", () => {
+    const turns = [{
+      id: "turn-edit",
+      status: "completed",
+      items: [{
+        id: "user-edit",
+        type: "userMessage",
+        content: [
+          { type: "text", text: "修改前" },
+          { type: "image", url: "data:image/png;base64,AAAA" },
+        ],
+      }],
+    }];
+    const target = createHistoricalMessageEditTarget(turns, "turn-edit")!;
+    const onCancelHistoryEdit = vi.fn();
+    const onSubmitHistoryEdit = vi.fn();
+    const { container } = renderConversation(
+      "exhausted",
+      undefined,
+      {
+        turns,
+        draft: "修改后",
+        historyEdit: { target, submitting: false },
+        onCancelHistoryEdit,
+        onSubmitHistoryEdit,
+      },
+    );
+    const view = within(container);
+
+    expect(
+      view.getByRole("status", { name: "正在编辑历史消息" }).textContent,
+    ).toContain("原消息的 1 个附件会保留");
+    fireEvent.click(view.getByRole("button", { name: "保存并重发" }));
+    expect(onSubmitHistoryEdit).toHaveBeenCalledOnce();
+    fireEvent.click(view.getByRole("button", { name: "取消编辑历史消息" }));
+    expect(onCancelHistoryEdit).toHaveBeenCalledOnce();
+  });
+
+  it("目标后还有对话时先确认删除后续并重发", () => {
+    const turns = [
+      {
+        id: "turn-edit",
+        status: "completed",
+        items: [{ id: "user-edit", type: "userMessage", text: "修改前" }],
+      },
+      {
+        id: "turn-later",
+        status: "completed",
+        items: [{ id: "user-later", type: "userMessage", text: "后续消息" }],
+      },
+    ];
+    const target = createHistoricalMessageEditTarget(turns, "turn-edit")!;
+    const onSubmitHistoryEdit = vi.fn();
+    const { container } = renderConversation(
+      "exhausted",
+      undefined,
+      {
+        turns,
+        draft: "修改后",
+        historyEdit: { target, submitting: false },
+        onSubmitHistoryEdit,
+      },
+    );
+    const view = within(container);
+
+    fireEvent.click(view.getByRole("button", { name: "保存并重发" }));
+    expect(onSubmitHistoryEdit).not.toHaveBeenCalled();
+    const dialog = within(document.body).getByRole("dialog", {
+      name: "删除后续对话并重发？",
+    });
+    expect(dialog.textContent).toContain("文件修改、已执行命令和远端操作不会撤销");
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "删除后续并重发" }),
+    );
+    expect(onSubmitHistoryEdit).toHaveBeenCalledOnce();
+    expect(
+      within(document.body).queryByRole("dialog", {
+        name: "删除后续对话并重发？",
+      }),
+    ).toBeNull();
   });
 
   it("引导发送后在输入框上方临时展示单行消息", () => {

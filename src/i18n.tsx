@@ -197,6 +197,25 @@ const english: Record<string, string> = {
   "编辑历史消息": "Edit previous message",
   "重发历史消息": "Resend previous message",
   "重发": "Resend",
+  "正在编辑历史消息": "Editing previous message",
+  "取消编辑历史消息": "Cancel editing previous message",
+  "原消息的 {count} 个附件会保留":
+    "{count} attachment(s) from the original message will be kept",
+  "保存后将从这条消息重新执行":
+    "Saving will rerun the conversation from this message",
+  "保存并重发": "Save and resend",
+  "正在保存并重发": "Saving and resending",
+  "删除后续对话并重发？": "Delete later messages and resend?",
+  "删除后续并重发": "Delete later messages and resend",
+  "目标消息及之后的对话将被移除，更早的历史会保留。":
+    "The target message and all later conversation will be removed. Earlier history will be kept.",
+  "文件修改、已执行命令和远端操作不会撤销。":
+    "File changes, executed commands, and remote operations will not be undone.",
+  "当前会话正忙或有排队消息，暂时不能编辑历史消息":
+    "This conversation is busy or has queued messages, so its history cannot be edited yet",
+  "目标消息已变化，请刷新后重试":
+    "The target message changed. Refresh and try again",
+  "历史消息不能为空": "The previous message cannot be empty",
   "通过自动化功能发送": "Sent by automation",
   "已更改 {count} 个文件": "Changed {count} files",
   "正在运行 {count} 个命令": "Running {count} commands",

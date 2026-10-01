@@ -899,9 +899,8 @@ describe("移动端对话格式", () => {
     expect(view.queryByRole("button", { name: /之前的/ })).toBeNull();
   });
 
-  it("已完成的历史用户消息支持编辑和重发", () => {
+  it("已完成的历史用户消息支持编辑", () => {
     const onEditUserMessage = vi.fn();
-    const onResendUserMessage = vi.fn();
     const { container } = render(
       <TurnCard
         turn={{
@@ -923,22 +922,19 @@ describe("移动端对话格式", () => {
         }}
         client={null}
         onEditUserMessage={onEditUserMessage}
-        onResendUserMessage={onResendUserMessage}
       />,
     );
     const view = within(container);
 
     fireEvent.click(view.getByRole("button", { name: "编辑历史消息" }));
-    fireEvent.click(view.getByRole("button", { name: "重发历史消息" }));
 
-    expect(onEditUserMessage).toHaveBeenCalledWith("保留 **Markdown** 原文");
-    expect(onResendUserMessage).toHaveBeenCalledWith("保留 **Markdown** 原文");
+    expect(onEditUserMessage).toHaveBeenCalledOnce();
+    expect(view.queryByRole("button", { name: "重发历史消息" })).toBeNull();
   });
 
   it("运行中的用户消息不显示历史消息操作", () => {
     const callbacks = {
       onEditUserMessage: vi.fn(),
-      onResendUserMessage: vi.fn(),
     };
     const { container } = render(
       <TurnCard
@@ -1697,7 +1693,6 @@ describe("移动端对话格式", () => {
       <TurnCard
         client={null}
         onEditUserMessage={vi.fn()}
-        onResendUserMessage={vi.fn()}
         turn={{
           id: "turn-automation",
           status: "completed",

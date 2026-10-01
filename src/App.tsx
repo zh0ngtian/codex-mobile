@@ -8,6 +8,12 @@ import {
 } from "react";
 import { AppServerClient, type RpcMessage } from "./app-server/client";
 import {
+  buildEditedHistoryInput,
+  createHistoricalMessageEditTarget,
+  revertHistoricalMessage,
+  type HistoricalMessageEditTarget,
+} from "./app-server/history-edit";
+import {
   listInstalledSkills,
   skillsReferencedInText,
   type InstalledSkill,
@@ -170,6 +176,16 @@ interface QueuedFollowUp extends QueuedFollowUpPreview {
   skills: InstalledSkill[];
 }
 
+interface HistoricalMessageEditState {
+  threadId: string;
+  target: HistoricalMessageEditTarget;
+  submitting: boolean;
+  reverted: boolean;
+  previousDraft: string;
+  previousImages: DraftImage[];
+  previousFiles: DraftFile[];
+}
+
 interface BackendThreadSnapshot {
   backendId: string;
   threads: AnyRecord[];
@@ -248,6 +264,8 @@ function BackendWorkspace({
   const [draft, setDraft] = useState("");
   const [draftImages, setDraftImages] = useState<DraftImage[]>([]);
   const [draftFiles, setDraftFiles] = useState<DraftFile[]>([]);
+  const [historyEdit, setHistoryEdit] =
+    useState<HistoricalMessageEditState | null>(null);
   const [imageReading, setImageReading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [startingThreadContext, setStartingThreadContext] = useState<
@@ -1133,11 +1151,21 @@ function BackendWorkspace({
     queuedFollowUpDispatchingRef.current = false;
   }
 
+  function discardHistoricalMessageEdit() {
+    setHistoryEdit((current) => {
+      current?.previousFiles.forEach((file) => {
+        URL.revokeObjectURL(file.previewUrl);
+      });
+      return null;
+    });
+  }
+
   function resetDraftContext() {
     draftContextGenerationRef.current += 1;
     invalidateImageReads();
     setPendingSteerMessage(null);
     clearQueuedFollowUps();
+    discardHistoricalMessageEdit();
   }
 
   function resetOlderTurns(cursor: string | null = null) {
@@ -1632,53 +1660,256 @@ function BackendWorkspace({
     });
   }
 
-  async function resendHistoricalMessage(sourceText: string) {
-    const text = sourceText.trim();
-    const threadId = String(active?.id ?? "");
+  function beginHistoricalMessageEdit(target: HistoricalMessageEditTarget) {
+    const thread = activeRef.current;
+    const threadId = String(thread?.id ?? "");
+    const currentTarget = createHistoricalMessageEditTarget(
+      thread?.turns ?? [],
+      target.turnId,
+    );
+    const hasQueuedMessage = queuedFollowUpsRef.current.some(
+      (followUp) => followUp.threadId === threadId,
+    );
     if (
-      !text ||
       !threadId ||
+      !currentTarget ||
+      currentTarget.messageId !== target.messageId ||
       activeThreadAccessMode !== "interactive" ||
-      imageReading ||
+      busy ||
       steering ||
+      imageReading ||
+      hasQueuedMessage ||
       !clientRef.current
     ) {
+      setError(t("当前会话正忙或有排队消息，暂时不能编辑历史消息"));
       return;
     }
-    const draftContext = draftContextGenerationRef.current;
-    const pendingSkills = skillsReferencedInText(
-      text,
-      skillCatalog.cwd === (active?.cwd ?? null) ? skillCatalog.skills : [],
-    );
-    if (busy) {
-      const queuedFollowUp: QueuedFollowUp = {
-        id: `queue-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-        threadId,
-        draftContext,
-        inputText: text,
-        text,
-        images: [],
-        files: [],
-        skills: pendingSkills,
-      };
-      requestRunCompletionNotificationPermission();
-      replaceQueuedFollowUps([
-        ...queuedFollowUpsRef.current,
-        queuedFollowUp,
-      ]);
-      setError("");
-      return;
-    }
-    requestRunCompletionNotificationPermission();
-    setError("");
-    await startTurnMessage({
-      text,
-      pendingImages: [],
-      pendingFiles: [],
-      pendingSkills,
-      draftContext,
-      onFailure: () => setDraft((current) => current || text),
+    invalidateImageReads();
+    setHistoryEdit({
+      threadId,
+      target: currentTarget,
+      submitting: false,
+      reverted: false,
+      previousDraft: draft,
+      previousImages: draftImages,
+      previousFiles: draftFiles,
     });
+    setDraft(currentTarget.text);
+    setDraftImages([]);
+    setDraftFiles([]);
+    setError("");
+  }
+
+  function cancelHistoricalMessageEdit() {
+    const session = historyEdit;
+    if (!session || session.submitting) return;
+    if (String(activeRef.current?.id ?? "") === session.threadId) {
+      setDraft(session.previousDraft);
+      setDraftImages(session.previousImages);
+      setDraftFiles(session.previousFiles);
+    } else {
+      session.previousFiles.forEach((file) => {
+        URL.revokeObjectURL(file.previewUrl);
+      });
+    }
+    setHistoryEdit(null);
+    setError("");
+  }
+
+  async function submitHistoricalMessageEdit() {
+    const session = historyEdit;
+    const client = clientRef.current;
+    const thread = activeRef.current;
+    const threadId = String(thread?.id ?? "");
+    const hasQueuedMessage = queuedFollowUpsRef.current.some(
+      (followUp) => followUp.threadId === threadId,
+    );
+    if (!session || session.submitting) return;
+    if (
+      !client ||
+      !thread ||
+      !threadId ||
+      threadId !== session.threadId ||
+      activeThreadAccessMode !== "interactive" ||
+      busy ||
+      steering ||
+      imageReading ||
+      hasQueuedMessage
+    ) {
+      setError(t("当前会话正忙或有排队消息，暂时不能编辑历史消息"));
+      return;
+    }
+
+    const text = draft.trim();
+    let target = session.target;
+    let retainedTurns = [...(thread.turns ?? [])];
+    if (!session.reverted) {
+      const currentTarget = createHistoricalMessageEditTarget(
+        thread.turns ?? [],
+        session.target.turnId,
+      );
+      if (!currentTarget || currentTarget.messageId !== session.target.messageId) {
+        setError(t("目标消息已变化，请刷新后重试"));
+        return;
+      }
+      target = currentTarget;
+      retainedTurns = retainedTurns.slice(
+        0,
+        retainedTurns.length - currentTarget.rollbackTurnCount,
+      );
+    }
+
+    const input = buildEditedHistoryInput(target, text);
+    const referencedSkills = skillsReferencedInText(
+      text,
+      skillCatalog.cwd === (thread.cwd ?? null) ? skillCatalog.skills : [],
+    );
+    for (const skill of referencedSkills) {
+      if (
+        !input.some(
+          (part) => part.type === "skill" && String(part.path ?? "") === skill.path,
+        )
+      ) {
+        input.push({ type: "skill", name: skill.name, path: skill.path });
+      }
+    }
+    if (!input.length) {
+      setError(t("历史消息不能为空"));
+      return;
+    }
+
+    setHistoryEdit((current) =>
+      current ? { ...current, submitting: true } : current,
+    );
+    setBusy(true);
+    setError("");
+    requestRunCompletionNotificationPermission();
+    const pendingTurnId =
+      `pending-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    let reverted = session.reverted;
+    let pendingAdded = false;
+    try {
+      let workingThread = thread;
+      if (!reverted) {
+        const revertedResult = await revertHistoricalMessage(
+          client,
+          threadId,
+          target,
+        );
+        const revertedThread =
+          (revertedResult.response as { thread?: AnyRecord } | null)?.thread;
+        const revertedTurnsCursor =
+          (revertedResult.response as { turnsBackwardsCursor?: string | null } | null)
+            ?.turnsBackwardsCursor ?? null;
+        workingThread = {
+          ...thread,
+          ...(revertedThread ?? {}),
+          id: threadId,
+          turns: retainedTurns,
+          ...(thread.isProjectless === true ? { isProjectless: true } : {}),
+        };
+        reverted = true;
+        activeRef.current = workingThread;
+        setActive(workingThread);
+        resetOlderTurns(
+          revertedResult.method === "thread/revert"
+            ? revertedTurnsCursor
+            : null,
+        );
+        setHistoryEdit((current) =>
+          current && current.threadId === threadId
+            ? {
+                ...current,
+                target: { ...target, hasLaterTurns: false },
+                reverted: true,
+                submitting: true,
+              }
+            : current,
+        );
+      }
+
+      const localItem = {
+        id: `local-${pendingTurnId}`,
+        type: "userMessage",
+        content: input,
+      };
+      const pendingTurn = createPendingTurn(
+        pendingTurnId,
+        localItem,
+        ++pendingSequenceRef.current,
+      );
+      const pendingThread = {
+        ...workingThread,
+        turns: [...(workingThread.turns ?? retainedTurns), pendingTurn],
+      };
+      pendingAdded = true;
+      activeRef.current = pendingThread;
+      setActive(pendingThread);
+
+      const shouldSendSettings = activeSettingsSynchronized;
+      const startedTurn = await client.request<{ turn: AnyRecord }>(
+        "turn/start",
+        {
+          threadId,
+          input,
+          ...(shouldSendSettings && selectedModel
+            ? { model: selectedModel }
+            : {}),
+          ...(shouldSendSettings && selectedEffort
+            ? { effort: selectedEffort }
+            : {}),
+          ...(shouldSendSettings && selectedServiceTier
+            ? { serviceTier: selectedServiceTier }
+            : {}),
+          ...(shouldSendSettings && selectedPermission
+            ? { permissions: selectedPermission }
+            : {}),
+          ...(shouldSendSettings
+            ? {
+                approvalPolicy: selectedApprovalPolicy,
+                approvalsReviewer: selectedApprovalsReviewer,
+              }
+            : {}),
+        },
+      );
+      setActive((current) => {
+        if (!current || String(current.id) !== threadId) return current;
+        const next = applyTurnStarted(current, {
+          threadId,
+          turn: startedTurn.turn,
+        });
+        activeRef.current = next;
+        return next;
+      });
+      setDraft(session.previousDraft);
+      setDraftImages(session.previousImages);
+      setDraftFiles(session.previousFiles);
+      setHistoryEdit(null);
+    } catch (reason) {
+      setBusy(false);
+      if (pendingAdded) {
+        setActive((current) => {
+          if (!current || String(current.id) !== threadId) return current;
+          const next = removePendingTurn(current, pendingTurnId);
+          activeRef.current = next;
+          return next;
+        });
+      }
+      setHistoryEdit((current) =>
+        current && current.threadId === threadId
+          ? {
+              ...current,
+              target: reverted
+                ? { ...target, hasLaterTurns: false }
+                : current.target,
+              reverted,
+              submitting: false,
+            }
+          : current,
+      );
+      setError(reason instanceof Error ? reason.message : String(reason));
+      if (reverted) retryThreadDetail();
+    }
   }
 
   async function actOnQueuedFollowUp(id: string) {
@@ -1814,6 +2045,7 @@ function BackendWorkspace({
   async function selectImages(files: FileList | null) {
     if (
       !files?.length ||
+      historyEdit ||
       (active?.id && activeThreadAccessMode !== "interactive")
     ) return;
     const generation = imageReadGenerationRef.current.begin();
@@ -2498,7 +2730,10 @@ function BackendWorkspace({
           onOpenAgentSettings={() => setPicker("agent")}
           onOpenPermissionSettings={() => setPicker("permission")}
           onDraftChange={setDraft}
-          onResendUserMessage={resendHistoricalMessage}
+          historyEdit={historyEdit}
+          onEditUserMessage={beginHistoricalMessageEdit}
+          onCancelHistoryEdit={cancelHistoricalMessageEdit}
+          onSubmitHistoryEdit={submitHistoricalMessageEdit}
           onInterrupt={interrupt}
           onQueuedFollowUpAction={actOnQueuedFollowUp}
         />

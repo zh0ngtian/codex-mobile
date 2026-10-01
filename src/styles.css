@@ -390,6 +390,19 @@ button, a, summary, [role="button"] { -webkit-tap-highlight-color: transparent; 
 .realtime-error { display: block; width: calc(100% - 16px); margin: 0 8px 8px; border: 0; border-radius: 16px; background: #f5eeee; padding: 9px 12px; color: #8b2525; text-align: left; font-size: 13px; }
 .composer-follow-up-stack { position: absolute; right: 10px; bottom: calc(100% + 3px); width: min(calc(100% - 20px), 430px); max-height: 176px; overflow-y: auto; display: grid; gap: 6px; scrollbar-width: none; }
 .composer-follow-up-stack::-webkit-scrollbar { display: none; }
+.history-edit-banner { min-height: 48px; margin: 0 0 8px; border: 1px solid rgba(25,118,243,.15); border-radius: 18px; background: rgba(236,245,255,.98); color: #345; display: flex; align-items: center; gap: 10px; padding: 7px 7px 7px 14px; box-shadow: 0 4px 16px rgba(25,118,243,.07); }
+.history-edit-banner > span { min-width: 0; flex: 1; display: grid; gap: 2px; }
+.history-edit-banner strong { font-size: 13px; }
+.history-edit-banner small { overflow: hidden; color: #62758a; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+.history-edit-banner > button { min-height: 34px; border: 0; border-radius: 17px; background: #fff; color: #345; padding: 0 12px; font-size: 12px; font-weight: 650; }
+.history-edit-banner > button:disabled { opacity: .45; }
+.history-edit-confirmation .action-sheet-body { display: grid; gap: 8px; }
+.history-edit-confirmation .action-sheet-body p { margin: 0; color: #555; line-height: 1.55; }
+.history-edit-confirmation .action-sheet-body p:last-child { color: #8b2525; }
+.history-edit-confirmation .action-sheet-footer { display: grid; grid-template-columns: 1fr 1.5fr; gap: 10px; }
+.history-edit-confirmation .action-sheet-footer button { min-height: 46px; border: 0; border-radius: 23px; background: #ededed; font-weight: 700; }
+.history-edit-confirmation .action-sheet-footer button.danger { background: #111; color: #fff; }
+.history-edit-confirmation .action-sheet-footer button:disabled { opacity: .45; }
 .pending-steer-message { min-width: 0; overflow: hidden; border-radius: 16px; background: rgba(239,239,239,.96); padding: 8px 13px; color: #555; box-shadow: 0 4px 16px rgba(0,0,0,.06); text-overflow: ellipsis; white-space: nowrap; font-size: 13px; line-height: 1.35; pointer-events: none; animation: pending-steer-in .16s ease-out; }
 @keyframes pending-steer-in { from { opacity: 0; transform: translateY(4px); } }
 .queued-follow-ups { display: grid; gap: 6px; }

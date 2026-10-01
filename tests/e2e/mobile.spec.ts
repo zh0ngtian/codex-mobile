@@ -1,5 +1,225 @@
 import { expect, test } from "@playwright/test";
 
+test("历史消息编辑会回退后保留附件重发", async ({ page }) => {
+  await page.addInitScript(() => {
+    const now = Math.floor(Date.now() / 1000);
+    const turns = [
+      {
+        id: "turn-a",
+        status: "completed",
+        items: [
+          {
+            id: "user-a",
+            type: "userMessage",
+            content: [
+              { type: "text", text: "原消息" },
+              { type: "localImage", path: "/tmp/original.png" },
+            ],
+          },
+          {
+            id: "agent-a",
+            type: "agentMessage",
+            phase: "final_answer",
+            text: "旧回复",
+          },
+        ],
+      },
+      {
+        id: "turn-b",
+        status: "completed",
+        items: [
+          { id: "user-b", type: "userMessage", text: "后续消息" },
+          {
+            id: "agent-b",
+            type: "agentMessage",
+            phase: "final_answer",
+            text: "后续回复",
+          },
+        ],
+      },
+    ];
+    (window as any).__historyEditRpc = [];
+    class HistoryEditSocket extends EventTarget {
+      static OPEN = 1;
+      static CLOSED = 3;
+      readyState = 0;
+
+      constructor() {
+        super();
+        setTimeout(() => {
+          this.readyState = HistoryEditSocket.OPEN;
+          this.dispatchEvent(new Event("open"));
+        }, 0);
+      }
+
+      send(raw: string) {
+        const request = JSON.parse(raw);
+        (window as any).__historyEditRpc.push(request);
+        if (request.id == null) return;
+        const responses: Record<string, unknown> = {
+          initialize: {
+            userAgent: "history-edit-mock",
+            codexHome: "/tmp/codex",
+            platformFamily: "unix",
+            platformOs: "macos",
+          },
+          "model/list": {
+            data: [
+              {
+                id: "gpt-test",
+                model: "gpt-test",
+                displayName: "GPT Test",
+                isDefault: true,
+                defaultReasoningEffort: "medium",
+                supportedReasoningEfforts: [
+                  { reasoningEffort: "medium", description: "平衡" },
+                ],
+                defaultServiceTier: null,
+                serviceTiers: [],
+              },
+            ],
+          },
+          "permissionProfile/list": {
+            data: [
+              { id: ":workspace", description: "Workspace", allowed: true },
+            ],
+          },
+          "config/read": {
+            config: {
+              model: "gpt-test",
+              model_reasoning_effort: "medium",
+              service_tier: null,
+              sandbox_mode: "workspace-write",
+              approval_policy: "on-request",
+              approvals_reviewer: "user",
+            },
+          },
+          "thread/list": {
+            data: [
+              {
+                id: "thread-edit",
+                preview: "历史编辑会话",
+                cwd: "/tmp/project",
+                updatedAt: now,
+                status: { type: "idle" },
+              },
+            ],
+          },
+          "thread/resume": {
+            thread: {
+              id: "thread-edit",
+              preview: "历史编辑会话",
+              cwd: "/tmp/project",
+              turns,
+            },
+            model: "gpt-test",
+            reasoningEffort: "medium",
+            serviceTier: null,
+            approvalPolicy: "on-request",
+            approvalsReviewer: "user",
+            activePermissionProfile: { id: ":workspace" },
+          },
+          "thread/revert": {
+            thread: {
+              id: "thread-edit",
+              preview: "历史编辑会话",
+              cwd: "/tmp/project",
+              turns: [],
+            },
+            turnsBackwardsCursor: null,
+            itemsBackwardsCursor: null,
+          },
+          "turn/start": {
+            turn: { id: "turn-new", status: "inProgress", items: [] },
+          },
+        };
+        setTimeout(
+          () =>
+            this.dispatchEvent(
+              new MessageEvent("message", {
+                data: JSON.stringify({
+                  id: request.id,
+                  result: responses[request.method] ?? {},
+                }),
+              }),
+            ),
+          0,
+        );
+      }
+
+      close() {
+        this.readyState = HistoryEditSocket.CLOSED;
+        this.dispatchEvent(new Event("close"));
+      }
+    }
+    (window as any).WebSocket = HistoryEditSocket;
+  });
+
+  await page.goto("/");
+  await page.getByRole("button", { name: /历史编辑会话/ }).first().click();
+  await expect(page.getByText("原消息", { exact: true })).toBeVisible();
+  await expect(page.getByText("后续消息", { exact: true })).toBeVisible();
+
+  const targetTurn = page
+    .getByText("原消息", { exact: true })
+    .locator("xpath=ancestor::section[contains(@class,'turn-card')]");
+  await targetTurn.getByRole("button", { name: "编辑历史消息" }).click();
+  await expect(page.getByLabel("正在编辑历史消息")).toContainText(
+    "原消息的 1 个附件会保留",
+  );
+
+  const composer = page.getByRole("textbox", { name: "向 Codex 提问" });
+  await expect(composer).toHaveValue("原消息");
+  await composer.fill("修改后的消息");
+  await page.getByRole("button", { name: "保存并重发" }).click();
+
+  const confirmation = page.getByLabel("删除后续对话并重发？");
+  await expect(confirmation).toContainText(
+    "文件修改、已执行命令和远端操作不会撤销。",
+  );
+  await confirmation
+    .getByRole("button", { name: "删除后续并重发" })
+    .click();
+
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        (window as any).__historyEditRpc.filter(
+          (message: any) =>
+            message.method === "thread/revert" ||
+            message.method === "turn/start",
+        ),
+      ),
+    )
+    .toHaveLength(2);
+  const requests = await page.evaluate(() =>
+    (window as any).__historyEditRpc.filter(
+      (message: any) =>
+        message.method === "thread/revert" || message.method === "turn/start",
+    ),
+  );
+  expect(requests.map((request: any) => request.method)).toEqual([
+    "thread/revert",
+    "turn/start",
+  ]);
+  expect(requests[0].params).toEqual({
+    threadId: "thread-edit",
+    beforeTurnId: "turn-a",
+  });
+  expect(requests[1].params).toEqual({
+    threadId: "thread-edit",
+    input: [
+      { type: "text", text: "修改后的消息", text_elements: [] },
+      { type: "localImage", path: "/tmp/original.png" },
+    ],
+    model: "gpt-test",
+    effort: "medium",
+    permissions: ":workspace",
+    approvalPolicy: "on-request",
+    approvalsReviewer: "user",
+  });
+});
+
 test("移动端选择器、线程恢复、Markdown、折叠与吸顶", async ({ page }) => {
   const expectSheetHeaderFlush = async (sheetSelector: string) => {
     const offset = await page.locator(sheetSelector).evaluate((sheet) => {

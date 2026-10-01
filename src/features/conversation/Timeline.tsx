@@ -38,8 +38,7 @@ import {
 type AnyRecord = Record<string, any>;
 
 type UserMessageActionProps = {
-  onEditUserMessage?: (text: string) => void;
-  onResendUserMessage?: (text: string) => void;
+  onEditUserMessage?: () => void;
   userMessageActionsDisabled?: boolean;
 };
 
@@ -91,7 +90,6 @@ function UserBubble({
   client,
   backend,
   onEditUserMessage,
-  onResendUserMessage,
   userMessageActionsDisabled = false,
 }: {
   item: AnyRecord;
@@ -151,9 +149,7 @@ function UserBubble({
     </div>
   );
   if (!heartbeat) {
-    const showActions = Boolean(
-      text.trim() && (onEditUserMessage || onResendUserMessage),
-    );
+    const showActions = Boolean(onEditUserMessage);
     if (!showActions) return bubble;
     return (
       <div className="user-message">
@@ -168,19 +164,9 @@ function UserBubble({
               type="button"
               aria-label={t("编辑历史消息")}
               disabled={userMessageActionsDisabled}
-              onClick={() => onEditUserMessage(text)}
+              onClick={onEditUserMessage}
             >
               {t("编辑")}
-            </button>
-          )}
-          {onResendUserMessage && (
-            <button
-              type="button"
-              aria-label={t("重发历史消息")}
-              disabled={userMessageActionsDisabled}
-              onClick={() => onResendUserMessage(text)}
-            >
-              {t("重发")}
             </button>
           )}
         </div>
@@ -259,7 +245,6 @@ function TimelineItem({
   client,
   backend,
   onEditUserMessage,
-  onResendUserMessage,
   userMessageActionsDisabled,
 }: {
   item: AnyRecord;
@@ -291,7 +276,6 @@ function TimelineItem({
         client={client}
         backend={backend}
         onEditUserMessage={onEditUserMessage}
-        onResendUserMessage={onResendUserMessage}
         userMessageActionsDisabled={userMessageActionsDisabled}
       />
     );
@@ -455,7 +439,6 @@ export function TurnCard({
   client,
   backend,
   onEditUserMessage,
-  onResendUserMessage,
   userMessageActionsDisabled,
 }: {
   turn: AnyRecord;
@@ -533,9 +516,6 @@ export function TurnCard({
             onEditUserMessage={
               grouped.running ? undefined : onEditUserMessage
             }
-            onResendUserMessage={
-              grouped.running ? undefined : onResendUserMessage
-            }
             userMessageActionsDisabled={userMessageActionsDisabled}
           />
         </div>
@@ -561,9 +541,6 @@ export function TurnCard({
               durationLabel={
                 index === durationSegmentIndex ? durationLabel : null
               }
-              onEditUserMessage={onEditUserMessage}
-              onResendUserMessage={onResendUserMessage}
-              userMessageActionsDisabled={userMessageActionsDisabled}
             />
           ))
         )}
@@ -579,9 +556,6 @@ function CompletedResponseSegment({
   copyTarget,
   showCopy,
   durationLabel,
-  onEditUserMessage,
-  onResendUserMessage,
-  userMessageActionsDisabled,
 }: {
   items: AnyRecord[];
   client: AppServerClient | null;
@@ -589,7 +563,7 @@ function CompletedResponseSegment({
   copyTarget: RefObject<HTMLDivElement | null>;
   showCopy: boolean;
   durationLabel: string | null;
-} & UserMessageActionProps) {
+}) {
   const completed = splitCompletedTurnResponses(items);
   const [showPrevious, setShowPrevious] = useState(false);
   const guidingMessages = completed.beforeFinal.filter(
@@ -611,9 +585,6 @@ function CompletedResponseSegment({
           item={entry.item}
           client={client}
           backend={backend}
-          onEditUserMessage={onEditUserMessage}
-          onResendUserMessage={onResendUserMessage}
-          userMessageActionsDisabled={userMessageActionsDisabled}
         />
       ),
     );
@@ -663,9 +634,6 @@ function CompletedResponseSegment({
             item={completed.final}
             client={client}
             backend={backend}
-            onEditUserMessage={onEditUserMessage}
-            onResendUserMessage={onResendUserMessage}
-            userMessageActionsDisabled={userMessageActionsDisabled}
           />
           {showCopy && (
             <CopyButton

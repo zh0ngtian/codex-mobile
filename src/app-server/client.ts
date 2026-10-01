@@ -25,6 +25,18 @@ export interface AppServerRequestOptions {
   timeoutMs?: number;
 }
 
+export class AppServerRpcError extends Error {
+  readonly name = "AppServerRpcError";
+
+  constructor(
+    message: string,
+    readonly code: number,
+    readonly data?: unknown,
+  ) {
+    super(message);
+  }
+}
+
 export class AppServerClient {
   private nextId = 1;
   private pending = new Map<number | string, PendingRequest>();
@@ -129,7 +141,15 @@ export class AppServerClient {
       if (!waiter) return;
       this.pending.delete(message.id);
       clearTimeout(waiter.timeout);
-      if (message.error) waiter.reject(new Error(message.error.message));
+      if (message.error) {
+        waiter.reject(
+          new AppServerRpcError(
+            message.error.message,
+            message.error.code,
+            message.error.data,
+          ),
+        );
+      }
       else waiter.resolve(message.result);
       return;
     }

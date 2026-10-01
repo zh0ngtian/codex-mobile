@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import { AppServerClient } from "../../src/app-server/client";
+import {
+  AppServerClient,
+  AppServerRpcError,
+} from "../../src/app-server/client";
 
 class FakeSocket extends EventTarget {
   static OPEN = 1;
@@ -82,6 +85,32 @@ describe("AppServerClient", () => {
       id: 9,
       error: { code: -32601, message: "unsupported" },
     });
+  });
+
+  it("服务端请求错误保留 JSON-RPC code 和 data", async () => {
+    const socket = new FakeSocket();
+    const client = new AppServerClient(socket as unknown as WebSocket);
+    const request = client.request("thread/revert", {
+      threadId: "thread-1",
+      beforeTurnId: "turn-2",
+    });
+    const sent = JSON.parse(socket.sent[0]);
+
+    socket.receive({
+      id: sent.id,
+      error: {
+        code: -32601,
+        message: "Method not found",
+        data: { method: "thread/revert" },
+      },
+    });
+
+    await expect(request).rejects.toMatchObject({
+      name: "AppServerRpcError",
+      code: -32601,
+      message: "Method not found",
+      data: { method: "thread/revert" },
+    } satisfies Partial<AppServerRpcError>);
   });
 
   it("普通请求超时后关闭半开连接并拒绝等待中的请求", async () => {
