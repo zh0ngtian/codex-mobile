@@ -84,6 +84,7 @@ function renderConversation(
       onNewChatBackendChange={() => undefined}
       onNewChatProjectChange={() => undefined}
       onPin={async () => true}
+      onDuplicate={async () => true}
       onRename={async () => true}
       onArchive={async () => true}
       onRetry={onRetry}
@@ -292,6 +293,7 @@ describe("会话详情历史分页", () => {
         onNewChatBackendChange={() => undefined}
         onNewChatProjectChange={() => undefined}
         onPin={async () => true}
+        onDuplicate={async () => true}
         onRename={async () => true}
         onArchive={async () => true}
         onRetry={() => undefined}

@@ -33,6 +33,7 @@ import { t } from "../../i18n";
 export type ThreadManagementAction =
   | "pin"
   | "refresh"
+  | "duplicate"
   | "rename"
   | "archive";
 
@@ -477,6 +478,7 @@ export function ThreadListPage({
         }}
         onPin={() => void runThreadAction("pin")}
         onRefresh={() => void runThreadAction("refresh")}
+        onDuplicate={() => void runThreadAction("duplicate")}
         onCopy={() => {
           if (!managedThread) return;
           void navigator.clipboard?.writeText(managedThread.threadId);

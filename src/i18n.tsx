@@ -171,7 +171,12 @@ const english: Record<string, string> = {
   "关闭状态": "Close status",
   "对话线程：": "Conversation thread:",
   "暂无数据": "No data",
+  "复制会话": "Duplicate conversation",
   "复制会话 ID": "Copy conversation ID",
+  "已复制会话": "Conversation duplicated",
+  "复制会话失败，请重试": "Failed to duplicate. Try again",
+  "复制会话响应无效，请重试":
+    "The duplicate conversation response was invalid. Try again",
   "目录：": "Directory:",
   "上下文：": "Context:",
   "剩余 {remaining}%（已用 {used} / {total}）":

@@ -190,6 +190,7 @@ export function ConversationActionMenu({
   onClose,
   onPin,
   onRefresh,
+  onDuplicate,
   onCopy,
   onRename,
   onArchive,
@@ -201,6 +202,7 @@ export function ConversationActionMenu({
   onClose: () => void;
   onPin: () => void;
   onRefresh: () => void;
+  onDuplicate: () => void;
   onCopy: () => void;
   onRename: () => void;
   onArchive: () => void;
@@ -221,6 +223,13 @@ export function ConversationActionMenu({
       icon: "refresh" as const,
       onClick: onRefresh,
       requiresWrite: false,
+    },
+    {
+      id: "duplicate",
+      label: t("复制会话"),
+      icon: "copy" as const,
+      onClick: onDuplicate,
+      requiresWrite: true,
     },
     {
       id: "copy",

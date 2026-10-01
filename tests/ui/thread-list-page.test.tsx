@@ -75,7 +75,7 @@ function renderList(
     onOpenThread?: (thread: (typeof threads)[number]) => void;
     onManageThread?: (
       thread: (typeof threads)[number],
-      action: "pin" | "refresh" | "rename" | "archive",
+      action: "pin" | "refresh" | "duplicate" | "rename" | "archive",
     ) => Promise<boolean>;
   } = {},
 ) {
@@ -133,6 +133,7 @@ describe("会话侧边栏列表", () => {
     expect(onOpenThread).not.toHaveBeenCalled();
     expect(view.getByRole("button", { name: "取消置顶" })).not.toBeNull();
     expect(view.getByRole("button", { name: "刷新会话" })).not.toBeNull();
+    expect(view.getByRole("button", { name: "复制会话" })).not.toBeNull();
     expect(view.getByRole("button", { name: "复制会话 ID" })).not.toBeNull();
     expect(view.getByRole("button", { name: "重命名" })).not.toBeNull();
     expect(view.getByRole("button", { name: "归档" })).not.toBeNull();

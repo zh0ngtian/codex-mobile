@@ -49,6 +49,7 @@ import {
 } from "./app-server/turn-steering";
 import {
   activeThreadAfterArchive,
+  duplicateThread,
   setThreadPinned,
 } from "./app-server/thread-metadata";
 import {
@@ -1863,6 +1864,43 @@ function BackendWorkspace({
     );
   }
 
+  async function duplicateManagedThread(
+    client: AppServerClient,
+    sourceThread: AnyRecord,
+  ) {
+    const sourceThreadId = String(sourceThread.id ?? "");
+    const forkedThread = await duplicateThread(client, sourceThreadId);
+    const { turns: _turns, ...rawMetadata } = forkedThread;
+    const isProjectless =
+      sourceThread.isProjectless === true ||
+      projectlessThreadIds.includes(sourceThreadId);
+    const duplicated = decorateThread({
+      ...rawMetadata,
+      name: rawMetadata.name ?? sourceThread.name,
+      preview: rawMetadata.preview ?? sourceThread.preview,
+      cwd: rawMetadata.cwd ?? sourceThread.cwd,
+      ...(isProjectless ? { isProjectless: true } : {}),
+    });
+    const duplicatedId = String(duplicated.id);
+
+    if (isProjectless) {
+      setProjectlessThreadIds((current) => {
+        const next = mergeProjectlessThreadIds(current, [duplicatedId]);
+        writeLocalProjectlessThreadIds(localStorage, backend.id, next);
+        return next;
+      });
+      setProjectThreadStates((current) => ({
+        ...current,
+        [PROJECTLESS_GROUP_ID]: "ready",
+      }));
+    }
+    setThreads((current) => [
+      duplicated,
+      ...current.filter((entry) => String(entry.id) !== duplicatedId),
+    ]);
+    showNotice(t("已复制会话"));
+  }
+
   async function manageListedThread(
     thread: AnyRecord,
     action: ThreadManagementAction,
@@ -1936,6 +1974,10 @@ function BackendWorkspace({
         showNotice(t("已刷新"));
         return true;
       }
+      if (action === "duplicate") {
+        await duplicateManagedThread(client, thread);
+        return true;
+      }
       if (action === "rename") {
         if (!name) return false;
         await client.request("thread/name/set", { threadId, name });
@@ -1975,18 +2017,26 @@ function BackendWorkspace({
           ? reason.message
           : action === "archive"
             ? t("归档失败，请重试")
-            : action === "rename"
-              ? t("重命名失败，请重试")
-              : action === "refresh"
-                ? t("刷新失败，请重试")
-                : thread.isPinned === true
-                  ? t("取消置顶失败，请重试")
-                  : t("置顶失败，请重试"),
+            : action === "duplicate"
+              ? t("复制会话失败，请重试")
+              : action === "rename"
+                ? t("重命名失败，请重试")
+                : action === "refresh"
+                  ? t("刷新失败，请重试")
+                  : thread.isPinned === true
+                    ? t("取消置顶失败，请重试")
+                    : t("置顶失败，请重试"),
       );
       return false;
     } finally {
       setPendingAction("");
     }
+  }
+
+  async function duplicateActiveThread() {
+    const thread = activeRef.current;
+    if (!thread || activeThreadAccessMode !== "interactive") return false;
+    return manageListedThread(thread, "duplicate");
   }
 
   async function togglePinned() {
@@ -2426,6 +2476,7 @@ function BackendWorkspace({
           }
           onNewChatProjectChange={chooseNewChatProject}
           onPin={togglePinned}
+          onDuplicate={duplicateActiveThread}
           onRename={renameThread}
           onArchive={archiveThread}
           onRetry={retryThreadDetail}

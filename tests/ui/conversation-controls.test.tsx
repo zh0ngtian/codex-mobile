@@ -62,6 +62,7 @@ describe("对话详情控制", () => {
   it("操作面板根据持久化字段切换置顶文案", () => {
     const onPin = vi.fn();
     const onRefresh = vi.fn();
+    const onDuplicate = vi.fn();
     const { container, rerender } = render(
       <ConversationActionMenu
         open
@@ -70,6 +71,7 @@ describe("对话详情控制", () => {
         onClose={() => undefined}
         onPin={onPin}
         onRefresh={onRefresh}
+        onDuplicate={onDuplicate}
         onCopy={() => undefined}
         onRename={() => undefined}
         onArchive={() => undefined}
@@ -81,6 +83,8 @@ describe("对话详情控制", () => {
     expect(onPin).toHaveBeenCalledTimes(1);
     fireEvent.click(view.getByRole("button", { name: "刷新会话" }));
     expect(onRefresh).toHaveBeenCalledTimes(1);
+    fireEvent.click(view.getByRole("button", { name: "复制会话" }));
+    expect(onDuplicate).toHaveBeenCalledTimes(1);
 
     rerender(
       <ConversationActionMenu
@@ -90,6 +94,7 @@ describe("对话详情控制", () => {
         onClose={() => undefined}
         onPin={onPin}
         onRefresh={onRefresh}
+        onDuplicate={onDuplicate}
         onCopy={() => undefined}
         onRename={() => undefined}
         onArchive={() => undefined}
@@ -109,6 +114,7 @@ describe("对话详情控制", () => {
         onClose={() => undefined}
         onPin={() => undefined}
         onRefresh={() => undefined}
+        onDuplicate={() => undefined}
         onCopy={() => undefined}
         onRename={() => undefined}
         onArchive={() => undefined}
@@ -117,6 +123,7 @@ describe("对话详情控制", () => {
     const view = within(container);
 
     expect(view.getByRole("button", { name: "刷新会话" }).hasAttribute("disabled")).toBe(false);
+    expect(view.getByRole("button", { name: "复制会话" }).hasAttribute("disabled")).toBe(true);
     expect(view.getByRole("button", { name: "复制会话 ID" }).hasAttribute("disabled")).toBe(false);
     expect(view.getByRole("button", { name: "置顶" }).hasAttribute("disabled")).toBe(true);
     expect(view.getByRole("button", { name: "重命名" }).hasAttribute("disabled")).toBe(true);

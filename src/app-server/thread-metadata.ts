@@ -41,6 +41,20 @@ export async function setThreadPinned(
   return { thread: result.thread, persistence: "server" };
 }
 
+export async function duplicateThread(
+  client: Pick<AppServerClient, "request">,
+  threadId: string,
+): Promise<DisplayRecord> {
+  const result = await client.request<{ thread: DisplayRecord }>(
+    "thread/fork",
+    { threadId, excludeTurns: true },
+  );
+  if (!result.thread?.id || String(result.thread.id) === threadId) {
+    throw new Error(t("复制会话响应无效，请重试"));
+  }
+  return result.thread;
+}
+
 export function activeThreadAfterArchive(
   active: DisplayRecord | null,
   archivedThreadId: string,

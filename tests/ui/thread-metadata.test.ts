@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   activeThreadAfterArchive,
+  duplicateThread,
   setThreadPinned,
 } from "../../src/app-server/thread-metadata";
 
@@ -51,6 +52,27 @@ describe("线程元数据", () => {
     await expect(
       setThreadPinned({ request } as any, "thread-1", true),
     ).rejects.toThrow("置顶状态不一致");
+  });
+
+  it("通过 thread/fork 复制完整会话", async () => {
+    const thread = { id: "thread-copy", forkedFromId: "thread-1" };
+    const request = vi.fn(async () => ({ thread }));
+
+    await expect(
+      duplicateThread({ request } as any, "thread-1"),
+    ).resolves.toBe(thread);
+    expect(request).toHaveBeenCalledWith("thread/fork", {
+      threadId: "thread-1",
+      excludeTurns: true,
+    });
+  });
+
+  it("复制响应没有新会话时报告响应异常", async () => {
+    const request = vi.fn(async () => ({ thread: { id: "thread-1" } }));
+
+    await expect(
+      duplicateThread({ request } as any, "thread-1"),
+    ).rejects.toThrow("复制会话响应无效");
   });
 
   it("旧归档响应不会清空后来打开的会话", () => {

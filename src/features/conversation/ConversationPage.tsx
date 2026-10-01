@@ -159,6 +159,7 @@ export function ConversationPage({
   onNewChatBackendChange,
   onNewChatProjectChange,
   onPin,
+  onDuplicate,
   onRename,
   onArchive,
   onRetry,
@@ -210,6 +211,7 @@ export function ConversationPage({
   onNewChatBackendChange: (backendId: string) => void;
   onNewChatProjectChange: (cwd: string) => void;
   onPin: () => Promise<boolean>;
+  onDuplicate: () => Promise<boolean>;
   onRename: () => Promise<boolean>;
   onArchive: () => Promise<boolean>;
   onRetry: () => void;
@@ -375,6 +377,11 @@ export function ConversationPage({
         onRefresh={() => {
           setActionsOpen(false);
           onRetry();
+        }}
+        onDuplicate={() => {
+          void onDuplicate().then((completed) => {
+            if (completed) setActionsOpen(false);
+          });
         }}
         onCopy={() => {
           void navigator.clipboard?.writeText(String(active.id));

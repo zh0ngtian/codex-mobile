@@ -46,6 +46,7 @@ function renderComposer() {
         onNewChatBackendChange: () => undefined,
         onNewChatProjectChange: () => undefined,
         onPin: async () => true,
+        onDuplicate: async () => true,
         onRename: async () => true,
         onArchive: async () => true,
         onRetry: () => undefined,
