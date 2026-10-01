@@ -17,7 +17,11 @@ import {
   turnDurationMs,
   type ImageSource,
 } from "../../ui/conversation";
-import { CopyButton, visibleAssistantText } from "../../ui/copy";
+import {
+  CopyButton,
+  selectElementText,
+  visibleAssistantText,
+} from "../../ui/copy";
 import { Chevron } from "../../ui/icons";
 import {
   RemoteFileLink,
@@ -96,6 +100,7 @@ function UserBubble({
       {text && (
         <div
           className={`user-message-text ${collapsible && !expanded ? "collapsed" : ""}`}
+          onContextMenu={(event) => selectElementText(event.currentTarget)}
         >
           <MarkdownMessage
             text={text}

@@ -81,6 +81,18 @@ export function visibleAssistantText(root: Element | null) {
     .join("\n\n");
 }
 
+export function selectElementText(root: Element | null) {
+  if (!root) return false;
+  const selection = window.getSelection();
+  if (!selection) return false;
+
+  const range = document.createRange();
+  range.selectNodeContents(root);
+  selection.removeAllRanges();
+  selection.addRange(range);
+  return true;
+}
+
 export function reactNodeText(node: ReactNode): string {
   if (typeof node === "string" || typeof node === "number") {
     return String(node);

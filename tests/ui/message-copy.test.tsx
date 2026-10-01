@@ -32,6 +32,42 @@ afterEach(() => {
 });
 
 describe("消息复制", () => {
+  it("长按用户消息时默认选中该条消息的全部文本", () => {
+    const { container } = render(
+      <TurnCard
+        client={null}
+        turn={{
+          id: "turn-user-copy",
+          status: "completed",
+          items: [
+            {
+              id: "user",
+              type: "userMessage",
+              text: "第一段\n\n**完整消息**",
+            },
+            {
+              id: "final",
+              type: "agentMessage",
+              phase: "final_answer",
+              text: "AI 回复不应选中",
+            },
+          ],
+        }}
+      />,
+    );
+
+    const userMessage = container.querySelector(".user-message-text");
+    expect(userMessage).not.toBeNull();
+    fireEvent.contextMenu(userMessage!);
+
+    const selection = window.getSelection();
+    expect(selection?.rangeCount).toBe(1);
+    expect(selection?.getRangeAt(0).commonAncestorContainer).toBe(userMessage);
+    expect(selection?.toString()).toContain("第一段");
+    expect(selection?.toString()).toContain("完整消息");
+    expect(selection?.toString()).not.toContain("AI 回复不应选中");
+  });
+
   it("只给块级代码增加复制按钮并复制代码正文", async () => {
     const writeText = mockClipboard();
     render(
