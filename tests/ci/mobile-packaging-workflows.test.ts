@@ -382,6 +382,9 @@ describe("移动 App 内置前端流水线", () => {
       expect(
         readFileSync(manualVersionEnv.GITHUB_OUTPUT, "utf8"),
       ).toContain("app_version=0.2.17");
+      expect(
+        readFileSync(manualVersionEnv.GITHUB_OUTPUT, "utf8"),
+      ).toContain("app_version_code=2017");
     } finally {
       rmSync(manualVersionDirectory, { recursive: true, force: true });
     }
@@ -416,11 +419,15 @@ describe("移动 App 内置前端流水线", () => {
       expect(result.stdout).toBe(expected);
     }
     expect(workflow.jobs.version?.outputs).toHaveProperty("app_version");
+    expect(workflow.jobs.version?.outputs).toHaveProperty("app_version_code");
     expect(workflow.jobs.version?.outputs).toHaveProperty("build_ios");
     expect(workflow.jobs.version?.outputs).toHaveProperty("publish_npm");
     expect(workflow.jobs.build.needs).toBe("version");
     expect(workflow.jobs.build.env?.APP_VERSION).toContain(
       "needs.version.outputs.app_version",
+    );
+    expect(workflow.jobs.build.env?.APP_VERSION_CODE).toContain(
+      "needs.version.outputs.app_version_code",
     );
     expect(workflow.jobs.ios).toMatchObject({
       needs: "version",

@@ -50,6 +50,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       app_version: ${{ steps.version.outputs.app_version }}
+      app_version_code: ${{ steps.version.outputs.app_version_code }}
       build_ios: ${{ steps.version.outputs.build_ios }}
       release_tag: ${{ steps.version.outputs.release_tag }}
       publish_npm: ${{ steps.version.outputs.publish_npm }}
@@ -131,9 +132,25 @@ jobs:
             echo "Manual npm publishing requires the next GitHub Release patch version: $next_version" >&2
             exit 1
           fi
+          version_code="$(
+            node - "$version" <<'NODE'
+          const [major, minor, patch] = process.argv[2]
+            .split(".")
+            .map(Number);
+          if (minor > 999 || patch > 999) {
+            throw new Error("Minor and patch versions must be below 1000");
+          }
+          const versionCode = major * 1_000_000 + minor * 1_000 + patch;
+          if (!Number.isSafeInteger(versionCode) || versionCode <= 0 || versionCode > 2_100_000_000) {
+            throw new Error(`Invalid Android versionCode: ${versionCode}`);
+          }
+          process.stdout.write(String(versionCode));
+          NODE
+          )"
           echo "APP_VERSION=$version" >> "$GITHUB_ENV"
-          echo "APP_VERSION_CODE=$GITHUB_RUN_NUMBER" >> "$GITHUB_ENV"
+          echo "APP_VERSION_CODE=$version_code" >> "$GITHUB_ENV"
           echo "app_version=$version" >> "$GITHUB_OUTPUT"
+          echo "app_version_code=$version_code" >> "$GITHUB_OUTPUT"
           echo "release_tag=v$version" >> "$GITHUB_OUTPUT"
           build_ios=true
           if [[ "$ENABLE_IOS_BUILD" == "false" ]]; then
@@ -166,7 +183,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       APP_VERSION: ${{ needs.version.outputs.app_version }}
-      APP_VERSION_CODE: ${{ github.run_number }}
+      APP_VERSION_CODE: ${{ needs.version.outputs.app_version_code }}
 
     steps:
       - name: Checkout repository
