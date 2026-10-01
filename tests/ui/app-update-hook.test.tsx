@@ -7,32 +7,43 @@ import {
 import { useAppUpdate } from "../../src/features/update/useAppUpdate";
 
 const releasePayload = {
-  tag_name: "v0.2.1",
-  body: "新版本",
-  draft: false,
-  prerelease: false,
-  html_url: "https://github.com/loock-ai/codex-mobile/releases/tag/v0.2.1",
-  assets: [
-    {
-      name: "CodexMobile-v0.2.1.apk",
-      browser_download_url:
-        "https://github.com/loock-ai/codex-mobile/releases/download/v0.2.1/CodexMobile-v0.2.1.apk",
-      digest:
-        "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-      size: 1_024,
-    },
-  ],
+  version: "0.2.31",
+  tag: "v0.2.31",
+  notes: "新版本",
+  pageUrl:
+    "http://192.168.123.79:8765/channels/codex-mobile/latest.json",
+  downloadUrl:
+    "http://192.168.123.79:8765/channels/codex-mobile/latest.apk",
+  sha256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  size: 1_024,
+  publishedAt: "2026-10-02T12:00:00+08:00",
 };
 
+function memoryStorage() {
+  const values = new Map<string, string>();
+  return {
+    get length() {
+      return values.size;
+    },
+    clear: () => values.clear(),
+    getItem: (key: string) => values.get(key) ?? null,
+    key: (index: number) => [...values.keys()][index] ?? null,
+    removeItem: (key: string) => values.delete(key),
+    setItem: (key: string, value: string) => values.set(key, value),
+  } satisfies Storage;
+}
+
 describe("App 更新控制器", () => {
+  let storage: Storage;
+
   beforeEach(() => {
-    localStorage.clear();
+    storage = memoryStorage();
   });
 
   it("普通浏览器不检查也不展示更新能力", () => {
     const fetchRelease = vi.fn(async () => releasePayload);
     const { result } = renderHook(() =>
-      useAppUpdate({ bridge: null, fetchRelease }),
+      useAppUpdate({ bridge: null, fetchRelease, storage }),
     );
 
     expect(result.current.supported).toBe(false);
@@ -47,7 +58,7 @@ describe("App 更新控制器", () => {
     };
     const fetchRelease = vi.fn(async () => releasePayload);
     const { result } = renderHook(() =>
-      useAppUpdate({ bridge, fetchRelease }),
+      useAppUpdate({ bridge, fetchRelease, storage }),
     );
 
     await waitFor(() => expect(result.current.state.phase).toBe("available"));
@@ -75,14 +86,15 @@ describe("App 更新控制器", () => {
       useAppUpdate({
         bridge,
         fetchRelease: async () => releasePayload,
+        storage,
       }),
     );
     await waitFor(() => expect(result.current.state.phase).toBe("available"));
 
     act(() => result.current.install());
     expect(installApk).toHaveBeenCalledWith(
-      releasePayload.assets[0].browser_download_url,
-      releasePayload.assets[0].digest.slice("sha256:".length),
+      releasePayload.downloadUrl,
+      releasePayload.sha256,
     );
     expect(result.current.state.phase).toBe("downloading");
 

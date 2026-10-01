@@ -238,21 +238,25 @@ npm run test:e2e
 - Android APK 及 SHA-256 校验文件；
 - 未签名 iOS IPA 及 SHA-256 校验文件。
 
-Android App 会检查正式 Release，发现新版本后由用户确认下载，校验成功后调起系统
-安装器。首次使用需要在 Android 系统中允许 Codex Mobile 安装未知应用，App 不支持
-静默安装。
+Android App 固定检查局域网更新清单
+`http://192.168.123.79:8765/channels/codex-mobile/latest.json`，发现新版本后从固定地址
+`http://192.168.123.79:8765/channels/codex-mobile/latest.apk` 下载，经 SHA-256 校验成功后
+调起系统安装器。手机必须与更新服务器处于同一局域网；首次使用需要在 Android 系统中
+允许 Codex Mobile 安装未知应用，App 不支持静默安装。
 
 iOS IPA 未签名，安装到真实设备或上传 TestFlight 前仍需使用 Apple Developer 证书
 签名。
 
 仓库使用固定提交的 PakePlus Android/iOS 项目作为原生容器，并把当前 `dist/` 静态
-资源内置到 App。构建产物不包含局域网 IP、网关 Token 或其他私人配置。
+资源内置到 App。构建产物只包含上述固定更新服务器地址，不包含网关 Token 或其他私人配置。
 
 发布流程：
 
 - `main` 的应用相关代码变化会触发 Android、iOS 构建和 GitHub Release；
 - npm 包只在网关、CLI 或包配置变化时随同发布，也可在手动工作流中显式启用；
 - Android、iOS 与同次发布的 npm 包共用一个解析后的版本号。
+- 仓库修改提交并推送后，还须在更新服务器所在 Mac 构建更高版本 APK，通过
+  `apk-server.py publish-channel codex-mobile` 覆盖固定局域网渠道并回验摘要。
 
 相关工作流：
 

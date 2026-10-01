@@ -121,6 +121,8 @@ jobs:
           ];
           const allowedUrls = new Set([
             "http://host.local:18766/?token=xxx",
+            "http://192.168.123.79:8765/channels/codex-mobile/latest.json",
+            "http://192.168.123.79:8765/channels/codex-mobile/latest.apk",
             "https://www.pakeplus.com/",
           ]);
           const endpointPatterns = [
@@ -180,11 +182,15 @@ jobs:
           const findings = [];
           for (const file of files) {
             const source = fs.readFileSync(file, "utf8");
+            const endpointSource = [...allowedUrls].reduce(
+              (current, url) => current.replaceAll(url, ""),
+              source,
+            );
             for (const [label, pattern] of [
               ...endpointPatterns,
               ...credentialPatterns,
             ]) {
-              for (const match of source.matchAll(pattern)) {
+              for (const match of endpointSource.matchAll(pattern)) {
                 findings.push(`${file}: ${label}: ${match[0].slice(0, 160)}`);
               }
             }

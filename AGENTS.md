@@ -6,8 +6,10 @@
 ## 构建与交付
 
 - 每次完成仓库修改后，必须提交并推送本次代码变更。
-- 推送成功后，必须构建一个新的 APK 包并上传到临时文件服务。
-- 交付修改时必须提供该 APK 的下载链接。
+- 推送成功后，必须构建版本号高于固定渠道现有版本的新 APK，并发布到 Codex Mobile 固定局域网渠道；不得只上传 48 小时随机临时链接。
+- 固定更新清单为 `http://192.168.123.79:8765/channels/codex-mobile/latest.json`，固定 APK 为 `http://192.168.123.79:8765/channels/codex-mobile/latest.apk`。
+- 使用 `/Users/zhongtian/WorkSpace/GlobalTranslation/scripts/apk-server.py publish-channel codex-mobile <APK> --version <版本> --notes <说明>` 发布；发布后必须通过固定 JSON、HEAD、GET 核对版本、文件大小和 SHA-256。
+- 交付修改时必须提供固定 APK 下载链接和本次版本号、文件大小、SHA-256。
 
 ## Git 提交规范
 

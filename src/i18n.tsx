@@ -344,7 +344,7 @@ const english: Record<string, string> = {
   "检查更新失败（HTTP {status}）": "Update check failed (HTTP {status})",
   "本次版本未提供更新说明。": "No release notes were provided for this version.",
   "无效版本号：{version}": "Invalid version: {version}",
-  "最新 Release 没有可验证的 Android APK": "The latest release does not contain a verifiable Android APK",
+  "内网更新源没有可验证的 Android APK": "The LAN update source does not contain a verifiable Android APK",
   "当前环境不支持麦克风": "Microphone access is not supported in this environment",
   "麦克风尚未准备完成": "The microphone is not ready yet",
   "原生麦克风 Bridge 不可用": "The native microphone bridge is unavailable",

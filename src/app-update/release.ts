@@ -1,7 +1,8 @@
-export const APP_UPDATE_REPOSITORY = "loock-ai/codex-mobile";
 export const APP_UPDATE_API_URL =
-  "https://api.github.com/repos/loock-ai/codex-mobile/releases/latest";
-export const APP_UPDATE_CACHE_KEY = "codex-mobile:app-update:last-release";
+  "http://192.168.123.79:8765/channels/codex-mobile/latest.json";
+export const APP_UPDATE_APK_URL =
+  "http://192.168.123.79:8765/channels/codex-mobile/latest.apk";
+export const APP_UPDATE_CACHE_KEY = "codex-mobile:app-update:last-lan-release";
 
 export interface SemanticVersion {
   major: number;
@@ -16,22 +17,6 @@ export interface AppRelease {
   downloadUrl: string;
   sha256: string;
   size: number;
-}
-
-interface GithubReleaseAsset {
-  name?: unknown;
-  browser_download_url?: unknown;
-  digest?: unknown;
-  size?: unknown;
-}
-
-interface GithubReleasePayload {
-  tag_name?: unknown;
-  body?: unknown;
-  draft?: unknown;
-  prerelease?: unknown;
-  html_url?: unknown;
-  assets?: unknown;
 }
 
 export function parseSemanticVersion(input: string): SemanticVersion | null {
@@ -67,67 +52,36 @@ function stringValue(value: unknown) {
   return typeof value === "string" ? value : "";
 }
 
-function validReleaseUrl(
-  value: string,
-  repository: string,
-  suffix: string,
-) {
-  try {
-    const url = new URL(value);
-    return (
-      url.protocol === "https:" &&
-      url.hostname === "github.com" &&
-      url.pathname === `/${repository}/${suffix}`
-    );
-  } catch {
-    return false;
-  }
-}
-
-export function parseGithubRelease(
-  input: unknown,
-  repository = APP_UPDATE_REPOSITORY,
-): AppRelease | null {
+export function parseLanRelease(input: unknown): AppRelease | null {
   if (!input || typeof input !== "object") return null;
-  const payload = input as GithubReleasePayload;
-  if (payload.draft === true || payload.prerelease === true) return null;
-
-  const tag = stringValue(payload.tag_name);
-  const parsed = parseSemanticVersion(tag);
+  const payload = input as Record<string, unknown>;
+  const versionValue = stringValue(payload.version);
+  const parsed = parseSemanticVersion(versionValue);
   if (!parsed) return null;
   const version = `${parsed.major}.${parsed.minor}.${parsed.patch}`;
-  const expectedName = `CodexMobile-v${version}.apk`;
-  const assets = Array.isArray(payload.assets)
-    ? (payload.assets as GithubReleaseAsset[])
-    : [];
-  const asset = assets.find((candidate) => candidate.name === expectedName);
-  if (!asset) return null;
-
-  const downloadUrl = stringValue(asset.browser_download_url);
-  const downloadSuffix =
-    `releases/download/v${version}/${expectedName}`;
-  if (!validReleaseUrl(downloadUrl, repository, downloadSuffix)) return null;
-
-  const digest = stringValue(asset.digest);
-  const digestMatch = /^sha256:([a-f0-9]{64})$/i.exec(digest);
-  if (!digestMatch) return null;
-
-  const pageUrl = stringValue(payload.html_url);
-  if (!validReleaseUrl(pageUrl, repository, `releases/tag/v${version}`)) {
+  if (stringValue(payload.tag) !== `v${version}`) return null;
+  const pageUrl = stringValue(payload.pageUrl);
+  const downloadUrl = stringValue(payload.downloadUrl);
+  if (pageUrl !== APP_UPDATE_API_URL || downloadUrl !== APP_UPDATE_APK_URL) {
     return null;
   }
+  const sha256 = stringValue(payload.sha256);
+  if (!/^[a-f0-9]{64}$/i.test(sha256)) return null;
+  const size = payload.size;
+  if (
+    typeof size !== "number" ||
+    !Number.isSafeInteger(size) ||
+    size <= 0
+  ) return null;
 
   return {
     version,
     tag: `v${version}`,
-    notes: stringValue(payload.body).trim() || t("本次版本未提供更新说明。"),
+    notes: stringValue(payload.notes).trim() || t("本次版本未提供更新说明。"),
     pageUrl,
     downloadUrl,
-    sha256: digestMatch[1].toLowerCase(),
-    size:
-      typeof asset.size === "number" && Number.isFinite(asset.size)
-        ? Math.max(0, asset.size)
-        : 0,
+    sha256: sha256.toLowerCase(),
+    size,
   };
 }
 
@@ -136,7 +90,6 @@ interface ReleaseCheckerOptions {
   storage: Pick<Storage, "getItem" | "setItem">;
   now?: () => number;
   cacheMs?: number;
-  repository?: string;
 }
 
 interface CachedRelease {
@@ -149,7 +102,6 @@ export function createReleaseChecker({
   storage,
   now = Date.now,
   cacheMs = 6 * 60 * 60 * 1_000,
-  repository = APP_UPDATE_REPOSITORY,
 }: ReleaseCheckerOptions) {
   const readCache = () => {
     try {
@@ -162,7 +114,7 @@ export function createReleaseChecker({
         now() - cached.checkedAt >= 0 &&
         now() - cached.checkedAt < cacheMs
       ) {
-        return cached.release;
+        return parseLanRelease(cached.release);
       }
     } catch {
       // Invalid local data is treated as a cache miss.
@@ -176,8 +128,10 @@ export function createReleaseChecker({
         const cached = readCache();
         if (cached) return cached;
       }
-      const release = parseGithubRelease(await fetchRelease(), repository);
-      if (!release) throw new Error(t("最新 Release 没有可验证的 Android APK"));
+      const release = parseLanRelease(await fetchRelease());
+      if (!release) {
+        throw new Error(t("内网更新源没有可验证的 Android APK"));
+      }
       storage.setItem(
         APP_UPDATE_CACHE_KEY,
         JSON.stringify({ checkedAt: now(), release } satisfies CachedRelease),

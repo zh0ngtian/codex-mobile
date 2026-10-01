@@ -214,6 +214,12 @@ describe("移动 App 内置前端流水线", () => {
         'const docs = "https://react.dev/errors/"; const sample = "http://host.local:18766/?token=xxx"; const sentinel = "https://www.pakeplus.com/\0\b";',
       ).status,
     ).toBe(0);
+    expect(
+      runAssetScanner(
+        scanner,
+        'const manifest = "http://192.168.123.79:8765/channels/codex-mobile/latest.json"; const apk = "http://192.168.123.79:8765/channels/codex-mobile/latest.apk";',
+      ).status,
+    ).toBe(0);
     expect(hardenHost).toContain("app/src/main/assets/index.html");
     expect(hardenHost).toContain("allowed_permissions");
     expect(source).toContain(".phone.camera = true");
@@ -272,7 +278,9 @@ describe("移动 App 内置前端流水线", () => {
     expect(source).toContain("vip.loock.codexmobile");
     expect(source).not.toContain("matrix:");
     expect(source).not.toContain("page_url");
-    expect(source).not.toMatch(/192\.168\.\d+\.\d+/);
+    const privateAddresses = source.match(/192\.168\.\d+\.\d+/g) ?? [];
+    expect(privateAddresses.length).toBeGreaterThan(0);
+    expect(new Set(privateAddresses)).toEqual(new Set(["192.168.123.79"]));
   });
 
   it("main 前端变更统一递增版本，并行构建双端后原子发布一个 Release", () => {
@@ -289,6 +297,7 @@ describe("移动 App 内置前端流水线", () => {
         "index.html",
         "package.json",
         "package-lock.json",
+        "mobile-version-floor.json",
         "vite.config.ts",
         "docs/assets/app-icon/codex-mobile-app-icon-1024.png",
         "scripts/compose-mobile-app-icon.sh",
@@ -314,7 +323,8 @@ describe("移动 App 内置前端流水线", () => {
       "Resolve app version",
     );
     expect(resolveVersion).toContain("releases/latest");
-    expect(resolveVersion).toContain("package.json");
+    expect(resolveVersion).toContain("mobile-version-floor.json");
+    expect(resolveVersion).toContain(".sort((left, right)");
     expect(resolveVersion).toContain("patch + 1");
     expect(resolveVersion).toContain("REQUESTED_VERSION");
     expect(resolveVersion).toContain(
@@ -368,23 +378,23 @@ describe("移动 App 内置前端流水线", () => {
       });
       expect(mismatchedVersion.status).not.toBe(0);
       expect(mismatchedVersion.stderr).toContain(
-        "Manual npm publishing requires the next GitHub Release patch version: 0.2.17",
+        "Manual npm publishing requires the next GitHub Release patch version: 0.2.31",
       );
 
       const explicitVersion = spawnSync("bash", ["-c", resolveVersion], {
         encoding: "utf8",
         env: {
           ...manualVersionEnv,
-          REQUESTED_VERSION: "v0.2.17",
+          REQUESTED_VERSION: "v0.2.31",
         },
       });
       expect(explicitVersion.status).toBe(0);
       expect(
         readFileSync(manualVersionEnv.GITHUB_OUTPUT, "utf8"),
-      ).toContain("app_version=0.2.17");
+      ).toContain("app_version=0.2.31");
       expect(
         readFileSync(manualVersionEnv.GITHUB_OUTPUT, "utf8"),
-      ).toContain("app_version_code=2017");
+      ).toContain("app_version_code=2031");
     } finally {
       rmSync(manualVersionDirectory, { recursive: true, force: true });
     }
@@ -510,7 +520,7 @@ describe("移动 App 内置前端流水线", () => {
     expect(source).toContain("actions/download-artifact@v4");
   });
 
-  it("Android 更新桥限制下载来源、校验摘要并只增加安装权限", () => {
+  it("Android 更新桥仅允许固定局域网渠道、校验摘要并只增加安装权限", () => {
     const { source, workflow } = readWorkflow(
       ".github/workflows/build-android.yml",
     );
@@ -524,8 +534,9 @@ describe("移动 App 内置前端流水线", () => {
     expect(hardenHost).toContain("FileProvider");
     expect(hardenHost).toContain("update_file_paths");
     expect(hardenHost).toContain(
-      "https://github.com/loock-ai/codex-mobile/releases/download/",
+      "http://192.168.123.79:8765/channels/codex-mobile/latest.apk",
     );
+    expect(hardenHost).toContain("instanceFollowRedirects = false");
     expect(hardenHost).toContain("MessageDigest.getInstance(\"SHA-256\")");
     expect(hardenHost).toContain("fun appVersion(): String");
     expect(hardenHost).toContain("getPackageInfo");
@@ -586,6 +597,12 @@ describe("移动 App 内置前端流水线", () => {
     );
     expect(runAssetScanner(scanner, 'const socket = "ws://gateway.example/ws";').status)
       .not.toBe(0);
+    expect(
+      runAssetScanner(
+        scanner,
+        'const manifest = "http://192.168.123.79:8765/channels/codex-mobile/latest.json"; const apk = "http://192.168.123.79:8765/channels/codex-mobile/latest.apk";',
+      ).status,
+    ).toBe(0);
     expect(hardenHost).toContain("PakePlus/index.html");
     expect(hardenHost).toContain(
       "Delete :NSAppTransportSecurity:NSAllowsArbitraryLoads",
@@ -625,6 +642,8 @@ describe("移动 App 内置前端流水线", () => {
     expect(source).toContain("vip.loock.codexmobile");
     expect(source).toContain("CODE_SIGNING_ALLOWED=NO");
     expect(source).not.toContain("page_url");
-    expect(source).not.toMatch(/192\.168\.\d+\.\d+/);
+    const privateAddresses = source.match(/192\.168\.\d+\.\d+/g) ?? [];
+    expect(privateAddresses.length).toBeGreaterThan(0);
+    expect(new Set(privateAddresses)).toEqual(new Set(["192.168.123.79"]));
   });
 });

@@ -1,37 +1,42 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  APP_UPDATE_APK_URL,
   APP_UPDATE_API_URL,
-  APP_UPDATE_REPOSITORY,
   compareSemanticVersions,
   createReleaseChecker,
   nextPatchVersion,
-  parseGithubRelease,
+  parseLanRelease,
   parseSemanticVersion,
 } from "../../src/app-update/release";
 
 const releasePayload = {
-  tag_name: "v0.2.1",
-  name: "Codex Mobile v0.2.1",
-  body: "自动更新说明",
-  draft: false,
-  prerelease: false,
-  html_url: "https://github.com/loock-ai/codex-mobile/releases/tag/v0.2.1",
-  assets: [
-    {
-      name: "CodexMobile-v0.2.1.apk",
-      browser_download_url:
-        "https://github.com/loock-ai/codex-mobile/releases/download/v0.2.1/CodexMobile-v0.2.1.apk",
-      digest:
-        "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-      size: 12_345,
-    },
-  ],
+  version: "0.2.31",
+  tag: "v0.2.31",
+  notes: "固定局域网更新渠道",
+  pageUrl:
+    "http://192.168.123.79:8765/channels/codex-mobile/latest.json",
+  downloadUrl:
+    "http://192.168.123.79:8765/channels/codex-mobile/latest.apk",
+  sha256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  size: 12_345,
+  publishedAt: "2026-10-02T12:00:00+08:00",
 };
 
-describe("App 自动更新 Release 模型", () => {
-  it("使用不可变的本项目 Latest Release 地址", () => {
+function memoryStorage() {
+  const values = new Map<string, string>();
+  return {
+    getItem: (key: string) => values.get(key) ?? null,
+    setItem: (key: string, value: string) => values.set(key, value),
+  };
+}
+
+describe("App 固定局域网更新模型", () => {
+  it("使用不可变的局域网清单和 APK 地址", () => {
     expect(APP_UPDATE_API_URL).toBe(
-      "https://api.github.com/repos/loock-ai/codex-mobile/releases/latest",
+      "http://192.168.123.79:8765/channels/codex-mobile/latest.json",
+    );
+    expect(APP_UPDATE_APK_URL).toBe(
+      "http://192.168.123.79:8765/channels/codex-mobile/latest.apk",
     );
   });
 
@@ -48,52 +53,37 @@ describe("App 自动更新 Release 模型", () => {
     expect(nextPatchVersion("not-semver", "0.2.0")).toBe("0.2.1");
   });
 
-  it("只接受本项目正式 Release、预期 APK 和 SHA-256", () => {
-    expect(
-      parseGithubRelease(releasePayload, APP_UPDATE_REPOSITORY),
-    ).toMatchObject({
-      version: "0.2.1",
-      tag: "v0.2.1",
-      notes: "自动更新说明",
+  it("只接受固定局域网渠道、正文件大小和 SHA-256", () => {
+    expect(parseLanRelease(releasePayload)).toMatchObject({
+      version: "0.2.31",
+      tag: "v0.2.31",
+      notes: "固定局域网更新渠道",
       sha256:
         "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       size: 12_345,
     });
     expect(
-      parseGithubRelease(
-        { ...releasePayload, prerelease: true },
-        APP_UPDATE_REPOSITORY,
-      ),
+      parseLanRelease({
+        ...releasePayload,
+        downloadUrl: "http://192.168.123.80:8765/channels/codex-mobile/latest.apk",
+      }),
     ).toBeNull();
     expect(
-      parseGithubRelease(
-        {
-          ...releasePayload,
-          assets: [
-            {
-              ...releasePayload.assets[0],
-              browser_download_url:
-                "https://example.com/CodexMobile-v0.2.1.apk",
-            },
-          ],
-        },
-        APP_UPDATE_REPOSITORY,
-      ),
+      parseLanRelease({
+        ...releasePayload,
+        pageUrl: "http://example.com/latest.json",
+      }),
     ).toBeNull();
     expect(
-      parseGithubRelease(
-        {
-          ...releasePayload,
-          assets: [{ ...releasePayload.assets[0], digest: null }],
-        },
-        APP_UPDATE_REPOSITORY,
-      ),
+      parseLanRelease({ ...releasePayload, sha256: null }),
     ).toBeNull();
+    expect(parseLanRelease({ ...releasePayload, size: 0 })).toBeNull();
+    expect(parseLanRelease({ ...releasePayload, tag: "v0.2.30" })).toBeNull();
   });
 
   it("自动检测在缓存时间内复用结果，手动检测绕过缓存", async () => {
     const fetchRelease = vi.fn(async () => releasePayload);
-    const storage = localStorage;
+    const storage = memoryStorage();
     const checker = createReleaseChecker({
       fetchRelease,
       storage,
@@ -102,10 +92,10 @@ describe("App 自动更新 Release 模型", () => {
     });
 
     await expect(checker.check(false)).resolves.toMatchObject({
-      version: "0.2.1",
+      version: "0.2.31",
     });
     await expect(checker.check(false)).resolves.toMatchObject({
-      version: "0.2.1",
+      version: "0.2.31",
     });
     expect(fetchRelease).toHaveBeenCalledTimes(1);
 

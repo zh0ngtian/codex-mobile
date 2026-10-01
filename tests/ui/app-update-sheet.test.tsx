@@ -7,13 +7,13 @@ const available: AppUpdateState = {
   phase: "available",
   currentVersion: "0.2.0",
   release: {
-    version: "0.2.1",
-    tag: "v0.2.1",
+    version: "0.2.31",
+    tag: "v0.2.31",
     notes: "修复移动端布局\n\n增加自动更新。",
     pageUrl:
-      "https://github.com/loock-ai/codex-mobile/releases/tag/v0.2.1",
+      "http://192.168.123.79:8765/channels/codex-mobile/latest.json",
     downloadUrl:
-      "https://github.com/loock-ai/codex-mobile/releases/download/v0.2.1/CodexMobile-v0.2.1.apk",
+      "http://192.168.123.79:8765/channels/codex-mobile/latest.apk",
     sha256:
       "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     size: 12_345,
@@ -35,7 +35,7 @@ describe("App 更新 Sheet", () => {
     );
 
     expect(screen.getByRole("dialog", { name: "发现新版本" })).not.toBeNull();
-    expect(screen.getByText("v0.2.1")).not.toBeNull();
+    expect(screen.getByText("v0.2.31")).not.toBeNull();
     expect(screen.getByText(/增加自动更新/)).not.toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "立即更新" }));
     expect(onInstall).toHaveBeenCalledTimes(1);

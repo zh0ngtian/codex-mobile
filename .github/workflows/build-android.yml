@@ -12,6 +12,7 @@ on:
       - "index.html"
       - "package.json"
       - "package-lock.json"
+      - "mobile-version-floor.json"
       - "tsconfig*.json"
       - "tsconfig.npm.json"
       - "vite.config.ts"
@@ -72,7 +73,7 @@ jobs:
           REQUESTED_VERSION: ${{ inputs.release_version }}
         run: |
           set -euo pipefail
-          fallback="$(node -p "require('./package.json').version")"
+          fallback="$(node -p "require('./mobile-version-floor.json').version")"
           requested="${REQUESTED_VERSION#v}"
           version="$fallback"
           if [[
@@ -106,9 +107,20 @@ jobs:
             node - "$latest" "$fallback" <<'NODE'
           const latest = process.argv[2] || "";
           const fallback = process.argv[3];
-          const match = /^v?(\d+)\.(\d+)\.(\d+)$/.exec(latest)
-            || /^v?(\d+)\.(\d+)\.(\d+)$/.exec(fallback);
-          if (!match) throw new Error(`Invalid fallback version: ${fallback}`);
+          const pattern = /^v?(\d+)\.(\d+)\.(\d+)$/;
+          const fallbackMatch = pattern.exec(fallback);
+          if (!fallbackMatch) {
+            throw new Error(`Invalid fallback version: ${fallback}`);
+          }
+          const candidates = [latest, fallback]
+            .map((value) => pattern.exec(value))
+            .filter(Boolean)
+            .sort((left, right) =>
+              Number(left[1]) - Number(right[1])
+              || Number(left[2]) - Number(right[2])
+              || Number(left[3]) - Number(right[3])
+            );
+          const match = candidates[candidates.length - 1];
           const patch = Number(match[3]);
           process.stdout.write(`${match[1]}.${match[2]}.${patch + 1}`);
           NODE
@@ -254,6 +266,8 @@ jobs:
           ];
           const allowedUrls = new Set([
             "http://host.local:18766/?token=xxx",
+            "http://192.168.123.79:8765/channels/codex-mobile/latest.json",
+            "http://192.168.123.79:8765/channels/codex-mobile/latest.apk",
             "https://www.pakeplus.com/",
           ]);
           const endpointPatterns = [
@@ -313,11 +327,15 @@ jobs:
           const findings = [];
           for (const file of files) {
             const source = fs.readFileSync(file, "utf8");
+            const endpointSource = [...allowedUrls].reduce(
+              (current, url) => current.replaceAll(url, ""),
+              source,
+            );
             for (const [label, pattern] of [
               ...endpointPatterns,
               ...credentialPatterns,
             ]) {
-              for (const match of source.matchAll(pattern)) {
+              for (const match of endpointSource.matchAll(pattern)) {
                 findings.push(`${file}: ${label}: ${match[0].slice(0, 160)}`);
               }
             }
@@ -879,18 +897,12 @@ jobs:
               private val activity: MainActivity,
               private val emit: (String, Int?, String?) -> Unit,
           ) {
-              private val allowedPrefix =
-                  "https://github.com/loock-ai/codex-mobile/releases/download/"
-              private val allowedRedirectHosts = setOf(
-                  "github.com",
-                  "objects.githubusercontent.com",
-                  "release-assets.githubusercontent.com",
-              )
+              private val allowedUrl =
+                  "http://192.168.123.79:8765/channels/codex-mobile/latest.apk"
 
               fun install(downloadUrl: String, sha256: String) {
                   if (
-                      !downloadUrl.startsWith(allowedPrefix)
-                      || !downloadUrl.matches(Regex(""".+/CodexMobile-v\d+\.\d+\.\d+\.apk"""))
+                      downloadUrl != allowedUrl
                       || !sha256.matches(Regex("""[a-fA-F0-9]{64}"""))
                   ) {
                       emit("error", null, "更新地址或摘要无效")
@@ -907,15 +919,14 @@ jobs:
 
               private fun downloadAndInstall(downloadUrl: String, sha256: String) {
                   val connection = URL(downloadUrl).openConnection() as HttpURLConnection
-                  connection.instanceFollowRedirects = true
+                  connection.instanceFollowRedirects = false
                   connection.connectTimeout = 15_000
                   connection.readTimeout = 30_000
                   connection.setRequestProperty("Accept", "application/vnd.android.package-archive")
                   connection.connect()
                   if (
                       connection.responseCode !in 200..299
-                      || connection.url.protocol != "https"
-                      || connection.url.host !in allowedRedirectHosts
+                      || connection.url.toString() != allowedUrl
                   ) {
                       throw IllegalStateException(
                           "下载更新失败（HTTP ${connection.responseCode}）"
@@ -1035,7 +1046,9 @@ jobs:
           grep -Fq 'MessageDigest.getInstance("SHA-256")' \
             app/src/main/java/com/app/pakeplus/AppUpdater.kt
           grep -Fq \
-            'https://github.com/loock-ai/codex-mobile/releases/download/' \
+            'http://192.168.123.79:8765/channels/codex-mobile/latest.apk' \
+            app/src/main/java/com/app/pakeplus/AppUpdater.kt
+          grep -Fq 'instanceFollowRedirects = false' \
             app/src/main/java/com/app/pakeplus/AppUpdater.kt
           grep -Fq 'canRequestPackageInstalls' \
             app/src/main/java/com/app/pakeplus/AppUpdater.kt
