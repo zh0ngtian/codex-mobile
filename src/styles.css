@@ -378,8 +378,15 @@ button, a, summary, [role="button"] { -webkit-tap-highlight-color: transparent; 
 .realtime-pulse { width: 10px; height: 10px; flex: 0 0 auto; border-radius: 50%; background: #2388f5; box-shadow: 0 0 0 0 rgba(35,136,245,.28); animation: realtime-pulse 1.6s ease-out infinite; }
 @keyframes realtime-pulse { 55%,100% { box-shadow: 0 0 0 8px transparent; } }
 .realtime-error { display: block; width: calc(100% - 16px); margin: 0 8px 8px; border: 0; border-radius: 16px; background: #f5eeee; padding: 9px 12px; color: #8b2525; text-align: left; font-size: 13px; }
-.pending-steer-message { position: absolute; right: 22px; bottom: calc(100% + 3px); max-width: calc(100% - 44px); overflow: hidden; border-radius: 16px; background: rgba(239,239,239,.96); padding: 8px 13px; color: #555; box-shadow: 0 4px 16px rgba(0,0,0,.06); text-overflow: ellipsis; white-space: nowrap; font-size: 13px; line-height: 1.35; pointer-events: none; animation: pending-steer-in .16s ease-out; }
+.composer-follow-up-stack { position: absolute; right: 22px; bottom: calc(100% + 3px); width: min(calc(100% - 44px), 430px); max-height: 176px; overflow-y: auto; display: grid; gap: 6px; scrollbar-width: none; }
+.composer-follow-up-stack::-webkit-scrollbar { display: none; }
+.pending-steer-message { min-width: 0; overflow: hidden; border-radius: 16px; background: rgba(239,239,239,.96); padding: 8px 13px; color: #555; box-shadow: 0 4px 16px rgba(0,0,0,.06); text-overflow: ellipsis; white-space: nowrap; font-size: 13px; line-height: 1.35; pointer-events: none; animation: pending-steer-in .16s ease-out; }
 @keyframes pending-steer-in { from { opacity: 0; transform: translateY(4px); } }
+.queued-follow-ups { display: grid; gap: 6px; }
+.queued-follow-up { min-width: 0; min-height: 38px; border-radius: 18px; background: rgba(239,239,239,.97); color: #555; display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: center; gap: 8px; padding: 4px 5px 4px 13px; box-shadow: 0 4px 16px rgba(0,0,0,.06); animation: pending-steer-in .16s ease-out; }
+.queued-follow-up > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; line-height: 1.35; }
+.queued-follow-up > button { min-height: 30px; border: 0; border-radius: 15px; background: #111; color: #fff; padding: 0 11px; font-size: 12px; font-weight: 650; }
+.queued-follow-up > button:disabled { opacity: .4; }
 .draft-images { display: flex; gap: 8px; max-width: 100%; overflow-x: auto; padding: 17px 22px 9px 10px; scrollbar-width: none; }
 .draft-images::-webkit-scrollbar { display: none; }
 .draft-images figure { position: relative; flex: 0 0 58px; width: 58px; height: 58px; margin: 0; border-radius: 13px; background: #e8e8e8; box-shadow: 0 1px 5px rgba(0,0,0,.08); }

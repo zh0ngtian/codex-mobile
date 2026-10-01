@@ -1637,3 +1637,169 @@ test("会话加载中返回并打开其他会话后忽略旧详情响应", async
   await expect(page.getByText("正确的新内容", { exact: true })).toBeVisible();
   await expect(page.getByText("不应重新出现", { exact: true })).toHaveCount(0);
 });
+
+test("运行中的追加消息默认排队并可改为引导", async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("codex-mobile:language", "zh-CN");
+    (window as any).__followUpRequests = [];
+    class FollowUpSocket extends EventTarget {
+      static OPEN = 1;
+      static CLOSED = 3;
+      readyState = 0;
+
+      constructor() {
+        super();
+        (window as any).__completeRunningTurn = () => {
+          this.dispatchEvent(
+            new MessageEvent("message", {
+              data: JSON.stringify({
+                method: "turn/completed",
+                params: {
+                  threadId: "running-thread",
+                  turn: {
+                    id: "running-turn",
+                    status: "completed",
+                    items: [
+                      {
+                        id: "running-final",
+                        type: "agentMessage",
+                        phase: "final_answer",
+                        text: "当前任务完成",
+                      },
+                    ],
+                  },
+                },
+              }),
+            }),
+          );
+        };
+        setTimeout(() => {
+          this.readyState = FollowUpSocket.OPEN;
+          this.dispatchEvent(new Event("open"));
+        }, 0);
+      }
+
+      send(raw: string) {
+        const request = JSON.parse(raw);
+        if (["turn/start", "turn/steer"].includes(request.method)) {
+          (window as any).__followUpRequests.push(request);
+        }
+        if (request.id == null) return;
+        const responses: Record<string, unknown> = {
+          initialize: {},
+          "model/list": {
+            data: [
+              {
+                model: "gpt-test",
+                displayName: "GPT Test",
+                isDefault: true,
+                supportedReasoningEfforts: [],
+                serviceTiers: [],
+              },
+            ],
+          },
+          "permissionProfile/list": {
+            data: [{ id: ":workspace", allowed: true }],
+          },
+          "config/read": { config: { sandbox_mode: "workspace-write" } },
+          "thread/list": {
+            data: [
+              {
+                id: "running-thread",
+                preview: "追加消息队列",
+                cwd: "/tmp/project",
+                updatedAt: Math.floor(Date.now() / 1000),
+                status: { type: "active", activeFlags: [] },
+              },
+            ],
+          },
+          "thread/resume": {
+            thread: {
+              id: "running-thread",
+              preview: "追加消息队列",
+              cwd: "/tmp/project",
+              turns: [
+                {
+                  id: "running-turn",
+                  status: "inProgress",
+                  items: [
+                    {
+                      id: "running-user",
+                      type: "userMessage",
+                      text: "执行当前任务",
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+          "turn/start": {
+            turn: {
+              id: "queued-turn",
+              status: "inProgress",
+              items: [],
+            },
+          },
+          "turn/steer": { turnId: "queued-turn" },
+        };
+        setTimeout(() => {
+          this.dispatchEvent(
+            new MessageEvent("message", {
+              data: JSON.stringify({
+                id: request.id,
+                result: responses[request.method] ?? {},
+              }),
+            }),
+          );
+        }, 0);
+      }
+
+      close() {
+        this.readyState = FollowUpSocket.CLOSED;
+        this.dispatchEvent(new CloseEvent("close"));
+      }
+    }
+    (window as any).WebSocket = FollowUpSocket;
+  });
+
+  await page.goto("/");
+  await page.getByRole("button", { name: /追加消息队列/ }).first().click();
+  const composer = page.getByRole("textbox", { name: "向 Codex 提问" });
+  await expect(page.getByRole("button", { name: "停止" })).toBeVisible();
+
+  await composer.fill("等当前任务完成后继续");
+  await page.getByRole("button", { name: "排队" }).click();
+  await expect(page.getByRole("status", { name: "排队消息" }))
+    .toContainText("等当前任务完成后继续");
+  expect(
+    await page.evaluate(() => (window as any).__followUpRequests),
+  ).toEqual([]);
+
+  await page.evaluate(() => (window as any).__completeRunningTurn());
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        (window as any).__followUpRequests.filter(
+          (request: any) => request.method === "turn/start",
+        ),
+      ),
+    )
+    .toHaveLength(1);
+  await expect(page.getByRole("status", { name: "排队消息" }))
+    .toHaveCount(0);
+
+  await composer.fill("立即调整执行方向");
+  await page.getByRole("button", { name: "排队" }).click();
+  await page.getByRole("button", { name: "改为引导" }).click();
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        (window as any).__followUpRequests.find(
+          (request: any) => request.method === "turn/steer",
+        )?.params.input,
+      ),
+    )
+    .toEqual([
+      { type: "text", text: "立即调整执行方向", text_elements: [] },
+    ]);
+});

@@ -13,6 +13,11 @@ function renderConversation(
     steering?: boolean;
     steerable?: boolean;
     pendingSteerText?: string;
+    queuedFollowUps?: Array<{
+      id: string;
+      text: string;
+      failed?: boolean;
+    }>;
     accessMode?: "interactive" | "readOnly";
     resumeError?: string;
     draftImages?: DraftImage[];
@@ -49,6 +54,7 @@ function renderConversation(
       steering={composer.steering ?? false}
       steerable={composer.steerable ?? true}
       pendingSteerText={composer.pendingSteerText ?? ""}
+      queuedFollowUps={composer.queuedFollowUps ?? []}
       accessMode={composer.accessMode ?? "interactive"}
       resumeError={composer.resumeError ?? ""}
       tokenUsage={null}
@@ -75,6 +81,7 @@ function renderConversation(
       onOpenPermissionSettings={() => undefined}
       onDraftChange={() => undefined}
       onInterrupt={() => undefined}
+      onQueuedFollowUpAction={() => undefined}
     />,
   );
   return { ...result, onLoadOlderTurns, onSubmit, onRetry };
@@ -199,7 +206,7 @@ describe("会话详情历史分页", () => {
     expect(onRetry).toHaveBeenCalledOnce();
   });
 
-  it("任务执行中输入内容后，停止按钮直接变成引导发送按钮", () => {
+  it("任务执行中输入内容后，停止按钮变成排队发送按钮", () => {
     const onSubmit = vi.fn((event: FormEvent) => event.preventDefault());
     const { container } = renderConversation(
       "exhausted",
@@ -207,15 +214,15 @@ describe("会话详情历史分页", () => {
       { draft: "先处理测试", busy: true, onSubmit },
     );
     const view = within(container);
-    const steer = view.getByRole("button", { name: "引导" });
+    const queue = view.getByRole("button", { name: "排队" });
 
-    expect(steer.getAttribute("type")).toBe("submit");
+    expect(queue.getAttribute("type")).toBe("submit");
     expect(view.queryByRole("button", { name: "停止" })).toBeNull();
-    fireEvent.click(steer);
+    fireEvent.click(queue);
     expect(onSubmit).toHaveBeenCalledOnce();
   });
 
-  it("任务执行中没有输入时保留停止按钮，引导提交中显示等待状态", () => {
+  it("任务执行中没有输入时保留停止按钮", () => {
     const idle = renderConversation(
       "exhausted",
       undefined,
@@ -224,17 +231,73 @@ describe("会话详情历史分页", () => {
     const stop = within(idle.container).getByRole("button", { name: "停止" });
     expect(stop.classList.contains("send-button-running")).toBe(true);
     expect(stop.getAttribute("aria-busy")).toBe("true");
-    idle.unmount();
+  });
 
-    const pending = renderConversation(
-      "exhausted",
-      undefined,
-      { draft: "继续", busy: true, steering: true },
+  it("排队消息提供改为引导按钮", () => {
+    const onQueuedFollowUpAction = vi.fn();
+    const { container } = render(
+      <ConversationPage
+        active={{
+          id: "thread-1",
+          cwd: "/tmp/project",
+          preview: "排队会话",
+          turns: [{ id: "turn-10", status: "inProgress", items: [] }],
+        }}
+        backendId="mini"
+        backendName="Mac mini"
+        backends={[]}
+        projectOptions={[]}
+        loadState="ready"
+        loadError=""
+        olderTurnsState="exhausted"
+        connection="online"
+        client={null}
+        error=""
+        draft=""
+        draftImages={[]}
+        draftFiles={[]}
+        imageReading={false}
+        busy
+        steering={false}
+        steerable
+        pendingSteerText=""
+        queuedFollowUps={[{ id: "queue-1", text: "先完成测试" }]}
+        accessMode="interactive"
+        resumeError=""
+        tokenUsage={null}
+        rateLimits={null}
+        pendingAction=""
+        selectedServiceTier={null}
+        selectedModelLabel="Codex"
+        selectedEffort={null}
+        selectedPermissionLabel="工作区"
+        imageInputRef={createRef<HTMLInputElement>()}
+        onBack={() => undefined}
+        onNewChatBackendChange={() => undefined}
+        onNewChatProjectChange={() => undefined}
+        onPin={async () => true}
+        onRename={async () => true}
+        onArchive={async () => true}
+        onRetry={() => undefined}
+        onLoadOlderTurns={async () => true}
+        onSubmit={() => undefined}
+        onRemoveImage={() => undefined}
+        onRemoveFile={() => undefined}
+        onSelectImages={async () => undefined}
+        onOpenAgentSettings={() => undefined}
+        onOpenPermissionSettings={() => undefined}
+        onDraftChange={() => undefined}
+        onInterrupt={() => undefined}
+        onQueuedFollowUpAction={onQueuedFollowUpAction}
+      />,
     );
-    const steering = within(pending.container).getByRole("button", {
-      name: "正在引导",
-    });
-    expect(steering.getAttribute("disabled")).not.toBeNull();
+    const view = within(container);
+
+    expect(view.getByRole("status", { name: "排队消息" }).textContent).toContain(
+      "先完成测试",
+    );
+    fireEvent.click(view.getByRole("button", { name: "改为引导" }));
+    expect(onQueuedFollowUpAction).toHaveBeenCalledWith("queue-1");
   });
 
   it("空闲已有会话且输入为空时隐藏实时语音入口", () => {
@@ -280,7 +343,7 @@ describe("会话详情历史分页", () => {
     expect(preview.getAttribute("title")).toBe(preview.textContent);
   });
 
-  it("真实 Turn ID 尚未返回时不允许把 pending 回合当作引导目标", () => {
+  it("真实 Turn ID 尚未返回时仍允许把追加消息加入队列", () => {
     const { container } = renderConversation(
       "exhausted",
       undefined,
@@ -288,8 +351,8 @@ describe("会话详情历史分页", () => {
     );
     const view = within(container);
 
-    expect(view.getByRole("button", { name: "停止" })).not.toBeNull();
-    expect(view.queryByRole("button", { name: "引导" })).toBeNull();
+    expect(view.getByRole("button", { name: "排队" })).not.toBeNull();
+    expect(view.queryByRole("button", { name: "停止" })).toBeNull();
   });
 
   it("待发送图片可以打开统一大图预览", () => {

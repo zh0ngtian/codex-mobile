@@ -32,6 +32,12 @@ import videoPoster from "../../assets/video-poster.svg";
 
 export type ConversationLoadState = "idle" | "loading" | "ready" | "error";
 
+export type QueuedFollowUpPreview = {
+  id: string;
+  text: string;
+  failed?: boolean;
+};
+
 function formatRealtimeDuration(startedAt: number | null, now: number) {
   if (!startedAt) return "00:00";
   const seconds = Math.max(0, Math.floor((now - startedAt) / 1000));
@@ -126,6 +132,7 @@ export function ConversationPage({
   steering,
   steerable,
   pendingSteerText,
+  queuedFollowUps,
   accessMode,
   resumeError,
   tokenUsage,
@@ -152,6 +159,7 @@ export function ConversationPage({
   onOpenPermissionSettings,
   onDraftChange,
   onInterrupt,
+  onQueuedFollowUpAction,
 }: {
   active: DisplayRecord;
   backendId: string;
@@ -172,6 +180,7 @@ export function ConversationPage({
   steering: boolean;
   steerable: boolean;
   pendingSteerText: string;
+  queuedFollowUps: QueuedFollowUpPreview[];
   accessMode: "interactive" | "readOnly";
   resumeError: string;
   tokenUsage: Record<string, any> | null;
@@ -198,6 +207,7 @@ export function ConversationPage({
   onOpenPermissionSettings: () => void;
   onDraftChange: (value: string) => void;
   onInterrupt: () => void | Promise<void>;
+  onQueuedFollowUpAction: (id: string) => void | Promise<void>;
 }) {
   const selectedBackend =
     backends.find((backend) => backend.id === backendId) ?? null;
@@ -207,7 +217,7 @@ export function ConversationPage({
   const turns = groupConversationTurns(active.turns ?? []);
   const isNewChat = !active.id;
   const hasDraft = Boolean(draft.trim() || draftImages.length || draftFiles.length);
-  const canSteer = busy && steerable && hasDraft;
+  const canQueue = busy && !isNewChat && hasDraft;
   const realtime = useRealtimeConversation({
     client,
     threadId: String(active.id ?? ""),
@@ -464,14 +474,48 @@ export function ConversationPage({
             onStop={() => void realtime.stop()}
           />
         )}
-        {pendingSteerText && (
-          <div
-            className="pending-steer-message"
-            role="status"
-            aria-label={t("已发送引导")}
-            title={pendingSteerText}
-          >
-            {pendingSteerText}
+        {(pendingSteerText || queuedFollowUps.length > 0) && (
+          <div className="composer-follow-up-stack">
+            {pendingSteerText && (
+              <div
+                className="pending-steer-message"
+                role="status"
+                aria-label={t("已发送引导")}
+                title={pendingSteerText}
+              >
+                {pendingSteerText}
+              </div>
+            )}
+            {queuedFollowUps.length > 0 && (
+              <div
+                className="queued-follow-ups"
+                role="status"
+                aria-label={t("排队消息")}
+              >
+                {queuedFollowUps.map((followUp) => {
+                  const canSteerFollowUp = busy && steerable;
+                  const canRetryFollowUp = !busy && followUp.failed;
+                  return (
+                    <div className="queued-follow-up" key={followUp.id}>
+                      <span title={followUp.text}>{followUp.text}</span>
+                      <button
+                        type="button"
+                        disabled={
+                          steering || (!canSteerFollowUp && !canRetryFollowUp)
+                        }
+                        onClick={() => onQueuedFollowUpAction(followUp.id)}
+                      >
+                        {canSteerFollowUp
+                          ? t("改为引导")
+                          : canRetryFollowUp
+                            ? t("重试")
+                            : t("排队中")}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
         {draftImages.length > 0 && (
@@ -604,19 +648,19 @@ export function ConversationPage({
             rows={1}
           />
           <button
-            type={busy && !canSteer ? "button" : "submit"}
+            type={busy && !canQueue ? "button" : "submit"}
             onClick={
-              busy && !canSteer ? onInterrupt : undefined
+              busy && !canQueue ? onInterrupt : undefined
             }
             className={`send-button${
-              busy && !canSteer ? " send-button-running" : ""
+              busy && !canQueue ? " send-button-running" : ""
             }`}
-            aria-busy={busy && !canSteer}
+            aria-busy={busy && !canQueue}
             aria-label={
               steering
                 ? t("正在引导")
-                : canSteer
-                  ? t("引导")
+                : canQueue
+                  ? t("排队")
                   : busy
                     ? t("停止")
                     : t("发送")
@@ -624,14 +668,14 @@ export function ConversationPage({
             disabled={
               !interactive ||
               steering ||
-              (canSteer && imageReading) ||
+              (canQueue && imageReading) ||
               (!busy && (imageReading || !hasDraft))
             }
           >
             {steering ? (
               <i className="action-spinner composer-steer-spinner" />
             ) : (
-              <AppIcon name={busy && !canSteer ? "stop" : "send"} />
+              <AppIcon name={busy && !canQueue ? "stop" : "send"} />
             )}
           </button>
         </div>

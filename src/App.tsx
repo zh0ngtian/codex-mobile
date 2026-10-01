@@ -40,7 +40,6 @@ import {
   clearPendingSteerForRequest,
   clearPendingSteerForThread,
   clearPendingSteerForTimeline,
-  mergeSteerDraft,
   type PendingSteerMessage,
 } from "./app-server/turn-steering";
 import {
@@ -50,6 +49,7 @@ import {
 import {
   ConversationPage,
   type ConversationLoadState,
+  type QueuedFollowUpPreview,
 } from "./features/conversation/ConversationPage";
 import { ThreadListPage } from "./features/threads/ThreadListPage";
 import { ApprovalSheet } from "./features/approvals/ApprovalSheet";
@@ -147,6 +147,14 @@ import { t, useI18n } from "./i18n";
 
 type AnyRecord = Record<string, any>;
 
+interface QueuedFollowUp extends QueuedFollowUpPreview {
+  threadId: string;
+  draftContext: number;
+  inputText: string;
+  images: DraftImage[];
+  files: DraftFile[];
+}
+
 interface BackendThreadSnapshot {
   backendId: string;
   threads: AnyRecord[];
@@ -230,6 +238,7 @@ function BackendWorkspace({
   const [steering, setSteering] = useState(false);
   const [pendingSteerMessage, setPendingSteerMessage] =
     useState<PendingSteerMessage | null>(null);
+  const [queuedFollowUps, setQueuedFollowUps] = useState<QueuedFollowUp[]>([]);
   const [error, setError] = useState("");
   const [requests, setRequests] = useState<RpcMessage[]>([]);
   const [userAnswers, setUserAnswers] = useState<Record<string, string>>({});
@@ -280,6 +289,8 @@ function BackendWorkspace({
   const refreshSequenceRef = useRef(0);
   const threadNotificationSequenceRef = useRef(0);
   const pendingSequenceRef = useRef(0);
+  const queuedFollowUpsRef = useRef<QueuedFollowUp[]>([]);
+  const queuedFollowUpDispatchingRef = useRef(false);
   const readLocalUnread = () =>
     readUnreadThreadIds(localStorage, backend.id);
   const writeLocalUnread = (ids: Set<string>) => {
@@ -393,6 +404,15 @@ function BackendWorkspace({
   useEffect(() => {
     conversationVisibleRef.current = conversationVisible;
   }, [conversationVisible]);
+
+  useEffect(
+    () => () => {
+      queuedFollowUpsRef.current.forEach((followUp) => {
+        followUp.files.forEach((file) => URL.revokeObjectURL(file.previewUrl));
+      });
+    },
+    [],
+  );
 
   async function loadThreads(client = clientRef.current) {
     if (!client || client !== clientRef.current) return;
@@ -732,6 +752,9 @@ function BackendWorkspace({
           if (message.method === "turn/completed") {
             if (params.threadId) {
               const threadId = String(params.threadId);
+              const hasQueuedFollowUp = queuedFollowUpsRef.current.some(
+                (followUp) => followUp.threadId === threadId,
+              );
               const documentVisible =
                 document.visibilityState === "visible";
               const needsAttention = shouldMarkThreadUnread({
@@ -743,12 +766,13 @@ function BackendWorkspace({
               setPendingSteerMessage((current) =>
                 clearPendingSteerForThread(current, threadId),
               );
-              if (needsAttention) {
+              if (needsAttention && !hasQueuedFollowUp) {
                 markThreadUnread(threadId);
-              } else {
+              } else if (!hasQueuedFollowUp) {
                 markThreadRead(threadId);
               }
               if (
+                !hasQueuedFollowUp &&
                 shouldNotifyRunCompleted({
                   threadId,
                   activeThreadId: String(activeRef.current?.id ?? ""),
@@ -1023,10 +1047,24 @@ function BackendWorkspace({
     if (imageInputRef.current) imageInputRef.current.value = "";
   }
 
+  function replaceQueuedFollowUps(next: QueuedFollowUp[]) {
+    queuedFollowUpsRef.current = next;
+    setQueuedFollowUps(next);
+  }
+
+  function clearQueuedFollowUps() {
+    queuedFollowUpsRef.current.forEach((followUp) => {
+      followUp.files.forEach((file) => URL.revokeObjectURL(file.previewUrl));
+    });
+    replaceQueuedFollowUps([]);
+    queuedFollowUpDispatchingRef.current = false;
+  }
+
   function resetDraftContext() {
     draftContextGenerationRef.current += 1;
     invalidateImageReads();
     setPendingSteerMessage(null);
+    clearQueuedFollowUps();
   }
 
   function resetOlderTurns(cursor: string | null = null) {
@@ -1230,98 +1268,45 @@ function BackendWorkspace({
     void loadThreadDetail(threadId, sequence);
   }
 
-  async function send(event: FormEvent) {
-    event.preventDefault();
-    if (active?.id && activeThreadAccessMode !== "interactive") return;
-    const text = draft.trim();
-    const pendingImages = draftImages;
-    const pendingFiles = draftFiles;
-    if (
-      imageReading ||
-      (!text && !pendingImages.length && !pendingFiles.length) ||
-      !clientRef.current
-    ) {
-      return;
+  function followUpPreviewText(
+    text: string,
+    images: DraftImage[],
+    files: DraftFile[],
+  ) {
+    return (
+      text ||
+      (files.length
+        ? t("{count} 个文件", { count: files.length })
+        : t("{count} 张图片", { count: images.length }))
+    );
+  }
+
+  async function startTurnMessage({
+    text,
+    pendingImages,
+    pendingFiles,
+    draftContext,
+    onFailure,
+  }: {
+    text: string;
+    pendingImages: DraftImage[];
+    pendingFiles: DraftFile[];
+    draftContext: number;
+    onFailure: () => void;
+  }) {
+    const client = clientRef.current;
+    if (!client) {
+      if (draftContext === draftContextGenerationRef.current) {
+        onFailure();
+        setError(t("设备尚未连接，请稍后重试"));
+      }
+      return false;
     }
-    const draftContext = draftContextGenerationRef.current;
-    const conversationBusy = active?.id
-      ? busy
-      : startingThreadContext === draftContextGenerationRef.current;
-    if (conversationBusy) {
-      let sent = false;
-      const threadId = String(active?.id ?? "");
-      const turnId = activeTurnId(active);
-      if (!threadId || !turnId) {
-        setError(t("当前任务正在启动，请稍后再引导"));
-        return;
-      }
-      const clientUserMessageId =
-        `steer-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-      const pendingSteerText =
-        text ||
-        (pendingFiles.length
-          ? t("{count} 个文件", { count: pendingFiles.length })
-          : t("{count} 张图片", { count: pendingImages.length }));
-      invalidateImageReads();
-      setDraft("");
-      setDraftImages([]);
-      setDraftFiles([]);
-      setSteering(true);
-      setPendingSteerMessage({
-        id: clientUserMessageId,
-        threadId,
-        text: pendingSteerText,
-      });
-      setError("");
-      try {
-        setImageReading(Boolean(pendingFiles.length));
-        const uploadedFiles = await Promise.all(
-          pendingFiles.map((file) => uploadFile(backend, file.file)),
-        );
-        await clientRef.current.request(
-          "turn/steer",
-          buildTurnSteerParams({
-            threadId,
-            turnId,
-            input: buildTurnInput(text, pendingImages, uploadedFiles),
-            clientUserMessageId,
-          }),
-        );
-        sent = true;
-      } catch (reason) {
-        setPendingSteerMessage((current) =>
-          clearPendingSteerForRequest(current, clientUserMessageId),
-        );
-        if (draftContext === draftContextGenerationRef.current) {
-          setDraft((current) => mergeSteerDraft(current, text));
-          setDraftImages((current) =>
-            mergeDraftImages(current, pendingImages)
-          );
-          setDraftFiles((current) =>
-            current.length ? current : pendingFiles,
-          );
-          setError(reason instanceof Error ? reason.message : String(reason));
-        }
-      } finally {
-        if (draftContext === draftContextGenerationRef.current) {
-          setSteering(false);
-          setImageReading(false);
-        }
-      }
-      if (sent && draftContext === draftContextGenerationRef.current) {
-        pendingFiles.forEach((file) => URL.revokeObjectURL(file.previewUrl));
-      }
-      return;
-    }
-    requestRunCompletionNotificationPermission();
-    invalidateImageReads();
-    setDraft("");
-    setDraftImages([]);
-    setDraftFiles([]);
     setBusy(true);
-    if (!active?.id) setStartingThreadContext(draftContext);
+    const initialThread = activeRef.current;
+    if (!initialThread?.id) setStartingThreadContext(draftContext);
     const pendingTurnId = `pending-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    let thread = active;
+    let thread = initialThread;
     const startingProjectless = !thread?.id && !thread?.cwd;
     let sent = false;
     try {
@@ -1343,7 +1328,7 @@ function BackendWorkspace({
           ? newChatPermissionMode.approvalsReviewer
           : selectedApprovalsReviewer;
       if (!thread?.id) {
-        const started = await clientRef.current.request<{
+        const started = await client.request<{
           thread: AnyRecord;
           model?: string;
           reasoningEffort?: string | null;
@@ -1434,7 +1419,7 @@ function BackendWorkspace({
           };
         });
       }
-      const startedTurn = await clientRef.current.request<{ turn: AnyRecord }>("turn/start", {
+      const startedTurn = await client.request<{ turn: AnyRecord }>("turn/start", {
         threadId: thread.id,
         input: buildTurnInput(text, pendingImages, uploadedFiles),
         ...(shouldSendSettings && selectedModel ? { model: selectedModel } : {}),
@@ -1483,11 +1468,7 @@ function BackendWorkspace({
             ? removePendingTurn(current, pendingTurnId)
             : current,
         );
-        setDraft((current) => current || text);
-        setDraftImages((current) => mergeDraftImages(current, pendingImages));
-        setDraftFiles((current) =>
-          current.length ? current : pendingFiles,
-        );
+        onFailure();
         setError(reason instanceof Error ? reason.message : String(reason));
       }
     } finally {
@@ -1498,7 +1479,201 @@ function BackendWorkspace({
     if (sent && draftContext === draftContextGenerationRef.current) {
       pendingFiles.forEach((file) => URL.revokeObjectURL(file.previewUrl));
     }
+    return sent;
   }
+
+  async function send(event: FormEvent) {
+    event.preventDefault();
+    if (active?.id && activeThreadAccessMode !== "interactive") return;
+    const text = draft.trim();
+    const pendingImages = draftImages;
+    const pendingFiles = draftFiles;
+    if (
+      imageReading ||
+      (!text && !pendingImages.length && !pendingFiles.length) ||
+      !clientRef.current
+    ) {
+      return;
+    }
+    const draftContext = draftContextGenerationRef.current;
+    const conversationBusy = active?.id
+      ? busy
+      : startingThreadContext === draftContextGenerationRef.current;
+    if (conversationBusy) {
+      const threadId = String(active?.id ?? "");
+      if (!threadId) {
+        setError(t("当前任务正在启动，请稍后再排队"));
+        return;
+      }
+      const queuedFollowUp: QueuedFollowUp = {
+        id: `queue-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        threadId,
+        draftContext,
+        inputText: text,
+        text: followUpPreviewText(text, pendingImages, pendingFiles),
+        images: pendingImages,
+        files: pendingFiles,
+      };
+      requestRunCompletionNotificationPermission();
+      invalidateImageReads();
+      setDraft("");
+      setDraftImages([]);
+      setDraftFiles([]);
+      replaceQueuedFollowUps([
+        ...queuedFollowUpsRef.current,
+        queuedFollowUp,
+      ]);
+      setError("");
+      return;
+    }
+    requestRunCompletionNotificationPermission();
+    invalidateImageReads();
+    setDraft("");
+    setDraftImages([]);
+    setDraftFiles([]);
+    setError("");
+    await startTurnMessage({
+      text,
+      pendingImages,
+      pendingFiles,
+      draftContext,
+      onFailure: () => {
+        setDraft((current) => current || text);
+        setDraftImages((current) => mergeDraftImages(current, pendingImages));
+        setDraftFiles((current) =>
+          current.length ? current : pendingFiles,
+        );
+      },
+    });
+  }
+
+  async function actOnQueuedFollowUp(id: string) {
+    const followUp = queuedFollowUpsRef.current.find(
+      (entry) => entry.id === id,
+    );
+    if (!followUp) return;
+    if (!busy) {
+      replaceQueuedFollowUps(
+        queuedFollowUpsRef.current.map((entry) =>
+          entry.id === id ? { ...entry, failed: false } : entry,
+        ),
+      );
+      return;
+    }
+    const thread = activeRef.current;
+    const threadId = String(thread?.id ?? "");
+    const turnId = activeTurnId(thread);
+    const client = clientRef.current;
+    if (
+      !threadId ||
+      threadId !== followUp.threadId ||
+      !turnId ||
+      !client ||
+      steering
+    ) {
+      return;
+    }
+    const originalIndex = queuedFollowUpsRef.current.findIndex(
+      (entry) => entry.id === id,
+    );
+    replaceQueuedFollowUps(
+      queuedFollowUpsRef.current.filter((entry) => entry.id !== id),
+    );
+    const clientUserMessageId =
+      `steer-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    setSteering(true);
+    setPendingSteerMessage({
+      id: clientUserMessageId,
+      threadId,
+      text: followUp.text,
+    });
+    setError("");
+    let sent = false;
+    try {
+      const uploadedFiles = await Promise.all(
+        followUp.files.map((file) => uploadFile(backend, file.file)),
+      );
+      await client.request(
+        "turn/steer",
+        buildTurnSteerParams({
+          threadId,
+          turnId,
+          input: buildTurnInput(
+            followUp.inputText,
+            followUp.images,
+            uploadedFiles,
+          ),
+          clientUserMessageId,
+        }),
+      );
+      sent = true;
+    } catch (reason) {
+      setPendingSteerMessage((current) =>
+        clearPendingSteerForRequest(current, clientUserMessageId),
+      );
+      if (followUp.draftContext === draftContextGenerationRef.current) {
+        const next = queuedFollowUpsRef.current.filter(
+          (entry) => entry.id !== followUp.id,
+        );
+        next.splice(Math.min(originalIndex, next.length), 0, followUp);
+        replaceQueuedFollowUps(next);
+        setError(reason instanceof Error ? reason.message : String(reason));
+      }
+    } finally {
+      if (followUp.draftContext === draftContextGenerationRef.current) {
+        setSteering(false);
+      }
+    }
+    if (sent && followUp.draftContext === draftContextGenerationRef.current) {
+      followUp.files.forEach((file) => URL.revokeObjectURL(file.previewUrl));
+    }
+  }
+
+  useEffect(() => {
+    const followUp = queuedFollowUps[0];
+    if (
+      busy ||
+      steering ||
+      queuedFollowUpDispatchingRef.current ||
+      !followUp ||
+      followUp.failed ||
+      connection !== "online" ||
+      conversationLoadState !== "ready" ||
+      activeThreadAccessMode !== "interactive" ||
+      String(active?.id ?? "") !== followUp.threadId ||
+      !clientRef.current
+    ) {
+      return;
+    }
+    queuedFollowUpDispatchingRef.current = true;
+    replaceQueuedFollowUps(
+      queuedFollowUpsRef.current.filter((entry) => entry.id !== followUp.id),
+    );
+    void startTurnMessage({
+      text: followUp.inputText,
+      pendingImages: followUp.images,
+      pendingFiles: followUp.files,
+      draftContext: followUp.draftContext,
+      onFailure: () => {
+        replaceQueuedFollowUps([
+          { ...followUp, failed: true },
+          ...queuedFollowUpsRef.current.filter(
+            (entry) => entry.id !== followUp.id,
+          ),
+        ]);
+      },
+    }).finally(() => {
+      queuedFollowUpDispatchingRef.current = false;
+    });
+  }, [
+    active?.id,
+    activeThreadAccessMode,
+    busy,
+    connection,
+    conversationLoadState,
+    queuedFollowUps,
+    steering,
+  ]);
 
   async function selectImages(files: FileList | null) {
     if (
@@ -1945,6 +2120,9 @@ function BackendWorkspace({
               ? pendingSteerMessage.text
               : ""
           }
+          queuedFollowUps={queuedFollowUps.filter(
+            (followUp) => followUp.threadId === String(active.id),
+          )}
           accessMode={activeThreadAccessMode}
           resumeError={activeThreadResumeError}
           tokenUsage={tokenUsageByThread[active.id] ?? null}
@@ -1983,6 +2161,7 @@ function BackendWorkspace({
           onOpenPermissionSettings={() => setPicker("permission")}
           onDraftChange={setDraft}
           onInterrupt={interrupt}
+          onQueuedFollowUpAction={actOnQueuedFollowUp}
         />
       ) : (
         <section className="conversation conversation-empty">

@@ -128,14 +128,18 @@ describe("悬浮状态布局", () => {
     expect(collapsedSpacingRule).toContain("margin-top: 17px");
   });
 
-  it("待进入对话的引导消息悬浮在输入区上方并保持单行省略", () => {
+  it("待处理的追加消息悬浮在输入区上方并保持单行省略", () => {
+    const stackRule =
+      styles.match(
+        /(?:^|\n)\.composer-follow-up-stack\s*\{([^}]*)\}/,
+      )?.[1] ?? "";
     const rule =
       styles.match(
         /(?:^|\n)\.pending-steer-message\s*\{([^}]*)\}/,
       )?.[1] ?? "";
 
-    expect(rule).toContain("position: absolute");
-    expect(rule).toContain("bottom: calc(100% + 3px)");
+    expect(stackRule).toContain("position: absolute");
+    expect(stackRule).toContain("bottom: calc(100% + 3px)");
     expect(rule).toContain("overflow: hidden");
     expect(rule).toContain("text-overflow: ellipsis");
     expect(rule).toContain("white-space: nowrap");
