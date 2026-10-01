@@ -42,8 +42,32 @@ export interface RunCompletionNotification {
   threadId: string;
 }
 
+interface CompletionThread {
+  id?: unknown;
+  name?: unknown;
+  preview?: unknown;
+}
+
 function currentScope(): CompletionNotificationScope {
   return window as unknown as CompletionNotificationScope;
+}
+
+export function completionThreadTitle({
+  threadId,
+  threads,
+  activeThread,
+  fallback,
+}: {
+  threadId: string;
+  threads: CompletionThread[];
+  activeThread?: CompletionThread | null;
+  fallback: string;
+}) {
+  const thread =
+    threads.find((entry) => String(entry.id ?? "") === threadId) ??
+    (String(activeThread?.id ?? "") === threadId ? activeThread : null);
+  const title = thread?.name || thread?.preview;
+  return typeof title === "string" && title.trim() ? title.trim() : fallback;
 }
 
 export function shouldNotifyRunCompleted({

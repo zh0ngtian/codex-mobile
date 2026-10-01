@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  completionThreadTitle,
   notifyRunCompleted,
   requestRunCompletionNotificationPermission,
   shouldNotifyRunCompleted,
@@ -7,6 +8,20 @@ import {
 } from "../../src/notifications/run-completion";
 
 describe("运行完成通知", () => {
+  it("使用完成运行所属会话的标题作为通知内容", () => {
+    expect(
+      completionThreadTitle({
+        threadId: "thread-2",
+        threads: [
+          { id: "thread-1", name: "当前会话" },
+          { id: "thread-2", name: "修复 Android 通知" },
+        ],
+        activeThread: { id: "thread-1", name: "当前会话" },
+        fallback: "新对话",
+      }),
+    ).toBe("修复 Android 通知");
+  });
+
   it("只在当前会话不可见或其他会话完成时提醒", () => {
     expect(
       shouldNotifyRunCompleted({

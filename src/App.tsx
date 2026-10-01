@@ -138,6 +138,7 @@ import {
   writeUnreadThreadIds,
 } from "./features/threads/thread-unread";
 import {
+  completionThreadTitle,
   notifyRunCompleted,
   requestRunCompletionNotificationPermission,
   shouldNotifyRunCompleted,
@@ -268,6 +269,7 @@ function BackendWorkspace({
   const imageReadGenerationRef = useRef(new ImageReadGeneration());
   const draftContextGenerationRef = useRef(0);
   const activeRef = useRef<AnyRecord | null>(null);
+  const threadsRef = useRef<AnyRecord[]>([]);
   const conversationVisibleRef = useRef(conversationVisible);
   const activeThreadTargetRef = useRef<string | null>(null);
   const openSequenceRef = useRef(0);
@@ -383,6 +385,10 @@ function BackendWorkspace({
       clearPendingSteerForTimeline(current, active),
     );
   }, [active]);
+
+  useEffect(() => {
+    threadsRef.current = threads;
+  }, [threads]);
 
   useEffect(() => {
     conversationVisibleRef.current = conversationVisible;
@@ -752,8 +758,11 @@ function BackendWorkspace({
               ) {
                 notifyRunCompleted({
                   title: t("Codex 运行结束"),
-                  body: t("{name} 上的任务已完成", {
-                    name: backend.name,
+                  body: completionThreadTitle({
+                    threadId,
+                    threads: threadsRef.current,
+                    activeThread: activeRef.current,
+                    fallback: t("新对话"),
                   }),
                   threadId,
                 });
