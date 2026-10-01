@@ -37,6 +37,12 @@ import {
 
 type AnyRecord = Record<string, any>;
 
+type UserMessageActionProps = {
+  onEditUserMessage?: (text: string) => void;
+  onResendUserMessage?: (text: string) => void;
+  userMessageActionsDisabled?: boolean;
+};
+
 function itemText(item: AnyRecord) {
   if (typeof item.aggregatedOutput === "string") return item.aggregatedOutput;
   if (typeof item.text === "string") return item.text;
@@ -84,11 +90,14 @@ function UserBubble({
   item,
   client,
   backend,
+  onEditUserMessage,
+  onResendUserMessage,
+  userMessageActionsDisabled = false,
 }: {
   item: AnyRecord;
   client: AppServerClient | null;
   backend?: BackendConfig | null;
-}) {
+} & UserMessageActionProps) {
   const rawText = itemText(item);
   const heartbeat = parseAutomationHeartbeat(rawText);
   const text = heartbeat?.instructions ?? rawText;
@@ -141,7 +150,43 @@ function UserBubble({
       )}
     </div>
   );
-  if (!heartbeat) return bubble;
+  if (!heartbeat) {
+    const showActions = Boolean(
+      text.trim() && (onEditUserMessage || onResendUserMessage),
+    );
+    if (!showActions) return bubble;
+    return (
+      <div className="user-message">
+        {bubble}
+        <div
+          className="user-message-actions"
+          role="group"
+          aria-label={t("历史消息操作")}
+        >
+          {onEditUserMessage && (
+            <button
+              type="button"
+              aria-label={t("编辑历史消息")}
+              disabled={userMessageActionsDisabled}
+              onClick={() => onEditUserMessage(text)}
+            >
+              {t("编辑")}
+            </button>
+          )}
+          {onResendUserMessage && (
+            <button
+              type="button"
+              aria-label={t("重发历史消息")}
+              disabled={userMessageActionsDisabled}
+              onClick={() => onResendUserMessage(text)}
+            >
+              {t("重发")}
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="automation-user-message">
       <small className="automation-message-label">
@@ -213,11 +258,14 @@ function TimelineItem({
   item,
   client,
   backend,
+  onEditUserMessage,
+  onResendUserMessage,
+  userMessageActionsDisabled,
 }: {
   item: AnyRecord;
   client: AppServerClient | null;
   backend?: BackendConfig | null;
-}) {
+} & UserMessageActionProps) {
   const type = String(item.type ?? "");
   if (type === "contextCompaction") {
     return (
@@ -237,7 +285,16 @@ function TimelineItem({
     : rawText;
   if (!text && !type) return null;
   if (type === "userMessage") {
-    return <UserBubble item={item} client={client} backend={backend} />;
+    return (
+      <UserBubble
+        item={item}
+        client={client}
+        backend={backend}
+        onEditUserMessage={onEditUserMessage}
+        onResendUserMessage={onResendUserMessage}
+        userMessageActionsDisabled={userMessageActionsDisabled}
+      />
+    );
   }
   const displayText = type === "agentMessage"
     ? visibleAgentMessageText(item)
@@ -397,12 +454,15 @@ export function TurnCard({
   turn,
   client,
   backend,
+  onEditUserMessage,
+  onResendUserMessage,
+  userMessageActionsDisabled,
 }: {
   turn: AnyRecord;
   liveDiff?: string;
   client: AppServerClient | null;
   backend?: BackendConfig | null;
-}) {
+} & UserMessageActionProps) {
   const grouped = groupTurnItems(turn);
   const responsesRef = useRef<HTMLDivElement>(null);
   let lastHumanIndex = -1;
@@ -466,7 +526,18 @@ export function TurnCard({
     <section className="turn-card">
       {grouped.user && (
         <div className="turn-user">
-          <UserBubble item={grouped.user} client={client} backend={backend} />
+          <UserBubble
+            item={grouped.user}
+            client={client}
+            backend={backend}
+            onEditUserMessage={
+              grouped.running ? undefined : onEditUserMessage
+            }
+            onResendUserMessage={
+              grouped.running ? undefined : onResendUserMessage
+            }
+            userMessageActionsDisabled={userMessageActionsDisabled}
+          />
         </div>
       )}
       <div className="turn-responses" ref={responsesRef}>
@@ -490,6 +561,9 @@ export function TurnCard({
               durationLabel={
                 index === durationSegmentIndex ? durationLabel : null
               }
+              onEditUserMessage={onEditUserMessage}
+              onResendUserMessage={onResendUserMessage}
+              userMessageActionsDisabled={userMessageActionsDisabled}
             />
           ))
         )}
@@ -505,6 +579,9 @@ function CompletedResponseSegment({
   copyTarget,
   showCopy,
   durationLabel,
+  onEditUserMessage,
+  onResendUserMessage,
+  userMessageActionsDisabled,
 }: {
   items: AnyRecord[];
   client: AppServerClient | null;
@@ -512,7 +589,7 @@ function CompletedResponseSegment({
   copyTarget: RefObject<HTMLDivElement | null>;
   showCopy: boolean;
   durationLabel: string | null;
-}) {
+} & UserMessageActionProps) {
   const completed = splitCompletedTurnResponses(items);
   const [showPrevious, setShowPrevious] = useState(false);
   const guidingMessages = completed.beforeFinal.filter(
@@ -534,6 +611,9 @@ function CompletedResponseSegment({
           item={entry.item}
           client={client}
           backend={backend}
+          onEditUserMessage={onEditUserMessage}
+          onResendUserMessage={onResendUserMessage}
+          userMessageActionsDisabled={userMessageActionsDisabled}
         />
       ),
     );
@@ -583,6 +663,9 @@ function CompletedResponseSegment({
             item={completed.final}
             client={client}
             backend={backend}
+            onEditUserMessage={onEditUserMessage}
+            onResendUserMessage={onResendUserMessage}
+            userMessageActionsDisabled={userMessageActionsDisabled}
           />
           {showCopy && (
             <CopyButton

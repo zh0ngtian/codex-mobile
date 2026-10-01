@@ -1553,6 +1553,49 @@ function BackendWorkspace({
     });
   }
 
+  async function resendHistoricalMessage(sourceText: string) {
+    const text = sourceText.trim();
+    const threadId = String(active?.id ?? "");
+    if (
+      !text ||
+      !threadId ||
+      activeThreadAccessMode !== "interactive" ||
+      imageReading ||
+      steering ||
+      !clientRef.current
+    ) {
+      return;
+    }
+    const draftContext = draftContextGenerationRef.current;
+    if (busy) {
+      const queuedFollowUp: QueuedFollowUp = {
+        id: `queue-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        threadId,
+        draftContext,
+        inputText: text,
+        text,
+        images: [],
+        files: [],
+      };
+      requestRunCompletionNotificationPermission();
+      replaceQueuedFollowUps([
+        ...queuedFollowUpsRef.current,
+        queuedFollowUp,
+      ]);
+      setError("");
+      return;
+    }
+    requestRunCompletionNotificationPermission();
+    setError("");
+    await startTurnMessage({
+      text,
+      pendingImages: [],
+      pendingFiles: [],
+      draftContext,
+      onFailure: () => setDraft((current) => current || text),
+    });
+  }
+
   async function actOnQueuedFollowUp(id: string) {
     const followUp = queuedFollowUpsRef.current.find(
       (entry) => entry.id === id,
@@ -2293,6 +2336,7 @@ function BackendWorkspace({
           onOpenAgentSettings={() => setPicker("agent")}
           onOpenPermissionSettings={() => setPicker("permission")}
           onDraftChange={setDraft}
+          onResendUserMessage={resendHistoricalMessage}
           onInterrupt={interrupt}
           onQueuedFollowUpAction={actOnQueuedFollowUp}
         />

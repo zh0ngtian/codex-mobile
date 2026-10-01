@@ -23,6 +23,9 @@ function renderConversation(
     draftImages?: DraftImage[];
     draftFiles?: DraftFile[];
     onSubmit?: (event: FormEvent) => void;
+    historyText?: string;
+    onDraftChange?: (value: string) => void;
+    onResendUserMessage?: (value: string) => void;
     newChat?: boolean;
   } = {},
   onRetry = vi.fn(),
@@ -34,7 +37,19 @@ function renderConversation(
         id: composer.newChat ? "" : "thread-1",
         cwd: composer.newChat ? null : "/tmp/project",
         preview: composer.newChat ? "新对话" : "分页会话",
-        turns: composer.newChat ? [] : [{ id: "turn-10", items: [] }],
+        turns: composer.newChat
+          ? []
+          : [{
+              id: "turn-10",
+              status: "completed",
+              items: composer.historyText
+                ? [{
+                    id: "user-history",
+                    type: "userMessage",
+                    text: composer.historyText,
+                  }]
+                : [],
+            }],
       }}
       backendId="mini"
       backendName="Mac mini"
@@ -79,7 +94,8 @@ function renderConversation(
       onSelectImages={async () => undefined}
       onOpenAgentSettings={() => undefined}
       onOpenPermissionSettings={() => undefined}
-      onDraftChange={() => undefined}
+      onDraftChange={composer.onDraftChange ?? (() => undefined)}
+      onResendUserMessage={composer.onResendUserMessage}
       onInterrupt={() => undefined}
       onQueuedFollowUpAction={() => undefined}
     />,
@@ -322,6 +338,30 @@ describe("会话详情历史分页", () => {
     expect(view.queryByRole("button", { name: "开始实时语音" })).toBeNull();
     fireEvent.click(view.getByRole("button", { name: "发送" }));
     expect(onSubmit).toHaveBeenCalledOnce();
+  });
+
+  it("历史消息可以回填编辑或直接重发", () => {
+    const onDraftChange = vi.fn();
+    const onResendUserMessage = vi.fn();
+    const { container } = renderConversation(
+      "exhausted",
+      undefined,
+      {
+        historyText: "重新检查这段实现",
+        onDraftChange,
+        onResendUserMessage,
+      },
+    );
+    const view = within(container);
+
+    fireEvent.click(view.getByRole("button", { name: "编辑历史消息" }));
+    expect(onDraftChange).toHaveBeenCalledWith("重新检查这段实现");
+    expect(document.activeElement).toBe(
+      view.getByRole("textbox", { name: "向 Codex 提问" }),
+    );
+
+    fireEvent.click(view.getByRole("button", { name: "重发历史消息" }));
+    expect(onResendUserMessage).toHaveBeenCalledWith("重新检查这段实现");
   });
 
   it("引导发送后在输入框上方临时展示单行消息", () => {

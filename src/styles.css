@@ -214,6 +214,12 @@ button, a, summary, [role="button"] { -webkit-tap-highlight-color: transparent; 
 .conversation-load-error p { max-width: 320px; margin: 0; color: #777; font-size: 13px; line-height: 1.5; }
 .conversation-load-error button { margin-top: 8px; min-width: 112px; border: 0; border-radius: 22px; background: #111; color: #fff; padding: 11px 20px; font-weight: 650; }
 .user-bubble { width: fit-content; margin: 0 0 22px auto; max-width: 82%; min-width: 0; padding: 13px 16px; border-radius: 23px; background: #f1f1f1; font-size: 16px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; }
+.user-message { width: fit-content; max-width: 82%; min-width: 0; margin: 0 0 22px auto; display: grid; justify-items: end; }
+.user-message > .user-bubble { max-width: 100%; margin: 0; }
+.user-message-actions { display: flex; align-items: center; justify-content: flex-end; gap: 2px; padding: 4px 4px 0; }
+.user-message-actions button { min-height: 32px; border: 0; border-radius: 16px; background: transparent; color: #737373; padding: 0 9px; font-size: 12px; font-weight: 600; }
+.user-message-actions button:active { background: #f1f1f1; color: #111; }
+.user-message-actions button:disabled { opacity: .4; }
 .user-message-text.collapsed { display: block; overflow: hidden; max-height: 12em; mask-image: linear-gradient(#000 76%, transparent); }
 .user-message-toggle { display: inline-flex; align-items: center; gap: 5px; margin: 9px 0 -2px; border: 0; background: transparent; padding: 0; font-size: 14px; font-weight: 650; }
 .user-message-toggle .chevron-icon { width: 15px; height: 15px; }
@@ -484,6 +490,8 @@ button, a, summary, [role="button"] { -webkit-tap-highlight-color: transparent; 
 .turn-card { min-width: 0; max-width: 100%; margin: 0 0 18px; }
 .turn-user { display: flex; justify-content: flex-end; min-width: 0; }
 .turn-user .user-bubble { margin-bottom: 16px; }
+.turn-user .user-message { margin-bottom: 16px; }
+.turn-user .user-message > .user-bubble { margin-bottom: 0; }
 .turn-responses { position: relative; min-width: 0; max-width: 100%; padding-top: 2px; }
 .copy-action { position: relative; display: inline-flex; align-items: center; gap: 5px; color: #858585; }
 .copy-action > button { width: 28px; height: 28px; border: 0; border-radius: 8px; background: transparent; color: inherit; display: grid; place-items: center; padding: 0; }

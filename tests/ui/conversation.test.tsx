@@ -899,6 +899,66 @@ describe("移动端对话格式", () => {
     expect(view.queryByRole("button", { name: /之前的/ })).toBeNull();
   });
 
+  it("已完成的历史用户消息支持编辑和重发", () => {
+    const onEditUserMessage = vi.fn();
+    const onResendUserMessage = vi.fn();
+    const { container } = render(
+      <TurnCard
+        turn={{
+          id: "turn-history-actions",
+          status: "completed",
+          items: [
+            {
+              id: "u-history",
+              type: "userMessage",
+              text: "保留 **Markdown** 原文",
+            },
+            {
+              id: "a-history",
+              type: "agentMessage",
+              phase: "final_answer",
+              text: "已处理",
+            },
+          ],
+        }}
+        client={null}
+        onEditUserMessage={onEditUserMessage}
+        onResendUserMessage={onResendUserMessage}
+      />,
+    );
+    const view = within(container);
+
+    fireEvent.click(view.getByRole("button", { name: "编辑历史消息" }));
+    fireEvent.click(view.getByRole("button", { name: "重发历史消息" }));
+
+    expect(onEditUserMessage).toHaveBeenCalledWith("保留 **Markdown** 原文");
+    expect(onResendUserMessage).toHaveBeenCalledWith("保留 **Markdown** 原文");
+  });
+
+  it("运行中的用户消息不显示历史消息操作", () => {
+    const callbacks = {
+      onEditUserMessage: vi.fn(),
+      onResendUserMessage: vi.fn(),
+    };
+    const { container } = render(
+      <TurnCard
+        turn={{
+          id: "turn-running-actions",
+          status: "inProgress",
+          items: [
+            { id: "u-running", type: "userMessage", text: "正在处理" },
+          ],
+        }}
+        client={null}
+        {...callbacks}
+      />,
+    );
+    const view = within(container);
+
+    expect(view.queryByRole("button", { name: "编辑历史消息" })).toBeNull();
+    expect(view.queryByRole("button", { name: "重发历史消息" })).toBeNull();
+  });
+
   it("连续多个引导消息按顺序各展示一次", () => {
     const { container } = render(
       <TurnCard
@@ -1636,6 +1696,8 @@ describe("移动端对话格式", () => {
     const { container } = render(
       <TurnCard
         client={null}
+        onEditUserMessage={vi.fn()}
+        onResendUserMessage={vi.fn()}
         turn={{
           id: "turn-automation",
           status: "completed",
@@ -1678,6 +1740,12 @@ describe("移动端对话格式", () => {
     expect(container.textContent).not.toContain("<heartbeat>");
     expect(container.textContent).not.toContain("automation-2");
     expect(container.textContent).not.toContain("NOTIFY");
+    expect(
+      within(container).queryByRole("button", { name: "编辑历史消息" }),
+    ).toBeNull();
+    expect(
+      within(container).queryByRole("button", { name: "重发历史消息" }),
+    ).toBeNull();
   });
 
   it("Markdown 渲染器允许用户气泡添加紧凑样式 class", () => {

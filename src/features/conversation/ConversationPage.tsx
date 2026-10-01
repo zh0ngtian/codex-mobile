@@ -159,6 +159,7 @@ export function ConversationPage({
   onOpenAgentSettings,
   onOpenPermissionSettings,
   onDraftChange,
+  onResendUserMessage,
   onInterrupt,
   onQueuedFollowUpAction,
 }: {
@@ -207,6 +208,7 @@ export function ConversationPage({
   onOpenAgentSettings: () => void;
   onOpenPermissionSettings: () => void;
   onDraftChange: (value: string) => void;
+  onResendUserMessage?: (text: string) => void | Promise<void>;
   onInterrupt: () => void | Promise<void>;
   onQueuedFollowUpAction: (id: string) => void | Promise<void>;
 }) {
@@ -446,6 +448,14 @@ export function ConversationPage({
                 liveDiff={turn.liveDiff}
                 client={client}
                 backend={selectedBackend}
+                onEditUserMessage={(text) => {
+                  onDraftChange(text);
+                  composerInputRef.current?.focus({ preventScroll: true });
+                }}
+                onResendUserMessage={onResendUserMessage}
+                userMessageActionsDisabled={
+                  !interactive || steering || realtimeActive || imageReading
+                }
               />
             )) : !isNewChat && (
               <div className="empty-state">{t("开始一次新的 Codex 对话")}</div>
