@@ -156,6 +156,8 @@ const english: Record<string, string> = {
   "选择图片或视频": "Choose images or video",
   "添加附件": "Add attachment",
   "向 Codex 提问": "Ask Codex",
+  "最大化输入框": "Maximize composer",
+  "还原输入框": "Restore composer",
   "正在引导": "Sending steering message",
   "引导": "Steer",
   "停止": "Stop",

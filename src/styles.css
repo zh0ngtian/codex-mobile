@@ -361,6 +361,10 @@ button, a, summary, [role="button"] { -webkit-tap-highlight-color: transparent; 
 .file-diff-line.meta { color: #777; background: #f5f5f5; }
 .file-diff-empty { padding: 24px; color: #888; text-align: center; font-size: 13px; }
 .composer-wrap { position: fixed; left: 50%; bottom: var(--browser-edge-bottom); transform: translateX(-50%); z-index: 4; width: min(100%, 720px); padding: 8px 22px 0; background: linear-gradient(transparent, #fff 17%, #fff); }
+.composer-wrap-maximized { inset: 0 auto auto 50%; z-index: 30; height: 100dvh; padding: calc(var(--safe-area-top) + 12px) 16px max(12px, env(safe-area-inset-bottom), var(--browser-edge-bottom)); background: #fff; display: flex; flex-direction: column; overflow: hidden; }
+.composer-wrap-maximized > .pending-steer-message { position: static; max-width: none; margin: 0 8px 8px; }
+.composer-wrap-maximized .composer-follow-up-stack { position: static; width: auto; max-height: 132px; margin: 0 8px 8px; }
+.composer-wrap-maximized .draft-images, .composer-wrap-maximized .draft-files { flex: 0 0 auto; max-height: 132px; }
 .readonly-thread-banner { min-height: 44px; margin: 0 8px 7px; border-radius: 18px; background: rgba(239,239,239,.97); color: #555; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 7px 6px 14px; box-shadow: 0 5px 18px rgba(0,0,0,.05); font-size: 12px; line-height: 1.35; }
 .readonly-thread-banner span { min-width: 0; }
 .readonly-thread-banner button { flex: 0 0 auto; min-height: 32px; border: 0; border-radius: 16px; background: #111; color: #fff; padding: 0 12px; font-size: 12px; font-weight: 650; }
@@ -411,9 +415,15 @@ button, a, summary, [role="button"] { -webkit-tap-highlight-color: transparent; 
 .chips { display: flex; gap: 7px; padding: 0 10px 7px; overflow: hidden; }
 .chips button { min-width: 0; max-width: 52%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border: 0; border-radius: 18px; background: #e9e9e9; padding: 7px 11px; font-size: 12px; font-weight: 650; }
 .chips button:disabled { opacity: .45; }
-.composer { min-height: 60px; border-radius: 31px; background: #f4f4f4; display: grid; grid-template-columns: 46px 1fr 44px; align-items: center; padding: 5px 8px; }
+.composer { min-height: 60px; border-radius: 31px; background: #f4f4f4; display: grid; grid-template-columns: 46px minmax(0,1fr) 34px 44px; align-items: center; padding: 5px 8px; }
 .composer textarea { border: 0; resize: none; outline: none; background: transparent; padding: 11px 7px; max-height: 120px; font-size: 16px; }
 .composer textarea:disabled { color: #888; opacity: .65; }
+.composer-size-button { width: 34px; height: 34px; border: 0; border-radius: 50%; background: transparent; color: #666; display: grid; place-items: center; padding: 0; }
+.composer-size-button:active { background: #e5e5e5; color: #111; }
+.composer-size-button svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.composer-wrap-maximized .composer { min-height: 0; flex: 1 1 auto; border-radius: 24px; align-items: end; }
+.composer-wrap-maximized .composer textarea { align-self: stretch; height: 100%; max-height: none; padding-block: 16px; }
+.composer-wrap-maximized .add-button, .composer-wrap-maximized .composer-size-button, .composer-wrap-maximized .send-button { margin-bottom: 4px; }
 .add-button, .send-button { border: 0; width: 42px; height: 42px; border-radius: 50%; background: transparent; display: grid; place-items: center; font-size: 32px; font-weight: 200; }
 .send-button { position: relative; overflow: hidden; background: #111; color: #fff; }
 .send-button > svg, .send-button > i { position: relative; z-index: 1; }

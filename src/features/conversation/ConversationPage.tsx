@@ -3,6 +3,7 @@ import {
   type RefObject,
   type UIEventHandler,
   useEffect,
+  useRef,
   useState,
 } from "react";
 import { AppServerClient } from "../../app-server/client";
@@ -214,6 +215,8 @@ export function ConversationPage({
   const [previewImage, setPreviewImage] = useState<DraftImage | null>(null);
   const [statusOpen, setStatusOpen] = useState(false);
   const [actionsOpen, setActionsOpen] = useState(false);
+  const [composerMaximized, setComposerMaximized] = useState(false);
+  const composerInputRef = useRef<HTMLTextAreaElement>(null);
   const turns = groupConversationTurns(active.turns ?? []);
   const isNewChat = !active.id;
   const hasDraft = Boolean(draft.trim() || draftImages.length || draftFiles.length);
@@ -226,6 +229,13 @@ export function ConversationPage({
   const realtimeActive = ["connecting", "listening", "stopping"].includes(
     realtime.state.status,
   );
+  useEffect(() => {
+    setComposerMaximized(false);
+  }, [active.id]);
+  useEffect(() => {
+    if (!composerMaximized) return;
+    composerInputRef.current?.focus({ preventScroll: true });
+  }, [composerMaximized]);
   const {
     scrollRef,
     contentRef,
@@ -445,9 +455,17 @@ export function ConversationPage({
       </div>
       <ErrorBanner message={error} />
       <form
-        className="composer-wrap"
+        className={`composer-wrap${
+          composerMaximized ? " composer-wrap-maximized" : ""
+        }`}
         aria-busy={imageReading}
         onSubmit={onSubmit}
+        onKeyDown={(event) => {
+          if (event.key === "Escape" && composerMaximized) {
+            event.preventDefault();
+            setComposerMaximized(false);
+          }
+        }}
       >
         {accessMode === "readOnly" && (
           <div
@@ -640,6 +658,7 @@ export function ConversationPage({
             ＋
           </button>
           <textarea
+            ref={composerInputRef}
             aria-label={t("向 Codex 提问")}
             value={draft}
             disabled={!interactive || steering || realtimeActive}
@@ -647,6 +666,17 @@ export function ConversationPage({
             placeholder={t("向 Codex 提问")}
             rows={1}
           />
+          <button
+            type="button"
+            className="composer-size-button"
+            aria-label={
+              composerMaximized ? t("还原输入框") : t("最大化输入框")
+            }
+            aria-pressed={composerMaximized}
+            onClick={() => setComposerMaximized((current) => !current)}
+          >
+            <AppIcon name={composerMaximized ? "minimize" : "maximize"} />
+          </button>
           <button
             type={busy && !canQueue ? "button" : "submit"}
             onClick={
