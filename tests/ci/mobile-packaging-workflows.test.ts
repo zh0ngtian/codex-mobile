@@ -188,6 +188,7 @@ describe("移动 App 内置前端流水线", () => {
     expect(buildFrontend).toContain("npm ci");
     expect(buildFrontend).toContain("npm run build");
     expect(buildFrontend).toContain("cp -R dist/. pakeplus/scripts/www/");
+    expect(source).toContain('packages: ""');
     expect(buildFrontend).toContain("allowedUrlPrefixes");
     expect(buildFrontend).toContain("authorization");
     expect(buildFrontend).toContain("bearer");
