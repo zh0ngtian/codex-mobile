@@ -423,13 +423,13 @@ button, a, summary, [role="button"] { -webkit-tap-highlight-color: transparent; 
 .chips button:disabled { opacity: .45; }
 .skill-mention-menu { position: absolute; z-index: 6; right: 10px; bottom: calc(100% - 8px); width: min(calc(100% - 20px), 460px); max-height: min(52dvh, 420px); overflow-y: auto; border: 1px solid rgba(0,0,0,.06); border-radius: 22px; background: rgba(255,255,255,.98); padding: 8px; box-shadow: 0 16px 44px rgba(0,0,0,.16); overscroll-behavior: contain; }
 .skill-mention-menu > p { margin: 0; padding: 6px 10px 8px; color: #888; font-size: 12px; font-weight: 650; }
-.skill-mention-menu > button { width: 100%; min-height: 58px; border: 0; border-radius: 15px; background: transparent; display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: center; gap: 12px; padding: 8px 10px; text-align: left; }
+.skill-mention-menu > button { width: 100%; min-height: 58px; border: 0; border-radius: 15px; background: transparent; display: block; padding: 10px; text-align: left; }
 .skill-mention-menu > button.selected { background: #f1f1f1; }
-.skill-mention-menu > button > span { min-width: 0; display: grid; gap: 3px; }
-.skill-mention-menu strong, .skill-mention-menu small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.skill-mention-menu strong { font-size: 14px; }
-.skill-mention-menu small { color: #777; font-size: 12px; }
-.skill-mention-menu code { max-width: 42%; overflow: hidden; border-radius: 9px; background: #e8e8e8; padding: 5px 7px; color: #444; text-overflow: ellipsis; white-space: nowrap; font: 11px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.skill-mention-menu > button > span { min-width: 0; display: grid; gap: 4px; }
+.skill-mention-menu strong, .skill-mention-menu small { overflow-wrap: anywhere; white-space: normal; }
+.skill-mention-menu strong { margin-top: 2px; font-size: 14px; line-height: 1.35; }
+.skill-mention-menu small { color: #777; font-size: 12px; line-height: 1.4; }
+.skill-mention-menu code { display: block; width: 100%; box-sizing: border-box; border-radius: 9px; background: #e8e8e8; padding: 6px 8px; color: #333; overflow-wrap: anywhere; white-space: normal; word-break: break-word; font: 12px/1.35 ui-monospace, SFMono-Regular, Menlo, monospace; }
 .skill-mention-status { min-height: 52px; color: #777; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 13px; }
 .composer-wrap-maximized .skill-mention-menu { position: static; flex: 0 0 auto; width: auto; max-height: min(22dvh, 180px); margin: 0 0 8px; }
 .composer { min-height: 60px; border-radius: 31px; background: #f4f4f4; display: grid; grid-template-columns: 46px minmax(0,1fr) 34px 44px; align-items: center; padding: 5px 8px; }

@@ -23,6 +23,17 @@ const skills: InstalledSkill[] = [
       shortDescription: "Build reusable skills",
     },
   },
+  {
+    name: "openai-templates:artifact-template-builder-with-a-very-long-name",
+    description: "Build a reusable artifact template from a reference",
+    path: "/skills/openai-templates/artifact-template-builder/SKILL.md",
+    scope: "user",
+    enabled: true,
+    interface: {
+      displayName: "Artifact Template Builder",
+      shortDescription: "Build reusable artifact templates",
+    },
+  },
 ];
 
 function SkillComposer({ loading = false }: { loading?: boolean }) {
@@ -116,6 +127,23 @@ describe("输入框 Skill 选择器", () => {
     fireEvent.keyDown(input, { key: "Enter" });
 
     expect((input as HTMLTextAreaElement).value).toBe("$skill-creator ");
+  });
+
+  it("完整渲染较长的 Skill 调用名", () => {
+    const { container } = render(<SkillComposer />);
+    const view = within(container);
+    const input = view.getByRole("textbox", { name: "向 Codex 提问" });
+
+    fireEvent.change(input, { target: { value: "@artifact" } });
+
+    const option = view.getByRole("option");
+    const invocation = within(option).getByTitle(
+      "$openai-templates:artifact-template-builder-with-a-very-long-name",
+    );
+    expect(invocation.textContent).toBe(
+      "$openai-templates:artifact-template-builder-with-a-very-long-name",
+    );
+    expect(within(option).getByText("Artifact Template Builder")).toBeTruthy();
   });
 
   it("Skill 尚在加载时显示局部加载状态", () => {

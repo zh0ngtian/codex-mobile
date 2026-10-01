@@ -717,10 +717,12 @@ export function ConversationPage({
                   onClick={() => chooseSkill(skill)}
                 >
                   <span>
-                    <strong>{skillDisplayName(skill)}</strong>
+                    <code title={`$${skill.name}`}>${skill.name}</code>
+                    {skillDisplayName(skill) !== skill.name && (
+                      <strong>{skillDisplayName(skill)}</strong>
+                    )}
                     <small>{skillDescription(skill)}</small>
                   </span>
-                  <code>${skill.name}</code>
                 </button>
               ))
             ) : (
