@@ -420,11 +420,13 @@ jobs:
               "android.permission.INTERNET",
               "android.permission.ACCESS_NETWORK_STATE",
               "android.permission.CAMERA",
+              "android.permission.POST_NOTIFICATIONS",
               "android.permission.RECORD_AUDIO",
               "android.permission.REQUEST_INSTALL_PACKAGES",
           }
           for required_permission in (
               "android.permission.CAMERA",
+              "android.permission.POST_NOTIFICATIONS",
               "android.permission.RECORD_AUDIO",
               "android.permission.REQUEST_INSTALL_PACKAGES",
           ):
@@ -561,6 +563,22 @@ jobs:
               "            this@MainActivity.realtimeAudioMuted = muted",
               "        }",
               "",
+              "        @JavascriptInterface",
+              "        fun requestCompletionNotificationPermission() {",
+              "            this@MainActivity.requestCompletionNotificationPermission()",
+              "        }",
+              "",
+              "        @JavascriptInterface",
+              "        fun showCompletionNotification(",
+              "            title: String,",
+              "            body: String,",
+              "            threadId: String,",
+              "        ) {",
+              "            this@MainActivity.showCompletionNotification(",
+              "                title, body, threadId",
+              "            )",
+              "        }",
+              "",
               "",
           ))
           interface_doc_anchor = "\n".join((
@@ -611,6 +629,83 @@ jobs:
               "                    5102,",
               "                )",
               "            }",
+              "        }",
+              "    }",
+              "",
+              "    private fun requestCompletionNotificationPermission() {",
+              "        runOnUiThread {",
+              "            if (",
+              "                android.os.Build.VERSION.SDK_INT >= 33 &&",
+              "                androidx.core.content.ContextCompat.checkSelfPermission(",
+              "                    this,",
+              "                    Manifest.permission.POST_NOTIFICATIONS,",
+              "                ) != android.content.pm.PackageManager.PERMISSION_GRANTED",
+              "            ) {",
+              "                androidx.core.app.ActivityCompat.requestPermissions(",
+              "                    this,",
+              "                    arrayOf(Manifest.permission.POST_NOTIFICATIONS),",
+              "                    5103,",
+              "                )",
+              "            } else {",
+              "                ensureCompletionNotificationChannel()",
+              "            }",
+              "        }",
+              "    }",
+              "",
+              "    private fun ensureCompletionNotificationChannel() {",
+              "        if (android.os.Build.VERSION.SDK_INT < 26) return",
+              "        val channel = android.app.NotificationChannel(",
+              "            \"codex-mobile-run-completed\",",
+              "            \"Codex 运行完成\",",
+              "            android.app.NotificationManager.IMPORTANCE_DEFAULT,",
+              "        )",
+              "        channel.description = \"Codex 任务运行结束提醒\"",
+              "        getSystemService(android.app.NotificationManager::class.java)",
+              "            .createNotificationChannel(channel)",
+              "    }",
+              "",
+              "    @SuppressLint(\"MissingPermission\")",
+              "    private fun showCompletionNotification(",
+              "        title: String,",
+              "        body: String,",
+              "        threadId: String,",
+              "    ) {",
+              "        runOnUiThread {",
+              "            if (",
+              "                android.os.Build.VERSION.SDK_INT >= 33 &&",
+              "                androidx.core.content.ContextCompat.checkSelfPermission(",
+              "                    this,",
+              "                    Manifest.permission.POST_NOTIFICATIONS,",
+              "                ) != android.content.pm.PackageManager.PERMISSION_GRANTED",
+              "            ) return@runOnUiThread",
+              "            ensureCompletionNotificationChannel()",
+              "            val launchIntent = packageManager",
+              "                .getLaunchIntentForPackage(packageName)",
+              "                ?.addFlags(android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP)",
+              "                ?: return@runOnUiThread",
+              "            val pendingIntent = android.app.PendingIntent.getActivity(",
+              "                this,",
+              "                threadId.hashCode(),",
+              "                launchIntent,",
+              "                android.app.PendingIntent.FLAG_UPDATE_CURRENT or",
+              "                    android.app.PendingIntent.FLAG_IMMUTABLE,",
+              "            )",
+              "            val notification = androidx.core.app.NotificationCompat.Builder(",
+              "                this,",
+              "                \"codex-mobile-run-completed\",",
+              "            )",
+              "                .setSmallIcon(applicationInfo.icon)",
+              "                .setContentTitle(title.take(120))",
+              "                .setContentText(body.take(512))",
+              "                .setStyle(",
+              "                    androidx.core.app.NotificationCompat.BigTextStyle()",
+              "                        .bigText(body.take(512))",
+              "                )",
+              "                .setContentIntent(pendingIntent)",
+              "                .setAutoCancel(true)",
+              "                .build()",
+              "            androidx.core.app.NotificationManagerCompat.from(this)",
+              "                .notify(threadId.hashCode(), notification)",
               "        }",
               "    }",
               "",
@@ -938,6 +1033,8 @@ jobs:
             app/src/main/AndroidManifest.xml
           grep -Fq 'android.permission.RECORD_AUDIO' \
             app/src/main/AndroidManifest.xml
+          grep -Fq 'android.permission.POST_NOTIFICATIONS' \
+            app/src/main/AndroidManifest.xml
           grep -Fq 'override fun onPermissionRequest' \
             app/src/main/java/com/app/pakeplus/MainActivity.kt
           grep -Fq 'PermissionRequest.RESOURCE_AUDIO_CAPTURE' \
@@ -947,6 +1044,14 @@ jobs:
           grep -Fq 'android.media.AudioRecord' \
             app/src/main/java/com/app/pakeplus/MainActivity.kt
           grep -Fq 'codex-mobile-realtime-audio' \
+            app/src/main/java/com/app/pakeplus/MainActivity.kt
+          grep -Fq 'fun requestCompletionNotificationPermission()' \
+            app/src/main/java/com/app/pakeplus/MainActivity.kt
+          grep -Fq 'fun showCompletionNotification(' \
+            app/src/main/java/com/app/pakeplus/MainActivity.kt
+          grep -Fq 'NotificationCompat.Builder' \
+            app/src/main/java/com/app/pakeplus/MainActivity.kt
+          grep -Fq 'codex-mobile-run-completed' \
             app/src/main/java/com/app/pakeplus/MainActivity.kt
           grep -Fq '${applicationId}.fileprovider' \
             app/src/main/AndroidManifest.xml
@@ -1003,6 +1108,7 @@ jobs:
               "android.permission.INTERNET",
               "android.permission.ACCESS_NETWORK_STATE",
               "android.permission.CAMERA",
+              "android.permission.POST_NOTIFICATIONS",
               "android.permission.RECORD_AUDIO",
               "android.permission.REQUEST_INSTALL_PACKAGES",
               dynamic_receiver_permission,

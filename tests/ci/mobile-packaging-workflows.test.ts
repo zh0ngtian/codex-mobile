@@ -218,6 +218,7 @@ describe("移动 App 内置前端流水线", () => {
     expect(source).toContain(".phone.camera = true");
     expect(hardenHost).toContain("android.permission.CAMERA");
     expect(hardenHost).toContain("android.permission.RECORD_AUDIO");
+    expect(hardenHost).toContain("android.permission.POST_NOTIFICATIONS");
     expect(hardenHost).toContain("onPermissionRequest");
     expect(hardenHost).toContain("PermissionRequest.RESOURCE_AUDIO_CAPTURE");
     expect(hardenHost).toContain("fun realtimeAudioStart()");
@@ -225,6 +226,12 @@ describe("移动 App 内置前端流水线", () => {
     expect(hardenHost).toContain("fun realtimeAudioSetMuted(");
     expect(hardenHost).toContain("android.media.AudioRecord");
     expect(hardenHost).toContain("codex-mobile-realtime-audio");
+    expect(hardenHost).toContain(
+      "fun requestCompletionNotificationPermission()",
+    );
+    expect(hardenHost).toContain("fun showCompletionNotification(");
+    expect(hardenHost).toContain("NotificationCompat.Builder");
+    expect(hardenHost).toContain("codex-mobile-run-completed");
     expect(hardenHost).toContain('android:allowBackup="false"');
     expect(hardenHost).toContain("enableEdgeToEdge()");
     expect(hardenHost).toContain(
@@ -582,6 +589,10 @@ describe("移动 App 内置前端流水线", () => {
     expect(hardenHost).toContain('name: "realtimeAudio"');
     expect(hardenHost).toContain("AVAudioEngine");
     expect(hardenHost).toContain("codex-mobile-realtime-audio");
+    expect(hardenHost).toContain("import UserNotifications");
+    expect(hardenHost).toContain('name: "completionNotification"');
+    expect(hardenHost).toContain("UNUserNotificationCenter");
+    expect(hardenHost).toContain("codex-mobile-run-completed");
     expect(hardenHost).toContain(
       'index_source.replace("./assets/", "./")',
     );

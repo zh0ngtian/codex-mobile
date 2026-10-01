@@ -126,6 +126,11 @@ import {
   shouldMarkThreadUnread,
   writeUnreadThreadIds,
 } from "./features/threads/thread-unread";
+import {
+  notifyRunCompleted,
+  requestRunCompletionNotificationPermission,
+  shouldNotifyRunCompleted,
+} from "./notifications/run-completion";
 import { t, useI18n } from "./i18n";
 
 type AnyRecord = Record<string, any>;
@@ -671,21 +676,37 @@ function BackendWorkspace({
           if (message.method === "turn/completed") {
             if (params.threadId) {
               const threadId = String(params.threadId);
+              const documentVisible =
+                document.visibilityState === "visible";
+              const needsAttention = shouldMarkThreadUnread({
+                threadId,
+                activeThreadId: String(activeRef.current?.id ?? ""),
+                conversationVisible: conversationVisibleRef.current,
+                documentVisible,
+              });
               setPendingSteerMessage((current) =>
                 clearPendingSteerForThread(current, threadId),
               );
-              if (
-                shouldMarkThreadUnread({
-                  threadId,
-                  activeThreadId: String(activeRef.current?.id ?? ""),
-                  conversationVisible: conversationVisibleRef.current,
-                  documentVisible:
-                    document.visibilityState === "visible",
-                })
-              ) {
+              if (needsAttention) {
                 markThreadUnread(threadId);
               } else {
                 markThreadRead(threadId);
+              }
+              if (
+                shouldNotifyRunCompleted({
+                  threadId,
+                  activeThreadId: String(activeRef.current?.id ?? ""),
+                  conversationVisible: conversationVisibleRef.current,
+                  documentVisible,
+                })
+              ) {
+                notifyRunCompleted({
+                  title: t("Codex 运行结束"),
+                  body: t("{name} 上的任务已完成", {
+                    name: backend.name,
+                  }),
+                  threadId,
+                });
               }
               setThreads((current) =>
                 current.map((thread) =>
@@ -1215,6 +1236,7 @@ function BackendWorkspace({
       }
       return;
     }
+    requestRunCompletionNotificationPermission();
     invalidateImageReads();
     setDraft("");
     setDraftImages([]);

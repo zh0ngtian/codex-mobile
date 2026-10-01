@@ -30,6 +30,8 @@ const english: Record<string, string> = {
   "测试并保存": "Test and save",
   "已暂停": "Paused",
   "任务进行中": "Task running",
+  "Codex 运行结束": "Codex run completed",
+  "{name} 上的任务已完成": "The task on {name} has completed",
   "{count} 个待审批": "{count} pending approvals",
   "已连接": "Connected",
   "未连接": "Disconnected",
