@@ -146,6 +146,11 @@ import {
   writeUnreadThreadIds,
 } from "./features/threads/thread-unread";
 import {
+  applyPinnedThreadState,
+  readPinnedThreadIds,
+  writeThreadPinned,
+} from "./features/threads/thread-pinning";
+import {
   completionThreadTitle,
   notifyRunCompleted,
   requestRunCompletionNotificationPermission,
@@ -311,6 +316,8 @@ function BackendWorkspace({
   const skillLoadSequenceRef = useRef(0);
   const readLocalUnread = () =>
     readUnreadThreadIds(localStorage, backend.id);
+  const readLocalPinned = () =>
+    readPinnedThreadIds(localStorage, backend.id);
   const writeLocalUnread = (ids: Set<string>) => {
     writeUnreadThreadIds(localStorage, backend.id, ids);
   };
@@ -343,12 +350,13 @@ function BackendWorkspace({
   > | null>(null);
   const decorateThreads = (data: AnyRecord[]): AnyRecord[] => {
     const localUnread = readLocalUnread();
-    return data.map((thread) => ({
+    return applyPinnedThreadState(data, readLocalPinned()).map((thread) => ({
       ...thread,
-      isPinned: thread.isPinned === true,
       isUnread: localUnread.has(String(thread.id)),
     }));
   };
+  const decorateThread = (thread: AnyRecord): AnyRecord =>
+    applyPinnedThreadState([thread], readLocalPinned())[0];
   const projectGroupIdOf = (thread: AnyRecord) =>
     thread.isProjectless === true
       ? PROJECTLESS_GROUP_ID
@@ -1001,8 +1009,7 @@ function BackendWorkspace({
                   resumed.serviceTier,
                 );
                 setActive({
-                  ...resumed.thread,
-                  isPinned: resumed.thread.isPinned === true,
+                  ...decorateThread(resumed.thread),
                   ...(currentThread.isProjectless === true
                     ? { isProjectless: true }
                     : {}),
@@ -1210,8 +1217,7 @@ function BackendWorkspace({
         session.serviceTier,
       );
       setActive({
-        ...session.thread,
-        isPinned: session.thread.isPinned === true,
+        ...decorateThread(session.thread),
         ...(activeRef.current?.isProjectless === true
           ? { isProjectless: true }
           : {}),
@@ -1874,7 +1880,14 @@ function BackendWorkspace({
     try {
       if (action === "pin") {
         const nextPinned = thread.isPinned !== true;
-        const refreshed = await setThreadPinned(client, threadId, nextPinned);
+        const result = await setThreadPinned(client, threadId, nextPinned);
+        const refreshed = result.thread;
+        writeThreadPinned(
+          localStorage,
+          backend.id,
+          threadId,
+          result.persistence === "local" ? nextPinned : false,
+        );
         setThreads((current) =>
           current.map((entry) =>
             String(entry.id) === threadId
@@ -1898,7 +1911,8 @@ function BackendWorkspace({
         if (!result.thread?.id) {
           throw new Error(t("会话详情返回无效，请重试"));
         }
-        const { turns: _turns, ...metadata } = result.thread;
+        const { turns: _turns, ...rawMetadata } = result.thread;
+        const metadata = decorateThread(rawMetadata);
         setThreads((current) =>
           current.map((entry) =>
             String(entry.id) === threadId
@@ -1940,6 +1954,7 @@ function BackendWorkspace({
       }
       await client.request("thread/archive", { threadId });
       markThreadRead(threadId);
+      writeThreadPinned(localStorage, backend.id, threadId, false);
       setThreads((current) =>
         current.filter((entry) => String(entry.id) !== threadId),
       );
@@ -1987,10 +2002,17 @@ function BackendWorkspace({
     setPendingAction("pin");
     setError("");
     try {
-      const refreshed = await setThreadPinned(
+      const result = await setThreadPinned(
         client,
         thread.id,
         nextPinned,
+      );
+      const refreshed = result.thread;
+      writeThreadPinned(
+        localStorage,
+        backend.id,
+        String(thread.id),
+        result.persistence === "local" ? nextPinned : false,
       );
       const persistedPinned = refreshed.isPinned;
       setThreads((current) =>
@@ -2067,6 +2089,7 @@ function BackendWorkspace({
     try {
       await client.request("thread/archive", { threadId: thread.id });
       markThreadRead(String(thread.id));
+      writeThreadPinned(localStorage, backend.id, String(thread.id), false);
       setThreads((current) =>
         current.filter((entry) => entry.id !== thread.id),
       );

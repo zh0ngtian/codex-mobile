@@ -11,11 +11,36 @@ describe("线程元数据", () => {
 
     await expect(
       setThreadPinned({ request } as any, "thread-1", true),
-    ).resolves.toBe(thread);
+    ).resolves.toEqual({ thread, persistence: "server" });
     expect(request).toHaveBeenCalledWith("thread/metadata/update", {
       threadId: "thread-1",
       isPinned: true,
     });
+  });
+
+  it("旧版 app-server 不支持置顶字段时降级为本地持久化", async () => {
+    const request = vi.fn(async () => {
+      throw new Error(
+        "thread metadata update must include at least one field",
+      );
+    });
+
+    await expect(
+      setThreadPinned({ request } as any, "thread-1", true),
+    ).resolves.toEqual({
+      thread: { id: "thread-1", isPinned: true },
+      persistence: "local",
+    });
+  });
+
+  it("非兼容性错误仍向上报告", async () => {
+    const request = vi.fn(async () => {
+      throw new Error("connection closed");
+    });
+
+    await expect(
+      setThreadPinned({ request } as any, "thread-1", true),
+    ).rejects.toThrow("connection closed");
   });
 
   it("服务端没有返回目标置顶状态时报告响应异常", async () => {
