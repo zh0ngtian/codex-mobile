@@ -521,7 +521,10 @@ export function ConversationPage({
           composerMaximized ? " composer-wrap-maximized" : ""
         }`}
         aria-busy={imageReading}
-        onSubmit={onSubmit}
+        onSubmit={(event) => {
+          onSubmit(event);
+          setComposerMaximized(false);
+        }}
         onKeyDown={(event) => {
           if (event.key === "Escape" && composerMaximized) {
             event.preventDefault();

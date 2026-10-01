@@ -1,9 +1,11 @@
-import { createRef } from "react";
+import { createRef, type FormEvent } from "react";
 import { fireEvent, render, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { ConversationPage } from "../../src/features/conversation/ConversationPage";
 
-function renderComposer() {
+function renderComposer(
+  onSubmit: (event: FormEvent) => void = () => undefined,
+) {
   return render(
     <ConversationPage
       {...({
@@ -51,7 +53,7 @@ function renderComposer() {
         onArchive: async () => true,
         onRetry: () => undefined,
         onLoadOlderTurns: async () => true,
-        onSubmit: () => undefined,
+        onSubmit,
         onRemoveImage: () => undefined,
         onRemoveFile: () => undefined,
         onSelectImages: async () => undefined,
@@ -92,6 +94,19 @@ describe("会话输入框最大化", () => {
     fireEvent.click(view.getByRole("button", { name: "最大化输入框" }));
     fireEvent.keyDown(form as HTMLFormElement, { key: "Escape" });
 
+    expect(form?.classList.contains("composer-wrap-maximized")).toBe(false);
+  });
+
+  it("最大化输入提交后立即还原", () => {
+    const onSubmit = vi.fn((event: FormEvent) => event.preventDefault());
+    const { container } = renderComposer(onSubmit);
+    const view = within(container);
+    const form = container.querySelector(".composer-wrap");
+
+    fireEvent.click(view.getByRole("button", { name: "最大化输入框" }));
+    fireEvent.click(view.getByRole("button", { name: "发送" }));
+
+    expect(onSubmit).toHaveBeenCalledOnce();
     expect(form?.classList.contains("composer-wrap-maximized")).toBe(false);
   });
 });

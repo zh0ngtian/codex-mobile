@@ -23,7 +23,7 @@ describe("输入框展开布局", () => {
     expect(wrapRule).toContain(
       "inset: auto auto var(--browser-edge-bottom) 50%",
     );
-    expect(wrapRule).toContain("padding: 10px 10px");
+    expect(wrapRule).toContain("padding: 10px 4px");
     expect(wrapRule).toContain("border-radius: 24px 24px 0 0");
     expect(wrapRule).not.toContain("100dvh");
     expect(wrapRule).toContain("display: flex");

@@ -730,10 +730,10 @@ test("移动端选择器、线程恢复、Markdown、折叠与吸顶", async ({ 
   expect(expandedPanelBox!.height).toBeGreaterThanOrEqual(viewport.height * .48);
   expect(expandedPanelBox!.height).toBeLessThanOrEqual(viewport.height * .54);
   expect(expandedPanelBox!.y).toBeGreaterThan(viewport.height * .4);
-  expect(expandedComposerBox!.x).toBeLessThanOrEqual(12);
+  expect(expandedComposerBox!.x).toBeLessThanOrEqual(6);
   expect(
     viewport.width - expandedComposerBox!.x - expandedComposerBox!.width,
-  ).toBeLessThanOrEqual(12);
+  ).toBeLessThanOrEqual(6);
   await page.getByRole("button", { name: "还原输入框" }).click();
   await expect(expandedComposer).toHaveCount(0);
 
