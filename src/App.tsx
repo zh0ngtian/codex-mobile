@@ -8,6 +8,11 @@ import {
 } from "react";
 import { AppServerClient, type RpcMessage } from "./app-server/client";
 import {
+  listInstalledSkills,
+  skillsReferencedInText,
+  type InstalledSkill,
+} from "./app-server/skills";
+import {
   createLatestThreadListLoader,
   loadAllProjectlessThreadRecords,
   loadAllProjectThreadRecords,
@@ -156,6 +161,7 @@ interface QueuedFollowUp extends QueuedFollowUpPreview {
   inputText: string;
   images: DraftImage[];
   files: DraftFile[];
+  skills: InstalledSkill[];
 }
 
 interface BackendThreadSnapshot {
@@ -278,6 +284,11 @@ function BackendWorkspace({
   const [pendingAction, setPendingAction] = useState("");
   const [notice, setNotice] = useState("");
   const [picker, setPicker] = useState<ComposerPicker>(null);
+  const [skillCatalog, setSkillCatalog] = useState<{
+    cwd: string | null;
+    skills: InstalledSkill[];
+    loading: boolean;
+  }>({ cwd: null, skills: [], loading: false });
   const clientRef = useRef<AppServerClient | null>(null);
   const connectionManagerRef = useRef<BackendConnectionManager | null>(null);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
@@ -297,6 +308,7 @@ function BackendWorkspace({
   const pendingSequenceRef = useRef(0);
   const queuedFollowUpsRef = useRef<QueuedFollowUp[]>([]);
   const queuedFollowUpDispatchingRef = useRef(false);
+  const skillLoadSequenceRef = useRef(0);
   const readLocalUnread = () =>
     readUnreadThreadIds(localStorage, backend.id);
   const writeLocalUnread = (ids: Set<string>) => {
@@ -410,6 +422,12 @@ function BackendWorkspace({
   useEffect(() => {
     conversationVisibleRef.current = conversationVisible;
   }, [conversationVisible]);
+
+  useEffect(() => {
+    const client = clientRef.current;
+    if (connection !== "online" || !client || !active) return;
+    void loadSkillsForCwd(client, active.cwd ?? null);
+  }, [active?.cwd, connection]);
 
   useEffect(
     () => () => {
@@ -616,6 +634,8 @@ function BackendWorkspace({
         }
         if (status === "offline") {
           clientRef.current = null;
+          skillLoadSequenceRef.current += 1;
+          setSkillCatalog({ cwd: null, skills: [], loading: false });
           setRefreshing(false);
           setBusy(false);
           setSteering(false);
@@ -637,6 +657,13 @@ function BackendWorkspace({
       onNotification: (_backendId, message, source) => {
           const client = source as AppServerClient;
           const params = (message.params ?? {}) as AnyRecord;
+          if (message.method === "skills/changed") {
+            void loadSkillsForCwd(
+              client,
+              activeRef.current?.cwd ?? null,
+              true,
+            );
+          }
           if (
             params.threadId &&
             params.threadId ===
@@ -876,6 +903,7 @@ function BackendWorkspace({
       onReady: (_backendId, source) => {
         const client = source as AppServerClient;
         clientRef.current = client;
+        void loadSkillsForCwd(client, activeRef.current?.cwd ?? null);
         void (async () => {
           try {
             if (!disposed && manager.client(backend.id) === source) {
@@ -1051,6 +1079,37 @@ function BackendWorkspace({
     imageReadGenerationRef.current.invalidate();
     setImageReading(false);
     if (imageInputRef.current) imageInputRef.current.value = "";
+  }
+
+  async function loadSkillsForCwd(
+    client: AppServerClient,
+    cwd: string | null,
+    forceReload = false,
+  ) {
+    const sequence = ++skillLoadSequenceRef.current;
+    setSkillCatalog((current) => ({
+      cwd,
+      skills: current.cwd === cwd ? current.skills : [],
+      loading: true,
+    }));
+    try {
+      const skills = await listInstalledSkills(client, cwd, forceReload);
+      if (
+        sequence === skillLoadSequenceRef.current &&
+        client === clientRef.current &&
+        (activeRef.current?.cwd ?? null) === cwd
+      ) {
+        setSkillCatalog({ cwd, skills, loading: false });
+      }
+    } catch {
+      if (
+        sequence === skillLoadSequenceRef.current &&
+        client === clientRef.current &&
+        (activeRef.current?.cwd ?? null) === cwd
+      ) {
+        setSkillCatalog({ cwd, skills: [], loading: false });
+      }
+    }
   }
 
   function replaceQueuedFollowUps(next: QueuedFollowUp[]) {
@@ -1291,12 +1350,14 @@ function BackendWorkspace({
     text,
     pendingImages,
     pendingFiles,
+    pendingSkills,
     draftContext,
     onFailure,
   }: {
     text: string;
     pendingImages: DraftImage[];
     pendingFiles: DraftFile[];
+    pendingSkills: InstalledSkill[];
     draftContext: number;
     onFailure: () => void;
   }) {
@@ -1427,7 +1488,12 @@ function BackendWorkspace({
       }
       const startedTurn = await client.request<{ turn: AnyRecord }>("turn/start", {
         threadId: thread.id,
-        input: buildTurnInput(text, pendingImages, uploadedFiles),
+        input: buildTurnInput(
+          text,
+          pendingImages,
+          uploadedFiles,
+          pendingSkills,
+        ),
         ...(shouldSendSettings && selectedModel ? { model: selectedModel } : {}),
         ...(shouldSendSettings && selectedEffort
           ? { effort: selectedEffort }
@@ -1494,6 +1560,10 @@ function BackendWorkspace({
     const text = draft.trim();
     const pendingImages = draftImages;
     const pendingFiles = draftFiles;
+    const pendingSkills = skillsReferencedInText(
+      text,
+      skillCatalog.cwd === (active?.cwd ?? null) ? skillCatalog.skills : [],
+    );
     if (
       imageReading ||
       (!text && !pendingImages.length && !pendingFiles.length) ||
@@ -1519,6 +1589,7 @@ function BackendWorkspace({
         text: followUpPreviewText(text, pendingImages, pendingFiles),
         images: pendingImages,
         files: pendingFiles,
+        skills: pendingSkills,
       };
       requestRunCompletionNotificationPermission();
       invalidateImageReads();
@@ -1542,6 +1613,7 @@ function BackendWorkspace({
       text,
       pendingImages,
       pendingFiles,
+      pendingSkills,
       draftContext,
       onFailure: () => {
         setDraft((current) => current || text);
@@ -1567,6 +1639,10 @@ function BackendWorkspace({
       return;
     }
     const draftContext = draftContextGenerationRef.current;
+    const pendingSkills = skillsReferencedInText(
+      text,
+      skillCatalog.cwd === (active?.cwd ?? null) ? skillCatalog.skills : [],
+    );
     if (busy) {
       const queuedFollowUp: QueuedFollowUp = {
         id: `queue-${Date.now()}-${Math.random().toString(36).slice(2)}`,
@@ -1576,6 +1652,7 @@ function BackendWorkspace({
         text,
         images: [],
         files: [],
+        skills: pendingSkills,
       };
       requestRunCompletionNotificationPermission();
       replaceQueuedFollowUps([
@@ -1591,6 +1668,7 @@ function BackendWorkspace({
       text,
       pendingImages: [],
       pendingFiles: [],
+      pendingSkills,
       draftContext,
       onFailure: () => setDraft((current) => current || text),
     });
@@ -1651,6 +1729,7 @@ function BackendWorkspace({
             followUp.inputText,
             followUp.images,
             uploadedFiles,
+            followUp.skills,
           ),
           clientUserMessageId,
         }),
@@ -1702,6 +1781,7 @@ function BackendWorkspace({
       text: followUp.inputText,
       pendingImages: followUp.images,
       pendingFiles: followUp.files,
+      pendingSkills: followUp.skills,
       draftContext: followUp.draftContext,
       onFailure: () => {
         replaceQueuedFollowUps([
@@ -2308,6 +2388,14 @@ function BackendWorkspace({
           selectedModelLabel={selectedModelLabel}
           selectedEffort={selectedEffort}
           selectedPermissionLabel={selectedPermissionLabel}
+          skills={
+            skillCatalog.cwd === (active.cwd ?? null)
+              ? skillCatalog.skills
+              : []
+          }
+          skillsLoading={
+            skillCatalog.cwd === (active.cwd ?? null) && skillCatalog.loading
+          }
           imageInputRef={imageInputRef}
           onBack={onOpenSidebar}
           onNewChatBackendChange={(backendId) =>

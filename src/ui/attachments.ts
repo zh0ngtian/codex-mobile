@@ -1,3 +1,5 @@
+import type { InstalledSkill } from "../app-server/skills";
+
 export const MAX_DRAFT_IMAGES = 4;
 export const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 export const MAX_TOTAL_IMAGE_BYTES = 20 * 1024 * 1024;
@@ -204,6 +206,7 @@ export function buildTurnInput(
   text: string,
   images: DraftImage[],
   files: UploadedFile[] = [],
+  skills: InstalledSkill[] = [],
 ) {
   return [
     ...(text
@@ -217,6 +220,11 @@ export function buildTurnInput(
       type: "text" as const,
       text: uploadedFileInput(file),
       text_elements: [] as unknown[],
+    })),
+    ...skills.map((skill) => ({
+      type: "skill" as const,
+      name: skill.name,
+      path: skill.path,
     })),
   ];
 }

@@ -35,6 +35,7 @@ describe("app-server V2 Schema", () => {
       "thread/start",
       "turn/start",
       "turn/interrupt",
+      "skills/list",
       "turn/diff/updated",
     ]) {
       expect(serialized).toContain(`"${method}"`);

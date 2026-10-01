@@ -7,6 +7,15 @@ import {
   useState,
 } from "react";
 import { AppServerClient } from "../../app-server/client";
+import {
+  filterInstalledSkills,
+  insertSkillMention,
+  skillDescription,
+  skillDisplayName,
+  skillMentionAt,
+  type InstalledSkill,
+  type SkillMentionQuery,
+} from "../../app-server/skills";
 import type { OlderTurnsLoadState } from "../../app-server/thread-session";
 import type { BackendConfig } from "../../backends/types";
 import { type DraftFile, type DraftImage } from "../../ui/attachments";
@@ -143,6 +152,8 @@ export function ConversationPage({
   selectedModelLabel,
   selectedEffort,
   selectedPermissionLabel,
+  skills = [],
+  skillsLoading = false,
   imageInputRef,
   onBack,
   onNewChatBackendChange,
@@ -192,6 +203,8 @@ export function ConversationPage({
   selectedModelLabel: string;
   selectedEffort: string | null;
   selectedPermissionLabel: string;
+  skills?: InstalledSkill[];
+  skillsLoading?: boolean;
   imageInputRef: RefObject<HTMLInputElement | null>;
   onBack: () => void;
   onNewChatBackendChange: (backendId: string) => void;
@@ -218,6 +231,10 @@ export function ConversationPage({
   const [statusOpen, setStatusOpen] = useState(false);
   const [actionsOpen, setActionsOpen] = useState(false);
   const [composerMaximized, setComposerMaximized] = useState(false);
+  const [skillMention, setSkillMention] = useState<SkillMentionQuery | null>(
+    null,
+  );
+  const [activeSkillIndex, setActiveSkillIndex] = useState(0);
   const composerInputRef = useRef<HTMLTextAreaElement>(null);
   const turns = groupConversationTurns(active.turns ?? []);
   const isNewChat = !active.id;
@@ -233,11 +250,39 @@ export function ConversationPage({
   );
   useEffect(() => {
     setComposerMaximized(false);
-  }, [active.id]);
+    setSkillMention(null);
+  }, [active.id, backendId]);
   useEffect(() => {
     if (!composerMaximized) return;
     composerInputRef.current?.focus({ preventScroll: true });
   }, [composerMaximized]);
+  useEffect(() => {
+    setActiveSkillIndex(0);
+  }, [skillMention?.query, skills]);
+  useEffect(() => {
+    if (!draft) setSkillMention(null);
+  }, [draft]);
+  const matchingSkills = skillMention
+    ? filterInstalledSkills(skills, skillMention.query).slice(0, 8)
+    : [];
+  const syncSkillMention = (value: string, cursor: number | null) => {
+    setSkillMention(skillMentionAt(value, cursor ?? value.length));
+  };
+  const chooseSkill = (skill: InstalledSkill) => {
+    const input = composerInputRef.current;
+    const mention = skillMentionAt(
+      draft,
+      input?.selectionStart ?? skillMention?.end ?? draft.length,
+    );
+    if (!mention) return;
+    const next = insertSkillMention(draft, mention, skill);
+    onDraftChange(next.text);
+    setSkillMention(null);
+    window.requestAnimationFrame(() => {
+      composerInputRef.current?.focus({ preventScroll: true });
+      composerInputRef.current?.setSelectionRange(next.cursor, next.cursor);
+    });
+  };
   const {
     scrollRef,
     contentRef,
@@ -639,6 +684,45 @@ export function ConversationPage({
             {selectedPermissionLabel}
           </button>
         </div>
+        {skillMention && (
+          <section
+            id="installed-skill-options"
+            className="skill-mention-menu"
+            role="listbox"
+            aria-label={t("已安装 Skill")}
+          >
+            <p>{t("选择 Skill")}</p>
+            {skillsLoading ? (
+              <div className="skill-mention-status" role="status">
+                <i className="action-spinner" aria-hidden="true" />
+                {t("正在加载 Skill…")}
+              </div>
+            ) : matchingSkills.length ? (
+              matchingSkills.map((skill, index) => (
+                <button
+                  id={`installed-skill-option-${index}`}
+                  type="button"
+                  role="option"
+                  aria-selected={index === activeSkillIndex}
+                  className={index === activeSkillIndex ? "selected" : ""}
+                  key={skill.path}
+                  onPointerDown={(event) => event.preventDefault()}
+                  onClick={() => chooseSkill(skill)}
+                >
+                  <span>
+                    <strong>{skillDisplayName(skill)}</strong>
+                    <small>{skillDescription(skill)}</small>
+                  </span>
+                  <code>${skill.name}</code>
+                </button>
+              ))
+            ) : (
+              <div className="skill-mention-status">
+                {t("没有匹配的 Skill")}
+              </div>
+            )}
+          </section>
+        )}
         <div className="composer">
           <input
             ref={imageInputRef}
@@ -672,7 +756,53 @@ export function ConversationPage({
             aria-label={t("向 Codex 提问")}
             value={draft}
             disabled={!interactive || steering || realtimeActive}
-            onChange={(event) => onDraftChange(event.target.value)}
+            aria-controls={skillMention ? "installed-skill-options" : undefined}
+            aria-expanded={Boolean(skillMention)}
+            aria-activedescendant={
+              skillMention && matchingSkills.length
+                ? `installed-skill-option-${activeSkillIndex}`
+                : undefined
+            }
+            onChange={(event) => {
+              onDraftChange(event.target.value);
+              syncSkillMention(
+                event.target.value,
+                event.target.selectionStart,
+              );
+            }}
+            onSelect={(event) =>
+              syncSkillMention(
+                event.currentTarget.value,
+                event.currentTarget.selectionStart,
+              )
+            }
+            onBlur={() => setSkillMention(null)}
+            onKeyDown={(event) => {
+              if (!skillMention || event.nativeEvent.isComposing) return;
+              if (event.key === "ArrowDown" && matchingSkills.length) {
+                event.preventDefault();
+                setActiveSkillIndex(
+                  (current) => (current + 1) % matchingSkills.length,
+                );
+              } else if (event.key === "ArrowUp" && matchingSkills.length) {
+                event.preventDefault();
+                setActiveSkillIndex(
+                  (current) =>
+                    (current - 1 + matchingSkills.length) %
+                    matchingSkills.length,
+                );
+              } else if (
+                (event.key === "Enter" || event.key === "Tab") &&
+                matchingSkills[activeSkillIndex]
+              ) {
+                event.preventDefault();
+                chooseSkill(matchingSkills[activeSkillIndex]);
+              } else if (event.key === "Escape") {
+                event.preventDefault();
+                event.stopPropagation();
+                setSkillMention(null);
+              }
+            }}
             placeholder={t("向 Codex 提问")}
             rows={1}
           />

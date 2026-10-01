@@ -207,4 +207,29 @@ describe("图片输入", () => {
       },
     ]);
   });
+
+  it("把已选择 Skill 作为结构化输入附在文本之后", () => {
+    expect(
+      buildTurnInput("$skill-creator 创建一个 Skill", [], [], [
+        {
+          name: "skill-creator",
+          description: "Create or update a Codex skill",
+          path: "/Users/me/.codex/skills/skill-creator/SKILL.md",
+          scope: "system",
+          enabled: true,
+        },
+      ]),
+    ).toEqual([
+      {
+        type: "text",
+        text: "$skill-creator 创建一个 Skill",
+        text_elements: [],
+      },
+      {
+        type: "skill",
+        name: "skill-creator",
+        path: "/Users/me/.codex/skills/skill-creator/SKILL.md",
+      },
+    ]);
+  });
 });
