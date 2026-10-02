@@ -1,4 +1,5 @@
 import { AppServerRpcError } from "./client";
+import { stripConversationTitleRequest } from "./conversation-title";
 
 type AnyRecord = Record<string, any>;
 
@@ -38,7 +39,9 @@ function normalizeUserInput(item: AnyRecord): HistoricalUserInput[] {
         part.type === "text"
           ? {
               ...part,
-              text: typeof part.text === "string" ? part.text : "",
+              text: stripConversationTitleRequest(
+                typeof part.text === "string" ? part.text : "",
+              ),
               text_elements: Array.isArray(part.text_elements)
                 ? [...part.text_elements]
                 : [],
@@ -47,9 +50,9 @@ function normalizeUserInput(item: AnyRecord): HistoricalUserInput[] {
       ) as HistoricalUserInput[];
   }
   const text = typeof item.text === "string"
-    ? item.text
+    ? stripConversationTitleRequest(item.text)
     : typeof item.content === "string"
-      ? item.content
+      ? stripConversationTitleRequest(item.content)
       : "";
   return text
     ? [{ type: "text", text, text_elements: [] }]

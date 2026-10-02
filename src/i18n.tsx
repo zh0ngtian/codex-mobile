@@ -14,6 +14,7 @@ const LANGUAGE_STORAGE_KEY = "codex-mobile:language";
 
 const english: Record<string, string> = {
   "切换语言": "Switch language",
+  "标题": "Title",
   "语言": "Language",
   "跟随系统": "System default",
   "中文": "Chinese",

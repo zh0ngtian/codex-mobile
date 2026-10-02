@@ -9,6 +9,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { TurnCard } from "../../src/features/conversation/Timeline";
 import { copyText } from "../../src/ui/copy";
 import { MarkdownMessage } from "../../src/ui/conversation";
+import { CONVERSATION_TITLE_REQUEST } from "../../src/app-server/conversation-title";
 
 function mockClipboard(writeText = vi.fn().mockResolvedValue(undefined)) {
   Object.defineProperty(navigator, "clipboard", {
@@ -32,6 +33,37 @@ afterEach(() => {
 });
 
 describe("消息复制", () => {
+  it("用户消息有后续附件文本时仍隐藏内部标题请求", () => {
+    const { container } = render(
+      <TurnCard
+        client={null}
+        turn={{
+          id: "turn-title-request",
+          status: "completed",
+          items: [{
+            id: "user",
+            type: "userMessage",
+            content: [
+              {
+                type: "text",
+                text: `检查附件\n\n${CONVERSATION_TITLE_REQUEST}`,
+              },
+              {
+                type: "text",
+                text: "已上传文件：[需求.pdf](/tmp/需求.pdf)\n本机路径：`/tmp/需求.pdf`",
+              },
+            ],
+          }],
+        }}
+      />,
+    );
+
+    expect(container.textContent).toContain("检查附件");
+    expect(container.textContent).toContain("需求.pdf");
+    expect(container.textContent).not.toContain("conversation_title_request");
+    expect(container.textContent).not.toContain("conversation-title");
+  });
+
   it("长按用户消息时默认选中该条消息的全部文本", () => {
     const { container } = render(
       <TurnCard

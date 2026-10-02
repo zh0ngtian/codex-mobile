@@ -5,6 +5,7 @@ import {
   revertHistoricalMessage,
 } from "../../src/app-server/history-edit";
 import { AppServerRpcError } from "../../src/app-server/client";
+import { CONVERSATION_TITLE_REQUEST } from "../../src/app-server/conversation-title";
 
 describe("历史消息编辑", () => {
   const turns = [
@@ -74,6 +75,29 @@ describe("历史消息编辑", () => {
       { type: "audio", url: "data:audio/wav;base64,BBBB" },
       { type: "skill", name: "review", path: "/tmp/review" },
       { type: "mention", name: "App.tsx", path: "/tmp/App.tsx" },
+    ]);
+  });
+
+  it("编辑首条历史消息时隐藏且不重发内部标题请求", () => {
+    const target = createHistoricalMessageEditTarget(
+      [{
+        id: "turn-title",
+        status: "completed",
+        items: [{
+          id: "user-title",
+          type: "userMessage",
+          content: [{
+            type: "text",
+            text: `修复登录回跳问题\n\n${CONVERSATION_TITLE_REQUEST}`,
+          }],
+        }],
+      }],
+      "turn-title",
+    );
+
+    expect(target?.text).toBe("修复登录回跳问题");
+    expect(buildEditedHistoryInput(target!, "调整登录回跳问题")).toEqual([
+      { type: "text", text: "调整登录回跳问题", text_elements: [] },
     ]);
   });
 

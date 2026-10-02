@@ -31,6 +31,10 @@ import {
 } from "./sheets/RemoteFileSheets";
 import { t, getActiveLocale } from "../../i18n";
 import {
+  extractGeneratedTitle,
+  stripConversationTitleRequest,
+} from "../../app-server/conversation-title";
+import {
   FileDiffSheet,
   ToolDetailSheet,
 } from "./sheets/ToolSheets";
@@ -54,16 +58,29 @@ type UserMessageActionProps = {
 };
 
 function itemText(item: AnyRecord) {
-  if (typeof item.aggregatedOutput === "string") return item.aggregatedOutput;
-  if (typeof item.text === "string") return item.text;
-  if (typeof item.content === "string") return item.content;
+  let text = "";
+  if (typeof item.aggregatedOutput === "string") text = item.aggregatedOutput;
+  else if (typeof item.text === "string") text = item.text;
+  else if (typeof item.content === "string") text = item.content;
   if (Array.isArray(item.content)) {
-    return item.content.map((part: AnyRecord) => part.text ?? "").join("");
+    text = item.content
+      .map((part: AnyRecord) => {
+        const partText = String(part.text ?? "");
+        return item.type === "userMessage"
+          ? stripConversationTitleRequest(partText)
+          : partText;
+      })
+      .join("");
+  } else if (typeof item.command === "string") text = item.command;
+  else if (Array.isArray(item.command)) text = item.command.join(" ");
+  else if (typeof item.output === "string") text = item.output;
+  if (item.type === "userMessage") {
+    return stripConversationTitleRequest(text);
   }
-  if (typeof item.command === "string") return item.command;
-  if (Array.isArray(item.command)) return item.command.join(" ");
-  if (typeof item.output === "string") return item.output;
-  return "";
+  if (item.type === "agentMessage") {
+    return extractGeneratedTitle(text).text;
+  }
+  return text;
 }
 
 function videoPathForItem(item: AnyRecord) {

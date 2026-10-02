@@ -1,4 +1,204 @@
 import { expect, test } from "@playwright/test";
+import { CONVERSATION_TITLE_REQUEST } from "../../src/app-server/conversation-title";
+
+test("新会话从首条流式回复生成一次标题并隐藏协议内容", async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("codex-mobile:language", "zh-CN");
+    (window as any).__titleRpc = [];
+
+    class TitleSocket extends EventTarget {
+      static OPEN = 1;
+      static CLOSED = 3;
+      readyState = 0;
+
+      constructor() {
+        super();
+        setTimeout(() => {
+          this.readyState = TitleSocket.OPEN;
+          this.dispatchEvent(new Event("open"));
+        }, 0);
+      }
+
+      send(raw: string) {
+        const request = JSON.parse(raw);
+        (window as any).__titleRpc.push(request);
+        if (request.id == null) return;
+        const responses: Record<string, unknown> = {
+          initialize: {
+            userAgent: "title-mock",
+            codexHome: "/tmp/codex",
+            platformFamily: "unix",
+            platformOs: "macos",
+          },
+          "model/list": {
+            data: [{
+              id: "gpt-test",
+              model: "gpt-test",
+              displayName: "GPT Test",
+              isDefault: true,
+              defaultReasoningEffort: "medium",
+              supportedReasoningEfforts: [
+                { reasoningEffort: "medium", description: "平衡" },
+              ],
+              defaultServiceTier: null,
+              serviceTiers: [],
+            }],
+          },
+          "permissionProfile/list": {
+            data: [{ id: ":workspace", description: "Workspace", allowed: true }],
+          },
+          "config/read": {
+            config: {
+              model: "gpt-test",
+              model_reasoning_effort: "medium",
+              sandbox_mode: "workspace-write",
+              approval_policy: "on-request",
+            },
+          },
+          "thread/list": { data: [] },
+          "thread/start": {
+            thread: {
+              id: "generated-title-thread",
+              preview: "",
+              cwd: "/tmp/project",
+              turns: [],
+            },
+            model: "gpt-test",
+            reasoningEffort: "medium",
+            serviceTier: null,
+            approvalPolicy: "on-request",
+            approvalsReviewer: "user",
+            activePermissionProfile: { id: ":workspace" },
+          },
+          "turn/start": {
+            turn: {
+              id: "generated-title-turn",
+              status: "inProgress",
+              items: [],
+            },
+          },
+        };
+        setTimeout(() => {
+          this.dispatchEvent(
+            new MessageEvent("message", {
+              data: JSON.stringify({
+                id: request.id,
+                result: responses[request.method] ?? {},
+              }),
+            }),
+          );
+        }, 0);
+
+        if (request.method === "turn/start") {
+          setTimeout(() => {
+            this.dispatchEvent(
+              new MessageEvent("message", {
+                data: JSON.stringify({
+                  method: "item/started",
+                  params: {
+                    threadId: "generated-title-thread",
+                    turnId: "generated-title-turn",
+                    item: {
+                      id: "first-reply",
+                      type: "agentMessage",
+                      text: "我先检查登录回跳相关代码。\n\n<!-- conversation-title: 修复",
+                    },
+                  },
+                }),
+              }),
+            );
+          }, 20);
+          setTimeout(() => {
+            this.dispatchEvent(
+              new MessageEvent("message", {
+                data: JSON.stringify({
+                  method: "item/agentMessage/delta",
+                  params: {
+                    threadId: "generated-title-thread",
+                    turnId: "generated-title-turn",
+                    itemId: "first-reply",
+                    delta: "登录回跳问题 -->\n",
+                  },
+                }),
+              }),
+            );
+          }, 40);
+          setTimeout(() => {
+            this.dispatchEvent(
+              new MessageEvent("message", {
+                data: JSON.stringify({
+                  method: "item/started",
+                  params: {
+                    threadId: "generated-title-thread",
+                    turnId: "generated-title-turn",
+                    item: {
+                      id: "later-reply",
+                      type: "agentMessage",
+                      text: "继续处理。\n<!-- conversation-title: 不应覆盖标题 -->",
+                    },
+                  },
+                }),
+              }),
+            );
+          }, 80);
+        }
+      }
+
+      close() {
+        this.readyState = TitleSocket.CLOSED;
+        this.dispatchEvent(new Event("close"));
+      }
+    }
+
+    (window as any).WebSocket = TitleSocket;
+  });
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "聊天", exact: true }).click();
+  await expect(page.locator(".thread-heading strong")).toHaveText("新对话");
+  await page.getByRole("textbox", { name: "向 Codex 提问" }).fill(
+    "请修复登录回跳问题",
+  );
+  await page.getByRole("button", { name: "发送" }).click();
+
+  await expect(page.locator(".thread-heading strong")).toHaveText(
+    "修复登录回跳问题",
+  );
+  await expect(page.getByText("我先检查登录回跳相关代码。", { exact: true }))
+    .toBeVisible();
+  await expect(page.getByText("继续处理。", { exact: true })).toBeVisible();
+  await expect(page.locator(".thread-heading strong")).toHaveText(
+    "修复登录回跳问题",
+  );
+  await expect(page.getByText(/conversation-title/)).toHaveCount(0);
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        (window as any).__titleRpc.filter(
+          (message: any) => message.method === "thread/name/set",
+        ),
+      ),
+    )
+    .toEqual([
+      expect.objectContaining({
+        params: {
+          threadId: "generated-title-thread",
+          name: "修复登录回跳问题",
+        },
+      }),
+    ]);
+
+  const turnStart = await page.evaluate(() =>
+    (window as any).__titleRpc.find(
+      (message: any) => message.method === "turn/start",
+    ),
+  );
+  expect(turnStart.params.input).toEqual([{
+    type: "text",
+    text: `请修复登录回跳问题\n\n${CONVERSATION_TITLE_REQUEST}`,
+    text_elements: [],
+  }]);
+});
 
 test("历史消息编辑会回退后保留附件重发", async ({ page }) => {
   await page.addInitScript(() => {
@@ -547,7 +747,8 @@ test("移动端选择器、线程恢复、Markdown、折叠与吸顶", async ({ 
               {
                 id: "live-agent",
                 type: "agentMessage",
-                text: "正在检查实时过程。",
+                text:
+                  "正在检查实时过程。\n\n<!-- conversation-title: 移动端",
               },
               {
                 id: "live-command",
@@ -572,6 +773,21 @@ test("移动端选择器、线程恢复、Markdown、折叠与吸顶", async ({ 
               );
             }
           }, 40);
+          setTimeout(() => {
+            this.dispatchEvent(
+              new MessageEvent("message", {
+                data: JSON.stringify({
+                  method: "item/agentMessage/delta",
+                  params: {
+                    threadId,
+                    turnId: "new-turn",
+                    itemId: "live-agent",
+                    delta: "协议检查 -->\n",
+                  },
+                }),
+              }),
+            );
+          }, 60);
           setTimeout(() => {
             this.dispatchEvent(
               new MessageEvent("message", {
@@ -1087,12 +1303,36 @@ test("移动端选择器、线程恢复、Markdown、折叠与吸顶", async ({ 
     approvalsReviewer: "auto_review",
   });
   expect(turnStart.params.input).toEqual([
-    { type: "text", text: "协议检查", text_elements: [] },
+    {
+      type: "text",
+      text: `协议检查\n\n${CONVERSATION_TITLE_REQUEST}`,
+      text_elements: [],
+    },
     {
       type: "image",
       url: expect.stringMatching(/^data:image\/png;base64,/),
     },
   ]);
+  await expect(page.locator(".thread-heading strong")).toHaveText(
+    "移动端协议检查",
+  );
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        (window as any).__rpcMessages.filter(
+          (message: any) => message.method === "thread/name/set",
+        ),
+      ),
+    )
+    .toEqual([
+      expect.objectContaining({
+        params: {
+          threadId: "new-thread",
+          name: "移动端协议检查",
+        },
+      }),
+    ]);
+  await expect(page.getByText(/conversation-title/)).toHaveCount(0);
   const widths = await page.evaluate(() => ({
     viewport: window.innerWidth,
     document: document.documentElement.scrollWidth,

@@ -14,6 +14,10 @@ import {
   type HistoricalMessageEditTarget,
 } from "./app-server/history-edit";
 import {
+  appendConversationTitleRequest,
+  extractGeneratedTitle,
+} from "./app-server/conversation-title";
+import {
   listInstalledSkills,
   skillsReferencedInText,
   type InstalledSkill,
@@ -186,6 +190,12 @@ import {
 import { t, useI18n } from "./i18n";
 
 type AnyRecord = Record<string, any>;
+
+interface AutomaticTitleState {
+  turnId: string | null;
+  status: "pending" | "saving" | "complete" | "closed";
+  savePromise?: Promise<void>;
+}
 
 interface QueuedFollowUp extends QueuedFollowUpPreview {
   threadId: string;
@@ -371,10 +381,112 @@ function BackendWorkspace({
   const pendingSequenceRef = useRef(0);
   const queuedFollowUpsRef = useRef<QueuedFollowUp[]>([]);
   const queuedFollowUpDispatchingRef = useRef(false);
+  const automaticTitleStatesRef = useRef(
+    new Map<string, AutomaticTitleState>(),
+  );
+  const automaticTitleStreamsRef = useRef(new Map<string, string>());
   const searchSequenceRef = useRef(0);
   const searchQueryRef = useRef(searchQuery);
   const skillLoadSequenceRef = useRef(0);
   const pluginLoadSequenceRef = useRef(0);
+
+  const automaticTitleStreamKey = (
+    threadId: string,
+    turnId: string,
+    itemId: string,
+  ) => `${threadId}\u0000${turnId}\u0000${itemId}`;
+
+  function updateThreadNameLocally(threadId: string, name: string) {
+    setThreads((current) => {
+      const next = current.map((thread) =>
+        String(thread.id) === threadId ? { ...thread, name } : thread,
+      );
+      threadsRef.current = next;
+      return next;
+    });
+    setSearchResults((current) =>
+      current.map((thread) =>
+        String(thread.id) === threadId ? { ...thread, name } : thread,
+      ),
+    );
+    setActive((current) => {
+      const next = String(current?.id ?? "") === threadId
+        ? { ...current, name }
+        : current;
+      activeRef.current = next;
+      return next;
+    });
+  }
+
+  function persistAutomaticTitle(
+    client: AppServerClient,
+    threadId: string,
+    turnId: string,
+    title: string,
+  ) {
+    const state = automaticTitleStatesRef.current.get(threadId);
+    if (
+      !state ||
+      state.status !== "pending" ||
+      state.turnId !== turnId
+    ) return;
+    state.status = "saving";
+    const savePromise = client
+      .request("thread/name/set", { threadId, name: title })
+      .then(() => {
+        if (state.status !== "saving") return;
+        state.status = "complete";
+        updateThreadNameLocally(threadId, title);
+      })
+      .catch(() => {
+        if (state.status === "saving") state.status = "closed";
+      });
+    state.savePromise = savePromise;
+  }
+
+  function processAutomaticTitleText(
+    client: AppServerClient,
+    threadId: string,
+    turnId: string,
+    text: string,
+  ) {
+    const result = extractGeneratedTitle(text);
+    if (result.title) {
+      persistAutomaticTitle(client, threadId, turnId, result.title);
+    }
+    return result.text;
+  }
+
+  function sanitizeAgentItem(
+    client: AppServerClient,
+    threadId: string,
+    turnId: string,
+    item: AnyRecord,
+    complete = false,
+  ) {
+    if (item.type !== "agentMessage" || typeof item.text !== "string") {
+      return item;
+    }
+    const key = automaticTitleStreamKey(
+      threadId,
+      turnId,
+      String(item.id ?? ""),
+    );
+    automaticTitleStreamsRef.current.set(key, item.text);
+    const sanitized = {
+      ...item,
+      text: processAutomaticTitleText(client, threadId, turnId, item.text),
+    };
+    if (complete) automaticTitleStreamsRef.current.delete(key);
+    return sanitized;
+  }
+
+  async function cancelAutomaticTitle(threadId: string) {
+    const state = automaticTitleStatesRef.current.get(threadId);
+    if (!state) return;
+    state.status = "closed";
+    await state.savePromise?.catch(() => undefined);
+  }
   const readLocalUnread = () =>
     readUnreadThreadIds(localStorage, backend.id);
   const readLocalPinned = () =>
@@ -861,6 +973,14 @@ function BackendWorkspace({
             const threadId = String(params.threadId);
             const threadName =
               typeof params.threadName === "string" ? params.threadName : null;
+            const automaticTitle =
+              automaticTitleStatesRef.current.get(threadId);
+            if (
+              threadName &&
+              automaticTitle?.status === "pending"
+            ) {
+              automaticTitle.status = "closed";
+            }
             setThreads((current) => {
               const next = applyThreadNameUpdateToList(
                 current,
@@ -895,6 +1015,15 @@ function BackendWorkspace({
           }
           if (message.method === "turn/started" && params.turn) {
             if (params.threadId) {
+              const automaticTitle = automaticTitleStatesRef.current.get(
+                String(params.threadId),
+              );
+              if (
+                automaticTitle?.status === "pending" &&
+                !automaticTitle.turnId
+              ) {
+                automaticTitle.turnId = String(params.turn.id ?? "") || null;
+              }
               setThreads((current) => {
                 const index = current.findIndex(
                   (thread) => thread.id === params.threadId,
@@ -949,6 +1078,23 @@ function BackendWorkspace({
             }));
           }
           if (message.method === "item/agentMessage/delta" && params.delta) {
+            const threadId = String(params.threadId ?? "");
+            const turnId = String(params.turnId ?? "");
+            const itemId = String(params.itemId ?? "");
+            const streamKey = automaticTitleStreamKey(
+              threadId,
+              turnId,
+              itemId,
+            );
+            const rawText =
+              `${automaticTitleStreamsRef.current.get(streamKey) ?? ""}${params.delta}`;
+            automaticTitleStreamsRef.current.set(streamKey, rawText);
+            const visibleText = processAutomaticTitleText(
+              client,
+              threadId,
+              turnId,
+              rawText,
+            );
             setActive((current) => {
               if (!current || current.id !== params.threadId) return current;
               const copy = structuredClone(current);
@@ -957,24 +1103,43 @@ function BackendWorkspace({
               );
               const item = turn?.items?.find((entry: AnyRecord) => entry.id === params.itemId);
               if (!item) return current;
-              if (item) item.text = `${item.text ?? ""}${params.delta}`;
+              if (item) item.text = visibleText;
               return copy;
             });
           }
           if (message.method === "item/started" && params.item) {
+            const nextParams = {
+              ...params,
+              item: sanitizeAgentItem(
+                client,
+                String(params.threadId ?? ""),
+                String(params.turnId ?? ""),
+                params.item,
+              ),
+            };
             setPendingSteerMessage((current) =>
-              clearPendingSteerForItem(current, params),
+              clearPendingSteerForItem(current, nextParams),
             );
             setActive((current) =>
-              current ? applyTurnItem(current, params) : current,
+              current ? applyTurnItem(current, nextParams) : current,
             );
           }
           if (message.method === "item/completed" && params.item) {
+            const nextParams = {
+              ...params,
+              item: sanitizeAgentItem(
+                client,
+                String(params.threadId ?? ""),
+                String(params.turnId ?? ""),
+                params.item,
+                true,
+              ),
+            };
             setPendingSteerMessage((current) =>
-              clearPendingSteerForItem(current, params),
+              clearPendingSteerForItem(current, nextParams),
             );
             setActive((current) =>
-              current ? applyTurnItem(current, params) : current,
+              current ? applyTurnItem(current, nextParams) : current,
             );
           }
           if (
@@ -1012,8 +1177,28 @@ function BackendWorkspace({
             );
           }
           if (message.method === "turn/completed") {
+            const threadId = String(params.threadId ?? "");
+            const turnId = String(params.turn?.id ?? params.turnId ?? "");
+            const completedParams = params.turn
+              ? {
+                  ...params,
+                  turn: {
+                    ...params.turn,
+                    items: Array.isArray(params.turn.items)
+                      ? params.turn.items.map((item: AnyRecord) =>
+                          sanitizeAgentItem(
+                            client,
+                            threadId,
+                            turnId,
+                            item,
+                            true,
+                          ),
+                        )
+                      : params.turn.items,
+                  },
+                }
+              : params;
             if (params.threadId) {
-              const threadId = String(params.threadId);
               const hasQueuedFollowUp = queuedFollowUpsRef.current.some(
                 (followUp) => followUp.threadId === threadId,
               );
@@ -1064,12 +1249,25 @@ function BackendWorkspace({
             }
             setActive((current) => {
               if (!current) return current;
-              const completed = applyCompletedTurn(current, params);
+              const completed = applyCompletedTurn(current, completedParams);
               if (completed === current) return current;
               setBusy(false);
               setSteering(false);
               return completed;
             });
+            const automaticTitle =
+              automaticTitleStatesRef.current.get(threadId);
+            if (
+              automaticTitle?.status === "pending" &&
+              automaticTitle.turnId === turnId
+            ) {
+              automaticTitle.status = "closed";
+            }
+            for (const key of automaticTitleStreamsRef.current.keys()) {
+              if (key.startsWith(`${threadId}\u0000${turnId}\u0000`)) {
+                automaticTitleStreamsRef.current.delete(key);
+              }
+            }
             void loadThreads(client);
             if (searchQueryRef.current.trim()) {
               setSearchRefreshVersion((current) => current + 1);
@@ -1711,6 +1909,10 @@ function BackendWorkspace({
         thread = startingProjectless
           ? { ...started.thread, isProjectless: true }
           : started.thread;
+        automaticTitleStatesRef.current.set(String(thread.id), {
+          turnId: null,
+          status: "pending",
+        });
         if (startingProjectless) {
           setProjectlessThreadIds((current) => {
             const next = mergeProjectlessThreadIds(current, [String(thread!.id)]);
@@ -1759,6 +1961,13 @@ function BackendWorkspace({
           setActive(thread);
         }
       }
+      const automaticTitle = automaticTitleStatesRef.current.get(
+        String(thread.id),
+      );
+      const modelText =
+        automaticTitle?.status === "pending" && !automaticTitle.turnId
+          ? appendConversationTitleRequest(text)
+          : text;
       const localItem = {
         id: `local-${pendingTurnId}`,
         type: "userMessage",
@@ -1786,7 +1995,7 @@ function BackendWorkspace({
       const startedTurn = await client.request<{ turn: AnyRecord }>("turn/start", {
         threadId: thread.id,
         input: buildTurnInput(
-          text,
+          modelText,
           pendingImages,
           uploadedFiles,
           pendingSkills,
@@ -1809,6 +2018,12 @@ function BackendWorkspace({
             }
           : {}),
       });
+      if (
+        automaticTitle?.status === "pending" &&
+        !automaticTitle.turnId
+      ) {
+        automaticTitle.turnId = String(startedTurn.turn.id ?? "") || null;
+      }
       sent = true;
       if (draftContext === draftContextGenerationRef.current) {
         setActive((current) => {
@@ -2569,6 +2784,7 @@ function BackendWorkspace({
       }
       if (action === "rename") {
         if (!name) return false;
+        await cancelAutomaticTitle(threadId);
         await client.request("thread/name/set", { threadId, name });
         setThreads((current) =>
           current.map((entry) =>
@@ -2706,6 +2922,7 @@ function BackendWorkspace({
     setPendingAction("rename");
     setError("");
     try {
+      await cancelAutomaticTitle(String(thread.id));
       await client.request("thread/name/set", {
         threadId: thread.id,
         name,
