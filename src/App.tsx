@@ -111,6 +111,11 @@ import {
 } from "./ui/attachments";
 import { uploadFile } from "./backends/file-upload";
 import {
+  runWorkspaceBootstrap,
+  shouldResumeWorkspaceThread,
+} from "./backends/workspace-bootstrap";
+import { AsyncValueCache } from "./lib/async-value-cache";
+import {
   effortOptionsForModel,
   defaultNewChatPermissionMode,
   normalizeModelSettings,
@@ -392,6 +397,12 @@ function BackendWorkspace({
   const searchQueryRef = useRef(searchQuery);
   const skillLoadSequenceRef = useRef(0);
   const pluginLoadSequenceRef = useRef(0);
+  const skillCatalogCacheRef = useRef(
+    new AsyncValueCache<InstalledSkill[]>(),
+  );
+  const pluginCatalogCacheRef = useRef(
+    new AsyncValueCache<InstalledPlugin[]>(),
+  );
 
   const automaticTitleStreamKey = (
     threadId: string,
@@ -693,10 +704,33 @@ function BackendWorkspace({
 
   useEffect(() => {
     const client = clientRef.current;
-    if (connection !== "online" || !client || !active) return;
-    void loadSkillsForCwd(client, active.cwd ?? null);
-    void loadPluginsForCwd(client, active.cwd ?? null);
-  }, [active?.cwd, connection]);
+    if (
+      connection !== "online" ||
+      conversationLoadState !== "ready" ||
+      !client ||
+      !active
+    ) return;
+    let cancelled = false;
+    const loadCatalogs = () => {
+      if (cancelled || client !== clientRef.current) return;
+      void loadSkillsForCwd(client, active.cwd ?? null);
+      void loadPluginsForCwd(client, active.cwd ?? null);
+    };
+    if (window.requestIdleCallback) {
+      const handle = window.requestIdleCallback(loadCatalogs, {
+        timeout: 1_500,
+      });
+      return () => {
+        cancelled = true;
+        window.cancelIdleCallback(handle);
+      };
+    }
+    const handle = window.setTimeout(loadCatalogs, 250);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(handle);
+    };
+  }, [active?.cwd, active?.id, connection, conversationLoadState]);
 
   useEffect(
     () => () => {
@@ -974,7 +1008,11 @@ function BackendWorkspace({
               activeRef.current?.cwd ?? null,
               true,
             );
-            void loadPluginsForCwd(client, activeRef.current?.cwd ?? null);
+            void loadPluginsForCwd(
+              client,
+              activeRef.current?.cwd ?? null,
+              true,
+            );
           }
           if (message.method === "thread/name/updated" && params.threadId) {
             const threadId = String(params.threadId);
@@ -1348,35 +1386,50 @@ function BackendWorkspace({
       onReady: (_backendId, source) => {
         const client = source as AppServerClient;
         clientRef.current = client;
-        void loadSkillsForCwd(client, activeRef.current?.cwd ?? null);
-        void loadPluginsForCwd(client, activeRef.current?.cwd ?? null);
+        const workspaceResumeSnapshot = {
+          threadId: activeRef.current?.id
+            ? String(activeRef.current.id)
+            : null,
+          openSequence: openSequenceRef.current,
+        };
         void (async () => {
           try {
             if (!disposed && manager.client(backend.id) === source) {
-            const [
-              modelResult,
-              permissionResult,
-              configResult,
-              rateLimitResult,
-            ] = await Promise.all([
-              client.request<{ data: AnyRecord[] }>("model/list", {
-                limit: 100,
-                includeHidden: false,
-              }),
-              client.request<{ data: AnyRecord[] }>("permissionProfile/list", {
-                limit: 100,
-                cwd: null,
-              }),
-              client
-                .request<{ config: AnyRecord }>("config/read", {
-                  cwd: null,
-                  includeLayers: false,
-                })
-                .catch(() => ({ config: {} })),
-              client
-                .request<AnyRecord>("account/rateLimits/read", undefined)
-                .catch(() => null),
-            ]);
+            const [modelResult, permissionResult, configResult] =
+              await runWorkspaceBootstrap({
+                loadThreads: () => loadThreads(client),
+                loadSettings: () => Promise.all([
+                  client.request<{ data: AnyRecord[] }>("model/list", {
+                    limit: 100,
+                    includeHidden: false,
+                  }),
+                  client.request<{ data: AnyRecord[] }>(
+                    "permissionProfile/list",
+                    {
+                      limit: 100,
+                      cwd: null,
+                    },
+                  ),
+                  client
+                    .request<{ config: AnyRecord }>("config/read", {
+                      cwd: null,
+                      includeLayers: false,
+                    })
+                    .catch(() => ({ config: {} })),
+                ]),
+                loadRateLimits: async () => {
+                  const result = await client.request<AnyRecord>(
+                    "account/rateLimits/read",
+                    undefined,
+                  );
+                  if (
+                    !disposed &&
+                    manager.client(backend.id) === source
+                  ) {
+                    setRateLimits(result);
+                  }
+                },
+              });
             if (disposed || manager.client(backend.id) !== source) return;
             const availableProfiles = permissionResult.data.filter(
               (profile) => profile.allowed,
@@ -1409,7 +1462,6 @@ function BackendWorkspace({
               availableProfiles[0]?.id ||
               "";
             setModels(modelResult.data);
-            setRateLimits(rateLimitResult);
             setPermissionProfiles(availableProfiles);
             setSelectedModel((current) => current || configuredModel);
             setSelectedEffort((current) => current ?? normalized.effort);
@@ -1427,11 +1479,15 @@ function BackendWorkspace({
             setSelectedApprovalsReviewer(
               (current) => config.approvals_reviewer || current,
             );
-            await loadThreads(client);
-            if (disposed || manager.client(backend.id) !== source) return;
             setRefreshing(false);
             const currentThread = activeRef.current;
-            if (currentThread?.id) {
+            if (
+              currentThread?.id &&
+              shouldResumeWorkspaceThread(workspaceResumeSnapshot, {
+                threadId: String(currentThread.id),
+                openSequence: openSequenceRef.current,
+              })
+            ) {
               activeThreadTargetRef.current = currentThread.id;
               const resumed = await resumeThreadSession(client, currentThread.id);
               if (
@@ -1537,13 +1593,30 @@ function BackendWorkspace({
     forceReload = false,
   ) {
     const sequence = ++skillLoadSequenceRef.current;
+    const cacheKey = `${backend.id}\u0000${cwd ?? ""}`;
+    const cached = forceReload
+      ? undefined
+      : skillCatalogCacheRef.current.get(cacheKey);
+    if (cached) {
+      if (
+        client === clientRef.current &&
+        (activeRef.current?.cwd ?? null) === cwd
+      ) {
+        setSkillCatalog({ cwd, skills: cached, loading: false });
+      }
+      return;
+    }
     setSkillCatalog((current) => ({
       cwd,
       skills: current.cwd === cwd ? current.skills : [],
       loading: true,
     }));
     try {
-      const skills = await listInstalledSkills(client, cwd, forceReload);
+      const skills = await skillCatalogCacheRef.current.load(
+        cacheKey,
+        () => listInstalledSkills(client, cwd, forceReload),
+        forceReload,
+      );
       if (
         sequence === skillLoadSequenceRef.current &&
         client === clientRef.current &&
@@ -1565,15 +1638,33 @@ function BackendWorkspace({
   async function loadPluginsForCwd(
     client: AppServerClient,
     cwd: string | null,
+    forceReload = false,
   ) {
     const sequence = ++pluginLoadSequenceRef.current;
+    const cacheKey = `${backend.id}\u0000${cwd ?? ""}`;
+    const cached = forceReload
+      ? undefined
+      : pluginCatalogCacheRef.current.get(cacheKey);
+    if (cached) {
+      if (
+        client === clientRef.current &&
+        (activeRef.current?.cwd ?? null) === cwd
+      ) {
+        setPluginCatalog({ cwd, plugins: cached, loading: false });
+      }
+      return;
+    }
     setPluginCatalog((current) => ({
       cwd,
       plugins: current.cwd === cwd ? current.plugins : [],
       loading: true,
     }));
     try {
-      const plugins = await listInstalledPlugins(client, cwd);
+      const plugins = await pluginCatalogCacheRef.current.load(
+        cacheKey,
+        () => listInstalledPlugins(client, cwd),
+        forceReload,
+      );
       if (
         sequence === pluginLoadSequenceRef.current &&
         client === clientRef.current &&

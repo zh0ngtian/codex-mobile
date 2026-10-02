@@ -3,6 +3,7 @@ import {
   type RefObject,
   type UIEventHandler,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -275,7 +276,10 @@ export function ConversationPage({
   );
   const [activeSkillIndex, setActiveSkillIndex] = useState(0);
   const composerInputRef = useRef<HTMLTextAreaElement>(null);
-  const turns = groupConversationTurns(active.turns ?? []);
+  const turns = useMemo(
+    () => groupConversationTurns(active.turns ?? []),
+    [active.turns],
+  );
   const isNewChat = !active.id;
   const hasDraft = Boolean(draft.trim() || draftImages.length || draftFiles.length);
   const canQueue = busy && !isNewChat && hasDraft;

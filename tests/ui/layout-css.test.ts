@@ -5,6 +5,22 @@ import { resolve } from "node:path";
 const styles = readFileSync(resolve(process.cwd(), "src/styles.css"), "utf8");
 
 describe("悬浮状态布局", () => {
+  it("页面主容器为旧版 WebView 提供 vh 回退并由 dvh 覆盖", () => {
+    const appShellRule =
+      styles.match(/\.app-shell\s*\{([^}]*)\}/)?.[1] ?? "";
+    const threadListRule =
+      styles.match(/\.thread-list-page\s*\{([^}]*)\}/)?.[1] ?? "";
+    const conversationRule =
+      styles.match(/\.conversation\s*\{([^}]*)\}/)?.[1] ?? "";
+
+    expect(appShellRule).toMatch(/min-height:\s*100vh;.*min-height:\s*100dvh;/);
+    expect(threadListRule).toMatch(/height:\s*100vh;.*height:\s*100dvh;/);
+    expect(threadListRule).toMatch(
+      /min-height:\s*100vh;.*min-height:\s*100dvh;/,
+    );
+    expect(conversationRule).toMatch(/height:\s*100vh;.*height:\s*100dvh;/);
+  });
+
   it("会话列表头部和机器选项使用同一个 sticky 容器", () => {
     const stickyRule =
       styles.match(/\.thread-list-sticky\s*\{([^}]*)\}/)?.[1] ?? "";

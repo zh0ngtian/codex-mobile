@@ -2523,3 +2523,127 @@ test("会话搜索在一个结果列表中展示服务端全文命中", async ({
       sortDirection: "desc",
     });
 });
+
+test("冷启动列表不等待额度查询且用户点入后不会重复恢复", async ({ page }) => {
+  await page.route("**/api/projects*", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        projects: ["/tmp/fast-project", "/tmp/slow-project"],
+        projectlessThreadIds: [],
+      }),
+    });
+  });
+  await page.addInitScript(() => {
+    localStorage.setItem("codex-mobile:language", "zh-CN");
+    (window as any).__coldStartupRequests = [];
+
+    class ColdStartupSocket extends EventTarget {
+      static OPEN = 1;
+      static CLOSED = 3;
+      readyState = 0;
+
+      constructor() {
+        super();
+        setTimeout(() => {
+          this.readyState = ColdStartupSocket.OPEN;
+          this.dispatchEvent(new Event("open"));
+        }, 0);
+      }
+
+      send(raw: string) {
+        const request = JSON.parse(raw);
+        (window as any).__coldStartupRequests.push(request);
+        if (request.id == null) return;
+        const turn = {
+          id: "cold-turn",
+          status: "completed",
+          items: [
+            { id: "cold-user", type: "userMessage", text: "冷启动问题" },
+            {
+              id: "cold-agent",
+              type: "agentMessage",
+              phase: "final_answer",
+              text: "冷启动会话已加载",
+            },
+          ],
+        };
+        const responses: Record<string, unknown> = {
+          initialize: {},
+          "model/list": {
+            data: [{
+              model: "gpt-test",
+              displayName: "GPT Test",
+              isDefault: true,
+              supportedReasoningEfforts: [],
+              serviceTiers: [],
+            }],
+          },
+          "permissionProfile/list": {
+            data: [{ id: ":workspace", allowed: true }],
+          },
+          "config/read": { config: { sandbox_mode: "workspace-write" } },
+          "account/rateLimits/read": { rateLimits: {} },
+          "thread/resume": {
+            thread: {
+              id: "cold-thread",
+              preview: "冷启动长会话",
+              cwd: "/tmp/fast-project",
+              turns: [],
+            },
+            initialTurnsPage: { data: [turn], nextCursor: null },
+          },
+          "skills/list": { data: [] },
+          "plugin/installed": { marketplaces: [] },
+        };
+        let result = responses[request.method] ?? {};
+        let delay = request.method === "account/rateLimits/read" ? 1_200 : 0;
+        if (request.method === "thread/list") {
+          const fast = request.params?.cwd === "/tmp/fast-project";
+          result = {
+            data: fast
+              ? [{
+                  id: "cold-thread",
+                  preview: "冷启动长会话",
+                  cwd: "/tmp/fast-project",
+                  updatedAt: Math.floor(Date.now() / 1000),
+                  status: { type: "idle" },
+                }]
+              : [],
+            nextCursor: null,
+          };
+          delay = fast ? 0 : 700;
+        }
+        setTimeout(() => {
+          this.dispatchEvent(
+            new MessageEvent("message", {
+              data: JSON.stringify({ id: request.id, result }),
+            }),
+          );
+        }, delay);
+      }
+
+      close() {
+        this.readyState = ColdStartupSocket.CLOSED;
+        this.dispatchEvent(new CloseEvent("close"));
+      }
+    }
+
+    (window as any).WebSocket = ColdStartupSocket;
+  });
+
+  await page.goto("/");
+  const thread = page.getByRole("button", { name: /冷启动长会话/ });
+  await expect(thread).toBeVisible({ timeout: 900 });
+  await thread.click();
+  await expect(page.getByText("冷启动会话已加载", { exact: true }))
+    .toBeVisible();
+  await page.waitForTimeout(1_300);
+
+  const resumeCount = await page.evaluate(() =>
+    (window as any).__coldStartupRequests.filter(
+      (request: any) => request.method === "thread/resume",
+    ).length,
+  );
+  expect(resumeCount).toBe(1);
+});
