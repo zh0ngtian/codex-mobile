@@ -1,4 +1,5 @@
 import { titleOf, type DisplayRecord } from "../../ui/app-display";
+import { isThreadRunning } from "../../ui/conversation";
 import { t } from "../../i18n";
 import { PROJECTLESS_GROUP_ID } from "../../app-server/thread-list-loader";
 
@@ -54,7 +55,8 @@ export function aggregateThreads(
           projectName: projectNameOf(thread),
           timestamp: threadTimestamp(thread),
           pinned: thread.isPinned === true,
-          unread: thread.isUnread === true,
+          unread:
+            thread.isUnread === true && !isThreadRunning(thread.status),
           thread,
         }),
       ),

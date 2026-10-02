@@ -412,12 +412,14 @@ jobs:
                   case "show":
                       guard let title = body["title"] as? String,
                             let notificationBody = body["body"] as? String,
+                            let backendId = body["backendId"] as? String,
                             let threadId = body["threadId"] as? String else {
                           return
                       }
                       showCompletionNotification(
                           title: title,
                           body: notificationBody,
+                          backendId: backendId,
                           threadId: threadId
                       )
                   default:
@@ -428,6 +430,7 @@ jobs:
               func showCompletionNotification(
                   title: String,
                   body: String,
+                  backendId: String,
                   threadId: String
               ) {
                   let center = UNUserNotificationCenter.current()
@@ -442,6 +445,10 @@ jobs:
                       content.body = String(body.prefix(512))
                       content.sound = .default
                       content.threadIdentifier = threadId
+                      content.userInfo = [
+                          "backendId": backendId,
+                          "threadId": threadId,
+                      ]
                       center.add(
                           UNNotificationRequest(
                               identifier:
@@ -634,6 +641,36 @@ jobs:
           }
 
           extension Coordinator {
+              func userNotificationCenter(
+                  _ center: UNUserNotificationCenter,
+                  didReceive response: UNNotificationResponse,
+                  withCompletionHandler completionHandler: @escaping () -> Void
+              ) {
+                  defer { completionHandler() }
+                  let userInfo = response.notification.request.content.userInfo
+                  guard let backendId = userInfo["backendId"] as? String,
+                        let threadId = userInfo["threadId"] as? String,
+                        !backendId.isEmpty,
+                        !threadId.isEmpty,
+                        let data = try? JSONSerialization.data(
+                            withJSONObject: [
+                                "backendId": backendId,
+                                "threadId": threadId,
+                            ]
+                        ),
+                        let json = String(data: data, encoding: .utf8) else {
+                      return
+                  }
+                  DispatchQueue.main.async { [weak self] in
+                      self?.realtimeWebView?.evaluateJavaScript(
+                          "window.__codexMobileCompletionTarget=\(json);"
+                          + "window.dispatchEvent(new CustomEvent("
+                          + "'codex-mobile-open-thread',"
+                          + "{detail:\(json)}))"
+                      )
+                  }
+              }
+
               func userNotificationCenter(
                   _ center: UNUserNotificationCenter,
                   willPresent notification: UNNotification,

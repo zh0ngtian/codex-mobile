@@ -164,10 +164,12 @@ import {
   writeThreadPinned,
 } from "./features/threads/thread-pinning";
 import {
+  bindRunCompletionNavigation,
   completionThreadTitle,
   notifyRunCompleted,
   requestRunCompletionNotificationPermission,
   shouldNotifyRunCompleted,
+  type RunCompletionNavigationTarget,
 } from "./notifications/run-completion";
 import { t, useI18n } from "./i18n";
 
@@ -865,6 +867,7 @@ function BackendWorkspace({
                     activeThread: activeRef.current,
                     fallback: t("新对话"),
                   }),
+                  backendId: backend.id,
                   threadId,
                 });
               }
@@ -2989,6 +2992,8 @@ function ConfiguredApp({
     readCollapsedProjectKeys(window.localStorage),
   );
   const [command, setCommand] = useState<WorkspaceCommand | null>(null);
+  const [pendingCompletionTarget, setPendingCompletionTarget] =
+    useState<RunCompletionNavigationTarget | null>(null);
   const commandIdRef = useRef(0);
   const edgeTouchStartRef = useRef<{ x: number; y: number } | null>(null);
   const resetListExpansion = useCallback(() => {
@@ -3323,6 +3328,42 @@ function ConfiguredApp({
     },
     [closeSidebar, selectBackend],
   );
+
+  useEffect(
+    () => bindRunCompletionNavigation(setPendingCompletionTarget),
+    [],
+  );
+
+  useEffect(() => {
+    if (!pendingCompletionTarget) return;
+    const backend = mountedBackends.find(
+      (entry) => entry.id === pendingCompletionTarget.backendId,
+    );
+    if (!backend) {
+      setPendingCompletionTarget(null);
+      return;
+    }
+    if (summaries[backend.id]?.connection !== "online") return;
+    const thread = snapshots[backend.id]?.threads.find(
+      (entry) => String(entry.id) === pendingCompletionTarget.threadId,
+    ) ?? { id: pendingCompletionTarget.threadId };
+    selectBackend(backend.id);
+    setCommand({
+      id: ++commandIdRef.current,
+      backendId: backend.id,
+      type: "open",
+      thread,
+    });
+    closeSidebar();
+    setPendingCompletionTarget(null);
+  }, [
+    closeSidebar,
+    mountedBackends,
+    pendingCompletionTarget,
+    selectBackend,
+    snapshots,
+    summaries,
+  ]);
 
   const manageThread = useCallback(
     (item: AggregatedThreadItem, action: ThreadManagementAction) => {

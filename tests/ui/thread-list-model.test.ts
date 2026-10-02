@@ -71,6 +71,23 @@ describe("会话列表派生", () => {
     expect(items.at(-1)?.projectName).toBe("无项目");
   });
 
+  it("运行中的会话不派生未读状态", () => {
+    const [running] = aggregateThreads(backends.slice(0, 1), {
+      book: [
+        {
+          id: "running-unread",
+          preview: "正在执行",
+          cwd: "/tmp/project",
+          updatedAt: 60,
+          isUnread: true,
+          status: { type: "active" },
+        },
+      ],
+    });
+
+    expect(running.unread).toBe(false);
+  });
+
   it("全部视图把置顶和最近拆分且不重复", () => {
     const groups = splitAllThreads(items);
     expect(groups.pinned.map((item) => item.threadId)).toEqual([

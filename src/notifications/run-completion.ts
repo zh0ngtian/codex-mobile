@@ -3,8 +3,10 @@ export interface AndroidCompletionNotificationBridge {
   showCompletionNotification?: (
     title: string,
     body: string,
+    backendId: string,
     threadId: string,
   ) => void;
+  consumeCompletionNotificationTarget?: () => string;
 }
 
 interface IosCompletionNotificationBridge {
@@ -28,7 +30,11 @@ interface BrowserNotificationConstructor {
 export interface CompletionNotificationScope {
   JsBridge?: AndroidCompletionNotificationBridge;
   Notification?: BrowserNotificationConstructor;
+  __codexMobileCompletionTarget?: unknown;
   focus?: () => void;
+  addEventListener?: (type: string, listener: EventListener) => void;
+  removeEventListener?: (type: string, listener: EventListener) => void;
+  dispatchEvent?: (event: Event) => boolean;
   webkit?: {
     messageHandlers?: {
       completionNotification?: IosCompletionNotificationBridge;
@@ -39,8 +45,16 @@ export interface CompletionNotificationScope {
 export interface RunCompletionNotification {
   title: string;
   body: string;
+  backendId: string;
   threadId: string;
 }
+
+export interface RunCompletionNavigationTarget {
+  backendId: string;
+  threadId: string;
+}
+
+export const RUN_COMPLETION_OPEN_EVENT = "codex-mobile-open-thread";
 
 interface CompletionThread {
   id?: unknown;
@@ -50,6 +64,68 @@ interface CompletionThread {
 
 function currentScope(): CompletionNotificationScope {
   return window as unknown as CompletionNotificationScope;
+}
+
+function completionNavigationTarget(
+  value: unknown,
+): RunCompletionNavigationTarget | null {
+  let parsed = value;
+  if (typeof parsed === "string") {
+    if (!parsed.trim()) return null;
+    try {
+      parsed = JSON.parse(parsed);
+    } catch {
+      return null;
+    }
+  }
+  if (!parsed || typeof parsed !== "object") return null;
+  const target = parsed as Record<string, unknown>;
+  const backendId =
+    typeof target.backendId === "string" ? target.backendId.trim() : "";
+  const threadId =
+    typeof target.threadId === "string" ? target.threadId.trim() : "";
+  return backendId && threadId ? { backendId, threadId } : null;
+}
+
+function dispatchRunCompletionNavigation(
+  target: RunCompletionNavigationTarget,
+  scope: CompletionNotificationScope,
+) {
+  scope.dispatchEvent?.(
+    new CustomEvent(RUN_COMPLETION_OPEN_EVENT, { detail: target }),
+  );
+}
+
+export function bindRunCompletionNavigation(
+  onNavigate: (target: RunCompletionNavigationTarget) => void,
+  scope: CompletionNotificationScope = currentScope(),
+) {
+  const handleNavigation = (event: Event) => {
+    const target = completionNavigationTarget(
+      (event as CustomEvent<unknown>).detail,
+    );
+    if (target) {
+      scope.__codexMobileCompletionTarget = undefined;
+      onNavigate(target);
+    }
+  };
+  scope.addEventListener?.(RUN_COMPLETION_OPEN_EVENT, handleNavigation);
+
+  try {
+    const pending =
+      completionNavigationTarget(scope.__codexMobileCompletionTarget) ??
+      completionNavigationTarget(
+        scope.JsBridge?.consumeCompletionNotificationTarget?.(),
+      );
+    scope.__codexMobileCompletionTarget = undefined;
+    if (pending) onNavigate(pending);
+  } catch {
+    // Native notification navigation is optional.
+  }
+
+  return () => {
+    scope.removeEventListener?.(RUN_COMPLETION_OPEN_EVENT, handleNavigation);
+  };
 }
 
 export function completionThreadTitle({
@@ -132,6 +208,7 @@ export function notifyRunCompleted(
       android.showCompletionNotification(
         notification.title,
         notification.body,
+        notification.backendId,
         notification.threadId,
       );
     } catch {
@@ -161,6 +238,7 @@ export function notifyRunCompleted(
     });
     browserNotification.onclick = () => {
       scope.focus?.();
+      dispatchRunCompletionNavigation(notification, scope);
       browserNotification.close();
     };
   } catch {

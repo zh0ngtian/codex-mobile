@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  bindRunCompletionNavigation,
   completionThreadTitle,
   notifyRunCompleted,
   requestRunCompletionNotificationPermission,
@@ -64,6 +65,7 @@ describe("运行完成通知", () => {
       {
         title: "Codex 运行结束",
         body: "Mac mini 上的任务已完成",
+        backendId: "mini",
         threadId: "thread-1",
       },
       scope,
@@ -73,6 +75,7 @@ describe("运行完成通知", () => {
     expect(showNotification).toHaveBeenCalledWith(
       "Codex 运行结束",
       "Mac mini 上的任务已完成",
+      "mini",
       "thread-1",
     );
   });
@@ -89,7 +92,12 @@ describe("运行完成通知", () => {
 
     requestRunCompletionNotificationPermission(scope);
     notifyRunCompleted(
-      { title: "完成", body: "任务已完成", threadId: "thread-2" },
+      {
+        title: "完成",
+        body: "任务已完成",
+        backendId: "book",
+        threadId: "thread-2",
+      },
       scope,
     );
 
@@ -98,6 +106,7 @@ describe("运行完成通知", () => {
       action: "show",
       title: "完成",
       body: "任务已完成",
+      backendId: "book",
       threadId: "thread-2",
     });
   });
@@ -126,7 +135,12 @@ describe("运行完成通知", () => {
     } as unknown as CompletionNotificationScope;
 
     notifyRunCompleted(
-      { title: "完成", body: "任务已完成", threadId: "thread-3" },
+      {
+        title: "完成",
+        body: "任务已完成",
+        backendId: "mini",
+        threadId: "thread-3",
+      },
       scope,
     );
 
@@ -138,6 +152,81 @@ describe("运行完成通知", () => {
     created[0].instance.onclick?.();
     expect(focus).toHaveBeenCalledTimes(1);
     expect(close).toHaveBeenCalledTimes(1);
+  });
+
+  it("浏览器通知点击后发出对应设备和会话的跳转事件", () => {
+    const targets: Array<{ backendId: string; threadId: string }> = [];
+    const created: Array<{ onclick: (() => void) | null }> = [];
+    const scope = new EventTarget() as CompletionNotificationScope;
+    Object.assign(scope, {
+      focus: vi.fn(),
+      Notification: class BrowserNotification {
+        static permission: NotificationPermission = "granted";
+        static requestPermission: () => Promise<NotificationPermission> =
+          vi.fn(async () => "granted");
+        onclick: (() => void) | null = null;
+        close = vi.fn();
+
+        constructor() {
+          created.push(this);
+        }
+      },
+    });
+    const unbind = bindRunCompletionNavigation(
+      (target) => targets.push(target),
+      scope,
+    );
+
+    notifyRunCompleted(
+      {
+        title: "完成",
+        body: "任务已完成",
+        backendId: "mini",
+        threadId: "thread-5",
+      },
+      scope,
+    );
+    created[0]?.onclick?.();
+
+    expect(targets).toEqual([{ backendId: "mini", threadId: "thread-5" }]);
+    unbind();
+  });
+
+  it("启动时消费 Android 原生桥保留的通知跳转目标", () => {
+    const target = vi.fn();
+    const scope = Object.assign(new EventTarget(), {
+      JsBridge: {
+        consumeCompletionNotificationTarget: () =>
+          JSON.stringify({ backendId: "mini", threadId: "thread-6" }),
+      },
+    }) as CompletionNotificationScope;
+
+    const unbind = bindRunCompletionNavigation(target, scope);
+
+    expect(target).toHaveBeenCalledWith({
+      backendId: "mini",
+      threadId: "thread-6",
+    });
+    unbind();
+  });
+
+  it("原生壳在页面监听前记录的跳转目标也会被消费", () => {
+    const target = vi.fn();
+    const scope = Object.assign(new EventTarget(), {
+      __codexMobileCompletionTarget: {
+        backendId: "book",
+        threadId: "thread-7",
+      },
+    }) as CompletionNotificationScope;
+
+    const unbind = bindRunCompletionNavigation(target, scope);
+
+    expect(target).toHaveBeenCalledWith({
+      backendId: "book",
+      threadId: "thread-7",
+    });
+    expect(scope.__codexMobileCompletionTarget).toBeUndefined();
+    unbind();
   });
 
   it("浏览器未授权时只申请权限，不提前发送通知", async () => {
@@ -152,7 +241,12 @@ describe("运行完成通知", () => {
 
     requestRunCompletionNotificationPermission(scope);
     notifyRunCompleted(
-      { title: "完成", body: "任务已完成", threadId: "thread-4" },
+      {
+        title: "完成",
+        body: "任务已完成",
+        backendId: "mini",
+        threadId: "thread-4",
+      },
       scope,
     );
     await Promise.resolve();

@@ -237,6 +237,9 @@ describe("移动 App 内置前端流水线", () => {
       "fun requestCompletionNotificationPermission()",
     );
     expect(hardenHost).toContain("fun showCompletionNotification(");
+    expect(hardenHost).toContain("fun consumeCompletionNotificationTarget()");
+    expect(hardenHost).toContain("override fun onNewIntent(");
+    expect(hardenHost).toContain("codex-mobile-open-thread");
     expect(hardenHost).toContain("NotificationCompat.Builder");
     expect(hardenHost).toContain("codex-mobile-run-completed");
     expect(hardenHost).toContain('android:allowBackup="false"');
@@ -618,6 +621,8 @@ describe("移动 App 内置前端流水线", () => {
     expect(hardenHost).toContain('name: "completionNotification"');
     expect(hardenHost).toContain("UNUserNotificationCenter");
     expect(hardenHost).toContain("codex-mobile-run-completed");
+    expect(hardenHost).toContain("didReceive response: UNNotificationResponse");
+    expect(hardenHost).toContain("codex-mobile-open-thread");
     expect(hardenHost).toContain(
       'index_source.replace("./assets/", "./")',
     );
