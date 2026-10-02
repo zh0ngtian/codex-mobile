@@ -253,18 +253,23 @@ describe("悬浮状态布局", () => {
     expect(footerRule).toContain("flex: 0 0 auto");
   });
 
-  it("普通手机浏览器单独增加上下边缘间距且不改变 WebView", () => {
+  it("普通手机浏览器保留边缘间距且原生输入栏保留独立缝隙", () => {
     const rootRule =
       styles.match(/(?:^|\n):root\s*\{([^}]*)\}/)?.[1] ?? "";
     const nativeRule =
       styles.match(/(?:^|\n)html\.native-webview\s*\{([^}]*)\}/)?.[1] ?? "";
     const listActionsRule =
       styles.match(/(?:^|\n)\.list-actions\s*\{([^}]*)\}/)?.[1] ?? "";
+    const timelineRule =
+      styles.match(/(?:^|\n)\.timeline\s*\{([^}]*)\}/)?.[1] ?? "";
     const composerRule =
       styles.match(/(?:^|\n)\.composer-wrap\s*\{([^}]*)\}/)?.[1] ?? "";
 
     expect(rootRule).toContain("--browser-edge-top: 8px");
     expect(rootRule).toContain("--browser-edge-bottom: 8px");
+    expect(rootRule).toContain(
+      "--composer-bottom-offset: max(var(--browser-edge-bottom), 8px)",
+    );
     expect(nativeRule).toContain("--browser-edge-top: 0px");
     expect(nativeRule).toContain("--browser-edge-bottom: 0px");
     expect(styles).not.toContain(
@@ -272,7 +277,11 @@ describe("悬浮状态布局", () => {
     );
     expect(listActionsRule).toContain("inset: auto 0 var(--browser-edge-bottom)");
     expect(listActionsRule).toContain("padding: 8px 16px 0");
-    expect(composerRule).toContain("bottom: var(--browser-edge-bottom)");
+    expect(timelineRule).toContain(
+      "padding: 22px 0 calc(105px + var(--composer-bottom-offset))",
+    );
+    expect(composerRule).toContain("bottom: var(--composer-bottom-offset)");
+    expect(composerRule).toContain("margin: 0");
     expect(composerRule).toContain("padding: 8px 10px 0");
   });
 
