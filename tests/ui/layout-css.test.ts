@@ -262,6 +262,10 @@ describe("悬浮状态布局", () => {
       styles.match(/(?:^|\n)\.thread-list-page\s*\{([^}]*)\}/)?.[1] ?? "";
     const listActionsRule =
       styles.match(/(?:^|\n)\.list-actions\s*\{([^}]*)\}/)?.[1] ?? "";
+    const searchBoxRule =
+      styles.match(/(?:^|\n)\.search-box\s*\{([^}]*)\}/)?.[1] ?? "";
+    const searchInputRule =
+      styles.match(/(?:^|\n)\.search-box input\s*\{([^}]*)\}/)?.[1] ?? "";
     const timelineRule =
       styles.match(/(?:^|\n)\.timeline\s*\{([^}]*)\}/)?.[1] ?? "";
     const composerRule =
@@ -284,6 +288,8 @@ describe("悬浮状态布局", () => {
       "inset: auto 0 var(--input-bar-bottom-offset)",
     );
     expect(listActionsRule).toContain("padding: 8px 16px 0");
+    expect(searchBoxRule).toContain("background: #f4f4f4");
+    expect(searchInputRule).toContain("background: #f4f4f4");
     expect(timelineRule).toContain(
       "padding: 22px 0 calc(105px + var(--input-bar-bottom-offset))",
     );

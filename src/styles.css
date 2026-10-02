@@ -169,9 +169,9 @@ button, a, summary, [role="button"] { -webkit-tap-highlight-color: transparent; 
 @media (prefers-reduced-motion: reduce) { .tool-activity-rows button > span.row-running, .image-placeholder { animation: none; } }
 .list-actions { position: fixed; z-index: 4; inset: auto 0 var(--input-bar-bottom-offset); display: grid; grid-template-columns: 1fr auto; gap: 8px; padding: 8px 16px 0; background: linear-gradient(transparent, #fff 18%, #fff); }
 .search-box, .new-chat { height: 50px; border-radius: 26px; display: flex; align-items: center; }
-.search-box { border: 1px solid #dedede; padding: 0 16px; gap: 10px; background: #fff; }
+.search-box { border: 1px solid #dedede; padding: 0 16px; gap: 10px; background: #f4f4f4; }
 .search-box svg, .new-chat svg, .send-button svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-.search-box input { border: 0; outline: none; min-width: 0; width: 100%; font-size: 15px; }
+.search-box input { border: 0; outline: none; min-width: 0; width: 100%; background: #f4f4f4; font-size: 15px; }
 .new-chat { border: 0; background: #0b0b0b; color: white; padding: 0 16px; gap: 7px; font-weight: 650; font-size: 14px; }
 .conversation { width: 100%; max-width: 100%; min-width: 0; padding-inline: 22px; overflow-x: clip; }
 .conversation-header { padding-bottom: 8px; }
