@@ -1,13 +1,13 @@
 import { useCallback, useRef, useState } from "react";
 
-export function useSidebarRefresh(onRefresh: () => void) {
+export function useSidebarRefresh(onRefresh?: () => void) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [refreshVersion, setRefreshVersion] = useState(0);
   const [silentRefreshVersion, setSilentRefreshVersion] = useState(0);
   const sidebarOpenRef = useRef(true);
 
   const refresh = useCallback(() => {
-    onRefresh();
+    onRefresh?.();
     setRefreshVersion((current) => current + 1);
   }, [onRefresh]);
 

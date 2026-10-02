@@ -11,6 +11,7 @@ interface ThreadListResponse {
 
 export type ProjectThreadLoadState = "idle" | "loading" | "ready" | "error";
 export const PROJECTLESS_GROUP_ID = "codex-mobile://projectless";
+export const PROJECT_THREAD_BATCH_SIZE = 5;
 
 interface ThreadListLoaderCallbacks {
   onData?: (threads: ThreadRecord[]) => void;
@@ -19,6 +20,7 @@ interface ThreadListLoaderCallbacks {
     cwd: string,
     threads: ThreadRecord[],
     hasMore: boolean,
+    nextCursor: string | null,
   ) => void;
   onProjectError?: (cwd: string, reason: Error) => void;
   onSettled?: () => void;
@@ -79,24 +81,28 @@ async function loadProjectlessThreadPage(
   client: ThreadListClient,
   threadIds: string[],
 ) {
-  const targetIds = new Set(threadIds);
-  const result: ThreadListResponse = await client.request("thread/list", {
-    limit: 50,
-    sortKey: "recency_at",
-  });
-  return {
-    threads: dedupeThreadsById(
-      projectlessThreadsFromPage(result.data, targetIds),
-    ),
-    hasMore: Boolean(result.nextCursor),
-  };
+  return loadProjectlessThreadRecords(
+    client,
+    threadIds,
+    PROJECT_THREAD_BATCH_SIZE,
+  );
 }
 
-export async function loadAllProjectlessThreadRecords(
+export function nextProjectThreadLimit(currentCount: number) {
+  return Math.max(0, Math.floor(currentCount)) + PROJECT_THREAD_BATCH_SIZE;
+}
+
+export async function loadProjectlessThreadRecords(
   client: ThreadListClient,
   threadIds: string[],
+  targetCount: number,
 ) {
   const targetIds = new Set(threadIds);
+  const effectiveTargetCount = Math.min(
+    Math.max(0, Math.floor(targetCount)),
+    targetIds.size,
+  );
+  if (!effectiveTargetCount) return { threads: [], hasMore: false };
   const found: ThreadRecord[] = [];
   const seenCursors = new Set<string>();
   let cursor: string | null = null;
@@ -107,6 +113,16 @@ export async function loadAllProjectlessThreadRecords(
       ...(cursor ? { cursor } : {}),
     });
     found.push(...projectlessThreadsFromPage(result.data, targetIds));
+    if (dedupeThreadsById(found).length >= effectiveTargetCount) {
+      const threads = dedupeThreadsById(found);
+      return {
+        threads: threads.slice(0, effectiveTargetCount),
+        hasMore:
+          threads.length > effectiveTargetCount ||
+          (Boolean(result.nextCursor) &&
+            targetIds.size > effectiveTargetCount),
+      };
+    }
     const nextCursor = result.nextCursor ?? null;
     if (!nextCursor || seenCursors.has(nextCursor)) {
       break;
@@ -114,30 +130,33 @@ export async function loadAllProjectlessThreadRecords(
     seenCursors.add(nextCursor);
     cursor = nextCursor;
   } while (cursor);
-  return dedupeThreadsById(found);
+  const threads = dedupeThreadsById(found).slice(0, effectiveTargetCount);
+  return {
+    threads,
+    hasMore: false,
+  };
 }
 
-export async function loadAllProjectThreadRecords(
+export async function loadProjectThreadRecords(
   client: ThreadListClient,
   cwd: string,
+  cursor?: string | null,
 ) {
-  const all: ThreadRecord[] = [];
-  const seenCursors = new Set<string>();
-  let cursor: string | null = null;
-  do {
-    const result: ThreadListResponse = await client.request("thread/list", {
-      limit: 50,
-      cwd,
-      sortKey: "recency_at",
-      ...(cursor ? { cursor } : {}),
-    });
-    all.push(...result.data);
-    const nextCursor = result.nextCursor ?? null;
-    if (!nextCursor || seenCursors.has(nextCursor)) break;
-    seenCursors.add(nextCursor);
-    cursor = nextCursor;
-  } while (cursor);
-  return dedupeThreadsById(all);
+  const result: ThreadListResponse = await client.request("thread/list", {
+    limit: PROJECT_THREAD_BATCH_SIZE,
+    cwd,
+    sortKey: "recency_at",
+    ...(cursor ? { cursor } : {}),
+  });
+  return {
+    threads: dedupeThreadsById(result.data),
+    hasMore: result.nextCursor
+      ? true
+      : result.nextCursor === null
+        ? false
+        : result.data.length >= PROJECT_THREAD_BATCH_SIZE,
+    nextCursor: result.nextCursor ?? null,
+  };
 }
 
 export function createLatestThreadListLoader(
@@ -164,23 +183,13 @@ export function createLatestThreadListLoader(
   ) => {
     const attempt = nextProjectAttempt(cwd);
     if (!options.silent) callbacks.onProjectStart?.(cwd);
-    return client
-      .request("thread/list", {
-        limit: 5,
-        cwd,
-        sortKey: "recency_at",
-      })
-      .then((result: ThreadListResponse) => {
+    return loadProjectThreadRecords(client, cwd)
+      .then(({ threads, hasMore, nextCursor }) => {
         if (
           sequence === latestSequence &&
           projectAttempts.get(cwd) === attempt
         ) {
-          const hasMore = result.nextCursor
-            ? true
-            : result.nextCursor === null
-              ? false
-              : result.data.length >= 5;
-          const projectThreads = dedupeThreadsById(result.data).filter(
+          const projectThreads = threads.filter(
             (thread) =>
               !currentProjectlessThreadIds.has(String(thread.id)),
           );
@@ -188,6 +197,7 @@ export function createLatestThreadListLoader(
             cwd,
             projectThreads,
             hasMore,
+            nextCursor,
           );
         }
       })
@@ -222,6 +232,7 @@ export function createLatestThreadListLoader(
             PROJECTLESS_GROUP_ID,
             threads,
             hasMore,
+            null,
           );
         }
       })

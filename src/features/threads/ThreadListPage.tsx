@@ -53,7 +53,6 @@ export function ThreadListPage({
   hasProjectlessThreads,
   projectThreadStates,
   projectHasMore,
-  projectVisibleCounts,
   collapsedProjectKeys,
   loadingProjectKeys,
   openingThreadId,
@@ -83,7 +82,6 @@ export function ThreadListPage({
   hasProjectlessThreads: boolean;
   projectThreadStates: Record<string, ProjectThreadLoadState>;
   projectHasMore: Record<string, boolean>;
-  projectVisibleCounts: Record<string, number>;
   collapsedProjectKeys: Set<string>;
   loadingProjectKeys: Set<string>;
   openingThreadId: string;
@@ -391,15 +389,13 @@ export function ThreadListPage({
                 const isExpanded =
                   Boolean(query.trim()) ||
                   !collapsedProjectKeys.has(projectKey);
-                const visibleCount =
-                  projectVisibleCounts[projectKey] ?? 5;
                 const isLoadingMore = loadingProjectKeys.has(projectKey);
                 const projectThreadState =
                   projectThreadStates[group.cwd] ??
                   (group.threads.length ? "ready" : "idle");
                 const hasMore =
                   projectHasMore[group.cwd] ??
-                  group.threads.length >= visibleCount;
+                  group.threads.length >= 5;
                 const showInitialLoading =
                   projectThreadState === "loading" &&
                   group.threads.length === 0;
@@ -428,9 +424,9 @@ export function ThreadListPage({
                     </h2>
                     {isExpanded && (
                       <>
-                        {recentThreads
-                          .slice(0, visibleCount)
-                          .map((thread) => renderRow(thread, false))}
+                        {recentThreads.map((thread) =>
+                          renderRow(thread, false),
+                        )}
                         {showInitialLoading && (
                           <div
                             className="project-thread-skeleton"
@@ -461,9 +457,7 @@ export function ThreadListPage({
                         )}
                         {!showInitialLoading &&
                           !showInitialError &&
-                          (isLoadingMore ||
-                            hasMore ||
-                            group.threads.length > visibleCount) && (
+                          (isLoadingMore || hasMore) && (
                           <button
                             type="button"
                             className="project-more"

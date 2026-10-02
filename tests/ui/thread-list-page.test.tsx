@@ -50,14 +50,15 @@ function renderList(
     collapsedProjectKeys = new Set<string>(),
     loadingBackendIds = new Set<string>(),
     refreshing = false,
+    visibleThreads = threads,
     hasProjectlessThreads = false,
     projectDirectories = ["/tmp/project-a", "/tmp/project-b"],
     projectThreadStates = {},
     projectHasMore = {},
-    projectVisibleCounts = {},
     query = "",
     searching = false,
     onRetryProject = () => undefined,
+    onToggleProject = () => undefined,
     onToggleProjectCollapsed = () => undefined,
     onOpenThread = () => undefined,
     onManageThread = async () => true,
@@ -65,14 +66,15 @@ function renderList(
     collapsedProjectKeys?: Set<string>;
     loadingBackendIds?: Set<string>;
     refreshing?: boolean;
+    visibleThreads?: typeof threads;
     hasProjectlessThreads?: boolean;
     projectDirectories?: string[];
     projectThreadStates?: Record<string, "loading" | "ready" | "error">;
     projectHasMore?: Record<string, boolean>;
-    projectVisibleCounts?: Record<string, number>;
     query?: string;
     searching?: boolean;
     onRetryProject?: (backendId: string, cwd: string) => void;
+    onToggleProject?: (backendId: string, cwd: string) => void;
     onToggleProjectCollapsed?: (backendId: string, cwd: string) => void;
     onOpenThread?: (thread: (typeof threads)[number]) => void;
     onManageThread?: (
@@ -87,12 +89,11 @@ function renderList(
       summaries={summaries}
       selectedBackendId={selectedBackendId}
       threadListState="ready"
-      visibleThreads={threads}
-      totalThreadCount={threads.length}
+      visibleThreads={visibleThreads}
+      totalThreadCount={visibleThreads.length}
       projectDirectories={projectDirectories}
       hasProjectlessThreads={hasProjectlessThreads}
       projectHasMore={projectHasMore}
-      projectVisibleCounts={projectVisibleCounts}
       collapsedProjectKeys={collapsedProjectKeys}
       loadingProjectKeys={new Set()}
       loadingBackendIds={loadingBackendIds}
@@ -110,7 +111,7 @@ function renderList(
       onManageBackends={() => undefined}
       onRefresh={() => undefined}
       onRetryProject={onRetryProject}
-      onToggleProject={() => undefined}
+      onToggleProject={onToggleProject}
       onToggleProjectCollapsed={onToggleProjectCollapsed}
     />,
   );
@@ -358,15 +359,50 @@ describe("会话侧边栏列表", () => {
     expect(projectA.getByRole("button", { name: "更多" })).not.toBeNull();
   });
 
+  it("点击更多时只请求对应项目的下一批", () => {
+    const onToggleProject = vi.fn();
+    const { container } = renderList("mini", {
+      projectHasMore: { "/tmp/project-a": true },
+      onToggleProject,
+    });
+    const projectA = within(
+      within(container).getByRole("heading", { name: /project-a/ })
+        .parentElement as HTMLElement,
+    );
+
+    fireEvent.click(projectA.getByRole("button", { name: "更多" }));
+
+    expect(onToggleProject).toHaveBeenCalledOnce();
+    expect(onToggleProject).toHaveBeenCalledWith("mini", "/tmp/project-a");
+  });
+
+  it("项目已分批加载的会话全部显示，并继续保留更多入口", () => {
+    const loadedThreads = aggregateThreads([backend], {
+      mini: Array.from({ length: 8 }, (_, index) => ({
+        id: `loaded-${index + 1}`,
+        preview: `已加载会话 ${index + 1}`,
+        cwd: "/tmp/project-a",
+        updatedAt: 100 - index,
+      })),
+    });
+    const { container } = renderList("mini", {
+      visibleThreads: loadedThreads,
+      projectDirectories: ["/tmp/project-a"],
+      projectHasMore: { "/tmp/project-a": true },
+    });
+    const view = within(container);
+
+    for (let index = 1; index <= 8; index += 1) {
+      expect(view.getByText(`已加载会话 ${index}`)).not.toBeNull();
+    }
+    expect(view.getByRole("button", { name: "更多" })).not.toBeNull();
+  });
+
   it("项目历史已经完整加载时不再显示更多", () => {
     const { container } = renderList("mini", {
       projectHasMore: {
         "/tmp/project-a": false,
         "/tmp/project-b": false,
-      },
-      projectVisibleCounts: {
-        "mini:/tmp/project-a": Number.MAX_SAFE_INTEGER,
-        "mini:/tmp/project-b": Number.MAX_SAFE_INTEGER,
       },
     });
 
@@ -427,7 +463,6 @@ describe("会话侧边栏列表", () => {
         projectDirectories={[]}
         hasProjectlessThreads={false}
         projectHasMore={{}}
-        projectVisibleCounts={{}}
         collapsedProjectKeys={new Set()}
         loadingProjectKeys={new Set()}
         loadingBackendIds={new Set()}
@@ -483,7 +518,6 @@ describe("会话侧边栏列表", () => {
         projectDirectories={["/tmp/project-a", "/tmp/project-b"]}
         hasProjectlessThreads={false}
         projectHasMore={{}}
-        projectVisibleCounts={{}}
         collapsedProjectKeys={new Set()}
         loadingProjectKeys={new Set()}
         loadingBackendIds={new Set()}

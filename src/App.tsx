@@ -30,8 +30,10 @@ import {
 } from "./app-server/plugins";
 import {
   createLatestThreadListLoader,
-  loadAllProjectlessThreadRecords,
-  loadAllProjectThreadRecords,
+  dedupeThreadsById,
+  loadProjectlessThreadRecords,
+  loadProjectThreadRecords,
+  nextProjectThreadLimit,
   PROJECTLESS_GROUP_ID,
   type ProjectThreadLoadState,
 } from "./app-server/thread-list-loader";
@@ -244,6 +246,7 @@ interface WorkspaceCommand {
   type: "new" | "open" | "load-project" | "retry-project" | "manage";
   thread?: AnyRecord;
   cwd?: string | null;
+  targetCount?: number;
   draft?: string;
   draftImages?: DraftImage[];
   draftFiles?: DraftFile[];
@@ -299,6 +302,9 @@ function BackendWorkspace({
   >({});
   const [projectHasMore, setProjectHasMore] = useState<
     Record<string, boolean>
+  >({});
+  const [projectNextCursors, setProjectNextCursors] = useState<
+    Record<string, string | null>
   >({});
   const [loadingProjectCwd, setLoadingProjectCwd] = useState("");
   const [refreshing, setRefreshing] = useState(false);
@@ -574,8 +580,12 @@ function BackendWorkspace({
           [cwd]: "loading",
         }));
       },
-      onProjectData(cwd, data, hasMore) {
+      onProjectData(cwd, data, hasMore, nextCursor) {
         const nextProjectThreads = decorateThreads(data);
+        setProjectNextCursors((current) => ({
+          ...current,
+          [cwd]: nextCursor,
+        }));
         setProjectHasMore((current) => ({
           ...current,
           [cwd]: fullyLoadedProjectCwdsRef.current.has(cwd) ? false : hasMore,
@@ -3260,22 +3270,47 @@ function BackendWorkspace({
     );
   };
 
-  async function loadAllProjectThreads(cwd: string) {
+  async function loadProjectThreads(cwd: string) {
     const client = clientRef.current;
     if (!client) return;
+    const cursor = projectNextCursors[cwd];
+    if (!cursor) {
+      setProjectHasMore((current) => ({ ...current, [cwd]: false }));
+      return;
+    }
     setLoadingProjectCwd(cwd);
     try {
-      const all = await loadAllProjectThreadRecords(client, cwd);
-      fullyLoadedProjectCwdsRef.current.add(cwd);
-      setProjectHasMore((current) => ({ ...current, [cwd]: false }));
-      setThreads((current) => [
-        ...current.filter((thread) => thread.cwd !== cwd),
-        ...decorateThreads(
-          all.filter(
+      const result = await loadProjectThreadRecords(client, cwd, cursor);
+      if (result.hasMore) {
+        fullyLoadedProjectCwdsRef.current.delete(cwd);
+      } else {
+        fullyLoadedProjectCwdsRef.current.add(cwd);
+      }
+      setProjectHasMore((current) => ({
+        ...current,
+        [cwd]: result.hasMore,
+      }));
+      setProjectNextCursors((current) => ({
+        ...current,
+        [cwd]: result.nextCursor,
+      }));
+      setThreads((current) => {
+        const currentProjectThreads = current.filter(
+          (thread) => projectGroupIdOf(thread) === cwd,
+        );
+        const nextProjectThreads = decorateThreads(
+          result.threads.filter(
             (thread) => !projectlessThreadIds.includes(String(thread.id)),
           ),
-        ),
-      ]);
+        );
+        return [
+          ...current.filter((thread) => projectGroupIdOf(thread) !== cwd),
+          ...dedupeThreadsById([
+            ...currentProjectThreads,
+            ...nextProjectThreads,
+          ]),
+        ];
+      });
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
     } finally {
@@ -3283,24 +3318,30 @@ function BackendWorkspace({
     }
   }
 
-  async function loadAllProjectlessThreads() {
+  async function loadProjectlessThreads(targetCount: number) {
     const client = clientRef.current;
     if (!client) return;
     setLoadingProjectCwd(PROJECTLESS_GROUP_ID);
     try {
-      const all = await loadAllProjectlessThreadRecords(
+      const result = await loadProjectlessThreadRecords(
         client,
         projectlessThreadIds,
+        targetCount,
       );
+      if (result.hasMore) {
+        fullyLoadedProjectCwdsRef.current.delete(PROJECTLESS_GROUP_ID);
+      } else {
+        fullyLoadedProjectCwdsRef.current.add(PROJECTLESS_GROUP_ID);
+      }
       setProjectHasMore((current) => ({
         ...current,
-        [PROJECTLESS_GROUP_ID]: false,
+        [PROJECTLESS_GROUP_ID]: result.hasMore,
       }));
       setThreads((current) => [
         ...current.filter(
           (thread) => projectGroupIdOf(thread) !== PROJECTLESS_GROUP_ID,
         ),
-        ...decorateThreads(all),
+        ...decorateThreads(result.threads),
       ]);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
@@ -3330,11 +3371,15 @@ function BackendWorkspace({
         command.draftImages ?? [],
         command.draftFiles ?? [],
       );
-    } else if (command.type === "load-project" && command.cwd) {
+    } else if (
+      command.type === "load-project" &&
+      command.cwd &&
+      command.targetCount
+    ) {
       if (command.cwd === PROJECTLESS_GROUP_ID) {
-        void loadAllProjectlessThreads();
+        void loadProjectlessThreads(command.targetCount);
       } else {
-        void loadAllProjectThreads(command.cwd);
+        void loadProjectThreads(command.cwd);
       }
     } else if (command.type === "retry-project" && command.cwd) {
       const client = clientRef.current;
@@ -3359,7 +3404,13 @@ function BackendWorkspace({
         command.name,
       ).then((completed) => command.onComplete?.(completed));
     }
-  }, [backend.id, command, projectOptions, projectlessThreadIds]);
+  }, [
+    backend.id,
+    command,
+    projectNextCursors,
+    projectOptions,
+    projectlessThreadIds,
+  ]);
 
   const conversationBusy = active?.id
     ? busy
@@ -3622,9 +3673,6 @@ function ConfiguredApp({
       window.localStorage.getItem("codex-mobile:list-backend") || "all",
   );
   const [query, setQuery] = useState("");
-  const [projectVisibleCounts, setProjectVisibleCounts] = useState<
-    Record<string, number>
-  >({});
   const [collapsedProjectKeys, setCollapsedProjectKeys] = useState(() =>
     readCollapsedProjectKeys(window.localStorage),
   );
@@ -3633,9 +3681,6 @@ function ConfiguredApp({
     useState<RunCompletionNavigationTarget | null>(null);
   const commandIdRef = useRef(0);
   const edgeTouchStartRef = useRef<{ x: number; y: number } | null>(null);
-  const resetListExpansion = useCallback(() => {
-    setProjectVisibleCounts({});
-  }, []);
   const {
     sidebarOpen,
     refreshVersion,
@@ -3644,7 +3689,7 @@ function ConfiguredApp({
     closeSidebar,
     refresh: refreshAllBackends,
     refreshSilently: refreshAllBackendsSilently,
-  } = useSidebarRefresh(resetListExpansion);
+  } = useSidebarRefresh();
   const selectListBackend = useCallback((backendId: string) => {
     window.localStorage.setItem("codex-mobile:list-backend", backendId);
     setListBackendId(backendId);
@@ -3979,19 +4024,22 @@ function ConfiguredApp({
 
   const toggleProject = useCallback(
     (backendId: string, cwd: string) => {
-      const key = `${backendId}:${cwd}`;
-      setProjectVisibleCounts((current) => ({
-        ...current,
-        [key]: Number.MAX_SAFE_INTEGER,
-      }));
+      const loadedCount = (snapshots[backendId]?.threads ?? []).filter(
+        (thread) =>
+          cwd === PROJECTLESS_GROUP_ID
+            ? thread.isProjectless === true
+            : thread.isProjectless !== true &&
+              String(thread.cwd ?? "") === cwd,
+      ).length;
       setCommand({
         id: ++commandIdRef.current,
         backendId,
         type: "load-project",
         cwd,
+        targetCount: nextProjectThreadLimit(loadedCount),
       });
     },
-    [],
+    [snapshots],
   );
 
   const toggleProjectCollapsed = useCallback(
@@ -4207,7 +4255,6 @@ function ConfiguredApp({
             hasProjectlessThreads={hasProjectlessThreads}
             projectThreadStates={projectThreadStates}
             projectHasMore={projectHasMore}
-            projectVisibleCounts={projectVisibleCounts}
             collapsedProjectKeys={collapsedProjectKeys}
             loadingProjectKeys={loadingProjectKeys}
             openingThreadId={openingThreadId}
