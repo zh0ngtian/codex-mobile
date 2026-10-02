@@ -3,6 +3,7 @@ import { useCallback, useRef, useState } from "react";
 export function useSidebarRefresh(onRefresh: () => void) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [refreshVersion, setRefreshVersion] = useState(0);
+  const [silentRefreshVersion, setSilentRefreshVersion] = useState(0);
   const sidebarOpenRef = useRef(true);
 
   const refresh = useCallback(() => {
@@ -14,8 +15,8 @@ export function useSidebarRefresh(onRefresh: () => void) {
     if (sidebarOpenRef.current) return;
     sidebarOpenRef.current = true;
     setSidebarOpen(true);
-    refresh();
-  }, [refresh]);
+    setSilentRefreshVersion((current) => current + 1);
+  }, []);
 
   const closeSidebar = useCallback(() => {
     if (!sidebarOpenRef.current) return;
@@ -26,6 +27,7 @@ export function useSidebarRefresh(onRefresh: () => void) {
   return {
     sidebarOpen,
     refreshVersion,
+    silentRefreshVersion,
     openSidebar,
     closeSidebar,
     refresh,

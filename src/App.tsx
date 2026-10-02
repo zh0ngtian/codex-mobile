@@ -253,6 +253,7 @@ interface BackendWorkspaceProps {
   ) => void;
   command: WorkspaceCommand | null;
   refreshVersion: number;
+  silentRefreshVersion: number;
   searchQuery: string;
 }
 
@@ -267,6 +268,7 @@ function BackendWorkspace({
   onSwitchNewChatBackend,
   command,
   refreshVersion,
+  silentRefreshVersion,
   searchQuery,
 }: BackendWorkspaceProps) {
   const [connection, setConnection] = useState<ConnectionState>("connecting");
@@ -596,7 +598,10 @@ function BackendWorkspace({
     return () => window.removeEventListener("beforeunload", protectQueuedMessages);
   }, [queuedFollowUps.length]);
 
-  async function loadThreads(client = clientRef.current) {
+  async function loadThreads(
+    client = clientRef.current,
+    options: { silent?: boolean } = {},
+  ) {
     if (!client || client !== clientRef.current) return;
     try {
       let directories = projects;
@@ -625,6 +630,7 @@ function BackendWorkspace({
         client,
         directories,
         nextProjectlessThreadIds,
+        options,
       );
     } catch (reason) {
       setThreadListState((current) =>
@@ -787,6 +793,18 @@ function BackendWorkspace({
         if (sequence === refreshSequenceRef.current) setRefreshing(false);
       });
   }, [refreshVersion]);
+
+  useEffect(() => {
+    if (!silentRefreshVersion) return;
+    fullyLoadedProjectCwdsRef.current.clear();
+    if (!clientRef.current) {
+      connectionManagerRef.current?.reconnect(backend.id);
+      return;
+    }
+    void loadThreads(clientRef.current, { silent: true }).catch(
+      () => undefined,
+    );
+  }, [silentRefreshVersion]);
 
   useEffect(() => {
     let disposed = false;
@@ -3306,6 +3324,7 @@ function ConfiguredApp({
   const {
     sidebarOpen,
     refreshVersion,
+    silentRefreshVersion,
     openSidebar,
     closeSidebar,
     refresh: refreshAllBackends,
@@ -3836,6 +3855,7 @@ function ConfiguredApp({
             onSwitchNewChatBackend={switchNewChatBackend}
             command={command}
             refreshVersion={refreshVersion}
+            silentRefreshVersion={silentRefreshVersion}
             searchQuery={query}
           />
         </div>

@@ -24,6 +24,10 @@ interface ThreadListLoaderCallbacks {
   onSettled?: () => void;
 }
 
+interface ThreadListLoadOptions {
+  silent?: boolean;
+}
+
 function threadTimestamp(thread: ThreadRecord) {
   return Number(
     thread.recencyAt ?? thread.updatedAt ?? thread.createdAt ?? 0,
@@ -156,9 +160,10 @@ export function createLatestThreadListLoader(
     client: ThreadListClient,
     cwd: string,
     sequence = latestSequence,
+    options: ThreadListLoadOptions = {},
   ) => {
     const attempt = nextProjectAttempt(cwd);
-    callbacks.onProjectStart?.(cwd);
+    if (!options.silent) callbacks.onProjectStart?.(cwd);
     return client
       .request("thread/list", {
         limit: 5,
@@ -203,9 +208,10 @@ export function createLatestThreadListLoader(
     client: ThreadListClient,
     threadIds: string[],
     sequence = latestSequence,
+    options: ThreadListLoadOptions = {},
   ) => {
     const attempt = nextProjectAttempt(PROJECTLESS_GROUP_ID);
-    callbacks.onProjectStart?.(PROJECTLESS_GROUP_ID);
+    if (!options.silent) callbacks.onProjectStart?.(PROJECTLESS_GROUP_ID);
     return loadProjectlessThreadPage(client, threadIds)
       .then(({ threads, hasMore }) => {
         if (
@@ -237,13 +243,14 @@ export function createLatestThreadListLoader(
       client: ThreadListClient,
       projects: string[] = [],
       projectlessThreadIds: string[] = [],
+      options: ThreadListLoadOptions = {},
     ) {
       if (pending?.client === client) return pending.promise;
 
       const sequence = ++latestSequence;
       currentProjectlessThreadIds = new Set(projectlessThreadIds);
       const projectRequests = projects.length
-        ? projects.map((cwd) => loadProject(client, cwd, sequence))
+        ? projects.map((cwd) => loadProject(client, cwd, sequence, options))
         : [client
             .request("thread/list", {
               limit: 50,
@@ -261,7 +268,7 @@ export function createLatestThreadListLoader(
             })];
       if (projectlessThreadIds.length) {
         projectRequests.push(
-          loadProjectless(client, projectlessThreadIds, sequence),
+          loadProjectless(client, projectlessThreadIds, sequence, options),
         );
       }
       const promise = Promise.all(projectRequests)

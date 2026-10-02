@@ -210,6 +210,35 @@ describe("会话列表轮询加载器", () => {
     expect(onSettled).toHaveBeenCalledOnce();
   });
 
+  it("静默刷新提交最新项目数据但不发布加载状态", async () => {
+    const client = {
+      request: vi.fn().mockResolvedValue({
+        data: [{ id: "thread-new", cwd: "/project/a" }],
+        nextCursor: null,
+      }),
+    };
+    const onProjectStart = vi.fn();
+    const onProjectData = vi.fn();
+    const loader = createLatestThreadListLoader({
+      onProjectStart,
+      onProjectData,
+    });
+
+    await loader.load(client, ["/project/a"], [], { silent: true });
+
+    expect(client.request).toHaveBeenCalledWith("thread/list", {
+      limit: 5,
+      cwd: "/project/a",
+      sortKey: "recency_at",
+    });
+    expect(onProjectStart).not.toHaveBeenCalled();
+    expect(onProjectData).toHaveBeenCalledWith(
+      "/project/a",
+      [{ id: "thread-new", cwd: "/project/a" }],
+      false,
+    );
+  });
+
   it("读取桌面端标记的无项目会话并从项目分组排除", async () => {
     const client = {
       request: vi.fn((_method: string, params: { cwd?: string }) => {
