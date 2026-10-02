@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   bindReadOnlyThreadRefresh,
   bindConnectionRecovery,
+  reconcileBackendWorkspace,
   reconnectAndWaitUntilReady,
   recoverBackendConnection,
 } from "../../src/backends/connection-recovery";
@@ -167,6 +168,25 @@ describe("App 前后台连接恢复", () => {
     );
     expect(reconnect).not.toHaveBeenCalled();
     expect(reconcile).toHaveBeenCalledWith(client);
+  });
+
+  it("工作区对账同时刷新服务端列表和当前会话且单项失败不阻塞另一项", async () => {
+    const client = { request: vi.fn() };
+    const refreshThreads = vi.fn(async () => {
+      throw new Error("list failed");
+    });
+    const refreshActive = vi.fn(async () => undefined);
+
+    await expect(
+      reconcileBackendWorkspace(
+        client as never,
+        refreshThreads,
+        refreshActive,
+      ),
+    ).rejects.toThrow("list failed");
+
+    expect(refreshThreads).toHaveBeenCalledWith(client);
+    expect(refreshActive).toHaveBeenCalledWith(client);
   });
 
   it("探测失败或当前没有客户端时立即重连", async () => {

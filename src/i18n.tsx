@@ -79,6 +79,7 @@ const english: Record<string, string> = {
   "暂无对话": "No conversations",
   "无法加载会话": "Unable to load conversations",
   "搜索聊天": "Search conversations",
+  "正在搜索会话": "Searching conversations",
   "聊天": "New chat",
   "设备": "Devices",
   "全部设备": "All devices",

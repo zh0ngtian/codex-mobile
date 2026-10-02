@@ -100,6 +100,21 @@ export async function recoverBackendConnection(
   }
 }
 
+export async function reconcileBackendWorkspace(
+  client: AppServerClient,
+  refreshThreads: (client: AppServerClient) => void | Promise<void>,
+  refreshActive: (client: AppServerClient) => void | Promise<void>,
+) {
+  const results = await Promise.allSettled([
+    refreshThreads(client),
+    refreshActive(client),
+  ]);
+  const failed = results.find(
+    (result): result is PromiseRejectedResult => result.status === "rejected",
+  );
+  if (failed) throw failed.reason;
+}
+
 export function bindConnectionRecovery({
   documentTarget = document,
   windowTarget = window,

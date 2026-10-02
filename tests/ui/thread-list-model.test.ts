@@ -3,6 +3,7 @@ import {
   aggregateThreads,
   filterAggregatedThreads,
   groupThreadsByProject,
+  mergeAggregatedThreadSearchResults,
   splitAllThreads,
 } from "../../src/features/threads/thread-list-model";
 import { PROJECTLESS_GROUP_ID } from "../../src/app-server/thread-list-loader";
@@ -149,5 +150,33 @@ describe("会话列表派生", () => {
       filterAggregatedThreads(items, "HA运维").map((item) => item.threadId),
     ).toEqual(["mini-pinned"]);
     expect(filterAggregatedThreads(items, "MacBook", false)).toEqual([]);
+  });
+
+  it("把服务端全文结果与设备项目匹配合并为一个去重列表", () => {
+    const serverMatches = aggregateThreads(backends, {
+      book: [
+        {
+          id: "book-recent",
+          preview: "查看 Docker 配置",
+          cwd: "/Users/me/infra",
+          recencyAt: 20,
+          searchSnippet: "正文命中了容器部署错误",
+        },
+      ],
+    });
+    const metadataMatches = filterAggregatedThreads(items, "MacBook");
+
+    const merged = mergeAggregatedThreadSearchResults(
+      serverMatches,
+      metadataMatches,
+    );
+
+    expect(merged.map((item) => item.threadId)).toEqual([
+      "book-pinned",
+      "book-recent",
+    ]);
+    expect(
+      merged.find((item) => item.threadId === "book-recent")?.searchSnippet,
+    ).toBe("正文命中了容器部署错误");
   });
 });

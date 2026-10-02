@@ -147,6 +147,8 @@ button, a, summary, [role="button"] { -webkit-tap-highlight-color: transparent; 
 .project-empty { margin: 2px 0 5px 26px; color: #999; font-size: 12px; }
 .thread-row { min-width: 0; min-height: 44px; border: 0; background: transparent; padding: 4px 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 10px; align-items: center; text-align: left; font-size: 15px; line-height: 1.35; cursor: pointer; touch-action: pan-y; -webkit-touch-callout: none; user-select: none; }
 .thread-row.with-source { min-height: 54px; grid-template-rows: auto auto; row-gap: 1px; }
+.thread-row.with-search-snippet { min-height: 58px; grid-template-rows: auto auto; row-gap: 1px; }
+.thread-row.with-source.with-search-snippet { min-height: 72px; grid-template-rows: auto auto auto; }
 .thread-row:disabled { opacity: .55; cursor: wait; }
 .thread-row-title { min-width: 0; overflow: hidden; display: flex; align-items: center; gap: 7px; white-space: nowrap; }
 .thread-row-title > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
@@ -154,6 +156,9 @@ button, a, summary, [role="button"] { -webkit-tap-highlight-color: transparent; 
 .thread-row-meta { display: inline-flex; align-items: center; justify-content: flex-end; gap: 8px; white-space: nowrap; }
 .thread-row time { color: #686868; font-size: 13px; }
 .thread-source { grid-column: 1 / -1; min-width: 0; overflow: hidden; color: #777; text-align: right; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+.thread-search-snippet { grid-column: 1 / -1; min-width: 0; overflow: hidden; color: #777; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.thread-searching { min-height: 44px; display: flex; align-items: center; justify-content: center; gap: 9px; color: #777; font-size: 13px; }
+.thread-searching .sidebar-refresh-spinner { width: 14px; height: 14px; }
 .sidebar-refresh-spinner { --spinner-tail: rgba(17,17,17,.18); --spinner-mid: rgba(17,17,17,.55); --spinner-head: #111; --spinner-stroke: 2.5px; width: 18px; height: 18px; }
 .thread-list-skeleton { display: grid; }
 .thread-row-skeleton { min-width: 0; height: 2em; display: grid; grid-template-columns: minmax(0, 1fr) 42px; gap: 18px; align-items: center; }

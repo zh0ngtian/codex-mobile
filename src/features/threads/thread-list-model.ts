@@ -87,6 +87,32 @@ export function filterAggregatedThreads(
   );
 }
 
+export function mergeAggregatedThreadSearchResults(
+  serverMatches: AggregatedThreadItem[],
+  metadataMatches: AggregatedThreadItem[],
+) {
+  const merged = new Map<string, AggregatedThreadItem>();
+  for (const item of [...metadataMatches, ...serverMatches]) {
+    const key = `${item.backendId}:${item.threadId}`;
+    const current = merged.get(key);
+    merged.set(
+      key,
+      current
+        ? {
+            ...current,
+            ...item,
+            thread: { ...current.thread, ...item.thread },
+          }
+        : item,
+    );
+  }
+  return [...merged.values()].sort(
+    (left, right) =>
+      right.timestamp - left.timestamp ||
+      left.threadId.localeCompare(right.threadId),
+  );
+}
+
 export function splitAllThreads(threads: AggregatedThreadItem[]) {
   return {
     pinned: threads.filter((thread) => thread.pinned),

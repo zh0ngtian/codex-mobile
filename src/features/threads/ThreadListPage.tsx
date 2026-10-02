@@ -58,6 +58,7 @@ export function ThreadListPage({
   loadingProjectKeys,
   openingThreadId,
   query,
+  searching,
   error,
   onQueryChange,
   onOpenThread,
@@ -87,6 +88,7 @@ export function ThreadListPage({
   loadingProjectKeys: Set<string>;
   openingThreadId: string;
   query: string;
+  searching: boolean;
   error: string;
   onQueryChange: (value: string) => void;
   onOpenThread: (thread: AggregatedThreadItem) => void | Promise<void>;
@@ -182,10 +184,13 @@ export function ThreadListPage({
     showSource: boolean,
   ) => {
     const key = managementKey(thread);
+    const searchSnippet = query.trim() && typeof thread.searchSnippet === "string"
+      ? thread.searchSnippet.trim().replace(/\s+/g, " ")
+      : "";
     return (
       <button
         key={key}
-        className={`thread-row${showSource ? " with-source" : ""}`}
+        className={`thread-row${showSource ? " with-source" : ""}${searchSnippet ? " with-search-snippet" : ""}`}
         disabled={openingThreadId === `${thread.backendId}:${thread.threadId}`}
         aria-busy={openingThreadId === `${thread.backendId}:${thread.threadId}`}
         onClick={(event) => {
@@ -227,6 +232,9 @@ export function ThreadListPage({
         <small className="thread-source">
           {thread.backendName} · {thread.projectName}
         </small>
+      )}
+      {searchSnippet && (
+        <small className="thread-search-snippet">{searchSnippet}</small>
       )}
     </button>
     );
@@ -289,6 +297,16 @@ export function ThreadListPage({
         />
       </div>
       <div className="thread-list">
+        {query.trim() && searching && (
+          <div
+            className="thread-searching"
+            role="status"
+            aria-label={t("正在搜索会话")}
+          >
+            <i className="sidebar-refresh-spinner" aria-hidden="true" />
+            {t("正在搜索会话")}
+          </div>
+        )}
         {threadListState === "loading" && (
           <div
             className="thread-list-skeleton"
@@ -450,6 +468,7 @@ export function ThreadListPage({
           </>
         )}
         {threadListState === "ready" &&
+          !searching &&
           !visibleThreads.length &&
           (selectedBackendId === "all" ||
             !projectDirectories.length ||
@@ -487,7 +506,7 @@ export function ThreadListPage({
         onArchive={() => void runThreadAction("archive")}
       />
       <footer className="list-actions">
-        <label className="search-box"><AppIcon name="search" /><input value={query} onChange={(event) => onQueryChange(event.target.value)} placeholder={t("搜索聊天")} /></label>
+        <label className="search-box" aria-busy={searching}><AppIcon name="search" /><input value={query} onChange={(event) => onQueryChange(event.target.value)} placeholder={t("搜索聊天")} /></label>
         <button
           className="new-chat"
           onClick={onNewChat}

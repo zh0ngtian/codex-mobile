@@ -31,6 +31,7 @@ import {
   PROJECTLESS_GROUP_ID,
   type ProjectThreadLoadState,
 } from "./app-server/thread-list-loader";
+import { searchThreadRecords } from "./app-server/thread-search";
 import {
   applyCompletedTurn,
   applyFileChangePatch,
@@ -127,6 +128,7 @@ import { BackendConnectionManager } from "./backends/connection-manager";
 import {
   bindConnectionRecovery,
   bindReadOnlyThreadRefresh,
+  reconcileBackendWorkspace,
   reconnectAndWaitUntilReady,
   recoverBackendConnection,
 } from "./backends/connection-recovery";
@@ -149,6 +151,7 @@ import {
 import {
   aggregateThreads,
   filterAggregatedThreads,
+  mergeAggregatedThreadSearchResults,
   type AggregatedThreadItem,
 } from "./features/threads/thread-list-model";
 import {
@@ -213,6 +216,10 @@ interface BackendThreadSnapshot {
   refreshing: boolean;
   threadListState: ThreadListState;
   openingThreadId: string;
+  searchQuery: string;
+  searchResults: AnyRecord[];
+  searchState: "idle" | "loading" | "ready" | "error";
+  searchError: string;
   error: string;
 }
 
@@ -246,6 +253,7 @@ interface BackendWorkspaceProps {
   ) => void;
   command: WorkspaceCommand | null;
   refreshVersion: number;
+  searchQuery: string;
 }
 
 function BackendWorkspace({
@@ -259,6 +267,7 @@ function BackendWorkspace({
   onSwitchNewChatBackend,
   command,
   refreshVersion,
+  searchQuery,
 }: BackendWorkspaceProps) {
   const [connection, setConnection] = useState<ConnectionState>("connecting");
   const [threads, setThreads] = useState<AnyRecord[]>([]);
@@ -276,6 +285,13 @@ function BackendWorkspace({
   const [refreshing, setRefreshing] = useState(false);
   const [threadListState, setThreadListState] =
     useState<ThreadListState>("loading");
+  const [resolvedSearchQuery, setResolvedSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<AnyRecord[]>([]);
+  const [searchState, setSearchState] = useState<
+    "idle" | "loading" | "ready" | "error"
+  >("idle");
+  const [searchError, setSearchError] = useState("");
+  const [searchRefreshVersion, setSearchRefreshVersion] = useState(0);
   const [active, setActive] = useState<AnyRecord | null>(null);
   const [draft, setDraft] = useState("");
   const [draftImages, setDraftImages] = useState<DraftImage[]>([]);
@@ -353,6 +369,8 @@ function BackendWorkspace({
   const pendingSequenceRef = useRef(0);
   const queuedFollowUpsRef = useRef<QueuedFollowUp[]>([]);
   const queuedFollowUpDispatchingRef = useRef(false);
+  const searchSequenceRef = useRef(0);
+  const searchQueryRef = useRef(searchQuery);
   const skillLoadSequenceRef = useRef(0);
   const pluginLoadSequenceRef = useRef(0);
   const readLocalUnread = () =>
@@ -373,12 +391,26 @@ function BackendWorkspace({
           : thread,
       ),
     );
+    setSearchResults((current) =>
+      current.map((thread) =>
+        String(thread.id) === threadId
+          ? { ...thread, isUnread: false }
+          : thread,
+      ),
+    );
   };
   const markThreadUnread = (threadId: string) => {
     const unread = readLocalUnread();
     unread.add(threadId);
     writeLocalUnread(unread);
     setThreads((current) =>
+      current.map((thread) =>
+        String(thread.id) === threadId
+          ? { ...thread, isUnread: true }
+          : thread,
+      ),
+    );
+    setSearchResults((current) =>
       current.map((thread) =>
         String(thread.id) === threadId
           ? { ...thread, isUnread: true }
@@ -471,6 +503,72 @@ function BackendWorkspace({
   useEffect(() => {
     conversationVisibleRef.current = conversationVisible;
   }, [conversationVisible]);
+
+  useEffect(() => {
+    searchQueryRef.current = searchQuery;
+  }, [searchQuery]);
+
+  useEffect(() => {
+    const normalizedQuery = searchQuery.trim();
+    const sequence = ++searchSequenceRef.current;
+    if (!normalizedQuery) {
+      setResolvedSearchQuery("");
+      setSearchResults([]);
+      setSearchState("idle");
+      setSearchError("");
+      return;
+    }
+    setResolvedSearchQuery(normalizedQuery);
+    setSearchResults([]);
+    setSearchError("");
+    const client = clientRef.current;
+    if (connection !== "online" || !client) {
+      setSearchState(connection === "offline" ? "error" : "loading");
+      if (connection === "offline") {
+        setSearchError(t("设备尚未连接，请稍后重试"));
+      }
+      return;
+    }
+    setSearchState("loading");
+    const timer = window.setTimeout(() => {
+      void searchThreadRecords(client, normalizedQuery)
+        .then((records) => {
+          if (
+            sequence !== searchSequenceRef.current ||
+            client !== clientRef.current
+          ) return;
+          const projectlessIds = new Set(projectlessThreadIds);
+          setSearchResults(
+            decorateThreads(
+              records.map((thread) =>
+                projectlessIds.has(String(thread.id)) || thread.cwd == null
+                  ? { ...thread, isProjectless: true }
+                  : thread,
+              ),
+            ),
+          );
+          setSearchState("ready");
+          setSearchError("");
+        })
+        .catch((reason) => {
+          if (
+            sequence !== searchSequenceRef.current ||
+            client !== clientRef.current
+          ) return;
+          setSearchResults([]);
+          setSearchState("error");
+          setSearchError(
+            reason instanceof Error ? reason.message : String(reason),
+          );
+        });
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [
+    connection,
+    projectlessThreadIds,
+    searchQuery,
+    searchRefreshVersion,
+  ]);
 
   useEffect(() => {
     const client = clientRef.current;
@@ -646,6 +744,10 @@ function BackendWorkspace({
       refreshing,
       threadListState,
       openingThreadId,
+      searchQuery: resolvedSearchQuery,
+      searchResults,
+      searchState,
+      searchError,
       error,
     });
   }, [
@@ -653,6 +755,10 @@ function BackendWorkspace({
     error,
     onSnapshotChange,
     openingThreadId,
+    resolvedSearchQuery,
+    searchError,
+    searchResults,
+    searchState,
     threadListState,
     threads,
     projects,
@@ -701,7 +807,6 @@ function BackendWorkspace({
           setSkillCatalog({ cwd: null, skills: [], loading: false });
           setPluginCatalog({ cwd: null, plugins: [], loading: false });
           setRefreshing(false);
-          setBusy(false);
           setSteering(false);
           setPendingSteerMessage(null);
           setRequests([]);
@@ -751,6 +856,12 @@ function BackendWorkspace({
               activeRef.current = next;
               return next;
             });
+            setSearchResults((current) =>
+              applyThreadNameUpdateToList(current, threadId, threadName),
+            );
+            if (searchQueryRef.current.trim()) {
+              setSearchRefreshVersion((current) => current + 1);
+            }
           }
           if (
             params.threadId &&
@@ -777,6 +888,13 @@ function BackendWorkspace({
                   ? [{ ...opened, status: { type: "active" } }, ...current]
                   : current;
               });
+              setSearchResults((current) =>
+                current.map((thread) =>
+                  String(thread.id) === String(params.threadId)
+                    ? { ...thread, status: { type: "active" } }
+                    : thread,
+                ),
+              );
             }
             setActive((current) => {
               if (!current) return current;
@@ -930,6 +1048,9 @@ function BackendWorkspace({
               return completed;
             });
             void loadThreads(client);
+            if (searchQueryRef.current.trim()) {
+              setSearchRefreshVersion((current) => current + 1);
+            }
           }
           if (
             message.method === "thread/status/changed" &&
@@ -939,6 +1060,13 @@ function BackendWorkspace({
             setThreads((current) =>
               current.map((thread) =>
                 thread.id === params.threadId
+                  ? { ...thread, status: params.status }
+                  : thread,
+              ),
+            );
+            setSearchResults((current) =>
+              current.map((thread) =>
+                String(thread.id) === String(params.threadId)
                   ? { ...thread, status: params.status }
                   : thread,
               ),
@@ -1150,7 +1278,12 @@ function BackendWorkspace({
               () => manager.reconnect(backend.id),
               () => disposed || clientRef.current != null,
             ),
-          reconcileActiveThread,
+          (client) =>
+            reconcileBackendWorkspace(
+              client,
+              loadThreads,
+              reconcileActiveThread,
+            ),
         ),
     });
     return () => {
@@ -2294,6 +2427,9 @@ function BackendWorkspace({
       duplicated,
       ...current.filter((entry) => String(entry.id) !== duplicatedId),
     ]);
+    if (searchQueryRef.current.trim()) {
+      setSearchRefreshVersion((current) => current + 1);
+    }
     showNotice(t("已复制会话"));
   }
 
@@ -2345,6 +2481,13 @@ function BackendWorkspace({
               : entry,
           ),
         );
+        setSearchResults((current) =>
+          current.map((entry) =>
+            String(entry.id) === threadId
+              ? { ...entry, isPinned: refreshed.isPinned }
+              : entry,
+          ),
+        );
         setActive((current) =>
           String(current?.id ?? "") === threadId
             ? { ...current, isPinned: refreshed.isPinned }
@@ -2364,6 +2507,17 @@ function BackendWorkspace({
         const { turns: _turns, ...rawMetadata } = result.thread;
         const metadata = decorateThread(rawMetadata);
         setThreads((current) =>
+          current.map((entry) =>
+            String(entry.id) === threadId
+              ? {
+                  ...entry,
+                  ...metadata,
+                  isPinned: metadata.isPinned === true,
+                }
+              : entry,
+          ),
+        );
+        setSearchResults((current) =>
           current.map((entry) =>
             String(entry.id) === threadId
               ? {
@@ -2398,6 +2552,11 @@ function BackendWorkspace({
             String(entry.id) === threadId ? { ...entry, name } : entry,
           ),
         );
+        setSearchResults((current) =>
+          current.map((entry) =>
+            String(entry.id) === threadId ? { ...entry, name } : entry,
+          ),
+        );
         setActive((current) =>
           String(current?.id ?? "") === threadId
             ? { ...current, name }
@@ -2411,6 +2570,9 @@ function BackendWorkspace({
       markThreadRead(threadId);
       writeThreadPinned(localStorage, backend.id, threadId, false);
       setThreads((current) =>
+        current.filter((entry) => String(entry.id) !== threadId),
+      );
+      setSearchResults((current) =>
         current.filter((entry) => String(entry.id) !== threadId),
       );
       const archivedThreadStillOpen =
@@ -2485,6 +2647,13 @@ function BackendWorkspace({
             : entry,
         ),
       );
+      setSearchResults((current) =>
+        current.map((entry) =>
+          entry.id === thread.id
+            ? { ...entry, isPinned: persistedPinned }
+            : entry,
+        ),
+      );
       setActive((current) =>
         current?.id === thread.id
           ? { ...current, isPinned: persistedPinned }
@@ -2519,6 +2688,11 @@ function BackendWorkspace({
         name,
       });
       setThreads((current) =>
+        current.map((entry) =>
+          entry.id === thread.id ? { ...entry, name } : entry,
+        ),
+      );
+      setSearchResults((current) =>
         current.map((entry) =>
           entry.id === thread.id ? { ...entry, name } : entry,
         ),
@@ -2569,6 +2743,9 @@ function BackendWorkspace({
       markThreadRead(String(thread.id));
       writeThreadPinned(localStorage, backend.id, String(thread.id), false);
       setThreads((current) =>
+        current.filter((entry) => entry.id !== thread.id),
+      );
+      setSearchResults((current) =>
         current.filter((entry) => entry.id !== thread.id),
       );
       const archivedThreadStillOpen =
@@ -3296,6 +3473,10 @@ function ConfiguredApp({
         previous.refreshing === snapshot.refreshing &&
         previous.threadListState === snapshot.threadListState &&
         previous.openingThreadId === snapshot.openingThreadId &&
+        previous.searchQuery === snapshot.searchQuery &&
+        previous.searchResults === snapshot.searchResults &&
+        previous.searchState === snapshot.searchState &&
+        previous.searchError === snapshot.searchError &&
         previous.error === snapshot.error
       ) {
         return current;
@@ -3317,19 +3498,59 @@ function ConfiguredApp({
       ),
     [mountedBackends, snapshots],
   );
-  const scopedThreads = useMemo(
+  const normalizedQuery = query.trim();
+  const scopedLoadedThreads = useMemo(
     () =>
-      filterAggregatedThreads(
-        listBackendId === "all"
-          ? aggregatedThreads
-          : aggregatedThreads.filter(
-              (thread) => thread.backendId === listBackendId,
-            ),
-        query,
-        listBackendId === "all",
-      ),
-    [aggregatedThreads, listBackendId, query],
+      listBackendId === "all"
+        ? aggregatedThreads
+        : aggregatedThreads.filter(
+            (thread) => thread.backendId === listBackendId,
+          ),
+    [aggregatedThreads, listBackendId],
   );
+  const aggregatedSearchThreads = useMemo(
+    () =>
+      normalizedQuery
+        ? aggregateThreads(
+            mountedBackends,
+            Object.fromEntries(
+              mountedBackends.map((backend) => {
+                const snapshot = snapshots[backend.id];
+                return [
+                  backend.id,
+                  snapshot?.searchQuery === normalizedQuery
+                    ? snapshot.searchResults
+                    : [],
+                ];
+              }),
+            ),
+          )
+        : [],
+    [mountedBackends, normalizedQuery, snapshots],
+  );
+  const scopedThreads = useMemo(() => {
+    if (!normalizedQuery) return scopedLoadedThreads;
+    const serverMatches =
+      listBackendId === "all"
+        ? aggregatedSearchThreads
+        : aggregatedSearchThreads.filter(
+            (thread) => thread.backendId === listBackendId,
+          );
+    const metadataMatches = filterAggregatedThreads(
+      scopedLoadedThreads,
+      normalizedQuery,
+      listBackendId === "all",
+    );
+    return mergeAggregatedThreadSearchResults(
+      serverMatches,
+      metadataMatches,
+    );
+  }, [
+    aggregatedSearchThreads,
+    listBackendId,
+    normalizedQuery,
+    scopedLoadedThreads,
+  ]);
   const scopedSnapshots =
     listBackendId === "all"
       ? mountedBackends.map((backend) => snapshots[backend.id]).filter(Boolean)
@@ -3350,8 +3571,22 @@ function ConfiguredApp({
         )
       ? "error"
       : "loading";
+  const searching =
+    Boolean(normalizedQuery) &&
+    scopedSnapshots.some(
+      (snapshot) =>
+        snapshot.searchQuery !== normalizedQuery ||
+        snapshot.searchState === "loading",
+    );
   const listError = scopedSnapshots
-    .map((snapshot) => snapshot.error)
+    .flatMap((snapshot) => [
+      snapshot.error,
+      ...(normalizedQuery &&
+      snapshot.searchQuery === normalizedQuery &&
+      snapshot.searchState === "error"
+        ? [snapshot.searchError]
+        : []),
+    ])
     .filter(Boolean)
     .join("；");
   const openingThreadId =
@@ -3596,6 +3831,7 @@ function ConfiguredApp({
             onSwitchNewChatBackend={switchNewChatBackend}
             command={command}
             refreshVersion={refreshVersion}
+            searchQuery={query}
           />
         </div>
       ))}
@@ -3613,8 +3849,11 @@ function ConfiguredApp({
             loadingBackendIds={loadingBackendIds}
             refreshing={refreshing}
             threadListState={threadListState}
+            searching={searching}
             visibleThreads={scopedThreads}
-            totalThreadCount={scopedThreadCount}
+            totalThreadCount={
+              normalizedQuery ? scopedThreads.length : scopedThreadCount
+            }
             projectDirectories={projectDirectories}
             hasProjectlessThreads={hasProjectlessThreads}
             projectThreadStates={projectThreadStates}

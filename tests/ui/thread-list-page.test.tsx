@@ -56,6 +56,7 @@ function renderList(
     projectHasMore = {},
     projectVisibleCounts = {},
     query = "",
+    searching = false,
     onRetryProject = () => undefined,
     onToggleProjectCollapsed = () => undefined,
     onOpenThread = () => undefined,
@@ -70,6 +71,7 @@ function renderList(
     projectHasMore?: Record<string, boolean>;
     projectVisibleCounts?: Record<string, number>;
     query?: string;
+    searching?: boolean;
     onRetryProject?: (backendId: string, cwd: string) => void;
     onToggleProjectCollapsed?: (backendId: string, cwd: string) => void;
     onOpenThread?: (thread: (typeof threads)[number]) => void;
@@ -98,6 +100,7 @@ function renderList(
       projectThreadStates={projectThreadStates}
       openingThreadId=""
       query={query}
+      searching={searching}
       error=""
       onQueryChange={() => undefined}
       onOpenThread={onOpenThread}
@@ -376,6 +379,65 @@ describe("会话侧边栏列表", () => {
     expect(collapsedProjectKeys.has("mini:/tmp/project-a")).toBe(true);
   });
 
+  it("同一搜索结果行展示服务端全文命中片段", () => {
+    const matchingThreads = threads.map((thread) =>
+      thread.threadId === "recent"
+        ? { ...thread, searchSnippet: "正文里提到了统一全文搜索" }
+        : thread,
+    );
+    const { container } = render(
+      <ThreadListPage
+        backends={[backend]}
+        summaries={summaries}
+        selectedBackendId="all"
+        threadListState="ready"
+        visibleThreads={matchingThreads.filter(
+          (thread) => thread.threadId === "recent",
+        )}
+        totalThreadCount={matchingThreads.length}
+        projectDirectories={[]}
+        hasProjectlessThreads={false}
+        projectHasMore={{}}
+        projectVisibleCounts={{}}
+        collapsedProjectKeys={new Set()}
+        loadingProjectKeys={new Set()}
+        loadingBackendIds={new Set()}
+        refreshing={false}
+        projectThreadStates={{}}
+        openingThreadId=""
+        query="全文搜索"
+        searching={false}
+        error=""
+        onQueryChange={() => undefined}
+        onOpenThread={() => undefined}
+        onManageThread={async () => true}
+        onNewChat={() => undefined}
+        onSelectBackend={() => undefined}
+        onManageBackends={() => undefined}
+        onRefresh={() => undefined}
+        onRetryProject={() => undefined}
+        onToggleProject={() => undefined}
+        onToggleProjectCollapsed={() => undefined}
+      />,
+    );
+
+    expect(
+      within(container).getByText("正文里提到了统一全文搜索"),
+    ).not.toBeNull();
+    expect(within(container).getByText("Mac mini · project-b")).not.toBeNull();
+  });
+
+  it("统一搜索尚未返回时展示搜索状态而不是空结果", () => {
+    const { container } = renderList("all", {
+      query: "未返回",
+      searching: true,
+    });
+    const view = within(container);
+
+    expect(view.getByLabelText("正在搜索会话")).not.toBeNull();
+    expect(view.queryByText("没有匹配的对话")).toBeNull();
+  });
+
   it("在未查看会话的右侧时间前显示蓝点", () => {
     const now = vi.spyOn(Date, "now").mockReturnValue(100_000);
     const unreadThreads = threads.map((thread) =>
@@ -400,6 +462,7 @@ describe("会话侧边栏列表", () => {
         projectThreadStates={{}}
         openingThreadId=""
         query=""
+        searching={false}
         error=""
         onQueryChange={() => undefined}
         onOpenThread={() => undefined}

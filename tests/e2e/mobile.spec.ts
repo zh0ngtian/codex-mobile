@@ -2168,3 +2168,118 @@ test("排队消息可编辑取消、跨会话保留并同步服务端标题", as
       { type: "text", text: "立即调整执行方向", text_elements: [] },
     ]);
 });
+
+test("会话搜索在一个结果列表中展示服务端全文命中", async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("codex-mobile:language", "zh-CN");
+    (window as any).__searchRequests = [];
+
+    class SearchSocket extends EventTarget {
+      static OPEN = 1;
+      static CLOSED = 3;
+      readyState = 0;
+
+      constructor() {
+        super();
+        setTimeout(() => {
+          this.readyState = SearchSocket.OPEN;
+          this.dispatchEvent(new Event("open"));
+        }, 0);
+      }
+
+      send(raw: string) {
+        const request = JSON.parse(raw);
+        (window as any).__searchRequests.push(request);
+        if (request.id == null) return;
+        const now = Math.floor(Date.now() / 1000);
+        const responses: Record<string, unknown> = {
+          initialize: {
+            userAgent: "search-mock",
+            codexHome: "/tmp/codex",
+            platformFamily: "unix",
+            platformOs: "macos",
+          },
+          "model/list": { data: [] },
+          "permissionProfile/list": { data: [] },
+          "config/read": { config: {} },
+          "account/rateLimits/read": {},
+          "skills/list": { data: [] },
+          "plugin/list": { data: [] },
+          "thread/list": {
+            data: [
+              {
+                id: "ordinary-thread",
+                preview: "普通标题",
+                cwd: "/tmp/project",
+                recencyAt: now,
+                status: { type: "idle" },
+              },
+            ],
+            nextCursor: null,
+          },
+          "thread/search": {
+            data: [
+              {
+                thread: {
+                  id: "content-match",
+                  preview: "标题没有关键词",
+                  cwd: "/tmp/project",
+                  recencyAt: now - 1,
+                  status: { type: "idle" },
+                },
+                snippet: "正文里的部署失败需要重新排查",
+              },
+            ],
+            nextCursor: null,
+            backwardsCursor: null,
+          },
+        };
+        const delay = request.method === "thread/search" ? 120 : 0;
+        setTimeout(() => {
+          this.dispatchEvent(
+            new MessageEvent("message", {
+              data: JSON.stringify({
+                id: request.id,
+                result: responses[request.method] ?? {},
+              }),
+            }),
+          );
+        }, delay);
+      }
+
+      close() {
+        this.readyState = SearchSocket.CLOSED;
+        this.dispatchEvent(new CloseEvent("close"));
+      }
+    }
+
+    (window as any).WebSocket = SearchSocket;
+  });
+
+  await page.goto("/");
+  const search = page.getByPlaceholder("搜索聊天");
+  await expect(search).toBeVisible();
+  await search.fill("部署失败");
+
+  await expect(page.getByRole("status", { name: "正在搜索会话" }))
+    .toBeVisible();
+  await expect(page.getByRole("button", { name: /标题没有关键词/ }))
+    .toBeVisible();
+  await expect(page.getByText("正文里的部署失败需要重新排查"))
+    .toBeVisible();
+  await expect(page.getByText("没有匹配的对话")).toHaveCount(0);
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        (window as any).__searchRequests.find(
+          (request: any) => request.method === "thread/search",
+        )?.params,
+      ),
+    )
+    .toEqual({
+      searchTerm: "部署失败",
+      limit: 50,
+      sortKey: "recency_at",
+      sortDirection: "desc",
+    });
+});
