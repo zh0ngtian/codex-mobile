@@ -188,11 +188,9 @@ interface QueuedFollowUp extends QueuedFollowUpPreview {
 interface HistoricalMessageEditState {
   threadId: string;
   target: HistoricalMessageEditTarget;
+  text: string;
   submitting: boolean;
   reverted: boolean;
-  previousDraft: string;
-  previousImages: DraftImage[];
-  previousFiles: DraftFile[];
 }
 
 interface BackendThreadSnapshot {
@@ -1203,12 +1201,7 @@ function BackendWorkspace({
   }
 
   function discardHistoricalMessageEdit() {
-    setHistoryEdit((current) => {
-      current?.previousFiles.forEach((file) => {
-        URL.revokeObjectURL(file.previewUrl);
-      });
-      return null;
-    });
+    setHistoryEdit(null);
   }
 
   function resetDraftContext() {
@@ -1748,30 +1741,22 @@ function BackendWorkspace({
     setHistoryEdit({
       threadId,
       target: currentTarget,
+      text: currentTarget.text,
       submitting: false,
       reverted: false,
-      previousDraft: draft,
-      previousImages: draftImages,
-      previousFiles: draftFiles,
     });
-    setDraft(currentTarget.text);
-    setDraftImages([]);
-    setDraftFiles([]);
     setError("");
+  }
+
+  function changeHistoricalMessageEditText(text: string) {
+    setHistoryEdit((current) =>
+      current && !current.submitting ? { ...current, text } : current,
+    );
   }
 
   function cancelHistoricalMessageEdit() {
     const session = historyEdit;
     if (!session || session.submitting) return;
-    if (String(activeRef.current?.id ?? "") === session.threadId) {
-      setDraft(session.previousDraft);
-      setDraftImages(session.previousImages);
-      setDraftFiles(session.previousFiles);
-    } else {
-      session.previousFiles.forEach((file) => {
-        URL.revokeObjectURL(file.previewUrl);
-      });
-    }
     setHistoryEdit(null);
     setError("");
   }
@@ -1800,7 +1785,7 @@ function BackendWorkspace({
       return;
     }
 
-    const text = draft.trim();
+    const text = session.text.trim();
     let target = session.target;
     let retainedTurns = [...(thread.turns ?? [])];
     if (!session.reverted) {
@@ -1956,9 +1941,6 @@ function BackendWorkspace({
         activeRef.current = next;
         return next;
       });
-      setDraft(session.previousDraft);
-      setDraftImages(session.previousImages);
-      setDraftFiles(session.previousFiles);
       setHistoryEdit(null);
     } catch (reason) {
       setBusy(false);
@@ -2817,6 +2799,7 @@ function BackendWorkspace({
           onDraftChange={setDraft}
           historyEdit={historyEdit}
           onEditUserMessage={beginHistoricalMessageEdit}
+          onHistoryEditTextChange={changeHistoricalMessageEditText}
           onCancelHistoryEdit={cancelHistoricalMessageEdit}
           onSubmitHistoryEdit={submitHistoricalMessageEdit}
           onInterrupt={interrupt}

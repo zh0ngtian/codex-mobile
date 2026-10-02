@@ -163,7 +163,7 @@ describe("运行完成通知", () => {
       Notification: class BrowserNotification {
         static permission: NotificationPermission = "granted";
         static requestPermission: () => Promise<NotificationPermission> =
-          vi.fn(async () => "granted");
+          vi.fn(async (): Promise<NotificationPermission> => "granted");
         onclick: (() => void) | null = null;
         close = vi.fn();
 

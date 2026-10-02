@@ -7,6 +7,7 @@ import {
   nextPatchVersion,
   parseLanRelease,
   parseSemanticVersion,
+  releaseNotesForUpgrade,
 } from "../../src/app-update/release";
 
 const releasePayload = {
@@ -61,6 +62,9 @@ describe("App 固定局域网更新模型", () => {
       sha256:
         "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       size: 12_345,
+      releaseNotes: [
+        { version: "0.2.31", notes: "固定局域网更新渠道" },
+      ],
     });
     expect(
       parseLanRelease({
@@ -79,6 +83,28 @@ describe("App 固定局域网更新模型", () => {
     ).toBeNull();
     expect(parseLanRelease({ ...releasePayload, size: 0 })).toBeNull();
     expect(parseLanRelease({ ...releasePayload, tag: "v0.2.30" })).toBeNull();
+  });
+
+  it("解析并筛选当前版本之后的全部升级说明", () => {
+    const release = parseLanRelease({
+      ...releasePayload,
+      releases: [
+        { version: "0.2.31", notes: "清单中的目标版本旧说明" },
+        { version: "0.2.29", notes: "早于当前版本" },
+        { version: "0.2.30", notes: "增加中间版本能力" },
+        { version: "0.2.32", notes: "高于目标版本" },
+      ],
+    });
+
+    expect(release?.releaseNotes).toEqual([
+      { version: "0.2.29", notes: "早于当前版本" },
+      { version: "0.2.30", notes: "增加中间版本能力" },
+      { version: "0.2.31", notes: "固定局域网更新渠道" },
+    ]);
+    expect(releaseNotesForUpgrade(release!, "0.2.29")).toEqual([
+      { version: "0.2.30", notes: "增加中间版本能力" },
+      { version: "0.2.31", notes: "固定局域网更新渠道" },
+    ]);
   });
 
   it("自动检测在缓存时间内复用结果，手动检测绕过缓存", async () => {

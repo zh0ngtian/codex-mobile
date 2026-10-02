@@ -160,23 +160,29 @@ test("历史消息编辑会回退后保留附件重发", async ({ page }) => {
   await expect(page.getByText("原消息", { exact: true })).toBeVisible();
   await expect(page.getByText("后续消息", { exact: true })).toBeVisible();
 
-  const targetTurn = page
-    .getByText("原消息", { exact: true })
-    .locator("xpath=ancestor::section[contains(@class,'turn-card')]");
+  const targetTurn = page.locator(".turn-card").first();
+  const composer = page.getByRole("textbox", { name: "向 Codex 提问" });
+  await composer.fill("未发送的底部草稿");
   await targetTurn.getByRole("button", { name: "编辑历史消息" }).click();
-  await expect(page.getByLabel("正在编辑历史消息")).toContainText(
+  await expect(targetTurn).toContainText(
     "原消息的 1 个附件会保留",
   );
 
-  const composer = page.getByRole("textbox", { name: "向 Codex 提问" });
-  await expect(composer).toHaveValue("原消息");
-  await composer.fill("修改后的消息");
-  await page.getByRole("button", { name: "保存并重发" }).click();
+  const inlineEditor = targetTurn.getByRole("textbox", {
+    name: "编辑历史消息内容",
+  });
+  await expect(inlineEditor).toHaveValue("原消息");
+  await expect(composer).toHaveValue("未发送的底部草稿");
+  await inlineEditor.fill("修改后的消息");
+  await targetTurn.getByRole("button", { name: "保存并重发" }).click();
 
-  const confirmation = page.getByLabel("删除后续对话并重发？");
+  const confirmation = targetTurn.getByRole("status", {
+    name: "确认删除后续对话",
+  });
   await expect(confirmation).toContainText(
     "文件修改、已执行命令和远端操作不会撤销。",
   );
+  await expect(page.getByRole("dialog", { name: "删除后续对话并重发？" })).toHaveCount(0);
   await confirmation
     .getByRole("button", { name: "删除后续并重发" })
     .click();

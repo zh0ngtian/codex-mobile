@@ -37,8 +37,19 @@ import {
 
 type AnyRecord = Record<string, any>;
 
+type InlineUserMessageEdit = {
+  value: string;
+  submitting: boolean;
+  hasLaterTurns: boolean;
+  attachmentCount: number;
+  onChange: (value: string) => void;
+  onCancel: () => void;
+  onSubmit: () => void | Promise<void>;
+};
+
 type UserMessageActionProps = {
   onEditUserMessage?: () => void;
+  inlineEdit?: InlineUserMessageEdit;
   userMessageActionsDisabled?: boolean;
 };
 
@@ -90,6 +101,7 @@ function UserBubble({
   client,
   backend,
   onEditUserMessage,
+  inlineEdit,
   userMessageActionsDisabled = false,
 }: {
   item: AnyRecord;
@@ -102,9 +114,93 @@ function UserBubble({
   const images = imageSourcesForItem(item);
   const collapsible = shouldCollapseUserMessage(text);
   const [expanded, setExpanded] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  useEffect(() => setConfirming(false), [inlineEdit?.hasLaterTurns]);
   const bubble = (
-    <div className="user-bubble">
-      {text && (
+    <div className={`user-bubble${inlineEdit ? " user-bubble-editing" : ""}`}>
+      {inlineEdit ? (
+        <div className="history-message-editor">
+          <textarea
+            autoFocus
+            aria-label={t("编辑历史消息内容")}
+            value={inlineEdit.value}
+            disabled={inlineEdit.submitting}
+            rows={Math.max(3, Math.min(10, inlineEdit.value.split("\n").length + 1))}
+            onChange={(event) => inlineEdit.onChange(event.target.value)}
+          />
+          <small>
+            {inlineEdit.attachmentCount > 0
+              ? t("原消息的 {count} 个附件会保留", {
+                  count: inlineEdit.attachmentCount,
+                })
+              : t("保存后将从这条消息重新执行")}
+          </small>
+          {confirming ? (
+            <div
+              className="history-edit-inline-confirmation"
+              role="status"
+              aria-label={t("确认删除后续对话")}
+            >
+              <strong>{t("删除后续对话并重发？")}</strong>
+              <p>{t("目标消息及之后的对话将被移除，更早的历史会保留。")}</p>
+              <p>{t("文件修改、已执行命令和远端操作不会撤销。")}</p>
+              <div>
+                <button
+                  type="button"
+                  disabled={inlineEdit.submitting}
+                  onClick={() => setConfirming(false)}
+                >
+                  {t("取消")}
+                </button>
+                <button
+                  type="button"
+                  className="danger"
+                  disabled={inlineEdit.submitting}
+                  onClick={() => {
+                    setConfirming(false);
+                    void inlineEdit.onSubmit();
+                  }}
+                >
+                  {t("删除后续并重发")}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="history-message-editor-actions">
+              <button
+                type="button"
+                disabled={inlineEdit.submitting}
+                aria-label={t("取消编辑历史消息")}
+                onClick={inlineEdit.onCancel}
+              >
+                {t("取消")}
+              </button>
+              <button
+                type="button"
+                className="primary"
+                disabled={
+                  inlineEdit.submitting ||
+                  (!inlineEdit.value.trim() && inlineEdit.attachmentCount === 0)
+                }
+                aria-label={
+                  inlineEdit.submitting
+                    ? t("正在保存并重发")
+                    : t("保存并重发")
+                }
+                onClick={() => {
+                  if (inlineEdit.hasLaterTurns) {
+                    setConfirming(true);
+                  } else {
+                    void inlineEdit.onSubmit();
+                  }
+                }}
+              >
+                {inlineEdit.submitting ? t("正在保存并重发") : t("保存并重发")}
+              </button>
+            </div>
+          )}
+        </div>
+      ) : text ? (
         <div
           className={`user-message-text ${collapsible && !expanded ? "collapsed" : ""}`}
           onContextMenu={(event) => selectElementText(event.currentTarget)}
@@ -130,9 +226,9 @@ function UserBubble({
             )}
           />
         </div>
-      )}
+      ) : null}
       <ImageGallery images={images} client={client} />
-      {collapsible && (
+      {!inlineEdit && collapsible && (
         <button
           type="button"
           className="user-message-toggle"
@@ -149,6 +245,7 @@ function UserBubble({
     </div>
   );
   if (!heartbeat) {
+    if (inlineEdit) return <div className="user-message">{bubble}</div>;
     const showActions = Boolean(onEditUserMessage);
     if (!showActions) return bubble;
     return (
@@ -439,6 +536,7 @@ export function TurnCard({
   client,
   backend,
   onEditUserMessage,
+  inlineEdit,
   userMessageActionsDisabled,
 }: {
   turn: AnyRecord;
@@ -516,6 +614,7 @@ export function TurnCard({
             onEditUserMessage={
               grouped.running ? undefined : onEditUserMessage
             }
+            inlineEdit={grouped.running ? undefined : inlineEdit}
             userMessageActionsDisabled={userMessageActionsDisabled}
           />
         </div>

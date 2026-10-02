@@ -39,7 +39,6 @@ import {
 import { effortLabel } from "../../ui/settings";
 import { groupConversationTurns } from "../../ui/conversation";
 import { ErrorBanner } from "../../ui/ErrorBanner";
-import { ActionSheet } from "../../ui/ActionSheet";
 import { TurnCard } from "./Timeline";
 import {
   ContextUsageButton,
@@ -187,6 +186,7 @@ export function ConversationPage({
   onDraftChange,
   historyEdit = null,
   onEditUserMessage,
+  onHistoryEditTextChange = () => undefined,
   onCancelHistoryEdit = () => undefined,
   onSubmitHistoryEdit = () => undefined,
   onInterrupt,
@@ -244,9 +244,11 @@ export function ConversationPage({
   onDraftChange: (value: string) => void;
   historyEdit?: {
     target: HistoricalMessageEditTarget;
+    text: string;
     submitting: boolean;
   } | null;
   onEditUserMessage?: (target: HistoricalMessageEditTarget) => void;
+  onHistoryEditTextChange?: (value: string) => void;
   onCancelHistoryEdit?: () => void;
   onSubmitHistoryEdit?: () => void | Promise<void>;
   onInterrupt: () => void | Promise<void>;
@@ -258,8 +260,6 @@ export function ConversationPage({
   const [statusOpen, setStatusOpen] = useState(false);
   const [actionsOpen, setActionsOpen] = useState(false);
   const [composerMaximized, setComposerMaximized] = useState(false);
-  const [historyEditConfirmationOpen, setHistoryEditConfirmationOpen] =
-    useState(false);
   const [skillMention, setSkillMention] = useState<SkillMentionQuery | null>(
     null,
   );
@@ -267,12 +267,7 @@ export function ConversationPage({
   const composerInputRef = useRef<HTMLTextAreaElement>(null);
   const turns = groupConversationTurns(active.turns ?? []);
   const isNewChat = !active.id;
-  const hasDraft = Boolean(
-    draft.trim() ||
-    draftImages.length ||
-    draftFiles.length ||
-    historyEdit?.target.attachmentCount,
-  );
+  const hasDraft = Boolean(draft.trim() || draftImages.length || draftFiles.length);
   const canQueue = busy && !isNewChat && hasDraft;
   const realtime = useRealtimeConversation({
     client,
@@ -285,11 +280,7 @@ export function ConversationPage({
   useEffect(() => {
     setComposerMaximized(false);
     setSkillMention(null);
-    setHistoryEditConfirmationOpen(false);
   }, [active.id, backendId]);
-  useEffect(() => {
-    setHistoryEditConfirmationOpen(false);
-  }, [historyEdit?.target.turnId]);
   useEffect(() => {
     if (!composerMaximized) return;
     composerInputRef.current?.focus({ preventScroll: true });
@@ -578,9 +569,19 @@ export function ConversationPage({
                     canEditHistory
                       ? () => {
                           onEditUserMessage!(target!);
-                          window.requestAnimationFrame(() => {
-                            composerInputRef.current?.focus({ preventScroll: true });
-                          });
+                        }
+                      : undefined
+                  }
+                  inlineEdit={
+                    historyEdit && target?.turnId === historyEdit.target.turnId
+                      ? {
+                          value: historyEdit.text,
+                          submitting: historyEdit.submitting,
+                          hasLaterTurns: historyEdit.target.hasLaterTurns,
+                          attachmentCount: historyEdit.target.attachmentCount,
+                          onChange: onHistoryEditTextChange,
+                          onCancel: onCancelHistoryEdit,
+                          onSubmit: onSubmitHistoryEdit,
                         }
                       : undefined
                   }
@@ -599,18 +600,9 @@ export function ConversationPage({
         }`}
         aria-busy={imageReading}
         onSubmit={(event) => {
-          if (!historyEdit) {
-            onSubmit(event);
-            setComposerMaximized(false);
-            return;
-          }
-          event.preventDefault();
-          if (historyEdit.submitting || !hasDraft) return;
-          if (historyEdit.target.hasLaterTurns) {
-            setHistoryEditConfirmationOpen(true);
-            return;
-          }
-          void onSubmitHistoryEdit();
+          if (historyEdit) event.preventDefault();
+          else onSubmit(event);
+          setComposerMaximized(false);
         }}
         onKeyDown={(event) => {
           if (event.key === "Escape" && composerMaximized) {
@@ -643,32 +635,6 @@ export function ConversationPage({
             onToggleMute={realtime.toggleMute}
             onStop={() => void realtime.stop()}
           />
-        )}
-        {historyEdit && (
-          <div
-            className="history-edit-banner"
-            role="status"
-            aria-label={t("正在编辑历史消息")}
-          >
-            <span>
-              <strong>{t("正在编辑历史消息")}</strong>
-              <small>
-                {historyEdit.target.attachmentCount > 0
-                  ? t("原消息的 {count} 个附件会保留", {
-                      count: historyEdit.target.attachmentCount,
-                    })
-                  : t("保存后将从这条消息重新执行")}
-              </small>
-            </span>
-            <button
-              type="button"
-              disabled={historyEdit.submitting}
-              aria-label={t("取消编辑历史消息")}
-              onClick={onCancelHistoryEdit}
-            >
-              {t("取消")}
-            </button>
-          </div>
         )}
         {(pendingSteerText || queuedFollowUps.length > 0) && (
           <div className="composer-follow-up-stack">
@@ -905,7 +871,9 @@ export function ConversationPage({
             ref={composerInputRef}
             aria-label={t("向 Codex 提问")}
             value={draft}
-            disabled={!interactive || steering || realtimeActive}
+            disabled={
+              !interactive || steering || realtimeActive || Boolean(historyEdit)
+            }
             aria-controls={skillMention ? "installed-mention-options" : undefined}
             aria-expanded={Boolean(skillMention)}
             aria-activedescendant={
@@ -962,6 +930,7 @@ export function ConversationPage({
           <button
             type="button"
             className="composer-size-button"
+            disabled={Boolean(historyEdit)}
             aria-label={
               composerMaximized ? t("还原输入框") : t("最大化输入框")
             }
@@ -971,22 +940,16 @@ export function ConversationPage({
             <AppIcon name={composerMaximized ? "minimize" : "maximize"} />
           </button>
           <button
-            type={historyEdit ? "submit" : busy && !canQueue ? "button" : "submit"}
+            type={busy && !canQueue ? "button" : "submit"}
             onClick={
-              !historyEdit && busy && !canQueue ? onInterrupt : undefined
+              busy && !canQueue ? onInterrupt : undefined
             }
             className={`send-button${
-              historyEdit?.submitting || (busy && !canQueue)
-                ? " send-button-running"
-                : ""
+              busy && !canQueue ? " send-button-running" : ""
             }`}
-            aria-busy={historyEdit?.submitting || (busy && !canQueue)}
+            aria-busy={busy && !canQueue}
             aria-label={
-              historyEdit
-                ? historyEdit.submitting
-                  ? t("正在保存并重发")
-                  : t("保存并重发")
-                : steering
+              steering
                 ? t("正在引导")
                 : canQueue
                   ? t("排队")
@@ -996,56 +959,20 @@ export function ConversationPage({
             }
             disabled={
               !interactive ||
-              historyEdit?.submitting ||
+              Boolean(historyEdit) ||
               steering ||
               (canQueue && imageReading) ||
               (!busy && (imageReading || !hasDraft))
             }
           >
-            {historyEdit?.submitting || steering ? (
+            {steering ? (
               <i className="action-spinner composer-steer-spinner" />
             ) : (
-              <AppIcon name={!historyEdit && busy && !canQueue ? "stop" : "send"} />
+              <AppIcon name={busy && !canQueue ? "stop" : "send"} />
             )}
           </button>
         </div>
       </form>
-      {historyEdit && (
-        <ActionSheet
-          open={historyEditConfirmationOpen}
-          title={t("删除后续对话并重发？")}
-          ariaLabel={t("删除后续对话并重发？")}
-          className="history-edit-confirmation"
-          onClose={() => setHistoryEditConfirmationOpen(false)}
-          closeDisabled={historyEdit.submitting}
-          closeOnBackdrop={!historyEdit.submitting}
-          footer={
-            <>
-              <button
-                type="button"
-                disabled={historyEdit.submitting}
-                onClick={() => setHistoryEditConfirmationOpen(false)}
-              >
-                {t("取消")}
-              </button>
-              <button
-                type="button"
-                className="danger"
-                disabled={historyEdit.submitting}
-                onClick={() => {
-                  setHistoryEditConfirmationOpen(false);
-                  void onSubmitHistoryEdit();
-                }}
-              >
-                {t("删除后续并重发")}
-              </button>
-            </>
-          }
-        >
-          <p>{t("目标消息及之后的对话将被移除，更早的历史会保留。")}</p>
-          <p>{t("文件修改、已执行命令和远端操作不会撤销。")}</p>
-        </ActionSheet>
-      )}
       <ConversationStatusSheet
         open={statusOpen}
         thread={active}

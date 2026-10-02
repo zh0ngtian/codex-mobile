@@ -33,8 +33,10 @@ function renderConversation(
     onEditUserMessage?: (target: Record<string, any>) => void;
     historyEdit?: {
       target: HistoricalMessageEditTarget;
+      text: string;
       submitting: boolean;
     } | null;
+    onHistoryEditTextChange?: (value: string) => void;
     onCancelHistoryEdit?: () => void;
     onSubmitHistoryEdit?: () => void;
     newChat?: boolean;
@@ -109,6 +111,7 @@ function renderConversation(
       onDraftChange={composer.onDraftChange ?? (() => undefined)}
       historyEdit={composer.historyEdit ?? null}
       onEditUserMessage={composer.onEditUserMessage}
+      onHistoryEditTextChange={composer.onHistoryEditTextChange ?? (() => undefined)}
       onCancelHistoryEdit={composer.onCancelHistoryEdit ?? (() => undefined)}
       onSubmitHistoryEdit={composer.onSubmitHistoryEdit ?? (() => undefined)}
       onInterrupt={() => undefined}
@@ -395,7 +398,7 @@ describe("会话详情历史分页", () => {
     ).toBeNull();
   });
 
-  it("编辑态保留附件提示并使用保存并重发提交", () => {
+  it("在原历史消息内编辑并保留底部草稿与附件提示", () => {
     const turns = [{
       id: "turn-edit",
       status: "completed",
@@ -411,25 +414,37 @@ describe("会话详情历史分页", () => {
     const target = createHistoricalMessageEditTarget(turns, "turn-edit")!;
     const onCancelHistoryEdit = vi.fn();
     const onSubmitHistoryEdit = vi.fn();
+    const onHistoryEditTextChange = vi.fn();
     const { container } = renderConversation(
       "exhausted",
       undefined,
       {
         turns,
-        draft: "修改后",
-        historyEdit: { target, submitting: false },
+        draft: "未发送的底部草稿",
+        historyEdit: { target, text: "修改前", submitting: false },
+        onHistoryEditTextChange,
         onCancelHistoryEdit,
         onSubmitHistoryEdit,
       },
     );
     const view = within(container);
 
+    const turn = container.querySelector(".turn-card") as HTMLElement;
+    const inlineEditor = within(turn).getByRole("textbox", {
+      name: "编辑历史消息内容",
+    });
+    expect((inlineEditor as HTMLTextAreaElement).value).toBe("修改前");
+    expect(turn.textContent).toContain("原消息的 1 个附件会保留");
     expect(
-      view.getByRole("status", { name: "正在编辑历史消息" }).textContent,
-    ).toContain("原消息的 1 个附件会保留");
-    fireEvent.click(view.getByRole("button", { name: "保存并重发" }));
+      (view.getByRole("textbox", { name: "向 Codex 提问" }) as HTMLTextAreaElement)
+        .value,
+    ).toBe("未发送的底部草稿");
+    expect(view.queryByRole("status", { name: "正在编辑历史消息" })).toBeNull();
+    fireEvent.change(inlineEditor, { target: { value: "修改后" } });
+    expect(onHistoryEditTextChange).toHaveBeenCalledWith("修改后");
+    fireEvent.click(within(turn).getByRole("button", { name: "保存并重发" }));
     expect(onSubmitHistoryEdit).toHaveBeenCalledOnce();
-    fireEvent.click(view.getByRole("button", { name: "取消编辑历史消息" }));
+    fireEvent.click(within(turn).getByRole("button", { name: "取消编辑历史消息" }));
     expect(onCancelHistoryEdit).toHaveBeenCalledOnce();
   });
 
@@ -453,26 +468,28 @@ describe("会话详情历史分页", () => {
       undefined,
       {
         turns,
-        draft: "修改后",
-        historyEdit: { target, submitting: false },
+        draft: "底部草稿",
+        historyEdit: { target, text: "修改后", submitting: false },
         onSubmitHistoryEdit,
       },
     );
     const view = within(container);
 
-    fireEvent.click(view.getByRole("button", { name: "保存并重发" }));
+    const turn = container.querySelector(".turn-card") as HTMLElement;
+    fireEvent.click(within(turn).getByRole("button", { name: "保存并重发" }));
     expect(onSubmitHistoryEdit).not.toHaveBeenCalled();
-    const dialog = within(document.body).getByRole("dialog", {
-      name: "删除后续对话并重发？",
+    const confirmation = within(turn).getByRole("status", {
+      name: "确认删除后续对话",
     });
-    expect(dialog.textContent).toContain("文件修改、已执行命令和远端操作不会撤销");
+    expect(confirmation.textContent).toContain("文件修改、已执行命令和远端操作不会撤销");
+    expect(within(document.body).queryByRole("dialog")).toBeNull();
     fireEvent.click(
-      within(dialog).getByRole("button", { name: "删除后续并重发" }),
+      within(confirmation).getByRole("button", { name: "删除后续并重发" }),
     );
     expect(onSubmitHistoryEdit).toHaveBeenCalledOnce();
     expect(
-      within(document.body).queryByRole("dialog", {
-        name: "删除后续对话并重发？",
+      within(turn).queryByRole("status", {
+        name: "确认删除后续对话",
       }),
     ).toBeNull();
   });

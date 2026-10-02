@@ -1,3 +1,5 @@
+import { t } from "../i18n";
+
 export const APP_UPDATE_API_URL =
   "http://192.168.123.79:8765/channels/codex-mobile/latest.json";
 export const APP_UPDATE_APK_URL =
@@ -9,6 +11,10 @@ export interface SemanticVersion {
   minor: number;
   patch: number;
 }
+export interface AppReleaseNote {
+  version: string;
+  notes: string;
+}
 export interface AppRelease {
   version: string;
   tag: string;
@@ -17,6 +23,7 @@ export interface AppRelease {
   downloadUrl: string;
   sha256: string;
   size: number;
+  releaseNotes: AppReleaseNote[];
 }
 
 export function parseSemanticVersion(input: string): SemanticVersion | null {
@@ -74,15 +81,51 @@ export function parseLanRelease(input: unknown): AppRelease | null {
     size <= 0
   ) return null;
 
+  const notes = stringValue(payload.notes).trim() || t("本次版本未提供更新说明。");
+  const releaseNotesByVersion = new Map<string, AppReleaseNote>();
+  const history = Array.isArray(payload.releases)
+    ? payload.releases
+    : Array.isArray(payload.releaseNotes)
+      ? payload.releaseNotes
+      : [];
+  history.forEach((entry) => {
+    if (!entry || typeof entry !== "object") return;
+    const candidate = entry as Record<string, unknown>;
+    const parsedVersion = parseSemanticVersion(stringValue(candidate.version));
+    const candidateNotes = stringValue(candidate.notes).trim();
+    if (!parsedVersion || !candidateNotes) return;
+    const candidateVersion = `${parsedVersion.major}.${parsedVersion.minor}.${parsedVersion.patch}`;
+    if (compareSemanticVersions(candidateVersion, version) > 0) return;
+    releaseNotesByVersion.set(candidateVersion, {
+      version: candidateVersion,
+      notes: candidateNotes,
+    });
+  });
+  releaseNotesByVersion.set(version, { version, notes });
+  const releaseNotes = [...releaseNotesByVersion.values()].sort((left, right) =>
+    compareSemanticVersions(left.version, right.version),
+  );
+
   return {
     version,
     tag: `v${version}`,
-    notes: stringValue(payload.notes).trim() || t("本次版本未提供更新说明。"),
+    notes,
     pageUrl,
     downloadUrl,
     sha256: sha256.toLowerCase(),
     size,
+    releaseNotes,
   };
+}
+
+export function releaseNotesForUpgrade(
+  release: AppRelease,
+  currentVersion: string,
+) {
+  if (!parseSemanticVersion(currentVersion)) return release.releaseNotes;
+  return release.releaseNotes.filter(
+    (entry) => compareSemanticVersions(entry.version, currentVersion) > 0,
+  );
 }
 
 interface ReleaseCheckerOptions {
@@ -140,4 +183,3 @@ export function createReleaseChecker({
     },
   };
 }
-import { t } from "../i18n";

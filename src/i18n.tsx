@@ -200,6 +200,7 @@ const english: Record<string, string> = {
   "展开更多": "Show more",
   "历史消息操作": "Message actions",
   "编辑历史消息": "Edit previous message",
+  "编辑历史消息内容": "Edit previous message content",
   "重发历史消息": "Resend previous message",
   "重发": "Resend",
   "正在编辑历史消息": "Editing previous message",
@@ -211,6 +212,7 @@ const english: Record<string, string> = {
   "保存并重发": "Save and resend",
   "正在保存并重发": "Saving and resending",
   "删除后续对话并重发？": "Delete later messages and resend?",
+  "确认删除后续对话": "Confirm deleting later messages",
   "删除后续并重发": "Delete later messages and resend",
   "目标消息及之后的对话将被移除，更早的历史会保留。":
     "The target message and all later conversation will be removed. Earlier history will be kept.",

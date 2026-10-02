@@ -1,6 +1,7 @@
 import type { AppUpdateState } from "./useAppUpdate";
 import { ActionSheet } from "../../ui/ActionSheet";
 import { t } from "../../i18n";
+import { releaseNotesForUpgrade } from "../../app-update/release";
 
 function statusLabel(state: AppUpdateState) {
   switch (state.phase) {
@@ -32,6 +33,10 @@ export function AppUpdateSheet({
     state.phase,
   );
   const label = statusLabel(state);
+  const releaseNotes = releaseNotesForUpgrade(
+    state.release,
+    state.currentVersion,
+  );
 
   return (
     <ActionSheet
@@ -68,7 +73,14 @@ export function AppUpdateSheet({
           <p className="app-update-current">
             {t("当前版本 v{version}", { version: state.currentVersion })}
           </p>
-          <div className="app-update-notes">{state.release.notes}</div>
+          <div className="app-update-release-list">
+            {releaseNotes.map((releaseNote) => (
+              <section key={releaseNote.version}>
+                <h3>v{releaseNote.version}</h3>
+                <div className="app-update-notes">{releaseNote.notes}</div>
+              </section>
+            ))}
+          </div>
           {label && (
             <div className="app-update-progress" aria-live="polite">
               <span>{label}</span>

@@ -5,7 +5,7 @@ import type { AppUpdateState } from "../../src/features/update/useAppUpdate";
 
 const available: AppUpdateState = {
   phase: "available",
-  currentVersion: "0.2.0",
+  currentVersion: "0.2.29",
   release: {
     version: "0.2.31",
     tag: "v0.2.31",
@@ -17,6 +17,10 @@ const available: AppUpdateState = {
     sha256:
       "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     size: 12_345,
+    releaseNotes: [
+      { version: "0.2.30", notes: "修复中间版本问题。" },
+      { version: "0.2.31", notes: "修复移动端布局\n\n增加自动更新。" },
+    ],
   },
 };
 
@@ -35,7 +39,9 @@ describe("App 更新 Sheet", () => {
     );
 
     expect(screen.getByRole("dialog", { name: "发现新版本" })).not.toBeNull();
-    expect(screen.getByText("v0.2.31")).not.toBeNull();
+    expect(screen.getByRole("heading", { name: "v0.2.30" })).not.toBeNull();
+    expect(screen.getByRole("heading", { name: "v0.2.31" })).not.toBeNull();
+    expect(screen.getByText(/修复中间版本问题/)).not.toBeNull();
     expect(screen.getByText(/增加自动更新/)).not.toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "立即更新" }));
     expect(onInstall).toHaveBeenCalledTimes(1);
