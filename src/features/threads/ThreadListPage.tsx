@@ -107,6 +107,7 @@ export function ThreadListPage({
   const [managedThread, setManagedThread] =
     useState<AggregatedThreadItem | null>(null);
   const [pendingThreadAction, setPendingThreadAction] = useState("");
+  const sidebarRef = useRef<HTMLElement | null>(null);
   const longPressRef = useRef<{
     timer: number;
     key: string;
@@ -137,6 +138,34 @@ export function ThreadListPage({
     }
   };
   useEffect(() => clearLongPress, []);
+  useEffect(() => {
+    const sidebar = sidebarRef.current;
+    if (!sidebar) return;
+    const preventNativeTextSelection = (event: Event) => {
+      const target =
+        event.target instanceof Element
+          ? event.target
+          : event.target instanceof Node
+            ? event.target.parentElement
+            : null;
+      if (
+        target?.closest(
+          "input, textarea, [contenteditable]:not([contenteditable='false'])",
+        )
+      ) {
+        return;
+      }
+      event.preventDefault();
+    };
+    sidebar.addEventListener("selectstart", preventNativeTextSelection, true);
+    return () => {
+      sidebar.removeEventListener(
+        "selectstart",
+        preventNativeTextSelection,
+        true,
+      );
+    };
+  }, []);
 
   const managementKey = (thread: AggregatedThreadItem) =>
     `${thread.backendId}:${thread.threadId}`;
@@ -241,7 +270,7 @@ export function ThreadListPage({
   };
 
   return (
-    <section className="thread-list-page">
+    <section className="thread-list-page" ref={sidebarRef}>
       <div className="thread-list-sticky">
         <header className="list-header">
           <div>

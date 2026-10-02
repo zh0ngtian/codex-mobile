@@ -117,6 +117,35 @@ function renderList(
 }
 
 describe("会话侧边栏列表", () => {
+  it("阻止非编辑区域触发原生文字选择并保留搜索框选字", () => {
+    const { container } = renderList("all");
+    const view = within(container);
+    const row = view.getByRole("button", { name: /置顶会话/ });
+    const heading = view.getByRole("heading", { name: "Codex Mobile" });
+    const search = view.getByRole("textbox", { name: "" });
+
+    const rowSelection = new Event("selectstart", {
+      bubbles: true,
+      cancelable: true,
+    });
+    const headingSelection = new Event("selectstart", {
+      bubbles: true,
+      cancelable: true,
+    });
+    const searchSelection = new Event("selectstart", {
+      bubbles: true,
+      cancelable: true,
+    });
+
+    row.dispatchEvent(rowSelection);
+    heading.dispatchEvent(headingSelection);
+    search.dispatchEvent(searchSelection);
+
+    expect(rowSelection.defaultPrevented).toBe(true);
+    expect(headingSelection.defaultPrevented).toBe(true);
+    expect(searchSelection.defaultPrevented).toBe(false);
+  });
+
   it("长按会话打开与会话内一致的管理菜单且不会误开会话", async () => {
     vi.useFakeTimers();
     const onOpenThread = vi.fn();
