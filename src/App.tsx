@@ -796,7 +796,12 @@ function BackendWorkspace({
         if (disposed) return;
         setConnection(status);
         if (status === "online") setError("");
-        if (connectionError) setError(connectionError);
+        if (
+          connectionError &&
+          connectionError !== t("无法连接设备网关")
+        ) {
+          setError(connectionError);
+        }
         if (status === "connecting") {
           clientRef.current = null;
         }
