@@ -250,6 +250,7 @@ interface WorkspaceCommand {
 interface BackendWorkspaceProps {
   backend: BackendConfig;
   conversationVisible: boolean;
+  foregroundRecoveryActive: boolean;
   backends: BackendConfig[];
   summaries: Record<string, BackendRuntimeSummary>;
   onSummaryChange: (summary: BackendRuntimeSummary) => void;
@@ -270,6 +271,7 @@ interface BackendWorkspaceProps {
 function BackendWorkspace({
   backend,
   conversationVisible,
+  foregroundRecoveryActive,
   backends,
   summaries,
   onSummaryChange,
@@ -370,6 +372,7 @@ function BackendWorkspace({
   const activeRef = useRef<AnyRecord | null>(null);
   const threadsRef = useRef<AnyRecord[]>([]);
   const conversationVisibleRef = useRef(conversationVisible);
+  const foregroundRecoveryActiveRef = useRef(foregroundRecoveryActive);
   const activeThreadTargetRef = useRef<string | null>(null);
   const openSequenceRef = useRef(0);
   const olderTurnsCursorRef = useRef<string | null>(null);
@@ -617,6 +620,10 @@ function BackendWorkspace({
   useEffect(() => {
     conversationVisibleRef.current = conversationVisible;
   }, [conversationVisible]);
+
+  useEffect(() => {
+    foregroundRecoveryActiveRef.current = foregroundRecoveryActive;
+  }, [foregroundRecoveryActive]);
 
   useEffect(() => {
     searchQueryRef.current = searchQuery;
@@ -1491,6 +1498,7 @@ function BackendWorkspace({
     connectionManagerRef.current = manager;
     manager.sync([backend]);
     const unbindConnectionRecovery = bindConnectionRecovery({
+      shouldRecover: () => foregroundRecoveryActiveRef.current,
       reconnect: () =>
         recoverBackendConnection(
           clientRef.current,
@@ -1502,7 +1510,6 @@ function BackendWorkspace({
           (client) =>
             reconcileBackendWorkspace(
               client,
-              loadThreads,
               reconcileActiveThread,
             ),
         ),
@@ -3545,11 +3552,19 @@ function ConfiguredApp({
     openSidebar,
     closeSidebar,
     refresh: refreshAllBackends,
+    refreshSilently: refreshAllBackendsSilently,
   } = useSidebarRefresh(resetListExpansion);
   const selectListBackend = useCallback((backendId: string) => {
     window.localStorage.setItem("codex-mobile:list-backend", backendId);
     setListBackendId(backendId);
   }, []);
+
+  useEffect(() => {
+    if (!sidebarOpen) return;
+    return bindConnectionRecovery({
+      reconnect: refreshAllBackendsSilently,
+    });
+  }, [refreshAllBackendsSilently, sidebarOpen]);
 
   useEffect(() => {
     let cancelled = false;
@@ -4061,6 +4076,7 @@ function ConfiguredApp({
         >
           <BackendWorkspace
             backend={backend}
+            foregroundRecoveryActive={backend.id === selectedBackend.id}
             conversationVisible={
               backend.id === selectedBackend.id && !sidebarOpen
             }

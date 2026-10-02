@@ -7,6 +7,8 @@ interface VisibilityTarget extends EventTarget {
 interface ConnectionRecoveryOptions {
   documentTarget?: VisibilityTarget;
   windowTarget?: EventTarget;
+  shouldRecover?: () => boolean;
+  cooldownMs?: number;
   reconnect: () => void | Promise<void>;
 }
 
@@ -84,8 +86,8 @@ export async function recoverBackendConnection(
   }
   try {
     await client.request(
-      "thread/list",
-      { limit: 1, sortKey: "updated_at" },
+      "thread/loaded/list",
+      { limit: 1 },
       { timeoutMs: 2_500 },
     );
   } catch {
@@ -102,29 +104,30 @@ export async function recoverBackendConnection(
 
 export async function reconcileBackendWorkspace(
   client: AppServerClient,
-  refreshThreads: (client: AppServerClient) => void | Promise<void>,
   refreshActive: (client: AppServerClient) => void | Promise<void>,
 ) {
-  const results = await Promise.allSettled([
-    refreshThreads(client),
-    refreshActive(client),
-  ]);
-  const failed = results.find(
-    (result): result is PromiseRejectedResult => result.status === "rejected",
-  );
-  if (failed) throw failed.reason;
+  await refreshActive(client);
 }
 
 export function bindConnectionRecovery({
   documentTarget = document,
   windowTarget = window,
+  shouldRecover = () => true,
+  cooldownMs = 3_000,
   reconnect,
 }: ConnectionRecoveryOptions) {
   let wasHidden = documentTarget.visibilityState === "hidden";
   let recoveryPromise: Promise<void> | null = null;
+  let lastRecoveryAt = Number.NEGATIVE_INFINITY;
 
   const requestRecovery = () => {
-    if (recoveryPromise) return;
+    const now = Date.now();
+    if (
+      !shouldRecover() ||
+      recoveryPromise ||
+      now - lastRecoveryAt < cooldownMs
+    ) return;
+    lastRecoveryAt = now;
     recoveryPromise = Promise.resolve(reconnect()).finally(() => {
       recoveryPromise = null;
     });

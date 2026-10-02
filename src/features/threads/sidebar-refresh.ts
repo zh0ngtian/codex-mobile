@@ -11,12 +11,16 @@ export function useSidebarRefresh(onRefresh: () => void) {
     setRefreshVersion((current) => current + 1);
   }, [onRefresh]);
 
+  const refreshSilently = useCallback(() => {
+    setSilentRefreshVersion((current) => current + 1);
+  }, []);
+
   const openSidebar = useCallback(() => {
     if (sidebarOpenRef.current) return;
     sidebarOpenRef.current = true;
     setSidebarOpen(true);
-    setSilentRefreshVersion((current) => current + 1);
-  }, []);
+    refreshSilently();
+  }, [refreshSilently]);
 
   const closeSidebar = useCallback(() => {
     if (!sidebarOpenRef.current) return;
@@ -31,5 +35,6 @@ export function useSidebarRefresh(onRefresh: () => void) {
     openSidebar,
     closeSidebar,
     refresh,
+    refreshSilently,
   };
 }

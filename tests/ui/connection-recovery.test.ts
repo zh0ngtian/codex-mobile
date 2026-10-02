@@ -162,31 +162,74 @@ describe("App 前后台连接恢复", () => {
     );
 
     expect(client.request).toHaveBeenCalledWith(
-      "thread/list",
-      { limit: 1, sortKey: "updated_at" },
+      "thread/loaded/list",
+      { limit: 1 },
       { timeoutMs: 2_500 },
     );
     expect(reconnect).not.toHaveBeenCalled();
     expect(reconcile).toHaveBeenCalledWith(client);
   });
 
-  it("工作区对账同时刷新服务端列表和当前会话且单项失败不阻塞另一项", async () => {
+  it("工作区恢复只对账当前会话，不刷新项目列表", async () => {
     const client = { request: vi.fn() };
-    const refreshThreads = vi.fn(async () => {
-      throw new Error("list failed");
-    });
     const refreshActive = vi.fn(async () => undefined);
 
-    await expect(
-      reconcileBackendWorkspace(
-        client as never,
-        refreshThreads,
-        refreshActive,
-      ),
-    ).rejects.toThrow("list failed");
+    await reconcileBackendWorkspace(client as never, refreshActive);
 
-    expect(refreshThreads).toHaveBeenCalledWith(client);
     expect(refreshActive).toHaveBeenCalledWith(client);
+  });
+
+  it("非当前设备跳过前台恢复，成为当前设备后再响应", () => {
+    const documentTarget = new FakeDocument();
+    const windowTarget = new EventTarget();
+    const reconnect = vi.fn();
+    let current = false;
+    const unbind = bindConnectionRecovery({
+      documentTarget,
+      windowTarget,
+      shouldRecover: () => current,
+      reconnect,
+    });
+
+    documentTarget.visibilityState = "hidden";
+    documentTarget.dispatchEvent(new Event("visibilitychange"));
+    documentTarget.visibilityState = "visible";
+    documentTarget.dispatchEvent(new Event("visibilitychange"));
+    expect(reconnect).not.toHaveBeenCalled();
+
+    current = true;
+    documentTarget.visibilityState = "hidden";
+    documentTarget.dispatchEvent(new Event("visibilitychange"));
+    documentTarget.visibilityState = "visible";
+    documentTarget.dispatchEvent(new Event("visibilitychange"));
+    expect(reconnect).toHaveBeenCalledOnce();
+    unbind();
+  });
+
+  it("恢复完成后的连续生命周期事件受冷却时间限制", async () => {
+    vi.useFakeTimers();
+    const documentTarget = new FakeDocument();
+    const windowTarget = new EventTarget();
+    const reconnect = vi.fn();
+    const unbind = bindConnectionRecovery({
+      documentTarget,
+      windowTarget,
+      reconnect,
+      cooldownMs: 3_000,
+    });
+
+    windowTarget.dispatchEvent(new Event("online"));
+    await Promise.resolve();
+    await Promise.resolve();
+    windowTarget.dispatchEvent(new Event("online"));
+    expect(reconnect).toHaveBeenCalledTimes(1);
+
+    vi.advanceTimersByTime(3_000);
+    windowTarget.dispatchEvent(new Event("online"));
+    expect(reconnect).toHaveBeenCalledTimes(2);
+
+    unbind();
+    vi.useRealTimers();
   });
 
   it("探测失败或当前没有客户端时立即重连", async () => {

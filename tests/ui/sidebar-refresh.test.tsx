@@ -25,6 +25,11 @@ describe("侧边栏刷新", () => {
     expect(onRefresh).toHaveBeenCalledTimes(1);
     expect(result.current.silentRefreshVersion).toBe(1);
     expect(result.current.refreshVersion).toBe(1);
+
+    act(() => result.current.refreshSilently());
+    expect(onRefresh).toHaveBeenCalledTimes(1);
+    expect(result.current.silentRefreshVersion).toBe(2);
+    expect(result.current.refreshVersion).toBe(1);
   });
 
   it("应用不再注册每分钟列表或时间刷新", () => {
