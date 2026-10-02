@@ -466,7 +466,7 @@ button, a, summary, [role="button"] { -webkit-tap-highlight-color: transparent; 
 .composer-size-button:active { background: #e5e5e5; color: #111; }
 .composer-size-button svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .composer-wrap-maximized .composer { min-height: 0; flex: 1 1 auto; border-radius: 24px; align-items: end; }
-.composer-wrap-maximized .composer textarea { align-self: stretch; height: 100%; max-height: none; padding-block: 16px; }
+.composer-wrap-maximized .composer textarea { align-self: stretch; height: 100%; max-height: none; border-radius: 18px; background: #fafafa; padding-block: 16px; }
 .composer-wrap-maximized .add-button, .composer-wrap-maximized .composer-size-button, .composer-wrap-maximized .send-button { margin-bottom: 4px; }
 .add-button, .send-button { border: 0; width: 42px; height: 42px; border-radius: 50%; background: transparent; display: grid; place-items: center; font-size: 32px; font-weight: 200; }
 .send-button { position: relative; overflow: hidden; background: #111; color: #fff; }
