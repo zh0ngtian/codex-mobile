@@ -286,6 +286,62 @@ describe("移动 App 内置前端流水线", () => {
     expect(new Set(privateAddresses)).toEqual(new Set(["192.168.123.79"]));
   });
 
+  it("Android 普通网页链接使用独立内置浏览器并提供参考图中的操作", () => {
+    const { workflow } = readWorkflow(
+      ".github/workflows/build-android.yml",
+    );
+    const hardenHost = readRunStep(
+      workflow,
+      "Harden and test embedded Android project",
+    );
+
+    expect(hardenHost).toContain("mobile/android/InAppBrowserActivity.kt");
+    expect(hardenHost).toContain("InAppBrowserActivity.createIntent");
+    expect(hardenHost).toContain('".InAppBrowserActivity"');
+    expect(hardenHost).toContain('f"{{{android}}}exported", "false"');
+    expect(hardenHost).toContain(
+      'fixedUrl.startsWith("http://", ignoreCase = true)',
+    );
+    expect(hardenHost).toContain(
+      'fixedUrl.startsWith("https://", ignoreCase = true)',
+    );
+    expect(hardenHost).toContain("required_drawables");
+
+    const browserSource = readProjectFile(
+      "mobile/android/InAppBrowserActivity.kt",
+    );
+    expect(browserSource).toContain(
+      "class InAppBrowserActivity : AppCompatActivity()",
+    );
+    expect(browserSource).toContain("MaterialToolbar");
+    expect(browserSource).toContain("onReceivedTitle");
+    expect(browserSource).toContain("在外部浏览器中打开");
+    expect(browserSource).toContain("重新加载");
+    expect(browserSource).toContain("桌面版网页");
+    expect(browserSource).toContain("全屏打开");
+    expect(browserSource).toContain("openInExternalBrowser");
+    expect(browserSource).toContain("toggleDesktopMode");
+    expect(browserSource).toContain("enterFullscreen");
+    expect(browserSource).toContain("webView.canGoBack()");
+    expect(browserSource).toContain(
+      "R.drawable.ic_in_app_browser_close",
+    );
+    expect(browserSource).toContain(
+      "R.drawable.ic_in_app_browser_more",
+    );
+    expect(browserSource).not.toContain("addJavascriptInterface");
+    expect(
+      readProjectFile(
+        "mobile/android/res/drawable/ic_in_app_browser_open_in_new.xml",
+      ),
+    ).toContain("Material Icons Round");
+    expect(
+      readProjectFile(
+        "mobile/android/res/drawable/ic_in_app_browser_desktop.xml",
+      ),
+    ).toContain("Material Icons Round");
+  });
+
   it("main 前端变更统一递增版本，并行构建双端后原子发布一个 Release", () => {
     const { source, workflow } = readWorkflow(
       ".github/workflows/build-android.yml",
@@ -298,6 +354,7 @@ describe("移动 App 内置前端流水线", () => {
         "bin/**",
         "public/**",
         "index.html",
+        "mobile/**",
         "package.json",
         "package-lock.json",
         "mobile-version-floor.json",

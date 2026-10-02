@@ -10,6 +10,7 @@ on:
       - "bin/**"
       - "public/**"
       - "index.html"
+      - "mobile/**"
       - "package.json"
       - "package-lock.json"
       - "mobile-version-floor.json"
@@ -445,6 +446,7 @@ jobs:
           import re
           import xml.etree.ElementTree as ET
           from pathlib import Path
+          from shutil import copyfile
 
           manifest_path = Path("app/src/main/AndroidManifest.xml")
           android = "http://schemas.android.com/apk/res/android"
@@ -488,6 +490,23 @@ jobs:
           application.set(f"{{{android}}}allowBackup", "false")
           application.attrib.pop(f"{{{android}}}dataExtractionRules", None)
           application.attrib.pop(f"{{{android}}}fullBackupContent", None)
+          for activity in list(application.findall("activity")):
+              if activity.get(f"{{{android}}}name") == ".InAppBrowserActivity":
+                  application.remove(activity)
+          browser_activity = ET.SubElement(application, "activity")
+          browser_activity.set(
+              f"{{{android}}}name",
+              ".InAppBrowserActivity",
+          )
+          browser_activity.set(f"{{{android}}}exported", "false")
+          browser_activity.set(
+              f"{{{android}}}theme",
+              "@style/Theme.PakePlus.NoActionBar",
+          )
+          browser_activity.set(
+              f"{{{android}}}windowSoftInputMode",
+              "adjustResize",
+          )
           for provider in list(application.findall("provider")):
               if provider.get(f"{{{android}}}authorities", "").endswith(
                   ".fileprovider"
@@ -563,6 +582,29 @@ jobs:
               "            insets",
           ))
           js_interface_anchor = "        // 判断是不是安卓客户端\n"
+          http_navigation_anchor = "\n".join((
+              '            if (fixedUrl.startsWith("http://") || fixedUrl.startsWith("https://")) {',
+              "                if (isDownloadableFileUrl(fixedUrl)) {",
+          ))
+          in_app_browser_navigation = "\n".join((
+              '            if (fixedUrl.startsWith("http://", ignoreCase = true) ||',
+              '                fixedUrl.startsWith("https://", ignoreCase = true)',
+              "            ) {",
+              "                if (isDownloadableFileUrl(fixedUrl)) {",
+          ))
+          web_navigation_anchor = "\n".join((
+              "                // 普通网页，交给 WebView 处理",
+              "                return false",
+          ))
+          open_in_app_browser = "\n".join((
+              "                startActivity(",
+              "                    InAppBrowserActivity.createIntent(",
+              "                        this@MainActivity,",
+              "                        fixedUrl,",
+              "                    )",
+              "                )",
+              "                return true",
+          ))
           safe_area_interface = "\n".join((
               "        @JavascriptInterface",
               "        fun safeAreaTopCssPx(): Double {",
@@ -908,6 +950,10 @@ jobs:
               raise SystemExit("Pinned PakePlus system-bar inset hook changed")
           if activity_source.count(js_interface_anchor) != 1:
               raise SystemExit("Pinned PakePlus JavaScript interface changed")
+          if activity_source.count(http_navigation_anchor) != 1:
+              raise SystemExit("Pinned PakePlus HTTP navigation hook changed")
+          if activity_source.count(web_navigation_anchor) != 1:
+              raise SystemExit("Pinned PakePlus WebView navigation behavior changed")
           if activity_source.count(interface_doc_anchor) != 1:
               raise SystemExit("Pinned PakePlus interface declaration changed")
           activity_path.write_text(
@@ -928,11 +974,48 @@ jobs:
                   1,
               )
               .replace(
+                  http_navigation_anchor,
+                  in_app_browser_navigation,
+                  1,
+              )
+              .replace(
+                  web_navigation_anchor,
+                  open_in_app_browser,
+                  1,
+              )
+              .replace(
                   interface_doc_anchor,
                   update_event_helper,
                   1,
               )
           )
+
+          browser_template = Path(
+              "../mobile/android/InAppBrowserActivity.kt"
+          )
+          if not browser_template.is_file():
+              raise SystemExit("Missing mobile/android/InAppBrowserActivity.kt")
+          browser_target = Path(
+              "app/src/main/java/com/app/pakeplus/InAppBrowserActivity.kt"
+          )
+          browser_target.write_text(browser_template.read_text())
+          browser_drawables = Path("../mobile/android/res/drawable")
+          drawable_target = Path("app/src/main/res/drawable")
+          required_drawables = {
+              "ic_in_app_browser_close.xml",
+              "ic_in_app_browser_desktop.xml",
+              "ic_in_app_browser_fullscreen.xml",
+              "ic_in_app_browser_more.xml",
+              "ic_in_app_browser_open_in_new.xml",
+              "ic_in_app_browser_refresh.xml",
+          }
+          if {path.name for path in browser_drawables.glob("*.xml")} != required_drawables:
+              raise SystemExit("In-app browser Material icon set is incomplete")
+          for drawable_name in required_drawables:
+              copyfile(
+                  browser_drawables / drawable_name,
+                  drawable_target / drawable_name,
+              )
 
           Path(
               "app/src/main/java/com/app/pakeplus/AppUpdater.kt"
@@ -1091,6 +1174,29 @@ jobs:
             app/src/main/assets/app.json > /dev/null
           grep -Fq 'enableEdgeToEdge()' \
             app/src/main/java/com/app/pakeplus/MainActivity.kt
+          grep -Fq 'InAppBrowserActivity.createIntent' \
+            app/src/main/java/com/app/pakeplus/MainActivity.kt
+          grep -Fq 'class InAppBrowserActivity' \
+            app/src/main/java/com/app/pakeplus/InAppBrowserActivity.kt
+          grep -Fq '在外部浏览器中打开' \
+            app/src/main/java/com/app/pakeplus/InAppBrowserActivity.kt
+          grep -Fq '桌面版网页' \
+            app/src/main/java/com/app/pakeplus/InAppBrowserActivity.kt
+          grep -Fq '全屏打开' \
+            app/src/main/java/com/app/pakeplus/InAppBrowserActivity.kt
+          test -s app/src/main/res/drawable/ic_in_app_browser_open_in_new.xml
+          test -s app/src/main/res/drawable/ic_in_app_browser_refresh.xml
+          test -s app/src/main/res/drawable/ic_in_app_browser_desktop.xml
+          test -s app/src/main/res/drawable/ic_in_app_browser_fullscreen.xml
+          if grep -Fq 'addJavascriptInterface' \
+            app/src/main/java/com/app/pakeplus/InAppBrowserActivity.kt; then
+            echo "::error::In-app browser must not expose the application JS bridge"
+            exit 1
+          fi
+          grep -Fq 'android:name=".InAppBrowserActivity"' \
+            app/src/main/AndroidManifest.xml
+          grep -Fq 'android:exported="false"' \
+            app/src/main/AndroidManifest.xml
           grep -Fq \
             'view.setPadding(systemBar.left, 0, systemBar.right, systemBar.bottom)' \
             app/src/main/java/com/app/pakeplus/MainActivity.kt
