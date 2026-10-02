@@ -258,6 +258,8 @@ describe("悬浮状态布局", () => {
       styles.match(/(?:^|\n):root\s*\{([^}]*)\}/)?.[1] ?? "";
     const nativeRule =
       styles.match(/(?:^|\n)html\.native-webview\s*\{([^}]*)\}/)?.[1] ?? "";
+    const threadListRule =
+      styles.match(/(?:^|\n)\.thread-list-page\s*\{([^}]*)\}/)?.[1] ?? "";
     const listActionsRule =
       styles.match(/(?:^|\n)\.list-actions\s*\{([^}]*)\}/)?.[1] ?? "";
     const timelineRule =
@@ -268,19 +270,24 @@ describe("悬浮状态布局", () => {
     expect(rootRule).toContain("--browser-edge-top: 8px");
     expect(rootRule).toContain("--browser-edge-bottom: 8px");
     expect(rootRule).toContain(
-      "--composer-bottom-offset: max(var(--browser-edge-bottom), 8px)",
+      "--input-bar-bottom-offset: max(var(--browser-edge-bottom), 8px)",
     );
     expect(nativeRule).toContain("--browser-edge-top: 0px");
     expect(nativeRule).toContain("--browser-edge-bottom: 0px");
     expect(styles).not.toContain(
       "@media (min-width: 721px) { :root { --browser-edge-top: 0px; --browser-edge-bottom: 0px; } }",
     );
-    expect(listActionsRule).toContain("inset: auto 0 var(--browser-edge-bottom)");
+    expect(threadListRule).toContain(
+      "padding: 0 16px calc(58px + var(--input-bar-bottom-offset))",
+    );
+    expect(listActionsRule).toContain(
+      "inset: auto 0 var(--input-bar-bottom-offset)",
+    );
     expect(listActionsRule).toContain("padding: 8px 16px 0");
     expect(timelineRule).toContain(
-      "padding: 22px 0 calc(105px + var(--composer-bottom-offset))",
+      "padding: 22px 0 calc(105px + var(--input-bar-bottom-offset))",
     );
-    expect(composerRule).toContain("bottom: var(--composer-bottom-offset)");
+    expect(composerRule).toContain("bottom: var(--input-bar-bottom-offset)");
     expect(composerRule).toContain("margin: 0");
     expect(composerRule).toContain("padding: 8px 10px 0");
   });

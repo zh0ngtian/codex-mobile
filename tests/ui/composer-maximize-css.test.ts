@@ -21,7 +21,7 @@ describe("输入框展开布局", () => {
 
     expect(wrapRule).toContain("height: min(52dvh, 520px)");
     expect(wrapRule).toContain(
-      "inset: auto auto var(--composer-bottom-offset) 50%",
+      "inset: auto auto var(--input-bar-bottom-offset) 50%",
     );
     expect(wrapRule).toContain("padding: 10px 4px");
     expect(wrapRule).toContain("border-radius: 24px 24px 0 0");
