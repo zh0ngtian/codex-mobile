@@ -1,0 +1,17 @@
+.message-timestamp {
+  display: block;
+  margin-top: 8px;
+  color: #858585;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.user-message-timestamp {
+  text-align: right;
+}
+
+.final-answer-timestamp {
+  text-align: left;
+}

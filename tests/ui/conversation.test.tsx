@@ -7,6 +7,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  formatMessageTimestamp,
   receivedItemCharacterCount,
   TurnCard,
 } from "../../src/features/conversation/Timeline";
@@ -44,6 +45,45 @@ afterEach(() => {
 });
 
 describe("移动端对话格式", () => {
+  it("用户消息与 final answer 显示精确到分钟的权威时间", () => {
+    const startedAt = new Date(2026, 9, 3, 9, 7, 35).getTime() / 1000;
+    const completedAt = new Date(2026, 9, 3, 9, 9, 4).getTime() / 1000;
+    const { container } = render(
+      <TurnCard
+        turn={{
+          id: "turn-timestamps",
+          status: "completed",
+          startedAt,
+          completedAt,
+          items: [
+            { id: "user", type: "userMessage", text: "记录发送时间" },
+            {
+              id: "final",
+              type: "agentMessage",
+              phase: "final_answer",
+              text: "记录完成时间",
+            },
+          ],
+        }}
+        client={null}
+      />,
+    );
+    const view = within(container);
+
+    expect(formatMessageTimestamp(startedAt)).toBe("2026-10-03 09:07");
+    expect(view.getByText("2026-10-03 09:07").tagName).toBe("TIME");
+    expect(view.getByText("2026-10-03 09:09").tagName).toBe("TIME");
+    expect(container.querySelectorAll(".message-timestamp")).toHaveLength(2);
+    expect(
+      container.querySelector(".user-message-timestamp")?.getAttribute("datetime"),
+    )
+      .toBe(new Date(startedAt * 1000).toISOString());
+    expect(
+      container.querySelector(".final-answer-timestamp")?.getAttribute("datetime"),
+    )
+      .toBe(new Date(completedAt * 1000).toISOString());
+  });
+
   it("按用户消息边界把连续 assistant-only turns 合并为逻辑回合", () => {
     const groups = groupConversationTurns([
       {

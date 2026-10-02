@@ -38,6 +38,7 @@ import {
   FileDiffSheet,
   ToolDetailSheet,
 } from "./sheets/ToolSheets";
+import "./timeline-timestamps.css";
 
 type AnyRecord = Record<string, any>;
 
@@ -56,6 +57,36 @@ type UserMessageActionProps = {
   inlineEdit?: InlineUserMessageEdit;
   userMessageActionsDisabled?: boolean;
 };
+
+export function formatMessageTimestamp(timestamp: number | null | undefined) {
+  if (typeof timestamp !== "number" || !Number.isFinite(timestamp)) return "";
+  const date = new Date(timestamp * 1000);
+  if (!Number.isFinite(date.getTime())) return "";
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return [
+    `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`,
+    `${pad(date.getHours())}:${pad(date.getMinutes())}`,
+  ].join(" ");
+}
+
+function MessageTimestamp({
+  timestamp,
+  className,
+}: {
+  timestamp?: number | null;
+  className: string;
+}) {
+  const label = formatMessageTimestamp(timestamp);
+  if (!label || timestamp == null) return null;
+  return (
+    <time
+      className={`message-timestamp ${className}`}
+      dateTime={new Date(timestamp * 1000).toISOString()}
+    >
+      {label}
+    </time>
+  );
+}
 
 function itemText(item: AnyRecord) {
   let text = "";
@@ -117,6 +148,7 @@ function UserBubble({
   item,
   client,
   backend,
+  timestamp,
   onEditUserMessage,
   inlineEdit,
   userMessageActionsDisabled = false,
@@ -124,6 +156,7 @@ function UserBubble({
   item: AnyRecord;
   client: AppServerClient | null;
   backend?: BackendConfig | null;
+  timestamp?: number | null;
 } & UserMessageActionProps) {
   const rawText = itemText(item);
   const heartbeat = parseAutomationHeartbeat(rawText);
@@ -259,6 +292,12 @@ function UserBubble({
           <Chevron direction={expanded ? "up" : "down"} />
         </button>
       )}
+      {!inlineEdit && (
+        <MessageTimestamp
+          timestamp={timestamp}
+          className="user-message-timestamp"
+        />
+      )}
     </div>
   );
   if (!heartbeat) {
@@ -358,12 +397,14 @@ function TimelineItem({
   item,
   client,
   backend,
+  timestamp,
   onEditUserMessage,
   userMessageActionsDisabled,
 }: {
   item: AnyRecord;
   client: AppServerClient | null;
   backend?: BackendConfig | null;
+  timestamp?: number | null;
 } & UserMessageActionProps) {
   const type = String(item.type ?? "");
   if (type === "contextCompaction") {
@@ -389,6 +430,7 @@ function TimelineItem({
         item={item}
         client={client}
         backend={backend}
+        timestamp={timestamp}
         onEditUserMessage={onEditUserMessage}
         userMessageActionsDisabled={userMessageActionsDisabled}
       />
@@ -426,6 +468,10 @@ function TimelineItem({
             {children}
           </RemoteFileLink>
         )}
+      />
+      <MessageTimestamp
+        timestamp={timestamp}
+        className="final-answer-timestamp"
       />
     </div>
   ) : null;
@@ -610,15 +656,17 @@ export function TurnCard({
     }
   }
   let copySegmentIndex = -1;
+  let finalSegmentIndex = -1;
   for (let index = completedSegments.length - 1; index >= 0; index -= 1) {
+    const segment = completedSegments[index];
     if (
-      completedSegments[index]?.some(
-        (item) => item.type === "agentMessage",
-      )
-    ) {
-      copySegmentIndex = index;
-      break;
+      copySegmentIndex < 0 &&
+      segment?.some((item) => item.type === "agentMessage")
+    ) copySegmentIndex = index;
+    if (finalSegmentIndex < 0 && splitCompletedTurnResponses(segment).final) {
+      finalSegmentIndex = index;
     }
+    if (copySegmentIndex >= 0 && finalSegmentIndex >= 0) break;
   }
   return (
     <section className="turn-card">
@@ -628,6 +676,7 @@ export function TurnCard({
             item={grouped.user}
             client={client}
             backend={backend}
+            timestamp={turn.startedAt}
             onEditUserMessage={
               grouped.running ? undefined : onEditUserMessage
             }
@@ -654,6 +703,9 @@ export function TurnCard({
               backend={backend}
               copyTarget={responsesRef}
               showCopy={index === copySegmentIndex}
+              completedAt={
+                index === finalSegmentIndex ? turn.completedAt : null
+              }
               durationLabel={
                 index === durationSegmentIndex ? durationLabel : null
               }
@@ -671,6 +723,7 @@ function CompletedResponseSegment({
   backend,
   copyTarget,
   showCopy,
+  completedAt,
   durationLabel,
 }: {
   items: AnyRecord[];
@@ -678,6 +731,7 @@ function CompletedResponseSegment({
   backend?: BackendConfig | null;
   copyTarget: RefObject<HTMLDivElement | null>;
   showCopy: boolean;
+  completedAt?: number | null;
   durationLabel: string | null;
 }) {
   const completed = splitCompletedTurnResponses(items);
@@ -750,6 +804,7 @@ function CompletedResponseSegment({
             item={completed.final}
             client={client}
             backend={backend}
+            timestamp={completedAt}
           />
           {showCopy && (
             <CopyButton
