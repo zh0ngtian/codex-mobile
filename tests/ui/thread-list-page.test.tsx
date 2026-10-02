@@ -177,7 +177,7 @@ describe("会话侧边栏列表", () => {
     expect(sticky?.querySelector(".backend-switcher")).not.toBeNull();
   });
 
-  it("全部视图把置顶独立展示且保留机器项目来源", () => {
+  it("全部视图把置顶独立展示且运行中会话只显示圆环", () => {
     const { container } = renderList("all");
     const view = within(container);
 
@@ -191,7 +191,10 @@ describe("会话侧边栏列表", () => {
     expect(projectB).not.toBeNull();
     expect(projectA.closest(".thread-source")?.querySelector(".status-dot")).toBeNull();
     expect(projectB.closest(".thread-source")?.querySelector(".status-dot")).toBeNull();
-    expect(view.getByLabelText("进行中")).not.toBeNull();
+    const running = view.getByLabelText("进行中");
+    expect(running.querySelector(".running-spinner")).not.toBeNull();
+    expect(running.querySelector(".running-dot")).toBeNull();
+    expect(running.querySelector(".thread-unread-dot")).toBeNull();
   });
 
   it("刷新期间只让右上角刷新按钮显示旋转状态", () => {

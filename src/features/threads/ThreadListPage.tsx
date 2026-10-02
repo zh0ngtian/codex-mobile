@@ -213,7 +213,6 @@ export function ThreadListPage({
       </span>
       {isThreadRunning(thread.status) ? (
         <span className="thread-running" aria-label={t("进行中")}>
-          <i className="running-dot" />
           <i className="running-spinner" />
         </span>
       ) : (

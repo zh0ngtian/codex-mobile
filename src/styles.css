@@ -163,7 +163,6 @@ button, a, summary, [role="button"] { -webkit-tap-highlight-color: transparent; 
 @keyframes thread-skeleton-pulse { 50% { opacity: .45; } }
 .thread-running { display: inline-flex; align-items: center; justify-content: flex-end; gap: 9px; min-width: 38px; overflow: visible !important; }
 .thread-running i { display: block; flex: 0 0 auto; }
-.running-dot { width: 8px; height: 8px; border-radius: 50%; background: #1976f3; }
 .running-spinner { --spinner-tail: rgba(25,118,243,.18); --spinner-mid: rgba(25,118,243,.58); --spinner-head: #1976f3; width: 17px; height: 17px; }
 @keyframes thread-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .backend-loading, .project-more .action-spinner, .running-spinner, .sidebar-refresh-spinner, .thread-row-skeleton i, .conversation-skeleton i { animation: none; } }
