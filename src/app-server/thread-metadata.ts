@@ -61,3 +61,26 @@ export function activeThreadAfterArchive(
 ) {
   return active?.id === archivedThreadId ? null : active;
 }
+
+export function applyThreadNameUpdate<T extends DisplayRecord>(
+  thread: T | null,
+  threadId: string,
+  threadName: string | null | undefined,
+): T | null {
+  if (!thread || String(thread.id ?? "") !== threadId) return thread;
+  if (threadName == null) {
+    const { name: _name, ...rest } = thread;
+    return rest as T;
+  }
+  return { ...thread, name: threadName };
+}
+
+export function applyThreadNameUpdateToList<T extends DisplayRecord>(
+  threads: T[],
+  threadId: string,
+  threadName: string | null | undefined,
+) {
+  return threads.map((thread) =>
+    applyThreadNameUpdate(thread, threadId, threadName) as T,
+  );
+}

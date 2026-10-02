@@ -277,6 +277,53 @@ describe("多设备界面", () => {
     window.confirm = originalConfirm;
   });
 
+  it("删除仍有未发送队列的设备前要求确认", () => {
+    const onChange = vi.fn();
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    const { container } = render(
+      <BackendManagerSheet
+        open
+        registry={{
+          version: 1,
+          selectedBackendId: "mini",
+          backends: [mini],
+        }}
+        summaries={{
+          mini: {
+            backendId: "mini",
+            connection: "online",
+            busy: false,
+            approvalCount: 0,
+            queuedCount: 2,
+            error: "",
+          },
+        }}
+        onChange={onChange}
+        onClose={() => undefined}
+      />,
+    );
+
+    fireEvent.click(
+      within(container).getByRole("button", { name: "暂停 Mac mini" }),
+    );
+    expect(confirm).toHaveBeenNthCalledWith(
+      1,
+      "Mac mini 仍有 2 条未发送队列，暂停会丢弃这些消息。确定暂停吗？",
+    );
+    expect(onChange).not.toHaveBeenCalled();
+
+    fireEvent.click(
+      within(container).getByRole("button", { name: "删除 Mac mini" }),
+    );
+
+    expect(confirm).toHaveBeenNthCalledWith(
+      2,
+      "Mac mini 仍有 2 条未发送队列，确定删除吗？",
+    );
+    expect(onChange).not.toHaveBeenCalled();
+    confirm.mockRestore();
+  });
+
   it("Android 容器在设备管理底部展示版本和检查更新入口", () => {
     const onCheckUpdate = vi.fn();
     render(

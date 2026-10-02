@@ -20,6 +20,8 @@ function renderConversation(
     queuedFollowUps?: Array<{
       id: string;
       text: string;
+      inputText?: string;
+      attachmentCount?: number;
       failed?: boolean;
     }>;
     accessMode?: "interactive" | "readOnly";
@@ -30,6 +32,8 @@ function renderConversation(
     historyText?: string;
     turns?: Array<Record<string, any>>;
     onDraftChange?: (value: string) => void;
+    onQueuedFollowUpEdit?: (id: string, text: string) => void;
+    onQueuedFollowUpCancel?: (id: string) => void;
     onEditUserMessage?: (target: Record<string, any>) => void;
     historyEdit?: {
       target: HistoricalMessageEditTarget;
@@ -116,6 +120,8 @@ function renderConversation(
       onSubmitHistoryEdit={composer.onSubmitHistoryEdit ?? (() => undefined)}
       onInterrupt={() => undefined}
       onQueuedFollowUpAction={() => undefined}
+      onQueuedFollowUpEdit={composer.onQueuedFollowUpEdit ?? (() => undefined)}
+      onQueuedFollowUpCancel={composer.onQueuedFollowUpCancel ?? (() => undefined)}
     />,
   );
   return { ...result, onLoadOlderTurns, onSubmit, onRetry };
@@ -324,6 +330,8 @@ describe("会话详情历史分页", () => {
         onDraftChange={() => undefined}
         onInterrupt={() => undefined}
         onQueuedFollowUpAction={onQueuedFollowUpAction}
+        onQueuedFollowUpEdit={() => undefined}
+        onQueuedFollowUpCancel={() => undefined}
       />,
     );
     const view = within(container);
@@ -333,6 +341,41 @@ describe("会话详情历史分页", () => {
     );
     fireEvent.click(view.getByRole("button", { name: "改为引导" }));
     expect(onQueuedFollowUpAction).toHaveBeenCalledWith("queue-1");
+  });
+
+  it("排队消息可以就地编辑并取消发送", () => {
+    const onQueuedFollowUpEdit = vi.fn();
+    const onQueuedFollowUpCancel = vi.fn();
+    const { container } = renderConversation(
+      "exhausted",
+      undefined,
+      {
+        busy: true,
+        queuedFollowUps: [{
+          id: "queue-1",
+          text: "原排队内容",
+          inputText: "原排队内容",
+          attachmentCount: 1,
+        }],
+        onQueuedFollowUpEdit,
+        onQueuedFollowUpCancel,
+      },
+    );
+    const view = within(container);
+
+    fireEvent.click(view.getByRole("button", { name: "编辑排队消息" }));
+    const editor = view.getByRole("textbox", { name: "编辑排队消息内容" });
+    expect((editor as HTMLTextAreaElement).value).toBe("原排队内容");
+    expect(view.getByText("1 个附件会保留")).not.toBeNull();
+    fireEvent.change(editor, { target: { value: "调整后的内容" } });
+    fireEvent.click(view.getByRole("button", { name: "保存排队消息" }));
+    expect(onQueuedFollowUpEdit).toHaveBeenCalledWith(
+      "queue-1",
+      "调整后的内容",
+    );
+
+    fireEvent.click(view.getByRole("button", { name: "取消排队消息" }));
+    expect(onQueuedFollowUpCancel).toHaveBeenCalledWith("queue-1");
   });
 
   it("空闲已有会话且输入为空时隐藏实时语音入口", () => {

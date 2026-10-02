@@ -19,5 +19,6 @@ export interface BackendRuntimeSummary {
   connection: "connecting" | "online" | "offline";
   busy: boolean;
   approvalCount: number;
+  queuedCount?: number;
   error: string;
 }

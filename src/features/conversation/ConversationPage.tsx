@@ -56,6 +56,8 @@ export type ConversationLoadState = "idle" | "loading" | "ready" | "error";
 export type QueuedFollowUpPreview = {
   id: string;
   text: string;
+  inputText?: string;
+  attachmentCount?: number;
   failed?: boolean;
 };
 
@@ -191,6 +193,8 @@ export function ConversationPage({
   onSubmitHistoryEdit = () => undefined,
   onInterrupt,
   onQueuedFollowUpAction,
+  onQueuedFollowUpEdit = () => undefined,
+  onQueuedFollowUpCancel = () => undefined,
 }: {
   active: DisplayRecord;
   backendId: string;
@@ -253,6 +257,8 @@ export function ConversationPage({
   onSubmitHistoryEdit?: () => void | Promise<void>;
   onInterrupt: () => void | Promise<void>;
   onQueuedFollowUpAction: (id: string) => void | Promise<void>;
+  onQueuedFollowUpEdit?: (id: string, text: string) => void;
+  onQueuedFollowUpCancel?: (id: string) => void;
 }) {
   const selectedBackend =
     backends.find((backend) => backend.id === backendId) ?? null;
@@ -260,6 +266,10 @@ export function ConversationPage({
   const [statusOpen, setStatusOpen] = useState(false);
   const [actionsOpen, setActionsOpen] = useState(false);
   const [composerMaximized, setComposerMaximized] = useState(false);
+  const [queuedFollowUpEdit, setQueuedFollowUpEdit] = useState<{
+    id: string;
+    text: string;
+  } | null>(null);
   const [skillMention, setSkillMention] = useState<SkillMentionQuery | null>(
     null,
   );
@@ -280,7 +290,16 @@ export function ConversationPage({
   useEffect(() => {
     setComposerMaximized(false);
     setSkillMention(null);
+    setQueuedFollowUpEdit(null);
   }, [active.id, backendId]);
+  useEffect(() => {
+    if (
+      queuedFollowUpEdit &&
+      !queuedFollowUps.some((item) => item.id === queuedFollowUpEdit.id)
+    ) {
+      setQueuedFollowUpEdit(null);
+    }
+  }, [queuedFollowUpEdit, queuedFollowUps]);
   useEffect(() => {
     if (!composerMaximized) return;
     composerInputRef.current?.focus({ preventScroll: true });
@@ -657,22 +676,100 @@ export function ConversationPage({
                 {queuedFollowUps.map((followUp) => {
                   const canSteerFollowUp = busy && steerable;
                   const canRetryFollowUp = !busy && followUp.failed;
+                  const editing = queuedFollowUpEdit?.id === followUp.id;
+                  const editedText = editing ? queuedFollowUpEdit.text.trim() : "";
+                  const canSaveEdit = Boolean(
+                    editedText || (followUp.attachmentCount ?? 0) > 0,
+                  );
                   return (
-                    <div className="queued-follow-up" key={followUp.id}>
-                      <span title={followUp.text}>{followUp.text}</span>
-                      <button
-                        type="button"
-                        disabled={
-                          steering || (!canSteerFollowUp && !canRetryFollowUp)
-                        }
-                        onClick={() => onQueuedFollowUpAction(followUp.id)}
-                      >
-                        {canSteerFollowUp
-                          ? t("改为引导")
-                          : canRetryFollowUp
-                            ? t("重试")
-                            : t("排队中")}
-                      </button>
+                    <div
+                      className={`queued-follow-up${editing ? " editing" : ""}`}
+                      key={followUp.id}
+                    >
+                      {editing ? (
+                        <>
+                          <textarea
+                            aria-label={t("编辑排队消息内容")}
+                            value={queuedFollowUpEdit.text}
+                            disabled={steering}
+                            rows={2}
+                            onChange={(event) =>
+                              setQueuedFollowUpEdit({
+                                id: followUp.id,
+                                text: event.currentTarget.value,
+                              })
+                            }
+                          />
+                          {(followUp.attachmentCount ?? 0) > 0 && (
+                            <small>
+                              {t("{count} 个附件会保留", {
+                                count: followUp.attachmentCount ?? 0,
+                              })}
+                            </small>
+                          )}
+                          <div className="queued-follow-up-actions">
+                            <button
+                              type="button"
+                              aria-label={t("取消编辑排队消息")}
+                              disabled={steering}
+                              onClick={() => setQueuedFollowUpEdit(null)}
+                            >
+                              {t("取消")}
+                            </button>
+                            <button
+                              type="button"
+                              aria-label={t("保存排队消息")}
+                              disabled={steering || !canSaveEdit}
+                              onClick={() => {
+                                onQueuedFollowUpEdit(followUp.id, editedText);
+                                setQueuedFollowUpEdit(null);
+                              }}
+                            >
+                              {t("保存")}
+                            </button>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <span title={followUp.text}>{followUp.text}</span>
+                          <div className="queued-follow-up-actions">
+                            <button
+                              type="button"
+                              aria-label={t("编辑排队消息")}
+                              disabled={steering}
+                              onClick={() =>
+                                setQueuedFollowUpEdit({
+                                  id: followUp.id,
+                                  text: followUp.inputText ?? followUp.text,
+                                })
+                              }
+                            >
+                              {t("编辑")}
+                            </button>
+                            <button
+                              type="button"
+                              aria-label={t("取消排队消息")}
+                              disabled={steering}
+                              onClick={() => onQueuedFollowUpCancel(followUp.id)}
+                            >
+                              {t("取消")}
+                            </button>
+                            <button
+                              type="button"
+                              disabled={
+                                steering || (!canSteerFollowUp && !canRetryFollowUp)
+                              }
+                              onClick={() => onQueuedFollowUpAction(followUp.id)}
+                            >
+                              {canSteerFollowUp
+                                ? t("改为引导")
+                                : canRetryFollowUp
+                                  ? t("重试")
+                                  : t("排队中")}
+                            </button>
+                          </div>
+                        </>
+                      )}
                     </div>
                   );
                 })}

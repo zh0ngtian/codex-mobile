@@ -1934,7 +1934,7 @@ test("会话加载中返回并打开其他会话后忽略旧详情响应", async
   await expect(page.getByText("不应重新出现", { exact: true })).toHaveCount(0);
 });
 
-test("运行中的追加消息默认排队并可改为引导", async ({ page }) => {
+test("排队消息可编辑取消、跨会话保留并同步服务端标题", async ({ page }) => {
   await page.addInitScript(() => {
     localStorage.setItem("codex-mobile:language", "zh-CN");
     (window as any).__followUpRequests = [];
@@ -1969,6 +1969,16 @@ test("运行中的追加消息默认排队并可改为引导", async ({ page }) 
             }),
           );
         };
+        (window as any).__renameRunningThread = (threadName: string | null) => {
+          this.dispatchEvent(
+            new MessageEvent("message", {
+              data: JSON.stringify({
+                method: "thread/name/updated",
+                params: { threadId: "running-thread", threadName },
+              }),
+            }),
+          );
+        };
         setTimeout(() => {
           this.readyState = FollowUpSocket.OPEN;
           this.dispatchEvent(new Event("open"));
@@ -1981,6 +1991,35 @@ test("运行中的追加消息默认排队并可改为引导", async ({ page }) 
           (window as any).__followUpRequests.push(request);
         }
         if (request.id == null) return;
+        const resumedThread = request.params?.threadId === "other-thread"
+          ? {
+              thread: {
+                id: "other-thread",
+                preview: "其他会话",
+                cwd: "/tmp/project",
+                turns: [],
+              },
+            }
+          : {
+              thread: {
+                id: "running-thread",
+                preview: "追加消息队列",
+                cwd: "/tmp/project",
+                turns: [
+                  {
+                    id: "running-turn",
+                    status: "inProgress",
+                    items: [
+                      {
+                        id: "running-user",
+                        type: "userMessage",
+                        text: "执行当前任务",
+                      },
+                    ],
+                  },
+                ],
+              },
+            };
         const responses: Record<string, unknown> = {
           initialize: {},
           "model/list": {
@@ -2007,28 +2046,16 @@ test("运行中的追加消息默认排队并可改为引导", async ({ page }) 
                 updatedAt: Math.floor(Date.now() / 1000),
                 status: { type: "active", activeFlags: [] },
               },
+              {
+                id: "other-thread",
+                preview: "其他会话",
+                cwd: "/tmp/project",
+                updatedAt: Math.floor(Date.now() / 1000) - 1,
+                status: { type: "idle", activeFlags: [] },
+              },
             ],
           },
-          "thread/resume": {
-            thread: {
-              id: "running-thread",
-              preview: "追加消息队列",
-              cwd: "/tmp/project",
-              turns: [
-                {
-                  id: "running-turn",
-                  status: "inProgress",
-                  items: [
-                    {
-                      id: "running-user",
-                      type: "userMessage",
-                      text: "执行当前任务",
-                    },
-                  ],
-                },
-              ],
-            },
-          },
+          "thread/resume": resumedThread,
           "turn/start": {
             turn: {
               id: "queued-turn",
@@ -2071,6 +2098,31 @@ test("运行中的追加消息默认排队并可改为引导", async ({ page }) 
     await page.evaluate(() => (window as any).__followUpRequests),
   ).toEqual([]);
 
+  await page.getByRole("button", { name: "打开会话列表" }).click();
+  await page.getByRole("button", { name: /其他会话/ }).first().click();
+  await expect(page.getByRole("status", { name: "排队消息" })).toHaveCount(0);
+  await page.getByRole("button", { name: "打开会话列表" }).click();
+  await page.getByRole("button", { name: /追加消息队列/ }).first().click();
+  await expect(page.getByRole("status", { name: "排队消息" }))
+    .toContainText("等当前任务完成后继续");
+
+  await page.getByRole("button", { name: "编辑排队消息" }).click();
+  await page.getByRole("textbox", { name: "编辑排队消息内容" })
+    .fill("修改后的排队内容");
+  await page.getByRole("button", { name: "保存排队消息" }).click();
+  await expect(page.getByRole("status", { name: "排队消息" }))
+    .toContainText("修改后的排队内容");
+
+  await page.evaluate(() =>
+    (window as any).__renameRunningThread("服务端实时名称")
+  );
+  await expect(page.locator(".thread-heading strong"))
+    .toHaveText("服务端实时名称");
+  await page.getByRole("button", { name: "打开会话列表" }).click();
+  await expect(page.getByRole("button", { name: /服务端实时名称/ }).first())
+    .toBeVisible();
+  await page.getByRole("button", { name: /服务端实时名称/ }).first().click();
+
   await page.evaluate(() => (window as any).__completeRunningTurn());
   await expect
     .poll(() =>
@@ -2081,6 +2133,23 @@ test("运行中的追加消息默认排队并可改为引导", async ({ page }) 
       ),
     )
     .toHaveLength(1);
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        (window as any).__followUpRequests.find(
+          (request: any) => request.method === "turn/start",
+        )?.params.input,
+      ),
+    )
+    .toEqual([
+      { type: "text", text: "修改后的排队内容", text_elements: [] },
+    ]);
+  await expect(page.getByRole("status", { name: "排队消息" }))
+    .toHaveCount(0);
+
+  await composer.fill("这条消息将取消");
+  await page.getByRole("button", { name: "排队" }).click();
+  await page.getByRole("button", { name: "取消排队消息" }).click();
   await expect(page.getByRole("status", { name: "排队消息" }))
     .toHaveCount(0);
 

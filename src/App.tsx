@@ -61,9 +61,18 @@ import {
 } from "./app-server/turn-steering";
 import {
   activeThreadAfterArchive,
+  applyThreadNameUpdate,
+  applyThreadNameUpdateToList,
   duplicateThread,
   setThreadPinned,
 } from "./app-server/thread-metadata";
+import {
+  hasQueuedFollowUpsForThread,
+  queuedFollowUpsForThread,
+  rebindQueuedFollowUpsToContext,
+  removeQueuedFollowUp,
+  updateQueuedFollowUpText,
+} from "./app-server/queued-follow-ups";
 import {
   ConversationPage,
   type ConversationLoadState,
@@ -479,6 +488,16 @@ function BackendWorkspace({
     [],
   );
 
+  useEffect(() => {
+    if (!queuedFollowUps.length) return;
+    const protectQueuedMessages = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", protectQueuedMessages);
+    return () => window.removeEventListener("beforeunload", protectQueuedMessages);
+  }, [queuedFollowUps.length]);
+
   async function loadThreads(client = clientRef.current) {
     if (!client || client !== clientRef.current) return;
     try {
@@ -601,6 +620,7 @@ function BackendWorkspace({
       connection,
       busy: busy || hasRunningThread,
       approvalCount: requests.length,
+      queuedCount: queuedFollowUps.length,
       error,
     });
   }, [
@@ -609,6 +629,7 @@ function BackendWorkspace({
     connection,
     error,
     onSummaryChange,
+    queuedFollowUps.length,
     requests.length,
     threads,
   ]);
@@ -707,6 +728,29 @@ function BackendWorkspace({
               true,
             );
             void loadPluginsForCwd(client, activeRef.current?.cwd ?? null);
+          }
+          if (message.method === "thread/name/updated" && params.threadId) {
+            const threadId = String(params.threadId);
+            const threadName =
+              typeof params.threadName === "string" ? params.threadName : null;
+            setThreads((current) => {
+              const next = applyThreadNameUpdateToList(
+                current,
+                threadId,
+                threadName,
+              );
+              threadsRef.current = next;
+              return next;
+            });
+            setActive((current) => {
+              const next = applyThreadNameUpdate(
+                current,
+                threadId,
+                threadName,
+              );
+              activeRef.current = next;
+              return next;
+            });
           }
           if (
             params.threadId &&
@@ -1192,12 +1236,28 @@ function BackendWorkspace({
     setQueuedFollowUps(next);
   }
 
-  function clearQueuedFollowUps() {
-    queuedFollowUpsRef.current.forEach((followUp) => {
-      followUp.files.forEach((file) => URL.revokeObjectURL(file.previewUrl));
-    });
-    replaceQueuedFollowUps([]);
+  function discardQueuedFollowUpsForThread(threadId: string) {
+    queuedFollowUpsForThread(queuedFollowUpsRef.current, threadId).forEach(
+      (followUp) => {
+        followUp.files.forEach((file) => URL.revokeObjectURL(file.previewUrl));
+      },
+    );
+    replaceQueuedFollowUps(
+      queuedFollowUpsRef.current.filter(
+        (followUp) => followUp.threadId !== threadId,
+      ),
+    );
     queuedFollowUpDispatchingRef.current = false;
+  }
+
+  function rebindQueuedThread(threadId: string) {
+    replaceQueuedFollowUps(
+      rebindQueuedFollowUpsToContext(
+        queuedFollowUpsRef.current,
+        threadId,
+        draftContextGenerationRef.current,
+      ),
+    );
   }
 
   function discardHistoricalMessageEdit() {
@@ -1208,7 +1268,6 @@ function BackendWorkspace({
     draftContextGenerationRef.current += 1;
     invalidateImageReads();
     setPendingSteerMessage(null);
-    clearQueuedFollowUps();
     discardHistoricalMessageEdit();
   }
 
@@ -1375,6 +1434,7 @@ function BackendWorkspace({
     const sequence = ++openSequenceRef.current;
     markThreadRead(String(thread.id));
     resetDraftContext();
+    rebindQueuedThread(String(thread.id));
     setDraft("");
     setDraftImages([]);
     setDraftFiles((current) => {
@@ -1673,6 +1733,7 @@ function BackendWorkspace({
         draftContext,
         inputText: text,
         text: followUpPreviewText(text, pendingImages, pendingFiles),
+        attachmentCount: pendingImages.length + pendingFiles.length,
         images: pendingImages,
         files: pendingFiles,
         skills: pendingSkills,
@@ -2053,8 +2114,52 @@ function BackendWorkspace({
     }
   }
 
+  function editQueuedFollowUp(id: string, inputText: string) {
+    const followUp = queuedFollowUpsRef.current.find((entry) => entry.id === id);
+    if (!followUp) return;
+    const text = inputText.trim();
+    if (!text && !followUp.images.length && !followUp.files.length) return;
+    const referencedSkills = skillsReferencedInText(
+      text,
+      skillCatalog.cwd === (activeRef.current?.cwd ?? null)
+        ? skillCatalog.skills
+        : [],
+    );
+    const referencedPlugins = pluginsReferencedInText(
+      text,
+      pluginCatalog.cwd === (activeRef.current?.cwd ?? null)
+        ? pluginCatalog.plugins
+        : [],
+    );
+    const updated = updateQueuedFollowUpText(
+      queuedFollowUpsRef.current,
+      id,
+      text,
+      followUpPreviewText(text, followUp.images, followUp.files),
+    ).map((entry) =>
+      entry.id === id
+        ? {
+            ...entry,
+            skills: referencedSkills,
+            plugins: referencedPlugins,
+          }
+        : entry,
+    );
+    replaceQueuedFollowUps(updated);
+  }
+
+  function cancelQueuedFollowUp(id: string) {
+    const followUp = queuedFollowUpsRef.current.find((entry) => entry.id === id);
+    if (!followUp) return;
+    followUp.files.forEach((file) => URL.revokeObjectURL(file.previewUrl));
+    replaceQueuedFollowUps(removeQueuedFollowUp(queuedFollowUpsRef.current, id));
+  }
+
   useEffect(() => {
-    const followUp = queuedFollowUps[0];
+    const activeThreadId = String(active?.id ?? "");
+    const followUp = queuedFollowUps.find(
+      (entry) => entry.threadId === activeThreadId,
+    );
     if (
       busy ||
       steering ||
@@ -2064,7 +2169,7 @@ function BackendWorkspace({
       connection !== "online" ||
       conversationLoadState !== "ready" ||
       activeThreadAccessMode !== "interactive" ||
-      String(active?.id ?? "") !== followUp.threadId ||
+      activeThreadId !== followUp.threadId ||
       !clientRef.current
     ) {
       return;
@@ -2204,6 +2309,22 @@ function BackendWorkspace({
       setError(t("设备尚未连接，请稍后重试"));
       return false;
     }
+    if (
+      action === "archive" &&
+      hasQueuedFollowUpsForThread(queuedFollowUpsRef.current, threadId)
+    ) {
+      const count = queuedFollowUpsForThread(
+        queuedFollowUpsRef.current,
+        threadId,
+      ).length;
+      if (
+        !window.confirm(
+          t("此会话仍有 {count} 条排队消息，归档会丢弃这些消息。确定归档吗？", {
+            count,
+          }),
+        )
+      ) return false;
+    }
     setPendingAction(action);
     setError("");
     try {
@@ -2286,6 +2407,7 @@ function BackendWorkspace({
         return true;
       }
       await client.request("thread/archive", { threadId });
+      discardQueuedFollowUpsForThread(threadId);
       markThreadRead(threadId);
       writeThreadPinned(localStorage, backend.id, threadId, false);
       setThreads((current) =>
@@ -2425,10 +2547,25 @@ function BackendWorkspace({
       pendingAction ||
       activeThreadAccessMode !== "interactive"
     ) return false;
+    const threadId = String(thread.id);
+    if (hasQueuedFollowUpsForThread(queuedFollowUpsRef.current, threadId)) {
+      const count = queuedFollowUpsForThread(
+        queuedFollowUpsRef.current,
+        threadId,
+      ).length;
+      if (
+        !window.confirm(
+          t("此会话仍有 {count} 条排队消息，归档会丢弃这些消息。确定归档吗？", {
+            count,
+          }),
+        )
+      ) return false;
+    }
     setPendingAction("archive");
     setError("");
     try {
       await client.request("thread/archive", { threadId: thread.id });
+      discardQueuedFollowUpsForThread(threadId);
       markThreadRead(String(thread.id));
       writeThreadPinned(localStorage, backend.id, String(thread.id), false);
       setThreads((current) =>
@@ -2804,6 +2941,8 @@ function BackendWorkspace({
           onSubmitHistoryEdit={submitHistoricalMessageEdit}
           onInterrupt={interrupt}
           onQueuedFollowUpAction={actOnQueuedFollowUp}
+          onQueuedFollowUpEdit={editQueuedFollowUp}
+          onQueuedFollowUpCancel={cancelQueuedFollowUp}
         />
       ) : (
         <section className="conversation conversation-empty">
@@ -3134,6 +3273,7 @@ function ConfiguredApp({
         previous.connection === summary.connection &&
         previous.busy === summary.busy &&
         previous.approvalCount === summary.approvalCount &&
+        previous.queuedCount === summary.queuedCount &&
         previous.error === summary.error
       ) {
         return current;

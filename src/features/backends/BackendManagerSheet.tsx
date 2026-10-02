@@ -174,16 +174,40 @@ export function BackendManagerSheet({
   const deleteBackend = (backend: BackendConfig) => {
     const summary = summaries[backend.id];
     if (
-      (summary?.busy || summary?.approvalCount) &&
+      (summary?.busy || summary?.approvalCount || summary?.queuedCount) &&
       !window.confirm(
-        t("{name} 仍有运行任务或待审批请求，确定删除吗？", {
-          name: backend.name,
-        }),
+        summary?.queuedCount
+          ? t("{name} 仍有 {count} 条未发送队列，确定删除吗？", {
+              name: backend.name,
+              count: summary.queuedCount,
+            })
+          : t("{name} 仍有运行任务或待审批请求，确定删除吗？", {
+              name: backend.name,
+            }),
       )
     ) {
       return;
     }
     updateRegistry(() => removeBackend(registry, backend.id));
+  };
+
+  const toggleBackend = (backend: BackendConfig) => {
+    const queuedCount = summaries[backend.id]?.queuedCount ?? 0;
+    if (
+      backend.enabled &&
+      queuedCount > 0 &&
+      !window.confirm(
+        t("{name} 仍有 {count} 条未发送队列，暂停会丢弃这些消息。确定暂停吗？", {
+          name: backend.name,
+          count: queuedCount,
+        }),
+      )
+    ) {
+      return;
+    }
+    updateRegistry(() =>
+      setBackendEnabled(registry, backend.id, !backend.enabled),
+    );
   };
 
   return (
@@ -330,15 +354,7 @@ export function BackendManagerSheet({
                           backend.enabled ? "暂停 {name}" : "启用 {name}",
                           { name: backend.name },
                         )}
-                        onClick={() =>
-                          updateRegistry(() =>
-                            setBackendEnabled(
-                              registry,
-                              backend.id,
-                              !backend.enabled,
-                            ),
-                          )
-                        }
+                        onClick={() => toggleBackend(backend)}
                       >
                         {backend.enabled ? t("暂停") : t("启用")}
                       </button>

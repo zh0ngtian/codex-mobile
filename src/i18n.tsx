@@ -56,6 +56,10 @@ const english: Record<string, string> = {
   "设备身份响应无效": "The device identity response is invalid",
   "{name} 仍有运行任务或待审批请求，确定删除吗？":
     "{name} still has running tasks or pending approvals. Delete it anyway?",
+  "{name} 仍有 {count} 条未发送队列，确定删除吗？":
+    "{name} still has {count} unsent queued message(s). Delete it anyway?",
+  "{name} 仍有 {count} 条未发送队列，暂停会丢弃这些消息。确定暂停吗？":
+    "{name} still has {count} unsent queued message(s). Pausing will discard them. Pause anyway?",
   "进行中": "Running",
   "未读": "Unread",
   "已断开": "Disconnected",
@@ -143,6 +147,15 @@ const english: Record<string, string> = {
   "排队中": "Queued",
   "排队": "Queue",
   "改为引导": "Steer instead",
+  "编辑排队消息": "Edit queued message",
+  "编辑排队消息内容": "Edit queued message content",
+  "取消编辑排队消息": "Cancel editing queued message",
+  "保存排队消息": "Save queued message",
+  "取消排队消息": "Cancel queued message",
+  "保存": "Save",
+  "{count} 个附件会保留": "{count} attachment(s) will be kept",
+  "此会话仍有 {count} 条排队消息，归档会丢弃这些消息。确定归档吗？":
+    "This conversation still has {count} queued message(s). Archiving will discard them. Archive anyway?",
   "待发送图片": "Images to send",
   "待发送文件": "Files to send",
   "预览 {name}": "Preview {name}",
