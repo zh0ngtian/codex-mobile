@@ -406,6 +406,27 @@ describe("移动 App 内置前端流水线", () => {
       const ghStub = join(manualVersionDirectory, "gh");
       writeFileSync(ghStub, "#!/bin/sh\nprintf 'v0.2.16\\n'\n");
       chmodSync(ghStub, 0o755);
+      const floor = JSON.parse(readProjectFile("mobile-version-floor.json"))
+        .version as string;
+      const nextVersion = [floor, "0.2.16"]
+        .sort((left, right) => {
+          const leftParts = left.split(".").map(Number);
+          const rightParts = right.split(".").map(Number);
+          return (
+            leftParts[0] - rightParts[0] ||
+            leftParts[1] - rightParts[1] ||
+            leftParts[2] - rightParts[2]
+          );
+        })
+        .at(-1)!
+        .split(".")
+        .map(Number);
+      nextVersion[2] += 1;
+      const expectedVersion = nextVersion.join(".");
+      const expectedVersionCode =
+        nextVersion[0] * 1_000_000 +
+        nextVersion[1] * 1_000 +
+        nextVersion[2];
       const manualVersionEnv = {
         ...process.env,
         ENABLE_IOS_BUILD: "false",
@@ -438,23 +459,23 @@ describe("移动 App 内置前端流水线", () => {
       });
       expect(mismatchedVersion.status).not.toBe(0);
       expect(mismatchedVersion.stderr).toContain(
-        "Manual npm publishing requires the next GitHub Release patch version: 0.2.31",
+        `Manual npm publishing requires the next GitHub Release patch version: ${expectedVersion}`,
       );
 
       const explicitVersion = spawnSync("bash", ["-c", resolveVersion], {
         encoding: "utf8",
         env: {
           ...manualVersionEnv,
-          REQUESTED_VERSION: "v0.2.31",
+          REQUESTED_VERSION: `v${expectedVersion}`,
         },
       });
       expect(explicitVersion.status).toBe(0);
       expect(
         readFileSync(manualVersionEnv.GITHUB_OUTPUT, "utf8"),
-      ).toContain("app_version=0.2.31");
+      ).toContain(`app_version=${expectedVersion}`);
       expect(
         readFileSync(manualVersionEnv.GITHUB_OUTPUT, "utf8"),
-      ).toContain("app_version_code=2031");
+      ).toContain(`app_version_code=${expectedVersionCode}`);
     } finally {
       rmSync(manualVersionDirectory, { recursive: true, force: true });
     }
