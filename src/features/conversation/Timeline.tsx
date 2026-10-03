@@ -13,6 +13,7 @@ import {
   splitTurnResponseSegments,
   stripGitDirectives,
   summarizeToolActivity,
+  summarizeTurnChanges,
   toolActivityRowLabel,
   turnDurationMs,
   type ImageSource,
@@ -639,6 +640,8 @@ export function TurnCard({
       ),
     );
   const completedSegments = splitTurnResponseSegments(grouped.responses);
+  const changeStats = summarizeTurnChanges(turn);
+  const changedLines = changeStats.additions + changeStats.deletions;
   const durationMs = turnDurationMs(turn);
   const durationLabel =
     durationMs != null && durationMs > 60_000
@@ -695,22 +698,33 @@ export function TurnCard({
             />
           </>
         ) : (
-          completedSegments.map((items, index) => (
-            <CompletedResponseSegment
-              key={items[0]?.id ?? index}
-              items={items}
-              client={client}
-              backend={backend}
-              copyTarget={responsesRef}
-              showCopy={index === copySegmentIndex}
-              completedAt={
-                index === finalSegmentIndex ? turn.completedAt : null
-              }
-              durationLabel={
-                index === durationSegmentIndex ? durationLabel : null
-              }
-            />
-          ))
+          <>
+            {completedSegments.map((items, index) => (
+              <CompletedResponseSegment
+                key={items[0]?.id ?? index}
+                items={items}
+                client={client}
+                backend={backend}
+                copyTarget={responsesRef}
+                showCopy={index === copySegmentIndex}
+                completedAt={
+                  index === finalSegmentIndex ? turn.completedAt : null
+                }
+                durationLabel={
+                  index === durationSegmentIndex ? durationLabel : null
+                }
+              />
+            ))}
+            <div className="turn-change-summary">
+              <span>{t("代码改动 {count} 行", { count: changedLines })}</span>
+              {changedLines > 0 && (
+                <span className="turn-change-breakdown">
+                  <span className="diff-add">+{changeStats.additions}</span>
+                  <span className="diff-delete">-{changeStats.deletions}</span>
+                </span>
+              )}
+            </div>
+          </>
         )}
       </div>
     </section>

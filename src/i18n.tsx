@@ -240,6 +240,7 @@ const english: Record<string, string> = {
   "历史消息不能为空": "The previous message cannot be empty",
   "通过自动化功能发送": "Sent by automation",
   "已更改 {count} 个文件": "Changed {count} files",
+  "代码改动 {count} 行": "{count} lines changed",
   "正在运行 {count} 个命令": "Running {count} commands",
   "已运行 {count} 个命令": "Ran {count} commands",
   "已调用 {count} 个工具": "Used {count} tools",

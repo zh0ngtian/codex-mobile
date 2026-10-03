@@ -36,6 +36,7 @@ import {
   splitTurnResponseSegments,
   stripGitDirectives,
   summarizeToolActivity,
+  summarizeTurnChanges,
   summarizeFileChange,
   toolActivityRowLabel,
 } from "../../src/ui/conversation";
@@ -558,6 +559,37 @@ describe("移动端对话格式", () => {
     view = within(container);
     expect(view.queryByText("代码变更")).toBeNull();
     expect(container.querySelector(".diff-card")).toBeNull();
+  });
+
+  it("回合结束后显示本次改动总行数，并优先采用回合 diff", () => {
+    const turn = {
+      id: "turn-line-count",
+      status: "inProgress",
+      liveDiff: "diff --git a/a.ts b/a.ts\n--- a/a.ts\n+++ b/a.ts\n@@ -1 +1,2 @@\n-old\n+new\n+extra",
+      items: [
+        { id: "user", type: "userMessage", text: "修改代码" },
+        {
+          id: "file", type: "fileChange",
+          changes: [{ path: "a.ts", diff: "@@ -1 +1 @@\n-old\n+new" }],
+        },
+        { id: "final", type: "agentMessage", phase: "final_answer", text: "完成" },
+      ],
+    };
+    const { container, rerender } = render(<TurnCard turn={turn} client={null} />);
+    const view = within(container);
+    expect(view.queryByText("代码改动 3 行")).toBeNull();
+
+    rerender(<TurnCard turn={{ ...turn, status: "completed" }} client={null} />);
+    expect(view.getByText("代码改动 3 行")).not.toBeNull();
+    expect(container.querySelector(".turn-change-breakdown")?.textContent).toBe("+2-1");
+    expect(summarizeTurnChanges({ items: turn.items })).toEqual({ additions: 1, deletions: 1 });
+    expect(summarizeTurnChanges({
+      liveDiff: "--- a/a.ts\n+++ b/a.ts\n@@ -1 +1 @@\n---old\n+++new",
+    })).toEqual({ additions: 1, deletions: 1 });
+
+    rerender(<TurnCard turn={{ id: "no-change", status: "completed", items: [] }} client={null} />);
+    expect(view.getByText("代码改动 0 行")).not.toBeNull();
+    expect(container.querySelector(".turn-change-breakdown")).toBeNull();
   });
 
   it("没有用户消息的回合不显示伪用户气泡", () => {

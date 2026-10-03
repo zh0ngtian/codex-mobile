@@ -267,11 +267,30 @@ export function parseUnifiedDiff(diff: string): ParsedDiffLine[] {
 function diffLineStats(diff: string) {
   let additions = 0;
   let deletions = 0;
+  let inHunk = false;
   for (const line of diff.split("\n")) {
-    if (line.startsWith("+") && !line.startsWith("+++")) additions += 1;
-    if (line.startsWith("-") && !line.startsWith("---")) deletions += 1;
+    if (line.startsWith("diff --git ")) inHunk = false;
+    if (line.startsWith("@@")) inHunk = true;
+    if (line.startsWith("+") && (inHunk || !line.startsWith("+++"))) additions += 1;
+    if (line.startsWith("-") && (inHunk || !line.startsWith("---"))) deletions += 1;
   }
   return { additions, deletions };
+}
+
+export function summarizeTurnChanges(turn: ConversationRecord) {
+  if (typeof turn.liveDiff === "string" && turn.liveDiff.length > 0) {
+    return diffLineStats(turn.liveDiff);
+  }
+  const stats = { additions: 0, deletions: 0 };
+  for (const item of turn.items ?? []) {
+    if (item.type !== "fileChange") continue;
+    for (const change of item.changes ?? []) {
+      const changeStats = diffLineStats(change.diff ?? "");
+      stats.additions += changeStats.additions;
+      stats.deletions += changeStats.deletions;
+    }
+  }
+  return stats;
 }
 
 export function summarizeFileChange(change: ConversationRecord) {
