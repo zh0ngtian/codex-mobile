@@ -176,6 +176,7 @@ import {
   writeLocalProjectlessThreadIds,
 } from "./features/threads/projectless-threads";
 import { useSidebarRefresh } from "./features/threads/sidebar-refresh";
+import { useSidebarSwipe } from "./features/threads/sidebar-swipe";
 import {
   readUnreadThreadIds,
   shouldMarkThreadUnread,
@@ -3680,7 +3681,6 @@ function ConfiguredApp({
   const [pendingCompletionTarget, setPendingCompletionTarget] =
     useState<RunCompletionNavigationTarget | null>(null);
   const commandIdRef = useRef(0);
-  const edgeTouchStartRef = useRef<{ x: number; y: number } | null>(null);
   const {
     sidebarOpen,
     refreshVersion,
@@ -3690,6 +3690,7 @@ function ConfiguredApp({
     refresh: refreshAllBackends,
     refreshSilently: refreshAllBackendsSilently,
   } = useSidebarRefresh();
+  useSidebarSwipe(sidebarOpen, openSidebar);
   const selectListBackend = useCallback((backendId: string) => {
     window.localStorage.setItem("codex-mobile:list-backend", backendId);
     setListBackendId(backendId);
@@ -3756,39 +3757,11 @@ function ConfiguredApp({
     const handlePopState = () => {
       if (sidebarOpen) closeSidebar();
     };
-    const handleTouchStart = (event: TouchEvent) => {
-      const touch = event.touches[0];
-      edgeTouchStartRef.current =
-        !sidebarOpen && touch && touch.clientX <= 24
-          ? { x: touch.clientX, y: touch.clientY }
-          : null;
-    };
-    const handleTouchMove = (event: TouchEvent) => {
-      const start = edgeTouchStartRef.current;
-      const touch = event.touches[0];
-      if (!start || !touch) return;
-      if (Math.abs(touch.clientY - start.y) > 44) {
-        edgeTouchStartRef.current = null;
-        return;
-      }
-      if (touch.clientX - start.x < 56) return;
-      edgeTouchStartRef.current = null;
-      openSidebar();
-    };
-    const handleTouchEnd = () => {
-      edgeTouchStartRef.current = null;
-    };
     window.addEventListener("popstate", handlePopState);
-    window.addEventListener("touchstart", handleTouchStart, { passive: true });
-    window.addEventListener("touchmove", handleTouchMove, { passive: true });
-    window.addEventListener("touchend", handleTouchEnd, { passive: true });
     return () => {
       window.removeEventListener("popstate", handlePopState);
-      window.removeEventListener("touchstart", handleTouchStart);
-      window.removeEventListener("touchmove", handleTouchMove);
-      window.removeEventListener("touchend", handleTouchEnd);
     };
-  }, [closeSidebar, openSidebar, sidebarOpen]);
+  }, [closeSidebar, sidebarOpen]);
 
   const enabledBackends = useMemo(
     () => registry.backends.filter((backend) => backend.enabled),
