@@ -1,5 +1,14 @@
 import { t } from "../i18n";
 
+const MAX_APP_SERVER_MESSAGE_BYTES = 16 * 1024 * 1024;
+
+function messageTooLarge(actualBytes: number, limitBytes: number) {
+  return t("请求消息 {actual} MiB，超过服务端 {limit} MiB 上限。请压缩或减少图片后重试。", {
+    actual: (actualBytes / 1024 / 1024).toFixed(1),
+    limit: String(limitBytes / 1024 / 1024),
+  });
+}
+
 export interface RpcMessage {
   id?: number | string;
   method?: string;
@@ -126,7 +135,12 @@ export class AppServerClient {
   }
 
   private send(message: RpcMessage) {
-    this.socket.send(JSON.stringify(message));
+    const payload = JSON.stringify(message);
+    const bytes = new TextEncoder().encode(payload).byteLength;
+    if (bytes > MAX_APP_SERVER_MESSAGE_BYTES) {
+      throw new Error(messageTooLarge(bytes, MAX_APP_SERVER_MESSAGE_BYTES));
+    }
+    this.socket.send(payload);
   }
 
   private receive(raw: string) {
@@ -142,9 +156,15 @@ export class AppServerClient {
       this.pending.delete(message.id);
       clearTimeout(waiter.timeout);
       if (message.error) {
+        const size = message.error.data as { actualBytes?: unknown; limitBytes?: unknown } | undefined;
+        const detail = message.error.code === -32001 &&
+          typeof size?.actualBytes === "number" &&
+          typeof size?.limitBytes === "number"
+          ? messageTooLarge(size.actualBytes, size.limitBytes)
+          : message.error.message;
         waiter.reject(
           new AppServerRpcError(
-            message.error.message,
+            detail,
             message.error.code,
             message.error.data,
           ),

@@ -321,6 +321,12 @@ button, a, summary, [role="button"] { -webkit-tap-highlight-color: transparent; 
 .tool-detail-sheet dl > div { display: grid; grid-template-columns: 82px minmax(0,1fr); gap: 10px; }
 .tool-detail-sheet dt { font-weight: 650; }
 .tool-detail-sheet dd { margin: 0; overflow-wrap: anywhere; }
+.image-generation-failure { margin-top: 22px; border-radius: 12px; background: #fff1ef; color: #792d24; padding: 14px 16px; font-size: 14px; line-height: 1.55; }
+.image-generation-failure strong { display: block; margin-bottom: 5px; }
+.image-generation-failure p { margin: 0; }
+.image-generation-failure details { margin-top: 12px; }
+.image-generation-failure summary { cursor: pointer; font-weight: 600; }
+.image-generation-failure dl { margin-top: 12px; gap: 7px; font-size: 12px; }
 .tool-detail-sheet pre { max-height: 32dvh; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; border-radius: 14px; background: #ececec; padding: 14px; font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
 .remote-file-preview { display: block; max-width: 100%; max-height: 46dvh; margin: 28px auto 18px; object-fit: contain; }
 .remote-file-sheet p { margin: 10px 0; overflow-wrap: anywhere; }

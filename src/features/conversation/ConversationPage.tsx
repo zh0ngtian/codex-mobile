@@ -585,6 +585,7 @@ export function ConversationPage({
                 <TurnCard
                   key={turn.id ?? index}
                   turn={turn}
+                  threadId={String(active.id)}
                   liveDiff={turn.liveDiff}
                   client={client}
                   backend={selectedBackend}

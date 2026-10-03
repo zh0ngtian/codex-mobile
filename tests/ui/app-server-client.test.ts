@@ -144,4 +144,16 @@ describe("AppServerClient", () => {
     ).rejects.toThrow("与 app-server 的连接不可用");
     expect(socket.sent).toHaveLength(0);
   });
+
+  it("图片编码后的请求超过服务端上限时显示实际原因且不发送", async () => {
+    const socket = new FakeSocket();
+    const client = new AppServerClient(socket as unknown as WebSocket);
+    const request = client.request("turn/start", {
+      input: [{ type: "image", url: `data:image/png;base64,${"A".repeat(17 * 1024 * 1024)}` }],
+    });
+
+    await expect(request).rejects.toThrow(/请求消息.*超过.*16 MiB/);
+    expect(socket.sent).toHaveLength(0);
+    expect(socket.closed).toHaveLength(0);
+  });
 });

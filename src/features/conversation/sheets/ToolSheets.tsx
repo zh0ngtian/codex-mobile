@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   parseUnifiedDiff,
@@ -7,6 +7,8 @@ import {
 import { ActionSheet } from "../../../ui/ActionSheet";
 import { t } from "../../../i18n";
 import { Chevron } from "../../../ui/icons";
+import type { BackendConfig } from "../../../backends/types";
+import { fetchImageGenerationError, type ImageGenerationError } from "../../../backends/image-generation-error";
 
 type AnyRecord = Record<string, any>;
 
@@ -64,7 +66,7 @@ export function ToolDetailSheet({
           </>
         )}
         <dl>
-          <div><dt>{t("状态")}</dt><dd>{item.status === "inProgress" ? t("进行中") : item.status || t("已完成")}</dd></div>
+          <div><dt>{t("状态")}</dt><dd>{item.status === "inProgress" ? t("进行中") : item.status === "failed" ? t("失败") : item.status || t("已完成")}</dd></div>
           {item.cwd && <div><dt>{t("工作目录")}</dt><dd>{item.cwd}</dd></div>}
           {item.durationMs != null && <div><dt>{t("耗时")}</dt><dd>{item.durationMs} ms</dd></div>}
           {item.exitCode != null && <div><dt>{t("退出码")}</dt><dd>{item.exitCode}</dd></div>}
@@ -83,6 +85,47 @@ export function ToolDetailSheet({
         )}
     </ActionSheet>,
     document.body,
+  );
+}
+
+export function ImageGenerationFailure({ backend, threadId, itemId }: {
+  backend?: BackendConfig | null;
+  threadId?: string;
+  itemId: string;
+}) {
+  const [diagnostic, setDiagnostic] = useState<ImageGenerationError | null>(null);
+  const [loading, setLoading] = useState(Boolean(backend && threadId && itemId));
+  useEffect(() => {
+    if (!backend || !threadId || !itemId) return;
+    let cancelled = false;
+    void fetchImageGenerationError(backend, threadId, itemId)
+      .then((error) => { if (!cancelled) setDiagnostic(error); })
+      .catch(() => { if (!cancelled) setDiagnostic(null); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [backend, threadId, itemId]);
+  return (
+    <div className="image-generation-failure" role="status">
+      <strong>{t("图像生成未完成")}</strong>
+      {loading ? <p>{t("正在获取失败原因…")}</p> : diagnostic?.code === "moderation_blocked" ? (
+        <>
+          <p>{diagnostic.stage === "output"
+            ? t("生成结果被内容审核拦截")
+            : t("图像生成被内容审核拦截")}
+            {diagnostic.categories.includes("sexual") ? t("（性相关内容）") : ""}。
+            {t("系统未指出具体触发区域。")}</p>
+          <details>
+            <summary>{t("技术详情")}</summary>
+            <dl>
+              <div><dt>{t("错误代码")}</dt><dd>{diagnostic.code}</dd></div>
+              <div><dt>{t("审核阶段")}</dt><dd>{diagnostic.stage}</dd></div>
+              {diagnostic.categories.length > 0 && <div><dt>{t("检测类别")}</dt><dd>{diagnostic.categories.join(", ")}</dd></div>}
+              {diagnostic.requestId && <div><dt>{t("请求 ID")}</dt><dd>{diagnostic.requestId}</dd></div>}
+            </dl>
+          </details>
+        </>
+      ) : <p>{t("服务端未提供具体原因")}</p>}
+    </div>
   );
 }
 

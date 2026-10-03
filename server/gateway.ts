@@ -3,8 +3,24 @@ import { createReadStream } from "node:fs";
 import { mkdir, open, readFile, rm, stat } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { extname, isAbsolute, join, normalize } from "node:path";
+import { homedir } from "node:os";
 import WebSocket, { WebSocketServer } from "ws";
 import type { CodexProjectState } from "./codex-projects.js";
+import { readImageGenerationError } from "./image-generation-error.js";
+
+const MAX_APP_SERVER_MESSAGE_BYTES = 16 * 1024 * 1024;
+
+function rawMessageBytes(data: WebSocket.RawData) {
+  if (data instanceof ArrayBuffer) return data.byteLength;
+  if (Array.isArray(data)) return data.reduce((total, part) => total + part.byteLength, 0);
+  return data.byteLength;
+}
+
+function rawMessageText(data: WebSocket.RawData) {
+  if (data instanceof ArrayBuffer) return Buffer.from(data).toString("utf8");
+  if (Array.isArray(data)) return Buffer.concat(data).toString("utf8");
+  return data.toString("utf8");
+}
 
 export interface GatewayOptions {
   host: string;
@@ -21,6 +37,7 @@ export interface GatewayOptions {
   readProjectDirectories?: () => Promise<string[]>;
   readProjectState?: () => Promise<CodexProjectState>;
   uploadDir?: string;
+  codexHome?: string;
 }
 
 export interface Gateway {
@@ -104,6 +121,7 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
       "/api/projects",
       "/api/uploads/file",
       "/api/files/preview",
+      "/api/image-generation-error",
     ].includes(url.pathname);
     const apiRequest =
       url.pathname === "/api" || url.pathname.startsWith("/api/");
@@ -127,6 +145,15 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
     if (controlRequest && request.method === "OPTIONS") {
       response.statusCode = 204;
       response.end();
+      return;
+    }
+    if (url.pathname === "/api/image-generation-error") {
+      const threadId = url.searchParams.get("threadId") ?? "";
+      const itemId = url.searchParams.get("itemId") ?? "";
+      const codexHome = options.codexHome ?? process.env.CODEX_HOME ?? join(homedir(), ".codex");
+      const error = await readImageGenerationError(codexHome, threadId, itemId);
+      response.setHeader("content-type", "application/json; charset=utf-8");
+      response.end(JSON.stringify({ error }));
       return;
     }
     if (url.pathname === "/api/host") {
@@ -343,16 +370,29 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
     const maxPendingBytes = 1024 * 1024;
 
     client.on("message", (data, isBinary) => {
+      const bytes = rawMessageBytes(data);
+      if (bytes > MAX_APP_SERVER_MESSAGE_BYTES) {
+        let id: unknown;
+        if (!isBinary) {
+          try { id = JSON.parse(rawMessageText(data)).id; } catch { /* Invalid JSON has no request ID. */ }
+        }
+        if ((typeof id === "string" || typeof id === "number") && client.readyState === WebSocket.OPEN) {
+          client.send(JSON.stringify({
+            id,
+            error: {
+              code: -32001,
+              message: "Request message exceeds the app-server 16 MiB limit",
+              data: { actualBytes: bytes, limitBytes: MAX_APP_SERVER_MESSAGE_BYTES },
+            },
+          }));
+        } else {
+          client.close(1009, "message exceeds app-server limit");
+        }
+        return;
+      }
       if (upstream.readyState === WebSocket.OPEN) upstream.send(data, { binary: isBinary });
       else if (upstream.readyState === WebSocket.CONNECTING) {
-        pendingBytes +=
-          typeof data === "string"
-            ? Buffer.byteLength(data)
-            : data instanceof ArrayBuffer
-              ? data.byteLength
-              : Array.isArray(data)
-                ? data.reduce((total, part) => total + part.byteLength, 0)
-                : data.byteLength;
+        pendingBytes += bytes;
         if (pendingBytes > maxPendingBytes) {
           client.close(1009, "pending messages exceeded limit");
           upstream.terminate();

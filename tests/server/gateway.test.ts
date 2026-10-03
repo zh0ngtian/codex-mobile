@@ -13,6 +13,54 @@ afterEach(async () => {
 });
 
 describe("透明网关", () => {
+  it("只向已鉴权客户端返回匹配图像生成条目的审核详情", async () => {
+    const root = await mkdtemp(join(tmpdir(), "codex-mobile-diagnostics-"));
+    cleanups.push(() => rm(root, { recursive: true, force: true }));
+    const threadId = "01a10355-60cd-70f2-8063-17d3a5626be4";
+    const created = new Date(Number.parseInt(threadId.replaceAll("-", "").slice(0, 12), 16));
+    const directory = join(root, "sessions", String(created.getFullYear()),
+      String(created.getMonth() + 1).padStart(2, "0"), String(created.getDate()).padStart(2, "0"));
+    await mkdir(directory, { recursive: true });
+    const error = { error: { code: "moderation_blocked", message: "request ID req-1.",
+      moderation_details: { moderation_stage: "output", categories: ["sexual"] } } };
+    await writeFile(join(directory, `rollout-test-${threadId}.jsonl`), [
+      { type: "event_msg", payload: { type: "item_completed", item: { kind: "image_gen.generation", id: "image-1", status: "failed" } } },
+      { type: "response_item", payload: { type: "custom_tool_call_output", output: [{ type: "input_text", text: `Some(${JSON.stringify(JSON.stringify(error))})` }] } },
+    ].map((entry) => JSON.stringify(entry)).join("\n") + "\n");
+    const gateway = await createGateway({ host: "127.0.0.1", port: 0, mode: "external",
+      upstreamUrl: "ws://127.0.0.1:9", staticDir: null, accessToken: "secret", codexHome: root });
+    cleanups.push(async () => gateway.close());
+    const endpoint = `http://127.0.0.1:${gateway.port}/api/image-generation-error?threadId=${threadId}&itemId=image-1`;
+    expect((await fetch(endpoint)).status).toBe(401);
+    expect(await (await fetch(`${endpoint}&token=secret`)).json()).toEqual({ error: {
+      code: "moderation_blocked", stage: "output", categories: ["sexual"], requestId: "req-1",
+    } });
+  });
+
+  it("超限请求返回具体错误且保持连接，不转发给上游", async () => {
+    const upstreamHttp = createServer();
+    const upstream = new WebSocketServer({ server: upstreamHttp });
+    await new Promise<void>((resolve) => upstreamHttp.listen(0, "127.0.0.1", resolve));
+    const upstreamPort = (upstreamHttp.address() as { port: number }).port;
+    let upstreamMessages = 0;
+    upstream.on("connection", (socket) => socket.on("message", () => { upstreamMessages += 1; }));
+    cleanups.push(async () => new Promise<void>((resolve) => upstreamHttp.close(() => resolve())));
+    const gateway = await createGateway({
+      host: "127.0.0.1", port: 0, mode: "external",
+      upstreamUrl: `ws://127.0.0.1:${upstreamPort}`, staticDir: null,
+    });
+    cleanups.push(async () => gateway.close());
+    const client = new WebSocket(`ws://127.0.0.1:${gateway.port}/ws`);
+    await new Promise<void>((resolve) => client.once("open", resolve));
+    const response = new Promise<any>((resolve) => client.once("message", (data) => resolve(JSON.parse(data.toString()))));
+    client.send(JSON.stringify({ id: 77, method: "turn/start", params: { data: "A".repeat(17 * 1024 * 1024) } }));
+
+    expect(await response).toMatchObject({ id: 77, error: { code: -32001 } });
+    expect(upstreamMessages).toBe(0);
+    expect(client.readyState).toBe(WebSocket.OPEN);
+    client.close();
+  }, 15_000);
+
   it("原样转发客户端和 app-server 的文本消息", async () => {
     const upstreamHttp = createServer();
     const upstream = new WebSocketServer({ server: upstreamHttp });

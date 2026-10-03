@@ -36,6 +36,7 @@ import {
 } from "../../app-server/conversation-title";
 import {
   FileDiffSheet,
+  ImageGenerationFailure,
   ToolDetailSheet,
 } from "./sheets/ToolSheets";
 import "./timeline-timestamps.css";
@@ -397,6 +398,7 @@ function TimelineItem({
   item,
   client,
   backend,
+  threadId,
   timestamp,
   onEditUserMessage,
   userMessageActionsDisabled,
@@ -404,9 +406,13 @@ function TimelineItem({
   item: AnyRecord;
   client: AppServerClient | null;
   backend?: BackendConfig | null;
+  threadId?: string;
   timestamp?: number | null;
 } & UserMessageActionProps) {
   const type = String(item.type ?? "");
+  if (type === "imageGeneration" && item.status === "failed") {
+    return <ImageGenerationFailure backend={backend} threadId={threadId} itemId={String(item.id ?? "")} />;
+  }
   if (type === "contextCompaction") {
     return (
       <div
@@ -596,6 +602,7 @@ export function receivedItemCharacterCount(item: AnyRecord) {
 
 export function TurnCard({
   turn,
+  threadId,
   client,
   backend,
   onEditUserMessage,
@@ -603,6 +610,7 @@ export function TurnCard({
   userMessageActionsDisabled,
 }: {
   turn: AnyRecord;
+  threadId?: string;
   liveDiff?: string;
   client: AppServerClient | null;
   backend?: BackendConfig | null;
@@ -635,6 +643,7 @@ export function TurnCard({
           item={entry.item}
           client={client}
           backend={backend}
+          threadId={threadId}
         />
       ),
     );
@@ -701,6 +710,7 @@ export function TurnCard({
               items={items}
               client={client}
               backend={backend}
+              threadId={threadId}
               copyTarget={responsesRef}
               showCopy={index === copySegmentIndex}
               completedAt={
@@ -721,6 +731,7 @@ function CompletedResponseSegment({
   items,
   client,
   backend,
+  threadId,
   copyTarget,
   showCopy,
   completedAt,
@@ -729,13 +740,16 @@ function CompletedResponseSegment({
   items: AnyRecord[];
   client: AppServerClient | null;
   backend?: BackendConfig | null;
+  threadId?: string;
   copyTarget: RefObject<HTMLDivElement | null>;
   showCopy: boolean;
   completedAt?: number | null;
   durationLabel: string | null;
 }) {
   const completed = splitCompletedTurnResponses(items);
-  const [showPrevious, setShowPrevious] = useState(false);
+  const [showPrevious, setShowPrevious] = useState(() =>
+    completed.previous.some((item) => item.type === "imageGeneration" && item.status === "failed"),
+  );
   const guidingMessages = completed.beforeFinal.filter(
     (item) => item.type === "userMessage",
   );
@@ -755,6 +769,7 @@ function CompletedResponseSegment({
           item={entry.item}
           client={client}
           backend={backend}
+          threadId={threadId}
         />
       ),
     );

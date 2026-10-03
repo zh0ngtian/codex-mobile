@@ -13,6 +13,21 @@ export type LanguagePreference = "system" | Locale;
 const LANGUAGE_STORAGE_KEY = "codex-mobile:language";
 
 const english: Record<string, string> = {
+  "请求消息 {actual} MiB，超过服务端 {limit} MiB 上限。请压缩或减少图片后重试。":
+    "Request is {actual} MiB, above the server's {limit} MiB limit. Compress or remove images and try again.",
+  "图像生成未完成": "Image generation could not be completed",
+  "失败": "Failed",
+  "正在获取失败原因…": "Loading failure details…",
+  "生成结果被内容审核拦截": "The generated image was blocked by content review",
+  "图像生成被内容审核拦截": "Image generation was blocked by content review",
+  "（性相关内容）": " (sexual content)",
+  "系统未指出具体触发区域。": "The system did not identify the specific area that triggered the block.",
+  "服务端未提供具体原因": "The server did not provide a specific reason",
+  "技术详情": "Technical details",
+  "错误代码": "Error code",
+  "审核阶段": "Review stage",
+  "检测类别": "Detected category",
+  "请求 ID": "Request ID",
   "切换语言": "Switch language",
   "标题": "Title",
   "语言": "Language",
