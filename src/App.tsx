@@ -3690,7 +3690,7 @@ function ConfiguredApp({
     refresh: refreshAllBackends,
     refreshSilently: refreshAllBackendsSilently,
   } = useSidebarRefresh();
-  useSidebarSwipe(sidebarOpen, openSidebar);
+  const sidebarLayerRef = useSidebarSwipe(sidebarOpen, openSidebar);
   const selectListBackend = useCallback((backendId: string) => {
     window.localStorage.setItem("codex-mobile:list-backend", backendId);
     setListBackendId(backendId);
@@ -4206,6 +4206,7 @@ function ConfiguredApp({
         </div>
       ))}
       <div
+        ref={sidebarLayerRef}
         className={`conversation-sidebar-layer${
           sidebarOpen ? " open" : ""
         }`}

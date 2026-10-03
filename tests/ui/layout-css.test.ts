@@ -327,6 +327,18 @@ describe("悬浮状态布局", () => {
       styles.match(
         /(?:^|\n)\.conversation-sidebar-scrim\s*\{([^}]*)\}/,
       )?.[1] ?? "";
+    const draggingRule =
+      styles.match(
+        /(?:^|\n)\.conversation-sidebar-layer\.dragging\s*\{([^}]*)\}/,
+      )?.[1] ?? "";
+    const draggingSidebarRule =
+      styles.match(
+        /(?:^|\n)\.conversation-sidebar-layer\.dragging \.conversation-sidebar\s*\{([^}]*)\}/,
+      )?.[1] ?? "";
+    const draggingScrimRule =
+      styles.match(
+        /(?:^|\n)\.conversation-sidebar-layer\.dragging \.conversation-sidebar-scrim\s*\{([^}]*)\}/,
+      )?.[1] ?? "";
 
     expect(layerRule).toContain("--sidebar-motion-duration: .24s");
     expect(layerRule).toContain(
@@ -340,6 +352,11 @@ describe("悬浮状态布局", () => {
     expect(scrimRule).toContain(
       "transition: opacity var(--sidebar-motion-duration) var(--sidebar-motion-easing)",
     );
+    expect(draggingRule).toContain("visibility: visible");
+    expect(draggingSidebarRule).toContain("var(--sidebar-drag-x)");
+    expect(draggingSidebarRule).toContain("transition: none");
+    expect(draggingScrimRule).toContain("var(--sidebar-drag-progress)");
+    expect(draggingScrimRule).toContain("transition: none");
   });
 
 });
