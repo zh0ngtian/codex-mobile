@@ -560,6 +560,42 @@ describe("移动端对话格式", () => {
     expect(container.querySelector(".diff-card")).toBeNull();
   });
 
+  it("完成后在消息外显示独立的代码改动计数", () => {
+    const turn = {
+      id: "turn-line-count",
+      status: "inProgress",
+      liveDiff: "diff --git a/a.ts b/a.ts\n--- a/a.ts\n+++ b/a.ts\n@@ -1 +1,2 @@\n-old\n+new\n+extra",
+      items: [
+        { id: "user", type: "userMessage", text: "修改代码" },
+        { id: "final", type: "agentMessage", phase: "final_answer", text: "完成" },
+      ],
+    };
+    const { container, rerender } = render(<TurnCard turn={turn} client={null} />);
+    expect(container.querySelector(".turn-change-indicator")).toBeNull();
+
+    rerender(<TurnCard turn={{ ...turn, status: "completed" }} client={null} />);
+    const indicator = container.querySelector(".turn-change-indicator");
+    expect(indicator?.parentElement).toBe(container.querySelector(".turn-card"));
+    expect(indicator?.querySelector(".turn-change-total")?.textContent).toBe("3");
+    expect(indicator?.querySelector(".turn-change-breakdown")?.textContent).toBe("+2-1");
+    expect(container.querySelector(".assistant-message")?.textContent).toBe("完成");
+
+    rerender(<TurnCard turn={{
+      id: "file-change-fallback",
+      status: "completed",
+      items: [{
+        id: "file",
+        type: "fileChange",
+        changes: [{ path: "a.ts", diff: "@@ -1 +1 @@\n-old\n+new" }],
+      }],
+    }} client={null} />);
+    expect(container.querySelector(".turn-change-total")?.textContent).toBe("2");
+    expect(container.querySelector(".turn-change-breakdown")?.textContent).toBe("+1-1");
+
+    rerender(<TurnCard turn={{ id: "no-change", status: "completed", items: [] }} client={null} />);
+    expect(container.querySelector(".turn-change-total")?.textContent).toBe("0");
+  });
+
   it("没有用户消息的回合不显示伪用户气泡", () => {
     const { container, rerender } = render(
       <TurnCard

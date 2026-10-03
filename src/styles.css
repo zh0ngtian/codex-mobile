@@ -540,6 +540,10 @@ button, a, summary, [role="button"] { -webkit-tap-highlight-color: transparent; 
 .turn-user .user-message { margin-bottom: 16px; }
 .turn-user .user-message > .user-bubble { margin-bottom: 0; }
 .turn-responses { position: relative; min-width: 0; max-width: 100%; padding-top: 2px; }
+.turn-change-indicator { display: inline-flex; align-items: baseline; gap: 5px; margin-top: 12px; padding: 6px 10px; border-radius: 10px; background: #f5f6f7; color: #707070; font-size: 12px; font-variant-numeric: tabular-nums; }
+.turn-change-total { color: #222; font-size: 16px; line-height: 1; }
+.turn-change-breakdown { display: inline-flex; gap: 7px; margin-left: 5px; }
+.turn-card:has(.turn-message-copy) .turn-change-indicator { margin-top: 36px; }
 .copy-action { position: relative; display: inline-flex; align-items: center; gap: 5px; color: #858585; }
 .copy-action > button { width: 28px; height: 28px; border: 0; border-radius: 8px; background: transparent; color: inherit; display: grid; place-items: center; padding: 0; }
 .copy-action > button svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }

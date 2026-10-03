@@ -13,6 +13,7 @@ import {
   splitTurnResponseSegments,
   stripGitDirectives,
   summarizeToolActivity,
+  summarizeTurnChanges,
   toolActivityRowLabel,
   turnDurationMs,
   type ImageSource,
@@ -648,6 +649,8 @@ export function TurnCard({
       ),
     );
   const completedSegments = splitTurnResponseSegments(grouped.responses);
+  const changeStats = summarizeTurnChanges(turn);
+  const changedLines = changeStats.additions + changeStats.deletions;
   const durationMs = turnDurationMs(turn);
   const durationLabel =
     durationMs != null && durationMs > 60_000
@@ -723,6 +726,19 @@ export function TurnCard({
           ))
         )}
       </div>
+      {!grouped.running && (
+        <div className="turn-change-indicator" aria-label={t("本次代码改动")}>
+          <span className="turn-change-label">{t("代码改动")}</span>
+          <strong className="turn-change-total">{changedLines}</strong>
+          <span className="turn-change-unit">{t("行")}</span>
+          {changedLines > 0 && (
+            <span className="turn-change-breakdown">
+              <span className="diff-add">+{changeStats.additions}</span>
+              <span className="diff-delete">-{changeStats.deletions}</span>
+            </span>
+          )}
+        </div>
+      )}
     </section>
   );
 }
