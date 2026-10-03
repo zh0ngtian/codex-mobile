@@ -3,6 +3,7 @@ import { useEffect, useLayoutEffect, useRef } from "react";
 type SwipeStart = {
   x: number;
   y: number;
+  direction: 1 | -1;
   distance: number;
   travel: number;
   active: boolean;
@@ -17,10 +18,16 @@ function resetSidebarDrag(layer: HTMLDivElement | null) {
   layer.style.removeProperty("--sidebar-drag-progress");
 }
 
-function canStartSidebarSwipe(target: EventTarget | null): boolean {
+function canStartSidebarSwipe(
+  target: EventTarget | null,
+  layer: HTMLDivElement | null,
+  sidebarOpen: boolean,
+): boolean {
   if (!(target instanceof Element)) return false;
-  const workspace = target.closest(".backend-workspace:not([hidden])");
-  if (!workspace) return false;
+  const surface = sidebarOpen
+    ? layer?.querySelector(".conversation-sidebar")
+    : target.closest(".backend-workspace:not([hidden])");
+  if (!surface || !surface.contains(target)) return false;
   if (
     target.closest(
       'input, textarea, select, [contenteditable]:not([contenteditable="false"]), [role="dialog"], .action-sheet-backdrop',
@@ -31,7 +38,7 @@ function canStartSidebarSwipe(target: EventTarget | null): boolean {
 
   for (
     let element: Element | null = target;
-    element && element !== workspace;
+    element && element !== surface;
     element = element.parentElement
   ) {
     const overflowX = window.getComputedStyle(element).overflowX;
@@ -45,7 +52,11 @@ function canStartSidebarSwipe(target: EventTarget | null): boolean {
   return true;
 }
 
-export function useSidebarSwipe(sidebarOpen: boolean, openSidebar: () => void) {
+export function useSidebarSwipe(
+  sidebarOpen: boolean,
+  openSidebar: () => void,
+  closeSidebar: () => void,
+) {
   const startRef = useRef<SwipeStart | null>(null);
   const layerRef = useRef<HTMLDivElement | null>(null);
 
@@ -62,10 +73,9 @@ export function useSidebarSwipe(sidebarOpen: boolean, openSidebar: () => void) {
       cancelDrag();
       const touch = event.touches[0];
       if (
-        sidebarOpen ||
         event.touches.length !== 1 ||
         !touch ||
-        !canStartSidebarSwipe(event.target)
+        !canStartSidebarSwipe(event.target, layerRef.current, sidebarOpen)
       ) {
         return;
       }
@@ -75,6 +85,7 @@ export function useSidebarSwipe(sidebarOpen: boolean, openSidebar: () => void) {
       startRef.current = {
         x: touch.clientX,
         y: touch.clientY,
+        direction: sidebarOpen ? -1 : 1,
         distance: 0,
         travel: width * 1.04,
         active: false,
@@ -90,33 +101,39 @@ export function useSidebarSwipe(sidebarOpen: boolean, openSidebar: () => void) {
         return;
       }
       const touch = event.touches[0];
-      const dx = touch.clientX - start.x;
+      const movement = (touch.clientX - start.x) * start.direction;
       const dy = touch.clientY - start.y;
-      if (dx < -16 || (Math.abs(dy) > 44 && Math.abs(dy) > dx)) {
+      if (
+        movement < -16 ||
+        (Math.abs(dy) > 44 && Math.abs(dy) > movement)
+      ) {
         cancelDrag();
         return;
       }
       if (!start.active) {
-        if (Math.abs(dy) > 12 && Math.abs(dy) >= dx) {
+        if (Math.abs(dy) > 12 && Math.abs(dy) >= movement) {
           cancelDrag();
           return;
         }
-        if (dx < 8 || dx <= Math.abs(dy) * 1.2) return;
+        if (movement < 8 || movement <= Math.abs(dy) * 1.2) return;
         start.active = true;
         layerRef.current?.classList.add("dragging");
       }
       if (event.cancelable) event.preventDefault();
-      const distance = Math.min(Math.max(dx, 0), start.travel);
+      const distance = Math.min(Math.max(movement, 0), start.travel);
       const elapsed = event.timeStamp - start.lastMoveAt;
       if (elapsed > 0) {
         start.velocity = (distance - start.distance) / elapsed;
       }
       start.distance = distance;
       start.lastMoveAt = event.timeStamp;
-      layerRef.current?.style.setProperty("--sidebar-drag-x", `${distance}px`);
+      layerRef.current?.style.setProperty(
+        "--sidebar-drag-x",
+        `${distance * start.direction}px`,
+      );
       layerRef.current?.style.setProperty(
         "--sidebar-drag-progress",
-        String(distance / start.travel),
+        String(start.direction === 1 ? distance / start.travel : 1 - distance / start.travel),
       );
     };
     const handleTouchEnd = (event: TouchEvent) => {
@@ -125,14 +142,15 @@ export function useSidebarSwipe(sidebarOpen: boolean, openSidebar: () => void) {
         cancelDrag();
         return;
       }
-      const shouldOpen =
+      const shouldFinish =
         start.distance >= Math.min(start.travel * 0.3, 120) ||
         (start.distance >= 56 &&
           start.velocity >= 0.45 &&
           event.timeStamp - start.lastMoveAt < 150);
       startRef.current = null;
-      if (shouldOpen) {
-        openSidebar();
+      if (shouldFinish) {
+        if (start.direction === 1) openSidebar();
+        else closeSidebar();
       } else {
         resetSidebarDrag(layerRef.current);
       }
@@ -149,7 +167,7 @@ export function useSidebarSwipe(sidebarOpen: boolean, openSidebar: () => void) {
       window.removeEventListener("touchcancel", cancelDrag);
       cancelDrag();
     };
-  }, [openSidebar, sidebarOpen]);
+  }, [closeSidebar, openSidebar, sidebarOpen]);
 
   return layerRef;
 }

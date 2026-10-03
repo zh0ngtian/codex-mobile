@@ -26,9 +26,9 @@ function workspace() {
   return surface;
 }
 
-function sidebarLayer() {
+function sidebarLayer(open = false) {
   const layer = document.createElement("div");
-  layer.className = "conversation-sidebar-layer";
+  layer.className = `conversation-sidebar-layer${open ? " open" : ""}`;
   const panel = layer.appendChild(document.createElement("aside"));
   panel.className = "conversation-sidebar";
   panel.getBoundingClientRect = () => ({ width: 300 }) as DOMRect;
@@ -44,7 +44,7 @@ describe("会话侧栏右滑手势", () => {
   it("会话中部右滑时面板跟随位移，松手后展开", () => {
     const onOpen = vi.fn();
     const { result, rerender } = renderHook(
-      ({ open }) => useSidebarSwipe(open, onOpen),
+      ({ open }) => useSidebarSwipe(open, onOpen, vi.fn()),
       { initialProps: { open: false } },
     );
     const layer = sidebarLayer();
@@ -70,7 +70,7 @@ describe("会话侧栏右滑手势", () => {
 
   it("拖动不足时收回，取消触摸时清理预览", () => {
     const onOpen = vi.fn();
-    const { result } = renderHook(() => useSidebarSwipe(false, onOpen));
+    const { result } = renderHook(() => useSidebarSwipe(false, onOpen, vi.fn()));
     const layer = sidebarLayer();
     result.current.current = layer;
     const surface = workspace();
@@ -90,7 +90,7 @@ describe("会话侧栏右滑手势", () => {
 
   it("短距离快速右滑松手后仍可展开", () => {
     const onOpen = vi.fn();
-    const { result } = renderHook(() => useSidebarSwipe(false, onOpen));
+    const { result } = renderHook(() => useSidebarSwipe(false, onOpen, vi.fn()));
     result.current.current = sidebarLayer();
     const surface = workspace();
 
@@ -102,7 +102,7 @@ describe("会话侧栏右滑手势", () => {
 
   it("保留左边缘右滑，并忽略纵向滚动和多指触控", () => {
     const onOpen = vi.fn();
-    const { result } = renderHook(() => useSidebarSwipe(false, onOpen));
+    const { result } = renderHook(() => useSidebarSwipe(false, onOpen, vi.fn()));
     const layer = sidebarLayer();
     result.current.current = layer;
     const surface = workspace();
@@ -130,7 +130,7 @@ describe("会话侧栏右滑手势", () => {
 
   it("不抢输入框、弹层和横向滚动内容的手势", () => {
     const onOpen = vi.fn();
-    const { result } = renderHook(() => useSidebarSwipe(false, onOpen));
+    const { result } = renderHook(() => useSidebarSwipe(false, onOpen, vi.fn()));
     const layer = sidebarLayer();
     result.current.current = layer;
     const surface = workspace();
@@ -155,7 +155,7 @@ describe("会话侧栏右滑手势", () => {
 
   it("侧栏已打开或从非会话区域起滑时不打开", () => {
     const onOpen = vi.fn();
-    const { result } = renderHook(() => useSidebarSwipe(true, onOpen));
+    const { result } = renderHook(() => useSidebarSwipe(true, onOpen, vi.fn()));
     result.current.current = sidebarLayer();
     const surface = workspace();
     touch(surface, "touchstart", [[180, 200]]);
@@ -163,5 +163,82 @@ describe("会话侧栏右滑手势", () => {
     touch(document.body, "touchstart", [[180, 200]]);
     touch(document.body, "touchmove", [[260, 205]]);
     expect(onOpen).not.toHaveBeenCalled();
+  });
+
+  it("侧栏内左滑时跟手收回，松手后关闭", () => {
+    const onOpen = vi.fn();
+    const onClose = vi.fn();
+    const { result, rerender } = renderHook(
+      ({ open }) => useSidebarSwipe(open, onOpen, onClose),
+      { initialProps: { open: true } },
+    );
+    const layer = sidebarLayer(true);
+    result.current.current = layer;
+    const panel = layer.querySelector("aside")!;
+
+    touch(panel, "touchstart", [[250, 300]]);
+    const move = touch(panel, "touchmove", [[210, 305]]);
+    expect(move.defaultPrevented).toBe(true);
+    expect(layer.classList.contains("dragging")).toBe(true);
+    expect(layer.style.getPropertyValue("--sidebar-drag-x")).toBe("-40px");
+    expect(Number(layer.style.getPropertyValue("--sidebar-drag-progress"))).toBeCloseTo(1 - 40 / 312);
+    expect(onClose).not.toHaveBeenCalled();
+
+    touch(panel, "touchmove", [[120, 309]]);
+    expect(layer.style.getPropertyValue("--sidebar-drag-x")).toBe("-130px");
+    touch(panel, "touchend", []);
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(onOpen).not.toHaveBeenCalled();
+    rerender({ open: false });
+    expect(layer.classList.contains("dragging")).toBe(false);
+  });
+
+  it("侧栏内短拖和取消触摸会恢复展开状态", () => {
+    const onClose = vi.fn();
+    const { result } = renderHook(() => useSidebarSwipe(true, vi.fn(), onClose));
+    const layer = sidebarLayer(true);
+    result.current.current = layer;
+    const panel = layer.querySelector("aside")!;
+
+    touch(panel, "touchstart", [[250, 300]]);
+    touch(panel, "touchmove", [[220, 305]]);
+    touch(panel, "touchend", []);
+    expect(onClose).not.toHaveBeenCalled();
+    expect(layer.classList.contains("dragging")).toBe(false);
+
+    touch(panel, "touchstart", [[250, 300]]);
+    touch(panel, "touchmove", [[170, 305]]);
+    touch(panel, "touchcancel", []);
+    expect(onClose).not.toHaveBeenCalled();
+    expect(layer.style.getPropertyValue("--sidebar-drag-x")).toBe("");
+  });
+
+  it("侧栏的纵向列表、搜索框和横向滚动区域保持原有手势", () => {
+    const onClose = vi.fn();
+    const { result } = renderHook(() => useSidebarSwipe(true, vi.fn(), onClose));
+    const layer = sidebarLayer(true);
+    result.current.current = layer;
+    const panel = layer.querySelector("aside")!;
+    const list = panel.appendChild(document.createElement("div"));
+    const input = panel.appendChild(document.createElement("input"));
+    const horizontal = panel.appendChild(document.createElement("div"));
+    horizontal.style.overflowX = "auto";
+    Object.defineProperties(horizontal, {
+      scrollWidth: { value: 400 },
+      clientWidth: { value: 200 },
+    });
+
+    touch(list, "touchstart", [[250, 200]]);
+    const vertical = touch(list, "touchmove", [[245, 270]]);
+    touch(list, "touchmove", [[110, 275]]);
+    touch(list, "touchend", []);
+    expect(vertical.defaultPrevented).toBe(false);
+    for (const target of [input, horizontal]) {
+      touch(target, "touchstart", [[250, 200]]);
+      touch(target, "touchmove", [[110, 205]]);
+      touch(target, "touchend", []);
+    }
+    expect(onClose).not.toHaveBeenCalled();
+    expect(layer.classList.contains("dragging")).toBe(false);
   });
 });

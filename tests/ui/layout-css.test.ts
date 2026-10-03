@@ -335,6 +335,10 @@ describe("悬浮状态布局", () => {
       styles.match(
         /(?:^|\n)\.conversation-sidebar-layer\.dragging \.conversation-sidebar\s*\{([^}]*)\}/,
       )?.[1] ?? "";
+    const closingSidebarRule =
+      styles.match(
+        /(?:^|\n)\.conversation-sidebar-layer\.open\.dragging \.conversation-sidebar\s*\{([^}]*)\}/,
+      )?.[1] ?? "";
     const draggingScrimRule =
       styles.match(
         /(?:^|\n)\.conversation-sidebar-layer\.dragging \.conversation-sidebar-scrim\s*\{([^}]*)\}/,
@@ -355,6 +359,8 @@ describe("悬浮状态布局", () => {
     expect(draggingRule).toContain("visibility: visible");
     expect(draggingSidebarRule).toContain("var(--sidebar-drag-x)");
     expect(draggingSidebarRule).toContain("transition: none");
+    expect(closingSidebarRule).toContain("translateX(var(--sidebar-drag-x))");
+    expect(closingSidebarRule).toContain("transition: none");
     expect(draggingScrimRule).toContain("var(--sidebar-drag-progress)");
     expect(draggingScrimRule).toContain("transition: none");
   });

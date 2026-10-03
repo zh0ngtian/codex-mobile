@@ -3690,7 +3690,11 @@ function ConfiguredApp({
     refresh: refreshAllBackends,
     refreshSilently: refreshAllBackendsSilently,
   } = useSidebarRefresh();
-  const sidebarLayerRef = useSidebarSwipe(sidebarOpen, openSidebar);
+  const sidebarLayerRef = useSidebarSwipe(
+    sidebarOpen,
+    openSidebar,
+    closeSidebar,
+  );
   const selectListBackend = useCallback((backendId: string) => {
     window.localStorage.setItem("codex-mobile:list-backend", backendId);
     setListBackendId(backendId);
