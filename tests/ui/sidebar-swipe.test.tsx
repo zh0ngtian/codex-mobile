@@ -32,6 +32,8 @@ function sidebarLayer(open = false) {
   const panel = layer.appendChild(document.createElement("aside"));
   panel.className = "conversation-sidebar";
   panel.getBoundingClientRect = () => ({ width: 300 }) as DOMRect;
+  const scrim = layer.appendChild(document.createElement("button"));
+  scrim.className = "conversation-sidebar-scrim";
   document.body.append(layer);
   return layer;
 }
@@ -191,6 +193,25 @@ describe("会话侧栏右滑手势", () => {
     expect(onOpen).not.toHaveBeenCalled();
     rerender({ open: false });
     expect(layer.classList.contains("dragging")).toBe(false);
+  });
+
+  it("右侧未被面板覆盖的遮罩区域左滑也跟手收回", () => {
+    const onClose = vi.fn();
+    const { result } = renderHook(() => useSidebarSwipe(true, vi.fn(), onClose));
+    const layer = sidebarLayer(true);
+    result.current.current = layer;
+    const scrim = layer.querySelector(".conversation-sidebar-scrim")!;
+
+    touch(scrim, "touchstart", [[380, 300]]);
+    const move = touch(scrim, "touchmove", [[340, 305]]);
+    expect(move.defaultPrevented).toBe(true);
+    expect(layer.classList.contains("dragging")).toBe(true);
+    expect(layer.style.getPropertyValue("--sidebar-drag-x")).toBe("-40px");
+    expect(onClose).not.toHaveBeenCalled();
+
+    touch(scrim, "touchmove", [[250, 309]]);
+    touch(scrim, "touchend", []);
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 
   it("侧栏内短拖和取消触摸会恢复展开状态", () => {

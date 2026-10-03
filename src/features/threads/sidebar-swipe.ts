@@ -25,7 +25,7 @@ function canStartSidebarSwipe(
 ): boolean {
   if (!(target instanceof Element)) return false;
   const surface = sidebarOpen
-    ? layer?.querySelector(".conversation-sidebar")
+    ? layer
     : target.closest(".backend-workspace:not([hidden])");
   if (!surface || !surface.contains(target)) return false;
   if (
