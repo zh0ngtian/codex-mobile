@@ -142,6 +142,25 @@ describe("移动端对话格式", () => {
     expect(groups[0].liveDiff).toBe("diff-1\ndiff-2");
   });
 
+  it("后续回合完成后，合并的逻辑回合也结束", () => {
+    const [group] = groupConversationTurns([
+      {
+        id: "turn-user",
+        status: "inProgress",
+        items: [{ id: "user", type: "userMessage", text: "修改代码" }],
+      },
+      {
+        id: "turn-final",
+        status: "completed",
+        items: [{ id: "final", type: "agentMessage", phase: "final_answer", text: "完成" }],
+      },
+    ]);
+    expect(group.status).toBe("completed");
+    const { container } = render(<TurnCard turn={group} client={null} />);
+    expect(container.querySelector(".turn-change-summary")?.textContent)
+      .toContain("本次代码改动 0 行");
+  });
+
   it("合并 assistant-only turns 时保留逻辑回合的完整耗时边界", () => {
     const [group] = groupConversationTurns([
       {
@@ -560,7 +579,7 @@ describe("移动端对话格式", () => {
     expect(container.querySelector(".diff-card")).toBeNull();
   });
 
-  it("完成后在消息外显示独立的代码改动计数", () => {
+  it("运行结束后以工具活动同款样式显示一条总计", () => {
     const turn = {
       id: "turn-line-count",
       status: "inProgress",
@@ -571,13 +590,14 @@ describe("移动端对话格式", () => {
       ],
     };
     const { container, rerender } = render(<TurnCard turn={turn} client={null} />);
-    expect(container.querySelector(".turn-change-indicator")).toBeNull();
+    expect(container.querySelector(".turn-change-summary")).toBeNull();
 
     rerender(<TurnCard turn={{ ...turn, status: "completed" }} client={null} />);
-    const indicator = container.querySelector(".turn-change-indicator");
-    expect(indicator?.parentElement).toBe(container.querySelector(".turn-card"));
-    expect(indicator?.querySelector(".turn-change-total")?.textContent).toBe("3");
-    expect(indicator?.querySelector(".turn-change-breakdown")?.textContent).toBe("+2-1");
+    const summary = container.querySelector(".turn-change-summary");
+    expect(summary?.parentElement).toBe(container.querySelector(".turn-card"));
+    expect(summary?.querySelector(".activity-icon")?.textContent).toBe("‹/›");
+    expect(summary?.querySelector(".activity-summary-text")?.textContent).toBe("本次代码改动 3 行+2-1");
+    expect(container.querySelectorAll(".turn-change-summary")).toHaveLength(1);
     expect(container.querySelector(".assistant-message")?.textContent).toBe("完成");
 
     rerender(<TurnCard turn={{
@@ -589,11 +609,10 @@ describe("移动端对话格式", () => {
         changes: [{ path: "a.ts", diff: "@@ -1 +1 @@\n-old\n+new" }],
       }],
     }} client={null} />);
-    expect(container.querySelector(".turn-change-total")?.textContent).toBe("2");
-    expect(container.querySelector(".turn-change-breakdown")?.textContent).toBe("+1-1");
+    expect(container.querySelector(".activity-summary-text")?.textContent).toBe("本次代码改动 2 行+1-1");
 
     rerender(<TurnCard turn={{ id: "no-change", status: "completed", items: [] }} client={null} />);
-    expect(container.querySelector(".turn-change-total")?.textContent).toBe("0");
+    expect(container.querySelector(".activity-summary-text")?.textContent).toBe("本次代码改动 0 行");
   });
 
   it("没有用户消息的回合不显示伪用户气泡", () => {

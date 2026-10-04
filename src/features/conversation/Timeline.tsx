@@ -727,16 +727,17 @@ export function TurnCard({
         )}
       </div>
       {!grouped.running && (
-        <div className="turn-change-indicator" aria-label={t("本次代码改动")}>
-          <span className="turn-change-label">{t("代码改动")}</span>
-          <strong className="turn-change-total">{changedLines}</strong>
-          <span className="turn-change-unit">{t("行")}</span>
-          {changedLines > 0 && (
-            <span className="turn-change-breakdown">
-              <span className="diff-add">+{changeStats.additions}</span>
-              <span className="diff-delete">-{changeStats.deletions}</span>
-            </span>
-          )}
+        <div className="turn-change-summary">
+          <span className="activity-icon" aria-hidden="true">‹/›</span>
+          <span className="activity-summary-text">
+            {t("本次代码改动 {count} 行", { count: changedLines })}
+            {changedLines > 0 && (
+              <>
+                <em className="diff-add">+{changeStats.additions}</em>
+                <em className="diff-delete">-{changeStats.deletions}</em>
+              </>
+            )}
+          </span>
         </div>
       )}
     </section>

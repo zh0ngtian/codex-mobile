@@ -843,10 +843,6 @@ export function groupTurnItems(turn: ConversationRecord) {
   };
 }
 
-function isRunningTurnStatus(status: unknown) {
-  return ["inProgress", "in_progress", "running"].includes(String(status));
-}
-
 function finiteNumber(value: unknown) {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
@@ -902,11 +898,7 @@ export function groupConversationTurns(
           : null;
     groups[groups.length - 1] = {
       ...previous,
-      status:
-        isRunningTurnStatus(previous.status) ||
-        isRunningTurnStatus(turn.status)
-          ? "inProgress"
-          : (turn.status ?? previous.status),
+      status: turn.status ?? previous.status,
       items: [...(previous.items ?? []), ...items],
       ...(startedAt != null ? { startedAt } : {}),
       ...(completedAt != null ? { completedAt } : {}),
