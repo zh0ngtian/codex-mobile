@@ -1,9 +1,115 @@
 import { expect, test } from "@playwright/test";
 
+test("模型目录延迟时保留会话恢复返回的推理强度", async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("codex-mobile:language", "zh-CN");
+
+    class DelayedModelSocket extends EventTarget {
+      static OPEN = 1;
+      static CLOSED = 3;
+      readyState = 0;
+
+      constructor() {
+        super();
+        setTimeout(() => {
+          this.readyState = DelayedModelSocket.OPEN;
+          this.dispatchEvent(new Event("open"));
+        }, 0);
+      }
+
+      send(raw: string) {
+        const request = JSON.parse(raw);
+        if (request.id == null) return;
+        const thread = {
+          id: "thread-delayed-models",
+          name: "推理强度恢复会话",
+          preview: "推理强度恢复会话",
+          cwd: "/tmp/project",
+          updatedAt: Math.floor(Date.now() / 1000),
+          status: { type: "idle" },
+          turns: [],
+        };
+        const responses: Record<string, unknown> = {
+          initialize: {},
+          "model/list": {
+            data: [{
+              id: "gpt-6.1-sol",
+              model: "gpt-6.1-sol",
+              displayName: "GPT-6.1-Sol",
+              isDefault: true,
+              defaultReasoningEffort: "low",
+              supportedReasoningEfforts: [
+                { reasoningEffort: "low", description: "更快响应" },
+                { reasoningEffort: "high", description: "更深入思考" },
+              ],
+              defaultServiceTier: null,
+              serviceTiers: [],
+            }],
+          },
+          "permissionProfile/list": {
+            data: [{ id: ":workspace", allowed: true }],
+          },
+          "config/read": {
+            config: {
+              model: "gpt-6.1-sol",
+              model_reasoning_effort: "low",
+              sandbox_mode: "workspace-write",
+            },
+          },
+          "account/rateLimits/read": {},
+          "thread/list": { data: [thread], nextCursor: null },
+          "thread/resume": {
+            thread,
+            initialTurnsPage: { data: [], nextCursor: null },
+            model: "gpt-6.1-sol",
+            reasoningEffort: "high",
+            serviceTier: null,
+            approvalPolicy: "on-request",
+            approvalsReviewer: "user",
+            activePermissionProfile: { id: ":workspace" },
+          },
+          "thread/turns/list": { data: [], nextCursor: null },
+        };
+        const delay = request.method === "model/list" ? 600 : 0;
+        setTimeout(() => {
+          this.dispatchEvent(
+            new MessageEvent("message", {
+              data: JSON.stringify({
+                id: request.id,
+                result: responses[request.method] ?? {},
+              }),
+            }),
+          );
+        }, delay);
+      }
+
+      close() {
+        this.readyState = DelayedModelSocket.CLOSED;
+        this.dispatchEvent(new CloseEvent("close"));
+      }
+    }
+
+    (window as any).WebSocket = DelayedModelSocket;
+  });
+
+  await page.goto("/");
+  const thread = page.getByRole("button", { name: /推理强度恢复会话/ }).first();
+  await expect(thread).toBeVisible({ timeout: 500 });
+  await thread.click();
+
+  const settings = page.getByRole("button", {
+    name: "选择模型、智能与速度",
+  });
+  await expect(settings).toContainText("GPT-6.1-Sol");
+  await expect(settings).toContainText("高");
+  await expect(settings).not.toContainText("智能");
+});
+
 test("新对话偏好跨冷启动恢复，线程设置即时写回且正常速度显式清除 Fast", async ({
   page,
 }) => {
   await page.addInitScript(() => {
+    localStorage.setItem("codex-mobile:language", "zh-CN");
     (window as any).__modelSettingsRpc = [];
 
     class MockSocket extends EventTarget {

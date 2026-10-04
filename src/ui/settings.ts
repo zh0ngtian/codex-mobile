@@ -119,11 +119,14 @@ export function normalizeModelSettings(
   serviceTier: string | null | undefined,
 ) {
   const efforts = effortOptionsForModel(model);
-  const normalizedEffort =
-    efforts.find((option) => option.id === effort)?.id ??
-    efforts.find((option) => option.id === model?.defaultReasoningEffort)?.id ??
-    efforts[0]?.id ??
-    null;
+  const normalizedEffort = model
+    ? efforts.find((option) => option.id === effort)?.id ??
+      efforts.find((option) => option.id === model.defaultReasoningEffort)?.id ??
+      efforts[0]?.id ??
+      null
+    : typeof effort === "string" && effort
+      ? effort
+      : null;
   const tiers = model?.serviceTiers ?? [];
   let normalizedServiceTier =
     tiers.find((tier) => tier.id === serviceTier)?.id ?? null;

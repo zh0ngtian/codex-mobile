@@ -1586,9 +1586,28 @@ function BackendWorkspace({
             modelsRef.current = modelResult.data;
             setPermissionProfiles(availableProfiles);
             if (!activeRef.current?.id) {
+              selectedModelRef.current = newChatModelSettings.model;
+              selectedEffortRef.current = newChatModelSettings.effort;
+              selectedServiceTierRef.current = newChatModelSettings.serviceTier;
               setSelectedModel(newChatModelSettings.model);
               setSelectedEffort(newChatModelSettings.effort);
               setSelectedServiceTier(newChatModelSettings.serviceTier);
+            } else {
+              const activeModel = modelResult.data.find(
+                (model) => model.model === selectedModelRef.current,
+              );
+              if (activeModel) {
+                const normalizedActiveSettings = normalizeModelSettings(
+                  activeModel,
+                  selectedEffortRef.current,
+                  selectedServiceTierRef.current,
+                );
+                selectedEffortRef.current = normalizedActiveSettings.effort;
+                selectedServiceTierRef.current =
+                  normalizedActiveSettings.serviceTier;
+                setSelectedEffort(normalizedActiveSettings.effort);
+                setSelectedServiceTier(normalizedActiveSettings.serviceTier);
+              }
             }
             setSelectedPermission((current) => current || configuredPermission);
             setSelectedApprovalPolicy(
@@ -1636,6 +1655,9 @@ function BackendWorkspace({
                 setActiveSettingsSynchronized(resumed.settingsSynchronized);
                 setActiveThreadAccessMode(resumed.accessMode);
                 setActiveThreadResumeError(resumed.resumeError ?? "");
+                selectedModelRef.current = resumed.model ?? "";
+                selectedEffortRef.current = resumedSettings.effort;
+                selectedServiceTierRef.current = resumedSettings.serviceTier;
                 setSelectedModel(resumed.model ?? "");
                 setSelectedEffort(resumedSettings.effort);
                 setSelectedServiceTier(resumedSettings.serviceTier);
@@ -1966,7 +1988,7 @@ function BackendWorkspace({
         throw new Error(t("会话详情返回无效，请重试"));
       }
       const resumedSettings = normalizeModelSettings(
-        models.find((model) => model.model === session.model),
+        modelsRef.current.find((model) => model.model === session.model),
         session.reasoningEffort,
         session.serviceTier,
       );
@@ -1986,6 +2008,9 @@ function BackendWorkspace({
       setActiveSettingsSynchronized(session.settingsSynchronized);
       setActiveThreadAccessMode(session.accessMode);
       setActiveThreadResumeError(session.resumeError ?? "");
+      selectedModelRef.current = session.model ?? "";
+      selectedEffortRef.current = resumedSettings.effort;
+      selectedServiceTierRef.current = resumedSettings.serviceTier;
       setSelectedModel(session.model ?? "");
       setSelectedEffort(resumedSettings.effort);
       setSelectedServiceTier(resumedSettings.serviceTier);
