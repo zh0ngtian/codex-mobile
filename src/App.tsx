@@ -71,7 +71,6 @@ import {
   applyThreadNameUpdate,
   applyThreadNameUpdateToList,
   duplicateThread,
-  setThreadPinned,
 } from "./app-server/thread-metadata";
 import {
   hasQueuedFollowUpsForThread,
@@ -185,6 +184,7 @@ import {
 import {
   applyPinnedThreadState,
   readPinnedThreadIds,
+  toggleThreadPinned,
   writeThreadPinned,
 } from "./features/threads/thread-pinning";
 import {
@@ -512,6 +512,21 @@ function BackendWorkspace({
     readUnreadThreadIds(localStorage, backend.id);
   const readLocalPinned = () =>
     readPinnedThreadIds(localStorage, backend.id);
+  const setLocalPinned = (threadId: string) => {
+    const isPinned = toggleThreadPinned(localStorage, backend.id, threadId);
+    const update = (current: AnyRecord[]) =>
+      current.map((entry) =>
+        String(entry.id) === threadId ? { ...entry, isPinned } : entry,
+      );
+    setThreads(update);
+    setSearchResults(update);
+    setActive((current) =>
+      String(current?.id ?? "") === threadId
+        ? { ...current, isPinned }
+        : current,
+    );
+    showNotice(isPinned ? t("已置顶") : t("已取消置顶"));
+  };
   const writeLocalUnread = (ids: Set<string>) => {
     writeUnreadThreadIds(localStorage, backend.id, ids);
   };
@@ -2788,10 +2803,6 @@ function BackendWorkspace({
     const client = clientRef.current;
     const threadId = String(thread.id ?? "");
     if (!threadId || pendingAction) return false;
-    if (!client) {
-      setError(t("设备尚未连接，请稍后重试"));
-      return false;
-    }
     if (
       action === "archive" &&
       hasQueuedFollowUpsForThread(queuedFollowUpsRef.current, threadId)
@@ -2812,36 +2823,12 @@ function BackendWorkspace({
     setError("");
     try {
       if (action === "pin") {
-        const nextPinned = thread.isPinned !== true;
-        const result = await setThreadPinned(client, threadId, nextPinned);
-        const refreshed = result.thread;
-        writeThreadPinned(
-          localStorage,
-          backend.id,
-          threadId,
-          result.persistence === "local" ? nextPinned : false,
-        );
-        setThreads((current) =>
-          current.map((entry) =>
-            String(entry.id) === threadId
-              ? { ...entry, isPinned: refreshed.isPinned }
-              : entry,
-          ),
-        );
-        setSearchResults((current) =>
-          current.map((entry) =>
-            String(entry.id) === threadId
-              ? { ...entry, isPinned: refreshed.isPinned }
-              : entry,
-          ),
-        );
-        setActive((current) =>
-          String(current?.id ?? "") === threadId
-            ? { ...current, isPinned: refreshed.isPinned }
-            : current,
-        );
-        showNotice(refreshed.isPinned ? t("已置顶") : t("已取消置顶"));
+        setLocalPinned(threadId);
         return true;
+      }
+      if (!client) {
+        setError(t("设备尚未连接，请稍后重试"));
+        return false;
       }
       if (action === "refresh") {
         const result = await client.request<{ thread: AnyRecord }>(
@@ -2963,51 +2950,16 @@ function BackendWorkspace({
   }
 
   async function togglePinned() {
-    const client = clientRef.current;
     const thread = activeRef.current;
     if (
-      !client ||
       !thread?.id ||
-      pendingAction ||
-      activeThreadAccessMode !== "interactive"
+      pendingAction
     ) return false;
     const nextPinned = thread.isPinned !== true;
     setPendingAction("pin");
     setError("");
     try {
-      const result = await setThreadPinned(
-        client,
-        thread.id,
-        nextPinned,
-      );
-      const refreshed = result.thread;
-      writeThreadPinned(
-        localStorage,
-        backend.id,
-        String(thread.id),
-        result.persistence === "local" ? nextPinned : false,
-      );
-      const persistedPinned = refreshed.isPinned;
-      setThreads((current) =>
-        current.map((entry) =>
-          entry.id === thread.id
-            ? { ...entry, isPinned: persistedPinned }
-            : entry,
-        ),
-      );
-      setSearchResults((current) =>
-        current.map((entry) =>
-          entry.id === thread.id
-            ? { ...entry, isPinned: persistedPinned }
-            : entry,
-        ),
-      );
-      setActive((current) =>
-        current?.id === thread.id
-          ? { ...current, isPinned: persistedPinned }
-          : current,
-      );
-      showNotice(persistedPinned ? t("已置顶") : t("已取消置顶"));
+      setLocalPinned(String(thread.id));
       return true;
     } catch {
       setError(nextPinned ? t("置顶失败，请重试") : t("取消置顶失败，请重试"));

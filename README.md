@@ -295,7 +295,7 @@ codex-mobile/
 
 ## 已知边界
 
-- Codex app-server 协议会随 CLI 版本演进；分页、置顶等能力以实际运行版本为准。
+- 会话置顶保存在当前设备本地，不同步至 Codex app-server 或其他设备；分页等能力以实际运行的 CLI 版本为准。
 - 大型会话的 `thread/read(includeTurns:true)` 响应可能很大，正常路径优先使用
   `thread/resume` 初始分页和 `thread/turns/list`。
 - app-server 的持久化 `ThreadItem` 可能是有损表示，前端也会合并逻辑回合。

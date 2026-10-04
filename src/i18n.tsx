@@ -410,7 +410,6 @@ const english: Record<string, string> = {
   "当前环境不支持麦克风": "Microphone access is not supported in this environment",
   "麦克风尚未准备完成": "The microphone is not ready yet",
   "原生麦克风 Bridge 不可用": "The native microphone bridge is unavailable",
-  "服务端返回的置顶状态不一致": "The server returned an inconsistent pinned state",
   "当前页面使用 HTTP，浏览器仅允许在 HTTPS 页面申请麦克风权限":
     "This page uses HTTP, but browsers only allow microphone access on HTTPS pages",
   "与 app-server 的连接已断开": "The app-server connection was closed",

@@ -41,17 +41,22 @@ export function writeThreadPinned(
   storage.setItem(storageKey(backendId), JSON.stringify([...pinned].sort()));
 }
 
+export function toggleThreadPinned(
+  storage: ThreadPinStorage,
+  backendId: string,
+  threadId: string,
+) {
+  const isPinned = !readPinnedThreadIds(storage, backendId).has(threadId);
+  writeThreadPinned(storage, backendId, threadId, isPinned);
+  return isPinned;
+}
+
 export function applyPinnedThreadState<T extends ThreadRecord>(
   threads: T[],
   locallyPinnedThreadIds: Set<string>,
 ): Array<T & { isPinned: boolean }> {
-  const serverProvidesPinState = threads.some(
-    (thread) => typeof thread.isPinned === "boolean",
-  );
   return threads.map((thread) => ({
     ...thread,
-    isPinned: serverProvidesPinState
-      ? thread.isPinned === true
-      : locallyPinnedThreadIds.has(String(thread.id)),
+    isPinned: locallyPinnedThreadIds.has(String(thread.id)),
   }));
 }

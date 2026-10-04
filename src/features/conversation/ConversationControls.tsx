@@ -215,7 +215,7 @@ export function ConversationActionMenu({
       label: pinned ? t("取消置顶") : t("置顶"),
       icon: "pin" as const,
       onClick: onPin,
-      requiresWrite: true,
+      requiresWrite: false,
     },
     {
       id: "refresh",
