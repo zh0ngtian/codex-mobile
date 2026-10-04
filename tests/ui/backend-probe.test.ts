@@ -12,7 +12,7 @@ const backend: BackendConfig = {
 };
 
 describe("设备网关探测", () => {
-  it("验证控制面后再完成一次 WebSocket initialize", async () => {
+  it("验证控制面后再完成一次 HTTP initialize", async () => {
     const fetchHost = vi.fn(async () =>
       new Response(
         JSON.stringify({
@@ -21,14 +21,15 @@ describe("设备网关探测", () => {
           hostname: "mac-mini.local",
           gatewayVersion: "0.2.0",
           appServerReady: true,
+          httpPolling: true,
         }),
         { status: 200, headers: { "content-type": "application/json" } },
       ),
     );
-    const initializeWebSocket = vi.fn(async () => undefined);
+    const initializeHttp = vi.fn(async () => undefined);
 
     await expect(
-      probeBackend(backend, { fetchHost, initializeWebSocket }),
+      probeBackend(backend, { fetchHost, initializeHttp }),
     ).resolves.toMatchObject({
       hostId: "mini",
       appServerReady: true,
@@ -37,9 +38,7 @@ describe("设备网关探测", () => {
       "http://192.168.100.8:4173/api/host?token=a+b",
       expect.objectContaining({ method: "GET" }),
     );
-    expect(initializeWebSocket).toHaveBeenCalledWith(
-      "ws://192.168.100.8:4173/ws?token=a+b",
-    );
+    expect(initializeHttp).toHaveBeenCalledWith(backend);
   });
 
   it("app-server 未就绪时不尝试建立业务连接", async () => {
@@ -55,15 +54,15 @@ describe("设备网关探测", () => {
         { status: 200 },
       ),
     );
-    const initializeWebSocket = vi.fn(async () => undefined);
+    const initializeHttp = vi.fn(async () => undefined);
 
     await expect(
-      probeBackend(backend, { fetchHost, initializeWebSocket }),
+      probeBackend(backend, { fetchHost, initializeHttp }),
     ).rejects.toThrow("app-server 尚未就绪");
-    expect(initializeWebSocket).not.toHaveBeenCalled();
+    expect(initializeHttp).not.toHaveBeenCalled();
   });
 
-  it("WebSocket 打开后 initialize 无响应也会超时", async () => {
+  it("HTTP initialize 无响应也会超时", async () => {
     const fetchHost = vi.fn(async () =>
       new Response(
         JSON.stringify({
@@ -72,6 +71,7 @@ describe("设备网关探测", () => {
           hostname: "mac-mini.local",
           gatewayVersion: "0.2.0",
           appServerReady: true,
+          httpPolling: true,
         }),
         { status: 200 },
       ),
@@ -81,7 +81,7 @@ describe("设备网关探测", () => {
       probeBackend(backend, {
         timeoutMs: 10,
         fetchHost,
-        initializeWebSocket: () => new Promise<void>(() => undefined),
+        initializeHttp: () => new Promise<void>(() => undefined),
       }),
     ).rejects.toThrow("initialize 超时");
   });

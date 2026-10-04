@@ -6,12 +6,14 @@ type AnyRecord = Record<string, any>;
 
 export function ApprovalSheet({
   approval,
+  submitting = false,
   userAnswers,
   onAnswerChange,
   onSubmitAnswers,
   onDecision,
 }: {
   approval: RpcMessage | null;
+  submitting?: boolean;
   userAnswers: Record<string, string>;
   onAnswerChange: (questionId: string, value: string) => void;
   onSubmitAnswers: () => void;
@@ -40,13 +42,13 @@ export function ApprovalSheet({
       closeOnBackdrop={false}
       footer={
         requestsInput ? (
-          <button className="approve" onClick={onSubmitAnswers}>
+          <button className="approve" disabled={submitting} onClick={onSubmitAnswers}>
             {t("提交回答")}
           </button>
         ) : (
           <>
-            <button onClick={() => onDecision("decline")}>{t("拒绝")}</button>
-            <button className="approve" onClick={() => onDecision("accept")}>
+            <button disabled={submitting} onClick={() => onDecision("decline")}>{t("拒绝")}</button>
+            <button className="approve" disabled={submitting} onClick={() => onDecision("accept")}>
               {t("允许")}
             </button>
           </>

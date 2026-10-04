@@ -23,11 +23,21 @@ type RequestListener = (message: RpcMessage) => void;
 interface PendingRequest {
   resolve: (value: unknown) => void;
   reject: (reason: unknown) => void;
-  timeout: ReturnType<typeof setTimeout>;
+  timeout: ReturnType<typeof setTimeout> | undefined;
 }
 
 interface AppServerClientOptions {
   requestTimeoutMs?: number;
+}
+
+export interface AppServerSocket {
+  readyState: number;
+  managesHttpTimeout?: boolean;
+  addEventListener(type: string, listener: (event: any) => void): void;
+  send(data: string, timeoutMs?: number): void | Promise<void>;
+  close(code?: number, reason?: string): void;
+  openRealtime?: () => Promise<void>;
+  closeRealtime?: () => void;
 }
 
 export interface AppServerRequestOptions {
@@ -63,7 +73,7 @@ export class AppServerClient {
   private readonly requestTimeoutMs: number;
 
   constructor(
-    private readonly socket: WebSocket,
+    private readonly socket: AppServerSocket,
     options: AppServerClientOptions = {},
   ) {
     this.requestTimeoutMs = options.requestTimeoutMs ?? 10_000;
@@ -83,7 +93,7 @@ export class AppServerClient {
       clientInfo: { name: "codex-mobile-web", title: "Codex Mobile Web", version: "0.2.0" },
       capabilities: { experimentalApi: true },
     });
-    this.notify("initialized", {});
+    await this.notify("initialized", {});
     return result;
   }
 
@@ -98,7 +108,7 @@ export class AppServerClient {
         reject(new AppServerConnectionUnavailableError());
         return;
       }
-      const timeout = setTimeout(() => {
+      const timeout = this.socket.managesHttpTimeout && !method.startsWith("thread/realtime/") ? undefined : setTimeout(() => {
         if (!this.pending.delete(id)) return;
         reject(new Error(t("{method} 请求超时", { method })));
         if (this.socket.readyState === WebSocket.OPEN) {
@@ -112,7 +122,12 @@ export class AppServerClient {
       };
       this.pending.set(id, pending);
       try {
-        this.send({ id, method, params });
+        const sending = this.send({ id, method, params }, options.timeoutMs ?? this.requestTimeoutMs);
+        if (sending) void sending.catch((reason) => {
+          if (!this.pending.delete(id)) return;
+          clearTimeout(timeout);
+          reject(reason);
+        });
       } catch (reason) {
         clearTimeout(timeout);
         this.pending.delete(id);
@@ -122,16 +137,19 @@ export class AppServerClient {
   }
 
   notify(method: string, params: unknown) {
-    this.send({ method, params });
+    return this.send({ method, params });
   }
 
   respond(id: number | string, result: unknown) {
-    this.send({ id, result });
+    return this.send({ id, result });
   }
 
   respondError(id: number | string, code: number, message: string, data?: unknown) {
-    this.send({ id, error: { code, message, data } });
+    return this.send({ id, error: { code, message, data } });
   }
+
+  openRealtime() { return this.socket.openRealtime?.() ?? Promise.resolve(); }
+  closeRealtime() { this.socket.closeRealtime?.(); }
 
   onNotification(listener: NotificationListener) {
     this.notificationListeners.add(listener);
@@ -143,13 +161,13 @@ export class AppServerClient {
     return () => this.requestListeners.delete(listener);
   }
 
-  private send(message: RpcMessage) {
+  private send(message: RpcMessage, timeoutMs?: number) {
     const payload = JSON.stringify(message);
     const bytes = new TextEncoder().encode(payload).byteLength;
     if (bytes > MAX_APP_SERVER_MESSAGE_BYTES) {
       throw new Error(messageTooLarge(bytes, MAX_APP_SERVER_MESSAGE_BYTES));
     }
-    this.socket.send(payload);
+    return this.socket.send(payload, timeoutMs);
   }
 
   private receive(raw: string) {

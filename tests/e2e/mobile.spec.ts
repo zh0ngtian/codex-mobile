@@ -1,4 +1,5 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./http-fixture";
+import { test as liveTest } from "@playwright/test";
 import { CONVERSATION_TITLE_REQUEST } from "../../src/app-server/conversation-title";
 
 test("发送前旧连接失效时恢复会话并只发送一次", async ({ page }) => {
@@ -941,7 +942,7 @@ test("移动端选择器、线程恢复、Markdown、折叠与吸顶", async ({ 
                 }),
               }),
             );
-          }, 300);
+          }, 1_500);
           setTimeout(() => {
             this.dispatchEvent(
               new MessageEvent("message", {
@@ -965,7 +966,7 @@ test("移动端选择器、线程恢复、Markdown、折叠与吸顶", async ({ 
                 }),
               }),
             );
-          }, 700);
+          }, 2_500);
         }
       }
 
@@ -1003,12 +1004,13 @@ test("移动端选择器、线程恢复、Markdown、折叠与吸顶", async ({ 
     clientX: 40,
     clientY: 180,
   });
-  await expect(page.getByLabel("会话操作")).toBeVisible();
-  await expect(page.getByRole("button", { name: "刷新会话" })).toBeVisible();
+  await markdownThreadRow.dispatchEvent("click");
+  await expect(page.getByLabel("会话操作", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "刷新会话", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "复制会话 ID" })).toBeVisible();
   await expect(page.getByRole("button", { name: "重命名" })).toBeVisible();
   await expect(page.getByRole("button", { name: "归档" })).toBeVisible();
-  await page.getByRole("button", { name: "刷新会话" }).click();
+  await page.getByRole("button", { name: "刷新会话", exact: true }).click();
   await expect
     .poll(() =>
       page.evaluate(() =>
@@ -1021,7 +1023,7 @@ test("移动端选择器、线程恢复、Markdown、折叠与吸顶", async ({ 
       ),
     )
     .toBe(true);
-  await expect(page.getByLabel("会话操作")).toHaveCount(0);
+  await expect(page.getByLabel("会话操作", { exact: true })).toHaveCount(0);
   const listHeader = page.locator(".list-header");
   const listSticky = page.locator(".thread-list-sticky");
   await expect(listSticky).toHaveCSS("position", "sticky");
@@ -1186,7 +1188,7 @@ test("移动端选择器、线程恢复、Markdown、折叠与吸顶", async ({ 
     "0px",
   );
   await expectSheetHeaderFlush(".image-preview-sheet");
-  await expect(page.getByText("/tmp/user.png", { exact: true })).toBeVisible();
+  await expect(page.locator(".image-preview-sheet")).toContainText("user.png");
   await expect(page.getByText("100%")).toBeVisible();
   await page.getByRole("button", { name: "放大图片" }).click();
   await expect(page.getByText("125%")).toBeVisible();
@@ -1528,6 +1530,7 @@ test("多设备同时连接、切换、缓存并路由后台审批", async ({ pa
               hostname: url.hostname,
               gatewayVersion: "0.2.0",
               appServerReady: true,
+              httpPolling: true,
             }),
             {
               status: 200,
@@ -1642,7 +1645,7 @@ test("多设备同时连接、切换、缓存并路由后台审批", async ({ pa
   });
 
   await page.goto("/");
-  await expect(page.getByRole("button", { name: /Mac mini.*进行中/ }))
+  await expect(page.getByRole("button", { name: /Mini 任务.*进行中/ }))
     .toBeVisible();
   await expect
     .poll(() =>
@@ -1726,8 +1729,9 @@ test("多设备同时连接、切换、缓存并路由后台审批", async ({ pa
   expect(widths.body).toBeLessThanOrEqual(widths.viewport);
 });
 
-test("移动端可连接真实 app-server 并校验新聊天目标", async ({ page }) => {
-  test.setTimeout(130_000);
+liveTest("移动端可连接真实 app-server 并校验新聊天目标", async ({ page }) => {
+  liveTest.setTimeout(130_000);
+  await page.addInitScript(() => localStorage.setItem("codex-mobile:language", "zh-CN"));
   await page.goto("/");
   await expect(
     page.getByRole("heading", { name: "Codex Mobile" }),

@@ -1,5 +1,5 @@
 import { AppServerClient } from "../app-server/client";
-import { backendWebSocketUrl } from "./connection-manager";
+import { HttpRpcTransport, transportUuid } from "./http-transport";
 import type { BackendConfig } from "./types";
 import { t } from "../i18n";
 
@@ -9,6 +9,7 @@ export interface GatewayHostInfo {
   hostname: string;
   gatewayVersion: string;
   appServerReady: boolean;
+  httpPolling?: boolean;
 }
 
 export interface BackendProjectState {
@@ -52,11 +53,11 @@ function withToken(baseUrl: string, path: string, token: string) {
   return url.toString();
 }
 
-async function initializeSocket(
-  url: string,
+async function initializeHttpSession(
+  config: BackendConfig,
   timeoutMs: number,
 ) {
-  const socket = new WebSocket(url);
+  const socket = new HttpRpcTransport(config, { sessionId: transportUuid() });
   try {
     await withTimeout(
       (async () => {
@@ -64,20 +65,21 @@ async function initializeSocket(
           socket.addEventListener("open", () => resolve(), { once: true });
           socket.addEventListener(
             "error",
-            () => reject(new Error(t("无法连接设备 WebSocket"))),
+            () => reject(new Error(t("无法连接设备网关"))),
             { once: true },
           );
           socket.addEventListener(
             "close",
-            () => reject(new Error(t("设备 WebSocket 已关闭"))),
+            () => reject(new Error(t("与 app-server 的连接已断开"))),
             { once: true },
           );
         });
         const client = new AppServerClient(socket);
         await client.initialize();
+        await client.request("thread/loaded/list", { limit: 1 });
       })(),
       timeoutMs,
-      t("WebSocket initialize 超时"),
+      t("HTTP initialize 超时"),
     );
   } finally {
     socket.close();
@@ -90,7 +92,7 @@ interface ProbeDependencies {
     input: string,
     init: RequestInit,
   ) => Promise<Response>;
-  initializeWebSocket?: (url: string) => Promise<void>;
+  initializeHttp?: (config: BackendConfig) => Promise<void>;
 }
 
 async function withTimeout<T>(
@@ -160,13 +162,14 @@ export async function probeBackend(
 ): Promise<GatewayHostInfo> {
   const timeoutMs = dependencies.timeoutMs ?? 6_000;
   const info = await fetchBackendHostInfo(config, dependencies);
-  const initializeWebSocket =
-    dependencies.initializeWebSocket ??
-    ((url: string) => initializeSocket(url, timeoutMs));
+  if (!info.httpPolling) throw new Error(t("设备网关需要升级以支持 HTTP 同步"));
+  const initializeHttp =
+    dependencies.initializeHttp ??
+    ((config: BackendConfig) => initializeHttpSession(config, timeoutMs));
   await withTimeout(
-    initializeWebSocket(backendWebSocketUrl(config)),
+    initializeHttp(config),
     timeoutMs,
-    t("WebSocket initialize 超时"),
+    t("HTTP initialize 超时"),
   );
   return info;
 }

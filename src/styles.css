@@ -599,3 +599,9 @@ button, a, summary, [role="button"] { -webkit-tap-highlight-color: transparent; 
 .permission-options > button { min-height: 70px; }
 .popover-link { min-height: 58px; }
 .popover-title { padding-top: 3px; padding-bottom: 8px; }
+.run-progress { display: grid; gap: 7px; margin: 8px 0 18px; padding: 12px 14px; border: 1px solid #e8e8e8; border-radius: 12px; background: #fafafa; color: #555; font-size: 13px; overflow-wrap: anywhere; }
+.run-progress strong { font-weight: 500; color: #333; }
+.run-progress small { color: #888; font-size: 11px; }
+.run-progress ol { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.run-progress li[data-status="completed"] { color: #888; }
+.run-progress li[data-status="inProgress"] { color: #333; }

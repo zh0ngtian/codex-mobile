@@ -344,6 +344,9 @@ function BackendWorkspace({
   const [queuedFollowUps, setQueuedFollowUps] = useState<QueuedFollowUp[]>([]);
   const [error, setError] = useState("");
   const [requests, setRequests] = useState<RpcMessage[]>([]);
+  const [syncState, setSyncState] = useState<{ updatedAt: number | null; stale: boolean } | null>(null);
+  const [respondingRequest, setRespondingRequest] = useState(false);
+  const respondingRequestRef = useRef(false);
   const [userAnswers, setUserAnswers] = useState<Record<string, string>>({});
   const [models, setModels] = useState<AnyRecord[]>([]);
   const [permissionProfiles, setPermissionProfiles] = useState<AnyRecord[]>([]);
@@ -1081,6 +1084,22 @@ function BackendWorkspace({
       onNotification: (_backendId, message, source) => {
           const client = source as AppServerClient;
           const params = (message.params ?? {}) as AnyRecord;
+          if (message.method === "mobile/sync") {
+            setSyncState({ updatedAt: params.updatedAt ?? null, stale: params.stale === true });
+            return;
+          }
+          if (message.method === "mobile/requests") {
+            setRequests(params.requests ?? []);
+            return;
+          }
+          if (message.method === "mobile/reset") {
+            void reconcileActiveThread(client).catch(() => undefined);
+            return;
+          }
+          if (message.method === "turn/plan/updated") {
+            setActive((current) => current?.id === params.threadId
+              ? { ...current, mobilePlan: params.plan ?? [] } : current);
+          }
           if (message.method === "skills/changed") {
             void loadSkillsForCwd(
               client,
@@ -1138,6 +1157,8 @@ function BackendWorkspace({
             threadNotificationSequenceRef.current += 1;
           }
           if (message.method === "turn/started" && params.turn) {
+            setActive((current) => current && current.id === params.threadId &&
+              current.turns?.at(-1)?.id !== params.turn.id ? { ...current, mobilePlan: [] } : current);
             if (params.threadId) {
               const automaticTitle = automaticTitleStatesRef.current.get(
                 String(params.threadId),
@@ -1379,6 +1400,9 @@ function BackendWorkspace({
               setSteering(false);
               return completed;
             });
+            if (String(activeRef.current?.id ?? "") === threadId) {
+              void reconcileActiveThread(client).catch(() => undefined);
+            }
             const automaticTitle =
               automaticTitleStatesRef.current.get(threadId);
             if (
@@ -1402,6 +1426,8 @@ function BackendWorkspace({
             params.threadId &&
             params.status
           ) {
+            setActive((current) => current?.id === params.threadId
+              ? { ...current, status: params.status } : current);
             setThreads((current) =>
               current.map((thread) =>
                 thread.id === params.threadId
@@ -1472,15 +1498,15 @@ function BackendWorkspace({
             request.method === "item/permissions/requestApproval" ||
             request.method === "item/tool/requestUserInput"
           ) {
-            setRequests((current) => [...current, request]);
+            setRequests((current) => current.some((entry) => entry.id === request.id) ? current : [...current, request]);
           } else {
-            client.respondError(
+            void Promise.resolve(client.respondError(
               request.id!,
               -32601,
               t("Codex Mobile Web 暂不支持服务器请求：{method}", {
                 method: request.method ?? "unknown",
               }),
-            );
+            )).catch((reason) => setError(String(reason)));
           }
       },
       onReady: (_backendId, source) => {
@@ -3431,6 +3457,22 @@ function BackendWorkspace({
     setPicker(null);
   };
   const approval = requests[0] ?? null;
+  const replyToRequest = async (result: unknown) => {
+    const client = clientRef.current;
+    if (!approval || !client || respondingRequestRef.current) return;
+    respondingRequestRef.current = true;
+    setRespondingRequest(true);
+    try {
+      await client.respond(approval.id!, result);
+      setRequests((current) => current.filter((entry) => entry.id !== approval.id));
+      setUserAnswers({});
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      respondingRequestRef.current = false;
+      setRespondingRequest(false);
+    }
+  };
   const finishRequest = (decision: "accept" | "decline") => {
     if (!approval) return;
     const params = (approval.params ?? {}) as AnyRecord;
@@ -3440,25 +3482,22 @@ function BackendWorkspace({
         ...(requested.fileSystem != null ? { fileSystem: requested.fileSystem } : {}),
         ...(requested.network != null ? { network: requested.network } : {}),
       };
-      clientRef.current?.respond(approval.id!, {
+      void replyToRequest({
         permissions: decision === "accept" ? granted : {},
         scope: "turn",
       });
     } else {
-      clientRef.current?.respond(approval.id!, { decision });
+      void replyToRequest({ decision });
     }
-    setRequests((current) => current.slice(1));
   };
   const answerQuestions = () => {
     if (!approval) return;
     const questions = ((approval.params as AnyRecord)?.questions ?? []) as AnyRecord[];
-    clientRef.current?.respond(approval.id!, {
+    void replyToRequest({
       answers: Object.fromEntries(
         questions.map((question) => [question.id, { answers: [userAnswers[question.id] ?? ""] }]),
       ),
     });
-    setUserAnswers({});
-    setRequests((current) => current.slice(1));
   };
 
   const startNewChat = (
@@ -3691,6 +3730,7 @@ function BackendWorkspace({
           connection={connection}
           client={clientRef.current}
           error={error}
+          syncState={syncState}
           draft={draft}
           draftImages={draftImages}
           draftFiles={draftFiles}
@@ -3798,6 +3838,7 @@ function BackendWorkspace({
       )}
       <ApprovalSheet
         approval={approval}
+        submitting={respondingRequest}
         userAnswers={userAnswers}
         onAnswerChange={(questionId, value) =>
           setUserAnswers((current) => ({

@@ -56,6 +56,7 @@ export function useRealtimeConversation({
           await appendRealtimeAudio(client, threadId, chunk);
         })
         .catch((reason) => {
+          void stopRealtimeSession(client, threadId).catch(() => undefined);
           releaseAudio();
           dispatch({
             type: "error",
@@ -81,6 +82,7 @@ export function useRealtimeConversation({
           try {
             captureRef.current?.start(sendChunk);
           } catch (reason) {
+            void stopRealtimeSession(client, threadId).catch(() => undefined);
             releaseAudio();
             dispatch({
               type: "error",
@@ -110,6 +112,7 @@ export function useRealtimeConversation({
           }
           break;
         case "thread/realtime/error":
+          void stopRealtimeSession(client, threadId).catch(() => undefined);
           releaseAudio();
           dispatch({
             type: "error",
@@ -117,6 +120,7 @@ export function useRealtimeConversation({
           });
           break;
         case "thread/realtime/closed":
+          client.closeRealtime();
           closeLocally();
           break;
       }
@@ -147,6 +151,9 @@ export function useRealtimeConversation({
     document.addEventListener("visibilitychange", handleVisibility);
     return () => {
       document.removeEventListener("visibilitychange", handleVisibility);
+      if (client && stateRef.current.status !== "idle") {
+        void stopRealtimeSession(client, threadId).catch(() => undefined);
+      }
       releaseAudio();
     };
   }, [client, closeLocally, releaseAudio, threadId]);

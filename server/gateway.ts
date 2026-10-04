@@ -7,6 +7,7 @@ import { homedir } from "node:os";
 import WebSocket, { WebSocketServer } from "ws";
 import type { CodexProjectState } from "./codex-projects.js";
 import { readImageGenerationError } from "./image-generation-error.js";
+import { HttpSessions } from "./http-session.js";
 
 const MAX_APP_SERVER_MESSAGE_BYTES = 16 * 1024 * 1024;
 
@@ -112,6 +113,7 @@ function applyCors(
 }
 
 export async function createGateway(options: GatewayOptions): Promise<Gateway> {
+  const httpSessions = new HttpSessions(options);
   const server: Server = createServer(async (request, response) => {
     const url = new URL(request.url ?? "/", "http://gateway.local");
     const origin = request.headers.origin;
@@ -122,6 +124,9 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
       "/api/uploads/file",
       "/api/files/preview",
       "/api/image-generation-error",
+      "/api/rpc",
+      "/api/events",
+      "/api/operations",
     ].includes(url.pathname);
     const apiRequest =
       url.pathname === "/api" || url.pathname.startsWith("/api/");
@@ -145,6 +150,10 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
     if (controlRequest && request.method === "OPTIONS") {
       response.statusCode = 204;
       response.end();
+      return;
+    }
+    if (["/api/rpc", "/api/events", "/api/operations"].includes(url.pathname)) {
+      await httpSessions.handle(request, response, url);
       return;
     }
     if (url.pathname === "/api/image-generation-error") {
@@ -174,6 +183,7 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
           hostname: options.hostname ?? "localhost",
           gatewayVersion: options.gatewayVersion ?? "0.1.0",
           appServerReady,
+          httpPolling: true,
         }),
       );
       return;
@@ -346,7 +356,7 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
   const wss = new WebSocketServer({ noServer: true });
   server.on("upgrade", (request, socket, head) => {
     const url = new URL(request.url ?? "/", "http://gateway.local");
-    if (url.pathname !== "/ws") {
+    if (url.pathname !== "/ws" && url.pathname !== "/api/realtime") {
       socket.write("HTTP/1.1 404 Not Found\r\n\r\n");
       socket.destroy();
       return;
@@ -354,6 +364,18 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
     if (!authorized(url, options.accessToken, request.headers.cookie)) {
       socket.write("HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n");
       socket.destroy();
+      return;
+    }
+    if (url.pathname === "/api/realtime") {
+      try { httpSessions.realtime(url.searchParams.get("sessionId")); }
+      catch (error) {
+        socket.write(`HTTP/1.1 ${(error as { status?: number }).status ?? 503} Session Unavailable\r\nConnection: close\r\n\r\n`);
+        socket.destroy(); return;
+      }
+      wss.handleUpgrade(request, socket, head, (client) => {
+        sockets.add(client); client.on("close", () => sockets.delete(client));
+        httpSessions.realtime(url.searchParams.get("sessionId"), client);
+      });
       return;
     }
     wss.handleUpgrade(request, socket, head, (client) => {
@@ -439,6 +461,7 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
   return {
     port: address.port,
     async close() {
+      await httpSessions.close();
       for (const socket of sockets) socket.terminate();
       await new Promise<void>((resolve) => wss.close(() => resolve()));
       await new Promise<void>((resolve) => server.close(() => resolve()));

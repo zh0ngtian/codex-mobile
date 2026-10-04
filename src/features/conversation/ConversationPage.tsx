@@ -51,6 +51,8 @@ import { useConversationAutoScroll } from "./conversation-scroll";
 import { useRealtimeConversation } from "./useRealtimeConversation";
 import { t } from "../../i18n";
 import videoPoster from "../../assets/video-poster.svg";
+import { RunProgress } from "./RunProgress";
+import type { HttpSyncState } from "../../backends/http-transport";
 
 export type ConversationLoadState = "idle" | "loading" | "ready" | "error";
 
@@ -148,6 +150,7 @@ export function ConversationPage({
   connection,
   client,
   error,
+  syncState = null,
   draft,
   draftImages,
   draftFiles,
@@ -208,6 +211,7 @@ export function ConversationPage({
   connection: ConnectionState;
   client: AppServerClient | null;
   error: string;
+  syncState?: HttpSyncState | null;
   draft: string;
   draftImages: DraftImage[];
   draftFiles: DraftFile[];
@@ -614,6 +618,7 @@ export function ConversationPage({
             }) : !isNewChat && (
               <div className="empty-state">{t("开始一次新的 Codex 对话")}</div>
             )}
+            <RunProgress thread={active} busy={busy} sync={syncState} />
           </div>
         </div>
       </div>

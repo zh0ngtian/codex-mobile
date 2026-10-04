@@ -13,6 +13,24 @@ export type LanguagePreference = "system" | Locale;
 const LANGUAGE_STORAGE_KEY = "codex-mobile:language";
 
 const english: Record<string, string> = {
+  "设备网关需要升级以支持 HTTP 同步": "Update the device gateway to support HTTP sync",
+  "请求结果待确认": "Request outcome needs confirmation",
+  "请求结果待确认，请刷新会话后检查，勿重复发送": "Request outcome is uncertain. Refresh the conversation before sending again.",
+  "实时会话连接不可用": "Realtime connection unavailable",
+  "实时会话连接超时": "Realtime connection timed out",
+  "HTTP initialize 超时": "HTTP initialization timed out",
+  "正在执行命令": "Running a command",
+  "正在修改文件": "Editing files",
+  "正在调用工具": "Using a tool",
+  "正在搜索": "Searching",
+  "正在分析": "Analyzing",
+  "正在生成回复": "Generating a reply",
+  "正在生成图像": "Generating an image",
+  "等待你确认": "Waiting for your approval",
+  "等待你的回答": "Waiting for your answer",
+  "执行状态": "Execution status",
+  "连接暂时不可用，正在重试": "Connection unavailable. Retrying…",
+  "最近同步：{seconds} 秒前": "Last synced {seconds}s ago",
   "请求消息 {actual} MiB，超过服务端 {limit} MiB 上限。请压缩或减少图片后重试。":
     "Request is {actual} MiB, above the server's {limit} MiB limit. Compress or remove images and try again.",
   "图像生成未完成": "Image generation could not be completed",

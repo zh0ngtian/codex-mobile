@@ -116,19 +116,25 @@ export function realtimeReducer(
   }
 }
 
-export function startRealtimeSession(
-  client: Pick<AppServerClient, "request">,
+export async function startRealtimeSession(
+  client: Pick<AppServerClient, "request"> & Partial<Pick<AppServerClient, "openRealtime" | "closeRealtime">>,
   threadId: string,
 ) {
-  return client.request("thread/realtime/start", {
-    threadId,
-    outputModality: "audio",
-    version: "v3",
-    voice: "cove",
-    transport: { type: "websocket" },
-    includeStartupContext: true,
-    clientManagedHandoffs: false,
-  });
+  try {
+    await client.openRealtime?.();
+    return await client.request("thread/realtime/start", {
+      threadId,
+      outputModality: "audio",
+      version: "v3",
+      voice: "cove",
+      transport: { type: "websocket" },
+      includeStartupContext: true,
+      clientManagedHandoffs: false,
+    });
+  } catch (reason) {
+    client.closeRealtime?.();
+    throw reason;
+  }
 }
 
 export function appendRealtimeAudio(
@@ -143,11 +149,12 @@ export function appendRealtimeAudio(
   );
 }
 
-export function stopRealtimeSession(
-  client: Pick<AppServerClient, "request">,
+export async function stopRealtimeSession(
+  client: Pick<AppServerClient, "request"> & Partial<Pick<AppServerClient, "closeRealtime">>,
   threadId: string,
 ) {
-  return client.request("thread/realtime/stop", { threadId });
+  try { return await client.request("thread/realtime/stop", { threadId }); }
+  finally { client.closeRealtime?.(); }
 }
 
 export function isRealtimeNotificationForThread(

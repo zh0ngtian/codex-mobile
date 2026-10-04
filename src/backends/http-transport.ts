@@ -1,0 +1,261 @@
+import type { RpcMessage } from "../app-server/client";
+import { t } from "../i18n";
+
+export interface HttpSyncState { updatedAt: number | null; stale: boolean }
+interface Config { baseUrl: string; token: string; id: string }
+interface PollResponse {
+  epoch: string; cursor: number; messages: RpcMessage[]; requests: RpcMessage[];
+  active: boolean; updatedAt: number; reset: boolean; hasMore?: boolean;
+}
+const readMethods = new Set(["initialize", "initialized", "thread/list", "thread/read", "thread/loaded/list", "thread/turns/list", "thread/items/list", "permissionProfile/list", "plugin/list", "model/list", "config/read", "configRequirements/read", "account/read", "account/rateLimits/read", "skills/list", "mcpServerStatus/list", "collaborationMode/list", "app/list"]);
+interface PendingWrite { requestId: string; message: RpcMessage; epoch?: string }
+const pendingWrites = new Map<string, Map<string, PendingWrite>>();
+
+export function transportUuid() {
+  if (typeof globalThis.crypto?.randomUUID === "function") return crypto.randomUUID();
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (character) => {
+    const value = Math.floor(Math.random() * 16);
+    return (character === "x" ? value : (value & 3) | 8).toString(16);
+  });
+}
+
+function sessionFor(config: Config) {
+  const key = `codex-mobile:http-session:${config.id}:${config.baseUrl}`;
+  try {
+    const saved = localStorage.getItem(key);
+    if (saved && /^[\da-f-]{36}$/i.test(saved)) return saved;
+    const created = transportUuid();
+    localStorage.setItem(key, created);
+    return created;
+  } catch { return transportUuid(); }
+}
+
+/** 手机 HTTP 生命周期与网关持有的上游会话相互独立。 */
+export class HttpRpcTransport extends EventTarget {
+  readyState = 0;
+  readonly managesHttpTimeout = true;
+  private readonly fetcher: typeof fetch;
+  private readonly sessionId: string;
+  private cursor = 0;
+  private epoch = "";
+  private initialized = false;
+  private polling = false;
+  private active = false;
+  private hasMore = false;
+  private failures = 0;
+  private updatedAt: number | null = null;
+  private timer: ReturnType<typeof setTimeout> | undefined;
+  private readonly controllers = new Set<AbortController>();
+  private readonly seenRequests = new Set<string>();
+  private readonly answeredRequests = new Set<string>();
+  private realtimeThreadId = "";
+  private readonly writes: Map<string, PendingWrite>;
+  private readonly writesKey: string;
+  private realtime: WebSocket | null = null;
+  private realtimeOpening: Promise<void> | null = null;
+
+  constructor(private readonly config: Config, options: { fetch?: typeof fetch; sessionId?: string } = {}) {
+    super();
+    this.fetcher = options.fetch ?? globalThis.fetch.bind(globalThis);
+    this.sessionId = options.sessionId ?? sessionFor(config);
+    this.writesKey = `codex-mobile:http-writes:${config.id}:${this.sessionId}`;
+    this.writes = pendingWrites.get(this.writesKey) ?? new Map();
+    if (!pendingWrites.has(this.writesKey)) {
+      try {
+        const saved = JSON.parse(localStorage.getItem(this.writesKey) ?? "[]");
+        for (const pair of saved) if (Array.isArray(pair) && typeof pair[0] === "string" && typeof pair[1]?.requestId === "string" && pair[1]?.message) this.writes.set(pair[0], pair[1]);
+      } catch { /* 存储不可用时同一页面内仍保留未确认操作。 */ }
+      pendingWrites.set(this.writesKey, this.writes);
+    }
+    document.addEventListener("visibilitychange", this.onResume);
+    window.addEventListener("online", this.onResume);
+    setTimeout(() => {
+      if (this.readyState !== 0) return;
+      this.readyState = 1;
+      this.dispatchEvent(new Event("open"));
+    }, 0);
+  }
+
+  private url(path: string, params: Record<string, string> = {}) {
+    const url = new URL(path, `${this.config.baseUrl}/`);
+    url.searchParams.set("sessionId", this.sessionId);
+    if (this.config.token) url.searchParams.set("token", this.config.token);
+    for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value);
+    return url.toString();
+  }
+
+  private emit(message: RpcMessage) {
+    if (this.readyState === 1) this.dispatchEvent(new MessageEvent("message", { data: JSON.stringify(message) }));
+  }
+
+  private saveWrites() {
+    try { localStorage.setItem(this.writesKey, JSON.stringify([...this.writes])); }
+    catch { /* 配额不足时不影响当前页面的同 ID 对账。 */ }
+  }
+
+  private async fetchJson(path: string, init: RequestInit = {}, params: Record<string, string> = {}, timeoutMs = 10_000) {
+    const controller = new AbortController();
+    this.controllers.add(controller);
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await this.fetcher(this.url(path, params), { ...init, mode: "cors", cache: "no-store", signal: controller.signal });
+      if (!response.ok) {
+        const error = new Error(response.status === 404
+          ? t("设备网关需要升级以支持 HTTP 同步")
+          : response.status === 401 ? t("访问口令不正确") : t("设备网关返回 {status}", { status: response.status }));
+        Object.assign(error, { status: response.status });
+        throw error;
+      }
+      return await response.json();
+    } finally {
+      clearTimeout(timer);
+      this.controllers.delete(controller);
+    }
+  }
+
+  async send(raw: string, timeoutMs = 10_000): Promise<void> {
+    if (this.readyState !== 1) throw new Error(t("设备尚未连接，请稍后重试"));
+    const message = JSON.parse(raw) as RpcMessage;
+    if (message.method?.startsWith("thread/realtime/")) {
+      if (this.realtime?.readyState !== 1) throw new Error(t("实时会话连接不可用"));
+      if (message.method === "thread/realtime/start") this.realtimeThreadId = String((message.params as { threadId?: string })?.threadId ?? "");
+      this.realtime.send(raw);
+      return;
+    }
+    const signature = !message.method || !readMethods.has(message.method)
+      ? JSON.stringify(message.method ? { method: message.method, params: message.params } : { ...message, epoch: this.epoch }) : null;
+    if (signature && !this.writes.has(signature) && this.writes.size >= 32) throw new Error(t("请求结果待确认，请刷新会话后检查，勿重复发送"));
+    const operation = (signature && this.writes.get(signature)) || { requestId: transportUuid(), message, epoch: this.epoch || undefined };
+    const { requestId } = operation;
+    if (signature) { this.writes.set(signature, operation); this.saveWrites(); }
+    const deadline = Date.now() + timeoutMs;
+    let response: RpcMessage | undefined;
+    let failure: unknown;
+    // 即便 HTTP 响应丢失，也只查询/重试同一个 requestId。
+    for (let attempt = 0; attempt < 3 && this.readyState === 1; attempt++) {
+      try {
+        response = await this.fetchJson("/api/rpc", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(operation) }, {}, Math.max(1, deadline - Date.now()));
+        break;
+      } catch (reason) {
+        failure = reason;
+        if ([401, 409, 404, 400].includes((reason as { status?: number }).status ?? 0)) {
+          throw reason;
+        }
+        if (this.readyState !== 1) throw new Error(t("请求结果待确认，请刷新会话后检查，勿重复发送"), { cause: reason });
+        try {
+          const operation = await this.fetchJson("/api/operations", {}, { requestId }, 5_000);
+          if (operation.status === "completed") { response = { ...operation.message, id: message.id }; break; }
+          if (operation.status === "uncertain") throw new Error(t("请求结果待确认，请刷新会话后检查，勿重复发送"));
+        } catch (queryError) {
+          if ((queryError as Error).message.includes(t("请求结果待确认"))) throw queryError;
+        }
+        if (Date.now() >= deadline) break;
+        await new Promise((resolve) => setTimeout(resolve, 300 * (attempt + 1)));
+      }
+    }
+    if (!response) throw new Error(t("请求结果待确认，请刷新会话后检查，勿重复发送"), { cause: failure });
+    if (this.readyState !== 1) throw new Error(t("请求结果待确认，请刷新会话后检查，勿重复发送"));
+    if (signature) { this.writes.delete(signature); this.saveWrites(); }
+    if (message.id != null && message.method) this.emit({ ...response, id: message.id });
+    else if (response.error) throw new Error(response.error.message);
+    if (message.method === "initialized") {
+      this.initialized = true;
+      await this.poll();
+    } else if (message.method === "turn/start" || message.method === "turn/steer") {
+      this.active = true;
+      this.schedule(0);
+    } else if (!message.method && message.id != null) {
+      this.answeredRequests.add(String(message.id));
+      this.schedule(0);
+    }
+  }
+
+  private onResume = () => {
+    clearTimeout(this.timer);
+    if (document.visibilityState === "visible") void this.poll();
+  };
+
+  private schedule(delay?: number) {
+    clearTimeout(this.timer);
+    if (this.readyState !== 1 || !this.initialized || document.visibilityState !== "visible") return;
+    this.timer = setTimeout(() => void this.poll(), delay ?? (this.hasMore && !this.failures ? 0 : this.failures
+      ? Math.min(30_000, 3_000 * 2 ** this.failures) : this.active ? 3_000 : 15_000));
+  }
+
+  private async poll() {
+    if (!this.initialized || this.polling || this.readyState !== 1 || document.visibilityState !== "visible") return;
+    clearTimeout(this.timer);
+    this.polling = true;
+    try {
+      const payload = await this.fetchJson("/api/events", {}, { after: String(this.cursor) }) as PollResponse;
+      if (this.readyState !== 1 || document.visibilityState !== "visible") return;
+      if (this.epoch && this.epoch !== payload.epoch) { this.close(4001, "gateway session changed"); return; }
+      this.epoch = payload.epoch;
+      this.active = payload.active || payload.requests.length > 0;
+      this.hasMore = payload.hasMore === true;
+      if (payload.reset) this.emit({ method: "mobile/reset", params: {} });
+      for (const message of payload.messages) this.emit(message);
+      const pending = new Set(payload.requests.map((request) => String(request.id)));
+      for (const id of this.answeredRequests) if (!pending.has(id)) this.answeredRequests.delete(id);
+      const requests = payload.requests.filter((request) => !this.answeredRequests.has(String(request.id)));
+      for (const id of this.seenRequests) if (!pending.has(id)) this.seenRequests.delete(id);
+      for (const request of requests) {
+        if (this.seenRequests.has(String(request.id))) continue;
+        this.seenRequests.add(String(request.id));
+        this.emit(request);
+      }
+      this.emit({ method: "mobile/requests", params: { requests } });
+      this.cursor = payload.cursor;
+      this.updatedAt = Date.now();
+      this.failures = 0;
+      this.sync(false);
+    } catch (reason) {
+      this.failures++;
+      this.sync(true);
+      if ([401, 503].includes((reason as { status?: number }).status ?? 0)) this.close(4001, "upstream unavailable");
+    } finally {
+      this.polling = false;
+      this.schedule();
+    }
+  }
+
+  private sync(stale: boolean) {
+    const state: HttpSyncState = { updatedAt: this.updatedAt, stale };
+    this.dispatchEvent(new CustomEvent("sync", { detail: state }));
+    this.emit({ method: "mobile/sync", params: state });
+  }
+
+  openRealtime(): Promise<void> {
+    if (this.realtime?.readyState === 1) return Promise.resolve();
+    if (this.realtimeOpening) return this.realtimeOpening;
+    const url = new URL(this.url("/api/realtime"));
+    url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+    const socket = new WebSocket(url);
+    this.realtime = socket;
+    this.realtimeOpening = new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => { socket.close(); reject(new Error(t("实时会话连接超时"))); }, 10_000);
+      socket.addEventListener("open", () => { clearTimeout(timer); resolve(); }, { once: true });
+      socket.addEventListener("error", () => { clearTimeout(timer); reject(new Error(t("实时会话连接不可用"))); }, { once: true });
+      socket.addEventListener("close", () => {
+        clearTimeout(timer);
+        reject(new Error(t("实时会话连接不可用")));
+        if (this.realtime === socket) this.emit({ method: "thread/realtime/closed", params: { threadId: this.realtimeThreadId } });
+      });
+      socket.addEventListener("message", (event) => this.dispatchEvent(new MessageEvent("message", { data: event.data })));
+    }).finally(() => { this.realtimeOpening = null; });
+    return this.realtimeOpening;
+  }
+
+  closeRealtime() { this.realtime?.close(); this.realtime = null; }
+
+  close(code = 1000, reason = "") {
+    if (this.readyState === 3) return;
+    this.readyState = 3;
+    clearTimeout(this.timer);
+    this.controllers.forEach((controller) => controller.abort());
+    this.closeRealtime();
+    document.removeEventListener("visibilitychange", this.onResume);
+    window.removeEventListener("online", this.onResume);
+    this.dispatchEvent(new CloseEvent("close", { code, reason }));
+  }
+}

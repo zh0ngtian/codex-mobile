@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./http-fixture";
 
 test("模型目录延迟时保留会话恢复返回的推理强度", async ({ page }) => {
   await page.addInitScript(() => {

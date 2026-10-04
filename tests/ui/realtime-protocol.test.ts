@@ -6,6 +6,13 @@ import {
 } from "../../src/app-server/realtime";
 
 describe("实时会话 app-server 协议", () => {
+  it("启动失败与停止失败都释放按需实时连接", async () => {
+    const client = { request: vi.fn().mockRejectedValue(new Error("offline")), openRealtime: vi.fn().mockResolvedValue(undefined), closeRealtime: vi.fn() };
+    await expect(startRealtimeSession(client as never, "thread")).rejects.toThrow("offline");
+    expect(client.closeRealtime).toHaveBeenCalledTimes(1);
+    await expect(stopRealtimeSession(client as never, "thread")).rejects.toThrow("offline");
+    expect(client.closeRealtime).toHaveBeenCalledTimes(2);
+  });
   it("使用 v3 WebSocket 音频模式启动已有线程", async () => {
     const client = {
       request: vi.fn().mockResolvedValue({}),

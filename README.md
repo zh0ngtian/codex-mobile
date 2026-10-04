@@ -69,7 +69,7 @@ http://<电脑局域网IP>:18766/?token=<随机口令>
 ### 3. 添加更多设备
 
 在另一台 Mac 上用不同口令启动网关，然后在 Codex Mobile 的设备管理中输入其完整
-地址。客户端会检查 `/api/host`，完成一次 WebSocket `initialize`，验证成功后保存
+地址。客户端会检查 `/api/host` 的 HTTP 轮询能力，通过 HTTP `initialize` 验证上游后保存
 设备。
 
 一个客户端最多保存 8 台设备，并可同时维持所有已启用设备的连接。
@@ -94,12 +94,12 @@ Codex Desktop 很适合坐在电脑前完成开发任务，但长任务启动后
 | 多设备 | 添加、测试、启停和切换多个网关；汇总各机器的连接与待审批状态 |
 | 会话组织 | 全部机器时间流、单机项目分组、搜索、折叠、置顶、未读、重命名和归档 |
 | 长会话 | 即时进入详情、骨架屏、错误重试、turns 分页和滚动位置保持 |
-| 实时交互 | 流式消息、reasoning、工具调用、文件变更、停止运行中的 turn |
+| 执行状态 | HTTP 拉取消息、reasoning、工具调用、执行计划和文件变更；可停止运行中的 turn |
 | 模型与权限 | 从 app-server 读取模型、推理强度、服务档位、权限和审批策略 |
 | Skill 调用 | 输入 `@` 搜索当前项目已安装的 Skill，选择后随消息直接调用 |
 | 审批 | 支持命令、文件修改、附加权限和 `requestUserInput` |
 | 文件与媒体 | Markdown/GFM、图片输入、远程图片、远程文本、Markdown/HTML 预览和文件 Diff |
-| 前后台恢复 | App 回到前台、网络切换或 WebSocket 半开时主动探测并恢复连接 |
+| 前后台恢复 | 后台暂停轮询，回到前台或网络恢复时立即同步；离线保留内容并显示同步状态 |
 | 多端复用 | 同一套前端运行于 Web、Android 和 iOS，不在 App 中固化后端地址 |
 
 ### 移动端交互
@@ -116,24 +116,33 @@ Codex Desktop 很适合坐在电脑前完成开发任务，但长任务启动后
 ```mermaid
 flowchart LR
     C["手机浏览器 / Android / iOS"]
-    C -->|HTTP API + WebSocket| G1["MacBook 网关"]
-    C -->|HTTP API + WebSocket| G2["Mac mini 网关"]
+    C -->|HTTP 提交与轮询；语音按需 WebSocket| G1["MacBook 网关"]
+    C -->|HTTP 提交与轮询；语音按需 WebSocket| G2["Mac mini 网关"]
     G1 -->|V2 JSON-RPC 透传| A1["Codex app-server"]
     G2 -->|V2 JSON-RPC 透传| A2["Codex app-server"]
     A1 --> R1["本机会话与运行时"]
     A2 --> R2["本机会话与运行时"]
 ```
 
-每台 Mac 运行自己的网关和 app-server，设备之间不互相代理。网关只负责：
+每台 Mac 运行自己的网关和 app-server，设备之间不互相代理。网关负责：
 
 - 提供静态前端，也可关闭静态资源进入 gateway-only 模式；
 - 校验局域网访问口令；
 - 提供 `/api/host`、`/api/status` 和 `/api/projects` 控制面；
-- 在客户端 WebSocket 与回环地址上的 app-server 之间双向转发消息；
+- 为 HTTP 客户端持有回环地址上的 app-server 会话连接，缓存有界执行状态和待审批；
+- 对写请求持久去重，并提供 `/api/rpc`、`/api/events` 和 `/api/operations`；
+- 实时语音通过按需 `/api/realtime` WebSocket 共享同一会话；保留 `/ws` 兼容旧客户端；
 - 在 Managed 模式下启动和管理 app-server 生命周期。
 
-网关不改写 app-server 的业务协议，不复制或长期保存会话内容，也不建立第二套会话
-数据库。
+会话历史仍以 app-server 为准，网关不建立第二套历史数据库。写操作记录保存在
+`$CODEX_HOME/codex-mobile-http`（默认 `~/.codex/codex-mobile-http`），用于防止弱网
+重试重复执行；网关重启后，无法确认的操作不会自动重放。遇到“请求结果待确认”时先检查
+会话，相同内容重试沿用原操作 ID，勿修改内容后反复发送。
+
+文字交互不需要手机常驻 WebSocket：前台执行中每 3 秒拉取，空闲每 15 秒拉取；网络失败
+退避至最长 30 秒，回前台或网络恢复立即同步。页面显示真实工具活动、执行计划（若上游
+提供）、等待审批及最近同步状态，不估算进度百分比。后台暂停意味着完成通知会在恢复
+同步后才产生。新版客户端要求网关支持 `httpPolling`，旧网关需先升级。
 
 ## 运行模式
 
@@ -161,7 +170,7 @@ codex-mobile start
 
 ### Gateway-only
 
-移动 App 已内置前端时，后端可以只提供控制面和 WebSocket：
+移动 App 已内置前端时，后端可以只提供 HTTP 接口和按需语音通道：
 
 ```bash
 CODEX_MOBILE_SERVE_STATIC=false codex-mobile start
@@ -274,7 +283,7 @@ codex-mobile/
 │   ├── backends/         # 多设备注册表、探测和连接管理
 │   ├── features/         # 会话、列表、审批、设置和设备管理 UI
 │   └── ui/               # 消息、附件、图标和展示辅助逻辑
-├── server/               # 透明网关、进程管理和项目目录读取
+├── server/               # HTTP 会话网关、进程管理和项目目录读取
 ├── tests/                # 协议、服务端、UI、CI 和移动端 E2E 测试
 ├── protocol/             # app-server V2 协议基准与生成物
 ├── docs/plans/           # 设计与实施记录

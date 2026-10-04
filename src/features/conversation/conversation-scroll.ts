@@ -29,6 +29,7 @@ export function useConversationAutoScroll({
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const contentRef = useRef<HTMLDivElement | null>(null);
   const followingRef = useRef(true);
+  const lastScrollTopRef = useRef(0);
   const frameRef = useRef<number | null>(null);
   const prependScrollHeightRef = useRef<number | null>(null);
 
@@ -37,6 +38,7 @@ export function useConversationAutoScroll({
     if (!target) return;
     followingRef.current = true;
     target.scrollTop = target.scrollHeight;
+    lastScrollTopRef.current = target.scrollTop;
   }, []);
 
   const scheduleScrollToLatest = useCallback(() => {
@@ -50,6 +52,8 @@ export function useConversationAutoScroll({
   }, [scrollToLatest]);
 
   const onScroll = useCallback<UIEventHandler<HTMLDivElement>>((event) => {
+    if (event.currentTarget.scrollTop === lastScrollTopRef.current) return;
+    lastScrollTopRef.current = event.currentTarget.scrollTop;
     const following = isConversationNearBottom(event.currentTarget);
     followingRef.current = following;
   }, []);
@@ -89,6 +93,7 @@ export function useConversationAutoScroll({
       if (followingRef.current) scheduleScrollToLatest();
     });
     observer.observe(content);
+    if (scrollRef.current) observer.observe(scrollRef.current);
     return () => observer.disconnect();
   }, [scheduleScrollToLatest, threadId]);
 

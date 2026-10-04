@@ -5,6 +5,7 @@ import {
 import type { ConnectionState } from "../ui/app-display";
 import { t } from "../i18n";
 import type { BackendConfig } from "./types";
+import { HttpRpcTransport } from "./http-transport";
 
 export interface WebSocketLike {
   readyState: number;
@@ -100,7 +101,7 @@ export class BackendConnectionManager {
       ...options,
       createSocket:
         options.createSocket ??
-        ((url) => new WebSocket(url) as unknown as WebSocketLike),
+        ((_url, backend) => new HttpRpcTransport(backend)),
       createClient:
         options.createClient ??
         ((socket) => new AppServerClient(socket as unknown as WebSocket)),

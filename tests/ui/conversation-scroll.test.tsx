@@ -52,6 +52,18 @@ function setScrollMetrics(
 }
 
 describe("对话流式滚动跟随", () => {
+  it("容器尺寸变化产生的位置未变 scroll 事件不能取消底部跟随", () => {
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => { callback(0); return 1; });
+    const { getByTestId, rerender, unmount } = render(<ScrollHarness revision={1} />);
+    const scroller = getByTestId("scroller");
+    setScrollMetrics(scroller, { scrollHeight: 500, clientHeight: 200, scrollTop: 220 });
+    fireEvent.scroll(scroller);
+    setScrollMetrics(scroller, { scrollHeight: 500, clientHeight: 100, scrollTop: 220 });
+    fireEvent.scroll(scroller);
+    rerender(<ScrollHarness revision={2} />);
+    expect(scroller.scrollTop).toBe(500);
+    unmount();
+  });
   it("使用 80px 阈值判断是否接近底部", () => {
     expect(
       isConversationNearBottom({
