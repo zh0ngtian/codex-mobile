@@ -420,6 +420,7 @@ test("历史消息编辑会回退后保留附件重发", async ({ page }) => {
     ],
     model: "gpt-test",
     effort: "medium",
+    serviceTier: null,
     permissions: ":workspace",
     approvalPolicy: "on-request",
     approvalsReviewer: "user",

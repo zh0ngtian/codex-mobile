@@ -181,6 +181,8 @@ const english: Record<string, string> = {
   "正在读取图片…": "Reading images…",
   "正在处理附件…": "Processing attachment…",
   "选择模型、智能与速度": "Choose model, reasoning, and speed",
+  "更新线程模型设置失败：{message}":
+    "Failed to update conversation model settings: {message}",
   "选择审批与权限模式": "Choose approval and permission mode",
   "选择图片": "Choose images",
   "选择图片或视频": "Choose images or video",

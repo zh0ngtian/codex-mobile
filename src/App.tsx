@@ -132,6 +132,12 @@ import {
   type PermissionModeId,
 } from "./ui/settings";
 import {
+  readNewChatModelSettings,
+  resolveNewChatModelSettings,
+  writeNewChatModelSettings,
+  type ModelSettingsSelection,
+} from "./ui/model-settings-preference";
+import {
   assignBackendHostId,
   loadBackendRegistry,
   saveBackendRegistry,
@@ -348,6 +354,9 @@ function BackendWorkspace({
     useState<ApprovalPolicy>("on-request");
   const [selectedApprovalsReviewer, setSelectedApprovalsReviewer] =
     useState<ApprovalsReviewer>("user");
+  const [initialNewChatModelSettings] = useState(() =>
+    readNewChatModelSettings(window.localStorage, backend.id),
+  );
   const [newChatPermissionMode, setNewChatPermissionMode] =
     useState<PermissionMode | null>(null);
   const [activeSettingsSynchronized, setActiveSettingsSynchronized] =
@@ -396,6 +405,15 @@ function BackendWorkspace({
   const refreshSequenceRef = useRef(0);
   const threadNotificationSequenceRef = useRef(0);
   const pendingSequenceRef = useRef(0);
+  const newChatModelSettingsRef = useRef<ModelSettingsSelection | null>(
+    initialNewChatModelSettings,
+  );
+  const hasStoredNewChatModelSettingsRef = useRef(
+    initialNewChatModelSettings !== null,
+  );
+  const threadSettingsUpdateSequenceRef = useRef<
+    Record<keyof ModelSettingsSelection, number>
+  >({ model: 0, effort: 0, serviceTier: 0 });
   const queuedFollowUpsRef = useRef<QueuedFollowUp[]>([]);
   const queuedFollowUpDispatchingRef = useRef(false);
   const automaticTitleStatesRef = useRef(
@@ -1386,11 +1404,16 @@ function BackendWorkspace({
             activeRef.current?.id === params.threadId
           ) {
             const settings = (params.threadSettings ?? {}) as AnyRecord;
-            if (typeof settings.model === "string") setSelectedModel(settings.model);
+            if (typeof settings.model === "string") {
+              threadSettingsUpdateSequenceRef.current.model += 1;
+              setSelectedModel(settings.model);
+            }
             if ("effort" in settings) {
+              threadSettingsUpdateSequenceRef.current.effort += 1;
               setSelectedEffort(settings.effort ?? null);
             }
             if ("serviceTier" in settings) {
+              threadSettingsUpdateSequenceRef.current.serviceTier += 1;
               setSelectedServiceTier(settings.serviceTier ?? null);
             }
             if (settings.approvalPolicy) {
@@ -1491,6 +1514,26 @@ function BackendWorkspace({
               config.model_reasoning_effort,
               config.service_tier,
             );
+            const configuredModelSettings = {
+              model: configuredModel,
+              effort: normalized.effort,
+              serviceTier: normalized.serviceTier,
+            };
+            const newChatModelSettings = resolveNewChatModelSettings(
+              modelResult.data,
+              hasStoredNewChatModelSettingsRef.current
+                ? newChatModelSettingsRef.current
+                : null,
+              configuredModelSettings,
+            );
+            newChatModelSettingsRef.current = newChatModelSettings;
+            if (hasStoredNewChatModelSettingsRef.current) {
+              writeNewChatModelSettings(
+                window.localStorage,
+                backend.id,
+                newChatModelSettings,
+              );
+            }
             const sandboxProfileId =
               config.sandbox_mode === "workspace-write"
                 ? ":workspace"
@@ -1506,11 +1549,11 @@ function BackendWorkspace({
               "";
             setModels(modelResult.data);
             setPermissionProfiles(availableProfiles);
-            setSelectedModel((current) => current || configuredModel);
-            setSelectedEffort((current) => current ?? normalized.effort);
-            setSelectedServiceTier(
-              (current) => current ?? normalized.serviceTier,
-            );
+            if (!activeRef.current?.id) {
+              setSelectedModel(newChatModelSettings.model);
+              setSelectedEffort(newChatModelSettings.effort);
+              setSelectedServiceTier(newChatModelSettings.serviceTier);
+            }
             setSelectedPermission((current) => current || configuredPermission);
             setSelectedApprovalPolicy(
               (current) =>
@@ -2092,7 +2135,7 @@ function BackendWorkspace({
         }>("thread/start", {
           cwd: thread?.cwd ?? null,
           ...(selectedModel ? { model: selectedModel } : {}),
-          ...(selectedServiceTier ? { serviceTier: selectedServiceTier } : {}),
+          serviceTier: selectedServiceTier,
           ...(effectivePermission ? { permissions: effectivePermission } : {}),
           approvalPolicy: effectiveApprovalPolicy,
           approvalsReviewer: effectiveApprovalsReviewer,
@@ -2132,7 +2175,9 @@ function BackendWorkspace({
         const startedSettings = normalizeModelSettings(
           models.find((model) => model.model === startedModel),
           started.reasoningEffort ?? selectedEffort,
-          started.serviceTier ?? selectedServiceTier,
+          "serviceTier" in started
+            ? started.serviceTier ?? null
+            : selectedServiceTier,
         );
         if (draftContext === draftContextGenerationRef.current) {
           setStartingThreadContext(null);
@@ -2196,7 +2241,7 @@ function BackendWorkspace({
         ...(shouldSendSettings && selectedEffort
           ? { effort: selectedEffort }
           : {}),
-        ...(shouldSendSettings && selectedServiceTier
+        ...(shouldSendSettings
           ? { serviceTier: selectedServiceTier }
           : {}),
         ...(shouldSendSettings && effectivePermission
@@ -2541,7 +2586,7 @@ function BackendWorkspace({
           ...(shouldSendSettings && selectedEffort
             ? { effort: selectedEffort }
             : {}),
-          ...(shouldSendSettings && selectedServiceTier
+          ...(shouldSendSettings
             ? { serviceTier: selectedServiceTier }
             : {}),
           ...(shouldSendSettings && selectedPermission
@@ -3176,6 +3221,57 @@ function BackendWorkspace({
             (profile) => profile.id === selectedPermission,
           )?.description,
         );
+
+  const rememberNewChatModelSettings = (
+    settings: ModelSettingsSelection,
+  ) => {
+    newChatModelSettingsRef.current = settings;
+    hasStoredNewChatModelSettingsRef.current = true;
+    writeNewChatModelSettings(window.localStorage, backend.id, settings);
+  };
+
+  const updateActiveThreadModelSettings = (
+    patch: Partial<ModelSettingsSelection>,
+    previous: ModelSettingsSelection,
+  ) => {
+    const client = clientRef.current;
+    const threadId = String(active?.id ?? "");
+    if (!client || !threadId) return;
+    const fields = Object.keys(patch) as Array<keyof ModelSettingsSelection>;
+    const sequences = Object.fromEntries(
+      fields.map((field) => [
+        field,
+        ++threadSettingsUpdateSequenceRef.current[field],
+      ]),
+    ) as Partial<Record<keyof ModelSettingsSelection, number>>;
+    void client
+      .request("thread/settings/update", { threadId, ...patch })
+      .catch((reason) => {
+        if (String(activeRef.current?.id ?? "") !== threadId) return;
+        if (
+          sequences.model === threadSettingsUpdateSequenceRef.current.model
+        ) {
+          setSelectedModel(previous.model);
+        }
+        if (
+          sequences.effort === threadSettingsUpdateSequenceRef.current.effort
+        ) {
+          setSelectedEffort(previous.effort);
+        }
+        if (
+          sequences.serviceTier ===
+          threadSettingsUpdateSequenceRef.current.serviceTier
+        ) {
+          setSelectedServiceTier(previous.serviceTier);
+        }
+        setError(
+          t("更新线程模型设置失败：{message}", {
+            message: reason instanceof Error ? reason.message : String(reason),
+          }),
+        );
+      });
+  };
+
   const chooseModel = (modelId: string) => {
     const model = models.find((option) => option.model === modelId);
     const normalized = normalizeModelSettings(
@@ -3183,9 +3279,50 @@ function BackendWorkspace({
       selectedEffort,
       selectedServiceTier,
     );
+    const previous = {
+      model: selectedModel,
+      effort: selectedEffort,
+      serviceTier: selectedServiceTier,
+    };
+    const next = {
+      model: modelId,
+      effort: normalized.effort,
+      serviceTier: normalized.serviceTier,
+    };
     setSelectedModel(modelId);
     setSelectedEffort(normalized.effort);
     setSelectedServiceTier(normalized.serviceTier);
+    if (active?.id) {
+      updateActiveThreadModelSettings(next, previous);
+    } else {
+      rememberNewChatModelSettings(next);
+    }
+  };
+  const chooseEffort = (effort: string) => {
+    const previous = {
+      model: selectedModel,
+      effort: selectedEffort,
+      serviceTier: selectedServiceTier,
+    };
+    setSelectedEffort(effort);
+    if (active?.id) {
+      updateActiveThreadModelSettings({ effort }, previous);
+    } else {
+      rememberNewChatModelSettings({ ...previous, effort });
+    }
+  };
+  const chooseSpeed = (serviceTier: string | null) => {
+    const previous = {
+      model: selectedModel,
+      effort: selectedEffort,
+      serviceTier: selectedServiceTier,
+    };
+    setSelectedServiceTier(serviceTier);
+    if (active?.id) {
+      updateActiveThreadModelSettings({ serviceTier }, previous);
+    } else {
+      rememberNewChatModelSettings({ ...previous, serviceTier });
+    }
   };
   const choosePermissionMode = (modeId: PermissionModeId) => {
     const mode = permissionModes.find((option) => option.id === modeId);
@@ -3266,6 +3403,12 @@ function BackendWorkspace({
     setActiveSettingsSynchronized(true);
     setActiveThreadAccessMode("interactive");
     setActiveThreadResumeError("");
+    const newChatModelSettings = newChatModelSettingsRef.current;
+    if (newChatModelSettings) {
+      setSelectedModel(newChatModelSettings.model);
+      setSelectedEffort(newChatModelSettings.effort);
+      setSelectedServiceTier(newChatModelSettings.serviceTier);
+    }
     if (defaultPermissionMode) {
       setNewChatPermissionMode(defaultPermissionMode);
       setSelectedPermission(defaultPermissionMode.permissions);
@@ -3581,9 +3724,9 @@ function BackendWorkspace({
         selectedSpeedLabel={selectedSpeedLabel}
         selectedPermissionModeId={selectedPermissionModeId}
         onPickerChange={setPicker}
-        onChooseEffort={setSelectedEffort}
+        onChooseEffort={chooseEffort}
         onChooseModel={chooseModel}
-        onChooseSpeed={setSelectedServiceTier}
+        onChooseSpeed={chooseSpeed}
         onChoosePermissionMode={choosePermissionMode}
       />
     </main>

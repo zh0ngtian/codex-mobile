@@ -12,6 +12,7 @@ export interface ModelCatalogEntry {
   model?: string;
   displayName?: string;
   description?: string | null;
+  isDefault?: boolean;
   defaultReasoningEffort?: string | null;
   supportedReasoningEfforts?: Array<{
     reasoningEffort: string;
