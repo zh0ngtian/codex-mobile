@@ -394,6 +394,10 @@ function BackendWorkspace({
   const draftContextGenerationRef = useRef(0);
   const activeRef = useRef<AnyRecord | null>(null);
   const threadsRef = useRef<AnyRecord[]>([]);
+  const modelsRef = useRef<AnyRecord[]>([]);
+  const selectedModelRef = useRef("");
+  const selectedEffortRef = useRef<string | null>(null);
+  const selectedServiceTierRef = useRef<string | null>(null);
   const conversationVisibleRef = useRef(conversationVisible);
   const foregroundRecoveryActiveRef = useRef(foregroundRecoveryActive);
   const activeThreadTargetRef = useRef<string | null>(null);
@@ -673,6 +677,16 @@ function BackendWorkspace({
   useEffect(() => {
     threadsRef.current = threads;
   }, [threads]);
+
+  useEffect(() => {
+    modelsRef.current = models;
+  }, [models]);
+
+  useEffect(() => {
+    selectedModelRef.current = selectedModel;
+    selectedEffortRef.current = selectedEffort;
+    selectedServiceTierRef.current = selectedServiceTier;
+  }, [selectedEffort, selectedModel, selectedServiceTier]);
 
   useEffect(() => {
     conversationVisibleRef.current = conversationVisible;
@@ -1404,17 +1418,33 @@ function BackendWorkspace({
             activeRef.current?.id === params.threadId
           ) {
             const settings = (params.threadSettings ?? {}) as AnyRecord;
-            if (typeof settings.model === "string") {
+            const modelChanged = typeof settings.model === "string";
+            const nextModel = modelChanged
+              ? settings.model
+              : selectedModelRef.current;
+            const normalizedSettings = normalizeModelSettings(
+              modelsRef.current.find((model) => model.model === nextModel),
+              "effort" in settings
+                ? settings.effort
+                : selectedEffortRef.current,
+              "serviceTier" in settings
+                ? settings.serviceTier
+                : selectedServiceTierRef.current,
+            );
+            if (modelChanged) {
               threadSettingsUpdateSequenceRef.current.model += 1;
-              setSelectedModel(settings.model);
+              selectedModelRef.current = nextModel;
+              setSelectedModel(nextModel);
             }
-            if ("effort" in settings) {
+            if (modelChanged || "effort" in settings) {
               threadSettingsUpdateSequenceRef.current.effort += 1;
-              setSelectedEffort(settings.effort ?? null);
+              selectedEffortRef.current = normalizedSettings.effort;
+              setSelectedEffort(normalizedSettings.effort);
             }
-            if ("serviceTier" in settings) {
+            if (modelChanged || "serviceTier" in settings) {
               threadSettingsUpdateSequenceRef.current.serviceTier += 1;
-              setSelectedServiceTier(settings.serviceTier ?? null);
+              selectedServiceTierRef.current = normalizedSettings.serviceTier;
+              setSelectedServiceTier(normalizedSettings.serviceTier);
             }
             if (settings.approvalPolicy) {
               setSelectedApprovalPolicy(settings.approvalPolicy as ApprovalPolicy);
@@ -1548,6 +1578,7 @@ function BackendWorkspace({
               availableProfiles[0]?.id ||
               "";
             setModels(modelResult.data);
+            modelsRef.current = modelResult.data;
             setPermissionProfiles(availableProfiles);
             if (!activeRef.current?.id) {
               setSelectedModel(newChatModelSettings.model);
@@ -2135,7 +2166,7 @@ function BackendWorkspace({
         }>("thread/start", {
           cwd: thread?.cwd ?? null,
           ...(selectedModel ? { model: selectedModel } : {}),
-          serviceTier: selectedServiceTier,
+          serviceTier: effectiveSelectedServiceTier,
           ...(effectivePermission ? { permissions: effectivePermission } : {}),
           approvalPolicy: effectiveApprovalPolicy,
           approvalsReviewer: effectiveApprovalsReviewer,
@@ -2177,7 +2208,7 @@ function BackendWorkspace({
           started.reasoningEffort ?? selectedEffort,
           "serviceTier" in started
             ? started.serviceTier ?? null
-            : selectedServiceTier,
+            : effectiveSelectedServiceTier,
         );
         if (draftContext === draftContextGenerationRef.current) {
           setStartingThreadContext(null);
@@ -2242,7 +2273,7 @@ function BackendWorkspace({
           ? { effort: selectedEffort }
           : {}),
         ...(shouldSendSettings
-          ? { serviceTier: selectedServiceTier }
+          ? { serviceTier: effectiveSelectedServiceTier }
           : {}),
         ...(shouldSendSettings && effectivePermission
           ? { permissions: effectivePermission }
@@ -2587,7 +2618,7 @@ function BackendWorkspace({
             ? { effort: selectedEffort }
             : {}),
           ...(shouldSendSettings
-            ? { serviceTier: selectedServiceTier }
+            ? { serviceTier: effectiveSelectedServiceTier }
             : {}),
           ...(shouldSendSettings && selectedPermission
             ? { permissions: selectedPermission }
@@ -3193,8 +3224,14 @@ function BackendWorkspace({
         t("默认模型");
   const effortOptions = effortOptionsForModel(selectedModelEntry);
   const speedOptions = speedOptionsForModel(selectedModelEntry);
+  const effectiveSelectedServiceTier = normalizeModelSettings(
+    selectedModelEntry,
+    selectedEffort,
+    selectedServiceTier,
+  ).serviceTier;
   const selectedSpeedLabel =
-    speedOptions.find((option) => option.id === selectedServiceTier)?.label ??
+    speedOptions.find((option) => option.id === effectiveSelectedServiceTier)
+      ?.label ??
     t("正常");
   const permissionModes = permissionModesFromProfiles(
     permissionProfiles as Array<{ id: string; allowed?: boolean }>,
@@ -3614,7 +3651,7 @@ function BackendWorkspace({
           tokenUsage={tokenUsageByThread[active.id] ?? null}
           rateLimits={rateLimits}
           pendingAction={pendingAction}
-          selectedServiceTier={selectedServiceTier}
+          selectedServiceTier={effectiveSelectedServiceTier}
           selectedModelLabel={selectedModelLabel}
           selectedEffort={selectedEffort}
           selectedPermissionLabel={selectedPermissionLabel}
@@ -3720,7 +3757,7 @@ function BackendWorkspace({
         selectedEffort={selectedEffort}
         selectedModel={selectedModel}
         selectedModelLabel={selectedModelLabel}
-        selectedServiceTier={selectedServiceTier}
+        selectedServiceTier={effectiveSelectedServiceTier}
         selectedSpeedLabel={selectedSpeedLabel}
         selectedPermissionModeId={selectedPermissionModeId}
         onPickerChange={setPicker}

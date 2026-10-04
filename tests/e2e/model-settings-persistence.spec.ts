@@ -13,6 +13,7 @@ test("新对话偏好跨冷启动恢复，线程设置即时写回且正常速�
 
       constructor() {
         super();
+        (window as any).__modelSettingsSocket = this;
         setTimeout(() => {
           this.readyState = MockSocket.OPEN;
           this.dispatchEvent(new Event("open"));
@@ -161,9 +162,27 @@ test("新对话偏好跨冷启动恢复，线程设置即时写回且正常速�
     )
     .toBe(true);
 
+  await page.evaluate(() => {
+    (window as any).__modelSettingsSocket.dispatchEvent(
+      new MessageEvent("message", {
+        data: JSON.stringify({
+          method: "thread/settings/updated",
+          params: {
+            threadId: "new-thread",
+            threadSettings: { serviceTier: "normal" },
+          },
+        }),
+      }),
+    );
+  });
+  await expect(modelSettings).not.toContainText("⚡");
   await modelSettings.click();
-  await page.getByRole("button", { name: /速度.*快速/ }).click();
-  await page.getByRole("button", { name: /正常.*默认速度/ }).click();
+  await page.getByRole("button", { name: /速度.*正常/ }).click();
+  const normalizedNormalSpeed = page.getByRole("button", {
+    name: /正常.*默认速度/,
+  });
+  await expect(normalizedNormalSpeed).toHaveAttribute("aria-pressed", "true");
+  await normalizedNormalSpeed.click();
   await modelSettings.click();
   await page.getByRole("button", { name: /低.*更快响应/ }).click();
 
