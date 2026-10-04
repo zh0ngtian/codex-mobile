@@ -4,8 +4,10 @@ import {
   bindConnectionRecovery,
   reconcileBackendWorkspace,
   reconnectAndWaitUntilReady,
+  requestWithUnsentReconnect,
   recoverBackendConnection,
 } from "../../src/backends/connection-recovery";
+import { AppServerConnectionUnavailableError } from "../../src/app-server/client";
 
 class FakeDocument extends EventTarget {
   visibilityState: DocumentVisibilityState = "visible";
@@ -278,5 +280,99 @@ describe("App 前后台连接恢复", () => {
 
     expect(reconnect).toHaveBeenCalledOnce();
     expect(wait).toHaveBeenCalledOnce();
+  });
+
+  it("请求尚未发送时等待替代客户端并安全重试一次", async () => {
+    const staleClient = { id: "stale" };
+    const replacementClient = { id: "replacement" };
+    let readyClient: typeof staleClient | null = null;
+    const reconnect = vi.fn();
+    const wait = vi.fn(async () => {
+      readyClient = replacementClient;
+    });
+    const request = vi
+      .fn()
+      .mockRejectedValueOnce(new AppServerConnectionUnavailableError())
+      .mockResolvedValueOnce({ turn: { id: "turn-1" } });
+
+    const result = await requestWithUnsentReconnect({
+      client: staleClient,
+      request,
+      reconnect,
+      readyClient: () => readyClient,
+      wait,
+    });
+
+    expect(result).toEqual({
+      client: replacementClient,
+      result: { turn: { id: "turn-1" } },
+    });
+    expect(request).toHaveBeenNthCalledWith(1, staleClient);
+    expect(request).toHaveBeenNthCalledWith(2, replacementClient);
+    expect(reconnect).toHaveBeenCalledOnce();
+    expect(wait).toHaveBeenCalledOnce();
+  });
+
+  it("已有替代 ready client 时直接复用且不重复重连", async () => {
+    const staleClient = { id: "stale" };
+    const replacementClient = { id: "replacement" };
+    const reconnect = vi.fn();
+    const request = vi
+      .fn()
+      .mockRejectedValueOnce(new AppServerConnectionUnavailableError())
+      .mockResolvedValueOnce("sent");
+
+    await expect(
+      requestWithUnsentReconnect({
+        client: staleClient,
+        request,
+        reconnect,
+        readyClient: () => replacementClient,
+      }),
+    ).resolves.toEqual({ client: replacementClient, result: "sent" });
+
+    expect(reconnect).not.toHaveBeenCalled();
+    expect(request).toHaveBeenCalledTimes(2);
+  });
+
+  it("发送后断线或 RPC 错误不会触发自动重连与重试", async () => {
+    const client = { id: "current" };
+    const reconnect = vi.fn();
+    const request = vi.fn(async () => {
+      throw new Error("与 app-server 的连接已断开");
+    });
+
+    await expect(
+      requestWithUnsentReconnect({
+        client,
+        request,
+        reconnect,
+        readyClient: () => null,
+      }),
+    ).rejects.toThrow("与 app-server 的连接已断开");
+
+    expect(request).toHaveBeenCalledOnce();
+    expect(reconnect).not.toHaveBeenCalled();
+  });
+
+  it("替代客户端再次发送前断线时停止，不进行第二轮恢复", async () => {
+    const staleClient = { id: "stale" };
+    const replacementClient = { id: "replacement" };
+    const reconnect = vi.fn();
+    const request = vi.fn(async () => {
+      throw new AppServerConnectionUnavailableError();
+    });
+
+    await expect(
+      requestWithUnsentReconnect({
+        client: staleClient,
+        request,
+        reconnect,
+        readyClient: () => replacementClient,
+      }),
+    ).rejects.toBeInstanceOf(AppServerConnectionUnavailableError);
+
+    expect(request).toHaveBeenCalledTimes(2);
+    expect(reconnect).not.toHaveBeenCalled();
   });
 });

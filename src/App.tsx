@@ -148,6 +148,7 @@ import {
   bindReadOnlyThreadRefresh,
   reconcileBackendWorkspace,
   reconnectAndWaitUntilReady,
+  requestWithUnsentReconnect,
   recoverBackendConnection,
 } from "./backends/connection-recovery";
 import {
@@ -388,6 +389,7 @@ function BackendWorkspace({
     loading: boolean;
   }>({ cwd: null, plugins: [], loading: false });
   const clientRef = useRef<AppServerClient | null>(null);
+  const readyClientRef = useRef<AppServerClient | null>(null);
   const connectionManagerRef = useRef<BackendConnectionManager | null>(null);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const imageReadGenerationRef = useRef(new ImageReadGeneration());
@@ -1050,9 +1052,11 @@ function BackendWorkspace({
         }
         if (status === "connecting") {
           clientRef.current = null;
+          readyClientRef.current = null;
         }
         if (status === "offline") {
           clientRef.current = null;
+          readyClientRef.current = null;
           skillLoadSequenceRef.current += 1;
           pluginLoadSequenceRef.current += 1;
           setSkillCatalog({ cwd: null, skills: [], loading: false });
@@ -1482,6 +1486,7 @@ function BackendWorkspace({
       onReady: (_backendId, source) => {
         const client = source as AppServerClient;
         clientRef.current = client;
+        readyClientRef.current = null;
         const workspaceResumeSnapshot = {
           threadId: activeRef.current?.id
             ? String(activeRef.current.id)
@@ -1647,6 +1652,9 @@ function BackendWorkspace({
                 );
               }
             }
+            if (!disposed && manager.client(backend.id) === source) {
+              readyClientRef.current = client;
+            }
           }
           } catch (reason) {
             if (
@@ -1695,6 +1703,7 @@ function BackendWorkspace({
         connectionManagerRef.current = null;
       }
       clientRef.current = null;
+      readyClientRef.current = null;
     };
   }, [backend.baseUrl, backend.id, backend.token]);
 
@@ -2104,6 +2113,26 @@ function BackendWorkspace({
     );
   }
 
+  async function requestAfterUnsentReconnect<T>(
+    client: AppServerClient,
+    method: string,
+    params: unknown,
+  ) {
+    return requestWithUnsentReconnect({
+      client,
+      request: (candidate) => candidate.request<T>(method, params),
+      reconnect: () => {
+        const manager = connectionManagerRef.current;
+        if (!manager) {
+          throw new Error(t("设备尚未连接，请稍后重试"));
+        }
+        readyClientRef.current = null;
+        manager.reconnect(backend.id);
+      },
+      readyClient: () => readyClientRef.current,
+    });
+  }
+
   async function startTurnMessage({
     text,
     pendingImages,
@@ -2121,7 +2150,7 @@ function BackendWorkspace({
     draftContext: number;
     onFailure: () => void;
   }) {
-    const client = clientRef.current;
+    let client = clientRef.current;
     if (!client) {
       if (draftContext === draftContextGenerationRef.current) {
         onFailure();
@@ -2155,7 +2184,7 @@ function BackendWorkspace({
           ? newChatPermissionMode.approvalsReviewer
           : selectedApprovalsReviewer;
       if (!thread?.id) {
-        const started = await client.request<{
+        const startedRequest = await requestAfterUnsentReconnect<{
           thread: AnyRecord;
           model?: string;
           reasoningEffort?: string | null;
@@ -2163,7 +2192,7 @@ function BackendWorkspace({
           approvalPolicy?: ApprovalPolicy;
           approvalsReviewer?: ApprovalsReviewer;
           activePermissionProfile?: { id: string } | null;
-        }>("thread/start", {
+        }>(client, "thread/start", {
           cwd: thread?.cwd ?? null,
           ...(selectedModel ? { model: selectedModel } : {}),
           serviceTier: effectiveSelectedServiceTier,
@@ -2171,6 +2200,8 @@ function BackendWorkspace({
           approvalPolicy: effectiveApprovalPolicy,
           approvalsReviewer: effectiveApprovalsReviewer,
         });
+        client = startedRequest.client;
+        const started = startedRequest.result;
         thread = startingProjectless
           ? { ...started.thread, isProjectless: true }
           : started.thread;
@@ -2225,6 +2256,7 @@ function BackendWorkspace({
             setSelectedPermission(started.activePermissionProfile.id);
           }
           setActiveSettingsSynchronized(true);
+          activeRef.current = thread;
           setActive(thread);
         }
       }
@@ -2259,7 +2291,9 @@ function BackendWorkspace({
           };
         });
       }
-      const startedTurn = await client.request<{ turn: AnyRecord }>("turn/start", {
+      const startedTurnRequest = await requestAfterUnsentReconnect<{
+        turn: AnyRecord;
+      }>(client, "turn/start", {
         threadId: thread.id,
         input: buildTurnInput(
           modelText,
@@ -2285,6 +2319,7 @@ function BackendWorkspace({
             }
           : {}),
       });
+      const startedTurn = startedTurnRequest.result;
       if (
         automaticTitle?.status === "pending" &&
         !automaticTitle.turnId

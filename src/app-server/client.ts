@@ -46,6 +46,15 @@ export class AppServerRpcError extends Error {
   }
 }
 
+export class AppServerConnectionUnavailableError extends Error {
+  readonly name = "AppServerConnectionUnavailableError";
+  readonly requestSent = false;
+
+  constructor() {
+    super(t("与 app-server 的连接不可用"));
+  }
+}
+
 export class AppServerClient {
   private nextId = 1;
   private pending = new Map<number | string, PendingRequest>();
@@ -86,7 +95,7 @@ export class AppServerClient {
     const id = this.nextId++;
     return new Promise<T>((resolve, reject) => {
       if (this.socket.readyState !== WebSocket.OPEN) {
-        reject(new Error(t("与 app-server 的连接不可用")));
+        reject(new AppServerConnectionUnavailableError());
         return;
       }
       const timeout = setTimeout(() => {

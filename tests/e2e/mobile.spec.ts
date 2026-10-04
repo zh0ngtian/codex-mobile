@@ -1,6 +1,140 @@
 import { expect, test } from "@playwright/test";
 import { CONVERSATION_TITLE_REQUEST } from "../../src/app-server/conversation-title";
 
+test("发送前旧连接失效时恢复会话并只发送一次", async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("codex-mobile:language", "zh-CN");
+    (window as any).__reconnectRpc = [];
+    (window as any).__reconnectSockets = [];
+
+    class ReconnectSocket extends EventTarget {
+      static OPEN = 1;
+      static CLOSED = 3;
+      readyState = 0;
+      readonly socketNumber: number;
+
+      constructor() {
+        super();
+        this.socketNumber = (window as any).__reconnectSockets.push(this);
+        setTimeout(() => {
+          this.readyState = ReconnectSocket.OPEN;
+          this.dispatchEvent(new Event("open"));
+        }, 0);
+      }
+
+      send(raw: string) {
+        const request = JSON.parse(raw);
+        (window as any).__reconnectRpc.push({
+          ...request,
+          socketNumber: this.socketNumber,
+        });
+        if (request.id == null) return;
+        const thread = {
+          id: "thread-reconnect",
+          name: "断线恢复会话",
+          preview: "断线恢复会话",
+          cwd: "/tmp/project",
+          status: { type: "idle" },
+          turns: [],
+        };
+        const responses: Record<string, unknown> = {
+          initialize: {
+            userAgent: "reconnect-mock",
+            codexHome: "/tmp/codex",
+            platformFamily: "unix",
+            platformOs: "macos",
+          },
+          "model/list": {
+            data: [{
+              id: "gpt-test",
+              model: "gpt-test",
+              displayName: "GPT Test",
+              isDefault: true,
+              defaultReasoningEffort: "medium",
+              supportedReasoningEfforts: [
+                { reasoningEffort: "medium", description: "平衡" },
+              ],
+              defaultServiceTier: null,
+              serviceTiers: [],
+            }],
+          },
+          "permissionProfile/list": {
+            data: [{ id: ":workspace", description: "Workspace", allowed: true }],
+          },
+          "config/read": {
+            config: {
+              model: "gpt-test",
+              model_reasoning_effort: "medium",
+              sandbox_mode: "workspace-write",
+              approval_policy: "on-request",
+            },
+          },
+          "account/rateLimits/read": {},
+          "thread/list": { data: [thread], nextCursor: null },
+          "thread/resume": {
+            thread,
+            initialTurnsPage: { data: [], nextCursor: null },
+            model: "gpt-test",
+            reasoningEffort: "medium",
+            serviceTier: null,
+            approvalPolicy: "on-request",
+            approvalsReviewer: "user",
+            activePermissionProfile: { id: ":workspace" },
+          },
+          "thread/turns/list": { data: [], nextCursor: null },
+          "turn/start": {
+            turn: { id: "turn-reconnected", status: "inProgress", items: [] },
+          },
+        };
+        setTimeout(() => {
+          this.dispatchEvent(
+            new MessageEvent("message", {
+              data: JSON.stringify({
+                id: request.id,
+                result: responses[request.method] ?? {},
+              }),
+            }),
+          );
+        }, 0);
+      }
+
+      close(code?: number, reason?: string) {
+        if (this.readyState === ReconnectSocket.CLOSED) return;
+        this.readyState = ReconnectSocket.CLOSED;
+        this.dispatchEvent(new CloseEvent("close", { code, reason }));
+      }
+    }
+
+    (window as any).WebSocket = ReconnectSocket;
+  });
+
+  await page.goto("/");
+  await page.getByRole("button", { name: /断线恢复会话/ }).first().click();
+  await expect(page.locator(".thread-heading strong")).toHaveText("断线恢复会话");
+  await page.evaluate(() => {
+    (window as any).__reconnectSockets[0].readyState = 3;
+  });
+
+  await page.getByRole("textbox", { name: "向 Codex 提问" }).fill("断线后发送");
+  await page.getByRole("button", { name: "发送" }).click();
+
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        (window as any).__reconnectRpc.filter(
+          (message: any) => message.method === "turn/start",
+        ),
+      ),
+    )
+    .toEqual([
+      expect.objectContaining({
+        socketNumber: 2,
+        params: expect.objectContaining({ threadId: "thread-reconnect" }),
+      }),
+    ]);
+  await expect(page.getByText("与 app-server 的连接不可用")).toHaveCount(0);
+});
+
 test("新会话从首条流式回复生成一次标题并隐藏协议内容", async ({ page }) => {
   await page.addInitScript(() => {
     localStorage.setItem("codex-mobile:language", "zh-CN");

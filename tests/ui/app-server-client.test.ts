@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   AppServerClient,
+  AppServerConnectionUnavailableError,
   AppServerRpcError,
 } from "../../src/app-server/client";
 
@@ -141,7 +142,11 @@ describe("AppServerClient", () => {
 
     await expect(
       client.request("thread/list", { limit: 5 }),
-    ).rejects.toThrow("与 app-server 的连接不可用");
+    ).rejects.toMatchObject({
+      name: "AppServerConnectionUnavailableError",
+      message: "与 app-server 的连接不可用",
+      requestSent: false,
+    } satisfies Partial<AppServerConnectionUnavailableError>);
     expect(socket.sent).toHaveLength(0);
   });
 

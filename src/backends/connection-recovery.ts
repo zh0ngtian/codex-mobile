@@ -1,4 +1,7 @@
-import type { AppServerClient } from "../app-server/client";
+import {
+  AppServerConnectionUnavailableError,
+  type AppServerClient,
+} from "../app-server/client";
 
 interface VisibilityTarget extends EventTarget {
   visibilityState: DocumentVisibilityState;
@@ -71,6 +74,51 @@ export async function reconnectAndWaitUntilReady(
   reconnect();
   for (let check = 0; check < maxChecks && !isReady(); check += 1) {
     await wait();
+  }
+}
+
+interface UnsentReconnectOptions<Client, Result> {
+  client: Client;
+  request: (client: Client) => Promise<Result>;
+  reconnect: () => void | Promise<void>;
+  readyClient: () => Client | null;
+  wait?: () => Promise<void>;
+  maxChecks?: number;
+}
+
+export async function requestWithUnsentReconnect<Client, Result>({
+  client,
+  request,
+  reconnect,
+  readyClient,
+  wait = () => new Promise((resolve) => globalThis.setTimeout(resolve, 100)),
+  maxChecks = 150,
+}: UnsentReconnectOptions<Client, Result>): Promise<{
+  client: Client;
+  result: Result;
+}> {
+  try {
+    return { client, result: await request(client) };
+  } catch (reason) {
+    if (!(reason instanceof AppServerConnectionUnavailableError)) {
+      throw reason;
+    }
+
+    let replacement = readyClient();
+    if (!replacement || replacement === client) {
+      await reconnect();
+      for (let check = 0; check < maxChecks; check += 1) {
+        replacement = readyClient();
+        if (replacement && replacement !== client) break;
+        await wait();
+      }
+    }
+    if (!replacement || replacement === client) throw reason;
+
+    return {
+      client: replacement,
+      result: await request(replacement),
+    };
   }
 }
 
