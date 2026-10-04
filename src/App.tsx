@@ -50,8 +50,10 @@ import {
   removePendingTurn,
 } from "./ui/conversation";
 import {
+  applyTurnChangeStats,
   loadRecoverableRecentThreadTurns,
   loadOlderThreadTurns,
+  loadTurnChangeStatsPage,
   prependUniqueTurns,
   resumeThreadSession,
   type OlderTurnsLoadState,
@@ -861,6 +863,21 @@ function BackendWorkspace({
           }
         : current,
     );
+    const turnsWithoutStats = latestTurns.filter((turn: AnyRecord) =>
+      turn.itemsView === "summary" &&
+      !activeRef.current?.turns?.some((currentTurn: AnyRecord) =>
+        currentTurn.id === turn.id && currentTurn.loadedChangeStats,
+      ),
+    );
+    if (turnsWithoutStats.length) {
+      void backfillTurnChangeStats(
+        client,
+        threadId,
+        turnsWithoutStats.map((turn: AnyRecord) => String(turn.id)),
+        () => isCurrent() && client === clientRef.current &&
+          String(activeRef.current?.id ?? "") === threadId,
+      );
+    }
     setBusy(running);
     setThreads((entries) =>
       entries.map((entry) =>
@@ -1756,6 +1773,42 @@ function BackendWorkspace({
     setOlderTurnsState(cursor ? "idle" : "exhausted");
   }
 
+  async function backfillTurnChangeStats(
+    client: AppServerClient,
+    threadId: string,
+    turnIds: string[],
+    isCurrent: () => boolean,
+    cursor?: string,
+  ) {
+    const targetIds = new Set(turnIds);
+    try {
+      const stats = await loadTurnChangeStatsPage(client, threadId, cursor);
+      if (!isCurrent()) return;
+      setActive((current) =>
+        current?.id === threadId
+          ? {
+              ...current,
+              turns: applyTurnChangeStats(current.turns ?? [], stats, turnIds),
+            }
+          : current,
+      );
+    } catch {
+      if (!isCurrent()) return;
+      setActive((current) =>
+        current?.id === threadId
+          ? {
+              ...current,
+              turns: (current.turns ?? []).map((turn: AnyRecord) =>
+                targetIds.has(String(turn.id)) && !turn.loadedChangeStats
+                  ? { ...turn, changeStatsUnavailable: true }
+                  : turn,
+              ),
+            }
+          : current,
+      );
+    }
+  }
+
   async function loadOlderTurns() {
     const client = clientRef.current;
     const threadId = String(activeRef.current?.id ?? "");
@@ -1786,6 +1839,14 @@ function BackendWorkspace({
               ),
             }
           : current,
+      );
+      void backfillTurnChangeStats(
+        client,
+        threadId,
+        page.turns.map((turn: AnyRecord) => String(turn.id)),
+        () => generation === olderTurnsGenerationRef.current &&
+          String(activeRef.current?.id ?? "") === threadId,
+        cursor,
       );
       olderTurnsCursorRef.current = page.nextCursor;
       setOlderTurnsState(page.nextCursor ? "idle" : "exhausted");
@@ -1832,6 +1893,12 @@ function BackendWorkspace({
           ? { isProjectless: true }
           : {}),
       });
+      void backfillTurnChangeStats(
+        client,
+        threadId,
+        (session.thread.turns ?? []).map((turn: AnyRecord) => String(turn.id)),
+        () => sequence === openSequenceRef.current,
+      );
       resetOlderTurns(session.nextTurnsCursor);
       setActiveSettingsSynchronized(session.settingsSynchronized);
       setActiveThreadAccessMode(session.accessMode);

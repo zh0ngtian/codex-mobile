@@ -2,6 +2,7 @@ import type {
   ApprovalPolicy,
   ApprovalsReviewer,
 } from "../ui/settings";
+import { summarizeTurnChanges } from "../ui/conversation";
 
 type AnyRecord = Record<string, any>;
 const initialTurnsLimit = 10;
@@ -9,6 +10,47 @@ const threadHistoryRequestTimeoutMs = 60_000;
 const threadHistoryRequestOptions = {
   timeoutMs: threadHistoryRequestTimeoutMs,
 };
+
+export type TurnChangeStats = { additions: number; deletions: number };
+
+export async function loadTurnChangeStatsPage(
+  client: Requester,
+  threadId: string,
+  cursor?: string,
+): Promise<Record<string, TurnChangeStats>> {
+  const response = await client.request(
+    "thread/turns/list",
+    {
+      threadId,
+      ...(cursor ? { cursor } : {}),
+      limit: initialTurnsLimit,
+      sortDirection: "desc",
+      itemsView: "full",
+    },
+    threadHistoryRequestOptions,
+  );
+  return Object.fromEntries(
+    (response.data ?? []).map((turn: AnyRecord) => [
+      String(turn.id),
+      summarizeTurnChanges(turn),
+    ]),
+  );
+}
+
+export function applyTurnChangeStats(
+  turns: AnyRecord[],
+  stats: Record<string, TurnChangeStats>,
+  requestedTurnIds: string[] = [],
+): AnyRecord[] {
+  const requested = new Set(requestedTurnIds);
+  return turns.map((turn) =>
+    Object.prototype.hasOwnProperty.call(stats, String(turn.id))
+      ? { ...turn, loadedChangeStats: stats[String(turn.id)], changeStatsUnavailable: false }
+      : requested.has(String(turn.id))
+        ? { ...turn, changeStatsUnavailable: true }
+        : turn,
+  );
+}
 
 interface Requester {
   request(

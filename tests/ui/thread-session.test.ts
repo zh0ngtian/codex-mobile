@@ -4,11 +4,35 @@ import {
   loadRecentThreadTurns,
   loadStableRecentThreadTurns,
   loadOlderThreadTurns,
+  loadTurnChangeStatsPage,
+  applyTurnChangeStats,
   prependUniqueTurns,
   resumeThreadSession,
 } from "../../src/app-server/thread-session";
 
 describe("恢复已有 app-server 会话", () => {
+  it("从完整历史页提取改动行数并回填精简回合", async () => {
+    const request = vi.fn().mockResolvedValue({
+      data: [{
+        id: "turn-1",
+        items: [{ type: "fileChange", changes: [{
+          diff: "diff --git a/a.ts b/a.ts\n--- a/a.ts\n+++ b/a.ts\n@@ -1 +1,2 @@\n-old\n+new\n+extra",
+        }] }],
+      }],
+    });
+    const stats = await loadTurnChangeStatsPage({ request }, "thread-1");
+    expect(request).toHaveBeenCalledWith("thread/turns/list", {
+      threadId: "thread-1",
+      limit: 10,
+      sortDirection: "desc",
+      itemsView: "full",
+    }, { timeoutMs: 60_000 });
+    expect(applyTurnChangeStats([
+      { id: "turn-1", itemsView: "summary", items: [] },
+    ], stats)).toMatchObject([{
+      loadedChangeStats: { additions: 2, deletions: 1 },
+    }]);
+  });
   it("优先 thread/resume 并返回线程的有效设置", async () => {
     const request = vi.fn().mockResolvedValue({
       thread: { id: "thread-1", turns: [] },

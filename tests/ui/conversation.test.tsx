@@ -613,6 +613,38 @@ describe("移动端对话格式", () => {
 
     rerender(<TurnCard turn={{ id: "no-change", status: "completed", items: [] }} client={null} />);
     expect(container.querySelector(".activity-summary-text")?.textContent).toBe("本次代码改动 0 行");
+
+    rerender(<TurnCard turn={{ id: "summary", status: "completed", itemsView: "summary", items: [] }} client={null} />);
+    expect(container.querySelector(".activity-summary-text")?.textContent).toBe("正在统计代码改动");
+
+    rerender(<TurnCard turn={{
+      id: "summary", status: "completed", itemsView: "summary", items: [],
+      loadedChangeStats: { additions: 2, deletions: 1 },
+    }} client={null} />);
+    expect(container.querySelector(".activity-summary-text")?.textContent).toBe("本次代码改动 3 行+2-1");
+
+    rerender(<TurnCard turn={{
+      id: "summary-error", status: "completed", itemsView: "summary", items: [],
+      changeStatsUnavailable: true,
+    }} client={null} />);
+    expect(container.querySelector(".activity-summary-text")?.textContent).toBe("代码改动统计不可用");
+  });
+
+  it("合并回合会汇总各段从历史记录回填的改动", () => {
+    const [group] = groupConversationTurns([
+      {
+        id: "first", status: "completed", itemsView: "summary",
+        loadedChangeStats: { additions: 2, deletions: 1 },
+        items: [{ id: "user", type: "userMessage", text: "修改" }],
+      },
+      {
+        id: "second", status: "completed", itemsView: "summary",
+        loadedChangeStats: { additions: 3, deletions: 2 },
+        items: [{ id: "answer", type: "agentMessage", phase: "final_answer", text: "完成" }],
+      },
+    ]);
+    const { container } = render(<TurnCard turn={group} client={null} />);
+    expect(container.querySelector(".activity-summary-text")?.textContent).toBe("本次代码改动 8 行+5-3");
   });
 
   it("没有用户消息的回合不显示伪用户气泡", () => {

@@ -14,6 +14,7 @@ import {
   stripGitDirectives,
   summarizeToolActivity,
   summarizeTurnChanges,
+  hasTurnChangeStats,
   toolActivityRowLabel,
   turnDurationMs,
   type ImageSource,
@@ -649,7 +650,8 @@ export function TurnCard({
       ),
     );
   const completedSegments = splitTurnResponseSegments(grouped.responses);
-  const changeStats = summarizeTurnChanges(turn);
+  const changeStats = turn.groupChangeStats ?? summarizeTurnChanges(turn);
+  const changeStatsReady = hasTurnChangeStats(turn);
   const changedLines = changeStats.additions + changeStats.deletions;
   const durationMs = turnDurationMs(turn);
   const durationLabel =
@@ -730,8 +732,10 @@ export function TurnCard({
         <div className="turn-change-summary">
           <span className="activity-icon" aria-hidden="true">‹/›</span>
           <span className="activity-summary-text">
-            {t("本次代码改动 {count} 行", { count: changedLines })}
-            {changedLines > 0 && (
+            {changeStatsReady
+              ? t("本次代码改动 {count} 行", { count: changedLines })
+              : t(turn.changeStatsUnavailable ? "代码改动统计不可用" : "正在统计代码改动")}
+            {changeStatsReady && changedLines > 0 && (
               <>
                 <em className="diff-add">+{changeStats.additions}</em>
                 <em className="diff-delete">-{changeStats.deletions}</em>

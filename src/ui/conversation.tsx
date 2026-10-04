@@ -282,15 +282,26 @@ export function summarizeTurnChanges(turn: ConversationRecord) {
     return diffLineStats(turn.liveDiff);
   }
   const stats = { additions: 0, deletions: 0 };
+  let hasFileDiff = false;
   for (const item of turn.items ?? []) {
     if (item.type !== "fileChange") continue;
     for (const change of item.changes ?? []) {
+      if (change.diff) hasFileDiff = true;
       const changeStats = diffLineStats(change.diff ?? "");
       stats.additions += changeStats.additions;
       stats.deletions += changeStats.deletions;
     }
   }
-  return stats;
+  return hasFileDiff ? stats : turn.loadedChangeStats ?? stats;
+}
+
+export function hasTurnChangeStats(turn: ConversationRecord) {
+  if (typeof turn.groupChangeStatsReady === "boolean") return turn.groupChangeStatsReady;
+  if (turn.loadedChangeStats || turn.liveDiff) return true;
+  if (turn.items?.some((item: ConversationRecord) =>
+    item.type === "fileChange" && item.changes?.some((change: ConversationRecord) => change.diff)
+  )) return true;
+  return turn.itemsView !== "summary";
 }
 
 export function summarizeFileChange(change: ConversationRecord) {
@@ -900,6 +911,12 @@ export function groupConversationTurns(
       ...previous,
       status: turn.status ?? previous.status,
       items: [...(previous.items ?? []), ...items],
+      groupChangeStats: {
+        additions: (previous.groupChangeStats ?? summarizeTurnChanges(previous)).additions + summarizeTurnChanges(turn).additions,
+        deletions: (previous.groupChangeStats ?? summarizeTurnChanges(previous)).deletions + summarizeTurnChanges(turn).deletions,
+      },
+      groupChangeStatsReady: hasTurnChangeStats(previous) && hasTurnChangeStats(turn),
+      changeStatsUnavailable: previous.changeStatsUnavailable || turn.changeStatsUnavailable,
       ...(startedAt != null ? { startedAt } : {}),
       ...(completedAt != null ? { completedAt } : {}),
       ...(durationMs != null ? { durationMs } : {}),
