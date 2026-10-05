@@ -276,7 +276,6 @@ const english: Record<string, string> = {
   "通过自动化功能发送": "Sent by automation",
   "已更改 {count} 个文件": "Changed {count} files",
   "本次代码改动 {count} 行": "{count} lines changed this turn",
-  "正在统计代码改动": "Counting code changes…",
   "代码改动统计不可用": "Code change count unavailable",
   "正在运行 {count} 个命令": "Running {count} commands",
   "已运行 {count} 个命令": "Ran {count} commands",

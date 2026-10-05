@@ -631,7 +631,7 @@ describe("移动端对话格式", () => {
     expect(container.querySelector(".activity-summary-text")?.textContent).toBe("本次代码改动 0 行");
 
     rerender(<TurnCard turn={{ id: "summary", status: "completed", itemsView: "summary", items: [] }} client={null} />);
-    expect(container.querySelector(".activity-summary-text")?.textContent).toBe("正在统计代码改动");
+    expect(container.querySelector(".turn-change-summary")).toBeNull();
 
     rerender(<TurnCard turn={{
       id: "summary", status: "completed", itemsView: "summary", items: [],
