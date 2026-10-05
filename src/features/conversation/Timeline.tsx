@@ -728,13 +728,13 @@ export function TurnCard({
           ))
         )}
       </div>
-      {!grouped.running && (
+      {!grouped.running && (changeStatsReady || turn.changeStatsUnavailable) && (
         <div className="turn-change-summary">
           <span className="activity-icon" aria-hidden="true">‹/›</span>
           <span className="activity-summary-text">
             {changeStatsReady
               ? t("本次代码改动 {count} 行", { count: changedLines })
-              : t(turn.changeStatsUnavailable ? "代码改动统计不可用" : "正在统计代码改动")}
+              : t("代码改动统计不可用")}
             {changeStatsReady && changedLines > 0 && (
               <>
                 <em className="diff-add">+{changeStats.additions}</em>
