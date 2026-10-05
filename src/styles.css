@@ -340,7 +340,7 @@ button, a, summary, [role="button"] { -webkit-tap-highlight-color: transparent; 
 .remote-file-path { color: #666; font-size: 13px; }
 .sheet-close { width: 100%; margin-top: 0; border: 0; border-radius: 24px; background: #111; color: #fff; padding: 13px; }
 .image-preview-backdrop { z-index: 30; background: rgba(0,0,0,.54); }
-.image-preview-sheet { height: 100vh; max-height: 100vh; height: 100dvh; max-height: 100dvh; border-radius: 0; clip-path: none; }
+.image-preview-sheet { height: 100vh; max-height: 100vh; height: 100dvh; max-height: 100dvh; padding-top: var(--safe-area-top); border-radius: 0; clip-path: none; }
 .image-preview-sheet .action-sheet-body { flex: 1; display: flex; flex-direction: column; padding: 0 16px max(18px, env(safe-area-inset-bottom)); overflow: hidden; }
 .image-preview-stage { position: relative; flex: 1; min-height: 0; width: 100%; overflow: hidden; border-radius: 20px; background: #111; display: grid; place-items: center; touch-action: none; cursor: zoom-in; user-select: none; }
 .image-preview-stage.zoomed { cursor: grab; }

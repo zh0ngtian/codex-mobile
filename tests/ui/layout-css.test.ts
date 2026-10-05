@@ -230,6 +230,7 @@ describe("悬浮状态布局", () => {
     expect(bodyRule).toContain("overflow: hidden");
     expect(bodyRule).toContain("flex-direction: column");
     expect(styles).toMatch(/\.image-preview-sheet\s*\{[^}]*height: 100vh;[^}]*height: 100dvh/);
+    expect(styles).toMatch(/\.image-preview-sheet\s*\{[^}]*padding-top: var\(--safe-area-top\)/);
     expect(styles).toMatch(/\.image-preview-stage\s*\{[^}]*flex: 1/);
   });
 
