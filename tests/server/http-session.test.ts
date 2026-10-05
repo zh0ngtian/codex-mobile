@@ -310,6 +310,104 @@ describe("HTTP 会话", () => {
     expect(f.received.filter((m) => m.method === "initialize")).toHaveLength(2);
   });
 
+  it("回合详情只返回改动统计与图片引用，完整工具输出不传手机且不落盘", async () => {
+    const f = await fixture(); await f.init();
+    const inline = "data:image/png;base64," + "a".repeat(300_000);
+    f.respond((socket, message) => socket.send(JSON.stringify({ id: message.id, result: {
+      data: [
+        { id: "live", liveDiff: "diff --git a/a b/a\n--- a/a\n+++ b/a\n@@ -1 +1 @@\n-old\n+new\n+++hunk content", items: [
+          { id: "diff", type: "fileChange", changes: [{ diff: "+ignored\n-ignored" }] },
+          { id: "tool", type: "commandExecution", aggregatedOutput: "tool output".repeat(100_000) },
+          { id: "view", type: "imageView", path: "/tmp/view.png", text: "discard" },
+          { id: "saved", type: "imageGeneration", savedPath: "/tmp/saved.png", result: inline, prompt: "discard" },
+          { id: "local", type: "imageGeneration", result: "/tmp/local.png" },
+          { id: "ignored", type: "imageGeneration", result: "not an image reference" },
+        ] },
+        { id: "files", loadedChangeStats: { additions: 99, deletions: 99 }, items: [
+          { type: "fileChange", changes: [{ diff: "--- a/a\n+++ b/a\n@@ -1 +1 @@\n-a\n+b" }, { diff: "+c\n-d" }] },
+          { type: "fileChange", changes: [{ diff: "+e" }] },
+        ] },
+        { id: "fallback", loadedChangeStats: { additions: 7, deletions: 8 }, items: [] },
+      ], nextCursor: "older", toolBody: "discard",
+    } })));
+    const message = { id: "details-original", method: "mobile/turns/details", params: { threadId: "t", cursor: "page", limit: 5, sortDirection: "desc" } };
+    const requestId = randomUUID();
+    const response = await f.rpc(message, requestId); expect(response.status).toBe(200);
+    const reply = await response.json();
+    expect(reply).toEqual({ id: "details-original", result: { data: [
+      { id: "live", loadedChangeStats: { additions: 2, deletions: 1 }, items: [
+        { id: "view", type: "imageView", path: "/tmp/view.png", backfilled: true },
+        { id: "saved", type: "imageGeneration", savedPath: "/tmp/saved.png", backfilled: true },
+        { id: "local", type: "imageGeneration", result: "/tmp/local.png", backfilled: true },
+      ] },
+      { id: "files", loadedChangeStats: { additions: 3, deletions: 2 }, items: [] },
+      { id: "fallback", loadedChangeStats: { additions: 7, deletions: 8 }, items: [] },
+    ], nextCursor: "older" } });
+    expect(f.received.at(-1)).toMatchObject({ method: "thread/turns/list", params: { threadId: "t", cursor: "page", limit: 5, sortDirection: "desc", itemsView: "full" } });
+    expect(f.received.some((entry) => entry.method === "mobile/turns/details")).toBe(false);
+    expect(Buffer.byteLength(JSON.stringify(reply))).toBeLessThan(2048);
+    expect(await readdir(join(f.root, "codex-mobile-http")).catch(() => [])).toEqual([]);
+    expect(await (await fetch(f.url("operations", `&requestId=${requestId}`))).json()).toMatchObject({ status: "completed", message: reply });
+  });
+
+  it("回合详情保留没有文件引用的内联图片并将上游分页限制在五回合", async () => {
+    const f = await fixture(); await f.init(); const inline = "data:image/png;base64,abc";
+    f.respond((socket, message) => socket.send(JSON.stringify({ id: message.id, result: { data: [
+      { id: "image", items: [{ id: "inline", type: "imageGeneration", result: inline }] },
+    ], nextCursor: null } })));
+    expect(await (await f.rpc({ id: 18, method: "mobile/turns/details", params: { threadId: "t", limit: 100, sortDirection: "desc" } })).json()).toEqual({ id: 18, result: {
+      data: [{ id: "image", loadedChangeStats: { additions: 0, deletions: 0 }, items: [{ id: "inline", type: "imageGeneration", result: inline, backfilled: true }] }], nextCursor: null,
+    } });
+    expect(f.received.at(-1).params).toEqual({ threadId: "t", limit: 5, sortDirection: "desc", itemsView: "full" });
+  });
+
+  it("回合详情原样返回上游错误并保留调用方 RPC id", async () => {
+    const f = await fixture(); await f.init(); const error = { code: -32602, message: "thread missing", data: { threadId: "missing" } };
+    f.respond((socket, message) => socket.send(JSON.stringify({ id: message.id, error })));
+    expect(await (await f.rpc({ id: 19, method: "mobile/turns/details", params: { threadId: "missing" } })).json()).toEqual({ id: 19, error });
+    expect(f.received.at(-1).method).toBe("thread/turns/list");
+  });
+
+  it("回合详情拒绝无 id 或无效分页参数且不发送上游", async () => {
+    const f = await fixture(); await f.init();
+    const invalid = [undefined, {}, { threadId: "" }, { threadId: 4 }, { threadId: "t", cursor: 4 }, { threadId: "t", limit: 0 }, { threadId: "t", limit: 1.5 }, { threadId: "t", sortDirection: "asc" }];
+    for (const params of invalid) expect((await f.rpc({ id: 2, method: "mobile/turns/details", params })).status).toBe(400);
+    expect((await f.rpc({ method: "mobile/turns/details", params: { threadId: "t" } })).status).toBe(400);
+    expect(f.received).toHaveLength(1);
+    expect(await readdir(join(f.root, "codex-mobile-http")).catch(() => [])).toEqual([]);
+  });
+
+  it("普通事件每页消息限制 64 KiB 并按游标无遗漏前进，审批保留独立完整预算", async () => {
+    const f = await fixture(); await f.init();
+    const question = "审批".repeat(100_000);
+    f.send({ id: "question", method: "item/tool/requestUserInput", params: { questions: [{ question }] } });
+    for (let n = 0; n < 5; n++) f.send({ method: "item/completed", params: { threadId: "t", turnId: "turn", item: { id: `i${n}`, type: "agentMessage", text: "x".repeat(32_000) } } });
+    await wait();
+    let page = await f.events(); expect(page.reset).toBe(false); expect(page.hasMore).toBe(true);
+    const ids: string[] = []; let previous = 0;
+    for (let count = 0; count < 5; count++) {
+      expect(page.cursor).toBeGreaterThan(previous); expect(page.requests[0].params.questions[0].question).toBe(question);
+      expect(Buffer.byteLength(JSON.stringify(page.messages))).toBeLessThanOrEqual(64 * 1024);
+      ids.push(...page.messages.map((entry: any) => entry.params.item.id));
+      if (!page.hasMore) break;
+      previous = page.cursor; page = await f.events(page.cursor);
+    }
+    expect(page.hasMore).toBe(false); expect(ids).toEqual(["i0", "i1", "i2", "i3", "i4"]);
+    expect((await f.events(page.cursor)).messages).toEqual([]);
+  });
+
+  it("单个超 64 KiB 事件占用空页且游标继续前进", async () => {
+    const f = await fixture(); await f.init();
+    f.send({ method: "item/completed", params: { threadId: "t", turnId: "turn", item: { id: "large", type: "mcpToolCall", output: Array.from({ length: 4 }, () => "x".repeat(32_000)) } } });
+    f.send({ method: "turn/completed", params: { threadId: "t", turn: { id: "turn", status: "completed" } } }); await wait();
+    const first = await f.events();
+    expect(first.messages).toHaveLength(1); expect(Buffer.byteLength(JSON.stringify(first.messages[0]))).toBeGreaterThan(64 * 1024);
+    expect(first.cursor).toBe(1); expect(first.hasMore).toBe(true);
+    const second = await f.events(first.cursor); expect(second.cursor).toBe(2); expect(second.hasMore).toBe(false);
+    expect(second.messages.map((message: any) => message.method)).toEqual(["turn/completed"]);
+    expect((await f.events(second.cursor)).messages).toEqual([]);
+  });
+
   it("图片读取响应不落盘，旧版误存的图片响应在会话恢复时清理", async () => {
     const f = await fixture(); await f.init();
     const directory = join(f.root, "codex-mobile-http", new URL(f.url("rpc")).searchParams.get("sessionId")!);
@@ -356,10 +454,12 @@ describe("HTTP 会话", () => {
     for (let n = 0; n < 600; n++) f.send({ method: "thread/title/updated", params: { threadId: "t", title: `title${n}` } });
     f.send({ method: "turn/completed", params: { threadId: "t", turn: { id: "turn", status: "completed" } } }); await wait(80);
     let page = await f.events(); expect(page.reset).toBe(true); expect(page.hasMore).toBe(true);
+    expect(Buffer.byteLength(JSON.stringify(page.messages))).toBeLessThanOrEqual(64 * 1024);
     const messages = [...page.messages];
     while (page.hasMore) {
       f.send({ method: "thread/title/updated", params: { threadId: "t", title: `title new ${messages.length}` } }); await wait();
       page = await f.events(page.cursor); expect(page.reset).toBe(false); messages.push(...page.messages);
+      expect(Buffer.byteLength(JSON.stringify(page.messages))).toBeLessThanOrEqual(64 * 1024);
     }
     expect(messages.filter((m: any) => m.method === "item/started").map((m: any) => m.params.item.id)).toEqual(Array.from({ length: 24 }, (_, n) => `i${n}`));
     expect(messages.at(-1).method).toBe("turn/completed");
@@ -409,7 +509,13 @@ describe("HTTP 会话", () => {
     const firstResponse = await fetch(f.url("events", "&after=0")); expect(firstResponse.status).toBe(200);
     let page: any = await firstResponse.json(); expect(page.reset).toBe(true);
     const messages = [...page.messages]; let count = 0;
-    while (page.hasMore && count++ < 64) { page = await f.events(page.cursor); messages.push(...page.messages); }
+    expect(page.messages).toHaveLength(1);
+    expect(Buffer.byteLength(JSON.stringify(page.messages[0]))).toBeGreaterThan(64 * 1024);
+    while (page.hasMore && count++ < 512) {
+      const cursor = page.cursor;
+      page = await f.events(cursor); expect(page.cursor).not.toBe(cursor); expect(page.messages.length).toBeGreaterThan(0);
+      messages.push(...page.messages);
+    }
     expect(page.hasMore).toBe(false); expect(page.active).toBe(false);
     expect(messages.at(-1).method).toBe("turn/completed");
     expect(messages.filter((message) => message.method === "item/completed").length).toBeGreaterThan(0);

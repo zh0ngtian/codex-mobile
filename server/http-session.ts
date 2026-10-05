@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import WebSocket from "ws";
+import { compactTurnDetails } from "./turn-details.js";
 
 export interface RpcMessage {
   id?: string | number;
@@ -24,7 +25,7 @@ const MAX_APPROVAL_BYTES = 2 * 1024 * 1024;
 const MAX_SESSIONS = 128;
 const MAX_EVENTS = 512;
 const MAX_EVENT_BYTES = 2 * 1024 * 1024;
-const MAX_RESPONSE_BYTES = 512 * 1024;
+const MAX_RESPONSE_BYTES = 64 * 1024;
 const MAX_TEXT = 32 * 1024;
 const MAX_SNAPSHOT_BYTES = 16 * 1024 * 1024;
 const SNAPSHOT_TTL_MS = 60_000;
@@ -35,7 +36,7 @@ const READ_ONLY_METHODS = new Set([
   "thread/turns/list", "thread/items/list", "permissionProfile/list", "plugin/list",
   "model/list", "account/read", "account/rateLimits/read", "config/read",
   "configRequirements/read", "skills/list", "mcpServerStatus/list",
-  "fs/readFile",
+  "fs/readFile", "mobile/turns/details",
 ]);
 
 class HttpError extends Error {
@@ -382,11 +383,13 @@ class Session {
     }) : this.history.filter((entry) => entry.cursor > after);
     const messages: RpcMessage[] = [];
     const frozenCursor = continuation?.snapshot.cursor ?? this.cursor;
-    let bytes = 0; let cursor = after; let index = continuation?.start ?? 0;
+    let bytes = 2; let cursor = after; let index = continuation?.start ?? 0;
     for (; index < available.length; index++) {
       const event = available[index];
-      if (bytes + event.bytes > MAX_RESPONSE_BYTES) break;
-      messages.push(event.message); bytes += event.bytes;
+      const eventBytes = event.bytes + (messages.length ? 1 : 0);
+      // An oversized first event must still advance the page, including frozen snapshots.
+      if (messages.length && bytes + eventBytes > MAX_RESPONSE_BYTES) break;
+      messages.push(event.message); bytes += eventBytes;
       cursor = event.cursor;
     }
     const hasMore = index < available.length;
@@ -559,6 +562,16 @@ class Session {
         } else {
           submitted = true;
           if (message.method === "initialized") result = await this.notifyInitialized(message, submittedSocket);
+          else if (message.method === "mobile/turns/details") {
+            const params = message.params!;
+            const upstream: RpcMessage = { id: message.id, method: "thread/turns/list", params: {
+              threadId: params.threadId, ...(params.cursor !== undefined ? { cursor: params.cursor } : {}),
+              limit: Math.min(params.limit ?? 5, 5), sortDirection: "desc", itemsView: "full",
+            } };
+            result = await this.exchange(upstream, submittedSocket);
+            if (this.socket === submittedSocket && this.epoch === submittedEpoch) this.observeRpcState(upstream, result);
+            if (result.error == null) result = { ...result, result: compactTurnDetails(result.result as Record<string, any>) };
+          }
           else result = await this.exchange(message, submittedSocket);
         }
         if (this.socket === submittedSocket && this.epoch === submittedEpoch) this.observeRpcState(message, result);
@@ -678,6 +691,13 @@ export class HttpSessions {
         if (message.method === "initialize" && message.id == null) throw new HttpError(400, "Initialize must include an RPC id");
         if (message.id != null && !["number", "string"].includes(typeof message.id)) throw new HttpError(400, "Invalid RPC id");
         if (message.method != null && (typeof message.method !== "string" || !message.method.length || message.method.length > 256)) throw new HttpError(400, "Invalid RPC method");
+        if (message.method === "mobile/turns/details") {
+          const params = message.params;
+          if (message.id == null || !params || Array.isArray(params) || typeof params.threadId !== "string" || !params.threadId.trim() ||
+            (params.cursor !== undefined && typeof params.cursor !== "string") ||
+            (params.limit !== undefined && (!Number.isSafeInteger(params.limit) || params.limit <= 0)) ||
+            (params.sortDirection !== undefined && params.sortDirection !== "desc")) throw new HttpError(400, "Invalid turn details parameters");
+        }
         if (!message.method && message.result === undefined && message.error === undefined) throw new HttpError(400, "Invalid RPC reply");
         if (body.epoch !== undefined && (typeof body.epoch !== "string" || !UUID.test(body.epoch))) throw new HttpError(400, "Invalid session epoch");
         result = await session.rpc(body.requestId, message, body.epoch);
