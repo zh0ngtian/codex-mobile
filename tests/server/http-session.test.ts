@@ -485,6 +485,26 @@ describe("HTTP 会话", () => {
     const first = await f.events(); expect(first.hasMore).toBe(true);
     vi.setSystemTime(Date.now() + 61_000);
     expect((await fetch(f.url("events", `&after=${first.cursor}`))).status).toBe(503);
+    expect((await fetch(f.url("events", `&after=${first.cursor}`))).status).toBe(503);
+  });
+
+  it("持续读取冻结快照分页会续期，累计超过一分钟仍按顺序读完", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const f = await fixture(); await f.init();
+    for (let n = 0; n < 20; n++) f.send({ method: "item/started", params: { threadId: "t", turnId: "turn", item: { id: `i${n}`, type: "agentMessage", text: "x".repeat(32_000) } } });
+    for (let n = 0; n < 600; n++) f.send({ method: "thread/title/updated", params: { threadId: "t", title: String(n) } });
+    f.send({ method: "turn/completed", params: { threadId: "t", turn: { id: "turn", status: "completed" } } }); await wait(50);
+    let page = await f.events(); expect(page.reset).toBe(true); expect(page.hasMore).toBe(true);
+    const messages = [...page.messages]; const startedAt = Date.now();
+    while (page.hasMore) {
+      vi.setSystemTime(Date.now() + 20_000);
+      const response = await fetch(f.url("events", `&after=${page.cursor}`)); expect(response.status).toBe(200);
+      page = await response.json(); expect(page.reset).toBe(false); messages.push(...page.messages);
+    }
+    expect(Date.now() - startedAt).toBeGreaterThan(60_000);
+    expect(messages.filter((message: any) => message.method === "item/started").map((message: any) => message.params.item.id)).toEqual(Array.from({ length: 20 }, (_, n) => `i${n}`));
+    expect(messages.at(-1).method).toBe("turn/completed");
+    expect((await f.events(page.cursor)).messages).toEqual([]);
   });
 
   it("多轮冻结快照受总字节预算限制，淘汰旧 cursor 不静默跳页", async () => {

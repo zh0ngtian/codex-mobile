@@ -407,6 +407,7 @@ class Session {
         cursor = this.nextSnapshotCursor--;
         this.snapshotPages.set(cursor, { snapshot, start: index });
         while (this.snapshotPages.size > 128) this.snapshotPages.delete(this.snapshotPages.keys().next().value!);
+        if (continuation) snapshot.expiresAt = Date.now() + SNAPSHOT_TTL_MS;
       } else {
         cursor = frozenCursor;
         if (continuation) this.releaseSnapshot(continuation.snapshot.id);
