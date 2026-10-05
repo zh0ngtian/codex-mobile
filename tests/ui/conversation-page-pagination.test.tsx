@@ -14,6 +14,7 @@ function renderConversation(
   composer: {
     draft?: string;
     busy?: boolean;
+    operationPending?: boolean;
     steering?: boolean;
     steerable?: boolean;
     pendingSteerText?: string;
@@ -83,6 +84,7 @@ function renderConversation(
       draftFiles={composer.draftFiles ?? []}
       imageReading={false}
       busy={composer.busy ?? false}
+      operationPending={composer.operationPending}
       steering={composer.steering ?? false}
       steerable={composer.steerable ?? true}
       pendingSteerText={composer.pendingSteerText ?? ""}
@@ -128,6 +130,15 @@ function renderConversation(
 }
 
 describe("会话详情历史分页", () => {
+  it("独立待确认提示位于会话滚动状态区域，不成为页面前置流式元素", () => {
+    const { container } = renderConversation("exhausted", undefined, { operationPending: true, busy: false });
+    const status = within(container).getByRole("status");
+    expect(status.textContent).toBe("发送状态确认中");
+    expect(status.classList.contains("operation-pending")).toBe(true);
+    expect(status.closest(".run-progress")).not.toBeNull();
+    expect(status.closest(".conversation-scroll-content")).not.toBeNull();
+    expect(container.querySelector(".conversation")?.firstElementChild?.className).toBe("conversation-header");
+  });
   it("无项目时仍可创建并发送新聊天", () => {
     const onSubmit = vi.fn((event: FormEvent) => event.preventDefault());
     const { container } = renderConversation(

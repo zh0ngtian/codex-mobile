@@ -2,14 +2,14 @@ import type { HttpSyncState } from "../../backends/http-transport";
 import { useEffect, useState } from "react";
 import { t } from "../../i18n";
 
-export function RunProgress({ thread, busy, sync }: { thread: Record<string, any>; busy: boolean; sync: HttpSyncState | null }) {
+export function RunProgress({ thread, busy, sync, operationPending = false }: { thread: Record<string, any>; busy: boolean; sync: HttpSyncState | null; operationPending?: boolean }) {
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
     if (!busy && !sync?.stale) return;
     const timer = setInterval(() => setNow(Date.now()), 1_000);
     return () => clearInterval(timer);
   }, [busy, sync?.stale]);
-  if (!busy && !sync?.stale) return null;
+  if (!busy && !sync?.stale && !operationPending) return null;
   const flags: string[] = thread.status?.activeFlags ?? [];
   const turn = thread.turns?.at(-1);
   const items: Record<string, any>[] = turn?.items ?? [];
@@ -25,7 +25,8 @@ export function RunProgress({ thread, busy, sync }: { thread: Record<string, any
   const detail = current?.command ?? current?.tool ?? "";
   const plan: Array<{ step: string; status: string }> = busy ? thread.mobilePlan ?? [] : [];
   return <section className="run-progress" aria-label={t("执行状态")}>
-    <strong>{label}{detail ? ` · ${String(detail).slice(0, 120)}` : ""}</strong>
+    {operationPending && <span role="status" className="operation-pending">{t("发送状态确认中")}</span>}
+    {(busy || sync?.stale) && <strong>{label}{detail ? ` · ${String(detail).slice(0, 120)}` : ""}</strong>}
     {plan.length > 0 && <ol>{plan.map((entry, index) => <li key={index} data-status={entry.status}>
       <span aria-hidden="true">{entry.status === "completed" ? "✓" : entry.status === "inProgress" ? "●" : "○"}</span> {entry.step}
     </li>)}</ol>}

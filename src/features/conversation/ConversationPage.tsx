@@ -156,6 +156,7 @@ export function ConversationPage({
   draftFiles,
   imageReading,
   busy,
+  operationPending = false,
   steering,
   steerable,
   pendingSteerText,
@@ -217,6 +218,7 @@ export function ConversationPage({
   draftFiles: DraftFile[];
   imageReading: boolean;
   busy: boolean;
+  operationPending?: boolean;
   steering: boolean;
   steerable: boolean;
   pendingSteerText: string;
@@ -618,7 +620,7 @@ export function ConversationPage({
             }) : !isNewChat && (
               <div className="empty-state">{t("开始一次新的 Codex 对话")}</div>
             )}
-            <RunProgress thread={active} busy={busy} sync={syncState} />
+            <RunProgress thread={active} busy={busy} sync={syncState} operationPending={operationPending} />
           </div>
         </div>
       </div>

@@ -3922,13 +3922,13 @@ function BackendWorkspace({
   const conversationBusy = active?.id
     ? busy || pendingOperationIds.some((id) => pendingOperationsRef.current.get(id)?.threadId === String(active.id))
     : startingThreadContext === draftContextGenerationRef.current;
+  const conversationOperationPending = pendingOperationIds.some((id) => {
+    const operation = pendingOperationsRef.current.get(id);
+    return operation?.draftContext === draftContextGenerationRef.current && (!operation.threadId || operation.threadId === String(active?.id ?? ""));
+  });
 
   return (
     <main className="app-shell">
-      {pendingOperationIds.some((id) => {
-        const operation = pendingOperationsRef.current.get(id);
-        return operation?.draftContext === draftContextGenerationRef.current && (!operation.threadId || operation.threadId === String(active?.id ?? ""));
-      }) && <p role="status" className="operation-pending">{t("发送状态确认中")}</p>}
       {active ? (
         <ConversationPage
           active={active}
@@ -3948,6 +3948,7 @@ function BackendWorkspace({
           draftFiles={draftFiles}
           imageReading={imageReading}
           busy={conversationBusy}
+          operationPending={conversationOperationPending}
           steering={steering}
           steerable={Boolean(activeTurnId(active))}
           pendingSteerText={
