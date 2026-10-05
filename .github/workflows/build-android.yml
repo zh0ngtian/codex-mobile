@@ -568,9 +568,10 @@ jobs:
           ))
           edge_to_edge_insets = "\n".join((
               "            val systemBar = insets.getInsets(WindowInsetsCompat.Type.systemBars())",
+              "            val imeInsets = insets.getInsets(WindowInsetsCompat.Type.ime())",
               "            nativeSafeAreaTopCssPx =",
               "                systemBar.top / resources.displayMetrics.density.toDouble()",
-              "            view.setPadding(systemBar.left, 0, systemBar.right, systemBar.bottom)",
+              "            view.setPadding(systemBar.left, 0, systemBar.right, maxOf(systemBar.bottom, imeInsets.bottom))",
               "            val insetWebView = view.findViewById<WebView>(R.id.webview)",
               "            val cssTop = nativeSafeAreaTopCssPx",
               "            insetWebView.post {",
@@ -1197,8 +1198,10 @@ jobs:
             app/src/main/AndroidManifest.xml
           grep -Fq 'android:exported="false"' \
             app/src/main/AndroidManifest.xml
+          grep -Fq 'val imeInsets = insets.getInsets(WindowInsetsCompat.Type.ime())' \
+            app/src/main/java/com/app/pakeplus/MainActivity.kt
           grep -Fq \
-            'view.setPadding(systemBar.left, 0, systemBar.right, systemBar.bottom)' \
+            'view.setPadding(systemBar.left, 0, systemBar.right, maxOf(systemBar.bottom, imeInsets.bottom))' \
             app/src/main/java/com/app/pakeplus/MainActivity.kt
           grep -Fq 'fun safeAreaTopCssPx(): Double' \
             app/src/main/java/com/app/pakeplus/MainActivity.kt

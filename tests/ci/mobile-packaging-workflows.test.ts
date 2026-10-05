@@ -145,6 +145,21 @@ function runAssetScanner(scanner: string, source: string) {
 }
 
 describe("移动 App 内置前端流水线", () => {
+  it("Android edge-to-edge 底部扣除 IME 且保留顶部安全区，硬化检查防止模板漂移", () => {
+    const { workflow } = readWorkflow(".github/workflows/build-android.yml");
+    const hardenHost = readRunStep(workflow, "Harden and test embedded Android project");
+    const template = hardenHost.match(/edge_to_edge_insets = "\\n"\.join\(\(\n([\s\S]*?)\n\s*\)\)/);
+    expect(template, "找不到原生 inset 模板").not.toBeNull();
+    const generatedInsets = template![1].split("\n")
+      .map((line) => JSON.parse(line.trim().replace(/,$/, "")))
+      .join("\n");
+    expect(generatedInsets).toContain("val imeInsets = insets.getInsets(WindowInsetsCompat.Type.ime())");
+    expect(generatedInsets).toContain("view.setPadding(systemBar.left, 0, systemBar.right, maxOf(systemBar.bottom, imeInsets.bottom))");
+    expect(generatedInsets).toContain("nativeSafeAreaTopCssPx =\n                systemBar.top / resources.displayMetrics.density.toDouble()");
+    expect(hardenHost).toContain("grep -Fq 'val imeInsets = insets.getInsets(WindowInsetsCompat.Type.ime())'");
+    expect(hardenHost).toContain("'view.setPadding(systemBar.left, 0, systemBar.right, maxOf(systemBar.bottom, imeInsets.bottom))' \\\n  app/src/main/java/com/app/pakeplus/MainActivity.kt");
+  });
+
   it("Vite 使用同时兼容 Web 与本地 WebView 的相对资源路径", () => {
     expect(readProjectFile("vite.config.ts")).toContain('base: "./"');
   });
@@ -245,7 +260,7 @@ describe("移动 App 内置前端流水线", () => {
     expect(hardenHost).toContain('android:allowBackup="false"');
     expect(hardenHost).toContain("enableEdgeToEdge()");
     expect(hardenHost).toContain(
-      "view.setPadding(systemBar.left, 0, systemBar.right, systemBar.bottom)",
+      "view.setPadding(systemBar.left, 0, systemBar.right, maxOf(systemBar.bottom, imeInsets.bottom))",
     );
     expect(hardenHost).toContain(
       "systemBar.top / resources.displayMetrics.density.toDouble()",
