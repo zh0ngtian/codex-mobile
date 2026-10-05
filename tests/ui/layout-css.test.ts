@@ -219,6 +219,10 @@ describe("悬浮状态布局", () => {
     expect(stageRule).toContain("touch-action: none");
     expect(stageRule).toContain("overflow: hidden");
     expect(imageRule).toContain("will-change: transform");
+    expect(imageRule).toContain("width: 100%");
+    expect(imageRule).toContain("height: 100%");
+    expect(imageRule).toContain("position: absolute");
+    expect(imageRule).toContain("object-fit: contain");
     const bodyRule =
       styles.match(
         /(?:^|\n)\.image-preview-sheet \.action-sheet-body\s*\{([^}]*)\}/,
