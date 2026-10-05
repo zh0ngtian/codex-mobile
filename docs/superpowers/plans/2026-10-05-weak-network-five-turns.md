@@ -60,3 +60,6 @@ Files: 本计划、必要的验收记录；真机证据保存到仓库外 `../co
 - 正常发送确认 58 ms；重度发送确认 1.231 秒，sleep 5 执行状态约 7.004 秒显示。模型完成耗时不作为纯网络指标。
 - 服务端执行后丢弃 ACK、断网 8 秒：恢复后 0.492 秒完成对账，后续新草稿保留，没有错误；原 UUID operation completed，匹配发送只有 1 个回合，pending 存储为空。
 - 同时发现根页面的待确认提示破坏真机安全区和键盘布局；`fbe181bf` 已迁入 ConversationPage 既有 RunProgress 区域，3 项新增测试完成 RED→GREEN，31 项相关单元测试、13 项 HTTP E2E、package build 通过，独立规格审查通过。重新构建、安装和复测最终候选包后才发布。
+- 第二个候选包 `34c1d0f` 重度复测：首次仍为 5、补页后 10；列表 7.462 秒 / 五回合 3.006 秒 / 历史五回合 3.350 秒 / 输入 0.273 秒。ACK 丢失后恢复 0.560 秒，原请求 completed、服务端仅一个匹配回合、没有残留 pending、新草稿保留。
+- 追加原生键盘适配：真机确认根提示不再侵入状态栏，但 edge-to-edge 的原有 Android insets listener 仅处理 systemBars.bottom，忽略 IME，WebView 仍按全屏高度布局，输入栏被键盘遮挡。Android 打包生成的 MainActivity 应在底部使用 `maxOf(systemBar.bottom, ime.bottom)`，保持原顶部安全区和无键盘布局；增加现有 CI 打包测试及生成源码硬化断言。修复后再次从已推送源码构建未发布的 0.2.74，并以真实 IME 截图、输入栏和提示位置验证后发布。
+- `14f758f` 已实现原生 IME 底部适配；已有 packaging 测试真实 RED→GREEN，8 项通过，YAML/Bash/Python 语法与 diff 检查通过。该修改不影响网关或已验证的 WebView 资源，最终 APK 真机检查仍待完成。
