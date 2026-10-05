@@ -17,6 +17,16 @@ import type { BackendConfig } from "../../src/backends/types";
 afterEach(cleanup);
 
 describe("图片放大预览", () => {
+  it("历史工具图片源文件已清理时不留下大块错误占位", async () => {
+    const request = vi.fn().mockRejectedValue(new Error("file missing"));
+    const { container } = render(<RemoteImage
+      image={{ source: "/tmp/old.png", name: "old.png", local: true, hideIfMissing: true }}
+      client={{ request } as never}
+    />);
+    await waitFor(() => expect(request).toHaveBeenCalled());
+    await waitFor(() => expect(container.querySelector(".image-placeholder")).toBeNull());
+    expect(container.querySelector(".image-load-error")).toBeNull();
+  });
   const backend: BackendConfig = {
     id: "mini",
     name: "Mac mini",

@@ -384,6 +384,7 @@ export interface ImageSource {
   source: string;
   name: string;
   local: boolean;
+  hideIfMissing?: boolean;
 }
 
 function imageName(source: string) {
@@ -426,7 +427,12 @@ export function imageSourcesForItem(
   }
   if (item.type === "imageView" && item.path) {
     return [
-      { source: item.path, name: imageName(item.path), local: true },
+      {
+        source: item.path,
+        name: imageName(item.path),
+        local: true,
+        ...(item.backfilled === true ? { hideIfMissing: true } : {}),
+      },
     ];
   }
   if (item.type === "imageGeneration") {

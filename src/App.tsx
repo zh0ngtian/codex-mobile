@@ -900,17 +900,19 @@ function BackendWorkspace({
           }
         : current,
     );
-    const turnsWithoutStats = latestTurns.filter((turn: AnyRecord) =>
+    const turnsNeedingBackfill = latestTurns.filter((turn: AnyRecord) =>
       turn.itemsView === "summary" &&
       !activeRef.current?.turns?.some((currentTurn: AnyRecord) =>
-        currentTurn.id === turn.id && currentTurn.loadedChangeStats,
+        currentTurn.id === turn.id && currentTurn.loadedChangeStats &&
+        currentTurn.loadedMediaStatus === turn.status &&
+        !["inProgress", "in_progress", "running"].includes(String(turn.status ?? "")),
       ),
     );
-    if (turnsWithoutStats.length) {
+    if (turnsNeedingBackfill.length) {
       void backfillTurnChangeStats(
         client,
         threadId,
-        turnsWithoutStats.map((turn: AnyRecord) => String(turn.id)),
+        turnsNeedingBackfill.map((turn: AnyRecord) => String(turn.id)),
         () => isCurrent() && client === clientRef.current &&
           String(activeRef.current?.id ?? "") === threadId,
       );

@@ -166,7 +166,9 @@ export function RemoteImage({
   }, [client, image.local, image.source]);
 
   if (failed) {
-    return <div className="image-load-error">{t("无法读取 {name}", { name: image.name })}</div>;
+    return image.hideIfMissing
+      ? null
+      : <div className="image-load-error">{t("无法读取 {name}", { name: image.name })}</div>;
   }
   if (!src) return <div className="image-placeholder" aria-label={t("正在加载 {name}", { name: image.name })} />;
 

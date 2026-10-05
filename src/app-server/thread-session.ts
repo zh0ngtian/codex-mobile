@@ -40,6 +40,7 @@ export async function loadTurnChangeStatsPage(
       ).map((item: AnyRecord) => ({
         id: item.id,
         type: item.type,
+        backfilled: true,
         ...(item.path ? { path: item.path } : {}),
         ...(item.savedPath ? { savedPath: item.savedPath } : {}),
         ...(item.result && /^(https?:|data:|\/)/i.test(item.result) ? { result: item.result } : {}),
@@ -80,6 +81,7 @@ export function applyTurnChangeStats(
       ...turn,
       items,
       loadedChangeStats: { additions: detail.additions, deletions: detail.deletions },
+      loadedMediaStatus: turn.status,
       changeStatsUnavailable: false,
     };
   });
