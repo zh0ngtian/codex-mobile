@@ -3,6 +3,7 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
   within,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -45,6 +46,21 @@ afterEach(() => {
 });
 
 describe("移动端对话格式", () => {
+  it("完成回合直接显示助手生成的图片并能打开应用内预览", async () => {
+    const request = vi.fn().mockResolvedValue({ dataBase64: "aGVsbG8=" });
+    const { container } = render(<TurnCard turn={{
+      id: "turn-image", status: "completed", items: [
+        { id: "user", type: "userMessage", text: "发图片" },
+        { id: "image", type: "imageView", path: "/tmp/assistant.png" },
+        { id: "final", type: "agentMessage", phase: "final_answer", text: "图片已发送" },
+      ],
+    }} client={{ request } as never} />);
+    const button = await waitFor(() => within(container).getByRole("button", { name: "查看图片 assistant.png" }));
+    expect(button.closest(".previous-messages")).toBeNull();
+    fireEvent.click(button);
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    expect(request).toHaveBeenCalledWith("fs/readFile", { path: "/tmp/assistant.png" });
+  });
   it("用户消息与 final answer 显示精确到分钟的权威时间", () => {
     const startedAt = new Date(2026, 9, 3, 9, 7, 35).getTime() / 1000;
     const completedAt = new Date(2026, 9, 3, 9, 9, 4).getTime() / 1000;

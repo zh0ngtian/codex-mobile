@@ -799,6 +799,8 @@ function CompletedResponseSegment({
       entries.filter(
         (item) =>
           item.type === "userMessage" ||
+          item.type === "imageView" ||
+          (item.type === "imageGeneration" && item.status !== "failed") ||
           Boolean(videoPathForItem(item)) ||
           (
             completed.previousCount === 0 &&

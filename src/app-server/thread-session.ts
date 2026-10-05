@@ -12,12 +12,13 @@ const threadHistoryRequestOptions = {
 };
 
 export type TurnChangeStats = { additions: number; deletions: number };
+export type TurnBackfill = TurnChangeStats & { images: AnyRecord[] };
 
 export async function loadTurnChangeStatsPage(
   client: Requester,
   threadId: string,
   cursor?: string,
-): Promise<Record<string, TurnChangeStats>> {
+): Promise<Record<string, TurnBackfill>> {
   const response = await client.request(
     "thread/turns/list",
     {
@@ -30,26 +31,58 @@ export async function loadTurnChangeStatsPage(
     threadHistoryRequestOptions,
   );
   return Object.fromEntries(
-    (response.data ?? []).map((turn: AnyRecord) => [
-      String(turn.id),
-      summarizeTurnChanges(turn),
-    ]),
+    (response.data ?? []).map((turn: AnyRecord) => {
+      const images = (turn.items ?? []).filter((item: AnyRecord) =>
+        (item.type === "imageView" && typeof item.path === "string" && item.path) ||
+        (item.type === "imageGeneration" &&
+          [item.savedPath, item.result].some((value) =>
+            typeof value === "string" && /^(data:|\/)/i.test(value))),
+      ).map((item: AnyRecord) => ({
+        id: item.id,
+        type: item.type,
+        ...(item.path ? { path: item.path } : {}),
+        ...(item.savedPath ? { savedPath: item.savedPath } : {}),
+        ...(item.result && /^(https?:|data:|\/)/i.test(item.result) ? { result: item.result } : {}),
+      }));
+      return [String(turn.id), { ...summarizeTurnChanges(turn), images }];
+    }),
   );
 }
 
 export function applyTurnChangeStats(
   turns: AnyRecord[],
-  stats: Record<string, TurnChangeStats>,
+  stats: Record<string, TurnBackfill>,
   requestedTurnIds: string[] = [],
 ): AnyRecord[] {
   const requested = new Set(requestedTurnIds);
-  return turns.map((turn) =>
-    Object.prototype.hasOwnProperty.call(stats, String(turn.id))
-      ? { ...turn, loadedChangeStats: stats[String(turn.id)], changeStatsUnavailable: false }
-      : requested.has(String(turn.id))
-        ? { ...turn, changeStatsUnavailable: true }
-        : turn,
-  );
+  return turns.map((turn) => {
+    const detail = stats[String(turn.id)];
+    if (!detail) return requested.has(String(turn.id))
+      ? { ...turn, changeStatsUnavailable: true }
+      : turn;
+    const items = [...(turn.items ?? [])];
+    const finalIndex = items.findIndex((item: AnyRecord) =>
+      item.type === "agentMessage" && item.phase === "final_answer",
+    );
+    let insertAt = finalIndex < 0 ? items.length : finalIndex;
+    for (const image of detail.images ?? []) {
+      const source = image.path ?? image.savedPath ?? image.result;
+      if (items.some((item: AnyRecord) =>
+        (image.id && item.id === image.id) ||
+        (item.type === image.type &&
+          (item.path ?? item.savedPath ?? item.result) === source) ||
+        (item.type === "agentMessage" && typeof item.text === "string" && item.text.includes(source)),
+      )) continue;
+      items.splice(insertAt, 0, image);
+      insertAt += 1;
+    }
+    return {
+      ...turn,
+      items,
+      loadedChangeStats: { additions: detail.additions, deletions: detail.deletions },
+      changeStatsUnavailable: false,
+    };
+  });
 }
 
 interface Requester {

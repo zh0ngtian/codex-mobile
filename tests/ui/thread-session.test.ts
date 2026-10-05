@@ -33,6 +33,27 @@ describe("恢复已有 app-server 会话", () => {
       loadedChangeStats: { additions: 2, deletions: 1 },
     }]);
   });
+  it("将完整历史中的原生图片回填到精简回合，重复回填不产生副本", async () => {
+    const request = vi.fn().mockResolvedValue({ data: [{
+      id: "turn-image",
+      items: [
+        { id: "user", type: "userMessage" },
+        { id: "view", type: "imageView", path: "/tmp/assistant.png" },
+        { id: "answer", type: "agentMessage", phase: "final_answer", text: "图片如下" },
+      ],
+    }] });
+    const details = await loadTurnChangeStatsPage({ request }, "thread-1");
+    const summary = [{ id: "turn-image", itemsView: "summary", items: [
+      { id: "user", type: "userMessage" },
+      { id: "answer", type: "agentMessage", phase: "final_answer", text: "图片如下" },
+    ] }];
+    const once = applyTurnChangeStats(summary, details);
+    const twice = applyTurnChangeStats(once, details);
+    expect(twice[0].items.map((item: { type: string }) => item.type)).toEqual([
+      "userMessage", "imageView", "agentMessage",
+    ]);
+    expect(twice[0].items[1].path).toBe("/tmp/assistant.png");
+  });
   it("优先 thread/resume 并返回线程的有效设置", async () => {
     const request = vi.fn().mockResolvedValue({
       thread: { id: "thread-1", turns: [] },

@@ -478,7 +478,9 @@ export function splitCompletedTurnResponses(
     previousCount: previous.filter(
       (item) =>
         item.type !== "contextCompaction" &&
-        item.type !== "userMessage",
+        item.type !== "userMessage" &&
+        item.type !== "imageView" &&
+        (item.type !== "imageGeneration" || item.status === "failed"),
     ).length,
     beforeFinal,
     afterFinal,
