@@ -202,7 +202,7 @@ import {
   completionThreadTitle,
   notifyRunCompleted,
   requestRunCompletionNotificationPermission,
-  shouldNotifyRunCompleted,
+  shouldNotifyFinalAnswer,
   type RunCompletionNavigationTarget,
 } from "./notifications/run-completion";
 import { t, useI18n } from "./i18n";
@@ -434,6 +434,8 @@ function BackendWorkspace({
   >({ model: 0, effort: 0, serviceTier: 0 });
   const queuedFollowUpsRef = useRef<QueuedFollowUp[]>([]);
   const queuedFollowUpDispatchingRef = useRef(false);
+  const completionEventCatchUpRef = useRef(false);
+  const notifiedFinalAnswerKeysRef = useRef(new Set<string>());
   const automaticTitleStatesRef = useRef(
     new Map<string, AutomaticTitleState>(),
   );
@@ -1094,6 +1096,7 @@ function BackendWorkspace({
           setError(connectionError);
         }
         if (status === "connecting") {
+          completionEventCatchUpRef.current = false;
           clientRef.current = null;
           readyClientRef.current = null;
         }
@@ -1124,6 +1127,10 @@ function BackendWorkspace({
       onNotification: (_backendId, message, source) => {
           const client = source as AppServerClient;
           const params = (message.params ?? {}) as AnyRecord;
+          if (message.method === "mobile/events/catchup") {
+            completionEventCatchUpRef.current = params.active === true;
+            return;
+          }
           if (message.method === "mobile/sync") {
             setSyncState({ updatedAt: params.updatedAt ?? null, stale: params.stale === true });
             return;
@@ -1342,6 +1349,46 @@ function BackendWorkspace({
             setActive((current) =>
               current ? applyTurnItem(current, nextParams) : current,
             );
+            const threadId = String(params.threadId ?? "");
+            const turnId = String(params.turnId ?? "");
+            const itemId = String(params.item.id ?? "");
+            const notificationKey = `${threadId}\u0000${turnId}\u0000${itemId}`;
+            const hasQueuedFollowUp = queuedFollowUpsRef.current.some(
+              (followUp) => followUp.threadId === threadId,
+            );
+            if (
+              !hasQueuedFollowUp &&
+              !notifiedFinalAnswerKeysRef.current.has(notificationKey) &&
+              shouldNotifyFinalAnswer({
+                item: nextParams.item,
+                catchingUp: completionEventCatchUpRef.current,
+                threadId,
+                activeThreadId: String(activeRef.current?.id ?? ""),
+                conversationVisible: conversationVisibleRef.current,
+                documentVisible:
+                  document.visibilityState === "visible",
+              })
+            ) {
+              notifiedFinalAnswerKeysRef.current.add(notificationKey);
+              while (notifiedFinalAnswerKeysRef.current.size > 256) {
+                const oldest = notifiedFinalAnswerKeysRef.current
+                  .values()
+                  .next().value;
+                if (typeof oldest !== "string") break;
+                notifiedFinalAnswerKeysRef.current.delete(oldest);
+              }
+              notifyRunCompleted({
+                title: t("Codex 运行结束"),
+                body: completionThreadTitle({
+                  threadId,
+                  threads: threadsRef.current,
+                  activeThread: activeRef.current,
+                  fallback: t("新对话"),
+                }),
+                backendId: backend.id,
+                threadId,
+              });
+            }
           }
           if (
             message.method === "item/commandExecution/outputDelta" ||
@@ -1418,27 +1465,6 @@ function BackendWorkspace({
                 markThreadUnread(threadId);
               } else if (!hasQueuedFollowUp) {
                 markThreadRead(threadId);
-              }
-              if (
-                !hasQueuedFollowUp &&
-                shouldNotifyRunCompleted({
-                  threadId,
-                  activeThreadId: String(activeRef.current?.id ?? ""),
-                  conversationVisible: conversationVisibleRef.current,
-                  documentVisible,
-                })
-              ) {
-                notifyRunCompleted({
-                  title: t("Codex 运行结束"),
-                  body: completionThreadTitle({
-                    threadId,
-                    threads: threadsRef.current,
-                    activeThread: activeRef.current,
-                    fallback: t("新对话"),
-                  }),
-                  backendId: backend.id,
-                  threadId,
-                });
               }
               setThreads((current) =>
                 current.map((thread) =>

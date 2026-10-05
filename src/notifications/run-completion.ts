@@ -164,6 +164,34 @@ export function shouldNotifyRunCompleted({
   );
 }
 
+export function shouldNotifyFinalAnswer({
+  item,
+  catchingUp,
+  threadId,
+  activeThreadId,
+  conversationVisible,
+  documentVisible,
+}: {
+  item?: Record<string, unknown> | null;
+  catchingUp: boolean;
+  threadId: string;
+  activeThreadId: string;
+  conversationVisible: boolean;
+  documentVisible: boolean;
+}) {
+  return (
+    !catchingUp &&
+    item?.type === "agentMessage" &&
+    item.phase === "final_answer" &&
+    shouldNotifyRunCompleted({
+      threadId,
+      activeThreadId,
+      conversationVisible,
+      documentVisible,
+    })
+  );
+}
+
 export function requestRunCompletionNotificationPermission(
   scope: CompletionNotificationScope = currentScope(),
 ) {

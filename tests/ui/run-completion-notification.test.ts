@@ -4,6 +4,7 @@ import {
   completionThreadTitle,
   notifyRunCompleted,
   requestRunCompletionNotificationPermission,
+  shouldNotifyFinalAnswer,
   shouldNotifyRunCompleted,
   type CompletionNotificationScope,
 } from "../../src/notifications/run-completion";
@@ -48,6 +49,57 @@ describe("运行完成通知", () => {
         documentVisible: true,
       }),
     ).toBe(true);
+  });
+
+  it("只有实时完成的 final answer 才提醒", () => {
+    const base = {
+      threadId: "thread-2",
+      activeThreadId: "thread-1",
+      conversationVisible: true,
+      documentVisible: true,
+      catchingUp: false,
+    };
+
+    expect(
+      shouldNotifyFinalAnswer({
+        ...base,
+        item: {
+          id: "final",
+          type: "agentMessage",
+          phase: "final_answer",
+          text: "完成",
+        },
+      }),
+    ).toBe(true);
+    expect(
+      shouldNotifyFinalAnswer({
+        ...base,
+        item: {
+          id: "commentary",
+          type: "agentMessage",
+          phase: "commentary",
+          text: "正在处理",
+        },
+      }),
+    ).toBe(false);
+    expect(
+      shouldNotifyFinalAnswer({
+        ...base,
+        item: { id: "legacy", type: "agentMessage", text: "旧协议回复" },
+      }),
+    ).toBe(false);
+    expect(
+      shouldNotifyFinalAnswer({
+        ...base,
+        catchingUp: true,
+        item: {
+          id: "replayed-final",
+          type: "agentMessage",
+          phase: "final_answer",
+          text: "历史回复",
+        },
+      }),
+    ).toBe(false);
   });
 
   it("优先通过 Android 原生桥申请权限并发送通知", () => {

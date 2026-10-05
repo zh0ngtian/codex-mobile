@@ -47,6 +47,8 @@ export class HttpRpcTransport extends EventTarget {
   private epoch = "";
   private initialized = false;
   private polling = false;
+  private catchingUp = true;
+  private catchUpAnnounced = false;
   private active = false;
   private hasMore = false;
   private failures = 0;
@@ -315,6 +317,10 @@ export class HttpRpcTransport extends EventTarget {
       this.epoch = payload.epoch;
       this.active = payload.active || payload.requests.length > 0;
       this.hasMore = payload.hasMore === true;
+      if (this.catchingUp && !this.catchUpAnnounced) {
+        this.catchUpAnnounced = true;
+        this.emit({ method: "mobile/events/catchup", params: { active: true } });
+      }
       if (payload.reset) this.emit({ method: "mobile/reset", params: {} });
       for (const message of payload.messages) this.emit(message);
       const pending = new Set(payload.requests.map((request) => String(request.id)));
@@ -329,6 +335,10 @@ export class HttpRpcTransport extends EventTarget {
       }
       this.emit({ method: "mobile/requests", params: { requests } });
       this.cursor = payload.cursor;
+      if (this.catchingUp && !this.hasMore) {
+        this.catchingUp = false;
+        this.emit({ method: "mobile/events/catchup", params: { active: false } });
+      }
       this.updatedAt = Date.now();
       this.failures = 0;
       this.sync(false);

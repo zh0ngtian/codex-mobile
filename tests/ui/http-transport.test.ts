@@ -22,6 +22,53 @@ const events = (overrides = {}) => new Response(JSON.stringify({
 }));
 
 describe("HTTP 文字传输", () => {
+  it("首轮历史事件由 catch-up 边界包裹，供通知层抑制重放", async () => {
+    vi.useFakeTimers();
+    const historicalFinal = {
+      method: "item/completed",
+      params: {
+        threadId: "thread",
+        turnId: "old-turn",
+        item: {
+          id: "old-final",
+          type: "agentMessage",
+          phase: "final_answer",
+          text: "历史回复",
+        },
+      },
+    };
+    const transport = setup((async (url) => {
+      if (String(url).includes("/api/events")) {
+        return events({
+          active: false,
+          messages: [historicalFinal],
+        });
+      }
+      return new Response(JSON.stringify({ result: {} }));
+    }) as typeof fetch, "initial-catch-up");
+    const messages: any[] = [];
+    transport.addEventListener("message", (event) => {
+      messages.push(JSON.parse((event as MessageEvent).data));
+    });
+
+    await vi.advanceTimersByTimeAsync(0);
+    await new AppServerClient(transport).initialize();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(
+      messages
+        .filter((message) =>
+          message.method === "mobile/events/catchup" ||
+          message.method === "item/completed",
+        )
+        .map((message) => [message.method, message.params?.active]),
+    ).toEqual([
+      ["mobile/events/catchup", true],
+      ["item/completed", undefined],
+      ["mobile/events/catchup", false],
+    ]);
+  });
+
   it("持续只读请求不能推迟待确认操作的已安排对账期限", async () => {
     vi.useFakeTimers();
     let completed = false;
