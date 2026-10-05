@@ -53,3 +53,43 @@ export function shouldMarkThreadUnread({
     !documentVisible
   );
 }
+
+export type FinalAnswerAttentionAction =
+  | "mark-unread"
+  | "mark-read"
+  | "preserve";
+
+export function finalAnswerAttentionAction({
+  item,
+  catchingUp,
+  hasQueuedFollowUp,
+  threadId,
+  activeThreadId,
+  conversationVisible,
+  documentVisible,
+}: {
+  item?: Record<string, unknown> | null;
+  catchingUp: boolean;
+  hasQueuedFollowUp: boolean;
+  threadId: string;
+  activeThreadId: string;
+  conversationVisible: boolean;
+  documentVisible: boolean;
+}): FinalAnswerAttentionAction {
+  if (
+    catchingUp ||
+    hasQueuedFollowUp ||
+    item?.type !== "agentMessage" ||
+    item.phase !== "final_answer"
+  ) {
+    return "preserve";
+  }
+  return shouldMarkThreadUnread({
+    threadId,
+    activeThreadId,
+    conversationVisible,
+    documentVisible,
+  })
+    ? "mark-unread"
+    : "mark-read";
+}

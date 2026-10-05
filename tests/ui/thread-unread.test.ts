@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
+  finalAnswerAttentionAction,
   readUnreadThreadIds,
   shouldMarkThreadUnread,
   writeUnreadThreadIds,
@@ -57,5 +58,54 @@ describe("会话未读状态", () => {
         documentVisible: true,
       }),
     ).toBe(true);
+  });
+
+  it("只用实时 final answer 更新未读状态", () => {
+    const finalAnswer = {
+      id: "final",
+      type: "agentMessage",
+      phase: "final_answer",
+      text: "完成",
+    };
+    const base = {
+      item: finalAnswer,
+      catchingUp: false,
+      hasQueuedFollowUp: false,
+      threadId: "thread-2",
+      activeThreadId: "thread-1",
+      conversationVisible: true,
+      documentVisible: true,
+    };
+
+    expect(finalAnswerAttentionAction(base)).toBe("mark-unread");
+    expect(
+      finalAnswerAttentionAction({
+        ...base,
+        threadId: "thread-1",
+      }),
+    ).toBe("mark-read");
+    expect(
+      finalAnswerAttentionAction({
+        ...base,
+        item: {
+          id: "commentary",
+          type: "agentMessage",
+          phase: "commentary",
+          text: "处理中",
+        },
+      }),
+    ).toBe("preserve");
+    expect(
+      finalAnswerAttentionAction({
+        ...base,
+        item: { id: "legacy", type: "agentMessage", text: "旧协议回复" },
+      }),
+    ).toBe("preserve");
+    expect(
+      finalAnswerAttentionAction({ ...base, catchingUp: true }),
+    ).toBe("preserve");
+    expect(
+      finalAnswerAttentionAction({ ...base, hasQueuedFollowUp: true }),
+    ).toBe("preserve");
   });
 });

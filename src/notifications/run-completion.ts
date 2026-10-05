@@ -1,3 +1,5 @@
+import { finalAnswerAttentionAction } from "../features/threads/thread-unread";
+
 export interface AndroidCompletionNotificationBridge {
   requestCompletionNotificationPermission?: () => void;
   showCompletionNotification?: (
@@ -179,17 +181,15 @@ export function shouldNotifyFinalAnswer({
   conversationVisible: boolean;
   documentVisible: boolean;
 }) {
-  return (
-    !catchingUp &&
-    item?.type === "agentMessage" &&
-    item.phase === "final_answer" &&
-    shouldNotifyRunCompleted({
-      threadId,
-      activeThreadId,
-      conversationVisible,
-      documentVisible,
-    })
-  );
+  return finalAnswerAttentionAction({
+    item,
+    catchingUp,
+    hasQueuedFollowUp: false,
+    threadId,
+    activeThreadId,
+    conversationVisible,
+    documentVisible,
+  }) === "mark-unread";
 }
 
 export function requestRunCompletionNotificationPermission(

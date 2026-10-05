@@ -193,8 +193,8 @@ import {
 import { useSidebarRefresh } from "./features/threads/sidebar-refresh";
 import { useSidebarSwipe } from "./features/threads/sidebar-swipe";
 import {
+  finalAnswerAttentionAction,
   readUnreadThreadIds,
-  shouldMarkThreadUnread,
   writeUnreadThreadIds,
 } from "./features/threads/thread-unread";
 import {
@@ -208,7 +208,6 @@ import {
   completionThreadTitle,
   notifyRunCompleted,
   requestRunCompletionNotificationPermission,
-  shouldNotifyFinalAnswer,
   type RunCompletionNavigationTarget,
 } from "./notifications/run-completion";
 import { t, useI18n } from "./i18n";
@@ -441,7 +440,7 @@ function BackendWorkspace({
   const queuedFollowUpsRef = useRef<QueuedFollowUp[]>([]);
   const queuedFollowUpDispatchingRef = useRef(false);
   const completionEventCatchUpRef = useRef(false);
-  const notifiedFinalAnswerKeysRef = useRef(new Set<string>());
+  const handledFinalAnswerKeysRef = useRef(new Set<string>());
   const automaticTitleStatesRef = useRef(
     new Map<string, AutomaticTitleState>(),
   );
@@ -1362,38 +1361,44 @@ function BackendWorkspace({
             const hasQueuedFollowUp = queuedFollowUpsRef.current.some(
               (followUp) => followUp.threadId === threadId,
             );
+            const attentionAction = finalAnswerAttentionAction({
+              item: nextParams.item,
+              catchingUp: completionEventCatchUpRef.current,
+              hasQueuedFollowUp,
+              threadId,
+              activeThreadId: String(activeRef.current?.id ?? ""),
+              conversationVisible: conversationVisibleRef.current,
+              documentVisible:
+                document.visibilityState === "visible",
+            });
             if (
-              !hasQueuedFollowUp &&
-              !notifiedFinalAnswerKeysRef.current.has(notificationKey) &&
-              shouldNotifyFinalAnswer({
-                item: nextParams.item,
-                catchingUp: completionEventCatchUpRef.current,
-                threadId,
-                activeThreadId: String(activeRef.current?.id ?? ""),
-                conversationVisible: conversationVisibleRef.current,
-                documentVisible:
-                  document.visibilityState === "visible",
-              })
+              attentionAction !== "preserve" &&
+              !handledFinalAnswerKeysRef.current.has(notificationKey)
             ) {
-              notifiedFinalAnswerKeysRef.current.add(notificationKey);
-              while (notifiedFinalAnswerKeysRef.current.size > 256) {
-                const oldest = notifiedFinalAnswerKeysRef.current
+              handledFinalAnswerKeysRef.current.add(notificationKey);
+              while (handledFinalAnswerKeysRef.current.size > 256) {
+                const oldest = handledFinalAnswerKeysRef.current
                   .values()
                   .next().value;
                 if (typeof oldest !== "string") break;
-                notifiedFinalAnswerKeysRef.current.delete(oldest);
+                handledFinalAnswerKeysRef.current.delete(oldest);
               }
-              notifyRunCompleted({
-                title: t("Codex 运行结束"),
-                body: completionThreadTitle({
+              if (attentionAction === "mark-unread") {
+                markThreadUnread(threadId);
+                notifyRunCompleted({
+                  title: t("Codex 运行结束"),
+                  body: completionThreadTitle({
+                    threadId,
+                    threads: threadsRef.current,
+                    activeThread: activeRef.current,
+                    fallback: t("新对话"),
+                  }),
+                  backendId: backend.id,
                   threadId,
-                  threads: threadsRef.current,
-                  activeThread: activeRef.current,
-                  fallback: t("新对话"),
-                }),
-                backendId: backend.id,
-                threadId,
-              });
+                });
+              } else {
+                markThreadRead(threadId);
+              }
             }
           }
           if (
@@ -1453,25 +1458,9 @@ function BackendWorkspace({
                 }
               : params;
             if (params.threadId) {
-              const hasQueuedFollowUp = queuedFollowUpsRef.current.some(
-                (followUp) => followUp.threadId === threadId,
-              );
-              const documentVisible =
-                document.visibilityState === "visible";
-              const needsAttention = shouldMarkThreadUnread({
-                threadId,
-                activeThreadId: String(activeRef.current?.id ?? ""),
-                conversationVisible: conversationVisibleRef.current,
-                documentVisible,
-              });
               setPendingSteerMessage((current) =>
                 clearPendingSteerForThread(current, threadId),
               );
-              if (needsAttention && !hasQueuedFollowUp) {
-                markThreadUnread(threadId);
-              } else if (!hasQueuedFollowUp) {
-                markThreadRead(threadId);
-              }
               setThreads((current) =>
                 current.map((thread) =>
                   String(thread.id) === threadId
