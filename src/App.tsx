@@ -2241,6 +2241,22 @@ function BackendWorkspace({
     });
   }
 
+  function syncStartedThreadSettings(started: AnyRecord) {
+    const startedModel = started.model || selectedModel;
+    const startedSettings = normalizeModelSettings(
+      models.find((model) => model.model === startedModel),
+      started.reasoningEffort ?? selectedEffort,
+      "serviceTier" in started ? started.serviceTier ?? null : effectiveSelectedServiceTier,
+    );
+    if (started.model) setSelectedModel(started.model);
+    setSelectedEffort(startedSettings.effort);
+    setSelectedServiceTier(startedSettings.serviceTier);
+    if (started.approvalPolicy) setSelectedApprovalPolicy(started.approvalPolicy);
+    if (started.approvalsReviewer) setSelectedApprovalsReviewer(started.approvalsReviewer);
+    if (started.activePermissionProfile?.id) setSelectedPermission(started.activePermissionProfile.id);
+    setActiveSettingsSynchronized(true);
+  }
+
   async function startTurnMessage({
     text,
     pendingImages,
@@ -2341,29 +2357,9 @@ function BackendWorkspace({
           { ...thread!, status: { type: "active" } },
           ...current.filter((entry) => entry.id !== thread!.id),
         ]);
-        const startedModel = started.model || selectedModel;
-        const startedSettings = normalizeModelSettings(
-          models.find((model) => model.model === startedModel),
-          started.reasoningEffort ?? selectedEffort,
-          "serviceTier" in started
-            ? started.serviceTier ?? null
-            : effectiveSelectedServiceTier,
-        );
         if (draftContext === draftContextGenerationRef.current) {
           setStartingThreadContext(null);
-          if (started.model) setSelectedModel(started.model);
-          setSelectedEffort(startedSettings.effort);
-          setSelectedServiceTier(startedSettings.serviceTier);
-          if (started.approvalPolicy) {
-            setSelectedApprovalPolicy(started.approvalPolicy);
-          }
-          if (started.approvalsReviewer) {
-            setSelectedApprovalsReviewer(started.approvalsReviewer);
-          }
-          if (started.activePermissionProfile?.id) {
-            setSelectedPermission(started.activePermissionProfile.id);
-          }
-          setActiveSettingsSynchronized(true);
+          syncStartedThreadSettings(started);
           activeRef.current = thread;
           setActive(thread);
         }
@@ -2472,7 +2468,12 @@ function BackendWorkspace({
                 writeLocalProjectlessThreadIds(window.localStorage, backend.id, next);
                 return next;
               });
+              if (startingProjectless) {
+                setProjectThreadStates((current) => ({ ...current, [PROJECTLESS_GROUP_ID]: "ready" }));
+                setProjectHasMore((current) => ({ ...current, [PROJECTLESS_GROUP_ID]: false }));
+              }
               if (currentContext && currentThread) {
+                syncStartedThreadSettings(response.result as AnyRecord);
                 activeThreadTargetRef.current = String(created.id);
                 activeRef.current = restored;
                 setActive(restored);
@@ -2593,7 +2594,7 @@ function BackendWorkspace({
       onFailure: () => {
         const currentDraft = currentDraftRef.current;
         const threadId = String(activeRef.current?.id ?? "");
-        if (threadId && (currentDraft.text.trim() || currentDraft.images.length || currentDraft.files.length)) {
+        if (currentDraft.text.trim() || currentDraft.images.length || currentDraft.files.length) {
           // 后续新草稿保持可编辑；失败的原输入和附件留在现有手动重试队列。
           replaceQueuedFollowUps([{
             id: `failed-${Date.now()}-${Math.random().toString(36).slice(2)}`,
@@ -2659,6 +2660,12 @@ function BackendWorkspace({
   function cancelHistoricalMessageEdit() {
     const session = historyEdit;
     if (!session || session.submitting) return;
+    setActive((current) => {
+      if (String(current?.id ?? "") !== session.threadId) return current;
+      const next = { ...current, turns: (current?.turns ?? []).filter((turn: AnyRecord) => !(turn.historyEditDraft && turn.id === session.target.turnId)) };
+      activeRef.current = next;
+      return next;
+    });
     setHistoryEdit(null);
     setError("");
   }
@@ -2690,6 +2697,7 @@ function BackendWorkspace({
     const text = session.text.trim();
     let target = session.target;
     let retainedTurns = [...(thread.turns ?? [])];
+    if (session.reverted) retainedTurns = retainedTurns.filter((turn) => !turn.historyEditDraft);
     if (!session.reverted) {
       const currentTarget = createHistoricalMessageEditTarget(
         thread.turns ?? [],
@@ -2750,8 +2758,25 @@ function BackendWorkspace({
       `pending-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     let reverted = session.reverted;
     let pendingAdded = false;
+    const draftContext = draftContextGenerationRef.current;
+    const restoreEditing = (nextReverted: boolean, failure?: string) => {
+      if (draftContext !== draftContextGenerationRef.current || String(activeRef.current?.id ?? "") !== threadId) return;
+      if (nextReverted) {
+        // revert 已删除原目标；仅保留用于手动编辑的本地草稿，不代表已执行回合。
+        const editDraft = { id: target.turnId, status: "failed", itemsView: "summary", historyEditDraft: true, items: [{ id: target.messageId, type: "userMessage", content: buildEditedHistoryInput(target, text) }] };
+        setActive((current) => {
+          if (!current || String(current.id) !== threadId) return current;
+          const next = { ...current, turns: [...(current.turns ?? []).filter((turn: AnyRecord) => turn.id !== pendingTurnId && turn.id !== target.turnId), editDraft] };
+          activeRef.current = next;
+          return next;
+        });
+      }
+      setHistoryEdit((current) => current?.threadId === threadId ? { ...current, target: nextReverted ? { ...target, hasLaterTurns: false } : target, reverted: nextReverted, submitting: false } : current);
+      setBusy(false);
+      if (failure) setError(failure);
+    };
     try {
-      let workingThread = thread;
+      let workingThread = session.reverted ? { ...thread, turns: retainedTurns } : thread;
       if (!reverted) {
         const revertedResult = await revertHistoricalMessage(
           client,
@@ -2845,6 +2870,41 @@ function BackendWorkspace({
       });
       setHistoryEdit(null);
     } catch (reason) {
+      if (reason instanceof HttpOperationPendingError) {
+        rememberPendingOperation(reason.requestId, {
+          threadId, draftContext, pendingTurnId,
+          confirmed: (response, confirmationClient) => {
+            if (draftContext !== draftContextGenerationRef.current || String(activeRef.current?.id ?? "") !== threadId) return;
+            if (response.error) {
+              restoreEditing(reverted, response.error.message);
+              return;
+            }
+            if (["thread/revert", "thread/rollback"].includes(reason.request.method ?? "")) {
+              // RPC 已明确完成回退；先恢复已知保留前缀，解锁原编辑，网络读取只校正事实。
+              const knownThread = { ...activeRef.current, turns: retainedTurns };
+              activeRef.current = knownThread;
+              setActive(knownThread);
+              resetOlderTurns((response.result as AnyRecord)?.turnsBackwardsCursor ?? null);
+              restoreEditing(true);
+              const correctionSequence = pendingSequenceRef.current;
+              void loadRecoverableRecentThreadTurns(confirmationClient, threadId, () => threadNotificationSequenceRef.current).then((recent) => {
+                if (recent == null || draftContext !== draftContextGenerationRef.current || String(activeRef.current?.id ?? "") !== threadId || confirmationClient !== clientRef.current || pendingSequenceRef.current !== correctionSequence) return;
+                setActive((current) => {
+                  if (!current || String(current.id) !== threadId) return current;
+                  const editDrafts = (current.turns ?? []).filter((turn: AnyRecord) => turn.historyEditDraft);
+                  const next = { ...current, turns: [...reconcileRecentTurns(retainedTurns, recent, { discardPendingThrough: correctionSequence }), ...editDrafts] };
+                  activeRef.current = next;
+                  return next;
+                });
+              }).catch(() => undefined);
+            } else {
+              setHistoryEdit(null);
+              void reconcileActiveThread(confirmationClient).catch(() => undefined);
+            }
+          },
+        }, client);
+        return;
+      }
       setBusy(false);
       if (pendingAdded) {
         setActive((current) => {
@@ -3015,7 +3075,7 @@ function BackendWorkspace({
   useEffect(() => {
     const activeThreadId = String(active?.id ?? "");
     const followUp = queuedFollowUps.find(
-      (entry) => entry.threadId === activeThreadId,
+      (entry) => entry.threadId === activeThreadId && (entry.threadId || entry.draftContext === draftContextGenerationRef.current),
     );
     if (
       busy ||
@@ -3896,7 +3956,7 @@ function BackendWorkspace({
               : ""
           }
           queuedFollowUps={queuedFollowUps.filter(
-            (followUp) => followUp.threadId === String(active.id),
+            (followUp) => followUp.threadId === String(active.id ?? "") && (followUp.threadId || followUp.draftContext === draftContextGenerationRef.current),
           )}
           accessMode={activeThreadAccessMode}
           resumeError={activeThreadResumeError}

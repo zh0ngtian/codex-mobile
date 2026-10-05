@@ -1,13 +1,19 @@
 import { expect, test } from "@playwright/test";
 
-for (const scenario of ["turn-success", "turn-error", "thread-start", "approval", "steer"] as const) {
+for (const scenario of ["turn-success", "turn-error", "thread-start", "thread-error", "thread-settings", "approval", "steer", "history-success", "history-error", "history-revert", "history-rollback", "history-read-delay"] as const) {
 test(`ACK 丢失后自动确认原发送并保留输入：${scenario}`, async ({ page }) => {
+  const newThread = scenario.startsWith("thread-");
+  const history = scenario.startsWith("history-");
   const thread: any = { id: "ack-thread", name: "ACK 会话", cwd: "/tmp/project", turns: [], status: { type: "idle" } };
   if (scenario === "steer") { thread.status = { type: "active" }; thread.turns = [{ id: "accepted-turn", status: "inProgress", items: [] }]; }
+  if (history) thread.turns = [{ id: "history-turn", status: "completed", items: [{ id: "old-user", type: "userMessage", content: [{ type: "text", text: "历史原文" }, { type: "localImage", path: "/tmp/original.png" }] }, { id: "old-answer", type: "agentMessage", phase: "final_answer", text: "旧答案" }] }];
   let accepted: any;
   let starts = 0;
+  let reverts = 0;
+  const subsequentTurns: any[] = [];
   let offline = false;
   let approvalReady = false;
+  let releaseRead: (() => void) | undefined;
   const queryIds: string[] = [];
   const uploadedNames: string[] = [];
   await page.addInitScript(() => {
@@ -36,8 +42,9 @@ test(`ACK 丢失后自动确认原发送并保留输入：${scenario}`, async ({
     if (url.pathname === "/api/events") return route.fulfill({ json: { epoch: "ack", cursor: 0, messages: [], requests: scenario === "approval" && approvalReady ? [{ id: "approval-lost", method: "item/commandExecution/requestApproval", params: { threadId: thread.id, command: "npm test" } }] : [], active: false, updatedAt: Date.now(), reset: false } });
     if (url.pathname === "/api/operations") {
       queryIds.push(url.searchParams.get("requestId")!);
-      const message = scenario === "turn-error" ? { error: { code: -1, message: "明确发送失败" } }
-        : scenario === "thread-start" ? { result: { thread } }
+      const message = ["turn-error", "thread-error", "history-error"].includes(scenario) ? { error: { code: -1, message: "明确发送失败" } }
+        : newThread ? { result: { thread, ...(scenario === "thread-settings" ? { model: "gpt-server", reasoningEffort: "high", serviceTier: "priority", approvalPolicy: "never", approvalsReviewer: "auto_review", activePermissionProfile: { id: ":read-only" } } : {}) } }
+        : accepted?.message.method === "thread/revert" || accepted?.message.method === "thread/rollback" ? { result: { thread } }
         : scenario === "approval" ? { result: null }
         : { result: { turn: { id: "accepted-turn", status: "inProgress", items: [] } } };
       return route.fulfill({ json: { status: "completed", message } });
@@ -45,12 +52,25 @@ test(`ACK 丢失后自动确认原发送并保留输入：${scenario}`, async ({
     if (url.pathname !== "/api/rpc") return route.continue();
     const operation = route.request().postDataJSON();
     const { message } = operation;
+    if (scenario === "history-read-delay" && accepted && message.method === "thread/turns/list" && !releaseRead) await new Promise<void>((resolve) => { releaseRead = resolve; });
+    if (message.method === "thread/revert" || message.method === "thread/rollback") {
+      if (scenario === "history-rollback" && message.method === "thread/revert") return route.fulfill({ json: { id: message.id, error: { code: -32601, message: "unknown method" } } });
+      reverts++;
+      thread.turns = [];
+      if (["history-revert", "history-rollback", "history-read-delay"].includes(scenario)) { accepted = operation; offline = true; return route.abort("internetdisconnected"); }
+      return route.fulfill({ json: { id: message.id, result: { thread } } });
+    }
+    if (newThread && message.method === "turn/start") {
+      subsequentTurns.push(operation);
+      return route.fulfill({ json: { id: message.id, result: { turn: { id: "next", status: "inProgress", items: [] } } } });
+    }
     if (message.method === "thread/resume") approvalReady = true;
-    if (message.method === (scenario === "thread-start" ? "thread/start" : scenario === "steer" ? "turn/steer" : "turn/start") || message.id === "approval-lost") {
+    if (message.method === (newThread ? "thread/start" : scenario === "steer" ? "turn/steer" : "turn/start") || message.id === "approval-lost") {
       starts++;
       accepted = operation;
+      if ((scenario === "thread-error" && starts === 2) || ["history-revert", "history-rollback", "history-read-delay"].includes(scenario)) return route.fulfill({ json: { id: message.id, result: newThread ? { thread } : { turn: { id: "next", status: "inProgress", items: [] } } } });
       if (scenario === "turn-error" && starts === 2) return route.fulfill({ json: { id: message.id, error: { code: -1, message: "明确发送失败" } } });
-      if (scenario === "turn-success" || scenario === "steer") thread.turns = [{ id: "accepted-turn", status: "completed", itemsView: "summary", items: [
+      if (scenario === "turn-success" || scenario === "steer" || scenario === "history-success") thread.turns = [{ id: "accepted-turn", status: "completed", itemsView: "summary", items: [
         { id: "user", type: "userMessage", content: [{ type: "text", text: "原始发送" }] },
         { id: "answer", type: "agentMessage", text: "确认后的结果" },
       ] }];
@@ -60,8 +80,8 @@ test(`ACK 丢失后自动确认原发送并保留输入：${scenario}`, async ({
     }
     const responses: Record<string, any> = {
       initialize: {},
-      "model/list": { data: [{ id: "gpt-test", model: "gpt-test", displayName: "GPT Test", isDefault: true, defaultReasoningEffort: "medium", supportedReasoningEfforts: [{ reasoningEffort: "medium", description: "平衡" }], serviceTiers: [] }] },
-      "permissionProfile/list": { data: [{ id: ":workspace", allowed: true }] },
+      "model/list": { data: [{ id: "gpt-test", model: "gpt-test", displayName: "GPT Test", isDefault: true, defaultReasoningEffort: "medium", supportedReasoningEfforts: [{ reasoningEffort: "medium", description: "平衡" }], serviceTiers: [] }, { id: "gpt-server", model: "gpt-server", displayName: "GPT Server", defaultReasoningEffort: "high", supportedReasoningEfforts: [{ reasoningEffort: "high", description: "深入" }], serviceTiers: [{ id: "priority", name: "快速", description: "Fast" }] }] },
+      "permissionProfile/list": { data: [{ id: ":workspace", allowed: true }, { id: ":read-only", allowed: true }] },
       "config/read": { config: { model: "gpt-test", sandbox_mode: "workspace-write" } },
       "thread/list": { data: [thread], nextCursor: null },
       "thread/resume": { thread, initialTurnsPage: { data: thread.turns, nextCursor: null }, model: "gpt-test", approvalPolicy: "on-request", approvalsReviewer: "user" },
@@ -72,25 +92,55 @@ test(`ACK 丢失后自动确认原发送并保留输入：${scenario}`, async ({
     return route.fulfill({ json: { id: message.id, result: responses[message.method] ?? {} } });
   });
   await page.goto("/");
-  if (scenario === "thread-start") await page.getByRole("button", { name: "聊天", exact: true }).click();
+  if (newThread) await page.getByRole("button", { name: "聊天", exact: true }).click();
   else await page.getByRole("button", { name: /ACK 会话/ }).first().click();
   if (scenario === "approval") await page.evaluate(() => window.dispatchEvent(new Event("online")));
   const input = page.getByRole("textbox", { name: "向 Codex 提问" });
   if (scenario === "turn-error") await page.locator('input[type="file"]').setInputFiles({ name: "old.txt", mimeType: "text/plain", buffer: Buffer.from("old") });
   if (scenario === "approval") await page.getByRole("button", { name: "允许", exact: true }).click();
+  else if (history) {
+    await input.fill("后续新输入");
+    await page.getByRole("button", { name: "编辑历史消息", exact: true }).click();
+    await page.getByRole("textbox", { name: "编辑历史消息内容" }).fill("原始发送");
+    await page.getByRole("button", { name: "保存并重发", exact: true }).click();
+  }
   else {
     await input.fill("原始发送");
     await page.getByRole("button", { name: scenario === "steer" ? "排队" : "发送", exact: true }).click();
     if (scenario === "steer") await page.getByRole("button", { name: "改为引导", exact: true }).click();
   }
   await expect(page.getByText("发送状态确认中", { exact: true })).toBeVisible();
-  await expect(input).toHaveValue("");
-  if (scenario !== "thread-start") await input.fill("后续新输入");
+  if (scenario === "turn-success") {
+    for (const control of [input, page.locator(".send-button")]) {
+      const box = await control.boundingBox();
+      expect(box).not.toBeNull();
+      expect(box!.y).toBeGreaterThanOrEqual(0);
+      expect(box!.y + box!.height).toBeLessThanOrEqual(page.viewportSize()!.height);
+    }
+  }
+  await expect(input).toHaveValue(history ? "后续新输入" : "");
+  if (!history && scenario !== "thread-start" && scenario !== "thread-settings") await input.fill("后续新输入");
   if (scenario === "turn-error") await page.locator('input[type="file"]').setInputFiles({ name: "new.txt", mimeType: "text/plain", buffer: Buffer.from("new") });
   offline = false;
   await page.evaluate(() => window.dispatchEvent(new Event("online")));
   await expect(page.getByText("发送状态确认中", { exact: true })).toHaveCount(0);
-  if (scenario === "turn-success") await expect(page.getByText("确认后的结果", { exact: true })).toBeVisible();
+  if (scenario === "turn-success" || scenario === "history-success") await expect(page.getByText("确认后的结果", { exact: true })).toBeVisible();
+  if (history) {
+    if (scenario === "history-success") await expect(page.getByRole("textbox", { name: "编辑历史消息内容" })).toHaveCount(0);
+    else {
+      const editor = page.getByRole("textbox", { name: "编辑历史消息内容" });
+      await expect(editor).toBeEnabled();
+      releaseRead?.();
+      await expect(editor).toHaveValue("原始发送");
+      await expect(page.getByText(/本次代码改动/)).toHaveCount(0);
+      if (scenario !== "history-error") {
+        expect(starts).toBe(0);
+        await page.getByRole("button", { name: "保存并重发", exact: true }).click();
+        await expect.poll(() => starts).toBe(1);
+      }
+    }
+    expect(reverts).toBe(1);
+  }
   if (scenario === "turn-success") {
     await expect(page.getByRole("img", { name: "result.png", exact: true })).toBeVisible();
     await expect(page.getByRole("img", { name: "result.png", exact: true })).toHaveCount(1);
@@ -100,6 +150,10 @@ test(`ACK 丢失后自动确认原发送并保留输入：${scenario}`, async ({
   }
   if (scenario === "approval") await expect(page.getByRole("button", { name: "允许", exact: true })).toHaveCount(0);
   if (scenario === "turn-error") await expect(page.getByRole("alert").getByText("明确发送失败", { exact: true })).toBeVisible();
+  if (scenario === "thread-error") {
+    await expect(page.getByRole("status", { name: "排队消息" })).toContainText("原始发送");
+    await expect(page.getByRole("status", { name: "排队消息" }).getByRole("button", { name: "重试", exact: true })).toBeEnabled();
+  }
   if (scenario === "turn-error") {
     await expect(page.getByRole("status", { name: "排队消息" })).toContainText("原始发送");
     await expect(page.getByText("new.txt", { exact: true })).toBeVisible();
@@ -109,11 +163,11 @@ test(`ACK 丢失后自动确认原发送并保留输入：${scenario}`, async ({
     })).toBe(true);
     await expect(page.getByRole("status", { name: "排队消息" }).getByRole("button", { name: "重试", exact: true })).toBeEnabled();
   }
-  await expect(input).toHaveValue(scenario === "thread-start" ? "原始发送" : "后续新输入");
+  await expect(input).toHaveValue(scenario === "thread-start" || scenario === "thread-settings" ? "原始发送" : "后续新输入");
   await expect(page.getByText(/请求结果待确认/)).toHaveCount(0);
   expect(starts).toBe(1);
-  expect(queryIds).toEqual([accepted.requestId]);
-  expect(await page.evaluate(() => Object.keys(localStorage).filter((key) => key.startsWith("codex-mobile:http-writes:")).map((key) => JSON.parse(localStorage.getItem(key)!)))).toEqual([[]]);
+  expect(new Set(queryIds).size).toBe(1);
+  await expect.poll(() => page.evaluate(() => Object.keys(localStorage).filter((key) => key.startsWith("codex-mobile:http-writes:")).map((key) => JSON.parse(localStorage.getItem(key)!)))).toEqual([[]]);
   if (scenario === "turn-error") {
     await page.getByRole("status", { name: "排队消息" }).getByRole("button", { name: "重试", exact: true }).click();
     await expect.poll(() => starts).toBe(2);
@@ -121,6 +175,30 @@ test(`ACK 丢失后自动确认原发送并保留输入：${scenario}`, async ({
     expect(JSON.stringify(accepted.message.params.input)).toContain("/tmp/old.txt");
     await expect(input).toHaveValue("后续新输入");
     await expect(page.getByText("new.txt", { exact: true })).toBeVisible();
+  }
+  if (scenario === "thread-settings") {
+    await expect(page.getByRole("button", { name: "选择模型、智能与速度" })).toContainText("GPT Server");
+    expect(subsequentTurns).toHaveLength(0);
+    await page.getByRole("button", { name: "发送", exact: true }).click();
+    await expect.poll(() => subsequentTurns.length).toBe(1);
+    expect(subsequentTurns[0].message.params).toMatchObject({ model: "gpt-server", effort: "high", serviceTier: "priority", approvalPolicy: "never", approvalsReviewer: "auto_review", permissions: ":read-only" });
+  }
+  if (scenario === "thread-error") {
+    expect(subsequentTurns).toHaveLength(0);
+    await page.getByRole("button", { name: "关闭错误提示", exact: true }).click();
+    await page.getByRole("status", { name: "排队消息" }).getByRole("button", { name: "重试", exact: true }).click();
+    await expect.poll(() => subsequentTurns.length).toBe(1);
+    expect(JSON.stringify(subsequentTurns[0].message.params.input)).toContain("原始发送");
+    await expect(input).toHaveValue("后续新输入");
+  }
+  if (scenario === "history-error") {
+    await page.getByRole("button", { name: "关闭错误提示", exact: true }).click();
+    await page.getByRole("textbox", { name: "编辑历史消息内容" }).fill("编辑重试");
+    await page.getByRole("button", { name: "保存并重发", exact: true }).click();
+    await expect.poll(() => starts).toBe(2);
+    expect(reverts).toBe(1);
+    expect(JSON.stringify(accepted.message.params.input)).toContain("编辑重试");
+    expect(JSON.stringify(accepted.message.params.input)).toContain("/tmp/original.png");
   }
 });
 }
