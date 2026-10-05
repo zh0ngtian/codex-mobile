@@ -22,6 +22,114 @@ const events = (overrides = {}) => new Response(JSON.stringify({
 }));
 
 describe("HTTP 文字传输", () => {
+  it("持续只读请求不能推迟待确认操作的已安排对账期限", async () => {
+    vi.useFakeTimers();
+    let completed = false;
+    let posts = 0;
+    const transport = setup((async (url, init) => {
+      if (String(url).includes("/api/events")) return events({ active: false });
+      if (String(url).includes("/api/operations")) return new Response(JSON.stringify(completed
+        ? { status: "completed", message: { result: { accepted: true } } } : { status: "uncertain" }));
+      if (JSON.parse(String(init?.body)).message.method === "turn/start") { posts++; throw new TypeError("ACK lost"); }
+      return new Response(JSON.stringify({ result: {} }));
+    }) as typeof fetch, "read-starvation");
+    const messages: any[] = [];
+    transport.addEventListener("message", (event) => messages.push(JSON.parse((event as MessageEvent).data)));
+    await vi.advanceTimersByTimeAsync(0);
+    const client = new AppServerClient(transport);
+    await client.initialize();
+    await vi.advanceTimersByTimeAsync(0); // 先安排空闲 15 秒，新增待确认项必须提前期限。
+    await expect(client.request("turn/start", {})).rejects.toThrow("请求结果待确认");
+    for (let elapsed = 500; elapsed <= 8_000; elapsed += 500) {
+      await vi.advanceTimersByTimeAsync(500);
+      if (elapsed === 4_000) completed = true;
+      await client.request("thread/read", { threadId: "busy-read" });
+    }
+    expect(messages.filter((message) => message.method === "mobile/operation/confirmed")).toHaveLength(1);
+    expect(posts).toBe(1);
+    expect(JSON.parse(localStorage.getItem("codex-mobile:http-writes:read-starvation:12345678-1234-4234-8234-123456789abc")!)).toEqual([]);
+  });
+
+  it("旧网关明确不支持轻量详情时用新 UUID 回退原完整读取并缓存能力", async () => {
+    const bodies: any[] = [];
+    const result = { data: [{ id: "turn", items: [{ type: "imageGeneration", images: [{ path: "/tmp/native.png" }] }], loadedChangeStats: { files: 1, additions: 2, deletions: 0 } }], nextCursor: null };
+    const transport = setup((async (_url, init) => {
+      const body = JSON.parse(String(init?.body));
+      bodies.push(body);
+      return new Response(JSON.stringify(body.message.method === "mobile/turns/details"
+        ? { error: { code: -32601, message: "method not found" } } : { result }));
+    }) as typeof fetch, "legacy-details");
+    await new Promise<void>((resolve) => transport.addEventListener("open", () => resolve()));
+    const client = new AppServerClient(transport);
+    const params = { threadId: "detail", itemsView: "full", limit: 1 };
+    await expect(client.request("thread/turns/list", params)).resolves.toEqual(result);
+    await expect(client.request("thread/turns/list", params)).resolves.toEqual(result);
+    expect(bodies.map((body) => body.message.method)).toEqual(["mobile/turns/details", "thread/turns/list", "thread/turns/list"]);
+    expect(bodies[1].requestId).not.toBe(bodies[0].requestId);
+    expect(bodies[1].message.params).toEqual(params);
+  });
+
+  it("轻量详情普通 RPC 错误不能回退或缓存为不支持", async () => {
+    const methods: string[] = [];
+    const transport = setup((async (_url, init) => {
+      methods.push(JSON.parse(String(init?.body)).message.method);
+      return new Response(JSON.stringify({ error: { code: -32602, message: "invalid params" } }));
+    }) as typeof fetch, "details-error");
+    await new Promise<void>((resolve) => transport.addEventListener("open", () => resolve()));
+    const client = new AppServerClient(transport);
+    for (let index = 0; index < 2; index++) await expect(client.request("thread/turns/list", { itemsView: "full" })).rejects.toThrow("invalid params");
+    expect(methods).toEqual(["mobile/turns/details", "mobile/turns/details"]);
+  });
+
+  it("轻量详情网络未知不会触发原协议回退", async () => {
+    const methods: string[] = [];
+    const transport = setup((async (url, init) => {
+      if (String(url).includes("/api/operations")) return new Response(JSON.stringify({ status: "uncertain" }));
+      methods.push(JSON.parse(String(init?.body)).message.method);
+      if (methods.length === 1) throw new TypeError("offline");
+      return new Response(JSON.stringify({ result: { data: [] } }));
+    }) as typeof fetch, "details-offline");
+    await new Promise<void>((resolve) => transport.addEventListener("open", () => resolve()));
+    const client = new AppServerClient(transport);
+    await expect(client.request("thread/turns/list", { itemsView: "full" })).rejects.toThrow("offline");
+    await expect(client.request("thread/turns/list", { itemsView: "full" })).resolves.toEqual({ data: [] });
+    expect(methods).toEqual(["mobile/turns/details", "mobile/turns/details"]);
+  });
+
+  it("旧协议回退的 ACK 丢失后只对账新只读 UUID", async () => {
+    const bodies: any[] = [];
+    const queries: string[] = [];
+    const transport = setup((async (url, init) => {
+      if (String(url).includes("/api/operations")) {
+        queries.push(new URL(String(url)).searchParams.get("requestId")!);
+        return new Response(JSON.stringify({ status: "completed", message: { result: { data: [{ id: "legacy-turn" }] } } }));
+      }
+      const body = JSON.parse(String(init?.body));
+      bodies.push(body);
+      if (body.message.method === "mobile/turns/details") return new Response(JSON.stringify({ error: { code: -32601, message: "method not found" } }));
+      throw new TypeError("fallback ACK lost");
+    }) as typeof fetch, "legacy-details-ack");
+    await new Promise<void>((resolve) => transport.addEventListener("open", () => resolve()));
+    await expect(new AppServerClient(transport).request("thread/turns/list", { itemsView: "full" })).resolves.toEqual({ data: [{ id: "legacy-turn" }] });
+    expect(bodies[1].requestId).not.toBe(bodies[0].requestId);
+    expect(queries).toEqual([bodies[1].requestId]);
+  });
+
+  it("轻量详情的明确不支持响应由对账找回时仍可回退", async () => {
+    const bodies: any[] = [];
+    const transport = setup((async (url, init) => {
+      if (String(url).includes("/api/operations")) return new Response(JSON.stringify({ status: "completed", message: { error: { code: -32601, message: "method not found" } } }));
+      const body = JSON.parse(String(init?.body));
+      bodies.push(body);
+      if (body.message.method === "mobile/turns/details") throw new TypeError("ACK lost");
+      return new Response(JSON.stringify({ result: { data: [{ id: "legacy" }] } }));
+    }) as typeof fetch, "details-unsupported-ack");
+    await new Promise<void>((resolve) => transport.addEventListener("open", () => resolve()));
+    await expect(new AppServerClient(transport).request("thread/turns/list", { itemsView: "full" })).resolves.toEqual({ data: [{ id: "legacy" }] });
+    expect(bodies.map((body) => body.message.method)).toEqual(["mobile/turns/details", "thread/turns/list"]);
+    expect(bodies[1].requestId).not.toBe(bodies[0].requestId);
+  });
+
   it("旧 epoch 的审批确认不能抑制新审批或作为当前审批确认", async () => {
     vi.useFakeTimers();
     localStorage.setItem("codex-mobile:http-writes:stale-approval:12345678-1234-4234-8234-123456789abc", JSON.stringify([["old", { requestId: "old-approval", epoch: "old", message: { id: "approval", result: { decision: "accept" } } }]]));

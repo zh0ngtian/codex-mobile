@@ -63,6 +63,8 @@ export class HttpRpcTransport extends EventTarget {
   private realtimeOpening: Promise<void> | null = null;
   private firstPoll: Promise<void> | undefined;
   private operationTimer: ReturnType<typeof setTimeout> | undefined;
+  private operationDueAt = 0;
+  private detailsUnsupported = false;
   private reconciling = false;
   private reconcileOffset = 0;
   private readonly inflightWrites = new Set<string>();
@@ -160,23 +162,34 @@ export class HttpRpcTransport extends EventTarget {
     if (signature && !this.writes.has(signature) && this.writes.size >= 32) throw new Error(t("请求结果待确认，请刷新会话后检查，勿重复发送"));
     const existing = signature ? this.writes.get(signature) : undefined;
     const operation = existing || { requestId: transportUuid(), message, epoch: this.epoch || undefined };
-    const { requestId } = operation;
+    let requestId = operation.requestId;
+    const original = operation.message;
+    const params = original.params as Record<string, unknown> | undefined;
+    const wireMessage = !this.detailsUnsupported && original.method === "thread/turns/list" && params?.itemsView === "full"
+      ? { ...original, method: "mobile/turns/details", params: { ...params, itemsView: undefined, limit: Math.min(5, Math.max(1, Number(params.limit) || 5)), sortDirection: "desc" } }
+      : original;
+    let wireOperation = { ...operation, message: wireMessage };
     if (signature) { this.writes.set(signature, operation); this.saveWrites(); }
     let response: RpcMessage | undefined;
     let failure: unknown;
     let mayHaveBeenAccepted = Boolean(existing);
     const deadline = Date.now() + timeoutMs;
+    const fallbackDetails = async () => {
+      if (signature || wireOperation.message.method !== "mobile/turns/details" || response?.error?.code !== -32601) return;
+      this.detailsUnsupported = true;
+      // 网关绑定 UUID 与原方法签名；回退是另一条只读 RPC，不能复用旧 UUID。
+      requestId = transportUuid();
+      wireOperation = { ...operation, requestId, message: original };
+      response = undefined;
+      response = await this.fetchJson("/api/rpc", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(wireOperation) }, {}, Math.max(1, deadline - Date.now()));
+    };
     if (signature) this.inflightWrites.add(requestId);
     if (signature && message.method && message.id != null) this.inflightRpcWrites.set(message.id, operation);
     try {
       for (let attempt = 0; attempt < 3 && this.readyState === 1; attempt++) {
         try {
-          const original = operation.message;
-          const params = original.params as Record<string, unknown> | undefined;
-          const wireMessage = original.method === "thread/turns/list" && params?.itemsView === "full"
-            ? { ...original, method: "mobile/turns/details", params: { ...params, itemsView: undefined, limit: Math.min(5, Math.max(1, Number(params.limit) || 5)), sortDirection: "desc" } }
-            : original;
-          response = await this.fetchJson("/api/rpc", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...operation, message: wireMessage }) }, {}, Math.max(1, deadline - Date.now()));
+          response = await this.fetchJson("/api/rpc", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(wireOperation) }, {}, Math.max(1, deadline - Date.now()));
+          await fallbackDetails();
           break;
         } catch (reason) {
           failure = reason;
@@ -191,7 +204,7 @@ export class HttpRpcTransport extends EventTarget {
         if (this.readyState !== 1) break;
         try {
           const result = await this.fetchJson("/api/operations", {}, { requestId }, 5_000);
-          if (result.status === "completed" && result.message) { response = result.message; break; }
+          if (result.status === "completed" && result.message) { response = result.message; await fallbackDetails(); break; }
           if (result.status === "uncertain") break;
         } catch { /* 404 和弱网都不能证明操作未提交。 */ }
         if (Date.now() >= deadline || attempt === 2) break;
@@ -226,9 +239,19 @@ export class HttpRpcTransport extends EventTarget {
   }
 
   private scheduleOperations(delay = this.writes.size ? 3_000 : 15_000) {
+    const dueAt = Date.now() + delay;
+    if (this.readyState === 1 && this.initialized && document.visibilityState === "visible"
+      && this.operationTimer !== undefined && this.operationDueAt <= dueAt) return;
     clearTimeout(this.operationTimer);
+    this.operationTimer = undefined;
+    this.operationDueAt = 0;
     if (this.readyState !== 1 || !this.initialized || document.visibilityState !== "visible") return;
-    this.operationTimer = setTimeout(() => void this.reconcileOperations(), delay);
+    this.operationDueAt = dueAt;
+    this.operationTimer = setTimeout(() => {
+      this.operationTimer = undefined;
+      this.operationDueAt = 0;
+      void this.reconcileOperations();
+    }, delay);
   }
 
   private async reconcileOperations() {
@@ -269,6 +292,8 @@ export class HttpRpcTransport extends EventTarget {
   private onResume = () => {
     clearTimeout(this.timer);
     clearTimeout(this.operationTimer);
+    this.operationTimer = undefined;
+    this.operationDueAt = 0;
     if (document.visibilityState === "visible") { void this.poll(); void this.reconcileOperations(); }
   };
 
@@ -352,6 +377,8 @@ export class HttpRpcTransport extends EventTarget {
     this.readyState = 3;
     clearTimeout(this.timer);
     clearTimeout(this.operationTimer);
+    this.operationTimer = undefined;
+    this.operationDueAt = 0;
     this.controllers.forEach((controller) => controller.abort());
     this.closeRealtime();
     document.removeEventListener("visibilitychange", this.onResume);
