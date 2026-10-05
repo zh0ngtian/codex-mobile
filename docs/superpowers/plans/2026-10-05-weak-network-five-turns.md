@@ -33,11 +33,11 @@ Files: `src/backends/http-transport.ts`、`src/app-server/client.ts`、`src/app-
 
 ## Task 3：集成、真机验收与固定渠道交付
 
-Files: 本计划、必要的验收记录；证据保存到忽略的 `test-results`。
+Files: 本计划、必要的验收记录；真机证据保存到仓库外 `../codex-mobile-proof/weak-network-v0.2.74-five-turns`，避免 Playwright 重跑清理。
 
 - [x] `NODE_OPTIONS=--no-experimental-webstorage npm test`；`npm run build:package`；定向 HTTP E2E。
 - [x] 复核已有图片预览、审批和排队流程未退化；已合并 origin/main 的已发布等价统计修复，保留其他会话的提交。
-- [ ] 使用 finishing-a-development-branch 技能按仓库已明确要求提交、推送，不重复询问发布方式；中文 Conventional Commit 正文包含新增功能和主要修改。
+- [x] 使用 finishing-a-development-branch 技能按仓库已明确要求提交、推送，不重复询问发布方式；中文 Conventional Commit 正文包含新增功能和主要修改。已集成到 main 并推送，真机发现的布局追加修复仍需推送后重新构建。
 - [ ] 推送后构建高于固定渠道的新 APK，同时升级实际使用的网关；版本选择以发布前固定清单为准。
 - [ ] 真机 WebView 注入弱网：400 ms/128000 B/s/32000 B/s 与 1200 ms/32000 B/s/8000 B/s；只读原始长会话，发送用专用可归档测试会话。测量列表、首次五回合、历史五回合、输入与发送确认；模拟已执行但 ACK 丢失，验证恢复后没有重复 turn、残留错误或恢复草稿。
 - [ ] 归档自建测试会话、恢复网络条件、清理本次无用临时文件。
@@ -50,3 +50,13 @@ Files: 本计划、必要的验收记录；证据保存到忽略的 `test-result
 - 集成验证：74 个测试文件、539 项测试及 `VITE_APP_VERSION=0.2.74 npm run build:package` 通过。旧 `mobile.spec.ts:1173` 的图片数量断言在基线 `19844cc` 同样失败，未混入本次修复；本次聚焦图片补齐测试验证显示、不重复和预览。
 - 本计划提交时真机验收与固定渠道发布尚待执行；实际交付以最终发布结果和真机证据为准。
 - 不向用户原始长会话发送消息。WebView 网络限速不冒充蜂窝 RF/TCP 丢包；加载是原生进程内页面重载，不冒充进程冷启动。
+
+## 首个候选包真机证据
+
+- 源码 `99f1bfc`，未发布的候选 APK 0.2.74；实际网关已升级到 0.2.74。原始长会话有 582 个回合，加载只读，不向原会话发送。
+- LGE_AN10 / Android 12 原生 WebView。正常、中度、重度网络各 3 次，所有首次加载均为 5 个回合，历史补页后为 10 个；网络记录只有 summary 和轻量 details，没有 HTTP full 回合或应用 WebSocket。
+- 中位数（秒）：正常列表 0.542 / 打开五回合 0.800 / 历史五回合 0.607 / 输入 0.193；中度 2.629 / 1.087 / 1.059 / 0.225；重度 8.102 / 2.833 / 3.328 / 0.223。重度从页面重载到打开长会话共 11.416 秒，基线 60 秒内未完成初始化。
+- 相同五回合 details：最近 full 84,149 字节、历史 full 7,967,776 字节，精简结果均为 728 字节。重度网络下统计最终全部补齐。
+- 正常发送确认 58 ms；重度发送确认 1.231 秒，sleep 5 执行状态约 7.004 秒显示。模型完成耗时不作为纯网络指标。
+- 服务端执行后丢弃 ACK、断网 8 秒：恢复后 0.492 秒完成对账，后续新草稿保留，没有错误；原 UUID operation completed，匹配发送只有 1 个回合，pending 存储为空。
+- 同时发现根页面的待确认提示破坏真机安全区和键盘布局；`fbe181bf` 已迁入 ConversationPage 既有 RunProgress 区域，3 项新增测试完成 RED→GREEN，31 项相关单元测试、13 项 HTTP E2E、package build 通过，独立规格审查通过。重新构建、安装和复测最终候选包后才发布。
