@@ -8,6 +8,7 @@ import WebSocket, { WebSocketServer } from "ws";
 import type { CodexProjectState } from "./codex-projects.js";
 import { readImageGenerationError } from "./image-generation-error.js";
 import { HttpSessions } from "./http-session.js";
+import { ImagePreviews } from "./image-preview.js";
 
 const MAX_APP_SERVER_MESSAGE_BYTES = 16 * 1024 * 1024;
 
@@ -114,6 +115,7 @@ function applyCors(
 
 export async function createGateway(options: GatewayOptions): Promise<Gateway> {
   const httpSessions = new HttpSessions(options);
+  const imagePreviews = new ImagePreviews();
   const server: Server = createServer(async (request, response) => {
     const url = new URL(request.url ?? "/", "http://gateway.local");
     const origin = request.headers.origin;
@@ -123,6 +125,7 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
       "/api/projects",
       "/api/uploads/file",
       "/api/files/preview",
+      "/api/images/preview",
       "/api/image-generation-error",
       "/api/rpc",
       "/api/events",
@@ -132,6 +135,14 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
       url.pathname === "/api" || url.pathname.startsWith("/api/");
     if (controlRequest) {
       applyCors(response, origin);
+    }
+    if (url.pathname === "/api/images/preview") {
+      response.setHeader("x-codex-image-preview", "1");
+      response.setHeader("access-control-expose-headers", "x-codex-image-preview, content-type, etag");
+      if (origin) {
+        response.setHeader("access-control-allow-methods", "GET, HEAD, OPTIONS");
+        response.setHeader("access-control-allow-headers", "content-type, if-none-match");
+      }
     }
     if (
       apiRequest &&
@@ -150,6 +161,10 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
     if (controlRequest && request.method === "OPTIONS") {
       response.statusCode = 204;
       response.end();
+      return;
+    }
+    if (url.pathname === "/api/images/preview") {
+      await imagePreviews.handle(request, response, url);
       return;
     }
     if (["/api/rpc", "/api/events", "/api/operations"].includes(url.pathname)) {
@@ -184,6 +199,7 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
           gatewayVersion: options.gatewayVersion ?? "0.1.0",
           appServerReady,
           httpPolling: true,
+          imagePreview: true,
         }),
       );
       return;

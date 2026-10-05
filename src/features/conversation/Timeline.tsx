@@ -129,9 +129,11 @@ function videoPathForItem(item: AnyRecord) {
 function ImageGallery({
   images,
   client,
+  backend,
 }: {
   images: ImageSource[];
   client: AppServerClient | null;
+  backend?: BackendConfig | null;
 }) {
   if (!images.length) return null;
   return (
@@ -141,6 +143,7 @@ function ImageGallery({
           key={`${image.source}-${index}`}
           image={image}
           client={client}
+          backend={backend}
         />
       ))}
     </div>
@@ -269,6 +272,7 @@ function UserBubble({
                   local: !/^(data:|https?:)/i.test(source),
                 }}
                 client={client}
+                backend={backend}
                 alt={alt}
               />
             )}
@@ -280,7 +284,7 @@ function UserBubble({
           />
         </div>
       ) : null}
-      <ImageGallery images={images} client={client} />
+      <ImageGallery images={images} client={client} backend={backend} />
       {!inlineEdit && collapsible && (
         <button
           type="button"
@@ -452,7 +456,7 @@ function TimelineItem({
     return <RemoteVideo path={generatedVideoPath} backend={backend} />;
   }
   const images = imageSourcesForItem(item);
-  if (images.length) return <ImageGallery images={images} client={client} />;
+  if (images.length) return <ImageGallery images={images} client={client} backend={backend} />;
   if (/reasoning/i.test(type)) {
     return displayText ? <div className="reasoning">{displayText}</div> : null;
   }
@@ -468,6 +472,7 @@ function TimelineItem({
               local: !/^(data:|https?:)/i.test(source),
             }}
             client={client}
+            backend={backend}
             alt={alt}
           />
         )}
@@ -768,6 +773,9 @@ function CompletedResponseSegment({
   durationLabel: string | null;
 }) {
   const completed = splitCompletedTurnResponses(items);
+  const processImages = completed.previous.filter(item => item.type === "imageView");
+  const foldImages = processImages.length > 1;
+  const [showProcessImages, setShowProcessImages] = useState(false);
   const [showPrevious, setShowPrevious] = useState(() =>
     completed.previous.some((item) => item.type === "imageGeneration" && item.status === "failed"),
   );
@@ -775,7 +783,7 @@ function CompletedResponseSegment({
     (item) => item.type === "userMessage",
   );
   const processBeforeFinal = completed.beforeFinal.filter(
-    (item) => item.type !== "userMessage",
+    (item) => item.type !== "userMessage" && !(foldImages && item.type === "imageView"),
   );
   const renderEntries = (entries: AnyRecord[]) =>
     groupTimelineEntries(entries).map((entry, index) =>
@@ -836,6 +844,15 @@ function CompletedResponseSegment({
         </>
       )}
       {!showPrevious && renderUnfoldedEntries(processBeforeFinal)}
+      {foldImages && <>
+        <button type="button" className="previous-messages-toggle process-images-toggle"
+          aria-expanded={showProcessImages}
+          onClick={() => setShowProcessImages(current => !current)}>
+          {t("过程截图（{count}）", { count: processImages.length })}
+          <Chevron direction={showProcessImages ? "down" : "right"} />
+        </button>
+        {showProcessImages && <div className="process-images">{renderEntries(processImages)}</div>}
+      </>}
       {completed.final && (
         <>
           <TimelineItem
@@ -856,11 +873,11 @@ function CompletedResponseSegment({
       {showPrevious ? (
         completed.afterFinal.length > 0 && (
           <div className="previous-messages after-final">
-            {renderEntries(completed.afterFinal)}
+            {renderEntries(completed.afterFinal.filter(item => !(foldImages && item.type === "imageView")))}
           </div>
         )
       ) : (
-        renderUnfoldedEntries(completed.afterFinal)
+        renderUnfoldedEntries(completed.afterFinal.filter(item => !(foldImages && item.type === "imageView")))
       )}
     </>
   );

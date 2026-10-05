@@ -51,10 +51,11 @@ describe("npm 全局安装包", () => {
         "LICENSE",
       ]),
     );
-    expect(packageJson.engines.node).toBe(">=20");
+    expect(packageJson.engines.node).toBe(">=20.9.0");
     expect(packageJson.publishConfig.access).toBe("public");
     expect(packageJson.dependencies).toEqual({
       qrcode: expect.any(String),
+      sharp: expect.any(String),
       ws: expect.any(String),
     });
   });

@@ -15,7 +15,7 @@
     "LICENSE"
   ],
   "engines": {
-    "node": ">=20"
+    "node": ">=20.9.0"
   },
   "repository": {
     "type": "git",
@@ -50,6 +50,7 @@
   },
   "dependencies": {
     "qrcode": "^1.5.4",
+    "sharp": "^0.35.5",
     "ws": "^8.18.3"
   },
   "devDependencies": {

@@ -18,6 +18,7 @@ import { ImagePreviewSheet } from "./ImagePreviewSheet";
 import { VideoPreviewSheet } from "./VideoPreviewSheet";
 import type { BackendConfig } from "../../../backends/types";
 import { remoteFilePreviewUrl } from "../../../backends/file-upload";
+import { loadCachedImage, type LoadedImage } from "../image-cache";
 import videoPoster from "../../../assets/video-poster.svg";
 
 function imageMime(source: string) {
@@ -125,82 +126,94 @@ function decodeBase64File(dataBase64: string) {
 export function RemoteImage({
   image,
   client,
+  backend,
   alt,
 }: {
   image: ImageSource;
   client: AppServerClient | null;
+  backend?: BackendConfig | null;
   alt?: string;
 }) {
-  const [src, setSrc] = useState(image.local ? "" : image.source);
-  const [size, setSize] = useState<number | null>(null);
+  const containerRef = useRef<HTMLSpanElement>(null);
+  const [visibleTarget, setVisibleTarget] = useState<{
+    source: string;
+    client: AppServerClient | null;
+    backendUrl?: string;
+    backendToken?: string;
+  } | null>(null);
+  const [loaded, setLoaded] = useState<LoadedImage | null>(null);
+  const [original, setOriginal] = useState<LoadedImage | null>(null);
   const [failed, setFailed] = useState(false);
   const [open, setOpen] = useState(false);
+  const [previewError, setPreviewError] = useState(false);
   const inline = /^data:/i.test(image.source);
   const displayName = inline ? alt?.trim() || t("图片") : image.name;
+  const source = image.source;
+  const backendUrl = backend?.baseUrl;
+  const backendToken = backend?.token;
+  const visible = typeof IntersectionObserver === "undefined" || (
+    visibleTarget?.source === source && visibleTarget.client === client &&
+    visibleTarget.backendUrl === backendUrl && visibleTarget.backendToken === backendToken
+  );
+
+  useEffect(() => {
+    if (typeof IntersectionObserver === "undefined" || !image.local) return;
+    let cancelled = false;
+    const observer = new IntersectionObserver(entries => {
+      if (!cancelled && entries.some(entry => entry.isIntersecting)) {
+        setVisibleTarget({ source, client, backendUrl, backendToken });
+        observer.disconnect();
+      }
+    }, { rootMargin: "160px" });
+    if (containerRef.current) observer.observe(containerRef.current);
+    return () => { cancelled = true; observer.disconnect(); };
+  }, [source, image.local, client, backendUrl, backendToken]);
 
   useEffect(() => {
     let cancelled = false;
+    setLoaded(null);
+    setOriginal(null);
     setFailed(false);
-    if (!image.local) {
-      setSrc(image.source);
-      setSize(null);
-      return () => {
-        cancelled = true;
-      };
-    }
-    setSrc("");
-    if (!client) return;
-    void client
-      .request<{ dataBase64: string }>("fs/readFile", { path: image.source })
-      .then((result) => {
-        if (cancelled) return;
-        setSize(Math.floor((result.dataBase64.length * 3) / 4));
-        setSrc(`data:${imageMime(image.source)};base64,${result.dataBase64}`);
-      })
-      .catch(() => {
-        if (!cancelled) setFailed(true);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [client, image.local, image.source]);
+    setOpen(false);
+    setPreviewError(false);
+    if (!image.local || !client || !visible) return;
+    void loadCachedImage(client, source, imageMime(source), backend)
+      .then(result => { if (!cancelled) setLoaded(result); })
+      .catch(() => { if (!cancelled) setFailed(true); });
+    return () => { cancelled = true; };
+  }, [client, image.local, source, visible, backendUrl, backendToken]);
 
-  if (failed) {
-    return image.hideIfMissing
-      ? null
-      : <div className="image-load-error">{t("无法读取 {name}", { name: image.name })}</div>;
-  }
-  if (!src) return <div className="image-placeholder" aria-label={t("正在加载 {name}", { name: image.name })} />;
+  useEffect(() => {
+    if (!open || !image.local || !loaded?.thumbnail || !client) return;
+    let cancelled = false;
+    setPreviewError(false);
+    void loadCachedImage(client, source, imageMime(source), backend, false)
+      .then(result => { if (!cancelled) setOriginal(result); })
+      .catch(() => { if (!cancelled) setPreviewError(true); });
+    return () => { cancelled = true; };
+  }, [open, client, source, loaded, image.local, backendUrl, backendToken]);
 
+  const src = image.local ? loaded?.src : source;
+  const size = original?.size ?? loaded?.size;
+  const previewPending = image.local && loaded?.thumbnail && !original && !previewError;
   return (
-    <>
-      <button
-        type="button"
-        className="message-image-button"
-        aria-label={t("查看图片 {name}", { name: displayName })}
-        onClick={(event) => {
-          event.stopPropagation();
-          setOpen(true);
-        }}
-      >
-        <img src={src} alt={alt || image.name} />
-      </button>
-      {open && (
-        <ImagePreviewSheet
-          src={src}
-          name={displayName}
-          alt={alt || displayName}
-          details={
-            inline
-              ? ""
-              : `${image.source}${
-                  size != null ? ` · ${formatImageSize(size)}` : ""
-                }`
-          }
-          onClose={() => setOpen(false)}
-        />
-      )}
-    </>
+    <span className={`remote-image${failed && image.hideIfMissing ? " remote-image-missing" : ""}`} ref={containerRef}>
+      {failed && image.hideIfMissing ? null : failed ? <span className="image-load-error">{t("无法读取 {name}", { name: image.name })}</span>
+        : !src ? <span className="image-placeholder" aria-label={t("正在加载 {name}", { name: image.name })} />
+        : <button type="button" className="message-image-button"
+          aria-label={t("查看图片 {name}", { name: displayName })}
+          onClick={event => { event.stopPropagation(); setOpen(true); }}>
+          <img src={src} alt={alt || image.name} loading="lazy" decoding="async" />
+        </button>}
+      {open && src && <ImagePreviewSheet
+        src={original?.src ?? src}
+        name={displayName}
+        alt={alt || displayName}
+        details={previewPending ? t("正在加载原图…") : previewError ? t("原图加载失败，请关闭后重试")
+          : inline ? "" : `${source}${size != null ? ` · ${formatImageSize(size)}` : ""}`}
+        onClose={() => setOpen(false)}
+      />}
+    </span>
   );
 }
 

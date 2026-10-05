@@ -298,6 +298,7 @@ describe("透明网关", () => {
       gatewayVersion: "0.2.0",
       appServerReady: false,
       httpPolling: true,
+      imagePreview: true,
     });
   });
 

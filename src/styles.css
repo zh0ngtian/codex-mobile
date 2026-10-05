@@ -615,3 +615,7 @@ button, a, summary, [role="button"] { -webkit-tap-highlight-color: transparent; 
 .run-progress ol { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
 .run-progress li[data-status="completed"] { color: #888; }
 .run-progress li[data-status="inProgress"] { color: #333; }
+
+.remote-image { display: block; }
+.process-images { display: grid; gap: 12px; margin: 12px 0; }
+.remote-image-missing { display: none; }

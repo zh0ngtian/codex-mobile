@@ -14,6 +14,18 @@ export function remoteFilePreviewUrl(
   return url.toString();
 }
 
+export function remoteImagePreviewUrl(
+  backend: BackendConfig,
+  path: string,
+  thumbnail = true,
+) {
+  const url = new URL("/api/images/preview", `${backend.baseUrl}/`);
+  if (backend.token) url.searchParams.set("token", backend.token);
+  url.searchParams.set("path", path);
+  if (thumbnail) url.searchParams.set("thumbnail", "1");
+  return url.toString();
+}
+
 export async function uploadFile(
   backend: BackendConfig,
   file: File,
