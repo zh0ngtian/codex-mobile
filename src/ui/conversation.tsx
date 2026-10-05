@@ -431,7 +431,7 @@ export function imageSourcesForItem(
         source: item.path,
         name: imageName(item.path),
         local: true,
-        ...(item.backfilled === true ? { hideIfMissing: true } : {}),
+        hideIfMissing: true,
       },
     ];
   }

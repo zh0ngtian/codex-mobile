@@ -22,6 +22,20 @@ const events = (overrides = {}) => new Response(JSON.stringify({
 }));
 
 describe("HTTP 文字传输", () => {
+  it("图片读取失败不会占用待确认写入配额", async () => {
+    const writesKey = "codex-mobile:http-writes:image-reads:12345678-1234-4234-8234-123456789abd";
+    localStorage.setItem(writesKey, JSON.stringify([["legacy", { requestId: "old", message: { id: 1, method: "fs/readFile", params: { path: "/tmp/old.png" } } }]]));
+    const transport = new HttpRpcTransport({ baseUrl: "http://device.test", token: "test", id: "image-reads" }, {
+      fetch: (async () => new Response("unavailable", { status: 400 })) as typeof fetch,
+      sessionId: "12345678-1234-4234-8234-123456789abd",
+    });
+    transports.push(transport);
+    await new Promise<void>((resolve) => transport.addEventListener("open", () => resolve()));
+    for (let index = 0; index < 33; index++) {
+      await expect(transport.send(JSON.stringify({ id: index, method: "fs/readFile", params: { path: `/tmp/${index}.png` } }))).rejects.toThrow("400");
+    }
+    expect(JSON.parse(localStorage.getItem(writesKey) ?? "[]")).toEqual([]);
+  });
   it("用 HTTP 初始化与提交任务，不建立 WebSocket", async () => {
     const socket = vi.spyOn(globalThis, "WebSocket");
     const calls: Array<{ url: string; body: any }> = [];

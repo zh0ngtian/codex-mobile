@@ -915,7 +915,7 @@ describe("移动端对话格式", () => {
     ]);
     expect(
       imageSourcesForItem({ type: "imageView", path: "/tmp/view.webp" }),
-    ).toEqual([{ source: "/tmp/view.webp", name: "view.webp", local: true }]);
+    ).toEqual([{ source: "/tmp/view.webp", name: "view.webp", local: true, hideIfMissing: true }]);
     expect(
       imageSourcesForItem({
         type: "imageGeneration",

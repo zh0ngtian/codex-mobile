@@ -310,6 +310,30 @@ describe("HTTP 会话", () => {
     expect(f.received.filter((m) => m.method === "initialize")).toHaveLength(2);
   });
 
+  it("图片读取响应不落盘，旧版误存的图片响应在会话恢复时清理", async () => {
+    const f = await fixture(); await f.init();
+    const directory = join(f.root, "codex-mobile-http", new URL(f.url("rpc")).searchParams.get("sessionId")!);
+    const writeId = randomUUID();
+    expect((await f.rpc({ id: 3, method: "thread/name/set", params: { threadId: "t", name: "keep" } }, writeId)).status).toBe(200);
+    const imageId = randomUUID();
+    await writeFile(join(directory, `${imageId}.json`), JSON.stringify({
+      requestId: imageId, signature: "a".repeat(64), status: "completed",
+      message: { id: 4, result: { dataBase64: "a".repeat(200_000) } },
+    }));
+    await f.restart();
+    await f.init();
+    f.respond((socket, message) => {
+      if (message.id != null) socket.send(JSON.stringify({ id: message.id, result: message.method === "fs/readFile" ? { dataBase64: "a".repeat(100_000) } : { method: message.method } }));
+    });
+    const imageRequestIds = Array.from({ length: 40 }, () => randomUUID());
+    for (const [index, requestId] of imageRequestIds.entries()) {
+      expect((await f.rpc({ id: index + 5, method: "fs/readFile", params: { path: `/tmp/${index}.png` } }, requestId)).status).toBe(200);
+    }
+    expect(await readdir(directory)).toEqual([`${writeId}.json`]);
+    expect((await fetch(f.url("operations", `&requestId=${imageRequestIds[0]}`))).status).toBe(404);
+    expect((await fetch(f.url("operations", `&requestId=${imageRequestIds.at(-1)}`))).status).toBe(200);
+  });
+
   it("长期持久操作逐文件去重，历史超过内存缓存容量仍可提交新写入", async () => {
     const f = await fixture(); await f.init(); const first = randomUUID();
     const message = { id: 7, method: "thread/name/set", params: { threadId: "t", name: "title" } };

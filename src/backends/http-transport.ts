@@ -7,7 +7,7 @@ interface PollResponse {
   epoch: string; cursor: number; messages: RpcMessage[]; requests: RpcMessage[];
   active: boolean; updatedAt: number; reset: boolean; hasMore?: boolean;
 }
-const readMethods = new Set(["initialize", "initialized", "thread/list", "thread/read", "thread/loaded/list", "thread/turns/list", "thread/items/list", "permissionProfile/list", "plugin/list", "model/list", "config/read", "configRequirements/read", "account/read", "account/rateLimits/read", "skills/list", "mcpServerStatus/list", "collaborationMode/list", "app/list"]);
+const readMethods = new Set(["initialize", "initialized", "thread/list", "thread/read", "thread/loaded/list", "thread/turns/list", "thread/items/list", "permissionProfile/list", "plugin/list", "model/list", "config/read", "configRequirements/read", "account/read", "account/rateLimits/read", "skills/list", "mcpServerStatus/list", "collaborationMode/list", "app/list", "fs/readFile"]);
 interface PendingWrite { requestId: string; message: RpcMessage; epoch?: string }
 const pendingWrites = new Map<string, Map<string, PendingWrite>>();
 
@@ -67,6 +67,15 @@ export class HttpRpcTransport extends EventTarget {
       } catch { /* 存储不可用时同一页面内仍保留未确认操作。 */ }
       pendingWrites.set(this.writesKey, this.writes);
     }
+    // 旧版把文件读取当作写入；清除遗留的待确认项以恢复图片读取配额。
+    let removedRead = false;
+    for (const [signature, operation] of this.writes) {
+      if (operation.message.method && readMethods.has(operation.message.method)) {
+        this.writes.delete(signature);
+        removedRead = true;
+      }
+    }
+    if (removedRead) this.saveWrites();
     document.addEventListener("visibilitychange", this.onResume);
     window.addEventListener("online", this.onResume);
     setTimeout(() => {

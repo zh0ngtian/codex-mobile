@@ -17,6 +17,7 @@ const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const MAX_REQUEST_BYTES = 16 * 1024 * 1024;
 const MAX_OPERATIONS = 2048;
 const MAX_TRANSIENT_OPERATIONS = 512;
+const MAX_IMAGE_READ_OPERATIONS = 32;
 const MAX_STORED_OPERATIONS = 65_536;
 const MAX_STORAGE_BYTES = 64 * 1024 * 1024;
 const MAX_APPROVAL_BYTES = 2 * 1024 * 1024;
@@ -34,6 +35,7 @@ const READ_ONLY_METHODS = new Set([
   "thread/turns/list", "thread/items/list", "permissionProfile/list", "plugin/list",
   "model/list", "account/read", "account/rateLimits/read", "config/read",
   "configRequirements/read", "skills/list", "mcpServerStatus/list",
+  "fs/readFile",
 ]);
 
 class HttpError extends Error {
@@ -49,6 +51,7 @@ type Operation = {
   promise?: Promise<RpcMessage>;
   durable?: boolean;
   connectionEpoch?: string;
+  imageRead?: boolean;
 };
 type Event = { cursor: number; message: RpcMessage; bytes: number };
 type Snapshot = { id: string; entries: Event[]; bytes: number; cursor: number; expiresAt: number };
@@ -145,10 +148,22 @@ class Session {
     let files: string[];
     try { files = await readdir(directory); } catch (error: any) { if (error.code === "ENOENT") return; throw error; }
     const records = files.filter((name) => name.endsWith(".json") && UUID.test(name.slice(0, -5)));
-    this.storedOperations = records.length;
-    for (let offset = 0; offset < records.length; offset += 128) {
-      const sizes = await Promise.all(records.slice(offset, offset + 128).map(async (name) => (await stat(join(directory, name))).size));
-      this.storageBytes += sizes.reduce((total, size) => total + size, 0);
+    for (let offset = 0; offset < records.length; offset += 32) {
+      await Promise.all(records.slice(offset, offset + 32).map(async (name) => {
+        const path = join(directory, name);
+        const raw = await readFile(path, "utf8");
+        // 旧版曾将 fs/readFile 当成写入操作，保存了大量 base64 图片响应。
+        // 仅删除可确认已完成的图片读取结果，保留所有真正的写入记录。
+        if (raw.includes('"dataBase64"')) {
+          const record = JSON.parse(raw) as { status?: string; message?: { result?: { dataBase64?: unknown } } };
+          if (record.status === "completed" && record.message?.result && Object.keys(record.message.result).length === 1 && typeof record.message.result.dataBase64 === "string") {
+            await unlink(path);
+            return;
+          }
+        }
+        this.storedOperations++;
+        this.storageBytes += Buffer.byteLength(raw);
+      }));
     }
   }
 
@@ -167,6 +182,8 @@ class Session {
   private trimOperations() {
     const durable = [...this.operations.values()].filter((entry) => entry.durable && entry.status !== "pending" && !entry.promise);
     while (this.operations.size > MAX_OPERATIONS + MAX_TRANSIENT_OPERATIONS && durable.length) this.operations.delete(durable.shift()!.requestId);
+    const imageReads = [...this.operations.values()].filter((entry) => entry.imageRead && entry.status !== "pending" && !entry.promise);
+    while (imageReads.length > MAX_IMAGE_READ_OPERATIONS) this.operations.delete(imageReads.shift()!.requestId);
   }
 
   private save(operation: Operation) {
@@ -506,7 +523,7 @@ class Session {
       if (!oldest) throw new HttpError(429, "Too many pending read operations");
       this.operations.delete(oldest.requestId);
     }
-    const operation: Operation = { requestId, signature, status: "pending", durable };
+    const operation: Operation = { requestId, signature, status: "pending", durable, imageRead: message.method === "fs/readFile" };
     this.operations.set(requestId, operation);
     const execution = async () => {
       let recorded = false;

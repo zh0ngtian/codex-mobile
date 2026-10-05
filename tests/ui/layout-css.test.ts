@@ -223,7 +223,15 @@ describe("悬浮状态布局", () => {
       styles.match(
         /(?:^|\n)\.image-preview-sheet \.action-sheet-body\s*\{([^}]*)\}/,
       )?.[1] ?? "";
-    expect(bodyRule).toContain("overflow-y: auto");
+    expect(bodyRule).toContain("overflow: hidden");
+    expect(bodyRule).toContain("flex-direction: column");
+    expect(styles).toMatch(/\.image-preview-sheet\s*\{[^}]*height: 100dvh/);
+    expect(styles).toMatch(/\.image-preview-stage\s*\{[^}]*flex: 1/);
+  });
+
+  it("失效图库不占空白，Markdown 图片使用原始宽高比", () => {
+    expect(styles).toMatch(/\.message-images:empty\s*\{[^}]*display: none/);
+    expect(styles).toMatch(/\.markdown-body \.message-image-button\s*\{[^}]*aspect-ratio: auto/);
   });
 
   it("视频预览保持原始宽高比且不会裁掉原生控制栏", () => {
