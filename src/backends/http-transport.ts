@@ -11,6 +11,13 @@ const readMethods = new Set(["initialize", "initialized", "thread/list", "thread
 interface PendingWrite { requestId: string; message: RpcMessage; epoch?: string }
 const pendingWrites = new Map<string, Map<string, PendingWrite>>();
 
+export class HttpOperationPendingError extends Error {
+  constructor(readonly requestId: string, readonly request: RpcMessage, cause?: unknown) {
+    super(t("请求结果待确认，请刷新会话后检查，勿重复发送"), { cause });
+    this.name = "HttpOperationPendingError";
+  }
+}
+
 export function transportUuid() {
   if (typeof globalThis.crypto?.randomUUID === "function") return crypto.randomUUID();
   return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (character) => {
@@ -48,11 +55,23 @@ export class HttpRpcTransport extends EventTarget {
   private readonly controllers = new Set<AbortController>();
   private readonly seenRequests = new Set<string>();
   private readonly answeredRequests = new Set<string>();
+  private latestRequests: RpcMessage[] = [];
   private realtimeThreadId = "";
   private readonly writes: Map<string, PendingWrite>;
   private readonly writesKey: string;
   private realtime: WebSocket | null = null;
   private realtimeOpening: Promise<void> | null = null;
+  private firstPoll: Promise<void> | undefined;
+  private operationTimer: ReturnType<typeof setTimeout> | undefined;
+  private reconciling = false;
+  private reconcileOffset = 0;
+  private readonly inflightWrites = new Set<string>();
+  private readonly inflightRpcWrites = new Map<number | string, PendingWrite>();
+
+  pendingErrorForRequest(id: number | string) {
+    const operation = this.inflightRpcWrites.get(id);
+    return operation ? new HttpOperationPendingError(operation.requestId, operation.message) : undefined;
+  }
 
   constructor(private readonly config: Config, options: { fetch?: typeof fetch; sessionId?: string } = {}) {
     super();
@@ -131,57 +150,126 @@ export class HttpRpcTransport extends EventTarget {
       this.realtime.send(raw);
       return;
     }
+    // 审批必须绑定从首个事件页读取的 epoch，不能在握手完成时猜测。
+    if (!message.method && message.id != null && !this.epoch) {
+      await this.firstPoll;
+      if (!this.epoch || this.readyState !== 1) throw new Error(t("设备尚未连接，请稍后重试"));
+    }
     const signature = !message.method || !readMethods.has(message.method)
       ? JSON.stringify(message.method ? { method: message.method, params: message.params } : { ...message, epoch: this.epoch }) : null;
     if (signature && !this.writes.has(signature) && this.writes.size >= 32) throw new Error(t("请求结果待确认，请刷新会话后检查，勿重复发送"));
-    const operation = (signature && this.writes.get(signature)) || { requestId: transportUuid(), message, epoch: this.epoch || undefined };
+    const existing = signature ? this.writes.get(signature) : undefined;
+    const operation = existing || { requestId: transportUuid(), message, epoch: this.epoch || undefined };
     const { requestId } = operation;
     if (signature) { this.writes.set(signature, operation); this.saveWrites(); }
-    const deadline = Date.now() + timeoutMs;
     let response: RpcMessage | undefined;
     let failure: unknown;
-    // 即便 HTTP 响应丢失，也只查询/重试同一个 requestId。
-    for (let attempt = 0; attempt < 3 && this.readyState === 1; attempt++) {
-      try {
-        response = await this.fetchJson("/api/rpc", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(operation) }, {}, Math.max(1, deadline - Date.now()));
-        break;
-      } catch (reason) {
-        failure = reason;
-        if ([401, 409, 404, 400].includes((reason as { status?: number }).status ?? 0)) {
-          throw reason;
-        }
-        if (this.readyState !== 1) throw new Error(t("请求结果待确认，请刷新会话后检查，勿重复发送"), { cause: reason });
+    let mayHaveBeenAccepted = Boolean(existing);
+    const deadline = Date.now() + timeoutMs;
+    if (signature) this.inflightWrites.add(requestId);
+    if (signature && message.method && message.id != null) this.inflightRpcWrites.set(message.id, operation);
+    try {
+      for (let attempt = 0; attempt < 3 && this.readyState === 1; attempt++) {
         try {
-          const operation = await this.fetchJson("/api/operations", {}, { requestId }, 5_000);
-          if (operation.status === "completed") { response = { ...operation.message, id: message.id }; break; }
-          if (operation.status === "uncertain") throw new Error(t("请求结果待确认，请刷新会话后检查，勿重复发送"));
-        } catch (queryError) {
-          if ((queryError as Error).message.includes(t("请求结果待确认"))) throw queryError;
+          const original = operation.message;
+          const params = original.params as Record<string, unknown> | undefined;
+          const wireMessage = original.method === "thread/turns/list" && params?.itemsView === "full"
+            ? { ...original, method: "mobile/turns/details", params: { ...params, itemsView: undefined, limit: Math.min(5, Math.max(1, Number(params.limit) || 5)), sortDirection: "desc" } }
+            : original;
+          response = await this.fetchJson("/api/rpc", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...operation, message: wireMessage }) }, {}, Math.max(1, deadline - Date.now()));
+          break;
+        } catch (reason) {
+          failure = reason;
+          if ([401, 409, 404, 400].includes((reason as { status?: number }).status ?? 0)) {
+            // 旧未知项可能早已执行；新一轮拒绝不能撤销早先的受理事实。
+            if (mayHaveBeenAccepted && signature) throw new HttpOperationPendingError(requestId, operation.message, reason);
+            if (signature && this.readyState === 1 && this.writes.get(signature) === operation) { this.writes.delete(signature); this.saveWrites(); }
+            throw reason;
+          }
+          mayHaveBeenAccepted = true;
         }
-        if (Date.now() >= deadline) break;
+        if (this.readyState !== 1) break;
+        try {
+          const result = await this.fetchJson("/api/operations", {}, { requestId }, 5_000);
+          if (result.status === "completed" && result.message) { response = result.message; break; }
+          if (result.status === "uncertain") break;
+        } catch { /* 404 和弱网都不能证明操作未提交。 */ }
+        if (Date.now() >= deadline || attempt === 2) break;
         await new Promise((resolve) => setTimeout(resolve, 300 * (attempt + 1)));
       }
+      if (!response || this.readyState !== 1) {
+        if (signature) throw new HttpOperationPendingError(requestId, operation.message, failure);
+        throw failure ?? new Error(t("设备尚未连接，请稍后重试"));
+      }
+      if (signature) { this.writes.delete(signature); this.saveWrites(); }
+      if (message.id != null && message.method) this.emit({ ...response, id: message.id });
+      else if (response.error) throw new Error(response.error.message);
+      if (message.method === "initialized") {
+        this.initialized = true;
+        this.firstPoll = this.poll();
+        this.scheduleOperations(0);
+      } else if (!response.error && (message.method === "turn/start" || message.method === "turn/steer")) {
+        this.active = true;
+        this.schedule(0);
+      } else if (!message.method && message.id != null) {
+        this.answeredRequests.add(String(message.id));
+        this.schedule(0);
+      }
+    } finally {
+      this.inflightWrites.delete(requestId);
+      if (message.id != null) this.inflightRpcWrites.delete(message.id);
+      if (existing && signature && response && this.readyState === 1 && this.writes.get(signature) !== operation) {
+        this.emit({ method: "mobile/operation/confirmed", params: { requestId, request: operation.message, response } });
+      }
+      this.scheduleOperations();
     }
-    if (!response) throw new Error(t("请求结果待确认，请刷新会话后检查，勿重复发送"), { cause: failure });
-    if (this.readyState !== 1) throw new Error(t("请求结果待确认，请刷新会话后检查，勿重复发送"));
-    if (signature) { this.writes.delete(signature); this.saveWrites(); }
-    if (message.id != null && message.method) this.emit({ ...response, id: message.id });
-    else if (response.error) throw new Error(response.error.message);
-    if (message.method === "initialized") {
-      this.initialized = true;
-      await this.poll();
-    } else if (message.method === "turn/start" || message.method === "turn/steer") {
-      this.active = true;
-      this.schedule(0);
-    } else if (!message.method && message.id != null) {
-      this.answeredRequests.add(String(message.id));
-      this.schedule(0);
+  }
+
+  private scheduleOperations(delay = this.writes.size ? 3_000 : 15_000) {
+    clearTimeout(this.operationTimer);
+    if (this.readyState !== 1 || !this.initialized || document.visibilityState !== "visible") return;
+    this.operationTimer = setTimeout(() => void this.reconcileOperations(), delay);
+  }
+
+  private async reconcileOperations() {
+    if (this.reconciling || !this.initialized || this.readyState !== 1 || document.visibilityState !== "visible") return;
+    this.reconciling = true;
+    const entries = [...this.writes];
+    const start = entries.length ? this.reconcileOffset % entries.length : 0;
+    this.reconcileOffset = start + 4;
+    try {
+      for (let index = 0; index < Math.min(4, entries.length); index++) {
+        const [signature, operation] = entries[(start + index) % entries.length];
+        if (this.inflightWrites.has(operation.requestId)) continue;
+        if (!operation.message.method && !this.epoch) continue;
+        try {
+          const result = await this.fetchJson("/api/operations", {}, { requestId: operation.requestId }, 5_000);
+          if (this.readyState !== 1 || document.visibilityState !== "visible") return;
+          if (result.status !== "completed" || !result.message || this.inflightWrites.has(operation.requestId) || this.writes.get(signature) !== operation) continue;
+          this.writes.delete(signature);
+          this.saveWrites();
+          if (!operation.message.method && !result.message.error && operation.epoch === this.epoch) {
+            this.answeredRequests.add(String(operation.message.id));
+            this.latestRequests = this.latestRequests.filter((request) => String(request.id) !== String(operation.message.id));
+            this.emit({ method: "mobile/requests", params: { requests: this.latestRequests } });
+            this.schedule(0);
+          }
+          this.emit({ method: "mobile/operation/confirmed", params: {
+            requestId: operation.requestId, request: operation.message, response: result.message,
+            ...(!operation.message.method && operation.epoch !== this.epoch ? { staleApproval: true } : {}),
+          } });
+        } catch { /* 未确认项保留，下一轮继续查询原 UUID。 */ }
+      }
+    } finally {
+      this.reconciling = false;
+      this.scheduleOperations();
     }
   }
 
   private onResume = () => {
     clearTimeout(this.timer);
-    if (document.visibilityState === "visible") void this.poll();
+    clearTimeout(this.operationTimer);
+    if (document.visibilityState === "visible") { void this.poll(); void this.reconcileOperations(); }
   };
 
   private schedule(delay?: number) {
@@ -207,6 +295,7 @@ export class HttpRpcTransport extends EventTarget {
       const pending = new Set(payload.requests.map((request) => String(request.id)));
       for (const id of this.answeredRequests) if (!pending.has(id)) this.answeredRequests.delete(id);
       const requests = payload.requests.filter((request) => !this.answeredRequests.has(String(request.id)));
+      this.latestRequests = requests;
       for (const id of this.seenRequests) if (!pending.has(id)) this.seenRequests.delete(id);
       for (const request of requests) {
         if (this.seenRequests.has(String(request.id))) continue;
@@ -219,6 +308,7 @@ export class HttpRpcTransport extends EventTarget {
       this.failures = 0;
       this.sync(false);
     } catch (reason) {
+      if (this.readyState !== 1) return;
       this.failures++;
       this.sync(true);
       if ([401, 503].includes((reason as { status?: number }).status ?? 0)) this.close(4001, "upstream unavailable");
@@ -261,6 +351,7 @@ export class HttpRpcTransport extends EventTarget {
     if (this.readyState === 3) return;
     this.readyState = 3;
     clearTimeout(this.timer);
+    clearTimeout(this.operationTimer);
     this.controllers.forEach((controller) => controller.abort());
     this.closeRealtime();
     document.removeEventListener("visibilitychange", this.onResume);

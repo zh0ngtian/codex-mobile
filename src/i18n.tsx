@@ -15,6 +15,7 @@ const LANGUAGE_STORAGE_KEY = "codex-mobile:language";
 const english: Record<string, string> = {
   "设备网关需要升级以支持 HTTP 同步": "Update the device gateway to support HTTP sync",
   "请求结果待确认": "Request outcome needs confirmation",
+  "发送状态确认中": "Confirming send status",
   "请求结果待确认，请刷新会话后检查，勿重复发送": "Request outcome is uncertain. Refresh the conversation before sending again.",
   "实时会话连接不可用": "Realtime connection unavailable",
   "实时会话连接超时": "Realtime connection timed out",

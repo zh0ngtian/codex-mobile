@@ -5,7 +5,7 @@ import type {
 import { summarizeTurnChanges } from "../ui/conversation";
 
 type AnyRecord = Record<string, any>;
-const initialTurnsLimit = 10;
+const initialTurnsLimit = 5;
 const threadHistoryRequestTimeoutMs = 60_000;
 const threadHistoryRequestOptions = {
   timeoutMs: threadHistoryRequestTimeoutMs,
@@ -18,13 +18,14 @@ export async function loadTurnChangeStatsPage(
   client: Requester,
   threadId: string,
   cursor?: string,
+  limit = initialTurnsLimit,
 ): Promise<Record<string, TurnBackfill>> {
   const response = await client.request(
     "thread/turns/list",
     {
       threadId,
       ...(cursor ? { cursor } : {}),
-      limit: initialTurnsLimit,
+      limit,
       sortDirection: "desc",
       itemsView: "full",
     },
@@ -170,12 +171,13 @@ export async function loadOlderThreadTurns(
 export async function loadRecentThreadTurns(
   client: Requester,
   threadId: string,
+  limit = initialTurnsLimit,
 ): Promise<AnyRecord[]> {
   const response = await client.request(
     "thread/turns/list",
     {
       threadId,
-      limit: initialTurnsLimit,
+      limit,
       sortDirection: "desc",
       itemsView: "summary",
     },
@@ -189,10 +191,11 @@ export async function loadStableRecentThreadTurns(
   threadId: string,
   readNotificationSequence: () => number,
   maxAttempts = 3,
+  limit = initialTurnsLimit,
 ): Promise<AnyRecord[] | null> {
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     const sequence = readNotificationSequence();
-    const turns = await loadRecentThreadTurns(client, threadId);
+    const turns = await loadRecentThreadTurns(client, threadId, limit);
     if (sequence === readNotificationSequence()) return turns;
   }
   return null;
@@ -205,6 +208,7 @@ export async function loadRecoverableRecentThreadTurns(
   wait: (delayMs: number) => Promise<void> = (delayMs) =>
     new Promise((resolve) => globalThis.setTimeout(resolve, delayMs)),
   maxAttempts = 3,
+  limit = initialTurnsLimit,
 ): Promise<AnyRecord[] | null> {
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     try {
@@ -212,6 +216,8 @@ export async function loadRecoverableRecentThreadTurns(
         client,
         threadId,
         readNotificationSequence,
+        3,
+        limit,
       );
       if (turns != null) return turns;
     } catch {

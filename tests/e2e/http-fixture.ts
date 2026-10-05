@@ -68,10 +68,36 @@ export const test = base.extend({
         if (session.results.has(requestId)) return new Response(JSON.stringify(session.results.get(requestId)));
         let result = {};
         if (message.method && message.id != null) {
+          const details = message.method === "mobile/turns/details";
+          const wireMessage = details ? { ...message, method: "thread/turns/list", params: { ...message.params, itemsView: "full" } } : message;
           result = await new Promise((resolve) => {
             session.waiters.set(String(message.id), resolve);
-            session.socket.send(JSON.stringify(message));
+            session.socket.send(JSON.stringify(wireMessage));
           });
+          if (details && !(result as any).error) {
+            // 兼容旧业务模拟器，网关详情只返回统计与图片引用。
+            const reply = result as any;
+            result = { ...reply, result: { ...reply.result, data: (reply.result?.data ?? []).map((turn: any) => {
+              const diffs: string[] = turn.liveDiff ? [turn.liveDiff] : (turn.items ?? []).filter((item: any) => item.type === "fileChange").flatMap((item: any) => (item.changes ?? []).map((change: any) => change.diff).filter(Boolean));
+              const loadedChangeStats = diffs.length ? diffs.reduce((stats, diff) => {
+                let inHunk = false;
+                for (const line of diff.split("\n")) {
+                  if (line.startsWith("diff --git ")) inHunk = false;
+                  if (line.startsWith("@@")) inHunk = true;
+                  if (line.startsWith("+") && (inHunk || !line.startsWith("+++"))) stats.additions++;
+                  if (line.startsWith("-") && (inHunk || !line.startsWith("---"))) stats.deletions++;
+                }
+                return stats;
+              }, { additions: 0, deletions: 0 }) : turn.loadedChangeStats ?? { additions: 0, deletions: 0 };
+              return { id: turn.id, loadedChangeStats, items: (turn.items ?? []).filter((item: any) =>
+                item.type === "imageView" && item.path || item.type === "imageGeneration" && (item.savedPath || /^(data:|\/)/i.test(item.result ?? "")),
+              ).map((item: any) => ({ id: item.id, type: item.type,
+                ...(item.path ? { path: item.path } : {}),
+                ...(item.savedPath ? { savedPath: item.savedPath } : {}),
+                ...(item.result && !(item.savedPath && /^data:/i.test(item.result)) ? { result: item.result } : {}),
+              })) };
+            }) } };
+          }
         } else {
           session.socket.send(JSON.stringify(message));
           if (message.id != null) session.requests.delete(String(message.id));

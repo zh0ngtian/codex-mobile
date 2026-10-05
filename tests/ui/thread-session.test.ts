@@ -11,6 +11,14 @@ import {
 } from "../../src/app-server/thread-session";
 
 describe("恢复已有 app-server 会话", () => {
+  it("完成时可只读取一个最近回合并补齐一个回合的统计和图片", async () => {
+    const request = vi.fn().mockResolvedValue({ data: [{ id: "last", loadedChangeStats: { additions: 7, deletions: 3 }, items: [{ id: "image", type: "imageView", path: "/tmp/result.png" }] }] });
+    await loadRecentThreadTurns({ request }, "thread", 1);
+    expect(request.mock.calls[0][1].limit).toBe(1);
+    const details = await loadTurnChangeStatsPage({ request }, "thread", undefined, 1);
+    expect(request.mock.calls[1][1].limit).toBe(1);
+    expect(details.last).toMatchObject({ additions: 7, deletions: 3, images: [{ path: "/tmp/result.png" }] });
+  });
   it("从完整历史页提取改动行数并回填精简回合", async () => {
     const request = vi.fn().mockResolvedValue({
       data: [{
@@ -23,7 +31,7 @@ describe("恢复已有 app-server 会话", () => {
     const stats = await loadTurnChangeStatsPage({ request }, "thread-1");
     expect(request).toHaveBeenCalledWith("thread/turns/list", {
       threadId: "thread-1",
-      limit: 10,
+      limit: 5,
       sortDirection: "desc",
       itemsView: "full",
     }, { timeoutMs: 60_000 });
@@ -82,7 +90,7 @@ describe("恢复已有 app-server 会话", () => {
         threadId: "thread-1",
         excludeTurns: true,
         initialTurnsPage: {
-          limit: 10,
+          limit: 5,
           sortDirection: "desc",
           itemsView: "summary",
         },
@@ -130,7 +138,7 @@ describe("恢复已有 app-server 会话", () => {
       "thread/turns/list",
       {
         threadId: "thread-1",
-        limit: 10,
+        limit: 5,
         sortDirection: "desc",
         itemsView: "summary",
       },
@@ -180,7 +188,7 @@ describe("恢复已有 app-server 会话", () => {
       {
         threadId: "thread-1",
         cursor: "older-cursor",
-        limit: 10,
+        limit: 5,
         sortDirection: "desc",
         itemsView: "summary",
       },
@@ -211,7 +219,7 @@ describe("恢复已有 app-server 会话", () => {
       "thread/turns/list",
       {
         threadId: "thread-1",
-        limit: 10,
+        limit: 5,
         sortDirection: "desc",
         itemsView: "summary",
       },

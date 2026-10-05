@@ -38,6 +38,7 @@ export interface AppServerSocket {
   close(code?: number, reason?: string): void;
   openRealtime?: () => Promise<void>;
   closeRealtime?: () => void;
+  pendingErrorForRequest?: (id: number | string) => Error | undefined;
 }
 
 export interface AppServerRequestOptions {
@@ -80,11 +81,12 @@ export class AppServerClient {
     socket.addEventListener("message", (event) => this.receive(String(event.data)));
     socket.addEventListener("close", () => {
       const error = new Error(t("与 app-server 的连接已断开"));
-      for (const waiter of this.pending.values()) {
+      for (const [id, waiter] of this.pending) {
+        // HTTP send 自己区分未确认写入；关闭事件不能抢先把它变成普通失败。
         clearTimeout(waiter.timeout);
-        waiter.reject(error);
+        waiter.reject(socket.pendingErrorForRequest?.(id) ?? error);
+        this.pending.delete(id);
       }
-      this.pending.clear();
     });
   }
 

@@ -7,6 +7,7 @@ import {
   useState,
 } from "react";
 import { AppServerClient, type RpcMessage } from "./app-server/client";
+import { HttpOperationPendingError } from "./backends/http-transport";
 import {
   buildEditedHistoryInput,
   createHistoricalMessageEditTarget,
@@ -331,6 +332,8 @@ function BackendWorkspace({
   const [draft, setDraft] = useState("");
   const [draftImages, setDraftImages] = useState<DraftImage[]>([]);
   const [draftFiles, setDraftFiles] = useState<DraftFile[]>([]);
+  const currentDraftRef = useRef({ text: draft, images: draftImages, files: draftFiles });
+  currentDraftRef.current = { text: draft, images: draftImages, files: draftFiles };
   const [historyEdit, setHistoryEdit] =
     useState<HistoricalMessageEditState | null>(null);
   const [imageReading, setImageReading] = useState(false);
@@ -414,6 +417,12 @@ function BackendWorkspace({
   const refreshSequenceRef = useRef(0);
   const threadNotificationSequenceRef = useRef(0);
   const pendingSequenceRef = useRef(0);
+  const pendingOperationsRef = useRef(new Map<string, {
+    threadId: string; draftContext: number; pendingTurnId?: string;
+    confirmed: (response: RpcMessage, client: AppServerClient) => void;
+  }>());
+  const earlyOperationConfirmationsRef = useRef(new Map<string, RpcMessage>());
+  const [pendingOperationIds, setPendingOperationIds] = useState<string[]>([]);
   const newChatModelSettingsRef = useRef<ModelSettingsSelection | null>(
     initialNewChatModelSettings,
   );
@@ -861,18 +870,28 @@ function BackendWorkspace({
   async function reconcileActiveThread(
     client: AppServerClient,
     isCurrent: () => boolean = () => true,
+    completedTurnId?: string,
   ) {
     const threadId = String(
       activeThreadTargetRef.current ?? activeRef.current?.id ?? "",
     );
     if (!threadId || client !== clientRef.current) return;
-    const discardPendingThrough = pendingSequenceRef.current;
+    const pendingThrough = pendingSequenceRef.current;
 
-    const latestTurns = await loadRecoverableRecentThreadTurns(
+    let latestTurns = await loadRecoverableRecentThreadTurns(
       client,
       threadId,
       () => threadNotificationSequenceRef.current,
+      undefined,
+      3,
+      completedTurnId ? 1 : 5,
     );
+    let detailLimit = completedTurnId ? 1 : 5;
+    // 较早回合的完成通知可能晚于后继回合；此时读取五回合保留后继。
+    if (completedTurnId && latestTurns?.at(-1)?.id !== completedTurnId) {
+      latestTurns = await loadRecoverableRecentThreadTurns(client, threadId, () => threadNotificationSequenceRef.current);
+      detailLimit = 5;
+    }
     if (
       client !== clientRef.current ||
       String(
@@ -885,11 +904,13 @@ function BackendWorkspace({
       return;
     }
 
+    const hasPendingOperation = [...pendingOperationsRef.current.values()].some((operation) => operation.threadId === threadId);
+    const discardPendingThrough = hasPendingOperation ? -1 : pendingThrough;
     const lastTurn = latestTurns.at(-1);
     const running =
       ["inProgress", "in_progress", "running"].includes(
         String(lastTurn?.status ?? ""),
-      ) || pendingSequenceRef.current > discardPendingThrough;
+      ) || hasPendingOperation || pendingSequenceRef.current > discardPendingThrough;
     setActive((current) =>
       current?.id === threadId
         ? {
@@ -915,6 +936,8 @@ function BackendWorkspace({
         turnsNeedingBackfill.map((turn: AnyRecord) => String(turn.id)),
         () => isCurrent() && client === clientRef.current &&
           String(activeRef.current?.id ?? "") === threadId,
+        undefined,
+        detailLimit,
       );
     }
     setBusy(running);
@@ -928,6 +951,21 @@ function BackendWorkspace({
           : entry,
       ),
     );
+  }
+
+  function rememberPendingOperation(
+    requestId: string,
+    operation: NonNullable<ReturnType<typeof pendingOperationsRef.current.get>>,
+    client: AppServerClient,
+  ) {
+    pendingOperationsRef.current.set(requestId, operation);
+    const early = earlyOperationConfirmationsRef.current.get(requestId);
+    if (early) {
+      earlyOperationConfirmationsRef.current.delete(requestId);
+      pendingOperationsRef.current.delete(requestId);
+      operation.confirmed(early, client);
+    }
+    setPendingOperationIds([...pendingOperationsRef.current.keys()]);
   }
 
   useEffect(() => {
@@ -1092,6 +1130,22 @@ function BackendWorkspace({
           }
           if (message.method === "mobile/requests") {
             setRequests(params.requests ?? []);
+            return;
+          }
+          if (message.method === "mobile/operation/confirmed") {
+            threadNotificationSequenceRef.current += 1;
+            const requestId = String(params.requestId);
+            const operation = pendingOperationsRef.current.get(requestId);
+            if (operation) {
+              pendingOperationsRef.current.delete(requestId);
+              setPendingOperationIds([...pendingOperationsRef.current.keys()]);
+              if (!params.staleApproval) operation.confirmed(params.response, client);
+            } else {
+              // 通知可能先于 send 的 rejection 回调；跨 reload 则仍恢复当前会话事实。
+              earlyOperationConfirmationsRef.current.set(requestId, params.response);
+              if (earlyOperationConfirmationsRef.current.size > 32) earlyOperationConfirmationsRef.current.delete(earlyOperationConfirmationsRef.current.keys().next().value!);
+              if (["turn/start", "turn/steer"].includes(params.request?.method)) void reconcileActiveThread(client).catch(() => undefined);
+            }
             return;
           }
           if (message.method === "mobile/reset") {
@@ -1403,7 +1457,7 @@ function BackendWorkspace({
               return completed;
             });
             if (String(activeRef.current?.id ?? "") === threadId) {
-              void reconcileActiveThread(client).catch(() => undefined);
+              void reconcileActiveThread(client, () => true, turnId).catch(() => undefined);
             }
             const automaticTitle =
               automaticTitleStatesRef.current.get(threadId);
@@ -1912,10 +1966,11 @@ function BackendWorkspace({
     turnIds: string[],
     isCurrent: () => boolean,
     cursor?: string,
+    limit = 5,
   ) {
     const targetIds = new Set(turnIds);
     try {
-      const stats = await loadTurnChangeStatsPage(client, threadId, cursor);
+      const stats = await loadTurnChangeStatsPage(client, threadId, cursor, limit);
       if (!isCurrent()) return;
       setActive((current) =>
         current?.id === threadId
@@ -2390,6 +2445,51 @@ function BackendWorkspace({
         });
       }
     } catch (reason) {
+      if (reason instanceof HttpOperationPendingError) {
+        const threadId = String(thread?.id ?? "");
+        const confirmed = (response: RpcMessage, confirmationClient: AppServerClient) => {
+          const currentContext = draftContext === draftContextGenerationRef.current;
+          const currentThread = !threadId || String(activeRef.current?.id ?? "") === threadId;
+          if (response.error) {
+            if (threadId) setThreads((current) => current.map((entry) => entry.id === threadId ? { ...entry, status: { type: "idle" } } : entry));
+            if (currentContext && currentThread) {
+              setBusy(false);
+              setStartingThreadContext(null);
+              setActive((current) => current?.id === threadId ? removePendingTurn(current, pendingTurnId) : current);
+              onFailure();
+              setError(response.error.message);
+            }
+            return;
+          }
+          if (reason.request.method === "thread/start") {
+            const created = (response.result as AnyRecord)?.thread;
+            if (created?.id) {
+              const restored = startingProjectless ? { ...created, isProjectless: true } : created;
+              automaticTitleStatesRef.current.set(String(created.id), { turnId: null, status: "pending" });
+              setThreads((current) => [restored, ...current.filter((entry) => entry.id !== created.id)]);
+              if (startingProjectless) setProjectlessThreadIds((current) => {
+                const next = mergeProjectlessThreadIds(current, [String(created.id)]);
+                writeLocalProjectlessThreadIds(window.localStorage, backend.id, next);
+                return next;
+              });
+              if (currentContext && currentThread) {
+                activeThreadTargetRef.current = String(created.id);
+                activeRef.current = restored;
+                setActive(restored);
+                setBusy(false);
+                setStartingThreadContext(null);
+                // thread/start 已完成，但正文未提交；保留供用户发送。
+                onFailure();
+              }
+            }
+          } else {
+            pendingFiles.forEach((file) => URL.revokeObjectURL(file.previewUrl));
+            if (currentContext && currentThread) void reconcileActiveThread(confirmationClient).catch(() => undefined);
+          }
+        };
+        rememberPendingOperation(reason.requestId, { threadId, draftContext, pendingTurnId, confirmed }, client);
+        return false;
+      }
       if (thread?.id) {
         setThreads((current) =>
           current.map((entry) =>
@@ -2445,7 +2545,7 @@ function BackendWorkspace({
     }
     const draftContext = draftContextGenerationRef.current;
     const conversationBusy = active?.id
-      ? busy
+      ? busy || [...pendingOperationsRef.current.values()].some((operation) => operation.threadId === String(active.id))
       : startingThreadContext === draftContextGenerationRef.current;
     if (conversationBusy) {
       const threadId = String(active?.id ?? "");
@@ -2491,6 +2591,20 @@ function BackendWorkspace({
       pendingPlugins,
       draftContext,
       onFailure: () => {
+        const currentDraft = currentDraftRef.current;
+        const threadId = String(activeRef.current?.id ?? "");
+        if (threadId && (currentDraft.text.trim() || currentDraft.images.length || currentDraft.files.length)) {
+          // 后续新草稿保持可编辑；失败的原输入和附件留在现有手动重试队列。
+          replaceQueuedFollowUps([{
+            id: `failed-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+            threadId, draftContext, inputText: text,
+            text: followUpPreviewText(text, pendingImages, pendingFiles),
+            attachmentCount: pendingImages.length + pendingFiles.length,
+            images: pendingImages, files: pendingFiles,
+            skills: pendingSkills, plugins: pendingPlugins, failed: true,
+          }, ...queuedFollowUpsRef.current]);
+          return;
+        }
         setDraft((current) => current || text);
         setDraftImages((current) => mergeDraftImages(current, pendingImages));
         setDraftFiles((current) =>
@@ -2516,6 +2630,7 @@ function BackendWorkspace({
       currentTarget.messageId !== target.messageId ||
       activeThreadAccessMode !== "interactive" ||
       busy ||
+      pendingOperationIds.some((id) => pendingOperationsRef.current.get(id)?.threadId === threadId) ||
       steering ||
       imageReading ||
       hasQueuedMessage ||
@@ -2819,6 +2934,22 @@ function BackendWorkspace({
       );
       sent = true;
     } catch (reason) {
+      if (reason instanceof HttpOperationPendingError) {
+        rememberPendingOperation(reason.requestId, {
+          threadId, draftContext: followUp.draftContext,
+          confirmed: (response, confirmationClient) => {
+            setPendingSteerMessage((current) => clearPendingSteerForRequest(current, clientUserMessageId));
+            if (response.error) {
+              replaceQueuedFollowUps([{ ...followUp, failed: true }, ...queuedFollowUpsRef.current.filter((entry) => entry.id !== followUp.id)]);
+              if (followUp.draftContext === draftContextGenerationRef.current) setError(response.error.message);
+            } else {
+              followUp.files.forEach((file) => URL.revokeObjectURL(file.previewUrl));
+              if (String(activeRef.current?.id ?? "") === threadId) void reconcileActiveThread(confirmationClient).catch(() => undefined);
+            }
+          },
+        }, client);
+        return;
+      }
       setPendingSteerMessage((current) =>
         clearPendingSteerForRequest(current, clientUserMessageId),
       );
@@ -2890,6 +3021,7 @@ function BackendWorkspace({
       busy ||
       steering ||
       queuedFollowUpDispatchingRef.current ||
+      pendingOperationIds.some((id) => pendingOperationsRef.current.get(id)?.threadId === activeThreadId) ||
       !followUp ||
       followUp.failed ||
       connection !== "online" ||
@@ -2929,6 +3061,7 @@ function BackendWorkspace({
     connection,
     conversationLoadState,
     queuedFollowUps,
+    pendingOperationIds,
     steering,
   ]);
 
@@ -3469,6 +3602,19 @@ function BackendWorkspace({
       setRequests((current) => current.filter((entry) => entry.id !== approval.id));
       setUserAnswers({});
     } catch (reason) {
+      if (reason instanceof HttpOperationPendingError) {
+        const context = draftContextGenerationRef.current;
+        rememberPendingOperation(reason.requestId, {
+          threadId: String((approval.params as AnyRecord)?.threadId ?? ""),
+          draftContext: context,
+          confirmed: (response) => {
+            if (context !== draftContextGenerationRef.current) return;
+            if (response.error) setError(response.error.message);
+            else setUserAnswers({});
+          },
+        }, client);
+        return;
+      }
       setError(reason instanceof Error ? reason.message : String(reason));
     } finally {
       respondingRequestRef.current = false;
@@ -3714,11 +3860,15 @@ function BackendWorkspace({
   ]);
 
   const conversationBusy = active?.id
-    ? busy
+    ? busy || pendingOperationIds.some((id) => pendingOperationsRef.current.get(id)?.threadId === String(active.id))
     : startingThreadContext === draftContextGenerationRef.current;
 
   return (
     <main className="app-shell">
+      {pendingOperationIds.some((id) => {
+        const operation = pendingOperationsRef.current.get(id);
+        return operation?.draftContext === draftContextGenerationRef.current && (!operation.threadId || operation.threadId === String(active?.id ?? ""));
+      }) && <p role="status" className="operation-pending">{t("发送状态确认中")}</p>}
       {active ? (
         <ConversationPage
           active={active}
