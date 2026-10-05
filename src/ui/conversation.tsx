@@ -278,6 +278,7 @@ function diffLineStats(diff: string) {
 }
 
 export function summarizeTurnChanges(turn: ConversationRecord) {
+  if (turn.changeStatsSource === "history" && turn.loadedChangeStats) return turn.loadedChangeStats;
   if (typeof turn.liveDiff === "string" && turn.liveDiff.length > 0) {
     return diffLineStats(turn.liveDiff);
   }
@@ -296,12 +297,13 @@ export function summarizeTurnChanges(turn: ConversationRecord) {
 }
 
 export function hasTurnChangeStats(turn: ConversationRecord) {
+  if (turn.changeStatsUnavailable) return false;
   if (typeof turn.groupChangeStatsReady === "boolean") return turn.groupChangeStatsReady;
   if (turn.loadedChangeStats || turn.liveDiff) return true;
   if (turn.items?.some((item: ConversationRecord) =>
     item.type === "fileChange" && item.changes?.some((change: ConversationRecord) => change.diff)
   )) return true;
-  return turn.itemsView !== "summary";
+  return !turn.changeStatsUnavailable && turn.itemsView !== "summary";
 }
 
 export function summarizeFileChange(change: ConversationRecord) {

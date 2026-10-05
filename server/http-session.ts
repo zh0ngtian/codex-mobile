@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import WebSocket from "ws";
+import { TurnChangeHistory } from "./turn-change-history.js";
 import { compactTurnDetails } from "./turn-details.js";
 
 export interface RpcMessage {
@@ -137,7 +138,7 @@ class Session {
   storageBytes = 0;
   invalidatedSocket?: WebSocket;
 
-  constructor(readonly id: string, private upstreamUrl: string, private root: string) {
+  constructor(readonly id: string, private upstreamUrl: string, private root: string, private changeHistory: TurnChangeHistory) {
     this.loadPromise = this.load();
   }
 
@@ -266,6 +267,7 @@ class Session {
   }
 
   private receive(message: RpcMessage) {
+    this.changeHistory.observe(message);
     this.touch();
     if (message.id != null && !message.method) {
       const waiter = this.waiting.get(message.id);
@@ -482,6 +484,10 @@ class Session {
     const result = response.result as Record<string, any> | undefined;
     if (!result || typeof result !== "object") return;
     const thread = result.thread;
+    if (thread?.id) this.changeHistory.observe({ method: "thread/started", params: { thread } });
+    if (request.method === "turn/start" && result.turn?.id) this.changeHistory.observe({
+      method: "turn/started", params: { threadId: request.params?.threadId, turn: result.turn },
+    });
     const threadId = thread?.id ?? request.params?.threadId;
     if (typeof threadId !== "string" || !threadId) return;
     const status = thread?.status?.type ?? thread?.status;
@@ -561,6 +567,13 @@ class Session {
           if (this.socket === submittedSocket && this.epoch === submittedEpoch && this.pending.get(message.id!) === submittedApproval) this.pending.delete(message.id!);
           result = { id: message.id, result: null };
         } else {
+          if (message.method === "turn/start" && typeof message.params?.threadId === "string") {
+            await this.changeHistory.beforeStart(message.params.threadId, message.params.cwd).catch(() => {});
+            if (this.socket !== submittedSocket || this.epoch !== submittedEpoch || submittedSocket?.readyState !== WebSocket.OPEN) {
+              await this.changeHistory.cancelStart(message.params.threadId);
+              throw new HttpError(503, "App-server changed before operation could be submitted");
+            }
+          }
           submitted = true;
           if (message.method === "initialized") result = await this.notifyInitialized(message, submittedSocket);
           else if (message.method === "mobile/turns/details") {
@@ -571,9 +584,18 @@ class Session {
             } };
             result = await this.exchange(upstream, submittedSocket);
             if (this.socket === submittedSocket && this.epoch === submittedEpoch) this.observeRpcState(upstream, result);
-            if (result.error == null) result = { ...result, result: compactTurnDetails(result.result as Record<string, any>) };
+            if (result.error == null) {
+              const full = result.result as Record<string, any>;
+              const stats = Object.fromEntries(await Promise.all((full.data ?? []).map(async (turn: Record<string, any>) =>
+                [String(turn.id), await this.changeHistory.get(params.threadId, turn)],
+              )));
+              result = { ...result, result: compactTurnDetails(full, stats) };
+            }
           }
           else result = await this.exchange(message, submittedSocket);
+        }
+        if (message.method === "turn/start" && result.error != null && typeof message.params?.threadId === "string") {
+          await this.changeHistory.cancelStart(message.params.threadId);
         }
         if (this.socket === submittedSocket && this.epoch === submittedEpoch) this.observeRpcState(message, result);
         operation.status = "completed"; operation.message = result;
@@ -640,8 +662,10 @@ export class HttpSessions {
   private sessions = new Map<string, Session>();
   private timer: NodeJS.Timeout;
   private root: string;
-  constructor(private options: { upstreamUrl: string; codexHome?: string }) {
+  private changeHistory: TurnChangeHistory;
+  constructor(private options: { upstreamUrl: string; codexHome?: string; changeHistory?: TurnChangeHistory }) {
     this.root = join(options.codexHome ?? process.env.CODEX_HOME ?? join(homedir(), ".codex"), "codex-mobile-http");
+    this.changeHistory = options.changeHistory ?? new TurnChangeHistory(options.codexHome ?? process.env.CODEX_HOME ?? join(homedir(), ".codex"));
     this.timer = setInterval(() => {
       for (const [id, session] of this.sessions) {
         session.heartbeat();
@@ -658,7 +682,7 @@ export class HttpSessions {
     const existing = this.sessions.get(id);
     if (existing) return existing;
     if (this.sessions.size >= MAX_SESSIONS) throw new HttpError(429, "Too many sessions");
-    const session = new Session(id, this.options.upstreamUrl, this.root);
+    const session = new Session(id, this.options.upstreamUrl, this.root, this.changeHistory);
     // Loading errors are returned by APIs rather than emitted as unhandled rejections.
     session.loadPromise.catch(() => {});
     this.sessions.set(id, session);
@@ -722,6 +746,7 @@ export class HttpSessions {
   async close() {
     clearInterval(this.timer);
     await Promise.all([...this.sessions.values()].map((session) => session.close()));
+    await this.changeHistory.flush();
     this.sessions.clear();
   }
 }

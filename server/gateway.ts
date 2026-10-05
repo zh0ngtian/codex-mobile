@@ -7,6 +7,8 @@ import { homedir } from "node:os";
 import WebSocket, { WebSocketServer } from "ws";
 import type { CodexProjectState } from "./codex-projects.js";
 import { readImageGenerationError } from "./image-generation-error.js";
+import { TurnChangeHistory } from "./turn-change-history.js";
+import { compactTurnDetails } from "./turn-details.js";
 import { HttpSessions } from "./http-session.js";
 import { ImagePreviews } from "./image-preview.js";
 
@@ -114,7 +116,8 @@ function applyCors(
 }
 
 export async function createGateway(options: GatewayOptions): Promise<Gateway> {
-  const httpSessions = new HttpSessions(options);
+  const changeHistory = new TurnChangeHistory(options.codexHome ?? process.env.CODEX_HOME ?? join(homedir(), ".codex"));
+  const httpSessions = new HttpSessions({ ...options, changeHistory });
   const imagePreviews = new ImagePreviews();
   const server: Server = createServer(async (request, response) => {
     const url = new URL(request.url ?? "/", "http://gateway.local");
@@ -407,6 +410,32 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
     let pendingBytes = 0;
     const maxPendingBytes = 1024 * 1024;
 
+    const requests = new Map<string | number, { method?: string; params?: Record<string, any> }>();
+    let sendQueue = Promise.resolve();
+    let responseQueue = Promise.resolve();
+    const forward = (data: WebSocket.RawData, isBinary: boolean) => {
+      sendQueue = sendQueue.then(async () => {
+        let preparedThread: string | undefined;
+        if (!isBinary) {
+          try {
+            const request = JSON.parse(rawMessageText(data));
+            if (request.method && request.id != null) {
+              requests.set(request.id, request);
+              if (requests.size > 512) requests.delete(requests.keys().next().value!);
+            }
+            if (request.method === "turn/start" && typeof request.params?.threadId === "string") {
+              preparedThread = request.params.threadId;
+              await changeHistory.beforeStart(request.params.threadId, request.params.cwd).catch(() => {});
+            }
+          } catch { /* Invalid JSON is forwarded for upstream validation. */ }
+        }
+        if (upstream.readyState === WebSocket.OPEN) {
+          try { upstream.send(data, { binary: isBinary }); }
+          catch { if (preparedThread) await changeHistory.cancelStart(preparedThread); }
+        } else if (preparedThread) await changeHistory.cancelStart(preparedThread);
+      }).catch(() => {});
+    };
+
     client.on("message", (data, isBinary) => {
       const bytes = rawMessageBytes(data);
       if (bytes > MAX_APP_SERVER_MESSAGE_BYTES) {
@@ -428,7 +457,7 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
         }
         return;
       }
-      if (upstream.readyState === WebSocket.OPEN) upstream.send(data, { binary: isBinary });
+      if (upstream.readyState === WebSocket.OPEN) forward(data, isBinary);
       else if (upstream.readyState === WebSocket.CONNECTING) {
         pendingBytes += bytes;
         if (pendingBytes > maxPendingBytes) {
@@ -440,11 +469,50 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
       }
     });
     upstream.on("open", () => {
-      for (const message of pending.splice(0)) upstream.send(message.data, { binary: message.binary });
+      for (const message of pending.splice(0)) forward(message.data, message.binary);
       pendingBytes = 0;
     });
     upstream.on("message", (data, isBinary) => {
-      if (client.readyState === WebSocket.OPEN) client.send(data, { binary: isBinary });
+      let message: Record<string, any> | undefined;
+      if (!isBinary) {
+        try {
+          message = JSON.parse(rawMessageText(data));
+          changeHistory.observe(message!);
+        } catch { /* Preserve non-JSON upstream messages. */ }
+      }
+      const request = message?.id != null && !message.method ? requests.get(message.id) : undefined;
+      if (request && message) {
+        requests.delete(message.id);
+        const thread = message.result?.thread;
+        if (thread?.id) changeHistory.observe({ method: "thread/started", params: { thread } });
+        if (request.method === "turn/start" && message.result?.turn?.id) changeHistory.observe({
+          method: "turn/started", params: { threadId: request.params?.threadId, turn: message.result.turn },
+        });
+      }
+      responseQueue = responseQueue.then(async () => {
+        if (request?.method === "turn/start" && message?.error != null && typeof request.params?.threadId === "string") {
+          await changeHistory.cancelStart(request.params.threadId);
+        }
+        let output: WebSocket.RawData | string = data;
+        if (request?.method === "thread/turns/list" && request.params?.itemsView === "full" &&
+          message?.error == null && Array.isArray(message?.result?.data)) {
+          const full = message!.result;
+          const stats = Object.fromEntries(await Promise.all(full.data.map(async (turn: Record<string, any>) =>
+            [String(turn.id), await changeHistory.get(request.params!.threadId, turn)],
+          )));
+          const details = compactTurnDetails(full, stats).data;
+          output = JSON.stringify({ ...message, result: { ...full, data: full.data.map((turn: Record<string, any>, index: number) => ({
+            ...turn, ...(details[index].loadedChangeStats
+              ? { loadedChangeStats: details[index].loadedChangeStats,
+                ...(details[index].changeStatsSource ? { changeStatsSource: details[index].changeStatsSource } : {}),
+                changeStatsUnavailable: false }
+              : { loadedChangeStats: undefined, changeStatsUnavailable: true }),
+          })) } });
+        }
+        if (client.readyState === WebSocket.OPEN) client.send(output, { binary: isBinary });
+      }).catch(() => {
+        if (client.readyState === WebSocket.OPEN) client.send(data, { binary: isBinary });
+      });
     });
     upstream.on("error", () => {
       if (client.readyState === WebSocket.OPEN) client.close(1011, "app-server unavailable");

@@ -2,7 +2,7 @@ import type {
   ApprovalPolicy,
   ApprovalsReviewer,
 } from "../ui/settings";
-import { summarizeTurnChanges } from "../ui/conversation";
+import { hasTurnChangeStats, summarizeTurnChanges } from "../ui/conversation";
 
 type AnyRecord = Record<string, any>;
 const initialTurnsLimit = 5;
@@ -12,7 +12,7 @@ const threadHistoryRequestOptions = {
 };
 
 export type TurnChangeStats = { additions: number; deletions: number };
-export type TurnBackfill = TurnChangeStats & { images: AnyRecord[] };
+export type TurnBackfill = Partial<TurnChangeStats> & { images: AnyRecord[]; unavailable?: boolean; source?: string };
 
 export async function loadTurnChangeStatsPage(
   client: Requester,
@@ -46,7 +46,9 @@ export async function loadTurnChangeStatsPage(
         ...(item.savedPath ? { savedPath: item.savedPath } : {}),
         ...(item.result && /^(https?:|data:|\/)/i.test(item.result) ? { result: item.result } : {}),
       }));
-      return [String(turn.id), { ...summarizeTurnChanges(turn), images }];
+      return [String(turn.id), hasTurnChangeStats(turn)
+        ? { ...summarizeTurnChanges(turn), images, ...(turn.changeStatsSource ? { source: turn.changeStatsSource } : {}) }
+        : { unavailable: true, images }];
     }),
   );
 }
@@ -81,9 +83,10 @@ export function applyTurnChangeStats(
     return {
       ...turn,
       items,
-      loadedChangeStats: { additions: detail.additions, deletions: detail.deletions },
+      loadedChangeStats: detail.unavailable ? undefined : { additions: detail.additions ?? 0, deletions: detail.deletions ?? 0 },
+      changeStatsSource: detail.source,
       loadedMediaStatus: turn.status,
-      changeStatsUnavailable: false,
+      changeStatsUnavailable: detail.unavailable === true,
     };
   });
 }

@@ -646,6 +646,34 @@ describe("移动端对话格式", () => {
     expect(container.querySelector(".activity-summary-text")?.textContent).toBe("代码改动统计不可用");
   });
 
+  it("完整历史明确缺失统计时也显示不可用，不能显示 0 行", () => {
+    const { container } = render(<TurnCard turn={{
+      id: "unknown-full", status: "completed", itemsView: "full",
+      changeStatsUnavailable: true, items: [],
+    }} client={null} />);
+    expect(container.querySelector(".activity-summary-text")?.textContent).toBe("代码改动统计不可用");
+  });
+
+  it("持久统计优先于有损的工具补丁", () => {
+    const { container } = render(<TurnCard turn={{
+      id: "snapshot", status: "completed", changeStatsSource: "history",
+      loadedChangeStats: { additions: 20, deletions: 3 },
+      liveDiff: "@@ -1 +1 @@\n-old\n+new",
+      items: [],
+    }} client={null} />);
+    expect(container.querySelector(".activity-summary-text")?.textContent).toBe("本次代码改动 23 行+20-3");
+  });
+
+  it("明确的统计不可用优先于残留有损 diff", () => {
+    const { container } = render(<TurnCard turn={{
+      id: "partial", status: "completed", changeStatsUnavailable: true,
+      liveDiff: "@@ -1 +1,3 @@\n-old\n+new",
+      items: [{ type: "fileChange", changes: [{ path: "a", diff: "+new" }] }],
+    }} client={null} />);
+    expect(container.querySelector(".turn-change-summary")?.textContent).toContain("代码改动统计不可用");
+    expect(container.querySelector(".turn-change-summary")?.textContent).not.toContain("本次代码改动");
+  });
+
   it("合并回合会汇总各段从历史记录回填的改动", () => {
     const [group] = groupConversationTurns([
       {

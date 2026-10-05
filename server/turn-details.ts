@@ -1,31 +1,35 @@
+import { countCompleteDiff } from "./turn-change-history.js";
 type RecordValue = Record<string, any>;
 type ChangeStats = { additions: number; deletions: number };
 
-function diffLineStats(diff: string): ChangeStats {
-  let additions = 0; let deletions = 0; let inHunk = false;
-  for (const line of diff.split("\n")) {
-    if (line.startsWith("diff --git ")) inHunk = false;
-    if (line.startsWith("@@")) inHunk = true;
-    if (line.startsWith("+") && (inHunk || !line.startsWith("+++"))) additions++;
-    if (line.startsWith("-") && (inHunk || !line.startsWith("---"))) deletions++;
-  }
-  return { additions, deletions };
-}
-
-function summarizeChanges(turn: RecordValue): ChangeStats {
-  if (typeof turn.liveDiff === "string" && turn.liveDiff.length) return diffLineStats(turn.liveDiff);
-  const stats = { additions: 0, deletions: 0 }; let hasFileDiff = false;
+function summarizeChanges(turn: RecordValue): ChangeStats | null {
+  if (turn.changeStatsUnavailable) return null;
+  const diff = turn.liveDiff ?? turn.diff;
+  if (typeof diff === "string") return countCompleteDiff(diff);
+  const stats = { additions: 0, deletions: 0 };
+  let hasFileDiff = false;
+  let missingDiff = false;
   for (const item of turn.items ?? []) {
     if (item.type !== "fileChange") continue;
     for (const change of item.changes ?? []) {
-      if (change.diff) hasFileDiff = true;
-      const diff = diffLineStats(change.diff ?? "");
-      stats.additions += diff.additions; stats.deletions += diff.deletions;
+      if (typeof change.diff !== "string" || change.diff.endsWith("\n[truncated]")) {
+        missingDiff = true;
+        continue;
+      }
+      const diff = countCompleteDiff(change.diff);
+      if (!diff) { missingDiff = true; continue; }
+      hasFileDiff = true;
+      stats.additions += diff.additions;
+      stats.deletions += diff.deletions;
     }
   }
-  return !hasFileDiff && turn.loadedChangeStats
-    ? { additions: turn.loadedChangeStats.additions, deletions: turn.loadedChangeStats.deletions }
-    : stats;
+  if (missingDiff) return null;
+  if (hasFileDiff) return stats;
+  if (turn.loadedChangeStats && !turn.changeStatsUnavailable) return turn.loadedChangeStats;
+  if (turn.changeStatsUnavailable || turn.itemsView === "summary" || (turn.items ?? []).some((item: RecordValue) =>
+    ["commandExecution", "mcpToolCall", "dynamicToolCall", "subAgentActivity", "collabToolCall", "collabAgentToolCall", "fileChange"].includes(item.type),
+  )) return null;
+  return stats;
 }
 
 function imageReferences(items: RecordValue[]): RecordValue[] {
@@ -47,11 +51,18 @@ function imageReferences(items: RecordValue[]): RecordValue[] {
 }
 
 // Whitelist only the details needed for history backfill; never retain tool bodies or diffs.
-export function compactTurnDetails(result: RecordValue) {
+export function compactTurnDetails(result: RecordValue, savedStats: Record<string, ChangeStats | null> = {}) {
   return {
-    data: (result.data ?? []).map((turn: RecordValue) => ({
-      id: turn.id, loadedChangeStats: summarizeChanges(turn), items: imageReferences(turn.items ?? []),
-    })),
+    data: (result.data ?? []).map((turn: RecordValue) => {
+      const stats = savedStats[String(turn.id)] ?? summarizeChanges(turn);
+      return {
+        id: turn.id,
+        ...(stats ? { loadedChangeStats: { additions: stats.additions, deletions: stats.deletions },
+          ...(savedStats[String(turn.id)] ? { changeStatsSource: "history" } : {}) }
+          : { changeStatsUnavailable: true }),
+        items: imageReferences(turn.items ?? []),
+      };
+    }),
     nextCursor: result.nextCursor,
   };
 }

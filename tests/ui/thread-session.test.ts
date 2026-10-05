@@ -11,6 +11,17 @@ import {
 } from "../../src/app-server/thread-session";
 
 describe("恢复已有 app-server 会话", () => {
+  it("统计缺失仍补回图片，但不写入虚假的 0 行", async () => {
+    const request = vi.fn().mockResolvedValue({ data: [{
+      id: "unknown", changeStatsUnavailable: true,
+      items: [{ id: "image", type: "imageView", path: "/tmp/result.png" }],
+    }] });
+    const details = await loadTurnChangeStatsPage({ request }, "thread");
+    const [turn] = applyTurnChangeStats([{ id: "unknown", status: "completed", itemsView: "summary", items: [] }], details);
+    expect(turn.changeStatsUnavailable).toBe(true);
+    expect(turn.loadedChangeStats).toBeUndefined();
+    expect(turn.items).toMatchObject([{ path: "/tmp/result.png" }]);
+  });
   it("完成时可只读取一个最近回合并补齐一个回合的统计和图片", async () => {
     const request = vi.fn().mockResolvedValue({ data: [{ id: "last", loadedChangeStats: { additions: 7, deletions: 3 }, items: [{ id: "image", type: "imageView", path: "/tmp/result.png" }] }] });
     await loadRecentThreadTurns({ request }, "thread", 1);

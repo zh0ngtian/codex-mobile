@@ -1,10 +1,12 @@
 import { createServer } from "node:http";
+import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { mkdtemp, rm, readFile, readdir, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, readFile, readdir, writeFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import WebSocket, { WebSocketServer } from "ws";
+import { TurnChangeHistory } from "../../server/turn-change-history.js";
 import { createGateway, type Gateway } from "../../server/gateway.js";
 
 const cleanup: Array<() => Promise<void>> = [];
@@ -315,8 +317,8 @@ describe("HTTP 会话", () => {
     const inline = "data:image/png;base64," + "a".repeat(300_000);
     f.respond((socket, message) => socket.send(JSON.stringify({ id: message.id, result: {
       data: [
-        { id: "live", liveDiff: "diff --git a/a b/a\n--- a/a\n+++ b/a\n@@ -1 +1 @@\n-old\n+new\n+++hunk content", items: [
-          { id: "diff", type: "fileChange", changes: [{ diff: "+ignored\n-ignored" }] },
+        { id: "live", liveDiff: "diff --git a/a b/a\n--- a/a\n+++ b/a\n@@ -1 +1,2 @@\n-old\n+new\n+++hunk content", items: [
+          { id: "diff", type: "fileChange", changes: [{ diff: "@@ -1 +1 @@\n-ignored\n+ignored" }] },
           { id: "tool", type: "commandExecution", aggregatedOutput: "tool output".repeat(100_000) },
           { id: "view", type: "imageView", path: "/tmp/view.png", text: "discard" },
           { id: "saved", type: "imageGeneration", savedPath: "/tmp/saved.png", result: inline, prompt: "discard" },
@@ -324,8 +326,8 @@ describe("HTTP 会话", () => {
           { id: "ignored", type: "imageGeneration", result: "not an image reference" },
         ] },
         { id: "files", loadedChangeStats: { additions: 99, deletions: 99 }, items: [
-          { type: "fileChange", changes: [{ diff: "--- a/a\n+++ b/a\n@@ -1 +1 @@\n-a\n+b" }, { diff: "+c\n-d" }] },
-          { type: "fileChange", changes: [{ diff: "+e" }] },
+          { type: "fileChange", changes: [{ diff: "--- a/a\n+++ b/a\n@@ -1 +1 @@\n-a\n+b" }, { diff: "@@ -1 +1 @@\n-d\n+c" }] },
+          { type: "fileChange", changes: [{ diff: "@@ -0,0 +1 @@\n+e" }] },
         ] },
         { id: "fallback", loadedChangeStats: { additions: 7, deletions: 8 }, items: [] },
       ], nextCursor: "older", toolBody: "discard",
@@ -348,6 +350,113 @@ describe("HTTP 会话", () => {
     expect(Buffer.byteLength(JSON.stringify(reply))).toBeLessThan(2048);
     expect(await readdir(join(f.root, "codex-mobile-http")).catch(() => [])).toEqual([]);
     expect(await (await fetch(f.url("operations", `&requestId=${requestId}`))).json()).toMatchObject({ status: "completed", message: reply });
+  });
+
+  it("完整历史缺少 diff 的命令回合明确返回统计不可用", async () => {
+    const f = await fixture(); await f.init();
+    f.respond((socket, message) => socket.send(JSON.stringify({ id: message.id, result: {
+      data: [{ id: "shell", items: [{ type: "commandExecution", exitCode: 0 }] }], nextCursor: null,
+    } })));
+    expect(await (await f.rpc({ id: 18, method: "mobile/turns/details", params: { threadId: "t" } })).json())
+      .toMatchObject({ result: { data: [{ id: "shell", changeStatsUnavailable: true }] } });
+  });
+
+  it("实时 diff 在截断前保存，重启网关仍恢复完整统计", async () => {
+    const f = await fixture(); await f.init();
+    const threadId = "01a10be8-1507-7533-9a04-8a94dbe3f050";
+    const turnId = "01a10c0e-5b86-73b0-967d-842a63468fc5";
+    f.send({ method: "turn/diff/updated", params: { threadId, turnId,
+      diff: "diff --git a/a.ts b/a.ts\n--- a/a.ts\n+++ b/a.ts\n@@ -1 +1,4000 @@\n-old\n" + "+new line of code\n".repeat(4000),
+    } });
+    await wait();
+    await f.restart(); await f.init();
+    f.respond((socket, message) => socket.send(JSON.stringify({ id: message.id, result: {
+      data: [{ id: turnId, status: "completed", items: [{ type: "commandExecution" }] }], nextCursor: null,
+    } })));
+    expect(await (await f.rpc({ id: 18, method: "mobile/turns/details", params: { threadId } })).json())
+      .toMatchObject({ result: { data: [{ loadedChangeStats: { additions: 4000, deletions: 1 } }] } });
+  });
+
+  it("开始请求在写文件前捕获快照，完成时已提交仍统计增删", async () => {
+    const f = await fixture(); await f.init();
+    const threadId = "01a10be8-1507-7533-9a04-8a94dbe3f050";
+    const turnId = "01a10c0e-5b86-73b0-967d-842a63468fc5";
+    const cwd = join(f.root, "repo"); await mkdir(cwd);
+    const git = (...args: string[]) => execFileSync("git", args, { cwd, stdio: "pipe" });
+    git("init"); git("config", "user.email", "test@example.com"); git("config", "user.name", "Test");
+    await writeFile(join(cwd, "a.ts"), "old\n"); git("add", "."); git("commit", "-m", "init");
+    f.respond((socket, message) => {
+      if (message.method === "thread/read") socket.send(JSON.stringify({ id: message.id, result: { thread: { id: threadId, cwd } } }));
+      else if (message.method === "turn/start") {
+        execFileSync(process.execPath, ["-e", "require('fs').writeFileSync('a.ts', 'new\\nextra\\n')"], { cwd });
+        git("add", "."); git("commit", "-m", "edit");
+        socket.send(JSON.stringify({ method: "turn/started", params: { threadId, turn: { id: turnId } } }));
+        socket.send(JSON.stringify({ method: "turn/completed", params: { threadId, turn: { id: turnId, status: "completed" } } }));
+        socket.send(JSON.stringify({ id: message.id, result: { turn: { id: turnId } } }));
+      } else socket.send(JSON.stringify({ id: message.id, result: { data: [{ id: turnId, status: "completed", items: [{ type: "commandExecution" }] }], nextCursor: null } }));
+    });
+    await f.rpc({ id: 2, method: "thread/read", params: { threadId, includeTurns: false } });
+    await f.rpc({ id: 3, method: "turn/start", params: { threadId } });
+    expect(await (await f.rpc({ id: 4, method: "mobile/turns/details", params: { threadId } })).json())
+      .toMatchObject({ result: { data: [{ loadedChangeStats: { additions: 2, deletions: 1 } }] } });
+  });
+
+  it("被拒绝的开始请求不把回合之间的改动算进下一回合", async () => {
+    const f = await fixture(); await f.init();
+    const threadId = "01a10be8-1507-7533-9a04-8a94dbe3f050";
+    const turnId = "01a10c0e-5b86-73b0-967d-842a63468fc5";
+    const cwd = join(f.root, "repo"); await mkdir(cwd);
+    const git = (...args: string[]) => execFileSync("git", args, { cwd, stdio: "pipe" });
+    git("init"); git("config", "user.email", "test@example.com"); git("config", "user.name", "Test");
+    await writeFile(join(cwd, "a.ts"), "old\n"); git("add", "."); git("commit", "-m", "init");
+    let attempts = 0;
+    f.respond((socket, message) => {
+      if (message.method === "thread/read") socket.send(JSON.stringify({ id: message.id, result: { thread: { id: threadId, cwd } } }));
+      else if (message.method === "turn/start") {
+        if (++attempts === 1) { socket.send(JSON.stringify({ id: message.id, error: { code: -32602, message: "rejected" } })); return; }
+        execFileSync(process.execPath, ["-e", "require('fs').writeFileSync('during.ts', 'during\\n')"], { cwd });
+        socket.send(JSON.stringify({ method: "turn/started", params: { threadId, turn: { id: turnId } } }));
+        socket.send(JSON.stringify({ method: "turn/completed", params: { threadId, turn: { id: turnId, status: "completed" } } }));
+        socket.send(JSON.stringify({ id: message.id, result: { turn: { id: turnId } } }));
+      } else socket.send(JSON.stringify({ id: message.id, result: { data: [{ id: turnId, status: "completed", items: [{ type: "commandExecution" }] }], nextCursor: null } }));
+    });
+    await f.rpc({ id: 2, method: "thread/read", params: { threadId } });
+    await f.rpc({ id: 3, method: "turn/start", params: { threadId } });
+    await writeFile(join(cwd, "between.ts"), "between\n");
+    await f.rpc({ id: 4, method: "turn/start", params: { threadId } });
+    expect(await (await f.rpc({ id: 5, method: "mobile/turns/details", params: { threadId } })).json())
+      .toMatchObject({ result: { data: [{ loadedChangeStats: { additions: 1, deletions: 0 } }] } });
+  });
+
+  it("捕获期间连接关闭时未发送请求应清掉基线", async () => {
+    const f = await fixture(); await f.init();
+    const threadId = "01a10be8-1507-7533-9a04-8a94dbe3f050";
+    const turnId = "01a10c0e-5b86-73b0-967d-842a63468fc5";
+    const cwd = join(f.root, "repo"); await mkdir(cwd);
+    const git = (...args: string[]) => execFileSync("git", args, { cwd, stdio: "pipe" });
+    git("init"); git("config", "user.email", "test@example.com"); git("config", "user.name", "Test");
+    await writeFile(join(cwd, "a.ts"), "old\n"); git("add", "."); git("commit", "-m", "init");
+    f.respond((socket, message) => {
+      if (message.method === "thread/read") socket.send(JSON.stringify({ id: message.id, result: { thread: { id: threadId, cwd } } }));
+      else if (message.method === "turn/start") {
+        execFileSync(process.execPath, ["-e", "require('fs').writeFileSync('during.ts', 'during\\n')"], { cwd });
+        socket.send(JSON.stringify({ method: "turn/started", params: { threadId, turn: { id: turnId } } }));
+        socket.send(JSON.stringify({ method: "turn/completed", params: { threadId, turn: { id: turnId, status: "completed" } } }));
+        socket.send(JSON.stringify({ id: message.id, result: { turn: { id: turnId } } }));
+      } else socket.send(JSON.stringify({ id: message.id, result: { data: [{ id: turnId, status: "completed", items: [{ type: "commandExecution" }] }], nextCursor: null } }));
+    });
+    await f.rpc({ id: 2, method: "thread/read", params: { threadId } });
+    const original = TurnChangeHistory.prototype.beforeStart;
+    const snapshot = vi.spyOn(TurnChangeHistory.prototype, "beforeStart").mockImplementationOnce(async function (this: TurnChangeHistory, ...args) {
+      await original.apply(this, args); f.connections.at(-1)!.terminate(); await wait();
+    });
+    try { expect((await f.rpc({ id: 3, method: "turn/start", params: { threadId } })).status).toBe(503); }
+    finally { snapshot.mockRestore(); }
+    expect(f.received.filter((request) => request.method === "turn/start")).toHaveLength(0);
+    await writeFile(join(cwd, "between.ts"), "between\n"); await f.init();
+    await f.rpc({ id: 4, method: "turn/start", params: { threadId } });
+    expect(await (await f.rpc({ id: 5, method: "mobile/turns/details", params: { threadId } })).json())
+      .toMatchObject({ result: { data: [{ loadedChangeStats: { additions: 1, deletions: 0 } }] } });
   });
 
   it("回合详情保留没有文件引用的内联图片并将上游分页限制在五回合", async () => {

@@ -2,8 +2,9 @@ import { createServer } from "node:http";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import WebSocket, { WebSocketServer } from "ws";
+import { TurnChangeHistory } from "../../server/turn-change-history.js";
 import { createGateway } from "../../server/gateway.js";
 
 const cleanups: Array<() => Promise<void>> = [];
@@ -103,6 +104,57 @@ describe("透明网关", () => {
 
     expect(await echoed).toBe(payload);
     client.close();
+  });
+
+  it("WebSocket 完整历史使用保存的回合统计", async () => {
+    const root = await mkdtemp(join(tmpdir(), "codex-ws-changes-"));
+    const http = createServer(); const upstream = new WebSocketServer({ server: http });
+    await new Promise<void>((resolve) => http.listen(0, "127.0.0.1", resolve));
+    const threadId = "01a10be8-1507-7533-9a04-8a94dbe3f050";
+    const turnId = "01a10c0e-5b86-73b0-967d-842a63468fc5";
+    upstream.on("connection", (socket) => socket.on("message", (raw) => {
+      const request = JSON.parse(raw.toString());
+      socket.send(JSON.stringify({ method: "turn/diff/updated", params: { threadId, turnId, diff: "diff --git a/a.ts b/a.ts\n--- a/a.ts\n+++ b/a.ts\n@@ -1 +1,2 @@\n-old\n+new\n+extra\n" } }));
+      socket.send(JSON.stringify({ id: request.id, result: { data: [{ id: turnId, status: "completed", items: [{ type: "commandExecution" }] }], nextCursor: null } }));
+    }));
+    const gateway = await createGateway({ host: "127.0.0.1", port: 0, mode: "external", codexHome: root,
+      upstreamUrl: `ws://127.0.0.1:${(http.address() as any).port}`, staticDir: null });
+    cleanups.push(async () => { await gateway.close(); await new Promise<void>((resolve) => http.close(() => resolve())); await rm(root, { recursive: true, force: true }); });
+    const client = new WebSocket(`ws://127.0.0.1:${gateway.port}/ws`);
+    await new Promise<void>((resolve) => client.once("open", resolve));
+    const response = new Promise<any>((resolve) => client.on("message", (raw) => {
+      const reply = JSON.parse(raw.toString()); if (reply.id === 8) resolve(reply);
+    }));
+    client.send(JSON.stringify({ id: 8, method: "thread/turns/list", params: { threadId, itemsView: "full", limit: 5 } }));
+    expect(await response).toMatchObject({ result: { data: [{ loadedChangeStats: { additions: 2, deletions: 1 } }] } });
+    client.close();
+  });
+
+  it("WebSocket 捕获后上游断开且未发送时清除 pending", async () => {
+    const root = await mkdtemp(join(tmpdir(), "codex-ws-unsent-"));
+    const http = createServer(); const upstream = new WebSocketServer({ server: http });
+    await new Promise<void>((resolve) => http.listen(0, "127.0.0.1", resolve));
+    let serverSocket: WebSocket | undefined; let starts = 0;
+    upstream.on("connection", (socket) => { serverSocket = socket; socket.on("message", () => starts++); });
+    const gateway = await createGateway({ host: "127.0.0.1", port: 0, mode: "external", codexHome: root,
+      upstreamUrl: `ws://127.0.0.1:${(http.address() as any).port}`, staticDir: null });
+    cleanups.push(async () => { await gateway.close(); await new Promise<void>((resolve) => http.close(() => resolve())); await rm(root, { recursive: true, force: true }); });
+    const threadId = "01a10be8-1507-7533-9a04-8a94dbe3f050";
+    const original = TurnChangeHistory.prototype.beforeStart;
+    let finished!: () => void; const prepared = new Promise<void>((resolve) => { finished = resolve; });
+    const snapshot = vi.spyOn(TurnChangeHistory.prototype, "beforeStart").mockImplementationOnce(async function (this: TurnChangeHistory, ...args) {
+      await original.apply(this, args); serverSocket!.terminate();
+      await new Promise((resolve) => setTimeout(resolve, 30)); finished();
+    });
+    const client = new WebSocket(`ws://127.0.0.1:${gateway.port}/ws`);
+    try {
+      await new Promise<void>((resolve) => client.once("open", resolve));
+      client.send(JSON.stringify({ id: 8, method: "turn/start", params: { threadId } }));
+      await prepared; await new Promise((resolve) => setTimeout(resolve, 30));
+      expect(starts).toBe(0);
+      const state = JSON.parse(await readFile(join(root, "codex-mobile-turn-changes", `${threadId}.json`), "utf8"));
+      expect(state.pending).toBeUndefined();
+    } finally { snapshot.mockRestore(); client.terminate(); }
   });
 
   it("拒绝错误的访问口令", async () => {
