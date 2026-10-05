@@ -17,6 +17,9 @@ export function AppIcon({
     | "copy"
     | "folder"
     | "folder-open"
+    | "file"
+    | "image"
+    | "location"
     | "maximize"
     | "menu"
     | "microphone"
@@ -34,8 +37,11 @@ export function AppIcon({
     back: <path d="M15 18l-6-6 6-6M9 12h11" />,
     close: <path d="m7 7 10 10M17 7 7 17" />,
     copy: <><rect x="8" y="8" width="11" height="11" rx="2" /><path d="M16 8V6a2 2 0 00-2-2H6a2 2 0 00-2 2v8a2 2 0 002 2h2" /></>,
+    file: <><path d="M6 3h8l4 4v14H6z" /><path d="M14 3v5h5" /></>,
     folder: <path d="M3 7a2 2 0 012-2h5l2 2h7a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />,
     "folder-open": <><path d="M3 10V7a2 2 0 012-2h5l2 2h7a2 2 0 012 2v1" /><path d="M3 10h18l-2 9H5a2 2 0 01-2-2z" /></>,
+    image: <><rect x="3" y="4" width="18" height="16" rx="2" /><circle cx="9" cy="9" r="2" /><path d="m4 17 5-5 4 4 2-2 5 5" /></>,
+    location: <><path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1116 0z" /><circle cx="12" cy="10" r="2.5" /></>,
     maximize: <path d="M9 4H4v5M15 4h5v5M9 20H4v-5M15 20h5v-5" />,
     menu: <path d="M5 7h14M5 12h14M5 17h14" />,
     microphone: <><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5 11a7 7 0 0014 0M12 18v3M9 21h6" /></>,

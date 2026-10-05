@@ -1,10 +1,11 @@
 import { createRef, type FormEvent } from "react";
-import { fireEvent, render, within } from "@testing-library/react";
+import { fireEvent, render, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { ConversationPage } from "../../src/features/conversation/ConversationPage";
 
 function renderComposer(
   onSubmit: (event: FormEvent) => void = () => undefined,
+  onSelectLocation: () => Promise<boolean> = async () => true,
 ) {
   return render(
     <ConversationPage
@@ -57,6 +58,7 @@ function renderComposer(
         onRemoveImage: () => undefined,
         onRemoveFile: () => undefined,
         onSelectImages: async () => undefined,
+        onSelectLocation,
         onOpenAgentSettings: () => undefined,
         onOpenPermissionSettings: () => undefined,
         onDraftChange: () => undefined,
@@ -68,6 +70,32 @@ function renderComposer(
 }
 
 describe("会话输入框最大化", () => {
+  it("加号菜单区分图片、文件和当前位置", async () => {
+    const onSelectLocation = vi.fn(async () => true);
+    const { container } = renderComposer(undefined, onSelectLocation);
+    const view = within(container);
+    const addButton = view.getByRole("button", { name: "添加附件" });
+
+    fireEvent.click(addButton);
+
+    expect(addButton.getAttribute("aria-expanded")).toBe("true");
+    const menu = view.getByRole("menu", { name: "附件菜单" });
+    expect(within(menu).getByRole("menuitem", { name: "图片" })).not.toBeNull();
+    expect(within(menu).getByRole("menuitem", { name: "文件" })).not.toBeNull();
+    const location = within(menu).getByRole("menuitem", { name: "当前位置" });
+    expect(view.getByLabelText("选择图片").getAttribute("accept")).toBe(
+      "image/png,image/jpeg,image/webp,image/gif",
+    );
+    expect(view.getByLabelText("选择文件").getAttribute("accept")).toBe("*/*");
+
+    fireEvent.click(location);
+
+    await waitFor(() => expect(onSelectLocation).toHaveBeenCalledOnce());
+    await waitFor(() =>
+      expect(view.queryByRole("menu", { name: "附件菜单" })).toBeNull(),
+    );
+  });
+
   it("在最大化与普通模式间切换时保留草稿", () => {
     const { container } = renderComposer();
     const view = within(container);

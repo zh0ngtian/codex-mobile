@@ -112,6 +112,7 @@ function renderConversation(
       onRemoveImage={() => undefined}
       onRemoveFile={() => undefined}
       onSelectImages={async () => undefined}
+      onSelectLocation={async () => false}
       onOpenAgentSettings={() => undefined}
       onOpenPermissionSettings={() => undefined}
       onDraftChange={composer.onDraftChange ?? (() => undefined)}
@@ -336,6 +337,7 @@ describe("会话详情历史分页", () => {
         onRemoveImage={() => undefined}
         onRemoveFile={() => undefined}
         onSelectImages={async () => undefined}
+        onSelectLocation={async () => false}
         onOpenAgentSettings={() => undefined}
         onOpenPermissionSettings={() => undefined}
         onDraftChange={() => undefined}

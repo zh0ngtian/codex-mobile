@@ -576,6 +576,27 @@ test("移动端选择器、线程恢复、Markdown、折叠与吸顶", async ({ 
 
   await page.addInitScript(() => {
     const now = Math.floor(Date.now() / 1000);
+    Object.defineProperty(navigator, "geolocation", {
+      configurable: true,
+      value: {
+        getCurrentPosition(success: PositionCallback) {
+          success({
+            coords: {
+              latitude: 31.230416,
+              longitude: 121.473701,
+              accuracy: 12.4,
+              altitude: null,
+              altitudeAccuracy: null,
+              heading: null,
+              speed: null,
+              toJSON: () => ({}),
+            },
+            timestamp: Date.now(),
+            toJSON: () => ({}),
+          });
+        },
+      },
+    });
     const longUserText =
       "# 用户标题\n\n**用户粗体**\n\n- 用户列表\n\n" +
       "请检查这个移动端界面，并参考附件中的视觉细节。\n".repeat(10);
@@ -1378,7 +1399,31 @@ test("移动端选择器、线程恢复、Markdown、折叠与吸顶", async ({ 
   await expect(page.getByText(/自定义/)).toHaveCount(0);
   await page.getByRole("button", { name: /自动审核/ }).click();
 
-  const imageInput = page.getByLabel("选择图片");
+  const addAttachment = page.getByRole("button", { name: "添加附件" });
+  await addAttachment.click();
+  await expect(addAttachment).toHaveAttribute("aria-expanded", "true");
+  const attachmentMenu = page.getByRole("menu", { name: "附件菜单" });
+  await expect(attachmentMenu).toBeVisible();
+  await expect(attachmentMenu.getByRole("menuitem", { name: "图片" })).toBeVisible();
+  await expect(attachmentMenu.getByRole("menuitem", { name: "文件" })).toBeVisible();
+  await expect(attachmentMenu.getByRole("menuitem", { name: "当前位置" })).toBeVisible();
+
+  const imageInput = page.getByLabel("选择图片", { exact: true });
+  const fileInput = page.getByLabel("选择文件", { exact: true });
+  await expect(imageInput).toHaveAttribute(
+    "accept",
+    "image/png,image/jpeg,image/webp,image/gif",
+  );
+  await expect(fileInput).toHaveAttribute("accept", "*/*");
+
+  await attachmentMenu.getByRole("menuitem", { name: "当前位置" }).click();
+  const composerInput = page.getByRole("textbox", { name: "向 Codex 提问" });
+  await expect(composerInput).toHaveValue(
+    "我的当前位置：[31.230416, 121.473701](https://maps.google.com/?q=31.230416,121.473701)（精度约 12 米）",
+  );
+  await expect(attachmentMenu).toHaveCount(0);
+  await composerInput.fill("");
+
   await imageInput.setInputFiles({
     name: "tiny.png",
     mimeType: "image/png",

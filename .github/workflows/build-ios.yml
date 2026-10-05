@@ -117,6 +117,7 @@ jobs:
             "https://github.com/syntax-tree/",
             "https://github.com/loock-ai/codex-mobile/releases/",
             "https://api.github.com/repos/loock-ai/codex-mobile/releases/",
+            "https://maps.google.com/",
             "https://react.dev/errors/",
           ];
           const allowedUrls = new Set([
@@ -286,8 +287,11 @@ jobs:
               -c "Set :NSMicrophoneUsageDescription 与 Codex 进行实时语音交互" \
               "$plist"
           /usr/libexec/PlistBuddy \
-            -c "Delete :NSLocationWhenInUseUsageDescription" \
-            "$plist" 2>/dev/null || true
+            -c "Add :NSLocationWhenInUseUsageDescription string 在你选择当前位置时将位置添加到消息" \
+            "$plist" 2>/dev/null \
+            || /usr/libexec/PlistBuddy \
+              -c "Set :NSLocationWhenInUseUsageDescription 在你选择当前位置时将位置添加到消息" \
+              "$plist"
           /usr/libexec/PlistBuddy \
             -c "Delete :NSCameraReactionEffectGesturesEnabledDefault" \
             "$plist" 2>/dev/null || true
@@ -709,6 +713,8 @@ jobs:
             -c 'Print :NSCameraUsageDescription' "$plist")"
           test -n "$(/usr/libexec/PlistBuddy \
             -c 'Print :NSMicrophoneUsageDescription' "$plist")"
+          test -n "$(/usr/libexec/PlistBuddy \
+            -c 'Print :NSLocationWhenInUseUsageDescription' "$plist")"
           if /usr/libexec/PlistBuddy \
             -c 'Print :NSAppTransportSecurity:NSAllowsArbitraryLoads' \
             "$plist" >/dev/null 2>&1; then
@@ -779,6 +785,9 @@ jobs:
             -c 'Print :NSCameraUsageDescription' "$app/Info.plist")"
           test -n "$(/usr/libexec/PlistBuddy \
             -c 'Print :NSMicrophoneUsageDescription' "$app/Info.plist")"
+          test -n "$(/usr/libexec/PlistBuddy \
+            -c 'Print :NSLocationWhenInUseUsageDescription' \
+            "$app/Info.plist")"
           test "$(/usr/libexec/PlistBuddy \
             -c 'Print :NSAppTransportSecurity:NSAllowsLocalNetworking' \
             "$app/Info.plist")" = "true"
@@ -788,9 +797,7 @@ jobs:
             echo "::error::Final iOS app still allows arbitrary network loads"
             exit 1
           fi
-          for key in \
-            ':NSLocationWhenInUseUsageDescription' \
-            ':UIBackgroundModes'; do
+          for key in ':UIBackgroundModes'; do
             if /usr/libexec/PlistBuddy -c "Print $key" \
               "$app/Info.plist" >/dev/null 2>&1; then
               echo "::error::Final iOS app contains unnecessary key $key"

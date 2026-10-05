@@ -106,6 +106,7 @@ function SkillComposer({ loading = false }: { loading?: boolean }) {
       onRemoveImage={() => undefined}
       onRemoveFile={() => undefined}
       onSelectImages={async () => undefined}
+      onSelectLocation={async () => false}
       onOpenAgentSettings={() => undefined}
       onOpenPermissionSettings={() => undefined}
       onDraftChange={setDraft}

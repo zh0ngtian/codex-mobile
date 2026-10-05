@@ -113,6 +113,12 @@ import {
   type DraftImage,
   type DraftFile,
 } from "./ui/attachments";
+import {
+  appendCurrentLocation,
+  currentLocationErrorMessage,
+  formatCurrentLocation,
+  requestCurrentPosition,
+} from "./ui/current-location";
 import { uploadFile } from "./backends/file-upload";
 import {
   runWorkspaceBootstrap,
@@ -3190,6 +3196,27 @@ function BackendWorkspace({
     }
   }
 
+  async function selectCurrentLocation() {
+    if (
+      historyEdit ||
+      (active?.id && activeThreadAccessMode !== "interactive")
+    ) return false;
+    const draftContext = draftContextGenerationRef.current;
+    try {
+      const position = await requestCurrentPosition();
+      if (draftContext !== draftContextGenerationRef.current) return false;
+      setDraft((current) =>
+        appendCurrentLocation(current, formatCurrentLocation(position)),
+      );
+      setError("");
+      return true;
+    } catch (reason) {
+      if (draftContext !== draftContextGenerationRef.current) return false;
+      setError(currentLocationErrorMessage(reason));
+      return false;
+    }
+  }
+
   async function interrupt() {
     if (activeThreadAccessMode !== "interactive") return;
     const turn = active?.turns?.at(-1);
@@ -4036,6 +4063,7 @@ function BackendWorkspace({
             })
           }
           onSelectImages={selectImages}
+          onSelectLocation={selectCurrentLocation}
           onOpenAgentSettings={() => setPicker("agent")}
           onOpenPermissionSettings={() => setPicker("permission")}
           onDraftChange={setDraft}

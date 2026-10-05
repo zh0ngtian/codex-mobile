@@ -215,6 +215,12 @@ describe("移动 App 内置前端流水线", () => {
     expect(buildFrontend).toContain(
       "https://github.com/loock-ai/codex-mobile/releases/",
     );
+    expect(
+      runAssetScanner(
+        scanner,
+        'const location = "https://maps.google.com/?q=31.230416,121.473701";',
+      ).status,
+    ).toBe(0);
     expect(runAssetScanner(scanner, 'const socket = "wss://gateway.example/ws";').status)
       .not.toBe(0);
     expect(
@@ -241,6 +247,10 @@ describe("移动 App 内置前端流水线", () => {
     expect(hardenHost).toContain("android.permission.CAMERA");
     expect(hardenHost).toContain("android.permission.RECORD_AUDIO");
     expect(hardenHost).toContain("android.permission.POST_NOTIFICATIONS");
+    expect(hardenHost).toContain("android.permission.ACCESS_COARSE_LOCATION");
+    expect(hardenHost).toContain("android.permission.ACCESS_FINE_LOCATION");
+    expect(hardenHost).toContain("setGeolocationEnabled(true)");
+    expect(hardenHost).toContain("onGeolocationPermissionsShowPrompt");
     expect(hardenHost).toContain("onPermissionRequest");
     expect(hardenHost).toContain("PermissionRequest.RESOURCE_AUDIO_CAPTURE");
     expect(hardenHost).toContain("fun realtimeAudioStart()");
@@ -691,6 +701,12 @@ describe("移动 App 内置前端流水线", () => {
     expect(buildFrontend).toContain(
       "https://github.com/loock-ai/codex-mobile/releases/",
     );
+    expect(
+      runAssetScanner(
+        scanner,
+        'const location = "https://maps.google.com/?q=31.230416,121.473701";',
+      ).status,
+    ).toBe(0);
     expect(runAssetScanner(scanner, 'const socket = "ws://gateway.example/ws";').status)
       .not.toBe(0);
     expect(
@@ -704,6 +720,8 @@ describe("移动 App 内置前端流水线", () => {
       "Delete :NSAppTransportSecurity:NSAllowsArbitraryLoads",
     );
     expect(hardenHost).toContain("Delete :UIBackgroundModes");
+    expect(hardenHost).toContain("Add :NSLocationWhenInUseUsageDescription");
+    expect(hardenHost).not.toContain("Delete :NSLocationWhenInUseUsageDescription");
     expect(hardenHost).toContain("developerExtrasEnabled");
     expect(hardenHost).toContain("case .microphone");
     expect(hardenHost).toContain("return .grant");

@@ -473,6 +473,13 @@ button, a, summary, [role="button"] { -webkit-tap-highlight-color: transparent; 
 .skill-mention-status { min-height: 52px; color: #777; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 13px; }
 .composer-wrap-maximized .skill-mention-menu { position: static; flex: 0 0 auto; width: auto; max-height: min(22dvh, 180px); margin: 0 0 8px; }
 .composer { min-height: 60px; border-radius: 31px; background: #f4f4f4; display: grid; grid-template-columns: 46px minmax(0,1fr) 34px 44px; align-items: center; padding: 5px 8px; }
+.attachment-picker { position: relative; display: grid; place-items: center; }
+.attachment-menu { position: absolute; z-index: 8; left: 0; bottom: calc(100% + 10px); width: 176px; overflow: hidden; border: 1px solid rgba(0,0,0,.06); border-radius: 18px; background: rgba(255,255,255,.98); box-shadow: 0 12px 36px rgba(0,0,0,.16); padding: 6px; backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); }
+.attachment-menu button { width: 100%; min-height: 48px; border: 0; border-radius: 13px; background: transparent; display: grid; grid-template-columns: 28px minmax(0,1fr); align-items: center; gap: 9px; padding: 7px 10px; color: #222; text-align: left; font-size: 16px; }
+.attachment-menu button:active { background: #f1f1f1; }
+.attachment-menu button:disabled { opacity: .55; }
+.attachment-menu svg { width: 23px; height: 23px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.attachment-menu .action-spinner { width: 19px; height: 19px; justify-self: center; }
 .composer textarea { border: 0; resize: none; outline: none; background: transparent; padding: 11px 7px; max-height: 120px; font-size: 16px; }
 .composer textarea:disabled { color: #888; opacity: .65; }
 .composer-size-button { width: 34px; height: 34px; border: 0; border-radius: 50%; background: transparent; color: #666; display: grid; place-items: center; padding: 0; }

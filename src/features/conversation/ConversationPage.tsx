@@ -188,6 +188,7 @@ export function ConversationPage({
   onRemoveImage,
   onRemoveFile,
   onSelectImages,
+  onSelectLocation,
   onOpenAgentSettings,
   onOpenPermissionSettings,
   onDraftChange,
@@ -250,6 +251,7 @@ export function ConversationPage({
   onRemoveImage: (imageId: string) => void;
   onRemoveFile: (fileId: string) => void;
   onSelectImages: (files: FileList | null) => Promise<void>;
+  onSelectLocation: () => Promise<boolean>;
   onOpenAgentSettings: () => void;
   onOpenPermissionSettings: () => void;
   onDraftChange: (value: string) => void;
@@ -273,6 +275,8 @@ export function ConversationPage({
   const [statusOpen, setStatusOpen] = useState(false);
   const [actionsOpen, setActionsOpen] = useState(false);
   const [composerMaximized, setComposerMaximized] = useState(false);
+  const [attachmentMenuOpen, setAttachmentMenuOpen] = useState(false);
+  const [locationPending, setLocationPending] = useState(false);
   const [queuedFollowUpEdit, setQueuedFollowUpEdit] = useState<{
     id: string;
     text: string;
@@ -282,6 +286,8 @@ export function ConversationPage({
   );
   const [activeSkillIndex, setActiveSkillIndex] = useState(0);
   const composerInputRef = useRef<HTMLTextAreaElement>(null);
+  const photoInputRef = useRef<HTMLInputElement>(null);
+  const attachmentPickerRef = useRef<HTMLDivElement>(null);
   const turns = useMemo(
     () => groupConversationTurns(active.turns ?? []),
     [active.turns],
@@ -299,6 +305,7 @@ export function ConversationPage({
   );
   useEffect(() => {
     setComposerMaximized(false);
+    setAttachmentMenuOpen(false);
     setSkillMention(null);
     setQueuedFollowUpEdit(null);
   }, [active.id, backendId]);
@@ -314,6 +321,20 @@ export function ConversationPage({
     if (!composerMaximized) return;
     composerInputRef.current?.focus({ preventScroll: true });
   }, [composerMaximized]);
+
+  useEffect(() => {
+    if (!attachmentMenuOpen) return;
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      if (
+        event.target instanceof Node &&
+        !attachmentPickerRef.current?.contains(event.target)
+      ) {
+        setAttachmentMenuOpen(false);
+      }
+    };
+    document.addEventListener("pointerdown", closeOnOutsidePointer);
+    return () => document.removeEventListener("pointerdown", closeOnOutsidePointer);
+  }, [attachmentMenuOpen]);
   useEffect(() => {
     setActiveSkillIndex(0);
   }, [skillMention?.query, skills, plugins]);
@@ -633,10 +654,14 @@ export function ConversationPage({
         onSubmit={(event) => {
           if (historyEdit) event.preventDefault();
           else onSubmit(event);
+          setAttachmentMenuOpen(false);
           setComposerMaximized(false);
         }}
         onKeyDown={(event) => {
-          if (event.key === "Escape" && composerMaximized) {
+          if (event.key === "Escape" && attachmentMenuOpen) {
+            event.preventDefault();
+            setAttachmentMenuOpen(false);
+          } else if (event.key === "Escape" && composerMaximized) {
             event.preventDefault();
             setComposerMaximized(false);
           }
@@ -948,34 +973,109 @@ export function ConversationPage({
           </section>
         )}
         <div className="composer">
-          <input
-            ref={imageInputRef}
-            className="visually-hidden"
-            type="file"
-            accept="*/*"
-            multiple
-            aria-label={t("选择图片或视频")}
-            onChange={(event) => {
-              const input = event.currentTarget;
-              void onSelectImages(input.files).finally(() => {
-                input.value = "";
-              });
-            }}
-          />
-          <button
-            type="button"
-            className="add-button"
-            aria-label={t("添加附件")}
-            disabled={
-              !interactive ||
-              realtimeActive ||
-              imageReading ||
-              Boolean(historyEdit)
-            }
-            onClick={() => imageInputRef.current?.click()}
-          >
-            ＋
-          </button>
+          <div className="attachment-picker" ref={attachmentPickerRef}>
+            <input
+              ref={photoInputRef}
+              className="visually-hidden"
+              type="file"
+              accept="image/png,image/jpeg,image/webp,image/gif"
+              multiple
+              aria-label={t("选择图片")}
+              onChange={(event) => {
+                const input = event.currentTarget;
+                void onSelectImages(input.files).finally(() => {
+                  input.value = "";
+                });
+              }}
+            />
+            <input
+              ref={imageInputRef}
+              className="visually-hidden"
+              type="file"
+              accept="*/*"
+              multiple
+              aria-label={t("选择文件")}
+              onChange={(event) => {
+                const input = event.currentTarget;
+                void onSelectImages(input.files).finally(() => {
+                  input.value = "";
+                });
+              }}
+            />
+            <button
+              type="button"
+              className="add-button"
+              aria-label={t("添加附件")}
+              aria-controls="attachment-menu"
+              aria-expanded={attachmentMenuOpen}
+              disabled={
+                !interactive ||
+                realtimeActive ||
+                imageReading ||
+                locationPending ||
+                Boolean(historyEdit)
+              }
+              onClick={() => setAttachmentMenuOpen((current) => !current)}
+            >
+              ＋
+            </button>
+            {attachmentMenuOpen && (
+              <div
+                id="attachment-menu"
+                className="attachment-menu"
+                role="menu"
+                aria-label={t("附件菜单")}
+              >
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={locationPending}
+                  onClick={() => {
+                    setAttachmentMenuOpen(false);
+                    photoInputRef.current?.click();
+                  }}
+                >
+                  <AppIcon name="image" />
+                  <span>{t("图片")}</span>
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={locationPending}
+                  onClick={() => {
+                    setAttachmentMenuOpen(false);
+                    imageInputRef.current?.click();
+                  }}
+                >
+                  <AppIcon name="file" />
+                  <span>{t("文件")}</span>
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={locationPending}
+                  onClick={() => {
+                    setLocationPending(true);
+                    void onSelectLocation()
+                      .then((selected) => {
+                        if (selected) {
+                          setAttachmentMenuOpen(false);
+                          composerInputRef.current?.focus({ preventScroll: true });
+                        }
+                      })
+                      .finally(() => setLocationPending(false));
+                  }}
+                >
+                  {locationPending ? (
+                    <i className="action-spinner" aria-hidden="true" />
+                  ) : (
+                    <AppIcon name="location" />
+                  )}
+                  <span>{locationPending ? t("正在定位…") : t("当前位置")}</span>
+                </button>
+              </div>
+            )}
+          </div>
           <textarea
             ref={composerInputRef}
             aria-label={t("向 Codex 提问")}
