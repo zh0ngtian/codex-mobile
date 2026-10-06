@@ -85,7 +85,7 @@ export function loadCachedImage(
   const fetchImage = async (): Promise<LoadedImage> => {
     if (backend && (!existingSupport() || await existingSupport())) {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), thumbnail ? 30_000 : 180_000);
+      const timeout = setTimeout(() => controller.abort(), thumbnail ? 30_000 : 300_000);
       try {
         const response = await fetch(remoteImagePreviewUrl(backend, source, thumbnail), {
           mode: "cors", cache: "no-store", signal: controller.signal,

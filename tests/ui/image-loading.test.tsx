@@ -33,7 +33,7 @@ describe("会话图片按需加载", () => {
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
-  it("弱网原图超过30秒仍可继续读取，180秒后结束等待", async () => {
+  it("弱网原图共享带宽超过三分钟仍继续读取，五分钟后结束等待", async () => {
     vi.useFakeTimers();
     const fetcher = vi.fn((_url: string, init: RequestInit) => new Promise((_resolve, reject) => {
       init.signal!.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
@@ -41,9 +41,9 @@ describe("会话图片按需加载", () => {
     vi.stubGlobal("fetch", fetcher);
     const loading = loadCachedImage({ request: vi.fn() } as never, image.source, "image/png", backend, false);
     const failure = expect(loading).rejects.toThrow("aborted");
-    await vi.advanceTimersByTimeAsync(31_000);
+    await vi.advanceTimersByTimeAsync(181_000);
     expect(fetcher.mock.calls[0][1].signal!.aborted).toBe(false);
-    await vi.advanceTimersByTimeAsync(149_001);
+    await vi.advanceTimersByTimeAsync(119_001);
     await failure;
   });
 
