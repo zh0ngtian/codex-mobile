@@ -12,6 +12,7 @@ interface ImageCache {
   bytes: number;
 }
 const caches = new WeakMap<AppServerClient, ImageCache>();
+const gatewayCaches = new Map<string, ImageCache>();
 const cacheBytesLimit = 8 * 1024 * 1024;
 const cacheEntryLimit = 128;
 const cacheTtl = 60_000;
@@ -31,16 +32,21 @@ function missingImage(reason: unknown) {
 }
 
 export function loadCachedImage(
-  client: AppServerClient,
+  client: AppServerClient | null,
   source: string,
   mime: string,
   backend?: BackendConfig | null,
   thumbnail = true,
 ): Promise<LoadedImage> {
-  let cache = caches.get(client);
+  const gatewayKey = JSON.stringify([backend?.baseUrl, backend?.token]);
+  let cache = client ? caches.get(client) : backend ? gatewayCaches.get(gatewayKey) : undefined;
   if (!cache) {
     cache = { entries: new Map(), pending: new Map(), gateways: new Map(), bytes: 0 };
-    caches.set(client, cache);
+    if (client) caches.set(client, cache);
+    else if (backend) {
+      gatewayCaches.set(gatewayKey, cache);
+      while (gatewayCaches.size > 8) gatewayCaches.delete(gatewayCaches.keys().next().value!);
+    }
   }
   const key = JSON.stringify([backend?.baseUrl, backend?.token, source, thumbnail]);
   const saved = cache.entries.get(key);
@@ -55,7 +61,6 @@ export function loadCachedImage(
   const inflight = cache.pending.get(key);
   if (inflight) return inflight;
 
-  const gatewayKey = JSON.stringify([backend?.baseUrl, backend?.token]);
   const rememberSupport = (promise: Promise<boolean>) => {
     cache!.gateways.set(gatewayKey, { promise, expiresAt: Date.now() + cacheTtl });
     while (cache!.gateways.size > 8) cache!.gateways.delete(cache!.gateways.keys().next().value!);
@@ -97,6 +102,7 @@ export function loadCachedImage(
         if (!(reason instanceof TypeError) || await probeSupport()) throw reason;
       } finally { clearTimeout(timeout); }
     }
+    if (!client) throw new Error("App server connection unavailable");
     const result = await client.request<{ dataBase64: string }>("fs/readFile", { path: source }, { timeoutMs: 180_000 });
     return { src: `data:${mime};base64,${result.dataBase64}`, size: Math.floor(result.dataBase64.length * 3 / 4), thumbnail: false };
   };

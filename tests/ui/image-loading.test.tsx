@@ -23,6 +23,16 @@ function blobResponse(text: string, status = 200) {
 }
 
 describe("会话图片按需加载", () => {
+  it("会话尚在重连时仍可通过 HTTP 打开图片文件", async () => {
+    const fetcher = vi.fn().mockResolvedValue(blobResponse("image"));
+    vi.stubGlobal("fetch", fetcher);
+    render(<RemoteFileLink href="/tmp/reconnecting.png" backend={backend} client={null}>照片</RemoteFileLink>);
+    fireEvent.click(screen.getByRole("link", { name: "照片" }));
+    await screen.findByRole("img", { name: "reconnecting.png" });
+    await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(2));
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
   it("弱网原图超过30秒仍可继续读取，180秒后结束等待", async () => {
     vi.useFakeTimers();
     const fetcher = vi.fn((_url: string, init: RequestInit) => new Promise((_resolve, reject) => {
@@ -51,6 +61,9 @@ describe("会话图片按需加载", () => {
     expect(screen.getByText("正在加载原图…")).not.toBeNull();
     expect(new URL(screen.getByRole("link", { name: "下载图片" }).getAttribute("href")!).searchParams.get("path")).toBe("/tmp/照片.png");
     view.rerender(<RemoteFileLink href="/tmp/照片.png" backend={{ ...backend }} client={client}>照片</RemoteFileLink>);
+    view.rerender(<RemoteFileLink href="/tmp/照片.png" backend={backend} client={null}>照片</RemoteFileLink>);
+    expect(screen.getByRole("img").getAttribute("src")).toContain("c21hbGw=");
+    view.rerender(<RemoteFileLink href="/tmp/照片.png" backend={backend} client={{ request } as never}>照片</RemoteFileLink>);
     expect(fetcher).toHaveBeenCalledTimes(2);
     expect(request).not.toHaveBeenCalled();
     await act(async () => original(blobResponse("original")));

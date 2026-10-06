@@ -225,6 +225,8 @@ function RemoteImageFileSheet({ path, client, backend, onClose }: {
   const [original, setOriginal] = useState<LoadedImage | null>(null);
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
+  const clientRef = useRef(client);
+  clientRef.current = client;
   const name = path.split("/").at(-1) || t("图片");
   const retry = () => setAttempt(value => value + 1);
   useEffect(() => {
@@ -233,16 +235,16 @@ function RemoteImageFileSheet({ path, client, backend, onClose }: {
     setPreview(null);
     setOriginal(null);
     void (async () => {
-      if (!client) throw new Error(t("尚未连接 app-server"));
-      const thumbnail = await loadCachedImage(client, path, imageMime(path), backend);
+      const loadClient = clientRef.current;
+      const thumbnail = await loadCachedImage(loadClient, path, imageMime(path), backend);
       if (cancelled) return;
       setPreview(thumbnail);
       if (!thumbnail.thumbnail) { setOriginal(thumbnail); return; }
-      const full = await loadCachedImage(client, path, imageMime(path), backend, false);
+      const full = await loadCachedImage(loadClient, path, imageMime(path), backend, false);
       if (!cancelled) setOriginal(full);
     })().catch(reason => { if (!cancelled) setError(reason instanceof Error ? reason.message : String(reason)); });
     return () => { cancelled = true; };
-  }, [client, path, backend.baseUrl, backend.token, attempt]);
+  }, [path, backend.baseUrl, backend.token, attempt]);
   const downloadHref = remoteFileDownloadUrl(backend, path);
   if (preview) return <ImagePreviewSheet
     src={original?.src ?? preview.src} name={name} downloadHref={downloadHref} onClose={onClose}
