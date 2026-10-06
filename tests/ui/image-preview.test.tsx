@@ -51,6 +51,17 @@ describe("图片放大预览", () => {
     expect(url.searchParams.get("token")).toBe(backend.token);
     expect(download.getAttribute("download")).toBe("斗兽场照片_裙摆加长.png");
   });
+  it("会话轮询重绘最终回复时保留已打开的文件预览", async () => {
+    const client = { request: vi.fn().mockResolvedValue({ dataBase64: "iVBORw0KGgo=" }) } as any;
+    const turn = { id: "refresh-photo", status: "completed", items: [{ id: "photo-answer", type: "agentMessage",
+      text: "[照片.png](/Users/test/照片.png)" }] };
+    const { rerender } = render(<TurnCard client={client} backend={backend} turn={turn} />);
+    fireEvent.click(screen.getByRole("link", { name: "照片.png" }));
+    await screen.findByRole("dialog", { name: "图片预览" });
+    rerender(<TurnCard client={client} backend={backend} turn={{ ...turn, items: [...turn.items] }} />);
+    expect(screen.getByRole("dialog", { name: "图片预览" })).not.toBeNull();
+    expect(client.request).toHaveBeenCalledTimes(1);
+  });
   it("普通电脑文件的下载同样使用网关地址", async () => {
     render(<RemoteFileLink href="/Users/test/report.txt" backend={backend}
       client={{ request: vi.fn().mockResolvedValue({ dataBase64: window.btoa("report") }) } as any}>

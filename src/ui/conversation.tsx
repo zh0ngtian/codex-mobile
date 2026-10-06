@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { createContext, useContext, type ComponentProps, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import { t } from "../i18n";
 import remarkGfm from "remark-gfm";
@@ -936,60 +936,52 @@ export function groupConversationTurns(
   return groups;
 }
 
+type MarkdownRenderers = {
+  renderImage?: (source: string, alt: string) => ReactNode;
+  renderLink?: (href: string, children: ReactNode) => ReactNode;
+};
+
+const MarkdownRendererContext = createContext<MarkdownRenderers>({});
+
+function MarkdownCodeBlock({ children }: { children?: ReactNode }) {
+  const code = reactNodeText(children).replace(/^\n/, "").replace(/\n$/, "");
+  return (
+    <div className="markdown-code-block">
+      <pre>{children}</pre>
+      <CopyButton text={code} label={t("复制代码块")} className="code-block-copy" />
+    </div>
+  );
+}
+
+function MarkdownImage({ node: _node, ...props }: ComponentProps<"img"> & { node?: unknown }) {
+  const { renderImage } = useContext(MarkdownRendererContext);
+  return renderImage ? <>{renderImage(props.src ?? "", props.alt ?? t("图片"))}</> : <img {...props} />;
+}
+
+function MarkdownLink({ node: _node, ...props }: ComponentProps<"a"> & { node?: unknown }) {
+  const { renderLink } = useContext(MarkdownRendererContext);
+  return renderLink ? <>{renderLink(props.href ?? "", props.children)}</> : <a {...props} />;
+}
+
+// 组件类型保持稳定，轮询更新只重绘内容，不卸载文件预览和图片交互状态。
+const markdownComponents = { pre: MarkdownCodeBlock, img: MarkdownImage, a: MarkdownLink };
+
 export function MarkdownMessage({
   text,
   renderImage,
   renderLink,
   className = "",
-}: {
+}: MarkdownRenderers & {
   text: string;
-  renderImage?: (source: string, alt: string) => ReactNode;
-  renderLink?: (href: string, children: ReactNode) => ReactNode;
   className?: string;
 }) {
-  const components = {
-    pre: ({ children }: { children?: ReactNode }) => {
-      const code = reactNodeText(children)
-        .replace(/^\n/, "")
-        .replace(/\n$/, "");
-      return (
-        <div className="markdown-code-block">
-          <pre>{children}</pre>
-          <CopyButton
-            text={code}
-            label={t("复制代码块")}
-            className="code-block-copy"
-          />
-        </div>
-      );
-    },
-    ...(renderImage
-      ? {
-          img: ({ src, alt }: { src?: string; alt?: string }) => (
-            <>{renderImage(src ?? "", alt ?? t("图片"))}</>
-          ),
-        }
-      : {}),
-    ...(renderLink
-      ? {
-          a: ({
-            href,
-            children,
-          }: {
-            href?: string;
-            children?: ReactNode;
-          }) => <>{renderLink(href ?? "", children)}</>,
-        }
-      : {}),
-  };
   return (
-    <div className={`markdown-body ${className}`.trim()}>
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
-        components={components}
-      >
-        {text}
-      </ReactMarkdown>
-    </div>
+    <MarkdownRendererContext.Provider value={{ renderImage, renderLink }}>
+      <div className={`markdown-body ${className}`.trim()}>
+        <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+          {text}
+        </ReactMarkdown>
+      </div>
+    </MarkdownRendererContext.Provider>
   );
 }
