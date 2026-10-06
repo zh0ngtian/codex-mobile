@@ -7,6 +7,7 @@ import WebSocket from "ws";
 import { TurnChangeHistory } from "./turn-change-history.js";
 import { compactTurnDetails } from "./turn-details.js";
 import { isNavigationResume } from "./rpc-replay.js";
+import { InlineImages } from "./inline-images.js";
 
 export interface RpcMessage {
   id?: string | number;
@@ -135,11 +136,12 @@ class Session {
   pong = true;
   closed = false;
   storeQueue: Promise<void> = Promise.resolve();
+  notificationQueue: Promise<void> = Promise.resolve();
   storedOperations = 0;
   storageBytes = 0;
   invalidatedSocket?: WebSocket;
 
-  constructor(readonly id: string, private upstreamUrl: string, private root: string, private changeHistory: TurnChangeHistory) {
+  constructor(readonly id: string, private upstreamUrl: string, private root: string, private changeHistory: TurnChangeHistory, private images: InlineImages) {
     this.loadPromise = this.load();
   }
 
@@ -255,7 +257,15 @@ class Session {
       socket.on("pong", () => { this.pong = true; });
       socket.on("message", (raw) => {
         if (this.socket !== socket) return;
-        try { this.receive(JSON.parse(raw.toString())); } catch { socket.terminate(); }
+        try {
+          const message = JSON.parse(raw.toString());
+          if (message.method && message.id == null && !message.method.startsWith("thread/realtime/")) {
+            this.notificationQueue = this.notificationQueue.then(async () => {
+              const projected = await this.images.notification(message);
+              if (this.socket === socket) this.receive(projected);
+            }).catch(() => { socket.terminate(); });
+          } else this.receive(message);
+        } catch { socket.terminate(); }
       });
       socket.on("error", () => reject(new HttpError(503, "App-server unavailable")));
       socket.on("close", () => {
@@ -595,6 +605,9 @@ class Session {
           }
           else result = await this.exchange(message, submittedSocket);
         }
+        if (result.error == null && result.result && typeof result.result === "object" && ["thread/resume", "thread/read", "thread/turns/list", "thread/items/list", "mobile/turns/details"].includes(message.method ?? "")) {
+          result = { ...result, result: await this.images.result(result.result as Record<string, any>) };
+        }
         if (message.method === "turn/start" && result.error != null && typeof message.params?.threadId === "string") {
           await this.changeHistory.cancelStart(message.params.threadId);
         }
@@ -664,8 +677,10 @@ export class HttpSessions {
   private timer: NodeJS.Timeout;
   private root: string;
   private changeHistory: TurnChangeHistory;
+  private images: InlineImages;
   constructor(private options: { upstreamUrl: string; codexHome?: string; changeHistory?: TurnChangeHistory }) {
     this.root = join(options.codexHome ?? process.env.CODEX_HOME ?? join(homedir(), ".codex"), "codex-mobile-http");
+    this.images = new InlineImages(join(options.codexHome ?? process.env.CODEX_HOME ?? join(homedir(), ".codex"), "codex-mobile-inline-images"));
     this.changeHistory = options.changeHistory ?? new TurnChangeHistory(options.codexHome ?? process.env.CODEX_HOME ?? join(homedir(), ".codex"));
     this.timer = setInterval(() => {
       for (const [id, session] of this.sessions) {
@@ -683,7 +698,7 @@ export class HttpSessions {
     const existing = this.sessions.get(id);
     if (existing) return existing;
     if (this.sessions.size >= MAX_SESSIONS) throw new HttpError(429, "Too many sessions");
-    const session = new Session(id, this.options.upstreamUrl, this.root, this.changeHistory);
+    const session = new Session(id, this.options.upstreamUrl, this.root, this.changeHistory, this.images);
     // Loading errors are returned by APIs rather than emitted as unhandled rejections.
     session.loadPromise.catch(() => {});
     this.sessions.set(id, session);

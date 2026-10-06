@@ -419,7 +419,7 @@ export function imageSourcesForItem(
         return [
           {
             source: part.url,
-            name: imageName(part.url),
+            name: part.name || imageName(part.url),
             local: !/^(data:|https?:)/i.test(part.url),
           },
         ];

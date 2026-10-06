@@ -97,10 +97,12 @@ export function buildEditedHistoryInput(
   target: HistoricalMessageEditTarget,
   text: string,
 ): HistoricalUserInput[] {
-  const input = target.input.map((part) =>
+  const input: HistoricalUserInput[] = target.input.map((part) =>
     part.type === "text"
       ? { ...part, text_elements: [] }
-      : { ...part },
+      : part.type === "image" && typeof part.url === "string" && /^(?:\/|[a-z]:[\\/])/i.test(part.url)
+        ? { type: "localImage", path: part.url }
+        : { ...part },
   );
   if (target.primaryTextIndex >= 0) {
     if (text) {

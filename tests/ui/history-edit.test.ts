@@ -8,6 +8,12 @@ import { AppServerRpcError } from "../../src/app-server/client";
 import { CONVERSATION_TITLE_REQUEST } from "../../src/app-server/conversation-title";
 
 describe("历史消息编辑", () => {
+  it("网关图片引用重发为 localImage，不把本地路径当远程 URL", () => {
+    const target = createHistoricalMessageEditTarget([{ id: "t", status: "completed", items: [{ id: "u", type: "userMessage", content: [
+      { type: "text", text: "原要求" }, { type: "image", url: "/cache/image-hash.jpg", name: "图片" },
+    ] }] }], "t")!;
+    expect(buildEditedHistoryInput(target, "新要求")[1]).toEqual({ type: "localImage", path: "/cache/image-hash.jpg" });
+  });
   const turns = [
     {
       id: "turn-a",

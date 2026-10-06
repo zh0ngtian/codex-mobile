@@ -7,6 +7,12 @@ import {
   within,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+it("网关缓存图片引用保留用户可读名称", () => {
+  expect(imageSourcesForItem({ type: "userMessage", content: [
+    { type: "image", url: "/cache/image-abcdef.jpg", name: "图片" },
+  ] })).toEqual([{ source: "/cache/image-abcdef.jpg", name: "图片", local: true }]);
+});
 import {
   formatMessageTimestamp,
   receivedItemCharacterCount,

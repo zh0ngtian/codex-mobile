@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import WebSocket, { WebSocketServer } from "ws";
+import sharp from "sharp";
 import { TurnChangeHistory } from "../../server/turn-change-history.js";
 import { createGateway, type Gateway } from "../../server/gateway.js";
 
@@ -50,6 +51,44 @@ async function fixture(autoPong = true) {
 }
 
 describe("HTTP 会话", () => {
+  it("图片会话的首次和补页文字响应保留正文，原图改为可鉴权预览的引用", async () => {
+    const f = await fixture(); await f.init();
+    const pixels = await sharp({ create: { width: 1200, height: 1000, channels: 3, background: "orange" } }).jpeg().toBuffer();
+    const original = Buffer.concat([pixels, Buffer.alloc(2 * 1024 * 1024)]);
+    const url = `data:image/jpeg;base64,${original.toString("base64")}`;
+    const user = { id: "user", type: "userMessage", content: [{ type: "text", text: "裙摆延长，其他部分不变" }, { type: "image", url }, { type: "image", url }] };
+    const turn = { id: "turn", status: "completed", items: [user, { id: "final", type: "agentMessage", text: "已完成：[原图](/tmp/原图.png)", phase: "final_answer" }] };
+    f.respond((socket, message) => socket.send(JSON.stringify({ id: message.id, result: message.method === "thread/resume"
+      ? { thread: { id: "t", turns: [] }, model: "model", initialTurnsPage: { data: [turn], nextCursor: "older" } }
+      : { data: [turn], nextCursor: "older" } })));
+    for (const method of ["thread/resume", "thread/turns/list"]) {
+      const response = await f.rpc({ id: method, method, params: { threadId: "t", excludeTurns: true, initialTurnsPage: { limit: 5, itemsView: "summary" } } });
+      const raw = await response.text(); expect(Buffer.byteLength(raw)).toBeLessThan(32 * 1024);
+      const result = JSON.parse(raw).result; const page = result.initialTurnsPage ?? result;
+      expect(page.nextCursor).toBe("older"); expect(page.data[0].items[1].text).toContain("已完成");
+      const parts = page.data[0].items[0].content; expect(parts[0].text).toBe("裙摆延长，其他部分不变");
+      expect(parts[1].name).toBe("图片"); expect(parts[1].url).toBe(parts[2].url);
+      expect((await readFile(parts[1].url)).equals(original)).toBe(true);
+      const preview = new URL(f.url("images/preview")); preview.searchParams.set("path", parts[1].url); preview.searchParams.set("thumbnail", "1");
+      expect((await fetch(preview.toString().replace("token=secret", "token=wrong"))).status).toBe(401);
+      const thumbnail = await fetch(preview); expect(thumbnail.status).toBe(200);
+      expect(await sharp(Buffer.from(await thumbnail.arrayBuffer())).metadata()).toMatchObject({ width: 640, height: 533 });
+      preview.searchParams.delete("thumbnail"); expect(Buffer.from(await (await fetch(preview)).arrayBuffer()).equals(original)).toBe(true);
+    }
+  });
+
+  it("实时用户图片通知在事件摘要截断前转换，保留原图和通知顺序", async () => {
+    const f = await fixture(); await f.init();
+    const original = Buffer.alloc(100_000, 1);
+    f.send({ method: "item/started", params: { threadId: "t", turnId: "turn", item: { id: "i", type: "userMessage", content: [{ type: "image", url: `data:image/png;base64,${original.toString("base64")}` }] } } });
+    f.send({ method: "turn/completed", params: { threadId: "t", turn: { id: "turn", status: "completed" } } });
+    let result: any;
+    for (let i = 0; i < 30; i++) { await wait(); result = await f.events(); if (result.messages.length === 2) break; }
+    expect(result.messages.map((m: any) => m.method)).toEqual(["item/started", "turn/completed"]);
+    expect(Buffer.byteLength(JSON.stringify(result))).toBeLessThan(4096);
+    expect(await readFile(result.messages[0].params.item.content[0].url)).toEqual(original);
+  });
+
   it("普通打开图片会话不持久保存历史响应，设置覆盖仍保存确认记录", async () => {
     const f = await fixture(); await f.init();
     const image = "data:image/png;base64," + "a".repeat(9 * 1024 * 1024);
@@ -60,7 +99,7 @@ describe("HTTP 会话", () => {
       const response = await f.rpc({ id, method: "thread/resume", params: { threadId: "t", excludeTurns: true, initialTurnsPage: { limit: 5, itemsView: "summary" } } });
       expect(response.status).toBe(200);
       const body = await response.json() as any;
-      expect(body.result.initialTurnsPage.data[0].items[0].content[0].url).toBe(image);
+      expect((await readFile(body.result.initialTurnsPage.data[0].items[0].content[0].url)).equals(Buffer.from(image.split(",")[1], "base64"))).toBe(true);
     }
     const root = join(f.root, "codex-mobile-http");
     expect(await readdir(root).catch(() => [])).toEqual([]);
@@ -477,14 +516,15 @@ describe("HTTP 会话", () => {
       .toMatchObject({ result: { data: [{ loadedChangeStats: { additions: 1, deletions: 0 } }] } });
   });
 
-  it("回合详情保留没有文件引用的内联图片并将上游分页限制在五回合", async () => {
+  it("回合详情将无文件引用的内联图片保存为原图并限制五回合", async () => {
     const f = await fixture(); await f.init(); const inline = "data:image/png;base64,abc";
     f.respond((socket, message) => socket.send(JSON.stringify({ id: message.id, result: { data: [
       { id: "image", items: [{ id: "inline", type: "imageGeneration", result: inline }] },
     ], nextCursor: null } })));
-    expect(await (await f.rpc({ id: 18, method: "mobile/turns/details", params: { threadId: "t", limit: 100, sortDirection: "desc" } })).json()).toEqual({ id: 18, result: {
-      data: [{ id: "image", loadedChangeStats: { additions: 0, deletions: 0 }, items: [{ id: "inline", type: "imageGeneration", result: inline, backfilled: true }] }], nextCursor: null,
-    } });
+    const reply = await (await f.rpc({ id: 18, method: "mobile/turns/details", params: { threadId: "t", limit: 100, sortDirection: "desc" } })).json() as any;
+    expect(reply).toMatchObject({ id: 18, result: { data: [{ id: "image", loadedChangeStats: { additions: 0, deletions: 0 }, items: [{ id: "inline", type: "imageGeneration", savedPath: expect.any(String), backfilled: true }] }], nextCursor: null } });
+    expect((await readFile(reply.result.data[0].items[0].savedPath)).equals(Buffer.from("abc", "base64"))).toBe(true);
+    expect(reply.result.data[0].items[0].result).toBeUndefined();
     expect(f.received.at(-1).params).toEqual({ threadId: "t", limit: 5, sortDirection: "desc", itemsView: "full" });
   });
 
