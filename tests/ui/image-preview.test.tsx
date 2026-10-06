@@ -61,11 +61,11 @@ describe("图片放大预览", () => {
     fireEvent.click(screen.getByRole("link", { name: "照片.png" }));
     await screen.findByRole("dialog", { name: "图片预览" });
     await screen.findByRole("img", { name: "照片.png" });
-    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
+    expect(fetch).toHaveBeenCalledTimes(1);
     rerender(<TurnCard client={client} backend={backend} turn={{ ...turn, items: [...turn.items] }} />);
     expect(screen.getByRole("dialog", { name: "图片预览" })).not.toBeNull();
     expect(client.request).not.toHaveBeenCalled();
-    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
   it("普通电脑文件的下载同样使用网关地址", async () => {
     render(<RemoteFileLink href="/Users/test/report.txt" backend={backend}

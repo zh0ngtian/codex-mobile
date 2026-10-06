@@ -31,6 +31,9 @@ export function ImagePreviewSheet({
   alt = name,
   details = "",
   onRetry,
+  preloadSrc,
+  onOriginalLoad,
+  onOriginalError,
   onClose,
 }: {
   src: string;
@@ -39,6 +42,9 @@ export function ImagePreviewSheet({
   alt?: string;
   details?: string;
   onRetry?: () => void;
+  preloadSrc?: string;
+  onOriginalLoad?: () => void;
+  onOriginalError?: () => void;
   onClose: () => void;
 }) {
   const [scale, setScale] = useState(1);
@@ -154,6 +160,8 @@ export function ImagePreviewSheet({
           }}
         />
       </div>
+      {preloadSrc && <img className="image-preview-original-preloader" src={preloadSrc} alt="" aria-hidden="true" hidden
+        onLoad={onOriginalLoad} onError={onOriginalError} />}
       <div className="image-preview-controls" aria-label={t("图片缩放")}>
         <button
           type="button"

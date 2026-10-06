@@ -17,7 +17,7 @@ import { ActionSheetDownload } from "../../../ui/ActionSheetDownload";
 import { ImagePreviewSheet } from "./ImagePreviewSheet";
 import { VideoPreviewSheet } from "./VideoPreviewSheet";
 import type { BackendConfig } from "../../../backends/types";
-import { remoteFileDownloadUrl, remoteFilePreviewUrl } from "../../../backends/file-upload";
+import { remoteFileDownloadUrl, remoteFilePreviewUrl, remoteImagePreviewUrl } from "../../../backends/file-upload";
 import { loadCachedImage, type LoadedImage } from "../image-cache";
 import videoPoster from "../../../assets/video-poster.svg";
 
@@ -222,7 +222,7 @@ function RemoteImageFileSheet({ path, client, backend, onClose }: {
   path: string; client: AppServerClient | null; backend: BackendConfig; onClose: () => void;
 }) {
   const [preview, setPreview] = useState<LoadedImage | null>(null);
-  const [original, setOriginal] = useState<LoadedImage | null>(null);
+  const [originalReady, setOriginalReady] = useState(false);
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
   const clientRef = useRef(client);
@@ -233,22 +233,28 @@ function RemoteImageFileSheet({ path, client, backend, onClose }: {
     let cancelled = false;
     setError("");
     setPreview(null);
-    setOriginal(null);
+    setOriginalReady(false);
     void (async () => {
       const loadClient = clientRef.current;
       const thumbnail = await loadCachedImage(loadClient, path, imageMime(path), backend);
       if (cancelled) return;
       setPreview(thumbnail);
-      if (!thumbnail.thumbnail) { setOriginal(thumbnail); return; }
-      const full = await loadCachedImage(loadClient, path, imageMime(path), backend, false);
-      if (!cancelled) setOriginal(full);
+      setOriginalReady(!thumbnail.thumbnail);
     })().catch(reason => { if (!cancelled) setError(reason instanceof Error ? reason.message : String(reason)); });
     return () => { cancelled = true; };
   }, [path, backend.baseUrl, backend.token, attempt]);
+  useEffect(() => {
+    if (!preview?.thumbnail || originalReady || error) return;
+    const timer = setTimeout(() => setError("timeout"), 300_000);
+    return () => clearTimeout(timer);
+  }, [preview, originalReady, error]);
   const downloadHref = remoteFileDownloadUrl(backend, path);
+  const originalSrc = remoteImagePreviewUrl(backend, path, false);
   if (preview) return <ImagePreviewSheet
-    src={original?.src ?? preview.src} name={name} downloadHref={downloadHref} onClose={onClose}
-    details={error ? t("原图加载失败，请重试") : !original ? t("正在加载原图…") : `${name} · ${formatImageSize(original.size)}`}
+    src={originalReady && preview.thumbnail ? originalSrc : preview.src} name={name} downloadHref={downloadHref} onClose={onClose}
+    preloadSrc={preview.thumbnail && !originalReady && !error ? originalSrc : undefined}
+    onOriginalLoad={() => setOriginalReady(true)} onOriginalError={() => setError("image-load-failed")}
+    details={error ? t("原图加载失败，请重试") : !originalReady ? t("正在加载原图…") : t("原图加载完成")}
     onRetry={error ? retry : undefined}
   />;
   return <ActionSheet title={t("图片预览")} ariaLabel={t("图片预览")} closeLabel={t("关闭图片预览")}
