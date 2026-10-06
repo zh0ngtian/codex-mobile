@@ -3552,8 +3552,11 @@ function BackendWorkspace({
     selectedEffort,
     selectedServiceTier,
   ).serviceTier;
+  const displayedServiceTier = selectedModelEntry
+    ? effectiveSelectedServiceTier
+    : null;
   const selectedSpeedLabel =
-    speedOptions.find((option) => option.id === effectiveSelectedServiceTier)
+    speedOptions.find((option) => option.id === displayedServiceTier)
       ?.label ??
     t("正常");
   const permissionModes = permissionModesFromProfiles(
@@ -4006,7 +4009,7 @@ function BackendWorkspace({
           tokenUsage={tokenUsageByThread[active.id] ?? null}
           rateLimits={rateLimits}
           pendingAction={pendingAction}
-          selectedServiceTier={effectiveSelectedServiceTier}
+          selectedServiceTier={displayedServiceTier}
           selectedModelLabel={selectedModelLabel}
           selectedEffort={selectedEffort}
           selectedPermissionLabel={selectedPermissionLabel}
@@ -4114,7 +4117,7 @@ function BackendWorkspace({
         selectedEffort={selectedEffort}
         selectedModel={selectedModel}
         selectedModelLabel={selectedModelLabel}
-        selectedServiceTier={effectiveSelectedServiceTier}
+        selectedServiceTier={displayedServiceTier}
         selectedSpeedLabel={selectedSpeedLabel}
         selectedPermissionModeId={selectedPermissionModeId}
         onPickerChange={setPicker}

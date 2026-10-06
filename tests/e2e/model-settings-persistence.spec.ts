@@ -1,109 +1,142 @@
 import { expect, test } from "./http-fixture";
 
-test("模型目录延迟时保留会话恢复返回的推理强度", async ({ page }) => {
-  await page.addInitScript(() => {
-    localStorage.setItem("codex-mobile:language", "zh-CN");
+for (const serviceTier of ["priority", "fast", null]) {
+  test(`模型目录延迟时保留会话强度与速度 ${serviceTier ?? "正常"}`, async ({ page }) => {
+    await page.addInitScript((serviceTier) => {
+      localStorage.setItem("codex-mobile:language", "zh-CN");
+      (window as any).__delayedSettingsRequests = [];
 
-    class DelayedModelSocket extends EventTarget {
-      static OPEN = 1;
-      static CLOSED = 3;
-      readyState = 0;
+      class DelayedModelSocket extends EventTarget {
+        static OPEN = 1;
+        static CLOSED = 3;
+        readyState = 0;
 
-      constructor() {
-        super();
-        setTimeout(() => {
-          this.readyState = DelayedModelSocket.OPEN;
-          this.dispatchEvent(new Event("open"));
-        }, 0);
-      }
+        constructor() {
+          super();
+          setTimeout(() => {
+            this.readyState = DelayedModelSocket.OPEN;
+            this.dispatchEvent(new Event("open"));
+          }, 0);
+        }
 
-      send(raw: string) {
-        const request = JSON.parse(raw);
-        if (request.id == null) return;
-        const thread = {
-          id: "thread-delayed-models",
-          name: "推理强度恢复会话",
-          preview: "推理强度恢复会话",
-          cwd: "/tmp/project",
-          updatedAt: Math.floor(Date.now() / 1000),
-          status: { type: "idle" },
-          turns: [],
-        };
-        const responses: Record<string, unknown> = {
-          initialize: {},
-          "model/list": {
-            data: [{
-              id: "gpt-6.1-sol",
-              model: "gpt-6.1-sol",
-              displayName: "GPT-6.1-Sol",
-              isDefault: true,
-              defaultReasoningEffort: "low",
-              supportedReasoningEfforts: [
-                { reasoningEffort: "low", description: "更快响应" },
-                { reasoningEffort: "high", description: "更深入思考" },
-              ],
-              defaultServiceTier: null,
-              serviceTiers: [],
-            }],
-          },
-          "permissionProfile/list": {
-            data: [{ id: ":workspace", allowed: true }],
-          },
-          "config/read": {
-            config: {
-              model: "gpt-6.1-sol",
-              model_reasoning_effort: "low",
-              sandbox_mode: "workspace-write",
+        send(raw: string) {
+          const request = JSON.parse(raw);
+          (window as any).__delayedSettingsRequests.push(request);
+          if (request.id == null) return;
+          const thread = {
+            id: "thread-delayed-models",
+            name: "推理强度恢复会话",
+            preview: "推理强度恢复会话",
+            cwd: "/tmp/project",
+            updatedAt: Math.floor(Date.now() / 1000),
+            status: { type: "idle" },
+            turns: [],
+          };
+          const responses: Record<string, unknown> = {
+            initialize: {},
+            "model/list": {
+              data: [{
+                id: "gpt-6.1-sol",
+                model: "gpt-6.1-sol",
+                displayName: "GPT-6.1-Sol",
+                isDefault: true,
+                defaultReasoningEffort: "low",
+                supportedReasoningEfforts: [
+                  { reasoningEffort: "low", description: "更快响应" },
+                  { reasoningEffort: "high", description: "更深入思考" },
+                ],
+                defaultServiceTier: null,
+                additionalSpeedTiers: ["fast"],
+                serviceTiers: [{ id: "priority", name: "Fast", description: "快速" }],
+              }],
             },
-          },
-          "account/rateLimits/read": {},
-          "thread/list": { data: [thread], nextCursor: null },
-          "thread/resume": {
-            thread,
-            initialTurnsPage: { data: [], nextCursor: null },
-            model: "gpt-6.1-sol",
-            reasoningEffort: "high",
-            serviceTier: null,
-            approvalPolicy: "on-request",
-            approvalsReviewer: "user",
-            activePermissionProfile: { id: ":workspace" },
-          },
-          "thread/turns/list": { data: [], nextCursor: null },
-        };
-        const delay = request.method === "model/list" ? 600 : 0;
-        setTimeout(() => {
-          this.dispatchEvent(
-            new MessageEvent("message", {
-              data: JSON.stringify({
-                id: request.id,
-                result: responses[request.method] ?? {},
+            "permissionProfile/list": {
+              data: [{ id: ":workspace", allowed: true }],
+            },
+            "config/read": {
+              config: {
+                model: "gpt-6.1-sol",
+                model_reasoning_effort: "low",
+                sandbox_mode: "workspace-write",
+              },
+            },
+            "account/rateLimits/read": {},
+            "thread/list": { data: [thread], nextCursor: null },
+            "thread/resume": {
+              thread,
+              initialTurnsPage: { data: [], nextCursor: null },
+              model: "gpt-6.1-sol",
+              reasoningEffort: "high",
+              serviceTier,
+              approvalPolicy: "on-request",
+              approvalsReviewer: "user",
+              activePermissionProfile: { id: ":workspace" },
+            },
+            "thread/turns/list": { data: [], nextCursor: null },
+            "turn/start": { turn: { id: "speed-turn", status: "inProgress", items: [] } },
+          };
+          const reply = () => {
+            this.dispatchEvent(
+              new MessageEvent("message", {
+                data: JSON.stringify({
+                  id: request.id,
+                  result: responses[request.method] ?? {},
+                }),
               }),
-            }),
-          );
-        }, delay);
+            );
+          };
+          if (request.method === "model/list") {
+            (window as any).__releaseModelCatalog = reply;
+          } else {
+            setTimeout(reply, 0);
+          }
+        }
+
+        close() {
+          this.readyState = DelayedModelSocket.CLOSED;
+          this.dispatchEvent(new CloseEvent("close"));
+        }
       }
 
-      close() {
-        this.readyState = DelayedModelSocket.CLOSED;
-        this.dispatchEvent(new CloseEvent("close"));
+      (window as any).WebSocket = DelayedModelSocket;
+    }, serviceTier);
+
+    for (let startup = 0; startup < 2; startup += 1) {
+      await page.goto("/");
+      const thread = page.getByRole("button", { name: /推理强度恢复会话/ }).first();
+      await expect(thread).toBeVisible({ timeout: 500 });
+      await thread.click();
+
+      const settings = page.getByRole("button", {
+        name: "选择模型、智能与速度",
+      });
+      await expect(settings).toContainText("gpt-6.1-sol");
+      await expect(settings).toContainText("高");
+      await expect(settings).not.toContainText("智能");
+      if (startup === 0) {
+        await page.getByRole("textbox", { name: "向 Codex 提问" }).fill("目录加载前验证速度");
+        await page.getByRole("button", { name: "发送" }).click();
+        await expect.poll(() => page.evaluate(() =>
+          (window as any).__delayedSettingsRequests.find((request: any) => request.method === "turn/start")?.params,
+        )).toMatchObject({ effort: "high", serviceTier });
       }
+      await page.evaluate(() => (window as any).__releaseModelCatalog());
+      await expect(settings).toContainText("GPT-6.1-Sol");
+      if (serviceTier) await expect(settings).toContainText("⚡");
+      else await expect(settings).not.toContainText("⚡");
+      await settings.click();
+      await page.getByRole("button", { name: /^速度/ }).click();
+      await expect(page.getByRole("button", { name: serviceTier ? /Fast.*快速/ : /正常.*默认速度/ }))
+        .toHaveAttribute("aria-pressed", "true");
+      await page.locator(".composer-popover-backdrop").click({ position: { x: 1, y: 1 } });
     }
-
-    (window as any).WebSocket = DelayedModelSocket;
+    await page.getByRole("textbox", { name: "向 Codex 提问" }).fill("验证速度");
+    await page.getByRole("button", { name: "发送" }).click();
+    await expect.poll(() => page.evaluate(() =>
+      (window as any).__delayedSettingsRequests.find((request: any) => request.method === "turn/start")?.params,
+    )).toMatchObject({ effort: "high", serviceTier: serviceTier ? "priority" : null });
   });
-
-  await page.goto("/");
-  const thread = page.getByRole("button", { name: /推理强度恢复会话/ }).first();
-  await expect(thread).toBeVisible({ timeout: 500 });
-  await thread.click();
-
-  const settings = page.getByRole("button", {
-    name: "选择模型、智能与速度",
-  });
-  await expect(settings).toContainText("GPT-6.1-Sol");
-  await expect(settings).toContainText("高");
-  await expect(settings).not.toContainText("智能");
-});
+}
 
 test("新对话偏好跨冷启动恢复，线程设置即时写回且正常速度显式清除 Fast", async ({
   page,

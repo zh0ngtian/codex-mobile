@@ -106,6 +106,12 @@ describe("移动端模型与审批设置", () => {
     });
   });
 
+  it.each(["priority", "fast"])("模型目录未就绪时保留 Fast 原值 %s", (serviceTier) => {
+    expect(normalizeModelSettings(null, "high", serviceTier)).toEqual({
+      effort: "high", serviceTier,
+    });
+  });
+
   it("将旧版 fast 配置映射为 model/list 返回的规范 service tier id", () => {
     expect(
       normalizeModelSettings(

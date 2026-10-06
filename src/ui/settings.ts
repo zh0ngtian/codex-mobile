@@ -127,6 +127,16 @@ export function normalizeModelSettings(
     : typeof effort === "string" && effort
       ? effort
       : null;
+  // 目录未就绪不代表不支持 Fast；保留原值，待目录返回后再校验。
+  if (!model) {
+    return {
+      effort: normalizedEffort,
+      serviceTier:
+        serviceTier && serviceTier !== "default" && serviceTier !== "normal"
+          ? serviceTier
+          : null,
+    };
+  }
   const tiers = model?.serviceTiers ?? [];
   let normalizedServiceTier =
     tiers.find((tier) => tier.id === serviceTier)?.id ?? null;
