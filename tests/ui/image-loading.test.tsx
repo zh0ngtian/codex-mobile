@@ -1,7 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { loadCachedImage } from "../../src/features/conversation/image-cache";
-import { RemoteImage } from "../../src/features/conversation/sheets/RemoteFileSheets";
+import { RemoteImage, RemoteFileLink } from "../../src/features/conversation/sheets/RemoteFileSheets";
 import { TurnCard } from "../../src/features/conversation/Timeline";
 
 const image = { source: "/tmp/screenshot.png", name: "screenshot.png", local: true };
@@ -23,6 +23,54 @@ function blobResponse(text: string, status = 200) {
 }
 
 describe("会话图片按需加载", () => {
+  it("弱网原图超过30秒仍可继续读取，180秒后结束等待", async () => {
+    vi.useFakeTimers();
+    const fetcher = vi.fn((_url: string, init: RequestInit) => new Promise((_resolve, reject) => {
+      init.signal!.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
+    }));
+    vi.stubGlobal("fetch", fetcher);
+    const loading = loadCachedImage({ request: vi.fn() } as never, image.source, "image/png", backend, false);
+    const failure = expect(loading).rejects.toThrow("aborted");
+    await vi.advanceTimersByTimeAsync(31_000);
+    expect(fetcher.mock.calls[0][1].signal!.aborted).toBe(false);
+    await vi.advanceTimersByTimeAsync(149_001);
+    await failure;
+  });
+
+  it("图片文件链接先显示缩略图，原图未完成也能下载，并在重绘后保持读取", async () => {
+    let original!: (value: unknown) => void;
+    const fetcher = vi.fn().mockImplementation((url: string) => url.includes("thumbnail=1")
+      ? Promise.resolve(blobResponse("small")) : new Promise(resolve => { original = resolve; }));
+    vi.stubGlobal("fetch", fetcher);
+    const request = vi.fn(() => new Promise(() => {}));
+    const client = { request } as never;
+    const view = render(<RemoteFileLink href="/tmp/照片.png" backend={backend} client={client}>照片</RemoteFileLink>);
+    fireEvent.click(screen.getByRole("link", { name: "照片" }));
+    await screen.findByRole("dialog", { name: "图片预览" });
+    expect((await screen.findByRole("img")).getAttribute("src")).toContain("c21hbGw=");
+    expect(screen.getByText("正在加载原图…")).not.toBeNull();
+    expect(new URL(screen.getByRole("link", { name: "下载图片" }).getAttribute("href")!).searchParams.get("path")).toBe("/tmp/照片.png");
+    view.rerender(<RemoteFileLink href="/tmp/照片.png" backend={{ ...backend }} client={client}>照片</RemoteFileLink>);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(request).not.toHaveBeenCalled();
+    await act(async () => original(blobResponse("original")));
+    await waitFor(() => expect(screen.getByRole("img").getAttribute("src")).toContain("b3JpZ2luYWw="));
+  });
+
+  it("图片文件原图失败保留缩略图和下载入口，重试后完成原图", async () => {
+    const fetcher = vi.fn().mockResolvedValueOnce(blobResponse("small"))
+      .mockResolvedValueOnce(blobResponse("failure", 503)).mockResolvedValueOnce(blobResponse("original"));
+    vi.stubGlobal("fetch", fetcher);
+    render(<RemoteFileLink href="/tmp/照片.png" backend={backend} client={{ request: vi.fn(() => new Promise(() => {})) } as never}>照片</RemoteFileLink>);
+    fireEvent.click(screen.getByRole("link", { name: "照片" }));
+    await screen.findByText("原图加载失败，请重试");
+    expect(screen.getByRole("img").getAttribute("src")).toContain("c21hbGw=");
+    expect(screen.getByRole("link", { name: "下载图片" })).not.toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "重试" }));
+    await waitFor(() => expect(screen.getByRole("img").getAttribute("src")).toContain("b3JpZ2luYWw="));
+    expect(fetcher).toHaveBeenCalledTimes(3);
+  });
+
   it("多张过程截图默认折叠，展开后才读取，且不重复放入之前消息", async () => {
     const request = vi.fn().mockResolvedValue({ dataBase64: "aGVsbG8=" });
     render(<TurnCard client={{ request } as never} turn={{ id: "turn", status: "completed", items: [

@@ -218,6 +218,48 @@ export function RemoteImage({
   );
 }
 
+function RemoteImageFileSheet({ path, client, backend, onClose }: {
+  path: string; client: AppServerClient | null; backend: BackendConfig; onClose: () => void;
+}) {
+  const [preview, setPreview] = useState<LoadedImage | null>(null);
+  const [original, setOriginal] = useState<LoadedImage | null>(null);
+  const [error, setError] = useState("");
+  const [attempt, setAttempt] = useState(0);
+  const name = path.split("/").at(-1) || t("图片");
+  const retry = () => setAttempt(value => value + 1);
+  useEffect(() => {
+    let cancelled = false;
+    setError("");
+    setPreview(null);
+    setOriginal(null);
+    void (async () => {
+      if (!client) throw new Error(t("尚未连接 app-server"));
+      const thumbnail = await loadCachedImage(client, path, imageMime(path), backend);
+      if (cancelled) return;
+      setPreview(thumbnail);
+      if (!thumbnail.thumbnail) { setOriginal(thumbnail); return; }
+      const full = await loadCachedImage(client, path, imageMime(path), backend, false);
+      if (!cancelled) setOriginal(full);
+    })().catch(reason => { if (!cancelled) setError(reason instanceof Error ? reason.message : String(reason)); });
+    return () => { cancelled = true; };
+  }, [client, path, backend.baseUrl, backend.token, attempt]);
+  const downloadHref = remoteFileDownloadUrl(backend, path);
+  if (preview) return <ImagePreviewSheet
+    src={original?.src ?? preview.src} name={name} downloadHref={downloadHref} onClose={onClose}
+    details={error ? t("原图加载失败，请重试") : !original ? t("正在加载原图…") : `${name} · ${formatImageSize(original.size)}`}
+    onRetry={error ? retry : undefined}
+  />;
+  return <ActionSheet title={t("图片预览")} ariaLabel={t("图片预览")} closeLabel={t("关闭图片预览")}
+    onClose={onClose} className="remote-text-sheet" backdropClassName="remote-file-backdrop"
+    headerActions={<ActionSheetDownload href={downloadHref} filename={name} label={t("下载图片")} />}>
+    <strong>{name}</strong>
+    <div className="remote-text-status" role={error ? "alert" : "status"}>
+      {error ? t("无法读取文件：{message}", { message: error }) : t("正在读取文件…")}
+    </div>
+    {error && <button type="button" className="secondary-button" onClick={retry}>{t("重试")}</button>}
+  </ActionSheet>;
+}
+
 function RemoteTextFileSheet({
   href,
   path,
@@ -498,7 +540,9 @@ export function RemoteFileLink({
       </a>
       {open &&
         createPortal(
-          isPreviewableVideoPath(target.path) && backend ? (
+          isPreviewableImagePath(target.path) && backend ? (
+            <RemoteImageFileSheet key={target.path} path={target.path} client={client} backend={backend} onClose={() => setOpen(false)} />
+          ) : isPreviewableVideoPath(target.path) && backend ? (
             <VideoPreviewSheet
               src={remoteFilePreviewUrl(backend, target.path)}
               name={

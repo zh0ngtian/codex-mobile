@@ -5,7 +5,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TurnCard } from "../../src/features/conversation/Timeline";
 import {
   RemoteImage,
@@ -14,7 +14,9 @@ import {
 import { ImagePreviewSheet } from "../../src/features/conversation/sheets/ImagePreviewSheet";
 import type { BackendConfig } from "../../src/backends/types";
 
-afterEach(cleanup);
+beforeEach(() => vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, status: 200,
+  headers: new Headers({ "x-codex-image-preview": "1" }), blob: async () => new Blob(["image"], { type: "image/png" }) })));
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 describe("图片放大预览", () => {
   it("历史工具图片源文件已清理时不留下大块错误占位", async () => {
@@ -58,9 +60,12 @@ describe("图片放大预览", () => {
     const { rerender } = render(<TurnCard client={client} backend={backend} turn={turn} />);
     fireEvent.click(screen.getByRole("link", { name: "照片.png" }));
     await screen.findByRole("dialog", { name: "图片预览" });
+    await screen.findByRole("img", { name: "照片.png" });
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
     rerender(<TurnCard client={client} backend={backend} turn={{ ...turn, items: [...turn.items] }} />);
     expect(screen.getByRole("dialog", { name: "图片预览" })).not.toBeNull();
-    expect(client.request).toHaveBeenCalledTimes(1);
+    expect(client.request).not.toHaveBeenCalled();
+    expect(fetch).toHaveBeenCalledTimes(2);
   });
   it("普通电脑文件的下载同样使用网关地址", async () => {
     render(<RemoteFileLink href="/Users/test/report.txt" backend={backend}

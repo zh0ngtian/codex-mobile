@@ -30,6 +30,7 @@ export function ImagePreviewSheet({
   name,
   alt = name,
   details = "",
+  onRetry,
   onClose,
 }: {
   src: string;
@@ -37,6 +38,7 @@ export function ImagePreviewSheet({
   name: string;
   alt?: string;
   details?: string;
+  onRetry?: () => void;
   onClose: () => void;
 }) {
   const [scale, setScale] = useState(1);
@@ -180,6 +182,7 @@ export function ImagePreviewSheet({
         </button>
       </div>
       {details && <p className="image-preview-details">{details}</p>}
+      {onRetry && <button type="button" className="secondary-button" onClick={onRetry}>{t("重试")}</button>}
     </ActionSheet>,
     document.body,
   );

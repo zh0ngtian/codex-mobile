@@ -65,7 +65,7 @@ describe("移动端对话格式", () => {
     expect(button.closest(".previous-messages")).toBeNull();
     fireEvent.click(button);
     expect(screen.getByRole("dialog")).toBeTruthy();
-    expect(request).toHaveBeenCalledWith("fs/readFile", { path: "/tmp/assistant.png" });
+    expect(request).toHaveBeenCalledWith("fs/readFile", { path: "/tmp/assistant.png" }, { timeoutMs: 180_000 });
   });
   it("用户消息与 final answer 显示精确到分钟的权威时间", () => {
     const startedAt = new Date(2026, 9, 3, 9, 7, 35).getTime() / 1000;

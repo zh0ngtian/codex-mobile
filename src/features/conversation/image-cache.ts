@@ -80,7 +80,7 @@ export function loadCachedImage(
   const fetchImage = async (): Promise<LoadedImage> => {
     if (backend && (!existingSupport() || await existingSupport())) {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 30_000);
+      const timeout = setTimeout(() => controller.abort(), thumbnail ? 30_000 : 180_000);
       try {
         const response = await fetch(remoteImagePreviewUrl(backend, source, thumbnail), {
           mode: "cors", cache: "no-store", signal: controller.signal,
@@ -97,7 +97,7 @@ export function loadCachedImage(
         if (!(reason instanceof TypeError) || await probeSupport()) throw reason;
       } finally { clearTimeout(timeout); }
     }
-    const result = await client.request<{ dataBase64: string }>("fs/readFile", { path: source });
+    const result = await client.request<{ dataBase64: string }>("fs/readFile", { path: source }, { timeoutMs: 180_000 });
     return { src: `data:${mime};base64,${result.dataBase64}`, size: Math.floor(result.dataBase64.length * 3 / 4), thumbnail: false };
   };
   const promise = fetchImage();

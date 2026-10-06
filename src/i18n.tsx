@@ -104,6 +104,7 @@ const english: Record<string, string> = {
   "过程截图（{count}）": "Process screenshots ({count})",
   "正在加载原图…": "Loading original image…",
   "原图加载失败，请关闭后重试": "Original image failed to load. Close and try again",
+  "原图加载失败，请重试": "Original image failed to load. Try again",
   "正在加载会话": "Loading conversations",
   "置顶": "Pinned",
   "最近": "Recent",
