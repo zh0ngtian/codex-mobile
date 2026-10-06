@@ -50,6 +50,7 @@ describe("会话列表派生", () => {
         preview: "无项目任务",
         cwd: null,
         isProjectless: true,
+        recencyAt: 1000,
         createdAt: 5,
       },
     ],
@@ -57,13 +58,13 @@ describe("会话列表派生", () => {
 
   it("为线程附加机器和项目来源并按时间降序汇总", () => {
     expect(items.map((item) => item.threadId)).toEqual([
+      "book-recent",
       "mini-pinned",
       "book-pinned",
-      "book-recent",
       "mini-recent",
       "mini-unknown",
     ]);
-    expect(items[0]).toMatchObject({
+    expect(items[1]).toMatchObject({
       backendId: "mini",
       backendName: "Mac mini",
       projectName: "home-assistant",
@@ -142,7 +143,7 @@ describe("会话列表派生", () => {
   it("全部搜索覆盖标题、机器和项目，单机可复用过滤结果", () => {
     expect(
       filterAggregatedThreads(items, "MacBook").map((item) => item.threadId),
-    ).toEqual(["book-pinned", "book-recent"]);
+    ).toEqual(["book-recent", "book-pinned"]);
     expect(
       filterAggregatedThreads(items, "sub2api").map((item) => item.threadId),
     ).toEqual(["mini-recent"]);
@@ -160,6 +161,7 @@ describe("会话列表派生", () => {
           preview: "查看 Docker 配置",
           cwd: "/Users/me/infra",
           recencyAt: 20,
+          updatedAt: 50,
           searchSnippet: "正文命中了容器部署错误",
         },
       ],
@@ -172,8 +174,8 @@ describe("会话列表派生", () => {
     );
 
     expect(merged.map((item) => item.threadId)).toEqual([
-      "book-pinned",
       "book-recent",
+      "book-pinned",
     ]);
     expect(
       merged.find((item) => item.threadId === "book-recent")?.searchSnippet,

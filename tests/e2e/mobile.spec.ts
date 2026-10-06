@@ -2635,7 +2635,7 @@ test("会话搜索在一个结果列表中展示服务端全文命中", async ({
                 id: "ordinary-thread",
                 preview: "普通标题",
                 cwd: "/tmp/project",
-                recencyAt: now,
+                updatedAt: now,
                 status: { type: "idle" },
               },
             ],
@@ -2648,7 +2648,7 @@ test("会话搜索在一个结果列表中展示服务端全文命中", async ({
                   id: "content-match",
                   preview: "标题没有关键词",
                   cwd: "/tmp/project",
-                  recencyAt: now - 1,
+                  updatedAt: now - 1,
                   status: { type: "idle" },
                 },
                 snippet: "正文里的部署失败需要重新排查",
@@ -2703,7 +2703,7 @@ test("会话搜索在一个结果列表中展示服务端全文命中", async ({
     .toEqual({
       searchTerm: "部署失败",
       limit: 50,
-      sortKey: "recency_at",
+      sortKey: "updated_at",
       sortDirection: "desc",
     });
 });

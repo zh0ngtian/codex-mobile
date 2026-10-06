@@ -31,9 +31,7 @@ interface ThreadListLoadOptions {
 }
 
 function threadTimestamp(thread: ThreadRecord) {
-  return Number(
-    thread.recencyAt ?? thread.updatedAt ?? thread.createdAt ?? 0,
-  );
+  return Number(thread.updatedAt ?? thread.createdAt ?? 0);
 }
 
 export function dedupeThreadsById(threads: ThreadRecord[]) {
@@ -109,7 +107,7 @@ export async function loadProjectlessThreadRecords(
   do {
     const result: ThreadListResponse = await client.request("thread/list", {
       limit: 50,
-      sortKey: "recency_at",
+      sortKey: "updated_at",
       ...(cursor ? { cursor } : {}),
     });
     found.push(...projectlessThreadsFromPage(result.data, targetIds));
@@ -145,7 +143,7 @@ export async function loadProjectThreadRecords(
   const result: ThreadListResponse = await client.request("thread/list", {
     limit: PROJECT_THREAD_BATCH_SIZE,
     cwd,
-    sortKey: "recency_at",
+    sortKey: "updated_at",
     ...(cursor ? { cursor } : {}),
   });
   return {
@@ -265,7 +263,7 @@ export function createLatestThreadListLoader(
         : [client
             .request("thread/list", {
               limit: 50,
-              sortKey: "recency_at",
+              sortKey: "updated_at",
             })
             .then((result: ThreadListResponse) => {
               if (sequence === latestSequence) {

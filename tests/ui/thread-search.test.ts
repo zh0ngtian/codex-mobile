@@ -13,7 +13,7 @@ describe("App Server 统一会话搜索", () => {
               thread: {
                 id: "matched-thread",
                 name: "服务端标题",
-                recencyAt: 30,
+                updatedAt: 30,
                 ephemeral: false,
               },
               snippet: "这里命中了部署失败",
@@ -21,7 +21,7 @@ describe("App Server 统一会话搜索", () => {
             {
               thread: {
                 id: "ephemeral-thread",
-                recencyAt: 20,
+                updatedAt: 20,
                 ephemeral: true,
               },
               snippet: "临时结果",
@@ -34,7 +34,7 @@ describe("App Server 统一会话搜索", () => {
             {
               thread: {
                 id: "child-thread",
-                recencyAt: 10,
+                updatedAt: 10,
                 parentThreadId: "parent-thread",
               },
               snippet: "子线程结果",
@@ -43,7 +43,7 @@ describe("App Server 统一会话搜索", () => {
               thread: {
                 id: "older-thread",
                 preview: "另一个结果",
-                recencyAt: 5,
+                updatedAt: 5,
               },
               snippet: "部署失败的更早上下文",
             },
@@ -58,14 +58,14 @@ describe("App Server 统一会话搜索", () => {
       {
         id: "matched-thread",
         name: "服务端标题",
-        recencyAt: 30,
+        updatedAt: 30,
         ephemeral: false,
         searchSnippet: "这里命中了部署失败",
       },
       {
         id: "older-thread",
         preview: "另一个结果",
-        recencyAt: 5,
+        updatedAt: 5,
         searchSnippet: "部署失败的更早上下文",
       },
     ]);
@@ -75,7 +75,7 @@ describe("App Server 统一会话搜索", () => {
       {
         searchTerm: "部署失败",
         limit: 50,
-        sortKey: "recency_at",
+        sortKey: "updated_at",
         sortDirection: "desc",
       },
       { timeoutMs: 60_000 },
@@ -86,7 +86,7 @@ describe("App Server 统一会话搜索", () => {
       {
         searchTerm: "部署失败",
         limit: 50,
-        sortKey: "recency_at",
+        sortKey: "updated_at",
         sortDirection: "desc",
         cursor: "older-page",
       },
@@ -102,7 +102,7 @@ describe("App Server 统一会话搜索", () => {
           new AppServerRpcError("method not found", -32601),
         )
         .mockResolvedValueOnce({
-          data: [{ id: "title-match", name: "发布流程", recencyAt: 9 }],
+          data: [{ id: "title-match", name: "发布流程", updatedAt: 9 }],
           nextCursor: null,
         }),
     };
@@ -113,7 +113,7 @@ describe("App Server 统一会话搜索", () => {
       {
         id: "title-match",
         name: "发布流程",
-        recencyAt: 9,
+        updatedAt: 9,
         searchSnippet: "发布流程",
       },
     ]);
@@ -123,7 +123,7 @@ describe("App Server 统一会话搜索", () => {
       {
         searchTerm: "发布",
         limit: 50,
-        sortKey: "recency_at",
+        sortKey: "updated_at",
       },
       { timeoutMs: 60_000 },
     );

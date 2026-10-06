@@ -35,9 +35,7 @@ export function projectNameOf(thread: DisplayRecord) {
 }
 
 function threadTimestamp(thread: DisplayRecord) {
-  return Number(
-    thread.recencyAt ?? thread.updatedAt ?? thread.createdAt ?? 0,
-  );
+  return Number(thread.updatedAt ?? thread.createdAt ?? 0);
 }
 
 export function aggregateThreads(

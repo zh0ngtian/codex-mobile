@@ -28,9 +28,7 @@ interface ThreadListResponse {
 const searchRequestOptions = { timeoutMs: 60_000 };
 
 function threadTimestamp(thread: ThreadRecord) {
-  return Number(
-    thread.recencyAt ?? thread.updatedAt ?? thread.createdAt ?? 0,
-  );
+  return Number(thread.updatedAt ?? thread.createdAt ?? 0);
 }
 
 function isPersistentTopLevelThread(thread: ThreadRecord) {
@@ -67,7 +65,7 @@ async function searchWithThreadSearch(
       {
         searchTerm,
         limit: 50,
-        sortKey: "recency_at",
+        sortKey: "updated_at",
         sortDirection: "desc",
         ...(cursor ? { cursor } : {}),
       },
@@ -100,7 +98,7 @@ async function searchWithThreadList(
       {
         searchTerm,
         limit: 50,
-        sortKey: "recency_at",
+        sortKey: "updated_at",
         ...(cursor ? { cursor } : {}),
       },
       searchRequestOptions,
