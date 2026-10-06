@@ -50,6 +50,24 @@ async function fixture(autoPong = true) {
 }
 
 describe("HTTP 会话", () => {
+  it("普通打开图片会话不持久保存历史响应，设置覆盖仍保存确认记录", async () => {
+    const f = await fixture(); await f.init();
+    const image = "data:image/png;base64," + "a".repeat(9 * 1024 * 1024);
+    f.respond((socket, message) => socket.send(JSON.stringify({ id: message.id, result: {
+      thread: { id: "t", turns: [] }, initialTurnsPage: { data: [{ items: [{ type: "userMessage", content: [{ type: "image", url: image }] }] }] },
+    } })));
+    for (let id = 2; id < 10; id++) {
+      const response = await f.rpc({ id, method: "thread/resume", params: { threadId: "t", excludeTurns: true, initialTurnsPage: { limit: 5, itemsView: "summary" } } });
+      expect(response.status).toBe(200);
+      const body = await response.json() as any;
+      expect(body.result.initialTurnsPage.data[0].items[0].content[0].url).toBe(image);
+    }
+    const root = join(f.root, "codex-mobile-http");
+    expect(await readdir(root).catch(() => [])).toEqual([]);
+    expect((await f.rpc({ id: 10, method: "thread/resume", params: { threadId: "t", model: "model" } })).status).toBe(200);
+    const sessions = await readdir(root);
+    expect(await readdir(join(root, sessions[0]))).toHaveLength(1);
+  });
   it("同一会话只初始化一次并回显每次调用的 RPC id", async () => {
     const f = await fixture();
     expect((await f.init()).status).toBe(200);

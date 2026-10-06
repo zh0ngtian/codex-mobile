@@ -22,6 +22,17 @@ const events = (overrides = {}) => new Response(JSON.stringify({
 }));
 
 describe("HTTP 文字传输", () => {
+  it("清除旧普通会话打开的待确认项，保留设置覆盖和消息发送", () => {
+    const writesKey = "codex-mobile:http-writes:resume-recovery:12345678-1234-4234-8234-123456789abc";
+    const records = [
+      ["navigation", { requestId: "navigation", message: { id: 1, method: "thread/resume", params: { threadId: "t", excludeTurns: true, initialTurnsPage: { limit: 5 } } } }],
+      ["settings", { requestId: "settings", message: { id: 2, method: "thread/resume", params: { threadId: "t", model: "model" } } }],
+      ["start", { requestId: "start", message: { id: 3, method: "turn/start", params: { threadId: "t" } } }],
+    ];
+    localStorage.setItem(writesKey, JSON.stringify(records));
+    setup(vi.fn() as typeof fetch, "resume-recovery");
+    expect(JSON.parse(localStorage.getItem(writesKey)!)).toEqual(records.slice(1));
+  });
   it("首轮历史事件由 catch-up 边界包裹，供通知层抑制重放", async () => {
     vi.useFakeTimers();
     const historicalFinal = {

@@ -6,6 +6,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import WebSocket from "ws";
 import { TurnChangeHistory } from "./turn-change-history.js";
 import { compactTurnDetails } from "./turn-details.js";
+import { isNavigationResume } from "./rpc-replay.js";
 
 export interface RpcMessage {
   id?: string | number;
@@ -510,7 +511,7 @@ class Session {
   async rpc(requestId: string, message: RpcMessage, epoch?: string) {
     this.touch(); await this.loadPromise;
     const signature = createHash("sha256").update(canonical({ message, ...(!message.method && epoch ? { epoch } : {}) })).digest("hex");
-    const durable = !message.method || (message.method !== "initialize" && message.id != null && !READ_ONLY_METHODS.has(message.method));
+    const durable = !message.method || (message.method !== "initialize" && message.id != null && !READ_ONLY_METHODS.has(message.method) && !isNavigationResume(message));
     const stored = await this.storedOperation(requestId);
     let previous = this.operations.get(requestId) ?? stored;
     if (previous && previous.signature !== signature) throw new HttpError(409, "Request ID already used with different content");
@@ -542,7 +543,7 @@ class Session {
         if (!message.method && epoch !== this.epoch) throw new HttpError(409, "Approval epoch is missing or stale");
         if (!message.method && (message.id == null || !this.pending.has(message.id))) throw new HttpError(409, "Approval request is not pending");
         if (message.method === "initialize") await this.connect();
-        else if (!this.ready && READ_ONLY_METHODS.has(message.method ?? "") && this.initializationMessage) {
+        else if (!this.ready && (READ_ONLY_METHODS.has(message.method ?? "") || isNavigationResume(message)) && this.initializationMessage) {
           const initialized = await this.initialize(this.initializationMessage);
           if (initialized.error != null) throw new HttpError(503, "Unable to reinitialize session");
           if (this.initializedNotification && !this.sentInitialized) await this.notifyInitialized({ method: "initialized", params: {} });

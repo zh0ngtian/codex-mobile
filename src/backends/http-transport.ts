@@ -1,5 +1,6 @@
 import type { RpcMessage } from "../app-server/client";
 import { t } from "../i18n";
+import { isNavigationResume } from "../../server/rpc-replay";
 
 export interface HttpSyncState { updatedAt: number | null; stale: boolean }
 interface Config { baseUrl: string; token: string; id: string }
@@ -93,7 +94,7 @@ export class HttpRpcTransport extends EventTarget {
     // 旧版把文件读取当作写入；清除遗留的待确认项以恢复图片读取配额。
     let removedRead = false;
     for (const [signature, operation] of this.writes) {
-      if (operation.message.method && readMethods.has(operation.message.method)) {
+      if (operation.message.method && (readMethods.has(operation.message.method) || isNavigationResume(operation.message))) {
         this.writes.delete(signature);
         removedRead = true;
       }
@@ -159,7 +160,7 @@ export class HttpRpcTransport extends EventTarget {
       await this.firstPoll;
       if (!this.epoch || this.readyState !== 1) throw new Error(t("设备尚未连接，请稍后重试"));
     }
-    const signature = !message.method || !readMethods.has(message.method)
+    const signature = !message.method || (!readMethods.has(message.method) && !isNavigationResume(message))
       ? JSON.stringify(message.method ? { method: message.method, params: message.params } : { ...message, epoch: this.epoch }) : null;
     if (signature && !this.writes.has(signature) && this.writes.size >= 32) throw new Error(t("请求结果待确认，请刷新会话后检查，勿重复发送"));
     const existing = signature ? this.writes.get(signature) : undefined;
