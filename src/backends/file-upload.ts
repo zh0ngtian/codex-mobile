@@ -4,6 +4,14 @@ import { t } from "../i18n";
 
 type Fetcher = typeof fetch;
 
+export function remoteFileDownloadUrl(backend: BackendConfig, path: string) {
+  const name = path.split("/").at(-1) || "download";
+  const url = new URL(`/api/files/download/${encodeURIComponent(name)}`, `${backend.baseUrl}/`);
+  if (backend.token) url.searchParams.set("token", backend.token);
+  url.searchParams.set("path", path);
+  return url.toString();
+}
+
 export function remoteFilePreviewUrl(
   backend: BackendConfig,
   path: string,

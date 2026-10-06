@@ -11,6 +11,7 @@ import { TurnChangeHistory } from "./turn-change-history.js";
 import { compactTurnDetails } from "./turn-details.js";
 import { HttpSessions } from "./http-session.js";
 import { ImagePreviews } from "./image-preview.js";
+import { downloadFile } from "./file-download.js";
 
 const MAX_APP_SERVER_MESSAGE_BYTES = 16 * 1024 * 1024;
 
@@ -122,6 +123,7 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
   const server: Server = createServer(async (request, response) => {
     const url = new URL(request.url ?? "/", "http://gateway.local");
     const origin = request.headers.origin;
+    const fileDownload = url.pathname.startsWith("/api/files/download/");
     const controlRequest = [
       "/api/status",
       "/api/host",
@@ -133,11 +135,15 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
       "/api/rpc",
       "/api/events",
       "/api/operations",
-    ].includes(url.pathname);
+    ].includes(url.pathname) || fileDownload;
     const apiRequest =
       url.pathname === "/api" || url.pathname.startsWith("/api/");
     if (controlRequest) {
       applyCors(response, origin);
+    }
+    if (fileDownload) {
+      response.setHeader("access-control-allow-methods", "GET, HEAD, OPTIONS");
+      response.setHeader("access-control-expose-headers", "content-disposition, content-length, content-type");
     }
     if (url.pathname === "/api/images/preview") {
       response.setHeader("x-codex-image-preview", "1");
@@ -164,6 +170,10 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
     if (controlRequest && request.method === "OPTIONS") {
       response.statusCode = 204;
       response.end();
+      return;
+    }
+    if (fileDownload) {
+      await downloadFile(request, response, url);
       return;
     }
     if (url.pathname === "/api/images/preview") {

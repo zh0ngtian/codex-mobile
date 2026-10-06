@@ -17,7 +17,7 @@ import { ActionSheetDownload } from "../../../ui/ActionSheetDownload";
 import { ImagePreviewSheet } from "./ImagePreviewSheet";
 import { VideoPreviewSheet } from "./VideoPreviewSheet";
 import type { BackendConfig } from "../../../backends/types";
-import { remoteFilePreviewUrl } from "../../../backends/file-upload";
+import { remoteFileDownloadUrl, remoteFilePreviewUrl } from "../../../backends/file-upload";
 import { loadCachedImage, type LoadedImage } from "../image-cache";
 import videoPoster from "../../../assets/video-poster.svg";
 
@@ -207,6 +207,7 @@ export function RemoteImage({
         </button>}
       {open && src && <ImagePreviewSheet
         src={original?.src ?? src}
+        downloadHref={image.local && backend ? remoteFileDownloadUrl(backend, source) : undefined}
         name={displayName}
         alt={alt || displayName}
         details={previewPending ? t("正在加载原图…") : previewError ? t("原图加载失败，请关闭后重试")
@@ -222,12 +223,14 @@ function RemoteTextFileSheet({
   path,
   line,
   client,
+  backend,
   onClose,
 }: {
   href: string;
   path: string;
   line: number | null;
   client: AppServerClient | null;
+  backend?: BackendConfig | null;
   onClose: () => void;
 }) {
   const [state, setState] = useState<{
@@ -333,6 +336,7 @@ function RemoteTextFileSheet({
     return (
       <ImagePreviewSheet
         src={`data:${imageMime(path)};base64,${state.dataBase64}`}
+        downloadHref={backend ? remoteFileDownloadUrl(backend, path) : undefined}
         name={name}
         details={`${href}${
           state.bytes != null ? ` · ${formatImageSize(state.bytes)}` : ""
@@ -354,7 +358,7 @@ function RemoteTextFileSheet({
         <>
           {state.dataBase64 && (
             <ActionSheetDownload
-              href={`data:text/plain;charset=utf-8;base64,${state.dataBase64}`}
+              href={backend ? remoteFileDownloadUrl(backend, path) : `data:application/octet-stream;base64,${state.dataBase64}`}
               filename={name}
               label={t("下载文件")}
             />
@@ -509,6 +513,7 @@ export function RemoteFileLink({
               path={target.path}
               line={target.line}
               client={client}
+              backend={backend}
               onClose={() => setOpen(false)}
             />
           ),

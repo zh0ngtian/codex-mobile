@@ -35,6 +35,31 @@ describe("图片放大预览", () => {
     enabled: true,
     order: 0,
   };
+  it("最终回复的中文电脑照片链接通过当前设备网关下载原文件", async () => {
+    const path = "/Users/zhongtian/Documents/旅行/斗兽场照片_裙摆加长.png";
+    const request = vi.fn().mockResolvedValue({ dataBase64: "iVBORw0KGgo=" });
+    render(<TurnCard client={{ request } as any} backend={backend} turn={{
+      id: "photo-turn", status: "completed", items: [{ id: "answer", type: "agentMessage",
+        text: `文件：[斗兽场照片_裙摆加长.png](<${path}>)` }],
+    }} />);
+    fireEvent.click(screen.getByRole("link", { name: "斗兽场照片_裙摆加长.png" }));
+    const download = await screen.findByRole("link", { name: "下载图片" });
+    const url = new URL(download.getAttribute("href")!);
+    expect(url.origin).toBe(backend.baseUrl);
+    expect(decodeURIComponent(url.pathname)).toBe("/api/files/download/斗兽场照片_裙摆加长.png");
+    expect(url.searchParams.get("path")).toBe(path);
+    expect(url.searchParams.get("token")).toBe(backend.token);
+    expect(download.getAttribute("download")).toBe("斗兽场照片_裙摆加长.png");
+  });
+  it("普通电脑文件的下载同样使用网关地址", async () => {
+    render(<RemoteFileLink href="/Users/test/report.txt" backend={backend}
+      client={{ request: vi.fn().mockResolvedValue({ dataBase64: window.btoa("report") }) } as any}>
+      report.txt
+    </RemoteFileLink>);
+    fireEvent.click(screen.getByRole("link", { name: "report.txt" }));
+    const download = await screen.findByRole("link", { name: "下载文件" });
+    expect(new URL(download.getAttribute("href")!).searchParams.get("path")).toBe("/Users/test/report.txt");
+  });
   it("大图支持按钮缩放和一键还原", () => {
     render(
       <ImagePreviewSheet

@@ -26,12 +26,14 @@ function pointerDistance(
 
 export function ImagePreviewSheet({
   src,
+  downloadHref = src,
   name,
   alt = name,
   details = "",
   onClose,
 }: {
   src: string;
+  downloadHref?: string;
   name: string;
   alt?: string;
   details?: string;
@@ -126,7 +128,7 @@ export function ImagePreviewSheet({
       backdropClassName="image-preview-backdrop"
       headerActions={
         <ActionSheetDownload
-          href={src}
+          href={downloadHref}
           filename={name}
           label={t("下载图片")}
         />
