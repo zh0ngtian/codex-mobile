@@ -309,6 +309,37 @@ jobs:
               "$plist"
           python3 - <<'PY'
           from pathlib import Path
+          import os
+          import re
+
+          native_version = os.environ["APP_VERSION"].split("-")[0]
+          major, minor, patch = map(int, native_version.split("."))
+          build_number = major * 1_000_000 + minor * 1_000 + patch
+          project_path = Path("PakePlus.xcodeproj/project.pbxproj")
+          project = project_path.read_text()
+          for setting, value in (
+              ("MARKETING_VERSION", native_version),
+              ("CURRENT_PROJECT_VERSION", str(build_number)),
+          ):
+              project, count = re.subn(
+                  rf"{setting} = [^;]+;",
+                  f"{setting} = {value};",
+                  project,
+              )
+              if count != 2:
+                  raise SystemExit(f"Pinned PakePlus {setting} settings changed")
+          project_path.write_text(project)
+
+          content_path = Path("PakePlus/ContentView.swift")
+          content = content_path.read_text()
+          keyboard_safe_area = ".ignoresSafeArea(edges: [.all])\n            .allowsHitTesting"
+          if content.count(keyboard_safe_area) != 1:
+              raise SystemExit("Pinned PakePlus keyboard safe area hook changed")
+          content_path.write_text(content.replace(
+              keyboard_safe_area,
+              ".ignoresSafeArea(.container, edges: [.all])\n            .allowsHitTesting",
+              1,
+          ))
 
           path = Path("PakePlus/WebView.swift")
           source = path.read_text()

@@ -46,7 +46,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
-    "typecheck": "tsc -b --pretty false"
+    "typecheck": "tsc -b --pretty false",
+    "ios:prepare": "node scripts/prepare-ios.mjs"
   },
   "dependencies": {
     "qrcode": "^1.5.4",

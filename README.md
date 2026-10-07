@@ -275,6 +275,20 @@ iOS IPA 未签名，安装到真实设备或上传 TestFlight 前仍需使用 Ap
 - [build-ios.yml](.github/workflows/build-ios.yml)
 - [publish-npm.yml](.github/workflows/publish-npm.yml)
 
+### 本地 iOS 与模拟器
+
+```bash
+npm ci
+npm run ios:prepare -- --version 0.2.91
+open .mobile-build/ios/pakeplus/PakePlus.xcodeproj
+```
+
+选择 `PakePlus` scheme 和 iPhone 模拟器运行。工程内置当前前端，并复用发布流水线的
+固定容器配置与原生补丁；生成目录会在下次准备成功后替换。原生容器支持键盘避让，
+App 原生版本号与前端发布版本保持一致。
+
+[本地构建、XCTest 流程与模拟器验证结果](docs/ios-simulator-verification.md)。
+
 ## 项目结构
 
 ```text
