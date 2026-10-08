@@ -10,6 +10,8 @@
 - 固定更新清单为 `http://192.168.123.79:8765/channels/codex-mobile/latest.json`，固定 APK 为 `http://192.168.123.79:8765/channels/codex-mobile/latest.apk`。
 - 使用 `/Users/zhongtian/WorkSpace/GlobalTranslation/scripts/apk-server.py publish-channel codex-mobile <APK> --version <版本> --notes <说明>` 发布；发布后必须通过固定 JSON、HEAD、GET 核对版本、文件大小和 SHA-256。
 - 交付修改时必须提供固定 APK 下载链接和本次版本号、文件大小、SHA-256。
+- iOS 安装包以后固定使用 `http://192.168.123.79:8765/channels/codex-mobile/latest.ipa`，不得只提供 48 小时随机临时链接；固定 iOS 清单为 `http://192.168.123.79:8765/channels/codex-mobile/latest-ios.json`，与 Android 的 `latest.json` 分开维护。
+- 使用 `/Users/zhongtian/WorkSpace/GlobalTranslation/scripts/apk-server.py publish-channel codex-mobile <IPA> --version <版本> --notes <说明>` 发布 IPA。发布后通过 iOS 清单、固定 IPA 的 HEAD 和完整 GET 核对版本、文件大小和 SHA-256；交付时提供固定 IPA 链接及版本，并注明是否签名。固定渠道不参与 48 小时临时文件清理，后续版本覆盖同一地址。
 
 ## Git 提交规范
 
