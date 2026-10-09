@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """使用 macOS 系统工具独立完成单 app IPA 的 Ad Hoc 签名。
 
-公开接口：validate_profile、sign_ipa、verify_ipa。profile 的纯数据校验支持 Linux。
+公开接口：validate_profile、signing_identity、sign_ipa、verify_ipa。profile 的纯数据校验支持 Linux。
 密码仅从受限文件或 Keychain 读取，不打印工具参数和工具错误输出。
 macOS security import -P / create-keychain -p / set-key-partition-list -k
 只能通过进程参数接收密码：同用户或管理员可能读取短暂的进程参数；此模块
@@ -54,11 +54,35 @@ def utc(value):
 
 
 def authorized(pattern, value):
-    if not isinstance(pattern, str):
+    if not isinstance(pattern, str) or not isinstance(value, str):
         return False
     if '*' not in pattern:
         return pattern == value
     return pattern.count('*') == 1 and pattern.endswith('*') and value.startswith(pattern[:-1])
+
+
+def entitlement_authorized(allowed, actual):
+    """递归要求实际权限在授权范围内，保留布尔/整数等标量类型边界。"""
+    if type(allowed) is not type(actual):
+        return False
+    if isinstance(actual, dict):
+        return all(key in allowed and entitlement_authorized(allowed[key], value)
+                   for key, value in actual.items())
+    if isinstance(actual, list):
+        return all(any(entitlement_authorized(pattern, item) for pattern in allowed)
+                   for item in actual)
+    if isinstance(actual, str):
+        return authorized(allowed, actual)
+    return allowed == actual
+
+
+def entitlements_sha256(entitlements):
+    """排序 XML plist 保留权限数据类型，产生签名前后可比较的稳定摘要。"""
+    return hashlib.sha256(plistlib.dumps(entitlements, fmt=plistlib.FMT_XML, sort_keys=True)).hexdigest()
+
+
+def public_identity(identity):
+    return {key: value for key, value in identity.items() if key != 'entitlements'}
 
 
 def validate_profile(profile, bundle_id, udid=None, now=None):
@@ -67,6 +91,11 @@ def validate_profile(profile, bundle_id, udid=None, now=None):
     udid=None 仅用于 verify_ipa 对已有产物的验签；sign_ipa 必须传入目标 UDID。
     App ID prefix 与 Team ID 分别来自对应 profile 字段，不假设两者相同。
     """
+    return _profile_identity(profile, bundle_id, udid, now)
+
+
+def _profile_identity(profile, bundle_id, udid=None, now=None, *, actual_entitlements=None):
+    """严格签名构造最小权限；独立验签验证实际身份而不重建历史 App ID。"""
     if not isinstance(profile, dict) or not isinstance(bundle_id, str) or not re.fullmatch(r'[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+', bundle_id):
         raise SigningError('Bundle ID 无效')
     ent = profile.get('Entitlements', {})
@@ -97,13 +126,15 @@ def validate_profile(profile, bundle_id, udid=None, now=None):
     prefix = pattern.split('.', 1)[0]
     if prefix not in prefixes or not prefix:
         raise SigningError('Profile App ID prefix 与 application-identifier 不一致')
-    app_id = f'{prefix}.{bundle_id}'
+    app_id = f'{prefix}.{bundle_id}' if actual_entitlements is None else actual_entitlements.get('application-identifier')
+    if not isinstance(app_id, str) or not re.fullmatch(r'[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+', app_id) or app_id.split('.', 1)[0] != prefix:
+        raise SigningError('实际 application-identifier 与 Profile App ID prefix 不一致')
     if not authorized(pattern, app_id):
         raise SigningError('Bundle ID 不符合 Profile 的 App ID 授权；请显式指定匹配值')
     if not isinstance(certs, list) or not certs or not all(isinstance(x, bytes) and x for x in certs):
         raise SigningError('Profile 缺少授权签名证书')
     groups = ent.get('keychain-access-groups', [])
-    if not isinstance(groups, list) or not any(authorized(group, app_id) for group in groups):
+    if not isinstance(groups, list) or (actual_entitlements is None and not any(authorized(group, app_id) for group in groups)):
         raise SigningError('Profile 不允许目标默认 keychain-access-group')
     minimal = {
         'application-identifier': app_id,
@@ -111,8 +142,47 @@ def validate_profile(profile, bundle_id, udid=None, now=None):
         'keychain-access-groups': [app_id],
         'get-task-allow': False,
     }
+    if actual_entitlements is not None:
+        actual_groups = actual_entitlements.get('keychain-access-groups')
+        if (actual_entitlements.get('get-task-allow') is not False
+                or actual_entitlements.get('com.apple.developer.team-identifier') != team
+                or not isinstance(actual_groups, list) or not actual_groups
+                or not all(isinstance(group, str) and group for group in actual_groups)
+                or not entitlement_authorized(ent, actual_entitlements)):
+            raise SigningError('实际 entitlement 超出 Profile 授权或签名身份无效')
+        minimal = actual_entitlements
     return {'bundleId': bundle_id, 'teamId': team, 'applicationIdentifier': app_id,
             'profileExpiresAt': expiry.isoformat().replace('+00:00', 'Z'), 'entitlements': minimal}
+
+
+def signing_identity(profile_dict, bundle_id, udid, *, compatibility_ipa=None,
+                     compatibility_ipa_sha256=None):
+    """只从摘要固定且独立验签成功的旧 IPA 继承签名身份及精确权限。"""
+    if (compatibility_ipa is None) != (compatibility_ipa_sha256 is None):
+        raise SigningError('兼容基准 IPA 与 SHA-256 必须成对提供')
+    if compatibility_ipa is None:
+        return validate_profile(profile_dict, bundle_id, udid)
+    if not isinstance(compatibility_ipa_sha256, str) or not re.fullmatch(r'[0-9A-Fa-f]{64}', compatibility_ipa_sha256):
+        raise SigningError('兼容基准 SHA-256 无效')
+    # 复制到私有临时快照后再计算摘要和验签，避免验证与使用读取不同基准。
+    with tempfile.TemporaryDirectory(prefix='codex-compatibility-verify-') as work:
+        snapshot = Path(work) / 'baseline.ipa'
+        try:
+            shutil.copyfile(compatibility_ipa, snapshot)
+            hasher = hashlib.sha256()
+            with snapshot.open('rb') as source:
+                for chunk in iter(lambda: source.read(1024 * 1024), b''):
+                    hasher.update(chunk)
+            digest = hasher.hexdigest()
+        except OSError:
+            raise SigningError('无法读取兼容基准 IPA') from None
+        if digest != compatibility_ipa_sha256.lower():
+            raise SigningError('兼容基准 IPA SHA-256 不一致')
+        details = inspect_ipa(snapshot)
+    if details['metadata']['bundleId'] != bundle_id:
+        raise SigningError('兼容签名必须保留基准 IPA 的 Bundle ID')
+    return _profile_identity(profile_dict, bundle_id, udid,
+                             actual_entitlements=details['entitlements'])
 
 
 def read_profile(path):
@@ -209,8 +279,8 @@ def read_bundle_id(app):
 
 
 def validate_signed_entitlements(entitlements, expected):
-    if entitlements != expected['entitlements']:
-        raise SigningError('签名 entitlement 与 Bundle ID/Profile 的最小授权不一致')
+    if entitlements_sha256(entitlements) != entitlements_sha256(expected['entitlements']):
+        raise SigningError('签名 entitlement 与本次指定的精确授权不一致')
 
 
 def der_item(data, offset=0):
@@ -390,15 +460,17 @@ def read_password(password_file=None, password_keychain_service=None):
         raise SigningError('Keychain 密码编码无效') from None
 
 
-def verify_app(app, directory):
+def verify_app(app, directory, *, details=False):
     run(['codesign', '--verify', '--deep', '--strict', app])
     bundle_id = read_bundle_id(app)
-    expected = validate_profile(read_profile(app / 'embedded.mobileprovision'), bundle_id)
+    profile = read_profile(app / 'embedded.mobileprovision')
     try:
         entitlements = plistlib.loads(run(['codesign', '-d', '--entitlements', ':-', app]))
     except (ValueError, plistlib.InvalidFileException):
         raise SigningError('无法读取已签名 entitlement') from None
-    validate_signed_entitlements(entitlements, expected)
+    if not isinstance(entitlements, dict):
+        raise SigningError('已签名 entitlement 必须为字典')
+    expected = _profile_identity(profile, bundle_id, actual_entitlements=entitlements)
     try:
         info = plistlib.loads((app / 'Info.plist').read_bytes())
     except (OSError, ValueError, plistlib.InvalidFileException):
@@ -417,18 +489,25 @@ def verify_app(app, directory):
     except OSError:
         raise SigningError('IPA 没有可验证的签名证书') from None
     certificate_validity(leaf)
-    profile = read_profile(app / 'embedded.mobileprovision')
     if not any(leaf == cert for cert in profile['DeveloperCertificates']):
         raise SigningError('IPA 签名证书未获得嵌入 Profile 授权')
-    return {key: value for key, value in expected.items() if key != 'entitlements'} | {'signed': True, 'version': version, 'buildNumber': build}
+    metadata = public_identity(expected) | {'signed': True, 'version': version, 'buildNumber': build,
+        'keychainAccessGroups': entitlements['keychain-access-groups'],
+        'entitlementsSha256': entitlements_sha256(entitlements)}
+    return {'metadata': metadata, 'entitlements': entitlements, 'certificate': leaf} if details else metadata
 
 
 def verify_ipa(path):
     """独立验签 IPA；不依赖 .signing.json 或原始 P12，返回可公开 metadata。"""
+    return inspect_ipa(path)['metadata']
+
+
+def inspect_ipa(path):
+    """内部基准检查返回权限和 leaf；公开 verify_ipa 只返回 metadata。"""
     require_macos()
     with tempfile.TemporaryDirectory(prefix='codex-ipa-verify-') as work:
         root = Path(work)
-        return verify_app(unpack_ipa(path, root / 'unpacked'), root)
+        return verify_app(unpack_ipa(path, root / 'unpacked'), root, details=True)
 
 
 def pack_ipa(root, output):
@@ -438,7 +517,8 @@ def pack_ipa(root, output):
 
 
 def sign_ipa(ipa, output, profile, p12, *, password_file=None,
-             password_keychain_service=None, bundle_id=None, udid=None):
+             password_keychain_service=None, bundle_id=None, udid=None,
+             compatibility_ipa=None, compatibility_ipa_sha256=None):
     """签名单 app，验证归档后原子安装 output 与 output.signing.json。
 
     不覆盖已有 output，避免失败后旧成功产物被误当作本次成功。
@@ -455,7 +535,8 @@ def sign_ipa(ipa, output, profile, p12, *, password_file=None,
     published = False
     try:
         data = read_profile(profile)
-        expected = validate_profile(data, bundle_id, udid)
+        expected = signing_identity(data, bundle_id, udid, compatibility_ipa=compatibility_ipa,
+                                    compatibility_ipa_sha256=compatibility_ipa_sha256)
         password = read_password(password_file, password_keychain_service)
         with tempfile.TemporaryDirectory(prefix='.codex-ios-sign-', dir=output.parent) as work:
             root = Path(work); unpacked = root / 'unpacked'
@@ -477,7 +558,9 @@ def sign_ipa(ipa, output, profile, p12, *, password_file=None,
                     run(['codesign', '--force', '--sign', identity, '--keychain', keychain, '--timestamp=none', component])
                 run(['codesign', '--force', '--sign', identity, '--keychain', keychain,
                      '--entitlements', entitlements, '--generate-entitlement-der', '--timestamp=none', app])
-                metadata = verify_app(app, root)
+                signed_details = verify_app(app, root, details=True)
+                validate_signed_entitlements(signed_details['entitlements'], expected)
+                metadata = signed_details['metadata']
                 candidate = root / 'signed.ipa'
                 pack_ipa(unpacked, candidate)
                 # 再解包最终 archive 验证，确保 zip 未丢失文件/权限/签名。
@@ -507,9 +590,12 @@ def parse_args(argv=None):
     secret.add_argument('--password-keychain-service', help='macOS Keychain generic password service')
     parser.add_argument('--bundle-id')
     parser.add_argument('--udid')
+    parser.add_argument('--compatibility-ipa', help='已安装且可独立验签的旧 IPA')
+    parser.add_argument('--compatibility-ipa-sha256', help='旧 IPA 的固定 SHA-256')
     args = parser.parse_args(argv)
     signing_fields = ('ipa', 'output', 'profile', 'p12', 'bundle_id', 'udid',
-                      'password_file', 'password_keychain_service')
+                      'password_file', 'password_keychain_service',
+                      'compatibility_ipa', 'compatibility_ipa_sha256')
     if args.verify_ipa is not None:
         if any(getattr(args, name) is not None for name in signing_fields):
             parser.error('--verify-ipa 不能同时提供签名参数')
@@ -519,6 +605,8 @@ def parse_args(argv=None):
         parser.error('签名必须提供：' + ', '.join('--' + name.replace('_', '-') for name in missing))
     if args.password_file is None and args.password_keychain_service is None:
         parser.error('签名必须提供 --password-file 或 --password-keychain-service')
+    if (args.compatibility_ipa is None) != (args.compatibility_ipa_sha256 is None):
+        parser.error('--compatibility-ipa 与 --compatibility-ipa-sha256 必须成对提供')
     return args
 
 
@@ -531,7 +619,9 @@ def main(argv=None):
             metadata = sign_ipa(args.ipa, args.output, args.profile, args.p12,
                             password_file=args.password_file,
                             password_keychain_service=args.password_keychain_service,
-                            bundle_id=args.bundle_id, udid=args.udid)
+                            bundle_id=args.bundle_id, udid=args.udid,
+                            compatibility_ipa=args.compatibility_ipa,
+                            compatibility_ipa_sha256=args.compatibility_ipa_sha256)
         print(json.dumps(metadata, ensure_ascii=False))
         return 0
     except SigningError as error:
