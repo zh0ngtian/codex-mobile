@@ -76,7 +76,7 @@ try {
     if (-not $hasMutex) { throw '共享桌面启动器已经运行' }
     Add-Type -Path $jobSource
     $job = New-Object CodexMobile.OwnedProcessJob
-    $secret = Get-Content -LiteralPath $config.TokenFile -Raw | ConvertTo-SecureString
+    $secret = (Get-Content -LiteralPath $config.TokenFile -Raw).Trim() | ConvertTo-SecureString
     $credential = New-Object Management.Automation.PSCredential('gateway', $secret)
     $env:CODEX_HOME = Join-Path $env:USERPROFILE '.codex'
     $env:CODEX_APP_SERVER_WS_URL = "ws://127.0.0.1:$($config.ServerPort)"
