@@ -3864,7 +3864,12 @@ function BackendWorkspace({
     }
     setLoadingProjectCwd(cwd);
     try {
-      const result = await loadProjectThreadRecords(client, cwd, cursor);
+      const result = await loadProjectThreadRecords(
+        client,
+        cwd,
+        cursor,
+        new Set([...readLocalPinned(), ...projectlessThreadIds]),
+      );
       if (result.hasMore) {
         fullyLoadedProjectCwdsRef.current.delete(cwd);
       } else {
@@ -3911,6 +3916,7 @@ function BackendWorkspace({
         client,
         projectlessThreadIds,
         targetCount,
+        readLocalPinned(),
       );
       if (result.hasMore) {
         fullyLoadedProjectCwdsRef.current.delete(PROJECTLESS_GROUP_ID);
@@ -3925,7 +3931,13 @@ function BackendWorkspace({
         ...current.filter(
           (thread) => projectGroupIdOf(thread) !== PROJECTLESS_GROUP_ID,
         ),
-        ...decorateThreads(result.threads),
+        ...mergeThreadListPage(
+          current.filter(
+            (thread) => projectGroupIdOf(thread) === PROJECTLESS_GROUP_ID,
+          ),
+          decorateThreads(result.threads),
+          readLocalPinned(),
+        ),
       ]);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
@@ -3972,9 +3984,12 @@ function BackendWorkspace({
           void threadListLoaderRef.current!.loadProjectless(
             client,
             projectlessThreadIds,
+            { pinnedThreadIds: [...readLocalPinned()] },
           );
         } else {
-          void threadListLoaderRef.current!.loadProject(client, command.cwd);
+          void threadListLoaderRef.current!.loadProject(client, command.cwd, {
+            pinnedThreadIds: [...readLocalPinned()],
+          });
         }
       }
     } else if (
@@ -4610,10 +4625,11 @@ function ConfiguredApp({
     (backendId: string, cwd: string) => {
       const loadedCount = (snapshots[backendId]?.threads ?? []).filter(
         (thread) =>
-          cwd === PROJECTLESS_GROUP_ID
+          thread.isPinned !== true &&
+          (cwd === PROJECTLESS_GROUP_ID
             ? thread.isProjectless === true
             : thread.isProjectless !== true &&
-              String(thread.cwd ?? "") === cwd,
+              String(thread.cwd ?? "") === cwd),
       ).length;
       setCommand({
         id: ++commandIdRef.current,

@@ -97,11 +97,13 @@ function projectlessThreadsFromPage(
 async function loadProjectlessThreadPage(
   client: ThreadListClient,
   threadIds: string[],
+  pinnedThreadIds: Set<string>,
 ) {
   return loadProjectlessThreadRecords(
     client,
     threadIds,
     PROJECT_THREAD_BATCH_SIZE,
+    pinnedThreadIds,
   );
 }
 
@@ -113,8 +115,9 @@ export async function loadProjectlessThreadRecords(
   client: ThreadListClient,
   threadIds: string[],
   targetCount: number,
+  pinnedThreadIds: Set<string> = new Set(),
 ) {
-  const targetIds = new Set(threadIds);
+  const targetIds = new Set(threadIds.filter((id) => !pinnedThreadIds.has(id)));
   const effectiveTargetCount = Math.min(
     Math.max(0, Math.floor(targetCount)),
     targetIds.size,
@@ -158,22 +161,41 @@ export async function loadProjectThreadRecords(
   client: ThreadListClient,
   cwd: string,
   cursor?: string | null,
+  excludedThreadIds: Set<string> = new Set(),
 ) {
-  const result: ThreadListResponse = await client.request("thread/list", {
-    limit: PROJECT_THREAD_BATCH_SIZE,
-    cwd,
-    sortKey: "recency_at",
-    ...(cursor ? { cursor } : {}),
-  });
-  return {
-    threads: dedupeThreadsById(result.data),
-    hasMore: result.nextCursor
-      ? true
-      : result.nextCursor === null
-        ? false
-        : result.data.length >= PROJECT_THREAD_BATCH_SIZE,
-    nextCursor: result.nextCursor ?? null,
-  };
+  let threads: ThreadRecord[] = [];
+  const seenCursors = new Set<string>(cursor ? [cursor] : []);
+  let nextCursor = cursor ?? null;
+  while (true) {
+    const limit = PROJECT_THREAD_BATCH_SIZE - threads.length;
+    const result: ThreadListResponse = await client.request("thread/list", {
+      limit,
+      cwd,
+      sortKey: "recency_at",
+      ...(nextCursor ? { cursor: nextCursor } : {}),
+    });
+    threads = dedupeThreadsById([
+      ...threads,
+      ...result.data.filter((thread) => !excludedThreadIds.has(String(thread.id))),
+    ]);
+    nextCursor = result.nextCursor ?? null;
+    if (nextCursor && seenCursors.has(nextCursor)) {
+      return { threads, hasMore: false, nextCursor: null };
+    }
+    // 无过滤时保留原有单页行为；有过滤时只补足本批缺少的普通对话。
+    if (!nextCursor || !excludedThreadIds.size || threads.length >= PROJECT_THREAD_BATCH_SIZE) {
+      return {
+        threads,
+        hasMore: nextCursor
+          ? true
+          : result.nextCursor === null
+            ? false
+            : result.data.length >= limit,
+        nextCursor,
+      };
+    }
+    seenCursors.add(nextCursor);
+  }
 }
 
 export function createLatestThreadListLoader(
@@ -185,6 +207,7 @@ export function createLatestThreadListLoader(
   let latestSequence = 0;
   const projectAttempts = new Map<string, number>();
   let currentProjectlessThreadIds = new Set<string>();
+  let currentPinnedThreadIds = new Set<string>();
 
   const nextProjectAttempt = (cwd: string) => {
     const attempt = (projectAttempts.get(cwd) ?? 0) + 1;
@@ -200,7 +223,12 @@ export function createLatestThreadListLoader(
   ) => {
     const attempt = nextProjectAttempt(cwd);
     if (!options.silent) callbacks.onProjectStart?.(cwd);
-    return loadProjectThreadRecords(client, cwd)
+    return loadProjectThreadRecords(
+      client,
+      cwd,
+      null,
+      new Set([...currentPinnedThreadIds, ...currentProjectlessThreadIds]),
+    )
       .then(({ threads, hasMore, nextCursor }) => {
         if (
           sequence === latestSequence &&
@@ -239,7 +267,7 @@ export function createLatestThreadListLoader(
   ) => {
     const attempt = nextProjectAttempt(PROJECTLESS_GROUP_ID);
     if (!options.silent) callbacks.onProjectStart?.(PROJECTLESS_GROUP_ID);
-    return loadProjectlessThreadPage(client, threadIds)
+    return loadProjectlessThreadPage(client, threadIds, currentPinnedThreadIds)
       .then(({ threads, hasMore }) => {
         if (
           sequence === latestSequence &&
@@ -277,9 +305,12 @@ export function createLatestThreadListLoader(
 
       const sequence = ++latestSequence;
       currentProjectlessThreadIds = new Set(projectlessThreadIds);
+      currentPinnedThreadIds = new Set(options.pinnedThreadIds ?? []);
       const projectRequests = projects.length
         ? projects.map((cwd) => loadProject(client, cwd, sequence, options))
-        : [client
+        : projectlessThreadIds.length
+          ? []
+          : [client
             .request("thread/list", {
               limit: 50,
               sortKey: "recency_at",
@@ -337,11 +368,21 @@ export function createLatestThreadListLoader(
       pending = { client, promise };
       return promise;
     },
-    loadProject(client: ThreadListClient, cwd: string) {
+    loadProject(
+      client: ThreadListClient,
+      cwd: string,
+      options: ThreadListLoadOptions = {},
+    ) {
+      if (options.pinnedThreadIds) currentPinnedThreadIds = new Set(options.pinnedThreadIds);
       return loadProject(client, cwd);
     },
-    loadProjectless(client: ThreadListClient, threadIds: string[]) {
+    loadProjectless(
+      client: ThreadListClient,
+      threadIds: string[],
+      options: ThreadListLoadOptions = {},
+    ) {
       currentProjectlessThreadIds = new Set(threadIds);
+      if (options.pinnedThreadIds) currentPinnedThreadIds = new Set(options.pinnedThreadIds);
       return loadProjectless(client, threadIds);
     },
   };

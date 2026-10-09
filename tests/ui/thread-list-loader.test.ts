@@ -18,6 +18,87 @@ function deferred<T>() {
 }
 
 describe("会话列表轮询加载器", () => {
+  it("每项目跳过置顶和无项目记录，补足五条普通对话并保留下一批游标", async () => {
+    const records = ["pin-a", "pin-b", "projectless", ...Array.from({ length: 10 }, (_, i) => `regular-${i}`)]
+      .map((id, i) => ({ id, updatedAt: 100 - i }));
+    const client = { request: vi.fn(async (_method: string, params: any) => {
+      const offset = Number(params.cursor ?? 0);
+      const end = offset + params.limit;
+      return { data: records.slice(offset, end), nextCursor: end < records.length ? String(end) : null };
+    }) };
+    const excluded = new Set(["pin-a", "pin-b", "projectless"]);
+    const first = await loadProjectThreadRecords(client, "/a", null, excluded);
+    expect(first.threads.map((thread) => thread.id)).toEqual(Array.from({ length: 5 }, (_, i) => `regular-${i}`));
+    expect(first.nextCursor).toBe("8");
+    expect(first.hasMore).toBe(true);
+    const second = await loadProjectThreadRecords(client, "/a", first.nextCursor, excluded);
+    expect(second.threads.map((thread) => thread.id)).toEqual(Array.from({ length: 5 }, (_, i) => `regular-${i + 5}`));
+    expect(second.hasMore).toBe(false);
+  });
+
+  it("整页置顶继续补取，历史不足五条普通对话时返回实际数量", async () => {
+    const client = { request: vi.fn()
+      .mockResolvedValueOnce({ data: Array.from({ length: 5 }, (_, i) => ({ id: `pin-${i}` })), nextCursor: "older" })
+      .mockResolvedValueOnce({ data: [{ id: "ordinary" }], nextCursor: null }) };
+    const result = await loadProjectThreadRecords(client, "/a", null, new Set(Array.from({ length: 5 }, (_, i) => `pin-${i}`)));
+    expect(result).toEqual({ threads: [{ id: "ordinary" }], hasMore: false, nextCursor: null });
+    expect(client.request).toHaveBeenCalledTimes(2);
+  });
+
+  it("重复游标的全置顶页停止补取", async () => {
+    const client = { request: vi.fn().mockResolvedValue({ data: [{ id: "pin" }], nextCursor: "repeat" }) };
+    expect(await loadProjectThreadRecords(client, "/a", "repeat", new Set(["pin"])))
+      .toEqual({ threads: [], hasMore: false, nextCursor: null });
+    expect(client.request).toHaveBeenCalledOnce();
+  });
+
+  it("无项目置顶不占普通对话目标数量", async () => {
+    const records = ["pin", ...Array.from({ length: 6 }, (_, i) => `regular-${i}`)].map((id, i) => ({ id, updatedAt: 100 - i }));
+    const client = { request: vi.fn().mockResolvedValue({ data: records, nextCursor: null }) };
+    const result = await loadProjectlessThreadRecords(client, records.map((thread) => thread.id), 5, new Set(["pin"]));
+    expect(result.threads.map((thread) => thread.id)).toEqual(Array.from({ length: 5 }, (_, i) => `regular-${i}`));
+    expect(result.hasMore).toBe(true);
+    const pinsOnly = { request: vi.fn() };
+    expect(await loadProjectlessThreadRecords(pinsOnly, ["pin"], 5, new Set(["pin"])))
+      .toEqual({ threads: [], hasMore: false });
+    expect(pinsOnly.request).not.toHaveBeenCalled();
+  });
+
+  it("初始加载和项目重试均跳过置顶，置顶摘要完整独立提交", async () => {
+    const regular = Array.from({ length: 5 }, (_, i) => ({ id: `regular-${i}`, updatedAt: 10 - i }));
+    const records = [{ id: "pin", updatedAt: 20 }, ...regular];
+    const client = { request: vi.fn(async (method: string, params: any) => {
+      if (method === "thread/read") return { thread: { id: params.threadId } };
+      const offset = Number(params.cursor ?? 0);
+      const end = offset + params.limit;
+      return { data: records.slice(offset, end), nextCursor: end < records.length ? String(end) : null };
+    }) };
+    const onProjectData = vi.fn();
+    const onPinnedData = vi.fn();
+    const loader = createLatestThreadListLoader({ onProjectData, onPinnedData });
+    await loader.load(client, ["/a"], [], { pinnedThreadIds: ["pin", "old-pin"] });
+    expect(onProjectData).toHaveBeenLastCalledWith("/a", regular, false, null);
+    expect(onPinnedData).toHaveBeenCalledWith([{ id: "pin" }, { id: "old-pin" }]);
+    await loader.loadProject(client, "/a");
+    expect(onProjectData).toHaveBeenLastCalledWith("/a", regular, false, null);
+  });
+
+  it("只有无项目分组时仍只提交五条普通对话，避免全局列表覆盖分页", async () => {
+    const records = ["pin", ...Array.from({ length: 6 }, (_, i) => `regular-${i}`)]
+      .map((id, i) => ({ id, updatedAt: 100 - i }));
+    const client = { request: vi.fn(async (method: string, params: any) =>
+      method === "thread/read" ? { thread: { id: params.threadId } } : { data: records, nextCursor: null }) };
+    const onData = vi.fn();
+    const onProjectData = vi.fn();
+    const onPinnedData = vi.fn();
+    await createLatestThreadListLoader({ onData, onProjectData, onPinnedData })
+      .load(client, [], records.map((thread) => thread.id), { pinnedThreadIds: ["pin"] });
+    expect(onData).not.toHaveBeenCalled();
+    expect(onProjectData).toHaveBeenCalledWith(PROJECTLESS_GROUP_ID,
+      records.slice(1, 6).map((thread) => ({ ...thread, isProjectless: true })), true, null);
+    expect(onPinnedData).toHaveBeenCalledWith([{ id: "pin", isProjectless: true }]);
+  });
+
   it("最近五条之外的置顶对话独立补取摘要并恢复无项目标记", async () => {
     const recent = Array.from({ length: 5 }, (_, index) => ({ id: `recent-${index}`, cwd: "/project/a" }));
     const client = {
