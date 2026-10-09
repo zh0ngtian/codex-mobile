@@ -40,7 +40,9 @@
 
 - [x] 两项独立实现接入后做规格与质量审查，解决影响交付的问题。
 - [x] 全量 Vitest、TypeScript/build；Playwright 验证 Web 几何、对比度、键盘操作和无横向页面溢出；iOS 真模拟器验证原生/Web 来回切换、草稿和边栏。
-- [ ] 按 `docs/commit-conventions.md` 提交并推送 main。
-- [ ] 独占固定发布锁，读取 Android/iOS/OTA 清单选择统一更高版本；构建 APK 与私有配置 Ad Hoc IPA，发布两个固定渠道和 HTTPS OTA。
-- [ ] 清单、HEAD、完整GET、签名与散列全部核对，保存实际截图/产物/日志至主工作区忽略目录；清理本次资源，测试会话及时归档。
-- [ ] 文档记录比较入口和验收范围，交付回复提供固定 OTA、APK/IPA 版本、大小、SHA-256及签名状态。
+- [x] 按 `docs/commit-conventions.md` 提交并推送 main。
+- [x] 独占固定发布锁，读取 Android/iOS/OTA 清单选择统一更高版本；构建 APK 与私有配置 Ad Hoc IPA，发布两个固定渠道和 HTTPS OTA。
+- [x] 清单、HEAD、完整GET、签名与散列全部核对，保存实际截图/产物/日志至主工作区忽略目录；清理本次资源，测试会话及时归档。
+- [x] 文档记录比较入口和验收范围，交付回复提供固定 OTA、APK/IPA 版本、大小、SHA-256及签名状态。
+
+实际交付：双端0.2.134；APK、Ad Hoc已签名IPA和HTTPS OTA清单/HEAD/完整GET均通过，发布锁与模拟器锁已释放。证据及产物在主工作区 `.mobile-build/web-ui-comparison-audit/`；本轮只用模拟会话与未发送草稿，无需归档真实会话。临时Android checkout和UI测试DerivedData已清理；受固定任务保护的worktree保留。

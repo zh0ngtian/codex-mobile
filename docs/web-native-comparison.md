@@ -32,3 +32,16 @@
 - Chromium：8项完整App操作回归通过，覆盖375px、1024px、深色、53px辅助字号、450px短视口、正文/来源对比度、搜索重试、草稿和菜单焦点。
 - iOS 26.5 iPhone 17 Pro：两个真实UI用例分别通过，最大辅助字号仍可搜索与新聊天；原生草稿切到网页继续编辑，再切回原生逐字保持。未发送测试会话或变更服务器会话。
 - iOS签名/OTA既有Python回归87项通过。原始截图和日志保留在主工作区 `.mobile-build/web-ui-comparison-audit/`。
+
+## 交付版本
+
+双端统一0.2.134，客户端代码已合并并推送main。安装后按上述入口切换；原生和网页会话页、边栏同时跟随选择。
+
+[固定OTA安装页](https://192.168.123.79:8766/channels/codex-mobile/current/install.html)
+
+| 安装包 | 版本 | 字节大小 | 签名 | SHA-256 |
+| --- | --- | --- | --- | --- |
+| [APK](http://192.168.123.79:8765/channels/codex-mobile/latest.apk) | 0.2.134 | 4,719,351 | APK v2签名 | `893ab272a019dab46bc117e83906e57cda01395a4359e86b0f11c908e531034a` |
+| [IPA](http://192.168.123.79:8765/channels/codex-mobile/latest.ipa) | 0.2.134 | 4,002,704 | Ad Hoc已签名 | `cf16ff6c96bd7c97588a0644d3d724bd6f8ba3f64d9f064af6b8ee0dc2cb315a` |
+
+固定HTTP两个清单、两个安装包HEAD和完整GET，以及HTTPS OTA清单、IPA HEAD/完整GET、安装页与manifest均已核对。iOS应用标识及签名权限保持已安装身份；验证记录保存在 `.mobile-build/web-ui-comparison-audit/release/0.2.134/verification.json`。
