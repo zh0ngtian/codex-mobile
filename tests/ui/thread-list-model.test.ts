@@ -14,6 +14,14 @@ const backends = [
 ];
 
 describe("会话列表派生", () => {
+  it("内部记忆整理会话隐藏，用户自动化会话仍显示", () => {
+    const result = aggregateThreads(backends.slice(0, 1), { book: [
+      { id: "memory", threadSource: "memory_consolidation" },
+      { id: "automation", threadSource: "automation" },
+    ] });
+    expect(result.map((item) => item.threadId)).toEqual(["automation"]);
+  });
+
   it("聚合列表隐藏子 Agent 与内部辅助会话，保留普通 UUID 标题和用户复制会话", () => {
     const result = aggregateThreads(backends.slice(0, 1), { book: [
       { id: "spawn", name: "有标题的子任务", source: { subAgent: { thread_spawn: { parent_thread_id: "main" } } }, status: { type: "active" }, isPinned: true },

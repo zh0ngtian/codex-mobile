@@ -1,6 +1,6 @@
 type ThreadRecord = Record<string, any>;
 
-const auxiliarySource = /^(?:subAgent(?:Review|Compact|ThreadSpawn|Other)?|internal)$/i;
+const auxiliarySource = /^(?:subAgent(?:Review|Compact|ThreadSpawn|Other)?|internal|memory_consolidation)$/i;
 
 /** 仅按明确的来源与生命周期证据隐藏辅助会话，标题和用户复制不参与分类。 */
 export function isVisibleThread(thread: ThreadRecord) {
