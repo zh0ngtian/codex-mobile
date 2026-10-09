@@ -301,6 +301,11 @@ class Session {
       return;
     }
     if (!message.method) return;
+    if (message.method === "serverRequest/resolved") {
+      const params = message.params ?? {};
+      const request = this.pending.get(params.requestId);
+      if (request && request.params?.threadId === params.threadId) this.pending.delete(params.requestId);
+    }
     this.project(message);
   }
 

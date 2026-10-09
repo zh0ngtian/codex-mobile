@@ -217,6 +217,24 @@ describe("Bark 通知", () => {
     f.send({ ...final, params: { ...final.params, item: { id: "item-512", type: "agentMessage" } } }); f.send(completed); await eventually(() => f.pushes.length === 1);
   });
 
+  it("流式审批解决后释放保留连接，数字和字符串请求 ID 相互独立", async () => {
+    const f = await fixture(); await f.settings();
+    const client = await f.stream();
+    const messages: any[] = [];
+    client.on("message", (raw) => messages.push(JSON.parse(raw.toString())));
+    f.send({ id: 1, method: "item/commandExecution/requestApproval", params: { threadId: "t" } });
+    f.send({ id: "1", method: "item/tool/requestUserInput", params: { threadId: "t" } });
+    await eventually(() => messages.length === 2);
+    const closed = new Promise<void>((resolve) => client.once("close", () => resolve()));
+    client.close(); await closed;
+    f.send({ method: "serverRequest/resolved", params: { threadId: "t", requestId: 1 } });
+    f.send({ method: "serverRequest/resolved", params: { threadId: "wrong-thread", requestId: "1" } });
+    await wait(1100);
+    expect(f.connections[0].readyState).toBe(WebSocket.OPEN);
+    f.send({ method: "serverRequest/resolved", params: { threadId: "t", requestId: "1" } });
+    await eventually(() => f.connections[0].readyState === WebSocket.CLOSED);
+  });
+
   it("注销 Bark 后释放已断开的流式上游", async () => {
     const f = await fixture(); await f.settings(); const client = await f.stream();
     client.send(JSON.stringify({ id: 1, method: "turn/start", params: { threadId: final.params.threadId } })); await eventually(() => f.requests.some((m) => m.method === "turn/start")); client.close(); await wait(50); expect(f.connections[0].readyState).toBe(WebSocket.OPEN);

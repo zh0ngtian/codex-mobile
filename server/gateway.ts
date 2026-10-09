@@ -493,6 +493,7 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
         if (["idle", "notLoaded", "systemError"].includes(status)) for (const entry of running) if (entry.startsWith(`${thread}:`)) running.delete(entry);
       }
       if (message.method && message.id != null) approvals.set(message.id, String(thread ?? ""));
+      if (message.method === "serverRequest/resolved" && approvals.get(params.requestId) === thread) approvals.delete(params.requestId);
       if (request?.method === "turn/start") {
         pendingStarts.delete(message.id);
         const resultTurn = message.result?.turn;
