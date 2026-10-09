@@ -319,6 +319,7 @@ jobs:
           cp mobile/ios/NativeConversationViewController.swift pakeplus/PakePlus/NativeConversationViewController.swift
           cp mobile/ios/NativeConversationState.swift pakeplus/PakePlus/NativeConversationState.swift
           cp mobile/ios/NativeConversationCell.swift pakeplus/PakePlus/NativeConversationCell.swift
+          cp mobile/ios/NativeConversationAppearance.swift pakeplus/PakePlus/NativeConversationAppearance.swift
           cp mobile/ios/NativeMarkdown.swift pakeplus/PakePlus/NativeMarkdown.swift
 
       - name: Harden and test the iOS host

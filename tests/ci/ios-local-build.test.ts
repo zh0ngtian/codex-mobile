@@ -12,7 +12,7 @@ describe("iOS 本地工程准备", () => {
     const workflow = parse(readFileSync(".github/workflows/build-ios.yml", "utf8"));
     const install = workflow.jobs.build.steps.find((step: any) => step.name === "Install iOS in-app browser source").run;
     const harden = workflow.jobs.build.steps.find((step: any) => step.name === "Harden and test the iOS host").run;
-    for (const name of ["NativeConversationBridge", "NativeConversationViewController", "NativeConversationState", "NativeConversationCell", "NativeMarkdown"]) {
+    for (const name of ["NativeConversationBridge", "NativeConversationViewController", "NativeConversationState", "NativeConversationCell", "NativeConversationAppearance", "NativeMarkdown"]) {
       expect(install).toContain(`${name}.swift`);
     }
     expect(harden).toContain("CodexMobileNativeConversationBridge.configure(webView)");

@@ -3,7 +3,15 @@ import XCTest
 /// 使用已经配置网关的测试设备；测试本身不改设备、项目或会话配置。
 final class NativeConversationUITests: XCTestCase {
     private func capture(_ app: XCUIApplication, _ name: String) {
-        let attachment = XCTAttachment(screenshot: app.screenshot())
+        let screenshot = app.screenshot()
+        if ProcessInfo.processInfo.environment["NATIVE_IOS_EXPORT_SCREENSHOTS"] == "1" {
+            let folder = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("NativeVisualCaptures")
+            do {
+                try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+                try screenshot.pngRepresentation.write(to: folder.appendingPathComponent(name + ".png"))
+            } catch { XCTFail("无法保存 UI 原始截图：\(error)") }
+        }
+        let attachment = XCTAttachment(screenshot: screenshot)
         attachment.name = name
         attachment.lifetime = .keepAlways
         add(attachment)
@@ -34,6 +42,17 @@ final class NativeConversationUITests: XCTestCase {
     private func openConversation(_ app: XCUIApplication) -> XCUIElement {
         app.launch()
         let chat = app.webViews.buttons["聊天"]
+        if !chat.waitForExistence(timeout: 3) {
+            let add = app.webViews.buttons["添加设备"]
+            if add.exists { add.tap() }
+            let address = app.webViews.textFields["网关地址"]
+            XCTAssertTrue(address.waitForExistence(timeout: 15), app.debugDescription)
+            app.webViews.textFields["设备名称"].tap()
+            app.webViews.textFields["设备名称"].typeText("Visual Simulator")
+            address.tap()
+            address.typeText("http://127.0.0.1:18786/?token=ios-simulator-check")
+            app.webViews.buttons["测试并保存"].tap()
+        }
         XCTAssertTrue(chat.waitForExistence(timeout: 30), app.debugDescription)
         chat.tap()
         let composer = app.textViews["codex.native.composer"]
@@ -56,6 +75,38 @@ final class NativeConversationUITests: XCTestCase {
         XCTAssertLessThanOrEqual(send.frame.maxX, app.frame.maxX)
         XCTAssertGreaterThanOrEqual(composer.frame.height, 44)
         capture(app, "empty-composer-width")
+    }
+
+    func testSingleLineComposerIsCompactAndMultilineExpands() {
+        continueAfterFailure = false
+        let app = XCUIApplication(bundleIdentifier: "vip.loock.codexmobile")
+        let composer = openConversation(app)
+        let send = app.buttons["codex.native.send"]
+        XCTAssertLessThanOrEqual(send.frame.maxY - composer.frame.minY, 56, "空输入区的文本与控件应处于同一行")
+        composer.tap()
+        composer.typeText("简短草稿")
+        XCTAssertLessThanOrEqual(send.frame.maxY - composer.frame.minY, 56)
+        capture(app, "visual-compact-input")
+        composer.typeText("\n第二行草稿")
+        XCTAssertGreaterThan(send.frame.minY, composer.frame.minY + 44, "多行内容应展开独立的操作行")
+        XCTAssertEqual(composer.value as? String, "简短草稿\n第二行草稿")
+        capture(app, "visual-expanded-input")
+    }
+
+    func testAccessibilityTextSizeExpandsNativeInput() {
+        continueAfterFailure = false
+        let app = XCUIApplication(bundleIdentifier: "vip.loock.codexmobile")
+        app.launchArguments = ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
+        let composer = openConversation(app)
+        XCTAssertGreaterThanOrEqual(composer.frame.height, 70, "最大辅助字号必须容纳完整文本行")
+        composer.tap()
+        composer.typeText("大字号草稿")
+        XCTAssertGreaterThanOrEqual(composer.frame.height, 70)
+        XCTAssertTrue(app.buttons["codex.native.send"].isHittable)
+        XCTAssertGreaterThanOrEqual(app.buttons["codex.native.send"].frame.width, 44)
+        capture(app, "visual-accessibility-input")
+        app.toolbars.buttons["codex.native.keyboard.done"].tap()
+        XCTAssertEqual(composer.value as? String, "大字号草稿")
     }
 
     func testNativeDraftKeyboardDoneAndBackRestore() {
@@ -133,6 +184,9 @@ final class NativeConversationUITests: XCTestCase {
             throw XCTSkip("指定 NATIVE_IOS_DESIGN_THREAD_TITLE 可捕获已生成的阅读验收回复；功能回归由真实 Markdown 发送测试覆盖")
         }
         let app = XCUIApplication(bundleIdentifier: "vip.loock.codexmobile")
+        if let category = ProcessInfo.processInfo.environment["NATIVE_IOS_DESIGN_CONTENT_SIZE"] {
+            app.launchArguments = ["-UIPreferredContentSizeCategoryName", category]
+        }
         app.launch()
         let thread = app.webViews.buttons.matching(NSPredicate(format: "label CONTAINS %@", title)).firstMatch
         XCTAssertTrue(thread.waitForExistence(timeout: 30), app.debugDescription)
@@ -142,6 +196,58 @@ final class NativeConversationUITests: XCTestCase {
         let latest = app.buttons["codex.native.latest"]
         if latest.isHittable { latest.tap() }
         capture(app, "08-readable-reply")
+        if ProcessInfo.processInfo.environment["NATIVE_IOS_DESIGN_CONTENT_SIZE"] != nil {
+            let grid = table.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "codex.native.table.")).firstMatch
+            for _ in 0..<12 {
+                if grid.isHittable { break }
+                table.swipeUp()
+                if latest.isHittable { latest.tap() }
+            }
+            XCTAssertTrue(grid.waitForExistence(timeout: 10), app.debugDescription)
+            grid.swipeLeft()
+            let status = table.textViews.matching(NSPredicate(format: "value == %@", "可阅读")).firstMatch
+            XCTAssertTrue(status.isHittable, "最大字号下表格第二列必须能横向滚动到可读位置")
+            XCTAssertGreaterThanOrEqual(status.frame.minX, table.frame.minX + 20, "最后一列的左侧文字不能被截掉")
+            XCTAssertLessThanOrEqual(status.frame.maxX, table.frame.maxX - 20, "整列内容必须处于阅读区域内")
+            capture(app, "visual-accessibility-table-scrolled")
+        }
+    }
+
+    func testShortUserMessageFitsItsText() {
+        continueAfterFailure = false
+        let app = XCUIApplication(bundleIdentifier: "vip.loock.codexmobile")
+        let composer = openConversation(app)
+        composer.tap()
+        composer.typeText("请只回复 OK。")
+        app.buttons["codex.native.send"].tap()
+        let table = app.tables["codex.native.timeline"]
+        let message = table.textViews.matching(NSPredicate(format: "value == %@", "请只回复 OK。")).firstMatch
+        XCTAssertTrue(message.waitForExistence(timeout: 30))
+        XCTAssertLessThan(message.frame.width, app.frame.width * 0.5, "短消息不应占用长消息的固定宽度")
+        XCTAssertGreaterThan(message.frame.minX, app.frame.midX)
+        let reply = table.textViews.matching(NSPredicate(format: "value == %@", "OK")).firstMatch
+        XCTAssertTrue(reply.waitForExistence(timeout: 90))
+        capture(app, "visual-short-message")
+    }
+
+    func testUserMessageKeepsNativeEditingMenu() throws {
+        guard let title = ProcessInfo.processInfo.environment["NATIVE_IOS_MESSAGE_THREAD_TITLE"], !title.isEmpty else {
+            throw XCTSkip("指定本轮创建的消息验收会话，验证完成后归档")
+        }
+        continueAfterFailure = false
+        let app = XCUIApplication(bundleIdentifier: "vip.loock.codexmobile")
+        app.launch()
+        let thread = app.webViews.buttons.matching(NSPredicate(format: "label CONTAINS %@", title)).firstMatch
+        XCTAssertTrue(thread.waitForExistence(timeout: 30))
+        thread.tap()
+        let message = app.tables["codex.native.timeline"].textViews.matching(NSPredicate(format: "value BEGINSWITH %@", "请只回复 NATIVE_IOS_OK")).firstMatch
+        XCTAssertTrue(message.waitForExistence(timeout: 20))
+        message.press(forDuration: 1.2)
+        let copy = app.descendants(matching: .any).matching(NSPredicate(format: "label IN %@", ["复制全文", "复制全部"])).firstMatch
+        XCTAssertTrue(copy.waitForExistence(timeout: 5), app.debugDescription)
+        capture(app, "visual-user-message-menu")
+        copy.tap()
+        XCTAssertTrue(app.textViews["codex.native.composer"].exists)
     }
 
     func testActivityDetailsRemainAccessible() throws {
