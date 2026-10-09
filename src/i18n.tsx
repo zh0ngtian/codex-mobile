@@ -13,6 +13,13 @@ export type LanguagePreference = "system" | Locale;
 const LANGUAGE_STORAGE_KEY = "codex-mobile:language";
 
 const english: Record<string, string> = {
+  "字体大小": "Font size",
+  "小": "Small",
+  "标准": "Standard",
+  "大": "Large",
+  "特大": "Extra large",
+  "立即生效，仅保存在当前客户端": "Applied immediately, saved on this client only",
+  "字号已应用，但无法保存；重启后可能恢复原字号": "Font size applied but could not be saved; restarting may restore the previous size",
   "推送方式": "Push notifications",
   "系统推送": "System notifications",
   "Bark 推送": "Bark notifications",

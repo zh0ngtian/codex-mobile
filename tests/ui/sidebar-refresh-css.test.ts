@@ -16,10 +16,10 @@ describe("侧边栏刷新视觉", () => {
     expect(sourceRule).toContain("text-align: right");
     expect(machineTabRule).toContain("height: 36px");
     expect(machineTabRule).toContain("border-radius: 18px");
-    expect(machineTabRule).toContain("font-size: 12px");
+    expect(machineTabRule).toContain("font-size: 0.75rem");
     expect(allTabRule).toContain("height: 36px");
     expect(allTabRule).toContain("border-radius: 18px");
-    expect(allTabRule).toContain("font-size: 12px");
+    expect(allTabRule).toContain("font-size: 0.75rem");
   });
 
   it("机器 Tab 选中态使用浅灰背景而不是黑色反白", () => {
