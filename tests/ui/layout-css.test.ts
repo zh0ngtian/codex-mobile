@@ -196,15 +196,15 @@ describe("悬浮状态布局", () => {
     expect(ringRule).toContain("animation: stream-receiving");
     expect(styles).not.toContain(".stream-character-spinner::after");
     expect(styles).toContain("@keyframes stream-receiving");
-    expect(styles).toContain(
+    expect(styles).not.toContain(
       "@media (prefers-reduced-motion: reduce) { .stream-character-spinner { animation: none; } }",
     );
   });
 
-  it("任务运行时的停止按钮显示旋转光带并尊重减少动态效果设置", () => {
+  it("任务运行时的停止按钮保留旋转光带", () => {
     expect(styles).toContain(".send-button-running::before");
     expect(styles).toContain("animation: composer-running-spin");
-    expect(styles).toContain(
+    expect(styles).not.toContain(
       "@media (prefers-reduced-motion: reduce) { .send-button-running::before { animation: none; } }",
     );
   });

@@ -178,7 +178,7 @@ button, a, summary, [role="button"] { -webkit-tap-highlight-color: transparent; 
 .thread-running i { display: block; flex: 0 0 auto; }
 .running-spinner { --spinner-tail: rgba(25,118,243,.18); --spinner-mid: rgba(25,118,243,.58); --spinner-head: #1976f3; width: 17px; height: 17px; }
 @keyframes thread-spin { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) { .backend-loading, .project-more .action-spinner, .running-spinner, .sidebar-refresh-spinner, .thread-row-skeleton i, .conversation-skeleton i { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .thread-row-skeleton i, .conversation-skeleton i { animation: none; } }
 @media (prefers-reduced-motion: reduce) { .tool-activity-rows button > span.row-running, .image-placeholder { animation: none; } }
 .list-actions { position: fixed; z-index: 4; inset: auto 0 var(--input-bar-bottom-offset); display: grid; grid-template-columns: 1fr auto; gap: 8px; padding: 8px 16px 0; background: linear-gradient(transparent, #fff 18%, #fff); }
 .search-box, .new-chat { height: 50px; border-radius: 26px; display: flex; align-items: center; }
@@ -268,7 +268,6 @@ button, a, summary, [role="button"] { -webkit-tap-highlight-color: transparent; 
 .stream-elapsed { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .stream-character-spinner { width: 13px; height: 13px; flex: 0 0 auto; border-radius: 50%; background: conic-gradient(from 0deg, transparent 0deg 36deg, #cecece 92deg, #c1c1c1 170deg, #adadad 250deg, #929292 330deg 360deg); -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 0); mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 0); animation: stream-receiving .78s linear infinite; }
 @keyframes stream-receiving { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) { .stream-character-spinner { animation: none; } }
 .context-compaction { width: 100%; margin: 13px 0 20px; display: grid; grid-template-columns: minmax(24px,1fr) auto auto minmax(24px,1fr); align-items: center; gap: 7px; color: #777; font-size: 12px; line-height: 1; }
 .context-compaction::before, .context-compaction::after { content: ""; height: 1px; background: #e5e5e5; }
 .context-compaction span { color: #8a8a8a; font-size: 15px; line-height: 1; }
@@ -497,7 +496,6 @@ button, a, summary, [role="button"] { -webkit-tap-highlight-color: transparent; 
 .send-button > svg, .send-button > i { position: relative; z-index: 1; }
 .send-button-running::before { content: ""; position: absolute; inset: 3px; border-radius: 50%; background: conic-gradient(from 0deg, transparent 0deg 72deg, rgba(255,255,255,.08) 130deg, rgba(255,255,255,.28) 245deg, rgba(255,255,255,.72) 345deg, rgba(255,255,255,.24) 360deg); -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 0); mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 0); animation: composer-running-spin 1s linear infinite; }
 @keyframes composer-running-spin { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) { .send-button-running::before { animation: none; } }
 .composer-steer-spinner { width: 18px; height: 18px; border-color: rgba(255,255,255,.35); border-top-color: #fff; }
 .add-button:disabled, .send-button:disabled { opacity: .35; }
 .empty-state { color: #777; text-align: center; padding: 52px 10px; }
@@ -516,9 +514,10 @@ button, a, summary, [role="button"] { -webkit-tap-highlight-color: transparent; 
 .conversation-action-menu button:disabled { opacity: .55; }
 .conversation-action-menu button.danger { color: #ef233c; }
 .conversation-action-menu button svg { width: 25px; height: 25px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-.action-spinner { width: 18px; height: 18px; border: 2px solid #ddd; border-top-color: #777; border-radius: 50%; animation: thread-spin .8s linear infinite; }
+.action-spinner { display: inline-block; flex: 0 0 auto; width: 18px; height: 18px; border: 2px solid #ddd; border-top-color: #777; border-radius: 50%; animation: thread-spin .8s linear infinite; }
 .backend-loading, .project-more .action-spinner, .running-spinner, .sidebar-refresh-spinner { display: block; flex: 0 0 auto; border: 0; border-radius: 50%; background: conic-gradient(from 0deg, transparent 0deg 36deg, var(--spinner-tail) 92deg, var(--spinner-mid) 220deg, var(--spinner-head) 330deg 360deg); -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - var(--spinner-stroke, 2px)), #000 0); mask: radial-gradient(farthest-side, transparent calc(100% - var(--spinner-stroke, 2px)), #000 0); animation: thread-spin .8s linear infinite; }
-@media (prefers-reduced-motion: reduce) { .backend-loading, .project-more .action-spinner, .running-spinner, .sidebar-refresh-spinner { animation: none; } }
+/* 状态指示器保留较慢旋转，让减少动态效果模式仍能辨识正在加载。 */
+@media (prefers-reduced-motion: reduce) { .action-spinner, .backend-loading, .project-more .action-spinner, .running-spinner, .sidebar-refresh-spinner, .stream-character-spinner, .send-button-running::before { animation-duration: 1.6s; } }
 .conversation-sheet-backdrop { z-index: 21; background: rgba(0,0,0,.24); }
 .conversation-status-sheet { min-height: 47dvh; max-height: 82dvh; box-shadow: 0 -18px 50px rgba(0,0,0,.12); }
 .conversation-status-sheet .action-sheet-body { padding: 0 24px calc(env(safe-area-inset-bottom) + 28px); }
