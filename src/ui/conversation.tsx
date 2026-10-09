@@ -583,6 +583,18 @@ export function createPendingTurn(
   };
 }
 
+export function reconcileThreadSnapshot(
+  current: ConversationRecord | null,
+  incoming: ConversationRecord,
+): ConversationRecord {
+  if (!current || current.id !== incoming.id) return incoming;
+  return {
+    ...current,
+    ...incoming,
+    turns: reconcileRecentTurns(current.turns ?? [], incoming.turns ?? []),
+  };
+}
+
 export function reconcileRecentTurns(
   currentTurns: ConversationRecord[],
   serverTurns: ConversationRecord[],
@@ -637,7 +649,16 @@ export function reconcileRecentTurns(
       }
       if (currentIndex < 0) return incoming;
       used.add(currentIndex);
-      return { ...currentItems[currentIndex], ...incoming };
+      const current = currentItems[currentIndex];
+      const merged = { ...current, ...incoming };
+      // 同一回复的流式文本只会追加；旧快照的短前缀不能擦掉已显示的内容。
+      if (current.type === "agentMessage" && incoming.type === "agentMessage" &&
+        typeof current.text === "string" && typeof incoming.text === "string" &&
+        current.text.length > incoming.text.length && current.text.startsWith(incoming.text)) {
+        merged.text = current.text;
+        if (current.phase != null) merged.phase = current.phase;
+      }
+      return merged;
     });
     return [
       ...ordered,
@@ -648,11 +669,11 @@ export function reconcileRecentTurns(
     current: ConversationRecord,
     incoming: ConversationRecord,
   ) => {
-    const merged: ConversationRecord = {
-      ...current,
-      ...incoming,
-      items: mergeItems(current.items ?? [], incoming.items ?? []),
-    };
+    const staleProgress = ["completed", "failed", "interrupted", "cancelled"].includes(current.status) &&
+      ["inProgress", "in_progress", "running"].includes(incoming.status);
+    const merged: ConversationRecord = staleProgress
+      ? { ...incoming, ...current, items: mergeItems(incoming.items ?? [], current.items ?? []) }
+      : { ...current, ...incoming, items: mergeItems(current.items ?? [], incoming.items ?? []) };
     delete merged.clientSequence;
     return merged;
   };
@@ -721,12 +742,19 @@ export function reconcileRecentTurns(
       ),
     ];
   }
+  const retained = currentTurns.filter(
+    (turn, index) => !pendingTurn(turn) && !matchedCurrentIndexes.has(index),
+  );
+  const incomingStartedAt = finiteNumber(reconciledWindow[0]?.startedAt);
+  const olderWindowIndex = incomingStartedAt == null ? -1 : retained.findIndex((turn) => {
+    const startedAt = finiteNumber(turn.startedAt);
+    return startedAt != null && startedAt > incomingStartedAt;
+  });
+  const insertAt = olderWindowIndex < 0 ? retained.length : olderWindowIndex;
   return [
-    ...currentTurns.filter(
-      (turn, index) =>
-        !pendingTurn(turn) && !matchedCurrentIndexes.has(index),
-    ),
+    ...retained.slice(0, insertAt),
     ...reconciledWindow,
+    ...retained.slice(insertAt),
     ...currentTurns.filter(
       (turn, index) =>
         pendingTurn(turn) &&

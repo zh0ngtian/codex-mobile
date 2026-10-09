@@ -36,6 +36,7 @@ import {
   parseRemoteFileHref,
   relativeTime,
   reconcileRecentTurns,
+  reconcileThreadSnapshot,
   removePendingTurn,
   parseUnifiedDiff,
   shouldCollapseUserMessage,
@@ -1390,6 +1391,41 @@ describe("移动端对话格式", () => {
       status: "inProgress",
       items: [{ id: "local-1", type: "userMessage", text: "新问题" }],
     });
+  });
+
+  it("刷新旧快照不会把已完成回合退回运行中或缩短回复", () => {
+    const current = [{ id: "turn-2", status: "completed", completedAt: 150,
+      items: [{ id: "a2", type: "agentMessage", phase: "final_answer", text: "完整的最新回复" }] }];
+    const stale = [{ id: "turn-2", status: "inProgress", completedAt: null,
+      items: [{ id: "a2", type: "agentMessage", phase: "commentary", text: "完整的" }] }];
+    expect(reconcileRecentTurns(current, stale)).toEqual(current);
+  });
+
+  it("流式回合刷新短前缀保持已显示文本但接受后续增长", () => {
+    const current = [{ id: "turn-2", status: "inProgress",
+      items: [{ id: "a2", type: "agentMessage", text: "已收到的流式内容" }] }];
+    const stale = [{ ...current[0], items: [{ ...current[0].items[0], text: "已收到" }] }];
+    expect(reconcileRecentTurns(current, stale)[0].items[0].text).toBe("已收到的流式内容");
+    const latest = [{ ...current[0], status: "completed",
+      items: [{ ...current[0].items[0], text: "已收到的流式内容和最终结果" }] }];
+    expect(reconcileRecentTurns(current, latest)).toEqual(latest);
+  });
+
+  it("不重叠的旧窗口插入历史位置并保持最新回合在末尾", () => {
+    const latest = { id: "turn-3", status: "completed", startedAt: 300, items: [] };
+    const older = { id: "turn-1", status: "completed", startedAt: 100, items: [] };
+    expect(reconcileRecentTurns([latest], [older])).toEqual([older, latest]);
+    expect(reconcileRecentTurns([older], [latest])).toEqual([older, latest]);
+  });
+
+  it("同会话重连快照保留最新回合和已加载历史，不同会话正常切换", () => {
+    const first = { id: "turn-1", status: "completed", items: [] };
+    const latest = { id: "turn-2", status: "completed", items: [] };
+    const current = { id: "thread", name: "原名称", turns: [first, latest] };
+    expect(reconcileThreadSnapshot(current, { id: "thread", name: "新名称", turns: [first] }))
+      .toEqual({ id: "thread", name: "新名称", turns: [first, latest] });
+    const other = { id: "other", turns: [first] };
+    expect(reconcileThreadSnapshot(current, other)).toEqual(other);
   });
 
   it("增量对账按 turn 和 item id 补齐后台期间漏掉的内容", () => {
