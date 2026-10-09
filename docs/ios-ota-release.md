@@ -91,7 +91,7 @@ iPhone 与 Mac 连接同一局域网。首次用 Safari 下载根证书配置，
 
 为保持入口稳定，将 Mac 的 `192.168.123.79` 在路由器设为 DHCP 保留地址。Mac 开机登录后 launchd 自动恢复服务；Mac 关机或离开局域网时安装入口不可用。若系统请求本地网络访问，允许 Safari/应用访问局域网。首次证书信任、系统安装确认以及真机覆盖后数据保留不能由模拟器代替验证。
 
-本机发布配置使用模板中的 `localRoot` 与 `caFile`。发布入口设置进程内 `SSL_CERT_FILE` 以验证自己的 CA，始终执行 TLS 验证，不使用 `-k` 或关闭证书检查。先建立版本目录，HTTPS 完整回验通过后原子切换 `current`，最后验证固定入口；升级时无需重新安装 CA。TLS 证书到期前执行 `python3 scripts/ios_ota_server.py renew`，保持 CA、服务私钥与 IP 不变；已加载的 launchd 服务会自动重启使用新证书，设备无需重新信任。`init` 不覆盖现有证书。
+本机发布配置使用模板中的 `localRoot` 与 `caFile`。发布入口通过专用 `CODEX_MOBILE_OTA_CA_FILE` 为 OTA 请求追加本机 CA，保留系统公共 CA，并且不改变 npm 等构建子进程的 SSL 信任，始终执行 TLS 验证，不使用 `-k` 或关闭证书检查。先建立版本目录，HTTPS 完整回验通过后原子切换 `current`，最后验证固定入口；升级时无需重新安装 CA。TLS 证书到期前执行 `python3 scripts/ios_ota_server.py renew`，保持 CA、服务私钥与 IP 不变；已加载的 launchd 服务会自动重启使用新证书，设备无需重新信任。`init` 不覆盖现有证书。
 
 本机默认发布命令仍为：
 

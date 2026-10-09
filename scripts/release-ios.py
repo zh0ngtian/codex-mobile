@@ -123,7 +123,7 @@ def main():
     from ios_sign import read_profile, validate_profile, sign_ipa
     config = load_config(args.config)
     if config.get('caFile'):
-        os.environ['SSL_CERT_FILE'] = config['caFile']
+        os.environ['CODEX_MOBILE_OTA_CA_FILE'] = config['caFile']
     profile = read_profile(config['profile'])
     identity = validate_profile(profile, config['bundleId'], config['udid'])
     previous = fetch_previous(config['baseUrl'])

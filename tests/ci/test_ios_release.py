@@ -1,4 +1,7 @@
 import json
+import os
+import sys
+import io
 from unittest.mock import patch
 import importlib.util
 import pathlib
@@ -49,6 +52,21 @@ class ReleaseTests(unittest.TestCase):
             path.write_text(json.dumps(config))
             with self.assertRaisesRegex(ValueError, '同时'):
                 self.release.load_config(path)
+
+    def test_plan_preserves_dependency_tls_while_adding_ota_ca(self):
+        config = dict(profile='private-profile', bundleId='app.example.mobile', udid='REGISTERED',
+                      baseUrl='https://localhost:8766/channels/codex-mobile', caFile='/private/ota-ca.pem')
+        with patch.dict(os.environ, {'SSL_CERT_FILE': '/original/system-ca.pem'}), \
+             patch.object(sys, 'argv', ['release-ios.py', '--config', 'private-config', '--notes', 'update', '--plan']), \
+             patch.object(self.release, 'load_config', return_value=config), \
+             patch('ios_sign.read_profile', return_value={}), \
+             patch('ios_sign.validate_profile', return_value={'bundleId': config['bundleId']}), \
+             patch.object(self.release, 'fetch_previous', return_value=None), \
+             patch.object(self.release, 'channel_versions', return_value=['0.2.122']), \
+             patch.object(sys, 'stdout', io.StringIO()):
+            self.release.main()
+            self.assertEqual(os.environ['SSL_CERT_FILE'], '/original/system-ca.pem')
+            self.assertEqual(os.environ['CODEX_MOBILE_OTA_CA_FILE'], config['caFile'])
 
     def test_local_publish_checks_staged_https_before_activation(self):
         release = {'version': '1.2.3'}

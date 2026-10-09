@@ -122,7 +122,7 @@ class OtaTests(unittest.TestCase):
                 staging = root/'staging'
                 release = self.ota.create_release(ipa, self.meta, staging, base, 'first')
                 self.ota.activate_local(staging, root/'app')
-                with patch.dict(os.environ, {'SSL_CERT_FILE': str(cert)}):
+                with patch.dict(os.environ, {'CODEX_MOBILE_OTA_CA_FILE': str(cert)}):
                     self.ota.verify_published(release)
                     (root/'app/current/latest.ipa').write_bytes(b'tampered data')
                     with self.assertRaisesRegex(ValueError, '大小|校验'):

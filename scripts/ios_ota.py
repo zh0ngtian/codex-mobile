@@ -11,6 +11,7 @@ import plistlib
 import re
 import shlex
 import shutil
+import ssl
 import subprocess
 import tempfile
 import urllib.error
@@ -168,7 +169,11 @@ class HttpsOnlyRedirectHandler(urllib.request.HTTPRedirectHandler):
 def request(url, method='GET'):
     if urllib.parse.urlsplit(url).scheme != 'https':
         raise ValueError('OTA 请求必须使用 HTTPS')
-    response = urllib.request.build_opener(HttpsOnlyRedirectHandler()).open(urllib.request.Request(url, method=method,
+    context = ssl.create_default_context()
+    ca_file = os.environ.get('CODEX_MOBILE_OTA_CA_FILE')
+    if ca_file:
+        context.load_verify_locations(cafile=ca_file)
+    response = urllib.request.build_opener(HttpsOnlyRedirectHandler(), urllib.request.HTTPSHandler(context=context)).open(urllib.request.Request(url, method=method,
                                       headers={'Cache-Control': 'no-cache'}), timeout=120)
     if urllib.parse.urlsplit(response.url).scheme != 'https':
         response.close()
