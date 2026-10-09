@@ -63,7 +63,9 @@ function spawnConcurrent(commands: string[]) {
   );
 }
 
-describe("开发双进程生命周期", () => {
+// 此套测试验证 macOS 的 zsh/concurrently 开发入口及 POSIX 信号语义。
+// Windows 使用单独的 External 网关入口，不通过这个开发启动器。
+describe.skipIf(process.platform === "win32")("开发双进程生命周期", () => {
   it.each([
     ["正常退出", 0, 0],
     ["异常退出", 7, 1],

@@ -8,6 +8,7 @@ import { TurnChangeHistory } from "./turn-change-history.js";
 import { compactTurnDetails } from "./turn-details.js";
 import { isNavigationResume } from "./rpc-replay.js";
 import { InlineImages } from "./inline-images.js";
+import { syncDirectory } from "./sync-directory.js";
 
 export interface RpcMessage {
   id?: string | number;
@@ -210,8 +211,7 @@ class Session {
       } finally { await unlink(temporary).catch(() => {}); }
       if (!previousSize) this.storedOperations++;
       this.storageBytes += size - previousSize;
-      const dir = await open(directory, "r");
-      try { await dir.sync(); } finally { await dir.close(); }
+      await syncDirectory(directory);
     };
     const result = this.storeQueue.then(write);
     this.storeQueue = result.catch(() => {});
@@ -225,8 +225,7 @@ class Session {
       const target = join(directory, `${operation.requestId}.json`);
       const size = await stat(target).then((entry) => entry.size);
       await unlink(target); this.storedOperations--; this.storageBytes -= size;
-      const dir = await open(directory, "r");
-      try { await dir.sync(); } finally { await dir.close(); }
+      await syncDirectory(directory);
     };
     const result = this.storeQueue.then(remove);
     this.storeQueue = result.catch(() => {});

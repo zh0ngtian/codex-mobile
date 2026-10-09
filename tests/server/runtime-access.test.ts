@@ -18,7 +18,7 @@ afterEach(() => {
 });
 
 describe("CLI 运行信息", () => {
-  it("以仅当前用户可读写的权限保存实际端口和口令", async () => {
+  it("保存实际端口和口令，并在 POSIX 上设置仅当前用户可读写权限", async () => {
     const directory = mkdtempSync(`${tmpdir()}/codex-mobile-runtime-`);
     directories.push(directory);
     const file = resolve(directory, "nested", "runtime.json");
@@ -32,6 +32,7 @@ describe("CLI 运行信息", () => {
       port: 19000,
       token: "secret",
     });
-    expect(statSync(file).mode & 0o777).toBe(0o600);
+    // Windows 的访问权限由 ACL 决定，stat 的 POSIX mode 不表示实际 ACL。
+    if (process.platform !== "win32") expect(statSync(file).mode & 0o777).toBe(0o600);
   });
 });

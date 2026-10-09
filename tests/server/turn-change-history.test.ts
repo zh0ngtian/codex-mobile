@@ -256,9 +256,10 @@ describe("回合 Git 改动统计", () => {
   it("强制 stage 文件名含 pathspec 字符时只包含确切的 tracked 路径", async () => {
     const { cwd, service } = await fixture(false);
     await writeFile(join(cwd, ".gitignore"), "*.txt\n"); await git(cwd, "add", ".gitignore"); await git(cwd, "commit", "-m", "ignore text files");
-    await writeFile(join(cwd, "a*.txt"), "old\n"); await git(cwd, "--literal-pathspecs", "add", "-f", "--", "a*.txt");
-    await writeFile(join(cwd, "a-other.txt"), "ignored\n"); await begin(service, cwd);
-    await writeFile(join(cwd, "a*.txt"), "new\nextra\n"); await writeFile(join(cwd, "a-other.txt"), "changed ignored\nmore ignored\n"); await end(service);
+    // [] 同样具有 pathspec 含义，且可作为 Windows 文件名（* 不可）。
+    await writeFile(join(cwd, "a[1].txt"), "old\n"); await git(cwd, "--literal-pathspecs", "add", "-f", "--", "a[1].txt");
+    await writeFile(join(cwd, "a1.txt"), "ignored\n"); await begin(service, cwd);
+    await writeFile(join(cwd, "a[1].txt"), "new\nextra\n"); await writeFile(join(cwd, "a1.txt"), "changed ignored\nmore ignored\n"); await end(service);
     await expect(service.get(threadId, { id: "turn-1" })).resolves.toEqual(change(2, 1));
   });
 

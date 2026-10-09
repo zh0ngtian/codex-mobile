@@ -174,6 +174,27 @@ CODEX_APP_SERVER_URL=ws://127.0.0.1:18765 \
 codex-mobile start
 ```
 
+### Windows（External 网关）
+
+使用 Node.js 20.9+，在 PowerShell 中运行：
+
+```powershell
+npm ci
+npm run build:package
+$env:CODEX_APP_SERVER_MODE = "external"
+$env:CODEX_APP_SERVER_URL = "ws://127.0.0.1:18765"
+$env:HOST = "127.0.0.1"
+$env:PORT = "18766"
+$env:CODEX_MOBILE_TOKEN = "替换为独立的高强度随机口令"
+npm start
+```
+
+上游 app-server 必须已经运行并提供 WebSocket 入口。此模式只启动网关，不启动、关闭或重启上游进程；桌面端与上游的生命周期绑定由桌面启动器负责。关闭网关不会关闭桌面端的 app-server。
+
+未设置 `HOME` 时使用 Windows 当前用户目录定位 `.codex`，仍可通过 `CODEX_HOME` 指定其他位置。Windows 保留文件内容同步和原子重命名，跳过系统不支持的目录 `fsync`；macOS/Linux 仍执行目录同步，Windows 不具备这一步提供的断电持久性保证。运行信息文件的 Windows 权限继承所在目录 ACL，应放在当前用户的私有目录。
+
+现有 `npm run dev` 使用 zsh，保留为 macOS 开发入口；上述 Windows 步骤使用 `npm start`。iOS 构建仍需 macOS/Xcode。
+
 ### Gateway-only
 
 移动 App 已内置前端时，后端可以只提供 HTTP 接口和按需语音通道：

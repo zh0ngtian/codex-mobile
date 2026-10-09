@@ -1,5 +1,5 @@
 import { resolve } from "node:path";
-import { hostname as readHostname } from "node:os";
+import { homedir, hostname as readHostname } from "node:os";
 import { join } from "node:path";
 import { createGateway, type Gateway } from "./gateway.js";
 import {
@@ -45,13 +45,13 @@ try {
     uploadDir:
       process.env.CODEX_MOBILE_UPLOAD_DIR ??
       join(
-        process.env.CODEX_HOME || join(process.env.HOME || "", ".codex"),
+        process.env.CODEX_HOME || join(process.env.HOME || homedir(), ".codex"),
         "codex-mobile-uploads",
       ),
     readProjectState: () =>
       readCodexProjectState(
         join(
-          process.env.CODEX_HOME || join(process.env.HOME || "", ".codex"),
+          process.env.CODEX_HOME || join(process.env.HOME || homedir(), ".codex"),
           ".codex-global-state.json",
         ),
       ),
