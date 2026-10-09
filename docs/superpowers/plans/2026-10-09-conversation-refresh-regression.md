@@ -24,14 +24,17 @@
 
 ### Task 3: 验证与双端交付
 
-- [ ] 运行 `npm test`、`npm run build`、`git diff --check`，阅读提交规范并提交、推送到 main。
-- [ ] 排队获取固定渠道版本，分配高于 APK、IPA 和 OTA 的统一版本。
-- [ ] 在本任务 worktree 构建 APK；运行 `npm run ios:release -- --config "$HOME/Library/Application Support/CodexMobile/ios-release.local.json" --version <统一版本> --notes '修复会话刷新和重连偶现内容回退'` 构建签名并发布 IPA。
-- [ ] 发布 APK，逐个校验固定清单、HEAD 和完整 GET 的版本、大小和 SHA-256，交付固定链接及签名状态。
-- [ ] 清理无用临时文件，归档本次测试会话（如创建）。
+- [x] 运行 `npm test`、`npm run build`、`git diff --check`，阅读提交规范并提交、推送到 main。
+- [x] 排队获取固定渠道版本，分配高于 APK、IPA 和 OTA 的统一版本。
+- [x] 在本任务 worktree 构建 APK；运行 `npm run ios:release -- --config "$HOME/Library/Application Support/CodexMobile/ios-release.local.json" --version <统一版本> --notes '修复会话刷新和重连偶现内容回退'` 构建签名并发布 IPA。
+- [x] 发布 APK，逐个校验固定清单、HEAD 和完整 GET 的版本、大小和 SHA-256，交付固定链接及签名状态。
+- [x] 清理无用临时文件，归档本次测试会话（如创建）。
 
 ## 执行记录
 
 - RED：初次四个单元用例和重连、交错刷新两个浏览器用例复现旧快照覆盖；补充稀疏窗口测试复现中间回合被追加到最新回合之后。
 - GREEN：完整单元测试 804 项通过；会话刷新及 HTTP 历史编辑七个浏览器用例通过；TypeScript、Vite 构建通过。
 - 交付版本：`0.2.127`，同时发布 Android APK 与 Ad Hoc 已签名 IPA；保留显式历史编辑回退流程。
+
+- 固定渠道验收：APK `4,705,107` 字节，SHA-256 `6e3e242dbf5e4030a695d083673b82040d343da4fcfb7ddc8b895cf5b2aed70c`；Ad Hoc IPA `3,762,317` 字节，SHA-256 `5e3ab78f161dae90d2706b57222ed3f825fe7bf2357f4ce2aa243e3cfdb27142`。双端清单、HEAD、完整 GET 与本地产物一致。
+- 构建依据代码提交 `16432e8`；本机交付证据保存在主工作区 `.mobile-build/conversation-refresh-release/delivery.json`。本次测试使用模拟传输，未创建真实会话。
