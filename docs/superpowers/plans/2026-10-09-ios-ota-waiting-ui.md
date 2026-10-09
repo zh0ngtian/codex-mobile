@@ -19,12 +19,21 @@ Files: `scripts/ios_ota.py`、`tests/ci/test_ios_ota.py`、`tests/ci/ios_ota_wai
 - [x] 运行上述测试并完成实现者自查：21 项通过（原有 10 项、UI 7 项、刷新 4 项）；独立需求审查和代码质量审查由主任务继续完成。
 - [x] 文档说明等待是请求状态、页面无法获取系统安装结果，记录刷新命令。
 - [x] 提交实现、测试和文档，使用中文 Conventional Commit。
-- [ ] 完成独立审查与 WebKit 验证后推送，合入 main。
-- [ ] 从长期主工作区执行 `python3 scripts/ios_ota.py refresh-page --root "$HOME/Library/Application Support/CodexMobile/ota-server/channels/codex-mobile"`，HTTPS GET 验证页面包含状态区域和脚本，再核对现有包和清单没有改变。
-- [ ] 归档测试工作区，提供固定安装页链接。
+- [x] 独立需求与代码质量审查均 Approved；WebKit 验证通过，已推送并合入 main。
+- [x] 从长期主工作区执行 `python3 scripts/ios_ota.py refresh-page --root "$HOME/Library/Application Support/CodexMobile/ota-server/channels/codex-mobile"`，HTTPS GET 验证页面包含状态区域和脚本，再核对现有包和清单没有改变。
+- [x] 保存验证记录并交付固定安装页；测试工作区使用宿主原生归档流程收尾。
 
 ## 验收
 
 只改安装页和发布工具，不改客户端代码，不重新构建双端安装包。既有版本 0.2.128 的签名包及身份保持原样。真机系统弹窗延时不可由网页消除，UI 应明确提示等待用户确认系统弹窗。
 
 工作区复用主目录依赖时，测试命令前设置 `NODE_PATH=<主工作区>/node_modules`；已有本地依赖或 CI 完成 `npm ci` 时无需额外设置。
+
+## 执行证据
+
+- 2026-10-09：OTA 和服务端回归共 36 项通过；合入 main 后 OTA 21 项再次通过。
+- 对真实部署 HTML 使用 WebKit 390×844 验证等待、15 秒重试、无横向溢出和减少动态效果（实际 `animationName=none`）。
+- 固定 HTTPS 安装页 GET 与本地 HTML 字节一致，缓存策略为 `no-cache`。
+- 当前版本仍为 0.2.128；IPA、manifest、JSON 散列及 current 目标未改变。HTTPS 完整 IPA 下载核对 3,763,499 字节，SHA-256 为 `03744bce87e5d554cee4c43fc6f2f96236d02a84c24c7db6852139a7e39404a2`。
+- 验证记录保存于长期主工作区 `.mobile-build/ota-waiting-ui/verification.json`，截图为同目录 `waiting.png`。
+- 本次验证网页状态与部署，不把浏览器模拟点击当作 iPhone 系统安装结果。
