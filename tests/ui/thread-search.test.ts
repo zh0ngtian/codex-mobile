@@ -3,6 +3,20 @@ import { AppServerRpcError } from "../../src/app-server/client";
 import { searchThreadRecords } from "../../src/app-server/thread-search";
 
 describe("App Server 统一会话搜索", () => {
+  it.each([false, true])("全文和标题回退搜索统一过滤来源为子 Agent 的结果（回退=%s）", async (fallback) => {
+    const records = [
+      { id: "main", source: "vscode" },
+      { id: "child", source: { subAgent: "review" } },
+      { id: "internal", threadSource: "subagent" },
+    ];
+    const request = vi.fn(async (method: string) => {
+      if (method === "thread/search" && fallback) throw new AppServerRpcError("method not found", -32601);
+      return { data: method === "thread/search"
+        ? records.map((thread) => ({ thread, snippet: "命中" })) : records, nextCursor: null };
+    });
+    expect((await searchThreadRecords({ request }, "任务")).map((thread) => thread.id)).toEqual(["main"]);
+  });
+
   it("全文结果按任务活动排序，重复记录仍保留查看后的最新标题和片段", async () => {
     const request = vi.fn().mockResolvedValue({ data: [
       { thread: { id: "viewed", recencyAt: 10, updatedAt: 10, name: "旧标题" }, snippet: "旧片段" },
