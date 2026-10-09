@@ -2762,6 +2762,28 @@ test("会话搜索在一个结果列表中展示服务端全文命中", async ({
       sortKey: "recency_at",
       sortDirection: "desc",
     });
+
+  const close = page.getByRole("button", { name: "关闭会话列表", exact: true });
+  const bounds = await close.boundingBox();
+  await close.click({ position: { x: bounds!.width - 8, y: 30 } });
+  await expect(search).toHaveValue("");
+  await page.getByRole("button", { name: "打开会话列表" }).click();
+  await expect(search).toBeVisible();
+  await expect(page.getByRole("button", { name: /普通标题/ })).toBeVisible();
+  await expect(page.getByText("正文里的部署失败需要重新排查")).toHaveCount(0);
+
+  await search.fill("部署失败");
+  await expect(page.getByText("正文里的部署失败需要重新排查")).toBeVisible();
+  await page.goBack();
+  await expect(search).toHaveValue("");
+  await page.getByRole("button", { name: "打开会话列表" }).click();
+  await search.fill("部署失败");
+  await expect(page.getByRole("status", { name: "正在搜索会话" })).toBeVisible();
+  await close.click({ position: { x: bounds!.width - 8, y: 30 } });
+  await page.getByRole("button", { name: "打开会话列表" }).click();
+  await expect(search).toHaveValue("");
+  await expect(page.getByRole("button", { name: /普通标题/ })).toBeVisible();
+  await expect(page.getByText("正文里的部署失败需要重新排查")).toHaveCount(0);
 });
 
 test("冷启动列表不等待额度查询且用户点入后不会重复恢复", async ({ page }) => {

@@ -4294,6 +4294,9 @@ function ConfiguredApp({
     refresh: refreshAllBackends,
     refreshSilently: refreshAllBackendsSilently,
   } = useSidebarRefresh();
+  useEffect(() => {
+    if (!sidebarOpen) setQuery("");
+  }, [sidebarOpen]);
   const sidebarLayerRef = useSidebarSwipe(
     sidebarOpen,
     openSidebar,
