@@ -92,7 +92,7 @@ export function ContextUsageButton({
       onClick={onClick}
       style={{ "--usage-degrees": `${degrees}deg` } as CSSProperties}
     >
-      <i />
+      <i aria-hidden="true" />
     </button>
   );
 }
@@ -102,12 +102,16 @@ export function ConversationStatusSheet({
   thread,
   tokenUsage,
   rateLimits,
+  backendName,
+  connectionLabel,
   onClose,
 }: {
   open: boolean;
   thread: DisplayRecord;
   tokenUsage: AnyRecord | null;
   rateLimits: AnyRecord | null;
+  backendName?: string;
+  connectionLabel?: string;
   onClose: () => void;
 }) {
   if (!open) return null;
@@ -129,7 +133,10 @@ export function ConversationStatusSheet({
       className="conversation-status-sheet"
       backdropClassName="conversation-sheet-backdrop"
     >
+        <h3 className="conversation-status-title">{titleOf(thread)}</h3>
         <dl>
+          {backendName && <div><dt>{t("机器")}</dt><dd>{backendName}</dd></div>}
+          {connectionLabel && <div><dt>{t("状态")}</dt><dd>{connectionLabel}</dd></div>}
           <div>
             <dt>{t("对话线程：")}</dt>
             <dd>
@@ -187,6 +194,15 @@ export function ConversationActionMenu({
   readOnly = false,
   thread,
   pendingAction,
+  backendName,
+  projectName,
+  connectionLabel,
+  modelLabel,
+  permissionLabel,
+  settingsEnabled = true,
+  onAgentSettings,
+  onPermissionSettings,
+  onStatus,
   onClose,
   onPin,
   onRefresh,
@@ -199,6 +215,15 @@ export function ConversationActionMenu({
   readOnly?: boolean;
   thread: DisplayRecord;
   pendingAction: string;
+  backendName?: string;
+  projectName?: string;
+  connectionLabel?: string;
+  modelLabel?: string;
+  permissionLabel?: string;
+  settingsEnabled?: boolean;
+  onAgentSettings?: () => void;
+  onPermissionSettings?: () => void;
+  onStatus?: () => void;
   onClose: () => void;
   onPin: () => void;
   onRefresh: () => void;
@@ -255,34 +280,49 @@ export function ConversationActionMenu({
     },
   ];
   return (
-    <>
-      <button
-        className="conversation-action-dismiss"
-        type="button"
-        aria-label={t("关闭会话操作")}
-        onClick={onClose}
-      />
-      <section className="conversation-action-menu" aria-label={t("会话操作")}>
-        <p>{titleOf(thread)}</p>
-        <div>
-          {actions.map((action) => (
-            <button
-              type="button"
-              className={action.danger ? "danger" : ""}
-              disabled={!!pendingAction || (readOnly && action.requiresWrite)}
-              aria-busy={pendingAction === action.id}
-              key={action.id}
-              onClick={action.onClick}
-            >
-              <AppIcon name={action.icon} />
-              <span>{action.label}</span>
-              {pendingAction === action.id && (
-                <i className="action-spinner" aria-hidden="true" />
-              )}
-            </button>
-          ))}
-        </div>
-      </section>
-    </>
+    <ActionSheet
+      open={open}
+      title={t("会话操作")}
+      ariaLabel={t("会话操作")}
+      onClose={onClose}
+      closeLabel={t("关闭会话操作")}
+      closeIcon={<AppIcon name="close" />}
+      showHandle
+      className="conversation-options-sheet"
+      backdropClassName="conversation-sheet-backdrop"
+    >
+      <div className="conversation-options-context">
+        <h3>{titleOf(thread)}</h3>
+        <p>{[backendName, projectName, connectionLabel].filter(Boolean).join(" · ")}</p>
+      </div>
+      <div className="conversation-options-settings">
+        {onAgentSettings && <button type="button" aria-label={t("选择模型、智能与速度")}
+          disabled={!settingsEnabled} onClick={onAgentSettings}>
+          <span>{t("选择模型、智能与速度")}</span><small>{modelLabel}</small>
+        </button>}
+        {onPermissionSettings && <button type="button" aria-label={t("选择审批与权限模式")}
+          disabled={!settingsEnabled} onClick={onPermissionSettings}>
+          <span>{t("选择审批与权限模式")}</span><small>{permissionLabel}</small>
+        </button>}
+        {onStatus && <button type="button" aria-label={t("查看上下文占用情况")}
+          onClick={onStatus}><span>{t("状态")}</span></button>}
+      </div>
+      {!!thread.id && <div className="conversation-options-actions">
+        {actions.map((action) => (
+          <button
+            type="button"
+            className={action.danger ? "danger" : ""}
+            disabled={!!pendingAction || (readOnly && action.requiresWrite)}
+            aria-busy={pendingAction === action.id}
+            key={action.id}
+            onClick={action.onClick}
+          >
+            <AppIcon name={action.icon} />
+            <span>{action.label}</span>
+            {pendingAction === action.id && <i className="action-spinner" aria-hidden="true" />}
+          </button>
+        ))}
+      </div>}
+    </ActionSheet>
   );
 }
