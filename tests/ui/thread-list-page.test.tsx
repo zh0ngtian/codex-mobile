@@ -118,6 +118,40 @@ function renderList(
 }
 
 describe("会话侧边栏列表", () => {
+  it.each(["all", "mini"])("%s 视图将运行和未读会话放在手动置顶后且不重复", (selectedBackendId) => {
+    const visibleThreads = aggregateThreads([backend], { mini: [
+      { id: "manual", preview: "手动置顶任务", cwd: "/tmp/project-a", isPinned: true, updatedAt: 1 },
+      { id: "running", preview: "运行任务", cwd: "/tmp/project-b", status: { type: "active" }, updatedAt: 30 },
+      { id: "unread", preview: "未读任务", cwd: "/tmp/project-b", isUnread: true, updatedAt: 40 },
+      { id: "ordinary", preview: "普通任务", cwd: "/tmp/project-b", updatedAt: 100 },
+    ] });
+    const { container } = renderList(selectedBackendId, {
+      visibleThreads,
+      collapsedProjectKeys: new Set(["mini:/tmp/project-b"]),
+    });
+    const pinnedSection = within(container).getByRole("heading", { name: "置顶" }).parentElement as HTMLElement;
+    expect([...pinnedSection.querySelectorAll(".thread-row-title")].map((node) => node.textContent)).toEqual([
+      "手动置顶任务", "未读任务", "运行任务",
+    ]);
+    expect(within(container).getAllByText("未读任务")).toHaveLength(1);
+    expect(within(container).getAllByText("运行任务")).toHaveLength(1);
+    expect(pinnedSection.querySelectorAll(".thread-unread-dot")).toHaveLength(1);
+    expect(pinnedSection.querySelectorAll(".running-spinner")).toHaveLength(1);
+    fireEvent.contextMenu(within(pinnedSection).getByRole("button", { name: /未读任务/ }));
+    expect(within(container).getByRole("button", { name: "置顶" })).not.toBeNull();
+    expect(within(container).queryByRole("button", { name: "取消置顶" })).toBeNull();
+  });
+
+  it("搜索运行中会话时只显示顶部结果，不重复显示项目分组", () => {
+    const { container } = renderList("mini", {
+      visibleThreads: threads.filter((thread) => thread.threadId === "recent"),
+      query: "最近会话",
+    });
+    expect(within(container).getByRole("heading", { name: "置顶" })).not.toBeNull();
+    expect(container.querySelector(".project-group")).toBeNull();
+    expect(within(container).getAllByText("最近会话")).toHaveLength(1);
+  });
+
   it("阻止非编辑区域触发原生文字选择并保留搜索框选字", () => {
     const { container } = renderList("all");
     const view = within(container);
@@ -216,7 +250,7 @@ describe("会话侧边栏列表", () => {
 
     expect(view.getByRole("heading", { name: "Codex Mobile" })).not.toBeNull();
     expect(view.getByRole("heading", { name: "置顶" })).not.toBeNull();
-    expect(view.getByRole("heading", { name: "最近" })).not.toBeNull();
+    expect(view.queryByRole("heading", { name: "最近" })).toBeNull();
     expect(view.getAllByText("置顶会话")).toHaveLength(1);
     const projectA = view.getByText("Mac mini · project-a");
     const projectB = view.getByText("Mac mini · project-b");
