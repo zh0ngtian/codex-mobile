@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import plistlib
+import re
 import shutil
 import subprocess
 import sys
@@ -64,7 +65,14 @@ def load_config(path):
                 raise ValueError(f'发布配置缺少 {key}')
     if not config.get('passwordFile') and not config.get('passwordKeychainService'):
         raise ValueError('配置必须指定 passwordFile 或 passwordKeychainService')
-    for key in ('profile', 'p12', 'passwordFile'):
+    if bool(config.get('compatibilityIpa')) != bool(config.get('compatibilityIpaSha256')):
+        raise ValueError('compatibilityIpa 与 compatibilityIpaSha256 必须同时提供')
+    if config.get('compatibilityIpa') and (not isinstance(config['compatibilityIpaSha256'], str)
+            or not re.fullmatch(r'[0-9a-f]{64}', config['compatibilityIpaSha256'])):
+        raise ValueError('compatibilityIpaSha256 必须是 SHA-256 小写十六进制')
+    if config.get('restoreInstalledIdentityFromBundleId') and not config.get('compatibilityIpa'):
+        raise ValueError('恢复渠道身份需要 compatibilityIpa 基准')
+    for key in ('profile', 'p12', 'passwordFile', 'compatibilityIpa'):
         if config.get(key):
             raw = Path(config[key]).expanduser()
             target = raw.resolve() if raw.is_absolute() else (path.parent/raw).resolve()
@@ -74,6 +82,18 @@ def load_config(path):
                 raise ValueError(f'{key} 必须使用权限 600')
             config[key] = str(target)
     return config
+
+
+def restore_identity_transition(config, identity, previous):
+    """显式恢复误改的渠道 Bundle ID；目标身份已由签名模块对基准验签。"""
+    if not previous or previous['bundleId'] == identity['bundleId']:
+        return None
+    if (not config.get('compatibilityIpa') or not config.get('compatibilityIpaSha256')
+            or config.get('restoreInstalledIdentityFromBundleId') != previous['bundleId']):
+        raise ValueError('渠道 Bundle ID 与已安装基准不同；需要显式恢复配置及 compatibilityIpa')
+    return {'fromBundleId': previous['bundleId'], 'toBundleId': identity['bundleId'],
+            'previousVersion': previous['version'], 'previousSha256': previous.get('sha256'),
+            'compatibilityIpaSha256': config['compatibilityIpaSha256']}
 
 
 def channel_versions():
@@ -120,13 +140,20 @@ def main():
     parser.add_argument('--version'); parser.add_argument('--notes', required=True)
     parser.add_argument('--plan', action='store_true', help='仅验证配置、profile、版本与 OTA 签名连续性')
     args = parser.parse_args()
-    from ios_sign import read_profile, validate_profile, sign_ipa
+    from ios_sign import read_profile, signing_identity, sign_ipa
     config = load_config(args.config)
     if config.get('caFile'):
         os.environ['CODEX_MOBILE_OTA_CA_FILE'] = config['caFile']
     profile = read_profile(config['profile'])
-    identity = validate_profile(profile, config['bundleId'], config['udid'])
+    compatibility = dict(compatibility_ipa=config.get('compatibilityIpa'),
+                         compatibility_ipa_sha256=config.get('compatibilityIpaSha256'))
+    identity = signing_identity(profile, config['bundleId'], config['udid'], **compatibility)
+    if identity.get('entitlements'):
+        identity['keychainAccessGroups'] = identity['entitlements']['keychain-access-groups']
     previous = fetch_previous(config['baseUrl'])
+    transition = restore_identity_transition(config, identity, previous)
+    if transition:
+        identity['identityTransition'] = transition
     versions = channel_versions() + ([previous['version']] if previous else [])
     version = args.version or next_version(versions)
     require_new_version(version, versions)
@@ -135,6 +162,9 @@ def main():
     validate_upgrade({**identity, 'version': version, 'buildNumber': build_number}, previous)
     if args.plan:
         print(json.dumps({'version': version, 'bundleId': config['bundleId'],
+                          'applicationIdentifier': identity.get('applicationIdentifier'),
+                          'keychainAccessGroups': identity.get('keychainAccessGroups'),
+                          'identityTransition': transition,
                           'installUrl': config['baseUrl']+'/current/install.html',
                           'steps': ['prepare', 'xcodebuild', 'adhoc-sign', 'https-publish-verify', 'lan-publish-verify']}, indent=2))
         return
@@ -148,7 +178,9 @@ def main():
     metadata = sign_ipa(unsigned, signed, config['profile'], config['p12'],
                         password_file=config.get('passwordFile'),
                         password_keychain_service=config.get('passwordKeychainService'),
-                        bundle_id=config['bundleId'], udid=config['udid'])
+                        bundle_id=config['bundleId'], udid=config['udid'], **compatibility)
+    if transition:
+        metadata['identityTransition'] = transition
     unsigned.unlink()
     staging = output/'ota'
     release = create_release(signed, metadata, staging, config['baseUrl'], args.notes, previous)

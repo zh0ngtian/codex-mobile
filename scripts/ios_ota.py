@@ -49,13 +49,34 @@ def validate_base_url(value):
 
 
 def validate_upgrade(metadata, previous):
+    transition = metadata.get('identityTransition')
     if not previous:
+        if transition is not None:
+            raise ValueError('身份恢复记录缺少原渠道版本')
         return
     if version_tuple(metadata['version']) <= version_tuple(previous['version']):
         raise ValueError('发布版本必须高于现有 OTA 版本')
+    restoring = False
+    if transition is not None:
+        if (not isinstance(transition, dict)
+                or set(transition) != {'fromBundleId', 'toBundleId', 'previousVersion', 'previousSha256', 'compatibilityIpaSha256'}
+                or transition['fromBundleId'] != previous.get('bundleId')
+                or transition['toBundleId'] != metadata.get('bundleId')
+                or transition['fromBundleId'] == transition['toBundleId']
+                or transition['previousVersion'] != previous.get('version')
+                or transition['previousSha256'] != previous.get('sha256')
+                or not all(isinstance(transition[k], str) and re.fullmatch(r'[0-9a-f]{64}', transition[k])
+                           for k in ('previousSha256', 'compatibilityIpaSha256'))):
+            raise ValueError('身份恢复记录与原渠道、目标 Bundle ID 或基准散列不匹配')
+        restoring = True
     for key in ('bundleId', 'teamId', 'applicationIdentifier'):
+        if key == 'bundleId' and restoring:
+            continue
         if metadata[key] != previous.get(key):
             raise ValueError(f'覆盖升级签名身份发生变化：{key}；需要兼容描述文件')
+    if (not restoring and previous.get('keychainAccessGroups') is not None
+            and metadata.get('keychainAccessGroups') != previous['keychainAccessGroups']):
+        raise ValueError('覆盖升级钥匙串组发生变化')
     if previous.get('buildNumber') and int(metadata['buildNumber']) <= int(previous['buildNumber']):
         raise ValueError('CFBundleVersion 必须高于现有 OTA 构建号')
 
@@ -211,8 +232,9 @@ def verify_published(release, fixed=True):
     json_url = release['pageUrl'] if fixed else release['manifestUrl'].removesuffix('manifest.plist')+'latest-ios.json'
     with request(json_url) as response:
         remote = json.load(response)
-    for key in ('version', 'buildNumber', 'sha256', 'size', 'bundleId', 'teamId', 'applicationIdentifier', 'manifestUrl', 'installUrl'):
-        if remote.get(key) != release[key]:
+    for key in ('version', 'buildNumber', 'sha256', 'size', 'bundleId', 'teamId', 'applicationIdentifier', 'manifestUrl', 'installUrl',
+                'keychainAccessGroups', 'entitlementsSha256', 'identityTransition'):
+        if remote.get(key) != release.get(key):
             raise ValueError(f'远端 OTA 清单不匹配：{key}')
     with request(release['installUrl'] if fixed else release['manifestUrl'].removesuffix('manifest.plist')+'install.html') as response:
         if urllib.parse.quote(release['manifestUrl'], safe='') not in response.read().decode():

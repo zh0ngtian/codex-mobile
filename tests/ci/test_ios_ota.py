@@ -101,6 +101,58 @@ class OtaTests(unittest.TestCase):
             self.assertEqual(json.loads((server/'current/latest-ios.json').read_text())['version'], '1.2.4')
             self.assertTrue((server/'releases/1.2.3/latest.ipa').exists())
 
+    def test_identity_restore_is_bound_to_previous_release_and_preserves_team(self):
+        previous = {**self.meta, 'version': '1.2.2', 'buildNumber': '1002002',
+                    'bundleId': 'app.profile.assigned', 'sha256': 'a' * 64,
+                    'keychainAccessGroups': ['PREFIX1234.app.profile.assigned']}
+        transition = dict(fromBundleId=previous['bundleId'], toBundleId=self.meta['bundleId'],
+                          previousVersion=previous['version'], previousSha256=previous['sha256'],
+                          compatibilityIpaSha256='b' * 64)
+        restored = {**self.meta, 'identityTransition': transition,
+                    'keychainAccessGroups': ['PREFIX1234.*', 'com.apple.token']}
+        self.ota.validate_upgrade(restored, previous)
+        for key, value in [('fromBundleId', 'other.app'), ('toBundleId', 'other.app'),
+                           ('previousVersion', '1.2.1'), ('previousSha256', 'c' * 64),
+                           ('compatibilityIpaSha256', '')]:
+            with self.subTest(key=key), self.assertRaises(ValueError):
+                self.ota.validate_upgrade({**restored, 'identityTransition': {**transition, key: value}}, previous)
+        for key in ('teamId', 'applicationIdentifier'):
+            with self.subTest(key=key), self.assertRaises(ValueError):
+                self.ota.validate_upgrade({**restored, key: 'OTHER'}, previous)
+        with self.assertRaises(ValueError):
+            self.ota.validate_upgrade(restored, None)
+
+    def test_normal_upgrade_retains_recorded_keychain_groups(self):
+        previous = {**self.meta, 'version': '1.2.2', 'buildNumber': '1002002',
+                    'keychainAccessGroups': ['PREFIX1234.*', 'com.apple.token']}
+        self.ota.validate_upgrade({**self.meta, 'keychainAccessGroups': previous['keychainAccessGroups']}, previous)
+        with self.assertRaises(ValueError):
+            self.ota.validate_upgrade({**self.meta, 'keychainAccessGroups': ['PREFIX1234.app.example.mobile']}, previous)
+
+    def test_restoration_is_rechecked_before_atomic_activation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory); ipa = root/'signed.ipa'; ipa.write_bytes(b'ipa')
+            previous_meta = {**self.meta, 'bundleId': 'app.profile.assigned',
+                             'version': '1.2.2', 'buildNumber': '1002002'}
+            old_source = root/'old-source'
+            previous = self.ota.create_release(ipa, previous_meta, old_source, 'https://example.com/app', 'old')
+            server = root/'server'; self.ota.activate_local(old_source, server)
+            restored_meta = {**self.meta, 'identityTransition': dict(
+                fromBundleId=previous['bundleId'], toBundleId=self.meta['bundleId'],
+                previousVersion=previous['version'], previousSha256=previous['sha256'],
+                compatibilityIpaSha256='b' * 64)}
+            source = root/'restored'
+            self.ota.create_release(ipa, restored_meta, source, 'https://example.com/app', 'restore', previous)
+            self.ota.stage_local(source, server)
+            changed = {**previous, 'sha256': 'c' * 64}
+            (server/'current/latest-ios.json').write_text(json.dumps(changed))
+            with self.assertRaises(ValueError):
+                self.ota.activate_staged(source, server)
+            self.assertEqual((server/'current').readlink(), pathlib.Path('releases/1.2.2'))
+            (server/'current/latest-ios.json').write_text(json.dumps(previous))
+            self.ota.activate_staged(source, server)
+            self.assertEqual((server/'current').readlink(), pathlib.Path('releases/1.2.3'))
+
     def test_https_real_head_get_manifest_and_tamper_detection(self):
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)

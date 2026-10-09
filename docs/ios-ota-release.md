@@ -21,11 +21,15 @@
 python3 scripts/ios_sign.py --verify-ipa /path/to/installed-version.ipa
 ```
 
-旧 App 必须与新 App 使用相同 `CFBundleIdentifier`、`application-identifier`（包含 App ID prefix）、Team ID 和兼容的 keychain access group。正常覆盖安装保留 App 数据容器；卸载会删除容器。Team ID 与 App ID prefix 不一定相同，脚本分别从 profile 字段取值。
+旧 App 必须与新 App 使用相同 `CFBundleIdentifier`、签名 `application-identifier`（包含 App ID prefix）、Team ID 和兼容的 keychain access group。正常覆盖安装保留 App 数据容器；卸载会删除容器。Team ID 与 App ID prefix 不一定相同，脚本分别从 profile 字段取值。`CFBundleIdentifier` 与签名 `application-identifier` 是不同字段，不应仅凭后者推断已经安装的 App 必须改名换 ID。
 
-本项目原 Bundle ID 是 `vip.loock.codexmobile`。显式 App ID 的淘宝 profile 只授权指定 Bundle ID，不能把 `application-identifier` 随意改成本项目原 ID。如果已安装版本是全能签重签且使用其它 Bundle ID、Team 或 prefix，新证书不一定能够覆盖它。应取得授权旧标识的兼容 profile；如果选择新标识，它会成为独立 App，不能称作保留原数据的升级。脚本不自动猜测、切换 Bundle ID，HTTPS 渠道也拒绝身份变化。
+用户提供的全能签 0.2.122 已安装包经严格资源验签和 Apple CMS 验证：Bundle ID 保留 `vip.loock.codexmobile`，签名 `application-identifier` 为 `SC456JW7RP.app.jade6694.grapefruit3766`，Team 为 `SC456JW7RP`，钥匙串组为 `SC456JW7RP.*` 与 `com.apple.token`。所用证书与本机 P12 一致。此前自动签名将两种标识强制绑定，把 Bundle ID 改成了 `app.jade6694.grapefruit3766`，因此产生另一个 App，并未完成原 App 的覆盖升级。当前兼容路径以真实已签名包为基准，保留这两个分别存在的标识，不修改 Apple 签署的 profile。
+
+默认签名继续要求常规 Bundle ID/profile 对应并使用最小权限。需要复现已安装包时，显式设置 `compatibilityIpa` 与 `compatibilityIpaSha256`。脚本验证基准归档散列、资源签名、Apple CMS、签名证书和全部权限授权，再对目标 profile、Team、App ID prefix、UDID 与有效期检查；只允许使用基准实际的 Bundle ID，并精确保留基准权限与钥匙串组。缺少有效基准时，不允许任意放宽对应关系。独立验签报告的是包的真实身份，不将“常规对应关系”当成所有第三方已签名包的事实。
 
 首次 HTTPS 渠道尚无历史记录时，发布方必须用旧签名 IPA 核对身份。服务器没有设备上的安装记录，无法代替这一步。后续发布由渠道身份记录与 App 的实际签名配置双重校验。
+
+本次修复需要将固定渠道从误改的 Bundle ID 恢复到原 Bundle ID。本机配置一次性设置 `restoreInstalledIdentityFromBundleId=app.jade6694.grapefruit3766`，且必须有已验签、散列固定的兼容基准。发布清单记录 `identityTransition`，绑定原渠道版本、原 IPA 散列、来源/目标 Bundle ID 与兼容基准散列；阶段发布和原子激活都复查，Team 和签名 application-identifier 仍不允许变化。恢复后删除这项一次性配置，普通升级继续拒绝身份变化，并检查已记录的钥匙串组。此操作覆盖的是原标识 App，不会把误改标识的另一个 App 的独立数据自动合并回来。
 
 Ad Hoc 只允许 profile 的 `ProvisionedDevices` 登记设备。脚本在构建前验证目标 UDID，安装时 iOS 再执行检查；增加设备必须由证书提供方重新生成 profile、重新签名。仅编辑 XML 不能增加授权。证书与 profile 均需有效，续期须保留兼容身份。
 
@@ -41,9 +45,21 @@ chmod 600 "$HOME/Library/Application Support/CodexMobile/ios-release.local.json"
 
 编辑配置中的 `bundleId`、目标 `udid`、证书路径。默认使用 `localRoot`、`caFile` 与固定局域网 `baseUrl`；远程服务器方式才使用 `sshHost` 和 `remoteRoot`，两种方式不能同时配置。相对证书路径以配置所在目录为基准；`baseUrl` 必须是有效 HTTPS 域名与路径，不接受账号密码、查询参数、片段和路径穿越。
 
+复用已安装身份时，把旧的已签名 IPA 保存在同一私有签名目录，权限 600；配置以下附加字段，SHA-256 用该 IPA 完整文件的实际散列，不能填写示例值：
+
+```json
+{
+  "bundleId": "vip.loock.codexmobile",
+  "compatibilityIpa": "signing/installed-0.2.122.ipa",
+  "compatibilityIpaSha256": "填写已安装IPA的64位SHA-256"
+}
+```
+
+以上字段合入完整的本机配置，其余证书、UDID、HTTPS/CA 保持实际值。基准路径和散列必须成对配置；修改或替换基准会使预检失败。证书/profile 续期前，应核对新 profile 授权仍兼容基准全部权限，且新证书属于同一 Team；不要求新旧 leaf 证书字节相同。在旧基准 profile 或证书到期前，把最新已安装、独立验签通过的正式 IPA 作为新基准并更新固定散列；不要永久依赖过期的 0.2.122 基准。
+
 推荐通过 macOS“钥匙串访问”创建通用密码项，服务名称 `codex-mobile-ios-p12`，密码填 P12 密码，配置 `passwordKeychainService` 为该服务名。也可使用 `passwordFile` 指向权限 600 的 UTF-8 文件；文件内容为密码，允许一个末尾换行；无密码 P12 使用空文件。不要同时设置两种密码来源，也不要在命令行或文档中填写密码。
 
-签名导入一次性隔离 keychain；不会变更登录钥匙串、默认钥匙串及用户 search list。签名前验证 Apple 签署的 CMS/profile、证书授权与有效期，实际 codesign 验证私钥可用。仅请求默认 keychain group 等必要权限，不复制供应商 profile 里全部扩展权限；生成 DER entitlements 供现代 iOS 校验。临时 keychain、解包内容、密码文件的流水线副本在结束时清理。
+签名导入一次性隔离 keychain；不会变更登录钥匙串、默认钥匙串及用户 search list。签名前验证 Apple 签署的 CMS/profile、证书授权与有效期，实际 codesign 验证私钥可用。默认仅请求默认 keychain group 等必要权限；兼容模式复用已验签基准的原有权限，不凭空添加新 profile 中的其它权限。生成 DER entitlements 供现代 iOS 校验。临时 keychain、解包内容、密码文件的流水线副本在结束时清理。
 
 源 P12 密码仅通过权限 600 的临时文件提供给 OpenSSL。为兼容 macOS，脚本在权限 700 的临时目录中将 P12 重新封装，中间私钥 PEM 始终加密，临时容器使用随机密码；不修改源证书。macOS `security import` 使用的临时随机密码可能短暂被同用户或管理员查看进程参数；脚本不回显参数或原始工具错误，结束后删除临时容器和钥匙串。建议使用专用构建用户/临时 CI runner。构建验签不等于联网证明证书未被 Apple 撤销，真机安装仍以系统验证结果为准。
 
@@ -67,7 +83,9 @@ python3 scripts/ios_sign.py \
   --bundle-id vip.loock.codexmobile --udid TARGET-DEVICE-UDID
 ```
 
-上述原 Bundle ID 需要获得授权它的 profile。输出路径必须不存在；成功生成 IPA 和 `.signing.json`。JSON 只包含公开签名身份、版本和有效期，不包含 UDID 列表、P12 或密码。已签名 IPA 本身必须包含 profile，下载 IPA 的人能够读到其设备列表；不能通过隐藏 JSON 彻底隐藏 IPA 内的 UDID。
+上面未指定兼容基准的默认模式，要求该 Bundle ID 与 profile App ID 对应。输出路径必须不存在；成功生成 IPA 和 `.signing.json`。JSON 只包含公开签名身份、版本和有效期，不包含 UDID 列表、P12 或密码。已签名 IPA 本身必须包含 profile，下载 IPA 的人能够读到其设备列表；不能通过隐藏 JSON 彻底隐藏 IPA 内的 UDID。
+
+若采用本项目已安装包的兼容路径，在上述命令增加 `--compatibility-ipa <已安装签名包> --compatibility-ipa-sha256 <实际散列>`。公开签名报告另含 `keychainAccessGroups` 与 `entitlementsSha256`，用于核对连续性；完整权限、证书和基准 IPA 保存在本机。上传的旧包只用作签名身份基准，不会把它的 0.2.122 内容重新当成最新客户端发布。
 
 ## 本机局域网部署（当前采用）
 
