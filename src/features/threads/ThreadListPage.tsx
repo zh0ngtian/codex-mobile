@@ -30,6 +30,7 @@ import {
 } from "./thread-list-model";
 import { projectCollapseKey } from "./project-collapse";
 import { t } from "../../i18n";
+import { useNativeSidebar } from "./useNativeSidebar";
 
 export type ThreadManagementAction =
   | "pin"
@@ -40,6 +41,43 @@ export type ThreadManagementAction =
 
 const LONG_PRESS_DELAY_MS = 500;
 const LONG_PRESS_MOVE_TOLERANCE_PX = 10;
+
+export interface ThreadListPageProps {
+  backends: BackendConfig[];
+  summaries: Record<string, BackendRuntimeSummary>;
+  selectedBackendId: string;
+  loadingBackendIds: Set<string>;
+  refreshing: boolean;
+  threadListState: ThreadListState;
+  visibleThreads: AggregatedThreadItem[];
+  totalThreadCount: number;
+  projectDirectories: string[];
+  hasProjectlessThreads: boolean;
+  projectThreadStates: Record<string, ProjectThreadLoadState>;
+  projectHasMore: Record<string, boolean>;
+  collapsedProjectKeys: Set<string>;
+  loadingProjectKeys: Set<string>;
+  openingThreadId: string;
+  query: string;
+  searching: boolean;
+  error: string;
+  onQueryChange: (value: string) => void;
+  onOpenThread: (thread: AggregatedThreadItem) => void | Promise<void>;
+  onManageThread: (
+    thread: AggregatedThreadItem,
+    action: ThreadManagementAction,
+    name?: string,
+  ) => Promise<boolean>;
+  onNewChat: () => void;
+  onSelectBackend: (backendId: string) => void;
+  onManageBackends: () => void;
+  onRefresh: () => void;
+  onRetryProject: (backendId: string, cwd: string) => void;
+  onToggleProject: (backendId: string, cwd: string) => void;
+  onToggleProjectCollapsed: (backendId: string, cwd: string) => void;
+  nativeVisible?: boolean;
+  onClose?: () => void;
+}
 
 export function ThreadListPage({
   backends,
@@ -70,39 +108,18 @@ export function ThreadListPage({
   onRetryProject,
   onToggleProject,
   onToggleProjectCollapsed,
-}: {
-  backends: BackendConfig[];
-  summaries: Record<string, BackendRuntimeSummary>;
-  selectedBackendId: string;
-  loadingBackendIds: Set<string>;
-  refreshing: boolean;
-  threadListState: ThreadListState;
-  visibleThreads: AggregatedThreadItem[];
-  totalThreadCount: number;
-  projectDirectories: string[];
-  hasProjectlessThreads: boolean;
-  projectThreadStates: Record<string, ProjectThreadLoadState>;
-  projectHasMore: Record<string, boolean>;
-  collapsedProjectKeys: Set<string>;
-  loadingProjectKeys: Set<string>;
-  openingThreadId: string;
-  query: string;
-  searching: boolean;
-  error: string;
-  onQueryChange: (value: string) => void;
-  onOpenThread: (thread: AggregatedThreadItem) => void | Promise<void>;
-  onManageThread: (
-    thread: AggregatedThreadItem,
-    action: ThreadManagementAction,
-  ) => Promise<boolean>;
-  onNewChat: () => void;
-  onSelectBackend: (backendId: string) => void;
-  onManageBackends: () => void;
-  onRefresh: () => void;
-  onRetryProject: (backendId: string, cwd: string) => void;
-  onToggleProject: (backendId: string, cwd: string) => void;
-  onToggleProjectCollapsed: (backendId: string, cwd: string) => void;
-}) {
+  nativeVisible = false,
+  onClose,
+}: ThreadListPageProps) {
+  const nativeSidebarVisible = useNativeSidebar({
+    backends, summaries, selectedBackendId, loadingBackendIds, refreshing,
+    threadListState, visibleThreads, totalThreadCount, projectDirectories,
+    hasProjectlessThreads, projectThreadStates, projectHasMore,
+    collapsedProjectKeys, loadingProjectKeys, openingThreadId, query, searching,
+    error, onQueryChange, onOpenThread, onManageThread, onNewChat,
+    onSelectBackend, onManageBackends, onRefresh, onRetryProject,
+    onToggleProject, onToggleProjectCollapsed, nativeVisible, onClose,
+  });
   const [managedThread, setManagedThread] =
     useState<AggregatedThreadItem | null>(null);
   const [pendingThreadAction, setPendingThreadAction] = useState("");
@@ -269,7 +286,7 @@ export function ThreadListPage({
   };
 
   return (
-    <section className="thread-list-page" ref={sidebarRef}>
+    <section className="thread-list-page" ref={sidebarRef} data-native-sidebar={nativeSidebarVisible}>
       <div className="thread-list-sticky">
         <header className="list-header">
           <div>

@@ -27,7 +27,7 @@ final class NativeConversationUITests: XCTestCase {
         table.swipeDown()
         capture(app, "02-reading-history")
         app.buttons["codex.native.back"].tap()
-        let chat = app.webViews.buttons["聊天"]
+        let chat = app.buttons["codex.native.sidebar.new"]
         XCTAssertTrue(chat.waitForExistence(timeout: 10))
         chat.tap()
         let composer = app.textViews["codex.native.composer"]
@@ -41,7 +41,7 @@ final class NativeConversationUITests: XCTestCase {
     }
     private func openConversation(_ app: XCUIApplication) -> XCUIElement {
         app.launch()
-        let chat = app.webViews.buttons["聊天"]
+        let chat = app.buttons["codex.native.sidebar.new"]
         if !chat.waitForExistence(timeout: 3) {
             let add = app.webViews.buttons["添加设备"]
             if add.exists { add.tap() }
@@ -123,8 +123,8 @@ final class NativeConversationUITests: XCTestCase {
         composer.typeText("继续编辑")
         app.toolbars.buttons["codex.native.keyboard.done"].tap()
         app.buttons["codex.native.back"].tap()
-        XCTAssertTrue(app.webViews.buttons["聊天"].waitForExistence(timeout: 10))
-        app.webViews.buttons["关闭会话列表"].tap()
+        XCTAssertTrue(app.buttons["codex.native.sidebar.new"].waitForExistence(timeout: 10))
+        app.buttons["codex.native.sidebar.close"].tap()
         XCTAssertTrue(composer.waitForExistence(timeout: 10))
         let restoredDraft = composer.value as? String ?? ""
         XCTAssertTrue(restoredDraft.contains("继续编辑"))
@@ -188,7 +188,7 @@ final class NativeConversationUITests: XCTestCase {
             app.launchArguments = ["-UIPreferredContentSizeCategoryName", category]
         }
         app.launch()
-        let thread = app.webViews.buttons.matching(NSPredicate(format: "label CONTAINS %@", title)).firstMatch
+        let thread = app.tables["codex.native.sidebar.list"].cells.matching(NSPredicate(format: "label CONTAINS %@", title)).firstMatch
         XCTAssertTrue(thread.waitForExistence(timeout: 30), app.debugDescription)
         thread.tap()
         let table = app.tables["codex.native.timeline"]
@@ -237,7 +237,7 @@ final class NativeConversationUITests: XCTestCase {
         continueAfterFailure = false
         let app = XCUIApplication(bundleIdentifier: "vip.loock.codexmobile")
         app.launch()
-        let thread = app.webViews.buttons.matching(NSPredicate(format: "label CONTAINS %@", title)).firstMatch
+        let thread = app.tables["codex.native.sidebar.list"].cells.matching(NSPredicate(format: "label CONTAINS %@", title)).firstMatch
         XCTAssertTrue(thread.waitForExistence(timeout: 30))
         thread.tap()
         let message = app.tables["codex.native.timeline"].textViews.matching(NSPredicate(format: "value BEGINSWITH %@", "请只回复 NATIVE_IOS_OK")).firstMatch
@@ -271,7 +271,7 @@ final class NativeConversationUITests: XCTestCase {
     private func openLongConversation(_ app: XCUIApplication) throws -> XCUIElement {
         let title = ProcessInfo.processInfo.environment["NATIVE_IOS_SCROLL_THREAD_TITLE"] ?? "iOS 原生方案可行性、收益与风险评估"
         app.launch()
-        let thread = app.webViews.buttons.matching(NSPredicate(format: "label CONTAINS %@", title)).firstMatch
+        let thread = app.tables["codex.native.sidebar.list"].cells.matching(NSPredicate(format: "label CONTAINS %@", title)).firstMatch
         XCTAssertTrue(thread.waitForExistence(timeout: 30), app.debugDescription)
         thread.tap()
         let table = app.tables["codex.native.timeline"]

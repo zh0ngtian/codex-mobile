@@ -7,7 +7,7 @@
 - 产品：移动端 AI 编程对话工具；核心任务是阅读回复、输入、发送、查看执行过程。
 - 风格：内容优先、极简、高对比、克制留白。检索命中 Minimalism & Swiss Style，采纳其阅读层次与低装饰原则。
 - 不采纳检索器的 Product Demo + Features、彩色生产力配色、Google Fonts；这些不适配已有 ChatGPT 参考和 UIKit。
-- 技术事实：SwiftUI/WKWebView 容器；核心对话为 UIKit，React 管理业务状态。SwiftUI 数据库只有系统动态字号原则适用，具体实现查 UIKit。
+- 技术事实：SwiftUI/WKWebView 容器；核心对话与会话边栏为 UIKit，React 管理业务状态。SwiftUI 数据库只有系统动态字号原则适用，具体实现查 UIKit。
 
 ## 视觉参数
 

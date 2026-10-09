@@ -28,6 +28,7 @@ final class CodexMobileConversationHostView: UIView {
 final class CodexMobileNativeConversationBridge: NSObject, WKScriptMessageHandler {
     private weak var webView: WKWebView?
     private var conversation: NativeConversationViewController?
+    private var sidebar: NativeSidebarViewController?
     private var attachmentRetryScheduled = false
 
     static func configure(_ webView: WKWebView) {
@@ -35,9 +36,12 @@ final class CodexMobileNativeConversationBridge: NSObject, WKScriptMessageHandle
         bridge.webView = webView
         let controller = webView.configuration.userContentController
         controller.add(bridge, name: "nativeConversation")
+        controller.add(bridge, name: "nativeSidebar")
         controller.addUserScript(WKUserScript(source: """
         if (location.protocol === 'file:') {
           window.__codexNativeConversationReady = true;
+          window.__codexNativeSidebarReady = true;
+          window.dispatchEvent(new CustomEvent('codex-mobile-native-sidebar-ready'));
           window.dispatchEvent(new CustomEvent('codex-mobile-native-conversation-ready'));
         }
         """, injectionTime: .atDocumentStart, forMainFrameOnly: true))
@@ -47,8 +51,9 @@ final class CodexMobileNativeConversationBridge: NSObject, WKScriptMessageHandle
         guard Thread.isMainThread, message.frameInfo.isMainFrame,
               message.frameInfo.request.url?.isFileURL == true, webView?.url?.isFileURL == true,
               let body = message.body as? [String: Any], let type = body["type"] as? String else { return }
+        if message.name == "nativeSidebar" { receiveSidebar(body, type: type); return }
         if type == "hide", let contextId = body["contextId"] as? String {
-            if conversation?.hide(contextId: contextId) == true { webView?.accessibilityElementsHidden = false }
+            if conversation?.hide(contextId: contextId) == true { updateAccessibility() }
             return
         }
         guard type == "snapshot", let object = body["snapshot"] as? [String: Any], object["version"] as? Int == 1,
@@ -64,11 +69,35 @@ final class CodexMobileNativeConversationBridge: NSObject, WKScriptMessageHandle
         }
         controller.receive(snapshot)
         attachIfPossible()
-        if controller.parent != nil { webView?.accessibilityElementsHidden = snapshot.visible }
+        updateAccessibility()
+    }
+
+    private func receiveSidebar(_ body: [String: Any], type: String) {
+        if type == "hide", let contextId = body["contextId"] as? String {
+            if sidebar?.hide(contextId: contextId) == true { updateAccessibility() }
+            return
+        }
+        guard type == "snapshot", let object = body["snapshot"] as? [String: Any],
+              object["version"] as? Int == 1,
+              let data = try? JSONSerialization.data(withJSONObject: object),
+              let snapshot = try? JSONDecoder().decode(NativeSidebarSnapshot.self, from: data),
+              snapshot.version == 1, !snapshot.contextId.isEmpty else { return }
+        let controller: NativeSidebarViewController
+        if let existing = sidebar { controller = existing }
+        else {
+            controller = NativeSidebarViewController()
+            controller.onAction = { [weak self] action in
+                self?.dispatchSidebar(action)
+            }
+            sidebar = controller
+        }
+        controller.receive(snapshot)
+        attachIfPossible()
+        updateAccessibility()
     }
 
     private func attachIfPossible() {
-        guard let webView, let controller = conversation, controller.parent == nil else { return }
+        guard let webView, conversation != nil || sidebar != nil else { return }
         guard webView.window != nil, let parent = owner(of: webView), let host = host(of: webView) else {
             guard !attachmentRetryScheduled else { return }
             attachmentRetryScheduled = true
@@ -78,17 +107,32 @@ final class CodexMobileNativeConversationBridge: NSObject, WKScriptMessageHandle
             }
             return
         }
-        parent.addChild(controller)
-        host.addSubview(controller.view)
-        controller.view.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([
-            controller.view.leadingAnchor.constraint(equalTo: host.leadingAnchor),
-            controller.view.trailingAnchor.constraint(equalTo: host.trailingAnchor),
-            controller.view.topAnchor.constraint(equalTo: host.topAnchor),
-            controller.view.bottomAnchor.constraint(equalTo: host.bottomAnchor)
-        ])
-        controller.didMove(toParent: parent)
-        webView.accessibilityElementsHidden = controller.isConversationVisible
+        let controllers: [UIViewController] = [conversation, sidebar].compactMap { $0 }
+        for controller in controllers where controller.parent == nil {
+            parent.addChild(controller)
+            host.addSubview(controller.view)
+            controller.view.translatesAutoresizingMaskIntoConstraints = false
+            NSLayoutConstraint.activate([
+                controller.view.leadingAnchor.constraint(equalTo: host.leadingAnchor),
+                controller.view.trailingAnchor.constraint(equalTo: host.trailingAnchor),
+                controller.view.topAnchor.constraint(equalTo: host.topAnchor),
+                controller.view.bottomAnchor.constraint(equalTo: host.bottomAnchor)
+            ])
+            controller.didMove(toParent: parent)
+        }
+        if let sidebar, sidebar.isSidebarVisible { host.bringSubviewToFront(sidebar.view) }
+        updateAccessibility()
+    }
+
+    private func updateAccessibility() {
+        webView?.accessibilityElementsHidden = (conversation?.parent != nil && conversation?.isConversationVisible == true)
+            || (sidebar?.parent != nil && sidebar?.isSidebarVisible == true)
+    }
+
+    private func dispatchSidebar(_ action: NativeSidebarAction) {
+        guard webView?.url?.isFileURL == true,
+              let data = try? JSONEncoder().encode(action), let json = String(data: data, encoding: .utf8) else { return }
+        webView?.evaluateJavaScript("window.dispatchEvent(new CustomEvent('codex-mobile-native-sidebar-action', { detail: \(json) }));")
     }
 
     private func host(of webView: WKWebView) -> CodexMobileConversationHostView? {

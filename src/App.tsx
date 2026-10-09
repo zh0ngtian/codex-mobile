@@ -4745,10 +4745,10 @@ function ConfiguredApp({
   ]);
 
   const manageThread = useCallback(
-    (item: AggregatedThreadItem, action: ThreadManagementAction) => {
+    (item: AggregatedThreadItem, action: ThreadManagementAction, nativeName?: string) => {
       let name: string | undefined;
       if (action === "rename") {
-        name = window.prompt(
+        name = nativeName?.trim() ?? window.prompt(
           t("输入新的会话名称"),
           titleOf(item.thread),
         )?.trim();
@@ -4867,6 +4867,8 @@ function ConfiguredApp({
       >
         <aside className="conversation-sidebar" aria-label={t("会话列表")}>
           <ThreadListPage
+            nativeVisible={sidebarOpen && !managerOpen}
+            onClose={closeSidebar}
             backends={registry.backends}
             summaries={summaries}
             selectedBackendId={listBackendId}

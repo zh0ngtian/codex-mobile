@@ -17,6 +17,7 @@ button, a, summary, [role="button"] { -webkit-tap-highlight-color: transparent; 
 .conversation-sidebar-layer { --sidebar-motion-duration: .24s; --sidebar-motion-easing: cubic-bezier(.22,.7,.2,1); position: fixed; inset-block: 0; left: 50%; z-index: 9; width: min(100%, 720px); transform: translateX(-50%); pointer-events: none; visibility: hidden; transition: visibility 0s linear var(--sidebar-motion-duration); }
 .conversation-sidebar-layer.open { pointer-events: auto; visibility: visible; transition-delay: 0s; }
 .conversation-sidebar-layer.dragging { visibility: visible; transition-delay: 0s; }
+.conversation-sidebar-layer:has([data-native-sidebar="true"]) { visibility: hidden; pointer-events: none; transition: none; }
 .conversation-sidebar { position: absolute; z-index: 1; inset-block: 0; left: 0; width: 85%; overflow: hidden; background: #fff; box-shadow: 18px 0 42px rgba(0,0,0,.12); transform: translateX(-104%); transition: transform var(--sidebar-motion-duration) var(--sidebar-motion-easing); }
 .conversation-sidebar-layer.open .conversation-sidebar { transform: translateX(0); }
 .conversation-sidebar-layer.dragging .conversation-sidebar { transform: translateX(calc(-104% + var(--sidebar-drag-x))); transition: none; }

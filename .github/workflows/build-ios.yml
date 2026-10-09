@@ -321,6 +321,8 @@ jobs:
           cp mobile/ios/NativeConversationCell.swift pakeplus/PakePlus/NativeConversationCell.swift
           cp mobile/ios/NativeConversationAppearance.swift pakeplus/PakePlus/NativeConversationAppearance.swift
           cp mobile/ios/NativeMarkdown.swift pakeplus/PakePlus/NativeMarkdown.swift
+          cp mobile/ios/NativeSidebarState.swift pakeplus/PakePlus/NativeSidebarState.swift
+          cp mobile/ios/NativeSidebarViewController.swift pakeplus/PakePlus/NativeSidebarViewController.swift
 
       - name: Harden and test the iOS host
         working-directory: pakeplus

@@ -548,6 +548,10 @@ const english: Record<string, string> = {
   "已是最新版本": "You are up to date",
   "没有可用设备": "No devices available",
   "会话列表": "Conversation list",
+  "已展开": "Expanded",
+  "已折叠": "Collapsed",
+  "个待审批": "pending approvals",
+  "试试会话名称或内容": "Try a conversation name or message",
 };
 
 let activeLocale: Locale = "zh-CN";
