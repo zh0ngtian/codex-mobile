@@ -13,6 +13,23 @@ export type LanguagePreference = "system" | Locale;
 const LANGUAGE_STORAGE_KEY = "codex-mobile:language";
 
 const english: Record<string, string> = {
+  "本会话允许": "Allow for this session",
+  "取消本轮": "Cancel this turn",
+  "允许并记住命令前缀": "Allow and remember command prefix",
+  "允许并记住主机": "Allow and remember host",
+  "阻止并记住主机": "Block and remember host",
+  "网络访问": "Network access",
+  "允许联网": "Allow network access",
+  "禁用联网": "Disable network access",
+  "读取路径": "Read paths",
+  "写入路径": "Write paths",
+  "其他（自行填写）": "Other (write your own)",
+  "自定义回答": "Custom answer",
+  "正在提交，请等待确认…": "Submitting, waiting for confirmation\u2026",
+  "请回答所有问题后提交。": "Answer all questions before submitting.",
+  "请求写入目录": "Requested write directory",
+  "网络目标": "Network destination",
+  "会话": "Conversation",
   "字体大小": "Font size",
   "小": "Small",
   "标准": "Standard",

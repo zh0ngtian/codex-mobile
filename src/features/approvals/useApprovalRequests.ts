@@ -3,15 +3,22 @@ import type { RpcMessage } from "../../app-server/client";
 import { HttpOperationPendingError } from "../../backends/http-transport";
 import { approvalKey, supportedApprovalMethods } from "./approval-model";
 
-type Entry = { request: RpcMessage; answers: Record<string, string>; error: string; submission?: symbol };
+type Entry = { request: RpcMessage; answers: Record<string, string>; error: string; submission?: symbol; releasePending?: () => void };
 type Responder = { respond: (id: number | string, result: unknown) => void | Promise<void> };
-type RememberPending = (id: string, confirmed: (response: RpcMessage) => void) => void;
+type RememberPending = (id: string, confirmed: (response: RpcMessage) => void) => void | (() => void);
 
 /** 请求状态与草稿一起存放，任何异步结果只能完成它所属的那次提交。 */
 export function useApprovalRequests() {
   const entriesRef = useRef<Entry[]>([]);
   const [entries, setEntries] = useState<Entry[]>([]);
-  const update = useCallback((next: Entry[]) => { entriesRef.current = next; setEntries(next); }, []);
+  const update = useCallback((next: Entry[]) => {
+    const previous = entriesRef.current;
+    entriesRef.current = next;
+    setEntries(next);
+    for (const entry of previous) {
+      if (entry.submission && entry.releasePending && !next.some((current) => current.submission === entry.submission)) entry.releasePending();
+    }
+  }, []);
   const sync = useCallback((requests: RpcMessage[]) => {
     const previous = new Map(entriesRef.current.map((entry) => [approvalKey(entry.request), entry]));
     const unique = new Map<string, RpcMessage>();
@@ -47,11 +54,11 @@ export function useApprovalRequests() {
     const first = entriesRef.current[0];
     if (!first || first.submission || (displayed && approvalKey(first.request) !== approvalKey(displayed))) return;
     const token = Symbol("approval-submission");
-    update(entriesRef.current.map((entry, index) => index ? entry : { ...entry, submission: token, error: "" }));
+    update(entriesRef.current.map((entry, index) => index ? entry : { ...entry, submission: token, releasePending: undefined, error: "" }));
     const finish = (response: RpcMessage) => {
       const current = entriesRef.current;
       if (!current.some((entry) => entry.submission === token)) return;
-      update(response.error ? current.map((entry) => entry.submission === token ? { ...entry, submission: undefined, error: response.error!.message } : entry)
+      update(response.error ? current.map((entry) => entry.submission === token ? { ...entry, submission: undefined, releasePending: undefined, error: response.error!.message } : entry)
         : current.filter((entry) => entry.submission !== token));
     };
     try {
@@ -59,7 +66,13 @@ export function useApprovalRequests() {
       finish({ result: {} });
     } catch (reason) {
       if (reason instanceof HttpOperationPendingError) {
-        remember(reason.requestId, finish);
+        if (!entriesRef.current.some((entry) => entry.submission === token)) return;
+        const releasePending = remember(reason.requestId, finish);
+        if (releasePending) {
+          if (entriesRef.current.some((entry) => entry.submission === token)) {
+            update(entriesRef.current.map((entry) => entry.submission === token ? { ...entry, releasePending } : entry));
+          } else releasePending();
+        }
       } else {
         finish({ error: { code: -1, message: reason instanceof Error ? reason.message : String(reason) } });
       }

@@ -76,6 +76,41 @@ describe("App 审批请求状态", () => {
     expect(respond).not.toHaveBeenCalled();
     expect(result.current.approval?.id).toBe(2);
   });
+  it.each(["serverRequest/resolved", "mobile/requests"])("%s 解除对应审批的待确认忙碌状态，不误清回合操作", async (method) => {
+    const { result } = renderHook(useApprovalRequests);
+    act(() => result.current.receive(question(1)));
+    const operations = new Map<string, string>([["turn-op", "turn/start"]]);
+    const cleanup = vi.fn(() => { operations.delete("approval-op"); });
+    await act(() => result.current.submit({}, {
+      respond: () => Promise.reject(new HttpOperationPendingError("approval-op", { id: 1, result: {} })),
+    }, () => { operations.set("approval-op", "approval"); return cleanup; }));
+    expect(operations.has("approval-op")).toBe(true);
+    act(() => result.current.onNotification({ method, params: method === "mobile/requests" ? { requests: [] } : { threadId: "t1", requestId: 1 } }));
+    expect(cleanup).toHaveBeenCalledOnce();
+    expect([...operations]).toEqual([["turn-op", "turn/start"]]);
+  });
+  it("请求先被解决、HTTP 后返回待确认时不再注册会锁住聊天的孤立操作", async () => {
+    const { result } = renderHook(useApprovalRequests);
+    act(() => result.current.receive(question(1)));
+    let reject!: (reason: Error) => void;
+    let sending!: Promise<void>;
+    const remember = vi.fn();
+    act(() => { sending = result.current.submit({}, { respond: () => new Promise<void>((_resolve, fail) => { reject = fail; }) }, remember); });
+    act(() => result.current.onNotification({ method: "mobile/requests", params: { requests: [] } }));
+    await act(async () => { reject(new HttpOperationPendingError("late", { id: 1, result: {} })); await sending; });
+    expect(remember).not.toHaveBeenCalled();
+  });
+  it("失败确认释放关联后，后续直接重试不再释放旧操作", async () => {
+    const { result } = renderHook(useApprovalRequests);
+    act(() => result.current.receive(question(1)));
+    let confirm!: (response: RpcMessage) => void;
+    const cleanup = vi.fn();
+    await act(() => result.current.submit({}, { respond: () => Promise.reject(new HttpOperationPendingError("old", { id: 1, result: {} })) }, (_id, callback) => { confirm = callback; return cleanup; }));
+    act(() => confirm({ error: { code: -1, message: "retry" } }));
+    expect(cleanup).toHaveBeenCalledOnce();
+    await act(() => result.current.submit({}, { respond: vi.fn() }, vi.fn()));
+    expect(cleanup).toHaveBeenCalledOnce();
+  });
   it("快照不会扩展到未知请求，重复投递只出现一次", () => {
     const { result } = renderHook(useApprovalRequests);
     act(() => result.current.onNotification({ method: "mobile/requests", params: { requests: [question(1), question(1), { id: 9, method: "unknown" }] } }));

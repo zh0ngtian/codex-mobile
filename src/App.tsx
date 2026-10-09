@@ -3730,6 +3730,12 @@ function BackendWorkspace({
         draftContext: draftContextGenerationRef.current,
         confirmed,
       }, client);
+      // 审批解决本身已经足以解除其 busy 状态；不要等待可能永久 uncertain 的 HTTP 查询。
+      return () => {
+        pendingOperationsRef.current.delete(requestId);
+        earlyOperationConfirmationsRef.current.delete(requestId);
+        setPendingOperationIds([...pendingOperationsRef.current.keys()]);
+      };
     }, approval);
   };
   const finishRequest = (decision: ApprovalDecision) => {

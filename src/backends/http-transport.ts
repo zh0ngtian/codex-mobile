@@ -9,7 +9,15 @@ interface PollResponse {
   active: boolean; updatedAt: number; reset: boolean; hasMore?: boolean;
 }
 const readMethods = new Set(["initialize", "initialized", "thread/list", "thread/read", "thread/loaded/list", "thread/turns/list", "thread/items/list", "permissionProfile/list", "plugin/list", "model/list", "config/read", "configRequirements/read", "account/read", "account/rateLimits/read", "skills/list", "mcpServerStatus/list", "collaborationMode/list", "app/list", "fs/readFile"]);
-interface PendingWrite { requestId: string; message: RpcMessage; epoch?: string }
+interface PendingWrite { requestId: string; message: RpcMessage; epoch?: string; queryOnly?: true }
+const responseSignature = (message: RpcMessage, epoch?: string) => JSON.stringify({ id: message.id, epoch });
+function persistentWrite(operation: PendingWrite): PendingWrite {
+  // 服务器回复可能包含密码等保密答案。磁盘只保留查询原 UUID 所需的路由信息。
+  return operation.message.method ? operation : {
+    requestId: operation.requestId, epoch: operation.epoch,
+    message: { id: operation.message.id }, queryOnly: true,
+  };
+}
 const pendingWrites = new Map<string, Map<string, PendingWrite>>();
 
 export class HttpOperationPendingError extends Error {
@@ -87,7 +95,13 @@ export class HttpRpcTransport extends EventTarget {
     if (!pendingWrites.has(this.writesKey)) {
       try {
         const saved = JSON.parse(localStorage.getItem(this.writesKey) ?? "[]");
-        for (const pair of saved) if (Array.isArray(pair) && typeof pair[0] === "string" && typeof pair[1]?.requestId === "string" && pair[1]?.message) this.writes.set(pair[0], pair[1]);
+        for (const pair of saved) {
+          if (!Array.isArray(pair) || typeof pair[0] !== "string" || typeof pair[1]?.requestId !== "string" || !pair[1]?.message) continue;
+          const operation = persistentWrite(pair[1]);
+          this.writes.set(operation.message.method ? pair[0] : responseSignature(operation.message, operation.epoch), operation);
+        }
+        // 同时迁移旧缓存中的完整回复及带明文答案的 signature。
+        if (saved.some((pair: any) => pair?.[1]?.message && !pair[1].message.method)) this.saveWrites();
       } catch { /* 存储不可用时同一页面内仍保留未确认操作。 */ }
       pendingWrites.set(this.writesKey, this.writes);
     }
@@ -122,7 +136,11 @@ export class HttpRpcTransport extends EventTarget {
   }
 
   private saveWrites() {
-    try { localStorage.setItem(this.writesKey, JSON.stringify([...this.writes])); }
+    try {
+      localStorage.setItem(this.writesKey, JSON.stringify([...this.writes].map(([signature, operation]) => [
+        operation.message.method ? signature : responseSignature(operation.message, operation.epoch), persistentWrite(operation),
+      ])));
+    }
     catch { /* 配额不足时不影响当前页面的同 ID 对账。 */ }
   }
 
@@ -161,9 +179,14 @@ export class HttpRpcTransport extends EventTarget {
       if (!this.epoch || this.readyState !== 1) throw new Error(t("设备尚未连接，请稍后重试"));
     }
     const signature = !message.method || (!readMethods.has(message.method) && !isNavigationResume(message))
-      ? JSON.stringify(message.method ? { method: message.method, params: message.params } : { ...message, epoch: this.epoch }) : null;
+      ? (message.method ? JSON.stringify({ method: message.method, params: message.params }) : responseSignature(message, this.epoch)) : null;
     if (signature && !this.writes.has(signature) && this.writes.size >= 32) throw new Error(t("请求结果待确认，请刷新会话后检查，勿重复发送"));
     const existing = signature ? this.writes.get(signature) : undefined;
+    if (existing?.queryOnly) {
+      // 重启后没有回复正文，绝不能把元数据当作回复重发或为同一审批生成新 UUID。
+      this.scheduleOperations(0);
+      throw new HttpOperationPendingError(existing.requestId, existing.message);
+    }
     const operation = existing || { requestId: transportUuid(), message, epoch: this.epoch || undefined };
     let requestId = operation.requestId;
     const original = operation.message;
