@@ -22,8 +22,8 @@
 
 ## 交付
 - [x] 执行全量 Vitest、typecheck、build、iOS相关Python回归、diff检查与独立审查。
-- [ ] 依提交规范提交并推送；持有固定渠道发布锁，分配高于双端当前清单的统一版本，构建APK及Ad Hoc签名IPA。
-- [ ] 验证JSON、HEAD、GET版本大小SHA-256及HTTPS OTA；归档测试会话，清理临时构建，交付固定链接和证据。
+- [x] 源码7d27d6b已提交推送main；持有固定渠道发布锁，统一版本0.2.136高于双端原0.2.135，APK及Ad Hoc签名IPA构建完成。
+- [x] JSON、HEAD、完整GET的版本/大小/SHA-256及HTTPS OTA全部通过；12条测试会话已归档，正式证据保留主工作区，临时worktree收尾归档。
 
 ## 已完成验证
 
@@ -37,3 +37,5 @@
 UIWindow自身键盘导引不更新，改用根控制器视图；逐帧evaluateJavaScript有WebKit进程延迟，改为复用系统弹簧时间线。只验证didHide终点不能证明中段同步，因此加入录屏核对；旧探针也被WAAPI top覆盖，已用真实浏览器负例修复。小字体再次编辑的分段视口问题以稳定原生终点解决，不放宽原有单帧位移阈值。
 
 最终原生结果：`viewport-final.xcresult` 两项、`drafts-send-final.xcresult` 两项均通过。12条仅由本次原生回归创建的测试会话已归档，模拟器锁已释放。
+
+网关0.2.136已部署，`/api/host`确认版本和appServerReady=true。APK签名与0.2.135一致；IPA的Bundle ID、application-identifier、权限摘要与钥匙串组连续性验证通过。产物、录屏和核验记录位于主工作区`.mobile-build/keyboard-approval-release/`，交付详情见`docs/ios-simulator-verification.md`。

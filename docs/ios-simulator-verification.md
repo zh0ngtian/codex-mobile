@@ -158,3 +158,14 @@ iPhone 17 Pro / iOS26.5成功构建启动；既有 `testBottomBarsClearHomeIndic
 验证包括全量848项Vitest、87项iOS发布脚本测试、类型检查与前端/网关构建；后续键盘时间线14项回归和真实WAAPI探针负例通过。审批完整App的两项HTTP浏览器回归通过，规格与质量审查通过。原生验证与最终发布证据将保存在主工作区 `.mobile-build/keyboard-approval-release/`。模拟器结果不代表真机覆盖安装与数据保留已验证。
 
 iPhone 17 Pro / iOS26.5最终四项XCTest通过：反复收起URL草稿、短/多行/长中文草稿、短/长/最大化发送、小字体发送后再次编辑。带拖尾断言的9次收起残差0–0.015625px；草稿和再次编辑检查通过。保留最终录屏、连续帧、日志和两份xcresult；本次12条测试会话已归档。
+
+源码 `7d27d6b` 已推送main，双端固定渠道发布 `0.2.136`。长期网关也已更新到0.2.136，认证健康接口返回appServerReady=true。Android和iOS固定清单、HEAD、完整GET，以及HTTPS OTA清单、IPA、manifest和安装页均核验通过。
+
+[固定OTA安装页](https://192.168.123.79:8766/channels/codex-mobile/current/install.html)
+
+| 产物 | 版本 | 大小（字节） | SHA-256 |
+| --- | --- | --- | --- |
+| [APK](http://192.168.123.79:8765/channels/codex-mobile/latest.apk) | 0.2.136 | 4,708,339 | `595db3759d649706bb7a221cb90c44a231359859190793aa3657e372db5879f4` |
+| [IPA（Ad Hoc已签名）](http://192.168.123.79:8765/channels/codex-mobile/latest.ipa) | 0.2.136 | 3,772,782 | `fa06e45d8bd4fa9e1151b2a8d50561da47fff62adba781de7295dd90865b0174` |
+
+APK证书与0.2.135一致；IPA签名身份、权限摘要与钥匙串组保持连续。最终证据保存在 `.mobile-build/keyboard-approval-release/verification/`，安装包和发布验收记录保存在同目录的 `release/0.2.136/`。已停止专用测试网关，模拟器与发布锁均在收尾释放；临时依赖检出和测试构建清理后归档worktree。
