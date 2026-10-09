@@ -19,6 +19,7 @@
 - [ ] GREEN：在 Android 注册内置浏览器之后，对 application 下所有 Activity 设置 `activity.set(f"{android}screenOrientation", "portrait")`（使用 XML 命名空间格式）；iOS 用正则将两个 `INFOPLIST_KEY_UISupportedInterfaceOrientations` 及两个 `_iPad` 设置替换为 `UIInterfaceOrientationPortrait`，用 plistlib 写入 `UIRequiresFullScreen = True`。
 - [x] 在最终 APK 的解析清单与 IPA 的编译后 plist 中校验上述方向限制；README 写明两个平台只支持竖屏。
 - [x] 运行 `NODE_OPTIONS=--no-experimental-webstorage npx vitest run tests/ci`、`npm run typecheck`、`git diff --check`，要求全部通过。
+- [x] 最终 APK 的 apkanalyzer 会将 portrait 输出为枚举值 1；先补充数字枚举失败测试，再兼容 `portrait`、`1`、`0x1`，仍拒绝横屏、sensor 和缺失方向。
 
 ### Task 2：提交与固定渠道交付
 

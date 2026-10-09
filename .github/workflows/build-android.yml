@@ -1370,7 +1370,7 @@ jobs:
               for activity in application.findall("activity")
           }
           for name in ("com.app.pakeplus.MainActivity", "com.app.pakeplus.InAppBrowserActivity"):
-              if activities.get(name) != "portrait":
+              if activities.get(name) not in {"portrait", "1", "0x1"}:
                   raise SystemExit("Final APK must lock app activities to portrait")
           providers = {
               element.get(f"{{{android}}}authorities", ""):
