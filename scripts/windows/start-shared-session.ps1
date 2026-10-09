@@ -13,7 +13,9 @@ $desktopExe = Join-Path $appDirectory 'ChatGPT.exe'
 $serverExe = Join-Path $appDirectory 'resources\codex.exe'
 $gatewayEntry = Join-Path $config.RepositoryPath 'npm-dist\server\index.js'
 $nodeExe = (Get-Command node.exe -ErrorAction Stop).Source
-$sshExe = Join-Path $env:WINDIR 'System32\OpenSSH\ssh.exe'
+# 32 位 PowerShell 会把 System32 重定向到 SysWOW64；通过 Sysnative 访问系统 SSH 客户端。
+$nativeSystemDirectory = if ([Environment]::Is64BitOperatingSystem -and -not [Environment]::Is64BitProcess) { 'Sysnative' } else { 'System32' }
+$sshExe = Join-Path $env:WINDIR "$nativeSystemDirectory\OpenSSH\ssh.exe"
 $jobSource = Join-Path $PSScriptRoot 'OwnedProcessJob.cs'
 
 foreach ($path in @($desktopExe, $serverExe, $gatewayEntry, $nodeExe, $sshExe, $config.IdentityFile, $config.TokenFile, $jobSource)) {
