@@ -11,7 +11,8 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const stepNames = [
   "Install Codex Mobile app icon", "Build embedded frontend",
   "Configure PakePlus for embedded HTML", "Install PakePlus dependencies",
-  "Generate iOS project", "Harden and test the iOS host",
+  "Generate iOS project", "Install iOS in-app browser source",
+  "Harden and test the iOS host",
 ];
 
 function run(command, args, cwd, env) {

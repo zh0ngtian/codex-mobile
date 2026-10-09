@@ -275,6 +275,16 @@ jobs:
         working-directory: pakeplus
         run: pnpm pp:worker
 
+      - name: Install iOS in-app browser source
+        shell: bash
+        run: |
+          set -euo pipefail
+          source="mobile/ios/InAppBrowserViewController.swift"
+          destination="pakeplus/PakePlus/InAppBrowserViewController.swift"
+          test -s "$source"
+          cp "$source" "$destination"
+          cmp "$source" "$destination"
+
       - name: Harden and test the iOS host
         working-directory: pakeplus
         shell: bash
@@ -466,6 +476,65 @@ jobs:
               "            return\n"
               "        }\n"
               '        guard message.name == "blobDownload" else { return }',
+              1,
+          )
+          download_navigation_anchor = (
+              "        // only trigger download when user clicks link, other navigation load normally\n"
+              "        if navigationAction.navigationType == .linkActivated, shouldDownload(url: url) {\n"
+              "            decisionHandler(.cancel)\n"
+              "            downloadFile(from: url)\n"
+              "            return\n"
+              "        }\n\n"
+              "        decisionHandler(.allow)"
+          )
+          if source.count(download_navigation_anchor) != 1:
+              raise SystemExit("Pinned PakePlus HTTP navigation hook changed")
+          source = source.replace(
+              download_navigation_anchor,
+              "        // only trigger download when user clicks link, other navigation load normally\n"
+              "        if navigationAction.navigationType == .linkActivated, shouldDownload(url: url) {\n"
+              "            decisionHandler(.cancel)\n"
+              "            downloadFile(from: url)\n"
+              "            return\n"
+              "        }\n\n"
+              "        if navigationAction.navigationType == .linkActivated,\n"
+              "           let scheme = url.scheme?.lowercased(),\n"
+              '           scheme == "http" || scheme == "https"\n'
+              "        {\n"
+              "            decisionHandler(.cancel)\n"
+              "            CodexMobileInAppBrowserViewController.present(url: url)\n"
+              "            return\n"
+              "        }\n\n"
+              "        decisionHandler(.allow)",
+              1,
+          )
+          ui_delegate_anchor = "    // MARK: - WKUIDelegate: system vs web permissions\n"
+          if source.count(ui_delegate_anchor) != 1:
+              raise SystemExit("Pinned PakePlus WKUIDelegate hook changed")
+          source = source.replace(
+              ui_delegate_anchor,
+              "    func webView(\n"
+              "        _ webView: WKWebView,\n"
+              "        createWebViewWith configuration: WKWebViewConfiguration,\n"
+              "        for navigationAction: WKNavigationAction,\n"
+              "        windowFeatures: WKWindowFeatures\n"
+              "    ) -> WKWebView? {\n"
+              "        guard navigationAction.targetFrame == nil,\n"
+              "              let url = navigationAction.request.url else { return nil }\n"
+              "        if shouldDownload(url: url) {\n"
+              "            downloadFile(from: url)\n"
+              "            return nil\n"
+              "        }\n"
+              "        if let scheme = url.scheme?.lowercased(),\n"
+              '           scheme == "http" || scheme == "https" {\n'
+              "            CodexMobileInAppBrowserViewController.present(url: url)\n"
+              "        } else if let scheme = url.scheme?.lowercased(),\n"
+              "                  isExternalAppScheme(scheme) {\n"
+              "            openExternalURL(url)\n"
+              "        }\n"
+              "        return nil\n"
+              "    }\n\n"
+              + ui_delegate_anchor,
               1,
           )
           navigation_finished = "    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {\n"
@@ -887,6 +956,7 @@ jobs:
           index_path.write_text(index_source.replace("./assets/", "./"))
           PY
           test -s PakePlus/index.html
+          test -s PakePlus/InAppBrowserViewController.swift
           find PakePlus/assets -type f -name '*.js' -print -quit | grep -q .
           if grep -Fq './assets/' PakePlus/index.html; then
             echo "::error::iOS bundle would flatten the Vite assets directory"
@@ -923,6 +993,17 @@ jobs:
           grep -Fq 'name: "completionNotification"' PakePlus/WebView.swift
           grep -Fq 'UNUserNotificationCenter' PakePlus/WebView.swift
           grep -Fq 'codex-mobile-run-completed' PakePlus/WebView.swift
+          grep -Fq 'CodexMobileInAppBrowserViewController.present' \
+            PakePlus/WebView.swift
+          grep -Fq '在外部浏览器中打开' \
+            PakePlus/InAppBrowserViewController.swift
+          grep -Fq 'preferredContentMode = .desktop' \
+            PakePlus/InAppBrowserViewController.swift
+          if grep -Fq 'addScriptMessageHandler' \
+            PakePlus/InAppBrowserViewController.swift; then
+            echo "::error::iOS external browser exposes an app script bridge"
+            exit 1
+          fi
           if grep -Fq 'context.coordinator.prepareWebGeolocationAuthorization()' \
             PakePlus/WebView.swift; then
             echo "::error::Release iOS host still requests geolocation"

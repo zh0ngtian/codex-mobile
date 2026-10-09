@@ -33,7 +33,8 @@ describe("iOS 本地工程准备", () => {
     expect(output.steps).toEqual([
       "Install Codex Mobile app icon", "Build embedded frontend",
       "Configure PakePlus for embedded HTML", "Install PakePlus dependencies",
-      "Generate iOS project", "Harden and test the iOS host",
+      "Generate iOS project", "Install iOS in-app browser source",
+      "Harden and test the iOS host",
     ]);
   });
 
@@ -94,6 +95,44 @@ describe("iOS 本地工程准备", () => {
     new Function(script!)();
     expect(document.activeElement).toBe(button);
     button.remove();
+  });
+
+  it("iOS 普通网页链接使用独立内置浏览器并提供与 Android 一致的操作", () => {
+    const workflow = parse(readFileSync(".github/workflows/build-ios.yml", "utf8"));
+    const installBrowser = workflow.jobs.build.steps.find(
+      (step: any) => step.name === "Install iOS in-app browser source",
+    );
+    const harden = workflow.jobs.build.steps.find(
+      (step: any) => step.name === "Harden and test the iOS host",
+    ).run;
+
+    expect(installBrowser.run).toContain(
+      "mobile/ios/InAppBrowserViewController.swift",
+    );
+    expect(installBrowser.run).toContain(
+      "pakeplus/PakePlus/InAppBrowserViewController.swift",
+    );
+    expect(harden).toContain("CodexMobileInAppBrowserViewController.present");
+    expect(harden).toContain("download_navigation_anchor");
+    expect(harden).toContain("navigationAction.navigationType == .linkActivated");
+    expect(harden).toContain("navigationAction.targetFrame == nil");
+
+    const browserSource = readFileSync(
+      "mobile/ios/InAppBrowserViewController.swift",
+      "utf8",
+    );
+    expect(browserSource).toContain(
+      "final class CodexMobileInAppBrowserViewController: UIViewController",
+    );
+    expect(browserSource).toContain("WKWebViewConfiguration()");
+    expect(browserSource).toContain("observe(\\.title");
+    expect(browserSource).toContain("在外部浏览器中打开");
+    expect(browserSource).toContain("重新加载");
+    expect(browserSource).toContain("桌面版网页");
+    expect(browserSource).toContain("全屏打开");
+    expect(browserSource).toContain("preferredContentMode = .desktop");
+    expect(browserSource).toContain("setNavigationBarHidden");
+    expect(browserSource).not.toContain("addScriptMessageHandler");
   });
 
   it.each(["../1.2.3", "1.2", "1.2.3;echo bad", "1.2.3-beta"])("拒绝不适合 iOS 的版本 %s", (version) => {
