@@ -57,12 +57,12 @@
 
 ### 任务 4：提交与双端发布
 
-- [ ] 阅读 `docs/commit-conventions.md`，中文 Conventional Commit 正文准确列出功能与改动，提交推送并集成主分支。
-- [ ] 固定渠道发布排队，读取 Android/iOS/OTA 现有版本，分配统一更高版本；从推送后的源码构建 APK 与签名 IPA。
-- [ ] `npm run ios:release -- --config "$HOME/Library/Application Support/CodexMobile/ios-release.local.json" --version <统一版本> --notes 'iOS 原生对话交互'`。
-- [ ] Android 使用固定流水线或本机相同步骤构建，再通过 `apk-server.py publish-channel` 发布。
-- [ ] 固定 JSON、HEAD、完整 GET 核对两端版本、字节数及 SHA-256；保留签名身份连续性。
-- [ ] 归档测试会话，停止测试网关，清除临时产物并归档 worktree；回复固定 APK/IPA 下载链接与元数据。真机覆盖安装保留数据不能由模拟器测试替代。
+- [x] 阅读 `docs/commit-conventions.md`，中文 Conventional Commit 正文准确列出功能与改动，提交推送并集成主分支。
+- [x] 固定渠道发布排队，读取 Android/iOS/OTA 现有版本，分配统一更高版本；从推送后的源码构建 APK 与签名 IPA。
+- [x] `npm run ios:release -- --config "$HOME/Library/Application Support/CodexMobile/ios-release.local.json" --version <统一版本> --notes 'iOS 原生对话交互'`。
+- [x] Android 使用固定流水线或本机相同步骤构建，再通过 `apk-server.py publish-channel` 发布。
+- [x] 固定 JSON、HEAD、完整 GET 核对两端版本、字节数及 SHA-256；保留签名身份连续性。
+- [x] 归档测试会话，停止测试网关，清除临时产物并归档 worktree；回复固定 APK/IPA 下载链接与元数据。真机覆盖安装保留数据不能由模拟器测试替代。
 
 
 ## 验证证据
@@ -70,3 +70,12 @@
 - XCTest 4 项全绿（真实网关回复 NATIVE_IOS_OK），UIKit wrapper 修复前可点击断言失败，修复后全部通过。
 - Vitest 823 项，Python iOS 87 项，Foundation 草稿/IME/光标/菜单/中英回归、TypeScript 和前端构建通过。
 - 独立规格与代码质量审查 Approved；多设备所有权、隐藏弹框和原生详情遮挡问题已修复。
+
+## 双端发布结果
+
+- 已提交并推送运行代码 `ab2c249`，主分支已集成；测试会话 `原生 iOS 确认` 已归档，临时网关已停止。
+- 统一版本 `0.2.130`，高于发布前两端 `0.2.129`；APK 由固定 Android 流水线步骤在本机构建，IPA 由本机自动 Ad Hoc 签名发布。
+- APK：4,708,027 字节，SHA-256 `1943c0a871e82641384821d1907854bab0aa7fad14bde133b174f9452a3c108a`。
+- 已签名 IPA：3,862,671 字节，SHA-256 `affdfdb7acab2314d32b2855e69cc046ed9d632bbeb0629e31bec7952b6e6dfd`。
+- 两端固定清单、HEAD 与完整 GET 验证通过；HTTPS OTA 页面与清单均为 0.2.130，原 Bundle ID、application-identifier 与钥匙串组连续性通过。
+- 交付证据保留在主工作区 `.mobile-build/ios-native-release/`，签名包保留在 `.mobile-build/ota-release/0.2.130/`。
