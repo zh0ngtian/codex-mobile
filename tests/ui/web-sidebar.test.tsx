@@ -83,18 +83,42 @@ describe("Web 边栏可操作性", () => {
     expect(p.onQueryChange).toHaveBeenCalledWith("");
   });
 
+  it("接入公共 ActionSheet 后只展示一个语义对话框", () => {
+    const { container } = render(<ThreadListPage {...props()} />);
+    const view = within(container);
+    fireEvent.click(view.getByRole("button", { name: "会话详情操作" }));
+    const dialogs = view.getAllByRole("dialog");
+    expect(dialogs).toHaveLength(1);
+    expect(dialogs[0]).toHaveAccessibleName("会话操作");
+  });
+
+  it("公共菜单支持鼠标遮罩关闭并保持会话未被误开", () => {
+    const p = props();
+    const { container } = render(<ThreadListPage {...p} />);
+    const view = within(container);
+    const manage = view.getByRole("button", { name: "会话详情操作" });
+    fireEvent.click(manage);
+    const backdrop = view.getByRole("dialog", { name: "会话操作" }).parentElement as HTMLElement;
+    fireEvent.click(backdrop);
+    expect(view.queryByRole("dialog")).toBeNull();
+    expect(p.onOpenThread).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(manage);
+  });
+
   it("可见管理按钮支持键盘焦点、Escape 关闭与焦点恢复", () => {
     const { container } = render(<ThreadListPage {...props()} />);
     const view = within(container);
     const manage = view.getByRole("button", { name: "会话详情操作" });
     manage.focus();
     fireEvent.click(manage);
-    const dialog = view.getByRole("dialog");
-    const menuActions = within(dialog).getAllByRole("button").filter(button => button.textContent);
+    const dialog = view.getByRole("dialog", { name: "会话操作" });
+    const menuActions = within(dialog).getAllByRole("button");
     expect(document.activeElement).toBe(menuActions[0]);
     menuActions.at(-1)?.focus();
     fireEvent.keyDown(document.activeElement as HTMLElement, { key: "Tab" });
     expect(document.activeElement).toBe(menuActions[0]);
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: "Tab", shiftKey: true });
+    expect(document.activeElement).toBe(menuActions.at(-1));
     fireEvent.keyDown(dialog, { key: "Escape" });
     expect(view.queryByRole("dialog")).toBeNull();
     expect(document.activeElement).toBe(manage);

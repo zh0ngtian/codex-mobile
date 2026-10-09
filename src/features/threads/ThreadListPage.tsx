@@ -4,7 +4,6 @@ import {
   useRef,
   useState,
   type PointerEvent as ReactPointerEvent,
-  type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 import {
   isThreadRunning,
@@ -126,7 +125,6 @@ export function ThreadListPage({
   const [pendingThreadAction, setPendingThreadAction] = useState("");
   const sidebarRef = useRef<HTMLElement | null>(null);
   const searchRef = useRef<HTMLInputElement | null>(null);
-  const menuRef = useRef<HTMLDivElement | null>(null);
   const menuTriggerRef = useRef<HTMLElement | null>(null);
   const wasVisibleRef = useRef(nativeVisible);
   const rowIdPrefix = useId();
@@ -193,50 +191,17 @@ export function ThreadListPage({
     wasVisibleRef.current = nativeVisible;
   }, [nativeVisible]);
   useEffect(() => {
-    if (managedThread) {
-      menuRef.current
-        ?.querySelector<HTMLElement>(".conversation-action-menu button:not(:disabled)")
-        ?.focus();
-    } else {
-      const trigger = menuTriggerRef.current;
-      menuTriggerRef.current = null;
-      if (trigger?.isConnected) {
-        trigger.focus();
-      } else if (trigger) {
-        const fallback = sidebarRef.current?.querySelector<HTMLElement>(".sidebar-close")
-          ?? sidebarRef.current?.querySelector<HTMLElement>(".thread-manage, .round-button");
-        fallback?.focus();
-      }
+    if (managedThread) return;
+    const trigger = menuTriggerRef.current;
+    menuTriggerRef.current = null;
+    if (trigger?.isConnected) {
+      trigger.focus();
+    } else if (trigger) {
+      const fallback = sidebarRef.current?.querySelector<HTMLElement>(".sidebar-close")
+        ?? sidebarRef.current?.querySelector<HTMLElement>(".thread-manage, .round-button");
+      fallback?.focus();
     }
   }, [managedThread]);
-  const handleMenuKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
-    if (event.key === "Escape") {
-      event.preventDefault();
-      event.stopPropagation();
-      if (!pendingThreadAction) setManagedThread(null);
-      return;
-    }
-    if (event.key !== "Tab") return;
-    const controls = Array.from(menuRef.current?.querySelectorAll<HTMLElement>(
-      ".conversation-action-menu button:not(:disabled)",
-    ) ?? []);
-    if (!controls.length) {
-      event.preventDefault();
-      menuRef.current?.focus();
-      return;
-    }
-    const first = controls[0];
-    const last = controls[controls.length - 1];
-    const active = document.activeElement as HTMLElement;
-    const focusOutsideActions = !controls.includes(active);
-    if (event.shiftKey && (active === first || focusOutsideActions)) {
-      event.preventDefault();
-      last.focus();
-    } else if (!event.shiftKey && (active === last || focusOutsideActions)) {
-      event.preventDefault();
-      first.focus();
-    }
-  };
   useEffect(() => {
     const sidebar = sidebarRef.current;
     if (!sidebar) return;
@@ -680,41 +645,29 @@ export function ThreadListPage({
           </div>
         )}
       </div>
-      {managedThread && (
-        <div
-          className="web-thread-menu"
-          role="dialog"
-          aria-modal="true"
-          aria-label={t("会话详情操作")}
-          tabIndex={-1}
-          ref={menuRef}
-          onKeyDown={handleMenuKeyDown}
-        >
-          <ConversationActionMenu
-            open={managedThread !== null}
-            readOnly={
-              managedThread
-                ? summaries[managedThread.backendId]?.connection !== "online"
-                : false
-            }
-            thread={managedThread?.thread ?? {}}
-            pendingAction={pendingThreadAction}
-            onClose={() => {
-              if (!pendingThreadAction) setManagedThread(null);
-            }}
-            onPin={() => void runThreadAction("pin")}
-            onRefresh={() => void runThreadAction("refresh")}
-            onDuplicate={() => void runThreadAction("duplicate")}
-            onCopy={() => {
-              if (!managedThread) return;
-              void navigator.clipboard?.writeText(managedThread.threadId);
-              setManagedThread(null);
-            }}
-            onRename={() => void runThreadAction("rename")}
-            onArchive={() => void runThreadAction("archive")}
-          />
-        </div>
-      )}
+      <ConversationActionMenu
+        open={managedThread !== null}
+        readOnly={
+          managedThread
+            ? summaries[managedThread.backendId]?.connection !== "online"
+            : false
+        }
+        thread={managedThread?.thread ?? {}}
+        pendingAction={pendingThreadAction}
+        onClose={() => {
+          if (!pendingThreadAction) setManagedThread(null);
+        }}
+        onPin={() => void runThreadAction("pin")}
+        onRefresh={() => void runThreadAction("refresh")}
+        onDuplicate={() => void runThreadAction("duplicate")}
+        onCopy={() => {
+          if (!managedThread) return;
+          void navigator.clipboard?.writeText(managedThread.threadId);
+          setManagedThread(null);
+        }}
+        onRename={() => void runThreadAction("rename")}
+        onArchive={() => void runThreadAction("archive")}
+      />
       <footer className="list-actions" aria-hidden={managedThread !== null}>
         <button
           type="button"
