@@ -191,6 +191,23 @@ python3 scripts/ios_ota.py publish \
 
 App 和直接安装页都要求用户确认系统安装提示；不能静默升级。安装开始后回主屏幕等待，再打开新版本。App 不伪造 iOS 安装进度或宣称系统已完成安装。
 
+### 安装页等待提示与原位刷新
+
+安装页点击“安装 / 更新”后，立即发起原有 `itms-services` 请求，同时显示等待图标与“正在请求系统安装，请等待弹窗…”提示，暂时阻止重复点击。15 秒后按钮恢复为“重新请求安装”，提示“若未出现系统安装提示，请确认局域网连接后重试”。从后台或系统弹窗返回页面时，也按实际截止时间恢复按钮。启用“减少动态效果”时，等待图标不旋转；禁用 JavaScript 时仍可使用原安装链接。
+
+等待 UI 只说明网页已请求系统安装。网页无法得知系统弹窗是否出现、用户是否确认、下载进度或安装结果；15 秒后恢复入口不表示安装失败，系统提示仍需用户确认。
+
+仅更新安装页时，无需重建或重新签名 IPA，也不提升渠道版本。可在发布服务器上执行：
+
+```bash
+python3 scripts/ios_ota.py refresh-page \
+  --root "$HOME/Library/Application Support/CodexMobile/ota-server/channels/codex-mobile"
+```
+
+`--root` 指向含有 `current` 与 `releases` 的渠道目录；远程部署使用其实际目录。命令共用 `.publish.lock`，锁内检查当前 IPA 的大小与 SHA-256、manifest 与 JSON 一致性，并要求 `current` 指向 `releases/<清单版本>`。校验通过后，在当前版本目录写入权限 644 的临时 HTML，再原子替换 `install.html`，失败清理临时文件。安装页属于可刷新的展示层；版本目录中的 IPA、manifest、JSON 及 `current` 链接保持原样，安装资源继续不可变。
+
+刷新后通过固定 HTTPS 安装页 GET 确认等待提示已更新，并核对原版本、IPA 大小与 SHA-256、清单及 `current` 目标未改变。该检查只验证网页与发布资源，不代替真机系统弹窗及覆盖安装验证。
+
 ## 可选 GitHub Actions 自动化（当前不启用）
 
 当前采用本机局域网发布，没有向 GitHub 保留签名凭据。下述仅供以后明确选择云端签名时配置；默认云工作流仍只生成未签名 IPA。现有主工作流支持将 Secrets 传给可复用 iOS 工作流。配置以下 Repository Variables：

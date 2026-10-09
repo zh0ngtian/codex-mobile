@@ -7,6 +7,7 @@ import unittest
 import os
 import ssl
 import subprocess
+import sys
 import threading
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -78,6 +79,114 @@ class OtaTests(unittest.TestCase):
             for version in ['1.2.3', '2.0.0']:
                 with self.assertRaises(ValueError):
                     self.ota.validate_upgrade(self.meta, {**previous, 'version': version})
+
+    def make_release(self, root, notes='修复更新'):
+        ipa = root/'signed.ipa'; ipa.write_bytes(b'signed fixture')
+        source = root/'release'
+        release = self.ota.create_release(ipa, self.meta, source, 'https://example.com/app', notes)
+        return source, release
+
+    def check_install_ui(self, scenario):
+        with tempfile.TemporaryDirectory() as directory:
+            source, _ = self.make_release(pathlib.Path(directory), '<img src=x onerror=alert(1)> & 更新')
+            result = subprocess.run(['node', str(SCRIPT.parents[1]/'tests/ci/ios_ota_waiting_ui.mjs'), scenario],
+                                    input=(source/'install.html').read_text(), text=True, capture_output=True)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_install_first_click_requests_immediately_and_announces_wait(self):
+        self.check_install_ui('first-click')
+
+    def test_install_wait_blocks_repeated_click(self):
+        self.check_install_ui('repeat-click')
+
+    def test_install_timeout_allows_retry_without_claiming_result(self):
+        self.check_install_ui('timeout')
+
+    def test_install_foreground_recovers_after_suspended_timer(self):
+        self.check_install_ui('foreground')
+
+    def test_install_modified_click_does_not_show_wait(self):
+        self.check_install_ui('modified-click')
+
+    def test_install_without_javascript_keeps_link_and_escaped_notes(self):
+        self.check_install_ui('no-javascript')
+
+    def test_install_spinner_respects_reduced_motion(self):
+        self.check_install_ui('reduced-motion')
+
+    def test_refresh_changes_only_html_and_preserves_current_package(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            source, release = self.make_release(root)
+            server = root/'server'; self.ota.activate_local(source, server)
+            current = server/'current'
+            def snapshot(path, symlink=False):
+                stat = path.lstat() if symlink else path.stat()
+                return (path.readlink() if symlink else path.read_bytes(), stat.st_ino,
+                        stat.st_mode, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns)
+            paths = [current/name for name in ('latest.ipa', 'manifest.plist', 'latest-ios.json')]
+            before = [snapshot(path) for path in paths]
+            link_before = snapshot(current, symlink=True)
+            (current/'install.html').write_text('old page')
+            result = subprocess.run([sys.executable, str(SCRIPT), 'refresh-page', '--root', str(server)],
+                                    capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            page = (current/'install.html').read_text()
+            self.assertIn('正在请求系统安装，请等待弹窗', page)
+            self.assertIn(release['sha256'], page)
+            self.assertEqual((current/'install.html').stat().st_mode & 0o777, 0o644)
+            self.assertEqual([snapshot(path) for path in paths], before)
+            self.assertEqual(snapshot(current, symlink=True), link_before)
+            self.assertFalse(list(current.glob('.install-*')))
+
+    def test_refresh_rejects_damaged_package_before_changing_html(self):
+        for broken in ('latest.ipa', 'manifest.plist', 'latest-ios.json'):
+            with self.subTest(broken=broken), tempfile.TemporaryDirectory() as directory:
+                root = pathlib.Path(directory)
+                source, _ = self.make_release(root)
+                server = root/'server'; self.ota.activate_local(source, server)
+                page = server/'current/install.html'
+                before = page.read_bytes()
+                path = server/'current'/broken
+                if broken == 'latest.ipa':
+                    path.write_bytes(b'tampered')
+                elif broken == 'manifest.plist':
+                    manifest = plistlib.loads(path.read_bytes())
+                    manifest['items'][0]['metadata']['bundle-identifier'] = 'other.app'
+                    path.write_bytes(plistlib.dumps(manifest))
+                else:
+                    release = json.loads(path.read_text()); release['size'] += 1
+                    path.write_text(json.dumps(release))
+                self.assertTrue(hasattr(self.ota, 'refresh_install_page'), '缺少安装页刷新功能')
+                with self.assertRaises(ValueError):
+                    self.ota.refresh_install_page(server)
+                self.assertEqual(page.read_bytes(), before)
+                self.assertFalse(list(page.parent.glob('.install-*')))
+
+    def test_refresh_requires_current_in_recorded_version_directory(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            source, _ = self.make_release(root)
+            server = root/'server'; self.ota.activate_local(source, server)
+            current = server/'current'; current.unlink(); current.symlink_to(source)
+            self.assertTrue(hasattr(self.ota, 'refresh_install_page'), '缺少安装页刷新功能')
+            before = (source/'install.html').read_bytes()
+            with self.assertRaises(ValueError):
+                self.ota.refresh_install_page(server)
+            self.assertEqual((source/'install.html').read_bytes(), before)
+
+    def test_refresh_cleans_temporary_page_after_replace_failure(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            source, _ = self.make_release(root)
+            server = root/'server'; self.ota.activate_local(source, server)
+            page = server/'current/install.html'; before = page.read_bytes()
+            self.assertTrue(hasattr(self.ota, 'refresh_install_page'), '缺少安装页刷新功能')
+            with patch.object(self.ota.os, 'replace', side_effect=OSError('replace failed')):
+                with self.assertRaises(OSError):
+                    self.ota.refresh_install_page(server)
+            self.assertEqual(page.read_bytes(), before)
+            self.assertFalse(list(page.parent.glob('.install-*')))
 
     def test_local_activation_is_atomic_and_blocks_old_versions(self):
         with tempfile.TemporaryDirectory() as directory:

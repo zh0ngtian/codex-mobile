@@ -89,6 +89,68 @@ def digest(path):
         return sha.hexdigest()
 
 
+def render_install_page(release):
+    link = 'itms-services://?action=download-manifest&url=' + urllib.parse.quote(release['manifestUrl'], safe='')
+    return f'''<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>安装 Codex Mobile</title><style>
+body{{font:17px system-ui;max-width:36rem;margin:12vh auto;padding:24px;line-height:1.7}}
+a{{display:inline-flex;align-items:center;gap:10px;padding:12px 24px;background:#111;color:white;border-radius:12px;text-decoration:none}}
+a[aria-disabled="true"]{{opacity:.7;cursor:wait}}
+small{{word-break:break-all}}
+#install-spinner:not([hidden]){{display:inline-block;width:18px;height:18px;border:2px solid #ffffff66;border-top-color:white;border-radius:50%;animation:spin .8s linear infinite}}
+@keyframes spin{{to{{transform:rotate(360deg)}}}}
+@media (prefers-reduced-motion: reduce){{#install-spinner:not([hidden]){{animation:none}}}}
+</style></head><body>
+<h1>Codex Mobile v{html.escape(release['version'])}</h1><p>{html.escape(release['notes'])}</p>
+<p><a id="install-link" href="{html.escape(link, quote=True)}"><span id="install-spinner" hidden aria-hidden="true"></span><span id="install-label">安装 / 更新</span></a></p>
+<p id="install-status" role="status" aria-live="polite" aria-atomic="true"></p>
+<p>请在 iPhone 的 Safari 中点击，并确认系统安装提示。安装后回到主屏幕等待完成，再打开 App。</p>
+<p>仅已登记的设备可以安装。覆盖升级请保留原 App，不要卸载。</p>
+<small>SHA-256：{html.escape(release['sha256'])}</small>
+<script>
+(() => {{
+  const link = document.getElementById('install-link');
+  const label = document.getElementById('install-label');
+  const spinner = document.getElementById('install-spinner');
+  const status = document.getElementById('install-status');
+  let deadline = 0;
+  let timer;
+  function updateWaiting() {{
+    if (!deadline) return;
+    clearTimeout(timer);
+    const remaining = deadline - Date.now();
+    if (remaining > 0) {{
+      timer = setTimeout(updateWaiting, remaining);
+      return;
+    }}
+    deadline = 0;
+    link.removeAttribute('aria-disabled');
+    spinner.hidden = true;
+    label.textContent = '重新请求安装';
+    status.textContent = '若未出现系统安装提示，请确认局域网连接后重试';
+  }}
+  link.addEventListener('click', (event) => {{
+    updateWaiting();
+    if (deadline) {{
+      event.preventDefault();
+      return;
+    }}
+    if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    // 首击保留 href 默认动作，让系统协议在用户手势中立即执行。
+    deadline = Date.now() + 15000;
+    link.setAttribute('aria-disabled', 'true');
+    spinner.hidden = false;
+    label.textContent = '等待系统安装提示';
+    status.textContent = '正在请求系统安装，请等待弹窗…';
+    updateWaiting();
+  }});
+  document.addEventListener('visibilitychange', updateWaiting);
+  window.addEventListener('pageshow', updateWaiting);
+}})();
+</script></body></html>'''
+
+
 def create_release(ipa, metadata, output, base_url, notes, previous=None):
     base = validate_base_url(base_url)
     if metadata.get('signed') is not True:
@@ -117,15 +179,7 @@ def create_release(ipa, metadata, output, base_url, notes, previous=None):
                                        'bundle-version': metadata['buildNumber'], 'kind': 'software', 'title': 'Codex Mobile'}}]}
     (output/'manifest.plist').write_bytes(plistlib.dumps(manifest))
     (output/'latest-ios.json').write_text(json.dumps(release, ensure_ascii=False, indent=2)+'\n')
-    link = 'itms-services://?action=download-manifest&url=' + urllib.parse.quote(manifest_url, safe='')
-    (output/'install.html').write_text(f'''<!doctype html>
-<html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>安装 Codex Mobile</title><style>body{{font:17px system-ui;max-width:36rem;margin:12vh auto;padding:24px;line-height:1.7}}a{{display:inline-block;padding:12px 24px;background:#111;color:white;border-radius:12px;text-decoration:none}}small{{word-break:break-all}}</style>
-<h1>Codex Mobile v{html.escape(version)}</h1><p>{html.escape(notes)}</p>
-<p><a href="{html.escape(link, quote=True)}">安装 / 更新</a></p>
-<p>请在 iPhone 的 Safari 中点击，并确认系统安装提示。安装后回到主屏幕等待完成，再打开 App。</p>
-<p>仅已登记的设备可以安装。覆盖升级请保留原 App，不要卸载。</p>
-<small>SHA-256：{release['sha256']}</small></html>''')
+    (output/'install.html').write_text(render_install_page(release), encoding='utf-8')
     return release
 
 
@@ -148,6 +202,32 @@ def check_package(source):
             or manifest['metadata']['bundle-identifier'] != release['bundleId']
             or manifest['metadata']['bundle-version'] != release['buildNumber']):
         raise ValueError('manifest 与发布清单不一致')
+    return release
+
+
+def refresh_install_page(root):
+    """安装页是可刷新的展示层；版本化 IPA、清单及 current 目标保持不变。"""
+    root = Path(root).resolve(strict=True)
+    with (root/'.publish.lock').open('a') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        current = root/'current'
+        if not current.is_symlink():
+            raise ValueError('current 必须指向已发布版本目录')
+        release = check_package(current)
+        dest = current.resolve(strict=True)
+        if dest != root/'releases'/release['version']:
+            raise ValueError('current 与清单记录的版本目录不一致')
+        pending = None
+        try:
+            with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', prefix='.install-',
+                                             suffix='.html', dir=dest, delete=False) as stream:
+                pending = Path(stream.name)
+                stream.write(render_install_page(release))
+            pending.chmod(0o644)
+            os.replace(pending, dest/'install.html')
+        finally:
+            if pending is not None:
+                pending.unlink(missing_ok=True)
     return release
 
 
@@ -313,6 +393,8 @@ def main():
     for name in ('activate', 'stage'):
         command = commands.add_parser(name)
         command.add_argument('--source', required=True); command.add_argument('--root', required=True)
+    refresh = commands.add_parser('refresh-page', help='校验当前发布包后，仅原子刷新安装页')
+    refresh.add_argument('--root', required=True)
     latest = commands.add_parser('latest-version')
     latest.add_argument('--base-url', required=True)
     resolve = commands.add_parser('resolve-version')
@@ -332,6 +414,8 @@ def main():
         activate_staged(args.source, args.root)
     elif args.command == 'stage':
         stage_local(args.source, args.root)
+    elif args.command == 'refresh-page':
+        refresh_install_page(args.root)
     else:
         from ios_sign import verify_ipa
         metadata = verify_ipa(args.ipa)
