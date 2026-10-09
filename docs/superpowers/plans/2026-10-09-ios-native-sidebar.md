@@ -43,11 +43,11 @@
 
 ## 任务 4：提交与固定渠道交付
 
-- [ ] 阅读 `docs/commit-conventions.md`，按中文 Conventional Commits 提交；接入最新 main 并推送。
-- [ ] 独占发布锁下读取两个现有固定清单，选择统一更高版本；构建 APK、通过本机私有配置构建并签署 IPA。
-- [ ] 发布固定 LAN 双端渠道及 HTTPS OTA；逐一用清单、HEAD、完整 GET 验证版本、字节数、SHA-256；保留本机签名报告。
-- [ ] 归档本次测试会话、保存必要构建证据、清除临时文件并归档 worktree；文档记录实际结果后提交推送。
-- [ ] 最终交付同时展示 OTA 安装页、APK/IPA 下载链接、统一版本、两份大小和 SHA-256，以及 IPA 签名状态。
+- [x] 阅读 `docs/commit-conventions.md`，按中文 Conventional Commits 提交；接入最新 main 并推送。
+- [x] 独占发布锁下读取两个现有固定清单，选择统一更高版本；构建 APK、通过本机私有配置构建并签署 IPA。
+- [x] 发布固定 LAN 双端渠道及 HTTPS OTA；逐一用清单、HEAD、完整 GET 验证版本、字节数、SHA-256；保留本机签名报告。
+- [x] 确认没有新增服务端测试会话、保存必要构建证据并清除临时文件；尝试平台归档 worktree，因置顶任务或工作区保护而保留；文档记录实际结果后提交推送。
+- [x] 最终交付同时展示 OTA 安装页、APK/IPA 下载链接、统一版本、两份大小和 SHA-256，以及 IPA 签名状态。
 
 ## 实际验收记录
 
@@ -61,3 +61,8 @@
 - 独立规范及质量审查已完成，影响交付的问题均已修复并复核通过。
 - 本次未向真实会话发送消息；复制会话 ID、重命名取消、项目折叠恢复等验收未改变真实会话内容，无新增服务端测试会话需要归档。
 - 模拟器与构建验签不能证明真机覆盖安装和数据保留；本次没有宣称真机验收。
+
+
+交付版本为 `0.2.133`，源提交 `a41d76b`。双端与 HTTPS OTA 的版本、HEAD 和完整 GET 校验通过，APK/IPA 与本机产物 SHA-256 一致，IPA Ad Hoc 已签名。大小、散列与入口见 [模拟器验证文档](../../ios-simulator-verification.md)。产物和报告保存在主工作区 `.mobile-build/ios-native-sidebar-audit/release/0.2.133/`。
+
+平台归档返回 `This worktree is protected by a pinned task or workspace.`，工作树保留为 `feat/ios-native-sidebar`；本次构建缓存、临时文件、网关和模拟器占用已经清理，必要证据保存在长期主工作区。

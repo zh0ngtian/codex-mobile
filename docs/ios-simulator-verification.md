@@ -1,6 +1,6 @@
 # iOS 本地构建与模拟器验证
 
-Codex Mobile iOS 使用固定提交的 PakePlus SwiftUI / WKWebView 容器，对话列表与输入区由 UIKit 原生界面承载。React 继续管理连接、会话、草稿和写操作，原生通过带上下文与序列号的快照和事件交互；侧栏、设置与复杂内容保留网页入口。设备地址和口令由用户在 App 中添加，构建产物不携带私人网关配置。
+Codex Mobile iOS 使用固定提交的 PakePlus SwiftUI / WKWebView 容器，对话消息列表、输入区与会话边栏由 UIKit 原生界面承载。React 继续管理连接、会话、草稿和写操作，原生通过带上下文与序列号的快照和事件交互；设置、设备管理与复杂内容保留网页入口。设备地址和口令由用户在 App 中添加，构建产物不携带私人网关配置。
 
 ## 生成与运行
 
@@ -195,3 +195,26 @@ iPhone 17 Pro / iOS 26.5，Xcode 27，测试构建 `0.2.130`。消息列表使�
 | IPA（Ad Hoc 已签名） | 0.2.131 | 3,898,985 | `59d76e30dc5d4b3aaf1bcab9fe71973b79a00aa7ee3e3ebecca87e19265f2389` |
 
 安装入口：[固定 OTA 安装页](https://192.168.123.79:8766/channels/codex-mobile/current/install.html)、[固定 IPA](http://192.168.123.79:8765/channels/codex-mobile/latest.ipa)、[固定 APK](http://192.168.123.79:8765/channels/codex-mobile/latest.apk)。本轮两条测试会话已归档，临时网关已停止，模拟器恢复浅色并释放占用。
+
+
+## 2026-10-09 会话边栏原生化
+
+客户端源码提交 `a41d76b`，已推送 `main`。沿用 ui-ux-pro-max 的黑白灰规范，UIKit 承载会话列表、UISearchTextField、设备菜单、项目折叠与分页、下拉刷新、上下文菜单、原生重命名和 VoiceOver 操作。业务仍由 React 管理，原生只投影当前状态并发送带上下文、序列号的意图；原生可见时隐藏旧 Web 抽屉，网页设备管理或桥异常时恢复回退入口。
+
+普通手机与 375pt 小屏、iPad、深色、系统最大辅助字号、搜索键盘和断网错误均经过真实模拟器验收，并查看原始截图。辅助字号下收起品牌标题和设备统计，避免挤压列表；搜索关闭清除查询并收起键盘，返回对话保留未发送草稿。全量 Vitest 93 个文件/843 项、Python iOS 87 项、Swift Markdown 37 项及 Conversation/Sidebar 状态回归、TypeScript 与前端构建通过；独立规范与质量复核通过。
+
+新增 `NativeSidebarUITests` 使用已有列表进行只读验收，仅创建未发送草稿，取消重命名并恢复项目折叠，没有新增服务端测试会话。断网用例 `testSearchFailureRemainsVisibleWithKeyboard` 必须在专用网关停止后显式设置 `NATIVE_SIDEBAR_OFFLINE_TEST=1`；常规运行会跳过。截图导出使用 `NATIVE_IOS_EXPORT_SCREENSHOTS=1`，原图位于测试 Runner 的 Documents/NativeSidebarCaptures。主工作区证据保存在忽略目录 `.mobile-build/ios-native-sidebar-audit/`；真实列表截图不提交仓库。执行与失效修复记录见 [实施计划](superpowers/plans/2026-10-09-ios-native-sidebar.md)。
+
+模拟器验收与安装包验签不代表真机覆盖安装、真机输入法或数据保留已验证。
+
+
+固定渠道交付版本 `0.2.133`。HTTP 双端清单、HEAD 和完整 GET 均验证版本、大小与 SHA-256；HTTPS OTA 清单、IPA 和安装页使用本机 CA 验证。APK 签名验证通过，IPA Ad Hoc 验签通过，Bundle ID、application-identifier 与钥匙串组连续。
+
+| 产物 | 版本 | 大小（字节） | SHA-256 |
+| --- | --- | --- | --- |
+| APK | 0.2.133 | 4,710,751 | `9dd53bb0535c7a05b6aa9153e9d973bd72c45429315d051c957efc729eaffa26` |
+| IPA（Ad Hoc 已签名） | 0.2.133 | 3,996,170 | `d5c34d51de91a6ed0bc43ffd92cd23261acbc62fb8263c3d654a8b4730d02e02` |
+
+安装入口：[固定 OTA 安装页](https://192.168.123.79:8766/channels/codex-mobile/current/install.html)、[固定 IPA](http://192.168.123.79:8765/channels/codex-mobile/latest.ipa)、[固定 APK](http://192.168.123.79:8765/channels/codex-mobile/latest.apk)。本次网关已停止，小屏测试模拟器已删除，iPad 已恢复关闭，普通模拟器恢复浅色并释放占用；安装包、签名报告和下载验证结果保存在主工作区证据目录。
+
+任务工作树归档受到平台的置顶任务或工作区保护，已保留；本次临时构建缓存已清理。
