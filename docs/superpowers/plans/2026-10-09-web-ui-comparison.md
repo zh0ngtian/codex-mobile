@@ -39,7 +39,7 @@
 ## 4. 集成、验收与交付
 
 - [x] 两项独立实现接入后做规格与质量审查，解决影响交付的问题。
-- [ ] 全量 Vitest、TypeScript/build；Playwright 验证 Web 几何、对比度、键盘操作和无横向页面溢出；iOS 真模拟器验证原生/Web 来回切换、草稿和边栏。
+- [x] 全量 Vitest、TypeScript/build；Playwright 验证 Web 几何、对比度、键盘操作和无横向页面溢出；iOS 真模拟器验证原生/Web 来回切换、草稿和边栏。
 - [ ] 按 `docs/commit-conventions.md` 提交并推送 main。
 - [ ] 独占固定发布锁，读取 Android/iOS/OTA 清单选择统一更高版本；构建 APK 与私有配置 Ad Hoc IPA，发布两个固定渠道和 HTTPS OTA。
 - [ ] 清单、HEAD、完整GET、签名与散列全部核对，保存实际截图/产物/日志至主工作区忽略目录；清理本次资源，测试会话及时归档。

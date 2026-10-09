@@ -203,6 +203,9 @@ final class NativeSidebarUITests: XCTestCase {
         XCTAssertTrue(webComposer.waitForExistence(timeout: 10), app.debugDescription)
         XCTAssertEqual(webComposer.value as? String, "两种界面共用的未发送草稿")
         webComposer.tap(); webComposer.typeText("\n网页继续编辑")
+        let editedDraft = webComposer.value as? String ?? ""
+        XCTAssertTrue(editedDraft.contains("两种界面共用的未发送草稿"))
+        XCTAssertTrue(editedDraft.contains("网页继续编辑"))
         capture(app, "comparison-web-keyboard")
         let done = app.toolbars.buttons["完成"]
         if done.exists { done.tap() }
@@ -211,7 +214,7 @@ final class NativeSidebarUITests: XCTestCase {
         XCTAssertTrue(app.tables["codex.native.sidebar.list"].waitForExistence(timeout: 10))
         app.buttons["codex.native.sidebar.close"].tap()
         XCTAssertTrue(composer.waitForExistence(timeout: 10))
-        XCTAssertEqual(composer.value as? String, "两种界面共用的未发送草稿\n网页继续编辑")
+        XCTAssertEqual(composer.value as? String, editedDraft)
         capture(app, "comparison-native-restored")
     }
     func testWebAccessibilityTextAndSidebarRemainUsable() {
