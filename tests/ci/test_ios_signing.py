@@ -101,6 +101,138 @@ class ProfileTests(unittest.TestCase):
             m.validate_profile(p, 'vip.example.app', 'test-udid')
 
 
+class CompatibilityIdentityTests(unittest.TestCase):
+    def baseline(self, root, p):
+        m = module()
+        ipa = root / 'baseline.ipa'
+        ipa.write_bytes(b'baseline archive')
+        ent = dict(p['Entitlements'])
+        ent['keychain-access-groups'] = ['OLDPREFIX.*', 'com.apple.token']
+        p['Entitlements']['keychain-access-groups'].append('com.apple.token')
+        metadata = {'bundleId': 'vip.installed.app', 'teamId': 'TEAM123',
+                    'applicationIdentifier': ent['application-identifier']}
+        return ipa, hashlib.sha256(ipa.read_bytes()).hexdigest(), {
+            'metadata': metadata, 'entitlements': ent, 'certificate': p['DeveloperCertificates'][0]}
+
+    def test_default_identity_keeps_strict_minimal_policy(self):
+        m = module()
+        self.assertEqual(m.signing_identity(profile(), 'vip.example.app', 'test-udid'),
+                         m.validate_profile(profile(), 'vip.example.app', 'test-udid'))
+        with self.assertRaises(m.SigningError):
+            m.signing_identity(profile(), 'vip.installed.app', 'test-udid')
+
+    def test_verified_baseline_preserves_distinct_bundle_id_and_all_permissions(self):
+        m = module(); p = profile()
+        with tempfile.TemporaryDirectory() as d:
+            ipa, digest, details = self.baseline(Path(d), p)
+            with patch.object(m, 'inspect_ipa', return_value=details) as inspect:
+                identity = m.signing_identity(p, 'vip.installed.app', 'test-udid',
+                                             compatibility_ipa=ipa, compatibility_ipa_sha256=digest)
+            inspect.assert_called_once()
+            self.assertEqual(identity['bundleId'], 'vip.installed.app')
+            self.assertEqual(identity['applicationIdentifier'], 'OLDPREFIX.vip.example.app')
+            self.assertEqual(identity['entitlements'], details['entitlements'])
+            self.assertNotIn('entitlements', m.public_identity(identity))
+
+    def test_baseline_requires_pair_and_matching_digest_before_inspection(self):
+        m = module()
+        with tempfile.TemporaryDirectory() as d:
+            ipa, digest, _ = self.baseline(Path(d), profile())
+            cases = [{'compatibility_ipa': ipa}, {'compatibility_ipa_sha256': digest},
+                     {'compatibility_ipa': ipa, 'compatibility_ipa_sha256': '0' * 64}]
+            with patch.object(m, 'inspect_ipa') as inspect:
+                for kwargs in cases:
+                    with self.assertRaises(m.SigningError):
+                        m.signing_identity(profile(), 'vip.installed.app', 'test-udid', **kwargs)
+                inspect.assert_not_called()
+
+    def test_baseline_rejects_wrong_bundle_udid_permissions_team_and_prefix(self):
+        m = module()
+        for change in ['bundle', 'udid', 'entitlement', 'team', 'prefix']:
+            with self.subTest(change=change), tempfile.TemporaryDirectory() as d:
+                p = profile(); ipa, digest, details = self.baseline(Path(d), p)
+                bundle, udid = 'vip.installed.app', 'test-udid'
+                if change == 'bundle': bundle = 'vip.other.app'
+                if change == 'udid': udid = 'missing'
+                if change == 'entitlement': del p['Entitlements']['aps-environment']
+                if change == 'team': details['entitlements']['com.apple.developer.team-identifier'] = 'OTHER'
+                if change == 'prefix': p['ApplicationIdentifierPrefix'] = ['OTHER']
+                with patch.object(m, 'inspect_ipa', return_value=details):
+                    with self.assertRaises(m.SigningError):
+                        m.signing_identity(p, bundle, udid, compatibility_ipa=ipa,
+                                           compatibility_ipa_sha256=digest)
+
+    def test_target_profile_can_authorize_a_renewed_certificate(self):
+        m = module(); p = profile()
+        with tempfile.TemporaryDirectory() as d:
+            ipa, digest, details = self.baseline(Path(d), p)
+            p['DeveloperCertificates'] = [b'renewed certificate']
+            with patch.object(m, 'inspect_ipa', return_value=details):
+                identity = m.signing_identity(p, 'vip.installed.app', 'test-udid',
+                                             compatibility_ipa=ipa, compatibility_ipa_sha256=digest)
+            self.assertEqual(identity['entitlements'], details['entitlements'])
+
+    def test_baseline_cannot_bypass_independent_verification(self):
+        m = module()
+        with tempfile.TemporaryDirectory() as d:
+            p = profile(); ipa, digest, _ = self.baseline(Path(d), p)
+            with patch.object(m, 'inspect_ipa', side_effect=m.SigningError('invalid signature')):
+                with self.assertRaises(m.SigningError):
+                    m.signing_identity(p, 'vip.installed.app', 'test-udid',
+                                       compatibility_ipa=ipa, compatibility_ipa_sha256=digest)
+
+    def test_recursive_authorization_rejects_unknown_keys_type_changes_and_escalation(self):
+        m = module()
+        allowed = {'flag': False, 'nested': {'names': ['PREFIX.*'], 'limit': 2}}
+        actual = {'flag': False, 'nested': {'names': ['PREFIX.one', 'PREFIX.two'], 'limit': 2}}
+        self.assertTrue(m.entitlement_authorized(allowed, actual))
+        for actual in [{'flag': 0}, {'unknown': False}, {'flag': True},
+                       {'nested': {'names': ['OTHER.one']}}, {'nested': {'limit': 3}},
+                       {'nested': {'names': 'PREFIX.one'}}]:
+            self.assertFalse(m.entitlement_authorized(allowed, actual))
+
+    def test_entitlements_hash_is_canonical_and_type_sensitive(self):
+        m = module()
+        self.assertEqual(m.entitlements_sha256({'b': ['one'], 'a': False}),
+                         m.entitlements_sha256({'a': False, 'b': ['one']}))
+        self.assertNotEqual(m.entitlements_sha256({'a': False}), m.entitlements_sha256({'a': 0}))
+        with self.assertRaises(m.SigningError):
+            m.validate_signed_entitlements({'a': 0}, {'entitlements': {'a': False}})
+
+    def test_independent_verification_accepts_authorized_historical_identity(self):
+        m = module(); p = profile(); cert = certificate(); p['DeveloperCertificates'] = [cert]
+        ent = dict(p['Entitlements']); ent['keychain-access-groups'] = ['OLDPREFIX.*']
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d); app = root / 'App.app'; app.mkdir()
+            (app / 'Info.plist').write_bytes(plistlib.dumps({'CFBundleIdentifier': 'vip.installed.app',
+                'CFBundleShortVersionString': '1.2.3', 'CFBundleVersion': '42'}))
+            def fake_run(command):
+                if '--entitlements' in command: return plistlib.dumps(ent)
+                extract = next((str(c) for c in command if str(c).startswith('--extract-certificates=')), None)
+                if extract: Path(extract.split('=', 1)[1] + '0').write_bytes(cert)
+                return b''
+            with patch.object(m, 'run', side_effect=fake_run), patch.object(m, 'read_profile', return_value=p):
+                metadata = m.verify_app(app, root)
+                self.assertEqual(metadata['bundleId'], 'vip.installed.app')
+                self.assertEqual(metadata['keychainAccessGroups'], ['OLDPREFIX.*'])
+                self.assertEqual(metadata['entitlementsSha256'], m.entitlements_sha256(ent))
+                self.assertNotIn('entitlements', metadata)
+                ent['unknown-permission'] = True
+                with self.assertRaises(m.SigningError): m.verify_app(app, root)
+
+    def test_cli_compatibility_flags_require_a_pair_and_exclude_verify_mode(self):
+        m = module()
+        common = ['--ipa', 'a.ipa', '--output', 'b.ipa', '--profile', 'a.mobileprovision',
+                  '--p12', 'a.p12', '--bundle-id', 'vip.installed.app', '--udid', 'test-udid',
+                  '--password-file', 'secret.txt']
+        parsed = m.parse_args(common + ['--compatibility-ipa', 'old.ipa', '--compatibility-ipa-sha256', 'a' * 64])
+        self.assertEqual(parsed.compatibility_ipa, 'old.ipa')
+        for args in [common + ['--compatibility-ipa', 'old.ipa'],
+                     ['--verify-ipa', 'old.ipa', '--compatibility-ipa', 'old.ipa',
+                      '--compatibility-ipa-sha256', 'a' * 64]]:
+            with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit): m.parse_args(args)
+
+
 class ArchiveTests(unittest.TestCase):
     def test_safe_unpack_preserves_executable_permission(self):
         m = module()
@@ -331,6 +463,19 @@ class FullFlowTests(unittest.TestCase):
                                bundle_id='vip.example.app', udid='test-udid')
             self.assertFalse(interrupted_output.exists())
             self.assertFalse(Path(str(interrupted_output) + '.signing.json').exists())
+            original_run = fake_run
+            def escalated_run(command):
+                if '--entitlements' in command:
+                    # 此权限被 profile 授权，但默认签名没有申请，仍须拒绝。
+                    return plistlib.dumps(expected['entitlements'] | {'aps-environment': 'production'})
+                return original_run(command)
+            altered_output = root / 'altered.ipa'
+            with patch.object(m, 'require_macos'), patch.object(m, 'read_profile', return_value=p), patch.object(m, 'run', side_effect=escalated_run):
+                with self.assertRaises(m.SigningError):
+                    m.sign_ipa(ipa, altered_output, profile_path, root / 'input.p12', password_file=secret,
+                               bundle_id='vip.example.app', udid='test-udid')
+            self.assertFalse(altered_output.exists())
+            self.assertFalse(Path(str(altered_output) + '.signing.json').exists())
 
 
 class CMSAuthenticityTests(unittest.TestCase):
