@@ -17,6 +17,7 @@ final class KeyboardLayoutProbeWebView: CodexMobileWebView {
     private let viewportLabel = UILabel()
     private var viewportTimer: Timer?
     private let stepLabel = UILabel()
+    private let tailLabel = UILabel()
 
     override init(frame: CGRect, configuration: WKWebViewConfiguration) {
         configuration.userContentController.addUserScript(WKUserScript(source: """
@@ -26,6 +27,10 @@ final class KeyboardLayoutProbeWebView: CodexMobileWebView {
         });
         """, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
         super.init(frame: frame, configuration: configuration)
+        tailLabel.frame = CGRect(x: 0, y: 76, width: 1, height: 1)
+        tailLabel.isAccessibilityElement = true
+        tailLabel.accessibilityIdentifier = "codex.keyboard-dismissal-tail"
+        tailLabel.accessibilityLabel = "not-sampled"
         stepLabel.frame = CGRect(x: 0, y: 74, width: 1, height: 1)
         stepLabel.isAccessibilityElement = true
         stepLabel.accessibilityIdentifier = "codex.composer-maximum-frame-step"
@@ -87,6 +92,8 @@ final class KeyboardLayoutProbeWebView: CodexMobileWebView {
 
     private func beginMeasurement() {
         guard !measuringDismissal else { return }
+        window?.addSubview(tailLabel)
+        tailLabel.accessibilityLabel = "not-sampled"
         window?.addSubview(stepLabel)
         stepLabel.accessibilityLabel = "not-sampled"
         evaluateJavaScript("""
@@ -124,6 +131,23 @@ final class KeyboardLayoutProbeWebView: CodexMobileWebView {
     }
 
     private func finishMeasurement() {
+        evaluateJavaScript("""
+        (() => {
+            const composer = document.querySelector('.composer-wrap');
+            if (!composer) return -1;
+            const current = composer.getBoundingClientRect().top;
+            // WAAPI 的 top 优先级高于 inline style；独立计算静态终点，避免动画覆盖探针。
+            const height = composer.offsetHeight;
+            const bottom = composer.style.bottom;
+            composer.style.bottom = '';
+            const inset = parseFloat(getComputedStyle(composer).bottom) || 0;
+            const target = window.innerHeight - height - inset;
+            composer.style.bottom = bottom;
+            return Math.abs(current - target);
+        })()
+        """) { [weak self] result, _ in
+            self?.tailLabel.accessibilityLabel = String((result as? NSNumber)?.doubleValue ?? -1)
+        }
         evaluateJavaScript("String(window.__codexSendFocusProbe)") { [weak self] result, _ in
             self?.sendFocusLabel.accessibilityLabel = result as? String ?? "unavailable"
         }

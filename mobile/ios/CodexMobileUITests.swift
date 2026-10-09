@@ -112,6 +112,12 @@ final class CodexMobileUITests: XCTestCase {
             else if doneChinese.exists { doneChinese.tap() }
             else { XCTFail("键盘对号收起按钮不存在：\(app.debugDescription)"); return }
             XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
+            let tail = app.staticTexts["codex.keyboard-dismissal-tail"]
+            XCTAssertTrue(tail.waitForExistence(timeout: 5))
+            let tailDistance = try XCTUnwrap(Double(tail.label))
+            print("KEYBOARD_DISMISSAL_TAIL \(tailDistance)")
+            XCTAssertGreaterThanOrEqual(tailDistance, 0)
+            XCTAssertLessThanOrEqual(tailDistance, 1, "系统键盘收起后输入栏不能继续下落")
             let probe = app.staticTexts["codex.keyboard-dismissal-height-difference"]
             XCTAssertTrue(probe.waitForExistence(timeout: 3), "测试工程应安装键盘布局探针")
             XCTAssertGreaterThan(try XCTUnwrap(Int(probe.value as? String ?? "")), 0, "探针应采到实际帧")
@@ -160,6 +166,12 @@ final class CodexMobileUITests: XCTestCase {
             let done = app.toolbars.buttons["Done"]
             if done.exists { done.tap() } else { app.toolbars.buttons["完成"].tap() }
             XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
+            let tail = app.staticTexts["codex.keyboard-dismissal-tail"]
+            XCTAssertTrue(tail.waitForExistence(timeout: 5))
+            let tailDistance = try XCTUnwrap(Double(tail.label))
+            print("KEYBOARD_DISMISSAL_TAIL \(tailDistance)")
+            XCTAssertGreaterThanOrEqual(tailDistance, 0)
+            XCTAssertLessThanOrEqual(tailDistance, 1, "系统键盘收起后输入栏不能继续下落")
             let probe = app.staticTexts["codex.keyboard-dismissal-height-difference"]
             XCTAssertTrue(probe.waitForExistence(timeout: 3))
             print("URL_DISMISSAL cycle=\(cycle) gap=\(probe.label)")
@@ -214,6 +226,12 @@ final class CodexMobileUITests: XCTestCase {
             XCTAssertTrue(app.webViews.buttons["发送"].isHittable)
             app.webViews.buttons["发送"].tap()
             XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5), "发送后应收起键盘")
+            let tail = app.staticTexts["codex.keyboard-dismissal-tail"]
+            XCTAssertTrue(tail.waitForExistence(timeout: 5))
+            let tailDistance = try XCTUnwrap(Double(tail.label))
+            print("KEYBOARD_DISMISSAL_TAIL \(tailDistance)")
+            XCTAssertGreaterThanOrEqual(tailDistance, 0)
+            XCTAssertLessThanOrEqual(tailDistance, 1, "系统键盘收起后输入栏不能继续下落")
             let probe = app.staticTexts["codex.keyboard-dismissal-height-difference"]
             XCTAssertTrue(probe.waitForExistence(timeout: 3))
             XCTAssertGreaterThan(try XCTUnwrap(Int(probe.value as? String ?? "")), 0, "探针应采到实际帧")
