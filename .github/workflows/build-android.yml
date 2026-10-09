@@ -273,6 +273,7 @@ jobs:
             "https://langium.org/docs/reference/configuration-services/",
           ];
           const allowedUrls = new Set([
+            "https://api.day.app/DeviceKey",
             "http://host.local:18766/?token=xxx",
             "http://192.168.123.79:8765/channels/codex-mobile/latest.json",
             "http://192.168.123.79:8765/channels/codex-mobile/latest.apk",
@@ -526,6 +527,13 @@ jobs:
           )
           for activity in application.findall("activity"):
               activity.set(f"{{{android}}}screenOrientation", "portrait")
+              if activity.get(f"{{{android}}}name") == ".MainActivity":
+                  activity.set(f"{{{android}}}launchMode", "singleTop")
+                  link_filter = ET.SubElement(activity, "intent-filter")
+                  ET.SubElement(link_filter, "action", {f"{{{android}}}name": "android.intent.action.VIEW"})
+                  for category in ("android.intent.category.DEFAULT", "android.intent.category.BROWSABLE"):
+                      ET.SubElement(link_filter, "category", {f"{{{android}}}name": category})
+                  ET.SubElement(link_filter, "data", {f"{{{android}}}scheme": "codexmobile", f"{{{android}}}host": "thread"})
           for provider in list(application.findall("provider")):
               if provider.get(f"{{{android}}}authorities", "").endswith(
                   ".fileprovider"
@@ -721,12 +729,18 @@ jobs:
               "    private fun completionNotificationTarget(",
               "        sourceIntent: android.content.Intent,",
               "    ): JSONObject? {",
+              "        val link = sourceIntent.data?.takeIf {",
+              "            it.scheme == \"codexmobile\" && it.host == \"thread\" &&",
+              "                (it.path.isNullOrEmpty() || it.path == \"/\") &&",
+              "                it.getQueryParameters(\"backendId\").size == 1 &&",
+              "                it.getQueryParameters(\"threadId\").size == 1",
+              "        }",
               "        val backendId = sourceIntent.getStringExtra(",
               "            \"codex-mobile-backend-id\"",
-              "        )?.trim().orEmpty()",
+              "        )?.trim() ?: link?.getQueryParameter(\"backendId\")?.trim().orEmpty()",
               "        val threadId = sourceIntent.getStringExtra(",
               "            \"codex-mobile-thread-id\"",
-              "        )?.trim().orEmpty()",
+              "        )?.trim() ?: link?.getQueryParameter(\"threadId\")?.trim().orEmpty()",
               "        if (backendId.isEmpty() || threadId.isEmpty()) return null",
               "        return JSONObject()",
               "            .put(\"backendId\", backendId)",
@@ -738,6 +752,7 @@ jobs:
               "    ) {",
               "        sourceIntent.removeExtra(\"codex-mobile-backend-id\")",
               "        sourceIntent.removeExtra(\"codex-mobile-thread-id\")",
+              "        sourceIntent.data = null",
               "    }",
               "",
               "    private fun consumeCompletionNotificationTarget(): String {",
@@ -750,13 +765,16 @@ jobs:
               "        sourceIntent: android.content.Intent,",
               "    ) {",
               "        val detail = completionNotificationTarget(sourceIntent) ?: return",
-              "        clearCompletionNotificationTarget(sourceIntent)",
               "        webView.post {",
               "            webView.evaluateJavascript(",
-              "                \"window.__codexMobileCompletionTarget=${detail};\" +",
-              "                    \"window.dispatchEvent(new CustomEvent('codex-mobile-open-thread',{detail:${detail}}))\",",
-              "                null,",
-              "            )",
+              "                \"(function(){if(!window.__codexMobileCompletionNavigationReady)return false;\" +",
+              "                    \"window.__codexMobileCompletionTarget=${detail};\" +",
+              "                    \"window.dispatchEvent(new CustomEvent('codex-mobile-open-thread',{detail:${detail}}));return true;})()\",",
+              "            ) { delivered ->",
+              "                if (delivered == \"true\" && intent === sourceIntent) {",
+              "                    clearCompletionNotificationTarget(sourceIntent)",
+              "                }",
+              "            }",
               "        }",
               "    }",
               "",

@@ -10,6 +10,7 @@ import { readImageGenerationError } from "./image-generation-error.js";
 import { TurnChangeHistory } from "./turn-change-history.js";
 import { compactTurnDetails } from "./turn-details.js";
 import { HttpSessions } from "./http-session.js";
+import { BarkNotifications } from "./bark-notifications.js";
 import { ImagePreviews } from "./image-preview.js";
 import { downloadFile } from "./file-download.js";
 
@@ -43,6 +44,7 @@ export interface GatewayOptions {
   readProjectState?: () => Promise<CodexProjectState>;
   uploadDir?: string;
   codexHome?: string;
+  barkFetch?: typeof fetch;
 }
 
 export interface Gateway {
@@ -118,7 +120,8 @@ function applyCors(
 
 export async function createGateway(options: GatewayOptions): Promise<Gateway> {
   const changeHistory = new TurnChangeHistory(options.codexHome ?? process.env.CODEX_HOME ?? join(homedir(), ".codex"));
-  const httpSessions = new HttpSessions({ ...options, changeHistory });
+  const notifications = new BarkNotifications({ codexHome: options.codexHome ?? process.env.CODEX_HOME ?? join(homedir(), ".codex"), displayName: options.displayName ?? options.hostname ?? options.hostId ?? "Codex", fetch: options.barkFetch });
+  const httpSessions = new HttpSessions({ ...options, changeHistory, notifications });
   const imagePreviews = new ImagePreviews();
   const server: Server = createServer(async (request, response) => {
     const url = new URL(request.url ?? "/", "http://gateway.local");
@@ -126,6 +129,7 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
     const fileDownload = url.pathname.startsWith("/api/files/download/");
     const controlRequest = [
       "/api/status",
+      "/api/notifications/settings",
       "/api/host",
       "/api/projects",
       "/api/uploads/file",
@@ -172,6 +176,10 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
       response.end();
       return;
     }
+    if (url.pathname === "/api/notifications/settings") {
+      await notifications.handle(request, response);
+      return;
+    }
     if (fileDownload) {
       await downloadFile(request, response, url);
       return;
@@ -212,6 +220,7 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
           gatewayVersion: options.gatewayVersion ?? "0.1.0",
           appServerReady,
           httpPolling: true,
+          barkPush: true,
           imagePreview: true,
         }),
       );
@@ -417,6 +426,87 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
     const upstream = new WebSocket(options.upstreamUrl);
     sockets.add(upstream);
     const pending: Array<{ data: WebSocket.RawData; binary: boolean }> = [];
+    let detached = false;
+    let lastCompletionAt = 0;
+    let retentionTimer: NodeJS.Timeout | undefined;
+    let retentionDeadline = 0;
+    const running = new Set<string>();
+    const completed = new Set<string>();
+    const pendingStarts = new Map<string | number, string>();
+    const approvals = new Map<string | number, string>();
+    // 仅为稀疏完成通知保留分类信息，不缓存会话正文；连接之间相互隔离。
+    const itemMetadata = new Map<string, { type?: string; phase?: string }>();
+    const observeNotification = (message: Record<string, any>) => {
+      const params = message.params;
+      const item = params?.item;
+      if (message.id == null && ["item/started", "item/completed"].includes(message.method) &&
+        typeof params?.threadId === "string" && params.threadId.length <= 1024 &&
+        typeof params.turnId === "string" && params.turnId.length <= 1024 &&
+        typeof item?.id === "string" && item.id.length <= 1024) {
+        const key = JSON.stringify([params.threadId, params.turnId, item.id]);
+        const previous = itemMetadata.get(key);
+        const metadata = {
+          ...(previous ?? {}),
+          ...(typeof item.type === "string" && item.type.length <= 64 ? { type: item.type } : {}),
+          ...(typeof item.phase === "string" && item.phase.length <= 64 ? { phase: item.phase } : {}),
+        };
+        itemMetadata.set(key, metadata);
+        while (itemMetadata.size > 512) itemMetadata.delete(itemMetadata.keys().next().value!);
+        notifications.observe({ ...message, params: { ...params, item: { ...metadata, ...item } } });
+      } else notifications.observe(message);
+    };
+    const release = () => {
+      if (retentionTimer) clearTimeout(retentionTimer);
+      retentionTimer = undefined;
+      if (upstream.readyState !== WebSocket.CLOSED) upstream.terminate();
+    };
+    const retain = () => {
+      if (!detached) return;
+      if (retentionTimer) clearTimeout(retentionTimer);
+      if (!notifications.subscribed) { release(); return; }
+      // 运行或等待审批时保留；静默最多半小时，完成后留一秒接收迟到的 final。
+      const delay = running.size || pendingStarts.size || approvals.size ? 30 * 60 * 1000 : 1000;
+      retentionDeadline = Date.now() + delay;
+      const checkRetention = () => {
+        if (!notifications.subscribed || Date.now() >= retentionDeadline) { release(); return; }
+        retentionTimer = setTimeout(checkRetention, Math.min(1000, retentionDeadline - Date.now()));
+        retentionTimer.unref();
+      };
+      retentionTimer = setTimeout(checkRetention, Math.min(1000, delay));
+      retentionTimer.unref();
+    };
+    const observeState = (message: Record<string, any>, request?: { method?: string; params?: Record<string, any> }) => {
+      const params = message.params ?? {};
+      const thread = params.threadId ?? params.thread?.id;
+      const turn = params.turn?.id ?? params.turnId;
+      const key = `${thread}:${turn}`;
+      if (message.method === "turn/started" && !completed.has(key)) running.add(key);
+      if (message.method === "turn/completed") {
+        lastCompletionAt = Date.now();
+        running.delete(key); running.delete(`${thread}:status`); completed.add(key);
+        while (completed.size > 512) completed.delete(completed.values().next().value!);
+        for (const [id, approvalThread] of approvals) if (approvalThread === thread) approvals.delete(id);
+      }
+      if (message.method === "thread/status/changed") {
+        const status = params.status?.type ?? params.status;
+        if (status === "active") running.add(`${thread}:status`);
+        if (["idle", "notLoaded", "systemError"].includes(status)) for (const entry of running) if (entry.startsWith(`${thread}:`)) running.delete(entry);
+      }
+      if (message.method && message.id != null) approvals.set(message.id, String(thread ?? ""));
+      if (request?.method === "turn/start") {
+        pendingStarts.delete(message.id);
+        const resultTurn = message.result?.turn;
+        const resultKey = `${request.params?.threadId}:${resultTurn?.id}`;
+        if (message.error == null && resultTurn?.id && !completed.has(resultKey) && !["completed", "failed", "interrupted", "cancelled"].includes(resultTurn.status)) running.add(resultKey);
+      }
+      if (request && message.error == null && ["thread/resume", "thread/read"].includes(request.method ?? "")) {
+        const resultThread = message.result?.thread;
+        const status = resultThread?.status?.type ?? resultThread?.status;
+        if (status === "active") running.add(`${resultThread.id}:status`);
+        for (const resultTurn of resultThread?.turns ?? []) if (["inProgress", "in_progress", "running"].includes(resultTurn.status) && !completed.has(`${resultThread.id}:${resultTurn.id}`)) running.add(`${resultThread.id}:${resultTurn.id}`);
+      }
+      retain();
+    };
     let pendingBytes = 0;
     const maxPendingBytes = 1024 * 1024;
 
@@ -467,6 +557,13 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
         }
         return;
       }
+      if (!isBinary) {
+        try {
+          const message = JSON.parse(rawMessageText(data));
+          if (message.method === "turn/start" && message.id != null && typeof message.params?.threadId === "string") pendingStarts.set(message.id, message.params.threadId);
+          if (!message.method && message.id != null) approvals.delete(message.id);
+        } catch { /* 上游验证消息格式。 */ }
+      }
       if (upstream.readyState === WebSocket.OPEN) forward(data, isBinary);
       else if (upstream.readyState === WebSocket.CONNECTING) {
         pendingBytes += bytes;
@@ -488,9 +585,11 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
         try {
           message = JSON.parse(rawMessageText(data));
           changeHistory.observe(message!);
+          observeNotification(message!);
         } catch { /* Preserve non-JSON upstream messages. */ }
       }
       const request = message?.id != null && !message.method ? requests.get(message.id) : undefined;
+      if (message) observeState(message, request);
       if (request && message) {
         requests.delete(message.id);
         const thread = message.result?.thread;
@@ -528,6 +627,8 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
       if (client.readyState === WebSocket.OPEN) client.close(1011, "app-server unavailable");
     });
     client.on("close", (code, reason) => {
+      detached = true;
+      if (notifications.subscribed && (running.size || pendingStarts.size || approvals.size || Date.now() - lastCompletionAt < 1000)) { retain(); return; }
       if (upstream.readyState === WebSocket.OPEN) {
         if (sendableCloseCode(code)) upstream.close(code, reason);
         else upstream.terminate();
@@ -535,6 +636,9 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
       else upstream.terminate();
     });
     upstream.on("close", (code, reason) => {
+      itemMetadata.clear();
+      if (retentionTimer) clearTimeout(retentionTimer);
+      retentionTimer = undefined;
       if (client.readyState === WebSocket.OPEN) {
         if (sendableCloseCode(code)) client.close(code, reason);
         else client.close(1011, "app-server disconnected");
@@ -556,6 +660,7 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
     port: address.port,
     async close() {
       await httpSessions.close();
+      await notifications.close();
       for (const socket of sockets) socket.terminate();
       await new Promise<void>((resolve) => wss.close(() => resolve()));
       await new Promise<void>((resolve) => server.close(() => resolve()));

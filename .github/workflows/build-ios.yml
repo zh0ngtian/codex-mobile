@@ -127,6 +127,7 @@ jobs:
             "https://langium.org/docs/reference/configuration-services/",
           ];
           const allowedUrls = new Set([
+            "https://api.day.app/DeviceKey",
             "http://host.local:18766/?token=xxx",
             "http://192.168.123.79:8765/channels/codex-mobile/latest.json",
             "http://192.168.123.79:8765/channels/codex-mobile/latest.apk",
@@ -347,6 +348,11 @@ jobs:
           plist_path = Path("PakePlus/Info.plist")
           info = plistlib.loads(plist_path.read_bytes())
           info["UIRequiresFullScreen"] = True
+          info["CFBundleURLTypes"] = [{
+              "CFBundleURLName": "Codex Mobile conversation",
+              "CFBundleURLSchemes": ["codexmobile"],
+              "CFBundleTypeRole": "Viewer",
+          }]
           plist_path.write_bytes(plistlib.dumps(info))
 
           content_path = Path("PakePlus/ContentView.swift")
@@ -356,7 +362,9 @@ jobs:
               raise SystemExit("Pinned PakePlus keyboard safe area hook changed")
           content_path.write_text(content.replace(
               keyboard_safe_area,
-              ".ignoresSafeArea(.container, edges: [.all])\n            .allowsHitTesting",
+              ".ignoresSafeArea(.container, edges: [.all])\n"
+              "            .onOpenURL { CodexMobileCompletionRouter.open($0) }\n"
+              "            .allowsHitTesting",
               1,
           ))
 
@@ -465,10 +473,57 @@ jobs:
               raise SystemExit("Pinned PakePlus navigation completion hook changed")
           source = source.replace(
               navigation_finished,
-              navigation_finished + "        syncBoldText()\n",
+              navigation_finished + "        syncBoldText()\n"
+              "        CodexMobileCompletionRouter.attach(webView)\n",
               1,
           )
           source += r'''
+
+          // 冷启动的 URL 先保存，待本地网页加载后再交给已有会话导航。
+          enum CodexMobileCompletionRouter {
+              private static let pendingKey = "codex-mobile-pending-link"
+              private static weak var webView: WKWebView?
+
+              static func open(_ url: URL) {
+                  guard let parts = URLComponents(url: url, resolvingAgainstBaseURL: false),
+                        parts.scheme == "codexmobile", parts.host == "thread",
+                        parts.path.isEmpty || parts.path == "/",
+                        parts.user == nil, parts.password == nil,
+                        parts.port == nil, parts.fragment == nil else { return }
+                  let queries = parts.queryItems ?? []
+                  guard queries.count == 2,
+                        queries.filter({ $0.name == "backendId" }).count == 1,
+                        queries.filter({ $0.name == "threadId" }).count == 1,
+                        let backendId = queries.first(where: { $0.name == "backendId" })?.value,
+                        let threadId = queries.first(where: { $0.name == "threadId" })?.value,
+                        !backendId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                        !threadId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                        backendId.count <= 256, threadId.count <= 512 else { return }
+                  UserDefaults.standard.set(["backendId": backendId, "threadId": threadId], forKey: pendingKey)
+                  deliver()
+              }
+
+              static func attach(_ view: WKWebView) {
+                  webView = view
+                  deliver()
+              }
+
+              private static func deliver() {
+                  guard let view = webView, !view.isLoading,
+                        let target = UserDefaults.standard.dictionary(forKey: pendingKey) as? [String: String],
+                        let data = try? JSONSerialization.data(withJSONObject: target),
+                        let json = String(data: data, encoding: .utf8) else { return }
+                  view.evaluateJavaScript(
+                      "window.__codexMobileCompletionTarget=\(json);"
+                      + "window.dispatchEvent(new CustomEvent('codex-mobile-open-thread',{detail:\(json)}))"
+                  ) { _, error in
+                      if error == nil,
+                         UserDefaults.standard.dictionary(forKey: pendingKey) as? [String: String] == target {
+                          UserDefaults.standard.removeObject(forKey: pendingKey)
+                      }
+                  }
+              }
+          }
 
           // WebKit 先按新 bounds 重排网页，主图层继续插值旧尺寸会裁剪固定输入栏。
           // 只移除主图层的几何动画，网页内部动画与原生透明度动画保持正常。

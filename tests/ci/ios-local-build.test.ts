@@ -8,6 +8,16 @@ function plan(...args: string[]) {
 }
 
 describe("iOS 本地工程准备", () => {
+  it("注册会话 URL Scheme，并在冷启动网页加载完成后消费目标", () => {
+    const workflow = parse(readFileSync(".github/workflows/build-ios.yml", "utf8"));
+    const harden = workflow.jobs.build.steps.find((step: any) => step.name === "Harden and test the iOS host").run;
+    expect(harden).toContain('info["CFBundleURLTypes"]');
+    expect(harden).toContain('"CFBundleURLSchemes": ["codexmobile"]');
+    expect(harden).toContain(".onOpenURL");
+    expect(harden).toContain("CodexMobileCompletionRouter.attach(webView)");
+    expect(harden).toContain("UserDefaults.standard");
+    expect(harden).toContain("codex-mobile-open-thread");
+  });
   it("复用发布流水线固定容器与硬化步骤，并输出可构建工程", () => {
     const result = plan("--version", "0.2.91");
     expect(result.status, result.stderr).toBe(0);

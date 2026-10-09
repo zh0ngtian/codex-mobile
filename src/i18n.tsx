@@ -13,6 +13,23 @@ export type LanguagePreference = "system" | Locale;
 const LANGUAGE_STORAGE_KEY = "codex-mobile:language";
 
 const english: Record<string, string> = {
+  "推送方式": "Push notifications",
+  "系统推送": "System notifications",
+  "Bark 推送": "Bark notifications",
+  "系统推送会有延迟，并且可能会漏推送。": "System notifications may be delayed, and some may be missed.",
+  "任务完成后由设备网关发送 Bark 通知，App 退出后也可接收。": "Your device gateway sends Bark notifications when tasks finish, even after this app exits.",
+  "Bark 推送链接": "Bark push URL",
+  "粘贴 Bark App 中的推送链接，包含服务器地址和设备 Key。": "Paste the push URL from Bark, including the server address and device key.",
+  "保存推送设置": "Save notification settings",
+  "推送设置已保存": "Notification settings saved",
+  "无法保存推送设置": "Unable to save notification settings",
+  "Bark 地址不能包含控制字符": "The Bark URL cannot contain control characters",
+  "请输入有效的 Bark 推送地址，地址中不能包含空白": "Enter a valid Bark push URL without whitespace",
+  "请输入完整的 HTTP 或 HTTPS Bark 地址": "Enter a complete HTTP or HTTPS Bark URL",
+  "Bark 地址只允许 HTTP 或 HTTPS 服务器和设备 Key，不能带凭据、查询或片段": "The Bark URL must contain an HTTP or HTTPS server and device key, without credentials, a query, or a fragment",
+  "Bark 地址需要有效的设备 Key，不能使用公共接口路径": "The Bark URL needs a valid device key, not a public API endpoint",
+  "api.day.app 地址只能包含一个设备 Key": "An api.day.app URL must contain just one device key",
+  "推送设置尚未同步到：{devices}。连接恢复后自动重试；旧网关需升级。": "Notification settings have not synced to: {devices}. Retrying when connected; older gateways need an update.",
   "设备网关需要升级以支持 HTTP 同步": "Update the device gateway to support HTTP sync",
   "请求结果待确认": "Request outcome needs confirmation",
   "发送状态确认中": "Confirming send status",

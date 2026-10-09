@@ -108,6 +108,13 @@ button, a, summary, [role="button"] { -webkit-tap-highlight-color: transparent; 
 .backend-language-settings button.selected { background: #fff; box-shadow: 0 1px 5px rgba(0,0,0,.08); }
 .backend-transport-settings > div { grid-template-columns: repeat(2,minmax(0,1fr)); }
 .backend-transport-settings > small { color: #777; font-size: 12px; line-height: 1.5; }
+.push-settings > div { grid-template-columns: repeat(2,minmax(0,1fr)); }
+.push-settings > div > label { display: flex; align-items: center; justify-content: center; gap: 7px; border-radius: 14px; padding: 10px 7px; font-size: 12px; cursor: pointer; }
+.push-settings > div > label.selected { background: #fff; box-shadow: 0 1px 5px rgba(0,0,0,.08); }
+.push-settings input[type="radio"] { margin: 0; accent-color: #111; }
+.push-settings small { color: #777; font-size: 12px; line-height: 1.5; }
+.push-settings .push-settings-save { background: #111; color: #fff; padding: 11px 14px; }
+.push-settings-form { gap: 10px; padding-top: 0; }
 .backend-form { display: grid; gap: 15px; padding-top: 8px; }
 .backend-form label { display: grid; gap: 7px; color: #555; font-size: 12px; }
 .backend-form-field { display: grid; gap: 7px; }

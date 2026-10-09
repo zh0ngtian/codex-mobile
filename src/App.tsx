@@ -213,6 +213,7 @@ import {
   type RunCompletionNavigationTarget,
 } from "./notifications/run-completion";
 import { t, useI18n } from "./i18n";
+import { readNotificationPreference, writeNotificationPreference, useNotificationSync, type NotificationPreference } from "./notifications/preferences";
 
 type AnyRecord = Record<string, any>;
 
@@ -4200,6 +4201,12 @@ export function AppBootstrap({
   initialRegistry: BackendRegistry;
 }) {
   const [registry, setRegistry] = useState(initialRegistry);
+  const [notificationPreference, setNotificationPreference] = useState(() => readNotificationPreference(window.localStorage));
+  const saveNotificationPreference = (next: NotificationPreference) => {
+    const saved = writeNotificationPreference(window.localStorage, next);
+    setNotificationPreference(saved);
+  };
+  const failedNotificationDevices = useNotificationSync(registry.backends, notificationPreference);
   const [transportMode, setTransportMode] = useState(() => readTransportMode(window.localStorage));
   const changeTransportMode = (mode: TransportMode) => {
     writeTransportMode(window.localStorage, mode);
@@ -4217,6 +4224,10 @@ export function AppBootstrap({
         appUpdate={appUpdate}
         transportMode={transportMode}
         onTransportModeChange={changeTransportMode}
+        notificationPreference={notificationPreference}
+        onNotificationPreferenceSave={saveNotificationPreference}
+        failedNotificationDevices={failedNotificationDevices}
+        onRegistryChange={setRegistry}
       />
     );
   }
@@ -4240,6 +4251,9 @@ export function AppBootstrap({
         summaries={{}}
         transportMode={transportMode}
         onTransportModeChange={changeTransportMode}
+        notificationPreference={notificationPreference}
+        onNotificationPreferenceSave={saveNotificationPreference}
+        failedNotificationDevices={failedNotificationDevices}
         onChange={(next) => {
           saveBackendRegistry(window.localStorage, next);
           setRegistry(next);
@@ -4274,13 +4288,22 @@ function ConfiguredApp({
   appUpdate,
   transportMode,
   onTransportModeChange,
+  notificationPreference,
+  onNotificationPreferenceSave,
+  failedNotificationDevices,
+  onRegistryChange,
 }: {
   initialRegistry: BackendRegistry;
   appUpdate: AppUpdateController;
   transportMode: TransportMode;
   onTransportModeChange: (mode: TransportMode) => void;
+  notificationPreference: NotificationPreference;
+  onNotificationPreferenceSave: (preference: NotificationPreference) => void;
+  failedNotificationDevices: string[];
+  onRegistryChange: (registry: BackendRegistry) => void;
 }) {
   const [registry, setRegistry] = useState(initialRegistry);
+  useEffect(() => { onRegistryChange(registry); }, [registry, onRegistryChange]);
   const [summaries, setSummaries] = useState<
     Record<string, BackendRuntimeSummary>
   >({});
@@ -4897,6 +4920,9 @@ function ConfiguredApp({
         onChange={persistRegistry}
         transportMode={transportMode}
         onTransportModeChange={onTransportModeChange}
+        notificationPreference={notificationPreference}
+        onNotificationPreferenceSave={onNotificationPreferenceSave}
+        failedNotificationDevices={failedNotificationDevices}
         onClose={() => setManagerOpen(false)}
         appUpdate={{
           supported: appUpdate.supported,
