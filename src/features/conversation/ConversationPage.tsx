@@ -596,6 +596,9 @@ export function ConversationPage({
               const target = createHistoricalMessageEditTarget(
                 active.turns ?? [],
                 String(turn.id ?? ""),
+                historyEdit?.target.turnId === String(turn.id ?? "")
+                  ? historyEdit.target.messageId
+                  : undefined,
               );
               const canEditHistory = Boolean(
                 target &&
@@ -618,14 +621,19 @@ export function ConversationPage({
                   backend={selectedBackend}
                   onEditUserMessage={
                     canEditHistory
-                      ? () => {
-                          onEditUserMessage!(target!);
+                      ? (messageId) => {
+                          const messageTarget = createHistoricalMessageEditTarget(
+                            active.turns ?? [], String(turn.id ?? ""), messageId,
+                          );
+                          if (messageTarget) onEditUserMessage!(messageTarget);
                         }
                       : undefined
                   }
                   inlineEdit={
                     historyEdit && target?.turnId === historyEdit.target.turnId
                       ? {
+                          messageId: historyEdit.target.messageId,
+                          precedingMessageCount: historyEdit.target.precedingMessageCount,
                           value: historyEdit.text,
                           submitting: historyEdit.submitting,
                           hasLaterTurns: historyEdit.target.hasLaterTurns,

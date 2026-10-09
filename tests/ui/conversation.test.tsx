@@ -1913,8 +1913,8 @@ describe("移动端对话格式", () => {
     expect(container.textContent).not.toContain("automation-2");
     expect(container.textContent).not.toContain("NOTIFY");
     expect(
-      within(container).queryByRole("button", { name: "编辑历史消息" }),
-    ).toBeNull();
+      within(container).getByRole("button", { name: "编辑历史消息" }),
+    ).not.toBeNull();
     expect(
       within(container).queryByRole("button", { name: "重发历史消息" }),
     ).toBeNull();

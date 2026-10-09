@@ -46,6 +46,8 @@ import "./timeline-timestamps.css";
 type AnyRecord = Record<string, any>;
 
 type InlineUserMessageEdit = {
+  messageId?: string;
+  precedingMessageCount?: number;
   value: string;
   submitting: boolean;
   hasLaterTurns: boolean;
@@ -191,6 +193,11 @@ function UserBubble({
                 })
               : t("保存后将从这条消息重新执行")}
           </small>
+          {Boolean(inlineEdit.precedingMessageCount) && (
+            <small>{t("同轮此前的 {count} 条用户消息及附件会一起重发", {
+              count: inlineEdit.precedingMessageCount!,
+            })}</small>
+          )}
           {confirming ? (
             <div
               className="history-edit-inline-confirmation"
@@ -307,40 +314,26 @@ function UserBubble({
       )}
     </div>
   );
-  if (!heartbeat) {
-    if (inlineEdit) return <div className="user-message">{bubble}</div>;
-    const showActions = Boolean(onEditUserMessage);
-    if (!showActions) return bubble;
+  const actions = !inlineEdit && onEditUserMessage ? (
+    <div className="user-message-actions" role="group" aria-label={t("历史消息操作")}>
+      <button type="button" aria-label={t("编辑历史消息")}
+        disabled={userMessageActionsDisabled} onClick={onEditUserMessage}>
+        {t("编辑")}
+      </button>
+    </div>
+  ) : null;
+  if (heartbeat) {
     return (
-      <div className="user-message">
+      <div className="automation-user-message">
+        <small className="automation-message-label">{t("通过自动化功能发送")}</small>
         {bubble}
-        <div
-          className="user-message-actions"
-          role="group"
-          aria-label={t("历史消息操作")}
-        >
-          {onEditUserMessage && (
-            <button
-              type="button"
-              aria-label={t("编辑历史消息")}
-              disabled={userMessageActionsDisabled}
-              onClick={onEditUserMessage}
-            >
-              {t("编辑")}
-            </button>
-          )}
-        </div>
+        {actions}
       </div>
     );
   }
-  return (
-    <div className="automation-user-message">
-      <small className="automation-message-label">
-        {t("通过自动化功能发送")}
-      </small>
-      {bubble}
-    </div>
-  );
+  return inlineEdit || actions
+    ? <div className="user-message">{bubble}{actions}</div>
+    : bubble;
 }
 
 function ToolActivity({ items }: { items: AnyRecord[] }) {
@@ -407,6 +400,7 @@ function TimelineItem({
   threadId,
   timestamp,
   onEditUserMessage,
+  inlineEdit,
   userMessageActionsDisabled,
 }: {
   item: AnyRecord;
@@ -443,6 +437,7 @@ function TimelineItem({
         client={client}
         backend={backend}
         timestamp={timestamp}
+        inlineEdit={inlineEdit}
         onEditUserMessage={onEditUserMessage}
         userMessageActionsDisabled={userMessageActionsDisabled}
       />
@@ -621,8 +616,21 @@ export function TurnCard({
   liveDiff?: string;
   client: AppServerClient | null;
   backend?: BackendConfig | null;
-} & UserMessageActionProps) {
+} & Omit<UserMessageActionProps, "onEditUserMessage"> & {
+  onEditUserMessage?: (messageId: string) => void;
+}) {
   const grouped = groupTurnItems(turn);
+  const actionsForMessage = (item: AnyRecord): UserMessageActionProps => {
+    const messageId = String(item.id ?? "");
+    if (grouped.running || item.type !== "userMessage" || !messageId || messageId.startsWith("local-")) return {};
+    return {
+      onEditUserMessage: onEditUserMessage ? () => onEditUserMessage(messageId) : undefined,
+      inlineEdit: inlineEdit && (inlineEdit.messageId == null
+        ? item === grouped.user
+        : inlineEdit.messageId === messageId) ? inlineEdit : undefined,
+      userMessageActionsDisabled,
+    };
+  };
   const responsesRef = useRef<HTMLDivElement>(null);
   let lastHumanIndex = -1;
   for (let index = grouped.responses.length - 1; index >= 0; index -= 1) {
@@ -651,6 +659,7 @@ export function TurnCard({
           client={client}
           backend={backend}
           threadId={threadId}
+          {...actionsForMessage(entry.item)}
         />
       ),
     );
@@ -696,11 +705,7 @@ export function TurnCard({
             client={client}
             backend={backend}
             timestamp={turn.startedAt}
-            onEditUserMessage={
-              grouped.running ? undefined : onEditUserMessage
-            }
-            inlineEdit={grouped.running ? undefined : inlineEdit}
-            userMessageActionsDisabled={userMessageActionsDisabled}
+            {...actionsForMessage(grouped.user)}
           />
         </div>
       )}
@@ -718,6 +723,7 @@ export function TurnCard({
             <CompletedResponseSegment
               key={items[0]?.id ?? index}
               items={items}
+              actionsForMessage={actionsForMessage}
               client={client}
               backend={backend}
               threadId={threadId}
@@ -755,6 +761,7 @@ export function TurnCard({
 
 function CompletedResponseSegment({
   items,
+  actionsForMessage,
   client,
   backend,
   threadId,
@@ -764,6 +771,7 @@ function CompletedResponseSegment({
   durationLabel,
 }: {
   items: AnyRecord[];
+  actionsForMessage: (item: AnyRecord) => UserMessageActionProps;
   client: AppServerClient | null;
   backend?: BackendConfig | null;
   threadId?: string;
@@ -799,6 +807,7 @@ function CompletedResponseSegment({
           client={client}
           backend={backend}
           threadId={threadId}
+          {...actionsForMessage(entry.item)}
         />
       ),
     );

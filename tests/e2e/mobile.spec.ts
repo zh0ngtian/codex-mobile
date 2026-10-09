@@ -335,8 +335,9 @@ test("新会话从首条流式回复生成一次标题并隐藏协议内容", as
   }]);
 });
 
-test("历史消息编辑会回退后保留附件重发", async ({ page }) => {
-  await page.addInitScript(() => {
+for (const editSteered of [false, true]) {
+test(editSteered ? "同轮引导消息支持编辑并保留此前输入重发" : "历史消息编辑会回退后保留附件重发", async ({ page }) => {
+  await page.addInitScript((editSteered) => {
     const now = Math.floor(Date.now() / 1000);
     const turns = [
       {
@@ -373,6 +374,10 @@ test("历史消息编辑会回退后保留附件重发", async ({ page }) => {
         ],
       },
     ];
+    if (editSteered) turns[0].items.push(
+      { id: "user-steer", type: "userMessage", content: [{ type: "text", text: "引导要求" }] },
+      { id: "agent-steer", type: "agentMessage", phase: "final_answer", text: "引导回复" },
+    );
     (window as any).__historyEditRpc = [];
     class HistoryEditSocket extends EventTarget {
       static OPEN = 1;
@@ -488,7 +493,7 @@ test("历史消息编辑会回退后保留附件重发", async ({ page }) => {
       }
     }
     (window as any).WebSocket = HistoryEditSocket;
-  });
+  }, editSteered);
 
   await page.goto("/");
   await page.getByRole("button", { name: /历史编辑会话/ }).first().click();
@@ -498,7 +503,7 @@ test("历史消息编辑会回退后保留附件重发", async ({ page }) => {
   const targetTurn = page.locator(".turn-card").first();
   const composer = page.getByRole("textbox", { name: "向 Codex 提问" });
   await composer.fill("未发送的底部草稿");
-  await targetTurn.getByRole("button", { name: "编辑历史消息" }).click();
+  await targetTurn.getByRole("button", { name: "编辑历史消息" }).nth(editSteered ? 1 : 0).click();
   await expect(targetTurn).toContainText(
     "原消息的 1 个附件会保留",
   );
@@ -506,7 +511,8 @@ test("历史消息编辑会回退后保留附件重发", async ({ page }) => {
   const inlineEditor = targetTurn.getByRole("textbox", {
     name: "编辑历史消息内容",
   });
-  await expect(inlineEditor).toHaveValue("原消息");
+  await expect(inlineEditor).toHaveValue(editSteered ? "引导要求" : "原消息");
+  if (editSteered) await expect(targetTurn).toContainText("同轮此前的 1 条用户消息及附件会一起重发");
   await expect(composer).toHaveValue("未发送的底部草稿");
   await inlineEditor.fill("修改后的消息");
   await targetTurn.getByRole("button", { name: "保存并重发" }).click();
@@ -550,8 +556,12 @@ test("历史消息编辑会回退后保留附件重发", async ({ page }) => {
   expect(requests[1].params).toEqual({
     threadId: "thread-edit",
     input: [
+      ...(editSteered ? [
+        { type: "text", text: "原消息", text_elements: [] },
+        { type: "localImage", path: "/tmp/original.png" },
+      ] : []),
       { type: "text", text: "修改后的消息", text_elements: [] },
-      { type: "localImage", path: "/tmp/original.png" },
+      ...(!editSteered ? [{ type: "localImage", path: "/tmp/original.png" }] : []),
     ],
     model: "gpt-test",
     effort: "medium",
@@ -561,6 +571,7 @@ test("历史消息编辑会回退后保留附件重发", async ({ page }) => {
     approvalsReviewer: "user",
   });
 });
+}
 
 test("移动端选择器、线程恢复、Markdown、折叠与吸顶", async ({ page }) => {
   const expectSheetHeaderFlush = async (sheetSelector: string) => {

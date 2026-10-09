@@ -438,6 +438,47 @@ describe("会话详情历史分页", () => {
     expect(view.queryByRole("button", { name: "重发历史消息" })).toBeNull();
   });
 
+  it("同轮主消息、引导消息与自动化消息各自支持编辑", () => {
+    const turns = [{ id: "multi", status: "completed", items: [
+      { id: "u1", type: "userMessage", text: "原始要求" },
+      { id: "a1", type: "agentMessage", phase: "final_answer", text: "原回复" },
+      { id: "u2", type: "userMessage", text: "引导要求" },
+      { id: "a2", type: "agentMessage", phase: "final_answer", text: "调整回复" },
+      { id: "u3", type: "userMessage", text: `<heartbeat>
+<automation_id>auto-1</automation_id>
+<instructions>自动检查</instructions>
+</heartbeat>` },
+    ] }];
+    const onEditUserMessage = vi.fn();
+    const { container } = renderConversation("exhausted", undefined, { turns, onEditUserMessage });
+    const buttons = within(container).getAllByRole("button", { name: "编辑历史消息" });
+    expect(buttons).toHaveLength(3);
+    fireEvent.click(buttons[1]);
+    expect(onEditUserMessage).toHaveBeenCalledWith(expect.objectContaining({ turnId: "multi", messageId: "u2", text: "引导要求" }));
+    fireEvent.click(buttons[2]);
+    expect(onEditUserMessage).toHaveBeenLastCalledWith(expect.objectContaining({ messageId: "u3" }));
+  });
+
+  it("引导消息的编辑器只显示在选中的消息内", () => {
+    const turns = [{ id: "multi", status: "completed", items: [
+      { id: "u1", type: "userMessage", text: "原始要求" },
+      { id: "a1", type: "agentMessage", phase: "final_answer", text: "原回复" },
+      { id: "u2", type: "userMessage", text: "引导要求" },
+      { id: "a2", type: "agentMessage", phase: "final_answer", text: "调整回复" },
+    ] }];
+    const target = createHistoricalMessageEditTarget(turns, "multi", "u2")!;
+    const { container } = renderConversation("exhausted", undefined, {
+      turns, historyEdit: { target, text: "编辑引导", submitting: false },
+    });
+    const view = within(container);
+    expect(view.getByText("原始要求")).toBeTruthy();
+    expect(view.queryByText("引导要求")).toBeNull();
+    const editor = view.getByRole("textbox", { name: "编辑历史消息内容" });
+    expect((editor as HTMLTextAreaElement).value).toBe("编辑引导");
+    expect(editor.closest(".turn-responses")).toBeTruthy();
+    expect(container.textContent).toContain("同轮此前的 1 条用户消息及附件会一起重发");
+  });
+
   it("有排队消息时不提供历史编辑入口", () => {
     const { container } = renderConversation(
       "exhausted",

@@ -298,6 +298,8 @@ const english: Record<string, string> = {
   "取消编辑历史消息": "Cancel editing previous message",
   "原消息的 {count} 个附件会保留":
     "{count} attachment(s) from the original message will be kept",
+  "同轮此前的 {count} 条用户消息及附件会一起重发":
+    "The {count} earlier user messages in this turn and their attachments will also be resent",
   "保存后将从这条消息重新执行":
     "Saving will rerun the conversation from this message",
   "保存并重发": "Save and resend",

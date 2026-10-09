@@ -2675,6 +2675,7 @@ function BackendWorkspace({
     const currentTarget = createHistoricalMessageEditTarget(
       thread?.turns ?? [],
       target.turnId,
+      target.messageId,
     );
     const hasQueuedMessage = queuedFollowUpsRef.current.some(
       (followUp) => followUp.threadId === threadId,
@@ -2756,6 +2757,7 @@ function BackendWorkspace({
       const currentTarget = createHistoricalMessageEditTarget(
         thread.turns ?? [],
         session.target.turnId,
+        session.target.messageId,
       );
       if (!currentTarget || currentTarget.messageId !== session.target.messageId) {
         setError(t("目标消息已变化，请刷新后重试"));
