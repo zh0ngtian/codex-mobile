@@ -145,6 +145,28 @@ function runAssetScanner(scanner: string, source: string) {
 }
 
 describe("移动 App 内置前端流水线", () => {
+  it.each(["android", "ios"])("%s 允许 Mermaid 依赖内置文档和 XML 命名空间，仍拦截固定私网地址与口令", (platform) => {
+    const { workflow } = readWorkflow(`.github/workflows/build-${platform}.yml`);
+    const scanner = readAssetScanner(workflow);
+    const dependencyUrls = [
+      "https://github.com/mermaid-js/mermaid/issues.",
+      "https://github.com/mermaid-js/mermaid/releases/tag/v11.0.0)",
+      "https://github.com/markedjs/marked.",
+      "https://chevrotain.io/docs/guide/resolving_lexer_errors.html#COMPLEMENT",
+      "https://github.com/chevrotain/chevrotain/issues/564#issuecomment-349062346",
+      "https://langium.org/docs/reference/configuration-services/#resolving-cyclic-dependencies",
+      "https://en.wikipedia.org/wiki/LL_parser#Left_factoring.",
+      "http://www.eclipse.org/elk/ElkGraph",
+      "http:///org/eclipse/emf/ecore/util/ExtendedMetaData",
+      "http://www.eclipse.org/emf/2002/Ecore",
+      "http://www.eclipse.org/emf/2003/XMLType",
+    ];
+    const result = runAssetScanner(scanner, JSON.stringify(dependencyUrls));
+    expect(result.status, result.stderr).toBe(0);
+    expect(runAssetScanner(scanner, '"http://192.168.0.2:18766"').status).not.toBe(0);
+    expect(runAssetScanner(scanner, '"https://example.com/?token=secret-token"').status).not.toBe(0);
+  });
+
   it("Android edge-to-edge 底部扣除 IME 且保留顶部安全区，硬化检查防止模板漂移", () => {
     const { workflow } = readWorkflow(".github/workflows/build-android.yml");
     const hardenHost = readRunStep(workflow, "Harden and test embedded Android project");

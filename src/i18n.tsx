@@ -336,6 +336,8 @@ const english: Record<string, string> = {
   "工具": "tool",
   "图片": "Image",
   "复制代码块": "Copy code block",
+  "Mermaid 图表": "Mermaid diagram",
+  "图表暂时无法渲染，显示源码": "Unable to render the diagram yet. Showing source.",
   "低": "Low",
   "中": "Medium",
   "高": "High",

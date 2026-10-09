@@ -1,8 +1,9 @@
-import { createContext, useContext, type ComponentProps, type ReactNode } from "react";
+import { createContext, isValidElement, useContext, type ComponentProps, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import { t } from "../i18n";
 import remarkGfm from "remark-gfm";
 import { CopyButton, reactNodeText } from "./copy";
+import { MermaidBlock } from "./mermaid";
 
 export type ConversationRecord = Record<string, any>;
 
@@ -945,6 +946,12 @@ const MarkdownRendererContext = createContext<MarkdownRenderers>({});
 
 function MarkdownCodeBlock({ children }: { children?: ReactNode }) {
   const code = reactNodeText(children).replace(/^\n/, "").replace(/\n$/, "");
+  if (
+    isValidElement<ComponentProps<"code">>(children) &&
+    children.props.className?.split(/\s+/).some((name) => /^language-mermaid$/i.test(name))
+  ) {
+    return <MermaidBlock source={code} />;
+  }
   return (
     <div className="markdown-code-block">
       <pre>{children}</pre>

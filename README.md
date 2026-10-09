@@ -98,7 +98,7 @@ Codex Desktop 很适合坐在电脑前完成开发任务，但长任务启动后
 | 模型与权限 | 从 app-server 读取模型、推理强度、服务档位、权限和审批策略 |
 | Skill 调用 | 输入 `@` 搜索当前项目已安装的 Skill，选择后随消息直接调用 |
 | 审批 | 支持命令、文件修改、附加权限和 `requestUserInput` |
-| 文件与媒体 | Markdown/GFM、图片与文件输入、当前位置、远程图片、远程文本、Markdown/HTML 预览和文件 Diff |
+| 文件与媒体 | Markdown/GFM、Mermaid 图表及源码查看/复制、图片与文件输入、当前位置、远程图片、远程文本、Markdown/HTML 预览和文件 Diff |
 | 前后台恢复 | 后台暂停轮询，回到前台或网络恢复时立即同步；离线保留内容并显示同步状态 |
 | 多端复用 | 同一套前端运行于 Web、Android 和 iOS，不在 App 中固化后端地址 |
 

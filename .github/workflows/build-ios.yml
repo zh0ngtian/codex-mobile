@@ -119,12 +119,24 @@ jobs:
             "https://api.github.com/repos/loock-ai/codex-mobile/releases/",
             "https://maps.google.com/",
             "https://react.dev/errors/",
+            // Mermaid 及其解析器内置的诊断文档链接，不是运行时后端地址。
+            "https://github.com/mermaid-js/mermaid/issues",
+            "https://github.com/mermaid-js/mermaid/releases/tag/",
+            "https://chevrotain.io/docs/",
+            "https://github.com/chevrotain/chevrotain/issues",
+            "https://langium.org/docs/reference/configuration-services/",
           ];
           const allowedUrls = new Set([
             "http://host.local:18766/?token=xxx",
             "http://192.168.123.79:8765/channels/codex-mobile/latest.json",
             "http://192.168.123.79:8765/channels/codex-mobile/latest.apk",
             "https://www.pakeplus.com/",
+            "https://github.com/markedjs/marked.",
+            "https://en.wikipedia.org/wiki/LL_parser#Left_factoring.",
+            "http://www.eclipse.org/elk/ElkGraph",
+            "http:///org/eclipse/emf/ecore/util/ExtendedMetaData",
+            "http://www.eclipse.org/emf/2002/Ecore",
+            "http://www.eclipse.org/emf/2003/XMLType",
           ]);
           const endpointPatterns = [
             [
