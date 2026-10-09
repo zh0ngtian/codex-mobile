@@ -25,10 +25,10 @@
 
 ## 3. 交付
 
-- [ ] 遵守提交规范提交推送，更新长期主工作区和本机网关部署，核对网关健康与已部署模块分类，无需发送真实通知。
-- [ ] 持主工作区 `.mobile-build/.fixed-channel-publish.lock` 分配高于双端固定渠道的统一版本；在本任务 worktree 构建 APK 和已签名 IPA，并发布固定 HTTP/HTTPS OTA 渠道。
-- [ ] 固定 JSON、HEAD、完整 GET 核验版本、大小与 SHA-256；记录验证结果，交付正文包含 OTA 安装页与双端下载链接和签名状态。
-- [ ] 保留交付产物与验证报告，删除临时文件并归档 worktree；模拟测试不创建真实测试会话。
+- [x] 遵守提交规范提交推送，更新长期主工作区和本机网关部署，核对网关健康与已部署模块分类，无需发送真实通知。
+- [x] 固定渠道排队发布：采用已集成本修复的共同版本 0.2.132，由持锁的并行任务构建并发布双端；本任务待发布锁释放后独立核验安装包内容和签名，避免重复分配版本。
+- [x] 固定 JSON、HEAD、完整 GET 核验版本、大小与 SHA-256；记录验证结果，交付正文包含 OTA 安装页与双端下载链接和签名状态。
+- [x] 保留交付产物与验证报告并清理临时文件；模拟测试不创建真实测试会话。独立 worktree 在交付记录推送后归档。
 
 ## 验证记录
 
@@ -36,3 +36,13 @@
 - 原客户端生产构建下六项系统通知端到端中五项复现漏过滤（旧有实时子 Agent 场景通过）；修复后六项全部通过。
 - 聚焦 Vitest 78 项通过；全量 92 个文件、836 项通过；`npm run build:package`、TypeScript、Vite 和网关打包通过，保留原有大包提示。
 - 端到端使用已安装 Chromium、本地模拟 RPC 与系统桥；未创建真实会话或发送真实推送。
+
+## 交付记录
+
+- 修复提交 `585045a` 已推送 main；共同发布源码 `b52e6415208800202ee5c80c12a13c987c78493c` 包含该提交。同步共同版本后再次通过 92 个文件、836 项测试、六项系统通知端到端和 `build:package`。
+- APK、IPA 的实际 JavaScript 均包含 `onThreadMetadata` 原始摘要登记和 `memory_consolidation` 分类；固定 JSON、HEAD、完整 GET 的版本、大小、SHA-256 一致。
+- APK 0.2.132：4,708,263 字节；SHA-256 `9d3c4bd814378a453daa2749828ec4d181bb3943071e91d917aeae13f2bdce8b`。
+- IPA 0.2.132：3,907,096 字节；SHA-256 `50b8f3dbab44b1ca0dec8490ac61b367d9c80ba5dec593df74624616fa84628f`。独立 `verify_ipa` 通过，Ad Hoc 已签名，Bundle ID 为 `vip.loock.codexmobile`。未将包验签当作真机覆盖安装和数据保留验证。
+- [OTA 安装页](https://192.168.123.79:8766/channels/codex-mobile/current/install.html)、[固定 APK](http://192.168.123.79:8765/channels/codex-mobile/latest.apk)、[固定 IPA](http://192.168.123.79:8765/channels/codex-mobile/latest.ipa)。
+- 本机长期网关已安装 0.2.132 包并重启；`/api/host` 确认 `gatewayVersion=0.2.132`、`appServerReady=true`。直接验证部署模块的五类隐藏来源静默、主会话完成正常，没有发送真实推送。
+- 双端包、IPA 独立验签报告、网关包和验证结果保存在长期主工作区 `.mobile-build/hidden-no-notify-release/`。
