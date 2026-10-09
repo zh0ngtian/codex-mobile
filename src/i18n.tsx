@@ -109,6 +109,7 @@ const english: Record<string, string> = {
   "当前版本 v{version}": "Current version v{version}",
   "正在检查…": "Checking…",
   "检查更新": "Check for updates",
+  "iOS 更新源未配置或签名身份不兼容": "iOS update source is not configured or the signing identity is incompatible",
   "二维码中缺少访问口令": "The QR code does not include an access token",
   "二维码无效：{message}": "Invalid QR code: {message}",
   "二维码不是有效的网关链接": "The QR code is not a valid gateway link",

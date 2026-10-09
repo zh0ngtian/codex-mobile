@@ -45,9 +45,12 @@ async function main() {
   const pnpmSetup = steps.find((step) => step.uses?.startsWith("pnpm/action-setup@"));
   const pnpmVersion = String(pnpmSetup?.with?.version ?? "");
   if (!/^\d+$/.test(pnpmVersion)) throw new Error("流水线必须配置 pnpm 主版本");
+  const appId = process.env.APP_ID || "vip.loock.codexmobile";
+  const otaBaseUrl = process.env.IOS_OTA_BASE_URL || "";
+  if (!/^[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$/.test(appId)) throw new Error("无效 iOS Bundle ID");
   const output = join(root, ".mobile-build/ios");
   const plan = {
-    repository: checkout.with.repository, ref: checkout.with.ref, version,
+    repository: checkout.with.repository, ref: checkout.with.ref, version, appId, otaBaseUrl,
     projectPath: join(output, "pakeplus/PakePlus.xcodeproj"),
     scheme: "PakePlus", packageManager: `pnpm@${pnpmVersion}`, steps: stepNames,
   };
@@ -60,7 +63,7 @@ async function main() {
     const runnerTemp = join(staging, "runner-temp");
     await mkdir(container);
     await mkdir(runnerTemp);
-    const env = { ...process.env, ...workflow.env, APP_VERSION: version,
+    const env = { ...workflow.env, ...process.env, APP_ID: appId, IOS_OTA_BASE_URL: otaBaseUrl, APP_VERSION: version,
       RUNNER_TEMP: runnerTemp, GITHUB_ENV: join(runnerTemp, "github-env") };
     run("git", ["init", "--quiet"], container, env);
     run("git", ["remote", "add", "origin", `https://github.com/${plan.repository}.git`], container, env);

@@ -6,3 +6,12 @@ playwright-report/
 .DS_Store
 *.tsbuildinfo
 .mobile-build/
+
+# iOS 分发凭据及本机发布配置；实际凭据仍应放在仓库外
+*.p12
+*.mobileprovision
+*.keychain-db
+*.pem
+*.password
+ios-release.local.json
+__pycache__/

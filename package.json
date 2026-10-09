@@ -47,7 +47,8 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "typecheck": "tsc -b --pretty false",
-    "ios:prepare": "node scripts/prepare-ios.mjs"
+    "ios:prepare": "node scripts/prepare-ios.mjs",
+    "ios:release": "python3 scripts/release-ios.py"
   },
   "dependencies": {
     "qrcode": "^1.5.4",

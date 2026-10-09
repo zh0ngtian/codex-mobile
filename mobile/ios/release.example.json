@@ -1,0 +1,10 @@
+{
+  "bundleId": "PROFILE-AUTHORIZED-BUNDLE-ID",
+  "udid": "TARGET-DEVICE-UDID",
+  "profile": "signing/adhoc.mobileprovision",
+  "p12": "signing/adhoc.p12",
+  "passwordFile": "signing/p12-password",
+  "baseUrl": "https://192.168.123.79:8766/channels/codex-mobile",
+  "localRoot": "ota-server/channels/codex-mobile",
+  "caFile": "ota-server/tls/ca.pem"
+}

@@ -142,3 +142,14 @@ describe("iOS 本地工程准备", () => {
     expect(result.stderr).toContain("版本必须是三个数字");
   });
 });
+
+it("本地工程准备解析 APP_ID/OTA 配置而不是使用 GitHub 表达式", () => {
+  const plain = JSON.parse(plan("--version", "0.2.116").stdout);
+  expect(plain.appId).toBe("vip.loock.codexmobile");
+  expect(plain.otaBaseUrl).toBe("");
+  const custom = spawnSync(process.execPath, ["scripts/prepare-ios.mjs", "--plan", "--version", "0.2.116"], {
+    encoding: "utf8", env: { ...process.env, APP_ID: "app.example.mobile", IOS_OTA_BASE_URL: "https://updates.example.com/mobile" },
+  });
+  expect(custom.status, custom.stderr).toBe(0);
+  expect(JSON.parse(custom.stdout)).toMatchObject({ appId: "app.example.mobile", otaBaseUrl: "https://updates.example.com/mobile" });
+});

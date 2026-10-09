@@ -26,3 +26,19 @@ export function readAndroidAppUpdateBridge(
   }
   return bridge;
 }
+
+export interface IosAppUpdateBridge {
+  appVersion: () => string;
+  apiUrl: string;
+  installUrl: string;
+  bundleId: string;
+  teamId: string;
+  applicationIdentifier: string;
+  installOta: (installUrl: string) => void;
+}
+
+export function readIosAppUpdateBridge(scope: typeof window = window): IosAppUpdateBridge | null {
+  const bridge = (scope as typeof window & { CodexMobileAppUpdate?: IosAppUpdateBridge }).CodexMobileAppUpdate;
+  return typeof bridge?.appVersion === "function" && typeof bridge.installOta === "function"
+    ? bridge : null;
+}

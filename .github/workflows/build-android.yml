@@ -19,6 +19,10 @@ on:
       - "vite.config.ts"
       - "docs/assets/app-icon/codex-mobile-app-icon-1024.png"
       - "scripts/compose-mobile-app-icon.sh"
+      - "scripts/prepare-ios.mjs"
+      - "scripts/ios_sign.py"
+      - "scripts/ios_ota.py"
+      - "scripts/release-ios.py"
       - ".github/workflows/build-android.yml"
       - ".github/workflows/build-ios.yml"
       - ".github/workflows/publish-npm.yml"
@@ -72,6 +76,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           PUBLISH_NPM_REQUESTED: ${{ inputs.publish_npm }}
           REQUESTED_VERSION: ${{ inputs.release_version }}
+          IOS_OTA_ENABLED: ${{ vars.IOS_OTA_ENABLED }}
+          IOS_OTA_BASE_URL: ${{ vars.IOS_OTA_BASE_URL }}
         run: |
           set -euo pipefail
           fallback="$(node -p "require('./mobile-version-floor.json').version")"
@@ -104,8 +110,12 @@ jobs:
               latest=""
             fi
           fi
+          ota_latest=""
+          if [[ "${IOS_OTA_ENABLED:-}" == "true" ]]; then
+            ota_latest="$(python3 scripts/ios_ota.py latest-version --base-url "$IOS_OTA_BASE_URL")"
+          fi
           next_version="$(
-            node - "$latest" "$fallback" <<'NODE'
+            node - "$latest" "$fallback" "$ota_latest" <<'NODE'
           const latest = process.argv[2] || "";
           const fallback = process.argv[3];
           const pattern = /^v?(\d+)\.(\d+)\.(\d+)$/;
@@ -113,7 +123,7 @@ jobs:
           if (!fallbackMatch) {
             throw new Error(`Invalid fallback version: ${fallback}`);
           }
-          const candidates = [latest, fallback]
+          const candidates = [latest, fallback, process.argv[4]]
             .map((value) => pattern.exec(value))
             .filter(Boolean)
             .sort((left, right) =>
@@ -126,10 +136,14 @@ jobs:
           process.stdout.write(`${match[1]}.${match[2]}.${patch + 1}`);
           NODE
           )"
-          if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
+          if [[ "$GITHUB_EVENT_NAME" == "push" || ( "${IOS_OTA_ENABLED:-}" == "true" && -z "$requested" ) ]]; then
             version="$next_version"
           elif [[ -n "$requested" ]]; then
             version="$requested"
+          fi
+          if [[ "${IOS_OTA_ENABLED:-}" == "true" && -n "$requested" ]]; then
+            python3 scripts/ios_ota.py resolve-version --base-url "$IOS_OTA_BASE_URL" \
+              --floor "$fallback" --requested "$requested" >/dev/null
           fi
           node -e '
             const version = process.argv[1];
@@ -1426,6 +1440,7 @@ jobs:
     needs: version
     if: needs.version.outputs.build_ios == 'true'
     uses: ./.github/workflows/build-ios.yml
+    secrets: inherit
     with:
       app_version: ${{ needs.version.outputs.app_version }}
 

@@ -8,6 +8,7 @@ import {
 import {
   APP_UPDATE_API_URL,
   compareSemanticVersions,
+  parseIosRelease,
   createReleaseChecker,
   type AppRelease,
 } from "../../app-update/release";
@@ -15,6 +16,8 @@ import { t } from "../../i18n";
 import {
   APP_UPDATE_EVENT,
   readAndroidAppUpdateBridge,
+  readIosAppUpdateBridge,
+  type IosAppUpdateBridge,
   type AndroidAppUpdateBridge,
   type AppUpdateNativeEvent,
 } from "../../app-update/native-bridge";
@@ -48,11 +51,12 @@ export interface AppUpdateController {
 
 interface UseAppUpdateOptions {
   bridge?: AndroidAppUpdateBridge | null;
+  iosBridge?: IosAppUpdateBridge | null;
   fetchRelease?: () => Promise<unknown>;
   storage?: Storage;
 }
 
-function bridgeVersion(bridge: AndroidAppUpdateBridge | null) {
+function bridgeVersion(bridge: Pick<AndroidAppUpdateBridge, "appVersion"> | null) {
   try {
     const version = bridge?.appVersion?.().trim();
     if (version) return version.replace(/^v/, "");
@@ -62,10 +66,11 @@ function bridgeVersion(bridge: AndroidAppUpdateBridge | null) {
   return import.meta.env.VITE_APP_VERSION?.trim().replace(/^v/, "") || "0.2.0";
 }
 
-async function fetchLatestRelease() {
+async function fetchLatestRelease(apiUrl = APP_UPDATE_API_URL) {
   const response = await fetch(
-    APP_UPDATE_API_URL,
+    apiUrl,
     {
+      cache: "no-store",
       headers: {
         Accept: "application/json",
       },
@@ -85,19 +90,25 @@ export function useAppUpdate(
       ? readAndroidAppUpdateBridge()
       : options.bridge,
   );
-  const supported = bridge !== null;
-  const [currentVersion] = useState(() => bridgeVersion(bridge));
+  const [iosBridge] = useState(() => options.iosBridge === undefined ? readIosAppUpdateBridge() : options.iosBridge);
+  const supported = bridge !== null || iosBridge !== null;
+  const [currentVersion] = useState(() => bridgeVersion(bridge ?? iosBridge));
   const [storage] = useState(() => options.storage ?? window.localStorage);
   const [fetchRelease] = useState(
-    () => options.fetchRelease ?? fetchLatestRelease,
+    () => options.fetchRelease ?? (() => fetchLatestRelease(iosBridge?.apiUrl)),
   );
   const checker = useMemo(
     () =>
       createReleaseChecker({
         fetchRelease,
         storage,
+        ...(iosBridge ? {
+          parser: (input: unknown) => parseIosRelease(input, iosBridge),
+          cacheKey: `codex-mobile:app-update:ios:${iosBridge.apiUrl}:${iosBridge.applicationIdentifier}`,
+          invalidReleaseMessage: t("iOS 更新源未配置或签名身份不兼容"),
+        } : {}),
       }),
-    [fetchRelease, storage],
+    [fetchRelease, storage, iosBridge],
   );
   const [state, setState] = useState<AppUpdateState>({
     phase: "idle",
@@ -116,6 +127,9 @@ export function useAppUpdate(
         error: undefined,
       }));
       try {
+        if (iosBridge && (!iosBridge.apiUrl || !iosBridge.installUrl || !iosBridge.applicationIdentifier)) {
+          throw new Error(t("iOS 更新源未配置或签名身份不兼容"));
+        }
         const release = await checker.check(force);
         const available =
           compareSemanticVersions(release.version, currentVersion) > 0;
@@ -140,7 +154,7 @@ export function useAppUpdate(
         }));
       }
     },
-    [checker, currentVersion, supported],
+    [checker, currentVersion, supported, iosBridge],
   );
 
   useEffect(() => {
@@ -178,8 +192,14 @@ export function useAppUpdate(
   }, [supported]);
 
   const install = useCallback(() => {
-    if (!bridge?.installApk || !state.release) return;
+    if (!state.release) return;
     try {
+      if (iosBridge && state.release.installUrl) {
+        iosBridge.installOta(state.release.installUrl);
+        setSheetOpen(false);
+        return;
+      }
+      if (!bridge?.installApk) return;
       bridge.installApk(state.release.downloadUrl, state.release.sha256);
       setState((current) => ({
         ...current,
@@ -195,7 +215,7 @@ export function useAppUpdate(
         error: reason instanceof Error ? reason.message : String(reason),
       }));
     }
-  }, [bridge, state.release]);
+  }, [bridge, iosBridge, state.release]);
 
   return {
     supported,

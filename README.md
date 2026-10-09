@@ -280,8 +280,11 @@ Android App 固定检查局域网更新清单
 调起系统安装器。手机必须与更新服务器处于同一局域网；首次使用需要在 Android 系统中
 允许 Codex Mobile 安装未知应用，App 不支持静默安装。
 
-iOS IPA 未签名，安装到真实设备或上传 TestFlight 前仍需使用 Apple Developer 证书
-签名。
+iOS 支持在本机局域网执行 Ad Hoc 自动签名与 HTTPS OTA。证书和密码保存在本机私有目录，
+`npm run ios:release` 构建后自动签名并更新固定安装页；iOS“管理设备”底部与 Android 一样提供“检查更新”，跳转 Safari 确认覆盖安装。
+未配置签名时仍保留明确标注的未签名 IPA；公开 GitHub Release 的 unsigned IPA 不能直接 OTA 安装。
+证书的 UDID、Bundle ID、Team ID 和 App ID prefix 必须兼容，升级数据保留需要旧安装身份一致。
+本机配置、局域网 CA 首次信任、HTTPS 服务、可选 CI 与安装验收步骤见 [iOS OTA 发布文档](docs/ios-ota-release.md)。
 
 仓库使用固定提交的 PakePlus Android/iOS 项目作为原生容器，并把当前 `dist/` 静态
 资源内置到 App。构建产物只包含上述固定更新服务器地址，不包含网关 Token 或其他私人配置。
@@ -312,7 +315,7 @@ open .mobile-build/ios/pakeplus/PakePlus.xcodeproj
 选择 `PakePlus` scheme 和 iPhone 模拟器运行。工程内置当前前端，并复用发布流水线的
 固定容器配置与原生补丁；生成目录会在下次准备成功后替换。原生容器支持键盘避让，
 App 原生版本号与前端发布版本保持一致。
-iOS 可在“管理设备”底部查看当前版本号；版本来自安装包内置前端的发布版本。
+iOS 可在“管理设备”底部查看当前版本号并检查更新；iOS 更新桥读取原生版本和签名身份，未配置 HTTPS OTA 时显示配置错误。
 
 [本地构建、XCTest 流程与模拟器验证结果](docs/ios-simulator-verification.md)。
 
@@ -368,7 +371,7 @@ codex-mobile/
 - app-server 的持久化 `ThreadItem` 可能是有损表示，前端也会合并逻辑回合。
 - 不同 app-server 进程之间没有全局实时状态。Codex Desktop 与本项目使用独立进程
   时，网页无法仅靠 V2 列表接口准确显示桌面进程正在执行的任务。
-- iOS 自动化产物未签名；正式分发不在无证书构建范围内。
+- iOS 未配置 Ad Hoc Secrets 时产物未签名；启用签名后生成独立 Ad Hoc artifact，OTA 真机安装仍需 profile 授权设备及兼容的已安装身份。
 
 ## 许可证
 

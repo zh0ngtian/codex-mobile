@@ -2,6 +2,19 @@ name: Build iOS App
 
 on:
   workflow_call:
+    secrets:
+      IOS_P12_BASE64:
+        required: false
+      IOS_PROFILE_BASE64:
+        required: false
+      IOS_P12_PASSWORD:
+        required: false
+      IOS_TARGET_UDID:
+        required: false
+      IOS_OTA_SSH_KEY:
+        required: false
+      IOS_OTA_KNOWN_HOSTS:
+        required: false
     inputs:
       app_version:
         description: Version shared by all release artifacts
@@ -24,7 +37,8 @@ concurrency:
 env:
   APP_NAME: CodexMobile
   DISPLAY_NAME: Codex Mobile
-  APP_ID: vip.loock.codexmobile
+  APP_ID: ${{ vars.IOS_BUNDLE_ID || 'vip.loock.codexmobile' }}
+  IOS_OTA_BASE_URL: ${{ vars.IOS_OTA_BASE_URL }}
 
 jobs:
   build:
@@ -41,10 +55,18 @@ jobs:
         shell: bash
         env:
           REQUESTED_VERSION: ${{ inputs.app_version }}
+          IOS_OTA_ENABLED: ${{ vars.IOS_OTA_ENABLED }}
         run: |
           set -euo pipefail
           version="${REQUESTED_VERSION:-$(node -p "require('./package.json').version")}"
           version="${version#v}"
+          if [[ "${IOS_OTA_ENABLED:-}" == "true" ]]; then
+            args=(--base-url "$IOS_OTA_BASE_URL" --floor "$(node -p "require('./mobile-version-floor.json').version")")
+            if [[ -n "$REQUESTED_VERSION" ]]; then
+              args+=(--requested "${REQUESTED_VERSION#v}")
+            fi
+            version="$(python3 scripts/ios_ota.py resolve-version "${args[@]}")"
+          fi
           node -e '
             const version = process.argv[1];
             if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(version)) {
@@ -139,6 +161,11 @@ jobs:
             "http://www.eclipse.org/emf/2002/Ecore",
             "http://www.eclipse.org/emf/2003/XMLType",
           ]);
+          if (process.env.IOS_OTA_BASE_URL) {
+            const base = process.env.IOS_OTA_BASE_URL.replace(/\/$/, "");
+            allowedUrls.add(`${base}/current/latest-ios.json`);
+            allowedUrls.add(`${base}/current/install.html`);
+          }
           const endpointPatterns = [
             [
               "private or link-local IPv4",
@@ -286,6 +313,8 @@ jobs:
           cmp "$source" "$destination"
           cp mobile/ios/AttachmentPickerBridge.swift pakeplus/PakePlus/AttachmentPickerBridge.swift
           cmp mobile/ios/AttachmentPickerBridge.swift pakeplus/PakePlus/AttachmentPickerBridge.swift
+          cp mobile/ios/AppUpdateBridge.swift pakeplus/PakePlus/AppUpdateBridge.swift
+          cmp mobile/ios/AppUpdateBridge.swift pakeplus/PakePlus/AppUpdateBridge.swift
 
       - name: Harden and test the iOS host
         working-directory: pakeplus
@@ -365,6 +394,15 @@ jobs:
               "CFBundleURLSchemes": ["codexmobile"],
               "CFBundleTypeRole": "Viewer",
           }]
+          base = os.environ.get("IOS_OTA_BASE_URL", "").rstrip("/")
+          if base:
+              from urllib.parse import urlsplit
+              parts = urlsplit(base)
+              if (parts.scheme != "https" or not parts.hostname or parts.username or parts.password
+                  or parts.query or parts.fragment or not re.fullmatch(r"https://[A-Za-z0-9.:-]+(?:/[A-Za-z0-9_-]+)*", base)):
+                  raise SystemExit("OTA base URL must be a public HTTPS address")
+              info["CodexMobileUpdateURL"] = base + "/current/latest-ios.json"
+              info["CodexMobileInstallURL"] = base + "/current/install.html"
           plist_path.write_bytes(plistlib.dumps(info))
 
           content_path = Path("PakePlus/ContentView.swift")
@@ -415,7 +453,8 @@ jobs:
           source = source.replace(
               webview_constructor,
               "let webView = CodexMobileWebView(frame: .zero, configuration: webConfiguration)\n"
-              "        CodexMobileAttachmentPickerBridge.configure(webView)",
+              "        CodexMobileAttachmentPickerBridge.configure(webView)\n"
+              "        CodexMobileAppUpdateBridge.configure(webView)",
               1,
           )
           media_prompt = "        decisionHandler(permissionDecisionForMediaCapture(type: type))"
@@ -1191,3 +1230,84 @@ jobs:
             ${{ runner.temp }}/CodexMobile-v${{ env.APP_VERSION }}-unsigned.ipa.sha256
           if-no-files-found: error
           retention-days: 7
+
+      - name: Sign Ad Hoc IPA
+        if: vars.IOS_ADHOC_ENABLED == 'true'
+        env:
+          P12_BASE64: ${{ secrets.IOS_P12_BASE64 }}
+          PROFILE_BASE64: ${{ secrets.IOS_PROFILE_BASE64 }}
+          P12_PASSWORD: ${{ secrets.IOS_P12_PASSWORD }}
+          TARGET_UDID: ${{ secrets.IOS_TARGET_UDID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          python3 - <<'PY_SIGN'
+          import base64, os
+          from pathlib import Path
+          root = Path(os.environ["RUNNER_TEMP"]) / "ios-signing"
+          root.mkdir(mode=0o700)
+          for env, name in [("P12_BASE64", "adhoc.p12"), ("PROFILE_BASE64", "adhoc.mobileprovision")]:
+              data = os.environ.get(env, "")
+              if not data:
+                  raise SystemExit("Signing enabled but required certificate secret is missing")
+              (root/name).write_bytes(base64.b64decode(data, validate=True))
+          (root/"p12.password").write_text(os.environ["P12_PASSWORD"])
+          PY_SIGN
+          python3 scripts/ios_sign.py \
+            --ipa "$RUNNER_TEMP/CodexMobile-v${APP_VERSION}-unsigned.ipa" \
+            --output "$RUNNER_TEMP/CodexMobile-v${APP_VERSION}-adhoc.ipa" \
+            --profile "$RUNNER_TEMP/ios-signing/adhoc.mobileprovision" \
+            --p12 "$RUNNER_TEMP/ios-signing/adhoc.p12" \
+            --password-file "$RUNNER_TEMP/ios-signing/p12.password" \
+            --bundle-id "$APP_ID" --udid "$TARGET_UDID"
+          cd "$RUNNER_TEMP"
+          shasum -a 256 "CodexMobile-v${APP_VERSION}-adhoc.ipa" \
+            > "CodexMobile-v${APP_VERSION}-adhoc.ipa.sha256"
+
+      - name: Upload verified Ad Hoc IPA
+        if: vars.IOS_ADHOC_ENABLED == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: CodexMobile-ios-adhoc
+          path: |
+            ${{ runner.temp }}/CodexMobile-v${{ env.APP_VERSION }}-adhoc.ipa
+            ${{ runner.temp }}/CodexMobile-v${{ env.APP_VERSION }}-adhoc.ipa.sha256
+            ${{ runner.temp }}/CodexMobile-v${{ env.APP_VERSION }}-adhoc.ipa.signing.json
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Publish HTTPS OTA
+        if: vars.IOS_ADHOC_ENABLED == 'true' && vars.IOS_OTA_ENABLED == 'true'
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.IOS_OTA_SSH_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.IOS_OTA_KNOWN_HOSTS }}
+          OTA_HOST: ${{ vars.IOS_OTA_SSH_HOST }}
+          OTA_ROOT: ${{ vars.IOS_OTA_REMOTE_ROOT }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          python3 - <<'PY_SSH'
+          import os
+          from pathlib import Path
+          ssh = Path.home()/".ssh"
+          ssh.mkdir(mode=0o700, exist_ok=True)
+          if not os.environ["SSH_PRIVATE_KEY"] or not os.environ["SSH_KNOWN_HOSTS"]:
+              raise SystemExit("OTA enabled but SSH secrets are missing")
+          (ssh/"id_ed25519").write_text(os.environ["SSH_PRIVATE_KEY"]+"\n")
+          (ssh/"known_hosts").write_text(os.environ["SSH_KNOWN_HOSTS"]+"\n")
+          PY_SSH
+          python3 scripts/ios_ota.py publish \
+            --ipa "$RUNNER_TEMP/CodexMobile-v${APP_VERSION}-adhoc.ipa" \
+            --base-url "$IOS_OTA_BASE_URL" --host "$OTA_HOST" --remote-root "$OTA_ROOT" \
+            --notes "Codex Mobile v${APP_VERSION}；提交 ${GITHUB_SHA}"
+
+      - name: Clean signing secrets
+        if: always() && vars.IOS_ADHOC_ENABLED == 'true'
+        shell: bash
+        run: |
+          rm -rf "$RUNNER_TEMP/ios-signing"
+          if [[ "${{ vars.IOS_OTA_ENABLED }}" == "true" ]]; then
+            rm -f "$HOME/.ssh/id_ed25519" "$HOME/.ssh/known_hosts"
+          fi
