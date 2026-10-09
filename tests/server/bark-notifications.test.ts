@@ -35,6 +35,30 @@ async function fixture(failPush: boolean | number = false) {
 }
 
 describe("Bark 通知", () => {
+  it.each(["started", "thread/read", "thread/resume", "thread/list", "stream"])("无标题子会话经 %s 登记后不推送，普通会话继续推送", async (method) => {
+    const f = await fixture(); await f.settings();
+    const thread = { id: final.params.threadId, source: { subAgent: { thread_spawn: { parent_thread_id: "main" } } } };
+    if (method === "stream") {
+      const client = await f.stream();
+      f.respond((socket, message) => socket.send(JSON.stringify({ id: message.id, result: { thread } })));
+      client.send(JSON.stringify({ id: 2, method: "thread/read", params: { threadId: thread.id } }));
+      await eventually(() => f.requests.some((request) => request.method === "thread/read")); await wait(30);
+    } else {
+      await f.rpc({ id: 1, method: "initialize", params: {} });
+      if (method === "started") f.send({ method: "thread/started", params: { thread } });
+      else {
+        f.respond((socket, message) => socket.send(JSON.stringify({ id: message.id, result: method === "thread/list" ? { data: [thread] } : { thread } })));
+        await f.rpc({ id: 2, method, params: { threadId: thread.id } });
+      }
+    }
+    f.send({ method: "thread/name/updated", params: { threadId: thread.id, threadName: "签名子任务" } });
+    f.send(final); f.send(completed); await wait(100); expect(f.pushes).toHaveLength(0);
+    f.send({ ...final, params: { ...final.params, threadId: "main" } });
+    f.send({ ...completed, params: { ...completed.params, threadId: "main" } });
+    await eventually(() => f.pushes.length === 1);
+    expect(f.pushes[0].url).toContain("threadId=main");
+  });
+
   it("实时新会话的标题作为正文，其他会话不串用", async () => {
     const f = await fixture(); await f.settings(); await f.rpc({ id: 1, method: "initialize", params: {} });
     f.send({ method: "thread/started", params: { thread: { id: final.params.threadId, name: "修复推送时机", preview: "首条需求" } } });

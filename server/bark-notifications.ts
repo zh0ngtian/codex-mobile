@@ -84,6 +84,7 @@ export class BarkNotifications {
     } catch (error) { response.statusCode = 400; response.end(JSON.stringify({ error: error instanceof Error ? error.message : "无法保存通知设置" })); }
   }
   private rememberThread(thread: any) {
+    this.completions.rememberThread(thread);
     if (typeof thread?.id !== "string" || !thread.id || thread.id.length > 1024) return;
     const title = { ...this.titles.get(thread.id) };
     let changed = false;

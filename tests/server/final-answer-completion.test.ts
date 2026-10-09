@@ -4,6 +4,33 @@ const final = (threadId = "thread", turnId = "turn") => ({ method: "item/complet
 const complete = (threadId = "thread", turnId = "turn", status = "completed") => ({ method: "turn/completed", params: { threadId, turn: { id: turnId, status } } });
 
 describe("最终回复完成判定", () => {
+  it.each([
+    { source: { subAgent: { thread_spawn: { parent_thread_id: "parent" } } } },
+    { source: { subagent: "review" } },
+    { parentThreadId: "parent" },
+    { threadSource: "subAgentThreadSpawn" },
+  ])("实时子会话来源 %j 不通知，普通无名会话照常通知", (metadata) => {
+    const tracker = new FinalAnswerCompletionTracker();
+    tracker.observe({ method: "thread/started", params: { thread: { id: "child", ...metadata } } });
+    tracker.observe({ method: "thread/name/updated", params: { threadId: "child", threadName: "有标题的子任务" } });
+    tracker.observe(final("child"));
+    expect(tracker.observe(complete("child"))).toBeNull();
+    tracker.observe(final("main"));
+    expect(tracker.observe(complete("main"))).toEqual({ threadId: "main", turnId: "turn" });
+  });
+
+  it("主任务的子 Agent 活动只屏蔽子会话，不屏蔽主任务与普通 fork", () => {
+    const tracker = new FinalAnswerCompletionTracker();
+    tracker.observe({ method: "item/started", params: { threadId: "main", turnId: "turn", item: { type: "subAgentActivity", agentThreadId: "child", kind: "spawned" } } });
+    tracker.observe(final("child"));
+    expect(tracker.observe(complete("child"))).toBeNull();
+    tracker.observe({ method: "thread/started", params: { thread: { id: "fork", source: "appServer", forkedFromId: "main" } } });
+    for (const id of ["main", "fork"]) {
+      tracker.observe(final(id));
+      expect(tracker.observe(complete(id))).toEqual({ threadId: id, turnId: "turn" });
+    }
+  });
+
   it.each([true, false])("兼容事件反序=%s，只通知一次", (reverse) => {
     const tracker = new FinalAnswerCompletionTracker();
     const messages = reverse ? [complete(), final()] : [final(), complete()];

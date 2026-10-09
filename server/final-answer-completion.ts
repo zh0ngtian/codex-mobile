@@ -7,12 +7,34 @@ const isFinal = (item: any) => item?.type === "agentMessage" && item.phase === "
 /** 仅登记实时分类证据，最终回复和成功回合结束都到达后才通知一次。 */
 export class FinalAnswerCompletionTracker {
   private turns = new Map<string, TurnState>();
+  private subagentThreads = new Set<string>();
+  /** 来源只用于分类；无标题、改名或后续稀疏 metadata 都不改变子会话身份。 */
+  rememberThread(thread: any) {
+    if (!validId(thread?.id)) return;
+    const source = thread.source;
+    const subagent = source && typeof source === "object" &&
+      (Object.hasOwn(source, "subAgent") || Object.hasOwn(source, "subagent"));
+    if (subagent || validId(thread.parentThreadId) ||
+      /^subAgent(?:Review|Compact|ThreadSpawn|Other)?$/.test(thread.threadSource ?? "")) {
+      this.rememberSubagent(thread.id);
+    }
+  }
+  private rememberSubagent(threadId: unknown) {
+    if (!validId(threadId)) return;
+    this.subagentThreads.delete(threadId); this.subagentThreads.add(threadId);
+    while (this.subagentThreads.size > 2048) this.subagentThreads.delete(this.subagentThreads.values().next().value!);
+  }
   observe(message: Notification): CompletedFinalAnswer | null {
-    if (message.id != null || !["item/completed", "turn/completed"].includes(message.method ?? "")) return null;
+    if (message.id != null) return null;
     const params = message.params as Record<string, any> | undefined;
+    if (message.method === "thread/started") this.rememberThread(params?.thread);
+    if (["item/started", "item/completed"].includes(message.method ?? "") && params?.item?.type === "subAgentActivity") {
+      this.rememberSubagent(params.item.agentThreadId);
+    }
+    if (!["item/completed", "turn/completed"].includes(message.method ?? "")) return null;
     const threadId = params?.threadId;
     const turnId = message.method === "turn/completed" ? params?.turn?.id ?? params?.turnId : params?.turnId;
-    if (!validId(threadId) || !validId(turnId)) return null;
+    if (!validId(threadId) || !validId(turnId) || this.subagentThreads.has(threadId)) return null;
     const key = JSON.stringify([threadId, turnId]);
     const state = this.turns.get(key) ?? { final: false, completed: false, blocked: false, emitted: false };
     if (message.method === "item/completed") {

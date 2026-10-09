@@ -1178,6 +1178,8 @@ function BackendWorkspace({
             setRequests(params.requests ?? []);
             return;
           }
+          for (const thread of threadsRef.current) finalAnswerCompletionRef.current.rememberThread(thread);
+          finalAnswerCompletionRef.current.rememberThread(activeRef.current);
           const completedFinalAnswer = completionEventCatchUpRef.current
             ? null : finalAnswerCompletionRef.current.observe(message);
           if (completedFinalAnswer) {
