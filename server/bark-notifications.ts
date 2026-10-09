@@ -15,6 +15,7 @@ type State = { subscriptions: Subscription[]; delivered: string[] };
 
 /** 全网关共用订阅和去重记录，HTTP 与流式连接只提交实时事件。 */
 export class BarkNotifications {
+  private titles = new Map<string, { name?: string | null; preview?: string | null }>();
   private completions = new FinalAnswerCompletionTracker();
   private subscriptions = new Map<string, Subscription>();
   private delivered = new Set<string>();
@@ -82,10 +83,44 @@ export class BarkNotifications {
       response.end(JSON.stringify({ saved: true }));
     } catch (error) { response.statusCode = 400; response.end(JSON.stringify({ error: error instanceof Error ? error.message : "无法保存通知设置" })); }
   }
+  private rememberThread(thread: any) {
+    if (typeof thread?.id !== "string" || !thread.id || thread.id.length > 1024) return;
+    const title = { ...this.titles.get(thread.id) };
+    let changed = false;
+    for (const field of ["name", "preview"] as const) {
+      if (typeof thread[field] === "string" || thread[field] === null) {
+        title[field] = thread[field]?.trim().slice(0, 4096) ?? null;
+        changed = true;
+      }
+    }
+    if (!changed) return;
+    this.titles.delete(thread.id); this.titles.set(thread.id, title);
+    while (this.titles.size > 2048) this.titles.delete(this.titles.keys().next().value!);
+  }
+  /** RPC 历史只登记标题，不参与实时完成判定。 */
+  observeRpc(request: { method?: string; params?: Record<string, any> }, response: { error?: unknown; result?: unknown }) {
+    if (this.closed || response.error != null) return;
+    const result = response.result as Record<string, any> | undefined;
+    this.rememberThread(result?.thread);
+    if (request.method === "thread/list" && Array.isArray(result?.data)) {
+      for (const thread of result.data) this.rememberThread(thread);
+    }
+    if (request.method === "thread/name/set") {
+      this.rememberThread({ id: request.params?.threadId, name: request.params?.name });
+    }
+  }
   observe(message: { method?: string; params?: Record<string, any>; id?: unknown }) {
     if (this.closed) return;
+    if (message.id == null) {
+      if (message.method === "thread/started") this.rememberThread(message.params?.thread);
+      if (message.method === "thread/name/updated") this.rememberThread({
+        id: message.params?.threadId, name: message.params?.threadName,
+      });
+    }
     const completed = this.completions.observe(message);
     if (!completed) return;
+    const title = this.titles.get(completed.threadId);
+    const body = title?.name || title?.preview || "新对话";
     // 不等待网络；磁盘登记成功后才发送，避免跨连接和重启重复通知。
     void this.enqueue(async () => {
       if (this.closed) return;
@@ -95,7 +130,7 @@ export class BarkNotifications {
         this.delivered.add(id);
         while (this.delivered.size > MAX_DEDUPLICATION) this.delivered.delete(this.delivered.values().next().value!);
         try { await this.save(); } catch (error) { this.delivered.delete(id); throw error; }
-        const job = this.send(subscription, { title: "Codex 运行结束", body: "任务已完成，点击查看会话", group: this.options.displayName, url: `codexmobile://thread?backendId=${encodeURIComponent(subscription.backendId)}&threadId=${encodeURIComponent(completed.threadId)}`, id });
+        const job = this.send(subscription, { title: "Codex 运行结束", body, group: this.options.displayName, url: `codexmobile://thread?backendId=${encodeURIComponent(subscription.backendId)}&threadId=${encodeURIComponent(completed.threadId)}`, id });
         this.jobs.add(job); void job.finally(() => this.jobs.delete(job));
       }
     }).catch(() => {});

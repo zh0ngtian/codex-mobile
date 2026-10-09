@@ -35,6 +35,57 @@ async function fixture(failPush: boolean | number = false) {
 }
 
 describe("Bark 通知", () => {
+  it("实时新会话的标题作为正文，其他会话不串用", async () => {
+    const f = await fixture(); await f.settings(); await f.rpc({ id: 1, method: "initialize", params: {} });
+    f.send({ method: "thread/started", params: { thread: { id: final.params.threadId, name: "修复推送时机", preview: "首条需求" } } });
+    f.send({ method: "thread/started", params: { thread: { id: "other", name: "其他会话" } } });
+    f.send(final); f.send(completed); await eventually(() => f.pushes.length === 1);
+    expect(f.pushes[0].body).toBe("修复推送时机");
+    expect(JSON.stringify(f.pushes)).not.toContain("private output");
+  });
+
+  it.each(["thread/resume", "thread/list"])("HTTP %s 的标题用于退出后的完成通知，历史本身不触发", async (method) => {
+    const f = await fixture(); await f.settings(); await f.rpc({ id: 1, method: "initialize", params: {} });
+    const thread = { id: final.params.threadId, name: "检查会话标题", turns: [{ id: "old", status: "completed", items: [final.params.item] }] };
+    f.respond((socket, message) => socket.send(JSON.stringify({ id: message.id, result: method === "thread/list" ? { data: [thread, { id: "other", name: "其他会话" }] } : { thread } })));
+    await f.rpc({ id: 2, method, params: { threadId: final.params.threadId } });
+    await wait(50); expect(f.pushes).toHaveLength(0);
+    f.send(final); f.send(completed); await eventually(() => f.pushes.length === 1);
+    expect(f.pushes[0].body).toBe("检查会话标题");
+  });
+
+  it.each([true, false])("HTTP 重命名成功=%s，只采用已保存的标题", async (success) => {
+    const f = await fixture(); await f.settings(); await f.rpc({ id: 1, method: "initialize", params: {} });
+    f.send({ method: "thread/started", params: { thread: { id: final.params.threadId, name: "原会话标题" } } });
+    await wait(30);
+    f.respond((socket, message) => socket.send(JSON.stringify({ id: message.id, ...(success ? { result: {} } : { error: { code: -1, message: "rename failed" } }) })));
+    await f.rpc({ id: 2, method: "thread/name/set", params: { threadId: final.params.threadId, name: "新会话标题" } });
+    f.send(final); f.send(completed); await eventually(() => f.pushes.length === 1);
+    expect(f.pushes[0].body).toBe(success ? "新会话标题" : "原会话标题");
+  });
+
+  it("流式 RPC 标题在 App 断开后仍可用，实时改名采用最新标题", async () => {
+    const f = await fixture(); await f.settings(); const client = await f.stream();
+    f.respond((socket, message) => socket.send(JSON.stringify({ id: message.id, result: message.method === "thread/resume" ? { thread: { id: final.params.threadId, name: "初始标题" } } : { turn: { id: "turn", status: "inProgress" } } })));
+    client.send(JSON.stringify({ id: 1, method: "thread/resume", params: { threadId: final.params.threadId } }));
+    await eventually(() => f.requests.some((request) => request.method === "thread/resume")); await wait(30);
+    client.send(JSON.stringify({ id: 2, method: "turn/start", params: { threadId: final.params.threadId } }));
+    await eventually(() => f.requests.some((request) => request.method === "turn/start")); await wait(30);
+    client.close(); await wait(30);
+    f.send({ method: "thread/name/updated", params: { threadId: final.params.threadId, threadName: "最终会话标题" } });
+    f.send(final); f.send(completed); await eventually(() => f.pushes.length === 1);
+    expect(f.pushes[0].body).toBe("最终会话标题");
+  });
+
+  it("流式成功 RPC 提供会话标题，空名称使用会话预览", async () => {
+    const f = await fixture(); await f.settings(); const client = await f.stream();
+    f.respond((socket, message) => socket.send(JSON.stringify({ id: message.id, result: { thread: { id: final.params.threadId, name: "", preview: "未命名会话的首条需求" } } })));
+    client.send(JSON.stringify({ id: 1, method: "thread/read", params: { threadId: final.params.threadId } }));
+    await eventually(() => f.requests.some((request) => request.method === "thread/read")); await wait(30);
+    f.send(final); f.send(completed); await eventually(() => f.pushes.length === 1);
+    expect(f.pushes[0].body).toBe("未命名会话的首条需求");
+  });
+
   it("final 消息结束时仍等待整个回合成功结束，重复事件只发一次", async () => {
     const f = await fixture(); await f.settings(); await f.rpc({ id: 1, method: "initialize", params: {} });
     f.send(final); await wait(100); expect(f.pushes).toHaveLength(0);
@@ -79,7 +130,7 @@ describe("Bark 通知", () => {
     const f = await fixture(); await f.settings(); await f.rpc({ id: 1, method: "initialize", params: {} });
     f.send({ ...final, params: { ...final.params, item: { ...final.params.item, phase: "commentary" } } }); f.send({ ...final, params: { ...final.params, item: { ...final.params.item, type: "reasoning" } } }); await wait(80); expect(f.pushes).toHaveLength(0);
     f.send(final); f.send(completed); await eventually(() => f.pushes.length === 1);
-    expect(f.pushes[0]).toMatchObject({ title: "Codex 运行结束", body: "任务已完成，点击查看会话", group: "办公室 Mac", url: `codexmobile://thread?backendId=${encodeURIComponent(f.backendId)}&threadId=${encodeURIComponent(final.params.threadId)}`, id: expect.any(String) }); expect(JSON.stringify(f.pushes)).not.toContain("private output");
+    expect(f.pushes[0]).toMatchObject({ title: "Codex 运行结束", body: "新对话", group: "办公室 Mac", url: `codexmobile://thread?backendId=${encodeURIComponent(f.backendId)}&threadId=${encodeURIComponent(final.params.threadId)}`, id: expect.any(String) }); expect(JSON.stringify(f.pushes)).not.toContain("private output");
     const client = await f.stream(); f.send(final); f.send(completed); await wait(80); expect(f.pushes).toHaveLength(1); client.close();
     expect((await stat(join(f.root, "codex-mobile-notifications"))).mode & 0o777).toBe(0o700);
     expect((await stat(join(f.root, "codex-mobile-notifications", "state.json"))).mode & 0o777).toBe(0o600);

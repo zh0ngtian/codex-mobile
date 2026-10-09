@@ -592,6 +592,7 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
       if (message) observeState(message, request);
       if (request && message) {
         requests.delete(message.id);
+        notifications.observeRpc(request, message);
         const thread = message.result?.thread;
         if (thread?.id) changeHistory.observe({ method: "thread/started", params: { thread } });
         if (request.method === "turn/start" && message.result?.turn?.id) changeHistory.observe({

@@ -60,5 +60,6 @@ test("系统推送等待最终回复和成功回合结束，忽略过程、失�
   complete("inline-final", "completed", [{ id: "inline", type: "agentMessage", phase: "final_answer", text: "完成" }]);
   await expect.poll(count).toBe(3);
   const pushes = await page.evaluate(() => (window as any).pushes);
+  expect(pushes.every((push: any) => push.body === thread.name)).toBe(true);
   expect(pushes.every((push: any) => push.threadId === thread.id && push.backendId)).toBe(true);
 });

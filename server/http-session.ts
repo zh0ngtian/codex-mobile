@@ -490,6 +490,7 @@ class Session {
   }
 
   private observeRpcState(request: RpcMessage, response: RpcMessage) {
+    this.notifications?.observeRpc(request, response);
     if (response.error != null || ![
       "turn/start", "turn/steer", "turn/interrupt", "turn/stop",
       "thread/resume", "thread/read", "thread/turns/list",

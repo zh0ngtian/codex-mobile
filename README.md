@@ -165,6 +165,8 @@ Bark 设置保存到当前客户端，并同步到各已启用设备的网关；
 
 系统和 Bark 推送都必须等待实时 `final_answer` 回复完成、且同一回合成功结束；过程回复、仍在执行、失败或中断的回合不会发送完成通知，也不补发历史。HTTP 模式由网关持有上游会话；流式模式在 App 断开后保留运行中的上游连接，并在完成后释放。Mac 网关必须保持运行且能访问 Bark 服务，网关或 app-server 重启期间的完成事件不保证补发。
 
+系统和 Bark 通知的正文显示已完成会话的标题；没有名称时使用会话预览，无法获取标题时显示“新对话”。
+
 通知携带 `codexmobile://thread?backendId=<设备ID>&threadId=<会话ID>`，点击可启动原生 App；冷启动等待页面加载和设备连接后打开对应会话。查看最新内容仍需手机能访问该设备网关。通知不携带网关口令或回复正文。
 
 Bark 注册和完成事件去重记录保存到 `$CODEX_HOME/codex-mobile-notifications`；Bark Key 不内置到 APK/IPA，也不提交到仓库。使用 Bark 不需要 Codex Mobile 的 APNs 服务端凭据。
