@@ -24,6 +24,16 @@
 - iOS 安装包以后固定使用 `http://192.168.123.79:8765/channels/codex-mobile/latest.ipa`，不得只提供 48 小时随机临时链接；固定 iOS 清单为 `http://192.168.123.79:8765/channels/codex-mobile/latest-ios.json`，与 Android 的 `latest.json` 分开维护。
 - 使用 `/Users/zhongtian/WorkSpace/GlobalTranslation/scripts/apk-server.py publish-channel codex-mobile <IPA> --version <版本> --notes <说明>` 发布 IPA。发布后通过 iOS 清单、固定 IPA 的 HEAD 和完整 GET 核对版本、文件大小和 SHA-256；交付时提供固定 IPA 链接、版本、文件大小、SHA-256，并注明是否签名，与 APK 对齐。固定渠道不参与 48 小时临时文件清理，后续版本覆盖同一地址。
 
+## iOS 自动签名与局域网 OTA
+
+- 签名证书、描述文件、密码及发布配置仅保存在本机仓库外私有目录，不上传 GitHub Secrets。签名材料目录权限 700、文件权限 600。
+- 本机发布配置固定为 `~/Library/Application Support/CodexMobile/ios-release.local.json`，以配置中授权的 Bundle ID、UDID、Team 与 profile 为准，不擅自使用原项目 Bundle ID 重签。
+- 推送后使用 `npm run ios:release -- --config "$HOME/Library/Application Support/CodexMobile/ios-release.local.json" --version <与APK统一的更高版本> --notes '<说明>'` 构建设备 IPA、自动 Ad Hoc 签名、验签、发布 HTTPS OTA 和固定 LAN IPA。APK 仍需构建并发布相同版本。
+- 云端 unsigned IPA 是构建产物，不能覆盖已签名的固定 IPA 或作为 OTA 发布包；本机签名/发布失败时先解决问题，不能用未签名包替代已签名交付。
+- 固定 OTA 安装页为 `https://192.168.123.79:8766/channels/codex-mobile/current/install.html`；更新清单为相同前缀的 `current/latest-ios.json`。HTTP 8765 固定下载渠道继续保留。
+- 局域网服务由 `local.codex-mobile.ios-ota` launchd 管理；必须从长期保留的主工作区执行 `scripts/ios_ota_server.py install`，不能绑定准备归档的 worktree。
+- 首次设备 CA 信任、升级身份连续性、证书续期和真机验证详见 [iOS OTA 发布文档](docs/ios-ota-release.md)。不把构建验签或模拟器 UI 验证当作真机覆盖安装与数据保留已验证。
+
 ## Git 提交规范
 
 - 提交前必须阅读并遵守 [Git 提交规范](docs/commit-conventions.md)。

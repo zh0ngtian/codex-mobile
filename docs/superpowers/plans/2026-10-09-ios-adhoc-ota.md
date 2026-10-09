@@ -37,16 +37,16 @@
 ## 5. 验证与交付
 
 - [x] 执行 Python 发布/签名测试、UI 更新测试、`tests/ci`、`npm run typecheck`、`git diff --check`。
-- [ ] 阅读提交规范，提交并推送本次变更；重新读取双平台固定清单，选高于两者的统一版本。
-- [ ] 推送后从本次源码构建 APK 与 IPA，具备密码和兼容 profile 后验证实际签名，具备 HTTPS 服务器后验证实际 OTA 发布。
-- [ ] 分别调用 `apk-server.py publish-channel codex-mobile` 发布；对 JSON、HEAD 和完整 GET 验证版本、大小和 SHA-256；记录签名状态与未完成的真机验证。
+- [x] 阅读提交规范，提交并推送本次变更；重新读取双平台固定清单，选高于两者的统一版本。
+- [x] 推送后从本次源码构建 APK 与 IPA，具备密码和兼容 profile 后验证实际签名，具备 HTTPS 服务器后验证实际 OTA 发布。
+- [x] 分别调用 `apk-server.py publish-channel codex-mobile` 发布；对 JSON、HEAD 和完整 GET 验证版本、大小和 SHA-256；记录签名状态与未完成的真机验证。
 
 ## 已完成的实际验证
 
-- Python 57 项、相关前端及 CI 54 项通过，TypeScript 类型检查与 diff 空白检查通过。
+- Python 58 项、相关前端及 CI 54 项通过，TypeScript 类型检查与 diff 空白检查通过。
 - Xcode 27.0 编译 iOS Simulator 成功，iOS 27 / iPhone 17 模拟器 XCTest 验证管理设备中的“检查更新”按钮及未配置提示通过（1 项）。
 - 已读取用户提供的真实 profile：授权显式 Bundle ID 与项目原 ID 不同；针对已登记设备验证成功，使用原项目 ID 被正确拒绝。
-- 已签名生产 IPA、生产 HTTPS 发布、真机覆盖升级与数据保留尚未验证：需要服务器地址/SSH 配置和旧安装的签名身份；P12 密码已从压缩包文件名取得并验证。
+- 已签名生产 IPA 与实际局域网 HTTPS 发布已验证；真机覆盖升级与数据保留尚未验证，需要确认旧安装的签名身份并在设备完成首次 CA 信任。P12 密码已从压缩包文件名取得并验证。
 
 ## 6. 用户补充：仅本机与局域网
 
@@ -54,5 +54,15 @@
 - [x] 真实 P12 兼容转换、实际 IPA 签名与独立验签通过（32 项签名测试）。
 - [x] TDD 实现局域网 HTTPS OTA 静态服务、私有 CA 首次信任入口与 launchd 托管。
 - [x] TDD 支持 localRoot/caFile 本机发布，先验证版本目录再原子切换固定入口，保留远程发布兼容。
-- [ ] 本机配置仅保存权限 600 文件；发布带固定 HTTPS 更新源的已签名 IPA。
-- [ ] 验证局域网 TLS、HEAD/完整 GET、manifest、固定安装页，交付首次 CA 信任步骤与真机待验证边界。
+- [x] 本机配置仅保存权限 600 文件；发布带固定 HTTPS 更新源的已签名 IPA。
+- [x] 验证局域网 TLS、HEAD/完整 GET、manifest、固定安装页，交付首次 CA 信任步骤与真机待验证边界。
+
+## 最终交付记录
+
+- 统一版本 `0.2.125`；APK 来自提交 `d479a444a134ef0f888b807217b16446cbc3ef5c` 的成功 CI 构建，IPA 从同一提交在隔离 worktree 本机构建并 Ad Hoc 签名。
+- APK：4,704,431 字节；SHA-256 `b256a2654927007d4d0bd660a07808e800cd37509180421a26ac918901449449`。
+- IPA（已签名）：3,762,001 字节；SHA-256 `5403f69f8598b3b6c2c6fdc97861d5917026df4eb14c3c2be327135ce8bba4e3`。
+- 双端固定 JSON、HEAD、完整 GET 验证通过；实际 HTTPS manifest、版本 IPA、固定 JSON/安装页和 TLS 校验通过。生产清单与已签名 IPA 的原生桥配置已通过实际前端解析。
+- 连续发布 0.2.124 与 0.2.125 验证版本递增、签名身份连续性和原子 current 切换；旧版本目录保留。
+- launchd 常驻服务实际引用长期主工作区脚本，运行状态正常。GitHub 签名 Secrets/Variables 均已清除。
+- 目标 iPhone 当前不可连接；首次 CA 信任、真机 OTA 安装和旧 App 数据保留待设备验收。与旧安装身份不兼容时不能宣称覆盖升级。
