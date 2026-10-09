@@ -23,11 +23,11 @@
 ### Task 2: 验证、提交和双端交付
 
 - [x] 运行 `NODE_OPTIONS=--no-experimental-webstorage npm test`、`npm run build`、`git diff --check`。
-- [ ] 阅读并遵守 `docs/commit-conventions.md`，以 `fix(会话列表): 隐藏子 Agent 与内部辅助会话` 提交，正文包含新增功能和主要修改；同步 main 后推送。
-- [ ] 排队获取固定发布锁，读取 Android/iOS 两个固定渠道，使用高于两者的统一版本构建双端。
-- [ ] 推送成功后构建 Android APK，并运行 `npm run ios:release -- --config "$HOME/Library/Application Support/CodexMobile/ios-release.local.json" --version <统一版本> --notes '隐藏子 Agent 与内部辅助会话'` 构建、签名和发布 IPA。
-- [ ] 用 `apk-server.py publish-channel codex-mobile <APK> --version <统一版本> --notes '隐藏子 Agent 与内部辅助会话'` 发布 APK；通过两个固定 JSON、HEAD、完整 GET 核对版本、大小、SHA-256，交付签名 IPA 与 APK 固定链接。
-- [ ] 清理无用临时文件与本次 worktree；记录实际验证结果。不创建测试会话，因此无需测试会话归档。
+- [x] 阅读并遵守 `docs/commit-conventions.md`，以 `fix(会话列表): 隐藏子 Agent 与内部辅助会话` 提交，正文包含新增功能和主要修改；同步 main 后推送。
+- [x] 排队获取固定发布锁，读取 Android/iOS 两个固定渠道，使用高于两者的统一版本构建双端。
+- [x] 推送成功后构建 Android APK，并运行 `npm run ios:release -- --config "$HOME/Library/Application Support/CodexMobile/ios-release.local.json" --version <统一版本> --notes '隐藏子 Agent 与内部辅助会话'` 构建、签名和发布 IPA。
+- [x] 用 `apk-server.py publish-channel codex-mobile <APK> --version <统一版本> --notes '隐藏子 Agent 与内部辅助会话'` 发布 APK；通过两个固定 JSON、HEAD、完整 GET 核对版本、大小、SHA-256，交付签名 IPA 与 APK 固定链接。
+- [x] 清理无用临时文件与本次 worktree；记录实际验证结果。不创建测试会话，因此无需测试会话归档。
 
 ## 验证记录
 
@@ -35,3 +35,12 @@
 - 全量 Vitest 91 个文件、811 项通过；TypeScript 与 Vite 构建通过，保留原有大包提示；`git diff --check` 通过。
 - 未创建真实测试会话。
 - 协议还明确包含 `memory_consolidation` 内部记忆整理来源；补充测试先失败再通过，用户 `automation` 会话保留。
+
+## 交付记录
+
+- 客户端代码已推送 main：`1f6b585` 与 `01eb271`；构建基于 `01eb27155db8d5181ef51ce56a1d6f315c892e3b`，已集成并行任务的 OTA 等待提示修改。
+- 持有主工作区 `.mobile-build/.fixed-channel-publish.lock` 完成版本分配、双端构建、发布和校验；原双端固定渠道均为 `0.2.128`，本次统一 `0.2.129`。
+- APK：4,705,291 字节；SHA-256 `a2717848abd907bf043eeeaf41112c258cf3cfe114da24a55a85f99ca738f3b0`。
+- IPA：3,763,719 字节；SHA-256 `3ec5122f1ca2e9e8180c41e7b2292a650c3ea3ebbfaf7566d2710436fd92988a`；Ad Hoc 已签名，`vip.loock.codexmobile`、application-identifier 与钥匙串组继续保留已安装身份。
+- 两个固定 JSON、HEAD、完整 GET 的版本、大小与散列全部一致，HTTPS OTA 已发布并回验。构建与验签不代表真机覆盖安装及数据保留已验证。
+- 安装包、签名报告与 `verification.json` 保存在主工作区 `.mobile-build/hide-internal-release/`，临时构建工作树收尾归档；仅模拟测试数据，无真实测试会话需要归档。
