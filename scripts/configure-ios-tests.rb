@@ -7,6 +7,24 @@ app_scheme = Xcodeproj::XCScheme.new
 app_scheme.add_build_target(app)
 app_scheme.set_launch_target(app)
 app_scheme.save_as(project_path, 'PakePlus', true)
+# 探针仅安装到显式配置的 UI 测试工程，普通 ios:prepare 和发布流水线不使用。
+probe_path = File.join(root, 'mobile/ios/KeyboardLayoutProbe.swift')
+probe = project.files.find { |f| f.real_path.to_s == probe_path }
+unless probe
+  group = project.main_group.new_group('CodexMobileTestSupport')
+  probe = group.new_file(probe_path)
+  app.source_build_phase.add_file_reference(probe)
+end
+webview_path = File.join(File.dirname(project_path), 'PakePlus/WebView.swift')
+webview = File.read(webview_path)
+constructor = 'let webView = CodexMobileWebView(frame: .zero, configuration: webConfiguration)'
+probe_constructor = 'let webView = KeyboardLayoutProbeWebView(frame: .zero, configuration: webConfiguration)'
+if webview.include?(constructor)
+  File.write(webview_path, webview.sub(constructor, probe_constructor))
+elsif !webview.include?(probe_constructor)
+  abort '固定 PakePlus WebView 构造入口已变化，无法安装键盘布局探针'
+end
+project.save
 target = project.targets.find { |t| t.name == 'CodexMobileUITests' }
 if target
   puts '模拟器 UI 测试 target 已存在'

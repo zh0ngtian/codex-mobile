@@ -96,3 +96,21 @@ xcodebuild -project .mobile-build/ios/pakeplus/PakePlus.xcodeproj \
   -only-testing:CodexMobileUITests/CodexMobileUITests/testUnsentDraftRemainsStableAfterKeyboardDismissal \
   -parallel-testing-enabled NO test
 ```
+
+### 点击对号时的动画期补充验证
+
+用户继续复现后，确认前一轮的 DOM 失焦和动画结束后位置采样未覆盖原生图层动画。旧实现的真实绘制帧中，WKWebView 的布局高度与呈现层高度最大相差 `371.94px`，网页已经按恢复后的视口重排，固定输入栏却被仍在插值的原生图层裁剪。
+
+正式容器改用 `CodexMobileWebView`，在 `super.layoutSubviews()` 后移除主图层的 `position`、`bounds` 及其子属性动画。键盘避让和失焦逻辑继续生效，网页子图层动画不受此处理影响。
+
+`configure-ios-tests.rb` 额外安装 `KeyboardLayoutProbeWebView`，用 CADisplayLink 在键盘收起期间逐帧记录高度差。该探针仅出现在显式配置过 UI 测试的工程；普通 `ios:prepare` 和 IPA 发布工程不包含探针。重复配置测试工程已验证幂等。
+
+iPhone 17 Pro / iOS 26.5 的 XCTest 和录屏检查结果：
+
+| 草稿场景 | 动画期最大高度差 | 保留内容、位置稳定及再次编辑 |
+| --- | --- | --- |
+| 32 字符短文本 | 0px | 通过 |
+| 36 字符三行中文 | 0px | 通过 |
+| 160 字符长中文草稿 | 0px | 通过 |
+
+三个场景均点击系统键盘对号 `Done / 完成`，并在收起后重复检查输入框位置与草稿，随后重新输入。重新编辑允许光标位于原文中间，移除新增文本后必须完整还原原草稿。单项集成测试通过，保留 `.mobile-build/keyboard-checkmark-verified.xcresult`、`.log` 和 `.mp4`。相关 Vitest 最终运行 52 项及 TypeScript 检查通过。

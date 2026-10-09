@@ -374,6 +374,14 @@ jobs:
           if developer_extras not in source:
               raise SystemExit("Pinned PakePlus developer extras block changed")
           source = source.replace(developer_extras, "")
+          webview_constructor = "let webView = WKWebView(frame: .zero, configuration: webConfiguration)"
+          if source.count(webview_constructor) != 1:
+              raise SystemExit("Pinned PakePlus WebView constructor changed")
+          source = source.replace(
+              webview_constructor,
+              "let webView = CodexMobileWebView(frame: .zero, configuration: webConfiguration)",
+              1,
+          )
           media_prompt = "        decisionHandler(permissionDecisionForMediaCapture(type: type))"
           if media_prompt not in source:
               raise SystemExit("Pinned PakePlus media permission hook changed")
@@ -454,6 +462,21 @@ jobs:
               1,
           )
           source += r'''
+
+          // WebKit 先按新 bounds 重排网页，主图层继续插值旧尺寸会裁剪固定输入栏。
+          // 只移除主图层的几何动画，网页内部动画与原生透明度动画保持正常。
+          class CodexMobileWebView: WKWebView {
+              override func layoutSubviews() {
+                  super.layoutSubviews()
+                  for key in layer.animationKeys() ?? [] {
+                      guard let animation = layer.animation(forKey: key) as? CAPropertyAnimation,
+                            let path = animation.keyPath else { continue }
+                      if path == "position" || path == "bounds" || path.hasPrefix("bounds.") {
+                          layer.removeAnimation(forKey: key)
+                      }
+                  }
+              }
+          }
 
           extension Coordinator {
               func installKeyboardDismissalSupport() {

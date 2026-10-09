@@ -4,39 +4,51 @@ final class CodexMobileUITests: XCTestCase {
     func testUnsentDraftRemainsStableAfterKeyboardDismissal() throws {
         continueAfterFailure = false
         let app = XCUIApplication(bundleIdentifier: "vip.loock.codexmobile")
-        app.launch()
-        XCTAssertTrue(app.webViews.buttons["聊天"].waitForExistence(timeout: 20), app.debugDescription)
-        app.webViews.buttons["聊天"].tap()
-        let input = app.webViews.textViews["向 Codex 提问"]
-        XCTAssertTrue(input.waitForExistence(timeout: 10), app.debugDescription)
-        let draft = "Unsent keyboard regression draft"
-        input.tap()
-        input.typeText(draft)
-        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
-        let done = app.buttons["Done"]
-        let doneChinese = app.buttons["完成"]
-        if done.exists { done.tap() }
-        else if doneChinese.exists { doneChinese.tap() }
-        else { XCTFail("键盘收起按钮不存在：\(app.debugDescription)"); return }
-        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
-        let frame = input.frame
-        for _ in 0..<12 {
-            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
-            XCTAssertEqual(input.frame.minY, frame.minY, accuracy: 1, "收起键盘后输入框应停止跳动")
-            XCTAssertEqual(input.value as? String, draft)
+        let drafts = [
+            "Unsent keyboard regression draft",
+            "第一行未发送的中文草稿\n第二行继续输入，点击对号收起键盘\n第三行保持内容",
+            String(repeating: "保留较长的输入文字，收起键盘时不能跳动。", count: 8),
+        ]
+        for draft in drafts {
+            app.terminate()
+            app.launch()
+            XCTAssertTrue(app.webViews.buttons["聊天"].waitForExistence(timeout: 20), app.debugDescription)
+            app.webViews.buttons["聊天"].tap()
+            let input = app.webViews.textViews["向 Codex 提问"]
+            XCTAssertTrue(input.waitForExistence(timeout: 10), app.debugDescription)
+            input.tap()
+            input.typeText(draft)
+            XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+            let done = app.toolbars.buttons["Done"]
+            let doneChinese = app.toolbars.buttons["完成"]
+            if done.exists { done.tap() }
+            else if doneChinese.exists { doneChinese.tap() }
+            else { XCTFail("键盘对号收起按钮不存在：\(app.debugDescription)"); return }
+            XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
+            let probe = app.staticTexts["codex.keyboard-dismissal-height-difference"]
+            XCTAssertTrue(probe.waitForExistence(timeout: 3), "测试工程应安装键盘布局探针")
+            let heightDifference = try XCTUnwrap(Double(probe.label))
+            print("KEYBOARD_DISMISSAL_GAP draftLength=\(draft.count) maximum=\(heightDifference)")
+            XCTAssertLessThanOrEqual(heightDifference, 1, "收起动画期间 WebView 布局高度和呈现高度必须同步")
+            let frame = input.frame
+            for _ in 0..<12 {
+                RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+                XCTAssertEqual(input.frame.minY, frame.minY, accuracy: 1, "收起键盘后输入框应停止跳动")
+                XCTAssertEqual(input.value as? String, draft)
+            }
+            XCTAssertGreaterThan(frame.minY, app.frame.height * 0.7, "输入框应回到屏幕底部")
+            XCTAssertTrue(app.webViews.buttons["发送"].isHittable)
+            let attachment = XCTAttachment(screenshot: app.screenshot())
+            attachment.name = "对号收起-\(draft.count)字草稿"
+            attachment.lifetime = .keepAlways
+            add(attachment)
+            input.tap()
+            input.typeText(" retained")
+            let resumedDraft = input.value as? String ?? ""
+            XCTAssertTrue(resumedDraft.contains(" retained"))
+            XCTAssertEqual(resumedDraft.replacingOccurrences(of: " retained", with: ""), draft)
+            XCTAssertTrue(app.webViews.buttons["发送"].isHittable)
         }
-        XCTAssertGreaterThan(frame.minY, app.frame.height * 0.7, "输入框应回到屏幕底部")
-        XCTAssertTrue(app.webViews.buttons["发送"].isHittable)
-        let attachment = XCTAttachment(screenshot: app.screenshot())
-        attachment.name = "未发送草稿收起键盘"
-        attachment.lifetime = .keepAlways
-        add(attachment)
-        input.tap()
-        input.typeText(" retained")
-        let resumedDraft = input.value as? String ?? ""
-        XCTAssertTrue(resumedDraft.contains(draft))
-        XCTAssertTrue(resumedDraft.contains("retained"))
-        XCTAssertTrue(app.webViews.buttons["发送"].isHittable)
     }
 
     func testEmbeddedFrontendAndGatewayConnection() throws {
