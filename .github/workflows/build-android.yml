@@ -524,6 +524,8 @@ jobs:
               f"{{{android}}}windowSoftInputMode",
               "adjustResize",
           )
+          for activity in application.findall("activity"):
+              activity.set(f"{{{android}}}screenOrientation", "portrait")
           for provider in list(application.findall("provider")):
               if provider.get(f"{{{android}}}authorities", "").endswith(
                   ".fileprovider"
@@ -1363,6 +1365,13 @@ jobs:
           application = root.find("application")
           if application is None or application.get(f"{{{android}}}allowBackup") != "false":
               raise SystemExit("Final APK must disable application backup")
+          activities = {
+              activity.get(f"{{{android}}}name"): activity.get(f"{{{android}}}screenOrientation")
+              for activity in application.findall("activity")
+          }
+          for name in ("com.app.pakeplus.MainActivity", "com.app.pakeplus.InAppBrowserActivity"):
+              if activities.get(name) != "portrait":
+                  raise SystemExit("Final APK must lock app activities to portrait")
           providers = {
               element.get(f"{{{android}}}authorities", ""):
                   element.get(f"{{{android}}}exported", "")

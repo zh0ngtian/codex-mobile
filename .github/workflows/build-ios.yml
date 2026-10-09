@@ -323,6 +323,7 @@ jobs:
           from pathlib import Path
           import os
           import re
+          import plistlib
 
           native_version = os.environ["APP_VERSION"].split("-")[0]
           major, minor, patch = map(int, native_version.split("."))
@@ -332,6 +333,8 @@ jobs:
           for setting, value in (
               ("MARKETING_VERSION", native_version),
               ("CURRENT_PROJECT_VERSION", str(build_number)),
+              ("INFOPLIST_KEY_UISupportedInterfaceOrientations", "UIInterfaceOrientationPortrait"),
+              ("INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad", "UIInterfaceOrientationPortrait"),
           ):
               project, count = re.subn(
                   rf"{setting} = [^;]+;",
@@ -341,6 +344,10 @@ jobs:
               if count != 2:
                   raise SystemExit(f"Pinned PakePlus {setting} settings changed")
           project_path.write_text(project)
+          plist_path = Path("PakePlus/Info.plist")
+          info = plistlib.loads(plist_path.read_bytes())
+          info["UIRequiresFullScreen"] = True
+          plist_path.write_bytes(plistlib.dumps(info))
 
           content_path = Path("PakePlus/ContentView.swift")
           content = content_path.read_text()
@@ -904,6 +911,18 @@ jobs:
           unpacked="$RUNNER_TEMP/CodexMobile-ios-unpacked"
           test -d "$app"
           test -s "$app/index.html"
+          python3 - "$app/Info.plist" <<'PY'
+          import plistlib
+          import sys
+          from pathlib import Path
+
+          info = plistlib.loads(Path(sys.argv[1]).read_bytes())
+          for key in ("UISupportedInterfaceOrientations", "UISupportedInterfaceOrientations~ipad"):
+              if info.get(key) != ["UIInterfaceOrientationPortrait"]:
+                  raise SystemExit(f"Final iOS app must be portrait-only: {key}")
+          if info.get("UIRequiresFullScreen") is not True:
+              raise SystemExit("Final iOS app must require full screen for portrait lock")
+          PY
           find "$app" -maxdepth 1 -type f -name 'index-*.js' -print -quit \
             | grep -q .
           test "$(/usr/libexec/PlistBuddy -c 'Print :DEBUG' \
