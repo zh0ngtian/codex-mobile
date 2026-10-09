@@ -25,9 +25,11 @@
 
 ## 3. 提交部署
 
-- [ ] 按 `docs/commit-conventions.md` 提交本任务文件，集成并推送；保留其他任务未提交修改。
-- [ ] 更新本机网关并核验状态。由于本次修改客户端共用模块及接入，读取双端清单后排队分配统一更高版本，构建 APK 和 IPA。
-- [ ] 分别执行 `apk-server.py publish-channel codex-mobile <安装包> --version <版本> --notes '子 Agent 会话不再发送完成通知'`；通过固定 JSON、HEAD、完整 GET 核对版本、大小和 SHA-256，提供签名状态。
-- [ ] 记录验证证据并清理临时产物；测试使用模拟会话，不创建真实会话。
+- [x] 按 `docs/commit-conventions.md` 提交本任务文件，集成并推送；保留其他任务未提交修改。
+- [x] 更新本机网关并核验状态。由于本次修改客户端共用模块及接入，读取双端清单后排队分配统一更高版本，构建 APK 和 IPA。
+- [x] 分别执行 `apk-server.py publish-channel codex-mobile <安装包> --version <版本> --notes '子 Agent 会话不再发送完成通知'`；通过固定 JSON、HEAD、完整 GET 核对版本、大小和 SHA-256，提供签名状态。
+- [x] 记录验证证据并清理临时产物；测试使用模拟会话，不创建真实会话。
 
 验证记录：基线 35 项测试通过；新增 10 项单元断言和 2 项系统通知端到端断言在旧实现下失败；修复后通知与传输 120 项测试和系统通知 2 项通过，前端与网关打包通过。
+
+交付记录：代码 `61a6526` 已集成并推送 main；本机网关升级至 `0.2.123`，部署模块对指定子会话的过滤验证通过，未发送测试通知。以主工作区 `.mobile-build/.fixed-channel-publish.lock` 持锁完成版本分配及双端发布。APK/未签名 IPA 均为 `0.2.123`，固定 JSON、HEAD、完整 GET 版本、大小及 SHA-256 一致，APK 签名与既有渠道相同。安装包与 verification.json 保留在主工作区 `.mobile-build/mute-subagent-notifications-release`。本次测试使用模拟传输，无真实测试会话需归档。
