@@ -1,5 +1,5 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   APP_UPDATE_EVENT,
   type AndroidAppUpdateBridge,
@@ -38,6 +38,33 @@ describe("App 更新控制器", () => {
 
   beforeEach(() => {
     storage = memoryStorage();
+  });
+
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("iOS 使用内置前端的发布版本且不检查 APK 更新", () => {
+    vi.stubEnv("VITE_APP_VERSION", "0.2.100");
+    const fetchRelease = vi.fn(async () => releasePayload);
+    const { result } = renderHook(() =>
+      useAppUpdate({ bridge: null, fetchRelease, storage }),
+    );
+
+    expect(result.current.state.currentVersion).toBe("0.2.100");
+    expect(result.current.supported).toBe(false);
+    expect(fetchRelease).not.toHaveBeenCalled();
+  });
+
+  it("Android 优先显示原生安装包版本", () => {
+    vi.stubEnv("VITE_APP_VERSION", "0.2.100");
+    const { result } = renderHook(() =>
+      useAppUpdate({
+        bridge: { appVersion: () => "v0.2.99", installApk: vi.fn() },
+        fetchRelease: async () => releasePayload,
+        storage,
+      }),
+    );
+
+    expect(result.current.state.currentVersion).toBe("0.2.99");
   });
 
   it("普通浏览器不检查也不展示更新能力", () => {

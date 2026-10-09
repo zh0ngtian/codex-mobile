@@ -59,7 +59,7 @@ function bridgeVersion(bridge: AndroidAppUpdateBridge | null) {
   } catch {
     // Older containers may expose a partial bridge.
   }
-  return "0.2.0";
+  return import.meta.env.VITE_APP_VERSION?.trim().replace(/^v/, "") || "0.2.0";
 }
 
 async function fetchLatestRelease() {

@@ -324,6 +324,30 @@ describe("多设备界面", () => {
     confirm.mockRestore();
   });
 
+  it("iOS 在设备管理显示版本且不提供 APK 更新入口", () => {
+    const onCheck = vi.fn();
+    render(
+      <BackendManagerSheet
+        open
+        registry={{ version: 1, selectedBackendId: "mini", backends: [mini] }}
+        summaries={summaries}
+        onChange={() => undefined}
+        onClose={() => undefined}
+        appUpdate={{
+          supported: false,
+          currentVersion: "0.2.100",
+          checking: false,
+          onCheck,
+        }}
+      />,
+    );
+
+    expect(screen.getByText("当前版本 v0.2.100")).not.toBeNull();
+    expect(screen.getByRole("region", { name: "应用信息" })).not.toBeNull();
+    expect(screen.queryByRole("button", { name: "检查更新" })).toBeNull();
+    expect(onCheck).not.toHaveBeenCalled();
+  });
+
   it("Android 容器在设备管理底部展示版本和检查更新入口", () => {
     const onCheckUpdate = vi.fn();
     render(

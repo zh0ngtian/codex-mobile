@@ -427,20 +427,25 @@ export function BackendManagerSheet({
                 ))}
               </div>
             </section>
-            {appUpdate?.supported && (
-              <section className="backend-app-update" aria-label={t("应用更新")}>
+            {appUpdate && (
+              <section
+                className="backend-app-update"
+                aria-label={t(appUpdate.supported ? "应用更新" : "应用信息")}
+              >
                 <div>
                   <strong>Codex Mobile</strong>
                   <small>{t("当前版本 v{version}", { version: appUpdate.currentVersion })}</small>
-                  {appUpdate.status && <small>{appUpdate.status}</small>}
+                  {appUpdate.supported && appUpdate.status && <small>{appUpdate.status}</small>}
                 </div>
-                <button
-                  type="button"
-                  disabled={appUpdate.checking}
-                  onClick={appUpdate.onCheck}
-                >
-                  {appUpdate.checking ? t("正在检查…") : t("检查更新")}
-                </button>
+                {appUpdate.supported && (
+                  <button
+                    type="button"
+                    disabled={appUpdate.checking}
+                    onClick={appUpdate.onCheck}
+                  >
+                    {appUpdate.checking ? t("正在检查…") : t("检查更新")}
+                  </button>
+                )}
               </section>
             )}
           </>

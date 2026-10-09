@@ -81,6 +81,7 @@ const english: Record<string, string> = {
   "删除": "Delete",
   "添加设备": "Add device",
   "应用更新": "App update",
+  "应用信息": "App info",
   "当前版本 v{version}": "Current version v{version}",
   "正在检查…": "Checking…",
   "检查更新": "Check for updates",
