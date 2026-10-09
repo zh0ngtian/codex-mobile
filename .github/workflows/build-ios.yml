@@ -284,6 +284,8 @@ jobs:
           test -s "$source"
           cp "$source" "$destination"
           cmp "$source" "$destination"
+          cp mobile/ios/AttachmentPickerBridge.swift pakeplus/PakePlus/AttachmentPickerBridge.swift
+          cmp mobile/ios/AttachmentPickerBridge.swift pakeplus/PakePlus/AttachmentPickerBridge.swift
 
       - name: Harden and test the iOS host
         working-directory: pakeplus
@@ -412,7 +414,8 @@ jobs:
               raise SystemExit("Pinned PakePlus WebView constructor changed")
           source = source.replace(
               webview_constructor,
-              "let webView = CodexMobileWebView(frame: .zero, configuration: webConfiguration)",
+              "let webView = CodexMobileWebView(frame: .zero, configuration: webConfiguration)\n"
+              "        CodexMobileAttachmentPickerBridge.configure(webView)",
               1,
           )
           media_prompt = "        decisionHandler(permissionDecisionForMediaCapture(type: type))"
