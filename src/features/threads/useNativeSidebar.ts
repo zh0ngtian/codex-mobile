@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from "react";
+import { readInterfaceMode, useInterfaceMode } from "../../ui/interface-mode";
 import { nativeSidebarHandler, nativeSidebarSnapshot, type NativeSidebarAction } from "./native-sidebar";
 import type { ThreadListPageProps, ThreadManagementAction } from "./ThreadListPage";
 
 /** React 为业务唯一来源；原生只发送有序意图，并接收当前可见列表。 */
 export function useNativeSidebar(props: ThreadListPageProps) {
+  const mode = useInterfaceMode();
   const [available, setAvailable] = useState(() => Boolean(nativeSidebarHandler()));
   const [contextId] = useState(() => `sidebar:${crypto.randomUUID()}`);
   const [acknowledgedSequence, acknowledge] = useState(0);
@@ -12,7 +14,7 @@ export function useNativeSidebar(props: ThreadListPageProps) {
   const [pending, setPending] = useState({ key: "", action: "" });
   const lastSequence = useRef(0); const serialized = useRef("");
   const pendingRef = useRef(false); const latest = useRef(props); latest.current = props;
-  const visibility = useRef(false); visibility.current = Boolean(props.nativeVisible) && !overlayOpen;
+  const visibility = useRef(false); visibility.current = mode === "native" && Boolean(props.nativeVisible) && !overlayOpen;
   useEffect(() => {
     const ready = () => setAvailable(Boolean(nativeSidebarHandler()));
     window.addEventListener("codex-mobile-native-sidebar-ready", ready);
@@ -27,10 +29,10 @@ export function useNativeSidebar(props: ThreadListPageProps) {
     return () => observer.disconnect();
   }, [available]);
   useEffect(() => {
-    if (!available) return;
+    if (!available || mode !== "native") return;
     const receive = (event: Event) => {
       const action = (event as CustomEvent<NativeSidebarAction>).detail; const current = latest.current;
-      if (!visibility.current || !action || action.contextId !== contextId ||
+      if (readInterfaceMode() !== "native" || !visibility.current || !action || action.contextId !== contextId ||
         !Number.isSafeInteger(action.sequence) || action.sequence <= lastSequence.current) return;
       lastSequence.current = action.sequence; acknowledge(action.sequence);
       switch (action.type) {
@@ -70,9 +72,16 @@ export function useNativeSidebar(props: ThreadListPageProps) {
     };
     window.addEventListener("codex-mobile-native-sidebar-action", receive);
     return () => window.removeEventListener("codex-mobile-native-sidebar-action", receive);
-  }, [available, contextId]);
+  }, [available, contextId, mode]);
   useEffect(() => {
     const handler = nativeSidebarHandler(); if (!available || !handler) return;
+    if (mode !== "native") {
+      if (serialized.current) {
+        try { handler.postMessage({ type: "hide", contextId }); } catch { setAvailable(false); }
+        serialized.current = "";
+      }
+      return;
+    }
     const snapshot = { ...nativeSidebarSnapshot(props, contextId), visible: visibility.current,
       error: props.error || actionError, acknowledgedSequence, pendingKey: pending.key, pendingAction: pending.action };
     const value = JSON.stringify(snapshot); if (value === serialized.current) return;
@@ -86,5 +95,5 @@ export function useNativeSidebar(props: ThreadListPageProps) {
     };
   }, [available, contextId]);
 
-  return available && Boolean(props.nativeVisible) && !overlayOpen;
+  return available && mode === "native" && Boolean(props.nativeVisible) && !overlayOpen;
 }

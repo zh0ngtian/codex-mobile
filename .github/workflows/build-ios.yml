@@ -767,7 +767,9 @@ jobs:
           extension Coordinator {
               private var boldTextScript: String {
                   let enabled = UIAccessibility.isBoldTextEnabled ? "true" : "false"
-                  return "document.documentElement.setAttribute('data-ios-bold-text', '\(enabled)');"
+                  let scale = UIFont.preferredFont(forTextStyle: .body).pointSize / 17
+                  let accessibility = UIApplication.shared.preferredContentSizeCategory.isAccessibilityCategory ? "true" : "false"
+                  return "document.documentElement.setAttribute('data-ios-bold-text', '\(enabled)'); document.documentElement.style.setProperty('--native-type-scale', '\(scale)'); document.documentElement.setAttribute('data-ios-accessibility-text', '\(accessibility)');"
               }
 
               func installBoldTextSupport(_ webView: WKWebView) {
@@ -783,6 +785,10 @@ jobs:
                   NotificationCenter.default.addObserver(
                       self, selector: #selector(syncBoldText),
                       name: UIApplication.didBecomeActiveNotification, object: nil
+                  )
+                  NotificationCenter.default.addObserver(
+                      self, selector: #selector(syncBoldText),
+                      name: UIContentSizeCategory.didChangeNotification, object: nil
                   )
               }
 

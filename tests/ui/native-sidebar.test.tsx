@@ -33,13 +33,29 @@ function action(type: string, sequence: number, extra: Record<string, unknown> =
   })));
 }
 beforeEach(() => {
+  window.localStorage.removeItem("codex-mobile:interface-mode");
   posts.length = 0; vi.clearAllMocks();
   Object.assign(window, { __codexNativeSidebarReady: true, webkit: { messageHandlers: {
     nativeSidebar: { postMessage: (value: unknown) => posts.push(value) },
   } } });
 });
-afterEach(() => { cleanup(); delete (window as any).webkit; delete (window as any).__codexNativeSidebarReady; });
+afterEach(() => { cleanup(); window.localStorage.removeItem("codex-mobile:interface-mode"); delete (window as any).webkit; delete (window as any).__codexNativeSidebarReady; });
 describe("iOS 原生边栏", () => {
+  it("网页模式隐藏原生，拒绝旧动作，切回后重新投影相同列表", async () => {
+    render(<Harness />); await waitFor(() => expect(latest()?.visible).toBe(true));
+    const switchMode = (mode: string) => act(() => {
+      window.localStorage.setItem("codex-mobile:interface-mode", mode);
+      window.dispatchEvent(new StorageEvent("storage", { key: "codex-mobile:interface-mode", newValue: mode }));
+    });
+    switchMode("web");
+    await waitFor(() => expect(posts.at(-1)?.type).toBe("hide"));
+    expect(document.querySelector(".thread-list-page")).toHaveAttribute("data-native-sidebar", "false");
+    action("open", 1, { id: "mac:read" }); expect(opened).not.toHaveBeenCalled();
+    switchMode("native");
+    await waitFor(() => expect(posts.at(-1)?.snapshot).toMatchObject({ visible: true }));
+    expect(document.querySelector(".thread-list-page")).toHaveAttribute("data-native-sidebar", "true");
+  });
+
   it("桥发送失败回退网页，ready 恢复后重新发送未变化的快照", async () => {
     const handler = (window as any).webkit.messageHandlers.nativeSidebar;
     const working = handler.postMessage;

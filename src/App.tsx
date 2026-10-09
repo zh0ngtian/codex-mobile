@@ -1091,6 +1091,7 @@ function BackendWorkspace({
 
   useEffect(() => {
     if (!refreshVersion) return;
+    if (searchQueryRef.current.trim()) setSearchRefreshVersion((current) => current + 1);
     const sequence = ++refreshSequenceRef.current;
     fullyLoadedProjectCwdsRef.current.clear();
     setThreadListState((current) =>

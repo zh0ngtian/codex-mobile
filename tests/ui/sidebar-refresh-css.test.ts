@@ -29,7 +29,7 @@ describe("侧边栏刷新视觉", () => {
       )?.[1] ?? "";
 
     expect(selectedRule).toContain("background: #c6c6c6");
-    expect(selectedRule).toContain("color: #111");
+    expect(selectedRule).toContain("color: var(--ui-text)");
     expect(selectedRule).not.toContain("background: #111");
     expect(selectedRule).not.toContain("color: #fff");
     expect(selectedRule).not.toContain("box-shadow");
@@ -44,7 +44,7 @@ describe("侧边栏刷新视觉", () => {
     expect(rule).toContain("width: 18px");
     expect(rule).toContain("height: 18px");
     expect(rule).toContain("--spinner-stroke: 2.5px");
-    expect(rule).toContain("--spinner-head: #111");
+    expect(rule).toContain("--spinner-head: var(--ui-text)");
   });
 
   it("机器列表加载、会话与项目 Loading 共用渐变头尾模式", () => {

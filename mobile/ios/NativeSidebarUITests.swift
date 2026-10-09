@@ -16,6 +16,9 @@ final class NativeSidebarUITests: XCTestCase {
     private func sidebar(_ app: XCUIApplication) -> XCUIElement {
         app.launch()
         let newChat = app.buttons["codex.native.sidebar.new"]
+        if !newChat.waitForExistence(timeout: 3), app.webViews.buttons["管理设备"].waitForExistence(timeout: 10) {
+            chooseInterface(app, "原生界面")
+        }
         if !newChat.waitForExistence(timeout: 3) {
             let add = app.webViews.buttons["添加设备"]
             if add.exists { add.tap() }
@@ -166,4 +169,66 @@ final class NativeSidebarUITests: XCTestCase {
         table.swipeLeft()
         XCTAssertTrue(table.waitForNonExistence(timeout: 10), app.debugDescription)
     }
+    private func chooseInterface(_ app: XCUIApplication, _ label: String) {
+        let nativeDevices = app.buttons["codex.native.sidebar.devices"]
+        if nativeDevices.exists { nativeDevices.tap() }
+        else { app.webViews.buttons["管理设备"].tap() }
+        let close = app.webViews.buttons["关闭"]
+        XCTAssertTrue(close.waitForExistence(timeout: 10), app.debugDescription)
+        let mode = app.webViews.switches[label]
+        for _ in 0..<12 {
+            if mode.isHittable { break }
+            app.webViews.firstMatch.swipeUp()
+        }
+        XCTAssertTrue(mode.isHittable, app.debugDescription)
+        mode.tap(); close.tap()
+    }
+    func testWebComparisonRetainsDraftAndRestoresNative() {
+        continueAfterFailure = false
+        let app = XCUIApplication(bundleIdentifier: "vip.loock.codexmobile")
+        _ = sidebar(app)
+        app.buttons["codex.native.sidebar.new"].tap()
+        let composer = app.textViews["codex.native.composer"]
+        XCTAssertTrue(composer.waitForExistence(timeout: 10))
+        composer.tap(); composer.typeText("两种界面共用的未发送草稿")
+        app.toolbars.buttons["codex.native.keyboard.done"].tap()
+        capture(app, "comparison-native-draft")
+        app.buttons["codex.native.back"].tap()
+        chooseInterface(app, "网页界面")
+        XCTAssertFalse(app.tables["codex.native.sidebar.list"].exists)
+        XCTAssertTrue(app.webViews.textFields["搜索聊天"].waitForExistence(timeout: 10), app.debugDescription)
+        capture(app, "comparison-web-sidebar")
+        app.webViews.buttons["关闭会话列表"].firstMatch.tap()
+        let webComposer = app.webViews.textViews["向 Codex 提问"]
+        XCTAssertTrue(webComposer.waitForExistence(timeout: 10), app.debugDescription)
+        XCTAssertEqual(webComposer.value as? String, "两种界面共用的未发送草稿")
+        webComposer.tap(); webComposer.typeText("\n网页继续编辑")
+        capture(app, "comparison-web-keyboard")
+        let done = app.toolbars.buttons["完成"]
+        if done.exists { done.tap() }
+        app.webViews.buttons["打开会话列表"].tap()
+        chooseInterface(app, "原生界面")
+        XCTAssertTrue(app.tables["codex.native.sidebar.list"].waitForExistence(timeout: 10))
+        app.buttons["codex.native.sidebar.close"].tap()
+        XCTAssertTrue(composer.waitForExistence(timeout: 10))
+        XCTAssertEqual(composer.value as? String, "两种界面共用的未发送草稿\n网页继续编辑")
+        capture(app, "comparison-native-restored")
+    }
+    func testWebAccessibilityTextAndSidebarRemainUsable() {
+        continueAfterFailure = false
+        let app = XCUIApplication(bundleIdentifier: "vip.loock.codexmobile")
+        app.launchArguments = ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
+        _ = sidebar(app)
+        capture(app, "comparison-native-accessibility")
+        chooseInterface(app, "网页界面")
+        let search = app.webViews.textFields["搜索聊天"]
+        XCTAssertTrue(search.waitForExistence(timeout: 10), app.debugDescription)
+        XCTAssertGreaterThanOrEqual(search.frame.height, 60, "网页搜索必须跟随最大系统辅助字号")
+        XCTAssertTrue(search.isHittable)
+        XCTAssertTrue(app.webViews.buttons["聊天"].isHittable)
+        capture(app, "comparison-web-accessibility")
+        chooseInterface(app, "原生界面")
+        XCTAssertTrue(app.buttons["codex.native.sidebar.new"].waitForExistence(timeout: 10))
+    }
+
 }

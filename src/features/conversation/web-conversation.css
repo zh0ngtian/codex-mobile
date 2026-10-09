@@ -347,3 +347,9 @@
 html[data-ios-accessibility-text="true"] .web-conversation .new-chat-targets { margin-top: 20px; }
 html[data-ios-accessibility-text="true"] .web-conversation .new-chat-targets h2 { font-size: 1.25rem; }
 html[data-ios-accessibility-text="true"] .web-conversation .conversation-model-button { gap: 4px; padding-inline: 0; font-size: 1rem; }
+
+.web-conversation .user-message-toggle {
+  min-width: 44px; min-height: 44px; padding: 8px 12px;
+  color: var(--ui-secondary); border-radius: 12px;
+}
+.web-conversation .user-message-toggle:active { background: var(--ui-surface-hover); }

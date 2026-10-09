@@ -395,7 +395,7 @@ describe("移动端对话格式", () => {
     const view = within(container);
     const steeringBubble = view
       .getByText("调整裁剪方式")
-      .closest(".user-bubble");
+      .closest(".user-message");
     const toggle = view.getByRole("button", {
       name: "之前的 1 条消息",
     });
@@ -618,7 +618,7 @@ describe("移动端对话格式", () => {
     rerender(<TurnCard turn={{ ...turn, status: "completed" }} client={null} />);
     const summary = container.querySelector(".turn-change-summary");
     expect(summary?.parentElement).toBe(container.querySelector(".turn-card"));
-    expect(summary?.querySelector(".activity-icon")?.textContent).toBe("‹/›");
+    expect(summary?.querySelector("svg.activity-icon")?.getAttribute("aria-hidden")).toBe("true");
     expect(summary?.querySelector(".activity-summary-text")?.textContent).toBe("本次代码改动 3 行+2-1");
     expect(container.querySelectorAll(".turn-change-summary")).toHaveLength(1);
     expect(container.querySelector(".assistant-message")?.textContent).toBe("完成");

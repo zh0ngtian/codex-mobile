@@ -49,3 +49,7 @@ Apple skills 中 UIKit 为一等实现方案；不为“原生”名称强行改
 - [ui-ux-pro-max](/Users/zhongtian/.codex/skills/ui-ux-pro-max/SKILL.md)：Minimalism & Swiss Style；quick-reference 的 Dynamic Type、对比、4/8 间距、按压与 Reduce Motion；pro-rules 交付清单。
 - [Apple Typography](https://developer.apple.com/design/human-interface-guidelines/typography)、[UIKit UIFont](https://developer.apple.com/documentation/uikit/uifont)：原生字形与系统字号实现。
 - [ChatGPT 官方参考](https://apps.apple.com/us/app/chatgpt/id6448311069)：现有对话结构与黑白灰方向。
+
+## 网页对比模式
+
+iOS 设备管理提供原生/网页界面偏好，原生默认；两种界面共享业务状态。网页视觉覆盖详见 [web-comparison.md](pages/web-comparison.md)，比较入口与范围见 [对比说明](../../docs/web-native-comparison.md)。网页使用同样的正文、点击尺寸和宽度参数，并接收 iOS 系统字号缩放。

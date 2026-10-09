@@ -163,17 +163,13 @@ describe("会话详情历史分页", () => {
     expect(onSubmit).toHaveBeenCalledOnce();
   });
 
-  it("右上角两个操作入口位于同一个按钮组", () => {
+  it("会话状态可以从会话操作菜单打开", () => {
     const { container } = renderConversation("exhausted");
     const view = within(container);
-    const group = view.getByRole("group", { name: "会话详情操作" });
-
-    expect(
-      within(group).getByRole("button", { name: "查看上下文占用情况" }),
-    ).not.toBeNull();
-    expect(
-      within(group).getByRole("button", { name: "会话操作" }),
-    ).not.toBeNull();
+    fireEvent.click(view.getByRole("button", { name: "会话操作" }));
+    fireEvent.click(view.getByRole("button", { name: "查看上下文占用情况" }));
+    expect(view.getByRole("dialog", { name: "状态" })).not.toBeNull();
+    fireEvent.click(view.getByRole("button", { name: "关闭状态" }));
   });
 
   it("会话操作菜单可以刷新当前会话并自动关闭", () => {

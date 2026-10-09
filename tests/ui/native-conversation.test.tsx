@@ -39,16 +39,52 @@ function action(type: string, sequence: number, extra: Record<string, unknown> =
   })));
 }
 beforeEach(() => {
+  window.localStorage.removeItem("codex-mobile:interface-mode");
   posts.length = 0; change.mockClear(); submit.mockClear();
   Object.assign(window, { __codexNativeConversationReady: true, webkit: { messageHandlers: {
     nativeConversation: { postMessage: (post: any) => posts.push(post) },
   } } });
 });
 afterEach(() => {
-  cleanup(); delete (window as any).webkit; delete (window as any).__codexNativeConversationReady;
+  cleanup(); window.localStorage.removeItem("codex-mobile:interface-mode"); delete (window as any).webkit; delete (window as any).__codexNativeConversationReady;
 });
 
 describe("iOS 原生对话桥接", () => {
+  it("切到网页隐藏原生并拒绝旧动作，切回后保留网页编辑的草稿", async () => {
+    render(<Harness />);
+    await waitFor(() => expect(latest()?.visible).toBe(true));
+    action("web", 1);
+    await waitFor(() => expect(latest()?.visible).toBe(false));
+    const switchMode = (mode: string) => act(() => {
+      window.localStorage.setItem("codex-mobile:interface-mode", mode);
+      window.dispatchEvent(new StorageEvent("storage", { key: "codex-mobile:interface-mode", newValue: mode }));
+    });
+    switchMode("web");
+    await waitFor(() => expect(posts.at(-1)?.type).toBe("hide"));
+    action("submit", 10, { text: "旧原生事件" });
+    expect(submit).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByRole("textbox", { name: "向 Codex 提问" }), { target: { value: "网页未发送草稿" } });
+    switchMode("native");
+    await waitFor(() => expect(posts.at(-1)?.snapshot).toMatchObject({ visible: true, draft: "网页未发送草稿" }));
+  });
+
+  it.each(["full-content", "dialog"])("原生隐藏后拒绝迟到草稿与提交：%s", async (hiddenBy) => {
+    render(<Harness />);
+    await waitFor(() => expect(latest()?.visible).toBe(true));
+    let dialog: HTMLElement | undefined;
+    if (hiddenBy === "full-content") action("web", 1);
+    else {
+      dialog = document.createElement("div"); dialog.setAttribute("role", "dialog");
+      act(() => document.body.append(dialog!));
+    }
+    await waitFor(() => expect(latest()?.visible).toBe(false));
+    action("draft", 2, { text: "隐藏后旧草稿" });
+    action("submit", 3, { text: "隐藏后旧提交" });
+    expect(change).not.toHaveBeenCalled();
+    expect(submit).not.toHaveBeenCalled();
+    if (dialog) act(() => dialog!.remove());
+  });
+
   it("工具过程与过程说明折叠为活动，最终回复保持独立且不丢详情", () => {
     const rows = nativeConversationRows([{ id: "turn", status: "completed", items: [
       { id: "u", type: "userMessage", content: [{ type: "text", text: "问题" }] },

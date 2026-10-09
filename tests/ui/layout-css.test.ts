@@ -90,7 +90,7 @@ describe("悬浮状态布局", () => {
     expect(groupRule).toContain("width: 88px");
     expect(groupRule).toContain("height: 44px");
     expect(groupRule).toContain("border-radius: 22px");
-    expect(groupRule).toContain("background: #f7f7f7");
+    expect(groupRule).toContain("background: var(--ui-surface)");
     expect(buttonRule).toContain("background: transparent");
     expect(buttonRule).not.toContain("border-left");
     expect(buttonRule).not.toContain("border-right");
@@ -105,7 +105,7 @@ describe("悬浮状态布局", () => {
     expect(labelRule).toContain("display: block");
     expect(labelRule).toContain("margin:");
     expect(labelRule).toContain("auto");
-    expect(labelRule).toContain("color: #777");
+    expect(labelRule).toContain("color: var(--ui-secondary)");
     expect(labelRule).toContain("font-size: 0.75rem");
   });
 
@@ -331,8 +331,8 @@ describe("悬浮状态布局", () => {
       "inset: auto 0 var(--input-bar-bottom-offset)",
     );
     expect(listActionsRule).toContain("padding: 8px 16px 0");
-    expect(searchBoxRule).toContain("background: #f4f4f4");
-    expect(searchInputRule).toContain("background: #f4f4f4");
+    expect(searchBoxRule).toContain("background: var(--ui-surface)");
+    expect(searchInputRule).toContain("background: var(--ui-surface)");
     expect(timelineRule).toContain(
       "padding: 22px 0 calc(105px + var(--input-bar-bottom-offset))",
     );
