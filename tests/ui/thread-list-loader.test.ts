@@ -18,6 +18,72 @@ function deferred<T>() {
 }
 
 describe("会话列表轮询加载器", () => {
+  it("主动置顶、未读和全部运行中摘要独立加载，不受项目五条限制", async () => {
+    const records = ["manual", "unread", "running", ...Array.from({ length: 5 }, (_, i) => `regular-${i}`)]
+      .map((id) => ({ id, cwd: "/a", status: { type: id === "running" ? "active" : "idle" } }));
+    const client = { request: vi.fn(async (method: string, params: any) => {
+      if (method === "thread/loaded/list") return params.cursor
+        ? { data: ["running", "idle", "missing"], nextCursor: null }
+        : { data: ["manual"], nextCursor: "next" };
+      if (method === "thread/read") {
+        if (params.threadId === "missing") throw new Error("unavailable");
+        return { thread: { ...(records.find((thread) => thread.id === params.threadId) ?? { id: "idle", status: { type: "idle" } }), turns: [] } };
+      }
+      const offset = Number(params.cursor ?? 0);
+      const end = offset + params.limit;
+      return { data: records.slice(offset, end), nextCursor: end < records.length ? String(end) : null };
+    }) };
+    const onPinnedData = vi.fn();
+    const onProjectData = vi.fn();
+    const loader = createLatestThreadListLoader({ onPinnedData, onProjectData });
+    await loader.load(client, ["/a"], ["unread"], {
+      pinnedThreadIds: ["manual"], prioritizedThreadIds: ["unread", "manual"], includeRunningThreads: true,
+    });
+    expect(onPinnedData).toHaveBeenCalledWith(expect.arrayContaining([
+      expect.objectContaining({ id: "manual" }),
+      expect.objectContaining({ id: "unread", isProjectless: true }),
+      expect.objectContaining({ id: "running", status: { type: "active" } }),
+    ]));
+    expect(onPinnedData.mock.calls[0][0]).toHaveLength(3);
+    expect(onPinnedData.mock.calls[0][0].every((thread: any) => !("turns" in thread))).toBe(true);
+    expect(client.request.mock.calls.filter(([method, params]) => method === "thread/read" && params.threadId === "manual")).toHaveLength(1);
+    expect(client.request).toHaveBeenCalledWith("thread/loaded/list", { limit: 100, cursor: "next" });
+    expect(onProjectData).toHaveBeenCalledWith("/a", records.slice(3), false, null);
+  });
+
+  it("已加载列表不可用时仍补取本机未读和主动置顶", async () => {
+    const client = { request: vi.fn(async (method: string, params: any) => {
+      if (method === "thread/loaded/list") throw new Error("unsupported");
+      if (method === "thread/read") return { thread: { id: params.threadId } };
+      return { data: [], nextCursor: null };
+    }) };
+    const onPinnedData = vi.fn();
+    await createLatestThreadListLoader({ onPinnedData }).load(client, [], [], {
+      pinnedThreadIds: ["manual"], prioritizedThreadIds: ["unread"], includeRunningThreads: true,
+    });
+    expect(onPinnedData).toHaveBeenCalledWith([{ id: "manual" }, { id: "unread" }]);
+  });
+
+  it("旧客户端被动置顶摘要迟到不会覆盖新客户端或触发旧项目请求", async () => {
+    const oldRead = deferred<{ thread: { id: string; status: { type: string } } }>();
+    const oldClient = { request: vi.fn((method: string) => method === "thread/loaded/list"
+      ? Promise.resolve({ data: ["old"], nextCursor: null })
+      : oldRead.promise) };
+    const newClient = { request: vi.fn(async (method: string) => method === "thread/loaded/list"
+      ? { data: ["new"], nextCursor: null }
+      : method === "thread/read" ? { thread: { id: "new", status: { type: "active" } } }
+      : { data: [], nextCursor: null }) };
+    const onPinnedData = vi.fn();
+    const loader = createLatestThreadListLoader({ onPinnedData });
+    const oldLoad = loader.load(oldClient, ["/old"], [], { includeRunningThreads: true });
+    await loader.load(newClient, ["/new"], [], { includeRunningThreads: true });
+    oldRead.resolve({ thread: { id: "old", status: { type: "active" } } });
+    await oldLoad;
+    expect(onPinnedData).toHaveBeenCalledOnce();
+    expect(onPinnedData).toHaveBeenCalledWith([{ id: "new", status: { type: "active" } }]);
+    expect(oldClient.request.mock.calls.some(([method]) => method === "thread/list")).toBe(false);
+  });
+
   it("每项目跳过置顶和无项目记录，补足五条普通对话并保留下一批游标", async () => {
     const records = ["pin-a", "pin-b", "projectless", ...Array.from({ length: 10 }, (_, i) => `regular-${i}`)]
       .map((id, i) => ({ id, updatedAt: 100 - i }));

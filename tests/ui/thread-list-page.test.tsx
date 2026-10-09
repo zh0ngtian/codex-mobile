@@ -118,6 +118,25 @@ function renderList(
 }
 
 describe("会话侧边栏列表", () => {
+  it.each(["all", "mini"])("%s 默认展开超过五条的主动及被动置顶，不受项目折叠影响", (selectedBackendId) => {
+    const visibleThreads = aggregateThreads([backend], { mini:
+      ["manual", "unread", "running"].flatMap((kind) => Array.from({ length: 7 }, (_, i) => ({
+        id: `${kind}-${i}`, preview: `${kind}-${i}`, cwd: "/tmp/project-a",
+        isPinned: kind === "manual", isUnread: kind === "unread",
+        status: { type: kind === "running" ? "active" : "idle" },
+      }))),
+    });
+    const { container } = renderList(selectedBackendId, {
+      visibleThreads, collapsedProjectKeys: new Set(["mini:/tmp/project-a"]),
+    });
+    const section = within(container).getByRole("heading", { name: "置顶" }).parentElement as HTMLElement;
+    expect(section.querySelectorAll(".thread-row-title")).toHaveLength(21);
+    for (const thread of visibleThreads) {
+      expect(within(section).getByText(thread.threadId)).not.toBeNull();
+    }
+    expect(within(section).queryByRole("button", { name: "更多" })).toBeNull();
+  });
+
   it.each(["all", "mini"])("%s 视图将运行和未读会话放在手动置顶后且不重复", (selectedBackendId) => {
     const visibleThreads = aggregateThreads([backend], { mini: [
       { id: "manual", preview: "手动置顶任务", cwd: "/tmp/project-a", isPinned: true, updatedAt: 1 },

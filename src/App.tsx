@@ -561,6 +561,12 @@ function BackendWorkspace({
     readUnreadThreadIds(localStorage, backend.id);
   const readLocalPinned = () =>
     readPinnedThreadIds(localStorage, backend.id);
+  const readPrioritizedThreadIds = () => new Set([
+    ...readLocalPinned(),
+    ...readLocalUnread(),
+    ...threadsRef.current.filter((thread) => isThreadRunning(thread.status))
+      .map((thread) => String(thread.id)),
+  ]);
   const setLocalPinned = (threadId: string) => {
     const isPinned = toggleThreadPinned(localStorage, backend.id, threadId);
     const update = (current: AnyRecord[]) =>
@@ -637,15 +643,13 @@ function BackendWorkspace({
     threadListLoaderRef.current = createLatestThreadListLoader({
       onData(data) {
         setThreads((current) =>
-          mergeThreadListPage(current, decorateThreads(data), readLocalPinned()),
+          mergeThreadListPage(current, decorateThreads(data), readPrioritizedThreadIds()),
         );
         setThreadListState("ready");
       },
       onPinnedData(data) {
-        const pinned = readLocalPinned();
-        const pinnedThreads = decorateThreads(
-          data.filter((thread) => pinned.has(String(thread.id))),
-        );
+        // 同步已结束运行的摘要，使其按最新状态回到普通列表。
+        const pinnedThreads = decorateThreads(data);
         setThreads((current) =>
           mergeThreadListPage(
             current,
@@ -687,7 +691,7 @@ function BackendWorkspace({
           const projectThreads = mergeThreadListPage(
             currentProjectThreads,
             [...nextProjectThreads, ...retainedExpandedThreads],
-            readLocalPinned(),
+            readPrioritizedThreadIds(),
           );
           return [
             ...current.filter((thread) => projectGroupIdOf(thread) !== cwd),
@@ -888,7 +892,12 @@ function BackendWorkspace({
         client,
         directories,
         nextProjectlessThreadIds,
-        { ...options, pinnedThreadIds: [...readLocalPinned()] },
+        {
+          ...options,
+          pinnedThreadIds: [...readLocalPinned()],
+          prioritizedThreadIds: [...readPrioritizedThreadIds()],
+          includeRunningThreads: true,
+        },
       );
     } catch (reason) {
       setThreadListState((current) =>
@@ -3858,7 +3867,7 @@ function BackendWorkspace({
         client,
         cwd,
         cursor,
-        new Set([...readLocalPinned(), ...projectlessThreadIds]),
+        new Set([...readPrioritizedThreadIds(), ...projectlessThreadIds]),
       );
       if (result.hasMore) {
         fullyLoadedProjectCwdsRef.current.delete(cwd);
@@ -3906,7 +3915,7 @@ function BackendWorkspace({
         client,
         projectlessThreadIds,
         targetCount,
-        readLocalPinned(),
+        readPrioritizedThreadIds(),
       );
       if (result.hasMore) {
         fullyLoadedProjectCwdsRef.current.delete(PROJECTLESS_GROUP_ID);
@@ -3926,7 +3935,7 @@ function BackendWorkspace({
             (thread) => projectGroupIdOf(thread) === PROJECTLESS_GROUP_ID,
           ),
           decorateThreads(result.threads),
-          readLocalPinned(),
+          readPrioritizedThreadIds(),
         ),
       ]);
     } catch (reason) {
@@ -3974,11 +3983,11 @@ function BackendWorkspace({
           void threadListLoaderRef.current!.loadProjectless(
             client,
             projectlessThreadIds,
-            { pinnedThreadIds: [...readLocalPinned()] },
+            { prioritizedThreadIds: [...readPrioritizedThreadIds()] },
           );
         } else {
           void threadListLoaderRef.current!.loadProject(client, command.cwd, {
-            pinnedThreadIds: [...readLocalPinned()],
+            prioritizedThreadIds: [...readPrioritizedThreadIds()],
           });
         }
       }
