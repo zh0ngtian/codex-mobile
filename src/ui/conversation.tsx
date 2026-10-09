@@ -602,6 +602,13 @@ export function reconcileRecentTurns(
 ): ConversationRecord[] {
   const pendingTurn = (turn: ConversationRecord) =>
     String(turn.id ?? "").startsWith("pending-");
+  const orderKnownTurns = (turns: ConversationRecord[]) => {
+    const confirmed = turns.filter((turn) => !pendingTurn(turn));
+    // 时间完整时可把稀疏快照与保留回合穿插；旧协议缺少时间时沿用窗口顺序。
+    if (confirmed.some((turn) => finiteNumber(turn.startedAt) == null)) return turns;
+    confirmed.sort((left, right) => left.startedAt - right.startedAt);
+    return [...confirmed, ...turns.filter(pendingTurn)];
+  };
   const userSignature = (turn: ConversationRecord) => {
     const user = (turn.items ?? []).find(
       (item: ConversationRecord) => item.type === "userMessage",
@@ -726,7 +733,7 @@ export function reconcileRecentTurns(
 
   if (exactOverlapIndexes.length) {
     const firstOverlap = Math.min(...exactOverlapIndexes);
-    return [
+    return orderKnownTurns([
       ...currentTurns.filter(
         (turn, index) =>
           index < firstOverlap &&
@@ -740,28 +747,20 @@ export function reconcileRecentTurns(
           !matchedCurrentIndexes.has(index) &&
           keepUnmatchedPending(turn),
       ),
-    ];
+    ]);
   }
-  const retained = currentTurns.filter(
-    (turn, index) => !pendingTurn(turn) && !matchedCurrentIndexes.has(index),
-  );
-  const incomingStartedAt = finiteNumber(reconciledWindow[0]?.startedAt);
-  const olderWindowIndex = incomingStartedAt == null ? -1 : retained.findIndex((turn) => {
-    const startedAt = finiteNumber(turn.startedAt);
-    return startedAt != null && startedAt > incomingStartedAt;
-  });
-  const insertAt = olderWindowIndex < 0 ? retained.length : olderWindowIndex;
-  return [
-    ...retained.slice(0, insertAt),
+  return orderKnownTurns([
+    ...currentTurns.filter(
+      (turn, index) => !pendingTurn(turn) && !matchedCurrentIndexes.has(index),
+    ),
     ...reconciledWindow,
-    ...retained.slice(insertAt),
     ...currentTurns.filter(
       (turn, index) =>
         pendingTurn(turn) &&
         !matchedCurrentIndexes.has(index) &&
         keepUnmatchedPending(turn),
     ),
-  ];
+  ]);
 }
 
 export function applyTurnItem(

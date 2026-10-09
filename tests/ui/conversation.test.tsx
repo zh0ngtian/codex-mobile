@@ -1418,6 +1418,14 @@ describe("移动端对话格式", () => {
     expect(reconcileRecentTurns([older], [latest])).toEqual([older, latest]);
   });
 
+  it("有回合时间的稀疏快照保持历史穿插顺序和最新回合位置", () => {
+    const turns = [1, 2, 3, 4].map((number) => ({
+      id: `turn-${number}`, status: "completed", startedAt: number * 100, items: [],
+    }));
+    expect(reconcileRecentTurns([turns[0], turns[2]], [turns[1], turns[3]])).toEqual(turns);
+    expect(reconcileRecentTurns(turns.slice(0, 3), [turns[1], turns[3]])).toEqual(turns);
+  });
+
   it("同会话重连快照保留最新回合和已加载历史，不同会话正常切换", () => {
     const first = { id: "turn-1", status: "completed", items: [] };
     const latest = { id: "turn-2", status: "completed", items: [] };
