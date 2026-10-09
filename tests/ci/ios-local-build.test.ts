@@ -37,6 +37,18 @@ describe("iOS 本地工程准备", () => {
     expect(harden).toContain("os.environ[\"APP_VERSION\"]");
   });
 
+  it("iOS 在启动、系统粗体设置变化、回到前台和页面重载时同步字重", () => {
+    const workflow = parse(readFileSync(".github/workflows/build-ios.yml", "utf8"));
+    const harden = workflow.jobs.build.steps.find((step: any) => step.name === "Harden and test the iOS host").run;
+    expect(harden).toContain("UIAccessibility.isBoldTextEnabled");
+    expect(harden).toContain("UIAccessibility.boldTextStatusDidChangeNotification");
+    expect(harden).toContain("UIApplication.didBecomeActiveNotification");
+    expect(harden).toContain("context.coordinator.installBoldTextSupport(webView)");
+    expect(harden).toContain("injectionTime: .atDocumentEnd, forMainFrameOnly: true");
+    expect(harden).toContain("data-ios-bold-text");
+    expect(harden).toContain('navigation_finished + "        syncBoldText()\\n"');
+  });
+
   it.each(["../1.2.3", "1.2", "1.2.3;echo bad", "1.2.3-beta"])("拒绝不适合 iOS 的版本 %s", (version) => {
     const result = plan("--version", version);
     expect(result.status).not.toBe(0);

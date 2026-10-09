@@ -379,7 +379,8 @@ jobs:
               + '\n        webView.configuration.userContentController.add('
               'context.coordinator, name: "completionNotification")'
               + '\n        UNUserNotificationCenter.current().delegate = context.coordinator'
-              + '\n        context.coordinator.realtimeWebView = webView',
+              + '\n        context.coordinator.realtimeWebView = webView'
+              + '\n        context.coordinator.installBoldTextSupport(webView)',
               1,
           )
           coordinator_declaration = (
@@ -431,6 +432,43 @@ jobs:
               '        guard message.name == "blobDownload" else { return }',
               1,
           )
+          navigation_finished = "    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {\n"
+          if source.count(navigation_finished) != 1:
+              raise SystemExit("Pinned PakePlus navigation completion hook changed")
+          source = source.replace(
+              navigation_finished,
+              navigation_finished + "        syncBoldText()\n",
+              1,
+          )
+          source += r'''
+
+          extension Coordinator {
+              private var boldTextScript: String {
+                  let enabled = UIAccessibility.isBoldTextEnabled ? "true" : "false"
+                  return "document.documentElement.setAttribute('data-ios-bold-text', '\(enabled)');"
+              }
+
+              func installBoldTextSupport(_ webView: WKWebView) {
+                  let script = WKUserScript(
+                      source: boldTextScript,
+                      injectionTime: .atDocumentEnd, forMainFrameOnly: true
+                  )
+                  webView.configuration.userContentController.addUserScript(script)
+                  NotificationCenter.default.addObserver(
+                      self, selector: #selector(syncBoldText),
+                      name: UIAccessibility.boldTextStatusDidChangeNotification, object: nil
+                  )
+                  NotificationCenter.default.addObserver(
+                      self, selector: #selector(syncBoldText),
+                      name: UIApplication.didBecomeActiveNotification, object: nil
+                  )
+              }
+
+              @objc func syncBoldText() {
+                  realtimeWebView?.evaluateJavaScript(boldTextScript, completionHandler: nil)
+              }
+          }
+          '''
           source += r'''
 
           private extension Coordinator {
