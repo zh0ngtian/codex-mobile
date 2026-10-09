@@ -49,6 +49,7 @@ import {
   createPendingTurn,
   isThreadRunning,
   reconcileRecentTurns,
+  reconcileThreadSnapshot,
   removePendingTurn,
 } from "./ui/conversation";
 import {
@@ -425,6 +426,7 @@ function BackendWorkspace({
   const fullyLoadedProjectCwdsRef = useRef(new Set<string>());
   const refreshSequenceRef = useRef(0);
   const threadNotificationSequenceRef = useRef(0);
+  const threadReconcileSequenceRef = useRef(0);
   const pendingSequenceRef = useRef(0);
   const pendingOperationsRef = useRef(new Map<string, {
     threadId: string; draftContext: number; pendingTurnId?: string;
@@ -907,6 +909,15 @@ function BackendWorkspace({
     }
   }
 
+  function applyActiveThreadSnapshot(incoming: AnyRecord) {
+    setActive((current) => {
+      const next = reconcileThreadSnapshot(current, incoming);
+      activeRef.current = next;
+      setBusy(["inProgress", "in_progress", "running"].includes(String(next.turns?.at(-1)?.status ?? "")));
+      return next;
+    });
+  }
+
   async function reconcileActiveThread(
     client: AppServerClient,
     isCurrent: () => boolean = () => true,
@@ -917,6 +928,10 @@ function BackendWorkspace({
     );
     if (!threadId || client !== clientRef.current) return;
     const pendingThrough = pendingSequenceRef.current;
+    const sequence = ++threadReconcileSequenceRef.current;
+    const openSequence = openSequenceRef.current;
+    const isLatest = () => sequence === threadReconcileSequenceRef.current &&
+      openSequence === openSequenceRef.current && isCurrent();
 
     let latestTurns = await loadRecoverableRecentThreadTurns(
       client,
@@ -939,28 +954,25 @@ function BackendWorkspace({
       ) !== threadId ||
       activeRef.current?.id !== threadId ||
       latestTurns == null ||
-      !isCurrent()
+      !isLatest()
     ) {
       return;
     }
 
     const hasPendingOperation = [...pendingOperationsRef.current.values()].some((operation) => operation.threadId === threadId);
     const discardPendingThrough = hasPendingOperation ? -1 : pendingThrough;
-    const lastTurn = latestTurns.at(-1);
-    const running =
-      ["inProgress", "in_progress", "running"].includes(
-        String(lastTurn?.status ?? ""),
-      ) || hasPendingOperation || pendingSequenceRef.current > discardPendingThrough;
-    setActive((current) =>
-      current?.id === threadId
-        ? {
-            ...current,
-            turns: reconcileRecentTurns(current.turns ?? [], latestTurns, {
-              discardPendingThrough,
-            }),
-          }
-        : current,
-    );
+    setActive((current) => {
+      if (current?.id !== threadId || !isLatest()) return current;
+      const turns = reconcileRecentTurns(current.turns ?? [], latestTurns, { discardPendingThrough });
+      const running = ["inProgress", "in_progress", "running"].includes(String(turns.at(-1)?.status ?? "")) ||
+        hasPendingOperation || pendingSequenceRef.current > discardPendingThrough;
+      const next = { ...current, turns };
+      activeRef.current = next;
+      setBusy(running);
+      setThreads((entries) => entries.map((entry) => entry.id === threadId
+        ? { ...entry, status: { type: running ? "active" : "idle" } } : entry));
+      return next;
+    });
     const turnsNeedingBackfill = latestTurns.filter((turn: AnyRecord) =>
       turn.itemsView === "summary" &&
       !activeRef.current?.turns?.some((currentTurn: AnyRecord) =>
@@ -974,23 +986,12 @@ function BackendWorkspace({
         client,
         threadId,
         turnsNeedingBackfill.map((turn: AnyRecord) => String(turn.id)),
-        () => isCurrent() && client === clientRef.current &&
+        () => isLatest() && client === clientRef.current &&
           String(activeRef.current?.id ?? "") === threadId,
         undefined,
         detailLimit,
       );
     }
-    setBusy(running);
-    setThreads((entries) =>
-      entries.map((entry) =>
-        entry.id === threadId
-          ? {
-              ...entry,
-              status: { type: running ? "active" : "idle" },
-            }
-          : entry,
-      ),
-    );
   }
 
   function rememberPendingOperation(
@@ -1763,7 +1764,11 @@ function BackendWorkspace({
               if (
                 !disposed &&
                 manager.client(backend.id) === source &&
-                activeRef.current?.id === currentThread.id
+                activeRef.current?.id === currentThread.id &&
+                shouldResumeWorkspaceThread(workspaceResumeSnapshot, {
+                  threadId: String(currentThread.id),
+                  openSequence: openSequenceRef.current,
+                })
               ) {
                 const resumedSettings = normalizeModelSettings(
                   modelResult.data.find(
@@ -1777,7 +1782,7 @@ function BackendWorkspace({
                     sanitizeAgentItem(client, currentThread.id, turn.id, item);
                   }
                 }
-                setActive({
+                applyActiveThreadSnapshot({
                   ...decorateThread(resumed.thread),
                   ...(currentThread.isProjectless === true
                     ? { isProjectless: true }
@@ -1802,10 +1807,6 @@ function BackendWorkspace({
                   setSelectedApprovalsReviewer(resumed.approvalsReviewer);
                 }
                 setSelectedPermission(resumed.activePermissionProfile?.id ?? "");
-                const lastTurn = resumed.thread.turns?.at(-1);
-                setBusy(
-                  ["inProgress", "in_progress", "running"].includes(lastTurn?.status),
-                );
               }
             }
             if (!disposed && manager.client(backend.id) === source) {
@@ -2111,7 +2112,7 @@ function BackendWorkspace({
     try {
       if (!client) throw new Error(t("设备尚未连接，请稍后重试"));
       const session = await resumeThreadSession(client, threadId);
-      if (sequence !== openSequenceRef.current) {
+      if (sequence !== openSequenceRef.current || client !== clientRef.current) {
         if (activeThreadTargetRef.current !== threadId) {
           void client
             .request("thread/unsubscribe", { threadId })
@@ -2127,7 +2128,7 @@ function BackendWorkspace({
         session.reasoningEffort,
         session.serviceTier,
       );
-      setActive({
+      applyActiveThreadSnapshot({
         ...decorateThread(session.thread),
         ...(activeRef.current?.isProjectless === true
           ? { isProjectless: true }
@@ -2158,10 +2159,6 @@ function BackendWorkspace({
       setSelectedPermission(session.activePermissionProfile?.id ?? "");
       setConversationLoadState("ready");
       setConversationLoadError("");
-      const lastTurn = session.thread.turns?.at(-1);
-      setBusy(
-        ["inProgress", "in_progress", "running"].includes(lastTurn?.status),
-      );
 
       if (session.thread.cwd) {
         void client

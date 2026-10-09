@@ -583,6 +583,18 @@ export function createPendingTurn(
   };
 }
 
+export function reconcileThreadSnapshot(
+  current: ConversationRecord | null,
+  incoming: ConversationRecord,
+): ConversationRecord {
+  if (!current || current.id !== incoming.id) return incoming;
+  return {
+    ...current,
+    ...incoming,
+    turns: reconcileRecentTurns(current.turns ?? [], incoming.turns ?? []),
+  };
+}
+
 export function reconcileRecentTurns(
   currentTurns: ConversationRecord[],
   serverTurns: ConversationRecord[],
@@ -590,6 +602,13 @@ export function reconcileRecentTurns(
 ): ConversationRecord[] {
   const pendingTurn = (turn: ConversationRecord) =>
     String(turn.id ?? "").startsWith("pending-");
+  const orderKnownTurns = (turns: ConversationRecord[]) => {
+    const confirmed = turns.filter((turn) => !pendingTurn(turn));
+    // 时间完整时可把稀疏快照与保留回合穿插；旧协议缺少时间时沿用窗口顺序。
+    if (confirmed.some((turn) => finiteNumber(turn.startedAt) == null)) return turns;
+    confirmed.sort((left, right) => left.startedAt - right.startedAt);
+    return [...confirmed, ...turns.filter(pendingTurn)];
+  };
   const userSignature = (turn: ConversationRecord) => {
     const user = (turn.items ?? []).find(
       (item: ConversationRecord) => item.type === "userMessage",
@@ -637,7 +656,16 @@ export function reconcileRecentTurns(
       }
       if (currentIndex < 0) return incoming;
       used.add(currentIndex);
-      return { ...currentItems[currentIndex], ...incoming };
+      const current = currentItems[currentIndex];
+      const merged = { ...current, ...incoming };
+      // 同一回复的流式文本只会追加；旧快照的短前缀不能擦掉已显示的内容。
+      if (current.type === "agentMessage" && incoming.type === "agentMessage" &&
+        typeof current.text === "string" && typeof incoming.text === "string" &&
+        current.text.length > incoming.text.length && current.text.startsWith(incoming.text)) {
+        merged.text = current.text;
+        if (current.phase != null) merged.phase = current.phase;
+      }
+      return merged;
     });
     return [
       ...ordered,
@@ -648,11 +676,11 @@ export function reconcileRecentTurns(
     current: ConversationRecord,
     incoming: ConversationRecord,
   ) => {
-    const merged: ConversationRecord = {
-      ...current,
-      ...incoming,
-      items: mergeItems(current.items ?? [], incoming.items ?? []),
-    };
+    const staleProgress = ["completed", "failed", "interrupted", "cancelled"].includes(current.status) &&
+      ["inProgress", "in_progress", "running"].includes(incoming.status);
+    const merged: ConversationRecord = staleProgress
+      ? { ...incoming, ...current, items: mergeItems(incoming.items ?? [], current.items ?? []) }
+      : { ...current, ...incoming, items: mergeItems(current.items ?? [], incoming.items ?? []) };
     delete merged.clientSequence;
     return merged;
   };
@@ -705,7 +733,7 @@ export function reconcileRecentTurns(
 
   if (exactOverlapIndexes.length) {
     const firstOverlap = Math.min(...exactOverlapIndexes);
-    return [
+    return orderKnownTurns([
       ...currentTurns.filter(
         (turn, index) =>
           index < firstOverlap &&
@@ -719,12 +747,11 @@ export function reconcileRecentTurns(
           !matchedCurrentIndexes.has(index) &&
           keepUnmatchedPending(turn),
       ),
-    ];
+    ]);
   }
-  return [
+  return orderKnownTurns([
     ...currentTurns.filter(
-      (turn, index) =>
-        !pendingTurn(turn) && !matchedCurrentIndexes.has(index),
+      (turn, index) => !pendingTurn(turn) && !matchedCurrentIndexes.has(index),
     ),
     ...reconciledWindow,
     ...currentTurns.filter(
@@ -733,7 +760,7 @@ export function reconcileRecentTurns(
         !matchedCurrentIndexes.has(index) &&
         keepUnmatchedPending(turn),
     ),
-  ];
+  ]);
 }
 
 export function applyTurnItem(
