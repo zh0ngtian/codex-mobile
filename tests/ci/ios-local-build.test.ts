@@ -77,7 +77,7 @@ describe("iOS 本地工程准备", () => {
     expect(harden).toContain("UIResponder.keyboardWillHideNotification");
     expect(harden).toContain("input.blur()");
     expect(harden).not.toContain("input.value =");
-    const script = harden.match(/blurWebInputOnKeyboardDismissal\(\) \{[\s\S]*?evaluateJavaScript\("""\n([\s\S]*?)\n\s*""",/)?.[1];
+    const script = harden.match(/blurWebInputOnKeyboardDismissal\([^)]*\) \{[\s\S]*?evaluateJavaScript\("""\n([\s\S]*?)\n\s*""",/)?.[1];
     expect(script).toBeTruthy();
     for (const tag of ["input", "textarea"]) {
       const input = document.createElement(tag) as HTMLInputElement | HTMLTextAreaElement;
@@ -85,7 +85,7 @@ describe("iOS 本地工程准备", () => {
       document.body.append(input);
       input.focus();
       expect(document.activeElement).toBe(input);
-      new Function(script!)();
+      new Function(script!.replace("\\(duration)", "250"))();
       expect(document.activeElement).not.toBe(input);
       expect(input.value).toBe("未发送的草稿");
       input.remove();
@@ -93,7 +93,7 @@ describe("iOS 本地工程准备", () => {
     const button = document.createElement("button");
     document.body.append(button);
     button.focus();
-    new Function(script!)();
+    new Function(script!.replace("\\(duration)", "250"))();
     expect(document.activeElement).toBe(button);
     button.remove();
   });

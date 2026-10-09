@@ -27,6 +27,12 @@ end
 project.save
 target = project.targets.find { |t| t.name == 'CodexMobileUITests' }
 if target
+  extra_path = File.join(root, 'mobile/ios/SmallFontKeyboardUITests.swift')
+  unless project.files.any? { |f| f.real_path.to_s == extra_path }
+    group = project.main_group.find_subpath('CodexMobileUITests', false)
+    target.source_build_phase.add_file_reference(group.new_file(extra_path))
+    project.save
+  end
   puts '模拟器 UI 测试 target 已存在'
   exit
 end
@@ -34,6 +40,7 @@ target = project.new_target(:ui_test_bundle, 'CodexMobileUITests', :ios, '15.6')
 target.add_dependency(app)
 source = project.main_group.new_group('CodexMobileUITests')
 source.new_file(ARGV[1] || File.join(root, 'mobile/ios/CodexMobileUITests.swift')).tap { |f| target.source_build_phase.add_file_reference(f) }
+source.new_file(File.join(root, 'mobile/ios/SmallFontKeyboardUITests.swift')).tap { |f| target.source_build_phase.add_file_reference(f) }
 target.build_configurations.each do |config|
  config.build_settings['PRODUCT_NAME'] = '$(TARGET_NAME)'
  config.build_settings['PRODUCT_BUNDLE_IDENTIFIER'] = 'vip.loock.codexmobile.uitests'
