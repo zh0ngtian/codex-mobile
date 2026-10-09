@@ -129,9 +129,12 @@ final class NativeConversationUITests: XCTestCase {
 
     func testCaptureReadableReplyDesign() throws {
         continueAfterFailure = false
+        guard let title = ProcessInfo.processInfo.environment["NATIVE_IOS_DESIGN_THREAD_TITLE"], !title.isEmpty else {
+            throw XCTSkip("指定 NATIVE_IOS_DESIGN_THREAD_TITLE 可捕获已生成的阅读验收回复；功能回归由真实 Markdown 发送测试覆盖")
+        }
         let app = XCUIApplication(bundleIdentifier: "vip.loock.codexmobile")
         app.launch()
-        let thread = app.webViews.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Markdown 中文阅读验收")).firstMatch
+        let thread = app.webViews.buttons.matching(NSPredicate(format: "label CONTAINS %@", title)).firstMatch
         XCTAssertTrue(thread.waitForExistence(timeout: 30), app.debugDescription)
         thread.tap()
         let table = app.tables["codex.native.timeline"]

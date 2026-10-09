@@ -77,6 +77,8 @@ sendButton.heightAnchor.constraint(equalToConstant: 44)
 - [x] 生成工程；串行跑空白/键盘几何、草稿、真实发送、翻历史与分页 XCTest，并导出实际截图。
 - [x] 实际检查空白/正常回复/中文长文/工具活动/代码表格/键盘/只读/深色画面；与参考截图并排判断布局、留白、层次和按钮尺寸，发现缺陷先修复再交付。
 - [x] 全量 Vitest、相关 Foundation、Python iOS、typecheck、build、diff check；独立规格与质量复审。
-- [ ] 中文 Conventional Commit 提交、推送并合入 main；分配高于两端固定渠道的统一版本。
-- [ ] 构建 APK 与本机签名 IPA，发布固定 LAN 与 HTTPS OTA；通过 JSON、HEAD、完整 GET 核对两端版本、大小和 SHA-256。
-- [ ] 归档仅本轮测试会话、停止网关、保存交付证据、清理临时文件并归档工作树。真机安装仍需用户验证。
+- [x] 中文 Conventional Commit 提交、推送并合入 main；分配高于两端固定渠道的统一版本。
+- [x] 构建 APK 与本机签名 IPA，发布固定 LAN 与 HTTPS OTA；通过 JSON、HEAD、完整 GET 核对两端版本、大小和 SHA-256。
+- [x] 归档仅本轮测试会话、停止网关、保存交付证据、清理临时文件并归档工作树。真机安装仍需用户验证。
+
+交付版本 `0.2.131`；运行代码提交 `ce14c22`。实际截图、回归与双端渠道元数据见 [模拟器验证记录](../../ios-simulator-verification.md#2026-10-09-对话可读性重做)。仅回复截图夹具通过 `NATIVE_IOS_DESIGN_THREAD_TITLE` 显式启用，完成后测试会话归档。

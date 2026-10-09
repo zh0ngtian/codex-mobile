@@ -183,3 +183,15 @@ iPhone 17 Pro / iOS 26.5，Xcode 27，测试构建 `0.2.130`。消息列表使�
 验证环境：iPhone 17 Pro / iOS 26.5；9 个独立原生 UI 用例分别验证空输入框几何、页面截图、真实 Markdown 回复、回复截图、活动详情、草稿收起与恢复、真实发送、历史阅读锚点、分页锚点；相关用例额外重跑浅色和深色截图。35 个原始 Markdown 用例及编号修复新增 2 个用例，共 37 项 Foundation 回归通过，原有状态回归通过。全量 Vitest 824 项/92 文件，Python iOS 87 项，TypeScript 和前端构建通过；最后修改相关 Vitest 25 项重新通过。独立代码与视觉复审发现并修复附件高度冲突、空白正文崩溃、表格链接入口、有序编号与多队列高度问题。
 
 本机原始截图与 xcresult 归档在 `.mobile-build/chat-redesign-audit/`；计划见 [重做计划](superpowers/plans/2026-10-09-ios-chat-redesign.md)。模拟器截图、构建与验签不代表已验证真机覆盖安装及数据保留。
+
+
+回复截图用例的 `NATIVE_IOS_DESIGN_THREAD_TITLE` 指向本轮真实发送产生的 Markdown 测试会话，只用于显式视觉采样；未配置时跳过此截图用例，真实 Markdown 功能测试仍独立创建会话并验收。截图完成后归档测试会话，不把历史测试夹具留在用户列表中。
+
+本次交付 `0.2.131`，客户端源码提交 `ce14c22`，已推送 `main`。固定渠道 JSON、HEAD 和完整 GET 均核对通过；HTTPS OTA 用本机 CA 校验清单、IPA 和安装页。
+
+| 产物 | 版本 | 大小（字节） | SHA-256 |
+| --- | --- | --- | --- |
+| APK | 0.2.131 | 4,708,319 | `dc6c46352d186da716c6c4355a8f1231257a2a2646c83550b86823bb8a351461` |
+| IPA（Ad Hoc 已签名） | 0.2.131 | 3,898,985 | `59d76e30dc5d4b3aaf1bcab9fe71973b79a00aa7ee3e3ebecca87e19265f2389` |
+
+安装入口：[固定 OTA 安装页](https://192.168.123.79:8766/channels/codex-mobile/current/install.html)、[固定 IPA](http://192.168.123.79:8765/channels/codex-mobile/latest.ipa)、[固定 APK](http://192.168.123.79:8765/channels/codex-mobile/latest.apk)。本轮两条测试会话已归档，临时网关已停止，模拟器恢复浅色并释放占用。
