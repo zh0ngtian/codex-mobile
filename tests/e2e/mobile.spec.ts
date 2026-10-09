@@ -2593,6 +2593,62 @@ test("排队消息可编辑取消、跨会话保留并同步服务端标题", as
     ]);
 });
 
+test("查看旧会话后刷新列表和搜索保持排序，新任务正常前移", async ({ page }) => {
+  test.setTimeout(30_000);
+  await page.addInitScript(() => {
+    localStorage.setItem("codex-mobile:language", "zh-CN");
+    const history = { id: "viewed-history", preview: "任务旧会话", cwd: "/tmp/project", recencyAt: 10, updatedAt: 10, status: { type: "idle" }, turns: [] };
+    const recent = { ...history, id: "recent-task", preview: "任务新会话", recencyAt: 20, updatedAt: 20 };
+    (window as any).__recencyHistory = history;
+    (window as any).__recencyRequests = [];
+    class RecencySocket extends EventTarget {
+      static OPEN = 1;
+      static CLOSED = 3;
+      readyState = 0;
+      constructor() {
+        super();
+        setTimeout(() => { this.readyState = 1; this.dispatchEvent(new Event("open")); }, 0);
+      }
+      send(raw: string) {
+        const request = JSON.parse(raw);
+        (window as any).__recencyRequests.push(request);
+        if (request.id == null) return;
+        if (request.method === "thread/resume") history.updatedAt = 100;
+        const responses: Record<string, unknown> = {
+          initialize: {},
+          "model/list": { data: [] },
+          "config/read": { config: {} },
+          "permissionProfile/list": { data: [] },
+          "thread/list": { data: [history, recent], nextCursor: null },
+          "thread/search": { data: [history, recent].map((thread) => ({ thread, snippet: thread.preview })), nextCursor: null },
+          "thread/resume": { thread: history, initialTurnsPage: { data: [], nextCursor: null } },
+          "thread/turns/list": { data: [], nextCursor: null },
+        };
+        const result = JSON.stringify({ id: request.id, result: responses[request.method] ?? {} });
+        setTimeout(() => this.dispatchEvent(new MessageEvent("message", { data: result })), 0);
+      }
+      close() { this.readyState = 3; this.dispatchEvent(new CloseEvent("close")); }
+    }
+    (window as any).WebSocket = RecencySocket;
+  });
+  await page.goto("/");
+  const rows = page.locator(".thread-row-title");
+  await expect(rows).toHaveText(["任务新会话", "任务旧会话"]);
+  await page.getByRole("button", { name: /任务旧会话/ }).click();
+  await expect(page.locator(".thread-heading strong")).toHaveText("任务旧会话");
+  await page.getByRole("button", { name: "打开会话列表" }).click();
+  await page.getByRole("button", { name: "刷新会话列表" }).click();
+  await expect.poll(() => page.evaluate(() => (window as any).__recencyHistory.updatedAt)).toBe(100);
+  await expect(rows).toHaveText(["任务新会话", "任务旧会话"]);
+  await page.getByPlaceholder("搜索聊天").fill("任务");
+  await expect.poll(() => page.evaluate(() => (window as any).__recencyRequests.some((request: any) => request.method === "thread/search"))).toBe(true);
+  await expect(rows).toHaveText(["任务新会话", "任务旧会话"]);
+  await page.getByPlaceholder("搜索聊天").fill("");
+  await page.evaluate(() => { (window as any).__recencyHistory.recencyAt = 30; });
+  await page.getByRole("button", { name: "刷新会话列表" }).click();
+  await expect(rows).toHaveText(["任务旧会话", "任务新会话"]);
+});
+
 test("会话搜索在一个结果列表中展示服务端全文命中", async ({ page }) => {
   await page.addInitScript(() => {
     localStorage.setItem("codex-mobile:language", "zh-CN");
@@ -2703,7 +2759,7 @@ test("会话搜索在一个结果列表中展示服务端全文命中", async ({
     .toEqual({
       searchTerm: "部署失败",
       limit: 50,
-      sortKey: "updated_at",
+      sortKey: "recency_at",
       sortDirection: "desc",
     });
 });

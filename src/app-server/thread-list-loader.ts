@@ -31,7 +31,8 @@ interface ThreadListLoadOptions {
 }
 
 function threadTimestamp(thread: ThreadRecord) {
-  return Number(thread.updatedAt ?? thread.createdAt ?? 0);
+  // 恢复会话会更新 updatedAt；最近任务排序使用只在任务开始时推进的 recencyAt。
+  return Number(thread.recencyAt ?? thread.updatedAt ?? thread.createdAt ?? 0);
 }
 
 export function dedupeThreadsById(threads: ThreadRecord[]) {
@@ -44,7 +45,12 @@ export function dedupeThreadsById(threads: ThreadRecord[]) {
       continue;
     }
     const current = unique.get(id);
-    if (!current || threadTimestamp(thread) > threadTimestamp(current)) {
+    // 排序时间不决定元数据新鲜度，同一会话仍保留最新快照。
+    if (
+      !current ||
+      Number(thread.updatedAt ?? thread.createdAt ?? 0) >
+        Number(current.updatedAt ?? current.createdAt ?? 0)
+    ) {
       unique.set(id, thread);
     }
   }
@@ -107,7 +113,7 @@ export async function loadProjectlessThreadRecords(
   do {
     const result: ThreadListResponse = await client.request("thread/list", {
       limit: 50,
-      sortKey: "updated_at",
+      sortKey: "recency_at",
       ...(cursor ? { cursor } : {}),
     });
     found.push(...projectlessThreadsFromPage(result.data, targetIds));
@@ -143,7 +149,7 @@ export async function loadProjectThreadRecords(
   const result: ThreadListResponse = await client.request("thread/list", {
     limit: PROJECT_THREAD_BATCH_SIZE,
     cwd,
-    sortKey: "updated_at",
+    sortKey: "recency_at",
     ...(cursor ? { cursor } : {}),
   });
   return {
@@ -263,7 +269,7 @@ export function createLatestThreadListLoader(
         : [client
             .request("thread/list", {
               limit: 50,
-              sortKey: "updated_at",
+              sortKey: "recency_at",
             })
             .then((result: ThreadListResponse) => {
               if (sequence === latestSequence) {

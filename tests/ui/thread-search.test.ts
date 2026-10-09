@@ -3,6 +3,27 @@ import { AppServerRpcError } from "../../src/app-server/client";
 import { searchThreadRecords } from "../../src/app-server/thread-search";
 
 describe("App Server 统一会话搜索", () => {
+  it("全文结果按任务活动排序，重复记录仍保留查看后的最新标题和片段", async () => {
+    const request = vi.fn().mockResolvedValue({ data: [
+      { thread: { id: "viewed", recencyAt: 10, updatedAt: 10, name: "旧标题" }, snippet: "旧片段" },
+      { thread: { id: "recent", recencyAt: 20, updatedAt: 20 }, snippet: "最近任务" },
+      { thread: { id: "viewed", recencyAt: 10, updatedAt: 100, name: "新标题" }, snippet: "新片段" },
+    ], nextCursor: null });
+    const results = await searchThreadRecords({ request }, "任务");
+    expect(results.map((thread) => thread.id)).toEqual(["recent", "viewed"]);
+    expect(results[1]).toMatchObject({ name: "新标题", searchSnippet: "新片段", updatedAt: 100 });
+  });
+
+  it("标题搜索回退仍不因查看会话改变排序", async () => {
+    const request = vi.fn().mockRejectedValueOnce(new AppServerRpcError("method not found", -32601))
+      .mockResolvedValueOnce({ data: [
+        { id: "viewed", recencyAt: 10, updatedAt: 100 },
+        { id: "recent", recencyAt: 20, updatedAt: 20 },
+      ], nextCursor: null });
+    expect((await searchThreadRecords({ request }, "任务")).map((thread) => thread.id))
+      .toEqual(["recent", "viewed"]);
+  });
+
   it("沿 thread/search 游标读取全文结果并排除临时与派生线程", async () => {
     const client = {
       request: vi
@@ -75,7 +96,7 @@ describe("App Server 统一会话搜索", () => {
       {
         searchTerm: "部署失败",
         limit: 50,
-        sortKey: "updated_at",
+        sortKey: "recency_at",
         sortDirection: "desc",
       },
       { timeoutMs: 60_000 },
@@ -86,7 +107,7 @@ describe("App Server 统一会话搜索", () => {
       {
         searchTerm: "部署失败",
         limit: 50,
-        sortKey: "updated_at",
+        sortKey: "recency_at",
         sortDirection: "desc",
         cursor: "older-page",
       },
@@ -123,7 +144,7 @@ describe("App Server 统一会话搜索", () => {
       {
         searchTerm: "发布",
         limit: 50,
-        sortKey: "updated_at",
+        sortKey: "recency_at",
       },
       { timeoutMs: 60_000 },
     );

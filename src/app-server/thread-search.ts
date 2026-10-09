@@ -28,7 +28,8 @@ interface ThreadListResponse {
 const searchRequestOptions = { timeoutMs: 60_000 };
 
 function threadTimestamp(thread: ThreadRecord) {
-  return Number(thread.updatedAt ?? thread.createdAt ?? 0);
+  // 恢复会话会更新 updatedAt；最近任务排序使用只在任务开始时推进的 recencyAt。
+  return Number(thread.recencyAt ?? thread.updatedAt ?? thread.createdAt ?? 0);
 }
 
 function isPersistentTopLevelThread(thread: ThreadRecord) {
@@ -41,7 +42,12 @@ function dedupeSearchRecords(records: ThreadRecord[]) {
     const id = String(record.id ?? "").trim();
     if (!id || !isPersistentTopLevelThread(record)) continue;
     const current = unique.get(id);
-    if (!current || threadTimestamp(record) > threadTimestamp(current)) {
+    // 标题与命中片段取最新元数据，避免相同活动时间保留旧快照。
+    if (
+      !current ||
+      Number(record.updatedAt ?? record.createdAt ?? 0) >
+        Number(current.updatedAt ?? current.createdAt ?? 0)
+    ) {
       unique.set(id, record);
     }
   }
@@ -65,7 +71,7 @@ async function searchWithThreadSearch(
       {
         searchTerm,
         limit: 50,
-        sortKey: "updated_at",
+        sortKey: "recency_at",
         sortDirection: "desc",
         ...(cursor ? { cursor } : {}),
       },
@@ -98,7 +104,7 @@ async function searchWithThreadList(
       {
         searchTerm,
         limit: 50,
-        sortKey: "updated_at",
+        sortKey: "recency_at",
         ...(cursor ? { cursor } : {}),
       },
       searchRequestOptions,

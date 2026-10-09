@@ -14,6 +14,35 @@ const backends = [
 ];
 
 describe("会话列表派生", () => {
+  it("查看或恢复旧会话后列表、项目和合并搜索仍按最近任务排序", () => {
+    const history = { id: "01a10657-66b0-7e30-97d8-62d853b8a3dc", cwd: "/project", recencyAt: 10, updatedAt: 10 };
+    const recent = { id: "recent-task", cwd: "/project", recencyAt: 20, updatedAt: 20 };
+    const list = (updatedAt: number) => aggregateThreads(backends.slice(0, 1), {
+      book: [{ ...history, updatedAt }, recent],
+    });
+    expect(list(10).map((item) => item.threadId)).toEqual([recent.id, history.id]);
+    const refreshed = list(100);
+    expect(refreshed.map((item) => item.threadId)).toEqual([recent.id, history.id]);
+    expect(groupThreadsByProject(refreshed)[0].threads.map((item) => item.threadId))
+      .toEqual([recent.id, history.id]);
+    expect(mergeAggregatedThreadSearchResults(refreshed, list(10)).map((item) => item.threadId))
+      .toEqual([recent.id, history.id]);
+    const started = aggregateThreads(backends.slice(0, 1), {
+      book: [{ ...history, recencyAt: 30, updatedAt: 100 }, recent],
+    });
+    expect(started[0].threadId).toBe(history.id);
+  });
+
+  it("活动时间缺失时兼容更新时间和创建时间，并保留有效的零值", () => {
+    const result = aggregateThreads(backends.slice(0, 1), { book: [
+      { id: "legacy", updatedAt: 30, createdAt: 1 },
+      { id: "created", recencyAt: null, createdAt: 20 },
+      { id: "zero", recencyAt: 0, updatedAt: 100 },
+      { id: "empty" },
+    ] });
+    expect(result.map((item) => item.timestamp)).toEqual([30, 20, 0, 0]);
+  });
+
   const items = aggregateThreads(backends, {
     book: [
       {
@@ -27,7 +56,7 @@ describe("会话列表派生", () => {
         id: "book-recent",
         preview: "查看 Docker 配置",
         cwd: "/Users/me/infra",
-        recencyAt: 20,
+        recencyAt: 50,
         updatedAt: 50,
       },
     ],
@@ -50,7 +79,6 @@ describe("会话列表派生", () => {
         preview: "无项目任务",
         cwd: null,
         isProjectless: true,
-        recencyAt: 1000,
         createdAt: 5,
       },
     ],
@@ -160,7 +188,7 @@ describe("会话列表派生", () => {
           id: "book-recent",
           preview: "查看 Docker 配置",
           cwd: "/Users/me/infra",
-          recencyAt: 20,
+          recencyAt: 50,
           updatedAt: 50,
           searchSnippet: "正文命中了容器部署错误",
         },

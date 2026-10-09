@@ -35,7 +35,8 @@ export function projectNameOf(thread: DisplayRecord) {
 }
 
 function threadTimestamp(thread: DisplayRecord) {
-  return Number(thread.updatedAt ?? thread.createdAt ?? 0);
+  // 恢复会话会更新 updatedAt；最近任务排序使用只在任务开始时推进的 recencyAt。
+  return Number(thread.recencyAt ?? thread.updatedAt ?? thread.createdAt ?? 0);
 }
 
 export function aggregateThreads(
