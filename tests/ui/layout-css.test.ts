@@ -317,7 +317,7 @@ describe("悬浮状态布局", () => {
     expect(rootRule).toContain("--browser-edge-top: 8px");
     expect(rootRule).toContain("--browser-edge-bottom: 8px");
     expect(rootRule).toContain(
-      "--input-bar-bottom-offset: max(var(--browser-edge-bottom), 8px)",
+      "--input-bar-bottom-offset: calc(env(safe-area-inset-bottom, 0px) + max(var(--browser-edge-bottom), 8px))",
     );
     expect(nativeRule).toContain("--browser-edge-top: 0px");
     expect(nativeRule).toContain("--browser-edge-bottom: 0px");

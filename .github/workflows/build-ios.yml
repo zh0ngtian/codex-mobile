@@ -380,6 +380,14 @@ jobs:
 
           path = Path("PakePlus/WebView.swift")
           source = path.read_text()
+          viewport_anchor = "meta.content = 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no';"
+          if source.count(viewport_anchor) != 1:
+              raise SystemExit("Pinned PakePlus viewport hook changed")
+          source = source.replace(
+              viewport_anchor,
+              "meta.content = 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover';",
+              1,
+          )
           import_anchor = "import WebKit\n"
           if source.count(import_anchor) != 1:
               raise SystemExit("Pinned PakePlus WebKit import changed")

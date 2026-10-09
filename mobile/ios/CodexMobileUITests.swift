@@ -15,6 +15,34 @@ final class CodexMobileUITests: XCTestCase {
         return input
     }
 
+    func testBottomBarsClearHomeIndicatorWithoutKeyboard() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication(bundleIdentifier: "vip.loock.codexmobile")
+        app.launch()
+        let input = openNewChat(app)
+        XCTAssertFalse(app.keyboards.firstMatch.exists)
+        XCTAssertGreaterThanOrEqual(app.frame.maxY - input.frame.maxY, 42,
+                                    "键盘收起时输入框应位于 Home 指示条安全区上方")
+        input.tap()
+        input.typeText("底部安全区未发送草稿")
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.webViews.buttons["发送"].isHittable)
+        let done = app.toolbars.buttons["Done"]
+        if done.exists { done.tap() } else { app.toolbars.buttons["完成"].tap() }
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
+        XCTAssertEqual(input.value as? String, "底部安全区未发送草稿")
+        XCTAssertGreaterThanOrEqual(app.frame.maxY - input.frame.maxY, 42)
+        app.webViews.buttons["打开会话列表"].tap()
+        let chat = app.webViews.buttons["聊天"]
+        XCTAssertTrue(chat.waitForExistence(timeout: 5))
+        XCTAssertGreaterThanOrEqual(app.frame.maxY - chat.frame.maxY, 42,
+                                    "下边栏应位于 Home 指示条安全区上方")
+        let attachment = XCTAttachment(screenshot: app.screenshot())
+        attachment.name = "下边栏底部安全区"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+
     func testUnsentDraftRemainsStableAfterKeyboardDismissal() throws {
         continueAfterFailure = false
         let app = XCUIApplication(bundleIdentifier: "vip.loock.codexmobile")
