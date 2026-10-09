@@ -21,7 +21,7 @@ button, a, summary, [role="button"] { -webkit-tap-highlight-color: transparent; 
 .conversation-sidebar-layer.open .conversation-sidebar { transform: translateX(0); }
 .conversation-sidebar-layer.dragging .conversation-sidebar { transform: translateX(calc(-104% + var(--sidebar-drag-x))); transition: none; }
 .conversation-sidebar-layer.open.dragging .conversation-sidebar { transform: translateX(var(--sidebar-drag-x)); transition: none; }
-.conversation-sidebar-scrim { position: absolute; inset: 0; border: 0; background: rgba(10,10,10,.24); opacity: 0; transition: opacity var(--sidebar-motion-duration) var(--sidebar-motion-easing); }
+.conversation-sidebar-scrim { overscroll-behavior: none; position: absolute; inset: 0; border: 0; background: rgba(10,10,10,.24); opacity: 0; transition: opacity var(--sidebar-motion-duration) var(--sidebar-motion-easing); }
 .conversation-sidebar-layer.open .conversation-sidebar-scrim { opacity: 1; }
 .conversation-sidebar-layer.dragging .conversation-sidebar-scrim { opacity: var(--sidebar-drag-progress); transition: none; }
 .thread-list-page { position: relative; height: 100vh; min-height: 100vh; height: 100dvh; min-height: 100dvh; overflow-y: auto; overscroll-behavior: contain; padding: 0 16px calc(58px + var(--input-bar-bottom-offset)); -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
@@ -309,7 +309,7 @@ button, a, summary, [role="button"] { -webkit-tap-highlight-color: transparent; 
 .image-placeholder, .image-load-error { min-height: 92px; border-radius: 14px; background: #ececec; display: grid; place-items: center; color: #888; font-size: 0.75rem; }
 .image-placeholder { animation: image-loading 1.4s ease-in-out infinite; }
 @keyframes image-loading { 50% { opacity: .55; } }
-.action-sheet-backdrop { position: fixed; inset: 0; z-index: 14; display: flex; align-items: flex-end; justify-content: center; background: rgba(0,0,0,.24); }
+.action-sheet-backdrop { overscroll-behavior: none; position: fixed; inset: 0; z-index: 14; display: flex; align-items: flex-end; justify-content: center; background: rgba(0,0,0,.24); }
 .action-sheet { width: min(100%, 720px); max-height: 84dvh; overflow: hidden; isolation: isolate; border-radius: 30px 30px 0 0; clip-path: inset(0 round 30px 30px 0 0); background: #fff; color: #111; display: flex; flex-direction: column; text-align: left; }
 .action-sheet-soft { background: #f7f7f7; }
 .action-sheet-handle { flex: 0 0 auto; display: block; width: 64px; height: 5px; margin: 10px auto 0; border-radius: 4px; background: #d5d5d5; }

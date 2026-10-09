@@ -1,5 +1,7 @@
-import { act, renderHook } from "@testing-library/react";
+import { act, cleanup, render, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { createElement } from "react";
+import { ActionSheet } from "../../src/ui/ActionSheet";
 import { useSidebarSwipe } from "../../src/features/threads/sidebar-swipe";
 
 function touch(
@@ -39,10 +41,39 @@ function sidebarLayer(open = false) {
 }
 
 afterEach(() => {
+  cleanup();
   document.body.innerHTML = "";
 });
 
 describe("会话侧栏右滑手势", () => {
+  it("拖动中出现更高弹层时取消侧栏手势，弹层遮罩也不触发侧栏", () => {
+    const onClose = vi.fn();
+    const { result } = renderHook(() => useSidebarSwipe(true, vi.fn(), onClose));
+    const layer = sidebarLayer(true);
+    result.current.current = layer;
+    const panel = layer.querySelector("aside")!;
+    touch(panel, "touchstart", [[250, 300]]);
+    touch(panel, "touchmove", [[210, 305]]);
+    expect(layer.classList.contains("dragging")).toBe(true);
+    const { container, unmount } = render(createElement(ActionSheet, {
+      title: "管理设备", children: "设置",
+    }));
+    touch(panel, "touchmove", [[120, 309]]);
+    touch(panel, "touchend", []);
+    expect(onClose).not.toHaveBeenCalled();
+    expect(layer.classList.contains("dragging")).toBe(false);
+    const backdrop = container.querySelector(".action-sheet-backdrop")!;
+    touch(backdrop, "touchstart", [[250, 300]]);
+    touch(backdrop, "touchmove", [[120, 309]]);
+    touch(backdrop, "touchend", []);
+    expect(onClose).not.toHaveBeenCalled();
+    unmount();
+    touch(panel, "touchstart", [[250, 300]]);
+    touch(panel, "touchmove", [[120, 309]]);
+    touch(panel, "touchend", []);
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
   it("会话中部右滑时面板跟随位移，松手后展开", () => {
     const onOpen = vi.fn();
     const { result, rerender } = renderHook(
