@@ -8,6 +8,17 @@ function plan(...args: string[]) {
 }
 
 describe("iOS 本地工程准备", () => {
+  it("主容器安装原生对话与状态源文件并注册版本化桥接", () => {
+    const workflow = parse(readFileSync(".github/workflows/build-ios.yml", "utf8"));
+    const install = workflow.jobs.build.steps.find((step: any) => step.name === "Install iOS in-app browser source").run;
+    const harden = workflow.jobs.build.steps.find((step: any) => step.name === "Harden and test the iOS host").run;
+    for (const name of ["NativeConversationBridge", "NativeConversationViewController", "NativeConversationState"]) {
+      expect(install).toContain(`${name}.swift`);
+    }
+    expect(harden).toContain("CodexMobileNativeConversationBridge.configure(webView)");
+    expect(harden).toContain("return CodexMobileConversationHostView(webView: webView)");
+    expect(harden).toContain('func makeUIView(context: Context) -> UIView');
+  });
   it("注册会话 URL Scheme，并在冷启动网页加载完成后消费目标", () => {
     const workflow = parse(readFileSync(".github/workflows/build-ios.yml", "utf8"));
     const harden = workflow.jobs.build.steps.find((step: any) => step.name === "Harden and test the iOS host").run;

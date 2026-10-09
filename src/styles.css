@@ -632,3 +632,17 @@ button, a, summary, [role="button"] { -webkit-tap-highlight-color: transparent; 
 
 .font-size-settings > div { grid-template-columns: repeat(4,minmax(0,1fr)); }
 .font-size-settings > small { color: #777; font-size: .75rem; line-height: 1.5; }
+/* 原生对话的完整内容入口仍复用当前会话与草稿。 */
+.native-conversation-return {
+  position: fixed;
+  z-index: 80;
+  top: calc(env(safe-area-inset-top) + 62px);
+  right: 12px;
+  min-height: 40px;
+  padding: 8px 14px;
+  border: 1px solid var(--border, #ddd);
+  border-radius: 20px;
+  background: var(--panel, #fff);
+  color: var(--text, #111);
+  box-shadow: 0 2px 10px #00000012;
+}

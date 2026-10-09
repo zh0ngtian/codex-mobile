@@ -1,6 +1,6 @@
 # iOS 本地构建与模拟器验证
 
-Codex Mobile iOS 复用当前 React 前端，内置于固定提交的 PakePlus SwiftUI / WKWebView 容器。设备地址和口令由用户在 App 中添加，构建产物不携带私人网关配置。
+Codex Mobile iOS 使用固定提交的 PakePlus SwiftUI / WKWebView 容器，对话列表与输入区由 UIKit 原生界面承载。React 继续管理连接、会话、草稿和写操作，原生通过带上下文与序列号的快照和事件交互；侧栏、设置与复杂内容保留网页入口。设备地址和口令由用户在 App 中添加，构建产物不携带私人网关配置。
 
 ## 生成与运行
 
@@ -39,6 +39,10 @@ CODEX_MOBILE_SERVE_STATIC=false npm start
 
 这个口令仅用于本机临时测试。测试结束后关闭该终端网关。
 
+原生回归还需要一条有更早分页消息的真实长会话。将其标题设置为测试 scheme 的
+`NATIVE_IOS_SCROLL_THREAD_TITLE` 环境变量（或写入生成 `.xctestrun` 中该 target 的 `EnvironmentVariables`）。
+历史测试只读取这条会话，不发送请求；发送测试另建会话，结束后必须归档。
+
 安装生成测试 target 的 Ruby 依赖，然后添加测试 scheme：
 
 ```bash
@@ -54,6 +58,21 @@ xcodebuild \
 ```
 
 每次 `resultBundlePath` 应为空目录或使用新名称。XcodeBuildMCP 的 `test_sim` 同样可执行此 scheme。
+
+当前原生核心回归使用 `-only-testing:CodexMobileUITests/NativeConversationUITests`。
+历史 Web 键盘用例保留作完整页面的诊断，不能直接作为原生输入框的验收。
+
+纯状态回归可在 macOS 无模拟器运行：
+
+```bash
+swiftc -D NATIVE_CONVERSATION_STATE_TESTS \
+  mobile/ios/NativeConversationState.swift mobile/ios/NativeConversationStateTests.swift \
+  -o /tmp/codex-mobile-native-state-tests
+/tmp/codex-mobile-native-state-tests
+```
+
+Node.js 26 自带 WebStorage 会影响 JSDOM 的 `localStorage`；本机 Vitest 使用
+`NODE_OPTIONS=--no-experimental-webstorage npm test`，不修改产品存储行为。
 
 ## 2026-10-08 验证结果
 
@@ -126,3 +145,20 @@ iPhone 17 Pro / iOS 26.5 的 XCTest 和录屏检查结果：
 高度探针继续保留为诊断，但不再把原始 model / presentation 高度差单独作为闪烁断言：Core Animation 提交前，新布局和上一呈现帧可以短暂不同。回归使用实际帧采样计数、整个收起期间零几何动画、稳态位置和输入行为作为通过条件。空 textarea 的 WKWebView 辅助功能值可能等于 placeholder；最大化按钮未被暴露为 AXButton 时，测试按相邻输入框定位并验证高度确实展开。
 
 原生结果保留在 `.mobile-build/send-keyboard-verified.xcresult`（发送三场景通过）和 `.mobile-build/send-keyboard-done-verified.xcresult`（对号保留草稿回归）。测试探针仍仅由显式 UI 测试配置安装，不进入正式 IPA。
+
+## 2026-10-09 核心对话原生化验证
+
+iPhone 17 Pro / iOS 26.5，Xcode 27，测试构建 `0.2.130`。消息列表使用可复用 UITableView 行，输入使用 UITextView 与 keyboardLayoutGuide；稳定消息 ID 和首行偏移用于保持阅读位置。UIKit 视图位于独立容器内，与 WKWebView 为兄弟视图；显示原生时关闭底层网页的辅助功能暴露，隐藏后恢复。
+
+四项 XCTest 全部通过：
+
+- 中文多行草稿、Done 收键盘、再次编辑、返回侧栏再恢复草稿；原生输入与返回按钮均可实际点击。
+- 原生发送经现有 React 逻辑和真实网关完成，收到 `NATIVE_IOS_OK`，草稿由业务层清空。
+- 阅读长会话时状态更新保留行 ID 与屏幕偏移；“跳到最新”回到底部。
+- 加载更早消息后原有可见行和偏移保持，误差不超过 3pt。
+
+结果保留在主工作区 `.mobile-build/ios-native-release/native-host-verified.xcresult`。
+全量 Vitest 823 项、Python iOS 回归 87 项、TypeScript、前端构建和 Foundation 原生状态回归通过；独立规格与代码质量审查通过。
+多设备前后台切换、后台弹框过滤、Skill 光标回写、旧序列拒绝、中文 marked text、只读模式和中英文菜单亦有自动回归。
+
+模拟器结果不等同于真机覆盖安装、数据保留或真机中文输入法组词已验证。

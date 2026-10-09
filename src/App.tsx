@@ -4024,6 +4024,7 @@ function BackendWorkspace({
           active={active}
           backendId={backend.id}
           backendName={backend.name}
+          nativeForeground={conversationVisible}
           backends={backends.filter((entry) => entry.enabled)}
           projectOptions={projectOptions}
           loadState={conversationLoadState}

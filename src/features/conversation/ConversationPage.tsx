@@ -49,10 +49,13 @@ import {
 import { ImagePreviewSheet } from "./sheets/ImagePreviewSheet";
 import { useConversationAutoScroll } from "./conversation-scroll";
 import { useRealtimeConversation } from "./useRealtimeConversation";
-import { t } from "../../i18n";
+import { getActiveLocale, t } from "../../i18n";
 import videoPoster from "../../assets/video-poster.svg";
 import { RunProgress } from "./RunProgress";
 import type { HttpSyncState } from "../../backends/http-transport";
+import { nativeConversationRows } from "./native-conversation";
+import { useNativeConversation } from "./useNativeConversation";
+import { FONT_SCALES, readFontSize } from "../../ui/font-size";
 
 export type ConversationLoadState = "idle" | "loading" | "ready" | "error";
 
@@ -142,6 +145,7 @@ export function ConversationPage({
   active,
   backendId,
   backendName,
+  nativeForeground = true,
   backends,
   projectOptions,
   loadState,
@@ -205,6 +209,7 @@ export function ConversationPage({
   active: DisplayRecord;
   backendId: string;
   backendName: string;
+  nativeForeground?: boolean;
   backends: BackendConfig[];
   projectOptions: Array<{ cwd: string; name: string }>;
   loadState: ConversationLoadState;
@@ -286,6 +291,7 @@ export function ConversationPage({
   );
   const [activeSkillIndex, setActiveSkillIndex] = useState(0);
   const composerInputRef = useRef<HTMLTextAreaElement>(null);
+  const [nativeDraftCursor, setNativeDraftCursor] = useState<{ text: string; cursor: number; sequence: number } | null>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
   const attachmentPickerRef = useRef<HTMLDivElement>(null);
   const turns = useMemo(
@@ -414,8 +420,96 @@ export function ConversationPage({
       requestOlderTurns();
     }
   };
+  const nativeRows = useMemo(() => nativeConversationRows(active.turns ?? []), [active.turns]);
+  const nativeEnabled = interactive && !steering && !realtimeActive && !historyEdit;
+  const native = useNativeConversation({
+    foreground: nativeForeground,
+    snapshot: {
+      version: 1,
+      locale: getActiveLocale(), isNewChat,
+      contextId: `${backendId}:${active.id || `new:${active.cwd ?? ""}`}`,
+      title: titleOf(active),
+      subtitle: `${backendName} · ${active.isProjectless ? t("无项目") : active.cwd?.split("/").pop() || t("无项目")} · ${connection === "online" ? t("已连接") : t("连接中")}`,
+      draft,
+      draftCursor: nativeDraftCursor?.text === draft ? nativeDraftCursor.cursor : null,
+      draftCursorSequence: nativeDraftCursor?.text === draft ? nativeDraftCursor.sequence : null,
+      enabled: nativeEnabled,
+      sendEnabled: nativeEnabled && (busy ? (!canQueue || !imageReading) : !imageReading && hasDraft),
+      sendLabel: steering ? t("正在引导") : canQueue ? t("排队") : busy ? t("停止") : t("发送"),
+      busy, error: loadError || error || resumeError,
+      status: accessMode === "readOnly" ? t("该会话正在其他 Codex 客户端运行，当前为只读模式")
+        : operationPending ? t("发送状态确认中") : busy ? t("正在处理") : syncState?.stale ? t("等待同步") : "",
+      loadState, olderTurnsState, fontSize: 16 * FONT_SCALES[readFontSize()], rows: nativeRows,
+      attachments: [
+        ...draftImages.map((image) => ({ id: `image:${image.id}`, name: image.name, kind: "image" as const, url: image.url })),
+        ...draftFiles.map((file) => ({ id: `file:${file.id}`, name: file.name, kind: "file" as const })),
+      ],
+      mentions: matchingMentions.map((entry) => entry.kind === "skill"
+        ? { id: `skill:${entry.skill.path}`, label: skillDisplayName(entry.skill), description: skillDescription(entry.skill) }
+        : { id: `plugin:${entry.plugin.id}`, label: pluginDisplayName(entry.plugin), description: pluginDescription(entry.plugin) }),
+      projects: isNewChat ? [{ id: "", label: t("无项目") }, ...projectOptions.map((project) => ({ id: project.cwd, label: project.name }))] : [],
+      backends: isNewChat ? backends.map((backend) => ({ id: backend.id, label: backend.name })) : [],
+      selectedProject: active.cwd ?? "", selectedBackendId: backendId,
+      settingsLabel: `${selectedModelLabel} · ${effortLabel(selectedEffort)} · ${selectedPermissionLabel}`,
+      queued: queuedFollowUps.map((entry) => ({ id: entry.id, text: entry.text, failed: Boolean(entry.failed) })),
+    },
+    hasAttachments: Boolean(draftImages.length || draftFiles.length),
+    submissionBlocked: imageReading || (busy && isNewChat),
+    suspended: realtimeActive || Boolean(historyEdit),
+    onDraftChange: (text, cursor) => {
+      setNativeDraftCursor(null);
+      onDraftChange(text);
+      syncSkillMention(text, cursor ?? text.length);
+    },
+    onAction: (action) => {
+      switch (action.type) {
+        case "submit": onSubmit({ preventDefault() {} } as FormEvent); break;
+        case "back": onBack(); break;
+        case "retry": onRetry(); break;
+        case "loadOlder": requestOlderTurns(); break;
+        case "interrupt": if (nativeEnabled && busy) void onInterrupt(); break;
+        case "agentSettings": onOpenAgentSettings(); break;
+        case "permissionSettings": onOpenPermissionSettings(); break;
+        case "photos": if (nativeEnabled && !imageReading) photoInputRef.current?.click(); break;
+        case "files": if (nativeEnabled && !imageReading) imageInputRef.current?.click(); break;
+        case "location": if (nativeEnabled && !locationPending) {
+          setLocationPending(true); void onSelectLocation().finally(() => setLocationPending(false));
+        } break;
+        case "removeAttachment":
+          if (action.id?.startsWith("image:")) onRemoveImage(action.id.slice(6));
+          if (action.id?.startsWith("file:")) onRemoveFile(action.id.slice(5));
+          break;
+        case "mention": {
+          if (!nativeEnabled) break;
+          const mention = skillMentionAt(draft, action.cursor ?? skillMention?.end ?? draft.length);
+          const entry = matchingMentions.find((option) => (option.kind === "skill" ? `skill:${option.skill.path}` : `plugin:${option.plugin.id}`) === action.id);
+          if (mention && entry) {
+            const next = entry.kind === "skill" ? insertSkillMention(draft, mention, entry.skill) : insertPluginMention(draft, mention, entry.plugin);
+            setNativeDraftCursor({ text: next.text, cursor: next.cursor, sequence: action.sequence });
+            onDraftChange(next.text); setSkillMention(null);
+          }
+        } break;
+        case "project": if (isNewChat && nativeEnabled) onNewChatProjectChange(action.id ?? ""); break;
+        case "backend": if (isNewChat && nativeEnabled && action.id) onNewChatBackendChange(action.id); break;
+        case "pin": if (active.id) void onPin(); break;
+        case "duplicate": if (active.id && interactive) void onDuplicate(); break;
+        case "rename": if (active.id && interactive) void onRename(); break;
+        case "archive": if (active.id && interactive) void onArchive(); break;
+        case "edit": {
+          const row = nativeRows.find((entry) => entry.id === action.id);
+          if (row?.role === "user" && row.turnId && interactive && !busy && !steering) {
+            const target = createHistoricalMessageEditTarget(active.turns ?? [], row.turnId, row.messageId);
+            if (target) onEditUserMessage?.(target);
+          }
+        } break;
+        case "queuedAction": if (interactive && !steering && action.id) void onQueuedFollowUpAction(action.id); break;
+        case "queuedCancel": if (!steering && action.id) onQueuedFollowUpCancel(action.id); break;
+      }
+    },
+  });
   return (
     <section className="conversation">
+      {native.fullContent && <button type="button" className="native-conversation-return" onClick={native.restoreNative}>{t("返回原生对话")}</button>}
       <header className="conversation-header">
         <button
           className="round-button"

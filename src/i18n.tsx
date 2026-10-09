@@ -13,6 +13,11 @@ export type LanguagePreference = "system" | Locale;
 const LANGUAGE_STORAGE_KEY = "codex-mobile:language";
 
 const english: Record<string, string> = {
+  "正在处理": "Processing",
+  "等待同步": "Waiting for sync",
+  "返回原生对话": "Return to native conversation",
+  "附件消息": "Attachment message",
+  "活动": "Activity",
   "字体大小": "Font size",
   "小": "Small",
   "标准": "Standard",
