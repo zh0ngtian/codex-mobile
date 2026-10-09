@@ -10,6 +10,8 @@ final class KeyboardLayoutProbeWebView: CodexMobileWebView {
     private let probeLabel = UILabel()
     private let sendFocusLabel = UILabel()
     private let geometryLabel = UILabel()
+    private let scrollGeometryLabel = UILabel()
+    private var maximumScrollGeometryAnimations = 0
     private var maximumGeometryAnimations = 0
     private var measurementCount = 0
 
@@ -21,6 +23,10 @@ final class KeyboardLayoutProbeWebView: CodexMobileWebView {
         });
         """, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
         super.init(frame: frame, configuration: configuration)
+        scrollGeometryLabel.frame = CGRect(x: 0, y: 70, width: 1, height: 1)
+        scrollGeometryLabel.isAccessibilityElement = true
+        scrollGeometryLabel.accessibilityIdentifier = "codex.scroll-geometry-animation-count"
+        scrollGeometryLabel.accessibilityLabel = "not-sampled"
         geometryLabel.frame = CGRect(x: 0, y: 68, width: 1, height: 1)
         geometryLabel.isAccessibilityElement = true
         geometryLabel.accessibilityIdentifier = "codex.geometry-animation-count"
@@ -54,11 +60,14 @@ final class KeyboardLayoutProbeWebView: CodexMobileWebView {
         maximumHeightDifference = 0
         measurementCount = 0
         maximumGeometryAnimations = 0
+        maximumScrollGeometryAnimations = 0
+        scrollGeometryLabel.accessibilityLabel = "not-sampled"
         geometryLabel.accessibilityLabel = "not-sampled"
         measuringDismissal = true
         window?.addSubview(probeLabel)
         window?.addSubview(sendFocusLabel)
         window?.addSubview(geometryLabel)
+        window?.addSubview(scrollGeometryLabel)
         probeLabel.accessibilityLabel = "0"
         displayLink?.invalidate()
         let link = CADisplayLink(target: self, selector: #selector(measureHeightDifference))
@@ -78,18 +87,24 @@ final class KeyboardLayoutProbeWebView: CodexMobileWebView {
     @objc private func measureHeightDifference() {
         guard measuringDismissal, let presentation = layer.presentation() else { return }
         measurementCount += 1
-        let geometryAnimations = (layer.animationKeys() ?? []).filter { key in
-            guard let animation = layer.animation(forKey: key) as? CAPropertyAnimation,
-                  let path = animation.keyPath else { return false }
-            return path == "position" || path == "bounds" || path.hasPrefix("bounds.")
-        }.count
-        maximumGeometryAnimations = max(maximumGeometryAnimations, geometryAnimations)
+        maximumGeometryAnimations = max(maximumGeometryAnimations, geometryAnimationCount(layer))
         geometryLabel.accessibilityLabel = String(maximumGeometryAnimations)
+        // WKWebView 本身稳定仍不够：内部 UIScrollView 的 UIKit 动画也会与网页绘制错位。
+        maximumScrollGeometryAnimations = max(maximumScrollGeometryAnimations, geometryAnimationCount(scrollView.layer))
+        scrollGeometryLabel.accessibilityLabel = String(maximumScrollGeometryAnimations)
         // model / presentation 在事务提交前允许短暂不同；高度差只作诊断，
         // 回归用动画数量和收起后的连续位置采样判断是否存在几何动画或跳动。
         let difference = abs(bounds.height - presentation.bounds.height)
         maximumHeightDifference = max(maximumHeightDifference, difference)
         probeLabel.accessibilityLabel = String(format: "%.2f", Double(maximumHeightDifference))
         probeLabel.accessibilityValue = String(measurementCount)
+    }
+
+    private func geometryAnimationCount(_ target: CALayer) -> Int {
+        (target.animationKeys() ?? []).filter { key in
+            guard let animation = target.animation(forKey: key) as? CAPropertyAnimation,
+                  let path = animation.keyPath else { return false }
+            return path == "position" || path == "bounds" || path.hasPrefix("bounds.")
+        }.count
     }
 }

@@ -608,6 +608,18 @@ jobs:
 
           class CodexMobileWebView: WKWebView {
               override class var layerClass: AnyClass { CodexMobileWebViewLayer.self }
+
+              // 在尺寸写入入口退出 UIKit 动画上下文，内部 scrollView 才不会继续插值旧尺寸。
+              // 仅取消原生容器几何动画，不影响网页内容、光标和 CSS 动画。
+              override var frame: CGRect {
+                  get { super.frame }
+                  set { UIView.performWithoutAnimation { super.frame = newValue } }
+              }
+
+              override var bounds: CGRect {
+                  get { super.bounds }
+                  set { UIView.performWithoutAnimation { super.bounds = newValue } }
+              }
           }
 
           extension Coordinator {

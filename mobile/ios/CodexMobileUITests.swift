@@ -42,6 +42,9 @@ final class CodexMobileUITests: XCTestCase {
             let heightDifference = try XCTUnwrap(Double(probe.label))
             print("KEYBOARD_DISMISSAL_GAP draftLength=\(draft.count) maximum=\(heightDifference)")
             XCTAssertEqual(app.staticTexts["codex.geometry-animation-count"].label, "0")
+            let scrollAnimations = app.staticTexts["codex.scroll-geometry-animation-count"]
+            print("SCROLL_GEOMETRY_ANIMATIONS maximum=\(scrollAnimations.label)")
+            XCTAssertEqual(scrollAnimations.label, "0", "键盘收起时原生滚动容器不应与网页布局使用不同的动画尺寸")
             let frame = input.frame
             for _ in 0..<12 {
                 RunLoop.current.run(until: Date().addingTimeInterval(0.1))
@@ -63,6 +66,45 @@ final class CodexMobileUITests: XCTestCase {
         }
     }
 
+    func testRepeatedKeyboardDismissalPreservesUrlDraft() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication(bundleIdentifier: "vip.loock.codexmobile")
+        app.launch()
+        let input = openNewChat(app)
+        let draft = "nsk-sign://addsource?url=%E6%BA%90%E5%9C%B0%E5%9D%80"
+        for cycle in 0..<3 {
+            input.tap()
+            if cycle == 0 { input.typeText(draft) }
+            XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+            XCTAssertEqual(input.value as? String, draft)
+            let before = XCTAttachment(screenshot: app.screenshot())
+            before.name = "URL草稿收起前-\(cycle)"
+            before.lifetime = .keepAlways
+            add(before)
+            let done = app.toolbars.buttons["Done"]
+            if done.exists { done.tap() } else { app.toolbars.buttons["完成"].tap() }
+            XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
+            let probe = app.staticTexts["codex.keyboard-dismissal-height-difference"]
+            XCTAssertTrue(probe.waitForExistence(timeout: 3))
+            print("URL_DISMISSAL cycle=\(cycle) gap=\(probe.label)")
+            XCTAssertGreaterThan(try XCTUnwrap(Int(probe.value as? String ?? "")), 0)
+            XCTAssertEqual(app.staticTexts["codex.geometry-animation-count"].label, "0")
+            let scrollAnimations = app.staticTexts["codex.scroll-geometry-animation-count"]
+            print("SCROLL_GEOMETRY_ANIMATIONS maximum=\(scrollAnimations.label)")
+            XCTAssertEqual(scrollAnimations.label, "0", "键盘收起时原生滚动容器不应与网页布局使用不同的动画尺寸")
+            let frame = input.frame
+            for _ in 0..<12 {
+                RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+                XCTAssertEqual(input.frame.minY, frame.minY, accuracy: 1)
+                XCTAssertEqual(input.value as? String, draft)
+            }
+            let after = XCTAttachment(screenshot: app.screenshot())
+            after.name = "URL草稿收起后-\(cycle)"
+            after.lifetime = .keepAlways
+            add(after)
+        }
+    }
+
     func testSendingDismissesKeyboardWithoutFlicker() throws {
         continueAfterFailure = false
         addUIInterruptionMonitor(withDescription: "发送通知授权") { alert in
@@ -77,6 +119,7 @@ final class CodexMobileUITests: XCTestCase {
             app.launch()
             let input = openNewChat(app)
             if maximized {
+                let collapsedInputHeight = input.frame.height
                 let maximize = app.descendants(matching: .any).matching(identifier: "最大化输入框").firstMatch
                 if maximize.exists { maximize.tap() }
                 else {
@@ -84,7 +127,8 @@ final class CodexMobileUITests: XCTestCase {
                     input.coordinate(withNormalizedOffset: CGVector(dx: 1, dy: 0.5))
                         .withOffset(CGVector(dx: 17, dy: 0)).tap()
                 }
-                XCTAssertGreaterThan(input.frame.height, app.frame.height * 0.2, "最大化输入框应展开")
+                // 键盘已经出现时可用高度会缩小，比较展开前后实际输入区域。
+                XCTAssertGreaterThan(input.frame.height, collapsedInputHeight * 2, "最大化输入框应展开")
             }
             input.tap()
             let marker = "IOS_SEND_STABLE_\(index)"
@@ -109,6 +153,9 @@ final class CodexMobileUITests: XCTestCase {
             XCTAssertEqual(geometry.label, "0", "发送收起过程中不应追加主图层几何动画")
             // WKWebView 的辅助功能会用 placeholder 代表空 textarea。
             XCTAssertTrue(["", "向 Codex 提问"].contains(input.value as? String ?? ""))
+            let scrollAnimations = app.staticTexts["codex.scroll-geometry-animation-count"]
+            print("SCROLL_GEOMETRY_ANIMATIONS maximum=\(scrollAnimations.label)")
+            XCTAssertEqual(scrollAnimations.label, "0", "键盘收起时原生滚动容器不应与网页布局使用不同的动画尺寸")
             let frame = input.frame
             for _ in 0..<12 {
                 RunLoop.current.run(until: Date().addingTimeInterval(0.1))
