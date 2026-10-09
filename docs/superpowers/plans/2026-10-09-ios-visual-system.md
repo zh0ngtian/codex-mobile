@@ -28,8 +28,8 @@
 - [x] 实际检查默认/大字号、浅色/深色、375pt 小屏、大屏和横屏/平板受支持范围；不以源码检查代替截图。
 - [x] 运行新增 UI 回归与原有草稿、发送、历史锚点回归；UI helper 只归档本轮产生的测试会话。
 - [x] 检查相关 Vitest、TypeScript、前端构建、Foundation、Git diff 和独立 Apple API 复审。
-- [ ] 按中文 Conventional Commits 提交推送并合入 main；统一更高版本构建 APK 与已签名 IPA，发布固定 LAN 与 HTTPS OTA。
-- [ ] JSON、HEAD、完整 GET 核对双端版本、字节与 SHA-256，保留截图、停止临时网关、归档 worktree。
+- [x] 按中文 Conventional Commits 提交推送并合入 main；统一更高版本构建 APK 与已签名 IPA，发布固定 LAN 与 HTTPS OTA。
+- [x] JSON、HEAD、完整 GET 核对双端版本、字节与 SHA-256，保留截图与产物、停止临时网关；worktree 归档状态以本任务附件为准。
 
 
 ## 验收证据
@@ -43,3 +43,14 @@
 - 追加视觉缺陷回归：最大字号末列文字左侧原为 7.5pt（小于阅读边界20pt），修复列宽上限后完整可见断言通过。
 
 - Xcode 的部分结果包导出收尾超时，验收断言已结束并显示通过；UI helper 同时保存同一 screenshot 的 PNG 原图到测试 Runner Documents，平板和短气泡证据由此保留。
+
+
+## 双端交付记录
+
+- 运行代码提交：`9973d75`；已保留并集成并行的 main 通知修复。集成后 Vitest 836 项 / 92 文件通过，前端类型与构建通过。
+- 版本：Android / iOS 均为 `0.2.132`。固定清单、HEAD、完整 GET 的大小与 SHA-256 一致；HTTPS OTA 使用本机已信任 CA 校验。
+- APK：4,708,263 字节；SHA-256 `9d3c4bd814378a453daa2749828ec4d181bb3943071e91d917aeae13f2bdce8b`。
+- IPA：3,907,096 字节；SHA-256 `50b8f3dbab44b1ca0dec8490ac61b367d9c80ba5dec593df74624616fa84628f`；Ad Hoc 已签名，保留安装 Bundle ID、application-identifier 与钥匙串组连续性。
+- [固定 OTA 安装页](https://192.168.123.79:8766/channels/codex-mobile/current/install.html)、[固定 APK](http://192.168.123.79:8765/channels/codex-mobile/latest.apk)、[固定 IPA](http://192.168.123.79:8765/channels/codex-mobile/latest.ipa)。
+- 原始 UI 证据与发布产物保留在主工作区 `.mobile-build/ios-visual-system-audit/`；三个本轮测试会话已归档，专用网关已停止，专用小屏模拟器已删除。固定 OTA 服务仍绑定长期主工作区。
+- 此轮为模拟器 UI、构建与验签验证；真机覆盖安装与数据保留未实测。
