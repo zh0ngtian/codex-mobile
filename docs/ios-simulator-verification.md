@@ -1,6 +1,6 @@
 # iOS 本地构建与模拟器验证
 
-Codex Mobile iOS 使用固定提交的 PakePlus SwiftUI / WKWebView 容器，对话消息列表、输入区与会话边栏由 UIKit 原生界面承载。React 继续管理连接、会话、草稿和写操作，原生通过带上下文与序列号的快照和事件交互；设置、设备管理与复杂内容保留网页入口。设备地址和口令由用户在 App 中添加，构建产物不携带私人网关配置。
+Codex Mobile iOS 复用当前 React 前端，内置于固定提交的 PakePlus SwiftUI / WKWebView 容器。设备地址和口令由用户在 App 中添加，构建产物不携带私人网关配置。
 
 ## 生成与运行
 
@@ -39,10 +39,6 @@ CODEX_MOBILE_SERVE_STATIC=false npm start
 
 这个口令仅用于本机临时测试。测试结束后关闭该终端网关。
 
-原生回归还需要一条有更早分页消息的真实长会话。将其标题设置为测试 scheme 的
-`NATIVE_IOS_SCROLL_THREAD_TITLE` 环境变量（或写入生成 `.xctestrun` 中该 target 的 `EnvironmentVariables`）。
-历史测试只读取这条会话，不发送请求；发送测试另建会话，结束后必须归档。
-
 安装生成测试 target 的 Ruby 依赖，然后添加测试 scheme：
 
 ```bash
@@ -58,21 +54,6 @@ xcodebuild \
 ```
 
 每次 `resultBundlePath` 应为空目录或使用新名称。XcodeBuildMCP 的 `test_sim` 同样可执行此 scheme。
-
-当前原生核心回归使用 `-only-testing:CodexMobileUITests/NativeConversationUITests`。
-历史 Web 键盘用例保留作完整页面的诊断，不能直接作为原生输入框的验收。
-
-纯状态回归可在 macOS 无模拟器运行：
-
-```bash
-swiftc -D NATIVE_CONVERSATION_STATE_TESTS \
-  mobile/ios/NativeConversationState.swift mobile/ios/NativeConversationStateTests.swift \
-  -o /tmp/codex-mobile-native-state-tests
-/tmp/codex-mobile-native-state-tests
-```
-
-Node.js 26 自带 WebStorage 会影响 JSDOM 的 `localStorage`；本机 Vitest 使用
-`NODE_OPTIONS=--no-experimental-webstorage npm test`，不修改产品存储行为。
 
 ## 2026-10-08 验证结果
 
@@ -146,75 +127,11 @@ iPhone 17 Pro / iOS 26.5 的 XCTest 和录屏检查结果：
 
 原生结果保留在 `.mobile-build/send-keyboard-verified.xcresult`（发送三场景通过）和 `.mobile-build/send-keyboard-done-verified.xcresult`（对号保留草稿回归）。测试探针仍仅由显式 UI 测试配置安装，不进入正式 IPA。
 
-## 2026-10-09 核心对话原生化验证
 
-iPhone 17 Pro / iOS 26.5，Xcode 27，测试构建 `0.2.130`。消息列表使用可复用 UITableView 行，输入使用 UITextView 与 keyboardLayoutGuide；稳定消息 ID 和首行偏移用于保持阅读位置。UIKit 视图位于独立容器内，与 WKWebView 为兄弟视图；显示原生时关闭底层网页的辅助功能暴露，隐藏后恢复。
+## 2026-10-10 恢复网页界面
 
-四项 XCTest 全部通过：
+按用户要求移除原生对话、原生边栏、原生 Markdown 和界面切换；网页对话与边栏恢复到原生化之前的实现（`6dc2607` 界面基线）。原有 WKWebView 容器、附件选择、内置浏览器、检查更新、通知深链与键盘修复保留；同期隐藏辅助会话不发送完成通知修复保留。
 
-- 中文多行草稿、Done 收键盘、再次编辑、返回侧栏再恢复草稿；原生输入与返回按钮均可实际点击。
-- 原生发送经现有 React 逻辑和真实网关完成，收到 `NATIVE_IOS_OK`，草稿由业务层清空。
-- 阅读长会话时状态更新保留行 ID 与屏幕偏移；“跳到最新”回到底部。
-- 加载更早消息后原有可见行和偏移保持，误差不超过 3pt。
+全量825项Vitest/92个文件、87项iOS Python回归、类型检查和前端构建通过。旧安装偏好和迟到原生事件不能改写网页草稿或搜索的新回归先失败、恢复后通过；界面专属73个文件或删除项逐字核对基线，独立审查通过。
 
-结果保留在主工作区 `.mobile-build/ios-native-release/native-host-verified.xcresult`。
-全量 Vitest 823 项、Python iOS 回归 87 项、TypeScript、前端构建和 Foundation 原生状态回归通过；独立规格与代码质量审查通过。
-多设备前后台切换、后台弹框过滤、Skill 光标回写、旧序列拒绝、中文 marked text、只读模式和中英文菜单亦有自动回归。
-
-模拟器结果不等同于真机覆盖安装、数据保留或真机中文输入法组词已验证。
-
-
-## 2026-10-09 对话可读性重做
-
-本轮参考 [ChatGPT 官方 App Store 截图](https://apps.apple.com/us/app/chatgpt/id6448311069)，先捕获旧界面再实现与检查原生画面。原始失效回归确认空输入框只有 16pt 宽；新版输入区设置明确左右约束，空态宽度回归通过，发送按钮为 44×44pt。
-
-当前界面采用一行顶栏、右侧用户气泡、左侧分块回复和底部圆角输入区。模型、权限、项目与设备入口移至菜单，工具与过程说明折叠为活动详情。Markdown 标题、段落、列表、引用、代码与横向表格分别排版；代码可复制，文字与表格可选择，列表保留起始编号。排队消息用单行入口与子菜单，避免挤满阅读区域。
-
-已逐张检查实际截图，而不是用单元测试代替视觉验收：
-
-| 空白对话 | 键盘展开 |
-| --- | --- |
-| ![空白对话](assets/ios-simulator/chat-redesign/empty.png) | ![键盘展开](assets/ios-simulator/chat-redesign/keyboard.png) |
-
-| 浅色回复 | 深色回复 |
-| --- | --- |
-| ![浅色回复](assets/ios-simulator/chat-redesign/reply-light.png) | ![深色回复](assets/ios-simulator/chat-redesign/reply-dark.png) |
-
-验证环境：iPhone 17 Pro / iOS 26.5；9 个独立原生 UI 用例分别验证空输入框几何、页面截图、真实 Markdown 回复、回复截图、活动详情、草稿收起与恢复、真实发送、历史阅读锚点、分页锚点；相关用例额外重跑浅色和深色截图。35 个原始 Markdown 用例及编号修复新增 2 个用例，共 37 项 Foundation 回归通过，原有状态回归通过。全量 Vitest 824 项/92 文件，Python iOS 87 项，TypeScript 和前端构建通过；最后修改相关 Vitest 25 项重新通过。独立代码与视觉复审发现并修复附件高度冲突、空白正文崩溃、表格链接入口、有序编号与多队列高度问题。
-
-本机原始截图与 xcresult 归档在 `.mobile-build/chat-redesign-audit/`；计划见 [重做计划](superpowers/plans/2026-10-09-ios-chat-redesign.md)。模拟器截图、构建与验签不代表已验证真机覆盖安装及数据保留。
-
-
-回复截图用例的 `NATIVE_IOS_DESIGN_THREAD_TITLE` 指向本轮真实发送产生的 Markdown 测试会话，只用于显式视觉采样；未配置时跳过此截图用例，真实 Markdown 功能测试仍独立创建会话并验收。截图完成后归档测试会话，不把历史测试夹具留在用户列表中。
-
-本次交付 `0.2.131`，客户端源码提交 `ce14c22`，已推送 `main`。固定渠道 JSON、HEAD 和完整 GET 均核对通过；HTTPS OTA 用本机 CA 校验清单、IPA 和安装页。
-
-| 产物 | 版本 | 大小（字节） | SHA-256 |
-| --- | --- | --- | --- |
-| APK | 0.2.131 | 4,708,319 | `dc6c46352d186da716c6c4355a8f1231257a2a2646c83550b86823bb8a351461` |
-| IPA（Ad Hoc 已签名） | 0.2.131 | 3,898,985 | `59d76e30dc5d4b3aaf1bcab9fe71973b79a00aa7ee3e3ebecca87e19265f2389` |
-
-安装入口：[固定 OTA 安装页](https://192.168.123.79:8766/channels/codex-mobile/current/install.html)、[固定 IPA](http://192.168.123.79:8765/channels/codex-mobile/latest.ipa)、[固定 APK](http://192.168.123.79:8765/channels/codex-mobile/latest.apk)。本轮两条测试会话已归档，临时网关已停止，模拟器恢复浅色并释放占用。
-
-
-## 2026-10-09 会话边栏原生化
-
-客户端源码提交 `a41d76b`，已推送 `main`。沿用 ui-ux-pro-max 的黑白灰规范，UIKit 承载会话列表、UISearchTextField、设备菜单、项目折叠与分页、下拉刷新、上下文菜单、原生重命名和 VoiceOver 操作。业务仍由 React 管理，原生只投影当前状态并发送带上下文、序列号的意图；原生可见时隐藏旧 Web 抽屉，网页设备管理或桥异常时恢复回退入口。
-
-普通手机与 375pt 小屏、iPad、深色、系统最大辅助字号、搜索键盘和断网错误均经过真实模拟器验收，并查看原始截图。辅助字号下收起品牌标题和设备统计，避免挤压列表；搜索关闭清除查询并收起键盘，返回对话保留未发送草稿。全量 Vitest 93 个文件/843 项、Python iOS 87 项、Swift Markdown 37 项及 Conversation/Sidebar 状态回归、TypeScript 与前端构建通过；独立规范与质量复核通过。
-
-新增 `NativeSidebarUITests` 使用已有列表进行只读验收，仅创建未发送草稿，取消重命名并恢复项目折叠，没有新增服务端测试会话。断网用例 `testSearchFailureRemainsVisibleWithKeyboard` 必须在专用网关停止后显式设置 `NATIVE_SIDEBAR_OFFLINE_TEST=1`；常规运行会跳过。截图导出使用 `NATIVE_IOS_EXPORT_SCREENSHOTS=1`，原图位于测试 Runner 的 Documents/NativeSidebarCaptures。主工作区证据保存在忽略目录 `.mobile-build/ios-native-sidebar-audit/`；真实列表截图不提交仓库。执行与失效修复记录见 [实施计划](superpowers/plans/2026-10-09-ios-native-sidebar.md)。
-
-模拟器验收与安装包验签不代表真机覆盖安装、真机输入法或数据保留已验证。
-
-
-固定渠道交付版本 `0.2.133`。HTTP 双端清单、HEAD 和完整 GET 均验证版本、大小与 SHA-256；HTTPS OTA 清单、IPA 和安装页使用本机 CA 验证。APK 签名验证通过，IPA Ad Hoc 验签通过，Bundle ID、application-identifier 与钥匙串组连续。
-
-| 产物 | 版本 | 大小（字节） | SHA-256 |
-| --- | --- | --- | --- |
-| APK | 0.2.133 | 4,710,751 | `9dd53bb0535c7a05b6aa9153e9d973bd72c45429315d051c957efc729eaffa26` |
-| IPA（Ad Hoc 已签名） | 0.2.133 | 3,996,170 | `d5c34d51de91a6ed0bc43ffd92cd23261acbc62fb8263c3d654a8b4730d02e02` |
-
-安装入口：[固定 OTA 安装页](https://192.168.123.79:8766/channels/codex-mobile/current/install.html)、[固定 IPA](http://192.168.123.79:8765/channels/codex-mobile/latest.ipa)、[固定 APK](http://192.168.123.79:8765/channels/codex-mobile/latest.apk)。本次网关已停止，小屏测试模拟器已删除，iPad 已恢复关闭，普通模拟器恢复浅色并释放占用；安装包、签名报告和下载验证结果保存在主工作区证据目录。
-
-任务工作树归档受到平台的置顶任务或工作区保护，已保留；本次临时构建缓存已清理。
+iPhone 17 Pro / iOS26.5成功构建启动；既有 `testBottomBarsClearHomeIndicatorWithoutKeyboard` 和 `testRepeatedKeyboardDismissalPreservesUrlDraft` 两项通过，覆盖原网页边栏/输入、底部安全区、键盘反复收起及草稿保持。本轮未发送测试消息或创建服务器会话。真实截图、日志和结果保存在主工作区 `.mobile-build/ui-rollback-audit/`；模拟器验证不代表真机覆盖安装和数据保留已验证。

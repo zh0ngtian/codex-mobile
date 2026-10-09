@@ -3,7 +3,6 @@ import {
   type RefObject,
   type UIEventHandler,
   useEffect,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -43,20 +42,17 @@ import { groupConversationTurns } from "../../ui/conversation";
 import { ErrorBanner } from "../../ui/ErrorBanner";
 import { TurnCard } from "./Timeline";
 import {
+  ContextUsageButton,
   ConversationActionMenu,
   ConversationStatusSheet,
 } from "./ConversationControls";
 import { ImagePreviewSheet } from "./sheets/ImagePreviewSheet";
 import { useConversationAutoScroll } from "./conversation-scroll";
 import { useRealtimeConversation } from "./useRealtimeConversation";
-import { getActiveLocale, t } from "../../i18n";
+import { t } from "../../i18n";
 import videoPoster from "../../assets/video-poster.svg";
 import { RunProgress } from "./RunProgress";
 import type { HttpSyncState } from "../../backends/http-transport";
-import { nativeConversationRows } from "./native-conversation";
-import { useNativeConversation } from "./useNativeConversation";
-import { FONT_SCALES, readFontSize } from "../../ui/font-size";
-import { Chevron } from "../../ui/icons";
 
 export type ConversationLoadState = "idle" | "loading" | "ready" | "error";
 
@@ -146,7 +142,6 @@ export function ConversationPage({
   active,
   backendId,
   backendName,
-  nativeForeground = true,
   backends,
   projectOptions,
   loadState,
@@ -210,7 +205,6 @@ export function ConversationPage({
   active: DisplayRecord;
   backendId: string;
   backendName: string;
-  nativeForeground?: boolean;
   backends: BackendConfig[];
   projectOptions: Array<{ cwd: string; name: string }>;
   loadState: ConversationLoadState;
@@ -281,9 +275,6 @@ export function ConversationPage({
   const [statusOpen, setStatusOpen] = useState(false);
   const [actionsOpen, setActionsOpen] = useState(false);
   const [composerMaximized, setComposerMaximized] = useState(false);
-  const [composerMultiline, setComposerMultiline] = useState(false);
-  const conversationRef = useRef<HTMLElement>(null);
-  const composerWrapRef = useRef<HTMLFormElement>(null);
   const [attachmentMenuOpen, setAttachmentMenuOpen] = useState(false);
   const [locationPending, setLocationPending] = useState(false);
   const [queuedFollowUpEdit, setQueuedFollowUpEdit] = useState<{
@@ -295,7 +286,6 @@ export function ConversationPage({
   );
   const [activeSkillIndex, setActiveSkillIndex] = useState(0);
   const composerInputRef = useRef<HTMLTextAreaElement>(null);
-  const [nativeDraftCursor, setNativeDraftCursor] = useState<{ text: string; cursor: number; sequence: number } | null>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
   const attachmentPickerRef = useRef<HTMLDivElement>(null);
   const turns = useMemo(
@@ -303,12 +293,6 @@ export function ConversationPage({
     [active.turns],
   );
   const isNewChat = !active.id;
-  const projectName = active.isProjectless
-    ? t("无项目")
-    : projectOptions.find((project) => project.cwd === active.cwd)?.name
-      ?? (active.cwd?.split("/").pop() || t("无项目"));
-  const connectionLabel = connection === "online"
-    ? t("已连接") : connection === "offline" ? t("未连接") : t("连接中");
   const hasDraft = Boolean(draft.trim() || draftImages.length || draftFiles.length);
   const canQueue = busy && !isNewChat && hasDraft;
   const realtime = useRealtimeConversation({
@@ -337,54 +321,6 @@ export function ConversationPage({
     if (!composerMaximized) return;
     composerInputRef.current?.focus({ preventScroll: true });
   }, [composerMaximized]);
-
-  useLayoutEffect(() => {
-    const input = composerInputRef.current;
-    if (!input) return;
-    const measure = () => {
-      if (composerMaximized) {
-        input.style.height = "";
-        return;
-      }
-      const style = window.getComputedStyle(input);
-      const lineHeight = parseFloat(style.lineHeight)
-        || (parseFloat(style.fontSize) || 17) * 1.5;
-      const padding = (parseFloat(style.paddingTop) || 0)
-        + (parseFloat(style.paddingBottom) || 0);
-      input.style.height = "auto";
-      const height = Math.max(lineHeight + padding, input.scrollHeight);
-      const maxHeight = Math.max(lineHeight + padding,
-        Math.min(lineHeight * 5 + padding, window.innerHeight * .3));
-      input.style.height = `${Math.min(height, maxHeight)}px`;
-      setComposerMultiline(draft.includes("\n") || height > lineHeight + padding + 1);
-    };
-    measure();
-    const resize = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
-    resize?.observe(input);
-    const fontChanges = new MutationObserver(measure);
-    fontChanges.observe(document.documentElement, {
-      attributes: true, attributeFilter: ["style", "class"],
-    });
-    window.addEventListener("resize", measure);
-    return () => {
-      resize?.disconnect();
-      fontChanges.disconnect();
-      window.removeEventListener("resize", measure);
-    };
-  }, [draft, composerMaximized]);
-
-  useLayoutEffect(() => {
-    const form = composerWrapRef.current;
-    if (!form) return;
-    const measure = () => {
-      conversationRef.current?.style.setProperty("--web-composer-height",
-        `${Math.ceil(form.getBoundingClientRect().height)}px`);
-    };
-    measure();
-    const resize = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
-    resize?.observe(form);
-    return () => resize?.disconnect();
-  }, []);
 
   useEffect(() => {
     if (!attachmentMenuOpen) return;
@@ -478,97 +414,8 @@ export function ConversationPage({
       requestOlderTurns();
     }
   };
-  const nativeRows = useMemo(() => nativeConversationRows(active.turns ?? []), [active.turns]);
-  const nativeEnabled = interactive && !steering && !realtimeActive && !historyEdit;
-  const native = useNativeConversation({
-    foreground: nativeForeground,
-    snapshot: {
-      version: 1,
-      locale: getActiveLocale(), isNewChat,
-      contextId: `${backendId}:${active.id || `new:${active.cwd ?? ""}`}`,
-      title: titleOf(active),
-      subtitle: `${backendName} · ${active.isProjectless ? t("无项目") : active.cwd?.split("/").pop() || t("无项目")} · ${connection === "online" ? t("已连接") : t("连接中")}`,
-      draft,
-      draftCursor: nativeDraftCursor?.text === draft ? nativeDraftCursor.cursor : null,
-      draftCursorSequence: nativeDraftCursor?.text === draft ? nativeDraftCursor.sequence : null,
-      enabled: nativeEnabled,
-      sendEnabled: nativeEnabled && (busy ? (!canQueue || !imageReading) : !imageReading && hasDraft),
-      sendLabel: steering ? t("正在引导") : canQueue ? t("排队") : busy ? t("停止") : t("发送"),
-      busy, error: loadError || error || (accessMode === "readOnly" ? "" : resumeError),
-      status: accessMode === "readOnly" ? t("该会话正在其他 Codex 客户端运行，当前为只读模式")
-        : operationPending ? t("发送状态确认中") : busy ? t("正在处理") : syncState?.stale ? t("等待同步") : "",
-      loadState, olderTurnsState, fontSize: 16 * FONT_SCALES[readFontSize()], rows: nativeRows,
-      attachments: [
-        ...draftImages.map((image) => ({ id: `image:${image.id}`, name: image.name, kind: "image" as const, url: image.url })),
-        ...draftFiles.map((file) => ({ id: `file:${file.id}`, name: file.name, kind: "file" as const })),
-      ],
-      mentions: matchingMentions.map((entry) => entry.kind === "skill"
-        ? { id: `skill:${entry.skill.path}`, label: skillDisplayName(entry.skill), description: skillDescription(entry.skill) }
-        : { id: `plugin:${entry.plugin.id}`, label: pluginDisplayName(entry.plugin), description: pluginDescription(entry.plugin) }),
-      projects: isNewChat ? [{ id: "", label: t("无项目") }, ...projectOptions.map((project) => ({ id: project.cwd, label: project.name }))] : [],
-      backends: isNewChat ? backends.map((backend) => ({ id: backend.id, label: backend.name })) : [],
-      selectedProject: active.cwd ?? "", selectedBackendId: backendId,
-      settingsLabel: `${selectedModelLabel} · ${effortLabel(selectedEffort)} · ${selectedPermissionLabel}`,
-      modelLabel: selectedModelLabel,
-      queued: queuedFollowUps.map((entry) => ({ id: entry.id, text: entry.text, failed: Boolean(entry.failed) })),
-    },
-    hasAttachments: Boolean(draftImages.length || draftFiles.length),
-    submissionBlocked: imageReading || (busy && isNewChat),
-    suspended: realtimeActive || Boolean(historyEdit),
-    onDraftChange: (text, cursor) => {
-      setNativeDraftCursor(null);
-      onDraftChange(text);
-      syncSkillMention(text, cursor ?? text.length);
-    },
-    onAction: (action) => {
-      switch (action.type) {
-        case "submit": onSubmit({ preventDefault() {} } as FormEvent); break;
-        case "back": onBack(); break;
-        case "retry": onRetry(); break;
-        case "loadOlder": requestOlderTurns(); break;
-        case "interrupt": if (nativeEnabled && busy) void onInterrupt(); break;
-        case "agentSettings": onOpenAgentSettings(); break;
-        case "permissionSettings": onOpenPermissionSettings(); break;
-        case "photos": if (nativeEnabled && !imageReading) photoInputRef.current?.click(); break;
-        case "files": if (nativeEnabled && !imageReading) imageInputRef.current?.click(); break;
-        case "location": if (nativeEnabled && !locationPending) {
-          setLocationPending(true); void onSelectLocation().finally(() => setLocationPending(false));
-        } break;
-        case "removeAttachment":
-          if (action.id?.startsWith("image:")) onRemoveImage(action.id.slice(6));
-          if (action.id?.startsWith("file:")) onRemoveFile(action.id.slice(5));
-          break;
-        case "mention": {
-          if (!nativeEnabled) break;
-          const mention = skillMentionAt(draft, action.cursor ?? skillMention?.end ?? draft.length);
-          const entry = matchingMentions.find((option) => (option.kind === "skill" ? `skill:${option.skill.path}` : `plugin:${option.plugin.id}`) === action.id);
-          if (mention && entry) {
-            const next = entry.kind === "skill" ? insertSkillMention(draft, mention, entry.skill) : insertPluginMention(draft, mention, entry.plugin);
-            setNativeDraftCursor({ text: next.text, cursor: next.cursor, sequence: action.sequence });
-            onDraftChange(next.text); setSkillMention(null);
-          }
-        } break;
-        case "project": if (isNewChat && nativeEnabled) onNewChatProjectChange(action.id ?? ""); break;
-        case "backend": if (isNewChat && nativeEnabled && action.id) onNewChatBackendChange(action.id); break;
-        case "pin": if (active.id) void onPin(); break;
-        case "duplicate": if (active.id && interactive) void onDuplicate(); break;
-        case "rename": if (active.id && interactive) void onRename(); break;
-        case "archive": if (active.id && interactive) void onArchive(); break;
-        case "edit": {
-          const row = nativeRows.find((entry) => entry.id === action.id);
-          if (row?.role === "user" && row.turnId && interactive && !busy && !steering) {
-            const target = createHistoricalMessageEditTarget(active.turns ?? [], row.turnId, row.messageId);
-            if (target) onEditUserMessage?.(target);
-          }
-        } break;
-        case "queuedAction": if (interactive && !steering && action.id) void onQueuedFollowUpAction(action.id); break;
-        case "queuedCancel": if (!steering && action.id) onQueuedFollowUpCancel(action.id); break;
-      }
-    },
-  });
   return (
-    <section className="conversation web-conversation" ref={conversationRef}>
-      {native.fullContent && <button type="button" className="native-conversation-return" onClick={native.restoreNative}>{t("返回原生对话")}</button>}
+    <section className="conversation">
       <header className="conversation-header">
         <button
           className="round-button"
@@ -578,56 +425,48 @@ export function ConversationPage({
           <AppIcon name="menu" />
         </button>
         <div className="thread-heading">
-          <h1 className="visually-hidden"><strong>{titleOf(active)}</strong></h1>
-          <button
-            type="button"
-            className="conversation-model-button"
-            aria-label={t("选择模型、智能与速度")}
-            title={`${selectedModelLabel} · ${effortLabel(selectedEffort)}`}
-            disabled={!interactive}
-            onClick={onOpenAgentSettings}
-          >
-            <span>Codex</span>
-            <Chevron direction="down" />
-          </button>
+          <strong>{titleOf(active)}</strong>
+          <span>
+            <i className={`status-dot ${connection}`} />
+            {backendName} · {active.isProjectless
+              ? t("无项目")
+              : active.cwd?.split("/").pop() || t("无项目")} ·{" "}
+            {connection === "online" ? t("已连接") : t("连接中")}
+          </span>
         </div>
-        <button
-          className="round-button"
-          type="button"
-          aria-label={t("会话操作")}
-          aria-haspopup="dialog"
-          aria-expanded={actionsOpen}
-          onClick={() => {
-            setStatusOpen(false);
-            setActionsOpen((current) => !current);
-          }}
-        >
-          <AppIcon name="more" />
-        </button>
+        {!!active.id && (
+          <div
+            className="conversation-header-actions"
+            role="group"
+            aria-label={t("会话详情操作")}
+          >
+            <ContextUsageButton
+              tokenUsage={tokenUsage}
+              onClick={() => {
+                setActionsOpen(false);
+                setStatusOpen(true);
+              }}
+            />
+            <button
+              className="round-button"
+              type="button"
+              aria-label={t("会话操作")}
+              aria-expanded={actionsOpen}
+              onClick={() => {
+                setStatusOpen(false);
+                setActionsOpen((current) => !current);
+              }}
+            >
+              <AppIcon name="more" />
+            </button>
+          </div>
+        )}
       </header>
       <ConversationActionMenu
         open={actionsOpen}
         readOnly={accessMode === "readOnly"}
         thread={active}
         pendingAction={pendingAction}
-        backendName={backendName}
-        projectName={projectName}
-        connectionLabel={connectionLabel}
-        modelLabel={`${selectedModelLabel} · ${effortLabel(selectedEffort)}${selectedServiceTier ? ` · ${selectedServiceTier}` : ""}`}
-        permissionLabel={selectedPermissionLabel}
-        settingsEnabled={interactive}
-        onAgentSettings={() => {
-          setActionsOpen(false);
-          onOpenAgentSettings();
-        }}
-        onPermissionSettings={() => {
-          setActionsOpen(false);
-          onOpenPermissionSettings();
-        }}
-        onStatus={() => {
-          setActionsOpen(false);
-          setStatusOpen(true);
-        }}
         onClose={() => setActionsOpen(false)}
         onPin={() => {
           void onPin().then((completed) => {
@@ -666,7 +505,7 @@ export function ConversationPage({
         <div className="conversation-scroll-content" ref={contentRef}>
           {isNewChat && (
             <section className="new-chat-targets" aria-label={t("新聊天目标")}>
-              <h2>{t("开始一次新的 Codex 对话")}</h2>
+              <h2>{t("开始处理")}</h2>
               <label>
                 <AppIcon name="folder" />
                 <span>
@@ -691,13 +530,9 @@ export function ConversationPage({
                     </option>
                   ))}
                 </select>
-                <Chevron direction="down" />
               </label>
               <label>
-                <svg className="device-glyph" viewBox="0 0 24 24" aria-hidden="true">
-                  <rect x="3" y="4" width="18" height="13" rx="2" />
-                  <path d="M8 21h8M12 17v4" />
-                </svg>
+                <span className="device-glyph" aria-hidden="true">▰</span>
                 <span>
                   <small>{t("机器")}</small>
                   <strong>{backendName}</strong>
@@ -715,7 +550,6 @@ export function ConversationPage({
                     </option>
                   ))}
                 </select>
-                <Chevron direction="down" />
               </label>
             </section>
           )}
@@ -821,7 +655,6 @@ export function ConversationPage({
       </div>
       <ErrorBanner message={error} />
       <form
-        ref={composerWrapRef}
         className={`composer-wrap${
           composerMaximized ? " composer-wrap-maximized" : ""
         }`}
@@ -1067,6 +900,25 @@ export function ConversationPage({
             {t("正在处理附件…")}
           </div>
         )}
+        <div className="chips">
+          <button
+            type="button"
+            aria-label={t("选择模型、智能与速度")}
+            disabled={!interactive}
+            onClick={onOpenAgentSettings}
+          >
+            {selectedServiceTier ? "⚡ " : ""}
+            {selectedModelLabel} {effortLabel(selectedEffort)}
+          </button>
+          <button
+            type="button"
+            aria-label={t("选择审批与权限模式")}
+            disabled={!interactive}
+            onClick={onOpenPermissionSettings}
+          >
+            {selectedPermissionLabel}
+          </button>
+        </div>
         {skillMention && (
           <section
             id="installed-mention-options"
@@ -1132,22 +984,6 @@ export function ConversationPage({
             )}
           </section>
         )}
-        {(composerMultiline || composerMaximized) && (
-          <div className="composer-expand-toolbar">
-            <button
-              type="button"
-              className="composer-size-button"
-              disabled={Boolean(historyEdit)}
-              aria-label={
-                composerMaximized ? t("还原输入框") : t("最大化输入框")
-              }
-              aria-pressed={composerMaximized}
-              onClick={() => setComposerMaximized((current) => !current)}
-            >
-              <AppIcon name={composerMaximized ? "minimize" : "maximize"} />
-            </button>
-          </div>
-        )}
         <div className="composer">
           <div className="attachment-picker" ref={attachmentPickerRef}>
             <input
@@ -1193,7 +1029,7 @@ export function ConversationPage({
               }
               onClick={() => setAttachmentMenuOpen((current) => !current)}
             >
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+              ＋
             </button>
             {attachmentMenuOpen && (
               <div
@@ -1313,6 +1149,18 @@ export function ConversationPage({
             rows={1}
           />
           <button
+            type="button"
+            className="composer-size-button"
+            disabled={Boolean(historyEdit)}
+            aria-label={
+              composerMaximized ? t("还原输入框") : t("最大化输入框")
+            }
+            aria-pressed={composerMaximized}
+            onClick={() => setComposerMaximized((current) => !current)}
+          >
+            <AppIcon name={composerMaximized ? "minimize" : "maximize"} />
+          </button>
+          <button
             type={busy && !canQueue ? "button" : "submit"}
             onClick={
               busy && !canQueue ? onInterrupt : undefined
@@ -1351,8 +1199,6 @@ export function ConversationPage({
         thread={active}
         tokenUsage={tokenUsage}
         rateLimits={rateLimits}
-        backendName={backendName}
-        connectionLabel={connectionLabel}
         onClose={() => setStatusOpen(false)}
       />
     </section>

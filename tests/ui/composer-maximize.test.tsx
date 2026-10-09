@@ -26,7 +26,7 @@ function renderComposer(
         connection: "online",
         client: null,
         error: "",
-        draft: "保留这段较长的草稿\n继续编辑第二行",
+        draft: "保留这段较长的草稿",
         draftImages: [],
         draftFiles: [],
         imageReading: false,
@@ -127,7 +127,7 @@ describe("会话输入框最大化", () => {
       (view.getByRole("textbox", {
         name: "向 Codex 提问",
       }) as HTMLTextAreaElement).value,
-    ).toBe("保留这段较长的草稿\n继续编辑第二行");
+    ).toBe("保留这段较长的草稿");
 
     fireEvent.click(view.getByRole("button", { name: "还原输入框" }));
     expect(form?.classList.contains("composer-wrap-maximized")).toBe(false);

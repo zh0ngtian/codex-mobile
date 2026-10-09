@@ -1091,7 +1091,6 @@ function BackendWorkspace({
 
   useEffect(() => {
     if (!refreshVersion) return;
-    if (searchQueryRef.current.trim()) setSearchRefreshVersion((current) => current + 1);
     const sequence = ++refreshSequenceRef.current;
     fullyLoadedProjectCwdsRef.current.clear();
     setThreadListState((current) =>
@@ -4030,7 +4029,6 @@ function BackendWorkspace({
           active={active}
           backendId={backend.id}
           backendName={backend.name}
-          nativeForeground={conversationVisible}
           backends={backends.filter((entry) => entry.enabled)}
           projectOptions={projectOptions}
           loadState={conversationLoadState}
@@ -4746,10 +4744,10 @@ function ConfiguredApp({
   ]);
 
   const manageThread = useCallback(
-    (item: AggregatedThreadItem, action: ThreadManagementAction, nativeName?: string) => {
+    (item: AggregatedThreadItem, action: ThreadManagementAction) => {
       let name: string | undefined;
       if (action === "rename") {
-        name = nativeName?.trim() ?? window.prompt(
+        name = window.prompt(
           t("输入新的会话名称"),
           titleOf(item.thread),
         )?.trim();
@@ -4868,8 +4866,6 @@ function ConfiguredApp({
       >
         <aside className="conversation-sidebar" aria-label={t("会话列表")}>
           <ThreadListPage
-            nativeVisible={sidebarOpen && !managerOpen}
-            onClose={closeSidebar}
             backends={registry.backends}
             summaries={summaries}
             selectedBackendId={listBackendId}

@@ -27,7 +27,6 @@ import { GatewayQrScannerSheet } from "./GatewayQrScannerSheet";
 import type { TransportMode } from "../../backends/transport-preference";
 import { PushSettings } from "../../notifications/PushSettings";
 import type { NotificationPreference } from "../../notifications/preferences";
-import { InterfaceModeSettings } from "../settings/InterfaceModeSettings";
 import { FontSizeSettings } from "../settings/FontSizeSettings";
 
 interface BackendDraft {
@@ -261,7 +260,6 @@ export function BackendManagerSheet({
           failedDevices={failedNotificationDevices}
         />}
         <FontSizeSettings />
-        <InterfaceModeSettings />
         {draft ? (
           <form className="backend-form" onSubmit={submit}>
             <label>

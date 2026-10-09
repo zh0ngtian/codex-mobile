@@ -306,18 +306,20 @@ function UserBubble({
           <Chevron direction={expanded ? "up" : "down"} />
         </button>
       )}
+      {!inlineEdit && (
+        <MessageTimestamp
+          timestamp={timestamp}
+          className="user-message-timestamp"
+        />
+      )}
     </div>
   );
-  const timestampView = !inlineEdit && (
-    <MessageTimestamp timestamp={timestamp} className="user-message-timestamp" />
-  );
-  const actions = !inlineEdit && (text || onEditUserMessage) ? (
+  const actions = !inlineEdit && onEditUserMessage ? (
     <div className="user-message-actions" role="group" aria-label={t("历史消息操作")}>
-      {text && <CopyButton text={text} label={t("复制用户消息")} className="user-message-copy" />}
-      {onEditUserMessage && <button type="button" aria-label={t("编辑历史消息")}
+      <button type="button" aria-label={t("编辑历史消息")}
         disabled={userMessageActionsDisabled} onClick={onEditUserMessage}>
         {t("编辑")}
-      </button>}
+      </button>
     </div>
   ) : null;
   if (heartbeat) {
@@ -325,25 +327,20 @@ function UserBubble({
       <div className="automation-user-message">
         <small className="automation-message-label">{t("通过自动化功能发送")}</small>
         {bubble}
-        {timestampView}
         {actions}
       </div>
     );
   }
-  return <div className="user-message">{bubble}{timestampView}{actions}</div>;
-}
-
-function ActivityIcon({ running = false }: { running?: boolean }) {
-  return <svg className={`activity-icon${running ? " row-running" : ""}`} viewBox="0 0 24 24" aria-hidden="true">
-    <path d="m8 7-5 5 5 5M16 7l5 5-5 5M14 4l-4 16" />
-  </svg>;
+  return inlineEdit || actions
+    ? <div className="user-message">{bubble}{actions}</div>
+    : bubble;
 }
 
 function ToolActivity({ items }: { items: AnyRecord[] }) {
   const summary = summarizeToolActivity(items);
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const selected = selectedIndex == null ? null : items[selectedIndex] ?? null;
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(summary.running);
   const parts = [
     summary.fileCount ? t("已更改 {count} 个文件", { count: summary.fileCount }) : "",
     summary.commandCount
@@ -357,17 +354,19 @@ function ToolActivity({ items }: { items: AnyRecord[] }) {
     <>
       <details
         className="tool-activity"
-        open={expanded}
-        onToggle={(event) => setExpanded(event.currentTarget.open)}
+        open={summary.running || expanded}
+        onToggle={(event) => {
+          if (!summary.running) setExpanded(event.currentTarget.open);
+        }}
       >
         <summary>
-          <ActivityIcon />
+          <span className="activity-icon">‹/›</span>
           <span className="activity-summary-text">
             {parts.join(getActiveLocale() === "zh-CN" ? "，" : ", ") || t("工具活动")}
             {summary.additions > 0 && <em className="diff-add">+{summary.additions}</em>}
             {summary.deletions > 0 && <em className="diff-delete">-{summary.deletions}</em>}
           </span>
-          <Chevron direction={expanded ? "down" : "right"} />
+          <Chevron direction={summary.running || expanded ? "down" : "right"} />
         </summary>
         <div className="tool-activity-rows">
           {items.map((item, index) => (
@@ -377,7 +376,7 @@ function ToolActivity({ items }: { items: AnyRecord[] }) {
               aria-label={toolActivityRowLabel(item)}
               onClick={() => setSelectedIndex(index)}
             >
-              <ActivityIcon running={item.status === "inProgress"} />
+              <span className={item.status === "inProgress" ? "row-running" : ""}>‹/›</span>
               <strong>{toolActivityRowLabel(item)}</strong>
               <Chevron />
             </button>
@@ -742,7 +741,7 @@ export function TurnCard({
       </div>
       {!grouped.running && (changeStatsReady || turn.changeStatsUnavailable) && (
         <div className="turn-change-summary">
-          <ActivityIcon />
+          <span className="activity-icon" aria-hidden="true">‹/›</span>
           <span className="activity-summary-text">
             {changeStatsReady
               ? t("本次代码改动 {count} 行", { count: changedLines })

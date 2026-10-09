@@ -13,22 +13,6 @@ export type LanguagePreference = "system" | Locale;
 const LANGUAGE_STORAGE_KEY = "codex-mobile:language";
 
 const english: Record<string, string> = {
-  "正在处理": "Processing",
-  "正在处理 · {count} 项活动": "Processing · {count} activities",
-  "已完成 {count} 项活动": "Completed {count} activities",
-  "过程说明": "Progress update",
-  "等待同步": "Waiting for sync",
-  "返回原生对话": "Return to native conversation",
-  "附件消息": "Attachment message",
-  "活动": "Activity",
-  "界面体验": "Interface experience",
-  "原生界面": "Native interface",
-  "网页界面": "Web interface",
-  "切换后关闭此面板，比较同一会话的两种体验": "Close this panel to compare both interfaces with the same conversation",
-  "界面已切换，但无法保存；重启后可能恢复原界面": "Interface changed but could not be saved; restarting may restore the previous interface",
-  "清除搜索": "Clear search",
-  "试试其他关键词，或清除搜索查看全部聊天。": "Try other keywords, or clear search to see all chats",
-  "复制用户消息": "Copy user message",
   "字体大小": "Font size",
   "小": "Small",
   "标准": "Standard",
@@ -556,10 +540,6 @@ const english: Record<string, string> = {
   "已是最新版本": "You are up to date",
   "没有可用设备": "No devices available",
   "会话列表": "Conversation list",
-  "已展开": "Expanded",
-  "已折叠": "Collapsed",
-  "个待审批": "pending approvals",
-  "试试会话名称或内容": "Try a conversation name or message",
 };
 
 let activeLocale: Locale = "zh-CN";

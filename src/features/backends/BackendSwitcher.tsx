@@ -33,16 +33,13 @@ export function BackendSwitcher({
       <button
         type="button"
         className="backend-pill all-backends"
-        aria-label={[
-          t("全部设备"),
-          allApprovalCount ? t("{count} 个待审批", { count: allApprovalCount }) : "",
-        ].filter(Boolean).join("，")}
+        aria-label={t("全部设备")}
         aria-pressed={selectedBackendId === "all"}
         onClick={() => onSelect("all")}
       >
         <strong>{t("全部")}</strong>
         {!!allApprovalCount && (
-          <b className="backend-approval-count">{t("{count} 个待审批", { count: allApprovalCount })}</b>
+          <b className="backend-approval-count">{allApprovalCount}</b>
         )}
       </button>
       {enabledBackends.map((backend) => {
@@ -71,15 +68,12 @@ export function BackendSwitcher({
                 aria-label={t("正在加载机器会话")}
               />
             ) : (
-              <i className={`status-dot ${status}`} aria-hidden="true" />
+              <i className={`status-dot ${status}`} />
             )}
-            <span className="backend-device-label">
-              <strong>{backend.name}</strong>
-              <small>{statusLabel(summary)}</small>
-            </span>
+            <strong>{backend.name}</strong>
             {!!summary?.approvalCount && (
               <b className="backend-approval-count">
-                {t("{count} 个待审批", { count: summary.approvalCount })}
+                {summary.approvalCount}
               </b>
             )}
           </button>

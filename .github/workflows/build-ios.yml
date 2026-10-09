@@ -315,14 +315,6 @@ jobs:
           cmp mobile/ios/AttachmentPickerBridge.swift pakeplus/PakePlus/AttachmentPickerBridge.swift
           cp mobile/ios/AppUpdateBridge.swift pakeplus/PakePlus/AppUpdateBridge.swift
           cmp mobile/ios/AppUpdateBridge.swift pakeplus/PakePlus/AppUpdateBridge.swift
-          cp mobile/ios/NativeConversationBridge.swift pakeplus/PakePlus/NativeConversationBridge.swift
-          cp mobile/ios/NativeConversationViewController.swift pakeplus/PakePlus/NativeConversationViewController.swift
-          cp mobile/ios/NativeConversationState.swift pakeplus/PakePlus/NativeConversationState.swift
-          cp mobile/ios/NativeConversationCell.swift pakeplus/PakePlus/NativeConversationCell.swift
-          cp mobile/ios/NativeConversationAppearance.swift pakeplus/PakePlus/NativeConversationAppearance.swift
-          cp mobile/ios/NativeMarkdown.swift pakeplus/PakePlus/NativeMarkdown.swift
-          cp mobile/ios/NativeSidebarState.swift pakeplus/PakePlus/NativeSidebarState.swift
-          cp mobile/ios/NativeSidebarViewController.swift pakeplus/PakePlus/NativeSidebarViewController.swift
 
       - name: Harden and test the iOS host
         working-directory: pakeplus
@@ -462,19 +454,9 @@ jobs:
               webview_constructor,
               "let webView = CodexMobileWebView(frame: .zero, configuration: webConfiguration)\n"
               "        CodexMobileAttachmentPickerBridge.configure(webView)\n"
-              "        CodexMobileAppUpdateBridge.configure(webView)\n"
-              "        CodexMobileNativeConversationBridge.configure(webView)",
+              "        CodexMobileAppUpdateBridge.configure(webView)",
               1,
           )
-          # SwiftUI 只拥有 wrapper；UIKit 在明确容器中管理 Web 与原生兄弟视图。
-          for original, replacement in [
-              ("func makeUIView(context: Context) -> WKWebView", "func makeUIView(context: Context) -> UIView"),
-              ("        return webView", "        return CodexMobileConversationHostView(webView: webView)"),
-              ("func updateUIView(_ uiView: WKWebView, context: Context)", "func updateUIView(_ uiView: UIView, context: Context)"),
-          ]:
-              if source.count(original) != 1:
-                  raise SystemExit("Pinned PakePlus conversation host hook changed: " + original)
-              source = source.replace(original, replacement, 1)
           media_prompt = "        decisionHandler(permissionDecisionForMediaCapture(type: type))"
           if media_prompt not in source:
               raise SystemExit("Pinned PakePlus media permission hook changed")
@@ -767,9 +749,7 @@ jobs:
           extension Coordinator {
               private var boldTextScript: String {
                   let enabled = UIAccessibility.isBoldTextEnabled ? "true" : "false"
-                  let scale = UIFont.preferredFont(forTextStyle: .body).pointSize / 17
-                  let accessibility = UIApplication.shared.preferredContentSizeCategory.isAccessibilityCategory ? "true" : "false"
-                  return "document.documentElement.setAttribute('data-ios-bold-text', '\(enabled)'); document.documentElement.style.setProperty('--native-type-scale', '\(scale)'); document.documentElement.setAttribute('data-ios-accessibility-text', '\(accessibility)');"
+                  return "document.documentElement.setAttribute('data-ios-bold-text', '\(enabled)');"
               }
 
               func installBoldTextSupport(_ webView: WKWebView) {
@@ -785,10 +765,6 @@ jobs:
                   NotificationCenter.default.addObserver(
                       self, selector: #selector(syncBoldText),
                       name: UIApplication.didBecomeActiveNotification, object: nil
-                  )
-                  NotificationCenter.default.addObserver(
-                      self, selector: #selector(syncBoldText),
-                      name: UIContentSizeCategory.didChangeNotification, object: nil
                   )
               }
 

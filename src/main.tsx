@@ -8,8 +8,6 @@ import {
   type AndroidWebViewBridge,
 } from "./ui/runtime-environment";
 import "./styles.css";
-import "./features/conversation/web-conversation.css";
-import "./features/threads/web-sidebar.css";
 import { applyFontSize, readFontSize } from "./ui/font-size";
 
 applyFontSize(readFontSize());

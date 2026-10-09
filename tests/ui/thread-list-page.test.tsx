@@ -176,7 +176,7 @@ describe("会话侧边栏列表", () => {
     const view = within(container);
     const row = view.getByRole("button", { name: /置顶会话/ });
     const heading = view.getByRole("heading", { name: "Codex Mobile" });
-    const search = view.getByRole("textbox", { name: "搜索聊天" });
+    const search = view.getByRole("textbox", { name: "" });
 
     const rowSelection = new Event("selectstart", {
       bubbles: true,
