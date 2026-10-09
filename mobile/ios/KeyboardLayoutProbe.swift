@@ -14,6 +14,9 @@ final class KeyboardLayoutProbeWebView: CodexMobileWebView {
     private var maximumScrollGeometryAnimations = 0
     private var maximumGeometryAnimations = 0
     private var measurementCount = 0
+    private let viewportLabel = UILabel()
+    private var viewportTimer: Timer?
+    private let stepLabel = UILabel()
 
     override init(frame: CGRect, configuration: WKWebViewConfiguration) {
         configuration.userContentController.addUserScript(WKUserScript(source: """
@@ -23,6 +26,31 @@ final class KeyboardLayoutProbeWebView: CodexMobileWebView {
         });
         """, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
         super.init(frame: frame, configuration: configuration)
+        stepLabel.frame = CGRect(x: 0, y: 74, width: 1, height: 1)
+        stepLabel.isAccessibilityElement = true
+        stepLabel.accessibilityIdentifier = "codex.composer-maximum-frame-step"
+        stepLabel.accessibilityLabel = "not-sampled"
+        viewportLabel.frame = CGRect(x: 0, y: 72, width: 1, height: 1)
+        viewportLabel.isAccessibilityElement = true
+        viewportLabel.accessibilityIdentifier = "codex.viewport-state"
+        viewportLabel.accessibilityLabel = "{}"
+        let timer = Timer(timeInterval: 0.1, repeats: true) { [weak self] _ in
+            guard let self else { return }
+            self.window?.addSubview(self.viewportLabel)
+            self.evaluateJavaScript("""
+            (() => { const input = document.querySelector('.composer textarea');
+              return {scale:visualViewport.scale, font:input ? getComputedStyle(input).fontSize : '',
+                height:visualViewport.height, top:visualViewport.offsetTop, scroll:scrollY}; })()
+            """) { [weak self] result, _ in
+                guard let self, var value = result as? [String: Any] else { return }
+                value["nativeScale"] = self.scrollView.zoomScale
+                guard let data = try? JSONSerialization.data(withJSONObject: value, options: [.sortedKeys]),
+                      let label = String(data: data, encoding: .utf8) else { return }
+                self.viewportLabel.accessibilityLabel = label
+            }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        viewportTimer = timer
         scrollGeometryLabel.frame = CGRect(x: 0, y: 70, width: 1, height: 1)
         scrollGeometryLabel.isAccessibilityElement = true
         scrollGeometryLabel.accessibilityIdentifier = "codex.scroll-geometry-animation-count"
@@ -52,11 +80,31 @@ final class KeyboardLayoutProbeWebView: CodexMobileWebView {
     required init?(coder: NSCoder) { fatalError("测试探针不支持 storyboard") }
 
     deinit {
+        viewportTimer?.invalidate()
         observers.forEach(NotificationCenter.default.removeObserver)
         displayLink?.invalidate()
     }
 
     private func beginMeasurement() {
+        guard !measuringDismissal else { return }
+        window?.addSubview(stepLabel)
+        stepLabel.accessibilityLabel = "not-sampled"
+        evaluateJavaScript("""
+        (() => {
+          const input = document.querySelector('.composer textarea');
+          if (!input) return;
+          let previous = input.getBoundingClientRect().y;
+          window.__codexComposerStep = 0;
+          const end = performance.now() + 550;
+          function sample() {
+            const current = input.getBoundingClientRect().y;
+            window.__codexComposerStep = Math.max(window.__codexComposerStep, Math.abs(current - previous));
+            previous = current;
+            if (performance.now() < end) requestAnimationFrame(() => setTimeout(sample, 0));
+          }
+          requestAnimationFrame(() => setTimeout(sample, 0));
+        })();
+        """, completionHandler: nil)
         maximumHeightDifference = 0
         measurementCount = 0
         maximumGeometryAnimations = 0
@@ -78,6 +126,11 @@ final class KeyboardLayoutProbeWebView: CodexMobileWebView {
     private func finishMeasurement() {
         evaluateJavaScript("String(window.__codexSendFocusProbe)") { [weak self] result, _ in
             self?.sendFocusLabel.accessibilityLabel = result as? String ?? "unavailable"
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+            self?.evaluateJavaScript("String(window.__codexComposerStep)") { [weak self] result, _ in
+                self?.stepLabel.accessibilityLabel = result as? String ?? "unavailable"
+            }
         }
         measuringDismissal = false
         displayLink?.invalidate()

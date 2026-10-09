@@ -284,6 +284,8 @@ jobs:
           test -s "$source"
           cp "$source" "$destination"
           cmp "$source" "$destination"
+          cp mobile/ios/AttachmentPickerBridge.swift pakeplus/PakePlus/AttachmentPickerBridge.swift
+          cmp mobile/ios/AttachmentPickerBridge.swift pakeplus/PakePlus/AttachmentPickerBridge.swift
 
       - name: Harden and test the iOS host
         working-directory: pakeplus
@@ -412,7 +414,8 @@ jobs:
               raise SystemExit("Pinned PakePlus WebView constructor changed")
           source = source.replace(
               webview_constructor,
-              "let webView = CodexMobileWebView(frame: .zero, configuration: webConfiguration)",
+              "let webView = CodexMobileWebView(frame: .zero, configuration: webConfiguration)\n"
+              "        CodexMobileAttachmentPickerBridge.configure(webView)",
               1,
           )
           media_prompt = "        decisionHandler(permissionDecisionForMediaCapture(type: type))"
@@ -633,21 +636,73 @@ jobs:
           extension Coordinator {
               func installKeyboardDismissalSupport() {
                   NotificationCenter.default.addObserver(
-                      self, selector: #selector(blurWebInputOnKeyboardDismissal),
+                      self, selector: #selector(blurWebInputOnKeyboardDismissal(_:)),
                       name: UIResponder.keyboardWillHideNotification, object: nil
                   )
               }
 
-              @objc private func blurWebInputOnKeyboardDismissal() {
-                  // 系统“完成”只收起键盘，DOM 焦点仍可能保留；先失焦，避免视口恢复时追踪光标。
+              @objc private func blurWebInputOnKeyboardDismissal(_ notification: Notification) {
+                  // 网页立即恢复高度，键盘仍在滑下；让输入栏从原位置同步滑动，避免先被键盘遮住。
+                  // WebKit 的第二次失焦通知可能报告 0，但系统键盘仍在完成此前的收起动画。
+                  let reportedDuration = notification.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? Double ?? 0.25
+                  let duration = (reportedDuration > 0 ? reportedDuration : 0.25) * 1000
                   realtimeWebView?.evaluateJavaScript("""
-                  (() => {
+                  ((duration) => {
                       const input = document.activeElement;
+                      const composer = document.querySelector('.composer-wrap');
+                      let finish;
+                      if (composer && !window.__codexKeyboardDismissalActive) {
+                          window.__codexKeyboardDismissalActive = true;
+                          const previousTop = composer.getBoundingClientRect().top;
+                          const previousHeight = window.innerHeight;
+                          const bottom = parseFloat(getComputedStyle(composer).bottom) || 0;
+                          const originalTop = composer.style.top;
+                          const originalBottom = composer.style.bottom;
+                          const started = performance.now();
+                          let animation;
+                          let moving = false;
+                          let completed = false;
+                          // 提前固定 top，避免 WebKit 恢复高度后、resize 回调前先绘制到底部。
+                          composer.style.top = `${previousTop}px`;
+                          composer.style.bottom = 'auto';
+                          finish = () => {
+                              if (completed) return;
+                              completed = true;
+                              window.removeEventListener('resize', synchronize);
+                              window.visualViewport?.removeEventListener('resize', synchronize);
+                              composer.style.top = originalTop;
+                              composer.style.bottom = originalBottom;
+                              animation?.cancel();
+                              window.__codexKeyboardDismissalActive = false;
+                          };
+                          const synchronize = () => {
+                              if (moving || window.innerHeight <= previousHeight + 1) return;
+                              moving = true;
+                              const targetTop = window.innerHeight - composer.offsetHeight - bottom;
+                              animation = composer.animate([
+                                  { top: `${previousTop}px` },
+                                  { top: `${targetTop}px` },
+                              ], {
+                                  duration: Math.max(100, duration - (performance.now() - started)),
+                                  easing: 'ease-out',
+                                  fill: 'forwards',
+                              });
+                              animation.finished.then(finish, finish);
+                          };
+                          window.addEventListener('resize', synchronize);
+                          window.visualViewport?.addEventListener('resize', synchronize);
+                          const sample = () => {
+                              synchronize();
+                              if (!moving && window.__codexKeyboardDismissalActive) requestAnimationFrame(sample);
+                          };
+                          requestAnimationFrame(sample);
+                          setTimeout(() => { if (!moving) finish(); }, duration + 100);
+                      }
                       if (input instanceof HTMLInputElement ||
                           input instanceof HTMLTextAreaElement || input?.isContentEditable) {
                           input.blur();
                       }
-                  })();
+                  })(\(duration));
                   """, completionHandler: nil)
               }
           }

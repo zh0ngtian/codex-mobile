@@ -1,6 +1,54 @@
 import XCTest
 
 final class CodexMobileUITests: XCTestCase {
+    func testAttachmentButtonsOpenNativePickersDirectly() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication(bundleIdentifier: "vip.loock.codexmobile")
+        app.launch()
+        _ = openNewChat(app)
+        for (title, identifier) in [("图片", "codex.attachments.photos"), ("文件", "codex.attachments.files"), ("图片", "codex.attachments.photos")] {
+            app.webViews.buttons["添加附件"].tap()
+            let item = app.webViews.descendants(matching: .any).matching(NSPredicate(format: "label == %@", title)).firstMatch
+            XCTAssertTrue(item.waitForExistence(timeout: 5), app.debugDescription)
+            item.tap()
+            XCTAssertTrue(app.otherElements[identifier].waitForExistence(timeout: 10), app.debugDescription)
+            XCTAssertFalse(app.buttons["拍照或录像"].exists)
+            XCTAssertFalse(app.buttons["Take Photo or Video"].exists)
+            let screenshot = XCTAttachment(screenshot: app.screenshot())
+            screenshot.name = "直接打开-\(title)"
+            screenshot.lifetime = .keepAlways
+            add(screenshot)
+            if app.buttons["取消"].exists { app.buttons["取消"].tap() }
+            else if app.buttons["Cancel"].exists { app.buttons["Cancel"].tap() }
+            else if app.buttons["关闭"].exists { app.buttons["关闭"].tap() }
+            else { app.buttons["Close"].tap() }
+            XCTAssertTrue(app.webViews.buttons["添加附件"].waitForExistence(timeout: 5))
+        }
+        verifyNativePhotoSelectionReturnsAttachment(app)
+    }
+
+    private func verifyNativePhotoSelectionReturnsAttachment(_ app: XCUIApplication) {
+        app.webViews.buttons["添加附件"].tap()
+        let item = app.webViews.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "图片")).firstMatch
+        XCTAssertTrue(item.waitForExistence(timeout: 5))
+        item.tap()
+        let picker = app.otherElements["codex.attachments.photos"]
+        XCTAssertTrue(picker.waitForExistence(timeout: 10))
+        let photo = picker.images.matching(identifier: "PXGGridLayout-Info").firstMatch
+        XCTAssertTrue(photo.waitForExistence(timeout: 10), app.debugDescription)
+        photo.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        let addButton = picker.buttons.matching(NSPredicate(format: "label BEGINSWITH %@ OR label BEGINSWITH %@ OR label == %@ OR label == %@", "添加", "Add", "完成", "Done")).firstMatch
+        XCTAssertTrue(addButton.waitForExistence(timeout: 5), app.debugDescription)
+        addButton.tap()
+        let remove = app.webViews.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "移除 ")).firstMatch
+        XCTAssertTrue(remove.waitForExistence(timeout: 15), "选中的原生图片应进入待发送附件区：\(app.debugDescription)")
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "原生选图回到待发送附件"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+        remove.tap()
+    }
+
     private func openNewChat(_ app: XCUIApplication) -> XCUIElement {
         let chat = app.webViews.buttons["聊天"]
         XCTAssertTrue(chat.waitForExistence(timeout: 20))
