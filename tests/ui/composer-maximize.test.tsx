@@ -70,6 +70,25 @@ function renderComposer(
 }
 
 describe("会话输入框最大化", () => {
+  it.each([false, true])("提交前同步取消输入焦点（最大化：%s）", (maximized) => {
+    let focusedAtSubmit = true;
+    const onSubmit = vi.fn((event: FormEvent) => {
+      event.preventDefault();
+      focusedAtSubmit = document.activeElement instanceof HTMLTextAreaElement;
+    });
+    const { container } = renderComposer(onSubmit);
+    const view = within(container);
+    if (maximized) fireEvent.click(view.getByRole("button", { name: "最大化输入框" }));
+    const input = view.getByRole("textbox", { name: "向 Codex 提问" });
+    input.focus();
+    expect(document.activeElement).toBe(input);
+
+    fireEvent.click(view.getByRole("button", { name: "发送" }));
+
+    expect(onSubmit).toHaveBeenCalledOnce();
+    expect(focusedAtSubmit).toBe(false);
+  });
+
   it("加号菜单区分图片、文件和当前位置", async () => {
     const onSelectLocation = vi.fn(async () => true);
     const { container } = renderComposer(undefined, onSelectLocation);

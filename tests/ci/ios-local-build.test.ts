@@ -48,13 +48,14 @@ describe("iOS 本地工程准备", () => {
     expect(harden).toContain("os.environ[\"APP_VERSION\"]");
   });
 
-  it("WebView 重排时移除主图层几何动画，避免绘制高度与网页布局错位", () => {
+  it("WebView 主图层阻止新增几何动画，避免布局后追加动画造成错位", () => {
     const workflow = parse(readFileSync(".github/workflows/build-ios.yml", "utf8"));
     const harden = workflow.jobs.build.steps.find((step: any) => step.name === "Harden and test the iOS host").run;
     expect(harden.includes("let webView = CodexMobileWebView(frame:")).toBe(true);
-    expect(harden.includes("super.layoutSubviews()")).toBe(true);
+    expect(harden.includes("override class var layerClass: AnyClass { CodexMobileWebViewLayer.self }")).toBe(true);
     expect(harden.includes('path == "position" || path == "bounds" || path.hasPrefix("bounds.")')).toBe(true);
-    expect(harden.includes("layer.removeAnimation(forKey: key)")).toBe(true);
+    expect(harden.includes("override func add(_ animation: CAAnimation, forKey key: String?)")).toBe(true);
+    expect(harden.includes("super.add(animation, forKey: key)")).toBe(true);
   });
 
   it("iOS 在启动、系统粗体设置变化、回到前台和页面重载时同步字重", () => {

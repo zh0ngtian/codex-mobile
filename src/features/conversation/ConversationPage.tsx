@@ -661,7 +661,11 @@ export function ConversationPage({
         aria-busy={imageReading}
         onSubmit={(event) => {
           if (historyEdit) event.preventDefault();
-          else onSubmit(event);
+          else {
+            // 在清空草稿或切换会话前结束编辑，避免键盘收起时 WebKit 继续追踪旧光标。
+            composerInputRef.current?.blur();
+            onSubmit(event);
+          }
           setAttachmentMenuOpen(false);
           setComposerMaximized(false);
         }}

@@ -1,6 +1,20 @@
 import XCTest
 
 final class CodexMobileUITests: XCTestCase {
+    private func openNewChat(_ app: XCUIApplication) -> XCUIElement {
+        let chat = app.webViews.buttons["聊天"]
+        XCTAssertTrue(chat.waitForExistence(timeout: 20))
+        chat.tap()
+        let input = app.webViews.textViews["向 Codex 提问"]
+        if !input.waitForExistence(timeout: 3) {
+            // 启动恢复可能先重置页面；待初始化完成后重新打开测试的新对话。
+            XCTAssertTrue(chat.waitForExistence(timeout: 10))
+            chat.tap()
+        }
+        XCTAssertTrue(input.waitForExistence(timeout: 10), app.debugDescription)
+        return input
+    }
+
     func testUnsentDraftRemainsStableAfterKeyboardDismissal() throws {
         continueAfterFailure = false
         let app = XCUIApplication(bundleIdentifier: "vip.loock.codexmobile")
@@ -12,10 +26,7 @@ final class CodexMobileUITests: XCTestCase {
         for draft in drafts {
             app.terminate()
             app.launch()
-            XCTAssertTrue(app.webViews.buttons["聊天"].waitForExistence(timeout: 20), app.debugDescription)
-            app.webViews.buttons["聊天"].tap()
-            let input = app.webViews.textViews["向 Codex 提问"]
-            XCTAssertTrue(input.waitForExistence(timeout: 10), app.debugDescription)
+            let input = openNewChat(app)
             input.tap()
             input.typeText(draft)
             XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
@@ -27,9 +38,10 @@ final class CodexMobileUITests: XCTestCase {
             XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
             let probe = app.staticTexts["codex.keyboard-dismissal-height-difference"]
             XCTAssertTrue(probe.waitForExistence(timeout: 3), "测试工程应安装键盘布局探针")
+            XCTAssertGreaterThan(try XCTUnwrap(Int(probe.value as? String ?? "")), 0, "探针应采到实际帧")
             let heightDifference = try XCTUnwrap(Double(probe.label))
             print("KEYBOARD_DISMISSAL_GAP draftLength=\(draft.count) maximum=\(heightDifference)")
-            XCTAssertLessThanOrEqual(heightDifference, 1, "收起动画期间 WebView 布局高度和呈现高度必须同步")
+            XCTAssertEqual(app.staticTexts["codex.geometry-animation-count"].label, "0")
             let frame = input.frame
             for _ in 0..<12 {
                 RunLoop.current.run(until: Date().addingTimeInterval(0.1))
@@ -48,6 +60,69 @@ final class CodexMobileUITests: XCTestCase {
             XCTAssertTrue(resumedDraft.contains(" retained"))
             XCTAssertEqual(resumedDraft.replacingOccurrences(of: " retained", with: ""), draft)
             XCTAssertTrue(app.webViews.buttons["发送"].isHittable)
+        }
+    }
+
+    func testSendingDismissesKeyboardWithoutFlicker() throws {
+        continueAfterFailure = false
+        addUIInterruptionMonitor(withDescription: "发送通知授权") { alert in
+            for title in ["不允许", "Don’t Allow"] {
+                if alert.buttons[title].exists { alert.buttons[title].tap(); return true }
+            }
+            return false
+        }
+        let app = XCUIApplication(bundleIdentifier: "vip.loock.codexmobile")
+        for (index, maximized) in [false, false, true].enumerated() {
+            app.terminate()
+            app.launch()
+            let input = openNewChat(app)
+            if maximized {
+                let maximize = app.descendants(matching: .any).matching(identifier: "最大化输入框").firstMatch
+                if maximize.exists { maximize.tap() }
+                else {
+                    // WebKit 有时不将纯 SVG 按钮暴露成 AXButton；按相邻输入框定位同一按钮。
+                    input.coordinate(withNormalizedOffset: CGVector(dx: 1, dy: 0.5))
+                        .withOffset(CGVector(dx: 17, dy: 0)).tap()
+                }
+                XCTAssertGreaterThan(input.frame.height, app.frame.height * 0.2, "最大化输入框应展开")
+            }
+            input.tap()
+            let marker = "IOS_SEND_STABLE_\(index)"
+            let prefix = index == 0 ? "" : String(repeating: "这是保留较长中文输入的发送布局验证。\n", count: 8)
+            input.typeText(prefix + "请只回复 " + marker + "，不调用工具，不修改文件。")
+            XCTAssertTrue(app.keyboards.firstMatch.exists)
+            XCTAssertTrue(app.webViews.buttons["发送"].isHittable)
+            app.webViews.buttons["发送"].tap()
+            XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5), "发送后应收起键盘")
+            let probe = app.staticTexts["codex.keyboard-dismissal-height-difference"]
+            XCTAssertTrue(probe.waitForExistence(timeout: 3))
+            XCTAssertGreaterThan(try XCTUnwrap(Int(probe.value as? String ?? "")), 0, "探针应采到实际帧")
+            let difference = try XCTUnwrap(Double(probe.label))
+            print("SEND_KEYBOARD_GAP case=\(index) maximum=\(difference) samples=\(probe.value ?? "")")
+            let sendFocus = app.staticTexts["codex.send-retained-input-focus"]
+            XCTAssertTrue(sendFocus.waitForExistence(timeout: 3))
+            print("SEND_RETAINED_INPUT_FOCUS case=\(index) value=\(sendFocus.label)")
+            XCTAssertEqual(sendFocus.label, "false", "发送事件结束时必须已经取消输入焦点")
+            let geometry = app.staticTexts["codex.geometry-animation-count"]
+            XCTAssertTrue(geometry.waitForExistence(timeout: 3))
+            print("SEND_GEOMETRY_ANIMATIONS case=\(index) maximum=\(geometry.label)")
+            XCTAssertEqual(geometry.label, "0", "发送收起过程中不应追加主图层几何动画")
+            // WKWebView 的辅助功能会用 placeholder 代表空 textarea。
+            XCTAssertTrue(["", "向 Codex 提问"].contains(input.value as? String ?? ""))
+            let frame = input.frame
+            for _ in 0..<12 {
+                RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+                XCTAssertEqual(input.frame.minY, frame.minY, accuracy: 1)
+            }
+            XCTAssertGreaterThan(frame.minY, app.frame.height * 0.7)
+            XCTAssertTrue(app.webViews.staticTexts[marker].waitForExistence(timeout: 90), app.debugDescription)
+            input.tap()
+            input.typeText("下一条未发送草稿")
+            XCTAssertEqual(input.value as? String, "下一条未发送草稿")
+            let image = XCTAttachment(screenshot: app.screenshot())
+            image.name = "发送后稳定-\(index)"
+            image.lifetime = .keepAlways
+            add(image)
         }
     }
 

@@ -594,19 +594,20 @@ jobs:
               }
           }
 
-          // WebKit 先按新 bounds 重排网页，主图层继续插值旧尺寸会裁剪固定输入栏。
-          // 只移除主图层的几何动画，网页内部动画与原生透明度动画保持正常。
-          class CodexMobileWebView: WKWebView {
-              override func layoutSubviews() {
-                  super.layoutSubviews()
-                  for key in layer.animationKeys() ?? [] {
-                      guard let animation = layer.animation(forKey: key) as? CAPropertyAnimation,
-                            let path = animation.keyPath else { continue }
-                      if path == "position" || path == "bounds" || path.hasPrefix("bounds.") {
-                          layer.removeAnimation(forKey: key)
-                      }
+          // UIKit 可能在布局之后追加几何动画；在主图层入口阻止动画，保持网页与容器尺寸同步。
+          // 此图层只用于 WKWebView 本身，网页子图层动画与透明度动画继续正常执行。
+          private class CodexMobileWebViewLayer: CALayer {
+              override func add(_ animation: CAAnimation, forKey key: String?) {
+                  if let property = animation as? CAPropertyAnimation, let path = property.keyPath,
+                     path == "position" || path == "bounds" || path.hasPrefix("bounds.") {
+                      return
                   }
+                  super.add(animation, forKey: key)
               }
+          }
+
+          class CodexMobileWebView: WKWebView {
+              override class var layerClass: AnyClass { CodexMobileWebViewLayer.self }
           }
 
           extension Coordinator {
