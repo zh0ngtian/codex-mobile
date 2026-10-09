@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { chmod, mkdir, open, readFile, rename, stat, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { FinalAnswerCompletionTracker } from "./final-answer-completion.js";
 import { parseBarkPushUrl } from "./notification-settings.js";
 
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
@@ -14,6 +15,7 @@ type State = { subscriptions: Subscription[]; delivered: string[] };
 
 /** 全网关共用订阅和去重记录，HTTP 与流式连接只提交实时事件。 */
 export class BarkNotifications {
+  private completions = new FinalAnswerCompletionTracker();
   private subscriptions = new Map<string, Subscription>();
   private delivered = new Set<string>();
   private queue: Promise<void> = Promise.resolve();
@@ -81,18 +83,19 @@ export class BarkNotifications {
     } catch (error) { response.statusCode = 400; response.end(JSON.stringify({ error: error instanceof Error ? error.message : "无法保存通知设置" })); }
   }
   observe(message: { method?: string; params?: Record<string, any>; id?: unknown }) {
-    const params = message.params; const item = params?.item;
-    if (this.closed || message.id != null || message.method !== "item/completed" || item?.type !== "agentMessage" || item.phase !== "final_answer" || typeof params?.threadId !== "string" || !params.threadId || typeof params.turnId !== "string" || !params.turnId || params.threadId.length > 1024 || params.turnId.length > 1024) return;
+    if (this.closed) return;
+    const completed = this.completions.observe(message);
+    if (!completed) return;
     // 不等待网络；磁盘登记成功后才发送，避免跨连接和重启重复通知。
     void this.enqueue(async () => {
       if (this.closed) return;
       for (const subscription of this.subscriptions.values()) {
-        const id = createHash("sha256").update(JSON.stringify([subscription.clientId, subscription.backendId, params.threadId, params.turnId])).digest("hex");
+        const id = createHash("sha256").update(JSON.stringify([subscription.clientId, subscription.backendId, completed.threadId, completed.turnId])).digest("hex");
         if (this.delivered.has(id) || this.jobs.size >= MAX_PENDING_PUSHES) continue;
         this.delivered.add(id);
         while (this.delivered.size > MAX_DEDUPLICATION) this.delivered.delete(this.delivered.values().next().value!);
         try { await this.save(); } catch (error) { this.delivered.delete(id); throw error; }
-        const job = this.send(subscription, { title: "Codex 运行结束", body: "任务已完成，点击查看会话", group: this.options.displayName, url: `codexmobile://thread?backendId=${encodeURIComponent(subscription.backendId)}&threadId=${encodeURIComponent(params.threadId)}`, id });
+        const job = this.send(subscription, { title: "Codex 运行结束", body: "任务已完成，点击查看会话", group: this.options.displayName, url: `codexmobile://thread?backendId=${encodeURIComponent(subscription.backendId)}&threadId=${encodeURIComponent(completed.threadId)}`, id });
         this.jobs.add(job); void job.finally(() => this.jobs.delete(job));
       }
     }).catch(() => {});

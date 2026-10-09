@@ -12,6 +12,7 @@ afterEach(async () => { for (const fn of cleanup.splice(0).reverse()) await fn()
 const wait = (ms = 20) => new Promise((resolve) => setTimeout(resolve, ms));
 async function eventually(check: () => boolean) { for (let n = 0; n < 100 && !check(); n++) await wait(); expect(check()).toBe(true); }
 const final = { method: "item/completed", params: { threadId: "thread /一", turnId: "turn", item: { id: "final", type: "agentMessage", phase: "final_answer", text: "private output" } } };
+const completed = { method: "turn/completed", params: { threadId: final.params.threadId, turn: { id: "turn", status: "completed" } } };
 async function fixture(failPush: boolean | number = false) {
   const root = await mkdtemp(join(tmpdir(), "codex-bark-")); cleanup.push(() => rm(root, { recursive: true, force: true }));
   const pushes: any[] = [];
@@ -34,6 +35,36 @@ async function fixture(failPush: boolean | number = false) {
 }
 
 describe("Bark 通知", () => {
+  it("final 消息结束时仍等待整个回合成功结束，重复事件只发一次", async () => {
+    const f = await fixture(); await f.settings(); await f.rpc({ id: 1, method: "initialize", params: {} });
+    f.send(final); await wait(100); expect(f.pushes).toHaveLength(0);
+    f.send({ method: "item/completed", params: { ...final.params, item: { id: "tool", type: "commandExecution" } } });
+    await wait(50); expect(f.pushes).toHaveLength(0);
+    f.send(completed); await eventually(() => f.pushes.length === 1);
+    f.send(final); f.send(completed); await wait(100); expect(f.pushes).toHaveLength(1);
+  });
+
+  it.each(["failed", "interrupted"])("final 后回合 %s 时不通知完成", async (status) => {
+    const f = await fixture(); await f.settings(); await f.rpc({ id: 1, method: "initialize", params: {} });
+    f.send(final); f.send({ ...completed, params: { ...completed.params, turn: { ...completed.params.turn, status } } });
+    await wait(100); expect(f.pushes).toHaveLength(0);
+  });
+
+  it("只有过程回复的成功回合不推送，其他回合完成也不触发未完成 final", async () => {
+    const f = await fixture(); await f.settings(); await f.rpc({ id: 1, method: "initialize", params: {} });
+    f.send({ ...final, params: { ...final.params, item: { ...final.params.item, phase: "commentary" } } }); f.send(completed);
+    await wait(100); expect(f.pushes).toHaveLength(0);
+    f.send({ ...final, params: { ...final.params, turnId: "still-running" } });
+    f.send({ ...completed, params: { ...completed.params, turn: { id: "other-turn", status: "completed" } } });
+    await wait(100); expect(f.pushes).toHaveLength(0);
+  });
+
+  it("成功回合完成事件直接携带 final 时发送一次", async () => {
+    const f = await fixture(); await f.settings(); await f.rpc({ id: 1, method: "initialize", params: {} });
+    f.send({ ...completed, params: { ...completed.params, turn: { ...completed.params.turn, items: [final.params.item] } } });
+    await eventually(() => f.pushes.length === 1);
+  });
+
   it("设置接口鉴权、CORS、校验并声明主机能力", async () => {
     const f = await fixture();
     expect((await fetch(f.url("notifications/settings").replace("secret", "wrong"), { method: "POST" })).status).toBe(401);
@@ -47,24 +78,24 @@ describe("Bark 通知", () => {
   it("HTTP 客户端退出后仍推送 final，跨会话与重启去重，system 注销", async () => {
     const f = await fixture(); await f.settings(); await f.rpc({ id: 1, method: "initialize", params: {} });
     f.send({ ...final, params: { ...final.params, item: { ...final.params.item, phase: "commentary" } } }); f.send({ ...final, params: { ...final.params, item: { ...final.params.item, type: "reasoning" } } }); await wait(80); expect(f.pushes).toHaveLength(0);
-    f.send(final); await eventually(() => f.pushes.length === 1);
+    f.send(final); f.send(completed); await eventually(() => f.pushes.length === 1);
     expect(f.pushes[0]).toMatchObject({ title: "Codex 运行结束", body: "任务已完成，点击查看会话", group: "办公室 Mac", url: `codexmobile://thread?backendId=${encodeURIComponent(f.backendId)}&threadId=${encodeURIComponent(final.params.threadId)}`, id: expect.any(String) }); expect(JSON.stringify(f.pushes)).not.toContain("private output");
-    const client = await f.stream(); f.send(final); await wait(80); expect(f.pushes).toHaveLength(1); client.close();
+    const client = await f.stream(); f.send(final); f.send(completed); await wait(80); expect(f.pushes).toHaveLength(1); client.close();
     expect((await stat(join(f.root, "codex-mobile-notifications"))).mode & 0o777).toBe(0o700);
     expect((await stat(join(f.root, "codex-mobile-notifications", "state.json"))).mode & 0o777).toBe(0o600);
-    await f.restart(); await f.rpc({ id: 1, method: "initialize", params: {} }); f.send(final); await wait(80); expect(f.pushes).toHaveLength(1);
-    await f.settings({ clientId: f.clientId, backendId: f.backendId, mode: "system" }); f.send({ ...final, params: { ...final.params, turnId: "another" } }); await wait(80); expect(f.pushes).toHaveLength(1);
+    await f.restart(); await f.rpc({ id: 1, method: "initialize", params: {} }); f.send(final); f.send(completed); await wait(80); expect(f.pushes).toHaveLength(1);
+    await f.settings({ clientId: f.clientId, backendId: f.backendId, mode: "system" }); f.send({ ...final, params: { ...final.params, turnId: "another" } }); f.send({ ...completed, params: { ...completed.params, turn: { id: "another", status: "completed" } } }); await wait(80); expect(f.pushes).toHaveLength(1);
     expect(await readFile(join(f.root, "codex-mobile-notifications", "state.json"), "utf8")).not.toContain(f.barkUrl);
   });
 
   it("真实 HTTP 推送失败不改变 RPC，重试有界", async () => {
-    const f = await fixture(true); await f.settings(); await f.rpc({ id: 1, method: "initialize", params: {} }); f.send(final);
+    const f = await fixture(true); await f.settings(); await f.rpc({ id: 1, method: "initialize", params: {} }); f.send(final); f.send(completed);
     expect((await f.rpc({ id: 2, method: "thread/read", params: { threadId: "t" } })).status).toBe(200);
     await eventually(() => f.pushes.length === 3); await wait(100); expect(f.pushes).toHaveLength(3);
   });
 
   it("重复同步相同订阅不取消首次失败后的成功重试", async () => {
-    const f = await fixture(1); await f.settings(); await f.rpc({ id: 1, method: "initialize", params: {} }); f.send(final);
+    const f = await fixture(1); await f.settings(); await f.rpc({ id: 1, method: "initialize", params: {} }); f.send(final); f.send(completed);
     await eventually(() => f.pushes.length === 1); expect((await f.settings()).status).toBe(200);
     await eventually(() => f.pushes.length === 2); await wait(600); expect(f.pushes).toHaveLength(2); expect(f.pushes[1].id).toBe(f.pushes[0].id);
   });
@@ -84,14 +115,14 @@ describe("Bark 通知", () => {
     f.send({ ...final, params: { ...final.params, threadId: "other-thread", item: { id: "final", type: "agentMessage" } } });
     f.send({ ...final, params: { ...final.params, item: { id: "other-item", type: "agentMessage" } } }); await wait(50); expect(f.pushes).toHaveLength(0);
     await f.stream(); f.send({ ...final, params: { ...final.params, item: { id: "final", type: "agentMessage" } } }); await wait(50); expect(f.pushes).toHaveLength(0);
-    f.send({ ...final, params: { ...final.params, item: { id: "final", type: "agentMessage" } } }, 0); await eventually(() => f.pushes.length === 1);
+    f.send({ ...final, params: { ...final.params, item: { id: "final", type: "agentMessage" } } }, 0); f.send(completed, 0); await eventually(() => f.pushes.length === 1);
   });
 
   it("流式 phase 最多保留512项分类 metadata", async () => {
     const f = await fixture(); await f.settings(); await f.stream();
     for (let n = 0; n <= 512; n++) f.send({ ...final, method: "item/started", params: { ...final.params, item: { id: `item-${n}`, type: "agentMessage", phase: "final_answer", text: "不缓存正文" } } });
-    f.send({ ...final, params: { ...final.params, item: { id: "item-0", type: "agentMessage" } } }); await wait(50); expect(f.pushes).toHaveLength(0);
-    f.send({ ...final, params: { ...final.params, item: { id: "item-512", type: "agentMessage" } } }); await eventually(() => f.pushes.length === 1);
+    f.send({ ...final, params: { ...final.params, item: { id: "item-0", type: "agentMessage" } } }); f.send(completed); await wait(50); expect(f.pushes).toHaveLength(0);
+    f.send({ ...final, params: { ...final.params, item: { id: "item-512", type: "agentMessage" } } }); f.send(completed); await eventually(() => f.pushes.length === 1);
   });
 
   it("注销 Bark 后释放已断开的流式上游", async () => {
@@ -104,27 +135,27 @@ describe("Bark 通知", () => {
     const f = await fixture(); await f.settings(); const client = await f.stream();
     client.send(JSON.stringify({ id: 1, method: "turn/start", params: { threadId: final.params.threadId } })); await eventually(() => f.requests.some((m) => m.method === "turn/start"));
     f.send({ method: "turn/completed", params: { threadId: final.params.threadId, turn: { id: "turn", status: "completed" } } }); await wait(50); client.close(); await wait(50);
-    expect(f.connections[0].readyState).toBe(WebSocket.OPEN); f.send(final); await eventually(() => f.pushes.length === 1); await eventually(() => f.connections[0].readyState === WebSocket.CLOSED);
+    expect(f.connections[0].readyState).toBe(WebSocket.OPEN); f.send(final); f.send(completed); await eventually(() => f.pushes.length === 1); await eventually(() => f.connections[0].readyState === WebSocket.CLOSED);
   });
 
   it("历史 RPC 结果不补发，HTTP 稀疏 completed 在 item 合并后判断 final", async () => {
     const f = await fixture(); await f.settings(); await f.rpc({ id: 1, method: "initialize", params: {} });
     f.respond((socket, message) => socket.send(JSON.stringify({ id: message.id, result: { thread: { id: final.params.threadId, turns: [{ id: "old", status: "completed", items: [final.params.item] }] } } })));
     await f.rpc({ id: 2, method: "thread/read", params: { threadId: final.params.threadId } }); await wait(50); expect(f.pushes).toHaveLength(0);
-    f.send({ ...final, method: "item/started" }); f.send({ ...final, params: { ...final.params, item: { id: "final", type: "agentMessage" } } }); await eventually(() => f.pushes.length === 1);
+    f.send({ ...final, method: "item/started" }); f.send({ ...final, params: { ...final.params, item: { id: "final", type: "agentMessage" } } }); f.send(completed); await eventually(() => f.pushes.length === 1);
   });
 
   it("pending turn/start 断开后仍接收 RPC 结果与完成事件", async () => {
     const f = await fixture(); await f.settings(); f.respond(() => {}); const client = await f.stream();
     client.send(JSON.stringify({ id: 42, method: "turn/start", params: { threadId: final.params.threadId } })); await eventually(() => f.requests.some((m) => m.id === 42)); client.close(); await wait(50); expect(f.connections[0].readyState).toBe(WebSocket.OPEN);
     f.send({ method: "turn/completed", params: { threadId: final.params.threadId, turn: { id: "turn", status: "completed" } } });
-    f.send({ id: 42, result: { turn: { id: "turn", status: "inProgress" } } }); f.send(final); await eventually(() => f.pushes.length === 1); await eventually(() => f.connections[0].readyState === WebSocket.CLOSED);
+    f.send({ id: 42, result: { turn: { id: "turn", status: "inProgress" } } }); f.send(final); f.send(completed); await eventually(() => f.pushes.length === 1); await eventually(() => f.connections[0].readyState === WebSocket.CLOSED);
   });
 
   it("流式客户端退出后保留运行中连接，完成与 final 竞态仍推送并释放", async () => {
     const f = await fixture(); await f.settings(); const client = await f.stream();
     client.send(JSON.stringify({ id: 1, method: "turn/start", params: { threadId: final.params.threadId } })); await eventually(() => f.requests.some((m) => m.method === "turn/start")); client.close(); await wait(80); expect(f.connections[0].readyState).toBe(WebSocket.OPEN);
-    f.send({ method: "turn/completed", params: { threadId: final.params.threadId, turn: { id: "turn", status: "completed" } } }); f.send(final); await eventually(() => f.pushes.length === 1); await eventually(() => f.connections[0].readyState === WebSocket.CLOSED);
+    f.send({ method: "turn/completed", params: { threadId: final.params.threadId, turn: { id: "turn", status: "completed" } } }); f.send(final); f.send(completed); await eventually(() => f.pushes.length === 1); await eventually(() => f.connections[0].readyState === WebSocket.CLOSED);
   });
 });
 
