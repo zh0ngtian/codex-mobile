@@ -1,4 +1,5 @@
 import { isThreadRunning } from "../ui/conversation";
+import { isVisibleThread } from "../features/threads/thread-visibility";
 
 type ThreadRecord = Record<string, any>;
 
@@ -83,10 +84,14 @@ function threadTimestamp(thread: ThreadRecord) {
 }
 
 export function dedupeThreadsById(threads: ThreadRecord[]) {
+  // 同批稀疏摘要不能抹掉已确认的子会话身份。
+  const hiddenIds = new Set(threads.filter((thread) => !isVisibleThread(thread))
+    .map((thread) => String(thread.id ?? "").trim()));
   const unique = new Map<string, ThreadRecord>();
   const unidentified: ThreadRecord[] = [];
   for (const thread of threads) {
     const id = String(thread.id ?? "").trim();
+    if (!isVisibleThread(thread) || (id && hiddenIds.has(id))) continue;
     if (!id) {
       unidentified.push(thread);
       continue;
@@ -228,8 +233,10 @@ export async function loadProjectThreadRecords(
     if (nextCursor && seenCursors.has(nextCursor)) {
       return { threads, hasMore: false, nextCursor: null };
     }
-    // 无过滤时保留原有单页行为；有过滤时只补足本批缺少的普通对话。
-    if (!nextCursor || !excludedThreadIds.size || threads.length >= PROJECT_THREAD_BATCH_SIZE) {
+    // 子会话和置顶记录均不占普通项目本批五条的名额。
+    if (!nextCursor ||
+      (!excludedThreadIds.size && result.data.every(isVisibleThread)) ||
+      threads.length >= PROJECT_THREAD_BATCH_SIZE) {
       return {
         threads,
         hasMore: nextCursor

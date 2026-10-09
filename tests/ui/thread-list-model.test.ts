@@ -14,6 +14,23 @@ const backends = [
 ];
 
 describe("会话列表派生", () => {
+  it("聚合列表隐藏子 Agent 与内部辅助会话，保留普通 UUID 标题和用户复制会话", () => {
+    const result = aggregateThreads(backends.slice(0, 1), { book: [
+      { id: "spawn", name: "有标题的子任务", source: { subAgent: { thread_spawn: { parent_thread_id: "main" } } }, status: { type: "active" }, isPinned: true },
+      { id: "legacy", source: { subagent: "review" }, isUnread: true },
+      { id: "parent", parentThreadId: "main" },
+      { id: "temporary", ephemeral: true },
+      { id: "compact", source: "subAgentCompact" },
+      { id: "review", sourceKind: "subAgentReview" },
+      { id: "analytics", threadSource: "subagent" },
+      { id: "internal", source: { internal: "title" } },
+      { id: "uuid", name: "01a1207a-bf03-7bc3-8be3-d15f44a61f8e", source: "vscode" },
+      { id: "fork", forkedFromId: "main", source: "cli" },
+      { id: "missing-source" },
+    ] });
+    expect(result.map((item) => item.threadId)).toEqual(["fork", "missing-source", "uuid"]);
+  });
+
   it("查看或恢复旧会话后列表、项目和合并搜索仍按最近任务排序", () => {
     const history = { id: "01a10657-66b0-7e30-97d8-62d853b8a3dc", cwd: "/project", recencyAt: 10, updatedAt: 10 };
     const recent = { id: "recent-task", cwd: "/project", recencyAt: 20, updatedAt: 20 };

@@ -2,6 +2,7 @@ import { titleOf, type DisplayRecord } from "../../ui/app-display";
 import { isThreadRunning } from "../../ui/conversation";
 import { t } from "../../i18n";
 import { PROJECTLESS_GROUP_ID } from "../../app-server/thread-list-loader";
+import { isVisibleThread } from "./thread-visibility";
 
 export interface ThreadSource {
   id: string;
@@ -45,7 +46,7 @@ export function aggregateThreads(
 ) {
   return backends
     .flatMap((backend) =>
-      (threadsByBackend[backend.id] ?? []).map(
+      (threadsByBackend[backend.id] ?? []).filter(isVisibleThread).map(
         (thread): AggregatedThreadItem => ({
           ...thread,
           backendId: backend.id,

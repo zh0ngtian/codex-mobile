@@ -18,6 +18,53 @@ function deferred<T>() {
 }
 
 describe("会话列表轮询加载器", () => {
+  it("运行中补取和显式置顶不会重新带出子 Agent", async () => {
+    const records: Record<string, any> = {
+      child: { id: "child", source: { subAgent: "review" }, status: { type: "active" } },
+      temporary: { id: "temporary", ephemeral: true },
+      main: { id: "main", source: "vscode", status: { type: "active" } },
+    };
+    const client = { request: vi.fn(async (method: string, params: any) => {
+      if (method === "thread/loaded/list") return { data: ["child", "main"], nextCursor: null };
+      if (method === "thread/read") return { thread: records[params.threadId] };
+      return { data: Object.values(records), nextCursor: null };
+    }) };
+    const onPinnedData = vi.fn();
+    const onData = vi.fn();
+    await createLatestThreadListLoader({ onPinnedData, onData }).load(client, [], [], {
+      pinnedThreadIds: ["child", "temporary"], includeRunningThreads: true,
+    });
+    expect(onPinnedData).toHaveBeenCalledWith([records.main]);
+    expect(onData).toHaveBeenCalledWith([records.main]);
+  });
+
+  it("项目分页过滤子 Agent 后继续补足五条，不需要显式排除 ID", async () => {
+    const records = [
+      { id: "child", parentThreadId: "main" },
+      { id: "internal", ephemeral: true },
+      ...Array.from({ length: 6 }, (_, i) => ({ id: `regular-${i}` })),
+    ];
+    const client = { request: vi.fn(async (_method: string, params: any) => {
+      const offset = Number(params.cursor ?? 0);
+      const end = offset + params.limit;
+      return { data: records.slice(offset, end), nextCursor: end < records.length ? String(end) : null };
+    }) };
+    const result = await loadProjectThreadRecords(client, "/a");
+    expect(result.threads.map((thread) => thread.id)).toEqual(Array.from({ length: 5 }, (_, i) => `regular-${i}`));
+    expect(result.nextCursor).toBe("7");
+    expect(result.hasMore).toBe(true);
+    const projectless = await loadProjectlessThreadRecords(client, records.map((thread) => thread.id), 5);
+    expect(projectless.threads.map((thread) => thread.id)).toEqual(Array.from({ length: 5 }, (_, i) => `regular-${i}`));
+  });
+
+  it("刷新保留和去重不会因稀疏的新摘要丢失同批子会话分类", () => {
+    const child = { id: "child", parentThreadId: "main", status: { type: "active" }, updatedAt: 1 };
+    expect(dedupeThreadsById([child, { id: "child", updatedAt: 2 }, { id: "main" }]))
+      .toEqual([{ id: "main" }]);
+    expect(mergeThreadListPage([child], [{ id: "main" }], new Set(["child"])))
+      .toEqual([{ id: "main" }]);
+  });
+
   it("同批更新尚未同步置顶 ID 时，普通分页仍保留主动和被动置顶，并采用最新结束状态", () => {
     const current = [
       { id: "manual", isPinned: true }, { id: "unread", isUnread: true },
