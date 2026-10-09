@@ -392,7 +392,8 @@ jobs:
               'context.coordinator, name: "completionNotification")'
               + '\n        UNUserNotificationCenter.current().delegate = context.coordinator'
               + '\n        context.coordinator.realtimeWebView = webView'
-              + '\n        context.coordinator.installBoldTextSupport(webView)',
+              + '\n        context.coordinator.installBoldTextSupport(webView)'
+              + '\n        context.coordinator.installKeyboardDismissalSupport()',
               1,
           )
           coordinator_declaration = (
@@ -453,6 +454,28 @@ jobs:
               1,
           )
           source += r'''
+
+          extension Coordinator {
+              func installKeyboardDismissalSupport() {
+                  NotificationCenter.default.addObserver(
+                      self, selector: #selector(blurWebInputOnKeyboardDismissal),
+                      name: UIResponder.keyboardWillHideNotification, object: nil
+                  )
+              }
+
+              @objc private func blurWebInputOnKeyboardDismissal() {
+                  // 系统“完成”只收起键盘，DOM 焦点仍可能保留；先失焦，避免视口恢复时追踪光标。
+                  realtimeWebView?.evaluateJavaScript("""
+                  (() => {
+                      const input = document.activeElement;
+                      if (input instanceof HTMLInputElement ||
+                          input instanceof HTMLTextAreaElement || input?.isContentEditable) {
+                          input.blur();
+                      }
+                  })();
+                  """, completionHandler: nil)
+              }
+          }
 
           extension Coordinator {
               private var boldTextScript: String {

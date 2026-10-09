@@ -1,6 +1,44 @@
 import XCTest
 
 final class CodexMobileUITests: XCTestCase {
+    func testUnsentDraftRemainsStableAfterKeyboardDismissal() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication(bundleIdentifier: "vip.loock.codexmobile")
+        app.launch()
+        XCTAssertTrue(app.webViews.buttons["聊天"].waitForExistence(timeout: 20), app.debugDescription)
+        app.webViews.buttons["聊天"].tap()
+        let input = app.webViews.textViews["向 Codex 提问"]
+        XCTAssertTrue(input.waitForExistence(timeout: 10), app.debugDescription)
+        let draft = "Unsent keyboard regression draft"
+        input.tap()
+        input.typeText(draft)
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        let done = app.buttons["Done"]
+        let doneChinese = app.buttons["完成"]
+        if done.exists { done.tap() }
+        else if doneChinese.exists { doneChinese.tap() }
+        else { XCTFail("键盘收起按钮不存在：\(app.debugDescription)"); return }
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
+        let frame = input.frame
+        for _ in 0..<12 {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+            XCTAssertEqual(input.frame.minY, frame.minY, accuracy: 1, "收起键盘后输入框应停止跳动")
+            XCTAssertEqual(input.value as? String, draft)
+        }
+        XCTAssertGreaterThan(frame.minY, app.frame.height * 0.7, "输入框应回到屏幕底部")
+        XCTAssertTrue(app.webViews.buttons["发送"].isHittable)
+        let attachment = XCTAttachment(screenshot: app.screenshot())
+        attachment.name = "未发送草稿收起键盘"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        input.tap()
+        input.typeText(" retained")
+        let resumedDraft = input.value as? String ?? ""
+        XCTAssertTrue(resumedDraft.contains(draft))
+        XCTAssertTrue(resumedDraft.contains("retained"))
+        XCTAssertTrue(app.webViews.buttons["发送"].isHittable)
+    }
+
     func testEmbeddedFrontendAndGatewayConnection() throws {
         continueAfterFailure = false
         addUIInterruptionMonitor(withDescription: "系统通知授权") { alert in

@@ -49,6 +49,34 @@ describe("iOS 本地工程准备", () => {
     expect(harden).toContain('navigation_finished + "        syncBoldText()\\n"');
   });
 
+  it("系统键盘收起时同步取消网页输入焦点，保留未发送草稿", () => {
+    const workflow = parse(readFileSync(".github/workflows/build-ios.yml", "utf8"));
+    const harden = workflow.jobs.build.steps.find((step: any) => step.name === "Harden and test the iOS host").run;
+    expect(harden).toContain("context.coordinator.installKeyboardDismissalSupport()");
+    expect(harden).toContain("UIResponder.keyboardWillHideNotification");
+    expect(harden).toContain("input.blur()");
+    expect(harden).not.toContain("input.value =");
+    const script = harden.match(/blurWebInputOnKeyboardDismissal\(\) \{[\s\S]*?evaluateJavaScript\("""\n([\s\S]*?)\n\s*""",/)?.[1];
+    expect(script).toBeTruthy();
+    for (const tag of ["input", "textarea"]) {
+      const input = document.createElement(tag) as HTMLInputElement | HTMLTextAreaElement;
+      input.value = "未发送的草稿";
+      document.body.append(input);
+      input.focus();
+      expect(document.activeElement).toBe(input);
+      new Function(script!)();
+      expect(document.activeElement).not.toBe(input);
+      expect(input.value).toBe("未发送的草稿");
+      input.remove();
+    }
+    const button = document.createElement("button");
+    document.body.append(button);
+    button.focus();
+    new Function(script!)();
+    expect(document.activeElement).toBe(button);
+    button.remove();
+  });
+
   it.each(["../1.2.3", "1.2", "1.2.3;echo bad", "1.2.3-beta"])("拒绝不适合 iOS 的版本 %s", (version) => {
     const result = plan("--version", version);
     expect(result.status).not.toBe(0);
