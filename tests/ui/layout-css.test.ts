@@ -32,6 +32,20 @@ describe("悬浮状态布局", () => {
     expect(headerRule).not.toContain("position: fixed");
   });
 
+  it("侧栏阻止 WebKit 长按选字并保留搜索框文字选择", () => {
+    const threadListRule =
+      styles.match(/\.thread-list-page\s*\{([^}]*)\}/)?.[1] ?? "";
+    const searchInputRule =
+      styles.match(/\.search-box input\s*\{([^}]*)\}/)?.[1] ?? "";
+
+    expect(threadListRule).toContain("-webkit-touch-callout: none");
+    expect(threadListRule).toContain("-webkit-user-select: none");
+    expect(threadListRule).toContain("user-select: none");
+    expect(searchInputRule).toContain("-webkit-touch-callout: default");
+    expect(searchInputRule).toContain("-webkit-user-select: text");
+    expect(searchInputRule).toContain("user-select: text");
+  });
+
   it("待审批通知固定在 Header 下方且不再依赖页面底部", () => {
     const rule = styles.match(/\.backend-attention\s*\{([^}]*)\}/)?.[1] ?? "";
 
