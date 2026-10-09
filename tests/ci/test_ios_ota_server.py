@@ -1,6 +1,7 @@
 """LAN OTA 服务、证书与 launchd 边界测试。"""
 import contextlib
 import importlib.util
+import io
 import json
 from pathlib import Path
 import plistlib
@@ -165,6 +166,28 @@ class HTTPBoundaryTests(unittest.TestCase):
             with self.request('/channels/codex-mobile/releases/1.2.3/' + name, method='HEAD') as response:
                 self.assertEqual(int(response.headers['Content-Length']), len(data))
                 self.assertEqual(response.read(), b'')
+
+    def test_access_log_identifies_install_requests_and_redacts_rejected_urls(self):
+        output = io.StringIO()
+        with patch.object(self.m.sys, 'stderr', output):
+            with self.request('/channels/codex-mobile/current/latest-ios.json') as response:
+                response.read()
+            with self.request('/channels/codex-mobile/releases/1.2.3/latest.ipa', method='HEAD') as response:
+                response.read()
+            with self.assertRaises(urllib.error.HTTPError):
+                self.request('/secret-password?token=secret-token')
+        records = [json.loads(line) for line in output.getvalue().splitlines()]
+        self.assertEqual(len(records), 3)
+        self.assertEqual([(r['method'], r['status'], r['path']) for r in records], [
+            ('GET', 200, '/channels/codex-mobile/current/latest-ios.json'),
+            ('HEAD', 200, '/channels/codex-mobile/releases/1.2.3/latest.ipa'),
+            ('GET', 404, '[rejected]')])
+        for record in records:
+            self.assertEqual(record['event'], 'ota_request')
+            self.assertEqual(record['remoteAddress'], '127.0.0.1')
+            self.assertTrue(record['time'].endswith('+00:00'))
+        self.assertNotIn('secret-password', output.getvalue())
+        self.assertNotIn('secret-token', output.getvalue())
 
     def test_idle_tcp_connection_cannot_block_other_tls_requests(self):
         stalled = socket.create_connection(self.servers[0].server_address, timeout=3)

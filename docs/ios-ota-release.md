@@ -91,6 +91,24 @@ iPhone 与 Mac 连接同一局域网。首次用 Safari 下载根证书配置，
 
 为保持入口稳定，将 Mac 的 `192.168.123.79` 在路由器设为 DHCP 保留地址。Mac 开机登录后 launchd 自动恢复服务；Mac 关机或离开局域网时安装入口不可用。若系统请求本地网络访问，允许 Safari/应用访问局域网。首次证书信任、系统安装确认以及真机覆盖后数据保留不能由模拟器代替验证。
 
+### “无法安装，请稍后再试”排查
+
+先保留已有 App，避免卸载删除数据。这条系统提示不能直接判断是网络、签名还是升级身份问题。
+
+1. 手机连接服务器所在局域网，用 Safari 打开固定 HTTPS JSON，确认能看到 `version` 等字段：`https://192.168.123.79:8766/channels/codex-mobile/current/latest-ios.json`。只有蜂窝网络且没有局域网路由时，无法下载 `192.168.123.79` 的文件；已打开的安装页不代表稍后系统安装服务仍能访问服务器。
+2. 核对根证书已安装并启用完全信任。不要通过忽略 Safari 证书警告判断系统安装服务已信任 TLS。
+3. 在 Mac 观察日志，手机从固定安装页重新发起安装：
+
+```bash
+tail -f "$HOME/Library/Application Support/CodexMobile/ota-server/server.stderr.log"
+```
+
+日志中 `ota_request` 记录 UTC 时间、客户端 IP、方法、状态和公开路径，拒绝路径统一显示 `[rejected]`，不记录查询参数或 Header。200 表示服务已开始返回响应，不能据此宣称 IPA 下载完毕或系统已安装。没有手机 HTTP 日志时，先排查网络和 TLS；只有安装页、没有 manifest 时检查系统安装请求；已有 manifest 和 IPA 请求仍失败时，应查看真机安装错误。
+
+4. 用 USB 将目标 iPhone 连接 Mac、解锁并信任电脑，在 macOS“控制台”选择该设备，重新尝试 OTA，记录 `appstored`、`installd` 或 `MIInstallerErrorDomain` 附近的错误。以真机报告检查 UDID、证书状态、entitlements 或旧 App 的 application-identifier；本机验签不能代替这一步。[Apple 安装故障排查](https://developer.apple.com/library/archive/technotes/tn2319/_index.html)。
+
+日志保存在权限 700 的本机私有目录，launchd 日志文件权限 600。启用或更新诊断服务应在长期主工作区执行 `python3 scripts/ios_ota_server.py restart`，不重新生成 CA。
+
 本机发布配置使用模板中的 `localRoot` 与 `caFile`。发布入口通过专用 `CODEX_MOBILE_OTA_CA_FILE` 为 OTA 请求追加本机 CA，保留系统公共 CA，并且不改变 npm 等构建子进程的 SSL 信任，始终执行 TLS 验证，不使用 `-k` 或关闭证书检查。先建立版本目录，HTTPS 完整回验通过后原子切换 `current`，最后验证固定入口；升级时无需重新安装 CA。TLS 证书到期前执行 `python3 scripts/ios_ota_server.py renew`，保持 CA、服务私钥与 IP 不变；已加载的 launchd 服务会自动重启使用新证书，设备无需重新信任。`init` 不覆盖现有证书。
 
 本机默认发布命令仍为：

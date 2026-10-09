@@ -7,6 +7,7 @@ mobileconfig。HTTPS 仅提供 ios_ota.py 的四个发布文件，兼容 current
 init 返回的 caFile，以便本机发布工具验证 TLS。没有第三方 Python 依赖。
 """
 import argparse
+from datetime import datetime, timezone
 import hashlib
 import ipaddress
 import json
@@ -189,6 +190,24 @@ def handler(config, bootstrap=False):
         server_version = 'CodexMobileOTA/1.0'
         sys_version = ''
         def log_message(self, *_): pass
+        def log_request(self, code='-', size='-'):
+            # 响应开始记录，不代表下载完成。只记录 allowlist 路径，不输出查询或 Header。
+            path = '[rejected]'
+            try:
+                parsed = urllib.parse.urlsplit(self.path)
+                if not parsed.query and not parsed.fragment:
+                    if bootstrap and parsed.path.removeprefix('/') in BOOTSTRAP:
+                        path = parsed.path
+                    elif not bootstrap and re.fullmatch(
+                        re.escape(CHANNEL_PREFIX) + r'(current|releases/\d+\.\d+\.\d+)/(latest\.ipa|manifest\.plist|latest-ios\.json|install\.html)', parsed.path):
+                        path = parsed.path
+            except ValueError:
+                pass
+            record = {'event': 'ota_request', 'time': datetime.now(timezone.utc).isoformat(),
+                      'remoteAddress': self.client_address[0],
+                      'method': self.command if self.command in ('GET', 'HEAD', 'OPTIONS', 'POST') else 'OTHER',
+                      'status': code, 'path': path}
+            print(json.dumps(record, ensure_ascii=True), file=sys.stderr, flush=True)
         def setup(self):
             self.request.settimeout(15)
             super().setup()
