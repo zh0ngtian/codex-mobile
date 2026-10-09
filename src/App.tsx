@@ -94,6 +94,8 @@ import {
   type ThreadManagementAction,
 } from "./features/threads/ThreadListPage";
 import { ApprovalSheet } from "./features/approvals/ApprovalSheet";
+import { useApprovalRequests } from "./features/approvals/useApprovalRequests";
+import { approvalKey, approvalResponse, questionResponse, type ApprovalDecision } from "./features/approvals/approval-model";
 import {
   ComposerSettings,
   type ComposerPicker,
@@ -356,11 +358,9 @@ function BackendWorkspace({
     useState<PendingSteerMessage | null>(null);
   const [queuedFollowUps, setQueuedFollowUps] = useState<QueuedFollowUp[]>([]);
   const [error, setError] = useState("");
-  const [requests, setRequests] = useState<RpcMessage[]>([]);
+  const approvalRequests = useApprovalRequests();
+  const { requests, approval, userAnswers } = approvalRequests;
   const [syncState, setSyncState] = useState<{ updatedAt: number | null; stale: boolean } | null>(null);
-  const [respondingRequest, setRespondingRequest] = useState(false);
-  const respondingRequestRef = useRef(false);
-  const [userAnswers, setUserAnswers] = useState<Record<string, string>>({});
   const [models, setModels] = useState<AnyRecord[]>([]);
   const [permissionProfiles, setPermissionProfiles] = useState<AnyRecord[]>([]);
   const [selectedModel, setSelectedModel] = useState("");
@@ -1150,7 +1150,7 @@ function BackendWorkspace({
           setRefreshing(false);
           setSteering(false);
           setPendingSteerMessage(null);
-          setRequests([]);
+          approvalRequests.reset();
           void fetchBackendHostInfo(backend).catch((reason) => {
             const message =
               reason instanceof Error ? reason.message : String(reason);
@@ -1175,10 +1175,7 @@ function BackendWorkspace({
             setSyncState({ updatedAt: params.updatedAt ?? null, stale: params.stale === true });
             return;
           }
-          if (message.method === "mobile/requests") {
-            setRequests(params.requests ?? []);
-            return;
-          }
+          if (approvalRequests.onNotification(message)) return;
           for (const thread of threadsRef.current) finalAnswerCompletionRef.current.rememberThread(thread);
           finalAnswerCompletionRef.current.rememberThread(activeRef.current);
           const completedFinalAnswer = completionEventCatchUpRef.current
@@ -1596,14 +1593,7 @@ function BackendWorkspace({
       },
       onRequest: (_backendId, request, source) => {
           const client = source as AppServerClient;
-          if (
-            request.method === "item/commandExecution/requestApproval" ||
-            request.method === "item/fileChange/requestApproval" ||
-            request.method === "item/permissions/requestApproval" ||
-            request.method === "item/tool/requestUserInput"
-          ) {
-            setRequests((current) => current.some((entry) => entry.id === request.id) ? current : [...current, request]);
-          } else {
+          if (!approvalRequests.receive(request)) {
             void Promise.resolve(client.respondError(
               request.id!,
               -32601,
@@ -3731,61 +3721,26 @@ function BackendWorkspace({
     if (!active?.id) setNewChatPermissionMode(mode);
     setPicker(null);
   };
-  const approval = requests[0] ?? null;
-  const replyToRequest = async (result: unknown) => {
+  const replyToRequest = (result: unknown) => {
     const client = clientRef.current;
-    if (!approval || !client || respondingRequestRef.current) return;
-    respondingRequestRef.current = true;
-    setRespondingRequest(true);
-    try {
-      await client.respond(approval.id!, result);
-      setRequests((current) => current.filter((entry) => entry.id !== approval.id));
-      setUserAnswers({});
-    } catch (reason) {
-      if (reason instanceof HttpOperationPendingError) {
-        const context = draftContextGenerationRef.current;
-        rememberPendingOperation(reason.requestId, {
-          threadId: String((approval.params as AnyRecord)?.threadId ?? ""),
-          draftContext: context,
-          confirmed: (response) => {
-            if (context !== draftContextGenerationRef.current) return;
-            if (response.error) setError(response.error.message);
-            else setUserAnswers({});
-          },
-        }, client);
-        return;
-      }
-      setError(reason instanceof Error ? reason.message : String(reason));
-    } finally {
-      respondingRequestRef.current = false;
-      setRespondingRequest(false);
-    }
+    if (!approval || !client) return;
+    void approvalRequests.submit(result, client, (requestId, confirmed) => {
+      rememberPendingOperation(requestId, {
+        threadId: String((approval.params as AnyRecord)?.threadId ?? ""),
+        draftContext: draftContextGenerationRef.current,
+        confirmed,
+      }, client);
+    }, approval);
   };
-  const finishRequest = (decision: "accept" | "decline") => {
+  const finishRequest = (decision: ApprovalDecision) => {
     if (!approval) return;
-    const params = (approval.params ?? {}) as AnyRecord;
-    if (approval.method === "item/permissions/requestApproval") {
-      const requested = (params.permissions ?? {}) as AnyRecord;
-      const granted = {
-        ...(requested.fileSystem != null ? { fileSystem: requested.fileSystem } : {}),
-        ...(requested.network != null ? { network: requested.network } : {}),
-      };
-      void replyToRequest({
-        permissions: decision === "accept" ? granted : {},
-        scope: "turn",
-      });
-    } else {
-      void replyToRequest({ decision });
-    }
+    const response = approvalResponse(approval, decision);
+    if (response) replyToRequest(response);
   };
   const answerQuestions = () => {
     if (!approval) return;
-    const questions = ((approval.params as AnyRecord)?.questions ?? []) as AnyRecord[];
-    void replyToRequest({
-      answers: Object.fromEntries(
-        questions.map((question) => [question.id, { answers: [userAnswers[question.id] ?? ""] }]),
-      ),
-    });
+    const response = questionResponse(approval, userAnswers);
+    if (response) replyToRequest(response);
   };
 
   const startNewChat = (
@@ -4146,15 +4101,12 @@ function BackendWorkspace({
         </div>
       )}
       <ApprovalSheet
+        key={approval ? approvalKey(approval) : "none"}
         approval={approval}
-        submitting={respondingRequest}
+        submitting={approvalRequests.submitting}
+        error={approvalRequests.error}
         userAnswers={userAnswers}
-        onAnswerChange={(questionId, value) =>
-          setUserAnswers((current) => ({
-            ...current,
-            [questionId]: value,
-          }))
-        }
+        onAnswerChange={approvalRequests.answer}
         onSubmitAnswers={answerQuestions}
         onDecision={finishRequest}
       />

@@ -1,0 +1,17 @@
+.approval-details { margin: 12px 0; overflow-wrap: anywhere; }
+.approval-details dt { margin-top: 12px; font-weight: 600; }
+.approval-details dd { margin: 4px 0 0; }
+.approval-details dd pre { margin: 0; }
+.approval-sheet .question-field { padding: 0; min-width: 0; border: 0; }
+.question-field legend { font-weight: 600; }
+.question-field p { margin: 0; }
+.question-options { display: grid; gap: 8px; }
+.question-option { display: flex; gap: 10px; align-items: center; border: 1px solid #ddd; border-radius: 14px; padding: 12px; min-height: 44px; }
+.approval-sheet .question-option input { width: 20px; height: 20px; margin: 0; flex: 0 0 20px; }
+.question-option span { display: grid; gap: 4px; overflow-wrap: anywhere; }
+.question-option strong { color: #222; }
+.question-option small { font-size: 0.875rem; }
+.approval-error { color: #a02020; overflow-wrap: anywhere; }
+.approval-hint { color: #666; font-size: 0.875rem; overflow-wrap: anywhere; }
+.approval-sheet button:disabled { opacity: 0.5; }
+.approval-sheet .action-sheet-footer button { overflow-wrap: anywhere; }
