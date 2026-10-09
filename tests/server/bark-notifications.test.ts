@@ -35,6 +35,23 @@ async function fixture(failPush: boolean | number = false) {
 }
 
 describe("Bark 通知", () => {
+  it.each([
+    { threadSource: "subagent" }, { threadSource: "memory_consolidation" },
+    { sourceKind: "subAgentReview" }, { ephemeral: true }, { source: { internal: "title" } },
+  ])("列表隐藏分类 %j 经摘要登记后不发送 Bark", async (metadata) => {
+    const f = await fixture(); await f.settings();
+    await f.rpc({ id: 0, method: "initialize", params: {} });
+    f.respond((socket, message) => socket.send(JSON.stringify({ id: message.id,
+      result: { thread: { id: final.params.threadId, ...metadata } } })));
+    await f.rpc({ id: 1, method: "thread/read", params: { threadId: final.params.threadId } });
+    f.send(final); f.send(completed); await wait(100);
+    expect(f.pushes).toHaveLength(0);
+    f.send({ ...final, params: { ...final.params, threadId: "main" } });
+    f.send({ ...completed, params: { ...completed.params, threadId: "main" } });
+    await eventually(() => f.pushes.length === 1);
+    expect(f.pushes[0].url).toContain("threadId=main");
+  });
+
   it.each(["started", "thread/read", "thread/resume", "thread/list", "stream"])("无标题子会话经 %s 登记后不推送，普通会话继续推送", async (method) => {
     const f = await fixture(); await f.settings();
     const thread = { id: final.params.threadId, source: { subAgent: { thread_spawn: { parent_thread_id: "main" } } } };

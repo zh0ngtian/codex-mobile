@@ -19,8 +19,10 @@ export interface RpcMessage {
 
 type NotificationListener = (message: RpcMessage) => void;
 type RequestListener = (message: RpcMessage) => void;
+type ThreadMetadataListener = (thread: Record<string, any>) => void;
 
 interface PendingRequest {
+  method: string;
   resolve: (value: unknown) => void;
   reject: (reason: unknown) => void;
   timeout: ReturnType<typeof setTimeout> | undefined;
@@ -71,6 +73,7 @@ export class AppServerClient {
   private pending = new Map<number | string, PendingRequest>();
   private notificationListeners = new Set<NotificationListener>();
   private requestListeners = new Set<RequestListener>();
+  private threadMetadataListeners = new Set<ThreadMetadataListener>();
   private readonly requestTimeoutMs: number;
 
   constructor(
@@ -118,6 +121,7 @@ export class AppServerClient {
         }
       }, options.timeoutMs ?? this.requestTimeoutMs);
       const pending: PendingRequest = {
+        method,
         resolve: resolve as (value: unknown) => void,
         reject,
         timeout,
@@ -163,6 +167,11 @@ export class AppServerClient {
     return () => this.requestListeners.delete(listener);
   }
 
+  onThreadMetadata(listener: ThreadMetadataListener) {
+    this.threadMetadataListeners.add(listener);
+    return () => this.threadMetadataListeners.delete(listener);
+  }
+
   private send(message: RpcMessage, timeoutMs?: number) {
     const payload = JSON.stringify(message);
     const bytes = new TextEncoder().encode(payload).byteLength;
@@ -199,7 +208,19 @@ export class AppServerClient {
           ),
         );
       }
-      else waiter.resolve(message.result);
+      else {
+        // 在列表/搜索过滤之前登记原始来源，RPC 本身不产生完成通知。
+        if (waiter.method.startsWith("thread/") && this.threadMetadataListeners.size) {
+          const result = message.result as { thread?: unknown; data?: unknown } | undefined;
+          const records = [result?.thread, ...(Array.isArray(result?.data) ? result.data : [])];
+          for (const record of records) {
+            const thread = record?.thread ?? record;
+            if (!thread || typeof thread !== "object" || typeof thread.id !== "string" || !thread.id) continue;
+            for (const listener of this.threadMetadataListeners) listener(thread);
+          }
+        }
+        waiter.resolve(message.result);
+      }
       return;
     }
     if (message.id !== undefined && message.method) {

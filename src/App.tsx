@@ -1615,6 +1615,11 @@ function BackendWorkspace({
       },
       onReady: (_backendId, source) => {
         const client = source as AppServerClient;
+        client.onThreadMetadata((thread) => {
+          if (!disposed && manager.client(backend.id) === source) {
+            finalAnswerCompletionRef.current.rememberThread(thread);
+          }
+        });
         clientRef.current = client;
         readyClientRef.current = null;
         const workspaceResumeSnapshot = {

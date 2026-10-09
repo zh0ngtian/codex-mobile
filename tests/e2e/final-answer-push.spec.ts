@@ -1,9 +1,16 @@
 import { expect, test, type WebSocketRoute } from "@playwright/test";
 
-for (const childSource of ["list", "started"]) {
+for (const [childSource, metadata] of [
+  ["list", { source: { subAgent: "review" } }],
+  ["started", { source: { subAgent: "review" } }],
+  ["memory-list", { threadSource: "memory_consolidation" }],
+  ["loaded", { threadSource: "subagent" }],
+  ["internal-started", { source: { internal: "title" } }],
+  ["ephemeral-list", { ephemeral: true }],
+] as const) {
 test(`系统推送屏蔽${childSource}子会话，主任务仍等待最终回复和成功结束`, async ({ page }) => {
   const thread = { id: "notification-thread", name: "完成通知会话", cwd: "/tmp/project", turns: [], status: { type: "idle" } };
-  const child = { ...thread, id: "child-thread", name: "签名子任务", source: { subAgent: { thread_spawn: { parent_thread_id: thread.id } } } };
+  const child = { ...thread, id: "child-thread", name: "签名子任务", status: { type: "active" }, ...metadata };
   const sockets: WebSocketRoute[] = [];
   const reply = (message: any) => {
     const results: Record<string, any> = {
@@ -11,7 +18,9 @@ test(`系统推送屏蔽${childSource}子会话，主任务仍等待最终回复
       "model/list": { data: [{ id: "gpt-test", model: "gpt-test", isDefault: true, supportedReasoningEfforts: [{ reasoningEffort: "medium", description: "平衡" }], serviceTiers: [] }] },
       "permissionProfile/list": { data: [{ id: ":workspace", allowed: true }] },
       "config/read": { config: { model: "gpt-test", sandbox_mode: "workspace-write" } },
-      "thread/list": { data: childSource === "list" ? [thread, child] : [thread], nextCursor: null },
+      "thread/loaded/list": { data: childSource === "loaded" ? [child.id] : [], nextCursor: null },
+      "thread/read": { thread: child },
+      "thread/list": { data: childSource.endsWith("list") ? [thread, child] : [thread], nextCursor: null },
     };
     return { id: message.id, result: results[message.method] ?? {} };
   };
@@ -46,7 +55,7 @@ test(`系统推送屏蔽${childSource}子会话，主任务仍等待最终回复
   const complete = (turnId: string, status = "completed", items?: any[]) => send("turn/completed", { turn: { id: turnId, status, items } });
   const count = () => page.evaluate(() => (window as any).pushes.length);
   const unchanged = async (expected: number) => { await page.waitForTimeout(150); expect(await count()).toBe(expected); };
-  if (childSource === "started") sockets[0].send(JSON.stringify({ method: "thread/started", params: { thread: child } }));
+  if (childSource.endsWith("started")) sockets[0].send(JSON.stringify({ method: "thread/started", params: { thread: child } }));
   sockets[0].send(JSON.stringify({ method: "item/completed", params: { threadId: child.id, turnId: "child-turn", item: { id: "child-final", type: "agentMessage", phase: "final_answer", text: "子任务完成" } } }));
   sockets[0].send(JSON.stringify({ method: "turn/completed", params: { threadId: child.id, turn: { id: "child-turn", status: "completed" } } }));
   await unchanged(0);
@@ -54,7 +63,7 @@ test(`系统推送屏蔽${childSource}子会话，主任务仍等待最终回复
   await unchanged(0);
   complete("first");
   await expect.poll(count).toBe(1);
-  if (childSource === "started") sockets[0].send(JSON.stringify({ method: "thread/started", params: { thread: child } }));
+  if (childSource.endsWith("started")) sockets[0].send(JSON.stringify({ method: "thread/started", params: { thread: child } }));
   sockets[0].send(JSON.stringify({ method: "item/completed", params: { threadId: child.id, turnId: "child-turn", item: { id: "child-final", type: "agentMessage", phase: "final_answer", text: "子任务完成" } } }));
   sockets[0].send(JSON.stringify({ method: "turn/completed", params: { threadId: child.id, turn: { id: "child-turn", status: "completed" } } }));
   await unchanged(1);

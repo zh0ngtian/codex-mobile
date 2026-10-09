@@ -29,6 +29,34 @@ class FakeSocket extends EventTarget {
 }
 
 describe("AppServerClient", () => {
+  it("thread RPC 摘要在业务 promise 完成前登记，隐藏后仍能识别通知来源", async () => {
+    const socket = new FakeSocket();
+    const client = new AppServerClient(socket as unknown as WebSocket);
+    const seen: any[] = [];
+    const off = client.onThreadMetadata((thread) => seen.push(thread));
+    const child = { id: "child", threadSource: "subagent" };
+    for (const [method, result, expected] of [
+      ["thread/list", { data: [child] }, [child]],
+      ["thread/read", { thread: child }, [child]],
+      ["thread/search", { data: [{ thread: child, snippet: "match" }] }, [child]],
+      ["thread/loaded/list", { data: ["child"] }, []],
+      ["model/list", { data: [child] }, []],
+    ] as const) {
+      seen.length = 0;
+      const promise = client.request(method, {});
+      const sent = JSON.parse(socket.sent.at(-1)!);
+      socket.receive({ id: sent.id, result });
+      expect(seen).toEqual(expected);
+      await expect(promise).resolves.toEqual(result);
+    }
+    off();
+    seen.length = 0;
+    const promise = client.request("thread/read", {});
+    socket.receive({ id: JSON.parse(socket.sent.at(-1)!).id, result: { thread: child } });
+    await promise;
+    expect(seen).toEqual([]);
+  });
+
   it("初始化后发送 initialized 并加载线程列表", async () => {
     const socket = new FakeSocket();
     const client = new AppServerClient(socket as unknown as WebSocket);

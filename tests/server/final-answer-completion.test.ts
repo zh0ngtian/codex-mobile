@@ -9,10 +9,17 @@ describe("最终回复完成判定", () => {
     { source: { subagent: "review" } },
     { parentThreadId: "parent" },
     { threadSource: "subAgentThreadSpawn" },
+    { threadSource: "subagent" },
+    { threadSource: "memory_consolidation" },
+    { sourceKind: "subAgentReview" },
+    { source: "subAgentCompact" },
+    { source: { internal: "title" } },
+    { ephemeral: true },
   ])("实时子会话来源 %j 不通知，普通无名会话照常通知", (metadata) => {
     const tracker = new FinalAnswerCompletionTracker();
     tracker.observe({ method: "thread/started", params: { thread: { id: "child", ...metadata } } });
     tracker.observe({ method: "thread/name/updated", params: { threadId: "child", threadName: "有标题的子任务" } });
+    tracker.rememberThread({ id: "child", name: "改名后稀疏摘要" });
     tracker.observe(final("child"));
     expect(tracker.observe(complete("child"))).toBeNull();
     tracker.observe(final("main"));
@@ -25,7 +32,8 @@ describe("最终回复完成判定", () => {
     tracker.observe(final("child"));
     expect(tracker.observe(complete("child"))).toBeNull();
     tracker.observe({ method: "thread/started", params: { thread: { id: "fork", source: "appServer", forkedFromId: "main" } } });
-    for (const id of ["main", "fork"]) {
+    tracker.rememberThread({ id: "automation", threadSource: "automation" });
+    for (const id of ["main", "fork", "automation"]) {
       tracker.observe(final(id));
       expect(tracker.observe(complete(id))).toEqual({ threadId: id, turnId: "turn" });
     }
