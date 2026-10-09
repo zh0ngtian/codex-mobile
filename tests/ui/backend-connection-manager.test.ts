@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { HttpRpcTransport } from "../../src/backends/http-transport";
 import {
   BackendConnectionManager,
   backendWebSocketUrl,
@@ -84,6 +85,33 @@ async function flush() {
 }
 
 describe("多后端连接池", () => {
+  afterEach(() => vi.unstubAllGlobals());
+  it("默认 HTTP，选择流式使用带口令的 WebSocket，切回后关闭旧连接", () => {
+    const urls: string[] = [];
+    class StreamSocket extends FakeSocket {
+      static CONNECTING = 0;
+      static OPEN = 1;
+      static CLOSED = 3;
+      constructor(url: string) { super(); urls.push(url); }
+    }
+    vi.stubGlobal("WebSocket", StreamSocket);
+    const manager = new BackendConnectionManager();
+    const config = backend("mini", "http://device.test", "a b");
+    manager.sync([config]);
+    const http = manager.socket("mini") as HttpRpcTransport;
+    expect(http).toBeInstanceOf(HttpRpcTransport);
+    expect(urls).toEqual([]);
+    manager.sync([{ ...config, transportMode: "stream" }]);
+    expect(http.readyState).toBe(3);
+    const stream = manager.socket("mini") as StreamSocket;
+    expect(stream).toBeInstanceOf(StreamSocket);
+    expect(urls).toEqual(["ws://device.test/ws?token=a+b"]);
+    manager.sync([{ ...config, transportMode: "http" }]);
+    expect(stream.closed).toBe(true);
+    expect(manager.socket("mini")).toBeInstanceOf(HttpRpcTransport);
+    manager.close();
+  });
+
   it("从 HTTP 地址构造带口令的 WebSocket 地址", () => {
     expect(
       backendWebSocketUrl(

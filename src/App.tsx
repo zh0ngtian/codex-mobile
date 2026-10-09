@@ -150,6 +150,7 @@ import {
   saveBackendRegistry,
 } from "./backends/registry";
 import { BackendConnectionManager } from "./backends/connection-manager";
+import { readTransportMode, writeTransportMode, type TransportMode } from "./backends/transport-preference";
 import {
   bindConnectionRecovery,
   bindReadOnlyThreadRefresh,
@@ -1088,6 +1089,7 @@ function BackendWorkspace({
 
   useEffect(() => {
     let disposed = false;
+    setSyncState(null);
     let manager: BackendConnectionManager;
     manager = new BackendConnectionManager({
       onConnection: (_backendId, status, connectionError) => {
@@ -1299,8 +1301,12 @@ function BackendWorkspace({
               turnId,
               itemId,
             );
+            const existingText = activeRef.current?.id === threadId
+              ? activeRef.current.turns?.find((turn: AnyRecord) => turn.id === turnId)
+                ?.items?.find((item: AnyRecord) => item.id === itemId)?.text
+              : "";
             const rawText =
-              `${automaticTitleStreamsRef.current.get(streamKey) ?? ""}${params.delta}`;
+              `${automaticTitleStreamsRef.current.get(streamKey) ?? existingText ?? ""}${params.delta}`;
             automaticTitleStreamsRef.current.set(streamKey, rawText);
             const visibleText = processAutomaticTitleText(
               client,
@@ -1746,6 +1752,11 @@ function BackendWorkspace({
                   resumed.reasoningEffort,
                   resumed.serviceTier,
                 );
+                for (const turn of resumed.thread.turns ?? []) {
+                  for (const item of turn.items ?? []) {
+                    sanitizeAgentItem(client, currentThread.id, turn.id, item);
+                  }
+                }
                 setActive({
                   ...decorateThread(resumed.thread),
                   ...(currentThread.isProjectless === true
@@ -1830,7 +1841,7 @@ function BackendWorkspace({
       clientRef.current = null;
       readyClientRef.current = null;
     };
-  }, [backend.baseUrl, backend.id, backend.token]);
+  }, [backend.baseUrl, backend.id, backend.token, backend.transportMode]);
 
   function invalidateImageReads() {
     imageReadGenerationRef.current.invalidate();
@@ -4153,6 +4164,11 @@ export function AppBootstrap({
   initialRegistry: BackendRegistry;
 }) {
   const [registry, setRegistry] = useState(initialRegistry);
+  const [transportMode, setTransportMode] = useState(() => readTransportMode(window.localStorage));
+  const changeTransportMode = (mode: TransportMode) => {
+    writeTransportMode(window.localStorage, mode);
+    setTransportMode(mode);
+  };
   const [managerOpen, setManagerOpen] = useState(
     !initialRegistry.backends.length,
   );
@@ -4163,6 +4179,8 @@ export function AppBootstrap({
       <ConfiguredApp
         initialRegistry={registry}
         appUpdate={appUpdate}
+        transportMode={transportMode}
+        onTransportModeChange={changeTransportMode}
       />
     );
   }
@@ -4184,6 +4202,8 @@ export function AppBootstrap({
         open={managerOpen}
         registry={registry}
         summaries={{}}
+        transportMode={transportMode}
+        onTransportModeChange={changeTransportMode}
         onChange={(next) => {
           saveBackendRegistry(window.localStorage, next);
           setRegistry(next);
@@ -4216,9 +4236,13 @@ export function AppBootstrap({
 function ConfiguredApp({
   initialRegistry,
   appUpdate,
+  transportMode,
+  onTransportModeChange,
 }: {
   initialRegistry: BackendRegistry;
   appUpdate: AppUpdateController;
+  transportMode: TransportMode;
+  onTransportModeChange: (mode: TransportMode) => void;
 }) {
   const [registry, setRegistry] = useState(initialRegistry);
   const [summaries, setSummaries] = useState<
@@ -4750,7 +4774,7 @@ function ConfiguredApp({
           key={`${backend.id}:${backend.baseUrl}:${backend.token}`}
         >
           <BackendWorkspace
-            backend={backend}
+            backend={{ ...backend, transportMode }}
             foregroundRecoveryActive={backend.id === selectedBackend.id}
             conversationVisible={
               backend.id === selectedBackend.id && !sidebarOpen
@@ -4831,6 +4855,8 @@ function ConfiguredApp({
         registry={registry}
         summaries={summaries}
         onChange={persistRegistry}
+        transportMode={transportMode}
+        onTransportModeChange={onTransportModeChange}
         onClose={() => setManagerOpen(false)}
         appUpdate={{
           supported: appUpdate.supported,

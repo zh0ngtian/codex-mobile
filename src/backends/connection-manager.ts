@@ -67,6 +67,7 @@ function configSignature(config: BackendConfig) {
     baseUrl: config.baseUrl,
     token: config.token,
     enabled: config.enabled,
+    transportMode: config.transportMode ?? "http",
   });
 }
 
@@ -101,7 +102,9 @@ export class BackendConnectionManager {
       ...options,
       createSocket:
         options.createSocket ??
-        ((_url, backend) => new HttpRpcTransport(backend)),
+        ((url, backend) => backend.transportMode === "stream"
+          ? new WebSocket(url)
+          : new HttpRpcTransport(backend)),
       createClient:
         options.createClient ??
         ((socket) => new AppServerClient(socket as unknown as WebSocket)),

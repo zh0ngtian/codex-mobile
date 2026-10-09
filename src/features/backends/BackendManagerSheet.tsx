@@ -24,6 +24,7 @@ import type {
 import { ActionSheet } from "../../ui/ActionSheet";
 import { t, useI18n } from "../../i18n";
 import { GatewayQrScannerSheet } from "./GatewayQrScannerSheet";
+import type { TransportMode } from "../../backends/transport-preference";
 
 interface BackendDraft {
   id: string;
@@ -50,6 +51,8 @@ export function BackendManagerSheet({
   onChange,
   onClose,
   appUpdate,
+  transportMode = "http",
+  onTransportModeChange,
   probe = defaultProbeBackend,
   scanQrCode,
 }: {
@@ -58,6 +61,8 @@ export function BackendManagerSheet({
   summaries: Record<string, BackendRuntimeSummary>;
   onChange: (registry: BackendRegistry) => void;
   onClose: () => void;
+  transportMode?: TransportMode;
+  onTransportModeChange?: (mode: TransportMode) => void;
   appUpdate?: {
     supported: boolean;
     currentVersion: string;
@@ -154,7 +159,7 @@ export function BackendManagerSheet({
         enabled: draft.enabled,
         order: draft.order,
       };
-      const host = await probe(candidate);
+      const host = await probe({ ...candidate, transportMode });
       const hostId = host.hostId.trim();
       if (!hostId) throw new Error(t("设备身份响应无效"));
       const next = upsertBackend(registry, {
@@ -220,6 +225,26 @@ export function BackendManagerSheet({
         className="backend-manager-sheet"
         backdropClassName="backend-manager-backdrop"
       >
+        <section className="backend-language-settings backend-transport-settings" aria-label={t("传输方式")}>
+          <strong>{t("传输方式")}</strong>
+          <div role="group" aria-label={t("传输方式")}>
+            {([["http", "HTTP"], ["stream", "流式"]] as const).map(([value, label]) => (
+              <button
+                type="button"
+                key={value}
+                className={transportMode === value ? "selected" : ""}
+                aria-pressed={transportMode === value}
+                disabled={testing}
+                onClick={() => onTransportModeChange?.(value)}
+              >
+                {t(label)}
+              </button>
+            ))}
+          </div>
+          <small>{transportMode === "http"
+            ? t("定时同步回复，切换后自动重连所有设备")
+            : t("实时接收回复，切换后自动重连所有设备")}</small>
+        </section>
         {draft ? (
           <form className="backend-form" onSubmit={submit}>
             <label>

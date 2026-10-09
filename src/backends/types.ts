@@ -1,3 +1,5 @@
+import type { TransportMode } from "./transport-preference";
+
 export interface BackendConfig {
   id: string;
   hostId?: string;
@@ -6,6 +8,8 @@ export interface BackendConfig {
   token: string;
   enabled: boolean;
   order: number;
+  /** 客户端统一偏好在连接时注入，不写入设备注册表。 */
+  transportMode?: TransportMode;
 }
 
 export interface BackendRegistry {

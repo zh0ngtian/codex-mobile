@@ -2,6 +2,7 @@ import { AppServerClient } from "../app-server/client";
 import { HttpRpcTransport, transportUuid } from "./http-transport";
 import type { BackendConfig } from "./types";
 import { t } from "../i18n";
+import { backendWebSocketUrl } from "./connection-manager";
 
 export interface GatewayHostInfo {
   hostId: string;
@@ -86,6 +87,24 @@ async function initializeHttpSession(
   }
 }
 
+async function initializeStreamSession(config: BackendConfig, timeoutMs: number) {
+  const socket = new WebSocket(backendWebSocketUrl(config));
+  try {
+    await withTimeout((async () => {
+      await new Promise<void>((resolve, reject) => {
+        socket.addEventListener("open", () => resolve(), { once: true });
+        socket.addEventListener("error", () => reject(new Error(t("无法连接设备 WebSocket"))), { once: true });
+        socket.addEventListener("close", () => reject(new Error(t("设备 WebSocket 已关闭"))), { once: true });
+      });
+      const client = new AppServerClient(socket);
+      await client.initialize();
+      await client.request("thread/loaded/list", { limit: 1 });
+    })(), timeoutMs, t("WebSocket initialize 超时"));
+  } finally {
+    socket.close();
+  }
+}
+
 interface ProbeDependencies {
   timeoutMs?: number;
   fetchHost?: (
@@ -93,6 +112,7 @@ interface ProbeDependencies {
     init: RequestInit,
   ) => Promise<Response>;
   initializeHttp?: (config: BackendConfig) => Promise<void>;
+  initializeStream?: (config: BackendConfig) => Promise<void>;
 }
 
 async function withTimeout<T>(
@@ -162,6 +182,14 @@ export async function probeBackend(
 ): Promise<GatewayHostInfo> {
   const timeoutMs = dependencies.timeoutMs ?? 6_000;
   const info = await fetchBackendHostInfo(config, dependencies);
+  if (config.transportMode === "stream") {
+    await withTimeout(
+      dependencies.initializeStream?.(config) ?? initializeStreamSession(config, timeoutMs),
+      timeoutMs,
+      t("WebSocket initialize 超时"),
+    );
+    return info;
+  }
   if (!info.httpPolling) throw new Error(t("设备网关需要升级以支持 HTTP 同步"));
   const initializeHttp =
     dependencies.initializeHttp ??
