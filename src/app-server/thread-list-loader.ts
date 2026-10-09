@@ -15,6 +15,7 @@ export const PROJECT_THREAD_BATCH_SIZE = 5;
 
 interface ThreadListLoaderCallbacks {
   onData?: (threads: ThreadRecord[]) => void;
+  onPinnedData?: (threads: ThreadRecord[]) => void;
   onProjectStart?: (cwd: string) => void;
   onProjectData?: (
     cwd: string,
@@ -28,6 +29,7 @@ interface ThreadListLoaderCallbacks {
 
 interface ThreadListLoadOptions {
   silent?: boolean;
+  pinnedThreadIds?: string[];
 }
 
 function threadTimestamp(thread: ThreadRecord) {
@@ -57,6 +59,17 @@ export function dedupeThreadsById(threads: ThreadRecord[]) {
   return [...unique.values(), ...unidentified].sort(
     (left, right) => threadTimestamp(right) - threadTimestamp(left),
   );
+}
+
+export function mergeThreadListPage(
+  current: ThreadRecord[],
+  incoming: ThreadRecord[],
+  retainedIds: Set<string>,
+) {
+  return dedupeThreadsById([
+    ...incoming,
+    ...current.filter((thread) => retainedIds.has(String(thread.id))),
+  ]);
 }
 
 function markProjectlessThreads(
@@ -284,6 +297,33 @@ export function createLatestThreadListLoader(
       if (projectlessThreadIds.length) {
         projectRequests.push(
           loadProjectless(client, projectlessThreadIds, sequence, options),
+        );
+      }
+      const pinnedThreadIds = [...new Set(options.pinnedThreadIds ?? [])];
+      if (pinnedThreadIds.length) {
+        const projectlessIds = new Set(projectlessThreadIds);
+        projectRequests.push(
+          Promise.allSettled(
+            pinnedThreadIds.map(async (threadId) => {
+              const result = await client.request("thread/read", {
+                threadId,
+                includeTurns: false,
+              });
+              if (String(result.thread?.id ?? "") !== threadId) return null;
+              const { turns: _turns, ...metadata } = result.thread;
+              return metadata as ThreadRecord;
+            }),
+          ).then((results) => {
+            if (sequence !== latestSequence) return;
+            const threads = results.flatMap((result) =>
+              result.status === "fulfilled" && result.value
+                ? [result.value]
+                : [],
+            );
+            callbacks.onPinnedData?.(
+              markProjectlessThreads(dedupeThreadsById(threads), projectlessIds),
+            );
+          }),
         );
       }
       const promise = Promise.all(projectRequests)

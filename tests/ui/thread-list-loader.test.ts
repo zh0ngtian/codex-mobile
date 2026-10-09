@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   createLatestThreadListLoader,
   dedupeThreadsById,
+  mergeThreadListPage,
   loadProjectlessThreadRecords,
   loadProjectThreadRecords,
   nextProjectThreadLimit,
@@ -17,6 +18,64 @@ function deferred<T>() {
 }
 
 describe("会话列表轮询加载器", () => {
+  it("最近五条之外的置顶对话独立补取摘要并恢复无项目标记", async () => {
+    const recent = Array.from({ length: 5 }, (_, index) => ({ id: `recent-${index}`, cwd: "/project/a" }));
+    const client = {
+      request: vi.fn(async (method: string, params: any) => {
+        if (method === "thread/list") return { data: recent, nextCursor: "older" };
+        return { thread: { id: params.threadId, cwd: "/project/a", turns: [{ id: "unused-history" }] } };
+      }),
+    };
+    const onProjectData = vi.fn();
+    const onPinnedData = vi.fn();
+    const loader = createLatestThreadListLoader({ onProjectData, onPinnedData });
+    await loader.load(client, ["/project/a"], ["old-pin"], { pinnedThreadIds: ["old-pin", "old-pin"] });
+    expect(client.request).toHaveBeenCalledWith("thread/read", { threadId: "old-pin", includeTurns: false });
+    expect(client.request.mock.calls.filter(([method]) => method === "thread/read")).toHaveLength(1);
+    expect(onPinnedData).toHaveBeenCalledWith([{ id: "old-pin", cwd: "/project/a", isProjectless: true }]);
+    expect(onProjectData).toHaveBeenCalledWith("/project/a", recent, true, "older");
+  });
+
+  it("单条置顶读取失败不阻塞其他置顶和最近列表", async () => {
+    const onPinnedData = vi.fn();
+    const onData = vi.fn();
+    const client = {
+      request: vi.fn(async (method: string, params: any) => {
+        if (method === "thread/list") return { data: [{ id: "recent" }] };
+        if (params.threadId === "missing") throw new Error("not found");
+        return { thread: { id: params.threadId } };
+      }),
+    };
+    await createLatestThreadListLoader({ onData, onPinnedData }).load(client, [], [], { pinnedThreadIds: ["missing", "available"] });
+    expect(onData).toHaveBeenCalledWith([{ id: "recent" }]);
+    expect(onPinnedData).toHaveBeenCalledWith([{ id: "available" }]);
+  });
+
+  it("忽略旧客户端迟到的置顶摘要", async () => {
+    const oldPinned = deferred<{ thread: { id: string } }>();
+    const oldClient = { request: vi.fn((method: string) => method === "thread/read" ? oldPinned.promise : Promise.resolve({ data: [] })) };
+    const newClient = { request: vi.fn(async (method: string) => method === "thread/read" ? { thread: { id: "new-pin" } } : { data: [] }) };
+    const onPinnedData = vi.fn();
+    const loader = createLatestThreadListLoader({ onPinnedData });
+    const oldLoad = loader.load(oldClient, [], [], { pinnedThreadIds: ["old-pin"] });
+    await loader.load(newClient, [], [], { pinnedThreadIds: ["new-pin"] });
+    oldPinned.resolve({ thread: { id: "old-pin" } });
+    await oldLoad;
+    expect(onPinnedData).toHaveBeenCalledTimes(1);
+    expect(onPinnedData).toHaveBeenCalledWith([{ id: "new-pin" }]);
+  });
+
+  it("列表刷新保留分页之外的置顶对话且不重复或保留已取消置顶的旧记录", () => {
+    const current = [{ id: "old-pin", updatedAt: 1 }, { id: "recent", updatedAt: 1 }, { id: "unpinned" }];
+    const incoming = [{ id: "recent", updatedAt: 2 }];
+    expect(mergeThreadListPage(current, incoming, new Set(["old-pin", "recent"]))).toEqual([
+      { id: "recent", updatedAt: 2 }, { id: "old-pin", updatedAt: 1 },
+    ]);
+    expect(mergeThreadListPage(incoming, current.slice(0, 1), new Set(["recent"]))).toEqual([
+      { id: "recent", updatedAt: 2 }, { id: "old-pin", updatedAt: 1 },
+    ]);
+  });
+
   it("查看旧会话只更新元数据时间，不超过最近开始任务的会话", () => {
     expect(
       dedupeThreadsById([

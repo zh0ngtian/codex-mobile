@@ -34,6 +34,7 @@ import {
   dedupeThreadsById,
   loadProjectlessThreadRecords,
   loadProjectThreadRecords,
+  mergeThreadListPage,
   nextProjectThreadLimit,
   PROJECTLESS_GROUP_ID,
   type ProjectThreadLoadState,
@@ -633,7 +634,23 @@ function BackendWorkspace({
   if (!threadListLoaderRef.current) {
     threadListLoaderRef.current = createLatestThreadListLoader({
       onData(data) {
-        setThreads(decorateThreads(data));
+        setThreads((current) =>
+          mergeThreadListPage(current, decorateThreads(data), readLocalPinned()),
+        );
+        setThreadListState("ready");
+      },
+      onPinnedData(data) {
+        const pinned = readLocalPinned();
+        const pinnedThreads = decorateThreads(
+          data.filter((thread) => pinned.has(String(thread.id))),
+        );
+        setThreads((current) =>
+          mergeThreadListPage(
+            current,
+            pinnedThreads,
+            new Set(current.map((thread) => String(thread.id))),
+          ),
+        );
         setThreadListState("ready");
       },
       onProjectStart(cwd) {
@@ -665,10 +682,14 @@ function BackendWorkspace({
                     ),
                 )
               : [];
+          const projectThreads = mergeThreadListPage(
+            currentProjectThreads,
+            [...nextProjectThreads, ...retainedExpandedThreads],
+            readLocalPinned(),
+          );
           return [
             ...current.filter((thread) => projectGroupIdOf(thread) !== cwd),
-            ...nextProjectThreads,
-            ...retainedExpandedThreads,
+            ...projectThreads,
           ];
         });
         setProjectThreadStates((current) => ({
@@ -865,7 +886,7 @@ function BackendWorkspace({
         client,
         directories,
         nextProjectlessThreadIds,
-        options,
+        { ...options, pinnedThreadIds: [...readLocalPinned()] },
       );
     } catch (reason) {
       setThreadListState((current) =>
