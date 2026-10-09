@@ -18,6 +18,18 @@ function deferred<T>() {
 }
 
 describe("会话列表轮询加载器", () => {
+  it("同批更新尚未同步置顶 ID 时，普通分页仍保留主动和被动置顶，并采用最新结束状态", () => {
+    const current = [
+      { id: "manual", isPinned: true }, { id: "unread", isUnread: true },
+      { id: "running", status: { type: "active" } }, { id: "older" },
+    ];
+    const incoming = [{ id: "recent" }];
+    expect(mergeThreadListPage(current, incoming, new Set()).map((thread) => thread.id))
+      .toEqual(["recent", "manual", "unread", "running"]);
+    expect(mergeThreadListPage(current, [{ id: "running", status: { type: "idle" } }], new Set())
+      .find((thread) => thread.id === "running")?.status).toEqual({ type: "idle" });
+  });
+
   it("主动置顶、未读和全部运行中摘要独立加载，不受项目五条限制", async () => {
     const records = ["manual", "unread", "running", ...Array.from({ length: 5 }, (_, i) => `regular-${i}`)]
       .map((id) => ({ id, cwd: "/a", status: { type: id === "running" ? "active" : "idle" } }));

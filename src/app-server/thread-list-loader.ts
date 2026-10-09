@@ -113,7 +113,8 @@ export function mergeThreadListPage(
 ) {
   return dedupeThreadsById([
     ...incoming,
-    ...current.filter((thread) => retainedIds.has(String(thread.id))),
+    ...current.filter((thread) => retainedIds.has(String(thread.id)) ||
+      thread.isPinned === true || thread.isUnread === true || isThreadRunning(thread.status)),
   ]);
 }
 
