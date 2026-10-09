@@ -20,7 +20,7 @@
 - 修改客户端运行代码（包括客户端引用的共用模块、原生桥接或影响客户端产物的构建配置）并推送成功后，必须同时构建新 APK 和 IPA，使用统一版本号且高于 Android、iOS 两个固定渠道的现有版本，并发布到 Codex Mobile 固定局域网渠道；不得只上传 48 小时随机临时链接。
 - 固定更新清单为 `http://192.168.123.79:8765/channels/codex-mobile/latest.json`，固定 APK 为 `http://192.168.123.79:8765/channels/codex-mobile/latest.apk`。
 - 使用 `/Users/zhongtian/WorkSpace/GlobalTranslation/scripts/apk-server.py publish-channel codex-mobile <APK> --version <版本> --notes <说明>` 发布；发布后必须通过固定 JSON、HEAD、GET 核对版本、文件大小和 SHA-256。
-- 涉及安装包发布的交付回复必须同时提供固定 APK、IPA 下载链接，以及两个安装包各自的本次版本号、文件大小、SHA-256；IPA 还必须注明是否签名。
+- 涉及安装包发布的交付回复必须同时提供可点击的固定 OTA 安装页链接（`https://192.168.123.79:8766/channels/codex-mobile/current/install.html`）、固定 APK 和 IPA 下载链接，以及两个安装包各自的本次版本号、文件大小、SHA-256；IPA 还必须注明是否签名。OTA 安装页链接必须在交付回复正文中展示，不能仅保存在发布清单或部署文档中。
 - iOS 安装包以后固定使用 `http://192.168.123.79:8765/channels/codex-mobile/latest.ipa`，不得只提供 48 小时随机临时链接；固定 iOS 清单为 `http://192.168.123.79:8765/channels/codex-mobile/latest-ios.json`，与 Android 的 `latest.json` 分开维护。
 - 使用 `/Users/zhongtian/WorkSpace/GlobalTranslation/scripts/apk-server.py publish-channel codex-mobile <IPA> --version <版本> --notes <说明>` 发布 IPA。发布后通过 iOS 清单、固定 IPA 的 HEAD 和完整 GET 核对版本、文件大小和 SHA-256；交付时提供固定 IPA 链接、版本、文件大小、SHA-256，并注明是否签名，与 APK 对齐。固定渠道不参与 48 小时临时文件清理，后续版本覆盖同一地址。
 
