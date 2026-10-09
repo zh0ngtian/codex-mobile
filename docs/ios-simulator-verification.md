@@ -132,6 +132,18 @@ iPhone 17 Pro / iOS 26.5 的 XCTest 和录屏检查结果：
 
 按用户要求移除原生对话、原生边栏、原生 Markdown 和界面切换；网页对话与边栏恢复到原生化之前的实现（`6dc2607` 界面基线）。原有 WKWebView 容器、附件选择、内置浏览器、检查更新、通知深链与键盘修复保留；同期隐藏辅助会话不发送完成通知修复保留。
 
-全量825项Vitest/92个文件、87项iOS Python回归、类型检查和前端构建通过。旧安装偏好和迟到原生事件不能改写网页草稿或搜索的新回归先失败、恢复后通过；界面专属73个文件或删除项逐字核对基线，独立审查通过。
+全量825项Vitest/92个文件、87项iOS Python回归、类型检查和前端构建通过。旧安装偏好和迟到原生事件不能改写网页草稿或搜索的新回归先失败、恢复后通过；运行界面与构建文件逐字核对基线，独立审查通过。
 
 iPhone 17 Pro / iOS26.5成功构建启动；既有 `testBottomBarsClearHomeIndicatorWithoutKeyboard` 和 `testRepeatedKeyboardDismissalPreservesUrlDraft` 两项通过，覆盖原网页边栏/输入、底部安全区、键盘反复收起及草稿保持。本轮未发送测试消息或创建服务器会话。真实截图、日志和结果保存在主工作区 `.mobile-build/ui-rollback-audit/`；模拟器验证不代表真机覆盖安装和数据保留已验证。
+
+
+回退版本为 `0.2.135`，客户端源码 `20f893e` 已推送main。两端固定清单、HEAD和完整GET校验版本、字节数与SHA-256一致；HTTPS OTA的清单、IPA、manifest和安装页也全部通过。实际IPA中原生对话/边栏类已不存在，签名身份、Team、application-identifier、钥匙串组与entitlements摘要均与0.2.134一致。
+
+[固定OTA安装页](https://192.168.123.79:8766/channels/codex-mobile/current/install.html)
+
+| 产物 | 版本 | 大小（字节） | SHA-256 |
+| --- | --- | --- | --- |
+| [APK](http://192.168.123.79:8765/channels/codex-mobile/latest.apk) | 0.2.135 | 4,705,315 | `84ef624e34d360d45075a2fdf2fee4100c12b172bb87000648b42266ea1c1c13` |
+| [IPA（Ad Hoc已签名）](http://192.168.123.79:8765/channels/codex-mobile/latest.ipa) | 0.2.135 | 3,763,728 | `d2d5602afbc7fc424f650d5f7063797b4de28c56b3ddb9bda08814c52e75d367` |
+
+主工作区生成Xcode工程已同步为网页实现。证据、截图、实际安装包和校验报告保留在 `.mobile-build/ui-rollback-audit/`；本次网关、测试Runner和临时构建缓存已清理，共享模拟器及固定发布锁已释放。未创建或发送测试会话；真机覆盖安装与数据保留仍待验证。

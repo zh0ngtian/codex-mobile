@@ -23,10 +23,12 @@
 
 ## 3. 提交与发布
 
-- [ ] 阅读提交规范，`git diff --check` / 暂存检查通过后，中文 Conventional Commit，合并推送 main。
-- [ ] 独占 `.mobile-build/.fixed-channel-publish.lock`，读取两端固定清单与 OTA 选择更高统一版本。推送后运行 `npm run ios:release -- --config "$HOME/Library/Application Support/CodexMobile/ios-release.local.json" --version <version> --notes '移除原生界面，恢复原网页对话与边栏'`。
-- [ ] 使用 `.github/workflows/build-android.yml` 的固定模板、构建步骤生成同版本 APK；两端固定渠道发布并验证 JSON、HEAD、完整GET大小与 SHA-256、iOS 独立验签和身份连续性。
-- [ ] 保存安装包、截图和日志到主工作区 `.mobile-build/ui-rollback-audit/`；清理任务临时缓存、网关、测试 Runner并释放两类锁；归档未受保护的本任务工作树。
-- [ ] 记录发布元数据并提交推送文档，最终回复展示固定 OTA、APK/IPA 链接、统一版本、各自大小及 SHA-256和 IPA签名状态。
+- [x] 阅读提交规范，`git diff --check` / 暂存检查通过后，中文 Conventional Commit，合并推送 main。
+- [x] 独占 `.mobile-build/.fixed-channel-publish.lock`，读取两端固定清单与 OTA 选择更高统一版本。推送后运行 `npm run ios:release -- --config "$HOME/Library/Application Support/CodexMobile/ios-release.local.json" --version 0.2.135 --notes '移除原生界面，恢复原网页对话与边栏'`。
+- [x] 使用 `.github/workflows/build-android.yml` 的固定模板、构建步骤生成同版本 APK；两端固定渠道发布并验证 JSON、HEAD、完整GET大小与 SHA-256、iOS 独立验签和身份连续性。
+- [x] 保存安装包、截图和日志到主工作区 `.mobile-build/ui-rollback-audit/`；清理任务临时缓存、网关、测试 Runner并释放两类锁；归档未受保护的本任务工作树。
+- [x] 记录发布元数据并提交推送文档，最终回复展示固定 OTA、APK/IPA 链接、统一版本、各自大小及 SHA-256和 IPA签名状态。
 
-阶段验收：界面专属73个路径逐字恢复 `6dc2607`；独立审查通过。825项Vitest/92个文件、87项Python、前端构建通过。iPhone 17 Pro / iOS26.5两项旧网页UI用例通过，覆盖底部安全区、聊天按钮、草稿输入、反复收键盘与几何动画。未发送任何测试消息。固定发布锁下读取双端及OTA均0.2.134，本次统一版本选择0.2.135。
+阶段验收：73个界面相关路径按 `6dc2607` 恢复，运行界面与构建路径逐字一致，验证文档追加本轮记录；独立审查通过。825项Vitest/92个文件、87项Python、前端构建通过。iPhone 17 Pro / iOS26.5两项旧网页UI用例通过，覆盖底部安全区、聊天按钮、草稿输入、反复收键盘与几何动画。未发送任何测试消息。固定发布锁下读取双端及OTA均0.2.134，本次统一版本选择0.2.135。
+
+交付完成：源码 `20f893e` 已推送main；双端0.2.135已发布，JSON/HEAD/完整GET及HTTPS OTA回验通过。IPA真实归档无原生聊天/边栏类，签名身份和钥匙串权限与0.2.134逐项一致。主工作区生成工程同步为当前网页实现；证据/安装包在 `.mobile-build/ui-rollback-audit/`。测试Runner、专用网关、临时构建目录和缓存已清理，两类锁释放；工作树使用宿主归档机制，受保护时保留，不绕过保护。真机覆盖升级及数据保留待用户设备验证。
