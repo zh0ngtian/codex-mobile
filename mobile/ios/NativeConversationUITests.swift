@@ -2,6 +2,35 @@ import XCTest
 
 /// 使用已经配置网关的测试设备；测试本身不改设备、项目或会话配置。
 final class NativeConversationUITests: XCTestCase {
+    private func capture(_ app: XCUIApplication, _ name: String) {
+        let attachment = XCTAttachment(screenshot: app.screenshot())
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+
+    func testCaptureConversationDesign() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication(bundleIdentifier: "vip.loock.codexmobile")
+        let table = try openLongConversation(app)
+        XCTAssertTrue(table.cells.firstMatch.waitForExistence(timeout: 30), app.debugDescription)
+        capture(app, "01-conversation")
+        table.swipeDown()
+        table.swipeDown()
+        capture(app, "02-reading-history")
+        app.buttons["codex.native.back"].tap()
+        let chat = app.webViews.buttons["聊天"]
+        XCTAssertTrue(chat.waitForExistence(timeout: 10))
+        chat.tap()
+        let composer = app.textViews["codex.native.composer"]
+        XCTAssertTrue(composer.waitForExistence(timeout: 10))
+        capture(app, "03-new-conversation")
+        composer.tap()
+        composer.typeText("把这段内容整理成清晰的实施步骤。\n保留关键细节。")
+        capture(app, "04-keyboard-draft")
+        app.toolbars.buttons["codex.native.keyboard.done"].tap()
+        capture(app, "05-keyboard-dismissed")
+    }
     private func openConversation(_ app: XCUIApplication) -> XCUIElement {
         app.launch()
         let chat = app.webViews.buttons["聊天"]
@@ -15,6 +44,18 @@ final class NativeConversationUITests: XCTestCase {
         XCTAssertTrue(composer.isHittable, "原生输入框必须可交互，不能只在AX树显示")
         XCTAssertTrue(app.buttons["codex.native.back"].isHittable, "原生header必须可交互")
         return composer
+    }
+
+    func testEmptyComposerUsesAvailableWidth() {
+        continueAfterFailure = false
+        let app = XCUIApplication(bundleIdentifier: "vip.loock.codexmobile")
+        let composer = openConversation(app)
+        XCTAssertGreaterThan(composer.frame.width, app.frame.width * 0.65, "空输入框必须可见且占据足够宽度")
+        let send = app.buttons["codex.native.send"]
+        XCTAssertGreaterThanOrEqual(send.frame.width, 44)
+        XCTAssertLessThanOrEqual(send.frame.maxX, app.frame.maxX)
+        XCTAssertGreaterThanOrEqual(composer.frame.height, 44)
+        capture(app, "empty-composer-width")
     }
 
     func testNativeDraftKeyboardDoneAndBackRestore() {
@@ -68,6 +109,56 @@ final class NativeConversationUITests: XCTestCase {
         XCTAssertEqual(composer.value as? String, "")
     }
 
+    func testMarkdownReplyUsesNativeTableAndCode() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication(bundleIdentifier: "vip.loock.codexmobile")
+        let composer = openConversation(app)
+        composer.tap()
+        composer.typeText("请只回复以下 Markdown，不调用工具、不修改文件：\n\n## 阅读验收\n\n这是一段清晰的中文回复，包含 **重点** 与完整段落。\n\n- 第一步：检查界面\n- 第二步：保留细节\n\n```swift\nlet message = \"清晰可读\"\nprint(message)\n```\n\n| 项目 | 状态 |\n| --- | --- |\n| 输入框 | 可编辑 |\n| 长回复 | 可阅读 |")
+        app.buttons["codex.native.send"].tap()
+        let table = app.tables["codex.native.timeline"]
+        let renderedTable = table.scrollViews.matching(NSPredicate(format: "identifier BEGINSWITH %@", "codex.native.table.")).firstMatch
+        XCTAssertTrue(renderedTable.waitForExistence(timeout: 120), app.debugDescription)
+        XCTAssertTrue(table.textViews.matching(NSPredicate(format: "value == %@", "输入框")).firstMatch.exists)
+        XCTAssertTrue(table.textViews.matching(NSPredicate(format: "value == %@", "可编辑")).firstMatch.exists)
+        XCTAssertLessThanOrEqual(renderedTable.frame.maxX, app.frame.maxX)
+        capture(app, "06-markdown-table-code")
+        table.swipeDown()
+        capture(app, "07-markdown-headings-lists")
+    }
+
+    func testCaptureReadableReplyDesign() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication(bundleIdentifier: "vip.loock.codexmobile")
+        app.launch()
+        let thread = app.webViews.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Markdown 中文阅读验收")).firstMatch
+        XCTAssertTrue(thread.waitForExistence(timeout: 30), app.debugDescription)
+        thread.tap()
+        let table = app.tables["codex.native.timeline"]
+        XCTAssertTrue(table.cells.firstMatch.waitForExistence(timeout: 30), app.debugDescription)
+        let latest = app.buttons["codex.native.latest"]
+        if latest.isHittable { latest.tap() }
+        capture(app, "08-readable-reply")
+    }
+
+    func testActivityDetailsRemainAccessible() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication(bundleIdentifier: "vip.loock.codexmobile")
+        let table = try openLongConversation(app)
+        let activity = table.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "codex.native.activity.")).firstMatch
+        for _ in 0..<12 {
+            if activity.isHittable { break }
+            table.swipeDown()
+        }
+        XCTAssertTrue(activity.isHittable, app.debugDescription)
+        capture(app, "09-folded-activity")
+        activity.tap()
+        XCTAssertTrue(app.textViews["codex.native.details.content"].waitForExistence(timeout: 5))
+        capture(app, "10-activity-details")
+        app.navigationBars.buttons["codex.native.details.done"].tap()
+        XCTAssertTrue(app.textViews["codex.native.composer"].exists)
+    }
+
     private func openLongConversation(_ app: XCUIApplication) throws -> XCUIElement {
         let title = ProcessInfo.processInfo.environment["NATIVE_IOS_SCROLL_THREAD_TITLE"] ?? "iOS 原生方案可行性、收益与风险评估"
         app.launch()
@@ -76,6 +167,7 @@ final class NativeConversationUITests: XCTestCase {
         thread.tap()
         let table = app.tables["codex.native.timeline"]
         XCTAssertTrue(table.waitForExistence(timeout: 20), app.debugDescription)
+        XCTAssertTrue(table.cells.firstMatch.waitForExistence(timeout: 30), app.debugDescription)
         return table
     }
 

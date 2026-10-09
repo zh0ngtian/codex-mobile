@@ -2,6 +2,7 @@ import { createRef, useState } from "react";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ConversationPage } from "../../src/features/conversation/ConversationPage";
+import { nativeConversationRows } from "../../src/features/conversation/native-conversation";
 
 const posts: any[] = [];
 const change = vi.fn();
@@ -48,6 +49,22 @@ afterEach(() => {
 });
 
 describe("iOS 原生对话桥接", () => {
+  it("工具过程与过程说明折叠为活动，最终回复保持独立且不丢详情", () => {
+    const rows = nativeConversationRows([{ id: "turn", status: "completed", items: [
+      { id: "u", type: "userMessage", content: [{ type: "text", text: "问题" }] },
+      { id: "c", type: "agentMessage", phase: "commentary", text: "正在检查实现" },
+      { id: "x", type: "commandExecution", command: "pwd", aggregatedOutput: "完整工具输出" },
+      { id: "y", type: "futureTool", output: "未知工具也保留" },
+      { id: "a", type: "agentMessage", phase: "final_answer", text: "最终回复" },
+    ] }]);
+    expect(rows.map((row) => row.role)).toEqual(["user", "tool", "assistant"]);
+    expect(rows[1].id).toBe("turn:activity");
+    expect(rows[1].text).toBe("已完成 3 项活动");
+    expect(rows[1].detail).toContain("完整工具输出");
+    expect(rows[1].detail).toContain("正在检查实现");
+    expect(rows[1].detail).toContain("未知工具也保留");
+    expect(rows[2].text).toBe("最终回复");
+  });
   it("后台隐藏设备的对话框不遮挡前台，hidden 切换后重新检测", async () => {
     const workspace = document.createElement("div"); workspace.hidden = true;
     const dialog = document.createElement("div"); dialog.setAttribute("role", "dialog");
@@ -92,7 +109,7 @@ describe("iOS 原生对话桥接", () => {
     await waitFor(() => expect(latest()?.title).toBe("原生会话"));
     expect(latest().version).toBe(1);
     expect(latest().enabled).toBe(true);
-    expect(latest().rows.map((row: any) => row.text)).toEqual(["中文问题", "pwd", "**中文回复**"]);
+    expect(latest().rows.map((row: any) => row.text)).toEqual(["中文问题", "已完成 1 项活动", "**中文回复**"]);
     expect(latest().rows[1].detail).toContain("/tmp/project");
     expect(new Set(latest().rows.map((row: any) => row.id)).size).toBe(3);
   });

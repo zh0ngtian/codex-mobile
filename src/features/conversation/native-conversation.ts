@@ -47,6 +47,7 @@ export interface NativeConversationSnapshot {
   selectedProject: string;
   selectedBackendId: string;
   settingsLabel: string;
+  modelLabel: string;
   queued: Array<{ id: string; text: string; failed: boolean }>;
 }
 
@@ -58,32 +59,53 @@ function timestamp(value: unknown) {
 
 /** 保留真实 item/turn 身份；原生投影不改变 app-server 的业务数据。 */
 export function nativeConversationRows(turns: Array<Record<string, any>>): NativeConversationRow[] {
-  return turns.flatMap((turn, turnIndex) => (turn.items ?? []).map((item: Record<string, any>, index: number) => {
-    const turnId = String(turn.id ?? `turn-${turnIndex}`);
-    const messageId = String(item.id ?? `item-${index}`);
-    const id = `${turnId}:${messageId}`;
-    if (item.type === "userMessage" || item.type === "agentMessage") {
-      let text = Array.isArray(item.content)
-        ? item.content.filter((part: any) => part.type === "text").map((part: any) => part.text ?? "").join("\n")
-        : String(item.text ?? item.content ?? "");
-      const user = item.type === "userMessage";
-      text = user ? stripConversationTitleRequest(text) : stripGitDirectives(extractGeneratedTitle(text).text);
-      const media = Array.isArray(item.content) && item.content.some((part: any) => part.type !== "text");
-      return {
-        id, turnId, messageId, role: user ? "user" as const : "assistant" as const,
-        text: text || (media ? t("附件消息") : ""),
-        timestamp: timestamp(user ? turn.startedAt : item.phase === "final_answer" ? turn.completedAt : undefined),
-        rich: media || /```|!\[|\[[^\]]*\]\(|\|.+\||<\/?[a-z]/i.test(text),
-      };
+  return turns.flatMap((turn, turnIndex) => {
+    const activity: NativeConversationRow[] = [];
+    const result: NativeConversationRow[] = [];
+    let activityIndex = -1;
+    (turn.items ?? []).forEach((item: Record<string, any>, index: number) => {
+      const turnId = String(turn.id ?? `turn-${turnIndex}`);
+      const messageId = String(item.id ?? `item-${index}`);
+      const id = `${turnId}:${messageId}`;
+      if (item.type === "userMessage" || item.type === "agentMessage") {
+        let text = Array.isArray(item.content)
+          ? item.content.filter((part: any) => part.type === "text").map((part: any) => part.text ?? "").join("\n")
+          : String(item.text ?? item.content ?? "");
+        const user = item.type === "userMessage";
+        text = user ? stripConversationTitleRequest(text) : stripGitDirectives(extractGeneratedTitle(text).text);
+        const media = Array.isArray(item.content) && item.content.some((part: any) => part.type !== "text");
+        const row: NativeConversationRow = {
+          id, turnId, messageId, role: user ? "user" as const : "assistant" as const,
+          text: text || (media ? t("附件消息") : ""),
+          timestamp: timestamp(user ? turn.startedAt : item.phase === "final_answer" ? turn.completedAt : undefined),
+          rich: media || /!\[|<\/?[a-z]/i.test(text),
+        };
+        if (!user && ["commentary", "analysis"].includes(item.phase)) {
+          if (activityIndex < 0) activityIndex = result.length;
+          activity.push({ ...row, detail: text });
+        } else if (row.text.trim()) result.push(row);
+        return;
+      }
+      const command = Array.isArray(item.command) ? item.command.join(" ") : item.command;
+      const text = command || toolActivityRowLabel(item) || String(item.type ?? t("活动"));
+      // 未识别的新 item 也保留完整内容，避免原生客户端静默丢失协议扩展。
+      const detail = [item.text, item.aggregatedOutput, item.output, item.diff]
+        .filter((value) => typeof value === "string" && value).join("\n\n") || JSON.stringify(item, null, 2);
+      if (activityIndex < 0) activityIndex = result.length;
+      activity.push({ id, turnId, messageId, role: "tool", text, detail,
+        rich: ["imageView", "imageGeneration", "fileChange"].includes(item.type) });
+    });
+    if (activity.length) {
+      result.splice(activityIndex, 0, {
+        id: `${String(turn.id ?? `turn-${turnIndex}`)}:activity`, role: "tool",
+        text: turn.status === "inProgress" ? t("正在处理 · {count} 项活动", { count: activity.length })
+          : t("已完成 {count} 项活动", { count: activity.length }),
+        detail: activity.map((row, index) => `${index + 1}. ${row.role === "assistant" ? t("过程说明") : row.text}\n${row.detail ?? row.text}`).join("\n\n"),
+        rich: activity.some((row) => row.rich),
+      });
     }
-    const command = Array.isArray(item.command) ? item.command.join(" ") : item.command;
-    const text = command || toolActivityRowLabel(item) || String(item.type ?? t("活动"));
-    // 未识别的新 item 也保留完整内容，避免原生客户端静默丢失协议扩展。
-    const detail = [item.text, item.aggregatedOutput, item.output, item.diff]
-      .filter((value) => typeof value === "string" && value).join("\n\n") || JSON.stringify(item, null, 2);
-    return { id, turnId, messageId, role: "tool" as const, text, detail,
-      rich: ["imageView", "imageGeneration", "fileChange"].includes(item.type) };
-  }));
+    return result;
+  });
 }
 
 export function nativeConversationHandler() {

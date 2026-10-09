@@ -162,3 +162,24 @@ iPhone 17 Pro / iOS 26.5，Xcode 27，测试构建 `0.2.130`。消息列表使�
 多设备前后台切换、后台弹框过滤、Skill 光标回写、旧序列拒绝、中文 marked text、只读模式和中英文菜单亦有自动回归。
 
 模拟器结果不等同于真机覆盖安装、数据保留或真机中文输入法组词已验证。
+
+
+## 2026-10-09 对话可读性重做
+
+本轮参考 [ChatGPT 官方 App Store 截图](https://apps.apple.com/us/app/chatgpt/id6448311069)，先捕获旧界面再实现与检查原生画面。原始失效回归确认空输入框只有 16pt 宽；新版输入区设置明确左右约束，空态宽度回归通过，发送按钮为 44×44pt。
+
+当前界面采用一行顶栏、右侧用户气泡、左侧分块回复和底部圆角输入区。模型、权限、项目与设备入口移至菜单，工具与过程说明折叠为活动详情。Markdown 标题、段落、列表、引用、代码与横向表格分别排版；代码可复制，文字与表格可选择，列表保留起始编号。排队消息用单行入口与子菜单，避免挤满阅读区域。
+
+已逐张检查实际截图，而不是用单元测试代替视觉验收：
+
+| 空白对话 | 键盘展开 |
+| --- | --- |
+| ![空白对话](assets/ios-simulator/chat-redesign/empty.png) | ![键盘展开](assets/ios-simulator/chat-redesign/keyboard.png) |
+
+| 浅色回复 | 深色回复 |
+| --- | --- |
+| ![浅色回复](assets/ios-simulator/chat-redesign/reply-light.png) | ![深色回复](assets/ios-simulator/chat-redesign/reply-dark.png) |
+
+验证环境：iPhone 17 Pro / iOS 26.5；9 个独立原生 UI 用例分别验证空输入框几何、页面截图、真实 Markdown 回复、回复截图、活动详情、草稿收起与恢复、真实发送、历史阅读锚点、分页锚点；相关用例额外重跑浅色和深色截图。35 个原始 Markdown 用例及编号修复新增 2 个用例，共 37 项 Foundation 回归通过，原有状态回归通过。全量 Vitest 824 项/92 文件，Python iOS 87 项，TypeScript 和前端构建通过；最后修改相关 Vitest 25 项重新通过。独立代码与视觉复审发现并修复附件高度冲突、空白正文崩溃、表格链接入口、有序编号与多队列高度问题。
+
+本机原始截图与 xcresult 归档在 `.mobile-build/chat-redesign-audit/`；计划见 [重做计划](superpowers/plans/2026-10-09-ios-chat-redesign.md)。模拟器截图、构建与验签不代表已验证真机覆盖安装及数据保留。

@@ -14,6 +14,9 @@ const LANGUAGE_STORAGE_KEY = "codex-mobile:language";
 
 const english: Record<string, string> = {
   "正在处理": "Processing",
+  "正在处理 · {count} 项活动": "Processing · {count} activities",
+  "已完成 {count} 项活动": "Completed {count} activities",
+  "过程说明": "Progress update",
   "等待同步": "Waiting for sync",
   "返回原生对话": "Return to native conversation",
   "附件消息": "Attachment message",

@@ -436,7 +436,7 @@ export function ConversationPage({
       enabled: nativeEnabled,
       sendEnabled: nativeEnabled && (busy ? (!canQueue || !imageReading) : !imageReading && hasDraft),
       sendLabel: steering ? t("正在引导") : canQueue ? t("排队") : busy ? t("停止") : t("发送"),
-      busy, error: loadError || error || resumeError,
+      busy, error: loadError || error || (accessMode === "readOnly" ? "" : resumeError),
       status: accessMode === "readOnly" ? t("该会话正在其他 Codex 客户端运行，当前为只读模式")
         : operationPending ? t("发送状态确认中") : busy ? t("正在处理") : syncState?.stale ? t("等待同步") : "",
       loadState, olderTurnsState, fontSize: 16 * FONT_SCALES[readFontSize()], rows: nativeRows,
@@ -451,6 +451,7 @@ export function ConversationPage({
       backends: isNewChat ? backends.map((backend) => ({ id: backend.id, label: backend.name })) : [],
       selectedProject: active.cwd ?? "", selectedBackendId: backendId,
       settingsLabel: `${selectedModelLabel} · ${effortLabel(selectedEffort)} · ${selectedPermissionLabel}`,
+      modelLabel: selectedModelLabel,
       queued: queuedFollowUps.map((entry) => ({ id: entry.id, text: entry.text, failed: Boolean(entry.failed) })),
     },
     hasAttachments: Boolean(draftImages.length || draftFiles.length),

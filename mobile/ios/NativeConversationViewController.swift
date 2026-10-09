@@ -7,14 +7,14 @@ final class NativeConversationViewController: UIViewController, UITextViewDelega
     private let composer = UITextView()
     private let sendButton = UIButton(type: .system)
     private let titleLabel = UILabel()
-    private let subtitleLabel = UILabel()
+    private let emptyLabel = UILabel()
+    private let placeholder = UILabel()
+    private let statusStack = UIStackView()
     private let statusLabel = UILabel()
     private let statusButton = UIButton(type: .system)
     private let menuButton = UIButton(type: .system)
     private var backButton: UIButton?
     private let settingsButton = UIButton(type: .system)
-    private let projectButton = UIButton(type: .system)
-    private let backendButton = UIButton(type: .system)
     private let attachmentButton = UIButton(type: .system)
     private let latestButton = UIButton(type: .system)
     private let olderButton = UIButton(type: .system)
@@ -22,7 +22,7 @@ final class NativeConversationViewController: UIViewController, UITextViewDelega
     private var composerHeight: NSLayoutConstraint!
     private var source: UITableViewDiffableDataSource<Int, String>!
     private var rows: [String: NativeConversationRow] = [:]
-    private var markdownCache: [String: (String, Double, NSAttributedString)] = [:]
+    private var markdownCache: [String: (String, [NativeMarkdownBlock])] = [:]
     private var applyingSnapshot = false
     private var pendingBottomScroll = false
     private var updatingDraft = false
@@ -79,46 +79,64 @@ final class NativeConversationViewController: UIViewController, UITextViewDelega
     }
 
     private func buildHeader() {
-        let back = button("", symbol: "chevron.left", identifier: "codex.native.back") { [weak self] in self?.back() }
+        let back = button("", symbol: "line.3.horizontal", identifier: "codex.native.back") { [weak self] in self?.back() }
         backButton = back
         back.accessibilityLabel = strings.text(.back)
-        titleLabel.font = .preferredFont(forTextStyle: .headline)
-        titleLabel.numberOfLines = 1
-        subtitleLabel.font = .preferredFont(forTextStyle: .caption1)
-        subtitleLabel.textColor = .secondaryLabel
-        subtitleLabel.numberOfLines = 1
-        let titles = UIStackView(arrangedSubviews: [titleLabel, subtitleLabel])
-        titles.axis = .vertical
-        titles.spacing = 2
-        menuButton.setImage(UIImage(systemName: "ellipsis.circle"), for: .normal)
+        settingsButton.accessibilityIdentifier = "codex.native.settings"
+        settingsButton.showsMenuAsPrimaryAction = true
+        settingsButton.titleLabel?.font = .systemFont(ofSize: 18, weight: .semibold)
+        settingsButton.setTitleColor(.label, for: .normal)
+        settingsButton.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        settingsButton.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        settingsButton.titleLabel?.lineBreakMode = .byTruncatingTail
+        menuButton.setImage(UIImage(systemName: "ellipsis"), for: .normal)
+        menuButton.tintColor = .label
         menuButton.accessibilityLabel = strings.text(.menu)
         menuButton.accessibilityIdentifier = "codex.native.menu"
         menuButton.showsMenuAsPrimaryAction = true
-        menuButton.widthAnchor.constraint(equalToConstant: 44).isActive = true
-        let header = UIStackView(arrangedSubviews: [back, titles, menuButton])
+        for control in [back, menuButton] {
+            control.widthAnchor.constraint(equalToConstant: 44).isActive = true
+            control.heightAnchor.constraint(equalToConstant: 44).isActive = true
+        }
+        let header = UIStackView(arrangedSubviews: [back, settingsButton, menuButton])
         header.alignment = .center
         header.spacing = 8
         header.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(header)
-        statusLabel.font = .preferredFont(forTextStyle: .caption1)
+        statusLabel.font = .preferredFont(forTextStyle: .footnote)
         statusLabel.textColor = .secondaryLabel
         statusLabel.numberOfLines = 2
         statusButton.setTitle(strings.text(.retry), for: .normal)
+        statusButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 44).isActive = true
+        statusButton.heightAnchor.constraint(greaterThanOrEqualToConstant: 44).isActive = true
         statusButton.addAction(UIAction { [weak self] _ in self?.emit("retry") }, for: .touchUpInside)
+        statusStack.axis = .vertical
+        statusStack.translatesAutoresizingMaskIntoConstraints = false
         let status = UIStackView(arrangedSubviews: [statusLabel, statusButton])
         status.alignment = .center
         status.spacing = 8
-        status.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(status)
+        statusStack.addArrangedSubview(status)
+        view.addSubview(statusStack)
+        emptyLabel.font = .systemFont(ofSize: 26, weight: .semibold)
+        emptyLabel.textAlignment = .center
+        emptyLabel.numberOfLines = 2
+        emptyLabel.textColor = .label
+        emptyLabel.accessibilityIdentifier = "codex.native.welcome"
+        emptyLabel.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(emptyLabel)
         NSLayoutConstraint.activate([
             header.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-            header.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12),
-            header.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12),
+            header.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 8),
+            header.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -8),
             header.heightAnchor.constraint(equalToConstant: 52),
-            status.topAnchor.constraint(equalTo: header.bottomAnchor),
-            status.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
-            status.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
-            timeline.topAnchor.constraint(equalTo: status.bottomAnchor, constant: 6)
+            statusStack.topAnchor.constraint(equalTo: header.bottomAnchor),
+            statusStack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
+            statusStack.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
+            timeline.topAnchor.constraint(equalTo: statusStack.bottomAnchor, constant: 8),
+            emptyLabel.centerXAnchor.constraint(equalTo: timeline.centerXAnchor),
+            emptyLabel.centerYAnchor.constraint(equalTo: timeline.centerYAnchor, constant: -20),
+            emptyLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 28),
+            emptyLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -28)
         ])
     }
 
@@ -137,7 +155,7 @@ final class NativeConversationViewController: UIViewController, UITextViewDelega
         view.addSubview(timeline)
         source = UITableViewDiffableDataSource<Int, String>(tableView: timeline) { [weak self] table, index, id in
             guard let self, let row = self.rows[id], let cell = table.dequeueReusableCell(withIdentifier: "message", for: index) as? NativeConversationCell else { return nil }
-            cell.configure(row, text: self.formatted(row), editable: self.state.snapshot?.allowsEditingMessages == true, strings: self.strings)
+            cell.configure(row, blocks: self.formatted(row), size: CGFloat(self.state.snapshot?.fontSize ?? 16), editable: self.state.snapshot?.allowsEditingMessages == true, strings: self.strings)
             cell.onDetail = { [weak self] in self?.showDetail(row) }
             cell.onWeb = { [weak self] in self?.emit("web", id: row.id) }
             cell.onEdit = { [weak self] in self?.emit("edit", id: row.id) }
@@ -149,12 +167,12 @@ final class NativeConversationViewController: UIViewController, UITextViewDelega
         olderButton.frame = CGRect(x: 0, y: 0, width: 320, height: 44)
         timeline.tableHeaderView = olderButton
         latestButton.accessibilityIdentifier = "codex.native.latest"
-        latestButton.setTitle(strings.text(.latest), for: .normal)
+        latestButton.accessibilityLabel = strings.text(.latest)
         latestButton.titleLabel?.font = .preferredFont(forTextStyle: .footnote)
         latestButton.backgroundColor = .secondarySystemBackground
-        latestButton.layer.cornerRadius = 16
+        latestButton.layer.cornerRadius = 22
         var latestConfiguration = UIButton.Configuration.plain()
-        latestConfiguration.title = strings.text(.latest)
+        latestConfiguration.image = UIImage(systemName: "arrow.down")
         latestConfiguration.contentInsets = NSDirectionalEdgeInsets(top: 7, leading: 12, bottom: 7, trailing: 12)
         latestButton.configuration = latestConfiguration
         latestButton.translatesAutoresizingMaskIntoConstraints = false
@@ -164,7 +182,9 @@ final class NativeConversationViewController: UIViewController, UITextViewDelega
         NSLayoutConstraint.activate([
             timeline.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             timeline.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            latestButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            latestButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
+            latestButton.widthAnchor.constraint(equalToConstant: 44),
+            latestButton.heightAnchor.constraint(equalToConstant: 44),
             latestButton.bottomAnchor.constraint(equalTo: timeline.bottomAnchor, constant: -12)
         ])
     }
@@ -172,7 +192,7 @@ final class NativeConversationViewController: UIViewController, UITextViewDelega
     private func buildComposer() {
         let panel = UIStackView()
         panel.axis = .vertical
-        panel.spacing = 7
+        panel.spacing = 8
         panel.layoutMargins = UIEdgeInsets(top: 8, left: 12, bottom: 8, right: 12)
         panel.isLayoutMarginsRelativeArrangement = true
         panel.backgroundColor = .systemBackground
@@ -182,49 +202,58 @@ final class NativeConversationViewController: UIViewController, UITextViewDelega
         accessories.spacing = 5
         accessories.isHidden = true
         panel.addArrangedSubview(accessories)
-        settingsButton.titleLabel?.font = .preferredFont(forTextStyle: .footnote)
-        settingsButton.showsMenuAsPrimaryAction = true
-        projectButton.titleLabel?.font = .preferredFont(forTextStyle: .footnote)
-        projectButton.showsMenuAsPrimaryAction = true
-        backendButton.titleLabel?.font = .preferredFont(forTextStyle: .footnote)
-        backendButton.showsMenuAsPrimaryAction = true
-        let choices = UIStackView(arrangedSubviews: [settingsButton, projectButton, backendButton])
-        choices.spacing = 12
-        choices.alignment = .leading
-        panel.addArrangedSubview(choices)
-        attachmentButton.setImage(UIImage(systemName: "plus.circle"), for: .normal)
+        let capsule = UIView()
+        capsule.backgroundColor = .secondarySystemBackground
+        capsule.layer.cornerRadius = 28
+        panel.addArrangedSubview(capsule)
+        attachmentButton.setImage(UIImage(systemName: "plus"), for: .normal)
+        attachmentButton.tintColor = .label
         attachmentButton.accessibilityLabel = strings.text(.attachments)
+        attachmentButton.accessibilityIdentifier = "codex.native.attachments"
         attachmentButton.showsMenuAsPrimaryAction = true
-        attachmentButton.menu = UIMenu(children: [menuAction(strings.text(.photos), symbol: "photo", type: "photos"),
-                                                menuAction(strings.text(.files), symbol: "doc", type: "files"),
-                                                menuAction(strings.text(.location), symbol: "location", type: "location")])
-        attachmentButton.widthAnchor.constraint(equalToConstant: 36).isActive = true
         composer.delegate = self
         composer.accessibilityIdentifier = "codex.native.composer"
         composer.accessibilityLabel = strings.text(.composer)
-        composer.font = .systemFont(ofSize: 16)
-        composer.backgroundColor = .secondarySystemBackground
-        composer.layer.cornerRadius = 13
-        composer.textContainerInset = UIEdgeInsets(top: 10, left: 8, bottom: 10, right: 8)
+        composer.font = .systemFont(ofSize: 17)
+        composer.backgroundColor = .clear
+        composer.textContainerInset = UIEdgeInsets(top: 10, left: 0, bottom: 8, right: 0)
+        composer.textContainer.lineFragmentPadding = 0
         composer.isScrollEnabled = false
         composerHeight = composer.heightAnchor.constraint(equalToConstant: 44)
         composerHeight.isActive = true
+        placeholder.font = .systemFont(ofSize: 17)
+        placeholder.textColor = .secondaryLabel
+        placeholder.isUserInteractionEnabled = false
         let toolbar = UIToolbar()
         toolbar.sizeToFit()
-        let done = UIBarButtonItem(title: strings.text(.done), style: .done, target: self, action: #selector(doneEditing))
+        let done = UIBarButtonItem(image: UIImage(systemName: "keyboard.chevron.compact.down"), style: .plain, target: self, action: #selector(doneEditing))
+        done.accessibilityLabel = strings.text(.done)
         done.accessibilityIdentifier = "codex.native.keyboard.done"
         toolbar.items = [UIBarButtonItem(barButtonSystemItem: .flexibleSpace, target: nil, action: nil), done]
         composer.inputAccessoryView = toolbar
         sendButton.accessibilityIdentifier = "codex.native.send"
-        sendButton.setTitle(strings.text(.send), for: .normal)
-        sendButton.titleLabel?.font = .preferredFont(forTextStyle: .headline)
-        sendButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 48).isActive = true
+        sendButton.layer.cornerRadius = 22
         sendButton.addAction(UIAction { [weak self] _ in self?.send() }, for: .touchUpInside)
-        let input = UIStackView(arrangedSubviews: [attachmentButton, composer, sendButton])
-        input.spacing = 8
-        input.alignment = .bottom
-        panel.addArrangedSubview(input)
+        for item in [composer, placeholder, attachmentButton, sendButton] {
+            item.translatesAutoresizingMaskIntoConstraints = false
+            capsule.addSubview(item)
+        }
         NSLayoutConstraint.activate([
+            composer.topAnchor.constraint(equalTo: capsule.topAnchor, constant: 6),
+            composer.leadingAnchor.constraint(equalTo: capsule.leadingAnchor, constant: 18),
+            composer.trailingAnchor.constraint(equalTo: capsule.trailingAnchor, constant: -18),
+            placeholder.leadingAnchor.constraint(equalTo: composer.leadingAnchor),
+            placeholder.topAnchor.constraint(equalTo: composer.topAnchor, constant: 10),
+            placeholder.trailingAnchor.constraint(lessThanOrEqualTo: composer.trailingAnchor),
+            attachmentButton.leadingAnchor.constraint(equalTo: capsule.leadingAnchor, constant: 8),
+            attachmentButton.topAnchor.constraint(equalTo: composer.bottomAnchor),
+            attachmentButton.bottomAnchor.constraint(equalTo: capsule.bottomAnchor, constant: -8),
+            attachmentButton.widthAnchor.constraint(equalToConstant: 44),
+            attachmentButton.heightAnchor.constraint(equalToConstant: 44),
+            sendButton.trailingAnchor.constraint(equalTo: capsule.trailingAnchor, constant: -8),
+            sendButton.centerYAnchor.constraint(equalTo: attachmentButton.centerYAnchor),
+            sendButton.widthAnchor.constraint(equalToConstant: 44),
+            sendButton.heightAnchor.constraint(equalToConstant: 44),
             panel.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             panel.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             panel.bottomAnchor.constraint(equalTo: view.keyboardLayoutGuide.topAnchor),
@@ -240,13 +269,15 @@ final class NativeConversationViewController: UIViewController, UITextViewDelega
         statusButton.setTitle(strings.text(.retry), for: .normal)
         composer.accessibilityLabel = strings.text(.composer)
         attachmentButton.accessibilityLabel = strings.text(.attachments)
-        (composer.inputAccessoryView as? UIToolbar)?.items?.last?.title = strings.text(.done)
-        latestButton.configuration?.title = strings.text(.latest)
+        (composer.inputAccessoryView as? UIToolbar)?.items?.last?.accessibilityLabel = strings.text(.done)
+        latestButton.accessibilityLabel = strings.text(.latest)
+        placeholder.text = strings.text(.composer)
+        emptyLabel.text = strings.text(.welcome)
+        emptyLabel.isHidden = !snapshot.rows.isEmpty || snapshot.loadState == "loading"
         titleLabel.text = snapshot.title
-        subtitleLabel.text = snapshot.subtitle
-        subtitleLabel.isHidden = snapshot.subtitle.isEmpty
         statusLabel.text = !snapshot.error.isEmpty ? snapshot.error : (!snapshot.status.isEmpty ? snapshot.status : (snapshot.loadState == "loading" ? strings.text(.loading) : ""))
         statusLabel.textColor = snapshot.error.isEmpty ? .secondaryLabel : .systemRed
+        statusStack.arrangedSubviews.first?.isHidden = statusLabel.text?.isEmpty != false
         statusButton.isHidden = snapshot.error.isEmpty && snapshot.loadState != "error"
         if composer.markedTextRange == nil {
             let suggestedCursor = state.consumeSuggestedCursor(hasMarkedText: false)
@@ -260,7 +291,8 @@ final class NativeConversationViewController: UIViewController, UITextViewDelega
                 updatingDraft = false
             }
         }
-        composer.font = .systemFont(ofSize: CGFloat(min(max(snapshot.fontSize, 12), 24)))
+        composer.font = .systemFont(ofSize: CGFloat(min(max(snapshot.fontSize + 1, 15), 25)))
+        placeholder.font = composer.font
         composer.isEditable = snapshot.enabled
         attachmentButton.isEnabled = snapshot.enabled
         updateSendButton()
@@ -313,9 +345,12 @@ final class NativeConversationViewController: UIViewController, UITextViewDelega
         guard let snapshot = state.snapshot else { return }
         let empty = state.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && snapshot.attachments.isEmpty
         let label = snapshot.busy ? (empty ? strings.text(.stop) : strings.text(.queue)) : snapshot.sendLabel
-        sendButton.setTitle(label, for: .normal)
+        sendButton.setImage(UIImage(systemName: snapshot.busy && empty ? "stop.fill" : "arrow.up", withConfiguration: UIImage.SymbolConfiguration(pointSize: 18, weight: .semibold)), for: .normal)
         sendButton.accessibilityLabel = label
         sendButton.isEnabled = snapshot.enabled && !state.submissionPending && ((snapshot.busy && empty) || snapshot.sendEnabled)
+        sendButton.backgroundColor = sendButton.isEnabled ? .label : .tertiaryLabel
+        sendButton.tintColor = .systemBackground
+        placeholder.isHidden = !state.draft.isEmpty
     }
 
     private func updateMenus(_ snapshot: NativeConversationSnapshot) {
@@ -326,23 +361,26 @@ final class NativeConversationViewController: UIViewController, UITextViewDelega
                                     menuAction(strings.text(.rename), symbol: "pencil", type: "rename"),
                                     menuAction(strings.text(.archive), symbol: "archivebox", type: "archive")]
         }
-        menuButton.menu = UIMenu(children: conversationActions)
+        var contextMenus: [UIMenuElement] = [menuAction(strings.text(.model), symbol: "slider.horizontal.3", type: "agentSettings"),
+                                                menuAction(strings.text(.permissions), symbol: "lock", type: "permissionSettings")]
+        if !snapshot.projects.isEmpty {
+            contextMenus.append(choiceMenu(snapshot.projects, selected: snapshot.selectedProject, title: strings.text(.project), type: "project"))
+        }
+        if !snapshot.backends.isEmpty {
+            contextMenus.append(choiceMenu(snapshot.backends, selected: snapshot.selectedBackendId, title: strings.text(.backend), type: "backend"))
+        }
+        menuButton.menu = UIMenu(title: snapshot.title, children: [UIMenu(title: snapshot.subtitle, options: .displayInline, children: contextMenus),
+                                                                                UIMenu(options: .displayInline, children: conversationActions)])
         attachmentButton.menu = UIMenu(children: [menuAction(strings.text(.photos), symbol: "photo", type: "photos"),
                                                 menuAction(strings.text(.files), symbol: "doc", type: "files"),
                                                 menuAction(strings.text(.location), symbol: "location", type: "location")])
-        settingsButton.setTitle(snapshot.settingsLabel, for: .normal)
-        settingsButton.menu = UIMenu(children: [menuAction(strings.text(.model), symbol: "slider.horizontal.3", type: "agentSettings"),
-                                               menuAction(strings.text(.permissions), symbol: "lock", type: "permissionSettings")])
-        projectButton.isEnabled = snapshot.enabled
-        backendButton.isEnabled = snapshot.enabled
-        configureChoices(projectButton, choices: snapshot.projects, selected: snapshot.selectedProject, fallback: strings.text(.project), type: "project")
-        configureChoices(backendButton, choices: snapshot.backends, selected: snapshot.selectedBackendId, fallback: strings.text(.backend), type: "backend")
+        settingsButton.setTitle("Codex ﹀", for: .normal)
+        settingsButton.accessibilityLabel = snapshot.modelLabel + ", " + strings.text(.settings)
+        settingsButton.menu = UIMenu(title: snapshot.settingsLabel, children: contextMenus)
     }
 
-    private func configureChoices(_ button: UIButton, choices: [NativeConversationChoice], selected: String?, fallback: String, type: String) {
-        button.isHidden = choices.isEmpty
-        button.setTitle(choices.first(where: { $0.id == selected })?.label ?? fallback, for: .normal)
-        button.menu = UIMenu(title: strings.text(.choose) + fallback, children: choices.map { choice in
+    private func choiceMenu(_ choices: [NativeConversationChoice], selected: String?, title: String, type: String) -> UIMenu {
+        UIMenu(title: title, children: choices.map { choice in
             UIAction(title: choice.label, state: choice.id == selected ? .on : .off) { [weak self] _ in self?.emit(type, id: choice.id) }
         })
     }
@@ -366,16 +404,19 @@ final class NativeConversationViewController: UIViewController, UITextViewDelega
             }
             accessories.addArrangedSubview(horizontalChips(chips))
         }
-        for queued in snapshot.queued {
+        if !snapshot.queued.isEmpty {
             let item = UIButton(type: .system)
-            item.setTitle((queued.failed ? strings.text(.retryPrefix) : strings.text(.queuePrefix)) + queued.text, for: .normal)
+            item.setTitle(strings.text(.queuedCount).replacingOccurrences(of: "{count}", with: String(snapshot.queued.count)), for: .normal)
             item.titleLabel?.font = .preferredFont(forTextStyle: .footnote)
             item.titleLabel?.lineBreakMode = .byTruncatingTail
             item.contentHorizontalAlignment = .leading
             item.isEnabled = snapshot.enabled
             item.showsMenuAsPrimaryAction = true
-            item.menu = UIMenu(children: [menuAction(queued.failed ? strings.text(.retry) : strings.text(.sendNow), symbol: "paperplane", type: "queuedAction", id: queued.id),
-                                          menuAction(strings.text(.cancelQueued), symbol: "xmark", type: "queuedCancel", id: queued.id)])
+            item.heightAnchor.constraint(equalToConstant: 44).isActive = true
+            item.menu = UIMenu(children: snapshot.queued.map { queued in
+                UIMenu(title: queued.text, children: [menuAction(queued.failed ? strings.text(.retry) : strings.text(.sendNow), symbol: "paperplane", type: "queuedAction", id: queued.id),
+                                                     menuAction(strings.text(.cancelQueued), symbol: "xmark", type: "queuedCancel", id: queued.id)])
+            })
             accessories.addArrangedSubview(item)
         }
         accessories.isHidden = accessories.arrangedSubviews.isEmpty
@@ -394,7 +435,7 @@ final class NativeConversationViewController: UIViewController, UITextViewDelega
             stack.topAnchor.constraint(equalTo: scroll.contentLayoutGuide.topAnchor),
             stack.bottomAnchor.constraint(equalTo: scroll.contentLayoutGuide.bottomAnchor),
             stack.heightAnchor.constraint(equalTo: scroll.frameLayoutGuide.heightAnchor),
-            scroll.heightAnchor.constraint(equalToConstant: 32)
+            scroll.heightAnchor.constraint(equalToConstant: 44)
         ])
         return scroll
     }
@@ -465,8 +506,9 @@ final class NativeConversationViewController: UIViewController, UITextViewDelega
         button.setImage(UIImage(systemName: symbol), for: .normal)
         button.accessibilityIdentifier = identifier
         button.titleLabel?.font = .preferredFont(forTextStyle: .footnote)
+        button.tintColor = .label
         button.addAction(UIAction { _ in action() }, for: .touchUpInside)
-        button.heightAnchor.constraint(greaterThanOrEqualToConstant: 32).isActive = true
+        button.heightAnchor.constraint(greaterThanOrEqualToConstant: 44).isActive = true
         return button
     }
 
@@ -501,12 +543,11 @@ final class NativeConversationViewController: UIViewController, UITextViewDelega
         latestButton.isHidden = isNearBottom || rows.isEmpty
     }
 
-    private func formatted(_ row: NativeConversationRow) -> NSAttributedString {
-        let size = state.snapshot?.fontSize ?? 16
-        if let cached = markdownCache[row.id], cached.0 == row.text, cached.1 == size { return cached.2 }
-        let rendered = NativeConversationMarkdown.render(row.text, markdown: row.role == "assistant", size: CGFloat(min(max(size, 12), 24)))
-        markdownCache[row.id] = (row.text, size, rendered)
-        return rendered
+    private func formatted(_ row: NativeConversationRow) -> [NativeMarkdownBlock] {
+        if let cached = markdownCache[row.id], cached.0 == row.text { return cached.1 }
+        let blocks = row.role == "assistant" ? NativeMarkdown.parse(row.text) : [.paragraph(row.text)]
+        markdownCache[row.id] = (row.text, blocks)
+        return blocks
     }
 
     private func showDetail(_ row: NativeConversationRow) {
@@ -518,75 +559,6 @@ final class NativeConversationViewController: UIViewController, UITextViewDelega
         navigation.sheetPresentationController?.prefersGrabberVisible = true
         navigation.sheetPresentationController?.prefersScrollingExpandsWhenScrolledToEdge = true
         present(navigation, animated: true)
-    }
-}
-
-private final class NativeConversationCell: UITableViewCell, UITextViewDelegate {
-    private let roleLabel = UILabel()
-    private let message = UITextView()
-    private let details = UIButton(type: .system)
-    private let full = UIButton(type: .system)
-    private let edit = UIButton(type: .system)
-    var onDetail: (() -> Void)?
-    var onWeb: (() -> Void)?
-    var onEdit: (() -> Void)?
-
-    override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
-        super.init(style: style, reuseIdentifier: reuseIdentifier)
-        selectionStyle = .none
-        backgroundColor = .systemBackground
-        roleLabel.font = .preferredFont(forTextStyle: .caption1)
-        roleLabel.textColor = .secondaryLabel
-        message.isEditable = false
-        message.delegate = self
-        message.isSelectable = true
-        message.isScrollEnabled = false
-        message.backgroundColor = .clear
-        message.textContainerInset = .zero
-        message.textContainer.lineFragmentPadding = 0
-        message.adjustsFontForContentSizeCategory = true
-        details.addAction(UIAction { [weak self] _ in self?.onDetail?() }, for: .touchUpInside)
-        full.addAction(UIAction { [weak self] _ in self?.onWeb?() }, for: .touchUpInside)
-        edit.addAction(UIAction { [weak self] _ in self?.onEdit?() }, for: .touchUpInside)
-        let actions = UIStackView(arrangedSubviews: [details, full, edit])
-        actions.axis = .horizontal
-        actions.alignment = .leading
-        actions.spacing = 12
-        let stack = UIStackView(arrangedSubviews: [roleLabel, message, actions])
-        stack.axis = .vertical
-        stack.spacing = 7
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        contentView.addSubview(stack)
-        NSLayoutConstraint.activate([
-            stack.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 18),
-            stack.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -18),
-            stack.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 14),
-            stack.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -14)
-        ])
-    }
-
-    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
-
-    func textView(_ textView: UITextView, shouldInteractWith URL: URL, in characterRange: NSRange, interaction: UITextItemInteraction) -> Bool {
-        onWeb?()
-        return false
-    }
-
-    func configure(_ row: NativeConversationRow, text: NSAttributedString, editable: Bool, strings: NativeConversationStrings) {
-        details.setTitle(strings.text(.toolDetails), for: .normal)
-        full.setTitle(strings.text(.fullContent), for: .normal)
-        edit.setTitle(strings.text(.edit), for: .normal)
-        let role = ["user": strings.text(.user), "assistant": strings.text(.assistant), "tool": strings.text(.tool), "system": strings.text(.system)][row.role] ?? row.role
-        roleLabel.text = role + (row.timestamp.map { " · \($0)" } ?? "")
-        message.attributedText = text
-        message.accessibilityIdentifier = "codex.native.row.\(row.id)"
-        message.accessibilityLabel = role
-        details.isHidden = row.role != "tool"
-        full.isHidden = row.rich != true
-        edit.isHidden = row.role != "user" || !editable
-        details.titleLabel?.font = .systemFont(ofSize: 13)
-        full.titleLabel?.font = .systemFont(ofSize: 13)
-        edit.titleLabel?.font = .systemFont(ofSize: 13)
     }
 }
 
@@ -626,51 +598,4 @@ private final class NativeConversationDetailViewController: UIViewController {
     }
     @objc private func close() { dismiss(animated: true) }
     @objc private func copyText() { UIPasteboard.general.string = text }
-}
-
-private enum NativeConversationMarkdown {
-    static func render(_ text: String, markdown: Bool, size: CGFloat) -> NSAttributedString {
-        let result = NSMutableAttributedString(string: "")
-        let ordinary: [NSAttributedString.Key: Any] = [.font: UIFont.systemFont(ofSize: size), .foregroundColor: UIColor.label]
-        guard markdown else { return NSAttributedString(string: text, attributes: ordinary) }
-        // 分离 fenced code，保留空格、缩进和换行；其余段落采用 Foundation Markdown。
-        var code = false
-        var segment = ""
-        func appendSegment() {
-            guard !segment.isEmpty else { return }
-            if code {
-                result.append(NSAttributedString(string: segment, attributes: [.font: UIFont.monospacedSystemFont(ofSize: size - 1, weight: .regular), .foregroundColor: UIColor.label, .backgroundColor: UIColor.secondarySystemBackground]))
-            } else if let parsed = try? AttributedString(markdown: segment, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)) {
-                let rendered = NSMutableAttributedString(attributedString: NSAttributedString(parsed))
-                rendered.addAttributes(ordinary, range: NSRange(location: 0, length: rendered.length))
-                for run in parsed.runs {
-                    let range = NSRange(run.range, in: parsed)
-                    let intent = run.inlinePresentationIntent ?? []
-                    if intent.contains(.code) {
-                        rendered.addAttribute(.font, value: UIFont.monospacedSystemFont(ofSize: size - 1, weight: .regular), range: range)
-                    } else {
-                        var traits: UIFontDescriptor.SymbolicTraits = []
-                        if intent.contains(.stronglyEmphasized) { traits.insert(.traitBold) }
-                        if intent.contains(.emphasized) { traits.insert(.traitItalic) }
-                        if let descriptor = UIFont.systemFont(ofSize: size).fontDescriptor.withSymbolicTraits(traits) {
-                            rendered.addAttribute(.font, value: UIFont(descriptor: descriptor, size: size), range: range)
-                        }
-                    }
-                }
-                result.append(rendered)
-            } else { result.append(NSAttributedString(string: segment, attributes: ordinary)) }
-            segment = ""
-        }
-        let lines = text.components(separatedBy: "\n")
-        for (index, line) in lines.enumerated() {
-            if line.trimmingCharacters(in: .whitespaces).hasPrefix("```") {
-                appendSegment()
-                code.toggle()
-            } else {
-                segment += line + (index < lines.count - 1 ? "\n" : "")
-            }
-        }
-        appendSegment()
-        return result
-    }
 }

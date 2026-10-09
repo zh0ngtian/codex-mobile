@@ -55,6 +55,7 @@ struct NativeConversationSnapshot: Decodable {
     var selectedProject: String? = nil
     var selectedBackendId: String? = nil
     var settingsLabel = "模型与权限"
+    var modelLabel = "Codex"
     var queued: [NativeConversationQueued] = []
 
     var allowsConversationActions: Bool { enabled && loadState == "ready" && !isNewChat }
@@ -69,7 +70,7 @@ struct NativeConversationSnapshot: Decodable {
     private enum CodingKeys: String, CodingKey {
         case version, locale, isNewChat, contextId, visible, title, subtitle, draft, acknowledgedSequence, draftCursor, draftCursorSequence
         case enabled, sendEnabled, sendLabel, busy, error, status, loadState, olderTurnsState, fontSize
-        case rows, attachments, mentions, projects, backends, selectedProject, selectedBackendId, settingsLabel, queued
+        case rows, attachments, mentions, projects, backends, selectedProject, selectedBackendId, settingsLabel, modelLabel, queued
     }
 
     init(from decoder: Decoder) throws {
@@ -102,6 +103,7 @@ struct NativeConversationSnapshot: Decodable {
         selectedProject = try values.decodeIfPresent(String.self, forKey: .selectedProject)
         selectedBackendId = try values.decodeIfPresent(String.self, forKey: .selectedBackendId)
         settingsLabel = try values.decodeIfPresent(String.self, forKey: .settingsLabel) ?? NativeConversationStrings(locale: locale).text(.settings)
+        modelLabel = try values.decodeIfPresent(String.self, forKey: .modelLabel) ?? "Codex"
         queued = try values.decodeIfPresent([NativeConversationQueued].self, forKey: .queued) ?? []
     }
 }
@@ -190,6 +192,7 @@ struct NativeConversationStrings {
         case loading, loadingOlder, retryOlder, web, pin, duplicate, rename, archive, model, permissions
         case project, backend, choose, retryPrefix, queuePrefix, sendNow, cancelQueued
         case toolDetails, fullContent, edit, user, assistant, tool, system, detailsTitle, copyAll, settings
+        case welcome, copyCode, queuedCount
     }
     let locale: String
     private static let values: [Key: (String, String)] = [
@@ -205,7 +208,8 @@ struct NativeConversationStrings {
         .sendNow: ("立即发送", "Send now"), .cancelQueued: ("取消排队", "Cancel queued message"),
         .toolDetails: ("查看工具详情", "View tool details"), .fullContent: ("查看完整内容", "View full content"), .edit: ("编辑重发", "Edit and resend"),
         .user: ("你", "You"), .assistant: ("Codex", "Codex"), .tool: ("工具", "Tool"), .system: ("系统", "System"),
-        .detailsTitle: ("工具详情", "Tool details"), .copyAll: ("复制全文", "Copy all"), .settings: ("模型与权限", "Model & permissions")
+        .detailsTitle: ("活动详情", "Activity details"), .copyAll: ("复制全文", "Copy all"), .settings: ("模型与权限", "Model & permissions"),
+        .welcome: ("有什么可以帮你？", "How can I help you?"), .copyCode: ("复制代码", "Copy code"), .queuedCount: ("{count} 条消息等待发送", "{count} messages queued")
     ]
     func text(_ key: Key) -> String {
         guard let values = Self.values[key] else { return "" }
