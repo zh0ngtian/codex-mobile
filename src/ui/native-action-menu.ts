@@ -1,3 +1,5 @@
+import { flushSync } from "react-dom";
+
 export const ACTION_MENU_EVENT = "codex-mobile-action-menu";
 export type MenuAnchor = { x: number; y: number; width: number; height: number };
 export type MenuAction = {
@@ -47,7 +49,9 @@ export function presentNativeActionMenu(
     const action = actions.find((entry) => entry.id === detail.actionId && !entry.disabled);
     dispose();
     onClose(action?.id);
-    if (action && !action.disabled) action.onSelect(true);
+    // 原生动作通过 evaluateJavaScript 返回；同步提交编辑框，让 focus 仍处于
+    // WebKit 的原生用户操作调用内，能够弹出系统键盘。
+    if (action && !action.disabled) flushSync(() => action.onSelect(true));
   };
   window.addEventListener(ACTION_MENU_EVENT, receive);
   try {
