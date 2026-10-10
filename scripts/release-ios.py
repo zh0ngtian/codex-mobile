@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""复用 PakePlus 的构建 → Ad Hoc 签名 → HTTPS OTA → 固定 LAN IPA 发布。"""
+"""PakePlus 构建 → Ad Hoc 签名 → HTTPS OTA → 固定 LAN IPA → Cloudflare 软件源。"""
 import argparse
 import json
 import os
@@ -11,11 +11,13 @@ import subprocess
 import sys
 import tempfile
 import urllib.request
+import shlex
 
 SCRIPTS = Path(__file__).resolve().parent
 ROOT = SCRIPTS.parent
 sys.path.insert(0, str(SCRIPTS))
 from ios_sign import SigningError
+import ios_app_source
 from ios_ota import (version_tuple, validate_base_url, fetch_previous, create_release,
                      publish_ssh, validate_upgrade, stage_local, activate_staged, verify_published)
 
@@ -134,14 +136,28 @@ def publish_local(source, root, release):
     return release
 
 
+def publish_app_source(output, signed, release, settings):
+    receipt = output / 'ota-release.json'
+    receipt.write_text(json.dumps(release, ensure_ascii=False, indent=2) + '\n')
+    try:
+        return ios_app_source.publish(signed, receipt, settings, output / 'app-source')
+    except (ValueError, OSError, KeyError) as error:
+        retry = shlex.join(['npm', 'run', 'ios:publish-source', '--', '--ipa', str(signed),
+                            '--release-json', str(receipt)])
+        raise ValueError(f'OTA 与 LAN 已发布，软件源未完成：{error}。保留原包与凭证，重试：{retry} '
+                         '（若使用自定义软件源，沿用 --signos-repo 与 --source-config）') from error
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--config', required=True)
     parser.add_argument('--version'); parser.add_argument('--notes', required=True)
     parser.add_argument('--plan', action='store_true', help='仅验证配置、profile、版本与 OTA 签名连续性')
+    ios_app_source.add_arguments(parser)
     args = parser.parse_args()
     from ios_sign import read_profile, signing_identity, sign_ipa
     config = load_config(args.config)
+    source_settings = ios_app_source.load_settings(args.signos_repo, args.source_config)
     if config.get('caFile'):
         os.environ['CODEX_MOBILE_OTA_CA_FILE'] = config['caFile']
     profile = read_profile(config['profile'])
@@ -166,8 +182,11 @@ def main():
                           'keychainAccessGroups': identity.get('keychainAccessGroups'),
                           'identityTransition': transition,
                           'installUrl': config['baseUrl']+'/current/install.html',
-                          'steps': ['prepare', 'xcodebuild', 'adhoc-sign', 'https-publish-verify', 'lan-publish-verify']}, indent=2))
+                          'sourceURL': source_settings['config']['baseUrl'] + '/source.json',
+                          'steps': ['prepare', 'xcodebuild', 'adhoc-sign', 'https-publish-verify',
+                                    'lan-publish-verify', 'app-source-publish-verify']}, indent=2))
         return
+    ios_app_source.preflight(source_settings)
     if not LAN_PUBLISHER.is_file():
         raise ValueError('本机缺少固定 LAN 发布脚本；请在更新服务器所在 Mac 执行')
     output = ROOT/'.mobile-build/ota-release'/version
@@ -205,6 +224,8 @@ def main():
             sha.update(chunk); size += len(chunk)
     if sha.hexdigest() != release['sha256'] or size != release['size']:
         raise ValueError('LAN IPA 完整 GET 校验失败')
+    source_result = publish_app_source(output, signed, release, source_settings)
+    release = {**release, 'appSource': source_result}
     print(json.dumps(release, ensure_ascii=False, indent=2))
 
 if __name__ == '__main__':

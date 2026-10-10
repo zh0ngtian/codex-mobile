@@ -5,7 +5,7 @@
 - [项目 README](../README.md)：使用方法、架构、配置、客户端能力与边界。
 - [自动安装指南](../install.md)：macOS npm 网关安装和开机启动。
 - [仓库协作约定](../AGENTS.md)与 [Git 提交规范](commit-conventions.md)：开发、验证和交付要求。
-- [iOS OTA 发布](ios-ota-release.md)：本机签名、身份连续性、固定渠道及安装诊断。
+- [iOS OTA 发布](ios-ota-release.md)：本机签名、身份连续性、固定渠道、Cloudflare 软件源同步与重试及安装诊断。
 - [iOS 模拟器验证](ios-simulator-verification.md)：可复用操作步骤与按日期保留的验收结果。
 - [协议基准](../protocol/app-server-v2/README.md)：固定快照的版本、来源和使用边界。
 
@@ -16,6 +16,7 @@
 - [Android 清单](http://192.168.123.79:8765/channels/codex-mobile/latest.json)及 [固定 APK](http://192.168.123.79:8765/channels/codex-mobile/latest.apk)。
 - [iOS 清单](http://192.168.123.79:8765/channels/codex-mobile/latest-ios.json)及 [固定 IPA](http://192.168.123.79:8765/channels/codex-mobile/latest.ipa)。
 - [HTTPS OTA 安装页](https://192.168.123.79:8766/channels/codex-mobile/current/install.html)及 [OTA 清单](https://192.168.123.79:8766/channels/codex-mobile/current/latest-ios.json)。
+- [Cloudflare 软件源](https://yao-app-source.305301890.workers.dev/source.json)：SignOs 可添加此源；正式发版使用 OTA 已成功发布的同一签名 IPA。
 
 固定链接随新版本更新。历史记录里的版本、大小、散列只描述当次发布；应读取当前清单，再用 HEAD 和完整 GET 校验当前下载。渠道可用和构建验签不等于真机覆盖安装、数据保留已验证。
 
