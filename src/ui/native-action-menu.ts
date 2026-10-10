@@ -44,7 +44,7 @@ export function presentNativeActionMenu(
   const receive = (event: Event) => {
     const detail = (event as CustomEvent).detail;
     if (detail?.requestId !== requestId || finished) return;
-    const action = actions.find((entry) => entry.id === detail.actionId);
+    const action = actions.find((entry) => entry.id === detail.actionId && !entry.disabled);
     dispose();
     onClose(action?.id);
     if (action && !action.disabled) action.onSelect(true);

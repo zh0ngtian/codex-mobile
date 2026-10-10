@@ -195,7 +195,6 @@ type ConversationActionMenuProps = {
 };
 
 function OpenConversationActionMenu({
-  open,
   readOnly = false,
   thread,
   pendingAction,
@@ -207,20 +206,7 @@ function OpenConversationActionMenu({
   onRename,
   onArchive,
   anchor,
-}: {
-  open: boolean;
-  readOnly?: boolean;
-  thread: DisplayRecord;
-  anchor?: MenuAnchor;
-  pendingAction: string;
-  onClose: () => void;
-  onPin: () => void;
-  onRefresh: () => void;
-  onDuplicate: () => void;
-  onCopy: () => void;
-  onRename: () => void;
-  onArchive: () => void;
-}) {
+}: Omit<ConversationActionMenuProps, "open">) {
   const pinned = thread.isPinned === true;
   const actions = [
     {
