@@ -138,12 +138,24 @@ export class BarkNotifications {
         this.completions.rememberThread(metadata);
         return;
       }
+      // 同一手机可能遗留多个安装/后端订阅；注销仍独立，投递按接收地址合并。
+      const destinations = new Map<string, Subscription[]>();
       for (const subscription of this.subscriptions.values()) {
-        const id = createHash("sha256").update(JSON.stringify([subscription.clientId, subscription.backendId, completed.threadId, completed.turnId])).digest("hex");
-        if (this.delivered.has(id) || this.jobs.size >= MAX_PENDING_PUSHES) continue;
+        const subscriptions = destinations.get(subscription.barkUrl) ?? [];
+        subscriptions.push(subscription); destinations.set(subscription.barkUrl, subscriptions);
+      }
+      for (const [barkUrl, subscriptions] of destinations) {
+        const subscription = subscriptions[subscriptions.length - 1];
+        const id = createHash("sha256").update(JSON.stringify(["bark-destination", barkUrl, completed.threadId, completed.turnId])).digest("hex");
+        if (this.delivered.has(id)) continue;
+        // 升级时沿用旧安装的已发送证据，并落盘地址记录，避免注销旧订阅后补发。
+        const previouslyDelivered = subscriptions.some((entry) => this.delivered.has(createHash("sha256")
+          .update(JSON.stringify([entry.clientId, entry.backendId, completed.threadId, completed.turnId])).digest("hex")));
+        if (!previouslyDelivered && this.jobs.size >= MAX_PENDING_PUSHES) continue;
         this.delivered.add(id);
         while (this.delivered.size > MAX_DEDUPLICATION) this.delivered.delete(this.delivered.values().next().value!);
         try { await this.save(); } catch (error) { this.delivered.delete(id); throw error; }
+        if (previouslyDelivered) continue;
         const job = this.send(subscription, { title: "Codex 运行结束", body, group: this.options.displayName, url: `codexmobile://thread?backendId=${encodeURIComponent(subscription.backendId)}&threadId=${encodeURIComponent(completed.threadId)}`, id });
         this.jobs.add(job); void job.finally(() => this.jobs.delete(job));
       }

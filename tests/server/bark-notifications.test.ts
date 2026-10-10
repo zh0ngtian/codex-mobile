@@ -1,5 +1,5 @@
 import { createServer } from "node:http";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { mkdtemp, rm, stat, readFile, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -233,6 +233,71 @@ describe("Bark 通知", () => {
     await f.restart(); await f.rpc({ id: 1, method: "initialize", params: {} }); await f.start(); f.send(final); f.send(completed); await wait(80); expect(f.pushes).toHaveLength(1);
     await f.settings({ clientId: f.clientId, backendId: f.backendId, mode: "system" }); f.send({ ...final, params: { ...final.params, turnId: "another" } }); f.send({ ...completed, params: { ...completed.params, turn: { id: "another", status: "completed" } } }); await wait(80); expect(f.pushes).toHaveLength(1);
     expect(await readFile(join(f.root, "codex-mobile-notifications", "state.json"), "utf8")).not.toContain(f.barkUrl);
+  });
+
+  it.each(["http", "stream"])("%s 相同接收地址的不同安装和后端只通知一次", async (transport) => {
+    const f = await fixture(); await f.settings();
+    const latest = { clientId: randomUUID(), backendId: "reinstalled-backend", mode: "bark", barkUrl: f.barkUrl + "/" };
+    await f.settings(latest);
+    if (transport === "stream") await f.stream();
+    else await f.rpc({ id: 1, method: "initialize", params: {} });
+    await f.start(); f.send(final); f.send(completed);
+    await eventually(() => f.pushes.length > 0); await wait(100);
+    expect(f.pushes).toHaveLength(1);
+    expect(f.pushes[0].url).toContain("backendId=reinstalled-backend");
+    const state = JSON.parse(await readFile(join(f.root, "codex-mobile-notifications", "state.json"), "utf8"));
+    expect(state.subscriptions).toHaveLength(2);
+    expect(state.delivered).toHaveLength(1);
+  });
+
+  it("不同接收地址各自通知，同安装的重复后端按地址合并", async () => {
+    const f = await fixture(); await f.settings();
+    await f.settings({ clientId: f.clientId, backendId: "alias", mode: "bark", barkUrl: f.barkUrl });
+    await f.settings({ clientId: randomUUID(), backendId: "other-phone", mode: "bark", barkUrl: f.barkUrl.replace("deviceKey", "otherKey") });
+    await f.rpc({ id: 1, method: "initialize", params: {} }); await f.start(); f.send(final); f.send(completed);
+    await eventually(() => f.pushes.length >= 2); await wait(100);
+    expect(f.pushes).toHaveLength(2);
+    expect(new Set(f.pushes.map((push) => push.id)).size).toBe(2);
+  });
+
+  it("接收地址去重跨重启与安装 ID 变更保留，注销互不影响", async () => {
+    const f = await fixture(); await f.settings(); await f.rpc({ id: 1, method: "initialize", params: {} }); await f.start(); f.send(final); f.send(completed);
+    await eventually(() => f.pushes.length === 1);
+    await f.restart();
+    const replacement = { clientId: randomUUID(), backendId: "replacement", mode: "bark", barkUrl: f.barkUrl };
+    await f.settings(replacement);
+    await f.settings({ clientId: f.clientId, backendId: f.backendId, mode: "system" });
+    await f.rpc({ id: 1, method: "initialize", params: {} }); await f.start(); f.send(final); f.send(completed); await wait(100);
+    expect(f.pushes).toHaveLength(1);
+    await f.settings({ clientId: f.clientId, backendId: f.backendId, mode: "bark", barkUrl: f.barkUrl });
+    await f.settings({ ...replacement, mode: "system" });
+    const threadId = "next-task";
+    await f.start(threadId);
+    f.send({ ...final, params: { ...final.params, threadId } });
+    f.send({ ...completed, params: { ...completed.params, threadId } });
+    await eventually(() => f.pushes.length === 2);
+    expect(f.pushes[1].url).toContain(`backendId=${encodeURIComponent(f.backendId)}`);
+  });
+
+  it("旧安装的已发送记录阻止同接收地址的新订阅补发", async () => {
+    const f = await fixture(); await f.settings();
+    const path = join(f.root, "codex-mobile-notifications", "state.json");
+    const state = JSON.parse(await readFile(path, "utf8"));
+    state.delivered = [createHash("sha256").update(JSON.stringify([f.clientId, f.backendId, final.params.threadId, "turn"])).digest("hex")];
+    await writeFile(path, JSON.stringify(state)); await f.restart();
+    await f.settings({ clientId: randomUUID(), backendId: "new-install", mode: "bark", barkUrl: f.barkUrl });
+    await f.rpc({ id: 1, method: "initialize", params: {} }); await f.start(); f.send(final); f.send(completed);
+    // 后续独立任务必须到达，证明通知队列已经处理旧回合。
+    const threadId = "fresh-task";
+    await f.start(threadId);
+    f.send({ ...final, params: { ...final.params, threadId } });
+    f.send({ ...completed, params: { ...completed.params, threadId } });
+    await eventually(() => f.pushes.length > 0); await wait(100);
+    expect(f.pushes).toHaveLength(1);
+    expect(f.pushes[0].url).toContain("threadId=fresh-task");
+    await f.settings({ clientId: f.clientId, backendId: f.backendId, mode: "system" });
+    await f.restart(); await f.rpc({ id: 1, method: "initialize", params: {} }); await f.start(); f.send(final); f.send(completed); await wait(100);
+    expect(f.pushes).toHaveLength(1);
   });
 
   it("真实 HTTP 推送失败不改变 RPC，重试有界", async () => {
