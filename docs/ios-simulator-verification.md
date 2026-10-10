@@ -24,7 +24,7 @@ xcodebuild \
   -derivedDataPath .mobile-build/ios-derived-data build
 ```
 
-`--plan` 只输出步骤。准备脚本复用 `.github/workflows/build-ios.yml` 中的固定容器提交、pnpm 主版本、前端构建、配置和原生硬化；图标按 asset catalog 的尺寸在本地生成。成功后替换 `.mobile-build/ios/` 中的生成工程；不要在该目录维护手写源码。失败时保留上一次成功工程。
+`--plan` 只输出步骤。准备脚本复用 `mobile/ios/build-recipe.yml` 中的固定容器提交、pnpm 主版本、前端构建、配置和原生硬化；图标按 asset catalog 的尺寸在本地生成。成功后替换 `.mobile-build/ios/` 中的生成工程；不要在该目录维护手写源码。失败时保留上一次成功工程。
 
 ## 模拟器 UI 回归
 

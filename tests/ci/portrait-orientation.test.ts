@@ -6,8 +6,8 @@ import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 
 function hardeningScript(platform: string, stepName: string) {
-  const workflow = parse(readFileSync(`.github/workflows/build-${platform}.yml`, "utf8"));
-  return workflow.jobs.build.steps.find((step: any) => step.name === stepName).run as string;
+  const recipe = parse(readFileSync(`mobile/${platform}/build-recipe.yml`, "utf8"));
+  return recipe.steps.find((step: any) => step.name === stepName).run as string;
 }
 
 function fixture(run: (directory: string) => void) {
@@ -17,8 +17,8 @@ function fixture(run: (directory: string) => void) {
 
 describe("移动端强制竖屏", () => {
   it.each(["portrait", "1", "0x1", "landscape", "0", "sensor", undefined])("APK 校验识别编译后的方向枚举 %s", (orientation) => {
-    const workflow = parse(readFileSync(".github/workflows/build-android.yml", "utf8"));
-    const verify = workflow.jobs.build.steps.find((step: any) => step.name === "Prepare and verify APK").run as string;
+    const recipe = parse(readFileSync("mobile/android/build-recipe.yml", "utf8"));
+    const verify = recipe.steps.find((step: any) => step.name === "Prepare and verify APK").run as string;
     const script = verify.slice(verify.indexOf("activities = {"), verify.indexOf("providers = {"));
     const result = spawnSync("python3", ["-c", `
 import xml.etree.ElementTree as ET

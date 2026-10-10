@@ -1,5 +1,4 @@
 import {
-  chmodSync,
   mkdtempSync,
   readFileSync,
   rmSync,
@@ -15,113 +14,31 @@ function readProjectFile(path: string) {
   return readFileSync(path, "utf8");
 }
 
-interface WorkflowStep {
-  env?: Record<string, string>;
-  if?: string;
+interface RecipeStep {
   name?: string;
   run?: string;
 }
 
-interface Workflow {
-  on?: {
-    push?: {
-      branches?: string[];
-      paths?: string[];
-    };
-    release?: {
-      types?: string[];
-    };
-    workflow_call?: {
-      inputs?: Record<string, unknown>;
-    };
-    workflow_dispatch?: {
-      inputs?: Record<
-        string,
-        {
-          default?: boolean | string;
-          description?: string;
-          required?: boolean;
-          type?: string;
-        }
-      >;
-    };
-  };
-  concurrency?: {
-    group?: string;
-    "cancel-in-progress"?: boolean;
-  };
-  permissions?: {
-    contents?: string;
-  };
-  jobs: {
-    version?: {
-      outputs?: Record<string, string>;
-      steps: WorkflowStep[];
-    };
-    build: {
-      needs?: string;
-      env?: Record<string, string>;
-      outputs?: Record<string, string>;
-      steps: WorkflowStep[];
-    };
-    ios?: {
-      if?: string;
-      needs?: string;
-      uses?: string;
-      with?: Record<string, string>;
-    };
-    npm?: {
-      if?: string;
-      needs?: string;
-      permissions?: {
-        contents?: string;
-        "id-token"?: string;
-      };
-      uses?: string;
-      with?: Record<string, string>;
-      secrets?: string;
-    };
-    release?: {
-      if?: string;
-      needs?: string | string[];
-      permissions?: {
-        contents?: string;
-      };
-      steps: WorkflowStep[];
-    };
-  };
+interface Recipe {
+  steps: RecipeStep[];
 }
 
-function readWorkflow(path: string) {
+function readRecipe(path: string) {
   const source = readProjectFile(path);
-  const workflow = parse(source) as Workflow;
-
-  expect(workflow.jobs.build.steps).toBeInstanceOf(Array);
-  return { source, workflow };
+  const recipe = parse(source) as Recipe;
+  expect(recipe.steps).toBeInstanceOf(Array);
+  return { source, recipe };
 }
 
-function readJobRunStep(
-  workflow: Workflow,
-  jobName: "version" | "build",
-  name: string,
-) {
-  const step = workflow.jobs[jobName]?.steps.find(
-    (candidate) => candidate.name === name,
-  );
-
-  expect(step, `找不到流水线步骤：${jobName}/${name}`).toBeDefined();
-  expect(step?.run, `流水线步骤没有 run 脚本：${jobName}/${name}`).toBeTypeOf(
-    "string",
-  );
+function readRunStep(recipe: Recipe, name: string) {
+  const step = recipe.steps.find((candidate) => candidate.name === name);
+  expect(step, `找不到构建步骤：${name}`).toBeDefined();
+  expect(step?.run, `构建步骤没有 run 脚本：${name}`).toBeTypeOf("string");
   return step?.run ?? "";
 }
 
-function readRunStep(workflow: Workflow, name: string) {
-  return readJobRunStep(workflow, "build", name);
-}
-
-function readAssetScanner(workflow: Workflow) {
-  const buildFrontend = readRunStep(workflow, "Build embedded frontend");
+function readAssetScanner(recipe: Recipe) {
+  const buildFrontend = readRunStep(recipe, "Build embedded frontend");
   const match = buildFrontend.match(
     /scan-mobile-assets\.cjs" <<'NODE'\n([\s\S]*?)\nNODE\n/,
   );
@@ -144,10 +61,10 @@ function runAssetScanner(scanner: string, source: string) {
   }
 }
 
-describe("移动 App 内置前端流水线", () => {
+describe("移动 App 本地构建配置", () => {
   it.each(["android", "ios"])("%s 允许 Mermaid 依赖内置文档和 XML 命名空间，仍拦截固定私网地址与口令", (platform) => {
-    const { workflow } = readWorkflow(`.github/workflows/build-${platform}.yml`);
-    const scanner = readAssetScanner(workflow);
+    const { recipe } = readRecipe(`mobile/${platform}/build-recipe.yml`);
+    const scanner = readAssetScanner(recipe);
     const dependencyUrls = [
       "https://github.com/mermaid-js/mermaid/issues.",
       "https://github.com/mermaid-js/mermaid/releases/tag/v11.0.0)",
@@ -168,8 +85,8 @@ describe("移动 App 内置前端流水线", () => {
   });
 
   it("Android edge-to-edge 底部扣除 IME 且保留顶部安全区，硬化检查防止模板漂移", () => {
-    const { workflow } = readWorkflow(".github/workflows/build-android.yml");
-    const hardenHost = readRunStep(workflow, "Harden and test embedded Android project");
+    const { recipe } = readRecipe("mobile/android/build-recipe.yml");
+    const hardenHost = readRunStep(recipe, "Harden and test embedded Android project");
     const template = hardenHost.match(/edge_to_edge_insets = "\\n"\.join\(\(\n([\s\S]*?)\n\s*\)\)/);
     expect(template, "找不到原生 inset 模板").not.toBeNull();
     const generatedInsets = template![1].split("\n")
@@ -201,20 +118,20 @@ describe("移动 App 内置前端流水线", () => {
   });
 
   it("Android 只构建一个不绑定后端的 Codex Mobile App", () => {
-    const { source, workflow } = readWorkflow(
-      ".github/workflows/build-android.yml",
+    const { source, recipe } = readRecipe(
+      "mobile/android/build-recipe.yml",
     );
     const installIcon = readRunStep(
-      workflow,
+      recipe,
       "Install Codex Mobile app icon",
     );
-    const buildFrontend = readRunStep(workflow, "Build embedded frontend");
+    const buildFrontend = readRunStep(recipe, "Build embedded frontend");
     const hardenHost = readRunStep(
-      workflow,
+      recipe,
       "Harden and test embedded Android project",
     );
-    const verifyArtifact = readRunStep(workflow, "Prepare and verify APK");
-    const scanner = readAssetScanner(workflow);
+    const verifyArtifact = readRunStep(recipe, "Prepare and verify APK");
+    const scanner = readAssetScanner(recipe);
 
     expect(installIcon).toContain(
       "docs/assets/app-icon/codex-mobile-app-icon-1024.png",
@@ -334,11 +251,11 @@ describe("移动 App 内置前端流水线", () => {
   });
 
   it("Android 普通网页链接使用独立内置浏览器并提供参考图中的操作", () => {
-    const { workflow } = readWorkflow(
-      ".github/workflows/build-android.yml",
+    const { recipe } = readRecipe(
+      "mobile/android/build-recipe.yml",
     );
     const hardenHost = readRunStep(
-      workflow,
+      recipe,
       "Harden and test embedded Android project",
     );
 
@@ -389,274 +306,15 @@ describe("移动 App 内置前端流水线", () => {
     ).toContain("Material Icons Round");
   });
 
-  it("main 前端变更统一递增版本，并行构建双端后原子发布一个 Release", () => {
-    const { source, workflow } = readWorkflow(
-      ".github/workflows/build-android.yml",
-    );
-    expect(workflow.on?.push?.branches).toEqual(["main"]);
-    expect(workflow.on?.push?.paths).toEqual(
-      expect.arrayContaining([
-        "src/**",
-        "server/**",
-        "bin/**",
-        "public/**",
-        "index.html",
-        "mobile/**",
-        "package.json",
-        "package-lock.json",
-        "mobile-version-floor.json",
-        "vite.config.ts",
-        "docs/assets/app-icon/codex-mobile-app-icon-1024.png",
-        "scripts/compose-mobile-app-icon.sh",
-        ".github/workflows/build-android.yml",
-        ".github/workflows/build-ios.yml",
-      ]),
-    );
-    expect(workflow.on).toHaveProperty("workflow_dispatch");
-    expect(
-      workflow.on?.workflow_dispatch?.inputs?.release_version,
-    ).toMatchObject({
-      required: false,
-      type: "string",
-    });
-    expect(workflow.concurrency).toMatchObject({
-      "cancel-in-progress": true,
-    });
-    expect(workflow.permissions?.contents).toBe("read");
-
-    const resolveVersion = readJobRunStep(
-      workflow,
-      "version",
-      "Resolve app version",
-    );
-    expect(resolveVersion).toContain("releases/latest");
-    expect(resolveVersion).toContain("mobile-version-floor.json");
-    expect(resolveVersion).toContain(".sort((left, right)");
-    expect(resolveVersion).toContain("patch + 1");
-    expect(resolveVersion).toContain("REQUESTED_VERSION");
-    expect(resolveVersion).toContain(
-      "Manual npm publishing requires release_version",
-    );
-    expect(resolveVersion).toContain(
-      "Manual npm publishing requires the next GitHub Release patch version",
-    );
-    expect(
-      spawnSync("bash", ["-n"], {
-        input: resolveVersion,
-        encoding: "utf8",
-      }).status,
-    ).toBe(0);
-    const manualVersionDirectory = mkdtempSync(
-      join(tmpdir(), "codex-mobile-version-"),
-    );
-    try {
-      const ghStub = join(manualVersionDirectory, "gh");
-      writeFileSync(ghStub, "#!/bin/sh\nprintf 'v0.2.16\\n'\n");
-      chmodSync(ghStub, 0o755);
-      const floor = JSON.parse(readProjectFile("mobile-version-floor.json"))
-        .version as string;
-      const nextVersion = [floor, "0.2.16"]
-        .sort((left, right) => {
-          const leftParts = left.split(".").map(Number);
-          const rightParts = right.split(".").map(Number);
-          return (
-            leftParts[0] - rightParts[0] ||
-            leftParts[1] - rightParts[1] ||
-            leftParts[2] - rightParts[2]
-          );
-        })
-        .at(-1)!
-        .split(".")
-        .map(Number);
-      nextVersion[2] += 1;
-      const expectedVersion = nextVersion.join(".");
-      const expectedVersionCode =
-        nextVersion[0] * 1_000_000 +
-        nextVersion[1] * 1_000 +
-        nextVersion[2];
-      const manualVersionEnv = {
-        ...process.env,
-        ENABLE_IOS_BUILD: "false",
-        GITHUB_ENV: join(manualVersionDirectory, "github-env"),
-        GITHUB_EVENT_NAME: "workflow_dispatch",
-        GITHUB_OUTPUT: join(manualVersionDirectory, "github-output"),
-        GITHUB_RUN_NUMBER: "1",
-        GITHUB_REPOSITORY: "loock-ai/codex-mobile",
-        PATH: `${manualVersionDirectory}:${process.env.PATH ?? ""}`,
-        PUBLISH_NPM_REQUESTED: "true",
-      };
-      const missingVersion = spawnSync("bash", ["-c", resolveVersion], {
-        encoding: "utf8",
-        env: {
-          ...manualVersionEnv,
-          REQUESTED_VERSION: "",
-        },
-      });
-      expect(missingVersion.status).not.toBe(0);
-      expect(missingVersion.stderr).toContain(
-        "Manual npm publishing requires release_version",
-      );
-
-      const mismatchedVersion = spawnSync("bash", ["-c", resolveVersion], {
-        encoding: "utf8",
-        env: {
-          ...manualVersionEnv,
-          REQUESTED_VERSION: "v0.3.0",
-        },
-      });
-      expect(mismatchedVersion.status).not.toBe(0);
-      expect(mismatchedVersion.stderr).toContain(
-        `Manual npm publishing requires the next GitHub Release patch version: ${expectedVersion}`,
-      );
-
-      const explicitVersion = spawnSync("bash", ["-c", resolveVersion], {
-        encoding: "utf8",
-        env: {
-          ...manualVersionEnv,
-          REQUESTED_VERSION: `v${expectedVersion}`,
-        },
-      });
-      expect(explicitVersion.status).toBe(0);
-      expect(
-        readFileSync(manualVersionEnv.GITHUB_OUTPUT, "utf8"),
-      ).toContain(`app_version=${expectedVersion}`);
-      expect(
-        readFileSync(manualVersionEnv.GITHUB_OUTPUT, "utf8"),
-      ).toContain(`app_version_code=${expectedVersionCode}`);
-    } finally {
-      rmSync(manualVersionDirectory, { recursive: true, force: true });
-    }
-    expect(resolveVersion).toContain("GITHUB_OUTPUT");
-    expect(resolveVersion).toContain("GITHUB_ENV");
-    expect(resolveVersion).toContain(
-      'if [[ "$ENABLE_IOS_BUILD" == "false" ]]; then',
-    );
-    expect(resolveVersion).toContain("build_ios=false");
-    const buildIosResolver = resolveVersion.match(
-      /(build_ios=true\n[ \t]*if \[\[ "\$ENABLE_IOS_BUILD" == "false" \]\]; then\n[ \t]*build_ios=false\n[ \t]*fi)/,
-    )?.[1];
-    expect(buildIosResolver).toBeTypeOf("string");
-    for (const [configuredValue, expected] of [
-      ["false", "false"],
-      ["", "true"],
-      ["FALSE", "true"],
-      ["0", "true"],
-    ]) {
-      const result = spawnSync(
-        "bash",
-        ["-c", `${buildIosResolver}\nprintf '%s' "$build_ios"`],
-        {
-          encoding: "utf8",
-          env: {
-            ...process.env,
-            ENABLE_IOS_BUILD: configuredValue,
-          },
-        },
-      );
-      expect(result.status).toBe(0);
-      expect(result.stdout).toBe(expected);
-    }
-    expect(workflow.jobs.version?.outputs).toHaveProperty("app_version");
-    expect(workflow.jobs.version?.outputs).toHaveProperty("app_version_code");
-    expect(workflow.jobs.version?.outputs).toHaveProperty("build_ios");
-    expect(workflow.jobs.version?.outputs).toHaveProperty("publish_npm");
-    expect(workflow.jobs.build.needs).toBe("version");
-    expect(workflow.jobs.build.env?.APP_VERSION).toContain(
-      "needs.version.outputs.app_version",
-    );
-    expect(workflow.jobs.build.env?.APP_VERSION_CODE).toContain(
-      "needs.version.outputs.app_version_code",
-    );
-    expect(workflow.jobs.ios).toMatchObject({
-      needs: "version",
-      uses: "./.github/workflows/build-ios.yml",
-    });
-    expect(workflow.jobs.ios?.with?.app_version).toContain(
-      "needs.version.outputs.app_version",
-    );
-    expect(workflow.jobs.ios?.if).toContain(
-      "needs.version.outputs.build_ios == 'true'",
-    );
-    expect(workflow.jobs.npm).toMatchObject({
-      needs: "version",
-      uses: "./.github/workflows/publish-npm.yml",
-      permissions: {
-        contents: "read",
-        "id-token": "write",
-      },
-    });
-    expect(workflow.jobs.npm?.secrets).toBeUndefined();
-    expect(workflow.jobs.npm?.if).toContain(
-      "needs.version.outputs.publish_npm == 'true'",
-    );
-    expect(workflow.jobs.npm?.with?.app_version).toContain(
-      "needs.version.outputs.app_version",
-    );
-    expect(resolveVersion).toContain("server/");
-    expect(resolveVersion).toContain("bin/");
-    expect(resolveVersion).toContain("tsconfig.npm.json");
-    expect(resolveVersion).toContain("publish_npm");
-
-    const hardenHost = readRunStep(
-      workflow,
-      "Harden and test embedded Android project",
-    );
-    expect(hardenHost).toContain("APP_VERSION_CODE");
-    expect(hardenHost).toContain("versionCode =");
-    expect(hardenHost).toContain("versionName =");
-
-    const verifyArtifact = readRunStep(workflow, "Prepare and verify APK");
-    expect(verifyArtifact).toContain("sha256sum");
-    expect(verifyArtifact).toContain(".sha256");
-
-    expect(workflow.jobs.release?.needs).toEqual([
-      "version",
-      "build",
-      "ios",
-    ]);
-    expect(workflow.jobs.release?.if).not.toContain("needs.npm.result");
-    expect(workflow.jobs.release?.if).toContain("always()");
-    expect(workflow.jobs.release?.if).toContain(
-      "needs.version.outputs.build_ios == 'false'",
-    );
-    expect(workflow.jobs.release?.if).toContain(
-      "needs.ios.result == 'skipped'",
-    );
-    expect(workflow.jobs.release?.permissions?.contents).toBe("write");
-    expect(workflow.jobs.release?.if).toContain("github.event_name == 'push'");
-    const downloadIos = workflow.jobs.release?.steps.find(
-      (step) => step.name === "Download verified unsigned IPA",
-    );
-    expect(downloadIos?.if).toContain(
-      "needs.version.outputs.build_ios == 'true'",
-    );
-    const publish = workflow.jobs.release?.steps.find(
-      (step) => step.name === "Publish GitHub Release",
-    )?.run;
-    expect(publish).toContain("gh release create");
-    expect(publish).toContain("--generate-notes");
-    expect(publish).toContain("--draft");
-    expect(publish).toContain("gh release edit");
-    expect(publish).toContain("--draft=false");
-    expect(publish).toContain("--cleanup-tag");
-    expect(publish).toContain("CodexMobile-v");
-    expect(publish).toContain("-unsigned.ipa");
-    expect(publish).toContain('if [[ "$IOS_BUILD_ENABLED" == "true" ]]');
-    expect(publish).toContain('release_assets=("$apk" "$apk_checksum")');
-    expect(publish).toContain('release_assets+=("$ipa" "$ipa_checksum")');
-    expect(publish).toContain("sha256sum --check");
-    expect(source).toContain("actions/download-artifact@v4");
-  });
-
   it("Android 更新桥仅允许固定局域网渠道、校验摘要并只增加安装权限", () => {
-    const { source, workflow } = readWorkflow(
-      ".github/workflows/build-android.yml",
+    const { source, recipe } = readRecipe(
+      "mobile/android/build-recipe.yml",
     );
     const hardenHost = readRunStep(
-      workflow,
+      recipe,
       "Harden and test embedded Android project",
     );
-    const verifyArtifact = readRunStep(workflow, "Prepare and verify APK");
+    const verifyArtifact = readRunStep(recipe, "Prepare and verify APK");
 
     expect(hardenHost).toContain("REQUEST_INSTALL_PACKAGES");
     expect(hardenHost).toContain("FileProvider");
@@ -679,25 +337,19 @@ describe("移动 App 内置前端流水线", () => {
   });
 
   it("iOS 只构建一个内置同一份前端的 Codex Mobile App", () => {
-    const { source, workflow } = readWorkflow(".github/workflows/build-ios.yml");
+    const { source, recipe } = readRecipe("mobile/ios/build-recipe.yml");
     const installIcon = readRunStep(
-      workflow,
+      recipe,
       "Install Codex Mobile app icon",
     );
-    const buildFrontend = readRunStep(workflow, "Build embedded frontend");
-    const hardenHost = readRunStep(workflow, "Harden and test the iOS host");
+    const buildFrontend = readRunStep(recipe, "Build embedded frontend");
+    const hardenHost = readRunStep(recipe, "Harden and test the iOS host");
     const verifyArtifact = readRunStep(
-      workflow,
+      recipe,
       "Prepare and verify unsigned IPA",
     );
-    const scanner = readAssetScanner(workflow);
+    const scanner = readAssetScanner(recipe);
 
-    expect(workflow.on?.release).toBeUndefined();
-    expect(workflow.on?.workflow_call?.inputs).toHaveProperty("app_version");
-    expect(workflow.on).toHaveProperty("workflow_dispatch");
-    expect(workflow.concurrency).toMatchObject({
-      "cancel-in-progress": true,
-    });
     expect(installIcon).toContain(
       "docs/assets/app-icon/codex-mobile-app-icon-1024.png",
     );
@@ -707,7 +359,6 @@ describe("移动 App 内置前端流水线", () => {
     expect(source).toContain(".phone.camera = true");
     expect(source).toContain("NSCameraUsageDescription");
     expect(source).toContain("NSMicrophoneUsageDescription");
-    expect(source).toContain("inputs.app_version");
     expect(source).not.toContain('APP_VERSION: "1.0.0"');
     expect(buildFrontend).toContain("npm ci");
     expect(buildFrontend).toContain("npm run build");

@@ -1,6 +1,5 @@
 # Codex Mobile
 
-[![Build Mobile Apps](https://github.com/loock-ai/codex-mobile/actions/workflows/build-android.yml/badge.svg)](https://github.com/loock-ai/codex-mobile/actions/workflows/build-android.yml)
 [![npm](https://img.shields.io/npm/v/codex-mobile)](https://www.npmjs.com/package/codex-mobile)
 [![GitHub Release](https://img.shields.io/github/v/release/loock-ai/codex-mobile)](https://github.com/loock-ai/codex-mobile/releases/latest)
 [![Apache-2.0](https://img.shields.io/github/license/loock-ai/codex-mobile)](LICENSE)
@@ -271,10 +270,7 @@ npm run test:e2e
 
 ## 移动端构建
 
-[最新 GitHub Release](https://github.com/loock-ai/codex-mobile/releases/latest) 提供：
-
-- Android APK 及 SHA-256 校验文件；
-- 未签名 iOS IPA 及 SHA-256 校验文件。
+GitHub Actions 构建与发布工作流已移除，推送代码不再自动构建安装包、创建 GitHub Release 或发布 npm。已有 Release 保留，后续安装包通过固定渠道发布。
 
 Android App 固定检查局域网更新清单
 `http://192.168.123.79:8765/channels/codex-mobile/latest.json`，发现新版本后从固定地址
@@ -284,9 +280,9 @@ Android App 固定检查局域网更新清单
 
 iOS 支持在本机局域网执行 Ad Hoc 自动签名与 HTTPS OTA。证书和密码保存在本机私有目录，
 `npm run ios:release` 构建后自动签名并更新固定安装页、LAN IPA，再将同一签名包同步到 [Cloudflare 软件源](https://yao-app-source.305301890.workers.dev/source.json)；iOS“管理设备”底部与 Android 一样提供“检查更新”，跳转 Safari 确认覆盖安装。
-未配置签名时仍保留明确标注的未签名 IPA；公开 GitHub Release 的 unsigned IPA 不能直接 OTA 安装。
+历史 GitHub Release 的 unsigned IPA 不能直接 OTA 安装；正式发布使用本机签名产物。
 证书的 UDID、Bundle ID、Team ID 和 App ID prefix 必须兼容，升级数据保留需要旧安装身份一致。
-本机配置、局域网 CA 首次信任、HTTPS 服务、软件源 S3 凭据与失败重试、可选 CI 及安装验收步骤见 [iOS OTA 发布文档](docs/ios-ota-release.md)。
+本机配置、局域网 CA 首次信任、HTTPS 服务、软件源 S3 凭据与失败重试及安装验收步骤见 [iOS OTA 发布文档](docs/ios-ota-release.md)。
 
 仓库使用固定提交的 PakePlus Android/iOS 项目作为原生容器，并把当前 `dist/` 静态
 资源内置到 App。构建产物只包含上述固定更新服务器地址，不包含网关 Token 或其他私人配置。
@@ -294,17 +290,14 @@ Android 和 iOS 安装包只支持正向竖屏，设备转动时保持竖屏，�
 
 发布流程：
 
-- `main` 的应用相关代码变化会触发 Android、iOS 构建和 GitHub Release；
-- npm 包只在网关、CLI 或包配置变化时随同发布，也可在手动工作流中显式启用；
-- Android、iOS 与同次发布的 npm 包共用一个解析后的版本号。
+- Android、iOS 使用本地构建配置；npm 包按需手动测试、构建和发布。
 - 修改客户端运行代码后，提交并推送，再发布高于 Android、iOS 两个固定渠道现有版本的统一版本 APK 和已签名 IPA；APK 使用 `apk-server.py publish-channel codex-mobile`，IPA 使用 `npm run ios:release`，并回验两端固定清单、HEAD、完整 GET 大小与 SHA-256。
-- 仅修改文档、规则、测试或服务端等非客户端内容时，无需另行构建或发布安装包；服务端变更仍须验证并部署网关。云工作流的触发路径独立于本机交付要求，具体约束见 [AGENTS.md](AGENTS.md)。
+- 仅修改文档、规则、测试或服务端等非客户端内容时，无需另行构建或发布安装包；服务端变更仍须验证并部署网关。具体约束见 [AGENTS.md](AGENTS.md)。
 
-相关工作流：
+本地构建配置与环境约定见 [构建说明](mobile/README.md)：
 
-- [build-android.yml](.github/workflows/build-android.yml)
-- [build-ios.yml](.github/workflows/build-ios.yml)
-- [publish-npm.yml](.github/workflows/publish-npm.yml)
+- [Android 构建配置](mobile/android/build-recipe.yml)
+- [iOS 构建配置](mobile/ios/build-recipe.yml)
 
 ### 本地 iOS 与模拟器
 
@@ -314,8 +307,8 @@ npm run ios:prepare -- --version 0.2.91
 open .mobile-build/ios/pakeplus/PakePlus.xcodeproj
 ```
 
-选择 `PakePlus` scheme 和 iPhone 模拟器运行。工程内置当前前端，并复用发布流水线的
-固定容器配置与原生补丁；生成目录会在下次准备成功后替换。原生容器支持键盘避让，
+选择 `PakePlus` scheme 和 iPhone 模拟器运行。工程内置当前前端，并读取本地构建配置中的
+固定容器提交与原生补丁；生成目录会在下次准备成功后替换。原生容器支持键盘避让，
 App 原生版本号与前端发布版本保持一致。
 iOS 可在“管理设备”底部查看当前版本号并检查更新；iOS 更新桥读取原生版本和签名身份，未配置 HTTPS OTA 时显示配置错误。
 
@@ -335,7 +328,7 @@ codex-mobile/
 ├── tests/                # 协议、服务端、UI、CI 和移动端 E2E 测试
 ├── protocol/             # app-server V2 协议基准与生成物
 ├── docs/plans/           # 设计与实施记录
-└── .github/workflows/    # 移动端和 npm 发布流水线
+└── mobile/              # 原生桥接、本地构建配置与移动端测试
 ```
 
 协议基准见
@@ -373,7 +366,7 @@ codex-mobile/
 - app-server 的持久化 `ThreadItem` 可能是有损表示，前端也会合并逻辑回合。
 - 不同 app-server 进程之间没有全局实时状态。Codex Desktop 与本项目使用独立进程
   时，网页无法仅靠 V2 列表接口准确显示桌面进程正在执行的任务。
-- 云工作流默认生成未签名 IPA；固定局域网 IPA 与 OTA 使用本机 Ad Hoc 签名产物，签名材料仅保存在仓库外。OTA 真机安装仍需 profile 授权设备及兼容的已安装身份。
+- 固定局域网 IPA 与 OTA 使用本机 Ad Hoc 签名产物，签名材料仅保存在仓库外。OTA 真机安装仍需 profile 授权设备及兼容的已安装身份。
 
 ## 许可证
 

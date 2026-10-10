@@ -2,7 +2,7 @@
 
 ## 已有基础设施与新增入口
 
-继续使用 `.github/workflows/build-ios.yml` 固定提交的 PakePlus 容器、内置前端和原生补丁；`npm run ios:prepare` 复用相同步骤。Android 更新清单、APK 以及 iOS LAN IPA 固定地址保持原有渠道。
+继续使用 `mobile/ios/build-recipe.yml` 固定提交的 PakePlus 容器、内置前端和原生补丁；`npm run ios:prepare` 复用相同步骤。Android 更新清单、APK 以及 iOS LAN IPA 固定地址保持原有渠道。
 
 新增入口：
 
@@ -255,22 +255,9 @@ python3 scripts/ios_ota.py refresh-page \
 
 刷新后通过固定 HTTPS 安装页 GET 确认等待提示已更新，并核对原版本、IPA 大小与 SHA-256、清单及 `current` 目标未改变。该检查只验证网页与发布资源，不代替真机系统弹窗及覆盖安装验证。
 
-## 可选 GitHub Actions 自动化（当前不启用）
+## 构建来源
 
-当前采用本机局域网发布，没有向 GitHub 保留签名凭据。下述仅供以后明确选择云端签名时配置；默认云工作流仍只生成未签名 IPA。现有主工作流支持将 Secrets 传给可复用 iOS 工作流。配置以下 Repository Variables：
-
-| Variable | 含义 |
-| --- | --- |
-| `IOS_ADHOC_ENABLED=true` | 每次 IPA 构建后签名；缺少凭据时任务失败，不伪装已签名 |
-| `IOS_BUNDLE_ID` | 与 profile 及旧安装兼容的 Bundle ID |
-| `IOS_OTA_BASE_URL` | 固定 HTTPS 渠道前缀 |
-| `IOS_OTA_ENABLED=true` | 签名成功后自动上传并回验 |
-| `IOS_OTA_SSH_HOST` | 已知指纹的 user@host |
-| `IOS_OTA_REMOTE_ROOT` | 服务器绝对目录 |
-
-Secrets：`IOS_P12_BASE64`、`IOS_PROFILE_BASE64`、`IOS_P12_PASSWORD`、`IOS_TARGET_UDID`、`IOS_OTA_SSH_KEY`、`IOS_OTA_KNOWN_HOSTS`。P12 密码为空时允许空 Secret。私钥使用专用发布账户，known_hosts 通过独立可信渠道核对后配置；不在日志里生成或展示 Secrets。
-
-开启签名后额外提供 `CodexMobile-ios-adhoc` artifact；原有 `CodexMobile-ios-unsigned` 与公共 GitHub Release 保留构建兼容性，公共 Release 中的 unsigned 文件不是 OTA 安装包。实际 OTA 使用验签后的 Ad Hoc artifact。默认未配置签名时仍输出明确标注未签名的 IPA；不会生成可安装的 OTA。启用 OTA 时，主工作流的版本解析同时读取公开 HTTPS 最新版本，独立 iOS 工作流也从该渠道与版本下限解析更高版本，防止本机先发布后 CI 反复构建旧版本。云 runner 无法连接 LAN 固定服务，LAN 双端交付仍从更新服务器所在 Mac 执行；仅发布 LAN 的任务须同步 `mobile-version-floor.json` 或在手动工作流显式传入高于双端 LAN 版本的版本号。
+GitHub Actions 工作流已移除。`npm run ios:prepare` 从 `mobile/ios/build-recipe.yml` 读取固定容器和原生补丁，`npm run ios:release` 继续负责本机签名与固定渠道发布。签名凭据仅保存在本机仓库外。
 
 ## iOS 27 验收与边界
 

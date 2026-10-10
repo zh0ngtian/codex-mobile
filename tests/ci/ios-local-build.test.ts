@@ -9,8 +9,8 @@ function plan(...args: string[]) {
 
 describe("iOS 本地工程准备", () => {
   it("注册会话 URL Scheme，并在冷启动网页加载完成后消费目标", () => {
-    const workflow = parse(readFileSync(".github/workflows/build-ios.yml", "utf8"));
-    const harden = workflow.jobs.build.steps.find((step: any) => step.name === "Harden and test the iOS host").run;
+    const recipe = parse(readFileSync("mobile/ios/build-recipe.yml", "utf8"));
+    const harden = recipe.steps.find((step: any) => step.name === "Harden and test the iOS host").run;
     expect(harden).toContain('info["CFBundleURLTypes"]');
     expect(harden).toContain('"CFBundleURLSchemes": ["codexmobile"]');
     expect(harden).toContain(".onOpenURL");
@@ -18,14 +18,14 @@ describe("iOS 本地工程准备", () => {
     expect(harden).toContain("UserDefaults.standard");
     expect(harden).toContain("codex-mobile-open-thread");
   });
-  it("复用发布流水线固定容器与硬化步骤，并输出可构建工程", () => {
+  it("读取本地构建配置中的固定容器与硬化步骤，并输出可构建工程", () => {
     const result = plan("--version", "0.2.91");
     expect(result.status, result.stderr).toBe(0);
     const output = JSON.parse(result.stdout);
-    const workflow = parse(readFileSync(".github/workflows/build-ios.yml", "utf8"));
-    const checkout = workflow.jobs.build.steps.find((step: any) => step.name === "Checkout pinned PakePlus iOS");
-    expect(output.repository).toBe(checkout.with.repository);
-    expect(output.ref).toBe(checkout.with.ref);
+    const recipe = parse(readFileSync("mobile/ios/build-recipe.yml", "utf8"));
+    const container = recipe.container;
+    expect(output.repository).toBe(container.repository);
+    expect(output.ref).toBe(container.ref);
     expect(output.version).toBe("0.2.91");
     expect(output.projectPath).toMatch(/\.mobile-build\/ios\/pakeplus\/PakePlus.xcodeproj$/);
     expect(output.scheme).toBe("PakePlus");
@@ -39,8 +39,8 @@ describe("iOS 本地工程准备", () => {
   });
 
   it("iOS 容器保留全面屏布局并避让键盘", () => {
-    const workflow = parse(readFileSync(".github/workflows/build-ios.yml", "utf8"));
-    const harden = workflow.jobs.build.steps.find((step: any) => step.name === "Harden and test the iOS host").run;
+    const recipe = parse(readFileSync("mobile/ios/build-recipe.yml", "utf8"));
+    const harden = recipe.steps.find((step: any) => step.name === "Harden and test the iOS host").run;
     expect(harden).toContain(".ignoresSafeArea(.container, edges: [.all])");
     expect(harden).toContain("Pinned PakePlus keyboard safe area hook changed");
     expect(harden).toContain("MARKETING_VERSION");
@@ -49,8 +49,8 @@ describe("iOS 本地工程准备", () => {
   });
 
   it("WebView 主图层阻止新增几何动画，避免布局后追加动画造成错位", () => {
-    const workflow = parse(readFileSync(".github/workflows/build-ios.yml", "utf8"));
-    const harden = workflow.jobs.build.steps.find((step: any) => step.name === "Harden and test the iOS host").run;
+    const recipe = parse(readFileSync("mobile/ios/build-recipe.yml", "utf8"));
+    const harden = recipe.steps.find((step: any) => step.name === "Harden and test the iOS host").run;
     expect(harden.includes("let webView = CodexMobileWebView(frame:")).toBe(true);
     expect(harden.includes("override class var layerClass: AnyClass { CodexMobileWebViewLayer.self }")).toBe(true);
     expect(harden.includes('path == "position" || path == "bounds" || path.hasPrefix("bounds.")')).toBe(true);
@@ -59,8 +59,8 @@ describe("iOS 本地工程准备", () => {
   });
 
   it("iOS 在启动、系统粗体设置变化、回到前台和页面重载时同步字重", () => {
-    const workflow = parse(readFileSync(".github/workflows/build-ios.yml", "utf8"));
-    const harden = workflow.jobs.build.steps.find((step: any) => step.name === "Harden and test the iOS host").run;
+    const recipe = parse(readFileSync("mobile/ios/build-recipe.yml", "utf8"));
+    const harden = recipe.steps.find((step: any) => step.name === "Harden and test the iOS host").run;
     expect(harden).toContain("UIAccessibility.isBoldTextEnabled");
     expect(harden).toContain("UIAccessibility.boldTextStatusDidChangeNotification");
     expect(harden).toContain("UIApplication.didBecomeActiveNotification");
@@ -71,8 +71,8 @@ describe("iOS 本地工程准备", () => {
   });
 
   it("系统键盘收起时同步取消网页输入焦点，保留未发送草稿", () => {
-    const workflow = parse(readFileSync(".github/workflows/build-ios.yml", "utf8"));
-    const harden = workflow.jobs.build.steps.find((step: any) => step.name === "Harden and test the iOS host").run;
+    const recipe = parse(readFileSync("mobile/ios/build-recipe.yml", "utf8"));
+    const harden = recipe.steps.find((step: any) => step.name === "Harden and test the iOS host").run;
     expect(harden).toContain("context.coordinator.installKeyboardDismissalSupport()");
     const source = readFileSync("mobile/ios/KeyboardDismissal.swift", "utf8");
     expect(source).toContain("UIResponder.keyboardWillHideNotification");
@@ -100,11 +100,11 @@ describe("iOS 本地工程准备", () => {
   });
 
   it("iOS 普通网页链接使用独立内置浏览器并提供与 Android 一致的操作", () => {
-    const workflow = parse(readFileSync(".github/workflows/build-ios.yml", "utf8"));
-    const installBrowser = workflow.jobs.build.steps.find(
+    const recipe = parse(readFileSync("mobile/ios/build-recipe.yml", "utf8"));
+    const installBrowser = recipe.steps.find(
       (step: any) => step.name === "Install iOS in-app browser source",
     );
-    const harden = workflow.jobs.build.steps.find(
+    const harden = recipe.steps.find(
       (step: any) => step.name === "Harden and test the iOS host",
     ).run;
 

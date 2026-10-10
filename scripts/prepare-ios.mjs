@@ -28,29 +28,28 @@ async function main() {
   const pkg = JSON.parse(await readFile(join(root, "package.json"), "utf8"));
   const version = values.version ?? pkg.version;
   if (!/^\d+\.\d+\.\d+$/.test(version)) throw new Error("版本必须是三个数字，例如 0.2.91");
-  const workflow = parse(await readFile(join(root, ".github/workflows/build-ios.yml"), "utf8"));
-  const steps = workflow.jobs.build.steps;
-  const checkout = steps.find((step) => step.name === "Checkout pinned PakePlus iOS");
-  if (!/^[\da-f]{40}$/.test(checkout?.with?.ref ?? "") ||
-      !/^[\w-]+\/[\w-]+$/.test(checkout?.with?.repository ?? "")) {
-    throw new Error("iOS 流水线必须固定容器仓库和完整提交 SHA");
+  const recipe = parse(await readFile(join(root, "mobile/ios/build-recipe.yml"), "utf8"));
+  const steps = recipe.steps;
+  const container = recipe.container;
+  if (!/^[\da-f]{40}$/.test(container?.ref ?? "") ||
+      !/^[\w-]+\/[\w-]+$/.test(container?.repository ?? "")) {
+    throw new Error("iOS 构建配置必须固定容器仓库和完整提交 SHA");
   }
   const selected = stepNames.map((name) => {
     const step = steps.find((candidate) => candidate.name === name);
     if (!step?.run || (step["working-directory"] && step["working-directory"] !== "pakeplus")) {
-      throw new Error(`iOS 流水线步骤缺失或工作目录不兼容：${name}`);
+      throw new Error(`iOS 构建配置步骤缺失或工作目录不兼容：${name}`);
     }
     return step;
   });
-  const pnpmSetup = steps.find((step) => step.uses?.startsWith("pnpm/action-setup@"));
-  const pnpmVersion = String(pnpmSetup?.with?.version ?? "");
-  if (!/^\d+$/.test(pnpmVersion)) throw new Error("流水线必须配置 pnpm 主版本");
+  const pnpmVersion = String(recipe.tools?.pnpm?.version ?? "");
+  if (!/^\d+$/.test(pnpmVersion)) throw new Error("构建配置必须配置 pnpm 主版本");
   const appId = process.env.APP_ID || "vip.loock.codexmobile";
   const otaBaseUrl = process.env.IOS_OTA_BASE_URL || "";
   if (!/^[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$/.test(appId)) throw new Error("无效 iOS Bundle ID");
   const output = join(root, ".mobile-build/ios");
   const plan = {
-    repository: checkout.with.repository, ref: checkout.with.ref, version, appId, otaBaseUrl,
+    repository: container.repository, ref: container.ref, version, appId, otaBaseUrl,
     projectPath: join(output, "pakeplus/PakePlus.xcodeproj"),
     scheme: "PakePlus", packageManager: `pnpm@${pnpmVersion}`, steps: stepNames,
   };
@@ -63,7 +62,7 @@ async function main() {
     const runnerTemp = join(staging, "runner-temp");
     await mkdir(container);
     await mkdir(runnerTemp);
-    const env = { ...workflow.env, ...process.env, APP_ID: appId, IOS_OTA_BASE_URL: otaBaseUrl, APP_VERSION: version,
+    const env = { ...recipe.env, ...process.env, APP_ID: appId, IOS_OTA_BASE_URL: otaBaseUrl, APP_VERSION: version,
       RUNNER_TEMP: runnerTemp, GITHUB_ENV: join(runnerTemp, "github-env") };
     run("git", ["init", "--quiet"], container, env);
     run("git", ["remote", "add", "origin", `https://github.com/${plan.repository}.git`], container, env);

@@ -83,7 +83,7 @@ describe("iOS 原生附件选择", () => {
     expect(bytes).toEqual([0, 1, 2, 255]);
   });
 
-  it("构建流水线将桥安装到主 WebView，保留相册和文件原生多选", () => {
+  it("本地构建将桥安装到主 WebView，保留相册和文件原生多选", () => {
     expect(existsSync("mobile/ios/AttachmentPickerBridge.swift"), "缺少 iOS 原生附件桥").toBe(true);
     const source = readFileSync("mobile/ios/AttachmentPickerBridge.swift", "utf8");
     expect(source).toContain("PHPickerViewController");
@@ -91,8 +91,8 @@ describe("iOS 原生附件选择", () => {
     expect(source).toContain("UIDocumentPickerViewController");
     expect(source).toContain("asCopy: true");
     expect(source).toContain("allowsMultipleSelection");
-    const workflow = parse(readFileSync(".github/workflows/build-ios.yml", "utf8"));
-    const steps = workflow.jobs.build.steps;
+    const recipe = parse(readFileSync("mobile/ios/build-recipe.yml", "utf8"));
+    const steps = recipe.steps;
     expect(steps.find((step: any) => step.name === "Install iOS in-app browser source").run).toContain("mobile/ios/AttachmentPickerBridge.swift");
     expect(steps.find((step: any) => step.name === "Harden and test the iOS host").run).toContain("CodexMobileAttachmentPickerBridge.configure(webView)");
   });
