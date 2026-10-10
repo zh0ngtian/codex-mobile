@@ -531,6 +531,9 @@ describe("会话详情历史分页", () => {
       name: "编辑历史消息内容",
     });
     expect((inlineEditor as HTMLTextAreaElement).value).toBe("修改前");
+    expect(document.activeElement).toBe(inlineEditor);
+    expect((inlineEditor as HTMLTextAreaElement).selectionStart).toBe(3);
+    expect((inlineEditor as HTMLTextAreaElement).selectionEnd).toBe(3);
     expect(turn.textContent).toContain("原消息的 1 个附件会保留");
     expect(
       (view.getByRole("textbox", { name: "向 Codex 提问" }) as HTMLTextAreaElement)

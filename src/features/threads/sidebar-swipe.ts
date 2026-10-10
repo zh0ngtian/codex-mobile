@@ -19,6 +19,12 @@ function resetSidebarDrag(layer: HTMLDivElement | null) {
   layer.style.removeProperty("--sidebar-drag-progress");
 }
 
+function isHistoryEditing(): boolean {
+  return Boolean(document.querySelector(
+    ".backend-workspace:not([hidden]) .history-message-editor",
+  ));
+}
+
 function canStartSidebarSwipe(
   target: EventTarget | null,
   layer: HTMLDivElement | null,
@@ -77,6 +83,7 @@ export function useSidebarSwipe(
       if (
         event.touches.length !== 1 ||
         !touch ||
+        isHistoryEditing() ||
         !canUseOverlayGesture(layerRef.current) ||
         !canStartSidebarSwipe(event.target, layerRef.current, sidebarOpen)
       ) {
@@ -99,7 +106,11 @@ export function useSidebarSwipe(
     const handleTouchMove = (event: TouchEvent) => {
       const start = startRef.current;
       if (!start) return;
-      if (event.touches.length !== 1 || !canUseOverlayGesture(layerRef.current)) {
+      if (
+        event.touches.length !== 1 ||
+        isHistoryEditing() ||
+        !canUseOverlayGesture(layerRef.current)
+      ) {
         cancelDrag();
         return;
       }
@@ -141,7 +152,11 @@ export function useSidebarSwipe(
     };
     const handleTouchEnd = (event: TouchEvent) => {
       const start = startRef.current;
-      if (!start?.active || !canUseOverlayGesture(layerRef.current)) {
+      if (
+        !start?.active ||
+        isHistoryEditing() ||
+        !canUseOverlayGesture(layerRef.current)
+      ) {
         cancelDrag();
         return;
       }

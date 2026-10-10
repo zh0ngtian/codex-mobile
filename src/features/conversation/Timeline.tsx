@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type RefObject } from "react";
+import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { AppServerClient } from "../../app-server/client";
 import type { BackendConfig } from "../../backends/types";
 import {
@@ -174,13 +174,18 @@ function UserBubble({
   const collapsible = shouldCollapseUserMessage(text);
   const [expanded, setExpanded] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const focusHistoryEditor = useCallback((input: HTMLTextAreaElement | null) => {
+    if (!input) return;
+    input.focus();
+    input.setSelectionRange(input.value.length, input.value.length);
+  }, []);
   useEffect(() => setConfirming(false), [inlineEdit?.hasLaterTurns]);
   const bubble = (
     <div className={`user-bubble${inlineEdit ? " user-bubble-editing" : ""}`}>
       {inlineEdit ? (
         <div className="history-message-editor">
           <textarea
-            autoFocus
+            ref={focusHistoryEditor}
             aria-label={t("编辑历史消息内容")}
             value={inlineEdit.value}
             disabled={inlineEdit.submitting}

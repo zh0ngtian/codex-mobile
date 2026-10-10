@@ -1,3 +1,4 @@
+import { flushSync } from "react-dom";
 import {
   FormEvent,
   useCallback,
@@ -2708,13 +2709,14 @@ function BackendWorkspace({
       return;
     }
     invalidateImageReads();
-    setHistoryEdit({
+    // 在编辑操作的回调内同步挂载输入框，让移动端立即接收输入焦点。
+    flushSync(() => setHistoryEdit({
       threadId,
       target: currentTarget,
       text: currentTarget.text,
       submitting: false,
       reverted: false,
-    });
+    }));
     setError("");
   }
 

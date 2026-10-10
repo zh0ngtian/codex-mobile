@@ -46,6 +46,64 @@ afterEach(() => {
 });
 
 describe("会话侧栏右滑手势", () => {
+  it.each([false, true])("编辑历史消息时禁用左右滑动，退出后恢复：侧栏打开=%s", (open) => {
+    const onOpen = vi.fn();
+    const onClose = vi.fn();
+    const { result } = renderHook(() => useSidebarSwipe(open, onOpen, onClose));
+    const layer = sidebarLayer(open);
+    result.current.current = layer;
+    const surface = workspace();
+    const editor = surface.appendChild(document.createElement("div"));
+    editor.className = "history-message-editor";
+    const target = open ? layer.querySelector("aside")! : surface;
+    const startX = open ? 250 : 50;
+    const endX = open ? 100 : 200;
+    touch(target, "touchstart", [[startX, 300]]);
+    const move = touch(target, "touchmove", [[endX, 305]]);
+    touch(target, "touchend", []);
+    expect(onOpen).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
+    expect(layer.classList.contains("dragging")).toBe(false);
+    if (!open) expect(move.defaultPrevented).toBe(false);
+    editor.remove();
+    touch(target, "touchstart", [[startX, 300]]);
+    touch(target, "touchmove", [[endX, 305]]);
+    touch(target, "touchend", []);
+    expect(open ? onClose : onOpen).toHaveBeenCalledOnce();
+  });
+
+  it.each(["touchmove", "touchend"])("拖动中进入编辑时取消预览与导航：%s", (nextEvent) => {
+    const onOpen = vi.fn();
+    const { result } = renderHook(() => useSidebarSwipe(false, onOpen, vi.fn()));
+    const layer = sidebarLayer();
+    result.current.current = layer;
+    const surface = workspace();
+    touch(surface, "touchstart", [[50, 300]]);
+    touch(surface, "touchmove", [[200, 305]]);
+    expect(layer.classList.contains("dragging")).toBe(true);
+    const editor = surface.appendChild(document.createElement("div"));
+    editor.className = "history-message-editor";
+    touch(surface, nextEvent, nextEvent === "touchmove" ? [[230, 305]] : []);
+    touch(surface, "touchend", []);
+    expect(onOpen).not.toHaveBeenCalled();
+    expect(layer.classList.contains("dragging")).toBe(false);
+    expect(layer.style.getPropertyValue("--sidebar-drag-x")).toBe("");
+  });
+
+  it("隐藏工作区的历史编辑不影响当前会话的滑动", () => {
+    const onOpen = vi.fn();
+    const { result } = renderHook(() => useSidebarSwipe(false, onOpen, vi.fn()));
+    result.current.current = sidebarLayer();
+    const hidden = workspace();
+    hidden.hidden = true;
+    hidden.appendChild(document.createElement("div")).className = "history-message-editor";
+    const surface = workspace();
+    touch(surface, "touchstart", [[50, 300]]);
+    touch(surface, "touchmove", [[200, 305]]);
+    touch(surface, "touchend", []);
+    expect(onOpen).toHaveBeenCalledOnce();
+  });
+
   it("拖动中出现更高弹层时取消侧栏手势，弹层遮罩也不触发侧栏", () => {
     const onClose = vi.fn();
     const { result } = renderHook(() => useSidebarSwipe(true, vi.fn(), onClose));
