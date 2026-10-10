@@ -15,3 +15,26 @@
 .final-answer-timestamp {
   text-align: left;
 }
+
+.final-answer-metadata {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  margin-top: 8px;
+  color: #737373;
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.4;
+}
+
+.final-answer-metadata .message-timestamp {
+  margin-top: 0;
+  color: inherit;
+  font-size: inherit;
+  line-height: inherit;
+}
+
+.final-answer-duration {
+  white-space: nowrap;
+}

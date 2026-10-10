@@ -452,6 +452,7 @@ function TimelineItem({
   backend,
   threadId,
   timestamp,
+  finalDurationLabel,
   onEditUserMessage,
   inlineEdit,
   userMessageActionsDisabled,
@@ -461,6 +462,7 @@ function TimelineItem({
   backend?: BackendConfig | null;
   threadId?: string;
   timestamp?: number | null;
+  finalDurationLabel?: string | null;
 } & UserMessageActionProps) {
   const type = String(item.type ?? "");
   if (type === "imageGeneration" && item.status === "failed") {
@@ -530,10 +532,19 @@ function TimelineItem({
           </RemoteFileLink>
         )}
       />
-      <MessageTimestamp
-        timestamp={timestamp}
-        className="final-answer-timestamp"
-      />
+      {(formatMessageTimestamp(timestamp) || finalDurationLabel) && (
+        <div className="final-answer-metadata">
+          <MessageTimestamp
+            timestamp={timestamp}
+            className="final-answer-timestamp"
+          />
+          {finalDurationLabel && (
+            <span className="final-answer-duration">
+              {t("用时 {duration}", { duration: finalDurationLabel })}
+            </span>
+          )}
+        </div>
+      )}
     </div>
   ) : null;
 }
@@ -785,6 +796,11 @@ export function TurnCard({
               completedAt={
                 index === finalSegmentIndex ? turn.completedAt : null
               }
+              finalDurationLabel={
+                index === finalSegmentIndex && durationMs != null
+                  ? formatTurnDuration(durationMs)
+                  : null
+              }
               durationLabel={
                 index === durationSegmentIndex ? durationLabel : null
               }
@@ -821,6 +837,7 @@ function CompletedResponseSegment({
   copyTarget,
   showCopy,
   completedAt,
+  finalDurationLabel,
   durationLabel,
 }: {
   items: AnyRecord[];
@@ -831,6 +848,7 @@ function CompletedResponseSegment({
   copyTarget: RefObject<HTMLDivElement | null>;
   showCopy: boolean;
   completedAt?: number | null;
+  finalDurationLabel: string | null;
   durationLabel: string | null;
 }) {
   const completed = splitCompletedTurnResponses(items);
@@ -923,6 +941,7 @@ function CompletedResponseSegment({
             client={client}
             backend={backend}
             timestamp={completedAt}
+            finalDurationLabel={finalDurationLabel}
           />
           {showCopy && (
             <CopyButton

@@ -53,6 +53,50 @@ afterEach(() => {
 });
 
 describe("移动端对话格式", () => {
+  it.each([
+    [{ durationMs: 23_000 }, "用时 23秒"],
+    [{ durationMs: 0 }, "用时 0秒"],
+    [{ startedAt: 100, completedAt: 225 }, "用时 2分5秒"],
+    [{ durationMs: 3_660_000 }, "用时 1小时1分"],
+  ])("最终回答下方显示可靠用时：%j", (timing, label) => {
+    const { container } = render(<TurnCard turn={{
+      id: "duration-final", status: "completed", ...timing, items: [
+        { id: "user", type: "userMessage", text: "检查" },
+        { id: "final", type: "agentMessage", phase: "final_answer", text: "完成" },
+      ],
+    }} client={null} />);
+    const duration = within(container).getByText(label);
+    expect(duration.closest(".assistant-message")).not.toBeNull();
+    expect(duration.closest(".markdown-body")).toBeNull();
+  });
+
+  it.each([
+    {}, { durationMs: -1 }, { durationMs: NaN },
+    { startedAt: 200, completedAt: 100 },
+    { startedAt: 100 }, { durationMs: 23_000, status: "inProgress" },
+  ])("缺少可靠用时或仍运行时不显示完成用时：%j", (timing) => {
+    const { container } = render(<TurnCard turn={{
+      id: "duration-missing", status: "completed", ...timing, items: [
+        { id: "final", type: "agentMessage", phase: "final_answer", text: "完成" },
+      ],
+    }} client={null} />);
+    expect(within(container).queryByText(/^用时 /)).toBeNull();
+  });
+
+  it("多个最终回答只在最后一段显示整轮用时", () => {
+    const { container } = render(<TurnCard turn={{
+      id: "duration-steered", status: "completed", durationMs: 23_000, items: [
+        { id: "user", type: "userMessage", text: "检查" },
+        { id: "first", type: "agentMessage", phase: "final_answer", text: "初版完成" },
+        { id: "steer", type: "userMessage", text: "继续" },
+        { id: "last", type: "agentMessage", phase: "final_answer", text: "最终完成" },
+      ],
+    }} client={null} />);
+    const duration = within(container).getByText("用时 23秒");
+    expect(duration.closest(".assistant-message")?.textContent).toContain("最终完成");
+    expect(container.querySelectorAll(".final-answer-duration")).toHaveLength(1);
+  });
+
   it("完成回合直接显示助手生成的图片并能打开应用内预览", async () => {
     const request = vi.fn().mockResolvedValue({ dataBase64: "aGVsbG8=" });
     const { container } = render(<TurnCard turn={{

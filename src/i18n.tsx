@@ -351,6 +351,7 @@ const english: Record<string, string> = {
   "{seconds}秒": "{seconds}s",
   "{count}分": "{count}m",
   "{count}秒": "{count}s",
+  "用时 {duration}": "Duration {duration}",
   "之前的 {count} 条消息": "{count} previous messages",
   "复制本回合 AI 消息": "Copy AI messages from this turn",
   "刚刚": "Just now",
