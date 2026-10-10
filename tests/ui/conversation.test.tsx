@@ -602,6 +602,30 @@ describe("移动端对话格式", () => {
     expect(container.querySelector(".diff-card")).toBeNull();
   });
 
+  it("编辑完成后默认显示每个文件的增删行数，点击文件定位对应 Diff", () => {
+    const { container } = render(<TurnCard turn={{
+      id: "per-file", status: "completed", items: [
+        { id: "edit", type: "fileChange", status: "completed", changes: [
+          { path: "/tmp/project/src/first.ts", diff: "@@ -0,0 +1,2 @@\n+one\n+two" },
+          { path: "/tmp/project/src/second.ts", diff: "@@ -1 +0,0 @@\n-old" },
+        ] },
+        { id: "final", type: "agentMessage", phase: "final_answer", text: "已完成修改" },
+      ],
+    }} client={null} />);
+    const files = within(container).getAllByRole("button", { name: /\/tmp\/project\/src\// });
+    expect(files).toHaveLength(2);
+    expect(files[0].textContent).toContain("+2-0");
+    expect(files[1].textContent).toContain("+0-1");
+    expect(files[0].closest(".previous-messages")).toBeNull();
+    expect(files[0].closest(".file-change-activity")).not.toBeNull();
+    expect(container.querySelector(".turn-change-summary")?.textContent).toContain("本次代码改动 3 行+2-1");
+    fireEvent.click(files[1]);
+    const headings = container.querySelectorAll(".file-diff-heading");
+    expect(headings[0].getAttribute("aria-expanded")).toBe("false");
+    expect(headings[1].getAttribute("aria-expanded")).toBe("true");
+    expect(container.querySelector(".file-diff-line.deletion")?.textContent).toContain("old");
+  });
+
   it("运行结束后以工具活动同款样式显示一条总计", () => {
     const turn = {
       id: "turn-line-count",

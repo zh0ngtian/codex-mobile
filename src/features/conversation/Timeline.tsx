@@ -13,6 +13,7 @@ import {
   splitTurnResponseSegments,
   stripGitDirectives,
   summarizeToolActivity,
+  summarizeFileChange,
   summarizeTurnChanges,
   hasTurnChangeStats,
   toolActivityRowLabel,
@@ -336,6 +337,48 @@ function UserBubble({
     : bubble;
 }
 
+function FileChangeActivity({ item }: { item: AnyRecord }) {
+  const changes = (item.changes ?? []) as AnyRecord[];
+  const summary = summarizeToolActivity([item]);
+  const [selectedFileIndex, setSelectedFileIndex] = useState<number | null>(null);
+  return (
+    <section className="file-change-activity">
+      <button type="button" className="file-change-title"
+        aria-label={toolActivityRowLabel(item)} onClick={() => setSelectedFileIndex(0)}>
+        <span className="activity-icon" aria-hidden="true">‹/›</span>
+        <strong>{toolActivityRowLabel(item)}</strong>
+        <span className="file-change-stats">
+          <span className="diff-add">+{summary.additions}</span>
+          <span className="diff-delete">-{summary.deletions}</span>
+        </span>
+        <Chevron />
+      </button>
+      <div className="file-change-files">
+        {changes.map((change, index) => {
+          const stats = summarizeFileChange(change);
+          const path = change.path || t("未命名文件");
+          return (
+            <button type="button" className="file-change-file" key={`${path}-${index}`}
+              title={path} onClick={() => setSelectedFileIndex(index)}>
+              <span className="file-change-path">{path}</span>
+              {typeof change.diff === "string" && (
+                <span className="file-change-stats">
+                  <span className="diff-add">+{stats.additions}</span>
+                  <span className="diff-delete">-{stats.deletions}</span>
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+      {selectedFileIndex != null && (
+        <FileDiffSheet item={item} initialFileIndex={selectedFileIndex}
+          onClose={() => setSelectedFileIndex(null)} />
+      )}
+    </section>
+  );
+}
+
 function ToolActivity({ items }: { items: AnyRecord[] }) {
   const summary = summarizeToolActivity(items);
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
@@ -350,6 +393,9 @@ function ToolActivity({ items }: { items: AnyRecord[] }) {
       : "",
     summary.toolCount ? t("已调用 {count} 个工具", { count: summary.toolCount }) : "",
   ].filter(Boolean);
+  if (items.every((item) => item.type === "fileChange")) {
+    return <>{items.map((item, index) => <FileChangeActivity key={item.id ?? index} item={item} />)}</>;
+  }
   return (
     <>
       <details
@@ -369,7 +415,9 @@ function ToolActivity({ items }: { items: AnyRecord[] }) {
           <Chevron direction={summary.running || expanded ? "down" : "right"} />
         </summary>
         <div className="tool-activity-rows">
-          {items.map((item, index) => (
+          {items.map((item, index) => item.type === "fileChange" ? (
+            <FileChangeActivity key={item.id ?? index} item={item} />
+          ) : (
             <button
               type="button"
               key={item.id ?? index}
@@ -816,6 +864,7 @@ function CompletedResponseSegment({
       entries.filter(
         (item) =>
           item.type === "userMessage" ||
+          item.type === "fileChange" ||
           item.type === "imageView" ||
           (item.type === "imageGeneration" && item.status !== "failed") ||
           Boolean(videoPathForItem(item)) ||

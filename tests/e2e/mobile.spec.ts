@@ -1297,14 +1297,12 @@ test("移动端选择器、线程恢复、Markdown、折叠与吸顶", async ({ 
     "0px",
   );
   await expectSheetHeaderFlush(".file-diff-sheet");
-  const appDiff = page.getByRole("button", { name: /App\.tsx.*\+2.*-1/ });
+  const appDiff = page.locator(".file-diff-heading").filter({ hasText: "App.tsx" });
   await expect(appDiff).toHaveAttribute("aria-expanded", "true");
   await expect(page.locator(".file-diff-line.addition")).toHaveCount(2);
   await expect(page.locator(".file-diff-line.deletion")).toHaveCount(1);
   await expect(page.getByText("138", { exact: true }).first()).toBeVisible();
-  const designDiff = page.getByRole("button", {
-    name: /mobile-diff-design\.md.*\+1/,
-  });
+  const designDiff = page.locator(".file-diff-heading").filter({ hasText: "mobile-diff-design.md" });
   await expect(designDiff).toHaveAttribute("aria-expanded", "false");
   await designDiff.click();
   await expect(designDiff).toHaveAttribute("aria-expanded", "true");
