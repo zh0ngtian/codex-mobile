@@ -17,11 +17,11 @@
 - [x] 运行上述测试、`npm run build` 和移动端相关 Playwright；检查小屏、横屏、长路径、点击定位与总数。
 
 ## 任务 2：提交与交付
-- [ ] `git diff --check`；按中文 Conventional Commits 提交并推送 main。
-- [ ] 持有主工作区 `.mobile-build/.fixed-channel-publish.lock`，读取 Android/iOS/OTA 清单，分配更高统一版本。
-- [ ] `gh workflow run build-android.yml -f release_version=<分配版本>`；下载 `CodexMobile-android` 并发布固定 APK。
-- [ ] `npm run ios:release -- --config "$HOME/Library/Application Support/CodexMobile/ios-release.local.json" --version <分配版本> --notes '编辑结果显示每个文件的增删行数'`。
-- [ ] 双端固定 JSON、HEAD、完整 GET 校验版本、大小与 SHA-256；提供固定 OTA/APK/IPA 链接与签名状态。清理临时验证文件。
+- [x] `git diff --check`；按中文 Conventional Commits 提交并推送 main。
+- [x] 持有主工作区 `.mobile-build/.fixed-channel-publish.lock`，读取 Android/iOS/OTA 清单，分配更高统一版本。
+- [x] `gh workflow run build-android.yml -f release_version=0.2.140`；下载 `CodexMobile-android` 并发布固定 APK。
+- [x] `npm run ios:release -- --config "$HOME/Library/Application Support/CodexMobile/ios-release.local.json" --version 0.2.140 --notes '编辑结果显示每个文件的增删行数'`。
+- [x] 双端固定 JSON、HEAD、完整 GET 校验版本、大小与 SHA-256；提供固定 OTA/APK/IPA 链接与签名状态。清理临时验证文件。
 
 ## 实施验证
 - 逐文件回归先因缺少文件按钮失败，再通过；相关 Vitest 70 项通过。
@@ -29,3 +29,12 @@
 - 独立 Playwright 文件编辑场景通过：375px 小屏、812px 横屏、长路径换行、44px 触控高度、第二文件定位和总数一致。截图人工检查通过。
 - 旧综合移动端用例在本次文件统计断言之前因 `user.png` 图片不可见失败；未改动无关图片实现。默认 Chrome 未安装，使用现有 Chromium 验证。
 - 使用协议模拟数据，没有创建真实测试会话。
+
+## 交付记录
+- 实现提交：`5de352c`，已推送 main；双端构建运行： https://github.com/zh0ngtian/codex-mobile/actions/runs/38029839472 。
+- 独占固定渠道锁后分配统一版本 `0.2.140`，高于原两端 `0.2.139`。
+- 固定 APK：`4,708,523` 字节；SHA-256 `70b1ce73877e9a50e2d8435ce085404d5fe2b001299685bd2cf15ffbe0f8a792`。
+- 固定 IPA：`3,773,294` 字节；SHA-256 `8389db0fbf8c9e59425ada0bc5860af61b8b5ab342fc258184473cbaf7445e70`；Ad Hoc 已签名，独立归档验签通过，Bundle ID、签名 application-identifier 与钥匙串组保持原有身份。
+- 固定 JSON、HEAD、完整 GET 与本机产物一致；HTTPS 使用配置中的 CA 校验，安装页版本正确。
+- 两端内嵌前端 SHA-256 相同：`45a831c8fafeb450854ec670e6b5a1470d4c66a29c59b812f2fefdd34385a2d1`。
+- 验证截图与下载校验记录保存在主工作区忽略目录 `.mobile-build/per-file-stats-0.2.140/`。未进行真机覆盖安装与数据保留验证。
