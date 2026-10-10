@@ -227,7 +227,7 @@ def publish(ipa, receipt_path, settings, workdir):
             config_path.write_text(json.dumps(config | {'root': str(stage)}, ensure_ascii=False))
             run_cli(settings['script'], config_path, 'publish', '--ipa', Path(ipa).resolve(),
                     '--sha256', receipt['sha256'], '--icon', ROOT / 'docs/assets/app-icon/codex-mobile-app-icon-1024.png',
-                    '--developer', 'loock-ai / zh0ngtian',
+                    '--developer', 'zh0ngtian',
                     '--description', '在手机上查看、继续和管理运行在 Mac 上的 Codex 工作流。',
                     '--notes', receipt['notes'], '--date', receipt['publishedAt'])
             after = json.loads((stage / 'source.json').read_text())

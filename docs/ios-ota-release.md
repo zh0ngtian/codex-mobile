@@ -80,6 +80,8 @@ npm run ios:release -- \
 
 运行依赖 Python 3.11+、rclone、本机 SignOs 仓库（默认 `~/WorkSpace/SignOs`）。目标读取该仓库的 `cloudflare/app-source/source.config.json`；相对 `root` 沿用 SignOs 仓库根目录语义。更换路径时给两个入口传入 `--signos-repo /path/to/SignOs` 和 `--source-config /private/path/source.config.json`。仅使用 S3，无需 Wrangler 登录。
 
+软件源中的开发者署名固定使用 GitHub 用户名 `zh0ngtian`，正式发布与独立补发均沿用该署名。
+
 源配置包含 `name`、`identifier`、`baseUrl`（HTTPS 根地址）、`root`、`bucket`、`accountId`；不得放密钥。认证来自 `AWS_ACCESS_KEY_ID`、`AWS_SECRET_ACCESS_KEY` 环境变量，脚本不打印值。当前已配置的私有凭据文件可在发布 shell 中加载：
 
 ```bash
