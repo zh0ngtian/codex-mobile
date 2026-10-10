@@ -9,8 +9,7 @@
 - `scripts/ios_sign.py`：校验并签名单 App IPA，再解包最终归档验签。支持内嵌 framework/dylib；拒绝 App Extension、多 App、XPC 和包含链接的归档。这些目标需要独立的 profile/entitlements，不能套用主 App 的证书配置。
 - `scripts/ios_ota_server.py`：本机局域网 HTTPS 服务、私有 CA 首次信任配置和 launchd 托管，私钥与签名材料均位于仓库外。
 - `scripts/ios_ota.py publish`：仅发布通过真实验签的 Ad Hoc IPA，生成版本化 manifest、JSON 和安装页，上传、回验后原子切换固定入口。
-- `npm run ios:release -- --config <仓库外配置> --notes '<更新说明>'`：准备工程、设备构建、自动签名、HTTPS 发布并回验、LAN IPA 发布并回验、Cloudflare 软件源发布并回验。版本默认高于 Android、iOS LAN 及 HTTPS OTA 三个渠道；可用 `--version` 明确指定更高版本。
-- `npm run ios:publish-source -- --ipa <正式签名包> --release-json <成功OTA凭证>`：软件源独立补发/重试，原样使用 IPA，无构建、签名或版本分配。
+- `npm run ios:release -- --config <仓库外配置> --notes '<更新说明>'`：准备工程、设备构建、自动签名、HTTPS 发布并回验、LAN IPA 发布并回验，保存成功凭证并返回软件源发布文档入口。版本默认高于 Android、iOS LAN 及 HTTPS OTA 三个渠道；可用 `--version` 明确指定更高版本。
 
 这里的“自动签名”指流水线自动执行手动管理的 Ad Hoc 证书签名，不要求买来的证书能登录 Xcode 开启 Automatically manage signing。不能用它上传到本项目的 App Store Connect 或 TestFlight。
 
@@ -72,57 +71,21 @@ npm run ios:release -- \
   --notes '新增 iOS 检查更新与 OTA 安装' --plan
 ```
 
-正式构建与发布先按下面“Cloudflare 软件源”注入 S3 凭据，再去掉 `--plan`。这个入口发布 iOS；仓库交付仍必须另外构建并发布相同版本 APK。不得在 Android 固定渠道还未同步时宣称双平台交付完成。
+正式构建与发布去掉 `--plan`；软件源发布按下方上游文档另行完成。这个入口发布 iOS；仓库交付仍必须另外构建并发布相同版本 APK。不得在 Android 固定渠道还未同步时宣称双平台交付完成。
 
 ## Cloudflare 软件源
 
-参考 [SignOs app-source 流程](https://github.com/zh0ngtian/SignOs/tree/main/cloudflare/app-source)，在既有 OTA/LAN 成功之后同步 [Yao App Source](https://yao-app-source.305301890.workers.dev/source.json)。不新建 Worker/bucket，不向云端上传签名材料，不用 unsigned IPA。发布器复用 SignOs 的 `scripts/app_source.py` CLI；本次适配核对版本为 `2ce22dfa01dd8935c09b7898e363930f66e3b9fc`。
+每次发布前读取并遵循 [SignOs PUBLISH_PROMPT.md](https://github.com/zh0ngtian/SignOs/blob/main/cloudflare/app-source/PUBLISH_PROMPT.md) 最新版。本仓库只保留此入口，不复制软件源的配置、上传、锁、清理或重试流程，也不固定上游版本。
 
-运行依赖 Python 3.11+、rclone、本机 SignOs 仓库（默认 `~/WorkSpace/SignOs`）。目标读取该仓库的 `cloudflare/app-source/source.config.json`；相对 `root` 沿用 SignOs 仓库根目录语义。更换路径时给两个入口传入 `--signos-repo /path/to/SignOs` 和 `--source-config /private/path/source.config.json`。仅使用 S3，无需 Wrangler 登录。
+`npm run ios:release` 仅自动完成 HTTPS OTA 与固定 LAN IPA 发布；成功输出中的 `appSource.status` 为 `pending`，`instructionsUrl` 指向上述文档。接续软件源发布使用本次产物：
 
-软件源开发者署名按追加规则维护：正式发布和独立补发使用 `gh api --hostname github.com user --jq .login` 读取当前登录用户名，再检查最新软件源中该 App 的 `developerName`。已有该用户名时保留原文；缺少时以 ` / ` 追加，原有开发者及顺序保持不变。比较忽略大小写，支持 `@用户名`，不把相似用户名当成同一人。未取得有效 GitHub 身份则停止软件源发布；需安装并登录 GitHub CLI。用户名不再写死，`--plan` 仍不联网读取账号或修改软件源。
+- 已签名 IPA：`.mobile-build/ota-release/<版本>/CodexMobile-v<版本>-adhoc.ipa`。
+- OTA/LAN 回验成功凭证：`.mobile-build/ota-release/<版本>/ota-release.json`。
+- 应用图标：`docs/assets/app-icon/codex-mobile-app-icon-1024.png`。
 
-例如 `loock-ai / Yao` 在 `zh0ngtian` 发布后变为 `loock-ai / Yao / zh0ngtian`；再次发布保持不变。只有用户明确要求时才能单独清理旧署名，不能在每次发布时自动删除别名或历史开发者。
+正式交付仍须完成软件源发布，并提供软件源地址与该版本公网 IPA 链接；使用同一已签名 IPA，确保版本、构建号、大小和 SHA-256 与 OTA/LAN 一致。开发者署名遵循 [仓库规则](../AGENTS.md#ios-自动签名与局域网-ota)。本地命令成功不代表软件源已经发布。
 
-源配置包含 `name`、`identifier`、`baseUrl`（HTTPS 根地址）、`root`、`bucket`、`accountId`；不得放密钥。认证来自 `AWS_ACCESS_KEY_ID`、`AWS_SECRET_ACCESS_KEY` 环境变量，脚本不打印值。当前已配置的私有凭据文件可在发布 shell 中加载：
-
-```bash
-source "$HOME/.config/yao-app-source/remote-publisher.env"
-npm run ios:release -- \
-  --config "$HOME/Library/Application Support/CodexMobile/ios-release.local.json" \
-  --version <与APK统一的更高版本> --notes '<更新说明>'
-```
-
-`--plan` 只读核对本地输入与发布配置，不检查 S3 权限，也不代表已上传。正式入口在构建前检查 rclone 和变量是否存在；实际权限与网络在软件源阶段验证。发布签名身份和权限连续性仍由既有 OTA 签名流程负责。
-
-自动发布顺序：
-
-1. OTA 和 LAN 完整回验通过，在 `.mobile-build/ota-release/<版本>/ota-release.json` 保存成功凭证。
-2. 核对凭证与 IPA 的 Bundle ID、version、build、大小、SHA-256、ZIP 完整性，继承凭证日期和更新说明。
-3. 持有 SignOs 配置 `root/.publish.lock`，比较公网与 R2 当前清单，恢复当前及全部历史 IPA/PNG 至本次独立暂存目录；每个历史 IPA 校验大小和 SHA-256。拒绝源外地址、路径穿越、同版本不同字节和降级。
-4. 调用 SignOs `publish` 合并清单，确认其他应用和历史版本保留；上传前再次对照线上基线。变化时停止，保留前后清单，重新从最新源恢复后重试。
-5. 调用 `sync --transport s3`：资源先上传并逐个完整下载回验，清单最后上传并回验；再次核对软件源与 OTA 的版本、构建号、大小和 SHA-256。
-
-软件源与 SignOs 共用单发布机窗口。该锁只保护同一配置 root 的本机进程，不是跨机器锁；从其他机器或不同 root 发布必须排队。也不能让旧 SignOs 本机清单在本次发布后直接覆盖云端；每次都应按其 `PUBLISH_PROMPT.md` 恢复最新源。本适配器不覆盖 SignOs 原缓存或删除任何线上历史资源。
-
-软件源失败会让总命令失败，但已经成功的 OTA/LAN 不回滚。用同一包和成功凭证补发；不要重新执行完整 `ios:release` 分配新版本：
-
-```bash
-npm run ios:publish-source -- \
-  --ipa /absolute/path/CodexMobile-vVERSION-adhoc.ipa \
-  --release-json /absolute/path/ota-release.json --plan
-
-source "$HOME/.config/yao-app-source/remote-publisher.env"
-npm run ios:publish-source -- \
-  --ipa /absolute/path/CodexMobile-vVERSION-adhoc.ipa \
-  --release-json /absolute/path/ota-release.json
-```
-
-凭证也接受成功 OTA 发布的 `latest-ios.json` 原样副本；签名标记和字节一致性检查不替代原 OTA 独立验签及发布验收。不要拿仅生成尚未成功上线的暂存 JSON 当成功凭证。
-
-独立命令默认在 `.mobile-build/app-source/` 保存 `before-source.json`、`source.json`、成功时的 `verification.json`；可用 `--workdir` 指定长期保留位置。自动入口放在该版本输出目录的 `app-source/` 下。临时配置与恢复的资源副本自动清理，原签名包、OTA 凭证和历史线上资源保留。失败后检查实际线上清单，不能把上传过程中断推断为线上完全未改变。
-
-正式发版交付除既有 OTA/APK/IPA 固定链接外，还应给出软件源地址与该版本公网 IPA URL。只有 OTA、LAN 与软件源版本、构建号、大小、SHA-256 一致才算 iOS 发布完成；服务器验收不代表真机覆盖安装或数据保留已验证。
+## 单独重签
 
 单独重签现有 IPA：
 

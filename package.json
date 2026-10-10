@@ -48,8 +48,7 @@
     "test:e2e": "playwright test",
     "typecheck": "tsc -b --pretty false",
     "ios:prepare": "node scripts/prepare-ios.mjs",
-    "ios:release": "python3 scripts/release-ios.py",
-    "ios:publish-source": "python3 scripts/ios_app_source.py"
+    "ios:release": "python3 scripts/release-ios.py"
   },
   "dependencies": {
     "qrcode": "^1.5.4",

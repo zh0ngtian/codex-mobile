@@ -281,10 +281,10 @@ Android App 固定检查局域网更新清单
 允许 Codex Mobile 安装未知应用，App 不支持静默安装。
 
 iOS 支持在本机局域网执行 Ad Hoc 自动签名与 HTTPS OTA。证书和密码保存在本机私有目录，
-`npm run ios:release` 构建后自动签名并更新固定安装页、LAN IPA，再将同一签名包同步到 [Cloudflare 软件源](https://yao-app-source.305301890.workers.dev/source.json)；iOS“管理设备”底部与 Android 一样提供“检查更新”，跳转 Safari 确认覆盖安装。
+`npm run ios:release` 构建后自动签名并更新固定安装页、LAN IPA，软件源发布使用同一签名包并遵循 [SignOs PUBLISH_PROMPT.md](https://github.com/zh0ngtian/SignOs/blob/main/cloudflare/app-source/PUBLISH_PROMPT.md) 最新版；iOS“管理设备”底部与 Android 一样提供“检查更新”，跳转 Safari 确认覆盖安装。
 历史 GitHub Release 的 unsigned IPA 不能直接 OTA 安装；正式发布使用本机签名产物。
 证书的 UDID、Bundle ID、Team ID 和 App ID prefix 必须兼容，升级数据保留需要旧安装身份一致。
-本机配置、局域网 CA 首次信任、HTTPS 服务、软件源 S3 凭据与失败重试及安装验收步骤见 [iOS OTA 发布文档](docs/ios-ota-release.md)。
+本机配置、局域网 CA 首次信任、HTTPS 服务及安装验收步骤见 [iOS OTA 发布文档](docs/ios-ota-release.md)。
 
 仓库使用固定提交的 PakePlus Android/iOS 项目作为原生容器，并把当前 `dist/` 静态
 资源内置到 App。构建产物只包含上述固定更新服务器地址，不包含网关 Token 或其他私人配置。

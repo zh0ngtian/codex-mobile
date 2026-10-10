@@ -17,10 +17,6 @@ class ReleaseTests(unittest.TestCase):
         self.assertTrue(SCRIPT.exists(), '缺少 iOS 统一发布入口')
         spec = importlib.util.spec_from_file_location('release_ios', SCRIPT)
         self.release = importlib.util.module_from_spec(spec); spec.loader.exec_module(self.release)
-        self.source_settings = patch('ios_app_source.load_settings', return_value={
-            'config': {'baseUrl': 'https://source.example'}})
-        self.source_settings.start()
-        self.addCleanup(self.source_settings.stop)
 
     def test_next_version_exceeds_both_channels(self):
         self.assertEqual(self.release.next_version(['0.2.115', '0.3.1', '0.2.0']), '0.3.2')
@@ -169,20 +165,7 @@ class ReleaseTests(unittest.TestCase):
                 self.release.publish_local('source', '/channel', release)
             activate.assert_not_called()
 
-    def test_source_failure_keeps_successful_ota_receipt_for_retry(self):
-        self.assertTrue(hasattr(self.release, 'publish_app_source'), 'OTA 成功后需要保存凭证并发布软件源')
-        with tempfile.TemporaryDirectory() as directory:
-            root = pathlib.Path(directory)
-            release = dict(version='0.2.150', signed=True, sha256='a' * 64)
-            def fail(ipa, receipt, settings, workdir):
-                self.assertEqual(json.loads(receipt.read_text()), release)
-                raise ValueError('S3 unavailable')
-            with patch('ios_app_source.publish', side_effect=fail):
-                with self.assertRaisesRegex(ValueError, 'ios:publish-source'):
-                    self.release.publish_app_source(root, root/'signed.ipa', release, {})
-            self.assertEqual(json.loads((root/'ota-release.json').read_text()), release)
-
-    def test_plan_lists_source_after_existing_channels(self):
+    def test_plan_references_external_guide_without_running_source_workflow(self):
         config = dict(profile='profile', bundleId='vip.loock.codexmobile', udid='DEVICE',
                       baseUrl='https://ota.example')
         with patch.object(sys, 'argv', ['release-ios.py', '--config', 'config', '--notes', 'update', '--plan']), \
@@ -191,17 +174,15 @@ class ReleaseTests(unittest.TestCase):
              patch('ios_sign.signing_identity', return_value={'bundleId': config['bundleId']}), \
              patch.object(self.release, 'fetch_previous', return_value=None), \
              patch.object(self.release, 'channel_versions', return_value=['0.2.149']), \
-             patch('ios_app_source.preflight') as preflight, \
-             patch('ios_app_source.publish') as publish, \
              patch.object(sys, 'stdout', io.StringIO()) as output:
             self.release.main()
         plan = json.loads(output.getvalue())
-        self.assertEqual(plan['steps'][-1], 'app-source-publish-verify')
-        self.assertEqual(plan['sourceURL'], 'https://source.example/source.json')
-        preflight.assert_not_called()
-        publish.assert_not_called()
+        self.assertEqual(plan['steps'][-1], 'lan-publish-verify')
+        self.assertEqual(plan['appSource']['status'], 'pending')
+        self.assertEqual(plan['appSource']['instructionsUrl'],
+            'https://github.com/zh0ngtian/SignOs/blob/main/cloudflare/app-source/PUBLISH_PROMPT.md')
 
-    def test_source_runs_only_after_lan_full_get_verification(self):
+    def test_receipt_is_saved_only_after_lan_full_get_verification(self):
         for valid_lan in (False, True):
             with self.subTest(valid_lan=valid_lan), tempfile.TemporaryDirectory() as directory:
                 root = pathlib.Path(directory)
@@ -222,10 +203,7 @@ class ReleaseTests(unittest.TestCase):
                 def sign(unsigned, signed, *args, **kwargs):
                     signed.write_bytes(package)
                     return release
-                def source(ipa, receipt, *args):
-                    self.assertTrue(receipt.is_file())
-                    events.append('source')
-                    return {}
+                output = io.StringIO()
                 patches = [
                     patch.object(sys, 'argv', ['release-ios.py', '--config', 'config', '--notes', 'update']),
                     patch.object(self.release, 'ROOT', root),
@@ -241,9 +219,7 @@ class ReleaseTests(unittest.TestCase):
                     patch.object(self.release, 'publish_local', side_effect=lambda *a: events.append('ota') or release),
                     patch.object(self.release.subprocess, 'run', side_effect=lambda *a, **k: events.append('lan-publish')),
                     patch.object(self.release.urllib.request, 'urlopen', side_effect=request),
-                    patch('ios_app_source.preflight'),
-                    patch('ios_app_source.publish', side_effect=source),
-                    patch.object(sys, 'stdout', io.StringIO()),
+                    patch.object(sys, 'stdout', output),
                 ]
                 with ExitStack() as stack:
                     for context in patches:
@@ -253,6 +229,14 @@ class ReleaseTests(unittest.TestCase):
                     else:
                         with self.assertRaisesRegex(ValueError, '完整 GET'):
                             self.release.main()
-                self.assertEqual(events, ['ota', 'lan-publish', 'lan-get'] + (['source'] if valid_lan else []))
+                self.assertEqual(events, ['ota', 'lan-publish', 'lan-get'])
+                receipt = root/'.mobile-build/ota-release/0.2.150/ota-release.json'
+                self.assertEqual(receipt.exists(), valid_lan)
+                if valid_lan:
+                    self.assertEqual(json.loads(receipt.read_text()), release)
+                    result = json.loads(output.getvalue())
+                    self.assertEqual(result['appSource']['status'], 'pending')
+                    self.assertEqual(result['releaseReceipt'], str(receipt))
+                    self.assertTrue(pathlib.Path(result['ipaPath']).is_file())
 
 if __name__ == '__main__': unittest.main()

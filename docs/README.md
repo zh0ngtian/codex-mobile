@@ -5,7 +5,7 @@
 - [项目 README](../README.md)：使用方法、架构、配置、客户端能力与边界。
 - [自动安装指南](../install.md)：macOS npm 网关安装和开机启动。
 - [仓库协作约定](../AGENTS.md)与 [Git 提交规范](commit-conventions.md)：开发、验证和交付要求。
-- [iOS OTA 发布](ios-ota-release.md)：本机签名、身份连续性、固定渠道、Cloudflare 软件源同步与重试及安装诊断。
+- [iOS OTA 发布](ios-ota-release.md)：本机签名、身份连续性、固定渠道、软件源发布文档入口及安装诊断。
 - [iOS 模拟器验证](ios-simulator-verification.md)：可复用操作步骤与按日期保留的验收结果。
 - [协议基准](../protocol/app-server-v2/README.md)：固定快照的版本、来源和使用边界。
 
