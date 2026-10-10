@@ -125,6 +125,27 @@ function renderList(
 }
 
 describe("会话侧边栏列表", () => {
+  it("原生长按菜单将选择路由到原会话并在关闭侧栏时清理", async () => {
+    const show = vi.fn();
+    const dismiss = vi.fn();
+    (window as any).CodexMobileActionMenu = { show, dismiss };
+    try {
+      const onManageThread = vi.fn().mockResolvedValue(true);
+      const { container, setSidebarOpen } = renderList("all", { onManageThread });
+      fireEvent.contextMenu(within(container).getByRole("button", { name: /置顶会话/ }));
+      expect(show).toHaveBeenCalledTimes(1);
+      expect(within(container).queryByLabelText("会话操作")).toBeNull();
+      const request = JSON.parse(show.mock.calls[0][0]);
+      expect(request.actions.find((a: any) => a.id === "pin").title).toBe("取消置顶");
+      await act(async () => window.dispatchEvent(new CustomEvent("codex-mobile-action-menu", {
+        detail: { requestId: request.requestId, actionId: "pin" },
+      })));
+      expect(onManageThread).toHaveBeenCalledWith(threads[0], "pin");
+      setSidebarOpen(false);
+      expect(dismiss).toHaveBeenCalled();
+    } finally { delete (window as any).CodexMobileActionMenu; }
+  });
+
   it.each(["all", "mini"])("%s 默认展开超过五条的主动及被动置顶，不受项目折叠影响", (selectedBackendId) => {
     const visibleThreads = aggregateThreads([backend], { mini:
       ["manual", "unread", "running"].flatMap((kind) => Array.from({ length: 7 }, (_, i) => ({

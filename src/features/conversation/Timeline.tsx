@@ -22,7 +22,7 @@ import {
 } from "../../ui/conversation";
 import {
   CopyButton,
-  selectElementText,
+  copyText,
   visibleAssistantText,
 } from "../../ui/copy";
 import { Chevron } from "../../ui/icons";
@@ -43,6 +43,9 @@ import {
   ToolDetailSheet,
 } from "./sheets/ToolSheets";
 import "./timeline-timestamps.css";
+import { ContextActionMenu } from "../../ui/ContextActionMenu";
+import { readNativeActionMenuBridge, type MenuAnchor } from "../../ui/native-action-menu";
+import { useLongPress } from "../../ui/use-long-press";
 
 type AnyRecord = Record<string, any>;
 
@@ -180,8 +183,19 @@ function UserBubble({
     input.setSelectionRange(input.value.length, input.value.length);
   }, []);
   useEffect(() => setConfirming(false), [inlineEdit?.hasLaterTurns]);
+  const [menuAnchor, setMenuAnchor] = useState<MenuAnchor | null>(null);
+  const [copyStatus, setCopyStatus] = useState("");
+  const longPress = useLongPress((anchor) => setMenuAnchor((current) => current ?? anchor), Boolean(inlineEdit));
+  useEffect(() => {
+    if (inlineEdit) setMenuAnchor(null);
+  }, [inlineEdit]);
+  useEffect(() => {
+    if (!copyStatus) return;
+    const timer = setTimeout(() => setCopyStatus(""), 1400);
+    return () => clearTimeout(timer);
+  }, [copyStatus]);
   const bubble = (
-    <div className={`user-bubble${inlineEdit ? " user-bubble-editing" : ""}`}>
+    <div className={`user-bubble${inlineEdit ? " user-bubble-editing" : ""}`} {...longPress}>
       {inlineEdit ? (
         <div className="history-message-editor">
           <textarea
@@ -272,7 +286,6 @@ function UserBubble({
       ) : text ? (
         <div
           className={`user-message-text ${collapsible && !expanded ? "collapsed" : ""}`}
-          onContextMenu={(event) => selectElementText(event.currentTarget)}
         >
           <MarkdownMessage
             text={text}
@@ -320,7 +333,7 @@ function UserBubble({
       )}
     </div>
   );
-  const actions = !inlineEdit && onEditUserMessage ? (
+  const actions = !inlineEdit && onEditUserMessage && !readNativeActionMenuBridge() ? (
     <div className="user-message-actions" role="group" aria-label={t("历史消息操作")}>
       <button type="button" aria-label={t("编辑历史消息")}
         disabled={userMessageActionsDisabled} onClick={onEditUserMessage}>
@@ -328,18 +341,30 @@ function UserBubble({
       </button>
     </div>
   ) : null;
+  const menu = menuAnchor && !inlineEdit ? <ContextActionMenu
+    anchor={menuAnchor} label={t("历史消息操作")} onClose={() => setMenuAnchor(null)}
+    actions={[
+      ...(onEditUserMessage ? [{ id: "edit", title: t("编辑"), icon: "pencil",
+        disabled: userMessageActionsDisabled, onSelect: () => onEditUserMessage() }] : []),
+      { id: "copy", title: t("复制"), icon: "doc.on.doc", disabled: !text,
+        copyText: text, onSelect: (native) => {
+          if (native) setCopyStatus(t("已复制"));
+          else void copyText(text).then((copied) => setCopyStatus(t(copied ? "已复制" : "复制失败")));
+        } },
+    ]} /> : null;
+  const feedback = copyStatus ? <small role="status" className="user-copy-status">{copyStatus}</small> : null;
   if (heartbeat) {
     return (
       <div className="automation-user-message">
         <small className="automation-message-label">{t("通过自动化功能发送")}</small>
         {bubble}
-        {actions}
+        {actions}{menu}{feedback}
       </div>
     );
   }
   return inlineEdit || actions
-    ? <div className="user-message">{bubble}{actions}</div>
-    : bubble;
+    ? <div className="user-message">{bubble}{actions}{menu}{feedback}</div>
+    : <>{bubble}{menu}{feedback}</>;
 }
 
 function FileChangeActivity({ item }: { item: AnyRecord }) {

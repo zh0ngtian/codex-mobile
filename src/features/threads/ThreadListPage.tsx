@@ -4,6 +4,8 @@ import {
   useState,
   type PointerEvent as ReactPointerEvent,
 } from "react";
+import { elementMenuAnchor, type MenuAnchor } from "../../ui/native-action-menu";
+import { copyText } from "../../ui/copy";
 import {
   isThreadRunning,
   relativeTime,
@@ -107,6 +109,7 @@ export function ThreadListPage({
 }) {
   const [managedThread, setManagedThread] =
     useState<AggregatedThreadItem | null>(null);
+  const [menuAnchor, setMenuAnchor] = useState<MenuAnchor>();
   const [pendingThreadAction, setPendingThreadAction] = useState("");
   const sidebarRef = useRef<HTMLElement | null>(null);
   const longPressRef = useRef<{
@@ -183,8 +186,10 @@ export function ThreadListPage({
     if (!sidebarOpen || event.button !== 0) return;
     clearLongPress();
     const key = managementKey(thread);
+    const anchor = elementMenuAnchor(event.currentTarget);
     const timer = window.setTimeout(() => {
       suppressClickRef.current = { key, until: Date.now() + 1_000 };
+      setMenuAnchor(anchor);
       setManagedThread(thread);
       longPressRef.current = null;
     }, LONG_PRESS_DELAY_MS);
@@ -242,6 +247,8 @@ export function ThreadListPage({
           event.preventDefault();
           clearLongPress();
           if (!sidebarOpen) return;
+          suppressClickRef.current = { key, until: Date.now() + 1_000 };
+          setMenuAnchor(elementMenuAnchor(event.currentTarget));
           setManagedThread(thread);
         }}
         onPointerDown={(event) => startLongPress(event, thread)}
@@ -524,6 +531,7 @@ export function ThreadListPage({
         }
         thread={managedThread?.thread ?? {}}
         pendingAction={pendingThreadAction}
+        anchor={menuAnchor}
         onClose={() => {
           if (!pendingThreadAction) setManagedThread(null);
         }}
@@ -532,7 +540,7 @@ export function ThreadListPage({
         onDuplicate={() => void runThreadAction("duplicate")}
         onCopy={() => {
           if (!managedThread) return;
-          void navigator.clipboard?.writeText(managedThread.threadId);
+          void copyText(managedThread.threadId);
           setManagedThread(null);
         }}
         onRename={() => void runThreadAction("rename")}

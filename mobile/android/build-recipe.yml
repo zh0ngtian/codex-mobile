@@ -426,6 +426,11 @@ steps:
       ))
       safe_area_interface = "\n".join((
           "        @JavascriptInterface",
+          "        fun showActionMenu(request: String) { this@MainActivity.actionMenuBridge.show(request) }",
+          "        @JavascriptInterface",
+          "        fun dismissActionMenu(id: String) { this@MainActivity.actionMenuBridge.dismiss(id) }",
+
+          "        @JavascriptInterface",
           "        fun safeAreaTopCssPx(): Double {",
           "            return this@MainActivity.nativeSafeAreaTopCssPx",
           "        }",
@@ -785,6 +790,14 @@ steps:
           raise SystemExit("Pinned PakePlus WebView navigation behavior changed")
       if activity_source.count(interface_doc_anchor) != 1:
           raise SystemExit("Pinned PakePlus interface declaration changed")
+      activity_source = activity_source.replace(
+          webview_field,
+          webview_field + "\n    private val actionMenuBridge by lazy { ActionMenuBridge(this, webView) }\n",
+          1,
+      )
+      Path("app/src/main/java/com/app/pakeplus/ActionMenuBridge.kt").write_text(
+          Path("../mobile/android/ActionMenuBridge.kt").read_text()
+      )
       activity_path.write_text(
           activity_source
           .replace(

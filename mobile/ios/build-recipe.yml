@@ -227,6 +227,8 @@ steps:
       cmp mobile/ios/AttachmentPickerBridge.swift pakeplus/PakePlus/AttachmentPickerBridge.swift
       cp mobile/ios/AppUpdateBridge.swift pakeplus/PakePlus/AppUpdateBridge.swift
       cmp mobile/ios/AppUpdateBridge.swift pakeplus/PakePlus/AppUpdateBridge.swift
+      cp mobile/ios/ActionMenuBridge.swift pakeplus/PakePlus/ActionMenuBridge.swift
+      cmp mobile/ios/ActionMenuBridge.swift pakeplus/PakePlus/ActionMenuBridge.swift
       cp mobile/ios/KeyboardDismissal.swift pakeplus/PakePlus/KeyboardDismissal.swift
       cmp mobile/ios/KeyboardDismissal.swift pakeplus/PakePlus/KeyboardDismissal.swift
   - name: Harden and test the iOS host
@@ -375,7 +377,8 @@ steps:
           webview_constructor,
           "let webView = CodexMobileWebView(frame: .zero, configuration: webConfiguration)\n"
           "        CodexMobileAttachmentPickerBridge.configure(webView)\n"
-          "        CodexMobileAppUpdateBridge.configure(webView)",
+          "        CodexMobileAppUpdateBridge.configure(webView)\n"
+          "        if #available(iOS 16.0, *) { CodexMobileActionMenuBridge.configure(webView) }",
           1,
       )
       media_prompt = "        decisionHandler(permissionDecisionForMediaCapture(type: type))"

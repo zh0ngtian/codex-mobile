@@ -1,4 +1,5 @@
-import type { CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { presentNativeActionMenu, type MenuAnchor } from "../../ui/native-action-menu";
 import { AppIcon, titleOf, type DisplayRecord } from "../../ui/app-display";
 import { ActionSheet } from "../../ui/ActionSheet";
 import { getActiveLocale, t } from "../../i18n";
@@ -182,7 +183,18 @@ export function ConversationStatusSheet({
   );
 }
 
-export function ConversationActionMenu({
+export function ConversationActionMenu(props: ConversationActionMenuProps) {
+  return props.open ? <OpenConversationActionMenu {...props} /> : null;
+}
+
+type ConversationActionMenuProps = {
+  open: boolean; readOnly?: boolean; thread: DisplayRecord; pendingAction: string;
+  anchor?: MenuAnchor;
+  onClose: () => void; onPin: () => void; onRefresh: () => void;
+  onDuplicate: () => void; onCopy: () => void; onRename: () => void; onArchive: () => void;
+};
+
+function OpenConversationActionMenu({
   open,
   readOnly = false,
   thread,
@@ -194,10 +206,12 @@ export function ConversationActionMenu({
   onCopy,
   onRename,
   onArchive,
+  anchor,
 }: {
   open: boolean;
   readOnly?: boolean;
   thread: DisplayRecord;
+  anchor?: MenuAnchor;
   pendingAction: string;
   onClose: () => void;
   onPin: () => void;
@@ -207,7 +221,6 @@ export function ConversationActionMenu({
   onRename: () => void;
   onArchive: () => void;
 }) {
-  if (!open) return null;
   const pinned = thread.isPinned === true;
   const actions = [
     {
@@ -254,6 +267,26 @@ export function ConversationActionMenu({
       requiresWrite: true,
     },
   ];
+  const [fallback, setFallback] = useState(false);
+  const latest = useRef({ actions, onClose });
+  latest.current = { actions, onClose };
+  useEffect(() => {
+    const dispose = presentNativeActionMenu(latest.current.actions.map((action) => ({
+      id: action.id, title: action.label, icon: action.icon,
+      destructive: action.danger,
+      disabled: !!pendingAction || (readOnly && action.requiresWrite),
+      copyText: action.id === "copy" ? String(thread.id ?? "") : undefined,
+      onSelect: (native) => {
+        if (native && action.id === "copy") latest.current.onClose();
+        else latest.current.actions.find((entry) => entry.id === action.id)?.onClick();
+      },
+    })), anchor ?? { x: window.innerWidth / 2, y: 80, width: 1, height: 1 },
+    // 等动作回调处理结束再关闭；保留异步 runThreadAction 的目标。
+    (actionId) => { if (!actionId) latest.current.onClose(); });
+    setFallback(!dispose);
+    return dispose ?? undefined;
+  }, [anchor, readOnly]);
+  if (!fallback) return null;
   return (
     <>
       <button
