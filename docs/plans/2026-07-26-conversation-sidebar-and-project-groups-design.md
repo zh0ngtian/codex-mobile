@@ -64,20 +64,20 @@
 选中具体机器后的项目分组视图，不增加置顶分组。机器存在运行中会话时，机器 Tab
 和对应会话行沿用蓝色旋转 Loading。
 
-![全部会话置顶与单机项目分组](/Users/loock/myFile/codex-web-mobile/docs/assets/conversation-sidebar-design/sidebar-list-states-pinned.png)
+![全部会话置顶与单机项目分组](../assets/conversation-sidebar-design/sidebar-list-states-pinned.png)
 
 ### 对话详情与新聊天
 
 对话详情使用左上角菜单打开侧边栏；新聊天在顶部直接选择项目和机器，不提供
 “工作区 / 工作树”选项。
 
-![对话详情与新聊天](/Users/loock/myFile/codex-web-mobile/docs/assets/conversation-sidebar-design/conversation-detail-and-new-chat.png)
+![对话详情与新聊天](../assets/conversation-sidebar-design/conversation-detail-and-new-chat.png)
 
 ### 状态面板与会话操作
 
 灰色环形按钮打开线程和上下文状态面板，三点按钮打开锚定式会话操作面板。
 
-![状态面板与会话操作](/Users/loock/myFile/codex-web-mobile/docs/assets/conversation-sidebar-design/status-and-conversation-actions.png)
+![状态面板与会话操作](../assets/conversation-sidebar-design/status-and-conversation-actions.png)
 
 ## 页面与状态
 

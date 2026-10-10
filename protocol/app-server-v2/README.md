@@ -1,7 +1,7 @@
 # Codex app-server V2 协议快照
 
-本目录同时保存 OpenAI 官方仓库发布的协议文档、Schema 和权威源定义，以及与
-本机 Codex CLI 版本严格匹配的生成产物。
+本目录同时保存 OpenAI 官方仓库发布的协议文档、Schema 和权威源定义，以及由
+`codex-cli 0.144.1` 生成的历史基准产物。它们不是当前安装 CLI 或上游 main 的实时镜像。
 
 ## 项目主基准
 
@@ -11,11 +11,7 @@
 codex_app_server_protocol.v2.schemas.json
 ```
 
-该文件复制自：
-
-```text
-/tmp/codex-app-server-schema.30E2y5/codex_app_server_protocol.v2.schemas.json
-```
+该文件来自 `codex-cli 0.144.1 --experimental` 的本机生成快照；复核使用本目录已提交文件及下方生成命令，不依赖当时的临时目录。
 
 校验信息：
 
@@ -88,12 +84,10 @@ codex app-server generate-json-schema \
 ## 使用原则
 
 - 阅读协议行为、调用顺序和 UI 建议时，以官方 `app-server/README.md` 为准。
-- 跟踪上游当前主分支类型时，以官方 `src/protocol/{common,v2}` 为准。
+- `official/codex-rs/app-server-protocol/src/protocol/{common.rs,v2}/` 对应上述固定提交的类型定义；跟踪上游变化需要另行获取并比较新快照，不能把已提交副本当作当前 main。
 - 构建当前机器上的客户端时，以对应 CLI 版本生成的 TypeScript 和 JSON Schema
   为准，因为官方文档明确说明生成产物与运行生成命令的 Codex 版本严格匹配。
-- 当前项目的直接输入是根目录下的
-  `codex_app_server_protocol.v2.schemas.json`；`official/` 用于对照上游文档和
-  当前主分支变化。
+- 本目录的 `codex_app_server_protocol.v2.schemas.json` 用于 `tests/protocol/schema.test.ts` 协议基准检查；审批模型也引用 `generated-local/` 中的类型。实际可用能力还要以连接的 app-server 响应和客户端兼容逻辑为准；`official/` 仅用于对照所记录提交。
 - `--experimental` 生成的字段和方法需要客户端在 `initialize` 中设置
   `capabilities.experimentalApi: true`。
-- 网关保持 app-server 消息透传，不基于 Schema 改写业务消息。
+- Schema 不用于生成第二套会话历史。网关还负责 HTTP 会话、写入去重、事件及回合详情精简等适配，并非所有消息都原样透传；当前职责见 [系统架构](../../README.md#系统架构)。

@@ -13,7 +13,7 @@ Codex `app-server` V2，复用真实会话、项目、工具调用和审批，�
 同时管理多台 Mac。
 
 [快速开始](#快速开始) · [核心能力](#核心能力) · [系统架构](#系统架构) ·
-[移动端构建](#移动端构建) · [已知边界](#已知边界)
+[移动端构建](#移动端构建) · [已知边界](#已知边界) · [文档索引](docs/README.md)
 
 > Codex Mobile 是独立开源项目，与 OpenAI 官方没有隶属关系。
 
@@ -107,7 +107,8 @@ Codex Desktop 很适合坐在电脑前完成开发任务，但长任务启动后
 - 会话列表以侧边栏组织，标题与机器切换栏联合吸顶。
 - “全部”视图按时间汇总多台机器；单机视图按本机项目目录分组。
 - 项目目录先展示，会话并发加载、独立渲染和独立重试。
-- 首屏只加载最近 10 个 turns，滚动到顶部继续加载旧历史。
+- 单机项目可通过标题右侧手柄拖动排序，也可点击手柄后上移、下移；排序保存在当前客户端，并同步用于该机器的新聊天项目选择。无项目分组固定在前，全部机器视图和搜索结果不参与拖动。
+- 首屏只加载最近 5 个 turns，滚动到顶部每次继续加载 5 个旧回合。
 - 工具、审批、文件、Diff 和状态信息使用适合触控的底部 Sheet 展示。
 - 运行状态只显示在具体会话上，不把机器连接状态与任务运行状态混在一起。
 
@@ -116,10 +117,10 @@ Codex Desktop 很适合坐在电脑前完成开发任务，但长任务启动后
 ```mermaid
 flowchart LR
     C["手机浏览器 / Android / iOS"]
-    C -->|HTTP 提交与轮询；语音按需 WebSocket| G1["MacBook 网关"]
-    C -->|HTTP 提交与轮询；语音按需 WebSocket| G2["Mac mini 网关"]
-    G1 -->|V2 JSON-RPC 透传| A1["Codex app-server"]
-    G2 -->|V2 JSON-RPC 透传| A2["Codex app-server"]
+    C -->|HTTP 轮询或 WebSocket 流式；语音使用 WebSocket| G1["MacBook 网关"]
+    C -->|HTTP 轮询或 WebSocket 流式；语音使用 WebSocket| G2["Mac mini 网关"]
+    G1 -->|V2 JSON-RPC| A1["Codex app-server"]
+    G2 -->|V2 JSON-RPC| A2["Codex app-server"]
     A1 --> R1["本机会话与运行时"]
     A2 --> R2["本机会话与运行时"]
 ```
@@ -297,8 +298,8 @@ Android 和 iOS 安装包只支持正向竖屏，设备转动时保持竖屏，�
 - `main` 的应用相关代码变化会触发 Android、iOS 构建和 GitHub Release；
 - npm 包只在网关、CLI 或包配置变化时随同发布，也可在手动工作流中显式启用；
 - Android、iOS 与同次发布的 npm 包共用一个解析后的版本号。
-- 仓库修改提交并推送后，还须在更新服务器所在 Mac 构建更高版本 APK，通过
-  `apk-server.py publish-channel codex-mobile` 覆盖固定局域网渠道并回验摘要。
+- 修改客户端运行代码后，提交并推送，再发布高于 Android、iOS 两个固定渠道现有版本的统一版本 APK 和已签名 IPA；APK 使用 `apk-server.py publish-channel codex-mobile`，IPA 使用 `npm run ios:release`，并回验两端固定清单、HEAD、完整 GET 大小与 SHA-256。
+- 仅修改文档、规则、测试或服务端等非客户端内容时，无需另行构建或发布安装包；服务端变更仍须验证并部署网关。云工作流的触发路径独立于本机交付要求，具体约束见 [AGENTS.md](AGENTS.md)。
 
 相关工作流：
 
@@ -346,8 +347,7 @@ codex-mobile/
 
 - 非回环监听必须配置 Token；当前 Token 方案适用于可信局域网。
 - 跨不可信网络使用时，应增加 HTTPS、可信反向代理和正式身份认证。
-- 公开仓库和正式构建产物不包含局域网地址、访问口令、Codex 登录态、API 密钥、
-  本机会话、用户项目内容或移动端签名材料。
+- 固定局域网更新地址会出现在仓库和 App 中；用户配置的网关地址、访问口令、Codex 登录态、API 密钥、本机会话、用户项目内容及签名私钥不提交到公开仓库。已签名 IPA 必须内嵌 provisioning profile，其中包含授权设备信息，详见 [iOS OTA 发布文档](docs/ios-ota-release.md)。
 - App 中保存的设备地址和 Token 位于客户端本地存储，不会提交到本仓库。
 
 ## 会话图片加载
@@ -374,7 +374,7 @@ codex-mobile/
 - app-server 的持久化 `ThreadItem` 可能是有损表示，前端也会合并逻辑回合。
 - 不同 app-server 进程之间没有全局实时状态。Codex Desktop 与本项目使用独立进程
   时，网页无法仅靠 V2 列表接口准确显示桌面进程正在执行的任务。
-- iOS 未配置 Ad Hoc Secrets 时产物未签名；启用签名后生成独立 Ad Hoc artifact，OTA 真机安装仍需 profile 授权设备及兼容的已安装身份。
+- 云工作流默认生成未签名 IPA；固定局域网 IPA 与 OTA 使用本机 Ad Hoc 签名产物，签名材料仅保存在仓库外。OTA 真机安装仍需 profile 授权设备及兼容的已安装身份。
 
 ## 许可证
 

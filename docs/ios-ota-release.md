@@ -29,7 +29,7 @@ python3 scripts/ios_sign.py --verify-ipa /path/to/installed-version.ipa
 
 首次 HTTPS 渠道尚无历史记录时，发布方必须用旧签名 IPA 核对身份。服务器没有设备上的安装记录，无法代替这一步。后续发布由渠道身份记录与 App 的实际签名配置双重校验。
 
-本次修复需要将固定渠道从误改的 Bundle ID 恢复到原 Bundle ID。本机配置一次性设置 `restoreInstalledIdentityFromBundleId=app.jade6694.grapefruit3766`，且必须有已验签、散列固定的兼容基准。发布清单记录 `identityTransition`，绑定原渠道版本、原 IPA 散列、来源/目标 Bundle ID 与兼容基准散列；阶段发布和原子激活都复查，Team 和签名 application-identifier 仍不允许变化。恢复后删除这项一次性配置，普通升级继续拒绝身份变化，并检查已记录的钥匙串组。此操作覆盖的是原标识 App，不会把误改标识的另一个 App 的独立数据自动合并回来。
+2026-10-09 的身份恢复已在 0.2.128 发布时完成；后续发布不应重复启用该迁移。2026-10-10 复核本机配置已移除一次性字段，现役 OTA 保留原 Bundle ID。该历史修复通过本机配置一次性设置 `restoreInstalledIdentityFromBundleId=app.jade6694.grapefruit3766`，且必须有已验签、散列固定的兼容基准。发布清单记录 `identityTransition`，绑定原渠道版本、原 IPA 散列、来源/目标 Bundle ID 与兼容基准散列；阶段发布和原子激活都复查，Team 和签名 application-identifier 仍不允许变化。恢复后删除这项一次性配置，普通升级继续拒绝身份变化，并检查已记录的钥匙串组。此操作覆盖的是原标识 App，不会把误改标识的另一个 App 的独立数据自动合并回来。
 
 Ad Hoc 只允许 profile 的 `ProvisionedDevices` 登记设备。脚本在构建前验证目标 UDID，安装时 iOS 再执行检查；增加设备必须由证书提供方重新生成 profile、重新签名。仅编辑 XML 不能增加授权。证书与 profile 均需有效，续期须保留兼容身份。
 
