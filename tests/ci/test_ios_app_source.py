@@ -6,6 +6,7 @@ import sys
 import tempfile
 import unittest
 from unittest.mock import patch
+from types import SimpleNamespace
 import zipfile
 
 SCRIPTS = Path(__file__).resolve().parents[2] / 'scripts'
@@ -44,6 +45,34 @@ class SourceTests(unittest.TestCase):
         before = self.ipa.read_bytes()
         self.assertEqual(self.module.prepare(self.ipa, self.receipt_path), self.receipt)
         self.assertEqual(self.ipa.read_bytes(), before)
+
+    def test_developer_append_preserves_existing_names_and_format(self):
+        self.assertTrue(hasattr(self.module, 'merge_developer'), '缺少追加署名规则')
+        cases = [('', 'zh0ngtian'), (None, 'zh0ngtian'),
+                 ('loock-ai / Yao', 'loock-ai / Yao / zh0ngtian'),
+                 ('loock-ai / zh0ngtian', 'loock-ai / zh0ngtian'),
+                 ('Yao, @ZH0NGTIAN; Other', 'Yao, @ZH0NGTIAN; Other'),
+                 ('Yao & zh0ngtian', 'Yao & zh0ngtian'),
+                 ('Yao (@zh0ngtian)', 'Yao (@zh0ngtian)'),
+                 ('zh0ngtian-tools', 'zh0ngtian-tools / zh0ngtian')]
+        for existing, expected in cases:
+            with self.subTest(existing=existing):
+                result = self.module.merge_developer(existing, 'zh0ngtian')
+                self.assertEqual(result, expected)
+                self.assertEqual(self.module.merge_developer(result, 'zh0ngtian'), expected)
+        with self.assertRaises(ValueError):
+            self.module.merge_developer(['Yao'], 'zh0ngtian')
+
+    def test_github_login_uses_authenticated_user_and_fails_without_valid_identity(self):
+        self.assertTrue(hasattr(self.module, 'current_github_user'), '不能硬编码发布用户名')
+        with patch.object(self.module.subprocess, 'run', return_value=SimpleNamespace(
+                returncode=0, stdout='another-publisher\n')) as run:
+            self.assertEqual(self.module.current_github_user(), 'another-publisher')
+        self.assertEqual(run.call_args.args[0], ['gh', 'api', '--hostname', 'github.com', 'user', '--jq', '.login'])
+        for code, output in [(1, ''), (0, ''), (0, 'name / other')]:
+            with patch.object(self.module.subprocess, 'run', return_value=SimpleNamespace(returncode=code, stdout=output)):
+                with self.assertRaises(ValueError):
+                    self.module.current_github_user()
 
     def test_rejects_unsigned_or_mismatched_receipt(self):
         for key, value in dict(signed=False, size=1, sha256='b' * 64,
@@ -161,10 +190,12 @@ class SourceTests(unittest.TestCase):
                 app = after['apps'][0]
                 app.update(version=self.receipt['version'], buildVersion=self.receipt['buildNumber'],
                            sha256=self.receipt['sha256'], size=self.receipt['size'],
-                           downloadURL='https://source.example/files/new.ipa')
+                           downloadURL='https://source.example/files/new.ipa',
+                           developerName=args[args.index('--developer') + 1])
                 (stage / 'source.json').write_text(json.dumps(after))
         attempt = self.root / 'attempts'
         with patch.object(self.module, 'preflight'), \
+             patch.object(self.module, 'current_github_user', return_value='current-publisher'), \
              patch.object(self.module, 'baseline', side_effect=[raw, b'changed']), \
              patch.object(self.module, 'restore_assets'), \
              patch.object(self.module, 'run_cli', side_effect=cli):
@@ -179,19 +210,23 @@ class SourceTests(unittest.TestCase):
         repo, path = self.settings()
         settings = self.module.load_settings(repo, path)
         before = self.source()
+        before['apps'][0]['developerName'] = 'loock-ai / Yao'
         raw = json.dumps(before).encode()
         events, staged = [], {}
         def cli(script, config_path, *args):
             events.append(args[0])
             stage = Path(json.loads(config_path.read_text())['root'])
             if args[0] == 'publish':
+                self.assertEqual(args[args.index('--developer') + 1], 'loock-ai / Yao / current-publisher')
                 after = json.loads(raw)
                 after['apps'][0].update(version=self.receipt['version'], buildVersion=self.receipt['buildNumber'],
                                        sha256=self.receipt['sha256'], size=self.receipt['size'],
-                                       downloadURL='https://source.example/files/new.ipa')
+                                       downloadURL='https://source.example/files/new.ipa',
+                                       developerName=args[args.index('--developer') + 1])
                 staged['bytes'] = json.dumps(after).encode()
                 (stage / 'source.json').write_bytes(staged['bytes'])
         with patch.object(self.module, 'preflight'), \
+             patch.object(self.module, 'current_github_user', create=True, return_value='current-publisher'), \
              patch.object(self.module, 'baseline', return_value=raw), \
              patch.object(self.module, 'restore_assets'), \
              patch.object(self.module, 'run_cli', side_effect=cli), \
@@ -213,6 +248,29 @@ class SourceTests(unittest.TestCase):
         publish.assert_not_called()
         baseline.assert_not_called()
         self.assertFalse((self.root / 'shared').exists())
+
+    def test_publisher_cannot_overwrite_prior_developer_before_sync(self):
+        repo, path = self.settings()
+        settings = self.module.load_settings(repo, path)
+        before = self.source()
+        before['apps'][0]['developerName'] = 'original-author'
+        events = []
+        def cli(script, config_path, *args):
+            events.append(args[0])
+            stage = Path(json.loads(config_path.read_text())['root'])
+            app = before['apps'][0] | dict(version=self.receipt['version'],
+                buildVersion=self.receipt['buildNumber'], size=self.receipt['size'],
+                sha256=self.receipt['sha256'], downloadURL='https://source.example/files/new.ipa',
+                developerName='current-publisher')
+            (stage/'source.json').write_text(json.dumps(before | {'apps': [app]}))
+        with patch.object(self.module, 'preflight'), \
+             patch.object(self.module, 'current_github_user', return_value='current-publisher'), \
+             patch.object(self.module, 'baseline', return_value=json.dumps(before).encode()), \
+             patch.object(self.module, 'restore_assets'), \
+             patch.object(self.module, 'run_cli', side_effect=cli):
+            with self.assertRaisesRegex(ValueError, '覆盖了开发者署名'):
+                self.module.publish(self.ipa, self.receipt_path, settings, self.root/'attempts')
+        self.assertEqual(events, ['publish'])
 
 
 if __name__ == '__main__':

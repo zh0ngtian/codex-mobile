@@ -24,6 +24,29 @@ BUNDLE_ID = 'vip.loock.codexmobile'
 USER_AGENT = 'YaoAppSourcePublisher/1.0'
 
 
+def current_github_user():
+    try:
+        result = subprocess.run(['gh', 'api', '--hostname', 'github.com', 'user', '--jq', '.login'],
+                                capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.TimeoutExpired):
+        raise ValueError('无法读取当前 GitHub 账号；请检查 gh 安装、登录和网络') from None
+    login = result.stdout.strip()
+    if result.returncode or not re.fullmatch(r'[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?', login):
+        raise ValueError('无法确认当前 GitHub 用户名，停止软件源发布')
+    return login
+
+
+def merge_developer(existing, login):
+    if existing is None or existing == '':
+        return login
+    if not isinstance(existing, str):
+        raise ValueError('软件源 developerName 不是字符串，不能覆盖既有署名')
+    pattern = r'(?<![A-Za-z0-9_-])' + re.escape(login) + r'(?![A-Za-z0-9_-])'
+    if re.search(pattern, existing, re.IGNORECASE):
+        return existing
+    return existing + ' / ' + login
+
+
 def digest(path):
     with Path(path).open('rb') as stream:
         return hashlib.file_digest(stream, 'sha256').hexdigest()
@@ -202,6 +225,7 @@ def run_cli(script, config_path, *args):
 def publish(ipa, receipt_path, settings, workdir):
     receipt = prepare(ipa, receipt_path)
     preflight(settings)
+    login = current_github_user()
     config = settings['config']
     shared = Path(config['root'])
     shared.mkdir(parents=True, exist_ok=True)
@@ -215,6 +239,8 @@ def publish(ipa, receipt_path, settings, workdir):
         before = json.loads(original)
         assets(before, config)
         check_candidate(before, receipt)
+        target = next((app for app in before['apps'] if app['bundleIdentifier'] == receipt['bundleId']), {})
+        developer = merge_developer(target.get('developerName'), login)
         workdir = Path(workdir)
         workdir.mkdir(parents=True, exist_ok=True)
         stage = Path(tempfile.mkdtemp(prefix=receipt['version'] + '-', dir=workdir))
@@ -227,13 +253,14 @@ def publish(ipa, receipt_path, settings, workdir):
             config_path.write_text(json.dumps(config | {'root': str(stage)}, ensure_ascii=False))
             run_cli(settings['script'], config_path, 'publish', '--ipa', Path(ipa).resolve(),
                     '--sha256', receipt['sha256'], '--icon', ROOT / 'docs/assets/app-icon/codex-mobile-app-icon-1024.png',
-                    '--developer', 'zh0ngtian',
+                    '--developer', developer,
                     '--description', '在手机上查看、继续和管理运行在 Mac 上的 Codex 工作流。',
                     '--notes', receipt['notes'], '--date', receipt['publishedAt'])
             after = json.loads((stage / 'source.json').read_text())
             assets(after, config)
             check_preserved(before, after, receipt)
-            published_app(after, receipt)
+            if published_app(after, receipt).get('developerName') != developer:
+                raise ValueError('生成的软件源覆盖了开发者署名，停止上传')
             if baseline(config) != original:
                 raise ValueError('线上清单已变化；保留本次证据，基于最新源重试')
             run_cli(settings['script'], config_path, 'sync', '--transport', 's3')

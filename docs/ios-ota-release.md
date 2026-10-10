@@ -80,7 +80,9 @@ npm run ios:release -- \
 
 运行依赖 Python 3.11+、rclone、本机 SignOs 仓库（默认 `~/WorkSpace/SignOs`）。目标读取该仓库的 `cloudflare/app-source/source.config.json`；相对 `root` 沿用 SignOs 仓库根目录语义。更换路径时给两个入口传入 `--signos-repo /path/to/SignOs` 和 `--source-config /private/path/source.config.json`。仅使用 S3，无需 Wrangler 登录。
 
-软件源中的开发者署名固定使用 GitHub 用户名 `zh0ngtian`，正式发布与独立补发均沿用该署名。
+软件源开发者署名按追加规则维护：正式发布和独立补发使用 `gh api --hostname github.com user --jq .login` 读取当前登录用户名，再检查最新软件源中该 App 的 `developerName`。已有该用户名时保留原文；缺少时以 ` / ` 追加，原有开发者及顺序保持不变。比较忽略大小写，支持 `@用户名`，不把相似用户名当成同一人。未取得有效 GitHub 身份则停止软件源发布；需安装并登录 GitHub CLI。用户名不再写死，`--plan` 仍不联网读取账号或修改软件源。
+
+例如 `loock-ai / Yao` 在 `zh0ngtian` 发布后变为 `loock-ai / Yao / zh0ngtian`；再次发布保持不变。只有用户明确要求时才能单独清理旧署名，不能在每次发布时自动删除别名或历史开发者。
 
 源配置包含 `name`、`identifier`、`baseUrl`（HTTPS 根地址）、`root`、`bucket`、`accountId`；不得放密钥。认证来自 `AWS_ACCESS_KEY_ID`、`AWS_SECRET_ACCESS_KEY` 环境变量，脚本不打印值。当前已配置的私有凭据文件可在发布 shell 中加载：
 
