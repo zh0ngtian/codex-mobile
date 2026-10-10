@@ -152,6 +152,19 @@ button, a, summary, [role="button"] { -webkit-tap-highlight-color: transparent; 
 .project-heading { width: 100%; min-width: 0; min-height: 34px; border: 0; background: transparent; display: grid; grid-template-columns: 19px minmax(0,1fr); align-items: center; gap: 7px; padding: 4px 0; color: inherit; text-align: left; cursor: pointer; }
 .project-heading svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .project-heading span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.project-heading-row { display: flex; align-items: center; gap: 8px; }
+.project-heading-row .project-heading { flex: 1; }
+.project-reorder-handle { flex: 0 0 44px; width: 44px; height: 44px; border: 0; border-radius: 10px; padding: 12px; background: transparent; color: #777; cursor: grab; touch-action: none; -webkit-touch-callout: none; }
+.project-reorder-handle svg { display: block; width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 3; stroke-linecap: round; }
+.project-reorder-handle:active { cursor: grabbing; background: #eee; }
+.project-reorder-handle:focus-visible, .project-order-actions button:focus-visible { outline: 2px solid #1677e8; outline-offset: 2px; }
+.project-dragging > h2 { border-radius: 10px; background: #edf5ff; }
+.project-drop-before > h2 { box-shadow: 0 -2px #1677e8; }
+.project-drop-after { box-shadow: 0 2px #1677e8; }
+.project-order-actions { display: flex; justify-content: flex-end; gap: 8px; padding-bottom: 6px; }
+.project-order-actions button { min-height: 44px; border: 0; border-radius: 10px; padding: 8px 16px; background: #eee; color: #333; }
+.project-order-actions button:disabled { opacity: .4; }
+
 .project-group > .thread-row { width: calc(100% - 26px); margin-left: 26px; }
 .project-more, .project-retry { justify-self: start; display: inline-flex; align-items: center; gap: 7px; margin: 1px 0 6px 26px; border: 0; padding: 5px 0; background: transparent; color: #aaa; font-size: 0.8125rem; font-weight: min(900, calc(600 + var(--bold-text-weight-offset))); white-space: nowrap; }
 .project-retry { color: #a44a42; }

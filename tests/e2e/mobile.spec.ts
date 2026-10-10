@@ -2929,3 +2929,80 @@ test("冷启动列表不等待额度查询且用户点入后不会重复恢复",
   );
   expect(resumeCount).toBe(1);
 });
+
+
+test("项目拖动排序同步新聊天并保留", async ({ page }, testInfo) => {
+  test.setTimeout(30_000);
+  const extraProjects = Array.from({ length: 15 }, (_, index) => `extra-${index}`);
+  await page.route("**/api/projects*", (route) => route.fulfill({ json: {
+    projects: ["/tmp/alpha", "/tmp/beta", "/tmp/gamma", ...extraProjects.map((name) => `/tmp/${name}`)], projectlessThreadIds: [],
+  } }));
+  await page.addInitScript(() => {
+    localStorage.setItem("codex-mobile:list-backend", "current-origin");
+    class ProjectOrderSocket extends EventTarget {
+      static OPEN = 1;
+      static CLOSED = 3;
+      readyState = 0;
+      constructor() {
+        super();
+        setTimeout(() => { this.readyState = 1; this.dispatchEvent(new Event("open")); }, 0);
+      }
+      send(raw: string) {
+        const request = JSON.parse(raw);
+        if (request.id == null) return;
+        const responses: Record<string, unknown> = {
+          initialize: {}, "thread/list": { data: [], nextCursor: null },
+          "model/list": { data: [{ model: "gpt-test", displayName: "GPT Test", isDefault: true, supportedReasoningEfforts: [], serviceTiers: [] }] },
+          "config/read": { config: { sandbox_mode: "workspace-write" } },
+          "permissionProfile/list": { data: [{ id: ":workspace", allowed: true }] },
+          "account/rateLimits/read": {}, "skills/list": { data: [] }, "plugin/installed": { marketplaces: [] },
+        };
+        setTimeout(() => this.dispatchEvent(new MessageEvent("message", { data: JSON.stringify({ id: request.id, result: responses[request.method] ?? {} }) })), 0);
+      }
+      close() { this.readyState = 3; this.dispatchEvent(new CloseEvent("close")); }
+    }
+    (window as any).WebSocket = ProjectOrderSocket;
+  });
+  await page.goto("/");
+  const names = page.locator(".project-heading span");
+  await expect(names).toHaveText(["alpha", "beta", "gamma", ...extraProjects]);
+  const first = await page.getByRole("button", { name: "调整项目顺序" }).first().boundingBox();
+  const last = await page.locator(".project-group h2").nth(2).boundingBox();
+  const cdp = await page.context().newCDPSession(page);
+  const x = first!.x + first!.width / 2;
+  const y = first!.y + first!.height / 2;
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y }] });
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: x - 30, y: last!.y + last!.height - 4 }] });
+  await expect(page.locator(".project-drop-after")).toHaveCount(1);
+  await page.screenshot({ path: testInfo.outputPath("project-order-drag.png") });
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  await expect(names).toHaveText(["beta", "gamma", "alpha", ...extraProjects]);
+  await expect(page.locator(".conversation-sidebar-layer")).toHaveClass(/open/);
+  await page.getByRole("button", { name: "聊天", exact: true }).click();
+  await expect(page.getByLabel("选择项目").locator("option")).toHaveText(["无项目", "beta", "gamma", "alpha", ...extraProjects]);
+  await page.reload();
+  await expect(names).toHaveText(["beta", "gamma", "alpha", ...extraProjects]);
+  // 鼠标拖动也走同一个提交和持久化入口。
+  const source = await page.getByRole("button", { name: "调整项目顺序" }).nth(2).boundingBox();
+  const target = await page.locator(".project-group h2").first().boundingBox();
+  await page.mouse.move(source!.x + 22, source!.y + 22);
+  await page.mouse.down();
+  await page.mouse.move(target!.x + target!.width - 22, target!.y + 3, { steps: 8 });
+  await page.mouse.up();
+  await expect(names).toHaveText(["alpha", "beta", "gamma", ...extraProjects]);
+  await page.getByRole("button", { name: "聊天", exact: true }).click();
+  await expect(page.getByLabel("选择项目").locator("option")).toHaveText(["无项目", "alpha", "beta", "gamma", ...extraProjects]);
+  await page.getByRole("button", { name: "打开会话列表" }).click();
+  await page.screenshot({ path: testInfo.outputPath("project-order-sidebar.png") });
+  await page.getByRole("button", { name: "调整项目顺序" }).first().hover();
+  const edgeSource = await page.getByRole("button", { name: "调整项目顺序" }).first().boundingBox();
+  const footer = await page.locator(".list-actions").boundingBox();
+  await page.mouse.move(edgeSource!.x + 22, edgeSource!.y + 22);
+  await page.mouse.down();
+  await page.mouse.move(edgeSource!.x + 22, footer!.y - 10, { steps: 8 });
+  await expect.poll(() => page.locator(".thread-list-page").evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+  await page.keyboard.press("Escape");
+  await page.mouse.up();
+  await expect(names).toHaveText(["alpha", "beta", "gamma", ...extraProjects]);
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+});

@@ -93,6 +93,7 @@ import {
   ThreadListPage,
   type ThreadManagementAction,
 } from "./features/threads/ThreadListPage";
+import { applyProjectOrder, readProjectOrders, writeProjectOrders } from "./features/threads/project-order";
 import { ApprovalSheet } from "./features/approvals/ApprovalSheet";
 import { useApprovalRequests } from "./features/approvals/useApprovalRequests";
 import { approvalKey, approvalResponse, questionResponse, type ApprovalDecision } from "./features/approvals/approval-model";
@@ -280,6 +281,7 @@ interface WorkspaceCommand {
 
 interface BackendWorkspaceProps {
   backend: BackendConfig;
+  projectOrder: string[];
   conversationVisible: boolean;
   foregroundRecoveryActive: boolean;
   backends: BackendConfig[];
@@ -301,6 +303,7 @@ interface BackendWorkspaceProps {
 
 function BackendWorkspace({
   backend,
+  projectOrder,
   conversationVisible,
   foregroundRecoveryActive,
   backends,
@@ -2207,8 +2210,9 @@ function BackendWorkspace({
         name: cwd.replace(/\/+$/, "").split("/").filter(Boolean).at(-1) || cwd,
       });
     }
-    return options;
-  }, [projects, threads]);
+    const byCwd = new Map(options.map((option) => [option.cwd, option]));
+    return applyProjectOrder(options.map((option) => option.cwd), projectOrder).map((cwd) => byCwd.get(cwd)!);
+  }, [projects, threads, projectOrder]);
 
   function openThread(thread: AnyRecord) {
     const sequence = ++openSequenceRef.current;
@@ -4276,6 +4280,7 @@ function ConfiguredApp({
       window.localStorage.getItem("codex-mobile:list-backend") || "all",
   );
   const [query, setQuery] = useState("");
+  const [projectOrders, setProjectOrders] = useState(() => readProjectOrders(window.localStorage));
   const [collapsedProjectKeys, setCollapsedProjectKeys] = useState(() =>
     readCollapsedProjectKeys(window.localStorage),
   );
@@ -4625,6 +4630,14 @@ function ConfiguredApp({
     [snapshots],
   );
 
+  const reorderProjects = useCallback((backendId: string, directories: string[]) => {
+    setProjectOrders((current) => {
+      const next = { ...current, [backendId]: directories };
+      writeProjectOrders(window.localStorage, next);
+      return next;
+    });
+  }, []);
+
   const toggleProjectCollapsed = useCallback(
     (backendId: string, cwd: string) => {
       const key = projectCollapseKey(backendId, cwd);
@@ -4798,6 +4811,7 @@ function ConfiguredApp({
         >
           <BackendWorkspace
             backend={{ ...backend, transportMode }}
+            projectOrder={projectOrders[backend.id] ?? []}
             foregroundRecoveryActive={backend.id === selectedBackend.id}
             conversationVisible={
               backend.id === selectedBackend.id && !sidebarOpen
@@ -4837,6 +4851,8 @@ function ConfiguredApp({
               normalizedQuery ? scopedThreads.length : scopedThreadCount
             }
             projectDirectories={projectDirectories}
+            projectOrder={projectOrders[listBackendId] ?? []}
+            onReorderProjects={reorderProjects}
             hasProjectlessThreads={hasProjectlessThreads}
             projectThreadStates={projectThreadStates}
             projectHasMore={projectHasMore}

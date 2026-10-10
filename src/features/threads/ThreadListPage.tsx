@@ -28,6 +28,8 @@ import {
   splitAllThreads,
   type AggregatedThreadItem,
 } from "./thread-list-model";
+import { applyProjectOrder } from "./project-order";
+import { useProjectReorder } from "./use-project-reorder";
 import { projectCollapseKey } from "./project-collapse";
 import { t } from "../../i18n";
 
@@ -52,6 +54,8 @@ export function ThreadListPage({
   visibleThreads,
   totalThreadCount,
   projectDirectories,
+  projectOrder = [],
+  onReorderProjects,
   hasProjectlessThreads,
   projectThreadStates,
   projectHasMore,
@@ -82,6 +86,8 @@ export function ThreadListPage({
   visibleThreads: AggregatedThreadItem[];
   totalThreadCount: number;
   projectDirectories: string[];
+  projectOrder?: string[];
+  onReorderProjects?: (backendId: string, directories: string[]) => void;
   hasProjectlessThreads: boolean;
   projectThreadStates: Record<string, ProjectThreadLoadState>;
   projectHasMore: Record<string, boolean>;
@@ -127,10 +133,19 @@ export function ThreadListPage({
     ? summaries[selectedBackend.id]
     : undefined;
   const allGroups = splitAllThreads(visibleThreads);
-  const projectGroups = groupThreadsByProject(visibleThreads, [
+  const unsortedProjectGroups = groupThreadsByProject(visibleThreads, [
     ...(hasProjectlessThreads ? [PROJECTLESS_GROUP_ID] : []),
     ...projectDirectories,
   ]);
+  const orderedDirectories = applyProjectOrder(unsortedProjectGroups.map((group) => group.cwd), projectOrder);
+  const groupsByCwd = new Map(unsortedProjectGroups.map((group) => [group.cwd, group]));
+  const projectGroups = orderedDirectories.map((cwd) => groupsByCwd.get(cwd)!);
+  const reorderDirectories = orderedDirectories.filter((cwd) => cwd && cwd !== PROJECTLESS_GROUP_ID);
+  const canReorder = sidebarOpen && selectedBackendId !== "all" && !query.trim() && Boolean(onReorderProjects) && reorderDirectories.length > 1;
+  const reorder = useProjectReorder({
+    enabled: canReorder, backendId: selectedBackendId,
+    directories: reorderDirectories, sidebarRef, onReorder: onReorderProjects,
+  });
   const renderNow = Math.floor(Date.now() / 1000);
   const clearLongPress = () => {
     if (longPressRef.current) {
@@ -413,8 +428,12 @@ export function ThreadListPage({
                   projectThreadState === "error" &&
                   group.threads.length === 0;
                 return (
-                  <section className="project-group" key={group.cwd}>
-                    <h2>
+                  <section
+                    className={`project-group${reorder.draggingCwd === group.cwd ? " project-dragging" : ""}${reorder.dropTarget?.cwd === group.cwd ? ` project-drop-${reorder.dropTarget.placement}` : ""}`}
+                    data-project-cwd={group.cwd !== PROJECTLESS_GROUP_ID ? group.cwd : undefined}
+                    key={group.cwd}
+                  >
+                    <h2 className={canReorder && Boolean(group.cwd) && group.cwd !== PROJECTLESS_GROUP_ID ? "project-heading-row" : undefined}>
                       <button
                         type="button"
                         className="project-heading"
@@ -431,7 +450,27 @@ export function ThreadListPage({
                         />
                         <span>{group.projectName}</span>
                       </button>
+                      {canReorder && Boolean(group.cwd) && group.cwd !== PROJECTLESS_GROUP_ID && (
+                        <button
+                          type="button"
+                          className="project-reorder-handle"
+                          aria-label={t("调整项目顺序")}
+                          aria-description={group.projectName}
+                          aria-expanded={reorder.menuCwd === group.cwd}
+                          {...reorder.handleProps(group.cwd)}
+                        >
+                          <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M8 6h.01M16 6h.01M8 12h.01M16 12h.01M8 18h.01M16 18h.01" />
+                          </svg>
+                        </button>
+                      )}
                     </h2>
+                    {canReorder && reorder.menuCwd === group.cwd && (
+                      <div className="project-order-actions" aria-label={t("项目排序")}>
+                        <button type="button" disabled={reorderDirectories.indexOf(group.cwd) === 0} onClick={() => reorder.moveBy(group.cwd, -1)}>{t("上移")}</button>
+                        <button type="button" disabled={reorderDirectories.indexOf(group.cwd) === reorderDirectories.length - 1} onClick={() => reorder.moveBy(group.cwd, 1)}>{t("下移")}</button>
+                      </div>
+                    )}
                     {isExpanded && (
                       <>
                         {recentThreads.map((thread) =>

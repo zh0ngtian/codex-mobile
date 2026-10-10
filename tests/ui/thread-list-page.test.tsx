@@ -63,6 +63,7 @@ function renderList(
     onToggleProjectCollapsed = () => undefined,
     onOpenThread = () => undefined,
     onManageThread = async () => true,
+    onReorderProjects = () => undefined,
   }: {
     collapsedProjectKeys?: Set<string>;
     loadingBackendIds?: Set<string>;
@@ -74,6 +75,7 @@ function renderList(
     projectHasMore?: Record<string, boolean>;
     query?: string;
     searching?: boolean;
+    onReorderProjects?: (backendId: string, directories: string[]) => void;
     onRetryProject?: (backendId: string, cwd: string) => void;
     onToggleProject?: (backendId: string, cwd: string) => void;
     onToggleProjectCollapsed?: (backendId: string, cwd: string) => void;
@@ -111,6 +113,7 @@ function renderList(
       onSelectBackend={() => undefined}
       onManageBackends={() => undefined}
       onRefresh={() => undefined}
+      onReorderProjects={onReorderProjects}
       onRetryProject={onRetryProject}
       onToggleProject={onToggleProject}
       onToggleProjectCollapsed={onToggleProjectCollapsed}
@@ -125,6 +128,52 @@ function renderList(
 }
 
 describe("会话侧边栏列表", () => {
+  it("触摸拖动项目手柄到另一个项目下方提交完整顺序", () => {
+    const onReorderProjects = vi.fn();
+    const onToggleProjectCollapsed = vi.fn();
+    const { container } = renderList("mini", { onReorderProjects, onToggleProjectCollapsed });
+    const groups = [...container.querySelectorAll<HTMLElement>(".project-group")];
+    groups.forEach((group, index) => {
+      vi.spyOn(group.querySelector("h2")!, "getBoundingClientRect").mockReturnValue({ top: 100 + index * 100, bottom: 144 + index * 100, height: 44, left: 0, right: 300, width: 300, x: 0, y: 100 + index * 100, toJSON() {} });
+    });
+    const handle = within(groups[0]).getByRole("button", { name: "调整项目顺序" });
+    fireEvent.pointerDown(handle, { pointerId: 1, pointerType: "touch", button: 0, clientX: 280, clientY: 120 });
+    fireEvent.pointerMove(handle, { pointerId: 1, clientX: 280, clientY: 250 });
+    fireEvent.pointerUp(handle, { pointerId: 1, clientX: 280, clientY: 250 });
+    fireEvent.click(handle);
+    expect(onReorderProjects).toHaveBeenCalledExactlyOnceWith("mini", ["/tmp/project-b", "/tmp/project-a"]);
+    expect(onToggleProjectCollapsed).not.toHaveBeenCalled();
+    expect(within(container).queryByRole("button", { name: "下移" })).toBeNull();
+  });
+
+  it("项目手柄支持点击下移和方向键上移", () => {
+    const onReorderProjects = vi.fn();
+    const { container } = renderList("mini", { onReorderProjects });
+    const handles = within(container).getAllByRole("button", { name: "调整项目顺序" });
+    fireEvent.click(handles[0]);
+    fireEvent.click(within(container).getByRole("button", { name: "下移" }));
+    expect(onReorderProjects).toHaveBeenLastCalledWith("mini", ["/tmp/project-b", "/tmp/project-a"]);
+    fireEvent.keyDown(handles[1], { key: "ArrowUp" });
+    expect(onReorderProjects).toHaveBeenLastCalledWith("mini", ["/tmp/project-b", "/tmp/project-a"]);
+  });
+
+  it.each(["cancel", "close"])("拖动 %s 时不提交排序", (action) => {
+    const onReorderProjects = vi.fn();
+    const { container, setSidebarOpen } = renderList("mini", { onReorderProjects });
+    const handle = within(container).getAllByRole("button", { name: "调整项目顺序" })[0];
+    fireEvent.pointerDown(handle, { pointerId: 1, button: 0, clientX: 280, clientY: 120 });
+    fireEvent.pointerMove(handle, { pointerId: 1, clientX: 280, clientY: 250 });
+    if (action === "cancel") fireEvent.pointerCancel(handle, { pointerId: 1 });
+    else setSidebarOpen(false);
+    fireEvent.pointerUp(handle, { pointerId: 1 });
+    expect(onReorderProjects).not.toHaveBeenCalled();
+  });
+
+  it("搜索时隐藏排序手柄", () => {
+    const { container } = renderList("mini", { query: "任务", onReorderProjects: vi.fn() });
+    expect(within(container).queryByRole("button", { name: "调整项目顺序" })).toBeNull();
+  });
+
   it.each(["all", "mini"])("%s 默认展开超过五条的主动及被动置顶，不受项目折叠影响", (selectedBackendId) => {
     const visibleThreads = aggregateThreads([backend], { mini:
       ["manual", "unread", "running"].flatMap((kind) => Array.from({ length: 7 }, (_, i) => ({
