@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { FinalAnswerCompletionTracker } from "../../server/final-answer-completion";
 import {
   AppServerClient,
   AppServerConnectionUnavailableError,
@@ -29,6 +30,50 @@ class FakeSocket extends EventTarget {
 }
 
 describe("AppServerClient", () => {
+  it.each([false, true])("移动指令确认事件支持 HTTP 延迟确认=%s，并恢复提前到达的完成", async (delayed) => {
+    const socket = new FakeSocket();
+    const client = new AppServerClient(socket as unknown as WebSocket);
+    const tracker = new FinalAnswerCompletionTracker({ requireMobileOrigin: true });
+    const completed: unknown[] = [];
+    client.onNotification((message) => {
+      const params = message.params as any;
+      const result = message.method === "mobile/turn/accepted"
+        ? tracker.observeRpc(params.request, params.response) : tracker.observe(message);
+      if (result) completed.push(result);
+    });
+    const finish = (turnId: string) => socket.receive({ method: "turn/completed", params: {
+      threadId: "t", turn: { id: turnId, status: "completed", items: [{ type: "agentMessage", phase: "final_answer" }] },
+    } });
+    finish("desktop");
+    const request = { method: "turn/start", params: { threadId: "t", input: [{ type: "text", text: "private prompt" }] } };
+    finish("mobile");
+    const response = { result: { turn: { id: "mobile" } } };
+    if (delayed) socket.receive({ method: "mobile/operation/confirmed", params: { request, response } });
+    else {
+      const pending = client.request(request.method, request.params);
+      socket.receive({ id: JSON.parse(socket.sent.at(-1)!).id, ...response });
+      await pending;
+    }
+    finish("mobile"); finish("next-desktop");
+    expect(completed).toEqual([{ threadId: "t", turnId: "mobile" }]);
+  });
+
+  it("失败指令不会生成来源事件，来源事件不保留输入正文", async () => {
+    const socket = new FakeSocket();
+    const client = new AppServerClient(socket as unknown as WebSocket);
+    const seen: any[] = [];
+    client.onNotification((message) => seen.push(message));
+    const pending = client.request("turn/steer", { threadId: "t", expectedTurnId: "turn", input: "private prompt" });
+    socket.receive({ id: JSON.parse(socket.sent.at(-1)!).id, result: { turnId: "turn" } });
+    await pending;
+    expect(seen).toHaveLength(1);
+    expect(JSON.stringify(seen)).not.toContain("private prompt");
+    const failed = client.request("turn/start", { threadId: "t" }).catch(() => undefined);
+    socket.receive({ id: JSON.parse(socket.sent.at(-1)!).id, error: { code: -1, message: "failed" } });
+    await failed;
+    expect(seen).toHaveLength(1);
+  });
+
   it("thread RPC 摘要在业务 promise 完成前登记，隐藏后仍能识别通知来源", async () => {
     const socket = new FakeSocket();
     const client = new AppServerClient(socket as unknown as WebSocket);

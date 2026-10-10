@@ -19,7 +19,9 @@ test(`系统推送屏蔽${childSource}子会话，主任务仍等待最终回复
       "permissionProfile/list": { data: [{ id: ":workspace", allowed: true }] },
       "config/read": { config: { model: "gpt-test", sandbox_mode: "workspace-write" } },
       "thread/loaded/list": { data: childSource === "loaded" ? [child.id] : [], nextCursor: null },
-      "thread/read": { thread: child },
+      "thread/read": { thread: message.params?.threadId === thread.id ? thread : child },
+      "thread/resume": { thread },
+      "turn/start": { turn: { id: "ui-sent", status: "inProgress", items: [] } },
       "thread/list": { data: childSource.endsWith("list") ? [thread, child] : [thread], nextCursor: null },
     };
     return { id: message.id, result: results[message.method] ?? {} };
@@ -55,6 +57,13 @@ test(`系统推送屏蔽${childSource}子会话，主任务仍等待最终回复
   const complete = (turnId: string, status = "completed", items?: any[]) => send("turn/completed", { turn: { id: turnId, status, items } });
   const count = () => page.evaluate(() => (window as any).pushes.length);
   const unchanged = async (expected: number) => { await page.waitForTimeout(150); expect(await count()).toBe(expected); };
+  const accept = (turnId: string, threadId = thread.id) => send("mobile/operation/confirmed", {
+    requestId: `request-${turnId}`, request: { method: "turn/start", params: { threadId } },
+    response: { result: { turn: { id: turnId } } },
+  });
+  final("desktop-before"); complete("desktop-before"); await unchanged(0);
+  for (const id of ["first", "commentary", "failed", "interrupted", "history", "late-final", "inline-final"]) accept(id);
+  accept("child-turn", child.id);
   if (childSource.endsWith("started")) sockets[0].send(JSON.stringify({ method: "thread/started", params: { thread: child } }));
   sockets[0].send(JSON.stringify({ method: "item/completed", params: { threadId: child.id, turnId: "child-turn", item: { id: "child-final", type: "agentMessage", phase: "final_answer", text: "子任务完成" } } }));
   sockets[0].send(JSON.stringify({ method: "turn/completed", params: { threadId: child.id, turn: { id: "child-turn", status: "completed" } } }));
@@ -78,6 +87,17 @@ test(`系统推送屏蔽${childSource}子会话，主任务仍等待最终回复
   final("late-final"); await expect.poll(count).toBe(2);
   complete("inline-final", "completed", [{ id: "inline", type: "agentMessage", phase: "final_answer", text: "完成" }]);
   await expect.poll(count).toBe(3);
+  final("desktop-after"); complete("desktop-after"); await unchanged(3);
+  final("confirmed-late"); complete("confirmed-late"); await unchanged(3);
+  accept("confirmed-late"); await expect.poll(count).toBe(4);
+  if (childSource === "list") {
+    await page.getByRole("button", { name: /完成通知会话/ }).first().click();
+    await page.getByRole("textbox", { name: "向 Codex 提问" }).fill("手机发起的单条指令");
+    await page.getByRole("button", { name: "发送", exact: true }).click();
+    await page.getByRole("button", { name: "打开会话列表" }).click();
+    final("ui-sent"); complete("ui-sent"); await expect.poll(count).toBe(5);
+    final("desktop-after-ui"); complete("desktop-after-ui"); await unchanged(5);
+  }
   const pushes = await page.evaluate(() => (window as any).pushes);
   expect(pushes.every((push: any) => push.body === thread.name)).toBe(true);
   expect(pushes.every((push: any) => push.threadId === thread.id && push.backendId)).toBe(true);

@@ -447,6 +447,7 @@ function BackendWorkspace({
   const queuedFollowUpDispatchingRef = useRef(false);
   const completionEventCatchUpRef = useRef(false);
   const finalAnswerCompletionRef = useRef(new FinalAnswerCompletionTracker());
+  const mobileCompletionRef = useRef(new FinalAnswerCompletionTracker({ requireMobileOrigin: true }));
   const automaticTitleStatesRef = useRef(
     new Map<string, AutomaticTitleState>(),
   );
@@ -1176,8 +1177,15 @@ function BackendWorkspace({
             return;
           }
           if (approvalRequests.onNotification(message)) return;
-          for (const thread of threadsRef.current) finalAnswerCompletionRef.current.rememberThread(thread);
-          finalAnswerCompletionRef.current.rememberThread(activeRef.current);
+          for (const tracker of [finalAnswerCompletionRef.current, mobileCompletionRef.current]) {
+            for (const thread of threadsRef.current) tracker.rememberThread(thread);
+            tracker.rememberThread(activeRef.current);
+          }
+          // 来源确认可迟于实时完成；历史追赶期间只登记来源，不收集完成证据。
+          const acceptedMobileTurn = message.method === "mobile/turn/accepted"
+            ? mobileCompletionRef.current.observeRpc(params.request, params.response) : null;
+          const completedMobileTurn = completionEventCatchUpRef.current ? null
+            : acceptedMobileTurn ?? mobileCompletionRef.current.observe(message);
           const completedFinalAnswer = completionEventCatchUpRef.current
             ? null : finalAnswerCompletionRef.current.observe(message);
           if (completedFinalAnswer) {
@@ -1195,6 +1203,21 @@ function BackendWorkspace({
             });
             if (attentionAction === "mark-unread") {
               markThreadUnread(threadId);
+            } else if (attentionAction === "mark-read") {
+              markThreadRead(threadId);
+            }
+          }
+          if (completedMobileTurn) {
+            const { threadId } = completedMobileTurn;
+            if (finalAnswerAttentionAction({
+              item: { type: "agentMessage", phase: "final_answer" },
+              catchingUp: false,
+              hasQueuedFollowUp: queuedFollowUpsRef.current.some((followUp) => followUp.threadId === threadId),
+              threadId,
+              activeThreadId: String(activeRef.current?.id ?? ""),
+              conversationVisible: conversationVisibleRef.current,
+              documentVisible: document.visibilityState === "visible",
+            }) === "mark-unread") {
               notifyRunCompleted({
                 title: t("Codex 运行结束"),
                 body: completionThreadTitle({
@@ -1206,8 +1229,6 @@ function BackendWorkspace({
                 backendId: backend.id,
                 threadId,
               });
-            } else if (attentionAction === "mark-read") {
-              markThreadRead(threadId);
             }
           }
           if (message.method === "mobile/operation/confirmed") {
@@ -1608,6 +1629,7 @@ function BackendWorkspace({
         client.onThreadMetadata((thread) => {
           if (!disposed && manager.client(backend.id) === source) {
             finalAnswerCompletionRef.current.rememberThread(thread);
+            mobileCompletionRef.current.rememberThread(thread);
           }
         });
         clientRef.current = client;

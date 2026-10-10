@@ -2,7 +2,7 @@ import { isVisibleThread } from "./thread-visibility.js";
 
 type Notification = { method?: string; params?: unknown; id?: unknown };
 export type CompletedFinalAnswer = { threadId: string; turnId: string };
-type TurnState = { final: boolean; completed: boolean; blocked: boolean; emitted: boolean };
+type TurnState = { final: boolean; completed: boolean; blocked: boolean; emitted: boolean; mobile?: boolean };
 const validId = (value: unknown): value is string => typeof value === "string" && value.length > 0 && value.length <= 1024;
 const isFinal = (item: any) => item?.type === "agentMessage" && item.phase === "final_answer";
 
@@ -10,6 +10,29 @@ const isFinal = (item: any) => item?.type === "agentMessage" && item.phase === "
 export class FinalAnswerCompletionTracker {
   private turns = new Map<string, TurnState>();
   private silentThreads = new Set<string>();
+  constructor(private options: { requireMobileOrigin?: boolean } = {}) {}
+  /** 仅成功提交的移动端 RPC 授权对应回合；历史/恢复结果不能授权。 */
+  observeRpc(request: { method?: string; params?: unknown }, response: { error?: unknown; result?: unknown }): CompletedFinalAnswer | null {
+    if (response.error != null || !["turn/start", "turn/steer"].includes(request.method ?? "")) return null;
+    const params = request.params as Record<string, any> | undefined;
+    const result = response.result as Record<string, any> | undefined;
+    const threadId = params?.threadId;
+    const turnId = request.method === "turn/start" ? result?.turn?.id : result?.turnId;
+    if (!validId(threadId) || !validId(turnId) || this.silentThreads.has(threadId)) return null;
+    if (request.method === "turn/steer" && params?.expectedTurnId !== turnId) return null;
+    const key = JSON.stringify([threadId, turnId]);
+    const state = this.turns.get(key) ?? { final: false, completed: false, blocked: false, emitted: false };
+    state.mobile = true;
+    return this.finish(threadId, turnId, state);
+  }
+  private finish(threadId: string, turnId: string, state: TurnState): CompletedFinalAnswer | null {
+    this.turns.set(JSON.stringify([threadId, turnId]), state);
+    while (this.turns.size > 512) this.turns.delete(this.turns.keys().next().value!);
+    if (!state.final || !state.completed || state.blocked || state.emitted ||
+      (this.options.requireMobileOrigin && !state.mobile)) return null;
+    state.emitted = true;
+    return { threadId, turnId };
+  }
   /** 来源只用于分类；无标题、改名或后续稀疏 metadata 都不改变子会话身份。 */
   rememberThread(thread: any) {
     if (!validId(thread?.id)) return;
@@ -42,10 +65,6 @@ export class FinalAnswerCompletionTracker {
       else state.completed = true;
       if (Array.isArray(params?.turn?.items) && params.turn.items.some(isFinal)) state.final = true;
     }
-    this.turns.set(key, state);
-    while (this.turns.size > 512) this.turns.delete(this.turns.keys().next().value!);
-    if (!state.final || !state.completed || state.blocked || state.emitted) return null;
-    state.emitted = true;
-    return { threadId, turnId };
+    return this.finish(threadId, turnId, state);
   }
 }

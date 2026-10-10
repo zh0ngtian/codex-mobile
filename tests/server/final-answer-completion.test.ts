@@ -79,3 +79,51 @@ describe("最终回复完成判定", () => {
     expect(tracker.observe(complete())).toBeNull();
   });
 });
+
+describe("移动端单条指令推送资格", () => {
+  const start = (threadId = "thread") => ({ method: "turn/start", params: { threadId } });
+  const accepted = (turnId = "turn") => ({ result: { turn: { id: turnId } } });
+  it("同一对话只有成功提交的回合可通知，查看和后续电脑指令不继承", () => {
+    const tracker = new FinalAnswerCompletionTracker({ requireMobileOrigin: true });
+    tracker.observeRpc({ method: "thread/resume", params: { threadId: "thread" } }, accepted("desktop"));
+    tracker.observe(final("thread", "desktop"));
+    expect(tracker.observe(complete("thread", "desktop"))).toBeNull();
+    tracker.observeRpc(start(), accepted());
+    tracker.observe(final());
+    expect(tracker.observe(complete())).toEqual({ threadId: "thread", turnId: "turn" });
+    tracker.observe(final("thread", "next"));
+    expect(tracker.observe(complete("thread", "next"))).toBeNull();
+    tracker.observe(final("other", "turn"));
+    expect(tracker.observe(complete("other", "turn"))).toBeNull();
+  });
+  it.each(["start", "steer"])("%s 确认晚于完成事件仍只通知一次", (method) => {
+    const tracker = new FinalAnswerCompletionTracker({ requireMobileOrigin: true });
+    const request = { method: `turn/${method}`, params: { threadId: "thread", expectedTurnId: "turn" } };
+    const response = method === "start" ? accepted() : { result: { turnId: "turn" } };
+    tracker.observe(final());
+    expect(tracker.observe(complete())).toBeNull();
+    expect(tracker.observeRpc(request, response)).toEqual({ threadId: "thread", turnId: "turn" });
+    expect(tracker.observeRpc(request, response)).toBeNull();
+    expect(tracker.observe(final())).toBeNull();
+  });
+  it("拒绝失败、缺少返回 ID、错回合 steer 与历史结果", () => {
+    for (const [request, response] of [
+      [start(), { ...accepted(), error: { message: "failed" } }],
+      [start(), { result: {} }],
+      [{ method: "turn/steer", params: { threadId: "thread", expectedTurnId: "other" } }, { result: { turnId: "turn" } }],
+      [{ method: "thread/read", params: { threadId: "thread" } }, accepted()],
+    ] as const) {
+      const tracker = new FinalAnswerCompletionTracker({ requireMobileOrigin: true });
+      tracker.observeRpc(request, response);
+      tracker.observe(final());
+      expect(tracker.observe(complete())).toBeNull();
+    }
+  });
+  it("成功 RPC 不把结果里的历史 final 当实时完成，隐藏来源仍静默", () => {
+    const tracker = new FinalAnswerCompletionTracker({ requireMobileOrigin: true });
+    expect(tracker.observeRpc(start(), { result: { turn: { id: "turn", status: "completed", items: [final().params.item] } } })).toBeNull();
+    tracker.rememberThread({ id: "thread", threadSource: "subagent" });
+    tracker.observe(final());
+    expect(tracker.observe(complete())).toBeNull();
+  });
+});

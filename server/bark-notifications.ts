@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { chmod, mkdir, open, readFile, rename, stat, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { FinalAnswerCompletionTracker } from "./final-answer-completion.js";
+import { FinalAnswerCompletionTracker, type CompletedFinalAnswer } from "./final-answer-completion.js";
 import { readLocalThreadMetadata } from "./local-thread-metadata.js";
 import { isVisibleThread } from "./thread-visibility.js";
 import { parseBarkPushUrl } from "./notification-settings.js";
@@ -18,7 +18,7 @@ type State = { subscriptions: Subscription[]; delivered: string[] };
 /** 全网关共用订阅和去重记录，HTTP 与流式连接只提交实时事件。 */
 export class BarkNotifications {
   private titles = new Map<string, { name?: string | null; preview?: string | null }>();
-  private completions = new FinalAnswerCompletionTracker();
+  private completions = new FinalAnswerCompletionTracker({ requireMobileOrigin: true });
   private subscriptions = new Map<string, Subscription>();
   private delivered = new Set<string>();
   private queue: Promise<void> = Promise.resolve();
@@ -100,7 +100,7 @@ export class BarkNotifications {
     this.titles.delete(thread.id); this.titles.set(thread.id, title);
     while (this.titles.size > 2048) this.titles.delete(this.titles.keys().next().value!);
   }
-  /** RPC 历史只登记标题，不参与实时完成判定。 */
+  /** RPC 历史只登记标题；成功提交指令另外登记对应回合的移动来源。 */
   observeRpc(request: { method?: string; params?: Record<string, any> }, response: { error?: unknown; result?: unknown }) {
     if (this.closed || response.error != null) return;
     const result = response.result as Record<string, any> | undefined;
@@ -111,6 +111,8 @@ export class BarkNotifications {
     if (request.method === "thread/name/set") {
       this.rememberThread({ id: request.params?.threadId, name: request.params?.name });
     }
+    const completed = this.completions.observeRpc(request, response);
+    if (completed) this.deliver(completed);
   }
   observe(message: { method?: string; params?: Record<string, any>; id?: unknown }) {
     if (this.closed) return;
@@ -122,6 +124,9 @@ export class BarkNotifications {
     }
     const completed = this.completions.observe(message);
     if (!completed) return;
+    this.deliver(completed);
+  }
+  private deliver(completed: CompletedFinalAnswer) {
     const title = this.titles.get(completed.threadId);
     const body = title?.name || title?.preview || "新对话";
     // 不等待网络；磁盘登记成功后才发送，避免跨连接和重启重复通知。

@@ -23,6 +23,7 @@ type ThreadMetadataListener = (thread: Record<string, any>) => void;
 
 interface PendingRequest {
   method: string;
+  params: unknown;
   resolve: (value: unknown) => void;
   reject: (reason: unknown) => void;
   timeout: ReturnType<typeof setTimeout> | undefined;
@@ -122,6 +123,10 @@ export class AppServerClient {
       }, options.timeoutMs ?? this.requestTimeoutMs);
       const pending: PendingRequest = {
         method,
+        params: ["turn/start", "turn/steer"].includes(method) ? {
+          threadId: (params as any)?.threadId,
+          expectedTurnId: (params as any)?.expectedTurnId,
+        } : undefined,
         resolve: resolve as (value: unknown) => void,
         reject,
         timeout,
@@ -181,6 +186,19 @@ export class AppServerClient {
     return this.socket.send(payload, timeoutMs);
   }
 
+  private publishTurnAcceptance(request: { method?: string; params?: any }, response: RpcMessage) {
+    if (response.error != null || !["turn/start", "turn/steer"].includes(request.method ?? "")) return;
+    const result = response.result as any;
+    // 内部事件只传分类所需 ID，不复制指令正文或完整回合。
+    const message = { method: "mobile/turn/accepted", params: {
+      request: { method: request.method, params: {
+        threadId: request.params?.threadId, expectedTurnId: request.params?.expectedTurnId,
+      } },
+      response: { result: { turn: { id: result?.turn?.id }, turnId: result?.turnId } },
+    } };
+    for (const listener of this.notificationListeners) listener(message);
+  }
+
   private receive(raw: string) {
     let message: RpcMessage;
     try {
@@ -219,6 +237,7 @@ export class AppServerClient {
             for (const listener of this.threadMetadataListeners) listener(thread);
           }
         }
+        this.publishTurnAcceptance(waiter, message);
         waiter.resolve(message.result);
       }
       return;
@@ -228,6 +247,10 @@ export class AppServerClient {
       return;
     }
     if (message.method) {
+      if (message.method === "mobile/operation/confirmed") {
+        const params = message.params as any;
+        if (params?.request && params?.response) this.publishTurnAcceptance(params.request, params.response);
+      }
       for (const listener of this.notificationListeners) listener(message);
     }
   }
