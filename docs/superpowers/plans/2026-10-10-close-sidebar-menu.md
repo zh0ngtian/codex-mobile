@@ -48,13 +48,13 @@ await expect(page.getByLabel("会话操作", { exact: true })).toHaveCount(0);
 
 ## 任务 3：提交和双端发布
 
-- [ ] 执行 `git diff --check`，按 `docs/commit-conventions.md` 提交本次文件并推送到 `origin/main`，不覆盖并行任务提交。
-- [ ] 固定渠道发布期间持有本机独占锁，读取 Android 和 iOS 固定清单，分配高于两端的统一版本。
-- [ ] 从已推送提交运行 `build-android.yml` 的 `workflow_dispatch`，显式指定统一版本，下载 `CodexMobile-android` 并核对 APK 内置版本及本次资源。
-- [ ] 执行 `npm run ios:release -- --config "$HOME/Library/Application Support/CodexMobile/ios-release.local.json" --version <统一版本> --notes '关闭边栏时同步收起会话长按菜单'`，预期 Ad Hoc 验签、身份连续性与 HTTPS/HTTP 完整回验通过。
-- [ ] 使用 `/Users/zhongtian/WorkSpace/GlobalTranslation/scripts/apk-server.py publish-channel codex-mobile <APK> --version <统一版本> --notes '关闭边栏时同步收起会话长按菜单'` 发布 Android。
-- [ ] 通过两端固定 JSON、HEAD、完整 GET 核对版本、文件大小、SHA-256；交付固定 OTA、APK、IPA 链接及实际元数据、IPA 签名状态。
-- [ ] 归档本次测试会话，清理临时文件并归档本次 worktree。
+- [x] 执行 `git diff --check`，按 `docs/commit-conventions.md` 提交本次文件并推送到 `origin/main`，不覆盖并行任务提交。
+- [x] 固定渠道发布期间持有本机独占锁，读取 Android 和 iOS 固定清单，分配高于两端的统一版本。
+- [x] 从已推送提交运行 `build-android.yml` 的 `workflow_dispatch`，显式指定统一版本，下载 `CodexMobile-android` 并核对 APK 内置版本及本次资源。
+- [x] 执行 `npm run ios:release -- --config "$HOME/Library/Application Support/CodexMobile/ios-release.local.json" --version <统一版本> --notes '关闭边栏时同步收起会话长按菜单'`，预期 Ad Hoc 验签、身份连续性与 HTTPS/HTTP 完整回验通过。
+- [x] 使用 `/Users/zhongtian/WorkSpace/GlobalTranslation/scripts/apk-server.py publish-channel codex-mobile <APK> --version <统一版本> --notes '关闭边栏时同步收起会话长按菜单'` 发布 Android。
+- [x] 通过两端固定 JSON、HEAD、完整 GET 核对版本、文件大小、SHA-256；交付固定 OTA、APK、IPA 链接及实际元数据、IPA 签名状态。
+- 本次浏览器测试使用协议模拟，没有创建真实测试会话。交付前清理临时构建目录，并使用原生 worktree 工具归档。
 
 ## 验证记录
 
@@ -64,3 +64,13 @@ await expect(page.getByLabel("会话操作", { exact: true })).toHaveCount(0);
 - 使用 `PLAYWRIGHT_CHANNEL=chromium HOST=127.0.0.1 PORT=4173 CODEX_APP_SERVER_MODE=external CODEX_APP_SERVER_URL=ws://127.0.0.1:19999` 执行上述 Playwright 场景，1 项通过；场景结束移除未完成的协议 mock 路由，避免 teardown 报错。
 - 固定发布锁已获得，两端固定版本为 0.2.136；本次统一版本选择 0.2.137，iOS 配置和身份连续性预检通过。
 - 真机覆盖安装和数据保留不在本次构建、发布验证范围内。
+
+## 发布结果
+
+- 源码提交：`04f259089bb0810910bc3ac7ec295e9f9a55a651`，已推送 `origin/main`。
+- [双端构建流水线](https://github.com/zh0ngtian/codex-mobile/actions/runs/38017821835)成功，Android 与 iOS 均为 0.2.137 / build 2137；固定 iOS 使用本机 Ad Hoc 签名产物。
+- [固定 OTA 安装页](https://192.168.123.79:8766/channels/codex-mobile/current/install.html)与固定 HTTPS JSON 已通过受信任 CA 回验。
+- [Android 固定下载](http://192.168.123.79:8765/channels/codex-mobile/latest.apk)：版本 0.2.137，4,708,027 字节，SHA-256 `ecf038cba8a229de2c848cc14807c96e97164aeba4c43c9ddb340d5e1ba0478c`。
+- [iOS 固定下载](http://192.168.123.79:8765/channels/codex-mobile/latest.ipa)：版本 0.2.137，3,772,845 字节，SHA-256 `6b36992b8f37c9c2bba3f39058b91b1be5e0c376f6b98bb97e87a650ccd86360`，Ad Hoc 已签名。
+- 两端均通过固定 JSON、HEAD 与完整 GET 的版本、大小、SHA-256 核对；内嵌主前端 JS 字节一致，包含本次边栏菜单状态修复。
+- 真机覆盖安装和数据保留未执行；本次完成交互回归、构建、验签与渠道回验。
