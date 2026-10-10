@@ -31,7 +31,7 @@ function canStartSidebarSwipe(
   if (!surface || !surface.contains(target)) return false;
   if (
     target.closest(
-      'input, textarea, select, .project-reorder-handle, .project-order-actions, [contenteditable]:not([contenteditable="false"]), [role="dialog"], .action-sheet-backdrop',
+      'input, textarea, select, [contenteditable]:not([contenteditable="false"]), [role="dialog"], .action-sheet-backdrop',
     )
   ) {
     return false;

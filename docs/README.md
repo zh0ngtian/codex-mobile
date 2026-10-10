@@ -27,7 +27,7 @@
 
 - [恢复网页界面](superpowers/plans/2026-10-10-remove-native-restore-web.md)：原生对话与原生边栏已回退；WKWebView 容器和原生桥保留。
 - [键盘同步](superpowers/plans/2026-10-10-keyboard-sync.md)与 [审批回复](superpowers/plans/2026-10-10-approval-replies.md)。
-- [项目拖动排序](superpowers/plans/2026-10-10-project-drag-order.md)：实现、验证与 0.2.138 发布记录。
+- [项目拖动排序](superpowers/plans/2026-10-10-project-drag-order.md)：实现、验证与 0.2.138 发布记录；已按用户要求[回退](superpowers/plans/2026-10-10-revert-project-order.md)。
 - [内置浏览器视觉记录](../design-qa.md)：原截图未保留，结论仅作历史线索。
 
 历史测试产物通常在被 Git 忽略的 `.mobile-build/` 中，只在原机器可用。清理前先核对是否仍为唯一证据；源码中的截图与文档引用按仓库相对路径维护。

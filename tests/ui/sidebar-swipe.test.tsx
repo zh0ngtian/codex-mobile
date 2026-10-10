@@ -46,20 +46,6 @@ afterEach(() => {
 });
 
 describe("会话侧栏右滑手势", () => {
-  it("项目排序手柄的横向偏移不会关闭侧栏", () => {
-    const onClose = vi.fn();
-    const { result } = renderHook(() => useSidebarSwipe(true, vi.fn(), onClose));
-    const layer = sidebarLayer(true);
-    result.current.current = layer;
-    const handle = layer.querySelector("aside")!.appendChild(document.createElement("button"));
-    handle.className = "project-reorder-handle";
-    touch(handle, "touchstart", [[250, 300]]);
-    touch(handle, "touchmove", [[100, 309]]);
-    touch(handle, "touchend", []);
-    expect(onClose).not.toHaveBeenCalled();
-    expect(layer.classList.contains("dragging")).toBe(false);
-  });
-
   it("拖动中出现更高弹层时取消侧栏手势，弹层遮罩也不触发侧栏", () => {
     const onClose = vi.fn();
     const { result } = renderHook(() => useSidebarSwipe(true, vi.fn(), onClose));

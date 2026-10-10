@@ -13,10 +13,6 @@ export type LanguagePreference = "system" | Locale;
 const LANGUAGE_STORAGE_KEY = "codex-mobile:language";
 
 const english: Record<string, string> = {
-  "调整项目顺序": "Reorder projects",
-  "项目排序": "Project order",
-  "上移": "Move up",
-  "下移": "Move down",
   "本会话允许": "Allow for this session",
   "取消本轮": "Cancel this turn",
   "允许并记住命令前缀": "Allow and remember command prefix",
