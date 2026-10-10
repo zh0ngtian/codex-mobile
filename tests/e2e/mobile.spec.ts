@@ -2750,6 +2750,14 @@ test("会话搜索在一个结果列表中展示服务端全文命中", async ({
   await page.goto("/");
   const search = page.getByPlaceholder("搜索聊天");
   await expect(search).toBeVisible();
+  await page.getByRole("button", { name: /普通标题/ }).dispatchEvent("contextmenu");
+  await expect(page.getByLabel("会话操作", { exact: true })).toBeVisible();
+  await page.goBack();
+  await expect(page.locator(".conversation-sidebar-layer")).not.toHaveClass(/open/);
+  await expect(page.getByLabel("会话操作", { exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "打开会话列表" }).click();
+  await expect(search).toBeVisible();
+  await expect(page.getByLabel("会话操作", { exact: true })).toHaveCount(0);
   await search.fill("部署失败");
 
   await expect(page.getByRole("status", { name: "正在搜索会话" }))
@@ -2795,6 +2803,7 @@ test("会话搜索在一个结果列表中展示服务端全文命中", async ({
   await expect(search).toHaveValue("");
   await expect(page.getByRole("button", { name: /普通标题/ })).toBeVisible();
   await expect(page.getByText("正文里的部署失败需要重新排查")).toHaveCount(0);
+  await page.unrouteAll({ behavior: "ignoreErrors" });
 });
 
 test("冷启动列表不等待额度查询且用户点入后不会重复恢复", async ({ page }) => {

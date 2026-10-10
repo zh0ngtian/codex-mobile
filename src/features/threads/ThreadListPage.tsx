@@ -42,6 +42,7 @@ const LONG_PRESS_DELAY_MS = 500;
 const LONG_PRESS_MOVE_TOLERANCE_PX = 10;
 
 export function ThreadListPage({
+  sidebarOpen = true,
   backends,
   summaries,
   selectedBackendId,
@@ -71,6 +72,7 @@ export function ThreadListPage({
   onToggleProject,
   onToggleProjectCollapsed,
 }: {
+  sidebarOpen?: boolean;
   backends: BackendConfig[];
   summaries: Record<string, BackendRuntimeSummary>;
   selectedBackendId: string;
@@ -138,6 +140,12 @@ export function ThreadListPage({
   };
   useEffect(() => clearLongPress, []);
   useEffect(() => {
+    if (sidebarOpen) return;
+    clearLongPress();
+    suppressClickRef.current = null;
+    setManagedThread(null);
+  }, [sidebarOpen]);
+  useEffect(() => {
     const sidebar = sidebarRef.current;
     if (!sidebar) return;
     const preventNativeTextSelection = (event: Event) => {
@@ -172,7 +180,7 @@ export function ThreadListPage({
     event: ReactPointerEvent<HTMLButtonElement>,
     thread: AggregatedThreadItem,
   ) => {
-    if (event.button !== 0) return;
+    if (!sidebarOpen || event.button !== 0) return;
     clearLongPress();
     const key = managementKey(thread);
     const timer = window.setTimeout(() => {
@@ -233,6 +241,7 @@ export function ThreadListPage({
         onContextMenu={(event) => {
           event.preventDefault();
           clearLongPress();
+          if (!sidebarOpen) return;
           setManagedThread(thread);
         }}
         onPointerDown={(event) => startLongPress(event, thread)}
@@ -507,7 +516,7 @@ export function ThreadListPage({
       </div>
       <ErrorBanner message={error} />
       <ConversationActionMenu
-        open={managedThread !== null}
+        open={sidebarOpen && managedThread !== null}
         readOnly={
           managedThread
             ? summaries[managedThread.backendId]?.connection !== "online"

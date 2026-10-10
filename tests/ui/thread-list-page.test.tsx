@@ -1,4 +1,5 @@
 import { act, fireEvent, render, within } from "@testing-library/react";
+import { cloneElement } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { ThreadListPage } from "../../src/features/threads/ThreadListPage";
 import { aggregateThreads } from "../../src/features/threads/thread-list-model";
@@ -83,7 +84,7 @@ function renderList(
     ) => Promise<boolean>;
   } = {},
 ) {
-  return render(
+  const element = (
     <ThreadListPage
       backends={[backend]}
       summaries={summaries}
@@ -113,8 +114,14 @@ function renderList(
       onRetryProject={onRetryProject}
       onToggleProject={onToggleProject}
       onToggleProjectCollapsed={onToggleProjectCollapsed}
-    />,
+    />
   );
+  const result = render(element);
+  return {
+    ...result,
+    setSidebarOpen: (sidebarOpen: boolean) =>
+      result.rerender(cloneElement(element, { sidebarOpen })),
+  };
 }
 
 describe("会话侧边栏列表", () => {
@@ -234,6 +241,47 @@ describe("会话侧边栏列表", () => {
     );
     expect(view.queryByLabelText("会话操作")).toBeNull();
     vi.useRealTimers();
+  });
+
+  it("关闭边栏收起长按菜单，再打开不会恢复旧菜单或吞掉点击", () => {
+    vi.useFakeTimers();
+    try {
+      const onOpenThread = vi.fn();
+      const { container, setSidebarOpen } = renderList("all", { onOpenThread });
+      const view = within(container);
+      const row = view.getByRole("button", { name: /置顶会话/ });
+      fireEvent.pointerDown(row, { button: 0, clientX: 20, clientY: 20 });
+      act(() => vi.advanceTimersByTime(550));
+      expect(view.getByLabelText("会话操作")).not.toBeNull();
+
+      setSidebarOpen(false);
+      expect(view.queryByLabelText("会话操作")).toBeNull();
+      setSidebarOpen(true);
+      expect(view.queryByLabelText("会话操作")).toBeNull();
+      fireEvent.click(row);
+      expect(onOpenThread).toHaveBeenCalledTimes(1);
+      fireEvent.contextMenu(row);
+      expect(view.getByLabelText("会话操作")).not.toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("长按计时期间关闭边栏会取消菜单，重新打开也不补弹", () => {
+    vi.useFakeTimers();
+    try {
+      const { container, setSidebarOpen } = renderList("all");
+      const view = within(container);
+      const row = view.getByRole("button", { name: /置顶会话/ });
+      fireEvent.pointerDown(row, { button: 0, clientX: 20, clientY: 20 });
+      act(() => vi.advanceTimersByTime(250));
+      setSidebarOpen(false);
+      setSidebarOpen(true);
+      act(() => vi.advanceTimersByTime(550));
+      expect(view.queryByLabelText("会话操作")).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("滚动手势会取消长按并保留普通点击打开会话", () => {
