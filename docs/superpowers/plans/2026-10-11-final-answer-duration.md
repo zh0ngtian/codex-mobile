@@ -22,7 +22,19 @@
 ### 2. 提交与交付
 
 - [x] `git diff --check`，按提交规范提交中文 Conventional Commit，推送并合入主分支。
-- [ ] 串行取得发布锁，读取双端渠道版本；在本 worktree 构建更高统一版本 APK 和签名 IPA。
-- [ ] 使用现有固定渠道发布脚本发布 APK，使用 `npm run ios:release` 完成签名与 OTA/LAN 发布。
-- [ ] 读取 SignOs 最新 `PUBLISH_PROMPT.md`，将同一签名 IPA 发布软件源，保留既有开发者并按当前 GitHub 用户追加。
-- [ ] 对固定清单、HEAD 和完整 GET 校验版本、大小、SHA-256；交付 OTA 页和 APK/IPA 链接。清理临时文件；如产生真实测试会话则及时归档。
+- [x] 串行取得发布锁，读取双端渠道版本；在本 worktree 构建更高统一版本 APK 和签名 IPA。
+- [x] 使用现有固定渠道发布脚本发布 APK，使用 `npm run ios:release` 完成签名与 OTA/LAN 发布。
+- [x] 读取 SignOs 最新 `PUBLISH_PROMPT.md`，将同一签名 IPA 发布软件源，保留既有开发者并按当前 GitHub 用户追加。
+- [x] 对固定清单、HEAD 和完整 GET 校验版本、大小、SHA-256；交付 OTA 页和 APK/IPA 链接。清理临时文件；如产生真实测试会话则及时归档。
+
+## 交付记录
+
+- 实现提交 `f59545d` 已推送并合入 main；取得发布锁后同步最新已推送 main，在本任务 worktree 构建，保留已有缩放、编辑焦点、原生长按菜单及页面滚动修复。
+- 相关 UI 回归最终 111 项通过；完整测试在实现与此前 main 集成阶段 885 项通过；类型检查、双端构建和 320/375/412 px 大字号浏览器验证通过。
+- 取得主工作区固定发布锁后，基于双端与 OTA 原版本 `0.2.144` 分配统一 `0.2.145` / build `2145`。
+- APK：4,714,335 字节；SHA-256 `b3dd917fbabf417908a910324cc64c065060f44f71e5d524786d455cab63c3c6`；签名证书与上一固定版本一致。
+- IPA：3,781,750 字节；SHA-256 `bf8cdd368a14650a7f78934f331b8cd6480195eb3af2ecdb14e60e969b52766b`；Ad Hoc 已签名，原安装身份与钥匙串组连续性检查通过。
+- 固定 Android/iOS JSON、HEAD、完整 GET 版本、大小、SHA-256 全部一致；HTTPS OTA 版本目录及固定入口回验通过。
+- 上游最新版发布指南已迁移到 SignOs `distribution/app-source/PUBLISH_PROMPT.md`；按该指南将同一签名 IPA 发布到家中软件源。当前 GitHub 用户 `zh0ngtian` 已包含在开发者署名 `loock-ai / zh0ngtian` 中，保留原值；源清单、HEAD 与完整 GET 验证通过。
+- APK 与 IPA 的前端入口 SHA-256 相同：`f7b29d1010a1c25aa474f38929bc40eceb1548346f10a5493f4fccf6f3b13530`；两端确认包含 `final-answer-duration`。
+- 安装包、预览及回验凭证保存在长期主工作区 `.mobile-build/final-answer-duration-release/`。本次使用模拟协议，未产生真实测试会话；未执行真机覆盖安装与数据保留验证。
