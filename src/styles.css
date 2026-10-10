@@ -4,6 +4,7 @@ b, strong, h1, h2, h3, h4, h5, h6 { font-weight: min(900, calc(700 + var(--bold-
 html.native-webview { --browser-edge-top: 0px; --browser-edge-bottom: 0px; }
 * { box-sizing: border-box; }
 html, body { touch-action: pan-x pan-y; }
+html, body { overflow-x: clip; overscroll-behavior-x: none; }
 html, body, #root { margin: 0; min-height: 100%; width: 100%; max-width: 100%; }
 button, input, textarea { font: inherit; }
 button { color: inherit; }
@@ -216,7 +217,7 @@ button, a, summary, [role="button"] { -webkit-tap-highlight-color: transparent; 
 .new-chat-targets select:disabled { cursor: not-allowed; }
 .device-glyph { font-size: 1.375rem; line-height: 1; }
 .new-chat-targets > p { margin: 2px 8px 0; color: #a33a30; text-align: center; font-size: 0.75rem; line-height: 1.45; }
-.conversation-scroll { min-width: 0; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+.conversation-scroll { min-width: 0; min-height: 0; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
 .conversation-scroll::-webkit-scrollbar { display: none; }
 .conversation-scroll-content { min-height: 100%; }
 .timeline { min-width: 0; max-width: 100%; padding: 22px 0 calc(105px + var(--input-bar-bottom-offset)); }
@@ -243,12 +244,13 @@ button, a, summary, [role="button"] { -webkit-tap-highlight-color: transparent; 
 .user-message-actions button { min-height: 32px; border: 0; border-radius: 16px; background: transparent; color: #737373; padding: 0 9px; font-size: 0.75rem; font-weight: min(900, calc(600 + var(--bold-text-weight-offset))); }
 .user-message-actions button:active { background: #f1f1f1; color: #111; }
 .user-message-actions button:disabled { opacity: .4; }
-.user-message > .user-bubble-editing { width: min(76vw, 520px); }
-.history-message-editor { min-width: 0; display: grid; gap: 9px; }
-.history-message-editor textarea { width: 100%; min-height: 96px; max-height: 42dvh; resize: vertical; border: 1px solid #d3d3d3; border-radius: 16px; outline: none; background: #fff; padding: 11px 12px; color: #111; font: inherit; font-size: 1rem; line-height: 1.5; }
+.user-message:has(> .user-bubble-editing) { width: min(76vw, 520px); max-width: 100%; grid-template-columns: minmax(0, 1fr); }
+.user-message > .user-bubble-editing { width: 100%; }
+.history-message-editor { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 9px; }
+.history-message-editor textarea { width: 100%; min-width: 0; min-height: 96px; max-height: 42dvh; resize: vertical; border: 1px solid #d3d3d3; border-radius: 16px; outline: none; background: #fff; padding: 11px 12px; color: #111; font: inherit; font-size: 1rem; line-height: 1.5; }
 .history-message-editor textarea:focus { border-color: #888; box-shadow: 0 0 0 3px rgba(0,0,0,.06); }
 .history-message-editor > small { color: #666; font-size: 0.6875rem; }
-.history-message-editor-actions, .history-edit-inline-confirmation > div { display: flex; justify-content: flex-end; gap: 8px; }
+.history-message-editor-actions, .history-edit-inline-confirmation > div { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 .history-message-editor button, .history-edit-inline-confirmation button { min-height: 36px; border: 0; border-radius: 18px; background: #fff; color: #222; padding: 0 13px; font-size: 0.75rem; font-weight: min(900, calc(700 + var(--bold-text-weight-offset))); }
 .history-message-editor button.primary, .history-edit-inline-confirmation button.danger { background: #111; color: #fff; }
 .history-message-editor button:disabled, .history-edit-inline-confirmation button:disabled { opacity: .45; }

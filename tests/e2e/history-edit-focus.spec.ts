@@ -1,10 +1,10 @@
 import { expect, test } from "@playwright/test";
 
-test("历史编辑点击内聚焦，左右滑动禁用，取消后恢复", async ({ page }) => {
+test("历史编辑聚焦、页面无横向滚动、取消后侧栏恢复", async ({ page }, testInfo) => {
   const thread = { id: "history-focus", name: "历史编辑焦点", cwd: "/tmp/project", status: { type: "idle" }, turns: [{
     id: "old-turn", status: "completed", items: [
       { id: "old-user", type: "userMessage", text: "历史原文" },
-      { id: "old-answer", type: "agentMessage", phase: "final_answer", text: "旧回复" },
+      { id: "old-answer", type: "agentMessage", phase: "final_answer", text: Array.from({ length: 60 }, (_, i) => `旧回复段落 ${i}`).join("\n\n") },
     ],
   }] };
   await page.addInitScript(() => {
@@ -41,6 +41,38 @@ test("历史编辑点击内聚焦，左右滑动禁用，取消后恢复", async
   await expect(editor).toBeFocused();
   await page.keyboard.insertText("追加");
   await expect(editor).toHaveValue("历史原文追加");
+  for (const width of [280, 320, 393]) {
+    await page.setViewportSize({ width, height: 812 });
+    await page.evaluate(() => document.documentElement.style.setProperty("--app-font-scale", "1.25"));
+    const bounds = await page.evaluate(() => {
+      const scroller = document.querySelector<HTMLElement>(".conversation-scroll")!;
+      const root = document.documentElement;
+      return { pageWidth: root.scrollWidth, viewport: innerWidth,
+        scrollWidth: scroller.scrollWidth, clientWidth: scroller.clientWidth,
+        rootOverflow: getComputedStyle(root).overflowX,
+        overscroll: getComputedStyle(root).overscrollBehaviorX };
+    });
+    expect(bounds.pageWidth).toBeLessThanOrEqual(bounds.viewport);
+    expect(bounds.scrollWidth).toBeLessThanOrEqual(bounds.clientWidth);
+    expect(bounds.overscroll).toBe("none");
+    expect(["clip", "hidden"]).toContain(bounds.rootOverflow);
+  }
+  await page.setViewportSize({ width: 393, height: 812 });
+  const scroller = page.locator(".conversation-scroll");
+  await scroller.evaluate(el => el.scrollTo(0, 0));
+  // Playwright 的 mobile WebKit 不支持 wheel；真实触摸由 iOS XCUITest 验证。
+  if (testInfo.project.name !== "webkit-mobile") {
+    const scrollBounds = (await scroller.boundingBox())!;
+    await page.mouse.move(scrollBounds.x + scrollBounds.width / 2, scrollBounds.y + scrollBounds.height / 2);
+    for (const direction of [-1, 1]) {
+      await page.mouse.wheel(direction * 300, 0);
+      expect(await scroller.evaluate(el => el.scrollLeft)).toBe(0);
+      expect(await page.evaluate(() => scrollX)).toBe(0);
+    }
+    await page.mouse.wheel(0, 300);
+    await expect.poll(() => scroller.evaluate(el => el.scrollTop)).toBeGreaterThan(100);
+  }
+  await scroller.evaluate(el => el.scrollTo(0, 0));
   const swipe = async (from: number, to: number) => {
     await page.locator(".conversation-header").evaluate((target, points) => {
       for (const [type, x] of [["touchstart", points[0]], ["touchmove", points[1]], ["touchend", points[1]]] as const) {

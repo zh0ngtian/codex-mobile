@@ -587,6 +587,9 @@ steps:
               super.didMoveToWindow()
               // 仅主界面禁用捏合；独立网页浏览器继续使用普通 WKWebView。
               scrollView.pinchGestureRecognizer?.isEnabled = false
+              // 主页面由内部 DOM 容器纵向滚动，外层 WebView 不应拖出横向空白。
+              scrollView.bounces = false
+              scrollView.alwaysBounceHorizontal = false
               keyboardDismissal?.attach(to: window)
           }
 

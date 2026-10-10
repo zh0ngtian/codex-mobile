@@ -19,28 +19,45 @@ webview_path = File.join(File.dirname(project_path), 'PakePlus/WebView.swift')
 webview = File.read(webview_path)
 constructor = 'let webView = CodexMobileWebView(frame: .zero, configuration: webConfiguration)'
 probe_constructor = 'let webView = KeyboardLayoutProbeWebView(frame: .zero, configuration: webConfiguration)'
+horizontal_constructor = 'let webView: CodexMobileWebView = ProcessInfo.processInfo.arguments.contains("-history-horizontal-scroll-test") ? HorizontalScrollProbeWebView(frame: .zero, configuration: webConfiguration) : KeyboardLayoutProbeWebView(frame: .zero, configuration: webConfiguration)'
 if webview.include?(constructor)
   File.write(webview_path, webview.sub(constructor, probe_constructor))
-elsif !webview.include?(probe_constructor)
+elsif !webview.include?(probe_constructor) && !webview.include?(horizontal_constructor)
   abort '固定 PakePlus WebView 构造入口已变化，无法安装键盘布局探针'
+end
+project.save
+horizontal_probe_path = File.join(root, 'mobile/ios/HorizontalScrollProbe.swift')
+unless project.files.any? { |f| f.real_path.to_s == horizontal_probe_path }
+  group = project.main_group.find_subpath('CodexMobileTestSupport', true)
+  app.source_build_phase.add_file_reference(group.new_file(horizontal_probe_path))
+end
+if File.read(webview_path).include?(probe_constructor)
+  File.write(webview_path, File.read(webview_path).sub(probe_constructor,
+    horizontal_constructor))
 end
 project.save
 target = project.targets.find { |t| t.name == 'CodexMobileUITests' }
 if target
-  extra_path = File.join(root, 'mobile/ios/SmallFontKeyboardUITests.swift')
-  unless project.files.any? { |f| f.real_path.to_s == extra_path }
-    group = project.main_group.find_subpath('CodexMobileUITests', false)
-    target.source_build_phase.add_file_reference(group.new_file(extra_path))
-    project.save
+  ['SmallFontKeyboardUITests.swift', 'HorizontalScrollUITests.swift'].each do |name|
+    extra_path = File.join(root, 'mobile/ios', name)
+    unless project.files.any? { |f| f.real_path.to_s == extra_path }
+      group = project.main_group.find_subpath('CodexMobileUITests', false)
+      target.source_build_phase.add_file_reference(group.new_file(extra_path))
+    end
   end
+  project.save
   puts '模拟器 UI 测试 target 已存在'
   exit
 end
 target = project.new_target(:ui_test_bundle, 'CodexMobileUITests', :ios, '15.6')
 target.add_dependency(app)
 source = project.main_group.new_group('CodexMobileUITests')
-source.new_file(ARGV[1] || File.join(root, 'mobile/ios/CodexMobileUITests.swift')).tap { |f| target.source_build_phase.add_file_reference(f) }
+source.new_file(ARGV[1] ? File.expand_path(ARGV[1]) : File.join(root, 'mobile/ios/CodexMobileUITests.swift')).tap { |f| target.source_build_phase.add_file_reference(f) }
 source.new_file(File.join(root, 'mobile/ios/SmallFontKeyboardUITests.swift')).tap { |f| target.source_build_phase.add_file_reference(f) }
+extra_path = File.join(root, 'mobile/ios/HorizontalScrollUITests.swift')
+unless project.files.any? { |f| f.real_path.to_s == extra_path }
+  target.source_build_phase.add_file_reference(source.new_file(extra_path))
+end
 target.build_configurations.each do |config|
  config.build_settings['PRODUCT_NAME'] = '$(TARGET_NAME)'
  config.build_settings['PRODUCT_BUNDLE_IDENTIFIER'] = 'vip.loock.codexmobile.uitests'
