@@ -3,6 +3,8 @@ import { chmod, mkdir, open, readFile, rename, stat, unlink } from "node:fs/prom
 import { join } from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { FinalAnswerCompletionTracker } from "./final-answer-completion.js";
+import { readLocalThreadMetadata } from "./local-thread-metadata.js";
+import { isVisibleThread } from "./thread-visibility.js";
 import { parseBarkPushUrl } from "./notification-settings.js";
 
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
@@ -124,7 +126,13 @@ export class BarkNotifications {
     const body = title?.name || title?.preview || "新对话";
     // 不等待网络；磁盘登记成功后才发送，避免跨连接和重启重复通知。
     void this.enqueue(async () => {
+      if (this.closed || !this.subscribed) return;
+      const metadata = await readLocalThreadMetadata(this.options.codexHome, completed.threadId);
       if (this.closed) return;
+      if (metadata && !isVisibleThread(metadata)) {
+        this.completions.rememberThread(metadata);
+        return;
+      }
       for (const subscription of this.subscriptions.values()) {
         const id = createHash("sha256").update(JSON.stringify([subscription.clientId, subscription.backendId, completed.threadId, completed.turnId])).digest("hex");
         if (this.delivered.has(id) || this.jobs.size >= MAX_PENDING_PUSHES) continue;

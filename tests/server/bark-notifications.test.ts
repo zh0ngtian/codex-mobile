@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
 import { randomUUID } from "node:crypto";
-import { mkdtemp, rm, stat, readFile } from "node:fs/promises";
+import { mkdtemp, rm, stat, readFile, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -35,6 +35,25 @@ async function fixture(failPush: boolean | number = false) {
 }
 
 describe("Bark 通知", () => {
+  it.each(["http", "stream"])("%s 仅收到完成事件时按本机真实子 Agent 元数据静默", async (transport) => {
+    const f = await fixture(); await f.settings();
+    if (transport === "stream") await f.stream();
+    else await f.rpc({ id: 0, method: "initialize", params: {} });
+    const threadId = "01a12457-49bd-79c3-abdb-cfdf41878cfc";
+    const directory = join(f.root, "sessions", "2026", "10", "10");
+    await mkdir(directory, { recursive: true });
+    await writeFile(join(directory, `rollout-2026-10-10T13-44-22-${threadId}.jsonl`), JSON.stringify({
+      type: "session_meta", payload: { id: threadId, parent_thread_id: "parent",
+        source: { subagent: { thread_spawn: { parent_thread_id: "parent" } } }, thread_source: "subagent" },
+    }) + "\n");
+    f.send({ ...final, params: { ...final.params, threadId } });
+    f.send({ ...completed, params: { ...completed.params, threadId } });
+    // 后续普通完成必须送达，确保队列已处理过子 Agent 的分类补查。
+    f.send(final); f.send(completed); await eventually(() => f.pushes.length > 0); await wait(100);
+    expect(f.pushes).toHaveLength(1);
+    expect(f.pushes[0].url).toContain(encodeURIComponent(final.params.threadId));
+  });
+
   it.each([
     { threadSource: "subagent" }, { threadSource: "memory_consolidation" },
     { sourceKind: "subAgentReview" }, { ephemeral: true }, { source: { internal: "title" } },
