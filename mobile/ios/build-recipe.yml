@@ -333,6 +333,14 @@ steps:
 
       path = Path("PakePlus/WebView.swift")
       source = path.read_text()
+      scale_limits_anchor = "webConfiguration.ignoresViewportScaleLimits = true"
+      if source.count(scale_limits_anchor) != 1:
+          raise SystemExit("Pinned PakePlus viewport scale configuration changed")
+      source = source.replace(
+          scale_limits_anchor,
+          "webConfiguration.ignoresViewportScaleLimits = false",
+          1,
+      )
       viewport_anchor = "meta.content = 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no';"
       if source.count(viewport_anchor) != 1:
           raise SystemExit("Pinned PakePlus viewport hook changed")
@@ -574,6 +582,8 @@ steps:
 
           override func didMoveToWindow() {
               super.didMoveToWindow()
+              // 仅主界面禁用捏合；独立网页浏览器继续使用普通 WKWebView。
+              scrollView.pinchGestureRecognizer?.isEnabled = false
               keyboardDismissal?.attach(to: window)
           }
 
@@ -963,6 +973,10 @@ steps:
       grep -Fq 'UNUserNotificationCenter' PakePlus/WebView.swift
       grep -Fq 'codex-mobile-run-completed' PakePlus/WebView.swift
       grep -Fq 'CodexMobileInAppBrowserViewController.present' \
+        PakePlus/WebView.swift
+      grep -Fq 'webConfiguration.ignoresViewportScaleLimits = false' \
+        PakePlus/WebView.swift
+      grep -Fq 'scrollView.pinchGestureRecognizer?.isEnabled = false' \
         PakePlus/WebView.swift
       grep -Fq '在外部浏览器中打开' \
         PakePlus/InAppBrowserViewController.swift

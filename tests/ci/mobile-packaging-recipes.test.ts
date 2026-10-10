@@ -62,6 +62,21 @@ function runAssetScanner(scanner: string, source: string) {
 }
 
 describe("移动 App 本地构建配置", () => {
+  it("主界面禁用原生捏合缩放，独立网页保留缩放", () => {
+    const ios = readRunStep(readRecipe("mobile/ios/build-recipe.yml").recipe, "Harden and test the iOS host");
+    expect(ios).toContain('"webConfiguration.ignoresViewportScaleLimits = false"');
+    expect(ios).toContain("scrollView.pinchGestureRecognizer?.isEnabled = false");
+    const iosBrowser = readProjectFile("mobile/ios/InAppBrowserViewController.swift");
+    expect(iosBrowser).toContain("WKWebView(frame: .zero, configuration: configuration)");
+    expect(iosBrowser).not.toContain("pinchGestureRecognizer?.isEnabled = false");
+    const android = readRunStep(readRecipe("mobile/android/build-recipe.yml").recipe, "Harden and test embedded Android project");
+    expect(android).toContain("webView.settings.setSupportZoom(false)");
+    expect(android).toContain("webView.settings.builtInZoomControls = false");
+    const androidBrowser = readProjectFile("mobile/android/InAppBrowserActivity.kt");
+    expect(androidBrowser).toContain("builtInZoomControls = true");
+    expect(androidBrowser).not.toContain("setSupportZoom(false)");
+  });
+
   it.each(["android", "ios"])("%s 允许 Mermaid 依赖内置文档和 XML 命名空间，仍拦截固定私网地址与口令", (platform) => {
     const { recipe } = readRecipe(`mobile/${platform}/build-recipe.yml`);
     const scanner = readAssetScanner(recipe);

@@ -354,6 +354,19 @@ steps:
       activity_source = activity_path.read_text()
       if "enableEdgeToEdge()" not in activity_source:
           raise SystemExit("Pinned PakePlus edge-to-edge setup changed")
+      zoom_anchor = "        webView.settings.setSupportZoom(setZoom)"
+      if activity_source.count(zoom_anchor) != 1:
+          raise SystemExit("Pinned PakePlus main WebView zoom configuration changed")
+      activity_source = activity_source.replace(
+          zoom_anchor,
+          "\n".join((
+              "        // 主界面保持固定比例；独立网页浏览器保留缩放能力。",
+              "        webView.settings.setSupportZoom(false)",
+              "        webView.settings.builtInZoomControls = false",
+              "        webView.settings.displayZoomControls = false",
+          )),
+          1,
+      )
       webview_field = "    private lateinit var webView: WebView\n"
       safe_area_field = (
           webview_field
@@ -989,6 +1002,10 @@ steps:
         ' \
         app/src/main/assets/app.json > /dev/null
       grep -Fq 'enableEdgeToEdge()' \
+        app/src/main/java/com/app/pakeplus/MainActivity.kt
+      grep -Fq 'webView.settings.setSupportZoom(false)' \
+        app/src/main/java/com/app/pakeplus/MainActivity.kt
+      grep -Fq 'webView.settings.builtInZoomControls = false' \
         app/src/main/java/com/app/pakeplus/MainActivity.kt
       grep -Fq 'InAppBrowserActivity.createIntent' \
         app/src/main/java/com/app/pakeplus/MainActivity.kt
