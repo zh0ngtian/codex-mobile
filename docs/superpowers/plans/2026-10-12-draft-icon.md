@@ -19,10 +19,10 @@
 
 ## Task 2：提交与发布
 
-- [ ] 按中文 Conventional Commit 提交，快进合入 main 并推送。
-- [ ] 获得固定渠道锁，读取 Android/iOS/GitHub 版本；GitHub Actions 构建 APK 与 unsigned IPA，本机 `npm run ios:release -- --config "$HOME/Library/Application Support/CodexMobile/ios-release.local.json" --version <统一更高版本> --notes '边栏草稿文字改为图标'` 签名及发布。
-- [ ] 使用既有 `apk-server.py publish-channel` 发布相同版本 APK；核对 JSON/HEAD/完整 GET 版本、大小、SHA-256、签名身份及 OTA 页面；核对软件源对应 unsigned IPA。
-- [ ] 保留发布回执与必要截图，清理临时文件，归档 worktree，释放锁；交付固定 OTA、APK、IPA 链接及版本、大小、SHA-256。
+- [x] 按中文 Conventional Commit 提交，快进合入 main 并推送。
+- [x] 获得固定渠道锁，读取 Android/iOS/GitHub 版本；GitHub Actions 构建 APK 与 unsigned IPA，本机 `npm run ios:release -- --config "$HOME/Library/Application Support/CodexMobile/ios-release.local.json" --version <统一更高版本> --notes '边栏草稿文字改为图标'` 签名及发布。
+- [x] 使用既有 `apk-server.py publish-channel` 发布相同版本 APK；核对 JSON/HEAD/完整 GET 版本、大小、SHA-256、签名身份及 OTA 页面；核对软件源对应 unsigned IPA。
+- [x] 保留发布回执与必要截图，清理临时文件，归档 worktree，释放锁；交付固定 OTA、APK、IPA 链接及版本、大小、SHA-256。
 
 ## 开发验证
 
@@ -30,3 +30,14 @@
 - 浏览器修改前观察到按钮为“草稿”文本且无 SVG，修改后 Chromium/WebKit 均为仅图标、aria-label/title 为草稿、44×44 点击区域，320/393px 保持刷新左侧；点击进入草稿列表。
 - 现有双浏览器草稿端到端回归 10 项全部通过，覆盖附件保存恢复、发送失败保留与成功移除、完整配置、删除及错误路径。
 - 未创建真实 Codex 测试会话；浏览器验证不代表真机覆盖安装验收。
+
+## 发布验收
+
+- 功能提交 `7df15d4` 已推送 main，统一版本 0.2.157 / build 2157；固定渠道发布期间持有主工作区 advisory lock。
+- GitHub Actions `38155366829` 双端构建和 Release 成功，下载包与 GitHub digest、构建回执的来源提交/版本/大小/SHA-256 一致。
+- 固定 APK：4,719,911 字节，SHA-256 `90f3d29a66afd7a51c8763a1e94c44a7ea75db870fdd637e14b44b4b31cfc87b`。
+- 固定 Ad Hoc 已签名 IPA：3,789,071 字节，SHA-256 `3468311207921f600e30fdb48926775f9ebabe1feaf41a49d92b6c301fbca54c`；签名身份、Team、完整钥匙串组连续。
+- 两端固定 JSON、HEAD 和完整 GET 通过；HTTPS OTA 安装页版本及 itms-services 链接已核对。签名包内包含新草稿图标且移除旧文字样式。
+- 软件源同步 GitHub 同版本 unsigned IPA，并核对公开版本/build/下载 URL/大小及 GitHub 全包散列证明；已有当前 GitHub 用户开发者署名保持原值。
+- 主工作区 `.mobile-build/draft-icon-release/0.2.157/` 保留安装包、签名/OTA 回执、渠道回验、GitHub 与软件源记录以及浏览器截图；签名 IPA 仅发布 OTA/LAN。
+- 无真实测试会话需归档；发布后释放锁并归档本次 worktree。未做真机覆盖安装验证。
