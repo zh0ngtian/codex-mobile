@@ -15,6 +15,7 @@ export function AppIcon({
     | "close"
     | "compose"
     | "copy"
+    | "draft"
     | "folder"
     | "folder-open"
     | "file"
@@ -37,6 +38,7 @@ export function AppIcon({
     back: <path d="M15 18l-6-6 6-6M9 12h11" />,
     close: <path d="m7 7 10 10M17 7 7 17" />,
     copy: <><rect x="8" y="8" width="11" height="11" rx="2" /><path d="M16 8V6a2 2 0 00-2-2H6a2 2 0 00-2 2v8a2 2 0 002 2h2" /></>,
+    draft: <><path d="M6 3h8l4 4v14H6z" /><path d="M14 3v5h4M9 12h6M9 16h6" /></>,
     file: <><path d="M6 3h8l4 4v14H6z" /><path d="M14 3v5h5" /></>,
     folder: <path d="M3 7a2 2 0 012-2h5l2 2h7a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />,
     "folder-open": <><path d="M3 10V7a2 2 0 012-2h5l2 2h7a2 2 0 012 2v1" /><path d="M3 10h18l-2 9H5a2 2 0 01-2-2z" /></>,

@@ -314,8 +314,14 @@ export function ThreadListPage({
             </p>
           </div>
           <div className="list-header-actions">
-            <button type="button" className="sidebar-drafts-button" onClick={onOpenDrafts}>
-              {t("草稿")}
+            <button
+              type="button"
+              className="round-button"
+              aria-label={t("草稿")}
+              title={t("草稿")}
+              onClick={onOpenDrafts}
+            >
+              <AppIcon name="draft" />
             </button>
             <button
               className={`round-button${refreshing ? " refreshing" : ""}`}
