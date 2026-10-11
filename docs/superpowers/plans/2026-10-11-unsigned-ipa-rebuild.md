@@ -2,13 +2,13 @@
 
 > **For agentic workers:** 在当前会话使用 superpowers:executing-plans，按任务执行 TDD 与 verification-before-completion。
 
-**Goal:** 从最新客户端源码及用户的 Windows 兼容分支重新编译未签名 IPA，提供可下载文件。
+**Goal:** 从最新客户端源码及用户的 Windows 兼容分支重新编译未签名 IPA，并按用户后续要求原样发布到软件源。
 
 **Architecture:** 在独立构建分支复用 prepare-ios.mjs 和 iOS build-recipe.yml。GitHub macOS runner 使用 Xcode 关闭签名，执行现有打包校验，并将产物保存为独立预发布附件。
 
 **Tech Stack:** Node.js 22.14.0、pnpm 10、Xcode 26.3、GitHub Actions、Vitest。
 
-**Spec:** 用户明确只需要重新构建的未签名 IPA；无需签名或软件源发布。
+**Spec:** 用户明确需要重新构建的未签名 IPA，并在构建完成后要求发布到软件源；全程无需签名。
 
 ## 全局约束
 
@@ -23,7 +23,7 @@
 - 非法版本不得进入 shell 或原生构建。
 - 准备、编译或打包失败必须中止成功交付。
 - IPA 必须包含 Payload、应用二进制、内置前端和正确版本。
-- 关闭签名，不调用 ios:release 或软件源上传器。
+- 构建阶段关闭签名，不调用 ios:release；发布阶段遵循 SignOs 最新上传说明，原样上传构建产物。
 - 下载后的文件大小及完整 SHA-256 必须与构建凭证一致。
 
 ### 任务 1：复用构建配置的未签名入口
@@ -67,4 +67,26 @@
 - SHA-256：9c60af68c37f1ad034d30dd13ee2acc5be1e494e06aee129fd69e738de54d9a1。
 - 下载：[CodexMobile-v0.2.147-unsigned.ipa](https://github.com/zh0ngtian/codex-mobile/releases/download/unsigned-ipa-0.2.147-38109534062-1/CodexMobile-v0.2.147-unsigned.ipa)。
 - 本机完整 GET、HEAD 和标准库 ZIP/Info.plist 校验通过；确认存在真实 Mach-O 二进制与内置前端，没有 embedded.mobileprovision 或应用 CodeResources。
-- 根据用户明确要求，本次仅交付重新编译的未签名 IPA，不执行签名及正式渠道发布。
+- 初次构建交付仅提供重新编译的未签名 IPA；用户后续明确要求将同一产物发布到软件源。
+
+### 任务 4：按用户追加要求发布软件源
+
+本次仅发布已验证的同一 IPA，不修改客户端运行代码。部署继续使用计划、已有构建 TDD 证据及发布前后断言；不为文档或一次性上传流程重复构建。
+
+- [x] 获取 SignOs 最新 PUBLISH_PROMPT.md，确认使用家中 HTTPS 上传器；从仓库外私有配置读取地址及 token 文件。
+- [x] 核对软件源现有版本 0.2.146（2146），并通过 GitHub SSH 认证确认当前用户名 Roxbili。
+- [x] 运行上传器 --plan，断言大小 3,758,080 字节及完整 SHA-256 与已验证产物一致。
+- [x] 保留已有署名并追加当前用户名，使用 loock-ai / zh0ngtian / Roxbili，保留应用说明并填写本次更新说明。
+- [x] 上传原始未签名 IPA，核对响应的版本、构建号、大小和 SHA-256。
+- [x] 通过 ${APP_SOURCE_BASE_URL}/source.json、下载 HEAD 及完整 GET 核对产物一致性，并检查图标资源。
+- [x] 保存本机发布凭证及验证结果，发布记录随本次文档提交推送。
+
+软件源地址与上传 token 均不写入仓库；公开计划仅引用 APP_SOURCE_BASE_URL。
+
+## 软件源发布证据
+
+- 2026-10-11 发布同一 IPA，上传响应 duplicate=false；版本 0.2.147、构建号 2147，大小和 SHA-256 与上述构建证据完全一致。
+- 软件源最新版本、开发者署名及应用说明断言通过；开发者为 loock-ai / zh0ngtian / Roxbili，历史版本 0.2.146（2146）仍存在。
+- 源清单、安装包 HEAD、完整 GET 和图标 GET 均为 HTTP 200；HEAD 与 GET 大小均为 3,758,080 字节，完整 GET SHA-256 与本地包一致。
+- 图标为有效 PNG，大小 531,869 字节；发布包仍为未签名 IPA。
+- 发布前预检、上传响应和发布后验证凭证保存在本机构建目录 .mobile-build/unsigned-delivery，不纳入 Git。
