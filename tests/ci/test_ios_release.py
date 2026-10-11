@@ -165,7 +165,7 @@ class ReleaseTests(unittest.TestCase):
                 self.release.publish_local('source', '/channel', release)
             activate.assert_not_called()
 
-    def test_plan_references_external_guide_without_running_source_workflow(self):
+    def test_plan_disables_signed_source_publication(self):
         config = dict(profile='profile', bundleId='vip.loock.codexmobile', udid='DEVICE',
                       baseUrl='https://ota.example')
         with patch.object(sys, 'argv', ['release-ios.py', '--config', 'config', '--notes', 'update', '--plan']), \
@@ -178,7 +178,8 @@ class ReleaseTests(unittest.TestCase):
             self.release.main()
         plan = json.loads(output.getvalue())
         self.assertEqual(plan['steps'][-1], 'lan-publish-verify')
-        self.assertEqual(plan['appSource']['status'], 'pending')
+        self.assertEqual(plan['appSource']['status'], 'disabled')
+        self.assertIn('unsigned IPA', plan['appSource']['reason'])
         self.assertEqual(plan['appSource']['instructionsUrl'],
             'https://github.com/zh0ngtian/SignOs/blob/main/distribution/source-aggregator/README.md')
 
@@ -235,7 +236,8 @@ class ReleaseTests(unittest.TestCase):
                 if valid_lan:
                     self.assertEqual(json.loads(receipt.read_text()), release)
                     result = json.loads(output.getvalue())
-                    self.assertEqual(result['appSource']['status'], 'pending')
+                    self.assertEqual(result['appSource']['status'], 'disabled')
+                    self.assertIn('unsigned IPA', result['appSource']['reason'])
                     self.assertEqual(result['releaseReceipt'], str(receipt))
                     self.assertTrue(pathlib.Path(result['ipaPath']).is_file())
 

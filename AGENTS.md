@@ -33,7 +33,7 @@
 - 首次修复误改标识的固定渠道时，只允许显式 `restoreInstalledIdentityFromBundleId` 加真实兼容基准的身份恢复；恢复记录须绑定原渠道版本与 IPA 散列，Team 和 application-identifier 不变。恢复完成后移除此一次性配置，后续发布继续执行身份与钥匙串组连续性检查。
 - 推送后使用 `npm run ios:release -- --config "$HOME/Library/Application Support/CodexMobile/ios-release.local.json" --version <与APK统一的更高版本> --notes '<说明>'` 构建设备 IPA、自动 Ad Hoc 签名、验签、发布 HTTPS OTA 和固定 LAN IPA。APK 仍需构建并发布相同版本。
 - 云端 unsigned IPA 是构建产物，不能覆盖已签名的固定 IPA 或作为 OTA 发布包；本机签名/发布失败时先解决问题，不能用未签名包替代已签名交付。
-- iOS 正式发布须完成 HTTPS OTA、固定 LAN IPA 和 [Cloudflare 软件源](https://signos-source-aggregator.305301890.workers.dev/sources/yao.json)。`npm run ios:release` 完成 OTA/LAN 回验并保存签名包与 `ota-release.json` 后，软件源发布必须读取并遵循 [SignOs 软件源文档](https://github.com/zh0ngtian/SignOs/blob/main/distribution/source-aggregator/README.md) 最新版，使用同一已签名 IPA；本仓库不维护软件源具体流程、上传器或重试命令。
+- iOS 已签名 IPA 仅发布到 HTTPS OTA 与固定 LAN 渠道，完成回验并保存签名包与 `ota-release.json`；不得再将 Ad Hoc 已签名包上传、归档或创建订阅发布到软件源。[Cloudflare 软件源](https://signos-source-aggregator.305301890.workers.dev/sources/yao.json) 只保留并自动同步 `zh0ngtian/codex-mobile` GitHub Release 的 `CodexMobile-*-unsigned.ipa` 订阅，每次正式交付核对对应未签名版本。软件源维护读取并遵循 [SignOs 软件源文档](https://github.com/zh0ngtian/SignOs/blob/main/distribution/source-aggregator/README.md) 最新版；本仓库不维护软件源具体流程、上传器或重试命令。
 - 发布 App 时，从当前 GitHub 登录账号读取用户名，以软件源该 App 当前的开发者署名为基准：已有该用户名则保持原值，缺少时追加；不得覆盖或删除先前开发者，除非用户明确要求。正式发布与补发使用同一规则，不能把发布者用户名硬编码为固定值。
 - 固定 OTA 安装页为 `https://192.168.123.79:8766/channels/codex-mobile/current/install.html`；更新清单为相同前缀的 `current/latest-ios.json`。HTTP 8765 固定下载渠道继续保留。
 - 局域网服务由 `local.codex-mobile.ios-ota` launchd 管理；必须从长期保留的主工作区执行 `scripts/ios_ota_server.py install`，不能绑定准备归档的 worktree。

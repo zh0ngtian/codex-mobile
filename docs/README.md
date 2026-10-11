@@ -16,7 +16,7 @@
 - [Android 清单](http://192.168.123.79:8765/channels/codex-mobile/latest.json)及 [固定 APK](http://192.168.123.79:8765/channels/codex-mobile/latest.apk)。
 - [iOS 清单](http://192.168.123.79:8765/channels/codex-mobile/latest-ios.json)及 [固定 IPA](http://192.168.123.79:8765/channels/codex-mobile/latest.ipa)。
 - [HTTPS OTA 安装页](https://192.168.123.79:8766/channels/codex-mobile/current/install.html)及 [OTA 清单](https://192.168.123.79:8766/channels/codex-mobile/current/latest-ios.json)。
-- [Cloudflare 软件源](https://yao-app-source.305301890.workers.dev/source.json)：SignOs 可添加此源；正式发版使用 OTA 已成功发布的同一签名 IPA。
+- [Cloudflare 软件源](https://signos-source-aggregator.305301890.workers.dev/sources/yao.json)：SignOs 可添加此源；只自动同步本仓库 GitHub Release 的 unsigned IPA，安装前需自行签名；Ad Hoc 已签名包仅用于 OTA/LAN。
 
 固定链接随新版本更新。历史记录里的版本、大小、散列只描述当次发布；应读取当前清单，再用 HEAD 和完整 GET 校验当前下载。渠道可用和构建验签不等于真机覆盖安装、数据保留已验证。
 

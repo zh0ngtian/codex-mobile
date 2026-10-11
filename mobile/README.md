@@ -43,4 +43,4 @@ node scripts/build-mobile.mjs --platform ios --version 0.2.148 --plan
 
 实际构建省略 `--plan`。Android 入口需要 Linux、Node.js 22.14.0、pnpm 10、JDK 17、Android SDK 与 recipe 中的工具；iOS 使用 macOS、Xcode 26.3，并复用 `ios:prepare` 的工程和图标准备。每次使用独立干净构建目录。产物位于 `.mobile-build/artifacts/`，包含安装包、SHA-256 和来源提交/大小回执。云端 APK 沿用当前 debug 构建签名，IPA 明确为未签名产物。
 
-GitHub Release 产物与正式本机渠道分别交付。iOS 正式发布仍需本机 Ad Hoc 签名、HTTPS OTA、固定 LAN IPA 和软件源验收；unsigned IPA 不能覆盖已签名固定渠道。
+GitHub Release 产物与正式本机渠道分别交付。iOS 正式发布仍需本机 Ad Hoc 签名、HTTPS OTA 和固定 LAN IPA 验收；软件源只同步本仓库 GitHub Release 的 unsigned IPA，交付时单独核对版本。Ad Hoc 已签名包不再发布到软件源，unsigned IPA 不能覆盖已签名固定渠道。

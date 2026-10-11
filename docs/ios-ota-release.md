@@ -9,7 +9,7 @@
 - `scripts/ios_sign.py`：校验并签名单 App IPA，再解包最终归档验签。支持内嵌 framework/dylib；拒绝 App Extension、多 App、XPC 和包含链接的归档。这些目标需要独立的 profile/entitlements，不能套用主 App 的证书配置。
 - `scripts/ios_ota_server.py`：本机局域网 HTTPS 服务、私有 CA 首次信任配置和 launchd 托管，私钥与签名材料均位于仓库外。
 - `scripts/ios_ota.py publish`：仅发布通过真实验签的 Ad Hoc IPA，生成版本化 manifest、JSON 和安装页，上传、回验后原子切换固定入口。
-- `npm run ios:release -- --config <仓库外配置> --notes '<更新说明>'`：准备工程、设备构建、自动签名、HTTPS 发布并回验、LAN IPA 发布并回验，保存成功凭证并返回软件源发布文档入口。版本默认高于 Android、iOS LAN 及 HTTPS OTA 三个渠道；可用 `--version` 明确指定更高版本。
+- `npm run ios:release -- --config <仓库外配置> --notes '<更新说明>'`：准备工程、设备构建、自动签名、HTTPS 发布并回验、LAN IPA 发布并回验，保存成功凭证；已签名包的软件源发布状态为 `disabled`。版本默认高于 Android、iOS LAN 及 HTTPS OTA 三个渠道；可用 `--version` 明确指定更高版本。
 
 这里的“自动签名”指流水线自动执行手动管理的 Ad Hoc 证书签名，不要求买来的证书能登录 Xcode 开启 Automatically manage signing。不能用它上传到本项目的 App Store Connect 或 TestFlight。
 
@@ -71,19 +71,20 @@ npm run ios:release -- \
   --notes '新增 iOS 检查更新与 OTA 安装' --plan
 ```
 
-正式构建与发布去掉 `--plan`；软件源发布按下方上游文档另行完成。这个入口发布 iOS；仓库交付仍必须另外构建并发布相同版本 APK。不得在 Android 固定渠道还未同步时宣称双平台交付完成。
+正式构建与发布去掉 `--plan`；软件源只自动同步 GitHub Release 的 unsigned IPA，不再接续发布本机已签名包。这个入口发布 iOS；仓库交付仍必须另外构建并发布相同版本 APK。不得在 Android 固定渠道还未同步时宣称双平台交付完成。
 
 ## Cloudflare 软件源
 
-每次发布前读取并遵循 [SignOs 软件源文档](https://github.com/zh0ngtian/SignOs/blob/main/distribution/source-aggregator/README.md) 最新版。本仓库只保留此入口，不复制软件源的配置、上传、锁、清理或重试流程，也不固定上游版本。
+软件源只保留 `zh0ngtian/codex-mobile` GitHub Release 的 `CodexMobile-*-unsigned.ipa` 订阅，自动同步未签名版本；安装前需自行签名。Ad Hoc 已签名订阅已删除，后续不得再上传、归档或创建订阅将本机签名包发布到软件源。未签名条目作为兼容清单 `?legacy=1` 的默认条目。
 
-`npm run ios:release` 仅自动完成 HTTPS OTA 与固定 LAN IPA 发布；成功输出中的 `appSource.status` 为 `pending`，`instructionsUrl` 指向上述文档。接续软件源发布使用本次产物：
+维护软件源时读取并遵循 [SignOs 软件源文档](https://github.com/zh0ngtian/SignOs/blob/main/distribution/source-aggregator/README.md) 最新版。本仓库只保留此入口，不复制软件源的配置、上传、锁、清理或重试流程，也不固定上游版本。
+
+`npm run ios:release` 仅自动完成 HTTPS OTA 与固定 LAN IPA 发布；计划与成功输出中的 `appSource.status` 为 `disabled`，`reason` 说明已签名包不再发布软件源，`instructionsUrl` 仍指向上游维护文档。保留的本机产物用于 OTA/LAN 验证与升级身份连续性：
 
 - 已签名 IPA：`.mobile-build/ota-release/<版本>/CodexMobile-v<版本>-adhoc.ipa`。
 - OTA/LAN 回验成功凭证：`.mobile-build/ota-release/<版本>/ota-release.json`。
-- 应用图标：`docs/assets/app-icon/codex-mobile-app-icon-1024.png`。
 
-正式交付仍须完成软件源发布，并提供软件源地址与该版本公网 IPA 链接；使用同一已签名 IPA，确保版本、构建号、大小和 SHA-256 与 OTA/LAN 一致。开发者署名遵循 [仓库规则](../AGENTS.md#ios-自动签名与局域网-ota)。本地命令成功不代表软件源已经发布。
+正式交付核对软件源的 unsigned IPA 版本、构建号、下载 URL 与对应 GitHub Release，已签名 OTA/LAN IPA 单独核验；两种签名状态的包大小与散列不要求相同。开发者署名遵循 [仓库规则](../AGENTS.md#ios-自动签名与局域网-ota)。本机命令成功不代表软件源已同步最新未签名版本。
 
 ## 单独重签
 

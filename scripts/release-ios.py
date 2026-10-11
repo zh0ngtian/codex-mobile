@@ -20,6 +20,11 @@ from ios_ota import (version_tuple, validate_base_url, fetch_previous, create_re
                      publish_ssh, validate_upgrade, stage_local, activate_staged, verify_published)
 
 APP_SOURCE_GUIDE = 'https://github.com/zh0ngtian/SignOs/blob/main/distribution/source-aggregator/README.md'
+APP_SOURCE_POLICY = {
+    'status': 'disabled',
+    'reason': 'Ad Hoc 已签名 IPA 仅发布 HTTPS OTA 和固定 LAN 渠道；软件源只同步 GitHub Release 的 unsigned IPA。',
+    'instructionsUrl': APP_SOURCE_GUIDE,
+}
 
 LAN = 'http://192.168.123.79:8765/channels/codex-mobile'
 LAN_PUBLISHER = Path('/Users/zhongtian/WorkSpace/GlobalTranslation/scripts/apk-server.py')
@@ -168,7 +173,7 @@ def main():
                           'keychainAccessGroups': identity.get('keychainAccessGroups'),
                           'identityTransition': transition,
                           'installUrl': config['baseUrl']+'/current/install.html',
-                          'appSource': {'status': 'pending', 'instructionsUrl': APP_SOURCE_GUIDE},
+                          'appSource': APP_SOURCE_POLICY,
                           'steps': ['prepare', 'xcodebuild', 'adhoc-sign', 'https-publish-verify',
                                     'lan-publish-verify']}, indent=2))
         return
@@ -212,7 +217,7 @@ def main():
     receipt = output / 'ota-release.json'
     receipt.write_text(json.dumps(release, ensure_ascii=False, indent=2) + '\n')
     result = {**release, 'ipaPath': str(signed), 'releaseReceipt': str(receipt),
-              'appSource': {'status': 'pending', 'instructionsUrl': APP_SOURCE_GUIDE}}
+              'appSource': APP_SOURCE_POLICY}
     print(json.dumps(result, ensure_ascii=False, indent=2))
 
 if __name__ == '__main__':
