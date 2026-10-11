@@ -126,6 +126,16 @@ function renderList(
 }
 
 describe("会话侧边栏列表", () => {
+  it("草稿入口位于刷新左侧，点击打开草稿列表", () => {
+    const { container, element, rerender } = renderList("all");
+    const onOpenDrafts = vi.fn();
+    rerender(cloneElement(element, { onOpenDrafts }));
+    const drafts = within(container).getByRole("button", { name: "草稿" });
+    const refresh = within(container).getByRole("button", { name: "刷新会话列表" });
+    expect(drafts.compareDocumentPosition(refresh) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    fireEvent.click(drafts);
+    expect(onOpenDrafts).toHaveBeenCalledOnce();
+  });
   it("取消原生长按菜单后，新的一次快速单击进入会话", () => {
     vi.useFakeTimers();
     const show = vi.fn();

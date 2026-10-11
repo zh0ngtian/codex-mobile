@@ -69,6 +69,7 @@ export function ThreadListPage({
   onSelectBackend,
   onManageBackends,
   onRefresh,
+  onOpenDrafts,
   onRetryProject,
   onToggleProject,
   onToggleProjectCollapsed,
@@ -102,6 +103,7 @@ export function ThreadListPage({
   onSelectBackend: (backendId: string) => void;
   onManageBackends: () => void;
   onRefresh: () => void;
+  onOpenDrafts?: () => void;
   onRetryProject: (backendId: string, cwd: string) => void;
   onToggleProject: (backendId: string, cwd: string) => void;
   onToggleProjectCollapsed: (backendId: string, cwd: string) => void;
@@ -312,6 +314,9 @@ export function ThreadListPage({
             </p>
           </div>
           <div className="list-header-actions">
+            <button type="button" className="sidebar-drafts-button" onClick={onOpenDrafts}>
+              {t("草稿")}
+            </button>
             <button
               className={`round-button${refreshing ? " refreshing" : ""}`}
               aria-label={t("刷新会话列表")}

@@ -1,3 +1,10 @@
+import { DraftsSheet } from "./features/drafts/DraftsSheet";
+import {
+  newChatDraftStore,
+  restoreNewChatDraft,
+  type SavedNewChatDraft,
+  type SavedDraftReference,
+} from "./features/drafts/new-chat-drafts";
 import { flushSync } from "react-dom";
 import {
   FormEvent,
@@ -276,6 +283,8 @@ interface WorkspaceCommand {
   draft?: string;
   draftImages?: DraftImage[];
   draftFiles?: DraftFile[];
+  savedDraft?: SavedNewChatDraft;
+  savedDraftReference?: SavedDraftReference;
   managementAction?: ThreadManagementAction;
   name?: string;
   onComplete?: (completed: boolean) => void;
@@ -295,6 +304,7 @@ interface BackendWorkspaceProps {
     draft: string,
     draftImages: DraftImage[],
     draftFiles: DraftFile[],
+    savedDraftReference?: SavedDraftReference,
   ) => void;
   command: WorkspaceCommand | null;
   refreshVersion: number;
@@ -345,6 +355,12 @@ function BackendWorkspace({
   const [searchRefreshVersion, setSearchRefreshVersion] = useState(0);
   const [active, setActive] = useState<AnyRecord | null>(null);
   const [draft, setDraft] = useState("");
+  const savedDraftRef = useRef<SavedDraftReference | undefined>(undefined);
+  const restoredDraftSettingsRef = useRef<SavedNewChatDraft["settings"] | null>(null);
+  const draftSavingRef = useRef(false);
+  const draftContentVersionRef = useRef(0);
+  const [draftSaving, setDraftSaving] = useState(false);
+  const [draftSaveStatus, setDraftSaveStatus] = useState("");
   const [draftImages, setDraftImages] = useState<DraftImage[]>([]);
   const [draftFiles, setDraftFiles] = useState<DraftFile[]>([]);
   const currentDraftRef = useRef({ text: draft, images: draftImages, files: draftFiles });
@@ -375,6 +391,11 @@ function BackendWorkspace({
     useState<ApprovalPolicy>("on-request");
   const [selectedApprovalsReviewer, setSelectedApprovalsReviewer] =
     useState<ApprovalsReviewer>("user");
+  useEffect(() => {
+    draftContentVersionRef.current += 1;
+    setDraftSaveStatus("");
+  }, [draft, draftImages, draftFiles, active?.cwd, selectedModel, selectedEffort,
+    selectedServiceTier, selectedPermission, selectedApprovalPolicy, selectedApprovalsReviewer]);
   const [initialNewChatModelSettings] = useState(() =>
     readNewChatModelSettings(window.localStorage, backend.id),
   );
@@ -1741,7 +1762,7 @@ function BackendWorkspace({
             setModels(modelResult.data);
             modelsRef.current = modelResult.data;
             setPermissionProfiles(availableProfiles);
-            if (!activeRef.current?.id) {
+            if (!activeRef.current?.id && !restoredDraftSettingsRef.current) {
               selectedModelRef.current = newChatModelSettings.model;
               selectedEffortRef.current = newChatModelSettings.effort;
               selectedServiceTierRef.current = newChatModelSettings.serviceTier;
@@ -1768,13 +1789,13 @@ function BackendWorkspace({
             setSelectedPermission((current) => current || configuredPermission);
             setSelectedApprovalPolicy(
               (current) =>
-                config.approval_policy ||
+                restoredDraftSettingsRef.current ? current : config.approval_policy ||
                 (configuredPermission === ":danger-full-access"
                   ? "never"
                   : current),
             );
             setSelectedApprovalsReviewer(
-              (current) => config.approvals_reviewer || current,
+              (current) => restoredDraftSettingsRef.current ? current : config.approvals_reviewer || current,
             );
             setRefreshing(false);
             const currentThread = activeRef.current;
@@ -2093,6 +2114,11 @@ function BackendWorkspace({
 
   function resetDraftContext() {
     draftContextGenerationRef.current += 1;
+    savedDraftRef.current = undefined;
+    restoredDraftSettingsRef.current = null;
+    draftSavingRef.current = false;
+    setDraftSaving(false);
+    setDraftSaveStatus("");
     invalidateImageReads();
     setPendingSteerMessage(null);
     discardHistoricalMessageEdit();
@@ -2411,6 +2437,7 @@ function BackendWorkspace({
     pendingPlugins,
     draftContext,
     onFailure,
+    onSent,
   }: {
     text: string;
     pendingImages: DraftImage[];
@@ -2419,6 +2446,7 @@ function BackendWorkspace({
     pendingPlugins: InstalledPlugin[];
     draftContext: number;
     onFailure: () => void;
+    onSent?: () => void;
   }) {
     let client = clientRef.current;
     if (!client) {
@@ -2577,6 +2605,7 @@ function BackendWorkspace({
         automaticTitle.turnId = String(startedTurn.turn.id ?? "") || null;
       }
       sent = true;
+      onSent?.();
       if (draftContext === draftContextGenerationRef.current) {
         setActive((current) => {
           if (!current) return current;
@@ -2630,6 +2659,7 @@ function BackendWorkspace({
               }
             }
           } else {
+            onSent?.();
             pendingFiles.forEach((file) => URL.revokeObjectURL(file.previewUrl));
             if (currentContext && currentThread) void reconcileActiveThread(confirmationClient).catch(() => undefined);
           }
@@ -2671,7 +2701,7 @@ function BackendWorkspace({
 
   async function send(event: FormEvent) {
     event.preventDefault();
-    if (active?.id && activeThreadAccessMode !== "interactive") return;
+    if (draftSavingRef.current || (active?.id && activeThreadAccessMode !== "interactive")) return;
     const text = draft.trim();
     const pendingImages = draftImages;
     const pendingFiles = draftFiles;
@@ -2747,6 +2777,7 @@ function BackendWorkspace({
       }
       return;
     }
+    const savedDraft = savedDraftRef.current;
     requestRunCompletionNotificationPermission();
     invalidateImageReads();
     setDraft("");
@@ -2760,6 +2791,13 @@ function BackendWorkspace({
       pendingSkills,
       pendingPlugins,
       draftContext,
+      onSent: savedDraft ? () => {
+        void newChatDraftStore.remove(savedDraft.id, savedDraft.revision).then(() => {
+          if (savedDraftRef.current?.revision === savedDraft.revision) savedDraftRef.current = undefined;
+        }).catch(() => {
+          if (draftContext === draftContextGenerationRef.current) setError(t("消息已发送，但无法移除本地草稿"));
+        });
+      } : undefined,
       onFailure: () => {
         const currentDraft = currentDraftRef.current;
         const threadId = String(activeRef.current?.id ?? "");
@@ -3752,11 +3790,13 @@ function BackendWorkspace({
     nextDraft = "",
     nextDraftImages: DraftImage[] = [],
     nextDraftFiles: DraftFile[] = [],
+    savedDraft?: SavedNewChatDraft,
+    savedDraftReference?: SavedDraftReference,
   ) => {
     const savedCwd = window.localStorage.getItem(
       `codex-mobile:new-chat-project:${backend.id}`,
     );
-    const selectedCwd =
+    const selectedCwd = savedDraft ? savedDraft.cwd :
       (typeof cwd === "string"
         ? cwd || null
         : savedCwd === ""
@@ -3777,9 +3817,17 @@ function BackendWorkspace({
     setSteering(false);
     setImageReading(false);
     setError("");
+    setDraftFiles(current => {
+      current.forEach(file => {
+        const pending = [...unconfirmedQueueDraftsRef.current.values()].some(draft => draft.files.some(original => original.previewUrl === file.previewUrl));
+        if (!pending && !nextDraftFiles.some(next => next.previewUrl === file.previewUrl)) URL.revokeObjectURL(file.previewUrl);
+      });
+      return nextDraftFiles;
+    });
+    savedDraftRef.current = savedDraft ?? savedDraftReference;
+    restoredDraftSettingsRef.current = savedDraft?.settings ?? null;
     setDraft(nextDraft);
     setDraftImages(nextDraftImages);
-    setDraftFiles(nextDraftFiles);
     setConversationLoadState("ready");
     setConversationLoadError("");
     resetOlderTurns();
@@ -3798,12 +3846,27 @@ function BackendWorkspace({
       setSelectedApprovalPolicy(defaultPermissionMode.approvalPolicy);
       setSelectedApprovalsReviewer(defaultPermissionMode.approvalsReviewer);
     }
-    setActive({
+    if (savedDraft) {
+      const settings = savedDraft.settings;
+      setNewChatPermissionMode(null);
+      selectedModelRef.current = settings.model;
+      selectedEffortRef.current = settings.effort;
+      selectedServiceTierRef.current = settings.serviceTier;
+      setSelectedModel(settings.model);
+      setSelectedEffort(settings.effort);
+      setSelectedServiceTier(settings.serviceTier);
+      setSelectedPermission(settings.permissions);
+      setSelectedApprovalPolicy(settings.approvalPolicy);
+      setSelectedApprovalsReviewer(settings.approvalsReviewer);
+    }
+    const nextActive = {
       id: "",
       turns: [],
       preview: t("新对话"),
       cwd: selectedCwd,
-    });
+    };
+    activeRef.current = nextActive;
+    setActive(nextActive);
   };
 
   const chooseNewChatProject = (cwd: string) => {
@@ -3910,6 +3973,38 @@ function BackendWorkspace({
     }
   }
 
+  async function saveNewChatDraft() {
+    if (active?.id || draftSavingRef.current || imageReading || startingThreadContext !== null || (!draft.trim() && !draftImages.length && !draftFiles.length)) return;
+    const context = draftContextGenerationRef.current;
+    const contentVersion = draftContentVersionRef.current;
+    draftSavingRef.current = true;
+    setDraftSaving(true);
+    setDraftSaveStatus("");
+    try {
+      const mode = newChatPermissionMode;
+      const saved = await newChatDraftStore.save({
+        backendId: backend.id, backendName: backend.name, cwd: active?.cwd ?? null,
+        text: draft, images: draftImages, files: draftFiles,
+        settings: { model: selectedModel, effort: selectedEffort, serviceTier: effectiveSelectedServiceTier,
+          permissions: mode?.permissions ?? selectedPermission,
+          approvalPolicy: mode?.approvalPolicy ?? selectedApprovalPolicy,
+          approvalsReviewer: mode?.approvalsReviewer ?? selectedApprovalsReviewer },
+      }, savedDraftRef.current?.id);
+      if (context === draftContextGenerationRef.current) {
+        savedDraftRef.current = { id: saved.id, revision: saved.revision };
+        if (contentVersion === draftContentVersionRef.current) setDraftSaveStatus(t("草稿已保存到本地"));
+        setError("");
+      }
+    } catch (reason) {
+      if (context === draftContextGenerationRef.current) setError(`${t("无法保存草稿")}：${reason instanceof Error ? reason.message : String(reason)}`);
+    } finally {
+      if (context === draftContextGenerationRef.current) {
+        draftSavingRef.current = false;
+        setDraftSaving(false);
+      }
+    }
+  }
+
   const handledCommandRef = useRef(0);
   useEffect(() => {
     if (
@@ -3928,6 +4023,8 @@ function BackendWorkspace({
         command.draft ?? "",
         command.draftImages ?? [],
         command.draftFiles ?? [],
+        command.savedDraft,
+        command.savedDraftReference,
       );
     } else if (
       command.type === "load-project" &&
@@ -4001,6 +4098,9 @@ function BackendWorkspace({
           draftImages={draftImages}
           draftFiles={draftFiles}
           imageReading={imageReading}
+          draftSaving={draftSaving}
+          draftSaveStatus={draftSaveStatus}
+          onSaveDraft={() => void saveNewChatDraft()}
           busy={conversationBusy}
           operationPending={conversationOperationPending}
           steering={steering}
@@ -4042,7 +4142,7 @@ function BackendWorkspace({
           imageInputRef={imageInputRef}
           onBack={onOpenSidebar}
           onNewChatBackendChange={(backendId) =>
-            onSwitchNewChatBackend(backendId, draft, draftImages, draftFiles)
+            onSwitchNewChatBackend(backendId, draft, draftImages, draftFiles, savedDraftRef.current)
           }
           onNewChatProjectChange={chooseNewChatProject}
           onPin={togglePinned}
@@ -4267,6 +4367,7 @@ function ConfiguredApp({
     Record<string, BackendRuntimeSummary>
   >({});
   const [managerOpen, setManagerOpen] = useState(false);
+  const [draftsOpen, setDraftsOpen] = useState(false);
   const [snapshots, setSnapshots] = useState<
     Record<string, BackendThreadSnapshot>
   >({});
@@ -4763,6 +4864,7 @@ function ConfiguredApp({
       currentDraft: string,
       currentDraftImages: DraftImage[],
       currentDraftFiles: DraftFile[],
+      savedDraftReference?: SavedDraftReference,
     ) => {
       const target = mountedBackends.find(
         (backend) => backend.id === backendId,
@@ -4778,6 +4880,7 @@ function ConfiguredApp({
         draft: currentDraft,
         draftImages: currentDraftImages,
         draftFiles: currentDraftFiles,
+        savedDraftReference,
       });
     },
     [mountedBackends, selectBackend],
@@ -4851,6 +4954,7 @@ function ConfiguredApp({
             onSelectBackend={selectListBackend}
             onManageBackends={() => setManagerOpen(true)}
             onRefresh={refreshAllBackends}
+            onOpenDrafts={() => setDraftsOpen(true)}
             onToggleProject={toggleProject}
             onToggleProjectCollapsed={toggleProjectCollapsed}
             onRetryProject={retryProject}
@@ -4863,6 +4967,19 @@ function ConfiguredApp({
           onClick={closeSidebar}
         />
       </div>
+      {draftsOpen && <DraftsSheet onClose={() => setDraftsOpen(false)} onOpenDraft={saved => {
+        const target = registry.backends.find(backend => backend.id === saved.backendId);
+        if (!target) throw new Error(t("草稿的设备已移除，无法恢复"));
+        const restored = restoreNewChatDraft(saved);
+        const nextRegistry = { ...registry, selectedBackendId: target.id,
+          backends: registry.backends.map(backend => backend.id === target.id ? { ...backend, enabled: true } : backend) };
+        persistRegistry(nextRegistry);
+        window.localStorage.setItem("codex-mobile:new-chat-backend", target.id);
+        setCommand({ id: ++commandIdRef.current, backendId: target.id, type: "new", cwd: saved.cwd,
+          draft: saved.text, draftImages: restored.images, draftFiles: restored.files, savedDraft: saved });
+        setDraftsOpen(false);
+        closeSidebar();
+      }} />}
       <BackendAttentionBanner
         backends={registry.backends}
         summaries={summaries}

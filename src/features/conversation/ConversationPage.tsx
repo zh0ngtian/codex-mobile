@@ -158,6 +158,9 @@ export function ConversationPage({
   draftImages,
   draftFiles,
   imageReading,
+  draftSaving = false,
+  draftSaveStatus = "",
+  onSaveDraft,
   busy,
   operationPending = false,
   steering,
@@ -222,6 +225,9 @@ export function ConversationPage({
   draftImages: DraftImage[];
   draftFiles: DraftFile[];
   imageReading: boolean;
+  draftSaving?: boolean;
+  draftSaveStatus?: string;
+  onSaveDraft?: () => void;
   busy: boolean;
   operationPending?: boolean;
   steering: boolean;
@@ -544,6 +550,7 @@ export function ConversationPage({
                   }
                 >
                   <option value="">{t("无项目")}</option>
+                  {active.cwd && !projectOptions.some(project => project.cwd === active.cwd) && <option value={active.cwd}>{active.cwd.split("/").filter(Boolean).at(-1) || active.cwd}</option>}
                   {projectOptions.map((project) => (
                     <option value={project.cwd} key={project.cwd}>
                       {project.name}
@@ -928,6 +935,14 @@ export function ConversationPage({
             {t("正在处理附件…")}
           </div>
         )}
+        {isNewChat && onSaveDraft && (
+          <div className="new-chat-draft-actions">
+            <span role="status">{draftSaveStatus}</span>
+            <button type="button" disabled={draftSaving || imageReading || busy || operationPending || (!draft.trim() && !draftImages.length && !draftFiles.length)} onClick={onSaveDraft}>
+              {draftSaving ? t("正在保存…") : t("保存草稿")}
+            </button>
+          </div>
+        )}
         <div className="chips">
           <button
             type="button"
@@ -1196,7 +1211,7 @@ export function ConversationPage({
             className={`send-button${
               busy && !canQueue ? " send-button-running" : ""
             }`}
-            aria-busy={busy && !canQueue}
+            aria-busy={(busy && !canQueue) || draftSaving}
             aria-label={
               steering
                 ? t("正在引导")
@@ -1206,7 +1221,7 @@ export function ConversationPage({
                     ? t("停止")
                     : t("发送")
             }
-            disabled={
+            disabled={draftSaving ||
               !interactive ||
               Boolean(historyEdit) ||
               steering ||
