@@ -315,6 +315,7 @@ class Session {
         return;
       }
       this.pending.set(message.id, message);
+      this.notifications?.observe(message);
       this.hostedObserver?.(message);
       return;
     }

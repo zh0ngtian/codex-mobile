@@ -10,6 +10,7 @@ type RememberPending = (id: string, confirmed: (response: RpcMessage) => void) =
 /** 请求状态与草稿一起存放，任何异步结果只能完成它所属的那次提交。 */
 export function useApprovalRequests() {
   const entriesRef = useRef<Entry[]>([]);
+  const [dismissed, setDismissed] = useState<string | null>(null);
   const [entries, setEntries] = useState<Entry[]>([]);
   const update = useCallback((next: Entry[]) => {
     const previous = entriesRef.current;
@@ -34,7 +35,7 @@ export function useApprovalRequests() {
     }
     return true;
   }, [update]);
-  const reset = useCallback(() => update([]), [update]);
+  const reset = useCallback(() => { update([]); setDismissed(null); }, [update]);
   const onNotification = useCallback((message: RpcMessage) => {
     const params = (message.params ?? {}) as Record<string, any>;
     if (message.method === "mobile/requests") { sync(params.requests ?? []); return true; }
@@ -78,8 +79,13 @@ export function useApprovalRequests() {
       }
     }
   }, [update]);
+  const dismiss = useCallback(() => {
+    const first = entriesRef.current[0];
+    if (first?.request.method === "item/tool/requestUserInput" && !first.submission) setDismissed(approvalKey(first.request));
+  }, []);
+  const reopen = useCallback(() => setDismissed(null), []);
   const current = entries[0];
-  return { requests: entries.map((entry) => entry.request), approval: current?.request ?? null,
+  return { requests: entries.map((entry) => entry.request), approval: current && approvalKey(current.request) !== dismissed ? current.request : null,
     userAnswers: current?.answers ?? {}, submitting: !!current?.submission, error: current?.error ?? "",
-    receive, reset, onNotification, answer, submit };
+    receive, reset, onNotification, answer, submit, dismiss, reopen };
 }

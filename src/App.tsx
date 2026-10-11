@@ -223,6 +223,7 @@ import {
   requestRunCompletionNotificationPermission,
   type RunCompletionNavigationTarget,
 } from "./notifications/run-completion";
+import { QuestionNotificationTracker } from "../server/question-notifications";
 import { FinalAnswerCompletionTracker } from "../server/final-answer-completion";
 import { t, useI18n } from "./i18n";
 import { readNotificationPreference, writeNotificationPreference, useNotificationSync, type NotificationPreference } from "./notifications/preferences";
@@ -475,6 +476,7 @@ function BackendWorkspace({
   const queueSubmittingThreadIdsRef = useRef(new Set<string>());
   const unconfirmedQueueDraftsRef = useRef(new Map<string, { text: string; images: DraftImage[]; files: DraftFile[] }>());
   const completionEventCatchUpRef = useRef(false);
+  const questionNotificationRef = useRef(new QuestionNotificationTracker());
   const finalAnswerCompletionRef = useRef(new FinalAnswerCompletionTracker());
   const mobileCompletionRef = useRef(new FinalAnswerCompletionTracker({ requireMobileOrigin: true }));
   const automaticTitleStatesRef = useRef(
@@ -1206,6 +1208,7 @@ function BackendWorkspace({
             setSyncState({ updatedAt: params.updatedAt ?? null, stale: params.stale === true });
             return;
           }
+          questionNotificationRef.current.observe(message, completionEventCatchUpRef.current);
           if (approvalRequests.onNotification(message)) return;
           for (const tracker of [finalAnswerCompletionRef.current, mobileCompletionRef.current]) {
             for (const thread of threadsRef.current) tracker.rememberThread(thread);
@@ -1644,6 +1647,18 @@ function BackendWorkspace({
       },
       onRequest: (_backendId, request, source) => {
           const client = source as AppServerClient;
+          for (const thread of threadsRef.current) questionNotificationRef.current.rememberThread(thread);
+          questionNotificationRef.current.rememberThread(activeRef.current);
+          const question = questionNotificationRef.current.observe(request, completionEventCatchUpRef.current);
+          if (question) {
+            markThreadUnread(question.threadId);
+            notifyRunCompleted({
+              title: t("Codex 需要你的回答"),
+              body: completionThreadTitle({ threadId: question.threadId, threads: threadsRef.current,
+                activeThread: activeRef.current, fallback: t("新对话") }),
+              backendId: backend.id, threadId: question.threadId,
+            });
+          }
           if (!approvalRequests.receive(request)) {
             void Promise.resolve(client.respondError(
               request.id!,
@@ -1660,6 +1675,7 @@ function BackendWorkspace({
           if (!disposed && manager.client(backend.id) === source) {
             finalAnswerCompletionRef.current.rememberThread(thread);
             mobileCompletionRef.current.rememberThread(thread);
+            questionNotificationRef.current.rememberThread(thread);
           }
         });
         clientRef.current = client;
@@ -4205,9 +4221,20 @@ function BackendWorkspace({
           {notice}
         </div>
       )}
+      {!approval && requests[0]?.method === "item/tool/requestUserInput" && (
+        <button className="pending-question-banner" onClick={approvalRequests.reopen}>
+          <strong>{t("Codex 需要你的回答")}</strong>
+          <span>{completionThreadTitle({ threadId: String((requests[0].params as AnyRecord)?.threadId ?? ""),
+            threads, activeThread: active, fallback: t("新对话") })}</span>
+          <span>{t("继续回答")}</span>
+        </button>
+      )}
       <ApprovalSheet
         key={approval ? approvalKey(approval) : "none"}
         approval={approval}
+        onDismiss={approvalRequests.dismiss}
+        threadTitle={approval ? completionThreadTitle({ threadId: String((approval.params as AnyRecord)?.threadId ?? ""),
+          threads, activeThread: active, fallback: t("新对话") }) : undefined}
         submitting={approvalRequests.submitting}
         error={approvalRequests.error}
         userAnswers={userAnswers}

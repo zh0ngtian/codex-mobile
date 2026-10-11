@@ -53,6 +53,24 @@ async function fixture(failPush: boolean | number = false) {
 }
 
 describe("Bark 通知", () => {
+  it.each(["http", "stream"])("%s 模型提问立即推送且跨连接重复请求不重发，完成通知独立", async (transport) => {
+    const f = await fixture(); await f.settings();
+    if (transport === "stream") await f.stream();
+    else await f.rpc({ id: 0, method: "initialize", params: {} });
+    const question = { id: "ask", method: "item/tool/requestUserInput", params: {
+      threadId: final.params.threadId, turnId: "turn", itemId: "question-item",
+      questions: [{ id: "q", header: "方案", question: "私密问题正文", options: null }],
+    } };
+    f.send(question); await eventually(() => f.pushes.length === 1);
+    expect(f.pushes[0]).toMatchObject({ title: "Codex 需要你的回答", body: "新对话" });
+    expect(f.pushes[0].url).toContain(encodeURIComponent(final.params.threadId));
+    expect(JSON.stringify(f.pushes)).not.toContain("私密问题正文");
+    f.send({ ...question, id: "another-connection" }); await wait(100);
+    expect(f.pushes).toHaveLength(1);
+    await f.start(); f.send(final); f.send(completed);
+    await eventually(() => f.pushes.length === 2);
+    expect(f.pushes[1].title).toBe("Codex 运行结束");
+  });
   it.each(["http", "stream"])("%s 只推送移动端具体指令，同会话查看与电脑后续回合静默", async (transport) => {
     const f = await fixture(); await f.settings();
     if (transport === "stream") await f.stream();

@@ -15,3 +15,11 @@
 .approval-hint { color: #666; font-size: 0.875rem; overflow-wrap: anywhere; }
 .approval-sheet button:disabled { opacity: 0.5; }
 .approval-sheet .action-sheet-footer button { overflow-wrap: anywhere; }
+
+.approval-thread-title { font-weight: 600; overflow-wrap: anywhere; }
+.approval-sheet textarea { width: 100%; min-height: 88px; resize: vertical; padding: 12px; border: 1px solid #ccc; border-radius: 12px; font: inherit; box-sizing: border-box; }
+.question-option:has(input:checked) { border-color: #222; background: #f2f2f2; }
+.question-option:active { background: #eee; }
+.pending-question-banner { position: fixed; z-index: 30; top: calc(env(safe-area-inset-top, 0px) + 72px); left: 16px; right: 16px; margin: 0 auto; max-width: 560px; display: grid; gap: 4px; text-align: left; padding: 12px 16px; min-height: 48px; border: 1px solid #ccc; border-radius: 14px; background: #fff; color: #222; box-shadow: 0 4px 16px #0002; font: inherit; }
+.pending-question-banner span { overflow-wrap: anywhere; }
+.pending-question-banner:active { background: #f2f2f2; }

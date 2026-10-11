@@ -5,6 +5,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { FinalAnswerCompletionTracker, type CompletedFinalAnswer } from "./final-answer-completion.js";
 import { readLocalThreadMetadata } from "./local-thread-metadata.js";
 import { isVisibleThread } from "./thread-visibility.js";
+import { QuestionNotificationTracker, type PendingQuestion } from "./question-notifications.js";
 import { parseBarkPushUrl } from "./notification-settings.js";
 
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
@@ -18,6 +19,7 @@ type State = { subscriptions: Subscription[]; delivered: string[] };
 /** 全网关共用订阅和去重记录，HTTP 与流式连接只提交实时事件。 */
 export class BarkNotifications {
   private titles = new Map<string, { name?: string | null; preview?: string | null }>();
+  private questions = new QuestionNotificationTracker();
   private completions = new FinalAnswerCompletionTracker({ requireMobileOrigin: true });
   private subscriptions = new Map<string, Subscription>();
   private delivered = new Set<string>();
@@ -87,6 +89,7 @@ export class BarkNotifications {
   }
   private rememberThread(thread: any) {
     this.completions.rememberThread(thread);
+    this.questions.rememberThread(thread);
     if (typeof thread?.id !== "string" || !thread.id || thread.id.length > 1024) return;
     const title = { ...this.titles.get(thread.id) };
     let changed = false;
@@ -122,11 +125,14 @@ export class BarkNotifications {
         id: message.params?.threadId, name: message.params?.threadName,
       });
     }
+    const question = this.questions.observe(message);
+    if (question) this.deliver(question);
     const completed = this.completions.observe(message);
     if (!completed) return;
     this.deliver(completed);
   }
-  private deliver(completed: CompletedFinalAnswer) {
+  private deliver(completed: CompletedFinalAnswer | PendingQuestion) {
+    const questionId = "questionId" in completed ? completed.questionId : null;
     const title = this.titles.get(completed.threadId);
     const body = title?.name || title?.preview || "新对话";
     // 不等待网络；磁盘登记成功后才发送，避免跨连接和重启重复通知。
@@ -146,17 +152,17 @@ export class BarkNotifications {
       }
       for (const [barkUrl, subscriptions] of destinations) {
         const subscription = subscriptions[subscriptions.length - 1];
-        const id = createHash("sha256").update(JSON.stringify(["bark-destination", barkUrl, completed.threadId, completed.turnId])).digest("hex");
+        const id = createHash("sha256").update(JSON.stringify(questionId == null ? ["bark-destination", barkUrl, completed.threadId, completed.turnId] : ["bark-question", barkUrl, completed.threadId, completed.turnId, questionId])).digest("hex");
         if (this.delivered.has(id)) continue;
         // 升级时沿用旧安装的已发送证据，并落盘地址记录，避免注销旧订阅后补发。
-        const previouslyDelivered = subscriptions.some((entry) => this.delivered.has(createHash("sha256")
+        const previouslyDelivered = questionId == null && subscriptions.some((entry) => this.delivered.has(createHash("sha256")
           .update(JSON.stringify([entry.clientId, entry.backendId, completed.threadId, completed.turnId])).digest("hex")));
         if (!previouslyDelivered && this.jobs.size >= MAX_PENDING_PUSHES) continue;
         this.delivered.add(id);
         while (this.delivered.size > MAX_DEDUPLICATION) this.delivered.delete(this.delivered.values().next().value!);
         try { await this.save(); } catch (error) { this.delivered.delete(id); throw error; }
         if (previouslyDelivered) continue;
-        const job = this.send(subscription, { title: "Codex 运行结束", body, group: this.options.displayName, url: `codexmobile://thread?backendId=${encodeURIComponent(subscription.backendId)}&threadId=${encodeURIComponent(completed.threadId)}`, id });
+        const job = this.send(subscription, { title: questionId == null ? "Codex 运行结束" : "Codex 需要你的回答", body, group: this.options.displayName, url: `codexmobile://thread?backendId=${encodeURIComponent(subscription.backendId)}&threadId=${encodeURIComponent(completed.threadId)}`, id });
         this.jobs.add(job); void job.finally(() => this.jobs.delete(job));
       }
     }).catch(() => {});

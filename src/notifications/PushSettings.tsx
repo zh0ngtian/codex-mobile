@@ -36,7 +36,7 @@ export function PushSettings({ preference, onSave, failedDevices = [] }: {
       </div>
       {mode === "system"
         ? <small>{t("系统推送会有延迟，并且可能会漏推送。")}</small>
-        : <small>{t("任务完成后由设备网关发送 Bark 通知，App 退出后也可接收。")}</small>}
+        : <small>{t("任务完成或需要回答时由设备网关发送 Bark 通知，App 退出后也可接收。")}</small>}
       <form className="backend-form push-settings-form" onSubmit={save} noValidate>
         {mode === "bark" && <label>
           {t("Bark 推送链接")}
