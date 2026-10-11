@@ -65,7 +65,6 @@ import {
 } from "./app-server/thread-session";
 import {
   activeTurnId,
-  buildTurnSteerParams,
   clearPendingSteerForItem,
   clearPendingSteerForRequest,
   clearPendingSteerForThread,
@@ -88,7 +87,6 @@ import {
 import {
   ConversationPage,
   type ConversationLoadState,
-  type QueuedFollowUpPreview,
 } from "./features/conversation/ConversationPage";
 import {
   ThreadListPage,
@@ -125,6 +123,8 @@ import {
   requestCurrentPosition,
 } from "./ui/current-location";
 import { uploadFile } from "./backends/file-upload";
+import { followUpRequest, HostedQueueSubmission, HostedQueueError, type HostedFollowUp, type FollowUpAction } from "./backends/follow-ups";
+import type { QueuedFollowUpPreview } from "./features/conversation/ConversationPage";
 import {
   runWorkspaceBootstrap,
   shouldResumeWorkspaceThread,
@@ -229,6 +229,8 @@ interface AutomaticTitleState {
 }
 
 interface QueuedFollowUp extends QueuedFollowUpPreview {
+  hosted?: boolean;
+  revision?: number;
   threadId: string;
   draftContext: number;
   inputText: string;
@@ -355,6 +357,7 @@ function BackendWorkspace({
     number | null
   >(null);
   const [steering, setSteering] = useState(false);
+  const [queueSaving, setQueueSaving] = useState(false);
   const [pendingSteerMessage, setPendingSteerMessage] =
     useState<PendingSteerMessage | null>(null);
   const [queuedFollowUps, setQueuedFollowUps] = useState<QueuedFollowUp[]>([]);
@@ -445,7 +448,11 @@ function BackendWorkspace({
     Record<keyof ModelSettingsSelection, number>
   >({ model: 0, effort: 0, serviceTier: 0 });
   const queuedFollowUpsRef = useRef<QueuedFollowUp[]>([]);
-  const queuedFollowUpDispatchingRef = useRef(false);
+  const queueRequestSequenceRef = useRef(0);
+  const queueMutatingRef = useRef(false);
+  const queueSubmissionsRef = useRef(new Map<string, HostedQueueSubmission>());
+  const queueSubmittingThreadIdsRef = useRef(new Set<string>());
+  const unconfirmedQueueDraftsRef = useRef(new Map<string, { text: string; images: DraftImage[]; files: DraftFile[] }>());
   const completionEventCatchUpRef = useRef(false);
   const finalAnswerCompletionRef = useRef(new FinalAnswerCompletionTracker());
   const mobileCompletionRef = useRef(new FinalAnswerCompletionTracker({ requireMobileOrigin: true }));
@@ -850,12 +857,13 @@ function BackendWorkspace({
       queuedFollowUpsRef.current.forEach((followUp) => {
         followUp.files.forEach((file) => URL.revokeObjectURL(file.previewUrl));
       });
+      unconfirmedQueueDraftsRef.current.forEach((draft) => draft.files.forEach((file) => URL.revokeObjectURL(file.previewUrl)));
     },
     [],
   );
 
   useEffect(() => {
-    if (!queuedFollowUps.length) return;
+    if (!queuedFollowUps.some((item) => !item.hosted)) return;
     const protectQueuedMessages = (event: BeforeUnloadEvent) => {
       event.preventDefault();
       event.returnValue = "";
@@ -1989,18 +1997,84 @@ function BackendWorkspace({
     setQueuedFollowUps(next);
   }
 
-  function discardQueuedFollowUpsForThread(threadId: string) {
-    queuedFollowUpsForThread(queuedFollowUpsRef.current, threadId).forEach(
-      (followUp) => {
+  function applyHostedQueue(items: HostedFollowUp[]) {
+    replaceQueuedFollowUps([
+      ...queuedFollowUpsRef.current.filter((item) => !item.hosted),
+      ...items.map((item) => ({ ...item, hosted: true,
+        draftContext: draftContextGenerationRef.current,
+        images: [], files: [], skills: [], plugins: [], failed: item.state === "failed",
+      })),
+    ]);
+  }
+
+  async function refreshHostedQueue() {
+    if (queueMutatingRef.current) return;
+    const sequence = ++queueRequestSequenceRef.current;
+    const result = await followUpRequest(backend);
+    if (sequence === queueRequestSequenceRef.current) applyHostedQueue(result.items);
+  }
+
+  async function mutateHostedQueue(action: FollowUpAction) {
+    if (queueMutatingRef.current) throw new Error(t("排队消息正在同步，请稍后重试"));
+    queueMutatingRef.current = true;
+    setQueueSaving(true);
+    ++queueRequestSequenceRef.current;
+    try {
+      const result = await followUpRequest(backend, action);
+      applyHostedQueue(result.items);
+      return result;
+    } finally {
+      queueMutatingRef.current = false;
+      setQueueSaving(false);
+      void refreshHostedQueue().catch(() => undefined);
+    }
+  }
+
+  useEffect(() => {
+    if (connection !== "online") return;
+    let stopped = false;
+    let inFlight = false;
+    const refresh = async () => {
+      if (stopped || inFlight || document.visibilityState === "hidden") return;
+      inFlight = true;
+      try { await refreshHostedQueue(); } catch { /* 入队和管理操作会显式报告连接/升级错误。 */ }
+      finally { inFlight = false; }
+    };
+    void refresh();
+    const timer = window.setInterval(() => void refresh(), 2000);
+    document.addEventListener("visibilitychange", refresh);
+    window.addEventListener("online", refresh);
+    return () => {
+      stopped = true;
+      ++queueRequestSequenceRef.current;
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", refresh);
+      window.removeEventListener("online", refresh);
+    };
+  }, [connection, active?.id, backend.baseUrl, backend.token]);
+
+  function releaseQueueSubmission(threadId: string, id: string) {
+    if (queueSubmissionsRef.current.get(threadId)?.confirmed(id)) unconfirmedQueueDraftsRef.current.delete(threadId);
+  }
+
+  async function discardQueuedFollowUpsForThread(threadId: string) {
+    if (queueSubmittingThreadIdsRef.current.has(threadId)) throw new Error(t("排队消息正在同步，请稍后重试"));
+    if (queueMutatingRef.current) throw new Error(t("排队消息正在同步，请稍后重试"));
+    try { await refreshHostedQueue(); } catch (reason) {
+      // 旧网关没有托管队列；其普通会话仍可归档。
+      if (!(reason instanceof HostedQueueError && reason.status === 404 &&
+        !queuedFollowUpsRef.current.some((item) => item.hosted && item.threadId === threadId))) throw reason;
+    }
+    if (queueSubmittingThreadIdsRef.current.has(threadId)) throw new Error(t("排队消息正在同步，请稍后重试"));
+    for (const followUp of queuedFollowUpsForThread(queuedFollowUpsRef.current, threadId)) {
+      if (followUp.hosted) {
+        await mutateHostedQueue({ action: "cancel", id: followUp.id, revision: followUp.revision! });
+        releaseQueueSubmission(threadId, followUp.id);
+      } else {
         followUp.files.forEach((file) => URL.revokeObjectURL(file.previewUrl));
-      },
-    );
-    replaceQueuedFollowUps(
-      queuedFollowUpsRef.current.filter(
-        (followUp) => followUp.threadId !== threadId,
-      ),
-    );
-    queuedFollowUpDispatchingRef.current = false;
+        replaceQueuedFollowUps(removeQueuedFollowUp(queuedFollowUpsRef.current, followUp.id));
+      }
+    }
   }
 
   function rebindQueuedThread(threadId: string) {
@@ -2238,11 +2312,16 @@ function BackendWorkspace({
     markThreadRead(String(thread.id));
     resetDraftContext();
     rebindQueuedThread(String(thread.id));
-    setDraft("");
-    setDraftImages([]);
+    setImageReading(queueSubmittingThreadIdsRef.current.has(String(thread.id)));
+    const unconfirmedDraft = unconfirmedQueueDraftsRef.current.get(String(thread.id));
+    setDraft(unconfirmedDraft?.text ?? "");
+    setDraftImages(unconfirmedDraft?.images ?? []);
     setDraftFiles((current) => {
-      current.forEach((file) => URL.revokeObjectURL(file.previewUrl));
-      return [];
+      current.forEach((file) => {
+        const retained = [...unconfirmedQueueDraftsRef.current.values()].some((pending) => pending.files.some((original) => original.id === file.id));
+        if (!retained) URL.revokeObjectURL(file.previewUrl);
+      });
+      return unconfirmedDraft?.files ?? [];
     });
     setOpeningThreadId(thread.id);
     setError("");
@@ -2615,34 +2694,57 @@ function BackendWorkspace({
     const conversationBusy = active?.id
       ? busy || [...pendingOperationsRef.current.values()].some((operation) => operation.threadId === String(active.id))
       : startingThreadContext === draftContextGenerationRef.current;
-    if (conversationBusy) {
+    const hasHostedQueue = queuedFollowUpsRef.current.some((item) => item.hosted && item.threadId === String(active?.id ?? ""));
+    if (conversationBusy || hasHostedQueue || queueSubmissionsRef.current.get(String(active?.id ?? ""))?.hasPending) {
       const threadId = String(active?.id ?? "");
       if (!threadId) {
         setError(t("当前任务正在启动，请稍后再排队"));
         return;
       }
-      const queuedFollowUp: QueuedFollowUp = {
-        id: `queue-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-        threadId,
-        draftContext,
-        inputText: text,
-        text: followUpPreviewText(text, pendingImages, pendingFiles),
-        attachmentCount: pendingImages.length + pendingFiles.length,
-        images: pendingImages,
-        files: pendingFiles,
-        skills: pendingSkills,
-        plugins: pendingPlugins,
-      };
+      if (queueMutatingRef.current || queueSubmittingThreadIdsRef.current.has(threadId)) return;
+      queueSubmittingThreadIdsRef.current.add(threadId);
       requestRunCompletionNotificationPermission();
-      invalidateImageReads();
-      setDraft("");
-      setDraftImages([]);
-      setDraftFiles([]);
-      replaceQueuedFollowUps([
-        ...queuedFollowUpsRef.current,
-        queuedFollowUp,
-      ]);
-      setError("");
+      setImageReading(true);
+      unconfirmedQueueDraftsRef.current.set(threadId, { text, images: pendingImages, files: pendingFiles });
+      let submission = queueSubmissionsRef.current.get(threadId);
+      if (!submission) { submission = new HostedQueueSubmission(); queueSubmissionsRef.current.set(threadId, submission); }
+      try {
+        const settings = activeSettingsSynchronized ? {
+          ...(selectedModel ? { model: selectedModel } : {}),
+          ...(selectedEffort ? { effort: selectedEffort } : {}),
+          serviceTier: effectiveSelectedServiceTier,
+          ...(selectedPermission ? { permissions: selectedPermission } : {}),
+          approvalPolicy: selectedApprovalPolicy,
+          approvalsReviewer: selectedApprovalsReviewer,
+        } : {};
+        const signature = JSON.stringify({ threadId, text, images: pendingImages,
+          files: pendingFiles.map((file) => ({ id: file.id, name: file.name, size: file.size, type: file.type })),
+        });
+        const action = await submission.prepare(signature, async () => {
+          const uploadedFiles = await Promise.all(pendingFiles.map((file) => uploadFile(backend, file.file)));
+          return { threadId, inputText: text,
+            text: followUpPreviewText(text, pendingImages, pendingFiles),
+            attachmentCount: pendingImages.length + pendingFiles.length,
+            extraInput: buildTurnInput("", pendingImages, uploadedFiles, pendingSkills, pendingPlugins), settings,
+          };
+        });
+        await mutateHostedQueue(action);
+        submission.confirmed(action.id);
+        unconfirmedQueueDraftsRef.current.delete(threadId);
+        pendingFiles.forEach((file) => URL.revokeObjectURL(file.previewUrl));
+        if (String(activeRef.current?.id ?? "") === threadId) {
+          // 上传期间仍可能输入新内容，只清理本次成功托管的草稿与附件。
+          setDraft((current) => current.trim() === text ? "" : current);
+          setDraftImages((current) => current.filter((image) => !pendingImages.some((original) => original.id === image.id)));
+          setDraftFiles((current) => current.filter((file) => !pendingFiles.some((original) => original.id === file.id)));
+          setError("");
+        }
+      } catch (reason) {
+        if (draftContext === draftContextGenerationRef.current) setError(reason instanceof Error ? reason.message : String(reason));
+      } finally {
+        queueSubmittingThreadIdsRef.current.delete(threadId);
+        if (String(activeRef.current?.id ?? "") === threadId) setImageReading(false);
+      }
       return;
     }
     requestRunCompletionNotificationPermission();
@@ -3002,198 +3104,70 @@ function BackendWorkspace({
   }
 
   async function actOnQueuedFollowUp(id: string) {
-    const followUp = queuedFollowUpsRef.current.find(
-      (entry) => entry.id === id,
-    );
-    if (!followUp) return;
-    if (!busy) {
-      replaceQueuedFollowUps(
-        queuedFollowUpsRef.current.map((entry) =>
-          entry.id === id ? { ...entry, failed: false } : entry,
-        ),
-      );
+    const followUp = queuedFollowUpsRef.current.find((entry) => entry.id === id);
+    if (!followUp || steering) return;
+    if (!followUp.hosted) {
+      // 明确失败的普通发送保留手动恢复入口；它从未进入自动排队调度。
+      if (busy || !followUp.failed) return;
+      replaceQueuedFollowUps(removeQueuedFollowUp(queuedFollowUpsRef.current, id));
+      await startTurnMessage({ text: followUp.inputText, pendingImages: followUp.images,
+        pendingFiles: followUp.files, pendingSkills: followUp.skills, pendingPlugins: followUp.plugins,
+        draftContext: followUp.draftContext,
+        onFailure: () => replaceQueuedFollowUps([{ ...followUp, failed: true }, ...queuedFollowUpsRef.current.filter((entry) => entry.id !== id)]),
+      });
       return;
     }
-    const thread = activeRef.current;
-    const threadId = String(thread?.id ?? "");
-    const turnId = activeTurnId(thread);
-    const client = clientRef.current;
-    if (
-      !threadId ||
-      threadId !== followUp.threadId ||
-      !turnId ||
-      !client ||
-      steering
-    ) {
-      return;
-    }
-    const originalIndex = queuedFollowUpsRef.current.findIndex(
-      (entry) => entry.id === id,
-    );
-    replaceQueuedFollowUps(
-      queuedFollowUpsRef.current.filter((entry) => entry.id !== id),
-    );
-    const clientUserMessageId =
-      `steer-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    if (followUp.state === "sending" || followUp.state === "uncertain") return;
     setSteering(true);
-    setPendingSteerMessage({
-      id: clientUserMessageId,
-      threadId,
-      text: followUp.text,
-    });
     setError("");
-    let sent = false;
+    const steer = busy && Boolean(activeTurnId(activeRef.current));
+    if (steer) setPendingSteerMessage({ id: followUp.id, threadId: followUp.threadId, text: followUp.text });
     try {
-      const uploadedFiles = await Promise.all(
-        followUp.files.map((file) => uploadFile(backend, file.file)),
-      );
-      await client.request(
-        "turn/steer",
-        buildTurnSteerParams({
-          threadId,
-          turnId,
-          input: buildTurnInput(
-            followUp.inputText,
-            followUp.images,
-            uploadedFiles,
-            followUp.skills,
-            followUp.plugins,
-          ),
-          clientUserMessageId,
-        }),
-      );
-      sent = true;
+      await mutateHostedQueue({ action: steer ? "steer" : "retry", id, revision: followUp.revision! });
+      if (steer) releaseQueueSubmission(followUp.threadId, id);
+      if (steer && clientRef.current) void reconcileActiveThread(clientRef.current).catch(() => undefined);
     } catch (reason) {
-      if (reason instanceof HttpOperationPendingError) {
-        rememberPendingOperation(reason.requestId, {
-          threadId, draftContext: followUp.draftContext,
-          confirmed: (response, confirmationClient) => {
-            setPendingSteerMessage((current) => clearPendingSteerForRequest(current, clientUserMessageId));
-            if (response.error) {
-              replaceQueuedFollowUps([{ ...followUp, failed: true }, ...queuedFollowUpsRef.current.filter((entry) => entry.id !== followUp.id)]);
-              if (followUp.draftContext === draftContextGenerationRef.current) setError(response.error.message);
-            } else {
-              followUp.files.forEach((file) => URL.revokeObjectURL(file.previewUrl));
-              if (String(activeRef.current?.id ?? "") === threadId) void reconcileActiveThread(confirmationClient).catch(() => undefined);
-            }
-          },
-        }, client);
-        return;
-      }
-      setPendingSteerMessage((current) =>
-        clearPendingSteerForRequest(current, clientUserMessageId),
-      );
-      if (followUp.draftContext === draftContextGenerationRef.current) {
-        const next = queuedFollowUpsRef.current.filter(
-          (entry) => entry.id !== followUp.id,
-        );
-        next.splice(Math.min(originalIndex, next.length), 0, followUp);
-        replaceQueuedFollowUps(next);
-        setError(reason instanceof Error ? reason.message : String(reason));
-      }
-    } finally {
-      if (followUp.draftContext === draftContextGenerationRef.current) {
-        setSteering(false);
-      }
-    }
-    if (sent && followUp.draftContext === draftContextGenerationRef.current) {
-      followUp.files.forEach((file) => URL.revokeObjectURL(file.previewUrl));
-    }
+      setPendingSteerMessage((current) => clearPendingSteerForRequest(current, followUp.id));
+      setError(reason instanceof Error ? reason.message : String(reason));
+    } finally { setSteering(false); }
   }
 
-  function editQueuedFollowUp(id: string, inputText: string) {
+  async function editQueuedFollowUp(id: string, inputText: string) {
     const followUp = queuedFollowUpsRef.current.find((entry) => entry.id === id);
-    if (!followUp) return;
+    if (!followUp) return false;
     const text = inputText.trim();
-    if (!text && !followUp.images.length && !followUp.files.length) return;
-    const referencedSkills = skillsReferencedInText(
-      text,
-      skillCatalog.cwd === (activeRef.current?.cwd ?? null)
-        ? skillCatalog.skills
-        : [],
-    );
-    const referencedPlugins = pluginsReferencedInText(
-      text,
-      pluginCatalog.cwd === (activeRef.current?.cwd ?? null)
-        ? pluginCatalog.plugins
-        : [],
-    );
-    const updated = updateQueuedFollowUpText(
-      queuedFollowUpsRef.current,
-      id,
-      text,
-      followUpPreviewText(text, followUp.images, followUp.files),
-    ).map((entry) =>
-      entry.id === id
-        ? {
-            ...entry,
-            skills: referencedSkills,
-            plugins: referencedPlugins,
-          }
-        : entry,
-    );
-    replaceQueuedFollowUps(updated);
+    if (!text && !followUp.attachmentCount) return false;
+    const referencedSkills = skillsReferencedInText(text, skillCatalog.cwd === (activeRef.current?.cwd ?? null) ? skillCatalog.skills : []);
+    const referencedPlugins = pluginsReferencedInText(text, pluginCatalog.cwd === (activeRef.current?.cwd ?? null) ? pluginCatalog.plugins : []);
+    if (!followUp.hosted) {
+      replaceQueuedFollowUps(updateQueuedFollowUpText(queuedFollowUpsRef.current, id, text, followUpPreviewText(text, followUp.images, followUp.files)).map((entry) => entry.id === id ? { ...entry, skills: referencedSkills, plugins: referencedPlugins } : entry));
+      return true;
+    }
+    try {
+      await mutateHostedQueue({ action: "edit", id, revision: followUp.revision!, inputText: text,
+        text: text || t("{count} 个附件", { count: followUp.attachmentCount ?? 0 }),
+        mentions: buildTurnInput("", [], [], referencedSkills, referencedPlugins),
+      });
+      setError("");
+      return true;
+    } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)); return false; }
   }
 
-  function cancelQueuedFollowUp(id: string) {
+  async function cancelQueuedFollowUp(id: string) {
     const followUp = queuedFollowUpsRef.current.find((entry) => entry.id === id);
     if (!followUp) return;
-    followUp.files.forEach((file) => URL.revokeObjectURL(file.previewUrl));
-    replaceQueuedFollowUps(removeQueuedFollowUp(queuedFollowUpsRef.current, id));
-  }
-
-  useEffect(() => {
-    const activeThreadId = String(active?.id ?? "");
-    const followUp = queuedFollowUps.find(
-      (entry) => entry.threadId === activeThreadId && (entry.threadId || entry.draftContext === draftContextGenerationRef.current),
-    );
-    if (
-      busy ||
-      steering ||
-      queuedFollowUpDispatchingRef.current ||
-      pendingOperationIds.some((id) => pendingOperationsRef.current.get(id)?.threadId === activeThreadId) ||
-      !followUp ||
-      followUp.failed ||
-      connection !== "online" ||
-      conversationLoadState !== "ready" ||
-      activeThreadAccessMode !== "interactive" ||
-      activeThreadId !== followUp.threadId ||
-      !clientRef.current
-    ) {
+    if (!followUp.hosted) {
+      followUp.files.forEach((file) => URL.revokeObjectURL(file.previewUrl));
+      replaceQueuedFollowUps(removeQueuedFollowUp(queuedFollowUpsRef.current, id));
       return;
     }
-    queuedFollowUpDispatchingRef.current = true;
-    replaceQueuedFollowUps(
-      queuedFollowUpsRef.current.filter((entry) => entry.id !== followUp.id),
-    );
-    void startTurnMessage({
-      text: followUp.inputText,
-      pendingImages: followUp.images,
-      pendingFiles: followUp.files,
-      pendingSkills: followUp.skills,
-      pendingPlugins: followUp.plugins,
-      draftContext: followUp.draftContext,
-      onFailure: () => {
-        replaceQueuedFollowUps([
-          { ...followUp, failed: true },
-          ...queuedFollowUpsRef.current.filter(
-            (entry) => entry.id !== followUp.id,
-          ),
-        ]);
-      },
-    }).finally(() => {
-      queuedFollowUpDispatchingRef.current = false;
-    });
-  }, [
-    active?.id,
-    activeThreadAccessMode,
-    busy,
-    connection,
-    conversationLoadState,
-    queuedFollowUps,
-    pendingOperationIds,
-    steering,
-  ]);
+    if (followUp.state === "uncertain" && !window.confirm(t("这条消息可能已发送。移除待确认记录不会撤销已发送的任务，确定移除吗？"))) return;
+    try {
+      await mutateHostedQueue({ action: "cancel", id, revision: followUp.revision! });
+      releaseQueueSubmission(followUp.threadId, id);
+      setError("");
+    } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)); }
+  }
 
   async function selectImages(files: FileList | null) {
     if (
@@ -3415,8 +3389,8 @@ function BackendWorkspace({
         showNotice(t("已重命名"));
         return true;
       }
+      await discardQueuedFollowUpsForThread(threadId);
       await client.request("thread/archive", { threadId });
-      discardQueuedFollowUpsForThread(threadId);
       markThreadRead(threadId);
       writeThreadPinned(localStorage, backend.id, threadId, false);
       setThreads((current) =>
@@ -3554,8 +3528,8 @@ function BackendWorkspace({
     setPendingAction("archive");
     setError("");
     try {
+      await discardQueuedFollowUpsForThread(threadId);
       await client.request("thread/archive", { threadId: thread.id });
-      discardQueuedFollowUpsForThread(threadId);
       markThreadRead(String(thread.id));
       writeThreadPinned(localStorage, backend.id, String(thread.id), false);
       setThreads((current) =>
@@ -4030,6 +4004,7 @@ function BackendWorkspace({
           busy={conversationBusy}
           operationPending={conversationOperationPending}
           steering={steering}
+          queueSaving={queueSaving}
           steerable={Boolean(activeTurnId(active))}
           pendingSteerText={
             pendingSteerMessage?.threadId === String(active.id)

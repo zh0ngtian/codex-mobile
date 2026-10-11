@@ -1,6 +1,6 @@
 import { randomUUID, createHash } from "node:crypto";
 import { mkdir, open, readFile, readdir, rename, unlink, stat } from "node:fs/promises";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
 import { homedir } from "node:os";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import WebSocket from "ws";
@@ -18,6 +18,7 @@ export interface RpcMessage {
   error?: unknown;
 }
 
+const HOSTED_SESSION_ID = "c0dec000-0000-4000-8000-000000000001";
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const MAX_REQUEST_BYTES = 16 * 1024 * 1024;
 const MAX_OPERATIONS = 2048;
@@ -142,7 +143,7 @@ class Session {
   storageBytes = 0;
   invalidatedSocket?: WebSocket;
 
-  constructor(readonly id: string, private upstreamUrl: string, private root: string, private changeHistory: TurnChangeHistory, private images: InlineImages, private notifications?: BarkNotifications) {
+  constructor(readonly id: string, private upstreamUrl: string, private root: string, private changeHistory: TurnChangeHistory, private images: InlineImages, private notifications?: BarkNotifications, private hostedObserver?: (message?: RpcMessage) => void, private hostedReply?: (requestId: string, message: RpcMessage) => Promise<RpcMessage | undefined>) {
     this.loadPromise = this.load();
   }
 
@@ -198,6 +199,11 @@ class Session {
     const write = async () => {
       const directory = join(this.root, this.id);
       await mkdir(directory, { recursive: true, mode: 0o700 });
+      // New root/session directory entries must be durable before a WAL can authorize upstream send.
+      for (const parentPath of [this.root, dirname(this.root)]) {
+        const parent = await open(parentPath, "r");
+        try { await parent.sync(); } finally { await parent.close(); }
+      }
       const target = join(directory, `${operation.requestId}.json`);
       const data = JSON.stringify(serializable);
       const previousSize = await stat(target).then((entry) => entry.size, (error: any) => { if (error.code === "ENOENT") return 0; throw error; });
@@ -237,6 +243,7 @@ class Session {
   private invalidate(socket: WebSocket) {
     if (this.invalidatedSocket === socket) return;
     this.invalidatedSocket = socket;
+    this.hostedObserver?.();
     this.ready = false; this.initialized = undefined; this.initializing = undefined;
     this.sentInitialized = false; this.sendingInitialized = undefined;
     this.epoch = randomUUID(); this.pending.clear(); this.running.clear(); this.history = []; this.historyBytes = 0;
@@ -278,6 +285,16 @@ class Session {
     try { await connecting; } finally { if (this.connecting === connecting) this.connecting = undefined; }
   }
 
+  mirror(message: RpcMessage) {
+    if (message.method && message.id != null) {
+      const bytes = Buffer.byteLength(JSON.stringify(message));
+      const retained = [...this.pending.values()].reduce((sum, entry) => sum + Buffer.byteLength(JSON.stringify(entry)), 0);
+      if ((!this.pending.has(message.id) && this.pending.size >= 128) || retained + bytes > MAX_APPROVAL_BYTES) return;
+      this.pending.set(message.id, message); return;
+    }
+    this.receive(message);
+  }
+
   private receive(message: RpcMessage) {
     this.changeHistory.observe(message);
     this.touch();
@@ -298,9 +315,11 @@ class Session {
         return;
       }
       this.pending.set(message.id, message);
+      this.hostedObserver?.(message);
       return;
     }
     if (!message.method) return;
+    this.hostedObserver?.(message);
     if (message.method === "serverRequest/resolved") {
       const params = message.params ?? {};
       const request = this.pending.get(params.requestId);
@@ -365,6 +384,11 @@ class Session {
     const bytes = Buffer.byteLength(JSON.stringify(message));
     const event = { cursor: ++this.cursor, message, bytes };
     this.history.push(event); this.historyBytes += bytes;
+    // Origin authorization is a live event, never a reconnect/reset snapshot or durable operation replay.
+    if (method === "mobile/turn/accepted") {
+      while (this.history.length > MAX_EVENTS || this.historyBytes > MAX_EVENT_BYTES) this.historyBytes -= this.history.shift()!.bytes;
+      return;
+    }
     const key = message.method?.startsWith("item/") && message.params?.item
       ? `item:${this.itemKey(message.params)}`
       : `${message.method}:${thread}:${turn}`;
@@ -502,6 +526,10 @@ class Session {
     ].includes(request.method ?? "")) return;
     const result = response.result as Record<string, any> | undefined;
     if (!result || typeof result !== "object") return;
+    if (["turn/start", "turn/steer"].includes(request.method ?? "")) this.hostedObserver?.({ method: "mobile/turn/accepted", params: {
+      request: { method: request.method, params: { threadId: request.params?.threadId, expectedTurnId: request.params?.expectedTurnId } },
+      response: { result: { turn: { id: result.turn?.id }, turnId: result.turnId } },
+    } });
     const thread = result.thread;
     if (thread?.id) this.changeHistory.observe({ method: "thread/started", params: { thread } });
     if (request.method === "turn/start" && result.turn?.id) this.changeHistory.observe({
@@ -582,7 +610,8 @@ class Session {
           result = { ...result, ...(message.id != null ? { id: message.id } : {}) };
         } else if (!message.method) {
           submitted = true;
-          await new Promise<void>((resolve, reject) => submittedSocket.send(JSON.stringify(message), (error) => error ? reject(error) : resolve()));
+          const hosted = await this.hostedReply?.(requestId, message);
+          if (!hosted) await new Promise<void>((resolve, reject) => submittedSocket.send(JSON.stringify(message), (error) => error ? reject(error) : resolve()));
           if (this.socket === submittedSocket && this.epoch === submittedEpoch && this.pending.get(message.id!) === submittedApproval) this.pending.delete(message.id!);
           result = { id: message.id, result: null };
         } else {
@@ -686,6 +715,8 @@ export class HttpSessions {
   private root: string;
   private changeHistory: TurnChangeHistory;
   private images: InlineImages;
+  private hostedRequests = new Map<string, { message: RpcMessage; originalId: string | number; epoch: string }>();
+  private hostedListeners = new Set<(message: RpcMessage) => void>();
   constructor(private options: { upstreamUrl: string; codexHome?: string; changeHistory?: TurnChangeHistory; notifications?: BarkNotifications }) {
     this.root = join(options.codexHome ?? process.env.CODEX_HOME ?? join(homedir(), ".codex"), "codex-mobile-http");
     this.images = new InlineImages(join(options.codexHome ?? process.env.CODEX_HOME ?? join(homedir(), ".codex"), "codex-mobile-inline-images"));
@@ -706,20 +737,25 @@ export class HttpSessions {
     const existing = this.sessions.get(id);
     if (existing) return existing;
     if (this.sessions.size >= MAX_SESSIONS) throw new HttpError(429, "Too many sessions");
-    const session = new Session(id, this.options.upstreamUrl, this.root, this.changeHistory, this.images, this.options.notifications);
+    const session = new Session(id, this.options.upstreamUrl, this.root, this.changeHistory, this.images, this.options.notifications,
+      id === HOSTED_SESSION_ID ? (message) => this.observeHosted(message) : undefined,
+      id !== HOSTED_SESSION_ID ? (requestId, message) => this.replyHosted(requestId, message) : undefined);
     // Loading errors are returned by APIs rather than emitted as unhandled rejections.
     session.loadPromise.catch(() => {});
     this.sessions.set(id, session);
+    if (id !== HOSTED_SESSION_ID) for (const entry of this.hostedRequests.values()) session.mirror(entry.message);
     return session;
   }
 
   async handle(request: IncomingMessage, response: ServerResponse, url: URL) {
     try {
+      if (url.searchParams.get("sessionId") === HOSTED_SESSION_ID) throw new HttpError(403, "Internal session is reserved");
       const session = this.session(url.searchParams.get("sessionId"));
       let result: unknown;
       if (url.pathname === "/api/events" && request.method === "GET") {
         const after = Number(url.searchParams.get("after") ?? "0");
         if (!Number.isSafeInteger(after) || after < 0) throw new HttpError(400, "Invalid event cursor");
+        for (const [id, entry] of this.hostedRequests) if (!session.pending.has(id)) session.mirror(entry.message);
         result = session.events(after);
       } else if (url.pathname === "/api/operations" && request.method === "GET") {
         const id = url.searchParams.get("requestId") ?? "";
@@ -761,7 +797,69 @@ export class HttpSessions {
     }
   }
 
+  private observeHosted(message?: RpcMessage) {
+    if (!message) {
+      for (const [id, entry] of this.hostedRequests) this.broadcastHosted({ method: "serverRequest/resolved", params: { requestId: id, threadId: entry.message.params?.threadId } });
+      this.hostedRequests.clear(); return;
+    }
+    if (message.id != null && message.method) {
+      const session = this.sessions.get(HOSTED_SESSION_ID)!;
+      const id = `hosted:${session.epoch}:${String(message.id)}`;
+      const mirrored = { ...message, id };
+      this.hostedRequests.set(id, { message: mirrored, originalId: message.id, epoch: session.epoch });
+      this.broadcastHosted(mirrored);
+    } else if (message.method === "mobile/turn/accepted") {
+      this.broadcastHosted(message); return;
+    } else if (message.method === "serverRequest/resolved") {
+      for (const [id, entry] of this.hostedRequests) if (entry.originalId === message.params?.requestId) {
+        this.hostedRequests.delete(id); this.broadcastHosted({ ...message, params: { ...message.params, requestId: id } });
+      }
+    }
+    // App-server broadcasts subscribed turn events itself. Internal approval requests are connection-local.
+    for (const listener of this.hostedListeners) if (message.id == null && message.method !== "serverRequest/resolved") listener(message);
+  }
+  private broadcastHosted(message: RpcMessage) {
+    for (const [id, session] of this.sessions) if (id !== HOSTED_SESSION_ID &&
+      (message.method !== "mobile/turn/accepted" || (session.ready && session.socket?.readyState === WebSocket.OPEN))) session.mirror(message);
+    for (const listener of this.hostedListeners) listener(message);
+  }
+  async replyHosted(requestId: string, message: RpcMessage): Promise<RpcMessage | undefined> {
+    if (typeof message.id !== "string" || !message.id.startsWith("hosted:")) return undefined;
+    const entry = this.hostedRequests.get(message.id);
+    const session = this.sessions.get(HOSTED_SESSION_ID);
+    if (!entry || !session || session.epoch !== entry.epoch || !session.pending.has(entry.originalId)) throw new HttpError(409, "后台审批已失效，请刷新会话");
+    const response = await session.rpc(requestId, { ...message, id: entry.originalId }, entry.epoch);
+    this.hostedRequests.delete(message.id);
+    this.broadcastHosted({ method: "serverRequest/resolved", params: { requestId: message.id, threadId: entry.message.params?.threadId } });
+    return { ...response, id: message.id };
+  }
+  subscribeHosted(listener: (message: RpcMessage) => void) {
+    this.hostedListeners.add(listener);
+    for (const entry of this.hostedRequests.values()) listener(entry.message);
+    return () => { this.hostedListeners.delete(listener); };
+  }
+
+  /** Dedicated durable identity survives gateway restarts and is never exposed to clients. */
+  async hostedReady() {
+    const session = this.session(HOSTED_SESSION_ID);
+    if (!session.ready || session.socket?.readyState !== WebSocket.OPEN) {
+      const initialized = await session.rpc(randomUUID(), { id: "hosted-initialize", method: "initialize", params: {
+        clientInfo: { name: "codex-mobile-follow-ups", version: "1" }, capabilities: { experimentalApi: true },
+      } });
+      if (initialized.error != null) throw new HttpError(503, "Unable to initialize follow-up session");
+    }
+    if (!session.sentInitialized) await session.rpc(randomUUID(), { method: "initialized", params: {} });
+    return session.epoch;
+  }
+  async hostedRpc(message: RpcMessage, requestId: string = randomUUID()) {
+    await this.hostedReady();
+    return this.session(HOSTED_SESSION_ID).rpc(requestId, message);
+  }
+
+  hostedOperation(requestId: string) { return this.session(HOSTED_SESSION_ID).operation(requestId); }
+
   realtime(sessionId: string | null, client?: WebSocket) {
+    if (sessionId === HOSTED_SESSION_ID) throw new HttpError(403, "Internal session is reserved");
     const session = this.session(sessionId);
     if (!session.ready || session.socket?.readyState !== WebSocket.OPEN) throw new HttpError(503, "Initialize session before realtime");
     if (client) session.voice(client);

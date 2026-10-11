@@ -1,5 +1,5 @@
 import { createRef, type FormEvent } from "react";
-import { fireEvent, render, within } from "@testing-library/react";
+import { fireEvent, render, within, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { ConversationPage } from "../../src/features/conversation/ConversationPage";
 import {
@@ -24,6 +24,8 @@ function renderConversation(
       inputText?: string;
       attachmentCount?: number;
       failed?: boolean;
+      state?: "queued" | "sending" | "failed" | "uncertain";
+      error?: string;
     }>;
     accessMode?: "interactive" | "readOnly";
     resumeError?: string;
@@ -356,7 +358,7 @@ describe("会话详情历史分页", () => {
     expect(onQueuedFollowUpAction).toHaveBeenCalledWith("queue-1");
   });
 
-  it("排队消息可以就地编辑并取消发送", () => {
+  it("排队消息可以就地编辑并取消发送", async () => {
     const onQueuedFollowUpEdit = vi.fn();
     const onQueuedFollowUpCancel = vi.fn();
     const { container } = renderConversation(
@@ -387,6 +389,7 @@ describe("会话详情历史分页", () => {
       "调整后的内容",
     );
 
+    await waitFor(() => expect(view.getByRole("button", { name: "取消排队消息" })).toBeVisible());
     fireEvent.click(view.getByRole("button", { name: "取消排队消息" }));
     expect(onQueuedFollowUpCancel).toHaveBeenCalledWith("queue-1");
   });
@@ -685,5 +688,17 @@ describe("会话详情历史分页", () => {
     expect(video.getAttribute("poster")).toMatch(/^data:image\/svg\+xml/);
     expect(view.getByText("PDF")).not.toBeNull();
     expect(view.getByRole("button", { name: "移除 需求.pdf" })).not.toBeNull();
+  });
+});
+
+
+describe("托管消息状态", () => {
+  it.each(["sending", "uncertain"] as const)("%s 时禁用编辑、取消和引导", (state) => {
+    const view = renderConversation("idle", undefined, { busy: true, queuedFollowUps: [{ id: "hosted", text: "下一条", state, error: state === "uncertain" ? "结果未知，请检查会话" : undefined }] });
+    const scope = within(view.container);
+    for (const label of state === "sending" ? ["编辑排队消息", "取消排队消息"] : ["编辑排队消息"]) expect(scope.getByRole("button", { name: label })).toBeDisabled();
+    expect(scope.getByRole("button", { name: state === "sending" ? "发送中" : "待确认" })).toBeDisabled();
+    if (state === "uncertain") expect(scope.getByText("结果未知，请检查会话")).toBeVisible();
+    view.unmount();
   });
 });

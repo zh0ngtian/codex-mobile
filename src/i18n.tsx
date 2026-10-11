@@ -13,6 +13,13 @@ export type LanguagePreference = "system" | Locale;
 const LANGUAGE_STORAGE_KEY = "codex-mobile:language";
 
 const english: Record<string, string> = {
+  "这条消息可能已发送。移除待确认记录不会撤销已发送的任务，确定移除吗？": "This message may have been sent. Removing the uncertain record will not cancel a submitted task. Remove it?",
+  "设备网关需要升级以支持托管排队消息": "Update the device gateway to host queued messages",
+  "网关排队响应无效": "Invalid gateway queue response",
+  "排队消息正在同步，请稍后重试": "Queue is syncing. Please try again shortly.",
+  "发送中": "Sending",
+  "待确认": "Awaiting confirmation",
+  "{count} 个附件": "{count} attachments",
   "本会话允许": "Allow for this session",
   "取消本轮": "Cancel this turn",
   "允许并记住命令前缀": "Allow and remember command prefix",

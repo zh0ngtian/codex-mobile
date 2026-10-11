@@ -5,12 +5,20 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import WebSocket, { WebSocketServer } from "ws";
 import { TurnChangeHistory } from "../../server/turn-change-history.js";
-import { createGateway } from "../../server/gateway.js";
+import { createGateway as createRealGateway, type GatewayOptions } from "../../server/gateway.js";
 
 const cleanups: Array<() => Promise<void>> = [];
+const temporaryHomes: string[] = [];
+
+async function createGateway(options: GatewayOptions) {
+  const temporaryHome = options.codexHome ? undefined : await mkdtemp(join(tmpdir(), "codex-gateway-isolated-"));
+  if (temporaryHome) temporaryHomes.push(temporaryHome);
+  return createRealGateway({ ...options, codexHome: options.codexHome ?? temporaryHome });
+}
 
 afterEach(async () => {
   await Promise.all(cleanups.splice(0).map((cleanup) => cleanup()));
+  await Promise.all(temporaryHomes.splice(0).map((directory) => rm(directory, { recursive: true, force: true })));
 });
 
 describe("透明网关", () => {
@@ -352,6 +360,7 @@ describe("透明网关", () => {
       httpPolling: true,
       barkPush: true,
       imagePreview: true,
+      followUpQueue: true,
     });
   });
 

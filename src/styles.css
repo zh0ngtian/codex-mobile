@@ -456,6 +456,7 @@ button, a, summary, [role="button"] { -webkit-tap-highlight-color: transparent; 
 .queued-follow-up.editing { grid-template-columns: 1fr; align-items: stretch; padding: 9px; border-radius: 16px; }
 .queued-follow-up textarea { width: 100%; min-height: 54px; resize: vertical; border: 1px solid #d2d2d2; border-radius: 11px; background: #fff; color: #222; padding: 8px 10px; font: inherit; font-size: 0.8125rem; line-height: 1.4; }
 .queued-follow-up > small { color: #777; padding: 0 3px; font-size: 0.6875rem; }
+.queued-follow-up > .queued-follow-up-error { grid-column: 1 / -1; grid-row: 2; overflow-wrap: anywhere; }
 .queued-follow-up-actions { display: flex; justify-content: flex-end; align-items: center; gap: 4px; }
 .queued-follow-up-actions > button { min-height: 30px; border: 0; border-radius: 15px; background: transparent; color: #555; padding: 0 9px; font-size: 0.75rem; font-weight: min(900, calc(650 + var(--bold-text-weight-offset))); white-space: nowrap; }
 .queued-follow-up-actions > button:last-child { background: #111; color: #fff; padding-inline: 11px; }

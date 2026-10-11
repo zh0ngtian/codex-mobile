@@ -1,11 +1,10 @@
 import { expect, test } from "@playwright/test";
 
-for (const scenario of ["turn-success", "turn-error", "thread-start", "thread-error", "thread-settings", "approval", "steer", "history-success", "history-error", "history-revert", "history-rollback", "history-read-delay"] as const) {
+for (const scenario of ["turn-success", "turn-error", "thread-start", "thread-error", "thread-settings", "approval", "history-success", "history-error", "history-revert", "history-rollback", "history-read-delay"] as const) {
 test(`ACK 丢失后自动确认原发送并保留输入：${scenario}`, async ({ page }) => {
   const newThread = scenario.startsWith("thread-");
   const history = scenario.startsWith("history-");
   const thread: any = { id: "ack-thread", name: "ACK 会话", cwd: "/tmp/project", turns: [], status: { type: "idle" } };
-  if (scenario === "steer") { thread.status = { type: "active" }; thread.turns = [{ id: "accepted-turn", status: "inProgress", items: [] }]; }
   if (history) thread.turns = [{ id: "history-turn", status: "completed", items: [{ id: "old-user", type: "userMessage", content: [{ type: "text", text: "历史原文" }, { type: "localImage", path: "/tmp/original.png" }] }, { id: "old-answer", type: "agentMessage", phase: "final_answer", text: "旧答案" }] }];
   let accepted: any;
   let starts = 0;
@@ -65,12 +64,12 @@ test(`ACK 丢失后自动确认原发送并保留输入：${scenario}`, async ({
       return route.fulfill({ json: { id: message.id, result: { turn: { id: "next", status: "inProgress", items: [] } } } });
     }
     if (message.method === "thread/resume") approvalReady = true;
-    if (message.method === (newThread ? "thread/start" : scenario === "steer" ? "turn/steer" : "turn/start") || message.id === "approval-lost") {
+    if (message.method === (newThread ? "thread/start" : "turn/start") || message.id === "approval-lost") {
       starts++;
       accepted = operation;
       if ((scenario === "thread-error" && starts === 2) || ["history-revert", "history-rollback", "history-read-delay"].includes(scenario)) return route.fulfill({ json: { id: message.id, result: newThread ? { thread } : { turn: { id: "next", status: "inProgress", items: [] } } } });
       if (scenario === "turn-error" && starts === 2) return route.fulfill({ json: { id: message.id, error: { code: -1, message: "明确发送失败" } } });
-      if (scenario === "turn-success" || scenario === "steer" || scenario === "history-success") thread.turns = [{ id: "accepted-turn", status: "completed", itemsView: "summary", items: [
+      if (scenario === "turn-success" || scenario === "history-success") thread.turns = [{ id: "accepted-turn", status: "completed", itemsView: "summary", items: [
         { id: "user", type: "userMessage", content: [{ type: "text", text: "原始发送" }] },
         { id: "answer", type: "agentMessage", text: "确认后的结果" },
       ] }];
@@ -96,7 +95,7 @@ test(`ACK 丢失后自动确认原发送并保留输入：${scenario}`, async ({
   else await page.getByRole("button", { name: /ACK 会话/ }).first().click();
   if (scenario === "approval") await page.evaluate(() => window.dispatchEvent(new Event("online")));
   const input = page.getByRole("textbox", { name: "向 Codex 提问" });
-  if (scenario === "turn-error") await page.locator('input[type="file"]').setInputFiles({ name: "old.txt", mimeType: "text/plain", buffer: Buffer.from("old") });
+  if (scenario === "turn-error") await page.locator('input[aria-label="选择文件"]').setInputFiles({ name: "old.txt", mimeType: "text/plain", buffer: Buffer.from("old") });
   if (scenario === "approval") await page.getByRole("button", { name: "允许", exact: true }).click();
   else if (history) {
     await input.fill("后续新输入");
@@ -106,8 +105,7 @@ test(`ACK 丢失后自动确认原发送并保留输入：${scenario}`, async ({
   }
   else {
     await input.fill("原始发送");
-    await page.getByRole("button", { name: scenario === "steer" ? "排队" : "发送", exact: true }).click();
-    if (scenario === "steer") await page.getByRole("button", { name: "改为引导", exact: true }).click();
+    await page.getByRole("button", { name: "发送", exact: true }).click();
   }
   await expect(page.getByText("发送状态确认中", { exact: true })).toBeVisible();
   if (scenario === "turn-success") {
@@ -120,7 +118,7 @@ test(`ACK 丢失后自动确认原发送并保留输入：${scenario}`, async ({
   }
   await expect(input).toHaveValue(history ? "后续新输入" : "");
   if (!history && scenario !== "thread-start" && scenario !== "thread-settings") await input.fill("后续新输入");
-  if (scenario === "turn-error") await page.locator('input[type="file"]').setInputFiles({ name: "new.txt", mimeType: "text/plain", buffer: Buffer.from("new") });
+  if (scenario === "turn-error") await page.locator('input[aria-label="选择文件"]').setInputFiles({ name: "new.txt", mimeType: "text/plain", buffer: Buffer.from("new") });
   offline = false;
   await page.evaluate(() => window.dispatchEvent(new Event("online")));
   await expect(page.getByText("发送状态确认中", { exact: true })).toHaveCount(0);

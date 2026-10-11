@@ -63,6 +63,8 @@ export type QueuedFollowUpPreview = {
   inputText?: string;
   attachmentCount?: number;
   failed?: boolean;
+  state?: "queued" | "sending" | "failed" | "uncertain";
+  error?: string;
 };
 
 function formatRealtimeDuration(startedAt: number | null, now: number) {
@@ -159,6 +161,7 @@ export function ConversationPage({
   busy,
   operationPending = false,
   steering,
+  queueSaving = false,
   steerable,
   pendingSteerText,
   queuedFollowUps,
@@ -222,6 +225,7 @@ export function ConversationPage({
   busy: boolean;
   operationPending?: boolean;
   steering: boolean;
+  queueSaving?: boolean;
   steerable: boolean;
   pendingSteerText: string;
   queuedFollowUps: QueuedFollowUpPreview[];
@@ -267,7 +271,7 @@ export function ConversationPage({
   onSubmitHistoryEdit?: () => void | Promise<void>;
   onInterrupt: () => void | Promise<void>;
   onQueuedFollowUpAction: (id: string) => void | Promise<void>;
-  onQueuedFollowUpEdit?: (id: string, text: string) => void;
+  onQueuedFollowUpEdit?: (id: string, text: string) => void | boolean | Promise<boolean>;
   onQueuedFollowUpCancel?: (id: string) => void;
 }) {
   const selectedBackend =
@@ -740,8 +744,9 @@ export function ConversationPage({
                 aria-label={t("排队消息")}
               >
                 {queuedFollowUps.map((followUp) => {
-                  const canSteerFollowUp = busy && steerable;
-                  const canRetryFollowUp = !busy && followUp.failed;
+                  const locked = followUp.state === "sending" || followUp.state === "uncertain";
+                  const canSteerFollowUp = busy && steerable && !locked;
+                  const canRetryFollowUp = !busy && followUp.failed && !locked;
                   const editing = queuedFollowUpEdit?.id === followUp.id;
                   const editedText = editing ? queuedFollowUpEdit.text.trim() : "";
                   const canSaveEdit = Boolean(
@@ -757,7 +762,7 @@ export function ConversationPage({
                           <textarea
                             aria-label={t("编辑排队消息内容")}
                             value={queuedFollowUpEdit.text}
-                            disabled={steering}
+                            disabled={steering || queueSaving || locked}
                             rows={2}
                             onChange={(event) =>
                               setQueuedFollowUpEdit({
@@ -777,7 +782,7 @@ export function ConversationPage({
                             <button
                               type="button"
                               aria-label={t("取消编辑排队消息")}
-                              disabled={steering}
+                              disabled={steering || queueSaving || locked}
                               onClick={() => setQueuedFollowUpEdit(null)}
                             >
                               {t("取消")}
@@ -785,10 +790,11 @@ export function ConversationPage({
                             <button
                               type="button"
                               aria-label={t("保存排队消息")}
-                              disabled={steering || !canSaveEdit}
+                              disabled={steering || queueSaving || locked || !canSaveEdit}
                               onClick={() => {
-                                onQueuedFollowUpEdit(followUp.id, editedText);
-                                setQueuedFollowUpEdit(null);
+                                void Promise.resolve(onQueuedFollowUpEdit(followUp.id, editedText)).then((saved) => {
+                                  if (saved !== false) setQueuedFollowUpEdit(null);
+                                });
                               }}
                             >
                               {t("保存")}
@@ -798,11 +804,12 @@ export function ConversationPage({
                       ) : (
                         <>
                           <span title={followUp.text}>{followUp.text}</span>
+                          {followUp.error && <small className="queued-follow-up-error" role="alert">{followUp.error}</small>}
                           <div className="queued-follow-up-actions">
                             <button
                               type="button"
                               aria-label={t("编辑排队消息")}
-                              disabled={steering}
+                              disabled={steering || queueSaving || locked}
                               onClick={() =>
                                 setQueuedFollowUpEdit({
                                   id: followUp.id,
@@ -815,7 +822,7 @@ export function ConversationPage({
                             <button
                               type="button"
                               aria-label={t("取消排队消息")}
-                              disabled={steering}
+                              disabled={steering || queueSaving || followUp.state === "sending"}
                               onClick={() => onQueuedFollowUpCancel(followUp.id)}
                             >
                               {t("取消")}
@@ -823,11 +830,15 @@ export function ConversationPage({
                             <button
                               type="button"
                               disabled={
-                                steering || (!canSteerFollowUp && !canRetryFollowUp)
+                                steering || queueSaving || (!canSteerFollowUp && !canRetryFollowUp)
                               }
                               onClick={() => onQueuedFollowUpAction(followUp.id)}
                             >
-                              {canSteerFollowUp
+                              {followUp.state === "sending"
+                                ? t("发送中")
+                                : followUp.state === "uncertain"
+                                  ? t("待确认")
+                                  : canSteerFollowUp
                                 ? t("改为引导")
                                 : canRetryFollowUp
                                   ? t("重试")

@@ -7,9 +7,20 @@ test("排队、编辑和引导消息变化时任务状态不被遮挡，历史�
       { id: "answer", type: "agentMessage", phase: "commentary", text: Array.from({ length: 40 }, (_, i) => `正在检查段落 ${i}`).join("\n\n") },
     ],
   }] };
+  let queue: any[] = [];
   await page.addInitScript(() => localStorage.setItem("codex-mobile:language", "zh-CN"));
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
+    if (url.pathname === "/api/follow-ups") {
+      if (route.request().method() === "POST") {
+        const action = route.request().postDataJSON();
+        const item = queue.find((candidate) => candidate.id === action.id);
+        if (action.action === "enqueue") queue.push({ ...action, state: "queued", revision: 1 });
+        if (action.action === "edit") Object.assign(item, { inputText: action.inputText, text: action.text, revision: item.revision + 1 });
+        if (["cancel", "steer"].includes(action.action)) queue = queue.filter((candidate) => candidate.id !== action.id);
+      }
+      return route.fulfill({ json: { items: queue, turnId: "running-turn" } });
+    }
     if (url.pathname === "/api/projects") return route.fulfill({ json: { projects: ["/tmp/project"], projectlessThreadIds: [] } });
     if (url.pathname === "/api/host") return route.fulfill({ json: { hostId: "layout-host", gatewayVersion: "0.2.145", appServerReady: true, httpPolling: true } });
     if (url.pathname === "/api/events") return route.fulfill({ json: { epoch: "layout", cursor: 0, messages: [], requests: [], active: true, updatedAt: Date.now(), reset: false } });
@@ -31,7 +42,7 @@ test("排队、编辑和引导消息变化时任务状态不被遮挡，历史�
   await page.goto("/");
   await page.getByRole("button", { name: /追加消息布局/ }).first().click();
   const scroller = page.locator(".conversation-scroll");
-  const queue = async (text: string) => {
+  const enqueue = async (text: string) => {
     await page.getByRole("textbox", { name: "向 Codex 提问" }).fill(text);
     await page.getByRole("button", { name: "排队", exact: true }).click();
   };
@@ -44,11 +55,11 @@ test("排队、编辑和引导消息变化时任务状态不被遮挡，历史�
     })).toBeLessThanOrEqual(-8);
   };
   await expect(page.locator(".run-progress")).toContainText("任务进行中");
-  await queue("先检查排队消息布局");
+  await enqueue("先检查排队消息布局");
   await expectClear();
   await page.screenshot({ path: `.mobile-build/follow-up-${testInfo.project.name}.png` });
-  await queue("再检查引导消息布局");
-  await queue("保留第三条排队消息");
+  await enqueue("再检查引导消息布局");
+  await enqueue("保留第三条排队消息");
   await expectClear();
   await page.getByRole("button", { name: "编辑排队消息", exact: true }).first().click();
   await page.getByRole("textbox", { name: "编辑排队消息内容" }).fill("多行编辑\n第二行内容\n第三行内容\n第四行内容");
@@ -79,6 +90,6 @@ test("排队、编辑和引导消息变化时任务状态不被遮挡，历史�
   await scroller.evaluate(el => el.scrollTo(0, 300));
   await expect.poll(() => scroller.evaluate(el => el.scrollTop)).toBe(300);
   await page.getByRole("button", { name: "取消排队消息" }).first().click();
-  await queue("阅读历史时新排队");
+  await enqueue("阅读历史时新排队");
   await expect.poll(() => scroller.evaluate(el => el.scrollTop)).toBe(300);
 });
