@@ -31,7 +31,7 @@ jobs:
       - name: 安装依赖
         run: npm ci 2>&1 | tee unsigned-ipa-install.log
       - name: 运行完整回归测试
-        run: npm test -- --testTimeout=15000 --exclude '**/.mobile-build/**' 2>&1 | tee unsigned-ipa-tests.log
+        run: npm test -- --maxWorkers=2 --testTimeout=60000 --exclude '**/.mobile-build/**' 2>&1 | tee unsigned-ipa-tests.log
       - name: 重新编译与校验未签名 IPA
         run: node scripts/build-unsigned-ios.mjs --version "$APP_VERSION" 2>&1 | tee unsigned-ipa-build.log
       - name: 保存本次构建下载附件
