@@ -717,9 +717,15 @@ describe("HTTP 会话", () => {
       id: `tool${n}`, type: "mcpToolCall", output: Array.from({ length: 4 }, () => "x".repeat(32_000)),
     } } });
     f.send({ method: "turn/completed", params: { threadId: "t", turn: { id: "turn", status: "completed" } } });
-    await wait(150);
-    const firstResponse = await fetch(f.url("events", "&after=0")); expect(firstResponse.status).toBe(200);
-    let page: any = await firstResponse.json(); expect(page.reset).toBe(true);
+    // 大量通知经异步队列归一化；等待完成状态，避免冷启动 CI 尚未处理完 25 MB 数据。
+    let page: any;
+    await vi.waitFor(async () => {
+      const firstResponse = await fetch(f.url("events", "&after=0")); expect(firstResponse.status).toBe(200);
+      page = await firstResponse.json();
+      expect(page.active).toBe(false);
+      expect(page.messages.some((message: any) => message.method === "item/completed")).toBe(true);
+    }, { timeout: 10_000, interval: 50 });
+    expect(page.reset).toBe(true);
     const messages = [...page.messages]; let count = 0;
     expect(page.messages).toHaveLength(1);
     expect(Buffer.byteLength(JSON.stringify(page.messages[0]))).toBeGreaterThan(64 * 1024);
