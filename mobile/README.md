@@ -1,6 +1,6 @@
-# 本地移动端构建
+# 移动端构建
 
-GitHub Actions 工作流已移除。`android/build-recipe.yml` 与 `ios/build-recipe.yml` 保留原有固定 PakePlus 容器、工具版本及构建脚本，不包含自动触发、云端签名、artifact 上传或发布任务。
+GitHub Actions 与本地构建共用 `android/build-recipe.yml` 和 `ios/build-recipe.yml` 中的固定 PakePlus 容器、工具版本及构建脚本。recipe 只描述构建步骤，自动触发、artifact 上传与 GitHub Release 发布由 `.github/workflows/build-mobile.yml` 管理。iOS 云端构建不读取本机签名材料。
 
 配置字段：
 
@@ -26,4 +26,21 @@ Android 配置保留原有构建步骤，供本机打包时读取；配置文件
 
 执行步骤前设置 `APP_VERSION`、`APP_VERSION_CODE`、`RUNNER_TEMP`，并注入 `env` 中的默认值。`APP_VERSION_CODE` 沿用 `major * 1000000 + minor * 1000 + patch`；`minor` 和 `patch` 必须小于 1000，结果须为正数且不超过 2100000000。`RUNNER_TEMP` 指向本次构建的临时目录。按照配置顺序执行前端、原生生成、硬化、Gradle 构建与 APK 校验步骤。
 
-固定渠道发布要求见 [仓库约定](../AGENTS.md)。迁移构建配置未改变原生补丁或安装包内容，不需要为本次 Actions 移除重新发布 APK/IPA。
+固定渠道发布要求见 [仓库约定](../AGENTS.md)。
+
+## GitHub 自动双端构建
+
+`main` 的客户端、共用构建入口和配置变更自动触发 `Build Mobile Apps`；也可以在 Actions 中手动运行，`release_version` 留空自动分配，填写时必须高于已用版本。工作流串行分配发布版本，同一次运行内 Android/iOS 并行构建，两端成功后才创建 Release。文档和服务端单独修改不触发，npm 不自动发布。
+
+版本计算读取全部 GitHub Release 标签（包括临时 `unsigned-ipa-<version>-<run>-<attempt>`）和 `mobile-version-floor.json`，选择最大版本后递增。GitHub 无法读取局域网清单；本机固定渠道超前时应先同步版本下限或手动指定更高版本。
+
+本地预检入口：
+
+```bash
+node scripts/build-mobile.mjs --platform android --version 0.2.148 --plan
+node scripts/build-mobile.mjs --platform ios --version 0.2.148 --plan
+```
+
+实际构建省略 `--plan`。Android 入口需要 Linux、Node.js 22.14.0、pnpm 10、JDK 17、Android SDK 与 recipe 中的工具；iOS 使用 macOS、Xcode 26.3，并复用 `ios:prepare` 的工程和图标准备。每次使用独立干净构建目录。产物位于 `.mobile-build/artifacts/`，包含安装包、SHA-256 和来源提交/大小回执。云端 APK 沿用当前 debug 构建签名，IPA 明确为未签名产物。
+
+GitHub Release 产物与正式本机渠道分别交付。iOS 正式发布仍需本机 Ad Hoc 签名、HTTPS OTA、固定 LAN IPA 和软件源验收；unsigned IPA 不能覆盖已签名固定渠道。

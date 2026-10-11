@@ -224,7 +224,7 @@ python3 scripts/ios_ota.py refresh-page \
 
 ## 构建来源
 
-GitHub Actions 工作流已移除。`npm run ios:prepare` 从 `mobile/ios/build-recipe.yml` 读取固定容器和原生补丁，`npm run ios:release` 继续负责本机签名与固定渠道发布。签名凭据仅保存在本机仓库外。
+GitHub Actions 已恢复 Android/iOS 统一版本自动构建，iOS 云端只生成 unsigned IPA 并上传 GitHub Release。`npm run ios:prepare` 从 `mobile/ios/build-recipe.yml` 读取固定容器和原生补丁，云端与本地复用此配置；`npm run ios:release` 继续负责本机签名与固定渠道发布。签名凭据仅保存在本机仓库外，不上传 GitHub Secrets；云端 unsigned IPA 不覆盖已签名固定渠道。
 
 ## iOS 27 验收与边界
 

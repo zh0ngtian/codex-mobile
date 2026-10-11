@@ -277,7 +277,7 @@ npm run test:e2e
 
 ## 移动端构建
 
-GitHub Actions 构建与发布工作流已移除，推送代码不再自动构建安装包、创建 GitHub Release 或发布 npm。已有 Release 保留，后续安装包通过固定渠道发布。
+GitHub Actions 在 `main` 的客户端及构建相关推送后自动构建 Android APK 和 iOS unsigned IPA，也支持在 Actions 中手动指定更高版本。两端共用统一版本，全部构建与校验成功后创建同一个 GitHub Release，附件包含安装包、SHA-256 和构建回执。文档及服务端单独修改不会触发；npm 包继续按需手动发布。
 
 Android App 固定检查局域网更新清单
 `http://192.168.123.79:8765/channels/codex-mobile/latest.json`，发现新版本后从固定地址
@@ -297,7 +297,7 @@ Android 和 iOS 安装包只支持正向竖屏，设备转动时保持竖屏，�
 
 发布流程：
 
-- Android、iOS 使用本地构建配置；npm 包按需手动测试、构建和发布。
+- GitHub 双端构建和本地构建复用 `mobile/*/build-recipe.yml`，版本高于全部 GitHub Release 标签及仓库下限；本机渠道超前时，先更新 `mobile-version-floor.json` 或手动指定更高版本。npm 包按需手动测试、构建和发布。
 - 修改客户端运行代码后，提交并推送，再发布高于 Android、iOS 两个固定渠道现有版本的统一版本 APK 和已签名 IPA；APK 使用 `apk-server.py publish-channel codex-mobile`，IPA 使用 `npm run ios:release`，并回验两端固定清单、HEAD、完整 GET 大小与 SHA-256。
 - 仅修改文档、规则、测试或服务端等非客户端内容时，无需另行构建或发布安装包；服务端变更仍须验证并部署网关。具体约束见 [AGENTS.md](AGENTS.md)。
 
