@@ -58,6 +58,9 @@ export function useConversationAutoScroll({
     const controlsHeight = Math.max(0, (panel?.bottom ?? inputBounds.bottom) - inputBounds.bottom);
     input.style.setProperty("--history-editor-visible-height", `${Math.max(96, bottom - top - controlsHeight)}px`);
     scroll.scrollTop += input.getBoundingClientRect().top - top;
+    if (document.activeElement === input && input.selectionStart === input.value.length) {
+      input.scrollTop = input.scrollHeight;
+    }
     lastScrollTopRef.current = scroll.scrollTop;
   }, []);
 

@@ -31,6 +31,14 @@ final class ActionMenuUITests: XCTestCase {
             XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: visible, object: editor)], timeout: 5), .completed,
                 "编辑框应自动滚动到固定输入栏与键盘以上：\(editor.frame), composer: \(composer.frame)")
             attach(app, nativeMenu ? "长按编辑自动键盘与定位" : "按钮编辑自动键盘与定位")
+            let viewportProbe = app.staticTexts["codex.viewport-state"]
+            let caretVisible = NSPredicate { _, _ in
+                guard let data = viewportProbe.label.data(using: .utf8),
+                      let value = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return false }
+                return value["historyCaretVisible"] as? Bool == true
+            }
+            XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: caretVisible, object: viewportProbe)], timeout: 5), .completed,
+                "多行编辑框缩小后仍应显示原文末尾的光标")
             editor.typeText("OK")
             XCTAssertTrue((editor.value as? String)?.contains("OK") == true)
             app.webViews.buttons["取消编辑历史消息"].tap()

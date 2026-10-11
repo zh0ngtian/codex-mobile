@@ -44,8 +44,11 @@ final class KeyboardLayoutProbeWebView: CodexMobileWebView {
             self.window?.addSubview(self.viewportLabel)
             self.evaluateJavaScript("""
             (() => { const input = document.querySelector('.composer textarea');
+              const editor = document.querySelector('.history-message-editor textarea');
               return {scale:visualViewport.scale, font:input ? getComputedStyle(input).fontSize : '',
-                height:visualViewport.height, top:visualViewport.offsetTop, scroll:scrollY}; })()
+                height:visualViewport.height, top:visualViewport.offsetTop, scroll:scrollY,
+                historyCaretVisible:editor ? editor.selectionStart === editor.value.length &&
+                  editor.scrollHeight - editor.scrollTop - editor.clientHeight <= 1 : null}; })()
             """) { [weak self] result, _ in
                 guard let self, var value = result as? [String: Any] else { return }
                 value["nativeScale"] = self.scrollView.zoomScale
