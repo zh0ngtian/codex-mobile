@@ -40,15 +40,15 @@
 文件：.github/workflows/build-unsigned-ipa.yml。
 
 - [x] 限定构建分支 push 触发，使用 macos-15-intel 与 Xcode 26.3；文档收尾不重复触发构建。
-- [ ] 安装依赖，运行完整测试和未签名构建；保存构建日志。
-- [ ] 使用 runner 自带 GitHub token 生成独立预发布下载附件。
-- [ ] 按中文提交规范提交并推送，核对远端提交并跟踪运行。
+- [x] 安装依赖，运行完整测试和未签名构建；保存构建日志。
+- [x] 使用 runner 自带 GitHub token 生成独立预发布下载附件。
+- [x] 按中文提交规范提交并推送，核对远端提交并跟踪运行。
 
 ### 任务 3：交付核验
 
-- [ ] 确认云端构建成功，下载 IPA、摘要及构建日志。
-- [ ] 检查 Payload、版本 0.2.147、构建号 2147、无描述文件及完整 SHA-256。
-- [ ] 提供新 IPA 下载链接，明确未签名、版本、大小和 SHA-256。
+- [x] 确认云端构建成功，下载 IPA、摘要及构建日志。
+- [x] 检查 Payload、版本 0.2.147、构建号 2147、无描述文件及完整 SHA-256。
+- [x] 准备新 IPA 下载链接、未签名状态、版本、大小和 SHA-256 交付信息。
 
 ## 基线
 
@@ -57,3 +57,14 @@
 首轮云端运行 38108941725：904 通过、1 失败、2 项 Windows Job 测试跳过。失败为 HTTP 快照压力测试在固定 150 ms 后过早读取通知队列；改为等待实际完成状态及工具通知就绪，保留原有预算、分页和完成事件断言，不修改服务端运行代码。
 
 第二轮 38109262726：快照测试通过；大图片历史读取测试在共享 runner 上超过 15 s，仍为 904 通过、1 失败、2 跳过。云端测试改为两个 worker、60 s 单项超时，减少 CPU/磁盘竞争；不跳过测试或降低功能断言。
+
+## 最终交付证据
+
+- 构建提交：8ba09be2f9687cad26cdabc541e7eb7c2d70af91。
+- GitHub 运行：38109534062，完整测试 905 通过、2 项 Windows 专用测试跳过；Xcode 显示 BUILD SUCCEEDED。
+- 版本：0.2.147；构建号：2147；Bundle ID：vip.loock.codexmobile。
+- 大小：3,758,080 字节。
+- SHA-256：9c60af68c37f1ad034d30dd13ee2acc5be1e494e06aee129fd69e738de54d9a1。
+- 下载：[CodexMobile-v0.2.147-unsigned.ipa](https://github.com/zh0ngtian/codex-mobile/releases/download/unsigned-ipa-0.2.147-38109534062-1/CodexMobile-v0.2.147-unsigned.ipa)。
+- 本机完整 GET、HEAD 和标准库 ZIP/Info.plist 校验通过；确认存在真实 Mach-O 二进制与内置前端，没有 embedded.mobileprovision 或应用 CodeResources。
+- 根据用户明确要求，本次仅交付重新编译的未签名 IPA，不执行签名及正式渠道发布。
