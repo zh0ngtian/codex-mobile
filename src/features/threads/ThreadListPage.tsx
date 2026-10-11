@@ -26,7 +26,6 @@ import { BackendSwitcher } from "../backends/BackendSwitcher";
 import { ConversationActionMenu } from "../conversation/ConversationControls";
 import {
   groupThreadsByProject,
-  isThreadPrioritized,
   splitAllThreads,
   type AggregatedThreadItem,
 } from "./thread-list-model";
@@ -395,12 +394,9 @@ export function ThreadListPage({
               .filter(
                 (group) =>
                   !query.trim() ||
-                  group.threads.some((thread) => !isThreadPrioritized(thread)),
+                  group.threads.length > 0,
               )
               .map((group) => {
-                const recentThreads = group.threads.filter(
-                  (thread) => !isThreadPrioritized(thread),
-                );
                 const projectKey = projectCollapseKey(
                   selectedBackendId,
                   group.cwd,
@@ -443,7 +439,7 @@ export function ThreadListPage({
                     </h2>
                     {isExpanded && (
                       <>
-                        {recentThreads.map((thread) =>
+                        {group.threads.map((thread) =>
                           renderRow(thread, false),
                         )}
                         {showInitialLoading && (

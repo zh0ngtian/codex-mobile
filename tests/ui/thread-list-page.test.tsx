@@ -119,6 +119,7 @@ function renderList(
   const result = render(element);
   return {
     ...result,
+    element,
     setSidebarOpen: (sidebarOpen: boolean) =>
       result.rerender(cloneElement(element, { sidebarOpen })),
   };
@@ -193,7 +194,7 @@ describe("会话侧边栏列表", () => {
     expect(within(section).queryByRole("button", { name: "更多" })).toBeNull();
   });
 
-  it.each(["all", "mini"])("%s 视图将运行和未读会话放在手动置顶后且不重复", (selectedBackendId) => {
+  it.each(["all", "mini"])("%s 视图将运行和未读会话放在手动置顶后，折叠项目不影响置顶区", (selectedBackendId) => {
     const visibleThreads = aggregateThreads([backend], { mini: [
       { id: "manual", preview: "手动置顶任务", cwd: "/tmp/project-a", isPinned: true, updatedAt: 1 },
       { id: "running", preview: "运行任务", cwd: "/tmp/project-b", status: { type: "active" }, updatedAt: 30 },
@@ -217,14 +218,62 @@ describe("会话侧边栏列表", () => {
     expect(within(container).queryByRole("button", { name: "取消置顶" })).toBeNull();
   });
 
-  it("搜索运行中会话时只显示顶部结果，不重复显示项目分组", () => {
+  it("搜索运行中会话时同时显示置顶和项目结果", () => {
     const { container } = renderList("mini", {
       visibleThreads: threads.filter((thread) => thread.threadId === "recent"),
       query: "最近会话",
     });
     expect(within(container).getByRole("heading", { name: "置顶" })).not.toBeNull();
-    expect(container.querySelector(".project-group")).toBeNull();
-    expect(within(container).getAllByText("最近会话")).toHaveLength(1);
+    expect(container.querySelectorAll(".project-group")).toHaveLength(1);
+    expect(within(container).getAllByText("最近会话")).toHaveLength(2);
+  });
+
+  it.each([false, true])("主动及被动置顶同时显示在置顶和所属分组（无项目：%s）", (isProjectless) => {
+    const visibleThreads = aggregateThreads([backend], { mini: [
+      { id: "manual", preview: "主动任务", cwd: "/tmp/project-a", isProjectless, isPinned: true, updatedAt: 1 },
+      { id: "running", preview: "执行任务", cwd: "/tmp/project-a", isProjectless, status: { type: "active" }, updatedAt: 3 },
+      { id: "unread", preview: "待阅任务", cwd: "/tmp/project-a", isProjectless, isUnread: true, updatedAt: 2 },
+    ] });
+    const onOpenThread = vi.fn();
+    const { container } = renderList("mini", { visibleThreads, hasProjectlessThreads: isProjectless, onOpenThread });
+    const pinned = within(container).getByRole("heading", { name: "置顶" }).parentElement as HTMLElement;
+    const projectHeading = within(container).getByRole("button", { name: isProjectless ? "无项目" : "project-a" });
+    const project = projectHeading.closest(".project-group") as HTMLElement;
+    expect([...project.querySelectorAll(".thread-row-title")].map(node => node.textContent)).toEqual([
+      "执行任务", "待阅任务", "主动任务",
+    ]);
+    for (const thread of visibleThreads) {
+      const title = String(thread.thread.preview);
+      const pinnedRow = within(pinned).getByRole("button", { name: new RegExp(title) });
+      const projectRow = within(project).getByRole("button", { name: new RegExp(title) });
+      fireEvent.click(pinnedRow);
+      fireEvent.click(projectRow);
+      expect(onOpenThread.mock.calls.slice(-2)).toEqual([[thread], [thread]]);
+      expect(within(container).getAllByText(title)).toHaveLength(2);
+    }
+    expect(project.querySelectorAll(".running-spinner")).toHaveLength(1);
+    expect(project.querySelectorAll(".thread-unread-dot")).toHaveLength(1);
+  });
+
+  it("取消主动置顶后保留项目入口，运行结束且已读后移除被动置顶副本", () => {
+    const visibleThreads = aggregateThreads([backend], { mini: [
+      { id: "manual", preview: "主动任务", cwd: "/tmp/project-a", isPinned: true },
+      { id: "running", preview: "执行任务", cwd: "/tmp/project-a", status: { type: "active" } },
+      { id: "unread", preview: "待阅任务", cwd: "/tmp/project-a", isUnread: true },
+    ] });
+    const { container, rerender, element } = renderList("mini", { visibleThreads });
+    for (const thread of visibleThreads) {
+      expect(within(container).getAllByText(String(thread.thread.preview))).toHaveLength(2);
+    }
+    const ordinary = aggregateThreads([backend], { mini: visibleThreads.map(({ thread }) => ({
+      ...thread, isPinned: false, isUnread: false, status: { type: "idle" },
+    })) });
+    rerender(cloneElement(element, { visibleThreads: ordinary }));
+    expect(within(container).queryByRole("heading", { name: "置顶" })).toBeNull();
+    const project = within(container).getByRole("button", { name: "project-a" }).closest(".project-group") as HTMLElement;
+    for (const thread of ordinary) {
+      expect(within(project).getAllByText(String(thread.thread.preview))).toHaveLength(1);
+    }
   });
 
   it("阻止非编辑区域触发原生文字选择并保留搜索框选字", () => {
@@ -397,7 +446,7 @@ describe("会话侧边栏列表", () => {
     const view = within(container);
 
     expect(view.getByRole("heading", { name: "置顶" })).not.toBeNull();
-    expect(view.getAllByText("置顶会话")).toHaveLength(1);
+    expect(view.getAllByText("置顶会话")).toHaveLength(2);
     expect(view.getByRole("heading", { name: /project-a/ })).not.toBeNull();
     expect(view.getByRole("heading", { name: /project-b/ })).not.toBeNull();
     expect(view.queryByText("Mac mini · project-a")).toBeNull();
@@ -453,7 +502,7 @@ describe("会话侧边栏列表", () => {
     });
     const view = within(container);
 
-    expect(view.getByText("置顶会话")).not.toBeNull();
+    expect(view.getAllByText("置顶会话")).toHaveLength(2);
     expect(view.queryByLabelText("正在加载项目会话")).toBeNull();
   });
 
@@ -571,7 +620,7 @@ describe("会话侧边栏列表", () => {
     expect(projectButton.getAttribute("aria-expanded")).toBe("false");
     expect(projectButton.querySelector('[data-icon="folder"]')).not.toBeNull();
     expect(view.getByText("置顶会话")).not.toBeNull();
-    expect(view.getByText("最近会话")).not.toBeNull();
+    expect(view.getAllByText("最近会话")).toHaveLength(2);
 
     fireEvent.click(projectButton);
     expect(onToggleProjectCollapsed).toHaveBeenCalledWith(
@@ -580,7 +629,7 @@ describe("会话侧边栏列表", () => {
     );
   });
 
-  it("搜索置顶会话时只保留置顶区且不改变项目折叠缓存", () => {
+  it("搜索置顶会话时显示双区域并临时展开项目，不改变折叠缓存", () => {
     const collapsedProjectKeys = new Set(["mini:/tmp/project-a"]);
     const { container } = renderList("mini", {
       collapsedProjectKeys,
@@ -589,8 +638,8 @@ describe("会话侧边栏列表", () => {
     const view = within(container);
 
     expect(view.getByRole("heading", { name: "置顶" })).not.toBeNull();
-    expect(view.getByText("置顶会话")).not.toBeNull();
-    expect(view.queryByRole("button", { name: /project-a/ })).toBeNull();
+    expect(view.getAllByText("置顶会话")).toHaveLength(2);
+    expect(view.getByRole("button", { name: /project-a/ }).getAttribute("aria-expanded")).toBe("true");
     expect(collapsedProjectKeys.has("mini:/tmp/project-a")).toBe(true);
   });
 
@@ -690,12 +739,14 @@ describe("会话侧边栏列表", () => {
       />,
     );
 
-    const unread = within(container).getByLabelText("未读");
-    const meta = unread.closest(".thread-row-meta");
-
-    expect(meta).not.toBeNull();
-    expect(within(meta as HTMLElement).getByText("1 分钟")).not.toBeNull();
-    expect(meta?.firstElementChild).toBe(unread);
+    const unreadMarkers = within(container).getAllByLabelText("未读");
+    expect(unreadMarkers).toHaveLength(2);
+    for (const unread of unreadMarkers) {
+      const meta = unread.closest(".thread-row-meta");
+      expect(meta).not.toBeNull();
+      expect(within(meta as HTMLElement).getByText("1 分钟")).not.toBeNull();
+      expect(meta?.firstElementChild).toBe(unread);
+    }
     now.mockRestore();
   });
 });
