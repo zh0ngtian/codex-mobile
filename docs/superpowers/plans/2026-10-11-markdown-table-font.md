@@ -19,12 +19,12 @@
 
 ### 2. 提交与交付
 
-- [ ] 遵循 `docs/commit-conventions.md`，执行 diff 检查、提交修复、合入并推送 main。
-- [ ] 取得主工作区 `.mobile-build/.fixed-channel-publish.lock`，结合 GitHub 新流水线版本及两端固定渠道分配统一更高版本。
-- [ ] 等待 main 双端流水线成功，下载同一源码 APK。运行 `npm run ios:release -- --config "$HOME/Library/Application Support/CodexMobile/ios-release.local.json" --version <统一版本> --notes '修复 Markdown 表格长 commit ID 和 SHA-256 字号异常放大'`。
-- [ ] 使用 `apk-server.py publish-channel codex-mobile <APK> --version <统一版本> --notes '修复 Markdown 表格长标识符字号异常放大'` 发布 APK；回验两端清单、HEAD、完整 GET 的版本、大小、SHA-256。
-- [ ] 读取 SignOs 最新软件源发布指令，使用同一已签名 IPA，按当前 GitHub 登录账号追加或保留开发者署名，发布并核验软件源。
-- [ ] 保存发布凭证与测试结论，清理临时构建目录并归档 worktree。测试使用静态协议与排版样本，不创建真实测试会话。
+- [x] 遵循 `docs/commit-conventions.md`，执行 diff 检查、提交修复、合入并推送 main。
+- [x] 取得主工作区 `.mobile-build/.fixed-channel-publish.lock`，结合 GitHub 新流水线版本及两端固定渠道分配统一更高版本。
+- [x] 等待 main 双端流水线成功，下载同一源码 APK。运行 `npm run ios:release -- --config "$HOME/Library/Application Support/CodexMobile/ios-release.local.json" --version <统一版本> --notes '修复 Markdown 表格长 commit ID 和 SHA-256 字号异常放大'`。
+- [x] 使用 `apk-server.py publish-channel codex-mobile <APK> --version <统一版本> --notes '修复 Markdown 表格长标识符字号异常放大'` 发布 APK；回验两端清单、HEAD、完整 GET 的版本、大小、SHA-256。
+- [x] 读取 SignOs 最新软件源发布指令，使用同一已签名 IPA，按当前 GitHub 登录账号追加或保留开发者署名，发布并核验软件源。
+- [x] 保存发布凭证与测试结论，清理临时构建目录并归档 worktree。测试使用静态协议与排版样本，不创建真实测试会话。
 
 ## 修复验证
 
@@ -32,3 +32,15 @@
 - 两浏览器标准/1.3 倍字号共 4 项通过；40 位提交与 64 位 SHA-256 保持 .88em，文本高度不超过正文代码，横向滚动可到末端且页面不超宽。
 - 相关 UI 回归 2 文件 100 项通过，`npm run build` 通过。首次试验的字号变量误放 body 已改为 html；该试验失败不是产品缺陷。
 - 上游原 `cloudflare/app-source/PUBLISH_PROMPT.md` 已迁移，通过 GitHub API 读取最新 `distribution/app-source/PUBLISH_PROMPT.md`，按其中要求使用现役家中 HTTPS 软件源，不恢复旧 Cloudflare 发布。
+
+- 补充横屏 812×375、应用最大字号 1.25 与减少动态效果检查通过；字号为 17.6px，表格独立滚动，页面宽度保持 812px。375px 大字号截图已检查，表格与正文代码字号一致。
+
+## 发布结果
+
+- 修复提交 `77e56eef2ef1eb55ff7f76402bd8334efadc0260` 已合入并推送 main。
+- [双端流水线 38116508584](https://github.com/zh0ngtian/codex-mobile/actions/runs/38116508584)全部成功；[GitHub Release v0.2.149](https://github.com/zh0ngtian/codex-mobile/releases/tag/v0.2.149)包含 APK 和云端未签名 IPA，固定渠道使用本机 Ad Hoc 已签名 IPA。
+- [固定 OTA 安装页](https://192.168.123.79:8766/channels/codex-mobile/current/install.html)及 HTTPS IPA，固定 LAN 两端清单、HEAD、完整 GET 均回验通过。
+- [APK](http://192.168.123.79:8765/channels/codex-mobile/latest.apk)：0.2.149，4,714,299 字节，SHA-256 `9fbf34655c3f147e83e6b1182a322359e7b01cd68ec3a781f294ff54a286a4c6`。
+- [IPA](http://192.168.123.79:8765/channels/codex-mobile/latest.ipa)：0.2.149，3,781,956 字节，SHA-256 `7c8ca4a3effca9f72924c38d44700e0fe63291d683d35ee2c1db81814deefcfb`，Ad Hoc 已签名；应用身份、权限与钥匙串组连续性通过。
+- 两端内嵌修复 CSS 字节一致；软件源使用同一签名 IPA，版本/build 2149、大小、散列、HEAD、完整 GET 一致，保留 `loock-ai / zh0ngtian / Roxbili` 署名。软件源地址来自私有配置，未写入仓库。
+- 发布包和凭证保留在主工作区 `.mobile-build/markdown-table-font-release/0.2.149/`。本次未创建真实测试会话；未执行真机覆盖安装、数据保留或原会话 UI 验证。
