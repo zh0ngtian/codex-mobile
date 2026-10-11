@@ -38,3 +38,11 @@ powershell.exe -NoProfile -ExecutionPolicy RemoteSigned -File $manager -Action s
 安装时将旧任务 XML、启动快捷方式和用户连接环境保存到部署目录的 `backup-<时间>`。回退前正常停止新服务，确认没有活动任务后恢复备份的启动项及 `CODEX_APP_SERVER_WS_URL`，再启用原 `CodexMobile-SharedDesktop` 任务。
 
 开发验证使用 `npm run test:windows-service` 及现有 Windows Job、External 网关测试。部署验收还需检查本机和公网连接、真实桌面连接，以及关闭界面后手机连接仍然可用。
+
+## 本机部署记录
+
+2026-10-11 已安装后台计划任务及桌面入口，旧入口、环境变量和计划任务备份在 `%LOCALAPPDATA%\CodexMobile\Service\backup-20261011-234900`。安装后核验任务权限、文件一致性、配置和快捷方式均通过。
+
+当前首次迁移状态为等待旧 app-server 退出。完成所有任务后，从托盘完全退出 Codex，再双击“打开 Codex”；新服务自动接管。若之后通过 uTools 打开界面，先重启一次 uTools，使其读取新的用户环境变量。
+
+新增 25 项服务测试、3 项相关回归及类型检查通过；真实隔离服务已验证启动和重启。真实桌面、公网隧道及关闭界面后手机连接的验收，需要首次迁移完成后进行。
