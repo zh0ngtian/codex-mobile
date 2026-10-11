@@ -125,6 +125,34 @@ function renderList(
 }
 
 describe("会话侧边栏列表", () => {
+  it("取消原生长按菜单后，新的一次快速单击进入会话", () => {
+    vi.useFakeTimers();
+    const show = vi.fn();
+    (window as any).CodexMobileActionMenu = { show, dismiss: vi.fn() };
+    try {
+      const onOpenThread = vi.fn();
+      const { container } = renderList("all", { onOpenThread });
+      const row = within(container).getByRole("button", { name: /置顶会话/ });
+      fireEvent.pointerDown(row, { button: 0, clientX: 20, clientY: 20 });
+      act(() => vi.advanceTimersByTime(550));
+      // 原生菜单接管触摸时，WebView 收到 cancel，不保证产生尾随 click。
+      fireEvent.pointerCancel(row);
+      expect(onOpenThread).not.toHaveBeenCalled();
+      const request = JSON.parse(show.mock.calls[0][0]);
+      act(() => window.dispatchEvent(new CustomEvent("codex-mobile-action-menu", {
+        detail: { requestId: request.requestId, actionId: null },
+      })));
+      fireEvent.pointerDown(row, { button: 0, clientX: 20, clientY: 20 });
+      fireEvent.pointerUp(row);
+      fireEvent.click(row);
+      expect(onOpenThread).toHaveBeenCalledTimes(1);
+      expect(show).toHaveBeenCalledTimes(1);
+    } finally {
+      delete (window as any).CodexMobileActionMenu;
+      vi.useRealTimers();
+    }
+  });
+
   it("原生长按菜单将选择路由到原会话并在关闭侧栏时清理", async () => {
     const show = vi.fn();
     const dismiss = vi.fn();

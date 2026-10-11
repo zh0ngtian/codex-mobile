@@ -139,6 +139,10 @@ final class CodexMobileActionMenuBridge: NSObject, WKScriptMessageHandler, UIAda
 private final class CodexMobileMenuButton: UIButton {
     var onEnd: (() -> Void)?
 
+    // 这个透明按钮只负责程序化弹出菜单和定位；会话行的触摸始终交给 WebView。
+    // 即使 UIKit 的关闭动画尚未完成，也不能再次点击宿主而重开旧菜单。
+    override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? { nil }
+
     override func contextMenuInteraction(_ interaction: UIContextMenuInteraction, willEndFor configuration: UIContextMenuConfiguration,
                                          animator: (any UIContextMenuInteractionAnimating)?) {
         super.contextMenuInteraction(interaction, willEndFor: configuration, animator: animator)

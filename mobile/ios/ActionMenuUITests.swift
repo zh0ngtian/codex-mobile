@@ -2,6 +2,52 @@ import XCTest
 
 /// 使用 tests/fixtures/native-menu 打包到专用模拟器测试工程；不写入真实会话。
 final class ActionMenuUITests: XCTestCase {
+    func testSidebarMenuCancelThenTapOpensThread() {
+        continueAfterFailure = false
+        let app = XCUIApplication(bundleIdentifier: "vip.loock.codexmobile")
+        app.launch()
+        let sidebar = app.webViews.buttons["打开侧栏验收"]
+        XCTAssertTrue(sidebar.waitForExistence(timeout: 20))
+        sidebar.tap()
+        let row = app.webViews.buttons.matching(NSPredicate(format: "label CONTAINS %@", "取消菜单后进入会话")).firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 5), app.debugDescription)
+        row.press(forDuration: 0.8)
+        XCTAssertTrue(action(app, "归档").waitForExistence(timeout: 5), app.debugDescription)
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.9)).tap()
+        XCTAssertFalse(action(app, "归档").exists)
+        attach(app, "侧栏长按菜单取消")
+        row.tap()
+        XCTAssertTrue(app.webViews.staticTexts["已进入侧栏会话"].waitForExistence(timeout: 5), "取消菜单后单击必须进入会话：\(app.debugDescription)")
+        XCTAssertFalse(action(app, "归档").exists, "普通点击不能重新打开原生菜单")
+        sidebar.tap()
+        row.press(forDuration: 0.8)
+        XCTAssertTrue(action(app, "置顶").waitForExistence(timeout: 5))
+        action(app, "置顶").tap()
+        row.tap()
+        XCTAssertTrue(app.webViews.staticTexts["已进入侧栏会话"].waitForExistence(timeout: 5))
+        XCTAssertFalse(action(app, "归档").exists)
+        attach(app, "取消后单击进入会话")
+    }
+
+    func testSidebarTapDuringMenuDismissalOpensThread() {
+        continueAfterFailure = false
+        let app = XCUIApplication(bundleIdentifier: "vip.loock.codexmobile")
+        app.launch()
+        let sidebar = app.webViews.buttons["打开侧栏验收"]
+        XCTAssertTrue(sidebar.waitForExistence(timeout: 20))
+        sidebar.tap()
+        let row = app.webViews.buttons.matching(NSPredicate(format: "label CONTAINS %@", "取消菜单后进入会话")).firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        let center = row.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        row.press(forDuration: 0.8)
+        XCTAssertTrue(action(app, "归档").waitForExistence(timeout: 5))
+        // 第一击取消菜单，紧接着第二击应交给会话行，不应重开临时宿主菜单。
+        center.doubleTap()
+        XCTAssertTrue(app.webViews.staticTexts["已进入侧栏会话"].waitForExistence(timeout: 5), app.debugDescription)
+        XCTAssertFalse(action(app, "归档").exists)
+        attach(app, "菜单取消动画期间单击")
+    }
+
     func testNativeMessageCopyAndEdit() {
         continueAfterFailure = false
         let app = XCUIApplication(bundleIdentifier: "vip.loock.codexmobile")

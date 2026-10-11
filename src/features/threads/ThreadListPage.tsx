@@ -185,6 +185,8 @@ export function ThreadListPage({
   ) => {
     if (!sidebarOpen || event.button !== 0) return;
     clearLongPress();
+    // 新触摸属于下一次点击，不能沿用上一次长按的尾随 click 抑制。
+    suppressClickRef.current = null;
     const key = managementKey(thread);
     const anchor = elementMenuAnchor(event.currentTarget);
     const timer = window.setTimeout(() => {
