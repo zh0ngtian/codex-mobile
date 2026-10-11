@@ -50,6 +50,15 @@ describe("GitHub 双端自动构建", () => {
       expect(result.status).not.toBe(0);
     }
   });
+  it("Release 分页使用独立 jq，兼容 GitHub CLI 的 slurp 限制", () => {
+    const workflow = parse(readFileSync(".github/workflows/build-mobile.yml", "utf8"));
+    const script = workflow.jobs.version.steps.find((step: { id?: string }) => step.id === "version").run;
+    const query = script.match(/\|\s*jq '([^']+)'/);
+    expect(query, "gh --slurp 分页必须使用独立 jq 转换").not.toBeNull();
+    const result = spawnSync("jq", [query![1]], { input: JSON.stringify([[{ tag_name: "v0.2.146" }], [{ tag_name: "v0.2.147" }]]), encoding: "utf8" });
+    expect(result.status, result.stderr).toBe(0);
+    expect(JSON.parse(result.stdout)).toEqual(["v0.2.146", "v0.2.147"]);
+  });
   it("main 自动触发、统一版本、双端成功后才创建 Release", () => {
     const path = ".github/workflows/build-mobile.yml";
     expect(existsSync(path), "缺少双端工作流").toBe(true);

@@ -61,7 +61,7 @@ jobs:
         run: |
           set -euo pipefail
           gh api --paginate --slurp "repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
-            --jq '[.[][] | .tag_name]' > "$RUNNER_TEMP/releases.json"
+            | jq '[.[][] | .tag_name]' > "$RUNNER_TEMP/releases.json"
           args=(--releases "$RUNNER_TEMP/releases.json")
           if [[ -n "$REQUESTED_VERSION" ]]; then args+=(--requested "$REQUESTED_VERSION"); fi
           node scripts/resolve-mobile-version.mjs "${args[@]}"
