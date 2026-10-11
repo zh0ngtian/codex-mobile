@@ -1,0 +1,55 @@
+# 未签名 IPA 云端重构计划
+
+> **For agentic workers:** 在当前会话使用 superpowers:executing-plans，按任务执行 TDD 与 verification-before-completion。
+
+**Goal:** 从最新客户端源码及用户的 Windows 兼容分支重新编译未签名 IPA，提供可下载文件。
+
+**Architecture:** 在独立构建分支复用 prepare-ios.mjs 和 iOS build-recipe.yml。GitHub macOS runner 使用 Xcode 关闭签名，执行现有打包校验，并将产物保存为独立预发布附件。
+
+**Tech Stack:** Node.js 22.14.0、pnpm 10、Xcode 26.3、GitHub Actions、Vitest。
+
+**Spec:** 用户明确只需要重新构建的未签名 IPA；无需签名或软件源发布。
+
+## 全局约束
+
+- 版本使用 0.2.147；Bundle ID 保持 vip.loock.codexmobile。
+- 不向云端传递软件源 token、签名材料或本机发布配置。
+- 不覆盖现有正式签名渠道；构建预发布不标记为 latest。
+- 使用独立 worktree 和构建分支，保留用户原有分支。
+- 沿用项目固定的 PakePlus 提交及原生补丁。
+
+## 审查重点
+
+- 非法版本不得进入 shell 或原生构建。
+- 准备、编译或打包失败必须中止成功交付。
+- IPA 必须包含 Payload、应用二进制、内置前端和正确版本。
+- 关闭签名，不调用 ios:release 或软件源上传器。
+- 下载后的文件大小及完整 SHA-256 必须与构建凭证一致。
+
+### 任务 1：复用构建配置的未签名入口
+
+文件：scripts/build-unsigned-ios.mjs、tests/ci/unsigned-ios-build.test.ts。
+
+- [x] 先写测试：合法版本可在 Windows 预检；非法版本失败。
+- [x] 运行测试，确认缺少构建入口而失败。
+- [x] 添加 --plan 预检与正式构建；准备后执行配置中的编译和 IPA 校验步骤。
+- [x] 运行入口测试和现有移动构建配置测试：15 项通过。
+
+### 任务 2：云端构建与下载
+
+文件：.github/workflows/build-unsigned-ipa.yml。
+
+- [x] 限定构建分支 push 触发，使用 macos-15-intel 与 Xcode 26.3；文档收尾不重复触发构建。
+- [ ] 安装依赖，运行完整测试和未签名构建；保存构建日志。
+- [ ] 使用 runner 自带 GitHub token 生成独立预发布下载附件。
+- [ ] 按中文提交规范提交并推送，核对远端提交并跟踪运行。
+
+### 任务 3：交付核验
+
+- [ ] 确认云端构建成功，下载 IPA、摘要及构建日志。
+- [ ] 检查 Payload、版本 0.2.147、构建号 2147、无描述文件及完整 SHA-256。
+- [ ] 提供新 IPA 下载链接，明确未签名、版本、大小和 SHA-256。
+
+## 基线
+
+原 Windows 工作区完整测试存在已报告的环境及上游平台兼容失败；本次云端在 macOS 执行完整套件，并如实保存失败日志。此次构建分支已合入 origin/main 的追加消息布局修复。

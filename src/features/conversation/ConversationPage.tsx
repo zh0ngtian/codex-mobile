@@ -3,6 +3,7 @@ import {
   type RefObject,
   type UIEventHandler,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -286,6 +287,7 @@ export function ConversationPage({
   );
   const [activeSkillIndex, setActiveSkillIndex] = useState(0);
   const composerInputRef = useRef<HTMLTextAreaElement>(null);
+  const composerRef = useRef<HTMLFormElement>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
   const attachmentPickerRef = useRef<HTMLDivElement>(null);
   const turns = useMemo(
@@ -395,6 +397,20 @@ export function ConversationPage({
     contentRevision: active.turns,
     ready: loadState === "ready",
   });
+  useLayoutEffect(() => {
+    const composer = composerRef.current;
+    const scroll = scrollRef.current;
+    if (!composer || !scroll) return;
+    // 排队、编辑、附件及字号变化都需要为整个输入区预留实际高度。
+    const updateInset = () => {
+      scroll.style.setProperty("--composer-height", `${composer.getBoundingClientRect().height}px`);
+    };
+    updateInset();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(updateInset);
+    observer.observe(composer);
+    return () => observer.disconnect();
+  }, [scrollRef]);
   const interactive =
     loadState === "ready" &&
     accessMode === "interactive";
@@ -655,6 +671,7 @@ export function ConversationPage({
       </div>
       <ErrorBanner message={error} />
       <form
+        ref={composerRef}
         className={`composer-wrap${
           composerMaximized ? " composer-wrap-maximized" : ""
         }`}

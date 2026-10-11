@@ -1,0 +1,61 @@
+name: 构建未签名 IPA
+
+on:
+  push:
+    branches: ['build/unsigned-ipa-*']
+    paths-ignore: ['docs/**', '**/*.md']
+
+permissions:
+  contents: write
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  ipa:
+    runs-on: macos-15-intel
+    timeout-minutes: 35
+    env:
+      APP_VERSION: '0.2.147'
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
+      NODE_OPTIONS: --no-experimental-webstorage
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.14.0'
+          cache: npm
+      - name: 安装依赖
+        run: npm ci 2>&1 | tee unsigned-ipa-install.log
+      - name: 运行完整回归测试
+        run: npm test -- --testTimeout=15000 --exclude '**/.mobile-build/**' 2>&1 | tee unsigned-ipa-tests.log
+      - name: 重新编译与校验未签名 IPA
+        run: node scripts/build-unsigned-ios.mjs --version "$APP_VERSION" 2>&1 | tee unsigned-ipa-build.log
+      - name: 保存本次构建下载附件
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="unsigned-ipa-${APP_VERSION}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          attachments=()
+          for file in unsigned-ipa-install.log unsigned-ipa-tests.log unsigned-ipa-build.log; do
+            if test -f "$file"; then attachments+=("$file"); fi
+          done
+          ipa=".mobile-build/ios/runner-temp/CodexMobile-v${APP_VERSION}-unsigned.ipa"
+          if test -s "$ipa" && test -s .mobile-build/unsigned-ios-receipt.json; then
+            attachments+=("$ipa" "$ipa.sha256" .mobile-build/unsigned-ios-receipt.json)
+          fi
+          if test "${#attachments[@]}" -eq 0; then exit 0; fi
+          cat > unsigned-ipa-notes.md <<'NOTES'
+          本次独立构建分支的未签名 IPA。由 Xcode 重新编译，安装前请自行签名。
+          构建源码提交及产物大小见 unsigned-ios-receipt.json，SHA-256 见校验文件。
+          若只有日志附件，表示构建未成功，日志用于定位失败步骤。
+          NOTES
+          gh release create "$tag" "${attachments[@]}" --target "$GITHUB_SHA" \
+            --title "Codex Mobile ${APP_VERSION} 未签名 IPA（构建 ${GITHUB_RUN_ID}）" \
+            --notes-file unsigned-ipa-notes.md --prerelease --latest=false
