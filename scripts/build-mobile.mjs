@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
-import { copyFile, mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, stat, symlink, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { dirname, join, resolve, basename } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -15,6 +15,11 @@ function run(command, args, cwd, env) {
   if (result.status !== 0) throw new Error(`${command} 执行失败（${result.status}）`);
 }
 const shellQuote = value => "'" + value.replaceAll("'", "'\\''") + "'";
+
+export async function linkAndroidSources(output, source = join(root, "mobile")) {
+  // recipe 在容器目录通过 ../mobile 读取当前仓库的原生补丁。
+  await symlink(source, join(output, "mobile"), "dir");
+}
 
 async function main() {
   const { values } = parseArgs({ options: {
@@ -54,6 +59,7 @@ async function main() {
   } else {
     // 不覆盖已有构建目录；每次 CI checkout 都有独立输出目录。
     await mkdir(container, { recursive: true });
+    await linkAndroidSources(output);
     run("git", ["init", "--quiet"], container, env);
     run("git", ["remote", "add", "origin", `https://github.com/${recipe.container.repository}.git`], container, env);
     run("git", ["fetch", "--depth=1", "origin", recipe.container.ref], container, env);
@@ -77,4 +83,6 @@ async function main() {
   await writeFile(join(dirname(artifactPath), `${platform}-build.json`), JSON.stringify(receipt, null, 2) + "\n");
   console.log(JSON.stringify(receipt, null, 2));
 }
-main().catch(error => { console.error(error.message); process.exitCode = 1; });
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  main().catch(error => { console.error(error.message); process.exitCode = 1; });
+}

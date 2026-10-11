@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -58,6 +58,26 @@ describe("GitHub 双端自动构建", () => {
     const result = spawnSync("jq", [query![1]], { input: JSON.stringify([[{ tag_name: "v0.2.146" }], [{ tag_name: "v0.2.147" }]]), encoding: "utf8" });
     expect(result.status, result.stderr).toBe(0);
     expect(JSON.parse(result.stdout)).toEqual(["v0.2.146", "v0.2.147"]);
+  });
+  it("Android SDK 沿用 recipe 的空 packages，不安装已删除的 tools", () => {
+    const workflow = parse(readFileSync(".github/workflows/build-mobile.yml", "utf8"));
+    const recipe = parse(readFileSync("mobile/android/build-recipe.yml", "utf8"));
+    const setup = workflow.jobs.build.steps.find((step: { uses?: string }) => step.uses === "android-actions/setup-android@v3");
+    expect(setup.with?.packages).toBe(recipe.tools["Android SDK"].packages);
+  });
+  it("隔离 Android 容器能通过 recipe 的 ../mobile 路径读取原生源文件", () => {
+    const dir = mkdtempSync(join(tmpdir(), "android-native-source-"));
+    try {
+      const source = join(dir, "source/mobile");
+      const output = join(dir, "output");
+      mkdirSync(join(source, "android"), { recursive: true });
+      mkdirSync(join(output, "pakeplus"), { recursive: true });
+      writeFileSync(join(source, "android/ActionMenuBridge.kt"), "native-source-fixture");
+      const result = spawnSync(process.execPath, ["--input-type=module", "-e",
+        'import { linkAndroidSources } from "./scripts/build-mobile.mjs"; await linkAndroidSources(process.argv[1], process.argv[2]);', output, source], { encoding: "utf8" });
+      expect(result.status, result.stderr).toBe(0);
+      expect(readFileSync(join(output, "pakeplus/../mobile/android/ActionMenuBridge.kt"), "utf8")).toBe("native-source-fixture");
+    } finally { rmSync(dir, { recursive: true, force: true }); }
   });
   it("main 自动触发、统一版本、双端成功后才创建 Release", () => {
     const path = ".github/workflows/build-mobile.yml";

@@ -99,6 +99,8 @@ jobs:
           java-version: '17'
       - uses: android-actions/setup-android@v3
         if: matrix.platform == 'android'
+        with:
+          packages: ''
       - uses: maxim-lobanov/setup-xcode@v1
         if: matrix.platform == 'ios'
         with:
