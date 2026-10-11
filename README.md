@@ -304,7 +304,7 @@ Android 和 iOS 安装包只支持正向竖屏，设备转动时保持竖屏，�
 
 - GitHub 双端构建和本地构建复用 `mobile/*/build-recipe.yml`，版本高于全部 GitHub Release 标签及仓库下限；本机渠道超前时，先更新 `mobile-version-floor.json` 或手动指定更高版本。npm 包按需手动测试、构建和发布。
 - 修改客户端运行代码后，提交并推送，再发布高于 Android、iOS 两个固定渠道现有版本的统一版本 APK 和已签名 IPA；APK 使用 `apk-server.py publish-channel codex-mobile`，IPA 使用 `npm run ios:release`，并回验两端固定清单、HEAD、完整 GET 大小与 SHA-256。
-- 仅修改文档、规则、测试或服务端等非客户端内容时，无需另行构建或发布安装包；服务端变更仍须验证并部署网关。具体约束见 [AGENTS.md](AGENTS.md)。
+- 改动不涉及客户端运行代码、客户端引用的共用模块、原生桥接或影响客户端产物的构建配置时，不得触发客户端 Web、APK 或 IPA 的构建与发布；仅修改文档、规则、测试、服务端或不影响客户端产物的脚本时，均遵循此规则。服务端变更仍须验证、构建服务端并部署网关。具体约束见 [AGENTS.md](AGENTS.md)。
 
 本地构建配置与环境约定见 [构建说明](mobile/README.md)：
 
