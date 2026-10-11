@@ -612,7 +612,7 @@ button, a, summary, [role="button"] { -webkit-tap-highlight-color: transparent; 
 .video-preview-stage video { display: block; width: auto; height: auto; max-width: 100%; max-height: min(60dvh, 640px); background: #080808; object-fit: contain; }
 .video-preview-name { overflow: hidden; padding: 0 4px; text-overflow: ellipsis; white-space: nowrap; font-size: 0.875rem; }
 .markdown-body pre code { background: transparent; padding: 0; }
-.markdown-body table { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse; }
+.markdown-body table { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 .markdown-body th, .markdown-body td { border: 1px solid #ddd; padding: 7px 9px; white-space: nowrap; }
 .markdown-body a { color: #0a63c9; text-underline-offset: 2px; }
 .composer-popover-backdrop { position: fixed; inset: 0; z-index: 9; background: rgba(255,255,255,.32); backdrop-filter: blur(2px); }
