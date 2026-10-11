@@ -19,7 +19,7 @@ from ios_sign import SigningError
 from ios_ota import (version_tuple, validate_base_url, fetch_previous, create_release,
                      publish_ssh, validate_upgrade, stage_local, activate_staged, verify_published)
 
-APP_SOURCE_GUIDE = 'https://github.com/zh0ngtian/SignOs/blob/main/cloudflare/app-source/PUBLISH_PROMPT.md'
+APP_SOURCE_GUIDE = 'https://github.com/zh0ngtian/SignOs/blob/main/distribution/source-aggregator/README.md'
 
 LAN = 'http://192.168.123.79:8765/channels/codex-mobile'
 LAN_PUBLISHER = Path('/Users/zhongtian/WorkSpace/GlobalTranslation/scripts/apk-server.py')

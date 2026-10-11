@@ -45,7 +45,7 @@ type Action = { action: 'cancel'|'retry'|'steer'; id: string; revision: number }
 
 - [x] 先写请求契约测试，检查请求含 token、幂等 UUID、revision；旧网关 404 明确报错；HTTP 与 WebSocket 后端配置使用同一 HTTP API。运行 `npm test -- tests/ui/gateway-follow-ups.test.ts` 观察失败。
 - [x] 入队时先上传文件，把图片与 mention 转为 extraInput，冻结 model/effort/serviceTier/permissions/approvalPolicy/approvalsReviewer。网关确认后清空原草稿，失败或断开仍保留草稿。
-- [x] 删除客户端自动发送 effect 与 beforeunload 内存队列保护；按设备同步网关 previews，前台恢复立即刷新；编辑、取消、引导、重试转发到网关。
+- [x] 删除客户端自动发送 effect 与托管队列的 beforeunload 内存保护（普通直接发送失败的手动草稿保护保留）；按设备同步网关 previews，前台恢复立即刷新；编辑、取消、引导、重试转发到网关。
 - [x] 用状态禁用发送中与待确认项的操作；展示发送失败或待确认原因；保留历史编辑/归档队列限制，归档时先取消网关队列。
 - [x] 浏览器验证关闭并重开恢复队列、切换会话自动发送、引导保持当前 turn；归档测试会话。
 - [x] 独立 reviewer 核对规格，然后核对代码质量；`npm run typecheck` 与相关测试通过。
@@ -55,10 +55,10 @@ type Action = { action: 'cancel'|'retry'|'steer'; id: string; revision: number }
 **Files:** `README.md`、本计划实施记录。
 
 - [x] README 记录托管、持久化、顺序、失败/待确认边界和旧网关升级要求。
-- [ ] 运行相关服务端/UI/e2e 测试、build 与 diff check，按中文 Conventional Commits 提交并推送。
-- [ ] 排队取得部署锁，网关部署到长期目录并回验能力/API。
-- [ ] 从双端现有渠道及 CI 版本分配更高统一版本；构建并发布 APK、已签名 IPA、HTTPS OTA、Cloudflare 软件源。
-- [ ] JSON、HEAD、完整 GET 核对双端版本、大小、SHA-256；交付展示固定 OTA/APK/IPA 链接；清理本次临时文件与 worktree。
+- [x] 运行相关服务端/UI/e2e 测试、build 与 diff check，按中文 Conventional Commits 提交并推送。
+- [x] 排队取得部署锁，网关部署到长期目录并回验能力/API。
+- [x] 从双端现有渠道及 CI 版本分配更高统一版本；构建并发布 APK、已签名 IPA、HTTPS OTA、Cloudflare 软件源。
+- [x] JSON、HEAD、完整 GET 核对双端版本、大小、SHA-256；交付展示固定 OTA/APK/IPA 链接；清理本次临时文件与 worktree。
 
 ## 实施验证记录
 
@@ -70,3 +70,20 @@ type Action = { action: 'cancel'|'retry'|'steer'; id: string; revision: number }
 - 扩展 HTTP 浏览器回归中的 result.png 展示和审批失败后按钮恢复两项失败，已在原始 HEAD `5a4f1cb` 的隔离基线重现同一错误，属于现有问题；本次未修改相关实现。
 - iOS 0.2.151 发布预检通过：保留 Bundle ID、application-identifier、Team 和兼容基准完整权限，无一次性身份恢复。
 - 上游原 `cloudflare/app-source/PUBLISH_PROMPT.md` 已删除；最新版 SignOs `00aeea2` 的现役说明为 `distribution/source-aggregator/README.md` 与 `hosting/home-source/README.md`。签名包继续沿用既有 `codex-mobile-signed/` GitHub 归档订阅，通过现役 Cloudflare 管理 API 同步、元数据与完整散列核验；开发者署名保留原值（已含当前 GitHub 用户）。
+
+## 发布与交付记录
+
+- 功能提交 `fea554d` 已推送 `origin/main`。GitHub 双端构建与 Release 工作流 [38124770289](https://github.com/zh0ngtian/codex-mobile/actions/runs/38124770289) 全部成功，产物来源提交与本次功能提交一致。
+- 取得长期网关目录的部署文件锁后，核对原 `gateway.js` 和 `http-session.js` 与基线相同，备份并原子替换本次三个模块，更新静态前端，重启 `com.minis.codex-mobile-gateway`。鉴权能力/API、WS initialize 与只读 thread/list 通过；同一目录仅一个现役网关实例。
+- 双端发布在本机共享发布锁内完成。APK、已签名 IPA 与 HTTPS OTA 均为 0.2.151 / build 2151；各自固定 JSON、HEAD 和完整 GET 与实际包的大小和 SHA-256 一致。签名身份与兼容基准完整权限保持连续。
+- Cloudflare 签名订阅及 GitHub 公网归档核验通过；保留原开发者署名 `loock-ai / zh0ngtian / Roxbili`。公共清单也已核对同一签名包的版本、大小和 SHA-256。
+- 修复仓库规则、README、发布文档与脚本中已删除的上游说明入口，改指现役软件源文档；发布脚本回归 11 项通过。仅发布说明入口改变，不影响已构建客户端。
+- 真机覆盖安装和原设备数据保留未执行；构建、签名、协议模拟与线上发布资源回验不能代替真机验收。
+- 本次只使用协议模拟，没有真实测试会话需归档。安装包及凭证保留在长期主工作区 `.mobile-build/ota-release/0.2.151/` 和 `.mobile-build/releases/0.2.151/`；临时测试/部署文件清理后归档开发 worktree。
+
+| 产物 | 版本 | 字节大小 | SHA-256 |
+| --- | --- | ---: | --- |
+| APK | 0.2.151 | 4715631 | `188cc882f8a35c92cf09b95ab5efcaa7f140aed8aed03e48c1128ef1078b0d7a` |
+| Ad Hoc 已签名 IPA | 0.2.151 | 3785291 | `9be6759f08a910025437160f8c40973c6b5604b6a663522a52c46a0c81de1efb` |
+
+[固定 OTA 安装页](https://192.168.123.79:8766/channels/codex-mobile/current/install.html) · [固定 APK](http://192.168.123.79:8765/channels/codex-mobile/latest.apk) · [固定 IPA](http://192.168.123.79:8765/channels/codex-mobile/latest.ipa) · [现役软件源](https://signos-source-aggregator.305301890.workers.dev/sources/yao.json) · [本次公网签名 IPA](https://github.com/zh0ngtian/ipa-archive/releases/download/codex-mobile-signed/v0.2.151-2151/CodexMobile-signed.ipa)

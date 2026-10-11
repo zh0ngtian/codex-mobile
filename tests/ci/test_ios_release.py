@@ -180,7 +180,7 @@ class ReleaseTests(unittest.TestCase):
         self.assertEqual(plan['steps'][-1], 'lan-publish-verify')
         self.assertEqual(plan['appSource']['status'], 'pending')
         self.assertEqual(plan['appSource']['instructionsUrl'],
-            'https://github.com/zh0ngtian/SignOs/blob/main/cloudflare/app-source/PUBLISH_PROMPT.md')
+            'https://github.com/zh0ngtian/SignOs/blob/main/distribution/source-aggregator/README.md')
 
     def test_receipt_is_saved_only_after_lan_full_get_verification(self):
         for valid_lan in (False, True):

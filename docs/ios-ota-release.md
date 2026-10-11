@@ -75,7 +75,7 @@ npm run ios:release -- \
 
 ## Cloudflare 软件源
 
-每次发布前读取并遵循 [SignOs PUBLISH_PROMPT.md](https://github.com/zh0ngtian/SignOs/blob/main/cloudflare/app-source/PUBLISH_PROMPT.md) 最新版。本仓库只保留此入口，不复制软件源的配置、上传、锁、清理或重试流程，也不固定上游版本。
+每次发布前读取并遵循 [SignOs 软件源文档](https://github.com/zh0ngtian/SignOs/blob/main/distribution/source-aggregator/README.md) 最新版。本仓库只保留此入口，不复制软件源的配置、上传、锁、清理或重试流程，也不固定上游版本。
 
 `npm run ios:release` 仅自动完成 HTTPS OTA 与固定 LAN IPA 发布；成功输出中的 `appSource.status` 为 `pending`，`instructionsUrl` 指向上述文档。接续软件源发布使用本次产物：
 
