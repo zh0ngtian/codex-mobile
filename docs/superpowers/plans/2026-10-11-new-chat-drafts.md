@@ -48,10 +48,10 @@ setCommand({ id: ++commandIdRef.current, backendId: record.backendId,
 **Files:** `README.md`、本计划验证记录。
 
 - [x] 更新 README 的当前能力与本地保存边界，完成相称 UI 回归、类型检查和构建。
-- [ ] 阅读提交规范，运行 `git diff --check`，提交带“新增功能”“主要修改”正文的中文 Conventional Commit，合入当前 main 并推送。
-- [ ] 排队获得发布锁，读取双端渠道与 GitHub Release 的最高版本，分配同一更高版本；使用 GitHub Actions 构建 APK/unsigned IPA、本机 `npm run ios:release` 签名发布。
-- [ ] 发布 APK 至固定渠道；两端 JSON、HEAD、完整 GET 校验版本/大小/SHA-256；核对软件源 unsigned IPA 与当前 GitHub 用户署名，保留本机签名包与 ota-release.json。
-- [ ] 本计划记录验收与交付；提供固定 OTA 页、APK、IPA 链接、版本、大小、散列和签名状态。清理无用临时文件，归档使用过的测试会话。
+- [x] 阅读提交规范，运行 `git diff --check`，提交带“新增功能”“主要修改”正文的中文 Conventional Commit，合入当前 main 并推送。
+- [x] 排队获得发布锁，读取双端渠道与 GitHub Release 的最高版本，分配同一更高版本；使用 GitHub Actions 构建 APK/unsigned IPA、本机 `npm run ios:release` 签名发布。
+- [x] 发布 APK 至固定渠道；两端 JSON、HEAD、完整 GET 校验版本/大小/SHA-256；核对软件源 unsigned IPA 与当前 GitHub 用户署名，保留本机签名包与 ota-release.json。
+- [x] 本计划记录验收与交付；提供固定 OTA 页、APK、IPA 链接、版本、大小、散列和签名状态。清理无用临时文件，归档使用过的测试会话。
 
 ## 开发验证记录
 
@@ -62,3 +62,16 @@ setCommand({ id: ++commandIdRef.current, backendId: record.backendId,
 - Playwright Chromium 与 mobile WebKit 共 10 项通过：重启恢复、真实附件内容与发送、更新原草稿、失败保留/成功移除、完整配置与无项目恢复、初始化竞争、单条删除、配额失败、附件独立保存、保存期间继续编辑和停用设备恢复。280/320/393px 无横向溢出，截图已检查。
 - 完整 UI 回归在 `NODE_OPTIONS=--no-experimental-webstorage` 下 640 项通过、1 项既有失败：`sidebar-refresh.test.tsx` 禁止 App 全部 setInterval，但基线已有 HTTP 操作两秒对账定时器（原 HEAD 第 2044 行）；本次没有新增定时器，不改动该过时断言。默认 Node 运行还会因实验 localStorage 产生环境失败，使用仓库已有的 Node 参数消除。
 - 未创建真实 Codex 测试会话；未占用共用模拟器或操作真机。浏览器/构建证据不代表真机覆盖安装和数据保留验收。
+
+## 固定渠道发布验收
+
+- 功能提交 `d635959` 已推送 main，统一分配 0.2.155 / build 2155，持有主工作区固定渠道发布锁。
+- 本机设备 IPA 构建、Ad Hoc 签名和独立验签通过，身份及完整钥匙串组保持连续；HTTPS OTA 与固定 LAN IPA 的 JSON/HEAD/完整 GET 已核对。
+- IPA：3,788,620 字节，SHA-256 `e7a53808e202c831ad11a8ddb803607068657c5f64ebac0bb3ce338fe9edd017`。已检查包内包含本次草稿运行代码。
+- 额外验证 WebKit 的 file:// 页面写入文字/ArrayBuffer、关闭页面后重新打开读取原文和文件字节通过，适配现有 App 的本地资源加载方式；该检查仍不是 iPhone 真机验收。
+
+- GitHub Actions `38139567516` 双端构建、契约验证及 Release 发布成功；下载包与 GitHub asset digest、构建回执中的来源提交一致。
+- APK：4,719,371 字节，SHA-256 `841b8555e3271c2e4f73d7076591ea74ee2c005fe4ea5171543538c59c375724`；固定 JSON、HEAD 与完整 GET 通过。
+- 软件源已同步同版本 unsigned IPA：3,765,148 字节，SHA-256 `ac8715581419effb8b004b634e83138cab48bbf7bbd3d9dfb6cf4ce83ad54803`；公开版本/build/downloadURL/大小与 GitHub Release 和全包下载一致。根据当前 GitHub 登录用户检查署名，原 `zh0ngtian` 保持。
+- 长期凭证位于主工作区 `.mobile-build/new-chat-drafts-release/0.2.155/`：双端包、unsigned 包、签名/OTA/渠道回验、GitHub 来源、软件源回执、UI 回归与构建日志、截图、file:// 存储检查。Ad Hoc 已签名包仅发布 OTA/LAN，没有上传软件源或 GitHub。
+- 本次测试只使用独立浏览器模拟数据，没有产生需要归档的真实 Codex 会话。收尾归档本任务 worktree，清理本次临时文件，并释放固定渠道锁。
