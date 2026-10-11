@@ -97,7 +97,7 @@ describe("移动端对话格式", () => {
     expect(container.querySelectorAll(".final-answer-duration")).toHaveLength(1);
   });
 
-  it("完成回合直接显示助手生成的图片并能打开应用内预览", async () => {
+  it("完成回合的过程图片折叠后仍能打开应用内预览", async () => {
     const request = vi.fn().mockResolvedValue({ dataBase64: "aGVsbG8=" });
     const { container } = render(<TurnCard turn={{
       id: "turn-image", status: "completed", items: [
@@ -106,8 +106,10 @@ describe("移动端对话格式", () => {
         { id: "final", type: "agentMessage", phase: "final_answer", text: "图片已发送" },
       ],
     }} client={{ request } as never} />);
+    expect(within(container).queryByRole("button", { name: "查看图片 assistant.png" })).toBeNull();
+    fireEvent.click(within(container).getByRole("button", { name: "之前的 1 条消息" }));
     const button = await waitFor(() => within(container).getByRole("button", { name: "查看图片 assistant.png" }));
-    expect(button.closest(".previous-messages")).toBeNull();
+    expect(button.closest(".previous-messages")).not.toBeNull();
     fireEvent.click(button);
     expect(screen.getByRole("dialog")).toBeTruthy();
     expect(request).toHaveBeenCalledWith("fs/readFile", { path: "/tmp/assistant.png" }, { timeoutMs: 180_000 });
@@ -447,7 +449,7 @@ describe("移动端对话格式", () => {
     expect(steeringBubble?.nextElementSibling).toBe(toggle);
   });
 
-  it("逻辑回合仍在执行时完整展示跨 turn 的实时过程", () => {
+  it("逻辑回合仍在执行时仅展示跨 turn 的过程说明", () => {
     const runningTurns = [
       {
         id: "turn-user",
@@ -482,10 +484,10 @@ describe("移动端对话格式", () => {
       view.queryByRole("button", { name: /之前的 \d+ 条消息/ }),
     ).toBeNull();
     expect(view.queryByText("准备执行")).not.toBeNull();
-    expect(view.queryByText("测试进行中")).not.toBeNull();
+    expect(view.queryByText("测试进行中")).toBeNull();
     expect(
       view.queryByRole("button", { name: "正在运行 npm test" }),
-    ).not.toBeNull();
+    ).toBeNull();
 
     const completedTurns = [
       runningTurns[0],
@@ -521,6 +523,64 @@ describe("移动端对话格式", () => {
     expect(view.queryByText("准备执行")).toBeNull();
     expect(view.queryByText("测试进行中")).toBeNull();
     expect(view.queryByText("测试完成")).not.toBeNull();
+  });
+
+  it("final answer 开始流式输出时立即折叠过程，并保留用户手动展开状态", () => {
+    const turn = { id: "phase-switch", status: "inProgress", items: [
+      { id: "u", type: "userMessage", text: "修复代码" },
+      { id: "c", type: "agentMessage", phase: "commentary", text: "正在检查代码" },
+      { id: "r", type: "reasoning", text: "分析依赖" },
+      { id: "cmd", type: "commandExecution", command: "cat src/app.ts", commandActions: [{ type: "read", name: "app.ts" }], status: "completed" },
+      { id: "edit", type: "fileChange", status: "completed", changes: [{ path: "src/app.ts", diff: "@@ -1 +1 @@\n-old\n+new" }] },
+    ] };
+    const { container, rerender } = render(<TurnCard turn={turn} client={null} />);
+    const view = within(container);
+    expect(view.getByText("正在检查代码")).toBeTruthy();
+    expect(view.queryByText("分析依赖")).toBeNull();
+    expect(view.queryByRole("button", { name: "已读取 app.ts" })).toBeNull();
+    expect(container.querySelector(".file-change-activity")).toBeNull();
+    const withFinal = { ...turn, items: [...turn.items, { id: "f", type: "agentMessage", phase: "final_answer", text: "修复完成" }] };
+    rerender(<TurnCard turn={withFinal} client={null} />);
+    expect(view.getByText("修复完成")).toBeTruthy();
+    expect(view.queryByText("正在检查代码")).toBeNull();
+    const toggle = view.getByRole("button", { name: "之前的 4 条消息" });
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(toggle);
+    expect(view.getByText("正在检查代码")).toBeTruthy();
+    expect(view.getByRole("button", { name: "已读取 app.ts" })).toBeTruthy();
+    rerender(<TurnCard turn={{ ...withFinal, status: "completed" }} client={null} />);
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    fireEvent.click(toggle);
+    expect(view.queryByText("正在检查代码")).toBeNull();
+  });
+
+  it("引导后新回复段显示 commentary，旧回复段保持 final 和折叠过程", () => {
+    const { container } = render(<TurnCard turn={{ id: "steered-phase", status: "inProgress", items: [
+      { id: "u1", type: "userMessage", text: "先检查" },
+      { id: "c1", type: "agentMessage", phase: "commentary", text: "第一段过程" },
+      { id: "f1", type: "agentMessage", phase: "final_answer", text: "第一段结果" },
+      { id: "u2", type: "userMessage", text: "继续构建" },
+      { id: "c2", type: "agentMessage", phase: "commentary", text: "第二段过程" },
+      { id: "cmd", type: "commandExecution", command: "npm run build" },
+    ] }} client={null} />);
+    const view = within(container);
+    expect(view.getByText("第一段结果")).toBeTruthy();
+    expect(view.queryByText("第一段过程")).toBeNull();
+    expect(view.getByText("继续构建")).toBeTruthy();
+    expect(view.getByText("第二段过程")).toBeTruthy();
+    expect(view.queryByRole("button", { name: "已执行 npm run build" })).toBeNull();
+  });
+
+  it("明确 commentary 的结束回合不会把最后一条过程说明当最终答复", () => {
+    const items = [
+      { id: "c1", type: "agentMessage", phase: "commentary", text: "检查中" },
+      { id: "c2", type: "agentMessage", phase: "commentary", text: "等待重试" },
+    ];
+    expect(splitCompletedTurnResponses(items).final).toBeNull();
+    const { container } = render(<TurnCard turn={{ id: "interrupted", status: "interrupted", items }} client={null} />);
+    expect(within(container).getByText("检查中")).toBeTruthy();
+    expect(within(container).getByText("等待重试")).toBeTruthy();
+    expect(container.querySelector(".final-answer-metadata")).toBeNull();
   });
 
   it("流式字符统计从用户发送后出现，始终位于回合末尾并在结束后隐藏", () => {
@@ -646,7 +706,7 @@ describe("移动端对话格式", () => {
     expect(container.querySelector(".diff-card")).toBeNull();
   });
 
-  it("编辑完成后默认显示每个文件的增删行数，点击文件定位对应 Diff", () => {
+  it("编辑过程默认折叠，展开后显示文件增删行数并定位 Diff", () => {
     const { container } = render(<TurnCard turn={{
       id: "per-file", status: "completed", items: [
         { id: "edit", type: "fileChange", status: "completed", changes: [
@@ -656,11 +716,13 @@ describe("移动端对话格式", () => {
         { id: "final", type: "agentMessage", phase: "final_answer", text: "已完成修改" },
       ],
     }} client={null} />);
+    expect(within(container).queryAllByRole("button", { name: /\/tmp\/project\/src\// })).toHaveLength(0);
+    fireEvent.click(within(container).getByRole("button", { name: "之前的 1 条消息" }));
     const files = within(container).getAllByRole("button", { name: /\/tmp\/project\/src\// });
     expect(files).toHaveLength(2);
     expect(files[0].textContent).toContain("+2-0");
     expect(files[1].textContent).toContain("+0-1");
-    expect(files[0].closest(".previous-messages")).toBeNull();
+    expect(files[0].closest(".previous-messages")).not.toBeNull();
     expect(files[0].closest(".file-change-activity")).not.toBeNull();
     expect(container.querySelector(".turn-change-summary")?.textContent).toContain("本次代码改动 3 行+2-1");
     fireEvent.click(files[1]);

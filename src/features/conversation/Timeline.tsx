@@ -726,24 +726,6 @@ export function TurnCard({
       total + receivedItemCharacterCount(item),
     0,
   );
-  const renderEntries = (items: AnyRecord[]) =>
-    groupTimelineEntries(items).map((entry, index) =>
-      entry.kind === "activity" ? (
-        <ToolActivity
-          key={`activity-${entry.items[0]?.id ?? index}`}
-          items={entry.items}
-        />
-      ) : (
-        <TimelineItem
-          key={entry.item.id ?? index}
-          item={entry.item}
-          client={client}
-          backend={backend}
-          threadId={threadId}
-          {...actionsForMessage(entry.item)}
-        />
-      ),
-    );
   const completedSegments = splitTurnResponseSegments(grouped.responses);
   const changeStats = turn.groupChangeStats ?? summarizeTurnChanges(turn);
   const changeStatsReady = hasTurnChangeStats(turn);
@@ -791,38 +773,31 @@ export function TurnCard({
         </div>
       )}
       <div className="turn-responses" ref={responsesRef}>
-        {grouped.running ? (
-          <>
-            {renderEntries(grouped.responses)}
-            <StreamCharacterCount
-              count={streamingCharacterCount}
-              startedAt={turn.startedAt}
-            />
-          </>
-        ) : (
-          completedSegments.map((items, index) => (
-            <CompletedResponseSegment
-              key={items[0]?.id ?? index}
-              items={items}
-              actionsForMessage={actionsForMessage}
-              client={client}
-              backend={backend}
-              threadId={threadId}
-              copyTarget={responsesRef}
-              showCopy={index === copySegmentIndex}
-              completedAt={
-                index === finalSegmentIndex ? turn.completedAt : null
-              }
-              finalDurationLabel={
-                index === finalSegmentIndex && durationMs != null
-                  ? formatTurnDuration(durationMs)
-                  : null
-              }
-              durationLabel={
-                index === durationSegmentIndex ? durationLabel : null
-              }
-            />
-          ))
+        {completedSegments.map((items, index) => (
+          <CompletedResponseSegment
+            key={items[0]?.id ?? index}
+            items={items}
+            running={grouped.running}
+            actionsForMessage={actionsForMessage}
+            client={client}
+            backend={backend}
+            threadId={threadId}
+            copyTarget={responsesRef}
+            showCopy={!grouped.running && index === copySegmentIndex}
+            completedAt={!grouped.running && index === finalSegmentIndex ? turn.completedAt : null}
+            finalDurationLabel={
+              !grouped.running && index === finalSegmentIndex && durationMs != null
+                ? formatTurnDuration(durationMs)
+                : null
+            }
+            durationLabel={!grouped.running && index === durationSegmentIndex ? durationLabel : null}
+          />
+        ))}
+        {grouped.running && (
+          <StreamCharacterCount
+            count={streamingCharacterCount}
+            startedAt={turn.startedAt}
+          />
         )}
       </div>
       {!grouped.running && (changeStatsReady || turn.changeStatsUnavailable) && (
@@ -847,6 +822,7 @@ export function TurnCard({
 
 function CompletedResponseSegment({
   items,
+  running,
   actionsForMessage,
   client,
   backend,
@@ -858,6 +834,7 @@ function CompletedResponseSegment({
   durationLabel,
 }: {
   items: AnyRecord[];
+  running: boolean;
   actionsForMessage: (item: AnyRecord) => UserMessageActionProps;
   client: AppServerClient | null;
   backend?: BackendConfig | null;
@@ -868,19 +845,19 @@ function CompletedResponseSegment({
   finalDurationLabel: string | null;
   durationLabel: string | null;
 }) {
-  const completed = splitCompletedTurnResponses(items);
-  const processImages = completed.previous.filter(item => item.type === "imageView");
-  const foldImages = processImages.length > 1;
-  const [showProcessImages, setShowProcessImages] = useState(false);
-  const [showPrevious, setShowPrevious] = useState(() =>
-    completed.previous.some((item) => item.type === "imageGeneration" && item.status === "failed"),
-  );
-  const guidingMessages = completed.beforeFinal.filter(
-    (item) => item.type === "userMessage",
-  );
+  const completed = splitCompletedTurnResponses(items, { allowLegacyFinal: !running });
+  const [showPrevious, setShowPrevious] = useState(false);
+  const hasFinal = Boolean(completed.final);
+  // A segment's explicit final starts a new display phase, even while the turn is running.
+  useEffect(() => setShowPrevious(false), [hasFinal]);
+  const guidingMessages = completed.beforeFinal.filter((item) => item.type === "userMessage");
+  const commentary = completed.beforeFinal.filter((item) => item.type === "agentMessage");
   const processBeforeFinal = completed.beforeFinal.filter(
-    (item) => item.type !== "userMessage" && !(foldImages && item.type === "imageView"),
+    (item) => item.type !== "userMessage" && (hasFinal || item.type !== "agentMessage"),
   );
+  const previousCount = hasFinal
+    ? completed.previousCount
+    : processBeforeFinal.filter((item) => item.type !== "contextCompaction").length;
   const renderEntries = (entries: AnyRecord[]) =>
     groupTimelineEntries(entries).map((entry, index) =>
       entry.kind === "activity" ? (
@@ -899,36 +876,25 @@ function CompletedResponseSegment({
         />
       ),
     );
-  const renderUnfoldedEntries = (entries: AnyRecord[]) =>
-    renderEntries(
-      entries.filter(
-        (item) =>
-          item.type === "userMessage" ||
-          item.type === "fileChange" ||
-          item.type === "imageView" ||
-          (item.type === "imageGeneration" && item.status !== "failed") ||
-          Boolean(videoPathForItem(item)) ||
-          (
-            completed.previousCount === 0 &&
-            item.type === "contextCompaction"
-          ),
-      ),
-    );
+  if (running && !hasFinal) {
+    return <>{renderEntries(items.filter((item) => item.type === "userMessage" || item.type === "agentMessage"))}</>;
+  }
   return (
     <>
       {renderEntries(guidingMessages)}
-      {completed.previousCount > 0 && (
+      {!hasFinal && renderEntries(commentary)}
+      {previousCount > 0 && (
         <>
           <button
             type="button"
             className="previous-messages-toggle"
             aria-expanded={showPrevious}
-            aria-label={`${t("之前的 {count} 条消息", { count: completed.previousCount })}${
+            aria-label={`${t("之前的 {count} 条消息", { count: previousCount })}${
               durationLabel ? ` · ${durationLabel}` : ""
             }`}
             onClick={() => setShowPrevious((current) => !current)}
           >
-            {t("之前的 {count} 条消息", { count: completed.previousCount })}
+            {t("之前的 {count} 条消息", { count: previousCount })}
             {durationLabel && (
               <span className="turn-duration">· {durationLabel}</span>
             )}
@@ -941,16 +907,6 @@ function CompletedResponseSegment({
           )}
         </>
       )}
-      {!showPrevious && renderUnfoldedEntries(processBeforeFinal)}
-      {foldImages && <>
-        <button type="button" className="previous-messages-toggle process-images-toggle"
-          aria-expanded={showProcessImages}
-          onClick={() => setShowProcessImages(current => !current)}>
-          {t("过程截图（{count}）", { count: processImages.length })}
-          <Chevron direction={showProcessImages ? "down" : "right"} />
-        </button>
-        {showProcessImages && <div className="process-images">{renderEntries(processImages)}</div>}
-      </>}
       {completed.final && (
         <>
           <TimelineItem
@@ -969,15 +925,13 @@ function CompletedResponseSegment({
           )}
         </>
       )}
-      {showPrevious ? (
-        completed.afterFinal.length > 0 && (
-          <div className="previous-messages after-final">
-            {renderEntries(completed.afterFinal.filter(item => !(foldImages && item.type === "imageView")))}
-          </div>
-        )
-      ) : (
-        renderUnfoldedEntries(completed.afterFinal.filter(item => !(foldImages && item.type === "imageView")))
+      {showPrevious && completed.afterFinal.length > 0 && (
+        <div className="previous-messages after-final">
+          {renderEntries(completed.afterFinal)}
+        </div>
       )}
+      {previousCount === 0 && renderEntries(processBeforeFinal)}
+      {previousCount === 0 && renderEntries(completed.afterFinal)}
     </>
   );
 }

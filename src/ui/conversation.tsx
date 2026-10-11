@@ -455,6 +455,7 @@ export function shouldCollapseUserMessage(text: string) {
 
 export function splitCompletedTurnResponses(
   responses: ConversationRecord[],
+  { allowLegacyFinal = true }: { allowLegacyFinal?: boolean } = {},
 ) {
   let finalIndex = -1;
   for (let index = responses.length - 1; index >= 0; index -= 1) {
@@ -466,9 +467,9 @@ export function splitCompletedTurnResponses(
       break;
     }
   }
-  if (finalIndex < 0) {
+  if (allowLegacyFinal && finalIndex < 0) {
     for (let index = responses.length - 1; index >= 0; index -= 1) {
-      if (responses[index]?.type === "agentMessage") {
+      if (responses[index]?.type === "agentMessage" && responses[index]?.phase == null) {
         finalIndex = index;
         break;
       }
@@ -487,9 +488,7 @@ export function splitCompletedTurnResponses(
     previousCount: previous.filter(
       (item) =>
         item.type !== "contextCompaction" &&
-        item.type !== "userMessage" &&
-        item.type !== "imageView" &&
-        (item.type !== "imageGeneration" || item.status === "failed"),
+        item.type !== "userMessage",
     ).length,
     beforeFinal,
     afterFinal,

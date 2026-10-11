@@ -1,6 +1,6 @@
 import { expect, test } from "./http-fixture";
 
-test("编辑卡片默认显示逐文件统计并支持窄屏与 Diff 定位", async ({ page }) => {
+test("编辑过程折叠后可展开逐文件统计并支持窄屏与 Diff 定位", async ({ page }) => {
   await page.addInitScript(() => {
     const thread = { id: "file-stats", preview: "逐文件统计", status: { type: "idle" }, turns: [{
       id: "edit-turn", status: "completed", items: [
@@ -44,6 +44,8 @@ test("编辑卡片默认显示逐文件统计并支持窄屏与 Diff 定位", as
   await page.goto("/");
   await page.getByRole("button", { name: /逐文件统计/ }).click();
   const editFiles = page.locator(".file-change-file");
+  await expect(editFiles).toHaveCount(0);
+  await page.getByRole("button", { name: "之前的 1 条消息" }).click();
   await expect(editFiles).toHaveCount(2);
   await expect(editFiles.first()).toContainText("+2-1");
   await expect(editFiles.nth(1)).toContainText("+1-0");
