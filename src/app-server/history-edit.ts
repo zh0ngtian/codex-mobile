@@ -11,6 +11,8 @@ export interface HistoricalMessageEditTarget {
   text: string;
   input: HistoricalUserInput[];
   primaryTextIndex: number;
+  precedingInputCount: number;
+  precedingMessageCount: number;
   rollbackTurnCount: number;
   hasLaterTurns: boolean;
   attachmentCount: number;
@@ -62,6 +64,7 @@ function normalizeUserInput(item: AnyRecord): HistoricalUserInput[] {
 export function createHistoricalMessageEditTarget(
   turns: AnyRecord[],
   turnId: string,
+  selectedMessageId?: string,
 ): HistoricalMessageEditTarget | null {
   const turnIndex = turns.findIndex((turn) => String(turn.id ?? "") === turnId);
   if (turnIndex < 0 || !turnId || turnId.startsWith("pending-")) return null;
@@ -70,16 +73,22 @@ export function createHistoricalMessageEditTarget(
   const userMessages = (Array.isArray(turn.items) ? turn.items : []).filter(
     (item: AnyRecord) => item.type === "userMessage",
   );
-  if (userMessages.length !== 1) return null;
-  const message = userMessages[0];
+  const messageIndex = selectedMessageId == null
+    ? 0
+    : userMessages.findIndex((item: AnyRecord) => String(item.id ?? "") === selectedMessageId);
+  const message = userMessages[messageIndex];
+  if (!message) return null;
   const messageId = String(message.id ?? "");
   if (!messageId || messageId.startsWith("local-")) return null;
-  const input = normalizeUserInput(message);
-  const primaryTextIndex = input.findIndex(
+  const precedingInput = userMessages.slice(0, messageIndex).flatMap(normalizeUserInput);
+  const messageInput = normalizeUserInput(message);
+  const messageTextIndex = messageInput.findIndex(
     (part) => part.type === "text" && !uploadedFileText(String(part.text ?? "")),
   );
-  const text = primaryTextIndex >= 0
-    ? String(input[primaryTextIndex].text ?? "")
+  const input = [...precedingInput, ...messageInput];
+  const primaryTextIndex = messageTextIndex < 0 ? -1 : precedingInput.length + messageTextIndex;
+  const text = messageTextIndex >= 0
+    ? String(messageInput[messageTextIndex].text ?? "")
     : "";
   return {
     turnId,
@@ -87,8 +96,10 @@ export function createHistoricalMessageEditTarget(
     text,
     input,
     primaryTextIndex,
+    precedingInputCount: precedingInput.length,
+    precedingMessageCount: messageIndex,
     rollbackTurnCount: turns.length - turnIndex,
-    hasLaterTurns: turnIndex < turns.length - 1,
+    hasLaterTurns: turnIndex < turns.length - 1 || messageIndex < userMessages.length - 1,
     attachmentCount: input.filter(isAttachmentInput).length,
   };
 }
@@ -116,9 +127,10 @@ export function buildEditedHistoryInput(
       input.splice(target.primaryTextIndex, 1);
     }
   } else if (text) {
-    input.unshift({ type: "text", text, text_elements: [] });
+    input.splice(target.precedingInputCount, 0, { type: "text", text, text_elements: [] });
   }
-  return input;
+  // 不能把清空目标消息误当作只重发同轮此前输入。
+  return input.length > target.precedingInputCount ? input : [];
 }
 
 interface HistoryEditRequester {

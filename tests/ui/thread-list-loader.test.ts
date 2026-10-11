@@ -18,6 +18,131 @@ function deferred<T>() {
 }
 
 describe("会话列表轮询加载器", () => {
+  it("运行中补取和显式置顶不会重新带出子 Agent", async () => {
+    const records: Record<string, any> = {
+      child: { id: "child", source: { subAgent: "review" }, status: { type: "active" } },
+      temporary: { id: "temporary", ephemeral: true },
+      main: { id: "main", source: "vscode", status: { type: "active" } },
+    };
+    const client = { request: vi.fn(async (method: string, params: any) => {
+      if (method === "thread/loaded/list") return { data: ["child", "main"], nextCursor: null };
+      if (method === "thread/read") return { thread: records[params.threadId] };
+      return { data: Object.values(records), nextCursor: null };
+    }) };
+    const onPinnedData = vi.fn();
+    const onData = vi.fn();
+    await createLatestThreadListLoader({ onPinnedData, onData }).load(client, [], [], {
+      pinnedThreadIds: ["child", "temporary"], includeRunningThreads: true,
+    });
+    expect(onPinnedData).toHaveBeenCalledWith([records.main]);
+    expect(onData).toHaveBeenCalledWith([records.main]);
+  });
+
+  it("项目分页过滤子 Agent 后继续补足五条，不需要显式排除 ID", async () => {
+    const records = [
+      { id: "child", parentThreadId: "main" },
+      { id: "internal", ephemeral: true },
+      ...Array.from({ length: 6 }, (_, i) => ({ id: `regular-${i}` })),
+    ];
+    const client = { request: vi.fn(async (_method: string, params: any) => {
+      const offset = Number(params.cursor ?? 0);
+      const end = offset + params.limit;
+      return { data: records.slice(offset, end), nextCursor: end < records.length ? String(end) : null };
+    }) };
+    const result = await loadProjectThreadRecords(client, "/a");
+    expect(result.threads.map((thread) => thread.id)).toEqual(Array.from({ length: 5 }, (_, i) => `regular-${i}`));
+    expect(result.nextCursor).toBe("7");
+    expect(result.hasMore).toBe(true);
+    const projectless = await loadProjectlessThreadRecords(client, records.map((thread) => thread.id), 5);
+    expect(projectless.threads.map((thread) => thread.id)).toEqual(Array.from({ length: 5 }, (_, i) => `regular-${i}`));
+  });
+
+  it("刷新保留和去重不会因稀疏的新摘要丢失同批子会话分类", () => {
+    const child = { id: "child", parentThreadId: "main", status: { type: "active" }, updatedAt: 1 };
+    expect(dedupeThreadsById([child, { id: "child", updatedAt: 2 }, { id: "main" }]))
+      .toEqual([{ id: "main" }]);
+    expect(mergeThreadListPage([child], [{ id: "main" }], new Set(["child"])))
+      .toEqual([{ id: "main" }]);
+  });
+
+  it("同批更新尚未同步置顶 ID 时，普通分页仍保留主动和被动置顶，并采用最新结束状态", () => {
+    const current = [
+      { id: "manual", isPinned: true }, { id: "unread", isUnread: true },
+      { id: "running", status: { type: "active" } }, { id: "older" },
+    ];
+    const incoming = [{ id: "recent" }];
+    expect(mergeThreadListPage(current, incoming, new Set()).map((thread) => thread.id))
+      .toEqual(["recent", "manual", "unread", "running"]);
+    expect(mergeThreadListPage(current, [{ id: "running", status: { type: "idle" } }], new Set())
+      .find((thread) => thread.id === "running")?.status).toEqual({ type: "idle" });
+  });
+
+  it("主动置顶、未读和全部运行中摘要独立加载，不受项目五条限制", async () => {
+    const records = ["manual", "unread", "running", ...Array.from({ length: 5 }, (_, i) => `regular-${i}`)]
+      .map((id) => ({ id, cwd: "/a", status: { type: id === "running" ? "active" : "idle" } }));
+    const client = { request: vi.fn(async (method: string, params: any) => {
+      if (method === "thread/loaded/list") return params.cursor
+        ? { data: ["running", "idle", "missing"], nextCursor: null }
+        : { data: ["manual"], nextCursor: "next" };
+      if (method === "thread/read") {
+        if (params.threadId === "missing") throw new Error("unavailable");
+        return { thread: { ...(records.find((thread) => thread.id === params.threadId) ?? { id: "idle", status: { type: "idle" } }), turns: [] } };
+      }
+      const offset = Number(params.cursor ?? 0);
+      const end = offset + params.limit;
+      return { data: records.slice(offset, end), nextCursor: end < records.length ? String(end) : null };
+    }) };
+    const onPinnedData = vi.fn();
+    const onProjectData = vi.fn();
+    const loader = createLatestThreadListLoader({ onPinnedData, onProjectData });
+    await loader.load(client, ["/a"], ["unread"], {
+      pinnedThreadIds: ["manual"], prioritizedThreadIds: ["unread", "manual"], includeRunningThreads: true,
+    });
+    expect(onPinnedData).toHaveBeenCalledWith(expect.arrayContaining([
+      expect.objectContaining({ id: "manual" }),
+      expect.objectContaining({ id: "unread", isProjectless: true }),
+      expect.objectContaining({ id: "running", status: { type: "active" } }),
+    ]));
+    expect(onPinnedData.mock.calls[0][0]).toHaveLength(3);
+    expect(onPinnedData.mock.calls[0][0].every((thread: any) => !("turns" in thread))).toBe(true);
+    expect(client.request.mock.calls.filter(([method, params]) => method === "thread/read" && params.threadId === "manual")).toHaveLength(1);
+    expect(client.request).toHaveBeenCalledWith("thread/loaded/list", { limit: 100, cursor: "next" });
+    expect(onProjectData).toHaveBeenCalledWith("/a", records.slice(3), false, null);
+  });
+
+  it("已加载列表不可用时仍补取本机未读和主动置顶", async () => {
+    const client = { request: vi.fn(async (method: string, params: any) => {
+      if (method === "thread/loaded/list") throw new Error("unsupported");
+      if (method === "thread/read") return { thread: { id: params.threadId } };
+      return { data: [], nextCursor: null };
+    }) };
+    const onPinnedData = vi.fn();
+    await createLatestThreadListLoader({ onPinnedData }).load(client, [], [], {
+      pinnedThreadIds: ["manual"], prioritizedThreadIds: ["unread"], includeRunningThreads: true,
+    });
+    expect(onPinnedData).toHaveBeenCalledWith([{ id: "manual" }, { id: "unread" }]);
+  });
+
+  it("旧客户端被动置顶摘要迟到不会覆盖新客户端或触发旧项目请求", async () => {
+    const oldRead = deferred<{ thread: { id: string; status: { type: string } } }>();
+    const oldClient = { request: vi.fn((method: string) => method === "thread/loaded/list"
+      ? Promise.resolve({ data: ["old"], nextCursor: null })
+      : oldRead.promise) };
+    const newClient = { request: vi.fn(async (method: string) => method === "thread/loaded/list"
+      ? { data: ["new"], nextCursor: null }
+      : method === "thread/read" ? { thread: { id: "new", status: { type: "active" } } }
+      : { data: [], nextCursor: null }) };
+    const onPinnedData = vi.fn();
+    const loader = createLatestThreadListLoader({ onPinnedData });
+    const oldLoad = loader.load(oldClient, ["/old"], [], { includeRunningThreads: true });
+    await loader.load(newClient, ["/new"], [], { includeRunningThreads: true });
+    oldRead.resolve({ thread: { id: "old", status: { type: "active" } } });
+    await oldLoad;
+    expect(onPinnedData).toHaveBeenCalledOnce();
+    expect(onPinnedData).toHaveBeenCalledWith([{ id: "new", status: { type: "active" } }]);
+    expect(oldClient.request.mock.calls.some(([method]) => method === "thread/list")).toBe(false);
+  });
+
   it("每项目跳过置顶和无项目记录，补足五条普通对话并保留下一批游标", async () => {
     const records = ["pin-a", "pin-b", "projectless", ...Array.from({ length: 10 }, (_, i) => `regular-${i}`)]
       .map((id, i) => ({ id, updatedAt: 100 - i }));

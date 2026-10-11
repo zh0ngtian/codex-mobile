@@ -1,4 +1,5 @@
 import { finalAnswerAttentionAction } from "../features/threads/thread-unread";
+import { readNotificationPreference } from "./preferences";
 
 export interface AndroidCompletionNotificationBridge {
   requestCompletionNotificationPermission?: () => void;
@@ -33,6 +34,7 @@ export interface CompletionNotificationScope {
   JsBridge?: AndroidCompletionNotificationBridge;
   Notification?: BrowserNotificationConstructor;
   __codexMobileCompletionTarget?: unknown;
+  __codexMobileCompletionNavigationReady?: boolean;
   focus?: () => void;
   addEventListener?: (type: string, listener: EventListener) => void;
   removeEventListener?: (type: string, listener: EventListener) => void;
@@ -57,6 +59,17 @@ export interface RunCompletionNavigationTarget {
 }
 
 export const RUN_COMPLETION_OPEN_EVENT = "codex-mobile-open-thread";
+
+export function parseCompletionDeepLink(value: string): RunCompletionNavigationTarget | null {
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "codexmobile:" || url.hostname !== "thread" ||
+      (url.pathname !== "" && url.pathname !== "/") || url.username || url.password || url.port || url.hash ||
+      url.searchParams.getAll("backendId").length !== 1 || url.searchParams.getAll("threadId").length !== 1 ||
+      [...url.searchParams.keys()].some((key) => !["backendId", "threadId"].includes(key))) return null;
+    return completionNavigationTarget({ backendId: url.searchParams.get("backendId"), threadId: url.searchParams.get("threadId") });
+  } catch { return null; }
+}
 
 interface CompletionThread {
   id?: unknown;
@@ -112,6 +125,7 @@ export function bindRunCompletionNavigation(
     }
   };
   scope.addEventListener?.(RUN_COMPLETION_OPEN_EVENT, handleNavigation);
+  scope.__codexMobileCompletionNavigationReady = true;
 
   try {
     const pending =
@@ -126,6 +140,7 @@ export function bindRunCompletionNavigation(
   }
 
   return () => {
+    scope.__codexMobileCompletionNavigationReady = false;
     scope.removeEventListener?.(RUN_COMPLETION_OPEN_EVENT, handleNavigation);
   };
 }
@@ -230,6 +245,7 @@ export function notifyRunCompleted(
   notification: RunCompletionNotification,
   scope: CompletionNotificationScope = currentScope(),
 ) {
+  if (readNotificationPreference(window.localStorage).mode === "bark") return;
   const android = scope.JsBridge;
   if (typeof android?.showCompletionNotification === "function") {
     try {

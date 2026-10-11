@@ -36,6 +36,7 @@ import {
   parseRemoteFileHref,
   relativeTime,
   reconcileRecentTurns,
+  reconcileThreadSnapshot,
   removePendingTurn,
   parseUnifiedDiff,
   shouldCollapseUserMessage,
@@ -52,6 +53,50 @@ afterEach(() => {
 });
 
 describe("移动端对话格式", () => {
+  it.each([
+    [{ durationMs: 23_000 }, "用时 23秒"],
+    [{ durationMs: 0 }, "用时 0秒"],
+    [{ startedAt: 100, completedAt: 225 }, "用时 2分5秒"],
+    [{ durationMs: 3_660_000 }, "用时 1小时1分"],
+  ])("最终回答下方显示可靠用时：%j", (timing, label) => {
+    const { container } = render(<TurnCard turn={{
+      id: "duration-final", status: "completed", ...timing, items: [
+        { id: "user", type: "userMessage", text: "检查" },
+        { id: "final", type: "agentMessage", phase: "final_answer", text: "完成" },
+      ],
+    }} client={null} />);
+    const duration = within(container).getByText(label);
+    expect(duration.closest(".assistant-message")).not.toBeNull();
+    expect(duration.closest(".markdown-body")).toBeNull();
+  });
+
+  it.each([
+    {}, { durationMs: -1 }, { durationMs: NaN },
+    { startedAt: 200, completedAt: 100 },
+    { startedAt: 100 }, { durationMs: 23_000, status: "inProgress" },
+  ])("缺少可靠用时或仍运行时不显示完成用时：%j", (timing) => {
+    const { container } = render(<TurnCard turn={{
+      id: "duration-missing", status: "completed", ...timing, items: [
+        { id: "final", type: "agentMessage", phase: "final_answer", text: "完成" },
+      ],
+    }} client={null} />);
+    expect(within(container).queryByText(/^用时 /)).toBeNull();
+  });
+
+  it("多个最终回答只在最后一段显示整轮用时", () => {
+    const { container } = render(<TurnCard turn={{
+      id: "duration-steered", status: "completed", durationMs: 23_000, items: [
+        { id: "user", type: "userMessage", text: "检查" },
+        { id: "first", type: "agentMessage", phase: "final_answer", text: "初版完成" },
+        { id: "steer", type: "userMessage", text: "继续" },
+        { id: "last", type: "agentMessage", phase: "final_answer", text: "最终完成" },
+      ],
+    }} client={null} />);
+    const duration = within(container).getByText("用时 23秒");
+    expect(duration.closest(".assistant-message")?.textContent).toContain("最终完成");
+    expect(container.querySelectorAll(".final-answer-duration")).toHaveLength(1);
+  });
+
   it("完成回合直接显示助手生成的图片并能打开应用内预览", async () => {
     const request = vi.fn().mockResolvedValue({ dataBase64: "aGVsbG8=" });
     const { container } = render(<TurnCard turn={{
@@ -599,6 +644,30 @@ describe("移动端对话格式", () => {
     view = within(container);
     expect(view.queryByText("代码变更")).toBeNull();
     expect(container.querySelector(".diff-card")).toBeNull();
+  });
+
+  it("编辑完成后默认显示每个文件的增删行数，点击文件定位对应 Diff", () => {
+    const { container } = render(<TurnCard turn={{
+      id: "per-file", status: "completed", items: [
+        { id: "edit", type: "fileChange", status: "completed", changes: [
+          { path: "/tmp/project/src/first.ts", diff: "@@ -0,0 +1,2 @@\n+one\n+two" },
+          { path: "/tmp/project/src/second.ts", diff: "@@ -1 +0,0 @@\n-old" },
+        ] },
+        { id: "final", type: "agentMessage", phase: "final_answer", text: "已完成修改" },
+      ],
+    }} client={null} />);
+    const files = within(container).getAllByRole("button", { name: /\/tmp\/project\/src\// });
+    expect(files).toHaveLength(2);
+    expect(files[0].textContent).toContain("+2-0");
+    expect(files[1].textContent).toContain("+0-1");
+    expect(files[0].closest(".previous-messages")).toBeNull();
+    expect(files[0].closest(".file-change-activity")).not.toBeNull();
+    expect(container.querySelector(".turn-change-summary")?.textContent).toContain("本次代码改动 3 行+2-1");
+    fireEvent.click(files[1]);
+    const headings = container.querySelectorAll(".file-diff-heading");
+    expect(headings[0].getAttribute("aria-expanded")).toBe("false");
+    expect(headings[1].getAttribute("aria-expanded")).toBe("true");
+    expect(container.querySelector(".file-diff-line.deletion")?.textContent).toContain("old");
   });
 
   it("运行结束后以工具活动同款样式显示一条总计", () => {
@@ -1392,6 +1461,49 @@ describe("移动端对话格式", () => {
     });
   });
 
+  it("刷新旧快照不会把已完成回合退回运行中或缩短回复", () => {
+    const current = [{ id: "turn-2", status: "completed", completedAt: 150,
+      items: [{ id: "a2", type: "agentMessage", phase: "final_answer", text: "完整的最新回复" }] }];
+    const stale = [{ id: "turn-2", status: "inProgress", completedAt: null,
+      items: [{ id: "a2", type: "agentMessage", phase: "commentary", text: "完整的" }] }];
+    expect(reconcileRecentTurns(current, stale)).toEqual(current);
+  });
+
+  it("流式回合刷新短前缀保持已显示文本但接受后续增长", () => {
+    const current = [{ id: "turn-2", status: "inProgress",
+      items: [{ id: "a2", type: "agentMessage", text: "已收到的流式内容" }] }];
+    const stale = [{ ...current[0], items: [{ ...current[0].items[0], text: "已收到" }] }];
+    expect(reconcileRecentTurns(current, stale)[0].items[0].text).toBe("已收到的流式内容");
+    const latest = [{ ...current[0], status: "completed",
+      items: [{ ...current[0].items[0], text: "已收到的流式内容和最终结果" }] }];
+    expect(reconcileRecentTurns(current, latest)).toEqual(latest);
+  });
+
+  it("不重叠的旧窗口插入历史位置并保持最新回合在末尾", () => {
+    const latest = { id: "turn-3", status: "completed", startedAt: 300, items: [] };
+    const older = { id: "turn-1", status: "completed", startedAt: 100, items: [] };
+    expect(reconcileRecentTurns([latest], [older])).toEqual([older, latest]);
+    expect(reconcileRecentTurns([older], [latest])).toEqual([older, latest]);
+  });
+
+  it("有回合时间的稀疏快照保持历史穿插顺序和最新回合位置", () => {
+    const turns = [1, 2, 3, 4].map((number) => ({
+      id: `turn-${number}`, status: "completed", startedAt: number * 100, items: [],
+    }));
+    expect(reconcileRecentTurns([turns[0], turns[2]], [turns[1], turns[3]])).toEqual(turns);
+    expect(reconcileRecentTurns(turns.slice(0, 3), [turns[1], turns[3]])).toEqual(turns);
+  });
+
+  it("同会话重连快照保留最新回合和已加载历史，不同会话正常切换", () => {
+    const first = { id: "turn-1", status: "completed", items: [] };
+    const latest = { id: "turn-2", status: "completed", items: [] };
+    const current = { id: "thread", name: "原名称", turns: [first, latest] };
+    expect(reconcileThreadSnapshot(current, { id: "thread", name: "新名称", turns: [first] }))
+      .toEqual({ id: "thread", name: "新名称", turns: [first, latest] });
+    const other = { id: "other", turns: [first] };
+    expect(reconcileThreadSnapshot(current, other)).toEqual(other);
+  });
+
   it("增量对账按 turn 和 item id 补齐后台期间漏掉的内容", () => {
     const current = [
       {
@@ -1913,8 +2025,8 @@ describe("移动端对话格式", () => {
     expect(container.textContent).not.toContain("automation-2");
     expect(container.textContent).not.toContain("NOTIFY");
     expect(
-      within(container).queryByRole("button", { name: "编辑历史消息" }),
-    ).toBeNull();
+      within(container).getByRole("button", { name: "编辑历史消息" }),
+    ).not.toBeNull();
     expect(
       within(container).queryByRole("button", { name: "重发历史消息" }),
     ).toBeNull();

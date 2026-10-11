@@ -9,6 +9,7 @@ import { compactTurnDetails } from "./turn-details.js";
 import { isNavigationResume } from "./rpc-replay.js";
 import { InlineImages } from "./inline-images.js";
 import { syncDirectory } from "./sync-directory.js";
+import type { BarkNotifications } from "./bark-notifications.js";
 
 export interface RpcMessage {
   id?: string | number;
@@ -142,7 +143,7 @@ class Session {
   storageBytes = 0;
   invalidatedSocket?: WebSocket;
 
-  constructor(readonly id: string, private upstreamUrl: string, private root: string, private changeHistory: TurnChangeHistory, private images: InlineImages) {
+  constructor(readonly id: string, private upstreamUrl: string, private root: string, private changeHistory: TurnChangeHistory, private images: InlineImages, private notifications?: BarkNotifications) {
     this.loadPromise = this.load();
   }
 
@@ -299,6 +300,11 @@ class Session {
       return;
     }
     if (!message.method) return;
+    if (message.method === "serverRequest/resolved") {
+      const params = message.params ?? {};
+      const request = this.pending.get(params.requestId);
+      if (request && request.params?.threadId === params.threadId) this.pending.delete(params.requestId);
+    }
     this.project(message);
   }
 
@@ -354,6 +360,7 @@ class Session {
     // Merging sparse item updates must not grow the retained payload beyond the same budget.
     message = { method: message.method, ...(message.params ? { params: bounded(message.params) } : {}) };
     if (message.params?.item) this.items.set(this.itemKey(message.params), message);
+    this.notifications?.observe(message);
     const bytes = Buffer.byteLength(JSON.stringify(message));
     const event = { cursor: ++this.cursor, message, bytes };
     this.history.push(event); this.historyBytes += bytes;
@@ -487,6 +494,7 @@ class Session {
   }
 
   private observeRpcState(request: RpcMessage, response: RpcMessage) {
+    this.notifications?.observeRpc(request, response);
     if (response.error != null || ![
       "turn/start", "turn/steer", "turn/interrupt", "turn/stop",
       "thread/resume", "thread/read", "thread/turns/list",
@@ -677,7 +685,7 @@ export class HttpSessions {
   private root: string;
   private changeHistory: TurnChangeHistory;
   private images: InlineImages;
-  constructor(private options: { upstreamUrl: string; codexHome?: string; changeHistory?: TurnChangeHistory }) {
+  constructor(private options: { upstreamUrl: string; codexHome?: string; changeHistory?: TurnChangeHistory; notifications?: BarkNotifications }) {
     this.root = join(options.codexHome ?? process.env.CODEX_HOME ?? join(homedir(), ".codex"), "codex-mobile-http");
     this.images = new InlineImages(join(options.codexHome ?? process.env.CODEX_HOME ?? join(homedir(), ".codex"), "codex-mobile-inline-images"));
     this.changeHistory = options.changeHistory ?? new TurnChangeHistory(options.codexHome ?? process.env.CODEX_HOME ?? join(homedir(), ".codex"));
@@ -697,7 +705,7 @@ export class HttpSessions {
     const existing = this.sessions.get(id);
     if (existing) return existing;
     if (this.sessions.size >= MAX_SESSIONS) throw new HttpError(429, "Too many sessions");
-    const session = new Session(id, this.options.upstreamUrl, this.root, this.changeHistory, this.images);
+    const session = new Session(id, this.options.upstreamUrl, this.root, this.changeHistory, this.images, this.options.notifications);
     // Loading errors are returned by APIs rather than emitted as unhandled rejections.
     session.loadPromise.catch(() => {});
     this.sessions.set(id, session);

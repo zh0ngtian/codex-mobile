@@ -4,6 +4,8 @@ import {
   useState,
   type PointerEvent as ReactPointerEvent,
 } from "react";
+import { elementMenuAnchor, type MenuAnchor } from "../../ui/native-action-menu";
+import { copyText } from "../../ui/copy";
 import {
   isThreadRunning,
   relativeTime,
@@ -24,6 +26,7 @@ import { BackendSwitcher } from "../backends/BackendSwitcher";
 import { ConversationActionMenu } from "../conversation/ConversationControls";
 import {
   groupThreadsByProject,
+  isThreadPrioritized,
   splitAllThreads,
   type AggregatedThreadItem,
 } from "./thread-list-model";
@@ -41,6 +44,7 @@ const LONG_PRESS_DELAY_MS = 500;
 const LONG_PRESS_MOVE_TOLERANCE_PX = 10;
 
 export function ThreadListPage({
+  sidebarOpen = true,
   backends,
   summaries,
   selectedBackendId,
@@ -70,6 +74,7 @@ export function ThreadListPage({
   onToggleProject,
   onToggleProjectCollapsed,
 }: {
+  sidebarOpen?: boolean;
   backends: BackendConfig[];
   summaries: Record<string, BackendRuntimeSummary>;
   selectedBackendId: string;
@@ -104,6 +109,7 @@ export function ThreadListPage({
 }) {
   const [managedThread, setManagedThread] =
     useState<AggregatedThreadItem | null>(null);
+  const [menuAnchor, setMenuAnchor] = useState<MenuAnchor>();
   const [pendingThreadAction, setPendingThreadAction] = useState("");
   const sidebarRef = useRef<HTMLElement | null>(null);
   const longPressRef = useRef<{
@@ -136,6 +142,12 @@ export function ThreadListPage({
     }
   };
   useEffect(() => clearLongPress, []);
+  useEffect(() => {
+    if (sidebarOpen) return;
+    clearLongPress();
+    suppressClickRef.current = null;
+    setManagedThread(null);
+  }, [sidebarOpen]);
   useEffect(() => {
     const sidebar = sidebarRef.current;
     if (!sidebar) return;
@@ -171,11 +183,13 @@ export function ThreadListPage({
     event: ReactPointerEvent<HTMLButtonElement>,
     thread: AggregatedThreadItem,
   ) => {
-    if (event.button !== 0) return;
+    if (!sidebarOpen || event.button !== 0) return;
     clearLongPress();
     const key = managementKey(thread);
+    const anchor = elementMenuAnchor(event.currentTarget);
     const timer = window.setTimeout(() => {
       suppressClickRef.current = { key, until: Date.now() + 1_000 };
+      setMenuAnchor(anchor);
       setManagedThread(thread);
       longPressRef.current = null;
     }, LONG_PRESS_DELAY_MS);
@@ -232,6 +246,9 @@ export function ThreadListPage({
         onContextMenu={(event) => {
           event.preventDefault();
           clearLongPress();
+          if (!sidebarOpen) return;
+          suppressClickRef.current = { key, until: Date.now() + 1_000 };
+          setMenuAnchor(elementMenuAnchor(event.currentTarget));
           setManagedThread(thread);
         }}
         onPointerDown={(event) => startLongPress(event, thread)}
@@ -376,11 +393,11 @@ export function ThreadListPage({
               .filter(
                 (group) =>
                   !query.trim() ||
-                  group.threads.some((thread) => !thread.pinned),
+                  group.threads.some((thread) => !isThreadPrioritized(thread)),
               )
               .map((group) => {
                 const recentThreads = group.threads.filter(
-                  (thread) => !thread.pinned,
+                  (thread) => !isThreadPrioritized(thread),
                 );
                 const projectKey = projectCollapseKey(
                   selectedBackendId,
@@ -506,7 +523,7 @@ export function ThreadListPage({
       </div>
       <ErrorBanner message={error} />
       <ConversationActionMenu
-        open={managedThread !== null}
+        open={sidebarOpen && managedThread !== null}
         readOnly={
           managedThread
             ? summaries[managedThread.backendId]?.connection !== "online"
@@ -514,6 +531,7 @@ export function ThreadListPage({
         }
         thread={managedThread?.thread ?? {}}
         pendingAction={pendingThreadAction}
+        anchor={menuAnchor}
         onClose={() => {
           if (!pendingThreadAction) setManagedThread(null);
         }}
@@ -522,7 +540,7 @@ export function ThreadListPage({
         onDuplicate={() => void runThreadAction("duplicate")}
         onCopy={() => {
           if (!managedThread) return;
-          void navigator.clipboard?.writeText(managedThread.threadId);
+          void copyText(managedThread.threadId);
           setManagedThread(null);
         }}
         onRename={() => void runThreadAction("rename")}

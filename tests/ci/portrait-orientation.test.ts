@@ -6,8 +6,8 @@ import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 
 function hardeningScript(platform: string, stepName: string) {
-  const workflow = parse(readFileSync(`.github/workflows/build-${platform}.yml`, "utf8"));
-  return workflow.jobs.build.steps.find((step: any) => step.name === stepName).run as string;
+  const recipe = parse(readFileSync(`mobile/${platform}/build-recipe.yml`, "utf8"));
+  return recipe.steps.find((step: any) => step.name === stepName).run as string;
 }
 
 function fixture(run: (directory: string) => void) {
@@ -16,6 +16,24 @@ function fixture(run: (directory: string) => void) {
 }
 
 describe("移动端强制竖屏", () => {
+  it.each(["portrait", "1", "0x1", "landscape", "0", "sensor", undefined])("APK 校验识别编译后的方向枚举 %s", (orientation) => {
+    const recipe = parse(readFileSync("mobile/android/build-recipe.yml", "utf8"));
+    const verify = recipe.steps.find((step: any) => step.name === "Prepare and verify APK").run as string;
+    const script = verify.slice(verify.indexOf("activities = {"), verify.indexOf("providers = {"));
+    const result = spawnSync("python3", ["-c", `
+import xml.etree.ElementTree as ET
+android = "http://schemas.android.com/apk/res/android"
+application = ET.Element("application")
+for name in ("com.app.pakeplus.MainActivity", "com.app.pakeplus.InAppBrowserActivity"):
+    activity = ET.SubElement(application, "activity")
+    activity.set(f"{{{android}}}name", name)
+    value = ${JSON.stringify(orientation ?? "")}
+    if value:
+        activity.set(f"{{{android}}}screenOrientation", value)
+` + script], { encoding: "utf8" });
+    expect(result.status === 0, result.stderr).toBe(["portrait", "1", "0x1"].includes(orientation ?? ""));
+  });
+
   it("Android 生成的主界面与应用内浏览器均锁定正向竖屏", () => fixture((directory) => {
     mkdirSync(join(directory, "app/src/main"), { recursive: true });
     writeFileSync(join(directory, "app/src/main/AndroidManifest.xml"), `

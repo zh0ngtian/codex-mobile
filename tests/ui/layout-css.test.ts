@@ -106,7 +106,7 @@ describe("悬浮状态布局", () => {
     expect(labelRule).toContain("margin:");
     expect(labelRule).toContain("auto");
     expect(labelRule).toContain("color: #777");
-    expect(labelRule).toContain("font-size: 12px");
+    expect(labelRule).toContain("font-size: 0.75rem");
   });
 
   it("复制按钮使用轻量线框图标，代码块入口保持紧凑", () => {
@@ -317,7 +317,7 @@ describe("悬浮状态布局", () => {
     expect(rootRule).toContain("--browser-edge-top: 8px");
     expect(rootRule).toContain("--browser-edge-bottom: 8px");
     expect(rootRule).toContain(
-      "--input-bar-bottom-offset: max(var(--browser-edge-bottom), 8px)",
+      "--input-bar-bottom-offset: calc(env(safe-area-inset-bottom, 0px) + max(var(--browser-edge-bottom), 8px))",
     );
     expect(nativeRule).toContain("--browser-edge-top: 0px");
     expect(nativeRule).toContain("--browser-edge-bottom: 0px");

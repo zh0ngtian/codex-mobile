@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef } from "react";
+import { canUseOverlayGesture, useOverlayScrollIsolation } from "../../ui/overlay-scroll";
 
 type SwipeStart = {
   x: number;
@@ -16,6 +17,12 @@ function resetSidebarDrag(layer: HTMLDivElement | null) {
   layer.classList.remove("dragging");
   layer.style.removeProperty("--sidebar-drag-x");
   layer.style.removeProperty("--sidebar-drag-progress");
+}
+
+function isHistoryEditing(): boolean {
+  return Boolean(document.querySelector(
+    ".backend-workspace:not([hidden]) .history-message-editor",
+  ));
 }
 
 function canStartSidebarSwipe(
@@ -59,6 +66,7 @@ export function useSidebarSwipe(
 ) {
   const startRef = useRef<SwipeStart | null>(null);
   const layerRef = useRef<HTMLDivElement | null>(null);
+  useOverlayScrollIsolation(sidebarOpen, layerRef);
 
   useLayoutEffect(() => {
     if (sidebarOpen) resetSidebarDrag(layerRef.current);
@@ -75,6 +83,8 @@ export function useSidebarSwipe(
       if (
         event.touches.length !== 1 ||
         !touch ||
+        isHistoryEditing() ||
+        !canUseOverlayGesture(layerRef.current) ||
         !canStartSidebarSwipe(event.target, layerRef.current, sidebarOpen)
       ) {
         return;
@@ -96,7 +106,11 @@ export function useSidebarSwipe(
     const handleTouchMove = (event: TouchEvent) => {
       const start = startRef.current;
       if (!start) return;
-      if (event.touches.length !== 1) {
+      if (
+        event.touches.length !== 1 ||
+        isHistoryEditing() ||
+        !canUseOverlayGesture(layerRef.current)
+      ) {
         cancelDrag();
         return;
       }
@@ -138,7 +152,11 @@ export function useSidebarSwipe(
     };
     const handleTouchEnd = (event: TouchEvent) => {
       const start = startRef.current;
-      if (!start?.active) {
+      if (
+        !start?.active ||
+        isHistoryEditing() ||
+        !canUseOverlayGesture(layerRef.current)
+      ) {
         cancelDrag();
         return;
       }

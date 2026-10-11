@@ -3,10 +3,11 @@ import {
   useEffect,
   useRef,
   type KeyboardEvent,
-  type MouseEvent,
+  type SyntheticEvent,
   type ReactNode,
 } from "react";
 import { t } from "../i18n";
+import { useOverlayScrollIsolation } from "./overlay-scroll";
 
 const focusableSelector = [
   "a[href]",
@@ -55,6 +56,8 @@ export function ActionSheet({
   backdropClassName?: string;
 }) {
   const titleId = useId();
+  const backdropRef = useRef<HTMLDivElement | null>(null);
+  useOverlayScrollIsolation(open, backdropRef);
   const sheetRef = useRef<HTMLElement | null>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
 
@@ -66,9 +69,9 @@ export function ActionSheet({
         : null;
     const firstFocusable =
       sheetRef.current?.querySelector<HTMLElement>(focusableSelector);
-    (firstFocusable ?? sheetRef.current)?.focus();
+    (firstFocusable ?? sheetRef.current)?.focus({ preventScroll: true });
     return () => {
-      previousFocusRef.current?.focus();
+      previousFocusRef.current?.focus({ preventScroll: true });
       previousFocusRef.current = null;
     };
   }, [open]);
@@ -93,7 +96,7 @@ export function ActionSheet({
       </>
     ) : null;
 
-  const stopPropagation = (event: MouseEvent<HTMLElement>) => {
+  const stopPropagation = (event: SyntheticEvent<HTMLElement>) => {
     event.stopPropagation();
   };
   const handleKeyDown = (event: KeyboardEvent<HTMLElement>) => {
@@ -124,6 +127,16 @@ export function ActionSheet({
 
   return (
     <div
+      ref={backdropRef}
+      onTouchStart={stopPropagation}
+      onTouchMove={stopPropagation}
+      onTouchEnd={stopPropagation}
+      onTouchCancel={stopPropagation}
+      onPointerDown={stopPropagation}
+      onPointerMove={stopPropagation}
+      onPointerUp={stopPropagation}
+      onPointerCancel={stopPropagation}
+      onWheel={stopPropagation}
       className={`action-sheet-backdrop ${backdropClassName}`.trim()}
       role="presentation"
       onClick={closeOnBackdrop && onClose ? () => onClose() : undefined}

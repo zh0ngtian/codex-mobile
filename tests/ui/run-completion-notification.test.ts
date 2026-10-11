@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   bindRunCompletionNavigation,
+  parseCompletionDeepLink,
   completionThreadTitle,
   notifyRunCompleted,
   requestRunCompletionNotificationPermission,
@@ -10,6 +11,19 @@ import {
 } from "../../src/notifications/run-completion";
 
 describe("运行完成通知", () => {
+  it("页面监听就绪后才允许原生入口派发，卸载时撤销就绪标记", () => {
+    const scope: CompletionNotificationScope = {};
+    const unbind = bindRunCompletionNavigation(() => {}, scope);
+    expect(scope.__codexMobileCompletionNavigationReady).toBe(true);
+    unbind();
+    expect(scope.__codexMobileCompletionNavigationReady).toBe(false);
+  });
+  it("深链接指定机器和会话，并拒绝其他协议、重复参数和空目标", () => {
+    expect(parseCompletionDeepLink("codexmobile://thread?backendId=mini&threadId=thread%2F1")).toEqual({ backendId: "mini", threadId: "thread/1" });
+    for (const invalid of ["https://thread?backendId=mini&threadId=t", "codexmobile://other?backendId=mini&threadId=t", "codexmobile://thread?backendId=mini", "codexmobile://thread?backendId=a&backendId=b&threadId=t", "codexmobile://thread?backendId=mini&threadId=", "codexmobile://thread/other?backendId=mini&threadId=t"]) {
+      expect(parseCompletionDeepLink(invalid)).toBeNull();
+    }
+  });
   it("使用完成运行所属会话的标题作为通知内容", () => {
     expect(
       completionThreadTitle({

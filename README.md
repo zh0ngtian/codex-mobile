@@ -1,6 +1,5 @@
 # Codex Mobile
 
-[![Build Mobile Apps](https://github.com/loock-ai/codex-mobile/actions/workflows/build-android.yml/badge.svg)](https://github.com/loock-ai/codex-mobile/actions/workflows/build-android.yml)
 [![npm](https://img.shields.io/npm/v/codex-mobile)](https://www.npmjs.com/package/codex-mobile)
 [![GitHub Release](https://img.shields.io/github/v/release/loock-ai/codex-mobile)](https://github.com/loock-ai/codex-mobile/releases/latest)
 [![Apache-2.0](https://img.shields.io/github/license/loock-ai/codex-mobile)](LICENSE)
@@ -13,7 +12,7 @@ Codex `app-server` V2，复用真实会话、项目、工具调用和审批，�
 同时管理多台 Mac。
 
 [快速开始](#快速开始) · [核心能力](#核心能力) · [系统架构](#系统架构) ·
-[移动端构建](#移动端构建) · [已知边界](#已知边界)
+[移动端构建](#移动端构建) · [已知边界](#已知边界) · [文档索引](docs/README.md)
 
 > Codex Mobile 是独立开源项目，与 OpenAI 官方没有隶属关系。
 
@@ -107,19 +106,22 @@ Codex Desktop 很适合坐在电脑前完成开发任务，但长任务启动后
 - 会话列表以侧边栏组织，标题与机器切换栏联合吸顶。
 - “全部”视图按时间汇总多台机器；单机视图按本机项目目录分组。
 - 项目目录先展示，会话并发加载、独立渲染和独立重试。
-- 首屏只加载最近 10 个 turns，滚动到顶部继续加载旧历史。
+- 首屏只加载最近 5 个 turns，滚动到顶部每次继续加载 5 个旧回合。
+- 会话列表长按使用 iOS/Android 系统菜单；用户消息长按可编辑或复制完整正文，忙碌时仍可复制。浏览器保留网页菜单；各平台均保留原有编辑按钮与消息布局。
+- 历史消息编辑在原位置修改并保存重发，有后续对话时需确认删除后续；原消息附件保留。
 - 工具、审批、文件、Diff 和状态信息使用适合触控的底部 Sheet 展示。
 - 运行状态只显示在具体会话上，不把机器连接状态与任务运行状态混在一起。
+- 最终回答下方显示完成时间和整轮用时，短回合也显示；历史回合缺少可靠计时数据时不显示用时。
 
 ## 系统架构
 
 ```mermaid
 flowchart LR
     C["手机浏览器 / Android / iOS"]
-    C -->|HTTP 提交与轮询；语音按需 WebSocket| G1["MacBook 网关"]
-    C -->|HTTP 提交与轮询；语音按需 WebSocket| G2["Mac mini 网关"]
-    G1 -->|V2 JSON-RPC 透传| A1["Codex app-server"]
-    G2 -->|V2 JSON-RPC 透传| A2["Codex app-server"]
+    C -->|HTTP 轮询或 WebSocket 流式；语音使用 WebSocket| G1["MacBook 网关"]
+    C -->|HTTP 轮询或 WebSocket 流式；语音使用 WebSocket| G2["Mac mini 网关"]
+    G1 -->|V2 JSON-RPC| A1["Codex app-server"]
+    G2 -->|V2 JSON-RPC| A2["Codex app-server"]
     A1 --> R1["本机会话与运行时"]
     A2 --> R2["本机会话与运行时"]
 ```
@@ -149,6 +151,33 @@ HTTP 模式下，文字交互不需要手机常驻 WebSocket：前台执行中�
 回复完成后才发送通知并更新未读状态；后台暂停时会在恢复同步后产生，启动或重连的
 首轮历史同步不会补发旧通知或重设未读。HTTP 模式要求网关支持 `httpPolling`，旧网关
 需先升级或选择流式模式。
+
+### 字体大小
+
+在“管理设备 → 字体大小”中选择小、标准、大或特大，立即调整正文、会话列表、输入框和设置文字。默认标准字号，选择保存在当前客户端，重启后自动恢复；Android、iOS 和 Web 均支持，并可与 iOS 系统粗体文本一起使用。
+
+### 任务完成推送
+
+在“管理设备 → 推送方式”中二选一，点击“保存推送设置”生效：
+
+- **系统推送（默认）**：客户端收到最终回复完成和同一回合成功结束事件后发送本地通知。系统推送会有延迟，并且可能会漏推送；App 退出后不能依靠客户端接收新完成事件。
+- **Bark 推送**：填写 Bark App 中复制的 `https://api.day.app/<设备Key>`，也支持自建 HTTP(S) Bark 服务器及路径前缀。保存时校验服务器、设备 Key 和地址格式，不接受消息正文、查询参数、片段或账号密码。格式校验不发送测试通知，也不能证明设备 Key 仍然有效。
+
+Bark 设置保存到当前客户端，并同步到各已启用设备的网关；同步失败会显示设备名称并在网络恢复后自动重试，旧网关需要升级。选择 Bark 后客户端不再发本地完成通知，避免重复提醒；改回系统、暂停或删除设备时注销对应订阅，离线注销会在下次打开 App 且连接恢复后重试。
+
+系统和 Bark 推送仅针对 Codex Mobile 成功发送的具体指令，按会话 ID 与回合 ID 配对；发送新指令、重新发送编辑后的指令及成功追加引导都只授权对应回合。打开、查看或恢复会话不会开启推送；同一对话后续从电脑、CLI 或自动化发起的回合不继承推送资格。
+
+系统和 Bark 推送都必须等待实时 `final_answer` 回复完成、且同一回合成功结束；过程回复、仍在执行、失败或中断的回合不会发送完成通知，也不补发历史。HTTP 模式由网关持有上游会话；流式模式在 App 断开后保留运行中的上游连接，并在完成后释放。Mac 网关必须保持运行且能访问 Bark 服务，网关或 app-server 重启期间的完成事件不保证补发。
+
+子 Agent、内部辅助、记忆整理及临时会话与列表隐藏规则一致，不发送系统或 Bark 完成通知。来源分类在列表/搜索过滤前登记，后续改名或稀疏摘要不会恢复通知；普通主会话、用户复制和自动化会话也必须符合移动指令来源与正常完成条件才通知。 Bark 在发送前还会补查本机 rollout 首行的来源元数据，避免只收到完成事件、尚未登记来源的子 Agent 会话触发推送。
+
+系统和 Bark 通知的正文显示已完成会话的标题；没有名称时使用会话预览，无法获取标题时显示“新对话”。
+
+通知携带 `codexmobile://thread?backendId=<设备ID>&threadId=<会话ID>`，点击可启动原生 App；冷启动等待页面加载和设备连接后打开对应会话。查看最新内容仍需手机能访问该设备网关。通知不携带网关口令或回复正文。
+
+同一 Bark 接收地址即使被不同安装或后端重复登记，每个回合也只推送一次；不同接收地址仍分别推送。注销只移除对应安装与后端的订阅，同地址的其他订阅继续生效。通知打开链接采用该地址最后登记的订阅。
+
+Bark 注册和完成事件去重记录保存到 `$CODEX_HOME/codex-mobile-notifications`；Bark Key 不内置到 APK/IPA，也不提交到仓库。使用 Bark 不需要 Codex Mobile 的 APNs 服务端凭据。
 
 ## 运行模式
 
@@ -269,10 +298,7 @@ npm run test:e2e
 
 ## 移动端构建
 
-[最新 GitHub Release](https://github.com/loock-ai/codex-mobile/releases/latest) 提供：
-
-- Android APK 及 SHA-256 校验文件；
-- 未签名 iOS IPA 及 SHA-256 校验文件。
+GitHub Actions 构建与发布工作流已移除，推送代码不再自动构建安装包、创建 GitHub Release 或发布 npm。已有 Release 保留，后续安装包通过固定渠道发布。
 
 Android App 固定检查局域网更新清单
 `http://192.168.123.79:8765/channels/codex-mobile/latest.json`，发现新版本后从固定地址
@@ -280,8 +306,11 @@ Android App 固定检查局域网更新清单
 调起系统安装器。手机必须与更新服务器处于同一局域网；首次使用需要在 Android 系统中
 允许 Codex Mobile 安装未知应用，App 不支持静默安装。
 
-iOS IPA 未签名，安装到真实设备或上传 TestFlight 前仍需使用 Apple Developer 证书
-签名。
+iOS 支持在本机局域网执行 Ad Hoc 自动签名与 HTTPS OTA。证书和密码保存在本机私有目录，
+`npm run ios:release` 构建后自动签名并更新固定安装页、LAN IPA，软件源发布使用同一签名包并遵循 [SignOs PUBLISH_PROMPT.md](https://github.com/zh0ngtian/SignOs/blob/main/cloudflare/app-source/PUBLISH_PROMPT.md) 最新版；iOS“管理设备”底部与 Android 一样提供“检查更新”，跳转 Safari 确认覆盖安装。
+历史 GitHub Release 的 unsigned IPA 不能直接 OTA 安装；正式发布使用本机签名产物。
+证书的 UDID、Bundle ID、Team ID 和 App ID prefix 必须兼容，升级数据保留需要旧安装身份一致。
+本机配置、局域网 CA 首次信任、HTTPS 服务及安装验收步骤见 [iOS OTA 发布文档](docs/ios-ota-release.md)。
 
 仓库使用固定提交的 PakePlus Android/iOS 项目作为原生容器，并把当前 `dist/` 静态
 资源内置到 App。构建产物只包含上述固定更新服务器地址，不包含网关 Token 或其他私人配置。
@@ -289,17 +318,14 @@ Android 和 iOS 安装包只支持正向竖屏，设备转动时保持竖屏，�
 
 发布流程：
 
-- `main` 的应用相关代码变化会触发 Android、iOS 构建和 GitHub Release；
-- npm 包只在网关、CLI 或包配置变化时随同发布，也可在手动工作流中显式启用；
-- Android、iOS 与同次发布的 npm 包共用一个解析后的版本号。
-- 仓库修改提交并推送后，还须在更新服务器所在 Mac 构建更高版本 APK，通过
-  `apk-server.py publish-channel codex-mobile` 覆盖固定局域网渠道并回验摘要。
+- Android、iOS 使用本地构建配置；npm 包按需手动测试、构建和发布。
+- 修改客户端运行代码后，提交并推送，再发布高于 Android、iOS 两个固定渠道现有版本的统一版本 APK 和已签名 IPA；APK 使用 `apk-server.py publish-channel codex-mobile`，IPA 使用 `npm run ios:release`，并回验两端固定清单、HEAD、完整 GET 大小与 SHA-256。
+- 仅修改文档、规则、测试或服务端等非客户端内容时，无需另行构建或发布安装包；服务端变更仍须验证并部署网关。具体约束见 [AGENTS.md](AGENTS.md)。
 
-相关工作流：
+本地构建配置与环境约定见 [构建说明](mobile/README.md)：
 
-- [build-android.yml](.github/workflows/build-android.yml)
-- [build-ios.yml](.github/workflows/build-ios.yml)
-- [publish-npm.yml](.github/workflows/publish-npm.yml)
+- [Android 构建配置](mobile/android/build-recipe.yml)
+- [iOS 构建配置](mobile/ios/build-recipe.yml)
 
 ### 本地 iOS 与模拟器
 
@@ -309,10 +335,10 @@ npm run ios:prepare -- --version 0.2.91
 open .mobile-build/ios/pakeplus/PakePlus.xcodeproj
 ```
 
-选择 `PakePlus` scheme 和 iPhone 模拟器运行。工程内置当前前端，并复用发布流水线的
-固定容器配置与原生补丁；生成目录会在下次准备成功后替换。原生容器支持键盘避让，
+选择 `PakePlus` scheme 和 iPhone 模拟器运行。工程内置当前前端，并读取本地构建配置中的
+固定容器提交与原生补丁；生成目录会在下次准备成功后替换。原生容器支持键盘避让，
 App 原生版本号与前端发布版本保持一致。
-iOS 可在“管理设备”底部查看当前版本号；版本来自安装包内置前端的发布版本。
+iOS 可在“管理设备”底部查看当前版本号并检查更新；iOS 更新桥读取原生版本和签名身份，未配置 HTTPS OTA 时显示配置错误。
 
 [本地构建、XCTest 流程与模拟器验证结果](docs/ios-simulator-verification.md)。
 
@@ -330,7 +356,7 @@ codex-mobile/
 ├── tests/                # 协议、服务端、UI、CI 和移动端 E2E 测试
 ├── protocol/             # app-server V2 协议基准与生成物
 ├── docs/plans/           # 设计与实施记录
-└── .github/workflows/    # 移动端和 npm 发布流水线
+└── mobile/              # 原生桥接、本地构建配置与移动端测试
 ```
 
 协议基准见
@@ -341,8 +367,7 @@ codex-mobile/
 
 - 非回环监听必须配置 Token；当前 Token 方案适用于可信局域网。
 - 跨不可信网络使用时，应增加 HTTPS、可信反向代理和正式身份认证。
-- 公开仓库和正式构建产物不包含局域网地址、访问口令、Codex 登录态、API 密钥、
-  本机会话、用户项目内容或移动端签名材料。
+- 固定局域网更新地址会出现在仓库和 App 中；用户配置的网关地址、访问口令、Codex 登录态、API 密钥、本机会话、用户项目内容及签名私钥不提交到公开仓库。已签名 IPA 必须内嵌 provisioning profile，其中包含授权设备信息，详见 [iOS OTA 发布文档](docs/ios-ota-release.md)。
 - App 中保存的设备地址和 Token 位于客户端本地存储，不会提交到本仓库。
 
 ## 会话图片加载
@@ -362,12 +387,14 @@ codex-mobile/
 ## 已知边界
 
 - 会话置顶保存在当前设备本地，不同步至 Codex app-server 或其他设备；全部置顶对话独立读取摘要，每个项目及无项目分组另外加载最近五条非置顶对话，置顶不占分页名额。“更多”每次追加五条非置顶对话，冷启动、刷新和重连沿用同一规则。分页等能力以实际运行的 CLI 版本为准。
+- 子 Agent、内部辅助与临时会话不会出现在普通列表、置顶区、无项目分组和搜索结果；隐藏记录不占项目每批五条的分页名额。依据会话来源和父会话标记识别，普通桌面/CLI 会话、UUID 标题及用户复制会话仍可显示。
+- 全部机器和单机列表中，运行中或未读会话临时显示在顶部置顶区，排在手动置顶会话之后；手动置顶与临时提升的会话分别按最近任务时间排序，项目区不重复展示。运行结束且已读后回到普通列表，临时提升不改变本机手动置顶状态。
 - 大型会话的 `thread/read(includeTurns:true)` 响应可能很大，正常路径优先使用
   `thread/resume` 初始分页和 `thread/turns/list`。
 - app-server 的持久化 `ThreadItem` 可能是有损表示，前端也会合并逻辑回合。
 - 不同 app-server 进程之间没有全局实时状态。Codex Desktop 与本项目使用独立进程
   时，网页无法仅靠 V2 列表接口准确显示桌面进程正在执行的任务。
-- iOS 自动化产物未签名；正式分发不在无证书构建范围内。
+- 固定局域网 IPA 与 OTA 使用本机 Ad Hoc 签名产物，签名材料仅保存在仓库外。OTA 真机安装仍需 profile 授权设备及兼容的已安装身份。
 
 ## 许可证
 

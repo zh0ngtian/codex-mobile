@@ -8,7 +8,7 @@ Codex Mobile 与 Codex CLI 的安装、升级、登录检查、局域网网关�
 
 - 必须实际执行安装、配置和验证，不要只把命令转述给用户。
 - 当前流程仅适用于 macOS；如果系统不是 macOS，停止执行并说明原因。
-- Node.js 必须为 20 或更高版本。缺少 Node.js 或 npm 时，先向用户说明并使用其现有
+- Node.js 必须为 20.9.0 或更高版本。缺少 Node.js 或 npm 时，先向用户说明并使用其现有
   Node.js 版本管理方式安装；不要直接执行来源不明的 `curl | sh`。
 - 不使用 `sudo npm install -g`。遇到全局目录权限问题时，优先沿用用户已有的
   nvm、fnm、Volta 或 Homebrew Node.js 环境。
@@ -28,7 +28,7 @@ node --version
 npm --version
 ```
 
-确认系统输出为 `Darwin`，Node.js 主版本不低于 20。记录当前 Node.js、npm、
+确认系统输出为 `Darwin`，Node.js 版本不低于 20.9.0。记录当前 Node.js、npm、
 `codex` 和 `codex-mobile` 的实际路径，后续 LaunchAgent 必须使用与当前终端一致的
 Node.js 环境：
 

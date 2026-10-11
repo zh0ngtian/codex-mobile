@@ -14,6 +14,31 @@ const backends = [
 ];
 
 describe("会话列表派生", () => {
+  it("内部记忆整理会话隐藏，用户自动化会话仍显示", () => {
+    const result = aggregateThreads(backends.slice(0, 1), { book: [
+      { id: "memory", threadSource: "memory_consolidation" },
+      { id: "automation", threadSource: "automation" },
+    ] });
+    expect(result.map((item) => item.threadId)).toEqual(["automation"]);
+  });
+
+  it("聚合列表隐藏子 Agent 与内部辅助会话，保留普通 UUID 标题和用户复制会话", () => {
+    const result = aggregateThreads(backends.slice(0, 1), { book: [
+      { id: "spawn", name: "有标题的子任务", source: { subAgent: { thread_spawn: { parent_thread_id: "main" } } }, status: { type: "active" }, isPinned: true },
+      { id: "legacy", source: { subagent: "review" }, isUnread: true },
+      { id: "parent", parentThreadId: "main" },
+      { id: "temporary", ephemeral: true },
+      { id: "compact", source: "subAgentCompact" },
+      { id: "review", sourceKind: "subAgentReview" },
+      { id: "analytics", threadSource: "subagent" },
+      { id: "internal", source: { internal: "title" } },
+      { id: "uuid", name: "01a1207a-bf03-7bc3-8be3-d15f44a61f8e", source: "vscode" },
+      { id: "fork", forkedFromId: "main", source: "cli" },
+      { id: "missing-source" },
+    ] });
+    expect(result.map((item) => item.threadId)).toEqual(["fork", "missing-source", "uuid"]);
+  });
+
   it("查看或恢复旧会话后列表、项目和合并搜索仍按最近任务排序", () => {
     const history = { id: "01a10657-66b0-7e30-97d8-62d853b8a3dc", cwd: "/project", recencyAt: 10, updatedAt: 10 };
     const recent = { id: "recent-task", cwd: "/project", recencyAt: 20, updatedAt: 20 };
@@ -129,6 +154,40 @@ describe("会话列表派生", () => {
       "mini-recent",
       "mini-unknown",
     ]);
+  });
+
+  it("手动置顶之后展示运行中和未读会话，各区按活动时间排序且跨机器不丢失", () => {
+    const mixed = aggregateThreads(backends, {
+      book: [
+        { id: "manual", isPinned: true, updatedAt: 1 },
+        { id: "running", status: { type: "active" }, isUnread: true, updatedAt: 40 },
+        { id: "unread", isUnread: true, updatedAt: 50 },
+        { id: "ordinary", updatedAt: 100 },
+      ],
+      mini: [
+        { id: "manual", isPinned: true, status: { type: "active" }, updatedAt: 2 },
+        { id: "unread", isUnread: true, updatedAt: 30 },
+      ],
+    });
+    const groups = splitAllThreads(mixed);
+    expect(groups.pinned.map((item) => `${item.backendId}:${item.threadId}`)).toEqual([
+      "mini:manual", "book:manual", "book:unread", "book:running", "mini:unread",
+    ]);
+    expect(groups.recent.map((item) => item.threadId)).toEqual(["ordinary"]);
+    expect(groups.pinned.filter((item) => !item.pinned)).toHaveLength(3);
+  });
+
+  it("运行结束并已读的会话回到最近区，手动置顶保持不变", () => {
+    const state = (status: string, isUnread: boolean) => splitAllThreads(
+      aggregateThreads(backends.slice(0, 1), { book: [
+        { id: "manual", isPinned: true, updatedAt: 1 },
+        { id: "task", status: { type: status }, isUnread, updatedAt: 20 },
+      ] }),
+    );
+    expect(state("active", false).pinned.map((item) => item.threadId)).toEqual(["manual", "task"]);
+    expect(state("idle", true).pinned.map((item) => item.threadId)).toEqual(["manual", "task"]);
+    expect(state("idle", false).pinned.map((item) => item.threadId)).toEqual(["manual"]);
+    expect(state("idle", false).recent.map((item) => item.threadId)).toEqual(["task"]);
   });
 
   it("单机视图按项目分组并按组内最新时间排序", () => {

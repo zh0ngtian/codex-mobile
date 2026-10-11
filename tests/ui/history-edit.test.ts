@@ -136,30 +136,53 @@ describe("历史消息编辑", () => {
     ]);
   });
 
-  it("拒绝包含多条用户消息或不稳定 ID 的轮次", () => {
-    expect(
-      createHistoricalMessageEditTarget(
-        [{
-          id: "turn-steered",
-          status: "completed",
-          items: [
-            { id: "user-1", type: "userMessage", text: "先做一版" },
-            { id: "user-2", type: "userMessage", text: "再调整" },
-          ],
-        }],
-        "turn-steered",
-      ),
-    ).toBeNull();
-    expect(
-      createHistoricalMessageEditTarget(
-        [{
-          id: "pending-1",
-          status: "completed",
-          items: [{ id: "user", type: "userMessage", text: "临时消息" }],
-        }],
-        "pending-1",
-      ),
-    ).toBeNull();
+  it("同轮多条历史用户消息按消息 ID 定位并保留此前输入与附件", () => {
+    const history = [{ id: "turn-steered", status: "completed", items: [
+      { id: "user-1", type: "userMessage", content: [{ type: "text", text: "先做一版" }, { type: "localImage", path: "/tmp/first.png" }] },
+      { id: "assistant-1", type: "agentMessage", text: "第一版" },
+      { id: "user-2", type: "userMessage", text: "再调整" },
+      { id: "user-3", type: "userMessage", text: "之后的要求" },
+    ] }];
+    const target = createHistoricalMessageEditTarget(history, "turn-steered", "user-2");
+    expect(target).toMatchObject({ messageId: "user-2", text: "再调整", primaryTextIndex: 2, hasLaterTurns: true, rollbackTurnCount: 1 });
+    expect(buildEditedHistoryInput(target!, "重新调整")).toEqual([
+      { type: "text", text: "先做一版", text_elements: [] },
+      { type: "localImage", path: "/tmp/first.png" },
+      { type: "text", text: "重新调整", text_elements: [] },
+    ]);
+    expect(createHistoricalMessageEditTarget(history, "turn-steered")?.messageId).toBe("user-1");
+    expect(createHistoricalMessageEditTarget(history, "turn-steered", "missing")).toBeNull();
+  });
+
+  it("同轮最后一条纯附件消息插入编辑文字时保留此前文字", () => {
+    const history = [{ id: "t", status: "completed", items: [
+      { id: "u1", type: "userMessage", text: "原要求" },
+      { id: "u2", type: "userMessage", content: [{ type: "localImage", path: "/tmp/second.png" }] },
+    ] }];
+    const target = createHistoricalMessageEditTarget(history, "t", "u2")!;
+    expect(target).toMatchObject({ text: "", primaryTextIndex: -1, hasLaterTurns: false });
+    expect(buildEditedHistoryInput(target, "查看第二张图")).toEqual([
+      { type: "text", text: "原要求", text_elements: [] },
+      { type: "text", text: "查看第二张图", text_elements: [] },
+      { type: "localImage", path: "/tmp/second.png" },
+    ]);
+  });
+
+  it("清空没有附件的引导消息时不能只重发此前要求", () => {
+    const target = createHistoricalMessageEditTarget([{ id: "t", status: "completed", items: [
+      { id: "u1", type: "userMessage", text: "原要求" },
+      { id: "u2", type: "userMessage", text: "引导要求" },
+    ] }], "t", "u2")!;
+    expect(buildEditedHistoryInput(target, "")).toEqual([]);
+  });
+
+  it("拒绝尚未确认或正在运行的轮次", () => {
+    for (const turn of [
+      { id: "pending-1", status: "completed" },
+      { id: "t", status: "inProgress" },
+    ]) {
+      expect(createHistoricalMessageEditTarget([{ ...turn, items: [{ id: "user", type: "userMessage", text: "临时消息" }] }], turn.id)).toBeNull();
+    }
   });
 
   it("优先按目标 turn ID 调用 thread/revert", async () => {

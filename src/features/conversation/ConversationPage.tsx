@@ -596,6 +596,9 @@ export function ConversationPage({
               const target = createHistoricalMessageEditTarget(
                 active.turns ?? [],
                 String(turn.id ?? ""),
+                historyEdit?.target.turnId === String(turn.id ?? "")
+                  ? historyEdit.target.messageId
+                  : undefined,
               );
               const canEditHistory = Boolean(
                 target &&
@@ -618,14 +621,19 @@ export function ConversationPage({
                   backend={selectedBackend}
                   onEditUserMessage={
                     canEditHistory
-                      ? () => {
-                          onEditUserMessage!(target!);
+                      ? (messageId) => {
+                          const messageTarget = createHistoricalMessageEditTarget(
+                            active.turns ?? [], String(turn.id ?? ""), messageId,
+                          );
+                          if (messageTarget) onEditUserMessage!(messageTarget);
                         }
                       : undefined
                   }
                   inlineEdit={
                     historyEdit && target?.turnId === historyEdit.target.turnId
                       ? {
+                          messageId: historyEdit.target.messageId,
+                          precedingMessageCount: historyEdit.target.precedingMessageCount,
                           value: historyEdit.text,
                           submitting: historyEdit.submitting,
                           hasLaterTurns: historyEdit.target.hasLaterTurns,
@@ -653,7 +661,11 @@ export function ConversationPage({
         aria-busy={imageReading}
         onSubmit={(event) => {
           if (historyEdit) event.preventDefault();
-          else onSubmit(event);
+          else {
+            // 在清空草稿或切换会话前结束编辑，避免键盘收起时 WebKit 继续追踪旧光标。
+            composerInputRef.current?.blur();
+            onSubmit(event);
+          }
           setAttachmentMenuOpen(false);
           setComposerMaximized(false);
         }}

@@ -25,6 +25,9 @@ import { ActionSheet } from "../../ui/ActionSheet";
 import { t, useI18n } from "../../i18n";
 import { GatewayQrScannerSheet } from "./GatewayQrScannerSheet";
 import type { TransportMode } from "../../backends/transport-preference";
+import { PushSettings } from "../../notifications/PushSettings";
+import type { NotificationPreference } from "../../notifications/preferences";
+import { FontSizeSettings } from "../settings/FontSizeSettings";
 
 interface BackendDraft {
   id: string;
@@ -53,6 +56,9 @@ export function BackendManagerSheet({
   appUpdate,
   transportMode = "http",
   onTransportModeChange,
+  notificationPreference,
+  onNotificationPreferenceSave,
+  failedNotificationDevices,
   probe = defaultProbeBackend,
   scanQrCode,
 }: {
@@ -63,6 +69,9 @@ export function BackendManagerSheet({
   onClose: () => void;
   transportMode?: TransportMode;
   onTransportModeChange?: (mode: TransportMode) => void;
+  notificationPreference?: NotificationPreference;
+  onNotificationPreferenceSave?: (preference: NotificationPreference) => void;
+  failedNotificationDevices?: string[];
   appUpdate?: {
     supported: boolean;
     currentVersion: string;
@@ -245,6 +254,12 @@ export function BackendManagerSheet({
             ? t("定时同步回复，切换后自动重连所有设备")
             : t("实时接收回复，切换后自动重连所有设备")}</small>
         </section>
+        {notificationPreference && onNotificationPreferenceSave && <PushSettings
+          preference={notificationPreference}
+          onSave={onNotificationPreferenceSave}
+          failedDevices={failedNotificationDevices}
+        />}
+        <FontSizeSettings />
         {draft ? (
           <form className="backend-form" onSubmit={submit}>
             <label>

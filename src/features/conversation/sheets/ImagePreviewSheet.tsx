@@ -17,13 +17,6 @@ function clampScale(value: number) {
   return Math.min(MAX_SCALE, Math.max(MIN_SCALE, value));
 }
 
-function pointerDistance(
-  first: { x: number; y: number },
-  second: { x: number; y: number },
-) {
-  return Math.hypot(second.x - first.x, second.y - first.y);
-}
-
 export function ImagePreviewSheet({
   src,
   downloadHref = src,
@@ -52,7 +45,6 @@ export function ImagePreviewSheet({
   const scaleRef = useRef(1);
   const pointers = useRef(new Map<number, { x: number; y: number }>());
   const dragOrigin = useRef<{ x: number; y: number } | null>(null);
-  const pinchOrigin = useRef<{ distance: number; scale: number } | null>(null);
 
   const applyScale = (value: number) => {
     const next = clampScale(value);
@@ -69,12 +61,7 @@ export function ImagePreviewSheet({
     });
     if (pointers.current.size === 1) {
       dragOrigin.current = { x: event.clientX, y: event.clientY };
-    } else if (pointers.current.size === 2) {
-      const [first, second] = Array.from(pointers.current.values());
-      pinchOrigin.current = {
-        distance: pointerDistance(first, second),
-        scale: scaleRef.current,
-      };
+    } else {
       dragOrigin.current = null;
     }
   };
@@ -84,15 +71,6 @@ export function ImagePreviewSheet({
     const previous = pointers.current.get(event.pointerId)!;
     const next = { x: event.clientX, y: event.clientY };
     pointers.current.set(event.pointerId, next);
-    if (pointers.current.size === 2 && pinchOrigin.current) {
-      const [first, second] = Array.from(pointers.current.values());
-      const distance = pointerDistance(first, second);
-      applyScale(
-        pinchOrigin.current.scale *
-          (distance / Math.max(1, pinchOrigin.current.distance)),
-      );
-      return;
-    }
     if (
       pointers.current.size === 1 &&
       scaleRef.current > 1 &&
@@ -108,7 +86,6 @@ export function ImagePreviewSheet({
 
   const handlePointerEnd = (event: PointerEvent<HTMLDivElement>) => {
     pointers.current.delete(event.pointerId);
-    pinchOrigin.current = null;
     const remaining = Array.from(pointers.current.values())[0] ?? null;
     dragOrigin.current = remaining;
   };

@@ -1,5 +1,5 @@
 .mermaid-block { min-width: 0; max-width: 100%; overflow: hidden; border: 1px solid #e5e5e5; border-radius: 14px; background: #fff; }
-.mermaid-toolbar { display: flex; align-items: center; gap: 10px; padding: 6px 10px; border-bottom: 1px solid #ededed; color: #666; font-size: 12px; }
+.mermaid-toolbar { display: flex; align-items: center; gap: 10px; padding: 6px 10px; border-bottom: 1px solid #ededed; color: #666; font-size: 0.75rem; }
 .mermaid-toolbar > span:first-child { flex: 1; }
 .mermaid-toolbar > button { border: 0; border-radius: 6px; background: transparent; color: inherit; padding: 6px 8px; font: inherit; }
 .mermaid-toolbar .copy-action { position: relative; }
@@ -8,4 +8,4 @@
 .mermaid-diagram { max-width: 100%; overflow-x: auto; padding: 12px; }
 .mermaid-diagram > svg { display: block; width: 100%; height: auto; margin: 0 auto; }
 .markdown-body .mermaid-block pre { border-radius: 0; padding: 12px; }
-.markdown-body .mermaid-error { margin: 0; padding: 10px 12px; color: #666; font-size: 12px; }
+.markdown-body .mermaid-error { margin: 0; padding: 10px 12px; color: #666; font-size: 0.75rem; }

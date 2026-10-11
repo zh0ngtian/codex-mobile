@@ -1,4 +1,5 @@
 import { act, fireEvent, render, within } from "@testing-library/react";
+import { cloneElement } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { ThreadListPage } from "../../src/features/threads/ThreadListPage";
 import { aggregateThreads } from "../../src/features/threads/thread-list-model";
@@ -83,7 +84,7 @@ function renderList(
     ) => Promise<boolean>;
   } = {},
 ) {
-  return render(
+  const element = (
     <ThreadListPage
       backends={[backend]}
       summaries={summaries}
@@ -113,11 +114,91 @@ function renderList(
       onRetryProject={onRetryProject}
       onToggleProject={onToggleProject}
       onToggleProjectCollapsed={onToggleProjectCollapsed}
-    />,
+    />
   );
+  const result = render(element);
+  return {
+    ...result,
+    setSidebarOpen: (sidebarOpen: boolean) =>
+      result.rerender(cloneElement(element, { sidebarOpen })),
+  };
 }
 
 describe("会话侧边栏列表", () => {
+  it("原生长按菜单将选择路由到原会话并在关闭侧栏时清理", async () => {
+    const show = vi.fn();
+    const dismiss = vi.fn();
+    (window as any).CodexMobileActionMenu = { show, dismiss };
+    try {
+      const onManageThread = vi.fn().mockResolvedValue(true);
+      const { container, setSidebarOpen } = renderList("all", { onManageThread });
+      fireEvent.contextMenu(within(container).getByRole("button", { name: /置顶会话/ }));
+      expect(show).toHaveBeenCalledTimes(1);
+      expect(within(container).queryByLabelText("会话操作")).toBeNull();
+      const request = JSON.parse(show.mock.calls[0][0]);
+      expect(request.actions.find((a: any) => a.id === "pin").title).toBe("取消置顶");
+      await act(async () => window.dispatchEvent(new CustomEvent("codex-mobile-action-menu", {
+        detail: { requestId: request.requestId, actionId: "pin" },
+      })));
+      expect(onManageThread).toHaveBeenCalledWith(threads[0], "pin");
+      setSidebarOpen(false);
+      expect(dismiss).toHaveBeenCalled();
+    } finally { delete (window as any).CodexMobileActionMenu; }
+  });
+
+  it.each(["all", "mini"])("%s 默认展开超过五条的主动及被动置顶，不受项目折叠影响", (selectedBackendId) => {
+    const visibleThreads = aggregateThreads([backend], { mini:
+      ["manual", "unread", "running"].flatMap((kind) => Array.from({ length: 7 }, (_, i) => ({
+        id: `${kind}-${i}`, preview: `${kind}-${i}`, cwd: "/tmp/project-a",
+        isPinned: kind === "manual", isUnread: kind === "unread",
+        status: { type: kind === "running" ? "active" : "idle" },
+      }))),
+    });
+    const { container } = renderList(selectedBackendId, {
+      visibleThreads, collapsedProjectKeys: new Set(["mini:/tmp/project-a"]),
+    });
+    const section = within(container).getByRole("heading", { name: "置顶" }).parentElement as HTMLElement;
+    expect(section.querySelectorAll(".thread-row-title")).toHaveLength(21);
+    for (const thread of visibleThreads) {
+      expect(within(section).getByText(thread.threadId)).not.toBeNull();
+    }
+    expect(within(section).queryByRole("button", { name: "更多" })).toBeNull();
+  });
+
+  it.each(["all", "mini"])("%s 视图将运行和未读会话放在手动置顶后且不重复", (selectedBackendId) => {
+    const visibleThreads = aggregateThreads([backend], { mini: [
+      { id: "manual", preview: "手动置顶任务", cwd: "/tmp/project-a", isPinned: true, updatedAt: 1 },
+      { id: "running", preview: "运行任务", cwd: "/tmp/project-b", status: { type: "active" }, updatedAt: 30 },
+      { id: "unread", preview: "未读任务", cwd: "/tmp/project-b", isUnread: true, updatedAt: 40 },
+      { id: "ordinary", preview: "普通任务", cwd: "/tmp/project-b", updatedAt: 100 },
+    ] });
+    const { container } = renderList(selectedBackendId, {
+      visibleThreads,
+      collapsedProjectKeys: new Set(["mini:/tmp/project-b"]),
+    });
+    const pinnedSection = within(container).getByRole("heading", { name: "置顶" }).parentElement as HTMLElement;
+    expect([...pinnedSection.querySelectorAll(".thread-row-title")].map((node) => node.textContent)).toEqual([
+      "手动置顶任务", "未读任务", "运行任务",
+    ]);
+    expect(within(container).getAllByText("未读任务")).toHaveLength(1);
+    expect(within(container).getAllByText("运行任务")).toHaveLength(1);
+    expect(pinnedSection.querySelectorAll(".thread-unread-dot")).toHaveLength(1);
+    expect(pinnedSection.querySelectorAll(".running-spinner")).toHaveLength(1);
+    fireEvent.contextMenu(within(pinnedSection).getByRole("button", { name: /未读任务/ }));
+    expect(within(container).getByRole("button", { name: "置顶" })).not.toBeNull();
+    expect(within(container).queryByRole("button", { name: "取消置顶" })).toBeNull();
+  });
+
+  it("搜索运行中会话时只显示顶部结果，不重复显示项目分组", () => {
+    const { container } = renderList("mini", {
+      visibleThreads: threads.filter((thread) => thread.threadId === "recent"),
+      query: "最近会话",
+    });
+    expect(within(container).getByRole("heading", { name: "置顶" })).not.toBeNull();
+    expect(container.querySelector(".project-group")).toBeNull();
+    expect(within(container).getAllByText("最近会话")).toHaveLength(1);
+  });
+
   it("阻止非编辑区域触发原生文字选择并保留搜索框选字", () => {
     const { container } = renderList("all");
     const view = within(container);
@@ -183,6 +264,47 @@ describe("会话侧边栏列表", () => {
     vi.useRealTimers();
   });
 
+  it("关闭边栏收起长按菜单，再打开不会恢复旧菜单或吞掉点击", () => {
+    vi.useFakeTimers();
+    try {
+      const onOpenThread = vi.fn();
+      const { container, setSidebarOpen } = renderList("all", { onOpenThread });
+      const view = within(container);
+      const row = view.getByRole("button", { name: /置顶会话/ });
+      fireEvent.pointerDown(row, { button: 0, clientX: 20, clientY: 20 });
+      act(() => vi.advanceTimersByTime(550));
+      expect(view.getByLabelText("会话操作")).not.toBeNull();
+
+      setSidebarOpen(false);
+      expect(view.queryByLabelText("会话操作")).toBeNull();
+      setSidebarOpen(true);
+      expect(view.queryByLabelText("会话操作")).toBeNull();
+      fireEvent.click(row);
+      expect(onOpenThread).toHaveBeenCalledTimes(1);
+      fireEvent.contextMenu(row);
+      expect(view.getByLabelText("会话操作")).not.toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("长按计时期间关闭边栏会取消菜单，重新打开也不补弹", () => {
+    vi.useFakeTimers();
+    try {
+      const { container, setSidebarOpen } = renderList("all");
+      const view = within(container);
+      const row = view.getByRole("button", { name: /置顶会话/ });
+      fireEvent.pointerDown(row, { button: 0, clientX: 20, clientY: 20 });
+      act(() => vi.advanceTimersByTime(250));
+      setSidebarOpen(false);
+      setSidebarOpen(true);
+      act(() => vi.advanceTimersByTime(550));
+      expect(view.queryByLabelText("会话操作")).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("滚动手势会取消长按并保留普通点击打开会话", () => {
     vi.useFakeTimers();
     const onOpenThread = vi.fn();
@@ -216,7 +338,7 @@ describe("会话侧边栏列表", () => {
 
     expect(view.getByRole("heading", { name: "Codex Mobile" })).not.toBeNull();
     expect(view.getByRole("heading", { name: "置顶" })).not.toBeNull();
-    expect(view.getByRole("heading", { name: "最近" })).not.toBeNull();
+    expect(view.queryByRole("heading", { name: "最近" })).toBeNull();
     expect(view.getAllByText("置顶会话")).toHaveLength(1);
     const projectA = view.getByText("Mac mini · project-a");
     const projectB = view.getByText("Mac mini · project-b");
@@ -547,5 +669,17 @@ describe("会话侧边栏列表", () => {
     expect(within(meta as HTMLElement).getByText("1 分钟")).not.toBeNull();
     expect(meta?.firstElementChild).toBe(unread);
     now.mockRestore();
+  });
+});
+
+
+describe("项目排序回退", () => {
+  it("项目标题保留折叠操作并移除排序手柄", () => {
+    const onToggleProjectCollapsed = vi.fn();
+    const { container } = renderList("mini", { onToggleProjectCollapsed });
+    const view = within(container);
+    expect(view.queryAllByRole("button", { name: "调整项目顺序" })).toHaveLength(0);
+    fireEvent.click(view.getByRole("button", { name: "project-a" }));
+    expect(onToggleProjectCollapsed).toHaveBeenCalledExactlyOnceWith("mini", "/tmp/project-a");
   });
 });

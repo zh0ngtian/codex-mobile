@@ -95,6 +95,35 @@ describe("图片放大预览", () => {
     expect(image.getAttribute("style")).toContain("scale(1)");
   });
 
+  it("双指展开或收拢不缩放图片，仍可按钮放大后单指拖动", () => {
+    class TestPointerEvent extends MouseEvent {
+      readonly pointerId: number;
+      constructor(type: string, init: MouseEventInit & { pointerId?: number } = {}) {
+        super(type, init);
+        this.pointerId = init.pointerId ?? 0;
+      }
+    }
+    vi.stubGlobal("PointerEvent", TestPointerEvent);
+    render(<ImagePreviewSheet src="data:image/png;base64,iVBORw0KGgo=" name="pinch.png" onClose={() => undefined} />);
+    const image = screen.getByRole("img", { name: "pinch.png" });
+    const stage = image.parentElement!;
+    fireEvent.pointerDown(stage, { pointerId: 1, clientX: 100, clientY: 100 });
+    fireEvent.pointerDown(stage, { pointerId: 2, clientX: 200, clientY: 100 });
+    fireEvent.pointerMove(stage, { pointerId: 2, clientX: 300, clientY: 100 });
+    expect(screen.getByText("100%")).not.toBeNull();
+    fireEvent.pointerUp(stage, { pointerId: 2 });
+    fireEvent.pointerUp(stage, { pointerId: 1 });
+    fireEvent.click(screen.getByRole("button", { name: "放大图片" }));
+    fireEvent.pointerDown(stage, { pointerId: 1, clientX: 100, clientY: 100 });
+    fireEvent.pointerDown(stage, { pointerId: 2, clientX: 200, clientY: 100 });
+    fireEvent.pointerMove(stage, { pointerId: 2, clientX: 150, clientY: 100 });
+    expect(screen.getByText("125%")).not.toBeNull();
+    expect(image.style.transform).toBe("translate(0px, 0px) scale(1.25)");
+    fireEvent.pointerUp(stage, { pointerId: 2 });
+    fireEvent.pointerMove(stage, { pointerId: 1, clientX: 120, clientY: 130 });
+    expect(image.style.transform).toBe("translate(20px, 30px) scale(1.25)");
+  });
+
   it("大图支持滚轮和双击手动缩放", () => {
     render(
       <ImagePreviewSheet

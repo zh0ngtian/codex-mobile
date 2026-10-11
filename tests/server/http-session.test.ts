@@ -234,6 +234,31 @@ describe("HTTP 会话", () => {
     expect(f.received.at(-1)).toEqual({ id: "approval", result: { decision: "accept" } });
   });
 
+  it("resolved 通知同步移除真实 HTTP 快照中的审批，保持其他请求且拒绝迟到回复", async () => {
+    const f = await fixture(); await f.init();
+    for (const [id, threadId] of [[1, "t"], ["1", "t"], ["other", "other-thread"]] as const) {
+      f.send({ id, method: "item/tool/requestUserInput", params: { threadId, questions: [] } });
+    }
+    let before: any;
+    for (let i = 0; i < 30; i++) { await wait(); before = await f.events(); if (before.requests.length === 3) break; }
+    expect(before.requests.map((request: any) => request.id)).toEqual([1, "1", "other"]);
+    f.send({ method: "serverRequest/resolved", params: { threadId: "wrong-thread", requestId: "1" } });
+    f.send({ method: "serverRequest/resolved", params: { threadId: "t", requestId: 1 } });
+    let after: any;
+    for (let i = 0; i < 30; i++) { await wait(); after = await f.events(before.cursor); if (after.messages.length === 2) break; }
+    expect(after.messages.map((message: any) => message.method)).toEqual(["serverRequest/resolved", "serverRequest/resolved"]);
+    expect(after.requests.map((request: any) => request.id)).toEqual(["1", "other"]);
+    expect(after.active).toBe(true);
+    expect((await f.rpc({ id: 1, result: { answers: {} } }, randomUUID(), after.epoch)).status).toBe(409);
+    expect(f.received.some((message) => message.id === 1 && !message.method)).toBe(false);
+    f.send({ method: "serverRequest/resolved", params: { threadId: "t", requestId: "1" } });
+    f.send({ method: "serverRequest/resolved", params: { threadId: "other-thread", requestId: "other" } });
+    for (let i = 0; i < 30; i++) { await wait(); after = await f.events(after.cursor); if (!after.requests.length) break; }
+    expect(after.requests).toEqual([]);
+    expect(after.active).toBe(false);
+    expect((await f.events()).requests).toEqual([]);
+  });
+
   it("审批带旧 epoch 时返回 409 并继续保留审批", async () => {
     const f = await fixture(); await f.init();
     f.send({ id: 42, method: "item/commandExecution/requestApproval", params: { threadId: "t" } }); await wait();

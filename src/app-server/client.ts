@@ -19,8 +19,11 @@ export interface RpcMessage {
 
 type NotificationListener = (message: RpcMessage) => void;
 type RequestListener = (message: RpcMessage) => void;
+type ThreadMetadataListener = (thread: Record<string, any>) => void;
 
 interface PendingRequest {
+  method: string;
+  params: unknown;
   resolve: (value: unknown) => void;
   reject: (reason: unknown) => void;
   timeout: ReturnType<typeof setTimeout> | undefined;
@@ -71,6 +74,7 @@ export class AppServerClient {
   private pending = new Map<number | string, PendingRequest>();
   private notificationListeners = new Set<NotificationListener>();
   private requestListeners = new Set<RequestListener>();
+  private threadMetadataListeners = new Set<ThreadMetadataListener>();
   private readonly requestTimeoutMs: number;
 
   constructor(
@@ -118,6 +122,11 @@ export class AppServerClient {
         }
       }, options.timeoutMs ?? this.requestTimeoutMs);
       const pending: PendingRequest = {
+        method,
+        params: ["turn/start", "turn/steer"].includes(method) ? {
+          threadId: (params as any)?.threadId,
+          expectedTurnId: (params as any)?.expectedTurnId,
+        } : undefined,
         resolve: resolve as (value: unknown) => void,
         reject,
         timeout,
@@ -163,6 +172,11 @@ export class AppServerClient {
     return () => this.requestListeners.delete(listener);
   }
 
+  onThreadMetadata(listener: ThreadMetadataListener) {
+    this.threadMetadataListeners.add(listener);
+    return () => this.threadMetadataListeners.delete(listener);
+  }
+
   private send(message: RpcMessage, timeoutMs?: number) {
     const payload = JSON.stringify(message);
     const bytes = new TextEncoder().encode(payload).byteLength;
@@ -170,6 +184,19 @@ export class AppServerClient {
       throw new Error(messageTooLarge(bytes, MAX_APP_SERVER_MESSAGE_BYTES));
     }
     return this.socket.send(payload, timeoutMs);
+  }
+
+  private publishTurnAcceptance(request: { method?: string; params?: any }, response: RpcMessage) {
+    if (response.error != null || !["turn/start", "turn/steer"].includes(request.method ?? "")) return;
+    const result = response.result as any;
+    // 内部事件只传分类所需 ID，不复制指令正文或完整回合。
+    const message = { method: "mobile/turn/accepted", params: {
+      request: { method: request.method, params: {
+        threadId: request.params?.threadId, expectedTurnId: request.params?.expectedTurnId,
+      } },
+      response: { result: { turn: { id: result?.turn?.id }, turnId: result?.turnId } },
+    } };
+    for (const listener of this.notificationListeners) listener(message);
   }
 
   private receive(raw: string) {
@@ -199,7 +226,20 @@ export class AppServerClient {
           ),
         );
       }
-      else waiter.resolve(message.result);
+      else {
+        // 在列表/搜索过滤之前登记原始来源，RPC 本身不产生完成通知。
+        if (waiter.method.startsWith("thread/") && this.threadMetadataListeners.size) {
+          const result = message.result as { thread?: unknown; data?: unknown } | undefined;
+          const records = [result?.thread, ...(Array.isArray(result?.data) ? result.data : [])];
+          for (const record of records) {
+            const thread = record?.thread ?? record;
+            if (!thread || typeof thread !== "object" || typeof thread.id !== "string" || !thread.id) continue;
+            for (const listener of this.threadMetadataListeners) listener(thread);
+          }
+        }
+        this.publishTurnAcceptance(waiter, message);
+        waiter.resolve(message.result);
+      }
       return;
     }
     if (message.id !== undefined && message.method) {
@@ -207,6 +247,10 @@ export class AppServerClient {
       return;
     }
     if (message.method) {
+      if (message.method === "mobile/operation/confirmed") {
+        const params = message.params as any;
+        if (params?.request && params?.response) this.publishTurnAcceptance(params.request, params.response);
+      }
       for (const listener of this.notificationListeners) listener(message);
     }
   }

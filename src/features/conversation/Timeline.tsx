@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type RefObject } from "react";
+import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { AppServerClient } from "../../app-server/client";
 import type { BackendConfig } from "../../backends/types";
 import {
@@ -13,6 +13,7 @@ import {
   splitTurnResponseSegments,
   stripGitDirectives,
   summarizeToolActivity,
+  summarizeFileChange,
   summarizeTurnChanges,
   hasTurnChangeStats,
   toolActivityRowLabel,
@@ -21,7 +22,7 @@ import {
 } from "../../ui/conversation";
 import {
   CopyButton,
-  selectElementText,
+  copyText,
   visibleAssistantText,
 } from "../../ui/copy";
 import { Chevron } from "../../ui/icons";
@@ -42,10 +43,15 @@ import {
   ToolDetailSheet,
 } from "./sheets/ToolSheets";
 import "./timeline-timestamps.css";
+import { ContextActionMenu } from "../../ui/ContextActionMenu";
+import { type MenuAnchor } from "../../ui/native-action-menu";
+import { useLongPress } from "../../ui/use-long-press";
 
 type AnyRecord = Record<string, any>;
 
 type InlineUserMessageEdit = {
+  messageId?: string;
+  precedingMessageCount?: number;
   value: string;
   submitting: boolean;
   hasLaterTurns: boolean;
@@ -171,13 +177,23 @@ function UserBubble({
   const collapsible = shouldCollapseUserMessage(text);
   const [expanded, setExpanded] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const focusHistoryEditor = useCallback((input: HTMLTextAreaElement | null) => {
+    if (!input) return;
+    input.focus();
+    input.setSelectionRange(input.value.length, input.value.length);
+  }, []);
   useEffect(() => setConfirming(false), [inlineEdit?.hasLaterTurns]);
+  const [menuAnchor, setMenuAnchor] = useState<MenuAnchor | null>(null);
+  const longPress = useLongPress((anchor) => setMenuAnchor((current) => current ?? anchor), Boolean(inlineEdit));
+  useEffect(() => {
+    if (inlineEdit) setMenuAnchor(null);
+  }, [inlineEdit]);
   const bubble = (
-    <div className={`user-bubble${inlineEdit ? " user-bubble-editing" : ""}`}>
+    <div className={`user-bubble${inlineEdit ? " user-bubble-editing" : ""}`} {...longPress}>
       {inlineEdit ? (
         <div className="history-message-editor">
           <textarea
-            autoFocus
+            ref={focusHistoryEditor}
             aria-label={t("编辑历史消息内容")}
             value={inlineEdit.value}
             disabled={inlineEdit.submitting}
@@ -191,6 +207,11 @@ function UserBubble({
                 })
               : t("保存后将从这条消息重新执行")}
           </small>
+          {Boolean(inlineEdit.precedingMessageCount) && (
+            <small>{t("同轮此前的 {count} 条用户消息及附件会一起重发", {
+              count: inlineEdit.precedingMessageCount!,
+            })}</small>
+          )}
           {confirming ? (
             <div
               className="history-edit-inline-confirmation"
@@ -259,7 +280,6 @@ function UserBubble({
       ) : text ? (
         <div
           className={`user-message-text ${collapsible && !expanded ? "collapsed" : ""}`}
-          onContextMenu={(event) => selectElementText(event.currentTarget)}
         >
           <MarkdownMessage
             text={text}
@@ -307,39 +327,77 @@ function UserBubble({
       )}
     </div>
   );
-  if (!heartbeat) {
-    if (inlineEdit) return <div className="user-message">{bubble}</div>;
-    const showActions = Boolean(onEditUserMessage);
-    if (!showActions) return bubble;
+  const actions = !inlineEdit && onEditUserMessage ? (
+    <div className="user-message-actions" role="group" aria-label={t("历史消息操作")}>
+      <button type="button" aria-label={t("编辑历史消息")}
+        disabled={userMessageActionsDisabled} onClick={onEditUserMessage}>
+        {t("编辑")}
+      </button>
+    </div>
+  ) : null;
+  const menu = menuAnchor && !inlineEdit ? <ContextActionMenu
+    anchor={menuAnchor} label={t("历史消息操作")} onClose={() => setMenuAnchor(null)}
+    actions={[
+      ...(onEditUserMessage ? [{ id: "edit", title: t("编辑"), icon: "pencil",
+        disabled: userMessageActionsDisabled, onSelect: () => onEditUserMessage() }] : []),
+      { id: "copy", title: t("复制"), icon: "doc.on.doc", disabled: !text,
+        copyText: text, onSelect: (native) => {
+          if (!native) void copyText(text);
+        } },
+    ]} /> : null;
+  if (heartbeat) {
     return (
-      <div className="user-message">
+      <div className="automation-user-message">
+        <small className="automation-message-label">{t("通过自动化功能发送")}</small>
         {bubble}
-        <div
-          className="user-message-actions"
-          role="group"
-          aria-label={t("历史消息操作")}
-        >
-          {onEditUserMessage && (
-            <button
-              type="button"
-              aria-label={t("编辑历史消息")}
-              disabled={userMessageActionsDisabled}
-              onClick={onEditUserMessage}
-            >
-              {t("编辑")}
-            </button>
-          )}
-        </div>
+        {actions}{menu}
       </div>
     );
   }
+  return inlineEdit || actions
+    ? <div className="user-message">{bubble}{actions}{menu}</div>
+    : <>{bubble}{menu}</>;
+}
+
+function FileChangeActivity({ item }: { item: AnyRecord }) {
+  const changes = (item.changes ?? []) as AnyRecord[];
+  const summary = summarizeToolActivity([item]);
+  const [selectedFileIndex, setSelectedFileIndex] = useState<number | null>(null);
   return (
-    <div className="automation-user-message">
-      <small className="automation-message-label">
-        {t("通过自动化功能发送")}
-      </small>
-      {bubble}
-    </div>
+    <section className="file-change-activity">
+      <button type="button" className="file-change-title"
+        aria-label={toolActivityRowLabel(item)} onClick={() => setSelectedFileIndex(0)}>
+        <span className="activity-icon" aria-hidden="true">‹/›</span>
+        <strong>{toolActivityRowLabel(item)}</strong>
+        <span className="file-change-stats">
+          <span className="diff-add">+{summary.additions}</span>
+          <span className="diff-delete">-{summary.deletions}</span>
+        </span>
+        <Chevron />
+      </button>
+      <div className="file-change-files">
+        {changes.map((change, index) => {
+          const stats = summarizeFileChange(change);
+          const path = change.path || t("未命名文件");
+          return (
+            <button type="button" className="file-change-file" key={`${path}-${index}`}
+              title={path} onClick={() => setSelectedFileIndex(index)}>
+              <span className="file-change-path">{path}</span>
+              {typeof change.diff === "string" && (
+                <span className="file-change-stats">
+                  <span className="diff-add">+{stats.additions}</span>
+                  <span className="diff-delete">-{stats.deletions}</span>
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+      {selectedFileIndex != null && (
+        <FileDiffSheet item={item} initialFileIndex={selectedFileIndex}
+          onClose={() => setSelectedFileIndex(null)} />
+      )}
+    </section>
   );
 }
 
@@ -357,6 +415,9 @@ function ToolActivity({ items }: { items: AnyRecord[] }) {
       : "",
     summary.toolCount ? t("已调用 {count} 个工具", { count: summary.toolCount }) : "",
   ].filter(Boolean);
+  if (items.every((item) => item.type === "fileChange")) {
+    return <>{items.map((item, index) => <FileChangeActivity key={item.id ?? index} item={item} />)}</>;
+  }
   return (
     <>
       <details
@@ -376,7 +437,9 @@ function ToolActivity({ items }: { items: AnyRecord[] }) {
           <Chevron direction={summary.running || expanded ? "down" : "right"} />
         </summary>
         <div className="tool-activity-rows">
-          {items.map((item, index) => (
+          {items.map((item, index) => item.type === "fileChange" ? (
+            <FileChangeActivity key={item.id ?? index} item={item} />
+          ) : (
             <button
               type="button"
               key={item.id ?? index}
@@ -406,7 +469,9 @@ function TimelineItem({
   backend,
   threadId,
   timestamp,
+  finalDurationLabel,
   onEditUserMessage,
+  inlineEdit,
   userMessageActionsDisabled,
 }: {
   item: AnyRecord;
@@ -414,6 +479,7 @@ function TimelineItem({
   backend?: BackendConfig | null;
   threadId?: string;
   timestamp?: number | null;
+  finalDurationLabel?: string | null;
 } & UserMessageActionProps) {
   const type = String(item.type ?? "");
   if (type === "imageGeneration" && item.status === "failed") {
@@ -443,6 +509,7 @@ function TimelineItem({
         client={client}
         backend={backend}
         timestamp={timestamp}
+        inlineEdit={inlineEdit}
         onEditUserMessage={onEditUserMessage}
         userMessageActionsDisabled={userMessageActionsDisabled}
       />
@@ -482,10 +549,19 @@ function TimelineItem({
           </RemoteFileLink>
         )}
       />
-      <MessageTimestamp
-        timestamp={timestamp}
-        className="final-answer-timestamp"
-      />
+      {(formatMessageTimestamp(timestamp) || finalDurationLabel) && (
+        <div className="final-answer-metadata">
+          <MessageTimestamp
+            timestamp={timestamp}
+            className="final-answer-timestamp"
+          />
+          {finalDurationLabel && (
+            <span className="final-answer-duration">
+              {t("用时 {duration}", { duration: finalDurationLabel })}
+            </span>
+          )}
+        </div>
+      )}
     </div>
   ) : null;
 }
@@ -621,8 +697,21 @@ export function TurnCard({
   liveDiff?: string;
   client: AppServerClient | null;
   backend?: BackendConfig | null;
-} & UserMessageActionProps) {
+} & Omit<UserMessageActionProps, "onEditUserMessage"> & {
+  onEditUserMessage?: (messageId: string) => void;
+}) {
   const grouped = groupTurnItems(turn);
+  const actionsForMessage = (item: AnyRecord): UserMessageActionProps => {
+    const messageId = String(item.id ?? "");
+    if (grouped.running || item.type !== "userMessage" || !messageId || messageId.startsWith("local-")) return {};
+    return {
+      onEditUserMessage: onEditUserMessage ? () => onEditUserMessage(messageId) : undefined,
+      inlineEdit: inlineEdit && (inlineEdit.messageId == null
+        ? item === grouped.user
+        : inlineEdit.messageId === messageId) ? inlineEdit : undefined,
+      userMessageActionsDisabled,
+    };
+  };
   const responsesRef = useRef<HTMLDivElement>(null);
   let lastHumanIndex = -1;
   for (let index = grouped.responses.length - 1; index >= 0; index -= 1) {
@@ -651,6 +740,7 @@ export function TurnCard({
           client={client}
           backend={backend}
           threadId={threadId}
+          {...actionsForMessage(entry.item)}
         />
       ),
     );
@@ -696,11 +786,7 @@ export function TurnCard({
             client={client}
             backend={backend}
             timestamp={turn.startedAt}
-            onEditUserMessage={
-              grouped.running ? undefined : onEditUserMessage
-            }
-            inlineEdit={grouped.running ? undefined : inlineEdit}
-            userMessageActionsDisabled={userMessageActionsDisabled}
+            {...actionsForMessage(grouped.user)}
           />
         </div>
       )}
@@ -718,6 +804,7 @@ export function TurnCard({
             <CompletedResponseSegment
               key={items[0]?.id ?? index}
               items={items}
+              actionsForMessage={actionsForMessage}
               client={client}
               backend={backend}
               threadId={threadId}
@@ -725,6 +812,11 @@ export function TurnCard({
               showCopy={index === copySegmentIndex}
               completedAt={
                 index === finalSegmentIndex ? turn.completedAt : null
+              }
+              finalDurationLabel={
+                index === finalSegmentIndex && durationMs != null
+                  ? formatTurnDuration(durationMs)
+                  : null
               }
               durationLabel={
                 index === durationSegmentIndex ? durationLabel : null
@@ -755,21 +847,25 @@ export function TurnCard({
 
 function CompletedResponseSegment({
   items,
+  actionsForMessage,
   client,
   backend,
   threadId,
   copyTarget,
   showCopy,
   completedAt,
+  finalDurationLabel,
   durationLabel,
 }: {
   items: AnyRecord[];
+  actionsForMessage: (item: AnyRecord) => UserMessageActionProps;
   client: AppServerClient | null;
   backend?: BackendConfig | null;
   threadId?: string;
   copyTarget: RefObject<HTMLDivElement | null>;
   showCopy: boolean;
   completedAt?: number | null;
+  finalDurationLabel: string | null;
   durationLabel: string | null;
 }) {
   const completed = splitCompletedTurnResponses(items);
@@ -799,6 +895,7 @@ function CompletedResponseSegment({
           client={client}
           backend={backend}
           threadId={threadId}
+          {...actionsForMessage(entry.item)}
         />
       ),
     );
@@ -807,6 +904,7 @@ function CompletedResponseSegment({
       entries.filter(
         (item) =>
           item.type === "userMessage" ||
+          item.type === "fileChange" ||
           item.type === "imageView" ||
           (item.type === "imageGeneration" && item.status !== "failed") ||
           Boolean(videoPathForItem(item)) ||
@@ -860,6 +958,7 @@ function CompletedResponseSegment({
             client={client}
             backend={backend}
             timestamp={completedAt}
+            finalDurationLabel={finalDurationLabel}
           />
           {showCopy && (
             <CopyButton

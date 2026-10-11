@@ -8,6 +8,9 @@ import {
   type AndroidWebViewBridge,
 } from "./ui/runtime-environment";
 import "./styles.css";
+import { applyFontSize, readFontSize } from "./ui/font-size";
+
+applyFontSize(readFontSize());
 
 const nativeBridge = (
   window as typeof window & { JsBridge?: AndroidWebViewBridge }

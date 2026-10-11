@@ -1,6 +1,8 @@
-# 内置浏览器 Design QA
+# 内置浏览器 Design QA（历史记录）
 
-- source visual truth path: 当前用户消息中的第 1 张参考截图（会话内附件，无本地文件路径）
+本文保留 2026-10-02 内置浏览器实现时的比较结论，关联 [实施计划](docs/superpowers/plans/2026-10-02-in-app-browser.md)。2026-10-10 复核时，下列 `test-results/` 和 `/tmp/` 截图已不存在，会话参考图也未入库；因此 `passed` 仅代表当时记录，不能作为当前版本的可重放视觉验收。现役能力见 [README](README.md#核心能力)。
+
+- source visual truth path: 原实施会话用户消息中的第 1 张参考截图（会话内附件，无本地文件路径）
 - source pixels: 918 × 2048
 - implementation screenshot path: `test-results/in-app-browser/implementation.png`
 - implementation pixels: 984 × 2136

@@ -1,3 +1,4 @@
+import { flushSync } from "react-dom";
 import {
   FormEvent,
   useCallback,
@@ -49,6 +50,7 @@ import {
   createPendingTurn,
   isThreadRunning,
   reconcileRecentTurns,
+  reconcileThreadSnapshot,
   removePendingTurn,
 } from "./ui/conversation";
 import {
@@ -93,6 +95,8 @@ import {
   type ThreadManagementAction,
 } from "./features/threads/ThreadListPage";
 import { ApprovalSheet } from "./features/approvals/ApprovalSheet";
+import { useApprovalRequests } from "./features/approvals/useApprovalRequests";
+import { approvalKey, approvalResponse, questionResponse, type ApprovalDecision } from "./features/approvals/approval-model";
 import {
   ComposerSettings,
   type ComposerPicker,
@@ -212,7 +216,9 @@ import {
   requestRunCompletionNotificationPermission,
   type RunCompletionNavigationTarget,
 } from "./notifications/run-completion";
+import { FinalAnswerCompletionTracker } from "../server/final-answer-completion";
 import { t, useI18n } from "./i18n";
+import { readNotificationPreference, writeNotificationPreference, useNotificationSync, type NotificationPreference } from "./notifications/preferences";
 
 type AnyRecord = Record<string, any>;
 
@@ -353,11 +359,9 @@ function BackendWorkspace({
     useState<PendingSteerMessage | null>(null);
   const [queuedFollowUps, setQueuedFollowUps] = useState<QueuedFollowUp[]>([]);
   const [error, setError] = useState("");
-  const [requests, setRequests] = useState<RpcMessage[]>([]);
+  const approvalRequests = useApprovalRequests();
+  const { requests, approval, userAnswers } = approvalRequests;
   const [syncState, setSyncState] = useState<{ updatedAt: number | null; stale: boolean } | null>(null);
-  const [respondingRequest, setRespondingRequest] = useState(false);
-  const respondingRequestRef = useRef(false);
-  const [userAnswers, setUserAnswers] = useState<Record<string, string>>({});
   const [models, setModels] = useState<AnyRecord[]>([]);
   const [permissionProfiles, setPermissionProfiles] = useState<AnyRecord[]>([]);
   const [selectedModel, setSelectedModel] = useState("");
@@ -423,6 +427,7 @@ function BackendWorkspace({
   const fullyLoadedProjectCwdsRef = useRef(new Set<string>());
   const refreshSequenceRef = useRef(0);
   const threadNotificationSequenceRef = useRef(0);
+  const threadReconcileSequenceRef = useRef(0);
   const pendingSequenceRef = useRef(0);
   const pendingOperationsRef = useRef(new Map<string, {
     threadId: string; draftContext: number; pendingTurnId?: string;
@@ -442,7 +447,8 @@ function BackendWorkspace({
   const queuedFollowUpsRef = useRef<QueuedFollowUp[]>([]);
   const queuedFollowUpDispatchingRef = useRef(false);
   const completionEventCatchUpRef = useRef(false);
-  const handledFinalAnswerKeysRef = useRef(new Set<string>());
+  const finalAnswerCompletionRef = useRef(new FinalAnswerCompletionTracker());
+  const mobileCompletionRef = useRef(new FinalAnswerCompletionTracker({ requireMobileOrigin: true }));
   const automaticTitleStatesRef = useRef(
     new Map<string, AutomaticTitleState>(),
   );
@@ -559,6 +565,12 @@ function BackendWorkspace({
     readUnreadThreadIds(localStorage, backend.id);
   const readLocalPinned = () =>
     readPinnedThreadIds(localStorage, backend.id);
+  const readPrioritizedThreadIds = () => new Set([
+    ...readLocalPinned(),
+    ...readLocalUnread(),
+    ...threadsRef.current.filter((thread) => isThreadRunning(thread.status))
+      .map((thread) => String(thread.id)),
+  ]);
   const setLocalPinned = (threadId: string) => {
     const isPinned = toggleThreadPinned(localStorage, backend.id, threadId);
     const update = (current: AnyRecord[]) =>
@@ -635,15 +647,13 @@ function BackendWorkspace({
     threadListLoaderRef.current = createLatestThreadListLoader({
       onData(data) {
         setThreads((current) =>
-          mergeThreadListPage(current, decorateThreads(data), readLocalPinned()),
+          mergeThreadListPage(current, decorateThreads(data), readPrioritizedThreadIds()),
         );
         setThreadListState("ready");
       },
       onPinnedData(data) {
-        const pinned = readLocalPinned();
-        const pinnedThreads = decorateThreads(
-          data.filter((thread) => pinned.has(String(thread.id))),
-        );
+        // 同步已结束运行的摘要，使其按最新状态回到普通列表。
+        const pinnedThreads = decorateThreads(data);
         setThreads((current) =>
           mergeThreadListPage(
             current,
@@ -685,7 +695,7 @@ function BackendWorkspace({
           const projectThreads = mergeThreadListPage(
             currentProjectThreads,
             [...nextProjectThreads, ...retainedExpandedThreads],
-            readLocalPinned(),
+            readPrioritizedThreadIds(),
           );
           return [
             ...current.filter((thread) => projectGroupIdOf(thread) !== cwd),
@@ -886,7 +896,12 @@ function BackendWorkspace({
         client,
         directories,
         nextProjectlessThreadIds,
-        { ...options, pinnedThreadIds: [...readLocalPinned()] },
+        {
+          ...options,
+          pinnedThreadIds: [...readLocalPinned()],
+          prioritizedThreadIds: [...readPrioritizedThreadIds()],
+          includeRunningThreads: true,
+        },
       );
     } catch (reason) {
       setThreadListState((current) =>
@@ -894,6 +909,15 @@ function BackendWorkspace({
       );
       throw reason;
     }
+  }
+
+  function applyActiveThreadSnapshot(incoming: AnyRecord) {
+    setActive((current) => {
+      const next = reconcileThreadSnapshot(current, incoming);
+      activeRef.current = next;
+      setBusy(["inProgress", "in_progress", "running"].includes(String(next.turns?.at(-1)?.status ?? "")));
+      return next;
+    });
   }
 
   async function reconcileActiveThread(
@@ -906,6 +930,10 @@ function BackendWorkspace({
     );
     if (!threadId || client !== clientRef.current) return;
     const pendingThrough = pendingSequenceRef.current;
+    const sequence = ++threadReconcileSequenceRef.current;
+    const openSequence = openSequenceRef.current;
+    const isLatest = () => sequence === threadReconcileSequenceRef.current &&
+      openSequence === openSequenceRef.current && isCurrent();
 
     let latestTurns = await loadRecoverableRecentThreadTurns(
       client,
@@ -928,28 +956,25 @@ function BackendWorkspace({
       ) !== threadId ||
       activeRef.current?.id !== threadId ||
       latestTurns == null ||
-      !isCurrent()
+      !isLatest()
     ) {
       return;
     }
 
     const hasPendingOperation = [...pendingOperationsRef.current.values()].some((operation) => operation.threadId === threadId);
     const discardPendingThrough = hasPendingOperation ? -1 : pendingThrough;
-    const lastTurn = latestTurns.at(-1);
-    const running =
-      ["inProgress", "in_progress", "running"].includes(
-        String(lastTurn?.status ?? ""),
-      ) || hasPendingOperation || pendingSequenceRef.current > discardPendingThrough;
-    setActive((current) =>
-      current?.id === threadId
-        ? {
-            ...current,
-            turns: reconcileRecentTurns(current.turns ?? [], latestTurns, {
-              discardPendingThrough,
-            }),
-          }
-        : current,
-    );
+    setActive((current) => {
+      if (current?.id !== threadId || !isLatest()) return current;
+      const turns = reconcileRecentTurns(current.turns ?? [], latestTurns, { discardPendingThrough });
+      const running = ["inProgress", "in_progress", "running"].includes(String(turns.at(-1)?.status ?? "")) ||
+        hasPendingOperation || pendingSequenceRef.current > discardPendingThrough;
+      const next = { ...current, turns };
+      activeRef.current = next;
+      setBusy(running);
+      setThreads((entries) => entries.map((entry) => entry.id === threadId
+        ? { ...entry, status: { type: running ? "active" : "idle" } } : entry));
+      return next;
+    });
     const turnsNeedingBackfill = latestTurns.filter((turn: AnyRecord) =>
       turn.itemsView === "summary" &&
       !activeRef.current?.turns?.some((currentTurn: AnyRecord) =>
@@ -963,23 +988,12 @@ function BackendWorkspace({
         client,
         threadId,
         turnsNeedingBackfill.map((turn: AnyRecord) => String(turn.id)),
-        () => isCurrent() && client === clientRef.current &&
+        () => isLatest() && client === clientRef.current &&
           String(activeRef.current?.id ?? "") === threadId,
         undefined,
         detailLimit,
       );
     }
-    setBusy(running);
-    setThreads((entries) =>
-      entries.map((entry) =>
-        entry.id === threadId
-          ? {
-              ...entry,
-              status: { type: running ? "active" : "idle" },
-            }
-          : entry,
-      ),
-    );
   }
 
   function rememberPendingOperation(
@@ -1138,7 +1152,7 @@ function BackendWorkspace({
           setRefreshing(false);
           setSteering(false);
           setPendingSteerMessage(null);
-          setRequests([]);
+          approvalRequests.reset();
           void fetchBackendHostInfo(backend).catch((reason) => {
             const message =
               reason instanceof Error ? reason.message : String(reason);
@@ -1163,9 +1177,60 @@ function BackendWorkspace({
             setSyncState({ updatedAt: params.updatedAt ?? null, stale: params.stale === true });
             return;
           }
-          if (message.method === "mobile/requests") {
-            setRequests(params.requests ?? []);
-            return;
+          if (approvalRequests.onNotification(message)) return;
+          for (const tracker of [finalAnswerCompletionRef.current, mobileCompletionRef.current]) {
+            for (const thread of threadsRef.current) tracker.rememberThread(thread);
+            tracker.rememberThread(activeRef.current);
+          }
+          // 来源确认可迟于实时完成；历史追赶期间只登记来源，不收集完成证据。
+          const acceptedMobileTurn = message.method === "mobile/turn/accepted"
+            ? mobileCompletionRef.current.observeRpc(params.request, params.response) : null;
+          const completedMobileTurn = completionEventCatchUpRef.current ? null
+            : acceptedMobileTurn ?? mobileCompletionRef.current.observe(message);
+          const completedFinalAnswer = completionEventCatchUpRef.current
+            ? null : finalAnswerCompletionRef.current.observe(message);
+          if (completedFinalAnswer) {
+            const { threadId } = completedFinalAnswer;
+            const attentionAction = finalAnswerAttentionAction({
+              item: { type: "agentMessage", phase: "final_answer" },
+              catchingUp: false,
+              hasQueuedFollowUp: queuedFollowUpsRef.current.some(
+                (followUp) => followUp.threadId === threadId,
+              ),
+              threadId,
+              activeThreadId: String(activeRef.current?.id ?? ""),
+              conversationVisible: conversationVisibleRef.current,
+              documentVisible: document.visibilityState === "visible",
+            });
+            if (attentionAction === "mark-unread") {
+              markThreadUnread(threadId);
+            } else if (attentionAction === "mark-read") {
+              markThreadRead(threadId);
+            }
+          }
+          if (completedMobileTurn) {
+            const { threadId } = completedMobileTurn;
+            if (finalAnswerAttentionAction({
+              item: { type: "agentMessage", phase: "final_answer" },
+              catchingUp: false,
+              hasQueuedFollowUp: queuedFollowUpsRef.current.some((followUp) => followUp.threadId === threadId),
+              threadId,
+              activeThreadId: String(activeRef.current?.id ?? ""),
+              conversationVisible: conversationVisibleRef.current,
+              documentVisible: document.visibilityState === "visible",
+            }) === "mark-unread") {
+              notifyRunCompleted({
+                title: t("Codex 运行结束"),
+                body: completionThreadTitle({
+                  threadId,
+                  threads: threadsRef.current,
+                  activeThread: activeRef.current,
+                  fallback: t("新对话"),
+                }),
+                backendId: backend.id,
+                threadId,
+              });
+            }
           }
           if (message.method === "mobile/operation/confirmed") {
             threadNotificationSequenceRef.current += 1;
@@ -1381,52 +1446,6 @@ function BackendWorkspace({
             setActive((current) =>
               current ? applyTurnItem(current, nextParams) : current,
             );
-            const threadId = String(params.threadId ?? "");
-            const turnId = String(params.turnId ?? "");
-            const itemId = String(params.item.id ?? "");
-            const notificationKey = `${threadId}\u0000${turnId}\u0000${itemId}`;
-            const hasQueuedFollowUp = queuedFollowUpsRef.current.some(
-              (followUp) => followUp.threadId === threadId,
-            );
-            const attentionAction = finalAnswerAttentionAction({
-              item: nextParams.item,
-              catchingUp: completionEventCatchUpRef.current,
-              hasQueuedFollowUp,
-              threadId,
-              activeThreadId: String(activeRef.current?.id ?? ""),
-              conversationVisible: conversationVisibleRef.current,
-              documentVisible:
-                document.visibilityState === "visible",
-            });
-            if (
-              attentionAction !== "preserve" &&
-              !handledFinalAnswerKeysRef.current.has(notificationKey)
-            ) {
-              handledFinalAnswerKeysRef.current.add(notificationKey);
-              while (handledFinalAnswerKeysRef.current.size > 256) {
-                const oldest = handledFinalAnswerKeysRef.current
-                  .values()
-                  .next().value;
-                if (typeof oldest !== "string") break;
-                handledFinalAnswerKeysRef.current.delete(oldest);
-              }
-              if (attentionAction === "mark-unread") {
-                markThreadUnread(threadId);
-                notifyRunCompleted({
-                  title: t("Codex 运行结束"),
-                  body: completionThreadTitle({
-                    threadId,
-                    threads: threadsRef.current,
-                    activeThread: activeRef.current,
-                    fallback: t("新对话"),
-                  }),
-                  backendId: backend.id,
-                  threadId,
-                });
-              } else {
-                markThreadRead(threadId);
-              }
-            }
           }
           if (
             message.method === "item/commandExecution/outputDelta" ||
@@ -1596,14 +1615,7 @@ function BackendWorkspace({
       },
       onRequest: (_backendId, request, source) => {
           const client = source as AppServerClient;
-          if (
-            request.method === "item/commandExecution/requestApproval" ||
-            request.method === "item/fileChange/requestApproval" ||
-            request.method === "item/permissions/requestApproval" ||
-            request.method === "item/tool/requestUserInput"
-          ) {
-            setRequests((current) => current.some((entry) => entry.id === request.id) ? current : [...current, request]);
-          } else {
+          if (!approvalRequests.receive(request)) {
             void Promise.resolve(client.respondError(
               request.id!,
               -32601,
@@ -1615,6 +1627,12 @@ function BackendWorkspace({
       },
       onReady: (_backendId, source) => {
         const client = source as AppServerClient;
+        client.onThreadMetadata((thread) => {
+          if (!disposed && manager.client(backend.id) === source) {
+            finalAnswerCompletionRef.current.rememberThread(thread);
+            mobileCompletionRef.current.rememberThread(thread);
+          }
+        });
         clientRef.current = client;
         readyClientRef.current = null;
         const workspaceResumeSnapshot = {
@@ -1764,7 +1782,11 @@ function BackendWorkspace({
               if (
                 !disposed &&
                 manager.client(backend.id) === source &&
-                activeRef.current?.id === currentThread.id
+                activeRef.current?.id === currentThread.id &&
+                shouldResumeWorkspaceThread(workspaceResumeSnapshot, {
+                  threadId: String(currentThread.id),
+                  openSequence: openSequenceRef.current,
+                })
               ) {
                 const resumedSettings = normalizeModelSettings(
                   modelResult.data.find(
@@ -1778,7 +1800,7 @@ function BackendWorkspace({
                     sanitizeAgentItem(client, currentThread.id, turn.id, item);
                   }
                 }
-                setActive({
+                applyActiveThreadSnapshot({
                   ...decorateThread(resumed.thread),
                   ...(currentThread.isProjectless === true
                     ? { isProjectless: true }
@@ -1803,10 +1825,6 @@ function BackendWorkspace({
                   setSelectedApprovalsReviewer(resumed.approvalsReviewer);
                 }
                 setSelectedPermission(resumed.activePermissionProfile?.id ?? "");
-                const lastTurn = resumed.thread.turns?.at(-1);
-                setBusy(
-                  ["inProgress", "in_progress", "running"].includes(lastTurn?.status),
-                );
               }
             }
             if (!disposed && manager.client(backend.id) === source) {
@@ -2112,7 +2130,7 @@ function BackendWorkspace({
     try {
       if (!client) throw new Error(t("设备尚未连接，请稍后重试"));
       const session = await resumeThreadSession(client, threadId);
-      if (sequence !== openSequenceRef.current) {
+      if (sequence !== openSequenceRef.current || client !== clientRef.current) {
         if (activeThreadTargetRef.current !== threadId) {
           void client
             .request("thread/unsubscribe", { threadId })
@@ -2128,7 +2146,7 @@ function BackendWorkspace({
         session.reasoningEffort,
         session.serviceTier,
       );
-      setActive({
+      applyActiveThreadSnapshot({
         ...decorateThread(session.thread),
         ...(activeRef.current?.isProjectless === true
           ? { isProjectless: true }
@@ -2159,10 +2177,6 @@ function BackendWorkspace({
       setSelectedPermission(session.activePermissionProfile?.id ?? "");
       setConversationLoadState("ready");
       setConversationLoadError("");
-      const lastTurn = session.thread.turns?.at(-1);
-      setBusy(
-        ["inProgress", "in_progress", "running"].includes(lastTurn?.status),
-      );
 
       if (session.thread.cwd) {
         void client
@@ -2674,6 +2688,7 @@ function BackendWorkspace({
     const currentTarget = createHistoricalMessageEditTarget(
       thread?.turns ?? [],
       target.turnId,
+      target.messageId,
     );
     const hasQueuedMessage = queuedFollowUpsRef.current.some(
       (followUp) => followUp.threadId === threadId,
@@ -2694,13 +2709,14 @@ function BackendWorkspace({
       return;
     }
     invalidateImageReads();
-    setHistoryEdit({
+    // 在编辑操作的回调内同步挂载输入框，让移动端立即接收输入焦点。
+    flushSync(() => setHistoryEdit({
       threadId,
       target: currentTarget,
       text: currentTarget.text,
       submitting: false,
       reverted: false,
-    });
+    }));
     setError("");
   }
 
@@ -2755,6 +2771,7 @@ function BackendWorkspace({
       const currentTarget = createHistoricalMessageEditTarget(
         thread.turns ?? [],
         session.target.turnId,
+        session.target.messageId,
       );
       if (!currentTarget || currentTarget.messageId !== session.target.messageId) {
         setError(t("目标消息已变化，请刷新后重试"));
@@ -3728,61 +3745,32 @@ function BackendWorkspace({
     if (!active?.id) setNewChatPermissionMode(mode);
     setPicker(null);
   };
-  const approval = requests[0] ?? null;
-  const replyToRequest = async (result: unknown) => {
+  const replyToRequest = (result: unknown) => {
     const client = clientRef.current;
-    if (!approval || !client || respondingRequestRef.current) return;
-    respondingRequestRef.current = true;
-    setRespondingRequest(true);
-    try {
-      await client.respond(approval.id!, result);
-      setRequests((current) => current.filter((entry) => entry.id !== approval.id));
-      setUserAnswers({});
-    } catch (reason) {
-      if (reason instanceof HttpOperationPendingError) {
-        const context = draftContextGenerationRef.current;
-        rememberPendingOperation(reason.requestId, {
-          threadId: String((approval.params as AnyRecord)?.threadId ?? ""),
-          draftContext: context,
-          confirmed: (response) => {
-            if (context !== draftContextGenerationRef.current) return;
-            if (response.error) setError(response.error.message);
-            else setUserAnswers({});
-          },
-        }, client);
-        return;
-      }
-      setError(reason instanceof Error ? reason.message : String(reason));
-    } finally {
-      respondingRequestRef.current = false;
-      setRespondingRequest(false);
-    }
-  };
-  const finishRequest = (decision: "accept" | "decline") => {
-    if (!approval) return;
-    const params = (approval.params ?? {}) as AnyRecord;
-    if (approval.method === "item/permissions/requestApproval") {
-      const requested = (params.permissions ?? {}) as AnyRecord;
-      const granted = {
-        ...(requested.fileSystem != null ? { fileSystem: requested.fileSystem } : {}),
-        ...(requested.network != null ? { network: requested.network } : {}),
+    if (!approval || !client) return;
+    void approvalRequests.submit(result, client, (requestId, confirmed) => {
+      rememberPendingOperation(requestId, {
+        threadId: String((approval.params as AnyRecord)?.threadId ?? ""),
+        draftContext: draftContextGenerationRef.current,
+        confirmed,
+      }, client);
+      // 审批解决本身已经足以解除其 busy 状态；不要等待可能永久 uncertain 的 HTTP 查询。
+      return () => {
+        pendingOperationsRef.current.delete(requestId);
+        earlyOperationConfirmationsRef.current.delete(requestId);
+        setPendingOperationIds([...pendingOperationsRef.current.keys()]);
       };
-      void replyToRequest({
-        permissions: decision === "accept" ? granted : {},
-        scope: "turn",
-      });
-    } else {
-      void replyToRequest({ decision });
-    }
+    }, approval);
+  };
+  const finishRequest = (decision: ApprovalDecision) => {
+    if (!approval) return;
+    const response = approvalResponse(approval, decision);
+    if (response) replyToRequest(response);
   };
   const answerQuestions = () => {
     if (!approval) return;
-    const questions = ((approval.params as AnyRecord)?.questions ?? []) as AnyRecord[];
-    void replyToRequest({
-      answers: Object.fromEntries(
-        questions.map((question) => [question.id, { answers: [userAnswers[question.id] ?? ""] }]),
-      ),
-    });
+    const response = questionResponse(approval, userAnswers);
+    if (response) replyToRequest(response);
   };
 
   const startNewChat = (
@@ -3868,7 +3856,7 @@ function BackendWorkspace({
         client,
         cwd,
         cursor,
-        new Set([...readLocalPinned(), ...projectlessThreadIds]),
+        new Set([...readPrioritizedThreadIds(), ...projectlessThreadIds]),
       );
       if (result.hasMore) {
         fullyLoadedProjectCwdsRef.current.delete(cwd);
@@ -3916,7 +3904,7 @@ function BackendWorkspace({
         client,
         projectlessThreadIds,
         targetCount,
-        readLocalPinned(),
+        readPrioritizedThreadIds(),
       );
       if (result.hasMore) {
         fullyLoadedProjectCwdsRef.current.delete(PROJECTLESS_GROUP_ID);
@@ -3936,7 +3924,7 @@ function BackendWorkspace({
             (thread) => projectGroupIdOf(thread) === PROJECTLESS_GROUP_ID,
           ),
           decorateThreads(result.threads),
-          readLocalPinned(),
+          readPrioritizedThreadIds(),
         ),
       ]);
     } catch (reason) {
@@ -3984,11 +3972,11 @@ function BackendWorkspace({
           void threadListLoaderRef.current!.loadProjectless(
             client,
             projectlessThreadIds,
-            { pinnedThreadIds: [...readLocalPinned()] },
+            { prioritizedThreadIds: [...readPrioritizedThreadIds()] },
           );
         } else {
           void threadListLoaderRef.current!.loadProject(client, command.cwd, {
-            pinnedThreadIds: [...readLocalPinned()],
+            prioritizedThreadIds: [...readPrioritizedThreadIds()],
           });
         }
       }
@@ -4143,15 +4131,12 @@ function BackendWorkspace({
         </div>
       )}
       <ApprovalSheet
+        key={approval ? approvalKey(approval) : "none"}
         approval={approval}
-        submitting={respondingRequest}
+        submitting={approvalRequests.submitting}
+        error={approvalRequests.error}
         userAnswers={userAnswers}
-        onAnswerChange={(questionId, value) =>
-          setUserAnswers((current) => ({
-            ...current,
-            [questionId]: value,
-          }))
-        }
+        onAnswerChange={approvalRequests.answer}
         onSubmitAnswers={answerQuestions}
         onDecision={finishRequest}
       />
@@ -4200,6 +4185,12 @@ export function AppBootstrap({
   initialRegistry: BackendRegistry;
 }) {
   const [registry, setRegistry] = useState(initialRegistry);
+  const [notificationPreference, setNotificationPreference] = useState(() => readNotificationPreference(window.localStorage));
+  const saveNotificationPreference = (next: NotificationPreference) => {
+    const saved = writeNotificationPreference(window.localStorage, next);
+    setNotificationPreference(saved);
+  };
+  const failedNotificationDevices = useNotificationSync(registry.backends, notificationPreference);
   const [transportMode, setTransportMode] = useState(() => readTransportMode(window.localStorage));
   const changeTransportMode = (mode: TransportMode) => {
     writeTransportMode(window.localStorage, mode);
@@ -4217,6 +4208,10 @@ export function AppBootstrap({
         appUpdate={appUpdate}
         transportMode={transportMode}
         onTransportModeChange={changeTransportMode}
+        notificationPreference={notificationPreference}
+        onNotificationPreferenceSave={saveNotificationPreference}
+        failedNotificationDevices={failedNotificationDevices}
+        onRegistryChange={setRegistry}
       />
     );
   }
@@ -4240,6 +4235,9 @@ export function AppBootstrap({
         summaries={{}}
         transportMode={transportMode}
         onTransportModeChange={changeTransportMode}
+        notificationPreference={notificationPreference}
+        onNotificationPreferenceSave={saveNotificationPreference}
+        failedNotificationDevices={failedNotificationDevices}
         onChange={(next) => {
           saveBackendRegistry(window.localStorage, next);
           setRegistry(next);
@@ -4274,13 +4272,22 @@ function ConfiguredApp({
   appUpdate,
   transportMode,
   onTransportModeChange,
+  notificationPreference,
+  onNotificationPreferenceSave,
+  failedNotificationDevices,
+  onRegistryChange,
 }: {
   initialRegistry: BackendRegistry;
   appUpdate: AppUpdateController;
   transportMode: TransportMode;
   onTransportModeChange: (mode: TransportMode) => void;
+  notificationPreference: NotificationPreference;
+  onNotificationPreferenceSave: (preference: NotificationPreference) => void;
+  failedNotificationDevices: string[];
+  onRegistryChange: (registry: BackendRegistry) => void;
 }) {
   const [registry, setRegistry] = useState(initialRegistry);
+  useEffect(() => { onRegistryChange(registry); }, [registry, onRegistryChange]);
   const [summaries, setSummaries] = useState<
     Record<string, BackendRuntimeSummary>
   >({});
@@ -4841,6 +4848,7 @@ function ConfiguredApp({
       >
         <aside className="conversation-sidebar" aria-label={t("会话列表")}>
           <ThreadListPage
+            sidebarOpen={sidebarOpen}
             backends={registry.backends}
             summaries={summaries}
             selectedBackendId={listBackendId}
@@ -4897,6 +4905,9 @@ function ConfiguredApp({
         onChange={persistRegistry}
         transportMode={transportMode}
         onTransportModeChange={onTransportModeChange}
+        notificationPreference={notificationPreference}
+        onNotificationPreferenceSave={onNotificationPreferenceSave}
+        failedNotificationDevices={failedNotificationDevices}
         onClose={() => setManagerOpen(false)}
         appUpdate={{
           supported: appUpdate.supported,

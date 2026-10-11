@@ -1,5 +1,7 @@
 # iOS 本地构建与模拟器验证
 
+本文的带日期章节是对应版本的历史验收记录。固定 `latest` / `current` 链接会随发布更新，表内旧版本大小与散列不能用于校验今天的下载包；当前版本应读取双端固定清单，入口见 [文档索引](README.md)。
+
 Codex Mobile iOS 复用当前 React 前端，内置于固定提交的 PakePlus SwiftUI / WKWebView 容器。设备地址和口令由用户在 App 中添加，构建产物不携带私人网关配置。
 
 ## 生成与运行
@@ -22,7 +24,7 @@ xcodebuild \
   -derivedDataPath .mobile-build/ios-derived-data build
 ```
 
-`--plan` 只输出步骤。准备脚本复用 `.github/workflows/build-ios.yml` 中的固定容器提交、pnpm 主版本、前端构建、配置和原生硬化；图标按 asset catalog 的尺寸在本地生成。成功后替换 `.mobile-build/ios/` 中的生成工程；不要在该目录维护手写源码。失败时保留上一次成功工程。
+`--plan` 只输出步骤。准备脚本复用 `mobile/ios/build-recipe.yml` 中的固定容器提交、pnpm 主版本、前端构建、配置和原生硬化；图标按 asset catalog 的尺寸在本地生成。成功后替换 `.mobile-build/ios/` 中的生成工程；不要在该目录维护手写源码。失败时保留上一次成功工程。
 
 ## 模拟器 UI 回归
 
@@ -114,3 +116,58 @@ iPhone 17 Pro / iOS 26.5 的 XCTest 和录屏检查结果：
 | 160 字符长中文草稿 | 0px | 通过 |
 
 三个场景均点击系统键盘对号 `Done / 完成`，并在收起后重复检查输入框位置与草稿，随后重新输入。重新编辑允许光标位于原文中间，移除新增文本后必须完整还原原草稿。单项集成测试通过，保留 `.mobile-build/keyboard-checkmark-verified.xcresult`、`.log` 和 `.mp4`。相关 Vitest 最终运行 52 项及 TypeScript 检查通过。
+
+### 点击发送并收起键盘的补充修复
+
+用户补充点击发送后收起键盘仍偶尔闪烁。旧容器在 `layoutSubviews` 中移除动画，但 UIKit 可以在布局之后继续追加动画；真实点击发送的 CADisplayLink 采样记录到主图层仍有 4 个 position / bounds 动画，新增的零几何动画断言失败。
+
+正式实现改用 `CodexMobileWebViewLayer`，在 `CALayer.add` 入口直接拒绝主图层 position / bounds 动画，其他动画正常交给 `super.add`。网页子图层不使用这个图层类型，因此网页动画保持原有行为。发送表单在调用提交回调、清空草稿或还原最大化状态之前同步取消 textarea 焦点；普通和最大化输入的行为回归先失败、修复后通过。
+
+新增 `testSendingDismissesKeyboardWithoutFlicker`，在 iPhone 17 Pro / iOS 26.5 分别发送短消息、长中文和最大化长中文，只请求回复固定标识。三个场景均验证真实回复、键盘消失、逐帧主图层几何动画数为 0、收起后 12 次位置采样变化不超过 1px，以及下一条输入可编辑；录屏检查通过。相关 Vitest 33 项和 TypeScript 检查通过。
+
+高度探针继续保留为诊断，但不再把原始 model / presentation 高度差单独作为闪烁断言：Core Animation 提交前，新布局和上一呈现帧可以短暂不同。回归使用实际帧采样计数、整个收起期间零几何动画、稳态位置和输入行为作为通过条件。空 textarea 的 WKWebView 辅助功能值可能等于 placeholder；最大化按钮未被暴露为 AXButton 时，测试按相邻输入框定位并验证高度确实展开。
+
+原生结果保留在 `.mobile-build/send-keyboard-verified.xcresult`（发送三场景通过）和 `.mobile-build/send-keyboard-done-verified.xcresult`（对号保留草稿回归）。测试探针仍仅由显式 UI 测试配置安装，不进入正式 IPA。
+
+
+## 2026-10-10 恢复网页界面
+
+按用户要求移除原生对话、原生边栏、原生 Markdown 和界面切换；网页对话与边栏恢复到原生化之前的实现（`6dc2607` 界面基线）。原有 WKWebView 容器、附件选择、内置浏览器、检查更新、通知深链与键盘修复保留；同期隐藏辅助会话不发送完成通知修复保留。
+
+全量825项Vitest/92个文件、87项iOS Python回归、类型检查和前端构建通过。旧安装偏好和迟到原生事件不能改写网页草稿或搜索的新回归先失败、恢复后通过；运行界面与构建文件逐字核对基线，独立审查通过。
+
+iPhone 17 Pro / iOS26.5成功构建启动；既有 `testBottomBarsClearHomeIndicatorWithoutKeyboard` 和 `testRepeatedKeyboardDismissalPreservesUrlDraft` 两项通过，覆盖原网页边栏/输入、底部安全区、键盘反复收起及草稿保持。本轮未发送测试消息或创建服务器会话。真实截图、日志和结果保存在主工作区 `.mobile-build/ui-rollback-audit/`；模拟器验证不代表真机覆盖安装和数据保留已验证。
+
+
+回退版本为 `0.2.135`，客户端源码 `20f893e` 已推送main。两端固定清单、HEAD和完整GET校验版本、字节数与SHA-256一致；HTTPS OTA的清单、IPA、manifest和安装页也全部通过。实际IPA中原生对话/边栏类已不存在，签名身份、Team、application-identifier、钥匙串组与entitlements摘要均与0.2.134一致。
+
+[固定OTA安装页](https://192.168.123.79:8766/channels/codex-mobile/current/install.html)
+
+| 产物 | 版本 | 大小（字节） | SHA-256 |
+| --- | --- | --- | --- |
+| [APK](http://192.168.123.79:8765/channels/codex-mobile/latest.apk) | 0.2.135 | 4,705,315 | `84ef624e34d360d45075a2fdf2fee4100c12b172bb87000648b42266ea1c1c13` |
+| [IPA（Ad Hoc已签名）](http://192.168.123.79:8765/channels/codex-mobile/latest.ipa) | 0.2.135 | 3,763,728 | `d2d5602afbc7fc424f650d5f7063797b4de28c56b3ddb9bda08814c52e75d367` |
+
+主工作区生成Xcode工程已同步为网页实现。证据、截图、实际安装包和校验报告保留在 `.mobile-build/ui-rollback-audit/`；本次网关、测试Runner和临时构建缓存已清理，共享模拟器及固定发布锁已释放。未创建或发送测试会话；真机覆盖安装与数据保留仍待验证。
+
+
+## 2026-10-10 键盘收起同步与审批回复
+
+输入栏改为读取系统键盘约束视图上的弹簧动画参数，并沿同一时间线执行网页关键帧。桥接、resize 和后续视口变化均扣除原生已过时间；原生完整视口与安全区提供稳定终点，终帧保留到 keyboardDidHide，避免附件工具栏分段恢复导致输入栏继续下落。原有失焦、草稿保留与原生图层防闪烁继续生效。
+
+审批界面支持命令、文件及权限确认，按服务器可用决策提交；问题支持选项、其他答案、文字及保密输入。失败保留当前草稿，队列中的相同问题 ID 相互隔离；保密答案不持久化。HTTP 和 WebSocket 在请求解决后清理旧审批，防止重连快照再次展示。
+
+验证包括全量848项Vitest、87项iOS发布脚本测试、类型检查与前端/网关构建；后续键盘时间线14项回归和真实WAAPI探针负例通过。审批完整App的两项HTTP浏览器回归通过，规格与质量审查通过。原生验证与最终发布证据保存在主工作区 `.mobile-build/keyboard-approval-release/`。模拟器结果不代表真机覆盖安装与数据保留已验证。
+
+iPhone 17 Pro / iOS26.5最终四项XCTest通过：反复收起URL草稿、短/多行/长中文草稿、短/长/最大化发送、小字体发送后再次编辑。带拖尾断言的9次收起残差0–0.015625px；草稿和再次编辑检查通过。保留最终录屏、连续帧、日志和两份xcresult；本次12条测试会话已归档。
+
+源码 `7d27d6b` 已推送main，双端固定渠道发布 `0.2.136`。长期网关也已更新到0.2.136，认证健康接口返回appServerReady=true。Android和iOS固定清单、HEAD、完整GET，以及HTTPS OTA清单、IPA、manifest和安装页均核验通过。
+
+[固定OTA安装页](https://192.168.123.79:8766/channels/codex-mobile/current/install.html)
+
+| 产物 | 版本 | 大小（字节） | SHA-256 |
+| --- | --- | --- | --- |
+| [APK](http://192.168.123.79:8765/channels/codex-mobile/latest.apk) | 0.2.136 | 4,708,339 | `595db3759d649706bb7a221cb90c44a231359859190793aa3657e372db5879f4` |
+| [IPA（Ad Hoc已签名）](http://192.168.123.79:8765/channels/codex-mobile/latest.ipa) | 0.2.136 | 3,772,782 | `fa06e45d8bd4fa9e1151b2a8d50561da47fff62adba781de7295dd90865b0174` |
+
+APK证书与0.2.135一致；IPA签名身份、权限摘要与钥匙串组保持连续。最终证据保存在 `.mobile-build/keyboard-approval-release/verification/`，安装包和发布验收记录保存在同目录的 `release/0.2.136/`。已停止专用测试网关，模拟器与发布锁均在收尾释放；临时依赖检出和测试构建清理后归档worktree。

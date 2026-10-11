@@ -1,4 +1,5 @@
 import { AppServerRpcError } from "./client";
+import { isVisibleThread } from "../features/threads/thread-visibility";
 
 type ThreadRecord = Record<string, any>;
 
@@ -32,15 +33,11 @@ function threadTimestamp(thread: ThreadRecord) {
   return Number(thread.recencyAt ?? thread.updatedAt ?? thread.createdAt ?? 0);
 }
 
-function isPersistentTopLevelThread(thread: ThreadRecord) {
-  return thread.ephemeral !== true && !thread.parentThreadId;
-}
-
 function dedupeSearchRecords(records: ThreadRecord[]) {
   const unique = new Map<string, ThreadRecord>();
   for (const record of records) {
     const id = String(record.id ?? "").trim();
-    if (!id || !isPersistentTopLevelThread(record)) continue;
+    if (!id || !isVisibleThread(record)) continue;
     const current = unique.get(id);
     // 标题与命中片段取最新元数据，避免相同活动时间保留旧快照。
     if (

@@ -64,40 +64,30 @@ describe("消息复制", () => {
     expect(container.textContent).not.toContain("conversation-title");
   });
 
-  it("长按用户消息时默认选中该条消息的全部文本", () => {
-    const { container } = render(
-      <TurnCard
-        client={null}
-        turn={{
-          id: "turn-user-copy",
-          status: "completed",
-          items: [
-            {
-              id: "user",
-              type: "userMessage",
-              text: "第一段\n\n**完整消息**",
-            },
-            {
-              id: "final",
-              type: "agentMessage",
-              phase: "final_answer",
-              text: "AI 回复不应选中",
-            },
-          ],
-        }}
-      />,
-    );
+  it("长按用户消息打开编辑复制菜单并复制完整正文", async () => {
+    const writeText = mockClipboard();
+    const onEditUserMessage = vi.fn();
+    const { container } = render(<TurnCard client={null}
+      onEditUserMessage={onEditUserMessage}
+      turn={{ id: "turn-menu", status: "completed", items: [
+        { id: "user", type: "userMessage", text: `第一段\n\n**完整消息**\n\n${CONVERSATION_TITLE_REQUEST}` },
+        { id: "final", type: "agentMessage", phase: "final_answer", text: "AI 回复" },
+      ] }} />);
+    fireEvent.contextMenu(container.querySelector(".user-bubble")!);
+    fireEvent.click(screen.getByRole("menuitem", { name: "复制" }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("第一段\n\n**完整消息**"));
+    fireEvent.contextMenu(container.querySelector(".user-bubble")!);
+    fireEvent.click(screen.getByRole("menuitem", { name: "编辑" }));
+    expect(onEditUserMessage).toHaveBeenCalledWith("user");
+  });
 
-    const userMessage = container.querySelector(".user-message-text");
-    expect(userMessage).not.toBeNull();
-    fireEvent.contextMenu(userMessage!);
-
-    const selection = window.getSelection();
-    expect(selection?.rangeCount).toBe(1);
-    expect(selection?.getRangeAt(0).commonAncestorContainer).toBe(userMessage);
-    expect(selection?.toString()).toContain("第一段");
-    expect(selection?.toString()).toContain("完整消息");
-    expect(selection?.toString()).not.toContain("AI 回复不应选中");
+  it("忙碌时长按仍能复制但不能编辑", () => {
+    const { container } = render(<TurnCard client={null} userMessageActionsDisabled
+      onEditUserMessage={vi.fn()} turn={{ id: "busy", status: "completed",
+        items: [{ id: "user", type: "userMessage", text: "工作中" }] }} />);
+    fireEvent.contextMenu(container.querySelector(".user-bubble")!);
+    expect(screen.getByRole("menuitem", { name: "编辑" })).toBeDisabled();
+    expect(screen.getByRole("menuitem", { name: "复制" })).not.toBeDisabled();
   });
 
   it("只给块级代码增加复制按钮并复制代码正文", async () => {

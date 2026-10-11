@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   APP_UPDATE_EVENT,
   type AndroidAppUpdateBridge,
+  type IosAppUpdateBridge,
 } from "../../src/app-update/native-bridge";
 import { useAppUpdate } from "../../src/features/update/useAppUpdate";
 
@@ -52,6 +53,50 @@ describe("App 更新控制器", () => {
     expect(result.current.state.currentVersion).toBe("0.2.100");
     expect(result.current.supported).toBe(false);
     expect(fetchRelease).not.toHaveBeenCalled();
+  });
+
+  it("iOS 显示检查更新并通过原生桥在 Safari 打开固定 OTA 安装页", async () => {
+    const installOta = vi.fn();
+    const iosBridge: IosAppUpdateBridge = {
+      appVersion: () => "0.2.30",
+      apiUrl: "https://updates.example.com/mobile/current/latest-ios.json",
+      installUrl: "https://updates.example.com/mobile/current/install.html",
+      bundleId: "app.example.mobile", teamId: "TEAM123456",
+      applicationIdentifier: "PREFIX1234.app.example.mobile", installOta,
+    };
+    const payload = {
+      ...releasePayload, signed: true, profileExpiresAt: "2027-10-03T04:08:22Z", bundleId: iosBridge.bundleId,
+      teamId: iosBridge.teamId, applicationIdentifier: iosBridge.applicationIdentifier,
+      pageUrl: iosBridge.apiUrl, installUrl: iosBridge.installUrl,
+      downloadUrl: "https://updates.example.com/mobile/releases/0.2.31/latest.ipa",
+      manifestUrl: "https://updates.example.com/mobile/releases/0.2.31/manifest.plist",
+    };
+    const fetchRelease = vi.fn(async () => payload);
+    const { result } = renderHook(() => useAppUpdate({ bridge: null, iosBridge, fetchRelease, storage }));
+    expect(result.current.supported).toBe(true);
+    await waitFor(() => expect(result.current.state.phase).toBe("available"));
+    await act(async () => result.current.check(false));
+    expect(fetchRelease).toHaveBeenCalledTimes(1);
+    act(() => result.current.install());
+    expect(installOta).toHaveBeenCalledWith(iosBridge.installUrl);
+    expect(result.current.state.phase).toBe("available");
+    expect(result.current.sheetOpen).toBe(false);
+  });
+
+  it("iOS 拒绝错误签名身份，不会把 Android 缓存当作 IPA", async () => {
+    const iosBridge: IosAppUpdateBridge = {
+      appVersion: () => "0.2.30",
+      apiUrl: "https://updates.example.com/mobile/current/latest-ios.json",
+      installUrl: "https://updates.example.com/mobile/current/install.html",
+      bundleId: "app.example.mobile", teamId: "TEAM123456",
+      applicationIdentifier: "PREFIX1234.app.example.mobile", installOta: vi.fn(),
+    };
+    storage.setItem("codex-mobile:app-update:last-lan-release", JSON.stringify({ checkedAt: Date.now(), release: releasePayload }));
+    const fetchRelease = vi.fn(async () => ({ ...releasePayload, signed: true, teamId: "OTHER" }));
+    const { result } = renderHook(() => useAppUpdate({ bridge: null, iosBridge, fetchRelease, storage }));
+    await waitFor(() => expect(result.current.state.phase).toBe("error"));
+    expect(fetchRelease).toHaveBeenCalledTimes(1);
+    expect(iosBridge.installOta).not.toHaveBeenCalled();
   });
 
   it("Android 优先显示原生安装包版本", () => {

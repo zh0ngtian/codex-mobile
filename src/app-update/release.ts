@@ -24,6 +24,13 @@ export interface AppRelease {
   sha256: string;
   size: number;
   releaseNotes: AppReleaseNote[];
+  installUrl?: string;
+  manifestUrl?: string;
+  signed?: boolean;
+  bundleId?: string;
+  teamId?: string;
+  applicationIdentifier?: string;
+  profileExpiresAt?: string;
 }
 
 export function parseSemanticVersion(input: string): SemanticVersion | null {
@@ -59,7 +66,7 @@ function stringValue(value: unknown) {
   return typeof value === "string" ? value : "";
 }
 
-export function parseLanRelease(input: unknown): AppRelease | null {
+function parseRelease(input: unknown, apiUrl: string, packageUrl: string): AppRelease | null {
   if (!input || typeof input !== "object") return null;
   const payload = input as Record<string, unknown>;
   const versionValue = stringValue(payload.version);
@@ -69,7 +76,7 @@ export function parseLanRelease(input: unknown): AppRelease | null {
   if (stringValue(payload.tag) !== `v${version}`) return null;
   const pageUrl = stringValue(payload.pageUrl);
   const downloadUrl = stringValue(payload.downloadUrl);
-  if (pageUrl !== APP_UPDATE_API_URL || downloadUrl !== APP_UPDATE_APK_URL) {
+  if (pageUrl !== apiUrl || downloadUrl !== packageUrl) {
     return null;
   }
   const sha256 = stringValue(payload.sha256);
@@ -118,6 +125,44 @@ export function parseLanRelease(input: unknown): AppRelease | null {
   };
 }
 
+export function parseLanRelease(input: unknown): AppRelease | null {
+  return parseRelease(input, APP_UPDATE_API_URL, APP_UPDATE_APK_URL);
+}
+
+export interface IosUpdateConfiguration {
+  apiUrl: string;
+  installUrl: string;
+  bundleId: string;
+  teamId: string;
+  applicationIdentifier: string;
+}
+
+export function parseIosRelease(input: unknown, config: IosUpdateConfiguration): AppRelease | null {
+  if (!input || typeof input !== "object") return null;
+  const payload = input as Record<string, unknown>;
+  const version = stringValue(payload.version);
+  if (!parseSemanticVersion(version) || payload.signed !== true) return null;
+  if (!config.bundleId || !config.teamId || !config.applicationIdentifier ||
+      payload.bundleId !== config.bundleId || payload.teamId !== config.teamId ||
+      payload.applicationIdentifier !== config.applicationIdentifier) return null;
+  let base: string;
+  try {
+    const api = new URL(config.apiUrl);
+    if (api.protocol !== "https:" || api.username || api.password || api.search || api.hash ||
+        !api.pathname.endsWith("/current/latest-ios.json")) return null;
+    base = config.apiUrl.slice(0, -"/current/latest-ios.json".length);
+    if (config.installUrl !== `${base}/current/install.html`) return null;
+  } catch { return null; }
+  const manifestUrl = `${base}/releases/${version}/manifest.plist`;
+  if (payload.manifestUrl !== manifestUrl || payload.installUrl !== config.installUrl) return null;
+  const profileExpiresAt = stringValue(payload.profileExpiresAt);
+  if (!Number.isFinite(Date.parse(profileExpiresAt)) || Date.parse(profileExpiresAt) <= Date.now()) return null;
+  const release = parseRelease(input, config.apiUrl, `${base}/releases/${version}/latest.ipa`);
+  return release ? { ...release, signed: true, installUrl: config.installUrl, manifestUrl,
+    bundleId: config.bundleId, teamId: config.teamId, applicationIdentifier: config.applicationIdentifier,
+    profileExpiresAt } : null;
+}
+
 export function releaseNotesForUpgrade(
   release: AppRelease,
   currentVersion: string,
@@ -133,6 +178,9 @@ interface ReleaseCheckerOptions {
   storage: Pick<Storage, "getItem" | "setItem">;
   now?: () => number;
   cacheMs?: number;
+  parser?: (input: unknown) => AppRelease | null;
+  cacheKey?: string;
+  invalidReleaseMessage?: string;
 }
 
 interface CachedRelease {
@@ -145,11 +193,14 @@ export function createReleaseChecker({
   storage,
   now = Date.now,
   cacheMs = 6 * 60 * 60 * 1_000,
+  parser = parseLanRelease,
+  cacheKey = APP_UPDATE_CACHE_KEY,
+  invalidReleaseMessage = t("内网更新源没有可验证的 Android APK"),
 }: ReleaseCheckerOptions) {
   const readCache = () => {
     try {
       const cached = JSON.parse(
-        storage.getItem(APP_UPDATE_CACHE_KEY) || "null",
+        storage.getItem(cacheKey) || "null",
       ) as CachedRelease | null;
       if (
         cached &&
@@ -157,7 +208,7 @@ export function createReleaseChecker({
         now() - cached.checkedAt >= 0 &&
         now() - cached.checkedAt < cacheMs
       ) {
-        return parseLanRelease(cached.release);
+        return parser(cached.release);
       }
     } catch {
       // Invalid local data is treated as a cache miss.
@@ -171,12 +222,12 @@ export function createReleaseChecker({
         const cached = readCache();
         if (cached) return cached;
       }
-      const release = parseLanRelease(await fetchRelease());
+      const release = parser(await fetchRelease());
       if (!release) {
-        throw new Error(t("内网更新源没有可验证的 Android APK"));
+        throw new Error(invalidReleaseMessage);
       }
       storage.setItem(
-        APP_UPDATE_CACHE_KEY,
+        cacheKey,
         JSON.stringify({ checkedAt: now(), release } satisfies CachedRelease),
       );
       return release;
