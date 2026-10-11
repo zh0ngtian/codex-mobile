@@ -31,7 +31,29 @@
 
 修改 `README.md`、`mobile/README.md`、`docs/ios-ota-release.md`，说明自动云端出包与本机签名渠道的边界。
 
-- [ ] 按提交规范提交，合入并推送 main；不修改客户端源码或现役 recipe，不重新发布局域网安装包。
-- [ ] 等待本次 push 对应的 Actions，确认版本、Android/iOS 状态、Release 附件大小和 SHA-256；失败则修复并再次验证。
-- [ ] 在本计划记录验收结果，提交并推送文档；文档推送不触发构建。
+- [x] 按提交规范提交，合入并推送 main；不修改客户端源码或现役 recipe，不重新发布局域网安装包。
+- [x] 等待本次 push 对应的 Actions，确认版本、Android/iOS 状态、Release 附件大小和 SHA-256；失败则修复并再次验证。
+- [x] 在本计划记录验收结果，提交并推送文档；文档推送不触发构建。
 - [ ] 归档本任务 worktree，清理临时测试文件。
+
+
+## 验收记录（2026-10-11）
+
+- 恢复提交 `651d08c`；分页兼容修复 `e08f5ee`；最终 Android 环境与路径修复 `6ec8c3e`。已合入并推送 main。
+- TDD 已验证工作流缺失、gh 分页参数冲突、Android SDK 默认 tools 包及原生相对路径问题的失败，再修复转绿；最终构建相关测试 6 个文件、48 项全部通过，`npm run typecheck` 与 diff 检查通过。
+- [最终自动运行 38115100859](https://github.com/zh0ngtian/codex-mobile/actions/runs/38115100859) 由 main push 自动触发，版本、Android、iOS 与共同发布任务全部 success。
+- [GitHub Release v0.2.148](https://github.com/zh0ngtian/codex-mobile/releases/tag/v0.2.148) 两端版本一致。完整下载全部附件后，验证安装包字节数、SHA-256、校验文件及构建回执一致，来源提交均为 `6ec8c3ee57a10d3acf1adbe37a8529756456dfa2`。
+
+| 云端产物 | 版本 | 字节数 | SHA-256 | 签名 |
+| --- | --- | --- | --- | --- |
+| CodexMobile-v0.2.148.apk | 0.2.148 | 4714203 | c3784c8c9f9672ec7a06077fcabf5d09f7661ec98a226caafc83c0da50ee6923 | 原有 debug 构建签名 |
+| CodexMobile-v0.2.148-unsigned.ipa | 0.2.148 | 3758081 | 8231ca3adccb71d7a0c21707b21466b2843b8be0ce26eafeda200ca2e1c7216a | 未签名 |
+
+本次仅修改 CI、构建入口、测试与说明，未改变客户端源码、原生补丁或现役 recipe 的产物配置。未重新发布本机签名渠道；固定渠道保留 0.2.146，已回验两端清单、HEAD 和完整 GET：
+
+| 固定渠道 | 版本 | 字节数 | SHA-256 |
+| --- | --- | --- | --- |
+| latest.apk | 0.2.146 | 4714647 | 2c23e3733937bcf7dfea8a73f835c030e55289afbe579f85aa47bdfbf301540a |
+| latest.ipa（Ad Hoc 已签名） | 0.2.146 | 3781983 | 32585321903f8ab6e1c93b44e080dc5e4b76b0ce7b29b4406276fc85c88bf0da |
+
+[固定 OTA 安装页](https://192.168.123.79:8766/channels/codex-mobile/current/install.html)、[固定 APK](http://192.168.123.79:8765/channels/codex-mobile/latest.apk)、[固定 IPA](http://192.168.123.79:8765/channels/codex-mobile/latest.ipa)。云端 unsigned IPA 与本机已签名渠道分别交付。npm 保持手动发布。
