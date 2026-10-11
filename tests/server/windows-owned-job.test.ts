@@ -39,7 +39,7 @@ try {
   while (-not (Test-Path -LiteralPath ($Marker+'.release'))) { Start-Sleep -Milliseconds 50 }
 } finally { $job.Dispose() }
 `);
-    const host = spawn("powershell.exe", ["-NoProfile", "-File", controller, "-Source", source,
+    const host = spawn("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "RemoteSigned", "-File", controller, "-Source", source,
       "-Node", process.execPath, "-Worker", worker, "-Marker", marker], { windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
     let stderr = "";
     host.stderr!.on("data", (chunk) => { stderr += chunk; });

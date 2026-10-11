@@ -10,13 +10,14 @@ export class SharedEndpoint {
     this.server = createServer(async (req, res) => {
       if (await handleHttp(req, res)) return;
       if (req.url === '/readyz' || req.url === '/healthz') {
+        if (req.headers.origin !== undefined) { res.writeHead(403); res.end(); return; }
         let ready = false;
         try { ready = this.accepting && (await fetch(new URL('/readyz', upstreamUrl.replace(/^ws:/, 'http:')), { signal: AbortSignal.timeout(2000) })).ok; } catch { }
         res.writeHead(ready ? 200 : 503); res.end(ready ? 'ready' : 'unavailable');
       } else { res.writeHead(404); res.end(); }
     });
-    this.wss = new WebSocketServer({ server: this.server, maxPayload: 4 * 1024 * 1024 });
-    this.wss.on('connection', (client) => this.connect(client));
+    this.wss = new WebSocketServer({ server: this.server, maxPayload: 100 * 1024 * 1024 });
+    this.wss.on('connection', (client, request) => this.connect(client, request));
   }
   get url() { return `ws://127.0.0.1:${this.server.address().port}`; }
   get pendingCount() { return [...this.connections].reduce((n, c) => n + c.pending.size + c.serverRequests.size, 0); }
@@ -28,16 +29,18 @@ export class SharedEndpoint {
     });
   }
   settle() { if (!this.pendingCount) for (const resolve of this.waiters) resolve(); }
-  connect(client) {
+  connect(client, request) {
     if (!this.accepting) { client.close(1013, 'service restarting'); return; }
-    const upstream = new WebSocket(this.upstreamUrl, { maxPayload: 4 * 1024 * 1024, handshakeTimeout: 5000 });
+    const headers = {};
+    for (const name of ['origin', 'authorization']) if (request?.headers[name]) headers[name] = request.headers[name];
+    const upstream = new WebSocket(this.upstreamUrl, { headers, maxPayload: 100 * 1024 * 1024, handshakeTimeout: 5000 });
     const connection = { client, upstream, pending: new Map(), serverRequests: new Set(), processes: new Map(), queue: [] };
     this.connections.add(connection);
     const fail = () => { client.close(1011, 'upstream unavailable'); upstream.terminate(); };
     client.on('error', () => {}); upstream.on('error', fail);
     client.on('close', () => { upstream.terminate(); this.connections.delete(connection); this.settle(); });
     upstream.on('close', () => client.close(1012, 'upstream disconnected'));
-    upstream.on('open', () => { for (const bytes of connection.queue) upstream.send(bytes); connection.queue = []; });
+    upstream.on('open', () => { for (const bytes of connection.queue) upstream.send(bytes, { binary: false }); connection.queue = []; });
     client.on('message', (bytes, binary) => {
       let value;
       try { if (binary) throw new Error(); value = JSON.parse(bytes.toString()); if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(); }
@@ -60,7 +63,7 @@ export class SharedEndpoint {
         // 保守识别可能发起工作的方法，读请求不会阻止持续空闲计时。
         if (!/(?:\/read|\/list|\/get)$/.test(value.method) && value.method !== 'initialize' && value.method !== 'initialized') this.onActivity();
       } else if (Object.hasOwn(value, 'id')) { connection.serverRequests.delete(JSON.stringify(value.id)); this.settle(); }
-      if (upstream.readyState === WebSocket.OPEN) upstream.send(bytes);
+      if (upstream.readyState === WebSocket.OPEN) upstream.send(bytes, { binary: false });
       else if (upstream.readyState === WebSocket.CONNECTING && connection.queue.length < 32) connection.queue.push(bytes);
       else fail();
     });
@@ -81,7 +84,7 @@ export class SharedEndpoint {
         for (const [id, marker] of connection.processes) if (handle && marker.handle === handle) { this.runningProcesses.delete(marker); connection.processes.delete(id); }
       }
       if (value.method === 'thread/status/changed' && value.params?.status?.type !== 'idle') this.onActivity();
-      if (client.readyState === WebSocket.OPEN) client.send(bytes);
+      if (client.readyState === WebSocket.OPEN) client.send(bytes, { binary: false });
     });
   }
   async drain(timeoutMs = 10_000) {

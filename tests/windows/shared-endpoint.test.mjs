@@ -84,3 +84,39 @@ test('上游发送无效消息时关闭该连接，服务不会因空消息崩�
   try { assert.equal((await closed)[0], 1011); }
   finally { await endpoint.close(); for (const c of upstream.clients) c.terminate(); await new Promise((r) => upstream.close(r)); }
 });
+
+test('代理保留 WebSocket Origin，不绕过上游的来源校验', async () => {
+  const upstream = new WebSocketServer({ host: '127.0.0.1', port: 0 }); await once(upstream, 'listening');
+  upstream.on('connection', (ws, req) => ws.send(JSON.stringify({ origin: req.headers.origin ?? null })));
+  const endpoint = new SharedEndpoint({ port: 0, upstreamUrl: `ws://127.0.0.1:${upstream.address().port}` }); await endpoint.listen();
+  const ws = new WebSocket(endpoint.url, { origin: 'http://example.invalid' }); const received = message(ws);
+  try {
+    assert.equal((await received).origin, 'http://example.invalid');
+    assert.equal((await fetch(endpoint.url.replace('ws:', 'http:') + '/readyz', { headers: { origin: 'http://example.invalid' } })).status, 403);
+  } finally { ws.terminate(); await endpoint.close(); for (const c of upstream.clients) c.terminate(); await new Promise((r) => upstream.close(r)); }
+});
+
+test('双向转发保留 JSON 文本帧类型，兼容真实 app-server 和桌面客户端', async () => {
+  const upstream = new WebSocketServer({ host: '127.0.0.1', port: 0 }); await once(upstream, 'listening');
+  upstream.on('connection', (ws) => ws.on('message', (bytes, binary) => { const v = JSON.parse(bytes.toString()); ws.send(JSON.stringify({ id: v.id, result: { receivedBinary: binary } })); }));
+  const endpoint = new SharedEndpoint({ port: 0, upstreamUrl: `ws://127.0.0.1:${upstream.address().port}` }); await endpoint.listen();
+  const ws = await open(endpoint.url);
+  try {
+    const response = once(ws, 'message'); ws.send(JSON.stringify({ id: 1, method: 'initialize' }));
+    const [bytes, binary] = await response;
+    assert.equal(JSON.parse(bytes.toString()).result.receivedBinary, false);
+    assert.equal(binary, false);
+  } finally { ws.terminate(); await endpoint.close(); for (const c of upstream.clients) c.terminate(); await new Promise((r) => upstream.close(r)); }
+});
+
+test('转发超过 4 MiB 的附件请求，不缩小现有 WebSocket 的消息容量', async () => {
+  const upstream = new WebSocketServer({ host: '127.0.0.1', port: 0 }); await once(upstream, 'listening');
+  upstream.on('connection', (ws) => ws.on('message', (bytes) => { const v = JSON.parse(bytes.toString()); ws.send(JSON.stringify({ id: v.id, result: { size: v.params.text.length } })); }));
+  const endpoint = new SharedEndpoint({ port: 0, upstreamUrl: `ws://127.0.0.1:${upstream.address().port}` }); await endpoint.listen();
+  const ws = await open(endpoint.url), size = 5 * 1024 * 1024;
+  try {
+    const received = Promise.race([message(ws).then((v) => v.result.size), once(ws, 'close').then(() => 0)]);
+    ws.send(JSON.stringify({ id: 1, method: 'turn/start', params: { text: 'x'.repeat(size) } }));
+    assert.equal(await received, size);
+  } finally { ws.terminate(); await endpoint.close(); for (const c of upstream.clients) c.terminate(); await new Promise((r) => upstream.close(r)); }
+});
