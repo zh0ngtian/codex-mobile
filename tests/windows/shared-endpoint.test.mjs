@@ -76,6 +76,31 @@ test('独立进程仍在运行时保持忙碌，收到退出通知后才释放',
   } finally { ws.terminate(); await endpoint.close(); for (const c of upstream.clients) c.terminate(); await new Promise((r) => upstream.close(r)); }
 });
 
+test('所属连接关闭后回收已终止的连接级进程标记，后续可恢复空闲', async () => {
+  const upstream = new WebSocketServer({ host: '127.0.0.1', port: 0 }); await once(upstream, 'listening');
+  upstream.on('connection', (ws) => ws.on('message', (bytes) => { const v = JSON.parse(bytes.toString()); ws.send(JSON.stringify({ id: v.id, result: {} })); }));
+  const endpoint = new SharedEndpoint({ port: 0, upstreamUrl: `ws://127.0.0.1:${upstream.address().port}` }); await endpoint.listen();
+  const ws = await open(endpoint.url);
+  try {
+    const accepted = message(ws); ws.send(JSON.stringify({ id: 1, method: 'process/spawn', params: { processHandle: 'owned' } })); await accepted;
+    assert.equal(endpoint.runningWorkCount, 1);
+    ws.close(); await once(ws, 'close'); await new Promise((r) => setTimeout(r, 50));
+    assert.equal(endpoint.runningWorkCount, 0); await endpoint.drain();
+  } finally { ws.terminate(); await endpoint.close(); for (const c of upstream.clients) c.terminate(); await new Promise((r) => upstream.close(r)); }
+});
+
+test('服务端取消审批请求后无需客户端回复也能完成排空', async () => {
+  const upstream = new WebSocketServer({ host: '127.0.0.1', port: 0 }); await once(upstream, 'listening'); let peer;
+  upstream.on('connection', (ws) => { peer = ws; ws.send(JSON.stringify({ id: 42, method: 'item/tool/requestUserInput', params: { threadId: 'a' } })); });
+  const endpoint = new SharedEndpoint({ port: 0, upstreamUrl: `ws://127.0.0.1:${upstream.address().port}` }); await endpoint.listen();
+  const ws = new WebSocket(endpoint.url); const approval = message(ws); await once(ws, 'open');
+  try {
+    await approval; assert.equal(endpoint.pendingCount, 1);
+    const resolved = message(ws); peer.send(JSON.stringify({ method: 'serverRequest/resolved', params: { requestId: 42 } })); await resolved;
+    assert.equal(endpoint.pendingCount, 0); await endpoint.drain(100);
+  } finally { ws.terminate(); await endpoint.close(); for (const c of upstream.clients) c.terminate(); await new Promise((r) => upstream.close(r)); }
+});
+
 test('上游发送无效消息时关闭该连接，服务不会因空消息崩溃', async () => {
   const upstream = new WebSocketServer({ host: '127.0.0.1', port: 0 }); await once(upstream, 'listening');
   upstream.on('connection', (ws) => ws.send('null'));

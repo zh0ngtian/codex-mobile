@@ -8,6 +8,7 @@ import { SharedEndpoint } from './shared-endpoint.mjs';
 import { ServiceRuntime } from './runtime.mjs';
 import { inspectVersion, snapshotVersion, bundleSignature, retainVersions } from './versions.mjs';
 import { createControlHandler } from './control.mjs';
+import { SidecarSupervisor } from './components.mjs';
 
 const execute = promisify(execFile), sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const windowsRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -23,7 +24,7 @@ const ssh = join(process.env.WINDIR, 'System32', 'OpenSSH', 'ssh.exe');
 const psArgs = (file, args = []) => ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'RemoteSigned', '-File', join(windowsRoot, file), ...args];
 const cleanEnv = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith('CODEX_MOBILE_') && !['CODEX_APP_SERVER_WS_URL', 'CODEX_APP_SERVER_FORCE_CLI'].includes(key)));
 const publicUrl = `ws://127.0.0.1:${config.ServerPort}`, privateUrl = `ws://127.0.0.1:${config.PrivateServerPort}`;
-let gateway, tunnel, runtime, handler, stopping = false, cache;
+let sides, runtime, handler, stopping = false, cache;
 async function launch(executable, args, env = cleanEnv) {
   const child = spawn(executable, args, { cwd: config.RepositoryPath, env, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
   // 下游输出可能包含用户内容，默认不复制到 supervisor 日志。
@@ -61,14 +62,14 @@ async function log(event, value) {
 }
 async function saveStatus() {
   const value = { ...runtime.status(), serviceProcessPid: process.pid, executable: runtime.current?.executable ?? null,
-    gatewayRunning: !!gateway?.alive(), tunnelRunning: !!tunnel?.alive(), autoUpdate: true };
+    ...sides?.status(), autoUpdate: true };
   const temp = join(root, 'status.tmp'); await writeFile(temp, JSON.stringify(value, null, 2)); await rename(temp, join(root, 'status.json'));
   return value;
 }
 async function shutdown(exitCode = 0) {
   if (stopping) return; stopping = true;
   try { await runtime?.stop(); } catch { }
-  await tunnel?.stop(); await gateway?.stop();
+  await sides?.stop();
   if (runtime) await saveStatus().catch(() => {});
   process.exit(exitCode);
 }
@@ -80,13 +81,16 @@ runtime = new ServiceRuntime({ endpoint, upstreamUrl: privateUrl, resolveVersion
     log(event, value).catch(() => {});
     if (event === 'updated') retainVersions(join(root, 'versions'), [runtime.current?.fingerprint, runtime.previous?.fingerprint]).catch(() => log('versions-cleanup-deferred', {}).catch(() => {}));
   } });
-handler = createControlHandler({ token, runtime, requestStop: () => shutdown(0) });
+handler = createControlHandler({ token, runtime: { status: () => ({ ...runtime.status(), ...sides?.status() }),
+  restart: (options) => runtime.restart(options), prepareStop: (options) => runtime.prepareStop(options) }, requestStop: () => shutdown(0) });
 process.on('SIGTERM', () => shutdown(0)); process.on('SIGINT', () => shutdown(0));
 try {
   await runtime.start();
-  gateway = await launch(process.execPath, [join(config.RepositoryPath, 'npm-dist', 'server', 'index.js')], {
+  sides = new SidecarSupervisor({ onEvent: (event) => log(event, {}).catch(() => {}), launchGateway: async () => {
+  const gateway = await launch(process.execPath, [join(config.RepositoryPath, 'npm-dist', 'server', 'index.js')], {
     ...cleanEnv, NODE_ENV: 'production', HOST: '127.0.0.1', PORT: String(config.GatewayPort), CODEX_MOBILE_TOKEN: gatewayToken,
     CODEX_APP_SERVER_MODE: 'external', CODEX_APP_SERVER_URL: publicUrl, CODEX_MOBILE_HOST_NAME: 'Windows Codex', CODEX_MOBILE_SERVE_STATIC: 'true',
+    CODEX_MOBILE_RUNTIME_FILE: config.RuntimeFile ?? join(root, 'gateway-runtime.json'),
   });
   const deadline = Date.now() + 30_000;
   let ready = false;
@@ -94,23 +98,23 @@ try {
     try { const r = await fetch(`http://127.0.0.1:${config.GatewayPort}/api/host`, { headers: { cookie: `codex_mobile_token=${encodeURIComponent(gatewayToken)}` }, signal: AbortSignal.timeout(2000) }); if (r.ok) { ready = true; break; } } catch { }
     await sleep(150);
   }
-  if (!ready) throw new Error('网关未就绪');
-  let nextVersionCheck = Date.now() + 60_000, nextTunnelAttempt = 0, waitingIdle = false;
+  if (!ready) { await gateway.stop(); throw new Error('网关未就绪'); }
+  return gateway;
+  }, launchTunnel: () => launch(ssh, ['-N', '-T', '-o', 'BatchMode=yes', '-o', 'IdentitiesOnly=yes', '-o', 'StrictHostKeyChecking=yes',
+    '-o', 'ExitOnForwardFailure=yes', '-o', 'ServerAliveInterval=15', '-o', 'ServerAliveCountMax=3', '-o', 'ConnectTimeout=10',
+    '-i', config.IdentityFile, '-R', `127.0.0.1:${config.RemotePort}:127.0.0.1:${config.GatewayPort}`, config.SshTarget]) });
+  await sides.tick();
+  let nextVersionCheck = Date.now() + 60_000, waitingIdle = false;
   while (!stopping) {
-    if (!gateway.alive() || (!runtime.operation && !runtime.server?.alive())) throw new Error('后台子进程异常退出');
-    if ((!tunnel || !tunnel.alive()) && Date.now() >= nextTunnelAttempt) {
-      tunnel = await launch(ssh, ['-N', '-T', '-o', 'BatchMode=yes', '-o', 'IdentitiesOnly=yes', '-o', 'StrictHostKeyChecking=yes',
-        '-o', 'ExitOnForwardFailure=yes', '-o', 'ServerAliveInterval=15', '-o', 'ServerAliveCountMax=3', '-o', 'ConnectTimeout=10',
-        '-i', config.IdentityFile, '-R', `127.0.0.1:${config.RemotePort}:127.0.0.1:${config.GatewayPort}`, config.SshTarget]);
-      nextTunnelAttempt = Date.now() + 5000;
-    }
+    if (!runtime.operation && !runtime.server?.alive()) throw new Error('app-server 已退出');
+    await sides.tick();
     const refresh = Date.now() >= nextVersionCheck;
     if (refresh || waitingIdle) {
       await runtime.checkUpdate({ refresh });
       waitingIdle = ['waiting-idle', 'rollback', 'update-deferred'].includes(runtime.updateState);
       if (refresh) nextVersionCheck = Date.now() + 60_000;
     }
-    await saveStatus(); await sleep(waitingIdle ? 1000 : 2000);
+    await saveStatus().catch(() => log('status-write-deferred', {}).catch(() => {})); await sleep(waitingIdle ? 1000 : 2000);
   }
 } catch {
   await log('service-failed', { updateState: runtime.updateState }).catch(() => {});

@@ -38,8 +38,13 @@ export class SharedEndpoint {
     this.connections.add(connection);
     const fail = () => { client.close(1011, 'upstream unavailable'); upstream.terminate(); };
     client.on('error', () => {}); upstream.on('error', fail);
-    client.on('close', () => { upstream.terminate(); this.connections.delete(connection); this.settle(); });
-    upstream.on('close', () => client.close(1012, 'upstream disconnected'));
+    client.on('close', () => { this.onActivity(); upstream.close(); });
+    upstream.on('close', () => {
+      // process/spawn 归该上游连接所有，服务端在连接结束时终止它们。
+      for (const marker of connection.processes.values()) this.runningProcesses.delete(marker);
+      this.connections.delete(connection); this.onActivity(); this.settle();
+      client.close(1012, 'upstream disconnected');
+    });
     upstream.on('open', () => { for (const bytes of connection.queue) upstream.send(bytes, { binary: false }); connection.queue = []; });
     client.on('message', (bytes, binary) => {
       let value;
@@ -79,6 +84,7 @@ export class SharedEndpoint {
         connection.pending.delete(id); this.settle();
       }
       if (value.method && Object.hasOwn(value, 'id')) connection.serverRequests.add(JSON.stringify(value.id));
+      if (value.method === 'serverRequest/resolved') { connection.serverRequests.delete(JSON.stringify(value.params?.requestId)); this.settle(); }
       if (value.method === 'process/exited') {
         const handle = value.params?.processHandle ?? value.params?.processId;
         for (const [id, marker] of connection.processes) if (handle && marker.handle === handle) { this.runningProcesses.delete(marker); connection.processes.delete(id); }

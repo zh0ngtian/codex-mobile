@@ -14,7 +14,8 @@ export class ServiceRuntime {
   status() {
     return { updateState: this.updateState, currentVersion: this.current?.version ?? null, targetVersion: this.target?.version ?? null,
       currentFingerprint: this.current?.fingerprint ?? null, targetFingerprint: this.target?.fingerprint ?? null,
-      pid: this.server?.pid ?? null, ready: !!this.server?.alive() && this.monitor?.socket.readyState === 1 && this.endpoint.accepting };
+      pid: this.server?.pid ?? null, monitorConnected: this.monitor?.socket.readyState === 1,
+      ready: !!this.server?.alive() && this.endpoint.accepting };
   }
   async lock(fn) {
     if (this.operation || this.stopping) return { changed: false, reason: 'operation-in-progress' };
@@ -65,12 +66,25 @@ export class ServiceRuntime {
     }
   }
   async idle() {
+    try { await this.ensureMonitor(); } catch { return { idle: false, reason: 'monitor-unavailable' }; }
     if (!this.monitor || this.endpoint.runningWorkCount > 0) return { idle: false, reason: 'process-active-or-unavailable' };
     return readIdleState(this.monitor.request.bind(this.monitor));
+  }
+  async ensureMonitor() {
+    if (this.monitor?.socket.readyState === 1) return;
+    if (!this.server?.alive() || this.stopping) throw new Error('app-server 不可用');
+    if (this.connecting) return this.connecting;
+    this.policy.invalidate(); this.monitor?.close(); this.monitor = null;
+    this.connecting = RpcClient.connect(this.upstreamUrl).then((monitor) => {
+      if (this.stopping) { monitor.close(); throw new Error('服务停止中'); }
+      this.monitor = monitor;
+    });
+    try { await this.connecting; } finally { this.connecting = null; }
   }
   async checkUpdate({ refresh = true } = {}) {
     return this.lock(async () => {
       try {
+        await this.ensureMonitor();
         const candidate = refresh || !this.target ? await this.resolveVersion() : this.target; this.target = candidate;
         if (candidate.fingerprint === this.current?.fingerprint) { this.updateState = 'aligned'; this.policy.invalidate(); return { changed: false, reason: 'aligned' }; }
         const idle = await this.idle();

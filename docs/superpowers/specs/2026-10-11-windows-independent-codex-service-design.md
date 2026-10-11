@@ -1,4 +1,4 @@
-# Windows Codex 界面与共享服务分离设计（待确认）
+# Windows Codex 界面与共享服务分离设计（用户已确认）
 
 ## 目标
 

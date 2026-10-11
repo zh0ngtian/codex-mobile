@@ -32,7 +32,7 @@ export class RpcClient {
     return new Promise((resolve, reject) => {
       if (this.socket.readyState !== WebSocket.OPEN) { reject(new Error('上游未连接')); return; }
       const id = this.nextId++;
-      const timer = setTimeout(() => { this.pending.delete(id); reject(new Error('上游 RPC 查询超时')); }, timeoutMs);
+      const timer = setTimeout(() => { this.pending.delete(id); reject(new Error('上游 RPC 查询超时')); this.socket.terminate(); }, timeoutMs);
       this.pending.set(id, { resolve, reject, timer });
       this.socket.send(JSON.stringify({ id, method, params }), (error) => { if (error) { clearTimeout(timer); this.pending.delete(id); reject(new Error('上游 RPC 发送失败')); } });
     });

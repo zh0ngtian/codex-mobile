@@ -29,7 +29,7 @@ function New-ServiceShortcut([string]$Path,[string]$ShortcutAction,[string]$Desc
     $style = if ($Visible) { 'Normal' } else { 'Hidden' }
     $keepOpen = if ($Visible) { '-NoExit ' } else { '' }
     $link.TargetPath=$powershell
-    $link.Arguments="-NoProfile $keepOpen-ExecutionPolicy RemoteSigned -WindowStyle $style -File `"$(Join-Path $ServiceRoot 'manage-service.ps1')`" -Action $ShortcutAction"
+    $link.Arguments="-NoProfile $keepOpen-ExecutionPolicy RemoteSigned -WindowStyle $style -File `"$(Join-Path $ServiceRoot 'manage-service.ps1')`" -ServiceRoot `"$ServiceRoot`" -Action $ShortcutAction"
     $link.WorkingDirectory=$ServiceRoot; $link.Description=$Description
     $link.Save()
 }
@@ -80,7 +80,7 @@ switch ($Action) {
     Save-Json $configPath @{ RepositoryPath=$shared.RepositoryPath; ServerPort=[int]$shared.ServerPort; PrivateServerPort=18768; GatewayPort=[int]$shared.GatewayPort;
         RemotePort=[int]$shared.RemotePort; ExternalUrl=$shared.ExternalUrl; IdentityFile=$shared.IdentityFile; TokenFile=$shared.TokenFile; SshTarget=$shared.SshTarget; CodexHome=$codexStateDirectory }
     $principal=New-ScheduledTaskPrincipal -UserId ([Security.Principal.WindowsIdentity]::GetCurrent().Name) -LogonType Interactive -RunLevel Limited
-    $arguments="-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy RemoteSigned -File `"$(Join-Path $ServiceRoot 'start-independent-service.ps1')`""
+    $arguments="-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy RemoteSigned -File `"$(Join-Path $ServiceRoot 'start-independent-service.ps1')`" -ConfigPath `"$configPath`""
     $taskAction=New-ScheduledTaskAction -Execute $powershell -Argument $arguments -WorkingDirectory $ServiceRoot
     $trigger=New-ScheduledTaskTrigger -AtLogOn -User ([Security.Principal.WindowsIdentity]::GetCurrent().Name)
     $settings=New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew -ExecutionTimeLimit ([TimeSpan]::Zero) -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)

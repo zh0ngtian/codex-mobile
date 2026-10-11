@@ -11,7 +11,7 @@ try {
     if (-not $hasMutex) { throw '独立后台服务已经运行' }
     # 首次迁移时不终止普通桌面的 stdio app-server；等旧实例退出后才接管空闲端口。
     while ($true) {
-        $servers = @(Get-CimInstance Win32_Process -Filter "Name = 'codex.exe'" | Where-Object { $_.CommandLine -match '(?:^|\s)app-server(?:\s|$)' })
+        $servers = @(Get-CimInstance Win32_Process -Filter "Name = 'codex.exe'" | Where-Object { $_.CommandLine -match '(?:^|\s)"?app-server"?(?:\s|$)' })
         $ports = [Net.NetworkInformation.IPGlobalProperties]::GetIPGlobalProperties().GetActiveTcpListeners()
         $occupied = @($ports | Where-Object { $_.Port -in @([int]$config.ServerPort,[int]$config.PrivateServerPort,[int]$config.GatewayPort) })
         if ($servers.Count -eq 0 -and $occupied.Count -eq 0) { break }
