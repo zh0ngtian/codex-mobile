@@ -158,7 +158,7 @@ describe("悬浮状态布局", () => {
     expect(collapsedSpacingRule).toContain("margin-top: 17px");
   });
 
-  it("待处理的追加消息悬浮在输入区上方并保持单行省略", () => {
+  it("待处理的追加消息参与输入区布局并保持单行省略", () => {
     const stackRule =
       styles.match(
         /(?:^|\n)\.composer-follow-up-stack\s*\{([^}]*)\}/,
@@ -168,8 +168,8 @@ describe("悬浮状态布局", () => {
         /(?:^|\n)\.pending-steer-message\s*\{([^}]*)\}/,
       )?.[1] ?? "";
 
-    expect(stackRule).toContain("position: absolute");
-    expect(stackRule).toContain("bottom: calc(100% + 3px)");
+    expect(stackRule).toContain("position: relative");
+    expect(stackRule).toContain("margin: 0 0 8px auto");
     expect(rule).toContain("overflow: hidden");
     expect(rule).toContain("text-overflow: ellipsis");
     expect(rule).toContain("white-space: nowrap");
@@ -334,7 +334,7 @@ describe("悬浮状态布局", () => {
     expect(searchBoxRule).toContain("background: #f4f4f4");
     expect(searchInputRule).toContain("background: #f4f4f4");
     expect(timelineRule).toContain(
-      "padding: 22px 0 calc(105px + var(--input-bar-bottom-offset))",
+      "padding: 22px 0 calc(max(105px, var(--composer-height, 105px)) + var(--input-bar-bottom-offset))",
     );
     expect(composerRule).toContain("bottom: var(--input-bar-bottom-offset)");
     expect(composerRule).toContain("margin: 0");

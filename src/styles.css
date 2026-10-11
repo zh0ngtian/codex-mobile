@@ -220,7 +220,7 @@ button, a, summary, [role="button"] { -webkit-tap-highlight-color: transparent; 
 .conversation-scroll { min-width: 0; min-height: 0; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
 .conversation-scroll::-webkit-scrollbar { display: none; }
 .conversation-scroll-content { min-height: 100%; }
-.timeline { min-width: 0; max-width: 100%; padding: 22px 0 calc(105px + var(--input-bar-bottom-offset)); }
+.timeline { min-width: 0; max-width: 100%; padding: 22px 0 calc(max(105px, var(--composer-height, 105px)) + var(--input-bar-bottom-offset)); }
 .older-turns-control, .older-turns-status { width: fit-content; min-height: 38px; margin: 0 auto 10px; border: 0; background: transparent; color: #777; display: flex; align-items: center; gap: 8px; padding: 6px 12px; font-size: 0.75rem; }
 .older-turns-control.error { color: #a44a42; }
 .older-turns-status .action-spinner { width: 14px; height: 14px; }
@@ -427,7 +427,7 @@ button, a, summary, [role="button"] { -webkit-tap-highlight-color: transparent; 
 .composer-wrap { position: fixed; left: 50%; bottom: var(--input-bar-bottom-offset); transform: translateX(-50%); z-index: 4; width: min(100%, 720px); margin: 0; padding: 8px 10px 0; background: linear-gradient(transparent, #fff 17%, #fff); }
 .composer-wrap-maximized { inset: auto auto var(--input-bar-bottom-offset) 50%; z-index: 30; height: min(52dvh, 520px); padding: 10px 4px max(10px, env(safe-area-inset-bottom), var(--browser-edge-bottom)); border: 1px solid rgba(0,0,0,.06); border-bottom: 0; border-radius: 24px 24px 0 0; background: #fff; box-shadow: 0 -16px 44px rgba(0,0,0,.12); display: flex; flex-direction: column; overflow: hidden; }
 .composer-wrap-maximized > .pending-steer-message { position: static; max-width: none; margin: 0 0 8px; }
-.composer-wrap-maximized .composer-follow-up-stack { position: static; width: auto; max-height: 132px; margin: 0 0 8px; }
+.composer-wrap-maximized .composer-follow-up-stack { position: static; flex: 0 0 auto; width: auto; max-height: 132px; margin: 0 0 8px; }
 .composer-wrap-maximized .draft-images, .composer-wrap-maximized .draft-files { flex: 0 0 auto; max-height: 132px; }
 .readonly-thread-banner { min-height: 44px; margin: 0 8px 7px; border-radius: 18px; background: rgba(239,239,239,.97); color: #555; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 7px 6px 14px; box-shadow: 0 5px 18px rgba(0,0,0,.05); font-size: 0.75rem; line-height: 1.35; }
 .readonly-thread-banner span { min-width: 0; }
@@ -446,7 +446,7 @@ button, a, summary, [role="button"] { -webkit-tap-highlight-color: transparent; 
 .realtime-pulse { width: 10px; height: 10px; flex: 0 0 auto; border-radius: 50%; background: #2388f5; box-shadow: 0 0 0 0 rgba(35,136,245,.28); animation: realtime-pulse 1.6s ease-out infinite; }
 @keyframes realtime-pulse { 55%,100% { box-shadow: 0 0 0 8px transparent; } }
 .realtime-error { display: block; width: calc(100% - 16px); margin: 0 8px 8px; border: 0; border-radius: 16px; background: #f5eeee; padding: 9px 12px; color: #8b2525; text-align: left; font-size: 0.8125rem; }
-.composer-follow-up-stack { position: absolute; right: 10px; bottom: calc(100% + 3px); width: min(calc(100% - 20px), 430px); max-height: 176px; overflow-y: auto; display: grid; gap: 6px; scrollbar-width: none; }
+.composer-follow-up-stack { position: relative; width: min(100%, 430px); margin: 0 0 8px auto; max-height: 176px; overflow-y: auto; display: grid; gap: 6px; scrollbar-width: none; }
 .composer-follow-up-stack::-webkit-scrollbar { display: none; }
 .pending-steer-message { min-width: 0; overflow: hidden; border-radius: 16px; background: rgba(239,239,239,.96); padding: 8px 13px; color: #555; box-shadow: 0 4px 16px rgba(0,0,0,.06); text-overflow: ellipsis; white-space: nowrap; font-size: 0.8125rem; line-height: 1.35; pointer-events: none; animation: pending-steer-in .16s ease-out; }
 @keyframes pending-steer-in { from { opacity: 0; transform: translateY(4px); } }
