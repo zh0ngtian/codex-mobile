@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 test("历史编辑聚焦、页面无横向滚动、取消后侧栏恢复", async ({ page }, testInfo) => {
-  const thread = { id: "history-focus", name: "历史编辑焦点", cwd: "/tmp/project", status: { type: "idle" }, turns: [{
+  const thread = { id: "history-focus", name: "历史编辑焦点", cwd: "/tmp/project", status: { type: "idle" }, turns: [{ id: "previous-turn", status: "completed", items: [{ id: "previous-answer", type: "agentMessage", phase: "final_answer", text: Array.from({ length: 12 }, (_, i) => `前面的回答 ${i}`).join("\n\n") }] }, {
     id: "old-turn", status: "completed", items: [
       { id: "old-user", type: "userMessage", text: "历史原文" },
       { id: "old-answer", type: "agentMessage", phase: "final_answer", text: Array.from({ length: 60 }, (_, i) => `旧回复段落 ${i}`).join("\n\n") },
@@ -39,6 +39,28 @@ test("历史编辑聚焦、页面无横向滚动、取消后侧栏恢复", async
   const editor = page.getByRole("textbox", { name: "编辑历史消息内容" });
   expect(await page.evaluate(() => (window as any).__historyEditFocusAtClickEnd)).toBe("编辑历史消息内容");
   await expect(editor).toBeFocused();
+  // 模拟键盘弹出使布局视口变矮；固定 composer 仍占据下方区域。
+  await page.setViewportSize({ width: 393, height: 420 });
+  await expect.poll(async () => {
+    const input = (await editor.boundingBox())!;
+    const composer = (await page.locator(".composer-wrap").boundingBox())!;
+    const scroll = (await page.locator(".conversation-scroll").boundingBox())!;
+    return input.y >= scroll.y && input.y + input.height <= composer.y - 8;
+  }).toBe(true);
+  await expect(editor).toBeFocused();
+  // 有的 WebView 只缩小 visualViewport，布局视口仍保持原高度。
+  await page.evaluate(() => {
+    Object.defineProperty(window.visualViewport!, "height", { configurable: true, value: 240 });
+    window.visualViewport!.dispatchEvent(new Event("resize"));
+  });
+  await expect.poll(async () => {
+    const input = (await editor.boundingBox())!;
+    return input.y + input.height <= 232;
+  }).toBe(true);
+  await page.evaluate(() => {
+    delete (window.visualViewport as unknown as { height?: number }).height;
+    window.visualViewport!.dispatchEvent(new Event("resize"));
+  });
   await page.keyboard.insertText("追加");
   await expect(editor).toHaveValue("历史原文追加");
   for (const width of [280, 320, 393]) {

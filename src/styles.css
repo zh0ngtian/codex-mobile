@@ -247,7 +247,7 @@ button, a, summary, [role="button"] { -webkit-tap-highlight-color: transparent; 
 .user-message:has(> .user-bubble-editing) { width: min(76vw, 520px); max-width: 100%; grid-template-columns: minmax(0, 1fr); }
 .user-message > .user-bubble-editing { width: 100%; }
 .history-message-editor { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 9px; }
-.history-message-editor textarea { width: 100%; min-width: 0; min-height: 96px; max-height: 42dvh; resize: vertical; border: 1px solid #d3d3d3; border-radius: 16px; outline: none; background: #fff; padding: 11px 12px; color: #111; font: inherit; font-size: 1rem; line-height: 1.5; }
+.history-message-editor textarea { width: 100%; min-width: 0; min-height: 96px; max-height: min(42dvh, var(--history-editor-visible-height, 42dvh)); resize: vertical; border: 1px solid #d3d3d3; border-radius: 16px; outline: none; background: #fff; padding: 11px 12px; color: #111; font: inherit; font-size: 1rem; line-height: 1.5; }
 .history-message-editor textarea:focus { border-color: #888; box-shadow: 0 0 0 3px rgba(0,0,0,.06); }
 .history-message-editor > small { color: #666; font-size: 0.6875rem; }
 .history-message-editor-actions, .history-edit-inline-confirmation > div { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }

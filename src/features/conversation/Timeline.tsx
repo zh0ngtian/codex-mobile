@@ -179,7 +179,7 @@ function UserBubble({
   const [confirming, setConfirming] = useState(false);
   const focusHistoryEditor = useCallback((input: HTMLTextAreaElement | null) => {
     if (!input) return;
-    input.focus();
+    input.focus({ preventScroll: true });
     input.setSelectionRange(input.value.length, input.value.length);
   }, []);
   useEffect(() => setConfirming(false), [inlineEdit?.hasLaterTurns]);

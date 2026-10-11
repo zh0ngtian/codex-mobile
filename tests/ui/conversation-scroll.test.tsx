@@ -8,9 +8,11 @@ import {
 function ScrollHarness({
   revision,
   threadId = "thread-1",
+  editing = false,
 }: {
   revision: number;
   threadId?: string;
+  editing?: boolean;
 }) {
   const {
     scrollRef,
@@ -21,14 +23,16 @@ function ScrollHarness({
     threadId,
     contentRevision: revision,
     ready: true,
+    historyEditMessageId: editing ? "history-user" : undefined,
   });
   return (
-    <>
+    <section className="conversation">
       <div data-testid="scroller" ref={scrollRef} onScroll={onScroll}>
-        <div ref={contentRef}>{revision}</div>
+        <div ref={contentRef}>{revision}{editing && <div className="history-message-editor"><textarea /></div>}</div>
       </div>
       <button onClick={beginPrependPreservation}>准备插入旧消息</button>
-    </>
+      <form className="composer-wrap" />
+    </section>
   );
 }
 
@@ -52,6 +56,39 @@ function setScrollMetrics(
 }
 
 describe("对话流式滚动跟随", () => {
+  it("编辑替代待执行的底部跟随，按键盘与固定输入栏边界定位，并允许取消后恢复跟随", () => {
+    const frames = new Map<number, FrameRequestCallback>();
+    let id = 0;
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation(callback => {
+      frames.set(++id, callback); return id;
+    });
+    vi.spyOn(window, "cancelAnimationFrame").mockImplementation(frame => { frames.delete(frame); });
+    const flush = () => {
+      const callbacks = [...frames.values()]; frames.clear(); callbacks.forEach(callback => callback(0));
+    };
+    const { container, getByTestId, rerender, unmount } = render(<ScrollHarness revision={1} />);
+    const scroller = getByTestId("scroller");
+    setScrollMetrics(scroller, { scrollHeight: 900, clientHeight: 300, scrollTop: 220 });
+    rerender(<ScrollHarness revision={1} editing />);
+    vi.spyOn(scroller, "getBoundingClientRect").mockImplementation(() => new DOMRect(0, 100, 300, 300));
+    const input = container.querySelector("textarea")!;
+    vi.spyOn(input, "getBoundingClientRect").mockImplementation(() => new DOMRect(0, 560 - scroller.scrollTop, 250, 96));
+    vi.spyOn(container.querySelector(".composer-wrap")!, "getBoundingClientRect").mockImplementation(() => new DOMRect(0, 300, 300, 100));
+    fireEvent(window, new Event("resize"));
+    flush();
+    expect(scroller.scrollTop).toBe(448);
+    expect(input.getBoundingClientRect().top).toBe(112);
+    expect(input.getBoundingClientRect().bottom).toBeLessThan(300);
+    rerender(<ScrollHarness revision={2} />);
+    flush();
+    expect(scroller.scrollTop).toBe(448);
+    scroller.scrollTop = 600; fireEvent.scroll(scroller);
+    rerender(<ScrollHarness revision={3} />); flush();
+    expect(scroller.scrollTop).toBe(900);
+    unmount();
+    expect(frames.size).toBe(0);
+  });
+
   it("容器尺寸变化产生的位置未变 scroll 事件不能取消底部跟随", () => {
     vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => { callback(0); return 1; });
     const { getByTestId, rerender, unmount } = render(<ScrollHarness revision={1} />);

@@ -2,6 +2,42 @@ import XCTest
 
 /// 使用 tests/fixtures/native-menu 打包到专用模拟器测试工程；不写入真实会话。
 final class ActionMenuUITests: XCTestCase {
+    func testHistoryEditorShowsKeyboardAndScrollsAboveComposer() {
+        continueAfterFailure = false
+        let app = XCUIApplication(bundleIdentifier: "vip.loock.codexmobile")
+        app.launch()
+        let entry = app.webViews.buttons["打开历史编辑定位验收"]
+        XCTAssertTrue(entry.waitForExistence(timeout: 20))
+        entry.tap()
+        let message = app.webViews.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "键盘滚动定位验收消息")).firstMatch
+        XCTAssertTrue(message.waitForExistence(timeout: 5))
+        for nativeMenu in [false, true] {
+            if nativeMenu {
+                message.press(forDuration: 0.8)
+                let edit = action(app, "编辑")
+                XCTAssertTrue(edit.waitForExistence(timeout: 5))
+                edit.tap()
+            } else {
+                app.webViews.buttons["编辑历史消息"].tap()
+            }
+            let editor = app.webViews.textViews["编辑历史消息内容"]
+            XCTAssertTrue(editor.waitForExistence(timeout: 5))
+            XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5), "进入编辑应自动弹出键盘")
+            let composer = app.webViews.buttons["模型验收"]
+            let visible = NSPredicate { _, _ in
+                editor.frame.height > 0 && editor.frame.minY >= app.webViews.firstMatch.frame.minY &&
+                editor.frame.maxY <= min(composer.frame.minY - 12, app.keyboards.firstMatch.frame.minY - 12)
+            }
+            XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: visible, object: editor)], timeout: 5), .completed,
+                "编辑框应自动滚动到固定输入栏与键盘以上：\(editor.frame), composer: \(composer.frame)")
+            attach(app, nativeMenu ? "长按编辑自动键盘与定位" : "按钮编辑自动键盘与定位")
+            editor.typeText("OK")
+            XCTAssertTrue((editor.value as? String)?.contains("OK") == true)
+            app.webViews.buttons["取消编辑历史消息"].tap()
+            XCTAssertFalse(editor.exists)
+        }
+    }
+
     func testSidebarMenuCancelThenTapOpensThread() {
         continueAfterFailure = false
         let app = XCUIApplication(bundleIdentifier: "vip.loock.codexmobile")

@@ -406,6 +406,7 @@ export function ConversationPage({
     threadId: String(active.id ?? `new:${backendId}`),
     contentRevision: active.turns,
     ready: loadState === "ready",
+    historyEditMessageId: historyEdit?.target.messageId,
   });
   useLayoutEffect(() => {
     const composer = composerRef.current;
