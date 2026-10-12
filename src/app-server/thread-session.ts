@@ -2,7 +2,7 @@ import type {
   ApprovalPolicy,
   ApprovalsReviewer,
 } from "../ui/settings";
-import { hasTurnChangeStats, summarizeTurnChanges } from "../ui/conversation";
+import { hasTurnChangeStats, summarizeTurnChanges, reconcileRecentTurns } from "../ui/conversation";
 
 type AnyRecord = Record<string, any>;
 const initialTurnsLimit = 5;
@@ -10,6 +10,35 @@ const threadHistoryRequestTimeoutMs = 60_000;
 const threadHistoryRequestOptions = {
   timeoutMs: threadHistoryRequestTimeoutMs,
 };
+
+export interface TurnCommentary { turnId: string; items: AnyRecord[] }
+
+export function runningTurnNeedingCommentary(turns: AnyRecord[]): AnyRecord | undefined {
+  const turn = turns.at(-1);
+  return turn?.id && ["inProgress", "in_progress", "running"].includes(turn.status) &&
+    !(turn.items ?? []).some((item: AnyRecord) => item.type === "agentMessage" && item.phase === "final_answer")
+    ? turn : undefined;
+}
+
+export async function loadRunningTurnCommentary(client: Requester, threadId: string, turns: AnyRecord[]): Promise<TurnCommentary | null> {
+  const turn = runningTurnNeedingCommentary(turns);
+  if (!turn) return null;
+  const result = await client.request("mobile/turns/commentary", { threadId, turnId: turn.id }, threadHistoryRequestOptions);
+  return result?.turnId === turn.id && Array.isArray(result.items) ? result : null;
+}
+
+export function applyTurnCommentary(turns: AnyRecord[], detail: TurnCommentary): AnyRecord[] {
+  return turns.map((turn) => {
+    if (turn.id !== detail.turnId || !detail.items.length) return turn;
+    const items = detail.items.map((item) => {
+      const existing = (turn.items ?? []).find((current: AnyRecord) => current.id === item.id);
+      // 回填只有用户文字，保留摘要或实时通知中的附件。
+      return existing && (item.type === "userMessage" || existing.phase === "final_answer")
+        ? { ...item, ...existing } : item;
+    });
+    return reconcileRecentTurns([turn], [{ ...turn, items }])[0];
+  });
+}
 
 export type TurnChangeStats = { additions: number; deletions: number };
 export type TurnBackfill = Partial<TurnChangeStats> & { images: AnyRecord[]; unavailable?: boolean; source?: string };

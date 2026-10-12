@@ -65,6 +65,9 @@ import {
   loadRecoverableRecentThreadTurns,
   loadOlderThreadTurns,
   loadTurnChangeStatsPage,
+  loadRunningTurnCommentary,
+  applyTurnCommentary,
+  runningTurnNeedingCommentary,
   prependUniqueTurns,
   resumeThreadSession,
   type OlderTurnsLoadState,
@@ -446,6 +449,7 @@ function BackendWorkspace({
   const foregroundRecoveryActiveRef = useRef(foregroundRecoveryActive);
   const activeThreadTargetRef = useRef<string | null>(null);
   const openSequenceRef = useRef(0);
+  const commentaryRecoveryRef = useRef<{ client: AppServerClient; key: string; promise: Promise<void> } | null>(null);
   const olderTurnsCursorRef = useRef<string | null>(null);
   const olderTurnsGenerationRef = useRef(0);
   const olderTurnsLoadingRef = useRef(false);
@@ -951,10 +955,37 @@ function BackendWorkspace({
     });
   }
 
+  function backfillRunningCommentary(client: AppServerClient, threadId: string, turns: AnyRecord[]) {
+    const turn = runningTurnNeedingCommentary(turns);
+    if (!turn) return Promise.resolve();
+    const generation = openSequenceRef.current;
+    const key = `${generation}:${threadId}:${turn.id}`;
+    const pending = commentaryRecoveryRef.current;
+    if (pending?.client === client && pending.key === key) return pending.promise;
+    const recovery = { client, key, promise: Promise.resolve() };
+    recovery.promise = loadRunningTurnCommentary(client, threadId, turns).then((detail) => {
+      if (!detail || generation !== openSequenceRef.current || client !== clientRef.current ||
+        activeThreadTargetRef.current !== threadId) return;
+      setActive((current) => {
+        if (current?.id !== threadId || generation !== openSequenceRef.current || client !== clientRef.current) return current;
+        const next = { ...current, turns: applyTurnCommentary(current.turns ?? [], detail) };
+        activeRef.current = next;
+        return next;
+      });
+    }).catch(() => {
+      // 历史恢复失败不阻断首屏与实时回复；不向旧网关回退全量拉取。
+    }).finally(() => {
+      if (commentaryRecoveryRef.current === recovery) commentaryRecoveryRef.current = null;
+    });
+    commentaryRecoveryRef.current = recovery;
+    return recovery.promise;
+  }
+
   async function reconcileActiveThread(
     client: AppServerClient,
     isCurrent: () => boolean = () => true,
     completedTurnId?: string,
+    recoverCommentary = false,
   ) {
     const threadId = String(
       activeThreadTargetRef.current ?? activeRef.current?.id ?? "",
@@ -1006,6 +1037,7 @@ function BackendWorkspace({
         ? { ...entry, status: { type: running ? "active" : "idle" } } : entry));
       return next;
     });
+    if (recoverCommentary) void backfillRunningCommentary(client, threadId, latestTurns);
     const turnsNeedingBackfill = latestTurns.filter((turn: AnyRecord) =>
       turn.itemsView === "summary" &&
       !activeRef.current?.turns?.some((currentTurn: AnyRecord) =>
@@ -1281,7 +1313,7 @@ function BackendWorkspace({
             return;
           }
           if (message.method === "mobile/reset") {
-            void reconcileActiveThread(client).catch(() => undefined);
+            void reconcileActiveThread(client, () => true, undefined, true).catch(() => undefined);
             return;
           }
           if (message.method === "turn/plan/updated") {
@@ -1851,6 +1883,7 @@ function BackendWorkspace({
                     ? { isProjectless: true }
                     : {}),
                 });
+                void backfillRunningCommentary(client, currentThread.id, resumed.thread.turns ?? []);
                 resetOlderTurns(resumed.nextTurnsCursor);
                 setConversationLoadState("ready");
                 setConversationLoadError("");
@@ -1911,7 +1944,7 @@ function BackendWorkspace({
           (client) =>
             reconcileBackendWorkspace(
               client,
-              reconcileActiveThread,
+              (currentClient) => reconcileActiveThread(currentClient, () => true, undefined, true),
             ),
         ),
     });
@@ -2268,6 +2301,7 @@ function BackendWorkspace({
           ? { isProjectless: true }
           : {}),
       });
+      void backfillRunningCommentary(client, threadId, session.thread.turns ?? []);
       void backfillTurnChangeStats(
         client,
         threadId,

@@ -8,7 +8,7 @@ import WebSocket, { WebSocketServer } from "ws";
 import type { CodexProjectState } from "./codex-projects.js";
 import { readImageGenerationError } from "./image-generation-error.js";
 import { TurnChangeHistory } from "./turn-change-history.js";
-import { compactTurnDetails } from "./turn-details.js";
+import { compactTurnDetails, compactTurnCommentary, turnCommentaryRequest, validTurnCommentaryParams } from "./turn-details.js";
 import { FollowUps } from "./follow-ups.js";
 import { HttpSessions } from "./http-session.js";
 import { BarkNotifications } from "./bark-notifications.js";
@@ -530,6 +530,13 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
         if (!isBinary) {
           try {
             const request = JSON.parse(rawMessageText(data));
+            if (request.method === "mobile/turns/commentary") {
+              if (request.id == null || !validTurnCommentaryParams(request.params)) {
+                if (client.readyState === WebSocket.OPEN) client.send(JSON.stringify({ id: request.id ?? null, error: { code: -32602, message: "Invalid turn commentary parameters" } }));
+                return;
+              }
+              data = Buffer.from(JSON.stringify({ id: request.id, ...turnCommentaryRequest(request.params) }));
+            }
             if (request.method && request.id != null) {
               requests.set(request.id, request);
               if (requests.size > 512) requests.delete(requests.keys().next().value!);
@@ -625,6 +632,9 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
           await changeHistory.cancelStart(request.params.threadId);
         }
         let output: WebSocket.RawData | string = data;
+        if (request?.method === "mobile/turns/commentary" && message?.error == null) {
+          output = JSON.stringify({ ...message, result: compactTurnCommentary(message!.result, request.params!.turnId) });
+        }
         if (request?.method === "thread/turns/list" && request.params?.itemsView === "full" &&
           message?.error == null && Array.isArray(message?.result?.data)) {
           const full = message!.result;
@@ -642,7 +652,9 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
         }
         if (client.readyState === WebSocket.OPEN) client.send(output, { binary: isBinary });
       }).catch(() => {
-        if (client.readyState === WebSocket.OPEN) client.send(data, { binary: isBinary });
+        if (client.readyState === WebSocket.OPEN) client.send(request?.method === "mobile/turns/commentary"
+          ? JSON.stringify({ id: message?.id, error: { code: -32000, message: "Commentary recovery unavailable" } })
+          : data, { binary: isBinary });
       });
     });
     upstream.on("error", () => {

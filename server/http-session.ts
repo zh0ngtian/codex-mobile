@@ -5,7 +5,7 @@ import { homedir } from "node:os";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import WebSocket from "ws";
 import { TurnChangeHistory } from "./turn-change-history.js";
-import { compactTurnDetails } from "./turn-details.js";
+import { compactTurnDetails, compactTurnCommentary, turnCommentaryRequest, validTurnCommentaryParams } from "./turn-details.js";
 import { isNavigationResume } from "./rpc-replay.js";
 import { InlineImages } from "./inline-images.js";
 import type { BarkNotifications } from "./bark-notifications.js";
@@ -41,7 +41,7 @@ const READ_ONLY_METHODS = new Set([
   "thread/turns/list", "thread/items/list", "permissionProfile/list", "plugin/list",
   "model/list", "account/read", "account/rateLimits/read", "config/read",
   "configRequirements/read", "skills/list", "mcpServerStatus/list",
-  "fs/readFile", "mobile/turns/details",
+  "fs/readFile", "mobile/turns/details", "mobile/turns/commentary",
 ]);
 
 class HttpError extends Error {
@@ -625,6 +625,11 @@ class Session {
           }
           submitted = true;
           if (message.method === "initialized") result = await this.notifyInitialized(message, submittedSocket);
+          else if (message.method === "mobile/turns/commentary") {
+            const upstream: RpcMessage = { id: message.id, ...turnCommentaryRequest(message.params!) };
+            result = await this.exchange(upstream, submittedSocket);
+            if (result.error == null) result = { ...result, result: compactTurnCommentary(result.result as Record<string, any>, message.params!.turnId) };
+          }
           else if (message.method === "mobile/turns/details") {
             const params = message.params!;
             const upstream: RpcMessage = { id: message.id, method: "thread/turns/list", params: {
@@ -777,6 +782,8 @@ export class HttpSessions {
         if (message.method === "initialize" && message.id == null) throw new HttpError(400, "Initialize must include an RPC id");
         if (message.id != null && !["number", "string"].includes(typeof message.id)) throw new HttpError(400, "Invalid RPC id");
         if (message.method != null && (typeof message.method !== "string" || !message.method.length || message.method.length > 256)) throw new HttpError(400, "Invalid RPC method");
+        if (message.method === "mobile/turns/commentary" &&
+          (message.id == null || !validTurnCommentaryParams(message.params))) throw new HttpError(400, "Invalid turn commentary parameters");
         if (message.method === "mobile/turns/details") {
           const params = message.params;
           if (message.id == null || !params || Array.isArray(params) || typeof params.threadId !== "string" || !params.threadId.trim() ||

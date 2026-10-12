@@ -6,6 +6,8 @@ import {
   loadOlderThreadTurns,
   loadTurnChangeStatsPage,
   applyTurnChangeStats,
+  applyTurnCommentary,
+  loadRunningTurnCommentary,
   prependUniqueTurns,
   resumeThreadSession,
 } from "../../src/app-server/thread-session";
@@ -290,4 +292,44 @@ describe("恢复已有 app-server 会话", () => {
       { id: "turn-3", status: "running" },
     ]);
   });
+});
+
+
+describe('运行文本回填', () => {
+  it('只请求最新运行且尚无 final 的回合，无运行回合时不发请求', async () => {
+    const request = vi.fn().mockResolvedValue({ turnId: 'live', items: [] });
+    await loadRunningTurnCommentary({ request }, 't', [{ id: 'old', status: 'completed' }, { id: 'live', status: 'inProgress', items: [] }]);
+    expect(request).toHaveBeenCalledWith('mobile/turns/commentary', { threadId: 't', turnId: 'live' }, { timeoutMs: 60_000 });
+    request.mockClear();
+    for (const turn of [{ id: 'done', status: 'completed' }, { id: 'live', status: 'inProgress', items: [{ type: 'agentMessage', phase: 'final_answer' }] }]) {
+      expect(await loadRunningTurnCommentary({ request }, 't', [turn])).toBeNull();
+    }
+    expect(request).not.toHaveBeenCalled();
+  });
+  it('按 ID 保持插话顺序、较长实时文本与用户附件，迟到回填不影响 final 和完成状态', () => {
+    const turns = [{ id: 'live', status: 'completed', items: [
+      { id: 'u', type: 'userMessage', content: [{ type: 'text', text: '开始' }, { type: 'image', url: '/tmp/a.png' }] },
+      { id: 'c2', type: 'agentMessage', phase: 'commentary', text: '检查文件已经完成' },
+      { id: 'f', type: 'agentMessage', phase: 'final_answer', text: '完成' },
+    ] }];
+    const detail = { turnId: 'live', items: [
+      { id: 'u', type: 'userMessage', content: [{ type: 'text', text: '开始' }] },
+      { id: 'c1', type: 'agentMessage', phase: 'commentary', text: '开始检查' },
+      { id: 'steer', type: 'userMessage', text: '继续' },
+      { id: 'c2', type: 'agentMessage', phase: 'commentary', text: '检查文件' },
+    ] };
+    const once = applyTurnCommentary(turns, detail);
+    expect(applyTurnCommentary(once, detail)).toEqual(once);
+    expect(once[0].items.map((item: any) => item.id)).toEqual(['u', 'c1', 'steer', 'c2', 'f']);
+    expect(once[0].items[3].text).toBe('检查文件已经完成');
+    expect(once[0].items[0].content).toHaveLength(2);
+    expect(once[0].status).toBe('completed');
+    expect(applyTurnCommentary([{ id: 'next', items: [] }], detail)).toEqual([{ id: 'next', items: [] }]);
+  });
+});
+
+
+it('同一消息已转为最终回复时，旧 commentary 不能覆盖其阶段或正文', () => {
+  const turns = [{ id: 't', status: 'inProgress', items: [{ id: 'same', type: 'agentMessage', phase: 'final_answer', text: '最终答复' }] }];
+  expect(applyTurnCommentary(turns, { turnId: 't', items: [{ id: 'same', type: 'agentMessage', phase: 'commentary', text: '之前更长的过程说明' }] })).toEqual(turns);
 });

@@ -51,6 +51,39 @@ async function fixture(autoPong = true) {
 }
 
 describe("HTTP 会话", () => {
+  it.each(['http', 'ws'])('commentary 通过 %s 只读投影，参数不透传且工具大正文不下发', async (transport) => {
+    const f = await fixture(); await f.init();
+    f.respond((socket, message) => socket.send(JSON.stringify({ id: message.id, result: { data: [{
+      id: 'live', status: 'inProgress', items: [
+        { id: 'u', type: 'userMessage', text: '开始' },
+        { id: 'c', type: 'agentMessage', phase: 'commentary', text: '处理中' },
+        { id: 'cmd', type: 'commandExecution', aggregatedOutput: 'x'.repeat(7_000_000) },
+      ], diff: 'secret' }], nextCursor: 'older' } })));
+    const message = { id: 99, method: 'mobile/turns/commentary', params: { threadId: 't', turnId: 'live' } };
+    let reply: any;
+    if (transport === 'http') reply = await (await f.rpc(message)).json();
+    else {
+      const socket = new WebSocket(`ws://127.0.0.1:${f.port()}/ws?token=secret`);
+      cleanup.push(async () => { socket.terminate(); });
+      await new Promise<void>(resolve => socket.once('open', resolve));
+      const response = new Promise<any>(resolve => socket.once('message', raw => resolve(JSON.parse(raw.toString()))));
+      socket.send(JSON.stringify(message)); reply = await response;
+    }
+    expect(reply).toEqual({ id: 99, result: { turnId: 'live', items: [
+      { id: 'u', type: 'userMessage', text: '开始' },
+      { id: 'c', type: 'agentMessage', phase: 'commentary', text: '处理中' },
+    ] } });
+    expect(f.received.at(-1)).toEqual({ id: transport === 'http' ? expect.any(String) : 99, method: 'thread/turns/list', params: { threadId: 't', limit: 1, sortDirection: 'desc', itemsView: 'full' } });
+    expect(JSON.stringify(reply).length).toBeLessThan(1024);
+    expect(await readdir(join(f.root, 'codex-mobile-http')).catch(() => [])).toEqual([]);
+  });
+  it('commentary 请求拒绝缺失回合 ID', async () => {
+    const f = await fixture(); await f.init();
+    for (const params of [{ threadId: 't' }, { threadId: '', turnId: 'live' }, { threadId: 't', turnId: [] }]) {
+      expect((await f.rpc({ id: 99, method: 'mobile/turns/commentary', params })).status).toBe(400);
+    }
+  });
+
   it("图片会话的首次和补页文字响应保留正文，原图改为可鉴权预览的引用", async () => {
     const f = await fixture(); await f.init();
     const pixels = await sharp({ create: { width: 1200, height: 1000, channels: 3, background: "orange" } }).jpeg().toBuffer();

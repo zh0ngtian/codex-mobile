@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { compactTurnDetails } from '../../server/turn-details.js';
+import { compactTurnDetails, compactTurnCommentary } from '../../server/turn-details.js';
 
 describe('历史统计可用性', () => {
   it('命令执行缺少 diff 时不能把未知改动写成 0', () => {
@@ -39,5 +39,28 @@ describe('历史统计可用性', () => {
       { id: 'missing', items: [{ type: 'fileChange', changes: [{ path: 'a.ts' }] }] },
     ] });
     expect(result.data.every((turn: any) => turn.changeStatsUnavailable === true && !turn.loadedChangeStats)).toBe(true);
+  });
+});
+
+
+describe('运行回合文本投影', () => {
+  const turn = { id: 'live', status: 'inProgress', items: [
+    { id: 'u', type: 'userMessage', content: [{ type: 'text', text: '继续' }, { type: 'image', url: 'secret-pixels' }] },
+    { id: 'c', type: 'agentMessage', phase: 'commentary', text: '检查文件', toolBody: 'secret' },
+    { id: 'cmd', type: 'commandExecution', aggregatedOutput: 'x'.repeat(7_000_000) },
+    { id: 'r', type: 'reasoning', text: '不返回' },
+  ] };
+  it('只保留请求回合的 commentary 与用户文字锚点，剔除工具和图片', () => {
+    const result = compactTurnCommentary({ data: [turn, { ...turn, id: 'other' }], nextCursor: 'older' }, 'live');
+    expect(result).toEqual({ turnId: 'live', items: [
+      { id: 'u', type: 'userMessage', content: [{ type: 'text', text: '继续' }] },
+      { id: 'c', type: 'agentMessage', phase: 'commentary', text: '检查文件' },
+    ] });
+    expect(Buffer.byteLength(JSON.stringify(result))).toBeLessThan(1024);
+  });
+  it('回合已结束、final 已开始或最近回合已变化时不回填', () => {
+    for (const data of [[{ ...turn, status: 'completed' }], [{ ...turn, items: [...turn.items, { id: 'f', type: 'agentMessage', phase: 'final_answer' }] }], [{ ...turn, id: 'next' }]]) {
+      expect(compactTurnCommentary({ data }, 'live')).toEqual({ turnId: 'live', items: [] });
+    }
   });
 });
