@@ -3,6 +3,7 @@ import { isThreadRunning } from "../../ui/conversation";
 import { t } from "../../i18n";
 import { PROJECTLESS_GROUP_ID } from "../../app-server/thread-list-loader";
 import { isVisibleThread } from "./thread-visibility";
+import { pathBasename } from "../../lib/path-basename";
 
 export interface ThreadSource {
   id: string;
@@ -31,8 +32,7 @@ export function projectNameOf(thread: DisplayRecord) {
     return t("无项目");
   }
   const cwd = typeof thread.cwd === "string" ? thread.cwd.trim() : "";
-  const normalized = cwd.replace(/\/+$/, "");
-  return normalized.split("/").filter(Boolean).at(-1) || t("未识别项目");
+  return pathBasename(cwd) || t("未识别项目");
 }
 
 function threadTimestamp(thread: DisplayRecord) {

@@ -130,6 +130,7 @@ import {
   shouldResumeWorkspaceThread,
 } from "./backends/workspace-bootstrap";
 import { AsyncValueCache } from "./lib/async-value-cache";
+import { pathBasename } from "./lib/path-basename";
 import {
   effortOptionsForModel,
   defaultNewChatPermissionMode,
@@ -2214,9 +2215,7 @@ function BackendWorkspace({
       seen.add(normalized);
       options.push({
         cwd: normalized,
-        name:
-          normalized.replace(/\/+$/, "").split("/").filter(Boolean).at(-1) ||
-          normalized,
+        name: pathBasename(normalized) || normalized,
       });
     }
     for (const thread of threads) {
@@ -2227,7 +2226,7 @@ function BackendWorkspace({
       seen.add(cwd);
       options.push({
         cwd,
-        name: cwd.replace(/\/+$/, "").split("/").filter(Boolean).at(-1) || cwd,
+        name: pathBasename(cwd) || cwd,
       });
     }
     return options;

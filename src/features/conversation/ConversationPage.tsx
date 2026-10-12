@@ -53,6 +53,7 @@ import { t } from "../../i18n";
 import videoPoster from "../../assets/video-poster.svg";
 import { RunProgress } from "./RunProgress";
 import type { HttpSyncState } from "../../backends/http-transport";
+import { pathBasename } from "../../lib/path-basename";
 
 export type ConversationLoadState = "idle" | "loading" | "ready" | "error";
 
@@ -430,7 +431,7 @@ export function ConversationPage({
             <i className={`status-dot ${connection}`} />
             {backendName} · {active.isProjectless
               ? t("无项目")
-              : active.cwd?.split("/").pop() || t("无项目")} ·{" "}
+              : pathBasename(active.cwd ?? "") || t("无项目")} ·{" "}
             {connection === "online" ? t("已连接") : t("连接中")}
           </span>
         </div>
