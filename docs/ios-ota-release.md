@@ -1,6 +1,12 @@
 # iOS Ad Hoc 签名与 OTA 发布
 
-## 已有基础设施与新增入口
+## 发布协调边界
+
+本页描述现有 iOS 构建、签名和渠道工具，不代表已具备统一合批发布机制。客户端正式发布由协调入口使用已冻结、通过检查的批次提交与统一版本执行，参与任务读取同一发布凭证，不各自分配版本、签名或发包。现有工具支持与缺失的共享队列、完整周期锁、心跳和恢复机制见 [发布协调说明](release-coordination.md)。通用合批规则维护在 canonical 全局 `AGENTS.md`。
+
+现有 `npm run ios:release` 仍会独立构建 iOS；它没有批次来源门禁。整合前后的验证、CI unsigned 产物与本机签名产物必须对应同一冻结提交，后续接入机制时保留本页的签名、升级连续性与渠道回验要求。
+
+## 已有基础设施与入口
 
 继续使用 `mobile/ios/build-recipe.yml` 固定提交的 PakePlus 容器、内置前端和原生补丁；`npm run ios:prepare` 复用相同步骤。Android 更新清单、APK 以及 iOS LAN IPA 固定地址保持原有渠道。
 
@@ -71,7 +77,7 @@ npm run ios:release -- \
   --notes '新增 iOS 检查更新与 OTA 安装' --plan
 ```
 
-正式构建与发布去掉 `--plan`；软件源只自动同步 GitHub Release 的 unsigned IPA，不再接续发布本机已签名包。这个入口发布 iOS；仓库交付仍必须另外构建并发布相同版本 APK。不得在 Android 固定渠道还未同步时宣称双平台交付完成。
+上述预检及后续正式命令由批次协调负责人执行；正式构建与发布必须显式传入冻结批次的 `--version <统一版本>`，并去掉 `--plan`；软件源只自动同步 GitHub Release 的 unsigned IPA，不再接续发布本机已签名包。这个入口发布 iOS；仓库交付仍必须由同一批次协调负责人构建并发布相同冻结提交、相同版本 APK，汇总 CI、双端渠道、软件源核对及必要部署的共同凭证。不得在 Android 固定渠道还未同步时宣称双平台交付完成。
 
 ## Cloudflare 软件源
 

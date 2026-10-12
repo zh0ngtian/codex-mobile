@@ -303,7 +303,7 @@ npm run test:e2e
 
 ## 移动端构建
 
-GitHub Actions 在 `main` 的客户端及构建相关推送后自动构建 Android APK 和 iOS unsigned IPA，也支持在 Actions 中手动指定更高版本。两端共用统一版本，全部构建与校验成功后创建同一个 GitHub Release，附件包含安装包、SHA-256 和构建回执。文档及服务端单独修改不会触发；npm 包继续按需手动发布。
+GitHub Actions 在 `main` 的客户端及构建相关推送后自动构建 Android APK 和 iOS unsigned IPA，也支持在 Actions 中手动指定更高版本。两端共用统一版本，全部构建与校验成功后创建同一个 GitHub Release，附件包含安装包、SHA-256 和构建回执。服务端和不匹配构建路径的文档修改不会触发；现有 `mobile/**` 也会匹配移动端文档，路径排除缺口见 [发布协调说明](docs/release-coordination.md)。npm 包继续按需手动发布。
 
 Android App 固定检查局域网更新清单
 `http://192.168.123.79:8765/channels/codex-mobile/latest.json`，发现新版本后从固定地址
@@ -321,10 +321,12 @@ iOS 支持在本机局域网执行 Ad Hoc 自动签名与 HTTPS OTA。证书和�
 资源内置到 App。构建产物只包含上述固定更新服务器地址，不包含网关 Token 或其他私人配置。
 Android 和 iOS 安装包只支持正向竖屏，设备转动时保持竖屏，应用内浏览器亦遵循该限制。
 
-发布流程：
+发布流程由统一协调入口负责提交整合、版本分配及批次交付；当前入口、共享队列与完整周期锁尚未实现，现有支持和待改造项见 [发布协调说明](docs/release-coordination.md)。通用合批策略以 canonical 全局规则为准。
+
+本项目发布要求：
 
 - GitHub 双端构建和本地构建复用 `mobile/*/build-recipe.yml`，版本高于全部 GitHub Release 标签及仓库下限；本机渠道超前时，先更新 `mobile-version-floor.json` 或手动指定更高版本。npm 包按需手动测试、构建和发布。
-- 修改客户端运行代码后，提交并推送，再发布高于 Android、iOS 两个固定渠道现有版本的统一版本 APK 和已签名 IPA；APK 使用 `apk-server.py publish-channel codex-mobile`，IPA 使用 `npm run ios:release`，并回验两端固定清单、HEAD、完整 GET 大小与 SHA-256。
+- 客户端任务独立开发并登记已验证提交，协调入口整合、复验、冻结并推送批次，再发布高于 Android、iOS 两个固定渠道现有版本的统一版本 APK 和已签名 IPA；APK 使用 `apk-server.py publish-channel codex-mobile`，IPA 使用 `npm run ios:release`，并回验两端固定清单、HEAD、完整 GET 大小与 SHA-256。
 - 改动不涉及客户端运行代码、客户端引用的共用模块、原生桥接或影响客户端产物的构建配置时，不得触发客户端 Web、APK 或 IPA 的构建与发布；仅修改文档、规则、测试、服务端或不影响客户端产物的脚本时，均遵循此规则。服务端变更仍须验证、构建服务端并部署网关。具体约束见 [AGENTS.md](AGENTS.md)。
 
 本地构建配置与环境约定见 [构建说明](mobile/README.md)：
