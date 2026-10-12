@@ -153,6 +153,70 @@ final class ActionMenuUITests: XCTestCase {
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.9)).tap()
     }
 
+    func testSkillPickerTouchSelection() {
+        continueAfterFailure = false
+        let app = XCUIApplication(bundleIdentifier: "vip.loock.codexmobile")
+        app.launch()
+        let open = app.webViews.buttons["打开 Skill 选择验收"]
+        XCTAssertTrue(open.waitForExistence(timeout: 20))
+        open.tap()
+        let input = app.webViews.textViews["向 Codex 提问"]
+        XCTAssertTrue(input.waitForExistence(timeout: 5))
+        input.tap()
+        input.typeText("@pdf")
+        let option = app.webViews.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH %@", "$pdf")).firstMatch
+        XCTAssertTrue(option.waitForExistence(timeout: 5), app.debugDescription)
+        option.tap()
+        XCTAssertEqual(input.value as? String, "$pdf ", "触摸候选必须写入 Skill 标记")
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3), "选择 Skill 后应继续输入")
+        attach(app, "Skill 触摸选择")
+        input.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 5) + "@")
+        let list = app.webViews.otherElements["已安装 Skill 和插件"]
+        XCTAssertTrue(list.waitForExistence(timeout: 5))
+        for _ in 0..<3 {
+            // AX 列表 frame 包含不可见内容，swipeUp 会被裁成点击；在可见区域拖动。
+            let start = app.coordinate(withNormalizedOffset: .zero).withOffset(
+                CGVector(dx: input.frame.midX, dy: input.frame.minY - 70))
+            start.press(forDuration: 0.1, thenDragTo: start.withOffset(CGVector(dx: 0, dy: -180)))
+            attach(app, "候选滚动状态")
+            XCTAssertEqual(input.value as? String, "@", "滚动候选不能触发选择")
+            XCTAssertTrue(list.exists, "滚动后候选应保持显示：\(app.debugDescription)")
+        }
+        XCTAssertEqual(input.value as? String, "@", "滚动候选不能触发选择")
+        let last = app.webViews.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH %@", "$skill-7")).firstMatch
+        XCTAssertTrue(last.exists && last.isHittable)
+        last.tap()
+        XCTAssertEqual(input.value as? String, "$skill-7 ")
+        attach(app, "滚动后选择 Skill")
+    }
+
+    func testThreadMenuOrderStaysFixedAcrossPinAndAnchor() {
+        continueAfterFailure = false
+        let app = XCUIApplication(bundleIdentifier: "vip.loock.codexmobile")
+        app.launch()
+        let open = app.webViews.buttons["打开菜单顺序验收"]
+        XCTAssertTrue(open.waitForExistence(timeout: 20))
+        for pinned in [false, true] {
+            open.tap()
+            let pinLabel = pinned ? "取消置顶" : "置顶"
+            XCTAssertTrue(action(app, pinLabel).waitForExistence(timeout: 5))
+            let labels = [pinLabel, "刷新会话", "复制会话", "复制会话 ID", "重命名", "归档"]
+            var previous: XCUIElement?
+            for label in labels {
+                let item = action(app, label)
+                XCTAssertTrue(item.exists && item.isHittable, label)
+                if let previous {
+                    XCTAssertGreaterThan(item.frame.minY, previous.frame.maxY - 1,
+                        "置顶前后和上下弹出位置都必须保持相同顺序：\(label)")
+                }
+                previous = item
+            }
+            attach(app, pinned ? "置顶后菜单顺序" : "置顶前菜单顺序")
+            action(app, pinLabel).tap()
+            XCTAssertTrue(app.webViews.staticTexts[pinned ? "会话未置顶" : "会话已置顶"].waitForExistence(timeout: 5))
+        }
+    }
+
     private func action(_ app: XCUIApplication, _ title: String) -> XCUIElement {
         let menuItem = app.menuItems[title]
         return menuItem.exists ? menuItem : app.buttons[title]

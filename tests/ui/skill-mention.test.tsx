@@ -136,6 +136,55 @@ describe("输入框 Skill 选择器", () => {
     ).toBeNull();
   });
 
+  it("触摸候选不依赖 WebKit 被取消的兼容 click", () => {
+    const { container } = render(<SkillComposer />);
+    const view = within(container);
+    const input = view.getByRole("textbox", { name: "向 Codex 提问" });
+    fireEvent.change(input, { target: { value: "@pdf" } });
+    const option = view.getByRole("option");
+    const pointer = (type: string, x = 10, y = 10) => {
+      const event = new Event(type, { bubbles: true, cancelable: true });
+      Object.assign(event, { pointerType: "touch", pointerId: 1, clientX: x, clientY: y });
+      fireEvent(option, event);
+    };
+    pointer("pointerdown");
+    pointer("pointerup");
+    expect(option.isConnected).toBe(true);
+    fireEvent.touchEnd(option);
+    expect((input as HTMLTextAreaElement).value).toBe("$pdf ");
+  });
+
+  it.each(["pointermove", "pointercancel", "touchmove"])("触摸候选 %s 后不误选", (type) => {
+    const { container } = render(<SkillComposer />);
+    const view = within(container);
+    const input = view.getByRole("textbox", { name: "向 Codex 提问" });
+    fireEvent.change(input, { target: { value: "@pdf" } });
+    const option = view.getByRole("option");
+    for (const [eventType, y] of [["pointerdown", 10], [type, 40], ["pointerup", 40]] as const) {
+      const event = new Event(eventType, { bubbles: true, cancelable: true });
+      Object.assign(event, { pointerType: "touch", pointerId: 1, clientX: 10, clientY: y, touches: [{ clientX: 10, clientY: y }] });
+      fireEvent(option, event);
+    }
+    const end = new Event("touchend", { bubbles: true, cancelable: true });
+    Object.assign(end, { changedTouches: [] });
+    fireEvent(option, end);
+    expect(end.defaultPrevented).toBe(true);
+    expect((input as HTMLTextAreaElement).value).toBe("@pdf");
+  });
+
+  it("触摸终点发生位移时即使缺少 move 通知也不误选", () => {
+    const { container } = render(<SkillComposer />);
+    const view = within(container);
+    const input = view.getByRole("textbox", { name: "向 Codex 提问" });
+    fireEvent.change(input, { target: { value: "@pdf" } });
+    const option = view.getByRole("option");
+    const down = new Event("pointerdown", { bubbles: true, cancelable: true });
+    Object.assign(down, { pointerType: "touch", pointerId: 1, clientX: 10, clientY: 10 });
+    fireEvent(option, down);
+    fireEvent.touchEnd(option, { changedTouches: [{ clientX: 10, clientY: 40 }] });
+    expect((input as HTMLTextAreaElement).value).toBe("@pdf");
+  });
+
   it("支持键盘切换并选择 Skill", () => {
     const { container } = render(<SkillComposer />);
     const view = within(container);

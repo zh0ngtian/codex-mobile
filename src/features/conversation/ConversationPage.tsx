@@ -296,6 +296,11 @@ export function ConversationPage({
     null,
   );
   const [activeSkillIndex, setActiveSkillIndex] = useState(0);
+  const mentionPointerRef = useRef<{
+    id: number;
+    x: number;
+    y: number;
+  } | null>(null);
   const composerInputRef = useRef<HTMLTextAreaElement>(null);
   const composerRef = useRef<HTMLFormElement>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
@@ -989,7 +994,54 @@ export function ConversationPage({
                       ? `skill:${option.skill.path}`
                       : `plugin:${option.plugin.id}`
                   }
-                  onPointerDown={(event) => event.preventDefault()}
+                  onPointerDown={(event) => {
+                    // 保持输入框焦点；mobile WebKit 会因此取消兼容 click。
+                    event.preventDefault();
+                    mentionPointerRef.current = {
+                      id: event.pointerId,
+                      x: event.clientX,
+                      y: event.clientY,
+                    };
+                  }}
+                  onPointerMove={(event) => {
+                    const pointer = mentionPointerRef.current;
+                    if (pointer && Math.hypot(
+                      event.clientX - pointer.x, event.clientY - pointer.y,
+                    ) > 10) mentionPointerRef.current = null;
+                  }}
+                  onPointerCancel={() => { mentionPointerRef.current = null; }}
+                  onPointerUp={(event) => {
+                    if (event.pointerType !== "pen") return;
+                    const pointer = mentionPointerRef.current;
+                    mentionPointerRef.current = null;
+                    if (pointer?.id !== event.pointerId) return;
+                    event.preventDefault();
+                    option.kind === "skill"
+                      ? chooseSkill(option.skill)
+                      : choosePlugin(option.plugin);
+                  }}
+                  onTouchMove={(event) => {
+                    const pointer = mentionPointerRef.current;
+                    const touch = event.touches[0];
+                    if (pointer && touch && Math.hypot(
+                      touch.clientX - pointer.x, touch.clientY - pointer.y,
+                    ) > 10) mentionPointerRef.current = null;
+                  }}
+                  onTouchCancel={() => { mentionPointerRef.current = null; }}
+                  onTouchEnd={(event) => {
+                    // 滚动结束也取消尾随 click，防止 WebKit 把滑动误当作选择。
+                    event.preventDefault();
+                    const pointer = mentionPointerRef.current;
+                    mentionPointerRef.current = null;
+                    const touch = event.changedTouches[0];
+                    if (!pointer || (touch && Math.hypot(
+                      touch.clientX - pointer.x, touch.clientY - pointer.y,
+                    ) > 10)) return;
+                    // 完成 touchend 后才移除候选，避免 iOS 尾随触摸让输入框失焦。
+                    option.kind === "skill"
+                      ? chooseSkill(option.skill)
+                      : choosePlugin(option.plugin);
+                  }}
                   onClick={() =>
                     option.kind === "skill"
                       ? chooseSkill(option.skill)

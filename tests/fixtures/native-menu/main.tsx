@@ -1,6 +1,7 @@
-import React, { useState } from "react";
+import React, { createRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
+import { ConversationPage } from "../../../src/features/conversation/ConversationPage";
 import { TurnCard } from "../../../src/features/conversation/Timeline";
 import { ConversationActionMenu } from "../../../src/features/conversation/ConversationControls";
 import { ThreadListPage } from "../../../src/features/threads/ThreadListPage";
@@ -45,7 +46,33 @@ function HistoryEditorFixture() {
   </main>;
 }
 
+function SkillPickerFixture() {
+  const [draft, setDraft] = useState("");
+  return <ConversationPage
+    active={{ id: "skill-fixture", cwd: "/fixture", preview: "Skill 选择验收", turns: [] }}
+    backendId="fixture" backendName="验收设备" backends={[]} projectOptions={[]}
+    loadState="ready" loadError="" olderTurnsState="exhausted" connection="online" client={null}
+    error="" draft={draft} draftImages={[]} draftFiles={[]} imageReading={false}
+    busy={false} steering={false} steerable pendingSteerText="" queuedFollowUps={[]}
+    accessMode="interactive" resumeError="" tokenUsage={null} rateLimits={null} pendingAction=""
+    selectedServiceTier={null} selectedModelLabel="Codex" selectedEffort={null} selectedPermissionLabel="工作区"
+    skills={Array.from({ length: 8 }, (_, i) => ({ name: i === 0 ? "pdf" : `skill-${i}`,
+      description: i === 0 ? "Read PDF files" : `Skill ${i} for touch and scroll verification`,
+      path: `/skills/${i}/SKILL.md`, scope: "user" as const, enabled: true }))}
+    plugins={[]} imageInputRef={createRef<HTMLInputElement>()}
+    onBack={() => {}} onNewChatBackendChange={() => {}} onNewChatProjectChange={() => {}}
+    onPin={async () => true} onDuplicate={async () => true} onRename={async () => true}
+    onArchive={async () => true} onRetry={() => {}} onLoadOlderTurns={async () => true}
+    onSubmit={event => event.preventDefault()} onRemoveImage={() => {}} onRemoveFile={() => {}}
+    onSelectImages={async () => {}} onSelectLocation={async () => false}
+    onOpenAgentSettings={() => {}} onOpenPermissionSettings={() => {}} onDraftChange={setDraft}
+    onInterrupt={() => {}} onQueuedFollowUpAction={() => {}}
+  />;
+}
+
 function NativeMenuFixture() {
+  const [skillFixture, setSkillFixture] = useState(false);
+  const [orderFixture, setOrderFixture] = useState(false);
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState("原生菜单验收消息");
   const [threadMenu, setThreadMenu] = useState(false);
@@ -58,6 +85,7 @@ function NativeMenuFixture() {
     id: "sidebar-thread", preview: "取消菜单后进入会话", cwd: "/fixture", updatedAt: 1,
     isPinned: pinned, status: { type: "idle" },
   }] });
+  if (skillFixture) return <SkillPickerFixture />;
   if (historyFixture) return <HistoryEditorFixture />;
   if (sidebar) return <div style={{ position: "fixed", inset: 0 }}>
     <ThreadListPage backends={[backend]} summaries={{ fixture: {
@@ -85,10 +113,12 @@ function NativeMenuFixture() {
     <button onClick={() => setThreadMenu(true)}>打开会话菜单验收</button>
     <p>{pinned ? "会话已置顶" : "会话未置顶"}</p>
     <ConversationActionMenu open={threadMenu} pendingAction="" thread={{ id: "fixture-thread", name: "验收会话", isPinned: pinned }}
-      anchor={{ x: 20, y: 300, width: 240, height: 44 }} onClose={() => setThreadMenu(false)}
+      anchor={{ x: 20, y: orderFixture ? (pinned ? 80 : window.innerHeight - 100) : 300, width: 240, height: 44 }} onClose={() => setThreadMenu(false)}
       onPin={() => { setPinned((value) => !value); setThreadMenu(false); }}
       onRefresh={() => setThreadMenu(false)} onDuplicate={() => setThreadMenu(false)}
       onCopy={() => setThreadMenu(false)} onRename={() => setThreadMenu(false)} onArchive={() => setThreadMenu(false)} />
+    <button onClick={() => setSkillFixture(true)}>打开 Skill 选择验收</button>
+    <button onClick={() => { setOrderFixture(true); setThreadMenu(true); }}>打开菜单顺序验收</button>
     <textarea aria-label="剪贴板验收" />
     <button onClick={() => setSidebar(true)}>打开侧栏验收</button>
     <button onClick={() => {

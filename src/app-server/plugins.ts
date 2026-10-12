@@ -86,7 +86,7 @@ export function pluginsReferencedInText(
   plugins: InstalledPlugin[],
 ) {
   const names = new Set(
-    [...text.matchAll(/(?:^|\s)@([^\s@]+)/gu)].map((match) =>
+    [...text.matchAll(/(?:^|[\s\p{Script=Han}\p{Ps}\p{Pi}，。！？；：、"'])@([^\s@]+)/gu)].map((match) =>
       match[1].replace(/[.,!?;:，。！？；：]+$/u, ""),
     ),
   );

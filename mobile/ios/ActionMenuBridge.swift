@@ -63,6 +63,8 @@ final class CodexMobileActionMenuBridge: NSObject, WKScriptMessageHandler, UIAda
             let button = CodexMobileMenuButton(frame: anchor)
             button.isAccessibilityElement = false
             button.showsMenuAsPrimaryAction = true
+            // 置顶会改变会话位置；上下弹出都保持前端传入的动作顺序。
+            button.preferredMenuElementOrder = .fixed
             // 根菜单直接包含动作，不包装子菜单；UIKit 按纵向列表呈现。
             button.menu = UIMenu(children: actions)
             button.onEnd = { [weak self, weak button] in

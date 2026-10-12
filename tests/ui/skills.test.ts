@@ -62,6 +62,18 @@ describe("Skill @ 提及", () => {
     expect(skillMentionAt("@pdf 后续文字", 9)).toBeNull();
   });
 
+  it("中文和标点后允许 @，邮件和已有调用标记不触发", () => {
+    expect(skillMentionAt("请用@pdf", 6)).toEqual({ start: 2, end: 6, query: "pdf" });
+    expect(skillMentionAt("（@pdf", 5)).toEqual({ start: 1, end: 5, query: "pdf" });
+    expect(skillMentionAt("mail@example.com", 16)).toBeNull();
+    expect(skillMentionAt("$pdf@other", 10)).toBeNull();
+    expect(skillMentionAt("@plugin@other", 13)).toBeNull();
+  });
+
+  it("中文紧邻选择标记仍发送结构化 Skill", () => {
+    expect(skillsReferencedInText("请用$pdf 处理", skills)).toEqual([skills[1]]);
+  });
+
   it("按名称、显示名称和描述过滤已安装 Skill", () => {
     expect(filterInstalledSkills(skills, "creator")).toEqual([skills[0]]);
     expect(filterInstalledSkills(skills, "reusable")).toEqual([skills[0]]);
