@@ -59,6 +59,15 @@ describe("GitHub 双端自动构建", () => {
     expect(result.status, result.stderr).toBe(0);
     expect(JSON.parse(result.stdout)).toEqual(["v0.2.146", "v0.2.147"]);
   });
+  it("双端与本机使用同一个精确 pnpm 版本，避免主版本解析到不可下载的新包", () => {
+    const workflow = parse(readFileSync(".github/workflows/build-mobile.yml", "utf8"));
+    const setup = workflow.jobs.build.steps.find((step: { uses?: string }) => step.uses === "pnpm/action-setup@v4");
+    expect(setup.with.version).toBe("10.34.6");
+    for (const platform of ["android", "ios"]) {
+      const recipe = parse(readFileSync(`mobile/${platform}/build-recipe.yml`, "utf8"));
+      expect(recipe.tools.pnpm.version).toBe(setup.with.version);
+    }
+  });
   it("Android SDK 沿用 recipe 的空 packages，不安装已删除的 tools", () => {
     const workflow = parse(readFileSync(".github/workflows/build-mobile.yml", "utf8"));
     const recipe = parse(readFileSync("mobile/android/build-recipe.yml", "utf8"));

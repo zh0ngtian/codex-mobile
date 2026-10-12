@@ -43,7 +43,7 @@ async function main() {
     return step;
   });
   const pnpmVersion = String(recipe.tools?.pnpm?.version ?? "");
-  if (!/^\d+$/.test(pnpmVersion)) throw new Error("构建配置必须配置 pnpm 主版本");
+  if (!/^\d+\.\d+\.\d+$/.test(pnpmVersion)) throw new Error("构建配置必须固定 pnpm 精确版本");
   const appId = process.env.APP_ID || "vip.loock.codexmobile";
   const otaBaseUrl = process.env.IOS_OTA_BASE_URL || "";
   if (!/^[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$/.test(appId)) throw new Error("无效 iOS Bundle ID");

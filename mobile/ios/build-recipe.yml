@@ -15,7 +15,7 @@ tools:
     cache: npm
     cache-dependency-path: package-lock.json
   pnpm:
-    version: 10
+    version: "10.34.6"
 steps:
   - name: Install Codex Mobile app icon
     shell: bash
