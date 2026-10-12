@@ -706,7 +706,7 @@ describe("移动端对话格式", () => {
     expect(container.querySelector(".diff-card")).toBeNull();
   });
 
-  it("编辑过程默认折叠，展开后显示文件增删行数并定位 Diff", () => {
+  it("编辑过程只展示总改动，展开后使用原工具活动入口查看 Diff", () => {
     const { container } = render(<TurnCard turn={{
       id: "per-file", status: "completed", items: [
         { id: "edit", type: "fileChange", status: "completed", changes: [
@@ -716,20 +716,15 @@ describe("移动端对话格式", () => {
         { id: "final", type: "agentMessage", phase: "final_answer", text: "已完成修改" },
       ],
     }} client={null} />);
-    expect(within(container).queryAllByRole("button", { name: /\/tmp\/project\/src\// })).toHaveLength(0);
-    fireEvent.click(within(container).getByRole("button", { name: "之前的 1 条消息" }));
-    const files = within(container).getAllByRole("button", { name: /\/tmp\/project\/src\// });
-    expect(files).toHaveLength(2);
-    expect(files[0].textContent).toContain("+2-0");
-    expect(files[1].textContent).toContain("+0-1");
-    expect(files[0].closest(".previous-messages")).not.toBeNull();
-    expect(files[0].closest(".file-change-activity")).not.toBeNull();
     expect(container.querySelector(".turn-change-summary")?.textContent).toContain("本次代码改动 3 行+2-1");
-    fireEvent.click(files[1]);
+    fireEvent.click(within(container).getByRole("button", { name: "之前的 1 条消息" }));
+    expect(container.querySelector(".file-change-activity")).toBeNull();
+    expect(within(container).queryAllByRole("button", { name: /\/tmp\/project\/src\// })).toHaveLength(0);
+    fireEvent.click(within(container).getByRole("button", { name: "已编辑 2 个文件" }));
     const headings = container.querySelectorAll(".file-diff-heading");
-    expect(headings[0].getAttribute("aria-expanded")).toBe("false");
-    expect(headings[1].getAttribute("aria-expanded")).toBe("true");
-    expect(container.querySelector(".file-diff-line.deletion")?.textContent).toContain("old");
+    expect(headings).toHaveLength(2);
+    expect(headings[0].getAttribute("aria-expanded")).toBe("true");
+    expect(headings[1].getAttribute("aria-expanded")).toBe("false");
   });
 
   it("运行结束后以工具活动同款样式显示一条总计", () => {

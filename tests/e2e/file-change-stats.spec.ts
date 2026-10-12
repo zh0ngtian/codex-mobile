@@ -1,6 +1,6 @@
 import { expect, test } from "./http-fixture";
 
-test("编辑过程折叠后可展开逐文件统计并支持窄屏与 Diff 定位", async ({ page }) => {
+test("编辑过程只显示总改动并支持窄屏与原 Diff 入口", async ({ page }) => {
   await page.addInitScript(() => {
     const thread = { id: "file-stats", preview: "逐文件统计", status: { type: "idle" }, turns: [{
       id: "edit-turn", status: "completed", items: [
@@ -43,33 +43,22 @@ test("编辑过程折叠后可展开逐文件统计并支持窄屏与 Diff 定�
   });
   await page.goto("/");
   await page.getByRole("button", { name: /逐文件统计/ }).click();
-  const editFiles = page.locator(".file-change-file");
-  await expect(editFiles).toHaveCount(0);
-  await page.getByRole("button", { name: "之前的 1 条消息" }).click();
-  await expect(editFiles).toHaveCount(2);
-  await expect(editFiles.first()).toContainText("+2-1");
-  await expect(editFiles.nth(1)).toContainText("+1-0");
-  await expect(editFiles.first()).toBeVisible();
-  const originalViewport = page.viewportSize()!;
-  for (const viewport of [{ width: 375, height: 812 }, { width: 812, height: 375 }]) {
-    await page.setViewportSize(viewport);
-    const dimensions = await editFiles.first().evaluate((element) => {
-      const stats = element.querySelector(".file-change-stats")!.getBoundingClientRect();
-      const row = element.getBoundingClientRect();
-      return { height: row.height, right: stats.right, viewport: innerWidth, scroll: document.documentElement.scrollWidth };
-    });
-    expect(dimensions.height).toBeGreaterThanOrEqual(44);
-    expect(dimensions.right).toBeLessThanOrEqual(dimensions.viewport);
-    expect(dimensions.scroll).toBeLessThanOrEqual(dimensions.viewport);
-  }
-  await page.setViewportSize({ width: 375, height: 812 });
-  await editFiles.first().scrollIntoViewIfNeeded();
-  await page.locator(".file-change-activity").screenshot({ path: ".mobile-build/per-file-edits.png" });
-  await page.setViewportSize(originalViewport);
-  await editFiles.nth(1).click();
-  await expect(page.locator(".file-diff-heading").nth(1)).toHaveAttribute("aria-expanded", "true");
-  await expect(page.locator(".file-diff-heading").first()).toHaveAttribute("aria-expanded", "false");
-  await page.getByRole("button", { name: "关闭文件修改" }).click();
   await expect(page.locator(".turn-change-summary")).toContainText("本次代码改动 4 行");
-  await expect(page.locator(".file-change-file")).toHaveCount(2);
+  await expect(page.locator(".turn-change-summary")).toContainText("+3-1");
+  await expect(page.locator(".file-change-file")).toHaveCount(0);
+  await page.getByRole("button", { name: "之前的 1 条消息" }).click();
+  await expect(page.locator(".file-change-activity")).toHaveCount(0);
+  const activity = page.locator(".tool-activity");
+  await expect(activity.locator("summary")).toContainText("已更改 2 个文件");
+  await expect(activity.locator("summary")).toContainText("+3-1");
+  await activity.locator("summary").click();
+  await page.getByRole("button", { name: "已编辑 2 个文件", exact: true }).click();
+  await expect(page.locator(".file-diff-heading")).toHaveCount(2);
+  await expect(page.locator(".file-diff-heading").first()).toHaveAttribute("aria-expanded", "true");
+  await page.getByRole("button", { name: "关闭文件修改" }).click();
+  await page.getByRole("button", { name: "之前的 1 条消息" }).click();
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.locator(".turn-change-summary").scrollIntoViewIfNeeded();
+  await page.screenshot({ path: ".mobile-build/total-only.png" });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
 });
