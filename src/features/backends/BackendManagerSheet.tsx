@@ -74,6 +74,7 @@ export function BackendManagerSheet({
   failedNotificationDevices?: string[];
   appUpdate?: {
     supported: boolean;
+    manualCheckSupported: boolean;
     currentVersion: string;
     checking: boolean;
     status?: string;
@@ -452,7 +453,7 @@ export function BackendManagerSheet({
                   <small>{t("当前版本 v{version}", { version: appUpdate.currentVersion })}</small>
                   {appUpdate.supported && appUpdate.status && <small>{appUpdate.status}</small>}
                 </div>
-                {appUpdate.supported && (
+                {appUpdate.manualCheckSupported && (
                   <button
                     type="button"
                     disabled={appUpdate.checking}

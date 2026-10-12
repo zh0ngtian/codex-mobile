@@ -42,6 +42,7 @@ export interface AppUpdateState {
 
 export interface AppUpdateController {
   supported: boolean;
+  manualCheckSupported: boolean;
   state: AppUpdateState;
   sheetOpen: boolean;
   setSheetOpen: (open: boolean) => void;
@@ -219,6 +220,7 @@ export function useAppUpdate(
 
   return {
     supported,
+    manualCheckSupported: bridge !== null && iosBridge === null,
     state,
     sheetOpen,
     setSheetOpen,

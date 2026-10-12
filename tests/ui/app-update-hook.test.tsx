@@ -55,7 +55,7 @@ describe("App 更新控制器", () => {
     expect(fetchRelease).not.toHaveBeenCalled();
   });
 
-  it("iOS 显示检查更新并通过原生桥在 Safari 打开固定 OTA 安装页", async () => {
+  it("iOS 隐藏手动检查入口并保留自动更新和 Safari OTA 安装", async () => {
     const installOta = vi.fn();
     const iosBridge: IosAppUpdateBridge = {
       appVersion: () => "0.2.30",
@@ -74,6 +74,7 @@ describe("App 更新控制器", () => {
     const fetchRelease = vi.fn(async () => payload);
     const { result } = renderHook(() => useAppUpdate({ bridge: null, iosBridge, fetchRelease, storage }));
     expect(result.current.supported).toBe(true);
+    expect(result.current.manualCheckSupported).toBe(false);
     await waitFor(() => expect(result.current.state.phase).toBe("available"));
     await act(async () => result.current.check(false));
     expect(fetchRelease).toHaveBeenCalledTimes(1);
@@ -110,6 +111,7 @@ describe("App 更新控制器", () => {
     );
 
     expect(result.current.state.currentVersion).toBe("0.2.99");
+    expect(result.current.manualCheckSupported).toBe(true);
   });
 
   it("普通浏览器不检查也不展示更新能力", () => {

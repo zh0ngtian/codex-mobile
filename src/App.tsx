@@ -4381,6 +4381,7 @@ export function AppBootstrap({
         onClose={() => setManagerOpen(false)}
         appUpdate={{
           supported: appUpdate.supported,
+          manualCheckSupported: appUpdate.manualCheckSupported,
           currentVersion: appUpdate.state.currentVersion,
           checking: appUpdate.state.phase === "checking",
           status:
@@ -5064,6 +5065,7 @@ function ConfiguredApp({
         onClose={() => setManagerOpen(false)}
         appUpdate={{
           supported: appUpdate.supported,
+          manualCheckSupported: appUpdate.manualCheckSupported,
           currentVersion: appUpdate.state.currentVersion,
           checking: appUpdate.state.phase === "checking",
           status:
