@@ -27,11 +27,11 @@
 
 ## 3. 提交与双端交付
 
-- [ ] 更新本计划的实际根因与验证结果，`git diff --check` 后按中文 Conventional Commits 提交并推送 main。
-- [ ] 持有主工作区 `.mobile-build/.fixed-channel-publish.lock`，读取 Android/iOS/OTA 清单和 GitHub Releases，分配统一更高版本。
-- [ ] 推送后使用 GitHub 双端构建的 APK 与 unsigned IPA，检查源码提交；本机运行 `npm run ios:release -- --config "$HOME/Library/Application Support/CodexMobile/ios-release.local.json" --version <已分配版本> --notes '修复 Skill 触摸选择并固定会话长按菜单顺序'`。
-- [ ] 发布相同版本 APK，检查固定清单、HEAD 和完整 GET 的版本、大小和 SHA-256；核对软件源的 GitHub unsigned IPA 版本与开发者署名。
-- [ ] 保存正式签名包、回执和必要验收证据到长期主工作区，清理临时测试资源、释放锁并归档 worktree。交付正文展示固定 OTA、APK、IPA 链接与完整包信息。
+- [x] 更新本计划的实际根因与验证结果，`git diff --check` 后按中文 Conventional Commits 提交并推送 main。
+- [x] 持有主工作区 `.mobile-build/.fixed-channel-publish.lock`，读取 Android/iOS/OTA 清单和 GitHub Releases，分配统一更高版本。
+- [x] 推送后使用 GitHub 双端构建的 APK 与 unsigned IPA，检查源码提交；本机运行 `npm run ios:release -- --config "$HOME/Library/Application Support/CodexMobile/ios-release.local.json" --version 0.2.161 --notes '修复 Skill 触摸选择并固定会话长按菜单顺序'`。
+- [x] 发布相同版本 APK，检查固定清单、HEAD 和完整 GET 的版本、大小和 SHA-256；核对软件源的 GitHub unsigned IPA 版本与开发者署名。
+- [x] 保存正式签名包、回执和必要验收证据到长期主工作区，清理临时测试资源、释放锁并归档 worktree。交付正文展示固定 OTA、APK、IPA 链接与完整包信息。
 
 ## 根因与验证记录
 
@@ -43,3 +43,18 @@
 - 两端原渠道和最新 GitHub Release 均为 0.2.160，计划统一发布 0.2.161。持有固定发布锁，iOS 配置、签名身份与升级连续性预检通过。GitHub 当前登录用户名与软件源现有署名一致，保持原值。
 
 本轮不连接真实网关、不创建测试会话，无需会话归档。原生菜单、Skill 验收截图、日志与 xcresult 保存到长期主工作区的 `.mobile-build/skill-picker-menu-release/`。模拟器验收不代表真机覆盖升级和数据保留已验证。
+
+## 交付记录
+
+- 客户端提交 `b19caa4` 已集成并推送 main。GitHub 双端构建 [38201255116](https://github.com/zh0ngtian/codex-mobile/actions/runs/38201255116) 成功，APK 与 unsigned IPA 的构建回执均指向该提交；[Release v0.2.161](https://github.com/zh0ngtian/codex-mobile/releases/tag/v0.2.161) 产物已逐字节核对。
+- APK 与本机 Ad Hoc 已签名 IPA 都发布为 `0.2.161` / build `2161`。两个 LAN 清单、HEAD、完整 GET，以及 HTTPS OTA 清单、manifest、安装页、IPA 全部通过回验；签名 Bundle ID、application-identifier、权限与钥匙串组保持兼容基准连续。
+- 软件源同步到 GitHub unsigned IPA `0.2.161`，3,767,099 字节，SHA-256 `9c0ff1d78b1f4783859a81c11075a3900f7e8f5053480c1f12744b0dd31e290f`。完整 GitHub GET 与附件 digest 一致，已按软件源当前流程验证散列证明；当前 GitHub 登录用户名已经包含于原开发者署名，保持原值。
+- 正式包、OTA 回执、构建回执、回验 JSON、截图与必要 XCTest 证据保存于长期主工作区 `.mobile-build/skill-picker-menu-release/`。临时事件探针和测试构建已清理；模拟器与发布锁已释放，任务 worktree 在最终工具收尾归档。
+- 真机覆盖安装与数据保留未验证。
+
+[固定 iPhone OTA 安装页](https://192.168.123.79:8766/channels/codex-mobile/current/install.html)
+
+| 产物 | 版本 | 字节数 | SHA-256 |
+| --- | --- | --- | --- |
+| [APK](http://192.168.123.79:8765/channels/codex-mobile/latest.apk) | 0.2.161 | 4,721,623 | `942e87e0855166b311181d26c7baec746bac18a3d565f275c55849a01a976c46` |
+| [IPA（Ad Hoc 已签名）](http://192.168.123.79:8765/channels/codex-mobile/latest.ipa) | 0.2.161 | 3,790,606 | `162752470f5f8edacc5bb2bc0c4ee658c8ff744a162a267225783584ddd12bc5` |
