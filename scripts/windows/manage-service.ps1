@@ -1,5 +1,5 @@
 ﻿param(
-    [ValidateSet('install','start','stop','restart','status','ui','check')][string]$Action = 'status',
+    [ValidateSet('install','update-launchers','start','stop','restart','status','ui','check')][string]$Action = 'status',
     [string]$ServiceRoot = (Join-Path $env:LOCALAPPDATA 'CodexMobile\Service'),
     [string]$SharedConfigPath = (Join-Path $env:LOCALAPPDATA 'CodexMobile\shared-session.json'),
     [switch]$Force
@@ -23,15 +23,32 @@ function Start-Backend {
     $task = Get-ScheduledTask -TaskName $taskName -ErrorAction Stop
     if ($task.State -ne 'Running') { Start-ScheduledTask -TaskName $taskName }
 }
+function Get-QuietLauncher {
+    if (-not $script:quietLauncher) {
+        $script:quietLauncher = (& $powershell -NoProfile -NonInteractive -ExecutionPolicy RemoteSigned -File (Join-Path $ServiceRoot 'build-quiet-launcher.ps1') -OutputDirectory $ServiceRoot).Trim()
+        if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $script:quietLauncher -PathType Leaf)) {throw '无终端启动器构建失败'}
+    }
+    return $script:quietLauncher
+}
 function New-ServiceShortcut([string]$Path,[string]$ShortcutAction,[string]$Description,[bool]$Visible) {
     $shell = New-Object -ComObject WScript.Shell
     $link = $shell.CreateShortcut($Path)
-    $style = if ($Visible) { 'Normal' } else { 'Hidden' }
-    $keepOpen = if ($Visible) { '-NoExit ' } else { '' }
-    $link.TargetPath=$powershell
-    $link.Arguments="-NoProfile $keepOpen-ExecutionPolicy RemoteSigned -WindowStyle $style -File `"$(Join-Path $ServiceRoot 'manage-service.ps1')`" -ServiceRoot `"$ServiceRoot`" -Action $ShortcutAction"
+    if ($Visible) {
+        $link.TargetPath=$powershell
+        $link.Arguments="-NoProfile -NoExit -ExecutionPolicy RemoteSigned -WindowStyle Normal -File `"$(Join-Path $ServiceRoot 'manage-service.ps1')`" -ServiceRoot `"$ServiceRoot`" -Action $ShortcutAction"
+    } else {
+        $link.TargetPath=Get-QuietLauncher
+        $link.Arguments=$ShortcutAction
+    }
+    $link.WindowStyle=1
     $link.WorkingDirectory=$ServiceRoot; $link.Description=$Description
     $link.Save()
+}
+function Set-StartupShortcut {
+    $shell=New-Object -ComObject WScript.Shell
+    $link=$shell.CreateShortcut((Join-Path ([Environment]::GetFolderPath('Startup')) 'Codex Desktop.lnk'))
+    $link.TargetPath=Get-QuietLauncher; $link.Arguments='start'
+    $link.WorkingDirectory=$ServiceRoot; $link.Description='启动独立 Codex 后台服务'; $link.Save()
 }
 
 switch ($Action) {
@@ -57,7 +74,7 @@ switch ($Action) {
     New-Item -ItemType Directory -Path $backup | Out-Null
     if ($oldTask) { [IO.File]::WriteAllText((Join-Path $backup 'old-task.xml'),(Export-ScheduledTask -TaskName 'CodexMobile-SharedDesktop'),(New-Object Text.UTF8Encoding($true))) }
     Save-Json (Join-Path $backup 'environment.json') @{ CODEX_APP_SERVER_WS_URL=[Environment]::GetEnvironmentVariable('CODEX_APP_SERVER_WS_URL','User'); OldTaskEnabled=($oldTask -and $oldTask.Settings.Enabled) }
-    foreach($name in @('OwnedProcessJob.cs','resolve-desktop.ps1','run-owned-process.ps1','start-independent-service.ps1','manage-service.ps1')) {
+    foreach($name in @('OwnedProcessJob.cs','resolve-desktop.ps1','run-owned-process.ps1','start-independent-service.ps1','manage-service.ps1','QuietLauncher.cs','build-quiet-launcher.ps1')) {
         Copy-Item -LiteralPath (Join-Path $PSScriptRoot $name) -Destination (Join-Path $ServiceRoot $name) -Force
     }
     $moduleRoot = Join-Path $ServiceRoot 'service'
@@ -80,8 +97,7 @@ switch ($Action) {
     Save-Json $configPath @{ RepositoryPath=$shared.RepositoryPath; ServerPort=[int]$shared.ServerPort; PrivateServerPort=18768; GatewayPort=[int]$shared.GatewayPort;
         RemotePort=[int]$shared.RemotePort; ExternalUrl=$shared.ExternalUrl; IdentityFile=$shared.IdentityFile; TokenFile=$shared.TokenFile; SshTarget=$shared.SshTarget; CodexHome=$codexStateDirectory }
     $principal=New-ScheduledTaskPrincipal -UserId ([Security.Principal.WindowsIdentity]::GetCurrent().Name) -LogonType Interactive -RunLevel Limited
-    $arguments="-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy RemoteSigned -File `"$(Join-Path $ServiceRoot 'start-independent-service.ps1')`" -ConfigPath `"$configPath`""
-    $taskAction=New-ScheduledTaskAction -Execute $powershell -Argument $arguments -WorkingDirectory $ServiceRoot
+    $taskAction=New-ScheduledTaskAction -Execute (Get-QuietLauncher) -Argument 'backend' -WorkingDirectory $ServiceRoot
     $trigger=New-ScheduledTaskTrigger -AtLogOn -User ([Security.Principal.WindowsIdentity]::GetCurrent().Name)
     $settings=New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew -ExecutionTimeLimit ([TimeSpan]::Zero) -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)
     Register-ScheduledTask -TaskName $taskName -Action $taskAction -Trigger $trigger -Settings $settings -Principal $principal -Description 'Independent Codex app-server, mobile gateway and idle version alignment; UI has a separate lifetime.' -Force | Out-Null
@@ -94,11 +110,39 @@ switch ($Action) {
     if(Test-Path -LiteralPath (Join-Path $desktop 'Codex 共享服务.lnk')) { New-ServiceShortcut (Join-Path $desktop 'Codex 共享服务.lnk') 'ui' '打开界面，连接独立后台服务' $false }
     $startup=Join-Path ([Environment]::GetFolderPath('Startup')) 'Codex Desktop.lnk'
     if(Test-Path -LiteralPath $startup) { Copy-Item -LiteralPath $startup -Destination (Join-Path $backup 'startup.lnk') }
-    $shell=New-Object -ComObject WScript.Shell; $link=$shell.CreateShortcut($startup)
-    $link.TargetPath=Join-Path $env:WINDIR 'System32\schtasks.exe'; $link.Arguments='/Run /TN "CodexMobile-Service"'; $link.Description='启动独立 Codex 后台服务'; $link.Save()
+    Set-StartupShortcut
     if($oldTask){Disable-ScheduledTask -TaskName 'CodexMobile-SharedDesktop' | Out-Null}
     Start-Backend
     [pscustomobject]@{Installed=$true;Task=$taskName;ServiceRoot=$ServiceRoot;Backup=$backup;NextStep='首次切换时退出旧 Codex，然后用打开 Codex快捷方式启动界面'} | ConvertTo-Json
+ }
+ 'update-launchers' {
+    if (-not (Test-Path -LiteralPath $configPath)) {throw '独立服务尚未安装'}
+    $task=Get-ScheduledTask -TaskName $taskName -ErrorAction Stop
+    $rootPath=[IO.Path]::GetFullPath($ServiceRoot).TrimEnd('\')
+    $taskExecutableRoot=Split-Path $task.Actions.Execute
+    if ($taskExecutableRoot -ne $rootPath -and -not $task.Actions.Arguments.Contains($configPath)) {throw '计划任务指向其他服务目录，拒绝更改'}
+    $backup=Join-Path $ServiceRoot ('launcher-backup-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
+    New-Item -ItemType Directory -Path $backup | Out-Null
+    [IO.File]::WriteAllText((Join-Path $backup 'task.xml'),(Export-ScheduledTask -TaskName $taskName),(New-Object Text.UTF8Encoding($true)))
+    $desktop=[Environment]::GetFolderPath('Desktop')
+    foreach($name in @('打开 Codex.lnk','Codex 共享服务.lnk')) {
+        $path=Join-Path $desktop $name
+        if(Test-Path -LiteralPath $path){Copy-Item -LiteralPath $path -Destination (Join-Path $backup $name)}
+    }
+    $startup=Join-Path ([Environment]::GetFolderPath('Startup')) 'Codex Desktop.lnk'
+    if(Test-Path -LiteralPath $startup){Copy-Item -LiteralPath $startup -Destination (Join-Path $backup 'startup.lnk')}
+    foreach($name in @('manage-service.ps1','QuietLauncher.cs','build-quiet-launcher.ps1')) {
+        $source=Join-Path $PSScriptRoot $name; $destination=Join-Path $ServiceRoot $name
+        if([IO.Path]::GetFullPath($source) -ne [IO.Path]::GetFullPath($destination)) {Copy-Item -LiteralPath $source -Destination $destination -Force}
+    }
+    $launcher=Get-QuietLauncher
+    New-ServiceShortcut (Join-Path $desktop '打开 Codex.lnk') 'ui' '无终端打开界面，连接独立后台服务' $false
+    if(Test-Path -LiteralPath (Join-Path $desktop 'Codex 共享服务.lnk')) {New-ServiceShortcut (Join-Path $desktop 'Codex 共享服务.lnk') 'ui' '无终端打开界面，连接独立后台服务' $false}
+    Set-StartupShortcut
+    # 更新后续启动入口；不停止或重启当前运行实例。
+    $taskAction=New-ScheduledTaskAction -Execute $launcher -Argument 'backend' -WorkingDirectory $ServiceRoot
+    Set-ScheduledTask -TaskName $taskName -Action $taskAction | Out-Null
+    [pscustomobject]@{Updated=$true;Launcher=$launcher;Backup=$backup;BackendRestarted=$false} | ConvertTo-Json
  }
  'check' {
     $descriptor = (& $powershell -NoProfile -NonInteractive -ExecutionPolicy RemoteSigned -File (Join-Path $PSScriptRoot 'resolve-desktop.ps1')) | ConvertFrom-Json
