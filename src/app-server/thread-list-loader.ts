@@ -60,7 +60,7 @@ async function loadPrioritizedThreadRecords(
         seenCursors.add(cursor);
       } while (cursor);
     } catch {
-      // 旧服务端或单页失败不影响已发现对话与本机主动置顶、未读摘要。
+      // 旧服务端或单页失败不影响已发现对话与本机关注、未读摘要。
     }
   }
   const results = await Promise.allSettled(
@@ -233,7 +233,7 @@ export async function loadProjectThreadRecords(
     if (nextCursor && seenCursors.has(nextCursor)) {
       return { threads, hasMore: false, nextCursor: null };
     }
-    // 子会话和置顶记录均不占普通项目本批五条的名额。
+    // 子会话和独立补取的关注/运行/未读记录均不占普通项目本批五条的名额。
     if (!nextCursor ||
       (!excludedThreadIds.size && result.data.every(isVisibleThread)) ||
       threads.length >= PROJECT_THREAD_BATCH_SIZE) {
@@ -394,7 +394,7 @@ export function createLatestThreadListLoader(
         }
         return Promise.all(projectRequests).then(() => undefined);
       };
-      // 先确定被动置顶集合，普通项目分页才能准确补足五条。
+      // 先补取运行与未读摘要，普通项目分页才能准确补足五条。
       const projectRequest = options.includeRunningThreads || options.prioritizedThreadIds
         ? priorityRequest.then(loadProjects)
         : loadProjects();

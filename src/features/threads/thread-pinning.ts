@@ -1,3 +1,6 @@
+// 沿用原置顶存储键，升级后已有选择直接成为关注。
+export const THREAD_FOLLOWING_CHANGED_EVENT = "codex-mobile-following-changed";
+
 interface ThreadPinStorage {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
@@ -39,6 +42,9 @@ export function writeThreadPinned(
   if (isPinned) pinned.add(threadId);
   else pinned.delete(threadId);
   storage.setItem(storageKey(backendId), JSON.stringify([...pinned].sort()));
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event(THREAD_FOLLOWING_CHANGED_EVENT));
+  }
 }
 
 export function toggleThreadPinned(

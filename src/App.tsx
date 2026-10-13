@@ -482,7 +482,10 @@ function BackendWorkspace({
   const completionEventCatchUpRef = useRef(false);
   const questionNotificationRef = useRef(new QuestionNotificationTracker());
   const finalAnswerCompletionRef = useRef(new FinalAnswerCompletionTracker());
-  const mobileCompletionRef = useRef(new FinalAnswerCompletionTracker({ requireMobileOrigin: true }));
+  const mobileCompletionRef = useRef(new FinalAnswerCompletionTracker({
+    requireMobileOrigin: true,
+    isThreadFollowed: (threadId) => readPinnedThreadIds(localStorage, backend.id).has(threadId),
+  }));
   const automaticTitleStatesRef = useRef(
     new Map<string, AutomaticTitleState>(),
   );
@@ -605,20 +608,26 @@ function BackendWorkspace({
     ...threadsRef.current.filter((thread) => isThreadRunning(thread.status))
       .map((thread) => String(thread.id)),
   ]);
-  const setLocalPinned = (threadId: string) => {
+  const setLocalPinned = (threadId: string, sourceThread?: AnyRecord) => {
     const isPinned = toggleThreadPinned(localStorage, backend.id, threadId);
     const update = (current: AnyRecord[]) =>
       current.map((entry) =>
         String(entry.id) === threadId ? { ...entry, isPinned } : entry,
       );
-    setThreads(update);
+    setThreads((current) => {
+      const next = update(current);
+      if (isPinned && sourceThread && !next.some((thread) => String(thread.id) === threadId)) {
+        next.push({ ...sourceThread, isPinned });
+      }
+      return next;
+    });
     setSearchResults(update);
     setActive((current) =>
       String(current?.id ?? "") === threadId
         ? { ...current, isPinned }
         : current,
     );
-    showNotice(isPinned ? t("已置顶") : t("已取消置顶"));
+    showNotice(isPinned ? t("已关注") : t("已取消关注"));
   };
   const writeLocalUnread = (ids: Set<string>) => {
     writeUnreadThreadIds(localStorage, backend.id, ids);
@@ -3400,7 +3409,7 @@ function BackendWorkspace({
     setError("");
     try {
       if (action === "pin") {
-        setLocalPinned(threadId);
+        setLocalPinned(threadId, thread);
         return true;
       }
       if (!client) {
@@ -3511,8 +3520,8 @@ function BackendWorkspace({
                 : action === "refresh"
                   ? t("刷新失败，请重试")
                   : thread.isPinned === true
-                    ? t("取消置顶失败，请重试")
-                    : t("置顶失败，请重试"),
+                    ? t("取消关注失败，请重试")
+                    : t("关注失败，请重试"),
       );
       return false;
     } finally {
@@ -3536,10 +3545,10 @@ function BackendWorkspace({
     setPendingAction("pin");
     setError("");
     try {
-      setLocalPinned(String(thread.id));
+      setLocalPinned(String(thread.id), thread);
       return true;
     } catch {
-      setError(nextPinned ? t("置顶失败，请重试") : t("取消置顶失败，请重试"));
+      setError(nextPinned ? t("关注失败，请重试") : t("取消关注失败，请重试"));
       return false;
     } finally {
       setPendingAction("");

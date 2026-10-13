@@ -29,7 +29,7 @@ const threads = aggregateThreads([backend], {
   mini: [
     {
       id: "pinned",
-      preview: "置顶会话",
+      preview: "关注会话",
       cwd: "/tmp/project-a",
       updatedAt: 30,
       isPinned: true,
@@ -143,7 +143,7 @@ describe("会话侧边栏列表", () => {
     try {
       const onOpenThread = vi.fn();
       const { container } = renderList("all", { onOpenThread });
-      const row = within(container).getByRole("button", { name: /置顶会话/ });
+      const row = within(container).getByRole("button", { name: /关注会话/ });
       fireEvent.pointerDown(row, { button: 0, clientX: 20, clientY: 20 });
       act(() => vi.advanceTimersByTime(550));
       // 原生菜单接管触摸时，WebView 收到 cancel，不保证产生尾随 click。
@@ -171,11 +171,11 @@ describe("会话侧边栏列表", () => {
     try {
       const onManageThread = vi.fn().mockResolvedValue(true);
       const { container, setSidebarOpen } = renderList("all", { onManageThread });
-      fireEvent.contextMenu(within(container).getByRole("button", { name: /置顶会话/ }));
+      fireEvent.contextMenu(within(container).getByRole("button", { name: /关注会话/ }));
       expect(show).toHaveBeenCalledTimes(1);
       expect(within(container).queryByLabelText("会话操作")).toBeNull();
       const request = JSON.parse(show.mock.calls[0][0]);
-      expect(request.actions.find((a: any) => a.id === "pin").title).toBe("取消置顶");
+      expect(request.actions.find((a: any) => a.id === "pin").title).toBe("取消关注");
       await act(async () => window.dispatchEvent(new CustomEvent("codex-mobile-action-menu", {
         detail: { requestId: request.requestId, actionId: "pin" },
       })));
@@ -185,7 +185,7 @@ describe("会话侧边栏列表", () => {
     } finally { delete (window as any).CodexMobileActionMenu; }
   });
 
-  it.each(["all", "mini"])("%s 默认展开超过五条的主动及被动置顶，不受项目折叠影响", (selectedBackendId) => {
+  it.each(["all", "mini"])("%s 关注区完整展开且运行未读不自动进入", (selectedBackendId) => {
     const visibleThreads = aggregateThreads([backend], { mini:
       ["manual", "unread", "running"].flatMap((kind) => Array.from({ length: 7 }, (_, i) => ({
         id: `${kind}-${i}`, preview: `${kind}-${i}`, cwd: "/tmp/project-a",
@@ -196,100 +196,101 @@ describe("会话侧边栏列表", () => {
     const { container } = renderList(selectedBackendId, {
       visibleThreads, collapsedProjectKeys: new Set(["mini:/tmp/project-a"]),
     });
-    const section = within(container).getByRole("heading", { name: "置顶" }).parentElement as HTMLElement;
-    expect(section.querySelectorAll(".thread-row-title")).toHaveLength(21);
+    const section = within(container).getByRole("heading", { name: "关注" }).parentElement as HTMLElement;
+    expect(section.querySelectorAll(".thread-row-title")).toHaveLength(7);
     for (const thread of visibleThreads) {
-      expect(within(section).getByText(thread.threadId)).not.toBeNull();
+      expect(Boolean(within(section).queryByText(thread.threadId))).toBe(thread.pinned);
     }
     expect(within(section).queryByRole("button", { name: "更多" })).toBeNull();
   });
 
-  it.each(["all", "mini"])("%s 视图将运行和未读会话放在手动置顶后，折叠项目不影响置顶区", (selectedBackendId) => {
-    const visibleThreads = aggregateThreads([backend], { mini: [
-      { id: "manual", preview: "手动置顶任务", cwd: "/tmp/project-a", isPinned: true, updatedAt: 1 },
-      { id: "running", preview: "运行任务", cwd: "/tmp/project-b", status: { type: "active" }, updatedAt: 30 },
-      { id: "unread", preview: "未读任务", cwd: "/tmp/project-b", isUnread: true, updatedAt: 40 },
-      { id: "ordinary", preview: "普通任务", cwd: "/tmp/project-b", updatedAt: 100 },
-    ] });
-    const { container } = renderList(selectedBackendId, {
-      visibleThreads,
-      collapsedProjectKeys: new Set(["mini:/tmp/project-b"]),
-    });
-    const pinnedSection = within(container).getByRole("heading", { name: "置顶" }).parentElement as HTMLElement;
-    expect([...pinnedSection.querySelectorAll(".thread-row-title")].map((node) => node.textContent)).toEqual([
-      "手动置顶任务", "未读任务", "运行任务",
-    ]);
-    expect(within(container).getAllByText("未读任务")).toHaveLength(1);
-    expect(within(container).getAllByText("运行任务")).toHaveLength(1);
-    expect(pinnedSection.querySelectorAll(".thread-unread-dot")).toHaveLength(1);
-    expect(pinnedSection.querySelectorAll(".running-spinner")).toHaveLength(1);
-    fireEvent.contextMenu(within(pinnedSection).getByRole("button", { name: /未读任务/ }));
-    expect(within(container).getByRole("button", { name: "置顶" })).not.toBeNull();
-    expect(within(container).queryByRole("button", { name: "取消置顶" })).toBeNull();
-  });
-
-  it("搜索运行中会话时同时显示置顶和项目结果", () => {
+  it("搜索运行中会话只显示项目结果", () => {
     const { container } = renderList("mini", {
-      visibleThreads: threads.filter((thread) => thread.threadId === "recent"),
-      query: "最近会话",
+      visibleThreads: threads.filter((thread) => thread.threadId === "recent"), query: "最近会话",
     });
-    expect(within(container).getByRole("heading", { name: "置顶" })).not.toBeNull();
+    expect(within(container).queryByRole("heading", { name: "关注" })).toBeNull();
     expect(container.querySelectorAll(".project-group")).toHaveLength(1);
-    expect(within(container).getAllByText("最近会话")).toHaveLength(2);
+    expect(within(container).getAllByText("最近会话")).toHaveLength(1);
   });
 
-  it.each([false, true])("主动及被动置顶同时显示在置顶和所属分组（无项目：%s）", (isProjectless) => {
+  it.each([false, true])("关注会话只在顶部显示，运行未读留在项目（无项目：%s）", (isProjectless) => {
     const visibleThreads = aggregateThreads([backend], { mini: [
-      { id: "manual", preview: "主动任务", cwd: "/tmp/project-a", isProjectless, isPinned: true, updatedAt: 1 },
+      { id: "manual", preview: "关注任务", cwd: "/tmp/project-a", isProjectless, isPinned: true, updatedAt: 1 },
       { id: "running", preview: "执行任务", cwd: "/tmp/project-a", isProjectless, status: { type: "active" }, updatedAt: 3 },
       { id: "unread", preview: "待阅任务", cwd: "/tmp/project-a", isProjectless, isUnread: true, updatedAt: 2 },
     ] });
     const onOpenThread = vi.fn();
     const { container } = renderList("mini", { visibleThreads, hasProjectlessThreads: isProjectless, onOpenThread });
-    const pinned = within(container).getByRole("heading", { name: "置顶" }).parentElement as HTMLElement;
-    const projectHeading = within(container).getByRole("button", { name: isProjectless ? "无项目" : "project-a" });
-    const project = projectHeading.closest(".project-group") as HTMLElement;
-    expect([...project.querySelectorAll(".thread-row-title")].map(node => node.textContent)).toEqual([
-      "执行任务", "待阅任务", "主动任务",
-    ]);
+    const followed = within(container).getByRole("heading", { name: "关注" }).parentElement as HTMLElement;
+    const project = within(container).getByRole("button", { name: isProjectless ? "无项目" : "project-a" }).closest(".project-group") as HTMLElement;
+    expect([...project.querySelectorAll(".thread-row-title")].map(node => node.textContent)).toEqual(["执行任务", "待阅任务"]);
+    expect([...followed.querySelectorAll(".thread-row-title")].map(node => node.textContent)).toEqual(["关注任务"]);
     for (const thread of visibleThreads) {
       const title = String(thread.thread.preview);
-      const pinnedRow = within(pinned).getByRole("button", { name: new RegExp(title) });
-      const projectRow = within(project).getByRole("button", { name: new RegExp(title) });
-      fireEvent.click(pinnedRow);
-      fireEvent.click(projectRow);
-      expect(onOpenThread.mock.calls.slice(-2)).toEqual([[thread], [thread]]);
-      expect(within(container).getAllByText(title)).toHaveLength(2);
+      fireEvent.click(within(container).getByRole("button", { name: new RegExp(title) }));
+      expect(onOpenThread).toHaveBeenLastCalledWith(thread);
+      expect(within(container).getAllByText(title)).toHaveLength(1);
     }
     expect(project.querySelectorAll(".running-spinner")).toHaveLength(1);
     expect(project.querySelectorAll(".thread-unread-dot")).toHaveLength(1);
   });
 
-  it("取消主动置顶后保留项目入口，运行结束且已读后移除被动置顶副本", () => {
+  it("取消关注后立即显示在项目中，即使仍运行或未读也不自动提升", () => {
     const visibleThreads = aggregateThreads([backend], { mini: [
-      { id: "manual", preview: "主动任务", cwd: "/tmp/project-a", isPinned: true },
-      { id: "running", preview: "执行任务", cwd: "/tmp/project-a", status: { type: "active" } },
+      { id: "manual", preview: "关注任务", cwd: "/tmp/project-a", isPinned: true, status: { type: "active" } },
       { id: "unread", preview: "待阅任务", cwd: "/tmp/project-a", isUnread: true },
     ] });
     const { container, rerender, element } = renderList("mini", { visibleThreads });
-    for (const thread of visibleThreads) {
-      expect(within(container).getAllByText(String(thread.thread.preview))).toHaveLength(2);
-    }
-    const ordinary = aggregateThreads([backend], { mini: visibleThreads.map(({ thread }) => ({
-      ...thread, isPinned: false, isUnread: false, status: { type: "idle" },
-    })) });
-    rerender(cloneElement(element, { visibleThreads: ordinary }));
-    expect(within(container).queryByRole("heading", { name: "置顶" })).toBeNull();
     const project = within(container).getByRole("button", { name: "project-a" }).closest(".project-group") as HTMLElement;
-    for (const thread of ordinary) {
-      expect(within(project).getAllByText(String(thread.thread.preview))).toHaveLength(1);
-    }
+    expect(within(project).queryByText("关注任务")).toBeNull();
+    const ordinary = aggregateThreads([backend], { mini: visibleThreads.map(({ thread }) => ({ ...thread, isPinned: false })) });
+    rerender(cloneElement(element, { visibleThreads: ordinary }));
+    expect(within(container).queryByRole("heading", { name: "关注" })).toBeNull();
+    expect(within(project).getAllByText("关注任务")).toHaveLength(1);
+    expect(project.querySelectorAll(".running-spinner")).toHaveLength(1);
+    expect(project.querySelectorAll(".thread-unread-dot")).toHaveLength(1);
+  });
+
+  it.each([false, true])("折叠项目后名称带运行与未读标记，展开时移除（无项目：%s）", (isProjectless) => {
+    const visibleThreads = aggregateThreads([backend], { mini: [
+      { id: "running", cwd: "/tmp/project-a", isProjectless, status: { type: "active" }, isUnread: true },
+      { id: "unread", cwd: "/tmp/project-a", isProjectless, isUnread: true },
+    ] });
+    const cwd = isProjectless ? "codex-mobile://projectless" : "/tmp/project-a";
+    const { container, rerender, element } = renderList("mini", {
+      visibleThreads, hasProjectlessThreads: isProjectless, collapsedProjectKeys: new Set([`mini:${cwd}`]),
+    });
+    const heading = within(container).getByRole("button", { name: new RegExp(isProjectless ? "无项目" : "project-a") });
+    expect(within(heading).getByLabelText("进行中")).not.toBeNull();
+    expect(within(heading).getByLabelText("未读")).not.toBeNull();
+    expect(heading.getAttribute("aria-expanded")).toBe("false");
+    rerender(cloneElement(element, { collapsedProjectKeys: new Set() }));
+    expect(within(heading).queryByLabelText("进行中")).toBeNull();
+    expect(within(heading).queryByLabelText("未读")).toBeNull();
+    expect(heading.getAttribute("aria-expanded")).toBe("true");
+  });
+
+  it("项目标记不包含移出项目的关注会话，运行中的旧未读不显示未读标记", () => {
+    const visibleThreads = aggregateThreads([backend], { mini: [
+      { id: "followed", cwd: "/tmp/project-a", isPinned: true, isUnread: true, status: { type: "active" } },
+      { id: "active", cwd: "/tmp/project-b", isUnread: true, status: { type: "active" } },
+    ] });
+    const { container } = renderList("mini", { visibleThreads,
+      collapsedProjectKeys: new Set(["mini:/tmp/project-a", "mini:/tmp/project-b"]),
+    });
+    const view = within(container);
+    const first = view.getByRole("button", { name: "project-a" });
+    expect(first.querySelector(".running-spinner")).toBeNull();
+    expect(first.querySelector(".thread-unread-dot")).toBeNull();
+    const second = view.getByRole("button", { name: /project-b/ });
+    expect(second.querySelector(".running-spinner")).not.toBeNull();
+    expect(second.querySelector(".thread-unread-dot")).toBeNull();
   });
 
   it("阻止非编辑区域触发原生文字选择并保留搜索框选字", () => {
     const { container } = renderList("all");
     const view = within(container);
-    const row = view.getByRole("button", { name: /置顶会话/ });
+    const row = view.getByRole("button", { name: /关注会话/ });
     const heading = view.getByRole("heading", { name: "Codex Mobile" });
     const search = view.getByRole("textbox", { name: "" });
 
@@ -324,7 +325,7 @@ describe("会话侧边栏列表", () => {
       onManageThread,
     });
     const view = within(container);
-    const row = view.getByRole("button", { name: /置顶会话/ });
+    const row = view.getByRole("button", { name: /关注会话/ });
 
     fireEvent.pointerDown(row, { button: 0, clientX: 20, clientY: 20 });
     act(() => vi.advanceTimersByTime(550));
@@ -332,7 +333,7 @@ describe("会话侧边栏列表", () => {
     fireEvent.click(row);
 
     expect(onOpenThread).not.toHaveBeenCalled();
-    expect(view.getByRole("button", { name: "取消置顶" })).not.toBeNull();
+    expect(view.getByRole("button", { name: "取消关注" })).not.toBeNull();
     expect(view.getByRole("button", { name: "刷新会话" })).not.toBeNull();
     expect(view.getByRole("button", { name: "复制会话" })).not.toBeNull();
     expect(view.getByRole("button", { name: "复制会话 ID" })).not.toBeNull();
@@ -340,7 +341,7 @@ describe("会话侧边栏列表", () => {
     expect(view.getByRole("button", { name: "归档" })).not.toBeNull();
 
     await act(async () => {
-      fireEvent.click(view.getByRole("button", { name: "取消置顶" }));
+      fireEvent.click(view.getByRole("button", { name: "取消关注" }));
       await Promise.resolve();
     });
     expect(onManageThread).toHaveBeenCalledWith(
@@ -357,7 +358,7 @@ describe("会话侧边栏列表", () => {
       const onOpenThread = vi.fn();
       const { container, setSidebarOpen } = renderList("all", { onOpenThread });
       const view = within(container);
-      const row = view.getByRole("button", { name: /置顶会话/ });
+      const row = view.getByRole("button", { name: /关注会话/ });
       fireEvent.pointerDown(row, { button: 0, clientX: 20, clientY: 20 });
       act(() => vi.advanceTimersByTime(550));
       expect(view.getByLabelText("会话操作")).not.toBeNull();
@@ -380,7 +381,7 @@ describe("会话侧边栏列表", () => {
     try {
       const { container, setSidebarOpen } = renderList("all");
       const view = within(container);
-      const row = view.getByRole("button", { name: /置顶会话/ });
+      const row = view.getByRole("button", { name: /关注会话/ });
       fireEvent.pointerDown(row, { button: 0, clientX: 20, clientY: 20 });
       act(() => vi.advanceTimersByTime(250));
       setSidebarOpen(false);
@@ -419,14 +420,14 @@ describe("会话侧边栏列表", () => {
     expect(sticky?.querySelector(".backend-switcher")).not.toBeNull();
   });
 
-  it("全部视图把置顶独立展示且运行中会话只显示圆环", () => {
+  it("全部视图把关注独立展示且运行中会话只显示圆环", () => {
     const { container } = renderList("all");
     const view = within(container);
 
     expect(view.getByRole("heading", { name: "Codex Mobile" })).not.toBeNull();
-    expect(view.getByRole("heading", { name: "置顶" })).not.toBeNull();
-    expect(view.queryByRole("heading", { name: "最近" })).toBeNull();
-    expect(view.getAllByText("置顶会话")).toHaveLength(1);
+    expect(view.getByRole("heading", { name: "关注" })).not.toBeNull();
+    expect(view.getByRole("heading", { name: "最近" })).not.toBeNull();
+    expect(view.getAllByText("关注会话")).toHaveLength(1);
     const projectA = view.getByText("Mac mini · project-a");
     const projectB = view.getByText("Mac mini · project-b");
     expect(projectA).not.toBeNull();
@@ -451,12 +452,12 @@ describe("会话侧边栏列表", () => {
     expect(refresh.querySelector("svg")).toBeNull();
   });
 
-  it("单机视图把置顶独立展示且行内不重复机器项目", () => {
+  it("单机视图把关注独立展示且行内不重复机器项目", () => {
     const { container } = renderList("mini");
     const view = within(container);
 
-    expect(view.getByRole("heading", { name: "置顶" })).not.toBeNull();
-    expect(view.getAllByText("置顶会话")).toHaveLength(2);
+    expect(view.getByRole("heading", { name: "关注" })).not.toBeNull();
+    expect(view.getAllByText("关注会话")).toHaveLength(1);
     expect(view.getByRole("heading", { name: /project-a/ })).not.toBeNull();
     expect(view.getByRole("heading", { name: /project-b/ })).not.toBeNull();
     expect(view.queryByText("Mac mini · project-a")).toBeNull();
@@ -512,7 +513,7 @@ describe("会话侧边栏列表", () => {
     });
     const view = within(container);
 
-    expect(view.getAllByText("置顶会话")).toHaveLength(2);
+    expect(view.getAllByText("关注会话")).toHaveLength(1);
     expect(view.queryByLabelText("正在加载项目会话")).toBeNull();
   });
 
@@ -629,8 +630,8 @@ describe("会话侧边栏列表", () => {
 
     expect(projectButton.getAttribute("aria-expanded")).toBe("false");
     expect(projectButton.querySelector('[data-icon="folder"]')).not.toBeNull();
-    expect(view.getByText("置顶会话")).not.toBeNull();
-    expect(view.getAllByText("最近会话")).toHaveLength(2);
+    expect(view.getByText("关注会话")).not.toBeNull();
+    expect(view.getAllByText("最近会话")).toHaveLength(1);
 
     fireEvent.click(projectButton);
     expect(onToggleProjectCollapsed).toHaveBeenCalledWith(
@@ -639,17 +640,17 @@ describe("会话侧边栏列表", () => {
     );
   });
 
-  it("搜索置顶会话时显示双区域并临时展开项目，不改变折叠缓存", () => {
+  it("搜索关注会话只显示关注区，不改变折叠缓存", () => {
     const collapsedProjectKeys = new Set(["mini:/tmp/project-a"]);
     const { container } = renderList("mini", {
       collapsedProjectKeys,
-      query: "置顶",
+      query: "关注",
     });
     const view = within(container);
 
-    expect(view.getByRole("heading", { name: "置顶" })).not.toBeNull();
-    expect(view.getAllByText("置顶会话")).toHaveLength(2);
-    expect(view.getByRole("button", { name: /project-a/ }).getAttribute("aria-expanded")).toBe("true");
+    expect(view.getByRole("heading", { name: "关注" })).not.toBeNull();
+    expect(view.getAllByText("关注会话")).toHaveLength(1);
+    expect(view.queryByRole("button", { name: /project-a/ })).toBeNull();
     expect(collapsedProjectKeys.has("mini:/tmp/project-a")).toBe(true);
   });
 
@@ -750,7 +751,7 @@ describe("会话侧边栏列表", () => {
     );
 
     const unreadMarkers = within(container).getAllByLabelText("未读");
-    expect(unreadMarkers).toHaveLength(2);
+    expect(unreadMarkers).toHaveLength(1);
     for (const unread of unreadMarkers) {
       const meta = unread.closest(".thread-row-meta");
       expect(meta).not.toBeNull();

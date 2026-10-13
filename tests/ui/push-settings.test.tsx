@@ -1,9 +1,10 @@
+import { writeThreadPinned } from "../../src/features/threads/thread-pinning";
 import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AppBootstrap } from "../../src/App";
 import { notifyRunCompleted } from "../../src/notifications/run-completion";
-import { readNotificationPreference, syncNotificationSettings, writeNotificationPreference } from "../../src/notifications/preferences";
+import { readNotificationPreference, syncNotificationSettings, writeNotificationPreference, useNotificationSync } from "../../src/notifications/preferences";
 
 describe("推送方式设置", () => {
   beforeEach(() => {
@@ -72,6 +73,44 @@ describe("推送方式设置", () => {
     await syncNotificationSettings([device], { mode: "system", barkUrl: "" }, window.localStorage, fetcher);
     expect(calls[3].body.mode).toBe("system");
     expect(calls.every((call) => call.body.clientId === calls[0].body.clientId)).toBe(true);
+  });
+
+  it("按设备同步本地关注集合，取消关注同步空集合", async () => {
+    const first = { id: "mini", name: "Mac mini", baseUrl: "http://host.local:18766", token: "", enabled: true, order: 0 };
+    const second = { ...first, id: "book", name: "MacBook", baseUrl: "http://book.local:18766" };
+    const bark = { mode: "bark" as const, barkUrl: "https://api.day.app/DeviceKey123" };
+    writeThreadPinned(window.localStorage, "mini", "desktop-thread", true);
+    const calls: any[] = [];
+    const fetcher = vi.fn(async (_url, init) => {
+      calls.push(JSON.parse(init!.body as string));
+      return new Response(JSON.stringify({ saved: true }), { status: 200 });
+    }) as unknown as typeof fetch;
+    await syncNotificationSettings([first, second], bark, window.localStorage, fetcher);
+    expect(calls.find(call => call.backendId === "mini").followedThreadIds).toEqual(["desktop-thread"]);
+    expect(calls.find(call => call.backendId === "book").followedThreadIds).toEqual([]);
+    writeThreadPinned(window.localStorage, "mini", "desktop-thread", false);
+    await syncNotificationSettings([first], bark, window.localStorage, fetcher);
+    expect(calls.at(-1).followedThreadIds).toEqual([]);
+  });
+
+  it("关注变化立即触发订阅同步，卸载后不再同步", async () => {
+    const devices = [{ id: "mini", name: "Mac mini", baseUrl: "http://host.local:18766", token: "", enabled: true, order: 0 }];
+    const preference = { mode: "bark" as const, barkUrl: "https://api.day.app/DeviceKey123" };
+    const bodies: any[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (_url, init) => {
+      bodies.push(JSON.parse(init!.body as string));
+      return new Response(JSON.stringify({ saved: true }), { status: 200 });
+    }));
+    function Subscription() { useNotificationSync(devices, preference); return null; }
+    const view = render(<Subscription />);
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    writeThreadPinned(window.localStorage, "mini", "desktop-thread", true);
+    await waitFor(() => expect(bodies).toHaveLength(2));
+    expect(bodies[1].followedThreadIds).toEqual(["desktop-thread"]);
+    view.unmount();
+    writeThreadPinned(window.localStorage, "mini", "desktop-thread", false);
+    await new Promise(resolve => setTimeout(resolve, 20));
+    expect(bodies).toHaveLength(2);
   });
 
   it("网关拒绝或不支持时返回设备名称并保留注册以便重试", async () => {

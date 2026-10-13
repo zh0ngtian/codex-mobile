@@ -127,3 +127,27 @@ describe("移动端单条指令推送资格", () => {
     expect(tracker.observe(complete())).toBeNull();
   });
 });
+
+describe("关注会话的完成资格", () => {
+  it("关注允许电脑回合，移动确认迟到仍登记来源且不重复完成", () => {
+    const followed = new Set(["thread"]);
+    const tracker = new FinalAnswerCompletionTracker({ requireMobileOrigin: true, isThreadFollowed: id => followed.has(id) });
+    tracker.observe(final());
+    expect(tracker.observe(complete())).toEqual({ threadId: "thread", turnId: "turn" });
+    expect(tracker.isMobileTurn("thread", "turn")).toBe(false);
+    expect(tracker.observeRpc({ method: "turn/start", params: { threadId: "thread" } }, { result: { turn: { id: "turn" } } })).toBeNull();
+    expect(tracker.isMobileTurn("thread", "turn")).toBe(true);
+    followed.clear();
+    tracker.observe(final("thread", "next"));
+    expect(tracker.observe(complete("thread", "next"))).toBeNull();
+    tracker.rememberThread({ id: "child", threadSource: "subagent" }); followed.add("child");
+    tracker.observe(final("child")); expect(tracker.observe(complete("child"))).toBeNull();
+  });
+  it("关注资格迟到可通过重观察完成事件确认，失败保持静默", () => {
+    let followed = false;
+    const tracker = new FinalAnswerCompletionTracker({ requireMobileOrigin: true, isThreadFollowed: () => followed });
+    tracker.observe(final()); expect(tracker.observe(complete())).toBeNull(); followed = true;
+    expect(tracker.observe(complete())).toEqual({ threadId: "thread", turnId: "turn" });
+    tracker.observe(final("thread", "bad")); expect(tracker.observe(complete("thread", "bad", "failed"))).toBeNull();
+  });
+});

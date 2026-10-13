@@ -10,7 +10,10 @@ const isFinal = (item: any) => item?.type === "agentMessage" && item.phase === "
 export class FinalAnswerCompletionTracker {
   private turns = new Map<string, TurnState>();
   private silentThreads = new Set<string>();
-  constructor(private options: { requireMobileOrigin?: boolean } = {}) {}
+  constructor(private options: { requireMobileOrigin?: boolean; isThreadFollowed?: (threadId: string) => boolean } = {}) {}
+  isMobileTurn(threadId: string, turnId: string): boolean {
+    return this.turns.get(JSON.stringify([threadId, turnId]))?.mobile === true;
+  }
   /** 仅成功提交的移动端 RPC 授权对应回合；历史/恢复结果不能授权。 */
   observeRpc(request: { method?: string; params?: unknown }, response: { error?: unknown; result?: unknown }): CompletedFinalAnswer | null {
     if (response.error != null || !["turn/start", "turn/steer"].includes(request.method ?? "")) return null;
@@ -29,7 +32,7 @@ export class FinalAnswerCompletionTracker {
     this.turns.set(JSON.stringify([threadId, turnId]), state);
     while (this.turns.size > 512) this.turns.delete(this.turns.keys().next().value!);
     if (!state.final || !state.completed || state.blocked || state.emitted ||
-      (this.options.requireMobileOrigin && !state.mobile)) return null;
+      (this.options.requireMobileOrigin && !state.mobile && !this.options.isThreadFollowed?.(threadId))) return null;
     state.emitted = true;
     return { threadId, turnId };
   }

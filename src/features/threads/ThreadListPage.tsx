@@ -131,7 +131,7 @@ export function ThreadListPage({
     ? summaries[selectedBackend.id]
     : undefined;
   const allGroups = splitAllThreads(visibleThreads);
-  const projectGroups = groupThreadsByProject(visibleThreads, [
+  const projectGroups = groupThreadsByProject(visibleThreads.filter((thread) => !thread.pinned), [
     ...(hasProjectlessThreads ? [PROJECTLESS_GROUP_ID] : []),
     ...projectDirectories,
   ]);
@@ -381,7 +381,7 @@ export function ThreadListPage({
           <>
             {!!allGroups.pinned.length && (
               <section className="thread-section">
-                <h2>{t("置顶")}</h2>
+                <h2>{t("关注")}</h2>
                 {allGroups.pinned.map((thread) => renderRow(thread, true))}
               </section>
             )}
@@ -397,7 +397,7 @@ export function ThreadListPage({
           <>
             {!!allGroups.pinned.length && (
               <section className="thread-section">
-                <h2>{t("置顶")}</h2>
+                <h2>{t("关注")}</h2>
                 {allGroups.pinned.map((thread) => renderRow(thread, false))}
               </section>
             )}
@@ -424,7 +424,9 @@ export function ThreadListPage({
                   group.threads.length >= 5;
                 const showInitialLoading =
                   projectThreadState === "loading" &&
-                  group.threads.length === 0;
+                  group.threads.length === 0 &&
+                  !visibleThreads.some((thread) => thread.pinned &&
+                    (thread.isProjectless ? PROJECTLESS_GROUP_ID : String(thread.cwd ?? "")) === group.cwd);
                 const showInitialError =
                   projectThreadState === "error" &&
                   group.threads.length === 0;
@@ -445,7 +447,19 @@ export function ThreadListPage({
                         <AppIcon
                           name={isExpanded ? "folder-open" : "folder"}
                         />
-                        <span>{group.projectName}</span>
+                        <span className="project-heading-label">
+                          <span className="project-heading-name">{group.projectName}</span>
+                          {!isExpanded && (
+                            <span className="project-attention">
+                              {group.threads.some((thread) => isThreadRunning(thread.status)) && (
+                                <i className="running-spinner" aria-label={t("进行中")} />
+                              )}
+                              {group.threads.some((thread) => thread.unread) && (
+                                <i className="thread-unread-dot" aria-label={t("未读")} />
+                              )}
+                            </span>
+                          )}
+                        </span>
                       </button>
                     </h2>
                     {isExpanded && (

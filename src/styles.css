@@ -153,6 +153,10 @@ button, a, summary, [role="button"] { -webkit-tap-highlight-color: transparent; 
 .project-heading { width: 100%; min-width: 0; min-height: 34px; border: 0; background: transparent; display: grid; grid-template-columns: 19px minmax(0,1fr); align-items: center; gap: 7px; padding: 4px 0; color: inherit; text-align: left; cursor: pointer; }
 .project-heading svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .project-heading span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.project-heading .project-heading-label { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.project-heading-name { min-width: 0; }
+.project-heading .project-attention { display: inline-flex; align-items: center; gap: 7px; flex: 0 0 auto; overflow: visible; }
+.project-attention .running-spinner { width: 15px; height: 15px; }
 .project-group > .thread-row { width: calc(100% - 26px); margin-left: 26px; }
 .project-more, .project-retry { justify-self: start; display: inline-flex; align-items: center; gap: 7px; margin: 1px 0 6px 26px; border: 0; padding: 5px 0; background: transparent; color: #aaa; font-size: 0.8125rem; font-weight: min(900, calc(600 + var(--bold-text-weight-offset))); white-space: nowrap; }
 .project-retry { color: #a44a42; }
