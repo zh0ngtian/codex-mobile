@@ -494,12 +494,40 @@ class Adapter:
         if app.get('version')!=self.version:return {'done':False,'result':{}}
         expected={'buildVersion':self.build_number,'downloadURL':unsigned['downloadUrl'],'size':unsigned['size'],'sha256':unsigned['sha256']}
         for key,value in expected.items():
+            if key=='sha256' and not app.get(key):return {'done':False,'result':{'missing':'unsigned-digest-attestation'}}
             if app.get(key)!=value:raise ValueError('软件源 unsigned 产物不匹配: '+key)
         username=self.gh_json('user')['login']
         if username.lower() not in re.split(r'[^a-z0-9-]+',app.get('developerName','').lower()):return {'done':False,'result':{}}
         return {'done':True,'result':{'appId':app['appID'],'version':self.version,**expected,'developerName':app['developerName'],
                                      'sourceCommit':self.frozen_sha,'signed':False,
                                      'syncOperation':self.read_progress().get('operations',{}).get('source',{})}}
+
+    def attest_source(self, base, headers, entry_id, catalog, expected):
+        for attempt in range(5):
+            entry=next(e for e in catalog['entries'] if e['id']==entry_id)
+            current=entry.get('current') or {};metadata=current.get('metadata') or {}
+            if current.get('downloadURL')!=expected['downloadUrl'] or metadata.get('version')!=self.version:
+                return False
+            if str(metadata.get('buildVersion'))!=self.build_number or current.get('inspection',{}).get('fullBytes')!=expected['size']:
+                raise ValueError('软件源待证明包的构建号/大小不在本批')
+            actual=current.get('sha256')
+            if actual and actual!=expected['sha256']:raise ValueError('软件源已公布散列不同，不能覆盖')
+            if actual==expected['sha256']:
+                self.progress('source',attestationVerified=True,attestationId=entry_id+':'+current.get('fingerprint',self.version),sha256=actual)
+                return True
+            if attempt==4:raise ValueError('软件源散列证明四次写入后仍未核对')
+            self.progress('source',attestationIntent=True,attestationId=entry_id+':'+current.get('fingerprint',self.version),sha256=expected['sha256'])
+            try:self.url_json(base+'/api/entries/'+entry_id+'/attest',method='POST',headers=headers,
+                              data={'revision':catalog['revision'],'sha256':expected['sha256']})
+            except Exception as error:
+                reconciled=self.url_json(base+'/api/catalog',headers=headers)
+                live=next(e for e in reconciled['entries'] if e['id']==entry_id)
+                if live.get('current',{}).get('sha256')==expected['sha256']:
+                    catalog=reconciled;continue
+                if 'HTTP 409' not in str(error) or attempt==3:raise
+                catalog=reconciled;continue
+            catalog=self.url_json(base+'/api/catalog',headers=headers)
+        raise ValueError('软件源散列证明未完成真实核对')
 
     def source_manage(self):
         credential_path=self.options.get('source_credentials')
@@ -530,6 +558,13 @@ class Adapter:
                           data={'revision':catalog['revision'],'developerName':developer,
                                 'description':presentation.get('description',''),
                                 'iconURL':presentation.get('iconURL') or public.get('iconURL'), 'legacyDefault':presentation.get('legacyDefault',public.get('legacyDefault',False))})
+        current=entry.get('current') or {}
+        if current.get('metadata',{}).get('version')==self.version:
+            build=self.build_check()
+            if not build['done']:raise ValueError('软件源证明缺少本批 CI 产物')
+            # presentation can change the catalog revision; reconcile before an attest POST.
+            catalog=self.url_json(base+'/api/catalog',headers=headers)
+            if self.attest_source(base,headers,entry_id,catalog,build['result']['artifacts']['ios']):return
         active=[j for j in catalog.get('jobs',[]) if j['entryId']==entry_id and j.get('status') not in ('succeeded','failed','superseded')]
         if active:
             self.progress('source',releaseId=entry_id,jobId=active[-1]['id'],status=active[-1]['status'])
