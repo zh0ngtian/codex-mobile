@@ -130,6 +130,9 @@ describe("GitHub 双端自动构建", () => {
     expect(workflow.on.pull_request).toBeDefined();
     expect(workflow.on.push).toBeDefined();
     expect(workflow.permissions.contents).toBe("read");
+    expect(workflow.concurrency.group).toBe("development-checks-${{ github.event.pull_request.number || github.ref }}-${{ github.ref == 'refs/heads/main' && github.sha || 'branch' }}");
+    expect(workflow.concurrency["cancel-in-progress"]).toBe("${{ github.ref != 'refs/heads/main' }}");
+    expect(workflow.concurrency.queue).toBeUndefined();
     expect(source).toContain("npm ci");
     expect(source).not.toContain("--ignore-scripts");
     expect(source).toContain("npm test -- tests/ci --maxWorkers=2 --testTimeout=60000");
