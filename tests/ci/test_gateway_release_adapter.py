@@ -84,6 +84,7 @@ class Adapter:
         self.build_exit_code = 0
         self.http_payload = {'mode': 'managed', 'upstreamUrl': 'ws://127.0.0.1:18765'}
         self.requests = []
+        self.proxy_handlers = []
 
     def command(self, args, cwd=None, input=None):
         self.calls.append(list(args))
@@ -139,6 +140,10 @@ class Adapter:
     def read_progress(self):
         return {}
 
+    def build_opener(self, *handlers):
+        self.proxy_handlers.extend(handlers)
+        return types.SimpleNamespace(open=self.urlopen)
+
     def urlopen(self, request, timeout=None):
         self.requests.append(request)
         return io.BytesIO(json.dumps(self.http_payload).encode())
@@ -157,6 +162,9 @@ class GatewayTests(unittest.TestCase):
         self.http = patch.object(self.module.urllib.request, 'urlopen', self.adapter.urlopen)
         self.http.start()
         self.addCleanup(self.http.stop)
+        opener = patch.object(self.module.urllib.request, 'build_opener', self.adapter.build_opener)
+        opener.start()
+        self.addCleanup(opener.stop)
         self.gateway = self.module.Gateway(self.adapter)
         diagnostics = patch.object(self.module.sys, 'stderr', io.StringIO())
         diagnostics.start()
@@ -413,6 +421,43 @@ class GatewayTests(unittest.TestCase):
                 self.gateway._prepare()
         self.assertFalse(self.adapter.root.joinpath('gateway-progress.json').exists())
         self.assertEqual(self.adapter.count(['npm', 'run', 'build:server']), 1)
+
+    def test_health_probe_uses_configured_lan_host_and_preserves_private_auth(self):
+        environment = json.loads(self.adapter.live.joinpath('gateway-env.json').read_text())
+        environment.update(HOST='192.168.123.79', CODEX_APP_SERVER_MODE='external',
+                           CODEX_APP_SERVER_URL='ws://127.0.0.1:14550')
+        put(self.adapter.live / 'gateway-env.json', json.dumps(environment))
+        self.adapter.http_payload = {'mode': 'external', 'upstreamUrl': 'ws://127.0.0.1:14550'}
+        self.gateway.run()
+        request = self.adapter.requests[-1]
+        self.assertEqual(request.full_url, 'http://192.168.123.79:19876/api/status')
+        self.assertEqual(request.get_header('Cookie'), 'codex_mobile_token=private%20token')
+        self.assertNotIn('private token', request.full_url)
+        self.assertNotIn('private token', json.dumps(self.adapter.calls))
+        self.assertNotIn('private token', json.dumps(self.adapter.events))
+        self.assertNotIn('private token', self.adapter.root.joinpath('gateway-progress.json').read_text())
+        self.assertTrue(self.gateway.check()['done'])
+
+    def test_health_probe_maps_wildcards_and_formats_ipv6_and_hostname(self):
+        environment = json.loads(self.adapter.live.joinpath('gateway-env.json').read_text())
+        for configured, authority in (('', '127.0.0.1'), ('0.0.0.0', '127.0.0.1'),
+                                      ('::', '[::1]'), ('::1', '[::1]'),
+                                      ('2001:db8::79', '[2001:db8::79]'), ('gateway.local', 'gateway.local')):
+            with self.subTest(host=configured):
+                environment['HOST'] = configured
+                put(self.adapter.live / 'gateway-env.json', json.dumps(environment))
+                self.assertTrue(self.gateway._healthy(self.adapter.pid))
+                self.assertEqual(self.adapter.requests[-1].full_url, f'http://{authority}:19876/api/status')
+                self.assertIn(['lsof', '-nP', '-a', '-p', str(self.adapter.pid),
+                               '-iTCP:19876', '-sTCP:LISTEN', '-t'], self.adapter.calls)
+
+    def test_health_probe_disables_environment_proxies(self):
+        with patch.dict(self.module.os.environ, {'HTTP_PROXY': 'http://external.proxy:8888',
+                                                'http_proxy': 'http://external.proxy:8888'}):
+            self.assertTrue(self.gateway._healthy(self.adapter.pid))
+        self.assertEqual(len(self.adapter.proxy_handlers), 1)
+        self.assertIsInstance(self.adapter.proxy_handlers[0], self.module.urllib.request.ProxyHandler)
+        self.assertEqual(self.adapter.proxy_handlers[0].proxies, {})
 
     def test_tampered_persistent_stage_is_not_used_as_build_source(self):
         self.adapter.fail_before_restart = True
