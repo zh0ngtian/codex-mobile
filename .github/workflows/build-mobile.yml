@@ -3,33 +3,28 @@ name: Build Mobile Apps
 on:
   push:
     branches: [main]
-    paths:
-      - 'src/**'
-      - 'public/**'
-      - 'index.html'
-      - 'mobile/**'
-      - 'package.json'
-      - 'package-lock.json'
-      - 'mobile-version-floor.json'
-      - 'tsconfig*.json'
-      - 'vite.config.ts'
-      - 'docs/assets/app-icon/codex-mobile-app-icon-1024.png'
-      - 'scripts/prepare-ios.mjs'
-      - 'scripts/build-mobile.mjs'
-      - 'scripts/resolve-mobile-version.mjs'
-      - '.github/workflows/build-mobile.yml'
+    paths: ['.release-batch.json']
   workflow_dispatch:
     inputs:
+      batch_id:
+        description: '协调器冻结的 batchId'
+        required: true
+        type: string
+      frozen_sha:
+        description: '引入冻结 manifest 的完整提交 SHA'
+        required: true
+        type: string
       release_version:
-        description: '可选：高于已发布版本的统一 major.minor.patch 版本'
-        required: false
+        description: '与冻结 manifest 一致的统一版本'
+        required: true
         type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: mobile-release-${{ github.ref }}
+  group: codex-mobile-main-production
+  queue: max
   cancel-in-progress: false
 
 defaults:
@@ -41,34 +36,42 @@ env:
 
 jobs:
   version:
-    name: Resolve shared version
+    name: Validate frozen batch
     runs-on: ubuntu-latest
     outputs:
       app_version: ${{ steps.version.outputs.app_version }}
       release_tag: ${{ steps.version.outputs.release_tag }}
+      release_required: ${{ steps.version.outputs.release_required }}
+      batch_id: ${{ steps.version.outputs.batch_id }}
+      source_commit: ${{ steps.version.outputs.source_commit }}
+      app_version_code: ${{ steps.version.outputs.app_version_code }}
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: '22.14.0'
-      - name: 分配双端统一版本
+      - name: 校验冻结批次与完整提交来源
         id: version
         env:
-          GH_TOKEN: ${{ github.token }}
+          REQUESTED_BATCH_ID: ${{ inputs.batch_id }}
+          REQUESTED_FROZEN_SHA: ${{ inputs.frozen_sha }}
           REQUESTED_VERSION: ${{ inputs.release_version }}
         run: |
           set -euo pipefail
-          gh api --paginate --slurp "repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
-            | jq '[.[][] | .tag_name]' > "$RUNNER_TEMP/releases.json"
-          args=(--releases "$RUNNER_TEMP/releases.json")
-          if [[ -n "$REQUESTED_VERSION" ]]; then args+=(--requested "$REQUESTED_VERSION"); fi
-          node scripts/resolve-mobile-version.mjs "${args[@]}"
+          args=()
+          if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]]; then
+            test -n "$REQUESTED_BATCH_ID" && test -n "$REQUESTED_FROZEN_SHA" && test -n "$REQUESTED_VERSION"
+            args+=(--batch-id "$REQUESTED_BATCH_ID" --frozen-sha "$REQUESTED_FROZEN_SHA" --version "$REQUESTED_VERSION")
+          fi
+          node scripts/validate-release-batch.mjs "${args[@]}"
 
   build:
     name: Build ${{ matrix.platform }}
     needs: version
+    if: needs.version.outputs.release_required == 'true'
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 40
     strategy:
@@ -81,10 +84,13 @@ jobs:
             runner: macos-15-intel
     env:
       APP_VERSION: ${{ needs.version.outputs.app_version }}
+      BATCH_ID: ${{ needs.version.outputs.batch_id }}
+      SOURCE_COMMIT: ${{ needs.version.outputs.source_commit }}
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: '22.14.0'
@@ -105,14 +111,16 @@ jobs:
         if: matrix.platform == 'ios'
         with:
           xcode-version: '26.3'
+      - name: 再次校验冻结来源
+        run: node scripts/validate-release-batch.mjs --batch-id "$BATCH_ID" --frozen-sha "$SOURCE_COMMIT" --version "$APP_VERSION"
       - name: 安装锁定依赖
-        run: npm ci
+        run: npm ci --ignore-scripts
       - name: 验证构建契约
         run: npm test -- tests/ci --maxWorkers=2 --testTimeout=60000
       - name: 编译并校验安装包
         env:
           BUILD_PLATFORM: ${{ matrix.platform }}
-        run: node scripts/build-mobile.mjs --platform "$BUILD_PLATFORM" --version "$APP_VERSION"
+        run: node scripts/build-mobile.mjs --platform "$BUILD_PLATFORM" --version "$APP_VERSION" --batch-id "$BATCH_ID" --frozen-sha "$SOURCE_COMMIT"
       - name: 保存已校验产物
         uses: actions/upload-artifact@v4
         with:
@@ -124,23 +132,41 @@ jobs:
   release:
     name: Publish dual-platform release
     needs: [version, build]
+    if: needs.version.outputs.release_required == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.14.0'
       - uses: actions/download-artifact@v4
         with:
           pattern: codex-mobile-*
           merge-multiple: true
           path: artifacts
       - name: 校验并发布双端 Release
-        working-directory: artifacts
         env:
           GH_TOKEN: ${{ github.token }}
           APP_VERSION: ${{ needs.version.outputs.app_version }}
           RELEASE_TAG: ${{ needs.version.outputs.release_tag }}
+          BATCH_ID: ${{ needs.version.outputs.batch_id }}
+          SOURCE_COMMIT: ${{ needs.version.outputs.source_commit }}
         run: |
           set -euo pipefail
+          # checkout 完整历史后，再核对当前远端 tag，包含 annotated tag 的真实 commit。
+          gh auth setup-git
+          remote_tag="$(git ls-remote --tags origin "refs/tags/$RELEASE_TAG")"
+          if [[ -n "$remote_tag" ]]; then
+            git fetch --force origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+          fi
+          node scripts/validate-release-batch.mjs --batch-id "$BATCH_ID" --frozen-sha "$SOURCE_COMMIT" --version "$APP_VERSION" \
+            --receipts artifacts --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT"
+          cd artifacts
           test -s "CodexMobile-v${APP_VERSION}.apk"
           test -s "CodexMobile-v${APP_VERSION}-unsigned.ipa"
           sha256sum --check ./*.sha256
@@ -150,5 +176,8 @@ jobs:
           附件包含安装包、SHA-256 校验文件和构建回执（来源提交、版本、文件大小及散列）。
           NOTES
           gh release create "$RELEASE_TAG" ./*.apk ./*.ipa ./*.sha256 ./*-build.json \
-            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --repo "$GITHUB_REPOSITORY" --target "$SOURCE_COMMIT" \
             --title "Codex Mobile ${APP_VERSION}" --notes-file release-notes.md
+          cd ..
+          git fetch --force origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+          test "$(git rev-parse "refs/tags/$RELEASE_TAG^{commit}")" = "$SOURCE_COMMIT"

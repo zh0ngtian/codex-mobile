@@ -50,14 +50,12 @@ describe("GitHub 双端自动构建", () => {
       expect(result.status).not.toBe(0);
     }
   });
-  it("Release 分页使用独立 jq，兼容 GitHub CLI 的 slurp 限制", () => {
+  it("正式构建只消费冻结版本，不自动分配版本", () => {
     const workflow = parse(readFileSync(".github/workflows/build-mobile.yml", "utf8"));
     const script = workflow.jobs.version.steps.find((step: { id?: string }) => step.id === "version").run;
-    const query = script.match(/\|\s*jq '([^']+)'/);
-    expect(query, "gh --slurp 分页必须使用独立 jq 转换").not.toBeNull();
-    const result = spawnSync("jq", [query![1]], { input: JSON.stringify([[{ tag_name: "v0.2.146" }], [{ tag_name: "v0.2.147" }]]), encoding: "utf8" });
-    expect(result.status, result.stderr).toBe(0);
-    expect(JSON.parse(result.stdout)).toEqual(["v0.2.146", "v0.2.147"]);
+    expect(script).toContain("validate-release-batch.mjs");
+    expect(script).not.toContain("resolve-mobile-version.mjs");
+    expect(script).not.toContain("gh api");
   });
   it("双端与本机使用同一个精确 pnpm 版本，避免主版本解析到不可下载的新包", () => {
     const workflow = parse(readFileSync(".github/workflows/build-mobile.yml", "utf8"));
@@ -94,7 +92,7 @@ describe("GitHub 双端自动构建", () => {
     const source = readFileSync(path, "utf8");
     const workflow = parse(source);
     expect(workflow.on.push.branches).toEqual(["main"]);
-    expect(workflow.on.push.paths).toContain("src/**");
+    expect(workflow.on.push.paths).toEqual([".release-batch.json"]);
     expect(workflow.on.push.paths).not.toContain("server/**");
     expect(workflow.on.workflow_dispatch.inputs.release_version).toBeDefined();
     expect(workflow.concurrency["cancel-in-progress"]).toBe(false);
@@ -103,9 +101,36 @@ describe("GitHub 双端自动构建", () => {
     expect(workflow.jobs.build.strategy.matrix.include.map((job: { platform: string }) => job.platform)).toEqual(["android", "ios"]);
     expect(workflow.jobs.build.env.APP_VERSION).toBe("${{ needs.version.outputs.app_version }}");
     expect(workflow.jobs.release.needs).toEqual(["version", "build"]);
-    expect(workflow.jobs.release.if).toBeUndefined();
+    expect(workflow.jobs.release.if).toContain("release_required == 'true'");
+    expect(workflow.jobs.build.if).toContain("release_required == 'true'");
+    expect(workflow.concurrency.group).toBe("codex-mobile-main-production");
+    expect(workflow.concurrency.queue).toBe("max");
+    for (const job of ["version", "build", "release"]) {
+      const checkout = workflow.jobs[job].steps.find((step: { uses?: string }) => step.uses === "actions/checkout@v4");
+      expect(checkout.with["fetch-depth"]).toBe(0);
+    }
+    expect(source).toContain("--receipts");
+    expect(source).toContain("gh auth setup-git");
+    expect(source).toContain('remote_tag="$(git ls-remote');
+    expect(source).toContain("--run-id");
+    expect(source).toContain("git rev-parse");
+    expect(workflow.on.workflow_dispatch.inputs.batch_id.required).toBe(true);
+    expect(workflow.on.workflow_dispatch.inputs.frozen_sha.required).toBe(true);
     expect(source).toContain("sha256sum --check");
     expect(source).toContain("gh release create");
     expect(source).not.toMatch(/npm publish|IOS_P12|IOS_PROFILE|secrets: inherit/);
   });
+  it("开发和 PR 检查独立运行且不能发包", () => {
+    const path = ".github/workflows/development-checks.yml";
+    expect(existsSync(path), "缺少独立开发检查工作流").toBe(true);
+    const source = readFileSync(path, "utf8");
+    const workflow = parse(source);
+    expect(workflow.on.pull_request).toBeDefined();
+    expect(workflow.on.push).toBeDefined();
+    expect(workflow.permissions.contents).toBe("read");
+    expect(source).toContain("npm ci --ignore-scripts");
+    expect(source).toContain("npm test");
+    expect(source).not.toMatch(/gh release|build-mobile.mjs|release-ios.py|npm run build/);
+  });
+
 });
