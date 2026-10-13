@@ -25,6 +25,52 @@ function fixture(change?: (batch: any) => void) {
 }
 
 describe("冻结批次来源门禁", () => {
+  it("GitHub Release 批次输出统一双端版本与精确冻结来源", () => {
+    const f = fixture(b => {
+      b.project = "codex-mobile-github-release";
+      b.target = "codex-mobile-github-release";
+      b.environment = "github-release";
+    });
+    try {
+      const result = f.run();
+      expect(result.status, result.stderr).toBe(0);
+      expect(JSON.parse(result.stdout)).toMatchObject({
+        release_required: "true", release_tag: "v0.2.148",
+        app_version: "0.2.148", app_version_code: "2148", source_commit: f.frozen,
+      });
+    } finally { f.cleanup(); }
+  });
+
+  it("GitHub 目标拒绝借用局域网项目和环境", () => {
+    const f = fixture(b => { b.target = "codex-mobile-github-release"; });
+    try { expect(f.run().status).not.toBe(0); } finally { f.cleanup(); }
+  });
+
+  it("发行说明保留冻结清单的中文修复内容并注明 IPA 未签名", () => {
+    const f = fixture(b => { b.releaseNotes = "修复 Windows 项目名称显示完整路径的问题。"; });
+    try {
+      const output = join(f.root, "release-notes.md");
+      const result = f.run("--notes", output);
+      expect(result.status, result.stderr).toBe(0);
+      const notes = readFileSync(output, "utf8");
+      expect(notes).toContain("修复 Windows 项目名称显示完整路径的问题。");
+      expect(notes).toContain("IPA 未签名");
+      expect(notes).toContain("SHA-256");
+    } finally { f.cleanup(); }
+  });
+
+  it("未提供更新日志的原批次仍输出双端产物与签名说明", () => {
+    const f = fixture();
+    try {
+      const output = join(f.root, "release-notes.md");
+      const result = f.run("--notes", output);
+      expect(result.status, result.stderr).toBe(0);
+      const notes = readFileSync(output, "utf8");
+      expect(notes).toContain("Android APK");
+      expect(notes).toContain("IPA 未签名");
+    } finally { f.cleanup(); }
+  });
+
   it("从最终 git HEAD 输出冻结版本、构建号、任务与批次", () => {
     const f = fixture(); try {
       const output = join(f.root, "github-output");

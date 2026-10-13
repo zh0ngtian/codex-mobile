@@ -170,11 +170,8 @@ jobs:
           test -s "CodexMobile-v${APP_VERSION}.apk"
           test -s "CodexMobile-v${APP_VERSION}-unsigned.ipa"
           sha256sum --check ./*.sha256
-          cat > release-notes.md <<'NOTES'
-          Android APK 与 iOS unsigned IPA 使用同一版本，由当前提交与固定 PakePlus 容器构建。
-          IPA 未签名，安装前需自行签名；本机 Ad Hoc 签名、OTA、固定 LAN 渠道与软件源发布仍按仓库现役流程执行。
-          附件包含安装包、SHA-256 校验文件和构建回执（来源提交、版本、文件大小及散列）。
-          NOTES
+          node ../scripts/validate-release-batch.mjs --root .. --batch-id "$BATCH_ID" --frozen-sha "$SOURCE_COMMIT" \
+            --version "$APP_VERSION" --notes release-notes.md
           gh release create "$RELEASE_TAG" ./*.apk ./*.ipa ./*.sha256 ./*-build.json \
             --repo "$GITHUB_REPOSITORY" --target "$SOURCE_COMMIT" \
             --title "Codex Mobile ${APP_VERSION}" --notes-file release-notes.md

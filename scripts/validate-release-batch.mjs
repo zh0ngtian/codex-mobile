@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
-import { appendFile, readFile, stat } from "node:fs/promises";
+import { appendFile, readFile, stat, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { resolve, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -24,6 +24,7 @@ export function validateManifest(batch) {
   const targets = {
     "vip.loock.codexmobile": { project: "codex-mobile-lan-production", environment: "lan-production", release: true },
     "codex-mobile-gateway": { project: "codex-mobile-gateway-production", environment: "production", release: false },
+    "codex-mobile-github-release": { project: "codex-mobile-github-release", environment: "github-release", release: true },
   };
   const target = Object.hasOwn(targets, batch.target ?? "") && targets[batch.target];
   if (!target || batch.project !== target.project || batch.environment !== target.environment || batch.scope !== "codex-mobile-main-production") fail("冻结批次目标、项目、环境或作用域不匹配");
@@ -96,10 +97,19 @@ export async function validateBuildReceipts(context, directory, { root = process
 async function main() {
   const { values } = parseArgs({ options: {
     root: { type: "string" }, "batch-id": { type: "string" }, "frozen-sha": { type: "string" }, version: { type: "string" },
-    output: { type: "string" }, receipts: { type: "string" }, "run-id": { type: "string" }, "run-attempt": { type: "string" },
+    output: { type: "string" }, notes: { type: "string" }, receipts: { type: "string" }, "run-id": { type: "string" }, "run-attempt": { type: "string" },
   } });
   const context = await validateReleaseBatch({ root: values.root, batchId: values["batch-id"], frozenSha: values["frozen-sha"], version: values.version });
   if (values.receipts) await validateBuildReceipts(context, resolve(values.receipts), { root: values.root, runId: values["run-id"], runAttempt: values["run-attempt"] });
+  if (values.notes) {
+    const changes = typeof context.batch.releaseNotes === "string" ? context.batch.releaseNotes.trim() : "";
+    await writeFile(values.notes, [
+      changes,
+      "Android APK 与 iOS unsigned IPA 使用同一版本，由当前冻结提交与固定 PakePlus 容器构建。",
+      "IPA 未签名，安装前需自行签名。",
+      "附件包含安装包、SHA-256 校验文件和构建回执（来源提交、版本、文件大小及散列）。",
+    ].filter(Boolean).join("\n\n") + "\n", "utf8");
+  }
   const output = values.output || process.env.GITHUB_OUTPUT;
   if (output) await appendFile(output, Object.entries(context.outputs).map(([key, value]) => `${key}=${value}\n`).join(""));
   console.log(JSON.stringify(context.outputs));
