@@ -41,13 +41,17 @@
 ## 4. 验证与协调发布
 
 - [x] 更新 README 关注、列表和通知现役说明；运行定向 UI、通知、传输回归与 `npm run typecheck`、发布契约和 Python 发布/恢复回归。
-- [ ] `git diff --check`、暂存检查，中文 Conventional Commit 提交本次功能及准确正文；推送 codex/thread-following，固定 40 位 SHA。
-- [ ] 保存真实命令/日志/通过状态的 validation.json，包含 adapter-regression、coordinator-recovery、build-contract、typecheck；两目标 ready 同一已推送 SHA。
-- [ ] 每次 wait 最多 45 秒，持续核对两目标状态和成功 receipt；失败保留批次现场，以关联修复任务推进。
-- [ ] 共同客户端成功凭证核对固定 APK、签名 IPA、HTTPS OTA、GitHub 双端、软件源 unsigned 版本及散列；网关成功凭证核对运行部署与 SHA。提供固定 OTA/APK/IPA 链接、双端版本/大小/SHA-256，标注 IPA 签名。归档工作区与测试会话。
+- [x] `git diff --check`、暂存检查，中文 Conventional Commit 提交本次功能及准确正文；推送 codex/thread-following，固定 40 位 SHA。
+- [x] 保存真实命令/日志/通过状态的 validation.json，包含 adapter-regression、coordinator-recovery、build-contract、typecheck；两目标 ready 同一已推送 SHA。
+- [x] 每次 wait 最多 45 秒，持续核对两目标状态和成功 receipt；失败保留批次现场，以关联修复任务推进。
+- [x] 共同客户端成功凭证核对固定 APK、签名 IPA、HTTPS OTA、GitHub 双端、软件源 unsigned 版本及散列；网关成功凭证核对运行部署与 SHA。提供固定 OTA/APK/IPA 链接、双端版本/大小/SHA-256，标注 IPA 签名。归档工作区与测试会话。
 
 ## 进度证据
 
 基线：7 文件 137 项通过。用户已确认设计与旧置顶迁移、保留未关注的手机发起通知。
 
 实施验收：17 文件 321 项相关单元/网关回归通过；Chromium、WebKit 14 项浏览器回归及小屏大字号/减少动画、横屏 2 项通过；78 项构建契约、153 项 Python 发布适配器、19 项协调恢复检查通过。类型检查与服务端构建通过。客户端和服务端独立规格审查、独立质量审查均通过；搜索历史关注、503 推送重试、空 final 重复扫描与迟到 final 漏推均先失败后修复。验证全部使用 fixture，无真实测试会话；未进行真机覆盖安装及数据保留验证。
+
+## 发布结果
+
+客户端批次 `30ccf2b2-2003-490c-bc1e-6dad5ba20316` 与网关批次 `d8aef117-5980-4097-83a2-2ffd9789e5e7` 均成功，分别核对包含同一任务提交 `6237d9345bc5fad74b37a71328c2b971814c0e01` 的共同凭证。客户端统一版本 `0.2.168` / build `2168`，固定 APK、Ad Hoc 已签名 IPA、HTTPS OTA 和 GitHub unsigned 软件源完整回验；实际部署通知模块与验证代码一致。公开交付摘要见 [验收证据](evidence/2026-10-13-thread-following-release.json)，完整凭证与安装包由现有发布协调器长期保留。

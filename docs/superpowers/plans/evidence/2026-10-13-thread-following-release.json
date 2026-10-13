@@ -1,0 +1,57 @@
+{
+  "feature": "会话关注与折叠项目状态",
+  "version": "0.2.168",
+  "buildNumber": 2168,
+  "taskSha": "6237d9345bc5fad74b37a71328c2b971814c0e01",
+  "client": {
+    "task": "thread-following-20261013",
+    "batch": "30ccf2b2-2003-490c-bc1e-6dad5ba20316",
+    "frozenSha": "662c952a2dfc7f7a9e109dd384bf60d426d86eb0",
+    "receiptVerified": true
+  },
+  "gateway": {
+    "task": "thread-following-gateway-20261013",
+    "batch": "d8aef117-5980-4097-83a2-2ffd9789e5e7",
+    "frozenSha": "558bb4badb3f90402b847e5facda2c5a23e71b21",
+    "receiptVerified": true,
+    "deployedNotificationModulesVerified": true
+  },
+  "checks": {
+    "featureRegression": 321,
+    "browserRegression": 16,
+    "buildContract": 78,
+    "adapterRegression": 153,
+    "coordinatorRecovery": 19,
+    "typecheck": "passed",
+    "serverBuild": "passed",
+    "independentSpecReview": "passed",
+    "independentQualityReview": "passed"
+  },
+  "installUrl": "https://192.168.123.79:8766/channels/codex-mobile/current/install.html",
+  "packages": {
+    "apk": {
+      "url": "http://192.168.123.79:8765/channels/codex-mobile/latest.apk",
+      "version": "0.2.168",
+      "size": 4721551,
+      "sha256": "8575010265ddda93df8b61c7c61ee744d8fb0ebb22143ed257d85765c0cc790e"
+    },
+    "ipa": {
+      "url": "http://192.168.123.79:8765/channels/codex-mobile/latest.ipa",
+      "version": "0.2.168",
+      "size": 3790617,
+      "sha256": "1ac2a941a3c4ed655585ebac45919a7fa8357459d5becf6aac0ad43293844650",
+      "signed": true
+    }
+  },
+  "unsignedSource": {
+    "version": "0.2.168",
+    "downloadURL": "https://github.com/zh0ngtian/codex-mobile/releases/download/v0.2.168/CodexMobile-v0.2.168-unsigned.ipa",
+    "size": 3767201,
+    "sha256": "893a476c0c4bbcde0ae3ca81331095a93dba4b6126479bfa710a4dd707ea6d04",
+    "signed": false,
+    "developerName": "zh0ngtian"
+  },
+  "limitations": [
+    "未进行真机覆盖安装和数据保留验证；测试使用 fixture，未创建真实测试会话"
+  ]
+}
