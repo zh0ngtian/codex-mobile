@@ -8,6 +8,7 @@ import sys
 import tempfile
 import zipfile
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -316,6 +317,47 @@ class ReleaseAdapterTests(unittest.TestCase):
             with patch('ios_sign.verify_app',return_value=details),patch('ios_sign.validate_signed_entitlements'),patch.object(a,'validate_signed_candidate',return_value={'signed':True}):
                 self.assertTrue(a.recover_signed_candidate(expected))
             with zipfile.ZipFile(a.local_ipa(True)) as zip_file:self.assertIn('Payload/PakePlus.app/Info.plist',zip_file.namelist())
+
+    def test_readonly_github_eof_retries_then_returns_same_query(self):
+        m=self.load()
+        with tempfile.TemporaryDirectory() as tmp:
+            a=m.Adapter(self.context(Path(tmp)))
+            replies=[SimpleNamespace(returncode=1,stderr='Get API: EOF',stdout=''),SimpleNamespace(returncode=0,stderr='',stdout='{"ok":true}')]
+            with patch.object(m.subprocess,'run',side_effect=replies) as run,patch.object(m.time,'sleep'):
+                self.assertEqual(a.gh_json('repos/test/repo/actions/runs'),{'ok':True})
+            self.assertEqual(run.call_count,2);self.assertEqual(run.call_args_list[0].args,run.call_args_list[1].args)
+
+    def test_readonly_github_retry_is_bounded_and_auth_failure_is_not_retried(self):
+        m=self.load()
+        with tempfile.TemporaryDirectory() as tmp:
+            a=m.Adapter(self.context(Path(tmp)))
+            with patch.object(m.subprocess,'run',return_value=SimpleNamespace(returncode=1,stderr='Get API: EOF',stdout='')) as run,patch.object(m.time,'sleep'):
+                with self.assertRaisesRegex(RuntimeError,'EOF'):a.gh_json('test/read')
+                self.assertEqual(run.call_count,4)
+            with patch.object(m.subprocess,'run',return_value=SimpleNamespace(returncode=1,stderr='HTTP 403: forbidden',stdout='')) as run,patch.object(m.time,'sleep'):
+                with self.assertRaises(RuntimeError):a.gh_json('test/read')
+                self.assertEqual(run.call_count,1)
+
+    def test_http_get_retries_eof_but_post_never_blindly_retries(self):
+        m=self.load()
+        with tempfile.TemporaryDirectory() as tmp:
+            a=m.Adapter(self.context(Path(tmp)))
+            eof=SimpleNamespace(returncode=56,stderr='connection EOF',stdout='')
+            ok=SimpleNamespace(returncode=0,stderr='',stdout='{"ok":true}\n200')
+            with patch.object(m.subprocess,'run',side_effect=[eof,ok]) as run,patch.object(m.time,'sleep'):
+                self.assertEqual(a.url_json('https://test/read'),{'ok':True});self.assertEqual(run.call_count,2)
+            with patch.object(m.subprocess,'run',return_value=eof) as run,patch.object(m.time,'sleep'):
+                with self.assertRaises(RuntimeError):a.request('https://test/write',method='POST',data={})
+                self.assertEqual(run.call_count,1)
+
+    def test_github_single_read_has_timeout_and_can_reconcile_after_timeout(self):
+        m=self.load()
+        with tempfile.TemporaryDirectory() as tmp:
+            a=m.Adapter(self.context(Path(tmp)))
+            replies=[subprocess.TimeoutExpired('gh',45),SimpleNamespace(returncode=0,stderr='',stdout='{"ok":true}')]
+            with patch.object(m.subprocess,'run',side_effect=replies) as run,patch.object(m.time,'sleep'):
+                self.assertEqual(a.gh_json('test/read'),{'ok':True})
+                self.assertTrue(all(c.kwargs.get('timeout')==45 for c in run.call_args_list))
 
 
 if __name__ == '__main__': unittest.main()
