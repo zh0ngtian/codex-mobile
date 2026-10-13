@@ -6,6 +6,8 @@ from pathlib import Path
 import re
 import shlex
 import shutil
+import subprocess
+import sys
 import tarfile
 import time
 import urllib.parse
@@ -14,6 +16,12 @@ import urllib.request
 from .state import atomic_json, read_json, sha256
 
 MARKER = '.codex-mobile-deployment.json'
+BUILD_COMMAND = ['npm', 'run', 'build:server']
+BUILD_WRAPPER = '''import sys
+sys.path.insert(0, sys.argv[1])
+from release_coordination.gateway import build_server
+build_server(*sys.argv[2:])
+'''
 
 
 def tree_digest(root):
@@ -32,6 +40,49 @@ def tree_digest(root):
     return digest.hexdigest()
 
 
+def source_fingerprint(work):
+    work = Path(work)
+    inputs = {'server': tree_digest(work / 'server'), 'bin': tree_digest(work / 'bin')}
+    for name in ('package.json', 'package-lock.json', 'tsconfig.npm.json'):
+        inputs[name] = sha256(work / name)
+    return hashlib.sha256(json.dumps(inputs, sort_keys=True).encode()).hexdigest()
+
+
+def build_server(work, checkpoint_path, identity_json, fingerprint):
+    """构建子进程先持久化成功凭证；父适配器响应丢失不丢失构建结果。"""
+    work = Path(work).resolve()
+    checkpoint_path = Path(checkpoint_path)
+    checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+    log = checkpoint_path.with_suffix('.log')
+    if source_fingerprint(work) != fingerprint:
+        raise RuntimeError('网关构建源指纹在启动前发生变化')
+    record = {'identity': json.loads(identity_json), 'work': str(work),
+              'sourceFingerprint': fingerprint, 'status': 'running',
+              'command': BUILD_COMMAND, 'log': str(log.resolve()), 'startedAt': time.time()}
+    atomic_json(checkpoint_path, record)
+    output = work / 'npm-dist/server'
+    if output.exists():
+        shutil.rmtree(output)
+    with log.open('wb') as compiler_log:
+        result = subprocess.run(BUILD_COMMAND, cwd=work, stdout=compiler_log, stderr=subprocess.STDOUT)
+        compiler_log.flush()
+        os.fsync(compiler_log.fileno())
+    record.update(exitCode=result.returncode, logSha256=sha256(log), completedAt=time.time())
+    if result.returncode != 0:
+        record['status'] = 'failed'
+        atomic_json(checkpoint_path, record)
+        sys.stderr.write(log.read_text(errors='replace'))
+        raise RuntimeError('网关服务端构建失败')
+    if source_fingerprint(work) != fingerprint:
+        record['status'] = 'failed'
+        atomic_json(checkpoint_path, record)
+        raise RuntimeError('网关构建源指纹在编译期间发生变化')
+    record.update(status='success', serverDigest=tree_digest(output))
+    # 在任何快照/打包及 stdout/stderr 回传前完成原子落盘。
+    atomic_json(checkpoint_path, record)
+    sys.stderr.write(log.read_text(errors='replace'))
+
+
 class Gateway:
     def __init__(self, adapter):
         self.adapter = adapter
@@ -46,6 +97,8 @@ class Gateway:
         self.backup = self.root / 'gateway-backup/package'
         self.archive = self.root / 'gateway-package.tgz'
         self.record_path = self.root / 'gateway-progress.json'
+        self.build_path = self.root / 'gateway-build.json'
+        self.build_log = self.root / 'gateway-build.log'
         self.sha = adapter.context['frozen']['sha']
         self.batch = adapter.context['id']
 
@@ -135,6 +188,33 @@ class Gateway:
                    'package': str(self.package), 'archiveSha256': record['archiveSha256']}
         return {'done': True, 'result': receipt}
 
+    def _build(self):
+        fingerprint = source_fingerprint(self.work)
+        if self.build_path.exists():
+            checkpoint = read_json(self.build_path)
+            if checkpoint.get('status') == 'success':
+                try:
+                    valid = (checkpoint.get('identity') == self._identity() and
+                             checkpoint.get('work') == str(self.work.resolve()) and
+                             checkpoint.get('sourceFingerprint') == fingerprint and
+                             checkpoint.get('exitCode') == 0 and checkpoint.get('command') == BUILD_COMMAND and
+                             checkpoint.get('serverDigest') == tree_digest(self.work / 'npm-dist/server') and
+                             checkpoint.get('log') == str(self.build_log.resolve()) and
+                             checkpoint.get('logSha256') == sha256(self.build_log))
+                except (OSError, ValueError, RuntimeError):
+                    valid = False
+                if not valid:
+                    raise RuntimeError('网关成功构建 checkpoint 的源指纹、输出或日志摘要不符')
+                return checkpoint
+        self.adapter.command([sys.executable, '-c', BUILD_WRAPPER,
+                              str(Path(__file__).resolve().parent.parent), str(self.work),
+                              str(self.build_path), json.dumps(self._identity()), fingerprint], cwd=self.work)
+        # wrapper 必须自己保存成功凭证；不能把成功响应代替持久检查点。
+        checkpoint = read_json(self.build_path) if self.build_path.exists() else {}
+        if checkpoint.get('status') != 'success':
+            raise RuntimeError('网关构建缺少成功 checkpoint')
+        return self._build()
+
     def _prepare(self):
         record = self._record()
         if record:
@@ -155,10 +235,7 @@ class Gateway:
         frozen = read_json(self.work / 'package.json')
         if original.get('dependencies', {}) != frozen.get('dependencies', {}):
             raise RuntimeError('网关依赖声明发生变化，现有安装依赖需要先验证')
-        output = self.work / 'npm-dist/server'
-        if output.exists():
-            shutil.rmtree(output)
-        self.adapter.command(['npm', 'run', 'build:server'], cwd=self.work)
+        checkpoint = self._build()
         # 快照写入临时目录再 rename，避免恢复时采用半个旧包。
         if not self.backup.exists():
             temporary = self.backup.parent.with_name('gateway-backup-pending')
@@ -178,6 +255,9 @@ class Gateway:
             shutil.copytree(self.work / relative, target)
         shutil.copy2(self.work / 'package.json', self.stage / 'package.json')
         digests = self._digests(self.stage)
+        if (digests['serverDigest'] != checkpoint['serverDigest'] or
+                source_fingerprint(self.work) != checkpoint['sourceFingerprint']):
+            raise RuntimeError('网关打包源指纹或服务端输出摘要与成功构建不符')
         atomic_json(self.stage / MARKER, {**self._identity(), **digests})
         pending = self.archive.with_suffix('.tgz.tmp')
         with tarfile.open(pending, 'w:gz') as archive:

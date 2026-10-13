@@ -33,6 +33,7 @@ def load_gateway():
         sys.modules['release_coordination.state'] = state
     spec = importlib.util.spec_from_file_location('release_coordination.gateway', MODULE)
     module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
 
@@ -63,6 +64,9 @@ class Adapter:
         put(self.live / 'gateway-env.json', json.dumps({'PORT': '19876', 'CODEX_MOBILE_TOKEN': 'private token',
                                                      'CODEX_APP_SERVER_MODE': 'managed'}))
         put(self.work / 'package.json', manifest)
+        put(self.work / 'package-lock.json', '{"lockfileVersion": 3}')
+        put(self.work / 'tsconfig.npm.json', '{"include": ["server/**/*.ts"]}')
+        put(self.work / 'server/index.ts', 'frozen server source')
         put(self.work / 'bin/codex-mobile.mjs', 'new entry')
         put(self.work / 'bin/access-url.mjs', 'new helper')
         self.pid = 100
@@ -76,11 +80,19 @@ class Adapter:
         self.listener_matches = True
         self.dirty_work = False
         self.query_error = False
+        self.build_response_loss = False
+        self.build_exit_code = 0
         self.http_payload = {'mode': 'managed', 'upstreamUrl': 'ws://127.0.0.1:18765'}
         self.requests = []
 
     def command(self, args, cwd=None, input=None):
         self.calls.append(list(args))
+        if len(args) > 2 and args[1] == '-c':
+            with patch.object(sys, 'argv', ['-c', *args[3:]]):
+                exec(args[2], {})
+            if self.build_response_loss:
+                raise RuntimeError('build response lost after child checkpoint')
+            return ''
         if args[:2] == ['git', 'status']:
             return ' M server/index.ts\n' if self.dirty_work else ''
         if args[:2] == ['git', 'rev-parse']:
@@ -108,6 +120,14 @@ class Adapter:
             entry = self.package / 'bin/codex-mobile.mjs'
             return f'/opt/homebrew/bin/node {entry} start\n' if not self.bad_command else 'node /other/service.js\n'
         raise AssertionError(f'unexpected external command: {args}')
+
+    def build(self, args, cwd=None, stdout=None, stderr=None):
+        self.calls.append(list(args))
+        if args != ['npm', 'run', 'build:server']:
+            raise AssertionError(f'unexpected build: {args}')
+        put(self.work / 'npm-dist/server/index.js', 'new server')
+        stdout.write(b'> codex-mobile build:server\n> tsc -p tsconfig.npm.json\n')
+        return types.SimpleNamespace(returncode=self.build_exit_code)
 
     def progress(self, phase, **fields):
         self.events.append((phase, fields))
@@ -138,6 +158,13 @@ class GatewayTests(unittest.TestCase):
         self.http.start()
         self.addCleanup(self.http.stop)
         self.gateway = self.module.Gateway(self.adapter)
+        diagnostics = patch.object(self.module.sys, 'stderr', io.StringIO())
+        diagnostics.start()
+        self.addCleanup(diagnostics.stop)
+        if hasattr(self.module, 'subprocess'):
+            builder = patch.object(self.module.subprocess, 'run', self.adapter.build)
+            builder.start()
+            self.addCleanup(builder.stop)
 
     def test_server_only_deploy_preserves_frontend_dependencies_and_startup(self):
         self.assertFalse(self.gateway.check()['done'])
@@ -296,6 +323,96 @@ class GatewayTests(unittest.TestCase):
         self.assertEqual(self.adapter.count(['launchctl', 'kickstart']), 1)
         self.adapter.query_error = False
         self.assertTrue(self.gateway.check()['done'])
+
+    def test_successful_build_survives_backup_failure_without_rebuilding(self):
+        with patch.object(self.module.shutil, 'copytree', side_effect=RuntimeError('backup interrupted')):
+            with self.assertRaisesRegex(RuntimeError, 'backup interrupted'):
+                self.gateway._prepare()
+        self.assertTrue(self.adapter.root.joinpath('gateway-build.json').exists())
+        self.module.Gateway(self.adapter)._prepare()
+        self.assertEqual(self.adapter.count(['npm', 'run', 'build:server']), 1)
+
+    def test_successful_build_survives_pack_failure_without_rebuilding(self):
+        with patch.object(self.module.tarfile, 'open', side_effect=RuntimeError('pack interrupted')):
+            with self.assertRaisesRegex(RuntimeError, 'pack interrupted'):
+                self.gateway._prepare()
+        self.assertTrue(self.adapter.root.joinpath('gateway-build.json').exists())
+        self.module.Gateway(self.adapter)._prepare()
+        self.assertEqual(self.adapter.count(['npm', 'run', 'build:server']), 1)
+
+    def test_child_completed_build_checkpoint_survives_lost_adapter_response(self):
+        self.adapter.build_response_loss = True
+        with self.assertRaisesRegex(RuntimeError, 'build response lost'):
+            self.gateway._prepare()
+        checkpoint = json.loads(self.adapter.root.joinpath('gateway-build.json').read_text())
+        self.assertEqual(checkpoint['status'], 'success')
+        self.assertEqual(checkpoint['exitCode'], 0)
+        self.assertEqual(checkpoint['identity']['sha'], 'a' * 40)
+        self.assertIn('sourceFingerprint', checkpoint)
+        self.assertIn('serverDigest', checkpoint)
+        self.assertIn('logSha256', checkpoint)
+        self.adapter.build_response_loss = False
+        self.module.Gateway(self.adapter)._prepare()
+        self.assertEqual(self.adapter.count(['npm', 'run', 'build:server']), 1)
+
+    def test_successful_build_checkpoint_rejects_fingerprint_output_or_log_tampering(self):
+        for mutation in ('fingerprint', 'output', 'log'):
+            with self.subTest(mutation=mutation):
+                with patch.object(self.module.tarfile, 'open', side_effect=RuntimeError('pack interrupted')):
+                    with self.assertRaises(RuntimeError):
+                        self.gateway._prepare()
+                checkpoint = self.adapter.root / 'gateway-build.json'
+                self.assertTrue(checkpoint.exists())
+                original_checkpoint = checkpoint.read_text()
+                if mutation == 'fingerprint':
+                    record = json.loads(original_checkpoint)
+                    record['sourceFingerprint'] = 'wrong fingerprint'
+                    checkpoint.write_text(json.dumps(record))
+                elif mutation == 'output':
+                    put(self.adapter.work / 'npm-dist/server/index.js', 'tampered compiler output')
+                else:
+                    put(self.adapter.root / 'gateway-build.log', 'tampered build log')
+                with self.assertRaisesRegex(RuntimeError, '构建|checkpoint|摘要|指纹'):
+                    self.module.Gateway(self.adapter)._prepare()
+                self.assertEqual(self.adapter.count(['npm', 'run', 'build:server']), 1)
+                checkpoint.write_text(original_checkpoint)
+                put(self.adapter.work / 'npm-dist/server/index.js', 'new server')
+                put(self.adapter.root / 'gateway-build.log', '> codex-mobile build:server\n> tsc -p tsconfig.npm.json\n')
+
+    def test_unfinished_wrong_source_checkpoint_clears_output_and_builds(self):
+        put(self.adapter.root / 'gateway-build.json', json.dumps({'status': 'running', 'sourceFingerprint': 'wrong'}))
+        put(self.adapter.work / 'npm-dist/server/stale.js', 'incomplete output')
+        self.gateway._prepare()
+        self.assertFalse(self.adapter.work.joinpath('npm-dist/server/stale.js').exists())
+        checkpoint = json.loads(self.adapter.root.joinpath('gateway-build.json').read_text())
+        self.assertEqual(checkpoint['status'], 'success')
+        self.assertEqual(self.adapter.count(['npm', 'run', 'build:server']), 1)
+
+    def test_failed_compiler_checkpoint_rebuilds_cleanly_and_preserves_log(self):
+        self.adapter.build_exit_code = 2
+        with self.assertRaisesRegex(RuntimeError, '构建失败'):
+            self.gateway._prepare()
+        checkpoint = json.loads(self.adapter.root.joinpath('gateway-build.json').read_text())
+        self.assertEqual(checkpoint['status'], 'failed')
+        self.assertEqual(checkpoint['exitCode'], 2)
+        self.assertIn('tsc -p tsconfig.npm.json', self.adapter.root.joinpath('gateway-build.log').read_text())
+        put(self.adapter.work / 'npm-dist/server/stale.js', 'partial compile output')
+        self.adapter.build_exit_code = 0
+        self.module.Gateway(self.adapter)._prepare()
+        self.assertFalse(self.adapter.work.joinpath('npm-dist/server/stale.js').exists())
+        self.assertEqual(self.adapter.count(['npm', 'run', 'build:server']), 2)
+
+    def test_output_modified_between_build_and_snapshot_is_not_packaged(self):
+        real_copy = self.module.shutil.copytree
+        def mutate_then_copy(source, destination, *args, **kwargs):
+            if pathlib.Path(source).resolve() == self.adapter.package.resolve():
+                put(self.adapter.work / 'npm-dist/server/index.js', 'wrong output after successful build')
+            return real_copy(source, destination, *args, **kwargs)
+        with patch.object(self.module.shutil, 'copytree', side_effect=mutate_then_copy):
+            with self.assertRaisesRegex(RuntimeError, '构建|摘要|指纹'):
+                self.gateway._prepare()
+        self.assertFalse(self.adapter.root.joinpath('gateway-progress.json').exists())
+        self.assertEqual(self.adapter.count(['npm', 'run', 'build:server']), 1)
 
     def test_tampered_persistent_stage_is_not_used_as_build_source(self):
         self.adapter.fail_before_restart = True
