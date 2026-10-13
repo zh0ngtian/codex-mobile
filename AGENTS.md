@@ -37,6 +37,7 @@
 - 客户端正式发布由适配器分阶段复用 `scripts/release-ios.py` 的设备构建、`scripts/ios_sign.py` 的 Ad Hoc 签名及 `scripts/ios_ota.py` 的 OTA 操作，绑定同一冻结 SHA 与统一版本，再发布固定 LAN IPA；APK 使用同批 CI 产物。`npm run ios:release -- --config "$HOME/Library/Application Support/CodexMobile/ios-release.local.json" --version <统一版本> --notes '<说明>' --plan` 保留只读预检；日常任务不得独立执行该组合入口正式发包。非客户端改动不得触发此流程。
 - 云端 unsigned IPA 是构建产物，不能覆盖已签名的固定 IPA 或作为 OTA 发布包；本机签名/发布失败时先解决问题，不能用未签名包替代已签名交付。
 - iOS 已签名 IPA 仅发布到 HTTPS OTA 与固定 LAN 渠道，完成回验并保存签名包与 `ota-release.json`；不得再将 Ad Hoc 已签名包上传、归档或创建订阅发布到软件源。[Cloudflare 软件源](https://signos-source-aggregator.305301890.workers.dev/sources/yao.json) 只保留并自动同步 `zh0ngtian/codex-mobile` GitHub Release 的 `CodexMobile-*-unsigned.ipa` 订阅，每次正式交付核对对应未签名版本。软件源维护读取并遵循 [SignOs 软件源文档](https://github.com/zh0ngtian/SignOs/blob/main/distribution/source-aggregator/README.md) 最新版；本项目适配器仅同步既有 unsigned 订阅、保留署名并完成版本核对；软件源本身的部署、配置、上传器与重试流程仍维护在上游，不在本仓复制。
+- 后续向软件源更新版本时，更新日志必须使用中文，清楚说明本版本实际新增的功能、修复的问题和主要改进（按实际改动列出），不得仅填写版本号、提交 SHA 或“常规更新”等笼统描述。自动同步所用的 GitHub Release 更新日志也须遵循此要求；正式发布与补发均适用，交付前核对软件源实际展示的更新日志与本版本改动一致。
 - 发布 App 时，从当前 GitHub 登录账号读取用户名，以软件源该 App 当前的开发者署名为基准：已有该用户名则保持原值，缺少时追加；不得覆盖或删除先前开发者，除非用户明确要求。正式发布与补发使用同一规则，不能把发布者用户名硬编码为固定值。
 - 固定 OTA 安装页为 `https://192.168.123.79:8766/channels/codex-mobile/current/install.html`；更新清单为相同前缀的 `current/latest-ios.json`。HTTP 8765 固定下载渠道继续保留。
 - 局域网服务由 `local.codex-mobile.ios-ota` launchd 管理；必须从长期保留的主工作区执行 `scripts/ios_ota_server.py install`，不能绑定准备归档的 worktree。
