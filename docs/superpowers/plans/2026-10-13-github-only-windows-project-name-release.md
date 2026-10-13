@@ -28,7 +28,16 @@
 
 ## 任务 2：冻结、构建与验收
 
-- [ ] 基于最新版 GitHub Release 与标签分配统一更高版本，生成新 UUID 批次与实际输入指纹，引用已验证任务提交。
-- [ ] 将新的 `.release-batch.json` 单独冻结提交；运行真实冻结验证，非强制推送 main。
-- [ ] 等待相同冻结 SHA 的 Development Checks、Android/iOS 构建及 Release 创建成功；不重复触发同一批。
-- [ ] 校验 Release tag 指向、双端回执、完整 GET 大小和 SHA-256，提供 GitHub Release 与下载链接，注明 IPA 未签名。
+- [x] 基于最新版 GitHub Release 与标签分配统一更高版本，生成新 UUID 批次与实际输入指纹，引用已验证任务提交。
+- [x] 将新的 `.release-batch.json` 单独冻结提交；运行真实冻结验证，非强制推送 main。
+- [x] 相同冻结 SHA 的 Development Checks、Android/iOS 构建及 Release 创建均成功；本批只触发一次双端构建。
+- [x] Release tag、双端回执、完整 GET 大小和 SHA-256 通过；IPA 未签名，交付 GitHub 链接。
+
+## 验收记录
+
+- 版本 `0.2.169`，构建号 `2169`；批次 `38cf950c-0d23-480e-b6d0-89642220e7ce`。
+- 冻结来源 `f398af4a618090eda171b0d44f472a3540d6f717`；Windows 修复来源 `1c54d6076576268f779faab1f21e690e96ffae16`，GitHub 目标实现来源 `5b394350bde2dc6c541c6f02b0b2e1a0e5f1f939`。
+- [双端构建与发布](https://github.com/zh0ngtian/codex-mobile/actions/runs/38400738101)及 [main 开发检查](https://github.com/zh0ngtian/codex-mobile/actions/runs/38400737987) 成功。
+- [GitHub Release](https://github.com/zh0ngtian/codex-mobile/releases/tag/v0.2.169) 中两个安装包、两个 SHA-256 文件和两个构建回执均已完整下载，并核对大小、散列、当前 run/attempt、任务来源、版本和 tag；IPA 包内没有签名目录或描述文件。
+- 冻结生成环节的 Windows 默认管道编码损坏了中文更新日志。保留原冻结记录与安装包来源，在 GitHub 已授权浏览器中修正 Release 正文，并通过公开 API 回验中文内容。后续生成含中文的清单应使用 UTF-8 文件或显式 UTF-8 输入，避免默认原生进程管道编码。
+- 详细公开证据见 [本次记录](evidence/2026-10-13-github-only-windows-project-name-release.json)；本地下载、输出与验证数据位于 `.mobile-build/github-only-release/`。本次按用户限定范围仅交付 GitHub 产物。
