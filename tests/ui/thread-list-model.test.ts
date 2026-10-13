@@ -156,7 +156,7 @@ describe("会话列表派生", () => {
     ]);
   });
 
-  it("手动置顶之后展示运行中和未读会话，各区按活动时间排序且跨机器不丢失", () => {
+  it("只有关注进入顶部，运行中和未读仍按活动时间显示在最近", () => {
     const mixed = aggregateThreads(backends, {
       book: [
         { id: "manual", isPinned: true, updatedAt: 1 },
@@ -171,21 +171,21 @@ describe("会话列表派生", () => {
     });
     const groups = splitAllThreads(mixed);
     expect(groups.pinned.map((item) => `${item.backendId}:${item.threadId}`)).toEqual([
-      "mini:manual", "book:manual", "book:unread", "book:running", "mini:unread",
+      "mini:manual", "book:manual",
     ]);
-    expect(groups.recent.map((item) => item.threadId)).toEqual(["ordinary"]);
-    expect(groups.pinned.filter((item) => !item.pinned)).toHaveLength(3);
+    expect(groups.recent.map((item) => `${item.backendId}:${item.threadId}`)).toEqual(["book:ordinary", "book:unread", "book:running", "mini:unread"]);
+    expect(groups.pinned.filter((item) => !item.pinned)).toHaveLength(0);
   });
 
-  it("运行结束并已读的会话回到最近区，手动置顶保持不变", () => {
+  it("运行和未读变化不影响关注区", () => {
     const state = (status: string, isUnread: boolean) => splitAllThreads(
       aggregateThreads(backends.slice(0, 1), { book: [
         { id: "manual", isPinned: true, updatedAt: 1 },
         { id: "task", status: { type: status }, isUnread, updatedAt: 20 },
       ] }),
     );
-    expect(state("active", false).pinned.map((item) => item.threadId)).toEqual(["manual", "task"]);
-    expect(state("idle", true).pinned.map((item) => item.threadId)).toEqual(["manual", "task"]);
+    expect(state("active", false).pinned.map((item) => item.threadId)).toEqual(["manual"]);
+    expect(state("idle", true).pinned.map((item) => item.threadId)).toEqual(["manual"]);
     expect(state("idle", false).pinned.map((item) => item.threadId)).toEqual(["manual"]);
     expect(state("idle", false).recent.map((item) => item.threadId)).toEqual(["task"]);
   });

@@ -59,7 +59,7 @@ describe("对话详情控制", () => {
     expect(view.getByText("/tmp/project")).not.toBeNull();
   });
 
-  it("操作面板根据持久化字段切换置顶文案", () => {
+  it("操作面板根据持久化字段切换关注文案", () => {
     const onPin = vi.fn();
     const onRefresh = vi.fn();
     const onDuplicate = vi.fn();
@@ -79,7 +79,7 @@ describe("对话详情控制", () => {
     );
     let view = within(container);
 
-    fireEvent.click(view.getByRole("button", { name: "置顶" }));
+    fireEvent.click(view.getByRole("button", { name: "关注" }));
     expect(onPin).toHaveBeenCalledTimes(1);
     fireEvent.click(view.getByRole("button", { name: "刷新会话" }));
     expect(onRefresh).toHaveBeenCalledTimes(1);
@@ -101,10 +101,10 @@ describe("对话详情控制", () => {
       />,
     );
     view = within(container);
-    expect(view.getByRole("button", { name: "取消置顶" })).not.toBeNull();
+    expect(view.getByRole("button", { name: "取消关注" })).not.toBeNull();
   });
 
-  it("只读会话仍可本地置顶，但禁用服务端写操作", () => {
+  it("只读会话仍可本地关注，但禁用服务端写操作", () => {
     const onPin = vi.fn();
     const { container } = render(
       <ConversationActionMenu
@@ -126,8 +126,8 @@ describe("对话详情控制", () => {
     expect(view.getByRole("button", { name: "刷新会话" }).hasAttribute("disabled")).toBe(false);
     expect(view.getByRole("button", { name: "复制会话" }).hasAttribute("disabled")).toBe(true);
     expect(view.getByRole("button", { name: "复制会话 ID" }).hasAttribute("disabled")).toBe(false);
-    expect(view.getByRole("button", { name: "置顶" }).hasAttribute("disabled")).toBe(false);
-    fireEvent.click(view.getByRole("button", { name: "置顶" }));
+    expect(view.getByRole("button", { name: "关注" }).hasAttribute("disabled")).toBe(false);
+    fireEvent.click(view.getByRole("button", { name: "关注" }));
     expect(onPin).toHaveBeenCalledOnce();
     expect(view.getByRole("button", { name: "重命名" }).hasAttribute("disabled")).toBe(true);
     expect(view.getByRole("button", { name: "归档" }).hasAttribute("disabled")).toBe(true);

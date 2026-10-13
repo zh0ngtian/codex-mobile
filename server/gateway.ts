@@ -12,6 +12,7 @@ import { compactTurnDetails, compactTurnCommentary, turnCommentaryRequest, valid
 import { FollowUps } from "./follow-ups.js";
 import { HttpSessions } from "./http-session.js";
 import { BarkNotifications } from "./bark-notifications.js";
+import { FollowedThreadNotifications } from "./followed-thread-notifications.js";
 import { ImagePreviews } from "./image-preview.js";
 import { downloadFile } from "./file-download.js";
 
@@ -124,6 +125,13 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
   const notifications = new BarkNotifications({ codexHome: options.codexHome ?? process.env.CODEX_HOME ?? join(homedir(), ".codex"), displayName: options.displayName ?? options.hostname ?? options.hostId ?? "Codex", fetch: options.barkFetch });
   const httpSessions = new HttpSessions({ ...options, changeHistory, notifications });
   const followUps = await FollowUps.open(options.codexHome ?? process.env.CODEX_HOME ?? join(homedir(), ".codex"), httpSessions);
+  const followedNotifications = new FollowedThreadNotifications({
+    sessions: httpSessions, followedThreadIds: () => notifications.followedThreadIds,
+    notifyCompletion: (threadId, turnId) => notifications.notifyFollowedCompletion(threadId, turnId),
+    rememberThread: thread => notifications.observeRpc({ method: "thread/read" }, { result: { thread } }),
+  });
+  const unsubscribeFollowing = notifications.subscribeFollowing(() => { void followedNotifications.poll(); });
+  void notifications.initialized().then(() => followedNotifications.start()).catch(() => {});
   const imagePreviews = new ImagePreviews();
   const server: Server = createServer(async (request, response) => {
     const url = new URL(request.url ?? "/", "http://gateway.local");
@@ -693,6 +701,8 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
   return {
     port: address.port,
     async close() {
+      unsubscribeFollowing();
+      await followedNotifications.close();
       await followUps.close();
       await httpSessions.close();
       await notifications.close();

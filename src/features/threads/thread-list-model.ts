@@ -114,15 +114,12 @@ export function mergeAggregatedThreadSearchResults(
 }
 
 export function isThreadPrioritized(thread: AggregatedThreadItem) {
-  return thread.pinned || thread.unread || isThreadRunning(thread.status);
+  return thread.pinned;
 }
 
 export function splitAllThreads(threads: AggregatedThreadItem[]) {
   return {
-    pinned: [
-      ...threads.filter((thread) => thread.pinned),
-      ...threads.filter((thread) => !thread.pinned && isThreadPrioritized(thread)),
-    ],
+    pinned: threads.filter(isThreadPrioritized),
     recent: threads.filter((thread) => !isThreadPrioritized(thread)),
   };
 }
