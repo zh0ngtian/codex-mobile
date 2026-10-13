@@ -9,6 +9,7 @@
 - 通用策略以当前生效的 canonical 全局 `AGENTS.md` 的“多任务协调、合批构建与发布”为准；本项目的配置、适配器入口、验证要求及实际验收状态见 [发布协调说明](docs/release-coordination.md)，不在项目规则复制通用正文。
 - 本项目需要发布的任务开始即在现有 `releasectl` 登记：客户端用 `codex-mobile-lan-production`，网关用 `codex-mobile-gateway-production`。在独立 worktree 开发，持续 heartbeat，完成本地验证并推送固定 SHA 后提交 ready；提交、版本分配和 main 推进由协调器处理。配置及常用命令见发布协调说明。
 - Codex Mobile 客户端批次统一覆盖 GitHub 双端 Release、固定 LAN APK/已签名 IPA、HTTPS OTA 及 unsigned IPA 软件源版本核对；服务端批次覆盖网关验证、服务端构建和部署。只改服务端不得触发客户端构建。
+- 同一改动同时影响客户端与网关运行行为时，分别登记两个目标任务并 ready 同一已推送 SHA；两份目标成功凭证均核对后，才完成该工作的交付。
 - 共用模拟器验证仍须排队，同一模拟器同一时间只由一个任务使用。正式发布的版本分配、构建、签名、渠道回验与部署均归协调入口，参与任务共用最终发布凭证。
 - 统一入口复用发布主机已有 `~/.local/bin/releasectl` 与数据库；适配器为 `scripts/codex_mobile_release_adapter.py`。两项目队列因共同写本仓库正式 main，明确共用 `codex-mobile-main-production` 锁；不与其他仓库共用锁。多机经同一发布主机 SSH，不各建数据库。实际完成以对应成功批次 receipt 为准。
 

@@ -13,7 +13,7 @@
 
 两者分别登记任务，但均会推进同一正式 main，因此显式共用可写目标锁 `codex-mobile-main-production`。不因为共用发布主机或只读证书而锁住其他仓库；其他项目沿用自己的作用域。多机器必须 SSH 到本发布主机运行同一 CLI，并把固定 SHA 推送共享 Git 远端、把验证文件传到发布主机；不另装数据库，不将 SQLite 放网络盘。
 
-现有服务为 **LaunchAgent 用户登录启动**：`gui/501/local.release-coordinator`、`~/Library/LaunchAgents/local.release-coordinator.plist`，已核对 running PID 与 installation.json。当前没有系统 LaunchDaemon，不能称为登录前系统开机启动。若用户需要切换为系统启动，在系统终端从上游源码目录执行其 `sudo ... install.py --system --user <本机用户名> --python <现有绝对Python路径>`；管理员认证由用户完成，仍复用同一状态库。之后须核对安装凭证和 `launchctl print system/local.release-coordinator`，签名钥匙串与 GitHub 认证可在登录前尚不可用。
+现有服务为 **LaunchAgent 用户登录启动**：`gui/501/local.release-coordinator`、`~/Library/LaunchAgents/local.release-coordinator.plist`，已核对 running PID 与 installation.json。当前没有系统 LaunchDaemon，不能称为登录前系统开机启动。若用户需要切换为系统启动，在系统终端从 `/Users/zhongtian/WorkSpace/release-coordinator` 执行 `sudo /opt/homebrew/opt/python@3.11/bin/python3.11 install.py --system --user zhongtian --python /opt/homebrew/opt/python@3.11/bin/python3.11`；管理员认证由用户完成，仍复用同一状态库。之后须核对安装凭证和 `launchctl print system/local.release-coordinator`，签名钥匙串与 GitHub 认证可在登录前尚不可用。
 
 ## 项目配置与适配器
 
@@ -44,8 +44,8 @@ prepare 检查原 profile、UDID、Bundle ID、Team、application-identifier、�
 | `sign` | 原 Ad Hoc 签名/独立验签；核对完整 entitlements 散列，恢复接纳已成功签名的候选，不重复签名；成功散列不可被替换 |
 | `ota` | 完整候选校验后原子安装本批暂存；复用既有不可变版本目录及 current 切换；HTTPS 清单、manifest、安装页、HEAD/完整 GET 核对 |
 | `apk` / `ipa` | 原 publish-channel 渠道；只补缺失一端，不覆盖同版本不同包或更高版本；固定 JSON、HEAD、完整 GET 校验 |
-| `source` | 本仓库 unsigned IPA 的版本/构建号、GitHub URL、大小、散列及当前 gh 用户署名；核对真实同步 job，保留原开发者与展示信息 |
-| `gateway` | 仅 `npm run build:server`；更新原已安装包的 server/bin，保留已部署 dist、依赖、start.py 与环境；核对文件摘要、实际 launchd PID/命令、监听端口和认证状态接口；响应丢失不重复重启 |
+| `source` | 本仓库 unsigned IPA 的版本/构建号、GitHub URL、大小、散列及当前 gh 用户署名；核对真实同步 job，保留原开发者与展示信息；公开记录缺失散列时，经版本/URL/大小核对后调用现役 `/attest` CAS 写入该产物散列并回验，响应丢失先对账 |
+| `gateway` | 仅 `npm run build:server`；更新原已安装包的 server/bin，保留已部署 dist、依赖、start.py 与环境；核对文件摘要、实际 launchd PID/命令、监听端口和认证状态接口；健康探测使用既有 `HOST`，通配地址转回环、IPv6 加方括号、本机请求绕过代理；响应丢失不重复重启 |
 | `verify` | 等待同冻结 SHA 必要开发 CI；再次核对全部对应阶段及任务祖先，生成共同成功凭证；客户端另外独立完整下载 GitHub APK/unsigned IPA |
 
 正式 CI 只在 main 冻结清单变化时触发，使用稳定作用域、`cancel-in-progress: false`、`queue: max`；gateway 清单跳过客户端 build/release。手动 dispatch 需匹配已有 batch/版本/最终 SHA，不得用它另发独立版本或重复触发同批；重复正式 run 会被适配器拒绝并保留诊断。开发/PR检查使用另一并发组，仅执行原有必要检查，不发包。recipe、容器 SHA、工具版本、Android 签名及 iOS unsigned 策略保留。
@@ -68,7 +68,7 @@ prepare 检查原 profile、UDID、Bundle ID、Team、application-identifier、�
 ~/.local/bin/releasectl batch --id BATCH_ID
 ```
 
-网关任务使用 `codex-mobile-gateway-production`，不复用客户端队列 ID。中断且未失败的批次等待 lease 到期后由服务接管；failed 不使用 resume，也不改冻结现场。修复任务只绑定最新失败叶节点：
+网关任务使用 `codex-mobile-gateway-production`，不复用客户端队列 ID。一次改动同时影响客户端和网关运行行为时，分别在两个项目 ID 登记目标任务，ready 使用同一已推送 SHA；该工作须核对两个目标的成功 receipt 才可交付。中断且未失败的批次等待 lease 到期后由服务接管；failed 不使用 resume，也不改冻结现场。修复任务只绑定最新失败叶节点：
 
 ```bash
 ~/.local/bin/releasectl register --project codex-mobile-lan-production --task MY_REPAIR --repairs-batch FAILED_LEAF_ID
@@ -81,6 +81,24 @@ status 返回原任务 `complete`，或 `recovered` 且 `recovered_by` 指向成
 
 ## 实际验收边界
 
-服务登录启动和上游 19 项并发/窗口/租约/不可变关联修复测试已验收；项目受控 HTTP 与网关替身只能证明相应恢复行为。真实客户端发布和网关部署状态以本次成功 receipt 为准，准备或进入队列时仍为 pending，后续验收记录列入本节。构建验签/渠道可用不等于真机覆盖安装或数据保留；当前未进行该真机验收。
+2026-10-13 已完成真实发布与部署，摘要见 [验收记录](superpowers/plans/evidence/2026-10-13-release-coordinator-acceptance.json)。共同凭证长期保留在本机状态目录，记录 task SHA 包含证据、CI run、渠道、部署 ID 和修复谱系：
 
-额外全量 UI 探查发现 5 个旧图片/视频/边栏用例失败；相关客户端源码、UI测试及依赖锁相对接入前未改动。本次保留原必要验证范围，不把这5项宣称通过，也不为协调器接入修改无关客户端行为。
+| 目标 | 成功批次 / 冻结 SHA | 实际验收 |
+| --- | --- | --- |
+| 客户端 | `ddfe5aa2-4a4b-49df-974f-ff8780af235e` / `798fba3b4d049f079d6c3cc4655dab7b430b89dd` | `0.2.167` / `2167`；正式双端 CI `38341442719`、必要开发 CI `38341442711` 成功；GitHub APK/unsigned IPA、固定 LAN 双端、已签名 HTTPS OTA、软件源 unsigned 订阅均完整回验 |
+| 网关 | `1dc61420-cbd4-4175-ac9d-8fe84e61ccc9` / `08174d17063c9575764305c9ea1b37eb0908e7fd` | 原 launchd `com.minis.codex-mobile-gateway`、PID `45773`；实际监听 `192.168.123.79:18766`、认证状态接口、进程命令与冻结文件摘要一致；开发 CI `38343347111` 成功；清单 CI `38343347098` 成功且跳过客户端构建 |
+
+客户端固定 [OTA 安装页](https://192.168.123.79:8766/channels/codex-mobile/current/install.html)、[APK](http://192.168.123.79:8765/channels/codex-mobile/latest.apk)、[IPA](http://192.168.123.79:8765/channels/codex-mobile/latest.ipa) 的本次记录：
+
+| 包 | 版本 / 大小（bytes） | SHA-256 |
+| --- | --- | --- |
+| APK | `0.2.167` / `4721095` | `c1bdb3ba242a397c2a1be36bd661a7e215caf7f264e2048724c81682c2a1e104` |
+| IPA（Ad Hoc 已签名） | `0.2.167` / `3790213` | `7983aaa90a4bec01fdbbe99544df3b250e0d91c1ac789ecd32fc30304a7d07b3` |
+
+签名保留 `vip.loock.codexmobile`、Team `SC456JW7RP`、原 application-identifier、完整权限与钥匙串组；软件源为同版本 GitHub unsigned IPA，散列 `c9ab9b62812fad29f612c316a082c91e88bc9ab9d7de27df3dd85ec286b91ec0`，当前 `zh0ngtian` 署名及展示信息保留。网关保留现有 start.py、gateway-env.json、Node 路径、依赖和前端 dist；前端散列 `82c243e7f812096f2be3270347cfab2c74ab4df0df44ec06f2db25f1a2ae821b` 与部署前一致。
+
+真实失败链保持不可变：客户端 `818f16e6…`（设备构建路径空格）→ `b5bd33b7…`（只读远端请求中断）→ `aa55dea4…`（软件源公开散列缺失）→ 成功 `ddfe5aa2…`；网关 `9a93da69…`（探针地址与原 HOST 不符）→ 成功 `1dc61420…`。每次均显式 register --repairs-batch 最新叶节点，按规则创建子批次；没有取消已运行 CI、覆盖失败状态或借用其他提交的包。原任务已实际核对 `recovered_by` 指向对应成功子批次并读取同一 receipt。
+
+本地 153 项 Python 发布/恢复回归、78 项构建契约、typecheck 和上游 19 项并发/窗口/冻结/租约/不可变关联修复检查通过。额外隔离验收实际终止负责人进程，验证租约未到期拒绝接管、到期后接管，发布只发生一次且凭证冻结 SHA 不变；真实 HTTP 替身验证响应丢失不重复发包、单渠道失败保留另一端成功。验证日志与 owner-interruption.json 在状态目录 `validations/codex-mobile-20261013/`。规范与质量独立审查通过。
+
+当前仍是用户登录启动，未安装登录前系统 LaunchDaemon。构建验签/渠道可用不等于真机覆盖安装或数据保留；当前未进行该真机验收。额外全量 UI 探查发现 5 个旧图片/视频/边栏用例失败；相关客户端源码、UI 测试及依赖锁相对接入前未改动，不把这些用例宣称通过。
