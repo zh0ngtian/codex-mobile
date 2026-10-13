@@ -359,5 +359,50 @@ class ReleaseAdapterTests(unittest.TestCase):
                 self.assertEqual(a.gh_json('test/read'),{'ok':True})
                 self.assertTrue(all(c.kwargs.get('timeout')==45 for c in run.call_args_list))
 
+    def test_source_missing_digest_is_a_missing_attestation_step(self):
+        m=self.load()
+        with tempfile.TemporaryDirectory() as tmp:
+            a=m.Adapter(self.context(Path(tmp)));a.options['source_url']='https://source.test/feed'
+            expected={'downloadUrl':'https://github.test/unsigned.ipa','size':3,'sha256':'c'*64}
+            feed={'apps':[{'appID':'entry-a','bundleIdentifier':'vip.loock.codexmobile','downloadURL':expected['downloadUrl'],'version':'0.2.164','buildVersion':'2164','size':3,'developerName':'alice'}]}
+            feed['apps'][0]['downloadURL']='https://github.test/app-unsigned.ipa';expected['downloadUrl']=feed['apps'][0]['downloadURL']
+            with patch.object(a,'build_check',return_value={'done':True,'result':{'artifacts':{'ios':expected}}}),patch.object(a,'url_json',return_value=feed),patch.object(a,'gh_json',return_value={'login':'alice'}):
+                self.assertFalse(a.source_check()['done'])
+
+    def test_source_attests_only_the_exact_missing_digest_once_after_response_loss(self):
+        m=self.load()
+        with tempfile.TemporaryDirectory() as tmp:
+            a=m.Adapter(self.context(Path(tmp)));credentials=a.root/'credentials.json'
+            m.atomic_json(credentials,{'url':'https://source.test','token':'test-secret'});a.options['source_credentials']=str(credentials)
+            expected={'downloadUrl':'https://github.test/app-unsigned.ipa','size':3,'sha256':'c'*64}
+            entry={'id':'entry-a','config':{'repository':a.repo},'presentation':{'developerName':'alice'},
+                   'current':{'downloadURL':expected['downloadUrl'],'metadata':{'version':'0.2.164','buildVersion':'2164'},'inspection':{'fullBytes':3},'fingerprint':'asset-fingerprint'}}
+            catalog={'revision':7,'entries':[entry],'jobs':[]};posts=[]
+            def request(url,**kwargs):
+                if url.endswith('/attest'):
+                    posts.append(kwargs['data']);entry['current']['sha256']='c'*64
+                    raise OSError('attestation response lost')
+                return catalog
+            with patch.object(a,'url_json',side_effect=request),patch.object(a,'gh_json',return_value={'login':'alice'}),patch.object(a,'build_check',return_value={'done':True,'result':{'artifacts':{'ios':expected}}}):
+                a.source_manage();a.source_manage()
+            self.assertEqual(posts,[{'revision':7,'sha256':'c'*64}])
+            self.assertTrue(a.read_progress()['operations']['source']['attestationVerified'])
+
+    def test_source_attestation_last_allowed_cas_retry_is_verified(self):
+        m=self.load()
+        with tempfile.TemporaryDirectory() as tmp:
+            a=m.Adapter(self.context(Path(tmp)));expected={'downloadUrl':'https://github.test/app-unsigned.ipa','size':3,'sha256':'c'*64}
+            entry={'id':'entry-a','current':{'downloadURL':expected['downloadUrl'],'metadata':{'version':'0.2.164','buildVersion':'2164'},'inspection':{'fullBytes':3}}}
+            catalog={'revision':1,'entries':[entry]};posts=[]
+            def request(url,**kwargs):
+                if url.endswith('/attest'):
+                    posts.append(kwargs['data']);catalog['revision']+=1
+                    if len(posts)<=3:raise RuntimeError('HTTP 409: revision conflict')
+                    entry['current']['sha256']='c'*64
+                return catalog
+            with patch.object(a,'url_json',side_effect=request):
+                self.assertTrue(a.attest_source('https://source.test',{},'entry-a',catalog,expected))
+            self.assertEqual(len(posts),4)
+
 
 if __name__ == '__main__': unittest.main()
