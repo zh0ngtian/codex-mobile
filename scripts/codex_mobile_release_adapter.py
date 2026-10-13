@@ -44,11 +44,25 @@ class Adapter:
 
     def git(self, *args): return self.command(['git', *args])
 
+    @staticmethod
+    def transient_read_error(message):
+        return bool(re.search(r'EOF|timed?\s*out|timeout|connection (reset|refused|aborted)|temporar|HTTP (408|429|500|502|503|504)|empty reply|could not resolve|failure when receiving',message,re.I))
+
     def gh_json(self, path, missing=False):
-        result = subprocess.run(['gh', 'api', path], cwd=self.work, text=True, capture_output=True)
-        if missing and result.returncode and 'HTTP 404' in result.stderr: return None
-        if result.returncode: raise RuntimeError('GitHub API 无法核对: ' + result.stderr.strip())
-        return json.loads(result.stdout)
+        # This helper only issues GET; a failed POST is reconciled by its owning phase instead.
+        for attempt in range(4):
+            try:
+                result = subprocess.run(['gh', 'api', path], cwd=self.work, text=True, capture_output=True,timeout=45)
+            except subprocess.TimeoutExpired:
+                if attempt==3:raise RuntimeError('GitHub GET timed out after bounded retries') from None
+                time.sleep(2**attempt);continue
+            if missing and result.returncode and 'HTTP 404' in result.stderr:return None
+            if not result.returncode:
+                try:return json.loads(result.stdout)
+                except json.JSONDecodeError:error='GitHub GET response incomplete EOF'
+            else:error=result.stderr.strip()
+            if attempt==3 or not self.transient_read_error(error):raise RuntimeError('GitHub API 无法核对: '+error)
+            time.sleep(2**attempt)
 
     def request(self, url, method='GET', data=None, headers=None, ca=None):
         # curl 与当前软件源/局域网服务兼容；凭据只通过 stdin，不写到命令参数或日志。
@@ -63,12 +77,22 @@ class Adapter:
         if data is not None:
             # body contains only public operation options; management token is a header.
             args.extend(['--data-binary', json.dumps(data)])
-        result = subprocess.run(args, text=True, input='\n'.join(config) if headers else None, capture_output=True)
-        if result.returncode: raise RuntimeError('HTTP 连接失败: ' + result.stderr.strip())
-        body, status = result.stdout.rsplit('\n', 1)
-        if status == '404': return None
-        if not status.startswith('2'): raise RuntimeError(f'HTTP {status}: {url.split("?")[0]}')
-        return body
+        attempts=4 if method in ('GET','HEAD') else 1
+        for attempt in range(attempts):
+            result = subprocess.run(args, text=True, input='\n'.join(config) if headers else None, capture_output=True)
+            if result.returncode:
+                error='HTTP 连接失败: '+result.stderr.strip()
+                # curl transport failures are safe to retry for GET/HEAD only.
+                transient=True
+            else:
+                try:body,status=result.stdout.rsplit('\n',1)
+                except ValueError:body,status='','000'
+                if status=='404':return None
+                if status.startswith('2'):return body
+                error=f'HTTP {status}: {url.split("?")[0]}'
+                transient=status in ('000','408','429','500','502','503','504')
+            if attempt==attempts-1 or not transient:raise RuntimeError(error)
+            time.sleep(2**attempt)
 
     def url_json(self, url, **kwargs):
         body = self.request(url, **kwargs)
@@ -81,7 +105,7 @@ class Adapter:
         if not lengths or int(lengths[-1]) != expected['size']: raise ValueError('HEAD 文件大小不匹配')
         output = Path(output); output.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         candidate = output.with_name('.get-' + uuid.uuid4().hex)
-        args = ['curl', '-fsSL', '--max-time', '180', '--output', str(candidate), url]
+        args = ['curl', '-fsSL', '--retry','3','--retry-delay','1','--retry-connrefused','--retry-all-errors', '--max-time', '180', '--output', str(candidate), url]
         if ca: args.extend(['--cacert', str(ca)])
         try:
             self.command(args)
