@@ -163,11 +163,18 @@ class Gateway:
             mode = 'external' if env.get('CODEX_APP_SERVER_MODE') == 'external' else 'managed'
             upstream_port = env.get('CODEX_APP_SERVER_PORT', '18765')
             upstream = (env.get('CODEX_APP_SERVER_URL') or f'ws://127.0.0.1:{upstream_port}') if mode == 'external' else f'ws://127.0.0.1:{upstream_port}'
-            request = urllib.request.Request(f'http://127.0.0.1:{port}/api/status')
+            host = str(env.get('HOST') or '127.0.0.1')
+            if host == '0.0.0.0':
+                host = '127.0.0.1'
+            elif host == '::':
+                host = '::1'
+            authority = f'[{host}]' if ':' in host and not host.startswith('[') else host
+            request = urllib.request.Request(f'http://{authority}:{port}/api/status')
             token = env.get('CODEX_MOBILE_TOKEN')
             if token:
                 request.add_header('Cookie', 'codex_mobile_token=' + urllib.parse.quote(str(token), safe="~()*!.'-"))
-            with urllib.request.urlopen(request, timeout=3) as response:
+            opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+            with opener.open(request, timeout=3) as response:
                 status = json.load(response)
             return status.get('mode') == mode and status.get('upstreamUrl') == upstream
         except Exception:
