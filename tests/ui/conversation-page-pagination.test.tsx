@@ -47,6 +47,7 @@ function renderConversation(
     onCancelHistoryEdit?: () => void;
     onSubmitHistoryEdit?: () => void;
     newChat?: boolean;
+    cwd?: string | null;
   } = {},
   onRetry = vi.fn(),
 ) {
@@ -55,7 +56,7 @@ function renderConversation(
     <ConversationPage
       active={{
         id: composer.newChat ? "" : "thread-1",
-        cwd: composer.newChat ? null : "/tmp/project",
+        cwd: composer.cwd !== undefined ? composer.cwd : composer.newChat ? null : "/tmp/project",
         preview: composer.newChat ? "新对话" : "分页会话",
         turns: composer.newChat
           ? []
@@ -133,6 +134,29 @@ function renderConversation(
 }
 
 describe("会话详情历史分页", () => {
+  it.each([
+    String.raw`C:\Projects\codex-mobile`,
+    String.raw`\\server\share\codex-mobile`,
+  ])("恢复不在项目列表中的草稿时路径 %s 仍显示项目名", (cwd) => {
+    const { container } = renderConversation("exhausted", undefined, { newChat: true, cwd });
+    const selector = within(container).getByRole("combobox", { name: "选择项目" });
+    const option = within(selector).getByRole("option", { name: "codex-mobile" });
+    expect((option as HTMLOptionElement).value).toBe(cwd);
+    expect((selector as HTMLSelectElement).value).toBe(cwd);
+  });
+
+  it.each([
+    String.raw`C:\Users\Fanding\Projects\codex-mobile`,
+    "C:\\Users\\Fanding\\Projects\\codex-mobile\\",
+    String.raw`\\server\share\codex-mobile`,
+    "/Users/me/codex-mobile/",
+  ])("对话顶部对项目路径 %s 只显示项目名", (cwd) => {
+    const { container } = renderConversation("exhausted", undefined, { cwd });
+    const heading = container.querySelector(".thread-heading span");
+    expect(heading?.textContent).toBe("Mac mini · codex-mobile · 已连接");
+    expect(heading?.textContent).not.toContain(cwd);
+  });
+
   it("独立待确认提示位于会话滚动状态区域，不成为页面前置流式元素", () => {
     const { container } = renderConversation("exhausted", undefined, { operationPending: true, busy: false });
     const status = within(container).getByRole("status");

@@ -4,6 +4,7 @@ import {
   filterAggregatedThreads,
   groupThreadsByProject,
   mergeAggregatedThreadSearchResults,
+  projectNameOf,
   splitAllThreads,
 } from "../../src/features/threads/thread-list-model";
 import { PROJECTLESS_GROUP_ID } from "../../src/app-server/thread-list-loader";
@@ -14,6 +15,31 @@ const backends = [
 ];
 
 describe("会话列表派生", () => {
+  it.each([
+    [String.raw`C:\Users\Fanding\Projects\codex-mobile`, "codex-mobile"],
+    ["C:\\Users\\Fanding\\Projects\\codex-mobile\\\\", "codex-mobile"],
+    [String.raw`\\server\share\项目`, "项目"],
+    ["C:\\Users/Fanding\\Projects/codex-mobile\\/", "codex-mobile"],
+    ["  C:\\Projects\\项目  ", "项目"],
+    ["/Users/me/Projects/codex-mobile/", "codex-mobile"],
+    ["", "未识别项目"],
+    ["/", "未识别项目"],
+  ])("项目路径 %s 只显示末级目录名称", (cwd, expected) => {
+    expect(projectNameOf({ cwd })).toBe(expected);
+  });
+
+  it("同名 Windows 项目显示短名称，分组仍保留各自完整路径", () => {
+    const directories = [String.raw`C:\Projects\app`, String.raw`D:\Projects\app`];
+    const records = aggregateThreads([{ id: "windows", name: "Windows" }], {
+      windows: directories.map((cwd, index) => ({ id: `thread-${index}`, cwd })),
+    });
+    expect(records.map((record) => record.projectName)).toEqual(["app", "app"]);
+    const groups = groupThreadsByProject(records, directories);
+    expect(groups.map((group) => group.cwd)).toEqual(directories);
+    expect(groups.map((group) => group.projectName)).toEqual(["app", "app"]);
+    expect(groups.map((group) => group.threads[0].cwd)).toEqual(directories);
+  });
+
   it("内部记忆整理会话隐藏，用户自动化会话仍显示", () => {
     const result = aggregateThreads(backends.slice(0, 1), { book: [
       { id: "memory", threadSource: "memory_consolidation" },
