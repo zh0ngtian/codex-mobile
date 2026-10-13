@@ -9,8 +9,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: development-checks-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  group: development-checks-${{ github.event.pull_request.number || github.ref }}-${{ github.ref == 'refs/heads/main' && github.sha || 'branch' }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 env:
   NODE_OPTIONS: --no-experimental-webstorage
