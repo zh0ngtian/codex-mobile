@@ -114,7 +114,7 @@ jobs:
       - name: 再次校验冻结来源
         run: node scripts/validate-release-batch.mjs --batch-id "$BATCH_ID" --frozen-sha "$SOURCE_COMMIT" --version "$APP_VERSION"
       - name: 安装锁定依赖
-        run: npm ci --ignore-scripts
+        run: npm ci
       - name: 验证构建契约
         run: npm test -- tests/ci --maxWorkers=2 --testTimeout=60000
       - name: 编译并校验安装包

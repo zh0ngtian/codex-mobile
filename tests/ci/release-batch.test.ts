@@ -38,6 +38,20 @@ describe("冻结批次来源门禁", () => {
     const f = fixture(b => { b.project = "codex-mobile-gateway-production"; b.target = "codex-mobile-gateway"; b.environment = "production"; });
     try { const r = f.run(); expect(r.status, r.stderr).toBe(0); expect(JSON.parse(r.stdout).release_required).toBe("false"); } finally { f.cleanup(); }
   });
+  it("网关批次不分配客户端版本或构建号", () => {
+    const f = fixture(b => {
+      b.project = "codex-mobile-gateway-production"; b.target = "codex-mobile-gateway"; b.environment = "production";
+      delete b.prepared.version; delete b.prepared.buildNumber;
+    });
+    try {
+      const r = f.run(); expect(r.status, r.stderr).toBe(0);
+      expect(JSON.parse(r.stdout)).toMatchObject({ release_required: "false", app_version: "", app_version_code: "", release_tag: "", source_commit: f.frozen });
+    } finally { f.cleanup(); }
+  });
+  it("网关批次可携带有效参考版本但不要求客户端构建号", () => {
+    const f = fixture(b => { b.project = "codex-mobile-gateway-production"; b.target = "codex-mobile-gateway"; b.environment = "production"; delete b.prepared.buildNumber; });
+    try { const r = f.run(); expect(r.status, r.stderr).toBe(0); expect(JSON.parse(r.stdout)).toMatchObject({ release_required: "false", app_version: "", app_version_code: "", release_tag: "" }); } finally { f.cleanup(); }
+  });
   it.each([
     ["未知目标", (b: any) => b.target = "unknown"],
     ["错误环境", (b: any) => b.environment = "production"],

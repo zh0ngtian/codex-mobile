@@ -28,7 +28,7 @@ jobs:
           node-version: '22.14.0'
           cache: npm
       - name: 安装锁定依赖
-        run: npm ci --ignore-scripts
+        run: npm ci
       - name: 验证类型
         run: npm run typecheck
       - name: 运行开发与构建契约测试

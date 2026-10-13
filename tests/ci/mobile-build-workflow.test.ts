@@ -117,6 +117,8 @@ describe("GitHub 双端自动构建", () => {
     expect(workflow.on.workflow_dispatch.inputs.batch_id.required).toBe(true);
     expect(workflow.on.workflow_dispatch.inputs.frozen_sha.required).toBe(true);
     expect(source).toContain("sha256sum --check");
+    expect(source).toContain("npm ci");
+    expect(source).not.toContain("--ignore-scripts");
     expect(source).toContain("gh release create");
     expect(source).not.toMatch(/npm publish|IOS_P12|IOS_PROFILE|secrets: inherit/);
   });
@@ -128,7 +130,8 @@ describe("GitHub 双端自动构建", () => {
     expect(workflow.on.pull_request).toBeDefined();
     expect(workflow.on.push).toBeDefined();
     expect(workflow.permissions.contents).toBe("read");
-    expect(source).toContain("npm ci --ignore-scripts");
+    expect(source).toContain("npm ci");
+    expect(source).not.toContain("--ignore-scripts");
     expect(source).toContain("npm test");
     expect(source).not.toMatch(/gh release|build-mobile.mjs|release-ios.py|npm run build/);
   });

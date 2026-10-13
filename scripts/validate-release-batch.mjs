@@ -37,9 +37,15 @@ export function validateManifest(batch) {
   }
   const prepared = batch.prepared;
   if (prepared?.localValidation !== "passed" || !/^[a-f0-9]{64}$/.test(prepared.inputFingerprint ?? "")) fail("缺少本机验证或输入指纹");
-  const code = versionCode(prepared.version);
-  if (!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(prepared.version) || String(prepared.buildNumber) !== String(code)) fail("冻结版本与构建号不一致");
-  return { batch_id: batch.batchId, app_version: prepared.version, app_version_code: String(code), release_tag: `v${prepared.version}`, release_required: String(target.release) };
+  let code;
+  if (target.release || prepared.version !== undefined || prepared.buildNumber !== undefined) {
+    code = versionCode(prepared.version);
+    if (!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(prepared.version) ||
+      ((target.release || prepared.buildNumber !== undefined) && String(prepared.buildNumber) !== String(code))) fail("冻结版本与构建号不一致");
+  }
+  // 服务端批次不分配或输出客户端版本；可选参考版本仍须有效。
+  return { batch_id: batch.batchId, app_version: target.release ? prepared.version : "", app_version_code: target.release ? String(code) : "",
+    release_tag: target.release ? `v${prepared.version}` : "", release_required: String(target.release) };
 }
 export async function validateReleaseBatch({ root = process.cwd(), batchId, frozenSha, version, githubSha = process.env.GITHUB_SHA, githubRef = process.env.GITHUB_REF } = {}) {
   root = resolve(root);
