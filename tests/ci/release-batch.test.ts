@@ -46,28 +46,25 @@ describe("冻结批次来源门禁", () => {
     try { expect(f.run().status).not.toBe(0); } finally { f.cleanup(); }
   });
 
-  it("发行说明保留冻结清单的中文修复内容并注明 IPA 未签名", () => {
+  it("发行说明仅保留冻结清单的中文更新内容", () => {
     const f = fixture(b => { b.releaseNotes = "修复 Windows 项目名称显示完整路径的问题。"; });
     try {
       const output = join(f.root, "release-notes.md");
       const result = f.run("--notes", output);
       expect(result.status, result.stderr).toBe(0);
       const notes = readFileSync(output, "utf8");
-      expect(notes).toContain("修复 Windows 项目名称显示完整路径的问题。");
-      expect(notes).toContain("IPA 未签名");
-      expect(notes).toContain("SHA-256");
+      expect(notes).toBe("修复 Windows 项目名称显示完整路径的问题。\n");
     } finally { f.cleanup(); }
   });
 
-  it("未提供更新日志的原批次仍输出双端产物与签名说明", () => {
+  it("未提供更新日志时不以构建和签名模板代替更新内容", () => {
     const f = fixture();
     try {
       const output = join(f.root, "release-notes.md");
       const result = f.run("--notes", output);
       expect(result.status, result.stderr).toBe(0);
       const notes = readFileSync(output, "utf8");
-      expect(notes).toContain("Android APK");
-      expect(notes).toContain("IPA 未签名");
+      expect(notes.trim()).toBe("");
     } finally { f.cleanup(); }
   });
 

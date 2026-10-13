@@ -103,12 +103,7 @@ async function main() {
   if (values.receipts) await validateBuildReceipts(context, resolve(values.receipts), { root: values.root, runId: values["run-id"], runAttempt: values["run-attempt"] });
   if (values.notes) {
     const changes = typeof context.batch.releaseNotes === "string" ? context.batch.releaseNotes.trim() : "";
-    await writeFile(values.notes, [
-      changes,
-      "Android APK 与 iOS unsigned IPA 使用同一版本，由当前冻结提交与固定 PakePlus 容器构建。",
-      "IPA 未签名，安装前需自行签名。",
-      "附件包含安装包、SHA-256 校验文件和构建回执（来源提交、版本、文件大小及散列）。",
-    ].filter(Boolean).join("\n\n") + "\n", "utf8");
+    await writeFile(values.notes, changes + "\n", "utf8");
   }
   const output = values.output || process.env.GITHUB_OUTPUT;
   if (output) await appendFile(output, Object.entries(context.outputs).map(([key, value]) => `${key}=${value}\n`).join(""));
