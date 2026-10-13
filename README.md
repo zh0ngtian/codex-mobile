@@ -303,7 +303,7 @@ npm run test:e2e
 
 ## 移动端构建
 
-GitHub Actions 在 `main` 的客户端及构建相关推送后自动构建 Android APK 和 iOS unsigned IPA，也支持在 Actions 中手动指定更高版本。两端共用统一版本，全部构建与校验成功后创建同一个 GitHub Release，附件包含安装包、SHA-256 和构建回执。服务端和不匹配构建路径的文档修改不会触发；现有 `mobile/**` 也会匹配移动端文档，路径排除缺口见 [发布协调说明](docs/release-coordination.md)。npm 包继续按需手动发布。
+正式发布由本机已有 `releasectl` 协调，`main` 的冻结批次清单触发 GitHub 双端构建；任意客户端任务分支推送不再自动发包。两端共用 prepare 预留版本，全部构建与校验成功后创建同一个 GitHub Release。配置、任务命令和恢复验收见 [发布协调说明](docs/release-coordination.md)；npm 包继续按需手动发布。
 
 Android App 固定检查局域网更新清单
 `http://192.168.123.79:8765/channels/codex-mobile/latest.json`，发现新版本后从固定地址
@@ -321,7 +321,7 @@ iOS 支持在本机局域网执行 Ad Hoc 自动签名与 HTTPS OTA。证书和�
 资源内置到 App。构建产物只包含上述固定更新服务器地址，不包含网关 Token 或其他私人配置。
 Android 和 iOS 安装包只支持正向竖屏，设备转动时保持竖屏，应用内浏览器亦遵循该限制。
 
-发布流程由统一协调入口负责提交整合、版本分配及批次交付；当前入口、共享队列与完整周期锁尚未实现，现有支持和待改造项见 [发布协调说明](docs/release-coordination.md)。通用合批策略以 canonical 全局规则为准。
+发布流程由统一协调入口负责提交整合、版本分配及批次交付；现已复用发布主机的 releasectl 服务和项目适配器，配置与实际验收状态见 [发布协调说明](docs/release-coordination.md)。通用合批策略以 canonical 全局规则为准。
 
 本项目发布要求：
 

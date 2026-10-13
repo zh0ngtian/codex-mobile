@@ -6,11 +6,11 @@
 
 ## 多任务协调、合批构建与发布
 
-- 通用策略以当前生效的 canonical 全局 `AGENTS.md` 的“多任务协调、合批构建与发布”为准；本项目的发布目标、验证要求、入口现状与待改造项见 [发布协调说明](docs/release-coordination.md)，不在项目规则复制通用正文。
-- 本项目各开发任务使用独立 worktree 开发并完成必要本地验证，提交并推送任务分支；就绪后登记确定的 SHA 与验证结果，由统一协调入口负责需要发布的提交整合和 main 推进。
+- 通用策略以当前生效的 canonical 全局 `AGENTS.md` 的“多任务协调、合批构建与发布”为准；本项目的配置、适配器入口、验证要求及实际验收状态见 [发布协调说明](docs/release-coordination.md)，不在项目规则复制通用正文。
+- 本项目需要发布的任务开始即在现有 `releasectl` 登记：客户端用 `codex-mobile-lan-production`，网关用 `codex-mobile-gateway-production`。在独立 worktree 开发，持续 heartbeat，完成本地验证并推送固定 SHA 后提交 ready；提交、版本分配和 main 推进由协调器处理。配置及常用命令见发布协调说明。
 - Codex Mobile 客户端批次统一覆盖 GitHub 双端 Release、固定 LAN APK/已签名 IPA、HTTPS OTA 及 unsigned IPA 软件源版本核对；服务端批次覆盖网关验证、服务端构建和部署。只改服务端不得触发客户端构建。
 - 共用模拟器验证仍须排队，同一模拟器同一时间只由一个任务使用。正式发布的版本分配、构建、签名、渠道回验与部署均归协调入口，参与任务共用最终发布凭证。
-- 当前没有可运行的统一协调入口、共享任务队列及覆盖完整发布周期的锁；现有 Actions 并发控制和 OTA 局部文件锁不能视为机制已落地。具体缺口以发布协调说明为准。
+- 统一入口复用发布主机已有 `~/.local/bin/releasectl` 与数据库；适配器为 `scripts/codex_mobile_release_adapter.py`。两项目队列因共同写本仓库正式 main，明确共用 `codex-mobile-main-production` 锁；不与其他仓库共用锁。多机经同一发布主机 SSH，不各建数据库。实际完成以对应成功批次 receipt 为准。
 
 ## 测试与验证
 
@@ -33,9 +33,9 @@
 - 本机发布配置固定为 `~/Library/Application Support/CodexMobile/ios-release.local.json`，以配置中授权的 Bundle ID、UDID、Team 与 profile 为准，不擅自使用原项目 Bundle ID 重签。
 - 当前已安装身份已由用户提供的全能签 0.2.122 IPA 确认：Bundle ID 为 `vip.loock.codexmobile`，签名 application-identifier 为 `SC456JW7RP.app.jade6694.grapefruit3766`，两者分别保留。配置中的 `compatibilityIpa` 与 `compatibilityIpaSha256` 固定真实已签名基准，精确保留其权限与钥匙串组；不能再因 profile App ID 字段将 Bundle ID 改成另一个应用。基准与签名材料均位于仓库外私有目录。
 - 首次修复误改标识的固定渠道时，只允许显式 `restoreInstalledIdentityFromBundleId` 加真实兼容基准的身份恢复；恢复记录须绑定原渠道版本与 IPA 散列，Team 和 application-identifier 不变。恢复完成后移除此一次性配置，后续发布继续执行身份与钥匙串组连续性检查。
-- 涉及客户端改动的批次冻结并推送成功后，由协调入口使用 `npm run ios:release -- --config "$HOME/Library/Application Support/CodexMobile/ios-release.local.json" --version <与APK统一的更高版本> --notes '<说明>'` 构建设备 IPA、自动 Ad Hoc 签名、验签、发布 HTTPS OTA 和固定 LAN IPA。APK 仍需构建并发布相同版本；非客户端改动不得触发此流程。
+- 客户端正式发布由适配器分阶段复用 `scripts/release-ios.py` 的设备构建、`scripts/ios_sign.py` 的 Ad Hoc 签名及 `scripts/ios_ota.py` 的 OTA 操作，绑定同一冻结 SHA 与统一版本，再发布固定 LAN IPA；APK 使用同批 CI 产物。`npm run ios:release -- --config "$HOME/Library/Application Support/CodexMobile/ios-release.local.json" --version <统一版本> --notes '<说明>' --plan` 保留只读预检；日常任务不得独立执行该组合入口正式发包。非客户端改动不得触发此流程。
 - 云端 unsigned IPA 是构建产物，不能覆盖已签名的固定 IPA 或作为 OTA 发布包；本机签名/发布失败时先解决问题，不能用未签名包替代已签名交付。
-- iOS 已签名 IPA 仅发布到 HTTPS OTA 与固定 LAN 渠道，完成回验并保存签名包与 `ota-release.json`；不得再将 Ad Hoc 已签名包上传、归档或创建订阅发布到软件源。[Cloudflare 软件源](https://signos-source-aggregator.305301890.workers.dev/sources/yao.json) 只保留并自动同步 `zh0ngtian/codex-mobile` GitHub Release 的 `CodexMobile-*-unsigned.ipa` 订阅，每次正式交付核对对应未签名版本。软件源维护读取并遵循 [SignOs 软件源文档](https://github.com/zh0ngtian/SignOs/blob/main/distribution/source-aggregator/README.md) 最新版；本仓库不维护软件源具体流程、上传器或重试命令。
+- iOS 已签名 IPA 仅发布到 HTTPS OTA 与固定 LAN 渠道，完成回验并保存签名包与 `ota-release.json`；不得再将 Ad Hoc 已签名包上传、归档或创建订阅发布到软件源。[Cloudflare 软件源](https://signos-source-aggregator.305301890.workers.dev/sources/yao.json) 只保留并自动同步 `zh0ngtian/codex-mobile` GitHub Release 的 `CodexMobile-*-unsigned.ipa` 订阅，每次正式交付核对对应未签名版本。软件源维护读取并遵循 [SignOs 软件源文档](https://github.com/zh0ngtian/SignOs/blob/main/distribution/source-aggregator/README.md) 最新版；本项目适配器仅同步既有 unsigned 订阅、保留署名并完成版本核对；软件源本身的部署、配置、上传器与重试流程仍维护在上游，不在本仓复制。
 - 发布 App 时，从当前 GitHub 登录账号读取用户名，以软件源该 App 当前的开发者署名为基准：已有该用户名则保持原值，缺少时追加；不得覆盖或删除先前开发者，除非用户明确要求。正式发布与补发使用同一规则，不能把发布者用户名硬编码为固定值。
 - 固定 OTA 安装页为 `https://192.168.123.79:8766/channels/codex-mobile/current/install.html`；更新清单为相同前缀的 `current/latest-ios.json`。HTTP 8765 固定下载渠道继续保留。
 - 局域网服务由 `local.codex-mobile.ios-ota` launchd 管理；必须从长期保留的主工作区执行 `scripts/ios_ota_server.py install`，不能绑定准备归档的 worktree。

@@ -1,50 +1,86 @@
-# Codex Mobile 发布协调说明
+# Codex Mobile 发布协调器接入
 
-通用的开发与发布分离、合批条件、等待窗口、冻结、避免抢占、失败恢复和完成判据，统一维护在当前生效的 canonical 全局 `AGENTS.md` 的“多任务协调、合批构建与发布”中。本说明只补充本项目的目标、验证、入口现状和具体改造项；项目约束见 [仓库规则](../AGENTS.md)。
+通用合批策略及不可变失败/关联修复规则维护在当前 canonical 全局 `AGENTS.md`。本页只说明本项目的配置、入口、验证和必要例外；上游合同见 [README](https://github.com/zh0ngtian/release-coordinator/blob/main/README.md) 和 [USAGE](https://github.com/zh0ngtian/release-coordinator/blob/main/USAGE.md)。
 
-## 适用目标与交付合同
+## 本机部署与作用域
 
-| 变更范围 | 本项目需要的交付 | 本项目验证与限制 |
-| --- | --- | --- |
-| 客户端运行代码、客户端引用的共用模块、原生桥接或影响客户端产物的构建配置 | 同批统一版本的 GitHub APK/unsigned IPA Release、固定 LAN APK/Ad Hoc 已签名 IPA、HTTPS OTA；核对软件源 unsigned IPA 同步 | 任务本地验证及整合后的必要检查；CI 构建契约与安装包校验；固定清单、HEAD、完整 GET 的版本、大小和 SHA-256；iOS 签名与升级身份连续性 |
-| 仅服务端 | 必要验证、`npm run build:server`、网关部署和部署验收 | 不触发客户端 Web、APK 或 IPA 构建发布；与客户端发布目标不同，不能仅因同仓库就合为同一发布目标 |
-| 仅文档、仓库规则、测试或不影响客户端产物的脚本，且不涉及构建或发布 | 相应验证、提交与推送 | 直接完成，不启动合批发布或客户端构建；脚本若影响服务端部署则仍按实际影响完成验证 |
+2026-10-13 已只读确认现有 `releasectl 0.1.3` 健康并复用，不另装服务或数据库。CLI 为 `~/.local/bin/releasectl`；状态库在 `~/Library/Application Support/ReleaseCoordinator/state.sqlite3`，runtime 由上游安装器复制为不可变目录，launchd 不指向开发 worktree。
 
-本项目版本继续使用 `major.minor.patch`，Android `versionCode` 与 iOS 构建号沿用 `major * 1000000 + minor * 1000 + patch`；`minor`、`patch` 小于 1000，构建号为正且不超过 2100000000。客户端批次版本必须高于 Android、iOS 固定 LAN 和 HTTPS OTA 当前版本，同时满足全部 GitHub Release 标签和 `mobile-version-floor.json` 的版本下限。CI 无法读取 LAN，协调入口必须对账后传入统一版本或同步仓库下限，不能让 CI 与本机各自分配。
+| 项目配置 ID | 仓库/正式分支 | 目标与环境 | 必要交付 |
+| --- | --- | --- | --- |
+| `codex-mobile-lan-production` | `zh0ngtian/codex-mobile` / `main` | `vip.loock.codexmobile` / `lan-production` | GitHub 双端 Release、固定 LAN APK/已签名 IPA、HTTPS OTA、软件源 unsigned 版本核对 |
+| `codex-mobile-gateway-production` | 相同仓库 / `main` | `codex-mobile-gateway` / `production` | 服务端构建、原本机安装位置及 launchd 网关部署验收；不构建客户端 |
 
-现役渠道与命令继续沿用 [文档索引](README.md#当前发布入口)、[移动端构建说明](../mobile/README.md)和 [iOS OTA 发布说明](ios-ota-release.md)。软件源仍只同步 GitHub Release 的 unsigned IPA；Ad Hoc 包只发 HTTPS OTA 与固定 LAN。签名材料、本机发布配置、Bundle ID、Team、application-identifier、钥匙串组及真机验收边界均不变。服务端部署沿用现有网关方式，不新增分发渠道。
+两者分别登记任务，但均会推进同一正式 main，因此显式共用可写目标锁 `codex-mobile-main-production`。不因为共用发布主机或只读证书而锁住其他仓库；其他项目沿用自己的作用域。多机器必须 SSH 到本发布主机运行同一 CLI，并把固定 SHA 推送共享 Git 远端、把验证文件传到发布主机；不另装数据库，不将 SQLite 放网络盘。
 
-## 入口现状（2026-10-12 静态核对）
+现有服务为 **LaunchAgent 用户登录启动**：`gui/501/local.release-coordinator`、`~/Library/LaunchAgents/local.release-coordinator.plist`，已核对 running PID 与 installation.json。当前没有系统 LaunchDaemon，不能称为登录前系统开机启动。若用户需要切换为系统启动，在系统终端从上游源码目录执行其 `sudo ... install.py --system --user <本机用户名> --python <现有绝对Python路径>`；管理员认证由用户完成，仍复用同一状态库。之后须核对安装凭证和 `launchctl print system/local.release-coordinator`，签名钥匙串与 GitHub 认证可在登录前尚不可用。
 
-**规则已更新，统一协调机制尚未实现。** 以下结果来自仓库工作流及脚本检查，不代表实际线上版本、运行中的 CI 或真机状态已经验收。本次未改变 CI/脚本，也未启动构建、签名、渠道发布或网关部署。
+## 项目配置与适配器
 
-| 入口 | 已有支持 | 未覆盖的协调要求 |
-| --- | --- | --- |
-| `.github/workflows/build-mobile.yml` | 客户端相关 main 推送或手动触发；同次 run 分配双端版本；两端契约测试、构建与校验全部成功后才创建同一 Release；下载当前 run 的 artifacts 并校验散列；`cancel-in-progress: false` | 无任务登记、合批窗口、冻结批次输入；`mobile/**` 会误匹配 `mobile/README.md` 等纯文档；并发组按 `github.ref` 分开；缺少 `queue: max`，等待中的 run 仍可能被新 run 替换；不覆盖本机签名、LAN/OTA、软件源核对或网关部署 |
-| `scripts/resolve-mobile-version.mjs` | 读取全部 Release 标签及仓库下限；统一计算版本与构建号；显式版本必须更高 | 无 LAN/OTA 对账、批次版本预留及失败批次状态；构建未创建 Release 时，其版本分配不会自动形成持久预留 |
-| `scripts/build-mobile.mjs` | 固定容器 SHA，复用 recipe，生成大小、SHA-256 与 `*-build.json`；CI `sourceCommit` 取 `GITHUB_SHA` | 不读取批次清单、不校验工作区与冻结 SHA 一致；本地未设置 `GITHUB_SHA` 时 `sourceCommit` 为 null；无批次/run/attempt 统一凭证绑定 |
-| `scripts/release-ios.py` / `npm run ios:release` | 检查 LAN/OTA 版本和签名身份；设备构建、Ad Hoc 签名、HTTPS 与 LAN 回验；保存已签名 IPA 和 `ota-release.json` | 仍能单独分配版本、独立构建发布；无从版本分配贯穿最终回验的批次锁、冻结 SHA 校验、任务映射和 CI run 绑定；成功凭证不是双端/网关统一凭证；中途失败不生成完整协调诊断 |
-| `scripts/ios_ota.py` | OTA 根目录 `.publish.lock` 使用 `fcntl.flock`；阶段发布和激活有升级检查、不可变版本目录与原子 `current` 切换；HTTPS 回验 | 锁只覆盖各次 OTA 文件操作，不覆盖构建、签名、LAN 或整批验收；无负责人、心跳、租约与跨机器协调记录；进程退出释放锁不能替代中断接管对账 |
-| 既有 `apk-server.py publish-channel codex-mobile` | 校验包，计算大小/散列，保存渠道更新历史，分别替换固定包与清单 | 无整批互斥锁、单调版本强制检查、冻结提交校验或双端事务；包与清单分别 `os.replace` 不等于双端渠道原子发布；固定地址覆盖不等于保留完整历史安装包 |
-| 网关部署 | 项目规则要求验证、服务端构建与部署；现有安装和运行入口保留 | 仓库未提供与移动端发布共用的任务队列、部署锁、冻结提交/部署状态及最终凭证协调入口 |
+本机已注册配置：
 
-GitHub Actions 的多批排队要求依据 [GitHub 官方并发文档](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency)：后续需要增加 `queue: max` 并保留 `cancel-in-progress: false`。队列有容量限制，且不能代替批次整合；调度状态必须由协调入口对账。
+- `~/Library/Application Support/ReleaseCoordinator/projects/codex-mobile-lan-production.json`。
+- `~/Library/Application Support/ReleaseCoordinator/projects/codex-mobile-gateway-production.json`。
 
-## 具体待改造项
+可移植模板位于 [客户端配置](../release/coordinator.mobile.example.json)及 [网关配置](../release/coordinator.gateway.example.json)。模板中的路径必须替换为本项目长期工作区和已有私有配置；服务已存在时只注册项目，不能再运行安装器或另开 serve。
 
-以下全部为 **pending**，本次仅登记，不表示已经存在对应 CLI、状态目录或服务。
+适配器命令为 `python3 {workspace}/scripts/codex_mobile_release_adapter.py`，接收上游 `run/check <阶段> --context <文件>` 协议。共享持久状态实现为 `scripts/release_coordination/state.py`；网关阶段为 `scripts/release_coordination/gateway.py`。本机使用现有 Python 3.11、Node.js、Git、gh、curl、Xcode 和原发布工具，不增加运行时依赖。
 
-1. **唯一协调入口与共享任务队列。** 为 Codex Mobile 客户端固定渠道和网关部署分别标识发布目标/环境，由同一协调控制面处理登记、整合、冻结、启动、查询、恢复和验收。任务记录包含任务 ID、分支/worktree、确定的完整 SHA、验证命令及结果/证据、目标、负责人、活跃状态和独立/紧急交付要求。开发任务不直接运行正式发布命令或推进需要发布的 main；无构建发布的任务保留直接完成路径。
-2. **完整周期的互斥锁。** 覆盖提交整合与 main 推进、版本预留、CI、本机签名、APK/IPA 固定渠道、OTA、软件源版本核对及必要部署验收；记录锁持有者、心跳、租约和接管历史，阻止过期持有者继续写渠道。单机 worktree 共用同一协调状态；多机器改用所有参与方可访问且支持原子互斥的控制面，不能各用自己的本地文件锁。
-3. **合批与冻结状态机。** 按全局规则实现等待窗口，依据活跃相关任务和收尾验证状态判断是否延长。整合任务提交，记录冲突解决及提交映射并复验。冻结任务、任务 SHA、最终整合 SHA、统一版本/构建号、发布目标及检查证据；冻结后任务另入下一批。冻结记录不得被正在构建期间的新任务改写。
-4. **CI 触发与排队。** 在 `build-mobile.yml` 增加 `queue: max`，并以同一应用/发布环境统一并发组，避免其他 ref 的手动运行绕过串行控制。将触发方式接入协调入口：冻结后只触发该批正式构建，main 自动触发与手动触发须去重或调整；checkout、版本 job、Release target 必须绑定冻结 SHA/版本。校验批次输入，拒绝未登记正式发布；补齐 `mobile/**` 内纯文档、测试等不影响客户端产物变更的路径/影响范围排除，保留现有服务端排除与必要构建契约检查。
-5. **产物来源与统一版本门禁。** 为 `build-mobile.mjs`、`release-ios.py` 增加冻结 SHA/工作区一致性校验与批次、run/attempt、版本及散列记录；本地真实来源不能依赖任意环境变量。协调入口一次编排现有双端 CI 和本机 iOS 设备构建/签名，各目标使用同一冻结提交，参与任务不分别构建或签名。只有来源与本批一致的 APK、unsigned IPA、Ad Hoc IPA 才能进入各自现有渠道，禁止借用其他提交的成功 run。
-6. **渠道与网关接入。** 用统一锁约束既有 APK 发布器、iOS OTA/LAN 发布入口及网关部署；保留现有身份校验、不可变 OTA 版本目录、版本规则和全部回验。补充 LAN 发布的单调版本门禁、包/清单一致性检查及部分成功状态记录；不另换渠道，不把 OTA 局部锁误称为端到端发布锁。
-7. **失败与中断恢复。** 持久保存批次、阶段、版本预留、CI run URL/ID/attempt、失败日志、已成功渠道和部署标记。接管先查询远端实际 run、Release、LAN/OTA 版本与散列及网关状态，防止重复签名/发包/部署。OTA 已有版本目录不能盲目重发；按现有不可覆盖与版本递增规则恢复，必要时记录与原失败批次关联的更高修复版本和新来源 SHA。无关任务不能覆盖失败批次状态。
-8. **共同发布凭证与完成核对。** 将最终 SHA、任务提交映射/改动包含证据、版本/构建号、CI 结果、各包来源/大小/SHA-256/签名状态、固定下载与 OTA 链接、渠道 HEAD/完整 GET、软件源 unsigned 版本核对、必要网关验收统一保存。各任务读取同一凭证并确认自身改动包含在最终提交；全部必要验收成功才完成。保留历史包、现有构建回执、`ota-release.json` 和验收记录，不能只依赖 14 天 Actions artifacts 留存。
+私有 options 引用原 `CodexMobile/ios-release.local.json`、现有 LAN 发布器、现有网关目录/label；软件源管理仅引用该服务既有私有 credentials，凭据不复制、不进入 Git/命令参数或共同凭证。维护软件源仍遵循 [现役上游说明](https://github.com/zh0ngtian/SignOs/blob/main/distribution/source-aggregator/README.md)，只操作本仓库既有 unsigned 订阅，保留完整署名和展示信息，不维护另一个签名包订阅。
 
-## 落地后的验收重点
+## 验证、冻结与各阶段
 
-机制改造时按项目要求使用计划与 TDD 流程。应验证同目标多任务合批、冲突整合复验、窗口上限、冻结后迟到任务、不同 ref 的发布互斥、多批排队、失败不被抢占、进程/机器中断接管与部分渠道成功恢复；同时验证纯文档/规则及仅服务端改动不会误触发客户端构建。
+ready 必需本地检查名为 `adapter-regression`、`coordinator-recovery`、`build-contract`、`typecheck`；均需真实 passed 记录及可定位的命令/结果证据。协调器 prepare 在整合 worktree 再执行锁定依赖安装、typecheck、原 `tests/ci` 契约测试和现有/新增 Python 发布回归。无构建发布的文档/规则改动按仓库例外直接提交推送，不调用 ready 触发发包。
 
-现有 `tests/ci/mobile-build-workflow.test.ts` 已检查 `cancel-in-progress: false`、构建及产物契约，但没有覆盖上述共享协调机制。规则更新的完成判据仅为文档一致性检查、提交与推送；不能据此宣称合批发布机制验收通过。当前仅文档提交若命中 `mobile/**`，可使用 GitHub 支持的 [跳过 CI 标记](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/skip-workflow-runs) 防止误触发；这不是路径过滤改造已落地，也不能用于跳过客户端发布批次的必要检查。
+客户端版本仍为 `major.minor.patch`，构建号为 `major * 1000000 + minor * 1000 + patch`，minor/patch 小于 1000，构建号正数且不超过 2100000000。prepare 读取 GitHub 全部 Release 标签、仓库下限、LAN APK/IPA、HTTPS OTA 和保留的失败版本预留，原子保留一次更高版本；重试不再分配。网关批次不递增 App 版本。
+
+prepare 检查原 profile、UDID、Bundle ID、Team、application-identifier、兼容基准与完整权限后，提交与上游字节一致的公共 `.release-batch.json`，采用本项目中文 Conventional Commit；协调器冻结该清单引入提交的 SHA。清单不自引用自身 SHA、不包含私有路径或验证日志。
+
+| 阶段 | 实际核对与缺失步骤 |
+| --- | --- |
+| `main` | 非强制推送冻结 SHA；核对正式远端分支已包含它 |
+| `build` | 按冻结 SHA 查询唯一正式 CI，记录 run/attempt；只下载本 run 缺失的平台，校验批次、任务、版本、真实来源、大小与散列；核对 Release tag 和附件 |
+| `iosbuild` | 复用现有设备构建 helper，保留编译成功日志和 DerivedData；编译成功后恢复只完成归档，已完整 IPA 候选直接接纳 |
+| `sign` | 原 Ad Hoc 签名/独立验签；核对完整 entitlements 散列，恢复接纳已成功签名的候选，不重复签名；成功散列不可被替换 |
+| `ota` | 完整候选校验后原子安装本批暂存；复用既有不可变版本目录及 current 切换；HTTPS 清单、manifest、安装页、HEAD/完整 GET 核对 |
+| `apk` / `ipa` | 原 publish-channel 渠道；只补缺失一端，不覆盖同版本不同包或更高版本；固定 JSON、HEAD、完整 GET 校验 |
+| `source` | 本仓库 unsigned IPA 的版本/构建号、GitHub URL、大小、散列及当前 gh 用户署名；核对真实同步 job，保留原开发者与展示信息 |
+| `gateway` | 仅 `npm run build:server`；更新原已安装包的 server/bin，保留已部署 dist、依赖、start.py 与环境；核对文件摘要、实际 launchd PID/命令、监听端口和认证状态接口；响应丢失不重复重启 |
+| `verify` | 等待同冻结 SHA 必要开发 CI；再次核对全部对应阶段及任务祖先，生成共同成功凭证；客户端另外独立完整下载 GitHub APK/unsigned IPA |
+
+正式 CI 只在 main 冻结清单变化时触发，使用稳定作用域、`cancel-in-progress: false`、`queue: max`；gateway 清单跳过客户端 build/release。手动 dispatch 需匹配已有 batch/版本/最终 SHA，不得用它另发独立版本或重复触发同批；重复正式 run 会被适配器拒绝并保留诊断。开发/PR检查使用另一并发组，仅执行原有必要检查，不发包。recipe、容器 SHA、工具版本、Android 签名及 iOS unsigned 策略保留。
+
+网关依赖声明若与已安装包不同，当前阶段阻止部署，需先完成该依赖变更所需验证和关联修复；不能假装旧依赖满足新代码。不修改服务端运行代码的协调器接入仍需按本次用户授权分别完成真实客户端发布和网关适配验收。
+
+## 常用命令与完成核对
+
+在发布主机执行（任务 ID 与验证文件换为自己的实际值）：
+
+```bash
+~/.local/bin/releasectl health
+~/.local/bin/releasectl register --project codex-mobile-lan-production --task MY_TASK
+~/.local/bin/releasectl heartbeat --task MY_TASK
+~/.local/bin/releasectl heartbeat --task MY_TASK --state closing
+# 独立分支本地验证并 push 确定提交后：
+~/.local/bin/releasectl ready --task MY_TASK --sha FULL_40_CHARACTER_SHA --validation /private/path/validation.json
+~/.local/bin/releasectl wait --task MY_TASK --timeout 45
+~/.local/bin/releasectl status --task MY_TASK
+~/.local/bin/releasectl batch --id BATCH_ID
+```
+
+网关任务使用 `codex-mobile-gateway-production`，不复用客户端队列 ID。中断且未失败的批次等待 lease 到期后由服务接管；failed 不使用 resume，也不改冻结现场。修复任务只绑定最新失败叶节点：
+
+```bash
+~/.local/bin/releasectl register --project codex-mobile-lan-production --task MY_REPAIR --repairs-batch FAILED_LEAF_ID
+# 验证并 push 修复 SHA 后，再以同样 required checks 调用 ready
+```
+
+status 返回原任务 `complete`，或 `recovered` 且 `recovered_by` 指向成功子批次时，读取该 batch 的同一 `data.receipt`，逐项核对最终 SHA、任务包含证据和所有必要渠道/部署成功。排队、冻结、恢复请求或某个渠道先成功都不代表交付。原 failed 批次和错误、子批次谱系、历史包均保留。
+
+持久凭证在 `ReleaseCoordinator/receipts/<batch>.json`；本项目产物在 `ReleaseCoordinator/artifacts/codex-mobile/<batch>/`，包含版本预留、编译日志/设备 IPA、已签名 IPA、CI 两端包、各阶段证据及 `ota-release.json`。14 天 Actions artifacts 不替代这些长期记录。旧 `npm run ios:release` 独立工具的 `.mobile-build/ota-release/<version>/` 历史继续保留，不以云端 unsigned IPA 覆盖已签名渠道。
+
+## 实际验收边界
+
+服务登录启动和上游 19 项并发/窗口/租约/不可变关联修复测试已验收；项目受控 HTTP 与网关替身只能证明相应恢复行为。真实客户端发布和网关部署状态以本次成功 receipt 为准，准备或进入队列时仍为 pending，后续验收记录列入本节。构建验签/渠道可用不等于真机覆盖安装或数据保留；当前未进行该真机验收。
+
+额外全量 UI 探查发现 5 个旧图片/视频/边栏用例失败；相关客户端源码、UI测试及依赖锁相对接入前未改动。本次保留原必要验证范围，不把这5项宣称通过，也不为协调器接入修改无关客户端行为。
