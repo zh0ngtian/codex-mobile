@@ -63,7 +63,7 @@ describe("Bark 通知", () => {
       questions: [{ id: "q", header: "方案", question: "私密问题正文", options: null }],
     } };
     f.send(question); await eventually(() => f.pushes.length === 1);
-    expect(f.pushes[0]).toMatchObject({ title: "Codex 需要你的回答", body: "新对话" });
+    expect(f.pushes[0]).toMatchObject({ title: "Codex 需要你回答", body: "新对话" });
     expect(f.pushes[0].url).toContain(encodeURIComponent(final.params.threadId));
     expect(JSON.stringify(f.pushes)).not.toContain("私密问题正文");
     f.send({ ...question, id: "another-connection" }); await wait(100);

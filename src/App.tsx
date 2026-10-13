@@ -1695,7 +1695,7 @@ function BackendWorkspace({
           if (question) {
             markThreadUnread(question.threadId);
             notifyRunCompleted({
-              title: t("Codex 需要你的回答"),
+              title: t("Codex 需要你回答"),
               body: completionThreadTitle({ threadId: question.threadId, threads: threadsRef.current,
                 activeThread: activeRef.current, fallback: t("新对话") }),
               backendId: backend.id, threadId: question.threadId,

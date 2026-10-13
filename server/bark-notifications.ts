@@ -191,7 +191,7 @@ export class BarkNotifications {
         while (this.delivered.size > MAX_DEDUPLICATION) this.delivered.delete(this.delivered.values().next().value!);
         try { await this.save(); } catch (error) { this.delivered.delete(id); throw error; }
         if (previouslyDelivered) continue;
-        const job = this.send(barkUrl, completed, { title: questionId == null ? "Codex 运行结束" : "Codex 需要你的回答", body, group: this.options.displayName, url: `codexmobile://thread?backendId=${encodeURIComponent(subscription.backendId)}&threadId=${encodeURIComponent(completed.threadId)}`, id });
+        const job = this.send(barkUrl, completed, { title: questionId == null ? "Codex 运行结束" : "Codex 需要你回答", body, group: this.options.displayName, url: `codexmobile://thread?backendId=${encodeURIComponent(subscription.backendId)}&threadId=${encodeURIComponent(completed.threadId)}`, id });
         this.jobs.add(job); void job.finally(() => this.jobs.delete(job));
       }
     }).catch(() => {});

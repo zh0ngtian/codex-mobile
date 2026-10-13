@@ -215,6 +215,7 @@ const english: Record<string, string> = {
     "Place the connection QR code from another device inside the frame",
   "正在识别…": "Recognizing…",
   "从相册选择二维码": "Choose QR code from photos",
+  "Codex 需要你回答": "Codex needs your answer",
   "Codex 需要你的回答": "Codex needs your response",
   "允许修改文件？": "Allow file changes?",
   "授予附加权限？": "Grant additional permissions?",

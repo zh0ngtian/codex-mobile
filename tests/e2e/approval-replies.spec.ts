@@ -142,7 +142,7 @@ test("新模型提问发送系统通知，稍后回答可恢复多行草稿并�
   ask = true;
   await expect(page.getByRole("dialog", { name: "Codex 需要你的回答" })).toBeVisible({ timeout: 20_000 });
   await expect.poll(() => page.evaluate(() => (window as any).testNotifications.length)).toBe(1);
-  expect(await page.evaluate(() => (window as any).testNotifications[0])).toEqual(["Codex 需要你的回答", "项目规划", "test", thread.id]);
+  expect(await page.evaluate(() => (window as any).testNotifications[0])).toEqual(["Codex 需要你回答", "项目规划", "test", thread.id]);
   await page.getByLabel("请描述你的方案").fill("先检查协议\n再实现界面");
   await page.getByRole("button", { name: "稍后回答" }).click();
   await expect(page.getByRole("dialog", { name: "Codex 需要你的回答" })).toHaveCount(0);
