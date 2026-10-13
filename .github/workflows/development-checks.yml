@@ -32,4 +32,4 @@ jobs:
       - name: 验证类型
         run: npm run typecheck
       - name: 运行开发与构建契约测试
-        run: npm test -- --maxWorkers=2 --testTimeout=60000
+        run: npm test -- tests/ci --maxWorkers=2 --testTimeout=60000

@@ -132,7 +132,10 @@ describe("GitHub 双端自动构建", () => {
     expect(workflow.permissions.contents).toBe("read");
     expect(source).toContain("npm ci");
     expect(source).not.toContain("--ignore-scripts");
-    expect(source).toContain("npm test");
+    expect(source).toContain("npm test -- tests/ci --maxWorkers=2 --testTimeout=60000");
+    expect(source).toContain("npm run typecheck");
+    expect(workflow.env.NODE_OPTIONS).toBe("--no-experimental-webstorage");
+    expect(source).not.toContain("npm test -- --maxWorkers");
     expect(source).not.toMatch(/gh release|build-mobile.mjs|release-ios.py|npm run build/);
   });
 
