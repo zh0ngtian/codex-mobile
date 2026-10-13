@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { parse } from "yaml";
 import { versionCode } from "./resolve-mobile-version.mjs";
+import { validateReleaseBatch, createBuildReceipt, readSourceCommit } from "./validate-release-batch.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 function run(command, args, cwd, env) {
@@ -23,7 +24,7 @@ export async function linkAndroidSources(output, source = join(root, "mobile")) 
 
 async function main() {
   const { values } = parseArgs({ options: {
-    platform: { type: "string" }, version: { type: "string" }, plan: { type: "boolean", default: false },
+    platform: { type: "string" }, version: { type: "string" }, "batch-id": { type: "string" }, "frozen-sha": { type: "string" }, plan: { type: "boolean", default: false },
   } });
   const platform = values.platform;
   if (!["android", "ios"].includes(platform)) throw new Error("平台必须为 android 或 ios");
@@ -50,6 +51,10 @@ async function main() {
   const plan = { platform, version, signing: platform === "android", container: recipe.container, artifactPath,
     steps: [...(platform === "ios" ? ["Prepare iOS project"] : []), ...steps.map(step => step.name)] };
   if (values.plan) { console.log(JSON.stringify(plan, null, 2)); return; }
+  const context = await validateReleaseBatch({ root, version, batchId: values["batch-id"], frozenSha: values["frozen-sha"] });
+  if (context.outputs.release_required !== "true") throw new Error("网关批次不得构建客户端");
+  // 提前确认回执身份完整，避免构建完成后才发现缺少 run 信息。
+  createBuildReceipt(context, {});
   if (platform === "ios" && process.platform !== "darwin") throw new Error("iOS 构建需要 macOS 和 Xcode");
   if (platform === "android" && process.platform !== "linux") throw new Error("Android 云端 recipe 需要 Linux");
   const env = { ...recipe.env, ...process.env, APP_VERSION: version, APP_VERSION_CODE: String(code), RUNNER_TEMP: runnerTemp,
@@ -79,7 +84,8 @@ async function main() {
   await mkdir(dirname(artifactPath), { recursive: true });
   await copyFile(built, artifactPath);
   await writeFile(`${artifactPath}.sha256`, `${sha256}  ${basename(artifactPath)}\n`);
-  const receipt = { ...plan, size, sha256, sourceCommit: process.env.GITHUB_SHA ?? null };
+  if (readSourceCommit(root) !== context.sourceCommit) throw new Error("构建期间 git HEAD 已改变");
+  const receipt = createBuildReceipt(context, { ...plan, filename, size, sha256 });
   await writeFile(join(dirname(artifactPath), `${platform}-build.json`), JSON.stringify(receipt, null, 2) + "\n");
   console.log(JSON.stringify(receipt, null, 2));
 }

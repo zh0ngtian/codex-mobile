@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """PakePlus 构建 → Ad Hoc 签名 → HTTPS OTA → 固定 LAN IPA。"""
 import argparse
+from contextlib import nullcontext
 import json
 import os
 from pathlib import Path
@@ -111,23 +112,42 @@ def channel_versions():
     return versions
 
 
-def build_unsigned(version, config, output):
+def build_unsigned(version, config, output, *, retained_root=None):
+    """原设备构建入口；协调批次可保留编译结果和成功日志以恢复归档。"""
     env = {**os.environ, 'APP_ID': config['bundleId'], 'IOS_OTA_BASE_URL': config['baseUrl']}
-    subprocess.run(['node', str(SCRIPTS/'prepare-ios.mjs'), '--version', version], cwd=ROOT, env=env, check=True)
-    project = ROOT/'.mobile-build/ios/pakeplus'
-    with tempfile.TemporaryDirectory(prefix='codex-mobile-ios-build-') as tmp:
-        derived = Path(tmp)/'DerivedData'
-        subprocess.run(['xcodebuild', '-project', str(project/'PakePlus.xcodeproj'), '-scheme', 'PakePlus',
-                        '-configuration', 'Release', '-sdk', 'iphoneos', '-derivedDataPath', str(derived),
-                        'CODE_SIGN_IDENTITY=', 'CODE_SIGNING_REQUIRED=NO', 'CODE_SIGNING_ALLOWED=NO'],
-                       cwd=ROOT, env=env, check=True)
+    if retained_root:
+        retained_root = Path(retained_root); retained_root.mkdir(parents=True, exist_ok=True, mode=0o700)
+    context = nullcontext(str(retained_root)) if retained_root else tempfile.TemporaryDirectory(prefix='codex-mobile-ios-build-')
+    with context as tmp:
+        root = Path(tmp); derived = root/'DerivedData'
         app = derived/'Build/Products/Release-iphoneos/PakePlus.app'
+        log = root/'compile.log'
+        completed = log.is_file() and '** BUILD SUCCEEDED **' in log.read_text(errors='replace') and (app/'Info.plist').is_file()
+        if completed:
+            prior=plistlib.loads((app/'Info.plist').read_bytes())
+            expected_build=str(sum(int(part)*factor for part,factor in zip(version.split('.'),(1000000,1000,1))))
+            completed=(prior.get('CFBundleIdentifier')==config['bundleId'] and prior.get('CFBundleShortVersionString')==version
+                       and str(prior.get('CFBundleVersion'))==expected_build and (app/prior.get('CFBundleExecutable','')).is_file())
+        if not completed:
+            subprocess.run(['node', str(SCRIPTS/'prepare-ios.mjs'), '--version', version], cwd=ROOT, env=env, check=True)
+            project = ROOT/'.mobile-build/ios/pakeplus'
+            if log.exists():
+                import uuid
+                log.rename(root/('compile-incomplete-'+uuid.uuid4().hex+'.log'))
+            with log.open('w') as stream:
+                log.chmod(0o600)
+                subprocess.run(['xcodebuild', '-project', str(project/'PakePlus.xcodeproj'), '-scheme', 'PakePlus',
+                                '-configuration', 'Release', '-sdk', 'iphoneos', '-derivedDataPath', str(derived),
+                                'CODE_SIGN_IDENTITY=', 'CODE_SIGNING_REQUIRED=NO', 'CODE_SIGNING_ALLOWED=NO'],
+                               cwd=ROOT, env=env, check=True, stdout=stream, stderr=subprocess.STDOUT)
         info_path = app/'Info.plist'
         info = plistlib.loads(info_path.read_bytes())
         info['CodexMobileUpdateURL'] = f"{config['baseUrl']}/current/latest-ios.json"
         info['CodexMobileInstallURL'] = f"{config['baseUrl']}/current/install.html"
         info_path.write_bytes(plistlib.dumps(info))
-        package = Path(tmp)/'package'; (package/'Payload').mkdir(parents=True)
+        package = root/'package'
+        if package.exists():shutil.rmtree(package)
+        (package/'Payload').mkdir(parents=True)
         shutil.copytree(app, package/'Payload/PakePlus.app', symlinks=True)
         subprocess.run(['ditto', '-c', '-k', '--keepParent', str(package/'Payload'), str(output)], check=True)
 

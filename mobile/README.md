@@ -28,13 +28,13 @@ Android 配置保留原有构建步骤，供本机打包时读取；配置文件
 
 固定渠道发布要求见 [仓库约定](../AGENTS.md)。
 
-## GitHub 自动双端构建（现有机制）
+## 冻结批次双端构建
 
-`main` 的客户端、共用构建入口和配置变更自动触发 `Build Mobile Apps`；也可以在 Actions 中手动运行，`release_version` 留空自动分配，填写时必须高于已用版本。工作流在同一 ref 的并发组内串行分配发布版本，同一次运行内 Android/iOS 并行构建，两端成功后才创建 Release。服务端与根目录/`docs/` 的普通文档修改不触发；现有 `mobile/**` 会匹配本目录文档，尚需补充排除规则。npm 不自动发布。
+客户端任务通过本机 `releasectl` 登记并提交 ready；prepare 预留统一版本，整合验证后冻结清单。正式 `Build Mobile Apps` 只由 main 的 `.release-batch.json` 变化触发，使用稳定作用域、`cancel-in-progress: false`、`queue: max`；gateway 批次跳过客户端产物。开发/PR检查另组，普通任务推送、文档修改不发布。
 
-现有工作流保留 `cancel-in-progress: false`，但缺少 `queue: max`；等待中的 run 仍可能被新 run 替换，其他 ref 的手动运行也不共用同一并发组。它没有实现提交合批、冻结批次或与本机签名/LAN/OTA 共用的协调锁。正式发布应由统一协调入口按冻结提交与版本推进，具体机制缺口见 [发布协调说明](../docs/release-coordination.md)。开发任务不要各自推进 main 或手动触发正式构建。
+CI 校验清单引入提交、任务祖先、目标、版本和构建号，再构建 Android APK 与 iOS unsigned IPA，两端同 run 成功后创建同一 Release。手动运行仅用于匹配已冻结批次的 batch ID、最终 SHA 和版本，不分配新版本、不重复触发同批。回执包含任务、来源 SHA、batch/run/attempt、大小和 SHA-256。
 
-版本计算读取全部 GitHub Release 标签（包括临时 `unsigned-ipa-<version>-<run>-<attempt>`）和 `mobile-version-floor.json`，选择最大版本后递增。GitHub 无法读取局域网清单；本机固定渠道超前时应先同步版本下限或手动指定更高版本。
+版本分配保留原规则，由 prepare 对账全部 GitHub 标签、仓库下限和 LAN/OTA，而不是 CI 与本机分别递增。配置、必要验证、共同凭证与中断/关联修复操作见 [发布协调说明](../docs/release-coordination.md)。
 
 本地预检入口：
 
