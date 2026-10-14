@@ -2,6 +2,7 @@ import { act, renderHook } from "@testing-library/react";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
+import ts from "typescript";
 import { useSidebarRefresh } from "../../src/features/threads/sidebar-refresh";
 
 describe("侧边栏刷新", () => {
@@ -35,7 +36,18 @@ describe("侧边栏刷新", () => {
   it("应用不再注册每分钟列表或时间刷新", () => {
     const source = readFileSync(resolve("src/App.tsx"), "utf8");
 
-    expect(source).not.toContain("window.setInterval");
-    expect(source).not.toContain("60_000");
+    const file = ts.createSourceFile("App.tsx", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+    const intervalDelays: string[] = [];
+    const visit = (node: ts.Node) => {
+      if (ts.isCallExpression(node) && /(?:^|\.)setInterval$/.test(node.expression.getText(file))) {
+        intervalDelays.push(node.arguments[1]?.getText(file).replace(/[_\s]/g, "") ?? "");
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(file);
+    // 托管排队的 2 秒同步允许存在；这里只限制原先的每分钟列表/时间刷新。
+    expect(intervalDelays).not.toContain("60000");
+    expect(intervalDelays).not.toContain("60*1000");
+    expect(intervalDelays).not.toContain("1000*60");
   });
 });
