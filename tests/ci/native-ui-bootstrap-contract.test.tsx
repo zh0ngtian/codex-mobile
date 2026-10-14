@@ -30,10 +30,10 @@ it.skipIf(process.platform !== 'darwin')('真实无设备App首启快照可直�
   try {
     const names = ['NativeJSONValue', 'NativeCommand', 'NativeCommandResult', 'NativeOption', 'NativeBackend', 'NativeNavigationItem', 'NativeGroup', 'NativeAttachment', 'NativeMessage', 'NativePanelItem', 'NativePanel', 'NativeSnapshot'];
     const executable = join(directory, 'decode');
-    const compiled = spawnSync('xcrun', ['swiftc', ...names.map(name => `mobile/ios/NativeUI/${name}.swift`), 'tests/ci/native-ui-decode.swift', '-o', executable], { encoding: 'utf8' });
-    expect(compiled.status, compiled.stderr).toBe(0);
-    const result = spawnSync(executable, [], { input: JSON.stringify(posts.at(-1)), encoding: 'utf8' });
-    expect(result.status, result.stderr).toBe(0);
+    const compiled = spawnSync('xcrun', ['swiftc', ...names.map(name => `mobile/ios/NativeUI/${name}.swift`), 'tests/ci/native-ui-decode.swift', '-o', executable], { encoding: 'utf8', timeout: 90_000 });
+    expect(compiled.status, compiled.error?.message ?? compiled.stderr).toBe(0);
+    const result = spawnSync(executable, [], { input: JSON.stringify(posts.at(-1)), encoding: 'utf8', timeout: 15_000 });
+    expect(result.status, result.error?.message ?? result.stderr).toBe(0);
     expect(result.stdout).toContain('Native bootstrap snapshot decoded');
   } finally { rmSync(directory, { recursive: true, force: true }); }
-}, 30000);
+}, 120_000);

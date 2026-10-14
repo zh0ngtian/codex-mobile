@@ -5,6 +5,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 
+// 云端冷启动可能首次编译Apple SDK模块；编译与执行分别有界，保留所有真实断言。
+const swiftCompileTimeout = 90_000;
+const swiftExecutionTimeout = 15_000;
+const swiftContractTimeout = 120_000;
 const source = (name: string) => readFileSync(`mobile/ios/NativeUI/${name}.swift`, "utf8");
 const trustedURL = "file:///Applications/Codex.app/index.html";
 function bootstrap() {
@@ -17,23 +21,23 @@ describe("SwiftUI 原生宿主契约", () => {
     const directory = mkdtempSync(join(tmpdir(), "native-model-"));
     try {
       const names = ["NativeJSONValue", "NativeCommand", "NativeCommandResult", "NativeOption", "NativeBackend", "NativeNavigationItem", "NativeGroup", "NativeAttachment", "NativeMessage", "NativePanelItem", "NativePanel", "NativeSnapshot", "NativeUIStore", "NativeUIPreference", "NativeMarkdownBlock", "NativeMarkdownBlockKind", "NativeMarkdownSyntax", "NativeMarkdownInlinePart", "NativeMediaSource", "NativeReferenceAudio", "NativeTextRhythm", "NativeFieldKey", "NativeFieldScope", "NativeImageData", "NativePlainText", "NativeTimelineState", "NativeTextPrompt"];
-      const compile = spawnSync("xcrun", ["swiftc", ...names.map(name => `mobile/ios/NativeUI/${name}.swift`), "tests/ci/native-ui-model-smoke.swift", "-o", join(directory, "smoke")], { encoding: "utf8" });
-      expect(compile.status, compile.stderr).toBe(0);
-      const result = spawnSync(join(directory, "smoke"), [], { encoding: "utf8" });
-      expect(result.status, result.stderr).toBe(0);
+      const compile = spawnSync("xcrun", ["swiftc", ...names.map(name => `mobile/ios/NativeUI/${name}.swift`), "tests/ci/native-ui-model-smoke.swift", "-o", join(directory, "smoke")], { encoding: "utf8", timeout: swiftCompileTimeout });
+      expect(compile.status, compile.error?.message ?? compile.stderr).toBe(0);
+      const result = spawnSync(join(directory, "smoke"), [], { encoding: "utf8", timeout: swiftExecutionTimeout });
+      expect(result.status, result.error?.message ?? result.stderr).toBe(0);
       expect(result.stdout).toContain("smoke passed");
     } finally { rmSync(directory, { force: true, recursive: true }); }
-  }, 30000);
+  }, swiftContractTimeout);
   it.skipIf(process.platform !== "darwin")("原生偏好首次关闭，保存失败回滚且不影响已冻结启动模式", () => {
     const directory = mkdtempSync(join(tmpdir(), "native-preference-"));
     try {
-      const compile = spawnSync("xcrun", ["swiftc", "mobile/ios/NativeUI/NativeUIPreference.swift", "tests/ci/native-ui-preference-smoke.swift", "-o", join(directory, "preference")], { encoding: "utf8" });
-      expect(compile.status, compile.stderr).toBe(0);
-      const result = spawnSync(join(directory, "preference"), [], { encoding: "utf8" });
-      expect(result.status, result.stderr).toBe(0);
+      const compile = spawnSync("xcrun", ["swiftc", "mobile/ios/NativeUI/NativeUIPreference.swift", "tests/ci/native-ui-preference-smoke.swift", "-o", join(directory, "preference")], { encoding: "utf8", timeout: swiftCompileTimeout });
+      expect(compile.status, compile.error?.message ?? compile.stderr).toBe(0);
+      const result = spawnSync(join(directory, "preference"), [], { encoding: "utf8", timeout: swiftExecutionTimeout });
+      expect(result.status, result.error?.message ?? result.stderr).toBe(0);
       expect(result.stdout).toContain("Preference smoke passed");
     } finally { rmSync(directory, { force: true, recursive: true }); }
-  }, 30000);
+  }, swiftContractTimeout);
   it("具有离线原生根、输入、侧栏及设置 UI 验收", () => {
     expect(existsSync("mobile/ios/NativeUI/NativeRootView.swift"), "缺少真实 SwiftUI 根").toBe(true);
     expect(source("NativeRootView")).toContain("native-ui-root");
@@ -105,10 +109,10 @@ describe("SwiftUI 原生宿主契约", () => {
   it.skipIf(process.platform !== "darwin")("执行Swift生产可信URL策略与真实生成脚本，特殊字符和导航变化仍限制首页", () => {
     const directory = mkdtempSync(join(tmpdir(), "native-trust-"));
     try {
-      const compile = spawnSync("xcrun", ["swiftc", ...["NativeJSONValue", "NativeCommand", "NativeUITrust"].map(name => `mobile/ios/NativeUI/${name}.swift`), "tests/ci/native-ui-trust-fixture.swift", "-o", join(directory, "fixture")], { encoding: "utf8" });
-      expect(compile.status, compile.stderr).toBe(0);
-      const result = spawnSync(join(directory, "fixture"), [], { encoding: "utf8" });
-      expect(result.status, result.stderr).toBe(0);
+      const compile = spawnSync("xcrun", ["swiftc", ...["NativeJSONValue", "NativeCommand", "NativeUITrust"].map(name => `mobile/ios/NativeUI/${name}.swift`), "tests/ci/native-ui-trust-fixture.swift", "-o", join(directory, "fixture")], { encoding: "utf8", timeout: swiftCompileTimeout });
+      expect(compile.status, compile.error?.message ?? compile.stderr).toBe(0);
+      const result = spawnSync(join(directory, "fixture"), [], { encoding: "utf8", timeout: swiftExecutionTimeout });
+      expect(result.status, result.error?.message ?? result.stderr).toBe(0);
       const output = JSON.parse(result.stdout);
       const install = (href: string) => new Function("location", output.bootstrap)({ protocol: new URL(href).protocol, href });
       for (const href of ["file:///private/tmp/index.html", output.trustedURL.replace("index.html", "other.html"), output.trustedURL + "?x=1", output.trustedURL + "#x", "https://example.com/index.html"]) {
@@ -132,7 +136,7 @@ describe("SwiftUI 原生宿主契约", () => {
       expect(preference).toHaveBeenCalledWith({ id: "switch-test", enabled: true, active: false, error: null });
 
     } finally { rmSync(directory, { force: true, recursive: true }); }
-  }, 30000);
+  }, swiftContractTimeout);
   it("离线基准不挂载业务 WebView，正式模式复用旧实例", () => {
     expect(source("NativeUIHost")).toMatch(/if !store.isReference \{\s+legacy/);
     expect(source("NativeUIBridge")).not.toContain("WKWebView(frame:");
