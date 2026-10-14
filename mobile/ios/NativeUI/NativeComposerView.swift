@@ -60,7 +60,7 @@ struct NativeComposerView: View {
             if !store.snapshot.queued.isEmpty {
                 Text("\(store.label("排队中：", "Queued: "))\(store.snapshot.queued.count)").font(.caption).foregroundStyle(.secondary)
             }
-        }.padding(.horizontal, 12).padding(.top, 6).padding(.bottom, 8).background(NativePalette.canvas)
+        }.padding(.horizontal, 12).padding(.top, 6).background(NativePalette.canvas)
     }
     private var canSend: Bool {
         !store.snapshot.readOnly && (store.isReference ? !store.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty : store.snapshot.canSend)

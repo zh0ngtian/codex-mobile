@@ -23,12 +23,12 @@ final class NativeUIStore {
         if isReference {
             snapshot.ready = true
             snapshot.connection = "connected"
-            snapshot.title = "UI 原生测试"
+            snapshot.title = "UI测试回复示例"
             snapshot.model = "GPT-5"
             snapshot.effort = "中等推理"
             snapshot.groups = [NativeGroup(id: "projects", title: "项目", items: [NativeNavigationItem(id: "reference", title: "Codex Mobile", subtitle: "原生界面基准")]), NativeGroup(id: "today", title: "今天", items: [NativeNavigationItem(id: "conversation", title: "UI 原生测试", selected: true)])]
             if arguments.contains("--native-ui-reference-conversation") {
-                snapshot.messages = [NativeMessage(id: "user", role: "user", text: "这是一次 UI 原生测试，请用中文简短回复：一个二级标题、两条列表，再用 Swift 代码显示 Hello，最后说明 12 × 13 的结果。"), NativeMessage(id: "assistant", role: "assistant", text: "## UI 原生测试\n\n- 测试标识：UI-20261014\n- 内容：二级标题、两条列表、Swift 代码块\n\n```swift\nprint(\"Hello\")\n```\n\n12 × 13 = 156", status: "已完成（用时 1 秒）")]
+                snapshot.messages = [NativeMessage(id: "user", role: "user", text: "这是一次 UI 探索测试（UI-20261014）。请用中文简短回复：一个二级标题、两条列表，再用 Swift 代码块展示 print(\"Hello\")。最后说明 12 × 13 的结果。"), NativeMessage(id: "assistant", role: "assistant", text: "## UI 探索测试\n- 测试标识：UI-20261014\n- 内容：二级标题、两条列表、Swift 代码块\n\n```swift\nprint(\"Hello\")\n```\n\n12 × 13 = 156", status: "已思考（用时 1 秒）")]
             }
         }
     }

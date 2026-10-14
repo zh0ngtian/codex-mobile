@@ -9,7 +9,7 @@ struct NativeConversationView: View {
                 Text(store.snapshot.messages.isEmpty ? "" : store.snapshot.title)
                     .font(.headline).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
                 NativeIconButton(title: store.label("新对话", "New Conversation"), symbol: "square.and.pencil", identifier: "native-new-thread") { store.command("thread.new") }
-            }.padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 10)
+            }.padding(.horizontal, 16).padding(.bottom, 10)
             if let error = store.snapshot.error {
                 VStack(spacing: 12) {
                     Text(error).font(.callout).textSelection(.enabled)
@@ -29,7 +29,9 @@ struct NativeConversationView: View {
                     LazyVStack(alignment: .leading, spacing: 26) {
                         ForEach(store.snapshot.messages) { message in NativeMessageView(message: message, store: store) }
                     }.padding(.top, 12).padding(.bottom, 24)
-                }.defaultScrollAnchor(.bottom).scrollDismissesKeyboard(.interactively)
+                }.defaultScrollAnchor(.bottom, for: .initialOffset)
+                    .defaultScrollAnchor(.top, for: .alignment)
+                    .scrollDismissesKeyboard(.interactively)
             }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) { NativeComposerView(store: store) }

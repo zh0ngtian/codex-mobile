@@ -37,7 +37,7 @@
 | 顶部菜单 | x16 y62 h44 w44，安全区内上方约8 | measured（AX） |
 | 右侧胶囊 | 参考x298 y62 w88 h44；CM只留新对话 | measured / CM映射 |
 | 抽屉 | 画布80%，主画布缩放.95并右移 | measured近似（记录） |
-| 输入卡 | 左右12，空态最小高104，底部距系统安全区8 | measured（卡位置）/ inferred（额外8） |
+| 输入卡 | 左右12，空态最小高104，底部贴合系统安全区 | measured（卡位置），pass1移除额外8pt以对齐 |
 | chips | h32 | measured |
 | 设置 | 左右16，基础行50 | measured |
 | 助手正文 | 左右24 | measured |
@@ -77,3 +77,13 @@ Swift宿主持有一个store，旧WebView仍执行业务且复用原WKWebsiteDat
 - `npm test -- tests/ci`：9文件88项通过；包含真正编译/执行Swift store、Codable往返和Markdown解析的smoke，以及包含特殊字符路径的源码安装fixture。
 - `npm run typecheck` 与 `ruby -c scripts/configure-ios-tests.rb` 通过。
 - 模拟器完整App构建、原生UI测试、归一化截图与视觉差分尚由主任务执行，静态基准不等于视觉验收完成。
+
+## 首轮截图布局差分与修正
+
+主任务已实际构建App并完成首轮3项NativeUIUITests。归一化并排图位于 `.mobile-build/native-reference/conversation-side-by-side-pass1.png`。本轮只修以下三项布局，未调整字号/圆角/颜色：
+
+1. 短会话用户泡泡起点y333，而参考S22为y148。单独设置初始滚动偏移到底部、内容不足时顶部对齐；新增UI断言要求首条用户消息位于顶栏下100pt内，首轮截图对应明确失败。
+2. 顶栏按钮y70而参考y62，移除额外顶部8pt。
+3. 输入卡y728/底832而参考y736/底840，移除额外底部8pt，保留系统安全区。
+
+离线conversation fixture改用S22公开树相同标题、用户消息和助手Markdown，以便下一轮比较排版。修正后仍需主任务的新鲜截图和4项UI验收，不以类型检查替代视觉结果。

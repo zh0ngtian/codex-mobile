@@ -31,6 +31,14 @@ final class NativeUIUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["你好，让我们开始吧"].exists)
     }
 
+    func testShortReferenceConversationStartsBelowHeader() {
+        let app = reference(true)
+        let message = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "这是一次 UI ")).firstMatch
+        XCTAssertTrue(message.waitForExistence(timeout: 5))
+        let sidebar = app.buttons["native-sidebar-open"]
+        XCTAssertLessThan(message.frame.minY, sidebar.frame.maxY + 100, "短对话应从顶部开始，不能贴到底部输入卡")
+    }
+
     func testDraftAndOfflineReferenceSendDoNotCreateRealConversation() {
         let app = reference()
         let input = app.descendants(matching: .any)["native-composer-input"]
