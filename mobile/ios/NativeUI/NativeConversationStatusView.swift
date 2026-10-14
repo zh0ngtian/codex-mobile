@@ -28,7 +28,7 @@ struct NativeConversationStatusView: View {
         if store.snapshot.pending == true { return store.label("等待操作确认", "Waiting for confirmation") }
         if store.snapshot.busy { return store.label("正在执行", "Working") }
         if store.snapshot.loading == "loading" { return store.label("正在加载会话…", "Loading conversation…") }
-        if store.snapshot.backendId != nil, store.snapshot.connection != "connected" {
+        if store.snapshot.backendId != nil, !["online", "connected"].contains(store.snapshot.connection) {
             return store.snapshot.connection == "connecting" ? store.label("正在连接设备…", "Connecting to device…") : store.label("设备连接已断开", "Device disconnected")
         }
         return nil

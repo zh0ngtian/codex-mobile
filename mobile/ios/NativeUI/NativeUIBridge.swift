@@ -46,9 +46,20 @@ final class NativeUIBridge: NSObject, WKScriptMessageHandler {
         guard object["type"] as? String == "snapshot", let snapshot = object["snapshot"] else { return }
         do {
             let data = try JSONSerialization.data(withJSONObject: snapshot)
-            store.receive(try JSONDecoder().decode(NativeSnapshot.self, from: data))
+            let value = try JSONDecoder().decode(NativeSnapshot.self, from: data)
+            #if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("--native-ui-trace") { print("Native snapshot panel=\(value.panel?.id ?? "none")") }
+            #endif
+            store.receive(value)
             if needsLifecycleSync { applyLifecycle() }
-        } catch { store.snapshot.error = "原生界面数据无法读取：\(error.localizedDescription)" }
+        } catch {
+            #if DEBUG
+            if case DecodingError.keyNotFound(let key, let context) = error {
+                print("Native UI missing key: \((context.codingPath.map(\.stringValue) + [key.stringValue]).joined(separator: "."))")
+            }
+            #endif
+            store.snapshot.error = "原生界面数据无法读取：\(error.localizedDescription)"
+        }
     }
     func setActive(_ active: Bool) {
         self.active = active
@@ -64,6 +75,9 @@ final class NativeUIBridge: NSObject, WKScriptMessageHandler {
         }
     }
     private func dispatch(_ command: NativeCommand) {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--native-ui-trace") { print("Native command \(command.name)") }
+        #endif
         guard let webView, NativeUITrust.accepts(webView.url, trustedURL: trustedURL),
               let script = NativeUITrust.dispatch(command, trustedURL: trustedURL) else {
             store.commandError = store.label("连接尚未就绪，请稍后重试", "The connection is not ready. Please retry.")

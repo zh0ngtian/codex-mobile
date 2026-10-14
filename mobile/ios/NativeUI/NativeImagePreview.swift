@@ -18,7 +18,7 @@ struct NativeImagePreview: View {
 
     var body: some View {
         NavigationStack {
-            Group {
+            VStack {
                 Group {
                     if let webHTML {
                         NativeHTMLWebView(html: webHTML, onOpenLink: { _ in })
@@ -32,6 +32,7 @@ struct NativeImagePreview: View {
                     } else { ProgressView(label("正在加载原图…", "Loading original image…")).padding() }
                 }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .navigationTitle(title).navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) { Button(label("完成", "Done")) { dismiss() } }

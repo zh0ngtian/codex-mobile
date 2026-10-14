@@ -3,14 +3,13 @@ import SwiftUI
 struct NativeMessageView: View {
     let message: NativeMessage
     let store: NativeUIStore
-    @ScaledMetric(relativeTo: .body) private var bodySize = 14
     @ScaledMetric(relativeTo: .caption) private var statusSize = 14
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             if message.role == "user" {
                 HStack(alignment: .top) {
                     Spacer(minLength: 52)
-                    Text(message.text).font(.system(size: bodySize * store.snapshot.fontScale, weight: .semibold)).lineSpacing(5).textSelection(.enabled)
+                    NativeMarkdownView(text: message.text, scale: store.snapshot.fontScale, store: store, compact: true, weight: .semibold)
                         .padding(.horizontal, 16).padding(.vertical, 10)
                         .background(NativePalette.bubble, in: .rect(cornerRadius: 16))
                 }.padding(.leading, 24).padding(.trailing, 21)

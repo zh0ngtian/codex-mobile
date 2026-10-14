@@ -13,10 +13,7 @@ struct NativeComposerView: View {
                 ScrollView(.horizontal) {
                     HStack {
                         ForEach(store.snapshot.attachments) { file in
-                            HStack {
-                                Label(file.name, systemImage: "doc")
-                                Button(store.label("移除", "Remove"), systemImage: "xmark") { store.command("attachment.remove", ["id": .string(file.id)]) }.labelStyle(.iconOnly)
-                            }.modifier(NativeScaledFont(size: 12, scale: store.snapshot.fontScale, relativeTo: .caption)).padding(8).background(.quaternary, in: .capsule)
+                            NativeDraftAttachmentView(attachment: file, store: store)
                         }
                     }
                 }
@@ -86,7 +83,7 @@ struct NativeComposerView: View {
                     }.buttonStyle(.plain)
                 }
             }
-        }.padding(.horizontal, 12).padding(.top, 6).background(NativePalette.canvas)
+        }.padding(.horizontal, 12).padding(.top, 6).background(NativePalette.canvas).disabled(!store.snapshot.ready)
     }
     private var canSend: Bool {
         !store.snapshot.readOnly && (store.isReference ? !store.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty : store.snapshot.canSend)

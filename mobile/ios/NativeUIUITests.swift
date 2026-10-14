@@ -123,6 +123,39 @@ final class NativeUIUITests: XCTestCase {
         XCTAssertTrue(app.buttons["复制全文"].exists)
     }
 
+    func testUserMarkdownInlineImageOpensOriginal() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--native-ui-reference-conversation", "--native-ui-reference-inline-image"]
+        app.launch()
+        let image = app.buttons["查看图片 行内图片"]
+        XCTAssertTrue(image.waitForExistence(timeout: 5))
+        image.tap()
+        XCTAssertTrue(app.navigationBars["行内图片"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["下载原图"].isEnabled)
+    }
+
+    func testLiveBootstrapClosesDeviceForm() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--native-ui-live", "--native-ui-trace"]
+        app.launch()
+        let field = app.textFields["native-field-name"]
+        XCTAssertTrue(field.waitForExistence(timeout: 10))
+        app.buttons["完成"].tap()
+        expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: field)
+        waitForExpectations(timeout: 5)
+        XCTAssertTrue(app.buttons["添加设备"].exists)
+    }
+
+    func testDraftAudioPreviewsWithNativeMediaPlayer() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--native-ui-reference", "--native-ui-reference-audio"]
+        app.launch()
+        app.buttons["预览 silence.wav"].tap()
+        XCTAssertTrue(app.navigationBars["silence.wav"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.descendants(matching: .any)["native-media-player"].waitForExistence(timeout: 10), app.debugDescription)
+        XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "无法播放媒体")).firstMatch.exists)
+    }
+
     func testReadingHistoryDoesNotJumpWhenNewMessageArrives() {
         let app = XCUIApplication()
         app.launchArguments = ["--native-ui-reference-conversation", "--native-ui-reference-long"]

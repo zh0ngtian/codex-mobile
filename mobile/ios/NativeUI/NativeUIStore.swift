@@ -50,7 +50,7 @@ final class NativeUIStore {
         #endif
         if isReference {
             snapshot.ready = true
-            snapshot.connection = "connected"
+            snapshot.connection = "online"
             snapshot.title = "UI测试回复示例"
             snapshot.model = "GPT-5"
             snapshot.effort = "中等推理"
@@ -74,6 +74,14 @@ final class NativeUIStore {
             if arguments.contains("--native-ui-reference-source") {
                 let content = (1...80).map { "let line\($0) = \($0)" }.joined(separator: "\n")
                 snapshot.messages = [NativeMessage(id: "source", role: "activity", text: "", blocks: [NativePanelItem(id: "source", kind: "source", title: "example.swift", text: content, line: 40)])]
+            }
+            if arguments.contains("--native-ui-reference-inline-image") {
+                let image = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNDAgODAiPjx0ZXh0IHg9IjEwIiB5PSI0MCI+U1ZHPC90ZXh0Pjwvc3ZnPg=="
+                snapshot.messages = [NativeMessage(id: "inline-image", role: "user", text: "正文 ![行内图片](\(image)) 末尾文本")]
+            }
+            if arguments.contains("--native-ui-reference-audio") {
+                snapshot.messages = []
+                snapshot.attachments = [NativeAttachment(id: "reference-audio", name: "silence.wav", detail: "0.1 秒音频", type: "audio/wav", command: NativeCommand(name: "attachment.preview", params: ["id": .string("reference-audio")]))]
             }
             if arguments.contains("--native-ui-reference-busy") {
                 snapshot.threadId = "reference-thread"
@@ -165,6 +173,9 @@ final class NativeUIStore {
         if isReference {
             if name == "settings.open", case .string(let id) = params["id"] {
                 snapshot.panel = NativePanel(id: "reference-settings:\(id)", title: id == "language" ? "语言" : "设置", items: [NativePanelItem(id: "reference-setting-value", kind: "text", title: "语言设置", text: "简体中文")])
+            }
+            if name == "attachment.preview", params["id"] == .string("reference-audio") {
+                snapshot.panel = NativePanel(id: "attachment:reference-audio", title: "silence.wav", items: [NativePanelItem(id: "audio", kind: "audio", title: "silence.wav", value: NativeReferenceAudio.source())])
             }
             if name == "thread.new" {
                 snapshot.messages = []; draft = ""; sidebarOpen = false

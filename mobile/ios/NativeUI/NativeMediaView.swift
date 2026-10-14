@@ -14,8 +14,11 @@ struct NativeMediaView: View {
     @Environment(\.locale) private var locale
     @Environment(\.scenePhase) private var scenePhase
     var body: some View {
-        Group {
-            if let player { VideoPlayer(player: player).frame(height: audio ? 120 : 260).accessibilityLabel(title) }
+        VStack(alignment: .leading, spacing: 8) {
+            if let player {
+                VideoPlayer(player: player).frame(height: audio ? 120 : 260).accessibilityLabel(title)
+                    .accessibilityElement(children: .contain).accessibilityIdentifier("native-media-player")
+            }
             else if let error {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(error).foregroundStyle(.secondary).textSelection(.enabled)

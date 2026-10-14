@@ -4,6 +4,8 @@ struct NativeMarkdownBlockView: View {
     let block: NativeMarkdownBlock
     var scale: Double
     var store: NativeUIStore?
+    var compact = false
+    var weight: Font.Weight = .medium
     @ScaledMetric(relativeTo: .body) private var bodySize = 14
     var body: some View {
         Group {
@@ -18,7 +20,7 @@ struct NativeMarkdownBlockView: View {
                         Image(systemName: checked ? "checkmark.square" : "square")
                             .accessibilityLabel(label(checked ? "已完成" : "未完成", checked ? "Completed" : "Incomplete"))
                     } else { Text(block.marker).accessibilityHidden(true) }
-                    Text(NativeInlineMarkdown.text(block.text)).lineSpacing(5).frame(maxWidth: .infinity, alignment: .leading)
+                    NativeInlineContentView(text: block.text, store: store, compact: compact).frame(maxWidth: compact ? nil : .infinity, alignment: .leading)
                 }.padding(.leading, CGFloat(block.depth) * 12)
             case .code:
                 if block.language.lowercased() == "mermaid", let resource = store?.snapshot.richContent?.first(where: { $0.kind == "html" && $0.text == block.text }), let html = resource.value {
@@ -32,26 +34,16 @@ struct NativeMarkdownBlockView: View {
             case .quote:
                 HStack(alignment: .top, spacing: 12) {
                     RoundedRectangle(cornerRadius: 2).fill(.secondary.opacity(0.3)).frame(width: 3)
-                    Text(NativeInlineMarkdown.text(block.text)).lineSpacing(5).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
+                    NativeInlineContentView(text: block.text, store: store, compact: compact).foregroundStyle(.secondary).frame(maxWidth: compact ? nil : .infinity, alignment: .leading)
                 }.fixedSize(horizontal: false, vertical: true)
             case .rule: Divider().padding(.vertical, 4)
-            case .table: NativeMarkdownTableView(rows: block.rows, scale: scale)
+            case .table: NativeMarkdownTableView(rows: block.rows, scale: scale, store: store)
             case .image:
-                if let destination = block.destination {
-                    if let resource = store?.snapshot.richContent?.first(where: { $0.kind == "image" && $0.text == destination }) {
-                        NativeImageView(source: resource.value ?? destination, title: block.text, previewSource: resource.previewURL)
-                    } else if NativeImageData.remoteURL(destination) != nil || destination.hasPrefix("data:") {
-                        NativeImageView(source: destination, title: block.text)
-                    } else if let store {
-                        Button(block.text.isEmpty ? label("查看图片", "View Image") : block.text, systemImage: "photo") {
-                            store.command("file.open", ["href": .string(destination)])
-                        }
-                    }
-                }
+                if let destination = block.destination { NativeMarkdownImageView(source: destination, title: block.text, store: store) }
             case .text:
-                Text(NativeInlineMarkdown.text(block.text)).lineSpacing(5).frame(maxWidth: .infinity, alignment: .leading)
+                NativeInlineContentView(text: block.text, store: store, compact: compact).frame(maxWidth: compact ? nil : .infinity, alignment: .leading)
             }
-        }.font(.system(size: bodySize * scale, weight: .medium))
+        }.font(.system(size: bodySize * scale, weight: weight))
     }
     private var headingScale: Double {
         switch block.level {

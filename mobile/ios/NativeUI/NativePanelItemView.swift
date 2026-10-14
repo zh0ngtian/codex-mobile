@@ -26,8 +26,9 @@ struct NativePanelItemView: View {
             case "audio", "video": NativeMediaView(source: item.value ?? "", title: item.title ?? "", audio: item.kind == "audio")
             case "file":
                 VStack(alignment: .leading, spacing: 8) {
-                    Button(item.title ?? store.label("查看文件", "View File"), systemImage: "doc") { store.perform(item.command) }
-                        .disabled(item.command == nil)
+                    if item.command != nil {
+                        Button(item.title ?? store.label("查看文件", "View File"), systemImage: "doc") { store.perform(item.command) }
+                    } else if let title = item.title { Label(title, systemImage: "doc") }
                     if let text = item.text { Text(text).font(.caption).foregroundStyle(.secondary).textSelection(.enabled) }
                     if let source = item.value { NativeFileDownloadView(source: source, title: item.title ?? "file") }
                 }
@@ -40,17 +41,20 @@ struct NativePanelItemView: View {
                         if let text = item.text { Text(text).foregroundStyle(.secondary).modifier(NativeScaledFont(size: 13, scale: store.snapshot.fontScale, relativeTo: .caption)) }
                     }.frame(minHeight: 44, alignment: .leading)
                 }
-            case "toggle": Toggle(item.title ?? "", isOn: toggleBinding)
-            case "textField": TextField(item.title ?? "", text: textBinding)
-            case "secureField": SecureField(item.title ?? "", text: textBinding)
-            case "multilineField": TextField(item.title ?? "", text: textBinding, axis: .vertical).lineLimit(3...10)
+            case "toggle": NativeFieldRow(text: item.text, scale: store.snapshot.fontScale) { Toggle(item.title ?? "", isOn: toggleBinding) }
+            case "textField": NativeFieldRow(text: item.text, scale: store.snapshot.fontScale) { TextField(item.title ?? "", text: textBinding).accessibilityIdentifier("native-field-\(item.id)") }
+            case "secureField": NativeFieldRow(text: item.text, scale: store.snapshot.fontScale) { SecureField(item.title ?? "", text: textBinding) }
+            case "multilineField": NativeFieldRow(text: item.text, scale: store.snapshot.fontScale) { TextField(item.title ?? "", text: textBinding, axis: .vertical).lineLimit(3...10) }
             case "singleChoice":
-                Picker(item.title ?? "", selection: textBinding) { ForEach(item.options ?? []) { option in NativeChoiceOptionView(option: option, scale: store.snapshot.fontScale).tag(option.value) } }
+                NativeFieldRow(text: item.text, scale: store.snapshot.fontScale) {
+                    Picker(item.title ?? "", selection: textBinding) { ForEach(item.options ?? []) { option in NativeChoiceOptionView(option: option, scale: store.snapshot.fontScale).tag(option.value) } }
+                }
             case "multiChoice":
                 VStack(alignment: .leading) {
                     if let title = item.title { Text(title).modifier(NativeScaledFont(size: 17, scale: store.snapshot.fontScale, weight: .semibold, relativeTo: .headline)) }
+                    if let text = item.text { Text(text).foregroundStyle(.secondary).textSelection(.enabled) }
                     ForEach(item.options ?? []) { option in
-                        Toggle(option.title, isOn: choiceBinding(option.value))
+                        Toggle(isOn: choiceBinding(option.value)) { NativeChoiceOptionView(option: option, scale: store.snapshot.fontScale) }
                     }
                 }
             default:

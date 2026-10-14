@@ -4,11 +4,13 @@ struct NativeMarkdownView: View {
     let text: String
     var scale: Double = 1
     var store: NativeUIStore? = nil
+    var compact = false
+    var weight: Font.Weight = .medium
     @State private var blocks: [NativeMarkdownBlock] = []
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             ForEach(blocks) { block in
-                NativeMarkdownBlockView(block: block, scale: scale, store: store)
+                NativeMarkdownBlockView(block: block, scale: scale, store: store, compact: compact, weight: weight)
                     .padding(.top, block.spacingBefore)
             }
         }
