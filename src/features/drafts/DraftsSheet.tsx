@@ -1,10 +1,14 @@
+import { useNativeGlobalPanel } from '../../native-ui/adapters';
+import type { NativeRuntime } from '../../native-ui/runtime';
+import { nativeAction } from '../../native-ui/projection';
 import { useEffect, useState } from "react";
 import { ActionSheet } from "../../ui/ActionSheet";
 import { ErrorBanner } from "../../ui/ErrorBanner";
 import { t } from "../../i18n";
 import { newChatDraftStore, type SavedNewChatDraft } from "./new-chat-drafts";
 
-export function DraftsSheet({ onClose, onOpenDraft }: {
+export function DraftsSheet({ onClose, onOpenDraft, nativeRuntime }: {
+  nativeRuntime?: NativeRuntime | null;
   onClose: () => void;
   onOpenDraft: (draft: SavedNewChatDraft) => void;
 }) {
@@ -22,7 +26,7 @@ export function DraftsSheet({ onClose, onOpenDraft }: {
     }).catch(reason => {
       if (!cancelled) setError(reason instanceof Error ? reason.message : t("无法读取草稿"));
     }).finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
+  return () => { cancelled = true; };
   }, [reload]);
 
   async function remove(draft: SavedNewChatDraft) {
@@ -37,6 +41,21 @@ export function DraftsSheet({ onClose, onOpenDraft }: {
       setDeleting(false);
     }
   }
+
+  useNativeGlobalPanel(nativeRuntime, 'drafts', { id: 'drafts', title: t('草稿'), items: [
+    { id: 'drafts-description', kind: 'text', text: t('仅保存在本地，选择草稿继续新对话') },
+    ...(loading ? [{ id: 'drafts-loading', kind: 'text', text: t('正在读取草稿…') }] : []),
+    ...(!loading && !drafts.length ? [{ id: 'drafts-empty', kind: 'text', text: t('暂无草稿') }] : []),
+    ...(error ? [{ id: 'drafts-error', kind: 'text', text: error }, nativeAction('drafts-retry', t('重试'), 'drafts.retry')] : []),
+    ...drafts.map(d => ({ id: d.id, kind: 'section', title: d.text.trim().replace(/\s+/g, ' ').slice(0, 100) || t('附件草稿'), text: `${d.backendName} · ${d.cwd || t('无项目')} · ${d.images.length} ${t('图片')} · ${d.files.length} ${t('文件')} · ${new Date(d.updatedAt).toLocaleString()}`, children: [
+      { ...nativeAction(`${d.id}:restore`, t('恢复'), 'drafts.restore', { id: d.id }), disabled: deleting || loading }, { ...nativeAction(`${d.id}:remove`, t('删除'), 'drafts.remove', { id: d.id }), disabled: deleting || loading },
+    ] })),
+  ] }, {
+    'panel.close': onClose,
+    'drafts.retry': () => setReload(v => v + 1),
+    'drafts.restore': p => { const d = drafts.find(d => d.id === p.id); if (!d || deleting || loading) throw new Error(t('草稿不可用')); try { onOpenDraft(d); } catch (reason) { setError(reason instanceof Error ? reason.message : t('无法恢复草稿')); throw reason; } },
+    'drafts.remove': p => { const d = drafts.find(d => d.id === p.id); if (!d || deleting || loading) throw new Error(t('草稿不可用')); return remove(d); },
+  });
 
   return (
     <ActionSheet title={t("草稿")} ariaLabel={t("草稿")} onClose={onClose} className="drafts-sheet">

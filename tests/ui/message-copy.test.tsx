@@ -126,6 +126,7 @@ describe("消息复制", () => {
             {
               id: "early",
               type: "agentMessage",
+              phase: "commentary",
               text: "**早期** 回复",
             },
             {
@@ -163,7 +164,7 @@ describe("消息复制", () => {
     );
 
     fireEvent.click(
-      screen.getByRole("button", { name: "之前的 3 条消息" }),
+      screen.getByRole("button", { name: "之前的 1 条消息" }),
     );
     fireEvent.click(copy);
     await waitFor(() =>

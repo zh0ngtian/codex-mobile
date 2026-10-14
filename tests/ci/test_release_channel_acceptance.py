@@ -3,6 +3,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import importlib.util
 import json
 from pathlib import Path
+import subprocess
 import sys
 import tempfile
 import threading
@@ -41,6 +42,14 @@ class Channels:
 class ChannelAcceptance(unittest.TestCase):
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory();root=Path(self.temp.name);self.module=load()
+        # 渠道阶段真实执行冻结工作区内的日志读取器，日志本身也须纳入 Git。
+        (root/'scripts').mkdir();(root/'release').mkdir()
+        (root/'scripts/read-release-notes.mjs').write_bytes((ROOT/'scripts/read-release-notes.mjs').read_bytes())
+        (root/'release/notes.md').write_text('- 修复输入文字丢失与消息图片遗漏的问题。\n',encoding='utf-8')
+        (root/'.release-batch.json').write_text('{}',encoding='utf-8')
+        for args in [('init','-q'),('config','user.email','test@example.com'),('config','user.name','Test'),
+                     ('add','scripts/read-release-notes.mjs','release/notes.md','.release-batch.json'),('commit','-qm','freeze')]:
+            subprocess.run(['git',*args],cwd=root,check=True,capture_output=True)
         try:self.channels=Channels()
         except PermissionError:self.temp.cleanup();self.skipTest('sandbox blocks local HTTP; run acceptance unsandboxed')
         self.patch=patch.object(self.module,'LAN',self.channels.url);self.patch.start()

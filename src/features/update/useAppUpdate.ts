@@ -1,3 +1,4 @@
+import { isClientForeground } from "../../native-ui/foreground";
 import {
   useCallback,
   useEffect,
@@ -166,7 +167,7 @@ export function useAppUpdate(
   useEffect(() => {
     if (!supported) return;
     const onVisible = () => {
-      if (document.visibilityState === "visible") void check(false);
+      if (isClientForeground()) void check(false);
     };
     document.addEventListener("visibilitychange", onVisible);
     return () => document.removeEventListener("visibilitychange", onVisible);

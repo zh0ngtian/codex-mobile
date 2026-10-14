@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { t } from "../../i18n";
 import { applyFontSize, FONT_SIZE_STORAGE_KEY, readFontSize, type FontSize } from "../../ui/font-size";
 
-export function FontSizeSettings() {
+export function useFontSizeSettings() {
   const [size, setSize] = useState(readFontSize);
   const [saveError, setSaveError] = useState(false);
   useEffect(() => applyFontSize(size), [size]);
@@ -18,6 +18,11 @@ export function FontSizeSettings() {
     }
   };
 
+  return { size, saveError, selectSize };
+}
+export function FontSizeSettings() { return <FontSizeSettingsForm state={useFontSizeSettings()} />; }
+export function FontSizeSettingsForm({ state }: { state: ReturnType<typeof useFontSizeSettings> }) {
+  const { size, saveError, selectSize } = state;
   return (
     <section className="backend-language-settings font-size-settings" aria-label={t("字体大小")}>
       <strong>{t("字体大小")}</strong>

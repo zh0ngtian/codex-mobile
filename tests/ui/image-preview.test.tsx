@@ -247,14 +247,14 @@ describe("图片放大预览", () => {
     expect(video.style.aspectRatio).toBe("1080 / 1920");
   });
 
-  it("Codex 生成的视频直接在消息中提供预览播放", () => {
+  it.each(["completed", "inProgress"])("%s 回合的 Codex 生成视频直接提供预览播放", (status) => {
     render(
       <TurnCard
         client={null}
         backend={backend}
         turn={{
           id: "turn-video",
-          status: "completed",
+          status,
           items: [
             {
               id: "generated-video",

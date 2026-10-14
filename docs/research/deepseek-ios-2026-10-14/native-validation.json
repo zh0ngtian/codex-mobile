@@ -1,0 +1,81 @@
+{
+  "date": "2026-10-14",
+  "branch": "codex/native-ios-deepseek-20261014",
+  "defaultInterface": "web",
+  "minimumIOS": "18.0",
+  "automated": {
+    "vitest": {
+      "files": 121,
+      "tests": 1214,
+      "status": "passed",
+      "workers": 2,
+      "runtime": "Node 24"
+    },
+    "serviceBuildContract": {
+      "files": 11,
+      "tests": 106,
+      "status": "passed",
+      "runtime": "Node 26"
+    },
+    "releasePython": {
+      "tests": 157,
+      "status": "passed"
+    },
+    "coordinatorRecovery": {
+      "tests": 30,
+      "status": "passed"
+    }
+  },
+  "simulator": {
+    "device": "iPhone 16 Pro",
+    "system": "iOS 27.0",
+    "udid": "15603299-0ABD-486F-B4B1-C1F3B8ACBDD1",
+    "nativeSuite": {
+      "tests": 16,
+      "status": "passed",
+      "result": "test_sim_2026-10-14T14-48-12-455Z_pid23807_8e98b80d.xcresult"
+    },
+    "liveRoundtripAndArchive": {
+      "status": "passed",
+      "result": "test_sim_2026-10-14T14-17-05-755Z_pid23807_4a2c906a.xcresult"
+    },
+    "switchTextAndImage": {
+      "status": "passed",
+      "route": "native → native → Web → native，完整进程重启",
+      "result": "test_sim_2026-10-14T14-42-05-393Z_pid23807_066029d3.xcresult"
+    },
+    "darkAccessibilityLarge": {
+      "tests": 2,
+      "status": "passed",
+      "result": "test_sim_2026-10-14T14-52-55-232Z_pid23807_966b4fb5.xcresult"
+    }
+  },
+  "ipad": {
+    "device": "iPad Pro 13-inch (M5)",
+    "system": "iOS 27.0",
+    "status": "rendered",
+    "build": "build_run_sim_2026-10-14T15-25-53-675Z_pid23807_01570109.log",
+    "scope": "核对实际截图中的正文、顶部与输入卡基本布局；未声称完整iPad自动化交互通过"
+  },
+  "legacy": {
+    "bottomSafeArea": "passed",
+    "repeatedURLDraftKeyboard": "passed",
+    "keyboardResult": "test_sim_2026-10-14T15-09-07-708Z_pid23807_ed8541e3.xcresult",
+    "keyboardProbe": "didHide后500ms真实绘制位置最大位移，保留≤1pt断言；静止视口变化和12pt真实尾跳对照均通过",
+    "additionalChineseInputAndSend": "iOS27辅助功能/焦点时序用例仍存在基线失败，未记为通过",
+    "comparisonWithoutNativeHost": "test_sim_2026-10-14T15-24-33-982Z_pid23807_a37d0539.xcresult，在原ZStack对照也未获得输入焦点；未为此修改旧Web生产输入/发送逻辑"
+  },
+  "complexFeatures": "审批、历史编辑、队列、工具/Diff及文件等以实际App控制器回归和原生参考/富内容UI覆盖；不声称均已在真机上逐项端到端验证",
+  "archivedTestThreads": [
+    "01a13ac2-84a4-7352-9841-fb9fc6cf3a4d",
+    "01a13ac4-6e64-7c61-b46a-74beeadcc6dc",
+    "01a13ac6-7f72-7752-8748-f60e8fe14747",
+    "01a13af7-f538-7b93-a818-633e6423116c"
+  ],
+  "physicalDevice": {
+    "name": "Yao iPhone 17 Pro",
+    "state": "unavailable",
+    "installationOrUpgradeDataRetentionVerified": false
+  },
+  "evidenceLocation": "原始日志及截图位于本轮worktree的.mobile-build/native-reference；xcresult保存在~/Library/Developer/XcodeBuildMCP/workspaces/codex-mobile-e2b7e5b8d624/result-bundles。此文件是验证记录，发布版本以成功批次凭证和在线固定清单为准。"
+}

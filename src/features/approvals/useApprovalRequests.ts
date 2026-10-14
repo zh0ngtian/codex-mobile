@@ -87,5 +87,6 @@ export function useApprovalRequests() {
   const current = entries[0];
   return { requests: entries.map((entry) => entry.request), approval: current && approvalKey(current.request) !== dismissed ? current.request : null,
     userAnswers: current?.answers ?? {}, submitting: !!current?.submission, error: current?.error ?? "",
+    current: () => { const entry = entriesRef.current[0]; return entry ? { request: entry.request, answers: entry.answers, submitting: !!entry.submission } : null; },
     receive, reset, onNotification, answer, submit, dismiss, reopen };
 }

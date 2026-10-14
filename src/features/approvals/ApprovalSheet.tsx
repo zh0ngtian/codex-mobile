@@ -6,7 +6,7 @@ import { approvalDecisions, questionResponse, type ApprovalDecision, type InputQ
 import "./approvals.css";
 
 type AnyRecord = Record<string, any>;
-function decisionLabel(decision: ApprovalDecision): string {
+export function decisionLabel(decision: ApprovalDecision): string {
   if (typeof decision === "string") return t({ accept: "允许", acceptForSession: "本会话允许", decline: "拒绝", cancel: "取消本轮" }[decision]);
   if ("acceptWithExecpolicyAmendment" in decision) return `${t("允许并记住命令前缀")}：${decision.acceptWithExecpolicyAmendment.execpolicy_amendment.join(" ")}`;
   const rule = decision.applyNetworkPolicyAmendment.network_policy_amendment;

@@ -36,12 +36,21 @@ function imageMime(source: string) {
   );
 }
 
-function isPreviewableImagePath(source: string) {
+export function isPreviewableImagePath(source: string) {
   return /\.(?:avif|gif|jpe?g|png|svg|webp)(?:$|[?#])/i.test(source);
 }
 
 export function isPreviewableVideoPath(source: string) {
   return /\.(?:m4v|mov|mp4|ogg|ogv|webm)(?:$|[?#])/i.test(source);
+}
+
+export function videoPathForItem(item: Record<string, any>) {
+  const candidate = item.savedPath ?? item.path ?? item.result;
+  return typeof candidate === "string" &&
+    candidate.startsWith("/") &&
+    isPreviewableVideoPath(candidate)
+    ? candidate
+    : "";
 }
 
 export function RemoteVideo({
@@ -77,7 +86,7 @@ function isHtmlPath(source: string) {
   return /\.(?:html?|xhtml)$/i.test(source);
 }
 
-function remoteMarkdownImage(path: string, source: string): ImageSource {
+export function remoteMarkdownImage(path: string, source: string): ImageSource {
   if (/^(?:data:|https?:)/i.test(source)) {
     return {
       source,
@@ -107,7 +116,7 @@ function formatImageSize(bytes: number | null) {
   return `${(bytes / 1024).toFixed(1)} KB`;
 }
 
-function decodeBase64File(dataBase64: string) {
+export function decodeBase64File(dataBase64: string) {
   const binary = window.atob(dataBase64);
   const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
   const text = new TextDecoder("utf-8").decode(bytes);

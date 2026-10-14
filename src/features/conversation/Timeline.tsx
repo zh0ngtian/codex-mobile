@@ -30,6 +30,7 @@ import {
   RemoteImage,
   RemoteVideo,
   isPreviewableVideoPath,
+  videoPathForItem,
 } from "./sheets/RemoteFileSheets";
 import { t, getActiveLocale } from "../../i18n";
 import {
@@ -122,14 +123,6 @@ function itemText(item: AnyRecord) {
   return text;
 }
 
-function videoPathForItem(item: AnyRecord) {
-  const candidate = item.savedPath ?? item.path ?? item.result;
-  return typeof candidate === "string" &&
-    candidate.startsWith("/") &&
-    isPreviewableVideoPath(candidate)
-    ? candidate
-    : "";
-}
 
 function ImageGallery({
   images,
@@ -745,6 +738,7 @@ export function TurnCard({
             durationLabel={!grouped.running && index === durationSegmentIndex ? durationLabel : null}
           />
         ))}
+        <TurnMedia items={grouped.responses} running={grouped.running} client={client} backend={backend} threadId={threadId} />
         {grouped.running && (
           <StreamCharacterCount
             count={streamingCharacterCount}
@@ -770,6 +764,64 @@ export function TurnCard({
       )}
     </section>
   );
+}
+
+function TurnMedia({
+  items,
+  running,
+  client,
+  backend,
+  threadId,
+}: {
+  items: AnyRecord[];
+  running: boolean;
+  client: AppServerClient | null;
+  backend?: BackendConfig | null;
+  threadId?: string;
+}) {
+  const [showProcessImages, setShowProcessImages] = useState(false);
+  // Media has its own display area and never contributes to commentary history.
+  const generatedSources = new Set<string>();
+  const mediaKeys = new Set<string>();
+  const generatedMedia = items.filter((item) => {
+    if (item.type !== "imageGeneration" && item.type !== "videoGeneration") return false;
+    const source = item.status === "failed"
+      ? ""
+      : imageSourcesForItem(item)[0]?.source || videoPathForItem(item);
+    if (source) generatedSources.add(source);
+    const key = source || `${item.type}:${item.id}`;
+    if (mediaKeys.has(key)) return false;
+    mediaKeys.add(key);
+    return true;
+  });
+  const screenshotSources = new Set<string>();
+  const screenshots = items.filter((item) => item.type === "imageView")
+    .flatMap(imageSourcesForItem).filter((image) => {
+      if (generatedSources.has(image.source) || screenshotSources.has(image.source)) return false;
+      screenshotSources.add(image.source);
+      return true;
+    });
+  return <>
+    {generatedMedia.map((item, index) => (
+      <TimelineItem key={item.id ?? index} item={item} client={client} backend={backend} threadId={threadId} />
+    ))}
+    {screenshots.length > 0 && (
+      !running && screenshots.length > 1 ? (
+        <div className="process-images">
+          <button
+            type="button"
+            className="previous-messages-toggle"
+            aria-expanded={showProcessImages}
+            onClick={() => setShowProcessImages((current) => !current)}
+          >
+            {t("过程截图（{count}）", { count: screenshots.length })}
+            <Chevron direction={showProcessImages ? "down" : "right"} />
+          </button>
+          {showProcessImages && <ImageGallery images={screenshots} client={client} backend={backend} />}
+        </div>
+      ) : <ImageGallery images={screenshots} client={client} backend={backend} />
+    )}
+  </>;
 }
 
 function CompletedResponseSegment({

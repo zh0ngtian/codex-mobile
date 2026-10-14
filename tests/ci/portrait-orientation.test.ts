@@ -15,7 +15,7 @@ function fixture(run: (directory: string) => void) {
   try { run(directory); } finally { rmSync(directory, { recursive: true, force: true }); }
 }
 
-describe("移动端强制竖屏", () => {
+describe("移动端方向约束", () => {
   it.each(["portrait", "1", "0x1", "landscape", "0", "sensor", undefined])("APK 校验识别编译后的方向枚举 %s", (orientation) => {
     const recipe = parse(readFileSync("mobile/android/build-recipe.yml", "utf8"));
     const verify = recipe.steps.find((step: any) => step.name === "Prepare and verify APK").run as string;
@@ -53,13 +53,14 @@ print(json.dumps({activity.get(f"{{{android}}}name"): activity.get(f"{{{android}
     expect(JSON.parse(result.stdout)).toEqual({ ".MainActivity": "portrait", ".InAppBrowserActivity": "portrait" });
   }));
 
-  it("iOS 两个构建配置的 iPhone/iPad 仅允许正向竖屏，iPad 使用全屏约束", () => fixture((directory) => {
+  it("iOS 18 的 iPhone/iPad 允许横屏，iPad 支持多任务", () => fixture((directory) => {
     mkdirSync(join(directory, "PakePlus.xcodeproj"));
     mkdirSync(join(directory, "PakePlus"));
     writeFileSync(join(directory, "PakePlus/Info.plist"), '<?xml version="1.0"?><plist version="1.0"><dict/></plist>');
     writeFileSync(join(directory, "PakePlus.xcodeproj/project.pbxproj"), ["Debug", "Release"].map(() => `
       MARKETING_VERSION = 1.0.0;
       CURRENT_PROJECT_VERSION = 1;
+      IPHONEOS_DEPLOYMENT_TARGET = 15.6;
       INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait";
       INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
     `).join("\n"));
@@ -71,8 +72,8 @@ print(json.dumps(plistlib.loads(Path("PakePlus/Info.plist").read_bytes())))
 `], { cwd: directory, encoding: "utf8", env: { ...process.env, APP_VERSION: "0.2.107" } });
     expect(result.status, result.stderr).toBe(0);
     const project = readFileSync(join(directory, "PakePlus.xcodeproj/project.pbxproj"), "utf8");
-    expect(project.match(/INFOPLIST_KEY_UISupportedInterfaceOrientations(?:_iPad)? = "?UIInterfaceOrientationPortrait"?;/g)).toHaveLength(4);
-    expect(project).not.toMatch(/Landscape|UpsideDown/);
-    expect(JSON.parse(result.stdout).UIRequiresFullScreen).toBe(true);
+    expect(project.match(/IPHONEOS_DEPLOYMENT_TARGET = 18.0;/g)).toHaveLength(2);
+    expect(project.match(/INFOPLIST_KEY_UISupportedInterfaceOrientations(?:_iPad)? = "[^"]*UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";/g)).toHaveLength(4);
+    expect(JSON.parse(result.stdout).UIRequiresFullScreen).toBe(false);
   }));
 });

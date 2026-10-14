@@ -1,0 +1,42 @@
+import Foundation
+
+struct NativeSnapshot: Codable {
+    var version = 1
+    var ready = false
+    var locale = "zh-CN"
+    var fontScale: Double = 1
+    var title = "Codex Mobile"
+    var threadId: String? = nil
+    var backendId: String? = nil
+    var connection = "disconnected"
+    var busy = false
+    var draft = ""
+    var canSend = false
+    var readOnly = false
+    var backends: [NativeBackend] = []
+    var groups: [NativeGroup] = []
+    var messages: [NativeMessage] = []
+    var attachments: [NativeAttachment] = []
+    var queued: [NativeNavigationItem] = []
+    var approvalCount = 0
+    var panel: NativePanel? = nil
+    var error: String? = nil
+    var badge: String? = nil
+    var model = "模型"
+    var effort = "推理强度"
+    var models: [NativeOption] = []
+    var efforts: [NativeOption] = []
+    var contextId: String? = nil
+    var draftRevision: Int? = nil
+    var commandResults: [NativeCommandResult]? = nil
+    var sidebarOpen: Bool? = nil
+    var search: String? = nil
+    var loading: String? = nil
+    var permission: String? = nil
+    var pending: Bool? = nil
+    var canInterrupt: Bool? = nil
+    var conversationActions: [NativePanelItem]? = nil
+    var mentions: [NativeOption]? = nil
+    var caretOffset: Int? = nil
+    var richContent: [NativePanelItem]? = nil
+}

@@ -1,3 +1,4 @@
+import { isClientForeground } from "../native-ui/foreground";
 import {
   AppServerConnectionUnavailableError,
   type AppServerClient,
@@ -32,11 +33,11 @@ export function bindReadOnlyThreadRefresh({
     if (
       disposed ||
       refreshInFlight ||
-      documentTarget.visibilityState !== "visible"
+      !isClientForeground(documentTarget)
     ) return;
     refreshInFlight = true;
     const result = refresh(
-      () => !disposed && documentTarget.visibilityState === "visible",
+      () => !disposed && isClientForeground(documentTarget),
     );
     if (result && typeof result.then === "function") {
       void result
@@ -164,7 +165,7 @@ export function bindConnectionRecovery({
   cooldownMs = 3_000,
   reconnect,
 }: ConnectionRecoveryOptions) {
-  let wasHidden = documentTarget.visibilityState === "hidden";
+  let wasHidden = !isClientForeground(documentTarget);
   let recoveryPromise: Promise<void> | null = null;
   let lastRecoveryAt = Number.NEGATIVE_INFINITY;
 
@@ -181,7 +182,7 @@ export function bindConnectionRecovery({
     });
   };
   const onVisibilityChange = () => {
-    if (documentTarget.visibilityState === "hidden") {
+    if (!isClientForeground(documentTarget)) {
       wasHidden = true;
       return;
     }

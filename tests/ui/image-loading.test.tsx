@@ -137,6 +137,72 @@ describe("会话图片按需加载", () => {
     expect(screen.getAllByRole("button", { name: "查看图片 b.png" })).toHaveLength(1);
   });
 
+  it.each(["completed", "inProgress"])("%s 回合的单张查看图片正常显示", async (status) => {
+    const request = vi.fn().mockResolvedValue({ dataBase64: "aGVsbG8=" });
+    render(<TurnCard client={{ request } as never} turn={{ id: "single", status, items: [
+      { id: "single-image", type: "imageView", path: "/tmp/single.png" },
+    ] }} />);
+    await screen.findByRole("button", { name: "查看图片 single.png" });
+    expect(screen.queryByRole("button", { name: /过程截图/ })).toBeNull();
+    expect(request).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(["completed", "inProgress"])("%s 回合区分生成产物与截图并跨 final 按路径去重", async (status) => {
+    const request = vi.fn().mockResolvedValue({ dataBase64: "aGVsbG8=" });
+    const { container } = render(<TurnCard client={{ request } as never} turn={{ id: "media", status, items: [
+      { id: "c", type: "agentMessage", phase: "commentary", text: "生成中" },
+      { id: "generated-view", type: "imageView", path: "/tmp/generated.png" },
+      { id: "s1", type: "imageView", path: "/tmp/shot-a.png" },
+      { id: "generated", type: "imageGeneration", savedPath: "/tmp/generated.png", status: "completed" },
+      { id: "f", type: "agentMessage", phase: "final_answer", text: "交付" },
+      { id: "s1-again", type: "imageView", path: "/tmp/shot-a.png" },
+      { id: "s2", type: "imageView", path: "/tmp/shot-b.png" },
+      { id: "generated-again", type: "imageGeneration", savedPath: "/tmp/generated.png", status: "completed" },
+    ] }} />);
+    await screen.findByRole("button", { name: "查看图片 generated.png" });
+    expect(screen.getAllByRole("button", { name: "查看图片 generated.png" })).toHaveLength(1);
+    if (status === "completed") {
+      expect(request).toHaveBeenCalledTimes(1);
+      fireEvent.click(screen.getByRole("button", { name: "过程截图（2）" }));
+    }
+    await screen.findByRole("button", { name: "查看图片 shot-b.png" });
+    expect(screen.getAllByRole("button", { name: "查看图片 shot-a.png" })).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: "之前的 1 条消息" }));
+    expect(container.querySelector(".previous-messages .message-images")).toBeNull();
+    expect(request).toHaveBeenCalledTimes(3);
+  });
+
+  it.each(["completed", "inProgress"])("%s 回合跨用户插话统一归集截图与生成产物", async (status) => {
+    const request = vi.fn().mockResolvedValue({ dataBase64: "aGVsbG8=" });
+    render(<TurnCard client={{ request } as never} turn={{ id: "steered-media", status, items: [
+      { id: "user", type: "userMessage", text: "检查截图" },
+      { id: "a", type: "imageView", path: "/tmp/steer-a.png" },
+      { id: "generated-view", type: "imageView", path: "/tmp/steer-generated.png" },
+      { id: "first-final", type: "agentMessage", phase: "final_answer", text: "初次检查完成" },
+      { id: "steer", type: "userMessage", text: "继续检查" },
+      { id: "a-again", type: "imageView", path: "/tmp/steer-a.png" },
+      { id: "b", type: "imageView", path: "/tmp/steer-b.png" },
+      { id: "generated", type: "imageGeneration", savedPath: "/tmp/steer-generated.png", status: "completed" },
+      { id: "last-final", type: "agentMessage", phase: "final_answer", text: "全部检查完成" },
+    ] }} />);
+    await screen.findByRole("button", { name: "查看图片 steer-generated.png" });
+    expect(screen.getAllByRole("button", { name: "查看图片 steer-generated.png" })).toHaveLength(1);
+    expect(screen.getByText("初次检查完成")).toBeTruthy();
+    expect(screen.getByText("继续检查")).toBeTruthy();
+    expect(screen.getByText("全部检查完成")).toBeTruthy();
+    if (status === "completed") {
+      expect(request).toHaveBeenCalledTimes(1);
+      expect(screen.getAllByRole("button", { name: "过程截图（2）" })).toHaveLength(1);
+      expect(screen.queryByRole("button", { name: "查看图片 steer-a.png" })).toBeNull();
+      fireEvent.click(screen.getByRole("button", { name: "过程截图（2）" }));
+    } else {
+      expect(screen.queryByRole("button", { name: /过程截图/ })).toBeNull();
+    }
+    await screen.findByRole("button", { name: "查看图片 steer-b.png" });
+    expect(screen.getAllByRole("button", { name: "查看图片 steer-a.png" })).toHaveLength(1);
+    expect(request).toHaveBeenCalledTimes(3);
+  });
+
   it("旧 WebView 没有 AbortSignal.timeout 时仍能加载缩略图", async () => {
     vi.stubGlobal("AbortSignal", {});
     const fetcher = vi.fn().mockResolvedValue(blobResponse("small"));
