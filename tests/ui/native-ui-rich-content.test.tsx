@@ -68,3 +68,23 @@ it('Windows Markdown的Mermaid源码与Swift统一CRLF为LF后缓存和查找', 
  renderHook(() => useNativeConversationAdapter(runtime, c({ active: { id: 't', turns: [{ id: 'x', items: [{ id: 'a', type: 'agentMessage', text: '```mermaid\r\ngraph TD\r\n A-->B\r\n```\r\n' }] }] } })));
  await waitFor(() => expect(runtime.snapshot().richContent?.find(i => i.kind === 'html')?.text).toBe('graph TD\n A-->B')); runtime.dispose();
 });
+it('用户Markdown正文也提供本地图片与Mermaid资源并剥离业务标题指令', async () => {
+ const { appendConversationTitleRequest } = await import('../../src/app-server/conversation-title');
+ const runtime = new NativeRuntime(() => {}); runtime.setNavigation({ selectedBackendId: 'b', backends: [], groups: [] });
+ const text = appendConversationTitleRequest('![用户图](/tmp/user.png)\n\n```mermaid\ngraph LR; User-->Codex\n```\n\n[代码](/app/main.ts:5)');
+ renderHook(() => useNativeConversationAdapter(runtime, c({ active: { id: 't', turns: [{ id: 'turn', items: [{ id: 'u', type: 'userMessage', content: [{ type: 'text', text }] }] }] } })));
+ await waitFor(() => expect(runtime.snapshot().richContent?.find(item => item.kind === 'html')?.text).toBe('graph LR; User-->Codex'));
+ const image = runtime.snapshot().richContent?.find(item => item.kind === 'image'); expect(image?.text).toBe('/tmp/user.png'); expect(new URL(image!.value!).searchParams.get('path')).toBe('/tmp/user.png');
+ expect(runtime.snapshot().messages[0].text).toContain('[代码](/app/main.ts:5)'); expect(runtime.snapshot().messages[0].text).not.toContain('conversation_title_request'); runtime.dispose();
+});
+it.each(['completed', 'inProgress'])('正式videoGeneration在%s且产物已就绪时提供真实视频预览', status => {
+ const snapshot = createWorkspaceAdapter(c({ active: { id: 't', turns: [{ id: 'turn', status, items: [{ id: 'video', type: 'videoGeneration', status, savedPath: '/tmp/generated-video.mp4' }] }] } }), { panelId: null, query: '', setPanel() {}, setQuery() {} }).snapshot;
+ const blocks = snapshot.messages.flatMap(message => message.blocks ?? []); const video = blocks.find(item => item.kind === 'video');
+ expect(video).toBeDefined(); expect(new URL(video!.value!).searchParams.get('path')).toBe('/tmp/generated-video.mp4'); expect(new URL(video!.value!).pathname).toBe('/api/files/preview');
+});
+it('正式videoGeneration无产物的运行态和失败态仍保留明确入口与原错误详情', () => {
+ const controller = c({ active: { id: 't', turns: [{ id: 'turn', status: 'inProgress', items: [{ id: 'running', type: 'videoGeneration', status: 'inProgress' }, { id: 'failed-video', type: 'videoGeneration', status: 'failed', savedPath: '/tmp/failed.mp4', error: '视频模型返回失败' }] }] } });
+ const projection = (panelId: string | null) => createWorkspaceAdapter(controller, { panelId, query: '', setPanel() {}, setQuery() {} }).snapshot;
+ const snapshot = projection(null); expect(JSON.stringify(snapshot.messages)).toContain('正在生成视频'); expect(JSON.stringify(snapshot.messages)).toContain('视频生成未完成'); expect(JSON.stringify(snapshot.messages)).not.toContain('failed.mp4');
+ expect(JSON.stringify(projection('tool:turn:failed-video').panel)).toContain('视频模型返回失败');
+});

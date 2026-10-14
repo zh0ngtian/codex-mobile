@@ -100,6 +100,7 @@ ConfiguredApp 使用真实 `scopedThreads`、`projectDirectories`、`collapsedPr
 - 工具详情挑选命令、cwd、状态、耗时、退出码、参数及输出，不把整个工具对象 JSON 充当业务面板。文件变更复用 summarizeFileChange，展示逐文件统计、真实 diff 及打开文件动作；运行计划、折叠推理、上下文压缩与失败图像诊断保留。
 - `file.open {href}` 复用 parseRemoteFileHref 和原客户端 `fs/readFile`，复用既有 base64 文本/二进制判定。Markdown/HTML 可切预览与源码，图片、SVG、音视频和下载使用既有鉴权资源 URL；不会创建跨 WK 无效的 blob URL。
 - 普通远程源码使用 `kind=source, title=文件名, text=完整源码, line=可选目标行`，供原生显示行号、目标行高亮与定位。SVG 文件读取真实文本后使用 html 展示。
+- 用户与助手正文资源均复用 nativeItemText 去除业务标题指令后收集；用户 Markdown 的本地图片、Mermaid 和文件链接保留。正式 videoGeneration 与 imageGeneration 一起参与媒体去重；运行中产物已就绪即可播放，无产物运行态与失败态保留明确入口及原工具错误详情，不创建不存在的视频诊断接口。
 - `NativeSnapshot.richContent` 仅提供当前实际内容所需的资源：本地 Markdown 图片 `kind=image, text=原始href, value=缩略URL, previewURL=原图URL`；Mermaid `kind=html, text=规范化LF后的原始源码, value=既有strict引擎生成的SVG`。绘图仅在专用离屏容器布局，没有 DOM 查询或点击业务动作。
 - html/SVG 的 Swift 隔离 WK 无业务桥与持久 store；audio/video/file 使用专门原生展示和下载。没有整屏旧网页业务兜底。
 

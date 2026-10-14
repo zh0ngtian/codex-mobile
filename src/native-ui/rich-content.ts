@@ -5,7 +5,7 @@ import { remoteFileDownloadUrl, remoteFilePreviewUrl, remoteImagePreviewUrl } fr
 import { groupConversationTurns, parseRemoteFileHref, summarizeFileChange } from '../ui/conversation';
 import { isPreviewableImagePath, isPreviewableVideoPath, decodeBase64File, remoteMarkdownImage } from '../features/conversation/sheets/RemoteFileSheets';
 import { renderMermaidSvg } from '../ui/mermaid';
-import { nativeAction, nativeCommand } from './projection';
+import { nativeAction, nativeCommand, nativeItemText } from './projection';
 import type { NativeWorkspaceController } from './workspace-adapter';
 import type { NativePanelItem, NativeSnapshot, NativeHandlers } from './protocol';
 
@@ -93,7 +93,7 @@ export function useNativeRichContent(c: NativeWorkspaceController, enabled: bool
  const pending = useRef(new Set<string>()); const epoch = useRef(0); const context = useRef(c.contextId);
  useLayoutEffect(() => { if (context.current !== c.contextId) { context.current = c.contextId; epoch.current++; setFile(null); } }, [c.contextId]);
  useEffect(() => () => { epoch.current++; }, []);
- const texts: Array<{ text: string; path?: string }> = enabled ? (c.active?.turns ?? []).flatMap((turn: any) => (turn.items ?? []).filter((i: any) => i.type === 'agentMessage').map((i: any) => ({ text: String(i.text ?? (Array.isArray(i.content) ? i.content.map((p: any) => p.text ?? '').join('') : i.content ?? '')) }))) : [];
+ const texts: Array<{ text: string; path?: string }> = enabled ? (c.active?.turns ?? []).flatMap((turn: any) => (turn.items ?? []).filter((i: any) => i.type === 'agentMessage' || i.type === 'userMessage').map((i: any) => ({ text: nativeItemText(i) }))) : [];
  if (enabled && file?.contextId === c.contextId && file.status === 'ready' && !file.binary) texts.push({ text: file.text, path: file.path });
  const resources = enabled ? markdownResources(texts, c) : { images: [], diagrams: [] };
  const render = async (source: string) => {

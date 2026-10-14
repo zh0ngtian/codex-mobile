@@ -56,8 +56,10 @@ export function projectConversation(active: RecordValue | null, imageURL: (path:
             historyInserted = true;
           } else messages.push({ id, role: 'assistant', text: nativeItemText(item), status: item.phase === 'commentary' ? undefined : status,
             actions: [nativeAction(`${id}:copy`, t('复制'), 'message.copy', { id })] });
-        } else if (item.type === 'imageGeneration' && item.status === 'failed') {
-          tools.push(nativeAction(`${id}:failure`, t('图像生成未完成'), 'panel.open', { id: `tool:${turnId}:${item.id}` }));
+        } else if ((item.type === 'imageGeneration' || item.type === 'videoGeneration') && item.status === 'failed') {
+          tools.push(nativeAction(`${id}:failure`, t(item.type === 'videoGeneration' ? '视频生成未完成' : '图像生成未完成'), 'panel.open', { id: `tool:${turnId}:${item.id}` }));
+        } else if (item.type === 'videoGeneration' && !videoPathForItem(item)) {
+          tools.push(nativeAction(`${id}:video`, t(['inProgress', 'in_progress', 'running'].includes(String(item.status)) ? '正在生成视频' : '视频生成未提供可播放文件'), 'panel.open', { id: `tool:${turnId}:${item.id}` }));
         } else if (item.type === 'contextCompaction') {
           messages.push({ id, role: 'activity', text: t('上下文已压缩') });
         } else if (item.type === 'reasoning') {
@@ -70,19 +72,20 @@ export function projectConversation(active: RecordValue | null, imageURL: (path:
       if (tools.length) messages.push({ id: `${segmentID}:tools`, role: 'activity', text: '', blocks: [{ id: `${segmentID}:tools`, kind: 'disclosure', title: `${t('工具')} (${tools.length})`, children: tools }] });
     }
     // 媒体独立于commentary，跨整个逻辑turn去重，生成结果优先于同源过程截图。
-    const generated = (turn.items ?? []).filter((item: RecordValue) => item.type === 'imageGeneration' && item.status !== 'failed');
-    const generatedSources = new Set(generated.flatMap((item: RecordValue) => imageSourcesForItem(item).map(image => image.source)));
+    const generated = (turn.items ?? []).filter((item: RecordValue) => (item.type === 'imageGeneration' || item.type === 'videoGeneration') && item.status !== 'failed');
+    const mediaSources = (item: RecordValue) => { const video = videoPathForItem(item); return video ? [{ source: video, name: video.split('/').at(-1) || t('视频'), local: true }] : imageSourcesForItem(item); };
+    const generatedSources = new Set(generated.flatMap((item: RecordValue) => mediaSources(item).map(media => media.source)));
     const seen = new Set<string>();
     const generatedImages: NativePanelItem[] = [];
     const screenshots: NativePanelItem[] = [];
     for (const item of [...generated, ...(turn.items ?? []).filter((entry: RecordValue) => entry.type === 'imageView')]) {
-      for (const [index, image] of imageSourcesForItem(item).entries()) {
+      for (const [index, image] of mediaSources(item).entries()) {
         if (seen.has(image.source) || (item.type === 'imageView' && generatedSources.has(image.source))) continue;
         seen.add(image.source);
         const video = videoPathForItem(item);
         const block: NativePanelItem = { id: `${turnId}:${item.id}:image:${index}`, kind: video ? 'video' : 'image', title: image.name, value: video && mediaURL ? mediaURL(video) : image.local ? imageURL(image.source) : image.source,
-          ...(image.local && originalImageURL ? { previewURL: originalImageURL(image.source) } : {}) };
-        if (item.type === 'imageGeneration') generatedImages.push(block); else screenshots.push(block);
+          ...(!video && image.local && originalImageURL ? { previewURL: originalImageURL(image.source) } : {}) };
+        if (item.type === 'imageGeneration' || item.type === 'videoGeneration') generatedImages.push(block); else screenshots.push(block);
       }
     }
     const mediaBlocks: NativePanelItem[] = [...generatedImages, ...(screenshots.length > 1 ? [{ id: `${turnId}:screenshots`, kind: 'disclosure', title: `${t('过程截图')} (${screenshots.length})`, children: screenshots }] : screenshots)];
