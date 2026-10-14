@@ -54,8 +54,10 @@ await waitFor(() => expect(client.request).toHaveBeenCalledWith('fs/readFile', {
 
 ## 本地验收记录
 
-新增 39 项文件引用回归，联合会话及附件测试共 136 项通过；typecheck 通过。WebKit 与 Chromium 在 375px 窄屏、默认和 1.3 倍字号下共 4 项通过，截图已检查。发布前置检查为 153 项适配器回归、30 项协调器恢复和 82 项构建契约，均通过。证据位于发布主机 `ReleaseCoordinator/validations/file-citations-20261014/`。未创建真实测试会话，无归档事项；未进行真机覆盖安装或 Office 内容预览验收。
+新增 42 项文件引用回归，联合会话及附件测试共 139 项通过；typecheck 通过。WebKit 与 Chromium 在 375px 窄屏、默认和 1.3 倍字号下共 4 项通过，截图已检查。发布前置检查为 153 项适配器回归、30 项协调器恢复和 82 项构建契约，均通过。证据位于发布主机 `ReleaseCoordinator/validations/file-citations-20261014/`。未创建真实测试会话，无归档事项；未进行真机覆盖安装或 Office 内容预览验收。
 
 独立审查发现的 HTML 引号属性及附件区标题层级问题已先补失败回归再修复；引用解析不使用 lookbehind，避免引入旧 WebKit 不支持的语法。
 
 HTML 注释及跨段附件标题范围补充 6 项失败回归后修复，附件识别与引用识别共用 HTML 范围扫描；注释、CDATA、处理指令及声明作为完整 token 跳过，不增加依赖。
+
+质量审查发现跨段 HTML 状态生命周期问题；补充 3 项失败回归后，将附件和引用识别合并为单次按文档顺序的 AST 遍历，并共享 HTML 状态。
