@@ -3273,7 +3273,7 @@ function BackendWorkspace({
     } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)); return false; }
   }
 
-  async function cancelQueuedFollowUp(id: string) {
+  async function cancelQueuedFollowUp(id: string, confirmed = false) {
     const followUp = queuedFollowUpsRef.current.find((entry) => entry.id === id);
     if (!followUp) return;
     if (!followUp.hosted) {
@@ -3281,7 +3281,7 @@ function BackendWorkspace({
       replaceQueuedFollowUps(removeQueuedFollowUp(queuedFollowUpsRef.current, id));
       return;
     }
-    if (followUp.state === "uncertain" && !window.confirm(t("这条消息可能已发送。移除待确认记录不会撤销已发送的任务，确定移除吗？"))) return;
+    if (followUp.state === "uncertain" && !confirmed && !window.confirm(t("这条消息可能已发送。移除待确认记录不会撤销已发送的任务，确定移除吗？"))) return;
     try {
       await mutateHostedQueue({ action: "cancel", id, revision: followUp.revision! });
       releaseQueueSubmission(followUp.threadId, id);
@@ -3578,7 +3578,7 @@ function BackendWorkspace({
     }
   }
 
-  async function renameThread() {
+  async function renameThread(explicitName?: string) {
     const client = clientRef.current;
     const thread = activeRef.current;
     if (
@@ -3587,7 +3587,7 @@ function BackendWorkspace({
       pendingAction ||
       activeThreadAccessMode !== "interactive"
     ) return false;
-    const name = window.prompt(t("输入新的会话名称"), titleOf(thread))?.trim();
+    const name = (explicitName ?? window.prompt(t("输入新的会话名称"), titleOf(thread)))?.trim();
     if (!name || name === titleOf(thread)) return false;
     setPendingAction("rename");
     setError("");
@@ -4192,7 +4192,7 @@ function BackendWorkspace({
     },
     cancelQueued: cancelQueuedFollowUp, sendQueued: actOnQueuedFollowUp, editQueued: editQueuedFollowUp,
     extended: {
-      state: { historyEdit, requests, approval, userAnswers, permissionModes, selectedPermissionModeId,
+      state: { historyEdit, requests, approval, userAnswers, approvalSubmitting: approvalRequests.submitting, approvalError: approvalRequests.error, permissionModes, selectedPermissionModeId,
         selectedServiceTier: displayedServiceTier, speedOptions, pendingAction, tokenUsage: tokenUsageByThread[active?.id] ?? null, rateLimits,
         projectOptions, backends, draftSaveStatus, activeThreadAccessMode, activeThreadResumeError },
       callbacks: { chooseSpeed, choosePermissionMode, replyToRequest, changeHistoricalMessageEditText, cancelHistoricalMessageEdit,
@@ -4427,6 +4427,11 @@ export function AppBootstrap({
     );
   }
 
+  return <UnconfiguredApp registry={registry} setRegistry={setRegistry} managerOpen={managerOpen} setManagerOpen={setManagerOpen} appUpdate={appUpdate} transportMode={transportMode} changeTransportMode={changeTransportMode} notificationPreference={notificationPreference} saveNotificationPreference={saveNotificationPreference} failedNotificationDevices={failedNotificationDevices} />;
+}
+/** 与ConfiguredApp互斥挂载，空registry也只有一个业务runtime。 */
+function UnconfiguredApp({ registry, setRegistry, managerOpen, setManagerOpen, appUpdate, transportMode, changeTransportMode, notificationPreference, saveNotificationPreference, failedNotificationDevices }: any) {
+  const nativeRuntime = useNativeRuntime({ selectedBackendId: '', backends: [], groups: [] }, { 'settings.open': () => setManagerOpen(true) });
   return (
     <main className="app-shell">
       <section className="empty-state">
@@ -4441,6 +4446,7 @@ export function AppBootstrap({
         </button>
       </section>
       <BackendManagerSheet
+        nativeRuntime={nativeRuntime}
         open={managerOpen}
         registry={registry}
         summaries={{}}
@@ -4449,7 +4455,7 @@ export function AppBootstrap({
         notificationPreference={notificationPreference}
         onNotificationPreferenceSave={saveNotificationPreference}
         failedNotificationDevices={failedNotificationDevices}
-        onChange={(next) => {
+        onChange={(next: BackendRegistry) => {
           saveBackendRegistry(window.localStorage, next);
           setRegistry(next);
         }}
@@ -4469,6 +4475,7 @@ export function AppBootstrap({
         }}
       />
       <AppUpdateSheet
+        nativeRuntime={nativeRuntime}
         open={appUpdate.sheetOpen}
         state={appUpdate.state}
         onClose={() => appUpdate.setSheetOpen(false)}
@@ -5048,6 +5055,8 @@ function ConfiguredApp({
       subtitle: summaries[backend.id]?.error || summaries[backend.id]?.connection,
     }))],
   }, {
+    "settings.open": () => setManagerOpen(true),
+    "drafts.open": () => setDraftsOpen(true),
     "navigation.sidebar": p => { if (p.open) openSidebar(); else closeSidebar(); },
     "navigation.search": p => setQuery(String(p.value)),
     "navigation.refresh": refreshAllBackends,
@@ -5164,7 +5173,7 @@ function ConfiguredApp({
           onClick={closeSidebar}
         />
       </div>
-      {draftsOpen && <DraftsSheet onClose={() => setDraftsOpen(false)} onOpenDraft={saved => {
+      {draftsOpen && <DraftsSheet nativeRuntime={nativeRuntime} onClose={() => setDraftsOpen(false)} onOpenDraft={saved => {
         const target = registry.backends.find(backend => backend.id === saved.backendId);
         if (!target) throw new Error(t("草稿的设备已移除，无法恢复"));
         const restored = restoreNewChatDraft(saved);
@@ -5188,6 +5197,7 @@ function ConfiguredApp({
         }}
       />
       <BackendManagerSheet
+        nativeRuntime={nativeRuntime}
         open={managerOpen}
         registry={registry}
         summaries={summaries}
@@ -5213,6 +5223,7 @@ function ConfiguredApp({
         }}
       />
       <AppUpdateSheet
+        nativeRuntime={nativeRuntime}
         open={appUpdate.sheetOpen}
         state={appUpdate.state}
         onClose={() => appUpdate.setSheetOpen(false)}

@@ -18,7 +18,7 @@ export interface NativeSnapshot {
   backends: Array<{ id: string; title: string; subtitle?: string; connected?: boolean }>;
   groups: NativeGroup[]; messages: NativeMessage[]; attachments: NativeAttachment[]; queued: NativeNavigationItem[];
   approvalCount: number; model: string; effort: string; models: NativeOption[]; efforts: NativeOption[];
-  error?: string; badge?: string; panel?: { id: string; title: string; items: NativePanelItem[] };
+  error?: string; badge?: string; panel?: { id: string; title: string; items: NativePanelItem[]; dismissible?: boolean };
   commandResults?: NativeResult[]; sidebarOpen?: boolean; search?: string; loading?: string;
   canInterrupt?: boolean; conversationActions?: NativePanelItem[]; permission?: string; pending?: boolean; mentions?: NativeOption[];
 }

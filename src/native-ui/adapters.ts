@@ -24,3 +24,9 @@ export function useNativeWorkspace(runtime: NativeRuntime | null, id: string, va
   useCommittedRegistration(handlers, committed => runtime?.setWorkspace(id, value, committed));
   useLayoutEffect(() => () => runtime?.removeWorkspace(id), [runtime, id]);
 }
+
+/** 全局面板复用各组件已有状态，仅注册其展示与显式回调。 */
+export function useNativeGlobalPanel(runtime: NativeRuntime | null | undefined, id: string, panel: NativeSnapshot['panel'], handlers: NativeHandlers) {
+  useCommittedRegistration(handlers, committed => runtime?.setGlobalPanel(id, panel, committed));
+  useLayoutEffect(() => () => runtime?.removeGlobalPanel(id), [runtime, id]);
+}

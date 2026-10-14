@@ -1,3 +1,4 @@
+import { workspaceBusinessPanels } from './workspace-panels';
 import { useEffect, useRef, useState } from 'react';
 import type { BackendConfig } from '../backends/types';
 import type { DraftFile, DraftImage } from '../ui/attachments';
@@ -28,7 +29,7 @@ export interface NativeWorkspaceController {
   chooseModel: (value: string) => void; chooseEffort: (value: string) => void; removeAttachment: (id: string) => void;
   selectFiles: (files: File[]) => Promise<void>; selectLocation: () => Promise<boolean>; saveDraft: () => Promise<boolean | void>;
   retry: () => void; loadOlder: () => Promise<boolean>; editMessage: (turnId: string, messageId: string) => void;
-  cancelQueued: (id: string) => Promise<void>; sendQueued: (id: string) => Promise<void>; editQueued: (id: string, value: string) => Promise<boolean>;
+  cancelQueued: (id: string, confirmed?: boolean) => Promise<void>; sendQueued: (id: string) => Promise<void>; editQueued: (id: string, value: string) => Promise<boolean>;
   /** 后续完整panel仍通过显式命令白名单扩展，不创建另一业务层。 */
   extended?: { state: RecordValue; callbacks: Record<string, (...args: any[]) => any> };
 }
@@ -69,7 +70,8 @@ export function createWorkspaceAdapter(c: NativeWorkspaceController, panel: Pane
     ...filterInstalledPlugins(c.plugins, mention.query).slice(0, 8).map(plugin => ({ id: `plugin:${plugin.id}`, value: `plugin:${plugin.id}`, title: pluginDisplayName(plugin), subtitle: pluginDescription(plugin) })),
   ] : [];
   const hasInput = !!c.draft.trim() || !!c.draftImages.length || !!c.draftFiles.length;
-  const conversationActions = [nativeAction('mentions', 'Skill / Plugin', 'panel.open', { id: 'mentions' })];
+  const business = workspaceBusinessPanels(c, panel);
+  const conversationActions = [...business.actions, nativeAction('mentions', 'Skill / Plugin', 'panel.open', { id: 'mentions' })];
   if (!c.active?.id) conversationActions.push({ ...nativeAction('save-draft', c.draftSaveStatus || t('保存草稿'), 'draft.save'), disabled: !hasInput || c.draftSaving || c.imageReading || c.busy || c.pending });
   if (c.loadState === 'error') conversationActions.push(nativeAction('retry', t('重试'), 'thread.retry'));
   if (c.olderTurnsState !== 'exhausted') conversationActions.push({ ...nativeAction('older', c.olderTurnsState === 'loading' ? t('加载中…') : c.olderTurnsState === 'error' ? t('重试加载历史') : t('加载更早消息'), 'thread.older'), disabled: c.olderTurnsState === 'loading' });
@@ -79,13 +81,13 @@ export function createWorkspaceAdapter(c: NativeWorkspaceController, panel: Pane
     canInterrupt: c.busy && !!c.active?.id && !c.readOnly, readOnly: c.readOnly, messages,
     attachments: [...c.draftImages.map(image => ({ id: image.id, name: image.name, imageURL: image.url, detail: `${image.size} B` })), ...c.draftFiles.map(file => ({ id: file.id, name: file.name, detail: `${file.size} B` }))],
     queued: c.queued.map(item => ({ id: String(item.id), title: String(item.text), subtitle: String(item.state ?? (item.failed ? t('发送失败') : t('排队中'))),
-      command: nativeCommand('queue.send', { id: item.id }), actions: [nativeAction(`${item.id}:cancel`, t('移除'), 'queue.cancel', { id: item.id })] })),
+      command: ['uncertain', 'sending', 'steering'].includes(item.state) ? undefined : nativeCommand('queue.send', { id: item.id }), actions: [{ ...nativeAction(`${item.id}:edit`, t('编辑'), 'panel.open', { id: `queue-edit:${item.id}` }), disabled: ['uncertain', 'sending', 'steering'].includes(item.state) }, nativeAction(`${item.id}:cancel`, t('移除'), 'queue.cancel', { id: item.id })] })),
     approvalCount: c.approvalCount, model: c.selectedModelLabel, effort: effortLabel(c.selectedEffort), permission: c.permission,
     models: c.models.map(model => ({ id: String(model.model), title: String(model.displayName || model.model), value: String(model.model) })),
     efforts: c.effortOptions.map(option => ({ id: option.id, title: option.label, value: option.id })),
     pending: c.pending || c.imageReading || c.draftSaving, loading: c.loadState, conversationActions,
     badge: c.syncStale ? t('正在同步') : undefined, error: c.error || c.loadError || undefined,
-    panel: projectPanel(c, panel),
+    panel: business.panel ?? projectPanel(c, panel),
   };
   const handlers: NativeHandlers = {
     'draft.set': p => c.setDraft(String(p.value), Number(p.revision), typeof p.caretOffset === 'number' ? p.caretOffset : String(p.value).length),
@@ -120,11 +122,17 @@ export function createWorkspaceAdapter(c: NativeWorkspaceController, panel: Pane
     },
     'panel.open': p => {
       const id = String(p.id);
-      if (id !== 'mentions' && !groupConversationTurns(c.active?.turns ?? []).some((turn: RecordValue) => id === `changes:${turn.id}` || turn.items?.some((item: RecordValue) => id === `tool:${turn.id}:${item.id}`))) throw new Error(t('此面板尚未接入'));
+      if (!business.accepts(id) && id !== 'mentions' && !groupConversationTurns(c.active?.turns ?? []).some((turn: RecordValue) => id === `changes:${turn.id}` || turn.items?.some((item: RecordValue) => id === `tool:${turn.id}:${item.id}`))) throw new Error(t('此面板尚未接入'));
       panel.setPanel(id); panel.setQuery('');
     },
     'panel.close': () => { panel.setPanel(null); panel.setQuery(''); },
-    'queue.cancel': p => c.cancelQueued(String(p.id)), 'queue.send': p => c.sendQueued(String(p.id)), 'queue.edit': p => c.editQueued(String(p.id), String(p.value)),
+    ...business.handlers,
+    'workspace.rename.change': p => panel.setQuery(String(p.value)),
+    'workspace.rename.submit': () => { if (!panel.query.trim()) throw new Error(t('名称不能为空')); c.extended?.callbacks.renameThread?.(panel.query.trim()); panel.setPanel(null); },
+    'queue.change': p => { if (!c.queued.some(q => q.id === p.id)) throw new Error(t('队列已更新')); panel.setQuery(String(p.value)); },
+    'queue.cancel': p => { const q = c.queued.find(q => q.id === p.id); if (!q) throw new Error(t('队列已更新')); if (q.state === 'uncertain' && p.confirmed !== true) return panel.setPanel(`confirm-queue:${q.id}`); return c.cancelQueued(String(p.id), p.confirmed === true); },
+    'queue.send': p => { const q = c.queued.find(q => q.id === p.id); if (!q || ['uncertain', 'sending', 'steering'].includes(q.state)) throw new Error(t('当前无法发送排队消息')); return c.sendQueued(String(p.id)); },
+    'queue.edit': async p => { const q = c.queued.find(q => q.id === p.id); if (!q || ['uncertain', 'sending', 'steering'].includes(q.state)) throw new Error(t('当前无法编辑排队消息')); if (!await c.editQueued(String(p.id), typeof p.value === 'string' ? p.value : panel.query)) throw new Error(t('无法保存排队消息')); panel.setPanel(null); },
   };
   return { snapshot: bindWorkspaceCommands(snapshot), handlers };
 }

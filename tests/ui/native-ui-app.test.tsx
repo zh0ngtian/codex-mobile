@@ -35,3 +35,9 @@ it('真实App注册导航与各设备workspace：原生关闭侧栏、切换列�
  await act(async () => { command('open', 'navigation.sidebar', { open: true }); });
  await waitFor(() => expect(posts.at(-1)?.sidebarOpen).toBe(true));
 });
+it('无设备冷启动直接发布ready原生添加设备表单，配置后沿同一业务入口管理设置和草稿', async () => {
+ Object.assign(window, { __CODEX_NATIVE_UI__: true, webkit: { messageHandlers: { nativeUI: { postMessage() {} } } }, codexMobilePublishNativeSnapshot: (v: unknown) => posts.push(v) });
+ render(<AppBootstrap initialRegistry={{ version: 1, selectedBackendId: '', backends: [] }} />);
+ await waitFor(() => expect(posts.at(-1)?.ready).toBe(true));
+ expect(posts.at(-1).panel.id).toBe('devices'); expect(posts.at(-1).panel.items.some((i: any) => i.id === 'gatewayUrl')).toBe(true);
+});

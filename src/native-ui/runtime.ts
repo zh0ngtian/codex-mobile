@@ -7,8 +7,8 @@ export function isNativeUIEnabled() {
   const target = window as NativeWindow;
   return target.__CODEX_NATIVE_UI__ === true && typeof target.webkit?.messageHandlers?.nativeUI?.postMessage === 'function';
 }
-const globalNames = new Set(['backend.select', 'navigation.search', 'navigation.sidebar', 'navigation.refresh', 'thread.new', 'thread.open', 'thread.manage', 'project.toggle', 'project.more', 'project.retry', 'navigation.filter']);
-const workspaceNames = new Set(['draft.set', 'draft.save', 'message.send', 'turn.stop', 'model.select', 'effort.select', 'attachment.pick', 'attachment.remove', 'location.insert', 'mention.search', 'mention.insert', 'thread.retry', 'thread.older', 'message.edit', 'message.copy', 'queue.cancel', 'queue.send', 'queue.edit']);
+const globalNames = new Set(['backend.select', 'navigation.search', 'navigation.sidebar', 'navigation.refresh', 'thread.new', 'thread.open', 'thread.manage', 'project.toggle', 'project.more', 'project.retry', 'navigation.filter', 'settings.open', 'drafts.open', 'device.add', 'device.edit', 'device.change', 'device.save', 'device.cancel', 'device.scan', 'device.toggle', 'device.remove', 'device.move', 'settings.language', 'settings.font', 'settings.transport', 'settings.push.mode', 'settings.push.url', 'settings.push.save', 'settings.update.check', 'drafts.restore', 'drafts.remove', 'drafts.retry', 'update.install', 'update.retry', 'update.close']);
+const workspaceNames = new Set(['draft.set', 'draft.save', 'message.send', 'turn.stop', 'model.select', 'effort.select', 'attachment.pick', 'attachment.remove', 'location.insert', 'mention.search', 'mention.insert', 'thread.retry', 'thread.older', 'message.edit', 'message.copy', 'queue.cancel', 'queue.send', 'queue.edit', 'speed.select', 'permission.select', 'newchat.backend', 'newchat.project', 'workspace.thread', 'workspace.rename.change', 'workspace.rename.submit', 'approval.answer', 'approval.decide', 'approval.submit', 'approval.dismiss', 'approval.reopen', 'history.change', 'history.cancel', 'history.submit', 'queue.change', 'file.open', 'file.mode', 'diagram.render']);
 // Task2b 只能经此处显式扩展可调用命令，不能把任意名字转发成 RPC。
 const panelNames = new Set(['panel.open', 'panel.close']);
 const stringKeys: Record<string, string[]> = {
@@ -17,11 +17,21 @@ const stringKeys: Record<string, string[]> = {
   'thread.manage': ['backendId', 'threadId', 'action'], 'project.toggle': ['backendId', 'cwd'], 'project.more': ['backendId', 'cwd'],
   'project.retry': ['backendId', 'cwd'], 'navigation.filter': ['value'], 'mention.search': ['value'], 'mention.insert': ['id'],
   'panel.open': ['id'], 'panel.close': ['id'], 'message.edit': ['turnId', 'messageId'], 'message.copy': ['id'],
-  'queue.cancel': ['id'], 'queue.send': ['id'], 'queue.edit': ['id', 'value'],
+  'queue.cancel': ['id'], 'queue.send': ['id'], 'queue.edit': ['id'], 'queue.change': ['id', 'value'],
+  'speed.select': ['value'], 'permission.select': ['value'], 'newchat.backend': ['value'], 'newchat.project': ['value'],
+  'workspace.thread': ['action'], 'workspace.rename.change': ['value'], 'approval.answer': ['requestKey', 'questionId', 'value'],
+  'approval.decide': ['requestKey'], 'approval.submit': ['requestKey'], 'approval.dismiss': ['requestKey'],
+  'history.change': ['editKey', 'value'], 'history.cancel': ['editKey'], 'history.submit': ['editKey'],
+  'device.edit': ['id'], 'device.change': ['field', 'value'], 'device.toggle': ['id'], 'device.remove': ['id'], 'device.move': ['id'],
+  'settings.language': ['value'], 'settings.font': ['value'], 'settings.transport': ['value'], 'settings.push.mode': ['value'], 'settings.push.url': ['value'],
+  'drafts.restore': ['id'], 'drafts.remove': ['id'], 'file.open': ['href'], 'file.mode': ['value'], 'diagram.render': ['source'],
 };
 function validate(name: string, params: NativeParams) {
   if (![globalNames, workspaceNames, panelNames].some(set => set.has(name))) throw new Error(t('不支持的原生命令'));
   for (const key of stringKeys[name] ?? []) if (typeof params[key] !== 'string') throw new Error(t("参数 {key} 必须是字符串", { key }));
+  if (params.confirmed !== undefined && typeof params.confirmed !== 'boolean') throw new Error(t('确认参数无效'));
+  if (name === 'approval.decide' && (!Number.isSafeInteger(params.index) || Number(params.index) < 0)) throw new Error(t('审批决定无效'));
+  if (name === 'device.move' && ![-1, 1].includes(Number(params.direction))) throw new Error(t('排序方向无效'));
   if (name === 'draft.set' && (!Number.isSafeInteger(params.revision) || Number(params.revision) < 1)) throw new Error(t('草稿版本无效'));
   if (name === 'draft.set' && params.caretOffset !== undefined && (!Number.isSafeInteger(params.caretOffset) || Number(params.caretOffset) < 0 || Number(params.caretOffset) > String(params.value).length)) throw new Error(t('草稿版本无效'));
   if (name === 'navigation.sidebar' && typeof params.open !== 'boolean') throw new Error(t('侧栏状态无效'));
@@ -34,6 +44,7 @@ interface Workspace { value: NativeSnapshot; handlers: NativeHandlers; revision:
 export class NativeRuntime {
   private navigation: NativeNavigation = { selectedBackendId: '', backends: [], groups: [] };
   private globalHandlers: NativeHandlers = {};
+  private globalPanels = new Map<string, { panel: NativeSnapshot['panel']; handlers: NativeHandlers }>();
   private workspaces = new Map<string, Workspace>();
   private results: NativeResult[] = [];
   private requests = new Map<string, Promise<NativeResult>>();
@@ -53,6 +64,8 @@ export class NativeRuntime {
   setNavigation(value: NativeNavigation, handlers: NativeHandlers = {}) {
     this.navigation = value; this.globalHandlers = handlers; this.schedule();
   }
+  setGlobalPanel(id: string, panel: NativeSnapshot['panel'], handlers: NativeHandlers) { this.globalPanels.set(id, { panel, handlers: panel ? handlers : {} }); this.schedule(); }
+  removeGlobalPanel(id: string) { this.globalPanels.delete(id); this.schedule(); }
   setWorkspace(id: string, value: NativeSnapshot, handlers: NativeHandlers) {
     const previous = this.workspaces.get(id);
     const same = previous !== undefined && previous.value.contextId === value.contextId;
@@ -67,7 +80,8 @@ export class NativeRuntime {
   removeWorkspace(id: string) { this.workspaces.delete(id); this.schedule(); }
   snapshot(): NativeSnapshot {
     const workspace = this.workspaces.get(this.navigation.selectedBackendId);
-    return { ...(workspace?.value ?? emptyNativeSnapshot()), backends: this.navigation.backends,
+    const globalPanel = [...this.globalPanels.values()].filter(v => v.panel).at(-1)?.panel;
+    return { ...(workspace?.value ?? emptyNativeSnapshot()), ...(globalPanel ? { ready: true, panel: globalPanel } : {}), backends: this.navigation.backends,
       groups: this.navigation.groups.map(group => ({ ...group, items: group.items.map(item => item.command?.name === 'thread.open' ? { ...item,
         selected: item.command.params.backendId === this.navigation.selectedBackendId && item.command.params.threadId === workspace?.value.threadId } : item) })),
       sidebarOpen: this.navigation.sidebarOpen, search: this.navigation.search,
@@ -110,12 +124,15 @@ export class NativeRuntime {
       if (this.inFlight.size > 64) throw new Error(t('待处理命令过多，请稍后重试'));
       validate(name, params);
       const workspace = this.workspaces.get(this.navigation.selectedBackendId);
-      const globalHandler = this.globalHandlers[name];
+      const globalPanelAlias = name === 'panel.open' && ['devices', 'settings', 'language', 'font', 'transport', 'notifications', 'updates', 'drafts'].includes(String(params.id));
+      const aliasHandler = globalPanelAlias ? this.globalHandlers[params.id === 'drafts' ? 'drafts.open' : 'settings.open'] : undefined;
+      const registeredPanel = name === 'panel.close' ? [...this.globalPanels.values()].find(v => v.panel?.id === params.id) : [...this.globalPanels.values()].reverse().find(v => v.handlers[name]);
+      const globalHandler = aliasHandler ?? registeredPanel?.handlers[name] ?? this.globalHandlers[name];
       const handler = globalNames.has(name) ? globalHandler : panelNames.has(name) ? (globalHandler ?? workspace?.handlers[name]) : workspace?.handlers[name];
       if (!globalNames.has(name) && !(panelNames.has(name) && globalHandler)) {
         if (!workspace?.value.ready) throw new Error(t('会话尚未就绪'));
         if (typeof params.contextId !== 'string' || params.contextId !== workspace.value.contextId) throw new Error(t('会话已切换，请重试'));
-        if (workspace.value.readOnly && !['message.copy', 'thread.retry', 'thread.older', 'panel.open', 'panel.close'].includes(name)) throw new Error(t('当前会话只读'));
+        if (workspace.value.readOnly && !['message.copy', 'thread.retry', 'thread.older', 'panel.open', 'panel.close', 'history.change', 'history.cancel', 'history.submit', 'approval.answer', 'approval.decide', 'approval.submit', 'approval.dismiss', 'approval.reopen', 'file.open', 'file.mode', 'diagram.render'].includes(name)) throw new Error(t('当前会话只读'));
       }
       if (!handler) throw new Error(t("此操作尚未接入：{name}", { name }));
       if (name === 'draft.set' && workspace) {
@@ -139,7 +156,7 @@ export class NativeRuntime {
     if (this.timer) clearTimeout(this.timer);
     this.timer = undefined;
     window.removeEventListener('codex-mobile-native-command', this.listener); this.listening = false;
-    this.workspaces.clear(); this.globalHandlers = {};
+    this.workspaces.clear(); this.globalHandlers = {}; this.globalPanels.clear();
   }
 }
 export function publishNativeSnapshot(snapshot: NativeSnapshot) {

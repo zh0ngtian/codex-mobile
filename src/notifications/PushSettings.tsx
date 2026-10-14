@@ -8,13 +8,17 @@ export function PushSettings({ preference, onSave, failedDevices = [] }: {
   onSave: (preference: NotificationPreference) => void;
   failedDevices?: string[];
 }) {
+  const state = usePushSettingsState(preference, onSave);
+  return <PushSettingsForm state={state} failedDevices={failedDevices} />;
+}
+export function usePushSettingsState(preference: NotificationPreference, onSave: (preference: NotificationPreference) => void) {
   const [mode, setMode] = useState(preference.mode);
   const [url, setUrl] = useState(preference.barkUrl);
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
   useEffect(() => { setMode(preference.mode); setUrl(preference.barkUrl); }, [preference]);
-  const save = (event: FormEvent) => {
-    event.preventDefault(); setError(""); setSaved(false);
+  const save = (event?: Pick<FormEvent, "preventDefault">) => {
+    event?.preventDefault(); setError(""); setSaved(false);
     try {
       const barkUrl = mode === "bark" ? parseBarkPushUrl(url) : preference.barkUrl;
       onSave({ mode, barkUrl }); setUrl(barkUrl); setSaved(true);
@@ -22,6 +26,10 @@ export function PushSettings({ preference, onSave, failedDevices = [] }: {
       setError(reason instanceof Error ? t(reason.message) : t("无法保存推送设置"));
     }
   };
+  return { mode, setMode, url, setUrl, error, setError, saved, setSaved, save };
+}
+export function PushSettingsForm({ state, failedDevices = [] }: { state: ReturnType<typeof usePushSettingsState>; failedDevices?: string[] }) {
+  const { mode, setMode, url, setUrl, error, setError, saved, setSaved, save } = state;
   return (
     <section className="backend-language-settings push-settings" aria-label={t("推送方式")}>
       <strong>{t("推送方式")}</strong>

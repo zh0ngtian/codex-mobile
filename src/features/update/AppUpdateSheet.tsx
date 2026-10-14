@@ -1,3 +1,6 @@
+import { useNativeGlobalPanel } from '../../native-ui/adapters';
+import type { NativeRuntime } from '../../native-ui/runtime';
+import { nativeAction } from '../../native-ui/projection';
 import type { AppUpdateState } from "./useAppUpdate";
 import { ActionSheet } from "../../ui/ActionSheet";
 import { t } from "../../i18n";
@@ -17,27 +20,42 @@ function statusLabel(state: AppUpdateState) {
 }
 export function AppUpdateSheet({
   open,
+  nativeRuntime,
   state,
   onClose,
   onInstall,
   onRetry,
 }: {
+  nativeRuntime?: NativeRuntime | null;
   open: boolean;
   state: AppUpdateState;
   onClose: () => void;
   onInstall: () => void;
   onRetry: () => void;
 }) {
-  if (!open || !state.release) return null;
   const working = ["downloading", "verifying", "installing"].includes(
     state.phase,
   );
   const label = statusLabel(state);
-  const releaseNotes = releaseNotesForUpgrade(
-    state.release,
+  const releaseNotes = state.release ? releaseNotesForUpgrade(
+    state.release!,
     state.currentVersion,
-  );
+  ) : [];
 
+  useNativeGlobalPanel(nativeRuntime, 'update', open && state.release ? { id: 'update', title: t('发现新版本'), dismissible: !working, items: [
+    { id: 'update-version', kind: 'text', title: `v${state.release.version}`, text: t('当前版本 v{version}', { version: state.currentVersion }) },
+    ...releaseNotes.map(note => ({ id: note.version, kind: 'markdown', title: `v${note.version}`, text: note.notes })),
+    ...(label ? [{ id: 'update-status', kind: 'text', text: label }] : []),
+    ...(state.phase === 'error' ? [{ id: 'update-error', kind: 'text', text: state.error || t('更新失败，请重试') }] : []),
+    { ...nativeAction('update-install', t(state.phase === 'error' ? '重试' : working ? label : '立即更新'), state.phase === 'error' ? 'update.retry' : 'update.install'), disabled: working },
+    { ...nativeAction('update-close', t('稍后'), 'update.close'), disabled: working },
+  ] } : undefined, {
+    'panel.close': () => { if (!working) onClose(); },
+    'update.install': () => { if (working || !state.release) throw new Error(t('当前无法更新')); onInstall(); },
+    'update.retry': () => { if (working || !state.release) throw new Error(t('当前无法更新')); onRetry(); },
+    'update.close': () => { if (!working) onClose(); },
+  });
+  if (!open || !state.release) return null;
   return (
     <ActionSheet
       title={

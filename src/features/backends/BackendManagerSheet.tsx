@@ -1,3 +1,6 @@
+import { useNativeGlobalPanel } from '../../native-ui/adapters';
+import { projectDevicePanel } from '../../native-ui/device-panel';
+import type { NativeRuntime } from '../../native-ui/runtime';
 import {
   type FormEvent,
   useCallback,
@@ -25,9 +28,9 @@ import { ActionSheet } from "../../ui/ActionSheet";
 import { t, useI18n } from "../../i18n";
 import { GatewayQrScannerSheet } from "./GatewayQrScannerSheet";
 import type { TransportMode } from "../../backends/transport-preference";
-import { PushSettings } from "../../notifications/PushSettings";
+import { PushSettingsForm, usePushSettingsState } from "../../notifications/PushSettings";
 import type { NotificationPreference } from "../../notifications/preferences";
-import { FontSizeSettings } from "../settings/FontSizeSettings";
+import { FontSizeSettingsForm, useFontSizeSettings } from "../settings/FontSizeSettings";
 
 interface BackendDraft {
   id: string;
@@ -49,6 +52,7 @@ function newBackendDraft(order: number): BackendDraft {
 
 export function BackendManagerSheet({
   open,
+  nativeRuntime,
   registry,
   summaries,
   onChange,
@@ -62,6 +66,7 @@ export function BackendManagerSheet({
   probe = defaultProbeBackend,
   scanQrCode,
 }: {
+  nativeRuntime?: NativeRuntime | null;
   open: boolean;
   registry: BackendRegistry;
   summaries: Record<string, BackendRuntimeSummary>;
@@ -84,6 +89,9 @@ export function BackendManagerSheet({
   scanQrCode?: () => Promise<string>;
 }) {
   const { preference, setPreference } = useI18n();
+  const font = useFontSizeSettings();
+  const push = usePushSettingsState(notificationPreference ?? { mode: 'system', barkUrl: '' }, onNotificationPreferenceSave ?? (() => {}));
+  const [confirmation, setConfirmation] = useState<{ name: string; id: string; message: string } | null>(null);
   const [draft, setDraft] = useState<BackendDraft | null>(() =>
     open && !registry.backends.length ? newBackendDraft(0) : null,
   );
@@ -130,20 +138,19 @@ export function BackendManagerSheet({
   }, []);
 
   const openQrScanner = async () => {
-    if (!scanQrCode) {
+    const nativeScan = (window as Window & { codexMobileScanGatewayQr?: () => Promise<string> }).codexMobileScanGatewayQr;
+    if (!scanQrCode && !nativeScan) {
       setQrScannerOpen(true);
       return;
     }
     try {
-      applyScannedGateway(await scanQrCode());
+      applyScannedGateway(await (scanQrCode ?? nativeScan!)());
     } catch (reason) {
       setError(
         reason instanceof Error ? reason.message : t("未能识别二维码"),
       );
     }
   };
-
-  if (!open) return null;
 
   const updateRegistry = (action: () => BackendRegistry) => {
     try {
@@ -154,8 +161,8 @@ export function BackendManagerSheet({
     }
   };
 
-  const submit = async (event: FormEvent) => {
-    event.preventDefault();
+  const submit = async (event?: Pick<FormEvent, "preventDefault">) => {
+    event?.preventDefault();
     if (!draft || testing) return;
     setTesting(true);
     setError("");
@@ -186,11 +193,11 @@ export function BackendManagerSheet({
     }
   };
 
-  const deleteBackend = (backend: BackendConfig) => {
+  const deleteBackend = (backend: BackendConfig, confirmed = false) => {
     const summary = summaries[backend.id];
     if (
       (summary?.busy || summary?.approvalCount || summary?.queuedCount) &&
-      !window.confirm(
+      !confirmed && !window.confirm(
         summary?.queuedCount
           ? t("{name} 仍有 {count} 条未发送队列，确定删除吗？", {
               name: backend.name,
@@ -206,12 +213,12 @@ export function BackendManagerSheet({
     updateRegistry(() => removeBackend(registry, backend.id));
   };
 
-  const toggleBackend = (backend: BackendConfig) => {
+  const toggleBackend = (backend: BackendConfig, confirmed = false) => {
     const queuedCount = summaries[backend.id]?.queuedCount ?? 0;
     if (
       backend.enabled &&
       queuedCount > 0 &&
-      !window.confirm(
+      !confirmed && !window.confirm(
         t("{name} 仍有 {count} 条未发送队列，暂停会丢弃这些消息。确定暂停吗？", {
           name: backend.name,
           count: queuedCount,
@@ -224,6 +231,38 @@ export function BackendManagerSheet({
       setBackendEnabled(registry, backend.id, !backend.enabled),
     );
   };
+
+  const getBackend = (id: unknown) => { const b = registry.backends.find(b => b.id === id); if (!b) throw new Error(t('设备已移除')); return b; };
+  const guard = () => { if (testing) throw new Error(t('正在测试…')); };
+  const editBackend = (backend: BackendConfig) => { guard(); setDraft({ id: backend.id, name: backend.name, gatewayUrl: formatBackendGatewayUrl(backend.baseUrl, backend.token), enabled: backend.enabled, order: backend.order }); setError(''); };
+  useNativeGlobalPanel(nativeRuntime, 'devices', projectDevicePanel({ open, registry, summaries, draft, testing, error, confirmation, transportMode, preference, font, push, hasPush: !!notificationPreference && !!onNotificationPreferenceSave, failedNotificationDevices, appUpdate }), {
+    'panel.close': () => { guard(); onClose(); },
+    'device.add': () => { guard(); setDraft(newBackendDraft(registry.backends.length)); setError(''); },
+    'device.edit': p => editBackend(getBackend(p.id)),
+    'device.change': p => { guard(); if (!draft || !['name', 'gatewayUrl'].includes(String(p.field))) throw new Error(t('设备表单已关闭')); setDraft({ ...draft, [String(p.field)]: String(p.value) }); },
+    'device.save': () => submit(),
+    'device.cancel': () => { guard(); setConfirmation(null); setDraft(null); setError(''); },
+    'device.scan': () => { guard(); return openQrScanner(); },
+    'device.move': p => { guard(); updateRegistry(() => moveBackend(registry, getBackend(p.id).id, Number(p.direction) as -1 | 1)); },
+    'device.toggle': p => {
+      guard(); const b = getBackend(p.id); const count = summaries[b.id]?.queuedCount ?? 0;
+      if (b.enabled && count && p.confirmed !== true) { setConfirmation({ name: 'device.toggle', id: b.id, message: t('{name} 仍有 {count} 条未发送队列，暂停会丢弃这些消息。确定暂停吗？', { name: b.name, count }) }); return; }
+      toggleBackend(b, p.confirmed === true); setConfirmation(null);
+    },
+    'device.remove': p => {
+      guard(); const b = getBackend(p.id); const summary = summaries[b.id];
+      if ((summary?.busy || summary?.approvalCount || summary?.queuedCount) && p.confirmed !== true) { setConfirmation({ name: 'device.remove', id: b.id, message: summary.queuedCount ? t('{name} 仍有 {count} 条未发送队列，确定删除吗？', { name: b.name, count: summary.queuedCount }) : t('{name} 仍有运行任务或待审批请求，确定删除吗？', { name: b.name }) }); return; }
+      deleteBackend(b, p.confirmed === true); setConfirmation(null);
+    },
+    'settings.language': p => { if (!['system', 'zh-CN', 'en'].includes(String(p.value))) throw new Error(t('选项不可用')); setPreference(p.value as any); },
+    'settings.font': p => { if (!['small', 'standard', 'large', 'extra-large'].includes(String(p.value))) throw new Error(t('选项不可用')); font.selectSize(p.value as any); },
+    'settings.transport': p => { guard(); if (!['http', 'stream'].includes(String(p.value))) throw new Error(t('选项不可用')); onTransportModeChange?.(p.value as TransportMode); },
+    'settings.push.mode': p => { if (!['system', 'bark'].includes(String(p.value))) throw new Error(t('选项不可用')); push.setMode(p.value as any); push.setError(''); push.setSaved(false); },
+    'settings.push.url': p => { push.setUrl(String(p.value)); push.setError(''); push.setSaved(false); },
+    'settings.push.save': () => push.save(),
+    'settings.update.check': () => { if (!appUpdate?.manualCheckSupported || appUpdate.checking) throw new Error(t('检查更新不可用')); appUpdate.onCheck(); },
+  });
+  if (!open) return null;
 
   return (
     <>
@@ -255,12 +294,11 @@ export function BackendManagerSheet({
             ? t("定时同步回复，切换后自动重连所有设备")
             : t("实时接收回复，切换后自动重连所有设备")}</small>
         </section>
-        {notificationPreference && onNotificationPreferenceSave && <PushSettings
-          preference={notificationPreference}
-          onSave={onNotificationPreferenceSave}
+        {notificationPreference && onNotificationPreferenceSave && <PushSettingsForm
+          state={push}
           failedDevices={failedNotificationDevices}
         />}
-        <FontSizeSettings />
+        <FontSizeSettingsForm state={font} />
         {draft ? (
           <form className="backend-form" onSubmit={submit}>
             <label>

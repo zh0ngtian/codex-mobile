@@ -86,3 +86,50 @@ it('原图资源URL保留现有token/path鉴权参数并移除thumbnail，不把
  expect(original.searchParams.get('token')).toBe('SECRET');
  expect(original.searchParams.get('path')).toBe('/tmp/原图.png');
 });
+
+it('扩展工作区面板显示真实服务档位权限与项目且校验目录', async () => {
+ const calls: unknown[] = []; const c = controller({ active: { id: '', cwd: '/app', turns: [] }, extended: { state: {
+ speedOptions: [{ id: null, label: '正常' }, { id: 'fast', label: '快速' }], selectedServiceTier: null,
+ permissionModes: [{ id: 'full-access', label: '完全访问权限', description: '允许执行' }], selectedPermissionModeId: 'full-access',
+ projectOptions: ['/app'], backends: [{ id: 'b', name: 'Mac', enabled: true, token: 'NOLEAK' }], activeThreadAccessMode: 'interactive',
+ tokenUsage: { total: { totalTokens: 123 } }, rateLimits: { primary: { usedPercent: 25 } }, pendingAction: 'saving',
+ }, callbacks: { chooseSpeed: v => calls.push(v), choosePermissionMode: v => calls.push(v), chooseNewChatProject: v => calls.push(v) } } });
+ const a = createWorkspaceAdapter(c, { panelId: 'workspace', query: '', setPanel() {}, setQuery() {} });
+ expect(a.snapshot.panel?.items.some(i => i.id === 'speed')).toBe(true);
+ expect(JSON.stringify(a.snapshot.panel)).toContain('123'); expect(JSON.stringify(a.snapshot.panel)).not.toContain('NOLEAK');
+ await a.handlers['speed.select']!({ value: 'fast' }); await a.handlers['permission.select']!({ value: 'full-access' });
+ await expect(Promise.resolve().then(() => a.handlers['speed.select']!({ value: 'bogus' }))).rejects.toThrow();
+ expect(calls).toEqual(['fast', 'full-access']);
+});
+
+it('审批面板保留所有问题与secret并阻止过期请求和无效decision', async () => {
+ const calls: unknown[] = []; const request = { id: 9, method: 'item/tool/requestUserInput', params: { questions: [
+ { id: 'q', header: '密码', question: '请输入密码', isSecret: true, isOther: true, options: [{ label: 'A', description: '选项 A' }] },
+ ] } };
+ const c = controller({ extended: { state: { approval: request, requests: [request], userAnswers: {}, approvalSubmitting: false }, callbacks: { answerApproval: (...v) => calls.push(v), replyToRequest: v => calls.push(v) } } });
+ const a = createWorkspaceAdapter(c, { panelId: 'approval', query: '', setPanel() {}, setQuery() {} });
+ expect(JSON.stringify(a.snapshot.panel)).toContain('secureField');
+ expect(a.snapshot.panel?.items.find(i => i.id === 'approval-submit')?.disabled).toBe(true);
+ await expect(Promise.resolve().then(() => a.handlers['approval.answer']!({ requestKey: 'number:8', questionId: 'q', value: 'late' }))).rejects.toThrow();
+ await a.handlers['approval.answer']!({ requestKey: 'number:9', questionId: 'q', value: 'secret' }); expect(calls).toEqual([['q', 'secret']]);
+ const command = { id: 10, method: 'item/commandExecution/requestApproval', params: { availableDecisions: ['decline', { acceptWithExecpolicyAmendment: { execpolicy_amendment: ['git'] } }] } };
+ c.extended!.state.approval = command;
+ const b = createWorkspaceAdapter(c, { panelId: 'approval', query: '', setPanel() {}, setQuery() {} });
+ await b.handlers['approval.decide']!({ requestKey: 'number:10', index: 1 });
+ expect(calls[1]).toEqual({ decision: { acceptWithExecpolicyAmendment: { execpolicy_amendment: ['git'] } } });
+ await expect(Promise.resolve().then(() => b.handlers['approval.decide']!({ requestKey: 'number:10', index: 20 }))).rejects.toThrow();
+});
+
+it('历史编辑使用原编辑状态并要求显式删除后续确认，队列不确定取消同样确认', async () => {
+ const calls: string[] = []; let shown: string | null = null;
+ const c = controller({ readOnly: true, queued: [{ id: 'q', text: '待确认', state: 'uncertain', hosted: true }], extended: { state: {
+ historyEdit: { threadId: 't', text: '修改', submitting: false, target: { turnId: 'turn', messageId: 'msg', rollbackTurnCount: 2, content: [{ type: 'localImage', path: '/a.png' }] } },
+ }, callbacks: { submitHistoricalMessageEdit: () => calls.push('submit'), changeHistoricalMessageEditText: (v: string) => calls.push(v) } }, cancelQueued: async (_id: string, confirmed?: boolean) => { if (confirmed) calls.push('cancel'); } } as any);
+ const a = createWorkspaceAdapter(c, { panelId: null, query: '', setPanel: id => { shown = id; }, setQuery() {} });
+ expect(a.snapshot.panel?.id).toBe('history-edit');
+ await a.handlers['history.change']!({ value: '新文', editKey: 't:turn:msg' });
+ await a.handlers['history.submit']!({ editKey: 't:turn:msg' }); expect(calls).toEqual(['新文']); expect(shown).toBe('confirm-history');
+ await a.handlers['history.submit']!({ editKey: 't:turn:msg', confirmed: true }); expect(calls).toEqual(['新文', 'submit']);
+ await a.handlers['queue.cancel']!({ id: 'q' }); expect(shown).toBe('confirm-queue:q');
+ await a.handlers['queue.cancel']!({ id: 'q', confirmed: true }); expect(calls).toContain('cancel');
+});

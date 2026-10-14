@@ -146,3 +146,12 @@ it('去重和回执均有界，近期重复请求不重新执行', async () => {
  await runtime.dispatch(command('0', 'turn.stop', { contextId: 'b:t' })); expect(executions).toBe(301);
  runtime.dispose();
 });
+
+it('全局面板独立于会话面板路由并支持无设备的ready引导', async () => {
+ const events: string[] = []; const runtime = new NativeRuntime(() => {});
+ runtime.setGlobalPanel('devices', { id: 'devices', title: '设备', items: [] }, { 'device.add': () => events.push('add') });
+ expect(runtime.snapshot().ready).toBe(true); expect(runtime.snapshot().panel?.id).toBe('devices');
+ expect((await runtime.dispatch({ id: 'add', name: 'device.add', params: {} })).ok).toBe(true);
+ expect(events).toEqual(['add']); runtime.removeGlobalPanel('devices');
+ expect(runtime.snapshot().panel).toBeUndefined(); runtime.dispose();
+});
