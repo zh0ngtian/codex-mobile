@@ -13,6 +13,21 @@ export type LanguagePreference = "system" | Locale;
 const LANGUAGE_STORAGE_KEY = "codex-mobile:language";
 
 const english: Record<string, string> = {
+  "界面模式": "Interface mode",
+  "使用原生界面": "Use native interface",
+  "下次完整启动 App 时生效": "Takes effect after fully restarting the app",
+  "当前环境不支持原生界面设置": "Native interface settings are unavailable in this environment",
+  "原生界面设置响应无效": "Invalid native interface settings response",
+  "保存原生界面设置超时，请重试": "Saving interface settings timed out. Please retry.",
+  "原生界面设置无效": "Invalid native interface setting",
+  "恢复界面切换检查点": "Restore interface switch checkpoint",
+  "恢复草稿": "Restore drafts",
+  "重试恢复": "Retry restoration",
+  "界面设置正在保存，请稍后重试": "Interface settings are being saved. Please retry shortly.",
+  "界面切换检查点存储不可用": "Interface switch checkpoint storage is unavailable",
+  "界面切换检查点存储被阻止": "Interface switch checkpoint storage is blocked",
+  "无法保存界面切换检查点": "Unable to save the interface switch checkpoint",
+
   "附件不支持预览": "Preview is unavailable for this attachment",
   "扫码不可用": "QR scanning is unavailable",
   "设备表单已变化": "The device form has changed",

@@ -1,3 +1,4 @@
+import { isIOSNativeHost } from './preference';
 import { getActiveLocale, t } from '../i18n';
 import { FONT_SCALES, readFontSize } from '../ui/font-size';
 import { emptyNativeSnapshot, type NativeHandlers, type NativeNavigation, type NativeSnapshot, type NativeResult, type NativeParams } from './protocol';
@@ -8,7 +9,7 @@ export function isNativeUIEnabled() {
   const target = window as NativeWindow;
   return target.__CODEX_NATIVE_UI__ === true && typeof target.webkit?.messageHandlers?.nativeUI?.postMessage === 'function';
 }
-const globalNames = new Set(['backend.select', 'navigation.search', 'navigation.sidebar', 'navigation.refresh', 'thread.new', 'thread.open', 'thread.manage', 'project.toggle', 'project.more', 'project.retry', 'navigation.filter', 'confirmation.answer', 'settings.open', 'drafts.open', 'device.add', 'device.edit', 'device.change', 'device.save', 'device.cancel', 'device.scan', 'device.toggle', 'device.remove', 'device.move', 'settings.language', 'settings.font', 'settings.transport', 'settings.push.mode', 'settings.push.url', 'settings.push.save', 'settings.update.check', 'drafts.restore', 'drafts.remove', 'drafts.retry', 'update.install', 'update.retry', 'update.close']);
+const globalNames = new Set(['settings.native-ui', 'backend.select', 'navigation.search', 'navigation.sidebar', 'navigation.refresh', 'thread.new', 'thread.open', 'thread.manage', 'project.toggle', 'project.more', 'project.retry', 'navigation.filter', 'confirmation.answer', 'settings.open', 'drafts.open', 'device.add', 'device.edit', 'device.change', 'device.save', 'device.cancel', 'device.scan', 'device.toggle', 'device.remove', 'device.move', 'settings.language', 'settings.font', 'settings.transport', 'settings.push.mode', 'settings.push.url', 'settings.push.save', 'settings.update.check', 'drafts.restore', 'drafts.remove', 'drafts.retry', 'update.install', 'update.retry', 'update.close']);
 const workspaceNames = new Set(['draft.set', 'draft.save', 'message.send', 'turn.stop', 'model.select', 'effort.select', 'attachment.pick', 'attachment.preview', 'attachment.remove', 'location.insert', 'mention.search', 'mention.insert', 'thread.retry', 'thread.older', 'message.edit', 'message.copy', 'queue.cancel', 'queue.send', 'queue.edit', 'speed.select', 'permission.select', 'newchat.backend', 'newchat.project', 'workspace.thread', 'workspace.rename.change', 'workspace.rename.submit', 'approval.answer', 'approval.decide', 'approval.submit', 'approval.dismiss', 'approval.reopen', 'history.change', 'history.cancel', 'history.submit', 'queue.change', 'file.open', 'file.mode', 'diagram.render']);
 // Task2b 只能经此处显式扩展可调用命令，不能把任意名字转发成 RPC。
 const panelNames = new Set(['panel.open', 'panel.close']);
@@ -29,6 +30,7 @@ const stringKeys: Record<string, string[]> = {
   'drafts.restore': ['id'], 'drafts.remove': ['id'], 'file.open': ['href'], 'file.mode': ['value'], 'diagram.render': ['source'],
 };
 function validate(name: string, params: NativeParams) {
+  if (name === 'settings.native-ui' && typeof params.enabled !== 'boolean') throw new Error(t('原生界面设置无效'));
   if (![globalNames, workspaceNames, panelNames].some(set => set.has(name))) throw new Error(t('不支持的原生命令'));
   for (const key of stringKeys[name] ?? []) if (typeof params[key] !== 'string') throw new Error(t("参数 {key} 必须是字符串", { key }));
   if (params.confirmed !== undefined && typeof params.confirmed !== 'boolean') throw new Error(t('确认参数无效'));
@@ -57,7 +59,7 @@ export class NativeRuntime {
   private listening = false;
   constructor(private publish: (snapshot: NativeSnapshot) => void) {}
   get listenerCount() { return this.listening ? 1 : 0; }
-  private listener = (event: Event) => { if (isNativeUIEnabled()) void this.dispatch((event as CustomEvent).detail); };
+  private listener = (event: Event) => { const detail = (event as CustomEvent).detail; if (isNativeUIEnabled() || (isIOSNativeHost() && detail?.name === 'settings.native-ui')) void this.dispatch(detail); };
   listen() {
     if (this.listening) return;
     this.disposed = false;

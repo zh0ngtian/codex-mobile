@@ -1,3 +1,4 @@
+import { NativeSwitchBoundary, useNativeSwitch, useSwitchRegistry, useSwitchWorkspace } from './native-ui/switch-context';
 import { emptyNativeSnapshot } from './native-ui/protocol';
 import { useNativeConfirmation } from './native-ui/confirmation';
 import { useNativeRuntime, useNativeWorkspace } from "./native-ui/adapters";
@@ -342,6 +343,7 @@ function BackendWorkspace({
   silentRefreshVersion,
   searchQuery,
 }: BackendWorkspaceProps) {
+  const restoredWorkspace = useNativeSwitch()?.restored.get(backend.id);
   const confirmWorkspaceAction = useNativeConfirmation(nativeRuntime, `workspace:${backend.id}`);
   const [connection, setConnection] = useState<ConnectionState>("connecting");
   const [threads, setThreads] = useState<AnyRecord[]>([]);
@@ -369,16 +371,16 @@ function BackendWorkspace({
   >("idle");
   const [searchError, setSearchError] = useState("");
   const [searchRefreshVersion, setSearchRefreshVersion] = useState(0);
-  const [active, setActive] = useState<AnyRecord | null>(() => isNativeUIEnabled() ? { id: "", turns: [], preview: t("新对话"), cwd: null } : null);
-  const [draft, setDraft] = useState("");
-  const savedDraftRef = useRef<SavedDraftReference | undefined>(undefined);
-  const restoredDraftSettingsRef = useRef<SavedNewChatDraft["settings"] | null>(null);
+  const [active, setActive] = useState<AnyRecord | null>(() => restoredWorkspace?.thread ? { ...restoredWorkspace.thread, turns: [] } : isNativeUIEnabled() ? { id: "", turns: [], preview: t("新对话"), cwd: null } : null);
+  const [draft, setDraft] = useState(restoredWorkspace?.text ?? "");
+  const savedDraftRef = useRef<SavedDraftReference | undefined>(restoredWorkspace?.savedDraftReference);
+  const restoredDraftSettingsRef = useRef<SavedNewChatDraft["settings"] | null>(restoredWorkspace?.settings ?? null);
   const draftSavingRef = useRef(false);
   const draftContentVersionRef = useRef(0);
   const [draftSaving, setDraftSaving] = useState(false);
   const [draftSaveStatus, setDraftSaveStatus] = useState("");
-  const [draftImages, setDraftImages] = useState<DraftImage[]>([]);
-  const [draftFiles, setDraftFiles] = useState<DraftFile[]>([]);
+  const [draftImages, setDraftImages] = useState<DraftImage[]>(restoredWorkspace?.images ?? []);
+  const [draftFiles, setDraftFiles] = useState<DraftFile[]>(restoredWorkspace?.files ?? []);
   const currentDraftRef = useRef({ text: draft, images: draftImages, files: draftFiles });
   const sendingDraftContextsRef = useRef(new Set<number>());
   currentDraftRef.current = { text: draft, images: draftImages, files: draftFiles };
@@ -409,14 +411,14 @@ function BackendWorkspace({
   const [syncState, setSyncState] = useState<{ updatedAt: number | null; stale: boolean } | null>(null);
   const [models, setModels] = useState<AnyRecord[]>([]);
   const [permissionProfiles, setPermissionProfiles] = useState<AnyRecord[]>([]);
-  const [selectedModel, setSelectedModel] = useState("");
-  const [selectedEffort, setSelectedEffort] = useState<string | null>(null);
-  const [selectedServiceTier, setSelectedServiceTier] = useState<string | null>(null);
-  const [selectedPermission, setSelectedPermission] = useState("");
+  const [selectedModel, setSelectedModel] = useState(restoredWorkspace?.settings.model ?? "");
+  const [selectedEffort, setSelectedEffort] = useState<string | null>(restoredWorkspace?.settings.effort ?? null);
+  const [selectedServiceTier, setSelectedServiceTier] = useState<string | null>(restoredWorkspace?.settings.serviceTier ?? null);
+  const [selectedPermission, setSelectedPermission] = useState(restoredWorkspace?.settings.permissions ?? "");
   const [selectedApprovalPolicy, setSelectedApprovalPolicy] =
-    useState<ApprovalPolicy>("on-request");
+    useState<ApprovalPolicy>(restoredWorkspace?.settings.approvalPolicy ?? "on-request");
   const [selectedApprovalsReviewer, setSelectedApprovalsReviewer] =
-    useState<ApprovalsReviewer>("user");
+    useState<ApprovalsReviewer>(restoredWorkspace?.settings.approvalsReviewer ?? "user");
   useEffect(() => {
     draftContentVersionRef.current += 1;
     setDraftSaveStatus("");
@@ -434,7 +436,7 @@ function BackendWorkspace({
   const [activeThreadResumeError, setActiveThreadResumeError] = useState("");
   const [openingThreadId, setOpeningThreadId] = useState("");
   const [conversationLoadState, setConversationLoadState] =
-    useState<ConversationLoadState>(() => isNativeUIEnabled() ? "ready" : "idle");
+    useState<ConversationLoadState>(() => restoredWorkspace || isNativeUIEnabled() ? "ready" : "idle");
   const [conversationLoadError, setConversationLoadError] = useState("");
   const [olderTurnsState, setOlderTurnsState] =
     useState<OlderTurnsLoadState>("exhausted");
@@ -461,7 +463,7 @@ function BackendWorkspace({
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const imageReadGenerationRef = useRef(new ImageReadGeneration());
   const draftContextGenerationRef = useRef(0);
-  const activeRef = useRef<AnyRecord | null>(null);
+  const activeRef = useRef<AnyRecord | null>(active);
   const threadsRef = useRef<AnyRecord[]>([]);
   const modelsRef = useRef<AnyRecord[]>([]);
   const selectedModelRef = useRef("");
@@ -4098,6 +4100,16 @@ function BackendWorkspace({
     }
   }
 
+  useSwitchWorkspace(backend.id, {
+    backendId: backend.id, backendName: backend.name, cwd: active?.cwd ?? null,
+    text: draft, images: draftImages, files: draftFiles,
+    thread: active ? { id: String(active.id ?? ''), cwd: active.cwd ?? null, preview: active.preview, isProjectless: active.isProjectless } : null,
+    savedDraftReference: savedDraftRef.current,
+    settings: { model: selectedModel, effort: selectedEffort, serviceTier: effectiveSelectedServiceTier,
+      permissions: newChatPermissionMode?.permissions ?? selectedPermission,
+      approvalPolicy: newChatPermissionMode?.approvalPolicy ?? selectedApprovalPolicy,
+      approvalsReviewer: newChatPermissionMode?.approvalsReviewer ?? selectedApprovalsReviewer },
+  });
   const handledCommandRef = useRef(0);
   useEffect(() => {
     if (
@@ -4399,12 +4411,17 @@ export function App() {
   return <AppBootstrap initialRegistry={initialRegistry} />;
 }
 
-export function AppBootstrap({
+export function AppBootstrap({ initialRegistry }: { initialRegistry: BackendRegistry }) {
+  return <NativeSwitchBoundary initialRegistry={initialRegistry}>{registry => <RestoredAppBootstrap initialRegistry={registry} />}</NativeSwitchBoundary>;
+}
+
+function RestoredAppBootstrap({
   initialRegistry,
 }: {
   initialRegistry: BackendRegistry;
 }) {
   const [registry, setRegistry] = useState(initialRegistry);
+  useSwitchRegistry(registry, !registry.backends.length);
   const [notificationPreference, setNotificationPreference] = useState(() => readNotificationPreference(window.localStorage));
   const saveNotificationPreference = (next: NotificationPreference) => {
     const saved = writeNotificationPreference(window.localStorage, next);
@@ -4523,6 +4540,7 @@ function ConfiguredApp({
   onRegistryChange: (registry: BackendRegistry) => void;
 }) {
   const [registry, setRegistry] = useState(initialRegistry);
+  useSwitchRegistry(registry);
   useEffect(() => { onRegistryChange(registry); }, [registry, onRegistryChange]);
   const [summaries, setSummaries] = useState<
     Record<string, BackendRuntimeSummary>

@@ -1,3 +1,4 @@
+import { useNativeSwitch } from '../../native-ui/switch-context';
 import { useNativeGlobalPanel } from '../../native-ui/adapters';
 import { projectDevicePanel } from '../../native-ui/device-panel';
 import type { NativeRuntime } from '../../native-ui/runtime';
@@ -92,6 +93,7 @@ export function BackendManagerSheet({
   probe?: (backend: BackendConfig) => Promise<GatewayHostInfo>;
   scanQrCode?: () => Promise<string>;
 }) {
+  const nativeSwitch = useNativeSwitch();
   const { preference, setPreference } = useI18n();
   const font = useFontSizeSettings();
   const push = usePushSettingsState(notificationPreference ?? { mode: 'system', barkUrl: '' }, onNotificationPreferenceSave ?? (() => {}));
@@ -280,6 +282,11 @@ export function BackendManagerSheet({
         className="backend-manager-sheet"
         backdropClassName="backend-manager-backdrop"
       >
+        {nativeSwitch && <section className="backend-language-settings" aria-label={t("界面模式")}>
+          <label><input type="checkbox" checked={nativeSwitch.enabled} disabled={nativeSwitch.loading || nativeSwitch.pending}
+            onChange={event => { void nativeSwitch.change(event.target.checked).catch(() => {}); }} />{t("使用原生界面")}</label>
+          <small>{t("下次完整启动 App 时生效")}</small>
+        </section>}
         <section className="backend-language-settings backend-transport-settings" aria-label={t("传输方式")}>
           <strong>{t("传输方式")}</strong>
           <div role="group" aria-label={t("传输方式")}>
