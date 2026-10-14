@@ -1,0 +1,72 @@
+{
+  "date": "2026-10-15",
+  "batchId": "e691dd32-f0a5-4984-80df-06e97c27b588",
+  "status": "complete",
+  "version": "0.2.176",
+  "buildNumber": "2176",
+  "frozenSha": "b02829442883b23cb7ed8a9e963f92ece4cc3769",
+  "tasks": [
+    {
+      "id": "codex-mobile-native-switch-missing-20261015",
+      "sha": "6db54bc0eecbf01d0311a95732a9761813cc6a1f"
+    }
+  ],
+  "formalCI": {
+    "runId": 38601556931,
+    "status": "success"
+  },
+  "developmentCI": {
+    "runId": 38601557025,
+    "status": "success"
+  },
+  "channels": {
+    "apk": {
+      "buildNumber": "2176",
+      "downloadUrl": "http://192.168.123.79:8765/channels/codex-mobile/latest.apk",
+      "pageUrl": "http://192.168.123.79:8765/channels/codex-mobile/latest.json",
+      "sha256": "6c56ab35ba2e8a06d4b3abd462a5607123dbdf370c7c5e30c9798ae42417d6bf",
+      "size": 4753139,
+      "version": "0.2.176"
+    },
+    "ipa": {
+      "buildNumber": "2176",
+      "downloadUrl": "http://192.168.123.79:8765/channels/codex-mobile/latest.ipa",
+      "pageUrl": "http://192.168.123.79:8765/channels/codex-mobile/latest-ios.json",
+      "sha256": "f2baac139c1922054e176134d1dc86ac6ed794d8efe8b4c83716d353d3bba0f8",
+      "signed": true,
+      "size": 4441848,
+      "version": "0.2.176"
+    },
+    "ota": {
+      "buildNumber": "2176",
+      "downloadUrl": "https://192.168.123.79:8766/channels/codex-mobile/releases/0.2.176/latest.ipa",
+      "installUrl": "https://192.168.123.79:8766/channels/codex-mobile/current/install.html",
+      "pageUrl": "https://192.168.123.79:8766/channels/codex-mobile/current/latest-ios.json",
+      "sha256": "f2baac139c1922054e176134d1dc86ac6ed794d8efe8b4c83716d353d3bba0f8",
+      "signed": true,
+      "size": 4441848,
+      "version": "0.2.176"
+    },
+    "source": {
+      "buildVersion": "2176",
+      "developerName": "zh0ngtian",
+      "downloadURL": "https://github.com/zh0ngtian/codex-mobile/releases/download/v0.2.176/CodexMobile-v0.2.176-unsigned.ipa",
+      "sha256": "dd69250959937102a027d5025e4dbf47f005b3658a5e217ca7006f8b746bd8b9",
+      "signed": false,
+      "size": 4421812,
+      "version": "0.2.176"
+    }
+  },
+  "sourceChineseNotesVerified": true,
+  "fixedChannelHeadAndFullGet": "passed",
+  "physicalDevice": {
+    "officialSignedPackageInstalled": true,
+    "installedVersion": "0.2.176",
+    "candidateInterfaceSwitchVisible": true,
+    "switchValue": "0",
+    "preferenceChangedByAgent": false,
+    "temporaryDiagnosticCodeRemoved": true,
+    "officialLaunchCheck": "blocked-by-device-lock",
+    "scope": "候选真机已用ictrl确认开关；正式同SHA签名包已覆盖安装，最终启动被系统Locked拒绝，待解锁复核；未声明所有用户数据及钥匙串逐项验收"
+  }
+}
