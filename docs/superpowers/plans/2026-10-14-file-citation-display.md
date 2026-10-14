@@ -45,12 +45,12 @@ await waitFor(() => expect(client.request).toHaveBeenCalledWith('fs/readFile', {
 
 ## 任务 2：审查、发布及核对
 
-- [ ] 独立范围审查核对以上要求；通过后独立质量审查代码、回归与边界。
-- [ ] 更新 README 当前文件引用能力与本计划实际验证结果。
-- [ ] 执行发布要求的 adapter-regression、coordinator-recovery、build-contract、typecheck，记录真实日志到仓库外 validation。
-- [ ] 推送确定 SHA 后以任务 `codex-mobile-file-citations-20261014` ready；持续 heartbeat，等待客户端批次成功。
-- [ ] 按成功 receipt 核对 GitHub 双端、固定 APK/已签名 IPA、HTTPS OTA、软件源 unsigned 对应版本和中文更新日志。
-- [ ] 交付提供修复摘要、验证边界、固定 OTA/APK/IPA 与双端版本、大小、散列、IPA 签名状态。
+- [x] 独立范围审查核对以上要求；通过后独立质量审查代码、回归与边界。
+- [x] 更新 README 当前文件引用能力与本计划实际验证结果。
+- [x] 执行发布要求的 adapter-regression、coordinator-recovery、build-contract、typecheck，记录真实日志到仓库外 validation。
+- [x] 推送确定 SHA 后以任务 `codex-mobile-file-citations-20261014` ready；持续 heartbeat，等待客户端批次成功。
+- [x] 按成功 receipt 核对 GitHub 双端、固定 APK/已签名 IPA、HTTPS OTA、软件源 unsigned 对应版本和中文更新日志。
+- [x] 交付提供修复摘要、验证边界、固定 OTA/APK/IPA 与双端版本、大小、散列、IPA 签名状态。
 
 ## 本地验收记录
 
@@ -63,3 +63,7 @@ HTML 注释及跨段附件标题范围补充 6 项失败回归后修复，附件
 质量审查发现跨段 HTML 状态生命周期问题；补充 3 项失败回归后，将附件和引用识别合并为单次按文档顺序的 AST 遍历，并共享 HTML 状态。
 
 已有链接保持原始文本，但继续扫描其 HTML 后代以维护共享范围；补充 2 项失败回归后修复，代码节点仍整体跳过。
+
+## 发布完成
+
+客户端批次 `7b4325e8-0441-4571-9500-ab4d317cc906` 已成功，版本 `0.2.173` / 构建号 `2173`，冻结提交 `c826076e0210fa8d2d67fd0d86d455d585e696dd` 包含本任务推送的 `c72eb78508c6cfe9175a28ad929c0a0e54d69cbb`。GitHub 双端、固定 LAN APK 与 Ad Hoc 已签名 IPA、HTTPS OTA 及软件源 unsigned 均核对完成。独立完整下载、大小与 SHA-256、安装页、manifest、开发者署名及中文更新日志回验通过。详情见 [本次验收凭证](evidence/2026-10-14-file-citation-display.json)。

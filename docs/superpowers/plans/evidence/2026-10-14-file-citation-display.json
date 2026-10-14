@@ -1,0 +1,49 @@
+{
+  "status": "passed",
+  "version": "0.2.173",
+  "batchId": "7b4325e8-0441-4571-9500-ab4d317cc906",
+  "taskSha": "c72eb78508c6cfe9175a28ad929c0a0e54d69cbb",
+  "frozenSha": "c826076e0210fa8d2d67fd0d86d455d585e696dd",
+  "githubRelease": "https://github.com/zh0ngtian/codex-mobile/releases/tag/v0.2.173",
+  "tests": {
+    "fileReference": 44,
+    "conversationAndAttachmentsTotal": 141,
+    "mobileBrowser": 4,
+    "adapterRegression": 153,
+    "coordinatorRecovery": 30,
+    "buildContract": 82,
+    "typecheck": "passed",
+    "clientBuild": "passed",
+    "specReview": "passed",
+    "qualityReview": "passed"
+  },
+  "apk": {
+    "version": "0.2.173",
+    "size": 4723291,
+    "sha256": "7c36279b422ca38e524fd1f9e47460794ca89146c185b0f5a2b3d23fdb79547e",
+    "url": "http://192.168.123.79:8765/channels/codex-mobile/latest.apk"
+  },
+  "signedIpa": {
+    "version": "0.2.173",
+    "size": 3792078,
+    "sha256": "baa0d7f25b716ba2dc75065c2e989a3ea702bb8bf7ade7eb99883693f736c273",
+    "url": "http://192.168.123.79:8765/channels/codex-mobile/latest.ipa",
+    "signed": true
+  },
+  "otaInstallUrl": "https://192.168.123.79:8766/channels/codex-mobile/current/install.html",
+  "source": {
+    "version": "0.2.173",
+    "buildVersion": "2173",
+    "downloadURL": "https://github.com/zh0ngtian/codex-mobile/releases/download/v0.2.173/CodexMobile-v0.2.173-unsigned.ipa",
+    "size": 3768640,
+    "sha256": "3ac4da00a0712e474fcd77313b2faabe093b76f7554b65415d0ad0ccf65f7d29",
+    "developerName": "zh0ngtian",
+    "versionDescription": "修复桌面会话中的文件引用直接显示为指令文本、无法点击打开的问题。\n修复用户消息附件列表中的文件名无法打开的问题，中文、空格和括号等文件名可以正确读取并下载。\n代码示例和普通正文保持原样，复制与编辑继续保留完整原始消息。\n"
+  },
+  "verification": "固定 APK/IPA 清单、HEAD 和完整 GET、HTTPS OTA 清单与 manifest、安装页、软件源 unsigned 版本与中文日志均通过独立核对；双端正式 CI 和必要开发 CI 成功",
+  "limitations": [
+    "未进行真机覆盖安装与数据保留验收",
+    "初始 image-preview 有一项旧生成视频用例失败；本次未修改该问题",
+    "未创建真实测试会话，无归档事项"
+  ]
+}
