@@ -13,8 +13,14 @@ enum NativeUITrust {
     (() => {
       const trustedURL = __CODEX_TRUSTED_URL__;
       if (window !== window.top || location.protocol !== "file:" || new URL(location.href).href !== new URL(trustedURL).href) return;
+      window.__CODEX_IOS_HOST__ = true;
       window.__CODEX_NATIVE_UI__ = __CODEX_NATIVE_ENABLED__;
       window.__CODEX_NATIVE_ACTIVE__ = true;
+      window.codexMobileUseLegacyRecovery = function() {
+        if (window !== window.top || location.protocol !== "file:" || new URL(location.href).href !== new URL(trustedURL).href) return;
+        window.__CODEX_NATIVE_UI_RECOVERED__ = true;
+        window.dispatchEvent(new Event("codex-mobile-native-recovery"));
+      };
       window.codexMobileSetNativeActive = function(active) {
         if (window !== window.top || location.protocol !== "file:" || new URL(location.href).href !== new URL(trustedURL).href) return;
         window.__CODEX_NATIVE_ACTIVE__ = active === true;
@@ -82,6 +88,27 @@ enum NativeUITrust {
         (() => {
           if (window !== window.top || location.protocol !== "file:" || new URL(location.href).href !== new URL(\(encodedURL)).href) return;
           window.codexMobileQRComplete?.(\(encoded));
+        })();
+        """
+    }
+
+    static func recoverLegacy(trustedURL: URL) -> String? {
+        guard let encodedURL = json(trustedURL.standardizedFileURL.absoluteString) else { return nil }
+        return """
+        (() => {
+          if (window !== window.top || location.protocol !== "file:" || new URL(location.href).href !== new URL(\(encodedURL)).href) return;
+          window.codexMobileUseLegacyRecovery?.();
+        })();
+        """
+    }
+
+    static func completePreference(id: String, enabled: Bool, active: Bool, error: String?, trustedURL: URL) -> String? {
+        let payload: [String: NativeJSONValue] = ["id": .string(id), "enabled": .bool(enabled), "active": .bool(active), "error": error.map(NativeJSONValue.string) ?? .null]
+        guard let encodedURL = json(trustedURL.standardizedFileURL.absoluteString), let encoded = json(payload) else { return nil }
+        return """
+        (() => {
+          if (window !== window.top || location.protocol !== "file:" || new URL(location.href).href !== new URL(\(encodedURL)).href) return;
+          window.codexMobileNativePreferenceComplete?.(\(encoded));
         })();
         """
     }

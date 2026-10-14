@@ -9,6 +9,8 @@ final class NativeUIBridge: NSObject, WKScriptMessageHandler {
     private weak var webView: WKWebView?
     private let trustedURL = Bundle.main.bundleURL.appendingPathComponent("index.html").standardizedFileURL
     private let qrPresenter = NativeQRPresenter()
+    private var recoveryRequested = false
+    private var legacyVisible = true
     private var active = true
     private var needsLifecycleSync = true
     override init() {
@@ -21,6 +23,7 @@ final class NativeUIBridge: NSObject, WKScriptMessageHandler {
     func attach(_ webView: WKWebView) {
         guard self.webView !== webView else { return }
         self.webView = webView
+        webView.accessibilityElementsHidden = !legacyVisible
         let controller = webView.configuration.userContentController
         controller.removeScriptMessageHandler(forName: "nativeUI")
         controller.add(self, name: "nativeUI")
@@ -34,7 +37,23 @@ final class NativeUIBridge: NSObject, WKScriptMessageHandler {
               message.frameInfo.isMainFrame,
               NativeUITrust.accepts(message.frameInfo.request.url, trustedURL: trustedURL),
               let object = message.body as? [String: Any] else { return }
-        if object["type"] as? String == "ready" { applyLifecycle(); return }
+        if object["type"] as? String == "ready" { applyLifecycle(); if recoveryRequested { recoverLegacy() }; return }
+        if object["type"] as? String == "nativePreference", let id = object["id"] as? String, !id.isEmpty, id.count <= 200 {
+            let preference = NativeUIPreference()
+            var failure: String?
+            if let raw = object["enabled"] {
+                if let number = raw as? NSNumber, CFGetTypeID(number) == CFBooleanGetTypeID() {
+                    do { try preference.save(number.boolValue) }
+                    catch { failure = store.label("界面偏好保存失败，请重试", "Could not save the interface preference. Please retry.") }
+                } else { failure = store.label("界面偏好参数无效", "Invalid interface preference") }
+            }
+            if object["enabled"] != nil { store.receivedNativePreference(preference.enabled, error: failure) }
+            else { store.savedNativePreference = preference.enabled }
+            if let webView, let script = NativeUITrust.completePreference(id: id, enabled: preference.enabled, active: store.nativeEnabled, error: failure, trustedURL: trustedURL) {
+                webView.evaluateJavaScript(script, completionHandler: nil)
+            }
+            return
+        }
         if object["type"] as? String == "scanQR", let id = object["id"] as? String, id.count <= 200, let webView {
             qrPresenter.scan(id: id, webView: webView, chinese: store.snapshot.locale.hasPrefix("zh")) { [weak self] value, error in
                 guard let self, NativeUITrust.accepts(webView.url, trustedURL: self.trustedURL),
@@ -61,6 +80,16 @@ final class NativeUIBridge: NSObject, WKScriptMessageHandler {
             store.snapshot.error = "原生界面数据无法读取：\(error.localizedDescription)"
         }
     }
+    func recoverLegacy() {
+        recoveryRequested = true
+        guard let webView, NativeUITrust.accepts(webView.url, trustedURL: trustedURL),
+              let script = NativeUITrust.recoverLegacy(trustedURL: trustedURL) else { return }
+        webView.evaluateJavaScript(script, completionHandler: nil)
+    }
+    func setLegacyVisible(_ visible: Bool) {
+        legacyVisible = visible
+        webView?.accessibilityElementsHidden = !visible
+    }
     func setActive(_ active: Bool) {
         self.active = active
         needsLifecycleSync = true
@@ -80,11 +109,16 @@ final class NativeUIBridge: NSObject, WKScriptMessageHandler {
         #endif
         guard let webView, NativeUITrust.accepts(webView.url, trustedURL: trustedURL),
               let script = NativeUITrust.dispatch(command, trustedURL: trustedURL) else {
-            store.commandError = store.label("连接尚未就绪，请稍后重试", "The connection is not ready. Please retry.")
+            let message = store.label("连接尚未就绪，请稍后重试", "The connection is not ready. Please retry.")
+            store.commandError = message
+            if command.name == "settings.native-ui" { store.receivedNativePreference(store.savedNativePreference, error: message) }
             return
         }
         webView.evaluateJavaScript(script) { [weak self] _, error in
-            if let error { self?.store.snapshot.error = error.localizedDescription }
+            if let error {
+                self?.store.snapshot.error = error.localizedDescription
+                if command.name == "settings.native-ui", let store = self?.store { store.receivedNativePreference(store.savedNativePreference, error: error.localizedDescription) }
+            }
         }
     }
 }

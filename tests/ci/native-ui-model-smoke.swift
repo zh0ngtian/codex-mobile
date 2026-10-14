@@ -26,6 +26,22 @@ struct NativeStoreSmoke {
         secondScene.command("second-scene")
         precondition(normal.draft == "第一窗口" && secondScene.draft == "第二窗口")
         precondition(firstCommands == ["first-scene"] && secondCommands == ["second-scene"])
+        let switchStore = NativeUIStore(arguments: [])
+        switchStore.savedNativePreference = false
+        var switchCommands: [NativeCommand] = []
+        switchStore.sendCommand = { switchCommands.append($0) }
+        switchStore.requestNativePreference(true)
+        switchStore.requestNativePreference(true)
+        precondition(switchCommands.count == 1 && switchStore.preferenceSaving)
+        precondition(switchCommands[0].name == "settings.native-ui" && switchCommands[0].params == ["enabled": .bool(true)], "切换只能请求共享检查点流程，不直接修改偏好")
+        precondition(!switchStore.savedNativePreference && !switchStore.nativeEnabled)
+        var failedSwitch = NativeSnapshot()
+        failedSwitch.commandResults = [NativeCommandResult(id: switchCommands[0].id, name: "settings.native-ui", ok: false, error: "附件保存失败")]
+        switchStore.receive(failedSwitch)
+        precondition(!switchStore.preferenceSaving && !switchStore.savedNativePreference && switchStore.preferenceError == "附件保存失败")
+        switchStore.requestNativePreference(true)
+        switchStore.receivedNativePreference(true)
+        precondition(switchStore.savedNativePreference && !switchStore.preferenceSaving && switchStore.preferenceError == nil && !switchStore.nativeEnabled)
         let reference = NativeUIStore(arguments: ["--native-ui-reference-conversation"])
         precondition(reference.snapshot.messages.count == 2)
         precondition(NativeMarkdownBlock.parse(reference.snapshot.messages[1].text).contains { $0.kind == .code && $0.text == "print(\"Hello\")" })
@@ -114,11 +130,13 @@ struct NativeStoreSmoke {
         editingSnapshot.commandResults = [NativeCommandResult(id: edits[0].id, name: "field.edit", ok: true, contextId: "mini:edit", fieldKey: wireKey, fieldRevision: 1)]
         editing.receive(editingSnapshot)
         precondition(editing.fieldValue(editable, scope: editingScope) == "第二版", "字段旧回执不能覆盖未确认的新编辑")
+        let staleEditable = editable
         editable.value = "业务规范化后的第二版"
         editingSnapshot.panel?.items = [editable]
         editingSnapshot.commandResults?.append(NativeCommandResult(id: edits[1].id, name: "field.edit", ok: true, contextId: "mini:edit", fieldKey: wireKey, fieldRevision: 2))
         editing.receive(editingSnapshot)
         precondition(editing.fieldValue(editable, scope: editingScope) == "业务规范化后的第二版")
+        precondition(editing.fieldValue(staleEditable, scope: editingScope) == "业务规范化后的第二版", "旧Binding捕获的DTO不能在ACK后倒写输入")
         editing.setFieldValue("被拒绝的输入", item: editable, scope: editingScope)
         editing.sendFieldEdit(editable, scope: editingScope, values: ["value": .string("被拒绝的输入")])
         editingSnapshot.commandResults?.append(NativeCommandResult(id: edits[2].id, name: "field.edit", ok: false, contextId: "mini:edit", error: "输入未通过校验", fieldKey: wireKey, fieldRevision: 3))

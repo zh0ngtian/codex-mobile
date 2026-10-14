@@ -20,6 +20,10 @@ struct NativeUIHost<Legacy: View>: View {
             }
         }
         .environment(\.nativeUIBridge, bridge)
+        .onChange(of: store.showLegacyForRecovery, initial: true) { _, recovery in
+            bridge.setLegacyVisible(!store.nativeEnabled || recovery)
+            if recovery { bridge.recoverLegacy() }
+        }
         .onChange(of: scenePhase, initial: true) { _, phase in bridge.setActive(phase == .active) }
     }
 }

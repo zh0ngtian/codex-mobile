@@ -11,17 +11,27 @@ function bootstrap() {
   return source("NativeUITrust").match(/static let script = """\n([\s\S]*?)\n\s*"""/)![1]
     .replace("__CODEX_TRUSTED_URL__", JSON.stringify(trustedURL)).replace("__CODEX_NATIVE_ENABLED__", "true");
 }
-afterEach(() => { delete (window as any).__CODEX_NATIVE_UI__; delete (window as any).__CODEX_NATIVE_ACTIVE__; delete (window as any).codexMobileSetNativeActive; delete (window as any).codexMobileNativeCommand; delete (window as any).codexMobilePublishNativeSnapshot; delete (window as any).webkit; delete (window as any).codexMobileScanGatewayQr; delete (window as any).codexMobileQRComplete; });
+afterEach(() => { delete (window as any).__CODEX_NATIVE_UI__; delete (window as any).__CODEX_IOS_HOST__; delete (window as any).__CODEX_NATIVE_UI_RECOVERED__; delete (window as any).codexMobileUseLegacyRecovery; delete (window as any).__CODEX_NATIVE_ACTIVE__; delete (window as any).codexMobileSetNativeActive; delete (window as any).codexMobileNativeCommand; delete (window as any).codexMobilePublishNativeSnapshot; delete (window as any).webkit; delete (window as any).codexMobileScanGatewayQr; delete (window as any).codexMobileQRComplete; delete (window as any).codexMobileNativePreferenceComplete; });
 describe("SwiftUI 原生宿主契约", () => {
   it.skipIf(process.platform !== "darwin")("执行真实 Swift store、Codable往返、离线状态与 Markdown 解析", () => {
     const directory = mkdtempSync(join(tmpdir(), "native-model-"));
     try {
-      const names = ["NativeJSONValue", "NativeCommand", "NativeCommandResult", "NativeOption", "NativeBackend", "NativeNavigationItem", "NativeGroup", "NativeAttachment", "NativeMessage", "NativePanelItem", "NativePanel", "NativeSnapshot", "NativeUIStore", "NativeMarkdownBlock", "NativeMarkdownBlockKind", "NativeMarkdownSyntax", "NativeMarkdownInlinePart", "NativeMediaSource", "NativeReferenceAudio", "NativeTextRhythm", "NativeFieldKey", "NativeFieldScope", "NativeImageData", "NativePlainText", "NativeTimelineState", "NativeTextPrompt"];
+      const names = ["NativeJSONValue", "NativeCommand", "NativeCommandResult", "NativeOption", "NativeBackend", "NativeNavigationItem", "NativeGroup", "NativeAttachment", "NativeMessage", "NativePanelItem", "NativePanel", "NativeSnapshot", "NativeUIStore", "NativeUIPreference", "NativeMarkdownBlock", "NativeMarkdownBlockKind", "NativeMarkdownSyntax", "NativeMarkdownInlinePart", "NativeMediaSource", "NativeReferenceAudio", "NativeTextRhythm", "NativeFieldKey", "NativeFieldScope", "NativeImageData", "NativePlainText", "NativeTimelineState", "NativeTextPrompt"];
       const compile = spawnSync("xcrun", ["swiftc", ...names.map(name => `mobile/ios/NativeUI/${name}.swift`), "tests/ci/native-ui-model-smoke.swift", "-o", join(directory, "smoke")], { encoding: "utf8" });
       expect(compile.status, compile.stderr).toBe(0);
       const result = spawnSync(join(directory, "smoke"), [], { encoding: "utf8" });
       expect(result.status, result.stderr).toBe(0);
       expect(result.stdout).toContain("smoke passed");
+    } finally { rmSync(directory, { force: true, recursive: true }); }
+  }, 30000);
+  it.skipIf(process.platform !== "darwin")("原生偏好首次关闭，保存失败回滚且不影响已冻结启动模式", () => {
+    const directory = mkdtempSync(join(tmpdir(), "native-preference-"));
+    try {
+      const compile = spawnSync("xcrun", ["swiftc", "mobile/ios/NativeUI/NativeUIPreference.swift", "tests/ci/native-ui-preference-smoke.swift", "-o", join(directory, "preference")], { encoding: "utf8" });
+      expect(compile.status, compile.stderr).toBe(0);
+      const result = spawnSync(join(directory, "preference"), [], { encoding: "utf8" });
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.stdout).toContain("Preference smoke passed");
     } finally { rmSync(directory, { force: true, recursive: true }); }
   }, 30000);
   it("具有离线原生根、输入、侧栏及设置 UI 验收", () => {
@@ -39,6 +49,15 @@ describe("SwiftUI 原生宿主契约", () => {
     window.addEventListener("codex-mobile-native-command", listener, { once: true });
     (window as any).codexMobileNativeCommand({ id: "c1", name: "draft.set", params: { value: "你好" } });
     expect(listener.mock.calls[0][0].detail).toEqual({ id: "c1", name: "draft.set", params: { value: "你好" } });
+  });
+  it("人工恢复仅切换呈现标记，不修改冻结模式或重新加载业务文档", () => {
+    const changed = vi.fn();
+    window.addEventListener("codex-mobile-native-recovery", changed, { once: true });
+    new Function("location", bootstrap())({ protocol: "file:", href: trustedURL });
+    (window as any).codexMobileUseLegacyRecovery();
+    expect((window as any).__CODEX_NATIVE_UI_RECOVERED__).toBe(true);
+    expect((window as any).__CODEX_NATIVE_UI__).toBe(true);
+    expect(changed).toHaveBeenCalledOnce();
   });
   it("原生场景前后台信号更新共享运行时并触发已有恢复事件", () => {
     new Function("location", bootstrap())({ protocol: "file:", href: trustedURL });
@@ -105,6 +124,13 @@ describe("SwiftUI 原生宿主契约", () => {
       expect(command).not.toHaveBeenCalled();
       new Function("location", output.dispatch)({ protocol: "file:", href: output.normalizedURL });
       expect(command).toHaveBeenCalledWith({ id: "trust-test", name: "draft.set", params: { value: '中文引号"和\\反斜线' } });
+      const preference = vi.fn();
+      (window as any).codexMobileNativePreferenceComplete = preference;
+      new Function("location", output.preference)({ protocol: "file:", href: "file:///private/tmp/index.html" });
+      expect(preference).not.toHaveBeenCalled();
+      new Function("location", output.preference)({ protocol: "file:", href: output.normalizedURL });
+      expect(preference).toHaveBeenCalledWith({ id: "switch-test", enabled: true, active: false, error: null });
+
     } finally { rmSync(directory, { force: true, recursive: true }); }
   }, 30000);
   it("离线基准不挂载业务 WebView，正式模式复用旧实例", () => {

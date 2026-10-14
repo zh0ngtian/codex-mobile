@@ -21,6 +21,9 @@ final class NativeUIStore {
     var textPrompt: NativeTextPrompt? = nil
     var promptValue = ""
     private(set) var caretOffset = 0
+    var savedNativePreference = NativeUIPreference().enabled
+    var preferenceSaving = false
+    var preferenceError: String? = nil
     var notice: String? = nil
     var showLegacyForRecovery = false
     @ObservationIgnored var sendCommand: ((NativeCommand) -> Void)?
@@ -28,7 +31,7 @@ final class NativeUIStore {
     @ObservationIgnored private var timelines: [String: NativeTimelineState] = [:]
     let isReference: Bool
     let nativeEnabled: Bool
-    static let preferenceKey = "codexMobile.useNativeUI"
+    static let preferenceKey = NativeUIPreference.key
     // 与共享运行时的全局命令域一致，导航回执不属于某个工作区。
     private static let globalCommands: Set<String> = [
         "backend.select", "navigation.search", "navigation.sidebar", "navigation.refresh", "navigation.filter",
@@ -36,7 +39,7 @@ final class NativeUIStore {
         "settings.open", "drafts.open", "device.add", "device.edit", "device.change", "device.save", "device.cancel", "device.scan",
         "device.toggle", "device.remove", "device.move", "settings.language", "settings.font", "settings.transport",
         "settings.push.mode", "settings.push.url", "settings.push.save", "settings.update.check", "drafts.restore", "drafts.remove", "drafts.retry",
-        "update.install", "update.retry", "update.close", "confirmation.answer"
+        "update.install", "update.retry", "update.close", "confirmation.answer", "settings.native-ui"
     ]
 
     static let launchPreference = UserDefaults.standard.bool(forKey: preferenceKey)
@@ -92,6 +95,24 @@ final class NativeUIStore {
             }
         }
     }
+    func requestNativePreference(_ enabled: Bool) {
+        guard !preferenceSaving, enabled != savedNativePreference else { return }
+        guard !isReference, sendCommand != nil else {
+            preferenceError = label("连接尚未就绪，请稍后重试", "The connection is not ready. Please retry.")
+            return
+        }
+        preferenceError = nil
+        preferenceSaving = true
+        command("settings.native-ui", ["enabled": .bool(enabled)])
+    }
+
+    func receivedNativePreference(_ enabled: Bool, error: String? = nil) {
+        savedNativePreference = enabled
+        preferenceSaving = false
+        preferenceError = error
+        if error == nil { notice = label("下次完整启动时生效", "Applies at the next full launch") }
+    }
+
     func receive(_ value: NativeSnapshot) {
         guard value.version == 1, !isReference else { return }
         let contextChanged = value.contextId != snapshot.contextId
@@ -111,6 +132,10 @@ final class NativeUIStore {
             }
         }
         for result in value.commandResults ?? [] {
+            if result.name == "settings.native-ui", !receivedResultIDs.contains(result.id) {
+                preferenceSaving = false
+                if !result.ok { preferenceError = result.error ?? label("切换保存失败，请重试", "Could not save the interface setting. Please retry.") }
+            }
             guard result.contextId == nil || result.contextId == value.contextId else { continue }
             if let key = result.fieldKey, let revision = result.fieldRevision {
                 pendingFields = pendingFields.filter { $0.key.wireValue != key || $0.value > revision }
@@ -137,14 +162,42 @@ final class NativeUIStore {
         }
         if pendingSearchRevision == nil, let search = value.search, self.search != search { self.search = search }
     }
+    // SwiftUI diff期间旧Binding仍可读取上一帧DTO；ACK后必须按身份读取当前快照。
+    private func currentItem(_ item: NativePanelItem, scope: NativeFieldScope) -> NativePanelItem {
+        let items: [NativePanelItem]
+        switch scope {
+        case .panel(let id):
+            items = snapshot.panel?.id == id ? snapshot.panel?.items ?? [] : []
+        case .message(let id):
+            if let message = snapshot.messages.first(where: { $0.id == id }) {
+                items = (message.blocks ?? []) + (message.actions ?? [])
+            } else if id == "conversation:\(threadKey)" || id == "history:\(threadKey)" {
+                items = snapshot.conversationActions ?? []
+            } else if let queued = snapshot.queued.first(where: { id == "queue:\($0.id)" }) {
+                items = queued.actions ?? []
+            } else if let group = snapshot.groups.first(where: { id == "group:\($0.id)" }) {
+                items = group.actions ?? []
+            } else {
+                items = snapshot.groups.flatMap(\.items).first(where: { id == "navigation:\($0.id)" })?.actions ?? []
+            }
+        }
+        func find(_ candidates: [NativePanelItem]) -> NativePanelItem? {
+            for candidate in candidates {
+                if candidate.id == item.id { return candidate }
+                if let match = find(candidate.children ?? []) { return match }
+            }
+            return nil
+        }
+        return find(items) ?? item
+    }
     func fieldValue(_ item: NativePanelItem, scope: NativeFieldScope) -> String {
-        fieldValues[NativeFieldKey(scope: scope, itemID: item.id)] ?? item.value ?? ""
+        fieldValues[NativeFieldKey(scope: scope, itemID: item.id)] ?? currentItem(item, scope: scope).value ?? ""
     }
     func setFieldValue(_ value: String, item: NativePanelItem, scope: NativeFieldScope) {
         fieldValues[NativeFieldKey(scope: scope, itemID: item.id)] = value
     }
     func selectedValues(_ item: NativePanelItem, scope: NativeFieldScope) -> [String] {
-        fieldSelections[NativeFieldKey(scope: scope, itemID: item.id)] ?? item.values ?? []
+        fieldSelections[NativeFieldKey(scope: scope, itemID: item.id)] ?? currentItem(item, scope: scope).values ?? []
     }
     func setSelectedValues(_ values: [String], item: NativePanelItem, scope: NativeFieldScope) {
         fieldSelections[NativeFieldKey(scope: scope, itemID: item.id)] = values

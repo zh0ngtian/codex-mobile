@@ -19,7 +19,8 @@ struct NativeUITrustFixture {
             "trustedURL": trusted.absoluteString,
             "normalizedURL": normalized.absoluteString,
             "bootstrap": NativeUITrust.bootstrap(trustedURL: trusted, enabled: true)!,
-            "dispatch": NativeUITrust.dispatch(command, trustedURL: trusted)!
+            "dispatch": NativeUITrust.dispatch(command, trustedURL: trusted)!,
+            "preference": NativeUITrust.completePreference(id: "switch-test", enabled: true, active: false, error: nil, trustedURL: trusted)!
         ]
         print(String(data: try JSONSerialization.data(withJSONObject: output), encoding: .utf8)!)
     }

@@ -4,15 +4,17 @@ struct NativeSettingsView: View {
     @Bindable var store: NativeUIStore
     @Environment(\.dismiss) private var dismiss
     @State private var detailOpen = false
-    @AppStorage(NativeUIStore.preferenceKey) private var useNativeUI = false
     var body: some View {
         NavigationStack {
             Form {
                 Section(store.label("应用", "Application")) {
                     setting("语言", "Language", symbol: "globe", id: "language")
                     setting("字体大小", "Font Size", symbol: "textformat.size", id: "font")
-                    Toggle(store.label("使用原生界面", "Use Native Interface"), isOn: $useNativeUI)
+                    Toggle(store.label("使用原生界面", "Use Native Interface"), isOn: preferenceBinding)
                         .accessibilityIdentifier("native-ui-preference")
+                        .disabled(store.preferenceSaving)
+                    if store.preferenceSaving { ProgressView(store.label("正在保存输入与附件…", "Saving text and attachments…")) }
+                    if let error = store.preferenceError { Text(error).foregroundStyle(.red).accessibilityIdentifier("native-ui-preference-error") }
                     Text(store.label("下次完整启动时生效", "Applies at the next full launch")).font(.caption).foregroundStyle(.secondary)
                 }.listRowBackground(NativePalette.settingsCard)
                 Section(store.label("连接", "Connection")) {
@@ -37,6 +39,9 @@ struct NativeSettingsView: View {
         }
         .interactiveDismissDisabled(store.snapshot.panel?.dismissible == false)
         .modifier(NativeScaledFont(size: 16, scale: store.snapshot.fontScale))
+    }
+    private var preferenceBinding: Binding<Bool> {
+        Binding(get: { store.savedNativePreference }, set: { store.requestNativePreference($0) })
     }
     private var detailBinding: Binding<Bool> {
         Binding(get: { detailOpen }, set: { value in if !value { store.closePanel() }; detailOpen = value })
