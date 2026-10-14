@@ -41,7 +41,7 @@ export function applyTurnCommentary(turns: AnyRecord[], detail: TurnCommentary):
 }
 
 export type TurnChangeStats = { additions: number; deletions: number };
-export type TurnBackfill = Partial<TurnChangeStats> & { images: AnyRecord[]; unavailable?: boolean; source?: string };
+export type TurnBackfill = Partial<TurnChangeStats> & { images: AnyRecord[]; commentaryItems?: AnyRecord[]; messageOrder?: string[]; unavailable?: boolean; source?: string };
 
 export async function loadTurnChangeStatsPage(
   client: Requester,
@@ -75,9 +75,16 @@ export async function loadTurnChangeStatsPage(
         ...(item.savedPath ? { savedPath: item.savedPath } : {}),
         ...(item.result && /^(https?:|data:|\/)/i.test(item.result) ? { result: item.result } : {}),
       }));
+      const commentaryItems = (turn.commentaryItems ?? turn.items ?? []).filter((item: AnyRecord) =>
+        item.type === "agentMessage" && item.phase === "commentary" && typeof item.id === "string" && typeof item.text === "string",
+      ).map((item: AnyRecord) => ({ id: item.id, type: item.type, phase: item.phase, text: item.text }));
+      const messageOrder = (turn.messageOrder ?? (turn.items ?? [])
+        .filter((item: AnyRecord) => ["userMessage", "agentMessage"].includes(item.type))
+        .map((item: AnyRecord) => item.id)).filter((id: unknown) => typeof id === "string");
+      const messages = commentaryItems.length ? { commentaryItems, messageOrder } : {};
       return [String(turn.id), hasTurnChangeStats(turn)
-        ? { ...summarizeTurnChanges(turn), images, ...(turn.changeStatsSource ? { source: turn.changeStatsSource } : {}) }
-        : { unavailable: true, images }];
+        ? { ...summarizeTurnChanges(turn), images, ...messages, ...(turn.changeStatsSource ? { source: turn.changeStatsSource } : {}) }
+        : { unavailable: true, images, ...messages }];
     }),
   );
 }
@@ -93,7 +100,17 @@ export function applyTurnChangeStats(
     if (!detail) return requested.has(String(turn.id))
       ? { ...turn, changeStatsUnavailable: true }
       : turn;
-    const items = [...(turn.items ?? [])];
+    const recovered = detail.commentaryItems?.length
+      ? applyTurnCommentary([turn], { turnId: String(turn.id), items: detail.commentaryItems })[0]
+      : turn;
+    let items: AnyRecord[] = [...(recovered.items ?? [])];
+    if (detail.commentaryItems?.length && detail.messageOrder?.length) {
+      const order = [...new Set(detail.messageOrder)];
+      const known = new Set(order);
+      const byId = new Map(items.map((item) => [item.id, item]));
+      items = [...order.flatMap((id) => byId.has(id) ? [byId.get(id)!] : []),
+        ...items.filter((item) => !known.has(item.id))];
+    }
     const finalIndex = items.findIndex((item: AnyRecord) =>
       item.type === "agentMessage" && item.phase === "final_answer",
     );

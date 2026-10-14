@@ -51,6 +51,20 @@ async function fixture(autoPong = true) {
 }
 
 describe("HTTP 会话", () => {
+  it('完成回合详情复用单次读取回填过程，手机不接收7MB工具输出', async () => {
+    const f = await fixture(); await f.init();
+    f.respond((socket, message) => socket.send(JSON.stringify({ id: message.id, result: { data: [{ id: 'done', status: 'completed', items: [
+      { id: 'u', type: 'userMessage', text: '检查' },
+      { id: 'c', type: 'agentMessage', phase: 'commentary', text: '检查完成前的过程' },
+      { id: 'cmd', type: 'commandExecution', aggregatedOutput: 'x'.repeat(7_000_000) },
+      { id: 'f', type: 'agentMessage', phase: 'final_answer', text: '已完成' },
+    ] }], nextCursor: 'older' } })));
+    const response = await (await f.rpc({ id: 100, method: 'mobile/turns/details', params: { threadId: 't', limit: 1 } })).json() as any;
+    expect(response.result.data[0]).toMatchObject({ commentaryItems: [{ id: 'c', type: 'agentMessage', phase: 'commentary', text: '检查完成前的过程' }], messageOrder: ['u', 'c', 'f'] });
+    expect(f.received.filter(m => m.method === 'thread/turns/list')).toHaveLength(1);
+    expect(JSON.stringify(response).length).toBeLessThan(1024);
+  });
+
   it.each(['http', 'ws'])('commentary 通过 %s 只读投影，参数不透传且工具大正文不下发', async (transport) => {
     const f = await fixture(); await f.init();
     f.respond((socket, message) => socket.send(JSON.stringify({ id: message.id, result: { data: [{
