@@ -81,6 +81,21 @@ function citationNodes(text: Text, options: FileReferencesOptions): PhrasingCont
   return nodes;
 }
 
+function updateHtmlScope(value: string, tags: string[]) {
+  // 先消费非标签 HTML 内容，避免其中的伪标签影响真实标签范围。
+  const tokens = /<!--[\s\S]*?(?:-->|$)|<!\[CDATA\[[\s\S]*?(?:\]\]>|$)|<\?[\s\S]*?(?:\?>|$)|<![^>]*(?:>|$)|<(\/?)([A-Za-z][A-Za-z0-9-]*)\b(?:"[^"]*"|'[^']*'|[^"'<>])*>/g;
+  for (const token of value.matchAll(tokens)) {
+    if (!token[2]) continue;
+    const name = token[2].toLowerCase();
+    if (token[1]) {
+      const index = tags.lastIndexOf(name);
+      if (index >= 0) tags.splice(index);
+    } else if (!/\/\s*>$/.test(token[0]) && !/^(?:area|base|br|col|embed|hr|img|input|link|meta|param|source|track|wbr)$/.test(name)) {
+      tags.push(name);
+    }
+  }
+}
+
 function transformCitations(node: Nodes, options: FileReferencesOptions) {
   if (["link", "linkReference", "code", "inlineCode", "html"].includes(node.type) || !("children" in node)) return;
   const children: Nodes[] = [];
@@ -88,15 +103,7 @@ function transformCitations(node: Nodes, options: FileReferencesOptions) {
   for (const child of node.children) {
     if (child.type === "html") {
       // 行内 HTML 的正文在 mdast 中仍是 text，保留标签范围内的全部内容。
-      for (const tag of child.value.matchAll(/<(\/?)([A-Za-z][A-Za-z0-9-]*)\b(?:"[^"]*"|'[^']*'|[^"'<>])*>/g)) {
-        const name = tag[2].toLowerCase();
-        if (tag[1]) {
-          const index = htmlTags.lastIndexOf(name);
-          if (index >= 0) htmlTags.splice(index);
-        } else if (!/\/\s*>$/.test(tag[0]) && !/^(?:area|base|br|col|embed|hr|img|input|link|meta|param|source|track|wbr)$/.test(name)) {
-          htmlTags.push(name);
-        }
-      }
+      updateHtmlScope(child.value, htmlTags);
       children.push(child);
     } else if (htmlTags.length) {
       children.push(child);
@@ -114,8 +121,10 @@ function transformCitations(node: Nodes, options: FileReferencesOptions) {
 export function remarkFileReferences(options: FileReferencesOptions) {
   return (tree: Root) => {
     let attachments = false;
+    const htmlTags: string[] = [];
     for (const node of tree.children) {
-      if (node.type !== "heading") continue;
+      if (node.type === "html") updateHtmlScope(node.value, htmlTags);
+      if (htmlTags.length || node.type !== "heading") continue;
       const plain = node.children.length === 1 && node.children[0].type === "text"
         ? node.children[0].value : null;
       if (node.depth === 1) attachments = plain?.trim() === "Files mentioned by the user:";

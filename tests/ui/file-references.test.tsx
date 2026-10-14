@@ -127,6 +127,28 @@ describe("桌面会话文件引用", () => {
     },
   );
 
+  it("保留 HTML 标签范围内的附件标题", () => {
+    render(<MarkdownMessage text={"<div>\n\n# Files mentioned by the user:\n\n## 文件.doc: /tmp/文件.doc\n\n</div>"} />);
+    expect(screen.queryByRole("link")).toBeNull();
+    expect(screen.getByRole("heading", { name: "文件.doc: /tmp/文件.doc" })).not.toBeNull();
+  });
+
+  it.each([
+    "<!-- <span> -->", '<!DOCTYPE span SYSTEM "<span>">',
+    "<![CDATA[<span>]]>", "<?fake <span> ?>",
+  ])("HTML 非标签内容 %s 不抑制外部引用", markup => {
+    render(<MarkdownMessage text={`前文 ${markup} :codex-file-citation{path="/tmp/outside.doc"}`} />);
+    expectFileLink("outside.doc", "/tmp/outside.doc");
+  });
+
+  it("HTML 注释里的伪闭合标签不转换内部引用", () => {
+    const inside = ':codex-file-citation{path="/tmp/inside.doc"}';
+    render(<MarkdownMessage text={`<span><!-- </span> -->${inside}</span> 外部 :codex-file-citation{path="/tmp/outside.doc"}`} />);
+    expect(screen.getAllByRole("link")).toHaveLength(1);
+    expectFileLink("outside.doc", "/tmp/outside.doc");
+    expect(screen.getByText(/外部/).textContent).toContain(inside);
+  });
+
   it("三级 My request 标题不结束用户附件区", () => {
     render(<MarkdownMessage text={"# Files mentioned by the user:\n\n### My request:\n\n## 文件.doc: /tmp/文件.doc"} />);
     expectFileLink("文件.doc", "/tmp/文件.doc");
