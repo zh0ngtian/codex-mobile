@@ -106,7 +106,7 @@ describe("SwiftUI 原生宿主契约", () => {
     expect(source("NativeUIBridge")).toContain("message.webView === webView");
     expect(source("NativeUIBridge")).toContain("NativeUITrust.accepts(message.frameInfo.request.url");
   });
-  it.skipIf(process.platform !== "darwin")("执行Swift生产可信URL策略与真实生成脚本，特殊字符和导航变化仍限制首页", () => {
+  it.skipIf(process.platform !== "darwin")("执行Swift生产可信URL策略与真实生成脚本，特殊字符和导航变化仍限制首页", async () => {
     const directory = mkdtempSync(join(tmpdir(), "native-trust-"));
     try {
       const compile = spawnSync("xcrun", ["swiftc", ...["NativeJSONValue", "NativeCommand", "NativeUITrust"].map(name => `mobile/ios/NativeUI/${name}.swift`), "tests/ci/native-ui-trust-fixture.swift", "-o", join(directory, "fixture")], { encoding: "utf8", timeout: swiftCompileTimeout });
@@ -114,6 +114,79 @@ describe("SwiftUI 原生宿主契约", () => {
       const result = spawnSync(join(directory, "fixture"), [], { encoding: "utf8", timeout: swiftExecutionTimeout });
       expect(result.status, result.error?.message ?? result.stderr).toBe(0);
       const output = JSON.parse(result.stdout);
+      const privatePage = output.private;
+      expect(privatePage.trustedURL).toMatch(/^file:\/\/\/private\/tmp\//);
+      expect(privatePage.trustedURL).not.toBe(privatePage.standardizedURL);
+      // 使用隔离的浏览器表面执行真正由 Swift 生产代码生成的每一种脚本。
+      const surface = (href: string, mainFrame = true) => {
+        const target: any = new EventTarget();
+        target.top = mainFrame ? target : {};
+        const document = new EventTarget();
+        const location = { protocol: new URL(href).protocol, href };
+        const postMessage = vi.fn();
+        target.webkit = { messageHandlers: { nativeUI: { postMessage } } };
+        const run = (script: string) => new Function("window", "document", "location", "Date", script)(target, document, location, { now: () => 0 });
+        return { target, document, location, postMessage, run };
+      };
+      const page = surface(privatePage.trustedURL);
+      page.run(privatePage.bootstrap);
+      expect(page.target.__CODEX_IOS_HOST__, "原始 /private 首页必须取得原生宿主标记").toBe(true);
+      expect(page.target.__CODEX_NATIVE_UI__).toBe(true);
+      expect(page.postMessage).toHaveBeenCalledWith({ type: "ready" });
+      const receivedCommand = vi.fn();
+      page.target.addEventListener("codex-mobile-native-command", receivedCommand);
+      page.run(privatePage.dispatch);
+      expect(receivedCommand.mock.calls[0][0].detail).toEqual({ id: "trust-test", name: "draft.set", params: { value: '中文引号"和\\反斜线' } });
+      const preferenceReceipt = vi.fn();
+      page.target.codexMobileNativePreferenceComplete = preferenceReceipt;
+      page.run(privatePage.preference);
+      expect(preferenceReceipt).toHaveBeenCalledWith({ id: "switch-test", enabled: true, active: false, error: null });
+      const visibility = vi.fn();
+      const focus = vi.fn();
+      page.document.addEventListener("visibilitychange", visibility);
+      page.target.addEventListener("focus", focus);
+      page.run(privatePage.lifecycleInactive);
+      expect(page.target.__CODEX_NATIVE_ACTIVE__).toBe(false);
+      page.run(privatePage.lifecycleActive);
+      expect(page.target.__CODEX_NATIVE_ACTIVE__).toBe(true);
+      expect(visibility).toHaveBeenCalledTimes(2);
+      expect(focus).toHaveBeenCalledOnce();
+      const scan = page.target.codexMobileScanGatewayQr();
+      expect(page.postMessage).toHaveBeenLastCalledWith({ type: "scanQR", id: "qr-0-1" });
+      page.run(privatePage.qr);
+      await expect(scan).resolves.toBe("https://gateway.example/?token=中文");
+      const recovery = vi.fn();
+      page.target.addEventListener("codex-mobile-native-recovery", recovery);
+      page.run(privatePage.recovery);
+      expect(page.target.__CODEX_NATIVE_UI_RECOVERED__).toBe(true);
+      expect(recovery).toHaveBeenCalledOnce();
+      for (const [href, mainFrame] of [
+        [privatePage.standardizedURL, true],
+        [privatePage.trustedURL + "?x=1", true],
+        [privatePage.trustedURL + "#x", true],
+        [privatePage.trustedURL.replace("index.html", "other.html"), true],
+        ["file:///private/tmp/index.html", true],
+        ["https://example.com/index.html", true],
+        [privatePage.trustedURL, false]
+      ] as const) {
+        const rejected = surface(href, mainFrame);
+        rejected.run(privatePage.bootstrap);
+        expect(rejected.target.__CODEX_IOS_HOST__).toBeUndefined();
+        expect(rejected.target.codexMobilePublishNativeSnapshot).toBeUndefined();
+        expect(rejected.postMessage).not.toHaveBeenCalled();
+        const callbacks = ["codexMobileNativeCommand", "codexMobileNativePreferenceComplete", "codexMobileSetNativeActive", "codexMobileQRComplete", "codexMobileUseLegacyRecovery"];
+        for (const callback of callbacks) rejected.target[callback] = vi.fn();
+        for (const script of [privatePage.dispatch, privatePage.preference, privatePage.lifecycleInactive, privatePage.lifecycleActive, privatePage.qr, privatePage.recovery]) rejected.run(script);
+        for (const callback of callbacks) expect(rejected.target[callback]).not.toHaveBeenCalled();
+        // 导航后，已安装 bootstrap 闭包内的生命周期与恢复入口同样拒绝。
+        page.location.href = href;
+        page.location.protocol = new URL(href).protocol;
+        page.target.top = mainFrame ? page.target : {};
+        page.target.codexMobileSetNativeActive(false);
+        page.target.codexMobileUseLegacyRecovery();
+        expect(visibility).toHaveBeenCalledTimes(2);
+        expect(recovery).toHaveBeenCalledOnce();
+      }
       const install = (href: string) => new Function("location", output.bootstrap)({ protocol: new URL(href).protocol, href });
       for (const href of ["file:///private/tmp/index.html", output.trustedURL.replace("index.html", "other.html"), output.trustedURL + "?x=1", output.trustedURL + "#x", "https://example.com/index.html"]) {
         install(href);
@@ -137,6 +210,15 @@ describe("SwiftUI 原生宿主契约", () => {
 
     } finally { rmSync(directory, { force: true, recursive: true }); }
   }, swiftContractTimeout);
+  it("桥与 WebView 使用同一原始 Bundle 首页资源，缺失时明确报告不可用", () => {
+    const bridge = source("NativeUIBridge");
+    expect(bridge).toContain('private let trustedURL = Bundle.main.url(forResource: "index", withExtension: "html")');
+    expect(bridge).not.toContain("Bundle.main.bundleURL.appendingPathComponent");
+    expect(bridge).not.toContain("standardizedFileURL");
+    expect(bridge).toContain("guard let trustedURL else");
+    expect(bridge).toContain("内置首页资源不可用");
+    expect(bridge).toContain("message.frameInfo.isMainFrame");
+  });
   it("离线基准不挂载业务 WebView，正式模式复用旧实例", () => {
     expect(source("NativeUIHost")).toMatch(/if !store.isReference \{\s+legacy/);
     expect(source("NativeUIBridge")).not.toContain("WKWebView(frame:");

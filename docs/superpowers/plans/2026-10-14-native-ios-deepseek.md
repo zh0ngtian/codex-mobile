@@ -84,7 +84,7 @@
 - [x] 静态与运行时AX核对控件名称，动态字号核心操作仍可达；Reduce Motion取消大幅位移。未声称真机VoiceOver手势已验证。
 - [x] 独立真实网关会话完成发送、回复与归档，切换中的图片和正文真实重启恢复；审批、历史/分页、队列、工具与Diff采用实际App控制器回归和原生富内容参考用例分层覆盖。
 - [x] 更新新鲜402pt并排对照及叠图，保留CM模型/推理/Skill入口、移除DeepSeek独有操作的有意差异。
-- [x] 真机连接检查仍为unavailable；没有把模拟器或设备构建当作覆盖安装和数据保留验证。
+- [x] 初次真机检查不可用，发布前再次检查已连接；自动化服务因开发者证书未信任而未取得READY。用户明确要求先不用真机，以模拟器验证完成本轮验收，未执行应用覆盖安装或声称数据保留已验证。
 - [x] 规格、SwiftUI质量与最终整合审查通过；修复发现的输入旧绑定、切换未就绪超时、已有线程恢复配置覆盖及发布日志缺失问题。
 
 详见 `docs/research/deepseek-ios-2026-10-14/native-validation.json`。旧Web的安全区与URL连续收键盘回归通过；两个旧中文输入/发送自动化在iOS27仍存在基线焦点时序失败，原ZStack无原生宿主对照同样复现，未记为通过。键盘34pt假阳性已用真实逐帧采样替换旧瞬态viewport推算，严格阈值和真实尾跳正对照均保留。
@@ -92,9 +92,9 @@
 ## Task 5：协调发布与交付
 
 - [x] `git diff --check`、121文件/1214项全量、106项本机默认Node构建契约、157项发布Python、30项协调恢复及typecheck通过，保存四项required checks日志；ready文件绑定随后推送的固定SHA。
-- [ ] 提交并推送固定 SHA，再 `releasectl ready`；不得自行创建正式版本或独立发包。
-- [ ] 等待成功 batch receipt，核对 GitHub 双端、LAN APK/签名 IPA、HTTPS OTA、unsigned 软件源版本/中文日志。
-- [ ] 回复固定 OTA 安装页、APK、IPA 链接与两端版本/大小/SHA-256、IPA 签名状态，说明默认旧界面及开关路径。
+- [x] 提交并推送固定 SHA，再 `releasectl ready`；不得自行创建正式版本或独立发包。原任务 `18bdda7`，云端冷启动 Swift 契约编译时限修复 `0249f25`，新批次同时包含两项任务。
+- [x] 成功批次 `b242af96-f94b-4190-8c07-6a13b1789c02` 发布 `0.2.175` / `2175`，冻结 `032186d778d21e0e4c58848c79fce58b0752f29c`；原任务 recovered 指向同一成功凭证。GitHub 双端、LAN APK/签名 IPA、HTTPS OTA 和 unsigned 软件源均回验通过，中文日志与本版实际变化一致。详见 [发布验收记录](../../research/deepseek-ios-2026-10-14/native-release-acceptance.json)。
+- [x] 交付使用固定 OTA 安装页、APK、IPA 链接及成功凭证中的两端版本/大小/SHA-256和 IPA 签名状态；默认旧界面及双向开关路径见 README 与本轮交付正文。
 
 ## 计划自检
 

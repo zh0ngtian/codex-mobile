@@ -2,6 +2,8 @@
 
 本次通过 `ictrl-phone-control` 操作已安装的 DeepSeek，记录页面、导航、截图、可见 UI 层级与交互状态，为 Codex Mobile 后续 iOS 原生界面设计提供参考。这里只描述观察事实与待确认项，未确定新产品架构，也未修改客户端运行代码。
 
+后续实现已于 2026-10-15 发布为 `0.2.175`：见 [原生实现设计](native-implementation-design.md)、[模拟器验证与边界](native-validation.json)、[发布验收记录](native-release-acceptance.json)及[界面对照图](native-ui-comparison.png)。下文保留探索当时的观察与待确认项。
+
 ## 证据与环境
 
 - 时间：2026-10-14 00:29–00:40，Asia/Shanghai。

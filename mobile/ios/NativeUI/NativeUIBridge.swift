@@ -7,7 +7,8 @@ final class NativeUIBridge: NSObject, WKScriptMessageHandler {
     let store = NativeUIStore()
     // 业务 WebView 由既有 WebView representable 创建并拥有；桥仅保留弱引用，绝不创建第二个实例。
     private weak var webView: WKWebView?
-    private let trustedURL = Bundle.main.bundleURL.appendingPathComponent("index.html").standardizedFileURL
+    // 与业务 WebView.loadFileURL 使用同一资源 URL，保留 WebKit 实际加载的 /private 路径。
+    private let trustedURL = Bundle.main.url(forResource: "index", withExtension: "html")
     private let qrPresenter = NativeQRPresenter()
     private var recoveryRequested = false
     private var legacyVisible = true
@@ -22,6 +23,10 @@ final class NativeUIBridge: NSObject, WKScriptMessageHandler {
     }
     func attach(_ webView: WKWebView) {
         guard self.webView !== webView else { return }
+        guard let trustedURL else {
+            store.snapshot.error = store.label("内置首页资源不可用", "The bundled home page is unavailable")
+            return
+        }
         self.webView = webView
         webView.accessibilityElementsHidden = !legacyVisible
         let controller = webView.configuration.userContentController
@@ -33,7 +38,7 @@ final class NativeUIBridge: NSObject, WKScriptMessageHandler {
         store.sendCommand = { [weak self] command in self?.dispatch(command) }
     }
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
-        guard message.name == "nativeUI", message.webView === webView,
+        guard let trustedURL, message.name == "nativeUI", message.webView === webView,
               message.frameInfo.isMainFrame,
               NativeUITrust.accepts(message.frameInfo.request.url, trustedURL: trustedURL),
               let object = message.body as? [String: Any] else { return }
@@ -56,8 +61,9 @@ final class NativeUIBridge: NSObject, WKScriptMessageHandler {
         }
         if object["type"] as? String == "scanQR", let id = object["id"] as? String, id.count <= 200, let webView {
             qrPresenter.scan(id: id, webView: webView, chinese: store.snapshot.locale.hasPrefix("zh")) { [weak self] value, error in
-                guard let self, NativeUITrust.accepts(webView.url, trustedURL: self.trustedURL),
-                      let script = NativeUITrust.completeQR(id: id, value: value, error: error, trustedURL: self.trustedURL) else { return }
+                guard let self, let trustedURL = self.trustedURL,
+                      NativeUITrust.accepts(webView.url, trustedURL: trustedURL),
+                      let script = NativeUITrust.completeQR(id: id, value: value, error: error, trustedURL: trustedURL) else { return }
                 webView.evaluateJavaScript(script, completionHandler: nil)
             }
             return
@@ -82,7 +88,7 @@ final class NativeUIBridge: NSObject, WKScriptMessageHandler {
     }
     func recoverLegacy() {
         recoveryRequested = true
-        guard let webView, NativeUITrust.accepts(webView.url, trustedURL: trustedURL),
+        guard let trustedURL, let webView, NativeUITrust.accepts(webView.url, trustedURL: trustedURL),
               let script = NativeUITrust.recoverLegacy(trustedURL: trustedURL) else { return }
         webView.evaluateJavaScript(script, completionHandler: nil)
     }
@@ -96,7 +102,7 @@ final class NativeUIBridge: NSObject, WKScriptMessageHandler {
         applyLifecycle()
     }
     private func applyLifecycle() {
-        guard let webView, NativeUITrust.accepts(webView.url, trustedURL: trustedURL),
+        guard let trustedURL, let webView, NativeUITrust.accepts(webView.url, trustedURL: trustedURL),
               let script = NativeUITrust.lifecycle(active: active, trustedURL: trustedURL) else { return }
         needsLifecycleSync = false
         webView.evaluateJavaScript(script) { [weak self] _, error in
@@ -107,7 +113,7 @@ final class NativeUIBridge: NSObject, WKScriptMessageHandler {
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("--native-ui-trace") { print("Native command \(command.name)") }
         #endif
-        guard let webView, NativeUITrust.accepts(webView.url, trustedURL: trustedURL),
+        guard let trustedURL, let webView, NativeUITrust.accepts(webView.url, trustedURL: trustedURL),
               let script = NativeUITrust.dispatch(command, trustedURL: trustedURL) else {
             let message = store.label("连接尚未就绪，请稍后重试", "The connection is not ready. Please retry.")
             store.commandError = message

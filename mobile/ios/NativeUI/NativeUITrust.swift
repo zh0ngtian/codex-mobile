@@ -53,14 +53,15 @@ enum NativeUITrust {
     })();
     """
 
+    // WebKit location 保留 /private 等原始加载路径；标准化仅用于原生文件信任判断。
     static func bootstrap(trustedURL: URL, enabled: Bool) -> String? {
-        guard let encodedURL = json(trustedURL.standardizedFileURL.absoluteString) else { return nil }
+        guard let encodedURL = json(trustedURL.absoluteString) else { return nil }
         return script.replacingOccurrences(of: "__CODEX_NATIVE_ENABLED__", with: enabled ? "true" : "false")
             .replacingOccurrences(of: "__CODEX_TRUSTED_URL__", with: encodedURL)
     }
 
     static func dispatch(_ command: NativeCommand, trustedURL: URL) -> String? {
-        guard let encodedURL = json(trustedURL.standardizedFileURL.absoluteString),
+        guard let encodedURL = json(trustedURL.absoluteString),
               let encodedCommand = json(command) else { return nil }
         // 在实际执行 JS 的时刻再次核对 URL，覆盖原生检查后导航发生变化的窗口。
         return """
@@ -72,7 +73,7 @@ enum NativeUITrust {
         """
     }
     static func lifecycle(active: Bool, trustedURL: URL) -> String? {
-        guard let encodedURL = json(trustedURL.standardizedFileURL.absoluteString) else { return nil }
+        guard let encodedURL = json(trustedURL.absoluteString) else { return nil }
         return """
         (() => {
           if (window !== window.top || location.protocol !== "file:" || new URL(location.href).href !== new URL(\(encodedURL)).href) return;
@@ -83,7 +84,7 @@ enum NativeUITrust {
 
     static func completeQR(id: String, value: String?, error: String?, trustedURL: URL) -> String? {
         let payload: [String: NativeJSONValue] = ["id": .string(id), "value": value.map(NativeJSONValue.string) ?? .null, "error": error.map(NativeJSONValue.string) ?? .null]
-        guard let encodedURL = json(trustedURL.standardizedFileURL.absoluteString), let encoded = json(payload) else { return nil }
+        guard let encodedURL = json(trustedURL.absoluteString), let encoded = json(payload) else { return nil }
         return """
         (() => {
           if (window !== window.top || location.protocol !== "file:" || new URL(location.href).href !== new URL(\(encodedURL)).href) return;
@@ -93,7 +94,7 @@ enum NativeUITrust {
     }
 
     static func recoverLegacy(trustedURL: URL) -> String? {
-        guard let encodedURL = json(trustedURL.standardizedFileURL.absoluteString) else { return nil }
+        guard let encodedURL = json(trustedURL.absoluteString) else { return nil }
         return """
         (() => {
           if (window !== window.top || location.protocol !== "file:" || new URL(location.href).href !== new URL(\(encodedURL)).href) return;
@@ -104,7 +105,7 @@ enum NativeUITrust {
 
     static func completePreference(id: String, enabled: Bool, active: Bool, error: String?, trustedURL: URL) -> String? {
         let payload: [String: NativeJSONValue] = ["id": .string(id), "enabled": .bool(enabled), "active": .bool(active), "error": error.map(NativeJSONValue.string) ?? .null]
-        guard let encodedURL = json(trustedURL.standardizedFileURL.absoluteString), let encoded = json(payload) else { return nil }
+        guard let encodedURL = json(trustedURL.absoluteString), let encoded = json(payload) else { return nil }
         return """
         (() => {
           if (window !== window.top || location.protocol !== "file:" || new URL(location.href).href !== new URL(\(encodedURL)).href) return;
