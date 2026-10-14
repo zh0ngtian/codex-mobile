@@ -76,8 +76,25 @@ final class NativeUIUITests: XCTestCase {
         XCTAssertFalse(alert.buttons["保存"].isEnabled)
         alert.textFields.firstMatch.tap()
         alert.textFields.firstMatch.typeText("已修改名称")
+        XCTAssertTrue(alert.buttons["保存"].isEnabled, app.debugDescription)
         alert.buttons["保存"].tap()
-        XCTAssertFalse(alert.exists)
+        expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: alert)
+        waitForExpectations(timeout: 3)
+    }
+
+    func testSidebarRenameCanCancel() {
+        let app = reference(true)
+        app.buttons["native-sidebar-open"].tap()
+        app.otherElements["native-sidebar"].scrollViews.firstMatch.swipeUp()
+        app.buttons["native-navigation-conversation"].press(forDuration: 1)
+        app.buttons["重命名"].tap()
+        let alert = app.alerts["重命名会话"]
+        XCTAssertTrue(alert.waitForExistence(timeout: 3))
+        alert.textFields.firstMatch.tap()
+        alert.textFields.firstMatch.typeText("已修改名称")
+        alert.buttons["取消"].tap()
+        expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: alert)
+        waitForExpectations(timeout: 3)
     }
 
     func testSettingsChildPageReturnsWithinSettings() {
@@ -136,7 +153,7 @@ final class NativeUIUITests: XCTestCase {
 
     func testLiveBootstrapClosesDeviceForm() {
         let app = XCUIApplication()
-        app.launchArguments = ["--native-ui-live", "--native-ui-trace"]
+        app.launchArguments = ["--native-ui-live"]
         app.launch()
         let field = app.textFields["native-field-name"]
         XCTAssertTrue(field.waitForExistence(timeout: 10))
