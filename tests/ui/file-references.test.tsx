@@ -149,6 +149,28 @@ describe("桌面会话文件引用", () => {
     expect(screen.getByText(/外部/).textContent).toContain(inside);
   });
 
+  it("跨段落保留 HTML 内部引用并在闭合后恢复转换", () => {
+    const inside = ':codex-file-citation{path="/tmp/inside.doc"}';
+    render(<MarkdownMessage text={`<span>开头\n\n${inside}\n\n</span>\n\n:codex-file-citation{path="/tmp/outside.doc"}`} />);
+    expect(screen.getAllByRole("link")).toHaveLength(1);
+    expectFileLink("outside.doc", "/tmp/outside.doc");
+    expect(screen.getByText(inside)).not.toBeNull();
+  });
+
+  it("跨段落 HTML 内附件标题保持原样且闭合后恢复识别", () => {
+    render(<MarkdownMessage text={"<span>开头\n\n# Files mentioned by the user:\n\n## file.doc: /tmp/file.doc\n\n</span>\n\n# Files mentioned by the user:\n\n## outside.doc: /tmp/outside.doc"} />);
+    expect(screen.getAllByRole("link")).toHaveLength(1);
+    expectFileLink("outside.doc", "/tmp/outside.doc");
+    expect(screen.getByRole("heading", { name: "file.doc: /tmp/file.doc" })).not.toBeNull();
+  });
+
+  it("遍历 HTML 内格式节点中的闭合标签并恢复外部引用", () => {
+    render(<MarkdownMessage text='<span>**内部 </span> 外部 :codex-file-citation{path="/tmp/outside.doc"}** 后文 :codex-file-citation{path="/tmp/after.doc"}' />);
+    expect(screen.getAllByRole("link")).toHaveLength(2);
+    expectFileLink("outside.doc", "/tmp/outside.doc");
+    expectFileLink("after.doc", "/tmp/after.doc");
+  });
+
   it("三级 My request 标题不结束用户附件区", () => {
     render(<MarkdownMessage text={"# Files mentioned by the user:\n\n### My request:\n\n## 文件.doc: /tmp/文件.doc"} />);
     expectFileLink("文件.doc", "/tmp/文件.doc");

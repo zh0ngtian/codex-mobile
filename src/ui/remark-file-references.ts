@@ -96,21 +96,39 @@ function updateHtmlScope(value: string, tags: string[]) {
   }
 }
 
-function transformCitations(node: Nodes, options: FileReferencesOptions) {
-  if (["link", "linkReference", "code", "inlineCode", "html"].includes(node.type) || !("children" in node)) return;
+type ReferenceState = { htmlTags: string[]; attachments: boolean };
+
+function transformReferences(
+  node: Nodes,
+  options: FileReferencesOptions,
+  state: ReferenceState,
+  parentType?: Nodes["type"],
+) {
+  if (node.type === "html") {
+    updateHtmlScope(node.value, state.htmlTags);
+    return;
+  }
+  if (["link", "linkReference", "code", "inlineCode"].includes(node.type) || !("children" in node)) return;
+
+  if (parentType === "root" && node.type === "heading" && !state.htmlTags.length) {
+    const plain = node.children.length === 1 && node.children[0].type === "text"
+      ? node.children[0].value : null;
+    if (node.depth === 1) state.attachments = plain?.trim() === "Files mentioned by the user:";
+    if (node.depth === 2 && plain?.trim() === "My request:") state.attachments = false;
+    if (state.attachments && node.depth === 2 && plain !== null) {
+      const file = plain.match(/^(.+?):\s+(\/[^\r\n]+)$/);
+      const link = file ? fileLink(file[2], file[1], options) : null;
+      if (link) node.children = [link];
+    }
+  }
+
   const children: Nodes[] = [];
-  const htmlTags: string[] = [];
   for (const child of node.children) {
-    if (child.type === "html") {
-      // 行内 HTML 的正文在 mdast 中仍是 text，保留标签范围内的全部内容。
-      updateHtmlScope(child.value, htmlTags);
-      children.push(child);
-    } else if (htmlTags.length) {
-      children.push(child);
-    } else if (child.type === "text") {
+    if (child.type === "text" && !state.htmlTags.length) {
       children.push(...citationNodes(child, options));
     } else {
-      transformCitations(child, options);
+      // HTML 内仍遍历格式节点，以便真正的闭合标签恢复后续文本转换。
+      transformReferences(child, options, state, node.type);
       children.push(child);
     }
   }
@@ -120,21 +138,7 @@ function transformCitations(node: Nodes, options: FileReferencesOptions) {
 /** 将桌面消息的文件元数据转换为现有 Markdown 文件链接，不修改消息原文。 */
 export function remarkFileReferences(options: FileReferencesOptions) {
   return (tree: Root) => {
-    let attachments = false;
-    const htmlTags: string[] = [];
-    for (const node of tree.children) {
-      if (node.type === "html") updateHtmlScope(node.value, htmlTags);
-      if (htmlTags.length || node.type !== "heading") continue;
-      const plain = node.children.length === 1 && node.children[0].type === "text"
-        ? node.children[0].value : null;
-      if (node.depth === 1) attachments = plain?.trim() === "Files mentioned by the user:";
-      if (node.depth === 2 && plain?.trim() === "My request:") attachments = false;
-      if (!attachments || node.depth !== 2 || plain === null) continue;
-      const file = plain.match(/^(.+?):\s+(\/[^\r\n]+)$/);
-      if (!file) continue;
-      const link = fileLink(file[2], file[1], options);
-      if (link) node.children = [link];
-    }
-    transformCitations(tree, options);
+    // 整篇文档按 mdast 顺序共用范围状态，不在段落或格式节点边界重置。
+    transformReferences(tree, options, { htmlTags: [], attachments: false });
   };
 }
