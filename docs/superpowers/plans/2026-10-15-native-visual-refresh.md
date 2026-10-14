@@ -40,16 +40,18 @@
 
 验证：`tests/ci/ios-native-ui.test.ts` 15/15通过，新增114条真实Swift断言；独立规格与质量复审均通过。最终普通段落方案仅新增DisplaySource与HTMLScope两个Foundation类型，移除了跨行临时代码token。模拟器完整编译通过，构建日志`build_sim_2026-10-14T18-26-22-200Z_pid23807_56759bc0.log`。本阶段未改变视觉token或JS复制业务。
 
+只读重开已有长文对话后，原先裸露的加粗星号与文件元指令已不再显示，文件引用显示为文件名；私有截图保存在`.mobile-build/native-design-audit-2026-10-15/08-live-prose-rendering-fixed.png`。这仅验证正文修复，不作为最终视觉验收截图。
+
 ## Task 2：补齐现有业务的展示元数据与分组
 
 **Files:** `src/native-ui/protocol.ts`、`projection.ts`、`workspace-adapter.ts`、`src/App.tsx`原有原生命令接线；Swift对应DTO；`tests/ui/native-ui-*.test.ts*`和真实Swift Codable契约。
 
-- [ ] TDD新增可选展示字段（空/旧DTO仍解码）：项目名/设备名、消息时间、分组类别、项目新对话命令。不得把访问口令或BackendConfig放入快照。
-- [ ] 默认导航同时显示置顶/项目/最近，搜索时展示搜索结果；复用既有排序、项目5条分页、折叠状态及“更多”。置顶仍保留在原项目中。
-- [ ] 项目右侧新对话按钮使用明确的backendId/cwd，验证目标仍存在，复用已有新对话路由；不发起`thread/start`直到用户发送。
-- [ ] 设备选择放入顶部菜单，保留全部设备与单设备；设置、草稿、刷新仍可达。
-- [ ] 模型/推理/速度/权限继续复用既有会话设置与命令；Skill/插件可从附件菜单和@进入。只改变入口展示，不复制业务。
-- [ ] 投影/上下文/旧DTO/取消输入/只读回归通过，规格与质量审查后提交。
+- [x] TDD新增可选展示字段（空/旧DTO仍解码）：项目名/设备名、消息时间、分组类别、项目新对话命令。不得把访问口令或BackendConfig放入快照。
+- [x] 默认导航同时显示置顶/项目/最近，搜索时展示搜索结果；复用既有排序、项目5条分页、折叠状态及“更多”。置顶仍保留在原项目中。
+- [x] 项目右侧新对话按钮使用明确的backendId/cwd，验证目标仍存在，复用已有新对话路由；不发起`thread/start`直到用户发送。
+- [ ] （由Task3–4界面接线）设备选择放入顶部菜单，保留全部设备与单设备；设置、草稿、刷新仍可达。
+- [ ] （由Task3–4界面接线）模型/推理/速度/权限继续复用既有会话设置与命令；Skill/插件可从附件菜单和@进入。只改变入口展示，不复制业务。
+- [x] 投影/上下文/旧DTO/取消输入/只读回归通过，规格与质量审查后提交。
 
 建议DTO形态（以实现时最小需求收敛）：
 ```ts
@@ -58,7 +60,13 @@ interface NativeGroup { /* 原字段保留 */ kind?: 'pinned' | 'project' | 'rec
 interface NativeSnapshot { /* 原字段保留 */ projectName?: string; backendName?: string; listBackendId?: string; serviceTier?: string }
 ```
 
-## Task 3：设计token与静态视觉基准
+验证：最终`NODE_OPTIONS=--no-experimental-webstorage`下18文件140项通过，typecheck与独立规格、质量审查通过。日志`.mobile-build/native-reference/visual-metadata-root-green.log`与`visual-metadata-root-typecheck.log`。代码提交`dacf57d`。
+
+## Task 3–4：视觉组件与原生展示状态（同一实现阶段）
+
+这两部分共用头部、输入栏与Store的展示身份，合并为一个连贯实现阶段，避免为静态基准复制一套临时页面。先交出离线静态基准供截图校准，再完成新对话聚焦及附件的权威上下文接线；完成后依次做独立规格、质量审查。
+
+### A：设计token与静态视觉基准
 
 **Files:** `NativePalette.swift`、新`NativeVisualMetrics.swift`、`NativeIconButton.swift`、`NativeMessageView.swift`、Markdown排版视图、`NativeUIStore.swift`参考fixture与必要单类型参考文件；原生UI契约。
 
@@ -68,7 +76,7 @@ interface NativeSnapshot { /* 原字段保留 */ projectName?: string; backendNa
 - [ ] 首轮构建和402pt截图对比，修正最大3项差异；记录改的是排版、颜色或布局。单类型单文件，不引入第三方库。
 - [ ] 规格与SwiftUI质量审查后提交。
 
-## Task 4：全屏侧栏、头部与输入栏两态
+### B：全屏侧栏、头部与输入栏两态
 
 **Files:** `NativeRootView.swift`、`NativeConversationView.swift`、`NativeSidebarView.swift`、`NativeNavigationGroupView.swift`、`NativeNavigationRow.swift`、`NativeComposerView.swift`及必要的小组件/store原生展示状态。
 

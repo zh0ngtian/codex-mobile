@@ -30,7 +30,7 @@
 | 头部左右留白 | 约16pt | inferred |
 | 返回圆按钮/右侧胶囊高度 | 44pt | inferred |
 | 右侧双操作胶囊宽度 | 约110pt | inferred |
-| 标题 | 约17–18pt、semibold/bold | inferred |
+| 对话标题 / 边栏品牌 | 第一轮15–16pt / 18pt、semibold/bold | inferred（OCR标题宽164.9pt，与系统粗体15pt约161.2pt相近；仍须真渲染校准） |
 | 项目/设备副标题 | 约12–13pt、secondary、单行截断 | inferred |
 | 正文 | 第一轮14pt、medium/semibold，约22pt行高 | inferred（按402pt归一后的字形及行宽，须用同内容实测校准） |
 | 用户文字 | 第一轮14pt、semibold、深粉 | inferred，须用单行气泡边界及同内容校准 |
@@ -45,8 +45,9 @@
 | 输入卡至系统键盘 | 约10–12pt | inferred，按键盘顶边比较 |
 | 输入按钮图标触区 | 至少44pt，视觉glyph约20–24pt | inferred/实现约束 |
 | 发送圆形glyph背景 | 约28–32pt | inferred |
-| 边栏分组标题 | 约16pt、bold | inferred |
-| 边栏会话/项目行 | 约16pt、medium/semibold，44–48pt节奏 | inferred |
+| 边栏分组标题 / 项目标题 / 会话标题 | 第一轮15pt bold / 15pt bold / 14pt medium | inferred（Projects宽61.0pt与系统15pt粗体60.7pt接近） |
+| 边栏正文左边 / 子会话左边 | 约20pt / 50pt | measured（OCR字形边界，内含约1pt识别误差） |
+| 置顶行 / 项目行 / 子会话行节奏 | 约49pt / 42–44pt / 44pt | measured/inferred（按连续文本起点；触控区域至少44pt） |
 
 ## 色彩
 
