@@ -608,6 +608,170 @@ describe("会话侧边栏列表", () => {
     expect(view.getByRole("button", { name: "更多" })).not.toBeNull();
   });
 
+  it.each([false, true])("折叠后展开只显示前五条，更多分批展示缓存且再次折叠重置（无项目：%s）", (isProjectless) => {
+    const cwd = isProjectless ? "codex-mobile://projectless" : "/tmp/project-a";
+    const loadedThreads = aggregateThreads([backend], {
+      mini: Array.from({ length: 12 }, (_, index) => ({
+        id: `cached-${index + 1}`, preview: `缓存会话 ${index + 1}`,
+        cwd: "/tmp/project-a", isProjectless, updatedAt: 100 - index,
+      })),
+    });
+    const onToggleProject = vi.fn();
+    const onToggleProjectCollapsed = vi.fn();
+    const { container, element, rerender } = renderList("mini", {
+      visibleThreads: loadedThreads, hasProjectlessThreads: isProjectless,
+      projectDirectories: isProjectless ? [] : [cwd],
+      projectHasMore: { [cwd]: false }, onToggleProject, onToggleProjectCollapsed,
+    });
+    const view = within(container);
+    const heading = view.getByRole("button", { name: isProjectless ? "无项目" : "project-a" });
+    const titles = () => [...container.querySelectorAll(".project-group .thread-row-title")].map(node => node.textContent);
+    expect(titles()).toEqual(loadedThreads.map(thread => thread.thread.preview));
+
+    fireEvent.click(heading);
+    expect(onToggleProjectCollapsed).toHaveBeenLastCalledWith("mini", cwd);
+    rerender(cloneElement(element, { collapsedProjectKeys: new Set([`mini:${cwd}`]) }));
+    expect(titles()).toEqual([]);
+    fireEvent.click(heading);
+    rerender(cloneElement(element, { collapsedProjectKeys: new Set() }));
+    expect(titles()).toEqual(loadedThreads.slice(0, 5).map(thread => thread.thread.preview));
+
+    fireEvent.click(view.getByRole("button", { name: "更多" }));
+    expect(titles()).toEqual(loadedThreads.slice(0, 10).map(thread => thread.thread.preview));
+    fireEvent.click(view.getByRole("button", { name: "更多" }));
+    expect(titles()).toHaveLength(12);
+    expect(view.queryByRole("button", { name: "更多" })).toBeNull();
+    expect(onToggleProject).not.toHaveBeenCalled();
+
+    fireEvent.click(heading);
+    rerender(cloneElement(element, { collapsedProjectKeys: new Set([`mini:${cwd}`]) }));
+    fireEvent.click(heading);
+    rerender(cloneElement(element, { collapsedProjectKeys: new Set() }));
+    expect(titles()).toEqual(loadedThreads.slice(0, 5).map(thread => thread.thread.preview));
+    expect(view.getByRole("button", { name: "更多" })).not.toBeNull();
+  });
+
+  it.each([false, true])("外部折叠状态恢复展开时重置到五条（初始已折叠：%s）", (initiallyCollapsed) => {
+    const loadedThreads = aggregateThreads([backend], {
+      mini: Array.from({ length: 8 }, (_, index) => ({
+        id: `external-${index}`, preview: `外部缓存 ${index}`, cwd: "/tmp/project-a", updatedAt: 100 - index,
+      })),
+    });
+    const collapsedProjectKeys = new Set(["mini:/tmp/project-a"]);
+    const { container, element, rerender } = renderList("mini", {
+      visibleThreads: loadedThreads, projectDirectories: ["/tmp/project-a"],
+      projectHasMore: { "/tmp/project-a": false },
+      collapsedProjectKeys: initiallyCollapsed ? collapsedProjectKeys : new Set(),
+    });
+    if (!initiallyCollapsed) rerender(cloneElement(element, { collapsedProjectKeys }));
+    rerender(cloneElement(element, { collapsedProjectKeys: new Set() }));
+    expect(container.querySelectorAll(".project-group .thread-row")).toHaveLength(5);
+    expect(within(container).getByRole("button", { name: "更多" })).not.toBeNull();
+    expect(collapsedProjectKeys).toEqual(new Set(["mini:/tmp/project-a"]));
+  });
+
+  it("更多先展示缓存，缓存不足一批时继续服务端分页且限制到新增五条", () => {
+    const loadedThreads = aggregateThreads([backend], {
+      mini: Array.from({ length: 13 }, (_, index) => ({
+        id: `paged-${index}`, preview: `分页会话 ${index}`, cwd: "/tmp/project-a", updatedAt: 100 - index,
+      })),
+    });
+    const onToggleProject = vi.fn();
+    const { container, element, rerender } = renderList("mini", {
+      visibleThreads: loadedThreads.slice(0, 8), projectDirectories: ["/tmp/project-a"],
+      collapsedProjectKeys: new Set(["mini:/tmp/project-a"]),
+      projectHasMore: { "/tmp/project-a": true }, onToggleProject,
+    });
+    rerender(cloneElement(element, { collapsedProjectKeys: new Set() }));
+    expect(container.querySelectorAll(".project-group .thread-row")).toHaveLength(5);
+    fireEvent.click(within(container).getByRole("button", { name: "更多" }));
+    expect(container.querySelectorAll(".project-group .thread-row")).toHaveLength(8);
+    expect(onToggleProject).toHaveBeenCalledExactlyOnceWith("mini", "/tmp/project-a");
+    rerender(cloneElement(element, { visibleThreads: loadedThreads, collapsedProjectKeys: new Set(), projectHasMore: { "/tmp/project-a": false } }));
+    expect(container.querySelectorAll(".project-group .thread-row")).toHaveLength(10);
+    fireEvent.click(within(container).getByRole("button", { name: "更多" }));
+    expect(container.querySelectorAll(".project-group .thread-row")).toHaveLength(13);
+    expect(onToggleProject).toHaveBeenCalledOnce();
+  });
+
+  it("一整批缓存展示完后，再点更多才请求服务端下一页", () => {
+    const loadedThreads = aggregateThreads([backend], {
+      mini: Array.from({ length: 15 }, (_, index) => ({
+        id: `exhausted-${index}`, preview: `缓存分页 ${index}`, cwd: "/tmp/project-a", updatedAt: 100 - index,
+      })),
+    });
+    const onToggleProject = vi.fn();
+    const { container, element, rerender } = renderList("mini", {
+      visibleThreads: loadedThreads.slice(0, 10), projectDirectories: ["/tmp/project-a"],
+      collapsedProjectKeys: new Set(["mini:/tmp/project-a"]),
+      projectHasMore: { "/tmp/project-a": true }, onToggleProject,
+    });
+    rerender(cloneElement(element, { collapsedProjectKeys: new Set() }));
+    fireEvent.click(within(container).getByRole("button", { name: "更多" }));
+    expect(container.querySelectorAll(".project-group .thread-row")).toHaveLength(10);
+    expect(onToggleProject).not.toHaveBeenCalled();
+    fireEvent.click(within(container).getByRole("button", { name: "更多" }));
+    expect(onToggleProject).toHaveBeenCalledExactlyOnceWith("mini", "/tmp/project-a");
+    rerender(cloneElement(element, { visibleThreads: loadedThreads, collapsedProjectKeys: new Set(), projectHasMore: { "/tmp/project-a": false } }));
+    expect(container.querySelectorAll(".project-group .thread-row")).toHaveLength(15);
+    expect(within(container).queryByRole("button", { name: "更多" })).toBeNull();
+  });
+
+  it("搜索临时展示全部命中并在退出后保留正常展示上限与折叠状态", () => {
+    const loadedThreads = aggregateThreads([backend], {
+      mini: Array.from({ length: 12 }, (_, index) => ({
+        id: `search-${index}`, preview: `搜索会话 ${index}`, cwd: "/tmp/project-a", updatedAt: 100 - index,
+      })),
+    });
+    const collapsedProjectKeys = new Set(["mini:/tmp/project-a"]);
+    const { container, element, rerender } = renderList("mini", {
+      visibleThreads: loadedThreads, projectDirectories: ["/tmp/project-a"],
+      collapsedProjectKeys, projectHasMore: { "/tmp/project-a": false },
+    });
+    rerender(cloneElement(element, { query: "搜索" }));
+    expect(container.querySelectorAll(".project-group .thread-row")).toHaveLength(12);
+    rerender(cloneElement(element, { query: "" }));
+    expect(container.querySelectorAll(".project-group .thread-row")).toHaveLength(0);
+    rerender(cloneElement(element, { collapsedProjectKeys: new Set() }));
+    expect(container.querySelectorAll(".project-group .thread-row")).toHaveLength(5);
+    fireEvent.click(within(container).getByRole("button", { name: "更多" }));
+    expect(container.querySelectorAll(".project-group .thread-row")).toHaveLength(10);
+    rerender(cloneElement(element, { collapsedProjectKeys: new Set(), query: "搜索" }));
+    expect(container.querySelectorAll(".project-group .thread-row")).toHaveLength(12);
+    rerender(cloneElement(element, { collapsedProjectKeys: new Set() }));
+    expect(container.querySelectorAll(".project-group .thread-row")).toHaveLength(10);
+    expect(collapsedProjectKeys).toEqual(new Set(["mini:/tmp/project-a"]));
+  });
+
+  it("项目展示上限按设备和目录隔离，关注区及全部视图保留全部会话", () => {
+    const otherBackend = { ...backend, id: "other", name: "另一台设备" };
+    const loadedThreads = aggregateThreads([backend, otherBackend], {
+      mini: [
+        ...Array.from({ length: 7 }, (_, index) => ({ id: `pinned-${index}`, preview: `关注 ${index}`, cwd: "/tmp/project-a", isPinned: true })),
+        ...["a", "b"].flatMap(project => Array.from({ length: 8 }, (_, index) => ({ id: `${project}-${index}`, preview: `${project} 会话 ${index}`, cwd: `/tmp/project-${project}`, updatedAt: 100 - index }))),
+      ],
+      other: Array.from({ length: 8 }, (_, index) => ({ id: `other-${index}`, preview: `另一设备 ${index}`, cwd: "/tmp/project-a", updatedAt: 100 - index })),
+    });
+    const miniThreads = loadedThreads.filter(thread => thread.backendId === "mini");
+    const { container, element, rerender } = renderList("mini", {
+      visibleThreads: miniThreads, collapsedProjectKeys: new Set(["mini:/tmp/project-a"]),
+      projectHasMore: { "/tmp/project-a": false, "/tmp/project-b": false },
+    });
+    rerender(cloneElement(element, { collapsedProjectKeys: new Set() }));
+    const view = within(container);
+    const projectA = view.getByRole("button", { name: "project-a" }).closest(".project-group") as HTMLElement;
+    const projectB = view.getByRole("button", { name: "project-b" }).closest(".project-group") as HTMLElement;
+    expect(projectA.querySelectorAll(".thread-row")).toHaveLength(5);
+    expect(projectB.querySelectorAll(".thread-row")).toHaveLength(8);
+    expect(view.getByRole("heading", { name: "关注" }).parentElement?.querySelectorAll(".thread-row")).toHaveLength(7);
+
+    rerender(cloneElement(element, { selectedBackendId: "other", backends: [backend, otherBackend], visibleThreads: loadedThreads.filter(thread => thread.backendId === "other"), collapsedProjectKeys: new Set() }));
+    expect(container.querySelectorAll(".project-group .thread-row")).toHaveLength(8);
+    rerender(cloneElement(element, { selectedBackendId: "all", visibleThreads: loadedThreads, collapsedProjectKeys: new Set() }));
+    expect(view.getByRole("heading", { name: "关注" }).parentElement?.querySelectorAll(".thread-row")).toHaveLength(7);
+    expect(view.getByRole("heading", { name: "最近" }).parentElement?.querySelectorAll(".thread-row")).toHaveLength(24);
+  });
+
   it("项目历史已经完整加载时不再显示更多", () => {
     const { container } = renderList("mini", {
       projectHasMore: {
