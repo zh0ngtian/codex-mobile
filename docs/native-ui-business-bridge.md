@@ -58,7 +58,7 @@ ConfiguredApp 使用真实 `scopedThreads`、`projectDirectories`、`collapsedPr
 | `message.edit {turnId,messageId}` | `createHistoricalMessageEditTarget` / `beginHistoricalMessageEdit`；完整历史编辑面板通过 history.* 命令继续调用原编辑回调 |
 | `queue.send / queue.cancel / queue.edit` | 现有排队消息管理回调 |
 
-附件 promise 与旧 input 回调按请求路由隔离，旧网页 input 行为保留。取消返回空数组，读取失败 reject，卸载会结束尚未完成的 promise；选择期间切换上下文不会把结果写入新会话。输入菜单保留图片、文件、当前位置，没有增加语音或相机。
+附件 promise 与旧 input 回调按请求路由隔离，旧网页 input 行为保留。取消返回空数组，读取失败 reject，卸载会结束尚未完成的 promise；选择期间切换上下文不会把结果写入新会话。输入菜单保留图片、文件、当前位置，没有增加语音或相机。草稿附件的可选 type 使用既有 MIME；只有音视频文件携带绑定创建上下文的 attachment.preview 命令。点击后复用 readFileAsDataUrl 读取当前单个 File，在 audio/video 面板投影 data URI；普通文件保留名称图标，图片继续使用原 data URI。不会逐帧读取全部文件或向 Swift 传 blob URL；100 MB 上限、读取错误重试及关闭/移除/换会话时的 epoch 与 File 身份检查保留。
 
 会话投影复用 `groupConversationTurns` 与 `splitTurnResponseSegments`，保留用户插话顺序、最终正文与运行中的 commentary。final 到达即显示；有 final 后只折叠 commentary，计数不含 reasoning/tool/diff/media。整轮媒体按来源去重，生成结果优先于同源截图，多张过程截图独立折叠。普通用户图片保留在 user.blocks。本地图片的 value 使用现有缩略图资源 URL，previewURL 使用移除 thumbnail 参数的原图 URL；二者保留现有 token/path 鉴权语义。远程 HTTP 图片与 data URL 保持原值。
 

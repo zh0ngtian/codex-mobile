@@ -13,6 +13,7 @@ export type LanguagePreference = "system" | Locale;
 const LANGUAGE_STORAGE_KEY = "codex-mobile:language";
 
 const english: Record<string, string> = {
+  "附件不支持预览": "Preview is unavailable for this attachment",
   "扫码不可用": "QR scanning is unavailable",
   "设备表单已变化": "The device form has changed",
   "设备表单已关闭": "The device form is closed",

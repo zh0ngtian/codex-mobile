@@ -4,7 +4,7 @@ import { NativeRuntime } from '../../src/native-ui/runtime';
 import { createWorkspaceAdapter, useNativeConversationAdapter, type NativeWorkspaceController } from '../../src/native-ui/workspace-adapter';
 const engine = vi.hoisted(() => ({ initialize: vi.fn(), render: vi.fn(async (_id, source) => ({ svg: `<svg><text>${source}</text></svg>` })) }));
 vi.mock('mermaid', () => ({ default: engine }));
-afterEach(cleanup);
+afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 function c(overrides: any = {}): NativeWorkspaceController { return { backend: { id: 'b', name: 'Mac', baseUrl: 'http://gateway', token: 'TOKEN', enabled: true, order: 0 }, active: { id: 't', turns: [] }, contextId: 'ctx', connection: 'online', draft: '', draftImages: [], draftFiles: [], busy: false, readOnly: false, imageReading: false, draftSaving: false, pending: false, models: [], selectedModel: '', selectedModelLabel: '', effortOptions: [], selectedEffort: null, permission: '', skills: [], plugins: [], queued: [], approvalCount: 0, loadState: 'ready', olderTurnsState: 'exhausted', error: '', setDraft() {}, send: async () => {}, stop: async () => {}, chooseModel() {}, chooseEffort() {}, removeAttachment() {}, selectFiles: async () => {}, selectLocation: async () => true, saveDraft: async () => {}, retry() {}, loadOlder: async () => true, editMessage() {}, cancelQueued: async () => {}, sendQueued: async () => {}, editQueued: async () => true, ...overrides }; }
 it('命令和文件变更面板挑选真实业务字段与diff统计，不以整对象JSON替代详情', () => {
  const state = c({ active: { id: 't', turns: [{ id: 'turn', items: [{ id: 'cmd', type: 'commandExecution', command: 'ls -la', cwd: '/app', status: 'completed', exitCode: 0, aggregatedOutput: 'hello', hidden: 'NOLEAK' }, { id: 'change', type: 'fileChange', changes: [{ path: '/app/a.ts', diff: '@@ -1 +1 @@\n-old\n+new' }] }] }] } });
@@ -94,4 +94,42 @@ it('相对变更文件按真实cwd规范化为可解析路径，缺cwd时保留d
  const existing = project('/app/project').items[0].children!.find(item => item.command?.name === 'file.open'); expect(existing?.command?.params.href).toBe('/app/project/src/App.tsx');
  expect(project().items[0].children!.some(item => item.command?.name === 'file.open')).toBe(false); expect(project().items[0].children!.some(item => item.kind === 'diff')).toBe(true);
  expect(project('relative-cwd').items[0].children!.some(item => item.command?.name === 'file.open')).toBe(false);
+});
+it('草稿音视频仅在点击时读取真实File并提供dataURI预览，普通文件无预览动作', async () => {
+ const attachments = await import('../../src/ui/attachments'); const reader = vi.spyOn(attachments, 'readFileAsDataUrl');
+ const runtime = new NativeRuntime(() => {}); runtime.setNavigation({ selectedBackendId: 'b', backends: [], groups: [] });
+ const files = [new File(['VIDEO'], 'clip.mp4', { type: 'video/mp4' }), new File(['AUDIO'], 'sound.m4a', { type: 'audio/mp4' }), new File(['TEXT'], 'plain.txt', { type: 'text/plain' })].map((file, index) => ({ id: `draft-${index}`, name: file.name, type: file.type, size: file.size, file, previewUrl: 'blob:LOCAL_ONLY' }));
+ const controller = c({ draftFiles: files }); const { rerender } = renderHook(() => useNativeConversationAdapter(runtime, controller));
+ expect(reader).not.toHaveBeenCalled(); const projected = runtime.snapshot().attachments;
+ expect(projected[0].type).toBe('video/mp4'); expect(projected[0].command?.name).toBe('attachment.preview'); expect(projected[0].command?.params.contextId).toBe('ctx'); expect(projected[2].command).toBeUndefined(); expect(JSON.stringify(runtime.snapshot())).not.toContain('blob:');
+ await act(async () => { expect((await runtime.dispatch({ id: 'preview-video', name: 'attachment.preview', params: { contextId: 'ctx', id: 'draft-0' } })).ok).toBe(true); });
+ expect(reader).toHaveBeenCalledTimes(1); expect(runtime.snapshot().panel?.items.find(item => item.kind === 'video')?.value).toBe('data:video/mp4;base64,VklERU8=');
+ rerender(); expect(reader).toHaveBeenCalledTimes(1);
+ await act(async () => { await runtime.dispatch({ id: 'preview-audio', name: 'attachment.preview', params: { contextId: 'ctx', id: 'draft-1' } }); }); expect(runtime.snapshot().panel?.items.find(item => item.kind === 'audio')?.value).toBe('data:audio/mp4;base64,QVVESU8=');
+ await act(async () => { expect((await runtime.dispatch({ id: 'preview-text', name: 'attachment.preview', params: { contextId: 'ctx', id: 'draft-2' } })).ok).toBe(false); }); reader.mockRestore(); runtime.dispose();
+});
+it.each(['close', 'remove', 'context'])('草稿媒体读取完成遇到%s后不会重开或污染预览', async reason => {
+ const attachments = await import('../../src/ui/attachments'); let finish!: (value: string) => void;
+ const reader = vi.spyOn(attachments, 'readFileAsDataUrl').mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+ const runtime = new NativeRuntime(() => {}); runtime.setNavigation({ selectedBackendId: 'b', backends: [], groups: [] });
+ const file = new File(['VIDEO'], 'clip.mp4', { type: 'video/mp4' }); const draft = { id: 'draft', name: file.name, type: file.type, size: file.size, file, previewUrl: 'blob:LOCAL' };
+ let controller = c({ draftFiles: [draft] }); const { rerender } = renderHook(() => useNativeConversationAdapter(runtime, controller));
+ let pending!: Promise<unknown>; act(() => { pending = runtime.dispatch({ id: `start-${reason}`, name: 'attachment.preview', params: { contextId: 'ctx', id: 'draft' } }); });
+ await waitFor(() => expect(reader).toHaveBeenCalledTimes(1));
+ if (reason === 'close') await act(async () => { await runtime.dispatch({ id: 'close-media', name: 'panel.close', params: { contextId: 'ctx', id: runtime.snapshot().panel!.id } }); });
+ else { controller = c({ contextId: reason === 'context' ? 'next' : 'ctx', draftFiles: reason === 'remove' ? [] : [draft] }); rerender(); }
+ await act(async () => { finish('data:video/mp4;base64,TEFURQ=='); await pending; }); expect(runtime.snapshot().panel).toBeUndefined(); reader.mockRestore(); runtime.dispose();
+});
+it('草稿媒体读取失败保留重试且继续遵守原100MB上限，不触发发送', async () => {
+ const attachments = await import('../../src/ui/attachments'); const reader = vi.spyOn(attachments, 'readFileAsDataUrl').mockRejectedValueOnce(new Error('本地媒体读取失败')).mockResolvedValue('data:audio/mp4;base64,QVVESU8=');
+ const runtime = new NativeRuntime(() => {}); runtime.setNavigation({ selectedBackendId: 'b', backends: [], groups: [] }); const sends = vi.fn(async () => {});
+ const file = new File(['AUDIO'], 'sound.m4a', { type: 'audio/mp4' }); const draft = { id: 'audio', name: file.name, type: file.type, size: file.size, file, previewUrl: 'blob:LOCAL' };
+ let controller = c({ draftFiles: [draft], readOnly: true, send: sends }); const { rerender } = renderHook(() => useNativeConversationAdapter(runtime, controller));
+ await act(async () => { expect((await runtime.dispatch({ id: 'fail-preview', name: 'attachment.preview', params: { contextId: 'ctx', id: 'audio' } })).ok).toBe(false); });
+ expect(JSON.stringify(runtime.snapshot().panel)).toContain('本地媒体读取失败'); const retry = runtime.snapshot().panel?.items.find(item => item.command?.name === 'attachment.preview')!.command!;
+ await act(async () => { expect((await runtime.dispatch({ id: 'retry-preview', name: retry.name, params: retry.params })).ok).toBe(true); }); expect(runtime.snapshot().panel?.items.some(item => item.kind === 'audio')).toBe(true);
+ const huge = new File(['x'], 'large.mp4', { type: 'video/mp4' }); Object.defineProperty(huge, 'size', { value: attachments.MAX_FILE_BYTES + 1 });
+ controller = c({ draftFiles: [{ ...draft, id: 'large', name: huge.name, type: huge.type, size: huge.size, file: huge }], send: sends }); rerender();
+ await act(async () => { const result = await runtime.dispatch({ id: 'huge-preview', name: 'attachment.preview', params: { contextId: 'ctx', id: 'large' } }); expect(result.ok).toBe(false); expect(result.error).toContain('100 MB'); });
+ expect(reader).toHaveBeenCalledTimes(2); expect(sends).not.toHaveBeenCalled(); runtime.dispose();
 });

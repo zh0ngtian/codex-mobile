@@ -1,5 +1,5 @@
 import type { ImageGenerationError } from '../backends/image-generation-error';
-import { projectToolPanel, projectFilePanel, useNativeRichContent, type NativeFileState } from './rich-content';
+import { projectToolPanel, projectFilePanel, projectAttachmentPreview, type NativeAttachmentPreview, useNativeRichContent, type NativeFileState } from './rich-content';
 import { workspaceBusinessPanels } from './workspace-panels';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { BackendConfig } from '../backends/types';
@@ -35,7 +35,7 @@ export interface NativeWorkspaceController {
   /** 后续完整panel仍通过显式命令白名单扩展，不创建另一业务层。 */
   extended?: { state: RecordValue; callbacks: Record<string, (...args: any[]) => any> };
 }
-interface PanelState { panelId: string | null; query: string; setPanel: (id: string | null) => void; setQuery: (query: string) => void; getQuery?: () => string; file?: NativeFileState | null; richContent?: NativePanelItem[]; customAnswers?: Set<string>; setCustomAnswer?: (key: string, custom: boolean) => void; richHandlers?: NativeHandlers; closeRich?: () => void; diagnostics?: Record<string, ImageGenerationError | null>; loadDiagnostic?: (id: string) => Promise<void> }
+interface PanelState { panelId: string | null; query: string; setPanel: (id: string | null) => void; setQuery: (query: string) => void; getQuery?: () => string; file?: NativeFileState | null; attachmentPreview?: NativeAttachmentPreview | null; richContent?: NativePanelItem[]; customAnswers?: Set<string>; setCustomAnswer?: (key: string, custom: boolean) => void; richHandlers?: NativeHandlers; closeRich?: () => void; diagnostics?: Record<string, ImageGenerationError | null>; loadDiagnostic?: (id: string) => Promise<void> }
 function projectPanel(c: NativeWorkspaceController, panel: PanelState): NativeSnapshot['panel'] {
   const id = panel.panelId;
   if (!id || ['approval', 'history-edit', 'confirm-history'].includes(id) || id.startsWith('confirm-queue:') || id.startsWith('queue-edit:')) return undefined;
@@ -46,6 +46,7 @@ function projectPanel(c: NativeWorkspaceController, panel: PanelState): NativeSn
     ];
     return { id, title: t('Skill / Plugin'), items };
   }
+  if (id === 'attachment') return projectAttachmentPreview(panel.attachmentPreview);
   if (id === 'file') return projectFilePanel(c, panel.file);
   const tool = projectToolPanel(c, id, panel.diagnostics); if (tool) return tool;
   return { id, title: t('内容已更新，请重新打开'), items: [] };
@@ -55,6 +56,7 @@ export function bindWorkspaceCommands(snapshot: NativeSnapshot): NativeSnapshot 
   const contextual = (command?: NativeCommand): NativeCommand | undefined => command ? { ...command, params: { ...command.params, contextId: command.params.contextId ?? snapshot.contextId } } : undefined;
   const item = (value: NativePanelItem): NativePanelItem => ({ ...value, command: contextual(value.command), children: value.children?.map(item) });
   return { ...snapshot,
+    attachments: snapshot.attachments.map(value => ({ ...value, command: contextual(value.command) })),
     messages: snapshot.messages.map(message => ({ ...message, blocks: message.blocks?.map(item), actions: message.actions?.map(item) })),
     queued: snapshot.queued.map(entry => ({ ...entry, command: contextual(entry.command), actions: entry.actions?.map(item) })),
     conversationActions: snapshot.conversationActions?.map(item),
@@ -81,7 +83,7 @@ export function createWorkspaceAdapter(c: NativeWorkspaceController, panel: Pane
     title: String(c.active?.name || c.active?.preview || t('新对话')), backendId: c.backend.id, threadId: c.active?.id ? String(c.active.id) : undefined, contextId: c.contextId,
     draftRevision: c.draftRevision, caretOffset, mentions, richContent: panel.richContent, connection: c.connection, busy: c.busy, draft: c.draft, canSend: hasInput && !c.readOnly && !c.imageReading && !c.draftSaving,
     canInterrupt: c.busy && !!c.active?.id && !c.readOnly, readOnly: c.readOnly, messages,
-    attachments: [...c.draftImages.map(image => ({ id: image.id, name: image.name, imageURL: image.url, detail: `${image.size} B` })), ...c.draftFiles.map(file => ({ id: file.id, name: file.name, detail: `${file.size} B` }))],
+    attachments: [...c.draftImages.map(image => ({ id: image.id, name: image.name, type: image.type, imageURL: image.url, detail: `${image.size} B` })), ...c.draftFiles.map(file => ({ id: file.id, name: file.name, type: file.type, detail: `${file.size} B`, ...(/^(audio|video)\//.test(file.type) ? { command: nativeCommand('attachment.preview', { id: file.id }) } : {}) }))],
     queued: c.queued.map(item => {
       const s = c.extended?.state ?? {}; const locked = item.state === 'sending' || item.state === 'uncertain';
       const canAct = !s.steering && !s.queueSaving && !locked && (c.busy ? !!s.steerable : !!item.failed);
@@ -131,7 +133,7 @@ export function createWorkspaceAdapter(c: NativeWorkspaceController, panel: Pane
     'panel.open': p => {
       const id = String(p.id);
       if (!business.accepts(id) && id !== 'mentions' && !groupConversationTurns(c.active?.turns ?? []).some((turn: RecordValue) => id === `changes:${turn.id}` || turn.items?.some((item: RecordValue) => id === `tool:${turn.id}:${item.id}`))) throw new Error(t('此面板尚未接入'));
-      panel.setPanel(id);
+      panel.closeRich?.(); panel.setPanel(id);
       const tool = groupConversationTurns(c.active?.turns ?? []).flatMap((turn: RecordValue) => (turn.items ?? []).map((item: RecordValue) => ({ turn, item }))).find(({ turn, item }: { turn: RecordValue; item: RecordValue }) => id === `tool:${turn.id}:${item.id}`);
       if (tool?.item.type === 'imageGeneration' && tool.item.status === 'failed') void panel.loadDiagnostic?.(String(tool.item.id));
       panel.setQuery(id.startsWith('queue-edit:') ? String(c.queued.find(q => `queue-edit:${q.id}` === id)?.inputText ?? c.queued.find(q => `queue-edit:${q.id}` === id)?.text ?? '') : id === 'thread-rename' ? String(c.active?.name ?? '') : '');
@@ -171,6 +173,6 @@ export function useNativeConversationAdapter(runtime: NativeRuntime | null, c: N
       const next = { contextId: c.contextId, revision: revision ?? (draftAckRef.current.contextId === c.contextId ? draftAckRef.current.revision : 0), text: value, caretOffset: caretOffset ?? value.length };
       draftAckRef.current = next;
       setDraftAck(next);
-  } }, { panelId: panelContext === c.contextId ? panelId : null, query, setPanel, setQuery, getQuery: () => queryRef.current, customAnswers, setCustomAnswer, file: rich.file, richContent: rich.resources, richHandlers: rich.handlers, closeRich: rich.close, diagnostics: rich.diagnostics, loadDiagnostic: rich.loadDiagnostic }) : { snapshot: emptyNativeSnapshot(), handlers: {} };
+  } }, { panelId: panelContext === c.contextId ? panelId : null, query, setPanel, setQuery, getQuery: () => queryRef.current, customAnswers, setCustomAnswer, file: rich.file, attachmentPreview: rich.attachmentPreview, richContent: rich.resources, richHandlers: rich.handlers, closeRich: rich.close, diagnostics: rich.diagnostics, loadDiagnostic: rich.loadDiagnostic }) : { snapshot: emptyNativeSnapshot(), handlers: {} };
   useNativeWorkspace(runtime, c.backend.id, adapter.snapshot, adapter.handlers);
 }

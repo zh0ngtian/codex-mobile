@@ -9,13 +9,13 @@ export function isNativeUIEnabled() {
   return target.__CODEX_NATIVE_UI__ === true && typeof target.webkit?.messageHandlers?.nativeUI?.postMessage === 'function';
 }
 const globalNames = new Set(['backend.select', 'navigation.search', 'navigation.sidebar', 'navigation.refresh', 'thread.new', 'thread.open', 'thread.manage', 'project.toggle', 'project.more', 'project.retry', 'navigation.filter', 'confirmation.answer', 'settings.open', 'drafts.open', 'device.add', 'device.edit', 'device.change', 'device.save', 'device.cancel', 'device.scan', 'device.toggle', 'device.remove', 'device.move', 'settings.language', 'settings.font', 'settings.transport', 'settings.push.mode', 'settings.push.url', 'settings.push.save', 'settings.update.check', 'drafts.restore', 'drafts.remove', 'drafts.retry', 'update.install', 'update.retry', 'update.close']);
-const workspaceNames = new Set(['draft.set', 'draft.save', 'message.send', 'turn.stop', 'model.select', 'effort.select', 'attachment.pick', 'attachment.remove', 'location.insert', 'mention.search', 'mention.insert', 'thread.retry', 'thread.older', 'message.edit', 'message.copy', 'queue.cancel', 'queue.send', 'queue.edit', 'speed.select', 'permission.select', 'newchat.backend', 'newchat.project', 'workspace.thread', 'workspace.rename.change', 'workspace.rename.submit', 'approval.answer', 'approval.decide', 'approval.submit', 'approval.dismiss', 'approval.reopen', 'history.change', 'history.cancel', 'history.submit', 'queue.change', 'file.open', 'file.mode', 'diagram.render']);
+const workspaceNames = new Set(['draft.set', 'draft.save', 'message.send', 'turn.stop', 'model.select', 'effort.select', 'attachment.pick', 'attachment.preview', 'attachment.remove', 'location.insert', 'mention.search', 'mention.insert', 'thread.retry', 'thread.older', 'message.edit', 'message.copy', 'queue.cancel', 'queue.send', 'queue.edit', 'speed.select', 'permission.select', 'newchat.backend', 'newchat.project', 'workspace.thread', 'workspace.rename.change', 'workspace.rename.submit', 'approval.answer', 'approval.decide', 'approval.submit', 'approval.dismiss', 'approval.reopen', 'history.change', 'history.cancel', 'history.submit', 'queue.change', 'file.open', 'file.mode', 'diagram.render']);
 // Task2b 只能经此处显式扩展可调用命令，不能把任意名字转发成 RPC。
 const panelNames = new Set(['panel.open', 'panel.close']);
 const stringKeys: Record<string, string[]> = {
   'confirmation.answer': ['key'],
   'draft.set': ['value', 'contextId'], 'model.select': ['value'], 'effort.select': ['value'], 'attachment.pick': ['kind'],
-  'attachment.remove': ['id'], 'backend.select': ['id'], 'navigation.search': ['value'], 'thread.open': ['backendId', 'threadId'],
+  'attachment.preview': ['id'], 'attachment.remove': ['id'], 'backend.select': ['id'], 'navigation.search': ['value'], 'thread.open': ['backendId', 'threadId'],
   'thread.manage': ['backendId', 'threadId', 'action'], 'project.toggle': ['backendId', 'cwd'], 'project.more': ['backendId', 'cwd'],
   'project.retry': ['backendId', 'cwd'], 'navigation.filter': ['value'], 'mention.search': ['value'], 'mention.insert': ['id'],
   'panel.open': ['id'], 'panel.close': ['id'], 'message.edit': ['turnId', 'messageId'], 'message.copy': ['id'],
@@ -134,7 +134,7 @@ export class NativeRuntime {
       if (!globalNames.has(name) && !(panelNames.has(name) && globalHandler)) {
         if (!workspace?.value.ready) throw new Error(t('会话尚未就绪'));
         if (typeof params.contextId !== 'string' || params.contextId !== workspace.value.contextId) throw new Error(t('会话已切换，请重试'));
-        if (workspace.value.readOnly && !['message.copy', 'thread.retry', 'thread.older', 'panel.open', 'panel.close', 'history.change', 'history.cancel', 'history.submit', 'approval.answer', 'approval.decide', 'approval.submit', 'approval.dismiss', 'approval.reopen', 'file.open', 'file.mode', 'diagram.render'].includes(name)) throw new Error(t('当前会话只读'));
+        if (workspace.value.readOnly && !['message.copy', 'attachment.preview', 'thread.retry', 'thread.older', 'panel.open', 'panel.close', 'history.change', 'history.cancel', 'history.submit', 'approval.answer', 'approval.decide', 'approval.submit', 'approval.dismiss', 'approval.reopen', 'file.open', 'file.mode', 'diagram.render'].includes(name)) throw new Error(t('当前会话只读'));
       }
       if (!handler) throw new Error(t("此操作尚未接入：{name}", { name }));
       if (name === 'draft.set' && workspace) {

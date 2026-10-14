@@ -9,7 +9,7 @@ export interface NativePanelItem {
 export interface NativeNavigationItem { id: string; title: string; subtitle?: string; badge?: string; selected?: boolean; command?: NativeCommand; actions?: NativePanelItem[] }
 export interface NativeGroup { id: string; title: string; items: NativeNavigationItem[]; command?: NativeCommand; actions?: NativePanelItem[]; collapsed?: boolean }
 export interface NativeMessage { id: string; role: string; text: string; status?: string; blocks?: NativePanelItem[]; actions?: NativePanelItem[] }
-export interface NativeAttachment { id: string; name: string; detail?: string; imageURL?: string }
+export interface NativeAttachment { id: string; name: string; detail?: string; imageURL?: string; type?: string; command?: NativeCommand }
 export interface NativeResult { id: string; name: string; ok: boolean; contextId?: string; error?: string; fieldKey?: string; fieldRevision?: number }
 export interface NativeSnapshot {
   version: 1; ready: boolean; locale: string; fontScale: number; title: string;

@@ -1,3 +1,4 @@
+import { MAX_FILE_BYTES, readFileAsDataUrl } from '../ui/attachments';
 import { fetchImageGenerationError, type ImageGenerationError } from '../backends/image-generation-error';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { t } from '../i18n';
@@ -9,6 +10,7 @@ import { nativeAction, nativeCommand, nativeItemText } from './projection';
 import type { NativeWorkspaceController } from './workspace-adapter';
 import type { NativePanelItem, NativeSnapshot, NativeHandlers } from './protocol';
 
+export interface NativeAttachmentPreview { id: string; name: string; type: string; file: File; contextId: string; status: 'loading' | 'ready' | 'error'; value?: string; error?: string }
 export interface NativeFileState { href: string; path: string; line: number | null; status: 'loading' | 'ready' | 'error'; text: string; bytes?: number; binary?: boolean; error?: string; mode: string }
 const describe = (id: string, title: string, value: unknown, kind = 'text'): NativePanelItem => ({ id, kind, title, text: typeof value === 'string' ? value : JSON.stringify(value, null, 2) });
 export function projectToolPanel(c: NativeWorkspaceController, id: string, diagnostics: Record<string, ImageGenerationError | null> = {}): NativeSnapshot['panel'] {
@@ -72,6 +74,12 @@ export function projectFilePanel(c: NativeWorkspaceController, state?: NativeFil
  }
  return { id: `file:${state.path}`, title: t('远程文件'), items };
 }
+/** 本地媒体内容仅在用户点击后读取，快照只投影当前打开的单个媒体。 */
+export function projectAttachmentPreview(preview?: NativeAttachmentPreview | null): NativeSnapshot['panel'] {
+ if (!preview) return undefined;
+ const items: NativePanelItem[] = preview.status === 'ready' ? [{ id: 'draft-media', kind: preview.type.startsWith('audio/') ? 'audio' : 'video', title: preview.name, value: preview.value }] : preview.status === 'error' ? [{ id: 'draft-media-error', kind: 'text', text: preview.error }, nativeAction('draft-media-retry', t('重试'), 'attachment.preview', { id: preview.id })] : [{ id: 'draft-media-loading', kind: 'text', title: t('正在读取文件…'), text: preview.name }];
+ return { id: `attachment:${preview.id}`, title: preview.name, items };
+}
 /** 只解析当前实际Markdown中的资源。复杂绘图复用既有strict引擎与离屏布局。 */
 export function markdownResources(texts: Array<{ text: string; path?: string }>, c: NativeWorkspaceController): { images: NativePanelItem[]; diagrams: string[] } {
  const images = new Map<string, NativePanelItem>(); const diagrams = new Set<string>();
@@ -93,12 +101,19 @@ export function markdownResources(texts: Array<{ text: string; path?: string }>,
  return { images: [...images.values()], diagrams: [...diagrams] };
 }
 export function useNativeRichContent(c: NativeWorkspaceController, enabled: boolean, setPanel: (id: string | null) => void) {
+ const [attachmentPreview, setAttachmentPreview] = useState<NativeAttachmentPreview | null>(null);
+ const currentFiles = useRef(c.draftFiles);
+ const attachmentReads = useRef(new WeakMap<File, Promise<string>>());
  const [file, setFile] = useState<(NativeFileState & { contextId: string }) | null>(null);
  const [diagnostics, setDiagnostics] = useState<Record<string, ImageGenerationError | null>>({});
  const diagnosticRequests = useRef(new Map<string, Promise<void>>());
  const [diagrams, setDiagrams] = useState<Record<string, string>>({});
  const pending = useRef(new Set<string>()); const epoch = useRef(0); const context = useRef(c.contextId);
- useLayoutEffect(() => { if (context.current !== c.contextId) { context.current = c.contextId; epoch.current++; setFile(null); } }, [c.contextId]);
+ useLayoutEffect(() => {
+  currentFiles.current = c.draftFiles;
+  if (context.current !== c.contextId) { context.current = c.contextId; epoch.current++; setFile(null); setAttachmentPreview(null); }
+  else if (attachmentPreview && !c.draftFiles.some(file => file.id === attachmentPreview.id && file.file === attachmentPreview.file)) { epoch.current++; setAttachmentPreview(null); }
+ }, [c.contextId, c.draftFiles, attachmentPreview?.id, attachmentPreview?.file]);
  useEffect(() => () => { epoch.current++; }, []);
  const texts: Array<{ text: string; path?: string }> = enabled ? (c.active?.turns ?? []).flatMap((turn: any) => (turn.items ?? []).filter((i: any) => i.type === 'agentMessage' || i.type === 'userMessage').map((i: any) => ({ text: nativeItemText(i) }))) : [];
  if (enabled && file?.contextId === c.contextId && file.status === 'ready' && !file.binary) texts.push({ text: file.text, path: file.path });
@@ -119,11 +134,30 @@ export function useNativeRichContent(c: NativeWorkspaceController, enabled: bool
   diagnosticRequests.current.set(key, task); return task;
  };
  const handlers: NativeHandlers = {
+  'attachment.preview': async p => {
+   const draft = currentFiles.current.find(file => file.id === p.id);
+   if (!draft) throw new Error(t('附件已移除'));
+   if (!/^(audio|video)\//.test(draft.type)) throw new Error(t('附件不支持预览'));
+   if (draft.file.size > MAX_FILE_BYTES || draft.size > MAX_FILE_BYTES) throw new Error(t('{name} 超过 100 MB', { name: draft.name }));
+   const token = ++epoch.current; const contextId = c.contextId;
+   const preview: NativeAttachmentPreview = { id: draft.id, name: draft.name, type: draft.type, file: draft.file, contextId, status: 'loading' };
+   const valid = () => token === epoch.current && context.current === contextId && currentFiles.current.some(file => file.id === draft.id && file.file === draft.file);
+   setFile(null); setAttachmentPreview(preview); setPanel('attachment');
+   try {
+    let reading = attachmentReads.current.get(draft.file);
+    if (!reading) { reading = readFileAsDataUrl(draft.file).finally(() => { attachmentReads.current.delete(draft.file); }); attachmentReads.current.set(draft.file, reading); }
+    const value = await reading;
+    if (valid()) setAttachmentPreview({ ...preview, status: 'ready', value });
+   } catch (error) {
+    if (!valid()) return;
+    setAttachmentPreview({ ...preview, status: 'error', error: error instanceof Error ? error.message : String(error) }); throw error;
+   }
+  },
   'file.open': async p => {
    const target = parseRemoteFileHref(String(p.href)); if (!target) throw new Error(t('文件链接无效'));
    const token = ++epoch.current; const contextId = c.contextId;
    const base: NativeFileState = { href: String(p.href), path: target.path, line: target.line, status: 'loading', text: '', mode: /\.(?:md|markdown|html?|xhtml)$/i.test(target.path) ? 'preview' : 'source' };
-   setFile({ ...base, contextId }); setPanel('file');
+   setAttachmentPreview(null); setFile({ ...base, contextId }); setPanel('file');
    if ((isPreviewableImagePath(target.path) && !/\.svg$/i.test(target.path)) || isPreviewableVideoPath(target.path) || /\.(?:mp3|wav|m4a|aac|flac|oga|opus)$/i.test(target.path)) { setFile({ ...base, contextId, status: 'ready' }); return; }
    try {
     const read = c.extended?.callbacks.readRemoteFile; if (!read) throw new Error(t('尚未连接 app-server'));
@@ -135,5 +169,5 @@ export function useNativeRichContent(c: NativeWorkspaceController, enabled: bool
   'file.mode': p => { if (!file || (p.path !== undefined && p.path !== file.path) || file.contextId !== c.contextId || !['preview', 'source'].includes(String(p.value))) throw new Error(t('文件面板已关闭')); setFile({ ...file, mode: String(p.value) }); },
   'diagram.render': async p => { if (!resources.diagrams.includes(String(p.source))) throw new Error(t('图表已更新')); await render(String(p.source)); },
  };
- return { diagnostics, loadDiagnostic, file: file?.contextId === c.contextId ? file : null, handlers, close: () => { epoch.current++; setFile(null); }, resources: [...resources.images, ...resources.diagrams.filter(source => diagrams[source]).map(source => ({ id: `mermaid:${source}`, kind: 'html', text: source, value: diagrams[source] }))] };
+ return { attachmentPreview: attachmentPreview?.contextId === c.contextId && c.draftFiles.some(file => file.id === attachmentPreview.id && file.file === attachmentPreview.file) ? attachmentPreview : null, diagnostics, loadDiagnostic, file: file?.contextId === c.contextId ? file : null, handlers, close: () => { epoch.current++; setFile(null); setAttachmentPreview(null); }, resources: [...resources.images, ...resources.diagrams.filter(source => diagrams[source]).map(source => ({ id: `mermaid:${source}`, kind: 'html', text: source, value: diagrams[source] }))] };
 }
