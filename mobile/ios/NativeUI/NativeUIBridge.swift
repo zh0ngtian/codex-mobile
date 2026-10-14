@@ -7,31 +7,22 @@ final class NativeUIBridge: NSObject, WKScriptMessageHandler {
     let store = NativeUIStore()
     // 业务 WebView 由既有 WebView representable 创建并拥有；桥仅保留弱引用，绝不创建第二个实例。
     private weak var webView: WKWebView?
-    static let script = """
-    if (location.protocol === "file:" && window === window.top) {
-    window.codexMobileNativeCommand = function(command) {
-      window.dispatchEvent(new CustomEvent("codex-mobile-native-command", {detail: command}));
-    };
-    window.codexMobilePublishNativeSnapshot = function(snapshot) {
-      window.webkit.messageHandlers.nativeUI.postMessage({type: "snapshot", snapshot: snapshot});
-    };
-    }
-    """
+    private let trustedURL = Bundle.main.bundleURL.appendingPathComponent("index.html").standardizedFileURL
     func attach(_ webView: WKWebView) {
         guard self.webView !== webView else { return }
         self.webView = webView
         let controller = webView.configuration.userContentController
         controller.removeScriptMessageHandler(forName: "nativeUI")
         controller.add(self, name: "nativeUI")
-        let enabled = store.nativeEnabled ? "true" : "false"
-        controller.addUserScript(WKUserScript(source: "if (location.protocol === 'file:' && window === window.top) window.__CODEX_NATIVE_UI__ = \(enabled);\n" + Self.script, injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        if let script = NativeUITrust.bootstrap(trustedURL: trustedURL, enabled: store.nativeEnabled) {
+            controller.addUserScript(WKUserScript(source: script, injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        }
         store.sendCommand = { [weak self] command in self?.dispatch(command) }
     }
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         guard message.name == "nativeUI", message.webView === webView,
               message.frameInfo.isMainFrame,
-              let frameURL = message.frameInfo.request.url, frameURL.isFileURL,
-              frameURL.standardizedFileURL == Bundle.main.bundleURL.appendingPathComponent("index.html").standardizedFileURL,
+              NativeUITrust.accepts(message.frameInfo.request.url, trustedURL: trustedURL),
               let object = message.body as? [String: Any], object["type"] as? String == "snapshot", let snapshot = object["snapshot"] else { return }
         do {
             let data = try JSONSerialization.data(withJSONObject: snapshot)
@@ -39,8 +30,9 @@ final class NativeUIBridge: NSObject, WKScriptMessageHandler {
         } catch { store.snapshot.error = "原生界面数据无法读取：\(error.localizedDescription)" }
     }
     private func dispatch(_ command: NativeCommand) {
-        guard let webView, webView.url?.isFileURL == true, let data = try? JSONEncoder().encode(command), let json = String(data: data, encoding: .utf8) else { return }
-        webView.evaluateJavaScript("window.codexMobileNativeCommand(\(json))") { [weak self] _, error in
+        guard let webView, NativeUITrust.accepts(webView.url, trustedURL: trustedURL),
+              let script = NativeUITrust.dispatch(command, trustedURL: trustedURL) else { return }
+        webView.evaluateJavaScript(script) { [weak self] _, error in
             if let error { self?.store.snapshot.error = error.localizedDescription }
         }
     }

@@ -2,6 +2,8 @@
 
 唯一 WKWebView 仍由现有 `WebView` 构造，原生桥只绑定这个实例。旧模式与原生模式沿用原配置的 WKWebsiteDataStore。UserDefaults `codexMobile.useNativeUI` 默认 false，进程启动时固定读取；设置修改只影响下一次完整启动。原生模式 WebView 仍挂载执行业务，SwiftUI 在前方。错误视图允许当前启动临时显示旧网页。
 
+注入、接收与派发只允许规范化后的 `Bundle.main.bundleURL/index.html`，且只允许已绑定 WebView 的主 frame；其他本地文件及远程页面均不能取得原生桥。可信 URL 由 JSONEncoder 编码进入脚本，发送时在 Swift 和 JS 实际执行处各校验一次，防止检查后导航改变。
+
 ## 双向通道
 
 原生在 document start 注入 `window.__CODEX_NATIVE_UI__: boolean`。TS 通过 `window.codexMobilePublishNativeSnapshot(snapshot)` 发布完整快照，等价于 `window.webkit.messageHandlers.nativeUI.postMessage({type:"snapshot",snapshot})`。

@@ -1,0 +1,49 @@
+import Foundation
+
+/// 注入、收取与派发使用相同的内置首页边界；不允许其他 file: 文档取得桥。
+enum NativeUITrust {
+    static func accepts(_ candidate: URL?, trustedURL: URL) -> Bool {
+        guard let candidate, candidate.isFileURL, trustedURL.isFileURL,
+              candidate.query == nil, candidate.fragment == nil,
+              candidate.user == nil, candidate.password == nil else { return false }
+        return candidate.standardizedFileURL == trustedURL.standardizedFileURL
+    }
+
+    static let script = """
+    (() => {
+      const trustedURL = __CODEX_TRUSTED_URL__;
+      if (window !== window.top || location.protocol !== "file:" || new URL(location.href).href !== new URL(trustedURL).href) return;
+      window.__CODEX_NATIVE_UI__ = __CODEX_NATIVE_ENABLED__;
+      window.codexMobileNativeCommand = function(command) {
+        window.dispatchEvent(new CustomEvent("codex-mobile-native-command", {detail: command}));
+      };
+      window.codexMobilePublishNativeSnapshot = function(snapshot) {
+        window.webkit.messageHandlers.nativeUI.postMessage({type: "snapshot", snapshot: snapshot});
+      };
+    })();
+    """
+
+    static func bootstrap(trustedURL: URL, enabled: Bool) -> String? {
+        guard let encodedURL = json(trustedURL.standardizedFileURL.absoluteString) else { return nil }
+        return script.replacingOccurrences(of: "__CODEX_NATIVE_ENABLED__", with: enabled ? "true" : "false")
+            .replacingOccurrences(of: "__CODEX_TRUSTED_URL__", with: encodedURL)
+    }
+
+    static func dispatch(_ command: NativeCommand, trustedURL: URL) -> String? {
+        guard let encodedURL = json(trustedURL.standardizedFileURL.absoluteString),
+              let encodedCommand = json(command) else { return nil }
+        // 在实际执行 JS 的时刻再次核对 URL，覆盖原生检查后导航发生变化的窗口。
+        return """
+        (() => {
+          const trustedURL = \(encodedURL);
+          if (window !== window.top || location.protocol !== "file:" || new URL(location.href).href !== new URL(trustedURL).href) return;
+          window.codexMobileNativeCommand(\(encodedCommand));
+        })();
+        """
+    }
+
+    private static func json<T: Encodable>(_ value: T) -> String? {
+        guard let data = try? JSONEncoder().encode(value) else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+}
