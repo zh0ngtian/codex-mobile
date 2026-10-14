@@ -1,6 +1,5 @@
 import { useLayoutEffect, useRef, useState } from 'react';
 import { NativeRuntime, isNativeUIEnabled, publishNativeSnapshot } from './runtime';
-import { isIOSNativeHost } from './preference';
 import { useNativeSwitch } from './switch-context';
 import type { NativeHandlers, NativeNavigation, NativeParams, NativeSnapshot } from './protocol';
 
@@ -18,7 +17,9 @@ function useCommittedRegistration(handlers: NativeHandlers, register: (handlers:
 }
 export function useNativeRuntime(navigation: NativeNavigation, handlers: NativeHandlers): NativeRuntime | null {
   const preference = useNativeSwitch();
-  const [runtime] = useState(() => (isNativeUIEnabled() || isIOSNativeHost()) ? new NativeRuntime(publishNativeSnapshot) : null);
+  const preferenceRef = useRef(preference);
+  useLayoutEffect(() => { preferenceRef.current = preference; });
+  const [runtime] = useState(() => isNativeUIEnabled() ? new NativeRuntime(publishNativeSnapshot, () => preferenceRef.current?.changed()) : null);
   useLayoutEffect(() => { runtime?.listen(); return () => runtime?.dispose(); }, [runtime]);
   useCommittedRegistration({ ...handlers, ...(preference ? { 'settings.native-ui': (params: NativeParams) => preference.change(params.enabled as boolean) } : {}) }, committed => runtime?.setNavigation({ ...navigation, error: preference?.error || navigation.error }, committed));
   return runtime;

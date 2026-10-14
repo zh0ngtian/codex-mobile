@@ -1,5 +1,4 @@
 import { flushSync } from 'react-dom';
-import { isIOSNativeHost } from './preference';
 import { getActiveLocale, t } from '../i18n';
 import { FONT_SCALES, readFontSize } from '../ui/font-size';
 import { emptyNativeSnapshot, type NativeHandlers, type NativeNavigation, type NativeSnapshot, type NativeResult, type NativeParams } from './protocol';
@@ -58,9 +57,9 @@ export class NativeRuntime {
   private disposed = false;
   private commandError?: string;
   private listening = false;
-  constructor(private publish: (snapshot: NativeSnapshot) => void) {}
+  constructor(private publish: (snapshot: NativeSnapshot) => void, private commandSucceeded?: (result: NativeResult) => void) {}
   get listenerCount() { return this.listening ? 1 : 0; }
-  private listener = (event: Event) => { const detail = (event as CustomEvent).detail; if (isNativeUIEnabled() || (isIOSNativeHost() && detail?.name === 'settings.native-ui')) void this.dispatch(detail); };
+  private listener = (event: Event) => { if (isNativeUIEnabled()) void this.dispatch((event as CustomEvent).detail); };
   listen() {
     if (this.listening) return;
     this.disposed = false;
@@ -106,6 +105,8 @@ export class NativeRuntime {
     const result = new Promise<NativeResult>(done => { resolve = done; });
     if (id) { this.requests.set(id, result); this.inFlight.add(id); }
     void this.execute(input).then(value => {
+      // 原生设置可能只更新局部组件；命令成功后显式捕获检查点中的最新设置。
+      if (value.ok) this.commandSucceeded?.(value);
       this.inFlight.delete(id); this.results = [...this.results, value].slice(-64);
       const currentContext = this.workspaces.get(this.navigation.selectedBackendId)?.value.contextId;
       if (!value.contextId || value.contextId === currentContext) this.commandError = value.ok ? undefined : value.error;

@@ -1,8 +1,10 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react';
 import { IDBFactory } from 'fake-indexeddb';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import * as switchStoreModule from '../../src/native-ui/switch-store';
 import { nativeSwitchStore } from '../../src/native-ui/switch-store';
+import { useNativeRuntime } from '../../src/native-ui/adapters';
+import { useNativeConfirmation } from '../../src/native-ui/confirmation';
 import { AppBootstrap } from '../../src/App';
 vi.mock('../../src/backends/connection-manager', () => ({ BackendConnectionManager: class { sync() {} close() {} reconnect() {} client() { return null; } socket() { return null; } } }));
 const posts: any[] = []; const messages: any[] = [];
@@ -12,7 +14,7 @@ function host(active: boolean) { Object.assign(window, { __CODEX_IOS_HOST__: tru
  messages.push(message); if (message.type === 'nativePreference') queueMicrotask(() => (window as any).codexMobileNativePreferenceComplete({ id: message.id, enabled: message.enabled ?? active, active }));
  } } } }, codexMobilePublishNativeSnapshot: (snapshot: any) => posts.push(snapshot) }); }
 beforeEach(() => { vi.stubGlobal('indexedDB', new IDBFactory()); vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { headers: { 'content-type': 'application/json' } }))); });
-afterEach(() => { cleanup(); localStorage.clear(); posts.length = 0; messages.length = 0; for (const key of ['__CODEX_IOS_HOST__', '__CODEX_NATIVE_UI__', 'webkit', 'codexMobilePublishNativeSnapshot', 'codexMobileNativePreference', 'codexMobileNativePreferenceComplete']) delete (window as any)[key]; vi.unstubAllGlobals(); });
+afterEach(() => { cleanup(); localStorage.clear(); posts.length = 0; messages.length = 0; for (const key of ['__CODEX_IOS_HOST__', '__CODEX_NATIVE_UI__', 'webkit', 'codexMobilePublishNativeSnapshot', 'codexMobileNativePreference', 'codexMobileNativePreferenceComplete']) delete (window as any)[key]; vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 it('旧界面仅在iOS宿主显示原生开关，保存偏好后当前界面保持旧模式', async () => {
  host(false); render(<AppBootstrap initialRegistry={{ version: 1, selectedBackendId: '', backends: [] }} />);
  const toggle = await screen.findByRole('checkbox', { name: '使用原生界面' }); expect(toggle).not.toBeChecked();
@@ -119,4 +121,27 @@ it('二进制附件重建失败保留检查点并停留在恢复界面', async (
  render(<AppBootstrap initialRegistry={registry} />);
  await waitFor(() => expect(posts.at(-1)?.error).toContain('无法重建附件'));
  expect((await nativeSwitchStore.load())?.workspaces[0].text).toBe('保留文字'); restore.mockRestore();
+});
+
+it('iOS旧界面确认沿用可见Web对话框，不创建不可见的原生确认', async () => {
+ host(false); const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+ const { result } = renderHook(() => {
+  const runtime = useNativeRuntime({ selectedBackendId: '', backends: [], groups: [] }, {});
+  return { runtime, confirm: useNativeConfirmation(runtime, 'legacy') };
+ });
+ expect(result.current.runtime).toBeNull();
+ expect(await result.current.confirm('确认清除？')).toBe(true); expect(confirm).toHaveBeenCalledWith('确认清除？');
+});
+it('切换后纯原生命令修改字号也同步检查点，重启不还原旧字号', async () => {
+ host(true); const first = render(<AppBootstrap initialRegistry={registry} />);
+ await waitFor(() => expect(posts.at(-1)?.ready).toBe(true));
+ await act(async () => command('font-before-arm', 'settings.open', { id: 'font' }));
+ await act(async () => command('arm-before-font', 'settings.native-ui', { enabled: false }));
+ await waitFor(() => expect(posts.at(-1)?.commandResults?.find((r: any) => r.id === 'arm-before-font')?.ok).toBe(true));
+ await act(async () => command('font-after-arm', 'settings.font', { value: 'extra-large', fieldKey: 'settings:font:font', fieldRevision: 1 }));
+ await waitFor(() => expect(posts.at(-1)?.commandResults?.find((r: any) => r.id === 'font-after-arm')?.ok).toBe(true));
+ await waitFor(async () => expect((await nativeSwitchStore.load())?.storage['codex-mobile:font-size']).toBe('extra-large'));
+ first.unmount(); render(<AppBootstrap initialRegistry={registry} />);
+ await waitFor(() => expect(posts.at(-1)?.fontScale).toBe(1.25));
+ expect(localStorage.getItem('codex-mobile:font-size')).toBe('extra-large');
 });
