@@ -1,3 +1,4 @@
+import { isClientForeground } from "../native-ui/foreground";
 import type { RpcMessage } from "../app-server/client";
 import { t } from "../i18n";
 import { isNavigationResume } from "../../server/rpc-replay";
@@ -266,12 +267,12 @@ export class HttpRpcTransport extends EventTarget {
 
   private scheduleOperations(delay = this.writes.size ? 3_000 : 15_000) {
     const dueAt = Date.now() + delay;
-    if (this.readyState === 1 && this.initialized && document.visibilityState === "visible"
+    if (this.readyState === 1 && this.initialized && isClientForeground()
       && this.operationTimer !== undefined && this.operationDueAt <= dueAt) return;
     clearTimeout(this.operationTimer);
     this.operationTimer = undefined;
     this.operationDueAt = 0;
-    if (this.readyState !== 1 || !this.initialized || document.visibilityState !== "visible") return;
+    if (this.readyState !== 1 || !this.initialized || !isClientForeground()) return;
     this.operationDueAt = dueAt;
     this.operationTimer = setTimeout(() => {
       this.operationTimer = undefined;
@@ -281,7 +282,7 @@ export class HttpRpcTransport extends EventTarget {
   }
 
   private async reconcileOperations() {
-    if (this.reconciling || !this.initialized || this.readyState !== 1 || document.visibilityState !== "visible") return;
+    if (this.reconciling || !this.initialized || this.readyState !== 1 || !isClientForeground()) return;
     this.reconciling = true;
     const entries = [...this.writes];
     const start = entries.length ? this.reconcileOffset % entries.length : 0;
@@ -293,7 +294,7 @@ export class HttpRpcTransport extends EventTarget {
         if (!operation.message.method && !this.epoch) continue;
         try {
           const result = await this.fetchJson("/api/operations", {}, { requestId: operation.requestId }, 5_000);
-          if (this.readyState !== 1 || document.visibilityState !== "visible") return;
+          if (this.readyState !== 1 || !isClientForeground()) return;
           if (result.status !== "completed" || !result.message || this.inflightWrites.has(operation.requestId) || this.writes.get(signature) !== operation) continue;
           this.writes.delete(signature);
           this.saveWrites();
@@ -320,23 +321,23 @@ export class HttpRpcTransport extends EventTarget {
     clearTimeout(this.operationTimer);
     this.operationTimer = undefined;
     this.operationDueAt = 0;
-    if (document.visibilityState === "visible") { void this.poll(); void this.reconcileOperations(); }
+    if (isClientForeground()) { void this.poll(); void this.reconcileOperations(); }
   };
 
   private schedule(delay?: number) {
     clearTimeout(this.timer);
-    if (this.readyState !== 1 || !this.initialized || document.visibilityState !== "visible") return;
+    if (this.readyState !== 1 || !this.initialized || !isClientForeground()) return;
     this.timer = setTimeout(() => void this.poll(), delay ?? (this.hasMore && !this.failures ? 0 : this.failures
       ? Math.min(30_000, 3_000 * 2 ** this.failures) : this.active ? 3_000 : 15_000));
   }
 
   private async poll() {
-    if (!this.initialized || this.polling || this.readyState !== 1 || document.visibilityState !== "visible") return;
+    if (!this.initialized || this.polling || this.readyState !== 1 || !isClientForeground()) return;
     clearTimeout(this.timer);
     this.polling = true;
     try {
       const payload = await this.fetchJson("/api/events", {}, { after: String(this.cursor) }) as PollResponse;
-      if (this.readyState !== 1 || document.visibilityState !== "visible") return;
+      if (this.readyState !== 1 || !isClientForeground()) return;
       if (this.epoch && this.epoch !== payload.epoch) { this.close(4001, "gateway session changed"); return; }
       this.epoch = payload.epoch;
       this.active = payload.active || payload.requests.length > 0;

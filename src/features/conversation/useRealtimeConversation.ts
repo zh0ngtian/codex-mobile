@@ -1,3 +1,4 @@
+import { isClientForeground } from "../../native-ui/foreground";
 import { useCallback, useEffect, useReducer, useRef } from "react";
 import type { AppServerClient, RpcMessage } from "../../app-server/client";
 import {
@@ -139,7 +140,7 @@ export function useRealtimeConversation({
   useEffect(() => {
     const handleVisibility = () => {
       if (
-        document.visibilityState === "hidden" &&
+        !isClientForeground() &&
         stateRef.current.status !== "idle"
       ) {
         if (client) {

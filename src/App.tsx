@@ -1,3 +1,8 @@
+import { useNativeRuntime } from "./native-ui/adapters";
+import { useNativeConversationAdapter } from "./native-ui/workspace-adapter";
+import { isNativeUIEnabled, type NativeRuntime } from "./native-ui/runtime";
+import { projectNavigation } from "./native-ui/projection";
+import { isClientForeground } from "./native-ui/foreground";
 import { DraftsSheet } from "./features/drafts/DraftsSheet";
 import {
   newChatDraftStore,
@@ -296,6 +301,7 @@ interface WorkspaceCommand {
 }
 
 interface BackendWorkspaceProps {
+  nativeRuntime: NativeRuntime | null;
   backend: BackendConfig;
   conversationVisible: boolean;
   foregroundRecoveryActive: boolean;
@@ -318,6 +324,7 @@ interface BackendWorkspaceProps {
 }
 
 function BackendWorkspace({
+  nativeRuntime,
   backend,
   conversationVisible,
   foregroundRecoveryActive,
@@ -358,7 +365,7 @@ function BackendWorkspace({
   >("idle");
   const [searchError, setSearchError] = useState("");
   const [searchRefreshVersion, setSearchRefreshVersion] = useState(0);
-  const [active, setActive] = useState<AnyRecord | null>(null);
+  const [active, setActive] = useState<AnyRecord | null>(() => isNativeUIEnabled() ? { id: "", turns: [], preview: t("新对话"), cwd: null } : null);
   const [draft, setDraft] = useState("");
   const savedDraftRef = useRef<SavedDraftReference | undefined>(undefined);
   const restoredDraftSettingsRef = useRef<SavedNewChatDraft["settings"] | null>(null);
@@ -413,7 +420,7 @@ function BackendWorkspace({
   const [activeThreadResumeError, setActiveThreadResumeError] = useState("");
   const [openingThreadId, setOpeningThreadId] = useState("");
   const [conversationLoadState, setConversationLoadState] =
-    useState<ConversationLoadState>("idle");
+    useState<ConversationLoadState>(() => isNativeUIEnabled() ? "ready" : "idle");
   const [conversationLoadError, setConversationLoadError] = useState("");
   const [olderTurnsState, setOlderTurnsState] =
     useState<OlderTurnsLoadState>("exhausted");
@@ -1274,7 +1281,7 @@ function BackendWorkspace({
               threadId,
               activeThreadId: String(activeRef.current?.id ?? ""),
               conversationVisible: conversationVisibleRef.current,
-              documentVisible: document.visibilityState === "visible",
+              documentVisible: isClientForeground(),
             });
             if (attentionAction === "mark-unread") {
               markThreadUnread(threadId);
@@ -1291,7 +1298,7 @@ function BackendWorkspace({
               threadId,
               activeThreadId: String(activeRef.current?.id ?? ""),
               conversationVisible: conversationVisibleRef.current,
-              documentVisible: document.visibilityState === "visible",
+              documentVisible: isClientForeground(),
             }) === "mark-unread") {
               notifyRunCompleted({
                 title: t("Codex 运行结束"),
@@ -2115,7 +2122,7 @@ function BackendWorkspace({
     let stopped = false;
     let inFlight = false;
     const refresh = async () => {
-      if (stopped || inFlight || document.visibilityState === "hidden") return;
+      if (stopped || inFlight || !isClientForeground()) return;
       inFlight = true;
       try { await refreshHostedQueue(); } catch { /* 入队和管理操作会显式报告连接/升级错误。 */ }
       finally { inFlight = false; }
@@ -2759,10 +2766,14 @@ function BackendWorkspace({
 
   async function send(event: FormEvent) {
     event.preventDefault();
-    if (draftSavingRef.current || (active?.id && activeThreadAccessMode !== "interactive")) return;
-    const text = draft.trim();
-    const pendingImages = draftImages;
-    const pendingFiles = draftFiles;
+    await sendMessage();
+  }
+
+  async function sendMessage() {
+    if (draftSavingRef.current || (active?.id && activeThreadAccessMode !== "interactive")) return false;
+    const text = currentDraftRef.current.text.trim();
+    const pendingImages = currentDraftRef.current.images;
+    const pendingFiles = currentDraftRef.current.files;
     const pendingSkills = skillsReferencedInText(
       text,
       skillCatalog.cwd === (active?.cwd ?? null) ? skillCatalog.skills : [],
@@ -2776,7 +2787,7 @@ function BackendWorkspace({
       (!text && !pendingImages.length && !pendingFiles.length) ||
       !clientRef.current
     ) {
-      return;
+      return false;
     }
     const draftContext = draftContextGenerationRef.current;
     const conversationBusy = active?.id
@@ -2787,9 +2798,9 @@ function BackendWorkspace({
       const threadId = String(active?.id ?? "");
       if (!threadId) {
         setError(t("当前任务正在启动，请稍后再排队"));
-        return;
+        return false;
       }
-      if (queueMutatingRef.current || queueSubmittingThreadIdsRef.current.has(threadId)) return;
+      if (queueMutatingRef.current || queueSubmittingThreadIdsRef.current.has(threadId)) return false;
       queueSubmittingThreadIdsRef.current.add(threadId);
       requestRunCompletionNotificationPermission();
       setImageReading(true);
@@ -2829,11 +2840,12 @@ function BackendWorkspace({
         }
       } catch (reason) {
         if (draftContext === draftContextGenerationRef.current) setError(reason instanceof Error ? reason.message : String(reason));
+        return false;
       } finally {
         queueSubmittingThreadIdsRef.current.delete(threadId);
         if (String(activeRef.current?.id ?? "") === threadId) setImageReading(false);
       }
-      return;
+      return true;
     }
     const savedDraft = savedDraftRef.current;
     requestRunCompletionNotificationPermission();
@@ -2842,7 +2854,7 @@ function BackendWorkspace({
     setDraftImages([]);
     setDraftFiles([]);
     setError("");
-    await startTurnMessage({
+    return startTurnMessage({
       text,
       pendingImages,
       pendingFiles,
@@ -2869,7 +2881,7 @@ function BackendWorkspace({
             images: pendingImages, files: pendingFiles,
             skills: pendingSkills, plugins: pendingPlugins, failed: true,
           }, ...queuedFollowUpsRef.current]);
-          return;
+          return false;
         }
         setDraft((current) => current || text);
         setDraftImages((current) => mergeDraftImages(current, pendingImages));
@@ -3265,7 +3277,7 @@ function BackendWorkspace({
     } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)); }
   }
 
-  async function selectImages(files: FileList | null) {
+  async function selectImages(files: FileList | File[] | null) {
     if (
       !files?.length ||
       historyEdit ||
@@ -4032,7 +4044,7 @@ function BackendWorkspace({
   }
 
   async function saveNewChatDraft() {
-    if (active?.id || draftSavingRef.current || imageReading || startingThreadContext !== null || (!draft.trim() && !draftImages.length && !draftFiles.length)) return;
+    if (active?.id || draftSavingRef.current || imageReading || startingThreadContext !== null || (!draft.trim() && !draftImages.length && !draftFiles.length)) return false;
     const context = draftContextGenerationRef.current;
     const contentVersion = draftContentVersionRef.current;
     draftSavingRef.current = true;
@@ -4053,8 +4065,10 @@ function BackendWorkspace({
         if (contentVersion === draftContentVersionRef.current) setDraftSaveStatus(t("草稿已保存到本地"));
         setError("");
       }
+      return true;
     } catch (reason) {
       if (context === draftContextGenerationRef.current) setError(`${t("无法保存草稿")}：${reason instanceof Error ? reason.message : String(reason)}`);
+      return false;
     } finally {
       if (context === draftContextGenerationRef.current) {
         draftSavingRef.current = false;
@@ -4134,6 +4148,47 @@ function BackendWorkspace({
   const conversationOperationPending = pendingOperationIds.some((id) => {
     const operation = pendingOperationsRef.current.get(id);
     return operation?.draftContext === draftContextGenerationRef.current && (!operation.threadId || operation.threadId === String(active?.id ?? ""));
+  });
+
+  const nativeContextId = `${backend.id}:context:${draftContextGenerationRef.current}`;
+  useNativeConversationAdapter(nativeRuntime, {
+    backend, active, contextId: nativeContextId, connection, draft, draftImages, draftFiles,
+    busy: conversationBusy, readOnly: Boolean(historyEdit || (active?.id && activeThreadAccessMode !== "interactive")),
+    imageReading, draftSaving, pending: conversationOperationPending, models, selectedModel,
+    selectedModelLabel, effortOptions, selectedEffort, permission: selectedPermissionLabel,
+    skills: skillCatalog.cwd === (active?.cwd ?? null) ? skillCatalog.skills : [],
+    plugins: pluginCatalog.cwd === (active?.cwd ?? null) ? pluginCatalog.plugins : [],
+    queued: queuedFollowUps.filter(item => item.threadId === String(active?.id ?? "") && (item.threadId || item.draftContext === draftContextGenerationRef.current)),
+    approvalCount: requests.length, loadState: conversationLoadState, loadError: conversationLoadError || activeThreadResumeError,
+    olderTurnsState, error, syncStale: syncState?.stale, draftSaveStatus,
+    getDraft: () => currentDraftRef.current.text,
+    setDraft: value => { currentDraftRef.current = { ...currentDraftRef.current, text: value }; setDraft(value); },
+    send: sendMessage, stop: interrupt, chooseModel, chooseEffort,
+    removeAttachment: id => {
+      setDraftImages(current => current.filter(item => item.id !== id));
+      setDraftFiles(current => { const removed = current.find(item => item.id === id); if (removed) URL.revokeObjectURL(removed.previewUrl); return current.filter(item => item.id !== id); });
+    },
+    selectFiles: async files => {
+      if (`${backend.id}:context:${draftContextGenerationRef.current}` !== nativeContextId) throw new Error(t("会话已切换，请重试"));
+      await selectImages(files);
+    },
+    selectLocation: selectCurrentLocation, saveDraft: saveNewChatDraft, retry: retryThreadDetail, loadOlder: loadOlderTurns,
+    editMessage: (turnId, messageId) => {
+      const target = createHistoricalMessageEditTarget(activeRef.current?.turns ?? [], turnId, messageId);
+      if (!target) throw new Error(t("消息已更新"));
+      beginHistoricalMessageEdit(target);
+    },
+    cancelQueued: cancelQueuedFollowUp, sendQueued: actOnQueuedFollowUp, editQueued: editQueuedFollowUp,
+    extended: {
+      state: { historyEdit, requests, approval, userAnswers, permissionModes, selectedPermissionModeId,
+        selectedServiceTier: displayedServiceTier, speedOptions, pendingAction, tokenUsage: tokenUsageByThread[active?.id] ?? null, rateLimits,
+        projectOptions, backends, draftSaveStatus, activeThreadAccessMode, activeThreadResumeError },
+      callbacks: { chooseSpeed, choosePermissionMode, replyToRequest, changeHistoricalMessageEditText, cancelHistoricalMessageEdit,
+        submitHistoricalMessageEdit, chooseNewChatProject, togglePinned, duplicateActiveThread, renameThread, archiveThread,
+        reopenApproval: approvalRequests.reopen, answerApproval: approvalRequests.answer,
+        dismissApproval: approvalRequests.dismiss,
+        switchNewChatBackend: (id: string) => onSwitchNewChatBackend(id, draft, draftImages, draftFiles, savedDraftRef.current) },
+    },
   });
 
   return (
@@ -4446,6 +4501,7 @@ function ConfiguredApp({
       window.localStorage.getItem("codex-mobile:list-backend") || "all",
   );
   const [query, setQuery] = useState("");
+  const [nativeNavigationFilter, setNativeNavigationFilter] = useState("sessions");
   const [collapsedProjectKeys, setCollapsedProjectKeys] = useState(() =>
     readCollapsedProjectKeys(window.localStorage),
   );
@@ -4453,6 +4509,7 @@ function ConfiguredApp({
   const [pendingCompletionTarget, setPendingCompletionTarget] =
     useState<RunCompletionNavigationTarget | null>(null);
   const commandIdRef = useRef(0);
+  const nativeManagementPending = useRef(false);
   const {
     sidebarOpen,
     refreshVersion,
@@ -4461,7 +4518,7 @@ function ConfiguredApp({
     closeSidebar,
     refresh: refreshAllBackends,
     refreshSilently: refreshAllBackendsSilently,
-  } = useSidebarRefresh();
+  } = useSidebarRefresh(undefined, !isNativeUIEnabled());
   useEffect(() => {
     if (!sidebarOpen) setQuery("");
   }, [sidebarOpen]);
@@ -4872,10 +4929,10 @@ function ConfiguredApp({
   ]);
 
   const manageThread = useCallback(
-    (item: AggregatedThreadItem, action: ThreadManagementAction) => {
+    (item: AggregatedThreadItem, action: ThreadManagementAction, nativeName?: string) => {
       let name: string | undefined;
       if (action === "rename") {
-        name = window.prompt(
+        name = nativeName ?? window.prompt(
           t("输入新的会话名称"),
           titleOf(item.thread),
         )?.trim();
@@ -4956,6 +5013,63 @@ function ConfiguredApp({
     [mountedBackends, selectBackend],
   );
 
+
+  const nativeGroups = isNativeUIEnabled() ? projectNavigation({
+    threads: scopedThreads, listBackendId, selectedBackendId: selectedBackend?.id ?? "",
+    projectDirectories, hasProjectlessThreads, collapsedProjectKeys, projectThreadStates,
+    projectHasMore, loadingProjectKeys, filter: nativeNavigationFilter, searching,
+    backends: mountedBackends, backendSnapshots: snapshots,
+    error: listError || (threadListState === "error" ? t("会话列表加载失败") : ""),
+  }) : [];
+  const performNativeProject = (name: string, params: Record<string, unknown>) => {
+    const group = nativeGroups.find(group => group.command?.params.backendId === params.backendId && group.command?.params.cwd === params.cwd);
+    const allowed = group?.command?.name === name || group?.actions?.some(action => action.command?.name === name);
+    if (!allowed) throw new Error(t("会话列表已更新，请刷新"));
+    if (name === "project.toggle") toggleProjectCollapsed(String(params.backendId), String(params.cwd));
+    else if (name === "project.more") toggleProject(String(params.backendId), String(params.cwd));
+    else retryProject(String(params.backendId), String(params.cwd));
+  };
+  const nativeRuntime = useNativeRuntime({
+    selectedBackendId: selectedBackend?.id ?? "", sidebarOpen, search: query, groups: nativeGroups,
+    backends: [{ id: "all", title: t("全部设备"), connected: true }, ...mountedBackends.map(backend => ({
+      id: backend.id, title: backend.name, connected: summaries[backend.id]?.connection === "online",
+      subtitle: summaries[backend.id]?.error || summaries[backend.id]?.connection,
+    }))],
+  }, {
+    "navigation.sidebar": p => { if (p.open) openSidebar(); else closeSidebar(); },
+    "navigation.search": p => setQuery(String(p.value)),
+    "navigation.refresh": refreshAllBackends,
+    "backend.select": p => {
+      const id = String(p.id);
+      if (id !== "all" && !mountedBackends.some(backend => backend.id === id)) throw new Error(t("设备已移除"));
+      // 设备列表筛选不切换当前对话所属workspace。
+      selectListBackend(id);
+    },
+    "navigation.filter": p => {
+      const value = String(p.value);
+      if (!["favorites", "projects", "sessions"].includes(value)) throw new Error(t("导航分类无效"));
+      setNativeNavigationFilter(value);
+    },
+    "thread.new": startNewChat,
+    "thread.open": p => {
+      const item = scopedThreads.find(item => item.backendId === p.backendId && item.threadId === p.threadId);
+      if (!item) throw new Error(t("会话列表已更新，请刷新"));
+      openThread(item);
+    },
+    "thread.manage": async p => {
+      const item = scopedThreads.find(item => item.backendId === p.backendId && item.threadId === p.threadId);
+      if (!item) throw new Error(t("会话列表已更新，请刷新"));
+      if (p.action === "rename" && typeof p.value !== "string") throw new Error(t("请输入新的会话名称"));
+      if (nativeManagementPending.current) throw new Error(t("会话操作未完成"));
+      nativeManagementPending.current = true;
+      try {
+        if (!await manageThread(item, p.action as ThreadManagementAction, typeof p.value === "string" ? p.value : undefined)) throw new Error(t("会话操作未完成"));
+      } finally { nativeManagementPending.current = false; }
+    },
+    "project.toggle": p => performNativeProject("project.toggle", p),
+    "project.more": p => performNativeProject("project.more", p),
+    "project.retry": p => performNativeProject("project.retry", p),
+  });
   if (!selectedBackend) {
     return <main className="app-shell"><div className="empty-state">{t("没有可用设备")}</div></main>;
   }
@@ -4969,6 +5083,7 @@ function ConfiguredApp({
           key={`${backend.id}:${backend.baseUrl}:${backend.token}`}
         >
           <BackendWorkspace
+            nativeRuntime={nativeRuntime}
             backend={{ ...backend, transportMode }}
             foregroundRecoveryActive={backend.id === selectedBackend.id}
             conversationVisible={

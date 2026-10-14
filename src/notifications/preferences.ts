@@ -1,3 +1,4 @@
+import { isClientForeground } from "../native-ui/foreground";
 import { useEffect, useState } from "react";
 import { parseBarkPushUrl, type NotificationPreference } from "../../server/notification-settings";
 import { transportUuid } from "../backends/http-transport";
@@ -107,7 +108,7 @@ export function useNotificationSync(backends: BackendConfig[], preference: Notif
       } finally { running = false; }
     };
     void synchronize();
-    const retry = () => { if (document.visibilityState === "visible") void synchronize(); };
+    const retry = () => { if (isClientForeground()) void synchronize(); };
     const timer = window.setInterval(retry, 30_000);
     const followingChanged = () => { void synchronize(); };
     const storageChanged = (event: StorageEvent) => {

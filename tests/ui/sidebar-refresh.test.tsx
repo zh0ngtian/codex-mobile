@@ -51,3 +51,11 @@ describe("侧边栏刷新", () => {
     expect(intervalDelays).not.toContain("1000*60");
   });
 });
+
+it('原生主画布初始不受隐藏网页侧栏状态影响', () => {
+  const { result } = renderHook(() => useSidebarRefresh(undefined, false));
+  expect(result.current.sidebarOpen).toBe(false);
+  act(() => result.current.openSidebar());
+  expect(result.current.sidebarOpen).toBe(true);
+  expect(result.current.silentRefreshVersion).toBe(1);
+});
