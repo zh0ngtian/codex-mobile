@@ -17,6 +17,7 @@ struct NativeConversationView: View {
                 }
                 NativeIconButton(title: store.label("新对话", "New Conversation"), symbol: "square.and.pencil", identifier: "native-new-thread") { store.command("thread.new") }
             }.padding(.horizontal, 16).padding(.bottom, 10)
+            NativeConversationStatusView(store: store)
             if let error = store.snapshot.error ?? store.commandError {
                 VStack(spacing: 12) {
                     Text(error).font(.callout).textSelection(.enabled)

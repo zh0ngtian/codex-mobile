@@ -25,7 +25,7 @@ struct NativeMessageView: View {
                         Text(status).font(.system(size: statusSize * store.snapshot.fontScale)).foregroundStyle(.secondary)
                             .padding(.bottom, NativeTextRhythm.statusToBodyGap - NativeTextRhythm.standardGap)
                     }
-                    NativeMarkdownView(text: message.text, scale: store.snapshot.fontScale)
+                    NativeMarkdownView(text: message.text, scale: store.snapshot.fontScale, store: store)
                     if let blocks = message.blocks {
                         ForEach(blocks) { item in NativePanelItemView(item: item, store: store, scope: .message(message.id)) }
                     }

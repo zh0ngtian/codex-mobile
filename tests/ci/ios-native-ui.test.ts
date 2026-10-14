@@ -11,12 +11,12 @@ function bootstrap() {
   return source("NativeUITrust").match(/static let script = """\n([\s\S]*?)\n\s*"""/)![1]
     .replace("__CODEX_TRUSTED_URL__", JSON.stringify(trustedURL)).replace("__CODEX_NATIVE_ENABLED__", "true");
 }
-afterEach(() => { delete (window as any).__CODEX_NATIVE_UI__; delete (window as any).__CODEX_NATIVE_ACTIVE__; delete (window as any).codexMobileSetNativeActive; delete (window as any).codexMobileNativeCommand; delete (window as any).codexMobilePublishNativeSnapshot; delete (window as any).webkit; });
+afterEach(() => { delete (window as any).__CODEX_NATIVE_UI__; delete (window as any).__CODEX_NATIVE_ACTIVE__; delete (window as any).codexMobileSetNativeActive; delete (window as any).codexMobileNativeCommand; delete (window as any).codexMobilePublishNativeSnapshot; delete (window as any).webkit; delete (window as any).codexMobileScanGatewayQr; delete (window as any).codexMobileQRComplete; });
 describe("SwiftUI 原生宿主契约", () => {
   it.skipIf(process.platform !== "darwin")("执行真实 Swift store、Codable往返、离线状态与 Markdown 解析", () => {
     const directory = mkdtempSync(join(tmpdir(), "native-model-"));
     try {
-      const names = ["NativeJSONValue", "NativeCommand", "NativeCommandResult", "NativeOption", "NativeBackend", "NativeNavigationItem", "NativeGroup", "NativeAttachment", "NativeMessage", "NativePanelItem", "NativePanel", "NativeSnapshot", "NativeUIStore", "NativeMarkdownBlock", "NativeMarkdownBlockKind", "NativeTextRhythm", "NativeFieldKey", "NativeFieldScope", "NativeImageData", "NativePlainText", "NativeTimelineState", "NativeTextPrompt"];
+      const names = ["NativeJSONValue", "NativeCommand", "NativeCommandResult", "NativeOption", "NativeBackend", "NativeNavigationItem", "NativeGroup", "NativeAttachment", "NativeMessage", "NativePanelItem", "NativePanel", "NativeSnapshot", "NativeUIStore", "NativeMarkdownBlock", "NativeMarkdownBlockKind", "NativeMarkdownSyntax", "NativeMediaSource", "NativeTextRhythm", "NativeFieldKey", "NativeFieldScope", "NativeImageData", "NativePlainText", "NativeTimelineState", "NativeTextPrompt"];
       const compile = spawnSync("xcrun", ["swiftc", ...names.map(name => `mobile/ios/NativeUI/${name}.swift`), "tests/ci/native-ui-model-smoke.swift", "-o", join(directory, "smoke")], { encoding: "utf8" });
       expect(compile.status, compile.stderr).toBe(0);
       const result = spawnSync(join(directory, "smoke"), [], { encoding: "utf8" });
@@ -51,6 +51,24 @@ describe("SwiftUI 原生宿主契约", () => {
       expect((window as any).__CODEX_NATIVE_ACTIVE__).toBe(true);
       expect(visibility).toHaveBeenCalledTimes(2);
     } finally { document.removeEventListener("visibilitychange", visibility); }
+  });
+  it("原生扫码Promise按请求回传结果、取消与占用错误", async () => {
+    const postMessage = vi.fn();
+    (window as any).webkit = { messageHandlers: { nativeUI: { postMessage } } };
+    new Function("location", bootstrap())({ protocol: "file:", href: trustedURL });
+    const target = window as any;
+    const success = target.codexMobileScanGatewayQr();
+    const request = postMessage.mock.calls.at(-1)![0];
+    expect(request.type).toBe("scanQR");
+    target.codexMobileQRComplete({ id: "not-current", value: "wrong" });
+    target.codexMobileQRComplete({ id: request.id, value: "https://gateway.example/?token=example" });
+    await expect(success).resolves.toBe("https://gateway.example/?token=example");
+    const cancelled = target.codexMobileScanGatewayQr();
+    const next = postMessage.mock.calls.at(-1)![0];
+    target.codexMobileQRComplete({ id: next.id, error: "已取消扫描" });
+    await expect(cancelled).rejects.toThrow("已取消扫描");
+    postMessage.mockImplementation(() => { throw new Error("扫码不可用"); });
+    await expect(target.codexMobileScanGatewayQr()).rejects.toThrow("扫码不可用");
   });
   it.each(["file:///private/tmp/index.html", "file:///Applications/Codex.app/other.html"])("其他本地文件不能取得原生桥：%s", (href) => {
     const script = bootstrap();

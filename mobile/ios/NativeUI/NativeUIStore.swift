@@ -32,7 +32,11 @@ final class NativeUIStore {
     // 与共享运行时的全局命令域一致，导航回执不属于某个工作区。
     private static let globalCommands: Set<String> = [
         "backend.select", "navigation.search", "navigation.sidebar", "navigation.refresh", "navigation.filter",
-        "thread.new", "thread.open", "thread.manage", "project.toggle", "project.more", "project.retry"
+        "thread.new", "thread.open", "thread.manage", "project.toggle", "project.more", "project.retry",
+        "settings.open", "drafts.open", "device.add", "device.edit", "device.change", "device.save", "device.cancel", "device.scan",
+        "device.toggle", "device.remove", "device.move", "settings.language", "settings.font", "settings.transport",
+        "settings.push.mode", "settings.push.url", "settings.push.save", "settings.update.check", "drafts.restore", "drafts.remove", "drafts.retry",
+        "update.install", "update.retry", "update.close", "confirmation.answer"
     ]
 
     static let launchPreference = UserDefaults.standard.bool(forKey: preferenceKey)
@@ -58,6 +62,18 @@ final class NativeUIStore {
                 snapshot.messages = (1...80).map { index in
                     NativeMessage(id: "reference-history-\(index)", role: "assistant", text: "历史消息 \(index)\n这是用于验证分页与阅读位置的离线参考内容。")
                 }
+            }
+            if arguments.contains("--native-ui-reference-rich") {
+                snapshot.messages = [NativeMessage(id: "rich", role: "assistant", text: "## 富内容示例\n1. 有序列表\n   - [x] 已完成的任务\n\n> 保持原生文字选择\n\n| 列一 | 列二 |\n| --- | --- |\n| 单元格 A | 单元格 B |", blocks: [
+                    NativePanelItem(id: "safe-html", kind: "html", title: "HTML 预览", value: "<p id='sentinel'>安全预览</p><script>document.getElementById('sentinel').textContent='脚本已执行'</script><svg viewBox='0 0 240 80'><rect x='10' y='10' width='220' height='60' rx='12' fill='#edf3fe'/><text x='120' y='48' text-anchor='middle' fill='#111'>SVG</text></svg>")
+                ])]
+            }
+            if arguments.contains("--native-ui-reference-svg") {
+                snapshot.messages = [NativeMessage(id: "svg", role: "assistant", text: "", blocks: [NativePanelItem(id: "vector", kind: "image", title: "vector.svg", value: "data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20240%2080'%3E%3Ctext%20x='10'%20y='40'%3E矢量原图%3C/text%3E%3C/svg%3E")])]
+            }
+            if arguments.contains("--native-ui-reference-source") {
+                let content = (1...80).map { "let line\($0) = \($0)" }.joined(separator: "\n")
+                snapshot.messages = [NativeMessage(id: "source", role: "activity", text: "", blocks: [NativePanelItem(id: "source", kind: "source", title: "example.swift", text: content, line: 40)])]
             }
             if arguments.contains("--native-ui-reference-busy") {
                 snapshot.threadId = "reference-thread"
@@ -125,8 +141,8 @@ final class NativeUIStore {
     func setSelectedValues(_ values: [String], item: NativePanelItem, scope: NativeFieldScope) {
         fieldSelections[NativeFieldKey(scope: scope, itemID: item.id)] = values
     }
-    func closePanel() {
-        guard let panel = snapshot.panel else { return }
+    func closePanel(expectedID: String? = nil) {
+        guard let panel = snapshot.panel, expectedID == nil || expectedID == panel.id else { return }
         let scope = NativeFieldScope.panel(panel.id)
         fieldValues = fieldValues.filter { $0.key.scope != scope }
         fieldSelections = fieldSelections.filter { $0.key.scope != scope }
@@ -147,6 +163,9 @@ final class NativeUIStore {
             return
         }
         if isReference {
+            if name == "settings.open", case .string(let id) = params["id"] {
+                snapshot.panel = NativePanel(id: "reference-settings:\(id)", title: id == "language" ? "语言" : "设置", items: [NativePanelItem(id: "reference-setting-value", kind: "text", title: "语言设置", text: "简体中文")])
+            }
             if name == "thread.new" {
                 snapshot.messages = []; draft = ""; sidebarOpen = false
                 snapshot.contextId = "reference:\(UUID().uuidString)"

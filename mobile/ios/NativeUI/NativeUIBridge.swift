@@ -8,6 +8,7 @@ final class NativeUIBridge: NSObject, WKScriptMessageHandler {
     // 业务 WebView 由既有 WebView representable 创建并拥有；桥仅保留弱引用，绝不创建第二个实例。
     private weak var webView: WKWebView?
     private let trustedURL = Bundle.main.bundleURL.appendingPathComponent("index.html").standardizedFileURL
+    private let qrPresenter = NativeQRPresenter()
     private var active = true
     private var needsLifecycleSync = true
     override init() {
@@ -34,6 +35,14 @@ final class NativeUIBridge: NSObject, WKScriptMessageHandler {
               NativeUITrust.accepts(message.frameInfo.request.url, trustedURL: trustedURL),
               let object = message.body as? [String: Any] else { return }
         if object["type"] as? String == "ready" { applyLifecycle(); return }
+        if object["type"] as? String == "scanQR", let id = object["id"] as? String, id.count <= 200, let webView {
+            qrPresenter.scan(id: id, webView: webView, chinese: store.snapshot.locale.hasPrefix("zh")) { [weak self] value, error in
+                guard let self, NativeUITrust.accepts(webView.url, trustedURL: self.trustedURL),
+                      let script = NativeUITrust.completeQR(id: id, value: value, error: error, trustedURL: self.trustedURL) else { return }
+                webView.evaluateJavaScript(script, completionHandler: nil)
+            }
+            return
+        }
         guard object["type"] as? String == "snapshot", let snapshot = object["snapshot"] else { return }
         do {
             let data = try JSONSerialization.data(withJSONObject: snapshot)

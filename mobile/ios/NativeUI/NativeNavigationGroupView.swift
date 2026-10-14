@@ -7,7 +7,7 @@ struct NativeNavigationGroupView: View {
         VStack(alignment: .leading, spacing: 4) {
             Button(action: toggle) {
                 HStack {
-                    Text(group.title).font(.caption).foregroundStyle(.secondary)
+                    Text(group.title).modifier(NativeScaledFont(size: 12, scale: store.snapshot.fontScale, relativeTo: .caption)).foregroundStyle(.secondary)
                     Spacer(minLength: 0)
                     if group.command != nil {
                         Image(systemName: group.collapsed == true ? "chevron.right" : "chevron.down")

@@ -7,10 +7,10 @@ struct NativeQueuedMessagesView: View {
             ForEach(store.snapshot.queued) { item in
                 HStack(spacing: 12) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(item.title).font(.caption).lineLimit(2)
-                        if let subtitle = item.subtitle { Text(subtitle).font(.caption2).foregroundStyle(.secondary) }
+                        Text(item.title).modifier(NativeScaledFont(size: 12, scale: store.snapshot.fontScale, relativeTo: .caption)).lineLimit(2)
+                        if let subtitle = item.subtitle { Text(subtitle).modifier(NativeScaledFont(size: 11, scale: store.snapshot.fontScale, relativeTo: .caption2)).foregroundStyle(.secondary) }
                     }.frame(maxWidth: .infinity, alignment: .leading)
-                    if let badge = item.badge { Text(badge).font(.caption2).foregroundStyle(.secondary) }
+                    if let badge = item.badge { Text(badge).modifier(NativeScaledFont(size: 11, scale: store.snapshot.fontScale, relativeTo: .caption2)).foregroundStyle(.secondary) }
                     Menu(store.label("管理排队消息", "Manage Queued Message"), systemImage: "ellipsis") {
                         if let command = item.command {
                             Button(store.label("发送", "Send")) { store.perform(command) }

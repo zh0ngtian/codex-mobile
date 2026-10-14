@@ -7,6 +7,8 @@ struct NativeImagePreview: View {
     let title: String
     @Environment(\.dismiss) private var dismiss
     @Environment(\.locale) private var locale
+    @State private var retry = 0
+    @State private var webHTML: String?
     @State private var image: UIImage?
     @State private var error: String?
     @State private var exportDocument: NativeFileDocument?
@@ -18,12 +20,14 @@ struct NativeImagePreview: View {
         NavigationStack {
             Group {
                 Group {
-                    if let image {
+                    if let webHTML {
+                        NativeHTMLWebView(html: webHTML, onOpenLink: { _ in })
+                    } else if let image {
                         NativeZoomableImage(image: image, title: title)
                     } else if let error {
                         VStack(spacing: 16) {
                             Text(error)
-                            Button(label("重试", "Retry"), action: retry)
+                            Button(label("重试", "Retry")) { retry += 1 }
                         }.padding()
                     } else { ProgressView(label("正在加载原图…", "Loading original image…")).padding() }
                 }
@@ -35,11 +39,9 @@ struct NativeImagePreview: View {
                     Button(label("下载原图", "Save Original"), systemImage: "arrow.down.doc") { exportOpen = true }
                         .disabled(exportDocument == nil)
                 }
-                if let url = NativeImageData.remoteURL(source) {
-                    ToolbarItem(placement: .secondaryAction) { ShareLink(item: url) { Label(label("分享链接", "Share Link"), systemImage: "square.and.arrow.up") } }
-                }
             }
-            .task(id: source, load)
+            .task(id: retry, load)
+            .onChange(of: source) { retry += 1 }
             .fileExporter(isPresented: $exportOpen, document: exportDocument, contentType: exportType, defaultFilename: title.isEmpty ? "image" : title) { result in
                 if case .failure(let error) = result { exportError = error.localizedDescription }
             }
@@ -49,12 +51,12 @@ struct NativeImagePreview: View {
         }
     }
 
-    private func retry() { Task { await load() } }
     private func load() async {
-        error = nil
+        error = nil; image = nil; webHTML = nil
         exportDocument = nil
         do {
             let data: Data
+            var mime = NativeImageData.mimeType(source)
             if let local = NativeImageData.data(for: source) { data = local }
             else if let url = NativeImageData.remoteURL(source) {
                 let (bytes, response) = try await URLSession.shared.data(from: url)
@@ -62,13 +64,20 @@ struct NativeImagePreview: View {
                     throw URLError(.badServerResponse)
                 }
                 data = bytes
+                mime = response.mimeType
             } else { throw URLError(.unsupportedURL) }
             guard !Task.isCancelled else { return }
-            guard let decoded = UIImage(data: data) else { throw URLError(.cannotDecodeContentData) }
-            image = decoded
+            if NativeImageData.needsWebRenderer(source, title: title) || ["image/svg+xml", "image/gif", "image/webp", "image/avif"].contains(mime ?? "") {
+                let contentType = mime ?? UTType(filenameExtension: (title as NSString).pathExtension)?.preferredMIMEType ?? "image/svg+xml"
+                webHTML = NativeImageData.webImageHTML("data:\(contentType);base64,\(data.base64EncodedString())", title: title)
+                guard webHTML != nil else { throw URLError(.cannotDecodeContentData) }
+            } else {
+                guard let decoded = UIImage(data: data) else { throw URLError(.cannotDecodeContentData) }
+                image = decoded
+            }
             if let source = CGImageSourceCreateWithData(data as CFData, nil), let type = CGImageSourceGetType(source) {
                 exportType = UTType(type as String) ?? .image
-            } else { exportType = .image }
+            } else { exportType = mime.flatMap { UTType(mimeType: $0) } ?? .image }
             exportDocument = NativeFileDocument(data: data)
         } catch {
             if !Task.isCancelled { self.error = "\(label("原图加载失败", "Unable to load the original image"))：\(error.localizedDescription)" }

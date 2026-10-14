@@ -80,6 +80,49 @@ final class NativeUIUITests: XCTestCase {
         XCTAssertFalse(alert.exists)
     }
 
+    func testSettingsChildPageReturnsWithinSettings() {
+        let app = reference()
+        app.buttons["native-sidebar-open"].tap()
+        app.buttons["native-settings-open"].tap()
+        app.buttons["语言"].tap()
+        XCTAssertTrue(app.staticTexts["语言设置"].waitForExistence(timeout: 5))
+        app.navigationBars.buttons["设置"].tap()
+        XCTAssertTrue(app.switches["native-ui-preference"].waitForExistence(timeout: 3))
+        app.buttons["完成"].tap()
+    }
+
+    func testRichContentUsesNativeTableAndScriptFreeIsolatedPreview() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--native-ui-reference-conversation", "--native-ui-reference-rich"]
+        app.launch()
+        let preview = app.webViews.firstMatch
+        XCTAssertTrue(preview.staticTexts["安全预览"].waitForExistence(timeout: 10))
+        XCTAssertFalse(preview.staticTexts["脚本已执行"].exists)
+        XCTAssertTrue(app.staticTexts["单元格 A"].exists)
+        XCTAssertTrue(app.staticTexts["已完成的任务"].exists)
+        XCTAssertTrue(app.buttons["全屏查看"].exists)
+    }
+
+    func testSVGOriginalPreviewRemainsDownloadable() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--native-ui-reference-conversation", "--native-ui-reference-svg"]
+        app.launch()
+        app.buttons["查看图片 vector.svg"].tap()
+        XCTAssertTrue(app.navigationBars["vector.svg"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.webViews.staticTexts["矢量原图"].firstMatch.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["下载原图"].isEnabled)
+    }
+
+    func testRemoteSourceFocusesLinkedLine() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--native-ui-reference-conversation", "--native-ui-reference-source"]
+        app.launch()
+        let target = app.staticTexts["let line40 = 40"]
+        expectation(for: NSPredicate(format: "hittable == true"), evaluatedWith: target)
+        waitForExpectations(timeout: 8)
+        XCTAssertTrue(app.buttons["复制全文"].exists)
+    }
+
     func testReadingHistoryDoesNotJumpWhenNewMessageArrives() {
         let app = XCUIApplication()
         app.launchArguments = ["--native-ui-reference-conversation", "--native-ui-reference-long"]

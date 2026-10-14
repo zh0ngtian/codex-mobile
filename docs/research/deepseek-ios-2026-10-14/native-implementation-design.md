@@ -109,3 +109,9 @@ DeepSeek空态品牌不复用，无鲸鱼、logo或语音入口。欢迎语映�
 引入明确的Markdown block kind和共享NativeTextRhythm：状态到正文20pt；heading到后续块26pt；连续列表项20pt；列表到代码12pt；代码到后段22pt；其他默认12pt。spacingBefore由前后block kind推导，首块为0，不用负padding。所有节奏值均为inferred，颜色、圆角和其他控件不变。
 
 参考/原生pass3黑色文字y坐标分别为heading317/288、list1 365/318、list2 402/347、code490/433、result537/472。本轮由主任务继续截图pass4并执行4项UI验收；不为小图标差异延后业务接线。
+
+### 富内容阶段复验
+
+- 2026-10-14 在相同 iPhone 16 Pro 模拟器以 402×874pt 重新截图、并排及 50% 叠图复验，更新 `native-ui-comparison.png`。正文、气泡、标题和底部输入卡的基准位置保持；代码字符串增加颜色区分。
+- 有意保留 CM 的模型、推理与 Skill 等业务入口，未迁移 DeepSeek 的语音、朗读、评价和品牌图案。当前对照图仍是离线固定文案，不能代表真实服务器业务验收。
+- 普通表格、引用、任务/有序列表和源码行号由 SwiftUI 展示；HTML/SVG 使用无业务桥、临时数据域且关闭脚本的独立 WKWebView。实际 UI 验证覆盖脚本阻止、SVG 原图预览下载及源码目标行定位。

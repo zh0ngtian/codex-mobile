@@ -5,7 +5,7 @@ struct NativeSidebarView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             HStack {
-                Text("Codex Mobile").font(.headline)
+                Text("Codex Mobile").modifier(NativeScaledFont(size: 17, scale: store.snapshot.fontScale, weight: .semibold, relativeTo: .headline))
                 Spacer()
                 NativeIconButton(title: store.label("刷新", "Refresh"), symbol: "arrow.clockwise", identifier: "native-sidebar-refresh") { store.command("navigation.refresh") }
                 NativeIconButton(title: store.label("关闭侧栏", "Close Sidebar"), symbol: "xmark", identifier: "native-sidebar-close") { store.sidebarIsOpen = false }
@@ -33,14 +33,15 @@ struct NativeSidebarView: View {
             Button { store.settingsOpen = true } label: {
                 Label(store.label("设置", "Settings"), systemImage: "gearshape").frame(maxWidth: .infinity, minHeight: 50, alignment: .leading)
             }.buttonStyle(.plain).accessibilityIdentifier("native-settings-open")
-        }.padding(16).background(NativePalette.canvas)
+        }.modifier(NativeScaledFont(size: 16, scale: store.snapshot.fontScale)).padding(16).background(NativePalette.canvas)
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("native-sidebar")
     }
     private func navigationButton(_ title: String, symbol: String, id: String) -> some View {
         Button {
             if ["favorites", "projects", "sessions"].contains(id) { store.command("navigation.filter", ["value": .string(id)]) }
-            else { store.command("panel.open", ["id": .string(id)]) }
+            else if id == "drafts" { store.command("drafts.open") }
+            else { store.command("settings.open", ["id": .string(id)]) }
         } label: {
             Label(title, systemImage: symbol).frame(maxWidth: .infinity, minHeight: 32, alignment: .leading)
         }.buttonStyle(.plain)

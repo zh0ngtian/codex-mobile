@@ -16,7 +16,7 @@ struct NativeComposerView: View {
                             HStack {
                                 Label(file.name, systemImage: "doc")
                                 Button(store.label("移除", "Remove"), systemImage: "xmark") { store.command("attachment.remove", ["id": .string(file.id)]) }.labelStyle(.iconOnly)
-                            }.font(.caption).padding(8).background(.quaternary, in: .capsule)
+                            }.modifier(NativeScaledFont(size: 12, scale: store.snapshot.fontScale, relativeTo: .caption)).padding(8).background(.quaternary, in: .capsule)
                         }
                     }
                 }
@@ -110,7 +110,7 @@ struct NativeComposerView: View {
         selection = TextSelection(insertionPoint: position)
     }
     private func chip(_ title: String, symbol: String, selected: Bool) -> some View {
-        Label(title, systemImage: symbol).font(.caption.weight(.medium)).fixedSize(horizontal: true, vertical: false)
+        Label(title, systemImage: symbol).modifier(NativeScaledFont(size: 12, scale: store.snapshot.fontScale, weight: .medium, relativeTo: .caption)).fixedSize(horizontal: true, vertical: false)
             .padding(.horizontal, 9).frame(minHeight: 32)
             .foregroundStyle(selected ? NativePalette.accent : Color.primary)
             .background(selected ? NativePalette.bubble : NativePalette.canvas, in: .capsule)

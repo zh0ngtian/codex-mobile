@@ -25,7 +25,7 @@ struct NativeRootView: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("native-ui-root")
-        .sheet(isPresented: $store.settingsOpen) { NativeSettingsView(store: store) }
+        .sheet(isPresented: settingsBinding) { NativeSettingsView(store: store) }
         .sheet(item: panelBinding) { panel in NativePanelView(panel: panel, store: store) }
         .alert(store.textPrompt?.title ?? "", isPresented: promptBinding, presenting: store.textPrompt) { prompt in
             TextField(store.label("名称", "Name"), text: $store.promptValue)
@@ -36,9 +36,16 @@ struct NativeRootView: View {
         .tint(NativePalette.accent)
         .environment(\.locale, Locale(identifier: store.snapshot.locale))
     }
+    private var settingsBinding: Binding<Bool> {
+        Binding(get: { store.settingsOpen }, set: { value in
+            if !value { store.closePanel() }
+            store.settingsOpen = value
+        })
+    }
     private var panelBinding: Binding<NativePanel?> {
-        Binding(get: { store.snapshot.panel }, set: { value in
-            if value == nil { store.closePanel() }
+        let presentedID = store.snapshot.panel?.id
+        return Binding(get: { store.settingsOpen ? nil : store.snapshot.panel }, set: { value in
+            if value == nil { store.closePanel(expectedID: presentedID) }
         })
     }
     private var promptBinding: Binding<Bool> {

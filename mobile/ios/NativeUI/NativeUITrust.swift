@@ -27,6 +27,22 @@ enum NativeUITrust {
       window.codexMobilePublishNativeSnapshot = function(snapshot) {
         window.webkit.messageHandlers.nativeUI.postMessage({type: "snapshot", snapshot: snapshot});
       };
+      const qrRequests = new Map();
+      let qrSequence = 0;
+      window.codexMobileScanGatewayQr = () => new Promise((resolve, reject) => {
+        const id = 'qr-' + Date.now().toString(36) + '-' + (++qrSequence);
+        qrRequests.set(id, {resolve, reject});
+        try { window.webkit.messageHandlers.nativeUI.postMessage({type: "scanQR", id}); }
+        catch (error) { qrRequests.delete(id); reject(error); }
+      });
+      window.codexMobileQRComplete = result => {
+        const pending = qrRequests.get(result.id);
+        if (!pending) return;
+        qrRequests.delete(result.id);
+        if (result.error) pending.reject(new Error(result.error));
+        else if (typeof result.value === 'string') pending.resolve(result.value);
+        else pending.reject(new Error('二维码数据无效'));
+      };
       window.webkit?.messageHandlers?.nativeUI?.postMessage({type: "ready"});
     })();
     """
@@ -55,6 +71,17 @@ enum NativeUITrust {
         (() => {
           if (window !== window.top || location.protocol !== "file:" || new URL(location.href).href !== new URL(\(encodedURL)).href) return;
           window.codexMobileSetNativeActive?.(\(active ? "true" : "false"));
+        })();
+        """
+    }
+
+    static func completeQR(id: String, value: String?, error: String?, trustedURL: URL) -> String? {
+        let payload: [String: NativeJSONValue] = ["id": .string(id), "value": value.map(NativeJSONValue.string) ?? .null, "error": error.map(NativeJSONValue.string) ?? .null]
+        guard let encodedURL = json(trustedURL.standardizedFileURL.absoluteString), let encoded = json(payload) else { return nil }
+        return """
+        (() => {
+          if (window !== window.top || location.protocol !== "file:" || new URL(location.href).href !== new URL(\(encodedURL)).href) return;
+          window.codexMobileQRComplete?.(\(encoded));
         })();
         """
     }

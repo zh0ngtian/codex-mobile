@@ -38,4 +38,5 @@ struct NativeSnapshot: Codable {
     var conversationActions: [NativePanelItem]? = nil
     var mentions: [NativeOption]? = nil
     var caretOffset: Int? = nil
+    var richContent: [NativePanelItem]? = nil
 }

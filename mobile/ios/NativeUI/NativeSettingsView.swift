@@ -3,6 +3,7 @@ import SwiftUI
 struct NativeSettingsView: View {
     @Bindable var store: NativeUIStore
     @Environment(\.dismiss) private var dismiss
+    @State private var detailOpen = false
     @AppStorage(NativeUIStore.preferenceKey) private var useNativeUI = false
     var body: some View {
         NavigationStack {
@@ -20,19 +21,30 @@ struct NativeSettingsView: View {
                 }.listRowBackground(NativePalette.settingsCard)
                 Section(store.label("通知与更新", "Notifications and Updates")) {
                     setting("通知", "Notifications", symbol: "bell", id: "notifications")
-                    setting("检查更新", "Check for Updates", symbol: "arrow.triangle.2.circlepath", id: "updates")
+                    setting("应用更新", "App Updates", symbol: "arrow.triangle.2.circlepath", id: "updates")
                 }
                 .listRowBackground(NativePalette.settingsCard)
             }.scrollContentBackground(.hidden).background(NativePalette.settings)
                 .environment(\.defaultMinListRowHeight, 50)
                 .navigationTitle(store.label("设置", "Settings")).navigationBarTitleDisplayMode(.inline)
-                .toolbar { ToolbarItem(placement: .confirmationAction) { Button(store.label("完成", "Done")) { dismiss() } } }
+                .toolbar {
+                    if store.snapshot.panel?.dismissible != false {
+                        ToolbarItem(placement: .confirmationAction) { Button(store.label("完成", "Done")) { store.closePanel(); store.settingsOpen = false; dismiss() } }
+                    }
+                }
+                .navigationDestination(isPresented: detailBinding) { NativeSettingsPanelDestination(store: store) }
+                .onChange(of: store.snapshot.panel?.id, initial: true) { _, id in detailOpen = id != nil }
         }
+        .interactiveDismissDisabled(store.snapshot.panel?.dismissible == false)
+        .modifier(NativeScaledFont(size: 16, scale: store.snapshot.fontScale))
+    }
+    private var detailBinding: Binding<Bool> {
+        Binding(get: { detailOpen }, set: { value in if !value { store.closePanel() }; detailOpen = value })
     }
     private func setting(_ chinese: String, _ english: String, symbol: String, id: String) -> some View {
         Button {
-            store.settingsOpen = false
-            store.command("panel.open", ["id": .string(id)])
+            detailOpen = true
+            store.command("settings.open", ["id": .string(id)])
         } label: {
             HStack { Label(store.label(chinese, english), systemImage: symbol); Spacer(); Image(systemName: "chevron.right").font(.caption).foregroundStyle(.secondary).accessibilityHidden(true) }
         }.foregroundStyle(.primary)

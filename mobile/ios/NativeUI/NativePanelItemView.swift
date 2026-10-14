@@ -8,38 +8,59 @@ struct NativePanelItemView: View {
         Group {
             switch item.kind {
             case "section":
-                Section(item.title ?? "") { ForEach(item.children ?? []) { child in NativePanelItemView(item: child, store: store, scope: scope) } }
-            case "disclosure":
-                DisclosureGroup(item.title ?? "") {
+                Section(item.title ?? "") {
+                    if let text = item.text { Text(text).foregroundStyle(.secondary).textSelection(.enabled) }
                     ForEach(item.children ?? []) { child in NativePanelItemView(item: child, store: store, scope: scope) }
                 }
-            case "markdown": NativeMarkdownView(text: item.text ?? "", scale: store.snapshot.fontScale)
+            case "disclosure":
+                DisclosureGroup(item.title ?? "") {
+                    if let text = item.text { Text(text).foregroundStyle(.secondary).textSelection(.enabled) }
+                    ForEach(item.children ?? []) { child in NativePanelItemView(item: child, store: store, scope: scope) }
+                }
+            case "markdown": NativeMarkdownView(text: item.text ?? "", scale: store.snapshot.fontScale, store: store)
             case "code", "diff": NativeCodeView(text: item.text ?? "", language: item.kind == "diff" ? "diff" : item.title ?? "", scale: store.snapshot.fontScale)
+            case "source": NativeSourceCodeView(text: item.text ?? "", title: item.title ?? "", targetLine: item.line, scale: store.snapshot.fontScale)
             case "image":
                 NativeImageView(source: item.value ?? "", title: item.title ?? store.label("图片", "Image"), previewSource: item.previewURL)
+            case "html": NativeHTMLContentView(html: item.value ?? item.text ?? "", title: item.title ?? "")
+            case "audio", "video": NativeMediaView(source: item.value ?? "", title: item.title ?? "", audio: item.kind == "audio")
+            case "file":
+                VStack(alignment: .leading, spacing: 8) {
+                    Button(item.title ?? store.label("查看文件", "View File"), systemImage: "doc") { store.perform(item.command) }
+                        .disabled(item.command == nil)
+                    if let text = item.text { Text(text).font(.caption).foregroundStyle(.secondary).textSelection(.enabled) }
+                    if let source = item.value { NativeFileDownloadView(source: source, title: item.title ?? "file") }
+                }
             case "link":
                 if let url = URL(string: item.value ?? ""), ["https", "http"].contains(url.scheme?.lowercased() ?? "") { Link(item.title ?? item.value ?? "", destination: url) }
-            case "action": Button(item.title ?? "") { store.perform(item.command) }.frame(minHeight: 44)
+            case "action":
+                Button { store.perform(item.command) } label: {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(item.title ?? "")
+                        if let text = item.text { Text(text).foregroundStyle(.secondary).modifier(NativeScaledFont(size: 13, scale: store.snapshot.fontScale, relativeTo: .caption)) }
+                    }.frame(minHeight: 44, alignment: .leading)
+                }
             case "toggle": Toggle(item.title ?? "", isOn: toggleBinding)
             case "textField": TextField(item.title ?? "", text: textBinding)
             case "secureField": SecureField(item.title ?? "", text: textBinding)
             case "multilineField": TextField(item.title ?? "", text: textBinding, axis: .vertical).lineLimit(3...10)
             case "singleChoice":
-                Picker(item.title ?? "", selection: textBinding) { ForEach(item.options ?? []) { option in Text(option.title).tag(option.value) } }
+                Picker(item.title ?? "", selection: textBinding) { ForEach(item.options ?? []) { option in NativeChoiceOptionView(option: option, scale: store.snapshot.fontScale).tag(option.value) } }
             case "multiChoice":
                 VStack(alignment: .leading) {
-                    if let title = item.title { Text(title).font(.headline) }
+                    if let title = item.title { Text(title).modifier(NativeScaledFont(size: 17, scale: store.snapshot.fontScale, weight: .semibold, relativeTo: .headline)) }
                     ForEach(item.options ?? []) { option in
                         Toggle(option.title, isOn: choiceBinding(option.value))
                     }
                 }
             default:
                 VStack(alignment: .leading, spacing: 8) {
-                    if let title = item.title { Text(title).font(.headline) }
+                    if let title = item.title { Text(title).modifier(NativeScaledFont(size: 17, scale: store.snapshot.fontScale, weight: .semibold, relativeTo: .headline)) }
                     if let text = item.text { Text(text).textSelection(.enabled) }
                 }
             }
         }.disabled(item.disabled == true)
+            .modifier(NativeScaledFont(size: 16, scale: store.snapshot.fontScale))
     }
     private var textBinding: Binding<String> {
         Binding(get: { store.fieldValue(item, scope: scope) }, set: { value in
