@@ -1,0 +1,237 @@
+[
+  {
+    "observed_identifier": "Message/shareEnable",
+    "states": [
+      "S27"
+    ],
+    "source": "AX Image id",
+    "asset_file_extracted": false,
+    "implementation_meaning_unverified": true
+  },
+  {
+    "observed_identifier": "chat/file_upload_menu/folder24",
+    "states": [
+      "S17"
+    ],
+    "source": "AX Image id",
+    "asset_file_extracted": false,
+    "implementation_meaning_unverified": true
+  },
+  {
+    "observed_identifier": "chat/file_upload_menu/wechatOutline24",
+    "states": [
+      "S17"
+    ],
+    "source": "AX Image id",
+    "asset_file_extracted": false,
+    "implementation_meaning_unverified": true
+  },
+  {
+    "observed_identifier": "chat/message/copyAction",
+    "states": [
+      "S25",
+      "S36",
+      "S37"
+    ],
+    "source": "AX Image id",
+    "asset_file_extracted": false,
+    "implementation_meaning_unverified": true
+  },
+  {
+    "observed_identifier": "chat/message/dislikeAction",
+    "states": [
+      "S36"
+    ],
+    "source": "AX Image id",
+    "asset_file_extracted": false,
+    "implementation_meaning_unverified": true
+  },
+  {
+    "observed_identifier": "chat/message/editAction",
+    "states": [
+      "S25"
+    ],
+    "source": "AX Image id",
+    "asset_file_extracted": false,
+    "implementation_meaning_unverified": true
+  },
+  {
+    "observed_identifier": "chat/message/likeAction",
+    "states": [
+      "S36"
+    ],
+    "source": "AX Image id",
+    "asset_file_extracted": false,
+    "implementation_meaning_unverified": true
+  },
+  {
+    "observed_identifier": "chat/message/regenerateAction",
+    "states": [
+      "S36"
+    ],
+    "source": "AX Image id",
+    "asset_file_extracted": false,
+    "implementation_meaning_unverified": true
+  },
+  {
+    "observed_identifier": "chat/message/selectAllAction",
+    "states": [
+      "S37"
+    ],
+    "source": "AX Image id",
+    "asset_file_extracted": false,
+    "implementation_meaning_unverified": true
+  },
+  {
+    "observed_identifier": "chat/message/selectTextAction",
+    "states": [
+      "S25",
+      "S36"
+    ],
+    "source": "AX Image id",
+    "asset_file_extracted": false,
+    "implementation_meaning_unverified": true
+  },
+  {
+    "observed_identifier": "chat/message/shareAction",
+    "states": [
+      "S25",
+      "S36",
+      "S37"
+    ],
+    "source": "AX Image id",
+    "asset_file_extracted": false,
+    "implementation_meaning_unverified": true
+  },
+  {
+    "observed_identifier": "chat/message/tts_play",
+    "states": [
+      "S36"
+    ],
+    "source": "AX Image id",
+    "asset_file_extracted": false,
+    "implementation_meaning_unverified": true
+  },
+  {
+    "observed_identifier": "chat/session/delete",
+    "states": [
+      "S30",
+      "S32"
+    ],
+    "source": "AX Image id",
+    "asset_file_extracted": false,
+    "implementation_meaning_unverified": true
+  },
+  {
+    "observed_identifier": "chat/session/edit",
+    "states": [
+      "S30"
+    ],
+    "source": "AX Image id",
+    "asset_file_extracted": false,
+    "implementation_meaning_unverified": true
+  },
+  {
+    "observed_identifier": "chat/session/pin",
+    "states": [
+      "S30",
+      "S32"
+    ],
+    "source": "AX Image id",
+    "asset_file_extracted": false,
+    "implementation_meaning_unverified": true
+  },
+  {
+    "observed_identifier": "checkmark",
+    "states": [
+      "S04"
+    ],
+    "source": "AX Image id",
+    "asset_file_extracted": false,
+    "implementation_meaning_unverified": true
+  },
+  {
+    "observed_identifier": "chevron.forward",
+    "states": [
+      "S03",
+      "S05",
+      "S07",
+      "S11"
+    ],
+    "source": "AX Image id",
+    "asset_file_extracted": false,
+    "implementation_meaning_unverified": true
+  },
+  {
+    "observed_identifier": "circle",
+    "states": [
+      "S18"
+    ],
+    "source": "AX Image id",
+    "asset_file_extracted": false,
+    "implementation_meaning_unverified": true
+  },
+  {
+    "observed_identifier": "clock.fill",
+    "states": [
+      "S18"
+    ],
+    "source": "AX Image id",
+    "asset_file_extracted": false,
+    "implementation_meaning_unverified": true
+  },
+  {
+    "observed_identifier": "folder.fill",
+    "states": [
+      "S18"
+    ],
+    "source": "AX Image id",
+    "asset_file_extracted": false,
+    "implementation_meaning_unverified": true
+  },
+  {
+    "observed_identifier": "magnifyingglass",
+    "states": [
+      "S18"
+    ],
+    "source": "AX Image id",
+    "asset_file_extracted": false,
+    "implementation_meaning_unverified": true
+  },
+  {
+    "observed_identifier": "person.2.fill",
+    "states": [
+      "S18"
+    ],
+    "source": "AX Image id",
+    "asset_file_extracted": false,
+    "implementation_meaning_unverified": true
+  },
+  {
+    "observed_identifier": "sessionList/multiSelect",
+    "states": [
+      "S30"
+    ],
+    "source": "AX Image id",
+    "asset_file_extracted": false,
+    "implementation_meaning_unverified": true
+  },
+  {
+    "observed_identifier": "settings/fontSize/fontSizeLarger",
+    "states": [
+      "S06"
+    ],
+    "source": "AX Image id",
+    "asset_file_extracted": false,
+    "implementation_meaning_unverified": true
+  },
+  {
+    "observed_identifier": "settings/fontSize/fontSizeSmaller",
+    "states": [
+      "S06"
+    ],
+    "source": "AX Image id",
+    "asset_file_extracted": false,
+    "implementation_meaning_unverified": true
+  }
+]

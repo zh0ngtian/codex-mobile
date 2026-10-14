@@ -1,9 +1,11 @@
 import { expect, test } from "@playwright/test";
 
-test("commentary 在 final 流式开始时折叠，窄屏大字号仍可展开工具记录", async ({ page }, testInfo) => {
+test("commentary 在 final 流式开始时折叠，展开仅显示 commentary 并以浅灰线分隔", async ({ page }, testInfo) => {
   const turn: Record<string, any> = { id: "phase-turn", status: "inProgress", items: [
     { id: "u", type: "userMessage", text: "检查阶段切换" },
     { id: "c", type: "agentMessage", phase: "commentary", text: "正在检查文件并准备修改" },
+    { id: "c2", type: "agentMessage", phase: "commentary", text: "已完成修改，正在验证" },
+    { id: "c3", type: "agentMessage", phase: "commentary", text: "验证通过，准备汇总结果" },
     { id: "r", type: "reasoning", text: "内部过程摘要" },
     { id: "cmd", type: "commandExecution", command: "cat src/App.tsx", status: "completed", commandActions: [{ type: "read", name: "App.tsx" }] },
     { id: "edit", type: "fileChange", status: "completed", changes: [{ path: "/tmp/project/src/App.tsx", diff: "@@ -1 +1 @@\n-old\n+new" }] },
@@ -42,7 +44,7 @@ test("commentary 在 final 流式开始时折叠，窄屏大字号仍可展开�
   events.push({ cursor: ++cursor, message: { method: "item/started", params: { threadId: thread.id, turnId: turn.id, item: final } } });
   await expect(page.getByText(final.text)).toBeVisible();
   await expect(page.getByText("正在检查文件并准备修改")).toHaveCount(0);
-  const toggle = page.getByRole("button", { name: "之前的 4 条消息" });
+  const toggle = page.getByRole("button", { name: "之前的 3 条消息" });
   await expect(toggle).toHaveAttribute("aria-expanded", "false");
   await page.emulateMedia({ reducedMotion: "reduce" });
   for (const viewport of [{ width: 375, height: 812 }, { width: 812, height: 375 }]) {
@@ -54,17 +56,16 @@ test("commentary 在 final 流式开始时折叠，窄屏大字号仍可展开�
     expect(bounds.width).toBeLessThanOrEqual(bounds.viewport);
     await toggle.click();
     await expect(page.getByText("正在检查文件并准备修改")).toBeVisible();
-    await page.locator(".tool-activity > summary").click();
-    await expect(page.getByRole("button", { name: "已读取 App.tsx" })).toBeVisible();
+    await expect(page.locator(".tool-activity")).toHaveCount(0);
+    await expect(page.getByText("内部过程摘要")).toHaveCount(0);
+    const dividers = page.locator(".previous-messages .commentary-message + .commentary-message");
+    await expect(dividers).toHaveCount(2);
+    expect(await dividers.first().evaluate(el => getComputedStyle(el).borderTop)).toBe("1px solid rgb(229, 229, 229)");
     await toggle.click();
     await expect(page.getByText("正在检查文件并准备修改")).toHaveCount(0);
   }
   await page.setViewportSize({ width: 375, height: 812 });
   await toggle.click();
-  await page.locator(".tool-activity > summary").click();
-  await page.locator(".file-change-file").click();
-  await expect(page.locator(".file-diff-line.deletion")).toContainText("old");
-  await page.getByRole("button", { name: "关闭文件修改" }).click();
-  await toggle.click();
+  await expect(page.locator(".file-change-activity")).toHaveCount(0);
   await page.locator(".turn-card").screenshot({ path: `.mobile-build/commentary-final-${testInfo.project.name}.png` });
 });
