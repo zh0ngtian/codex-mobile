@@ -27,6 +27,12 @@ struct NativeRootView: View {
         .accessibilityIdentifier("native-ui-root")
         .sheet(isPresented: $store.settingsOpen) { NativeSettingsView(store: store) }
         .sheet(item: panelBinding) { panel in NativePanelView(panel: panel, store: store) }
+        .alert(store.textPrompt?.title ?? "", isPresented: promptBinding, presenting: store.textPrompt) { prompt in
+            TextField(store.label("名称", "Name"), text: $store.promptValue)
+            Button(store.label("取消", "Cancel"), role: .cancel) { store.textPrompt = nil }
+            Button(store.label("保存", "Save")) { store.confirmTextPrompt(prompt) }
+                .disabled(store.promptValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        }
         .tint(NativePalette.accent)
         .environment(\.locale, Locale(identifier: store.snapshot.locale))
     }
@@ -34,5 +40,8 @@ struct NativeRootView: View {
         Binding(get: { store.snapshot.panel }, set: { value in
             if value == nil { store.closePanel() }
         })
+    }
+    private var promptBinding: Binding<Bool> {
+        Binding(get: { store.textPrompt != nil }, set: { if !$0 { store.textPrompt = nil } })
     }
 }

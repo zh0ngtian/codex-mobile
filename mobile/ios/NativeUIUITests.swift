@@ -59,6 +59,25 @@ final class NativeUIUITests: XCTestCase {
         XCTAssertTrue(app.otherElements["native-queued-messages"].waitForExistence(timeout: 5))
         XCTAssertEqual(app.buttons["native-send"].label, "停止")
         XCTAssertFalse(app.buttons["语音"].exists)
+        app.buttons["管理排队消息"].tap()
+        XCTAssertTrue(app.buttons["发送"].waitForExistence(timeout: 3))
+        app.buttons["发送"].tap()
+        XCTAssertFalse(app.otherElements["native-queued-messages"].exists)
+    }
+
+    func testSidebarRenameCollectsNameInNativeAlert() {
+        let app = reference(true)
+        app.buttons["native-sidebar-open"].tap()
+        app.otherElements["native-sidebar"].scrollViews.firstMatch.swipeUp()
+        app.buttons["native-navigation-conversation"].press(forDuration: 1)
+        app.buttons["重命名"].tap()
+        let alert = app.alerts["重命名会话"]
+        XCTAssertTrue(alert.waitForExistence(timeout: 3))
+        XCTAssertFalse(alert.buttons["保存"].isEnabled)
+        alert.textFields.firstMatch.tap()
+        alert.textFields.firstMatch.typeText("已修改名称")
+        alert.buttons["保存"].tap()
+        XCTAssertFalse(alert.exists)
     }
 
     func testReadingHistoryDoesNotJumpWhenNewMessageArrives() {

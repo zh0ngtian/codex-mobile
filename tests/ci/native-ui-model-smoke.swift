@@ -112,6 +112,19 @@ struct NativeStoreSmoke {
         precondition(editing.commandError == "输入未通过校验")
         editing.receive(editingSnapshot)
         precondition(editing.commandError == "输入未通过校验", "重复回执不重复触发错误")
+        editingSnapshot.commandResults?.append(NativeCommandResult(id: "retry-success", name: "field.edit", ok: true, contextId: "mini:edit"))
+        editing.receive(editingSnapshot)
+        precondition(editing.commandError == nil, "同会话重试成功后必须清理失败提示")
+        let rename = NativeCommand(name: "thread.manage", params: ["backendId": .string("mini"), "threadId": .string("thread-rename"), "action": .string("rename")])
+        let commandCount = edits.count
+        editing.perform(rename)
+        precondition(editing.textPrompt != nil && edits.count == commandCount, "重命名必须先收集名称")
+        editing.promptValue = "新会话名称"
+        let presented = editing.textPrompt
+        editing.textPrompt = nil
+        editing.confirmTextPrompt(presented)
+        precondition(edits.last?.params["value"] == .string("新会话名称"))
+        precondition(edits.last?.params["threadId"] == .string("thread-rename"))
         let searching = NativeUIStore(arguments: [])
         var searches: [NativeCommand] = []
         searching.sendCommand = { searches.append($0) }

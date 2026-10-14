@@ -18,6 +18,8 @@ final class NativeUIStore {
     private var pendingSidebarRevision: Int? = nil
     private var receivedResultIDs: Set<String> = []
     var commandError: String? = nil
+    var textPrompt: NativeTextPrompt? = nil
+    var promptValue = ""
     private(set) var caretOffset = 0
     var notice: String? = nil
     var showLegacyForRecovery = false
@@ -43,7 +45,7 @@ final class NativeUIStore {
             snapshot.title = "UI测试回复示例"
             snapshot.model = "GPT-5"
             snapshot.effort = "中等推理"
-            snapshot.groups = [NativeGroup(id: "projects", title: "项目", items: [NativeNavigationItem(id: "reference", title: "Codex Mobile", subtitle: "原生界面基准")]), NativeGroup(id: "today", title: "今天", items: [NativeNavigationItem(id: "conversation", title: "UI 原生测试", selected: true)])]
+            snapshot.groups = [NativeGroup(id: "projects", title: "项目", items: [NativeNavigationItem(id: "reference", title: "Codex Mobile", subtitle: "原生界面基准")]), NativeGroup(id: "today", title: "今天", items: [NativeNavigationItem(id: "conversation", title: "UI 原生测试", selected: true, actions: [NativePanelItem(id: "reference-rename", kind: "action", title: "重命名", command: NativeCommand(name: "thread.manage", params: ["action": .string("rename"), "backendId": .string("reference"), "threadId": .string("conversation")]))])])]
             if arguments.contains("--native-ui-reference-conversation") {
                 snapshot.messages = [NativeMessage(id: "user", role: "user", text: "这是一次 UI 探索测试（UI-20261014）。请用中文简短回复：一个二级标题、两条列表，再用 Swift 代码块展示 print(\"Hello\")。最后说明 12 × 13 的结果。"), NativeMessage(id: "assistant", role: "assistant", text: "## UI 探索测试\n- 测试标识：UI-20261014\n- 内容：二级标题、两条列表、Swift 代码块\n\n```swift\nprint(\"Hello\")\n```\n\n12 × 13 = 156", status: "已思考（用时 1 秒）")]
             }
@@ -71,6 +73,7 @@ final class NativeUIStore {
             pendingSearchRevision = nil
             receivedResultIDs.removeAll()
             commandError = nil
+            textPrompt = nil
         }
         if panelChanged {
             pendingFields = pendingFields.filter { key, _ in
@@ -85,8 +88,8 @@ final class NativeUIStore {
                 if key == "sidebar-search", let pending = pendingSearchRevision, revision >= pending { pendingSearchRevision = nil }
                 if key == "sidebar-state", let pending = pendingSidebarRevision, revision >= pending { pendingSidebarRevision = nil }
             }
-            if !receivedResultIDs.contains(result.id), !result.ok {
-                commandError = result.error ?? label("操作未完成，请重试", "The operation failed. Please retry.")
+            if !receivedResultIDs.contains(result.id) {
+                commandError = result.ok ? nil : result.error ?? label("操作未完成，请重试", "The operation failed. Please retry.")
             }
             receivedResultIDs.insert(result.id)
         }
@@ -148,7 +151,7 @@ final class NativeUIStore {
                 if snapshot.busy {
                     let id = UUID().uuidString
                     let cancel = NativePanelItem(id: "\(id):cancel", kind: "action", title: "移除", command: NativeCommand(name: "queue.cancel", params: ["id": .string(id)]))
-                    snapshot.queued.append(NativeNavigationItem(id: id, title: draft, subtitle: "排队中", actions: [cancel]))
+                    snapshot.queued.append(NativeNavigationItem(id: id, title: draft, subtitle: "排队中", command: NativeCommand(name: "queue.send", params: ["id": .string(id)]), actions: [cancel]))
                 } else {
                     snapshot.messages.append(NativeMessage(id: UUID().uuidString, role: "user", text: draft))
                 }
@@ -156,7 +159,7 @@ final class NativeUIStore {
                 timeline(for: threadKey).receive(messageIDs: snapshot.messages.map(\.id))
             }
             if name == "turn.stop" { snapshot.busy = false; snapshot.canInterrupt = false }
-            if name == "queue.cancel", case .string(let id) = params["id"] { snapshot.queued.removeAll { $0.id == id } }
+            if ["queue.cancel", "queue.send"].contains(name), case .string(let id) = params["id"] { snapshot.queued.removeAll { $0.id == id } }
             return
         }
         var contextual = params
@@ -165,7 +168,19 @@ final class NativeUIStore {
     }
     func perform(_ command: NativeCommand?) {
         guard let command else { return }
+        if command.name == "thread.manage", command.params["action"] == .string("rename"), command.params["value"] == nil {
+            promptValue = ""
+            textPrompt = NativeTextPrompt(title: label("重命名会话", "Rename Conversation"), command: command)
+            return
+        }
         self.command(command.name, command.params)
+    }
+    func confirmTextPrompt(_ presented: NativeTextPrompt? = nil) {
+        guard let prompt = presented ?? textPrompt, !promptValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        var params = prompt.command.params
+        params["value"] = .string(promptValue)
+        textPrompt = nil
+        command(prompt.command.name, params)
     }
     func label(_ chinese: String, _ english: String) -> String {
         snapshot.locale.lowercased().hasPrefix("zh") ? chinese : english

@@ -22,6 +22,7 @@ struct NativeNavigationRow: View {
             .background(item.selected == true ? NativePalette.bubble : .clear, in: .rect(cornerRadius: 12))
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier("native-navigation-\(item.id)")
         .contextMenu {
             ForEach(item.actions ?? []) { action in
                 NativePanelItemView(item: action, store: store, scope: .message("navigation:\(item.id)"))

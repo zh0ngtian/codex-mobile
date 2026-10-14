@@ -12,6 +12,9 @@ struct NativeQueuedMessagesView: View {
                     }.frame(maxWidth: .infinity, alignment: .leading)
                     if let badge = item.badge { Text(badge).font(.caption2).foregroundStyle(.secondary) }
                     Menu(store.label("管理排队消息", "Manage Queued Message"), systemImage: "ellipsis") {
+                        if let command = item.command {
+                            Button(store.label("发送", "Send")) { store.perform(command) }
+                        }
                         ForEach(item.actions ?? []) { action in
                             NativePanelItemView(item: action, store: store, scope: .message("queue:\(item.id)"))
                         }
