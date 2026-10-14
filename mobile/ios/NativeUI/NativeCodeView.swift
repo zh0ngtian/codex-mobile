@@ -1,0 +1,23 @@
+import SwiftUI
+import UIKit
+
+struct NativeCodeView: View {
+    let text: String
+    var language: String = ""
+    @Environment(\.locale) private var locale
+    private var isChinese: Bool { locale.identifier.lowercased().hasPrefix("zh") }
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text(language).font(.caption).foregroundStyle(.secondary)
+                Spacer()
+                Button(isChinese ? "复制" : "Copy", systemImage: "document.on.document") { UIPasteboard.general.string = text }
+                    .font(.caption).frame(minHeight: 44).accessibilityLabel(isChinese ? "复制代码" : "Copy Code")
+            }.padding(.horizontal, 12)
+            Divider()
+            ScrollView(.horizontal) {
+                Text(text).font(.system(.callout, design: .monospaced)).textSelection(.enabled).padding(12)
+            }
+        }.background(NativePalette.code, in: .rect(cornerRadius: 12))
+    }
+}

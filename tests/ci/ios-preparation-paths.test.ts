@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { chmodSync, copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { expect, it } from "vitest";
@@ -14,6 +14,7 @@ it.skipIf(process.platform !== "darwin")("iOS 准备在包含空格、单引号�
   try {
     copyFileSync("scripts/prepare-ios.mjs", join(project, "scripts/prepare-ios.mjs"));
     copyFileSync("mobile/ios/build-recipe.yml", join(project, "mobile/ios/build-recipe.yml"));
+    cpSync("mobile/ios/NativeUI", join(project, "mobile/ios/NativeUI"), { recursive: true });
     writeFileSync(join(project, "package.json"), '{"type":"module","version":"0.2.165"}');
     symlinkSync(resolve("node_modules"), join(project, "node_modules"), "dir");
     const bridges = ["InAppBrowserViewController.swift", "AttachmentPickerBridge.swift", "AppUpdateBridge.swift", "ActionMenuBridge.swift", "KeyboardDismissal.swift"];
@@ -25,6 +26,7 @@ it.skipIf(process.platform !== "darwin")("iOS 准备在包含空格、单引号�
     const result = spawnSync(process.execPath, [entry, "--version", "0.2.165"],
       { cwd: project, env: { ...process.env, PATH: `${fakeBin}:${process.env.PATH}` }, encoding: "utf8" });
     expect(result.status, result.stdout + result.stderr).toBe(0);
+    expect(readFileSync(join(project, ".mobile-build/ios/pakeplus/PakePlus/NativeUI/NativeRootView.swift"), "utf8")).toBe(readFileSync("mobile/ios/NativeUI/NativeRootView.swift", "utf8"));
     for (const name of bridges) expect(readFileSync(join(project, ".mobile-build/ios/pakeplus/PakePlus", name), "utf8")).toBe(`fixture ${name}\n`);
   } finally { rmSync(temporary, { recursive: true, force: true }); }
 });

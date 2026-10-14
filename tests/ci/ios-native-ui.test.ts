@@ -1,0 +1,59 @@
+import { existsSync, readFileSync, mkdtempSync, rmSync } from "node:fs";
+import { describe, expect, it, vi, afterEach } from "vitest";
+import { parse } from "yaml";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { spawnSync } from "node:child_process";
+
+const source = (name: string) => readFileSync(`mobile/ios/NativeUI/${name}.swift`, "utf8");
+afterEach(() => { delete (window as any).codexMobileNativeCommand; delete (window as any).codexMobilePublishNativeSnapshot; delete (window as any).webkit; });
+describe("SwiftUI 原生宿主契约", () => {
+  it.skipIf(process.platform !== "darwin")("执行真实 Swift store、Codable往返、离线状态与 Markdown 解析", () => {
+    const directory = mkdtempSync(join(tmpdir(), "native-model-"));
+    try {
+      const names = ["NativeJSONValue", "NativeCommand", "NativeOption", "NativeBackend", "NativeNavigationItem", "NativeGroup", "NativeAttachment", "NativeMessage", "NativePanelItem", "NativePanel", "NativeSnapshot", "NativeUIStore", "NativeMarkdownBlock"];
+      const compile = spawnSync("xcrun", ["swiftc", ...names.map(name => `mobile/ios/NativeUI/${name}.swift`), "tests/ci/native-ui-model-smoke.swift", "-o", join(directory, "smoke")], { encoding: "utf8" });
+      expect(compile.status, compile.stderr).toBe(0);
+      const result = spawnSync(join(directory, "smoke"), [], { encoding: "utf8" });
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.stdout).toContain("smoke passed");
+    } finally { rmSync(directory, { force: true, recursive: true }); }
+  }, 30000);
+  it("具有离线原生根、输入、侧栏及设置 UI 验收", () => {
+    expect(existsSync("mobile/ios/NativeUI/NativeRootView.swift"), "缺少真实 SwiftUI 根").toBe(true);
+    expect(source("NativeRootView")).toContain("native-ui-root");
+    expect(source("NativeUIStore")).toContain("--native-ui-reference");
+    expect(source("NativeComposerView")).toContain("native-composer-input");
+    expect(source("NativeSettingsView")).toContain("native-ui-preference");
+  });
+  it("注入纯数据命令事件，保留 request id 与任意 JSON 参数", () => {
+    expect(existsSync("mobile/ios/NativeUI/NativeUIBridge.swift")).toBe(true);
+    const script = source("NativeUIBridge").match(/static let script = """\n([\s\S]*?)\n\s*"""/)![1];
+    new Function("location", script)({ protocol: "file:" });
+    const listener = vi.fn();
+    window.addEventListener("codex-mobile-native-command", listener, { once: true });
+    (window as any).codexMobileNativeCommand({ id: "c1", name: "draft.set", params: { value: "你好" } });
+    expect(listener.mock.calls[0][0].detail).toEqual({ id: "c1", name: "draft.set", params: { value: "你好" } });
+  });
+  it("外部网页不能取得原生数据发布入口", () => {
+    const script = source("NativeUIBridge").match(/static let script = """\n([\s\S]*?)\n\s*"""/)![1];
+    new Function("location", script)({ protocol: "https:" });
+    expect((window as any).codexMobilePublishNativeSnapshot).toBeUndefined();
+    expect(source("NativeUIBridge")).toContain("message.webView === webView");
+    expect(source("NativeUIBridge")).toContain("frameURL.isFileURL");
+  });
+  it("离线基准不挂载业务 WebView，正式模式复用旧实例", () => {
+    expect(source("NativeUIHost")).toMatch(/if !store.isReference \{\s+legacy/);
+    expect(source("NativeUIBridge")).not.toContain("WKWebView(frame:");
+    expect(source("NativeUIStore")).toContain("guard value.version == 1, !isReference");
+  });
+  it("构建安装原生源码并保持现有 WebView 唯一构造入口", () => {
+    const recipe = parse(readFileSync("mobile/ios/build-recipe.yml", "utf8"));
+    const scripts = recipe.steps.map((s: any) => s.run ?? "").join("\n");
+    expect(scripts).toContain("mobile/ios/NativeUI/*.swift");
+    expect(scripts).toContain("NativeUIHost");
+    expect(scripts).toContain("NativeUIBridge.shared.attach(webView)");
+    expect(scripts).toContain('IPHONEOS_DEPLOYMENT_TARGET = 18.0;');
+    expect(readFileSync("scripts/configure-ios-tests.rb", "utf8")).toContain("NativeUIUITests.swift");
+  });
+});
