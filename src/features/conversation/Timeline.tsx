@@ -30,6 +30,7 @@ import {
   RemoteImage,
   RemoteVideo,
   isPreviewableVideoPath,
+  videoPathForItem,
 } from "./sheets/RemoteFileSheets";
 import { t, getActiveLocale } from "../../i18n";
 import {
@@ -122,14 +123,6 @@ function itemText(item: AnyRecord) {
   return text;
 }
 
-function videoPathForItem(item: AnyRecord) {
-  const candidate = item.savedPath ?? item.path ?? item.result;
-  return typeof candidate === "string" &&
-    candidate.startsWith("/") &&
-    isPreviewableVideoPath(candidate)
-    ? candidate
-    : "";
-}
 
 function ImageGallery({
   images,

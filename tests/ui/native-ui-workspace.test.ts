@@ -123,13 +123,80 @@ it('审批面板保留所有问题与secret并阻止过期请求和无效decisio
 it('历史编辑使用原编辑状态并要求显式删除后续确认，队列不确定取消同样确认', async () => {
  const calls: string[] = []; let shown: string | null = null;
  const c = controller({ readOnly: true, queued: [{ id: 'q', text: '待确认', state: 'uncertain', hosted: true }], extended: { state: {
- historyEdit: { threadId: 't', text: '修改', submitting: false, target: { turnId: 'turn', messageId: 'msg', rollbackTurnCount: 2, content: [{ type: 'localImage', path: '/a.png' }] } },
+ historyEdit: { threadId: 't', text: '修改', submitting: false, target: { turnId: 'turn', messageId: 'msg', rollbackTurnCount: 2, hasLaterTurns: true, input: [{ type: 'localImage', path: '/a.png' }] } },
  }, callbacks: { submitHistoricalMessageEdit: () => calls.push('submit'), changeHistoricalMessageEditText: (v: string) => calls.push(v) } }, cancelQueued: async (_id: string, confirmed?: boolean) => { if (confirmed) calls.push('cancel'); } } as any);
  const a = createWorkspaceAdapter(c, { panelId: null, query: '', setPanel: id => { shown = id; }, setQuery() {} });
- expect(a.snapshot.panel?.id).toBe('history-edit');
+ expect(a.snapshot.panel?.id).toBe('history-edit:t:turn:msg');
  await a.handlers['history.change']!({ value: '新文', editKey: 't:turn:msg' });
  await a.handlers['history.submit']!({ editKey: 't:turn:msg' }); expect(calls).toEqual(['新文']); expect(shown).toBe('confirm-history');
  await a.handlers['history.submit']!({ editKey: 't:turn:msg', confirmed: true }); expect(calls).toEqual(['新文', 'submit']);
  await a.handlers['queue.cancel']!({ id: 'q' }); expect(shown).toBe('confirm-queue:q');
  await a.handlers['queue.cancel']!({ id: 'q', confirmed: true }); expect(calls).toContain('cancel');
+});
+
+it('审批和历史编辑使用身份隔离原生字段缓存并保持真实input附件', () => {
+ const c = controller({ extended: { state: { approval: { id: 1, method: 'item/tool/requestUserInput', params: { questions: [] } } }, callbacks: {} } });
+ const state = { panelId: 'approval', query: '', setPanel() {}, setQuery() {} };
+ expect(createWorkspaceAdapter(c, state).snapshot.panel?.id).toBe('approval:number:1');
+ c.extended!.state.approval = { id: 2, method: 'item/tool/requestUserInput', params: { questions: [] } };
+ expect(createWorkspaceAdapter(c, state).snapshot.panel?.id).toBe('approval:number:2');
+ c.extended!.state = { historyEdit: { threadId: 't', text: '', submitting: true, target: { turnId: 'turn', messageId: 'm', input: [{ type: 'localImage', path: '/tmp/a.png' }], attachmentCount: 1 } } };
+ const panel = createWorkspaceAdapter(c, { ...state, panelId: null }).snapshot.panel!;
+ expect(panel.id).toBe('history-edit:t:turn:m'); expect(panel.dismissible).toBe(false); expect(JSON.stringify(panel)).toContain('/tmp/a.png');
+});
+it('队列投影保留引导、重试、待确认状态并禁用发送中的修改取消', () => {
+ const c = controller({ busy: true, extended: { state: { steerable: true, steering: false, queueSaving: false }, callbacks: {} }, queued: [
+ { id: 'q', text: '排队', state: 'queued' }, { id: 's', text: '发送', state: 'sending' }, { id: 'u', text: '待确认', state: 'uncertain' },
+ ] });
+ const entries = createWorkspaceAdapter(c, { panelId: null, query: '', setPanel() {}, setQuery() {} }).snapshot.queued;
+ expect(entries[0].subtitle).toContain('改为引导'); expect(entries[1].actions?.find(a => a.command?.name === 'queue.cancel')?.disabled).toBe(true);
+ expect(entries[2].command).toBeUndefined();
+});
+it('审批提交从同一业务拥有者读取已接受但尚未render的最新回答，旧请求不能写入新问题', async () => {
+ let live: any = { request: { id: 1, method: 'item/tool/requestUserInput', params: { questions: [{ id: 'q', question: '问题', header: '问题', isOther: true, options: [] }] } }, answers: { q: '旧答案' }, submitting: false }; const replies: any[] = [];
+ const c = controller({ extended: { state: { approval: live.request, requests: [live.request], userAnswers: { q: '旧答案' } }, callbacks: { currentApproval: () => live, answerApproval: (id: string, value: string) => { live.answers[id] = value; }, replyToRequest: (v: any) => replies.push(v) } } });
+ const a = createWorkspaceAdapter(c, { panelId: 'approval', query: '', setPanel() {}, setQuery() {} });
+ await a.handlers['approval.answer']!({ requestKey: 'number:1', questionId: 'q', value: '新答案' });
+ await a.handlers['approval.submit']!({ requestKey: 'number:1' }); expect(replies[0]).toEqual({ answers: { q: { answers: ['新答案'] } } });
+ live = { ...live, request: { ...live.request, id: 2 } };
+ await expect(Promise.resolve().then(() => a.handlers['approval.answer']!({ requestKey: 'number:1', questionId: 'q', value: '迟到答案' }))).rejects.toThrow();
+ expect(live.answers.q).toBe('新答案');
+});
+it('自定义secret答案不作为Picker值或option暴露，用其他选项哨兵保持合法选择', () => {
+ const request = { id: 1, method: 'item/tool/requestUserInput', params: { questions: [{ id: 'q', question: '输入', header: '输入', isSecret: true, isOther: true, options: [{ label: 'A', description: '说明' }] }] } };
+ const c = controller({ extended: { state: { approval: request, userAnswers: { q: 'TOPSECRET' } }, callbacks: {} } });
+ const panel = createWorkspaceAdapter(c, { panelId: 'approval', query: '', setPanel() {}, setQuery() {} }).snapshot.panel!;
+ const option = panel.items[0].children?.find(i => i.kind === 'singleChoice')!;
+ expect(option.value).not.toBe('TOPSECRET'); expect(option.options?.some(o => o.value === option.value)).toBe(true); expect(JSON.stringify(option.options)).not.toContain('TOPSECRET');
+ expect(panel.items[0].children?.find(i => i.kind === 'secureField')?.value).toBe('TOPSECRET');
+});
+it('会话状态面板保留线程ID目录和真实上下文剩余量', () => {
+ const c = controller({ active: { id: 'thread-id', cwd: '/app/project', turns: [] }, extended: { state: { tokenUsage: { last: { totalTokens: 20 }, total: { totalTokens: 500 }, modelContextWindow: 100 }, activeThreadAccessMode: 'interactive' }, callbacks: {} } });
+ const panel = createWorkspaceAdapter(c, { panelId: 'workspace', query: '', setPanel() {}, setQuery() {} }).snapshot.panel!;
+ expect(JSON.stringify(panel)).toContain('thread-id'); expect(JSON.stringify(panel)).toContain('/app/project'); expect(JSON.stringify(panel)).toContain('80%');
+});
+it('重命名和队列字段连续编辑保存不会消费上次render的旧值', async () => {
+ const { NativeRuntime } = await import('../../src/native-ui/runtime'); const calls: any[] = [];
+ const runtime = new NativeRuntime(() => {}); runtime.setNavigation({ selectedBackendId: 'b', backends: [], groups: [] });
+ const c = controller({ queued: [{ id: 'q', inputText: '旧队列', text: '旧队列' }], editQueued: async (_id, value) => { calls.push(value); return true; }, extended: { state: {}, callbacks: { renameThread: (name: string) => { calls.push(name); return true; } } } });
+ renderHook(() => useNativeConversationAdapter(runtime, c));
+ const send = (id: string, name: string, params = {}) => runtime.dispatch({ id, name, params: { ...params, contextId: c.contextId } });
+ const { act } = await import('@testing-library/react');
+ await act(async () => { await send('queue-panel', 'panel.open', { id: 'queue-edit:q' }); });
+ await act(async () => { const change = send('queue-change-fast', 'queue.change', { id: 'q', value: '最新队列' }); const save = send('queue-save-fast', 'queue.edit', { id: 'q' }); await change; await save; });
+ expect(calls[0]).toBe('最新队列');
+ await act(async () => { await send('rename-panel', 'workspace.thread', { action: 'rename' }); });
+ await act(async () => { const change = send('rename-change-fast', 'workspace.rename.change', { value: '最新名称' }); const save = send('rename-save-fast', 'workspace.rename.submit'); await change; await save; });
+ expect(calls[1]).toBe('最新名称'); runtime.dispose(); cleanup();
+});
+it('旧会话队列编辑异步完成不能关闭新会话已打开的面板', async () => {
+ const { NativeRuntime } = await import('../../src/native-ui/runtime'); const { act } = await import('@testing-library/react');
+ const runtime = new NativeRuntime(() => {}); runtime.setNavigation({ selectedBackendId: 'b', backends: [], groups: [] });
+ let finish!: (v: boolean) => void; let c = controller({ queued: [{ id: 'q', inputText: '旧', text: '旧' }], editQueued: () => new Promise(resolve => { finish = resolve; }) });
+ const { rerender } = renderHook(() => useNativeConversationAdapter(runtime, c));
+ let pending!: Promise<unknown>; act(() => { pending = runtime.dispatch({ id: 'old-edit', name: 'queue.edit', params: { contextId: c.contextId, id: 'q', value: '编辑' } }); });
+ c = controller({ contextId: 'new-context' }); rerender();
+ await act(async () => { await runtime.dispatch({ id: 'new-panel', name: 'panel.open', params: { contextId: 'new-context', id: 'mentions' } }); });
+ expect(runtime.snapshot().panel?.id).toBe('mentions');
+ await act(async () => { finish(true); await pending; }); expect(runtime.snapshot().panel?.id).toBe('mentions'); runtime.dispose(); cleanup();
 });

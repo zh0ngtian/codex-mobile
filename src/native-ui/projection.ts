@@ -1,4 +1,5 @@
-import { groupConversationTurns, splitTurnResponseSegments, imageSourcesForItem, isThreadRunning, turnDurationMs, stripGitDirectives, automationAgentMessageText, summarizeTurnChanges } from '../ui/conversation';
+import { videoPathForItem } from '../features/conversation/sheets/RemoteFileSheets';
+import { groupConversationTurns, splitTurnResponseSegments, imageSourcesForItem, isThreadRunning, turnDurationMs, stripGitDirectives, automationAgentMessageText, summarizeTurnChanges, toolActivityRowLabel } from '../ui/conversation';
 import { extractGeneratedTitle, stripConversationTitleRequest } from '../app-server/conversation-title';
 import { groupThreadsByProject, splitAllThreads, type AggregatedThreadItem } from '../features/threads/thread-list-model';
 import { projectCollapseKey } from '../features/threads/project-collapse';
@@ -24,7 +25,7 @@ export function nativeItemText(item: RecordValue): string {
   return text;
 }
 /** final 与其他正文立即投影；commentary 折叠计数独立于工具和推理。 */
-export function projectConversation(active: RecordValue | null, imageURL: (path: string) => string, originalImageURL?: (path: string) => string): NativeMessage[] {
+export function projectConversation(active: RecordValue | null, imageURL: (path: string) => string, originalImageURL?: (path: string) => string, mediaURL?: (path: string) => string): NativeMessage[] {
   const messages: NativeMessage[] = [];
   const imageBlocks = (item: RecordValue, prefix: string): NativePanelItem[] => imageSourcesForItem(item).map((image, index) => ({
     id: `${prefix}:image:${index}`, kind: 'image', title: image.name, value: image.local ? imageURL(image.source) : image.source,
@@ -55,14 +56,21 @@ export function projectConversation(active: RecordValue | null, imageURL: (path:
             historyInserted = true;
           } else messages.push({ id, role: 'assistant', text: nativeItemText(item), status: item.phase === 'commentary' ? undefined : status,
             actions: [nativeAction(`${id}:copy`, t('复制'), 'message.copy', { id })] });
-        } else if (!imageSourcesForItem(item).length && item.type !== 'reasoning') {
-          tools.push(nativeAction(`${id}:tool`, item.type === 'commandExecution' ? t('执行命令') : String(item.type), 'panel.open', { id: `tool:${turnId}:${item.id}` }));
+        } else if (item.type === 'imageGeneration' && item.status === 'failed') {
+          tools.push(nativeAction(`${id}:failure`, t('图像生成未完成'), 'panel.open', { id: `tool:${turnId}:${item.id}` }));
+        } else if (item.type === 'contextCompaction') {
+          messages.push({ id, role: 'activity', text: t('上下文已压缩') });
+        } else if (item.type === 'reasoning') {
+          const reasoning = item.text ?? (Array.isArray(item.summary) ? item.summary.map((p: any) => typeof p === 'string' ? p : p.text ?? '').join('\n') : item.summary) ?? (Array.isArray(item.content) ? item.content.map((p: any) => p.text ?? '').join('\n') : item.content) ?? '';
+          if (reasoning) messages.push({ id, role: 'activity', text: '', blocks: [{ id: `${id}:reasoning`, kind: 'disclosure', title: t('思考过程'), children: [{ id: `${id}:text`, kind: 'markdown', text: String(reasoning) }] }] });
+        } else if (!imageSourcesForItem(item).length && !videoPathForItem(item)) {
+          tools.push(nativeAction(`${id}:tool`, toolActivityRowLabel(item), 'panel.open', { id: `tool:${turnId}:${item.id}` }));
         }
       }
       if (tools.length) messages.push({ id: `${segmentID}:tools`, role: 'activity', text: '', blocks: [{ id: `${segmentID}:tools`, kind: 'disclosure', title: `${t('工具')} (${tools.length})`, children: tools }] });
     }
     // 媒体独立于commentary，跨整个逻辑turn去重，生成结果优先于同源过程截图。
-    const generated = (turn.items ?? []).filter((item: RecordValue) => item.type === 'imageGeneration');
+    const generated = (turn.items ?? []).filter((item: RecordValue) => item.type === 'imageGeneration' && item.status !== 'failed');
     const generatedSources = new Set(generated.flatMap((item: RecordValue) => imageSourcesForItem(item).map(image => image.source)));
     const seen = new Set<string>();
     const generatedImages: NativePanelItem[] = [];
@@ -71,7 +79,8 @@ export function projectConversation(active: RecordValue | null, imageURL: (path:
       for (const [index, image] of imageSourcesForItem(item).entries()) {
         if (seen.has(image.source) || (item.type === 'imageView' && generatedSources.has(image.source))) continue;
         seen.add(image.source);
-        const block: NativePanelItem = { id: `${turnId}:${item.id}:image:${index}`, kind: 'image', title: image.name, value: image.local ? imageURL(image.source) : image.source,
+        const video = videoPathForItem(item);
+        const block: NativePanelItem = { id: `${turnId}:${item.id}:image:${index}`, kind: video ? 'video' : 'image', title: image.name, value: video && mediaURL ? mediaURL(video) : image.local ? imageURL(image.source) : image.source,
           ...(image.local && originalImageURL ? { previewURL: originalImageURL(image.source) } : {}) };
         if (item.type === 'imageGeneration') generatedImages.push(block); else screenshots.push(block);
       }

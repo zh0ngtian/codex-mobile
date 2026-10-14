@@ -152,3 +152,28 @@ it('快速网络ACK先于React提交时仍按实时busy状态排队，不并发�
  expect(boundary.requests.filter(request => request.method === 'turn/start')).toHaveLength(1);
  await waitFor(() => expect(queueItems[0]?.inputText).toBe('ACK后立即输入'));
 });
+it('历史编辑连续change与submit消费最新文本并同步占用提交状态', async () => {
+ const contextId = await setup(); boundary.immediateSend = true;
+ await act(async () => { command('hist-draft', 'draft.set', { contextId, value: '原历史', revision: 1 }); command('hist-send', 'message.send', { contextId }); });
+ await waitFor(() => expect(posts.at(-1)?.threadId).toBe('sent-thread'));
+ await act(async () => boundary.options.onNotification('a', { method: 'turn/completed', params: { threadId: 'sent-thread', turn: { id: 'turn-live', status: 'completed', items: [{ id: 'history-user', type: 'userMessage', content: [{ type: 'text', text: '原历史' }] }] } } }, boundary.client));
+ await waitFor(() => expect(posts.at(-1)?.busy).toBe(false));
+ await act(async () => { command('hist-edit', 'message.edit', { contextId, turnId: 'turn-live', messageId: 'history-user' }); });
+ await waitFor(() => expect(posts.at(-1)?.panel?.id).toContain('history-edit:'));
+ const editKey = 'sent-thread:turn-live:history-user';
+ await act(async () => {
+  command('hist-change', 'history.change', { contextId, editKey, value: '最新历史正文' });
+  command('hist-submit1', 'history.submit', { contextId, editKey });
+  command('hist-submit2', 'history.submit', { contextId, editKey });
+ });
+ await waitFor(() => expect(boundary.requests.filter(r => r.method === 'turn/start')).toHaveLength(2));
+ expect(boundary.requests.filter(r => r.method === 'turn/start')[1].params.input[0].text).toContain('最新历史正文');
+ expect(boundary.requests.filter(r => r.method === 'thread/revert')).toHaveLength(1);
+});
+it('新对话连续输入与保存草稿使用同一实时草稿且不会发送消息', async () => {
+ const { newChatDraftStore } = await import('../../src/features/drafts/new-chat-drafts');
+ const save = vi.spyOn(newChatDraftStore, 'save').mockImplementation(async input => ({ ...input, id: 'draft-native', revision: '1', updatedAt: Date.now(), files: [] }));
+ const contextId = await setup();
+ await act(async () => { command('save-input', 'draft.set', { contextId, value: '立即保存的最新草稿', revision: 1 }); command('save-current', 'draft.save', { contextId }); });
+ expect(save).toHaveBeenCalledTimes(1); expect(save.mock.calls[0][0].text).toBe('立即保存的最新草稿'); expect(boundary.requests.some(r => r.method === 'turn/start')).toBe(false); save.mockRestore();
+});

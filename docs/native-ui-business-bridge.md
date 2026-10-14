@@ -1,6 +1,6 @@
 # 原生会话业务桥接线地图
 
-本文记录 Task2a 的实际业务接线。SwiftUI 仍复用既有单个 WKWebView 中的 React、客户端与数据状态；没有新增 HTTP、WebSocket 或 RPC 协议栈。默认网页模式不会订阅原生命令，也不会计算原生会话投影。
+本文记录 Task2a 与 Task2b 的实际业务接线。SwiftUI 仍复用既有单个 WKWebView 中的 React、客户端与数据状态；没有新增 HTTP、WebSocket 或 RPC 协议栈。默认网页模式不会订阅原生命令，也不会计算原生会话投影。
 
 ## 协议与隔离
 
@@ -55,7 +55,7 @@ ConfiguredApp 使用真实 `scopedThreads`、`projectDirectories`、`collapsedPr
 | `mention.insert {id}` | `skill:PATH` / `plugin:ID` 定位真实目录，复用 insertSkillMention / insertPluginMention，保留光标后正文并返回新光标 |
 | `thread.retry / thread.older` | `retryThreadDetail` / `loadOlderTurns` |
 | `message.copy {id}` | 完整正文复制；原生可使用已投影正文的系统剪贴板；JS 回退失败明确报错 |
-| `message.edit {turnId,messageId}` | `createHistoricalMessageEditTarget` / `beginHistoricalMessageEdit`；完整历史编辑面板属于 Task2b |
+| `message.edit {turnId,messageId}` | `createHistoricalMessageEditTarget` / `beginHistoricalMessageEdit`；完整历史编辑面板通过 history.* 命令继续调用原编辑回调 |
 | `queue.send / queue.cancel / queue.edit` | 现有排队消息管理回调 |
 
 附件 promise 与旧 input 回调按请求路由隔离，旧网页 input 行为保留。取消返回空数组，读取失败 reject，卸载会结束尚未完成的 promise；选择期间切换上下文不会把结果写入新会话。输入菜单保留图片、文件、当前位置，没有增加语音或相机。
@@ -66,16 +66,47 @@ ConfiguredApp 使用真实 `scopedThreads`、`projectDirectories`、`collapsedPr
 
 `foreground.ts` 提供纯 `isClientForeground` 判定：原生使用可信宿主设置的 `__CODEX_NATIVE_ACTIVE__`，网页继续使用 document.visibilityState。App 队列与未读判断、HTTP transport、connection-recovery、通知同步、更新检查和 realtime 可见性检查均复用该 helper。scene 的 JS 活动更新仍通过现有 visibilitychange / focus 恢复机制处理；没有创建第二条连接。
 
-## 后续模块的明确接口
+## 扩展业务面板接口
 
-Task2b 在 `NativeWorkspaceController.extended` 已取得以下 JS 内部能力，不能把整个 extended 对象发布给 Swift：
+`NativeWorkspaceController.extended` 提供以下 JS 内部能力；投影只挑选明确展示字段，不能把整个 extended 对象发布给 Swift：
 
 - state：historyEdit、requests、approval、userAnswers、permissionModes、selectedPermissionModeId、serviceTier/speedOptions、pendingAction、tokenUsage、rateLimits、projectOptions、backends、draftSaveStatus、会话访问与恢复状态。
 - callbacks：chooseSpeed、choosePermissionMode、replyToRequest、change/cancel/submitHistoricalMessageEdit、chooseNewChatProject、switchNewChatBackend、togglePinned、duplicateActiveThread、renameThread、archiveThread、reopen/answer/dismissApproval。
 - 全局设备与设置控制仍在 ConfiguredApp：registry/persistRegistry、transportMode/onTransportModeChange、notificationPreference/onNotificationPreferenceSave、appUpdate、draftsOpen/草稿恢复逻辑。扩展原生 panel 时复用这些拥有者，显式扩展 runtime 白名单与参数验证。
 
-Task2a 仅为 tool/changes 提供真实代码/差异内容的通用 panel；完整设备 CRUD、扫码、草稿列表恢复、通知与更新、语言字号、模型服务档位与权限、审批、历史编辑与工具/文件丰富预览由 Task2b 完成。冷启动检查点、双向界面切换与发布验收属于 Task3 / 协调入口。
+### Task2b 已接线模块
+
+| 模块 | 面板与实际业务入口 |
+| --- | --- |
+| 会话设置 | `workspace` 及 model/effort/speed/permission 别名；真实目录校验后调用 chooseModel/chooseEffort/chooseSpeed/choosePermissionMode，显示连接、访问、同步、线程目录、上下文与额度、待处理状态 |
+| 新对话目标 | `newchat.backend/project` 复用原目标设备、项目回调，切设备和保存草稿同步消费 currentDraftRef，保留尚未 render 的输入且不自动发送 |
+| 会话操作 | 原 pin/duplicate/rename/archive 回调；重命名显式传值；归档中涉及排队消息时通过原生确认等待答案，网页继续使用原 confirm |
+| 审批 | `approval.answer/decide/submit/dismiss/reopen` 复用 approval-model 与 useApprovalRequests；决定仅映射当前 availableDecisions 的有效下标，回答读取同一拥有者已接受的最新答案 |
+| 历史编辑 | `history.change/cancel/submit` 复用原编辑回调与附件 input；真实存在后续对话时显示显式删除确认；historyEditRef 同步占用提交状态，防止连续不同 UUID 重复回退与发送 |
+| 排队消息 | `queue.change/edit/cancel/send` 保留原 hosted queue UUID、revision、HTTP pending 与查询语义，严格按 sending/uncertain、busy/steerable、failed 与同步状态提供编辑、取消、引导和重试 |
+| 设备与设置 | `settings.open {id}` 打开 devices/language/font/transport/notifications/updates；BackendManagerSheet 自身状态直接投影，probe/hostId 校验、注册表启停重排删除复用旧入口，繁忙或队列操作使用显式确认 |
+| 扫码 | 宿主 `codexMobileScanGatewayQr()` 返回原始扫码内容，再走 applyScannedGateway；只填现有表单，仍需测试并保存；取消或设备表单变化不会写入另一表单 |
+| 推送与字号 | Web 与原生共享 usePushSettingsState/useFontSizeSettings 的单一状态；Bark 校验、保存错误及未同步设备均保留，字号与语言立即反映在 snapshot |
+| 无设备启动 | UnconfiguredApp 与 ConfiguredApp 互斥挂载各自 runtime；无设备立即 ready 并展示添加设备表单，关闭后仍有重新添加入口 |
+| 本地草稿 | DraftsSheet 直接投影已有 list/remove/retry/restore；只传元数据，恢复回调获得原 IDB 二进制记录，不复制记录、不发送消息 |
+| 应用更新 | AppUpdateSheet 原 phase、进度、更新说明、install/retry/close；`manualCheckSupported=false` 不投影手动检查动作 |
+
+全局面板通过 runtime 的独立注册通道合并，按真实打开顺序展示；后台组件重新 render 不抢面板。`panel.close` 按当前 DTO id 路由到拥有者。全局设置别名不会接管 mentions、工具或会话面板。关闭或切换会话后，旧请求完成不能关闭新面板。
+
+审批 DTO id 为 `approval:<approvalKey>`；历史编辑为 `history-edit:<editKey>`，删除后续确认为 `confirm-history:<editKey>`。字段缓存随身份隔离，旧面板无法回答新请求；提交中禁用字段和关闭。问题选项仅使用静态 option 下标及 other 哨兵，自定义 secret 仅进入 secureField 和原审批内存状态，不放入 Picker 选项或额外持久存储。
+
+### 富内容展示契约
+
+- 工具详情挑选命令、cwd、状态、耗时、退出码、参数及输出，不把整个工具对象 JSON 充当业务面板。文件变更复用 summarizeFileChange，展示逐文件统计、真实 diff 及打开文件动作；运行计划、折叠推理、上下文压缩与失败图像诊断保留。
+- `file.open {href}` 复用 parseRemoteFileHref 和原客户端 `fs/readFile`，复用既有 base64 文本/二进制判定。Markdown/HTML 可切预览与源码，图片、SVG、音视频和下载使用既有鉴权资源 URL；不会创建跨 WK 无效的 blob URL。
+- 普通远程源码使用 `kind=source, title=文件名, text=完整源码, line=可选目标行`，供原生显示行号、目标行高亮与定位。SVG 文件读取真实文本后使用 html 展示。
+- `NativeSnapshot.richContent` 仅提供当前实际内容所需的资源：本地 Markdown 图片 `kind=image, text=原始href, value=缩略URL, previewURL=原图URL`；Mermaid `kind=html, text=规范化LF后的原始源码, value=既有strict引擎生成的SVG`。绘图仅在专用离屏容器布局，没有 DOM 查询或点击业务动作。
+- html/SVG 的 Swift 隔离 WK 无业务桥与持久 store；audio/video/file 使用专门原生展示和下载。没有整屏旧网页业务兜底。
+
+冷启动检查点、双向界面切换与发布验收仍属于 Task3 / 协调入口。
 
 ## 验证记录
 
 新增行为遵循 RED→GREEN；日志位于 `.mobile-build/native-reference/task2a-*.log`，覆盖 dispatcher/context/revision、React adapter/StrictMode、真实 App 导航与发送/停止/UUID 托管队列/失败恢复、turn 与媒体投影、UTF16 mention 光标、附件 promise、前后台与默认网页隔离。最终全量测试与 Swift 构建由本轮整合后再次核对。
+
+Task2b 分模块 RED→GREEN 日志位于 `.mobile-build/native-reference/task2b-*.log`。最终关联回归覆盖原生 dispatcher/面板/实际 App 发送与历史编辑、设备/推送/字号、审批、草稿、Mermaid、图片与更新；纯 TypeScript 侧检查不能替代 Swift 整合、模拟器或真机验收。

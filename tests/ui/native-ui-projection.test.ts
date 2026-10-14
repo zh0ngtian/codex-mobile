@@ -14,7 +14,7 @@ describe('真实业务原生投影', () => {
     const history = messages.find(m => m.blocks?.some(b => b.kind === 'disclosure'))!.blocks!.find(b => b.kind === 'disclosure')!;
     expect(history.title).toContain('1'); expect(history.children).toHaveLength(1);
     expect(messages.find(m => m.role === 'user')?.blocks?.[0]).toMatchObject({ kind: 'image', value: 'data:image/png;base64,YQ==' });
-    expect(JSON.stringify(messages)).not.toContain('"text":"推理"');
+    expect(messages.flatMap(m => m.blocks ?? []).find(b => b.id.endsWith(':reasoning'))?.children?.[0]?.text).toBe('推理');
   });
   it('延续turn使用已有分组且稳定id，多个最终正文与普通图片都保留', () => {
     const active = { id: 't', turns: [

@@ -24,6 +24,17 @@ function loadEngine() {
   return enginePromise;
 }
 
+/** Web与原生展示共用strict引擎，容器只负责Mermaid布局，不承载业务DOM。 */
+export async function renderMermaidSvg(source: string): Promise<string> {
+  const engine = await loadEngine();
+  const container = document.createElement('div');
+  container.style.cssText = 'position:absolute;left:-10000px;top:0;pointer-events:none';
+  container.setAttribute('aria-hidden', 'true');
+  document.body.append(container);
+  try { return (await engine.render(`codex-mermaid-${++nextDiagramId}`, source, container)).svg; }
+  finally { container.remove(); }
+}
+
 export function MermaidBlock({ source }: { source: string }) {
   const [result, setResult] = useState<{ source: string; svg: string | null } | null>(null);
   const [showSource, setShowSource] = useState(false);
@@ -32,21 +43,11 @@ export function MermaidBlock({ source }: { source: string }) {
   useEffect(() => {
     let cancelled = false;
     const timer = setTimeout(async () => {
-      let container: HTMLDivElement | undefined;
       try {
-        const engine = await loadEngine();
-        if (cancelled) return;
-        // 布局需要真实 DOM；独立容器避免 Mermaid 修改 React 管理的消息节点。
-        container = document.createElement("div");
-        container.style.cssText = "position:absolute;left:-10000px;top:0;pointer-events:none";
-        container.setAttribute("aria-hidden", "true");
-        document.body.append(container);
-        const { svg } = await engine.render(`codex-mermaid-${++nextDiagramId}`, source, container);
+        const svg = await renderMermaidSvg(source);
         if (!cancelled) setResult({ source, svg });
       } catch {
         if (!cancelled) setResult({ source, svg: null });
-      } finally {
-        container?.remove();
       }
     }, 150);
     return () => {

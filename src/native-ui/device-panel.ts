@@ -4,7 +4,7 @@ import type { NativePanelItem, NativeSnapshot } from './protocol';
 /** 此投影只挑选字段；完整设备凭证只在显式编辑表单中进入secureField。 */
 export function projectDevicePanel(c: any): NativeSnapshot['panel'] {
  if (!c.open) return undefined;
- const field = (id: string, title: string, value: string, secure = false): NativePanelItem => ({ id, kind: secure ? 'secureField' : 'textField', title, value, disabled: c.testing, command: nativeCommand('device.change', { field: id }) });
+ const field = (id: string, title: string, value: string, secure = false): NativePanelItem => ({ id, kind: secure ? 'secureField' : 'textField', title, value, disabled: c.testing, command: nativeCommand('device.change', { field: id, draftId: c.draft?.id }) });
  const choice = (id: string, title: string, value: string, options: string[][], name: string): NativePanelItem => ({ id, kind: 'singleChoice', title, value, options: options.map(([v, label]) => ({ id: v, value: v, title: t(label) })), command: nativeCommand(name), disabled: c.testing });
  const items: NativePanelItem[] = [];
  if (c.confirmation) {
@@ -38,5 +38,8 @@ export function projectDevicePanel(c: any): NativeSnapshot['panel'] {
    if (c.appUpdate.manualCheckSupported) items.push({ ...nativeAction('check-update', t(c.appUpdate.checking ? '正在检查…' : '检查更新'), 'settings.update.check'), disabled: c.appUpdate.checking });
   }
  }
- return { id: 'devices', title: t(c.confirmation ? '确认设备操作' : c.draft ? '设备连接' : '管理设备'), items, dismissible: !c.testing };
+ const prefixes: Record<string, string[]> = { devices: ['device', 'name', 'gatewayUrl', 'scan', 'save', 'cancel', 'add', ...c.registry.backends.map((b: any) => b.id)], language: ['language'], font: ['font'], transport: ['transport'], notifications: ['push', 'bark'], updates: ['app-version', 'check-update'] };
+ const page = c.page === 'settings' ? undefined : c.page;
+ const visible = page && prefixes[page] && !c.confirmation ? items.filter(item => prefixes[page].some(prefix => item.id === prefix || item.id.startsWith(`${prefix}-`))) : items;
+ return { id: page && page !== 'devices' ? `settings:${page}` : 'devices', title: t(c.confirmation ? '确认设备操作' : c.draft ? '设备连接' : '管理设备'), items: visible, dismissible: !c.testing };
 }

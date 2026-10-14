@@ -6,6 +6,8 @@ import {
   useCallback,
   useEffect,
   useState,
+  useRef,
+  useLayoutEffect,
 } from "react";
 import {
   formatBackendGatewayUrl,
@@ -53,6 +55,7 @@ function newBackendDraft(order: number): BackendDraft {
 export function BackendManagerSheet({
   open,
   nativeRuntime,
+  nativePage,
   registry,
   summaries,
   onChange,
@@ -67,6 +70,7 @@ export function BackendManagerSheet({
   scanQrCode,
 }: {
   nativeRuntime?: NativeRuntime | null;
+  nativePage?: string;
   open: boolean;
   registry: BackendRegistry;
   summaries: Record<string, BackendRuntimeSummary>;
@@ -95,6 +99,10 @@ export function BackendManagerSheet({
   const [draft, setDraft] = useState<BackendDraft | null>(() =>
     open && !registry.backends.length ? newBackendDraft(0) : null,
   );
+  const draftRef = useRef(draft);
+  const setCurrentDraft = (next: BackendDraft | null) => { draftRef.current = next; setDraft(next); };
+  useLayoutEffect(() => { draftRef.current = draft; }, [draft]);
+  const testingRef = useRef(false);
   const [testing, setTesting] = useState(false);
   const [error, setError] = useState("");
   const [qrScannerOpen, setQrScannerOpen] = useState(false);
@@ -114,17 +122,8 @@ export function BackendManagerSheet({
     try {
       const gateway = parseBackendGatewayUrl(value);
       if (!gateway.token) throw new Error(t("二维码中缺少访问口令"));
-      setDraft((current) =>
-        current
-          ? {
-              ...current,
-              gatewayUrl: formatBackendGatewayUrl(
-                gateway.baseUrl,
-                gateway.token,
-              ),
-            }
-          : current,
-      );
+      const current = draftRef.current;
+      if (current) setCurrentDraft({ ...current, gatewayUrl: formatBackendGatewayUrl(gateway.baseUrl, gateway.token) });
       setError("");
     } catch (reason) {
       setError(
@@ -138,13 +137,17 @@ export function BackendManagerSheet({
   }, []);
 
   const openQrScanner = async () => {
+    const targetId = draftRef.current?.id;
     const nativeScan = (window as Window & { codexMobileScanGatewayQr?: () => Promise<string> }).codexMobileScanGatewayQr;
     if (!scanQrCode && !nativeScan) {
+      if (nativeRuntime) { setError(t('扫码不可用')); return; }
       setQrScannerOpen(true);
       return;
     }
     try {
-      applyScannedGateway(await (scanQrCode ?? nativeScan!)());
+      const value = await (scanQrCode ?? nativeScan!)();
+      if (draftRef.current?.id !== targetId) throw new Error(t('设备表单已变化'));
+      applyScannedGateway(value);
     } catch (reason) {
       setError(
         reason instanceof Error ? reason.message : t("未能识别二维码"),
@@ -163,18 +166,20 @@ export function BackendManagerSheet({
 
   const submit = async (event?: Pick<FormEvent, "preventDefault">) => {
     event?.preventDefault();
-    if (!draft || testing) return;
+    const currentDraft = draftRef.current;
+    if (!currentDraft || testingRef.current) return;
+    testingRef.current = true;
     setTesting(true);
     setError("");
     try {
-      const gateway = parseBackendGatewayUrl(draft.gatewayUrl);
+      const gateway = parseBackendGatewayUrl(currentDraft.gatewayUrl);
       const candidate: BackendConfig = {
-        id: draft.id,
-        name: draft.name.trim(),
+        id: currentDraft.id,
+        name: currentDraft.name.trim(),
         baseUrl: gateway.baseUrl,
         token: gateway.token,
-        enabled: draft.enabled,
-        order: draft.order,
+        enabled: currentDraft.enabled,
+        order: currentDraft.order,
       };
       const host = await probe({ ...candidate, transportMode });
       const hostId = host.hostId.trim();
@@ -185,10 +190,11 @@ export function BackendManagerSheet({
         name: candidate.name || host.displayName,
       });
       onChange(next);
-      setDraft(null);
+      setCurrentDraft(null);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
     } finally {
+      testingRef.current = false;
       setTesting(false);
     }
   };
@@ -233,15 +239,15 @@ export function BackendManagerSheet({
   };
 
   const getBackend = (id: unknown) => { const b = registry.backends.find(b => b.id === id); if (!b) throw new Error(t('设备已移除')); return b; };
-  const guard = () => { if (testing) throw new Error(t('正在测试…')); };
-  const editBackend = (backend: BackendConfig) => { guard(); setDraft({ id: backend.id, name: backend.name, gatewayUrl: formatBackendGatewayUrl(backend.baseUrl, backend.token), enabled: backend.enabled, order: backend.order }); setError(''); };
-  useNativeGlobalPanel(nativeRuntime, 'devices', projectDevicePanel({ open, registry, summaries, draft, testing, error, confirmation, transportMode, preference, font, push, hasPush: !!notificationPreference && !!onNotificationPreferenceSave, failedNotificationDevices, appUpdate }), {
+  const guard = () => { if (testingRef.current) throw new Error(t('正在测试…')); };
+  const editBackend = (backend: BackendConfig) => { guard(); setCurrentDraft({ id: backend.id, name: backend.name, gatewayUrl: formatBackendGatewayUrl(backend.baseUrl, backend.token), enabled: backend.enabled, order: backend.order }); setError(''); };
+  useNativeGlobalPanel(nativeRuntime, 'devices', projectDevicePanel({ open, page: nativePage, registry, summaries, draft, testing, error, confirmation, transportMode, preference, font, push, hasPush: !!notificationPreference && !!onNotificationPreferenceSave, failedNotificationDevices, appUpdate }), {
     'panel.close': () => { guard(); onClose(); },
-    'device.add': () => { guard(); setDraft(newBackendDraft(registry.backends.length)); setError(''); },
+    'device.add': () => { guard(); setCurrentDraft(newBackendDraft(registry.backends.length)); setError(''); },
     'device.edit': p => editBackend(getBackend(p.id)),
-    'device.change': p => { guard(); if (!draft || !['name', 'gatewayUrl'].includes(String(p.field))) throw new Error(t('设备表单已关闭')); setDraft({ ...draft, [String(p.field)]: String(p.value) }); },
+    'device.change': p => { guard(); if (!draftRef.current || (p.draftId !== undefined && p.draftId !== draftRef.current.id) || !['name', 'gatewayUrl'].includes(String(p.field))) throw new Error(t('设备表单已关闭')); setCurrentDraft({ ...draftRef.current!, [String(p.field)]: String(p.value) }); },
     'device.save': () => submit(),
-    'device.cancel': () => { guard(); setConfirmation(null); setDraft(null); setError(''); },
+    'device.cancel': () => { guard(); setConfirmation(null); setCurrentDraft(null); setError(''); },
     'device.scan': () => { guard(); return openQrScanner(); },
     'device.move': p => { guard(); updateRegistry(() => moveBackend(registry, getBackend(p.id).id, Number(p.direction) as -1 | 1)); },
     'device.toggle': p => {

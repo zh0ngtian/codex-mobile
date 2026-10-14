@@ -155,3 +155,9 @@ it('全局面板独立于会话面板路由并支持无设备的ready引导', as
  expect(events).toEqual(['add']); runtime.removeGlobalPanel('devices');
  expect(runtime.snapshot().panel).toBeUndefined(); runtime.dispose();
 });
+it('全局面板按实际打开顺序展示，后台组件render不会抢走当前面板', () => {
+ const runtime = new NativeRuntime(() => {});
+ runtime.setGlobalPanel('devices', undefined, {}); runtime.setGlobalPanel('drafts', { id: 'drafts', title: '', items: [] }, {});
+ runtime.setGlobalPanel('devices', { id: 'devices', title: '', items: [] }, {}); expect(runtime.snapshot().panel?.id).toBe('devices');
+ runtime.setGlobalPanel('drafts', { id: 'drafts', title: '更新标题', items: [] }, {}); expect(runtime.snapshot().panel?.id).toBe('devices'); runtime.dispose();
+});

@@ -24,3 +24,27 @@ it('暂停与删除繁忙队列需原生显式确认，更新仅在现有能力�
  expect(changes[0].backends[0].enabled).toBe(false);
  expect(JSON.stringify(runtime.snapshot().panel)).not.toContain('settings.update.check'); runtime.dispose();
 });
+it('原生设置子页只展示指定功能且不复制业务状态', () => {
+ const runtime = new NativeRuntime(() => {});
+ render(<BackendManagerSheet nativeRuntime={runtime} nativePage="language" open registry={{ version: 1, backends: [], selectedBackendId: '' }} summaries={{}} onClose={() => {}} onChange={() => {}} />);
+ expect(runtime.snapshot().panel?.id).toBe('settings:language');
+ expect(runtime.snapshot().panel?.items.map(i => i.id)).toEqual(['language']); runtime.dispose();
+});
+it('全局字号操作立即投影新的fontScale', async () => {
+ const runtime = new NativeRuntime(() => {});
+ render(<BackendManagerSheet nativeRuntime={runtime} nativePage="font" open registry={{ version: 1, backends: [], selectedBackendId: '' }} summaries={{}} onClose={() => {}} onChange={() => {}} />);
+ await act(async () => { await runtime.dispatch({ id: 'font', name: 'settings.font', params: { value: 'large' } }); });
+ expect(runtime.snapshot().fontScale).toBe(1.125); runtime.dispose();
+});
+it('原生表单连续命令同步保留全部字段并同步占用probe，避免不同UUID重复保存', async () => {
+ const runtime = new NativeRuntime(() => {}); const probes: any[] = []; let finish!: (v: any) => void;
+ render(<BackendManagerSheet nativeRuntime={runtime} open registry={{ version: 1, backends: [], selectedBackendId: '' }} summaries={{}} onClose={() => {}} onChange={() => {}} probe={b => { probes.push(b); return new Promise(r => { finish = r; }); }} />);
+ await act(async () => {
+  const name = runtime.dispatch({ id: 'name-fast', name: 'device.change', params: { field: 'name', value: '同步名称' } });
+  const url = runtime.dispatch({ id: 'url-fast', name: 'device.change', params: { field: 'gatewayUrl', value: 'http://localhost/?token=SYNC' } });
+  const first = runtime.dispatch({ id: 'save-fast1', name: 'device.save', params: {} });
+  const second = runtime.dispatch({ id: 'save-fast2', name: 'device.save', params: {} });
+  await name; await url; expect(probes).toHaveLength(1); expect(probes[0].name).toBe('同步名称'); expect(probes[0].token).toBe('SYNC');
+  finish({ hostId: 'HOST', displayName: 'Mac' }); await first; await second;
+ }); runtime.dispose();
+});

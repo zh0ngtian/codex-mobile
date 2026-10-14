@@ -34,10 +34,21 @@ it('真实App注册导航与各设备workspace：原生关闭侧栏、切换列�
  expect(posts.at(-1).draftRevision).toBe(1);
  await act(async () => { command('open', 'navigation.sidebar', { open: true }); });
  await waitFor(() => expect(posts.at(-1)?.sidebarOpen).toBe(true));
+ await act(async () => { command('before-switch', 'draft.set', { contextId, value: '切设备前最新输入', revision: 2 }); command('switch-new-device', 'newchat.backend', { contextId, value: 'a' }); });
+ await waitFor(() => expect(posts.at(-1)?.backendId).toBe('a')); expect(posts.at(-1).draft).toBe('切设备前最新输入');
 });
 it('无设备冷启动直接发布ready原生添加设备表单，配置后沿同一业务入口管理设置和草稿', async () => {
  Object.assign(window, { __CODEX_NATIVE_UI__: true, webkit: { messageHandlers: { nativeUI: { postMessage() {} } } }, codexMobilePublishNativeSnapshot: (v: unknown) => posts.push(v) });
  render(<AppBootstrap initialRegistry={{ version: 1, selectedBackendId: '', backends: [] }} />);
  await waitFor(() => expect(posts.at(-1)?.ready).toBe(true));
  expect(posts.at(-1).panel.id).toBe('devices'); expect(posts.at(-1).panel.items.some((i: any) => i.id === 'gatewayUrl')).toBe(true);
+});
+it('无设备关闭表单后仍保持ready并能通过添加设备动作重新打开', async () => {
+ Object.assign(window, { __CODEX_NATIVE_UI__: true, webkit: { messageHandlers: { nativeUI: { postMessage() {} } } }, codexMobilePublishNativeSnapshot: (v: unknown) => posts.push(v) });
+ render(<AppBootstrap initialRegistry={{ version: 1, selectedBackendId: '', backends: [] }} />);
+ await waitFor(() => expect(posts.at(-1)?.panel?.id).toBe('devices'));
+ await act(async () => { command('close-empty', 'panel.close', { id: 'devices' }); });
+ await waitFor(() => expect(posts.at(-1)?.panel).toBeUndefined());
+ expect(posts.at(-1).ready).toBe(true); expect(posts.at(-1).conversationActions.some((i: any) => i.command?.name === 'settings.open')).toBe(true);
+ await act(async () => { command('reopen-empty', 'settings.open'); }); await waitFor(() => expect(posts.at(-1)?.panel?.id).toBe('devices'));
 });

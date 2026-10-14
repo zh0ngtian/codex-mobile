@@ -4,7 +4,7 @@ export interface NativeCommand { id?: string; name: string; params: NativeParams
 export interface NativeOption { id: string; title: string; value: string; subtitle?: string }
 export interface NativePanelItem {
   id: string; kind: string; title?: string; text?: string; value?: string; previewURL?: string; values?: string[];
-  options?: NativeOption[]; command?: NativeCommand; children?: NativePanelItem[]; disabled?: boolean;
+  line?: number; options?: NativeOption[]; command?: NativeCommand; children?: NativePanelItem[]; disabled?: boolean;
 }
 export interface NativeNavigationItem { id: string; title: string; subtitle?: string; badge?: string; selected?: boolean; command?: NativeCommand; actions?: NativePanelItem[] }
 export interface NativeGroup { id: string; title: string; items: NativeNavigationItem[]; command?: NativeCommand; actions?: NativePanelItem[]; collapsed?: boolean }
@@ -18,6 +18,7 @@ export interface NativeSnapshot {
   backends: Array<{ id: string; title: string; subtitle?: string; connected?: boolean }>;
   groups: NativeGroup[]; messages: NativeMessage[]; attachments: NativeAttachment[]; queued: NativeNavigationItem[];
   approvalCount: number; model: string; effort: string; models: NativeOption[]; efforts: NativeOption[];
+  richContent?: NativePanelItem[];
   error?: string; badge?: string; panel?: { id: string; title: string; items: NativePanelItem[]; dismissible?: boolean };
   commandResults?: NativeResult[]; sidebarOpen?: boolean; search?: string; loading?: string;
   canInterrupt?: boolean; conversationActions?: NativePanelItem[]; permission?: string; pending?: boolean; mentions?: NativeOption[];

@@ -1,8 +1,10 @@
+import type { ImageGenerationError } from '../backends/image-generation-error';
+import { projectToolPanel, projectFilePanel, useNativeRichContent, type NativeFileState } from './rich-content';
 import { workspaceBusinessPanels } from './workspace-panels';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { BackendConfig } from '../backends/types';
 import type { DraftFile, DraftImage } from '../ui/attachments';
-import { remoteImagePreviewUrl } from '../backends/file-upload';
+import { remoteImagePreviewUrl, remoteFilePreviewUrl } from '../backends/file-upload';
 import { filterInstalledSkills, skillMentionAt, skillDisplayName, skillDescription, type InstalledSkill } from '../app-server/skills';
 import { filterInstalledPlugins, pluginDisplayName, pluginDescription, type InstalledPlugin } from '../app-server/plugins';
 import { getActiveLocale, t } from '../i18n';
@@ -33,7 +35,7 @@ export interface NativeWorkspaceController {
   /** 后续完整panel仍通过显式命令白名单扩展，不创建另一业务层。 */
   extended?: { state: RecordValue; callbacks: Record<string, (...args: any[]) => any> };
 }
-interface PanelState { panelId: string | null; query: string; setPanel: (id: string | null) => void; setQuery: (query: string) => void }
+interface PanelState { panelId: string | null; query: string; setPanel: (id: string | null) => void; setQuery: (query: string) => void; getQuery?: () => string; file?: NativeFileState | null; richContent?: NativePanelItem[]; customAnswers?: Set<string>; setCustomAnswer?: (key: string, custom: boolean) => void; richHandlers?: NativeHandlers; closeRich?: () => void; diagnostics?: Record<string, ImageGenerationError | null>; loadDiagnostic?: (id: string) => Promise<void> }
 function projectPanel(c: NativeWorkspaceController, panel: PanelState): NativeSnapshot['panel'] {
   const id = panel.panelId;
   if (!id) return undefined;
@@ -44,10 +46,8 @@ function projectPanel(c: NativeWorkspaceController, panel: PanelState): NativeSn
     ];
     return { id, title: t('Skill / Plugin'), items };
   }
-  for (const turn of groupConversationTurns(c.active?.turns ?? [])) {
-    if (id === `changes:${turn.id}`) return { id, title: t('文件变更'), items: [{ id: `${id}:diff`, kind: 'diff', text: String(turn.liveDiff ?? (turn.items ?? []).filter((item: RecordValue) => item.type === 'fileChange').map((item: RecordValue) => JSON.stringify(item.changes, null, 2)).join('\n')) }] };
-    for (const item of turn.items ?? []) if (id === `tool:${turn.id}:${item.id}`) return { id, title: String(item.type), items: [{ id: `${id}:detail`, kind: 'code', title: 'json', text: JSON.stringify(item, null, 2) }] };
-  }
+  if (id === 'file') return projectFilePanel(c, panel.file);
+  const tool = projectToolPanel(c, id, panel.diagnostics); if (tool) return tool;
   return { id, title: t('内容已更新，请重新打开'), items: [] };
 }
 /** 命令绑定投影创建时的上下文，不能让旧sheet按钮使用点击时的新context。 */
@@ -62,7 +62,9 @@ export function bindWorkspaceCommands(snapshot: NativeSnapshot): NativeSnapshot 
   };
 }
 export function createWorkspaceAdapter(c: NativeWorkspaceController, panel: PanelState): { snapshot: NativeSnapshot; handlers: NativeHandlers } {
-  const messages = projectConversation(c.active, path => remoteImagePreviewUrl(c.backend, path), path => remoteImagePreviewUrl(c.backend, path, false));
+  const messages = projectConversation(c.active, path => remoteImagePreviewUrl(c.backend, path), path => remoteImagePreviewUrl(c.backend, path, false), path => remoteFilePreviewUrl(c.backend, path));
+  if (c.busy && c.active?.mobilePlan?.length) messages.push({ id: 'running-plan', role: 'activity', text: '', blocks: [{ id: 'plan', kind: 'section', title: t('执行计划'), children: c.active.mobilePlan.map((step: any, index: number) => ({ id: `plan:${index}:${step.step}`, kind: 'text', title: `${step.status === 'completed' ? '✓' : step.status === 'inProgress' ? '●' : '○'} ${step.step}`, text: step.status })) }] });
+  if (c.extended?.state.pendingSteerText) messages.push({ id: 'pending-steer', role: 'activity', text: String(c.extended.state.pendingSteerText), status: t('正在引导') });
   const caretOffset = Math.max(0, Math.min(c.draft.length, c.caretOffset ?? c.draft.length));
   const mention = skillMentionAt(c.draft, caretOffset);
   const mentions = mention ? [
@@ -77,11 +79,17 @@ export function createWorkspaceAdapter(c: NativeWorkspaceController, panel: Pane
   if (c.olderTurnsState !== 'exhausted') conversationActions.push({ ...nativeAction('older', c.olderTurnsState === 'loading' ? t('加载中…') : c.olderTurnsState === 'error' ? t('重试加载历史') : t('加载更早消息'), 'thread.older'), disabled: c.olderTurnsState === 'loading' });
   const snapshot: NativeSnapshot = { ...emptyNativeSnapshot(), ready: true, locale: getActiveLocale(), fontScale: FONT_SCALES[readFontSize()],
     title: String(c.active?.name || c.active?.preview || t('新对话')), backendId: c.backend.id, threadId: c.active?.id ? String(c.active.id) : undefined, contextId: c.contextId,
-    draftRevision: c.draftRevision, caretOffset, mentions, connection: c.connection, busy: c.busy, draft: c.draft, canSend: hasInput && !c.readOnly && !c.imageReading && !c.draftSaving,
+    draftRevision: c.draftRevision, caretOffset, mentions, richContent: panel.richContent, connection: c.connection, busy: c.busy, draft: c.draft, canSend: hasInput && !c.readOnly && !c.imageReading && !c.draftSaving,
     canInterrupt: c.busy && !!c.active?.id && !c.readOnly, readOnly: c.readOnly, messages,
     attachments: [...c.draftImages.map(image => ({ id: image.id, name: image.name, imageURL: image.url, detail: `${image.size} B` })), ...c.draftFiles.map(file => ({ id: file.id, name: file.name, detail: `${file.size} B` }))],
-    queued: c.queued.map(item => ({ id: String(item.id), title: String(item.text), subtitle: String(item.state ?? (item.failed ? t('发送失败') : t('排队中'))),
-      command: ['uncertain', 'sending', 'steering'].includes(item.state) ? undefined : nativeCommand('queue.send', { id: item.id }), actions: [{ ...nativeAction(`${item.id}:edit`, t('编辑'), 'panel.open', { id: `queue-edit:${item.id}` }), disabled: ['uncertain', 'sending', 'steering'].includes(item.state) }, nativeAction(`${item.id}:cancel`, t('移除'), 'queue.cancel', { id: item.id })] })),
+    queued: c.queued.map(item => {
+      const s = c.extended?.state ?? {}; const locked = item.state === 'sending' || item.state === 'uncertain';
+      const canAct = !s.steering && !s.queueSaving && !locked && (c.busy ? !!s.steerable : !!item.failed);
+      const status = item.state === 'sending' ? t('发送中') : item.state === 'uncertain' ? t('待确认') : canAct ? t(c.busy ? '改为引导' : '重试') : t('排队中');
+      return { id: String(item.id), title: String(item.text), subtitle: `${status}${item.error ? ` · ${item.error}` : ''}`,
+        command: canAct ? nativeCommand('queue.send', { id: item.id }) : undefined,
+        actions: [{ ...nativeAction(`${item.id}:edit`, t('编辑'), 'panel.open', { id: `queue-edit:${item.id}` }), disabled: locked || !!s.steering || !!s.queueSaving }, { ...nativeAction(`${item.id}:cancel`, t('移除'), 'queue.cancel', { id: item.id }), disabled: item.state === 'sending' || !!s.steering || !!s.queueSaving }] };
+    }),
     approvalCount: c.approvalCount, model: c.selectedModelLabel, effort: effortLabel(c.selectedEffort), permission: c.permission,
     models: c.models.map(model => ({ id: String(model.model), title: String(model.displayName || model.model), value: String(model.model) })),
     efforts: c.effortOptions.map(option => ({ id: option.id, title: option.label, value: option.id })),
@@ -123,27 +131,38 @@ export function createWorkspaceAdapter(c: NativeWorkspaceController, panel: Pane
     'panel.open': p => {
       const id = String(p.id);
       if (!business.accepts(id) && id !== 'mentions' && !groupConversationTurns(c.active?.turns ?? []).some((turn: RecordValue) => id === `changes:${turn.id}` || turn.items?.some((item: RecordValue) => id === `tool:${turn.id}:${item.id}`))) throw new Error(t('此面板尚未接入'));
-      panel.setPanel(id); panel.setQuery('');
+      panel.setPanel(id);
+      const tool = groupConversationTurns(c.active?.turns ?? []).flatMap((turn: RecordValue) => (turn.items ?? []).map((item: RecordValue) => ({ turn, item }))).find(({ turn, item }: { turn: RecordValue; item: RecordValue }) => id === `tool:${turn.id}:${item.id}`);
+      if (tool?.item.type === 'imageGeneration' && tool.item.status === 'failed') void panel.loadDiagnostic?.(String(tool.item.id));
+      panel.setQuery(id.startsWith('queue-edit:') ? String(c.queued.find(q => `queue-edit:${q.id}` === id)?.inputText ?? c.queued.find(q => `queue-edit:${q.id}` === id)?.text ?? '') : id === 'thread-rename' ? String(c.active?.name ?? '') : '');
     },
-    'panel.close': () => { panel.setPanel(null); panel.setQuery(''); },
-    ...business.handlers,
-    'workspace.rename.change': p => panel.setQuery(String(p.value)),
-    'workspace.rename.submit': () => { if (!panel.query.trim()) throw new Error(t('名称不能为空')); c.extended?.callbacks.renameThread?.(panel.query.trim()); panel.setPanel(null); },
-    'queue.change': p => { if (!c.queued.some(q => q.id === p.id)) throw new Error(t('队列已更新')); panel.setQuery(String(p.value)); },
-    'queue.cancel': p => { const q = c.queued.find(q => q.id === p.id); if (!q) throw new Error(t('队列已更新')); if (q.state === 'uncertain' && p.confirmed !== true) return panel.setPanel(`confirm-queue:${q.id}`); return c.cancelQueued(String(p.id), p.confirmed === true); },
-    'queue.send': p => { const q = c.queued.find(q => q.id === p.id); if (!q || ['uncertain', 'sending', 'steering'].includes(q.state)) throw new Error(t('当前无法发送排队消息')); return c.sendQueued(String(p.id)); },
-    'queue.edit': async p => { const q = c.queued.find(q => q.id === p.id); if (!q || ['uncertain', 'sending', 'steering'].includes(q.state)) throw new Error(t('当前无法编辑排队消息')); if (!await c.editQueued(String(p.id), typeof p.value === 'string' ? p.value : panel.query)) throw new Error(t('无法保存排队消息')); panel.setPanel(null); },
+    'panel.close': p => { if (p.id !== snapshot.panel?.id || snapshot.panel?.dismissible === false) throw new Error(t('面板已变化或当前不能关闭'));  if (snapshot.panel?.id.startsWith('approval:')) c.extended?.callbacks.dismissApproval?.(); if (snapshot.panel?.id.startsWith('history-edit:')) c.extended?.callbacks.cancelHistoricalMessageEdit?.(); panel.closeRich?.(); panel.setPanel(null); panel.setQuery(''); },
+    ...business.handlers, ...panel.richHandlers,
+    'workspace.thread': p => { if (p.action === 'rename') panel.setQuery(String(c.active?.name ?? '')); return business.handlers['workspace.thread']!(p); },
+    'workspace.rename.change': p => { if (panel.panelId !== 'thread-rename') throw new Error(t('面板已关闭')); panel.setQuery(String(p.value)); },
+    'workspace.rename.submit': async () => { if (panel.panelId !== 'thread-rename') throw new Error(t('面板已关闭')); const value = (panel.getQuery?.() ?? panel.query).trim(); if (!value) throw new Error(t('名称不能为空')); if (await c.extended?.callbacks.renameThread?.(value) === false) throw new Error(t('重命名未完成')); panel.setPanel(null); },
+    'queue.change': p => { if (panel.panelId !== `queue-edit:${p.id}` || !c.queued.some(q => q.id === p.id)) throw new Error(t('队列已更新')); panel.setQuery(String(p.value)); },
+    'queue.cancel': p => { const q = c.queued.find(q => q.id === p.id); if (!q || q.state === 'sending' || c.extended?.state.steering || c.extended?.state.queueSaving) throw new Error(t('队列已更新')); if (q.state === 'uncertain' && p.confirmed !== true) return panel.setPanel(`confirm-queue:${q.id}`); return c.cancelQueued(String(p.id), p.confirmed === true); },
+    'queue.send': p => { const q = c.queued.find(q => q.id === p.id); if (!q || !snapshot.queued.find(entry => entry.id === q.id)?.command) throw new Error(t('当前无法发送排队消息')); return c.sendQueued(String(p.id)); },
+    'queue.edit': async p => { const q = c.queued.find(q => q.id === p.id); if (!q || ['uncertain', 'sending', 'steering'].includes(q.state)) throw new Error(t('当前无法编辑排队消息')); if (!await c.editQueued(String(p.id), typeof p.value === 'string' ? p.value : panel.getQuery?.() ?? panel.query)) throw new Error(t('无法保存排队消息')); panel.setPanel(null); },
   };
   return { snapshot: bindWorkspaceCommands(snapshot), handlers };
 }
 export function useNativeConversationAdapter(runtime: NativeRuntime | null, c: NativeWorkspaceController) {
   const [panelId, setPanelID] = useState<string | null>(null);
   const [panelContext, setPanelContext] = useState(c.contextId);
-  const setPanel = (id: string | null) => { setPanelContext(c.contextId); setPanelID(id); };
-  const [query, setQuery] = useState('');
+  const committedContext = useRef(c.contextId);
+  useLayoutEffect(() => { committedContext.current = c.contextId; }, [c.contextId]);
+  const setPanel = (id: string | null) => { if (committedContext.current !== c.contextId) return; setPanelContext(c.contextId); setPanelID(id); };
+  const [query, setQueryState] = useState('');
+  const queryRef = useRef(query);
+  const setQuery = (value: string) => { queryRef.current = value; setQueryState(value); };
+  const [customAnswers, setCustomAnswers] = useState<Set<string>>(new Set());
+  const setCustomAnswer = (key: string, custom: boolean) => setCustomAnswers(values => { const next = new Set(values); if (custom) next.add(key); else next.delete(key); return next; });
+  const rich = useNativeRichContent(c, !!runtime, setPanel);
   const [draftAck, setDraftAck] = useState({ contextId: c.contextId, revision: 0, text: c.draft, caretOffset: c.draft.length });
   const draftAckRef = useRef(draftAck); draftAckRef.current = draftAck;
-  useEffect(() => { setPanel(null); setQuery(''); }, [c.contextId]);
+  useEffect(() => { setPanel(null); setQuery(''); setCustomAnswers(new Set()); }, [c.contextId]);
   const adapter = runtime ? createWorkspaceAdapter({ ...c, draftRevision: draftAck.contextId === c.contextId ? draftAck.revision : 0,
     caretOffset: draftAck.contextId === c.contextId && draftAck.text === c.draft ? draftAck.caretOffset : c.draft.length,
     getCaret: () => draftAckRef.current.contextId === c.contextId ? draftAckRef.current.caretOffset : c.draft.length,
@@ -152,6 +171,6 @@ export function useNativeConversationAdapter(runtime: NativeRuntime | null, c: N
       const next = { contextId: c.contextId, revision: revision ?? (draftAckRef.current.contextId === c.contextId ? draftAckRef.current.revision : 0), text: value, caretOffset: caretOffset ?? value.length };
       draftAckRef.current = next;
       setDraftAck(next);
-  } }, { panelId: panelContext === c.contextId ? panelId : null, query, setPanel, setQuery }) : { snapshot: emptyNativeSnapshot(), handlers: {} };
+  } }, { panelId: panelContext === c.contextId ? panelId : null, query, setPanel, setQuery, getQuery: () => queryRef.current, customAnswers, setCustomAnswer, file: rich.file, richContent: rich.resources, richHandlers: rich.handlers, closeRich: rich.close, diagnostics: rich.diagnostics, loadDiagnostic: rich.loadDiagnostic }) : { snapshot: emptyNativeSnapshot(), handlers: {} };
   useNativeWorkspace(runtime, c.backend.id, adapter.snapshot, adapter.handlers);
 }

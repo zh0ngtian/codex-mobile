@@ -1,3 +1,4 @@
+import { contextUsageView, sevenDayRateLimitView } from '../features/conversation/ConversationControls';
 import { t } from '../i18n';
 import { approvalDecisions, approvalKey, approvalResponse, questionResponse, type InputQuestion } from '../features/approvals/approval-model';
 import { decisionLabel } from '../features/approvals/ApprovalSheet';
@@ -5,7 +6,7 @@ import { nativeAction, nativeCommand } from './projection';
 import type { NativePanelItem, NativeSnapshot, NativeHandlers } from './protocol';
 import type { NativeWorkspaceController } from './workspace-adapter';
 
-type State = { panelId: string | null; query: string; setPanel: (id: string | null) => void };
+type State = { panelId: string | null; query: string; setPanel: (id: string | null) => void; customAnswers?: Set<string>; setCustomAnswer?: (key: string, custom: boolean) => void };
 const text = (id: string, title: string, value: unknown): NativePanelItem => ({ id, kind: 'text', title, text: String(value ?? '') });
 export function historyEditKey(edit: any) { return `${edit.threadId}:${edit.target.turnId}:${edit.target.messageId}`; }
 export function workspaceBusinessPanels(c: NativeWorkspaceController, panel: State): { panel?: NativeSnapshot['panel']; actions: NativePanelItem[]; handlers: NativeHandlers; accepts: (id: string) => boolean } {
@@ -21,28 +22,31 @@ export function workspaceBusinessPanels(c: NativeWorkspaceController, panel: Sta
  const answers = s.userAnswers ?? {};
  const disabled = !!s.approvalSubmitting;
  let result: NativeSnapshot['panel'];
- const id = panel.panelId;
+ const id = ['permission', 'model', 'effort', 'speed'].includes(panel.panelId ?? '') ? 'workspace' : panel.panelId;
  if (id === 'workspace') {
-  const items: NativePanelItem[] = [text('connection', t('设备连接'), `${c.backend.name} · ${c.connection}`), text('access', t('会话访问状态'), s.activeThreadAccessMode), text('sync', t('同步状态'), c.syncStale ? t('正在同步') : t('已同步')),
+  const items: NativePanelItem[] = [text('connection', t('设备连接'), `${c.backend.name} · ${t(c.connection === 'online' ? '已连接' : c.connection === 'connecting' ? '正在连接' : '未连接')}`), text('access', t('会话访问状态'), t(s.activeThreadAccessMode === 'readOnly' ? '只读' : '可交互')), text('sync', t('同步状态'), c.syncStale ? t('正在同步') : t('已同步')),
    choice('model', t('模型'), c.selectedModel, c.models.map(m => ({ id: m.model, label: m.displayName || m.model, description: m.description })), 'model.select'),
    choice('effort', t('推理强度'), c.selectedEffort, c.effortOptions, 'effort.select'),
    choice('speed', t('速度'), s.selectedServiceTier, s.speedOptions ?? [], 'speed.select'), choice('permission', t('权限模式'), s.selectedPermissionModeId, s.permissionModes ?? [], 'permission.select'),
   ];
   if (!c.active?.id) items.push(choice('new-backend', t('目标设备'), c.backend.id, (s.backends ?? []).filter((b: any) => b.enabled).map((b: any) => ({ id: b.id, label: b.name })), 'newchat.backend'),
    choice('new-project', t('项目'), c.active?.cwd, [{ id: '', label: t('无项目') }, ...(s.projectOptions ?? []).map((p: any) => ({ id: typeof p === 'string' ? p : p.cwd, label: typeof p === 'string' ? p : p.name || p.cwd }))], 'newchat.project'));
-  else items.push(...[['pin', t(c.active?.pinned ? '取消收藏' : '收藏')], ['duplicate', t('复制会话')], ['rename', t('重命名')], ['archive', t('归档')]].map(([action, label]) => nativeAction(`thread:${action}`, label, 'workspace.thread', { action })));
+  else items.push(...[['pin', t(c.active?.isPinned ? '取消关注' : '关注')], ['duplicate', t('复制会话')], ['rename', t('重命名')], ['archive', t('归档')]].map(([action, label]) => nativeAction(`thread:${action}`, label, 'workspace.thread', { action })));
+  if (c.active?.id) items.push(text('thread-id', t('对话线程：'), c.active.id), text('thread-cwd', t('目录：'), c.active.cwd || t('无项目')));
+  const context = contextUsageView(s.tokenUsage); if (context) items.push(text('context-remaining', t('上下文：'), t('剩余 {remaining}%（已用 {used} / {total}）', { remaining: Math.round(context.remainingPercent), used: context.used, total: context.total })));
   const usage = s.tokenUsage; if (usage) {
    for (const [part, label] of [['total', t('累计用量')], ['last', t('本轮用量')]]) {
     const u = usage[part]; if (u) items.push(text(`usage:${part}`, label, `${u.totalTokens ?? 0} tokens · ${t('输入')} ${u.inputTokens ?? 0} · ${t('输出')} ${u.outputTokens ?? 0} · ${t('缓存')} ${u.cachedInputTokens ?? 0} · ${t('推理')} ${u.reasoningOutputTokens ?? 0}`));
    }
    if (usage.modelContextWindow) items.push(text('context-window', t('上下文窗口'), usage.modelContextWindow));
   }
+  const sevenDay = sevenDayRateLimitView(s.rateLimits); if (sevenDay) items.push(text('seven-day-remaining', t('7 天额度'), `${Math.round(sevenDay.remainingPercent)}% ${t('剩余')}`));
   const limits = s.rateLimits?.rateLimits ?? s.rateLimits;
   for (const part of ['primary', 'secondary']) if (limits?.[part]) items.push(text(`limits:${part}`, part === 'primary' ? t('主要额度') : t('长期额度'), `${limits[part].usedPercent ?? 0}% · ${limits[part].windowDurationMins ?? ''} min · ${t('重置')} ${limits[part].resetsAt ? new Date(limits[part].resetsAt * 1000).toLocaleString() : ''}`));
-  if (s.pendingAction || c.pending) items.push(text('pending', t('待处理操作'), s.pendingAction || t('等待确认')));
+  if (s.pendingAction || c.pending) items.push(text('pending', t('待处理操作'), s.pendingAction ? t(({ rename: '正在重命名', archive: '正在归档', duplicate: '正在复制会话', pin: '正在更新关注状态', refresh: '正在刷新' } as Record<string, string>)[s.pendingAction] || '等待确认') : t('等待确认')));
   if (s.activeThreadResumeError) items.push(text('resume-error', t('恢复失败'), s.activeThreadResumeError));
   result = { id, title: t('会话设置'), items };
- } else if (id === 'thread-rename') result = { id, title: t('重命名'), items: [ { id: 'thread-name', kind: 'textField', title: t('名称'), value: panel.query || String(c.active?.name ?? ''), command: nativeCommand('workspace.rename.change') }, nativeAction('rename-submit', t('保存'), 'workspace.rename.submit') ] };
+ } else if (id === 'thread-rename') result = { id, title: t('重命名'), items: [ { id: 'thread-name', kind: 'textField', title: t('名称'), value: panel.query, command: nativeCommand('workspace.rename.change') }, nativeAction('rename-submit', t('保存'), 'workspace.rename.submit') ] };
  else if (request && (id === 'approval' || (!id && request))) {
   const items: NativePanelItem[] = [];
   if (s.approvalError) items.push(text('approval-error', t('提交失败'), s.approvalError));
@@ -50,8 +54,11 @@ export function workspaceBusinessPanels(c: NativeWorkspaceController, panel: Sta
   if (request.method === 'item/tool/requestUserInput') {
    for (const q of questions) {
     const children: NativePanelItem[] = [text(`${q.id}:prompt`, q.header, q.question)];
-    if (q.options?.length) children.push(choice(`${q.id}:options`, q.header, answers[q.id], q.options.map(o => ({ id: o.label, label: o.label, description: o.description })), 'approval.answer', { requestKey, questionId: q.id }));
-    if (!q.options?.length || q.isOther) children.push({ id: `${q.id}:answer`, kind: q.isSecret ? 'secureField' : 'multilineField', title: t(q.options?.length ? '自定义回答' : '回答'), value: answers[q.id] ?? '', command: nativeCommand('approval.answer', { requestKey, questionId: q.id }), disabled });
+    if (q.options?.length) {
+     const custom = panel.customAnswers?.has(`${requestKey}:${q.id}`) || (!!answers[q.id] && !q.options.some(o => o.label === answers[q.id]));
+     children.push(choice(`${q.id}:options`, q.header, custom ? 'other' : answers[q.id] ? `option:${q.options.findIndex(o => o.label === answers[q.id])}` : '', [{ id: '', label: t('请选择') }, ...q.options.map((o, index) => ({ id: `option:${index}`, label: o.label, description: o.description })), ...(q.isOther ? [{ id: 'other', label: t('其他（自行填写）') }] : [])], 'approval.answer', { requestKey, questionId: q.id, choice: true }));
+    }
+    if (!q.options?.length || q.isOther) children.push({ id: `${q.id}:answer`, kind: q.isSecret ? 'secureField' : 'multilineField', title: t(q.options?.length ? '自定义回答' : '回答'), value: answers[q.id] ?? '', command: nativeCommand('approval.answer', { requestKey, questionId: q.id, custom: true }), disabled });
     items.push({ id: q.id, kind: 'section', title: q.header, children: children.map(child => ({ ...child, disabled })) });
    }
    items.push({ ...nativeAction('approval-submit', t('提交回答'), 'approval.submit', { requestKey }), disabled: disabled || !questionResponse(request, answers) }, { ...nativeAction('approval-dismiss', t('稍后回答'), 'approval.dismiss', { requestKey }), disabled });
@@ -65,12 +72,13 @@ export function workspaceBusinessPanels(c: NativeWorkspaceController, panel: Sta
    for (const [index, entry] of (perms?.fileSystem?.entries ?? []).entries()) items.push(text(`permissions:entry:${index}`, entry.access, entry.path.path ?? entry.path.pattern ?? JSON.stringify(entry.path.value)));
    items.push(...approvalDecisions(request).map((decision, index) => ({ ...nativeAction(`approval-decision:${index}`, decisionLabel(decision), 'approval.decide', { requestKey, index }), disabled })));
   }
-  result = { id: 'approval', dismissible: request.method === 'item/tool/requestUserInput' && !disabled, title: t(request.method === 'item/tool/requestUserInput' ? 'Codex 需要你的回答' : '需要你的确认'), items };
+  result = { id: `approval:${requestKey}`, dismissible: request.method === 'item/tool/requestUserInput' && !disabled, title: t(request.method === 'item/tool/requestUserInput' ? 'Codex 需要你的回答' : '需要你的确认'), items };
  } else if (edit && (id === 'history-edit' || id === 'confirm-history' || !id)) {
-  result = { id: id || 'history-edit', title: t(id === 'confirm-history' ? '确认修改历史消息' : '编辑历史消息'), items: id === 'confirm-history' ? [text('history-warning', t('修改并重新发送将删除此消息之后的对话'), `${edit.target.rollbackTurnCount} ${t('轮对话')}`), nativeAction('history-confirm', t('确认并发送'), 'history.submit', { editKey: key, confirmed: true }), nativeAction('history-back', t('返回编辑'), 'panel.open', { id: 'history-edit' })] : [
+  result = { id: `${id === 'confirm-history' ? 'confirm-history' : 'history-edit'}:${key}`, dismissible: !edit.submitting, title: t(id === 'confirm-history' ? '确认修改历史消息' : '编辑历史消息'), items: id === 'confirm-history' ? [text('history-warning', t('修改并重新发送将删除此消息之后的对话'), `${edit.target.rollbackTurnCount} ${t('轮对话')} · ${t('文件修改、已执行命令和远端操作不会撤销。')}`), nativeAction('history-confirm', t('确认并发送'), 'history.submit', { editKey: key, confirmed: true }), nativeAction('history-back', t('返回编辑'), 'panel.open', { id: 'history-edit' })] : [
    { id: 'history-text', kind: 'multilineField', title: t('消息'), value: edit.text, command: nativeCommand('history.change', { editKey: key }), disabled: edit.submitting },
-   ...(edit.target.content ?? []).filter((p: any) => p.type !== 'text').map((p: any, index: number) => text(`history-attachment:${index}`, t('保留附件'), p.name || p.path || p.url || p.type)),
-   { ...nativeAction('history-submit', t('保存并重新发送'), 'history.submit', { editKey: key }), disabled: edit.submitting || (!edit.text.trim() && !(edit.target.content ?? []).some((p: any) => p.type !== 'text')) },
+   text('history-attachments', t('原消息的 {count} 个附件会保留', { count: edit.target.attachmentCount ?? 0 }), edit.target.precedingMessageCount ? t('同轮此前的 {count} 条用户消息及附件会一起重发', { count: edit.target.precedingMessageCount }) : ''),
+   ...(edit.target.input ?? []).filter((p: any) => p.type !== 'text').map((p: any, index: number) => text(`history-attachment:${index}`, t('保留附件'), p.name || p.path || p.url || p.type)),
+   { ...nativeAction('history-submit', t('保存并重新发送'), 'history.submit', { editKey: key }), disabled: edit.submitting || (!edit.text.trim() && !(edit.target.attachmentCount > 0 || (edit.target.input ?? []).some((p: any) => p.type !== 'text'))) },
    { ...nativeAction('history-cancel', t('取消'), 'history.cancel', { editKey: key }), disabled: edit.submitting },
   ] };
  } else if (id?.startsWith('confirm-queue:')) {
@@ -78,25 +86,32 @@ export function workspaceBusinessPanels(c: NativeWorkspaceController, panel: Sta
   if (queued) result = { id, title: t('确认移除'), items: [text('queue-warning', t('这条消息可能已发送。移除待确认记录不会撤销已发送的任务，确定移除吗？'), queued.text), nativeAction('queue-confirm', t('确定移除'), 'queue.cancel', { id: queued.id, confirmed: true })] };
  } else if (id?.startsWith('queue-edit:')) {
   const queued = c.queued.find(q => `queue-edit:${q.id}` === id);
-  if (queued) result = { id, title: t('编辑排队消息'), items: [{ id: 'queue-text', kind: 'multilineField', title: t('消息'), value: panel.query || queued.inputText || '', command: nativeCommand('queue.change', { id: queued.id }) }, nativeAction('queue-save', t('保存'), 'queue.edit', { id: queued.id })] };
+  if (queued) result = { id, title: t('编辑排队消息'), items: [...(queued.attachmentCount ? [text('queue-attachments', t('{count} 个附件会保留', { count: queued.attachmentCount }), '')] : []), { id: 'queue-text', kind: 'multilineField', title: t('消息'), value: panel.query, command: nativeCommand('queue.change', { id: queued.id }) }, nativeAction('queue-save', t('保存'), 'queue.edit', { id: queued.id })] };
  }
- const currentRequest = (p: any) => { if (!request || p.requestKey !== requestKey || disabled) throw new Error(t('审批请求已变化或正在提交')); return request; };
- const currentEdit = (p: any) => { if (!edit || p.editKey !== key || edit.submitting) throw new Error(t('编辑消息已变化或正在提交')); return edit; };
+ const currentRequest = (p: any) => { const live = cb.currentApproval ? cb.currentApproval() : { request, submitting: disabled }; if (!live?.request || p.requestKey !== approvalKey(live.request) || live.submitting) throw new Error(t('审批请求已变化或正在提交')); return live.request; };
+ const currentEdit = (p: any) => { const live = cb.currentHistoryEdit ? cb.currentHistoryEdit() : edit; if (!live || p.editKey !== historyEditKey(live) || live.submitting) throw new Error(t('编辑消息已变化或正在提交')); return live; };
  const select = (values: any[], value: unknown) => { const match = values.find(o => String(o.id ?? '') === value); if (!match) throw new Error(t('选项不可用')); return match; };
  const handlers: NativeHandlers = {
   'speed.select': p => cb.chooseSpeed?.(select(s.speedOptions ?? [], p.value).id),
   'permission.select': p => cb.choosePermissionMode?.(select(s.permissionModes ?? [], p.value).id),
   'newchat.backend': p => { if (c.active?.id || !(s.backends ?? []).some((b: any) => b.enabled && b.id === p.value)) throw new Error(t('设备不可用')); return cb.switchNewChatBackend?.(p.value); },
-  'newchat.project': p => { if (c.active?.id || (p.value !== '' && !(s.projectOptions ?? []).some((v: any) => (typeof v === 'string' ? v : v.cwd) === p.value))) throw new Error(t('项目不可用')); return cb.chooseNewChatProject?.(p.value || null); },
+  'newchat.project': p => { if (c.active?.id || (p.value !== '' && !(s.projectOptions ?? []).some((v: any) => (typeof v === 'string' ? v : v.cwd) === p.value))) throw new Error(t('项目不可用')); return cb.chooseNewChatProject?.(String(p.value)); },
   'workspace.thread': p => { if (!c.active?.id) throw new Error(t('会话不可用')); const action = { pin: cb.togglePinned, duplicate: cb.duplicateActiveThread, archive: cb.archiveThread }[String(p.action)]; if (p.action === 'rename') return panel.setPanel('thread-rename'); if (!action) throw new Error(t('会话操作无效')); return action(); },
-  'approval.answer': p => { const r = currentRequest(p); const q = (r.params?.questions ?? []).find((v: InputQuestion) => v.id === p.questionId); if (!q || (q.options?.length && !q.isOther && !q.options.some((o: any) => o.label === p.value))) throw new Error(t('回答选项无效')); cb.answerApproval?.(q.id, String(p.value)); },
+  'approval.answer': p => {
+   const r = currentRequest(p); const q: InputQuestion | undefined = (r.params?.questions ?? []).find((v: InputQuestion) => v.id === p.questionId);
+   if (!q) throw new Error(t('回答选项无效'));
+   if (p.choice === true && p.value === 'other' && q.isOther) { panel.setCustomAnswer?.(`${p.requestKey}:${q.id}`, true); cb.answerApproval?.(q.id, ''); return; }
+   const chosen = p.choice === true && p.value !== '' ? q.options?.[Number(String(p.value).replace(/^option:/, ''))]?.label : String(p.value);
+   if (typeof chosen !== 'string' || (q.options?.length && !q.isOther && chosen !== '' && !q.options.some(o => o.label === chosen))) throw new Error(t('回答选项无效'));
+   panel.setCustomAnswer?.(`${p.requestKey}:${q.id}`, p.custom === true && !!q.isOther); cb.answerApproval?.(q.id, chosen);
+  },
   'approval.decide': p => { const r = currentRequest(p); if (!Number.isSafeInteger(p.index)) throw new Error(t('审批决定无效')); const decision = approvalDecisions(r)[Number(p.index)]; if (decision === undefined) throw new Error(t('审批决定无效')); const response = approvalResponse(r, decision); if (!response) throw new Error(t('审批决定无效')); return cb.replyToRequest?.(response); },
-  'approval.submit': p => { const r = currentRequest(p); const response = questionResponse(r, answers); if (!response) throw new Error(t('请回答所有问题后提交。')); return cb.replyToRequest?.(response); },
+  'approval.submit': p => { const r = currentRequest(p); const response = questionResponse(r, cb.currentApproval?.()?.answers ?? answers); if (!response) throw new Error(t('请回答所有问题后提交。')); return cb.replyToRequest?.(response); },
   'approval.dismiss': p => { currentRequest(p); cb.dismissApproval?.(); panel.setPanel(null); },
   'approval.reopen': () => { cb.reopenApproval?.(); panel.setPanel('approval'); },
   'history.change': p => { currentEdit(p); cb.changeHistoricalMessageEditText?.(String(p.value)); },
   'history.cancel': p => { currentEdit(p); cb.cancelHistoricalMessageEdit?.(); panel.setPanel(null); },
-  'history.submit': p => { const e = currentEdit(p); if (!p.confirmed && !e.reverted && e.target.rollbackTurnCount > 0) return panel.setPanel('confirm-history'); return cb.submitHistoricalMessageEdit?.(); },
+  'history.submit': p => { const e = currentEdit(p); if (!p.confirmed && !e.reverted && e.target.hasLaterTurns) return panel.setPanel('confirm-history'); return cb.submitHistoricalMessageEdit?.(); },
  };
- return { panel: result, actions, handlers, accepts: value => ['workspace', 'approval', 'history-edit', 'thread-rename'].includes(value) || value.startsWith('queue-edit:') };
+ return { panel: result, actions, handlers, accepts: value => ['workspace', 'permission', 'model', 'effort', 'speed', 'approval', 'history-edit', 'thread-rename'].includes(value) || value.startsWith('queue-edit:') };
 }

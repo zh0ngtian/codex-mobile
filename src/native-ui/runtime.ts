@@ -1,4 +1,5 @@
-import { t } from '../i18n';
+import { getActiveLocale, t } from '../i18n';
+import { FONT_SCALES, readFontSize } from '../ui/font-size';
 import { emptyNativeSnapshot, type NativeHandlers, type NativeNavigation, type NativeSnapshot, type NativeResult, type NativeParams } from './protocol';
 
 type NativeWindow = Window & { __CODEX_NATIVE_UI__?: boolean; webkit?: { messageHandlers?: { nativeUI?: { postMessage: (value: unknown) => void } } }; codexMobilePublishNativeSnapshot?: (snapshot: NativeSnapshot) => void };
@@ -7,11 +8,12 @@ export function isNativeUIEnabled() {
   const target = window as NativeWindow;
   return target.__CODEX_NATIVE_UI__ === true && typeof target.webkit?.messageHandlers?.nativeUI?.postMessage === 'function';
 }
-const globalNames = new Set(['backend.select', 'navigation.search', 'navigation.sidebar', 'navigation.refresh', 'thread.new', 'thread.open', 'thread.manage', 'project.toggle', 'project.more', 'project.retry', 'navigation.filter', 'settings.open', 'drafts.open', 'device.add', 'device.edit', 'device.change', 'device.save', 'device.cancel', 'device.scan', 'device.toggle', 'device.remove', 'device.move', 'settings.language', 'settings.font', 'settings.transport', 'settings.push.mode', 'settings.push.url', 'settings.push.save', 'settings.update.check', 'drafts.restore', 'drafts.remove', 'drafts.retry', 'update.install', 'update.retry', 'update.close']);
+const globalNames = new Set(['backend.select', 'navigation.search', 'navigation.sidebar', 'navigation.refresh', 'thread.new', 'thread.open', 'thread.manage', 'project.toggle', 'project.more', 'project.retry', 'navigation.filter', 'confirmation.answer', 'settings.open', 'drafts.open', 'device.add', 'device.edit', 'device.change', 'device.save', 'device.cancel', 'device.scan', 'device.toggle', 'device.remove', 'device.move', 'settings.language', 'settings.font', 'settings.transport', 'settings.push.mode', 'settings.push.url', 'settings.push.save', 'settings.update.check', 'drafts.restore', 'drafts.remove', 'drafts.retry', 'update.install', 'update.retry', 'update.close']);
 const workspaceNames = new Set(['draft.set', 'draft.save', 'message.send', 'turn.stop', 'model.select', 'effort.select', 'attachment.pick', 'attachment.remove', 'location.insert', 'mention.search', 'mention.insert', 'thread.retry', 'thread.older', 'message.edit', 'message.copy', 'queue.cancel', 'queue.send', 'queue.edit', 'speed.select', 'permission.select', 'newchat.backend', 'newchat.project', 'workspace.thread', 'workspace.rename.change', 'workspace.rename.submit', 'approval.answer', 'approval.decide', 'approval.submit', 'approval.dismiss', 'approval.reopen', 'history.change', 'history.cancel', 'history.submit', 'queue.change', 'file.open', 'file.mode', 'diagram.render']);
 // Task2b 只能经此处显式扩展可调用命令，不能把任意名字转发成 RPC。
 const panelNames = new Set(['panel.open', 'panel.close']);
 const stringKeys: Record<string, string[]> = {
+  'confirmation.answer': ['key'],
   'draft.set': ['value', 'contextId'], 'model.select': ['value'], 'effort.select': ['value'], 'attachment.pick': ['kind'],
   'attachment.remove': ['id'], 'backend.select': ['id'], 'navigation.search': ['value'], 'thread.open': ['backendId', 'threadId'],
   'thread.manage': ['backendId', 'threadId', 'action'], 'project.toggle': ['backendId', 'cwd'], 'project.more': ['backendId', 'cwd'],
@@ -64,7 +66,7 @@ export class NativeRuntime {
   setNavigation(value: NativeNavigation, handlers: NativeHandlers = {}) {
     this.navigation = value; this.globalHandlers = handlers; this.schedule();
   }
-  setGlobalPanel(id: string, panel: NativeSnapshot['panel'], handlers: NativeHandlers) { this.globalPanels.set(id, { panel, handlers: panel ? handlers : {} }); this.schedule(); }
+  setGlobalPanel(id: string, panel: NativeSnapshot['panel'], handlers: NativeHandlers) { if (panel && this.globalPanels.get(id)?.panel?.id !== panel.id) this.globalPanels.delete(id); this.globalPanels.set(id, { panel, handlers: panel ? handlers : {} }); this.schedule(); }
   removeGlobalPanel(id: string) { this.globalPanels.delete(id); this.schedule(); }
   setWorkspace(id: string, value: NativeSnapshot, handlers: NativeHandlers) {
     const previous = this.workspaces.get(id);
@@ -81,7 +83,7 @@ export class NativeRuntime {
   snapshot(): NativeSnapshot {
     const workspace = this.workspaces.get(this.navigation.selectedBackendId);
     const globalPanel = [...this.globalPanels.values()].filter(v => v.panel).at(-1)?.panel;
-    return { ...(workspace?.value ?? emptyNativeSnapshot()), ...(globalPanel ? { ready: true, panel: globalPanel } : {}), backends: this.navigation.backends,
+    return { ...(workspace?.value ?? emptyNativeSnapshot()), locale: getActiveLocale(), fontScale: FONT_SCALES[readFontSize()], ...(globalPanel ? { ready: true, panel: globalPanel } : {}), backends: this.navigation.backends,
       groups: this.navigation.groups.map(group => ({ ...group, items: group.items.map(item => item.command?.name === 'thread.open' ? { ...item,
         selected: item.command.params.backendId === this.navigation.selectedBackendId && item.command.params.threadId === workspace?.value.threadId } : item) })),
       sidebarOpen: this.navigation.sidebarOpen, search: this.navigation.search,

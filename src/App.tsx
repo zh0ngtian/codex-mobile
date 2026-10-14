@@ -1,4 +1,6 @@
-import { useNativeRuntime } from "./native-ui/adapters";
+import { emptyNativeSnapshot } from './native-ui/protocol';
+import { useNativeConfirmation } from './native-ui/confirmation';
+import { useNativeRuntime, useNativeWorkspace } from "./native-ui/adapters";
 import { useNativeConversationAdapter } from "./native-ui/workspace-adapter";
 import { isNativeUIEnabled, type NativeRuntime } from "./native-ui/runtime";
 import { projectNavigation } from "./native-ui/projection";
@@ -13,6 +15,7 @@ import {
 import { flushSync } from "react-dom";
 import {
   FormEvent,
+  type SetStateAction,
   useCallback,
   useEffect,
   useMemo,
@@ -339,6 +342,7 @@ function BackendWorkspace({
   silentRefreshVersion,
   searchQuery,
 }: BackendWorkspaceProps) {
+  const confirmWorkspaceAction = useNativeConfirmation(nativeRuntime, `workspace:${backend.id}`);
   const [connection, setConnection] = useState<ConnectionState>("connecting");
   const [threads, setThreads] = useState<AnyRecord[]>([]);
   const [projects, setProjects] = useState<string[]>([]);
@@ -378,8 +382,12 @@ function BackendWorkspace({
   const currentDraftRef = useRef({ text: draft, images: draftImages, files: draftFiles });
   const sendingDraftContextsRef = useRef(new Set<number>());
   currentDraftRef.current = { text: draft, images: draftImages, files: draftFiles };
-  const [historyEdit, setHistoryEdit] =
-    useState<HistoricalMessageEditState | null>(null);
+  const [historyEdit, setHistoryEditState] = useState<HistoricalMessageEditState | null>(null);
+  const historyEditRef = useRef<HistoricalMessageEditState | null>(null);
+  const setHistoryEdit = (next: SetStateAction<HistoricalMessageEditState | null>) => {
+    historyEditRef.current = typeof next === 'function' ? next(historyEditRef.current) : next;
+    setHistoryEditState(historyEditRef.current);
+  };
   const [imageReading, setImageReading] = useState(false);
   const [busy, setBusyState] = useState(false);
   const busyRef = useRef(false);
@@ -2949,7 +2957,7 @@ function BackendWorkspace({
   }
 
   function cancelHistoricalMessageEdit() {
-    const session = historyEdit;
+    const session = historyEditRef.current;
     if (!session || session.submitting) return;
     setActive((current) => {
       if (String(current?.id ?? "") !== session.threadId) return current;
@@ -2962,7 +2970,7 @@ function BackendWorkspace({
   }
 
   async function submitHistoricalMessageEdit() {
-    const session = historyEdit;
+    const session = historyEditRef.current;
     const client = clientRef.current;
     const thread = activeRef.current;
     const threadId = String(thread?.id ?? "");
@@ -3281,7 +3289,7 @@ function BackendWorkspace({
       replaceQueuedFollowUps(removeQueuedFollowUp(queuedFollowUpsRef.current, id));
       return;
     }
-    if (followUp.state === "uncertain" && !confirmed && !window.confirm(t("这条消息可能已发送。移除待确认记录不会撤销已发送的任务，确定移除吗？"))) return;
+    if (followUp.state === "uncertain" && !confirmed && !await confirmWorkspaceAction(t("这条消息可能已发送。移除待确认记录不会撤销已发送的任务，确定移除吗？"))) return;
     try {
       await mutateHostedQueue({ action: "cancel", id, revision: followUp.revision! });
       releaseQueueSubmission(followUp.threadId, id);
@@ -3421,7 +3429,7 @@ function BackendWorkspace({
         threadId,
       ).length;
       if (
-        !window.confirm(
+        !await confirmWorkspaceAction(
           t("此会话仍有 {count} 条排队消息，归档会丢弃这些消息。确定归档吗？", {
             count,
           }),
@@ -3638,7 +3646,7 @@ function BackendWorkspace({
         threadId,
       ).length;
       if (
-        !window.confirm(
+        !await confirmWorkspaceAction(
           t("此会话仍有 {count} 条排队消息，归档会丢弃这些消息。确定归档吗？", {
             count,
           }),
@@ -4056,7 +4064,8 @@ function BackendWorkspace({
   }
 
   async function saveNewChatDraft() {
-    if (active?.id || draftSavingRef.current || imageReading || startingThreadContext !== null || (!draft.trim() && !draftImages.length && !draftFiles.length)) return false;
+    const content = currentDraftRef.current;
+    if (active?.id || draftSavingRef.current || imageReading || startingThreadContext !== null || (!content.text.trim() && !content.images.length && !content.files.length)) return false;
     const context = draftContextGenerationRef.current;
     const contentVersion = draftContentVersionRef.current;
     draftSavingRef.current = true;
@@ -4066,7 +4075,7 @@ function BackendWorkspace({
       const mode = newChatPermissionMode;
       const saved = await newChatDraftStore.save({
         backendId: backend.id, backendName: backend.name, cwd: active?.cwd ?? null,
-        text: draft, images: draftImages, files: draftFiles,
+        text: content.text, images: content.images, files: content.files,
         settings: { model: selectedModel, effort: selectedEffort, serviceTier: effectiveSelectedServiceTier,
           permissions: mode?.permissions ?? selectedPermission,
           approvalPolicy: mode?.approvalPolicy ?? selectedApprovalPolicy,
@@ -4074,7 +4083,7 @@ function BackendWorkspace({
       }, savedDraftRef.current?.id);
       if (context === draftContextGenerationRef.current) {
         savedDraftRef.current = { id: saved.id, revision: saved.revision };
-        if (contentVersion === draftContentVersionRef.current) setDraftSaveStatus(t("草稿已保存到本地"));
+        if (contentVersion === draftContentVersionRef.current || (currentDraftRef.current.text === content.text && currentDraftRef.current.images === content.images && currentDraftRef.current.files === content.files)) setDraftSaveStatus(t("草稿已保存到本地"));
         setError("");
       }
       return true;
@@ -4192,14 +4201,14 @@ function BackendWorkspace({
     },
     cancelQueued: cancelQueuedFollowUp, sendQueued: actOnQueuedFollowUp, editQueued: editQueuedFollowUp,
     extended: {
-      state: { historyEdit, requests, approval, userAnswers, approvalSubmitting: approvalRequests.submitting, approvalError: approvalRequests.error, permissionModes, selectedPermissionModeId,
+      state: { historyEdit, pendingSteerText: pendingSteerMessage?.threadId === String(active?.id) ? pendingSteerMessage.text : null, steering, queueSaving, steerable: Boolean(activeTurnId(active)), requests, approval, userAnswers, approvalSubmitting: approvalRequests.submitting, approvalError: approvalRequests.error, permissionModes, selectedPermissionModeId,
         selectedServiceTier: displayedServiceTier, speedOptions, pendingAction, tokenUsage: tokenUsageByThread[active?.id] ?? null, rateLimits,
         projectOptions, backends, draftSaveStatus, activeThreadAccessMode, activeThreadResumeError },
-      callbacks: { chooseSpeed, choosePermissionMode, replyToRequest, changeHistoricalMessageEditText, cancelHistoricalMessageEdit,
+      callbacks: { currentHistoryEdit: () => historyEditRef.current, currentApproval: approvalRequests.current, readRemoteFile: (path: string) => { const client = clientRef.current; if (!client) throw new Error(t('尚未连接 app-server')); return client.request<{ dataBase64: string }>('fs/readFile', { path }); }, chooseSpeed, choosePermissionMode, replyToRequest, changeHistoricalMessageEditText, cancelHistoricalMessageEdit,
         submitHistoricalMessageEdit, chooseNewChatProject, togglePinned, duplicateActiveThread, renameThread, archiveThread,
         reopenApproval: approvalRequests.reopen, answerApproval: approvalRequests.answer,
         dismissApproval: approvalRequests.dismiss,
-        switchNewChatBackend: (id: string) => onSwitchNewChatBackend(id, draft, draftImages, draftFiles, savedDraftRef.current) },
+        switchNewChatBackend: (id: string) => { const content = currentDraftRef.current; return onSwitchNewChatBackend(id, content.text, content.images, content.files, savedDraftRef.current); } },
     },
   });
 
@@ -4407,6 +4416,7 @@ export function AppBootstrap({
     writeTransportMode(window.localStorage, mode);
     setTransportMode(mode);
   };
+  const [nativeSettingsPage, setNativeSettingsPage] = useState('devices');
   const [managerOpen, setManagerOpen] = useState(
     !initialRegistry.backends.length,
   );
@@ -4427,11 +4437,17 @@ export function AppBootstrap({
     );
   }
 
-  return <UnconfiguredApp registry={registry} setRegistry={setRegistry} managerOpen={managerOpen} setManagerOpen={setManagerOpen} appUpdate={appUpdate} transportMode={transportMode} changeTransportMode={changeTransportMode} notificationPreference={notificationPreference} saveNotificationPreference={saveNotificationPreference} failedNotificationDevices={failedNotificationDevices} />;
+  return <UnconfiguredApp registry={registry} setRegistry={setRegistry} managerOpen={managerOpen} setManagerOpen={setManagerOpen} appUpdate={appUpdate} transportMode={transportMode} changeTransportMode={changeTransportMode} notificationPreference={notificationPreference} saveNotificationPreference={saveNotificationPreference} failedNotificationDevices={failedNotificationDevices} nativeSettingsPage={nativeSettingsPage} setNativeSettingsPage={setNativeSettingsPage} />;
 }
 /** 与ConfiguredApp互斥挂载，空registry也只有一个业务runtime。 */
-function UnconfiguredApp({ registry, setRegistry, managerOpen, setManagerOpen, appUpdate, transportMode, changeTransportMode, notificationPreference, saveNotificationPreference, failedNotificationDevices }: any) {
-  const nativeRuntime = useNativeRuntime({ selectedBackendId: '', backends: [], groups: [] }, { 'settings.open': () => setManagerOpen(true) });
+function UnconfiguredApp({ registry, setRegistry, managerOpen, setManagerOpen, appUpdate, transportMode, changeTransportMode, notificationPreference, saveNotificationPreference, failedNotificationDevices, nativeSettingsPage, setNativeSettingsPage }: {
+ registry: BackendRegistry; setRegistry: (value: BackendRegistry) => void; managerOpen: boolean; setManagerOpen: (value: boolean) => void;
+ appUpdate: ReturnType<typeof useAppUpdate>; transportMode: TransportMode; changeTransportMode: (value: TransportMode) => void;
+ notificationPreference: NotificationPreference; saveNotificationPreference: (value: NotificationPreference) => void; failedNotificationDevices: string[];
+ nativeSettingsPage: string; setNativeSettingsPage: (value: string) => void;
+}) {
+  const nativeRuntime = useNativeRuntime({ selectedBackendId: 'bootstrap', backends: [], groups: [] }, { 'settings.open': p => { setNativeSettingsPage(String(p.id || 'devices')); setManagerOpen(true); } });
+  useNativeWorkspace(nativeRuntime, 'bootstrap', { ...emptyNativeSnapshot(), ready: true, title: t('添加设备'), conversationActions: [{ id: 'add-device', kind: 'action', title: t('添加设备'), command: { name: 'settings.open', params: {} } }] }, {});
   return (
     <main className="app-shell">
       <section className="empty-state">
@@ -4447,6 +4463,7 @@ function UnconfiguredApp({ registry, setRegistry, managerOpen, setManagerOpen, a
       </section>
       <BackendManagerSheet
         nativeRuntime={nativeRuntime}
+        nativePage={nativeSettingsPage}
         open={managerOpen}
         registry={registry}
         summaries={{}}
@@ -4510,6 +4527,7 @@ function ConfiguredApp({
   const [summaries, setSummaries] = useState<
     Record<string, BackendRuntimeSummary>
   >({});
+  const [nativeSettingsPage, setNativeSettingsPage] = useState('devices');
   const [managerOpen, setManagerOpen] = useState(false);
   const [draftsOpen, setDraftsOpen] = useState(false);
   const [snapshots, setSnapshots] = useState<
@@ -5055,7 +5073,7 @@ function ConfiguredApp({
       subtitle: summaries[backend.id]?.error || summaries[backend.id]?.connection,
     }))],
   }, {
-    "settings.open": () => setManagerOpen(true),
+    "settings.open": p => { setNativeSettingsPage(String(p.id || "devices")); setManagerOpen(true); },
     "drafts.open": () => setDraftsOpen(true),
     "navigation.sidebar": p => { if (p.open) openSidebar(); else closeSidebar(); },
     "navigation.search": p => setQuery(String(p.value)),
@@ -5198,6 +5216,7 @@ function ConfiguredApp({
       />
       <BackendManagerSheet
         nativeRuntime={nativeRuntime}
+        nativePage={nativeSettingsPage}
         open={managerOpen}
         registry={registry}
         summaries={summaries}
