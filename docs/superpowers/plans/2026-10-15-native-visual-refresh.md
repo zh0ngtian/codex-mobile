@@ -29,13 +29,16 @@
 
 **Files:** `mobile/ios/NativeUI/NativeInlineMarkdown.swift`、必要的单职责Foundation辅助类型、`NativePlainText.swift`、`tests/ci/native-ui-model-smoke.swift`、`tests/ci/ios-native-ui.test.ts`。
 
-- [ ] 先写并运行失败回归，真实执行Foundation生产解析：
+- [x] 先写并运行失败回归，真实执行Foundation生产解析：
   - `**二是希望细化合规路径及办理指导。**企业关注` 显示无星号、前句有strong属性且后句未加粗。
   - 行内代码、转义星号、已有链接和不完整标记不被误处理。
   - `:codex-file-citation{path="/Users/example/中文 文件.xlsx" purpose="source"}` 显示可点击的文件名，URL逐字往返到原绝对路径。
   - fenced/inline code中的示例及无效路径不被转换为文件操作；消息原文和JS复制业务不改。
-- [ ] 用最小原生展示解析修复，不引入新依赖、不修改权限或传输；代码块仍走独立代码视图。
-- [ ] GREEN后进行规格审查，再质量审查；完成本阶段独立提交。
+- [x] 用最小原生展示解析修复，不引入新依赖、不修改权限或传输；代码块仍走独立代码视图。
+- [x] 普通连续文本按完整段落解释，跨行链接和行内代码保持同一解析范围；列表、标题、空行和代码围栏继续作为结构边界，不能吞掉原块结构。
+- [x] GREEN后进行规格审查，再质量审查；完成本阶段独立提交。
+
+验证：`tests/ci/ios-native-ui.test.ts` 15/15通过，新增114条真实Swift断言；独立规格与质量复审均通过。最终普通段落方案仅新增DisplaySource与HTMLScope两个Foundation类型，移除了跨行临时代码token。模拟器完整编译通过，构建日志`build_sim_2026-10-14T18-26-22-200Z_pid23807_56759bc0.log`。本阶段未改变视觉token或JS复制业务。
 
 ## Task 2：补齐现有业务的展示元数据与分组
 
@@ -60,7 +63,7 @@ interface NativeSnapshot { /* 原字段保留 */ projectName?: string; backendNa
 **Files:** `NativePalette.swift`、新`NativeVisualMetrics.swift`、`NativeIconButton.swift`、`NativeMessageView.swift`、Markdown排版视图、`NativeUIStore.swift`参考fixture与必要单类型参考文件；原生UI契约。
 
 - [ ] RED：白底/粉色气泡、返回按钮、合并新对话/更多操作胶囊、标题和设备项目副标题、底部单行输入、无语音入口的可测契约。
-- [ ] 先建立最小token系统，再按设计说明完成静态基准。默认正文约16pt与约22pt行高作为第一轮inferred值；用户消息深粉文字、#FFEFF5气泡、较大圆角。
+- [ ] 先建立最小token系统，再按设计说明完成静态基准。归一后正文约14pt与约22pt行高作为第一轮inferred值；用户消息深粉文字、#FFEFF5气泡、较大圆角。用同内容截图校准而不锁死估计字号。
 - [ ] 对话正文保留加粗、列表缩进、代码、表格、文件链接与媒体，操作区只使用CM已有功能。显示真实时间与整轮用时，不伪造数据。
 - [ ] 首轮构建和402pt截图对比，修正最大3项差异；记录改的是排版、颜色或布局。单类型单文件，不引入第三方库。
 - [ ] 规格与SwiftUI质量审查后提交。
