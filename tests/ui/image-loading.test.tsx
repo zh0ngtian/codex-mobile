@@ -172,6 +172,37 @@ describe("会话图片按需加载", () => {
     expect(request).toHaveBeenCalledTimes(3);
   });
 
+  it.each(["completed", "inProgress"])("%s 回合跨用户插话统一归集截图与生成产物", async (status) => {
+    const request = vi.fn().mockResolvedValue({ dataBase64: "aGVsbG8=" });
+    render(<TurnCard client={{ request } as never} turn={{ id: "steered-media", status, items: [
+      { id: "user", type: "userMessage", text: "检查截图" },
+      { id: "a", type: "imageView", path: "/tmp/steer-a.png" },
+      { id: "generated-view", type: "imageView", path: "/tmp/steer-generated.png" },
+      { id: "first-final", type: "agentMessage", phase: "final_answer", text: "初次检查完成" },
+      { id: "steer", type: "userMessage", text: "继续检查" },
+      { id: "a-again", type: "imageView", path: "/tmp/steer-a.png" },
+      { id: "b", type: "imageView", path: "/tmp/steer-b.png" },
+      { id: "generated", type: "imageGeneration", savedPath: "/tmp/steer-generated.png", status: "completed" },
+      { id: "last-final", type: "agentMessage", phase: "final_answer", text: "全部检查完成" },
+    ] }} />);
+    await screen.findByRole("button", { name: "查看图片 steer-generated.png" });
+    expect(screen.getAllByRole("button", { name: "查看图片 steer-generated.png" })).toHaveLength(1);
+    expect(screen.getByText("初次检查完成")).toBeTruthy();
+    expect(screen.getByText("继续检查")).toBeTruthy();
+    expect(screen.getByText("全部检查完成")).toBeTruthy();
+    if (status === "completed") {
+      expect(request).toHaveBeenCalledTimes(1);
+      expect(screen.getAllByRole("button", { name: "过程截图（2）" })).toHaveLength(1);
+      expect(screen.queryByRole("button", { name: "查看图片 steer-a.png" })).toBeNull();
+      fireEvent.click(screen.getByRole("button", { name: "过程截图（2）" }));
+    } else {
+      expect(screen.queryByRole("button", { name: /过程截图/ })).toBeNull();
+    }
+    await screen.findByRole("button", { name: "查看图片 steer-b.png" });
+    expect(screen.getAllByRole("button", { name: "查看图片 steer-a.png" })).toHaveLength(1);
+    expect(request).toHaveBeenCalledTimes(3);
+  });
+
   it("旧 WebView 没有 AbortSignal.timeout 时仍能加载缩略图", async () => {
     vi.stubGlobal("AbortSignal", {});
     const fetcher = vi.fn().mockResolvedValue(blobResponse("small"));

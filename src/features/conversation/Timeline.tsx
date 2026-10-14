@@ -745,6 +745,7 @@ export function TurnCard({
             durationLabel={!grouped.running && index === durationSegmentIndex ? durationLabel : null}
           />
         ))}
+        <TurnMedia items={grouped.responses} running={grouped.running} client={client} backend={backend} threadId={threadId} />
         {grouped.running && (
           <StreamCharacterCount
             count={streamingCharacterCount}
@@ -770,6 +771,64 @@ export function TurnCard({
       )}
     </section>
   );
+}
+
+function TurnMedia({
+  items,
+  running,
+  client,
+  backend,
+  threadId,
+}: {
+  items: AnyRecord[];
+  running: boolean;
+  client: AppServerClient | null;
+  backend?: BackendConfig | null;
+  threadId?: string;
+}) {
+  const [showProcessImages, setShowProcessImages] = useState(false);
+  // Media has its own display area and never contributes to commentary history.
+  const generatedSources = new Set<string>();
+  const mediaKeys = new Set<string>();
+  const generatedMedia = items.filter((item) => {
+    if (item.type !== "imageGeneration" && item.type !== "videoGeneration") return false;
+    const source = item.status === "failed"
+      ? ""
+      : imageSourcesForItem(item)[0]?.source || videoPathForItem(item);
+    if (source) generatedSources.add(source);
+    const key = source || `${item.type}:${item.id}`;
+    if (mediaKeys.has(key)) return false;
+    mediaKeys.add(key);
+    return true;
+  });
+  const screenshotSources = new Set<string>();
+  const screenshots = items.filter((item) => item.type === "imageView")
+    .flatMap(imageSourcesForItem).filter((image) => {
+      if (generatedSources.has(image.source) || screenshotSources.has(image.source)) return false;
+      screenshotSources.add(image.source);
+      return true;
+    });
+  return <>
+    {generatedMedia.map((item, index) => (
+      <TimelineItem key={item.id ?? index} item={item} client={client} backend={backend} threadId={threadId} />
+    ))}
+    {screenshots.length > 0 && (
+      !running && screenshots.length > 1 ? (
+        <div className="process-images">
+          <button
+            type="button"
+            className="previous-messages-toggle"
+            aria-expanded={showProcessImages}
+            onClick={() => setShowProcessImages((current) => !current)}
+          >
+            {t("过程截图（{count}）", { count: screenshots.length })}
+            <Chevron direction={showProcessImages ? "down" : "right"} />
+          </button>
+          {showProcessImages && <ImageGallery images={screenshots} client={client} backend={backend} />}
+        </div>
+      ) : <ImageGallery images={screenshots} client={client} backend={backend} />
+    )}
+  </>;
 }
 
 function CompletedResponseSegment({
@@ -799,7 +858,6 @@ function CompletedResponseSegment({
 }) {
   const completed = splitCompletedTurnResponses(items, { allowLegacyFinal: !running });
   const [showPrevious, setShowPrevious] = useState(false);
-  const [showProcessImages, setShowProcessImages] = useState(false);
   const hasFinal = Boolean(completed.final);
   // A segment's explicit final starts a new display phase, even while the turn is running.
   useEffect(() => setShowPrevious(false), [hasFinal]);
@@ -809,27 +867,6 @@ function CompletedResponseSegment({
   const processBeforeFinal = completed.beforeFinal.filter(isCommentary);
   const processAfterFinal = completed.afterFinal.filter(isCommentary);
   const previousCount = hasFinal ? processBeforeFinal.length + processAfterFinal.length : 0;
-  // Media has its own display area and never contributes to commentary history.
-  const generatedSources = new Set<string>();
-  const mediaKeys = new Set<string>();
-  const generatedMedia = items.filter((item) => {
-    if (item.type !== "imageGeneration" && item.type !== "videoGeneration") return false;
-    const source = item.status === "failed"
-      ? ""
-      : imageSourcesForItem(item)[0]?.source || videoPathForItem(item);
-    if (source) generatedSources.add(source);
-    const key = source || `${item.type}:${item.id}`;
-    if (mediaKeys.has(key)) return false;
-    mediaKeys.add(key);
-    return true;
-  });
-  const screenshotSources = new Set<string>();
-  const screenshots = items.filter((item) => item.type === "imageView")
-    .flatMap(imageSourcesForItem).filter((image) => {
-      if (generatedSources.has(image.source) || screenshotSources.has(image.source)) return false;
-      screenshotSources.add(image.source);
-      return true;
-    });
   const renderEntries = (entries: AnyRecord[]) =>
     groupTimelineEntries(entries).map((entry, index) => {
       if (entry.kind === "activity") return (
@@ -848,27 +885,8 @@ function CompletedResponseSegment({
         ? <div className="commentary-message" key={entry.item.id ?? index}>{message}</div>
         : <Fragment key={entry.item.id ?? index}>{message}</Fragment>;
     });
-  const media = <>
-    {renderEntries(generatedMedia)}
-    {screenshots.length > 0 && (
-      !running && screenshots.length > 1 ? (
-        <div className="process-images">
-          <button
-            type="button"
-            className="previous-messages-toggle"
-            aria-expanded={showProcessImages}
-            onClick={() => setShowProcessImages((current) => !current)}
-          >
-            {t("过程截图（{count}）", { count: screenshots.length })}
-            <Chevron direction={showProcessImages ? "down" : "right"} />
-          </button>
-          {showProcessImages && <ImageGallery images={screenshots} client={client} backend={backend} />}
-        </div>
-      ) : <ImageGallery images={screenshots} client={client} backend={backend} />
-    )}
-  </>;
   if (running && !hasFinal) {
-    return <>{renderEntries(items.filter((item) => item.type === "userMessage" || item.type === "agentMessage"))}{media}</>;
+    return <>{renderEntries(items.filter((item) => item.type === "userMessage" || item.type === "agentMessage"))}</>;
   }
   return (
     <>
@@ -921,7 +939,6 @@ function CompletedResponseSegment({
           {renderEntries(processAfterFinal)}
         </div>
       )}
-      {media}
     </>
   );
 }
