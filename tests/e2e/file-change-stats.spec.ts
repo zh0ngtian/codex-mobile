@@ -1,6 +1,6 @@
 import { expect, test } from "./http-fixture";
 
-test("编辑过程只显示总改动并支持窄屏与原 Diff 入口", async ({ page }) => {
+test("编辑过程只显示总改动，不展示历史工具执行记录", async ({ page }) => {
   await page.addInitScript(() => {
     const thread = { id: "file-stats", preview: "逐文件统计", status: { type: "idle" }, turns: [{
       id: "edit-turn", status: "completed", items: [
@@ -46,17 +46,9 @@ test("编辑过程只显示总改动并支持窄屏与原 Diff 入口", async ({
   await expect(page.locator(".turn-change-summary")).toContainText("本次代码改动 4 行");
   await expect(page.locator(".turn-change-summary")).toContainText("+3-1");
   await expect(page.locator(".file-change-file")).toHaveCount(0);
-  await page.getByRole("button", { name: "之前的 1 条消息" }).click();
+  await expect(page.getByRole("button", { name: /之前的/ })).toHaveCount(0);
+  await expect(page.locator(".tool-activity")).toHaveCount(0);
   await expect(page.locator(".file-change-activity")).toHaveCount(0);
-  const activity = page.locator(".tool-activity");
-  await expect(activity.locator("summary")).toContainText("已更改 2 个文件");
-  await expect(activity.locator("summary")).toContainText("+3-1");
-  await activity.locator("summary").click();
-  await page.getByRole("button", { name: "已编辑 2 个文件", exact: true }).click();
-  await expect(page.locator(".file-diff-heading")).toHaveCount(2);
-  await expect(page.locator(".file-diff-heading").first()).toHaveAttribute("aria-expanded", "true");
-  await page.getByRole("button", { name: "关闭文件修改" }).click();
-  await page.getByRole("button", { name: "之前的 1 条消息" }).click();
   await page.setViewportSize({ width: 375, height: 812 });
   await page.locator(".turn-change-summary").scrollIntoViewIfNeeded();
   await page.screenshot({ path: ".mobile-build/total-only.png" });

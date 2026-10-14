@@ -583,6 +583,7 @@ button, a, summary, [role="button"] { -webkit-tap-highlight-color: transparent; 
 .previous-messages-toggle .chevron-icon { width: 15px; height: 15px; }
 .previous-messages-toggle[aria-expanded="false"] + .assistant-message { margin-top: 17px; }
 .previous-messages { padding-top: 17px; }
+.commentary-message + .commentary-message { border-top: 1px solid #e5e5e5; padding-top: 18px; }
 .markdown-body { white-space: normal; }
 .markdown-body > :first-child { margin-top: 0; }
 .markdown-body > :last-child { margin-bottom: 0; }

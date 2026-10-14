@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { AppServerClient } from "../../app-server/client";
 import type { BackendConfig } from "../../backends/types";
 import {
@@ -804,30 +804,28 @@ function CompletedResponseSegment({
   useEffect(() => setShowPrevious(false), [hasFinal]);
   const guidingMessages = completed.beforeFinal.filter((item) => item.type === "userMessage");
   const commentary = completed.beforeFinal.filter((item) => item.type === "agentMessage");
-  const processBeforeFinal = completed.beforeFinal.filter(
-    (item) => item.type !== "userMessage" && (hasFinal || item.type !== "agentMessage"),
-  );
-  const previousCount = hasFinal
-    ? completed.previousCount
-    : processBeforeFinal.filter((item) => item.type !== "contextCompaction").length;
+  const isCommentary = (item: AnyRecord) => item.type === "agentMessage" && item.phase === "commentary";
+  const processBeforeFinal = completed.beforeFinal.filter(isCommentary);
+  const processAfterFinal = completed.afterFinal.filter(isCommentary);
+  const previousCount = hasFinal ? processBeforeFinal.length + processAfterFinal.length : 0;
   const renderEntries = (entries: AnyRecord[]) =>
-    groupTimelineEntries(entries).map((entry, index) =>
-      entry.kind === "activity" ? (
-        <ToolActivity
-          key={`activity-${entry.items[0]?.id ?? index}`}
-          items={entry.items}
-        />
-      ) : (
+    groupTimelineEntries(entries).map((entry, index) => {
+      if (entry.kind === "activity") return (
+        <ToolActivity key={`activity-${entry.items[0]?.id ?? index}`} items={entry.items} />
+      );
+      const message = (
         <TimelineItem
-          key={entry.item.id ?? index}
           item={entry.item}
           client={client}
           backend={backend}
           threadId={threadId}
           {...actionsForMessage(entry.item)}
         />
-      ),
-    );
+      );
+      return isCommentary(entry.item)
+        ? <div className="commentary-message" key={entry.item.id ?? index}>{message}</div>
+        : <Fragment key={entry.item.id ?? index}>{message}</Fragment>;
+    });
   if (running && !hasFinal) {
     return <>{renderEntries(items.filter((item) => item.type === "userMessage" || item.type === "agentMessage"))}</>;
   }
@@ -877,13 +875,11 @@ function CompletedResponseSegment({
           )}
         </>
       )}
-      {showPrevious && completed.afterFinal.length > 0 && (
+      {showPrevious && processAfterFinal.length > 0 && (
         <div className="previous-messages after-final">
-          {renderEntries(completed.afterFinal)}
+          {renderEntries(processAfterFinal)}
         </div>
       )}
-      {previousCount === 0 && renderEntries(processBeforeFinal)}
-      {previousCount === 0 && renderEntries(completed.afterFinal)}
     </>
   );
 }

@@ -97,22 +97,16 @@ describe("移动端对话格式", () => {
     expect(container.querySelectorAll(".final-answer-duration")).toHaveLength(1);
   });
 
-  it("完成回合的过程图片折叠后仍能打开应用内预览", async () => {
-    const request = vi.fn().mockResolvedValue({ dataBase64: "aGVsbG8=" });
-    const { container } = render(<TurnCard turn={{
-      id: "turn-image", status: "completed", items: [
-        { id: "user", type: "userMessage", text: "发图片" },
-        { id: "image", type: "imageView", path: "/tmp/assistant.png" },
-        { id: "final", type: "agentMessage", phase: "final_answer", text: "图片已发送" },
-      ],
-    }} client={{ request } as never} />);
-    expect(within(container).queryByRole("button", { name: "查看图片 assistant.png" })).toBeNull();
+  it("完成回合展开 commentary 时不会夹带原生过程图片", () => {
+    const { container } = render(<TurnCard turn={{ id: "turn-image", status: "completed", items: [
+      { id: "user", type: "userMessage", text: "发图片" },
+      { id: "c", type: "agentMessage", phase: "commentary", text: "正在生成图片" },
+      { id: "image", type: "imageView", path: "/tmp/assistant.png" },
+      { id: "final", type: "agentMessage", phase: "final_answer", text: "图片已发送" },
+    ] }} client={null} />);
     fireEvent.click(within(container).getByRole("button", { name: "之前的 1 条消息" }));
-    const button = await waitFor(() => within(container).getByRole("button", { name: "查看图片 assistant.png" }));
-    expect(button.closest(".previous-messages")).not.toBeNull();
-    fireEvent.click(button);
-    expect(screen.getByRole("dialog")).toBeTruthy();
-    expect(request).toHaveBeenCalledWith("fs/readFile", { path: "/tmp/assistant.png" }, { timeoutMs: 180_000 });
+    expect(within(container).getByText("正在生成图片")).toBeTruthy();
+    expect(within(container).queryByRole("button", { name: "查看图片 assistant.png" })).toBeNull();
   });
   it("用户消息与 final answer 显示精确到分钟的权威时间", () => {
     const startedAt = new Date(2026, 9, 3, 9, 7, 35).getTime() / 1000;
@@ -262,7 +256,7 @@ describe("移动端对话格式", () => {
         status: "completed",
         items: [
           { id: "u1", type: "userMessage", text: "检查项目" },
-          { id: "a1", type: "agentMessage", text: "开始检查" },
+          { id: "a1", type: "agentMessage", phase: "commentary", text: "开始检查" },
         ],
       },
       {
@@ -298,7 +292,7 @@ describe("移动端对话格式", () => {
     const view = within(container);
 
     const toggle = view.getByRole("button", {
-      name: "之前的 3 条消息",
+      name: "之前的 1 条消息",
     });
     expect(
       view.getAllByRole("button", { name: /之前的 \d+ 条消息/ }),
@@ -309,7 +303,7 @@ describe("移动端对话格式", () => {
 
     fireEvent.click(toggle);
     expect(view.queryByText("开始检查")).not.toBeNull();
-    expect(view.queryByText("分析过程")).not.toBeNull();
+    expect(view.queryByText("分析过程")).toBeNull();
   });
 
   it("折叠入口只在整轮耗时超过一分钟时展示耗时", () => {
@@ -321,7 +315,7 @@ describe("移动端对话格式", () => {
           durationMs: 90_000,
           items: [
             { id: "u1", type: "userMessage", text: "检查耗时" },
-            { id: "r1", type: "reasoning", text: "处理中" },
+            { id: "r1", type: "agentMessage", phase: "commentary", text: "处理中" },
             {
               id: "a1",
               type: "agentMessage",
@@ -349,7 +343,7 @@ describe("移动端对话格式", () => {
           durationMs: 60_000,
           items: [
             { id: "u1", type: "userMessage", text: "检查耗时" },
-            { id: "r1", type: "reasoning", text: "处理中" },
+            { id: "r1", type: "agentMessage", phase: "commentary", text: "处理中" },
             {
               id: "a1",
               type: "agentMessage",
@@ -378,7 +372,7 @@ describe("移动端对话格式", () => {
           completedAt: 225,
           items: [
             { id: "u1", type: "userMessage", text: "先检查" },
-            { id: "r1", type: "reasoning", text: "第一次处理" },
+            { id: "r1", type: "agentMessage", phase: "commentary", text: "第一次处理" },
             {
               id: "a1",
               type: "agentMessage",
@@ -386,7 +380,7 @@ describe("移动端对话格式", () => {
               text: "第一次完成",
             },
             { id: "u2", type: "userMessage", text: "继续调整" },
-            { id: "r2", type: "reasoning", text: "第二次处理" },
+            { id: "r2", type: "agentMessage", phase: "commentary", text: "第二次处理" },
             {
               id: "a2",
               type: "agentMessage",
@@ -426,7 +420,7 @@ describe("移动端对话格式", () => {
               text: "先完成一版",
             },
             { id: "u2", type: "userMessage", text: "调整裁剪方式" },
-            { id: "r2", type: "reasoning", text: "重新检查边缘" },
+            { id: "r2", type: "agentMessage", phase: "commentary", text: "重新检查边缘" },
             {
               id: "a2",
               type: "agentMessage",
@@ -456,7 +450,7 @@ describe("移动端对话格式", () => {
         status: "completed",
         items: [
           { id: "u1", type: "userMessage", text: "运行测试" },
-          { id: "a1", type: "agentMessage", text: "准备执行" },
+          { id: "a1", type: "agentMessage", phase: "commentary", text: "准备执行" },
         ],
       },
       {
@@ -497,7 +491,7 @@ describe("移动端对话格式", () => {
         items: runningTurns[1].items.map((item) => ({
           ...item,
           status:
-            item.type === "commandExecution" ? "completed" : item.status,
+            item.type === "commandExecution" ? "completed" : ("status" in item ? item.status : undefined),
         })),
       },
       {
@@ -518,7 +512,7 @@ describe("移动端对话格式", () => {
     rerender(<TurnCard turn={completedGroup} client={null} />);
 
     expect(
-      view.queryByRole("button", { name: "之前的 3 条消息" }),
+      view.queryByRole("button", { name: "之前的 1 条消息" }),
     ).not.toBeNull();
     expect(view.queryByText("准备执行")).toBeNull();
     expect(view.queryByText("测试进行中")).toBeNull();
@@ -543,11 +537,11 @@ describe("移动端对话格式", () => {
     rerender(<TurnCard turn={withFinal} client={null} />);
     expect(view.getByText("修复完成")).toBeTruthy();
     expect(view.queryByText("正在检查代码")).toBeNull();
-    const toggle = view.getByRole("button", { name: "之前的 4 条消息" });
+    const toggle = view.getByRole("button", { name: "之前的 1 条消息" });
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
     fireEvent.click(toggle);
     expect(view.getByText("正在检查代码")).toBeTruthy();
-    expect(view.getByRole("button", { name: "已读取 app.ts" })).toBeTruthy();
+    expect(view.queryByRole("button", { name: "已读取 app.ts" })).toBeNull();
     rerender(<TurnCard turn={{ ...withFinal, status: "completed" }} client={null} />);
     expect(toggle.getAttribute("aria-expanded")).toBe("true");
     fireEvent.click(toggle);
@@ -706,7 +700,7 @@ describe("移动端对话格式", () => {
     expect(container.querySelector(".diff-card")).toBeNull();
   });
 
-  it("编辑过程只展示总改动，展开后使用原工具活动入口查看 Diff", () => {
+  it("编辑过程只展示总改动，不把工具与 Diff 填进历史展开区", () => {
     const { container } = render(<TurnCard turn={{
       id: "per-file", status: "completed", items: [
         { id: "edit", type: "fileChange", status: "completed", changes: [
@@ -717,14 +711,9 @@ describe("移动端对话格式", () => {
       ],
     }} client={null} />);
     expect(container.querySelector(".turn-change-summary")?.textContent).toContain("本次代码改动 3 行+2-1");
-    fireEvent.click(within(container).getByRole("button", { name: "之前的 1 条消息" }));
-    expect(container.querySelector(".file-change-activity")).toBeNull();
-    expect(within(container).queryAllByRole("button", { name: /\/tmp\/project\/src\// })).toHaveLength(0);
-    fireEvent.click(within(container).getByRole("button", { name: "已编辑 2 个文件" }));
-    const headings = container.querySelectorAll(".file-diff-heading");
-    expect(headings).toHaveLength(2);
-    expect(headings[0].getAttribute("aria-expanded")).toBe("true");
-    expect(headings[1].getAttribute("aria-expanded")).toBe("false");
+    expect(within(container).queryByRole("button", { name: /之前的/ })).toBeNull();
+    expect(container.querySelector(".tool-activity")).toBeNull();
+    expect(container.querySelectorAll(".file-diff-heading")).toHaveLength(0);
   });
 
   it("运行结束后以工具活动同款样式显示一条总计", () => {
@@ -1143,8 +1132,8 @@ describe("移动端对话格式", () => {
 
     expect(steerText.closest(".user-bubble")).not.toBeNull();
     expect(
-      view.getByRole("button", { name: "之前的 1 条消息" }),
-    ).not.toBeNull();
+      view.queryByRole("button", { name: "之前的 1 条消息" }),
+    ).toBeNull();
     expect(
       view.queryByRole("button", { name: "之前的 2 条消息" }),
     ).toBeNull();
@@ -1310,118 +1299,22 @@ describe("移动端对话格式", () => {
     });
   });
 
-  it("上下文压缩提示不计入折叠数量，并随历史消息一起展开", () => {
-    const compaction = { id: "compact-1", type: "contextCompaction" };
-    const result = splitCompletedTurnResponses([
-      { id: "c1", type: "commandExecution" },
-      compaction,
-      {
-        id: "a1",
-        type: "agentMessage",
-        phase: "final_answer",
-        text: "继续完成任务",
-      },
-    ]);
-
-    expect(result.previous).toEqual([
-      { id: "c1", type: "commandExecution" },
-      compaction,
-    ]);
+  it("原始压缩记录保留在数据中，但不进入 commentary 展开区", () => {
+    const compaction = { id: "compact", type: "contextCompaction" };
+    const command = { id: "cmd", type: "commandExecution" };
+    const final = { id: "final", type: "agentMessage", phase: "final_answer", text: "继续完成任务" };
+    const result = splitCompletedTurnResponses([command, compaction, final]);
+    expect(result.previous).toEqual([command, compaction]);
     expect(result.previousCount).toBe(1);
-
-    const { container } = render(
-      <TurnCard
-        turn={{
-          id: "turn-compact",
-          status: "completed",
-          items: [
-            { id: "u1", type: "userMessage", text: "继续" },
-            { id: "c1", type: "commandExecution" },
-            compaction,
-            {
-              id: "a1",
-              type: "agentMessage",
-              phase: "final_answer",
-              text: "继续完成任务",
-            },
-          ],
-        }}
-        client={null}
-      />,
-    );
-    const view = within(container);
-
-    expect(view.queryByText("上下文已压缩")).toBeNull();
-    const previousButton = view.getByRole("button", {
-      name: "之前的 1 条消息",
-    });
-    fireEvent.click(previousButton);
-    expect(view.getByRole("separator", { name: "上下文已压缩" })).not.toBeNull();
-    const compactionNode = view.getByText("上下文已压缩");
-    const finalNode = view.getByText("继续完成任务");
-    expect(
-      compactionNode.compareDocumentPosition(finalNode) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).not.toBe(0);
-
-    const after = render(
-      <TurnCard
-        turn={{
-          id: "turn-compact-after",
-          status: "completed",
-          items: [
-            { id: "u2", type: "userMessage", text: "继续" },
-            { id: "c2", type: "commandExecution" },
-            {
-              id: "a2",
-              type: "agentMessage",
-              phase: "final_answer",
-              text: "先完成回复",
-            },
-            { id: "compact-2", type: "contextCompaction" },
-          ],
-        }}
-        client={null}
-      />,
-    );
-    const afterView = within(after.container);
-    expect(afterView.queryByText("上下文已压缩")).toBeNull();
-    fireEvent.click(
-      afterView.getByRole("button", { name: "之前的 1 条消息" }),
-    );
-    expect(
-      afterView
-        .getByText("先完成回复")
-        .compareDocumentPosition(afterView.getByText("上下文已压缩")) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).not.toBe(0);
-
-    const standalone = render(
-      <TurnCard
-        turn={{
-          id: "turn-compact-only",
-          status: "completed",
-          items: [
-            { id: "u3", type: "userMessage", text: "继续" },
-            {
-              id: "a3",
-              type: "agentMessage",
-              phase: "final_answer",
-              text: "完成回复",
-            },
-            { id: "compact-3", type: "contextCompaction" },
-          ],
-        }}
-        client={null}
-      />,
-    );
-    const standaloneView = within(standalone.container);
-    expect(standaloneView.queryByRole("button", {
-      name: /之前的/,
-    })).toBeNull();
-    expect(
-      standaloneView.getByRole("separator", { name: "上下文已压缩" }),
-    ).not.toBeNull();
+    for (const items of [[command, compaction, final], [command, final, compaction], [final, compaction]]) {
+      const { container } = render(<TurnCard turn={{ id: "compact", status: "completed", items: [
+        { id: "u", type: "userMessage", text: "继续" }, ...items,
+      ] }} client={null} />);
+      const view = within(container);
+      expect(view.queryByRole("button", { name: /之前的/ })).toBeNull();
+      expect(view.queryByRole("separator", { name: "上下文已压缩" })).toBeNull();
+      expect(view.getByText("继续完成任务")).toBeTruthy();
+    }
   });
 
   it("turn/completed 只合并最终摘要，不丢失本地累计的完整过程", () => {
@@ -2140,5 +2033,44 @@ describe("移动端对话格式", () => {
     expect(
       screen.getByRole("button", { name: "App.tsx" }).getAttribute("data-href"),
     ).toBe("/Users/loock/project/src/App.tsx:12");
+  });
+});
+
+
+describe("commentary 独立展示预览", () => {
+  const commentary = (id: string, text: string) => ({ id, type: "agentMessage", phase: "commentary", text });
+  const user = { id: "u", type: "userMessage", text: "检查文件" };
+  const before = [commentary("c1", "先检查结构"), commentary("c2", "正在验证修改")];
+  const tools = [
+    { id: "r", type: "reasoning", text: "内部分析" },
+    { id: "cmd", type: "commandExecution", status: "completed", command: "cat src/App.tsx" },
+    { id: "edit", type: "fileChange", status: "completed", changes: [{ path: "src/App.tsx", diff: "@@ -1 +1 @@\n-old\n+new" }] },
+    { id: "img", type: "imageView", path: "/tmp/process.png" },
+  ];
+  const final = { id: "f", type: "agentMessage", phase: "final_answer", text: "修改完成" };
+  it("展开只计数和显示 commentary，前后工具、图片与 reasoning 均隐藏", () => {
+    const { container } = render(<TurnCard turn={{ id: "filtered", status: "completed", items: [user, ...before, ...tools, final, ...tools.map(item => ({ ...item, id: item.id + "after" })), commentary("late", "补充验证结果")] }} client={null} />);
+    const view = within(container); const toggle = view.getByRole("button", { name: "之前的 3 条消息" });
+    expect(view.queryByText("先检查结构")).toBeNull();
+    fireEvent.click(toggle);
+    for (const text of ["先检查结构", "正在验证修改", "补充验证结果", "修改完成"]) expect(view.getByText(text)).toBeTruthy();
+    expect(view.queryByText("内部分析")).toBeNull();
+    expect(container.querySelector(".tool-activity")).toBeNull();
+    expect(container.querySelector(".file-change-activity")).toBeNull();
+    expect(view.queryByRole("button", { name: /查看图片/ })).toBeNull();
+    expect(container.querySelectorAll(".commentary-message")).toHaveLength(3);
+    expect(container.querySelectorAll(".previous-messages .commentary-message + .commentary-message")).toHaveLength(1);
+  });
+  it("没有 commentary 时不留下工具展开入口或直接显示工具", () => {
+    const { container } = render(<TurnCard turn={{ id: "no-commentary", status: "completed", items: [user, ...tools, final] }} client={null} />);
+    expect(within(container).queryByRole("button", { name: /之前的/ })).toBeNull();
+    expect(container.querySelector(".tool-activity")).toBeNull();
+    expect(within(container).queryByRole("button", { name: /查看图片/ })).toBeNull();
+    expect(within(container).getByText("修改完成")).toBeTruthy();
+  });
+  it("运行阶段的相邻 commentary 也有独立分隔节点", () => {
+    const { container } = render(<TurnCard turn={{ id: "running", status: "inProgress", items: [user, ...before, ...tools] }} client={null} />);
+    expect(container.querySelectorAll(".commentary-message + .commentary-message")).toHaveLength(1);
+    expect(container.querySelector(".tool-activity")).toBeNull();
   });
 });
