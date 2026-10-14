@@ -12,7 +12,8 @@ struct NativeSettingsView: View {
                     setting("字体大小", "Font Size", symbol: "textformat.size", id: "font")
                     Toggle(store.label("使用原生界面", "Use Native Interface"), isOn: preferenceBinding)
                         .accessibilityIdentifier("native-ui-preference")
-                        .disabled(store.preferenceSaving)
+                        .disabled(store.preferenceSaving || !store.canChangeNativePreference)
+                    if !store.canChangeNativePreference { Text(store.label("请先完成界面加载或恢复后再切换", "Finish loading or recovering the interface before switching.")).font(.caption).foregroundStyle(.secondary) }
                     if store.preferenceSaving { ProgressView(store.label("正在保存输入与附件…", "Saving text and attachments…")) }
                     if let error = store.preferenceError { Text(error).foregroundStyle(.red).accessibilityIdentifier("native-ui-preference-error") }
                     Text(store.label("下次完整启动时生效", "Applies at the next full launch")).font(.caption).foregroundStyle(.secondary)

@@ -21,8 +21,12 @@ final class NativeUIStore {
     var textPrompt: NativeTextPrompt? = nil
     var promptValue = ""
     private(set) var caretOffset = 0
+    private var preferenceRuntimeReady = false
+    var canChangeNativePreference: Bool { snapshot.ready && preferenceRuntimeReady }
     var savedNativePreference = NativeUIPreference().enabled
     var preferenceSaving = false
+    @ObservationIgnored private var preferenceCommandID: String?
+    @ObservationIgnored private var preferenceTimeout: Task<Void, Never>?
     var preferenceError: String? = nil
     var notice: String? = nil
     var showLegacyForRecovery = false
@@ -97,16 +101,32 @@ final class NativeUIStore {
     }
     func requestNativePreference(_ enabled: Bool) {
         guard !preferenceSaving, enabled != savedNativePreference else { return }
-        guard !isReference, sendCommand != nil else {
+        guard !isReference, canChangeNativePreference, sendCommand != nil else {
             preferenceError = label("连接尚未就绪，请稍后重试", "The connection is not ready. Please retry.")
             return
         }
         preferenceError = nil
         preferenceSaving = true
-        command("settings.native-ui", ["enabled": .bool(enabled)])
+        let command = NativeCommand(name: "settings.native-ui", params: ["enabled": .bool(enabled)])
+        preferenceCommandID = command.id
+        preferenceTimeout?.cancel()
+        preferenceTimeout = Task { [weak self] in
+            do { try await Task.sleep(for: .seconds(20)) }
+            catch { return }
+            self?.expireNativePreferenceRequest(command.id)
+        }
+        sendCommand?(command)
+    }
+
+    func expireNativePreferenceRequest(_ id: String) {
+        guard preferenceCommandID == id, preferenceSaving else { return }
+        receivedNativePreference(savedNativePreference, error: label("界面设置保存超时，请重试", "Saving the interface setting timed out. Please retry."))
     }
 
     func receivedNativePreference(_ enabled: Bool, error: String? = nil) {
+        preferenceTimeout?.cancel()
+        preferenceTimeout = nil
+        preferenceCommandID = nil
         savedNativePreference = enabled
         preferenceSaving = false
         preferenceError = error
@@ -115,6 +135,7 @@ final class NativeUIStore {
 
     func receive(_ value: NativeSnapshot) {
         guard value.version == 1, !isReference else { return }
+        preferenceRuntimeReady = value.ready && value.panel?.id != "native-switch-recovery"
         let contextChanged = value.contextId != snapshot.contextId
         let panelChanged = value.panel?.id != snapshot.panel?.id
         if contextChanged {
@@ -132,7 +153,10 @@ final class NativeUIStore {
             }
         }
         for result in value.commandResults ?? [] {
-            if result.name == "settings.native-ui", !receivedResultIDs.contains(result.id) {
+            if result.name == "settings.native-ui", result.id == preferenceCommandID {
+                preferenceTimeout?.cancel()
+                preferenceTimeout = nil
+                preferenceCommandID = nil
                 preferenceSaving = false
                 if !result.ok { preferenceError = result.error ?? label("切换保存失败，请重试", "Could not save the interface setting. Please retry.") }
             }

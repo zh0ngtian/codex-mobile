@@ -27,6 +27,9 @@ struct NativeStoreSmoke {
         precondition(normal.draft == "第一窗口" && secondScene.draft == "第二窗口")
         precondition(firstCommands == ["first-scene"] && secondCommands == ["second-scene"])
         let switchStore = NativeUIStore(arguments: [])
+        var switchReady = NativeSnapshot()
+        switchReady.ready = true
+        switchStore.receive(switchReady)
         switchStore.savedNativePreference = false
         var switchCommands: [NativeCommand] = []
         switchStore.sendCommand = { switchCommands.append($0) }
@@ -42,6 +45,25 @@ struct NativeStoreSmoke {
         switchStore.requestNativePreference(true)
         switchStore.receivedNativePreference(true)
         precondition(switchStore.savedNativePreference && !switchStore.preferenceSaving && switchStore.preferenceError == nil && !switchStore.nativeEnabled)
+        let unavailableSwitch = NativeUIStore(arguments: [])
+        unavailableSwitch.savedNativePreference = false
+        var unavailableCommands: [NativeCommand] = []
+        unavailableSwitch.sendCommand = { unavailableCommands.append($0) }
+        unavailableSwitch.requestNativePreference(true)
+        precondition(unavailableCommands.isEmpty && !unavailableSwitch.preferenceSaving && unavailableSwitch.preferenceError != nil, "启动未就绪时不能派发无人监听的切换")
+        var recoverySnapshot = NativeSnapshot()
+        recoverySnapshot.ready = true
+        recoverySnapshot.panel = NativePanel(id: "native-switch-recovery", title: "恢复草稿", items: [])
+        unavailableSwitch.receive(recoverySnapshot)
+        unavailableSwitch.requestNativePreference(true)
+        precondition(unavailableCommands.isEmpty && !unavailableSwitch.preferenceSaving, "恢复失败页面不能让开关永久等待")
+        unavailableSwitch.receive(switchReady)
+        unavailableSwitch.requestNativePreference(true)
+        let timeoutID = unavailableCommands.last!.id
+        unavailableSwitch.expireNativePreferenceRequest("old-request")
+        precondition(unavailableSwitch.preferenceSaving, "旧超时不能结束新请求")
+        unavailableSwitch.expireNativePreferenceRequest(timeoutID)
+        precondition(!unavailableSwitch.preferenceSaving && !unavailableSwitch.savedNativePreference && unavailableSwitch.preferenceError != nil, "没有回执时必须恢复可重试状态")
         let reference = NativeUIStore(arguments: ["--native-ui-reference-conversation"])
         precondition(reference.snapshot.messages.count == 2)
         precondition(NativeMarkdownBlock.parse(reference.snapshot.messages[1].text).contains { $0.kind == .code && $0.text == "print(\"Hello\")" })
