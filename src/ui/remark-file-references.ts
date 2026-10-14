@@ -103,12 +103,14 @@ function transformReferences(
   options: FileReferencesOptions,
   state: ReferenceState,
   parentType?: Nodes["type"],
+  convertText = true,
 ) {
   if (node.type === "html") {
     updateHtmlScope(node.value, state.htmlTags);
     return;
   }
-  if (["link", "linkReference", "code", "inlineCode"].includes(node.type) || !("children" in node)) return;
+  if (["code", "inlineCode"].includes(node.type) || !("children" in node)) return;
+  const convertChildren = convertText && node.type !== "link" && node.type !== "linkReference";
 
   if (parentType === "root" && node.type === "heading" && !state.htmlTags.length) {
     const plain = node.children.length === 1 && node.children[0].type === "text"
@@ -124,11 +126,11 @@ function transformReferences(
 
   const children: Nodes[] = [];
   for (const child of node.children) {
-    if (child.type === "text" && !state.htmlTags.length) {
+    if (child.type === "text" && convertChildren && !state.htmlTags.length) {
       children.push(...citationNodes(child, options));
     } else {
-      // HTML 内仍遍历格式节点，以便真正的闭合标签恢复后续文本转换。
-      transformReferences(child, options, state, node.type);
+      // 链接及 HTML 内仍扫描真实标签；链接文本和代码示例始终保持原样。
+      transformReferences(child, options, state, node.type, convertChildren);
       children.push(child);
     }
   }
