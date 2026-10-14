@@ -2,6 +2,7 @@ import { createContext, isValidElement, useContext, type ComponentProps, type Re
 import ReactMarkdown from "react-markdown";
 import { t } from "../i18n";
 import remarkGfm from "remark-gfm";
+import { remarkFileReferences } from "./remark-file-references";
 import { CopyButton, reactNodeText } from "./copy";
 import { MermaidBlock } from "./mermaid";
 
@@ -1011,7 +1012,7 @@ export function MarkdownMessage({
   return (
     <MarkdownRendererContext.Provider value={{ renderImage, renderLink }}>
       <div className={`markdown-body ${className}`.trim()}>
-        <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+        <ReactMarkdown remarkPlugins={[remarkGfm, [remarkFileReferences, { parseFileHref: parseRemoteFileHref }]]} components={markdownComponents}>
           {text}
         </ReactMarkdown>
       </div>
