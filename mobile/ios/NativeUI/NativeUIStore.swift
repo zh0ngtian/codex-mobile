@@ -9,8 +9,8 @@ final class NativeUIStore {
     var settingsOpen = false
     var search = ""
     var attachmentOpen = false
-    var fieldValues: [String: String] = [:]
-    var fieldSelections: [String: [String]] = [:]
+    private var fieldValues: [NativeFieldKey: String] = [:]
+    private var fieldSelections: [NativeFieldKey: [String]] = [:]
     var showLegacyForRecovery = false
     @ObservationIgnored var sendCommand: ((NativeCommand) -> Void)?
     let isReference: Bool
@@ -36,8 +36,31 @@ final class NativeUIStore {
     }
     func receive(_ value: NativeSnapshot) {
         guard value.version == 1, !isReference else { return }
+        // 完整快照是业务权威值；待命令回执保护由后续业务桥提供。
+        fieldValues.removeAll()
+        fieldSelections.removeAll()
         snapshot = value
         if draft != value.draft { draft = value.draft }
+    }
+    func fieldValue(_ item: NativePanelItem, scope: NativeFieldScope) -> String {
+        fieldValues[NativeFieldKey(scope: scope, itemID: item.id)] ?? item.value ?? ""
+    }
+    func setFieldValue(_ value: String, item: NativePanelItem, scope: NativeFieldScope) {
+        fieldValues[NativeFieldKey(scope: scope, itemID: item.id)] = value
+    }
+    func selectedValues(_ item: NativePanelItem, scope: NativeFieldScope) -> [String] {
+        fieldSelections[NativeFieldKey(scope: scope, itemID: item.id)] ?? item.values ?? []
+    }
+    func setSelectedValues(_ values: [String], item: NativePanelItem, scope: NativeFieldScope) {
+        fieldSelections[NativeFieldKey(scope: scope, itemID: item.id)] = values
+    }
+    func closePanel() {
+        guard let panel = snapshot.panel else { return }
+        let scope = NativeFieldScope.panel(panel.id)
+        fieldValues = fieldValues.filter { $0.key.scope != scope }
+        fieldSelections = fieldSelections.filter { $0.key.scope != scope }
+        snapshot.panel = nil
+        command("panel.close", ["id": .string(panel.id)])
     }
     func command(_ name: String, _ params: [String: NativeJSONValue] = [:]) {
         if isReference {

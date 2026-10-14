@@ -32,8 +32,7 @@ struct NativeRootView: View {
     }
     private var panelBinding: Binding<NativePanel?> {
         Binding(get: { store.snapshot.panel }, set: { value in
-            if value == nil, let panel = store.snapshot.panel { store.command("panel.close", ["id": .string(panel.id)]) }
-            store.snapshot.panel = value
+            if value == nil { store.closePanel() }
         })
     }
 }

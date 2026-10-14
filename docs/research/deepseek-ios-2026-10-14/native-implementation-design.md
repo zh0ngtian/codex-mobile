@@ -64,7 +64,7 @@ DeepSeek空态品牌不复用，无鲸鱼、logo或语音入口。欢迎语映�
 
 正文保留原生AttributedString内联Markdown，标题/列表/围栏代码拆为原生组件；业务工具/差异/审批等由通用panel item提供。设置使用原生Form分组，语言/字体/设备/传输/通知/更新由共享业务提供panel，原生界面开关写UserDefaults，下次完整启动生效。动态字体、VoiceOver标签、ReduceMotion取消位移缩放动画；iOS18为最低系统。
 
-Swift宿主持有一个store，旧WebView仍执行业务且复用原WKWebsiteDataStore；桥只弱引用既有WebView。详见 `mobile/ios/NativeUI/BRIDGE.md`。不通过DOM寻找控件，不复制app-server协议。错误提供手动显示旧界面。离线launch参数使用真实原生组件，不连接后端，不创建测试会话。
+每个scene的Swift宿主独立持有bridge/store，该窗口既有WebView仍执行业务且复用原WKWebsiteDataStore；桥只弱引用既有WebView。详见 `mobile/ios/NativeUI/BRIDGE.md`。不通过DOM寻找控件，不复制app-server协议。错误提供手动显示旧界面。离线launch参数使用真实原生组件，不连接后端，不创建测试会话。
 
 ## 验收顺序与边界
 
@@ -74,7 +74,7 @@ Swift宿主持有一个store，旧WebView仍执行业务且复用原WKWebsiteDat
 
 - 新增契约首次运行3项预期失败（缺少原生根、桥、源码接入），之后转绿。
 - `xcrun swiftc -typecheck -sdk iphonesimulator -target arm64-apple-ios18.0-simulator mobile/ios/NativeUI/*.swift` 通过；仅调用编译器，没有启动或占用模拟器。
-- `npm test -- tests/ci`：9文件88项通过；包含真正编译/执行Swift store、Codable往返和Markdown解析的smoke，以及包含特殊字符路径的源码安装fixture。
+- `npm test -- tests/ci`：9文件91项通过；包含真正编译/执行Swift store、Codable往返和Markdown解析的smoke，以及包含特殊字符路径的源码安装fixture。
 - `npm run typecheck` 与 `ruby -c scripts/configure-ios-tests.rb` 通过。
 - 模拟器完整App构建、原生UI测试、归一化截图与视觉差分尚由主任务执行，静态基准不等于视觉验收完成。
 
@@ -87,3 +87,9 @@ Swift宿主持有一个store，旧WebView仍执行业务且复用原WKWebsiteDat
 3. 输入卡y728/底832而参考y736/底840，移除额外底部8pt，保留系统安全区。
 
 离线conversation fixture改用S22公开树相同标题、用户消息和助手Markdown，以便下一轮比较排版。修正后仍需主任务的新鲜截图和4项UI验收，不以类型检查替代视觉结果。
+
+## 原生验收与质量修复复核
+
+主任务已实际执行新增位置断言的RED：首条用户文本minY=343，期望小于顶栏maxY+100=214.25，失败结果为 `test_sim_2026-10-14T10-35-30-766Z_pid23807_92176acf.xcresult`。更新后4项NativeUIUITests均GREEN；第二轮并排图为 `.mobile-build/native-reference/conversation-side-by-side-pass2.png`。目前只确认三处大布局问题已修正，字号和其他排版差异仍待下一轮。
+
+质量审查后，真实Swift smoke分别先复现“同进程新窗口提前应用偏好”和“权威快照无法清除旧字段覆盖值”，再转GREEN。修复为scene独立桥/状态与进程只读启动模式；字段缓存以panel/message及item组合为作用域，有效完整快照清理本地覆盖，关闭面板清理对应作用域（含secure值）。测试覆盖业务校正、多选、换面板、关闭重开及同id字段隔离。异步编辑回执协调仍由后续共享业务桥处理。

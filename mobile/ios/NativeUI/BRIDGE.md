@@ -30,6 +30,8 @@ Swift 通过 `window.codexMobileNativeCommand(command)` 发出 `codex-mobile-nat
 - panelItem: `{id,kind,title?,text?,value?:string,values?:string[],options?:option[],command?,children?:panelItem[],disabled?:boolean}`。
 - panelItem.kind 支持 section、text、markdown、code、diff、image、link、action、toggle、textField、secureField、multilineField、singleChoice、multiChoice。image 的 value 为 URL，link 的 value 为 URL；code/diff 的 text 为原文。输入变化使用 item.command 并合并 params.value 字符串；多选变化合并 params.values 字符串数组；toggle 使用 params.value 布尔值。section 用 children。
 
+字段临时编辑以panel ID或message ID及item ID组合为作用域；关闭panel会清除该作用域（包含secure值），每份有效完整快照清理临时覆盖，以业务权威值重新展示。后续异步编辑保护须以命令回执协调，不能让旧本地缓存永久覆盖快照。
+
 ## 固定命令
 
 - `draft.set {value:string}`、`message.send {}`、`turn.stop {}`、`thread.new {}`。

@@ -3,11 +3,12 @@ import SwiftUI
 struct NativePanelItemView: View {
     let item: NativePanelItem
     let store: NativeUIStore
+    let scope: NativeFieldScope
     var body: some View {
         Group {
             switch item.kind {
             case "section":
-                Section(item.title ?? "") { ForEach(item.children ?? []) { child in NativePanelItemView(item: child, store: store) } }
+                Section(item.title ?? "") { ForEach(item.children ?? []) { child in NativePanelItemView(item: child, store: store, scope: scope) } }
             case "markdown": NativeMarkdownView(text: item.text ?? "", scale: store.snapshot.fontScale)
             case "code", "diff": NativeCodeView(text: item.text ?? "", language: item.kind == "diff" ? "diff" : item.title ?? "")
             case "image":
@@ -40,23 +41,23 @@ struct NativePanelItemView: View {
         }.disabled(item.disabled == true)
     }
     private var textBinding: Binding<String> {
-        Binding(get: { store.fieldValues[item.id] ?? item.value ?? "" }, set: { value in
-            store.fieldValues[item.id] = value
+        Binding(get: { store.fieldValue(item, scope: scope) }, set: { value in
+            store.setFieldValue(value, item: item, scope: scope)
             update(["value": .string(value)])
         })
     }
     private var toggleBinding: Binding<Bool> {
-        Binding(get: { (store.fieldValues[item.id] ?? item.value) == "true" }, set: { value in
-            store.fieldValues[item.id] = value ? "true" : "false"
+        Binding(get: { store.fieldValue(item, scope: scope) == "true" }, set: { value in
+            store.setFieldValue(value ? "true" : "false", item: item, scope: scope)
             update(["value": .bool(value)])
         })
     }
     private func choiceBinding(_ value: String) -> Binding<Bool> {
-        Binding(get: { (store.fieldSelections[item.id] ?? item.values ?? []).contains(value) }, set: { selected in
-            var values = store.fieldSelections[item.id] ?? item.values ?? []
+        Binding(get: { store.selectedValues(item, scope: scope).contains(value) }, set: { selected in
+            var values = store.selectedValues(item, scope: scope)
             values.removeAll { $0 == value }
             if selected { values.append(value) }
-            store.fieldSelections[item.id] = values
+            store.setSelectedValues(values, item: item, scope: scope)
             update(["values": .array(values.map { .string($0) })])
         })
     }

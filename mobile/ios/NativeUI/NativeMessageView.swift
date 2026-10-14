@@ -18,12 +18,12 @@ struct NativeMessageView: View {
                     if let status = message.status { Text(status).font(.caption).foregroundStyle(.secondary) }
                     NativeMarkdownView(text: message.text, scale: store.snapshot.fontScale)
                     if let blocks = message.blocks {
-                        ForEach(blocks) { item in NativePanelItemView(item: item, store: store) }
+                        ForEach(blocks) { item in NativePanelItemView(item: item, store: store, scope: .message(message.id)) }
                     }
                     if let actions = message.actions {
                         ViewThatFits(in: .horizontal) {
-                            HStack { ForEach(actions) { item in NativePanelItemView(item: item, store: store) } }
-                            VStack(alignment: .leading) { ForEach(actions) { item in NativePanelItemView(item: item, store: store) } }
+                            HStack { ForEach(actions) { item in NativePanelItemView(item: item, store: store, scope: .message(message.id)) } }
+                            VStack(alignment: .leading) { ForEach(actions) { item in NativePanelItemView(item: item, store: store, scope: .message(message.id)) } }
                         }
                     }
                 }.padding(.horizontal, 24)
