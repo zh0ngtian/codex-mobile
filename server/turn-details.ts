@@ -50,6 +50,17 @@ function imageReferences(items: RecordValue[]): RecordValue[] {
   });
 }
 
+function commentaryDetails(items: RecordValue[]) {
+  const commentaryItems = items.filter((item) => item.type === "agentMessage" && item.phase === "commentary" &&
+    typeof item.id === "string" && typeof item.text === "string")
+    .map((item) => ({ id: item.id, type: item.type, phase: item.phase, text: item.text }));
+  if (!commentaryItems.length) return {};
+  // final 和用户消息只传顺序锚点，正文/附件继续使用首屏摘要或实时数据。
+  const messageOrder = items.filter((item) => ["userMessage", "agentMessage"].includes(item.type) &&
+    typeof item.id === "string").map((item) => item.id);
+  return { commentaryItems, messageOrder };
+}
+
 // Whitelist only the details needed for history backfill; never retain tool bodies or diffs.
 export function compactTurnDetails(result: RecordValue, savedStats: Record<string, ChangeStats | null> = {}) {
   return {
@@ -61,6 +72,7 @@ export function compactTurnDetails(result: RecordValue, savedStats: Record<strin
           ...(savedStats[String(turn.id)] ? { changeStatsSource: "history" } : {}) }
           : { changeStatsUnavailable: true }),
         items: imageReferences(turn.items ?? []),
+        ...commentaryDetails(turn.items ?? []),
       };
     }),
     nextCursor: result.nextCursor,

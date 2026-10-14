@@ -333,3 +333,29 @@ it('同一消息已转为最终回复时，旧 commentary 不能覆盖其阶段�
   const turns = [{ id: 't', status: 'inProgress', items: [{ id: 'same', type: 'agentMessage', phase: 'final_answer', text: '最终答复' }] }];
   expect(applyTurnCommentary(turns, { turnId: 't', items: [{ id: 'same', type: 'agentMessage', phase: 'commentary', text: '之前更长的过程说明' }] })).toEqual(turns);
 });
+
+
+describe('完成摘要的 commentary 恢复', () => {
+  const first = { id: 'c1', type: 'agentMessage', phase: 'commentary', text: '第一段过程' };
+  const second = { id: 'c2', type: 'agentMessage', phase: 'commentary', text: '第二段过程' };
+  it.each(['compact', 'full'])('复用 %s 详情读取，恢复 commentary、final与插话顺序且不截短实时文本', async (view) => {
+    const user = { id: 'u', type: 'userMessage', content: [{ type: 'text', text: '开始' }, { type: 'image', url: '/tmp/a.png' }] };
+    const f1 = { id: 'f1', type: 'agentMessage', phase: 'final_answer', text: '第一版完成' };
+    const steer = { id: 'steer', type: 'userMessage', text: '继续' };
+    const f2 = { id: 'f2', type: 'agentMessage', phase: 'final_answer', text: '最终完成' };
+    const history = [user, first, f1, steer, second, f2];
+    const request = vi.fn().mockResolvedValue({ data: [{ id: 'done', changeStatsUnavailable: true,
+      ...(view === 'compact' ? { items: [], commentaryItems: [first, second], messageOrder: history.map(i => i.id) } : { items: history }),
+    }] });
+    const detail = await loadTurnChangeStatsPage({ request }, 't');
+    const summary = [{ id: 'done', status: 'completed', itemsView: 'summary', items: [user, f1, steer, { ...second, text: '第二段过程已验证通过' }, f2] }];
+    const once = applyTurnChangeStats(summary, detail);
+    expect(once[0].items.map((i: any) => i.id)).toEqual(history.map(i => i.id));
+    expect(once[0].items[4].text).toBe('第二段过程已验证通过');
+    expect(once[0].items[0].content).toHaveLength(2);
+    expect(once[0].changeStatsUnavailable).toBe(true);
+    expect(once[0].loadedChangeStats).toBeUndefined();
+    expect(applyTurnChangeStats(once, detail)).toEqual(once);
+    expect(request).toHaveBeenCalledTimes(1);
+  });
+});

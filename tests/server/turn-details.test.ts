@@ -64,3 +64,26 @@ describe('运行回合文本投影', () => {
     }
   });
 });
+
+
+describe('已完成回合的历史过程恢复', () => {
+  it('同一次详情投影补回 commentary 和文字顺序，工具大正文与用户附件不下发', () => {
+    const result = compactTurnDetails({ data: [{ id: 'done', status: 'completed', items: [
+      { id: 'u', type: 'userMessage', content: [{ type: 'image', url: 'secret-pixels' }, { type: 'text', text: '用户原文' }] },
+      { id: 'c1', type: 'agentMessage', phase: 'commentary', text: '检查结构', toolBody: 'secret' },
+      { id: 'cmd', type: 'commandExecution', aggregatedOutput: 'x'.repeat(7_000_000) },
+      { id: 'f1', type: 'agentMessage', phase: 'final_answer', text: '第一段最终答复'.repeat(1000) },
+      { id: 'steer', type: 'userMessage', text: '继续' },
+      { id: 'c2', type: 'agentMessage', phase: 'commentary', text: '检查修改' },
+      { id: 'r', type: 'reasoning', text: '内部信息' },
+      { id: 'f2', type: 'agentMessage', phase: 'final_answer', text: '完成' },
+    ] }], nextCursor: 'older' });
+    expect(result.data[0]).toMatchObject({ id: 'done', commentaryItems: [
+      { id: 'c1', type: 'agentMessage', phase: 'commentary', text: '检查结构' },
+      { id: 'c2', type: 'agentMessage', phase: 'commentary', text: '检查修改' },
+    ], messageOrder: ['u', 'c1', 'f1', 'steer', 'c2', 'f2'] });
+    expect(Buffer.byteLength(JSON.stringify(result))).toBeLessThan(1024);
+    expect(JSON.stringify(result)).not.toContain('secret');
+    expect(result.nextCursor).toBe('older');
+  });
+});
