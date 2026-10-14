@@ -376,11 +376,17 @@ function BackendWorkspace({
   const [draftImages, setDraftImages] = useState<DraftImage[]>([]);
   const [draftFiles, setDraftFiles] = useState<DraftFile[]>([]);
   const currentDraftRef = useRef({ text: draft, images: draftImages, files: draftFiles });
+  const sendingDraftContextsRef = useRef(new Set<number>());
   currentDraftRef.current = { text: draft, images: draftImages, files: draftFiles };
   const [historyEdit, setHistoryEdit] =
     useState<HistoricalMessageEditState | null>(null);
   const [imageReading, setImageReading] = useState(false);
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusyState] = useState(false);
+  const busyRef = useRef(false);
+  const setBusy = useCallback((value: boolean) => {
+    busyRef.current = value;
+    setBusyState(value);
+  }, []);
   const [startingThreadContext, setStartingThreadContext] = useState<
     number | null
   >(null);
@@ -2790,12 +2796,12 @@ function BackendWorkspace({
       return false;
     }
     const draftContext = draftContextGenerationRef.current;
-    const conversationBusy = active?.id
-      ? busy || [...pendingOperationsRef.current.values()].some((operation) => operation.threadId === String(active.id))
-      : startingThreadContext === draftContextGenerationRef.current;
-    const hasHostedQueue = queuedFollowUpsRef.current.some((item) => item.hosted && item.threadId === String(active?.id ?? ""));
-    if (conversationBusy || hasHostedQueue || queueSubmissionsRef.current.get(String(active?.id ?? ""))?.hasPending) {
-      const threadId = String(active?.id ?? "");
+    const threadId = String(activeRef.current?.id ?? "");
+    const conversationBusy = sendingDraftContextsRef.current.has(draftContext) || busyRef.current || (threadId
+      ? [...pendingOperationsRef.current.values()].some((operation) => operation.threadId === threadId)
+      : startingThreadContext === draftContext);
+    const hasHostedQueue = queuedFollowUpsRef.current.some((item) => item.hosted && item.threadId === threadId);
+    if (conversationBusy || hasHostedQueue || queueSubmissionsRef.current.get(threadId)?.hasPending) {
       if (!threadId) {
         setError(t("当前任务正在启动，请稍后再排队"));
         return false;
@@ -2847,6 +2853,9 @@ function BackendWorkspace({
       }
       return true;
     }
+    // 在首个await和React提交前占用当前草稿与发送上下文；不同请求UUID也不能重复消费。
+    sendingDraftContextsRef.current.add(draftContext);
+    currentDraftRef.current = { text: "", images: [], files: [] };
     const savedDraft = savedDraftRef.current;
     requestRunCompletionNotificationPermission();
     invalidateImageReads();
@@ -2883,12 +2892,15 @@ function BackendWorkspace({
           }, ...queuedFollowUpsRef.current]);
           return false;
         }
+        currentDraftRef.current = { text, images: pendingImages, files: pendingFiles };
         setDraft((current) => current || text);
         setDraftImages((current) => mergeDraftImages(current, pendingImages));
         setDraftFiles((current) =>
           current.length ? current : pendingFiles,
         );
       },
+    }).finally(() => {
+      sendingDraftContextsRef.current.delete(draftContext);
     });
   }
 

@@ -12,7 +12,7 @@
 
 ## 会话上下文与输入
 
-`contextId = backendId + ':context:' + draftContextGeneration`。真实导航或新建会话使 generation 递增；新对话的 `thread/start` 获得实际 threadId 时不改变 contextId，避免清除期间继续输入的文字。
+`contextId = backendId + ':context:' + draftContextGeneration`。真实导航或新建会话使 generation 递增；新对话的 `thread/start` 获得实际 threadId 时不改变 contextId，避免清除期间继续输入的文字。发送在首个 await 前同步消费草稿并占用该上下文；业务 busy 状态同步保存到 ref，避免不同命令 UUID 或快速网络 ACK 在 React 尚未提交时重复创建会话/turn。等待首次 threadId 时的新输入保留，已有会话的新输入仍进入原托管队列。
 
 `draft.set` 使用 `{contextId,value,revision,caretOffset?}`。revision 为每个上下文的单调正整数，caretOffset 使用 UTF16 偏移，与现有 JS mention 函数相同。Swift 只接受追上本地版本的 draft/caret；JS 在调用 callback 前占用版本，旧异步完成不能倒退版本。React hook 将接受的 revision 与草稿同批回显，延迟旧 render 不会抢先确认新输入。程序发送清空、发送失败恢复、Skill/Plugin 插入、当前位置插入均回到既有 setDraft。
 
