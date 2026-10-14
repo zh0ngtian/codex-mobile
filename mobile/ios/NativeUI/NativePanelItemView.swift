@@ -10,7 +10,7 @@ struct NativePanelItemView: View {
             case "section":
                 Section(item.title ?? "") { ForEach(item.children ?? []) { child in NativePanelItemView(item: child, store: store, scope: scope) } }
             case "markdown": NativeMarkdownView(text: item.text ?? "", scale: store.snapshot.fontScale)
-            case "code", "diff": NativeCodeView(text: item.text ?? "", language: item.kind == "diff" ? "diff" : item.title ?? "")
+            case "code", "diff": NativeCodeView(text: item.text ?? "", language: item.kind == "diff" ? "diff" : item.title ?? "", scale: store.snapshot.fontScale)
             case "image":
                 if let url = URL(string: item.value ?? "") {
                     AsyncImage(url: url) { image in image.resizable().scaledToFit() } placeholder: { ProgressView() }

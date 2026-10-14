@@ -2,7 +2,7 @@ import SwiftUI
 
 struct NativeComposerView: View {
     @Bindable var store: NativeUIStore
-    @ScaledMetric(relativeTo: .body) private var textSize = 16
+    @ScaledMetric(relativeTo: .body) private var textSize = 14
     var body: some View {
         VStack(spacing: 12) {
             if !store.snapshot.attachments.isEmpty {

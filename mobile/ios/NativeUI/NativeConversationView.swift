@@ -2,12 +2,14 @@ import SwiftUI
 
 struct NativeConversationView: View {
     @Bindable var store: NativeUIStore
+    @ScaledMetric(relativeTo: .headline) private var titleSize = 14
+    @ScaledMetric(relativeTo: .title3) private var greetingSize = 18
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 12) {
                 NativeIconButton(title: store.label("打开侧栏", "Open Sidebar"), symbol: "line.3.horizontal", identifier: "native-sidebar-open") { store.sidebarOpen.toggle() }
                 Text(store.snapshot.messages.isEmpty ? "" : store.snapshot.title)
-                    .font(.headline).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
+                    .font(.system(size: titleSize * store.snapshot.fontScale, weight: .semibold)).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
                 NativeIconButton(title: store.label("新对话", "New Conversation"), symbol: "square.and.pencil", identifier: "native-new-thread") { store.command("thread.new") }
             }.padding(.horizontal, 16).padding(.bottom, 10)
             if let error = store.snapshot.error {
@@ -22,7 +24,7 @@ struct NativeConversationView: View {
                     Button(store.label("使用旧界面恢复", "Recover Using Web Interface")) { store.showLegacyForRecovery = true }
                 }.frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if store.snapshot.messages.isEmpty {
-                Text(store.label("你好，让我们开始吧", "Hello, let’s get started")).font(.title3.weight(.semibold))
+                Text(store.label("你好，让我们开始吧", "Hello, let’s get started")).font(.system(size: greetingSize * store.snapshot.fontScale, weight: .semibold))
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ScrollView {

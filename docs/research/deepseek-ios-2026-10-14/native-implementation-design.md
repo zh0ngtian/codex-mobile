@@ -43,7 +43,7 @@
 | 助手正文 | 左右24 | measured |
 | 用户泡泡 | 左>=76，内部横16/竖10 | measured |
 | 输入圆角 | 26，泡泡16，代码12 | inferred |
-| 字体 | 标题17 semibold、正文16、chip12、次级13 | inferred，动态字号relativeTo |
+| 字体 | 顶栏14 semibold、用户14 semibold、助手14 medium、正文heading约16 bold、状态14、输入14、空态18 semibold、代码12、chip12 | inferred（pass2截图迭代修正），动态字号relativeTo并结合应用fontScale |
 | 阴影 | black opacity .06 / radius6 / y2 | inferred |
 
 | 颜色 | HEX | 依据 |
@@ -93,3 +93,11 @@ DeepSeek空态品牌不复用，无鲸鱼、logo或语音入口。欢迎语映�
 主任务已实际执行新增位置断言的RED：首条用户文本minY=343，期望小于顶栏maxY+100=214.25，失败结果为 `test_sim_2026-10-14T10-35-30-766Z_pid23807_92176acf.xcresult`。更新后4项NativeUIUITests均GREEN；第二轮并排图为 `.mobile-build/native-reference/conversation-side-by-side-pass2.png`。目前只确认三处大布局问题已修正，字号和其他排版差异仍待下一轮。
 
 质量审查后，真实Swift smoke分别先复现“同进程新窗口提前应用偏好”和“权威快照无法清除旧字段覆盖值”，再转GREEN。修复为scene独立桥/状态与进程只读启动模式；字段缓存以panel/message及item组合为作用域，有效完整快照清理本地覆盖，关闭面板清理对应作用域（含secure值）。测试覆盖业务校正、多选、换面板、关闭重开及同id字段隔离。异步编辑回执协调仍由后续共享业务桥处理。
+
+## Typography pass3
+
+第二轮相同S22文案中，原生用户正文5行，参考约4行；首个中文字墨迹高度约14pt，参考约11.5pt。由此将初始16pt正文推断修正为14pt，并分别使用用户semibold、助手medium；正文heading约16pt bold，状态14pt，顶栏14pt semibold，输入14pt，空态18pt semibold，代码12pt。
+
+用户正文参考TextView高83pt/约4行、基线约21pt；14pt系统默认行高约17pt，因此用户和Markdown正文增加5pt lineSpacing（inferred），块间spacing不变。
+
+本轮仅修改字体、字重、正文leading及代码字号的fontScale传递。所有字号继续使用ScaledMetric跟随系统动态字体；代码复制保留44pt触控范围。没有调整组件间距、颜色或圆角；参考泡泡y148与当前y128的20pt差异留给独立layout pass4。新鲜截图仍由主任务统一构建和采集。

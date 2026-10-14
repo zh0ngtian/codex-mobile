@@ -4,6 +4,8 @@ import UIKit
 struct NativeCodeView: View {
     let text: String
     var language: String = ""
+    var scale: Double = 1
+    @ScaledMetric(relativeTo: .callout) private var codeSize = 12
     @Environment(\.locale) private var locale
     private var isChinese: Bool { locale.identifier.lowercased().hasPrefix("zh") }
     var body: some View {
@@ -16,7 +18,7 @@ struct NativeCodeView: View {
             }.padding(.horizontal, 12)
             Divider()
             ScrollView(.horizontal) {
-                Text(text).font(.system(.callout, design: .monospaced)).textSelection(.enabled).padding(12)
+                Text(text).font(.system(size: codeSize * scale, design: .monospaced)).textSelection(.enabled).padding(12)
             }
         }.background(NativePalette.code, in: .rect(cornerRadius: 12))
     }
