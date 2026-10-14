@@ -375,6 +375,8 @@ function BackendWorkspace({
   const [draft, setDraft] = useState(restoredWorkspace?.text ?? "");
   const savedDraftRef = useRef<SavedDraftReference | undefined>(restoredWorkspace?.savedDraftReference);
   const restoredDraftSettingsRef = useRef<SavedNewChatDraft["settings"] | null>(restoredWorkspace?.settings ?? null);
+  // 仅首轮同线程恢复保留检查点中的本地待发送设置；普通重连仍同步服务器设置。
+  const checkpointThreadSettingsRef = useRef(restoredWorkspace?.thread?.id ?? null);
   const draftSavingRef = useRef(false);
   const draftContentVersionRef = useRef(0);
   const [draftSaving, setDraftSaving] = useState(false);
@@ -1867,16 +1869,18 @@ function BackendWorkspace({
                 setSelectedServiceTier(normalizedActiveSettings.serviceTier);
               }
             }
+            // 状态updater可能延后执行，保留本轮恢复语义，不读取随后消费的ref。
+            const restoringDraftSettings = restoredDraftSettingsRef.current !== null;
             setSelectedPermission((current) => current || configuredPermission);
             setSelectedApprovalPolicy(
               (current) =>
-                restoredDraftSettingsRef.current ? current : config.approval_policy ||
+                restoringDraftSettings ? current : config.approval_policy ||
                 (configuredPermission === ":danger-full-access"
                   ? "never"
                   : current),
             );
             setSelectedApprovalsReviewer(
-              (current) => restoredDraftSettingsRef.current ? current : config.approvals_reviewer || current,
+              (current) => restoringDraftSettings ? current : config.approvals_reviewer || current,
             );
             setRefreshing(false);
             const currentThread = activeRef.current;
@@ -1923,19 +1927,25 @@ function BackendWorkspace({
                 setActiveSettingsSynchronized(resumed.settingsSynchronized);
                 setActiveThreadAccessMode(resumed.accessMode);
                 setActiveThreadResumeError(resumed.resumeError ?? "");
-                selectedModelRef.current = resumed.model ?? "";
-                selectedEffortRef.current = resumedSettings.effort;
-                selectedServiceTierRef.current = resumedSettings.serviceTier;
-                setSelectedModel(resumed.model ?? "");
-                setSelectedEffort(resumedSettings.effort);
-                setSelectedServiceTier(resumedSettings.serviceTier);
-                if (resumed.approvalPolicy) {
-                  setSelectedApprovalPolicy(resumed.approvalPolicy);
+                if (checkpointThreadSettingsRef.current === String(currentThread.id)) {
+                  // 输入设置是本地下一次发送的选择；恢复只接收线程内容与访问状态，不写回服务器。
+                  checkpointThreadSettingsRef.current = null;
+                  restoredDraftSettingsRef.current = null;
+                } else {
+                  selectedModelRef.current = resumed.model ?? "";
+                  selectedEffortRef.current = resumedSettings.effort;
+                  selectedServiceTierRef.current = resumedSettings.serviceTier;
+                  setSelectedModel(resumed.model ?? "");
+                  setSelectedEffort(resumedSettings.effort);
+                  setSelectedServiceTier(resumedSettings.serviceTier);
+                  if (resumed.approvalPolicy) {
+                    setSelectedApprovalPolicy(resumed.approvalPolicy);
+                  }
+                  if (resumed.approvalsReviewer) {
+                    setSelectedApprovalsReviewer(resumed.approvalsReviewer);
+                  }
+                  setSelectedPermission(resumed.activePermissionProfile?.id ?? "");
                 }
-                if (resumed.approvalsReviewer) {
-                  setSelectedApprovalsReviewer(resumed.approvalsReviewer);
-                }
-                setSelectedPermission(resumed.activePermissionProfile?.id ?? "");
               }
             }
             if (!disposed && manager.client(backend.id) === source) {
@@ -2195,6 +2205,7 @@ function BackendWorkspace({
   }
 
   function resetDraftContext() {
+    checkpointThreadSettingsRef.current = null;
     draftContextGenerationRef.current += 1;
     savedDraftRef.current = undefined;
     restoredDraftSettingsRef.current = null;
