@@ -6,7 +6,7 @@ import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const validator = resolve("scripts/validate-release-batch.mjs");
-function fixture(change?: (batch: any) => void) {
+function fixture(change?: (batch: any) => void, notes: string | null = "- 新增会话搜索。") {
   const root = mkdtempSync(join(tmpdir(), "frozen-batch-"));
   const git = (...args: string[]) => {
     const r = spawnSync("git", args, { cwd: root, encoding: "utf8" });
@@ -14,7 +14,9 @@ function fixture(change?: (batch: any) => void) {
     return r.stdout.trim();
   };
   git("init", "-q"); git("config", "user.email", "test@example.com"); git("config", "user.name", "Test");
-  writeFileSync(join(root, "source.txt"), "source"); git("add", "."); git("commit", "-qm", "task");
+  writeFileSync(join(root, "source.txt"), "source");
+  if (notes !== null) { mkdirSync(join(root, "release")); writeFileSync(join(root, "release/notes.md"), notes); }
+  git("add", "."); git("commit", "-qm", "task");
   const task = git("rev-parse", "HEAD");
   const batch = { schemaVersion: 1, batchId: "batch-123", project: "codex-mobile-lan-production", scope: "codex-mobile-main-production", target: "vip.loock.codexmobile", environment: "lan-production", tasks: [{ id: "task-1", sha: task, validation: { checks: [{ name: "ci", status: "passed" }] } }], prepared: { version: "0.2.148", buildNumber: 2148, localValidation: "passed", inputFingerprint: "b".repeat(64) } };
   change?.(batch);
@@ -57,14 +59,42 @@ describe("冻结批次来源门禁", () => {
     } finally { f.cleanup(); }
   });
 
-  it("未提供更新日志时不以构建和签名模板代替更新内容", () => {
-    const f = fixture();
+  it("清单无更新日志时读取冻结仓库的受控中文日志", () => {
+    const f = fixture(undefined, "\n- 新增原生界面。\n- 修复输入丢字。\n");
     try {
       const output = join(f.root, "release-notes.md");
       const result = f.run("--notes", output);
       expect(result.status, result.stderr).toBe(0);
-      const notes = readFileSync(output, "utf8");
-      expect(notes.trim()).toBe("");
+      expect(readFileSync(output, "utf8")).toBe("- 新增原生界面。\n- 修复输入丢字。\n");
+    } finally { f.cleanup(); }
+  });
+
+  it.each([null, "", " \n "])("缺失或空受控日志时明确失败：%j", notes => {
+    const f = fixture(undefined, notes);
+    try {
+      const result = f.run("--notes", join(f.root, "release-notes.md"));
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain("更新日志");
+    } finally { f.cleanup(); }
+  });
+
+  it.each([{ notes: "" }, { notes: " \n " }, { notes: null }, { notes: [] }])("显式无效日志不能降级使用文件：$notes", ({ notes }) => {
+    const f = fixture(b => { b.releaseNotes = notes; });
+    try {
+      const result = f.run("--notes", join(f.root, "release-notes.md"));
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain("更新日志");
+    } finally { f.cleanup(); }
+  });
+
+  it("拒绝未纳入冻结提交的日志文件", () => {
+    const f = fixture(undefined, null);
+    try {
+      mkdirSync(join(f.root, "release"));
+      writeFileSync(join(f.root, "release/notes.md"), "- 未提交的日志。");
+      const result = f.run("--notes", join(f.root, "release-notes.md"));
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain("更新日志");
     } finally { f.cleanup(); }
   });
 

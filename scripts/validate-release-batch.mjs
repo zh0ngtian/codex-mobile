@@ -6,6 +6,7 @@ import { resolve, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { versionCode } from "./resolve-mobile-version.mjs";
+import { readReleaseNotes } from "./read-release-notes.mjs";
 
 const manifestPath = ".release-batch.json";
 const fail = message => { throw new Error(message); };
@@ -102,7 +103,7 @@ async function main() {
   const context = await validateReleaseBatch({ root: values.root, batchId: values["batch-id"], frozenSha: values["frozen-sha"], version: values.version });
   if (values.receipts) await validateBuildReceipts(context, resolve(values.receipts), { root: values.root, runId: values["run-id"], runAttempt: values["run-attempt"] });
   if (values.notes) {
-    const changes = typeof context.batch.releaseNotes === "string" ? context.batch.releaseNotes.trim() : "";
+    const changes = await readReleaseNotes(resolve(values.root || process.cwd()), context.batch);
     await writeFile(values.notes, changes + "\n", "utf8");
   }
   const output = values.output || process.env.GITHUB_OUTPUT;

@@ -679,7 +679,8 @@ class Adapter:
             raise TimeoutError('冻结提交必要开发 CI 等待超时')
         else:raise ValueError('不支持的发布阶段')
 
-    def notes(self):return '发布协调批次 '+self.context['id']+'；任务 '+', '.join(t['id'] for t in self.context['tasks'])
+    def notes(self):
+        return self.command(['node', self.work/'scripts/read-release-notes.mjs', '--root', self.work])
 
     def run_phase(self, phase):
         checked=self.check_phase(phase)
