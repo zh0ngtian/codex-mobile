@@ -70,6 +70,13 @@ describe("桌面会话文件引用", () => {
     expect(screen.getByText(/前文/).textContent).toBe("前文 中文 空格(1)%20#附件.docx 中间 计划.xls 后文");
   });
 
+  it("无需空格也能识别相邻引用与普通前文", () => {
+    render(<MarkdownMessage text='前文:codex-file-citation{path="/tmp/first.doc"}::codex-file-citation{path="/tmp/second.doc"}' />);
+    expectFileLink("first.doc", "/tmp/first.doc");
+    expectFileLink("second.doc", "/tmp/second.doc");
+    expect(screen.getByText(/前文/).textContent).toBe("前文first.docsecond.doc");
+  });
+
   it.each([
     ':codex-file-citation{purpose="source"}',
     ':codex-file-citation{path="/tmp/a.doc" path="/tmp/b.doc"}',
@@ -86,6 +93,7 @@ describe("桌面会话文件引用", () => {
     ':codex-file-citation{path="/tmp/a.doc"',
     ':codex-file-citation{path="/tmp/a.doc}',
     ':::codex-file-citation{path="/tmp/a.doc"}',
+    '::::codex-file-citation{path="/tmp/a.doc"}',
     ':codex-file-citation{broken :codex-file-citation{path="/tmp/nested.doc"}}',
     ':codex-file-citation{path="/tmp/unclosed :codex-file-citation{path="/tmp/nested.doc"}}',
   ])("保留非法或残缺指令 %s", text => {
@@ -106,6 +114,23 @@ describe("桌面会话文件引用", () => {
     expect(links[0].getAttribute("href")).toBe("https://example.com");
     expect(links[0].textContent).toBe(citation);
     expect(container.querySelectorAll("code")).toHaveLength(2);
+  });
+
+  it.each(['title="/>"', "title='/>'", 'title="> / >"', "title='> / >'"])(
+    "保留 HTML 引号属性 %s 内的引用，并转换标签外引用",
+    attribute => {
+      const inside = ':codex-file-citation{path="/tmp/inside.doc"}';
+      render(<MarkdownMessage text={`<span ${attribute}>${inside}</span> 外部 :codex-file-citation{path="/tmp/outside.doc"}`} />);
+      expect(screen.getAllByRole("link")).toHaveLength(1);
+      expectFileLink("outside.doc", "/tmp/outside.doc");
+      expect(screen.getByText(/外部/).textContent).toBe(`<span ${attribute}>${inside}</span> 外部 outside.doc`);
+    },
+  );
+
+  it("三级 My request 标题不结束用户附件区", () => {
+    render(<MarkdownMessage text={"# Files mentioned by the user:\n\n### My request:\n\n## 文件.doc: /tmp/文件.doc"} />);
+    expectFileLink("文件.doc", "/tmp/文件.doc");
+    expect(screen.getByRole("heading", { name: "My request:", level: 3 })).not.toBeNull();
   });
 
   it("保留附件区之外、不同层级及普通标题中的裸路径", () => {

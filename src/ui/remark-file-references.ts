@@ -43,11 +43,12 @@ function citationPath(attributes: string): string | null {
 }
 
 function citationNodes(text: Text, options: FileReferencesOptions): PhrasingContent[] {
-  const directive = /(?<!:):{1,2}codex-file-citation\{/g;
+  const directive = /:{1,2}codex-file-citation\{/g;
   const nodes: PhrasingContent[] = [];
   let offset = 0;
   let match: RegExpExecArray | null;
   while ((match = directive.exec(text.value))) {
+    if (match.index > 0 && text.value[match.index - 1] === ":") continue;
     const attributesStart = directive.lastIndex;
     let end = attributesStart;
     let depth = 1;
@@ -87,7 +88,7 @@ function transformCitations(node: Nodes, options: FileReferencesOptions) {
   for (const child of node.children) {
     if (child.type === "html") {
       // 行内 HTML 的正文在 mdast 中仍是 text，保留标签范围内的全部内容。
-      for (const tag of child.value.matchAll(/<(\/?)([A-Za-z][A-Za-z0-9-]*)\b[^>]*>/g)) {
+      for (const tag of child.value.matchAll(/<(\/?)([A-Za-z][A-Za-z0-9-]*)\b(?:"[^"]*"|'[^']*'|[^"'<>])*>/g)) {
         const name = tag[2].toLowerCase();
         if (tag[1]) {
           const index = htmlTags.lastIndexOf(name);
@@ -118,7 +119,7 @@ export function remarkFileReferences(options: FileReferencesOptions) {
       const plain = node.children.length === 1 && node.children[0].type === "text"
         ? node.children[0].value : null;
       if (node.depth === 1) attachments = plain?.trim() === "Files mentioned by the user:";
-      if (plain?.trim() === "My request:") attachments = false;
+      if (node.depth === 2 && plain?.trim() === "My request:") attachments = false;
       if (!attachments || node.depth !== 2 || plain === null) continue;
       const file = plain.match(/^(.+?):\s+(\/[^\r\n]+)$/);
       if (!file) continue;
