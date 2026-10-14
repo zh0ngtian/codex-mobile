@@ -24,10 +24,11 @@ export function nativeItemText(item: RecordValue): string {
   return text;
 }
 /** final 与其他正文立即投影；commentary 折叠计数独立于工具和推理。 */
-export function projectConversation(active: RecordValue | null, imageURL: (path: string) => string): NativeMessage[] {
+export function projectConversation(active: RecordValue | null, imageURL: (path: string) => string, originalImageURL?: (path: string) => string): NativeMessage[] {
   const messages: NativeMessage[] = [];
   const imageBlocks = (item: RecordValue, prefix: string): NativePanelItem[] => imageSourcesForItem(item).map((image, index) => ({
     id: `${prefix}:image:${index}`, kind: 'image', title: image.name, value: image.local ? imageURL(image.source) : image.source,
+    ...(image.local && originalImageURL ? { previewURL: originalImageURL(image.source) } : {}),
   }));
   for (const turn of groupConversationTurns(active?.turns ?? [])) {
     const turnId = String(turn.id);
@@ -70,7 +71,8 @@ export function projectConversation(active: RecordValue | null, imageURL: (path:
       for (const [index, image] of imageSourcesForItem(item).entries()) {
         if (seen.has(image.source) || (item.type === 'imageView' && generatedSources.has(image.source))) continue;
         seen.add(image.source);
-        const block: NativePanelItem = { id: `${turnId}:${item.id}:image:${index}`, kind: 'image', title: image.name, value: image.local ? imageURL(image.source) : image.source };
+        const block: NativePanelItem = { id: `${turnId}:${item.id}:image:${index}`, kind: 'image', title: image.name, value: image.local ? imageURL(image.source) : image.source,
+          ...(image.local && originalImageURL ? { previewURL: originalImageURL(image.source) } : {}) };
         if (item.type === 'imageGeneration') generatedImages.push(block); else screenshots.push(block);
       }
     }

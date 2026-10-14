@@ -61,7 +61,7 @@ export function bindWorkspaceCommands(snapshot: NativeSnapshot): NativeSnapshot 
   };
 }
 export function createWorkspaceAdapter(c: NativeWorkspaceController, panel: PanelState): { snapshot: NativeSnapshot; handlers: NativeHandlers } {
-  const messages = projectConversation(c.active, path => remoteImagePreviewUrl(c.backend, path));
+  const messages = projectConversation(c.active, path => remoteImagePreviewUrl(c.backend, path), path => remoteImagePreviewUrl(c.backend, path, false));
   const caretOffset = Math.max(0, Math.min(c.draft.length, c.caretOffset ?? c.draft.length));
   const mention = skillMentionAt(c.draft, caretOffset);
   const mentions = mention ? [

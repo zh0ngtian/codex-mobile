@@ -3,7 +3,7 @@ export type NativeParams = Record<string, unknown>;
 export interface NativeCommand { id?: string; name: string; params: NativeParams }
 export interface NativeOption { id: string; title: string; value: string; subtitle?: string }
 export interface NativePanelItem {
-  id: string; kind: string; title?: string; text?: string; value?: string; values?: string[];
+  id: string; kind: string; title?: string; text?: string; value?: string; previewURL?: string; values?: string[];
   options?: NativeOption[]; command?: NativeCommand; children?: NativePanelItem[]; disabled?: boolean;
 }
 export interface NativeNavigationItem { id: string; title: string; subtitle?: string; badge?: string; selected?: boolean; command?: NativeCommand; actions?: NativePanelItem[] }

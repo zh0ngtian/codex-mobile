@@ -81,3 +81,14 @@ it('全部设备的项目入口仍按真实项目与无项目分组，含未加�
  expect(groups.find(g => g.id === 'a:/empty')?.actions?.[0].command?.name).toBe('project.more');
  expect(groups.some(g => g.title.includes('无项目'))).toBe(true);
 });
+
+it('本地用户图片与生成图分别保留缩略图和原图回调，data及远程图片URL保持原值', () => {
+ const messages = projectConversation({ id: 't', turns: [{ id: 'turn', items: [
+  { id: 'user-images', type: 'userMessage', content: [{ type: 'localImage', path: '/user.png' }, { type: 'image', url: 'data:image/png;base64,YQ==' }, { type: 'image', url: 'https://remote.invalid/image.png' }] },
+  { id: 'generated', type: 'imageGeneration', savedPath: '/generated.png' },
+  { id: 'screen', type: 'imageView', path: '/screen.png' },
+ ] }] }, path => `thumbnail:${path}`, path => `original:${path}`);
+ const blocks = messages.flatMap(message => message.blocks ?? []).filter(block => block.kind === 'image');
+ expect(blocks.filter(block => block.value?.startsWith('thumbnail:')).map(block => block.previewURL)).toEqual(['original:/user.png', 'original:/generated.png', 'original:/screen.png']);
+ expect(blocks.filter(block => /^(data:|https:)/.test(block.value ?? '')).every(block => block.previewURL === undefined)).toBe(true);
+});

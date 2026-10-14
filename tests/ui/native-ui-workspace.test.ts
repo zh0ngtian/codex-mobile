@@ -75,3 +75,14 @@ it('会话快照中的递归动作绑定创建上下文，旧面板动作不能�
  expect(commands.length).toBeGreaterThan(3);
  expect(commands.every(command => command.params.contextId === 'b:t:1')).toBe(true);
 });
+
+it('原图资源URL保留现有token/path鉴权参数并移除thumbnail，不把640像素缩略图当原图', () => {
+ const adapter = createWorkspaceAdapter(controller({ active: { id: 't', turns: [{ id: 'turn', items: [{ id: 'u', type: 'userMessage', content: [{ type: 'localImage', path: '/tmp/原图.png' }] }] }] } }), { panelId: null, query: '', setPanel() {}, setQuery() {} });
+ const image = adapter.snapshot.messages[0].blocks![0];
+ expect(new URL(image.value!).searchParams.get('thumbnail')).toBe('1');
+ expect(image.previewURL).toBeTypeOf('string');
+ const original = new URL(image.previewURL!);
+ expect(original.searchParams.has('thumbnail')).toBe(false);
+ expect(original.searchParams.get('token')).toBe('SECRET');
+ expect(original.searchParams.get('path')).toBe('/tmp/原图.png');
+});
