@@ -3,7 +3,6 @@ import WebKit
 
 @MainActor
 final class NativeUIBridge: NSObject, WKScriptMessageHandler {
-    static let shared = NativeUIBridge()
     let store = NativeUIStore()
     // 业务 WebView 由既有 WebView representable 创建并拥有；桥仅保留弱引用，绝不创建第二个实例。
     private weak var webView: WKWebView?

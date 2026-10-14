@@ -3,14 +3,30 @@ import Foundation
 @main
 struct NativeStoreSmoke {
     @MainActor static func main() throws {
-        let defaults = UserDefaults(suiteName: "CodexMobile.NativeUI.Tests")!
-        defaults.removePersistentDomain(forName: "CodexMobile.NativeUI.Tests")
-        let normal = NativeUIStore(arguments: [], defaults: defaults)
+        let defaults = UserDefaults.standard
+        let previousPreference = defaults.object(forKey: NativeUIStore.preferenceKey)
+        defer {
+            if let previousPreference { defaults.set(previousPreference, forKey: NativeUIStore.preferenceKey) }
+            else { defaults.removeObject(forKey: NativeUIStore.preferenceKey) }
+        }
+        defaults.removeObject(forKey: NativeUIStore.preferenceKey)
+        let normal = NativeUIStore(arguments: [])
         precondition(!normal.nativeEnabled, "首次应默认旧界面")
         defaults.set(true, forKey: NativeUIStore.preferenceKey)
         precondition(!normal.nativeEnabled, "当前启动不能热切换")
-        precondition(NativeUIStore(arguments: [], defaults: defaults).nativeEnabled)
-        let reference = NativeUIStore(arguments: ["--native-ui-reference-conversation"], defaults: defaults)
+        precondition(!NativeUIStore(arguments: []).nativeEnabled, "同进程新窗口不能提前启用新偏好")
+        let secondScene = NativeUIStore(arguments: [])
+        normal.draft = "第一窗口"
+        secondScene.draft = "第二窗口"
+        var firstCommands: [String] = []
+        var secondCommands: [String] = []
+        normal.sendCommand = { firstCommands.append($0.name) }
+        secondScene.sendCommand = { secondCommands.append($0.name) }
+        normal.command("first-scene")
+        secondScene.command("second-scene")
+        precondition(normal.draft == "第一窗口" && secondScene.draft == "第二窗口")
+        precondition(firstCommands == ["first-scene"] && secondCommands == ["second-scene"])
+        let reference = NativeUIStore(arguments: ["--native-ui-reference-conversation"])
         precondition(reference.snapshot.messages.count == 2)
         precondition(NativeMarkdownBlock.parse(reference.snapshot.messages[1].text).contains { $0.kind == "code" && $0.text == "print(\"Hello\")" })
         let encoded = try JSONEncoder().encode(reference.snapshot)
@@ -31,7 +47,6 @@ struct NativeStoreSmoke {
         let command = NativeCommand(name: "test", params: params)
         let commandRoundtrip = try JSONDecoder().decode(NativeCommand.self, from: JSONEncoder().encode(command))
         precondition(commandRoundtrip.params == params)
-        defaults.removePersistentDomain(forName: "CodexMobile.NativeUI.Tests")
         print("Native store/schema/Markdown smoke passed")
     }
 }

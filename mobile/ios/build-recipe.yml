@@ -390,7 +390,7 @@ steps:
       source = source.replace(
           webview_constructor,
           "let webView = CodexMobileWebView(frame: .zero, configuration: webConfiguration)\n"
-          "        NativeUIBridge.shared.attach(webView)\n"
+          "        context.environment.nativeUIBridge?.attach(webView)\n"
           "        CodexMobileAttachmentPickerBridge.configure(webView)\n"
           "        CodexMobileAppUpdateBridge.configure(webView)\n"
           "        if #available(iOS 16.0, *) { CodexMobileActionMenuBridge.configure(webView) }",

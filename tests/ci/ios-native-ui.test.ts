@@ -80,6 +80,10 @@ describe("SwiftUI 原生宿主契约", () => {
   it("离线基准不挂载业务 WebView，正式模式复用旧实例", () => {
     expect(source("NativeUIHost")).toMatch(/if !store.isReference \{\s+legacy/);
     expect(source("NativeUIBridge")).not.toContain("WKWebView(frame:");
+    expect(source("NativeUIBridge")).not.toContain("static let shared");
+    expect(source("NativeUIHost")).toContain("@State private var bridge = NativeUIBridge()");
+    expect(source("NativeUIHost")).toContain(".environment(\\.nativeUIBridge, bridge)");
+    expect(source("NativeUIEnvironment")).toContain("@Entry var nativeUIBridge: NativeUIBridge? = nil");
     expect(source("NativeUIStore")).toContain("guard value.version == 1, !isReference");
   });
   it("构建安装原生源码并保持现有 WebView 唯一构造入口", () => {
@@ -87,7 +91,7 @@ describe("SwiftUI 原生宿主契约", () => {
     const scripts = recipe.steps.map((s: any) => s.run ?? "").join("\n");
     expect(scripts).toContain("mobile/ios/NativeUI/*.swift");
     expect(scripts).toContain("NativeUIHost");
-    expect(scripts).toContain("NativeUIBridge.shared.attach(webView)");
+    expect(scripts).toContain("context.environment.nativeUIBridge?.attach(webView)");
     expect(scripts).toContain('IPHONEOS_DEPLOYMENT_TARGET = 18.0;');
     expect(readFileSync("scripts/configure-ios-tests.rb", "utf8")).toContain("NativeUIUITests.swift");
   });

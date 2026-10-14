@@ -17,9 +17,11 @@ final class NativeUIStore {
     let nativeEnabled: Bool
     static let preferenceKey = "codexMobile.useNativeUI"
 
-    init(arguments: [String] = ProcessInfo.processInfo.arguments, defaults: UserDefaults = .standard) {
+    static let launchPreference = UserDefaults.standard.bool(forKey: preferenceKey)
+
+    init(arguments: [String] = ProcessInfo.processInfo.arguments) {
         isReference = arguments.contains("--native-ui-reference") || arguments.contains("--native-ui-reference-conversation")
-        nativeEnabled = isReference || defaults.bool(forKey: Self.preferenceKey)
+        nativeEnabled = isReference || Self.launchPreference
         if isReference {
             snapshot.ready = true
             snapshot.connection = "connected"

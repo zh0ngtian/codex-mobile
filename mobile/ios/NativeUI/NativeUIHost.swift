@@ -2,7 +2,8 @@ import SwiftUI
 
 struct NativeUIHost<Legacy: View>: View {
     private let legacy: Legacy
-    @State private var store = NativeUIBridge.shared.store
+    @State private var bridge = NativeUIBridge()
+    private var store: NativeUIStore { bridge.store }
     init(@ViewBuilder legacy: () -> Legacy) { self.legacy = legacy() }
     var body: some View {
         ZStack {
@@ -17,5 +18,6 @@ struct NativeUIHost<Legacy: View>: View {
                 NativeRootView(store: store)
             }
         }
+        .environment(\.nativeUIBridge, bridge)
     }
 }
