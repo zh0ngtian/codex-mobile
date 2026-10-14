@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { NativeRuntime, isNativeUIEnabled, publishNativeSnapshot } from './runtime';
 import { useNativeSwitch } from './switch-context';
 import type { NativeHandlers, NativeNavigation, NativeParams, NativeSnapshot } from './protocol';
@@ -15,11 +15,18 @@ function useCommittedRegistration(handlers: NativeHandlers, register: (handlers:
     }])));
   });
 }
+// 人工错误恢复只关闭呈现层，不重挂业务workspace或更改本进程冻结模式。
+function subscribeRecovery(callback: () => void) {
+  window.addEventListener('codex-mobile-native-recovery', callback);
+  return () => window.removeEventListener('codex-mobile-native-recovery', callback);
+}
 export function useNativeRuntime(navigation: NativeNavigation, handlers: NativeHandlers): NativeRuntime | null {
   const preference = useNativeSwitch();
   const preferenceRef = useRef(preference);
   useLayoutEffect(() => { preferenceRef.current = preference; });
-  const [runtime] = useState(() => isNativeUIEnabled() ? new NativeRuntime(publishNativeSnapshot, () => preferenceRef.current?.changed()) : null);
+  const enabled = useSyncExternalStore(subscribeRecovery, isNativeUIEnabled, () => false);
+  const [cachedRuntime] = useState(() => enabled ? new NativeRuntime(publishNativeSnapshot, () => preferenceRef.current?.changed()) : null);
+  const runtime = enabled ? cachedRuntime : null;
   useLayoutEffect(() => { runtime?.listen(); return () => runtime?.dispose(); }, [runtime]);
   useCommittedRegistration({ ...handlers, ...(preference ? { 'settings.native-ui': (params: NativeParams) => preference.change(params.enabled as boolean) } : {}) }, committed => runtime?.setNavigation({ ...navigation, error: preference?.error || navigation.error }, committed));
   return runtime;

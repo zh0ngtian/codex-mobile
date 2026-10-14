@@ -12,7 +12,7 @@ export function useNativeConfirmation(runtime: NativeRuntime | null, owner: stri
   { ...nativeAction('confirmation-yes', t('确认'), 'confirmation.answer', { key: display.key, confirmed: true }), text: display.message },
   nativeAction('confirmation-no', t('取消'), 'confirmation.answer', { key: display.key, confirmed: false }),
  ] } : undefined, { 'confirmation.answer': p => settle(p.key, p.confirmed === true), 'panel.close': p => settle(p.id, false) });
- useLayoutEffect(() => () => { pending.current?.resolve(false); pending.current = null; }, []);
+ useLayoutEffect(() => () => { pending.current?.resolve(false); pending.current = null; }, [runtime]);
  return (message: string): Promise<boolean> => {
   if (!runtime) return Promise.resolve(window.confirm(message));
   if (pending.current) return Promise.reject(new Error(t('已有确认操作等待处理')));

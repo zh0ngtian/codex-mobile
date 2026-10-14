@@ -6,15 +6,16 @@ import { nativeSwitchStore } from '../../src/native-ui/switch-store';
 import { useNativeRuntime } from '../../src/native-ui/adapters';
 import { useNativeConfirmation } from '../../src/native-ui/confirmation';
 import { AppBootstrap } from '../../src/App';
-vi.mock('../../src/backends/connection-manager', () => ({ BackendConnectionManager: class { sync() {} close() {} reconnect() {} client() { return null; } socket() { return null; } } }));
+const connections = vi.hoisted(() => ({ created: 0, closed: 0 }));
+vi.mock('../../src/backends/connection-manager', () => ({ BackendConnectionManager: class { constructor() { connections.created++; } sync() {} close() { connections.closed++; } reconnect() {} client() { return null; } socket() { return null; } } }));
 const posts: any[] = []; const messages: any[] = [];
 const registry = { version: 1 as const, selectedBackendId: 'a', backends: ['a', 'b'].map((id, order) => ({ id, hostId: id, name: id, enabled: true, order, baseUrl: `https://${id}.invalid`, token: '' })) };
 function command(id: string, name: string, params: Record<string, unknown> = {}) { window.dispatchEvent(new CustomEvent('codex-mobile-native-command', { detail: { id, name, params } })); }
 function host(active: boolean) { Object.assign(window, { __CODEX_IOS_HOST__: true, __CODEX_NATIVE_UI__: active, webkit: { messageHandlers: { nativeUI: { postMessage(message: any) {
- messages.push(message); if (message.type === 'nativePreference') queueMicrotask(() => (window as any).codexMobileNativePreferenceComplete({ id: message.id, enabled: message.enabled ?? active, active }));
+ messages.push(message); if (message.type === 'nativePreference') { const complete = (window as any).codexMobileNativePreferenceComplete; queueMicrotask(() => complete({ id: message.id, enabled: message.enabled ?? active, active })); }
  } } } }, codexMobilePublishNativeSnapshot: (snapshot: any) => posts.push(snapshot) }); }
 beforeEach(() => { vi.stubGlobal('indexedDB', new IDBFactory()); vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { headers: { 'content-type': 'application/json' } }))); });
-afterEach(() => { cleanup(); localStorage.clear(); posts.length = 0; messages.length = 0; for (const key of ['__CODEX_IOS_HOST__', '__CODEX_NATIVE_UI__', 'webkit', 'codexMobilePublishNativeSnapshot', 'codexMobileNativePreference', 'codexMobileNativePreferenceComplete']) delete (window as any)[key]; vi.unstubAllGlobals(); vi.restoreAllMocks(); });
+afterEach(() => { cleanup(); localStorage.clear(); posts.length = 0; messages.length = 0; for (const key of ['__CODEX_IOS_HOST__', '__CODEX_NATIVE_UI__', '__CODEX_NATIVE_UI_RECOVERED__', 'webkit', 'codexMobilePublishNativeSnapshot', 'codexMobileNativePreference', 'codexMobileNativePreferenceComplete']) delete (window as any)[key]; vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 it('旧界面仅在iOS宿主显示原生开关，保存偏好后当前界面保持旧模式', async () => {
  host(false); render(<AppBootstrap initialRegistry={{ version: 1, selectedBackendId: '', backends: [] }} />);
  const toggle = await screen.findByRole('checkbox', { name: '使用原生界面' }); expect(toggle).not.toBeChecked();
@@ -144,4 +145,29 @@ it('切换后纯原生命令修改字号也同步检查点，重启不还原旧�
  first.unmount(); render(<AppBootstrap initialRegistry={registry} />);
  await waitFor(() => expect(posts.at(-1)?.fontScale).toBe(1.25));
  expect(localStorage.getItem('codex-mobile:font-size')).toBe('extra-large');
+});
+
+it('人工恢复同一个Web业务界面时保留全部草稿与连接，仅关闭原生呈现', async () => {
+ host(true); render(<AppBootstrap initialRegistry={registry} />); await waitFor(() => expect(posts.at(-1)?.ready).toBe(true));
+ await act(async () => command('before-recovery-text', 'draft.set', { contextId: posts.at(-1).contextId, value: '人工恢复保留输入', revision: 1 }));
+ await act(async () => command('before-recovery-settings', 'settings.open', { id: 'devices' }));
+ const created = connections.created; const closed = connections.closed;
+ await act(async () => { (window as any).__CODEX_NATIVE_UI_RECOVERED__ = true; window.dispatchEvent(new Event('codex-mobile-native-recovery')); });
+ expect((window as any).__CODEX_NATIVE_UI__).toBe(true);
+ expect(screen.getByRole('dialog', { name: '管理设备' })).toBeInTheDocument();
+ expect(screen.getByRole('textbox', { name: '向 Codex 提问' })).toHaveValue('人工恢复保留输入');
+ expect(connections.created).toBe(created); expect(connections.closed).toBe(closed);
+ const count = posts.length;
+ await act(async () => { command('after-recovery-invalid', 'draft.set', { contextId: posts.at(-1).contextId, value: '不应覆盖', revision: 2 }); await new Promise(resolve => setTimeout(resolve, 40)); });
+ expect(posts.length).toBe(count); expect(screen.getByRole('textbox', { name: '向 Codex 提问' })).toHaveValue('人工恢复保留输入');
+ expect(messages.some(message => message.type === 'nativePreference' && message.enabled !== undefined)).toBe(false);
+});
+it('人工恢复结束等待中的原生确认，后续确认走可见Web对话框', async () => {
+ host(true); const webConfirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+ const { result } = renderHook(() => { const runtime = useNativeRuntime({ selectedBackendId: '', backends: [], groups: [] }, {}); return { runtime, confirm: useNativeConfirmation(runtime, 'manual-recovery') }; });
+ let pending!: Promise<boolean>; act(() => { pending = result.current.confirm('等待中的确认'); });
+ expect(result.current.runtime?.snapshot().panel?.id).toContain('manual-recovery');
+ await act(async () => { (window as any).__CODEX_NATIVE_UI_RECOVERED__ = true; window.dispatchEvent(new Event('codex-mobile-native-recovery')); });
+ expect(result.current.runtime).toBeNull(); expect(await pending).toBe(false);
+ expect(await result.current.confirm('恢复后的确认')).toBe(false); expect(webConfirm).toHaveBeenCalledWith('恢复后的确认');
 });
