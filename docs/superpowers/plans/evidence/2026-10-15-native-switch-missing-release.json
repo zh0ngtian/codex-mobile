@@ -66,7 +66,8 @@
     "switchValue": "0",
     "preferenceChangedByAgent": false,
     "temporaryDiagnosticCodeRemoved": true,
-    "officialLaunchCheck": "blocked-by-device-lock",
-    "scope": "候选真机已用ictrl确认开关；正式同SHA签名包已覆盖安装，最终启动被系统Locked拒绝，待解锁复核；未声明所有用户数据及钥匙串逐项验收"
+    "officialLaunchCheck": "not-required-by-user",
+    "scope": "候选真机已用ictrl确认开关；正式同SHA签名包已覆盖安装，最后启动被系统Locked拒绝。用户随后明确不再要求真机确认，本轮按已完成的测试和发布验收结束；未声明正式包页面复核或所有用户数据及钥匙串逐项验收",
+    "lastAttempt": "blocked-by-device-lock"
   }
 }

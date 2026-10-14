@@ -35,4 +35,4 @@ private let trustedURL = Bundle.main.url(forResource: "index", withExtension: "h
 - [x] 107项CI构建契约、157项发布Python、30项协调器测试和typecheck通过；中文日志只列本次可感知修复。
 - [x] 固定修复SHA `6db54bc0eecbf01d0311a95732a9761813cc6a1f` 已推送并ready；协调器冻结 `b02829442883b23cb7ed8a9e963f92ece4cc3769`，分配0.2.176/2176。
 - [x] 成功批次 `e691dd32-f0a5-4984-80df-06e97c27b588` 的共同凭证、双端CI、固定APK/签名IPA/HTTPS OTA、unsigned软件源与中文日志均核对；独立HEAD和完整GET散列一致。详见[发布验收](evidence/2026-10-15-native-switch-missing-release.json)。
-- [ ] 候选真机已用ictrl确认开关value=0；正式0.2.176签名包已覆盖安装，最后启动遇系统锁屏，待用户解锁后复核正式页面。未卸载或修改用户界面偏好。
+- [x] 候选真机已用ictrl确认开关value=0；正式0.2.176签名包已覆盖安装，最后启动遇系统锁屏。用户随后明确不再要求真机确认，本轮按已完成测试和发布验收结束；没有将正式包页面复核记为通过。未卸载或修改用户界面偏好。
