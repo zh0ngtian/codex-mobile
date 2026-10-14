@@ -1,4 +1,4 @@
-import { StrictMode, useState } from 'react';
+import { StrictMode, useLayoutEffect, useState } from 'react';
 import { act, cleanup, render } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { useNativeRuntime, useNativeWorkspace } from '../../src/native-ui/adapters';
@@ -35,4 +35,42 @@ it('React StrictMode清理重挂后仍发布且只订阅一次', async () => {
  expect(posts).toHaveLength(1);
  await act(async () => { window.dispatchEvent(new CustomEvent('codex-mobile-native-command', { detail: { id: 'strict-d', name: 'draft.set', params: { contextId: 'b:t', value: '严格模式', revision: 1 } } })); });
  expect(view.container.textContent).toBe('严格模式');
+});
+
+it('提交新会话的布局effect中迟到旧命令不能执行新会话回调', async () => {
+ Object.assign(window, { __CODEX_NATIVE_UI__: true, webkit: { messageHandlers: { nativeUI: { postMessage() {} } } } });
+ const writes: Array<{ contextId: string; value: string }> = [];
+ function ContextHarness({ contextId }: { contextId: string }) {
+  const runtime = useNativeRuntime({ selectedBackendId: 'b', backends: [], groups: [] }, {});
+  useNativeWorkspace(runtime, 'b', { ...emptyNativeSnapshot(), ready: true, backendId: 'b', contextId }, {
+   'draft.set': params => { writes.push({ contextId, value: String(params.value) }); },
+  });
+  useLayoutEffect(() => {
+   if (contextId !== 'new') return;
+   for (const [id, context, value] of [['old-request', 'old', 'stale draft'], ['new-request', 'new', 'fresh draft']]) {
+    window.dispatchEvent(new CustomEvent('codex-mobile-native-command', { detail: { id, name: 'draft.set', params: { contextId: context, value, revision: 1 } } }));
+   }
+  }, [contextId]);
+  return null;
+ }
+ const view = render(<ContextHarness contextId="old" />);
+ await act(async () => { view.rerender(<ContextHarness contextId="new" />); });
+ expect(writes).toEqual([{ contextId: 'new', value: 'fresh draft' }]);
+});
+it('导航状态与回调在同一布局提交更新，不会校验旧设备却调用新设备回调', async () => {
+ Object.assign(window, { __CODEX_NATIVE_UI__: true, webkit: { messageHandlers: { nativeUI: { postMessage() {} } } } });
+ const actions: Array<{ callbackBackend: string; snapshotBackend?: string }> = [];
+ function NavigationHarness({ backendId }: { backendId: string }) {
+  const runtime = useNativeRuntime({ selectedBackendId: backendId, backends: [], groups: [] }, {
+   'thread.new': () => { actions.push({ callbackBackend: backendId, snapshotBackend: runtime?.snapshot().backendId }); },
+  });
+  useNativeWorkspace(runtime, backendId, { ...emptyNativeSnapshot(), ready: true, backendId, contextId: backendId }, {});
+  useLayoutEffect(() => {
+   if (backendId === 'new') window.dispatchEvent(new CustomEvent('codex-mobile-native-command', { detail: { id: 'new-navigation', name: 'thread.new', params: {} } }));
+  }, [backendId]);
+  return null;
+ }
+ const view = render(<NavigationHarness backendId="old" />);
+ await act(async () => { view.rerender(<NavigationHarness backendId="new" />); });
+ expect(actions).toEqual([{ callbackBackend: 'new', snapshotBackend: 'new' }]);
 });

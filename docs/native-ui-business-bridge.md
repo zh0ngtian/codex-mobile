@@ -40,7 +40,7 @@ ConfiguredApp 使用真实 `scopedThreads`、`projectDirectories`、`collapsedPr
 
 ## 会话、附件与目录
 
-`workspace-adapter.ts` 的 `NativeWorkspaceController` 明确接收 BackendWorkspace 的 state 与 callbacks。`createWorkspaceAdapter` 只挑选纯展示字段，`useNativeConversationAdapter` 负责 panel/mention 本地展示状态与最新 callback 引用。
+`workspace-adapter.ts` 的 `NativeWorkspaceController` 明确接收 BackendWorkspace 的 state 与 callbacks。`createWorkspaceAdapter` 只挑选纯展示字段，`useNativeConversationAdapter` 负责 panel/mention 本地展示状态。导航和 workspace 的 callback ref 与对应快照/context 在同一 layout effect 内注册；render 阶段不会提前切换 callback，避免迟到旧命令通过旧 context 校验后执行新会话回调。订阅与卸载同样在 layout 阶段完成，并保留 StrictMode 重挂行为。
 
 | 命令 | 既有业务入口 |
 | --- | --- |
