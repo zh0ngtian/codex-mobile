@@ -20,12 +20,14 @@ describe("SwiftUI 原生宿主契约", () => {
   it.skipIf(process.platform !== "darwin")("执行真实 Swift store、Codable往返、离线状态与 Markdown 解析", () => {
     const directory = mkdtempSync(join(tmpdir(), "native-model-"));
     try {
-      const names = ["NativeJSONValue", "NativeCommand", "NativeCommandResult", "NativeOption", "NativeBackend", "NativeNavigationItem", "NativeGroup", "NativeAttachment", "NativeMessage", "NativePanelItem", "NativePanel", "NativeSnapshot", "NativeUIStore", "NativeUIPreference", "NativeMarkdownBlock", "NativeMarkdownBlockKind", "NativeMarkdownSyntax", "NativeMarkdownInlinePart", "NativeMediaSource", "NativeReferenceAudio", "NativeTextRhythm", "NativeFieldKey", "NativeFieldScope", "NativeImageData", "NativePlainText", "NativeTimelineState", "NativeTextPrompt"];
+      const names = ["NativeJSONValue", "NativeCommand", "NativeCommandResult", "NativeOption", "NativeBackend", "NativeNavigationItem", "NativeGroup", "NativeAttachment", "NativeMessage", "NativePanelItem", "NativePanel", "NativeSnapshot", "NativeUIStore", "NativeUIPreference", "NativeMarkdownBlock", "NativeMarkdownBlockKind", "NativeMarkdownSyntax", "NativeMarkdownInlinePart", "NativeMediaSource", "NativeReferenceAudio", "NativeTextRhythm", "NativeFieldKey", "NativeFieldScope", "NativeImageData", "NativePlainText", "NativeInlineMarkdown", "NativeMarkdownDisplaySource", "NativeMarkdownHTMLScope", "NativeTimelineState", "NativeTextPrompt"];
       const compile = spawnSync("xcrun", ["swiftc", ...names.map(name => `mobile/ios/NativeUI/${name}.swift`), "tests/ci/native-ui-model-smoke.swift", "-o", join(directory, "smoke")], { encoding: "utf8", timeout: swiftCompileTimeout });
       expect(compile.status, compile.error?.message ?? compile.stderr).toBe(0);
       const result = spawnSync(join(directory, "smoke"), [], { encoding: "utf8", timeout: swiftExecutionTimeout });
       expect(result.status, result.error?.message ?? result.stderr).toBe(0);
       expect(result.stdout).toContain("smoke passed");
+      expect(result.stdout).toMatch(/Native visual content \d+ assertions passed/);
+      expect(result.stdout).toMatch(/Native document presentation \d+ assertions passed/);
     } finally { rmSync(directory, { force: true, recursive: true }); }
   }, swiftContractTimeout);
   it.skipIf(process.platform !== "darwin")("原生偏好首次关闭，保存失败回滚且不影响已冻结启动模式", () => {
@@ -38,6 +40,16 @@ describe("SwiftUI 原生宿主契约", () => {
       expect(result.stdout).toContain("Preference smoke passed");
     } finally { rmSync(directory, { force: true, recursive: true }); }
   }, swiftContractTimeout);
+  it("正文生产消费者沿 block、图片分段与表格单元格传递文档展示范围", () => {
+    expect(source("NativeMarkdownBlockView")).toContain("NativeInlineMarkdown.text(block.text, scope: block.scope)");
+    expect(source("NativeMarkdownBlockView")).toContain("compact: compact, scope: block.scope");
+    expect(source("NativeMarkdownBlockView")).toContain("cellScopes: block.cellScopes");
+    expect(source("NativeInlineContentView")).toContain("NativeMarkdownInlinePart.parse(text, scope: scope)");
+    expect(source("NativeInlineContentView")).toContain("NativeInlineMarkdown.text(part.text, scope: part.scope)");
+    expect(source("NativeInlineContentView")).toContain(".task(id: scope.identity + [text])");
+    expect(source("NativeMarkdownTableView")).toContain("scope: cellScope(row: rowIndex, column: columnIndex)");
+    expect(source("NativePlainText")).toContain("NativeInlineMarkdown.text(block.text, scope: block.scope)");
+  });
   it("具有离线原生根、输入、侧栏及设置 UI 验收", () => {
     expect(existsSync("mobile/ios/NativeUI/NativeRootView.swift"), "缺少真实 SwiftUI 根").toBe(true);
     expect(source("NativeRootView")).toContain("native-ui-root");

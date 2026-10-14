@@ -12,14 +12,18 @@ struct NativeMarkdownBlock: Identifiable {
     var checked: Bool? = nil
     var destination: String? = nil
     var rows: [[String]] = []
+    var scope = NativeMarkdownHTMLScope()
+    var cellScopes: [[NativeMarkdownHTMLScope]] = []
     var spacingBefore: Double { NativeTextRhythm.spacingBefore(kind, after: previousKind) }
 
     static func parse(_ source: String) -> [Self] {
         let lines = source.replacingOccurrences(of: "\r\n", with: "\n").components(separatedBy: "\n")
         var result: [Self] = []
         var index = 0
+        var scope = NativeMarkdownHTMLScope()
         func append(_ kind: NativeMarkdownBlockKind, _ text: String) {
-            result.append(Self(id: result.count, kind: kind, text: text, previousKind: result.last?.kind))
+            result.append(Self(id: result.count, kind: kind, text: text, previousKind: result.last?.kind, scope: scope))
+            if kind != .code && kind != .image && kind != .rule && kind != .table { scope = scope.advancing(over: text) }
         }
         while index < lines.count {
             let line = lines[index]
@@ -34,7 +38,7 @@ struct NativeMarkdownBlock: Identifiable {
                 }
                 append(.code, code.joined(separator: "\n"))
                 result[result.count - 1].language = fence.language
-            } else if let heading = NativeMarkdownSyntax.groups(line, pattern: "^ {0,3}(#{1,6}) +(.+?) *#* *$") {
+            } else if let heading = NativeMarkdownSyntax.heading(line) {
                 append(.heading, heading[1]); result[result.count - 1].level = heading[0].count
             } else if index + 1 < lines.count, NativeMarkdownSyntax.isTableDelimiter(lines[index + 1]), line.contains("|") {
                 var rows = [NativeMarkdownSyntax.tableCells(line)]
@@ -45,9 +49,16 @@ struct NativeMarkdownBlock: Identifiable {
                 index -= 1
                 append(.table, rows.map { $0.joined(separator: "\t") }.joined(separator: "\n"))
                 result[result.count - 1].rows = rows
+                result[result.count - 1].cellScopes = rows.map { row in
+                    row.map { text in
+                        let current = scope
+                        scope = scope.advancing(over: text)
+                        return current
+                    }
+                }
             } else if NativeMarkdownSyntax.isRule(trimmed) {
                 append(.rule, "")
-            } else if let list = NativeMarkdownSyntax.groups(line, pattern: "^(\\s*)([-+*]|[0-9]+[.)]) +(.+)$") {
+            } else if let list = NativeMarkdownSyntax.list(line) {
                 var text = list[2]
                 var checked: Bool?
                 if let task = NativeMarkdownSyntax.groups(text, pattern: "^\\[([ xX])\\] +(.*)$") {
@@ -70,7 +81,15 @@ struct NativeMarkdownBlock: Identifiable {
             } else if index + 1 < lines.count, NativeMarkdownSyntax.isSetext(lines[index + 1]) {
                 append(.heading, line); result[result.count - 1].level = lines[index + 1].contains("=") ? 1 : 2
                 index += 1
-            } else { append(.text, line) }
+            } else {
+                var paragraph = [line]
+                index += 1
+                while index < lines.count && !NativeMarkdownSyntax.interruptsParagraph(lines, at: index) {
+                    paragraph.append(lines[index]); index += 1
+                }
+                index -= 1
+                append(.text, paragraph.joined(separator: "\n"))
+            }
         }
         return result
     }

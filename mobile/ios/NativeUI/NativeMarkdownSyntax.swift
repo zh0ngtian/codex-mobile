@@ -20,6 +20,21 @@ enum NativeMarkdownSyntax {
             return String(text[range])
         }
     }
+    static func heading(_ text: String) -> [String]? {
+        groups(text, pattern: "^ {0,3}(#{1,6}) +(.+?) *#* *$")
+    }
+    static func list(_ text: String) -> [String]? {
+        groups(text, pattern: "^(\\s*)([-+*]|[0-9]+[.)]) +(.+)$")
+    }
+    static func interruptsParagraph(_ lines: [String], at index: Int) -> Bool {
+        let line = lines[index]
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        if trimmed.isEmpty || fence(trimmed) != nil || heading(line) != nil || list(line) != nil ||
+            isRule(trimmed) || trimmed.hasPrefix(">") { return true }
+        // 独立图片由块起始分支处理；段落内部的图片仍属于行内 code/link 的完整范围。
+        guard index + 1 < lines.count else { return false }
+        return isSetext(lines[index + 1]) || (line.contains("|") && isTableDelimiter(lines[index + 1]))
+    }
     static func fence(_ text: String) -> (character: Character, count: Int, language: String)? {
         guard let first = text.first, first == "`" || first == "~" else { return nil }
         let count = text.prefix(while: { $0 == first }).count
@@ -54,7 +69,11 @@ enum NativeMarkdownSyntax {
         var cells: [String] = [], current = ""
         var escaped = false, code = false
         for character in value {
-            if escaped { current.append(character); escaped = false }
+            if escaped {
+                // 仅表格分隔符在这里去转义，其余反斜杠交给行内 Foundation 解析。
+                if character != "|" { current.append("\\") }
+                current.append(character); escaped = false
+            }
             else if character == "\\" { escaped = true }
             else if character == "`" { code.toggle(); current.append(character) }
             else if character == "|" && !code { cells.append(current.trimmingCharacters(in: .whitespaces)); current = "" }

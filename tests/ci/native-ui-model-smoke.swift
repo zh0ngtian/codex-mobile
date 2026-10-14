@@ -3,6 +3,8 @@ import Foundation
 @main
 struct NativeStoreSmoke {
     @MainActor static func main() throws {
+        verifyVisualContent()
+        verifyDocumentPresentation()
         let defaults = UserDefaults.standard
         let previousPreference = defaults.object(forKey: NativeUIStore.preferenceKey)
         defer {
@@ -71,7 +73,8 @@ struct NativeStoreSmoke {
         precondition(referenceBlocks.map(\.kind) == [.heading, .list, .list, .code, .text])
         precondition(referenceBlocks.map(\.spacingBefore) == [0, 26, 20, 12, 22])
         let plainBlocks = NativeMarkdownBlock.parse("第一段\n第二段")
-        precondition(plainBlocks.map(\.spacingBefore) == [0, 12], "未特判的正文保留默认节奏")
+        precondition(plainBlocks.count == 1 && plainBlocks[0].text == "第一段\n第二段", "连续普通行属于同一 logical paragraph，保留 Foundation 行内语义")
+        precondition(NativeMarkdownBlock.parse("第一段\n\n第二段").map(\.spacingBefore) == [0, 12], "独立正文段落保留默认节奏")
         let rich = NativeMarkdownBlock.parse("# 一级\n\n### 三级\n\n1. 第一个\n   - [x] 子任务\n2. 第二个\n\n> 引用\n> 续行\n\n---\n\n| 列一 | 列二 |\n| :--- | ---: |\n| a\\|b | `c|d` |\n\n![示意图](https://example.com/image.png)\n\n~~~json\n{\"ok\":true}\n~~~")
         precondition(rich.filter { $0.kind == .heading }.map(\.level) == [1, 3])
         let lists = rich.filter { $0.kind == .list }
@@ -274,4 +277,229 @@ struct NativeStoreSmoke {
         precondition(commandRoundtrip.params == params)
         print("Native store/schema/Markdown smoke passed")
     }
+
+    private static func verifyVisualContent() {
+        var checks = 0
+        func expect(_ condition: @autoclosure () -> Bool, _ reason: String) {
+            checks += 1
+            precondition(condition(), reason)
+        }
+        func plain(_ source: String) -> String { String(NativeInlineMarkdown.text(source).characters) }
+        func strong(_ source: String) -> String {
+            let text = NativeInlineMarkdown.text(source)
+            return text.runs.filter { $0.inlinePresentationIntent?.contains(.stronglyEmphasized) == true }
+                .map { String(text[$0.range].characters) }.joined()
+        }
+        func links(_ source: String) -> [URL] { NativeInlineMarkdown.text(source).runs.compactMap(\.link) }
+        let cjk = "**二是希望细化合规路径及办理指导。**企业关注"
+        expect(plain(cjk) == "二是希望细化合规路径及办理指导。企业关注", "中文句末粗体不能裸露星号")
+        expect(strong(cjk) == "二是希望细化合规路径及办理指导。", "仅前句应有真实 Foundation strong 属性")
+        expect(plain("前文**中文，**后文 **结束！**企业") == "前文中文，后文 结束！企业", "多个中文标点粗体可相邻正文")
+        expect(strong("前文**中文，**后文 **结束！**企业") == "中文，结束！", "多个粗体范围不能扩散到后文")
+        expect(strong("***粗体斜体。***企业") == "粗体斜体。", "保留粗斜体组合")
+        let combination = NativeInlineMarkdown.text("***粗体斜体。***企业")
+        expect(combination.runs.first?.inlinePresentationIntent?.contains(.emphasized) == true, "保留真实强调属性")
+        expect(plain("**normal** and *italic* and __strong__ snake_case") == "normal and italic and strong snake_case", "正常 Markdown 和下划线语义不回归")
+        expect(strong("**normal** and *italic* and __strong__ snake_case") == "normalstrong", "原有粗体范围不回归")
+        expect(plain("`**代码。**企业` ``代码 ` **标点。**企业``") == "**代码。**企业 代码 ` **标点。**企业", "任意长度行内代码不处理星号")
+        expect(plain(#"\**转义。**企业"#) == "**转义。**企业", "转义的开标记不能生成粗体")
+        expect(strong(#"\**转义。**企业"#).isEmpty, "转义内容不能有 strong 属性")
+        expect(plain("**未闭合。企业") == "**未闭合。企业", "未闭合星号必须保留")
+        expect(plain("__未闭合。企业") == "__未闭合。企业", "未闭合下划线必须保留")
+        let web = "[网页](https://example.com/a**x。**企业)"
+        expect(links(web).first?.absoluteString == "https://example.com/a**x%E3%80%82**%E4%BC%81%E4%B8%9A", "链接 URL 不改写")
+        let path = "/Users/example/中文 文件(1)%20#附件[2]*.xlsx"
+        let citation = ":codex-file-citation{path=\"\(path)\" purpose=\"source\" artifact_kind=\"workbook\"}"
+        let reference = NativeInlineMarkdown.text("来源 \(citation)。")
+        expect(String(reference.characters) == "来源 中文 文件(1)%20#附件[2]*.xlsx。", "引用应显示逐字 basename")
+        expect(reference.runs.compactMap(\.link).count == 1, "引用必须生成真实可点击 link 属性")
+        let href = reference.runs.compactMap(\.link).first?.absoluteString
+        expect(href?.removingPercentEncoding == path, "空格中文括号百分号井号必须经 URL 逐字往返")
+        expect(href?.contains("%20") == true && href?.contains("%23") == true && href?.contains("%25") == true && href?.contains("%28") == true, "文件路径使用逐段 URL 编码")
+        expect(plain("前文:codex-file-citation{path='/tmp/first.doc'}::codex-file-citation{extra='值' path='/tmp/second.doc'}") == "前文first.docsecond.doc", "单双冒号及相邻引用兼容")
+        expect(links("**\(citation)**").count == 1 && strong("**\(citation)**") == "中文 文件(1)%20#附件[2]*.xlsx", "引用保留周围强强调")
+        let invalid = [
+            ":codex-file-citation{purpose='source'}",
+            ":codex-file-citation{path='/tmp/a.doc' path='/tmp/b.doc'}",
+            ":codex-file-citation{path='relative.doc'}",
+            ":codex-file-citation{path='file:///tmp/a.doc'}",
+            ":codex-file-citation{path='https://example.com/a.doc'}",
+            ":codex-file-citation{path='/unsupported/a.doc'}",
+            ":codex-file-citation{path='/tmp/'}",
+            ":codex-file-citation{path='/tmp//a.doc'}",
+            ":codex-file-citation{path='/tmp/./a.doc'}",
+            ":codex-file-citation{path='/tmp/../a.doc'}",
+            ":codex-file-citation{path='/tmp/a.doc:12'}",
+            ":codex-file-citation{path='/tmp/a.doc:12:3'}",
+            ":codex-file-citation{path='/tmp/a\u{0001}b.doc'}",
+            ":codex-file-citation{path='/tmp/a\u{007f}b.doc'}",
+            ":codex-file-citation{path='/tmp/a\u{0085}b.doc'}",
+            ":codex-file-citation{path='/tmp/a\u{2028}b.doc'}",
+            ":codex-file-citation{path=/tmp/a.doc}",
+            ":codex-file-citation{path='/tmp/a.doc' broken}",
+            ":codex-file-citation{path='/tmp/a.doc'extra='x'}",
+            ":codex-file-citation{path='/tmp/a.doc'",
+            ":codex-file-citation{path='/tmp/a.doc}",
+            ":::codex-file-citation{path='/tmp/a.doc'}",
+            "::::codex-file-citation{path='/tmp/a.doc'}",
+            ":codex-file-citation{broken :codex-file-citation{path='/tmp/nested.doc'}}",
+            ":codex-file-citation{path='/tmp/unclosed :codex-file-citation{path='/tmp/nested.doc'}}"
+        ]
+        for value in invalid {
+            expect(plain(value) == value && links(value).isEmpty, "非法或不完整引用必须原样保留：\(value)")
+        }
+        expect(plain("`\(citation)`") == citation && links("`\(citation)`").isEmpty, "行内代码不能生成文件链接")
+        expect(plain("``\(citation)``") == citation && links("``\(citation)``").isEmpty, "多反引号代码不能生成文件链接")
+        let linked = "[\(citation)](https://example.com)"
+        expect(plain(linked) == citation && links(linked).map(\.absoluteString) == ["https://example.com"], "已有链接标签不生成嵌套文件链接")
+        for html in ["<code>\(citation)</code>", "<span title='>'>\(citation)</span>", "<span><!-- </span> -->\(citation)</span>", "<div>\n\(citation)\n</div>", "<!-- \(citation) -->"] {
+            expect(!links(html).contains { $0.absoluteString.removingPercentEncoding == path }, "HTML 示例不能生成文件链接")
+        }
+        expect(links("<span>\(citation)</span> \(citation)").count == 1, "HTML 闭合后恢复外部引用")
+        expect(plain(#"\:codex-file-citation{path='/tmp/a.doc'}"#) == ":codex-file-citation{path='/tmp/a.doc'}" && links(#"\:codex-file-citation{path='/tmp/a.doc'}"#).isEmpty, "转义指令不生成链接")
+        expect(strong("**粗体*斜体*。**企业") == "粗体斜体。", "内部强调不破坏中文粗体边界")
+        expect(links("[\(citation)][file]").isEmpty, "已有引用链接标签不生成文件链接")
+        let fenced = "```text\n\(citation)\n**原样。**企业\n```"
+        expect(NativePlainText.message(fenced, role: "assistant") == "\(citation)\n**原样。**企业", "代码块可访问文本保留原代码")
+        expect(NativePlainText.message(cjk + "\n\n来源 " + citation, role: "assistant") == "二是希望细化合规路径及办理指导。企业关注\n\n来源 中文 文件(1)%20#附件[2]*.xlsx", "可访问文本必须与正文使用同一展示解释")
+        expect(NativePlainText.message(cjk + citation, role: "user") == cjk + citation, "用户原文复制行为保持不变")
+        print("Native visual content \(checks) assertions passed")
+    }
+
+
+    private static func verifyDocumentPresentation() {
+        var checks = 0
+        func expect(_ condition: @autoclosure () -> Bool, _ reason: String) {
+            checks += 1
+            precondition(condition(), reason)
+        }
+        // 与生产 BlockView → InlineContentView → InlinePart 相同的分块和图片分段管线。
+        func rendered(_ source: String) -> [AttributedString] {
+            NativeMarkdownBlock.parse(source).flatMap { block -> [AttributedString] in
+                if block.kind == .code || block.kind == .image || block.kind == .rule { return [] }
+                if block.kind == .heading { return [NativeInlineMarkdown.text(block.text, scope: block.scope)] }
+                if block.kind == .table {
+                    return block.rows.enumerated().flatMap { rowIndex, row in
+                        row.enumerated().flatMap { columnIndex, text in
+                            NativeMarkdownInlinePart.parse(text, scope: block.cellScopes[rowIndex][columnIndex])
+                                .filter { $0.destination == nil }.map { NativeInlineMarkdown.text($0.text, scope: $0.scope) }
+                        }
+                    }
+                }
+                return NativeMarkdownInlinePart.parse(block.text, scope: block.scope).filter { $0.destination == nil }
+                    .map { NativeInlineMarkdown.text($0.text, scope: $0.scope) }
+            }
+        }
+        func fileLinks(_ source: String) -> [URL] {
+            rendered(source).flatMap { $0.runs.compactMap(\.link) }.filter { $0.absoluteString.hasPrefix("/") }
+        }
+        let inside = ":codex-file-citation{path='/tmp/inside.doc'}"
+        let outside = ":codex-file-citation{path='/tmp/outside.doc'}"
+        let qualityCases = [
+            ("跨行已有链接标签", fileLinks("[网页\n\(inside)](https://example.com)").isEmpty),
+            ("跨行引用链接标签", fileLinks("[网页\n\(inside)][ref]").isEmpty),
+            ("list 真实边界", NativeMarkdownBlock.parse("- `first\n- second`").map(\.kind) == [.list, .list]),
+            ("heading 真实边界", NativeMarkdownBlock.parse("plain `first\n# heading`").map(\.kind) == [.text, .heading]),
+            ("heading 后正文边界", NativeMarkdownBlock.parse("# `heading\nparagraph`").map(\.kind) == [.heading, .text]),
+            ("setext 真实边界", NativeMarkdownBlock.parse("one `first\n---\nsecond`").map(\.kind) == [.heading, .text]),
+            ("跨行链接内整行 image", fileLinks("[网页\n![图](https://example.com/a.png)\n\(inside)](https://example.com)").isEmpty)
+        ]
+        let qualityFailures = qualityCases.filter { !$0.1 }.map { $0.0 }
+        checks += qualityCases.count
+        if !qualityFailures.isEmpty {
+            FileHandle.standardError.write(Data(("Quality regressions: " + qualityFailures.joined(separator: "、") + "\n").utf8))
+        }
+        precondition(qualityFailures.isEmpty, "logical paragraph 必须保留真实块边界与完整行内范围")
+        let imageInCode = "<span>\n`first\n![</span>](https://example.com/a.png)\nlast`\n\(inside)\n</span>"
+        expect(rendered(imageInCode).contains { value in value.runs.contains { run in run.inlinePresentationIntent?.contains(.code) == true && String(value[run.range].characters).contains("![</span>]") } }, "普通段落内整行 image 不切断行内 code 范围")
+        let nestedImage = "<span> ![a [b](https://example.com/b.png) </span>](https://example.com/a.png) \(inside)"
+        let multilineCode = "<span>\n`多行\n</span>\n代码`\n\(inside)\n</span>"
+        let rangeFailures = [
+            ("image 完整范围", fileLinks(nestedImage).isEmpty),
+            ("跨行 inline code 范围", fileLinks(multilineCode).isEmpty)
+        ].filter { !$0.1 }.map { $0.0 }
+        if !rangeFailures.isEmpty {
+            FileHandle.standardError.write(Data(("Range regressions: " + rangeFailures.joined(separator: "、") + "\n").utf8))
+        }
+        checks += 2
+        precondition(rangeFailures.isEmpty, "完整 token 范围必须贯穿实际消费者管线")
+        let fenceCases = [
+            ("不等长 backtick fence", "```html\n<span>\n````\n<span>\n`跨行\n</span>\n代码`\n\(inside)\n</span>"),
+            ("tilde fence 内未闭合注释", "~~~html\n<!--\n~~~\n<span>\n`多行\n</span>\n代码`\n\(inside)\n</span>"),
+            ("空段前未配对反引号", "未配对 `\n\n<span>\n`跨行\n</span>\n代码`\n\(inside)\n</span>")
+        ]
+        let fenceFailures = fenceCases.filter { !fileLinks($0.1).isEmpty }.map { $0.0 }
+        checks += fenceCases.count
+        if !fenceFailures.isEmpty {
+            FileHandle.standardError.write(Data(("Fence regressions: " + fenceFailures.joined(separator: "、") + "\n").utf8))
+        }
+        precondition(fenceFailures.isEmpty, "fenced 内容必须在发现文档 inline 范围之前隔离")
+        for (reason, value) in fenceCases {
+            let unicodeDocument = "前置😀e\u{301}中文\n\n" + value + "\n" + outside
+            expect(fileLinks(unicodeDocument).map(\.absoluteString) == ["/tmp/outside.doc"], reason + "前有 Unicode 时仍按原文索引保护")
+        }
+        expect(NativePlainText.message("😀e\u{301}中文 `a\n</span>\nb` 后文", role: "assistant") == "😀e\u{301}中文 a </span> b 后文", "文档 code token 的 Unicode 范围与正文恢复逐字一致")
+        expect(fileLinks("`未闭合\n\n" + outside).count == 1 && fileLinks(outside).count == 1, "文档预处理的未闭合状态不泄漏到其他段落或文档")
+        let imageParts = NativeMarkdownInlinePart.parse(nestedImage)
+        expect(imageParts.compactMap(\.destination).isEmpty, "复杂图片范围不一致时不抽取局部图片")
+        expect(imageParts.count == 1 && imageParts.first?.text == nestedImage, "复杂图片整体交给既有 Foundation 解释")
+        expect(fileLinks("`未闭合\n\(outside)").map(\.absoluteString) == ["/tmp/outside.doc"], "未配对反引号不能把后续整篇当代码")
+        expect(fileLinks("<span>\n`未闭合\n</span>\n\(outside)").map(\.absoluteString) == ["/tmp/outside.doc"], "未配对反引号不能屏蔽真实闭合标签")
+        let codeRuns = rendered(multilineCode).flatMap { value in
+            value.runs.filter { $0.inlinePresentationIntent?.contains(.code) == true }.map { String(value[$0.range].characters) }
+        }
+        expect(codeRuns == ["多行 </span> 代码"], "跨行代码恢复真实 Foundation code 属性与内容")
+        expect(NativePlainText.message(multilineCode, role: "assistant").contains("多行 </span> 代码"), "可访问文本恢复代码正文且不泄漏临时 token")
+        expect(fileLinks("<span>\n``多行\n</span>\n`代码``\n\(inside)\n</span>").isEmpty, "多反引号跨行代码中的单反引号不会提前结束范围")
+        expect(fileLinks("<span>\n`多行\n</span>\n代码`\n</span> \(outside)").map(\.absoluteString) == ["/tmp/outside.doc"], "跨行代码结束后真实 HTML 闭合仍恢复文件引用")
+        let fencedBackticks = "```text\n`跨行\n</span>`\n```"
+        expect(NativePlainText.message(fencedBackticks, role: "assistant") == "`跨行\n</span>`", "fenced 代码中的反引号与换行不能被文档预处理改写")
+        expect(NativePlainText.message("前文\r\n" + fencedBackticks.replacingOccurrences(of: "\n", with: "\r\n"), role: "assistant") == "前文\n\n`跨行\n</span>`", "原有 CRLF 归一必须先于文档保护，fenced 代码内容不变")
+        expect(fileLinks("`未闭合\n\n\(outside)").map(\.absoluteString) == ["/tmp/outside.doc"], "未配对反引号跨段落后仍允许普通引用")
+        expect(fileLinks("`第一段\n\n\(outside)\n\n最后`").map(\.absoluteString) == ["/tmp/outside.doc"], "空段边界两侧反引号不能合并成跨段代码")
+        let strongCode = rendered("**正文 `代码\n第二行` 后文**")
+        let strongCodeRuns = strongCode.flatMap { $0.runs.filter { $0.inlinePresentationIntent?.contains(.code) == true } }
+        expect(!strongCodeRuns.isEmpty && strongCodeRuns.allSatisfy { $0.inlinePresentationIntent?.contains(.stronglyEmphasized) == true }, "恢复跨行 code 保留外层 strong 属性")
+        let protectedImages = [
+            ("HTML 属性内图片", "<span title=\"![图](https://example.com/a.png)\"> \(inside)</span>"),
+            ("已有链接标签内图片", "[网页 ![图](https://example.com/a.png) \(inside)](https://example.com)"),
+            ("非法整体引用内图片", ":codex-file-citation{broken ![图](https://example.com/a.png) :codex-file-citation{path='/tmp/nested.doc'}}")
+        ]
+        let reviewCases = protectedImages + [
+            ("跨 block 未完成 HTML 标签", "<span\ntitle='x'> \(inside)\n</span>"),
+            ("表格单反斜杠转义引用", "| " + "\\" + inside + " | x |\n| --- | --- |")
+        ]
+        var reviewFailures: [String] = []
+        for (reason, value) in reviewCases {
+            checks += 1
+            if !fileLinks(value).isEmpty { reviewFailures.append(reason) }
+        }
+        if !reviewFailures.isEmpty {
+            FileHandle.standardError.write(Data(("Review regressions: " + reviewFailures.joined(separator: "、") + "\n").utf8))
+        }
+        precondition(reviewFailures.isEmpty, "规格审查的实际消费者管线回归必须通过")
+        for (reason, value) in protectedImages {
+            expect(NativeMarkdownInlinePart.parse(value).compactMap(\.destination).isEmpty, reason + "不能切断原保护结构")
+        }
+        expect(fileLinks("<div>\n\(inside)\n</div>").isEmpty, "实际分块后的多行 HTML 不能生成文件操作")
+        let boundaries = "<div>\n\n# 标题 \(inside)\n\n- 列表 \(inside)\n\n> 引用 \(inside)\n\n</div> 后文 \(outside)"
+        expect(fileLinks(boundaries).map(\.absoluteString) == ["/tmp/outside.doc"], "空行、标题、列表和引用分块必须继承文档 HTML 范围")
+        expect(fileLinks("<span>\n\(inside)\n</span> \(outside)").map(\.absoluteString) == ["/tmp/outside.doc"], "闭合标签同行之后恢复正常文件引用")
+        expect(fileLinks("```html\n<div>\n```\n\(outside)").map(\.absoluteString) == ["/tmp/outside.doc"], "fenced 代码的伪 HTML 标签不能污染后续正文")
+        expect(fileLinks("<span>\n```html\n</span>\n```\n\(inside)\n</span>\n\(outside)").map(\.absoluteString) == ["/tmp/outside.doc"], "代码中的伪闭合标签不能结束外部 HTML 范围")
+        expect(fileLinks("`<div>`\n\(outside)").map(\.absoluteString) == ["/tmp/outside.doc"], "行内代码的伪标签不污染后续 block")
+        expect(fileLinks("<span> 开头 ![图](https://example.com/a.png) \(inside)</span> \(outside)").map(\.absoluteString) == ["/tmp/outside.doc"], "图片切开正文后必须继承同一 HTML 范围")
+        expect(fileLinks("![<div>](https://example.com/a.png)\n\(outside)").map(\.absoluteString) == ["/tmp/outside.doc"], "图片替代文本的伪标签不能污染外部正文")
+        expect(fileLinks("<span>\n<!-- </span> -->\n\(inside)\n</span>\n\(outside)").map(\.absoluteString) == ["/tmp/outside.doc"], "跨 block HTML 注释的伪标签不改变真实范围")
+        expect(fileLinks("[<span>网页](https://example.com)\n\(inside)\n</span>\n\(outside)").map(\.absoluteString) == ["/tmp/outside.doc"], "已有链接标签中的 HTML 起始标签仍推进文档范围")
+        expect(fileLinks("<span>\n[网页 </span>](https://example.com)\n\(outside)").map(\.absoluteString) == ["/tmp/outside.doc"], "已有链接标签中的闭合标签恢复后续引用")
+        expect(fileLinks("<span>\n<!--\n</span>\n-->\n\(inside)\n</span>\n\(outside)").map(\.absoluteString) == ["/tmp/outside.doc"], "跨 block 注释内的伪闭合标签不能改变范围")
+        let table = "| <span>标题 | \(inside) |\n| --- | --- |\n| \(inside) | </span> \(outside) |\n\(outside)"
+        expect(fileLinks(table).map(\.absoluteString) == ["/tmp/outside.doc", "/tmp/outside.doc"], "表格单元格与后续正文共享文档范围")
+        expect(fileLinks("<span>\n\(inside)").isEmpty && fileLinks(outside).count == 1, "独立文档之间不泄漏 HTML scope")
+        let accessibility = NativePlainText.message(boundaries, role: "assistant")
+        expect(accessibility.contains(inside) && accessibility.contains("outside.doc") && !accessibility.contains(outside), "可访问文本共享文档 HTML 解释，保留示例正文")
+        print("Native document presentation \(checks) assertions passed")
+    }
+
 }

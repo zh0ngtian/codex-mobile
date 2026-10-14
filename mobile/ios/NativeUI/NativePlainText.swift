@@ -5,8 +5,14 @@ enum NativePlainText {
         guard role != "user" else { return source }
         return NativeMarkdownBlock.parse(source).map { block in
             if block.kind == .code { return block.text }
-            guard let text = try? AttributedString(markdown: block.text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)) else { return block.text }
-            return String(text.characters)
+            if block.kind == .table {
+                return block.rows.enumerated().map { rowIndex, row in
+                    row.enumerated().map { columnIndex, text in
+                        String(NativeInlineMarkdown.text(text, scope: block.cellScopes[rowIndex][columnIndex]).characters)
+                    }.joined(separator: "\t")
+                }.joined(separator: "\n")
+            }
+            return String(NativeInlineMarkdown.text(block.text, scope: block.scope).characters)
         }.joined(separator: "\n\n")
     }
 }
