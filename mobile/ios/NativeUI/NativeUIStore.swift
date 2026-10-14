@@ -29,6 +29,11 @@ final class NativeUIStore {
     let isReference: Bool
     let nativeEnabled: Bool
     static let preferenceKey = "codexMobile.useNativeUI"
+    // 与共享运行时的全局命令域一致，导航回执不属于某个工作区。
+    private static let globalCommands: Set<String> = [
+        "backend.select", "navigation.search", "navigation.sidebar", "navigation.refresh", "navigation.filter",
+        "thread.new", "thread.open", "thread.manage", "project.toggle", "project.more", "project.retry"
+    ]
 
     static let launchPreference = UserDefaults.standard.bool(forKey: preferenceKey)
 
@@ -163,7 +168,9 @@ final class NativeUIStore {
             return
         }
         var contextual = params
-        if contextual["contextId"] == nil, let context = snapshot.contextId { contextual["contextId"] = .string(context) }
+        if !Self.globalCommands.contains(name), contextual["contextId"] == nil, let context = snapshot.contextId {
+            contextual["contextId"] = .string(context)
+        }
         sendCommand?(NativeCommand(name: name, params: contextual))
     }
     func perform(_ command: NativeCommand?) {

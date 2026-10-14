@@ -152,8 +152,9 @@ struct NativeStoreSmoke {
         sidebarStore.sidebarIsOpen = false
         sidebarStore.receive(sidebarSnapshot)
         precondition(!sidebarStore.sidebarOpen, "迟到快照不能重开用户刚关闭的抽屉")
+        sidebarSnapshot.contextId = "mini:new-context"
         sidebarSnapshot.sidebarOpen = false
-        sidebarSnapshot.commandResults = [NativeCommandResult(id: sidebarCommands[0].id, name: "navigation.sidebar", ok: true, fieldKey: "sidebar-state", fieldRevision: 1)]
+        sidebarSnapshot.commandResults = [NativeCommandResult(id: sidebarCommands[0].id, name: "navigation.sidebar", ok: true, contextId: { if case .string(let value) = sidebarCommands[0].params["contextId"] { return value }; return nil }(), fieldKey: "sidebar-state", fieldRevision: 1)]
         sidebarStore.receive(sidebarSnapshot)
         sidebarSnapshot.sidebarOpen = true
         sidebarStore.receive(sidebarSnapshot)
