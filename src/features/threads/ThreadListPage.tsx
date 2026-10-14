@@ -21,7 +21,10 @@ import type {
   BackendRuntimeSummary,
 } from "../../backends/types";
 import type { ProjectThreadLoadState } from "../../app-server/thread-list-loader";
-import { PROJECTLESS_GROUP_ID } from "../../app-server/thread-list-loader";
+import {
+  PROJECTLESS_GROUP_ID,
+  PROJECT_THREAD_BATCH_SIZE,
+} from "../../app-server/thread-list-loader";
 import { BackendSwitcher } from "../backends/BackendSwitcher";
 import { ConversationActionMenu } from "../conversation/ConversationControls";
 import {
@@ -112,6 +115,7 @@ export function ThreadListPage({
     useState<AggregatedThreadItem | null>(null);
   const [menuAnchor, setMenuAnchor] = useState<MenuAnchor>();
   const [pendingThreadAction, setPendingThreadAction] = useState("");
+  const [projectVisibleLimits, setProjectVisibleLimits] = useState<Record<string, number>>({});
   const sidebarRef = useRef<HTMLElement | null>(null);
   const longPressRef = useRef<{
     timer: number;
@@ -142,6 +146,18 @@ export function ThreadListPage({
       longPressRef.current = null;
     }
   };
+  useEffect(() => {
+    if (!collapsedProjectKeys.size) return;
+    setProjectVisibleLimits((previous) => {
+      const resetKeys = [...collapsedProjectKeys].filter(
+        (key) => previous[key] !== PROJECT_THREAD_BATCH_SIZE,
+      );
+      if (!resetKeys.length) return previous;
+      const next = { ...previous };
+      for (const key of resetKeys) next[key] = PROJECT_THREAD_BATCH_SIZE;
+      return next;
+    });
+  }, [collapsedProjectKeys]);
   useEffect(() => clearLongPress, []);
   useEffect(() => {
     if (sidebarOpen) return;
@@ -419,9 +435,14 @@ export function ThreadListPage({
                 const projectThreadState =
                   projectThreadStates[group.cwd] ??
                   (group.threads.length ? "ready" : "idle");
-                const hasMore =
+                const visibleLimit = projectVisibleLimits[projectKey] ?? group.threads.length;
+                const displayedThreads = query.trim()
+                  ? group.threads
+                  : group.threads.slice(0, visibleLimit);
+                const hasServerMore =
                   projectHasMore[group.cwd] ??
-                  group.threads.length >= 5;
+                  group.threads.length >= PROJECT_THREAD_BATCH_SIZE;
+                const hasMore = hasServerMore || displayedThreads.length < group.threads.length;
                 const showInitialLoading =
                   projectThreadState === "loading" &&
                   group.threads.length === 0 &&
@@ -437,12 +458,18 @@ export function ThreadListPage({
                         type="button"
                         className="project-heading"
                         aria-expanded={isExpanded}
-                        onClick={() =>
+                        onClick={() => {
+                          if (!collapsedProjectKeys.has(projectKey)) {
+                            setProjectVisibleLimits((previous) => ({
+                              ...previous,
+                              [projectKey]: PROJECT_THREAD_BATCH_SIZE,
+                            }));
+                          }
                           onToggleProjectCollapsed(
                             selectedBackendId,
                             group.cwd,
-                          )
-                        }
+                          );
+                        }}
                       >
                         <AppIcon
                           name={isExpanded ? "folder-open" : "folder"}
@@ -464,7 +491,7 @@ export function ThreadListPage({
                     </h2>
                     {isExpanded && (
                       <>
-                        {group.threads.map((thread) =>
+                        {displayedThreads.map((thread) =>
                           renderRow(thread, false),
                         )}
                         {showInitialLoading && (
@@ -503,12 +530,20 @@ export function ThreadListPage({
                             className="project-more"
                             disabled={isLoadingMore}
                             aria-busy={isLoadingMore}
-                            onClick={() =>
-                              onToggleProject(
-                                selectedBackendId,
-                                group.cwd,
-                              )
-                            }
+                            onClick={() => {
+                              if (query.trim()) {
+                                onToggleProject(selectedBackendId, group.cwd);
+                                return;
+                              }
+                              const nextLimit = visibleLimit + PROJECT_THREAD_BATCH_SIZE;
+                              setProjectVisibleLimits((previous) => ({
+                                ...previous,
+                                [projectKey]: nextLimit,
+                              }));
+                              if (hasServerMore && nextLimit > group.threads.length) {
+                                onToggleProject(selectedBackendId, group.cwd);
+                              }
+                            }}
                           >
                             {isLoadingMore ? (
                               <>
