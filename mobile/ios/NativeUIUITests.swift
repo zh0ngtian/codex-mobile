@@ -156,11 +156,145 @@ final class NativeUIUITests: XCTestCase {
         app.launchArguments = ["--native-ui-live"]
         app.launch()
         let field = app.textFields["native-field-name"]
-        XCTAssertTrue(field.waitForExistence(timeout: 10))
+        let firstLaunch = field.waitForExistence(timeout: 3)
+        if !firstLaunch {
+            openNativeSettings(app)
+            app.collectionViews.buttons["设备"].tap()
+            app.collectionViews.buttons["添加设备"].tap()
+            XCTAssertTrue(field.waitForExistence(timeout: 10), app.debugDescription)
+            app.navigationBars.buttons["设置"].tap()
+        }
         app.buttons["完成"].tap()
         expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: field)
         waitForExpectations(timeout: 5)
-        XCTAssertTrue(app.buttons["添加设备"].exists)
+        if firstLaunch { XCTAssertTrue(app.buttons["添加设备"].exists) }
+        else { XCTAssertTrue(app.otherElements["native-ui-root"].exists) }
+    }
+
+    func testLiveGatewayRoundtripAndArchive() {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["--native-ui-live"]
+        app.launch()
+        let name = app.textFields["native-field-name"]
+        if name.waitForExistence(timeout: 3) {
+        name.tap()
+        name.typeText("CM_NATIVE_UI_QA")
+        XCTAssertEqual(name.value as? String, "CM_NATIVE_UI_QA", "真实字段必须接收到输入")
+        let address = app.secureTextFields["网关地址"]
+        address.tap()
+        address.typeText("http://127.0.0.1:18786/?token=ios-simulator-check")
+        app.collectionViews.buttons["测试并保存"].tap()
+        XCTAssertTrue(name.waitForNonExistence(timeout: 30), app.debugDescription)
+        if app.buttons["完成"].waitForExistence(timeout: 1) { app.buttons["完成"].tap() }
+        }
+        let input = app.descendants(matching: .any)["native-composer-input"]
+        XCTAssertTrue(input.waitForExistence(timeout: 30), app.debugDescription)
+        input.tap()
+        input.typeText("这是 CM_NATIVE_UI_20261014 自动化验证。请只回复 NATIVE_IOS_OK，不调用工具，不修改文件。")
+        let send = app.buttons["native-send"]
+        expectation(for: NSPredicate(format: "enabled == true"), evaluatedWith: send)
+        waitForExpectations(timeout: 30)
+        send.tap()
+        XCTAssertTrue(app.staticTexts["NATIVE_IOS_OK"].waitForExistence(timeout: 90), app.debugDescription)
+        let image = XCTAttachment(screenshot: app.screenshot())
+        image.name = "原生真实消息往返"; image.lifetime = .keepAlways; add(image)
+        app.otherElements["native-ui-root"].buttons["会话操作"].tap()
+        app.buttons["会话设置"].tap()
+        app.collectionViews.buttons["归档"].tap()
+        XCTAssertTrue(app.staticTexts["你好，让我们开始吧"].waitForExistence(timeout: 15), app.debugDescription)
+    }
+
+    func testLiveSwitchPreservesDraftAndImageAcrossBothInterfaces() {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["--native-ui-live", "--native-ui-preference-probe"]
+        app.launch()
+        let input = app.descendants(matching: .any)["native-composer-input"]
+        XCTAssertTrue(input.waitForExistence(timeout: 20), app.debugDescription)
+        expectation(for: NSPredicate(format: "enabled == true"), evaluatedWith: input)
+        waitForExpectations(timeout: 15)
+        app.buttons["native-new-thread"].tap()
+        openNativeSettings(app)
+        let initialToggle = app.switches["native-ui-preference"]
+        if initialToggle.value as? String == "1" {
+            initialToggle.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
+            waitForToggle(initialToggle, value: "0")
+        }
+        app.buttons["完成"].tap()
+        app.buttons["native-sidebar-close"].tap()
+        input.tap()
+        input.typeText("CM_SWITCH_DRAFT_20261014")
+        app.otherElements["native-ui-root"].buttons["添加附件"].tap()
+        app.buttons["照片"].tap()
+        let picker = app.otherElements["codex.attachments.photos"]
+        XCTAssertTrue(picker.waitForExistence(timeout: 10), app.debugDescription)
+        let photo = picker.images.matching(identifier: "PXGGridLayout-Info").firstMatch
+        XCTAssertTrue(photo.waitForExistence(timeout: 10), app.debugDescription)
+        photo.tap()
+        let addPhoto = picker.buttons.matching(NSPredicate(format: "label BEGINSWITH %@ OR label BEGINSWITH %@ OR label == %@ OR label == %@", "添加", "Add", "完成", "Done")).firstMatch
+        XCTAssertTrue(addPhoto.waitForExistence(timeout: 5), app.debugDescription)
+        addPhoto.tap()
+        let remove = app.otherElements["native-ui-root"].buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "移除 ")).firstMatch
+        XCTAssertTrue(remove.waitForExistence(timeout: 15), app.debugDescription)
+        let attachmentLabel = remove.label
+        openNativeSettings(app)
+        let toggle = app.switches["native-ui-preference"]
+        XCTAssertEqual(toggle.value as? String, "0")
+        toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
+        waitForToggle(toggle, value: "1")
+        XCTAssertTrue(app.otherElements["native-ui-root"].exists, "本次启动不能热切换")
+        app.terminate()
+        app.launchArguments = ["--native-ui-preference-probe"]
+        app.launch()
+        expectation(for: NSPredicate(format: "value == %@", "CM_SWITCH_DRAFT_20261014"), evaluatedWith: input)
+        waitForExpectations(timeout: 20)
+        XCTAssertEqual(input.value as? String, "CM_SWITCH_DRAFT_20261014")
+        XCTAssertTrue(app.otherElements["native-ui-root"].buttons[attachmentLabel].exists)
+        openNativeSettings(app)
+        app.switches["native-ui-preference"].coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
+        waitForToggle(app.switches["native-ui-preference"], value: "0")
+        app.terminate()
+        app.launch()
+        let webInput = app.webViews.textViews["向 Codex 提问"]
+        XCTAssertTrue(webInput.waitForExistence(timeout: 20), app.debugDescription)
+        XCTAssertEqual(webInput.value as? String, "CM_SWITCH_DRAFT_20261014")
+        XCTAssertTrue(app.webViews.buttons[attachmentLabel].exists, app.debugDescription)
+        XCTAssertFalse(app.otherElements["native-ui-root"].exists)
+        let manager = app.webViews.buttons["管理设备"]
+        if !manager.isHittable { app.webViews.buttons["打开会话列表"].tap() }
+        manager.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        // iOS 27 的 WebKit AX 在这个 aria-modal 中没有返回 checkbox。
+        // 本用例固定402×874验收机型，坐标来自实际设置页截图；重启后原生根与草稿仍须真实通过。
+        let settingsImage = XCTAttachment(screenshot: app.screenshot())
+        settingsImage.name = "旧界面可见切换开关"; settingsImage.lifetime = .keepAlways; add(settingsImage)
+        app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 30, dy: 247)).tap()
+        let savedPreference = app.staticTexts["native-ui-saved-preference"]
+        expectation(for: NSPredicate(format: "label == %@", "1"), evaluatedWith: savedPreference)
+        waitForExpectations(timeout: 20)
+        XCTAssertFalse(app.otherElements["native-ui-root"].exists, "旧界面也只能在下次完整启动切换")
+        app.terminate()
+        app.launch()
+        expectation(for: NSPredicate(format: "value == %@", "CM_SWITCH_DRAFT_20261014"), evaluatedWith: input)
+        waitForExpectations(timeout: 20)
+        XCTAssertEqual(input.value as? String, "CM_SWITCH_DRAFT_20261014")
+        XCTAssertTrue(app.otherElements["native-ui-root"].buttons[attachmentLabel].exists)
+        app.buttons["native-new-thread"].tap()
+        openNativeSettings(app)
+        app.switches["native-ui-preference"].coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
+        waitForToggle(app.switches["native-ui-preference"], value: "0")
+    }
+
+    private func openNativeSettings(_ app: XCUIApplication) {
+        app.buttons["native-sidebar-open"].tap()
+        app.buttons["native-settings-open"].tap()
+        XCTAssertTrue(app.switches["native-ui-preference"].waitForExistence(timeout: 5), app.debugDescription)
+    }
+
+    private func waitForToggle(_ toggle: XCUIElement, value: String) {
+        let changed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", value), object: toggle)
+        let result = XCTWaiter.wait(for: [changed], timeout: 10)
+        XCTAssertEqual(result, .completed, XCUIApplication().debugDescription)
     }
 
     func testDraftAudioPreviewsWithNativeMediaPlayer() {
@@ -171,6 +305,20 @@ final class NativeUIUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["silence.wav"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.descendants(matching: .any)["native-media-player"].waitForExistence(timeout: 10), app.debugDescription)
         XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "无法播放媒体")).firstMatch.exists)
+    }
+
+    func testReferenceLandscapeKeepsInputAndSendReachable() {
+        let app = reference()
+        XCUIDevice.shared.orientation = .landscapeLeft
+        defer { XCUIDevice.shared.orientation = .portrait }
+        let input = app.descendants(matching: .any)["native-composer-input"]
+        let landscape = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in app.frame.width > app.frame.height }, object: app)
+        XCTAssertEqual(XCTWaiter.wait(for: [landscape], timeout: 5), .completed)
+        XCTAssertTrue(input.isHittable, app.debugDescription)
+        input.tap()
+        input.typeText("Landscape_QA")
+        XCTAssertTrue(app.buttons["native-send"].isHittable, app.debugDescription)
+        XCTAssertTrue(app.buttons["native-send"].isEnabled)
     }
 
     func testReadingHistoryDoesNotJumpWhenNewMessageArrives() {

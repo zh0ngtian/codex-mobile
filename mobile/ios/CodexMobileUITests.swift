@@ -1,6 +1,11 @@
 import XCTest
 
 final class CodexMobileUITests: XCTestCase {
+    private func waitForTailMeasurement(_ tail: XCUIElement) {
+        let complete = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in Double(tail.label) != nil }, object: tail)
+        XCTAssertEqual(XCTWaiter.wait(for: [complete], timeout: 3), .completed)
+    }
+
     func testAttachmentButtonsOpenNativePickersDirectly() throws {
         continueAfterFailure = false
         let app = XCUIApplication(bundleIdentifier: "vip.loock.codexmobile")
@@ -114,6 +119,7 @@ final class CodexMobileUITests: XCTestCase {
             XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
             let tail = app.staticTexts["codex.keyboard-dismissal-tail"]
             XCTAssertTrue(tail.waitForExistence(timeout: 5))
+            waitForTailMeasurement(tail)
             let tailDistance = try XCTUnwrap(Double(tail.label))
             print("KEYBOARD_DISMISSAL_TAIL \(tailDistance)")
             XCTAssertGreaterThanOrEqual(tailDistance, 0)
@@ -168,6 +174,7 @@ final class CodexMobileUITests: XCTestCase {
             XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
             let tail = app.staticTexts["codex.keyboard-dismissal-tail"]
             XCTAssertTrue(tail.waitForExistence(timeout: 5))
+            waitForTailMeasurement(tail)
             let tailDistance = try XCTUnwrap(Double(tail.label))
             print("KEYBOARD_DISMISSAL_TAIL \(tailDistance)")
             XCTAssertGreaterThanOrEqual(tailDistance, 0)
@@ -228,6 +235,7 @@ final class CodexMobileUITests: XCTestCase {
             XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5), "发送后应收起键盘")
             let tail = app.staticTexts["codex.keyboard-dismissal-tail"]
             XCTAssertTrue(tail.waitForExistence(timeout: 5))
+            waitForTailMeasurement(tail)
             let tailDistance = try XCTUnwrap(Double(tail.label))
             print("KEYBOARD_DISMISSAL_TAIL \(tailDistance)")
             XCTAssertGreaterThanOrEqual(tailDistance, 0)

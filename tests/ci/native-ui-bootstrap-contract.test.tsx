@@ -1,13 +1,19 @@
 import { render, cleanup, waitFor } from '@testing-library/react';
-import { afterEach, expect, it } from 'vitest';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { JSDOM } from 'jsdom';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { AppBootstrap } from '../../src/App';
 
+beforeEach(() => {
+  // 固定为浏览器Storage；Node 26 的实验性同名全局不属于这项Web宿主契约。
+  vi.stubGlobal('localStorage', new JSDOM('', { url: 'http://localhost' }).window.localStorage);
+});
+
 afterEach(() => {
-  cleanup(); localStorage.clear();
+  cleanup(); window.localStorage.clear(); vi.unstubAllGlobals();
   delete (window as any).__CODEX_NATIVE_UI__;
   delete (window as any).webkit;
   delete (window as any).codexMobilePublishNativeSnapshot;

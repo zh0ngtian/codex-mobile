@@ -19,6 +19,15 @@ struct NativeUIHost<Legacy: View>: View {
                 NativeRootView(store: store)
             }
         }
+        #if DEBUG
+        .overlay(alignment: .topLeading) {
+            if ProcessInfo.processInfo.arguments.contains("--native-ui-preference-probe") {
+                Text(store.savedNativePreference ? "1" : "0")
+                    .font(.system(size: 1)).frame(width: 1, height: 1).allowsHitTesting(false)
+                    .accessibilityIdentifier("native-ui-saved-preference")
+            }
+        }
+        #endif
         .environment(\.nativeUIBridge, bridge)
         .onChange(of: store.showLegacyForRecovery, initial: true) { _, recovery in
             bridge.setLegacyVisible(!store.nativeEnabled || recovery)
