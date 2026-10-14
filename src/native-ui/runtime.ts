@@ -1,3 +1,4 @@
+import { flushSync } from 'react-dom';
 import { isIOSNativeHost } from './preference';
 import { getActiveLocale, t } from '../i18n';
 import { FONT_SCALES, readFontSize } from '../ui/font-size';
@@ -150,7 +151,13 @@ export class NativeRuntime {
         }
       } else {
         if (workspace && ['message.send', 'mention.insert', 'location.insert'].includes(name)) workspace.echo = undefined;
-        await handler(params);
+        if (params.fieldRevision !== undefined) {
+          // Swift在ACK后释放本地输入保护，必须先完成React提交和layout投影注册。
+          // 仅同步调用handler；其返回的异步工作仍在flushSync之外等待。
+          let pending: unknown;
+          flushSync(() => { pending = handler(params); });
+          await pending;
+        } else await handler(params);
       }
       return { ...base, ok: true };
     } catch (error) { return { ...base, error: error instanceof Error ? error.message : String(error) }; }

@@ -56,3 +56,22 @@ it('设备子页保存探测失败保留真实错误且不更新注册表', asyn
  expect(runtime.snapshot().panel?.items.find(item => item.id === 'devices-error')?.text).toBe('设备身份探测失败');
  expect(saved).toHaveLength(0); expect(runtime.snapshot().panel?.items.find(item => item.id === 'save')?.disabled).toBe(false); runtime.dispose();
 });
+it('设备字段每次ACK都携带已提交的同版本面板文字，连续快输不会被旧值夺回', async () => {
+ const runtime = new NativeRuntime(() => {});
+ render(<BackendManagerSheet nativeRuntime={runtime} open registry={{ version: 1, backends: [], selectedBackendId: '' }} summaries={{}} onClose={() => {}} onChange={() => {}} />);
+ const observed: Array<{ ack: number | undefined; value: string | undefined }> = [];
+ await act(async () => {
+  const text = 'CM_NATIVE_UI_QA';
+  for (let revision = 1; revision <= text.length; revision++) {
+   const result = await runtime.dispatch({ id: `atomic-name-${revision}`, name: 'device.change', params: {
+    field: 'name', value: text.slice(0, revision), fieldKey: 'devices:name', fieldRevision: revision,
+   } });
+   expect(result.ok, result.error).toBe(true);
+   // 必须在act替测试冲刷React之前观察：Swift接到ACK便会释放本地字段保护。
+   const snapshot = runtime.snapshot();
+   observed.push({ ack: snapshot.commandResults?.at(-1)?.fieldRevision, value: snapshot.panel?.items.find(item => item.id === 'name')?.value });
+  }
+ });
+ expect(observed).toEqual(Array.from('CM_NATIVE_UI_QA', (_, index) => ({ ack: index + 1, value: 'CM_NATIVE_UI_QA'.slice(0, index + 1) })));
+ runtime.dispose();
+});
