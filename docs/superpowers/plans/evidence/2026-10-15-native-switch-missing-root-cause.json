@@ -1,0 +1,41 @@
+{
+  "date": "2026-10-15",
+  "installedVersion": "0.2.175",
+  "device": "iPhone 17 Pro / iOS 27",
+  "reproducedAfterFullRestart": true,
+  "bridgeInEnvironment": true,
+  "handlerType": "function",
+  "hostFlag": null,
+  "documentStart": {
+    "isTopFrame": true,
+    "protocol": "file:",
+    "urlConstructorType": "function"
+  },
+  "actualHref": "file:///private/var/containers/Bundle/Application/<app-id>/PakePlus.app/index.html",
+  "injectedTrustedHref": "file:///var/containers/Bundle/Application/<app-id>/PakePlus.app/index.html",
+  "rootCause": "Foundation.standardizedFileURL标准化真实/private目录别名，JS严格href守卫使用标准化后的另一种地址，导致bootstrap提前返回；模拟器/Users路径未触发该差异",
+  "evidence": "本地ignored .mobile-build/native-host-diagnostic/physical-trusted.json；不含聊天正文",
+  "candidateFix": {
+    "hostFlag": true,
+    "physicalSettings": "ictrl在管理设备首项读到Switch“使用原生界面”，value=0，另有下次完整启动生效说明",
+    "userPreferenceChanged": false,
+    "physicalDiagnostic": "只读诊断构建，正式发布前移除全部临时探针",
+    "regression": {
+      "red": "真实private路径首页bootstrap未设置宿主标记，断言失败",
+      "green": "14项真实Swift脚本契约通过，包含六类JS及拒绝旁路"
+    },
+    "ciContracts": 107,
+    "pythonReleaseTests": 157,
+    "coordinatorTests": 30,
+    "typecheck": "passed",
+    "simulator": {
+      "releaseBuildRun": "passed",
+      "focusedUITests": 3,
+      "result": "test_sim_2026-10-14T16-48-11-633Z_pid23807_0fb3e5b1.xcresult"
+    },
+    "reviews": {
+      "spec": "approved",
+      "quality": "approved"
+    }
+  }
+}
