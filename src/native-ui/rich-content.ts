@@ -14,8 +14,15 @@ const describe = (id: string, title: string, value: unknown, kind = 'text'): Nat
 export function projectToolPanel(c: NativeWorkspaceController, id: string, diagnostics: Record<string, ImageGenerationError | null> = {}): NativeSnapshot['panel'] {
  const diffItems = (changes: any[], prefix: string): NativePanelItem[] => changes.map((change, i) => {
   const stats = summarizeFileChange(change);
+  const rawPath = typeof change.path === 'string' ? change.path : '';
+  let href = parseRemoteFileHref(rawPath) ? rawPath : null;
+  const cwd = typeof c.active?.cwd === 'string' ? c.active.cwd : '';
+  if (!href && rawPath && !rawPath.startsWith('/') && !/^[a-z][a-z\d+.-]*:/i.test(rawPath) && cwd.startsWith('/')) {
+   const resolved = remoteMarkdownImage(`${cwd.replace(/\/+$/, '')}/__native_context__.md`, rawPath);
+   if (resolved.local && parseRemoteFileHref(resolved.source)) href = resolved.source;
+  }
   return { id: `${prefix}:${i}`, kind: 'disclosure', title: `${change.path || t('未命名文件')} +${stats.additions} −${stats.deletions}`, children: [
-   nativeAction(`${prefix}:${i}:file`, t('打开文件'), 'file.open', { href: change.path }), { id: `${prefix}:${i}:diff`, kind: 'diff', text: change.diff || t('暂无 Diff 内容') },
+   ...(href ? [nativeAction(`${prefix}:${i}:file`, t('打开文件'), 'file.open', { href })] : []), { id: `${prefix}:${i}:diff`, kind: 'diff', text: change.diff || t('暂无 Diff 内容') },
   ] };
  });
  for (const turn of groupConversationTurns(c.active?.turns ?? [])) {

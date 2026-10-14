@@ -91,13 +91,13 @@ ConfiguredApp 使用真实 `scopedThreads`、`projectDirectories`、`collapsedPr
 | 本地草稿 | DraftsSheet 直接投影已有 list/remove/retry/restore；只传元数据，恢复回调获得原 IDB 二进制记录，不复制记录、不发送消息 |
 | 应用更新 | AppUpdateSheet 原 phase、进度、更新说明、install/retry/close；`manualCheckSupported=false` 不投影手动检查动作 |
 
-全局面板通过 runtime 的独立注册通道合并，按真实打开顺序展示；后台组件重新 render 不抢面板。`panel.close` 按当前 DTO id 路由到拥有者。全局设置别名不会接管 mentions、工具或会话面板。关闭或切换会话后，旧请求完成不能关闭新面板。
+全局面板通过 runtime 的独立注册通道合并，按真实打开顺序展示；后台组件重新 render 不抢面板。`panel.close` 按当前 DTO id 路由到拥有者。全局设置别名不会接管 mentions、工具或会话面板。关闭或切换会话后，旧请求完成不能关闭新面板。审批、历史确认或队列确认对应记录消失后，瞬态面板直接撤下，不投影空的内容过期面板；后续审批仍显示当前请求。
 
-审批 DTO id 为 `approval:<approvalKey>`；历史编辑为 `history-edit:<editKey>`，删除后续确认为 `confirm-history:<editKey>`。字段缓存随身份隔离，旧面板无法回答新请求；提交中禁用字段和关闭。问题选项仅使用静态 option 下标及 other 哨兵，自定义 secret 仅进入 secureField 和原审批内存状态，不放入 Picker 选项或额外持久存储。
+审批 DTO id 为 `approval:<approvalKey>`；历史编辑为 `history-edit:<editKey>`，删除后续确认为 `confirm-history:<editKey>`。两个审批分支均显示请求实际 threadId，标题复用 completionThreadTitle，设备级队列中的其他会话不会被误认为当前会话。字段缓存随身份隔离，旧面板无法回答新请求；提交中禁用字段和关闭。问题选项仅使用静态 option 下标及 other 哨兵，自定义 secret 仅进入 secureField 和原审批内存状态，不放入 Picker 选项或额外持久存储。
 
 ### 富内容展示契约
 
-- 工具详情挑选命令、cwd、状态、耗时、退出码、参数及输出，不把整个工具对象 JSON 充当业务面板。文件变更复用 summarizeFileChange，展示逐文件统计、真实 diff 及打开文件动作；运行计划、折叠推理、上下文压缩与失败图像诊断保留。
+- 工具详情挑选命令、cwd、状态、耗时、退出码、参数及输出，不把整个工具对象 JSON 充当业务面板。文件变更复用 summarizeFileChange，展示逐文件统计、真实 diff 及打开文件动作；相对路径仅在真实 active.cwd 可正规化为受支持路径时提供打开动作，缺少目录时保留差异但不生成无效按钮；运行计划、折叠推理、上下文压缩与失败图像诊断保留。
 - `file.open {href}` 复用 parseRemoteFileHref 和原客户端 `fs/readFile`，复用既有 base64 文本/二进制判定。Markdown/HTML 可切预览与源码，图片、SVG、音视频和下载使用既有鉴权资源 URL；不会创建跨 WK 无效的 blob URL。
 - 普通远程源码使用 `kind=source, title=文件名, text=完整源码, line=可选目标行`，供原生显示行号、目标行高亮与定位。SVG 文件读取真实文本后使用 html 展示。
 - 用户与助手正文资源均复用 nativeItemText 去除业务标题指令后收集；用户 Markdown 的本地图片、Mermaid 和文件链接保留。正式 videoGeneration 与 imageGeneration 一起参与媒体去重；运行中产物已就绪即可播放，无产物运行态与失败态保留明确入口及原工具错误详情，不创建不存在的视频诊断接口。

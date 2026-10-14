@@ -38,7 +38,7 @@ export interface NativeWorkspaceController {
 interface PanelState { panelId: string | null; query: string; setPanel: (id: string | null) => void; setQuery: (query: string) => void; getQuery?: () => string; file?: NativeFileState | null; richContent?: NativePanelItem[]; customAnswers?: Set<string>; setCustomAnswer?: (key: string, custom: boolean) => void; richHandlers?: NativeHandlers; closeRich?: () => void; diagnostics?: Record<string, ImageGenerationError | null>; loadDiagnostic?: (id: string) => Promise<void> }
 function projectPanel(c: NativeWorkspaceController, panel: PanelState): NativeSnapshot['panel'] {
   const id = panel.panelId;
-  if (!id) return undefined;
+  if (!id || ['approval', 'history-edit', 'confirm-history'].includes(id) || id.startsWith('confirm-queue:') || id.startsWith('queue-edit:')) return undefined;
   if (id === 'mentions') {
     const items: NativePanelItem[] = [{ id: 'mention-search', kind: 'textField', title: t('搜索 Skill / Plugin'), value: panel.query, command: nativeCommand('mention.search') },
       ...filterInstalledSkills(c.skills, panel.query).map(skill => ({ ...nativeAction(`skill:${skill.path}`, skillDisplayName(skill), 'mention.insert', { id: `skill:${skill.path}` }), text: skillDescription(skill) })),

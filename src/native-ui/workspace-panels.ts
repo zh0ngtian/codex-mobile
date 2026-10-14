@@ -49,6 +49,9 @@ export function workspaceBusinessPanels(c: NativeWorkspaceController, panel: Sta
  } else if (id === 'thread-rename') result = { id, title: t('重命名'), items: [ { id: 'thread-name', kind: 'textField', title: t('名称'), value: panel.query, command: nativeCommand('workspace.rename.change') }, nativeAction('rename-submit', t('保存'), 'workspace.rename.submit') ] };
  else if (request && (id === 'approval' || (!id && request))) {
   const items: NativePanelItem[] = [];
+  const threadId = String(request.params?.threadId ?? '');
+  if (threadId) items.push(text('approval-thread-id', t('对话线程：'), threadId));
+  if (s.approvalThreadTitle) items.push(text('approval-thread-title', t('会话'), s.approvalThreadTitle));
   if (s.approvalError) items.push(text('approval-error', t('提交失败'), s.approvalError));
   if (disabled) items.push(text('approval-pending', t('正在提交，请等待确认…'), ''));
   if (request.method === 'item/tool/requestUserInput') {

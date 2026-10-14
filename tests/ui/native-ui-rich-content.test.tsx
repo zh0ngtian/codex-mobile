@@ -88,3 +88,10 @@ it('正式videoGeneration无产物的运行态和失败态仍保留明确入口�
  const snapshot = projection(null); expect(JSON.stringify(snapshot.messages)).toContain('正在生成视频'); expect(JSON.stringify(snapshot.messages)).toContain('视频生成未完成'); expect(JSON.stringify(snapshot.messages)).not.toContain('failed.mp4');
  expect(JSON.stringify(projection('tool:turn:failed-video').panel)).toContain('视频模型返回失败');
 });
+it('相对变更文件按真实cwd规范化为可解析路径，缺cwd时保留diff而不提供死按钮', () => {
+ const active = { id: 't', cwd: '/app/project', turns: [{ id: 'turn', items: [{ id: 'file', type: 'fileChange', changes: [{ path: 'src/../src/App.tsx', diff: '+new' }] }] }] };
+ const project = (cwd?: string) => createWorkspaceAdapter(c({ active: { ...active, cwd } }), { panelId: 'changes:turn', query: '', setPanel() {}, setQuery() {} }).snapshot.panel!;
+ const existing = project('/app/project').items[0].children!.find(item => item.command?.name === 'file.open'); expect(existing?.command?.params.href).toBe('/app/project/src/App.tsx');
+ expect(project().items[0].children!.some(item => item.command?.name === 'file.open')).toBe(false); expect(project().items[0].children!.some(item => item.kind === 'diff')).toBe(true);
+ expect(project('relative-cwd').items[0].children!.some(item => item.command?.name === 'file.open')).toBe(false);
+});

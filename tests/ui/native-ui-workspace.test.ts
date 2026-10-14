@@ -200,3 +200,29 @@ it('旧会话队列编辑异步完成不能关闭新会话已打开的面板', a
  expect(runtime.snapshot().panel?.id).toBe('mentions');
  await act(async () => { finish(true); await pending; }); expect(runtime.snapshot().panel?.id).toBe('mentions'); runtime.dispose(); cleanup();
 });
+it.each(['item/commandExecution/requestApproval', 'item/tool/requestUserInput'])('设备级%s面板明确显示目标会话而不误认active会话', method => {
+ const request = { id: 7, method, params: { threadId: 'other-thread', questions: [] } };
+ const c = controller({ active: { id: 'active-thread', name: '当前会话', turns: [] }, extended: { state: { approval: request, approvalThreadTitle: '另一个会话', userAnswers: {} }, callbacks: {} } });
+ const panel = createWorkspaceAdapter(c, { panelId: 'approval', query: '', setPanel() {}, setQuery() {} }).snapshot.panel!;
+ expect(JSON.stringify(panel.items)).toContain('other-thread'); expect(JSON.stringify(panel.items)).toContain('另一个会话');
+});
+it('审批成功与历史提交、队列移除真实rerender后不保留空瞬态sheet，下个审批仍可见', async () => {
+ const { NativeRuntime } = await import('../../src/native-ui/runtime'); const { useApprovalRequests } = await import('../../src/features/approvals/useApprovalRequests'); const { useState } = await import('react'); const { act } = await import('@testing-library/react');
+ const runtime = new NativeRuntime(() => {}); runtime.setNavigation({ selectedBackendId: 'b', backends: [], groups: [] });
+ let resolveHistory!: () => void; let removeQueue!: () => void;
+ const { result } = renderHook(() => {
+  const approvals = useApprovalRequests(); const [historyEdit, setHistoryEdit] = useState<any>(null); const [queued, setQueued] = useState<any[]>([]);
+  resolveHistory = () => setHistoryEdit({ threadId: 't', text: '修改', submitting: false, target: { turnId: 'turn', messageId: 'm', hasLaterTurns: true, rollbackTurnCount: 2 } });
+  removeQueue = () => setQueued([{ id: 'q', state: 'uncertain', text: '待确认' }]);
+  useNativeConversationAdapter(runtime, controller({ queued, cancelQueued: async () => setQueued([]), approvalCount: approvals.requests.length, extended: { state: { approval: approvals.approval, userAnswers: approvals.userAnswers, historyEdit }, callbacks: { replyToRequest: (value: unknown) => approvals.submit(value, { respond: async () => {} }, () => {}, approvals.approval ?? undefined), submitHistoricalMessageEdit: () => setHistoryEdit(null) } } }));
+  return approvals;
+ });
+ await act(async () => { result.current.receive({ id: 1, method: 'item/commandExecution/requestApproval' }); await runtime.dispatch({ id: 'approval-open', name: 'panel.open', params: { contextId: 'b:t:1', id: 'approval' } }); });
+ await act(async () => { await runtime.dispatch({ id: 'approval-finish', name: 'approval.decide', params: { contextId: 'b:t:1', requestKey: 'number:1', index: 0 } }); }); expect(runtime.snapshot().panel).toBeUndefined();
+ await act(async () => { result.current.receive({ id: 2, method: 'item/commandExecution/requestApproval' }); }); expect(runtime.snapshot().panel?.id).toBe('approval:number:2');
+ await act(async () => { await runtime.dispatch({ id: 'approval-next-finish', name: 'approval.decide', params: { contextId: 'b:t:1', requestKey: 'number:2', index: 0 } }); resolveHistory(); await runtime.dispatch({ id: 'history-open', name: 'panel.open', params: { contextId: 'b:t:1', id: 'history-edit' } }); });
+ await act(async () => { await runtime.dispatch({ id: 'history-confirm', name: 'history.submit', params: { contextId: 'b:t:1', editKey: 't:turn:m' } }); }); expect(runtime.snapshot().panel?.id).toBe('confirm-history:t:turn:m');
+ await act(async () => { await runtime.dispatch({ id: 'history-done', name: 'history.submit', params: { contextId: 'b:t:1', editKey: 't:turn:m', confirmed: true } }); }); expect(runtime.snapshot().panel).toBeUndefined();
+ await act(async () => { removeQueue(); }); await act(async () => { await runtime.dispatch({ id: 'queue-warning', name: 'queue.cancel', params: { contextId: 'b:t:1', id: 'q' } }); }); expect(runtime.snapshot().panel?.id).toBe('confirm-queue:q');
+ await act(async () => { await runtime.dispatch({ id: 'queue-done', name: 'queue.cancel', params: { contextId: 'b:t:1', id: 'q', confirmed: true } }); }); expect(runtime.snapshot().panel).toBeUndefined(); runtime.dispose(); cleanup();
+});

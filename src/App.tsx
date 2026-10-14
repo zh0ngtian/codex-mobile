@@ -4201,7 +4201,7 @@ function BackendWorkspace({
     },
     cancelQueued: cancelQueuedFollowUp, sendQueued: actOnQueuedFollowUp, editQueued: editQueuedFollowUp,
     extended: {
-      state: { historyEdit, pendingSteerText: pendingSteerMessage?.threadId === String(active?.id) ? pendingSteerMessage.text : null, steering, queueSaving, steerable: Boolean(activeTurnId(active)), requests, approval, userAnswers, approvalSubmitting: approvalRequests.submitting, approvalError: approvalRequests.error, permissionModes, selectedPermissionModeId,
+      state: { approvalThreadTitle: approval ? completionThreadTitle({ threadId: String((approval.params as AnyRecord)?.threadId ?? ""), threads, activeThread: active, fallback: t("新对话") }) : undefined, historyEdit, pendingSteerText: pendingSteerMessage?.threadId === String(active?.id) ? pendingSteerMessage.text : null, steering, queueSaving, steerable: Boolean(activeTurnId(active)), requests, approval, userAnswers, approvalSubmitting: approvalRequests.submitting, approvalError: approvalRequests.error, permissionModes, selectedPermissionModeId,
         selectedServiceTier: displayedServiceTier, speedOptions, pendingAction, tokenUsage: tokenUsageByThread[active?.id] ?? null, rateLimits,
         projectOptions, backends, draftSaveStatus, activeThreadAccessMode, activeThreadResumeError },
       callbacks: { currentHistoryEdit: () => historyEditRef.current, currentApproval: approvalRequests.current, readRemoteFile: (path: string) => { const client = clientRef.current; if (!client) throw new Error(t('尚未连接 app-server')); return client.request<{ dataBase64: string }>('fs/readFile', { path }); }, chooseSpeed, choosePermissionMode, replyToRequest, changeHistoricalMessageEditText, cancelHistoricalMessageEdit,
