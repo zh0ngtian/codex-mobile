@@ -39,4 +39,15 @@ struct NativeSnapshot: Codable {
     var mentions: [NativeOption]? = nil
     var caretOffset: Int? = nil
     var richContent: [NativePanelItem]? = nil
+    var projectName: String? = nil
+    var backendName: String? = nil
+    var listBackendId: String? = nil
+    var modelValue: String? = nil
+    var effortValue: String? = nil
+    var speed: String? = nil
+    var speedValue: String? = nil
+    var speeds: [NativeOption]? = nil
+    var permissionValue: String? = nil
+    var permissions: [NativeOption]? = nil
+    var contextUsage: NativeContextUsage? = nil
 }

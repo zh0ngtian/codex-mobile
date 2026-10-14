@@ -48,6 +48,7 @@ export function projectConversation(active: RecordValue | null, imageURL: (path:
         const id = `${turnId}:${item.id}`;
         if (item.type === 'userMessage') {
           messages.push({ id, role: 'user', text: nativeItemText(item), blocks: imageBlocks(item, id),
+            ...(typeof turn.startedAt === 'number' && Number.isFinite(turn.startedAt) && turn.startedAt > 0 ? { timestamp: turn.startedAt } : {}),
             actions: [nativeAction(`${id}:copy`, t('复制'), 'message.copy', { id }), nativeAction(`${id}:edit`, t('编辑'), 'message.edit', { turnId, messageId: String(item.id) })] });
         } else if (item.type === 'agentMessage') {
           if (item.phase === 'commentary' && collapse) {
@@ -55,6 +56,7 @@ export function projectConversation(active: RecordValue | null, imageURL: (path:
               children: commentary.map(entry => ({ id: `${turnId}:${entry.id}`, kind: 'markdown', text: nativeItemText(entry) })) }] });
             historyInserted = true;
           } else messages.push({ id, role: 'assistant', text: nativeItemText(item), status: item.phase === 'commentary' ? undefined : status,
+            ...(item.phase !== 'commentary' && !running && typeof turn.completedAt === 'number' && Number.isFinite(turn.completedAt) && turn.completedAt > 0 ? { timestamp: turn.completedAt } : {}),
             actions: [nativeAction(`${id}:copy`, t('复制'), 'message.copy', { id })] });
         } else if ((item.type === 'imageGeneration' || item.type === 'videoGeneration') && item.status === 'failed') {
           tools.push(nativeAction(`${id}:failure`, t(item.type === 'videoGeneration' ? '视频生成未完成' : '图像生成未完成'), 'panel.open', { id: `tool:${turnId}:${item.id}` }));
@@ -100,7 +102,7 @@ interface NavigationInput {
   threads: AggregatedThreadItem[]; listBackendId: string; selectedBackendId: string; activeThreadId?: string;
   projectDirectories: string[]; hasProjectlessThreads: boolean; collapsedProjectKeys: Set<string>;
   projectThreadStates: Record<string, ProjectThreadLoadState>; projectHasMore: Record<string, boolean>; loadingProjectKeys: Set<string>;
-  filter?: string; searching?: boolean; error?: string;
+  filter?: string; query?: string; searching?: boolean; error?: string;
   backends?: Array<{ id: string; name: string }>;
   backendSnapshots?: Record<string, { projects: string[]; projectlessThreadIds: string[]; projectThreadStates: Record<string, ProjectThreadLoadState>; projectHasMore: Record<string, boolean> }>;
 }
@@ -116,8 +118,10 @@ export function projectNavigation(input: NavigationInput): NativeGroup[] {
       ].map(([action, title]) => nativeAction(`${item.backendId}:${item.threadId}:${action}`, title, 'thread.manage', { ...params, action })),
     };
   };
+  if (input.query?.trim()) return [{ id: 'search', category: 'search', title: input.searching ? t('搜索中…') : t('搜索结果'), items: input.threads.map(row),
+    ...(input.error ? { subtitle: input.error, actions: [nativeAction('search-retry', t('重试'), 'navigation.refresh')] } : {}) }];
   const split = splitAllThreads(input.threads);
-  const groups: NativeGroup[] = [{ id: 'favorites', title: t('关注'), items: split.pinned.map(row) }];
+  const groups: NativeGroup[] = [{ id: 'favorites', category: 'pinned', title: t('关注'), items: split.pinned.map(row) }];
   if (input.filter === 'favorites') return groups;
   const appendProjects = (backendId: string, threads: AggregatedThreadItem[], directories: string[], hasProjectless: boolean,
     states: Record<string, ProjectThreadLoadState>, hasMore: Record<string, boolean>, backendName?: string) => {
@@ -128,16 +132,18 @@ export function projectNavigation(input: NavigationInput): NativeGroup[] {
       const actions: NativePanelItem[] = [];
       if (states[group.cwd] === 'error') actions.push(nativeAction(`${key}:retry`, t('重试'), 'project.retry', params));
       if (hasMore[group.cwd]) actions.push(nativeAction(`${key}:more`, input.loadingProjectKeys.has(key) ? t('加载中…') : t('加载更多'), 'project.more', params));
-      groups.push({ id: key, title: backendName ? `${backendName} · ${group.projectName}` : group.projectName, collapsed, command: nativeCommand('project.toggle', params), actions, items: collapsed ? [] : group.threads.map(row) });
+      groups.push({ id: key, category: 'project', title: group.projectName, subtitle: backendName, collapsed, loading: states[group.cwd],
+        command: nativeCommand('project.toggle', params), newCommand: nativeCommand('thread.new', { backendId, cwd: group.cwd === PROJECTLESS_GROUP_ID ? '' : group.cwd }),
+        actions, items: collapsed ? [] : group.threads.map(row) });
     }
   };
-  if (input.listBackendId === 'all' && input.filter === 'projects') {
+  if (input.listBackendId === 'all') {
     for (const backend of input.backends ?? []) {
       const state = input.backendSnapshots?.[backend.id];
-      appendProjects(backend.id, split.recent.filter(item => item.backendId === backend.id), state?.projects ?? [], !!state?.projectlessThreadIds.length, state?.projectThreadStates ?? {}, state?.projectHasMore ?? {}, backend.name);
+      appendProjects(backend.id, input.threads.filter(item => item.backendId === backend.id), state?.projects ?? [], !!state?.projectlessThreadIds.length, state?.projectThreadStates ?? {}, state?.projectHasMore ?? {}, backend.name);
     }
-  } else if (input.listBackendId === 'all') groups.push({ id: 'recent', title: input.searching ? t('搜索中…') : t('最近会话'), items: split.recent.map(row) });
-  else appendProjects(input.listBackendId, split.recent, input.projectDirectories, input.hasProjectlessThreads, input.projectThreadStates, input.projectHasMore);
+  } else appendProjects(input.listBackendId, input.threads, input.projectDirectories, input.hasProjectlessThreads, input.projectThreadStates, input.projectHasMore);
+  if (input.filter !== 'projects') groups.push({ id: 'recent', category: 'recent', title: t('最近会话'), items: split.recent.map(row) });
   if (input.error) groups.push({ id: 'list-error', title: input.error, items: [{ id: 'retry', title: t('重试'), command: nativeCommand('navigation.refresh') }] });
   return groups;
 }

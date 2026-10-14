@@ -5,6 +5,7 @@ import { useNativeRuntime, useNativeWorkspace } from "./native-ui/adapters";
 import { useNativeConversationAdapter } from "./native-ui/workspace-adapter";
 import { isNativeUIEnabled, type NativeRuntime } from "./native-ui/runtime";
 import { projectNavigation } from "./native-ui/projection";
+import { resolveNativeNewChatTarget, type NativeNewChatTarget } from "./native-ui/new-chat-target";
 import { isClientForeground } from "./native-ui/foreground";
 import { DraftsSheet } from "./features/drafts/DraftsSheet";
 import {
@@ -5021,18 +5022,18 @@ function ConfiguredApp({
     [],
   );
 
-  const startNewChat = useCallback(() => {
+  const startNewChat = useCallback((target?: NativeNewChatTarget) => {
     const savedBackendId = window.localStorage.getItem(
       "codex-mobile:new-chat-backend",
     );
-    const backendId =
+    const backendId = target?.backendId ?? (
       listBackendId === "all"
         ? mountedBackends.find(
             (backend) => backend.id === savedBackendId,
           )?.id ??
           selectedBackend?.id ??
           mountedBackends[0]?.id
-        : listBackendId;
+        : listBackendId);
     if (!backendId) return;
     window.localStorage.setItem("codex-mobile:new-chat-backend", backendId);
     selectBackend(backendId);
@@ -5040,7 +5041,7 @@ function ConfiguredApp({
       id: ++commandIdRef.current,
       backendId,
       type: "new",
-      cwd: null,
+      cwd: target?.cwd ?? null,
     });
     closeSidebar();
   }, [
@@ -5083,7 +5084,7 @@ function ConfiguredApp({
   const nativeGroups = isNativeUIEnabled() ? projectNavigation({
     threads: scopedThreads, listBackendId, selectedBackendId: selectedBackend?.id ?? "",
     projectDirectories, hasProjectlessThreads, collapsedProjectKeys, projectThreadStates,
-    projectHasMore, loadingProjectKeys, filter: nativeNavigationFilter, searching,
+    projectHasMore, loadingProjectKeys, filter: nativeNavigationFilter, query, searching,
     backends: mountedBackends, backendSnapshots: snapshots,
     error: listError || (threadListState === "error" ? t("会话列表加载失败") : ""),
   }) : [];
@@ -5096,7 +5097,7 @@ function ConfiguredApp({
     else retryProject(String(params.backendId), String(params.cwd));
   };
   const nativeRuntime = useNativeRuntime({
-    selectedBackendId: selectedBackend?.id ?? "", sidebarOpen, search: query, groups: nativeGroups,
+    selectedBackendId: selectedBackend?.id ?? "", listBackendId, sidebarOpen, search: query, groups: nativeGroups,
     backends: [{ id: "all", title: t("全部设备"), connected: true }, ...mountedBackends.map(backend => ({
       id: backend.id, title: backend.name, connected: summaries[backend.id]?.connection === "online",
       subtitle: summaries[backend.id]?.error || summaries[backend.id]?.connection,
@@ -5118,7 +5119,7 @@ function ConfiguredApp({
       if (!["favorites", "projects", "sessions"].includes(value)) throw new Error(t("导航分类无效"));
       setNativeNavigationFilter(value);
     },
-    "thread.new": startNewChat,
+    "thread.new": p => startNewChat(resolveNativeNewChatTarget(p, mountedBackends, nativeGroups)),
     "thread.open": p => {
       const item = scopedThreads.find(item => item.backendId === p.backendId && item.threadId === p.threadId);
       if (!item) throw new Error(t("会话列表已更新，请刷新"));
@@ -5203,7 +5204,7 @@ function ConfiguredApp({
             onQueryChange={setQuery}
             onOpenThread={openThread}
             onManageThread={manageThread}
-            onNewChat={startNewChat}
+            onNewChat={() => startNewChat()}
             onSelectBackend={selectListBackend}
             onManageBackends={() => setManagerOpen(true)}
             onRefresh={refreshAllBackends}

@@ -31,6 +31,7 @@ const stringKeys: Record<string, string[]> = {
 };
 function validate(name: string, params: NativeParams) {
   if (name === 'settings.native-ui' && typeof params.enabled !== 'boolean') throw new Error(t('原生界面设置无效'));
+  if (name === 'thread.new' && (params.backendId !== undefined || params.cwd !== undefined) && (typeof params.backendId !== 'string' || typeof params.cwd !== 'string')) throw new Error(t('项目目标无效'));
   if (![globalNames, workspaceNames, panelNames].some(set => set.has(name))) throw new Error(t('不支持的原生命令'));
   for (const key of stringKeys[name] ?? []) if (typeof params[key] !== 'string') throw new Error(t("参数 {key} 必须是字符串", { key }));
   if (params.confirmed !== undefined && typeof params.confirmed !== 'boolean') throw new Error(t('确认参数无效'));
@@ -88,7 +89,7 @@ export class NativeRuntime {
     return { ...(workspace?.value ?? emptyNativeSnapshot()), locale: getActiveLocale(), fontScale: FONT_SCALES[readFontSize()], ...(globalPanel ? { ready: true, panel: globalPanel } : {}), backends: this.navigation.backends,
       groups: this.navigation.groups.map(group => ({ ...group, items: group.items.map(item => item.command?.name === 'thread.open' ? { ...item,
         selected: item.command.params.backendId === this.navigation.selectedBackendId && item.command.params.threadId === workspace?.value.threadId } : item) })),
-      sidebarOpen: this.navigation.sidebarOpen, search: this.navigation.search,
+      sidebarOpen: this.navigation.sidebarOpen, search: this.navigation.search, listBackendId: this.navigation.listBackendId,
       draftRevision: workspace?.revision ?? 0, ...(workspace?.echo !== undefined ? { draft: workspace.echo, caretOffset: workspace.echoCaret ?? workspace.echo.length } : {}),
       commandResults: [...this.results], error: this.commandError || workspace?.value.error || this.navigation.error || undefined };
   }

@@ -21,6 +21,12 @@ it('真实App注册导航与各设备workspace：原生关闭侧栏、切换列�
  expect(JSON.stringify(posts)).not.toContain('SECRET-');
  await act(async () => { command('filter', 'backend.select', { id: 'b' }); });
  await waitFor(() => expect(localStorage.getItem('codex-mobile:list-backend')).toBe('b'));
+ await waitFor(() => expect(posts.at(-1)?.listBackendId).toBe('b'));
+ expect(posts.at(-1).backendId).toBe('a');
+ await act(async () => { command('search-native', 'navigation.search', { value: '没有匹配' }); });
+ await waitFor(() => expect(posts.at(-1)?.groups.map((group: any) => group.category)).toEqual(['search']));
+ await act(async () => { command('clear-search-native', 'navigation.search', { value: '' }); });
+ await waitFor(() => expect(posts.at(-1)?.groups.some((group: any) => group.category === 'recent')).toBe(true));
  await act(async () => { command('invalid-project', 'project.toggle', { backendId: 'removed', cwd: '/fake' }); });
  await waitFor(() => expect(posts.at(-1)?.commandResults?.find((r: any) => r.id === 'invalid-project')?.ok).toBe(false));
  expect(localStorage.getItem('codex-mobile:collapsed-projects')).toBeNull();

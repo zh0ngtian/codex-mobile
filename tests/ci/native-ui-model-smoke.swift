@@ -93,6 +93,31 @@ struct NativeStoreSmoke {
         let encoded = try JSONEncoder().encode(reference.snapshot)
         let decoded = try JSONDecoder().decode(NativeSnapshot.self, from: encoded)
         precondition(decoded.version == 1 && decoded.messages.count == 2)
+        // 旧 v1 JSON 没有新增的 optional 展示元数据，仍必须可解码。
+        precondition(decoded.projectName == nil && decoded.backendName == nil && decoded.listBackendId == nil)
+        precondition(decoded.speeds == nil && decoded.permissions == nil && decoded.contextUsage == nil)
+        precondition(decoded.messages.allSatisfy { $0.timestamp == nil })
+        let oldGroup = try JSONDecoder().decode(NativeGroup.self, from: Data(#"{"id":"old","title":"旧分组","items":[]}"#.utf8))
+        precondition(oldGroup.category == nil && oldGroup.newCommand == nil && oldGroup.subtitle == nil && oldGroup.loading == nil)
+        var metadata = decoded
+        metadata.projectName = "项目"
+        metadata.backendName = "Mac"
+        metadata.listBackendId = "all"
+        metadata.modelValue = "model"
+        metadata.effortValue = "high"
+        metadata.speed = "优先"
+        metadata.speedValue = "priority"
+        metadata.speeds = [NativeOption(id: "priority", title: "优先", value: "priority")]
+        metadata.permissionValue = "workspace-write"
+        metadata.permissions = [NativeOption(id: "workspace-write", title: "工作区", value: "workspace-write")]
+        metadata.contextUsage = NativeContextUsage(used: 250, total: 1000, usedPercent: 25, remainingPercent: 75)
+        metadata.messages[0].timestamp = 100
+        metadata.groups = [NativeGroup(id: "project", title: "项目", items: [], category: "project", subtitle: "Mac", loading: "loading", newCommand: NativeCommand(id: "new", name: "thread.new", params: ["backendId": .string("b"), "cwd": .string("")]))]
+        let metadataRoundtrip = try JSONDecoder().decode(NativeSnapshot.self, from: JSONEncoder().encode(metadata))
+        precondition(metadataRoundtrip.projectName == "项目" && metadataRoundtrip.backendName == "Mac" && metadataRoundtrip.listBackendId == "all")
+        precondition(metadataRoundtrip.contextUsage?.remainingPercent == 75 && metadataRoundtrip.messages[0].timestamp == 100)
+        precondition(metadataRoundtrip.speeds?.first?.value == "priority" && metadataRoundtrip.permissions?.first?.value == "workspace-write")
+        precondition(metadataRoundtrip.groups[0].newCommand?.params["cwd"] == .string(""))
         reference.command("thread.new")
         precondition(reference.snapshot.messages.isEmpty)
         reference.draft = "离线草稿"
