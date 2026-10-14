@@ -30,7 +30,7 @@ struct NativeConversationView: View {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 26) {
                         ForEach(store.snapshot.messages) { message in NativeMessageView(message: message, store: store) }
-                    }.padding(.top, 12).padding(.bottom, 24)
+                    }.padding(.top, 32).padding(.bottom, 24)
                 }.defaultScrollAnchor(.bottom, for: .initialOffset)
                     .defaultScrollAnchor(.top, for: .alignment)
                     .scrollDismissesKeyboard(.interactively)

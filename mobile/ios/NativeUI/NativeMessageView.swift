@@ -13,10 +13,13 @@ struct NativeMessageView: View {
                     Text(message.text).font(.system(size: bodySize * store.snapshot.fontScale, weight: .semibold)).lineSpacing(5).textSelection(.enabled)
                         .padding(.horizontal, 16).padding(.vertical, 10)
                         .background(NativePalette.bubble, in: .rect(cornerRadius: 16))
-                }.padding(.horizontal, 24)
+                }.padding(.leading, 24).padding(.trailing, 21)
             } else {
-                VStack(alignment: .leading, spacing: 12) {
-                    if let status = message.status { Text(status).font(.system(size: statusSize * store.snapshot.fontScale)).foregroundStyle(.secondary) }
+                VStack(alignment: .leading, spacing: NativeTextRhythm.standardGap) {
+                    if let status = message.status {
+                        Text(status).font(.system(size: statusSize * store.snapshot.fontScale)).foregroundStyle(.secondary)
+                            .padding(.bottom, NativeTextRhythm.statusToBodyGap - NativeTextRhythm.standardGap)
+                    }
                     NativeMarkdownView(text: message.text, scale: store.snapshot.fontScale)
                     if let blocks = message.blocks {
                         ForEach(blocks) { item in NativePanelItemView(item: item, store: store, scope: .message(message.id)) }

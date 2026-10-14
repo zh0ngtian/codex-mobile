@@ -43,7 +43,7 @@
 | 助手正文 | 左右24 | measured |
 | 用户泡泡 | 左>=76，内部横16/竖10 | measured |
 | 输入圆角 | 26，泡泡16，代码12 | inferred |
-| 字体 | 顶栏14 semibold、用户14 semibold、助手14 medium、正文heading约16 bold、状态14、输入14、空态18 semibold、代码12、chip12 | inferred（pass2截图迭代修正），动态字号relativeTo并结合应用fontScale |
+| 字体 | 顶栏14 semibold、用户14 semibold、助手14 medium、正文heading20 bold、状态14、输入14、空态18 semibold、代码12、chip12 | inferred（pass2截图迭代修正），动态字号relativeTo并结合应用fontScale |
 | 阴影 | black opacity .06 / radius6 / y2 | inferred |
 
 | 颜色 | HEX | 依据 |
@@ -101,3 +101,11 @@ DeepSeek空态品牌不复用，无鲸鱼、logo或语音入口。欢迎语映�
 用户正文参考TextView高83pt/约4行、基线约21pt；14pt系统默认行高约17pt，因此用户和Markdown正文增加5pt lineSpacing（inferred），块间spacing不变。
 
 本轮仅修改字体、字重、正文leading及代码字号的fontScale传递。所有字号继续使用ScaledMetric跟随系统动态字体；代码复制保留44pt触控范围。没有调整组件间距、颜色或圆角；参考泡泡y148与当前y128的20pt差异留给独立layout pass4。新鲜截图仍由主任务统一构建和采集。
+
+## 排版节奏 pass4
+
+第三轮正文已接近参考并同为4行；仍可测得内容起点y128/参考y148，标题墨迹约13pt/参考17pt，以及助手块间节奏偏紧。按本轮单独修正：滚动内容顶部12→32pt，H2调整为20pt bold（仍动态缩放），用户泡泡右侧24→21pt、左侧保持>=76pt。
+
+引入明确的Markdown block kind和共享NativeTextRhythm：状态到正文20pt；heading到后续块26pt；连续列表项20pt；列表到代码12pt；代码到后段22pt；其他默认12pt。spacingBefore由前后block kind推导，首块为0，不用负padding。所有节奏值均为inferred，颜色、圆角和其他控件不变。
+
+参考/原生pass3黑色文字y坐标分别为heading317/288、list1 365/318、list2 402/347、code490/433、result537/472。本轮由主任务继续截图pass4并执行4项UI验收；不为小图标差异延后业务接线。
