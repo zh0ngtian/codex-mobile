@@ -3,6 +3,7 @@ import SwiftUI
 struct NativeUIHost<Legacy: View>: View {
     private let legacy: Legacy
     @State private var bridge = NativeUIBridge()
+    @Environment(\.scenePhase) private var scenePhase
     private var store: NativeUIStore { bridge.store }
     init(@ViewBuilder legacy: () -> Legacy) { self.legacy = legacy() }
     var body: some View {
@@ -19,5 +20,6 @@ struct NativeUIHost<Legacy: View>: View {
             }
         }
         .environment(\.nativeUIBridge, bridge)
+        .onChange(of: scenePhase, initial: true) { _, phase in bridge.setActive(phase == .active) }
     }
 }

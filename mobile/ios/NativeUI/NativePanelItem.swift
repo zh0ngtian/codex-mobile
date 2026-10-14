@@ -11,4 +11,5 @@ struct NativePanelItem: Codable, Identifiable {
     var command: NativeCommand? = nil
     var children: [NativePanelItem]? = nil
     var disabled: Bool? = nil
+    var previewURL: String? = nil
 }

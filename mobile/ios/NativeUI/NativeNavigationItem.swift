@@ -7,4 +7,5 @@ struct NativeNavigationItem: Codable, Identifiable {
     var badge: String? = nil
     var selected: Bool? = nil
     var command: NativeCommand? = nil
+    var actions: [NativePanelItem]? = nil
 }

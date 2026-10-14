@@ -48,4 +48,36 @@ final class NativeUIUITests: XCTestCase {
         app.buttons["native-send"].tap()
         XCTAssertTrue(app.staticTexts["检查原生输入"].exists)
     }
+
+    func testBusyComposerKeepsQueueSendAndStopSeparate() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--native-ui-reference-conversation", "--native-ui-reference-busy"]
+        app.launch()
+        XCTAssertTrue(app.buttons["native-stop"].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.buttons["native-send"].label, "排队发送")
+        app.buttons["native-send"].tap()
+        XCTAssertTrue(app.otherElements["native-queued-messages"].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.buttons["native-send"].label, "停止")
+        XCTAssertFalse(app.buttons["语音"].exists)
+    }
+
+    func testReadingHistoryDoesNotJumpWhenNewMessageArrives() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--native-ui-reference-conversation", "--native-ui-reference-long"]
+        app.launch()
+        let timeline = app.scrollViews["native-timeline"]
+        XCTAssertTrue(timeline.waitForExistence(timeout: 5))
+        timeline.swipeDown()
+        timeline.swipeDown()
+        XCTAssertTrue(app.buttons["native-jump-to-bottom"].waitForExistence(timeout: 3))
+        let input = app.descendants(matching: .any)["native-composer-input"]
+        input.tap()
+        input.typeText("新增测试消息")
+        app.buttons["native-send"].tap()
+        XCTAssertFalse(app.staticTexts["新增测试消息"].isHittable)
+        app.buttons["native-jump-to-bottom"].tap()
+        let visible = NSPredicate(format: "hittable == true")
+        expectation(for: visible, evaluatedWith: app.staticTexts["新增测试消息"])
+        waitForExpectations(timeout: 5)
+    }
 }

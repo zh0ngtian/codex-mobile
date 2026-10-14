@@ -14,12 +14,20 @@ enum NativeUITrust {
       const trustedURL = __CODEX_TRUSTED_URL__;
       if (window !== window.top || location.protocol !== "file:" || new URL(location.href).href !== new URL(trustedURL).href) return;
       window.__CODEX_NATIVE_UI__ = __CODEX_NATIVE_ENABLED__;
+      window.__CODEX_NATIVE_ACTIVE__ = true;
+      window.codexMobileSetNativeActive = function(active) {
+        if (window !== window.top || location.protocol !== "file:" || new URL(location.href).href !== new URL(trustedURL).href) return;
+        window.__CODEX_NATIVE_ACTIVE__ = active === true;
+        document.dispatchEvent(new Event("visibilitychange"));
+        if (active === true) window.dispatchEvent(new Event("focus"));
+      };
       window.codexMobileNativeCommand = function(command) {
         window.dispatchEvent(new CustomEvent("codex-mobile-native-command", {detail: command}));
       };
       window.codexMobilePublishNativeSnapshot = function(snapshot) {
         window.webkit.messageHandlers.nativeUI.postMessage({type: "snapshot", snapshot: snapshot});
       };
+      window.webkit?.messageHandlers?.nativeUI?.postMessage({type: "ready"});
     })();
     """
 
@@ -38,6 +46,15 @@ enum NativeUITrust {
           const trustedURL = \(encodedURL);
           if (window !== window.top || location.protocol !== "file:" || new URL(location.href).href !== new URL(trustedURL).href) return;
           window.codexMobileNativeCommand(\(encodedCommand));
+        })();
+        """
+    }
+    static func lifecycle(active: Bool, trustedURL: URL) -> String? {
+        guard let encodedURL = json(trustedURL.standardizedFileURL.absoluteString) else { return nil }
+        return """
+        (() => {
+          if (window !== window.top || location.protocol !== "file:" || new URL(location.href).href !== new URL(\(encodedURL)).href) return;
+          window.codexMobileSetNativeActive?.(\(active ? "true" : "false"));
         })();
         """
     }

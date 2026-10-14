@@ -7,12 +7,12 @@ struct NativeSidebarView: View {
             HStack {
                 Text("Codex Mobile").font(.headline)
                 Spacer()
-                NativeIconButton(title: store.label("关闭侧栏", "Close Sidebar"), symbol: "xmark", identifier: "native-sidebar-close") { store.sidebarOpen = false }
+                NativeIconButton(title: store.label("刷新", "Refresh"), symbol: "arrow.clockwise", identifier: "native-sidebar-refresh") { store.command("navigation.refresh") }
+                NativeIconButton(title: store.label("关闭侧栏", "Close Sidebar"), symbol: "xmark", identifier: "native-sidebar-close") { store.sidebarIsOpen = false }
             }
-            TextField(store.label("搜索会话", "Search Conversations"), text: $store.search)
+            TextField(store.label("搜索会话", "Search Conversations"), text: $store.sidebarSearchText)
                 .accessibilityIdentifier("native-sidebar-search")
                 .padding(10).background(.quaternary, in: .capsule)
-                .onChange(of: store.search) { store.command("navigation.search", ["value": .string(store.search)]) }
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
                     ForEach(store.snapshot.backends) { backend in
@@ -26,19 +26,7 @@ struct NativeSidebarView: View {
                     navigationButton(store.label("会话", "Conversations"), symbol: "bubble.left.and.bubble.right", id: "sessions")
                     navigationButton(store.label("草稿", "Drafts"), symbol: "square.and.pencil", id: "drafts")
                     ForEach(store.snapshot.groups) { group in
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(group.title).font(.caption).foregroundStyle(.secondary)
-                            ForEach(group.items) { item in
-                                Button { store.perform(item.command); store.sidebarOpen = false } label: {
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Text(item.title).font(.body).lineLimit(2)
-                                        if let subtitle = item.subtitle { Text(subtitle).font(.caption).foregroundStyle(.secondary) }
-                                    }.frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                                        .padding(.horizontal, 10)
-                                        .background(item.selected == true ? NativePalette.bubble : .clear, in: .rect(cornerRadius: 12))
-                                }.buttonStyle(.plain)
-                            }
-                        }
+                        NativeNavigationGroupView(group: group, store: store)
                     }
                 }
             }
@@ -50,7 +38,10 @@ struct NativeSidebarView: View {
             .accessibilityIdentifier("native-sidebar")
     }
     private func navigationButton(_ title: String, symbol: String, id: String) -> some View {
-        Button { store.command("panel.open", ["id": .string(id)]) } label: {
+        Button {
+            if ["favorites", "projects", "sessions"].contains(id) { store.command("navigation.filter", ["value": .string(id)]) }
+            else { store.command("panel.open", ["id": .string(id)]) }
+        } label: {
             Label(title, systemImage: symbol).frame(maxWidth: .infinity, minHeight: 32, alignment: .leading)
         }.buttonStyle(.plain)
     }

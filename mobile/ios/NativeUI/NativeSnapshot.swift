@@ -26,4 +26,16 @@ struct NativeSnapshot: Codable {
     var effort = "推理强度"
     var models: [NativeOption] = []
     var efforts: [NativeOption] = []
+    var contextId: String? = nil
+    var draftRevision: Int? = nil
+    var commandResults: [NativeCommandResult]? = nil
+    var sidebarOpen: Bool? = nil
+    var search: String? = nil
+    var loading: String? = nil
+    var permission: String? = nil
+    var pending: Bool? = nil
+    var canInterrupt: Bool? = nil
+    var conversationActions: [NativePanelItem]? = nil
+    var mentions: [NativeOption]? = nil
+    var caretOffset: Int? = nil
 }

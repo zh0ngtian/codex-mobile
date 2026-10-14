@@ -11,12 +11,12 @@ function bootstrap() {
   return source("NativeUITrust").match(/static let script = """\n([\s\S]*?)\n\s*"""/)![1]
     .replace("__CODEX_TRUSTED_URL__", JSON.stringify(trustedURL)).replace("__CODEX_NATIVE_ENABLED__", "true");
 }
-afterEach(() => { delete (window as any).__CODEX_NATIVE_UI__; delete (window as any).codexMobileNativeCommand; delete (window as any).codexMobilePublishNativeSnapshot; delete (window as any).webkit; });
+afterEach(() => { delete (window as any).__CODEX_NATIVE_UI__; delete (window as any).__CODEX_NATIVE_ACTIVE__; delete (window as any).codexMobileSetNativeActive; delete (window as any).codexMobileNativeCommand; delete (window as any).codexMobilePublishNativeSnapshot; delete (window as any).webkit; });
 describe("SwiftUI 原生宿主契约", () => {
   it.skipIf(process.platform !== "darwin")("执行真实 Swift store、Codable往返、离线状态与 Markdown 解析", () => {
     const directory = mkdtempSync(join(tmpdir(), "native-model-"));
     try {
-      const names = ["NativeJSONValue", "NativeCommand", "NativeOption", "NativeBackend", "NativeNavigationItem", "NativeGroup", "NativeAttachment", "NativeMessage", "NativePanelItem", "NativePanel", "NativeSnapshot", "NativeUIStore", "NativeMarkdownBlock", "NativeMarkdownBlockKind", "NativeTextRhythm", "NativeFieldKey", "NativeFieldScope"];
+      const names = ["NativeJSONValue", "NativeCommand", "NativeCommandResult", "NativeOption", "NativeBackend", "NativeNavigationItem", "NativeGroup", "NativeAttachment", "NativeMessage", "NativePanelItem", "NativePanel", "NativeSnapshot", "NativeUIStore", "NativeMarkdownBlock", "NativeMarkdownBlockKind", "NativeTextRhythm", "NativeFieldKey", "NativeFieldScope", "NativeImageData", "NativePlainText", "NativeTimelineState"];
       const compile = spawnSync("xcrun", ["swiftc", ...names.map(name => `mobile/ios/NativeUI/${name}.swift`), "tests/ci/native-ui-model-smoke.swift", "-o", join(directory, "smoke")], { encoding: "utf8" });
       expect(compile.status, compile.stderr).toBe(0);
       const result = spawnSync(join(directory, "smoke"), [], { encoding: "utf8" });
@@ -39,6 +39,18 @@ describe("SwiftUI 原生宿主契约", () => {
     window.addEventListener("codex-mobile-native-command", listener, { once: true });
     (window as any).codexMobileNativeCommand({ id: "c1", name: "draft.set", params: { value: "你好" } });
     expect(listener.mock.calls[0][0].detail).toEqual({ id: "c1", name: "draft.set", params: { value: "你好" } });
+  });
+  it("原生场景前后台信号更新共享运行时并触发已有恢复事件", () => {
+    new Function("location", bootstrap())({ protocol: "file:", href: trustedURL });
+    const visibility = vi.fn();
+    document.addEventListener("visibilitychange", visibility);
+    try {
+      (window as any).codexMobileSetNativeActive(false);
+      expect((window as any).__CODEX_NATIVE_ACTIVE__).toBe(false);
+      (window as any).codexMobileSetNativeActive(true);
+      expect((window as any).__CODEX_NATIVE_ACTIVE__).toBe(true);
+      expect(visibility).toHaveBeenCalledTimes(2);
+    } finally { document.removeEventListener("visibilitychange", visibility); }
   });
   it.each(["file:///private/tmp/index.html", "file:///Applications/Codex.app/other.html"])("其他本地文件不能取得原生桥：%s", (href) => {
     const script = bootstrap();
