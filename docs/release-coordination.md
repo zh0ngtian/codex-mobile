@@ -26,6 +26,8 @@
 
 适配器命令为 `python3 {workspace}/scripts/codex_mobile_release_adapter.py`，接收上游 `run/check <阶段> --context <文件>` 协议。共享持久状态实现为 `scripts/release_coordination/state.py`；网关阶段为 `scripts/release_coordination/gateway.py`。本机使用现有 Python 3.11、Node.js、Git、gh、curl、Xcode 和原发布工具，不增加运行时依赖。
 
+客户端每批发布前更新受控的 `release/notes.md`，只列本版本实际用户变化。GitHub Release、LAN 和 OTA 共用冻结工作区的日志读取器；显式 manifest 日志优先，当前 canonical manifest 缺少此字段时读取该文件，缺失、空白或与 HEAD 不一致均失败。软件源沿用该 GitHub Release 日志，不用批次 ID 或分发模板代替。
+
 私有 options 引用原 `CodexMobile/ios-release.local.json`、现有 LAN 发布器、现有网关目录/label；软件源管理仅引用该服务既有私有 credentials，凭据不复制、不进入 Git/命令参数或共同凭证。维护软件源仍遵循 [现役上游说明](https://github.com/zh0ngtian/SignOs/blob/main/distribution/source-aggregator/README.md)，只操作本仓库既有 unsigned 订阅，保留完整署名和展示信息，不维护另一个签名包订阅。
 
 ## 验证、冻结与各阶段

@@ -104,7 +104,15 @@ ConfiguredApp 使用真实 `scopedThreads`、`projectDirectories`、`collapsedPr
 - `NativeSnapshot.richContent` 仅提供当前实际内容所需的资源：本地 Markdown 图片 `kind=image, text=原始href, value=缩略URL, previewURL=原图URL`；Mermaid `kind=html, text=规范化LF后的原始源码, value=既有strict引擎生成的SVG`。绘图仅在专用离屏容器布局，没有 DOM 查询或点击业务动作。
 - html/SVG 的 Swift 隔离 WK 无业务桥与持久 store；audio/video/file 使用专门原生展示和下载。没有整屏旧网页业务兜底。
 
-冷启动检查点、双向界面切换与发布验收仍属于 Task3 / 协调入口。
+### 双向切换与启动检查点
+
+- iOS 首次默认 Web；Swift 在进程首次读取偏好后冻结本次模式。两边设置共用 `settings.native-ui` / `NativeSwitchBoundary`，只有专用 IndexedDB 检查点完整事务成功后，才请求宿主保存下次启动偏好；宿主写入失败恢复原值。
+- `codexMobileNativePreference({enabled?})` 通过可信首页桥读取或保存偏好，回传 `{enabled, active}`；当前运行模式不随偏好变化。未就绪或恢复失败时禁用切换；丢失回执有按请求 ID 匹配的有界错误回收。
+- 检查点使用独立数据库，不进入手动草稿列表。保存全部已挂载工作区正文、图片、文件完整二进制、设备、项目、线程与发送配置。设置使用明确白名单；不复制 HTTP session/pending writes、审批秘密答案或待确认写操作。
+- 已准备切换后继续编辑，会串行合并最新状态；同一 File 的二进制读取缓存避免每个字符重复读取。存储失败显示错误、保留当前输入。冷启动先恢复目标与内容再挂载业务；已有线程的首轮 resume 保留本地发送选择，同时同步服务器消息、访问状态，之后普通重连仍采用服务器设置。
+- 人工“使用旧界面恢复”只揭示当前 WK，设置一次性呈现恢复标记并解除原生确认，不重载文档、不重挂业务工作区、不重连传输、不改变持久偏好。原生专用 runtime 停止发布，旧 Web 的设置、面板和确认恢复原有操作。
+
+正式构建、统一版本、签名与渠道回验继续由发布协调入口负责。
 
 ## 验证记录
 
