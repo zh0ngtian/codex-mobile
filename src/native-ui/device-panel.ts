@@ -38,7 +38,7 @@ export function projectDevicePanel(c: any): NativeSnapshot['panel'] {
    if (c.appUpdate.manualCheckSupported) items.push({ ...nativeAction('check-update', t(c.appUpdate.checking ? '正在检查…' : '检查更新'), 'settings.update.check'), disabled: c.appUpdate.checking });
   }
  }
- const prefixes: Record<string, string[]> = { devices: ['device', 'name', 'gatewayUrl', 'scan', 'save', 'cancel', 'add', ...c.registry.backends.map((b: any) => b.id)], language: ['language'], font: ['font'], transport: ['transport'], notifications: ['push', 'bark'], updates: ['app-version', 'check-update'] };
+ const prefixes: Record<string, string[]> = { devices: ['device', 'devices-error', 'name', 'gatewayUrl', 'scan', 'save', 'cancel', 'add', ...c.registry.backends.map((b: any) => b.id)], language: ['language'], font: ['font'], transport: ['transport'], notifications: ['push', 'bark'], updates: ['app-version', 'check-update'] };
  const page = c.page === 'settings' ? undefined : c.page;
  const visible = page && prefixes[page] && !c.confirmation ? items.filter(item => prefixes[page].some(prefix => item.id === prefix || item.id.startsWith(`${prefix}-`))) : items;
  return { id: page && page !== 'devices' ? `settings:${page}` : 'devices', title: t(c.confirmation ? '确认设备操作' : c.draft ? '设备连接' : '管理设备'), items: visible, dismissible: !c.testing };

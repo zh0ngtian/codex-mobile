@@ -53,7 +53,7 @@ export function projectFilePanel(c: NativeWorkspaceController, state?: NativeFil
  if (state.status === 'loading') items.push(describe('file-loading', t('正在读取文件…'), ''));
  if (state.status === 'error') items.push(describe('file-error', t('读取失败'), state.error), nativeAction('file-retry', t('重试'), 'file.open', { href: state.href }));
  if (state.status === 'ready') {
-  items.push({ id: 'file-download', kind: 'file', title: t('下载文件'), text: name, value: remoteFileDownloadUrl(c.backend, path) });
+  items.push({ id: 'file-download', kind: 'file', title: name, text: t('下载文件'), value: remoteFileDownloadUrl(c.backend, path) });
   if (svg) items.push({ id: 'file-svg', kind: 'html', title: name, value: state.text });
   else if (image) items.push({ id: 'file-image', kind: 'image', title: name, value: remoteImagePreviewUrl(c.backend, path), previewURL: remoteImagePreviewUrl(c.backend, path, false) });
   else if (video || audio) items.push({ id: 'file-media', kind: video ? 'video' : 'audio', title: name, value: remoteFilePreviewUrl(c.backend, path) });

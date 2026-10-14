@@ -30,7 +30,7 @@ it('文件链接使用既有fs读取与解码，预览模式切换及下载URL�
  const { rerender } = renderHook(() => useNativeConversationAdapter(runtime, controller));
  await act(async () => { expect((await runtime.dispatch({ id: 'file', name: 'file.open', params: { contextId: 'ctx', href: '/app/readme.md:4' } })).ok).toBe(true); });
  expect(read).toHaveBeenCalledWith('/app/readme.md'); expect(runtime.snapshot().panel?.items.some(i => i.kind === 'markdown')).toBe(true);
- const download = runtime.snapshot().panel?.items.find(i => i.kind === 'file'); expect(new URL(download!.value!).searchParams.get('path')).toBe('/app/readme.md');
+ const download = runtime.snapshot().panel?.items.find(i => i.kind === 'file'); expect(new URL(download!.value!).searchParams.get('path')).toBe('/app/readme.md'); expect(download!.title).toBe('readme.md');
  await act(async () => { await runtime.dispatch({ id: 'mode', name: 'file.mode', params: { contextId: 'ctx', value: 'source' } }); }); expect(runtime.snapshot().panel?.items.some(i => i.kind === 'source' && i.line === 4)).toBe(true);
  let pending: Promise<unknown>;
  act(() => { pending = runtime.dispatch({ id: 'late', name: 'file.open', params: { contextId: 'ctx', href: '/app/late.html' } }); });

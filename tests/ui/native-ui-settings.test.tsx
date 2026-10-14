@@ -48,3 +48,11 @@ it('原生表单连续命令同步保留全部字段并同步占用probe，避�
   finish({ hostId: 'HOST', displayName: 'Mac' }); await first; await second;
  }); runtime.dispose();
 });
+it('设备子页保存探测失败保留真实错误且不更新注册表', async () => {
+ const runtime = new NativeRuntime(() => {}); const saved: unknown[] = [];
+ render(<BackendManagerSheet nativeRuntime={runtime} nativePage="devices" open registry={{ version: 1, backends: [], selectedBackendId: '' }} summaries={{}} onClose={() => {}} onChange={registry => saved.push(registry)} probe={async () => { throw new Error('设备身份探测失败'); }} />);
+ await act(async () => { await runtime.dispatch({ id: 'probe-url', name: 'device.change', params: { field: 'gatewayUrl', value: 'http://localhost/?token=SECRET' } }); });
+ await act(async () => { await runtime.dispatch({ id: 'probe-save', name: 'device.save', params: {} }); });
+ expect(runtime.snapshot().panel?.items.find(item => item.id === 'devices-error')?.text).toBe('设备身份探测失败');
+ expect(saved).toHaveLength(0); expect(runtime.snapshot().panel?.items.find(item => item.id === 'save')?.disabled).toBe(false); runtime.dispose();
+});
