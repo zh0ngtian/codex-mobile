@@ -2,7 +2,7 @@ import type {
   ApprovalPolicy,
   ApprovalsReviewer,
 } from "../ui/settings";
-import { hasTurnChangeStats, summarizeTurnChanges, reconcileRecentTurns } from "../ui/conversation";
+import { hasTurnChangeStats, summarizeTurnChanges } from "../ui/conversation";
 
 type AnyRecord = Record<string, any>;
 const initialTurnsLimit = 5;
@@ -30,26 +30,36 @@ export async function loadRunningTurnCommentary(client: Requester, threadId: str
 export function applyTurnCommentary(turns: AnyRecord[], detail: TurnCommentary): AnyRecord[] {
   return turns.map((turn) => {
     if (turn.id !== detail.turnId || !detail.items.length) return turn;
-    const incoming = detail.items.map((item) => {
-      const existing = (turn.items ?? []).find((current: AnyRecord) => current.id === item.id);
+    const current: AnyRecord[] = turn.items ?? [];
+    const byId = new Map(current.map(item => [item.id, item]));
+    for (const item of detail.items) {
+      // 回填用户必须精确匹配 ID，不能复用摘要对账的首条用户替换规则。
+      const existing = byId.get(item.id);
       const merged = existing && (item.type === "userMessage" || existing.phase === "final_answer")
-        ? { ...item, ...existing } : { ...item };
+        ? { ...item, ...existing } : { ...existing, ...item };
+      if (existing?.type === "agentMessage" && item.type === "agentMessage" &&
+        typeof existing.text === "string" && typeof item.text === "string" &&
+        existing.text.length > item.text.length && existing.text.startsWith(item.text)) {
+        merged.text = existing.text;
+        if (existing.phase != null) merged.phase = existing.phase;
+      }
       // 旧回填可能没有时间，不能擦掉已恢复的权威时间。
-      if (typeof merged.timestamp !== "number" && typeof existing?.timestamp === "number") merged.timestamp = existing.timestamp;
-      return merged;
-    });
-    const recovered = reconcileRecentTurns([turn], [{ ...turn, items: incoming }])[0];
-    const byId = new Map((recovered.items ?? []).map((item: AnyRecord) => [item.id, item]));
-    // commentary 接口省略媒体时保留已有锚点，仅将缺失消息插入下一个已知消息前。
-    const order = (turn.items ?? []).map((item: AnyRecord) => item.id);
-    for (let index = 0; index < incoming.length; index += 1) {
-      const id = incoming[index].id;
-      if (order.includes(id)) continue;
-      const next = incoming.slice(index + 1).find(item => order.includes(item.id));
-      order.splice(next ? order.indexOf(next.id) : order.length, 0, id);
+      if (!Number.isFinite(merged.timestamp) && Number.isFinite(existing?.timestamp)) merged.timestamp = existing!.timestamp;
+      byId.set(item.id, merged);
     }
-    const items = order.map((id: string) => byId.get(id) as AnyRecord);
-    return { ...recovered, items: orderTurnItems(items, detail.messageOrder) };
+    // 省略媒体的旧接口保留已有锚点；缺失项插在后锚点前，或前锚点后。
+    const order = current.map(item => item.id);
+    for (let index = 0; index < detail.items.length; index += 1) {
+      const id = detail.items[index].id;
+      if (order.includes(id)) continue;
+      const next = detail.items.slice(index + 1).find(item => order.includes(item.id));
+      const previous = detail.items.slice(0, index).reverse().find(item => order.includes(item.id));
+      const insertAt = next ? order.indexOf(next.id)
+        : previous ? order.indexOf(previous.id) + 1 : order.length;
+      order.splice(insertAt, 0, id);
+    }
+    const items = order.map(id => byId.get(id)!);
+    return { ...turn, items: orderTurnItems(items, detail.messageOrder) };
   });
 }
 

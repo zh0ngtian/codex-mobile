@@ -432,3 +432,31 @@ it('详情保留视频路径与无路径失败生成项，按消息顺序放回'
  expect(restored[0].items.find((i:any)=>i.id==='v')).toMatchObject(video);
  expect(restored[0].items.find((i:any)=>i.id==='bad')).toMatchObject(failed);
 });
+
+it('无 messageOrder 的旧 commentary 根据前锚点插入，不能越过较新用户插话', () => {
+ const u1={id:'u1',type:'userMessage',text:'先检查'};
+ const c1={id:'c1',type:'agentMessage',phase:'commentary',text:'开始检查',timestamp:123};
+ const u2={id:'u2',type:'userMessage',text:'继续检查',content:[{type:'image',url:'/latest.png'}]};
+ const c2={id:'c2',type:'agentMessage',phase:'commentary',text:'继续验证'};
+ const turns=[{id:'t',status:'inProgress',items:[u1,u2,c2]}];
+ const detail={turnId:'t',items:[u1,c1]};
+ const result=applyTurnCommentary(turns,detail);
+ expect(result[0].items.map((item:any)=>item.id)).toEqual(['u1','c1','u2','c2']);
+ expect(applyTurnCommentary(result,detail)).toEqual(result);
+ expect(result[0].items[2]).toEqual(u2);
+});
+
+it.each([false,true])('回填仅按用户消息精确ID合并，不将旧用户吞并新用户，完整顺序=%s', withOrder => {
+ const u1={id:'u1',type:'userMessage',text:'旧问题'};
+ const c1={id:'c1',type:'agentMessage',phase:'commentary',text:'旧过程',timestamp:123};
+ const u2={id:'u2',type:'userMessage',text:'新问题',content:[{type:'image',url:'/latest.png'}]};
+ const c2={id:'c2',type:'agentMessage',phase:'commentary',text:'新过程',timestamp:456};
+ const detail={turnId:'t',items:[u1,c1],...(withOrder?{messageOrder:['u1','c1','u2','c2']}:{})};
+ const result=applyTurnCommentary([{id:'t',status:'inProgress',items:[u2,c2]}],detail);
+ expect(result[0].items.every(Boolean)).toBe(true);
+ expect(result[0].items).toHaveLength(4);
+ expect(result[0].items.find((item:any)=>item.id==='u1')).toEqual(u1);
+ expect(result[0].items.find((item:any)=>item.id==='u2')).toEqual(u2);
+ if(withOrder) expect(result[0].items.map((item:any)=>item.id)).toEqual(['u1','c1','u2','c2']);
+ expect(applyTurnCommentary(result,detail)).toEqual(result);
+});
