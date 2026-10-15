@@ -105,3 +105,17 @@ it('详情保留真实时间及媒体锚点，只有媒体时仍有顺序且过�
     { id: 'c', type: 'agentMessage', phase: 'commentary', text: '图片如下', timestamp: 123.45 },
   ] }] }, 'live').items[0].timestamp).toBe(123.45);
 });
+it('运行回合含媒体时仅附消息与媒体 ID 顺序，图片正文和工具均不回填', () => {
+  const result = compactTurnCommentary({ data: [{ id: 'live', status: 'inProgress', items: [
+    { id: 'u', type: 'userMessage', text: '开始', content: [{ type: 'image', url: 'private-user-attachment' }] },
+    { id: 'c1', type: 'agentMessage', phase: 'commentary', text: '第一张' },
+    { id: 'image1', type: 'imageView', path: '/private/image1.png' },
+    { id: 'tool', type: 'mcpToolCall', result: 'private-tool-body' },
+    { id: 'c2', type: 'agentMessage', phase: 'commentary', text: '第二张' },
+    { id: 'image2', type: 'imageGeneration', result: 'private-image-body' },
+    { id: 'video', type: 'videoGeneration', result: 'private-video-body' },
+  ] }] }, 'live');
+  expect(result.messageOrder).toEqual(['u', 'c1', 'image1', 'c2', 'image2', 'video']);
+  expect(result.items.map(item => item.id)).toEqual(['u', 'c1', 'c2']);
+  expect(JSON.stringify(result)).not.toContain('private');
+});

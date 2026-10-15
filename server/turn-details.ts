@@ -55,13 +55,17 @@ function messageTimestamp(item: RecordValue) {
     ? { timestamp: item.timestamp } : {};
 }
 
+function orderedMessageIds(items: RecordValue[]): string[] {
+  return items.filter((item) => ["userMessage", "agentMessage", "imageView", "imageGeneration", "videoGeneration"].includes(item.type) &&
+    typeof item.id === "string" && !!item.id).map((item) => item.id);
+}
+
 function commentaryDetails(items: RecordValue[]) {
   const commentaryItems = items.filter((item) => item.type === "agentMessage" && item.phase === "commentary" &&
     typeof item.id === "string" && typeof item.text === "string")
     .map((item) => ({ id: item.id, type: item.type, phase: item.phase, text: item.text, ...messageTimestamp(item) }));
   // final 和用户消息只传顺序锚点，正文/附件继续使用首屏摘要或实时数据。
-  const messageOrder = items.filter((item) => ["userMessage", "agentMessage", "imageView", "imageGeneration", "videoGeneration"].includes(item.type) &&
-    typeof item.id === "string").map((item) => item.id);
+  const messageOrder = orderedMessageIds(items);
   return { ...(commentaryItems.length ? { commentaryItems } : {}), ...(messageOrder.length ? { messageOrder } : {}) };
 }
 
@@ -100,8 +104,12 @@ export function turnCommentaryRequest(params: RecordValue) {
 export function compactTurnCommentary(result: RecordValue, turnId: string) {
   const turn = (result.data ?? []).find((entry: RecordValue) => entry.id === turnId);
   const items: RecordValue[] = [];
+  let messageOrder: string[] | undefined;
   if (turn && ["inProgress", "in_progress", "running"].includes(turn.status) &&
     !(turn.items ?? []).some((item: RecordValue) => item.type === "agentMessage" && item.phase === "final_answer")) {
+    if ((turn.items ?? []).some((item: RecordValue) => ["imageView", "imageGeneration", "videoGeneration"].includes(item.type))) {
+      messageOrder = orderedMessageIds(turn.items ?? []);
+    }
     for (const item of turn.items ?? []) {
       if (typeof item.id !== "string" || !item.id) continue;
       if (item.type === "agentMessage" && item.phase === "commentary" && typeof item.text === "string") {
@@ -116,5 +124,5 @@ export function compactTurnCommentary(result: RecordValue, turnId: string) {
       }
     }
   }
-  return { turnId, items };
+  return { turnId, items, ...(messageOrder ? { messageOrder } : {}) };
 }

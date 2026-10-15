@@ -70,3 +70,37 @@ it('消息 ID 与对象属性同名时仍按精确记录读取，不借用原型
     Object.fromEntries([['constructor', seconds], ['__proto__', seconds]]),
   );
 });
+it('原线程创建五天后的新日期续写文件在先前未命中后仍可发现', async () => {
+  const f = await fixture();
+  await appendFile(f.file, line('original'));
+  expect(await f.reader.read(threadId, ['original', 'continued'])).toEqual({ original: seconds });
+  const directory = join(f.root, 'sessions', '2026', '10', '15');
+  await mkdir(directory, { recursive: true });
+  const file = join(directory, `rollout-2026-10-15T13-44-22-${threadId}_01a1396f-d4a4-7431-9c9b-85f85528d46b.jsonl`);
+  const content = JSON.stringify({ type: 'session_meta', payload: { id: threadId } }) + '\n' + line('continued');
+  await writeFile(file, content);
+  expect(await f.reader.read(threadId, ['original', 'continued'])).toEqual({ original: seconds, continued: seconds });
+  expect(await readFile(file, 'utf8')).toBe(content);
+});
+it('非v7线程可在活动日期目录定位，忽略其他线程及非日期目录', async () => {
+  const f = await fixture();
+  const id = 'c0dec000-0000-4000-8000-000000000002';
+  const records = [
+    ['2026/10/15', id, 'found', id],
+    ['2026/10/16', id, 'wrong-meta', threadId],
+    ['2026/10/15', threadId, 'wrong-file', id],
+    ['2026/10/notes', id, 'wrong-day', id],
+    ['2026/notes/15', id, 'wrong-month', id],
+    ['notes/10/15', id, 'wrong-year', id],
+    ['2026/99/15', id, 'invalid-month', id],
+    ['2026/10/99', id, 'invalid-day', id],
+    ['2026/10/15/nested', id, 'nested', id],
+  ];
+  for (const [date, filenameId, messageId, metaId] of records) {
+    const directory = join(f.root, 'sessions', date);
+    await mkdir(directory, { recursive: true });
+    await writeFile(join(directory, `rollout-2026-10-15T13-44-22-${filenameId}.jsonl`),
+      JSON.stringify({ type: 'session_meta', payload: { id: metaId } }) + '\n' + line(messageId));
+  }
+  expect(await f.reader.read(id, records.map(record => record[2]))).toEqual({ found: seconds });
+});
