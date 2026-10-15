@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { SharedEndpoint } from './shared-endpoint.mjs';
 import { ServiceRuntime } from './runtime.mjs';
-import { inspectVersion, snapshotVersion, bundleSignature, retainVersions } from './versions.mjs';
+import { createVersionInspector, snapshotVersion, retainVersions } from './versions.mjs';
 import { createControlHandler } from './control.mjs';
 import { SidecarSupervisor } from './components.mjs';
 
@@ -24,7 +24,8 @@ const ssh = join(process.env.WINDIR, 'System32', 'OpenSSH', 'ssh.exe');
 const psArgs = (file, args = []) => ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'RemoteSigned', '-File', join(windowsRoot, file), ...args];
 const cleanEnv = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith('CODEX_MOBILE_') && !['CODEX_APP_SERVER_WS_URL', 'CODEX_APP_SERVER_FORCE_CLI'].includes(key)));
 const publicUrl = `ws://127.0.0.1:${config.ServerPort}`, privateUrl = `ws://127.0.0.1:${config.PrivateServerPort}`;
-let sides, runtime, handler, stopping = false, cache;
+let sides, runtime, handler, stopping = false;
+const inspect = createVersionInspector({ cachePath: join(root, 'version-cache.json') });
 async function launch(executable, args, env = cleanEnv) {
   const child = spawn(executable, args, { cwd: config.RepositoryPath, env, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
   // 下游输出可能包含用户内容，默认不复制到 supervisor 日志。
@@ -37,11 +38,7 @@ async function launch(executable, args, env = cleanEnv) {
 async function resolveVersion() {
   const { stdout } = await execute(powershell, psArgs('resolve-desktop.ps1'), { env: cleanEnv, windowsHide: true, encoding: 'utf8', timeout: 30_000, maxBuffer: 65536 });
   const desktop = JSON.parse(stdout.trim().replace(/^\uFEFF/, ''));
-  const signature = await bundleSignature(desktop.resourcesDirectory);
-  if (!cache || cache.path !== desktop.resourcesDirectory || cache.signature !== signature) {
-    cache = { path: desktop.resourcesDirectory, signature, candidate: await inspectVersion(desktop) };
-  }
-  return cache.candidate;
+  return inspect(desktop);
 }
 async function launchServer(version) {
   const specPath = join(root, 'workers', `${randomUUID()}.json`);
@@ -76,7 +73,7 @@ async function shutdown(exitCode = 0) {
 const endpoint = new SharedEndpoint({ port: config.ServerPort, upstreamUrl: privateUrl,
   handleHttp: (req, res) => handler ? handler(req, res) : false });
 runtime = new ServiceRuntime({ endpoint, upstreamUrl: privateUrl, resolveVersion,
-  prepareVersion: (candidate) => snapshotVersion(candidate, join(root, 'versions')), launchServer,
+  prepareVersion: (candidate) => snapshotVersion(candidate, join(root, 'versions'), inspect), launchServer,
   onEvent: (event, value) => {
     log(event, value).catch(() => {});
     if (event === 'updated') retainVersions(join(root, 'versions'), [runtime.current?.fingerprint, runtime.previous?.fingerprint]).catch(() => log('versions-cleanup-deferred', {}).catch(() => {}));

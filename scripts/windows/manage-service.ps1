@@ -44,11 +44,17 @@ function New-ServiceShortcut([string]$Path,[string]$ShortcutAction,[string]$Desc
     $link.WorkingDirectory=$ServiceRoot; $link.Description=$Description
     $link.Save()
 }
-function Set-StartupShortcut {
+function Remove-LegacyStartupShortcut {
+    param([string]$Path = (Join-Path ([Environment]::GetFolderPath('Startup')) 'Codex Desktop.lnk'))
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return }
     $shell=New-Object -ComObject WScript.Shell
-    $link=$shell.CreateShortcut((Join-Path ([Environment]::GetFolderPath('Startup')) 'Codex Desktop.lnk'))
-    $link.TargetPath=Get-QuietLauncher; $link.Arguments='start'
-    $link.WorkingDirectory=$ServiceRoot; $link.Description='启动独立 Codex 后台服务'; $link.Save()
+    $link=$shell.CreateShortcut($Path)
+    $rootPath=[IO.Path]::GetFullPath($ServiceRoot).TrimEnd('\')
+    # 只迁移本服务的旧入口；同名的第三方快捷方式不属于本服务。
+    if ((Split-Path $link.TargetPath) -eq $rootPath -and
+        [IO.Path]::GetFileName($link.TargetPath) -like 'CodexMobileLauncher-*.exe' -and $link.Arguments -eq 'start') {
+        Remove-Item -LiteralPath $Path -Force
+    }
 }
 
 switch ($Action) {
@@ -110,7 +116,7 @@ switch ($Action) {
     if(Test-Path -LiteralPath (Join-Path $desktop 'Codex 共享服务.lnk')) { New-ServiceShortcut (Join-Path $desktop 'Codex 共享服务.lnk') 'ui' '打开界面，连接独立后台服务' $false }
     $startup=Join-Path ([Environment]::GetFolderPath('Startup')) 'Codex Desktop.lnk'
     if(Test-Path -LiteralPath $startup) { Copy-Item -LiteralPath $startup -Destination (Join-Path $backup 'startup.lnk') }
-    Set-StartupShortcut
+    Remove-LegacyStartupShortcut
     if($oldTask){Disable-ScheduledTask -TaskName 'CodexMobile-SharedDesktop' | Out-Null}
     Start-Backend
     [pscustomobject]@{Installed=$true;Task=$taskName;ServiceRoot=$ServiceRoot;Backup=$backup;NextStep='首次切换时退出旧 Codex，然后用打开 Codex快捷方式启动界面'} | ConvertTo-Json
@@ -138,7 +144,7 @@ switch ($Action) {
     $launcher=Get-QuietLauncher
     New-ServiceShortcut (Join-Path $desktop '打开 Codex.lnk') 'ui' '无终端打开界面，连接独立后台服务' $false
     if(Test-Path -LiteralPath (Join-Path $desktop 'Codex 共享服务.lnk')) {New-ServiceShortcut (Join-Path $desktop 'Codex 共享服务.lnk') 'ui' '无终端打开界面，连接独立后台服务' $false}
-    Set-StartupShortcut
+    Remove-LegacyStartupShortcut
     # 更新后续启动入口；不停止或重启当前运行实例。
     $taskAction=New-ScheduledTaskAction -Execute $launcher -Argument 'backend' -WorkingDirectory $ServiceRoot
     Set-ScheduledTask -TaskName $taskName -Action $taskAction | Out-Null

@@ -44,7 +44,7 @@
     "prepack": "npm run build:package",
     "start": "node --import tsx scripts/start-gateway.mjs",
     "test": "vitest run && npm run test:windows-service",
-    "test:windows-service": "node --test tests/windows/service-policy.test.mjs tests/windows/shared-endpoint.test.mjs tests/windows/service-runtime.test.mjs tests/windows/service-versions.test.mjs tests/windows/service-control.test.mjs",
+    "test:windows-service": "node --test tests/windows/service-policy.test.mjs tests/windows/shared-endpoint.test.mjs tests/windows/service-runtime.test.mjs tests/windows/service-versions.test.mjs tests/windows/service-control.test.mjs tests/windows/startup-entry.test.mjs",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "typecheck": "tsc -b --pretty false",
