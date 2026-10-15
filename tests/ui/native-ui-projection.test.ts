@@ -105,12 +105,16 @@ it.each(['inProgress','completed'])('原生 %s 的 commentary 保留分钟时间
  ]}]},p=>'thumb:'+p,p=>'original:'+p);
  if(status==='completed'){
   const children=messages.find(m=>m.blocks?.[0]?.kind==='disclosure')!.blocks![0].children!;
-  expect(children.map(c=>c.kind)).toEqual(['markdown','text','image','markdown','text','image']);
+  expect(children.map(c=>c.kind)).toEqual(['markdown','image','text','markdown','image','text']);
   expect(children.filter(c=>c.kind==='text').map(c=>c.text)).toEqual(['2026-10-15 09:07','2026-10-15 09:09']);
   expect(children.filter(c=>c.kind==='image').map(c=>c.previewURL)).toEqual(['original:/one.png','original:/two.png']);
  }else{
-  expect(messages.find(m=>m.id==='turn:c1')?.status).toBe('2026-10-15 09:07');
-  expect(messages.map(m=>m.id)).toEqual(['turn:c1','turn:i1','turn:c2','turn:i2']);
+  expect(messages.find(m=>m.id==='turn:c1')?.status).toBeUndefined();
+  expect(messages.map(m=>m.id)).toEqual(['turn:c1','turn:c2']);
+  expect(messages[0].blocks?.map(block=>block.kind)).toEqual(['image','text']);
+  expect(messages[0].blocks?.at(-1)?.text).toBe('2026-10-15 09:07');
+  expect(messages[1].blocks?.map(block=>block.kind)).toEqual(['image','text']);
+  expect(messages[1].blocks?.at(-1)?.text).toBe('2026-10-15 09:09');
  }
 });
 
@@ -129,4 +133,20 @@ it('原生独立生成媒体和视频保留原始位置与失败入口，不回�
  expect(history[1].previewURL).toBe('original:/screen.png');
  expect(messages[2].blocks![0]).toMatchObject({kind:'video',value:'media:/clip.mp4'});
  expect(messages[4].blocks![0]).toMatchObject({title:'视频生成未完成',command:{name:'panel.open'}});
+});
+
+
+it.each(['inProgress','completed'])('原生 %s 的无图 commentary 仍在正文后独立显示一次分钟时间',status=>{
+ const timestamp=new Date(2026,9,15,9,7,42).getTime()/1000;
+ const messages=projectConversation({turns:[{id:'turn',status,items:[
+  {id:'c',type:'agentMessage',phase:'commentary',text:'只发文字',timestamp},
+  ...(status==='completed'?[{id:'f',type:'agentMessage',phase:'final_answer',text:'完成'}]:[]),
+ ]}]},p=>p);
+ if(status==='completed') {
+  expect(messages[0].blocks![0].children?.map(b=>[b.kind,b.text])).toEqual([['markdown','只发文字'],['text','2026-10-15 09:07']]);
+ } else {
+  expect(messages[0].text).toBe('只发文字');
+  expect(messages[0].status).toBeUndefined();
+  expect(messages[0].blocks?.map(b=>[b.kind,b.text])).toEqual([['text','2026-10-15 09:07']]);
+ }
 });

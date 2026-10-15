@@ -431,7 +431,6 @@ function TimelineItem({
           </RemoteFileLink>
         )}
       />
-      {commentary && <MessageTimestamp timestamp={timestamp} className="commentary-timestamp" />}
       {!commentary && (formatMessageTimestamp(timestamp) || finalDurationLabel) && (
         <div className="final-answer-metadata">
           <MessageTimestamp
@@ -739,13 +738,14 @@ function CompletedResponseSegment({
     const commentary = entry.item.type === "agentMessage" && entry.item.phase === "commentary";
     const message = <TimelineItem
       item={entry.item} client={client} backend={backend} threadId={threadId}
-      timestamp={commentary ? entry.item.timestamp : entry.item === completed.final ? completedAt : undefined}
+      timestamp={entry.item === completed.final ? completedAt : undefined}
       finalDurationLabel={entry.item === completed.final ? finalDurationLabel : undefined}
       {...actionsForMessage(entry.item)}
     />;
     return commentary ? <div className="commentary-message" key={entry.item.id ?? index}>
       {message}
       {entry.media.map((media, mediaIndex) => <TimelineItem key={media.id ?? mediaIndex} item={media} client={client} backend={backend} threadId={threadId} />)}
+      <MessageTimestamp timestamp={entry.item.timestamp} className="commentary-timestamp" />
     </div> : <Fragment key={entry.item.id ?? index}>{message}</Fragment>;
   };
   // 相邻的过程消息共享一个历史区；独立媒体与 final 仍留在原始位置。

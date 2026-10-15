@@ -64,8 +64,8 @@ export function projectConversation(active: RecordValue | null, imageURL: (path:
           if (!historyCount) historyID = id;
           const timestamp = formatMessageTimestamp(item.timestamp);
           history.push({ id, kind: 'markdown', text: nativeItemText(item) });
-          if (timestamp) history.push({ id: `${id}:timestamp`, kind: 'text', text: timestamp });
           history.push(...entry.media.flatMap(mediaBlocks));
+          if (timestamp) history.push({ id: `${id}:timestamp`, kind: 'text', text: timestamp });
           historyCount += 1;
           continue;
         }
@@ -75,9 +75,13 @@ export function projectConversation(active: RecordValue | null, imageURL: (path:
           messages.push({ id, role: 'user', text: nativeItemText(item), blocks: imageBlocks(item, id),
             actions: [nativeAction(`${id}:copy`, t('复制'), 'message.copy', { id }), nativeAction(`${id}:edit`, t('编辑'), 'message.edit', { turnId, messageId: String(item.id) })] });
         } else if (item.type === 'agentMessage') {
-          messages.push({ id, role: 'assistant', text: nativeItemText(item), status: item.phase === 'commentary' ? formatMessageTimestamp(item.timestamp) || undefined : status,
+          const commentary = item.phase === 'commentary';
+          const timestamp = commentary ? formatMessageTimestamp(item.timestamp) : '';
+          const blocks = entry.media.flatMap(mediaBlocks);
+          if (timestamp) blocks.push({ id: `${id}:timestamp`, kind: 'text', text: timestamp });
+          messages.push({ id, role: 'assistant', text: nativeItemText(item), status: commentary ? undefined : status,
+            ...(blocks.length ? { blocks } : {}),
             actions: [nativeAction(`${id}:copy`, t('复制'), 'message.copy', { id })] });
-          for (const media of entry.media) messages.push({ id: `${turnId}:${media.id}`, role: 'activity', text: '', blocks: mediaBlocks(media) });
         } else if ((item.type === 'imageGeneration' || item.type === 'videoGeneration') && item.status === 'failed') {
           messages.push({ id, role: 'activity', text: '', blocks: [nativeAction(`${id}:failure`, t(item.type === 'videoGeneration' ? '视频生成未完成' : '图像生成未完成'), 'panel.open', { id: `tool:${turnId}:${item.id}` })] });
         } else if (item.type === 'videoGeneration' && !videoPathForItem(item)) {

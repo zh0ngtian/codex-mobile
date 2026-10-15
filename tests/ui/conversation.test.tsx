@@ -2076,11 +2076,13 @@ describe("commentary 独立展示预览", () => {
 });
 
 
-it.each(['inProgress','completed'])('%s commentary 的时间与截图在同一消息中按原序展示', status => {
+it.each(['inProgress','completed'])('%s commentary 的时间在所属全部图片下方且只显示一次', async status => {
  const timestamp = new Date(2026,9,15,9,7,42).getTime()/1000;
- const {container} = render(<TurnCard client={null} turn={{id:'ordered',status,items:[
+ const request = vi.fn().mockResolvedValue({dataBase64:'aGVsbG8='});
+ const {container} = render(<TurnCard client={{request} as never} turn={{id:'ordered',status,items:[
   {id:'c1',type:'agentMessage',phase:'commentary',text:'第一张检查',timestamp},
   {id:'i1',type:'imageView',path:'/one.png'},
+  {id:'i1b',type:'imageView',path:'/one-more.png'},
   {id:'c2',type:'agentMessage',phase:'commentary',text:'第二张检查',timestamp:timestamp+120},
   {id:'i2',type:'imageView',path:'/two.png'},
   ...(status === 'completed' ? [{id:'f',type:'agentMessage',phase:'final_answer',text:'完成'}] : []),
@@ -2092,6 +2094,11 @@ it.each(['inProgress','completed'])('%s commentary 的时间与截图在同一�
  expect(rows[1].textContent).toContain('2026-10-15 09:09');
  expect(rows[0].querySelector('.message-images')).not.toBeNull();
  expect(rows[1].querySelector('.message-images')).not.toBeNull();
+ await waitFor(() => expect(rows[0].querySelectorAll('img')).toHaveLength(2));
+ expect([...rows[0].querySelectorAll('.assistant-message, img, time')].map(node => node.tagName.toLowerCase())).toEqual(['div','img','img','time']);
+ expect([...rows[1].querySelectorAll('.assistant-message, .message-images, time')].map(node => node.tagName.toLowerCase())).toEqual(['div','div','time']);
+ expect(rows[0].querySelectorAll('time')).toHaveLength(1);
+ expect(rows[1].querySelectorAll('time')).toHaveLength(1);
 });
 
 it('生成失败的视频在原始位置显示失败状态，不挤入 commentary 历史', () => {
@@ -2133,4 +2140,18 @@ it('没有真实 commentary 时间时不使用回合时间填补', () => {
   {id:'c',type:'agentMessage',phase:'commentary',text:'时间未知'},
  ]}}/>);
  expect(container.querySelector('.commentary-message time')).toBeNull();
+});
+
+
+it.each(['inProgress','completed'])('%s 无图片的 commentary 时间紧随正文', status => {
+ const timestamp=new Date(2026,9,15,9,7,42).getTime()/1000;
+ const {container}=render(<TurnCard client={null} turn={{id:'text-only',status,items:[
+  {id:'c',type:'agentMessage',phase:'commentary',text:'只发文字',timestamp},
+  ...(status==='completed'?[{id:'f',type:'agentMessage',phase:'final_answer',text:'完成'}]:[]),
+ ]}}/>);
+ if(status==='completed') fireEvent.click(within(container).getByRole('button',{name:'之前的 1 条消息'}));
+ const row=container.querySelector('.commentary-message')!;
+ expect([...row.children].map(node=>node.tagName.toLowerCase())).toEqual(['div','time']);
+ expect(row.lastElementChild?.textContent).toBe('2026-10-15 09:07');
+ expect(row.querySelectorAll('time')).toHaveLength(1);
 });
