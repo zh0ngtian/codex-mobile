@@ -87,3 +87,21 @@ describe('已完成回合的历史过程恢复', () => {
     expect(result.nextCursor).toBe('older');
   });
 });
+
+it('详情保留真实时间及媒体锚点，只有媒体时仍有顺序且过滤敏感正文', () => {
+  const result = compactTurnDetails({ data: [{ id: 'media', items: [
+    { id: 'c', type: 'agentMessage', phase: 'commentary', text: '图片如下', timestamp: 123.45 },
+    { id: 'image', type: 'imageView', path: '/tmp/image.png' },
+    { id: 'generated', type: 'imageGeneration', savedPath: '/tmp/generated.png' },
+    { id: 'video', type: 'videoGeneration', result: 'secret video body' },
+    { id: 'u', type: 'userMessage', content: [{ type: 'image', url: 'private attachment' }] },
+    { id: 'f', type: 'agentMessage', phase: 'final_answer', text: 'private final' },
+  ] }, { id: 'only-media', items: [{ id: 'v', type: 'videoGeneration' }] }] });
+  expect(result.data[0].commentaryItems[0].timestamp).toBe(123.45);
+  expect(result.data[0].messageOrder).toEqual(['c', 'image', 'generated', 'video', 'u', 'f']);
+  expect(result.data[1].messageOrder).toEqual(['v']);
+  expect(JSON.stringify(result)).not.toMatch(/secret|private/);
+  expect(compactTurnCommentary({ data: [{ id: 'live', status: 'inProgress', items: [
+    { id: 'c', type: 'agentMessage', phase: 'commentary', text: '图片如下', timestamp: 123.45 },
+  ] }] }, 'live').items[0].timestamp).toBe(123.45);
+});
