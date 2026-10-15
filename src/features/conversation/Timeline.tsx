@@ -3,7 +3,6 @@ import { AppServerClient } from "../../app-server/client";
 import type { BackendConfig } from "../../backends/types";
 import {
   automationAgentMessageText,
-  groupTimelineEntries,
   groupTurnItems,
   imageSourcesForItem,
   MarkdownMessage,
@@ -12,10 +11,8 @@ import {
   splitCompletedTurnResponses,
   splitTurnResponseSegments,
   stripGitDirectives,
-  summarizeToolActivity,
   summarizeTurnChanges,
   hasTurnChangeStats,
-  toolActivityRowLabel,
   turnDurationMs,
   type ImageSource,
 } from "../../ui/conversation";
@@ -29,7 +26,6 @@ import {
   RemoteFileLink,
   RemoteImage,
   RemoteVideo,
-  isPreviewableVideoPath,
   videoPathForItem,
 } from "./sheets/RemoteFileSheets";
 import { t, getActiveLocale } from "../../i18n";
@@ -38,11 +34,13 @@ import {
   stripConversationTitleRequest,
 } from "../../app-server/conversation-title";
 import {
-  FileDiffSheet,
   ImageGenerationFailure,
-  ToolDetailSheet,
 } from "./sheets/ToolSheets";
+import { formatMessageTimestamp } from "../../ui/message-timestamp";
+import { orderedTurnMedia, commentaryMediaEntries } from "../../ui/timeline-media";
 import "./timeline-timestamps.css";
+
+export { formatMessageTimestamp } from "../../ui/message-timestamp";
 import { ContextActionMenu } from "../../ui/ContextActionMenu";
 import { type MenuAnchor } from "../../ui/native-action-menu";
 import { useLongPress } from "../../ui/use-long-press";
@@ -67,16 +65,6 @@ type UserMessageActionProps = {
   userMessageActionsDisabled?: boolean;
 };
 
-export function formatMessageTimestamp(timestamp: number | null | undefined) {
-  if (typeof timestamp !== "number" || !Number.isFinite(timestamp)) return "";
-  const date = new Date(timestamp * 1000);
-  if (!Number.isFinite(date.getTime())) return "";
-  const pad = (value: number) => String(value).padStart(2, "0");
-  return [
-    `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`,
-    `${pad(date.getHours())}:${pad(date.getMinutes())}`,
-  ].join(" ");
-}
 
 function MessageTimestamp({
   timestamp,
@@ -351,63 +339,6 @@ function UserBubble({
     : <>{bubble}{menu}</>;
 }
 
-function ToolActivity({ items }: { items: AnyRecord[] }) {
-  const summary = summarizeToolActivity(items);
-  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
-  const selected = selectedIndex == null ? null : items[selectedIndex] ?? null;
-  const [expanded, setExpanded] = useState(summary.running);
-  const parts = [
-    summary.fileCount ? t("已更改 {count} 个文件", { count: summary.fileCount }) : "",
-    summary.commandCount
-      ? t(summary.running ? "正在运行 {count} 个命令" : "已运行 {count} 个命令", {
-          count: summary.commandCount,
-        })
-      : "",
-    summary.toolCount ? t("已调用 {count} 个工具", { count: summary.toolCount }) : "",
-  ].filter(Boolean);
-  return (
-    <>
-      <details
-        className="tool-activity"
-        open={summary.running || expanded}
-        onToggle={(event) => {
-          if (!summary.running) setExpanded(event.currentTarget.open);
-        }}
-      >
-        <summary>
-          <span className="activity-icon">‹/›</span>
-          <span className="activity-summary-text">
-            {parts.join(getActiveLocale() === "zh-CN" ? "，" : ", ") || t("工具活动")}
-            {summary.additions > 0 && <em className="diff-add">+{summary.additions}</em>}
-            {summary.deletions > 0 && <em className="diff-delete">-{summary.deletions}</em>}
-          </span>
-          <Chevron direction={summary.running || expanded ? "down" : "right"} />
-        </summary>
-        <div className="tool-activity-rows">
-          {items.map((item, index) => (
-            <button
-              type="button"
-              key={item.id ?? index}
-              aria-label={toolActivityRowLabel(item)}
-              onClick={() => setSelectedIndex(index)}
-            >
-              <span className={item.status === "inProgress" ? "row-running" : ""}>‹/›</span>
-              <strong>{toolActivityRowLabel(item)}</strong>
-              <Chevron />
-            </button>
-          ))}
-        </div>
-      </details>
-      {selected?.type === "fileChange" && (
-        <FileDiffSheet item={selected} onClose={() => setSelectedIndex(null)} />
-      )}
-      {selected && selected.type !== "fileChange" && (
-        <ToolDetailSheet item={selected} onClose={() => setSelectedIndex(null)} />
-      )}
-    </>
-  );
-}
-
 function TimelineItem({
   item,
   client,
@@ -427,6 +358,7 @@ function TimelineItem({
   finalDurationLabel?: string | null;
 } & UserMessageActionProps) {
   const type = String(item.type ?? "");
+  const commentary = type === "agentMessage" && item.phase === "commentary";
   if (type === "imageGeneration" && item.status === "failed") {
     return <ImageGenerationFailure backend={backend} threadId={threadId} itemId={String(item.id ?? "")} />;
   }
@@ -467,6 +399,11 @@ function TimelineItem({
   if (backend && generatedVideoPath) {
     return <RemoteVideo path={generatedVideoPath} backend={backend} />;
   }
+  if (type === "videoGeneration" && !generatedVideoPath) {
+    const label = item.status === "failed" ? t("视频生成未完成")
+      : ["inProgress", "in_progress", "running"].includes(item.status) ? t("正在生成视频") : t("视频生成未提供可播放文件");
+    return <div className="image-generation-failure" role="status"><strong>{label}</strong></div>;
+  }
   const images = imageSourcesForItem(item);
   if (images.length) return <ImageGallery images={images} client={client} backend={backend} />;
   if (/reasoning/i.test(type)) {
@@ -494,7 +431,8 @@ function TimelineItem({
           </RemoteFileLink>
         )}
       />
-      {(formatMessageTimestamp(timestamp) || finalDurationLabel) && (
+      {commentary && <MessageTimestamp timestamp={timestamp} className="commentary-timestamp" />}
+      {!commentary && (formatMessageTimestamp(timestamp) || finalDurationLabel) && (
         <div className="final-answer-metadata">
           <MessageTimestamp
             timestamp={timestamp}
@@ -671,7 +609,7 @@ export function TurnCard({
       total + receivedItemCharacterCount(item),
     0,
   );
-  const completedSegments = splitTurnResponseSegments(grouped.responses);
+  const completedSegments = splitTurnResponseSegments(orderedTurnMedia(grouped.responses));
   const changeStats = turn.groupChangeStats ?? summarizeTurnChanges(turn);
   const changeStatsReady = hasTurnChangeStats(turn);
   const changedLines = changeStats.additions + changeStats.deletions;
@@ -738,7 +676,6 @@ export function TurnCard({
             durationLabel={!grouped.running && index === durationSegmentIndex ? durationLabel : null}
           />
         ))}
-        <TurnMedia items={grouped.responses} running={grouped.running} client={client} backend={backend} threadId={threadId} />
         {grouped.running && (
           <StreamCharacterCount
             count={streamingCharacterCount}
@@ -764,64 +701,6 @@ export function TurnCard({
       )}
     </section>
   );
-}
-
-function TurnMedia({
-  items,
-  running,
-  client,
-  backend,
-  threadId,
-}: {
-  items: AnyRecord[];
-  running: boolean;
-  client: AppServerClient | null;
-  backend?: BackendConfig | null;
-  threadId?: string;
-}) {
-  const [showProcessImages, setShowProcessImages] = useState(false);
-  // Media has its own display area and never contributes to commentary history.
-  const generatedSources = new Set<string>();
-  const mediaKeys = new Set<string>();
-  const generatedMedia = items.filter((item) => {
-    if (item.type !== "imageGeneration" && item.type !== "videoGeneration") return false;
-    const source = item.status === "failed"
-      ? ""
-      : imageSourcesForItem(item)[0]?.source || videoPathForItem(item);
-    if (source) generatedSources.add(source);
-    const key = source || `${item.type}:${item.id}`;
-    if (mediaKeys.has(key)) return false;
-    mediaKeys.add(key);
-    return true;
-  });
-  const screenshotSources = new Set<string>();
-  const screenshots = items.filter((item) => item.type === "imageView")
-    .flatMap(imageSourcesForItem).filter((image) => {
-      if (generatedSources.has(image.source) || screenshotSources.has(image.source)) return false;
-      screenshotSources.add(image.source);
-      return true;
-    });
-  return <>
-    {generatedMedia.map((item, index) => (
-      <TimelineItem key={item.id ?? index} item={item} client={client} backend={backend} threadId={threadId} />
-    ))}
-    {screenshots.length > 0 && (
-      !running && screenshots.length > 1 ? (
-        <div className="process-images">
-          <button
-            type="button"
-            className="previous-messages-toggle"
-            aria-expanded={showProcessImages}
-            onClick={() => setShowProcessImages((current) => !current)}
-          >
-            {t("过程截图（{count}）", { count: screenshots.length })}
-            <Chevron direction={showProcessImages ? "down" : "right"} />
-          </button>
-          {showProcessImages && <ImageGallery images={screenshots} client={client} backend={backend} />}
-        </div>
-      ) : <ImageGallery images={screenshots} client={client} backend={backend} />
-    )}
-  </>;
 }
 
 function CompletedResponseSegment({
@@ -854,84 +733,51 @@ function CompletedResponseSegment({
   const hasFinal = Boolean(completed.final);
   // A segment's explicit final starts a new display phase, even while the turn is running.
   useEffect(() => setShowPrevious(false), [hasFinal]);
-  const guidingMessages = completed.beforeFinal.filter((item) => item.type === "userMessage");
-  const commentary = completed.beforeFinal.filter((item) => item.type === "agentMessage");
-  const isCommentary = (item: AnyRecord) => item.type === "agentMessage" && item.phase === "commentary";
-  const processBeforeFinal = completed.beforeFinal.filter(isCommentary);
-  const processAfterFinal = completed.afterFinal.filter(isCommentary);
-  const previousCount = hasFinal ? processBeforeFinal.length + processAfterFinal.length : 0;
-  const renderEntries = (entries: AnyRecord[]) =>
-    groupTimelineEntries(entries).map((entry, index) => {
-      if (entry.kind === "activity") return (
-        <ToolActivity key={`activity-${entry.items[0]?.id ?? index}`} items={entry.items} />
-      );
-      const message = (
-        <TimelineItem
-          item={entry.item}
-          client={client}
-          backend={backend}
-          threadId={threadId}
-          {...actionsForMessage(entry.item)}
-        />
-      );
-      return isCommentary(entry.item)
-        ? <div className="commentary-message" key={entry.item.id ?? index}>{message}</div>
-        : <Fragment key={entry.item.id ?? index}>{message}</Fragment>;
-    });
-  if (running && !hasFinal) {
-    return <>{renderEntries(items.filter((item) => item.type === "userMessage" || item.type === "agentMessage"))}</>;
+  const entries = commentaryMediaEntries(items);
+  const previousCount = hasFinal ? entries.filter(entry => entry.item.type === "agentMessage" && entry.item.phase === "commentary").length : 0;
+  const renderEntry = (entry: ReturnType<typeof commentaryMediaEntries>[number], index: number) => {
+    const commentary = entry.item.type === "agentMessage" && entry.item.phase === "commentary";
+    const message = <TimelineItem
+      item={entry.item} client={client} backend={backend} threadId={threadId}
+      timestamp={commentary ? entry.item.timestamp : entry.item === completed.final ? completedAt : undefined}
+      finalDurationLabel={entry.item === completed.final ? finalDurationLabel : undefined}
+      {...actionsForMessage(entry.item)}
+    />;
+    return commentary ? <div className="commentary-message" key={entry.item.id ?? index}>
+      {message}
+      {entry.media.map((media, mediaIndex) => <TimelineItem key={media.id ?? mediaIndex} item={media} client={client} backend={backend} threadId={threadId} />)}
+    </div> : <Fragment key={entry.item.id ?? index}>{message}</Fragment>;
+  };
+  // 相邻的过程消息共享一个历史区；独立媒体与 final 仍留在原始位置。
+  const chunks: Array<{ history: boolean; entries: typeof entries }> = [];
+  for (const entry of entries) {
+    const commentary = entry.item.type === "agentMessage" && entry.item.phase === "commentary";
+    const visible = entry.item.type === "userMessage" || entry.item.type === "agentMessage" ||
+      ["imageView", "imageGeneration", "videoGeneration"].includes(entry.item.type);
+    if (!visible) continue;
+    const history = hasFinal && commentary;
+    if (chunks.at(-1)?.history === history) chunks.at(-1)!.entries.push(entry);
+    else chunks.push({ history, entries: [entry] });
   }
-  return (
-    <>
-      {renderEntries(guidingMessages)}
-      {!hasFinal && renderEntries(commentary)}
-      {previousCount > 0 && (
-        <>
-          <button
-            type="button"
-            className="previous-messages-toggle"
-            aria-expanded={showPrevious}
-            aria-label={`${t("之前的 {count} 条消息", { count: previousCount })}${
-              durationLabel ? ` · ${durationLabel}` : ""
-            }`}
-            onClick={() => setShowPrevious((current) => !current)}
-          >
-            {t("之前的 {count} 条消息", { count: previousCount })}
-            {durationLabel && (
-              <span className="turn-duration">· {durationLabel}</span>
-            )}
-            <Chevron direction={showPrevious ? "down" : "right"} />
-          </button>
-          {showPrevious && (
-            <div className="previous-messages">
-              {renderEntries(processBeforeFinal)}
-            </div>
-          )}
-        </>
-      )}
-      {completed.final && (
-        <>
-          <TimelineItem
-            item={completed.final}
-            client={client}
-            backend={backend}
-            timestamp={completedAt}
-            finalDurationLabel={finalDurationLabel}
-          />
-          {showCopy && (
-            <CopyButton
-              text={() => visibleAssistantText(copyTarget.current)}
-              label={t("复制本回合 AI 消息")}
-              className="turn-message-copy"
-            />
-          )}
-        </>
-      )}
-      {showPrevious && processAfterFinal.length > 0 && (
-        <div className="previous-messages after-final">
-          {renderEntries(processAfterFinal)}
-        </div>
-      )}
-    </>
-  );
+  let toggleInserted = false;
+  return <>
+    {chunks.map((chunk, index) => {
+      if (!chunk.history) return <Fragment key={chunk.entries[0]?.item.id ?? index}>{chunk.entries.map(renderEntry)}</Fragment>;
+      const showToggle = !toggleInserted;
+      toggleInserted = true;
+      return <Fragment key={chunk.entries[0]?.item.id ?? index}>
+        {showToggle && <button
+          type="button" className="previous-messages-toggle" aria-expanded={showPrevious}
+          aria-label={`${t("之前的 {count} 条消息", { count: previousCount })}${durationLabel ? ` · ${durationLabel}` : ""}`}
+          onClick={() => setShowPrevious(current => !current)}
+        >
+          {t("之前的 {count} 条消息", { count: previousCount })}
+          {durationLabel && <span className="turn-duration">· {durationLabel}</span>}
+          <Chevron direction={showPrevious ? "down" : "right"} />
+        </button>}
+        {showPrevious && <div className="previous-messages">{chunk.entries.map(renderEntry)}</div>}
+      </Fragment>;
+    })}
+    {completed.final && showCopy && <CopyButton text={() => visibleAssistantText(copyTarget.current)} label={t("复制本回合 AI 消息")} className="turn-message-copy" />}
+  </>;
 }

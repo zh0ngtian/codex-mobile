@@ -359,3 +359,76 @@ describe('完成摘要的 commentary 恢复', () => {
     expect(request).toHaveBeenCalledTimes(1);
   });
 });
+
+
+describe('commentary 与媒体有序回填', () => {
+  const c1 = { id: 'c1', type: 'agentMessage', phase: 'commentary', text: '检查', timestamp: 1792026420 };
+  const c2 = { id: 'c2', type: 'agentMessage', phase: 'commentary', text: '验证', timestamp: 1792026540 };
+  const img1 = { id: 'i1', type: 'imageView', path: '/one.png' };
+  const img2 = { id: 'i2', type: 'imageView', path: '/two.png' };
+  const final = { id: 'f', type: 'agentMessage', phase: 'final_answer', text: '完成' };
+  it.each(['compact', 'full'])('%s 详情先合并截图再按原始顺序排序并保留分钟时间', async view => {
+    const history = [c1, img1, c2, img2, final];
+    const request = vi.fn().mockResolvedValue({ data: [{ id: 't', items: view === 'full' ? history : [img1, img2],
+      ...(view === 'compact' ? { commentaryItems: [c1,c2], messageOrder: history.map(i => i.id) } : {}) }] });
+    const details = await loadTurnChangeStatsPage({ request }, 'thread');
+    const once = applyTurnChangeStats([{ id: 't', status: 'completed', items: [{ ...c2, text: '验证已经完成' }, final] }], details);
+    expect(once[0].items.map((i: any) => i.id)).toEqual(['c1','i1','c2','i2','f']);
+    expect(once[0].items[0].timestamp).toBe(c1.timestamp);
+    expect(once[0].items[2].text).toBe('验证已经完成');
+    expect(applyTurnChangeStats(once, details)).toEqual(once);
+    const restored = applyTurnCommentary(once, { turnId: 't', items: [{ ...c1, timestamp: undefined }, c2] });
+    expect(restored[0].items.map((i: any) => i.id)).toEqual(['c1','i1','c2','i2','f']);
+    expect(restored[0].items[0].timestamp).toBe(c1.timestamp);
+  });
+  it('没有 commentary 仍按媒体位置排序', async () => {
+    const history = [img1, final, img2];
+    const request = vi.fn().mockResolvedValue({ data: [{ id:'t', items:history }] });
+    const details = await loadTurnChangeStatsPage({ request }, 'thread');
+    const result = applyTurnChangeStats([{id:'t', items:[final]}],details);
+    expect(result[0].items.map((i:any)=>i.id)).toEqual(['i1','f','i2']);
+  });
+});
+
+it('迟到的不完整顺序不能把已显示的插话与较新的截图移到旧 final 后', () => {
+ const c1={id:'c1',type:'agentMessage',phase:'commentary',text:'检查'};
+ const img={id:'i1',type:'imageView',path:'/one.png'};
+ const steer={id:'u2',type:'userMessage',text:'继续'};
+ const newImage={id:'i2',type:'imageView',path:'/two.png'};
+ const final={id:'f',type:'agentMessage',phase:'final_answer',text:'完成'};
+ const current=[{id:'t',status:'completed',items:[c1,img,steer,newImage,final]}];
+ const result=applyTurnChangeStats(current,{t:{images:[img],commentaryItems:[c1],messageOrder:['c1','i1','f'],unavailable:true}});
+ expect(result[0].items.map((i:any)=>i.id)).toEqual(['c1','i1','u2','i2','f']);
+});
+
+it('running commentary 的媒体顺序与详情并发重复回填后保持一致', async () => {
+ const c1={id:'c1',type:'agentMessage',phase:'commentary',text:'检查',timestamp:123};
+ const c2={id:'c2',type:'agentMessage',phase:'commentary',text:'验证',timestamp:456};
+ const img1={id:'i1',type:'imageView',path:'/one.png'};
+ const img2={id:'i2',type:'imageView',path:'/two.png'};
+ const history=[c1,img1,c2,img2];
+ const commentary={turnId:'t',items:[c1,c2],messageOrder:history.map(i=>i.id)};
+ const details={t:{images:[img1,img2],commentaryItems:[c1,c2],messageOrder:history.map(i=>i.id),unavailable:true}};
+ const turns=[{id:'t',status:'inProgress',items:[img1,{...c2,text:'验证全部通过'},img2]}];
+ for(const reverse of [false,true]){
+  const result=reverse?applyTurnCommentary(applyTurnChangeStats(turns,details),commentary):applyTurnChangeStats(applyTurnCommentary(turns,commentary),details);
+  expect(result[0].items.map((i:any)=>i.id)).toEqual(history.map(i=>i.id));
+  expect(result[0].items[2].text).toBe('验证全部通过');
+  expect(result[0].items[2].timestamp).toBe(456);
+ }
+});
+
+it('详情保留视频路径与无路径失败生成项，按消息顺序放回', async () => {
+ const c={id:'c',type:'agentMessage',phase:'commentary',text:'生成'};
+ const video={id:'v',type:'videoGeneration',path:'/clip.mp4',status:'completed'};
+ const failed={id:'bad',type:'imageGeneration',status:'failed'};
+ const remote={id:'g',type:'imageGeneration',result:'https://images.invalid/one.png'};
+ const final={id:'f',type:'agentMessage',phase:'final_answer',text:'完成'};
+ const history=[c,video,failed,remote,final];
+ const request=vi.fn().mockResolvedValue({data:[{id:'t',items:history}]});
+ const details=await loadTurnChangeStatsPage({request},'thread');
+ const restored=applyTurnChangeStats([{id:'t',items:[final]}],details);
+ expect(restored[0].items.map((i:any)=>i.id)).toEqual(history.map(i=>i.id));
+ expect(restored[0].items.find((i:any)=>i.id==='v')).toMatchObject(video);
+ expect(restored[0].items.find((i:any)=>i.id==='bad')).toMatchObject(failed);
+});

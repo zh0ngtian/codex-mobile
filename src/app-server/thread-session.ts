@@ -11,7 +11,7 @@ const threadHistoryRequestOptions = {
   timeoutMs: threadHistoryRequestTimeoutMs,
 };
 
-export interface TurnCommentary { turnId: string; items: AnyRecord[] }
+export interface TurnCommentary { turnId: string; items: AnyRecord[]; messageOrder?: string[] }
 
 export function runningTurnNeedingCommentary(turns: AnyRecord[]): AnyRecord | undefined {
   const turn = turns.at(-1);
@@ -30,14 +30,43 @@ export async function loadRunningTurnCommentary(client: Requester, threadId: str
 export function applyTurnCommentary(turns: AnyRecord[], detail: TurnCommentary): AnyRecord[] {
   return turns.map((turn) => {
     if (turn.id !== detail.turnId || !detail.items.length) return turn;
-    const items = detail.items.map((item) => {
+    const incoming = detail.items.map((item) => {
       const existing = (turn.items ?? []).find((current: AnyRecord) => current.id === item.id);
-      // 回填只有用户文字，保留摘要或实时通知中的附件。
-      return existing && (item.type === "userMessage" || existing.phase === "final_answer")
-        ? { ...item, ...existing } : item;
+      const merged = existing && (item.type === "userMessage" || existing.phase === "final_answer")
+        ? { ...item, ...existing } : { ...item };
+      // 旧回填可能没有时间，不能擦掉已恢复的权威时间。
+      if (typeof merged.timestamp !== "number" && typeof existing?.timestamp === "number") merged.timestamp = existing.timestamp;
+      return merged;
     });
-    return reconcileRecentTurns([turn], [{ ...turn, items }])[0];
+    const recovered = reconcileRecentTurns([turn], [{ ...turn, items: incoming }])[0];
+    const byId = new Map((recovered.items ?? []).map((item: AnyRecord) => [item.id, item]));
+    // commentary 接口省略媒体时保留已有锚点，仅将缺失消息插入下一个已知消息前。
+    const order = (turn.items ?? []).map((item: AnyRecord) => item.id);
+    for (let index = 0; index < incoming.length; index += 1) {
+      const id = incoming[index].id;
+      if (order.includes(id)) continue;
+      const next = incoming.slice(index + 1).find(item => order.includes(item.id));
+      order.splice(next ? order.indexOf(next.id) : order.length, 0, id);
+    }
+    const items = order.map((id: string) => byId.get(id) as AnyRecord);
+    return { ...recovered, items: orderTurnItems(items, detail.messageOrder) };
   });
+}
+
+function orderTurnItems(items: AnyRecord[], messageOrder?: string[]) {
+  if (!messageOrder?.length) return items;
+  const order = [...new Set(messageOrder)];
+  const known = new Set(order);
+  // 新实时消息可能不在旧详情快照内，继续放在其下一个已有锚点前。
+  for (let index = 0; index < items.length; index += 1) {
+    const item = items[index];
+    if (known.has(item.id)) continue;
+    const next = items.slice(index + 1).find(entry => known.has(entry.id));
+    order.splice(next ? order.indexOf(next.id) : order.length, 0, item.id);
+    known.add(item.id);
+  }
+  const byId = new Map(items.map(item => [item.id, item]));
+  return order.flatMap(id => byId.has(id) ? [byId.get(id)!] : []);
 }
 
 export type TurnChangeStats = { additions: number; deletions: number };
@@ -64,24 +93,26 @@ export async function loadTurnChangeStatsPage(
     (response.data ?? []).map((turn: AnyRecord) => {
       const images = (turn.items ?? []).filter((item: AnyRecord) =>
         (item.type === "imageView" && typeof item.path === "string" && item.path) ||
-        (item.type === "imageGeneration" &&
-          [item.savedPath, item.result].some((value) =>
-            typeof value === "string" && /^(data:|\/)/i.test(value))),
+        (["imageGeneration", "videoGeneration"].includes(item.type) &&
+          (item.status === "failed" || item.type === "videoGeneration" ||
+            [item.path, item.savedPath, item.result].some((value) =>
+              typeof value === "string" && /^(https?:|data:|\/)/i.test(value)))),
       ).map((item: AnyRecord) => ({
         id: item.id,
         type: item.type,
         backfilled: true,
+        ...(item.status ? { status: item.status } : {}),
         ...(item.path ? { path: item.path } : {}),
         ...(item.savedPath ? { savedPath: item.savedPath } : {}),
         ...(item.result && /^(https?:|data:|\/)/i.test(item.result) ? { result: item.result } : {}),
       }));
       const commentaryItems = (turn.commentaryItems ?? turn.items ?? []).filter((item: AnyRecord) =>
         item.type === "agentMessage" && item.phase === "commentary" && typeof item.id === "string" && typeof item.text === "string",
-      ).map((item: AnyRecord) => ({ id: item.id, type: item.type, phase: item.phase, text: item.text }));
+      ).map((item: AnyRecord) => ({ id: item.id, type: item.type, phase: item.phase, text: item.text, ...(typeof item.timestamp === "number" ? { timestamp: item.timestamp } : {}) }));
       const messageOrder = (turn.messageOrder ?? (turn.items ?? [])
-        .filter((item: AnyRecord) => ["userMessage", "agentMessage"].includes(item.type))
+        .filter((item: AnyRecord) => ["userMessage", "agentMessage", "imageView", "imageGeneration", "videoGeneration"].includes(item.type))
         .map((item: AnyRecord) => item.id)).filter((id: unknown) => typeof id === "string");
-      const messages = commentaryItems.length ? { commentaryItems, messageOrder } : {};
+      const messages = { ...(commentaryItems.length ? { commentaryItems } : {}), ...(messageOrder.length ? { messageOrder } : {}) };
       return [String(turn.id), hasTurnChangeStats(turn)
         ? { ...summarizeTurnChanges(turn), images, ...messages, ...(turn.changeStatsSource ? { source: turn.changeStatsSource } : {}) }
         : { unavailable: true, images, ...messages }];
@@ -103,14 +134,7 @@ export function applyTurnChangeStats(
     const recovered = detail.commentaryItems?.length
       ? applyTurnCommentary([turn], { turnId: String(turn.id), items: detail.commentaryItems })[0]
       : turn;
-    let items: AnyRecord[] = [...(recovered.items ?? [])];
-    if (detail.commentaryItems?.length && detail.messageOrder?.length) {
-      const order = [...new Set(detail.messageOrder)];
-      const known = new Set(order);
-      const byId = new Map(items.map((item) => [item.id, item]));
-      items = [...order.flatMap((id) => byId.has(id) ? [byId.get(id)!] : []),
-        ...items.filter((item) => !known.has(item.id))];
-    }
+    const items: AnyRecord[] = [...(recovered.items ?? [])];
     const finalIndex = items.findIndex((item: AnyRecord) =>
       item.type === "agentMessage" && item.phase === "final_answer",
     );
@@ -119,16 +143,16 @@ export function applyTurnChangeStats(
       const source = image.path ?? image.savedPath ?? image.result;
       if (items.some((item: AnyRecord) =>
         (image.id && item.id === image.id) ||
-        (item.type === image.type &&
+        (source && item.type === image.type &&
           (item.path ?? item.savedPath ?? item.result) === source) ||
-        (item.type === "agentMessage" && typeof item.text === "string" && item.text.includes(source)),
+        (source && item.type === "agentMessage" && typeof item.text === "string" && item.text.includes(source)),
       )) continue;
       items.splice(insertAt, 0, image);
       insertAt += 1;
     }
     return {
       ...turn,
-      items,
+      items: orderTurnItems(items, detail.messageOrder),
       loadedChangeStats: detail.unavailable ? undefined : { additions: detail.additions ?? 0, deletions: detail.deletions ?? 0 },
       changeStatsSource: detail.source,
       loadedMediaStatus: turn.status,
