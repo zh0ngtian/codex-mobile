@@ -460,3 +460,33 @@ it.each([false,true])('回填仅按用户消息精确ID合并，不将旧用户�
  if(withOrder) expect(result[0].items.map((item:any)=>item.id)).toEqual(['u1','c1','u2','c2']);
  expect(applyTurnCommentary(result,detail)).toEqual(result);
 });
+
+it('旧 running 完整顺序不包含后来的插话时，先恢复旧快照再保留较新的消息', () => {
+ const u1={id:'u1',type:'userMessage',text:'旧问题'};
+ const c1={id:'c1',type:'agentMessage',phase:'commentary',text:'旧过程',timestamp:123};
+ const u2={id:'u2',type:'userMessage',text:'新问题'};
+ const c2={id:'c2',type:'agentMessage',phase:'commentary',text:'新过程全部完成',timestamp:456};
+ const image={id:'new-image',type:'imageView',path:'/new.png'};
+ const current=[{id:'t',status:'inProgress',items:[u2,c2,image]}];
+ const detail={turnId:'t',items:[u1,c1],messageOrder:['u1','c1']};
+ const result=applyTurnCommentary(current,detail);
+ expect(result[0].items).toEqual([u1,c1,u2,c2,image]);
+ expect(applyTurnCommentary(result,detail)).toEqual(result);
+});
+
+it.each([false,true])('旧详情新增的图片不能成为较新插话的后锚点，现有首用户=%s', includeUser => {
+ const u1={id:'u1',type:'userMessage',text:'旧问题'};
+ const c1={id:'c1',type:'agentMessage',phase:'commentary',text:'旧过程',timestamp:123};
+ const oldImage={id:'old-image',type:'imageView',path:'/old.png'};
+ const u2={id:'u2',type:'userMessage',text:'新问题'};
+ const c2={id:'c2',type:'agentMessage',phase:'commentary',text:'新过程完整内容',timestamp:456};
+ const newImage={id:'new-image',type:'imageView',path:'/new.png'};
+ const tool={id:'tool',type:'commandExecution',command:'pwd',aggregatedOutput:'/project'};
+ const current=[{id:'t',status:'inProgress',items:[...(includeUser?[u1]:[]),u2,c2,newImage,tool]}];
+ const detail={t:{commentaryItems:[c1],images:[oldImage],messageOrder:['u1','c1','old-image'],unavailable:true}};
+ const result=applyTurnChangeStats(current,detail);
+ expect(result[0].items.map((item:any)=>item.id)).toEqual([...(includeUser?['u1']:[]),'c1','old-image','u2','c2','new-image','tool']);
+ expect(result[0].items.find((item:any)=>item.id==='c2')).toEqual(c2);
+ expect(result[0].items.find((item:any)=>item.id==='tool')).toEqual(tool);
+ expect(applyTurnChangeStats(result,detail)).toEqual(result);
+});

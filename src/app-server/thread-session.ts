@@ -59,19 +59,21 @@ export function applyTurnCommentary(turns: AnyRecord[], detail: TurnCommentary):
       order.splice(insertAt, 0, id);
     }
     const items = order.map(id => byId.get(id)!);
-    return { ...turn, items: orderTurnItems(items, detail.messageOrder) };
+    return { ...turn, items: orderTurnItems(items, detail.messageOrder, current) };
   });
 }
 
-function orderTurnItems(items: AnyRecord[], messageOrder?: string[]) {
+function orderTurnItems(items: AnyRecord[], messageOrder: string[] | undefined, currentItems: AnyRecord[]) {
   if (!messageOrder?.length) return items;
   const order = [...new Set(messageOrder)];
   const known = new Set(order);
-  // 新实时消息可能不在旧详情快照内，继续放在其下一个已有锚点前。
+  // 只用回填前已存在的公共消息作锚点；刚补入的旧消息不能把较新插话拖到旧快照前。
+  const anchors = new Set(currentItems.filter(item => known.has(item.id)).map(item => item.id));
+  // 没有公共锚点时，完整旧快照的消息先于未包含在该快照中的新实时消息。
   for (let index = 0; index < items.length; index += 1) {
     const item = items[index];
     if (known.has(item.id)) continue;
-    const next = items.slice(index + 1).find(entry => known.has(entry.id));
+    const next = items.slice(index + 1).find(entry => anchors.has(entry.id));
     order.splice(next ? order.indexOf(next.id) : order.length, 0, item.id);
     known.add(item.id);
   }
@@ -162,7 +164,7 @@ export function applyTurnChangeStats(
     }
     return {
       ...turn,
-      items: orderTurnItems(items, detail.messageOrder),
+      items: orderTurnItems(items, detail.messageOrder, turn.items ?? []),
       loadedChangeStats: detail.unavailable ? undefined : { additions: detail.additions ?? 0, deletions: detail.deletions ?? 0 },
       changeStatsSource: detail.source,
       loadedMediaStatus: turn.status,
