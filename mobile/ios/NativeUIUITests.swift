@@ -9,6 +9,112 @@ final class NativeUIUITests: XCTestCase {
         return app
     }
 
+    func testVisualReferenceUsesSameNativeViewsAndIndependentFixture() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--native-ui-reference-visual"]
+        app.launch()
+        XCTAssertTrue(app.staticTexts["说明 Sidechat 支持方式"].waitForExistence(timeout: 5))
+        app.buttons["native-sidebar-open"].tap()
+        XCTAssertTrue(app.buttons["native-new-conversation-launcher"].exists)
+        let hiddenInput = app.descendants(matching: .any)["native-composer-input"]
+        // XCTest 对被覆盖的 disabled UIKit 字段仍可返回 isHittable；验证其实际编辑门控。
+        XCTAssertFalse(hiddenInput.isEnabled)
+        XCTAssertFalse(app.keyboards.firstMatch.exists)
+        XCTAssertTrue(app.staticTexts["Projects"].exists)
+        XCTAssertFalse(app.buttons["语音"].exists)
+    }
+
+    func testVisualReferenceSidebarLauncherFocusesFreshDraft() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--native-ui-reference-visual", "--native-ui-reference-visual-sidebar"]
+        app.launch()
+        app.buttons["native-new-conversation-launcher"].tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        let input = app.descendants(matching: .any)["native-composer-input"]
+        XCTAssertTrue(input.isHittable)
+        XCTAssertTrue(app.staticTexts["Hello, let’s get started"].exists)
+        XCTAssertFalse(app.staticTexts["简单说一下你是怎么支持 sidechat 的"].exists)
+        input.typeText("fresh offline draft")
+        XCTAssertTrue(app.buttons["native-send"].isEnabled)
+    }
+
+    func testVisualReferenceSidebarPlusOpensFreshAttachmentMenu() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--native-ui-reference-visual", "--native-ui-reference-visual-sidebar"]
+        app.launch()
+        app.buttons["native-new-conversation-attachment"].tap()
+        XCTAssertTrue(app.buttons["Photos"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Files"].exists)
+        XCTAssertTrue(app.staticTexts["Hello, let’s get started"].exists)
+        XCTAssertFalse(app.keyboards.firstMatch.exists)
+        XCTAssertFalse(app.buttons["native-send"].isEnabled)
+    }
+
+    func testVisualReferenceProjectAndRecentNewConversationUseSameLauncher() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--native-ui-reference-visual", "--native-ui-reference-visual-sidebar"]
+        app.launch()
+        app.buttons["native-group-new-visual-project-0"].tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Hello, let’s get started"].exists)
+        app.buttons["native-sidebar-open"].tap()
+        let recent = app.buttons["native-group-new-visual-recent"]
+        if !recent.isHittable { app.otherElements["native-sidebar"].scrollViews.firstMatch.swipeUp() }
+        recent.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Hello, let’s get started"].exists)
+    }
+
+    func testVisualReferenceLauncherArrowIsAnInteractiveFreshDraftAction() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--native-ui-reference-visual", "--native-ui-reference-visual-sidebar"]
+        app.launch()
+        app.buttons["native-new-conversation-action"].tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Hello, let’s get started"].exists)
+    }
+
+    func testVisualReferenceLargeTextLandscapeKeepsOneComposerAndDraft() {
+        XCUIDevice.shared.orientation = .portrait
+        defer { XCUIDevice.shared.orientation = .portrait }
+        let app = XCUIApplication()
+        app.launchArguments = ["--native-ui-reference-visual", "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXL"]
+        app.launch()
+        app.buttons["native-new-thread"].tap()
+        let input = app.descendants(matching: .any)["native-composer-input"]
+        XCTAssertTrue(input.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        input.typeText("stable draft line one\nline two\nline three\nline four\nline five")
+        XCTAssertEqual(app.descendants(matching: .any).matching(identifier: "native-composer-input").count, 1)
+        XCUIDevice.shared.orientation = .landscapeLeft
+        XCTAssertTrue(input.isHittable)
+        XCTAssertTrue((input.value as? String)?.contains("stable draft") == true)
+        let send = app.buttons["native-send"]
+        let sendReady = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in send.isHittable }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [sendReady], timeout: 3), .completed)
+        if !send.isHittable {
+            let evidence = XCTAttachment(screenshot: app.screenshot())
+            evidence.lifetime = .keepAlways
+            add(evidence)
+            print("Landscape frames: app=\(app.frame) input=\(input.frame) send=\(send.frame) keyboard=\(app.keyboards.firstMatch.frame)")
+        }
+        XCTAssertTrue(send.isHittable)
+        input.typeText(" tail")
+        XCTAssertTrue((input.value as? String)?.contains("tail") == true)
+        XCTAssertTrue(app.buttons["native-send"].isEnabled)
+    }
+
+    func testVisualReferenceConfigurationExposesAuthoritativeValues() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--native-ui-reference-visual", "--native-ui-reference-visual-focused"]
+        app.launch()
+        XCTAssertTrue(app.buttons["native-model-menu"].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.buttons["native-model-menu"].value as? String, "gpt-5")
+        XCTAssertEqual(app.buttons["native-effort-menu"].value as? String, "medium")
+        XCTAssertEqual(app.buttons["native-speed-menu"].value as? String, "standard")
+        XCTAssertEqual(app.buttons["native-permission-menu"].value as? String, "read-only")
+    }
+
     func testReferenceUsesNativeRootAndHasNoVoiceEntry() {
         let app = reference()
         XCTAssertTrue(app.otherElements["native-ui-root"].waitForExistence(timeout: 10))
@@ -22,7 +128,9 @@ final class NativeUIUITests: XCTestCase {
         let app = reference(true)
         app.buttons["native-sidebar-open"].tap()
         XCTAssertTrue(app.otherElements["native-sidebar"].exists)
+        app.buttons["native-sidebar-search-open"].tap()
         XCTAssertTrue(app.textFields["native-sidebar-search"].exists)
+        app.buttons["native-sidebar-device-menu"].tap()
         app.buttons["native-settings-open"].tap()
         XCTAssertTrue(app.switches["native-ui-preference"].waitForExistence(timeout: 3))
         app.buttons["完成"].tap()
@@ -100,6 +208,7 @@ final class NativeUIUITests: XCTestCase {
     func testSettingsChildPageReturnsWithinSettings() {
         let app = reference()
         app.buttons["native-sidebar-open"].tap()
+        app.buttons["native-sidebar-device-menu"].tap()
         app.buttons["native-settings-open"].tap()
         app.buttons["语言"].tap()
         XCTAssertTrue(app.staticTexts["语言设置"].waitForExistence(timeout: 5))
@@ -287,6 +396,7 @@ final class NativeUIUITests: XCTestCase {
 
     private func openNativeSettings(_ app: XCUIApplication) {
         app.buttons["native-sidebar-open"].tap()
+        app.buttons["native-sidebar-device-menu"].tap()
         app.buttons["native-settings-open"].tap()
         XCTAssertTrue(app.switches["native-ui-preference"].waitForExistence(timeout: 5), app.debugDescription)
     }

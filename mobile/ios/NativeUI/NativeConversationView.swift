@@ -2,48 +2,28 @@ import SwiftUI
 
 struct NativeConversationView: View {
     @Bindable var store: NativeUIStore
-    @ScaledMetric(relativeTo: .headline) private var titleSize = 14
     @ScaledMetric(relativeTo: .title3) private var greetingSize = 18
+    @State private var composerFocused = false
     var body: some View {
-        VStack(spacing: 0) {
-            if noDevice {
-                HStack {
-                    Text("Codex Mobile").font(.headline)
-                    Spacer()
-                    NativeIconButton(title: store.label("设置", "Settings"), symbol: "gearshape", identifier: "native-settings-open") { store.settingsOpen = true }
-                }.padding(.horizontal, 16).padding(.bottom, 10)
-            } else {
-                HStack(spacing: 12) {
-                    NativeIconButton(title: store.label("打开侧栏", "Open Sidebar"), symbol: "line.3.horizontal", identifier: "native-sidebar-open") { store.sidebarIsOpen.toggle() }
-                    Text(store.snapshot.messages.isEmpty ? "" : store.snapshot.title)
-                        .font(.system(size: titleSize * store.snapshot.fontScale, weight: .semibold)).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
-                    if let actions = store.snapshot.conversationActions, !actions.isEmpty {
-                        Menu(store.label("会话操作", "Conversation Actions"), systemImage: "ellipsis") {
-                            ForEach(actions) { item in NativePanelItemView(item: item, store: store, scope: .message("conversation:\(store.threadKey)")) }
-                        }.labelStyle(.iconOnly).frame(minWidth: 44, minHeight: 44)
-                    }
-                    NativeIconButton(title: store.label("新对话", "New Conversation"), symbol: "square.and.pencil", identifier: "native-new-thread") { store.command("thread.new") }
-                }.padding(.horizontal, 16).padding(.bottom, 10)
-            }
-            NativeConversationStatusView(store: store)
-            if let error = store.snapshot.error ?? store.commandError {
-                VStack(spacing: 12) {
-                    Text(error).font(.callout).textSelection(.enabled)
-                    Button(store.label("使用旧界面恢复", "Recover Using Web Interface")) { store.showLegacyForRecovery = true }
-                }.padding().frame(maxWidth: .infinity).background(.red.opacity(0.08))
-            }
-            if !store.snapshot.ready {
-                VStack(spacing: 16) {
-                    ProgressView(store.label("正在加载", "Loading"))
-                    Button(store.label("使用旧界面恢复", "Recover Using Web Interface")) { store.showLegacyForRecovery = true }
-                }.frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if noDevice {
-                NativeNoDeviceView(store: store)
-            } else if store.snapshot.messages.isEmpty {
-                Text(store.label("你好，让我们开始吧", "Hello, let’s get started")).font(.system(size: greetingSize * store.snapshot.fontScale, weight: .semibold))
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
+        Group {
+            if hasTimeline {
                 NativeTimelineView(store: store, timeline: store.timeline(for: store.threadKey)).id(store.threadKey)
+            } else {
+                VStack(spacing: 0) {
+                    if !store.snapshot.ready {
+                        VStack(spacing: 16) {
+                            ProgressView(store.label("正在加载", "Loading"))
+                            Button(store.label("使用旧界面恢复", "Recover Using Web Interface")) { store.showLegacyForRecovery = true }
+                        }.frame(maxWidth: .infinity, maxHeight: .infinity)
+                    } else if noDevice {
+                        NativeNoDeviceView(store: store)
+                    } else {
+                        Text(store.label("你好，让我们开始吧", "Hello, let’s get started"))
+                            .font(.system(size: greetingSize * store.snapshot.fontScale, weight: .semibold))
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    }
+                }
+                .safeAreaInset(edge: .top, spacing: 0) { NativeConversationChrome(store: store, noDevice: noDevice) }
             }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -53,10 +33,12 @@ struct NativeConversationView: View {
                     if let mentions = store.snapshot.mentions, !mentions.isEmpty {
                         NativeMentionSuggestions(items: mentions, store: store, context: store.snapshot.contextId).padding(.horizontal, 12)
                     }
-                    NativeComposerView(store: store).id(store.contextKey)
+                    NativeComposerView(store: store, onFocusChanged: { composerFocused = $0 }).id(store.contextKey)
                 }
             }
         }
+        .background { NativePageBackground(focused: composerFocused) }
     }
+    private var hasTimeline: Bool { store.snapshot.ready && !noDevice && !store.snapshot.messages.isEmpty }
     private var noDevice: Bool { !store.isReference && store.snapshot.ready && store.snapshot.backends.isEmpty }
 }

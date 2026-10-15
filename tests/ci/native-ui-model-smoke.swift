@@ -12,6 +12,7 @@ struct NativeStoreSmoke {
             else { defaults.removeObject(forKey: NativeUIStore.preferenceKey) }
         }
         defaults.removeObject(forKey: NativeUIStore.preferenceKey)
+        NativeComposerPresentationSmoke.verify()
         let normal = NativeUIStore(arguments: [])
         precondition(!normal.nativeEnabled, "首次应默认旧界面")
         defaults.set(true, forKey: NativeUIStore.preferenceKey)
@@ -66,15 +67,21 @@ struct NativeStoreSmoke {
         precondition(unavailableSwitch.preferenceSaving, "旧超时不能结束新请求")
         unavailableSwitch.expireNativePreferenceRequest(timeoutID)
         precondition(!unavailableSwitch.preferenceSaving && !unavailableSwitch.savedNativePreference && unavailableSwitch.preferenceError != nil, "没有回执时必须恢复可重试状态")
+        let visual = NativeUIStore(arguments: ["--native-ui-reference-visual"])
+        precondition(visual.isReference && visual.nativeEnabled && visual.snapshot.ready)
+        precondition(visual.snapshot.messages.count == 2 && visual.snapshot.messages.last?.timestamp == 1791603780)
+        precondition(visual.snapshot.groups.filter { $0.category == "project" }.count == 5)
+        precondition(NativeUIStore(arguments: ["--native-ui-reference-visual", "--native-ui-reference-visual-sidebar"]).sidebarOpen)
+        precondition(NativeUIStore(arguments: ["--native-ui-reference-visual", "--native-ui-reference-visual-focused"]).visualReferenceFocused)
         let reference = NativeUIStore(arguments: ["--native-ui-reference-conversation"])
         precondition(reference.snapshot.messages.count == 2)
         precondition(NativeMarkdownBlock.parse(reference.snapshot.messages[1].text).contains { $0.kind == .code && $0.text == "print(\"Hello\")" })
         let referenceBlocks = NativeMarkdownBlock.parse(reference.snapshot.messages[1].text)
         precondition(referenceBlocks.map(\.kind) == [.heading, .list, .list, .code, .text])
-        precondition(referenceBlocks.map(\.spacingBefore) == [0, 26, 20, 12, 22])
+        precondition(referenceBlocks.map(\.spacingBefore) == [0, 26, 4, 12, 22])
         let plainBlocks = NativeMarkdownBlock.parse("第一段\n第二段")
         precondition(plainBlocks.count == 1 && plainBlocks[0].text == "第一段\n第二段", "连续普通行属于同一 logical paragraph，保留 Foundation 行内语义")
-        precondition(NativeMarkdownBlock.parse("第一段\n\n第二段").map(\.spacingBefore) == [0, 12], "独立正文段落保留默认节奏")
+        precondition(NativeMarkdownBlock.parse("第一段\n\n第二段").map(\.spacingBefore) == [0, 24], "独立正文段落保留参考正文节奏")
         let rich = NativeMarkdownBlock.parse("# 一级\n\n### 三级\n\n1. 第一个\n   - [x] 子任务\n2. 第二个\n\n> 引用\n> 续行\n\n---\n\n| 列一 | 列二 |\n| :--- | ---: |\n| a\\|b | `c|d` |\n\n![示意图](https://example.com/image.png)\n\n~~~json\n{\"ok\":true}\n~~~")
         precondition(rich.filter { $0.kind == .heading }.map(\.level) == [1, 3])
         let lists = rich.filter { $0.kind == .list }
@@ -133,6 +140,7 @@ struct NativeStoreSmoke {
             guard var object = try JSONSerialization.jsonObject(with: JSONEncoder().encode(NativeSnapshot())) as? [String: Any] else {
                 throw NSError(domain: "NativeStoreSmoke", code: 1)
             }
+            object["ready"] = true
             object["contextId"] = context
             object["draft"] = draft
             object["draftRevision"] = revision

@@ -8,33 +8,33 @@ struct NativeMessageView: View {
         VStack(alignment: .leading, spacing: 12) {
             if message.role == "user" {
                 HStack(alignment: .top) {
-                    Spacer(minLength: 52)
+                    Spacer(minLength: 96)
                     NativeMarkdownView(text: message.text, scale: store.snapshot.fontScale, store: store, compact: true, weight: .semibold)
-                        .padding(.horizontal, 16).padding(.vertical, 10)
-                        .background(NativePalette.bubble, in: .rect(cornerRadius: 16))
-                }.padding(.leading, 24).padding(.trailing, 21)
+                        .padding(.horizontal, 13).padding(.vertical, 12)
+                        .foregroundStyle(NativePalette.bubbleText)
+                        .background(NativePalette.bubble, in: .rect(cornerRadius: NativeVisualMetrics.bubbleRadius))
+                }.padding(.horizontal, NativeVisualMetrics.pageInset)
                 if let blocks = message.blocks, !blocks.isEmpty {
                     VStack(alignment: .trailing, spacing: 8) {
                         ForEach(blocks) { item in NativePanelItemView(item: item, store: store, scope: .message(message.id)) }
-                    }.padding(.leading, 76).padding(.trailing, 21)
+                    }.padding(.leading, 76).padding(.trailing, 16)
                 }
             } else {
                 VStack(alignment: .leading, spacing: NativeTextRhythm.standardGap) {
                     if let status = message.status {
-                        Text(status).font(.system(size: statusSize * store.snapshot.fontScale)).foregroundStyle(.secondary)
-                            .padding(.bottom, NativeTextRhythm.statusToBodyGap - NativeTextRhythm.standardGap)
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(status).font(.system(size: statusSize * store.snapshot.fontScale, weight: .semibold)).foregroundStyle(NativePalette.statusText)
+                            Divider()
+                        }
                     }
                     NativeMarkdownView(text: message.text, scale: store.snapshot.fontScale, store: store)
                     if let blocks = message.blocks {
                         ForEach(blocks) { item in NativePanelItemView(item: item, store: store, scope: .message(message.id)) }
                     }
-                    if let actions = message.actions, !actions.isEmpty {
-                        ViewThatFits(in: .horizontal) {
-                            HStack { ForEach(actions) { item in NativePanelItemView(item: item, store: store, scope: .message(message.id)) } }
-                            VStack(alignment: .leading) { ForEach(actions) { item in NativePanelItemView(item: item, store: store, scope: .message(message.id)) } }
-                        }
+                    if message.timestamp != nil || !(message.actions ?? []).isEmpty {
+                        NativeMessageFooter(message: message, store: store)
                     }
-                }.padding(.horizontal, 24)
+                }.padding(.horizontal, NativeVisualMetrics.pageInset)
             }
         }.frame(maxWidth: .infinity, alignment: .leading).accessibilityElement(children: .contain)
             .contextMenu {

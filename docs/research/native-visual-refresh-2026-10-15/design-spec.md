@@ -32,8 +32,8 @@
 | 右侧双操作胶囊宽度 | 约110pt | inferred |
 | 对话标题 / 边栏品牌 | 第一轮15–16pt / 18pt、semibold/bold | inferred（OCR标题宽164.9pt，与系统粗体15pt约161.2pt相近；仍须真渲染校准） |
 | 项目/设备副标题 | 约12–13pt、secondary、单行截断 | inferred |
-| 正文 | 第一轮14pt、medium/semibold，约22pt行高 | inferred（按402pt归一后的字形及行宽，须用同内容实测校准） |
-| 用户文字 | 第一轮14pt、semibold、深粉 | inferred，须用单行气泡边界及同内容校准 |
+| 正文 | 第三轮14.5pt、medium（strong为bold），约22pt行高 | inferred（按402pt归一后的字形及行宽，须用同内容实测校准） |
+| 用户文字 | 第三轮14pt、semibold、深粉 | inferred，须用单行气泡边界及同内容校准 |
 | 段间距 | 约20–24pt | inferred |
 | 连续列表项间距 | 约3–5pt，保留列表缩进 | inferred |
 | 过程摘要 | 约14pt、semibold、灰；下方细线 | inferred |

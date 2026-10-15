@@ -5,7 +5,7 @@ struct NativeMarkdownTableView: View {
     let scale: Double
     var store: NativeUIStore? = nil
     var cellScopes: [[NativeMarkdownHTMLScope]] = []
-    @ScaledMetric(relativeTo: .body) private var bodySize = 14
+    @ScaledMetric(relativeTo: .body) private var bodySize = 14.5
     var body: some View {
         ScrollView(.horizontal) {
             Grid(alignment: .topLeading, horizontalSpacing: 0, verticalSpacing: 0) {
@@ -13,10 +13,12 @@ struct NativeMarkdownTableView: View {
                     GridRow {
                         ForEach(Array(cells.enumerated()), id: \.offset) { columnIndex, text in
                             NativeInlineContentView(text: text, store: store, scope: cellScope(row: rowIndex, column: columnIndex))
-                                .font(.system(size: bodySize * scale, weight: rowIndex == 0 ? .semibold : .regular))
-                                .padding(10).frame(minWidth: 80, maxWidth: 260, maxHeight: .infinity, alignment: .topLeading)
-                                .background(rowIndex == 0 ? Color.primary.opacity(0.05) : .clear)
-                                .overlay { Rectangle().stroke(.secondary.opacity(0.18), lineWidth: 0.5) }
+                                .font(.system(size: bodySize * scale, weight: rowIndex == 0 ? .bold : .medium))
+                                .lineLimit(nil)
+                                .padding(10)
+                                .frame(width: 260, alignment: .topLeading)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .overlay(alignment: .bottom) { Rectangle().fill(.secondary.opacity(0.25)).frame(height: 0.5) }
                         }
                     }
                 }

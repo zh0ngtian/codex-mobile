@@ -11,15 +11,20 @@ struct NativeTimelineView: View {
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 26) {
+                LazyVStack(alignment: .leading, spacing: 30) {
                     if let older = olderAction {
                         NativePanelItemView(item: older, store: store, scope: .message("history:\(store.threadKey)"))
                     }
                     ForEach(store.snapshot.messages) { message in NativeMessageView(message: message, store: store) }
                 }
                 .scrollTargetLayout()
-                .padding(.top, 32).padding(.bottom, 24)
+                .padding(.top, 20).padding(.bottom, 24)
             }
+            .accessibilityIdentifier("native-timeline")
+            .safeAreaInset(edge: .top, spacing: 0) {
+                NativeConversationChrome(store: store).zIndex(1)
+            }
+            .scrollClipDisabled()
             .defaultScrollAnchor(.bottom, for: .initialOffset)
             .defaultScrollAnchor(.top, for: .alignment)
             .scrollPosition(id: $timeline.visibleMessageID, anchor: .top)
@@ -42,7 +47,6 @@ struct NativeTimelineView: View {
             }
             .onChange(of: timeline.revision) { restoreOrFollow(proxy) }
             .onAppear { restoreOrFollow(proxy) }
-            .accessibilityIdentifier("native-timeline")
             .overlay(alignment: .bottomTrailing) {
                 if !timeline.followsTail {
                     Button(store.label("转至底部", "Jump to Latest"), systemImage: "arrow.down") { jumpToTail(proxy) }
