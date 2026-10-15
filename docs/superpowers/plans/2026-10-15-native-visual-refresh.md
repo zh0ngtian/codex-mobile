@@ -101,6 +101,8 @@ interface NativeSnapshot { /* 原字段保留 */ projectName?: string; backendNa
 ## Task 6：协调发布与交付
 
 - [x] 全量123文件1269项TS测试、typecheck、相关27文件232项契约、157项发布Python及30项协调器恢复检查通过；保留四项required checks证据。
-- [ ] 中文Conventional Commits提交并推送确定SHA；更新用户可感知中文日志，ready本任务。
-- [ ] 等待成功共同receipt，核对双端GitHub、固定APK/签名IPA、HTTPS OTA和unsigned软件源；不独立分配正式版本或换签名身份。
-- [ ] 交付固定OTA页、APK/IPA及版本/大小/SHA256、IPA签名状态，附视觉对照与已知边界。
+- [x] 中文Conventional Commits提交并推送确定SHA；更新用户可感知中文日志，ready本任务。
+- [x] 等待成功共同receipt，核对双端GitHub、固定APK/签名IPA、HTTPS OTA和unsigned软件源；不独立分配正式版本或换签名身份。
+- [x] 交付固定OTA页、APK/IPA及版本/大小/SHA256、IPA签名状态，附视觉对照与已知边界。
+
+本次最终交付：协调批次`f67e1182-7046-4558-b041-18568e19fdbd`成功，版本`0.2.177`/构建`2177`，冻结提交`bafbd284ca5751531f04032aa0409f865ea30169`包含任务提交`cb4f635b854b01647949f57c239f0050f27ba956`。固定HTTP双端清单、HEAD及完整GET，HTTPS CA验证/安装页/清单/HEAD及完整GET均由主任务再次核对；unsigned软件源版本、URL、大小、SHA、署名及中文日志与GitHub Release一致。真机覆盖安装按用户要求未执行。脱敏记录见`evidence/2026-10-15-native-visual-refresh-release.json`。

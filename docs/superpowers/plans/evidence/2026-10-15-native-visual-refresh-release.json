@@ -1,0 +1,39 @@
+{
+  "batch": "f67e1182-7046-4558-b041-18568e19fdbd",
+  "version": "0.2.177",
+  "frozen": "bafbd284ca5751531f04032aa0409f865ea30169",
+  "task": {
+    "id": "codex-mobile-native-visual-refresh-20261015",
+    "sha": "cb4f635b854b01647949f57c239f0050f27ba956"
+  },
+  "apk": {
+    "size": 4753787,
+    "sha256": "8f40d8ad20f6f7035f4489d0bcb5bb0e7084234f5ea369a6736defa7d19a37ba",
+    "downloadUrl": "http://192.168.123.79:8765/channels/codex-mobile/latest.apk"
+  },
+  "ipa": {
+    "size": 4582395,
+    "sha256": "cb1862a9bc1aa7cecb5715099a1eef0189616423f155f34dc6b699bdabf38c30",
+    "signed": true,
+    "installUrl": "https://192.168.123.79:8766/channels/codex-mobile/current/install.html"
+  },
+  "checks": [
+    "HTTP manifest/HEAD/full GET",
+    "HTTPS CA/manifest/install page/HEAD/full GET",
+    "unsigned source version/URL/size/SHA/developer/Chinese notes",
+    "GitHub Release Chinese notes"
+  ],
+  "buildNumber": "2177",
+  "validation": {
+    "typescript": {
+      "files": 123,
+      "passed": 1269
+    },
+    "adapterRegression": 157,
+    "coordinatorRecovery": 30,
+    "offlineNativeScenarios": 9,
+    "existingConversationsReadOnly": 3,
+    "designQA": "passed",
+    "deviceInstall": "按用户要求未执行真机验收"
+  }
+}
