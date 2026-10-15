@@ -4,6 +4,8 @@
 
 后续实现已于 2026-10-15 发布为 `0.2.175`：见 [原生实现设计](native-implementation-design.md)、[模拟器验证与边界](native-validation.json)、[发布验收记录](native-release-acceptance.json)及[界面对照图](native-ui-comparison.png)。下文保留探索当时的观察与待确认项。
 
+2026-10-15 后续修复：0.2.175 在真机受到 `/private/var` 路径别名影响，开关未显示；已定位并发布0.2.176，见[根因证据](../../superpowers/plans/evidence/2026-10-15-native-switch-missing-root-cause.json)和[修复发布验收](../../superpowers/plans/evidence/2026-10-15-native-switch-missing-release.json)。
+
 ## 证据与环境
 
 - 时间：2026-10-14 00:29–00:40，Asia/Shanghai。

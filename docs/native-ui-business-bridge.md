@@ -10,6 +10,12 @@
 - 每个 JS scene 的 `NativeRuntime` 合并 ConfiguredApp 导航与当前选中 BackendWorkspace。其他 workspace 的流式更新不能覆盖当前画面。发布以 32 ms 合并；请求独立执行，慢发送不会阻塞停止和继续输入。
 - `runtime.ts` 是命令白名单与类型验证入口。最多保留 256 个去重请求、64 条完成回执；最多同时执行 64 个请求。回执为 `commandResults: [{id,name,ok,contextId?,error?,fieldKey?,fieldRevision?}]`。异步旧会话错误仍保留回执，但不会覆盖新会话的错误展示。
 
+## 内置首页地址与真机路径
+
+`NativeUIBridge` 与业务 WebView 都从 `Bundle.main.url(forResource: "index", withExtension: "html")` 取得同一个原始资源 URL。注入、命令、偏好回执、扫码、恢复与前后台脚本中的可信地址保留原始 `absoluteString`；JavaScript 继续严格检查顶层 `file:` 首页。Swift 收取消息时仍对 URL 标准化并比较精确首页，拒绝 query、fragment 和其他文档。
+
+不要把 `standardizedFileURL` 的结果写进 JavaScript 的 `location.href` 字符串守卫。真机 WebKit 可保留 `/private/var/...`，Foundation 对真实存在路径的标准化会产生 `/var/...`；二者指向同一资源，却会导致守卫拒绝注入。模拟器 `/Users/...` 首页不会暴露此问题。跨 Swift 回归使用真实存在的 `/private/tmp` 文件验证该差异，详见[根因与回归证据](superpowers/plans/evidence/2026-10-15-native-switch-missing-root-cause.json)。
+
 ## 会话上下文与输入
 
 `contextId = backendId + ':context:' + draftContextGeneration`。真实导航或新建会话使 generation 递增；新对话的 `thread/start` 获得实际 threadId 时不改变 contextId，避免清除期间继续输入的文字。发送在首个 await 前同步消费草稿并占用该上下文；业务 busy 状态同步保存到 ref，避免不同命令 UUID 或快速网络 ACK 在 React 尚未提交时重复创建会话/turn。等待首次 threadId 时的新输入保留，已有会话的新输入仍进入原托管队列。

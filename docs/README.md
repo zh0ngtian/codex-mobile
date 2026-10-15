@@ -8,6 +8,7 @@
 - [发布协调说明](release-coordination.md)：本项目 releasectl 配置、适配器入口、必要验证、共同凭证及实际验收状态。
 - [iOS OTA 发布](ios-ota-release.md)：本机签名、身份连续性、固定渠道、软件源发布文档入口及安装诊断。
 - [原生 iOS 界面桥接](native-ui-business-bridge.md)：双向切换、检查点与共享业务边界。
+- [原生界面视觉目标](research/native-visual-refresh-2026-10-15/design-spec.md)：2026-10-15 最新截图对应的对话、全屏侧栏和输入两态映射。
 - [iOS 模拟器验证](ios-simulator-verification.md)：可复用操作步骤与按日期保留的验收结果。
 - [协议基准](../protocol/app-server-v2/README.md)：固定快照的版本、来源和使用边界。
 

@@ -12,6 +12,21 @@ function controller(overrides: Partial<NativeWorkspaceController> = {}): NativeW
  ...overrides };
 }
 describe('核心会话controller适配', () => {
+ it('头部与聚焦配置仅投影业务展示元数据，上下文使用本轮用量且速度不硬编码', () => {
+  const c = controller({ active: { id: 't', cwd: 'C:\\Work\\项目', turns: [] }, extended: { state: {
+   speedOptions: [{ id: null, label: '标准' }, { id: 'priority', label: '优先' }], selectedServiceTier: 'priority',
+   permissionModes: [{ id: 'workspace-write', label: '工作区', description: '工作区内写入' }], selectedPermissionModeId: 'workspace-write',
+   tokenUsage: { total: { totalTokens: 9999 }, last: { totalTokens: 250 }, modelContextWindow: 1000 },
+  }, callbacks: {} } });
+  const snapshot = createWorkspaceAdapter(c, { panelId: null, query: '', setPanel() {}, setQuery() {} }).snapshot;
+  expect(snapshot).toMatchObject({ projectName: '项目', backendName: 'Mac', modelValue: 'm', effortValue: 'high', speed: '优先', speedValue: 'priority',
+   speeds: [{ id: '', value: '', title: '标准' }, { id: 'priority', value: 'priority', title: '优先' }], permissionValue: 'workspace-write',
+   permissions: [{ id: 'workspace-write', value: 'workspace-write', title: '工作区', subtitle: '工作区内写入' }],
+   contextUsage: { used: 250, total: 1000, usedPercent: 25, remainingPercent: 75 } });
+  expect(snapshot.contextUsage).not.toHaveProperty('tokenUsage');
+  const empty = createWorkspaceAdapter(controller({ active: { turns: [] } }), { panelId: null, query: '', setPanel() {}, setQuery() {} }).snapshot;
+  expect(empty.projectName).toBe('无项目'); expect(empty.contextUsage).toBeUndefined();
+ });
  it('忙碌中仍可发送并暴露独立停止，所有回调走现有controller且无设备凭证进入快照', async () => {
   const activity: string[] = []; const adapter = createWorkspaceAdapter(controller({ send: async () => { activity.push('queue'); }, stop: async () => { activity.push('stop'); } }), { panelId: null, query: '', setPanel() {}, setQuery() {} });
   expect(adapter.snapshot.canSend).toBe(true); expect(adapter.snapshot.canInterrupt).toBe(true);

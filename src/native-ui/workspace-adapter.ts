@@ -11,6 +11,8 @@ import { getActiveLocale, t } from '../i18n';
 import { FONT_SCALES, readFontSize } from '../ui/font-size';
 import { effortLabel } from '../ui/settings';
 import { groupConversationTurns } from '../ui/conversation';
+import { projectNameOf } from '../features/threads/thread-list-model';
+import { contextUsageView } from '../features/conversation/ConversationControls';
 import { copyText } from '../ui/copy';
 import type { NativeRuntime } from './runtime';
 import { useNativeWorkspace } from './adapters';
@@ -64,6 +66,8 @@ export function bindWorkspaceCommands(snapshot: NativeSnapshot): NativeSnapshot 
   };
 }
 export function createWorkspaceAdapter(c: NativeWorkspaceController, panel: PanelState): { snapshot: NativeSnapshot; handlers: NativeHandlers } {
+  const state = c.extended?.state ?? {};
+  const options = (entries: RecordValue[]) => entries.map(option => ({ id: String(option.id ?? ''), value: String(option.id ?? ''), title: String(option.label ?? option.id ?? ''), ...(option.description ? { subtitle: String(option.description) } : {}) }));
   const messages = projectConversation(c.active, path => remoteImagePreviewUrl(c.backend, path), path => remoteImagePreviewUrl(c.backend, path, false), path => remoteFilePreviewUrl(c.backend, path));
   if (c.busy && c.active?.mobilePlan?.length) messages.push({ id: 'running-plan', role: 'activity', text: '', blocks: [{ id: 'plan', kind: 'section', title: t('执行计划'), children: c.active.mobilePlan.map((step: any, index: number) => ({ id: `plan:${index}:${step.step}`, kind: 'text', title: `${step.status === 'completed' ? '✓' : step.status === 'inProgress' ? '●' : '○'} ${step.step}`, text: step.status })) }] });
   if (c.extended?.state.pendingSteerText) messages.push({ id: 'pending-steer', role: 'activity', text: String(c.extended.state.pendingSteerText), status: t('正在引导') });
@@ -81,6 +85,7 @@ export function createWorkspaceAdapter(c: NativeWorkspaceController, panel: Pane
   if (c.olderTurnsState !== 'exhausted') conversationActions.push({ ...nativeAction('older', c.olderTurnsState === 'loading' ? t('加载中…') : c.olderTurnsState === 'error' ? t('重试加载历史') : t('加载更早消息'), 'thread.older'), disabled: c.olderTurnsState === 'loading' });
   const snapshot: NativeSnapshot = { ...emptyNativeSnapshot(), ready: true, locale: getActiveLocale(), fontScale: FONT_SCALES[readFontSize()],
     title: String(c.active?.name || c.active?.preview || t('新对话')), backendId: c.backend.id, threadId: c.active?.id ? String(c.active.id) : undefined, contextId: c.contextId,
+    backendName: c.backend.name, projectName: !c.active?.id && !c.active?.cwd ? t('无项目') : projectNameOf(c.active ?? {}),
     draftRevision: c.draftRevision, caretOffset, mentions, richContent: panel.richContent, connection: c.connection, busy: c.busy, draft: c.draft, canSend: hasInput && !c.readOnly && !c.imageReading && !c.draftSaving,
     canInterrupt: c.busy && !!c.active?.id && !c.readOnly, readOnly: c.readOnly, messages,
     attachments: [...c.draftImages.map(image => ({ id: image.id, name: image.name, type: image.type, imageURL: image.url, detail: `${image.size} B` })), ...c.draftFiles.map(file => ({ id: file.id, name: file.name, type: file.type, detail: `${file.size} B`, ...(/^(audio|video)\//.test(file.type) ? { command: nativeCommand('attachment.preview', { id: file.id }) } : {}) }))],
@@ -95,6 +100,13 @@ export function createWorkspaceAdapter(c: NativeWorkspaceController, panel: Pane
     approvalCount: c.approvalCount, model: c.selectedModelLabel, effort: effortLabel(c.selectedEffort), permission: c.permission,
     models: c.models.map(model => ({ id: String(model.model), title: String(model.displayName || model.model), value: String(model.model) })),
     efforts: c.effortOptions.map(option => ({ id: option.id, title: option.label, value: option.id })),
+    modelValue: c.selectedModel, effortValue: c.selectedEffort ?? '',
+    speeds: Array.isArray(state.speedOptions) ? options(state.speedOptions) : undefined,
+    speedValue: Array.isArray(state.speedOptions) ? String(state.selectedServiceTier ?? '') : undefined,
+    speed: state.speedOptions?.find((option: RecordValue) => option.id === state.selectedServiceTier)?.label,
+    permissions: Array.isArray(state.permissionModes) ? options(state.permissionModes) : undefined,
+    permissionValue: typeof state.selectedPermissionModeId === 'string' ? state.selectedPermissionModeId : undefined,
+    contextUsage: contextUsageView(state.tokenUsage) ?? undefined,
     pending: c.pending || c.imageReading || c.draftSaving, loading: c.loadState, conversationActions,
     badge: c.syncStale ? t('正在同步') : undefined, error: c.error || c.loadError || undefined,
     panel: business.panel ?? projectPanel(c, panel),

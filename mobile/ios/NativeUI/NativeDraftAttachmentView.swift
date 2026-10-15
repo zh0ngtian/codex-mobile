@@ -17,7 +17,7 @@ struct NativeDraftAttachmentView: View {
                     .labelStyle(.iconOnly).font(.title3).frame(minWidth: 44, minHeight: 44)
             }
             Button(store.label("移除 \(attachment.name)", "Remove \(attachment.name)"), systemImage: "xmark") { store.command("attachment.remove", ["id": .string(attachment.id)]) }
-                .labelStyle(.iconOnly).frame(minWidth: 44, minHeight: 44)
+                .labelStyle(.iconOnly).frame(minWidth: 44, minHeight: 44).disabled(!store.composerCanEdit)
         }.padding(8).background(.quaternary, in: .rect(cornerRadius: 16))
     }
     private var symbol: String {

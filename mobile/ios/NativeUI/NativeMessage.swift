@@ -7,4 +7,5 @@ struct NativeMessage: Codable, Identifiable {
     var status: String? = nil
     var blocks: [NativePanelItem]? = nil
     var actions: [NativePanelItem]? = nil
+    var timestamp: Double? = nil
 }

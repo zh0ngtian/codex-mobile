@@ -24,20 +24,43 @@ vi.mock('../../src/backends/connection-manager', () => ({ BackendConnectionManag
 const posts: any[] = []; let queueItems: any[] = [];
 function command(id: string, name: string, params: Record<string, unknown> = {}) { window.dispatchEvent(new CustomEvent('codex-mobile-native-command', { detail: { id, name, params } })); }
 afterEach(() => { cleanup(); boundary.requests = []; boundary.client = null; boundary.options = null; boundary.release = null; boundary.failSend = false; boundary.immediateSend = false; queueItems = []; posts.length = 0; localStorage.clear(); delete (window as any).__CODEX_NATIVE_UI__; delete (window as any).webkit; delete (window as any).codexMobilePublishNativeSnapshot; vi.unstubAllGlobals(); });
-async function setup(native = true) {
+async function setup(native = true, projectState = { projects: [] as string[], projectlessThreadIds: [] as string[] }) {
  if (native) Object.assign(window, { __CODEX_NATIVE_UI__: true, webkit: { messageHandlers: { nativeUI: { postMessage() {} } } }, codexMobilePublishNativeSnapshot: (s: unknown) => posts.push(s) });
  vi.stubGlobal('fetch', vi.fn(async (url: string, options?: RequestInit) => {
   if (String(url).includes('/api/follow-ups')) {
    if (options?.body) { const action = JSON.parse(String(options.body)); if (action.action === 'enqueue') queueItems.push({ ...action, revision: 1, state: 'queued' }); }
    return new Response(JSON.stringify({ items: queueItems }));
   }
-  return new Response(JSON.stringify({ projects: [], projectlessThreadIds: [] }));
+  return new Response(JSON.stringify(projectState));
  }));
  render(<AppBootstrap initialRegistry={{ version: 1, selectedBackendId: 'a', backends: [{ id: 'a', hostId: 'host', name: 'Mac', enabled: true, order: 0, baseUrl: 'https://gateway.invalid', token: 'SECRET' }] }} />);
  if (native) await waitFor(() => expect(posts.at(-1)?.models?.[0]?.value).toBe('gpt'));
  else await waitFor(() => expect(boundary.requests.some(request => request.method === 'model/list')).toBe(true));
  return posts.at(-1)?.contextId as string;
 }
+it('项目新对话沿真实App命令路由，点击不启动thread，无项目空串覆盖保存目录，无参保留旧默认目录', async () => {
+ localStorage.setItem('codex-mobile:new-chat-project:a', '/saved');
+ await setup(true, { projects: ['/saved', '/target'], projectlessThreadIds: ['unloaded'] });
+ await waitFor(() => expect(posts.at(-1)?.groups.some((group: any) => group.newCommand?.params.cwd === '/target')).toBe(true));
+ const initialContext = posts.at(-1).contextId;
+ const target = posts.at(-1).groups.find((group: any) => group.newCommand?.params.cwd === '/target').newCommand;
+ await act(async () => { command('project-new', target.name, target.params); });
+ await waitFor(() => expect(posts.at(-1)?.projectName).toBe('target'));
+ expect(posts.at(-1).contextId).not.toBe(initialContext);
+ expect(boundary.requests.some(request => request.method === 'thread/start')).toBe(false);
+ const targetContext = posts.at(-1).contextId;
+ await act(async () => { command('new-invalid', 'thread.new', { backendId: 'a', cwd: '/removed' }); });
+ await waitFor(() => expect(posts.at(-1)?.commandResults?.some((result: any) => result.id === 'new-invalid' && !result.ok)).toBe(true));
+ expect(posts.at(-1).contextId).toBe(targetContext);
+ const projectless = posts.at(-1).groups.find((group: any) => group.newCommand?.params.cwd === '').newCommand;
+ await act(async () => { command('new-projectless', projectless.name, projectless.params); });
+ await waitFor(() => expect(posts.at(-1)?.projectName).toBe('无项目'));
+ expect(posts.at(-1).contextId).not.toBe(targetContext);
+ // 显式项目路由不覆盖旧保存选择；无参仍使用原有保存目录策略。
+ await act(async () => { command('new-legacy-default', 'thread.new'); });
+ await waitFor(() => expect(posts.at(-1)?.projectName).toBe('saved'));
+ expect(boundary.requests.some(request => request.method === 'thread/start')).toBe(false);
+});
 it('原生命令进入现有send与托管队列，慢发送不阻塞停止和继续输入，final立即进入快照', async () => {
  const contextId = await setup();
  await act(async () => { command('draft1', 'draft.set', { contextId, value: '原生第一条', revision: 1 }); command('send1', 'message.send', { contextId }); command('send1', 'message.send', { contextId }); });

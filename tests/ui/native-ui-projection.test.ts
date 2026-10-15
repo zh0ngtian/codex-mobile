@@ -1,6 +1,63 @@
 import { describe, expect, it } from 'vitest';
 import { projectConversation, projectNavigation, insertNativeMention } from '../../src/native-ui/projection';
 import { aggregateThreads } from '../../src/features/threads/thread-list-model';
+import { PROJECTLESS_GROUP_ID } from '../../src/app-server/thread-list-loader';
+
+function navigation(overrides: Partial<Parameters<typeof projectNavigation>[0]> = {}) {
+ return projectNavigation({ threads: [], listBackendId: 'all', selectedBackendId: 'a', projectDirectories: [], hasProjectlessThreads: false,
+  collapsedProjectKeys: new Set(), projectThreadStates: {}, projectHasMore: {}, loadingProjectKeys: new Set(), ...overrides });
+}
+
+it('默认导航同时保留关注、权威设备项目顺序和最近，关注也留在原项目，不二次截断分页', () => {
+ const backends = [{ id: 'b', name: '乙' }, { id: 'a', name: '甲' }];
+ const threads = aggregateThreads(backends, { b: [{ id: 'pin', cwd: '/b', isPinned: true }, ...Array.from({ length: 7 }, (_, i) => ({ id: `t${i}`, cwd: '/b' }))] });
+ const groups = navigation({ threads, backends, backendSnapshots: {
+  b: { projects: ['/empty', '/b'], projectlessThreadIds: ['unloaded'], projectThreadStates: { '/empty': 'loading' }, projectHasMore: { '/b': true } },
+  a: { projects: ['C:\\Work\\One'], projectlessThreadIds: [], projectThreadStates: {}, projectHasMore: {} },
+ } });
+ expect(groups.map(group => group.id)).toEqual(['favorites', `b:${PROJECTLESS_GROUP_ID}`, 'b:/empty', 'b:/b', 'a:C:\\Work\\One', 'recent']);
+ expect(groups[0]).toMatchObject({ category: 'pinned', items: [{ id: 'b:pin' }] });
+ expect(groups.find(group => group.id === 'b:/b')?.items).toHaveLength(8);
+ expect(groups.find(group => group.id === 'b:/empty')).toMatchObject({ category: 'project', title: 'empty', subtitle: '乙', loading: 'loading', items: [], newCommand: { name: 'thread.new', params: { backendId: 'b', cwd: '/empty' } } });
+ expect(groups.find(group => group.id === `b:${PROJECTLESS_GROUP_ID}`)?.newCommand?.params.cwd).toBe('');
+ expect(groups.find(group => group.id === 'a:C:\\Work\\One')?.title).toBe('One');
+ expect(groups.at(-1)).toMatchObject({ category: 'recent', items: expect.not.arrayContaining([expect.objectContaining({ id: 'b:pin' })]) });
+});
+
+it('有搜索词时只出现搜索结果组，搜索完成仍保持搜索类别并且没有重复关注或空项目', () => {
+ const threads = aggregateThreads([{ id: 'a', name: '甲' }], { a: [{ id: 'p', cwd: '/p', isPinned: true }] });
+ for (const searching of [true, false]) {
+  const groups = navigation({ threads, query: '匹配', searching, backends: [{ id: 'a', name: '甲' }], filter: 'projects' });
+  expect(groups).toHaveLength(1); expect(groups[0]).toMatchObject({ id: 'search', category: 'search', items: [{ id: 'a:p' }] });
+  expect(groups[0].title).toBe(searching ? '搜索中…' : '搜索结果');
+ }
+ expect(navigation({ query: '没有匹配' })[0]).toMatchObject({ category: 'search', items: [] });
+ const failed = navigation({ query: '失败', error: '设备连接中断' });
+ expect(failed).toHaveLength(1);
+ expect(failed[0]).toMatchObject({ category: 'search', subtitle: '设备连接中断', actions: [{ command: { name: 'navigation.refresh' } }] });
+});
+
+it('单设备与现有关注/项目筛选仍保留分类，折叠不移除项目新建目标', () => {
+ const threads = aggregateThreads([{ id: 'a', name: '甲' }], { a: [{ id: 'p', cwd: '/p', isPinned: true }] });
+ const input = { threads, listBackendId: 'a', projectDirectories: ['/p'], collapsedProjectKeys: new Set(['a:/p']) };
+ expect(navigation({ ...input, filter: 'favorites' }).map(group => group.category)).toEqual(['pinned']);
+ const project = navigation({ ...input, filter: 'projects' }).find(group => group.category === 'project');
+ expect(project).toMatchObject({ collapsed: true, items: [], newCommand: { params: { backendId: 'a', cwd: '/p' } } });
+ expect(navigation(input).map(group => group.category)).toEqual(['pinned', 'project', 'recent']);
+});
+
+it('消息时间仅投影真实turn开始和final完成时间，未知时间不填当前时间', () => {
+ const turns = [{ id: 'known', startedAt: 100, completedAt: 150, items: [{ id: 'u', type: 'userMessage', text: '问' }, { id: 'c', type: 'agentMessage', phase: 'commentary', text: '过程' }, { id: 'f', type: 'agentMessage', phase: 'final_answer', text: '答' }] },
+  { id: 'unknown', items: [{ id: 'u2', type: 'userMessage', text: '再问' }, { id: 'f2', type: 'agentMessage', phase: 'final_answer', text: '再答' }] }];
+ const messages = projectConversation({ turns }, path => path);
+ expect(messages.find(message => message.id === 'known:u')?.timestamp).toBe(100);
+ expect(messages.find(message => message.id === 'known:f')?.timestamp).toBe(150);
+ expect(messages.filter(message => message.id.startsWith('unknown:')).every(message => message.timestamp === undefined)).toBe(true);
+ for (const timestamp of [0, -1, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+  const invalid = projectConversation({ turns: [{ id: 'invalid', startedAt: timestamp, completedAt: timestamp, items: [{ id: 'u', type: 'userMessage', text: '问' }, { id: 'f', type: 'agentMessage', phase: 'final_answer', text: '答' }] }] }, path => path);
+  expect(invalid.every(message => message.timestamp === undefined)).toBe(true);
+ }
+});
 
 describe('真实业务原生投影', () => {
   it('final立即可见且只将commentary折叠，reasoning/tool/diff不计入历史条数，保留用户图片', () => {

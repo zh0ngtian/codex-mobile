@@ -28,7 +28,7 @@ it.skipIf(process.platform !== 'darwin')('真实无设备App首启快照可直�
   await waitFor(() => expect(posts.at(-1)?.panel?.id).toBe('devices'));
   const directory = mkdtempSync(join(tmpdir(), 'native-bootstrap-'));
   try {
-    const names = ['NativeJSONValue', 'NativeCommand', 'NativeCommandResult', 'NativeOption', 'NativeBackend', 'NativeNavigationItem', 'NativeGroup', 'NativeAttachment', 'NativeMessage', 'NativePanelItem', 'NativePanel', 'NativeSnapshot'];
+    const names = ['NativeJSONValue', 'NativeCommand', 'NativeCommandResult', 'NativeOption', 'NativeBackend', 'NativeNavigationItem', 'NativeGroup', 'NativeAttachment', 'NativeMessage', 'NativePanelItem', 'NativePanel', 'NativeContextUsage', 'NativeSnapshot'];
     const executable = join(directory, 'decode');
     const compiled = spawnSync('xcrun', ['swiftc', ...names.map(name => `mobile/ios/NativeUI/${name}.swift`), 'tests/ci/native-ui-decode.swift', '-o', executable], { encoding: 'utf8', timeout: 90_000 });
     expect(compiled.status, compiled.error?.message ?? compiled.stderr).toBe(0);

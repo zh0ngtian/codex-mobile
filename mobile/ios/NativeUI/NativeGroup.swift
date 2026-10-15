@@ -7,4 +7,8 @@ struct NativeGroup: Codable, Identifiable {
     var command: NativeCommand? = nil
     var actions: [NativePanelItem]? = nil
     var collapsed: Bool? = nil
+    var category: String? = nil
+    var subtitle: String? = nil
+    var loading: String? = nil
+    var newCommand: NativeCommand? = nil
 }

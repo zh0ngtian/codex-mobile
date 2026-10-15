@@ -6,9 +6,23 @@ final class NativeUIStore {
     var snapshot = NativeSnapshot()
     var draft = ""
     var sidebarOpen = false
-    var settingsOpen = false
+    var settingsOpen = false {
+        didSet { if settingsOpen { cancelComposerPresentation() } }
+    }
     var search = ""
     var attachmentOpen = false
+    private(set) var composerPresentation: NativeComposerPresentationEvent?
+    private var composerIntent: NativeComposerPresentationIntent?
+    var awaitingNewConversation: Bool { composerIntent != nil }
+    var composerCanEdit: Bool { snapshot.ready && !snapshot.readOnly && snapshot.pending != true && !awaitingNewConversation }
+    var composerCanSend: Bool {
+        composerCanEdit && (isReference ? !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !snapshot.attachments.isEmpty : snapshot.canSend)
+    }
+    var composerCanInterrupt: Bool { snapshot.ready && !snapshot.readOnly && !awaitingNewConversation && (snapshot.canInterrupt ?? snapshot.busy) }
+    var navigationBackends: [NativeBackend] { snapshot.backends.filter { $0.id != "all" } }
+    var listBackendConnected: Bool {
+        snapshot.listBackendId == "all" ? navigationBackends.contains { $0.connected == true } : navigationBackends.first { $0.id == snapshot.listBackendId }?.connected == true
+    }
     private var fieldValues: [NativeFieldKey: String] = [:]
     private var fieldSelections: [NativeFieldKey: [String]] = [:]
     private var pendingFields: [NativeFieldKey: Int] = [:]
@@ -33,6 +47,7 @@ final class NativeUIStore {
     @ObservationIgnored var sendCommand: ((NativeCommand) -> Void)?
     @ObservationIgnored var copyText: ((String) -> Void)?
     @ObservationIgnored private var timelines: [String: NativeTimelineState] = [:]
+    let visualReferenceFocused: Bool
     let isReference: Bool
     let nativeEnabled: Bool
     static let preferenceKey = NativeUIPreference.key
@@ -49,7 +64,8 @@ final class NativeUIStore {
     static let launchPreference = UserDefaults.standard.bool(forKey: preferenceKey)
 
     init(arguments: [String] = ProcessInfo.processInfo.arguments) {
-        isReference = arguments.contains("--native-ui-reference") || arguments.contains("--native-ui-reference-conversation")
+        visualReferenceFocused = arguments.contains("--native-ui-reference-visual-focused")
+        isReference = arguments.contains("--native-ui-reference") || arguments.contains("--native-ui-reference-conversation") || arguments.contains("--native-ui-reference-visual")
         #if DEBUG
         nativeEnabled = isReference || Self.launchPreference || arguments.contains("--native-ui-live")
         #else
@@ -98,6 +114,10 @@ final class NativeUIStore {
                 caretOffset = draft.utf16.count
             }
         }
+        if arguments.contains("--native-ui-reference-visual") {
+            snapshot = NativeVisualReference.snapshot()
+            sidebarOpen = arguments.contains("--native-ui-reference-visual-sidebar")
+        }
     }
     func requestNativePreference(_ enabled: Bool) {
         guard !preferenceSaving, enabled != savedNativePreference else { return }
@@ -138,7 +158,14 @@ final class NativeUIStore {
         preferenceRuntimeReady = value.ready && value.panel?.id != "native-switch-recovery"
         let contextChanged = value.contextId != snapshot.contextId
         let panelChanged = value.panel?.id != snapshot.panel?.id
+        if let event = composerPresentation,
+           !value.ready || value.readOnly || value.pending == true || value.threadId?.isEmpty == false ||
+           value.commandResults?.contains(where: { $0.id == event.id && $0.name == "thread.new" && !$0.ok }) == true {
+            composerPresentation = nil
+        }
         if contextChanged {
+            attachmentOpen = false
+            if composerPresentation?.contextID != value.contextId { composerPresentation = nil }
             pendingFields.removeAll()
             draftRevision = value.draftRevision ?? 0
             pendingSearchRevision = nil
@@ -178,13 +205,14 @@ final class NativeUIStore {
         fieldValues = fieldValues.filter { pendingFields[$0.key] != nil }
         fieldSelections = fieldSelections.filter { pendingFields[$0.key] != nil }
         snapshot = value
-        if pendingSidebarRevision == nil, let open = value.sidebarOpen { sidebarOpen = open }
+        if pendingSidebarRevision == nil, let open = value.sidebarOpen, !awaitingNewConversation { sidebarOpen = open }
         timeline(for: threadKey).receive(messageIDs: value.messages.map(\.id))
         if contextChanged || (value.draftRevision ?? 0) >= draftRevision {
             if draft != value.draft { draft = value.draft }
             caretOffset = min(draft.utf16.count, max(0, value.caretOffset ?? draft.utf16.count))
         }
         if pendingSearchRevision == nil, let search = value.search, self.search != search { self.search = search }
+        advanceComposerPresentation(value)
     }
     // SwiftUI diff期间旧Binding仍可读取上一帧DTO；ACK后必须按身份读取当前快照。
     private func currentItem(_ item: NativePanelItem, scope: NativeFieldScope) -> NativePanelItem {
@@ -235,7 +263,79 @@ final class NativeUIStore {
         snapshot.panel = nil
         command("panel.close", ["id": .string(panel.id)])
     }
+    func startNewConversation(presentation: NativeComposerPresentation = .focus, params: [String: NativeJSONValue] = [:]) {
+        guard snapshot.ready, snapshot.pending != true, isReference || sendCommand != nil else { return }
+        let request = NativeCommand(name: "thread.new", params: params)
+        let targetBackendID: String?
+        if case .string(let value) = params["backendId"] { targetBackendID = value }
+        else { targetBackendID = nil }
+        composerPresentation = nil
+        attachmentOpen = false
+        commandError = nil
+        composerIntent = NativeComposerPresentationIntent(commandID: request.id, previousContextID: snapshot.contextId, previousThreadID: snapshot.threadId, targetBackendID: targetBackendID, presentation: presentation)
+        if isReference {
+            // 本地演示也先确认 ACK，再通过相同纯值状态机确认权威的新上下文。
+            var ack = snapshot
+            ack.commandResults = [NativeCommandResult(id: request.id, name: request.name, ok: true)]
+            advanceComposerPresentation(ack)
+            var fresh = snapshot
+            fresh.contextId = "reference:\(UUID().uuidString)"
+            fresh.threadId = nil
+            if let targetBackendID { fresh.backendId = targetBackendID }
+            fresh.messages = []; fresh.draft = ""; fresh.attachments = []; fresh.queued = []
+            fresh.readOnly = false; fresh.pending = false; fresh.busy = false; fresh.canInterrupt = false
+            fresh.sidebarOpen = false; fresh.commandResults = nil
+            snapshot = fresh
+            draft = ""; caretOffset = 0
+            advanceComposerPresentation(fresh)
+        } else {
+            sendCommand?(request)
+        }
+    }
+    func cancelComposerPresentation() {
+        composerIntent = nil
+        composerPresentation = nil
+        attachmentOpen = false
+    }
+    private func advanceComposerPresentation(_ value: NativeSnapshot) {
+        guard var intent = composerIntent else { return }
+        intent.receive(value)
+        if intent.invalidated {
+            composerIntent = nil
+            return
+        }
+        if let contextID = intent.confirmedContextID {
+            composerIntent = nil
+            composerPresentation = NativeComposerPresentationEvent(id: intent.commandID, contextID: contextID, presentation: intent.presentation)
+            sidebarOpen = false
+        } else {
+            composerIntent = intent
+        }
+    }
+    func consumeComposerPresentation(contextID: String?) -> NativeComposerPresentation? {
+        guard let event = composerPresentation, event.contextID == contextID, contextID == snapshot.contextId,
+              composerCanEdit, !sidebarOpen else { return nil }
+        composerPresentation = nil
+        switch event.presentation {
+        case .focus: break
+        case .attachments: attachmentOpen = true
+        case .photos: command("attachment.pick", ["kind": .string("photos")])
+        case .files: command("attachment.pick", ["kind": .string("files")])
+        }
+        return event.presentation
+    }
     func command(_ name: String, _ params: [String: NativeJSONValue] = [:]) {
+        if name == "thread.new" { startNewConversation(params: params); return }
+        if ["thread.open", "backend.select", "drafts.restore", "drafts.open", "settings.open", "navigation.filter", "newchat.backend", "newchat.project"].contains(name) {
+            cancelComposerPresentation()
+        }
+        let editingCommands: Set<String> = ["draft.set", "draft.save", "model.select", "effort.select", "speed.select", "permission.select", "attachment.pick", "attachment.remove", "location.insert", "mention.search", "mention.insert"]
+        if editingCommands.contains(name), !composerCanEdit { return }
+        if name == "panel.open", ["permission", "mentions"].contains({ if case .string(let id) = params["id"] { return id }; return "" }()), !composerCanEdit { return }
+        if name == "panel.open", !snapshot.ready || awaitingNewConversation { return }
+        if ["attachment.preview", "queue.cancel", "queue.send", "queue.edit", "queue.change"].contains(name), !snapshot.ready || awaitingNewConversation { return }
+        if name == "message.send", !composerCanSend { return }
+        if name == "turn.stop", !composerCanInterrupt { return }
         if name != "message.copy" { notice = nil }
         if name == "message.copy" {
             guard case .string(let id) = params["id"], let message = snapshot.messages.first(where: { $0.id == id }) else {
@@ -253,11 +353,6 @@ final class NativeUIStore {
             }
             if name == "attachment.preview", params["id"] == .string("reference-audio") {
                 snapshot.panel = NativePanel(id: "attachment:reference-audio", title: "silence.wav", items: [NativePanelItem(id: "audio", kind: "audio", title: "silence.wav", value: NativeReferenceAudio.source())])
-            }
-            if name == "thread.new" {
-                snapshot.messages = []; draft = ""; sidebarOpen = false
-                snapshot.contextId = "reference:\(UUID().uuidString)"
-                snapshot.threadId = nil
             }
             if name == "message.send", !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 if snapshot.busy {
@@ -283,6 +378,7 @@ final class NativeUIStore {
     func perform(_ command: NativeCommand?) {
         guard let command else { return }
         if command.name == "thread.manage", command.params["action"] == .string("rename"), command.params["value"] == nil {
+            cancelComposerPresentation()
             promptValue = ""
             textPrompt = NativeTextPrompt(title: label("重命名会话", "Rename Conversation"), command: command)
             return
@@ -302,7 +398,7 @@ final class NativeUIStore {
     var composerText: String {
         get { draft }
         set {
-            guard draft != newValue else { return }
+            guard composerCanEdit, draft != newValue else { return }
             let lengthChange = newValue.utf16.count - draft.utf16.count
             draft = newValue
             caretOffset = min(newValue.utf16.count, max(0, caretOffset + lengthChange))
@@ -313,6 +409,7 @@ final class NativeUIStore {
         get { sidebarOpen }
         set {
             guard sidebarOpen != newValue else { return }
+            cancelComposerPresentation()
             sidebarOpen = newValue
             fieldRevision += 1
             pendingSidebarRevision = fieldRevision
@@ -330,10 +427,12 @@ final class NativeUIStore {
         }
     }
     func updateDraft() {
+        guard composerCanEdit else { return }
         draftRevision += 1
         command("draft.set", ["value": .string(draft), "revision": .number(Double(draftRevision)), "caretOffset": .number(Double(caretOffset))])
     }
     func setCaretOffset(_ offset: Int) {
+        guard composerCanEdit else { return }
         let bounded = min(draft.utf16.count, max(0, offset))
         guard caretOffset != bounded else { return }
         caretOffset = bounded

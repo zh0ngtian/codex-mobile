@@ -87,5 +87,11 @@
     "scope": "用户明确要求先不用真机，以模拟器验证完成本轮验收；没有执行应用覆盖安装或声称真机数据保留已验证"
   },
   "evidenceLocation": "原始日志及截图位于本轮worktree的.mobile-build/native-reference；xcresult保存在~/Library/Developer/XcodeBuildMCP/workspaces/codex-mobile-e2b7e5b8d624/result-bundles。此文件是验证记录，发布版本以成功批次凭证和在线固定清单为准。",
-  "releaseAcceptance": "native-release-acceptance.json"
+  "releaseAcceptance": "native-release-acceptance.json",
+  "followUpIssue": {
+    "date": "2026-10-15",
+    "version": "0.2.175",
+    "symptom": "真机管理设备中原生开关未显示，完整重启仍复现；原模拟器验收未覆盖private路径别名差异",
+    "rootCauseEvidence": "../../superpowers/plans/evidence/2026-10-15-native-switch-missing-root-cause.json"
+  }
 }
