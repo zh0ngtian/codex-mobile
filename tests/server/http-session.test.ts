@@ -86,7 +86,7 @@ describe("HTTP 会话", () => {
     expect(reply).toEqual({ id: 99, result: { turnId: 'live', items: [
       { id: 'u', type: 'userMessage', text: '开始' },
       { id: 'c', type: 'agentMessage', phase: 'commentary', text: '处理中' },
-    ] } });
+    ], messageOrder: ['u', 'c'] } });
     expect(f.received.at(-1)).toEqual({ id: transport === 'http' ? expect.any(String) : 99, method: 'thread/turns/list', params: { threadId: 't', limit: 1, sortDirection: 'desc', itemsView: 'full' } });
     expect(JSON.stringify(reply).length).toBeLessThan(1024);
     expect(await readdir(join(f.root, 'codex-mobile-http')).catch(() => [])).toEqual([]);

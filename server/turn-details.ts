@@ -107,9 +107,7 @@ export function compactTurnCommentary(result: RecordValue, turnId: string) {
   let messageOrder: string[] | undefined;
   if (turn && ["inProgress", "in_progress", "running"].includes(turn.status) &&
     !(turn.items ?? []).some((item: RecordValue) => item.type === "agentMessage" && item.phase === "final_answer")) {
-    if ((turn.items ?? []).some((item: RecordValue) => ["imageView", "imageGeneration", "videoGeneration"].includes(item.type))) {
-      messageOrder = orderedMessageIds(turn.items ?? []);
-    }
+    messageOrder = orderedMessageIds(turn.items ?? []);
     for (const item of turn.items ?? []) {
       if (typeof item.id !== "string" || !item.id) continue;
       if (item.type === "agentMessage" && item.phase === "commentary" && typeof item.text === "string") {

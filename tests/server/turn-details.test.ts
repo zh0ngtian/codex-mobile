@@ -55,7 +55,7 @@ describe('运行回合文本投影', () => {
     expect(result).toEqual({ turnId: 'live', items: [
       { id: 'u', type: 'userMessage', content: [{ type: 'text', text: '继续' }] },
       { id: 'c', type: 'agentMessage', phase: 'commentary', text: '检查文件' },
-    ] });
+    ], messageOrder: ['u', 'c'] });
     expect(Buffer.byteLength(JSON.stringify(result))).toBeLessThan(1024);
   });
   it('回合已结束、final 已开始或最近回合已变化时不回填', () => {
@@ -118,4 +118,18 @@ it('运行回合含媒体时仅附消息与媒体 ID 顺序，图片正文和工
   expect(result.messageOrder).toEqual(['u', 'c1', 'image1', 'c2', 'image2', 'video']);
   expect(result.items.map(item => item.id)).toEqual(['u', 'c1', 'c2']);
   expect(JSON.stringify(result)).not.toContain('private');
+});
+
+it('纯文字运行回合保留稀疏过程及重复文字插话的精确 ID 顺序', () => {
+  const result = compactTurnCommentary({ data: [{ id: 'live', status: 'inProgress', items: [
+    { id: 'c1', type: 'agentMessage', phase: 'commentary' },
+    { id: 'u1', type: 'userMessage', text: '继续' },
+    { id: 'tool', type: 'commandExecution', aggregatedOutput: 'private-tool-body' },
+    { id: 'c2', type: 'agentMessage', phase: 'commentary', text: '检查中' },
+    { id: 'u2', type: 'userMessage', text: '继续' },
+    { id: 'c3', type: 'agentMessage', phase: 'commentary' },
+  ] }] }, 'live');
+  expect(result.messageOrder).toEqual(['c1', 'u1', 'c2', 'u2', 'c3']);
+  expect(result.items.map(item => item.id)).toEqual(['u1', 'c2', 'u2']);
+  expect(JSON.stringify(result)).not.toContain('private-tool-body');
 });
