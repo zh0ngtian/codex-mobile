@@ -669,3 +669,4 @@ button, a, summary, [role="button"] { -webkit-tap-highlight-color: transparent; 
 @media (max-width: 340px) { .list-header { gap: 6px; } .list-header h1 { font-size: 1.1rem; } .list-header-actions { gap: 4px; } }
 
 [data-native-composer="true"] .timeline { padding-bottom: calc(var(--native-composer-occlusion, 0px) + 12px); }
+[data-native-composer="true"] .error-banner { position: static; left: auto; bottom: auto; transform: none; width: 100%; margin: 12px 0 0; }

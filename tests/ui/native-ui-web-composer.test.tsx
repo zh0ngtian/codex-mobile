@@ -1,4 +1,5 @@
-import { act, cleanup, render, renderHook, screen } from '@testing-library/react';
+import { readFileSync } from 'node:fs';
+import { act, cleanup, fireEvent, render, renderHook, screen } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import * as bridge from '../../src/native-ui/runtime';
 import { useNativeRuntime } from '../../src/native-ui/adapters';
@@ -72,4 +73,26 @@ it('网页遮罩期间迟到原生动作不能改草稿，关闭后必须有当�
  runtime.setWebComposer('a', { contextId: 'a:t', visible: true, blocked: false });
  expect((await runtime.dispatch({ id: 'visible', name: 'message.send', params: { contextId: 'a:t' } })).ok).toBe(true);
  expect(calls).toBe(1); runtime.dispose();
+});
+
+it.each([false, true])('业务错误保持关闭和新错误恢复能力，混合模式移入历史末尾（hybrid=%s）', enabled => {
+ if (enabled) hybrid();
+ const runtime = enabled ? new bridge.NativeRuntime(() => {}) : null;
+ const styles = readFileSync('src/styles.css', 'utf8');
+ const errorRules = styles.match(/(?:\[data-native-composer="true"\]\s+)?\.error-banner\s*\{[^}]*\}/g)?.join('\n') ?? '';
+ const page = (error: string) => <><style>{errorRules}</style><ConversationPage {...pageProps} error={error} nativeRuntime={runtime} nativeContextId="a:t" conversationVisible /></>;
+ const view = render(page('首次业务失败'));
+ const alert = screen.getByRole('alert');
+ const content = view.container.querySelector('.conversation-scroll-content')!;
+ expect(content.contains(alert)).toBe(enabled);
+ if (enabled) expect(alert.closest('.timeline')).not.toBeNull();
+ expect(getComputedStyle(alert).position).toBe(enabled ? 'static' : 'fixed');
+ expect(getComputedStyle(alert).transform).toBe(enabled ? 'none' : 'translateX(-50%)');
+ expect(screen.getAllByText('首次业务失败')).toHaveLength(1);
+ fireEvent.click(screen.getByRole('button', { name: '关闭错误提示' })); expect(screen.queryByRole('alert')).toBeNull();
+ view.rerender(page('首次业务失败')); expect(screen.queryByRole('alert')).toBeNull();
+ view.rerender(page('后续业务失败')); expect(screen.getByRole('alert')).toHaveTextContent('后续业务失败');
+ fireEvent.click(screen.getByRole('button', { name: '关闭错误提示' }));
+ view.rerender(page('')); view.rerender(page('后续业务失败')); expect(screen.getByRole('alert')).toHaveTextContent('后续业务失败');
+ runtime?.dispose();
 });

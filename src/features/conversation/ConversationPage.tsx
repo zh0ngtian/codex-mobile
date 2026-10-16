@@ -537,6 +537,7 @@ export function ConversationPage({
       requestOlderTurns();
     }
   };
+  const businessError = <ErrorBanner message={error} />;
   const composerStatus = <>
         {accessMode === "readOnly" && (
           <div
@@ -819,11 +820,11 @@ export function ConversationPage({
               <div className="empty-state">{t("开始一次新的 Codex 对话")}</div>
             )}
             <RunProgress thread={active} busy={busy} sync={syncState} operationPending={operationPending} />
-            {nativeComposer && composerStatus}
+            {nativeComposer && <>{composerStatus}{businessError}</>}
           </div>
         </div>
       </div>
-      <ErrorBanner message={error} />
+      {!nativeComposer && businessError}
       {!nativeComposer && <form
         ref={composerRef}
         className={`composer-wrap${
