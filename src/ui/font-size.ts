@@ -1,3 +1,5 @@
+import { isIOSNativeHost } from "../native-ui/preference";
+
 export const FONT_SIZE_STORAGE_KEY = "codex-mobile:font-size";
 export const FONT_SCALES = {
   small: 0.875,
@@ -8,6 +10,7 @@ export const FONT_SCALES = {
 export type FontSize = keyof typeof FONT_SCALES;
 
 export function readFontSize(): FontSize {
+  if (isIOSNativeHost()) return "small";
   try {
     const value = window.localStorage.getItem(FONT_SIZE_STORAGE_KEY);
     if (value && Object.hasOwn(FONT_SCALES, value)) return value as FontSize;
@@ -18,5 +21,5 @@ export function readFontSize(): FontSize {
 }
 
 export function applyFontSize(size: FontSize) {
-  document.documentElement.style.setProperty("--app-font-scale", String(FONT_SCALES[size]));
+  document.documentElement.style.setProperty("--app-font-scale", String(FONT_SCALES[isIOSNativeHost() ? "small" : size]));
 }

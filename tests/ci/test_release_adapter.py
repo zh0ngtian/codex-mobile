@@ -34,6 +34,50 @@ class ReleaseAdapterTests(unittest.TestCase):
                 'results': {'prepare': {'version': '0.2.164', 'buildNumber': '2164'}},
                 'frozen': {'sha': 'b' * 40, 'version': '0.2.164', 'buildNumber': '2164'}}
 
+    def notes_fixture(self, root, manifest=None, notes='- 新增原生界面。\n- 修复输入丢字。'):
+        work = root / 'work'
+        work.mkdir()
+        (work / 'scripts').mkdir()
+        # 使用合批工作区中的真实共享读取器，不能从适配器安装路径读取日志。
+        reader = ROOT / 'scripts/read-release-notes.mjs'
+        (work / 'scripts/read-release-notes.mjs').write_bytes(reader.read_bytes())
+        (work / '.release-batch.json').write_text(json.dumps(manifest or {}))
+        if notes is not None:
+            (work / 'release').mkdir()
+            (work / 'release/notes.md').write_text(notes)
+        for args in [('init', '-q'), ('config', 'user.email', 'test@example.com'),
+                     ('config', 'user.name', 'Test'), ('add', '.'), ('commit', '-qm', 'freeze')]:
+            subprocess.run(['git', *args], cwd=work, check=True, capture_output=True)
+        return self.load().Adapter(self.context(root))
+
+    def test_notes_reads_tracked_file_from_merged_worktree(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            a = self.notes_fixture(Path(tmp))
+            self.assertEqual(a.notes(), '- 新增原生界面。\n- 修复输入丢字。')
+
+    def test_notes_prefers_explicit_manifest_content(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            a = self.notes_fixture(Path(tmp), {'releaseNotes': '  - 修复会话搜索。\n'})
+            self.assertEqual(a.notes(), '- 修复会话搜索。')
+
+    def test_notes_missing_empty_or_invalid_fails_without_template(self):
+        for manifest, notes in [({}, None), ({}, ''), ({}, ' \n '),
+                                ({'releaseNotes': ''}, '- 不能自动替代。'),
+                                ({'releaseNotes': None}, '- 不能自动替代。')]:
+            with self.subTest(manifest=manifest, notes=notes), tempfile.TemporaryDirectory() as tmp:
+                a = self.notes_fixture(Path(tmp), manifest, notes)
+                with self.assertRaisesRegex(RuntimeError, 'exited'):
+                    a.notes()
+
+    def test_notes_rejects_untracked_or_modified_file(self):
+        for tracked in (False, True):
+            with self.subTest(tracked=tracked), tempfile.TemporaryDirectory() as tmp:
+                a = self.notes_fixture(Path(tmp), notes='- 冻结日志。' if tracked else None)
+                (a.work / 'release').mkdir(exist_ok=True)
+                (a.work / 'release/notes.md').write_text('- 未提交的日志。')
+                with self.assertRaisesRegex(RuntimeError, 'exited'):
+                    a.notes()
+
     def test_reservation_is_atomic_and_reused_across_concurrent_retries(self):
         m = self.load()
         with tempfile.TemporaryDirectory() as tmp:

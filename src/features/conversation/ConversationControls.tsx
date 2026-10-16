@@ -2,6 +2,8 @@ import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { presentNativeActionMenu, type MenuAnchor } from "../../ui/native-action-menu";
 import { AppIcon, titleOf, type DisplayRecord } from "../../ui/app-display";
 import { ActionSheet } from "../../ui/ActionSheet";
+import { useWebInterface } from "../web-ui/preference";
+import { useModernPopover } from "../web-ui/usePopoverFocus";
 import { getActiveLocale, t } from "../../i18n";
 
 type AnyRecord = Record<string, any>;
@@ -207,6 +209,8 @@ function OpenConversationActionMenu({
   onArchive,
   anchor,
 }: Omit<ConversationActionMenuProps, "open">) {
+  const { modern } = useWebInterface();
+  const menuRef = useRef<HTMLElement>(null);
   const pinned = thread.isPinned === true;
   const actions = [
     {
@@ -254,6 +258,7 @@ function OpenConversationActionMenu({
     },
   ];
   const [fallback, setFallback] = useState(false);
+  useModernPopover(modern && fallback, menuRef, menuRef, onClose);
   const latest = useRef({ actions, onClose });
   latest.current = { actions, onClose };
   useEffect(() => {
@@ -264,10 +269,14 @@ function OpenConversationActionMenu({
       copyText: action.id === "copy" ? String(thread.id ?? "") : undefined,
       onSelect: (native) => {
         if (native && action.id === "copy") latest.current.onClose();
-        else latest.current.actions.find((entry) => entry.id === action.id)?.onClick();
+        else {
+          latest.current.actions.find((entry) => entry.id === action.id)?.onClick();
+          // 原生菜单已消费；先让重命名捕获会话目标，再同步收起，取消也能立即重开。
+          if (native && action.id === "rename") latest.current.onClose();
+        }
       },
     })), anchor ?? { x: window.innerWidth / 2, y: 80, width: 1, height: 1 },
-    // 等动作回调处理结束再关闭；保留异步 runThreadAction 的目标。
+    // 原生直接取消时收起；动作选择由上方回调在捕获目标后处理。
     (actionId) => { if (!actionId) latest.current.onClose(); });
     setFallback(!dispose);
     return dispose ?? undefined;
@@ -281,7 +290,7 @@ function OpenConversationActionMenu({
         aria-label={t("关闭会话操作")}
         onClick={onClose}
       />
-      <section className="conversation-action-menu" aria-label={t("会话操作")}>
+      <section ref={menuRef} tabIndex={modern ? -1 : undefined} className="conversation-action-menu" aria-label={t("会话操作")}>
         <p>{titleOf(thread)}</p>
         <div>
           {actions.map((action) => (

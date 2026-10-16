@@ -59,7 +59,7 @@ final class CodexMobileKeyboardDismissal: NSObject {
         webView.evaluateJavaScript("""
         ((timing) => {
             const input = document.activeElement;
-            const composer = document.querySelector('.composer-wrap');
+            const composer = document.querySelector('[data-native-composer="true"]') ? null : document.querySelector('.composer-wrap');
             if (composer && !window.__codexKeyboardDismissal) {
                 const previousTop = composer.getBoundingClientRect().top;
                 const previousHeight = window.innerHeight;

@@ -1,4 +1,4 @@
-import { fireEvent, render, within } from "@testing-library/react";
+import { act, fireEvent, render, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import {
   ConversationActionMenu,
@@ -6,8 +6,42 @@ import {
   contextUsageView,
   sevenDayRateLimitView,
 } from "../../src/features/conversation/ConversationControls";
+import { ACTION_MENU_EVENT } from "../../src/ui/native-action-menu";
 
 describe("对话详情控制", () => {
+  it("原生重命名先分发动作，再关闭已消费的菜单，不等待重命名完成", () => {
+    const show = vi.fn();
+    (window as any).CodexMobileActionMenu = { show, dismiss: vi.fn() };
+    try {
+      const calls: string[] = [];
+      const { unmount } = render(
+        <ConversationActionMenu
+          open
+          thread={{ id: "thread-1", preview: "当前会话" }}
+          pendingAction=""
+          onClose={() => calls.push("close")}
+          onPin={() => undefined}
+          onRefresh={() => undefined}
+          onDuplicate={() => undefined}
+          onCopy={() => undefined}
+          onRename={() => {
+            calls.push("rename");
+            return new Promise<boolean>(() => {});
+          }}
+          onArchive={() => undefined}
+        />,
+      );
+      const request = JSON.parse(show.mock.calls[0][0]);
+      act(() => window.dispatchEvent(new CustomEvent(ACTION_MENU_EVENT, {
+        detail: { requestId: request.requestId, actionId: "rename" },
+      })));
+      expect(calls).toEqual(["rename", "close"]);
+      unmount();
+    } finally {
+      delete (window as any).CodexMobileActionMenu;
+    }
+  });
+
   it("上下文环和面板文字由同一份 token usage 推导", () => {
     expect(
       contextUsageView({

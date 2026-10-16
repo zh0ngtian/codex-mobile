@@ -1,3 +1,5 @@
+import { useNativeWebComposer } from '../../native-ui/web-composer';
+import type { NativeRuntime } from '../../native-ui/runtime';
 import {
   type FormEvent,
   type RefObject,
@@ -8,6 +10,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { flushSync } from "react-dom";
 import { AppServerClient } from "../../app-server/client";
 import {
   createHistoricalMessageEditTarget,
@@ -51,6 +54,8 @@ import { ImagePreviewSheet } from "./sheets/ImagePreviewSheet";
 import { useConversationAutoScroll } from "./conversation-scroll";
 import { useRealtimeConversation } from "./useRealtimeConversation";
 import { t } from "../../i18n";
+import { useWebInterface } from "../web-ui/preference";
+import { ModernContextUsage, NewChatDraftMenu } from "./ModernConversationControls";
 import videoPoster from "../../assets/video-poster.svg";
 import { RunProgress } from "./RunProgress";
 import type { HttpSyncState } from "../../backends/http-transport";
@@ -184,6 +189,7 @@ export function ConversationPage({
   pluginsLoading = false,
   imageInputRef,
   onBack,
+  onNewChat,
   onNewChatBackendChange,
   onNewChatProjectChange,
   onPin,
@@ -198,8 +204,13 @@ export function ConversationPage({
   onSelectImages,
   onSelectLocation,
   onOpenAgentSettings,
+  onOpenSpeedSettings,
   onOpenPermissionSettings,
   onDraftChange,
+  nativeRuntime = null,
+  nativeContextId = '',
+  conversationVisible = false,
+  webOverlayOpen = false,
   historyEdit = null,
   onEditUserMessage,
   onHistoryEditTextChange = () => undefined,
@@ -210,6 +221,10 @@ export function ConversationPage({
   onQueuedFollowUpEdit = () => undefined,
   onQueuedFollowUpCancel = () => undefined,
 }: {
+  nativeRuntime?: NativeRuntime | null;
+  nativeContextId?: string;
+  conversationVisible?: boolean;
+  webOverlayOpen?: boolean;
   active: DisplayRecord;
   backendId: string;
   backendName: string;
@@ -228,7 +243,7 @@ export function ConversationPage({
   imageReading: boolean;
   draftSaving?: boolean;
   draftSaveStatus?: string;
-  onSaveDraft?: () => void;
+  onSaveDraft?: () => void | boolean | Promise<boolean>;
   busy: boolean;
   operationPending?: boolean;
   steering: boolean;
@@ -251,6 +266,7 @@ export function ConversationPage({
   pluginsLoading?: boolean;
   imageInputRef: RefObject<HTMLInputElement | null>;
   onBack: () => void;
+  onNewChat?: () => void;
   onNewChatBackendChange: (backendId: string) => void;
   onNewChatProjectChange: (cwd: string) => void;
   onPin: () => Promise<boolean>;
@@ -264,8 +280,9 @@ export function ConversationPage({
   onRemoveFile: (fileId: string) => void;
   onSelectImages: (files: FileList | null) => Promise<void>;
   onSelectLocation: () => Promise<boolean>;
-  onOpenAgentSettings: () => void;
-  onOpenPermissionSettings: () => void;
+  onOpenAgentSettings: (restoreComposerFocus?: () => void) => void;
+  onOpenSpeedSettings?: (restoreComposerFocus?: () => void) => void;
+  onOpenPermissionSettings: (restoreComposerFocus?: () => void) => void;
   onDraftChange: (value: string) => void;
   historyEdit?: {
     target: HistoricalMessageEditTarget;
@@ -281,6 +298,15 @@ export function ConversationPage({
   onQueuedFollowUpEdit?: (id: string, text: string) => void | boolean | Promise<boolean>;
   onQueuedFollowUpCancel?: (id: string) => void;
 }) {
+  const { modern } = useWebInterface();
+  const [composerFocused, setComposerFocused] = useState(false);
+  const [composerWrapped, setComposerWrapped] = useState(false);
+  const settingsFocusRef = useRef<(() => void) | undefined>(undefined);
+  const composerIdentityRef = useRef({ id: active.id, backendId, historyEdit, active, revision: 0 });
+  const previousIdentity = composerIdentityRef.current;
+  const changedComposer = previousIdentity.id !== active.id || previousIdentity.backendId !== backendId ||
+    Boolean(previousIdentity.historyEdit) !== Boolean(historyEdit) || (!active.id && previousIdentity.active !== active);
+  composerIdentityRef.current = { id: active.id, backendId, historyEdit, active, revision: previousIdentity.revision + Number(changedComposer) };
   const selectedBackend =
     backends.find((backend) => backend.id === backendId) ?? null;
   const [previewImage, setPreviewImage] = useState<DraftImage | null>(null);
@@ -313,6 +339,8 @@ export function ConversationPage({
   const isNewChat = !active.id;
   const hasDraft = Boolean(draft.trim() || draftImages.length || draftFiles.length);
   const canQueue = busy && !isNewChat && hasDraft;
+  const composerExpanded = composerFocused || composerWrapped || draft.includes("\n") || draftImages.length > 0 || draftFiles.length > 0 || composerMaximized;
+  const canSaveDraft = !draftSaving && !imageReading && !busy && !operationPending && hasDraft;
   const realtime = useRealtimeConversation({
     client,
     threadId: String(active.id ?? ""),
@@ -323,6 +351,9 @@ export function ConversationPage({
   );
   useEffect(() => {
     setComposerMaximized(false);
+    setStatusOpen(false);
+    setActionsOpen(false);
+    settingsFocusRef.current = undefined;
     setAttachmentMenuOpen(false);
     setSkillMention(null);
     setQueuedFollowUpEdit(null);
@@ -414,10 +445,12 @@ export function ConversationPage({
     ready: loadState === "ready",
     historyEditMessageId: historyEdit?.target.messageId,
   });
+  const nativeComposer = useNativeWebComposer(nativeRuntime, backendId, nativeContextId, conversationVisible,
+    webOverlayOpen || statusOpen || actionsOpen || Boolean(historyEdit || previewImage || queuedFollowUpEdit) || attachmentMenuOpen || realtimeActive, scrollRef);
   useLayoutEffect(() => {
     const composer = composerRef.current;
     const scroll = scrollRef.current;
-    if (!composer || !scroll) return;
+    if (nativeComposer || !composer || !scroll) return;
     // 排队、编辑、附件及字号变化都需要为整个输入区预留实际高度。
     const updateInset = () => {
       scroll.style.setProperty("--composer-height", `${composer.getBoundingClientRect().height}px`);
@@ -426,11 +459,68 @@ export function ConversationPage({
     if (typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver(updateInset);
     observer.observe(composer);
-    return () => observer.disconnect();
-  }, [scrollRef]);
+    return () => { observer.disconnect(); scroll.style.removeProperty("--composer-height"); };
+  }, [scrollRef, nativeComposer]);
   const interactive =
     loadState === "ready" &&
     accessMode === "interactive";
+  // 设置在 pointerdown 前记录输入焦点与选区，允许按钮正常产生 WebKit click。
+  const captureSettingsFocus = () => {
+    const input = composerInputRef.current;
+    settingsFocusRef.current = undefined;
+    if (!input || document.activeElement !== input || input.disabled) return;
+    const identity = composerIdentityRef.current;
+    const start = input.selectionStart;
+    const end = input.selectionEnd;
+    settingsFocusRef.current = () => {
+      const current = composerIdentityRef.current;
+      if (!input.isConnected || input.disabled || composerInputRef.current !== input || current.revision !== identity.revision || current.historyEdit) return;
+      input.focus({ preventScroll: true });
+      input.setSelectionRange(start, end);
+    };
+  };
+  const openSettings = (callback: ((restore?: () => void) => void) | undefined, trigger: HTMLButtonElement) => {
+    if (document.activeElement === composerInputRef.current) captureSettingsFocus();
+    const revision = composerIdentityRef.current.revision;
+    const restore = settingsFocusRef.current ?? (document.activeElement === trigger ? () => {
+      const current = composerIdentityRef.current;
+      if (!trigger.isConnected || trigger.disabled || !composerRef.current?.contains(trigger) || current.revision !== revision || current.historyEdit) return;
+      // 键盘入口返回原按钮；先同步显示工具栏，避免浏览器拒绝聚焦 display:none 的控件。
+      flushSync(() => setComposerFocused(true));
+      trigger.focus({ preventScroll: true });
+    } : undefined);
+    settingsFocusRef.current = undefined;
+    callback?.(restore);
+  };
+  useLayoutEffect(() => {
+    const input = composerInputRef.current;
+    if (!input) return;
+    if (!modern) { input.style.removeProperty("height"); return; }
+    const resize = () => {
+      input.style.height = "auto";
+      // scrollHeight 包含 CSS 最小高度；测量内容时去除下限，避免单行被误判为换行。
+      const previousMinHeight = input.style.minHeight;
+      input.style.minHeight = "0";
+      const style = getComputedStyle(input);
+      const lineHeight = parseFloat(style.lineHeight) || 22;
+      const padding = (parseFloat(style.paddingTop) || 0) + (parseFloat(style.paddingBottom) || 0);
+      const contentHeight = input.scrollHeight;
+      input.style.minHeight = previousMinHeight;
+      const multiline = contentHeight > lineHeight + padding + 2;
+      // 聚焦期间按真实宽度测量；失焦后保留换行状态，防止宽窄布局往返抖动。
+      if (composerFocused || !composerExpanded || !draft) setComposerWrapped(multiline);
+      input.style.height = `${Math.min(154, Math.max(lineHeight + padding, contentHeight))}px`;
+    };
+    resize();
+    if (typeof ResizeObserver === "undefined") return;
+    let width = input.getBoundingClientRect().width;
+    const observer = new ResizeObserver(() => {
+      const nextWidth = input.getBoundingClientRect().width;
+      if (nextWidth !== width) { width = nextWidth; resize(); }
+    });
+    observer.observe(input);
+    return () => observer.disconnect();
+  }, [modern, draft, composerExpanded, composerFocused]);
   const requestOlderTurns = () => {
     if (!["idle", "error"].includes(olderTurnsState)) return;
     beginPrependPreservation();
@@ -447,45 +537,90 @@ export function ConversationPage({
       requestOlderTurns();
     }
   };
+  const businessError = <ErrorBanner message={error} />;
+  const composerStatus = <>
+        {accessMode === "readOnly" && (
+          <div
+            className="readonly-thread-banner"
+            role="status"
+            title={resumeError}
+          >
+            <span>{t("该会话正在其他 Codex 客户端运行，当前为只读模式")}</span>
+            <button type="button" onClick={onRetry}>
+              {t("重新连接")}
+            </button>
+          </div>
+        )}
+        {(!modern || nativeComposer) && realtimeActive && (
+          <RealtimeControls
+            status={
+              realtime.state.status as "connecting" | "listening" | "stopping"
+            }
+            startedAt={realtime.state.startedAt}
+            muted={realtime.state.muted}
+            userTranscript={realtime.state.userTranscript}
+            assistantTranscript={realtime.state.assistantTranscript}
+            onToggleMute={realtime.toggleMute}
+            onStop={() => void realtime.stop()}
+          />
+        )}
+        {imageReading && (
+          <div className="draft-image-reading" role="status" aria-live="polite">
+            {t("正在处理附件…")}
+          </div>
+        )}
+        {isNewChat && onSaveDraft && (
+          <div className="new-chat-draft-actions">
+            <span role="status">{draftSaveStatus}</span>
+            {!modern && <button type="button" disabled={!canSaveDraft} onClick={() => { void onSaveDraft(); }}>
+              {draftSaving ? t("正在保存…") : t("保存草稿")}
+            </button>}
+          </div>
+        )}
+    {nativeComposer && pendingSteerText && <div className="pending-steer-message" role="status" aria-label={t("已发送引导")}>{pendingSteerText}</div>}
+  </>;
   return (
-    <section className="conversation">
+    <section className="conversation" data-native-composer={nativeComposer ? "true" : undefined}>
       <header className="conversation-header">
         <button
           className="round-button"
           aria-label={t("打开会话列表")}
           onClick={onBack}
         >
-          <AppIcon name="menu" />
+          {modern ? <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5-7 7 7 7" /></svg> : <AppIcon name="menu" />}
         </button>
         <div className="thread-heading">
           <strong>{titleOf(active)}</strong>
           <span>
-            <i className={`status-dot ${connection}`} />
-            {backendName} · {active.isProjectless
-              ? t("无项目")
-              : pathBasename(active.cwd ?? "") || t("无项目")} ·{" "}
-            {connection === "online" ? t("已连接") : t("连接中")}
+            {modern ? <><span className="modern-project-subtitle">{active.isProjectless ? t("无项目") : pathBasename(active.cwd ?? "") || t("无项目")}</span><span aria-hidden="true">·</span><span className="modern-device-subtitle-name">{backendName}</span></> : <>
+              <i className={`status-dot ${connection}`} />
+              {backendName} · {active.isProjectless ? t("无项目") : pathBasename(active.cwd ?? "") || t("无项目")} ·{" "}
+              {connection === "online" ? t("已连接") : t("连接中")}
+            </>}
           </span>
         </div>
-        {!!active.id && (
+        {(modern || !!active.id) && (
           <div
             className="conversation-header-actions"
             role="group"
             aria-label={t("会话详情操作")}
           >
-            <ContextUsageButton
+            {modern ? <ModernContextUsage tokenUsage={tokenUsage} rateLimits={rateLimits} open={statusOpen}
+              onToggle={() => { setActionsOpen(false); setStatusOpen(current => !current); }} onClose={() => setStatusOpen(false)} /> : <ContextUsageButton
               tokenUsage={tokenUsage}
               onClick={() => {
                 setActionsOpen(false);
                 setStatusOpen(true);
               }}
-            />
+            />}
+            {modern && <button type="button" className="round-button" aria-label={t("新建对话")} onClick={onNewChat} disabled={!onNewChat}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4H5a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7" /><path d="m15 3 5 5M10 17l-3 1 1-4L18 4a2.1 2.1 0 0 1 3 3z" /></svg></button>}
             <button
               className="round-button"
               type="button"
               aria-label={t("会话操作")}
               aria-expanded={actionsOpen}
-              onClick={() => {
+              onClick={(event) => {
+                if (modern) event.currentTarget.focus({ preventScroll: true });
                 setStatusOpen(false);
                 setActionsOpen((current) => !current);
               }}
@@ -495,8 +630,9 @@ export function ConversationPage({
           </div>
         )}
       </header>
+      {modern && isNewChat && actionsOpen && <NewChatDraftMenu canSave={canSaveDraft && interactive && Boolean(onSaveDraft)} saving={draftSaving} onSave={onSaveDraft} onClose={() => setActionsOpen(false)} />}
       <ConversationActionMenu
-        open={actionsOpen}
+        open={actionsOpen && (!modern || !isNewChat)}
         readOnly={accessMode === "readOnly"}
         thread={active}
         pendingAction={pendingAction}
@@ -684,16 +820,21 @@ export function ConversationPage({
               <div className="empty-state">{t("开始一次新的 Codex 对话")}</div>
             )}
             <RunProgress thread={active} busy={busy} sync={syncState} operationPending={operationPending} />
+            {nativeComposer && <>{composerStatus}{businessError}</>}
           </div>
         </div>
       </div>
-      <ErrorBanner message={error} />
-      <form
+      {!nativeComposer && businessError}
+      {!nativeComposer && <form
         ref={composerRef}
         className={`composer-wrap${
-          composerMaximized ? " composer-wrap-maximized" : ""
+          composerMaximized && !modern ? " composer-wrap-maximized" : ""
         }`}
         aria-busy={imageReading}
+        data-expanded={modern ? composerExpanded : undefined}
+        onBlur={(event) => {
+          if (!settingsFocusRef.current && !(event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget))) setComposerFocused(false);
+        }}
         onSubmit={(event) => {
           if (historyEdit) event.preventDefault();
           else {
@@ -714,31 +855,7 @@ export function ConversationPage({
           }
         }}
       >
-        {accessMode === "readOnly" && (
-          <div
-            className="readonly-thread-banner"
-            role="status"
-            title={resumeError}
-          >
-            <span>{t("该会话正在其他 Codex 客户端运行，当前为只读模式")}</span>
-            <button type="button" onClick={onRetry}>
-              {t("重新连接")}
-            </button>
-          </div>
-        )}
-        {realtimeActive && (
-          <RealtimeControls
-            status={
-              realtime.state.status as "connecting" | "listening" | "stopping"
-            }
-            startedAt={realtime.state.startedAt}
-            muted={realtime.state.muted}
-            userTranscript={realtime.state.userTranscript}
-            assistantTranscript={realtime.state.assistantTranscript}
-            onToggleMute={realtime.toggleMute}
-            onStop={() => void realtime.stop()}
-          />
-        )}
+        {composerStatus}
         {(pendingSteerText || queuedFollowUps.length > 0) && (
           <div className="composer-follow-up-stack">
             {pendingSteerText && (
@@ -929,33 +1046,12 @@ export function ConversationPage({
             ))}
           </div>
         )}
-        {previewImage && (
-          <ImagePreviewSheet
-            src={previewImage.url}
-            name={previewImage.name}
-            alt={t("待发送 {name}", { name: previewImage.name })}
-            onClose={() => setPreviewImage(null)}
-          />
-        )}
-        {imageReading && (
-          <div className="draft-image-reading" role="status" aria-live="polite">
-            {t("正在处理附件…")}
-          </div>
-        )}
-        {isNewChat && onSaveDraft && (
-          <div className="new-chat-draft-actions">
-            <span role="status">{draftSaveStatus}</span>
-            <button type="button" disabled={draftSaving || imageReading || busy || operationPending || (!draft.trim() && !draftImages.length && !draftFiles.length)} onClick={onSaveDraft}>
-              {draftSaving ? t("正在保存…") : t("保存草稿")}
-            </button>
-          </div>
-        )}
-        <div className="chips">
+        {!modern && <div className="chips">
           <button
             type="button"
             aria-label={t("选择模型、智能与速度")}
             disabled={!interactive}
-            onClick={onOpenAgentSettings}
+            onClick={() => onOpenAgentSettings()}
           >
             {selectedServiceTier ? "⚡ " : ""}
             {selectedModelLabel} {effortLabel(selectedEffort)}
@@ -964,11 +1060,11 @@ export function ConversationPage({
             type="button"
             aria-label={t("选择审批与权限模式")}
             disabled={!interactive}
-            onClick={onOpenPermissionSettings}
+            onClick={() => onOpenPermissionSettings()}
           >
             {selectedPermissionLabel}
           </button>
-        </div>
+        </div>}
         {skillMention && (
           <section
             id="installed-mention-options"
@@ -1185,6 +1281,17 @@ export function ConversationPage({
               </div>
             )}
           </div>
+          {modern && <div className="modern-composer-configuration" onPointerDownCapture={captureSettingsFocus}>
+            <button type="button" className="modern-permission-button" aria-label={t("选择审批与权限模式")} title={selectedPermissionLabel} disabled={!interactive || Boolean(historyEdit)} onClick={(event) => openSettings(onOpenPermissionSettings, event.currentTarget)}>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v8c0 4-3.5 7-7 9-3.5-2-7-5-7-9z" /><path d="M12 8v5m0 3v.1" /></svg>
+            </button>
+            <button type="button" className={`modern-speed-button${selectedServiceTier ? " is-fast" : ""}`} aria-label={t("选择速度")} disabled={!interactive || Boolean(historyEdit) || !onOpenSpeedSettings} onClick={(event) => openSettings(onOpenSpeedSettings, event.currentTarget)}>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14 2-11 12h8l-1 8 11-12h-8z" /></svg>
+            </button>
+            <button type="button" className="modern-model-effort-button" aria-label={t("选择模型与思考强度")} disabled={!interactive || Boolean(historyEdit)} onClick={(event) => openSettings(onOpenAgentSettings, event.currentTarget)}>
+              <span>{selectedModelLabel}</span><small>{effortLabel(selectedEffort)}</small>
+            </button>
+          </div>}
           <textarea
             ref={composerInputRef}
             aria-label={t("向 Codex 提问")}
@@ -1212,6 +1319,7 @@ export function ConversationPage({
                 event.currentTarget.selectionStart,
               )
             }
+            onFocus={() => setComposerFocused(true)}
             onBlur={() => setSkillMention(null)}
             onKeyDown={(event) => {
               if (!skillMention || event.nativeEvent.isComposing) return;
@@ -1290,9 +1398,18 @@ export function ConversationPage({
             )}
           </button>
         </div>
-      </form>
+      </form>}
+        {previewImage && (
+          <ImagePreviewSheet
+            src={previewImage.url}
+            name={previewImage.name}
+            alt={t("待发送 {name}", { name: previewImage.name })}
+            onClose={() => setPreviewImage(null)}
+          />
+        )}
+
       <ConversationStatusSheet
-        open={statusOpen}
+        open={!modern && statusOpen}
         thread={active}
         tokenUsage={tokenUsage}
         rateLimits={rateLimits}

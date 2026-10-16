@@ -2,6 +2,10 @@ import { useLayoutEffect, type RefObject } from "react";
 
 // 侧栏和弹层共享一个滚动边界；DOM 嵌套关系不等于视觉层级。
 const layers: HTMLElement[] = [];
+const presenceListeners = new Set<() => void>();
+export function hasOverlayPresence() { return layers.length > 0; }
+export function subscribeOverlayPresence(listener: () => void) { presenceListeners.add(listener); return () => { presenceListeners.delete(listener); }; }
+function notifyPresence() { for (const listener of presenceListeners) listener(); }
 let restoreDocumentScroll: (() => void) | undefined;
 let touchPoint: { x: number; y: number; layer: HTMLElement | null } | null = null;
 
@@ -139,9 +143,10 @@ export function useOverlayScrollIsolation(
     if (!open || !layer) return;
     if (!layers.length) restoreDocumentScroll = lockDocumentScroll();
     layers.push(layer);
+    notifyPresence();
     return () => {
       const index = layers.indexOf(layer);
-      if (index !== -1) layers.splice(index, 1);
+      if (index !== -1) { layers.splice(index, 1); notifyPresence(); }
       if (!layers.length) {
         restoreDocumentScroll?.();
         restoreDocumentScroll = undefined;

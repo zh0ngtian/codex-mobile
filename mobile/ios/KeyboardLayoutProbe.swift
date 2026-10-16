@@ -47,6 +47,7 @@ final class KeyboardLayoutProbeWebView: CodexMobileWebView {
               const editor = document.querySelector('.history-message-editor textarea');
               return {scale:visualViewport.scale, font:input ? getComputedStyle(input).fontSize : '',
                 height:visualViewport.height, top:visualViewport.offsetTop, scroll:scrollY,
+                draftLength:input?.value.length ?? null, composerFocused:input === document.activeElement,
                 historyCaretVisible:editor ? editor.selectionStart === editor.value.length &&
                   editor.scrollHeight - editor.scrollTop - editor.clientHeight <= 1 : null}; })()
             """) { [weak self] result, _ in
@@ -134,22 +135,35 @@ final class KeyboardLayoutProbeWebView: CodexMobileWebView {
     }
 
     private func finishMeasurement() {
-        evaluateJavaScript("""
-        (() => {
-            const composer = document.querySelector('.composer-wrap');
-            if (!composer) return -1;
-            const current = composer.getBoundingClientRect().top;
-            // WAAPI 的 top 优先级高于 inline style；独立计算静态终点，避免动画覆盖探针。
-            const height = composer.offsetHeight;
-            const bottom = composer.style.bottom;
-            composer.style.bottom = '';
-            const inset = parseFloat(getComputedStyle(composer).bottom) || 0;
-            const target = window.innerHeight - height - inset;
-            composer.style.bottom = bottom;
-            return Math.abs(current - target);
-        })()
-        """) { [weak self] result, _ in
-            self?.tailLabel.accessibilityLabel = String((result as? NSNumber)?.doubleValue ?? -1)
+        // iOS 27在didHide后仍可能短暂报告旧的innerHeight；直接量取绘制位置，避免把安全区差当成位移。
+        callAsyncJavaScript("""
+        const composer = document.querySelector('.composer-wrap');
+        if (!composer) return { maximum: -1 };
+        const start = composer.getBoundingClientRect().top;
+        const initialViewport = window.innerHeight;
+        const deadline = performance.now() + 500;
+        let maximum = 0;
+        return await new Promise(resolve => {
+            function sample() {
+                const current = document.querySelector('.composer-wrap');
+                if (!current) { resolve({ maximum: -1 }); return; }
+                const top = current.getBoundingClientRect().top;
+                maximum = Math.max(maximum, Math.abs(top - start));
+                if (performance.now() < deadline) requestAnimationFrame(sample);
+                else resolve({ maximum, start, end: top, initialViewport, finalViewport: window.innerHeight });
+            }
+            requestAnimationFrame(sample);
+        });
+        """, arguments: [:], in: nil, in: .page) { [weak self] result in
+            guard let self else { return }
+            switch result {
+            case .success(let value):
+                let sample = value as? [String: Any]
+                self.tailLabel.accessibilityLabel = String((sample?["maximum"] as? NSNumber)?.doubleValue ?? -1)
+                self.tailLabel.accessibilityValue = String(describing: value)
+            case .failure:
+                self.tailLabel.accessibilityLabel = "-1"
+            }
         }
         evaluateJavaScript("String(window.__codexSendFocusProbe)") { [weak self] result, _ in
             self?.sendFocusLabel.accessibilityLabel = result as? String ?? "unavailable"

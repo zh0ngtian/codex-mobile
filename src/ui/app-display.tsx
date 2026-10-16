@@ -16,6 +16,7 @@ export function AppIcon({
     | "compose"
     | "copy"
     | "draft"
+    | "device"
     | "folder"
     | "folder-open"
     | "file"
@@ -30,6 +31,7 @@ export function AppIcon({
     | "refresh"
     | "rename"
     | "search"
+    | "settings"
     | "send"
     | "stop";
 }) {
@@ -39,6 +41,7 @@ export function AppIcon({
     close: <path d="m7 7 10 10M17 7 7 17" />,
     copy: <><rect x="8" y="8" width="11" height="11" rx="2" /><path d="M16 8V6a2 2 0 00-2-2H6a2 2 0 00-2 2v8a2 2 0 002 2h2" /></>,
     draft: <><path d="M6 3h8l4 4v14H6z" /><path d="M14 3v5h4M9 12h6M9 16h6" /></>,
+    device: <><rect x="4" y="4" width="16" height="12" rx="2" /><path d="M2 20h20M9 16v4m6-4v4" /></>,
     file: <><path d="M6 3h8l4 4v14H6z" /><path d="M14 3v5h5" /></>,
     folder: <path d="M3 7a2 2 0 012-2h5l2 2h7a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />,
     "folder-open": <><path d="M3 10V7a2 2 0 012-2h5l2 2h7a2 2 0 012 2v1" /><path d="M3 10h18l-2 9H5a2 2 0 01-2-2z" /></>,
@@ -52,6 +55,7 @@ export function AppIcon({
     refresh: <><path d="M20 6v5h-5" /><path d="M19 11a7 7 0 1 0 .2 4" /></>,
     rename: <><path d="M4 20h4l11-11a2.8 2.8 0 00-4-4L4 16z" /><path d="m13.5 6.5 4 4" /></>,
     search: <><circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" /></>,
+    settings: <><path d="M10 2h4l.7 2.3 1.9.8 2.1-1.1 2.8 2.8-1.1 2.1.8 1.9L23 12l-2.3.7-.8 1.9 1.1 2.1-2.8 2.8-2.1-1.1-1.9.8L14 22h-4l-.7-2.3-1.9-.8-2.1 1.1-2.8-2.8 1.1-2.1-.8-1.9L1 12l2.3-.7.8-1.9L3 7.3l2.8-2.8 2.1 1.1 1.9-.8z" /><circle cx="12" cy="12" r="3" /></>,
     compose: <><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 013 3L8 18l-4 1 1-4z" /></>,
     send: <><path d="m5 12 7-7 7 7" /><path d="M12 19V5" /></>,
     stop: <rect x="7" y="7" width="10" height="10" rx="2" />,

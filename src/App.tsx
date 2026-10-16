@@ -1,3 +1,13 @@
+import { NativeSwitchBoundary, useNativeSwitch, useSwitchRegistry, useSwitchWorkspace } from './native-ui/switch-context';
+import { WebInterfaceProvider } from './features/web-ui/preference';
+import { emptyNativeSnapshot } from './native-ui/protocol';
+import { useNativeConfirmation } from './native-ui/confirmation';
+import { useNativeRuntime, useNativeWorkspace } from "./native-ui/adapters";
+import { useNativeConversationAdapter } from "./native-ui/workspace-adapter";
+import { isNativeUIEnabled, type NativeRuntime } from "./native-ui/runtime";
+import { projectNavigation } from "./native-ui/projection";
+import { resolveNativeNewChatTarget, type NativeNewChatTarget } from "./native-ui/new-chat-target";
+import { isClientForeground } from "./native-ui/foreground";
 import { DraftsSheet } from "./features/drafts/DraftsSheet";
 import {
   newChatDraftStore,
@@ -8,6 +18,7 @@ import {
 import { flushSync } from "react-dom";
 import {
   FormEvent,
+  type SetStateAction,
   useCallback,
   useEffect,
   useMemo,
@@ -296,6 +307,7 @@ interface WorkspaceCommand {
 }
 
 interface BackendWorkspaceProps {
+  nativeRuntime: NativeRuntime | null;
   backend: BackendConfig;
   conversationVisible: boolean;
   foregroundRecoveryActive: boolean;
@@ -318,6 +330,7 @@ interface BackendWorkspaceProps {
 }
 
 function BackendWorkspace({
+  nativeRuntime,
   backend,
   conversationVisible,
   foregroundRecoveryActive,
@@ -332,6 +345,8 @@ function BackendWorkspace({
   silentRefreshVersion,
   searchQuery,
 }: BackendWorkspaceProps) {
+  const restoredWorkspace = useNativeSwitch()?.restored.get(backend.id);
+  const confirmWorkspaceAction = useNativeConfirmation(isNativeUIEnabled() ? nativeRuntime : null, `workspace:${backend.id}`);
   const [connection, setConnection] = useState<ConnectionState>("connecting");
   const [threads, setThreads] = useState<AnyRecord[]>([]);
   const [projects, setProjects] = useState<string[]>([]);
@@ -358,22 +373,34 @@ function BackendWorkspace({
   >("idle");
   const [searchError, setSearchError] = useState("");
   const [searchRefreshVersion, setSearchRefreshVersion] = useState(0);
-  const [active, setActive] = useState<AnyRecord | null>(null);
-  const [draft, setDraft] = useState("");
-  const savedDraftRef = useRef<SavedDraftReference | undefined>(undefined);
-  const restoredDraftSettingsRef = useRef<SavedNewChatDraft["settings"] | null>(null);
+  const [active, setActive] = useState<AnyRecord | null>(() => restoredWorkspace?.thread ? { ...restoredWorkspace.thread, turns: [] } : isNativeUIEnabled() ? { id: "", turns: [], preview: t("新对话"), cwd: null } : null);
+  const [draft, setDraft] = useState(restoredWorkspace?.text ?? "");
+  const savedDraftRef = useRef<SavedDraftReference | undefined>(restoredWorkspace?.savedDraftReference);
+  const restoredDraftSettingsRef = useRef<SavedNewChatDraft["settings"] | null>(restoredWorkspace?.settings ?? null);
+  // 仅首轮同线程恢复保留检查点中的本地待发送设置；普通重连仍同步服务器设置。
+  const checkpointThreadSettingsRef = useRef(restoredWorkspace?.thread?.id ?? null);
   const draftSavingRef = useRef(false);
   const draftContentVersionRef = useRef(0);
   const [draftSaving, setDraftSaving] = useState(false);
   const [draftSaveStatus, setDraftSaveStatus] = useState("");
-  const [draftImages, setDraftImages] = useState<DraftImage[]>([]);
-  const [draftFiles, setDraftFiles] = useState<DraftFile[]>([]);
+  const [draftImages, setDraftImages] = useState<DraftImage[]>(restoredWorkspace?.images ?? []);
+  const [draftFiles, setDraftFiles] = useState<DraftFile[]>(restoredWorkspace?.files ?? []);
   const currentDraftRef = useRef({ text: draft, images: draftImages, files: draftFiles });
+  const sendingDraftContextsRef = useRef(new Set<number>());
   currentDraftRef.current = { text: draft, images: draftImages, files: draftFiles };
-  const [historyEdit, setHistoryEdit] =
-    useState<HistoricalMessageEditState | null>(null);
+  const [historyEdit, setHistoryEditState] = useState<HistoricalMessageEditState | null>(null);
+  const historyEditRef = useRef<HistoricalMessageEditState | null>(null);
+  const setHistoryEdit = (next: SetStateAction<HistoricalMessageEditState | null>) => {
+    historyEditRef.current = typeof next === 'function' ? next(historyEditRef.current) : next;
+    setHistoryEditState(historyEditRef.current);
+  };
   const [imageReading, setImageReading] = useState(false);
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusyState] = useState(false);
+  const busyRef = useRef(false);
+  const setBusy = useCallback((value: boolean) => {
+    busyRef.current = value;
+    setBusyState(value);
+  }, []);
   const [startingThreadContext, setStartingThreadContext] = useState<
     number | null
   >(null);
@@ -388,14 +415,14 @@ function BackendWorkspace({
   const [syncState, setSyncState] = useState<{ updatedAt: number | null; stale: boolean } | null>(null);
   const [models, setModels] = useState<AnyRecord[]>([]);
   const [permissionProfiles, setPermissionProfiles] = useState<AnyRecord[]>([]);
-  const [selectedModel, setSelectedModel] = useState("");
-  const [selectedEffort, setSelectedEffort] = useState<string | null>(null);
-  const [selectedServiceTier, setSelectedServiceTier] = useState<string | null>(null);
-  const [selectedPermission, setSelectedPermission] = useState("");
+  const [selectedModel, setSelectedModel] = useState(restoredWorkspace?.settings.model ?? "");
+  const [selectedEffort, setSelectedEffort] = useState<string | null>(restoredWorkspace?.settings.effort ?? null);
+  const [selectedServiceTier, setSelectedServiceTier] = useState<string | null>(restoredWorkspace?.settings.serviceTier ?? null);
+  const [selectedPermission, setSelectedPermission] = useState(restoredWorkspace?.settings.permissions ?? "");
   const [selectedApprovalPolicy, setSelectedApprovalPolicy] =
-    useState<ApprovalPolicy>("on-request");
+    useState<ApprovalPolicy>(restoredWorkspace?.settings.approvalPolicy ?? "on-request");
   const [selectedApprovalsReviewer, setSelectedApprovalsReviewer] =
-    useState<ApprovalsReviewer>("user");
+    useState<ApprovalsReviewer>(restoredWorkspace?.settings.approvalsReviewer ?? "user");
   useEffect(() => {
     draftContentVersionRef.current += 1;
     setDraftSaveStatus("");
@@ -413,7 +440,7 @@ function BackendWorkspace({
   const [activeThreadResumeError, setActiveThreadResumeError] = useState("");
   const [openingThreadId, setOpeningThreadId] = useState("");
   const [conversationLoadState, setConversationLoadState] =
-    useState<ConversationLoadState>("idle");
+    useState<ConversationLoadState>(() => restoredWorkspace || isNativeUIEnabled() ? "ready" : "idle");
   const [conversationLoadError, setConversationLoadError] = useState("");
   const [olderTurnsState, setOlderTurnsState] =
     useState<OlderTurnsLoadState>("exhausted");
@@ -424,6 +451,7 @@ function BackendWorkspace({
   const [pendingAction, setPendingAction] = useState("");
   const [notice, setNotice] = useState("");
   const [picker, setPicker] = useState<ComposerPicker>(null);
+  const composerFocusRestoreRef = useRef<(() => void) | undefined>(undefined);
   const [skillCatalog, setSkillCatalog] = useState<{
     cwd: string | null;
     skills: InstalledSkill[];
@@ -440,7 +468,7 @@ function BackendWorkspace({
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const imageReadGenerationRef = useRef(new ImageReadGeneration());
   const draftContextGenerationRef = useRef(0);
-  const activeRef = useRef<AnyRecord | null>(null);
+  const activeRef = useRef<AnyRecord | null>(active);
   const threadsRef = useRef<AnyRecord[]>([]);
   const modelsRef = useRef<AnyRecord[]>([]);
   const selectedModelRef = useRef("");
@@ -1274,7 +1302,7 @@ function BackendWorkspace({
               threadId,
               activeThreadId: String(activeRef.current?.id ?? ""),
               conversationVisible: conversationVisibleRef.current,
-              documentVisible: document.visibilityState === "visible",
+              documentVisible: isClientForeground(),
             });
             if (attentionAction === "mark-unread") {
               markThreadUnread(threadId);
@@ -1291,7 +1319,7 @@ function BackendWorkspace({
               threadId,
               activeThreadId: String(activeRef.current?.id ?? ""),
               conversationVisible: conversationVisibleRef.current,
-              documentVisible: document.visibilityState === "visible",
+              documentVisible: isClientForeground(),
             }) === "mark-unread") {
               notifyRunCompleted({
                 title: t("Codex 运行结束"),
@@ -1844,16 +1872,18 @@ function BackendWorkspace({
                 setSelectedServiceTier(normalizedActiveSettings.serviceTier);
               }
             }
+            // 状态updater可能延后执行，保留本轮恢复语义，不读取随后消费的ref。
+            const restoringDraftSettings = restoredDraftSettingsRef.current !== null;
             setSelectedPermission((current) => current || configuredPermission);
             setSelectedApprovalPolicy(
               (current) =>
-                restoredDraftSettingsRef.current ? current : config.approval_policy ||
+                restoringDraftSettings ? current : config.approval_policy ||
                 (configuredPermission === ":danger-full-access"
                   ? "never"
                   : current),
             );
             setSelectedApprovalsReviewer(
-              (current) => restoredDraftSettingsRef.current ? current : config.approvals_reviewer || current,
+              (current) => restoringDraftSettings ? current : config.approvals_reviewer || current,
             );
             setRefreshing(false);
             const currentThread = activeRef.current;
@@ -1900,19 +1930,25 @@ function BackendWorkspace({
                 setActiveSettingsSynchronized(resumed.settingsSynchronized);
                 setActiveThreadAccessMode(resumed.accessMode);
                 setActiveThreadResumeError(resumed.resumeError ?? "");
-                selectedModelRef.current = resumed.model ?? "";
-                selectedEffortRef.current = resumedSettings.effort;
-                selectedServiceTierRef.current = resumedSettings.serviceTier;
-                setSelectedModel(resumed.model ?? "");
-                setSelectedEffort(resumedSettings.effort);
-                setSelectedServiceTier(resumedSettings.serviceTier);
-                if (resumed.approvalPolicy) {
-                  setSelectedApprovalPolicy(resumed.approvalPolicy);
+                if (checkpointThreadSettingsRef.current === String(currentThread.id)) {
+                  // 输入设置是本地下一次发送的选择；恢复只接收线程内容与访问状态，不写回服务器。
+                  checkpointThreadSettingsRef.current = null;
+                  restoredDraftSettingsRef.current = null;
+                } else {
+                  selectedModelRef.current = resumed.model ?? "";
+                  selectedEffortRef.current = resumedSettings.effort;
+                  selectedServiceTierRef.current = resumedSettings.serviceTier;
+                  setSelectedModel(resumed.model ?? "");
+                  setSelectedEffort(resumedSettings.effort);
+                  setSelectedServiceTier(resumedSettings.serviceTier);
+                  if (resumed.approvalPolicy) {
+                    setSelectedApprovalPolicy(resumed.approvalPolicy);
+                  }
+                  if (resumed.approvalsReviewer) {
+                    setSelectedApprovalsReviewer(resumed.approvalsReviewer);
+                  }
+                  setSelectedPermission(resumed.activePermissionProfile?.id ?? "");
                 }
-                if (resumed.approvalsReviewer) {
-                  setSelectedApprovalsReviewer(resumed.approvalsReviewer);
-                }
-                setSelectedPermission(resumed.activePermissionProfile?.id ?? "");
               }
             }
             if (!disposed && manager.client(backend.id) === source) {
@@ -2115,7 +2151,7 @@ function BackendWorkspace({
     let stopped = false;
     let inFlight = false;
     const refresh = async () => {
-      if (stopped || inFlight || document.visibilityState === "hidden") return;
+      if (stopped || inFlight || !isClientForeground()) return;
       inFlight = true;
       try { await refreshHostedQueue(); } catch { /* 入队和管理操作会显式报告连接/升级错误。 */ }
       finally { inFlight = false; }
@@ -2172,6 +2208,7 @@ function BackendWorkspace({
   }
 
   function resetDraftContext() {
+    checkpointThreadSettingsRef.current = null;
     draftContextGenerationRef.current += 1;
     savedDraftRef.current = undefined;
     restoredDraftSettingsRef.current = null;
@@ -2759,10 +2796,14 @@ function BackendWorkspace({
 
   async function send(event: FormEvent) {
     event.preventDefault();
-    if (draftSavingRef.current || (active?.id && activeThreadAccessMode !== "interactive")) return;
-    const text = draft.trim();
-    const pendingImages = draftImages;
-    const pendingFiles = draftFiles;
+    await sendMessage();
+  }
+
+  async function sendMessage() {
+    if (draftSavingRef.current || (active?.id && activeThreadAccessMode !== "interactive")) return false;
+    const text = currentDraftRef.current.text.trim();
+    const pendingImages = currentDraftRef.current.images;
+    const pendingFiles = currentDraftRef.current.files;
     const pendingSkills = skillsReferencedInText(
       text,
       skillCatalog.cwd === (active?.cwd ?? null) ? skillCatalog.skills : [],
@@ -2776,20 +2817,20 @@ function BackendWorkspace({
       (!text && !pendingImages.length && !pendingFiles.length) ||
       !clientRef.current
     ) {
-      return;
+      return false;
     }
     const draftContext = draftContextGenerationRef.current;
-    const conversationBusy = active?.id
-      ? busy || [...pendingOperationsRef.current.values()].some((operation) => operation.threadId === String(active.id))
-      : startingThreadContext === draftContextGenerationRef.current;
-    const hasHostedQueue = queuedFollowUpsRef.current.some((item) => item.hosted && item.threadId === String(active?.id ?? ""));
-    if (conversationBusy || hasHostedQueue || queueSubmissionsRef.current.get(String(active?.id ?? ""))?.hasPending) {
-      const threadId = String(active?.id ?? "");
+    const threadId = String(activeRef.current?.id ?? "");
+    const conversationBusy = sendingDraftContextsRef.current.has(draftContext) || busyRef.current || (threadId
+      ? [...pendingOperationsRef.current.values()].some((operation) => operation.threadId === threadId)
+      : startingThreadContext === draftContext);
+    const hasHostedQueue = queuedFollowUpsRef.current.some((item) => item.hosted && item.threadId === threadId);
+    if (conversationBusy || hasHostedQueue || queueSubmissionsRef.current.get(threadId)?.hasPending) {
       if (!threadId) {
         setError(t("当前任务正在启动，请稍后再排队"));
-        return;
+        return false;
       }
-      if (queueMutatingRef.current || queueSubmittingThreadIdsRef.current.has(threadId)) return;
+      if (queueMutatingRef.current || queueSubmittingThreadIdsRef.current.has(threadId)) return false;
       queueSubmittingThreadIdsRef.current.add(threadId);
       requestRunCompletionNotificationPermission();
       setImageReading(true);
@@ -2829,12 +2870,16 @@ function BackendWorkspace({
         }
       } catch (reason) {
         if (draftContext === draftContextGenerationRef.current) setError(reason instanceof Error ? reason.message : String(reason));
+        return false;
       } finally {
         queueSubmittingThreadIdsRef.current.delete(threadId);
         if (String(activeRef.current?.id ?? "") === threadId) setImageReading(false);
       }
-      return;
+      return true;
     }
+    // 在首个await和React提交前占用当前草稿与发送上下文；不同请求UUID也不能重复消费。
+    sendingDraftContextsRef.current.add(draftContext);
+    currentDraftRef.current = { text: "", images: [], files: [] };
     const savedDraft = savedDraftRef.current;
     requestRunCompletionNotificationPermission();
     invalidateImageReads();
@@ -2842,7 +2887,7 @@ function BackendWorkspace({
     setDraftImages([]);
     setDraftFiles([]);
     setError("");
-    await startTurnMessage({
+    return startTurnMessage({
       text,
       pendingImages,
       pendingFiles,
@@ -2869,14 +2914,17 @@ function BackendWorkspace({
             images: pendingImages, files: pendingFiles,
             skills: pendingSkills, plugins: pendingPlugins, failed: true,
           }, ...queuedFollowUpsRef.current]);
-          return;
+          return false;
         }
+        currentDraftRef.current = { text, images: pendingImages, files: pendingFiles };
         setDraft((current) => current || text);
         setDraftImages((current) => mergeDraftImages(current, pendingImages));
         setDraftFiles((current) =>
           current.length ? current : pendingFiles,
         );
       },
+    }).finally(() => {
+      sendingDraftContextsRef.current.delete(draftContext);
     });
   }
 
@@ -2925,7 +2973,7 @@ function BackendWorkspace({
   }
 
   function cancelHistoricalMessageEdit() {
-    const session = historyEdit;
+    const session = historyEditRef.current;
     if (!session || session.submitting) return;
     setActive((current) => {
       if (String(current?.id ?? "") !== session.threadId) return current;
@@ -2938,7 +2986,7 @@ function BackendWorkspace({
   }
 
   async function submitHistoricalMessageEdit() {
-    const session = historyEdit;
+    const session = historyEditRef.current;
     const client = clientRef.current;
     const thread = activeRef.current;
     const threadId = String(thread?.id ?? "");
@@ -3016,186 +3064,164 @@ function BackendWorkspace({
       return;
     }
 
-    setHistoryEdit((current) =>
-      current ? { ...current, submitting: true } : current,
-    );
+    const draftContext = draftContextGenerationRef.current;
+    let ownedEdit: HistoricalMessageEditState = { ...session, submitting: true };
+    let editingClient = client;
+    const ownsCurrentEdit = () => draftContext === draftContextGenerationRef.current &&
+      String(activeRef.current?.id ?? "") === threadId && historyEditRef.current === ownedEdit;
+    const isCurrentEdit = () => ownsCurrentEdit() && editingClient === clientRef.current;
+    const updateSourceStatus = (running: boolean) => {
+      setThreads((entries) => entries.map((entry) => String(entry.id) === threadId
+        ? { ...entry, status: { type: running ? "active" : "idle" } }
+        : entry));
+    };
+    const setOwnedEdit = (next: HistoricalMessageEditState) => {
+      ownedEdit = next;
+      setHistoryEdit(next);
+    };
+    setHistoryEdit(ownedEdit);
     setBusy(true);
     setError("");
+    updateSourceStatus(true);
     requestRunCompletionNotificationPermission();
     const pendingTurnId =
       `pending-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const pendingSequence = ++pendingSequenceRef.current;
     let reverted = session.reverted;
-    let pendingAdded = false;
-    const draftContext = draftContextGenerationRef.current;
+    // 请求参数在原会话授权时冻结；导航后仍完成原线程的重发，不读取新会话的设置。
+    const shouldSendSettings = activeSettingsSynchronized;
+    const resendParams = {
+      threadId,
+      input,
+      ...(shouldSendSettings && selectedModel ? { model: selectedModel } : {}),
+      ...(shouldSendSettings && selectedEffort ? { effort: selectedEffort } : {}),
+      ...(shouldSendSettings ? { serviceTier: effectiveSelectedServiceTier } : {}),
+      ...(shouldSendSettings && selectedPermission ? { permissions: selectedPermission } : {}),
+      ...(shouldSendSettings ? {
+        approvalPolicy: selectedApprovalPolicy,
+        approvalsReviewer: selectedApprovalsReviewer,
+      } : {}),
+    };
     const restoreEditing = (nextReverted: boolean, failure?: string) => {
-      if (draftContext !== draftContextGenerationRef.current || String(activeRef.current?.id ?? "") !== threadId) return;
+      updateSourceStatus(false);
+      // 解除同一个编辑的提交锁不依赖旧连接；换会话或新编辑仍由所有权隔离。
+      if (!ownsCurrentEdit()) return;
       if (nextReverted) {
         // revert 已删除原目标；仅保留用于手动编辑的本地草稿，不代表已执行回合。
         const editDraft = { id: target.turnId, status: "failed", itemsView: "summary", historyEditDraft: true, items: [{ id: target.messageId, type: "userMessage", content: buildEditedHistoryInput(target, text) }] };
-        setActive((current) => {
-          if (!current || String(current.id) !== threadId) return current;
-          const next = { ...current, turns: [...(current.turns ?? []).filter((turn: AnyRecord) => turn.id !== pendingTurnId && turn.id !== target.turnId), editDraft] };
-          activeRef.current = next;
-          return next;
-        });
+        const next = { ...activeRef.current, turns: [...(activeRef.current?.turns ?? []).filter((turn: AnyRecord) => turn.id !== pendingTurnId && turn.id !== target.turnId), editDraft] };
+        activeRef.current = next;
+        setActive(next);
       }
-      setHistoryEdit((current) => current?.threadId === threadId ? { ...current, target: nextReverted ? { ...target, hasLaterTurns: false } : target, reverted: nextReverted, submitting: false } : current);
+      setOwnedEdit({ ...ownedEdit, target: nextReverted ? { ...target, hasLaterTurns: false } : target, reverted: nextReverted, submitting: false });
       setBusy(false);
       if (failure) setError(failure);
     };
-    try {
-      let workingThread = session.reverted ? { ...thread, turns: retainedTurns } : thread;
-      if (!reverted) {
-        const revertedResult = await revertHistoricalMessage(
-          client,
-          threadId,
-          target,
-        );
-        const revertedThread =
-          (revertedResult.response as { thread?: AnyRecord } | null)?.thread;
-        const revertedTurnsCursor =
-          (revertedResult.response as { turnsBackwardsCursor?: string | null } | null)
-            ?.turnsBackwardsCursor ?? null;
-        workingThread = {
-          ...thread,
-          ...(revertedThread ?? {}),
-          id: threadId,
-          turns: retainedTurns,
-          ...(thread.isProjectless === true ? { isProjectless: true } : {}),
-        };
-        reverted = true;
+    const applyRevertedResult = (response: AnyRecord | null | undefined, method: string) => {
+      const workingThread = {
+        ...thread,
+        ...(response?.thread ?? {}),
+        id: threadId,
+        turns: retainedTurns,
+        ...(thread.isProjectless === true ? { isProjectless: true } : {}),
+      };
+      reverted = true;
+      if (isCurrentEdit()) {
         activeRef.current = workingThread;
         setActive(workingThread);
-        resetOlderTurns(
-          revertedResult.method === "thread/revert"
-            ? revertedTurnsCursor
-            : null,
-        );
-        setHistoryEdit((current) =>
-          current && current.threadId === threadId
-            ? {
-                ...current,
-                target: { ...target, hasLaterTurns: false },
-                reverted: true,
-                submitting: true,
-              }
-            : current,
-        );
+        resetOlderTurns(method === "thread/revert" ? response?.turnsBackwardsCursor ?? null : null);
+        setOwnedEdit({ ...ownedEdit, target: { ...target, hasLaterTurns: false }, reverted: true, submitting: true });
       }
-
-      const localItem = {
-        id: `local-${pendingTurnId}`,
-        type: "userMessage",
-        content: input,
-      };
-      const pendingTurn = createPendingTurn(
-        pendingTurnId,
-        localItem,
-        ++pendingSequenceRef.current,
-      );
-      const pendingThread = {
-        ...workingThread,
-        turns: [...(workingThread.turns ?? retainedTurns), pendingTurn],
-      };
-      pendingAdded = true;
-      activeRef.current = pendingThread;
-      setActive(pendingThread);
-
-      const shouldSendSettings = activeSettingsSynchronized;
-      const startedTurn = await client.request<{ turn: AnyRecord }>(
-        "turn/start",
-        {
-          threadId,
-          input,
-          ...(shouldSendSettings && selectedModel
-            ? { model: selectedModel }
-            : {}),
-          ...(shouldSendSettings && selectedEffort
-            ? { effort: selectedEffort }
-            : {}),
-          ...(shouldSendSettings
-            ? { serviceTier: effectiveSelectedServiceTier }
-            : {}),
-          ...(shouldSendSettings && selectedPermission
-            ? { permissions: selectedPermission }
-            : {}),
-          ...(shouldSendSettings
-            ? {
-                approvalPolicy: selectedApprovalPolicy,
-                approvalsReviewer: selectedApprovalsReviewer,
-              }
-            : {}),
-        },
-      );
-      setActive((current) => {
-        if (!current || String(current.id) !== threadId) return current;
-        const next = applyTurnStarted(current, {
-          threadId,
-          turn: startedTurn.turn,
-        });
+      return workingThread;
+    };
+    const finishStartedTurn = (turn: AnyRecord, responseClient: AppServerClient) => {
+      const sourceThread = String(activeRef.current?.id ?? "") === threadId ? activeRef.current : null;
+      const knownTurn = sourceThread?.turns?.find((entry: AnyRecord) => entry.id === turn.id);
+      const terminal = ["completed", "failed", "interrupted", "cancelled"].includes(String(knownTurn?.status));
+      // turn/start 回执是较早事实，不能覆盖已经收到的完成通知或恢复快照。
+      const acceptedTurn = terminal ? { ...turn, ...knownTurn } : turn;
+      const next = sourceThread ? applyTurnStarted(sourceThread, { threadId, turn: acceptedTurn }) : null;
+      const running = ["inProgress", "in_progress", "running"].includes(String(next?.turns?.at(-1)?.status ?? acceptedTurn.status));
+      // 后台源线程已由完成通知变为 idle 时，较早的 start 回执不能重新标为 active。
+      const backgroundCompleted = !sourceThread && threadsRef.current.some((entry) =>
+        String(entry.id) === threadId && entry.status?.type === "idle");
+      if (!backgroundCompleted || !running) updateSourceStatus(running);
+      if (!ownsCurrentEdit()) return;
+      if (responseClient === clientRef.current && next) {
         activeRef.current = next;
-        return next;
-      });
+        setActive(next);
+      }
+      setBusy(running);
       setHistoryEdit(null);
-    } catch (reason) {
+      const currentClient = clientRef.current;
+      if (currentClient) {
+        // 完成编辑后只在同一上下文且尚未开始另一编辑时核对服务器事实。
+        void reconcileActiveThread(currentClient, () =>
+          draftContext === draftContextGenerationRef.current &&
+          String(activeRef.current?.id ?? "") === threadId && historyEditRef.current === null,
+        ).catch(() => undefined);
+      }
+    };
+    const handleFailure = (reason: unknown, requestClient: AppServerClient) => {
       if (reason instanceof HttpOperationPendingError) {
         rememberPendingOperation(reason.requestId, {
           threadId, draftContext, pendingTurnId,
           confirmed: (response, confirmationClient) => {
-            if (draftContext !== draftContextGenerationRef.current || String(activeRef.current?.id ?? "") !== threadId) return;
+            // pending registry 已匹配原请求；仅当前连接的确认可接管原编辑的界面写入。
+            if (confirmationClient === clientRef.current) editingClient = confirmationClient;
             if (response.error) {
               restoreEditing(reverted, response.error.message);
               return;
             }
             if (["thread/revert", "thread/rollback"].includes(reason.request.method ?? "")) {
-              // RPC 已明确完成回退；先恢复已知保留前缀，解锁原编辑，网络读取只校正事实。
-              const knownThread = { ...activeRef.current, turns: retainedTurns };
-              activeRef.current = knownThread;
-              setActive(knownThread);
-              resetOlderTurns((response.result as AnyRecord)?.turnsBackwardsCursor ?? null);
-              restoreEditing(true);
-              const correctionSequence = pendingSequenceRef.current;
-              void loadRecoverableRecentThreadTurns(confirmationClient, threadId, () => threadNotificationSequenceRef.current).then((recent) => {
-                if (recent == null || draftContext !== draftContextGenerationRef.current || String(activeRef.current?.id ?? "") !== threadId || confirmationClient !== clientRef.current || pendingSequenceRef.current !== correctionSequence) return;
-                setActive((current) => {
-                  if (!current || String(current.id) !== threadId) return current;
-                  const editDrafts = (current.turns ?? []).filter((turn: AnyRecord) => turn.historyEditDraft);
-                  const next = { ...current, turns: [...reconcileRecentTurns(retainedTurns, recent, { discardPendingThrough: correctionSequence }), ...editDrafts] };
-                  activeRef.current = next;
-                  return next;
-                });
-              }).catch(() => undefined);
+              // 已确认原授权回退成功后继续原线程重发；是否仍显示该编辑只决定界面写入。
+              const workingThread = applyRevertedResult(response.result as AnyRecord, reason.request.method!);
+              void sendEditedTurn(workingThread, confirmationClient);
             } else {
-              setHistoryEdit(null);
-              void reconcileActiveThread(confirmationClient).catch(() => undefined);
+              const turn = (response.result as AnyRecord)?.turn;
+              if (turn) finishStartedTurn(turn, confirmationClient);
+              else {
+                updateSourceStatus(true);
+                if (isCurrentEdit()) {
+                  setHistoryEdit(null);
+                  void reconcileActiveThread(confirmationClient).catch(() => undefined);
+                }
+              }
             }
           },
-        }, client);
+        }, requestClient);
         return;
       }
-      setBusy(false);
-      if (pendingAdded) {
-        setActive((current) => {
-          if (!current || String(current.id) !== threadId) return current;
-          const next = removePendingTurn(current, pendingTurnId);
-          activeRef.current = next;
-          return next;
-        });
+      // 回退已经成功时，服务端原目标已删除；复用现有本地编辑草稿锚点。
+      restoreEditing(reverted, reason instanceof Error ? reason.message : String(reason));
+      if (reverted && ownsCurrentEdit() && clientRef.current) retryThreadDetail();
+    };
+    async function sendEditedTurn(workingThread: AnyRecord, requestClient: AppServerClient) {
+      const localItem = { id: `local-${pendingTurnId}`, type: "userMessage", content: input };
+      if (isCurrentEdit()) {
+        const pendingThread = {
+          ...workingThread,
+          turns: [...(workingThread.turns ?? retainedTurns), createPendingTurn(pendingTurnId, localItem, pendingSequence)],
+        };
+        activeRef.current = pendingThread;
+        setActive(pendingThread);
       }
-      setHistoryEdit((current) =>
-        current && current.threadId === threadId
-          ? {
-              ...current,
-              target: reverted
-                ? { ...target, hasLaterTurns: false }
-                : current.target,
-              reverted,
-              submitting: false,
-            }
-          : current,
-      );
-      setError(reason instanceof Error ? reason.message : String(reason));
-      if (reverted) retryThreadDetail();
+      try {
+        const startedTurn = await requestClient.request<{ turn: AnyRecord }>("turn/start", resendParams);
+        finishStartedTurn(startedTurn.turn, requestClient);
+      } catch (reason) {
+        handleFailure(reason, requestClient);
+      }
+    }
+    try {
+      let workingThread = session.reverted ? { ...thread, turns: retainedTurns } : thread;
+      if (!reverted) {
+        const result = await revertHistoricalMessage(client, threadId, target);
+        workingThread = applyRevertedResult(result.response as AnyRecord, result.method);
+      }
+      await sendEditedTurn(workingThread, client);
+    } catch (reason) {
+      handleFailure(reason, client);
     }
   }
 
@@ -3249,7 +3275,7 @@ function BackendWorkspace({
     } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)); return false; }
   }
 
-  async function cancelQueuedFollowUp(id: string) {
+  async function cancelQueuedFollowUp(id: string, confirmed = false) {
     const followUp = queuedFollowUpsRef.current.find((entry) => entry.id === id);
     if (!followUp) return;
     if (!followUp.hosted) {
@@ -3257,7 +3283,7 @@ function BackendWorkspace({
       replaceQueuedFollowUps(removeQueuedFollowUp(queuedFollowUpsRef.current, id));
       return;
     }
-    if (followUp.state === "uncertain" && !window.confirm(t("这条消息可能已发送。移除待确认记录不会撤销已发送的任务，确定移除吗？"))) return;
+    if (followUp.state === "uncertain" && !confirmed && !await confirmWorkspaceAction(t("这条消息可能已发送。移除待确认记录不会撤销已发送的任务，确定移除吗？"))) return;
     try {
       await mutateHostedQueue({ action: "cancel", id, revision: followUp.revision! });
       releaseQueueSubmission(followUp.threadId, id);
@@ -3265,7 +3291,7 @@ function BackendWorkspace({
     } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)); }
   }
 
-  async function selectImages(files: FileList | null) {
+  async function selectImages(files: FileList | File[] | null) {
     if (
       !files?.length ||
       historyEdit ||
@@ -3397,7 +3423,7 @@ function BackendWorkspace({
         threadId,
       ).length;
       if (
-        !window.confirm(
+        !await confirmWorkspaceAction(
           t("此会话仍有 {count} 条排队消息，归档会丢弃这些消息。确定归档吗？", {
             count,
           }),
@@ -3554,7 +3580,7 @@ function BackendWorkspace({
     }
   }
 
-  async function renameThread() {
+  async function renameThread(explicitName?: string) {
     const client = clientRef.current;
     const thread = activeRef.current;
     if (
@@ -3563,7 +3589,7 @@ function BackendWorkspace({
       pendingAction ||
       activeThreadAccessMode !== "interactive"
     ) return false;
-    const name = window.prompt(t("输入新的会话名称"), titleOf(thread))?.trim();
+    const name = (explicitName ?? window.prompt(t("输入新的会话名称"), titleOf(thread)))?.trim();
     if (!name || name === titleOf(thread)) return false;
     setPendingAction("rename");
     setError("");
@@ -3614,7 +3640,7 @@ function BackendWorkspace({
         threadId,
       ).length;
       if (
-        !window.confirm(
+        !await confirmWorkspaceAction(
           t("此会话仍有 {count} 条排队消息，归档会丢弃这些消息。确定归档吗？", {
             count,
           }),
@@ -4032,7 +4058,8 @@ function BackendWorkspace({
   }
 
   async function saveNewChatDraft() {
-    if (active?.id || draftSavingRef.current || imageReading || startingThreadContext !== null || (!draft.trim() && !draftImages.length && !draftFiles.length)) return;
+    const content = currentDraftRef.current;
+    if (active?.id || draftSavingRef.current || imageReading || startingThreadContext !== null || (!content.text.trim() && !content.images.length && !content.files.length)) return false;
     const context = draftContextGenerationRef.current;
     const contentVersion = draftContentVersionRef.current;
     draftSavingRef.current = true;
@@ -4042,7 +4069,7 @@ function BackendWorkspace({
       const mode = newChatPermissionMode;
       const saved = await newChatDraftStore.save({
         backendId: backend.id, backendName: backend.name, cwd: active?.cwd ?? null,
-        text: draft, images: draftImages, files: draftFiles,
+        text: content.text, images: content.images, files: content.files,
         settings: { model: selectedModel, effort: selectedEffort, serviceTier: effectiveSelectedServiceTier,
           permissions: mode?.permissions ?? selectedPermission,
           approvalPolicy: mode?.approvalPolicy ?? selectedApprovalPolicy,
@@ -4050,11 +4077,13 @@ function BackendWorkspace({
       }, savedDraftRef.current?.id);
       if (context === draftContextGenerationRef.current) {
         savedDraftRef.current = { id: saved.id, revision: saved.revision };
-        if (contentVersion === draftContentVersionRef.current) setDraftSaveStatus(t("草稿已保存到本地"));
+        if (contentVersion === draftContentVersionRef.current || (currentDraftRef.current.text === content.text && currentDraftRef.current.images === content.images && currentDraftRef.current.files === content.files)) setDraftSaveStatus(t("草稿已保存到本地"));
         setError("");
       }
+      return true;
     } catch (reason) {
       if (context === draftContextGenerationRef.current) setError(`${t("无法保存草稿")}：${reason instanceof Error ? reason.message : String(reason)}`);
+      return false;
     } finally {
       if (context === draftContextGenerationRef.current) {
         draftSavingRef.current = false;
@@ -4063,6 +4092,16 @@ function BackendWorkspace({
     }
   }
 
+  useSwitchWorkspace(backend.id, {
+    backendId: backend.id, backendName: backend.name, cwd: active?.cwd ?? null,
+    text: draft, images: draftImages, files: draftFiles,
+    thread: active ? { id: String(active.id ?? ''), cwd: active.cwd ?? null, preview: active.preview, isProjectless: active.isProjectless } : null,
+    savedDraftReference: savedDraftRef.current,
+    settings: { model: selectedModel, effort: selectedEffort, serviceTier: effectiveSelectedServiceTier,
+      permissions: newChatPermissionMode?.permissions ?? selectedPermission,
+      approvalPolicy: newChatPermissionMode?.approvalPolicy ?? selectedApprovalPolicy,
+      approvalsReviewer: newChatPermissionMode?.approvalsReviewer ?? selectedApprovalsReviewer },
+  });
   const handledCommandRef = useRef(0);
   useEffect(() => {
     if (
@@ -4136,10 +4175,55 @@ function BackendWorkspace({
     return operation?.draftContext === draftContextGenerationRef.current && (!operation.threadId || operation.threadId === String(active?.id ?? ""));
   });
 
+  const nativeContextId = `${backend.id}:context:${draftContextGenerationRef.current}`;
+  useNativeConversationAdapter(nativeRuntime, {
+    backend, active, contextId: nativeContextId, connection, draft, draftImages, draftFiles,
+    busy: conversationBusy, readOnly: Boolean(historyEdit || (active?.id && activeThreadAccessMode !== "interactive")),
+    imageReading, draftSaving, pending: conversationOperationPending, models, selectedModel,
+    selectedModelLabel, effortOptions, selectedEffort, permission: selectedPermissionLabel,
+    skills: skillCatalog.cwd === (active?.cwd ?? null) ? skillCatalog.skills : [],
+    plugins: pluginCatalog.cwd === (active?.cwd ?? null) ? pluginCatalog.plugins : [],
+    queued: queuedFollowUps.filter(item => item.threadId === String(active?.id ?? "") && (item.threadId || item.draftContext === draftContextGenerationRef.current)),
+    approvalCount: requests.length, loadState: conversationLoadState, loadError: conversationLoadError || activeThreadResumeError,
+    olderTurnsState, error, syncStale: syncState?.stale, draftSaveStatus,
+    getDraft: () => currentDraftRef.current.text,
+    setDraft: value => { currentDraftRef.current = { ...currentDraftRef.current, text: value }; setDraft(value); },
+    send: sendMessage, stop: interrupt, chooseModel, chooseEffort,
+    removeAttachment: id => {
+      setDraftImages(current => current.filter(item => item.id !== id));
+      setDraftFiles(current => { const removed = current.find(item => item.id === id); if (removed) URL.revokeObjectURL(removed.previewUrl); return current.filter(item => item.id !== id); });
+    },
+    selectFiles: async files => {
+      if (`${backend.id}:context:${draftContextGenerationRef.current}` !== nativeContextId) throw new Error(t("会话已切换，请重试"));
+      await selectImages(files);
+    },
+    selectLocation: selectCurrentLocation, saveDraft: saveNewChatDraft, retry: retryThreadDetail, loadOlder: loadOlderTurns,
+    editMessage: (turnId, messageId) => {
+      const target = createHistoricalMessageEditTarget(activeRef.current?.turns ?? [], turnId, messageId);
+      if (!target) throw new Error(t("消息已更新"));
+      beginHistoricalMessageEdit(target);
+    },
+    cancelQueued: cancelQueuedFollowUp, sendQueued: actOnQueuedFollowUp, editQueued: editQueuedFollowUp,
+    extended: {
+      state: { approvalThreadTitle: approval ? completionThreadTitle({ threadId: String((approval.params as AnyRecord)?.threadId ?? ""), threads, activeThread: active, fallback: t("新对话") }) : undefined, historyEdit, pendingSteerText: pendingSteerMessage?.threadId === String(active?.id) ? pendingSteerMessage.text : null, steering, queueSaving, steerable: Boolean(activeTurnId(active)), requests, approval, userAnswers, approvalSubmitting: approvalRequests.submitting, approvalError: approvalRequests.error, permissionModes, selectedPermissionModeId,
+        selectedServiceTier: displayedServiceTier, speedOptions, pendingAction, tokenUsage: tokenUsageByThread[active?.id] ?? null, rateLimits,
+        projectOptions, backends, draftSaveStatus, activeThreadAccessMode, activeThreadResumeError },
+      callbacks: { currentHistoryEdit: () => historyEditRef.current, currentApproval: approvalRequests.current, readRemoteFile: (path: string) => { const client = clientRef.current; if (!client) throw new Error(t('尚未连接 app-server')); return client.request<{ dataBase64: string }>('fs/readFile', { path }); }, chooseSpeed, choosePermissionMode, replyToRequest, changeHistoricalMessageEditText, cancelHistoricalMessageEdit,
+        submitHistoricalMessageEdit, chooseNewChatProject, togglePinned, duplicateActiveThread, renameThread, archiveThread,
+        reopenApproval: approvalRequests.reopen, answerApproval: approvalRequests.answer,
+        dismissApproval: approvalRequests.dismiss,
+        switchNewChatBackend: (id: string) => { const content = currentDraftRef.current; return onSwitchNewChatBackend(id, content.text, content.images, content.files, savedDraftRef.current); } },
+    },
+  });
+
   return (
     <main className="app-shell">
       {active ? (
         <ConversationPage
+          nativeRuntime={nativeRuntime}
+          nativeContextId={nativeContextId}
+          conversationVisible={conversationVisible}
+          webOverlayOpen={Boolean(picker || approval)}
           active={active}
           backendId={backend.id}
           backendName={backend.name}
@@ -4158,7 +4242,7 @@ function BackendWorkspace({
           imageReading={imageReading}
           draftSaving={draftSaving}
           draftSaveStatus={draftSaveStatus}
-          onSaveDraft={() => void saveNewChatDraft()}
+          onSaveDraft={saveNewChatDraft}
           busy={conversationBusy}
           operationPending={conversationOperationPending}
           steering={steering}
@@ -4199,6 +4283,7 @@ function BackendWorkspace({
           }
           imageInputRef={imageInputRef}
           onBack={onOpenSidebar}
+          onNewChat={() => startNewChat()}
           onNewChatBackendChange={(backendId) =>
             onSwitchNewChatBackend(backendId, draft, draftImages, draftFiles, savedDraftRef.current)
           }
@@ -4224,8 +4309,9 @@ function BackendWorkspace({
           }
           onSelectImages={selectImages}
           onSelectLocation={selectCurrentLocation}
-          onOpenAgentSettings={() => setPicker("agent")}
-          onOpenPermissionSettings={() => setPicker("permission")}
+          onOpenAgentSettings={(restore) => { composerFocusRestoreRef.current = restore; setPicker("agent"); }}
+          onOpenSpeedSettings={(restore) => { composerFocusRestoreRef.current = restore; setPicker("speed"); }}
+          onOpenPermissionSettings={(restore) => { composerFocusRestoreRef.current = restore; setPicker("permission"); }}
           onDraftChange={setDraft}
           historyEdit={historyEdit}
           onEditUserMessage={beginHistoricalMessageEdit}
@@ -4297,6 +4383,7 @@ function BackendWorkspace({
         selectedSpeedLabel={selectedSpeedLabel}
         selectedPermissionModeId={selectedPermissionModeId}
         onPickerChange={setPicker}
+        onRestoreComposerFocus={() => { const restore = composerFocusRestoreRef.current; composerFocusRestoreRef.current = undefined; restore?.(); }}
         onChooseEffort={chooseEffort}
         onChooseModel={chooseModel}
         onChooseSpeed={chooseSpeed}
@@ -4323,12 +4410,17 @@ export function App() {
   return <AppBootstrap initialRegistry={initialRegistry} />;
 }
 
-export function AppBootstrap({
+export function AppBootstrap({ initialRegistry }: { initialRegistry: BackendRegistry }) {
+  return <NativeSwitchBoundary initialRegistry={initialRegistry}>{registry => <WebInterfaceProvider><RestoredAppBootstrap initialRegistry={registry} /></WebInterfaceProvider>}</NativeSwitchBoundary>;
+}
+
+function RestoredAppBootstrap({
   initialRegistry,
 }: {
   initialRegistry: BackendRegistry;
 }) {
   const [registry, setRegistry] = useState(initialRegistry);
+  useSwitchRegistry(registry, !registry.backends.length);
   const [notificationPreference, setNotificationPreference] = useState(() => readNotificationPreference(window.localStorage));
   const saveNotificationPreference = (next: NotificationPreference) => {
     const saved = writeNotificationPreference(window.localStorage, next);
@@ -4340,6 +4432,7 @@ export function AppBootstrap({
     writeTransportMode(window.localStorage, mode);
     setTransportMode(mode);
   };
+  const [nativeSettingsPage, setNativeSettingsPage] = useState('devices');
   const [managerOpen, setManagerOpen] = useState(
     !initialRegistry.backends.length,
   );
@@ -4360,6 +4453,17 @@ export function AppBootstrap({
     );
   }
 
+  return <UnconfiguredApp registry={registry} setRegistry={setRegistry} managerOpen={managerOpen} setManagerOpen={setManagerOpen} appUpdate={appUpdate} transportMode={transportMode} changeTransportMode={changeTransportMode} notificationPreference={notificationPreference} saveNotificationPreference={saveNotificationPreference} failedNotificationDevices={failedNotificationDevices} nativeSettingsPage={nativeSettingsPage} setNativeSettingsPage={setNativeSettingsPage} />;
+}
+/** 与ConfiguredApp互斥挂载，空registry也只有一个业务runtime。 */
+function UnconfiguredApp({ registry, setRegistry, managerOpen, setManagerOpen, appUpdate, transportMode, changeTransportMode, notificationPreference, saveNotificationPreference, failedNotificationDevices, nativeSettingsPage, setNativeSettingsPage }: {
+ registry: BackendRegistry; setRegistry: (value: BackendRegistry) => void; managerOpen: boolean; setManagerOpen: (value: boolean) => void;
+ appUpdate: ReturnType<typeof useAppUpdate>; transportMode: TransportMode; changeTransportMode: (value: TransportMode) => void;
+ notificationPreference: NotificationPreference; saveNotificationPreference: (value: NotificationPreference) => void; failedNotificationDevices: string[];
+ nativeSettingsPage: string; setNativeSettingsPage: (value: string) => void;
+}) {
+  const nativeRuntime = useNativeRuntime({ selectedBackendId: 'bootstrap', backends: [], groups: [] }, { 'settings.open': p => { setNativeSettingsPage(String(p.id || 'devices')); setManagerOpen(true); } });
+  useNativeWorkspace(nativeRuntime, 'bootstrap', { ...emptyNativeSnapshot(), ready: true, title: t('添加设备'), conversationActions: [{ id: 'add-device', kind: 'action', title: t('添加设备'), command: { name: 'settings.open', params: {} } }] }, {});
   return (
     <main className="app-shell">
       <section className="empty-state">
@@ -4374,6 +4478,8 @@ export function AppBootstrap({
         </button>
       </section>
       <BackendManagerSheet
+        nativeRuntime={isNativeUIEnabled() ? nativeRuntime : null}
+        nativePage={nativeSettingsPage}
         open={managerOpen}
         registry={registry}
         summaries={{}}
@@ -4382,7 +4488,7 @@ export function AppBootstrap({
         notificationPreference={notificationPreference}
         onNotificationPreferenceSave={saveNotificationPreference}
         failedNotificationDevices={failedNotificationDevices}
-        onChange={(next) => {
+        onChange={(next: BackendRegistry) => {
           saveBackendRegistry(window.localStorage, next);
           setRegistry(next);
         }}
@@ -4402,6 +4508,7 @@ export function AppBootstrap({
         }}
       />
       <AppUpdateSheet
+        nativeRuntime={isNativeUIEnabled() ? nativeRuntime : null}
         open={appUpdate.sheetOpen}
         state={appUpdate.state}
         onClose={() => appUpdate.setSheetOpen(false)}
@@ -4432,10 +4539,12 @@ function ConfiguredApp({
   onRegistryChange: (registry: BackendRegistry) => void;
 }) {
   const [registry, setRegistry] = useState(initialRegistry);
+  useSwitchRegistry(registry);
   useEffect(() => { onRegistryChange(registry); }, [registry, onRegistryChange]);
   const [summaries, setSummaries] = useState<
     Record<string, BackendRuntimeSummary>
   >({});
+  const [nativeSettingsPage, setNativeSettingsPage] = useState('devices');
   const [managerOpen, setManagerOpen] = useState(false);
   const [draftsOpen, setDraftsOpen] = useState(false);
   const [snapshots, setSnapshots] = useState<
@@ -4446,6 +4555,7 @@ function ConfiguredApp({
       window.localStorage.getItem("codex-mobile:list-backend") || "all",
   );
   const [query, setQuery] = useState("");
+  const [nativeNavigationFilter, setNativeNavigationFilter] = useState("sessions");
   const [collapsedProjectKeys, setCollapsedProjectKeys] = useState(() =>
     readCollapsedProjectKeys(window.localStorage),
   );
@@ -4453,6 +4563,7 @@ function ConfiguredApp({
   const [pendingCompletionTarget, setPendingCompletionTarget] =
     useState<RunCompletionNavigationTarget | null>(null);
   const commandIdRef = useRef(0);
+  const nativeManagementPending = useRef(false);
   const {
     sidebarOpen,
     refreshVersion,
@@ -4461,7 +4572,7 @@ function ConfiguredApp({
     closeSidebar,
     refresh: refreshAllBackends,
     refreshSilently: refreshAllBackendsSilently,
-  } = useSidebarRefresh();
+  } = useSidebarRefresh(undefined, !isNativeUIEnabled());
   useEffect(() => {
     if (!sidebarOpen) setQuery("");
   }, [sidebarOpen]);
@@ -4872,10 +4983,10 @@ function ConfiguredApp({
   ]);
 
   const manageThread = useCallback(
-    (item: AggregatedThreadItem, action: ThreadManagementAction) => {
+    (item: AggregatedThreadItem, action: ThreadManagementAction, nativeName?: string) => {
       let name: string | undefined;
       if (action === "rename") {
-        name = window.prompt(
+        name = nativeName ?? window.prompt(
           t("输入新的会话名称"),
           titleOf(item.thread),
         )?.trim();
@@ -4898,18 +5009,18 @@ function ConfiguredApp({
     [],
   );
 
-  const startNewChat = useCallback(() => {
+  const startNewChat = useCallback((target?: NativeNewChatTarget) => {
     const savedBackendId = window.localStorage.getItem(
       "codex-mobile:new-chat-backend",
     );
-    const backendId =
+    const backendId = target?.backendId ?? (
       listBackendId === "all"
         ? mountedBackends.find(
             (backend) => backend.id === savedBackendId,
           )?.id ??
           selectedBackend?.id ??
           mountedBackends[0]?.id
-        : listBackendId;
+        : listBackendId);
     if (!backendId) return;
     window.localStorage.setItem("codex-mobile:new-chat-backend", backendId);
     selectBackend(backendId);
@@ -4917,7 +5028,7 @@ function ConfiguredApp({
       id: ++commandIdRef.current,
       backendId,
       type: "new",
-      cwd: null,
+      cwd: target?.cwd ?? null,
     });
     closeSidebar();
   }, [
@@ -4956,6 +5067,65 @@ function ConfiguredApp({
     [mountedBackends, selectBackend],
   );
 
+
+  const nativeGroups = isNativeUIEnabled() ? projectNavigation({
+    threads: scopedThreads, listBackendId, selectedBackendId: selectedBackend?.id ?? "",
+    projectDirectories, hasProjectlessThreads, collapsedProjectKeys, projectThreadStates,
+    projectHasMore, loadingProjectKeys, filter: nativeNavigationFilter, query, searching,
+    backends: mountedBackends, backendSnapshots: snapshots,
+    error: listError || (threadListState === "error" ? t("会话列表加载失败") : ""),
+  }) : [];
+  const performNativeProject = (name: string, params: Record<string, unknown>) => {
+    const group = nativeGroups.find(group => group.command?.params.backendId === params.backendId && group.command?.params.cwd === params.cwd);
+    const allowed = group?.command?.name === name || group?.actions?.some(action => action.command?.name === name);
+    if (!allowed) throw new Error(t("会话列表已更新，请刷新"));
+    if (name === "project.toggle") toggleProjectCollapsed(String(params.backendId), String(params.cwd));
+    else if (name === "project.more") toggleProject(String(params.backendId), String(params.cwd));
+    else retryProject(String(params.backendId), String(params.cwd));
+  };
+  const nativeRuntime = useNativeRuntime({
+    selectedBackendId: selectedBackend?.id ?? "", listBackendId, sidebarOpen, search: query, groups: nativeGroups,
+    backends: [{ id: "all", title: t("全部设备"), connected: true }, ...mountedBackends.map(backend => ({
+      id: backend.id, title: backend.name, connected: summaries[backend.id]?.connection === "online",
+      subtitle: summaries[backend.id]?.error || summaries[backend.id]?.connection,
+    }))],
+  }, {
+    "settings.open": p => { setNativeSettingsPage(String(p.id || "devices")); setManagerOpen(true); },
+    "drafts.open": () => setDraftsOpen(true),
+    "navigation.sidebar": p => { if (p.open) openSidebar(); else closeSidebar(); },
+    "navigation.search": p => setQuery(String(p.value)),
+    "navigation.refresh": refreshAllBackends,
+    "backend.select": p => {
+      const id = String(p.id);
+      if (id !== "all" && !mountedBackends.some(backend => backend.id === id)) throw new Error(t("设备已移除"));
+      // 设备列表筛选不切换当前对话所属workspace。
+      selectListBackend(id);
+    },
+    "navigation.filter": p => {
+      const value = String(p.value);
+      if (!["favorites", "projects", "sessions"].includes(value)) throw new Error(t("导航分类无效"));
+      setNativeNavigationFilter(value);
+    },
+    "thread.new": p => startNewChat(resolveNativeNewChatTarget(p, mountedBackends, nativeGroups)),
+    "thread.open": p => {
+      const item = scopedThreads.find(item => item.backendId === p.backendId && item.threadId === p.threadId);
+      if (!item) throw new Error(t("会话列表已更新，请刷新"));
+      openThread(item);
+    },
+    "thread.manage": async p => {
+      const item = scopedThreads.find(item => item.backendId === p.backendId && item.threadId === p.threadId);
+      if (!item) throw new Error(t("会话列表已更新，请刷新"));
+      if (p.action === "rename" && typeof p.value !== "string") throw new Error(t("请输入新的会话名称"));
+      if (nativeManagementPending.current) throw new Error(t("会话操作未完成"));
+      nativeManagementPending.current = true;
+      try {
+        if (!await manageThread(item, p.action as ThreadManagementAction, typeof p.value === "string" ? p.value : undefined)) throw new Error(t("会话操作未完成"));
+      } finally { nativeManagementPending.current = false; }
+    },
+    "project.toggle": p => performNativeProject("project.toggle", p),
+    "project.more": p => performNativeProject("project.more", p),
+    "project.retry": p => performNativeProject("project.retry", p),
+  });
   if (!selectedBackend) {
     return <main className="app-shell"><div className="empty-state">{t("没有可用设备")}</div></main>;
   }
@@ -4969,6 +5139,7 @@ function ConfiguredApp({
           key={`${backend.id}:${backend.baseUrl}:${backend.token}`}
         >
           <BackendWorkspace
+            nativeRuntime={nativeRuntime}
             backend={{ ...backend, transportMode }}
             foregroundRecoveryActive={backend.id === selectedBackend.id}
             conversationVisible={
@@ -4997,6 +5168,7 @@ function ConfiguredApp({
         <aside className="conversation-sidebar" aria-label={t("会话列表")}>
           <ThreadListPage
             sidebarOpen={sidebarOpen}
+            onCloseSidebar={closeSidebar}
             backends={registry.backends}
             summaries={summaries}
             selectedBackendId={listBackendId}
@@ -5020,7 +5192,7 @@ function ConfiguredApp({
             onQueryChange={setQuery}
             onOpenThread={openThread}
             onManageThread={manageThread}
-            onNewChat={startNewChat}
+            onNewChat={() => startNewChat()}
             onSelectBackend={selectListBackend}
             onManageBackends={() => setManagerOpen(true)}
             onRefresh={refreshAllBackends}
@@ -5037,7 +5209,7 @@ function ConfiguredApp({
           onClick={closeSidebar}
         />
       </div>
-      {draftsOpen && <DraftsSheet onClose={() => setDraftsOpen(false)} onOpenDraft={saved => {
+      {draftsOpen && <DraftsSheet nativeRuntime={isNativeUIEnabled() ? nativeRuntime : null} onClose={() => setDraftsOpen(false)} onOpenDraft={saved => {
         const target = registry.backends.find(backend => backend.id === saved.backendId);
         if (!target) throw new Error(t("草稿的设备已移除，无法恢复"));
         const restored = restoreNewChatDraft(saved);
@@ -5061,6 +5233,8 @@ function ConfiguredApp({
         }}
       />
       <BackendManagerSheet
+        nativeRuntime={isNativeUIEnabled() ? nativeRuntime : null}
+        nativePage={nativeSettingsPage}
         open={managerOpen}
         registry={registry}
         summaries={summaries}
@@ -5086,6 +5260,7 @@ function ConfiguredApp({
         }}
       />
       <AppUpdateSheet
+        nativeRuntime={isNativeUIEnabled() ? nativeRuntime : null}
         open={appUpdate.sheetOpen}
         state={appUpdate.state}
         onClose={() => appUpdate.setSheetOpen(false)}

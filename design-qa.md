@@ -1,48 +1,81 @@
-# 内置浏览器 Design QA（历史记录）
+# 原生 iOS 对齐网页设计稿：视觉验收
 
-本文保留 2026-10-02 内置浏览器实现时的比较结论，关联 [实施计划](docs/superpowers/plans/2026-10-02-in-app-browser.md)。2026-10-10 复核时，下列 `test-results/` 和 `/tmp/` 截图已不存在，会话参考图也未入库；因此 `passed` 仅代表当时记录，不能作为当前版本的可重放视觉验收。现役能力见 [README](README.md#核心能力)。
+当前结论：见下方 2026-10-16 第二轮复核。旧轮次的通过结论仅覆盖当时已检查页面，不能代表设备、通知与附件子页。
 
-- source visual truth path: 原实施会话用户消息中的第 1 张参考截图（会话内附件，无本地文件路径）
-- source pixels: 918 × 2048
-- implementation screenshot path: `test-results/in-app-browser/implementation.png`
-- implementation pixels: 984 × 2136
-- CSS size: 不适用；Android 真机原生 Activity，设备逻辑宽度 375 dp
-- density normalization: 参考图与真机截图按屏幕宽高比例对齐；状态栏、系统图标和设备安全区视为系统基础设施，不作为 App 内容差异
-- viewport: Android 12 真机，984 × 2136 px，420 dpi override
-- state: HTTP 页面加载完成，右上角操作菜单展开
+## 2026-10-16 设备菜单与设置入口
 
-## Full-view comparison evidence
+用户提供的真机截图显示系统 `Menu` 将“全部”放大、用灰块强调设备，并让“设置”无法进入。现改用 SwiftUI 组合的独立弹出层，按设计稿的左 78pt、右 18pt 放置，设备与操作行保持 44pt 点击区域；使用原生按钮、SF Symbols、材质和系统设置 sheet。现有设备切换、草稿、刷新及列表筛选动作仍走原业务命令。
 
-参考图和真机最终截图均包含浅色状态栏、关闭按钮、动态网页标题、右上三点菜单、深色网页内容与右上悬浮白色操作面板。面板右对齐、圆角、四行操作顺序和页面遮挡关系一致；最终面板宽度约为屏幕的 45%，与参考图约 43% 接近。
+离线模拟器 `testDeviceMenuKeepsCompactRowsAndOpensSettings` 实际点击菜单“设置”，进入原生设置页并确认界面开关存在；截图与网页设计并排位于 `/Users/zhongtian/.codex/visualizations/2026/10/16/01a1433c-545b-78c0-9522-eb1bcb3cf80d/native-design-audit/compare/device-menu-final.png`。演示设备名与用户真机不同；未重新发布安装包，也未将模拟器结果冒充真机覆盖安装验收。
 
-## Focused region comparison evidence
+## 2026-10-16 原生规则修正
 
-菜单区域需要单独检查，因为首轮全图中它是主要偏差来源。最终实现使用 Google Material Icons Round 的 `open_in_new`、`refresh`、`desktop_windows` 和 `fullscreen` 图标；四项文案、图标顺序、行对齐和单行显示均与参考图一致。标题栏使用 Material Toolbar 的关闭和纵向三点图标，标题来自页面 HTML title。
+用户已确认原生历史编辑必须原位进行、iOS 不做更新检查。原生编辑器已在原用户消息位置呈现，保留附件、保存重发与取消；只有删除后续内容确认使用sheet。三条离线模拟器流程通过，原位/失败截图已实际查看，输入与保存取消均可点击；设置版本行已验证为静态文字。截图位于 `native-rules/历史编辑-原位.png` 和 `native-rules/历史编辑-失败.png`，完整目录见本轮计划。
 
-## Required fidelity surfaces
+生命周期审查补修跨会话迟到回调、重连后的编辑所有权与终态保护。用户要求快速收尾后停止追加测试，最后后台状态保护仅静态检查；完整证据和该限制见 `docs/superpowers/plans/2026-10-16-native-rules-and-ota.md`。用户随后取消本轮发布：当前修正仅提交推送，尚未进入新安装包。下文保留上一轮设计对照的历史结论。
 
-- Fonts and typography: 标题采用 Material Subtitle2，菜单为 12sp 粗体；真机中最长文案保持单行，没有截断或溢出。系统字体与参考设备字体存在设备级差异，属可接受差异。
-- Spacing and layout rhythm: 48dp 顶栏、48dp 菜单触控行、右对齐 160dp 面板、16dp 圆角；关闭、标题、三点与菜单内容保持稳定对齐。
-- Colors and visual tokens: 顶栏为接近参考图的浅灰白，文字为近黑色，菜单图标使用深灰绿色；网页内容颜色由目标网页自身决定。
-- Image quality and asset fidelity: 所有非系统菜单图标均来自 Google Material Icons Round 矢量资源，没有使用文字字符、CSS 图形或占位图。
-- Copy and content: “在外部浏览器中打开”“重新加载”“桌面版网页”“全屏打开”与参考图一致；桌面版启用后明确切换为“手机版网页”。
+## 2026-10-16 第二轮：用户反馈后的重新审查
 
-## Comparison history
+本轮以当前网页运行画面和修改前后的新模拟器截图为证据，修正旧报告“无剩余P2”的过宽结论。原生控件、业务命令及用户后续要求（虚线链接、右上角等尺寸图标）优先保留。
 
-1. 首轮：菜单为 336dp、18sp，覆盖约 90% 屏宽；图标使用 Android 旧式内建资源。判定为 P1。
-   - 修复：改用 Material Icons Round，重新按参考图测量面板与文字比例。
-   - 后证据：`/tmp/codex-mobile-browser-menu-v2.png`，图标正确但面板仍偏宽。
-2. 第二轮：菜单收窄到 272dp、16sp，层级正确，但仍明显宽于参考图。判定为 P2。
-   - 修复：最终收窄为 160dp、12sp，压缩内边距并保留 48dp 触控行。
-   - 后证据：`test-results/in-app-browser/implementation.png`，最长文案单行显示，面板比例与参考图接近。
-3. 交互检查：验证主 WebView 点击 HTTP 链接进入独立 Activity；刷新、桌面版切换、全屏工具栏隐藏与返回恢复、外部浏览器、关闭均通过真机操作。
+| 发现 | 修正与验证 |
+| --- | --- |
+| P2 项目两个状态使用相同图标，折叠仍暴露加载更多 | 收起使用系统空心文件夹，展开使用实心文件夹；投影与原生子树共同隐藏内部状态、重试和分页；展开恢复原动作。真实点击展开、折叠、再次展开和加载更多通过。 |
+| P2 加载更多沿用默认强调色 | 使用灰色14pt文字，与项目子项同缩进；加载中禁用重复点击。 |
+| P2 设置标题及分组留白过紧 | 调整标题、关闭按钮、分组标题行高和脚注间距；保留44pt触区。 |
+| P2 设备页使用通用Form，操作变成竖排粉色大按钮 | 改为白卡、设备状态、编辑和横排操作；地址、队列、审批保留在设备详情弹层，错误持续展示。添加/编辑保留安全输入、扫码、测试保存及原确认流程。 |
+| P2 通知页使用菜单选择器和默认表单 | 改为原生单选卡、灰色说明、Bark安全输入和黑色保存按钮；Bark校验、保存中禁用及同步错误回归通过。 |
+| P2 附件在输入框下方内联展开 | 改为原生sheet三入口卡；额外保留既有位置操作。系统选择器在sheet关闭后触发，并再次校验原会话仍可编辑。取消后草稿和键盘恢复通过。 |
+| P2 模型列表行高及分组间距偏紧 | 补足24pt文字行、52pt原生行和20pt分组标签行；统一画布后列表密度接近参考。 |
+| P2 置顶分组缺少折叠交互 | 增加原生折叠按钮和状态；独立代码审查指出初版触区不足，已改为44pt。 |
 
-## Findings
+证据目录：`.mobile-build/design-audit-20261016/`，包括 `source/`、`before/`、`after/` 和 `compare/`。网页画布393×852，模拟器402×874pt；对照时缩至相同画布。来源后续弹层曾因网页容器自身自动滚动而被裁切，已用真实滚动恢复到顶部并重新采集 `11-notifications-valid.png`、`12-bark-valid.png`、`13-attachments-valid.png`；被裁切截图不作为整屏位置依据。
 
-没有仍需处理的 P0、P1 或 P2 差异。
+本轮保留的原生差异：iOS sheet外壳、状态栏与键盘；项目图标用SF Symbols空心/实心区分；设备/设置返回标题避让网页稿中重叠的返回键；设备操作至少44pt，附件保留位置操作所以比三卡参考更高。台数、模型、版本和脱敏设备名称来自状态，不照抄设计示例。正文的系统字体换行和小幅行距差异仍存在，未宣称逐像素相同。菜单继续使用系统Menu，不新增网页菜单。
 
-## Follow-up Polish
+验证：TypeScript检查、45项投影/设置/Swift smoke回归通过；设备→表单→返回→通知→Bark UI流程通过；最终项目分页/折叠、附件取消恢复及七屏截图流程通过。独立质量复核未发现未解决P1/P2。没有创建真实远端会话；本轮不包含真机覆盖安装与数据保留验收。
 
-- P3：不同 Android 厂商的系统状态栏高度与图标排列会和参考设备不同，这是系统基础设施差异，不在 App 内仿制。
+本轮已按用户要求仅发布OTA 0.2.180（2180），签名包及固定渠道回验通过。凭证：`docs/superpowers/plans/evidence/2026-10-16-native-design-audit-ota-release.json`。以下正式交付段属于上一轮0.2.178的历史记录。
 
-final result: passed
+## 视觉真值与截图条件
+
+- 来源：用户给定的 `codex-mobile-preview/src/Prototype.tsx` 与 `src/prototype.css` 最新文件，已通过内置浏览器打开对话、聚焦输入、模型、权限、侧栏与设置。
+- 参考截图：相邻 `codex-mobile-preview-evidence` 中 `model-button-left/model-button-screen.png`、`project-icons-removed/sidebar-screen.png`、`quota-rows/quota-rows-screen.png`、`header-menu-refinement/{model-list,settings}-screen.png`、`iteration-2/permission-final-screen.png`。
+- 本轮实际渲染：专用 iPhone 17 Pro / iOS 27 模拟器，402×874pt、1206×2622px；XCTest 截图附件位于 `.mobile-build/preview-ui-final-delivery.xcresult`（最终成功流程），导出到 `.mobile-build/preview-qa/delivery-attachments/`。
+- 参考截图为393×852px，按同尺寸归一原生截图（3倍像素先缩小至逻辑画布，再统一画布）；系统状态栏、键盘、home indicator及iOS27浮动sheet外壳不比较像素一致。对话内容相同，项目与设备名称为脱敏演示值；选择值、版本及台数保留真实fixture投影，不能为贴图改产品状态。
+- 同图证据：`.mobile-build/preview-qa/{conversation,usage,focused,model,permission,sidebar,settings}-comparison.png`，均已实际打开比较。权限仅比较对应面板区域（参考底下为另一技术会话）；聚焦仅比较头部和输入区域（原生保留滚到最新消息的既有行为）。
+
+## 第一轮发现及修正
+
+- P1：上下文环的透明中心不能稳定点中。UI用例真实tap失败，44pt标签补完整contentShape后复验。
+- P2：用量面板标签/数字颜色层级反转、背景透出气泡、圆环22pt小于28pt参考。已改灰标签、黑色加粗数字、不透明背景、224pt宽与28pt环，已由最终成功流程复拍确认。
+- P2：模型面板默认Form将全部文字染成强调色，完成按钮颜色错误，默认字号/间距使最后一项下沉；标题与关闭按钮方位偏离参考。已改为原生滚动分组卡，14pt文字/50pt行、左标题/右关闭、仅勾选强调；以系统label颜色明确完成按钮黑白底色，常规六项均可见。
+- P2：权限面板默认字号、标题和高度明显大于参考；已改13/11pt标题副说明、13/11pt选项与77pt行，底部面板按普通/辅助字号适配。
+- 设备确认返回设置丢失偏好、子页标题不准确，以及附件选择桥被局部同名变量遮蔽，已分别补红绿回归并修复；它们属于功能验收，不以截图通过替代。
+
+## 五类视觉表面
+
+- 字体：沿用系统字体与SF符号；正文/侧栏总体节奏接近。模型与权限已校准至参考的14pt、13/11pt层级，并使用动态字号。
+- 间距：对话、侧栏分组、输入两态和设置白卡结构符合参考；模型/权限已复拍，全部选项和关闭/完成可见。
+- 色彩：保留粉色气泡、强调色、灰底白卡；用量层级及模型完成按钮已复拍确认；高风险选项继续用原生橙色与文字说明。
+- 图像：本设计无新增位图资产；使用原生系统图标，不使用网页控件、假键盘、截图背景或新图标依赖。
+- 文案：沿用真实模型、设备、版本、权限描述及额度数据；缺少额度不伪造百分比。辅助功能提示保留7天额度语义。
+
+## 已验证交互与边界
+
+- 原生配置、模型/强度选择、权限、草稿与键盘恢复、设置菜单和设备往返、项目与最近入口、忙碌发送/独立停止：既有5项关键UI通过。
+- 最大辅助字号、竖屏、忙碌中带草稿：发送和停止可点击且左右边界均在屏幕内，通过。
+- 中文截图流程成功到达模型/权限/侧栏/设置；圆环补完整44pt触区后，最终整条中文流程真实tap复验通过。
+- 未创建真实远端测试会话；不需要归档远端数据。未进行真机覆盖安装、数据保留或VoiceOver实机验收。
+
+## 最终复拍与接受结论
+
+- 复拍：`preview-ui-final-delivery.xcresult`，中文截图流程1项通过、0失败，实际依次操作用量→关闭→输入草稿→模型→完成→权限→关闭→侧栏→设置。配置/焦点恢复用例在 `preview-ui-verified.xcresult` 通过；上下文独立用例与最大辅助字号忙碌竖屏用例分别通过。
+- 永久截图与同图比较：`/Users/zhongtian/.codex/visualizations/2026/10/16/01a1433c-545b-78c0-9522-eb1bcb3cf80d/native-preview-alignment/` 下 `*-final.png`、`*-comparison-final.png` 与 `*-detail-comparison.png`。实际打开最终模型、权限、用量、设置、输入及侧栏，且打开局部细节后才接受。
+- 迭代历史：用量层级/背景/尺寸修正；模型默认Form的颜色/密度/标题方位修正；权限字号和高度修正；Circle中心命中区域修正；最后将完成按钮背景由依赖层级的primary改为确定系统label颜色，再次复拍黑底白字。最初错误证据保留为 `usage-before-comparison.png` 与 `before-model-comparison.png`，后续证据为最终同图。权限旧版本比较左侧最初误用了更早设计，最终已纠正为 `iteration-2/permission-final-screen.png`，该旧左图不用于结论。
+- 无剩余P0/P1/P2。P3/有意差异：iOS27原生浮动sheet与popover圆角、底部安全区和系统键盘布局；模型选项/选中值、版本、台数和日期来自真实状态或脱敏fixture；系统图标保留SF Symbols。正文存在原生排版的细小行距差异，不影响结构、密度与阅读。
+- 最终检查清单：字体与层级、留白和分组、色彩/选中/禁用、图标清晰度、真实文案与无假数据、关键操作与最大辅助字号已复核。
+
+## 正式交付
+
+`0.2.178` / `2178` 已由批次 `4d8da967-2996-4f7d-9e0a-cbbe1b5ba8c8` 验收成功。GitHub双端、已签名IPA/OTA、LAN固定下载及unsigned软件源均通过，独立HEAD/完整GET比对一致；本页的界面截图来自同一运行代码的离线模拟器验证，测试包版本字段为本地工程版本，正式包已注入统一版本。渠道数据见 `docs/superpowers/plans/evidence/2026-10-16-native-preview-alignment-release.json`。

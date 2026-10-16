@@ -1,0 +1,42 @@
+{
+  "task": "修复新版非原生侧栏设备菜单错位和设置入口",
+  "sourceSha": "58e41ccce765c1a0cc04915c629656e90f747eee",
+  "iosOta": {
+    "taskId": "modern-sidebar-menu-settings-20261016",
+    "batchId": "28e8b666-c97d-4575-836b-c315bff39a39",
+    "state": "complete",
+    "frozenSha": "1fd57d566c875c3ed9b777003e642e9cb7627543",
+    "sourceIncluded": true,
+    "version": "0.2.183",
+    "buildNumber": 2183,
+    "signed": true,
+    "bundleId": "vip.loock.codexmobile",
+    "teamId": "SC456JW7RP",
+    "applicationIdentifier": "SC456JW7RP.app.jade6694.grapefruit3766",
+    "size": 4900628,
+    "sha256": "808652508d21bc36a9f9d542bcc22f55db10eb094213028c51d6d20ac50a1825",
+    "installUrl": "https://192.168.123.79:8766/channels/codex-mobile/current/install.html",
+    "ipaUrl": "http://192.168.123.79:8765/channels/codex-mobile/latest.ipa",
+    "lanManifestUrl": "http://192.168.123.79:8765/channels/codex-mobile/latest-ios.json",
+    "httpsManifestUrl": "https://192.168.123.79:8766/channels/codex-mobile/current/latest-ios.json",
+    "verification": "协调器所有阶段成功；两处清单、HEAD 和完整 GET 均为 0.2.183、4900628 字节及相同 SHA-256；HTTPS 安装页指向版本化 0.2.183 manifest；IPA 内置网页资源包含修复后的菜单标记。"
+  },
+  "checks": {
+    "adapterRegression": "166 tests passed",
+    "coordinatorRecovery": "30 tests passed",
+    "vitest": "128 files, 1448 tests passed",
+    "typecheck": "passed",
+    "clientBuild": "passed",
+    "iosSimulator": "App 内 WKWebView 的 ModernSidebarUITests.testDeviceMenuAlignmentAndSettingsOpenInEmbeddedWebView：1 passed",
+    "simulatorFixture": "本地调试启动参数注入离线设备，不连接生产网关或创建真实会话。",
+    "menuScreenshot": "docs/assets/ios-simulator/modern-sidebar-menu-20261016.png",
+    "settingsScreenshot": "docs/assets/ios-simulator/modern-sidebar-settings-20261016.png"
+  },
+  "unchangedChannels": {
+    "githubLatestRelease": "v0.2.181",
+    "androidApkVersion": "0.2.181"
+  },
+  "limitations": [
+    "未进行真机覆盖安装与数据保留验证。"
+  ]
+}

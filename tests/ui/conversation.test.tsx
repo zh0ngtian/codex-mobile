@@ -97,7 +97,7 @@ describe("移动端对话格式", () => {
     expect(container.querySelectorAll(".final-answer-duration")).toHaveLength(1);
   });
 
-  it("完成回合展开 commentary 时不会夹带原生过程图片", () => {
+  it("完成回合展开 commentary 时原生过程图片在所属消息下方", () => {
     const { container } = render(<TurnCard turn={{ id: "turn-image", status: "completed", items: [
       { id: "user", type: "userMessage", text: "发图片" },
       { id: "c", type: "agentMessage", phase: "commentary", text: "正在生成图片" },
@@ -106,7 +106,7 @@ describe("移动端对话格式", () => {
     ] }} client={null} />);
     fireEvent.click(within(container).getByRole("button", { name: "之前的 1 条消息" }));
     expect(within(container).getByText("正在生成图片")).toBeTruthy();
-    expect(within(container).queryByRole("button", { name: "查看图片 assistant.png" })).toBeNull();
+    expect(container.querySelector(".previous-messages .commentary-message .message-images")).not.toBeNull();
   });
   it("用户消息与 final answer 显示精确到分钟的权威时间", () => {
     const startedAt = new Date(2026, 9, 3, 9, 7, 35).getTime() / 1000;
@@ -2048,7 +2048,7 @@ describe("commentary 独立展示预览", () => {
     { id: "img", type: "imageView", path: "/tmp/process.png" },
   ];
   const final = { id: "f", type: "agentMessage", phase: "final_answer", text: "修改完成" };
-  it("展开只计数和显示 commentary，前后工具、图片与 reasoning 均隐藏", () => {
+  it("历史只计数 commentary 并显示所属截图，工具和 reasoning 保持隐藏", () => {
     const { container } = render(<TurnCard turn={{ id: "filtered", status: "completed", items: [user, ...before, ...tools, final, ...tools.map(item => ({ ...item, id: item.id + "after" })), commentary("late", "补充验证结果")] }} client={null} />);
     const view = within(container); const toggle = view.getByRole("button", { name: "之前的 3 条消息" });
     expect(view.queryByText("先检查结构")).toBeNull();
@@ -2057,7 +2057,7 @@ describe("commentary 独立展示预览", () => {
     expect(view.queryByText("内部分析")).toBeNull();
     expect(container.querySelector(".tool-activity")).toBeNull();
     expect(container.querySelector(".file-change-activity")).toBeNull();
-    expect(view.queryByRole("button", { name: /查看图片/ })).toBeNull();
+    expect(container.querySelector(".previous-messages .commentary-message .message-images")).not.toBeNull();
     expect(container.querySelectorAll(".commentary-message")).toHaveLength(3);
     expect(container.querySelectorAll(".previous-messages .commentary-message + .commentary-message")).toHaveLength(1);
   });
@@ -2065,7 +2065,7 @@ describe("commentary 独立展示预览", () => {
     const { container } = render(<TurnCard turn={{ id: "no-commentary", status: "completed", items: [user, ...tools, final] }} client={null} />);
     expect(within(container).queryByRole("button", { name: /之前的/ })).toBeNull();
     expect(container.querySelector(".tool-activity")).toBeNull();
-    expect(within(container).queryByRole("button", { name: /查看图片/ })).toBeNull();
+    expect(container.querySelector(".message-images")).not.toBeNull();
     expect(within(container).getByText("修改完成")).toBeTruthy();
   });
   it("运行阶段的相邻 commentary 也有独立分隔节点", () => {
@@ -2073,4 +2073,85 @@ describe("commentary 独立展示预览", () => {
     expect(container.querySelectorAll(".commentary-message + .commentary-message")).toHaveLength(1);
     expect(container.querySelector(".tool-activity")).toBeNull();
   });
+});
+
+
+it.each(['inProgress','completed'])('%s commentary 的时间在所属全部图片下方且只显示一次', async status => {
+ const timestamp = new Date(2026,9,15,9,7,42).getTime()/1000;
+ const request = vi.fn().mockResolvedValue({dataBase64:'aGVsbG8='});
+ const {container} = render(<TurnCard client={{request} as never} turn={{id:'ordered',status,items:[
+  {id:'c1',type:'agentMessage',phase:'commentary',text:'第一张检查',timestamp},
+  {id:'i1',type:'imageView',path:'/one.png'},
+  {id:'i1b',type:'imageView',path:'/one-more.png'},
+  {id:'c2',type:'agentMessage',phase:'commentary',text:'第二张检查',timestamp:timestamp+120},
+  {id:'i2',type:'imageView',path:'/two.png'},
+  ...(status === 'completed' ? [{id:'f',type:'agentMessage',phase:'final_answer',text:'完成'}] : []),
+ ]}}/>);
+ if(status==='completed') fireEvent.click(within(container).getByRole('button',{name:'之前的 2 条消息'}));
+ const rows=container.querySelectorAll('.commentary-message');
+ expect(rows).toHaveLength(2);
+ expect(rows[0].textContent).toContain('2026-10-15 09:07');
+ expect(rows[1].textContent).toContain('2026-10-15 09:09');
+ expect(rows[0].querySelector('.message-images')).not.toBeNull();
+ expect(rows[1].querySelector('.message-images')).not.toBeNull();
+ await waitFor(() => expect(rows[0].querySelectorAll('img')).toHaveLength(2));
+ expect([...rows[0].querySelectorAll('.assistant-message, img, time')].map(node => node.tagName.toLowerCase())).toEqual(['div','img','img','time']);
+ expect([...rows[1].querySelectorAll('.assistant-message, .message-images, time')].map(node => node.tagName.toLowerCase())).toEqual(['div','div','time']);
+ expect(rows[0].querySelectorAll('time')).toHaveLength(1);
+ expect(rows[1].querySelectorAll('time')).toHaveLength(1);
+});
+
+it('生成失败的视频在原始位置显示失败状态，不挤入 commentary 历史', () => {
+ const {container}=render(<TurnCard client={null} turn={{id:'video-failed',status:'completed',items:[
+  {id:'c',type:'agentMessage',phase:'commentary',text:'开始生成'},
+  {id:'v',type:'videoGeneration',status:'failed'},
+  {id:'f',type:'agentMessage',phase:'final_answer',text:'生成已停止'},
+ ]}}/>);
+ expect(within(container).getByRole('status').textContent).toContain('视频生成未完成');
+ expect(container.querySelector('.previous-messages')).toBeNull();
+ expect(container.querySelector('.turn-responses')?.textContent?.indexOf('视频生成未完成')).toBeLessThan(container.querySelector('.turn-responses')!.textContent!.indexOf('生成已停止'));
+});
+
+it('运行转完成后截图随各自 commentary 折叠，用户插话和多个 final 不打乱媒体位置', () => {
+ const firstTime=new Date(2026,9,15,10,1,13).getTime()/1000;
+ const items=[
+  {id:'c1',type:'agentMessage',phase:'commentary',text:'第一步',timestamp:firstTime},
+  {id:'i1',type:'imageView',path:'/step1.png'},
+  {id:'f1',type:'agentMessage',phase:'final_answer',text:'初次完成'},
+  {id:'steer',type:'userMessage',text:'再检查'},
+  {id:'c2',type:'agentMessage',phase:'commentary',text:'第二步',timestamp:firstTime+60},
+  {id:'i2',type:'imageView',path:'/step2.png'},
+ ];
+ const {container,rerender}=render(<TurnCard client={null} turn={{id:'transition',status:'inProgress',items}}/>);
+ expect(within(container).getByText('第二步')).toBeTruthy();
+ expect(container.querySelectorAll('.commentary-message .message-images')).toHaveLength(1);
+ rerender(<TurnCard client={null} turn={{id:'transition',status:'completed',items:[...items,
+  {id:'f2',type:'agentMessage',phase:'final_answer',text:'再次完成'},
+  {id:'extra-final',type:'agentMessage',phase:'final_answer',text:'最终补充'},
+ ]}}/>);
+ expect(within(container).queryByText('第二步')).toBeNull();
+ for(const toggle of within(container).getAllByRole('button',{name:'之前的 1 条消息'})) fireEvent.click(toggle);
+ expect([...container.querySelectorAll('.commentary-message, .turn-responses > .assistant-message, .turn-responses > .user-message')].map(el=>el.textContent)).toEqual(expect.arrayContaining(['第一步2026-10-15 10:01','第二步2026-10-15 10:02','初次完成','再次完成','最终补充']));
+ expect(container.querySelectorAll('.commentary-message .message-images')).toHaveLength(2);
+});
+
+it('没有真实 commentary 时间时不使用回合时间填补', () => {
+ const {container}=render(<TurnCard client={null} turn={{id:'unknown-time',status:'inProgress',startedAt:1000,items:[
+  {id:'c',type:'agentMessage',phase:'commentary',text:'时间未知'},
+ ]}}/>);
+ expect(container.querySelector('.commentary-message time')).toBeNull();
+});
+
+
+it.each(['inProgress','completed'])('%s 无图片的 commentary 时间紧随正文', status => {
+ const timestamp=new Date(2026,9,15,9,7,42).getTime()/1000;
+ const {container}=render(<TurnCard client={null} turn={{id:'text-only',status,items:[
+  {id:'c',type:'agentMessage',phase:'commentary',text:'只发文字',timestamp},
+  ...(status==='completed'?[{id:'f',type:'agentMessage',phase:'final_answer',text:'完成'}]:[]),
+ ]}}/>);
+ if(status==='completed') fireEvent.click(within(container).getByRole('button',{name:'之前的 1 条消息'}));
+ const row=container.querySelector('.commentary-message')!;
+ expect([...row.children].map(node=>node.tagName.toLowerCase())).toEqual(['div','time']);
+ expect(row.lastElementChild?.textContent).toBe('2026-10-15 09:07');
+ expect(row.querySelectorAll('time')).toHaveLength(1);
 });

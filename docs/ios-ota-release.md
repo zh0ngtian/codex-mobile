@@ -2,7 +2,7 @@
 
 ## 发布协调边界
 
-本页描述现有 iOS 构建、签名和渠道工具，不代表已具备统一合批发布机制。客户端正式发布由协调入口使用已冻结、通过检查的批次提交与统一版本执行，参与任务读取同一发布凭证，不各自分配版本、签名或发包。现有队列、锁、阶段恢复与实际验收状态见 [发布协调说明](release-coordination.md)。通用合批规则维护在 canonical 全局 `AGENTS.md`。
+本页描述现役 iOS 构建、签名和渠道工具；统一协调入口及目标配置见发布协调说明。客户端正式发布由协调入口使用已冻结、通过检查的批次提交与统一版本执行，参与任务读取同一发布凭证，不各自分配版本、签名或发包。现有队列、锁、阶段恢复与实际验收状态见 [发布协调说明](release-coordination.md)。项目合批规则维护在 [仓库 AGENTS.md](../AGENTS.md)。
 
 日常正式发布由适配器分阶段复用本页的构建、签名和 OTA helper，逐阶段核对冻结提交、版本和实际结果；成功编译、签名及发包不会因响应丢失被重复执行。`npm run ios:release` 组合工具继续保留历史/只读 `--plan` 用法，不作为各任务独立发包入口。签名身份、完整权限、升级连续性及渠道回验要求不变。
 
@@ -74,10 +74,14 @@ chmod 600 "$HOME/Library/Application Support/CodexMobile/ios-release.local.json"
 ```bash
 npm run ios:release -- \
   --config "$HOME/Library/Application Support/CodexMobile/ios-release.local.json" \
-  --notes '新增 iOS 检查更新与 OTA 安装' --plan
+  --notes '修复历史消息原位编辑' --plan
 ```
 
-上述命令只做预检；正式构建、签名和发布由适配器按冻结提交与统一版本执行各阶段；软件源只自动同步 GitHub Release 的 unsigned IPA，不再接续发布本机已签名包。这个入口发布 iOS；仓库交付仍必须由同一批次协调负责人构建并发布相同冻结提交、相同版本 APK，汇总 CI、双端渠道、软件源核对及必要部署的共同凭证。不得在 Android 固定渠道还未同步时宣称双平台交付完成。
+上述命令只做预检；正式构建、签名和发布由适配器按冻结提交与统一版本执行各阶段；软件源只自动同步 GitHub Release 的 unsigned IPA，不再接续发布本机已签名包。默认双端批次还须发布同一冻结提交、同一版本 APK，并核对软件源。用户明确指定 OTA-only 时，登记独立 `codex-mobile-ios-ota-production` 目标，只执行 iOS 构建、签名及 OTA/LAN 验收；它共用 main 锁和源码整合，不调用 GitHub Release、APK 或软件源阶段。不得把 OTA-only 宣称为双端交付。
+
+## App 内版本与安装入口
+
+iOS 旧界面和原生界面只展示当前原生版本，不执行自动或手动检查更新，不展示升级弹层，不从 App 内触发 OTA 安装。用户通过 Safari 打开[固定安装页](https://192.168.123.79:8766/channels/codex-mobile/current/install.html)安装新版本。安装页、签名、HTTPS 渠道和外部回验继续保留；取消 App 内更新检查不改变这些发布能力。
 
 ## Cloudflare 软件源
 
@@ -90,7 +94,7 @@ npm run ios:release -- \
 - 协调器已签名 IPA：`~/Library/Application Support/ReleaseCoordinator/artifacts/codex-mobile/<批次>/adhoc.ipa`。
 - 协调器 OTA/LAN 回验成功凭证：同一持久批次目录的 `ota-release.json`；最终完成读取协调器共同 receipt。旧组合工具 `.mobile-build/ota-release/<版本>/` 的历史包与凭证仍保留。
 
-正式交付核对软件源的 unsigned IPA 版本、构建号、下载 URL 与对应 GitHub Release，已签名 OTA/LAN IPA 单独核验；两种签名状态的包大小与散列不要求相同。开发者署名遵循 [仓库规则](../AGENTS.md#ios-自动签名与局域网-ota)。本机命令成功不代表软件源已同步最新未签名版本。
+默认双端正式交付核对软件源的 unsigned IPA 版本、构建号、下载 URL 与对应 GitHub Release，已签名 OTA/LAN IPA 单独核验；两种签名状态的包大小与散列不要求相同。开发者署名遵循 [仓库规则](../AGENTS.md#ios-自动签名与局域网-ota)。本机命令成功不代表软件源已同步最新未签名版本。
 
 ## 单独重签
 

@@ -1,0 +1,75 @@
+{
+  "date": "2026-10-15",
+  "batchId": "b242af96-f94b-4190-8c07-6a13b1789c02",
+  "status": "complete",
+  "version": "0.2.175",
+  "buildNumber": "2175",
+  "frozenSha": "032186d778d21e0e4c58848c79fce58b0752f29c",
+  "tasks": [
+    {
+      "id": "codex-mobile-native-ios-deepseek-20261014",
+      "sha": "18bdda7d37d5a4c9429913f11a870ed5ea97cade"
+    },
+    {
+      "id": "codex-mobile-native-ios-ci-cold-swift-20261014",
+      "sha": "0249f25eaf315f3482764a7f2549a732a44ba25c"
+    }
+  ],
+  "recoveryOf": "816efabd-cd3d-4bbc-8e08-2373b3f90c41",
+  "receipt": "~/Library/Application Support/ReleaseCoordinator/receipts/b242af96-f94b-4190-8c07-6a13b1789c02.json",
+  "formalCI": {
+    "runId": 38593533435,
+    "status": "success",
+    "url": "https://github.com/zh0ngtian/codex-mobile/actions/runs/38593533435"
+  },
+  "developmentCI": {
+    "runId": 38593533616,
+    "status": "success"
+  },
+  "channels": {
+    "apk": {
+      "version": "0.2.175",
+      "buildNumber": "2175",
+      "size": 4753123,
+      "sha256": "f0fa44513075ec457cfa98bcf47572a0822722cdf7b0ce3cd514124b6e90022a",
+      "downloadUrl": "http://192.168.123.79:8765/channels/codex-mobile/latest.apk",
+      "pageUrl": "http://192.168.123.79:8765/channels/codex-mobile/latest.json"
+    },
+    "ipa": {
+      "version": "0.2.175",
+      "buildNumber": "2175",
+      "size": 4441589,
+      "sha256": "f423b54b139c8c31bada4e80552dc6dba76b71d71e1fdc5471502ec0cbe5bf82",
+      "signed": true,
+      "downloadUrl": "http://192.168.123.79:8765/channels/codex-mobile/latest.ipa",
+      "pageUrl": "http://192.168.123.79:8765/channels/codex-mobile/latest-ios.json"
+    },
+    "ota": {
+      "version": "0.2.175",
+      "buildNumber": "2175",
+      "size": 4441589,
+      "sha256": "f423b54b139c8c31bada4e80552dc6dba76b71d71e1fdc5471502ec0cbe5bf82",
+      "signed": true,
+      "downloadUrl": "https://192.168.123.79:8766/channels/codex-mobile/releases/0.2.175/latest.ipa",
+      "installUrl": "https://192.168.123.79:8766/channels/codex-mobile/current/install.html",
+      "pageUrl": "https://192.168.123.79:8766/channels/codex-mobile/current/latest-ios.json"
+    },
+    "source": {
+      "version": "0.2.175",
+      "buildVersion": "2175",
+      "size": 4420535,
+      "sha256": "c292bf0e6ba532e202d4043d113809d668070d900341dc7c1ee8aed6e8dd9cfe",
+      "signed": false,
+      "downloadURL": "https://github.com/zh0ngtian/codex-mobile/releases/download/v0.2.175/CodexMobile-v0.2.175-unsigned.ipa",
+      "developerName": "zh0ngtian",
+      "minOSVersion": "18.0",
+      "notes": "- 新增参考 DeepSeek 布局的 iOS 18 及以上原生界面，保留 CM 品牌与现有功能；首次使用仍默认原有界面。\n- 两种界面均可在设置中一键切换，下次完整启动生效，并保留未发送的文字、图片和文件，以及目标设备、项目、会话和发送配置。\n- 原生界面支持设备、项目和会话管理、搜索、审批、发送队列、工具与变更查看、文件媒体，以及语言和字号设置。\n- 修复快速输入时文字回退、丢失的问题，以及消息中过程截图和生成图片、视频遗漏的问题。"
+    }
+  },
+  "validationScope": "用户要求以模拟器完成本轮验收，未进行真机覆盖安装和数据保留验证",
+  "defaultInterface": "web",
+  "switchEffect": "下次完整进程启动",
+  "signedIpaIdentityPreserved": true,
+  "fixedChannelIndependentHeadAndFullGet": "passed",
+  "sourceNotesMatchTrackedChineseReleaseNotes": true
+}

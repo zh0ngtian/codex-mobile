@@ -1,3 +1,4 @@
+import { isClientForeground } from "../../native-ui/foreground";
 import {
   useCallback,
   useEffect,
@@ -8,7 +9,6 @@ import {
 import {
   APP_UPDATE_API_URL,
   compareSemanticVersions,
-  parseIosRelease,
   createReleaseChecker,
   type AppRelease,
 } from "../../app-update/release";
@@ -92,30 +92,30 @@ export function useAppUpdate(
       : options.bridge,
   );
   const [iosBridge] = useState(() => options.iosBridge === undefined ? readIosAppUpdateBridge() : options.iosBridge);
-  const supported = bridge !== null || iosBridge !== null;
+  // iOS 仅从原生桥读取已安装版本，应用内更新只对 Android 开放。
+  const supported = bridge !== null && iosBridge === null;
   const [currentVersion] = useState(() => bridgeVersion(bridge ?? iosBridge));
   const [storage] = useState(() => options.storage ?? window.localStorage);
   const [fetchRelease] = useState(
-    () => options.fetchRelease ?? (() => fetchLatestRelease(iosBridge?.apiUrl)),
+    () => options.fetchRelease ?? (() => fetchLatestRelease()),
   );
   const checker = useMemo(
     () =>
       createReleaseChecker({
         fetchRelease,
         storage,
-        ...(iosBridge ? {
-          parser: (input: unknown) => parseIosRelease(input, iosBridge),
-          cacheKey: `codex-mobile:app-update:ios:${iosBridge.apiUrl}:${iosBridge.applicationIdentifier}`,
-          invalidReleaseMessage: t("iOS 更新源未配置或签名身份不兼容"),
-        } : {}),
       }),
-    [fetchRelease, storage, iosBridge],
+    [fetchRelease, storage],
   );
   const [state, setState] = useState<AppUpdateState>({
     phase: "idle",
     currentVersion,
   });
-  const [sheetOpen, setSheetOpen] = useState(false);
+  const [sheetOpen, setSheetOpenState] = useState(false);
+  const setSheetOpen = useCallback((open: boolean) => {
+    if (iosBridge && open) return;
+    setSheetOpenState(open);
+  }, [iosBridge]);
   const presentedVersionRef = useRef("");
 
   const check = useCallback(
@@ -128,9 +128,6 @@ export function useAppUpdate(
         error: undefined,
       }));
       try {
-        if (iosBridge && (!iosBridge.apiUrl || !iosBridge.installUrl || !iosBridge.applicationIdentifier)) {
-          throw new Error(t("iOS 更新源未配置或签名身份不兼容"));
-        }
         const release = await checker.check(force);
         const available =
           compareSemanticVersions(release.version, currentVersion) > 0;
@@ -155,7 +152,7 @@ export function useAppUpdate(
         }));
       }
     },
-    [checker, currentVersion, supported, iosBridge],
+    [checker, currentVersion, supported, setSheetOpen],
   );
 
   useEffect(() => {
@@ -166,7 +163,7 @@ export function useAppUpdate(
   useEffect(() => {
     if (!supported) return;
     const onVisible = () => {
-      if (document.visibilityState === "visible") void check(false);
+      if (isClientForeground()) void check(false);
     };
     document.addEventListener("visibilitychange", onVisible);
     return () => document.removeEventListener("visibilitychange", onVisible);
@@ -190,16 +187,11 @@ export function useAppUpdate(
     };
     window.addEventListener(APP_UPDATE_EVENT, onNativeUpdate);
     return () => window.removeEventListener(APP_UPDATE_EVENT, onNativeUpdate);
-  }, [supported]);
+  }, [supported, setSheetOpen]);
 
   const install = useCallback(() => {
-    if (!state.release) return;
+    if (!supported || !state.release) return;
     try {
-      if (iosBridge && state.release.installUrl) {
-        iosBridge.installOta(state.release.installUrl);
-        setSheetOpen(false);
-        return;
-      }
       if (!bridge?.installApk) return;
       bridge.installApk(state.release.downloadUrl, state.release.sha256);
       setState((current) => ({
@@ -216,11 +208,11 @@ export function useAppUpdate(
         error: reason instanceof Error ? reason.message : String(reason),
       }));
     }
-  }, [bridge, iosBridge, state.release]);
+  }, [bridge, supported, state.release, setSheetOpen]);
 
   return {
     supported,
-    manualCheckSupported: bridge !== null && iosBridge === null,
+    manualCheckSupported: supported,
     state,
     sheetOpen,
     setSheetOpen,
