@@ -17,7 +17,7 @@ struct NativeModelOptionsView: View {
                     .frame(width: 44, height: 44).contentShape(.rect)
                     .background { Circle().fill(NativePalette.settingsCard).frame(width: 34, height: 34) }
                     .buttonStyle(.plain)
-            }.padding(.leading, 22).padding(.trailing, 12).padding(.top, 12).padding(.bottom, 10)
+            }.padding(.leading, 22).padding(.trailing, 12).padding(.top, 12).padding(.bottom, 14)
             ScrollView {
                 VStack(spacing: 20) {
                     NativeComposerOptionGroup(title: store.label("模型", "Model"), options: store.snapshot.models, selected: store.snapshot.modelValue, scale: store.snapshot.fontScale) { value in

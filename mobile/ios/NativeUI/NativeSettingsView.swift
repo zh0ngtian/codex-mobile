@@ -8,57 +8,55 @@ struct NativeSettingsView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                HStack {
-                    Text(store.label("设置", "Settings")).modifier(NativeScaledFont(size: 21, scale: store.snapshot.fontScale, weight: .bold, relativeTo: .title2))
-                    Spacer()
-                    Button(store.label("关闭", "Close"), systemImage: "xmark", action: close)
-                        .labelStyle(.iconOnly).font(.body.bold()).foregroundStyle(.secondary)
-                        .frame(width: 44, height: 44).background(NativePalette.settingsCard, in: .circle)
-                        .accessibilityIdentifier("native-settings-close")
-                        .disabled(store.snapshot.panel?.dismissible == false)
-                }.padding(.leading, 24).padding(.trailing, 16).padding(.top, 12).padding(.bottom, 12)
+                NativeSettingsHeaderView(title: store.label("设置", "Settings"), store: store,
+                                         disabled: store.snapshot.panel?.dismissible == false, close: close)
                 ScrollView {
                     VStack(spacing: 22) {
-                        NativeSettingsGroupView(title: store.label("应用", "Application")) {
-                            NativeSettingsChoiceRow(title: store.label("语言", "Language"), symbol: "globe", item: item("language"), store: store)
-                            separator
-                            NativeSettingsChoiceRow(title: store.label("字体大小", "Font Size"), symbol: "textformat.size", item: item("font"), store: store)
-                            separator
-                            Toggle(isOn: preferenceBinding) { Label(store.label("使用原生界面", "Use Native Interface"), systemImage: "iphone") }
-                                .padding(.horizontal, 15).frame(minHeight: 55)
-                                .accessibilityIdentifier("native-ui-preference")
-                                .disabled(store.preferenceSaving || !store.canChangeNativePreference)
+                        VStack(alignment: .leading, spacing: 8) {
+                            NativeSettingsGroupView(title: store.label("应用", "Application"), scale: store.snapshot.fontScale) {
+                                NativeSettingsChoiceRow(title: store.label("语言", "Language"), symbol: "globe", item: item("language"), store: store)
+                                separator
+                                NativeSettingsChoiceRow(title: store.label("字体大小", "Font Size"), symbol: "textformat", item: item("font"), store: store)
+                                separator
+                                Toggle(isOn: preferenceBinding) { Label(store.label("使用原生界面", "Use Native Interface"), systemImage: "laptopcomputer") }
+                                    .padding(.horizontal, 15).frame(minHeight: 55)
+                                    .accessibilityIdentifier("native-ui-preference")
+                                    .disabled(store.preferenceSaving || !store.canChangeNativePreference)
+                            }
+                            VStack(alignment: .leading, spacing: 5) {
+                                Text(store.label("下次完整启动时生效", "Applies at the next full launch"))
+                                    .modifier(NativeScaledFont(size: 11, scale: store.snapshot.fontScale, relativeTo: .caption))
+                                    .foregroundStyle(.secondary).frame(minHeight: 17, alignment: .leading)
+                                if store.preferenceSaving { ProgressView(store.label("正在保存输入与附件…", "Saving text and attachments…")) }
+                                if let error = store.preferenceError { Text(error).foregroundStyle(.red).accessibilityIdentifier("native-ui-preference-error") }
+                                if let error = item("font-error")?.text { Text(error).foregroundStyle(.red) }
+                            }.frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 15)
                         }
-                        VStack(alignment: .leading, spacing: 5) {
-                            Text(store.label("下次完整启动时生效", "Applies at the next full launch")).font(.caption).foregroundStyle(.secondary)
-                            if store.preferenceSaving { ProgressView(store.label("正在保存输入与附件…", "Saving text and attachments…")) }
-                            if let error = store.preferenceError { Text(error).foregroundStyle(.red).accessibilityIdentifier("native-ui-preference-error") }
-                            if let error = item("font-error")?.text { Text(error).foregroundStyle(.red) }
-                        }.frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 15).padding(.top, -15)
-                        NativeSettingsGroupView(title: store.label("连接", "Connection")) {
-                            NativeSettingsNavigationRow(title: store.label("设备", "Devices"), symbol: "desktopcomputer", value: store.label("\(store.navigationBackends.count) 台", "\(store.navigationBackends.count) devices")) { open("devices") }
-                            separator
-                            NativeSettingsChoiceRow(title: store.label("传输方式", "Transport"), symbol: "network", item: item("transport"), store: store)
+                        VStack(alignment: .leading, spacing: 8) {
+                            NativeSettingsGroupView(title: store.label("连接", "Connection"), scale: store.snapshot.fontScale) {
+                                NativeSettingsNavigationRow(title: store.label("设备", "Devices"), symbol: "laptopcomputer", value: store.label("\(store.navigationBackends.count) 台", "\(store.navigationBackends.count) devices")) { open("devices") }
+                                separator
+                                NativeSettingsChoiceRow(title: store.label("传输方式", "Transport"), symbol: "network", item: item("transport"), store: store)
+                            }
+                            Text(transportHint)
+                                .modifier(NativeScaledFont(size: 11, scale: store.snapshot.fontScale, relativeTo: .caption))
+                                .foregroundStyle(.secondary).frame(maxWidth: .infinity, minHeight: 17, alignment: .leading)
+                                .padding(.horizontal, 15)
                         }
-                        Text(transportHint)
-                            .font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal, 15).padding(.top, -15)
-                        NativeSettingsGroupView(title: store.label("通知", "Notifications")) {
+                        NativeSettingsGroupView(title: store.label("通知", "Notifications"), scale: store.snapshot.fontScale) {
                             NativeSettingsNavigationRow(title: store.label("通知", "Notifications"), symbol: "bell", value: selected("push")) { open("notifications") }
                         }
                     }.padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 24)
                 }.scrollIndicators(.hidden)
-                Button { open("updates") } label: {
-                    HStack(spacing: 7) { Text("Codex Mobile"); Text(version) }
-                        .font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity, minHeight: 44)
-                }.buttonStyle(.plain).accessibilityLabel(store.label("版本与检查更新", "Version and Check for Updates"))
+                Text("Codex Mobile \(version)")
+                    .font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity, minHeight: 44)
                     .accessibilityIdentifier("native-settings-version")
             }
             .background(NativePalette.settings)
             .navigationTitle(store.label("设置", "Settings")).navigationBarTitleDisplayMode(.inline)
             .toolbarVisibility(.hidden, for: .navigationBar)
             .navigationDestination(isPresented: detailBinding) {
-                NativeSettingsPanelDestination(store: store).toolbarVisibility(.visible, for: .navigationBar)
+                NativeSettingsPanelDestination(store: store)
             }
             .task { store.command("settings.open", ["id": .string("settings")]) }
             .onChange(of: store.snapshot.panel?.id, initial: true) { _, id in

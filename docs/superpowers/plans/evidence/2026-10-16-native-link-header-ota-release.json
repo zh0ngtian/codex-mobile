@@ -1,0 +1,26 @@
+{
+  "version": "0.2.179",
+  "buildNumber": "2179",
+  "size": 4706742,
+  "sha256": "f4662aa25e7a4b3d3a3639306efd2bb6c485436b76dba443d7d3944c354ecc4c",
+  "signed": true,
+  "sourceCommit": "cb6e33d7255ee8d1c1485e8af24bb7c332ef8072",
+  "installUrl": "https://192.168.123.79:8766/channels/codex-mobile/current/install.html",
+  "fixedIpaUrl": "http://192.168.123.79:8765/channels/codex-mobile/latest.ipa",
+  "githubReleasePublished": false,
+  "apkPublished": false,
+  "softwareSourceUpdated": false,
+  "distribution": "ota-only",
+  "githubLatestRelease": "v0.2.178",
+  "apkVersionUnchanged": "0.2.178",
+  "signatureIdentityPreserved": true,
+  "verification": [
+    "Swift smoke: 15 passed",
+    "iOS Simulator native interaction: passed",
+    "same-state visual comparison: passed",
+    "HTTPS JSON/manifest/install page/HEAD/full GET: passed",
+    "fixed IPA JSON/HEAD/full GET/size/SHA-256: passed"
+  ],
+  "deviceInstall": "未进行真机覆盖安装与数据保留验收",
+  "futureFormalBatch": "源码已推送到当前任务分支，后续正式批次须纳入本次源提交；本轮不推进正式main或触发双端Release"
+}

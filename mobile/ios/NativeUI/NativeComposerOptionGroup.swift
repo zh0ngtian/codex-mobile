@@ -10,7 +10,7 @@ struct NativeComposerOptionGroup: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(title).modifier(NativeScaledFont(size: 12, scale: scale, relativeTo: .caption))
-                .foregroundStyle(Color.secondary).padding(.horizontal, 14)
+                .foregroundStyle(Color.secondary).frame(minHeight: 20).padding(.horizontal, 14)
             VStack(spacing: 0) {
                 ForEach(options) { option in
                     VStack(spacing: 0) {
@@ -23,7 +23,7 @@ struct NativeComposerOptionGroup: View {
                                 }
                             }
                             .modifier(NativeScaledFont(size: 14, scale: scale))
-                            .padding(.vertical, 13).frame(minHeight: 50).contentShape(.rect)
+                            .frame(minHeight: 24).padding(.vertical, 13).frame(minHeight: 52).contentShape(.rect)
                         }.buttonStyle(.plain).accessibilityAddTraits(option.value == selected ? .isSelected : [])
                         if option.id != options.last?.id { Divider() }
                     }

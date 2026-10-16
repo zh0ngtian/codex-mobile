@@ -163,13 +163,55 @@ it('审批面板保留所有问题与secret并阻止过期请求和无效decisio
  await expect(Promise.resolve().then(() => b.handlers['approval.decide']!({ requestKey: 'number:10', index: 20 }))).rejects.toThrow();
 });
 
+const historyThread = (messageId = 'm') => ({ id: 't', turns: [{ id: 'turn', status: 'completed', items: [
+ { id: messageId, type: 'userMessage', content: [{ type: 'text', text: '原消息' }, { type: 'localImage', path: '/a.png' }] },
+ { id: 'reply', type: 'agentMessage', text: '原回复' },
+] }] });
+it('历史编辑精确挂到原消息并递归绑定上下文，正文附件和普通草稿保持独立', () => {
+ const edit = { threadId: 't', text: '编辑草稿', submitting: false, target: { turnId: 'turn', messageId: 'm', input: [{ type: 'localImage', path: '/a.png' }], attachmentCount: 1, precedingMessageCount: 2 } };
+ const a = createWorkspaceAdapter(controller({ active: historyThread(), draft: '普通输入草稿', extended: { state: { historyEdit: edit }, callbacks: {} } }), { panelId: null, query: '', setPanel() {}, setQuery() {} });
+ expect(a.snapshot.panel).toBeUndefined();
+ const target = a.snapshot.messages.find(message => message.id === 'turn:m')!;
+ expect(target.text).toBe('原消息'); expect(target.blocks?.[0].kind).toBe('image'); expect(a.snapshot.draft).toBe('普通输入草稿');
+ expect(target.historyEdit?.id).toBe('history-edit:t:turn:m');
+ expect(target.historyEdit?.items.find(item => item.id === 'history-text')).toMatchObject({ value: '编辑草稿', command: { name: 'history.change', params: { contextId: 'b:t:1', editKey: 't:turn:m', turnId: 'turn', messageId: 'm' } } });
+ expect(JSON.stringify(target.historyEdit)).toContain('同轮此前的 2 条用户消息及附件会一起重发');
+ expect(a.snapshot.messages.filter(message => message.historyEdit)).toHaveLength(1);
+ expect(target.historyEdit?.items.filter(item => item.command).every(item => item.command?.params.contextId === 'b:t:1')).toBe(true);
+});
+it('找不到历史目标时明确提示并只保留取消，不挂到其他消息或回退编辑sheet', async () => {
+ let cancelled = false;
+ const a = createWorkspaceAdapter(controller({ active: historyThread('other'), extended: { state: { historyEdit: { threadId: 't', text: '保留草稿', target: { turnId: 'turn', messageId: 'm' } } }, callbacks: { cancelHistoricalMessageEdit: () => { cancelled = true; } } } }), { panelId: 'history-edit', query: '', setPanel() {}, setQuery() {} });
+ expect(a.snapshot.panel).toBeUndefined(); expect(a.snapshot.messages.every(message => !message.historyEdit)).toBe(true);
+ expect(JSON.stringify(a.snapshot.conversationActions)).toContain('目标消息已变化，请取消编辑后重新选择');
+ await expect(Promise.resolve().then(() => a.handlers['history.submit']!({ editKey: 't:turn:m' }))).rejects.toThrow('目标消息已变化');
+ await a.handlers['history.cancel']!({ editKey: 't:turn:m' }); expect(cancelled).toBe(true);
+});
+it('删除确认返回原位，失败草稿保留且旧目标与提交中操作被业务身份门控', async () => {
+ let panelId: string | null = null; let submissions = 0;
+ let edit: any = { threadId: 't', text: '新草稿', submitting: false, target: { turnId: 'turn', messageId: 'm', hasLaterTurns: true, rollbackTurnCount: 2 } };
+ const c = controller({ active: historyThread(), extended: { state: { historyEdit: edit }, callbacks: { currentHistoryEdit: () => edit, submitHistoricalMessageEdit: async () => { submissions++; edit.submitting = true; throw new Error('发送失败'); } } } });
+ const project = () => createWorkspaceAdapter(c, { panelId, query: '', setPanel: id => { panelId = id; }, setQuery() {} });
+ await project().handlers['history.submit']!({ editKey: 't:turn:m' });
+ const confirm = project(); expect(confirm.snapshot.panel?.id).toBe('confirm-history:t:turn:m'); expect(confirm.snapshot.messages[0].historyEdit).toBeDefined();
+ await confirm.handlers['panel.close']!({ id: confirm.snapshot.panel!.id }); expect(project().snapshot.panel).toBeUndefined(); expect(project().snapshot.messages[0].historyEdit?.items[0].value).toBe('新草稿');
+ await project().handlers['history.submit']!({ editKey: 't:turn:m' });
+ await expect(project().handlers['history.submit']!({ editKey: 't:turn:m', confirmed: true })).rejects.toThrow('发送失败');
+ expect(panelId).toBeNull(); expect(submissions).toBe(1);
+ await expect(Promise.resolve().then(() => project().handlers['history.submit']!({ editKey: 't:turn:m', confirmed: true }))).rejects.toThrow('正在提交');
+ edit.submitting = false; c.error = '发送失败';
+ expect(project().snapshot.messages[0].historyEdit?.items[0].value).toBe('新草稿'); expect(project().snapshot.error).toBe('发送失败');
+ edit = { ...edit, target: { ...edit.target, messageId: 'other' } };
+ await expect(Promise.resolve().then(() => project().handlers['history.change']!({ editKey: 't:turn:m', value: '旧输入' }))).rejects.toThrow('编辑消息已变化');
+});
+
 it('历史编辑使用原编辑状态并要求显式删除后续确认，队列不确定取消同样确认', async () => {
  const calls: string[] = []; let shown: string | null = null;
- const c = controller({ readOnly: true, queued: [{ id: 'q', text: '待确认', state: 'uncertain', hosted: true }], extended: { state: {
+ const c = controller({ active: historyThread('msg'), readOnly: true, queued: [{ id: 'q', text: '待确认', state: 'uncertain', hosted: true }], extended: { state: {
  historyEdit: { threadId: 't', text: '修改', submitting: false, target: { turnId: 'turn', messageId: 'msg', rollbackTurnCount: 2, hasLaterTurns: true, input: [{ type: 'localImage', path: '/a.png' }] } },
  }, callbacks: { submitHistoricalMessageEdit: () => calls.push('submit'), changeHistoricalMessageEditText: (v: string) => calls.push(v) } }, cancelQueued: async (_id: string, confirmed?: boolean) => { if (confirmed) calls.push('cancel'); } } as any);
  const a = createWorkspaceAdapter(c, { panelId: null, query: '', setPanel: id => { shown = id; }, setQuery() {} });
- expect(a.snapshot.panel?.id).toBe('history-edit:t:turn:msg');
+ expect(a.snapshot.panel).toBeUndefined(); expect(a.snapshot.messages[0].historyEdit?.id).toBe('history-edit:t:turn:msg');
  await a.handlers['history.change']!({ value: '新文', editKey: 't:turn:msg' });
  await a.handlers['history.submit']!({ editKey: 't:turn:msg' }); expect(calls).toEqual(['新文']); expect(shown).toBe('confirm-history');
  await a.handlers['history.submit']!({ editKey: 't:turn:msg', confirmed: true }); expect(calls).toEqual(['新文', 'submit']);
@@ -184,7 +226,8 @@ it('审批和历史编辑使用身份隔离原生字段缓存并保持真实inpu
  c.extended!.state.approval = { id: 2, method: 'item/tool/requestUserInput', params: { questions: [] } };
  expect(createWorkspaceAdapter(c, state).snapshot.panel?.id).toBe('approval:number:2');
  c.extended!.state = { historyEdit: { threadId: 't', text: '', submitting: true, target: { turnId: 'turn', messageId: 'm', input: [{ type: 'localImage', path: '/tmp/a.png' }], attachmentCount: 1 } } };
- const panel = createWorkspaceAdapter(c, { ...state, panelId: null }).snapshot.panel!;
+ c.active = historyThread();
+ const panel = createWorkspaceAdapter(c, { ...state, panelId: null }).snapshot.messages[0].historyEdit!;
  expect(panel.id).toBe('history-edit:t:turn:m'); expect(panel.dismissible).toBe(false); expect(JSON.stringify(panel)).toContain('/tmp/a.png');
 });
 it('队列投影保留引导、重试、待确认状态并禁用发送中的修改取消', () => {
@@ -257,7 +300,7 @@ it('审批成功与历史提交、队列移除真实rerender后不保留空瞬�
   const approvals = useApprovalRequests(); const [historyEdit, setHistoryEdit] = useState<any>(null); const [queued, setQueued] = useState<any[]>([]);
   resolveHistory = () => setHistoryEdit({ threadId: 't', text: '修改', submitting: false, target: { turnId: 'turn', messageId: 'm', hasLaterTurns: true, rollbackTurnCount: 2 } });
   removeQueue = () => setQueued([{ id: 'q', state: 'uncertain', text: '待确认' }]);
-  useNativeConversationAdapter(runtime, controller({ queued, cancelQueued: async () => setQueued([]), approvalCount: approvals.requests.length, extended: { state: { approval: approvals.approval, userAnswers: approvals.userAnswers, historyEdit }, callbacks: { replyToRequest: (value: unknown) => approvals.submit(value, { respond: async () => {} }, () => {}, approvals.approval ?? undefined), submitHistoricalMessageEdit: () => setHistoryEdit(null) } } }));
+  useNativeConversationAdapter(runtime, controller({ active: historyThread(), queued, cancelQueued: async () => setQueued([]), approvalCount: approvals.requests.length, extended: { state: { approval: approvals.approval, userAnswers: approvals.userAnswers, historyEdit }, callbacks: { replyToRequest: (value: unknown) => approvals.submit(value, { respond: async () => {} }, () => {}, approvals.approval ?? undefined), submitHistoricalMessageEdit: () => setHistoryEdit(null) } } }));
   return approvals;
  });
  await act(async () => { result.current.receive({ id: 1, method: 'item/commandExecution/requestApproval' }); await runtime.dispatch({ id: 'approval-open', name: 'panel.open', params: { contextId: 'b:t:1', id: 'approval' } }); });

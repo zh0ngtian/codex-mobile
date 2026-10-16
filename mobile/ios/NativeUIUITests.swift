@@ -9,6 +9,86 @@ final class NativeUIUITests: XCTestCase {
         return app
     }
 
+    private func historyReference(fails: Bool = false) -> XCUIApplication {
+        let app = XCUIApplication()
+        app.launchArguments = ["--native-ui-reference-history"] + (fails ? ["--native-ui-reference-history-failure"] : [])
+        app.launch()
+        XCTAssertTrue(app.staticTexts["原消息"].waitForExistence(timeout: 5))
+        app.staticTexts["原消息"].press(forDuration: 1)
+        app.buttons["编辑"].tap()
+        return app
+    }
+
+    func testHistoricalEditStaysAtMessageAndCancelKeepsAttachmentsAndComposer() {
+        let app = historyReference()
+        let input = app.descendants(matching: .any)["native-history-input"]
+        XCTAssertTrue(input.waitForExistence(timeout: 5))
+        XCTAssertTrue(input.isHittable)
+        XCTAssertGreaterThanOrEqual(input.frame.minY, app.frame.minY)
+        XCTAssertLessThanOrEqual(input.frame.maxY, app.frame.maxY)
+        XCTAssertTrue(app.buttons["native-history-submit"].isHittable)
+        XCTAssertTrue(app.buttons["native-history-cancel"].isHittable)
+        XCTAssertFalse(app.navigationBars["编辑历史消息"].exists)
+        XCTAssertTrue(app.staticTexts["original.txt"].exists)
+        XCTAssertTrue(app.staticTexts["后续对话仍在原位置"].exists)
+        input.tap(); input.typeText(" 已编辑\n第二行")
+        XCTAssertTrue((input.value as? String)?.contains("第二行") == true)
+        capture("历史编辑-原位", app: app)
+        app.buttons["native-history-cancel"].tap()
+        XCTAssertFalse(input.exists)
+        XCTAssertTrue(app.staticTexts["原消息"].exists)
+        XCTAssertTrue(app.staticTexts["original.txt"].exists)
+        let composer = app.descendants(matching: .any)["native-composer-input"]
+        XCTAssertEqual(composer.value as? String, "普通输入草稿")
+    }
+
+    func testHistoricalEditConfirmationReturnsInlineThenSavesAndResends() {
+        let app = historyReference()
+        let input = app.descendants(matching: .any)["native-history-input"]
+        XCTAssertTrue(input.waitForExistence(timeout: 5))
+        XCTAssertTrue(input.isHittable)
+        XCTAssertGreaterThanOrEqual(input.frame.minY, app.frame.minY)
+        XCTAssertLessThanOrEqual(input.frame.maxY, app.frame.maxY)
+        XCTAssertTrue(app.buttons["native-history-submit"].isHittable)
+        XCTAssertTrue(app.buttons["native-history-cancel"].isHittable)
+        input.tap(); input.typeText(" 新要求")
+        let draft = input.value as? String
+        app.buttons["native-history-submit"].tap()
+        XCTAssertTrue(app.staticTexts["修改并重新发送将删除此消息之后的对话"].waitForExistence(timeout: 5))
+        capture("历史编辑-确认", app: app)
+        app.buttons["完成"].tap()
+        XCTAssertTrue(input.waitForExistence(timeout: 3))
+        XCTAssertEqual(input.value as? String, draft)
+        XCTAssertTrue(app.staticTexts["后续对话仍在原位置"].exists)
+        app.buttons["native-history-submit"].tap()
+        app.buttons["确认并发送"].tap()
+        XCTAssertTrue(app.staticTexts[draft!].waitForExistence(timeout: 3))
+        XCTAssertFalse(input.exists)
+        XCTAssertFalse(app.staticTexts["后续对话仍在原位置"].exists)
+        XCTAssertTrue(app.staticTexts["original.txt"].exists)
+    }
+
+    func testHistoricalEditSendFailureKeepsInlineDraftAndAttachment() {
+        let app = historyReference(fails: true)
+        let input = app.descendants(matching: .any)["native-history-input"]
+        XCTAssertTrue(input.waitForExistence(timeout: 5))
+        XCTAssertTrue(input.isHittable)
+        XCTAssertGreaterThanOrEqual(input.frame.minY, app.frame.minY)
+        XCTAssertLessThanOrEqual(input.frame.maxY, app.frame.maxY)
+        XCTAssertTrue(app.buttons["native-history-submit"].isHittable)
+        XCTAssertTrue(app.buttons["native-history-cancel"].isHittable)
+        input.tap(); input.typeText(" 失败草稿")
+        let draft = input.value as? String
+        app.buttons["native-history-submit"].tap()
+        app.buttons["确认并发送"].tap()
+        XCTAssertTrue(app.staticTexts["发送失败，请重试"].waitForExistence(timeout: 3))
+        XCTAssertEqual(input.value as? String, draft)
+        XCTAssertTrue(app.buttons["native-history-submit"].isEnabled)
+        XCTAssertTrue(app.staticTexts["original.txt"].exists)
+        XCTAssertFalse(app.navigationBars["确认修改历史消息"].exists)
+        capture("历史编辑-失败", app: app)
+    }
+
     func testVisualReferenceUsesSameNativeViewsAndIndependentFixture() {
         let app = XCUIApplication()
         app.launchArguments = ["--native-ui-reference-visual"]
@@ -194,6 +274,96 @@ final class NativeUIUITests: XCTestCase {
         capture("预览对照-设置", app: app)
     }
 
+    func testReferenceSettingsSubpageAuditScreenshots() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--native-ui-reference-visual", "--native-ui-reference-visual-zh", "--native-ui-reference-visual-sidebar"]
+        app.launch()
+        app.buttons["native-sidebar-device-menu"].tap()
+        app.buttons["native-settings-open"].tap()
+        app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "设备")).firstMatch.tap()
+        XCTAssertTrue(app.staticTexts["DEMO5VYDY4"].waitForExistence(timeout: 5))
+        capture("审查-设备", app: app)
+        if !app.buttons["添加设备"].isHittable { app.swipeUp() }
+        app.buttons["添加设备"].tap()
+        XCTAssertTrue(app.secureTextFields.firstMatch.waitForExistence(timeout: 5))
+        capture("审查-设备表单", app: app)
+        app.buttons["取消"].tap()
+        app.buttons["native-settings-back"].tap()
+        app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "通知")).firstMatch.tap()
+        XCTAssertTrue(app.buttons["保存推送设置"].waitForExistence(timeout: 5))
+        capture("审查-通知", app: app)
+        app.buttons["native-settings-choice-bark"].tap()
+        XCTAssertTrue(app.secureTextFields["native-field-bark-url"].waitForExistence(timeout: 5))
+        capture("审查-Bark通知", app: app)
+    }
+
+    func testDeviceMenuKeepsCompactRowsAndOpensSettings() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--native-ui-reference-visual", "--native-ui-reference-visual-zh", "--native-ui-reference-visual-sidebar"]
+        app.launch()
+        app.buttons["native-sidebar-device-menu"].tap()
+        XCTAssertTrue(app.staticTexts["连接的设备"].waitForExistence(timeout: 5))
+        let settings = app.buttons["native-settings-open"]
+        XCTAssertTrue(settings.isHittable)
+        XCTAssertLessThanOrEqual(settings.frame.height, 55)
+        XCTAssertLessThan(settings.frame.minY, app.frame.midY)
+        capture("审查-设备菜单对齐", app: app)
+        settings.tap()
+        XCTAssertTrue(app.switches["native-ui-preference"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.staticTexts["连接的设备"].exists)
+    }
+
+    func testReferenceNotificationsAuditScreenshot() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--native-ui-reference-visual", "--native-ui-reference-visual-zh", "--native-ui-reference-visual-sidebar"]
+        app.launch()
+        app.buttons["native-sidebar-device-menu"].tap()
+        app.buttons["native-settings-open"].tap()
+        app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "通知")).firstMatch.tap()
+        XCTAssertTrue(app.buttons["保存推送设置"].waitForExistence(timeout: 5))
+        capture("审查-通知", app: app)
+    }
+
+    func testAttachmentSheetKeepsDraftAndRestoresFocusAfterCancel() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--native-ui-reference-visual", "--native-ui-reference-visual-zh", "--native-ui-reference-visual-focused"]
+        app.launch()
+        let input = app.descendants(matching: .any)["native-composer-input"]
+        XCTAssertTrue(input.waitForExistence(timeout: 5))
+        input.typeText("保留附件草稿")
+        app.buttons["添加附件"].tap()
+        XCTAssertTrue(app.buttons["Skill 与插件"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["照片"].isHittable)
+        XCTAssertTrue(app.buttons["文件"].isHittable)
+        XCTAssertTrue(app.buttons["当前位置"].isHittable)
+        capture("审查-附件", app: app)
+        app.buttons["native-attachment-close"].tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        XCTAssertTrue((input.value as? String)?.contains("保留附件草稿") == true)
+    }
+
+    func testProjectDisclosureHidesPagingAndRestoresActions() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--native-ui-reference-visual", "--native-ui-reference-visual-zh", "--native-ui-reference-visual-sidebar", "--native-ui-reference-project-pagination"]
+        app.launch()
+        let project = app.buttons["native-group-toggle-visual-project-4"]
+        let more = app.buttons["native-group-action-visual-project-4:more"]
+        XCTAssertTrue(project.waitForExistence(timeout: 5))
+        XCTAssertEqual(project.value as? String, "已展开")
+        XCTAssertTrue(more.exists)
+        capture("项目-展开", app: app)
+        project.tap()
+        XCTAssertEqual(project.value as? String, "已折叠")
+        XCTAssertFalse(more.exists)
+        XCTAssertFalse(app.buttons["native-navigation-project-child-1"].exists)
+        capture("项目-折叠", app: app)
+        project.tap()
+        XCTAssertTrue(more.waitForExistence(timeout: 5))
+        more.tap()
+        XCTAssertTrue(app.buttons["native-navigation-visual-more"].waitForExistence(timeout: 5))
+        XCTAssertFalse(more.exists)
+    }
+
     private func capture(_ name: String, app: XCUIApplication) {
         let attachment = XCTAttachment(screenshot: app.screenshot())
         attachment.name = name
@@ -304,7 +474,8 @@ final class NativeUIUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["设备"].waitForExistence(timeout: 5))
         app.navigationBars.buttons["设置"].tap()
         XCTAssertTrue(app.switches["native-ui-preference"].waitForExistence(timeout: 3))
-        XCTAssertTrue(app.buttons["native-settings-version"].exists)
+        XCTAssertTrue(app.staticTexts["native-settings-version"].exists)
+        XCTAssertFalse(app.buttons["native-settings-version"].exists)
         XCTAssertFalse(app.buttons["应用更新"].exists)
         app.buttons["native-settings-close"].tap()
     }

@@ -46,6 +46,17 @@ it('单设备与现有关注/项目筛选仍保留分类，折叠不移除项目
  expect(navigation(input).map(group => group.category)).toEqual(['pinned', 'project', 'recent']);
 });
 
+it('折叠项目不暴露分页、重试和加载状态，展开后恢复真实动作', () => {
+ const input = { listBackendId: 'a', projectDirectories: ['/p'], projectHasMore: { '/p': true }, projectThreadStates: { '/p': 'error' as const }, loadingProjectKeys: new Set<string>() };
+ const folded = navigation({ ...input, collapsedProjectKeys: new Set(['a:/p']) }).find(g => g.id === 'a:/p')!;
+ expect(folded.actions).toEqual([]); expect(folded.loading).toBeUndefined();
+ const expanded = navigation(input).find(g => g.id === 'a:/p')!;
+ expect(expanded.actions?.map(a => a.command?.name)).toEqual(['project.retry', 'project.more']);
+ expect(expanded.actions?.[1].command?.params).toEqual({ backendId: 'a', cwd: '/p' });
+ const loading = navigation({ ...input, projectThreadStates: { '/p': 'ready' }, loadingProjectKeys: new Set(['a:/p']) }).find(g => g.id === 'a:/p')!;
+ expect(loading.actions?.[0]).toMatchObject({ title: '加载中…', disabled: true });
+});
+
 it('消息时间仅投影真实turn开始和final完成时间，未知时间不填当前时间', () => {
  const turns = [{ id: 'known', startedAt: 100, completedAt: 150, items: [{ id: 'u', type: 'userMessage', text: '问' }, { id: 'c', type: 'agentMessage', phase: 'commentary', text: '过程' }, { id: 'f', type: 'agentMessage', phase: 'final_answer', text: '答' }] },
   { id: 'unknown', items: [{ id: 'u2', type: 'userMessage', text: '再问' }, { id: 'f2', type: 'agentMessage', phase: 'final_answer', text: '再答' }] }];

@@ -65,7 +65,7 @@ final class NativeUIStore {
 
     init(arguments: [String] = ProcessInfo.processInfo.arguments) {
         visualReferenceFocused = arguments.contains("--native-ui-reference-visual-focused")
-        isReference = arguments.contains("--native-ui-reference") || arguments.contains("--native-ui-reference-conversation") || arguments.contains("--native-ui-reference-visual")
+        isReference = arguments.contains("--native-ui-reference-history") || arguments.contains("--native-ui-reference") || arguments.contains("--native-ui-reference-conversation") || arguments.contains("--native-ui-reference-visual")
         #if DEBUG
         nativeEnabled = isReference || Self.launchPreference || arguments.contains("--native-ui-live")
         #else
@@ -116,7 +116,14 @@ final class NativeUIStore {
         }
         if arguments.contains("--native-ui-reference-visual") {
             snapshot = NativeVisualReference.snapshot(chinese: arguments.contains("--native-ui-reference-visual-zh"))
+            if arguments.contains("--native-ui-reference-project-pagination"), let index = snapshot.groups.firstIndex(where: { $0.id == "visual-project-4" }) {
+                snapshot.groups[index].actions = [NativePanelItem(id: "visual-project-4:more", kind: "action", title: "加载更多", command: NativeCommand(name: "project.more", params: ["backendId": .string("visual-device"), "cwd": .string("/demo/demo_gpu_monitor")]))]
+            }
             sidebarOpen = arguments.contains("--native-ui-reference-visual-sidebar")
+        }
+        if arguments.contains("--native-ui-reference-history") {
+            snapshot = NativeHistoryEditReference.snapshot(fails: arguments.contains("--native-ui-reference-history-failure"))
+            draft = snapshot.draft
         }
     }
     func requestNativePreference(_ enabled: Bool) {
@@ -173,6 +180,12 @@ final class NativeUIStore {
             commandError = nil
             textPrompt = nil
         }
+        pendingFields = pendingFields.filter { key, _ in
+            if case .historyEdit(let contextID, let messageID, let editID) = key.scope {
+                return contextID == (value.contextId ?? "") && value.messages.first(where: { $0.id == messageID })?.historyEdit?.id == editID
+            }
+            return true
+        }
         if panelChanged {
             pendingFields = pendingFields.filter { key, _ in
                 if case .panel = key.scope { return false }
@@ -220,6 +233,10 @@ final class NativeUIStore {
         switch scope {
         case .panel(let id):
             items = snapshot.panel?.id == id ? snapshot.panel?.items ?? [] : []
+        case .historyEdit(let contextID, let messageID, let editID):
+            if contextID == (snapshot.contextId ?? ""), let editor = snapshot.messages.first(where: { $0.id == messageID })?.historyEdit, editor.id == editID {
+                items = editor.items
+            } else { items = [] }
         case .message(let id):
             if let message = snapshot.messages.first(where: { $0.id == id }) {
                 items = (message.blocks ?? []) + (message.actions ?? [])
@@ -355,9 +372,22 @@ final class NativeUIStore {
             return
         }
         if isReference {
+            if NativeHistoryEditReference.handle(name, params: params, snapshot: &snapshot, error: &commandError) { return }
+            if name == "project.toggle", let index = snapshot.groups.firstIndex(where: { $0.command?.name == "project.toggle" && $0.command?.params == params }) {
+                snapshot.groups[index].collapsed = snapshot.groups[index].collapsed != true
+            }
+            if name == "project.more", let index = snapshot.groups.firstIndex(where: { $0.command?.params == params }) {
+                snapshot.groups[index].items.append(NativeNavigationItem(id: "visual-more", title: "加载出的历史会话"))
+                snapshot.groups[index].actions = []
+            }
             if name == "settings.open", case .string(let id) = params["id"] {
+                if id == "devices" { snapshot.panel = NativeReferenceSettings.devices(locale: snapshot.locale); return }
+                if id == "notifications" { snapshot.panel = NativeReferenceSettings.notifications(locale: snapshot.locale); return }
                 snapshot.panel = id == "settings" ? NativeReferenceSettings.panel(locale: snapshot.locale, fontScale: snapshot.fontScale) : NativePanel(id: "reference-settings:\(id)", title: label("设置", "Settings"), items: [NativePanelItem(id: "reference-setting-value", kind: "text", title: id == "devices" ? label("设备", "Devices") : label("检查更新", "Check for Updates"))])
             }
+            if ["device.add", "device.edit"].contains(name) { snapshot.panel = NativeReferenceSettings.deviceForm(locale: snapshot.locale) }
+            if name == "device.cancel" { snapshot.panel = NativeReferenceSettings.devices(locale: snapshot.locale) }
+            if name == "settings.push.mode" { snapshot.panel = NativeReferenceSettings.notifications(locale: snapshot.locale, bark: params["value"] == .string("bark")) }
             if ["settings.language", "settings.font"].contains(name), case .string(let value) = params["value"] {
                 if name == "settings.language", value != "system" { snapshot.locale = value }
                 if name == "settings.font" { snapshot.fontScale = ["small": 0.875, "standard": 1, "large": 1.125, "extra-large": 1.25][value] ?? 1 }
@@ -466,6 +496,11 @@ final class NativeUIStore {
     }
     func sendFieldEdit(_ item: NativePanelItem, scope: NativeFieldScope, values: [String: NativeJSONValue]) {
         guard let action = item.command else { return }
+        if case .historyEdit(let contextID, let messageID, let editID) = scope {
+            guard contextID == (snapshot.contextId ?? ""),
+                  let editor = snapshot.messages.first(where: { $0.id == messageID })?.historyEdit,
+                  editor.id == editID, editor.items.first(where: { $0.id == item.id })?.disabled != true else { return }
+        }
         let key = NativeFieldKey(scope: scope, itemID: item.id)
         fieldRevision += 1
         pendingFields[key] = fieldRevision

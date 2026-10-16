@@ -11,4 +11,11 @@ struct NativeComposerAdjustment: Identifiable {
         guard contextID == self.contextID, editable, !sidebarOpen else { return nil }
         return wasFocused
     }
+    /// 系统选择器或后续面板必须等当前 sheet 关闭后，再检查原会话是否仍可编辑。
+    func deferredAttachmentCommand(_ command: NativeCommand?, contextID: String?, editable: Bool, sidebarOpen: Bool) -> NativeCommand? {
+        guard kind == .attachments,
+              restoredFocus(contextID: contextID, editable: editable, sidebarOpen: sidebarOpen) != nil else { return nil }
+        return command
+    }
+
 }

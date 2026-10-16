@@ -3,24 +3,12 @@ import SwiftUI
 struct NativeSidebarView: View {
     @Bindable var store: NativeUIStore
     @State private var searchVisible = false
+    @State private var deviceMenuOpen = false
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 12) {
                 NativeIconButton(title: store.label("关闭侧栏", "Close Sidebar"), symbol: "line.3.horizontal", identifier: "native-sidebar-close") { store.sidebarIsOpen = false }
-                Menu {
-                    Button(store.label("全部设备", "All Devices")) { store.command("backend.select", ["id": .string("all")]) }
-                    ForEach(store.navigationBackends) { backend in
-                        Button(backend.title) { store.command("backend.select", ["id": .string(backend.id)]) }
-                    }
-                    Divider()
-                    Button(store.label("草稿", "Drafts")) { store.command("drafts.open") }
-                    Button(store.label("设置", "Settings")) { store.settingsOpen = true }.accessibilityIdentifier("native-settings-open")
-                    Button(store.label("刷新", "Refresh")) { store.command("navigation.refresh") }.accessibilityIdentifier("native-sidebar-refresh")
-                    Divider()
-                    Button(store.label("关注", "Favorites")) { store.command("navigation.filter", ["value": .string("favorites")]) }
-                    Button(store.label("项目", "Projects")) { store.command("navigation.filter", ["value": .string("projects")]) }
-                    Button(store.label("会话", "Conversations")) { store.command("navigation.filter", ["value": .string("sessions")]) }
-                } label: {
+                Button { deviceMenuOpen.toggle() } label: {
                     VStack(spacing: 3) {
                         HStack(spacing: 7) {
                             Text("Codex").modifier(NativeScaledFont(size: 18, scale: store.snapshot.fontScale, weight: .bold, relativeTo: .headline))
@@ -71,6 +59,22 @@ struct NativeSidebarView: View {
                     }
             }
             .accessibilityElement(children: .contain).accessibilityIdentifier("native-sidebar")
+            .overlay(alignment: .topLeading) {
+                if deviceMenuOpen {
+                    GeometryReader { geometry in
+                        ZStack(alignment: .topLeading) {
+                            Button { deviceMenuOpen = false } label: {
+                                Color.clear.frame(maxWidth: .infinity, maxHeight: .infinity).contentShape(.rect)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel(store.label("关闭设备菜单", "Close Device Menu"))
+                            NativeSidebarDeviceMenu(store: store) { deviceMenuOpen = false }
+                                .frame(width: min(340, max(196, geometry.size.width - 96)))
+                                .offset(x: 78, y: 56)
+                        }
+                    }
+                }
+            }
     }
     private var projectGroups: [NativeGroup] { store.snapshot.groups.filter { $0.category == "project" } }
     private var leadingGroups: [NativeGroup] { store.snapshot.groups.filter { $0.category == "pinned" || $0.category == "search" || $0.category == nil } }

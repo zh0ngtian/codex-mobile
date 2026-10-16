@@ -32,7 +32,17 @@ class Adapter:
         self.root = self.progress_path.parent.parent / 'artifacts' / 'codex-mobile' / context['id']
         self.root.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.repo = self.options['github_repository']
-        self.mobile = self.options['kind'] == 'mobile'
+        self.ota_only = self.options['kind'] == 'mobile-ota'
+        self.mobile = self.options['kind'] in ('mobile', 'mobile-ota')
+        self.ota_phases = ['main', 'iosbuild', 'sign', 'ota', 'ipa', 'verify']
+        if self.ota_only or context['project'] == 'codex-mobile-ios-ota-production':
+            if not (self.ota_only and context['project'] == 'codex-mobile-ios-ota-production'
+                    and self.config['target'] == 'vip.loock.codexmobile'
+                    and self.config['environment'] == 'ota-production'
+                    and self.config.get('branch') == 'main'
+                    and context['scope'] == 'codex-mobile-main-production'
+                    and self.config.get('phases') == self.ota_phases):
+                raise ValueError('OTA-only 项目、身份、环境、作用域或发布阶段不匹配')
         self._ios_config = None
 
     def command(self, args, cwd=None, input=None):
@@ -597,7 +607,16 @@ class Adapter:
         if run['conclusion']!='success':raise ValueError('冻结提交必要开发 CI 未通过')
         return {'done':True,'result':{'runId':run['id'],'attempt':run.get('run_attempt',1),'sourceCommit':self.frozen_sha}}
 
+    def require_authorized_phase(self, phase):
+        if self.ota_only and phase not in self.ota_phases:
+            raise ValueError('OTA-only 目标禁止执行阶段: ' + phase)
+
+    def prior_ota_history(self):
+        from release_coordination.prior_ota import included_history
+        return included_history(self)
+
     def check_phase(self, phase):
+        self.require_authorized_phase(phase)
         if phase=='main':return self.main_check()
         if phase=='build':return self.build_check()
         if phase=='iosbuild':return self.iosbuild_check()
@@ -611,25 +630,33 @@ class Adapter:
         if phase=='verify':
             development=self.development_check()
             if not development['done']:return {'done':False,'result':{'missing':'development'}}
-            phases=['main','build','iosbuild','sign','ota','apk','ipa','source'] if self.mobile else ['main','gateway']
+            phases=self.ota_phases[:-1] if self.ota_only else ['main','build','iosbuild','sign','ota','apk','ipa','source'] if self.mobile else ['main','gateway']
             evidence={'development':development['result']}
             for step in phases:
                 checked=self.check_phase(step)
                 if not checked.get('done'):return {'done':False,'result':{'missing':step}}
                 evidence[step]=checked['result']
             # GitHub Release contents are independently downloaded, not just trusted CI filenames.
-            if self.mobile:
+            if self.mobile and not self.ota_only:
                 for item in evidence['build']['artifacts'].values():
                     self.download_verified(item['downloadUrl'],item,self.root/('verified-github-'+Path(item['path']).name))
                 if evidence['apk']['version']!=evidence['ipa']['version']:raise ValueError('双端渠道版本不一致')
                 atomic_json(self.root/'ota-release.json',{**evidence['ota'],'lan':evidence['ipa'],'source':evidence['source'],
                             'verifiedAt':time.time(),'appSource':{'signedPackage':'disabled','unsignedVerified':True}})
+            history = self.prior_ota_history() if self.ota_only else []
+            if self.ota_only:
+                atomic_json(self.root/'ota-release.json', {**evidence['ota'], 'lan':evidence['ipa'],
+                    'sourceCommit':self.frozen_sha, 'batchId':self.context['id'], 'distribution':'ota-only',
+                    'githubReleasePublished':False, 'apkPublished':False, 'softwareSourceUpdated':False,
+                    'priorStandaloneDeliveries':history, 'verifiedAt':time.time()})
             return {'done':True,'result':{'sourceCommit':self.frozen_sha,'batchId':self.context['id'],'channels':evidence,
+                             **({'distribution':'ota-only','priorStandaloneDeliveries':history} if self.ota_only else {}),
                              'tasksIncluded':[t['sha'] for t in self.context['tasks']], 'verifiedAt':time.time(),
                              'deviceInstall':'未进行真机覆盖安装与数据保留验收'}}
         raise ValueError('不支持的发布阶段: '+phase)
 
     def execute_phase(self, phase):
+        self.require_authorized_phase(phase)
         if phase=='main':
             self.command(['git','push','origin',self.frozen_sha+':refs/heads/'+self.config['branch']])
         elif phase=='build':self.run_build()

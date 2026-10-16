@@ -29,7 +29,6 @@ struct NativeInlineContentView: View {
             }
             if run.link != nil {
                 value[run.range].foregroundColor = .primary
-                value[run.range].underlineStyle = .single
             }
         }
         return value

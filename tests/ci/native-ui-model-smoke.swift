@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 
 @main
 struct NativeStoreSmoke {
@@ -13,12 +14,24 @@ struct NativeStoreSmoke {
         }
         defaults.removeObject(forKey: NativeUIStore.preferenceKey)
         NativeComposerPresentationSmoke.verify()
+        NativeHistoryEditSmoke.verify()
+        let inlineJSON = Data(#"{"id":"turn:m","role":"user","text":"原消息","historyEdit":{"id":"history-edit:t:turn:m","title":"编辑历史消息","items":[{"id":"history-text","kind":"multilineField","value":"新草稿"}]}}"#.utf8)
+        let inlineMessage = try JSONDecoder().decode(NativeMessage.self, from: inlineJSON)
+        let inlineRoundtrip = try JSONSerialization.jsonObject(with: JSONEncoder().encode(inlineMessage)) as! [String: Any]
+        precondition((inlineRoundtrip["historyEdit"] as? [String: Any])?["id"] as? String == "history-edit:t:turn:m", "真实原生DTO必须保留消息原位编辑而不丢弃字段")
         let adjustment = NativeComposerAdjustment(kind: .model, contextID: "b:t:1", wasFocused: true)
         precondition(adjustment.restoredFocus(contextID: "b:t:1", editable: true, sidebarOpen: false) == true, "调节完成恢复原输入焦点")
         precondition(adjustment.restoredFocus(contextID: "b:t:2", editable: true, sidebarOpen: false) == nil, "过期调节面板不能聚焦另一会话")
         precondition(adjustment.restoredFocus(contextID: "b:t:1", editable: false, sidebarOpen: false) == nil, "只读或等待态不恢复键盘")
         precondition(adjustment.restoredFocus(contextID: "b:t:1", editable: true, sidebarOpen: true) == nil, "侧栏展开时不恢复键盘")
         precondition(NativeComposerAdjustment(kind: .permission, contextID: "b:t:1", wasFocused: false).restoredFocus(contextID: "b:t:1", editable: true, sidebarOpen: false) == false, "原先收起的输入保持收起")
+        let attachmentSession = NativeComposerAdjustment(kind: .attachments, contextID: "b:t:1", wasFocused: true)
+        let photoCommand = NativeCommand(name: "attachment.pick", params: ["kind": .string("photos")])
+        precondition(attachmentSession.deferredAttachmentCommand(photoCommand, contextID: "b:t:1", editable: true, sidebarOpen: false)?.params["kind"] == .string("photos"), "关闭附件面板后执行原选择动作")
+        precondition(attachmentSession.deferredAttachmentCommand(photoCommand, contextID: "b:t:2", editable: true, sidebarOpen: false) == nil, "切换会话后不能执行旧附件动作")
+        precondition(attachmentSession.deferredAttachmentCommand(photoCommand, contextID: "b:t:1", editable: false, sidebarOpen: false) == nil, "只读态不能打开附件选择器")
+        precondition(attachmentSession.deferredAttachmentCommand(photoCommand, contextID: "b:t:1", editable: true, sidebarOpen: true) == nil, "展开侧栏后取消待执行附件动作")
+        precondition(adjustment.deferredAttachmentCommand(photoCommand, contextID: "b:t:1", editable: true, sidebarOpen: false) == nil, "配置面板不能执行附件动作")
         precondition(NativeRateLimit(remainingPercent: 72, resetsAt: 2000, windowDurationMins: 10).remainingTimePercent(at: Date(timeIntervalSince1970: 1700)) == 50)
         precondition(NativeRateLimit(remainingPercent: 72, resetsAt: nil, windowDurationMins: 10).remainingTimePercent(at: Date(timeIntervalSince1970: 1700)) == nil, "没有可靠重置时间不能伪造时间余量")
         precondition(NativeRateLimit(remainingPercent: 72, resetsAt: 2000, windowDurationMins: 0).remainingTimePercent(at: Date(timeIntervalSince1970: 1700)) == nil)
@@ -349,6 +362,12 @@ struct NativeStoreSmoke {
                 .map { String(text[$0.range].characters) }.joined()
         }
         func links(_ source: String) -> [URL] { NativeInlineMarkdown.text(source).runs.compactMap(\.link) }
+        let linkedPresentation = NativeInlineMarkdown.text("正文 [网页](https://example.com/path) 和 [文件](/tmp/example.swift#L12)")
+        let linkedRuns = linkedPresentation.runs.filter { $0.link != nil }
+        expect(linkedRuns.count == 2, "网页与文件仍是真实可点击链接")
+        expect(linkedRuns.allSatisfy { $0.underlineStyle == Text.LineStyle(pattern: .dash) }, "网页与文件链接均须使用虚线下划线")
+        expect(linkedPresentation.runs.filter { $0.link == nil }.allSatisfy { $0.underlineStyle == nil }, "虚线不能扩散到普通正文")
+        expect(linkedRuns.compactMap(\.link).map(\.absoluteString) == ["https://example.com/path", "/tmp/example.swift#L12"], "样式修正不能改写链接目的地")
         let cjk = "**二是希望细化合规路径及办理指导。**企业关注"
         expect(plain(cjk) == "二是希望细化合规路径及办理指导。企业关注", "中文句末粗体不能裸露星号")
         expect(strong(cjk) == "二是希望细化合规路径及办理指导。", "仅前句应有真实 Foundation strong 属性")

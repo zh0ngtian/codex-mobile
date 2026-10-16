@@ -59,7 +59,7 @@ export function bindWorkspaceCommands(snapshot: NativeSnapshot): NativeSnapshot 
   const item = (value: NativePanelItem): NativePanelItem => ({ ...value, command: contextual(value.command), children: value.children?.map(item) });
   return { ...snapshot,
     attachments: snapshot.attachments.map(value => ({ ...value, command: contextual(value.command) })),
-    messages: snapshot.messages.map(message => ({ ...message, blocks: message.blocks?.map(item), actions: message.actions?.map(item) })),
+    messages: snapshot.messages.map(message => ({ ...message, blocks: message.blocks?.map(item), actions: message.actions?.map(item), historyEdit: message.historyEdit ? { ...message.historyEdit, items: message.historyEdit.items.map(item) } : undefined })),
     queued: snapshot.queued.map(entry => ({ ...entry, command: contextual(entry.command), actions: entry.actions?.map(item) })),
     conversationActions: snapshot.conversationActions?.map(item),
     panel: snapshot.panel ? { ...snapshot.panel, items: snapshot.panel.items.map(item) } : undefined,
@@ -78,7 +78,8 @@ export function createWorkspaceAdapter(c: NativeWorkspaceController, panel: Pane
     ...filterInstalledPlugins(c.plugins, mention.query).slice(0, 8).map(plugin => ({ id: `plugin:${plugin.id}`, value: `plugin:${plugin.id}`, title: pluginDisplayName(plugin), subtitle: pluginDescription(plugin) })),
   ] : [];
   const hasInput = !!c.draft.trim() || !!c.draftImages.length || !!c.draftFiles.length;
-  const business = workspaceBusinessPanels(c, panel);
+  const business = workspaceBusinessPanels(c, panel, messages);
+  if (business.historyMessage) business.historyMessage.historyEdit = business.historyEdit;
   const context = contextUsageView(state.tokenUsage);
   const limits = state.rateLimits?.rateLimits ?? state.rateLimits;
   const rateLimitWindow = [limits?.secondary, limits?.primary].find(entry => Number.isFinite(Number(entry?.windowDurationMins)) && Number(entry?.windowDurationMins) >= 7 * 24 * 60);
