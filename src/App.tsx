@@ -1,4 +1,5 @@
 import { NativeSwitchBoundary, useNativeSwitch, useSwitchRegistry, useSwitchWorkspace } from './native-ui/switch-context';
+import { WebInterfaceProvider } from './features/web-ui/preference';
 import { emptyNativeSnapshot } from './native-ui/protocol';
 import { useNativeConfirmation } from './native-ui/confirmation';
 import { useNativeRuntime, useNativeWorkspace } from "./native-ui/adapters";
@@ -4424,7 +4425,7 @@ export function App() {
 }
 
 export function AppBootstrap({ initialRegistry }: { initialRegistry: BackendRegistry }) {
-  return <NativeSwitchBoundary initialRegistry={initialRegistry}>{registry => <RestoredAppBootstrap initialRegistry={registry} />}</NativeSwitchBoundary>;
+  return <NativeSwitchBoundary initialRegistry={initialRegistry}>{registry => <WebInterfaceProvider><RestoredAppBootstrap initialRegistry={registry} /></WebInterfaceProvider>}</NativeSwitchBoundary>;
 }
 
 function RestoredAppBootstrap({

@@ -1,4 +1,5 @@
 import { useNativeSwitch } from '../../native-ui/switch-context';
+import { useWebInterface } from '../web-ui/preference';
 import { useNativeGlobalPanel } from '../../native-ui/adapters';
 import { projectDevicePanel } from '../../native-ui/device-panel';
 import type { NativeRuntime } from '../../native-ui/runtime';
@@ -94,6 +95,7 @@ export function BackendManagerSheet({
   scanQrCode?: () => Promise<string>;
 }) {
   const nativeSwitch = useNativeSwitch();
+  const webInterface = useWebInterface();
   const { preference, setPreference } = useI18n();
   const font = useFontSizeSettings();
   const push = usePushSettingsState(notificationPreference ?? { mode: 'system', barkUrl: '' }, onNotificationPreferenceSave ?? (() => {}));
@@ -282,6 +284,12 @@ export function BackendManagerSheet({
         className="backend-manager-sheet"
         backdropClassName="backend-manager-backdrop"
       >
+        <section className="backend-language-settings web-interface-settings" aria-label={t("Web 界面")}>
+          <label><input type="checkbox" checked={webInterface.enabled}
+            onChange={event => webInterface.change(event.target.checked)} />{t("使用新版界面")}</label>
+          <small>{t("保存后立即生效，仅影响 Web 界面")}</small>
+          {webInterface.error && <small role="alert">{webInterface.error}</small>}
+        </section>
         {nativeSwitch && <section className="backend-language-settings" aria-label={t("界面模式")}>
           <label><input type="checkbox" checked={nativeSwitch.enabled} disabled={nativeSwitch.loading || nativeSwitch.pending}
             onChange={event => { void nativeSwitch.change(event.target.checked).catch(() => {}); }} />{t("使用原生界面")}</label>

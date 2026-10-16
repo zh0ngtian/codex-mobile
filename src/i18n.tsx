@@ -15,6 +15,10 @@ const LANGUAGE_STORAGE_KEY = "codex-mobile:language";
 const english: Record<string, string> = {
   "界面模式": "Interface mode",
   "使用原生界面": "Use native interface",
+  "Web 界面": "Web interface",
+  "使用新版界面": "Use new interface",
+  "保存后立即生效，仅影响 Web 界面": "Applied immediately after saving; affects the web interface only",
+  "无法保存界面偏好：{message}。请重试。": "Unable to save interface preference: {message}. Please try again.",
   "下次完整启动 App 时生效": "Takes effect after fully restarting the app",
   "当前环境不支持原生界面设置": "Native interface settings are unavailable in this environment",
   "原生界面设置响应无效": "Invalid native interface settings response",

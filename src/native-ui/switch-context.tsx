@@ -68,7 +68,7 @@ function SwitchProvider({ initialRegistry, checkpoint, restored, children }: { i
  }, [checkpoint]);
  const capture = () => {
   const storage: Record<string, string> = {};
-  const keys = new Set(['codex-mobile:language', 'codex-mobile:font-size', 'codex-mobile:notification-preference', 'codex-mobile:transport-mode', 'codex-mobile:list-backend', 'codex-mobile:new-chat-backend', 'codex-mobile:collapsed-projects']);
+  const keys = new Set(['codex-mobile:language', 'codex-mobile:font-size', 'codex-mobile:notification-preference', 'codex-mobile:transport-mode', 'codex-mobile:list-backend', 'codex-mobile:new-chat-backend', 'codex-mobile:collapsed-projects', 'codex-mobile:web-interface']);
   const prefixes = ['codex-mobile:new-chat-project:', 'codex-mobile:new-chat-model-settings:v1:', 'codex-mobile:pinned:', 'codex-mobile:unread:', 'codex-mobile:projectless-threads:'];
   for (let index = 0; index < localStorage.length; index++) { const key = localStorage.key(index); if (key && (keys.has(key) || prefixes.some(prefix => key.startsWith(prefix)))) storage[key] = localStorage.getItem(key)!; }
   return { version: 1 as const, registry: state.registry.current, storage, workspaces: [...state.workspaces.values()] };
