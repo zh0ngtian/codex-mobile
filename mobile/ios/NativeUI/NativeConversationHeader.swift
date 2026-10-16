@@ -23,14 +23,20 @@ struct NativeConversationHeader: View {
                     HStack(spacing: 0) {
                         NativeContextUsageButton(store: store)
                         Button { store.command("thread.new") } label: {
-                            Image(systemName: "square.and.pencil").font(.system(size: 23)).frame(width: 44, height: 44)
+                            Image(systemName: "square.and.pencil").resizable().scaledToFit()
+                                .font(.system(size: NativeVisualMetrics.headerIconSize, weight: .regular))
+                                .frame(width: NativeVisualMetrics.headerIconSize, height: NativeVisualMetrics.headerIconSize)
+                                .frame(width: NativeVisualMetrics.controlHeight, height: NativeVisualMetrics.controlHeight).contentShape(.rect)
                         }.accessibilityLabel(store.label("新对话", "New Conversation")).accessibilityIdentifier("native-new-thread")
                             .disabled(!store.snapshot.ready || store.snapshot.pending == true || store.awaitingNewConversation)
                         Menu {
                             ForEach(store.snapshot.conversationActions ?? []) { item in NativePanelItemView(item: item, store: store, scope: .message("conversation:\(store.threadKey)")) }
                             Button(store.label("工作区", "Workspace"), systemImage: "folder") { store.command("panel.open", ["id": .string("workspace")]) }
                         } label: {
-                            Image(systemName: "ellipsis").font(.system(size: 22, weight: .semibold)).frame(width: 44, height: 44)
+                            Image(systemName: "ellipsis").resizable().scaledToFit()
+                                .font(.system(size: NativeVisualMetrics.headerIconSize, weight: .regular))
+                                .frame(width: NativeVisualMetrics.headerIconSize, height: NativeVisualMetrics.headerIconSize)
+                                .frame(width: NativeVisualMetrics.controlHeight, height: NativeVisualMetrics.controlHeight).contentShape(.rect)
                         }.accessibilityLabel(store.label("会话操作", "Conversation Actions"))
                     }.buttonStyle(.plain).padding(.horizontal, 4)
                         .background(NativePalette.controlFill, in: .capsule)

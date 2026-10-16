@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 
 @main
 struct NativeStoreSmoke {
@@ -349,6 +350,12 @@ struct NativeStoreSmoke {
                 .map { String(text[$0.range].characters) }.joined()
         }
         func links(_ source: String) -> [URL] { NativeInlineMarkdown.text(source).runs.compactMap(\.link) }
+        let linkedPresentation = NativeInlineMarkdown.text("正文 [网页](https://example.com/path) 和 [文件](/tmp/example.swift#L12)")
+        let linkedRuns = linkedPresentation.runs.filter { $0.link != nil }
+        expect(linkedRuns.count == 2, "网页与文件仍是真实可点击链接")
+        expect(linkedRuns.allSatisfy { $0.underlineStyle == Text.LineStyle(pattern: .dash) }, "网页与文件链接均须使用虚线下划线")
+        expect(linkedPresentation.runs.filter { $0.link == nil }.allSatisfy { $0.underlineStyle == nil }, "虚线不能扩散到普通正文")
+        expect(linkedRuns.compactMap(\.link).map(\.absoluteString) == ["https://example.com/path", "/tmp/example.swift#L12"], "样式修正不能改写链接目的地")
         let cjk = "**二是希望细化合规路径及办理指导。**企业关注"
         expect(plain(cjk) == "二是希望细化合规路径及办理指导。企业关注", "中文句末粗体不能裸露星号")
         expect(strong(cjk) == "二是希望细化合规路径及办理指导。", "仅前句应有真实 Foundation strong 属性")
