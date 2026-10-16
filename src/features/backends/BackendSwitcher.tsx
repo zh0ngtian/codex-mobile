@@ -16,12 +16,14 @@ export function BackendSwitcher({
   selectedBackendId,
   loadingBackendIds = new Set<string>(),
   onSelect,
+  presentation = "tabs",
 }: {
   backends: BackendConfig[];
   summaries: Record<string, BackendRuntimeSummary>;
   selectedBackendId: string;
   loadingBackendIds?: Set<string>;
   onSelect: (backendId: string) => void;
+  presentation?: "tabs" | "menu";
 }) {
   const enabledBackends = backends.filter((backend) => backend.enabled);
   const allApprovalCount = enabledBackends.reduce(
@@ -29,12 +31,14 @@ export function BackendSwitcher({
     0,
   );
   return (
-    <nav className="backend-switcher" aria-label={t("设备")}>
+    <nav className="backend-switcher" role={presentation === "menu" ? "group" : undefined} aria-label={t("设备")}>
       <button
         type="button"
         className="backend-pill all-backends"
         aria-label={t("全部设备")}
-        aria-pressed={selectedBackendId === "all"}
+        role={presentation === "menu" ? "menuitemradio" : undefined}
+        aria-checked={presentation === "menu" ? selectedBackendId === "all" : undefined}
+        aria-pressed={presentation === "tabs" ? selectedBackendId === "all" : undefined}
         onClick={() => onSelect("all")}
       >
         <strong>{t("全部")}</strong>
@@ -58,7 +62,9 @@ export function BackendSwitcher({
             type="button"
             className="backend-pill"
             aria-label={`${backend.name}，${details}`}
-            aria-pressed={backend.id === selectedBackendId}
+            role={presentation === "menu" ? "menuitemradio" : undefined}
+            aria-checked={presentation === "menu" ? backend.id === selectedBackendId : undefined}
+            aria-pressed={presentation === "tabs" ? backend.id === selectedBackendId : undefined}
             key={backend.id}
             onClick={() => onSelect(backend.id)}
           >
