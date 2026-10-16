@@ -15,7 +15,10 @@ export function projectDevicePanel(c: any): NativeSnapshot['panel'] {
  else {
   for (const [index, backend] of c.registry.backends.entries()) {
    const summary = c.summaries[backend.id];
+   const connection = !backend.enabled ? 'paused' : summary?.connection ?? 'offline';
+   const connectionLabels: Record<string, string> = { online: '已连接', connecting: '连接中', offline: '未连接', paused: '已暂停' };
    items.push({ id: backend.id, kind: 'section', title: backend.name, text: `${backend.baseUrl} · ${!backend.enabled ? t('已暂停') : summary?.connection ?? t('未连接')} · ${summary?.queuedCount ?? 0} ${t('排队中')} · ${summary?.approvalCount ?? 0} ${t('待审批')}`, children: [
+    { id: `${backend.id}:connection`, kind: 'text', text: t(connectionLabels[connection] ?? '未连接'), value: connection },
     nativeAction(`${backend.id}:edit`, t('编辑'), 'device.edit', { id: backend.id }), nativeAction(`${backend.id}:toggle`, t(backend.enabled ? '暂停' : '启用'), 'device.toggle', { id: backend.id }), nativeAction(`${backend.id}:remove`, t('删除'), 'device.remove', { id: backend.id }),
     { ...nativeAction(`${backend.id}:up`, t('上移'), 'device.move', { id: backend.id, direction: -1 }), disabled: index === 0 }, { ...nativeAction(`${backend.id}:down`, t('下移'), 'device.move', { id: backend.id, direction: 1 }), disabled: index === c.registry.backends.length - 1 },
     ...(summary?.error ? [{ id: `${backend.id}:error`, kind: 'text', text: summary.error }] : []),
@@ -45,5 +48,6 @@ export function projectDevicePanel(c: any): NativeSnapshot['panel'] {
  const root = page === 'settings';
  const visible = root ? items.filter(item => ['language', 'font', 'font-error', 'transport', 'push', 'app-version', 'check-update'].includes(item.id)) : page && prefixes[page] && !confirmation ? items.filter(item => prefixes[page].some(prefix => item.id === prefix || item.id.startsWith(`${prefix}-`))) : items;
  const titles: Record<string, string> = { settings: t('设置'), language: t('语言'), font: t('字体大小'), transport: t('传输方式'), notifications: t('通知'), updates: t('应用更新') };
- return { id: root ? 'settings:root' : page && page !== 'devices' ? `settings:${page}` : 'devices', title: titles[page] ?? t(confirmation ? '确认设备操作' : c.draft ? '设备连接' : '管理设备'), items: visible, dismissible: !c.testing };
+ const deviceTitle = confirmation ? '确认设备操作' : c.draft ? c.registry.backends.some((backend: any) => backend.id === c.draft.id) ? '编辑设备' : '添加设备' : '设备';
+ return { id: root ? 'settings:root' : page && page !== 'devices' ? `settings:${page}` : 'devices', title: titles[page] ?? t(deviceTitle), items: visible, dismissible: !c.testing };
 }

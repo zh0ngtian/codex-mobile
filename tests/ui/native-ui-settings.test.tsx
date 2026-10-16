@@ -4,6 +4,42 @@ import { NativeRuntime } from '../../src/native-ui/runtime';
 import { BackendManagerSheet } from '../../src/features/backends/BackendManagerSheet';
 import { createDefaultBackendRegistry } from '../../src/backends/registry';
 afterEach(cleanup);
+it('设备页标题区分列表、新增和编辑，表单仍使用同一设备作用域', async () => {
+ const runtime = new NativeRuntime(() => {});
+ const backend = { id: 'mac', name: '工作电脑', baseUrl: 'https://gateway.example', token: 'DEVICE_SECRET', enabled: true, order: 0 };
+ render(<BackendManagerSheet nativeRuntime={runtime} nativePage="devices" open registry={{ version: 1, backends: [backend], selectedBackendId: backend.id }} summaries={{}} onClose={() => {}} onChange={() => {}} />);
+ expect(runtime.snapshot().panel?.title).toBe('设备');
+ await act(async () => { await runtime.dispatch({ id: 'open-edit', name: 'device.edit', params: { id: backend.id } }); });
+ expect(runtime.snapshot().panel?.title).toBe('编辑设备');
+ expect(runtime.snapshot().panel?.id).toBe('devices');
+ expect(runtime.snapshot().panel?.items.find(item => item.id === 'gatewayUrl')?.kind).toBe('secureField');
+ await act(async () => { await runtime.dispatch({ id: 'cancel-edit', name: 'device.cancel', params: {} }); });
+ await act(async () => { await runtime.dispatch({ id: 'open-add', name: 'device.add', params: {} }); });
+ expect(runtime.snapshot().panel?.title).toBe('添加设备');
+ expect(runtime.snapshot().panel?.id).toBe('devices');
+ runtime.dispose();
+});
+it('设备卡投影独立连接状态并保留地址、队列、审批和错误，不暴露凭证', () => {
+ const runtime = new NativeRuntime(() => {});
+ const backend = { id: 'online-device', name: '工作电脑', baseUrl: 'https://gateway.example', token: 'DEVICE_SECRET', enabled: true, order: 0 };
+ render(<BackendManagerSheet nativeRuntime={runtime} nativePage="devices" open registry={{ version: 1, backends: [backend, { ...backend, id: 'paused-device', name: '备用电脑', enabled: false, order: 1 }], selectedBackendId: backend.id }} summaries={{
+  'online-device': { backendId: 'online-device', connection: 'online', busy: true, queuedCount: 2, approvalCount: 1, error: '上一轮连接失败' },
+  'paused-device': { backendId: 'paused-device', connection: 'online', busy: false, queuedCount: 0, approvalCount: 0, error: '' },
+ }} onClose={() => {}} onChange={() => {}} />);
+ const items = runtime.snapshot().panel!.items;
+ const online = items.find(item => item.id === 'online-device')!;
+ const paused = items.find(item => item.id === 'paused-device')!;
+ expect(online.children?.find(item => item.id === 'online-device:connection')).toMatchObject({ kind: 'text', text: '已连接', value: 'online' });
+ expect(paused.children?.find(item => item.id === 'paused-device:connection')).toMatchObject({ kind: 'text', text: '已暂停', value: 'paused' });
+ expect(online.text).toContain('https://gateway.example');
+ expect(online.text).toContain('2 排队中');
+ expect(online.text).toContain('1 待审批');
+ expect(online.children?.find(item => item.id === 'online-device:error')?.text).toBe('上一轮连接失败');
+ expect(online.children?.find(item => item.id === 'online-device:up')?.disabled).toBe(true);
+ expect(paused.children?.find(item => item.id === 'paused-device:down')?.disabled).toBe(true);
+ expect(JSON.stringify(items)).not.toContain('DEVICE_SECRET');
+ runtime.dispose();
+});
 it('原生设备面板共用表单与probe，普通列表不泄露口令，编辑并校验hostId后保存', async () => {
  const runtime = new NativeRuntime(() => {}); const changes: any[] = []; const probed: any[] = [];
  render(<BackendManagerSheet nativeRuntime={runtime} open registry={{ version: 1, backends: [], selectedBackendId: '' }} summaries={{}} onClose={() => {}} onChange={v => changes.push(v)} probe={async b => { probed.push(b); return { hostId: 'HOST', displayName: '机器' } as any; }} />);
@@ -29,6 +65,30 @@ it('原生设置子页只展示指定功能且不复制业务状态', () => {
  render(<BackendManagerSheet nativeRuntime={runtime} nativePage="language" open registry={{ version: 1, backends: [], selectedBackendId: '' }} summaries={{}} onClose={() => {}} onChange={() => {}} />);
  expect(runtime.snapshot().panel?.id).toBe('settings:language');
  expect(runtime.snapshot().panel?.items.map(i => i.id)).toEqual(['language']); runtime.dispose();
+});
+it('通知单选、Bark安全字段和保存继续使用真实回调并保留校验及同步失败信息', async () => {
+ const runtime = new NativeRuntime(() => {}); const saves: unknown[] = [];
+ const preference = { mode: 'system' as const, barkUrl: '' };
+ render(<BackendManagerSheet nativeRuntime={runtime} nativePage="notifications" open registry={createDefaultBackendRegistry('https://gateway.example')} summaries={{}} onClose={() => {}} onChange={() => {}} notificationPreference={preference} onNotificationPreferenceSave={value => saves.push(value)} failedNotificationDevices={['备用电脑']} />);
+ const send = async (name: string, params = {}) => act(async () => {
+  const result = await runtime.dispatch({ id: crypto.randomUUID(), name, params });
+  expect(result.ok, result.error).toBe(true);
+ });
+ await send('settings.push.mode', { value: 'bark' });
+ expect(runtime.snapshot().panel?.id).toBe('settings:notifications');
+ expect(runtime.snapshot().panel?.items.find(item => item.id === 'push')?.value).toBe('bark');
+ expect(runtime.snapshot().panel?.items.find(item => item.id === 'bark-url')?.kind).toBe('secureField');
+ await send('settings.push.url', { value: 'invalid-bark-link' });
+ await send('settings.push.save');
+ expect(saves).toHaveLength(0);
+ expect(runtime.snapshot().panel?.items.find(item => item.id === 'push-status')?.text).toBeTruthy();
+ await send('settings.push.url', { value: 'https://api.day.app/VALID_DEVICE_KEY' });
+ await send('settings.push.save');
+ expect(saves).toEqual([{ mode: 'bark', barkUrl: 'https://api.day.app/VALID_DEVICE_KEY' }]);
+ expect(runtime.snapshot().panel?.items.find(item => item.id === 'push-status')?.text).toBe('推送设置已保存');
+ expect(runtime.snapshot().panel?.items.find(item => item.id === 'push-failed')?.text).toContain('备用电脑');
+ expect(runtime.snapshot().panel?.items.some(item => item.id === 'language' || item.id === 'name')).toBe(false);
+ runtime.dispose();
 });
 it('全局字号操作立即投影新的fontScale', async () => {
  const runtime = new NativeRuntime(() => {});

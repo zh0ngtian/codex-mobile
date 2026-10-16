@@ -10,6 +10,7 @@ struct NativeComposerView: View {
     @State private var selection: TextSelection?
     @State private var adjustment: NativeComposerAdjustment?
     @State private var adjustmentReturn: NativeComposerAdjustment?
+    @State private var pendingAttachmentCommand: NativeCommand?
     var body: some View {
         VStack(spacing: 12) {
             if !store.snapshot.queued.isEmpty {
@@ -64,19 +65,6 @@ struct NativeComposerView: View {
             .background(.ultraThinMaterial, in: .rect(cornerRadius: expanded ? 26 : 24))
             .overlay { RoundedRectangle(cornerRadius: expanded ? 26 : 24).stroke(.primary.opacity(0.18), lineWidth: 0.5) }
             .shadow(color: .black.opacity(0.04), radius: 10, y: 4)
-            if store.attachmentOpen && store.composerCanEdit {
-                HStack(spacing: 12) {
-                    attachment(store.label("照片", "Photos"), symbol: "photo", kind: "photos")
-                    attachment(store.label("文件", "Files"), symbol: "paperclip", kind: "files")
-                    Button { store.command("location.insert"); store.attachmentOpen = false } label: {
-                        Label(store.label("当前位置", "Current Location"), systemImage: "location")
-                            .frame(maxWidth: .infinity, minHeight: 72).background(.quaternary, in: .rect(cornerRadius: 16))
-                    }.buttonStyle(.plain)
-                }
-                Button(store.label("Skill 与插件", "Skills and Plugins"), systemImage: "at") {
-                    store.command("panel.open", ["id": .string("mentions")]); store.attachmentOpen = false
-                }.buttonStyle(.plain).frame(minHeight: 44)
-            }
         }
         .padding(.horizontal, expanded ? NativeVisualMetrics.composerExpandedInset : NativeVisualMetrics.composerInset)
         .padding(.top, 8).padding(.bottom, focused ? 12 : 6)
@@ -86,17 +74,32 @@ struct NativeComposerView: View {
         .onAppear { if store.visualReferenceFocused && store.composerCanEdit { focused = true } }
         .onChange(of: store.composerPresentation?.id, initial: true) { applyPresentation() }
         .onChange(of: store.awaitingNewConversation) { if store.awaitingNewConversation { focused = false } }
-        .onChange(of: store.composerCanEdit) { if !store.composerCanEdit { focused = false } }
+        .onChange(of: store.composerCanEdit) {
+            if !store.composerCanEdit {
+                focused = false
+                if adjustment?.kind == .attachments { store.attachmentOpen = false; adjustment = nil }
+            }
+        }
         .sheet(item: $adjustment, onDismiss: restoreAdjustmentFocus) { session in
             switch session.kind {
             case .model: NativeModelOptionsView(store: store, adjustment: session)
             case .permission: NativePermissionOptionsView(store: store, adjustment: session)
+            case .attachments:
+                NativeAttachmentOptionsView(store: store) { command in
+                    pendingAttachmentCommand = command
+                    adjustment = nil
+                }
             }
+        }
+        .onChange(of: store.attachmentOpen, initial: true) {
+            if store.attachmentOpen && store.composerCanEdit { openAdjustment(.attachments) }
+            else if adjustment?.kind == .attachments { adjustment = nil }
         }
         .onChange(of: store.snapshot.contextId) {
             if adjustment != nil || adjustmentReturn != nil {
                 adjustment = nil
                 adjustmentReturn = nil
+                pendingAttachmentCommand = nil
                 focused = false
             }
         }
@@ -122,7 +125,15 @@ struct NativeComposerView: View {
         focused = false
     }
     private func restoreAdjustmentFocus() {
-        defer { adjustmentReturn = nil }
+        defer {
+            adjustmentReturn = nil
+            pendingAttachmentCommand = nil
+            store.attachmentOpen = false
+        }
+        if let command = adjustmentReturn?.deferredAttachmentCommand(pendingAttachmentCommand, contextID: store.snapshot.contextId, editable: store.composerCanEdit, sidebarOpen: store.sidebarOpen) {
+            store.perform(command)
+            return
+        }
         guard let session = adjustmentReturn,
               let restore = session.restoredFocus(contextID: store.snapshot.contextId, editable: store.composerCanEdit, sidebarOpen: store.sidebarOpen) else { return }
         focused = restore
@@ -141,10 +152,5 @@ struct NativeComposerView: View {
     private var placeholder: String {
         if let name = store.snapshot.backendName { return store.label("在 \(name) 上工作", "Work on \(name)") }
         return store.label("向 Codex 提问", "Ask Codex")
-    }
-    private func attachment(_ title: String, symbol: String, kind: String) -> some View {
-        Button { store.command("attachment.pick", ["kind": .string(kind)]); store.attachmentOpen = false } label: {
-            Label(title, systemImage: symbol).frame(maxWidth: .infinity, minHeight: 72).background(.quaternary, in: .rect(cornerRadius: 16))
-        }.buttonStyle(.plain)
     }
 }

@@ -130,9 +130,9 @@ export function projectNavigation(input: NavigationInput): NativeGroup[] {
       const collapsed = input.collapsedProjectKeys.has(key);
       const params = { backendId, cwd: group.cwd };
       const actions: NativePanelItem[] = [];
-      if (states[group.cwd] === 'error') actions.push(nativeAction(`${key}:retry`, t('重试'), 'project.retry', params));
-      if (hasMore[group.cwd]) actions.push(nativeAction(`${key}:more`, input.loadingProjectKeys.has(key) ? t('加载中…') : t('加载更多'), 'project.more', params));
-      groups.push({ id: key, category: 'project', title: group.projectName, subtitle: backendName, collapsed, loading: states[group.cwd],
+      if (!collapsed && states[group.cwd] === 'error') actions.push(nativeAction(`${key}:retry`, t('重试'), 'project.retry', params));
+      if (!collapsed && hasMore[group.cwd]) actions.push({ ...nativeAction(`${key}:more`, input.loadingProjectKeys.has(key) ? t('加载中…') : t('加载更多'), 'project.more', params), disabled: input.loadingProjectKeys.has(key) });
+      groups.push({ id: key, category: 'project', title: group.projectName, subtitle: backendName, collapsed, loading: collapsed ? undefined : states[group.cwd],
         command: nativeCommand('project.toggle', params), newCommand: nativeCommand('thread.new', { backendId, cwd: group.cwd === PROJECTLESS_GROUP_ID ? '' : group.cwd }),
         actions, items: collapsed ? [] : group.threads.map(row) });
     }

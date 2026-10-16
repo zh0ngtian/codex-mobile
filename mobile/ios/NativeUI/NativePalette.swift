@@ -27,6 +27,9 @@ enum NativePalette {
     static let settingsCard = Color(uiColor: UIColor { trait in
         trait.userInterfaceStyle == .dark ? UIColor(white: 41 / 255, alpha: 1) : .white
     })
+    static let attachmentTile = Color(uiColor: UIColor { trait in
+        trait.userInterfaceStyle == .dark ? UIColor(white: 41 / 255, alpha: 1) : UIColor(white: 239 / 255, alpha: 1)
+    })
     static let permissionCard = Color(uiColor: UIColor { trait in
         trait.userInterfaceStyle == .dark ? UIColor(white: 41 / 255, alpha: 1) : UIColor(white: 231 / 255, alpha: 1)
     })
