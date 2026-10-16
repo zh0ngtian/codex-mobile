@@ -1,5 +1,7 @@
 import { useWebInterface } from "../web-ui/preference";
 import { ModernComposerSettings } from "./ModernComposerSettings";
+import { isNativeWebComposerEnabled } from "../../native-ui/web-composer";
+import { AppIcon } from "../../ui/app-display";
 import { Chevron } from "../../ui/icons";
 import { t } from "../../i18n";
 import {
@@ -18,6 +20,7 @@ export type ComposerPicker =
 
 function LegacyComposerSettings({
   picker,
+  textEditorOnly = false,
   effortOptions,
   speedOptions,
   permissionModes,
@@ -35,6 +38,7 @@ function LegacyComposerSettings({
   onChoosePermissionMode,
 }: {
   picker: ComposerPicker;
+  textEditorOnly?: boolean;
   effortOptions: Array<{ id: string; label: string; description?: string }>;
   speedOptions: Array<{ id: string | null; label: string; description: string }>;
   permissionModes: PermissionMode[];
@@ -55,6 +59,7 @@ function LegacyComposerSettings({
   return (
     <div className="composer-popover-backdrop" onClick={() => onPickerChange(null)}>
       <section
+        data-text-editor-only={textEditorOnly ? "true" : undefined}
         className={`composer-popover ${picker === "permission" ? "permission-popover" : ""}`}
         aria-label={
           picker === "permission"
@@ -87,7 +92,7 @@ function LegacyComposerSettings({
                       <strong>{option.label}</strong>
                       {option.description && <small>{option.description}</small>}
                     </span>
-                    <i>{selected ? "✓" : ""}</i>
+                    <i>{selected && !textEditorOnly ? "✓" : ""}</i>
                   </button>
                 );
               })}
@@ -129,7 +134,7 @@ function LegacyComposerSettings({
                       <strong>{option.displayName}</strong>
                       <small>{meta.description || meta.identity}</small>
                     </span>
-                    <i>{selected ? "✓" : ""}</i>
+                    <i>{selected && !textEditorOnly ? "✓" : ""}</i>
                   </button>
                 );
               })}
@@ -156,11 +161,12 @@ function LegacyComposerSettings({
                       onPickerChange(null);
                     }}
                   >
+                    {textEditorOnly && <AppIcon name={option.id ? "speed" : "speed-off"} />}
                     <span>
                       <strong>{option.label}</strong>
                       <small>{option.description}</small>
                     </span>
-                    <i>{selected ? "✓" : ""}</i>
+                    <i>{selected && !textEditorOnly ? "✓" : ""}</i>
                   </button>
                 );
               })}
@@ -178,11 +184,12 @@ function LegacyComposerSettings({
                   aria-pressed={selected}
                   onClick={() => onChoosePermissionMode(mode.id)}
                 >
+                  {textEditorOnly && <AppIcon name={mode.id === "read-only" ? "lock" : mode.id === "full-access" ? "shield-off" : mode.id === "auto-review" ? "shield-check" : "shield"} />}
                   <span>
                     <strong>{mode.label}</strong>
                     <small>{mode.description}</small>
                   </span>
-                  <i>{selected ? "✓" : ""}</i>
+                  <i>{selected && !textEditorOnly ? "✓" : ""}</i>
                 </button>
               );
             })}
@@ -197,5 +204,12 @@ export type ComposerSettingsProps = Parameters<typeof LegacyComposerSettings>[0]
 
 export function ComposerSettings(props: ComposerSettingsProps) {
   const { modern } = useWebInterface();
-  return modern ? <ModernComposerSettings {...props} /> : <LegacyComposerSettings {...props} />;
+  const textEditorOnly = isNativeWebComposerEnabled();
+  return modern ? <ModernComposerSettings {...props} textEditorOnly={textEditorOnly} /> : <LegacyComposerSettings {...props} textEditorOnly={textEditorOnly} onPickerChange={picker => {
+    if (textEditorOnly && picker === null) props.onRestoreComposerFocus?.();
+    props.onPickerChange(picker);
+  }} onChoosePermissionMode={mode => {
+    if (textEditorOnly) props.onRestoreComposerFocus?.();
+    props.onChoosePermissionMode(mode);
+  }} />;
 }

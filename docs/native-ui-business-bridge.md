@@ -142,15 +142,15 @@ Task2b 分模块 RED→GREEN 日志位于 `.mobile-build/native-reference/task2b
 
 `isNativeUIEnabled` 保持整页呈现和前后台语义；`isNativeBridgeEnabled` 只扩展 runtime 的创建、监听和发布。每个 scene 继续使用既有单个业务 WebView 和一个 runtime；两个可信启动 flag 分开注入，消息和布局脚本仍校验原始 Bundle 首页、主 frame 和同一 WebView。
 
-真实挂载的 `ConversationPage` 登记 `{contextId, visible, blocked, bodyFontSize}`。`bodyFontSize` 是未乘应用缩放的正文基准：由 `useWebInterface().modern` 的当前实际界面发布，旧版网页为 16pt、新版网页为 14.2pt，切换模式即更新，不能从保存偏好推断完整原生模式。字段保持可选以兼容旧载荷；Swift 解码忽略错误类型、非有限、非正及大于 64pt 的无效基准，缺省使用完整原生正文的 14.5pt。输入文字与行高预算共用同一个有效字体值，保留 `ScaledMetric` 的系统动态字体并只乘一次 `snapshot.fontScale`，不修改对话正文。runtime 仅发布当前设备且上下文匹配的呈现，旧上下文清理不能移除新登记。公共遮罩通过 overlay-scroll 的只读订阅通知，页面另登记设置、审批、历史编辑、预览、会话菜单、队列编辑和已有 realtime 状态。遮罩出现收起原生输入并失焦，关闭后不主动弹键盘；网页 form 在混合模式中卸载。只读重连、处理附件、待引导和新对话草稿提示保留在历史末尾，新对话机器与项目选择继续使用网页。
+真实挂载的 `ConversationPage` 保留完整网页 form：附件、发送、停止、排队、模型、推理、Fast、访问权限按钮和菜单，以及附件、队列和 Skill / Plugin 候选都由既有网页组件与回调拥有。仅文字编辑由常驻 `NativeWebTextEditor`（UIKit `UITextView`）替换；混合模式不再挂 `NativeComposerView`、原生 sheet 或原生附件菜单，完整原生界面的对应组件独立保留。混合模式的模型、推理和速度菜单保留 `aria-pressed` 语义并去掉视觉勾选；Fast 开关使用不同图标，模型按钮继续显示当前推理强度。
 
-设备设置、草稿、更新和确认保留网页呈现；workspace adapter 继续持有真正 runtime，使用 composer 呈现模式抑制自动审批镜像。由原生输入栏显式打开的面板仍复用原有业务命令。混合宿主保持稳定，原生 sheet presenter 不因 panel 出现而重建。
+网页 textarea 作为不可访问、不可命中的布局代理继续持有草稿并测量换行，发布当前 context 的有限矩形、viewport 尺寸、字体、内边距、焦点请求和 UTF-16 选区。`bodyFontSize` 仍保留当前正文基准（旧版 16、新版 14.2），代理与原生文字统一使用该正文基准乘一次应用缩放，并共用已缩放的字号与行高；代理不受普通网页 textarea 的 16px 防自动缩放下限影响。Swift 忽略无效数值、空矩形及越出 viewport 的矩形，键盘先缩小宿主而网页矩形尚未更新时，当前编辑器暂时透明并禁止命中，保留同 context 的 first responder 与输入，避免收键盘反向触发布局循环；桥仅将编辑器附加到现有可信业务 WKWebView 的对应矩形内，不能命中按钮或网页遮罩；没有第二个业务 WebView。只有网页 form 测得的完整高度用于历史底部留白，附件、提示及队列都计入布局。
 
-非交互 `NativeComposerLayoutProbe` 测量整个输入容器（含候选、提示、附件与队列），弱引用桥把顶部转换到同 window 的业务 WebView，按 0.5pt 去重后发出 `codex-mobile-native-composer-layout`。网页按 `top * innerHeight / webViewHeight` 换算遮挡，只为 timeline 增加实测留白；键盘和主页安全区不重复叠加。隐藏清理把顶部放回 WebView 底边，网页遮挡归零；top=0 仍是有效几何。监听随页面上下文清理。
+输入沿现有 `draft.set`、`draftRevision` 和 `caretOffset` 同步，不引入原生发送路径。显式网页焦点请求以 `focusRevision` 单调消费，同版本原生焦点观察 echo 不会收起键盘。常驻 UITextView 在输入中不重建；相同 echo 不重设文字或选区，有 marked text 时保留输入法组合。Skill、插件、位置插入以及设置关闭仍通过现有 textarea 引用请求原生焦点和 UTF-16 选区。首次挂载登记可早于父 workspace 的 layout effect，后续几何与清理必须匹配已登记 context；旧 context 的输入、焦点、几何、设置恢复和清理均不能覆盖新会话。
 
-两种原生输入呈现始终使用同一个纵向 `TextField`，取消最大化按钮与强制填满高度。硬换行和自动折行使输入从一行自然增长，超限后由控件内部滚动，删除后缩回。App 在 iPhone、iPad 及应用内浏览器中固定正向竖屏，iPad 要求全屏，旋转设备后仍保留竖屏输入与发送操作。普通/辅助字号分别最多六/三行；再取实际宿主高度预算允许的更小上限，至少保留一行。宿主高度直接取 `NativeUIHost` 外层 `GeometryReader` 的提案，并固定子树承载尺寸；完整原生空态正文允许缩至零并裁切正文溢出，输入底栏始终按真实宿主底边定位，避免顶部状态与问候语的固有高度反撑宿主。实测扣除候选、提示、附件、队列及外边距后，按真实字体行高、输入内边距和整行工具栏实测高度计算剩余编辑行数；工具栏首帧使用 20pt 图标字体的实际动态行高保护，完整高度另加底距和舍入净空，避免模型文字撑高整行后覆盖输入，不从已扣输入栏的正文高度反推，也不重复扣键盘或安全区。`NativeComposerLayoutBudget` 为一行编辑和工具栏保留空间；附件与队列使用独立内容理想高度取宿主允许的上限，超出时仅辅助区纵向滚动，队列自身继续最多 132pt。测量的是实际内容而不是受限视口，不创建重复按钮或副作用，不会因辅助区填满预算将输入反压为一行。非有限高度和无效行高使用安全预算，极大有限高度先限制自然上限再转换整数。只有切换会话上下文时重置局部输入状态。`selectionRevision` 只在权威正文或 UTF-16 光标变化时推进，本地绑定和相同草稿 echo 不强制重设 TextSelection，以保留中文组字状态。
+公共遮罩、网页侧栏、历史编辑、预览、会话菜单、队列编辑、realtime、不可编辑状态和宿主后台均隐藏并禁用原生编辑器；禁编辑的代理仍显示原有草稿且不可输入。关闭网页设置时可恢复同 context 原生焦点与选区，切换会话后旧回调失效。自然增缩和最大高度由网页 textarea 测量决定（旧版 120px、新版 154px），超限后原生框内滚动；混合模式没有最大化按钮。关闭原生输入开关并重启后恢复网页 textarea，草稿继续经原有检查点保存。
 
-关联自动化已验证真实 ConversationPage 呈现、遮罩、布局与恢复、检查点事务、真实 Swift Store/DTO/偏好以及可信 JavaScript 生成与执行。2026-10-16 整合后全量 1458 项测试通过，iOS 27 离线模拟器的 11 个输入、开关、组字、布局与错误场景分别通过，实际范围见[本轮验证记录](superpowers/plans/2026-10-16-native-web-composer.md#2026-10-16-本地验证记录)。未创建真实远端测试会话，未进行真机覆盖安装或数据保留验收；正式渠道交付仍以协调器成功凭证为准。
+自动化覆盖真实 React 网页按钮和回调、代理矩形、UTF-16 选区、设置焦点恢复、遮罩、后台和 context 竞态，以及真实 Swift Store/DTO 与可信 JavaScript 生成执行。实际界面验收限定 iPhone 17 Pro、正常字号、竖屏；构建验签和模拟器验证不代表真机覆盖安装与数据保留已验证。
 
 ### 网页重命名文本输入
 

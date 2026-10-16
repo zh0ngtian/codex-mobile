@@ -31,7 +31,7 @@ export function ModernComposerSettings(props: ComposerSettingsProps) {
   const close = () => { onRestoreComposerFocus?.(); onPickerChange(null); };
   const choose = (callback: () => void) => { onRestoreComposerFocus?.(); callback(); onPickerChange(null); };
   return <div className="composer-popover-backdrop modern-composer-backdrop" onClick={close}>
-    <section ref={panel} tabIndex={-1} role="dialog" aria-modal="true" aria-label={title} className={`composer-popover modern-composer-settings ${picker === "permission" ? "permission-popover" : ""}`}
+    <section ref={panel} tabIndex={-1} role="dialog" aria-modal="true" aria-label={title} data-text-editor-only={props.textEditorOnly ? "true" : undefined} className={`composer-popover modern-composer-settings ${picker === "permission" ? "permission-popover" : ""}`}
       onClick={event => event.stopPropagation()} onKeyDown={event => {
         if (event.key === "Escape") { event.preventDefault(); close(); }
         if (event.key === "Tab") {
@@ -46,23 +46,23 @@ export function ModernComposerSettings(props: ComposerSettingsProps) {
         {(picker === "model" || picker === "agent") && <>
           <section role="group" aria-label={t("模型")}><h3>{t("模型")}</h3><div className="modern-choice-list">
             {props.models.map(option => <ChoiceButton key={option.id || option.model} aria-pressed={option.model === props.selectedModel} disabled={!option.model} onActivate={() => { if (option.model) choose(() => props.onChooseModel(option.model!)); }}>
-              <span>{option.displayName}</span><i aria-hidden="true">{option.model === props.selectedModel ? "✓" : ""}</i>
+              <span>{option.displayName}</span><i aria-hidden="true">{option.model === props.selectedModel && !props.textEditorOnly ? "✓" : ""}</i>
             </ChoiceButton>)}
           </div></section>
           <section role="group" aria-label={t("思考强度")}><h3>{t("思考强度")}</h3><div className="modern-choice-list">
             {props.effortOptions.map(option => <ChoiceButton key={option.id} aria-pressed={option.id === props.selectedEffort} onActivate={() => choose(() => props.onChooseEffort(option.id))}>
-              <span>{option.label}</span><i aria-hidden="true">{option.id === props.selectedEffort ? "✓" : ""}</i>
+              <span>{option.label}</span><i aria-hidden="true">{option.id === props.selectedEffort && !props.textEditorOnly ? "✓" : ""}</i>
             </ChoiceButton>)}
           </div></section>
         </>}
         {picker === "speed" && <section role="group" aria-label={t("速度列表")}><div className="modern-choice-list">
           {props.speedOptions.map(option => <ChoiceButton key={option.id ?? "normal"} aria-pressed={option.id === props.selectedServiceTier} onActivate={() => choose(() => props.onChooseSpeed(option.id))}>
-            <span><strong>{option.label}</strong><small>{option.description}</small></span><i aria-hidden="true">{option.id === props.selectedServiceTier ? "✓" : ""}</i>
+            {props.textEditorOnly && <AppIcon name={option.id ? "speed" : "speed-off"} />}<span><strong>{option.label}</strong><small>{option.description}</small></span><i aria-hidden="true">{option.id === props.selectedServiceTier && !props.textEditorOnly ? "✓" : ""}</i>
           </ChoiceButton>)}
         </div></section>}
         {picker === "permission" && <section role="group" aria-label={t("权限模式")}><div className="modern-choice-list">
           {props.permissionModes.map(mode => <ChoiceButton key={mode.id} aria-pressed={mode.id === props.selectedPermissionModeId} onActivate={() => choose(() => props.onChoosePermissionMode(mode.id))}>
-            <span><strong>{mode.label}</strong><small>{mode.description}</small></span><i aria-hidden="true">{mode.id === props.selectedPermissionModeId ? "✓" : ""}</i>
+            {props.textEditorOnly && <AppIcon name={mode.id === "read-only" ? "lock" : mode.id === "full-access" ? "shield-off" : mode.id === "auto-review" ? "shield-check" : "shield"} />}<span><strong>{mode.label}</strong><small>{mode.description}</small></span><i aria-hidden="true">{mode.id === props.selectedPermissionModeId ? "✓" : ""}</i>
           </ChoiceButton>)}
         </div></section>}
       </div>

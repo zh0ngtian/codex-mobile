@@ -511,6 +511,13 @@ final class NativeUIStore {
         draftRevision += 1
         command("draft.set", ["value": .string(draft), "revision": .number(Double(draftRevision)), "caretOffset": .number(Double(caretOffset))])
     }
+    /// UITextView 一次提交正文和 UTF-16 光标，不重置本地组字选区。
+    func updateWebDraft(_ text: String, caret: Int, contextID: String) {
+        guard webComposerVisible, composerCanEdit, snapshot.contextId == contextID, caret >= 0, caret <= text.utf16.count else { return }
+        guard draft != text || caretOffset != caret else { return }
+        draft = text; caretOffset = caret
+        updateDraft()
+    }
     func setCaretOffset(_ offset: Int) {
         guard composerCanEdit else { return }
         let bounded = min(draft.utf16.count, max(0, offset))

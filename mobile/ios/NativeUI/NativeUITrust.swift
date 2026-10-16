@@ -128,6 +128,18 @@ enum NativeUITrust {
         """
     }
 
+    static func webTextEditorState(contextId: String, focused: Bool, start: Int, end: Int, trustedURL: URL) -> String? {
+        guard !contextId.isEmpty, start >= 0, end >= start else { return nil }
+        let payload: [String: NativeJSONValue] = ["contextId": .string(contextId), "focused": .bool(focused), "selectionStart": .number(Double(start)), "selectionEnd": .number(Double(end))]
+        guard let encodedURL = json(trustedURL.absoluteString), let encoded = json(payload) else { return nil }
+        return """
+        (() => {
+          if (window !== window.top || location.protocol !== "file:" || new URL(location.href).href !== new URL(\(encodedURL)).href) return;
+          window.dispatchEvent(new CustomEvent("codex-mobile-native-editor-state", {detail: \(encoded)}));
+        })();
+        """
+    }
+
     private static func json<T: Encodable>(_ value: T) -> String? {
         guard let data = try? JSONEncoder().encode(value) else { return nil }
         return String(data: data, encoding: .utf8)
