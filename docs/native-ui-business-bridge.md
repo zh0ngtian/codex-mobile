@@ -90,9 +90,9 @@ ConfiguredApp 使用真实 `scopedThreads`、`projectDirectories`、`collapsedPr
 | 审批 | `approval.answer/decide/submit/dismiss/reopen` 复用 approval-model 与 useApprovalRequests；决定仅映射当前 availableDecisions 的有效下标，回答读取同一拥有者已接受的最新答案 |
 | 历史编辑 | 原生输入框位于原消息位置，`history.change/cancel/submit` 复用原编辑回调与附件 input；真实存在后续对话时显示显式删除确认；historyEditRef 同步占用提交状态，防止连续不同 UUID 重复回退与发送 |
 | 排队消息 | `queue.change/edit/cancel/send` 保留原 hosted queue UUID、revision、HTTP pending 与查询语义，严格按 sending/uncertain、busy/steerable、failed 与同步状态提供编辑、取消、引导和重试 |
-| 设备与设置 | `settings.open {id}` 打开 devices/language/font/transport/notifications/updates；BackendManagerSheet 自身状态直接投影，probe/hostId 校验、注册表启停重排删除复用旧入口，繁忙或队列操作使用显式确认 |
+| 设备与设置 | `settings.open {id}` 打开 devices/language/transport/notifications/updates，font 仅保留非 iOS 网页设置；BackendManagerSheet 自身状态直接投影，probe/hostId 校验、注册表启停重排删除复用旧入口，繁忙或队列操作使用显式确认 |
 | 扫码 | 宿主 `codexMobileScanGatewayQr()` 返回原始扫码内容，再走 applyScannedGateway；只填现有表单，仍需测试并保存；取消或设备表单变化不会写入另一表单 |
-| 推送与字号 | Web 与原生共享 usePushSettingsState/useFontSizeSettings 的单一状态；Bark 校验、保存错误及未同步设备均保留，字号与语言立即反映在 snapshot |
+| 推送与字号 | Web 与原生共享 usePushSettingsState/useFontSizeSettings 的单一状态；Bark 校验、保存错误及未同步设备均保留；iOS 应用字号固定为原 small（0.875），忽略旧字号偏好，设置与过期字体页均不展示调整选项，snapshot 与原生加载态保持同一比例；语言立即反映在 snapshot |
 | 无设备启动 | UnconfiguredApp 与 ConfiguredApp 互斥挂载各自 runtime；无设备立即 ready 并展示添加设备表单，关闭后仍有重新添加入口 |
 | 本地草稿 | DraftsSheet 直接投影已有 list/remove/retry/restore；只传元数据，恢复回调获得原 IDB 二进制记录，不复制记录、不发送消息 |
 | 应用更新 | AppUpdateSheet 原 phase、进度、更新说明、install/retry/close；`manualCheckSupported=false` 不投影手动检查动作 |
@@ -130,7 +130,7 @@ Task2b 分模块 RED→GREEN 日志位于 `.mobile-build/native-reference/task2b
 
 原生对话顶部新增锚定用量面板，继续使用现有 `contextUsageView` 的最近请求占用；七天套餐额度投影来自现有 `rateLimits`，仅有可靠的窗口长度和重置时间时计算时间剩余。缺失数据不使用网页原型的演示值。新增字段保持可选以兼容既有快照。
 
-模型与思考强度共用 SwiftUI `Menu` 系统弹出菜单，以 `.menuOrder(.fixed)` 固定模型、思考强度两个 `Section` 及接口选项的原始顺序，平级列出选项并显示当前选中标记，与会话菜单采用相同系统菜单形式。选项按钮创建时捕获 `contextId`，选择继续走既有 `chooseComposerOption`；过期菜单和不可编辑状态不能派发更改。权限保留独立说明面板，附件面板保持原入口，这两类临时调节面板关闭后仅在原输入上下文仍有效时恢复原焦点。速度菜单继续使用权威 `snapshot.speedValue`，空值及 `default`/`normal` 默认别名显示 `bolt.slash`，非默认服务档位（包括旧 `fast` 与真实目录中的 `priority`）显示 `bolt.fill`；图标和辅助功能值共用 `isFastEnabled` 判断 Fast 开关；不建立乐观速度状态。输入栏的附件、权限、速度、停止、发送图标及模型/思考文字统一继承单一基准 16pt 的 `ScaledMetric` 字体，跟随现有字号比例与 Dynamic Type，44pt 点击范围及 28pt 发送圆底保留。侧栏项目行不再带新建图标，最近对话和底部新建入口继续保留。设置首页展示现有偏好的实时投影，语言与字号直接选择，版本行只展示已安装版本。iOS 不做启动、前台或手动更新检查，不接收升级事件，也不在 App 内触发 OTA 安装；Android 更新流程保持原有行为。
+模型与思考强度共用 SwiftUI `Menu` 系统弹出菜单，以 `.menuOrder(.fixed)` 固定模型、思考强度两个 `Section` 及接口选项的原始顺序，平级列出选项并显示当前选中标记，与会话菜单采用相同系统菜单形式。选项按钮创建时捕获 `contextId`，选择继续走既有 `chooseComposerOption`；过期菜单和不可编辑状态不能派发更改。权限保留独立说明面板，附件面板保持原入口，这两类临时调节面板关闭后仅在原输入上下文仍有效时恢复原焦点。速度菜单继续使用权威 `snapshot.speedValue`，空值及 `default`/`normal` 默认别名显示 `bolt.slash`，非默认服务档位（包括旧 `fast` 与真实目录中的 `priority`）显示 `bolt.fill`；图标和辅助功能值共用 `isFastEnabled` 判断 Fast 开关；不建立乐观速度状态。输入栏的附件、权限、速度、停止、发送图标及模型/思考文字统一继承单一基准 16pt 的 `ScaledMetric` 字体，应用字号固定为原 small（0.875），继续跟随 Dynamic Type，44pt 点击范围及 28pt 发送圆底保留。侧栏项目行不再带新建图标，最近对话和底部新建入口继续保留。设置首页展示现有偏好的实时投影，语言直接选择，iOS 移除字号行，版本行只展示已安装版本。iOS 不做启动、前台或手动更新检查，不接收升级事件，也不在 App 内触发 OTA 安装；Android 更新流程保持原有行为。
 
 ## 网页原生输入框
 
@@ -144,6 +144,10 @@ Task2b 分模块 RED→GREEN 日志位于 `.mobile-build/native-reference/task2b
 
 非交互 `NativeComposerLayoutProbe` 测量整个输入容器（含候选、提示、附件与队列），弱引用桥把顶部转换到同 window 的业务 WebView，按 0.5pt 去重后发出 `codex-mobile-native-composer-layout`。网页按 `top * innerHeight / webViewHeight` 换算遮挡，只为 timeline 增加实测留白；键盘和主页安全区不重复叠加。隐藏清理把顶部放回 WebView 底边，网页遮挡归零；top=0 仍是有效几何。监听随页面上下文清理。
 
-两种原生输入呈现始终使用同一个纵向 `TextField`，取消最大化按钮与强制填满高度。硬换行和自动折行使输入从一行自然增长，超限后由控件内部滚动，删除后缩回。竖屏普通/辅助字号分别最多六/三行，横屏分别最多二/一行；再取实际宿主高度预算允许的更小上限，至少保留一行。宿主高度直接取 `NativeUIHost` 外层 `GeometryReader` 的提案，并固定子树承载尺寸；完整原生空态正文允许缩至零并裁切正文溢出，输入底栏始终按真实宿主底边定位，避免顶部状态与问候语的固有高度反撑宿主。实测扣除候选、提示、附件、队列及外边距后，按真实字体行高、输入内边距和整行工具栏实测高度计算剩余编辑行数；工具栏首帧使用同一 16pt 字体的实际动态行高保护，完整高度另加底距和舍入净空，避免模型文字撑高整行后覆盖输入，不从已扣输入栏的正文高度反推，也不重复扣键盘或安全区。`NativeComposerLayoutBudget` 为一行编辑和工具栏保留空间，横屏采用紧凑间距；附件与队列使用独立内容理想高度取宿主允许的上限，超出时仅辅助区纵向滚动，队列自身继续最多 132pt。测量的是实际内容而不是受限视口，不创建重复按钮或副作用，不会因辅助区填满预算将输入反压为一行。非有限高度和无效行高使用安全预算，极大有限高度先限制自然上限再转换整数。只有切换会话上下文时重置局部输入状态。`selectionRevision` 只在权威正文或 UTF-16 光标变化时推进，本地绑定和相同草稿 echo 不强制重设 TextSelection，以保留中文组字状态。
+两种原生输入呈现始终使用同一个纵向 `TextField`，取消最大化按钮与强制填满高度。硬换行和自动折行使输入从一行自然增长，超限后由控件内部滚动，删除后缩回。App 在 iPhone、iPad 及应用内浏览器中固定正向竖屏，iPad 要求全屏，旋转设备后仍保留竖屏输入与发送操作。普通/辅助字号分别最多六/三行；再取实际宿主高度预算允许的更小上限，至少保留一行。宿主高度直接取 `NativeUIHost` 外层 `GeometryReader` 的提案，并固定子树承载尺寸；完整原生空态正文允许缩至零并裁切正文溢出，输入底栏始终按真实宿主底边定位，避免顶部状态与问候语的固有高度反撑宿主。实测扣除候选、提示、附件、队列及外边距后，按真实字体行高、输入内边距和整行工具栏实测高度计算剩余编辑行数；工具栏首帧使用同一 16pt 字体的实际动态行高保护，完整高度另加底距和舍入净空，避免模型文字撑高整行后覆盖输入，不从已扣输入栏的正文高度反推，也不重复扣键盘或安全区。`NativeComposerLayoutBudget` 为一行编辑和工具栏保留空间；附件与队列使用独立内容理想高度取宿主允许的上限，超出时仅辅助区纵向滚动，队列自身继续最多 132pt。测量的是实际内容而不是受限视口，不创建重复按钮或副作用，不会因辅助区填满预算将输入反压为一行。非有限高度和无效行高使用安全预算，极大有限高度先限制自然上限再转换整数。只有切换会话上下文时重置局部输入状态。`selectionRevision` 只在权威正文或 UTF-16 光标变化时推进，本地绑定和相同草稿 echo 不强制重设 TextSelection，以保留中文组字状态。
 
 关联自动化已验证真实 ConversationPage 呈现、遮罩、布局与恢复、检查点事务、真实 Swift Store/DTO/偏好以及可信 JavaScript 生成与执行。2026-10-16 整合后全量 1458 项测试通过，iOS 27 离线模拟器的 11 个输入、开关、组字、布局与错误场景分别通过，实际范围见[本轮验证记录](superpowers/plans/2026-10-16-native-web-composer.md#2026-10-16-本地验证记录)。未创建真实远端测试会话，未进行真机覆盖安装或数据保留验收；正式渠道交付仍以协调器成功凭证为准。
+
+### 网页重命名文本输入
+
+网页会话与侧栏继续调用现有 `window.prompt` 并由既有 `thread/name/set` 完成重命名。生成的主 WebView Coordinator 实现 `runJavaScriptTextInputPanelWithPrompt`，交给单一职责 `CodexMobileJavaScriptTextInputBridge` 显示系统文本框并预填 `defaultText`；保存返回输入，取消返回 nil。仅接受可信内置首页的主 frame，按钮文字提前同步 App 的 `document.documentElement.lang`，不在 prompt 挂起期间求值网页 JS。请求绑定独立标识并只完成一次，导航开始时取消挂起弹窗，重复或旧 action 不能完成新请求。完整原生 `NativeTextPrompt` 业务路径继续保留。

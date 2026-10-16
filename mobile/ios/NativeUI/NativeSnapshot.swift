@@ -5,7 +5,7 @@ struct NativeSnapshot: Codable {
     var version = 1
     var ready = false
     var locale = "zh-CN"
-    var fontScale: Double = 1
+    var fontScale: Double = 0.875
     var title = "Codex Mobile"
     var threadId: String? = nil
     var backendId: String? = nil

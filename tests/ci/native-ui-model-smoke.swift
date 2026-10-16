@@ -42,11 +42,20 @@ struct NativeStoreSmoke {
         precondition(NativeRateLimit(remainingPercent: 72, resetsAt: 2000, windowDurationMins: 0).remainingTimePercent(at: Date(timeIntervalSince1970: 1700)) == nil)
         precondition(NativeRateLimit(remainingPercent: 72, resetsAt: 2000, windowDurationMins: 10).remainingTimePercent(at: Date(timeIntervalSince1970: 2100)) == 0)
         let adjustmentStore = NativeUIStore(arguments: [])
+        precondition(adjustmentStore.snapshot.fontScale == 0.875, "原生加载态固定小字号")
         var adjustmentSnapshot = NativeSnapshot()
+        adjustmentSnapshot.fontScale = 1.25
         adjustmentSnapshot.ready = true
         adjustmentSnapshot.contextId = "b:t:1"
         adjustmentSnapshot.draft = "保留草稿"
         adjustmentStore.receive(adjustmentSnapshot)
+        precondition(adjustmentStore.snapshot.fontScale == 0.875, "旧原生快照不能放大应用字号")
+        let fontReference = NativeUIStore(arguments: ["--native-ui-reference-visual"])
+        precondition(fontReference.snapshot.fontScale == 0.875, "离线参考使用实际小字号")
+        fontReference.command("settings.open", ["id": .string("settings")])
+        precondition(fontReference.snapshot.panel?.items.contains(where: { $0.id == "font" }) == false)
+        fontReference.command("settings.font", ["value": .string("extra-large")])
+        precondition(fontReference.snapshot.fontScale == 0.875, "过期字号命令不能放大离线参考")
         var adjustmentCommands: [NativeCommand] = []
         adjustmentStore.setCaretOffset(2)
         adjustmentStore.sendCommand = { adjustmentCommands.append($0) }

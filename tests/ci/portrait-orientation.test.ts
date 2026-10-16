@@ -53,7 +53,7 @@ print(json.dumps({activity.get(f"{{{android}}}name"): activity.get(f"{{{android}
     expect(JSON.parse(result.stdout)).toEqual({ ".MainActivity": "portrait", ".InAppBrowserActivity": "portrait" });
   }));
 
-  it("iOS 18 的 iPhone/iPad 允许横屏，iPad 支持多任务", () => fixture((directory) => {
+  it("iOS 18 的 iPhone/iPad Debug 与 Release 均只允许正向竖屏并要求全屏", () => fixture((directory) => {
     mkdirSync(join(directory, "PakePlus.xcodeproj"));
     mkdirSync(join(directory, "PakePlus"));
     writeFileSync(join(directory, "PakePlus/Info.plist"), '<?xml version="1.0"?><plist version="1.0"><dict/></plist>');
@@ -73,7 +73,38 @@ print(json.dumps(plistlib.loads(Path("PakePlus/Info.plist").read_bytes())))
     expect(result.status, result.stderr).toBe(0);
     const project = readFileSync(join(directory, "PakePlus.xcodeproj/project.pbxproj"), "utf8");
     expect(project.match(/IPHONEOS_DEPLOYMENT_TARGET = 18.0;/g)).toHaveLength(2);
-    expect(project.match(/INFOPLIST_KEY_UISupportedInterfaceOrientations(?:_iPad)? = "[^"]*UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";/g)).toHaveLength(4);
-    expect(JSON.parse(result.stdout).UIRequiresFullScreen).toBe(false);
+    expect(project.match(/INFOPLIST_KEY_UISupportedInterfaceOrientations(?:_iPad)? = "UIInterfaceOrientationPortrait";/g)).toHaveLength(4);
+    const info = JSON.parse(result.stdout);
+    expect(info.UIRequiresFullScreen).toBe(true);
+    expect(info.UISupportedInterfaceOrientations).toEqual(['UIInterfaceOrientationPortrait']);
+    expect(info['UISupportedInterfaceOrientations~ipad']).toEqual(['UIInterfaceOrientationPortrait']);
+  }));
+
+  it.each([
+    [['UIInterfaceOrientationPortrait'], true, true],
+    [['UIInterfaceOrientationPortrait', 'UIInterfaceOrientationLandscapeLeft'], true, false],
+    [['UIInterfaceOrientationPortraitUpsideDown'], true, false],
+    [[], true, false],
+    [undefined, true, false],
+    [['UIInterfaceOrientationPortrait'], false, false],
+    [['UIInterfaceOrientationPortrait'], undefined, false],
+  ])('最终 IPA 严格校验方向与全屏：%j / %s', (orientations, fullScreen, accepted) => fixture(directory => {
+    const verify = hardeningScript('ios', 'Prepare and verify unsigned IPA');
+    const script = verify.split("<<'PY'\n")[1].split('\nPY')[0];
+    const plist = join(directory, 'Info.plist');
+    const make = spawnSync('python3', ['-c', `
+import json, plistlib
+from pathlib import Path
+values = json.loads(${JSON.stringify(JSON.stringify({ orientations, fullScreen }))})
+info = {"MinimumOSVersion": "18.0"}
+if "orientations" in values:
+    for key in ("UISupportedInterfaceOrientations", "UISupportedInterfaceOrientations~ipad"):
+        info[key] = values["orientations"]
+if "fullScreen" in values: info["UIRequiresFullScreen"] = values["fullScreen"]
+Path(${JSON.stringify(plist)}).write_bytes(plistlib.dumps(info))
+`], { encoding: 'utf8' });
+    expect(make.status, make.stderr).toBe(0);
+    const result = spawnSync('python3', ['-c', script, plist], { encoding: 'utf8' });
+    expect(result.status === 0, result.stderr).toBe(accepted);
   }));
 });

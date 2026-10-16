@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { t } from "../../i18n";
+import { isIOSNativeHost } from "../../native-ui/preference";
 import { applyFontSize, FONT_SIZE_STORAGE_KEY, readFontSize, type FontSize } from "../../ui/font-size";
 
 export function useFontSizeSettings() {
@@ -8,6 +9,7 @@ export function useFontSizeSettings() {
   useEffect(() => applyFontSize(size), [size]);
 
   const selectSize = (value: FontSize) => {
+    if (isIOSNativeHost()) return;
     setSize(value);
     applyFontSize(value);
     try {
@@ -23,6 +25,7 @@ export function useFontSizeSettings() {
 export function FontSizeSettings() { return <FontSizeSettingsForm state={useFontSizeSettings()} />; }
 export function FontSizeSettingsForm({ state }: { state: ReturnType<typeof useFontSizeSettings> }) {
   const { size, saveError, selectSize } = state;
+  if (isIOSNativeHost()) return null;
   return (
     <section className="backend-language-settings font-size-settings" aria-label={t("字体大小")}>
       <strong>{t("字体大小")}</strong>

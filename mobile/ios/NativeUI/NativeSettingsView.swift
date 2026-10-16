@@ -16,8 +16,6 @@ struct NativeSettingsView: View {
                             NativeSettingsGroupView(title: store.label("应用", "Application"), scale: store.snapshot.fontScale) {
                                 NativeSettingsChoiceRow(title: store.label("语言", "Language"), symbol: "globe", item: item("language"), store: store)
                                 separator
-                                NativeSettingsChoiceRow(title: store.label("字体大小", "Font Size"), symbol: "textformat", item: item("font"), store: store)
-                                separator
                                 Toggle(isOn: preferenceBinding) { Label(store.label("使用原生界面", "Use Native Interface"), systemImage: "laptopcomputer") }
                                     .padding(.horizontal, 15).frame(minHeight: 55)
                                     .accessibilityIdentifier("native-ui-preference")
@@ -34,7 +32,6 @@ struct NativeSettingsView: View {
                                     .foregroundStyle(.secondary).frame(minHeight: 17, alignment: .leading)
                                 if store.preferenceSaving { ProgressView(store.label("正在保存输入与附件…", "Saving text and attachments…")) }
                                 if let error = store.preferenceError { Text(error).foregroundStyle(.red).accessibilityIdentifier("native-ui-preference-error") }
-                                if let error = item("font-error")?.text { Text(error).foregroundStyle(.red) }
                             }.frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 15)
                         }
                         VStack(alignment: .leading, spacing: 8) {

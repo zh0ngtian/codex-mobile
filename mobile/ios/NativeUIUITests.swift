@@ -151,7 +151,7 @@ final class NativeUIUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Hello, let’s get started"].exists)
     }
 
-    func testVisualReferenceLargeTextLandscapeKeepsOneComposerAndDraft() {
+    func testVisualReferenceLargeTextRotationKeepsPortraitComposerAndDraft() {
         XCUIDevice.shared.orientation = .portrait
         defer { XCUIDevice.shared.orientation = .portrait }
         let app = XCUIApplication()
@@ -166,7 +166,7 @@ final class NativeUIUITests: XCTestCase {
         XCUIDevice.shared.orientation = .landscapeLeft
         let keyboard = app.keyboards.firstMatch
         let keyboardVisible = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
-            app.frame.width > app.frame.height && keyboard.exists && keyboard.frame.intersects(app.frame) && keyboard.frame.minY < app.frame.maxY - 20
+            app.frame.width < app.frame.height && keyboard.exists && keyboard.frame.intersects(app.frame) && keyboard.frame.minY < app.frame.maxY - 20
         }, object: nil)
         XCTAssertEqual(XCTWaiter.wait(for: [keyboardVisible], timeout: 8), .completed)
         XCTAssertTrue(input.isHittable)
@@ -178,7 +178,7 @@ final class NativeUIUITests: XCTestCase {
             let evidence = XCTAttachment(screenshot: app.screenshot())
             evidence.lifetime = .keepAlways
             add(evidence)
-            print("Landscape frames: app=\(app.frame) input=\(input.frame) send=\(send.frame) keyboard=\(app.keyboards.firstMatch.frame)")
+            print("Portrait rotation frames: app=\(app.frame) input=\(input.frame) send=\(send.frame) keyboard=\(app.keyboards.firstMatch.frame)")
         }
         XCTAssertTrue(send.isHittable)
         XCTAssertLessThanOrEqual(input.frame.maxY, app.buttons["native-model-menu"].frame.minY, "最大辅助字号下输入不能覆盖工具栏")
@@ -219,7 +219,7 @@ final class NativeUIUITests: XCTestCase {
         XCTAssertEqual(app.descendants(matching: .any).matching(identifier: "native-composer-input").count, 1)
     }
 
-    func testLandscapeAttachmentKeepsEditorAndActionsAboveKeyboard() {
+    func testRotationKeepsPortraitAttachmentEditorAndActionsAboveKeyboard() {
         continueAfterFailure = false
         XCUIDevice.shared.orientation = .portrait
         defer { XCUIDevice.shared.orientation = .portrait }
@@ -234,7 +234,7 @@ final class NativeUIUITests: XCTestCase {
         input.typeText("\nsecond\nthird")
         XCTAssertGreaterThan(input.frame.height, oneLineHeight + 10, "附件不能填满预算压制自然增长")
         XCUIDevice.shared.orientation = .landscapeLeft
-        let rotated = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in app.frame.width > app.frame.height }, object: nil)
+        let rotated = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in app.frame.width < app.frame.height }, object: nil)
         XCTAssertEqual(XCTWaiter.wait(for: [rotated], timeout: 5), .completed)
         for action in [app.buttons["移除 silence.wav"], app.buttons["native-send"], app.buttons["native-stop"]] {
             XCTAssertTrue(action.isHittable, app.debugDescription)
@@ -244,7 +244,7 @@ final class NativeUIUITests: XCTestCase {
         }
         XCTAssertTrue(input.isHittable)
         XCTAssertTrue((input.value as? String)?.contains("third") == true)
-        capture("横屏附件-输入与操作均在键盘上方", app: app)
+        capture("旋转后保持竖屏-附件输入与操作均在键盘上方", app: app)
     }
 
     func testVisualReferenceConfigurationExposesAuthoritativeValues() {
@@ -757,16 +757,16 @@ final class NativeUIUITests: XCTestCase {
         XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "无法播放媒体")).firstMatch.exists)
     }
 
-    func testReferenceLandscapeKeepsInputAndSendReachable() {
+    func testReferenceRotationKeepsPortraitInputAndSendReachable() {
         let app = reference()
         XCUIDevice.shared.orientation = .landscapeLeft
         defer { XCUIDevice.shared.orientation = .portrait }
         let input = app.descendants(matching: .any)["native-composer-input"]
-        let landscape = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in app.frame.width > app.frame.height }, object: app)
-        XCTAssertEqual(XCTWaiter.wait(for: [landscape], timeout: 5), .completed)
+        let portrait = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in app.frame.width < app.frame.height }, object: app)
+        XCTAssertEqual(XCTWaiter.wait(for: [portrait], timeout: 5), .completed)
         XCTAssertTrue(input.isHittable, app.debugDescription)
         input.tap()
-        input.typeText("Landscape_QA")
+        input.typeText("Portrait_Rotation_QA")
         XCTAssertTrue(app.buttons["native-send"].isHittable, app.debugDescription)
         XCTAssertTrue(app.buttons["native-send"].isEnabled)
     }
