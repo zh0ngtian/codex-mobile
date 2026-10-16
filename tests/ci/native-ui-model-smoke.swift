@@ -14,6 +14,11 @@ struct NativeStoreSmoke {
         }
         defaults.removeObject(forKey: NativeUIStore.preferenceKey)
         NativeComposerPresentationSmoke.verify()
+        NativeHistoryEditSmoke.verify()
+        let inlineJSON = Data(#"{"id":"turn:m","role":"user","text":"原消息","historyEdit":{"id":"history-edit:t:turn:m","title":"编辑历史消息","items":[{"id":"history-text","kind":"multilineField","value":"新草稿"}]}}"#.utf8)
+        let inlineMessage = try JSONDecoder().decode(NativeMessage.self, from: inlineJSON)
+        let inlineRoundtrip = try JSONSerialization.jsonObject(with: JSONEncoder().encode(inlineMessage)) as! [String: Any]
+        precondition((inlineRoundtrip["historyEdit"] as? [String: Any])?["id"] as? String == "history-edit:t:turn:m", "真实原生DTO必须保留消息原位编辑而不丢弃字段")
         let adjustment = NativeComposerAdjustment(kind: .model, contextID: "b:t:1", wasFocused: true)
         precondition(adjustment.restoredFocus(contextID: "b:t:1", editable: true, sidebarOpen: false) == true, "调节完成恢复原输入焦点")
         precondition(adjustment.restoredFocus(contextID: "b:t:2", editable: true, sidebarOpen: false) == nil, "过期调节面板不能聚焦另一会话")

@@ -65,7 +65,7 @@ final class NativeUIStore {
 
     init(arguments: [String] = ProcessInfo.processInfo.arguments) {
         visualReferenceFocused = arguments.contains("--native-ui-reference-visual-focused")
-        isReference = arguments.contains("--native-ui-reference") || arguments.contains("--native-ui-reference-conversation") || arguments.contains("--native-ui-reference-visual")
+        isReference = arguments.contains("--native-ui-reference-history") || arguments.contains("--native-ui-reference") || arguments.contains("--native-ui-reference-conversation") || arguments.contains("--native-ui-reference-visual")
         #if DEBUG
         nativeEnabled = isReference || Self.launchPreference || arguments.contains("--native-ui-live")
         #else
@@ -120,6 +120,10 @@ final class NativeUIStore {
                 snapshot.groups[index].actions = [NativePanelItem(id: "visual-project-4:more", kind: "action", title: "加载更多", command: NativeCommand(name: "project.more", params: ["backendId": .string("visual-device"), "cwd": .string("/demo/demo_gpu_monitor")]))]
             }
             sidebarOpen = arguments.contains("--native-ui-reference-visual-sidebar")
+        }
+        if arguments.contains("--native-ui-reference-history") {
+            snapshot = NativeHistoryEditReference.snapshot(fails: arguments.contains("--native-ui-reference-history-failure"))
+            draft = snapshot.draft
         }
     }
     func requestNativePreference(_ enabled: Bool) {
@@ -176,6 +180,12 @@ final class NativeUIStore {
             commandError = nil
             textPrompt = nil
         }
+        pendingFields = pendingFields.filter { key, _ in
+            if case .historyEdit(let contextID, let messageID, let editID) = key.scope {
+                return contextID == (value.contextId ?? "") && value.messages.first(where: { $0.id == messageID })?.historyEdit?.id == editID
+            }
+            return true
+        }
         if panelChanged {
             pendingFields = pendingFields.filter { key, _ in
                 if case .panel = key.scope { return false }
@@ -223,6 +233,10 @@ final class NativeUIStore {
         switch scope {
         case .panel(let id):
             items = snapshot.panel?.id == id ? snapshot.panel?.items ?? [] : []
+        case .historyEdit(let contextID, let messageID, let editID):
+            if contextID == (snapshot.contextId ?? ""), let editor = snapshot.messages.first(where: { $0.id == messageID })?.historyEdit, editor.id == editID {
+                items = editor.items
+            } else { items = [] }
         case .message(let id):
             if let message = snapshot.messages.first(where: { $0.id == id }) {
                 items = (message.blocks ?? []) + (message.actions ?? [])
@@ -358,6 +372,7 @@ final class NativeUIStore {
             return
         }
         if isReference {
+            if NativeHistoryEditReference.handle(name, params: params, snapshot: &snapshot, error: &commandError) { return }
             if name == "project.toggle", let index = snapshot.groups.firstIndex(where: { $0.command?.name == "project.toggle" && $0.command?.params == params }) {
                 snapshot.groups[index].collapsed = snapshot.groups[index].collapsed != true
             }
@@ -481,6 +496,11 @@ final class NativeUIStore {
     }
     func sendFieldEdit(_ item: NativePanelItem, scope: NativeFieldScope, values: [String: NativeJSONValue]) {
         guard let action = item.command else { return }
+        if case .historyEdit(let contextID, let messageID, let editID) = scope {
+            guard contextID == (snapshot.contextId ?? ""),
+                  let editor = snapshot.messages.first(where: { $0.id == messageID })?.historyEdit,
+                  editor.id == editID, editor.items.first(where: { $0.id == item.id })?.disabled != true else { return }
+        }
         let key = NativeFieldKey(scope: scope, itemID: item.id)
         fieldRevision += 1
         pendingFields[key] = fieldRevision

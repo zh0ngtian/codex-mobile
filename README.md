@@ -119,7 +119,7 @@ Codex Desktop 很适合坐在电脑前完成开发任务，但长任务启动后
 - 项目目录先展示，会话并发加载、独立渲染和独立重试。
 - 首屏只加载最近 5 个 turns，滚动到顶部每次继续加载 5 个旧回合。
 - 会话列表长按使用 iOS/Android 系统菜单；用户消息长按可编辑或复制完整正文，忙碌时仍可复制。浏览器保留网页菜单；各平台均保留原有编辑按钮与消息布局。
-- 历史消息编辑在原位置修改并保存重发，有后续对话时需确认删除后续；原消息附件保留。
+- 网页和 iOS 原生界面的历史消息都在原消息位置编辑并保存重发，有后续对话时需确认删除后续；原消息附件保留。
 - 工具、审批、文件、Diff 和状态信息使用适合触控的底部 Sheet 展示。
 - 运行状态显示在具体会话上，项目折叠时在名称后聚合显示运行/未读标记；机器连接状态仍独立显示。
 - 最终回答下方显示完成时间和整轮用时，短回合也显示；历史回合缺少可靠计时数据时不显示用时。
@@ -135,7 +135,7 @@ iOS 18 及以上提供可选的原生界面，对话页采用粉色消息气泡�
 
 侧栏顶部菜单可切换设备、打开草稿、刷新和设置；设备管理从设置进入，搜索按钮独立显示。项目行点击展开或收起，最近对话和底部提问入口保留新建。输入框聚焦后显示权限、速度及当前模型与思考强度，模型和思考强度在同一分组面板选择，关闭后恢复原先输入状态。
 
-对话右上角的上下文圆环显示已用比例，点击查看上下文余量和已有套餐额度。时间剩余按真实额度窗口的重置时间计算，缺少数据时不显示演示百分比。设置按应用、连接、通知分组，语言和字号可直接选择，版本行位于底部并可检查更新。
+对话右上角的上下文圆环显示已用比例，点击查看上下文余量和已有套餐额度。时间剩余按真实额度窗口的重置时间计算，缺少数据时不显示演示百分比。设置按应用、连接、通知分组，语言和字号可直接选择，版本行位于底部，仅展示已安装版本。
 
 原生界面和旧界面共用已有业务与数据。原生加载错误时，可选择“使用旧界面恢复”继续使用同一份当前状态。原生界面支持系统深浅色、动态字体和既有语言、字号设置；不新增语音入口。实现边界见 [原生界面桥接说明](docs/native-ui-business-bridge.md)。
 
@@ -324,7 +324,7 @@ npm run test:e2e
 
 ## 移动端构建
 
-正式发布由本机已有 `releasectl` 协调，`main` 的冻结批次清单触发 GitHub 双端构建；任意客户端任务分支推送不再自动发包。两端共用 prepare 预留版本，全部构建与校验成功后创建同一个 GitHub Release。配置、任务命令和恢复验收见 [发布协调说明](docs/release-coordination.md)；npm 包继续按需手动发布。
+正式发布由本机已有 `releasectl` 协调，`main` 的冻结批次清单触发 GitHub 双端构建；任意客户端任务分支推送不再自动发包。默认双端批次共用 prepare 预留版本，全部构建与校验成功后创建同一个 GitHub Release。用户指定 OTA-only 时，使用独立 `codex-mobile-ios-ota-production` 目标，仍整合到 main、分配更高版本并生成共同验收凭证，但只发布已签名 IPA 到 HTTPS OTA 和固定 LAN，不创建 GitHub Release、APK 或软件源版本。配置、任务命令和恢复验收见 [发布协调说明](docs/release-coordination.md)；npm 包继续按需手动发布。
 
 Android App 固定检查局域网更新清单
 `http://192.168.123.79:8765/channels/codex-mobile/latest.json`，发现新版本后从固定地址
@@ -333,7 +333,7 @@ Android App 固定检查局域网更新清单
 允许 Codex Mobile 安装未知应用，App 不支持静默安装。
 
 iOS 支持在本机局域网执行 Ad Hoc 自动签名与 HTTPS OTA。证书和密码保存在本机私有目录，
-`npm run ios:release` 构建后自动签名并更新固定安装页、LAN IPA；已签名包仅用于 HTTPS OTA 和固定 LAN 渠道，不再发布到软件源。[Cloudflare 软件源](https://signos-source-aggregator.305301890.workers.dev/sources/yao.json) 只自动同步本仓库 GitHub Release 的 unsigned IPA，安装前需自行签名，维护规则见 [SignOs 软件源文档](https://github.com/zh0ngtian/SignOs/blob/main/distribution/source-aggregator/README.md)。iOS“管理设备”底部显示当前版本，不提供“检查更新”按钮；启动与回前台时仍自动检查更新，发现新版本后可跳转 Safari 确认覆盖安装。手动安装使用[固定 OTA 安装页](https://192.168.123.79:8766/channels/codex-mobile/current/install.html)。
+协调器复用本机构建和签名脚本，更新固定安装页与 LAN IPA；已签名包仅用于 HTTPS OTA 和固定 LAN 渠道，不再发布到软件源。[Cloudflare 软件源](https://signos-source-aggregator.305301890.workers.dev/sources/yao.json) 只自动同步本仓库 GitHub Release 的 unsigned IPA，安装前需自行签名，维护规则见 [SignOs 软件源文档](https://github.com/zh0ngtian/SignOs/blob/main/distribution/source-aggregator/README.md)。iOS 的旧界面和原生界面都只展示当前版本，不做自动或手动更新检查，也不显示升级提示；启动和回前台不请求更新源。安装新版本请在 Safari 打开[固定 OTA 安装页](https://192.168.123.79:8766/channels/codex-mobile/current/install.html)。
 历史 GitHub Release 的 unsigned IPA 不能直接 OTA 安装；正式发布使用本机签名产物。
 证书的 UDID、Bundle ID、Team ID 和 App ID prefix 必须兼容，升级数据保留需要旧安装身份一致。
 本机配置、局域网 CA 首次信任、HTTPS 服务及安装验收步骤见 [iOS OTA 发布文档](docs/ios-ota-release.md)。
@@ -347,7 +347,7 @@ Android 安装包保持竖屏。iOS 主界面以 iPhone 竖屏为基准，并支
 本项目发布要求：
 
 - GitHub 双端构建和本地构建复用 `mobile/*/build-recipe.yml`，版本高于全部 GitHub Release 标签及仓库下限；本机渠道超前时，先更新 `mobile-version-floor.json` 或手动指定更高版本。npm 包按需手动测试、构建和发布。
-- 客户端任务独立开发并登记已验证提交，协调入口整合、复验、冻结并推送批次，再发布高于 Android、iOS 两个固定渠道现有版本的统一版本 APK 和已签名 IPA；APK 使用 `apk-server.py publish-channel codex-mobile`，IPA 使用 `npm run ios:release`，并回验两端固定清单、HEAD、完整 GET 大小与 SHA-256。
+- 客户端任务独立开发并登记已验证提交，协调入口整合、复验、冻结并推送批次，再发布高于 Android、iOS 两个固定渠道现有版本的统一版本 APK 和已签名 IPA；APK 使用 `apk-server.py publish-channel codex-mobile`，IPA 复用适配器签名和发布阶段，并回验两端固定清单、HEAD、完整 GET 大小与 SHA-256。明确指定的 OTA-only 批次只构建和回验 IPA，复用相同发布锁和签名身份检查。
 - 改动不涉及客户端运行代码、客户端引用的共用模块、原生桥接或影响客户端产物的构建配置时，不得触发客户端 Web、APK 或 IPA 的构建与发布；仅修改文档、规则、测试、服务端或不影响客户端产物的脚本时，均遵循此规则。服务端变更仍须验证、构建服务端并部署网关。具体约束见 [AGENTS.md](AGENTS.md)。
 
 本地构建配置与环境约定见 [构建说明](mobile/README.md)：
@@ -366,7 +366,7 @@ open .mobile-build/ios/pakeplus/PakePlus.xcodeproj
 选择 `PakePlus` scheme 和 iPhone 模拟器运行。工程内置当前前端，并读取本地构建配置中的
 固定容器提交与原生补丁；生成目录会在下次准备成功后替换。原生容器支持键盘避让，
 App 原生版本号与前端发布版本保持一致。
-iOS 可在“管理设备”底部查看当前版本号；iOS 更新桥读取原生版本和签名身份供自动更新使用，未配置 HTTPS OTA 时显示配置错误。
+iOS 可在“管理设备”底部查看当前版本号；iOS 保留原生版本读取能力；App 不检查更新，也不因缺少更新源配置而显示更新错误。
 
 [本地构建、XCTest 流程与模拟器验证结果](docs/ios-simulator-verification.md)。
 

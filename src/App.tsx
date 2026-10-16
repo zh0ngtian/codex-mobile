@@ -3062,186 +3062,164 @@ function BackendWorkspace({
       return;
     }
 
-    setHistoryEdit((current) =>
-      current ? { ...current, submitting: true } : current,
-    );
+    const draftContext = draftContextGenerationRef.current;
+    let ownedEdit: HistoricalMessageEditState = { ...session, submitting: true };
+    let editingClient = client;
+    const ownsCurrentEdit = () => draftContext === draftContextGenerationRef.current &&
+      String(activeRef.current?.id ?? "") === threadId && historyEditRef.current === ownedEdit;
+    const isCurrentEdit = () => ownsCurrentEdit() && editingClient === clientRef.current;
+    const updateSourceStatus = (running: boolean) => {
+      setThreads((entries) => entries.map((entry) => String(entry.id) === threadId
+        ? { ...entry, status: { type: running ? "active" : "idle" } }
+        : entry));
+    };
+    const setOwnedEdit = (next: HistoricalMessageEditState) => {
+      ownedEdit = next;
+      setHistoryEdit(next);
+    };
+    setHistoryEdit(ownedEdit);
     setBusy(true);
     setError("");
+    updateSourceStatus(true);
     requestRunCompletionNotificationPermission();
     const pendingTurnId =
       `pending-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const pendingSequence = ++pendingSequenceRef.current;
     let reverted = session.reverted;
-    let pendingAdded = false;
-    const draftContext = draftContextGenerationRef.current;
+    // 请求参数在原会话授权时冻结；导航后仍完成原线程的重发，不读取新会话的设置。
+    const shouldSendSettings = activeSettingsSynchronized;
+    const resendParams = {
+      threadId,
+      input,
+      ...(shouldSendSettings && selectedModel ? { model: selectedModel } : {}),
+      ...(shouldSendSettings && selectedEffort ? { effort: selectedEffort } : {}),
+      ...(shouldSendSettings ? { serviceTier: effectiveSelectedServiceTier } : {}),
+      ...(shouldSendSettings && selectedPermission ? { permissions: selectedPermission } : {}),
+      ...(shouldSendSettings ? {
+        approvalPolicy: selectedApprovalPolicy,
+        approvalsReviewer: selectedApprovalsReviewer,
+      } : {}),
+    };
     const restoreEditing = (nextReverted: boolean, failure?: string) => {
-      if (draftContext !== draftContextGenerationRef.current || String(activeRef.current?.id ?? "") !== threadId) return;
+      updateSourceStatus(false);
+      // 解除同一个编辑的提交锁不依赖旧连接；换会话或新编辑仍由所有权隔离。
+      if (!ownsCurrentEdit()) return;
       if (nextReverted) {
         // revert 已删除原目标；仅保留用于手动编辑的本地草稿，不代表已执行回合。
         const editDraft = { id: target.turnId, status: "failed", itemsView: "summary", historyEditDraft: true, items: [{ id: target.messageId, type: "userMessage", content: buildEditedHistoryInput(target, text) }] };
-        setActive((current) => {
-          if (!current || String(current.id) !== threadId) return current;
-          const next = { ...current, turns: [...(current.turns ?? []).filter((turn: AnyRecord) => turn.id !== pendingTurnId && turn.id !== target.turnId), editDraft] };
-          activeRef.current = next;
-          return next;
-        });
+        const next = { ...activeRef.current, turns: [...(activeRef.current?.turns ?? []).filter((turn: AnyRecord) => turn.id !== pendingTurnId && turn.id !== target.turnId), editDraft] };
+        activeRef.current = next;
+        setActive(next);
       }
-      setHistoryEdit((current) => current?.threadId === threadId ? { ...current, target: nextReverted ? { ...target, hasLaterTurns: false } : target, reverted: nextReverted, submitting: false } : current);
+      setOwnedEdit({ ...ownedEdit, target: nextReverted ? { ...target, hasLaterTurns: false } : target, reverted: nextReverted, submitting: false });
       setBusy(false);
       if (failure) setError(failure);
     };
-    try {
-      let workingThread = session.reverted ? { ...thread, turns: retainedTurns } : thread;
-      if (!reverted) {
-        const revertedResult = await revertHistoricalMessage(
-          client,
-          threadId,
-          target,
-        );
-        const revertedThread =
-          (revertedResult.response as { thread?: AnyRecord } | null)?.thread;
-        const revertedTurnsCursor =
-          (revertedResult.response as { turnsBackwardsCursor?: string | null } | null)
-            ?.turnsBackwardsCursor ?? null;
-        workingThread = {
-          ...thread,
-          ...(revertedThread ?? {}),
-          id: threadId,
-          turns: retainedTurns,
-          ...(thread.isProjectless === true ? { isProjectless: true } : {}),
-        };
-        reverted = true;
+    const applyRevertedResult = (response: AnyRecord | null | undefined, method: string) => {
+      const workingThread = {
+        ...thread,
+        ...(response?.thread ?? {}),
+        id: threadId,
+        turns: retainedTurns,
+        ...(thread.isProjectless === true ? { isProjectless: true } : {}),
+      };
+      reverted = true;
+      if (isCurrentEdit()) {
         activeRef.current = workingThread;
         setActive(workingThread);
-        resetOlderTurns(
-          revertedResult.method === "thread/revert"
-            ? revertedTurnsCursor
-            : null,
-        );
-        setHistoryEdit((current) =>
-          current && current.threadId === threadId
-            ? {
-                ...current,
-                target: { ...target, hasLaterTurns: false },
-                reverted: true,
-                submitting: true,
-              }
-            : current,
-        );
+        resetOlderTurns(method === "thread/revert" ? response?.turnsBackwardsCursor ?? null : null);
+        setOwnedEdit({ ...ownedEdit, target: { ...target, hasLaterTurns: false }, reverted: true, submitting: true });
       }
-
-      const localItem = {
-        id: `local-${pendingTurnId}`,
-        type: "userMessage",
-        content: input,
-      };
-      const pendingTurn = createPendingTurn(
-        pendingTurnId,
-        localItem,
-        ++pendingSequenceRef.current,
-      );
-      const pendingThread = {
-        ...workingThread,
-        turns: [...(workingThread.turns ?? retainedTurns), pendingTurn],
-      };
-      pendingAdded = true;
-      activeRef.current = pendingThread;
-      setActive(pendingThread);
-
-      const shouldSendSettings = activeSettingsSynchronized;
-      const startedTurn = await client.request<{ turn: AnyRecord }>(
-        "turn/start",
-        {
-          threadId,
-          input,
-          ...(shouldSendSettings && selectedModel
-            ? { model: selectedModel }
-            : {}),
-          ...(shouldSendSettings && selectedEffort
-            ? { effort: selectedEffort }
-            : {}),
-          ...(shouldSendSettings
-            ? { serviceTier: effectiveSelectedServiceTier }
-            : {}),
-          ...(shouldSendSettings && selectedPermission
-            ? { permissions: selectedPermission }
-            : {}),
-          ...(shouldSendSettings
-            ? {
-                approvalPolicy: selectedApprovalPolicy,
-                approvalsReviewer: selectedApprovalsReviewer,
-              }
-            : {}),
-        },
-      );
-      setActive((current) => {
-        if (!current || String(current.id) !== threadId) return current;
-        const next = applyTurnStarted(current, {
-          threadId,
-          turn: startedTurn.turn,
-        });
+      return workingThread;
+    };
+    const finishStartedTurn = (turn: AnyRecord, responseClient: AppServerClient) => {
+      const sourceThread = String(activeRef.current?.id ?? "") === threadId ? activeRef.current : null;
+      const knownTurn = sourceThread?.turns?.find((entry: AnyRecord) => entry.id === turn.id);
+      const terminal = ["completed", "failed", "interrupted", "cancelled"].includes(String(knownTurn?.status));
+      // turn/start 回执是较早事实，不能覆盖已经收到的完成通知或恢复快照。
+      const acceptedTurn = terminal ? { ...turn, ...knownTurn } : turn;
+      const next = sourceThread ? applyTurnStarted(sourceThread, { threadId, turn: acceptedTurn }) : null;
+      const running = ["inProgress", "in_progress", "running"].includes(String(next?.turns?.at(-1)?.status ?? acceptedTurn.status));
+      // 后台源线程已由完成通知变为 idle 时，较早的 start 回执不能重新标为 active。
+      const backgroundCompleted = !sourceThread && threadsRef.current.some((entry) =>
+        String(entry.id) === threadId && entry.status?.type === "idle");
+      if (!backgroundCompleted || !running) updateSourceStatus(running);
+      if (!ownsCurrentEdit()) return;
+      if (responseClient === clientRef.current && next) {
         activeRef.current = next;
-        return next;
-      });
+        setActive(next);
+      }
+      setBusy(running);
       setHistoryEdit(null);
-    } catch (reason) {
+      const currentClient = clientRef.current;
+      if (currentClient) {
+        // 完成编辑后只在同一上下文且尚未开始另一编辑时核对服务器事实。
+        void reconcileActiveThread(currentClient, () =>
+          draftContext === draftContextGenerationRef.current &&
+          String(activeRef.current?.id ?? "") === threadId && historyEditRef.current === null,
+        ).catch(() => undefined);
+      }
+    };
+    const handleFailure = (reason: unknown, requestClient: AppServerClient) => {
       if (reason instanceof HttpOperationPendingError) {
         rememberPendingOperation(reason.requestId, {
           threadId, draftContext, pendingTurnId,
           confirmed: (response, confirmationClient) => {
-            if (draftContext !== draftContextGenerationRef.current || String(activeRef.current?.id ?? "") !== threadId) return;
+            // pending registry 已匹配原请求；仅当前连接的确认可接管原编辑的界面写入。
+            if (confirmationClient === clientRef.current) editingClient = confirmationClient;
             if (response.error) {
               restoreEditing(reverted, response.error.message);
               return;
             }
             if (["thread/revert", "thread/rollback"].includes(reason.request.method ?? "")) {
-              // RPC 已明确完成回退；先恢复已知保留前缀，解锁原编辑，网络读取只校正事实。
-              const knownThread = { ...activeRef.current, turns: retainedTurns };
-              activeRef.current = knownThread;
-              setActive(knownThread);
-              resetOlderTurns((response.result as AnyRecord)?.turnsBackwardsCursor ?? null);
-              restoreEditing(true);
-              const correctionSequence = pendingSequenceRef.current;
-              void loadRecoverableRecentThreadTurns(confirmationClient, threadId, () => threadNotificationSequenceRef.current).then((recent) => {
-                if (recent == null || draftContext !== draftContextGenerationRef.current || String(activeRef.current?.id ?? "") !== threadId || confirmationClient !== clientRef.current || pendingSequenceRef.current !== correctionSequence) return;
-                setActive((current) => {
-                  if (!current || String(current.id) !== threadId) return current;
-                  const editDrafts = (current.turns ?? []).filter((turn: AnyRecord) => turn.historyEditDraft);
-                  const next = { ...current, turns: [...reconcileRecentTurns(retainedTurns, recent, { discardPendingThrough: correctionSequence }), ...editDrafts] };
-                  activeRef.current = next;
-                  return next;
-                });
-              }).catch(() => undefined);
+              // 已确认原授权回退成功后继续原线程重发；是否仍显示该编辑只决定界面写入。
+              const workingThread = applyRevertedResult(response.result as AnyRecord, reason.request.method!);
+              void sendEditedTurn(workingThread, confirmationClient);
             } else {
-              setHistoryEdit(null);
-              void reconcileActiveThread(confirmationClient).catch(() => undefined);
+              const turn = (response.result as AnyRecord)?.turn;
+              if (turn) finishStartedTurn(turn, confirmationClient);
+              else {
+                updateSourceStatus(true);
+                if (isCurrentEdit()) {
+                  setHistoryEdit(null);
+                  void reconcileActiveThread(confirmationClient).catch(() => undefined);
+                }
+              }
             }
           },
-        }, client);
+        }, requestClient);
         return;
       }
-      setBusy(false);
-      if (pendingAdded) {
-        setActive((current) => {
-          if (!current || String(current.id) !== threadId) return current;
-          const next = removePendingTurn(current, pendingTurnId);
-          activeRef.current = next;
-          return next;
-        });
+      // 回退已经成功时，服务端原目标已删除；复用现有本地编辑草稿锚点。
+      restoreEditing(reverted, reason instanceof Error ? reason.message : String(reason));
+      if (reverted && ownsCurrentEdit() && clientRef.current) retryThreadDetail();
+    };
+    async function sendEditedTurn(workingThread: AnyRecord, requestClient: AppServerClient) {
+      const localItem = { id: `local-${pendingTurnId}`, type: "userMessage", content: input };
+      if (isCurrentEdit()) {
+        const pendingThread = {
+          ...workingThread,
+          turns: [...(workingThread.turns ?? retainedTurns), createPendingTurn(pendingTurnId, localItem, pendingSequence)],
+        };
+        activeRef.current = pendingThread;
+        setActive(pendingThread);
       }
-      setHistoryEdit((current) =>
-        current && current.threadId === threadId
-          ? {
-              ...current,
-              target: reverted
-                ? { ...target, hasLaterTurns: false }
-                : current.target,
-              reverted,
-              submitting: false,
-            }
-          : current,
-      );
-      setError(reason instanceof Error ? reason.message : String(reason));
-      if (reverted) retryThreadDetail();
+      try {
+        const startedTurn = await requestClient.request<{ turn: AnyRecord }>("turn/start", resendParams);
+        finishStartedTurn(startedTurn.turn, requestClient);
+      } catch (reason) {
+        handleFailure(reason, requestClient);
+      }
+    }
+    try {
+      let workingThread = session.reverted ? { ...thread, turns: retainedTurns } : thread;
+      if (!reverted) {
+        const result = await revertHistoricalMessage(client, threadId, target);
+        workingThread = applyRevertedResult(result.response as AnyRecord, result.method);
+      }
+      await sendEditedTurn(workingThread, client);
+    } catch (reason) {
+      handleFailure(reason, client);
     }
   }
 

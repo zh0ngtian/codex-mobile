@@ -1,7 +1,8 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { AppBootstrap } from '../../src/App';
-const boundary = vi.hoisted(() => ({ requests: [] as Array<{ method: string; params: any }>, options: null as any, client: null as any, release: null as null | (() => void), failSend: false, immediateSend: false }));
+import { HttpOperationPendingError } from '../../src/backends/http-transport';
+const boundary = vi.hoisted(() => ({ requests: [] as Array<{ method: string; params: any }>, options: null as any, client: null as any, release: null as null | (() => void), failSend: false, immediateSend: false, nextThreadId: 'sent-thread', delayRevert: false, pendingMethod: '', releaseRevert: null as null | (() => void), rejectStart: null as null | (() => void) }));
 vi.mock('../../src/backends/connection-manager', () => ({ BackendConnectionManager: class {
  constructor(private options: any) { boundary.options = options; }
  client() { return boundary.client; } socket() { return null; } close() {} reconnect() {}
@@ -12,8 +13,10 @@ vi.mock('../../src/backends/connection-manager', () => ({ BackendConnectionManag
    if (method === 'model/list') return { data: [{ model: 'gpt', displayName: 'GPT', isDefault: true, supportedReasoningEfforts: [{ reasoningEffort: 'high', description: '' }] }] };
    if (method === 'permissionProfile/list') return { data: [{ id: ':workspace', allowed: true }] };
    if (method === 'config/read') return { config: { model: 'gpt', sandbox_mode: 'workspace-write', model_reasoning_effort: 'high' } };
-   if (method === 'thread/start') return { thread: { id: 'sent-thread', cwd: null, turns: [] }, model: 'gpt' };
-   if (method === 'turn/start') { if (boundary.failSend) throw new Error('真实发送失败'); if (boundary.immediateSend) return { turn: { id: 'turn-live', status: 'inProgress', items: [] } }; return new Promise(resolve => { boundary.release = () => resolve({ turn: { id: 'turn-live', status: 'inProgress', items: [] } }); }); }
+   if (method === 'thread/start') return { thread: { id: boundary.nextThreadId, cwd: null, turns: [] }, model: 'gpt' };
+   if (method === boundary.pendingMethod) throw new HttpOperationPendingError(`pending-${params.threadId}-${method}`, { id: 'pending-rpc', method, params });
+   if (method === 'thread/revert' && boundary.delayRevert) return new Promise(resolve => { boundary.releaseRevert = () => resolve({ thread: { id: params.threadId, turns: [] } }); });
+   if (method === 'turn/start') { const turnId = params.threadId === 'thread-b' ? 'turn-b' : 'turn-live'; if (boundary.failSend) throw new Error('真实发送失败'); if (boundary.immediateSend) return { turn: { id: turnId, status: 'inProgress', items: [] } }; return new Promise((resolve, reject) => { boundary.release = () => resolve({ turn: { id: turnId, status: 'inProgress', items: [] } }); boundary.rejectStart = () => reject(new Error('旧会话发送失败')); }); }
    if (method === 'thread/turns/list') return { data: [], nextCursor: null };
    return { data: [], items: [], marketplaces: [], nextCursor: null };
   } };
@@ -23,7 +26,7 @@ vi.mock('../../src/backends/connection-manager', () => ({ BackendConnectionManag
 } }));
 const posts: any[] = []; let queueItems: any[] = [];
 function command(id: string, name: string, params: Record<string, unknown> = {}) { window.dispatchEvent(new CustomEvent('codex-mobile-native-command', { detail: { id, name, params } })); }
-afterEach(() => { cleanup(); boundary.requests = []; boundary.client = null; boundary.options = null; boundary.release = null; boundary.failSend = false; boundary.immediateSend = false; queueItems = []; posts.length = 0; localStorage.clear(); delete (window as any).__CODEX_NATIVE_UI__; delete (window as any).webkit; delete (window as any).codexMobilePublishNativeSnapshot; vi.unstubAllGlobals(); });
+afterEach(() => { cleanup(); boundary.requests = []; boundary.client = null; boundary.options = null; boundary.release = null; boundary.failSend = false; boundary.immediateSend = false; boundary.nextThreadId = 'sent-thread'; boundary.delayRevert = false; boundary.pendingMethod = ''; boundary.releaseRevert = null; boundary.rejectStart = null; queueItems = []; posts.length = 0; localStorage.clear(); delete (window as any).__CODEX_NATIVE_UI__; delete (window as any).webkit; delete (window as any).codexMobilePublishNativeSnapshot; vi.unstubAllGlobals(); });
 async function setup(native = true, projectState = { projects: [] as string[], projectlessThreadIds: [] as string[] }) {
  if (native) Object.assign(window, { __CODEX_NATIVE_UI__: true, webkit: { messageHandlers: { nativeUI: { postMessage() {} } } }, codexMobilePublishNativeSnapshot: (s: unknown) => posts.push(s) });
  vi.stubGlobal('fetch', vi.fn(async (url: string, options?: RequestInit) => {
@@ -182,7 +185,8 @@ it('历史编辑连续change与submit消费最新文本并同步占用提交状�
  await act(async () => boundary.options.onNotification('a', { method: 'turn/completed', params: { threadId: 'sent-thread', turn: { id: 'turn-live', status: 'completed', items: [{ id: 'history-user', type: 'userMessage', content: [{ type: 'text', text: '原历史' }] }] } } }, boundary.client));
  await waitFor(() => expect(posts.at(-1)?.busy).toBe(false));
  await act(async () => { command('hist-edit', 'message.edit', { contextId, turnId: 'turn-live', messageId: 'history-user' }); });
- await waitFor(() => expect(posts.at(-1)?.panel?.id).toContain('history-edit:'));
+ await waitFor(() => expect(posts.at(-1)?.messages.find((message: any) => message.id === 'turn-live:history-user')?.historyEdit?.id).toContain('history-edit:'));
+ expect(posts.at(-1).panel).toBeUndefined();
  const editKey = 'sent-thread:turn-live:history-user';
  await act(async () => {
   command('hist-change', 'history.change', { contextId, editKey, value: '最新历史正文' });
@@ -192,7 +196,199 @@ it('历史编辑连续change与submit消费最新文本并同步占用提交状�
  await waitFor(() => expect(boundary.requests.filter(r => r.method === 'turn/start')).toHaveLength(2));
  expect(boundary.requests.filter(r => r.method === 'turn/start')[1].params.input[0].text).toContain('最新历史正文');
  expect(boundary.requests.filter(r => r.method === 'thread/revert')).toHaveLength(1);
+ await waitFor(() => expect(posts.at(-1)?.messages.every((message: any) => !message.historyEdit)).toBe(true));
 });
+it('原位历史编辑失败恢复目标草稿和原附件，重试保留同轮此前消息并只回退一次', async () => {
+ const contextId = await setup(); boundary.immediateSend = true;
+ await act(async () => { command('history-failure-draft', 'draft.set', { contextId, value: '创建对话', revision: 1 }); command('history-failure-send', 'message.send', { contextId }); });
+ await waitFor(() => expect(posts.at(-1)?.threadId).toBe('sent-thread'));
+ await act(async () => boundary.options.onNotification('a', { method: 'turn/completed', params: { threadId: 'sent-thread', turn: { id: 'turn-live', status: 'completed', items: [
+  { id: 'before', type: 'userMessage', content: [{ type: 'text', text: '同轮此前消息' }, { type: 'localImage', path: '/cache/before.png' }] },
+  { id: 'target', type: 'userMessage', content: [{ type: 'text', text: '原目标' }, { type: 'localImage', path: '/cache/target.png' }] },
+ ] } } }, boundary.client));
+ await waitFor(() => expect(posts.at(-1)?.busy).toBe(false));
+ await act(async () => { command('history-failure-composer', 'draft.set', { contextId, value: '普通草稿仍保留', revision: 2 }); command('history-failure-edit', 'message.edit', { contextId, turnId: 'turn-live', messageId: 'target' }); });
+ const edited = () => posts.at(-1)?.messages.find((message: any) => message.id === 'turn-live:target');
+ await waitFor(() => expect(edited()?.historyEdit?.id).toBe('history-edit:sent-thread:turn-live:target'));
+ expect(JSON.stringify(edited().historyEdit)).toContain('同轮此前的 1 条用户消息及附件会一起重发');
+ boundary.failSend = true;
+ await act(async () => { command('history-failure-change', 'history.change', { contextId, editKey: 'sent-thread:turn-live:target', value: '失败后保留的新草稿' }); command('history-failure-submit', 'history.submit', { contextId, editKey: 'sent-thread:turn-live:target' }); });
+ await waitFor(() => expect(posts.at(-1)?.error).toContain('真实发送失败'));
+ await waitFor(() => expect(edited()?.historyEdit?.items.find((item: any) => item.id === 'history-text')?.disabled).toBe(false));
+ expect(edited().historyEdit.items.find((item: any) => item.id === 'history-text').value).toBe('失败后保留的新草稿');
+ expect(JSON.stringify(edited().blocks)).toContain(encodeURIComponent('/cache/target.png'));
+ expect(JSON.stringify(edited().historyEdit)).toContain('原对话已回退，待重新发送的编辑草稿');
+ expect(posts.at(-1).draft).toBe('普通草稿仍保留'); expect(posts.at(-1).panel).toBeUndefined();
+ const attempted = boundary.requests.filter(request => request.method === 'turn/start').at(-1)!.params.input;
+ expect(attempted.filter((part: any) => part.type === 'text').map((part: any) => part.text)).toEqual(['同轮此前消息', '失败后保留的新草稿']);
+ expect(attempted.filter((part: any) => part.type === 'localImage').map((part: any) => part.path)).toEqual(['/cache/before.png', '/cache/target.png']);
+ boundary.failSend = false;
+ await act(async () => { command('history-failure-retry', 'history.submit', { contextId, editKey: 'sent-thread:turn-live:target' }); });
+ await waitFor(() => expect(posts.at(-1)?.messages.every((message: any) => !message.historyEdit)).toBe(true));
+ expect(boundary.requests.filter(request => request.method === 'thread/revert')).toHaveLength(1);
+});
+
+async function createHistorySource() {
+ const contextId = await setup(); boundary.immediateSend = true;
+ await act(async () => { command('source-draft', 'draft.set', { contextId, value: 'A原消息', revision: 1 }); command('source-send', 'message.send', { contextId }); });
+ await waitFor(() => expect(posts.at(-1)?.threadId).toBe('sent-thread'));
+ await completeHistoryThread('sent-thread', 'turn-live', 'message-a', 'A原消息');
+ await act(async () => { command('source-edit', 'message.edit', { contextId, turnId: 'turn-live', messageId: 'message-a' }); command('source-edit-change', 'history.change', { contextId, editKey: 'sent-thread:turn-live:message-a', value: 'A授权重发内容' }); });
+ await waitFor(() => expect(posts.at(-1)?.messages.some((message: any) => message.historyEdit)).toBe(true));
+ return contextId;
+}
+async function completeHistoryThread(threadId: string, turnId: string, messageId: string, text: string) {
+ await act(async () => boundary.options.onNotification('a', { method: 'turn/completed', params: { threadId, turn: { id: turnId, status: 'completed', items: [{ id: messageId, type: 'userMessage', content: [{ type: 'text', text }] }] } } }, boundary.client));
+ await waitFor(() => expect(posts.at(-1)?.busy).toBe(false));
+}
+async function switchHistoryDestination(existing: boolean) {
+ await act(async () => { command('destination-new', 'thread.new'); });
+ await waitFor(() => expect(posts.at(-1)?.threadId).toBeUndefined());
+ const contextId = posts.at(-1).contextId;
+ if (existing) {
+  boundary.nextThreadId = 'thread-b'; boundary.immediateSend = true;
+  await act(async () => { command('destination-draft', 'draft.set', { contextId, value: 'B原消息', revision: 1 }); command('destination-send', 'message.send', { contextId }); });
+  await waitFor(() => expect(posts.at(-1)?.threadId).toBe('thread-b'));
+  await completeHistoryThread('thread-b', 'turn-b', 'message-b', 'B原消息');
+ }
+ await act(async () => { command('destination-composer', 'draft.set', { contextId, value: 'B普通草稿', revision: 2 }); });
+ await waitFor(() => expect(posts.at(-1)?.draft).toBe('B普通草稿'));
+ return contextId;
+}
+it.each([false, true])('A历史回退迟到时已切换目标existing=%s，仍重发A但不能覆盖新目标上下文', async existing => {
+ const contextId = await createHistorySource(); boundary.delayRevert = true;
+ await act(async () => { command('source-submit', 'history.submit', { contextId, editKey: 'sent-thread:turn-live:message-a' }); });
+ await waitFor(() => expect(boundary.releaseRevert).toBeTypeOf('function'));
+ const destinationContext = await switchHistoryDestination(existing);
+ const expectedThread = existing ? 'thread-b' : undefined;
+ await act(async () => { boundary.releaseRevert!(); });
+ await waitFor(() => expect(boundary.requests.filter(request => request.method === 'turn/start' && request.params.threadId === 'sent-thread')).toHaveLength(2));
+ await waitFor(() => expect(posts.at(-1)?.commandResults?.some((result: any) => result.id === 'source-submit')).toBe(true));
+ expect(posts.at(-1)).toMatchObject({ contextId: destinationContext, draft: 'B普通草稿', busy: false, pending: false, readOnly: false });
+ expect(posts.at(-1).threadId).toBe(expectedThread);
+ expect(posts.at(-1).messages.some((message: any) => message.text.includes('A授权重发内容'))).toBe(false);
+ const resend = boundary.requests.filter(request => request.method === 'turn/start' && request.params.threadId === 'sent-thread').at(-1)!;
+ expect(resend.params.input[0].text).toBe('A授权重发内容');
+ expect(boundary.requests.filter(request => request.method === 'thread/revert')).toHaveLength(1);
+});
+it.each(['success', 'failure'])('A历史发送%s迟到时B的新编辑、错误、草稿和pending状态不被清空', async outcome => {
+ const contextId = await createHistorySource(); boundary.immediateSend = false;
+ await act(async () => { command('source-submit', 'history.submit', { contextId, editKey: 'sent-thread:turn-live:message-a' }); });
+ await waitFor(() => expect(boundary.requests.filter(request => request.method === 'turn/start')).toHaveLength(2));
+ const finish = outcome === 'success' ? boundary.release! : boundary.rejectStart!;
+ const destinationContext = await switchHistoryDestination(true);
+ await act(async () => { command('destination-edit', 'message.edit', { contextId: destinationContext, turnId: 'turn-b', messageId: 'message-b' }); command('destination-change', 'history.change', { contextId: destinationContext, editKey: 'thread-b:turn-b:message-b', value: 'B新编辑草稿' }); });
+ await waitFor(() => expect(posts.at(-1)?.messages.find((message: any) => message.id === 'turn-b:message-b')?.historyEdit?.items[0].value).toBe('B新编辑草稿'));
+ await act(async () => { command('destination-error', 'model.select', { contextId: destinationContext, value: 'invalid' }); });
+ await waitFor(() => expect(posts.at(-1)?.error).toBeTruthy());
+ const error = posts.at(-1).error;
+ await act(async () => { finish(); });
+ await waitFor(() => expect(posts.at(-1)?.commandResults?.some((result: any) => result.id === 'source-submit')).toBe(true));
+ expect(posts.at(-1)).toMatchObject({ threadId: 'thread-b', contextId: destinationContext, draft: 'B普通草稿', busy: false, pending: false, readOnly: true, error });
+ expect(posts.at(-1).messages.find((message: any) => message.id === 'turn-b:message-b')?.historyEdit?.items[0].value).toBe('B新编辑草稿');
+});
+
+it.each(['thread/revert', 'turn/start'])('A历史%s的HTTP待确认成功只完成A授权操作并保持B编辑状态', async method => {
+ const contextId = await createHistorySource(); boundary.pendingMethod = method;
+ await act(async () => { command('source-submit', 'history.submit', { contextId, editKey: 'sent-thread:turn-live:message-a' }); });
+ await waitFor(() => expect(posts.at(-1)?.pending).toBe(true));
+ boundary.pendingMethod = '';
+ const destinationContext = await switchHistoryDestination(true);
+ await act(async () => { command('destination-edit', 'message.edit', { contextId: destinationContext, turnId: 'turn-b', messageId: 'message-b' }); command('destination-change', 'history.change', { contextId: destinationContext, editKey: 'thread-b:turn-b:message-b', value: 'B新编辑草稿' }); });
+ await waitFor(() => expect(posts.at(-1)?.messages.find((message: any) => message.id === 'turn-b:message-b')?.historyEdit?.items[0].value).toBe('B新编辑草稿'));
+ const result = method === 'thread/revert' ? { thread: { id: 'sent-thread', turns: [] } } : { turn: { id: 'turn-a-retry', status: 'inProgress', items: [] } };
+ await act(async () => boundary.options.onNotification('a', { method: 'mobile/operation/confirmed', params: { requestId: `pending-sent-thread-${method}`, request: { method, params: { threadId: 'sent-thread' } }, response: { id: 'pending-rpc', result } } }, boundary.client));
+ await waitFor(() => expect(boundary.requests.filter(request => request.method === 'turn/start' && request.params.threadId === 'sent-thread')).toHaveLength(2));
+ expect(posts.at(-1)).toMatchObject({ threadId: 'thread-b', contextId: destinationContext, draft: 'B普通草稿', busy: false, pending: false, readOnly: true });
+ expect(posts.at(-1).messages.find((message: any) => message.id === 'turn-b:message-b')?.historyEdit?.items[0].value).toBe('B新编辑草稿');
+ expect(boundary.requests.filter(request => request.method === 'thread/revert' && request.params.threadId === 'sent-thread')).toHaveLength(1);
+});
+it('A历史发送迟到不解除B自己正在等待HTTP回退确认的busy和pending', async () => {
+ const contextId = await createHistorySource(); boundary.immediateSend = false;
+ await act(async () => { command('source-submit', 'history.submit', { contextId, editKey: 'sent-thread:turn-live:message-a' }); });
+ await waitFor(() => expect(boundary.requests.filter(request => request.method === 'turn/start')).toHaveLength(2));
+ const finish = boundary.release!;
+ const destinationContext = await switchHistoryDestination(true);
+ await act(async () => { command('destination-edit', 'message.edit', { contextId: destinationContext, turnId: 'turn-b', messageId: 'message-b' }); command('destination-change', 'history.change', { contextId: destinationContext, editKey: 'thread-b:turn-b:message-b', value: 'B待确认编辑草稿' }); });
+ await waitFor(() => expect(posts.at(-1)?.messages.find((message: any) => message.id === 'turn-b:message-b')?.historyEdit).toBeDefined());
+ boundary.pendingMethod = 'thread/revert';
+ await act(async () => { command('destination-submit', 'history.submit', { contextId: destinationContext, editKey: 'thread-b:turn-b:message-b' }); });
+ await waitFor(() => expect(posts.at(-1)?.pending).toBe(true));
+ await act(async () => { finish(); });
+ await waitFor(() => expect(posts.at(-1)?.commandResults?.some((result: any) => result.id === 'source-submit')).toBe(true));
+ expect(posts.at(-1)).toMatchObject({ threadId: 'thread-b', contextId: destinationContext, busy: true, pending: true, readOnly: true, draft: 'B普通草稿' });
+ expect(posts.at(-1).messages.find((message: any) => message.id === 'turn-b:message-b')?.historyEdit?.items[0]).toMatchObject({ value: 'B待确认编辑草稿', disabled: true });
+});
+
+async function reconnectHistoryClient() {
+ const previous = boundary.client;
+ const replacement = { ...previous, request: async (method: string, params: any) => {
+  if (method === 'thread/resume') {
+   boundary.requests.push({ method, params });
+   return { thread: { id: params.threadId, turns: [] }, model: 'gpt' };
+  }
+  return previous.request(method, params);
+ } };
+ const before = boundary.requests.filter(request => request.method === 'thread/resume').length;
+ await act(async () => {
+  boundary.options.onConnection('a', 'offline');
+  boundary.options.onConnection('a', 'connecting');
+  boundary.client = replacement;
+  boundary.options.onConnection('a', 'online');
+  boundary.options.onReady('a', replacement);
+ });
+ await waitFor(() => expect(boundary.requests.filter(request => request.method === 'thread/resume')).toHaveLength(before + 1));
+ return replacement;
+}
+it.each(['thread/revert', 'turn/start'].flatMap(method => ['success', 'error'].map(outcome => ({ method, outcome }))))('历史$method等待期间原上下文重连后可信确认$outcome能释放旧提交', async ({ method, outcome }) => {
+ const contextId = await createHistorySource(); boundary.pendingMethod = method;
+ await act(async () => { command('source-submit', 'history.submit', { contextId, editKey: 'sent-thread:turn-live:message-a' }); });
+ await waitFor(() => expect(posts.at(-1)?.pending).toBe(true));
+ const replacement = await reconnectHistoryClient();
+ boundary.pendingMethod = '';
+ const response = outcome === 'error' ? { id: 'pending-rpc', error: { code: -1, message: '确认发送失败' } }
+  : { id: 'pending-rpc', result: method === 'thread/revert' ? { thread: { id: 'sent-thread', turns: [] } } : { turn: { id: 'turn-resend', status: 'inProgress', items: [] } } };
+ await act(async () => boundary.options.onNotification('a', { method: 'mobile/operation/confirmed', params: { requestId: `pending-sent-thread-${method}`, request: { method }, response } }, replacement));
+ await waitFor(() => expect(posts.at(-1)?.pending).toBe(false));
+ expect(posts.at(-1).contextId).toBe(contextId);
+ if (outcome === 'success') {
+  await waitFor(() => expect(posts.at(-1)?.readOnly).toBe(false));
+  expect(posts.at(-1).messages.every((message: any) => !message.historyEdit)).toBe(true);
+ } else {
+  await waitFor(() => expect(posts.at(-1)?.messages.find((message: any) => message.id === 'turn-live:message-a')?.historyEdit?.items[0].disabled).toBe(false));
+  expect(posts.at(-1)).toMatchObject({ busy: false, error: '确认发送失败' });
+  await act(async () => { command('cancel-after-reconnect', 'history.cancel', { contextId, editKey: 'sent-thread:turn-live:message-a' }); });
+  await waitFor(() => expect(posts.at(-1)?.readOnly).toBe(false));
+ }
+});
+it('普通历史发送错误在同一编辑重连后到达仍能释放编辑且保留失败草稿', async () => {
+ const contextId = await createHistorySource(); boundary.immediateSend = false;
+ await act(async () => { command('source-submit', 'history.submit', { contextId, editKey: 'sent-thread:turn-live:message-a' }); });
+ await waitFor(() => expect(boundary.requests.filter(request => request.method === 'turn/start')).toHaveLength(2));
+ const fail = boundary.rejectStart!;
+ await reconnectHistoryClient();
+ await act(async () => { fail(); });
+ await waitFor(() => expect(posts.at(-1)?.error).toContain('旧会话发送失败'));
+ expect(posts.at(-1)).toMatchObject({ busy: false, pending: false, contextId });
+ expect(posts.at(-1).messages.find((message: any) => message.id === 'turn-live:message-a')?.historyEdit?.items[0]).toMatchObject({ value: 'A授权重发内容', disabled: false });
+});
+it('历史start待确认前已完成，迟到inProgress确认不能倒退终态或阻止再次编辑', async () => {
+ const contextId = await createHistorySource(); boundary.pendingMethod = 'turn/start';
+ await act(async () => { command('source-submit', 'history.submit', { contextId, editKey: 'sent-thread:turn-live:message-a' }); });
+ await waitFor(() => expect(posts.at(-1)?.pending).toBe(true));
+ boundary.pendingMethod = '';
+ await act(async () => boundary.options.onNotification('a', { method: 'turn/completed', params: { threadId: 'sent-thread', turn: { id: 'turn-resend', status: 'completed', items: [{ id: 'message-resend', type: 'userMessage', content: [{ type: 'text', text: 'A授权重发内容' }] }, { id: 'final-resend', type: 'agentMessage', phase: 'final_answer', text: '重发已完成' }] } } }, boundary.client));
+ await waitFor(() => expect(posts.at(-1)?.messages.some((message: any) => message.text === '重发已完成')).toBe(true));
+ const beforeReads = boundary.requests.filter(request => request.method === 'thread/turns/list').length;
+ await act(async () => boundary.options.onNotification('a', { method: 'mobile/operation/confirmed', params: { requestId: 'pending-sent-thread-turn/start', request: { method: 'turn/start' }, response: { id: 'pending-rpc', result: { turn: { id: 'turn-resend', status: 'inProgress', items: [] } } } } }, boundary.client));
+ await waitFor(() => expect(posts.at(-1)?.pending).toBe(false));
+ expect(posts.at(-1).busy).toBe(false);
+ expect(posts.at(-1).groups.flatMap((group: any) => group.items).filter((item: any) => item.command?.params?.threadId === 'sent-thread').every((item: any) => item.badge !== '运行中')).toBe(true);
+ await act(async () => { command('edit-completed-resend', 'message.edit', { contextId, turnId: 'turn-resend', messageId: 'message-resend' }); });
+ await waitFor(() => expect(posts.at(-1)?.messages.find((message: any) => message.id === 'turn-resend:message-resend')?.historyEdit).toBeDefined());
+ expect(boundary.requests.filter(request => request.method === 'thread/turns/list').length).toBeGreaterThan(beforeReads);
+});
+
 it('新对话连续输入与保存草稿使用同一实时草稿且不会发送消息', async () => {
  const { newChatDraftStore } = await import('../../src/features/drafts/new-chat-drafts');
  const save = vi.spyOn(newChatDraftStore, 'save').mockImplementation(async input => ({ ...input, id: 'draft-native', revision: '1', updatedAt: Date.now(), files: [] }));

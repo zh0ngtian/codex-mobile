@@ -48,10 +48,8 @@ struct NativeSettingsView: View {
                         }
                     }.padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 24)
                 }.scrollIndicators(.hidden)
-                Button { open("updates") } label: {
-                    HStack(spacing: 7) { Text("Codex Mobile"); Text(version) }
-                        .font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity, minHeight: 44)
-                }.buttonStyle(.plain).accessibilityLabel(store.label("版本与检查更新", "Version and Check for Updates"))
+                Text("Codex Mobile \(version)")
+                    .font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity, minHeight: 44)
                     .accessibilityIdentifier("native-settings-version")
             }
             .background(NativePalette.settings)

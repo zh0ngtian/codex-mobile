@@ -4,6 +4,12 @@ struct NativeConversationStatusView: View {
     let store: NativeUIStore
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
+            if let unavailable = store.snapshot.conversationActions?.first(where: { $0.id == "history-unavailable" }) {
+                NativePanelItemView(item: unavailable, store: store, scope: .message("conversation:\(store.threadKey)"))
+                if let cancel = store.snapshot.conversationActions?.first(where: { $0.id == "history-cancel" }) {
+                    NativePanelItemView(item: cancel, store: store, scope: .message("conversation:\(store.threadKey)"))
+                }
+            }
             if store.snapshot.approvalCount > 0 {
                 Button { store.command("approval.reopen") } label: {
                     Label(store.label("有 \(store.snapshot.approvalCount) 项待处理请求", "\(store.snapshot.approvalCount) pending requests"), systemImage: "exclamationmark.bubble")

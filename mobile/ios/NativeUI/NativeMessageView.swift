@@ -7,13 +7,18 @@ struct NativeMessageView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             if message.role == "user" {
-                HStack(alignment: .top) {
-                    Spacer(minLength: 96)
-                    NativeMarkdownView(text: message.text, scale: store.snapshot.fontScale, store: store, compact: true, weight: .semibold)
-                        .padding(.horizontal, 13).padding(.vertical, 12)
-                        .foregroundStyle(NativePalette.bubbleText)
-                        .background(NativePalette.bubble, in: .rect(cornerRadius: NativeVisualMetrics.bubbleRadius))
-                }.padding(.horizontal, NativeVisualMetrics.pageInset)
+                if let editor = message.historyEdit {
+                    NativeHistoricalMessageEditor(editor: editor, messageID: message.id, store: store)
+                        .padding(.horizontal, NativeVisualMetrics.pageInset)
+                } else {
+                    HStack(alignment: .top) {
+                        Spacer(minLength: 96)
+                        NativeMarkdownView(text: message.text, scale: store.snapshot.fontScale, store: store, compact: true, weight: .semibold)
+                            .padding(.horizontal, 13).padding(.vertical, 12)
+                            .foregroundStyle(NativePalette.bubbleText)
+                            .background(NativePalette.bubble, in: .rect(cornerRadius: NativeVisualMetrics.bubbleRadius))
+                    }.padding(.horizontal, NativeVisualMetrics.pageInset)
+                }
                 if let blocks = message.blocks, !blocks.isEmpty {
                     VStack(alignment: .trailing, spacing: 8) {
                         ForEach(blocks) { item in NativePanelItemView(item: item, store: store, scope: .message(message.id)) }
@@ -38,7 +43,7 @@ struct NativeMessageView: View {
             }
         }.frame(maxWidth: .infinity, alignment: .leading).accessibilityElement(children: .contain)
             .contextMenu {
-                ForEach(message.actions ?? []) { item in
+                ForEach(message.historyEdit == nil ? message.actions ?? [] : []) { item in
                     NativePanelItemView(item: item, store: store, scope: .message(message.id))
                 }
             }

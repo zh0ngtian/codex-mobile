@@ -23,12 +23,13 @@ export function readSourceCommit(root) {
 export function validateManifest(batch) {
   if (batch?.schemaVersion !== 1 || !line(batch.batchId)) fail("无效冻结批次 schemaVersion 或 batchId");
   const targets = {
-    "vip.loock.codexmobile": { project: "codex-mobile-lan-production", environment: "lan-production", release: true },
-    "codex-mobile-gateway": { project: "codex-mobile-gateway-production", environment: "production", release: false },
-    "codex-mobile-github-release": { project: "codex-mobile-github-release", environment: "github-release", release: true },
+    "codex-mobile-lan-production": { target: "vip.loock.codexmobile", environment: "lan-production", release: true, versioned: true },
+    "codex-mobile-ios-ota-production": { target: "vip.loock.codexmobile", environment: "ota-production", release: false, versioned: true },
+    "codex-mobile-gateway-production": { target: "codex-mobile-gateway", environment: "production", release: false, versioned: false },
+    "codex-mobile-github-release": { target: "codex-mobile-github-release", environment: "github-release", release: true, versioned: true },
   };
-  const target = Object.hasOwn(targets, batch.target ?? "") && targets[batch.target];
-  if (!target || batch.project !== target.project || batch.environment !== target.environment || batch.scope !== "codex-mobile-main-production") fail("冻结批次目标、项目、环境或作用域不匹配");
+  const target = Object.hasOwn(targets, batch.project ?? "") && targets[batch.project];
+  if (!target || batch.target !== target.target || batch.environment !== target.environment || batch.scope !== "codex-mobile-main-production") fail("冻结批次目标、项目、环境或作用域不匹配");
   if (!Array.isArray(batch.tasks) || !batch.tasks.length) fail("冻结批次必须包含任务");
   const ids = new Set();
   for (const task of batch.tasks) {
@@ -40,13 +41,13 @@ export function validateManifest(batch) {
   const prepared = batch.prepared;
   if (prepared?.localValidation !== "passed" || !/^[a-f0-9]{64}$/.test(prepared.inputFingerprint ?? "")) fail("缺少本机验证或输入指纹");
   let code;
-  if (target.release || prepared.version !== undefined || prepared.buildNumber !== undefined) {
+  if (target.versioned || prepared.version !== undefined || prepared.buildNumber !== undefined) {
     code = versionCode(prepared.version);
     if (!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(prepared.version) ||
-      ((target.release || prepared.buildNumber !== undefined) && String(prepared.buildNumber) !== String(code))) fail("冻结版本与构建号不一致");
+      ((target.versioned || prepared.buildNumber !== undefined) && String(prepared.buildNumber) !== String(code))) fail("冻结版本与构建号不一致");
   }
-  // 服务端批次不分配或输出客户端版本；可选参考版本仍须有效。
-  return { batch_id: batch.batchId, app_version: target.release ? prepared.version : "", app_version_code: target.release ? String(code) : "",
+  // OTA 批次保留严格版本合同，但不创建 GitHub Release；网关不输出客户端版本。
+  return { batch_id: batch.batchId, app_version: target.versioned ? prepared.version : "", app_version_code: target.versioned ? String(code) : "",
     release_tag: target.release ? `v${prepared.version}` : "", release_required: String(target.release) };
 }
 export async function validateReleaseBatch({ root = process.cwd(), batchId, frozenSha, version, githubSha = process.env.GITHUB_SHA, githubRef = process.env.GITHUB_REF } = {}) {

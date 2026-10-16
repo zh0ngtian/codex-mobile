@@ -312,6 +312,7 @@ const english: Record<string, string> = {
   "启用": "Enable",
   "删除": "Delete",
   "添加设备": "Add device",
+  "编辑设备": "Edit device",
   "应用更新": "App update",
   "应用信息": "App info",
   "当前版本 v{version}": "Current version v{version}",
@@ -531,6 +532,10 @@ const english: Record<string, string> = {
     "This conversation is busy or has queued messages, so its history cannot be edited yet",
   "目标消息已变化，请刷新后重试":
     "The target message changed. Refresh and try again",
+  "原对话已回退，待重新发送的编辑草稿":
+    "The conversation was reverted. This edited draft is waiting to be resent.",
+  "目标消息已变化，请取消编辑后重新选择":
+    "The target message changed. Cancel editing and select it again.",
   "历史消息不能为空": "The previous message cannot be empty",
   "通过自动化功能发送": "Sent by automation",
   "已更改 {count} 个文件": "Changed {count} files",

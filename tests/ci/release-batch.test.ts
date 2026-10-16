@@ -27,6 +27,23 @@ function fixture(change?: (batch: any) => void, notes: string | null = "- 新增
 }
 
 describe("冻结批次来源门禁", () => {
+  it("独立 OTA 批次绑定版本和来源，但不触发 GitHub 双端构建或 Release", () => {
+    const f = fixture(b => { b.project = "codex-mobile-ios-ota-production"; b.environment = "ota-production"; });
+    try {
+      const result = f.run();
+      expect(result.status, result.stderr).toBe(0);
+      expect(JSON.parse(result.stdout)).toMatchObject({ release_required: "false", release_tag: "", app_version: "0.2.148", app_version_code: "2148", source_commit: f.frozen });
+    } finally { f.cleanup(); }
+  });
+  it.each(["version", "buildNumber"])("OTA 冻结清单仍要求有效%s", field => {
+    const f = fixture(b => { b.project = "codex-mobile-ios-ota-production"; b.environment = "ota-production"; delete b.prepared[field]; });
+    try { expect(f.run().status).not.toBe(0); } finally { f.cleanup(); }
+  });
+  it("OTA 目标不能借用双端环境", () => {
+    const f = fixture(b => { b.project = "codex-mobile-ios-ota-production"; });
+    try { expect(f.run().status).not.toBe(0); } finally { f.cleanup(); }
+  });
+
   it("GitHub Release 批次输出统一双端版本与精确冻结来源", () => {
     const f = fixture(b => {
       b.project = "codex-mobile-github-release";

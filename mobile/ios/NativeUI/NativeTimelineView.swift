@@ -7,6 +7,7 @@ struct NativeTimelineView: View {
     @State private var userScrolling = false
     @State private var requestedAtTop = false
     @State private var contentFits = true
+    @State private var followedTailBeforeEditing: Bool?
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -45,6 +46,17 @@ struct NativeTimelineView: View {
                 }
                 if !userScrolling, timeline.followsTail, !metrics.atBottom { scrollToTail(proxy) }
             }
+            .onChange(of: historyMessageID) { _, messageID in
+                if let messageID {
+                    if followedTailBeforeEditing == nil { followedTailBeforeEditing = timeline.followsTail }
+                    timeline.followsTail = false
+                    proxy.scrollTo(messageID, anchor: .center)
+                } else if let followedTailBeforeEditing {
+                    timeline.followsTail = followedTailBeforeEditing
+                    self.followedTailBeforeEditing = nil
+                    restoreOrFollow(proxy)
+                }
+            }
             .onChange(of: timeline.revision) { restoreOrFollow(proxy) }
             .onAppear { restoreOrFollow(proxy) }
             .overlay(alignment: .bottomTrailing) {
@@ -57,6 +69,7 @@ struct NativeTimelineView: View {
             }
         }
     }
+    private var historyMessageID: String? { store.snapshot.messages.first(where: { $0.historyEdit != nil })?.id }
     private var olderAction: NativePanelItem? { store.snapshot.conversationActions?.first { $0.command?.name == "thread.older" } }
     private func restoreOrFollow(_ proxy: ScrollViewProxy) {
         if let anchor = timeline.pendingAnchorID {

@@ -61,7 +61,7 @@ ConfiguredApp 使用真实 `scopedThreads`、`projectDirectories`、`collapsedPr
 | `mention.insert {id}` | `skill:PATH` / `plugin:ID` 定位真实目录，复用 insertSkillMention / insertPluginMention，保留光标后正文并返回新光标 |
 | `thread.retry / thread.older` | `retryThreadDetail` / `loadOlderTurns` |
 | `message.copy {id}` | 完整正文复制；原生可使用已投影正文的系统剪贴板；JS 回退失败明确报错 |
-| `message.edit {turnId,messageId}` | `createHistoricalMessageEditTarget` / `beginHistoricalMessageEdit`；完整历史编辑面板通过 history.* 命令继续调用原编辑回调 |
+| `message.edit {turnId,messageId}` | `createHistoricalMessageEditTarget` / `beginHistoricalMessageEdit`；编辑器挂到精确匹配的原消息，继续通过 history.* 命令调用原编辑回调 |
 | `queue.send / queue.cancel / queue.edit` | 现有排队消息管理回调 |
 
 附件 promise 与旧 input 回调按请求路由隔离，旧网页 input 行为保留。取消返回空数组，读取失败 reject，卸载会结束尚未完成的 promise；选择期间切换上下文不会把结果写入新会话。输入菜单保留图片、文件、当前位置，没有增加语音或相机。草稿附件的可选 type 使用既有 MIME；只有音视频文件携带绑定创建上下文的 attachment.preview 命令。点击后复用 readFileAsDataUrl 读取当前单个 File，在 audio/video 面板投影 data URI；普通文件保留名称图标，图片继续使用原 data URI。不会逐帧读取全部文件或向 Swift 传 blob URL；100 MB 上限、读取错误重试及关闭/移除/换会话时的 epoch 与 File 身份检查保留。
@@ -88,7 +88,7 @@ ConfiguredApp 使用真实 `scopedThreads`、`projectDirectories`、`collapsedPr
 | 新对话目标 | `newchat.backend/project` 复用原目标设备、项目回调，切设备和保存草稿同步消费 currentDraftRef，保留尚未 render 的输入且不自动发送 |
 | 会话操作 | 原 pin/duplicate/rename/archive 回调；重命名显式传值；归档中涉及排队消息时通过原生确认等待答案，网页继续使用原 confirm |
 | 审批 | `approval.answer/decide/submit/dismiss/reopen` 复用 approval-model 与 useApprovalRequests；决定仅映射当前 availableDecisions 的有效下标，回答读取同一拥有者已接受的最新答案 |
-| 历史编辑 | `history.change/cancel/submit` 复用原编辑回调与附件 input；真实存在后续对话时显示显式删除确认；historyEditRef 同步占用提交状态，防止连续不同 UUID 重复回退与发送 |
+| 历史编辑 | 原生输入框位于原消息位置，`history.change/cancel/submit` 复用原编辑回调与附件 input；真实存在后续对话时显示显式删除确认；historyEditRef 同步占用提交状态，防止连续不同 UUID 重复回退与发送 |
 | 排队消息 | `queue.change/edit/cancel/send` 保留原 hosted queue UUID、revision、HTTP pending 与查询语义，严格按 sending/uncertain、busy/steerable、failed 与同步状态提供编辑、取消、引导和重试 |
 | 设备与设置 | `settings.open {id}` 打开 devices/language/font/transport/notifications/updates；BackendManagerSheet 自身状态直接投影，probe/hostId 校验、注册表启停重排删除复用旧入口，繁忙或队列操作使用显式确认 |
 | 扫码 | 宿主 `codexMobileScanGatewayQr()` 返回原始扫码内容，再走 applyScannedGateway；只填现有表单，仍需测试并保存；取消或设备表单变化不会写入另一表单 |
@@ -99,7 +99,7 @@ ConfiguredApp 使用真实 `scopedThreads`、`projectDirectories`、`collapsedPr
 
 全局面板通过 runtime 的独立注册通道合并，按真实打开顺序展示；后台组件重新 render 不抢面板。`panel.close` 按当前 DTO id 路由到拥有者。全局设置别名不会接管 mentions、工具或会话面板。关闭或切换会话后，旧请求完成不能关闭新面板。审批、历史确认或队列确认对应记录消失后，瞬态面板直接撤下，不投影空的内容过期面板；后续审批仍显示当前请求。
 
-审批 DTO id 为 `approval:<approvalKey>`；历史编辑为 `history-edit:<editKey>`，删除后续确认为 `confirm-history:<editKey>`。两个审批分支均显示请求实际 threadId，标题复用 completionThreadTitle，设备级队列中的其他会话不会被误认为当前会话。字段缓存随身份隔离，旧面板无法回答新请求；提交中禁用字段和关闭。问题选项仅使用静态 option 下标及 other 哨兵，自定义 secret 仅进入 secureField 和原审批内存状态，不放入 Picker 选项或额外持久存储。
+审批 DTO id 为 `approval:<approvalKey>`；原位历史编辑仍使用 `history-edit:<editKey>` 身份，但随目标消息投影，不进入通用 sheet；只有删除后续确认为 `confirm-history:<editKey>` 弹层。两个审批分支均显示请求实际 threadId，标题复用 completionThreadTitle，设备级队列中的其他会话不会被误认为当前会话。字段缓存随身份隔离，旧面板无法回答新请求；提交中禁用字段和关闭。问题选项仅使用静态 option 下标及 other 哨兵，自定义 secret 仅进入 secureField 和原审批内存状态，不放入 Picker 选项或额外持久存储。
 
 ### 富内容展示契约
 
@@ -118,7 +118,7 @@ ConfiguredApp 使用真实 `scopedThreads`、`projectDirectories`、`collapsedPr
 - 已准备切换后继续编辑，会串行合并最新状态；同一 File 的二进制读取缓存避免每个字符重复读取。存储失败显示错误、保留当前输入。冷启动先恢复目标与内容再挂载业务；已有线程的首轮 resume 保留本地发送选择，同时同步服务器消息、访问状态，之后普通重连仍采用服务器设置。
 - 人工“使用旧界面恢复”只揭示当前 WK，设置一次性呈现恢复标记并解除原生确认，不重载文档、不重挂业务工作区、不重连传输、不改变持久偏好。原生专用 runtime 停止发布，旧 Web 的设置、面板和确认恢复原有操作。
 
-正式构建、统一版本、签名与渠道回验继续由发布协调入口负责。
+正式构建、版本分配、签名与渠道回验继续由发布协调入口负责。用户指定 OTA-only 时使用独立 `codex-mobile-ios-ota-production` 目标，仍整合到 main，并保留真实来源的历史 OTA 凭证。
 
 ## 验证记录
 
@@ -130,4 +130,4 @@ Task2b 分模块 RED→GREEN 日志位于 `.mobile-build/native-reference/task2b
 
 原生对话顶部新增锚定用量面板，继续使用现有 `contextUsageView` 的最近请求占用；七天套餐额度投影来自现有 `rateLimits`，仅有可靠的窗口长度和重置时间时计算时间剩余。缺失数据不使用网页原型的演示值。新增字段保持可选以兼容既有快照。
 
-模型与思考强度共用原生分组面板，权限有独立说明面板，速度保留系统菜单。选择继续走已有命令与 `contextId` 校验；临时调节面板关闭后仅在原输入上下文仍有效时恢复原焦点。侧栏项目行不再带新建图标，最近对话和底部新建入口继续保留。设置首页展示现有偏好的实时投影，语言与字号直接选择，版本行仍可进入已有更新检查。
+模型与思考强度共用原生分组面板，权限有独立说明面板，速度保留系统菜单。选择继续走已有命令与 `contextId` 校验；临时调节面板关闭后仅在原输入上下文仍有效时恢复原焦点。侧栏项目行不再带新建图标，最近对话和底部新建入口继续保留。设置首页展示现有偏好的实时投影，语言与字号直接选择，版本行只展示已安装版本。iOS 不做启动、前台或手动更新检查，不接收升级事件，也不在 App 内触发 OTA 安装；Android 更新流程保持原有行为。

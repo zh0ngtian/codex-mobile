@@ -3,19 +3,33 @@ import { t } from '../i18n';
 import { approvalDecisions, approvalKey, approvalResponse, questionResponse, type InputQuestion } from '../features/approvals/approval-model';
 import { decisionLabel } from '../features/approvals/ApprovalSheet';
 import { nativeAction, nativeCommand } from './projection';
-import type { NativePanelItem, NativeSnapshot, NativeHandlers } from './protocol';
+import type { NativeMessage, NativePanelItem, NativeSnapshot, NativeHandlers } from './protocol';
 import type { NativeWorkspaceController } from './workspace-adapter';
 
 type State = { panelId: string | null; query: string; setPanel: (id: string | null) => void; customAnswers?: Set<string>; setCustomAnswer?: (key: string, custom: boolean) => void };
 const text = (id: string, title: string, value: unknown): NativePanelItem => ({ id, kind: 'text', title, text: String(value ?? '') });
 export function historyEditKey(edit: any) { return `${edit.threadId}:${edit.target.turnId}:${edit.target.messageId}`; }
-export function workspaceBusinessPanels(c: NativeWorkspaceController, panel: State): { panel?: NativeSnapshot['panel']; actions: NativePanelItem[]; handlers: NativeHandlers; accepts: (id: string) => boolean } {
+export function workspaceBusinessPanels(c: NativeWorkspaceController, panel: State, messages: NativeMessage[]): { panel?: NativeSnapshot['panel']; historyEdit?: NativeSnapshot['panel']; historyMessage?: NativeMessage; actions: NativePanelItem[]; handlers: NativeHandlers; accepts: (id: string) => boolean } {
  const s = c.extended?.state ?? {}; const cb = c.extended?.callbacks ?? {};
  const actions = [nativeAction('workspace', t('会话设置'), 'panel.open', { id: 'workspace' })];
  if (c.approvalCount) actions.push(nativeAction('approval', t('{count} 个待审批', { count: c.approvalCount }), 'approval.reopen'));
  const choice = (id: string, title: string, value: unknown, options: any[], name: string, params = {}): NativePanelItem => ({ id, kind: 'singleChoice', title, value: String(value ?? ''), options: options.map(o => ({ id: String(o.id ?? ''), value: String(o.id ?? ''), title: String(o.label ?? o.name ?? o.id ?? ''), subtitle: o.description })), command: nativeCommand(name, params), disabled: c.pending });
  const edit = s.historyEdit;
  const key = edit ? historyEditKey(edit) : '';
+ const historyMessage = edit?.threadId === c.active?.id ? messages.find(message => message.role === 'user' && message.actions?.some(item => item.command?.name === 'message.edit' && item.command.params.turnId === edit.target.turnId && item.command.params.messageId === edit.target.messageId)) : undefined;
+ const historyParams = edit ? { editKey: key, turnId: edit.target.turnId, messageId: edit.target.messageId } : {};
+ let historyEdit: NativeSnapshot['panel'];
+ if (edit) {
+  if (historyMessage) historyEdit = { id: `history-edit:${key}`, dismissible: !edit.submitting, title: t('编辑历史消息'), items: [
+   { id: 'history-text', kind: 'multilineField', title: t('消息'), value: edit.text, command: nativeCommand('history.change', historyParams), disabled: edit.submitting },
+   ...(edit.reverted ? [text('history-reverted', t('原对话已回退，待重新发送的编辑草稿'), '')] : []),
+   text('history-attachments', t('原消息的 {count} 个附件会保留', { count: edit.target.attachmentCount ?? 0 }), edit.target.precedingMessageCount ? t('同轮此前的 {count} 条用户消息及附件会一起重发', { count: edit.target.precedingMessageCount }) : ''),
+   ...(edit.target.input ?? []).filter((p: any) => p.type !== 'text').map((p: any, index: number) => text(`history-attachment:${index}`, t('保留附件'), p.name || p.path || p.url || p.type)),
+   { ...nativeAction('history-submit', t('保存并重新发送'), 'history.submit', historyParams), disabled: edit.submitting || (!edit.text.trim() && !(edit.target.attachmentCount > 0 || (edit.target.input ?? []).some((p: any) => p.type !== 'text'))) },
+   { ...nativeAction('history-cancel', t('取消'), 'history.cancel', historyParams), disabled: edit.submitting },
+  ] };
+  else actions.push(text('history-unavailable', t(edit.submitting ? '正在提交，请等待确认…' : '目标消息已变化，请取消编辑后重新选择'), ''), { ...nativeAction('history-cancel', t('取消'), 'history.cancel', historyParams), disabled: edit.submitting });
+ }
  const request = s.approval;
  const requestKey = request ? approvalKey(request) : '';
  const questions: InputQuestion[] = request?.params?.questions ?? [];
@@ -76,13 +90,11 @@ export function workspaceBusinessPanels(c: NativeWorkspaceController, panel: Sta
    items.push(...approvalDecisions(request).map((decision, index) => ({ ...nativeAction(`approval-decision:${index}`, decisionLabel(decision), 'approval.decide', { requestKey, index }), disabled })));
   }
   result = { id: `approval:${requestKey}`, dismissible: request.method === 'item/tool/requestUserInput' && !disabled, title: t(request.method === 'item/tool/requestUserInput' ? 'Codex 需要你的回答' : '需要你的确认'), items };
- } else if (edit && (id === 'history-edit' || id === 'confirm-history' || !id)) {
-  result = { id: `${id === 'confirm-history' ? 'confirm-history' : 'history-edit'}:${key}`, dismissible: !edit.submitting, title: t(id === 'confirm-history' ? '确认修改历史消息' : '编辑历史消息'), items: id === 'confirm-history' ? [text('history-warning', t('修改并重新发送将删除此消息之后的对话'), `${edit.target.rollbackTurnCount} ${t('轮对话')} · ${t('文件修改、已执行命令和远端操作不会撤销。')}`), nativeAction('history-confirm', t('确认并发送'), 'history.submit', { editKey: key, confirmed: true }), nativeAction('history-back', t('返回编辑'), 'panel.open', { id: 'history-edit' })] : [
-   { id: 'history-text', kind: 'multilineField', title: t('消息'), value: edit.text, command: nativeCommand('history.change', { editKey: key }), disabled: edit.submitting },
-   text('history-attachments', t('原消息的 {count} 个附件会保留', { count: edit.target.attachmentCount ?? 0 }), edit.target.precedingMessageCount ? t('同轮此前的 {count} 条用户消息及附件会一起重发', { count: edit.target.precedingMessageCount }) : ''),
-   ...(edit.target.input ?? []).filter((p: any) => p.type !== 'text').map((p: any, index: number) => text(`history-attachment:${index}`, t('保留附件'), p.name || p.path || p.url || p.type)),
-   { ...nativeAction('history-submit', t('保存并重新发送'), 'history.submit', { editKey: key }), disabled: edit.submitting || (!edit.text.trim() && !(edit.target.attachmentCount > 0 || (edit.target.input ?? []).some((p: any) => p.type !== 'text'))) },
-   { ...nativeAction('history-cancel', t('取消'), 'history.cancel', { editKey: key }), disabled: edit.submitting },
+ } else if (edit && historyMessage && id === 'confirm-history') {
+  result = { id: `confirm-history:${key}`, dismissible: !edit.submitting, title: t('确认修改历史消息'), items: [
+   text('history-warning', t('修改并重新发送将删除此消息之后的对话'), `${edit.target.rollbackTurnCount} ${t('轮对话')} · ${t('文件修改、已执行命令和远端操作不会撤销。')}`),
+   { ...nativeAction('history-confirm', t('确认并发送'), 'history.submit', { ...historyParams, confirmed: true }), disabled: edit.submitting },
+   { ...nativeAction('history-back', t('返回编辑'), 'panel.open', { id: 'history-edit' }), disabled: edit.submitting },
   ] };
  } else if (id?.startsWith('confirm-queue:')) {
   const queued = c.queued.find(q => `confirm-queue:${q.id}` === id);
@@ -92,7 +104,7 @@ export function workspaceBusinessPanels(c: NativeWorkspaceController, panel: Sta
   if (queued) result = { id, title: t('编辑排队消息'), items: [...(queued.attachmentCount ? [text('queue-attachments', t('{count} 个附件会保留', { count: queued.attachmentCount }), '')] : []), { id: 'queue-text', kind: 'multilineField', title: t('消息'), value: panel.query, command: nativeCommand('queue.change', { id: queued.id }) }, nativeAction('queue-save', t('保存'), 'queue.edit', { id: queued.id })] };
  }
  const currentRequest = (p: any) => { const live = cb.currentApproval ? cb.currentApproval() : { request, submitting: disabled }; if (!live?.request || p.requestKey !== approvalKey(live.request) || live.submitting) throw new Error(t('审批请求已变化或正在提交')); return live.request; };
- const currentEdit = (p: any) => { const live = cb.currentHistoryEdit ? cb.currentHistoryEdit() : edit; if (!live || p.editKey !== historyEditKey(live) || live.submitting) throw new Error(t('编辑消息已变化或正在提交')); return live; };
+ const currentEdit = (p: any, requireTarget = true) => { const live = cb.currentHistoryEdit ? cb.currentHistoryEdit() : edit; if (!live || p.editKey !== historyEditKey(live) || (p.turnId != null && p.turnId !== live.target.turnId) || (p.messageId != null && p.messageId !== live.target.messageId) || live.submitting) throw new Error(t('编辑消息已变化或正在提交')); if (requireTarget && !historyMessage) throw new Error(t('目标消息已变化，请取消编辑后重新选择')); return live; };
  const select = (values: any[], value: unknown) => { const match = values.find(o => String(o.id ?? '') === value); if (!match) throw new Error(t('选项不可用')); return match; };
  const handlers: NativeHandlers = {
   'speed.select': p => cb.chooseSpeed?.(select(s.speedOptions ?? [], p.value).id),
@@ -113,8 +125,8 @@ export function workspaceBusinessPanels(c: NativeWorkspaceController, panel: Sta
   'approval.dismiss': p => { currentRequest(p); cb.dismissApproval?.(); panel.setPanel(null); },
   'approval.reopen': () => { cb.reopenApproval?.(); panel.setPanel('approval'); },
   'history.change': p => { currentEdit(p); cb.changeHistoricalMessageEditText?.(String(p.value)); },
-  'history.cancel': p => { currentEdit(p); cb.cancelHistoricalMessageEdit?.(); panel.setPanel(null); },
-  'history.submit': p => { const e = currentEdit(p); if (!p.confirmed && !e.reverted && e.target.hasLaterTurns) return panel.setPanel('confirm-history'); return cb.submitHistoricalMessageEdit?.(); },
+  'history.cancel': p => { currentEdit(p, false); cb.cancelHistoricalMessageEdit?.(); panel.setPanel(null); },
+  'history.submit': p => { const e = currentEdit(p); if (!p.confirmed && !e.reverted && e.target.hasLaterTurns) return panel.setPanel('confirm-history'); panel.setPanel(null); return cb.submitHistoricalMessageEdit?.(); },
  };
- return { panel: result, actions, handlers, accepts: value => ['workspace', 'permission', 'model', 'effort', 'speed', 'approval', 'history-edit', 'thread-rename'].includes(value) || value.startsWith('queue-edit:') };
+ return { panel: result, historyEdit, historyMessage, actions, handlers, accepts: value => ['workspace', 'permission', 'model', 'effort', 'speed', 'approval', 'history-edit', 'thread-rename'].includes(value) || value.startsWith('queue-edit:') };
 }

@@ -9,6 +9,86 @@ final class NativeUIUITests: XCTestCase {
         return app
     }
 
+    private func historyReference(fails: Bool = false) -> XCUIApplication {
+        let app = XCUIApplication()
+        app.launchArguments = ["--native-ui-reference-history"] + (fails ? ["--native-ui-reference-history-failure"] : [])
+        app.launch()
+        XCTAssertTrue(app.staticTexts["原消息"].waitForExistence(timeout: 5))
+        app.staticTexts["原消息"].press(forDuration: 1)
+        app.buttons["编辑"].tap()
+        return app
+    }
+
+    func testHistoricalEditStaysAtMessageAndCancelKeepsAttachmentsAndComposer() {
+        let app = historyReference()
+        let input = app.descendants(matching: .any)["native-history-input"]
+        XCTAssertTrue(input.waitForExistence(timeout: 5))
+        XCTAssertTrue(input.isHittable)
+        XCTAssertGreaterThanOrEqual(input.frame.minY, app.frame.minY)
+        XCTAssertLessThanOrEqual(input.frame.maxY, app.frame.maxY)
+        XCTAssertTrue(app.buttons["native-history-submit"].isHittable)
+        XCTAssertTrue(app.buttons["native-history-cancel"].isHittable)
+        XCTAssertFalse(app.navigationBars["编辑历史消息"].exists)
+        XCTAssertTrue(app.staticTexts["original.txt"].exists)
+        XCTAssertTrue(app.staticTexts["后续对话仍在原位置"].exists)
+        input.tap(); input.typeText(" 已编辑\n第二行")
+        XCTAssertTrue((input.value as? String)?.contains("第二行") == true)
+        capture("历史编辑-原位", app: app)
+        app.buttons["native-history-cancel"].tap()
+        XCTAssertFalse(input.exists)
+        XCTAssertTrue(app.staticTexts["原消息"].exists)
+        XCTAssertTrue(app.staticTexts["original.txt"].exists)
+        let composer = app.descendants(matching: .any)["native-composer-input"]
+        XCTAssertEqual(composer.value as? String, "普通输入草稿")
+    }
+
+    func testHistoricalEditConfirmationReturnsInlineThenSavesAndResends() {
+        let app = historyReference()
+        let input = app.descendants(matching: .any)["native-history-input"]
+        XCTAssertTrue(input.waitForExistence(timeout: 5))
+        XCTAssertTrue(input.isHittable)
+        XCTAssertGreaterThanOrEqual(input.frame.minY, app.frame.minY)
+        XCTAssertLessThanOrEqual(input.frame.maxY, app.frame.maxY)
+        XCTAssertTrue(app.buttons["native-history-submit"].isHittable)
+        XCTAssertTrue(app.buttons["native-history-cancel"].isHittable)
+        input.tap(); input.typeText(" 新要求")
+        let draft = input.value as? String
+        app.buttons["native-history-submit"].tap()
+        XCTAssertTrue(app.staticTexts["修改并重新发送将删除此消息之后的对话"].waitForExistence(timeout: 5))
+        capture("历史编辑-确认", app: app)
+        app.buttons["完成"].tap()
+        XCTAssertTrue(input.waitForExistence(timeout: 3))
+        XCTAssertEqual(input.value as? String, draft)
+        XCTAssertTrue(app.staticTexts["后续对话仍在原位置"].exists)
+        app.buttons["native-history-submit"].tap()
+        app.buttons["确认并发送"].tap()
+        XCTAssertTrue(app.staticTexts[draft!].waitForExistence(timeout: 3))
+        XCTAssertFalse(input.exists)
+        XCTAssertFalse(app.staticTexts["后续对话仍在原位置"].exists)
+        XCTAssertTrue(app.staticTexts["original.txt"].exists)
+    }
+
+    func testHistoricalEditSendFailureKeepsInlineDraftAndAttachment() {
+        let app = historyReference(fails: true)
+        let input = app.descendants(matching: .any)["native-history-input"]
+        XCTAssertTrue(input.waitForExistence(timeout: 5))
+        XCTAssertTrue(input.isHittable)
+        XCTAssertGreaterThanOrEqual(input.frame.minY, app.frame.minY)
+        XCTAssertLessThanOrEqual(input.frame.maxY, app.frame.maxY)
+        XCTAssertTrue(app.buttons["native-history-submit"].isHittable)
+        XCTAssertTrue(app.buttons["native-history-cancel"].isHittable)
+        input.tap(); input.typeText(" 失败草稿")
+        let draft = input.value as? String
+        app.buttons["native-history-submit"].tap()
+        app.buttons["确认并发送"].tap()
+        XCTAssertTrue(app.staticTexts["发送失败，请重试"].waitForExistence(timeout: 3))
+        XCTAssertEqual(input.value as? String, draft)
+        XCTAssertTrue(app.buttons["native-history-submit"].isEnabled)
+        XCTAssertTrue(app.staticTexts["original.txt"].exists)
+        XCTAssertFalse(app.navigationBars["确认修改历史消息"].exists)
+        capture("历史编辑-失败", app: app)
+    }
+
     func testVisualReferenceUsesSameNativeViewsAndIndependentFixture() {
         let app = XCUIApplication()
         app.launchArguments = ["--native-ui-reference-visual"]
@@ -378,7 +458,8 @@ final class NativeUIUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["设备"].waitForExistence(timeout: 5))
         app.navigationBars.buttons["设置"].tap()
         XCTAssertTrue(app.switches["native-ui-preference"].waitForExistence(timeout: 3))
-        XCTAssertTrue(app.buttons["native-settings-version"].exists)
+        XCTAssertTrue(app.staticTexts["native-settings-version"].exists)
+        XCTAssertFalse(app.buttons["native-settings-version"].exists)
         XCTAssertFalse(app.buttons["应用更新"].exists)
         app.buttons["native-settings-close"].tap()
     }

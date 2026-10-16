@@ -8,4 +8,5 @@ struct NativeMessage: Codable, Identifiable {
     var blocks: [NativePanelItem]? = nil
     var actions: [NativePanelItem]? = nil
     var timestamp: Double? = nil
+    var historyEdit: NativePanel? = nil
 }
