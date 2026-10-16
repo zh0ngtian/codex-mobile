@@ -164,6 +164,11 @@ final class NativeUIUITests: XCTestCase {
         input.typeText("stable draft line one\nline two\nline three\nline four\nline five")
         XCTAssertEqual(app.descendants(matching: .any).matching(identifier: "native-composer-input").count, 1)
         XCUIDevice.shared.orientation = .landscapeLeft
+        let keyboard = app.keyboards.firstMatch
+        let keyboardVisible = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            app.frame.width > app.frame.height && keyboard.exists && keyboard.frame.intersects(app.frame) && keyboard.frame.minY < app.frame.maxY - 20
+        }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [keyboardVisible], timeout: 8), .completed)
         XCTAssertTrue(input.isHittable)
         XCTAssertTrue((input.value as? String)?.contains("stable draft") == true)
         let send = app.buttons["native-send"]
@@ -177,6 +182,8 @@ final class NativeUIUITests: XCTestCase {
         }
         XCTAssertTrue(send.isHittable)
         XCTAssertLessThanOrEqual(input.frame.maxY, app.buttons["native-model-menu"].frame.minY, "最大辅助字号下输入不能覆盖工具栏")
+        XCTAssertLessThanOrEqual(app.buttons["native-model-menu"].frame.maxY, keyboard.frame.minY + 1)
+        XCTAssertLessThanOrEqual(send.frame.maxY, keyboard.frame.minY + 1)
         input.typeText(" tail")
         XCTAssertTrue((input.value as? String)?.contains("tail") == true)
         XCTAssertTrue(app.buttons["native-send"].isEnabled)

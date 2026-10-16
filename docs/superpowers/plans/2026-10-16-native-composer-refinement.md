@@ -104,11 +104,12 @@ Menu {
 
 ## 任务二：实际布局、发布与交付
 
-- [ ] 在生产 App + 离线 HTTP fixture 的独立模拟器测试 Bundle 中验证：无最大化图标；逐行输入增长；长输入达到上限后内部滚动；删除后缩小；横屏和最大辅助字号的输入、发送/停止可达。
-- [ ] 实际打开系统模型/思考菜单，确认两组平级列表和选择标记、无旧模型 sheet“完成”按钮；选择模型和强度后保留草稿。
-- [ ] 切换 Fast，核对两种图标与权威状态一致；对照截图核对文字和图标大小。
-- [ ] 复核独立输入/整页原生两种呈现及原有开关，保存截图、几何记录和原始 xcresult。使用主工作区共享模拟器锁，结束后及时释放；不创建真实远端会话。
-- [ ] 本地必要门禁：adapter-regression、coordinator-recovery、build-contract、typecheck；独立规格/质量审查后推送固定 SHA，再由协调器 ready。
+- [x] 在生产 App + 离线 HTTP fixture 的独立模拟器测试 Bundle 中验证：无最大化图标；逐行输入增长；长输入达到上限后内部滚动；删除后缩小；横屏和最大辅助字号的输入、发送/停止可达。
+- [x] 实际打开系统模型/思考菜单，确认两组平级列表和选择标记、无旧模型 sheet“完成”按钮；选择模型和强度后保留草稿。
+- [x] 切换 Fast，核对两种图标与权威状态一致；对照截图核对文字和图标大小。
+- [x] 复核独立输入/整页原生两种呈现及原有开关，保存截图、几何记录和原始 xcresult。使用主工作区共享模拟器锁，结束后及时释放；不创建真实远端会话。
+- [x] 本地必要门禁：adapter-regression、coordinator-recovery、build-contract、typecheck；独立规格与质量审查通过。
+- [ ] 推送固定 SHA 并由协调器 ready，等待成功批次凭证。
 - [ ] 等待同批 APK、签名 IPA、HTTPS OTA、GitHub Release 和 unsigned 软件源成功凭证，再做固定清单/HEAD/完整 GET/散列核对。
 - [ ] 最终提供固定 OTA、APK、IPA 链接，以及两个包的版本、字节大小、SHA-256；注明 IPA 签名状态和实际真机验证边界。
 
@@ -145,3 +146,12 @@ Menu {
 - 数学回归先对“完整 60pt 工具栏 + 4pt 底距 + 1pt 舍入净空”要求运行 RED，旧居中溢出平均公式按预期失败。
 - 工具栏所有文字与图标改由同一个 16pt `ScaledMetric` 字体绘制并计算首帧行高保护；实际整行高度测量后参与编辑器 padding 和最低高度预算，不降低字号或 44pt 操作范围，不重建 TextField。
 - 修复后关联 3 文件 25 项通过，原生 Swift、XCTest 源码和 TypeScript 类型检查通过；日志为 `red-toolbar-clearance.log`、`green-toolbar-clearance.log`、`swift-typecheck-toolbar-clearance.log`、`ui-tests-typecheck-toolbar-clearance.log`、`typecheck-toolbar-clearance.log`。仓库横屏输入测试提升到最大辅助字号并加入文字与工具栏不重叠断言，实际 UI 由父任务继续复验。
+
+
+### 最终本地验收
+
+- 最终运行代码为 `113368b11483042d61fa3479ba647fd394bd923c`。生产 App + 内存 HTTP fixture 的独立 Bundle 在 iOS 27 模拟器完成六项真实交互验收：硬换行/自动折行增长、封顶滚动、删除缩回；完整原生模式增长；模型→思考固定菜单顺序、切换保留草稿；真实 `priority` 档位 Fast 开关；横屏附件与运行中操作；最大辅助字号横屏布局；先编辑再旋转且键盘保持屏内。
+- 最大辅助字号与屏内键盘同时存在时，输入底边 114pt、模型工具栏顶边 116pt/底边 170pt、发送底边 164pt，均在键盘顶边 222pt 以上；输入、模型和发送均可点击。附件场景同样通过，未将屏外键盘的快照当作已覆盖。
+- 最终 `129` 文件 `1458` 项 Vitest 通过，真实 Swift smoke 包含在内；发布适配器 Python `166` 项、协调器恢复 `30` 项通过。原生 Swift、XCTest 源码及 TypeScript 类型检查通过。独立规格与质量复核通过，两处实际 UI 缺陷已按 RED→GREEN 关闭。
+- 原始 xcresult、截图、几何及验收脚本持久保存在仓库外 `~/Library/Application Support/CodexMobile/validation/native-composer-refinement-20261016/`。测试仅使用离线数据，未创建真实远端测试会话；未进行真机覆盖安装和数据保留验收。
+- 发布仍由已登记任务 `native-composer-refinement-20261016` 交给协调器，成功版本、渠道下载与散列以共同成功 receipt 及独立回验 JSON 为准，不在本地自行分配版本或正式发包。
