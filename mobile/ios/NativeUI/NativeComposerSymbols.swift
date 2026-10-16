@@ -11,4 +11,18 @@ enum NativeComposerSymbols {
     static func speedSymbol(_ value: String?) -> String {
         isFastEnabled(value) ? "bolt.fill" : "bolt.slash"
     }
+
+    static func permissionSymbol(_ value: String) -> String {
+        switch value {
+        case "full-access": "exclamationmark.shield"
+        case "read-only": "hand.raised"
+        default: "checkmark.shield"
+        }
+    }
+
+    static func modelTitle(model: String, effort: String, smart: String) -> String {
+        let model = model.trimmingCharacters(in: .whitespacesAndNewlines)
+        let effort = effort.trimmingCharacters(in: .whitespacesAndNewlines)
+        return "\(model.isEmpty ? smart : model) · \(effort.isEmpty ? smart : effort)"
+    }
 }

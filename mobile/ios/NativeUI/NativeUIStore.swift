@@ -10,7 +10,7 @@ final class NativeUIStore {
         didSet { if settingsOpen { cancelComposerPresentation() } }
     }
     var search = ""
-    var attachmentOpen = false
+    private(set) var attachmentOpen = false
     private(set) var composerPresentation: NativeComposerPresentationEvent?
     private var composerIntent: NativeComposerPresentationIntent?
     var awaitingNewConversation: Bool { composerIntent != nil }
@@ -232,6 +232,7 @@ final class NativeUIStore {
         fieldValues = fieldValues.filter { pendingFields[$0.key] != nil }
         fieldSelections = fieldSelections.filter { pendingFields[$0.key] != nil }
         snapshot = value
+        snapshot.fontScale = 0.875
         if pendingSidebarRevision == nil, let open = value.sidebarOpen, !awaitingNewConversation { sidebarOpen = open }
         timeline(for: threadKey).receive(messageIDs: value.messages.map(\.id))
         if contextChanged || (value.draftRevision ?? 0) >= draftRevision {
@@ -351,18 +352,34 @@ final class NativeUIStore {
         composerPresentation = nil
         switch event.presentation {
         case .focus: break
-        case .attachments: attachmentOpen = true
+        case .attachments: setComposerAttachmentOpen(true, contextID: contextID)
         case .photos: command("attachment.pick", ["kind": .string("photos")])
         case .files: command("attachment.pick", ["kind": .string("files")])
         }
         return event.presentation
     }
+    func composerAttachmentIsOpen(contextID: String?) -> Bool {
+        contextID == snapshot.contextId && attachmentOpen
+    }
+    /// View 消失和 UIKit 菜单结束可能晚于新会话呈现，只接受所属会话的读写。
+    func setComposerAttachmentOpen(_ isOpen: Bool, contextID: String?) {
+        guard contextID == snapshot.contextId else { return }
+        if isOpen, !composerCanEdit || sidebarOpen { return }
+        attachmentOpen = isOpen
+    }
     func chooseComposerOption(_ name: String, value: String, contextID: String?) {
-        guard composerCanEdit, contextID == snapshot.contextId,
+        guard NativeComposerMenuContext(contextID: contextID).allowsExecution(contextID: snapshot.contextId, editable: composerCanEdit, sidebarOpen: sidebarOpen),
               ["model.select", "effort.select", "speed.select", "permission.select"].contains(name) else { return }
         var params: [String: NativeJSONValue] = ["value": .string(value)]
         if let contextID { params["contextId"] = .string(contextID) }
         command(name, params)
+    }
+    func chooseComposerAttachment(_ action: NativeComposerAttachmentAction, contextID: String?) {
+        guard NativeComposerMenuContext(contextID: contextID).allowsExecution(contextID: snapshot.contextId, editable: composerCanEdit, sidebarOpen: sidebarOpen) else { return }
+        let selection = action.command
+        var params = selection.params
+        if let contextID { params["contextId"] = .string(contextID) }
+        command(selection.name, params)
     }
     func command(_ name: String, _ params: [String: NativeJSONValue] = [:]) {
         if name == "thread.new" { startNewConversation(params: params); return }
@@ -399,15 +416,14 @@ final class NativeUIStore {
             if name == "settings.open", case .string(let id) = params["id"] {
                 if id == "devices" { snapshot.panel = NativeReferenceSettings.devices(locale: snapshot.locale); return }
                 if id == "notifications" { snapshot.panel = NativeReferenceSettings.notifications(locale: snapshot.locale); return }
-                snapshot.panel = id == "settings" ? NativeReferenceSettings.panel(locale: snapshot.locale, fontScale: snapshot.fontScale) : NativePanel(id: "reference-settings:\(id)", title: label("设置", "Settings"), items: [NativePanelItem(id: "reference-setting-value", kind: "text", title: id == "devices" ? label("设备", "Devices") : label("检查更新", "Check for Updates"))])
+                snapshot.panel = id == "settings" ? NativeReferenceSettings.panel(locale: snapshot.locale) : NativePanel(id: "reference-settings:\(id)", title: label("设置", "Settings"), items: [NativePanelItem(id: "reference-setting-value", kind: "text", title: id == "devices" ? label("设备", "Devices") : label("检查更新", "Check for Updates"))])
             }
             if ["device.add", "device.edit"].contains(name) { snapshot.panel = NativeReferenceSettings.deviceForm(locale: snapshot.locale) }
             if name == "device.cancel" { snapshot.panel = NativeReferenceSettings.devices(locale: snapshot.locale) }
             if name == "settings.push.mode" { snapshot.panel = NativeReferenceSettings.notifications(locale: snapshot.locale, bark: params["value"] == .string("bark")) }
-            if ["settings.language", "settings.font"].contains(name), case .string(let value) = params["value"] {
-                if name == "settings.language", value != "system" { snapshot.locale = value }
-                if name == "settings.font" { snapshot.fontScale = ["small": 0.875, "standard": 1, "large": 1.125, "extra-large": 1.25][value] ?? 1 }
-                snapshot.panel = NativeReferenceSettings.panel(locale: snapshot.locale, fontScale: snapshot.fontScale)
+            if name == "settings.language", case .string(let value) = params["value"] {
+                if value != "system" { snapshot.locale = value }
+                snapshot.panel = NativeReferenceSettings.panel(locale: snapshot.locale)
             }
             if ["model.select", "effort.select", "permission.select", "speed.select"].contains(name), case .string(let value) = params["value"] {
                 if name == "model.select", let option = snapshot.models.first(where: { $0.value == value }) { snapshot.modelValue = value; snapshot.model = option.title }

@@ -269,10 +269,14 @@ function OpenConversationActionMenu({
       copyText: action.id === "copy" ? String(thread.id ?? "") : undefined,
       onSelect: (native) => {
         if (native && action.id === "copy") latest.current.onClose();
-        else latest.current.actions.find((entry) => entry.id === action.id)?.onClick();
+        else {
+          latest.current.actions.find((entry) => entry.id === action.id)?.onClick();
+          // 原生菜单已消费；先让重命名捕获会话目标，再同步收起，取消也能立即重开。
+          if (native && action.id === "rename") latest.current.onClose();
+        }
       },
     })), anchor ?? { x: window.innerWidth / 2, y: 80, width: 1, height: 1 },
-    // 等动作回调处理结束再关闭；保留异步 runThreadAction 的目标。
+    // 原生直接取消时收起；动作选择由上方回调在捕获目标后处理。
     (actionId) => { if (!actionId) latest.current.onClose(); });
     setFallback(!dispose);
     return dispose ?? undefined;

@@ -17,7 +17,7 @@ it.skipIf(process.platform !== "darwin")("iOS 准备在包含空格、单引号�
     cpSync("mobile/ios/NativeUI", join(project, "mobile/ios/NativeUI"), { recursive: true });
     writeFileSync(join(project, "package.json"), '{"type":"module","version":"0.2.165"}');
     symlinkSync(resolve("node_modules"), join(project, "node_modules"), "dir");
-    const bridges = ["InAppBrowserViewController.swift", "AttachmentPickerBridge.swift", "AppUpdateBridge.swift", "ActionMenuBridge.swift", "KeyboardDismissal.swift"];
+    const bridges = ["InAppBrowserViewController.swift", "AttachmentPickerBridge.swift", "AppUpdateBridge.swift", "ActionMenuBridge.swift", "KeyboardDismissal.swift", "JavaScriptTextInputBridge.swift"];
     for (const name of bridges) writeFileSync(join(project, "mobile/ios", name), `fixture ${name}\n`);
     writeFileSync(join(fakeBin, "git"), `#!/bin/sh\nmkdir -p "$PWD/PakePlus/Assets.xcassets/AppIcon.appiconset"\nprintf '{"images":[]}' > "$PWD/PakePlus/Assets.xcassets/AppIcon.appiconset/Contents.json"\n`);
     writeFileSync(join(fakeBin, "bash"), `#!/bin/sh\nfor arg in "$@"; do\n case "$arg" in *'source="mobile/ios/InAppBrowserViewController.swift"'*) exec /bin/bash "$@" ;; esac\ndone\nexit 0\n`);
