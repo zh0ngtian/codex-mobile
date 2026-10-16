@@ -119,3 +119,13 @@
 - 两种宿主显式传入输入栏创建时的上下文，消费意图、附件 Binding、清理回调和配置菜单均绑定该值。Store 附件状态改为私有写入，带上下文的 setter 拒绝旧菜单关闭和显示回调，并在打开时继续检查编辑与侧栏门禁；新建、导航与权威换上下文的主动清理保留。
 - Store 回归同时覆盖原有新建 ACK/快照确认后消费附件的真实路径，保证旧拥有者清理不影响新请求，当前拥有者关闭仍生效；实际 full-native 快捷入口和文件选择器回归由主任务接续复验。
 - 本次拥有者修复的相关六文件 65 项通过，`npm run typecheck` 与完整 NativeUI Swift 5 iOS SDK 类型检查均通过、无诊断；对应 `composer-menu-owner-green.log`、`composer-menu-owner-typecheck.log`、`composer-menu-owner-swift-typecheck.log`。
+
+## 本地验收完成（发布前）
+
+- 运行源码固定为 `4dd600c102b3dcf758e2f693f0112f323ba8e172`。全量 Vitest 131 文件、1485 项通过；TypeScript 通过；本地发布 Python 166 项、现役协调器上游恢复 30 项通过，完整 NativeUI Swift 5 SDK 与 XCTest 类型检查通过。
+- 手机实际 UI 的四条旧/新版网页会话页和侧栏重命名路径均完成预填、取消无请求、立即重开和保存；完整原生设置/重命名、两种网页旧大字号偏好统一 0.875、手机及 iPad 旋转保持竖屏均通过。
+- 五类菜单场景通过：手动附件与真实 Files 取消重开、审核选择保留草稿、Fast/模型/推理无勾且模型按钮可见推理、十一项完整目录系统滚动、完整原生侧栏新建附件快捷入口。原始截图已核对图标、可见推理值和无勾。
+- 侧栏拥有者修复后系统菜单和 Files 已正常打开；最终回归等待系统文件选择器关闭动画后，继续输入并核对文本通过（`sidebar-picker-dismissal.json`）。之前的即时 `isHittable` 失败属于测试未等待关闭，不新增产品延迟或重试。
+- 原始 RED/GREEN xcresult、离线 fixture 与 UI 测试、探针、截图和完整日志保存在仓库外 `~/Library/Application Support/CodexMobile/validation/ios-rename-font-portrait-20261016/`。混合失败批次保留原样，仅上述实际通过场景计入验收。
+- 规格、质量独立审查通过，菜单拥有者 P2 已由真实侧栏回归关闭。测试使用离线 fixture，未创建远端测试会话。构建验签及模拟器验证不代表真机覆盖安装或数据保留已经验证。
+- 下一步推送固定提交，以现役 `codex-mobile-ios-ota-production` 任务提交 ready；等待成功 receipt 与独立固定 IPA/HTTPS OTA 完整下载回验后交付。本轮不创建 GitHub Release、不构建 APK、不更新软件源。
