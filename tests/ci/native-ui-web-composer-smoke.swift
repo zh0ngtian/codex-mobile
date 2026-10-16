@@ -2,6 +2,22 @@ import Foundation
 
 enum NativeWebComposerSmoke {
     @MainActor static func verify() throws {
+        func decodedBodyFontSize(_ raw: String) throws -> Double? {
+            let decoder = JSONDecoder()
+            decoder.nonConformingFloatDecodingStrategy = .convertFromString(positiveInfinity: "Infinity", negativeInfinity: "-Infinity", nan: "NaN")
+            let presentation = try decoder.decode(NativeWebComposerPresentation.self, from: Data(raw.utf8))
+            let encoded = try JSONEncoder().encode(presentation)
+            return (try JSONSerialization.jsonObject(with: encoded) as? [String: Any])?["bodyFontSize"] as? Double
+        }
+        let payload = #"{"contextId":"a:t","visible":true,"blocked":false"#
+        let modernBodyFontSize = try decodedBodyFontSize(payload + #","bodyFontSize":14.2}"#)
+        precondition(modernBodyFontSize == 14.2, "网页正文基准字号必须跨桥往返，不能被旧DTO丢弃")
+        let legacyBodyFontSize = try decodedBodyFontSize(payload + "}")
+        precondition(legacyBodyFontSize == nil, "旧payload缺少字号仍正常解码并保留原生默认字号")
+        for rawSize in ["0", "-16", "1e300", "null", #""invalid""#, #""NaN""#, #""Infinity""#, #""-Infinity""#] {
+            let invalidBodyFontSize = try decodedBodyFontSize(payload + ",\"bodyFontSize\":" + rawSize + "}")
+            precondition(invalidBodyFontSize == nil, "无效字号不能进入布局或影响旧快照解码")
+        }
         let natural = NativeComposerLineLimits.resolve(availableHeight: 500, lineHeight: 24, compact: false, accessibility: false)
         let restricted = NativeComposerLineLimits.resolve(availableHeight: 128, lineHeight: 24, compact: false, accessibility: false)
         precondition(natural == 1...6, "竖屏输入从一行按内容自然增长，最多六行")

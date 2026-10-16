@@ -4,8 +4,9 @@ import { afterEach, expect, it, vi } from 'vitest';
 import * as bridge from '../../src/native-ui/runtime';
 import { useNativeRuntime } from '../../src/native-ui/adapters';
 import { emptyNativeSnapshot } from '../../src/native-ui/protocol';
+import { WebInterfaceProvider, useWebInterface, WEB_INTERFACE_KEY } from '../../src/features/web-ui/preference';
 
-afterEach(() => { cleanup(); for (const key of ['__CODEX_NATIVE_UI__', '__CODEX_NATIVE_COMPOSER__', '__CODEX_NATIVE_UI_RECOVERED__', 'webkit']) delete (window as any)[key]; });
+afterEach(() => { cleanup(); localStorage.removeItem(WEB_INTERFACE_KEY); for (const key of ['__CODEX_NATIVE_UI__', '__CODEX_NATIVE_COMPOSER__', '__CODEX_NATIVE_UI_RECOVERED__', 'webkit']) delete (window as any)[key]; });
 function hybrid() { Object.assign(window, { __CODEX_NATIVE_UI__: false, __CODEX_NATIVE_COMPOSER__: true, webkit: { messageHandlers: { nativeUI: { postMessage() {} } } } }); }
 it('独立输入能力启动唯一业务runtime而不启用完整原生界面，恢复后关闭桥', () => {
  hybrid(); const { result } = renderHook(() => useNativeRuntime({ selectedBackendId: '', backends: [], groups: [] }, {}));
@@ -46,7 +47,7 @@ it('真实网页会话卸载Web表单，公共遮罩与当前可见状态控制�
  const props = { ...pageProps, nativeRuntime: runtime, nativeContextId: 'a:t', conversationVisible: true };
  const view = render(<><ConversationPage {...props} /><Overlay open={false} /></>);
  expect(screen.queryByRole('textbox', { name: '向 Codex 提问' })).toBeNull();
- expect((runtime.snapshot() as any).webComposer).toEqual({ contextId: 'a:t', visible: true, blocked: false });
+ expect(runtime.snapshot().webComposer).toEqual({ contextId: 'a:t', visible: true, blocked: false, bodyFontSize: 16 });
  view.rerender(<><ConversationPage {...props} /><Overlay open /></>); expect((runtime.snapshot() as any).webComposer.blocked).toBe(true);
  view.rerender(<><ConversationPage {...props} conversationVisible={false} /><Overlay open={false} /></>); expect((runtime.snapshot() as any).webComposer.visible).toBe(false);
  view.unmount(); expect((runtime.snapshot() as any).webComposer).toBeUndefined(); runtime.dispose();
@@ -95,4 +96,31 @@ it.each([false, true])('业务错误保持关闭和新错误恢复能力，混�
  fireEvent.click(screen.getByRole('button', { name: '关闭错误提示' }));
  view.rerender(page('')); view.rerender(page('后续业务失败')); expect(screen.getByRole('alert')).toHaveTextContent('后续业务失败');
  runtime?.dispose();
+});
+
+function WebInterfaceToggle() {
+ const { modern, change } = useWebInterface();
+ return <button onClick={() => change(!modern)}>切换网页模式</button>;
+}
+it('真实网页会话发布当前正文基准字号，切换界面时更新且不重复应用字号缩放', () => {
+ hybrid(); const runtime = new bridge.NativeRuntime(() => {});
+ runtime.setNavigation({ selectedBackendId: 'a', backends: [], groups: [] });
+ runtime.setWorkspace('a', { ...emptyNativeSnapshot(), ready: true, contextId: 'a:t', fontScale: 0.875 }, {});
+ const view = render(<WebInterfaceProvider><ConversationPage {...pageProps} nativeRuntime={runtime} nativeContextId="a:t" conversationVisible /><WebInterfaceToggle /></WebInterfaceProvider>);
+ expect(runtime.snapshot().webComposer).toMatchObject({ contextId: 'a:t', bodyFontSize: 16 });
+ fireEvent.click(screen.getByRole('button', { name: '切换网页模式' }));
+ expect(document.documentElement.dataset.webInterface).toBe('modern');
+ expect(runtime.snapshot().webComposer).toMatchObject({ contextId: 'a:t', bodyFontSize: 14.2 });
+ fireEvent.click(screen.getByRole('button', { name: '切换网页模式' }));
+ expect(runtime.snapshot().webComposer).toMatchObject({ contextId: 'a:t', bodyFontSize: 16 });
+ view.unmount(); expect(runtime.snapshot().webComposer).toBeUndefined(); runtime.dispose();
+});
+it('字号投影使用实际界面上下文，不从保存的新版偏好推断', () => {
+ hybrid(); localStorage.setItem(WEB_INTERFACE_KEY, 'modern');
+ const runtime = new bridge.NativeRuntime(() => {});
+ runtime.setNavigation({ selectedBackendId: 'a', backends: [], groups: [] });
+ runtime.setWorkspace('a', { ...emptyNativeSnapshot(), ready: true, contextId: 'a:t' }, {});
+ render(<ConversationPage {...pageProps} nativeRuntime={runtime} nativeContextId="a:t" conversationVisible />);
+ expect(runtime.snapshot().webComposer).toMatchObject({ bodyFontSize: 16 });
+ runtime.dispose();
 });
