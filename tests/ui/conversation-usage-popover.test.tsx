@@ -23,6 +23,7 @@ const rateLimits = {
 function pageProps(overrides: Partial<ComponentProps<typeof ConversationPage>> = {}): ComponentProps<typeof ConversationPage> {
   return {
     active: { id: "thread-1", cwd: "/tmp/project", preview: "测试对话", turns: [] },
+    conversationVisible: true,
     backendId: "mini", backendName: "Mac mini", backends: [], projectOptions: [],
     loadState: "ready", loadError: "", olderTurnsState: "exhausted", connection: "online",
     client: null, error: "", draft: "", draftImages: [], draftFiles: [], imageReading: false,
@@ -181,5 +182,20 @@ describe.each([false, true])("对话用量卡片（现代界面 %s）", (modern)
     openCard();
     rerender(<ConversationPage {...pageProps(change === "thread" ? { active: { id: "thread-2", turns: [] }, tokenUsage: null } : { backendId: "other" })} />);
     expect(screen.queryByRole("dialog", { name: "用量与额度" })).toBeNull();
+  });
+
+  it("保留挂载的工作区隐藏时移除卡片，返回后不自动重开", () => {
+    const current = pageProps();
+    const { rerender } = render(<ConversationPage {...current} />);
+    const { button } = openCard();
+
+    rerender(<ConversationPage {...current} conversationVisible={false} />);
+    expect(screen.queryByRole("dialog", { name: "用量与额度" })).toBeNull();
+    expect(button).toHaveAttribute("aria-expanded", "false");
+
+    rerender(<ConversationPage {...current} conversationVisible />);
+    expect(screen.queryByRole("dialog", { name: "用量与额度" })).toBeNull();
+    fireEvent.click(button);
+    expect(screen.getByRole("dialog", { name: "用量与额度" })).toBeInTheDocument();
   });
 });

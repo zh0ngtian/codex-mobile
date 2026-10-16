@@ -11,6 +11,7 @@ type Props = ComponentProps<typeof ConversationPage>;
 function props(overrides: Partial<Props> & Record<string, unknown> = {}): Props {
   return {
     active: { id: "thread-1", cwd: "/tmp/project", preview: "真实会话标题", turns: [] },
+    conversationVisible: true,
     backendId: "mini", backendName: "Mac mini", backends: [], projectOptions: [],
     loadState: "ready", loadError: "", olderTurnsState: "exhausted", connection: "online", client: null,
     error: "", draft: "保留草稿", draftImages: [], draftFiles: [], imageReading: false,

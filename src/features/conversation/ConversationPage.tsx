@@ -360,6 +360,9 @@ export function ConversationPage({
     setQueuedFollowUpEdit(null);
   }, [active.id, backendId]);
   useEffect(() => {
+    if (!conversationVisible) setStatusOpen(false);
+  }, [conversationVisible]);
+  useEffect(() => {
     if (
       queuedFollowUpEdit &&
       !queuedFollowUps.some((item) => item.id === queuedFollowUpEdit.id)
@@ -606,10 +609,10 @@ export function ConversationPage({
             role="group"
             aria-label={t("会话详情操作")}
           >
-            {modern ? <ModernContextUsage tokenUsage={tokenUsage} rateLimits={rateLimits} open={statusOpen}
+            {modern ? <ModernContextUsage tokenUsage={tokenUsage} rateLimits={rateLimits} open={conversationVisible && statusOpen}
               onToggle={() => { setActionsOpen(false); setStatusOpen(current => !current); }} onClose={() => setStatusOpen(false)} /> : <ContextUsageButton
               tokenUsage={tokenUsage}
-              open={statusOpen}
+              open={conversationVisible && statusOpen}
               buttonRef={usageButtonRef}
               onClick={() => {
                 setActionsOpen(false);
@@ -1412,7 +1415,7 @@ export function ConversationPage({
         )}
 
       <ConversationUsagePopover
-        open={!modern && statusOpen}
+        open={!modern && conversationVisible && statusOpen}
         anchorRef={usageButtonRef}
         tokenUsage={tokenUsage}
         rateLimits={rateLimits}
