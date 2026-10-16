@@ -112,8 +112,8 @@ ConfiguredApp 使用真实 `scopedThreads`、`projectDirectories`、`collapsedPr
 
 ### 双向切换与启动检查点
 
-- iOS 首次默认 Web；Swift 在进程首次读取偏好后冻结本次模式。两边设置共用 `settings.native-ui` / `NativeSwitchBoundary`，只有专用 IndexedDB 检查点完整事务成功后，才请求宿主保存下次启动偏好；宿主写入失败恢复原值。
-- `codexMobileNativePreference({enabled?})` 通过可信首页桥读取或保存偏好，回传 `{enabled, active}`；当前运行模式不随偏好变化。未就绪或恢复失败时禁用切换；丢失回执有按请求 ID 匹配的有界错误回收。
+- iOS 首次默认网页界面配合原生输入框，完整原生界面仍默认关闭；Swift 在进程首次读取偏好后冻结本次模式。两边设置共用 `settings.native-ui` / `NativeSwitchBoundary`，只有专用 IndexedDB 检查点完整事务成功后，才请求宿主保存下次启动偏好；宿主写入失败恢复原值。
+- `codexMobileNativePreference({enabled?, kind?: "interface" | "composer"})` 通过可信首页桥读取或保存偏好，回传 `{enabled, active}`；当前运行模式不随偏好变化。未就绪或恢复失败时禁用切换；丢失回执有按请求 ID 匹配的有界错误回收。
 - 检查点使用独立数据库，不进入手动草稿列表。保存全部已挂载工作区正文、图片、文件完整二进制、设备、项目、线程与发送配置。设置使用明确白名单；不复制 HTTP session/pending writes、审批秘密答案或待确认写操作。
 - 已准备切换后继续编辑，会串行合并最新状态；同一 File 的二进制读取缓存避免每个字符重复读取。存储失败显示错误、保留当前输入。冷启动先恢复目标与内容再挂载业务；已有线程的首轮 resume 保留本地发送选择，同时同步服务器消息、访问状态，之后普通重连仍采用服务器设置。
 - 人工“使用旧界面恢复”只揭示当前 WK，设置一次性呈现恢复标记并解除原生确认，不重载文档、不重挂业务工作区、不重连传输、不改变持久偏好。原生专用 runtime 停止发布，旧 Web 的设置、面板和确认恢复原有操作。
@@ -131,3 +131,19 @@ Task2b 分模块 RED→GREEN 日志位于 `.mobile-build/native-reference/task2b
 原生对话顶部新增锚定用量面板，继续使用现有 `contextUsageView` 的最近请求占用；七天套餐额度投影来自现有 `rateLimits`，仅有可靠的窗口长度和重置时间时计算时间剩余。缺失数据不使用网页原型的演示值。新增字段保持可选以兼容既有快照。
 
 模型与思考强度共用原生分组面板，权限有独立说明面板，速度保留系统菜单。选择继续走已有命令与 `contextId` 校验；临时调节面板关闭后仅在原输入上下文仍有效时恢复原焦点。侧栏项目行不再带新建图标，最近对话和底部新建入口继续保留。设置首页展示现有偏好的实时投影，语言与字号直接选择，版本行只展示已安装版本。iOS 不做启动、前台或手动更新检查，不接收升级事件，也不在 App 内触发 OTA 安装；Android 更新流程保持原有行为。
+
+## 网页原生输入框
+
+两个 UserDefaults 偏好独立保存：`codexMobile.useNativeUI` 默认 false，`codexMobile.useNativeComposer` 默认 true。启动时冻结两个值，同进程的新 scene 不提前使用保存值；完整原生模式优先。独立输入开关通过 `settings.native-composer` 复用 `NativeSwitchBoundary` 的检查点事务、增量保存、失败恢复及并发锁，不能直接绕过网页保存草稿。
+
+`isNativeUIEnabled` 保持整页呈现和前后台语义；`isNativeBridgeEnabled` 只扩展 runtime 的创建、监听和发布。每个 scene 继续使用既有单个业务 WebView 和一个 runtime；两个可信启动 flag 分开注入，消息和布局脚本仍校验原始 Bundle 首页、主 frame 和同一 WebView。
+
+真实挂载的 `ConversationPage` 登记 `{contextId, visible, blocked}`。runtime 仅发布当前设备且上下文匹配的呈现，旧上下文清理不能移除新登记。公共遮罩通过 overlay-scroll 的只读订阅通知，页面另登记设置、审批、历史编辑、预览、会话菜单、队列编辑和已有 realtime 状态。遮罩出现收起原生输入并失焦，关闭后不主动弹键盘；网页 form 在混合模式中卸载。只读重连、处理附件、待引导和新对话草稿提示保留在历史末尾，新对话机器与项目选择继续使用网页。
+
+设备设置、草稿、更新和确认保留网页呈现；workspace adapter 继续持有真正 runtime，使用 composer 呈现模式抑制自动审批镜像。由原生输入栏显式打开的面板仍复用原有业务命令。混合宿主保持稳定，原生 sheet presenter 不因 panel 出现而重建。
+
+非交互 `NativeComposerLayoutProbe` 测量整个输入容器（含候选、提示、附件与队列），弱引用桥把顶部转换到同 window 的业务 WebView，按 0.5pt 去重后发出 `codex-mobile-native-composer-layout`。网页按 `top * innerHeight / webViewHeight` 换算遮挡，只为 timeline 增加实测留白；键盘和主页安全区不重复叠加。隐藏清理把顶部放回 WebView 底边，网页遮挡归零；top=0 仍是有效几何。监听随页面上下文清理。
+
+最大化和还原使用同一个原生 TextField，只有切换会话上下文时重置局部输入状态。`selectionRevision` 只在权威正文或 UTF-16 光标变化时推进，本地绑定和相同草稿 echo 不强制重设 TextSelection，以保留中文组字状态。
+
+关联自动化已验证真实 ConversationPage 呈现、遮罩、布局与恢复、检查点事务、真实 Swift Store/DTO/偏好以及可信 JavaScript 生成与执行。模拟器、真机覆盖安装和正式发布结果由整合阶段单独验收，不以这些自动化结果代替。

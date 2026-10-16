@@ -7,12 +7,17 @@ struct NativeStoreSmoke {
         verifyVisualContent()
         verifyDocumentPresentation()
         let defaults = UserDefaults.standard
+        let previousComposerPreference = defaults.object(forKey: NativeUIPreference.composerKey)
         let previousPreference = defaults.object(forKey: NativeUIStore.preferenceKey)
         defer {
+            if let previousComposerPreference { defaults.set(previousComposerPreference, forKey: NativeUIPreference.composerKey) }
+            else { defaults.removeObject(forKey: NativeUIPreference.composerKey) }
             if let previousPreference { defaults.set(previousPreference, forKey: NativeUIStore.preferenceKey) }
             else { defaults.removeObject(forKey: NativeUIStore.preferenceKey) }
         }
         defaults.removeObject(forKey: NativeUIStore.preferenceKey)
+        defaults.removeObject(forKey: NativeUIPreference.composerKey)
+        try NativeWebComposerSmoke.verify()
         NativeComposerPresentationSmoke.verify()
         NativeHistoryEditSmoke.verify()
         let inlineJSON = Data(#"{"id":"turn:m","role":"user","text":"原消息","historyEdit":{"id":"history-edit:t:turn:m","title":"编辑历史消息","items":[{"id":"history-text","kind":"multilineField","value":"新草稿"}]}}"#.utf8)

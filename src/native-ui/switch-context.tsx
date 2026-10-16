@@ -4,10 +4,11 @@ import type { BackendRegistry } from '../backends/types';
 import { nativeSwitchStore, restoreSwitchWorkspace, type SavedSwitchCheckpoint, type SwitchWorkspace } from './switch-store';
 import { emptyNativeSnapshot } from './protocol';
 import { publishNativeSnapshot } from './runtime';
-import { isIOSNativeHost, requestNativePreference } from './preference';
+import { isIOSNativeHost, requestNativePreference, type NativePreferenceKind } from './preference';
 interface SwitchState {
- enabled: boolean; loading: boolean; pending: boolean; error: string; notice: string;
+ enabled: boolean; composerEnabled: boolean; loading: boolean; pending: boolean; error: string; notice: string;
  change(enabled: boolean): Promise<void>;
+ changeComposer(enabled: boolean): Promise<void>;
  workspaces: Map<string, SwitchWorkspace>; restored: Map<string, SwitchWorkspace>;
  registry: { current: BackendRegistry };
  changed(): void;
@@ -56,6 +57,7 @@ export function NativeSwitchBoundary({ initialRegistry, children }: { initialReg
  return <SwitchProvider initialRegistry={checkpoint?.registry ?? initialRegistry} restored={restored} checkpoint={checkpoint}>{children(checkpoint?.registry ?? initialRegistry)}</SwitchProvider>;
 }
 function SwitchProvider({ initialRegistry, checkpoint, restored, children }: { initialRegistry: BackendRegistry; checkpoint: SavedSwitchCheckpoint | null; restored: Map<string, SwitchWorkspace>; children: ReactNode }) {
+ const [composerEnabled, setComposerEnabled] = useState(true);
  const [enabled, setEnabled] = useState(false); const [loading, setLoading] = useState(true);
  const [pending, setPending] = useState(false); const inFlight = useRef(false);
  const [error, setError] = useState(''); const [notice, setNotice] = useState('');
@@ -63,7 +65,7 @@ function SwitchProvider({ initialRegistry, checkpoint, restored, children }: { i
  const [state] = useState(() => ({ workspaces: new Map<string, SwitchWorkspace>(), restored, registry: { current: initialRegistry } }));
  useEffect(() => {
   let cancelled = false; disposed.current = false;
-  void requestNativePreference().then(value => { if (!cancelled) setEnabled(value.enabled); }).catch(reason => { if (!cancelled) setError(String(reason)); }).finally(() => { if (!cancelled) setLoading(false); });
+  void Promise.all([requestNativePreference(), requestNativePreference({ kind: 'composer' })]).then(([value, composer]) => { if (!cancelled) { setEnabled(value.enabled); setComposerEnabled(composer.enabled); } }).catch(reason => { if (!cancelled) setError(String(reason)); }).finally(() => { if (!cancelled) setLoading(false); });
   return () => { cancelled = true; disposed.current = true; };
  }, [checkpoint]);
  const capture = () => {
@@ -95,7 +97,7 @@ function SwitchProvider({ initialRegistry, checkpoint, restored, children }: { i
   for (const name of ['input', 'change', 'click', 'pagehide', 'visibilitychange']) window.addEventListener(name, interaction);
   return () => { for (const name of ['input', 'change', 'click', 'pagehide', 'visibilitychange']) window.removeEventListener(name, interaction); };
  });
- const change = async (next: boolean) => {
+ const changePreference = async (kind: NativePreferenceKind, next: boolean) => {
   if (inFlight.current) throw new Error('界面设置正在保存，请稍后重试');
   inFlight.current = true; setPending(true); setError(''); setNotice('');
   const wasArmed = armed.current; armed.current = false;
@@ -105,8 +107,8 @@ function SwitchProvider({ initialRegistry, checkpoint, restored, children }: { i
    while (syncing.current) await new Promise(resolve => setTimeout(resolve, 5));
    previous = await nativeSwitchStore.load();
    await nativeSwitchStore.save(capture()); wrote = true;
-   const saved = await requestNativePreference({ enabled: next });
-   armed.current = true; setEnabled(saved.enabled); setNotice('下次完整启动 App 时生效');
+   const saved = await requestNativePreference({ kind, enabled: next });
+   armed.current = true; (kind === 'composer' ? setComposerEnabled : setEnabled)(saved.enabled); setNotice('下次完整启动 App 时生效');
    previousSignature.current = ''; changed();
   } catch (reason) {
    if (wrote) {
@@ -117,7 +119,7 @@ function SwitchProvider({ initialRegistry, checkpoint, restored, children }: { i
    const message = reason instanceof Error ? reason.message : String(reason); setError(`无法保存界面设置：${message}`); throw reason;
   } finally { inFlight.current = false; setPending(false); }
  };
- return <SwitchContext.Provider value={{ ...state, enabled, loading, pending, error, notice, change, changed }}>{children}{error && <p role="alert">{error}</p>}</SwitchContext.Provider>;
+ return <SwitchContext.Provider value={{ ...state, enabled, composerEnabled, loading, pending, error, notice, change: next => changePreference('interface', next), changeComposer: next => changePreference('composer', next), changed }}>{children}{error && <p role="alert">{error}</p>}</SwitchContext.Provider>;
 }
 export function useSwitchWorkspace(backendId: string, value: SwitchWorkspace) {
  const state = useNativeSwitch();

@@ -667,3 +667,5 @@ button, a, summary, [role="button"] { -webkit-tap-highlight-color: transparent; 
 .saved-draft-delete { flex-shrink: 0; min-width: 44px; min-height: 44px; padding: 0 8px; border: 0; border-radius: 12px; color: #a52a2a; background: #fff4f4; }
 .new-chat-draft-actions > button:active, .saved-draft-open:active { background: #eaeaea; }
 @media (max-width: 340px) { .list-header { gap: 6px; } .list-header h1 { font-size: 1.1rem; } .list-header-actions { gap: 4px; } }
+
+[data-native-composer="true"] .timeline { padding-bottom: calc(var(--native-composer-occlusion, 0px) + 12px); }

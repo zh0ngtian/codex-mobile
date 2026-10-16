@@ -302,6 +302,8 @@ export function BackendManagerSheet({
     <section className="backend-language-settings" aria-label={t("界面模式")}>
       <label><input type="checkbox" checked={nativeSwitch.enabled} disabled={nativeSwitch.loading || nativeSwitch.pending}
         onChange={event => { void nativeSwitch.change(event.target.checked).catch(() => {}); }} />{t("使用原生界面")}</label>
+      <label><input type="checkbox" checked={nativeSwitch.composerEnabled} disabled={nativeSwitch.loading || nativeSwitch.pending}
+        onChange={event => { void nativeSwitch.changeComposer(event.target.checked).catch(() => {}); }} />{t("使用原生输入框")}</label>
       <small>{t("下次完整启动 App 时生效")}</small>
     </section>
   );

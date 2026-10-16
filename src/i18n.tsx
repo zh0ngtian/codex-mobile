@@ -33,6 +33,8 @@ const english: Record<string, string> = {
   "连接的设备": "Connected devices",
   "新建对话": "New conversation",
   "界面模式": "Interface mode",
+  "使用原生输入框": "Use native composer",
+  "当前会话输入不可用": "Conversation input is unavailable",
   "使用原生界面": "Use native interface",
   "Web 界面": "Web interface",
   "使用新版界面": "Use new interface",

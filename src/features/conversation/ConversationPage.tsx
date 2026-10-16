@@ -1,3 +1,5 @@
+import { useNativeWebComposer } from '../../native-ui/web-composer';
+import type { NativeRuntime } from '../../native-ui/runtime';
 import {
   type FormEvent,
   type RefObject,
@@ -205,6 +207,10 @@ export function ConversationPage({
   onOpenSpeedSettings,
   onOpenPermissionSettings,
   onDraftChange,
+  nativeRuntime = null,
+  nativeContextId = '',
+  conversationVisible = false,
+  webOverlayOpen = false,
   historyEdit = null,
   onEditUserMessage,
   onHistoryEditTextChange = () => undefined,
@@ -215,6 +221,10 @@ export function ConversationPage({
   onQueuedFollowUpEdit = () => undefined,
   onQueuedFollowUpCancel = () => undefined,
 }: {
+  nativeRuntime?: NativeRuntime | null;
+  nativeContextId?: string;
+  conversationVisible?: boolean;
+  webOverlayOpen?: boolean;
   active: DisplayRecord;
   backendId: string;
   backendName: string;
@@ -435,10 +445,12 @@ export function ConversationPage({
     ready: loadState === "ready",
     historyEditMessageId: historyEdit?.target.messageId,
   });
+  const nativeComposer = useNativeWebComposer(nativeRuntime, backendId, nativeContextId, conversationVisible,
+    webOverlayOpen || statusOpen || actionsOpen || Boolean(historyEdit || previewImage || queuedFollowUpEdit) || attachmentMenuOpen || realtimeActive, scrollRef);
   useLayoutEffect(() => {
     const composer = composerRef.current;
     const scroll = scrollRef.current;
-    if (!composer || !scroll) return;
+    if (nativeComposer || !composer || !scroll) return;
     // 排队、编辑、附件及字号变化都需要为整个输入区预留实际高度。
     const updateInset = () => {
       scroll.style.setProperty("--composer-height", `${composer.getBoundingClientRect().height}px`);
@@ -447,8 +459,8 @@ export function ConversationPage({
     if (typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver(updateInset);
     observer.observe(composer);
-    return () => observer.disconnect();
-  }, [scrollRef]);
+    return () => { observer.disconnect(); scroll.style.removeProperty("--composer-height"); };
+  }, [scrollRef, nativeComposer]);
   const interactive =
     loadState === "ready" &&
     accessMode === "interactive";
@@ -525,8 +537,49 @@ export function ConversationPage({
       requestOlderTurns();
     }
   };
+  const composerStatus = <>
+        {accessMode === "readOnly" && (
+          <div
+            className="readonly-thread-banner"
+            role="status"
+            title={resumeError}
+          >
+            <span>{t("该会话正在其他 Codex 客户端运行，当前为只读模式")}</span>
+            <button type="button" onClick={onRetry}>
+              {t("重新连接")}
+            </button>
+          </div>
+        )}
+        {(!modern || nativeComposer) && realtimeActive && (
+          <RealtimeControls
+            status={
+              realtime.state.status as "connecting" | "listening" | "stopping"
+            }
+            startedAt={realtime.state.startedAt}
+            muted={realtime.state.muted}
+            userTranscript={realtime.state.userTranscript}
+            assistantTranscript={realtime.state.assistantTranscript}
+            onToggleMute={realtime.toggleMute}
+            onStop={() => void realtime.stop()}
+          />
+        )}
+        {imageReading && (
+          <div className="draft-image-reading" role="status" aria-live="polite">
+            {t("正在处理附件…")}
+          </div>
+        )}
+        {isNewChat && onSaveDraft && (
+          <div className="new-chat-draft-actions">
+            <span role="status">{draftSaveStatus}</span>
+            {!modern && <button type="button" disabled={!canSaveDraft} onClick={() => { void onSaveDraft(); }}>
+              {draftSaving ? t("正在保存…") : t("保存草稿")}
+            </button>}
+          </div>
+        )}
+    {nativeComposer && pendingSteerText && <div className="pending-steer-message" role="status" aria-label={t("已发送引导")}>{pendingSteerText}</div>}
+  </>;
   return (
-    <section className="conversation">
+    <section className="conversation" data-native-composer={nativeComposer ? "true" : undefined}>
       <header className="conversation-header">
         <button
           className="round-button"
@@ -766,11 +819,12 @@ export function ConversationPage({
               <div className="empty-state">{t("开始一次新的 Codex 对话")}</div>
             )}
             <RunProgress thread={active} busy={busy} sync={syncState} operationPending={operationPending} />
+            {nativeComposer && composerStatus}
           </div>
         </div>
       </div>
       <ErrorBanner message={error} />
-      <form
+      {!nativeComposer && <form
         ref={composerRef}
         className={`composer-wrap${
           composerMaximized && !modern ? " composer-wrap-maximized" : ""
@@ -800,31 +854,7 @@ export function ConversationPage({
           }
         }}
       >
-        {accessMode === "readOnly" && (
-          <div
-            className="readonly-thread-banner"
-            role="status"
-            title={resumeError}
-          >
-            <span>{t("该会话正在其他 Codex 客户端运行，当前为只读模式")}</span>
-            <button type="button" onClick={onRetry}>
-              {t("重新连接")}
-            </button>
-          </div>
-        )}
-        {!modern && realtimeActive && (
-          <RealtimeControls
-            status={
-              realtime.state.status as "connecting" | "listening" | "stopping"
-            }
-            startedAt={realtime.state.startedAt}
-            muted={realtime.state.muted}
-            userTranscript={realtime.state.userTranscript}
-            assistantTranscript={realtime.state.assistantTranscript}
-            onToggleMute={realtime.toggleMute}
-            onStop={() => void realtime.stop()}
-          />
-        )}
+        {composerStatus}
         {(pendingSteerText || queuedFollowUps.length > 0) && (
           <div className="composer-follow-up-stack">
             {pendingSteerText && (
@@ -1013,27 +1043,6 @@ export function ConversationPage({
                 </button>
               </figure>
             ))}
-          </div>
-        )}
-        {previewImage && (
-          <ImagePreviewSheet
-            src={previewImage.url}
-            name={previewImage.name}
-            alt={t("待发送 {name}", { name: previewImage.name })}
-            onClose={() => setPreviewImage(null)}
-          />
-        )}
-        {imageReading && (
-          <div className="draft-image-reading" role="status" aria-live="polite">
-            {t("正在处理附件…")}
-          </div>
-        )}
-        {isNewChat && onSaveDraft && (
-          <div className="new-chat-draft-actions">
-            <span role="status">{draftSaveStatus}</span>
-            {!modern && <button type="button" disabled={!canSaveDraft} onClick={() => { void onSaveDraft(); }}>
-              {draftSaving ? t("正在保存…") : t("保存草稿")}
-            </button>}
           </div>
         )}
         {!modern && <div className="chips">
@@ -1388,7 +1397,16 @@ export function ConversationPage({
             )}
           </button>
         </div>
-      </form>
+      </form>}
+        {previewImage && (
+          <ImagePreviewSheet
+            src={previewImage.url}
+            name={previewImage.name}
+            alt={t("待发送 {name}", { name: previewImage.name })}
+            onClose={() => setPreviewImage(null)}
+          />
+        )}
+
       <ConversationStatusSheet
         open={!modern && statusOpen}
         thread={active}

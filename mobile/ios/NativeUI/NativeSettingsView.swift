@@ -22,6 +22,11 @@ struct NativeSettingsView: View {
                                     .padding(.horizontal, 15).frame(minHeight: 55)
                                     .accessibilityIdentifier("native-ui-preference")
                                     .disabled(store.preferenceSaving || !store.canChangeNativePreference)
+                                separator
+                                Toggle(isOn: Binding(get: { store.savedComposerPreference }, set: { store.requestNativePreference($0, kind: "composer") })) { Label(store.label("使用原生输入框", "Use Native Composer"), systemImage: "keyboard") }
+                                    .padding(.horizontal, 15).frame(minHeight: 55)
+                                    .accessibilityIdentifier("native-composer-preference")
+                                    .disabled(store.preferenceSaving || !store.canChangeNativePreference)
                             }
                             VStack(alignment: .leading, spacing: 5) {
                                 Text(store.label("下次完整启动时生效", "Applies at the next full launch"))

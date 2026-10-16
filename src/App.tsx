@@ -346,7 +346,7 @@ function BackendWorkspace({
   searchQuery,
 }: BackendWorkspaceProps) {
   const restoredWorkspace = useNativeSwitch()?.restored.get(backend.id);
-  const confirmWorkspaceAction = useNativeConfirmation(nativeRuntime, `workspace:${backend.id}`);
+  const confirmWorkspaceAction = useNativeConfirmation(isNativeUIEnabled() ? nativeRuntime : null, `workspace:${backend.id}`);
   const [connection, setConnection] = useState<ConnectionState>("connecting");
   const [threads, setThreads] = useState<AnyRecord[]>([]);
   const [projects, setProjects] = useState<string[]>([]);
@@ -4220,6 +4220,10 @@ function BackendWorkspace({
     <main className="app-shell">
       {active ? (
         <ConversationPage
+          nativeRuntime={nativeRuntime}
+          nativeContextId={nativeContextId}
+          conversationVisible={conversationVisible}
+          webOverlayOpen={Boolean(picker || approval)}
           active={active}
           backendId={backend.id}
           backendName={backend.name}
@@ -4474,7 +4478,7 @@ function UnconfiguredApp({ registry, setRegistry, managerOpen, setManagerOpen, a
         </button>
       </section>
       <BackendManagerSheet
-        nativeRuntime={nativeRuntime}
+        nativeRuntime={isNativeUIEnabled() ? nativeRuntime : null}
         nativePage={nativeSettingsPage}
         open={managerOpen}
         registry={registry}
@@ -4504,7 +4508,7 @@ function UnconfiguredApp({ registry, setRegistry, managerOpen, setManagerOpen, a
         }}
       />
       <AppUpdateSheet
-        nativeRuntime={nativeRuntime}
+        nativeRuntime={isNativeUIEnabled() ? nativeRuntime : null}
         open={appUpdate.sheetOpen}
         state={appUpdate.state}
         onClose={() => appUpdate.setSheetOpen(false)}
@@ -5205,7 +5209,7 @@ function ConfiguredApp({
           onClick={closeSidebar}
         />
       </div>
-      {draftsOpen && <DraftsSheet nativeRuntime={nativeRuntime} onClose={() => setDraftsOpen(false)} onOpenDraft={saved => {
+      {draftsOpen && <DraftsSheet nativeRuntime={isNativeUIEnabled() ? nativeRuntime : null} onClose={() => setDraftsOpen(false)} onOpenDraft={saved => {
         const target = registry.backends.find(backend => backend.id === saved.backendId);
         if (!target) throw new Error(t("草稿的设备已移除，无法恢复"));
         const restored = restoreNewChatDraft(saved);
@@ -5229,7 +5233,7 @@ function ConfiguredApp({
         }}
       />
       <BackendManagerSheet
-        nativeRuntime={nativeRuntime}
+        nativeRuntime={isNativeUIEnabled() ? nativeRuntime : null}
         nativePage={nativeSettingsPage}
         open={managerOpen}
         registry={registry}
@@ -5256,7 +5260,7 @@ function ConfiguredApp({
         }}
       />
       <AppUpdateSheet
-        nativeRuntime={nativeRuntime}
+        nativeRuntime={isNativeUIEnabled() ? nativeRuntime : null}
         open={appUpdate.sheetOpen}
         state={appUpdate.state}
         onClose={() => appUpdate.setSheetOpen(false)}

@@ -1,6 +1,7 @@
 import Foundation
 
 struct NativeSnapshot: Codable {
+    var webComposer: NativeWebComposerPresentation? = nil
     var version = 1
     var ready = false
     var locale = "zh-CN"
