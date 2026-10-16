@@ -5,10 +5,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 
-// 云端冷启动可能首次编译Apple SDK模块；编译与执行分别有界，保留所有真实断言。
-const swiftCompileTimeout = 90_000;
+// 正式 CI 的完整 Swift 回归编译在 90 秒超时；为云端冷启动保留有界预算，执行仍限 15 秒。
+const swiftCompileTimeout = 180_000;
 const swiftExecutionTimeout = 15_000;
-const swiftContractTimeout = 120_000;
+const swiftContractTimeout = 210_000;
 const source = (name: string) => readFileSync(`mobile/ios/NativeUI/${name}.swift`, "utf8");
 const trustedURL = "file:///Applications/Codex.app/index.html";
 function bootstrap() {
