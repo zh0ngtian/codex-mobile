@@ -1,6 +1,6 @@
 # iOS 输入栏图标与正文字号 Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** 加号菜单去掉 Skill 与插件入口，按参考图改善图标大小和间距，输入文字跟随当前对话页正文尺寸。
 
@@ -19,12 +19,12 @@
 - 修改 `tests/ci/native-ui-menu-smoke.swift`、相关 Swift smoke 与 `tests/ui/native-ui-web-composer.test.tsx`：验证三项业务菜单与上下文、当前网页模式及字号元数据、旧 payload 解码和实际字号解析，不为样式值增加镜像测试。
 - 修改 `docs/native-ui-business-bridge.md`、`release/notes.md` 中受影响的用户说明。
 
-- [ ] 运行干净基线：`NODE_OPTIONS=--no-experimental-webstorage npm test -- tests/ci/ios-native-ui.test.ts tests/ui/native-ui-web-composer.test.tsx --maxWorkers=2`。
-- [ ] 先修改菜单实际命令 smoke 的 expected 为 `photos/files/location`、派发次数为 3；新增真实网页呈现用例，要求发布当前界面正文字号并在模式切换后更新。运行观察功能缺失导致 RED，保存仓库外日志。
-- [ ] 最小实现三项菜单，移除无用 `.mentions` 映射；保留所有原命令与上下文检查，其他 Skill/插件能力不动。
-- [ ] 最小实现字体数据：`bodyFontSize?: number`；旧网页传 16、新网页传 14.2，NativeWebComposerHost 传给编辑器；完整原生传 14.5。新增字段不得改变旧 payload 可解码性；编辑器计算字体与 UIFont 行高使用同一结果。
-- [ ] 对照截图调整视觉：图标约 20pt 基准（原 16pt），发送圆形约 32pt（原 28pt），常规工具栏间隙 4pt、配置项间隙 8pt 作为首轮尺寸；图标与标题独立字体，44pt 命中区域保持。最终在 iPhone 17 Pro 正常字号竖屏截图校准，不新增图中未请求的功能。
-- [ ] 关联测试 GREEN、`npm run typecheck` 与完整 Swift SDK 编译检查，自审后按中文 Conventional Commits 提交；正文含“新增功能”和“主要修改”。不推 main、不自行发包。
+- [x] 运行干净基线：`NODE_OPTIONS=--no-experimental-webstorage npm test -- tests/ci/ios-native-ui.test.ts tests/ui/native-ui-web-composer.test.tsx --maxWorkers=2`。
+- [x] 先修改菜单实际命令 smoke 的 expected 为 `photos/files/location`、派发次数为 3；新增真实网页呈现用例，要求发布当前界面正文字号并在模式切换后更新。运行观察功能缺失导致 RED，保存仓库外日志。
+- [x] 最小实现三项菜单，移除无用 `.mentions` 映射；保留所有原命令与上下文检查，其他 Skill/插件能力不动。
+- [x] 最小实现字体数据：`bodyFontSize?: number`；旧网页传 16、新网页传 14.2，NativeWebComposerHost 传给编辑器；完整原生传 14.5。新增字段不得改变旧 payload 可解码性；编辑器计算字体与 UIFont 行高使用同一结果。
+- [x] 对照截图调整视觉：图标约 20pt 基准（原 16pt），发送圆形约 32pt（原 28pt），常规工具栏间隙 4pt、配置项间隙 8pt 作为首轮尺寸；图标与标题独立字体，44pt 命中区域保持。最终在 iPhone 17 Pro 正常字号竖屏截图校准，不新增图中未请求的功能。
+- [x] 关联测试 GREEN、`npm run typecheck` 与完整 Swift SDK 编译检查，自审后按中文 Conventional Commits 提交；正文含“新增功能”和“主要修改”。不推 main、不自行发包。
 
 ### Task 2: 实际 UI 与发布（主任务）
 
@@ -37,3 +37,13 @@
 ## 证据目录
 
 `~/Library/Application Support/CodexMobile/validation/ios-composer-spacing-font-20261017/`。
+
+## 本地验收结果
+
+- 运行实现提交 `4fe6884fba40f2eeab3babbb834d1641afbd560a`。基线两文件 25 项通过；新增菜单与字号行为先 RED，再 GREEN 27 项。最终全量 131 文件 1487 项、TypeScript、完整 NativeUI Swift 5 iOS SDK 类型检查通过；发布 Python 166 项、现役协调器恢复 30 项通过。
+- iPhone 17 Pro 模拟器、正常系统字号、竖屏实际 UI 共六项场景通过：旧版网页字体、新版网页字体、完整原生字体、三项附件菜单与真实 Files 取消重开保留草稿、多行增长上限与清空缩回、发送按钮圆外区域点击。
+- 旧版网页输入实际 14pt，与助手正文 computed font 14pt 一致；新版两者均 12.425pt。完整原生输入实测 12.6875pt，与现有助手正文 14.5 × 0.875 基准一致。输入样式及 UIFont 行高预算共用同一有效字体值。
+- 已核对参考图与实际截图：加号、审核、速度图标比例接近，左侧附件/审核与右侧速度/模型/发送之间留白；模型和推理强度保持可见。多行六行上限后内部滚动，工具栏保持可操作，清空后缩回。
+- 初轮多行测试将发送 AX 视觉边框 32pt 误当成触区不足。单独在发送中心上方 20pt（圆外、44pt 框内）坐标点击，草稿清空且消息出现，证明现有外框可点；只修正忽略目录 QA 断言，不增加产品修改。原始失败结果保留，最终多行回归通过。
+- 规格与质量独立审查通过，无未解决 P0/P1/P2。截图、原始 RED/GREEN xcresult、离线 fixture、探针和日志保存在上述仓库外目录。测试 App 已卸载并释放共享模拟器锁；未创建远端测试会话。未进行物理真机覆盖安装与数据保留验收。
+- 下一步由 OTA-only 协调器完成版本、签名与固定渠道回验；成功 receipt 和独立完整下载核对后交付。
