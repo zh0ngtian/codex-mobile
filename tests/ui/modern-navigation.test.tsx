@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useState, type ComponentProps } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BackendManagerSheet } from "../../src/features/backends/BackendManagerSheet";
@@ -138,6 +138,26 @@ describe("新版侧栏", () => {
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
   });
 
+  it.each([false, true])("设备菜单 Tab 关闭并将焦点移到可见的相邻控件（反向：%s）", (shiftKey) => {
+    render(<ThreadListPage {...listProps} />, { wrapper: Wrapper });
+    const title = screen.getByRole("button", { name: /Codex.*Mac mini/ });
+    fireEvent.click(title);
+    const menu = screen.getByRole("menu", { name: "设备菜单" });
+    fireEvent.keyDown(menu, { key: "End" });
+    expect(screen.getByRole("menuitem", { name: "刷新会话列表" })).toHaveFocus();
+    fireEvent.keyDown(document.activeElement!, { key: "Tab", shiftKey });
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    expect(shiftKey ? title : screen.getByRole("button", { name: "搜索会话" })).toHaveFocus();
+  });
+
+  it("键盘焦点离开标题菜单区域时关闭设备菜单", () => {
+    render(<ThreadListPage {...listProps} />, { wrapper: Wrapper });
+    fireEvent.click(screen.getByRole("button", { name: /Codex.*Mac mini/ }));
+    act(() => screen.getByRole("button", { name: /关注的对话/ }).focus());
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /关注的对话/ })).toHaveFocus();
+  });
+
   it("搜索使用真实受控输入，关闭侧栏收起搜索与设备菜单", () => {
     function SearchList({ open }: { open: boolean }) {
       const [query, setQuery] = useState("");
@@ -249,5 +269,68 @@ describe("新版全局设置", () => {
     expect(screen.getByRole("textbox", { name: "设备名称" })).toHaveValue("未保存名称");
     fireEvent.click(screen.getByRole("button", { name: "返回设备" }));
     expect(screen.getByRole("button", { name: "添加设备" })).toBeInTheDocument();
+  });
+});
+
+
+describe("新版设置导航焦点", () => {
+  it.each(["语言", "字体大小", "设备", "传输方式", "通知"])("进入%s子页后焦点留在同一个弹层，返回恢复入口", (label) => {
+    renderSettings();
+    const dialog = screen.getByRole("dialog", { name: "设置" });
+    const entry = screen.getByRole("button", { name: label });
+    entry.focus();
+    fireEvent.click(entry);
+    expect(screen.getByRole("dialog", { name: label })).toBe(dialog);
+    expect(dialog.contains(document.activeElement)).toBe(true);
+    const back = screen.getByRole("button", { name: "返回设置" });
+    expect(back).toHaveFocus();
+    const focusable = [...dialog.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled])')];
+    fireEvent.keyDown(back, { key: "Tab", shiftKey: true });
+    expect(focusable.at(-1)).toHaveFocus();
+    fireEvent.keyDown(focusable.at(-1)!, { key: "Tab" });
+    expect(back).toHaveFocus();
+    fireEvent.click(back);
+    expect(screen.getByRole("dialog", { name: "设置" })).toBe(dialog);
+    expect(screen.getByRole("button", { name: label })).toHaveFocus();
+  });
+
+  it.each(["返回设备", "取消", "测试并保存"])("设备编辑页%s后保持弹层焦点与键盘循环", async (action) => {
+    const probe = vi.fn(async () => ({ hostId: "mini", displayName: "Mac mini", hostname: "mini.local", gatewayVersion: "0.2.0", appServerReady: true }));
+    renderSettings({ probe });
+    const dialog = screen.getByRole("dialog");
+    fireEvent.click(screen.getByRole("button", { name: "设备" }));
+    const edit = screen.getByRole("button", { name: "编辑 Mac mini" });
+    edit.focus();
+    fireEvent.click(edit);
+    expect(dialog.contains(document.activeElement)).toBe(true);
+    const name = screen.getByRole("textbox", { name: "设备名称" });
+    name.focus();
+    fireEvent.change(name, { target: { value: "保留编辑焦点" } });
+    expect(name).toHaveFocus();
+    const actionButton = screen.getByRole("button", { name: action });
+    actionButton.focus();
+    fireEvent.click(actionButton);
+    await waitFor(() => expect(screen.queryByRole("textbox", { name: "设备名称" })).not.toBeInTheDocument());
+    expect(screen.getByRole("dialog")).toBe(dialog);
+    expect(dialog.contains(document.activeElement)).toBe(true);
+    const back = screen.getByRole("button", { name: "返回设置" });
+    expect(back).toHaveFocus();
+    fireEvent.keyDown(back, { key: "Tab", shiftKey: true });
+    expect(screen.getByRole("button", { name: "添加设备" })).toHaveFocus();
+  });
+
+  it("切换新旧界面后仍聚焦同一设置弹层且不重建草稿", () => {
+    renderSettings({ registry: { version: 1, selectedBackendId: "", backends: [] } });
+    const dialog = screen.getByRole("dialog");
+    fireEvent.change(screen.getByRole("textbox", { name: "设备名称" }), { target: { value: "未保存内容" } });
+    for (const mode of ["legacy", "modern"]) {
+      const toggle = screen.getByRole("checkbox", { name: "使用新版界面" });
+      toggle.focus();
+      fireEvent.click(toggle);
+      expect(document.documentElement.dataset.webInterface).toBe(mode);
+      expect(screen.getByRole("dialog")).toBe(dialog);
+      expect(dialog.contains(document.activeElement)).toBe(true);
+      expect(screen.getByRole("textbox", { name: "设备名称" })).toHaveValue("未保存内容");
+    }
   });
 });

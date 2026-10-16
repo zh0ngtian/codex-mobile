@@ -26,7 +26,7 @@ export function ModernSettingsRoot({ language, fontSize, deviceCount, transport,
   onNavigate: (page: SettingsPage) => void;
 }) {
   const row = (page: Exclude<SettingsPage, "root">, label: string, detail: string) => (
-    <button type="button" className="modern-settings-row" aria-label={label} onClick={() => onNavigate(page)}>
+    <button type="button" className="modern-settings-row" data-settings-page={page} aria-label={label} onClick={() => onNavigate(page)}>
       <SettingsIcon kind={page} /><span>{label}</span><small>{detail}</small><i className="modern-settings-chevron" aria-hidden="true" />
     </button>
   );

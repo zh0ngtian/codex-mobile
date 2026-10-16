@@ -22,6 +22,7 @@ export function ModernSidebarHeader({
   const [menuOpen, setMenuOpen] = useState(false);
   const headerRef = useRef<HTMLElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const searchRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const menuId = useId();
   const closeMenu = () => {
@@ -52,6 +53,9 @@ export function ModernSidebarHeader({
   const runAction = (action?: () => void) => { closeMenu(); action?.(); };
 
   return <header ref={headerRef} className="modern-sidebar-header"
+    onBlur={event => {
+      if (!event.currentTarget.contains(event.relatedTarget)) setMenuOpen(false);
+    }}
     onTouchStart={event => event.stopPropagation()} onTouchMove={event => event.stopPropagation()}
     onTouchEnd={event => event.stopPropagation()} onTouchCancel={event => event.stopPropagation()}>
     <button type="button" className="modern-circle-button" aria-label={t("关闭侧栏")} onClick={onCloseSidebar}>
@@ -66,12 +70,18 @@ export function ModernSidebarHeader({
         <span>{subtitle}</span>
       </span>
     </button>
-    <button type="button" className="modern-circle-button" aria-label={t("搜索会话")} aria-expanded={searchOpen}
+    <button type="button" className="modern-circle-button" ref={searchRef} aria-label={t("搜索会话")} aria-expanded={searchOpen}
       onClick={() => { setMenuOpen(false); onToggleSearch(); }}>
       <AppIcon name="search" />
     </button>
     {menuOpen && <div id={menuId} ref={menuRef} className="modern-device-menu" role="menu" aria-label={t("设备菜单")}
       onKeyDown={event => {
+        if (event.key === "Tab") {
+          event.preventDefault();
+          setMenuOpen(false);
+          (event.shiftKey ? triggerRef : searchRef).current?.focus({ preventScroll: true });
+          return;
+        }
         if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
         event.preventDefault();
         const items = [...event.currentTarget.querySelectorAll<HTMLButtonElement>("button:not(:disabled)")];

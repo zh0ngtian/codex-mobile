@@ -113,6 +113,11 @@ export function BackendManagerSheet({
   const [error, setError] = useState("");
   const [qrScannerOpen, setQrScannerOpen] = useState(false);
   const [settingsPage, setSettingsPage] = useState<SettingsPage>("root");
+  const settingsEntryRef = useRef<SettingsPage | null>(null);
+  const usedModernNavigation = useRef(false);
+  useEffect(() => {
+    if (open && webInterface.modern) usedModernNavigation.current = true;
+  }, [open, webInterface.modern]);
 
   useEffect(() => {
     if (!open) {
@@ -121,6 +126,8 @@ export function BackendManagerSheet({
       setTesting(false);
       setQrScannerOpen(false);
       setSettingsPage("root");
+      settingsEntryRef.current = null;
+      usedModernNavigation.current = false;
     } else if (!registry.backends.length) {
       setDraft((current) => current ?? newBackendDraft(0));
     }
@@ -534,6 +541,10 @@ export function BackendManagerSheet({
         onClose={onClose}
         closeLabel={t("关闭")}
         closeOnBackdrop={false}
+        focusResetKey={modern ? `modern:${settingsPage}:${draft?.id ?? ""}` : usedModernNavigation.current ? "legacy" : undefined}
+        initialFocusSelector={!modern ? ".web-interface-settings input" : draft || settingsPage !== "root"
+          ? ".modern-settings-back"
+          : settingsEntryRef.current ? `[data-settings-page="${settingsEntryRef.current}"]` : undefined}
         className={`backend-manager-sheet${modern ? " modern-settings-sheet" : ""}`}
         headerActions={modern && (draft || settingsPage !== "root") ? <button
           type="button" className="modern-settings-back" aria-label={draft ? t("返回设备") : t("返回设置")}
@@ -546,7 +557,10 @@ export function BackendManagerSheet({
             fontSize={t(({ small: "小", standard: "标准", large: "大", "extra-large": "特大" } as const)[font.size])}
             deviceCount={registry.backends.length} transport={t(transportMode === "http" ? "HTTP" : "流式")}
             notification={notificationPreference && onNotificationPreferenceSave ? t(push.mode === "system" ? "系统推送" : "Bark 推送") : undefined}
-            webToggle={webToggle} nativeToggle={nativeToggle} currentVersion={appUpdate?.currentVersion} onNavigate={setSettingsPage}
+            webToggle={webToggle} nativeToggle={nativeToggle} currentVersion={appUpdate?.currentVersion} onNavigate={page => {
+              settingsEntryRef.current = page;
+              setSettingsPage(page);
+            }}
           /> : <>
             {settingsPage === "devices" && deviceContent}
             {settingsPage === "language" && languageForm}
