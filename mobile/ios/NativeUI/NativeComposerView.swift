@@ -15,9 +15,6 @@ struct NativeComposerView: View {
     @ScaledMetric(relativeTo: .body) private var toolbarSize = 16
     @FocusState private var focused: Bool
     @State private var selection: TextSelection?
-    @State private var adjustment: NativeComposerAdjustment?
-    @State private var adjustmentReturn: NativeComposerAdjustment?
-    @State private var pendingAttachmentCommand: NativeCommand?
     var body: some View {
         VStack(spacing: layoutBudget.supplementarySpacing) {
             if hasSupplementaryContent {
@@ -64,10 +61,11 @@ struct NativeComposerView: View {
                     .onChange(of: selection) { updateCaret() }
                     .onChange(of: store.selectionRevision, initial: true) { updateSelection() }
                 HStack(spacing: 2) {
-                    Button { store.attachmentOpen.toggle() } label: {
-                        Image(systemName: "plus").frame(width: 44, height: 44)
-                    }.buttonStyle(.plain).accessibilityLabel(store.label("添加附件", "Add Attachment")).disabled(!store.composerCanEdit)
-                    if expanded { NativeComposerConfigurationView(store: store, openAdjustment: openAdjustment) }
+                    NativeComposerAttachmentMenu(store: store, contextID: store.snapshot.contextId,
+                        isEnabled: store.composerCanEdit && !store.sidebarOpen, isOpen: $store.attachmentOpen,
+                        fontSize: toolbarSize * store.snapshot.fontScale)
+                        .frame(width: 44, height: 44)
+                    if expanded { NativeComposerConfigurationView(store: store) }
                     Spacer(minLength: 0)
                     if canInterrupt && hasDraft {
                         Button(store.label("停止", "Stop"), systemImage: "stop.circle") { store.command("turn.stop") }
@@ -102,35 +100,10 @@ struct NativeComposerView: View {
         .onChange(of: store.composerPresentation?.id, initial: true) { applyPresentation() }
         .onChange(of: store.awaitingNewConversation) { if store.awaitingNewConversation { focused = false } }
         .onChange(of: store.composerCanEdit) {
-            if !store.composerCanEdit {
-                focused = false
-                if adjustment?.kind == .attachments { store.attachmentOpen = false; adjustment = nil }
-            }
-        }
-        .sheet(item: $adjustment, onDismiss: restoreAdjustmentFocus) { session in
-            switch session.kind {
-            case .permission: NativePermissionOptionsView(store: store, adjustment: session)
-            case .attachments:
-                NativeAttachmentOptionsView(store: store) { command in
-                    pendingAttachmentCommand = command
-                    adjustment = nil
-                }
-            }
-        }
-        .onChange(of: store.attachmentOpen, initial: true) {
-            if store.attachmentOpen && store.composerCanEdit { openAdjustment(.attachments) }
-            else if adjustment?.kind == .attachments { adjustment = nil }
-        }
-        .onChange(of: store.snapshot.contextId) {
-            if adjustment != nil || adjustmentReturn != nil {
-                adjustment = nil
-                adjustmentReturn = nil
-                pendingAttachmentCommand = nil
-                focused = false
-            }
+            if !store.composerCanEdit { focused = false; store.attachmentOpen = false }
         }
         .onChange(of: focused) { onFocusChanged(focused) }
-        .onDisappear { onFocusChanged(false) }
+        .onDisappear { store.attachmentOpen = false; onFocusChanged(false) }
         .onChange(of: store.sidebarOpen) { if store.sidebarOpen { focused = false } }
 
     }
@@ -147,27 +120,6 @@ struct NativeComposerView: View {
         focused = presentation == .focus
     }
     private func submit() { store.command(canInterrupt && !hasDraft ? "turn.stop" : "message.send") }
-    private func openAdjustment(_ kind: NativeComposerAdjustmentKind) {
-        guard store.composerCanEdit else { return }
-        let session = NativeComposerAdjustment(kind: kind, contextID: store.snapshot.contextId, wasFocused: focused)
-        adjustmentReturn = session
-        adjustment = session
-        focused = false
-    }
-    private func restoreAdjustmentFocus() {
-        defer {
-            adjustmentReturn = nil
-            pendingAttachmentCommand = nil
-            store.attachmentOpen = false
-        }
-        if let command = adjustmentReturn?.deferredAttachmentCommand(pendingAttachmentCommand, contextID: store.snapshot.contextId, editable: store.composerCanEdit, sidebarOpen: store.sidebarOpen) {
-            store.perform(command)
-            return
-        }
-        guard let session = adjustmentReturn,
-              let restore = session.restoredFocus(contextID: store.snapshot.contextId, editable: store.composerCanEdit, sidebarOpen: store.sidebarOpen) else { return }
-        focused = restore
-    }
     private func updateCaret() {
         guard let selection, case .selection(let range) = selection.indices else { return }
         // 清空/切换草稿后，TextField 可能仍回调旧文本的选区。
@@ -190,7 +142,7 @@ struct NativeComposerView: View {
     private var inputAvailableHeight: CGFloat {
         availableHeight - supplementaryHeight - layoutBudget.supplementarySpacing - layoutBudget.outerHeight
     }
-    private var expanded: Bool { focused || adjustment != nil || (canInterrupt && hasDraft) || store.attachmentOpen || !store.snapshot.attachments.isEmpty || store.draft.contains("\n") || store.draft.count > 48 }
+    private var expanded: Bool { focused || (canInterrupt && hasDraft) || store.attachmentOpen || !store.snapshot.attachments.isEmpty || store.draft.contains("\n") || store.draft.count > 48 }
     private var placeholder: String {
         if let name = store.snapshot.backendName { return store.label("在 \(name) 上工作", "Work on \(name)") }
         return store.label("向 Codex 提问", "Ask Codex")

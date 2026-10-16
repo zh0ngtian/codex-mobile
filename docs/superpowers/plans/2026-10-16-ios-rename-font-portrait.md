@@ -90,11 +90,11 @@
 - `NativeAttachmentOptionsView.swift`、`NativePermissionOptionsView.swift`、`NativePermissionOptionView.swift`、`NativeComposerAdjustment*.swift`：用 rg 核对引用，仅删除确实不再使用的旧 sheet 路径，保留必要安全合同并更新旧 smoke。
 - 现有 Swift smoke、相关 NativeUIUITests 与构建契约，以及 README、桥接文档、release/notes.md。
 
-- [ ] 先为附件菜单动作绑定和旧 context 拒绝、当前模型及推理标签补真实 Swift 行为回归，观察旧实现 RED；保留原草稿、selectionRevision、等待新会话回归。
-- [ ] 附件菜单直接显示四项：照片 `photo`、文件 `paperclip`、Skill 与插件 `at`、当前位置 `location`，仍走 attachment.pick/photos、attachment.pick/files、panel.open/mentions、location.insert。
-- [ ] 审核模式遍历权威 snapshot.permissions，使用语义相应图标（只读/工作区/自动审核/完全访问），选择仍走 chooseComposerOption(permission.select, contextID:)；按钮保持 44pt，图标与文字共享现有工具栏字号。
-- [ ] Fast、模型、推理强度按钮只显示文本或相应速度图标，不显示选择 ✓；菜单固定顺序和全部目录保持。
-- [ ] 模型按钮用单一可见文本呈现“模型 · 推理强度”，避免 SwiftUI Menu 将多个 Text 仅提取第一项；空值沿现有“智能”语义，长名称优先保留末尾推理强度，可中间截断。实际截图须看到推理值，不能只用原 accessibilityValue 判定。
+- [x] 先为附件菜单动作绑定和旧 context 拒绝、当前模型及推理标签补真实 Swift 行为回归，观察旧实现 RED；保留原草稿、selectionRevision、等待新会话回归。
+- [x] 附件菜单直接显示四项：照片 `photo`、文件 `paperclip`、Skill 与插件 `at`、当前位置 `location`，仍走 attachment.pick/photos、attachment.pick/files、panel.open/mentions、location.insert。
+- [x] 审核模式遍历权威 snapshot.permissions，使用语义相应图标（只读/工作区/自动审核/完全访问），选择仍走 chooseComposerOption(permission.select, contextID:)；按钮保持 44pt，图标与文字共享现有工具栏字号。
+- [x] Fast、模型、推理强度按钮只显示文本或相应速度图标，不显示选择 ✓；菜单固定顺序和全部目录保持。
+- [x] 模型按钮用单一可见文本呈现“模型 · 推理强度”，避免 SwiftUI Menu 将多个 Text 仅提取第一项；空值沿现有“智能”语义，长名称优先保留末尾推理强度，可中间截断。实际截图须看到推理值，不能只用原 accessibilityValue 判定。
 - [ ] 侧栏新建附件入口仍直接打开同一个系统菜单；选文件/照片进入原系统选择器、取消可重新打开；Skill/Plugin 后续面板仍走原业务，菜单外取消保留草稿。
 - [ ] 关联回归、TypeScript 和 Swift 类型检查后自审提交，不操作发布；规格与质量依序复核。
 - [ ] 主任务真实 UI 覆盖四类菜单、图标和无 ✓ 截图、模型与推理可见文本、全部目录/溢出系统滚动、选择后草稿保留、侧栏附件快捷入口和原系统文件选择器；再统一全量必要验证并 ready。
@@ -104,3 +104,10 @@
 - 新文本输入桥已在真实原生会话菜单中显示系统文本框、预填和取消；字号与实际固定竖屏两项已 GREEN。
 - `rename-cancel-reopen-red.xcresult` 证明会话页取消后下一次点击会话操作无法立即重开：原生 UIMenu 已消费，但 React actionsOpen 只在动作成功时清理。侧栏 managedThread 的相同保留条件由源码确认，React 回归保护原目标与后端，侧栏真实 UI 待继续验证，不把它描述为已复现的同一重开缺陷。修复须在正确捕获目标后清理原生呈现状态，取消不发命名请求；普通网页 fallback 行为保持。
 - 首次 GREEN 测试包崩溃来自主任务自写 QA 探针空样式 parseFloat 得 NaN，进入 NSJSONSerialization 后抛异常；仅忽略目录探针已改为有限数值/null。生产实现未因此修改，原始 crash 保存于私有 validation 目录。
+
+### 输入栏菜单实现验证
+
+- 2026-10-16：新增实际生产 Swift store 回归先观察 RED：侧栏打开后，旧配置菜单仍派发模型、推理、速度及审核动作（`composer-menu-context-red.log`）。
+- 新菜单上下文合同替换旧 sheet 的恢复合同；真实 Swift smoke 覆盖四项附件动作、原上下文、不可编辑/等待/侧栏拒绝、草稿与 selectionRevision 保持，以及模型/推理单一标签。宿主 17 项全部 GREEN（`composer-menu-green.log`）；最终相关六文件 65 项通过（`composer-menu-final-tests.log`），包含原生 runtime、workspace、附件及新对话业务回归。
+- `npm run typecheck`、完整 NativeUI iOS SDK Swift 类型检查（与工程一致的 Swift 5 模式）和 NativeUIUITests 的 XCTest 类型检查均通过；日志分别为 `composer-menu-typecheck.log`、`composer-menu-swift-typecheck.log`、`composer-menu-xctest-typecheck.log`。首轮额外 Swift 6 全目录检查触及既有 Markdown NSCache 并发诊断，未将该无关代码纳入本次菜单修改。
+- UIKit 新按钮保留正常命中测试，使用系统 `willEndFor` 完成回调清理状态，随后才执行原附件命令；不再保留附件或权限 sheet。实际系统菜单、目录溢出、图标、可见推理标签、快捷入口与系统选择器验收继续由主任务执行。

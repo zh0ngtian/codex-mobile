@@ -130,7 +130,11 @@ Task2b 分模块 RED→GREEN 日志位于 `.mobile-build/native-reference/task2b
 
 原生对话顶部新增锚定用量面板，继续使用现有 `contextUsageView` 的最近请求占用；七天套餐额度投影来自现有 `rateLimits`，仅有可靠的窗口长度和重置时间时计算时间剩余。缺失数据不使用网页原型的演示值。新增字段保持可选以兼容既有快照。
 
-模型与思考强度共用 SwiftUI `Menu` 系统弹出菜单，以 `.menuOrder(.fixed)` 固定模型、思考强度两个 `Section` 及接口选项的原始顺序，平级列出选项并显示当前选中标记，与会话菜单采用相同系统菜单形式。选项按钮创建时捕获 `contextId`，选择继续走既有 `chooseComposerOption`；过期菜单和不可编辑状态不能派发更改。权限保留独立说明面板，附件面板保持原入口，这两类临时调节面板关闭后仅在原输入上下文仍有效时恢复原焦点。速度菜单继续使用权威 `snapshot.speedValue`，空值及 `default`/`normal` 默认别名显示 `bolt.slash`，非默认服务档位（包括旧 `fast` 与真实目录中的 `priority`）显示 `bolt.fill`；图标和辅助功能值共用 `isFastEnabled` 判断 Fast 开关；不建立乐观速度状态。输入栏的附件、权限、速度、停止、发送图标及模型/思考文字统一继承单一基准 16pt 的 `ScaledMetric` 字体，应用字号固定为原 small（0.875），继续跟随 Dynamic Type，44pt 点击范围及 28pt 发送圆底保留。侧栏项目行不再带新建图标，最近对话和底部新建入口继续保留。设置首页展示现有偏好的实时投影，语言直接选择，iOS 移除字号行，版本行只展示已安装版本。iOS 不做启动、前台或手动更新检查，不接收升级事件，也不在 App 内触发 OTA 安装；Android 更新流程保持原有行为。
+附件、权限、速度及模型/思考强度统一使用 iOS 系统弹出菜单。权限直接遍历权威 `snapshot.permissions`，选项显示审核、只读或完全访问的 SF Symbol，并保留说明的辅助功能 hint。模型与思考强度共用 SwiftUI `Menu`，以 `.menuOrder(.fixed)` 固定两个平级 `Section` 和接口原始顺序，完整列出目录，超屏滚动交给系统，不增加自定义分页或滚动容器；Fast、模型和思考选项不绘制选中勾。模型按钮使用单一可见 `Text` 显示“模型 · 思考强度”，空值显示智能语义，长名称中间截断以保留末尾强度。选项创建时捕获 `contextId`，选择仍走既有 `chooseComposerOption`；过期、不可编辑、等待新会话或侧栏打开时拒绝执行。
+
+附件入口由单一职责 `NativeComposerAttachmentMenu` 包装可交互 `UIButton/UIMenu`，同时支持直接点击和 `consumeComposerPresentation(.attachments)` 的程序打开，均不再呈现 sheet。四项顺序为照片 `photo`、文件 `paperclip`、Skill 与插件 `at`、当前位置 `location`，沿用 `attachment.pick/photos`、`attachment.pick/files`、`panel.open/mentions` 和 `location.insert`。菜单上下文在创建时固定；`willEndFor` 动画结束后清理呈现状态，再由 store 重新检查原会话并派发命令，避免系统菜单与后续照片/文件选择器或 Skill 面板争用呈现。取消后可以重新打开；菜单本身不改变输入焦点，不替换 TextField、草稿或 TextSelection，也不推进 selectionRevision。
+
+速度菜单继续使用权威 `snapshot.speedValue`，空值及 `default`/`normal` 默认别名显示 `bolt.slash`，非默认服务档位（包括旧 `fast` 与真实目录中的 `priority`）显示 `bolt.fill`；图标和辅助功能值共用 `isFastEnabled` 判断 Fast 开关；不建立乐观速度状态。输入栏的附件、权限、速度、停止、发送图标及模型/思考文字统一继承单一基准 16pt 的 `ScaledMetric` 字体，应用字号固定为原 small（0.875），继续跟随 Dynamic Type，44pt 点击范围及 28pt 发送圆底保留。侧栏项目行不再带新建图标，最近对话和底部新建入口继续保留。设置首页展示现有偏好的实时投影，语言直接选择，iOS 移除字号行，版本行只展示已安装版本。iOS 不做启动、前台或手动更新检查，不接收升级事件，也不在 App 内触发 OTA 安装；Android 更新流程保持原有行为。
 
 ## 网页原生输入框
 

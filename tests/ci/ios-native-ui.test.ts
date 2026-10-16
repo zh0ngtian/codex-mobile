@@ -20,13 +20,14 @@ describe("SwiftUI 原生宿主契约", () => {
   it.skipIf(process.platform !== "darwin")("执行真实 Swift store、Codable往返、离线状态与 Markdown 解析", () => {
     const directory = mkdtempSync(join(tmpdir(), "native-model-"));
     try {
-      const names = ["NativeJSONValue", "NativeCommand", "NativeCommandResult", "NativeOption", "NativeBackend", "NativeNavigationItem", "NativeGroup", "NativeAttachment", "NativeMessage", "NativePanelItem", "NativePanel", "NativeContextUsage", "NativeRateLimit", "NativeWebComposerPresentation", "NativeComposerLineLimits", "NativeComposerLayoutBudget", "NativeComposerSymbols", "NativeComposerAdjustment", "NativeComposerAdjustmentKind", "NativeSnapshot", "NativeUIStore", "NativeComposerPresentation", "NativeComposerPresentationEvent", "NativeComposerPresentationIntent", "NativeUIPreference", "NativeMarkdownBlock", "NativeMarkdownBlockKind", "NativeMarkdownSyntax", "NativeMarkdownInlinePart", "NativeMediaSource", "NativeReferenceAudio", "NativeVisualReference", "NativeReferenceSettings", "NativeHistoryEditReference", "NativeTextRhythm", "NativeFieldKey", "NativeFieldScope", "NativeImageData", "NativePlainText", "NativeInlineMarkdown", "NativeMarkdownDisplaySource", "NativeMarkdownHTMLScope", "NativeTimelineState", "NativeTextPrompt"];
-      const compile = spawnSync("xcrun", ["swiftc", ...names.map(name => `mobile/ios/NativeUI/${name}.swift`), "tests/ci/native-ui-model-smoke.swift", "tests/ci/native-ui-presentation-smoke.swift", "tests/ci/native-ui-history-smoke.swift", "tests/ci/native-ui-web-composer-smoke.swift", "-o", join(directory, "smoke")], { encoding: "utf8", timeout: swiftCompileTimeout });
+      const names = ["NativeJSONValue", "NativeCommand", "NativeCommandResult", "NativeOption", "NativeBackend", "NativeNavigationItem", "NativeGroup", "NativeAttachment", "NativeMessage", "NativePanelItem", "NativePanel", "NativeContextUsage", "NativeRateLimit", "NativeWebComposerPresentation", "NativeComposerLineLimits", "NativeComposerLayoutBudget", "NativeComposerSymbols", "NativeComposerMenuContext", "NativeComposerAttachmentAction", "NativeSnapshot", "NativeUIStore", "NativeComposerPresentation", "NativeComposerPresentationEvent", "NativeComposerPresentationIntent", "NativeUIPreference", "NativeMarkdownBlock", "NativeMarkdownBlockKind", "NativeMarkdownSyntax", "NativeMarkdownInlinePart", "NativeMediaSource", "NativeReferenceAudio", "NativeVisualReference", "NativeReferenceSettings", "NativeHistoryEditReference", "NativeTextRhythm", "NativeFieldKey", "NativeFieldScope", "NativeImageData", "NativePlainText", "NativeInlineMarkdown", "NativeMarkdownDisplaySource", "NativeMarkdownHTMLScope", "NativeTimelineState", "NativeTextPrompt"];
+      const compile = spawnSync("xcrun", ["swiftc", ...names.map(name => `mobile/ios/NativeUI/${name}.swift`), "tests/ci/native-ui-model-smoke.swift", "tests/ci/native-ui-presentation-smoke.swift", "tests/ci/native-ui-menu-smoke.swift", "tests/ci/native-ui-history-smoke.swift", "tests/ci/native-ui-web-composer-smoke.swift", "-o", join(directory, "smoke")], { encoding: "utf8", timeout: swiftCompileTimeout });
       expect(compile.status, compile.error?.message ?? compile.stderr).toBe(0);
       const result = spawnSync(join(directory, "smoke"), [], { encoding: "utf8", timeout: swiftExecutionTimeout });
       expect(result.status, result.error?.message ?? result.stderr).toBe(0);
       expect(result.stdout).toContain("smoke passed");
       expect(result.stdout).toMatch(/Native composer presentation \d+ assertions passed/);
+      expect(result.stdout).toMatch(/Native composer menu \d+ assertions passed/);
       expect(result.stdout).toMatch(/Native visual content \d+ assertions passed/);
       expect(result.stdout).toMatch(/Native document presentation \d+ assertions passed/);
       expect(result.stdout).toMatch(/Native inline history \d+ assertions passed/);
@@ -56,6 +57,28 @@ describe("SwiftUI 原生宿主契约", () => {
     const composer = source("NativeComposerView");
     expect(composer.match(/TextField\(/g)).toHaveLength(1);
     expect(composer).toContain(".lineLimit(composerLineLimits)");
+  });
+  it("输入栏直接使用系统菜单，完整平级目录不带勾选并可见当前推理强度", () => {
+    const composer = source("NativeComposerView");
+    const configuration = source("NativeComposerConfigurationView");
+    const attachments = source("NativeComposerAttachmentMenu");
+    expect(composer).toContain("NativeComposerAttachmentMenu(");
+    expect(composer).not.toContain(".sheet(");
+    expect(configuration).toContain("ForEach(store.snapshot.permissions ?? [])");
+    expect(configuration).toContain("NativeComposerSymbols.permissionSymbol(option.value)");
+    expect(configuration).toContain("ForEach(store.snapshot.models)");
+    expect(configuration).toContain("ForEach(store.snapshot.efforts)");
+    expect(configuration.match(/Section\(/g)).toHaveLength(2);
+    expect(configuration.match(/\.menuOrder\(\.fixed\)/g)).toHaveLength(3);
+    expect(configuration).not.toMatch(/checkmark|ScrollView|\.prefix\(|Picker\(/);
+    expect(configuration).toContain("Text(NativeComposerSymbols.modelTitle(");
+    expect(configuration).toContain(".truncationMode(.middle)");
+    expect(attachments).toContain("showsMenuAsPrimaryAction = true");
+    expect(attachments).toContain("preferredMenuElementOrder = .fixed");
+    expect(attachments).toContain("performPrimaryAction()");
+    expect(attachments).toContain("willEndFor");
+    expect(attachments).toContain("animator.addCompletion");
+    expect(attachments).not.toContain("hitTest(");
   });
   it("具有离线原生根、输入、侧栏及设置 UI 验收", () => {
     expect(existsSync("mobile/ios/NativeUI/NativeRootView.swift"), "缺少真实 SwiftUI 根").toBe(true);

@@ -2,21 +2,30 @@ import SwiftUI
 
 struct NativeComposerConfigurationView: View {
     let store: NativeUIStore
-    let openAdjustment: (NativeComposerAdjustmentKind) -> Void
 
     var body: some View {
         HStack(spacing: 0) {
-            Button(store.label("权限", "Permissions"), systemImage: "exclamationmark.shield") { openAdjustment(.permission) }
-                .labelStyle(.iconOnly).frame(width: 44, height: 44)
-                .foregroundStyle(Color.orange)
-                .accessibilityValue(store.snapshot.permission ?? "")
-                .accessibilityIdentifier("native-permission-menu")
+            Menu {
+                ForEach(store.snapshot.permissions ?? []) { option in
+                    let context = store.snapshot.contextId
+                    Button { store.chooseComposerOption("permission.select", value: option.value, contextID: context) } label: {
+                        Label(option.title, systemImage: NativeComposerSymbols.permissionSymbol(option.value))
+                    }
+                    .accessibilityHint(option.subtitle ?? "")
+                }
+            } label: {
+                Label(store.label("权限", "Permissions"), systemImage: "exclamationmark.shield")
+                    .labelStyle(.iconOnly).frame(width: 44, height: 44)
+            }
+            .menuOrder(.fixed)
+            .foregroundStyle(Color.orange)
+            .accessibilityValue(store.snapshot.permission ?? "")
+            .accessibilityIdentifier("native-permission-menu")
             Menu {
                 ForEach(store.snapshot.speeds ?? []) { option in
                     let context = store.snapshot.contextId
                     Button { store.chooseComposerOption("speed.select", value: option.value, contextID: context) } label: {
-                        if option.value == store.snapshot.speedValue { Label(option.title, systemImage: "checkmark") }
-                        else { Text(option.title) }
+                        Text(option.title)
                     }
                 }
             } label: {
@@ -31,8 +40,7 @@ struct NativeComposerConfigurationView: View {
                     ForEach(store.snapshot.models) { option in
                         let context = store.snapshot.contextId
                         Button { store.chooseComposerOption("model.select", value: option.value, contextID: context) } label: {
-                            if option.value == store.snapshot.modelValue { Label(option.title, systemImage: "checkmark") }
-                            else { Text(option.title) }
+                            Text(option.title)
                         }
                     }
                 }
@@ -40,22 +48,19 @@ struct NativeComposerConfigurationView: View {
                     ForEach(store.snapshot.efforts) { option in
                         let context = store.snapshot.contextId
                         Button { store.chooseComposerOption("effort.select", value: option.value, contextID: context) } label: {
-                            if option.value == store.snapshot.effortValue { Label(option.title, systemImage: "checkmark") }
-                            else { Text(option.title) }
+                            Text(option.title)
                         }
                     }
                 }
             } label: {
-                HStack(spacing: 4) {
-                    Text(store.snapshot.model).foregroundStyle(.primary).lineLimit(1)
-                    Text(store.snapshot.effort).foregroundStyle(.secondary).lineLimit(1).fixedSize(horizontal: true, vertical: false)
-                }
-                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading).contentShape(.rect)
+                Text(NativeComposerSymbols.modelTitle(model: store.snapshot.model, effort: store.snapshot.effort, smart: store.label("智能", "Smart")))
+                    .foregroundStyle(.primary).lineLimit(1).truncationMode(.middle)
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading).contentShape(.rect)
             }
             .menuOrder(.fixed)
-            .accessibilityLabel(store.label("模型与思考强度", "Model and Reasoning Effort"))
+            .accessibilityHint(store.label("模型与思考强度", "Model and Reasoning Effort"))
             .accessibilityValue("\(store.snapshot.model) \(store.snapshot.effort)")
             .accessibilityIdentifier("native-model-menu")
-        }.buttonStyle(.plain).disabled(!store.composerCanEdit)
+        }.buttonStyle(.plain).disabled(!store.composerCanEdit || store.sidebarOpen)
     }
 }

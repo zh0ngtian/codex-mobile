@@ -24,19 +24,7 @@ struct NativeStoreSmoke {
         let inlineMessage = try JSONDecoder().decode(NativeMessage.self, from: inlineJSON)
         let inlineRoundtrip = try JSONSerialization.jsonObject(with: JSONEncoder().encode(inlineMessage)) as! [String: Any]
         precondition((inlineRoundtrip["historyEdit"] as? [String: Any])?["id"] as? String == "history-edit:t:turn:m", "真实原生DTO必须保留消息原位编辑而不丢弃字段")
-        let adjustment = NativeComposerAdjustment(kind: .permission, contextID: "b:t:1", wasFocused: true)
-        precondition(adjustment.restoredFocus(contextID: "b:t:1", editable: true, sidebarOpen: false) == true, "调节完成恢复原输入焦点")
-        precondition(adjustment.restoredFocus(contextID: "b:t:2", editable: true, sidebarOpen: false) == nil, "过期调节面板不能聚焦另一会话")
-        precondition(adjustment.restoredFocus(contextID: "b:t:1", editable: false, sidebarOpen: false) == nil, "只读或等待态不恢复键盘")
-        precondition(adjustment.restoredFocus(contextID: "b:t:1", editable: true, sidebarOpen: true) == nil, "侧栏展开时不恢复键盘")
-        precondition(NativeComposerAdjustment(kind: .permission, contextID: "b:t:1", wasFocused: false).restoredFocus(contextID: "b:t:1", editable: true, sidebarOpen: false) == false, "原先收起的输入保持收起")
-        let attachmentSession = NativeComposerAdjustment(kind: .attachments, contextID: "b:t:1", wasFocused: true)
-        let photoCommand = NativeCommand(name: "attachment.pick", params: ["kind": .string("photos")])
-        precondition(attachmentSession.deferredAttachmentCommand(photoCommand, contextID: "b:t:1", editable: true, sidebarOpen: false)?.params["kind"] == .string("photos"), "关闭附件面板后执行原选择动作")
-        precondition(attachmentSession.deferredAttachmentCommand(photoCommand, contextID: "b:t:2", editable: true, sidebarOpen: false) == nil, "切换会话后不能执行旧附件动作")
-        precondition(attachmentSession.deferredAttachmentCommand(photoCommand, contextID: "b:t:1", editable: false, sidebarOpen: false) == nil, "只读态不能打开附件选择器")
-        precondition(attachmentSession.deferredAttachmentCommand(photoCommand, contextID: "b:t:1", editable: true, sidebarOpen: true) == nil, "展开侧栏后取消待执行附件动作")
-        precondition(adjustment.deferredAttachmentCommand(photoCommand, contextID: "b:t:1", editable: true, sidebarOpen: false) == nil, "配置面板不能执行附件动作")
+        NativeComposerMenuSmoke.verify()
         precondition(NativeRateLimit(remainingPercent: 72, resetsAt: 2000, windowDurationMins: 10).remainingTimePercent(at: Date(timeIntervalSince1970: 1700)) == 50)
         precondition(NativeRateLimit(remainingPercent: 72, resetsAt: nil, windowDurationMins: 10).remainingTimePercent(at: Date(timeIntervalSince1970: 1700)) == nil, "没有可靠重置时间不能伪造时间余量")
         precondition(NativeRateLimit(remainingPercent: 72, resetsAt: 2000, windowDurationMins: 0).remainingTimePercent(at: Date(timeIntervalSince1970: 1700)) == nil)
@@ -68,6 +56,13 @@ struct NativeStoreSmoke {
         precondition(adjustmentCommands.count == 1 && adjustmentCommands[0].params["contextId"] == .string("b:t:1"))
         precondition(adjustmentStore.draft == "保留草稿", "选择配置不得清空草稿")
         precondition(adjustmentStore.caretOffset == 2 && adjustmentStore.selectionRevision == optionSelectionRevision, "选择配置不得重置光标或组字选区")
+        adjustmentStore.sidebarOpen = true
+        let commandsBeforeSidebarMenu = adjustmentCommands.count
+        for name in ["model.select", "effort.select", "speed.select", "permission.select"] {
+            adjustmentStore.chooseComposerOption(name, value: "stale-visible-menu", contextID: "b:t:1")
+        }
+        precondition(adjustmentCommands.count == commandsBeforeSidebarMenu, "侧栏展开后旧菜单不能继续更改模型、推理、速度或审核模式")
+        adjustmentStore.sidebarOpen = false
         let normal = NativeUIStore(arguments: [])
         precondition(!normal.nativeEnabled, "首次应默认旧界面")
         defaults.set(true, forKey: NativeUIStore.preferenceKey)

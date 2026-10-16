@@ -359,11 +359,18 @@ final class NativeUIStore {
         return event.presentation
     }
     func chooseComposerOption(_ name: String, value: String, contextID: String?) {
-        guard composerCanEdit, contextID == snapshot.contextId,
+        guard NativeComposerMenuContext(contextID: contextID).allowsExecution(contextID: snapshot.contextId, editable: composerCanEdit, sidebarOpen: sidebarOpen),
               ["model.select", "effort.select", "speed.select", "permission.select"].contains(name) else { return }
         var params: [String: NativeJSONValue] = ["value": .string(value)]
         if let contextID { params["contextId"] = .string(contextID) }
         command(name, params)
+    }
+    func chooseComposerAttachment(_ action: NativeComposerAttachmentAction, contextID: String?) {
+        guard NativeComposerMenuContext(contextID: contextID).allowsExecution(contextID: snapshot.contextId, editable: composerCanEdit, sidebarOpen: sidebarOpen) else { return }
+        let selection = action.command
+        var params = selection.params
+        if let contextID { params["contextId"] = .string(contextID) }
+        command(selection.name, params)
     }
     func command(_ name: String, _ params: [String: NativeJSONValue] = [:]) {
         if name == "thread.new" { startNewConversation(params: params); return }
