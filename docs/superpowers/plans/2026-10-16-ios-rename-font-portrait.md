@@ -73,3 +73,34 @@
 - `npm run typecheck`、文本输入桥 Swift 6 iOS SDK 类型检查、完整 NativeUIUITests 的 iOS XCTest 类型检查均通过，无诊断。生成整合宿主编译和真实 UI GREEN 继续由主任务执行，尚不能用这些检查替代。
 - 上述日志均位于仓库外 `~/Library/Application Support/CodexMobile/validation/ios-rename-font-portrait-20261016/`。
 - 提交前补充源 Info.plist 的双设备方向数组断言先 RED，再显式写入仅 portrait，避免只依赖工程生成设置覆盖；关联方向/构建/文本桥测试继续 GREEN，见 `plist-directions-red.log`、`plist-directions-green.log`。
+- 取消重命名补充：真实 UI 已复现输入框取消无更名、无写请求，但原生菜单消费后网页仍保留打开状态，下一次点击会先关闭旧状态。新增 React 回归先 RED：共享菜单未调用关闭，旧版/新版会话页取消后的 `aria-expanded` 均仍为 true（3 项失败、99 项通过，`rename-cancel-react-red.log`）。
+- 共享会话操作菜单仅对原生重命名选择补充收起：先分发原动作，让侧栏同步捕获会话与后端，再关闭已消费的菜单；网页可见菜单取消行为及其他菜单动作保持原样。四个关联文件 105 项通过（`rename-cancel-react-green.log`），覆盖旧/新版会话页重开、侧栏原目标重命名、网页取消保留菜单及原生菜单既有合同；`npm run typecheck` 通过（`rename-cancel-typecheck.log`）。真实取消→重开→保存 UI 验收继续由主任务执行。
+
+## 新增范围：输入栏统一系统菜单
+
+用户后续明确五项需求，并确认：Fast、模型与推理强度均去掉当前选中的 ✓；模型目录打开即全部列出，超出屏幕允许 iOS 系统滚动。模型按钮必须同时显示推理强度。本轮仍仅 iOS 签名 IPA + OTA。
+
+### 任务：菜单呈现与状态保持
+
+**文件职责：**
+- `NativeComposerView.swift`：附件入口改系统 Menu，消除原附件/权限 sheet 调节路径；同一 TextField、自然增缩、选择与草稿保护不变。
+- `NativeComposerConfigurationView.swift`：审核模式使用系统 Menu 和对应 SF Symbol；Fast、模型、推理选项不再绘制选中 ✓，模型/推理仍平级 Section、固定顺序、ForEach 完整目录，不加入自定义分页或 ScrollView。
+- 新的单一职责附件 Menu 视图（如需）：同时支持工具栏点开和侧栏新建附件快捷入口的程序打开。SwiftUI 不提供程序打开时，沿现有 `ActionMenuBridge.swift` 中 UIButton/UIMenu/performPrimaryAction 的模式实现可交互按钮；不能直接复用其 hitTest 永远 nil 的透明按钮，也不能保留旧 sheet 作为分支回退。
+- `NativeUIStore.swift` 或小型呈现策略：附件动作捕获菜单生成时的 context；只读、等待新会话、侧栏打开和过期上下文均拒绝执行，保留原业务命令及 API。
+- `NativeAttachmentOptionsView.swift`、`NativePermissionOptionsView.swift`、`NativePermissionOptionView.swift`、`NativeComposerAdjustment*.swift`：用 rg 核对引用，仅删除确实不再使用的旧 sheet 路径，保留必要安全合同并更新旧 smoke。
+- 现有 Swift smoke、相关 NativeUIUITests 与构建契约，以及 README、桥接文档、release/notes.md。
+
+- [ ] 先为附件菜单动作绑定和旧 context 拒绝、当前模型及推理标签补真实 Swift 行为回归，观察旧实现 RED；保留原草稿、selectionRevision、等待新会话回归。
+- [ ] 附件菜单直接显示四项：照片 `photo`、文件 `paperclip`、Skill 与插件 `at`、当前位置 `location`，仍走 attachment.pick/photos、attachment.pick/files、panel.open/mentions、location.insert。
+- [ ] 审核模式遍历权威 snapshot.permissions，使用语义相应图标（只读/工作区/自动审核/完全访问），选择仍走 chooseComposerOption(permission.select, contextID:)；按钮保持 44pt，图标与文字共享现有工具栏字号。
+- [ ] Fast、模型、推理强度按钮只显示文本或相应速度图标，不显示选择 ✓；菜单固定顺序和全部目录保持。
+- [ ] 模型按钮用单一可见文本呈现“模型 · 推理强度”，避免 SwiftUI Menu 将多个 Text 仅提取第一项；空值沿现有“智能”语义，长名称优先保留末尾推理强度，可中间截断。实际截图须看到推理值，不能只用原 accessibilityValue 判定。
+- [ ] 侧栏新建附件入口仍直接打开同一个系统菜单；选文件/照片进入原系统选择器、取消可重新打开；Skill/Plugin 后续面板仍走原业务，菜单外取消保留草稿。
+- [ ] 关联回归、TypeScript 和 Swift 类型检查后自审提交，不操作发布；规格与质量依序复核。
+- [ ] 主任务真实 UI 覆盖四类菜单、图标和无 ✓ 截图、模型与推理可见文本、全部目录/溢出系统滚动、选择后草稿保留、侧栏附件快捷入口和原系统文件选择器；再统一全量必要验证并 ready。
+
+### 实际 UI 补充缺陷：取消重命名后菜单重开
+
+- 新文本输入桥已在真实原生会话菜单中显示系统文本框、预填和取消；字号与实际固定竖屏两项已 GREEN。
+- `rename-cancel-reopen-red.xcresult` 证明会话页取消后下一次点击会话操作无法立即重开：原生 UIMenu 已消费，但 React actionsOpen 只在动作成功时清理。侧栏 managedThread 的相同保留条件由源码确认，React 回归保护原目标与后端，侧栏真实 UI 待继续验证，不把它描述为已复现的同一重开缺陷。修复须在正确捕获目标后清理原生呈现状态，取消不发命名请求；普通网页 fallback 行为保持。
+- 首次 GREEN 测试包崩溃来自主任务自写 QA 探针空样式 parseFloat 得 NaN，进入 NSJSONSerialization 后抛异常；仅忽略目录探针已改为有限数值/null。生产实现未因此修改，原始 crash 保存于私有 validation 目录。
