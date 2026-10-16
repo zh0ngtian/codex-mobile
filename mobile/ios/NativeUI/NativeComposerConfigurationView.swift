@@ -23,7 +23,8 @@ struct NativeComposerConfigurationView: View {
                 Label(store.label("速度", "Speed"), systemImage: NativeComposerSymbols.speedSymbol(store.snapshot.speedValue))
                     .labelStyle(.iconOnly).frame(width: 44, height: 44)
             }
-            .accessibilityValue("\(store.snapshot.speed ?? "")，\(store.snapshot.speedValue == "fast" ? store.label("Fast 已开启", "Fast On") : store.label("Fast 已关闭", "Fast Off"))")
+            .menuOrder(.fixed)
+            .accessibilityValue("\(store.snapshot.speed ?? "")，\(NativeComposerSymbols.isFastEnabled(store.snapshot.speedValue) ? store.label("Fast 已开启", "Fast On") : store.label("Fast 已关闭", "Fast Off"))")
             .accessibilityIdentifier("native-speed-menu")
             Menu {
                 Section(store.label("模型", "Model")) {
@@ -51,6 +52,7 @@ struct NativeComposerConfigurationView: View {
                 }
                 .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading).contentShape(.rect)
             }
+            .menuOrder(.fixed)
             .accessibilityLabel(store.label("模型与思考强度", "Model and Reasoning Effort"))
             .accessibilityValue("\(store.snapshot.model) \(store.snapshot.effort)")
             .accessibilityIdentifier("native-model-menu")

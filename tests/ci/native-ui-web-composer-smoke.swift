@@ -19,21 +19,25 @@ enum NativeWebComposerSmoke {
         for lineHeight in [0.0, -24, Double.nan, Double.infinity, -Double.infinity] {
             precondition(NativeComposerLineLimits.resolve(availableHeight: 128, lineHeight: lineHeight, compact: false, accessibility: false) == 1...2, "无效行高使用安全行高，不能将非有限数转换为整数")
         }
-        precondition(NativeComposerSymbols.speedSymbol("fast") == "bolt.fill", "Fast 开启显示实心闪电")
-        for speed in [nil, "standard", "", "disabled"] as [String?] {
-            precondition(NativeComposerSymbols.speedSymbol(speed) == "bolt.slash", "Fast 关闭或标准档显示划线闪电")
+        for speed in ["fast", "priority", "custom-tier"] {
+            precondition(NativeComposerSymbols.isFastEnabled(speed), "非默认速度档位的辅助功能和图标共用开启状态")
+            precondition(NativeComposerSymbols.speedSymbol(speed) == "bolt.fill", "任意已启用的非默认速度档位都显示实心闪电，不能只识别 fast")
+        }
+        for speed in [nil, "default", "normal", ""] as [String?] {
+            precondition(!NativeComposerSymbols.isFastEnabled(speed), "默认速度档位的辅助功能和图标共用关闭状态")
+            precondition(NativeComposerSymbols.speedSymbol(speed) == "bolt.slash", "正常、默认或空速度显示划线闪电")
         }
         let speedStore = NativeUIStore(arguments: [])
         var speedSnapshot = NativeSnapshot()
         speedSnapshot.ready = true; speedSnapshot.contextId = "speed:context"
-        speedSnapshot.speedValue = "standard"
+        speedSnapshot.speedValue = ""
         speedStore.receive(speedSnapshot)
         var speedCommands: [NativeCommand] = []
         speedStore.sendCommand = { speedCommands.append($0) }
-        speedStore.chooseComposerOption("speed.select", value: "fast", contextID: "speed:context")
+        speedStore.chooseComposerOption("speed.select", value: "priority", contextID: "speed:context")
         precondition(speedCommands.count == 1 && speedCommands[0].name == "speed.select", "速度沿原命令派发")
         precondition(NativeComposerSymbols.speedSymbol(speedStore.snapshot.speedValue) == "bolt.slash", "请求发送后仍显示权威速度，不乐观改图标")
-        speedSnapshot.speedValue = "fast"; speedStore.receive(speedSnapshot)
+        speedSnapshot.speedValue = "priority"; speedStore.receive(speedSnapshot)
         precondition(NativeComposerSymbols.speedSymbol(speedStore.snapshot.speedValue) == "bolt.fill", "权威快照确认 Fast 后更新图标")
         let store = NativeUIStore(arguments: [])
         precondition(store.composerEnabled && !store.nativeEnabled, "默认只启用独立输入框")

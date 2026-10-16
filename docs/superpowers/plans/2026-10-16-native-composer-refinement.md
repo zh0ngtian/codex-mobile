@@ -16,7 +16,7 @@
 - 输入始终从一行开始，按硬换行及自动换行自然增长。达到预算后由控件内部滚动，删除内容后缩回；不强制填满预算。
 - 默认行数上限沿用现有普通模式：竖屏标准最多六行、辅助字号三行、横屏两行、横屏辅助字号一行；还须取当前可用高度预算允许的更小值。至少保留一行及发送/停止操作。
 - 字体和 SF Symbol 共享一个工具栏字号（基准 16pt），同时使用现有字号比例及 Dynamic Type。44pt 点击范围和发送圆形按钮背景尺寸继续保留。
-- Fast 使用权威 speedValue 判断：fast 为 bolt.fill，关闭/标准模式为 bolt.slash；辅助功能说明同时表达当前状态。
+- Fast 使用权威 speedValue 判断：空值及 default/normal 默认别名为关闭，其余非默认服务档位（含 fast/priority）开启；开启为 bolt.fill，关闭为 bolt.slash；辅助功能说明同时表达当前状态。
 - 模型和思考强度位于同一系统菜单内的两组列表，保留已选标记；不再用带“完成”按钮的模型底部面板。
 
 ## 文件职责
@@ -52,7 +52,7 @@ static func resolve(availableHeight: Double, lineHeight: Double,
 
 ~~~swift
 static func speedSymbol(_ value: String?) -> String {
-    value == "fast" ? "bolt.fill" : "bolt.slash"
+    isFastEnabled(value) ? "bolt.fill" : "bolt.slash"
 }
 ~~~
 
@@ -118,3 +118,11 @@ Menu {
 - 五个关联测试文件共 31 项通过，涵盖真实 Swift smoke、独立输入与 bootstrap 契约、草稿及 adapter。原生 Swift 源码和 XCTest 源文件使用 iPhoneSimulator 27.0 SDK 进行 `swiftc -typecheck`，均通过；`npm run typecheck` 通过。
 - 更新自然增缩、内部滚动、系统菜单选择、Fast 状态及截图的 XCTest 步骤，尚未执行模拟器验收。
 - RED/GREEN 原始日志存于仓库外 `~/Library/Application Support/CodexMobile/validation/native-composer-refinement-20261016/`；没有执行发布、版本分配或 ready。
+
+### 规格审查修复：Fast 服务档位别名
+
+- 真实 Swift smoke 先对 `priority` 运行 RED，在旧 `fast` 单值判断上按预期失败；统一 `isFastEnabled` 后回归。
+- 速度图标与辅助功能共用现有业务语义：空值及 `default`/`normal` 为正常，`fast`、`priority` 及其他非默认服务档位为开启。离线 UI fixture 使用真实 `priority` 值。
+- 复用 `settings.test.ts` 和 `native-ui-workspace.test.ts`，43 项通过，确认旧 fast 映射到目录 priority、原生 adapter 原样投影 `speedValue: priority`，不硬编码速度目录。
+- 模拟器发现系统菜单自动反序；模型与速度菜单采用 `.menuOrder(.fixed)`，保持模型→思考与正常→Fast，以及目录选项的原始顺序，留待父任务按截图复验。
+- 修复后真实 Swift smoke 与上述业务回归合计 59 项通过，原生 Swift iOS 类型检查及 TypeScript 类型检查通过；原始日志为 `red-fast-tier.log`、`green-fast-tier.log`、`swift-typecheck-fast-tier.log` 与 `typecheck-fast-tier.log`。
