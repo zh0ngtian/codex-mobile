@@ -40,6 +40,10 @@ OTA-only 使用现役 releasectl 的独立项目，不另建服务或数据库�
 
 0.2.179、0.2.180 是接入独立目标之前的已验证单独 OTA，不补造历史批次。`release/standalone-ota-history.json` 索引其原始公开凭证；新 OTA 批次从冻结 Git 提交读取这些凭证，检查其真实 sourceCommit 是本批祖先，并把原版本、散列、凭证路径和源码包含结果写入 `priorStandaloneDeliveries`。此记录证明源码已集成，不代表旧包由新批次构建，也不替代旧包原验签结果。
 
+### 独立 OTA 实际启用状态
+
+2026-10-16 已登记新项目并完成本地实现与门禁验证，代码提交 `8992a47` 位于 `codex/native-preview-alignment-20261016`。用户随后取消本轮发布，任务 `native-rules-ota-20261016` 已 withdrawn，未 ready、无批次、未推进 main，也未发布安装包。新目标的首次真实批次验收及旧 OTA 源码整合仍待后续发起；使用前须纳入上述实现提交，不能把配置登记或本地测试当成已上线。
+
 ## 验证、冻结与各阶段
 
 ready 必需本地检查名为 `adapter-regression`、`coordinator-recovery`、`build-contract`、`typecheck`；均需真实 passed 记录及可定位的命令/结果证据。协调器 prepare 在整合 worktree 再执行锁定依赖安装、typecheck、原 `tests/ci` 契约测试和现有/新增 Python 发布回归。无构建发布的文档/规则改动按仓库例外直接提交推送，不调用 ready 触发发包。
