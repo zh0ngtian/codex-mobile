@@ -11,7 +11,9 @@
 - [x] 在 `modern-navigation.test.tsx` 先加入 iOS 式空 `relatedTarget` 焦点转移和设置点击回归，确认旧代码失败。
 - [x] 修改菜单焦点处理与设备列表布局，保证菜单各行对齐、设置回调可达；运行针对性测试。
 - [x] 生成 iOS 模拟器工程，启动 App 的新版非原生界面，检查菜单布局并实际进入设置页；保留 XCTest 结果和截图。
-- [ ] 通过 typecheck、build、发布适配器及协调器检查，更新中文更新说明，提交推送。
-- [ ] 将同一固定 SHA 提交 OTA-only 队列，等待成功凭证；独立核对 HTTPS/LAN 清单、HEAD、完整 GET、大小和 SHA-256。
+- [x] 通过 typecheck、build、发布适配器及协调器检查，更新中文更新说明，提交推送。
+- [x] 将同一固定 SHA 提交 OTA-only 队列，等待成功凭证；独立核对 HTTPS/LAN 清单、HEAD、完整 GET、大小和 SHA-256。
 
 模拟器使用打入当前前端的 App/WKWebView，通过仅供本地调试的启动参数注入离线设备；没有连接生产网关或创建真实会话。`ModernSidebarUITests.testDeviceMenuAlignmentAndSettingsOpenInEmbeddedWebView` 最终 1 项通过，截图见[菜单](../../assets/ios-simulator/modern-sidebar-menu-20261016.png)与[设置页](../../assets/ios-simulator/modern-sidebar-settings-20261016.png)。
+
+最终 OTA 0.2.183 验收见[发布记录](evidence/2026-10-16-modern-sidebar-menu-ota.json)。未进行真机覆盖安装与数据保留验证。
