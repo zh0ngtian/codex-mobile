@@ -1,0 +1,52 @@
+{
+  "task": "原生设备菜单对齐、设置入口及此前原生修复合入主分支",
+  "sourceSha": "d10a97113a2163ac455015b4cd3003c5fe0a0f51",
+  "mainSha": "ffe6d1fa9529d5e4e75d2e4dc89d9a0787e6c7c2",
+  "iosOta": {
+    "taskId": "native-sidebar-fix-ota-20261016",
+    "batchId": "c383eece-1663-4a6e-8fbd-d83475384ba9",
+    "state": "complete",
+    "frozenSha": "20e68b2ce8e09a0fe6d440ad2c2224278bcff503",
+    "sourceIncluded": true,
+    "version": "0.2.182",
+    "buildNumber": 2182,
+    "signed": true,
+    "bundleId": "vip.loock.codexmobile",
+    "teamId": "SC456JW7RP",
+    "applicationIdentifier": "SC456JW7RP.app.jade6694.grapefruit3766",
+    "size": 4900256,
+    "sha256": "15702b040b5a6aaf8a6e32411ddd2c7f21e664c6b28af43e536df9054336e38b",
+    "installUrl": "https://192.168.123.79:8766/channels/codex-mobile/current/install.html",
+    "ipaUrl": "http://192.168.123.79:8765/channels/codex-mobile/latest.ipa",
+    "lanManifestUrl": "http://192.168.123.79:8765/channels/codex-mobile/latest-ios.json",
+    "httpsManifestUrl": "https://192.168.123.79:8766/channels/codex-mobile/current/latest-ios.json",
+    "verification": "协调器所有阶段成功；独立读取两处清单，HEAD 与完整 GET 均为 HTTP 200、4900256 字节且 SHA-256 一致；HTTPS 安装页返回 200。"
+  },
+  "gateway": {
+    "taskId": "commentary-main-gateway-20261016",
+    "batchId": "2e1468a0-eb72-4211-addb-b0f9b3b42d3d",
+    "state": "complete",
+    "frozenSha": "ffe6d1fa9529d5e4e75d2e4dc89d9a0787e6c7c2",
+    "sourceIncluded": true,
+    "deploymentId": "2e1468a0-eb72-4211-addb-b0f9b3b42d3d:ffe6d1fa9529d5e4e75d2e4dc89d9a0787e6c7c2",
+    "service": "gui/501/com.minis.codex-mobile-gateway",
+    "pidAtVerification": 40182,
+    "verification": "协调器构建、部署与最终验收成功；launchctl 显示服务 running，PID 40182 监听 192.168.123.79:18766。"
+  },
+  "localChecks": {
+    "adapterRegression": "166 tests passed",
+    "coordinatorRecovery": "30 tests passed",
+    "vitest": "128 files, 1447 tests passed",
+    "typecheck": "passed",
+    "clientBuild": "passed",
+    "serverBuild": "passed",
+    "iosSimulator": "NativeUIUITests.testDeviceMenuKeepsCompactRowsAndOpensSettings: 1 passed"
+  },
+  "unchangedChannels": {
+    "githubLatestRelease": "v0.2.181",
+    "androidApkVersion": "0.2.181"
+  },
+  "limitations": [
+    "未进行真机覆盖安装与数据保留验证。"
+  ]
+}
