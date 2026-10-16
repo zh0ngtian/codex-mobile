@@ -285,6 +285,8 @@ const english: Record<string, string> = {
   "英文": "English",
   "设备连接": "Connect device",
   "管理设备": "Manage devices",
+  "设置": "Settings",
+  "通知": "Notifications",
   "关闭": "Close",
   "设备名称": "Device name",
   "例如 Mac mini": "For example, Mac mini",

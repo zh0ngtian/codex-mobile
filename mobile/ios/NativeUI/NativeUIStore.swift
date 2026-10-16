@@ -115,7 +115,7 @@ final class NativeUIStore {
             }
         }
         if arguments.contains("--native-ui-reference-visual") {
-            snapshot = NativeVisualReference.snapshot()
+            snapshot = NativeVisualReference.snapshot(chinese: arguments.contains("--native-ui-reference-visual-zh"))
             sidebarOpen = arguments.contains("--native-ui-reference-visual-sidebar")
         }
     }
@@ -324,6 +324,13 @@ final class NativeUIStore {
         }
         return event.presentation
     }
+    func chooseComposerOption(_ name: String, value: String, contextID: String?) {
+        guard composerCanEdit, contextID == snapshot.contextId,
+              ["model.select", "effort.select", "speed.select", "permission.select"].contains(name) else { return }
+        var params: [String: NativeJSONValue] = ["value": .string(value)]
+        if let contextID { params["contextId"] = .string(contextID) }
+        command(name, params)
+    }
     func command(_ name: String, _ params: [String: NativeJSONValue] = [:]) {
         if name == "thread.new" { startNewConversation(params: params); return }
         if ["thread.open", "backend.select", "drafts.restore", "drafts.open", "settings.open", "navigation.filter", "newchat.backend", "newchat.project"].contains(name) {
@@ -349,7 +356,18 @@ final class NativeUIStore {
         }
         if isReference {
             if name == "settings.open", case .string(let id) = params["id"] {
-                snapshot.panel = NativePanel(id: "reference-settings:\(id)", title: id == "language" ? "语言" : "设置", items: [NativePanelItem(id: "reference-setting-value", kind: "text", title: "语言设置", text: "简体中文")])
+                snapshot.panel = id == "settings" ? NativeReferenceSettings.panel(locale: snapshot.locale, fontScale: snapshot.fontScale) : NativePanel(id: "reference-settings:\(id)", title: label("设置", "Settings"), items: [NativePanelItem(id: "reference-setting-value", kind: "text", title: id == "devices" ? label("设备", "Devices") : label("检查更新", "Check for Updates"))])
+            }
+            if ["settings.language", "settings.font"].contains(name), case .string(let value) = params["value"] {
+                if name == "settings.language", value != "system" { snapshot.locale = value }
+                if name == "settings.font" { snapshot.fontScale = ["small": 0.875, "standard": 1, "large": 1.125, "extra-large": 1.25][value] ?? 1 }
+                snapshot.panel = NativeReferenceSettings.panel(locale: snapshot.locale, fontScale: snapshot.fontScale)
+            }
+            if ["model.select", "effort.select", "permission.select", "speed.select"].contains(name), case .string(let value) = params["value"] {
+                if name == "model.select", let option = snapshot.models.first(where: { $0.value == value }) { snapshot.modelValue = value; snapshot.model = option.title }
+                if name == "effort.select", let option = snapshot.efforts.first(where: { $0.value == value }) { snapshot.effortValue = value; snapshot.effort = option.title }
+                if name == "permission.select", let option = snapshot.permissions?.first(where: { $0.value == value }) { snapshot.permissionValue = value; snapshot.permission = option.title }
+                if name == "speed.select", let option = snapshot.speeds?.first(where: { $0.value == value }) { snapshot.speedValue = value; snapshot.speed = option.title }
             }
             if name == "attachment.preview", params["id"] == .string("reference-audio") {
                 snapshot.panel = NativePanel(id: "attachment:reference-audio", title: "silence.wav", items: [NativePanelItem(id: "audio", kind: "audio", title: "silence.wav", value: NativeReferenceAudio.source())])

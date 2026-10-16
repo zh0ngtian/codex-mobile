@@ -22,12 +22,16 @@ enum NativePalette {
         trait.userInterfaceStyle == .dark ? UIColor(white: 0.16, alpha: 1) : UIColor(white: 250 / 255, alpha: 1)
     })
     static let settings = Color(uiColor: UIColor { trait in
-        trait.userInterfaceStyle == .dark ? UIColor(white: 30 / 255, alpha: 1) : UIColor(white: 248 / 255, alpha: 1)
+        trait.userInterfaceStyle == .dark ? UIColor(white: 30 / 255, alpha: 1) : UIColor(white: 241 / 255, alpha: 1)
     })
     static let settingsCard = Color(uiColor: UIColor { trait in
         trait.userInterfaceStyle == .dark ? UIColor(white: 41 / 255, alpha: 1) : .white
     })
+    static let permissionCard = Color(uiColor: UIColor { trait in
+        trait.userInterfaceStyle == .dark ? UIColor(white: 41 / 255, alpha: 1) : UIColor(white: 231 / 255, alpha: 1)
+    })
     static let canvas = Color(uiColor: .systemBackground)
+    static let systemLabel = Color(uiColor: .label)
     static let secondary = Color(uiColor: UIColor { trait in
         trait.userInterfaceStyle == .dark ? UIColor(white: 0.65, alpha: 1) : UIColor(white: 143 / 255, alpha: 1)
     })

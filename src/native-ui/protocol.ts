@@ -27,6 +27,7 @@ export interface NativeSnapshot {
   modelValue?: string; effortValue?: string; speed?: string; speedValue?: string; speeds?: NativeOption[];
   permissionValue?: string; permissions?: NativeOption[];
   contextUsage?: { used: number; total: number; usedPercent: number; remainingPercent: number };
+  sevenDayRateLimit?: { remainingPercent: number; resetsAt?: number; windowDurationMins?: number };
 }
 export function emptyNativeSnapshot(): NativeSnapshot {
   return { version: 1, ready: false, locale: 'zh-CN', fontScale: 1, title: 'Codex Mobile', connection: 'disconnected', busy: false,

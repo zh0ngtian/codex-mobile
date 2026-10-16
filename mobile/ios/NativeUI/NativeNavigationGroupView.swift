@@ -28,7 +28,7 @@ struct NativeNavigationGroupView: View {
                 Text(store.label("加载失败", "Could not load")).font(.caption).foregroundStyle(.secondary).padding(.leading, isProject ? 30 : 0)
             }
             ForEach(group.items) { item in
-                NativeNavigationRow(item: item, store: store, showsSubtitle: group.category == "search" || store.snapshot.listBackendId == "all", rowHeight: group.category == "pinned" ? 49 : 44)
+                NativeNavigationRow(item: item, store: store, showsSubtitle: group.category == "search" || store.snapshot.listBackendId == "all", rowHeight: group.category == "pinned" || group.category == "recent" ? 49 : 44)
                     .padding(.leading, isProject ? 30 : 0)
             }
             ForEach(group.actions ?? []) { action in
@@ -52,7 +52,8 @@ struct NativeNavigationGroupView: View {
         }.frame(minHeight: isProject || group.category == "recent" ? 44 : 20)
     }
     private var newCommand: NativeCommand? {
-        group.newCommand ?? (group.category == "recent" ? NativeCommand(name: "thread.new") : nil)
+        guard !isProject else { return nil }
+        return group.newCommand ?? (group.category == "recent" ? NativeCommand(name: "thread.new") : nil)
     }
     private var isProject: Bool { group.category == "project" }
 }

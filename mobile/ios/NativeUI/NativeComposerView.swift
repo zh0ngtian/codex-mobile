@@ -8,6 +8,8 @@ struct NativeComposerView: View {
     @ScaledMetric(relativeTo: .body) private var textSize = 14
     @FocusState private var focused: Bool
     @State private var selection: TextSelection?
+    @State private var adjustment: NativeComposerAdjustment?
+    @State private var adjustmentReturn: NativeComposerAdjustment?
     var body: some View {
         VStack(spacing: 12) {
             if !store.snapshot.queued.isEmpty {
@@ -39,7 +41,7 @@ struct NativeComposerView: View {
                     Button { store.attachmentOpen.toggle() } label: {
                         Image(systemName: "plus").font(.system(size: 23)).frame(width: 44, height: 44)
                     }.buttonStyle(.plain).accessibilityLabel(store.label("添加附件", "Add Attachment")).disabled(!store.composerCanEdit)
-                    if expanded { ScrollView(.horizontal) { configuration }.scrollIndicators(.hidden) }
+                    if expanded { NativeComposerConfigurationView(store: store, openAdjustment: openAdjustment) }
                     Spacer(minLength: 0)
                     if canInterrupt && hasDraft {
                         Button(store.label("停止", "Stop"), systemImage: "stop.circle") { store.command("turn.stop") }
@@ -85,6 +87,19 @@ struct NativeComposerView: View {
         .onChange(of: store.composerPresentation?.id, initial: true) { applyPresentation() }
         .onChange(of: store.awaitingNewConversation) { if store.awaitingNewConversation { focused = false } }
         .onChange(of: store.composerCanEdit) { if !store.composerCanEdit { focused = false } }
+        .sheet(item: $adjustment, onDismiss: restoreAdjustmentFocus) { session in
+            switch session.kind {
+            case .model: NativeModelOptionsView(store: store, adjustment: session)
+            case .permission: NativePermissionOptionsView(store: store, adjustment: session)
+            }
+        }
+        .onChange(of: store.snapshot.contextId) {
+            if adjustment != nil || adjustmentReturn != nil {
+                adjustment = nil
+                adjustmentReturn = nil
+                focused = false
+            }
+        }
         .onChange(of: focused) { onFocusChanged(focused) }
         .onDisappear { onFocusChanged(false) }
         .onChange(of: store.sidebarOpen) { if store.sidebarOpen { focused = false } }
@@ -99,11 +114,18 @@ struct NativeComposerView: View {
         focused = presentation == .focus
     }
     private func submit() { store.command(canInterrupt && !hasDraft ? "turn.stop" : "message.send") }
-    private func choose(_ name: String, value: String, context: String?) {
-        guard store.composerCanEdit, context == store.snapshot.contextId else { return }
-        var params: [String: NativeJSONValue] = ["value": .string(value)]
-        if let context { params["contextId"] = .string(context) }
-        store.command(name, params)
+    private func openAdjustment(_ kind: NativeComposerAdjustmentKind) {
+        guard store.composerCanEdit else { return }
+        let session = NativeComposerAdjustment(kind: kind, contextID: store.snapshot.contextId, wasFocused: focused)
+        adjustmentReturn = session
+        adjustment = session
+        focused = false
+    }
+    private func restoreAdjustmentFocus() {
+        defer { adjustmentReturn = nil }
+        guard let session = adjustmentReturn,
+              let restore = session.restoredFocus(contextID: store.snapshot.contextId, editable: store.composerCanEdit, sidebarOpen: store.sidebarOpen) else { return }
+        focused = restore
     }
     private func updateCaret() {
         guard let selection, case .selection(let range) = selection.indices else { return }
@@ -115,68 +137,10 @@ struct NativeComposerView: View {
         let position = String.Index(utf16Offset: min(store.caretOffset, store.draft.utf16.count), in: store.draft)
         selection = TextSelection(insertionPoint: position)
     }
-    private var expanded: Bool { focused || (canInterrupt && hasDraft) || store.attachmentOpen || !store.snapshot.attachments.isEmpty || store.draft.contains("\n") || store.draft.count > 48 }
+    private var expanded: Bool { focused || adjustment != nil || (canInterrupt && hasDraft) || store.attachmentOpen || !store.snapshot.attachments.isEmpty || store.draft.contains("\n") || store.draft.count > 48 }
     private var placeholder: String {
         if let name = store.snapshot.backendName { return store.label("在 \(name) 上工作", "Work on \(name)") }
         return store.label("向 Codex 提问", "Ask Codex")
-    }
-    private var configuration: some View {
-        HStack(spacing: 2) {
-            Menu {
-                ForEach(store.snapshot.permissions ?? []) { option in
-                    let context = store.snapshot.contextId
-                    Button(option.title) { choose("permission.select", value: option.value, context: context) }
-                        .accessibilityAddTraits(option.value == store.snapshot.permissionValue ? .isSelected : [])
-                }
-                Button(store.snapshot.permission ?? store.label("权限", "Permissions")) { store.command("panel.open", ["id": .string("permission")]) }
-            } label: { configurationIcon("checkmark.shield", title: store.snapshot.permission ?? store.label("权限", "Permissions")) }
-            .accessibilityLabel(store.label("权限", "Permissions"))
-            .accessibilityValue(store.snapshot.permissionValue ?? store.snapshot.permission ?? "")
-            .accessibilityIdentifier("native-permission-menu")
-            Menu {
-                ForEach(store.snapshot.models) { option in
-                    let context = store.snapshot.contextId
-                    Button(option.title) { choose("model.select", value: option.value, context: context) }
-                        .accessibilityAddTraits(option.value == store.snapshot.modelValue ? .isSelected : [])
-                }
-            } label: { configurationIcon("circle.dashed", title: store.snapshot.model) }
-            .accessibilityLabel(store.label("模型", "Model"))
-            .accessibilityValue(store.snapshot.modelValue ?? store.snapshot.model)
-            .accessibilityIdentifier("native-model-menu")
-            Menu {
-                ForEach(store.snapshot.speeds ?? []) { option in
-                    let context = store.snapshot.contextId
-                    Button(option.title) { choose("speed.select", value: option.value, context: context) }
-                        .accessibilityAddTraits(option.value == store.snapshot.speedValue ? .isSelected : [])
-                }
-            } label: { configurationIcon("bolt.fill", title: store.snapshot.speed ?? store.label("速度", "Speed")) }
-            .accessibilityLabel(store.label("速度", "Speed"))
-            .accessibilityValue(store.snapshot.speedValue ?? store.snapshot.speed ?? "")
-            .accessibilityIdentifier("native-speed-menu")
-            Menu {
-                ForEach(store.snapshot.efforts) { option in
-                    let context = store.snapshot.contextId
-                    Button(option.title) { choose("effort.select", value: option.value, context: context) }
-                        .accessibilityAddTraits(option.value == store.snapshot.effortValue ? .isSelected : [])
-                }
-            } label: { configurationIcon("gauge.with.dots.needle.50percent", title: store.snapshot.effort) }
-            .accessibilityLabel(store.label("推理强度", "Reasoning Effort"))
-            .accessibilityValue(store.snapshot.effortValue ?? store.snapshot.effort)
-            .accessibilityIdentifier("native-effort-menu")
-            Menu {
-                Button(store.label("Skill 与插件", "Skills and Plugins")) { store.command("panel.open", ["id": .string("mentions")]) }
-                if store.snapshot.threadId == nil, hasDraft {
-                    Button(store.label("保存草稿", "Save Draft")) { store.command("draft.save") }
-                }
-                if let usage = store.snapshot.contextUsage {
-                    Text(store.label("上下文已使用 \(Int(usage.usedPercent))%", "Context used \(Int(usage.usedPercent))%"))
-                }
-                Button(store.label("工作区", "Workspace")) { store.command("panel.open", ["id": .string("workspace")]) }
-            } label: { configurationIcon("at", title: store.label("Skill 与插件", "Skills and Plugins")) }
-        }.buttonStyle(.plain).disabled(!store.composerCanEdit)
-    }
-    private func configurationIcon(_ symbol: String, title: String) -> some View {
-        Image(systemName: symbol).font(.system(size: 20)).frame(minWidth: 44, minHeight: 44).accessibilityLabel(title)
     }
     private func attachment(_ title: String, symbol: String, kind: String) -> some View {
         Button { store.command("attachment.pick", ["kind": .string(kind)]); store.attachmentOpen = false } label: {
