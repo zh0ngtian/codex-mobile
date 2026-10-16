@@ -3,9 +3,8 @@ import SwiftUI
 struct NativeComposerView: View {
     @Bindable var store: NativeUIStore
     var onFocusChanged: (Bool) -> Void = { _ in }
-    var allowsMaximizing = false
-    var availableHeight: CGFloat = 500
-    @State private var maximized = false
+    let availableHeight: CGFloat
+    @State private var supplementaryHeight: CGFloat = 0
     @Environment(\.verticalSizeClass) private var verticalSizeClass
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @ScaledMetric(relativeTo: .body) private var textSize = 14
@@ -16,18 +15,23 @@ struct NativeComposerView: View {
     @State private var pendingAttachmentCommand: NativeCommand?
     var body: some View {
         VStack(spacing: 12) {
-            if !store.snapshot.queued.isEmpty {
-                ScrollView { NativeQueuedMessagesView(store: store) }.frame(maxHeight: 132)
-                    .disabled(store.awaitingNewConversation)
-            }
-            if !store.snapshot.attachments.isEmpty {
-                ScrollView(.horizontal) {
-                    HStack {
-                        ForEach(store.snapshot.attachments) { file in
-                            NativeDraftAttachmentView(attachment: file, store: store)
-                        }
+            if hasSupplementaryContent {
+                VStack(spacing: 12) {
+                    if !store.snapshot.queued.isEmpty {
+                        ScrollView { NativeQueuedMessagesView(store: store) }.frame(maxHeight: 132)
+                            .disabled(store.awaitingNewConversation)
                     }
-                }.disabled(!store.snapshot.ready || store.awaitingNewConversation)
+                    if !store.snapshot.attachments.isEmpty {
+                        ScrollView(.horizontal) {
+                            HStack {
+                                ForEach(store.snapshot.attachments) { file in
+                                    NativeDraftAttachmentView(attachment: file, store: store)
+                                }
+                            }
+                        }.disabled(!store.snapshot.ready || store.awaitingNewConversation)
+                    }
+                }
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { supplementaryHeight = $0 }
             }
             ZStack(alignment: .bottomLeading) {
                 TextField(placeholder, text: $store.composerText, selection: $selection, prompt: Text(placeholder).foregroundStyle(NativePalette.secondary), axis: .vertical)
@@ -36,41 +40,33 @@ struct NativeComposerView: View {
                     .accessibilityIdentifier("native-composer-input")
                     .accessibilityHidden(store.sidebarOpen)
                     .disabled(!store.composerCanEdit || store.sidebarOpen)
-                    .padding(.leading, expanded ? 16 : 48).padding(.trailing, expanded ? 16 : (allowsMaximizing ? 92 : 48))
+                    .padding(.leading, expanded ? 16 : 48).padding(.trailing, expanded ? 16 : 48)
                     .padding(.top, expanded ? 17 : 14).padding(.bottom, expanded ? 58 : 14)
                     .onChange(of: selection) { updateCaret() }
                     .onChange(of: store.selectionRevision, initial: true) { updateSelection() }
                 HStack(spacing: 2) {
                     Button { store.attachmentOpen.toggle() } label: {
-                        Image(systemName: "plus").font(.system(size: 23)).frame(width: 44, height: 44)
+                        Image(systemName: "plus").frame(width: 44, height: 44)
                     }.buttonStyle(.plain).accessibilityLabel(store.label("添加附件", "Add Attachment")).disabled(!store.composerCanEdit)
                     if expanded { NativeComposerConfigurationView(store: store, openAdjustment: openAdjustment) }
                     Spacer(minLength: 0)
                     if canInterrupt && hasDraft {
                         Button(store.label("停止", "Stop"), systemImage: "stop.circle") { store.command("turn.stop") }
-                            .labelStyle(.iconOnly).font(.title2).frame(minWidth: 44, minHeight: 44)
+                            .labelStyle(.iconOnly).frame(minWidth: 44, minHeight: 44)
                             .accessibilityIdentifier("native-stop")
-                    }
-                    if allowsMaximizing {
-                        Button { maximized.toggle() } label: {
-                            Image(systemName: maximized ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right")
-                                .font(.system(size: 16)).frame(width: 44, height: 44)
-                        }.buttonStyle(.plain)
-                            .accessibilityLabel(store.label(maximized ? "还原输入框" : "最大化输入框", maximized ? "Restore Composer" : "Maximize Composer"))
-                            .accessibilityIdentifier("native-composer-maximize")
                     }
                     Button(action: submit) {
                         Image(systemName: canInterrupt && !hasDraft ? "stop.fill" : "arrow.up")
-                            .font(.system(size: 17, weight: .semibold)).foregroundStyle(.white)
+                            .foregroundStyle(.white)
                             .frame(width: 28, height: 28)
                             .background(canSend || canInterrupt ? NativePalette.accent : Color.gray.opacity(0.35), in: .circle)
                             .frame(width: 44, height: 44)
                     }.buttonStyle(.plain).disabled(!canSend && !(canInterrupt && !hasDraft))
                         .accessibilityLabel(canInterrupt && !hasDraft ? store.label("停止", "Stop") : store.snapshot.busy ? store.label("排队发送", "Queue Message") : store.label("发送", "Send"))
                         .accessibilityIdentifier("native-send")
-                }.padding(.horizontal, 4).padding(.bottom, expanded ? 4 : 2)
+                }.modifier(NativeScaledFont(size: 16, scale: store.snapshot.fontScale, weight: .semibold))
+                .padding(.horizontal, 4).padding(.bottom, expanded ? 4 : 2)
             }
-            .frame(height: maximized ? maximizedInputHeight : nil, alignment: .top)
             .frame(minHeight: expanded ? NativeVisualMetrics.composerExpandedHeight : NativeVisualMetrics.composerHeight)
             .background(NativePalette.controlFill, in: .rect(cornerRadius: expanded ? 26 : 24))
             .background(.ultraThinMaterial, in: .rect(cornerRadius: expanded ? 26 : 24))
@@ -93,7 +89,6 @@ struct NativeComposerView: View {
         }
         .sheet(item: $adjustment, onDismiss: restoreAdjustmentFocus) { session in
             switch session.kind {
-            case .model: NativeModelOptionsView(store: store, adjustment: session)
             case .permission: NativePermissionOptionsView(store: store, adjustment: session)
             case .attachments:
                 NativeAttachmentOptionsView(store: store) { command in
@@ -107,7 +102,6 @@ struct NativeComposerView: View {
             else if adjustment?.kind == .attachments { adjustment = nil }
         }
         .onChange(of: store.snapshot.contextId) {
-            maximized = false
             if adjustment != nil || adjustmentReturn != nil {
                 adjustment = nil
                 adjustmentReturn = nil
@@ -124,7 +118,7 @@ struct NativeComposerView: View {
     private var hasDraft: Bool { !store.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !store.snapshot.attachments.isEmpty }
     private var canInterrupt: Bool { store.composerCanInterrupt }
     private var composerLineLimits: ClosedRange<Int> {
-        NativeComposerLineLimits.resolve(maximized: maximized, availableHeight: Double(maximizedInputHeight),
+        NativeComposerLineLimits.resolve(availableHeight: Double(inputAvailableHeight),
             lineHeight: Double(textSize * store.snapshot.fontScale * 1.5), compact: verticalSizeClass == .compact,
             accessibility: dynamicTypeSize.isAccessibilitySize)
     }
@@ -164,12 +158,12 @@ struct NativeComposerView: View {
         let position = String.Index(utf16Offset: min(store.caretOffset, store.draft.utf16.count), in: store.draft)
         selection = TextSelection(insertionPoint: position)
     }
-    private var maximizedInputHeight: CGFloat {
-        let attachments: CGFloat = store.snapshot.attachments.isEmpty ? 0 : 90
-        let queue: CGFloat = store.snapshot.queued.isEmpty ? 0 : 144
-        return max(80, availableHeight - attachments - queue - 28)
+    private var hasSupplementaryContent: Bool { !store.snapshot.attachments.isEmpty || !store.snapshot.queued.isEmpty }
+    private var inputAvailableHeight: CGFloat {
+        let supplementary = hasSupplementaryContent ? supplementaryHeight + 12 : 0
+        return availableHeight - supplementary - 8 - (focused ? 12 : 6)
     }
-    private var expanded: Bool { maximized || focused || adjustment != nil || (canInterrupt && hasDraft) || store.attachmentOpen || !store.snapshot.attachments.isEmpty || store.draft.contains("\n") || store.draft.count > 48 }
+    private var expanded: Bool { focused || adjustment != nil || (canInterrupt && hasDraft) || store.attachmentOpen || !store.snapshot.attachments.isEmpty || store.draft.contains("\n") || store.draft.count > 48 }
     private var placeholder: String {
         if let name = store.snapshot.backendName { return store.label("在 \(name) 上工作", "Work on \(name)") }
         return store.label("向 Codex 提问", "Ask Codex")

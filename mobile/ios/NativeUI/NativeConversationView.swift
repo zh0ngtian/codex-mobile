@@ -2,6 +2,8 @@ import SwiftUI
 
 struct NativeConversationView: View {
     @Bindable var store: NativeUIStore
+    let availableHeight: CGFloat
+    @State private var supplementaryHeight: CGFloat = 0
     @ScaledMetric(relativeTo: .title3) private var greetingSize = 18
     @State private var composerFocused = false
     var body: some View {
@@ -29,16 +31,22 @@ struct NativeConversationView: View {
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if !noDevice {
                 VStack(spacing: 4) {
-                    if let notice = store.notice { Text(notice).font(.caption).foregroundStyle(.secondary) }
-                    if let mentions = store.snapshot.mentions, !mentions.isEmpty {
-                        NativeMentionSuggestions(items: mentions, store: store, context: store.snapshot.contextId).padding(.horizontal, 12)
+                    if hasSupplementaryContent {
+                        VStack(spacing: 4) {
+                            if let notice = store.notice { Text(notice).font(.caption).foregroundStyle(.secondary) }
+                            if let mentions = store.snapshot.mentions, !mentions.isEmpty {
+                                NativeMentionSuggestions(items: mentions, store: store, context: store.snapshot.contextId).padding(.horizontal, 12)
+                            }
+                        }
+                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { supplementaryHeight = $0 }
                     }
-                    NativeComposerView(store: store, onFocusChanged: { composerFocused = $0 }).id(store.contextKey)
+                    NativeComposerView(store: store, onFocusChanged: { composerFocused = $0 }, availableHeight: availableHeight - (hasSupplementaryContent ? supplementaryHeight + 4 : 0)).id(store.contextKey)
                 }
             }
         }
         .background { NativePageBackground(focused: composerFocused) }
     }
+    private var hasSupplementaryContent: Bool { store.notice != nil || !(store.snapshot.mentions?.isEmpty ?? true) }
     private var hasTimeline: Bool { store.snapshot.ready && !noDevice && !store.snapshot.messages.isEmpty }
     private var noDevice: Bool { !store.isReference && store.snapshot.ready && store.snapshot.backends.isEmpty }
 }

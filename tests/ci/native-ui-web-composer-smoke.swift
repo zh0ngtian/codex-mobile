@@ -2,13 +2,39 @@ import Foundation
 
 enum NativeWebComposerSmoke {
     @MainActor static func verify() throws {
-        let collapsed = NativeComposerLineLimits.resolve(maximized: false, availableHeight: 500, lineHeight: 24, compact: false, accessibility: false)
-        let maximized = NativeComposerLineLimits.resolve(maximized: true, availableHeight: 500, lineHeight: 24, compact: false, accessibility: false)
-        precondition(collapsed == 1...6, "普通输入按内容自然增长")
-        precondition(maximized.lowerBound > collapsed.lowerBound && maximized.lowerBound == maximized.upperBound, "最大化实际编辑区域必须保留预算行数，不能只扩大背景")
-        precondition(Double(maximized.upperBound) * 24 + 80 <= 500, "输入行数为底部操作预留高度")
-        precondition(NativeComposerLineLimits.resolve(maximized: false, availableHeight: 500, lineHeight: 24, compact: true, accessibility: true) == 1...1, "横屏大字号普通输入维持原限制")
-        precondition(NativeComposerLineLimits.resolve(maximized: true, availableHeight: 100, lineHeight: 60, compact: true, accessibility: true) == 1...1, "有限高度至少保留一行并允许滚动")
+        let natural = NativeComposerLineLimits.resolve(availableHeight: 500, lineHeight: 24, compact: false, accessibility: false)
+        let restricted = NativeComposerLineLimits.resolve(availableHeight: 128, lineHeight: 24, compact: false, accessibility: false)
+        precondition(natural == 1...6, "竖屏输入从一行按内容自然增长，最多六行")
+        precondition(restricted == 1...2, "宿主可用高度缩小时，自然增长上限也必须缩小")
+        precondition(NativeComposerLineLimits.resolve(availableHeight: 500, lineHeight: 24, compact: false, accessibility: true) == 1...3, "竖屏辅助字号最多三行")
+        precondition(NativeComposerLineLimits.resolve(availableHeight: 500, lineHeight: 24, compact: true, accessibility: false) == 1...2, "横屏最多两行")
+        precondition(NativeComposerLineLimits.resolve(availableHeight: 500, lineHeight: 24, compact: true, accessibility: true) == 1...1, "横屏辅助字号最多一行")
+        for height in [0.0, -100, 80, 100, Double.nan, Double.infinity, -Double.infinity] {
+            precondition(NativeComposerLineLimits.resolve(availableHeight: height, lineHeight: 60, compact: false, accessibility: false) == 1...1, "极小或非有限高度至少保留一行，不强制占满高度")
+        }
+        for height in [128.0, 500, Double.greatestFiniteMagnitude] {
+            let range = NativeComposerLineLimits.resolve(availableHeight: height, lineHeight: 24, compact: false, accessibility: false)
+            precondition(range.lowerBound == 1 && range.upperBound <= 6, "所有有效高度均从一行自然增长，极端大值不会溢出")
+        }
+        for lineHeight in [0.0, -24, Double.nan, Double.infinity, -Double.infinity] {
+            precondition(NativeComposerLineLimits.resolve(availableHeight: 128, lineHeight: lineHeight, compact: false, accessibility: false) == 1...2, "无效行高使用安全行高，不能将非有限数转换为整数")
+        }
+        precondition(NativeComposerSymbols.speedSymbol("fast") == "bolt.fill", "Fast 开启显示实心闪电")
+        for speed in [nil, "standard", "", "disabled"] as [String?] {
+            precondition(NativeComposerSymbols.speedSymbol(speed) == "bolt.slash", "Fast 关闭或标准档显示划线闪电")
+        }
+        let speedStore = NativeUIStore(arguments: [])
+        var speedSnapshot = NativeSnapshot()
+        speedSnapshot.ready = true; speedSnapshot.contextId = "speed:context"
+        speedSnapshot.speedValue = "standard"
+        speedStore.receive(speedSnapshot)
+        var speedCommands: [NativeCommand] = []
+        speedStore.sendCommand = { speedCommands.append($0) }
+        speedStore.chooseComposerOption("speed.select", value: "fast", contextID: "speed:context")
+        precondition(speedCommands.count == 1 && speedCommands[0].name == "speed.select", "速度沿原命令派发")
+        precondition(NativeComposerSymbols.speedSymbol(speedStore.snapshot.speedValue) == "bolt.slash", "请求发送后仍显示权威速度，不乐观改图标")
+        speedSnapshot.speedValue = "fast"; speedStore.receive(speedSnapshot)
+        precondition(NativeComposerSymbols.speedSymbol(speedStore.snapshot.speedValue) == "bolt.fill", "权威快照确认 Fast 后更新图标")
         let store = NativeUIStore(arguments: [])
         precondition(store.composerEnabled && !store.nativeEnabled, "默认只启用独立输入框")
         let previous = UserDefaults.standard.object(forKey: NativeUIPreference.composerKey)

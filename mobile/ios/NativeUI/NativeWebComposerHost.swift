@@ -4,17 +4,23 @@ import SwiftUI
 struct NativeWebComposerHost: View {
     @Bindable var store: NativeUIStore
     let availableHeight: CGFloat
+    @State private var supplementaryHeight: CGFloat = 0
     @Environment(\.nativeUIBridge) private var bridge
     var body: some View {
         Group {
             if store.webComposerVisible {
                 VStack(spacing: 4) {
-                    if let notice = store.notice { Text(notice).font(.caption).foregroundStyle(.secondary) }
-                    if let error = store.commandError { Text(error).font(.caption).foregroundStyle(.red) }
-                    if let mentions = store.snapshot.mentions, !mentions.isEmpty {
-                        NativeMentionSuggestions(items: mentions, store: store, context: store.snapshot.contextId).padding(.horizontal, 12)
+                    if hasSupplementaryContent {
+                        VStack(spacing: 4) {
+                            if let notice = store.notice { Text(notice).font(.caption).foregroundStyle(.secondary) }
+                            if let error = store.commandError { Text(error).font(.caption).foregroundStyle(.red) }
+                            if let mentions = store.snapshot.mentions, !mentions.isEmpty {
+                                NativeMentionSuggestions(items: mentions, store: store, context: store.snapshot.contextId).padding(.horizontal, 12)
+                            }
+                        }
+                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { supplementaryHeight = $0 }
                     }
-                    NativeComposerView(store: store, allowsMaximizing: true, availableHeight: max(100, availableHeight - supplementaryHeight)).id(store.contextKey)
+                    NativeComposerView(store: store, availableHeight: availableHeight - (hasSupplementaryContent ? supplementaryHeight + 4 : 0)).id(store.contextKey)
                 }
                 .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("native-web-composer")
@@ -25,8 +31,8 @@ struct NativeWebComposerHost: View {
         .tint(NativePalette.accent)
         .environment(\.locale, Locale(identifier: store.snapshot.locale))
     }
-    private var supplementaryHeight: CGFloat {
-        (store.notice == nil ? 0 : 32) + (store.commandError == nil ? 0 : 32) + ((store.snapshot.mentions?.isEmpty ?? true) ? 0 : 180)
+    private var hasSupplementaryContent: Bool {
+        store.notice != nil || store.commandError != nil || !(store.snapshot.mentions?.isEmpty ?? true)
     }
     private var panelBinding: Binding<NativePanel?> {
         let presentedID = store.snapshot.panel?.id

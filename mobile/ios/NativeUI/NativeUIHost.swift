@@ -17,7 +17,7 @@ struct NativeUIHost<Legacy: View>: View {
                 .accessibilityHidden(store.nativeEnabled && !store.showLegacyForRecovery)
             }
             if store.nativeEnabled && !store.showLegacyForRecovery {
-                NativeRootView(store: store)
+                NativeRootView(store: store, availableHeight: availableHeight)
             }
         }
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { availableHeight = $0 }

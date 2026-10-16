@@ -181,6 +181,36 @@ final class NativeUIUITests: XCTestCase {
         XCTAssertTrue(app.buttons["native-send"].isEnabled)
     }
 
+    func testComposerNaturallyGrowsScrollsAndShrinksWithoutMaximize() {
+        XCUIDevice.shared.orientation = .portrait
+        let app = XCUIApplication()
+        app.launchArguments = ["--native-ui-reference-visual", "--native-ui-reference-visual-focused"]
+        app.launch()
+        let input = app.descendants(matching: .any)["native-composer-input"]
+        XCTAssertTrue(input.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["native-composer-maximize"].exists)
+        let oneLineHeight = input.frame.height
+        input.typeText("line one\nline two\nline three")
+        let grows = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in input.frame.height > oneLineHeight + 10 }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [grows], timeout: 3), .completed)
+        capture("原生输入-自然增长", app: app)
+        input.typeText(String(repeating: "\nscrolling line", count: 15))
+        let cappedHeight = input.frame.height
+        input.typeText(String(repeating: "\nextra line", count: 5))
+        XCTAssertEqual(input.frame.height, cappedHeight, accuracy: 2, "超限输入在编辑器内部滚动")
+        XCTAssertTrue((input.value as? String)?.hasSuffix("extra line") == true)
+        XCTAssertTrue(app.buttons["native-send"].isHittable)
+        capture("原生输入-超限滚动", app: app)
+        let characters = (input.value as? String)?.count ?? 0
+        input.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: characters))
+        let shrinks = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in input.frame.height <= oneLineHeight + 2 }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [shrinks], timeout: 3), .completed)
+        input.typeText(String(repeating: "natural wrapping text ", count: 12))
+        XCTAssertGreaterThan(input.frame.height, oneLineHeight + 10, "软换行也自然增长")
+        XCTAssertEqual(app.descendants(matching: .any).matching(identifier: "native-composer-input").count, 1)
+    }
+
     func testVisualReferenceConfigurationExposesAuthoritativeValues() {
         let app = XCUIApplication()
         app.launchArguments = ["--native-ui-reference-visual", "--native-ui-reference-visual-focused"]
@@ -188,19 +218,30 @@ final class NativeUIUITests: XCTestCase {
         XCTAssertTrue(app.buttons["native-model-menu"].waitForExistence(timeout: 5))
         XCTAssertEqual(app.buttons["native-model-menu"].value as? String, "GPT-5 Medium")
         XCTAssertFalse(app.buttons["native-effort-menu"].exists)
-        XCTAssertEqual(app.buttons["native-speed-menu"].value as? String, "Standard")
+        XCTAssertTrue((app.buttons["native-speed-menu"].value as? String)?.contains("Fast Off") == true)
         XCTAssertEqual(app.buttons["native-permission-menu"].value as? String, "Read Only")
         let input = app.descendants(matching: .any)["native-composer-input"]
         input.typeText("configuration draft")
         app.buttons["native-model-menu"].tap()
         XCTAssertTrue(app.buttons["High"].waitForExistence(timeout: 5))
         app.buttons["High"].tap()
-        app.buttons["Done"].tap()
+        XCTAssertFalse(app.otherElements["native-model-options"].exists)
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
         XCTAssertTrue((input.value as? String)?.contains("configuration draft") == true)
         XCTAssertEqual(app.buttons["native-model-menu"].value as? String, "GPT-5 High")
+        app.buttons["native-model-menu"].tap()
+        XCTAssertTrue(app.buttons["GPT-5 Mini"].waitForExistence(timeout: 5))
+        app.buttons["GPT-5 Mini"].tap()
+        XCTAssertEqual(app.buttons["native-model-menu"].value as? String, "GPT-5 Mini High")
+        XCTAssertTrue((input.value as? String)?.contains("configuration draft") == true)
+        app.buttons["native-speed-menu"].tap()
+        app.buttons["Fast"].tap()
+        XCTAssertTrue((app.buttons["native-speed-menu"].value as? String)?.contains("Fast On") == true)
+        capture("原生输入-Fast开启", app: app)
         app.buttons["native-speed-menu"].tap()
         app.buttons["Standard"].tap()
+        XCTAssertTrue((app.buttons["native-speed-menu"].value as? String)?.contains("Fast Off") == true)
+        capture("原生输入-Fast关闭", app: app)
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
         app.buttons["native-permission-menu"].tap()
         XCTAssertTrue(app.buttons["Full Access"].waitForExistence(timeout: 5))
@@ -260,7 +301,7 @@ final class NativeUIUITests: XCTestCase {
         app.buttons["native-model-menu"].tap()
         XCTAssertTrue(app.buttons["High"].waitForExistence(timeout: 5))
         capture("预览对照-模型", app: app)
-        app.buttons["完成"].tap()
+        app.buttons["High"].tap()
         app.buttons["native-permission-menu"].tap()
         XCTAssertTrue(app.buttons["完全访问"].waitForExistence(timeout: 5))
         capture("预览对照-权限", app: app)

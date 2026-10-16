@@ -23,7 +23,7 @@ enum NativeVisualReference {
         value.efforts = [NativeOption(id: "low", title: "Low", value: "low"), NativeOption(id: "medium", title: "Medium", value: "medium"), NativeOption(id: "high", title: "High", value: "high")]
         value.speed = "Standard"
         value.speedValue = "standard"
-        value.speeds = [NativeOption(id: "standard", title: "Standard", value: "standard")]
+        value.speeds = [NativeOption(id: "standard", title: "Standard", value: "standard"), NativeOption(id: "fast", title: "Fast", value: "fast")]
         value.permission = chinese ? "只读" : "Read Only"
         value.permissionValue = "read-only"
         value.permissions = [
