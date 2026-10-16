@@ -135,7 +135,7 @@ describe("新版会话真实数据与操作", () => {
     fireEvent.click(trigger);
     const dialog = within(document.body).getByRole("dialog", { name: "用量与额度" });
     expect(Array.from(dialog.querySelectorAll("dt")).map(row => row.textContent)).toEqual(["上下文余量", "周期剩余", "时间剩余", "输入 Token", "输出 Token"]);
-    expect(Array.from(dialog.querySelectorAll("dd")).map(row => row.textContent)).toEqual(["75%", "72%", "1%", "100K（缓存命中 80%）", "28.5K"]);
+    expect(Array.from(dialog.querySelectorAll("dd")).map(row => row.textContent)).toEqual(["75%", "72%", "1%", "100K (缓存 80%)", "28.5K"]);
     expect(dialog.textContent).not.toMatch(/已用|重置/);
     expect(document.activeElement).toBe(dialog);
     fireEvent.keyDown(dialog, { key: "Escape" });

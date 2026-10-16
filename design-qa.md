@@ -6,10 +6,10 @@ final result: passed
 
 - 源视觉：用户提供的卡片截图，长期副本 `/Users/zhongtian/Library/Application Support/ReleaseCoordinator/validations/conversation-usage-card-20261017/reference.png`，474×292 像素，仅包含三行用量卡片，没有设备 viewport 或可确定的 CSS 密度。
 - 用户批准的修改：三项额度后加入输入 Token（缓存命中百分比）与输出 Token；K/M 缩写；周期为七天、时间为五小时额度。
-- 原生全屏证据：同目录 `native-card-full.png`，iPhone 17 Pro，iOS 26.5、正常字号、竖屏，402×874 CSS 点，1206×2622 像素，3 倍密度。使用离线 NativeVisualReference，未请求生产网关。
+- 原生全屏证据：同目录 `native-cache-label-full.png`，iPhone 17 Pro，iOS 26.5、正常字号、竖屏，402×874 CSS 点，1206×2622 像素，3 倍密度。使用离线 NativeVisualReference，未请求生产网关。
 - 全景：已打开全屏截图核对头部圆圈、系统 popover 锚点、卡片与正文、底部输入框关系，卡片完整位于屏幕内。
-- 聚焦比较：同目录 `comparison.png` 同屏放置原图与原生卡片裁剪；源图缩为448×276、原生901×550裁剪缩为600×366，保留正常字形比例。现役原生卡片为容纳缓存后缀从224点扩到300点，并从三行扩为五行，因此不将两侧强拉同宽或宣称像素完全相同。
-- 网页证据：同目录 `web-card-final.png`。真实 ConversationPage 的现代、传统入口已分别打开；最新五行文字为93%、72%、43%、100K（缓存命中80%）、28.5K。最终页面加载和交互后没有新的浏览器 console error。
+- 聚焦比较：同目录 `comparison-cache-label.png` 同屏放置原图与原生卡片裁剪；源图缩为448×276、原生901×550裁剪缩为600×366，保留正常字形比例。现役原生卡片为容纳缓存后缀从224点扩到300点，并从三行扩为五行，因此不将两侧强拉同宽或宣称像素完全相同。
+- 网页证据：同目录 `web-cache-label.png`。真实 ConversationPage 的现代、传统入口已分别打开；最新五行文字为93%、72%、43%、100K (缓存 80%)、28.5K。最终页面加载和交互后没有新的浏览器 console error。
 
 ## 视觉检查
 
@@ -23,7 +23,7 @@ final result: passed
 
 - 现代和传统网页均验证展开、Escape、外部点击、再次触发、焦点恢复、实时更新、跨会话/后端关闭，以及缺少数据状态。
 - 原生测试 `testContextRingPresentsNativeUsagePopover` 与 `testUsageCardShowsCompactConversationTokenAndLimits` 两项通过；中文样例断言覆盖五行、缓存命中、外点关闭和重开。
-- 首轮原生测试把不可命中的背景静态文本作为点击目标，属于测试命中方式错误；改用卡片外明确空白坐标后，同一关闭与重开断言通过。最终结果保存在同目录 `usage-native-final.xcresult`，2通过、0失败。
+- 首轮原生测试把不可命中的背景静态文本作为点击目标，属于测试命中方式错误；改用卡片外明确空白坐标后，同一关闭与重开断言通过。最终结果保存在同目录 `cache-label-native.xcresult`，2通过、0失败。
 - 独立审查发现网页 portal 在保留挂载的工作区隐藏时残留（P2）。正式回归先出现传统/现代两例失败，修复 d9aaa87 让可见性直接约束 portal、隐藏时清除展开状态，返回不自动重开；最终248项相关回归全部通过，质量复审 approved。
 - 最终没有剩余 P0/P1/P2 或 P3 视觉与交互问题。未验证真机覆盖安装与数据保留；本轮界面验收按仓库要求只覆盖 iPhone 17 Pro 正常字号竖屏。
 
@@ -34,3 +34,7 @@ final result: passed
 - [x] 浏览器真实渲染与交互、原生模拟器编译和两项UI验收。
 - [x] 修复质量审查发现的工作区隐藏问题，独立复审通过。
 - [x] 无真实远端测试会话，测试App已卸载、共享模拟器锁已释放。
+
+## 缓存文案验收更新
+
+输入行已按用户最新要求改为 `100K (缓存 80%)`，英文括号、数值后的空格与简短标签均核对。现代/传统网页134项相关测试及类型检查通过，iPhone 17 Pro 正常字号竖屏两项原生测试再次通过。数据计算和卡片布局未变；本次只更新显示字符串。发布仍受协调器合并恢复缺陷阻塞，尚未获得仓库外协调器修复授权。

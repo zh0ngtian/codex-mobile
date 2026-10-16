@@ -26,10 +26,10 @@ struct NativeUsageDetailsView: View {
     private var inputTokenValue: String {
         guard let input = store.snapshot.inputTokenUsage else { return store.label("暂无数据", "Unavailable") }
         guard let hit = store.snapshot.inputCacheHitPercent else {
-            return store.label("\(input)（缓存命中暂无数据）", "\(input) (Cache hit unavailable)")
+            return store.label("\(input) (缓存 暂无数据)", "\(input) (Cache unavailable)")
         }
         let percentage = hit.formatted(.number.precision(.fractionLength(0...1)))
-        return store.label("\(input)（缓存命中 \(percentage)%）", "\(input) (Cache hit \(percentage)%)")
+        return store.label("\(input) (缓存 \(percentage)%)", "\(input) (Cache \(percentage)%)")
     }
 
     private func percent(_ value: Double) -> String { "\(Int(value.rounded()))%" }

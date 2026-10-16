@@ -55,8 +55,8 @@ export function ConversationUsagePopover({ open, anchorRef, tokenUsage, rateLimi
   const input = formatTokenCount(tokenUsage?.total?.inputTokens);
   const cacheHit = inputCacheHitPercent(tokenUsage);
   const inputValue = input == null ? t("暂无数据") : cacheHit == null
-    ? t("{tokens}（缓存命中暂无数据）", { tokens: input })
-    : t("{tokens}（缓存命中 {percent}%）", { tokens: input, percent: cacheHit });
+    ? t("{tokens} (缓存 暂无数据)", { tokens: input })
+    : t("{tokens} (缓存 {percent}%)", { tokens: input, percent: cacheHit });
   return createPortal(<section ref={panel} tabIndex={-1} role="dialog" aria-label={t("用量与额度")}
     className="conversation-usage-popover" style={position}>
     <strong>{t("用量与额度")}</strong>
