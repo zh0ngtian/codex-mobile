@@ -302,11 +302,13 @@ export function ConversationPage({
   const [composerFocused, setComposerFocused] = useState(false);
   const [composerWrapped, setComposerWrapped] = useState(false);
   const settingsFocusRef = useRef<(() => void) | undefined>(undefined);
+  const formControlHandoffRef = useRef<{ target: HTMLElement; pointerId: number; revision: number } | undefined>(undefined);
   const composerIdentityRef = useRef({ id: active.id, backendId, nativeContextId, historyEdit, active, revision: 0 });
   const previousIdentity = composerIdentityRef.current;
   const changedComposer = previousIdentity.id !== active.id || previousIdentity.backendId !== backendId || previousIdentity.nativeContextId !== nativeContextId ||
     Boolean(previousIdentity.historyEdit) !== Boolean(historyEdit) || (!active.id && previousIdentity.active !== active);
   composerIdentityRef.current = { id: active.id, backendId, nativeContextId, historyEdit, active, revision: previousIdentity.revision + Number(changedComposer) };
+  const hasFormControlHandoff = () => formControlHandoffRef.current?.revision === composerIdentityRef.current.revision;
   const selectedBackend =
     backends.find((backend) => backend.id === backendId) ?? null;
   const [previewImage, setPreviewImage] = useState<DraftImage | null>(null);
@@ -354,6 +356,7 @@ export function ConversationPage({
     setStatusOpen(false);
     setActionsOpen(false);
     settingsFocusRef.current = undefined;
+    formControlHandoffRef.current = undefined;
     setAttachmentMenuOpen(false);
     setSkillMention(null);
     setQueuedFollowUpEdit(null);
@@ -452,11 +455,40 @@ export function ConversationPage({
   const nativeTextEditor = useNativeWebComposer(nativeRuntime, backendId, nativeContextId, conversationVisible,
     webOverlayOpen || statusOpen || actionsOpen || Boolean(historyEdit || previewImage || queuedFollowUpEdit) || attachmentMenuOpen || realtimeActive, composerInputRef,
     (focused, caret) => {
-      // 与网页form的blur使用同一交接保护：配置按钮pointerdown后不能在click前折叠工具栏。
-      if (focused || !settingsFocusRef.current) setComposerFocused(focused);
+      // 与网页form的blur使用同一交接保护：控件pointerdown后不能在click前折叠或移位。
+      if (focused || (!settingsFocusRef.current && !hasFormControlHandoff())) setComposerFocused(focused);
       if (focused) syncSkillMention(draft, caret);
     });
   const nativeComposer = nativeTextEditor.enabled;
+  const finishFormControlHandoff = () => {
+    const handoff = formControlHandoffRef.current;
+    formControlHandoffRef.current = undefined;
+    if (!handoff || handoff.revision !== composerIdentityRef.current.revision) return;
+    settingsFocusRef.current = undefined;
+    setComposerFocused(nativeTextEditor.isFocused());
+  };
+  useEffect(() => {
+    if (!nativeComposer) return;
+    const outside = (event: PointerEvent) => {
+      const handoff = formControlHandoffRef.current;
+      if (handoff && event.target instanceof Node && !handoff.target.contains(event.target)) finishFormControlHandoff();
+    };
+    const release = (event: PointerEvent) => {
+      if ((event.pointerId ?? 0) === formControlHandoffRef.current?.pointerId) outside(event);
+    };
+    const cancel = (event: PointerEvent) => {
+      if ((event.pointerId ?? 0) === formControlHandoffRef.current?.pointerId) finishFormControlHandoff();
+    };
+    document.addEventListener("pointerdown", outside);
+    document.addEventListener("pointerup", release);
+    document.addEventListener("pointercancel", cancel);
+    return () => {
+      document.removeEventListener("pointerdown", outside);
+      document.removeEventListener("pointerup", release);
+      document.removeEventListener("pointercancel", cancel);
+      formControlHandoffRef.current = undefined;
+    };
+  }, [nativeComposer, nativeContextId]);
   useLayoutEffect(() => {
     const composer = composerRef.current;
     const scroll = scrollRef.current;
@@ -841,10 +873,20 @@ export function ConversationPage({
         }`}
         aria-busy={imageReading}
         data-expanded={modern ? composerExpanded : undefined}
+        onPointerDownCapture={(event) => {
+          if (!nativeComposer || !nativeTextEditor.isFocused() || event.button > 0 || !(event.target instanceof Element)) return;
+          const target = event.target.closest<HTMLElement>("button, input, select, a, audio, video, [role=button], [role=menuitem]");
+          if (!target || !event.currentTarget.contains(target) || target.matches(":disabled")) return;
+          formControlHandoffRef.current = { target, pointerId: event.pointerId ?? 0, revision: composerIdentityRef.current.revision };
+        }}
+        onClick={finishFormControlHandoff}
+        onPointerUp={(event) => { if (event.defaultPrevented) finishFormControlHandoff(); }}
+        onTouchEnd={(event) => { if (event.defaultPrevented) finishFormControlHandoff(); }}
         onBlur={(event) => {
-          if (!settingsFocusRef.current && !(event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget))) setComposerFocused(false);
+          if (!settingsFocusRef.current && !hasFormControlHandoff() && !(event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget))) setComposerFocused(false);
         }}
         onSubmit={(event) => {
+          finishFormControlHandoff();
           if (historyEdit) event.preventDefault();
           else {
             // 在清空草稿或切换会话前结束编辑，避免键盘收起时 WebKit 继续追踪旧光标。

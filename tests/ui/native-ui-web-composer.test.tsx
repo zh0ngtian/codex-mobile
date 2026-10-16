@@ -303,3 +303,48 @@ it.each([
  expect(proxy.selectionStart).toBe(start); expect(proxy.selectionEnd).toBe(end);
  view.unmount(); runtime.dispose();
 });
+
+it.each(['发送', '添加附件'] as const)('整个网页form在%s的pointerdown→pointerup→原生blur间保持点击几何，动作后释放', name => {
+ hybrid(); localStorage.setItem(WEB_INTERFACE_KEY, 'modern'); const runtime = new bridge.NativeRuntime(() => {});
+ runtime.setNavigation({ selectedBackendId: 'a', backends: [], groups: [] }); runtime.setWorkspace('a', { ...emptyNativeSnapshot(), ready: true, contextId: 'a:t', draft: pageProps.draft }, {});
+ const submit = vi.fn(event => event.preventDefault());
+ const view = render(<WebInterfaceProvider><ConversationPage {...pageProps} nativeRuntime={runtime} nativeContextId="a:t" conversationVisible onSubmit={submit} /></WebInterfaceProvider>);
+ const form = view.container.querySelector('.composer-wrap')!;
+ const state = (focused: boolean) => act(() => window.dispatchEvent(new CustomEvent('codex-mobile-native-editor-state', { detail: { contextId: 'a:t', focused, selectionStart: 2, selectionEnd: 4 } })));
+ state(true); const trigger = screen.getByRole('button', { name });
+ fireEvent.pointerDown(trigger, { pointerId: 1 }); fireEvent.pointerUp(trigger, { pointerId: 1 }); state(false);
+ expect(form).toHaveAttribute('data-expanded', 'true');
+ fireEvent.click(trigger);
+ if (name === '发送') expect(submit).toHaveBeenCalledOnce();
+ else expect(screen.getByRole('menu', { name: '附件菜单' })).toBeVisible();
+ expect(form).toHaveAttribute('data-expanded', 'false');
+ view.unmount(); runtime.dispose();
+});
+it.each(['pointercancel', 'outside-up'] as const)('网页form控件交接在%s后清理，不能一直保持展开', cancel => {
+ hybrid(); localStorage.setItem(WEB_INTERFACE_KEY, 'modern'); const runtime = new bridge.NativeRuntime(() => {});
+ runtime.setNavigation({ selectedBackendId: 'a', backends: [], groups: [] }); runtime.setWorkspace('a', { ...emptyNativeSnapshot(), ready: true, contextId: 'a:t', draft: pageProps.draft }, {});
+ const submit = vi.fn(event => event.preventDefault());
+ const view = render(<WebInterfaceProvider><ConversationPage {...pageProps} nativeRuntime={runtime} nativeContextId="a:t" conversationVisible onSubmit={submit} /></WebInterfaceProvider>);
+ const form = view.container.querySelector('.composer-wrap')!; const trigger = screen.getByRole('button', { name: '发送' });
+ const state = (focused: boolean) => act(() => window.dispatchEvent(new CustomEvent('codex-mobile-native-editor-state', { detail: { contextId: 'a:t', focused, selectionStart: 2, selectionEnd: 4 } })));
+ state(true); fireEvent.pointerDown(trigger, { pointerId: 1 }); state(false); expect(form).toHaveAttribute('data-expanded', 'true');
+ if (cancel === 'pointercancel') fireEvent.pointerCancel(trigger, { pointerId: 1 });
+ else fireEvent.pointerUp(document.body, { pointerId: 1 });
+ expect(form).toHaveAttribute('data-expanded', 'false'); expect(submit).not.toHaveBeenCalled();
+ state(true); state(false); expect(form).toHaveAttribute('data-expanded', 'false');
+ view.unmount(); runtime.dispose();
+});
+
+it('网页候选在touchend内完成动作并取消尾随click时仍释放form交接', () => {
+ hybrid(); localStorage.setItem(WEB_INTERFACE_KEY, 'modern'); const runtime = new bridge.NativeRuntime(() => {});
+ runtime.setNavigation({ selectedBackendId: 'a', backends: [], groups: [] }); runtime.setWorkspace('a', { ...emptyNativeSnapshot(), ready: true, contextId: 'a:t', draft: '@p' }, {});
+ vi.spyOn(window, 'requestAnimationFrame').mockImplementation(() => 1);
+ const changed = vi.fn();
+ const view = render(<WebInterfaceProvider><ConversationPage {...pageProps} draft="@p" skills={[{ name: 'pdf', path: '/pdf/SKILL.md', description: 'PDF', scope: 'user', enabled: true }]} nativeRuntime={runtime} nativeContextId="a:t" conversationVisible onDraftChange={changed} /></WebInterfaceProvider>);
+ const state = (focused: boolean) => act(() => window.dispatchEvent(new CustomEvent('codex-mobile-native-editor-state', { detail: { contextId: 'a:t', focused, selectionStart: 2, selectionEnd: 2 } })));
+ state(true); const option = screen.getByRole('option', { name: /\$pdf/ }); const form = view.container.querySelector('.composer-wrap')!;
+ fireEvent.pointerDown(option, { pointerId: 1, clientX: 0, clientY: 0 }); state(false); expect(form).toHaveAttribute('data-expanded', 'true');
+ fireEvent.touchEnd(option, { changedTouches: [{ clientX: 0, clientY: 0 }] });
+ expect(changed).toHaveBeenCalledOnce(); expect(form).toHaveAttribute('data-expanded', 'false');
+ view.unmount(); runtime.dispose();
+});

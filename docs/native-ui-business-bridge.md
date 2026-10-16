@@ -148,7 +148,7 @@ Task2b 分模块 RED→GREEN 日志位于 `.mobile-build/native-reference/task2b
 
 输入沿现有 `draft.set`、`draftRevision` 和 `caretOffset` 同步，不引入原生发送路径。原生选区观察附带 `draftRevision`；hook 保存绑定正文、版本及 context 的 UTF-16 选区，在对应 React 正文提交后重放，避免未聚焦代理更新 value 时把光标推到末尾。旧版本或旧 context 的回报不能覆盖新选区。显式网页焦点请求以 `focusRevision` 单调消费，同版本原生焦点观察 echo 不会收起键盘。常驻 UITextView 在输入中不重建；相同 echo 不重设文字或选区，有 marked text 时保留输入法组合。Skill、插件、位置插入以及设置关闭仍通过现有 textarea 引用请求原生焦点和 UTF-16 选区。首次挂载登记可早于父 workspace 的 layout effect，后续几何与清理必须匹配已登记 context；旧 context 的输入、焦点、几何、设置恢复和清理均不能覆盖新会话。
 
-公共遮罩、网页侧栏、历史编辑、预览、会话菜单、队列编辑、realtime、不可编辑状态和宿主后台均隐藏并禁用原生编辑器；禁编辑的代理仍显示原有草稿且不可输入。设置按钮在 pointerdown 捕获焦点后，原生失焦观察与网页 form 的 blur 共用交接保护，避免 click 前折叠工具栏或移走按钮；关闭网页设置时可恢复同 context 原生焦点与选区，切换会话后旧回调失效。自然增缩和最大高度由网页 textarea 测量决定（旧版 120px、新版 154px），超限后原生框内滚动；混合模式没有最大化按钮。关闭原生输入开关并重启后恢复网页 textarea，草稿继续经原有检查点保存。
+公共遮罩、网页侧栏、历史编辑、预览、会话菜单、队列编辑、realtime、不可编辑状态和宿主后台均隐藏并禁用原生编辑器；禁编辑的代理仍显示原有草稿且不可输入。网页 form 控件在 pointerdown 到 click 之间使用绑定当前 context 的交接保护，原生失焦观察与 form 的 blur 都不能提前折叠工具栏或移走按钮；普通点击完成、控件在 touchend/pointerup 内完成并取消尾随 click、指针取消或区域外抬手时立即清理，不增加延迟、重试或额外发送路径。设置按钮另保存关闭选项后的焦点与选区；关闭网页设置时可恢复同 context 原生焦点与选区，切换会话后旧回调失效。自然增缩和最大高度由网页 textarea 测量决定（旧版 120px、新版 154px），超限后原生框内滚动；混合模式没有最大化按钮。关闭原生输入开关并重启后恢复网页 textarea，草稿继续经原有检查点保存。
 
 自动化覆盖真实 React 网页按钮和回调、代理矩形、UTF-16 选区、设置焦点恢复、遮罩、后台和 context 竞态，以及真实 Swift Store/DTO 与可信 JavaScript 生成执行。实际界面验收限定 iPhone 17 Pro、正常字号、竖屏；构建验签和模拟器验证不代表真机覆盖安装与数据保留已验证。
 
