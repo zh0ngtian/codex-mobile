@@ -28,6 +28,8 @@ struct NativeConversationView: View {
                 .safeAreaInset(edge: .top, spacing: 0) { NativeConversationChrome(store: store, noDevice: noDevice) }
             }
         }
+        .frame(maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
+        .clipped()
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if !noDevice {
                 VStack(spacing: 4) {

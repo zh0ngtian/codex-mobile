@@ -1,10 +1,13 @@
 import SwiftUI
+import UIKit
 
 struct NativeComposerView: View {
     @Bindable var store: NativeUIStore
     var onFocusChanged: (Bool) -> Void = { _ in }
     let availableHeight: CGFloat
-    @State private var supplementaryHeight: CGFloat = 0
+    @State private var supplementaryContentHeight: CGFloat = 0
+    @State private var queuedContentHeight: CGFloat = 0
+    @State private var attachmentContentHeight: CGFloat = 0
     @Environment(\.verticalSizeClass) private var verticalSizeClass
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @ScaledMetric(relativeTo: .body) private var textSize = 14
@@ -14,24 +17,38 @@ struct NativeComposerView: View {
     @State private var adjustmentReturn: NativeComposerAdjustment?
     @State private var pendingAttachmentCommand: NativeCommand?
     var body: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: layoutBudget.supplementarySpacing) {
             if hasSupplementaryContent {
-                VStack(spacing: 12) {
-                    if !store.snapshot.queued.isEmpty {
-                        ScrollView { NativeQueuedMessagesView(store: store) }.frame(maxHeight: 132)
-                            .disabled(store.awaitingNewConversation)
-                    }
-                    if !store.snapshot.attachments.isEmpty {
-                        ScrollView(.horizontal) {
-                            HStack {
-                                ForEach(store.snapshot.attachments) { file in
-                                    NativeDraftAttachmentView(attachment: file, store: store)
-                                }
+                ScrollView {
+                    VStack(spacing: layoutBudget.supplementarySpacing) {
+                        if !store.snapshot.queued.isEmpty {
+                            ScrollView {
+                                NativeQueuedMessagesView(store: store)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { queuedContentHeight = $0 }
                             }
-                        }.disabled(!store.snapshot.ready || store.awaitingNewConversation)
+                            .frame(height: min(132, queuedContentHeight))
+                            .disabled(store.awaitingNewConversation)
+                        }
+                        if !store.snapshot.attachments.isEmpty {
+                            ScrollView(.horizontal) {
+                                HStack {
+                                    ForEach(store.snapshot.attachments) { file in
+                                        NativeDraftAttachmentView(attachment: file, store: store)
+                                    }
+                                }
+                                .fixedSize(horizontal: false, vertical: true)
+                                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { attachmentContentHeight = $0 }
+                            }
+                            .frame(height: attachmentContentHeight)
+                            .disabled(!store.snapshot.ready || store.awaitingNewConversation)
+                        }
                     }
+                    .fixedSize(horizontal: false, vertical: true)
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { supplementaryContentHeight = $0 }
                 }
-                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { supplementaryHeight = $0 }
+                .frame(height: supplementaryHeight)
+                .accessibilityIdentifier("native-composer-supplementary")
             }
             ZStack(alignment: .bottomLeading) {
                 TextField(placeholder, text: $store.composerText, selection: $selection, prompt: Text(placeholder).foregroundStyle(NativePalette.secondary), axis: .vertical)
@@ -41,7 +58,7 @@ struct NativeComposerView: View {
                     .accessibilityHidden(store.sidebarOpen)
                     .disabled(!store.composerCanEdit || store.sidebarOpen)
                     .padding(.leading, expanded ? 16 : 48).padding(.trailing, expanded ? 16 : 48)
-                    .padding(.top, expanded ? 17 : 14).padding(.bottom, expanded ? 58 : 14)
+                    .padding(.top, layoutBudget.editorTopInset).padding(.bottom, layoutBudget.editorBottomInset)
                     .onChange(of: selection) { updateCaret() }
                     .onChange(of: store.selectionRevision, initial: true) { updateSelection() }
                 HStack(spacing: 2) {
@@ -67,14 +84,14 @@ struct NativeComposerView: View {
                 }.modifier(NativeScaledFont(size: 16, scale: store.snapshot.fontScale, weight: .semibold))
                 .padding(.horizontal, 4).padding(.bottom, expanded ? 4 : 2)
             }
-            .frame(minHeight: expanded ? NativeVisualMetrics.composerExpandedHeight : NativeVisualMetrics.composerHeight)
+            .frame(minHeight: layoutBudget.editorMinimumHeight)
             .background(NativePalette.controlFill, in: .rect(cornerRadius: expanded ? 26 : 24))
             .background(.ultraThinMaterial, in: .rect(cornerRadius: expanded ? 26 : 24))
             .overlay { RoundedRectangle(cornerRadius: expanded ? 26 : 24).stroke(.primary.opacity(0.18), lineWidth: 0.5) }
             .shadow(color: .black.opacity(0.04), radius: 10, y: 4)
         }
         .padding(.horizontal, expanded ? NativeVisualMetrics.composerExpandedInset : NativeVisualMetrics.composerInset)
-        .padding(.top, 8).padding(.bottom, focused ? 12 : 6)
+        .padding(.top, layoutBudget.outerTopInset).padding(.bottom, layoutBudget.outerBottomInset)
         .disabled(!store.snapshot.ready)
         .accessibilityHidden(store.sidebarOpen)
         .allowsHitTesting(!store.sidebarOpen)
@@ -119,8 +136,8 @@ struct NativeComposerView: View {
     private var canInterrupt: Bool { store.composerCanInterrupt }
     private var composerLineLimits: ClosedRange<Int> {
         NativeComposerLineLimits.resolve(availableHeight: Double(inputAvailableHeight),
-            lineHeight: Double(textSize * store.snapshot.fontScale * 1.5), compact: verticalSizeClass == .compact,
-            accessibility: dynamicTypeSize.isAccessibilitySize)
+            lineHeight: Double(inputLineHeight), compact: verticalSizeClass == .compact,
+            accessibility: dynamicTypeSize.isAccessibilitySize, chromeHeight: layoutBudget.editorChromeHeight)
     }
     private func applyPresentation() {
         guard let presentation = store.consumeComposerPresentation(contextID: store.snapshot.contextId) else { return }
@@ -159,9 +176,16 @@ struct NativeComposerView: View {
         selection = TextSelection(insertionPoint: position)
     }
     private var hasSupplementaryContent: Bool { !store.snapshot.attachments.isEmpty || !store.snapshot.queued.isEmpty }
+    private var inputLineHeight: CGFloat { UIFont.systemFont(ofSize: textSize * store.snapshot.fontScale, weight: .medium).lineHeight }
+    private var layoutBudget: NativeComposerLayoutBudget {
+        NativeComposerLayoutBudget.resolve(availableHeight: Double(availableHeight), lineHeight: Double(inputLineHeight),
+            toolbarLineHeight: Double(UIFont.systemFont(ofSize: textSize * (16.0 / 14.0) * store.snapshot.fontScale, weight: .semibold).lineHeight),
+            expanded: expanded, focused: focused, compact: verticalSizeClass == .compact,
+            hasSupplementaryContent: hasSupplementaryContent)
+    }
+    private var supplementaryHeight: CGFloat { min(supplementaryContentHeight, layoutBudget.supplementaryMaximumHeight) }
     private var inputAvailableHeight: CGFloat {
-        let supplementary = hasSupplementaryContent ? supplementaryHeight + 12 : 0
-        return availableHeight - supplementary - 8 - (focused ? 12 : 6)
+        availableHeight - supplementaryHeight - layoutBudget.supplementarySpacing - layoutBudget.outerHeight
     }
     private var expanded: Bool { focused || adjustment != nil || (canInterrupt && hasDraft) || store.attachmentOpen || !store.snapshot.attachments.isEmpty || store.draft.contains("\n") || store.draft.count > 48 }
     private var placeholder: String {

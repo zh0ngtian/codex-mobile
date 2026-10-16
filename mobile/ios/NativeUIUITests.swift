@@ -211,6 +211,34 @@ final class NativeUIUITests: XCTestCase {
         XCTAssertEqual(app.descendants(matching: .any).matching(identifier: "native-composer-input").count, 1)
     }
 
+    func testLandscapeAttachmentKeepsEditorAndActionsAboveKeyboard() {
+        continueAfterFailure = false
+        XCUIDevice.shared.orientation = .portrait
+        defer { XCUIDevice.shared.orientation = .portrait }
+        let app = XCUIApplication()
+        app.launchArguments = ["--native-ui-reference-conversation", "--native-ui-reference-audio", "--native-ui-reference-busy"]
+        app.launch()
+        let input = app.descendants(matching: .any)["native-composer-input"]
+        XCTAssertTrue(input.waitForExistence(timeout: 5))
+        input.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        let oneLineHeight = input.frame.height
+        input.typeText("\nsecond\nthird")
+        XCTAssertGreaterThan(input.frame.height, oneLineHeight + 10, "附件不能填满预算压制自然增长")
+        XCUIDevice.shared.orientation = .landscapeLeft
+        let rotated = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in app.frame.width > app.frame.height }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [rotated], timeout: 5), .completed)
+        for action in [app.buttons["移除 silence.wav"], app.buttons["native-send"], app.buttons["native-stop"]] {
+            XCTAssertTrue(action.isHittable, app.debugDescription)
+            XCTAssertGreaterThanOrEqual(action.frame.height, 44)
+            XCTAssertGreaterThanOrEqual(action.frame.minY, 0)
+            XCTAssertLessThanOrEqual(action.frame.maxY, app.keyboards.firstMatch.frame.minY + 1)
+        }
+        XCTAssertTrue(input.isHittable)
+        XCTAssertTrue((input.value as? String)?.contains("third") == true)
+        capture("横屏附件-输入与操作均在键盘上方", app: app)
+    }
+
     func testVisualReferenceConfigurationExposesAuthoritativeValues() {
         let app = XCUIApplication()
         app.launchArguments = ["--native-ui-reference-visual", "--native-ui-reference-visual-focused"]

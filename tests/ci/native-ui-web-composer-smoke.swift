@@ -19,6 +19,22 @@ enum NativeWebComposerSmoke {
         for lineHeight in [0.0, -24, Double.nan, Double.infinity, -Double.infinity] {
             precondition(NativeComposerLineLimits.resolve(availableHeight: 128, lineHeight: lineHeight, compact: false, accessibility: false) == 1...2, "无效行高使用安全行高，不能将非有限数转换为整数")
         }
+        let attachmentLayout = NativeComposerLayoutBudget.resolve(availableHeight: 178, lineHeight: 21, toolbarLineHeight: 24, expanded: true, focused: true, compact: true, hasSupplementaryContent: true)
+        let audioHeight = min(60, attachmentLayout.supplementaryMaximumHeight)
+        precondition(audioHeight >= 44, "横屏音频附件保留完整的移除点击高度")
+        precondition(attachmentLayout.editorMinimumHeight + attachmentLayout.outerHeight + attachmentLayout.supplementarySpacing + audioHeight <= 178, "附件与最小编辑器整体不能超过键盘上方宿主预算")
+        precondition(attachmentLayout.editorMinimumHeight >= 21 + attachmentLayout.editorChromeHeight, "紧凑输入仍保留真实一行和工具栏")
+        let queuedHeight = min(640, attachmentLayout.supplementaryMaximumHeight)
+        precondition(attachmentLayout.editorMinimumHeight + attachmentLayout.outerHeight + attachmentLayout.supplementarySpacing + queuedHeight <= 178, "长队列只能在辅助区内部滚动，不能挤出发送按钮")
+        let firstRotationLayout = NativeComposerLayoutBudget.resolve(availableHeight: 178, lineHeight: 21, toolbarLineHeight: 24, expanded: true, focused: true, compact: false, hasSupplementaryContent: true)
+        precondition(firstRotationLayout.editorMinimumHeight + firstRotationLayout.outerHeight + firstRotationLayout.supplementarySpacing + firstRotationLayout.supplementaryMaximumHeight <= 178, "旋转首帧即使方向环境尚未更新，也不能撑大宿主")
+        let largeLayout = NativeComposerLayoutBudget.resolve(availableHeight: 178, lineHeight: 52, toolbarLineHeight: 60, expanded: true, focused: true, compact: true, hasSupplementaryContent: true)
+        precondition(largeLayout.supplementaryMaximumHeight >= 44, "辅助字号仍留出可滚动附件操作区")
+        precondition(largeLayout.editorBottomInset >= (44 + 60) / 2 + 4, "字号放大后输入文字不能与工具栏重叠")
+        precondition(largeLayout.editorMinimumHeight + largeLayout.outerHeight + largeLayout.supplementarySpacing + largeLayout.supplementaryMaximumHeight <= 178, "动态字号的整个输入容器遵守真实宿主高度")
+        let portraitLayout = NativeComposerLayoutBudget.resolve(availableHeight: 500, lineHeight: 21, toolbarLineHeight: 24, expanded: true, focused: true, compact: false, hasSupplementaryContent: true)
+        let portraitInputBudget = 500 - portraitLayout.outerHeight - portraitLayout.supplementarySpacing - min(60, portraitLayout.supplementaryMaximumHeight)
+        precondition(NativeComposerLineLimits.resolve(availableHeight: portraitInputBudget, lineHeight: 21, compact: false, accessibility: false, chromeHeight: portraitLayout.editorChromeHeight) == 1...6, "附件只扣实际内容高度，不能填满预算把自然增长压回一行")
         for speed in ["fast", "priority", "custom-tier"] {
             precondition(NativeComposerSymbols.isFastEnabled(speed), "非默认速度档位的辅助功能和图标共用开启状态")
             precondition(NativeComposerSymbols.speedSymbol(speed) == "bolt.fill", "任意已启用的非默认速度档位都显示实心闪电，不能只识别 fast")

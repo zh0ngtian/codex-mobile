@@ -2,28 +2,29 @@ import SwiftUI
 
 struct NativeUIHost<Legacy: View>: View {
     private let legacy: Legacy
-    @State private var availableHeight: CGFloat = 500
     @State private var bridge = NativeUIBridge()
     @Environment(\.scenePhase) private var scenePhase
     private var store: NativeUIStore { bridge.store }
     init(@ViewBuilder legacy: () -> Legacy) { self.legacy = legacy() }
     var body: some View {
-        ZStack {
-            // 同一个 WebView 始终挂在真实视图树中，继续执行数据与已有系统桥。
-            if !store.isReference {
-                legacy
-                .opacity(store.nativeEnabled && !store.showLegacyForRecovery ? 0.01 : 1)
-                .allowsHitTesting(!store.nativeEnabled || store.showLegacyForRecovery)
-                .accessibilityHidden(store.nativeEnabled && !store.showLegacyForRecovery)
+        GeometryReader { geometry in
+            ZStack {
+                // 同一个 WebView 始终挂在真实视图树中，继续执行数据与已有系统桥。
+                if !store.isReference {
+                    legacy
+                    .opacity(store.nativeEnabled && !store.showLegacyForRecovery ? 0.01 : 1)
+                    .allowsHitTesting(!store.nativeEnabled || store.showLegacyForRecovery)
+                    .accessibilityHidden(store.nativeEnabled && !store.showLegacyForRecovery)
+                }
+                if store.nativeEnabled && !store.showLegacyForRecovery {
+                    NativeRootView(store: store, availableHeight: geometry.size.height)
+                }
             }
-            if store.nativeEnabled && !store.showLegacyForRecovery {
-                NativeRootView(store: store, availableHeight: availableHeight)
-            }
-        }
-        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { availableHeight = $0 }
-        .overlay(alignment: .bottom) {
-            if store.composerEnabled && !store.nativeEnabled && !store.showLegacyForRecovery {
-                NativeWebComposerHost(store: store, availableHeight: availableHeight)
+            .frame(width: geometry.size.width, height: geometry.size.height)
+            .overlay(alignment: .bottom) {
+                if store.composerEnabled && !store.nativeEnabled && !store.showLegacyForRecovery {
+                    NativeWebComposerHost(store: store, availableHeight: geometry.size.height)
+                }
             }
         }
         #if DEBUG

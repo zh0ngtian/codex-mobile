@@ -22,7 +22,8 @@
 ## 文件职责
 
 - NativeComposerView.swift：删除最大化状态/按钮/固定展开高度，使用自然行数范围；统一工具栏字体。
-- NativeComposerLineLimits.swift：计算 1...安全最大行数，不再接受 maximized。
+- NativeComposerLineLimits.swift：计算 1...安全最大行数，不再接受 maximized；实际输入传入随方向与动态字号计算的 chromeHeight。
+- NativeComposerLayoutBudget.swift：为一行编辑与 44pt 工具栏预留真实高度，计算横屏紧凑间距和附件/队列的可滚动高度上限。
 - NativeComposerConfigurationView.swift：Fast 图标按状态切换；模型和思考使用系统 Menu。
 - NativeWebComposerHost.swift、NativeUIHost.swift、NativeRootView.swift、NativeConversationView.swift：两种原生呈现均获得真实可用高度，扣除辅助内容后传给输入栏；避免用扣除输入栏后的布局高度反向计算而振荡。
 - NativeVisualMetrics.swift 或独立小型呈现策略：共用字号及 Fast 符号选择，不加入业务副本。
@@ -37,11 +38,13 @@
 
 ~~~swift
 static func resolve(availableHeight: Double, lineHeight: Double,
-                    compact: Bool, accessibility: Bool) -> ClosedRange<Int> {
+                    compact: Bool, accessibility: Bool,
+                    chromeHeight: Double) -> ClosedRange<Int> {
     let preferred = compact ? (accessibility ? 1 : 2) : (accessibility ? 3 : 6)
     let safeHeight = availableHeight.isFinite ? max(0, availableHeight) : 0
     let safeLine = lineHeight.isFinite && lineHeight > 0 ? max(1, lineHeight) : 24
-    let budget = Int(min(Double(preferred), max(0, safeHeight - 80) / safeLine))
+    let chrome = chromeHeight.isFinite ? max(0, chromeHeight) : 80
+    let budget = Int(min(Double(preferred), max(0, safeHeight - chrome) / safeLine))
     return 1...max(1, budget)
 }
 ~~~
@@ -126,3 +129,12 @@ Menu {
 - 复用 `settings.test.ts` 和 `native-ui-workspace.test.ts`，43 项通过，确认旧 fast 映射到目录 priority、原生 adapter 原样投影 `speedValue: priority`，不硬编码速度目录。
 - 模拟器发现系统菜单自动反序；模型与速度菜单采用 `.menuOrder(.fixed)`，保持模型→思考与正常→Fast，以及目录选项的原始顺序，留待父任务按截图复验。
 - 修复后真实 Swift smoke 与上述业务回归合计 59 项通过，原生 Swift iOS 类型检查及 TypeScript 类型检查通过；原始日志为 `red-fast-tier.log`、`green-fast-tier.log`、`swift-typecheck-fast-tier.log` 与 `typecheck-fast-tier.log`。
+
+### 实际 UI 修复：横屏附件与整体输入预算
+
+- 父任务在 `testAttachmentDoesNotConsumeEditorHeightBudget` 复现 RED：178pt 键盘上方空间不足以容纳原 98pt 编辑卡、60pt 音频附件及 32pt 间距/外边距，附件可操作但发送被键盘遮挡。原始证据为 `.mobile-build/refinement-attachment-budget.xcresult` 与私有 `attachment-qa/E9E97CDC-14B8-41AE-B6C2-43B2EE0C0298.png`。
+- 新增真实生产 `NativeComposerLayoutBudget` 数学回归，覆盖 178pt 下附件、长队列、辅助字号的整个容器边界，以及附件不填满预算、竖屏仍可自然增长到六行。
+- 宿主改读外层 GeometryReader 提案并固定子树承载尺寸，空态正文允许压缩；唯一 TextField 保留，字号使用实际字体行高计算。辅助内容独立测量理想高度、按宿主预算限高滚动；横屏只调整间距，不缩小 44pt 发送、停止或附件操作范围。
+- 新增仓库 XCTest `testLandscapeAttachmentKeepsEditorAndActionsAboveKeyboard`，等待父任务继续同场景实际复验；本地不操作模拟器或 `.mobile-build`。
+- 最终行数合同由视图传入 `NativeComposerLayoutBudget.editorChromeHeight`，按实际字体行高与工具栏净空计算；80pt 仅作为无效 chrome 数值的防护默认，不再作为真实输入的固定扣除值。旋转首帧的旧方向环境也须满足整个输入容器不超过 178pt 的数学边界。
+- 本地修复后关联 3 文件 25 项通过，原生 Swift 与 XCTest 源码 iOS 类型检查、TypeScript 类型检查通过；日志分别为 `green-attachment-budget.log`、`swift-typecheck-attachment-budget.log`、`ui-tests-typecheck-attachment-budget.log`、`typecheck-attachment-budget.log`。
