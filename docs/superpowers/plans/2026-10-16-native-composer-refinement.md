@@ -155,3 +155,11 @@ Menu {
 - 最终 `129` 文件 `1458` 项 Vitest 通过，真实 Swift smoke 包含在内；发布适配器 Python `166` 项、协调器恢复 `30` 项通过。原生 Swift、XCTest 源码及 TypeScript 类型检查通过。独立规格与质量复核通过，两处实际 UI 缺陷已按 RED→GREEN 关闭。
 - 原始 xcresult、截图、几何及验收脚本持久保存在仓库外 `~/Library/Application Support/CodexMobile/validation/native-composer-refinement-20261016/`。测试仅使用离线数据，未创建真实远端测试会话；未进行真机覆盖安装和数据保留验收。
 - 发布仍由已登记任务 `native-composer-refinement-20261016` 交给协调器，成功版本、渠道下载与散列以共同成功 receipt 及独立回验 JSON 为准，不在本地自行分配版本或正式发包。
+
+### 正式 CI 修复：Swift 冷 SDK 编译预算
+
+- 正式批次 `ee3e1566-ac8b-446f-a331-55232b484be8` 的 iOS 构建契约提供实际 RED：11 文件 114 项中，113 项通过；真实 Swift Store/DTO/Markdown/输入栏 smoke 编译在 90050ms 触发 `spawnSync xcrun ETIMEDOUT`，没有 Swift 编译错误。原始失败日志保存在私有验证目录 `formal-ci-failed.log`；该批次未发布固定渠道。
+- 正式 CI 的完整 Swift 回归编译实测触发 90 秒上限，日志未定位具体编译阶段；为云端冷启动保留有界预算，仅将 `swiftCompileTimeout` 从 90000ms 调整为 180000ms、外层 `swiftContractTimeout` 从 120000ms 调整为 210000ms。Swift 执行仍严格限制 15000ms，全部生产源文件、smoke 文件和断言保持原样；不修改生产 Swift 或用户功能更新日志。
+- 父任务关联修复登记为 `native-composer-refinement-ci-repair-20261016`，后续推送与 ready 继续由父任务及协调器执行。
+- 本地使用与正式 CI 相同的 `NODE_OPTIONS=--no-experimental-webstorage npm test -- tests/ci --maxWorkers=2 --testTimeout=60000`，11 文件 114 项全部通过；`npm run typecheck` 通过。日志为 `green-ci-timeout-repair.log`、`typecheck-ci-timeout-repair.log`。
+- 额外使用全新隔离 `-module-cache-path` 对同一组 44 份生产 Swift 源与 4 份 smoke 进行一次冷编译/执行：编译 11.459 秒、执行 0.098 秒，全部真实断言通过。临时缓存和可执行文件验证后清理；计时及断言输出保存为 `cold-swift-ci-timeout-repair.log`。这是本机补充验证，不替代云端新批次成功凭证。
