@@ -29,6 +29,7 @@ final class NativeUIStore {
     private var pendingFields: [NativeFieldKey: Int] = [:]
     private var fieldRevision = 0
     private var draftRevision = 0
+    var webEditorDraftRevision: Int { draftRevision }
     private var pendingSearchRevision: Int? = nil
     private var pendingSidebarRevision: Int? = nil
     private var receivedResultIDs: Set<String> = []

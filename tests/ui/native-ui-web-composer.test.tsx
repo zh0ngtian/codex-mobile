@@ -34,7 +34,8 @@ it('独立输入偏好命令严格验证布尔值并使用全局事务', async (
  expect(saved).toBe(false); runtime.dispose();
 });
 
-import { createRef, useState } from 'react';
+import { createRef, useLayoutEffect, useRef, useState } from 'react';
+import { useNativeWebComposer } from '../../src/native-ui/web-composer';
 import { ComposerSettings, type ComposerPicker } from '../../src/features/settings/ComposerSettings';
 import { ConversationPage } from '../../src/features/conversation/ConversationPage';
 import { useOverlayScrollIsolation } from '../../src/ui/overlay-scroll';
@@ -44,7 +45,7 @@ const pageProps = {
 function Overlay({ open }: { open: boolean }) { const ref = createRef<HTMLDivElement>(); useOverlayScrollIsolation(open, ref); return <div ref={ref} />; }
 it('真实网页会话保留Web表单和隐藏布局代理，公共遮罩控制原生文字编辑', () => {
  hybrid(); const runtime = new bridge.NativeRuntime(() => {});
- runtime.setNavigation({ selectedBackendId: 'a', backends: [], groups: [] }); runtime.setWorkspace('a', { ...emptyNativeSnapshot(), ready: true, contextId: 'a:t' }, {});
+ runtime.setNavigation({ selectedBackendId: 'a', backends: [], groups: [] }); runtime.setWorkspace('a', { ...emptyNativeSnapshot(), ready: true, contextId: 'a:t', draft: pageProps.draft }, {});
  const props = { ...pageProps, nativeRuntime: runtime, nativeContextId: 'a:t', conversationVisible: true };
  const view = render(<><ConversationPage {...props} /><Overlay open={false} /></>);
  expect(screen.queryByRole('textbox', { name: '向 Codex 提问' })).toBeNull();
@@ -62,7 +63,7 @@ it('真实网页会话保留Web表单和隐藏布局代理，公共遮罩控制�
 it('网页代理发布有限矩形及UTF16选区，旧context状态不能覆盖当前焦点', () => {
  hybrid(); const runtime = new bridge.NativeRuntime(() => {});
  runtime.setNavigation({ selectedBackendId: 'a', backends: [], groups: [] });
- runtime.setWorkspace('a', { ...emptyNativeSnapshot(), ready: true, contextId: 'a:t' }, {});
+ runtime.setWorkspace('a', { ...emptyNativeSnapshot(), ready: true, contextId: 'a:t', draft: pageProps.draft }, {});
  const view = render(<ConversationPage {...pageProps} nativeRuntime={runtime} nativeContextId="a:t" conversationVisible />);
  const proxy = view.container.querySelector('.composer textarea') as HTMLTextAreaElement;
  vi.spyOn(proxy, 'getBoundingClientRect').mockReturnValue({ x: 50, y: 500, left: 50, top: 500, right: 350, bottom: 550, width: 300, height: 50 } as DOMRect);
@@ -147,7 +148,7 @@ it('字号投影使用实际界面上下文，不从保存的新版偏好推断'
  hybrid(); localStorage.setItem(WEB_INTERFACE_KEY, 'modern');
  const runtime = new bridge.NativeRuntime(() => {});
  runtime.setNavigation({ selectedBackendId: 'a', backends: [], groups: [] });
- runtime.setWorkspace('a', { ...emptyNativeSnapshot(), ready: true, contextId: 'a:t' }, {});
+ runtime.setWorkspace('a', { ...emptyNativeSnapshot(), ready: true, contextId: 'a:t', draft: pageProps.draft }, {});
  render(<ConversationPage {...pageProps} nativeRuntime={runtime} nativeContextId="a:t" conversationVisible />);
  expect(runtime.snapshot().webComposer).toMatchObject({ bodyFontSize: 16 });
  runtime.dispose();
@@ -168,7 +169,7 @@ it.each([false, true])('网页设置关闭恢复同context的原生焦点和UTF1
  hybrid(); localStorage.setItem(WEB_INTERFACE_KEY, modern ? 'modern' : 'legacy');
  const runtime = new bridge.NativeRuntime(() => {}); let restore: (() => void) | undefined;
  runtime.setNavigation({ selectedBackendId: 'a', backends: [], groups: [] });
- runtime.setWorkspace('a', { ...emptyNativeSnapshot(), ready: true, contextId: 'a:t' }, {});
+ runtime.setWorkspace('a', { ...emptyNativeSnapshot(), ready: true, contextId: 'a:t', draft: pageProps.draft }, {});
  const props = { ...pageProps, nativeRuntime: runtime, nativeContextId: 'a:t', conversationVisible: true, onOpenAgentSettings: (callback?: () => void) => { restore = callback; } };
  const page = (contextId = 'a:t', covered = false) => <WebInterfaceProvider><ConversationPage {...props} nativeContextId={contextId} webOverlayOpen={covered} /></WebInterfaceProvider>;
  const view = render(page());
@@ -183,7 +184,7 @@ it.each([false, true])('网页设置关闭恢复同context的原生焦点和UTF1
 });
 it('宿主后台立即阻止混合文字编辑与迟到焦点', () => {
  hybrid(); const runtime = new bridge.NativeRuntime(() => {});
- runtime.setNavigation({ selectedBackendId: 'a', backends: [], groups: [] }); runtime.setWorkspace('a', { ...emptyNativeSnapshot(), ready: true, contextId: 'a:t' }, {});
+ runtime.setNavigation({ selectedBackendId: 'a', backends: [], groups: [] }); runtime.setWorkspace('a', { ...emptyNativeSnapshot(), ready: true, contextId: 'a:t', draft: pageProps.draft }, {});
  const view = render(<ConversationPage {...pageProps} nativeRuntime={runtime} nativeContextId="a:t" conversationVisible />);
  (window as any).__CODEX_NATIVE_ACTIVE__ = false;
  act(() => window.dispatchEvent(new Event('visibilitychange')));
@@ -196,7 +197,7 @@ it.each([false, true])('混合代理与原生文字使用正文基准乘一次iO
  hybrid(); (window as any).__CODEX_IOS_HOST__ = true;
  localStorage.setItem(WEB_INTERFACE_KEY, modern ? 'modern' : 'legacy');
  const runtime = new bridge.NativeRuntime(() => {});
- runtime.setNavigation({ selectedBackendId: 'a', backends: [], groups: [] }); runtime.setWorkspace('a', { ...emptyNativeSnapshot(), ready: true, contextId: 'a:t' }, {});
+ runtime.setNavigation({ selectedBackendId: 'a', backends: [], groups: [] }); runtime.setWorkspace('a', { ...emptyNativeSnapshot(), ready: true, contextId: 'a:t', draft: pageProps.draft }, {});
  const view = render(<WebInterfaceProvider><ConversationPage {...pageProps} nativeRuntime={runtime} nativeContextId="a:t" conversationVisible /></WebInterfaceProvider>);
  const proxy = view.container.querySelector('.composer textarea') as HTMLTextAreaElement;
  const expectedSize = (modern ? 14.2 : 16) * 0.875;
@@ -209,7 +210,7 @@ it.each([false, true])('混合代理与原生文字使用正文基准乘一次iO
 
 it('原生焦点观察与显式网页焦点请求分离，观察echo不推进请求版本', () => {
  hybrid(); const runtime = new bridge.NativeRuntime(() => {});
- runtime.setNavigation({ selectedBackendId: 'a', backends: [], groups: [] }); runtime.setWorkspace('a', { ...emptyNativeSnapshot(), ready: true, contextId: 'a:t' }, {});
+ runtime.setNavigation({ selectedBackendId: 'a', backends: [], groups: [] }); runtime.setWorkspace('a', { ...emptyNativeSnapshot(), ready: true, contextId: 'a:t', draft: pageProps.draft }, {});
  const view = render(<ConversationPage {...pageProps} nativeRuntime={runtime} nativeContextId="a:t" conversationVisible />);
  const proxy = view.container.querySelector('.composer textarea') as HTMLTextAreaElement;
  act(() => window.dispatchEvent(new CustomEvent('codex-mobile-native-editor-state', { detail: { contextId: 'a:t', focused: true, selectionStart: 2, selectionEnd: 4 } })));
@@ -221,7 +222,7 @@ it('原生焦点观察与显式网页焦点请求分离，观察echo不推进请
 
 it('旧context位置选择晚完成不能请求新会话焦点', async () => {
  hybrid(); const runtime = new bridge.NativeRuntime(() => {}); let finish!: (value: boolean) => void;
- runtime.setNavigation({ selectedBackendId: 'a', backends: [], groups: [] }); runtime.setWorkspace('a', { ...emptyNativeSnapshot(), ready: true, contextId: 'a:t' }, {});
+ runtime.setNavigation({ selectedBackendId: 'a', backends: [], groups: [] }); runtime.setWorkspace('a', { ...emptyNativeSnapshot(), ready: true, contextId: 'a:t', draft: pageProps.draft }, {});
  const location = () => new Promise<boolean>(resolve => { finish = resolve; });
  const view = render(<ConversationPage {...pageProps} nativeRuntime={runtime} nativeContextId="a:t" conversationVisible onSelectLocation={location} />);
  fireEvent.click(screen.getByRole('button', { name: '添加附件' })); fireEvent.click(screen.getByRole('menuitem', { name: '当前位置' }));
@@ -234,7 +235,7 @@ it('旧context位置选择晚完成不能请求新会话焦点', async () => {
 
 it.each(['skill', 'plugin'] as const)('旧context的%s插入动画回调不能聚焦新会话', kind => {
  hybrid(); const runtime = new bridge.NativeRuntime(() => {});
- runtime.setNavigation({ selectedBackendId: 'a', backends: [], groups: [] }); runtime.setWorkspace('a', { ...emptyNativeSnapshot(), ready: true, contextId: 'a:t' }, {});
+ runtime.setNavigation({ selectedBackendId: 'a', backends: [], groups: [] }); runtime.setWorkspace('a', { ...emptyNativeSnapshot(), ready: true, contextId: 'a:t', draft: pageProps.draft }, {});
  const props = { ...pageProps, draft: '@p', skills: [{ name: 'pdf', path: '/pdf/SKILL.md', description: 'PDF', scope: 'user', enabled: true }], plugins: [{ id: 'pdf-plugin', name: 'pdf-plugin', installed: true, enabled: true, availability: 'AVAILABLE' }] } as Parameters<typeof ConversationPage>[0];
  const view = render(<ConversationPage {...props} nativeRuntime={runtime} nativeContextId="a:t" conversationVisible />);
  act(() => window.dispatchEvent(new CustomEvent('codex-mobile-native-editor-state', { detail: { contextId: 'a:t', focused: true, selectionStart: 2, selectionEnd: 2 } })));
@@ -253,7 +254,7 @@ it.each([
 ] as const)('设置按钮的pointerdown→原生失焦→click保留工具栏并打开网页选项（modern=%s，%s）', (modern, buttonName, title) => {
  hybrid(); localStorage.setItem(WEB_INTERFACE_KEY, modern ? 'modern' : 'legacy');
  const runtime = new bridge.NativeRuntime(() => {});
- runtime.setNavigation({ selectedBackendId: 'a', backends: [], groups: [] }); runtime.setWorkspace('a', { ...emptyNativeSnapshot(), ready: true, contextId: 'a:t' }, {});
+ runtime.setNavigation({ selectedBackendId: 'a', backends: [], groups: [] }); runtime.setWorkspace('a', { ...emptyNativeSnapshot(), ready: true, contextId: 'a:t', draft: pageProps.draft }, {});
  const modernCSS = readFileSync('src/features/web-ui/modern.css', 'utf8');
  const configurationCSS = modernCSS.split('\n').filter(line => line.includes('.modern-composer-configuration {')).join('\n');
  function Handoff() {
@@ -275,5 +276,30 @@ it.each([
  expect(screen.getByRole('button', { name: buttonName })).toBeVisible();
  fireEvent.click(trigger);
  expect(screen.getByRole(modern ? 'dialog' : 'region', { name: title })).toBeVisible();
+ view.unmount(); runtime.dispose();
+});
+
+it.each([
+ ['abcd', 1, 'aXbcd', 2, 2], ['abcd', 4, 'abcdX', 4, 5], ['甲😀尾文', 3, '甲😀中尾文', 3, 4],
+] as const)('React正文commit保留原生观测的UTF16选区（初稿=%s，原光标=%s）', (initial, beforeCaret, next, start, end) => {
+ hybrid(); const runtime = new bridge.NativeRuntime(() => {});
+ runtime.setNavigation({ selectedBackendId: 'a', backends: [], groups: [] }); runtime.listen();
+ function Harness() {
+  const [draft, setDraft] = useState<string>(initial); const ref = useRef<HTMLTextAreaElement>(null);
+  useNativeWebComposer(runtime, 'a', 'a:t', true, false, ref, () => {});
+  useLayoutEffect(() => runtime.setWorkspace('a', { ...emptyNativeSnapshot(), ready: true, contextId: 'a:t', draft }, { 'draft.set': p => setDraft(String(p.value)) }));
+  return <textarea ref={ref} value={draft} onChange={event => setDraft(event.target.value)} />;
+ }
+ const view = render(<Harness />); const proxy = view.container.querySelector('textarea')!;
+ const state = (selectionStart: number, selectionEnd = selectionStart, draftRevision = 0) => window.dispatchEvent(new CustomEvent('codex-mobile-native-editor-state', { detail: { contextId: 'a:t', focused: true, selectionStart, selectionEnd, draftRevision } }));
+ act(() => state(beforeCaret)); expect(proxy.selectionStart).toBe(beforeCaret);
+ act(() => {
+  window.dispatchEvent(new CustomEvent('codex-mobile-native-command', { detail: { id: 'typing', name: 'draft.set', params: { contextId: 'a:t', value: next, revision: 1, caretOffset: start } } }));
+  state(start, end, 1);
+ });
+ expect(proxy.value).toBe(next); expect(proxy.selectionStart).toBe(start); expect(proxy.selectionEnd).toBe(end);
+ expect(runtime.snapshot().webComposer).toMatchObject({ selectionStart: start, selectionEnd: end, focusRevision: 0 });
+ act(() => state(0, 0, 0));
+ expect(proxy.selectionStart).toBe(start); expect(proxy.selectionEnd).toBe(end);
  view.unmount(); runtime.dispose();
 });

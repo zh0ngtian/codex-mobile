@@ -128,9 +128,11 @@ enum NativeUITrust {
         """
     }
 
-    static func webTextEditorState(contextId: String, focused: Bool, start: Int, end: Int, trustedURL: URL) -> String? {
+    static func webTextEditorState(contextId: String, focused: Bool, start: Int, end: Int, draftRevision: Int? = nil, trustedURL: URL) -> String? {
         guard !contextId.isEmpty, start >= 0, end >= start else { return nil }
-        let payload: [String: NativeJSONValue] = ["contextId": .string(contextId), "focused": .bool(focused), "selectionStart": .number(Double(start)), "selectionEnd": .number(Double(end))]
+        if let draftRevision, draftRevision < 0 { return nil }
+        var payload: [String: NativeJSONValue] = ["contextId": .string(contextId), "focused": .bool(focused), "selectionStart": .number(Double(start)), "selectionEnd": .number(Double(end))]
+        if let draftRevision { payload["draftRevision"] = .number(Double(draftRevision)) }
         guard let encodedURL = json(trustedURL.absoluteString), let encoded = json(payload) else { return nil }
         return """
         (() => {

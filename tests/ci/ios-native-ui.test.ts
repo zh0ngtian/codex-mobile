@@ -94,6 +94,14 @@ describe("SwiftUI 原生宿主契约", () => {
     expect(source("NativeUIHost")).not.toContain("NativeWebComposerHost(store:");
     expect(source("NativeUIBridge")).toContain("NativeWebTextEditor");
   });
+  it("混合文字编辑器局部遵循网页浅色外观，完整原生界面继续使用系统主题", () => {
+    const editor = source("NativeWebTextEditor");
+    expect(editor).toContain("input.overrideUserInterfaceStyle = .light");
+    expect(editor).toContain("input.addSubview(placeholder)");
+    expect(editor).toContain("input.textColor = .label");
+    expect(editor).toContain(".foregroundColor: UIColor.label");
+    expect(source("NativeUIHost")).not.toContain(".preferredColorScheme(.light)");
+  });
   it("具有离线原生根、输入、侧栏及设置 UI 验收", () => {
     expect(existsSync("mobile/ios/NativeUI/NativeRootView.swift"), "缺少真实 SwiftUI 根").toBe(true);
     expect(source("NativeRootView")).toContain("native-ui-root");
@@ -195,7 +203,7 @@ describe("SwiftUI 原生宿主契约", () => {
       expect(composerPage.target.__CODEX_NATIVE_UI__).toBe(false); expect(composerPage.target.__CODEX_NATIVE_COMPOSER__).toBe(true);
       const editorEvent = vi.fn(); composerPage.target.addEventListener('codex-mobile-native-editor-state', editorEvent);
       composerPage.run(privatePage.editorState);
-      expect(editorEvent.mock.calls[0][0].detail).toEqual({ contextId: '中文"\\上下文', focused: true, selectionStart: 2, selectionEnd: 4 });
+      expect(editorEvent.mock.calls[0][0].detail).toEqual({ contextId: '中文"\\上下文', focused: true, selectionStart: 2, selectionEnd: 4, draftRevision: 7 });
       const layoutEvent = vi.fn(); composerPage.target.addEventListener('codex-mobile-native-composer-layout', layoutEvent);
       composerPage.run(privatePage.composerLayout);
       expect(layoutEvent.mock.calls[0][0].detail).toEqual({ contextId: '中文"\\上下文', top: 470.5, webViewHeight: 844 });

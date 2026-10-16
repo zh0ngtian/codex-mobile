@@ -20,6 +20,7 @@ export function useNativeWebComposer(runtime: NativeRuntime | null, backendId: s
   const enabled = capable && runtime !== null;
   const { modern } = useWebInterface();
   const state = useRef({ focused: false, focusRevision: 0 });
+  const observedSelection = useRef<{ contextId: string; text: string; revision: number; start: number; end: number; committed: boolean } | undefined>(undefined);
   const latest = useRef({ visible, blocked: blocked || overlay, bodyFontSize: modern ? 14.2 : 16, onState });
   latest.current = { visible, blocked: blocked || overlay, bodyFontSize: modern ? 14.2 : 16, onState };
   const publishRef = useRef<() => void>(() => {});
@@ -27,11 +28,24 @@ export function useNativeWebComposer(runtime: NativeRuntime | null, backendId: s
     const input = inputRef.current;
     if (!enabled || !input) { runtime?.setWebComposer(backendId, undefined, contextId); return; }
     state.current = { focused: false, focusRevision: 0 };
+    observedSelection.current = undefined;
     const focus = input.focus.bind(input), blur = input.blur.bind(input), select = input.setSelectionRange.bind(input);
     let disposed = false;
     const publish = (register = false) => {
       if (disposed || !input.isConnected) return;
       const current = latest.current;
+      let selection = observedSelection.current;
+      if (selection?.contextId === contextId) {
+        if (input.value === selection.text) {
+          // React给未聚焦textarea提交value会把光标推到末尾；等对应正文commit后重放原生选区。
+          select(selection.start, selection.end);
+          selection.committed = true;
+        } else if (selection.committed) {
+          // 已确认后的外部正文替换使用它自己的选区，不重放上一个正文的观测。
+          observedSelection.current = undefined;
+          selection = undefined;
+        }
+      }
       // 布局代理不接收普通Web textarea防自动缩放的16px下限；与原生共用已缩放正文。
       const fontSize = current.bodyFontSize * FONT_SCALES[readFontSize()];
       const lineHeight = fontSize * 1.4;
@@ -47,7 +61,7 @@ export function useNativeWebComposer(runtime: NativeRuntime | null, backendId: s
       const metric = (name: string, fallback = 0) => { const value = parseFloat(style.getPropertyValue(name)); return Number.isFinite(value) && value >= 0 && value <= 128 ? value : fallback; };
       const value: NativeWebComposerPresentation = { contextId, visible: current.visible, blocked: current.blocked || input.disabled || !foreground(), bodyFontSize: current.bodyFontSize,
         ...(valid ? { rect, viewportWidth, viewportHeight } : {}), focused: state.current.focused, focusRevision: state.current.focusRevision,
-        selectionStart: input.selectionStart, selectionEnd: input.selectionEnd,
+        selectionStart: selection?.start ?? input.selectionStart, selectionEnd: selection?.end ?? input.selectionEnd,
         paddingTop: metric('padding-top'), paddingRight: metric('padding-right'), paddingBottom: metric('padding-bottom'), paddingLeft: metric('padding-left'),
         fontSize, lineHeight };
       runtime.setWebComposer(backendId, value, register ? undefined : contextId);
@@ -57,12 +71,20 @@ export function useNativeWebComposer(runtime: NativeRuntime | null, backendId: s
     // 现有 Skill/插件/位置和设置回调仍操作同一个 textarea 引用，改为请求常驻原生编辑器。
     input.focus = () => { if (disposed || input.disabled || !latest.current.visible) return; state.current.focused = true; state.current.focusRevision++; latest.current.onState(true, input.selectionStart); publish(); };
     input.blur = () => { state.current.focused = false; state.current.focusRevision++; latest.current.onState(false, input.selectionStart); publish(); };
-    input.setSelectionRange = (start, end, direction) => { select(start, end, direction); state.current.focusRevision++; publish(); };
+    input.setSelectionRange = (start, end, direction) => {
+      select(start, end, direction);
+      observedSelection.current = { contextId, text: input.value, revision: runtime.snapshot().draftRevision ?? 0, start: input.selectionStart, end: input.selectionEnd, committed: true };
+      state.current.focusRevision++;
+      publish();
+    };
     const editorState = (event: Event) => {
       const detail = (event as CustomEvent).detail;
-      if (!latest.current.visible || latest.current.blocked || input.disabled || !foreground() || detail?.contextId !== contextId || typeof detail.focused !== 'boolean'
-        || !Number.isSafeInteger(detail.selectionStart) || !Number.isSafeInteger(detail.selectionEnd) || detail.selectionStart < 0 || detail.selectionEnd < detail.selectionStart || detail.selectionEnd > input.value.length) return;
-      select(detail.selectionStart, detail.selectionEnd);
+      const snapshot = runtime.snapshot();
+      const revision = detail?.draftRevision ?? snapshot.draftRevision ?? 0;
+      if (!latest.current.visible || latest.current.blocked || input.disabled || !foreground() || detail?.contextId !== contextId || snapshot.contextId !== contextId || typeof detail.focused !== 'boolean'
+        || !Number.isSafeInteger(revision) || revision < 0 || revision !== (snapshot.draftRevision ?? 0)
+        || !Number.isSafeInteger(detail.selectionStart) || !Number.isSafeInteger(detail.selectionEnd) || detail.selectionStart < 0 || detail.selectionEnd < detail.selectionStart || detail.selectionEnd > snapshot.draft.length) return;
+      observedSelection.current = { contextId, text: snapshot.draft, revision, start: detail.selectionStart, end: detail.selectionEnd, committed: false };
       state.current.focused = detail.focused;
       latest.current.onState(detail.focused, detail.selectionStart);
       publish();

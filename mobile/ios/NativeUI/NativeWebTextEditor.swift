@@ -20,6 +20,8 @@ final class NativeWebTextEditor: NSObject, UITextViewDelegate {
         super.init()
         input.delegate = self
         input.backgroundColor = .clear
+        // 网页输入栏固定浅底；仅这个混合编辑器使用浅色trait，placeholder和typingAttributes随之解析。
+        input.overrideUserInterfaceStyle = .light
         input.textContainer.lineFragmentPadding = 0
         input.clipsToBounds = true
         input.accessibilityIdentifier = "native-composer-input"

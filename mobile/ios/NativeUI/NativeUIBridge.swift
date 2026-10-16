@@ -106,7 +106,7 @@ final class NativeUIBridge: NSObject, WKScriptMessageHandler {
     private func reportWebTextEditorState(contextID: String, focused: Bool, start: Int, end: Int) {
         guard active, legacyVisible, store.webComposerVisible, store.composerCanEdit, contextID == store.snapshot.contextId,
               let webView, let trustedURL, NativeUITrust.accepts(webView.url, trustedURL: trustedURL),
-              let script = NativeUITrust.webTextEditorState(contextId: contextID, focused: focused, start: start, end: end, trustedURL: trustedURL) else { return }
+              let script = NativeUITrust.webTextEditorState(contextId: contextID, focused: focused, start: start, end: end, draftRevision: store.webEditorDraftRevision, trustedURL: trustedURL) else { return }
         webView.evaluateJavaScript(script, completionHandler: nil)
     }
     func reportComposerLayout(_ probe: UIView, contextID: String) {
