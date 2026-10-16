@@ -20,7 +20,7 @@ describe("SwiftUI 原生宿主契约", () => {
   it.skipIf(process.platform !== "darwin")("执行真实 Swift store、Codable往返、离线状态与 Markdown 解析", () => {
     const directory = mkdtempSync(join(tmpdir(), "native-model-"));
     try {
-      const names = ["NativeJSONValue", "NativeCommand", "NativeCommandResult", "NativeOption", "NativeBackend", "NativeNavigationItem", "NativeGroup", "NativeAttachment", "NativeMessage", "NativePanelItem", "NativePanel", "NativeContextUsage", "NativeRateLimit", "NativeWebComposerPresentation", "NativeComposerAdjustment", "NativeComposerAdjustmentKind", "NativeSnapshot", "NativeUIStore", "NativeComposerPresentation", "NativeComposerPresentationEvent", "NativeComposerPresentationIntent", "NativeUIPreference", "NativeMarkdownBlock", "NativeMarkdownBlockKind", "NativeMarkdownSyntax", "NativeMarkdownInlinePart", "NativeMediaSource", "NativeReferenceAudio", "NativeVisualReference", "NativeReferenceSettings", "NativeHistoryEditReference", "NativeTextRhythm", "NativeFieldKey", "NativeFieldScope", "NativeImageData", "NativePlainText", "NativeInlineMarkdown", "NativeMarkdownDisplaySource", "NativeMarkdownHTMLScope", "NativeTimelineState", "NativeTextPrompt"];
+      const names = ["NativeJSONValue", "NativeCommand", "NativeCommandResult", "NativeOption", "NativeBackend", "NativeNavigationItem", "NativeGroup", "NativeAttachment", "NativeMessage", "NativePanelItem", "NativePanel", "NativeContextUsage", "NativeRateLimit", "NativeWebComposerPresentation", "NativeComposerLineLimits", "NativeComposerAdjustment", "NativeComposerAdjustmentKind", "NativeSnapshot", "NativeUIStore", "NativeComposerPresentation", "NativeComposerPresentationEvent", "NativeComposerPresentationIntent", "NativeUIPreference", "NativeMarkdownBlock", "NativeMarkdownBlockKind", "NativeMarkdownSyntax", "NativeMarkdownInlinePart", "NativeMediaSource", "NativeReferenceAudio", "NativeVisualReference", "NativeReferenceSettings", "NativeHistoryEditReference", "NativeTextRhythm", "NativeFieldKey", "NativeFieldScope", "NativeImageData", "NativePlainText", "NativeInlineMarkdown", "NativeMarkdownDisplaySource", "NativeMarkdownHTMLScope", "NativeTimelineState", "NativeTextPrompt"];
       const compile = spawnSync("xcrun", ["swiftc", ...names.map(name => `mobile/ios/NativeUI/${name}.swift`), "tests/ci/native-ui-model-smoke.swift", "tests/ci/native-ui-presentation-smoke.swift", "tests/ci/native-ui-history-smoke.swift", "tests/ci/native-ui-web-composer-smoke.swift", "-o", join(directory, "smoke")], { encoding: "utf8", timeout: swiftCompileTimeout });
       expect(compile.status, compile.error?.message ?? compile.stderr).toBe(0);
       const result = spawnSync(join(directory, "smoke"), [], { encoding: "utf8", timeout: swiftExecutionTimeout });
@@ -51,6 +51,11 @@ describe("SwiftUI 原生宿主契约", () => {
     expect(source("NativeInlineContentView")).toContain(".task(id: scope.identity + [text])");
     expect(source("NativeMarkdownTableView")).toContain("scope: cellScope(row: rowIndex, column: columnIndex)");
     expect(source("NativePlainText")).toContain("NativeInlineMarkdown.text(block.text, scope: block.scope)");
+  });
+  it("最大化保留同一原生编辑器并把预算行数用于TextField", () => {
+    const composer = source("NativeComposerView");
+    expect(composer.match(/TextField\(/g)).toHaveLength(1);
+    expect(composer).toContain(".lineLimit(composerLineLimits)");
   });
   it("具有离线原生根、输入、侧栏及设置 UI 验收", () => {
     expect(existsSync("mobile/ios/NativeUI/NativeRootView.swift"), "缺少真实 SwiftUI 根").toBe(true);

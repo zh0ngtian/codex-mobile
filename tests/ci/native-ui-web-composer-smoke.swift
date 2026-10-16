@@ -2,6 +2,13 @@ import Foundation
 
 enum NativeWebComposerSmoke {
     @MainActor static func verify() throws {
+        let collapsed = NativeComposerLineLimits.resolve(maximized: false, availableHeight: 500, lineHeight: 24, compact: false, accessibility: false)
+        let maximized = NativeComposerLineLimits.resolve(maximized: true, availableHeight: 500, lineHeight: 24, compact: false, accessibility: false)
+        precondition(collapsed == 1...6, "普通输入按内容自然增长")
+        precondition(maximized.lowerBound > collapsed.lowerBound && maximized.lowerBound == maximized.upperBound, "最大化实际编辑区域必须保留预算行数，不能只扩大背景")
+        precondition(Double(maximized.upperBound) * 24 + 80 <= 500, "输入行数为底部操作预留高度")
+        precondition(NativeComposerLineLimits.resolve(maximized: false, availableHeight: 500, lineHeight: 24, compact: true, accessibility: true) == 1...1, "横屏大字号普通输入维持原限制")
+        precondition(NativeComposerLineLimits.resolve(maximized: true, availableHeight: 100, lineHeight: 60, compact: true, accessibility: true) == 1...1, "有限高度至少保留一行并允许滚动")
         let store = NativeUIStore(arguments: [])
         precondition(store.composerEnabled && !store.nativeEnabled, "默认只启用独立输入框")
         let previous = UserDefaults.standard.object(forKey: NativeUIPreference.composerKey)

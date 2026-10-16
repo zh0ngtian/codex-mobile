@@ -31,7 +31,7 @@ struct NativeComposerView: View {
             }
             ZStack(alignment: .bottomLeading) {
                 TextField(placeholder, text: $store.composerText, selection: $selection, prompt: Text(placeholder).foregroundStyle(NativePalette.secondary), axis: .vertical)
-                    .lineLimit(1...maximumLines).font(.system(size: textSize * store.snapshot.fontScale, weight: .medium))
+                    .lineLimit(composerLineLimits).font(.system(size: textSize * store.snapshot.fontScale, weight: .medium))
                     .focused($focused)
                     .accessibilityIdentifier("native-composer-input")
                     .accessibilityHidden(store.sidebarOpen)
@@ -123,7 +123,11 @@ struct NativeComposerView: View {
     private var canSend: Bool { store.composerCanSend }
     private var hasDraft: Bool { !store.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !store.snapshot.attachments.isEmpty }
     private var canInterrupt: Bool { store.composerCanInterrupt }
-    private var maximumLines: Int { maximized ? max(1, Int((maximizedInputHeight - 80) / max(24, textSize * store.snapshot.fontScale * 1.5))) : verticalSizeClass == .compact ? (dynamicTypeSize.isAccessibilitySize ? 1 : 2) : (dynamicTypeSize.isAccessibilitySize ? 3 : 6) }
+    private var composerLineLimits: ClosedRange<Int> {
+        NativeComposerLineLimits.resolve(maximized: maximized, availableHeight: Double(maximizedInputHeight),
+            lineHeight: Double(textSize * store.snapshot.fontScale * 1.5), compact: verticalSizeClass == .compact,
+            accessibility: dynamicTypeSize.isAccessibilitySize)
+    }
     private func applyPresentation() {
         guard let presentation = store.consumeComposerPresentation(contextID: store.snapshot.contextId) else { return }
         focused = presentation == .focus
