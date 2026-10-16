@@ -117,7 +117,7 @@ struct NativeComposerAttachmentMenu: UIViewRepresentable {
             opening = false
             presented = false
             parent.isOpen = false
-            // 系统菜单完全关闭再打开照片、文件或 Skill 面板，取消后仍可重新打开。
+            // 系统菜单完全关闭再执行附件动作，取消后仍可重新打开。
             if let action, let context {
                 parent.store.chooseComposerAttachment(action, contextID: context.contextID)
             }

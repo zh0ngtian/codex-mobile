@@ -6,6 +6,7 @@ struct NativeComposerView: View {
     let contextID: String?
     var onFocusChanged: (Bool) -> Void = { _ in }
     let availableHeight: CGFloat
+    var bodyFontSize: Double = 14.5
     @State private var supplementaryContentHeight: CGFloat = 0
     @State private var queuedContentHeight: CGFloat = 0
     @State private var attachmentContentHeight: CGFloat = 0
@@ -13,7 +14,7 @@ struct NativeComposerView: View {
     @Environment(\.verticalSizeClass) private var verticalSizeClass
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @ScaledMetric(relativeTo: .body) private var textSize = 14
-    @ScaledMetric(relativeTo: .body) private var toolbarSize = 16
+    @ScaledMetric(relativeTo: .body) private var iconSize = 20
     @FocusState private var focused: Bool
     @State private var selection: TextSelection?
     var body: some View {
@@ -52,7 +53,7 @@ struct NativeComposerView: View {
             }
             ZStack(alignment: .bottomLeading) {
                 TextField(placeholder, text: $store.composerText, selection: $selection, prompt: Text(placeholder).foregroundStyle(NativePalette.secondary), axis: .vertical)
-                    .lineLimit(composerLineLimits).font(.system(size: textSize * store.snapshot.fontScale, weight: .medium))
+                    .lineLimit(composerLineLimits).font(.system(size: inputFontSize, weight: .medium))
                     .focused($focused)
                     .accessibilityIdentifier("native-composer-input")
                     .accessibilityHidden(store.sidebarOpen)
@@ -61,13 +62,13 @@ struct NativeComposerView: View {
                     .padding(.top, layoutBudget.editorTopInset).padding(.bottom, layoutBudget.editorBottomInset)
                     .onChange(of: selection) { updateCaret() }
                     .onChange(of: store.selectionRevision, initial: true) { updateSelection() }
-                HStack(spacing: 2) {
+                HStack(spacing: 4) {
                     NativeComposerAttachmentMenu(store: store, contextID: contextID,
                         isEnabled: store.composerCanEdit && !store.sidebarOpen, isOpen: attachmentPresentation,
-                        fontSize: toolbarSize * store.snapshot.fontScale)
+                        fontSize: iconSize * store.snapshot.fontScale)
                         .frame(width: 44, height: 44)
                     if expanded { NativeComposerConfigurationView(store: store, contextID: contextID) }
-                    Spacer(minLength: 0)
+                    if !expanded { Spacer(minLength: 0) }
                     if canInterrupt && hasDraft {
                         Button(store.label("停止", "Stop"), systemImage: "stop.circle") { store.command("turn.stop") }
                             .labelStyle(.iconOnly).frame(minWidth: 44, minHeight: 44)
@@ -76,13 +77,13 @@ struct NativeComposerView: View {
                     Button(action: submit) {
                         Image(systemName: canInterrupt && !hasDraft ? "stop.fill" : "arrow.up")
                             .foregroundStyle(.white)
-                            .frame(width: 28, height: 28)
+                            .frame(width: 32, height: 32)
                             .background(canSend || canInterrupt ? NativePalette.accent : Color.gray.opacity(0.35), in: .circle)
                             .frame(width: 44, height: 44)
                     }.buttonStyle(.plain).disabled(!canSend && !(canInterrupt && !hasDraft))
                         .accessibilityLabel(canInterrupt && !hasDraft ? store.label("停止", "Stop") : store.snapshot.busy ? store.label("排队发送", "Queue Message") : store.label("发送", "Send"))
                         .accessibilityIdentifier("native-send")
-                }.font(.system(size: toolbarSize * store.snapshot.fontScale, weight: .semibold))
+                }.font(.system(size: iconSize * store.snapshot.fontScale, weight: .semibold))
                 .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { toolbarHeight = $0 }
                 .padding(.horizontal, 4).padding(.bottom, expanded ? 4 : 2)
             }
@@ -132,10 +133,11 @@ struct NativeComposerView: View {
         selection = TextSelection(insertionPoint: position)
     }
     private var hasSupplementaryContent: Bool { !store.snapshot.attachments.isEmpty || !store.snapshot.queued.isEmpty }
-    private var inputLineHeight: CGFloat { UIFont.systemFont(ofSize: textSize * store.snapshot.fontScale, weight: .medium).lineHeight }
+    private var inputFontSize: CGFloat { textSize * (bodyFontSize / 14) * store.snapshot.fontScale }
+    private var inputLineHeight: CGFloat { UIFont.systemFont(ofSize: inputFontSize, weight: .medium).lineHeight }
     private var layoutBudget: NativeComposerLayoutBudget {
         NativeComposerLayoutBudget.resolve(availableHeight: Double(availableHeight), lineHeight: Double(inputLineHeight),
-            toolbarHeight: Double(max(toolbarHeight, ceil(UIFont.systemFont(ofSize: toolbarSize * store.snapshot.fontScale, weight: .semibold).lineHeight) + 1)),
+            toolbarHeight: Double(max(toolbarHeight, ceil(UIFont.systemFont(ofSize: iconSize * store.snapshot.fontScale, weight: .semibold).lineHeight) + 1)),
             expanded: expanded, focused: focused, compact: verticalSizeClass == .compact,
             hasSupplementaryContent: hasSupplementaryContent)
     }
