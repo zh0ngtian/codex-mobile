@@ -342,7 +342,7 @@ iOS 支持在本机局域网执行 Ad Hoc 自动签名与 HTTPS OTA。证书和�
 资源内置到 App。构建产物只包含上述固定更新服务器地址，不包含网关 Token 或其他私人配置。
 Android 安装包保持竖屏。iOS 主界面以 iPhone 竖屏为基准，并支持横屏及 iPad；应用内浏览器保留自身的方向策略。
 
-发布流程由统一协调入口负责提交整合、版本分配及批次交付；现已复用发布主机的 releasectl 服务和项目适配器，配置与实际验收状态见 [发布协调说明](docs/release-coordination.md)。通用合批策略以 canonical 全局规则为准。
+发布流程由统一协调入口负责提交整合、版本分配及批次交付；现已复用发布主机的 releasectl 服务和项目适配器。项目发布约束见 [仓库协作约定](AGENTS.md)，配置、失败恢复和实际验收状态见 [发布协调说明](docs/release-coordination.md)。
 
 本项目发布要求：
 

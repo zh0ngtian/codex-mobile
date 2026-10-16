@@ -1,6 +1,6 @@
 # Codex Mobile 发布协调器接入
 
-通用合批策略及不可变失败/关联修复规则维护在当前 canonical 全局 `AGENTS.md`。本页只说明本项目的配置、入口、验证和必要例外；上游合同见 [README](https://github.com/zh0ngtian/release-coordinator/blob/main/README.md) 和 [USAGE](https://github.com/zh0ngtian/release-coordinator/blob/main/USAGE.md)。
+本项目的协调与交付约束维护在 [仓库 AGENTS.md](../AGENTS.md)。本页说明项目配置、执行入口、不可变失败与关联修复、验证和必要例外；协调器上游合同见 [README](https://github.com/zh0ngtian/release-coordinator/blob/main/README.md) 和 [USAGE](https://github.com/zh0ngtian/release-coordinator/blob/main/USAGE.md)。
 
 ## 本机部署与作用域
 
