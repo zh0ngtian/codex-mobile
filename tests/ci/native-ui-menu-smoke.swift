@@ -30,10 +30,9 @@ enum NativeComposerMenuSmoke {
         let expected: [(NativeComposerAttachmentAction, String, [String: NativeJSONValue], String)] = [
             (.photos, "attachment.pick", ["kind": .string("photos")], "photo"),
             (.files, "attachment.pick", ["kind": .string("files")], "paperclip"),
-            (.mentions, "panel.open", ["id": .string("mentions")], "at"),
             (.location, "location.insert", [:], "location")
         ]
-        check(NativeComposerAttachmentAction.allCases == expected.map(\.0), "附件四项顺序固定且全部列出")
+        check(NativeComposerAttachmentAction.allCases == expected.map(\.0), "附件三项顺序固定且全部列出")
         let store = NativeUIStore(arguments: [])
         var value = NativeSnapshot()
         value.ready = true; value.contextId = "old-context"; value.draft = "保留草稿与选区"
@@ -48,7 +47,7 @@ enum NativeComposerMenuSmoke {
             var contextual = params; contextual["contextId"] = .string("old-context")
             check(commands.last?.name == name && commands.last?.params == contextual, "附件保留现有业务动作及原上下文")
         }
-        check(commands.count == 4, "每个选择只派发一次")
+        check(commands.count == 3, "每个选择只派发一次")
         check(store.draft == value.draft && store.caretOffset == 3 && store.selectionRevision == revision, "附件选择不重设草稿、光标或中文组字选区")
         store.setComposerAttachmentOpen(true, contextID: "old-context")
         check(store.attachmentOpen, "当前会话可以打开附件菜单")

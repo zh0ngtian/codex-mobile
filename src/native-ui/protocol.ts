@@ -12,7 +12,7 @@ export interface NativeGroup { id: string; title: string; items: NativeNavigatio
 export interface NativeMessage { id: string; role: string; text: string; status?: string; blocks?: NativePanelItem[]; actions?: NativePanelItem[]; timestamp?: number; historyEdit?: NativeSnapshot['panel'] }
 export interface NativeAttachment { id: string; name: string; detail?: string; imageURL?: string; type?: string; command?: NativeCommand }
 export interface NativeResult { id: string; name: string; ok: boolean; contextId?: string; error?: string; fieldKey?: string; fieldRevision?: number }
-export interface NativeWebComposerPresentation { contextId: string; visible: boolean; blocked: boolean }
+export interface NativeWebComposerPresentation { contextId: string; visible: boolean; blocked: boolean; bodyFontSize?: number }
 export interface NativeSnapshot {
   webComposer?: NativeWebComposerPresentation;
   version: 1; ready: boolean; locale: string; fontScale: number; title: string;

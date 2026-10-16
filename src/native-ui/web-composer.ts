@@ -1,4 +1,5 @@
 import { useLayoutEffect, useSyncExternalStore, type RefObject } from 'react';
+import { useWebInterface } from '../features/web-ui/preference';
 import { hasOverlayPresence, subscribeOverlayPresence } from '../ui/overlay-scroll';
 import { isNativeBridgeEnabled, isNativeUIEnabled, type NativeRuntime } from './runtime';
 
@@ -12,9 +13,11 @@ export function useNativeWebComposer(runtime: NativeRuntime | null, backendId: s
   const capable = useSyncExternalStore(subscribeRecovery, isNativeWebComposerEnabled, () => false);
   const overlay = useSyncExternalStore(subscribeOverlayPresence, hasOverlayPresence, () => false);
   const enabled = capable && runtime !== null;
+  const { modern } = useWebInterface();
+  const bodyFontSize = modern ? 14.2 : 16;
   useLayoutEffect(() => {
-    if (enabled) runtime.setWebComposer(backendId, { contextId, visible, blocked: blocked || overlay });
-  }, [runtime, backendId, contextId, enabled, visible, blocked, overlay]);
+    if (enabled) runtime.setWebComposer(backendId, { contextId, visible, blocked: blocked || overlay, bodyFontSize });
+  }, [runtime, backendId, contextId, enabled, visible, blocked, overlay, bodyFontSize]);
   useLayoutEffect(() => () => runtime?.setWebComposer(backendId, undefined, contextId), [runtime, backendId, contextId]);
   useLayoutEffect(() => {
     const scroll = scrollRef.current;
