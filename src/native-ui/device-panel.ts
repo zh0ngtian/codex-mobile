@@ -1,5 +1,4 @@
 import { t } from '../i18n';
-import { isIOSNativeHost } from './preference';
 import { nativeAction, nativeCommand } from './projection';
 import type { NativePanelItem, NativeSnapshot } from './protocol';
 /** 此投影只挑选字段；完整设备凭证只在显式编辑表单中进入secureField。 */
@@ -30,10 +29,8 @@ export function projectDevicePanel(c: any): NativeSnapshot['panel'] {
  if (c.error) items.push({ id: 'devices-error', kind: 'text', title: t('错误'), text: c.error });
  if (!confirmation) {
   items.push(choice('transport', t('传输方式'), c.transportMode, [['http', 'HTTP'], ['stream', '流式']], 'settings.transport'), choice('language', t('语言'), c.preference, [['system', '跟随系统'], ['zh-CN', '中文'], ['en', '英文']], 'settings.language'));
-  if (!isIOSNativeHost()) {
-   items.push(choice('font', t('字体大小'), c.font.size, [['small', '小'], ['standard', '标准'], ['large', '大'], ['extra-large', '特大']], 'settings.font'));
-   if (c.font.saveError) items.push({ id: 'font-error', kind: 'text', text: t('字号已应用，但无法保存；重启后可能恢复原字号') });
-  }
+  items.push(choice('font', t('字体大小'), c.font.size, [['small', '小'], ['standard', '标准'], ['large', '大'], ['extra-large', '特大']], 'settings.font'));
+  if (c.font.saveError) items.push({ id: 'font-error', kind: 'text', text: t('字号已应用，但无法保存；重启后可能恢复原字号') });
   if (c.hasPush) {
    const p = c.push;
    items.push(choice('push', t('推送方式'), p.mode, [['system', '系统推送'], ['bark', 'Bark 推送']], 'settings.push.mode'));

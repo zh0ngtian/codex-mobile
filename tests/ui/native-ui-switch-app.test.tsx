@@ -133,20 +133,21 @@ it('iOS旧界面确认沿用可见Web对话框，不创建不可见的原生确�
  expect(result.current.runtime).toBeNull();
  expect(await result.current.confirm('确认清除？')).toBe(true); expect(confirm).toHaveBeenCalledWith('确认清除？');
 });
-it('iOS 切换检查点中的旧大字号与过期字号命令均不改变固定小字号，重启仍一致', async () => {
+it('iOS 切换检查点保存调整后的字号，重新启动恢复新选择', async () => {
  localStorage.setItem('codex-mobile:font-size', 'extra-large');
  host(true); const first = render(<AppBootstrap initialRegistry={registry} />);
  await waitFor(() => expect(posts.at(-1)?.ready).toBe(true));
- expect(posts.at(-1)?.fontScale).toBe(0.875);
+ expect(posts.at(-1)?.fontScale).toBe(1.25);
  await act(async () => command('font-before-arm', 'settings.open', { id: 'font' }));
  await act(async () => command('arm-before-font', 'settings.native-ui', { enabled: false }));
  await waitFor(() => expect(posts.at(-1)?.commandResults?.find((r: any) => r.id === 'arm-before-font')?.ok).toBe(true));
  await act(async () => command('font-after-arm', 'settings.font', { value: 'standard', fieldKey: 'settings:font:font', fieldRevision: 1 }));
  await waitFor(() => expect(posts.at(-1)?.commandResults?.find((r: any) => r.id === 'font-after-arm')?.ok).toBe(true));
- await waitFor(async () => expect((await nativeSwitchStore.load())?.storage['codex-mobile:font-size']).toBe('extra-large'));
+ await waitFor(() => expect(posts.at(-1)?.fontScale).toBe(1));
+ await waitFor(async () => expect((await nativeSwitchStore.load())?.storage['codex-mobile:font-size']).toBe('standard'));
  first.unmount(); render(<AppBootstrap initialRegistry={registry} />);
- await waitFor(() => expect(posts.at(-1)?.fontScale).toBe(0.875));
- expect(localStorage.getItem('codex-mobile:font-size')).toBe('extra-large');
+ await waitFor(() => expect(posts.at(-1)?.fontScale).toBe(1));
+ expect(localStorage.getItem('codex-mobile:font-size')).toBe('standard');
 });
 
 it('人工恢复同一个Web业务界面时保留全部草稿与连接，仅关闭原生呈现', async () => {

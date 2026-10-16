@@ -1,6 +1,5 @@
 import type { ReactNode } from "react";
 import { t } from "../../i18n";
-import { isIOSNativeHost } from "../../native-ui/preference";
 
 export type SettingsPage = "root" | "devices" | "language" | "font" | "transport" | "notifications";
 
@@ -36,7 +35,7 @@ export function ModernSettingsRoot({ language, fontSize, deviceCount, transport,
       <h3>{t("应用")}</h3>
       <div className="modern-settings-card">
         {row("language", t("语言"), language)}
-        {!isIOSNativeHost() && row("font", t("字体大小"), fontSize)}
+        {row("font", t("字体大小"), fontSize)}
         {webToggle}
         {nativeToggle}
       </div>

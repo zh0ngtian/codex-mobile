@@ -10,16 +10,15 @@ export const FONT_SCALES = {
 export type FontSize = keyof typeof FONT_SCALES;
 
 export function readFontSize(): FontSize {
-  if (isIOSNativeHost()) return "small";
   try {
     const value = window.localStorage.getItem(FONT_SIZE_STORAGE_KEY);
     if (value && Object.hasOwn(FONT_SCALES, value)) return value as FontSize;
   } catch {
-    // 存储不可读时仍允许使用标准字号进入应用。
+    // 存储不可读时仍使用当前客户端的默认字号进入应用。
   }
-  return "standard";
+  return isIOSNativeHost() ? "small" : "standard";
 }
 
 export function applyFontSize(size: FontSize) {
-  document.documentElement.style.setProperty("--app-font-scale", String(FONT_SCALES[isIOSNativeHost() ? "small" : size]));
+  document.documentElement.style.setProperty("--app-font-scale", String(FONT_SCALES[size]));
 }

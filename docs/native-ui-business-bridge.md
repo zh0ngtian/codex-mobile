@@ -90,9 +90,9 @@ ConfiguredApp 使用真实 `scopedThreads`、`projectDirectories`、`collapsedPr
 | 审批 | `approval.answer/decide/submit/dismiss/reopen` 复用 approval-model 与 useApprovalRequests；决定仅映射当前 availableDecisions 的有效下标，回答读取同一拥有者已接受的最新答案 |
 | 历史编辑 | 原生输入框位于原消息位置，`history.change/cancel/submit` 复用原编辑回调与附件 input；真实存在后续对话时显示显式删除确认；historyEditRef 同步占用提交状态，防止连续不同 UUID 重复回退与发送 |
 | 排队消息 | `queue.change/edit/cancel/send` 保留原 hosted queue UUID、revision、HTTP pending 与查询语义，严格按 sending/uncertain、busy/steerable、failed 与同步状态提供编辑、取消、引导和重试 |
-| 设备与设置 | `settings.open {id}` 打开 devices/language/transport/notifications/updates，font 仅保留非 iOS 网页设置；BackendManagerSheet 自身状态直接投影，probe/hostId 校验、注册表启停重排删除复用旧入口，繁忙或队列操作使用显式确认 |
+| 设备与设置 | `settings.open {id}` 打开 devices/language/font/transport/notifications/updates，iOS 网页与原生共用字号设置；BackendManagerSheet 自身状态直接投影，probe/hostId 校验、注册表启停重排删除复用旧入口，繁忙或队列操作使用显式确认 |
 | 扫码 | 宿主 `codexMobileScanGatewayQr()` 返回原始扫码内容，再走 applyScannedGateway；只填现有表单，仍需测试并保存；取消或设备表单变化不会写入另一表单 |
-| 推送与字号 | Web 与原生共享 usePushSettingsState/useFontSizeSettings 的单一状态；Bark 校验、保存错误及未同步设备均保留；iOS 应用字号固定为原 small（0.875），忽略旧字号偏好，设置与过期字体页均不展示调整选项，snapshot 与原生加载态保持同一比例；语言立即反映在 snapshot |
+| 推送与字号 | Web 与原生共享 usePushSettingsState/useFontSizeSettings 的单一状态；Bark 校验、保存错误及未同步设备均保留；iOS 默认保留 small（0.875），读取已有字号偏好；网页与原生设置均支持四档调整，立即保存并投影到 snapshot，原生接收所选比例，加载态仍使用 small；语言立即反映在 snapshot |
 | 无设备启动 | UnconfiguredApp 与 ConfiguredApp 互斥挂载各自 runtime；无设备立即 ready 并展示添加设备表单，关闭后仍有重新添加入口 |
 | 本地草稿 | DraftsSheet 直接投影已有 list/remove/retry/restore；只传元数据，恢复回调获得原 IDB 二进制记录，不复制记录、不发送消息 |
 | 应用更新 | AppUpdateSheet 原 phase、进度、更新说明、install/retry/close；`manualCheckSupported=false` 不投影手动检查动作 |
@@ -134,7 +134,7 @@ Task2b 分模块 RED→GREEN 日志位于 `.mobile-build/native-reference/task2b
 
 附件入口由单一职责 `NativeComposerAttachmentMenu` 包装可交互 `UIButton/UIMenu`，同时支持直接点击和 `consumeComposerPresentation(.attachments)` 的程序打开，均不再呈现 sheet。三项顺序为照片 `photo`、文件 `paperclip`、当前位置 `location`，沿用 `attachment.pick/photos`、`attachment.pick/files` 和 `location.insert`。加号菜单不再列出 Skill 与插件，其他既有 Skill、插件和提及能力保持不变。菜单上下文在创建时固定；两种宿主将该上下文作为输入栏的不可变参数，附件呈现使用按上下文隔离的 Binding，旧输入栏消失、禁编辑或 UIKit 结束回调只能清理所属会话，不能清除新会话已消费的打开请求。`willEndFor` 动画结束后清理呈现状态，再由 store 重新检查原会话并派发命令，避免系统菜单与后续照片/文件选择器争用呈现。取消后可以重新打开；菜单本身不改变输入焦点，不替换 TextField、草稿或 TextSelection，也不推进 selectionRevision。
 
-速度菜单继续使用权威 `snapshot.speedValue`，空值及 `default`/`normal` 默认别名显示 `bolt.slash`，非默认服务档位（包括旧 `fast` 与真实目录中的 `priority`）显示 `bolt.fill`；图标和辅助功能值共用 `isFastEnabled` 判断 Fast 开关；不建立乐观速度状态。输入栏的附件、权限、速度、停止和发送图标采用独立的 20pt 基准，模型/思考文字保留 16pt 基准；权限和速度的系统菜单标签显式使用图标字体。整行间距为 4pt、配置组内间距为 8pt，附件与权限靠左，配置组在权限后使用弹性留白，使速度、模型/思考和发送靠右；模型文字保持自然宽度，长名称中间截断。图标和文字继续使用 `ScaledMetric` 跟随 Dynamic Type，并各乘一次应用字号 small（0.875）；点击范围至少 44pt，发送圆底扩大至 32pt。侧栏项目行不再带新建图标，最近对话和底部新建入口继续保留。设置首页展示现有偏好的实时投影，语言直接选择，iOS 移除字号行，版本行只展示已安装版本。iOS 不做启动、前台或手动更新检查，不接收升级事件，也不在 App 内触发 OTA 安装；Android 更新流程保持原有行为。
+速度菜单继续使用权威 `snapshot.speedValue`，空值及 `default`/`normal` 默认别名显示 `bolt.slash`，非默认服务档位（包括旧 `fast` 与真实目录中的 `priority`）显示 `bolt.fill`；图标和辅助功能值共用 `isFastEnabled` 判断 Fast 开关；不建立乐观速度状态。输入栏的附件、权限、速度、停止和发送图标采用独立的 20pt 基准，模型/思考文字保留 16pt 基准；权限和速度的系统菜单标签显式使用图标字体。整行间距为 4pt、配置组内间距为 8pt，附件与权限靠左，配置组在权限后使用弹性留白，使速度、模型/思考和发送靠右；模型文字保持自然宽度，长名称中间截断。图标和文字继续使用 `ScaledMetric` 跟随 Dynamic Type，并各乘一次所选应用字号比例，默认 small（0.875）；点击范围至少 44pt，发送圆底扩大至 32pt。侧栏项目行不再带新建图标，最近对话和底部新建入口继续保留。设置首页展示现有偏好的实时投影，语言直接选择，iOS 恢复四档字号选择及保存错误反馈，版本行只展示已安装版本。iOS 不做启动、前台或手动更新检查，不接收升级事件，也不在 App 内触发 OTA 安装；Android 更新流程保持原有行为。
 
 ## 网页原生输入框
 

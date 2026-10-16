@@ -4,7 +4,6 @@ import { ModernSettingsRoot, type SettingsPage } from "./ModernSettingsRoot";
 import { useWebInterface } from '../web-ui/preference';
 import { useNativeGlobalPanel } from '../../native-ui/adapters';
 import { projectDevicePanel } from '../../native-ui/device-panel';
-import { isIOSNativeHost } from '../../native-ui/preference';
 import type { NativeRuntime } from '../../native-ui/runtime';
 import {
   type FormEvent,
@@ -567,12 +566,12 @@ export function BackendManagerSheet({
           /> : <>
             {settingsPage === "devices" && deviceContent}
             {settingsPage === "language" && languageForm}
-            {settingsPage === "font" && !isIOSNativeHost() && <FontSizeSettingsForm state={font} />}
+            {settingsPage === "font" && <FontSizeSettingsForm state={font} />}
             {settingsPage === "transport" && transportForm}
             {settingsPage === "notifications" && pushForm}
           </>}
         </div> : <>
-          {webToggle}{nativeToggle}{transportForm}{pushForm}{!isIOSNativeHost() && <FontSizeSettingsForm state={font} />}
+          {webToggle}{nativeToggle}{transportForm}{pushForm}<FontSizeSettingsForm state={font} />
           {deviceContent}
           {!draft && <>{languageForm}{updateSection}</>}
         </>}
