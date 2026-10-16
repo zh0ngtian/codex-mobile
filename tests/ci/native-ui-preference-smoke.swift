@@ -21,6 +21,15 @@ struct NativePreferenceSmoke {
         defaults.removeObject(forKey: NativeUIPreference.key)
         do { try broken.save(true); preconditionFailure("首次保存失败必须报告错误") }
         catch { precondition(defaults.object(forKey: NativeUIPreference.key) == nil, "失败后恢复首次默认状态") }
+        let composer = NativeUIPreference(defaults: defaults, storageKey: NativeUIPreference.composerKey, defaultEnabled: true)
+        precondition(composer.enabled, "首次打开默认使用独立原生输入框")
+        let frozenComposer = composer.enabled
+        try composer.save(false)
+        precondition(!composer.enabled && frozenComposer, "保存输入偏好不改变冻结值")
+        precondition(!preference.enabled, "两个偏好相互独立")
+        let brokenComposer = NativeUIPreference(defaults: defaults, storageKey: NativeUIPreference.composerKey, defaultEnabled: true, synchronize: { false })
+        do { try brokenComposer.save(true); preconditionFailure("输入偏好失败必须报告") }
+        catch { precondition(!composer.enabled, "输入偏好失败回滚") }
         print("Preference smoke passed")
     }
 }

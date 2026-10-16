@@ -14,6 +14,7 @@ final class NativeUIBridge: NSObject, WKScriptMessageHandler {
     private var legacyVisible = true
     private var active = true
     private var needsLifecycleSync = true
+    private var composerLayout: (contextID: String, top: CGFloat, height: CGFloat)?
     override init() {
         super.init()
         store.copyText = { [weak store] text in
@@ -32,7 +33,7 @@ final class NativeUIBridge: NSObject, WKScriptMessageHandler {
         let controller = webView.configuration.userContentController
         controller.removeScriptMessageHandler(forName: "nativeUI")
         controller.add(self, name: "nativeUI")
-        if let script = NativeUITrust.bootstrap(trustedURL: trustedURL, enabled: store.nativeEnabled) {
+        if let script = NativeUITrust.bootstrap(trustedURL: trustedURL, enabled: store.nativeEnabled, composerEnabled: store.composerEnabled) {
             controller.addUserScript(WKUserScript(source: script, injectionTime: .atDocumentStart, forMainFrameOnly: true))
         }
         store.sendCommand = { [weak self] command in self?.dispatch(command) }
@@ -44,17 +45,24 @@ final class NativeUIBridge: NSObject, WKScriptMessageHandler {
               let object = message.body as? [String: Any] else { return }
         if object["type"] as? String == "ready" { applyLifecycle(); if recoveryRequested { recoverLegacy() }; return }
         if object["type"] as? String == "nativePreference", let id = object["id"] as? String, !id.isEmpty, id.count <= 200 {
-            let preference = NativeUIPreference()
+            let kind = object["kind"] as? String ?? "interface"
+            let validKind = object["kind"] == nil || object["kind"] as? String == "interface" || object["kind"] as? String == "composer"
+            let composer = kind == "composer"
+            let preference = NativeUIPreference(storageKey: composer ? NativeUIPreference.composerKey : NativeUIPreference.key, defaultEnabled: composer)
             var failure: String?
-            if let raw = object["enabled"] {
+            if !validKind { failure = store.label("界面偏好参数无效", "Invalid interface preference") }
+            else if let raw = object["enabled"] {
                 if let number = raw as? NSNumber, CFGetTypeID(number) == CFBooleanGetTypeID() {
                     do { try preference.save(number.boolValue) }
                     catch { failure = store.label("界面偏好保存失败，请重试", "Could not save the interface preference. Please retry.") }
                 } else { failure = store.label("界面偏好参数无效", "Invalid interface preference") }
             }
-            if object["enabled"] != nil { store.receivedNativePreference(preference.enabled, error: failure) }
-            else { store.savedNativePreference = preference.enabled }
-            if let webView, let script = NativeUITrust.completePreference(id: id, enabled: preference.enabled, active: store.nativeEnabled, error: failure, trustedURL: trustedURL) {
+            if validKind {
+                if object["enabled"] != nil { store.receivedNativePreference(preference.enabled, kind: kind, error: failure) }
+                else if composer { store.savedComposerPreference = preference.enabled }
+                else { store.savedNativePreference = preference.enabled }
+            }
+            if let webView, let script = NativeUITrust.completePreference(id: id, enabled: preference.enabled, active: composer ? store.composerEnabled : store.nativeEnabled, error: failure, trustedURL: trustedURL) {
                 webView.evaluateJavaScript(script, completionHandler: nil)
             }
             return
@@ -85,6 +93,27 @@ final class NativeUIBridge: NSObject, WKScriptMessageHandler {
             #endif
             store.snapshot.error = "原生界面数据无法读取：\(error.localizedDescription)"
         }
+    }
+    func reportComposerLayout(_ probe: UIView, contextID: String) {
+        guard store.webComposerVisible, contextID == store.snapshot.contextId,
+              let webView, let window = probe.window, window === webView.window,
+              let trustedURL, NativeUITrust.accepts(webView.url, trustedURL: trustedURL) else { return }
+        let top = max(0, probe.convert(probe.bounds, to: webView).minY)
+        let height = webView.bounds.height
+        guard height > 0 else { return }
+        if let previous = composerLayout, previous.contextID == contextID, abs(previous.top - top) < 0.5, abs(previous.height - height) < 0.5 { return }
+        composerLayout = (contextID, top, height)
+        publishComposerLayout(contextID: contextID, top: top, height: height)
+    }
+    func clearComposerLayout(contextID: String) {
+        guard let previous = composerLayout, previous.contextID == contextID else { return }
+        composerLayout = nil
+        publishComposerLayout(contextID: contextID, top: previous.height, height: previous.height)
+    }
+    private func publishComposerLayout(contextID: String, top: CGFloat, height: CGFloat) {
+        guard let trustedURL, let webView, NativeUITrust.accepts(webView.url, trustedURL: trustedURL),
+              let script = NativeUITrust.composerLayout(contextId: contextID, top: Double(top), webViewHeight: Double(height), trustedURL: trustedURL) else { return }
+        webView.evaluateJavaScript(script, completionHandler: nil)
     }
     func recoverLegacy() {
         recoveryRequested = true
@@ -117,13 +146,13 @@ final class NativeUIBridge: NSObject, WKScriptMessageHandler {
               let script = NativeUITrust.dispatch(command, trustedURL: trustedURL) else {
             let message = store.label("连接尚未就绪，请稍后重试", "The connection is not ready. Please retry.")
             store.commandError = message
-            if command.name == "settings.native-ui" { store.receivedNativePreference(store.savedNativePreference, error: message) }
+            store.failNativePreference(command, error: message)
             return
         }
         webView.evaluateJavaScript(script) { [weak self] _, error in
             if let error {
                 self?.store.snapshot.error = error.localizedDescription
-                if command.name == "settings.native-ui", let store = self?.store { store.receivedNativePreference(store.savedNativePreference, error: error.localizedDescription) }
+                self?.store.failNativePreference(command, error: error.localizedDescription)
             }
         }
     }

@@ -13,15 +13,15 @@ const source = (name: string) => readFileSync(`mobile/ios/NativeUI/${name}.swift
 const trustedURL = "file:///Applications/Codex.app/index.html";
 function bootstrap() {
   return source("NativeUITrust").match(/static let script = """\n([\s\S]*?)\n\s*"""/)![1]
-    .replace("__CODEX_TRUSTED_URL__", JSON.stringify(trustedURL)).replace("__CODEX_NATIVE_ENABLED__", "true");
+    .replace("__CODEX_TRUSTED_URL__", JSON.stringify(trustedURL)).replace("__CODEX_NATIVE_ENABLED__", "true").replace("__CODEX_NATIVE_COMPOSER_ENABLED__", "false");
 }
-afterEach(() => { delete (window as any).__CODEX_NATIVE_UI__; delete (window as any).__CODEX_IOS_HOST__; delete (window as any).__CODEX_NATIVE_UI_RECOVERED__; delete (window as any).codexMobileUseLegacyRecovery; delete (window as any).__CODEX_NATIVE_ACTIVE__; delete (window as any).codexMobileSetNativeActive; delete (window as any).codexMobileNativeCommand; delete (window as any).codexMobilePublishNativeSnapshot; delete (window as any).webkit; delete (window as any).codexMobileScanGatewayQr; delete (window as any).codexMobileQRComplete; delete (window as any).codexMobileNativePreferenceComplete; });
+afterEach(() => { delete (window as any).__CODEX_NATIVE_UI__; delete (window as any).__CODEX_NATIVE_COMPOSER__; delete (window as any).__CODEX_IOS_HOST__; delete (window as any).__CODEX_NATIVE_UI_RECOVERED__; delete (window as any).codexMobileUseLegacyRecovery; delete (window as any).__CODEX_NATIVE_ACTIVE__; delete (window as any).codexMobileSetNativeActive; delete (window as any).codexMobileNativeCommand; delete (window as any).codexMobilePublishNativeSnapshot; delete (window as any).webkit; delete (window as any).codexMobileScanGatewayQr; delete (window as any).codexMobileQRComplete; delete (window as any).codexMobileNativePreferenceComplete; });
 describe("SwiftUI 原生宿主契约", () => {
   it.skipIf(process.platform !== "darwin")("执行真实 Swift store、Codable往返、离线状态与 Markdown 解析", () => {
     const directory = mkdtempSync(join(tmpdir(), "native-model-"));
     try {
-      const names = ["NativeJSONValue", "NativeCommand", "NativeCommandResult", "NativeOption", "NativeBackend", "NativeNavigationItem", "NativeGroup", "NativeAttachment", "NativeMessage", "NativePanelItem", "NativePanel", "NativeContextUsage", "NativeRateLimit", "NativeComposerAdjustment", "NativeComposerAdjustmentKind", "NativeSnapshot", "NativeUIStore", "NativeComposerPresentation", "NativeComposerPresentationEvent", "NativeComposerPresentationIntent", "NativeUIPreference", "NativeMarkdownBlock", "NativeMarkdownBlockKind", "NativeMarkdownSyntax", "NativeMarkdownInlinePart", "NativeMediaSource", "NativeReferenceAudio", "NativeVisualReference", "NativeReferenceSettings", "NativeHistoryEditReference", "NativeTextRhythm", "NativeFieldKey", "NativeFieldScope", "NativeImageData", "NativePlainText", "NativeInlineMarkdown", "NativeMarkdownDisplaySource", "NativeMarkdownHTMLScope", "NativeTimelineState", "NativeTextPrompt"];
-      const compile = spawnSync("xcrun", ["swiftc", ...names.map(name => `mobile/ios/NativeUI/${name}.swift`), "tests/ci/native-ui-model-smoke.swift", "tests/ci/native-ui-presentation-smoke.swift", "tests/ci/native-ui-history-smoke.swift", "-o", join(directory, "smoke")], { encoding: "utf8", timeout: swiftCompileTimeout });
+      const names = ["NativeJSONValue", "NativeCommand", "NativeCommandResult", "NativeOption", "NativeBackend", "NativeNavigationItem", "NativeGroup", "NativeAttachment", "NativeMessage", "NativePanelItem", "NativePanel", "NativeContextUsage", "NativeRateLimit", "NativeWebComposerPresentation", "NativeComposerLineLimits", "NativeComposerAdjustment", "NativeComposerAdjustmentKind", "NativeSnapshot", "NativeUIStore", "NativeComposerPresentation", "NativeComposerPresentationEvent", "NativeComposerPresentationIntent", "NativeUIPreference", "NativeMarkdownBlock", "NativeMarkdownBlockKind", "NativeMarkdownSyntax", "NativeMarkdownInlinePart", "NativeMediaSource", "NativeReferenceAudio", "NativeVisualReference", "NativeReferenceSettings", "NativeHistoryEditReference", "NativeTextRhythm", "NativeFieldKey", "NativeFieldScope", "NativeImageData", "NativePlainText", "NativeInlineMarkdown", "NativeMarkdownDisplaySource", "NativeMarkdownHTMLScope", "NativeTimelineState", "NativeTextPrompt"];
+      const compile = spawnSync("xcrun", ["swiftc", ...names.map(name => `mobile/ios/NativeUI/${name}.swift`), "tests/ci/native-ui-model-smoke.swift", "tests/ci/native-ui-presentation-smoke.swift", "tests/ci/native-ui-history-smoke.swift", "tests/ci/native-ui-web-composer-smoke.swift", "-o", join(directory, "smoke")], { encoding: "utf8", timeout: swiftCompileTimeout });
       expect(compile.status, compile.error?.message ?? compile.stderr).toBe(0);
       const result = spawnSync(join(directory, "smoke"), [], { encoding: "utf8", timeout: swiftExecutionTimeout });
       expect(result.status, result.error?.message ?? result.stderr).toBe(0);
@@ -51,6 +51,11 @@ describe("SwiftUI 原生宿主契约", () => {
     expect(source("NativeInlineContentView")).toContain(".task(id: scope.identity + [text])");
     expect(source("NativeMarkdownTableView")).toContain("scope: cellScope(row: rowIndex, column: columnIndex)");
     expect(source("NativePlainText")).toContain("NativeInlineMarkdown.text(block.text, scope: block.scope)");
+  });
+  it("最大化保留同一原生编辑器并把预算行数用于TextField", () => {
+    const composer = source("NativeComposerView");
+    expect(composer.match(/TextField\(/g)).toHaveLength(1);
+    expect(composer).toContain(".lineLimit(composerLineLimits)");
   });
   it("具有离线原生根、输入、侧栏及设置 UI 验收", () => {
     expect(existsSync("mobile/ios/NativeUI/NativeRootView.swift"), "缺少真实 SwiftUI 根").toBe(true);
@@ -147,6 +152,14 @@ describe("SwiftUI 原生宿主契约", () => {
       expect(page.target.__CODEX_IOS_HOST__, "原始 /private 首页必须取得原生宿主标记").toBe(true);
       expect(page.target.__CODEX_NATIVE_UI__).toBe(true);
       expect(page.postMessage).toHaveBeenCalledWith({ type: "ready" });
+      expect(page.target.__CODEX_NATIVE_COMPOSER__).toBe(false);
+      const composerPage = surface(privatePage.trustedURL);
+      composerPage.run(privatePage.composerBootstrap);
+      expect(composerPage.target.__CODEX_NATIVE_UI__).toBe(false); expect(composerPage.target.__CODEX_NATIVE_COMPOSER__).toBe(true);
+      const layoutEvent = vi.fn(); composerPage.target.addEventListener('codex-mobile-native-composer-layout', layoutEvent);
+      composerPage.run(privatePage.composerLayout);
+      expect(layoutEvent.mock.calls[0][0].detail).toEqual({ contextId: '中文"\\上下文', top: 470.5, webViewHeight: 844 });
+      composerPage.location.href = 'https://example.com'; composerPage.run(privatePage.composerLayout); expect(layoutEvent).toHaveBeenCalledTimes(1);
       const receivedCommand = vi.fn();
       page.target.addEventListener("codex-mobile-native-command", receivedCommand);
       page.run(privatePage.dispatch);

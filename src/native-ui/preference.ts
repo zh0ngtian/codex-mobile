@@ -1,10 +1,12 @@
 import { transportUuid } from '../backends/http-transport';
+export type NativePreferenceKind = 'interface' | 'composer';
+export interface NativePreferenceInput { enabled?: boolean; kind?: NativePreferenceKind }
 export interface NativePreference { enabled: boolean; active: boolean }
 type PreferenceResponse = Partial<NativePreference> & { id: string; error?: string };
 type HostWindow = Window & {
  __CODEX_IOS_HOST__?: boolean;
  webkit?: { messageHandlers?: { nativeUI?: { postMessage(value: unknown): void } } };
- codexMobileNativePreference?: (input: { enabled?: boolean }) => Promise<NativePreference>;
+ codexMobileNativePreference?: (input: NativePreferenceInput) => Promise<NativePreference>;
  codexMobileNativePreferenceComplete?: (response: PreferenceResponse) => void;
 };
 const pending = new Map<string, { resolve: (value: NativePreference) => void; reject: (reason: Error) => void; timer: ReturnType<typeof setTimeout> }>();
@@ -14,7 +16,7 @@ export function isIOSNativeHost() {
  return host.__CODEX_IOS_HOST__ === true && typeof host.webkit?.messageHandlers?.nativeUI?.postMessage === 'function';
 }
 /** 宿主只接收可信主文档消息；此处不更改本进程冻结的 __CODEX_NATIVE_UI__。 */
-export function requestNativePreference(input: { enabled?: boolean } = {}): Promise<NativePreference> {
+export function requestNativePreference(input: NativePreferenceInput = {}): Promise<NativePreference> {
  if (!isIOSNativeHost()) return Promise.reject(new Error('当前环境不支持原生界面设置'));
  const host = window as HostWindow;
  host.codexMobileNativePreference = requestNativePreference;

@@ -2,6 +2,7 @@ import SwiftUI
 
 struct NativeUIHost<Legacy: View>: View {
     private let legacy: Legacy
+    @State private var availableHeight: CGFloat = 500
     @State private var bridge = NativeUIBridge()
     @Environment(\.scenePhase) private var scenePhase
     private var store: NativeUIStore { bridge.store }
@@ -17,6 +18,12 @@ struct NativeUIHost<Legacy: View>: View {
             }
             if store.nativeEnabled && !store.showLegacyForRecovery {
                 NativeRootView(store: store)
+            }
+        }
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { availableHeight = $0 }
+        .overlay(alignment: .bottom) {
+            if store.composerEnabled && !store.nativeEnabled && !store.showLegacyForRecovery {
+                NativeWebComposerHost(store: store, availableHeight: availableHeight)
             }
         }
         #if DEBUG
