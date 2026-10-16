@@ -14,7 +14,7 @@ import { FONT_SCALES, readFontSize } from '../ui/font-size';
 import { effortLabel } from '../ui/settings';
 import { groupConversationTurns } from '../ui/conversation';
 import { projectNameOf } from '../features/threads/thread-list-model';
-import { contextUsageMetrics, formatTokenCount, rateLimitMetrics } from '../features/conversation/usage-metrics';
+import { contextUsageMetrics, formatTokenCount, inputCacheHitPercent, rateLimitMetrics } from '../features/conversation/usage-metrics';
 import { copyText } from '../ui/copy';
 import type { NativeRuntime } from './runtime';
 import { useNativeWorkspace } from './adapters';
@@ -83,7 +83,8 @@ export function createWorkspaceAdapter(c: NativeWorkspaceController, panel: Pane
   const business = workspaceBusinessPanels(c, panel, messages);
   if (business.historyMessage) business.historyMessage.historyEdit = business.historyEdit;
   const context = contextUsageMetrics(state.tokenUsage);
-  const conversationTokenUsage = formatTokenCount(state.tokenUsage?.total?.totalTokens);
+  const inputTokenUsage = formatTokenCount(state.tokenUsage?.total?.inputTokens);
+  const outputTokenUsage = formatTokenCount(state.tokenUsage?.total?.outputTokens);
   const sevenDayRateLimit = rateLimitMetrics(state.rateLimits, 10080);
   const fiveHourRateLimit = rateLimitMetrics(state.rateLimits, 300);
   const conversationActions = [...business.actions, nativeAction('mentions', 'Skill / Plugin', 'panel.open', { id: 'mentions' })];
@@ -114,7 +115,9 @@ export function createWorkspaceAdapter(c: NativeWorkspaceController, panel: Pane
     permissions: Array.isArray(state.permissionModes) ? options(state.permissionModes) : undefined,
     permissionValue: typeof state.selectedPermissionModeId === 'string' ? state.selectedPermissionModeId : undefined,
     contextUsage: context ? { ...context, used: Math.min(context.total, Math.max(0, context.used)) } : undefined,
-    conversationTokenUsage: conversationTokenUsage ?? undefined,
+    inputTokenUsage: inputTokenUsage ?? undefined,
+    outputTokenUsage: outputTokenUsage ?? undefined,
+    inputCacheHitPercent: inputCacheHitPercent(state.tokenUsage) ?? undefined,
     sevenDayRateLimit: sevenDayRateLimit ?? undefined,
     fiveHourRateLimit: fiveHourRateLimit ?? undefined,
     pending: c.pending || c.imageReading || c.draftSaving, loading: c.loadState, conversationActions,

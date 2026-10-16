@@ -36,6 +36,14 @@ export function rateLimitRemainingPercent(rateLimits: UsageSnapshot, durationMin
   return rateLimitMetrics(rateLimits, durationMins)?.remainingPercent ?? null;
 }
 
+/** 缓存命中率使用累计输入；零输入没有可计算的分母。 */
+export function inputCacheHitPercent(tokenUsage: UsageSnapshot): number | null {
+  const input = tokenUsage?.total?.inputTokens;
+  const cached = tokenUsage?.total?.cachedInputTokens;
+  if (!validNumber(input) || input === 0 || !validNumber(cached) || cached > input) return null;
+  return Math.round(cached / input * 1000) / 10;
+}
+
 /** 十进制 K/M，最多一位小数；K 舍入到 1000 时提升为 M。 */
 export function formatTokenCount(value: unknown): string | null {
   if (!validNumber(value)) return null;

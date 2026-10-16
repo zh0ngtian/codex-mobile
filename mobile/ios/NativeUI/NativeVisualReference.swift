@@ -34,7 +34,9 @@ enum NativeVisualReference {
         value.contextUsage = NativeContextUsage(used: 14000, total: 200000, usedPercent: 7, remainingPercent: 93)
         value.sevenDayRateLimit = NativeRateLimit(remainingPercent: 72, windowDurationMins: 10080)
         value.fiveHourRateLimit = NativeRateLimit(remainingPercent: 43, windowDurationMins: 300)
-        value.conversationTokenUsage = "128.5K"
+        value.inputTokenUsage = "100K"
+        value.outputTokenUsage = "28.5K"
+        value.inputCacheHitPercent = 80
         value.messages = [
             NativeMessage(id: "visual-user", role: "user", text: "简单说一下你是怎么支持 sidechat 的"),
             NativeMessage(id: "visual-assistant", role: "assistant", text: """

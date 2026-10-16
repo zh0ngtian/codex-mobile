@@ -127,14 +127,14 @@ describe("新版会话真实数据与操作", () => {
     expect(container.querySelector(".context-ring-track")).not.toBeNull();
     expect(container.querySelector(".context-ring-progress")).toBeNull();
   });
-  it("用量卡片展示四行，分别使用七天和五小时额度并支持关闭", () => {
+  it("用量卡片展示五行，分别使用七天和五小时额度并支持关闭", () => {
     vi.spyOn(Date, "now").mockReturnValue(1_800_000_000_000);
-    const { view, container } = setup({ tokenUsage: { last: { totalTokens: 25 }, total: { totalTokens: 128450 }, modelContextWindow: 100 }, rateLimits: { rateLimits: { primary: { usedPercent: 99, windowDurationMins: 300 }, secondary: { usedPercent: 28, windowDurationMins: 10080, resetsAt: 1_800_302_400 } } } });
+    const { view, container } = setup({ tokenUsage: { last: { totalTokens: 25 }, total: { totalTokens: 128450, inputTokens: 100000, cachedInputTokens: 80000, outputTokens: 28450 }, modelContextWindow: 100 }, rateLimits: { rateLimits: { primary: { usedPercent: 99, windowDurationMins: 300 }, secondary: { usedPercent: 28, windowDurationMins: 10080, resetsAt: 1_800_302_400 } } } });
     const trigger = view.getByRole("button", { name: "查看上下文占用情况" });
     fireEvent.click(trigger);
     const dialog = within(document.body).getByRole("dialog", { name: "用量与额度" });
-    expect(Array.from(dialog.querySelectorAll("dt")).map(row => row.textContent)).toEqual(["上下文余量", "周期剩余", "时间剩余", "对话 Token"]);
-    expect(Array.from(dialog.querySelectorAll("dd")).map(row => row.textContent)).toEqual(["75%", "72%", "1%", "128.5K"]);
+    expect(Array.from(dialog.querySelectorAll("dt")).map(row => row.textContent)).toEqual(["上下文余量", "周期剩余", "时间剩余", "输入 Token", "输出 Token"]);
+    expect(Array.from(dialog.querySelectorAll("dd")).map(row => row.textContent)).toEqual(["75%", "72%", "1%", "100K（缓存命中 80%）", "28.5K"]);
     expect(dialog.textContent).not.toMatch(/已用|重置/);
     expect(document.activeElement).toBe(dialog);
     fireEvent.keyDown(dialog, { key: "Escape" });
@@ -155,7 +155,7 @@ describe("新版会话真实数据与操作", () => {
     const { view } = setup({ tokenUsage: { last: { totalTokens: null }, modelContextWindow: 100 }, rateLimits });
     fireEvent.click(view.getByRole("button", { name: "查看上下文占用情况" }));
     const dialog = within(document.body).getByRole("dialog", { name: "用量与额度" });
-    expect(Array.from(dialog.querySelectorAll("dd")).map(row => row.textContent)).toEqual(["暂无数据", quota, time, "暂无数据"]);
+    expect(Array.from(dialog.querySelectorAll("dd")).map(row => row.textContent)).toEqual(["暂无数据", quota, time, "暂无数据", "暂无数据"]);
   });
   it.each([false, true])("新聊天菜单只在保存成功后关闭：%s", async success => {
     const onSaveDraft = vi.fn(async () => success);

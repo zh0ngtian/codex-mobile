@@ -128,7 +128,7 @@ Task2b 分模块 RED→GREEN 日志位于 `.mobile-build/native-reference/task2b
 
 ## 2026-10-16 设计稿对齐
 
-原生与网页对话顶部的圆圈打开四行用量卡片：上下文余量、周期剩余、时间剩余、对话 Token。共享 `usage-metrics.ts` 严格使用 `last.totalTokens / modelContextWindow` 推导上下文，按 `windowDurationMins` 的 10080 与 300 分别识别七天和五小时额度，不根据窗口位置或重置倒计时猜测。累计 Token 只读当前会话 `total.totalTokens`，格式化为十进制 K/M 字符串后通过可选 `conversationTokenUsage` 传给 Swift；新增可选 `fiveHourRateLimit` 与既有 `sevenDayRateLimit` 同结构。缺失、负数和非有限数值不转成 0，显示「暂无数据」；0 Token 与实际耗尽额度仍正常显示。切换会话时关闭卡片，原生沿用系统 popover、网页沿用现有焦点与关闭逻辑并通过 body portal 避免顶部裁剪。不新增请求、持久化或数据源；可选字段继续兼容旧快照。
+原生与网页对话顶部的圆圈打开五行用量卡片：上下文余量、周期剩余、时间剩余、输入 Token（含缓存命中率）、输出 Token。共享 `usage-metrics.ts` 严格使用 `last.totalTokens / modelContextWindow` 推导上下文，按 `windowDurationMins` 的 10080 与 300 分别识别七天和五小时额度，不根据窗口位置或重置倒计时猜测。输入与输出 Token 只读当前会话 `total.inputTokens`、`total.outputTokens`，格式化为十进制 K/M 字符串后分别通过可选 `inputTokenUsage`、`outputTokenUsage` 传给 Swift。缓存命中率为累计 `total.cachedInputTokens / total.inputTokens * 100`，最多一位小数，经可选 `inputCacheHitPercent` 传递；输入须大于 0，缓存数须有限、非负且不超过输入，否则缓存率显示「暂无数据」，不能把零分母当成 0%；新增可选 `fiveHourRateLimit` 与既有 `sevenDayRateLimit` 同结构。缺失、负数和非有限数值不转成 0，显示「暂无数据」；0 Token 与实际耗尽额度仍正常显示。切换会话时关闭卡片，原生沿用系统 popover、网页沿用现有焦点与关闭逻辑并通过 body portal 避免顶部裁剪。不新增请求、持久化或数据源；可选字段继续兼容旧快照。
 
 附件、权限、速度及模型/思考强度统一使用 iOS 系统弹出菜单。权限直接遍历权威 `snapshot.permissions`，选项显示审核、只读或完全访问的 SF Symbol，并保留说明的辅助功能 hint。模型与思考强度共用 SwiftUI `Menu`，以 `.menuOrder(.fixed)` 固定两个平级 `Section` 和接口原始顺序，完整列出目录，超屏滚动交给系统，不增加自定义分页或滚动容器；Fast、模型和思考选项不绘制选中勾。模型按钮使用单一可见 `Text` 显示“模型 · 思考强度”，空值显示智能语义，长名称中间截断以保留末尾强度。选项创建时捕获 `contextId`，选择仍走既有 `chooseComposerOption`；过期、不可编辑、等待新会话或侧栏打开时拒绝执行。
 

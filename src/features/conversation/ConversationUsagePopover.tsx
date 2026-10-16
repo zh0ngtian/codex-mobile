@@ -2,7 +2,7 @@ import { useLayoutEffect, useRef, useState, type CSSProperties, type RefObject }
 import { createPortal } from "react-dom";
 import { t } from "../../i18n";
 import { useModernPopover } from "../web-ui/usePopoverFocus";
-import { contextRemainingPercent, formatTokenCount, rateLimitRemainingPercent } from "./usage-metrics";
+import { contextRemainingPercent, formatTokenCount, inputCacheHitPercent, rateLimitRemainingPercent } from "./usage-metrics";
 
 export { formatTokenCount } from "./usage-metrics";
 
@@ -26,7 +26,7 @@ export function ConversationUsagePopover({ open, anchorRef, tokenUsage, rateLimi
       const y = viewport?.offsetTop ?? 0;
       const width = viewport?.width ?? window.innerWidth;
       const height = viewport?.height ?? window.innerHeight;
-      const cardWidth = Math.min(224, Math.max(0, width - 24));
+      const cardWidth = Math.min(300, Math.max(0, width - 24));
       const cardHeight = Math.min(panel.current?.getBoundingClientRect().height ?? 0, height - 24);
       setPosition({
         width: cardWidth,
@@ -52,6 +52,11 @@ export function ConversationUsagePopover({ open, anchorRef, tokenUsage, rateLimi
   }, [open, anchorRef]);
   if (!open) return null;
   const percent = (value: number | null) => value == null ? t("暂无数据") : `${value}%`;
+  const input = formatTokenCount(tokenUsage?.total?.inputTokens);
+  const cacheHit = inputCacheHitPercent(tokenUsage);
+  const inputValue = input == null ? t("暂无数据") : cacheHit == null
+    ? t("{tokens}（缓存命中暂无数据）", { tokens: input })
+    : t("{tokens}（缓存命中 {percent}%）", { tokens: input, percent: cacheHit });
   return createPortal(<section ref={panel} tabIndex={-1} role="dialog" aria-label={t("用量与额度")}
     className="conversation-usage-popover" style={position}>
     <strong>{t("用量与额度")}</strong>
@@ -59,7 +64,8 @@ export function ConversationUsagePopover({ open, anchorRef, tokenUsage, rateLimi
       <div><dt>{t("上下文余量")}</dt><dd>{percent(contextRemainingPercent(tokenUsage))}</dd></div>
       <div><dt>{t("周期剩余")}</dt><dd>{percent(rateLimitRemainingPercent(rateLimits, 10080))}</dd></div>
       <div><dt>{t("时间剩余")}</dt><dd>{percent(rateLimitRemainingPercent(rateLimits, 300))}</dd></div>
-      <div><dt>{t("对话 Token")}</dt><dd>{formatTokenCount(tokenUsage?.total?.totalTokens) ?? t("暂无数据")}</dd></div>
+      <div><dt>{t("输入 Token")}</dt><dd>{inputValue}</dd></div>
+      <div><dt>{t("输出 Token")}</dt><dd>{formatTokenCount(tokenUsage?.total?.outputTokens) ?? t("暂无数据")}</dd></div>
     </dl>
   </section>, document.body);
 }

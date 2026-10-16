@@ -2,15 +2,15 @@ import { createRef, type ComponentProps } from "react";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ConversationPage } from "../../src/features/conversation/ConversationPage";
-import { contextRemainingPercent, formatTokenCount, rateLimitRemainingPercent } from "../../src/features/conversation/usage-metrics";
+import { contextRemainingPercent, formatTokenCount, inputCacheHitPercent, rateLimitRemainingPercent } from "../../src/features/conversation/usage-metrics";
 
 const preference = vi.hoisted(() => ({ modern: false }));
 vi.mock("../../src/features/web-ui/preference", () => ({ useWebInterface: () => preference }));
 afterEach(cleanup);
 
 const tokenUsage = {
-  last: { totalTokens: 100_000 },
-  total: { totalTokens: 3_084_000 },
+  last: { totalTokens: 100_000, inputTokens: 1, cachedInputTokens: 1, outputTokens: 1 },
+  total: { totalTokens: 3_084_000, inputTokens: 3_000_000, cachedInputTokens: 2_400_000, outputTokens: 84_000 },
   modelContextWindow: 250_000,
 };
 const rateLimits = {
@@ -59,6 +59,15 @@ describe("对话用量计算", () => {
     expect(formatTokenCount(value)).toBeNull();
   });
 
+  it.each([
+    [100000, 80000, 80], [1000, 333, 33.3], [1000, 0, 0], [1000, 1000, 100],
+    [0, 0, null], [null, 0, null], [undefined, 0, null], [-1, 0, null], [NaN, 0, null],
+    [1000, null, null], [1000, undefined, null], [1000, -1, null], [1000, NaN, null],
+    [1000, Infinity, null], [1000, 1001, null],
+  ])("累计输入 %s、缓存命中 %s 严格推导百分比 %s", (input, cached, expected) => {
+    expect(inputCacheHitPercent({ total: { inputTokens: input, cachedInputTokens: cached }, last: { inputTokens: 1, cachedInputTokens: 1 } })).toBe(expected);
+  });
+
   it("上下文只取最近一次用量，累计 token 不参与计算", () => {
     expect(contextRemainingPercent(tokenUsage)).toBe(60);
     expect(contextRemainingPercent({ ...tokenUsage, last: null })).toBeNull();
@@ -98,11 +107,11 @@ describe("对话用量计算", () => {
 
 describe.each([false, true])("对话用量卡片（现代界面 %s）", (modern) => {
   beforeEach(() => { preference.modern = modern; });
-  it("顶部按钮打开四行卡片，移除线程 ID、目录和重置时间", () => {
+  it("顶部按钮打开五行卡片，移除线程 ID、目录和重置时间", () => {
     const { container } = render(<ConversationPage {...pageProps()} />);
     const { card, button } = openCard();
     const view = within(card);
-    for (const [label, value] of [["上下文余量", "60%"], ["周期剩余", "71%"], ["时间剩余", "85%"], ["对话 Token", "3.1M"]]) {
+    for (const [label, value] of [["上下文余量", "60%"], ["周期剩余", "71%"], ["时间剩余", "85%"], ["输入 Token", "3M（缓存命中 80%）"], ["输出 Token", "84K"]]) {
       expect(view.getByText(label).nextElementSibling?.textContent).toBe(value);
     }
     expect(card.parentElement).toBe(document.body);
@@ -116,18 +125,32 @@ describe.each([false, true])("对话用量卡片（现代界面 %s）", (modern)
   it("卡片跟随实时 props 更新，累计 total 缺失时不回退 last", () => {
     const { rerender } = render(<ConversationPage {...pageProps()} />);
     const { card } = openCard();
-    rerender(<ConversationPage {...pageProps({ tokenUsage: { ...tokenUsage, last: { totalTokens: 125_000 }, total: { totalTokens: 128_450 } }, rateLimits: { primary: { usedPercent: 45, windowDurationMins: 300 }, secondary: { usedPercent: 65, windowDurationMins: 10_080 } } })} />);
+    rerender(<ConversationPage {...pageProps({ tokenUsage: { ...tokenUsage, last: { totalTokens: 125_000 }, total: { totalTokens: 128_450, inputTokens: 100_000, cachedInputTokens: 80_000, outputTokens: 28_450 } }, rateLimits: { primary: { usedPercent: 45, windowDurationMins: 300 }, secondary: { usedPercent: 65, windowDurationMins: 10_080 } } })} />);
     expect(within(card).getByText("上下文余量").nextElementSibling).toHaveTextContent("50%");
     expect(within(card).getByText("周期剩余").nextElementSibling).toHaveTextContent("35%");
     expect(within(card).getByText("时间剩余").nextElementSibling).toHaveTextContent("55%");
-    expect(within(card).getByText("对话 Token").nextElementSibling).toHaveTextContent("128.5K");
+    expect(within(card).getByText("输入 Token").nextElementSibling).toHaveTextContent("100K（缓存命中 80%）");
+    expect(within(card).getByText("输出 Token").nextElementSibling).toHaveTextContent("28.5K");
     rerender(<ConversationPage {...pageProps({ tokenUsage: { ...tokenUsage, total: null } })} />);
-    expect(within(card).getByText("对话 Token").nextElementSibling).toHaveTextContent("暂无数据");
+    expect(within(card).getByText("输入 Token").nextElementSibling).toHaveTextContent("暂无数据");
+    expect(within(card).getByText("输出 Token").nextElementSibling).toHaveTextContent("暂无数据");
   });
 
-  it("历史用量缺失时四行均显示暂无数据", () => {
+  it("历史用量缺失时五行均显示暂无数据", () => {
     render(<ConversationPage {...pageProps({ tokenUsage: null, rateLimits: null })} />);
-    expect(within(openCard().card).getAllByText("暂无数据")).toHaveLength(4);
+    expect(within(openCard().card).getAllByText("暂无数据")).toHaveLength(5);
+  });
+
+  it.each([
+    [0, 0, "0（缓存命中暂无数据）"], [1000, null, "1K（缓存命中暂无数据）"],
+    [1000, 1001, "1K（缓存命中暂无数据）"], [1000, 333, "1K（缓存命中 33.3%）"],
+    [1000, 0, "1K（缓存命中 0%）"], [null, 0, "暂无数据"],
+  ])("输入 %s、缓存 %s 展示为 %s，输出零值仍可展示", (input, cached, expected) => {
+    render(<ConversationPage {...pageProps({ tokenUsage: { last: { inputTokens: 100, cachedInputTokens: 100, outputTokens: 100 }, total: { inputTokens: input, cachedInputTokens: cached, outputTokens: 0 } } })} />);
+    const view = within(openCard().card);
+    expect(view.getByText("输入 Token").nextElementSibling?.textContent).toBe(expected);
+    expect(view.getByText("输出 Token").nextElementSibling?.textContent).toBe("0");
+    expect(view.queryByText("对话 Token")).toBeNull();
   });
 
   it.each(["Escape", "外部点击", "再次点击"])("%s 关闭卡片并恢复触发按钮焦点", (method) => {
@@ -148,8 +171,8 @@ describe.each([false, true])("对话用量卡片（现代界面 %s）", (modern)
   it("卡片内部点击保持打开", () => {
     render(<ConversationPage {...pageProps()} />);
     const { card } = openCard();
-    fireEvent.pointerDown(within(card).getByText("对话 Token"));
-    fireEvent.click(within(card).getByText("对话 Token"));
+    fireEvent.pointerDown(within(card).getByText("输入 Token"));
+    fireEvent.click(within(card).getByText("输入 Token"));
     expect(card).toBeInTheDocument();
   });
 

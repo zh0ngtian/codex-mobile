@@ -29,7 +29,7 @@ export interface NativeSnapshot {
   modelValue?: string; effortValue?: string; speed?: string; speedValue?: string; speeds?: NativeOption[];
   permissionValue?: string; permissions?: NativeOption[];
   contextUsage?: { used: number; total: number; usedPercent: number; remainingPercent: number };
-  conversationTokenUsage?: string;
+  inputTokenUsage?: string; outputTokenUsage?: string; inputCacheHitPercent?: number;
   fiveHourRateLimit?: { remainingPercent: number; resetsAt?: number; windowDurationMins?: number };
   sevenDayRateLimit?: { remainingPercent: number; resetsAt?: number; windowDurationMins?: number };
 }

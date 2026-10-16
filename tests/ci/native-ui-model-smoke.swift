@@ -152,16 +152,19 @@ struct NativeStoreSmoke {
         precondition(decoded.version == 1 && decoded.messages.count == 2)
         // 旧 v1 JSON 没有新增的 optional 展示元数据，仍必须可解码。
         precondition(decoded.projectName == nil && decoded.backendName == nil && decoded.listBackendId == nil)
-        precondition(decoded.speeds == nil && decoded.permissions == nil && decoded.contextUsage == nil && decoded.sevenDayRateLimit == nil && decoded.fiveHourRateLimit == nil && decoded.conversationTokenUsage == nil)
+        precondition(decoded.speeds == nil && decoded.permissions == nil && decoded.contextUsage == nil && decoded.sevenDayRateLimit == nil && decoded.fiveHourRateLimit == nil && decoded.inputTokenUsage == nil && decoded.outputTokenUsage == nil && decoded.inputCacheHitPercent == nil)
         precondition(decoded.messages.allSatisfy { $0.timestamp == nil })
         let oldGroup = try JSONDecoder().decode(NativeGroup.self, from: Data(#"{"id":"old","title":"旧分组","items":[]}"#.utf8))
         precondition(oldGroup.category == nil && oldGroup.newCommand == nil && oldGroup.subtitle == nil && oldGroup.loading == nil)
         var usageJSON = try JSONSerialization.jsonObject(with: JSONEncoder().encode(decoded)) as! [String: Any]
-        usageJSON["conversationTokenUsage"] = "128.5K"
+        usageJSON["inputTokenUsage"] = "100K"
+        usageJSON["outputTokenUsage"] = "28.5K"
+        usageJSON["inputCacheHitPercent"] = 80
         usageJSON["fiveHourRateLimit"] = ["remainingPercent": 43, "windowDurationMins": 300]
         let usageSnapshot = try JSONDecoder().decode(NativeSnapshot.self, from: JSONSerialization.data(withJSONObject: usageJSON))
         let usageRoundtrip = try JSONSerialization.jsonObject(with: JSONEncoder().encode(usageSnapshot)) as! [String: Any]
-        precondition(usageRoundtrip["conversationTokenUsage"] as? String == "128.5K", "会话 Token 展示值必须通过快照往返")
+        precondition(usageRoundtrip["inputTokenUsage"] as? String == "100K" && usageRoundtrip["outputTokenUsage"] as? String == "28.5K", "累计输入输出 Token 展示值必须通过快照往返")
+        precondition(usageRoundtrip["inputCacheHitPercent"] as? Int == 80, "输入缓存命中率必须通过快照往返")
         precondition((usageRoundtrip["fiveHourRateLimit"] as? [String: Any])?["remainingPercent"] as? Int == 43, "五小时额度必须独立通过快照往返")
         var metadata = decoded
         metadata.projectName = "项目"

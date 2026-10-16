@@ -532,11 +532,11 @@ button, a, summary, [role="button"] { -webkit-tap-highlight-color: transparent; 
 .backend-loading, .project-more .action-spinner, .running-spinner, .sidebar-refresh-spinner { display: block; flex: 0 0 auto; border: 0; border-radius: 50%; background: conic-gradient(from 0deg, transparent 0deg 36deg, var(--spinner-tail) 92deg, var(--spinner-mid) 220deg, var(--spinner-head) 330deg 360deg); -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - var(--spinner-stroke, 2px)), #000 0); mask: radial-gradient(farthest-side, transparent calc(100% - var(--spinner-stroke, 2px)), #000 0); animation: thread-spin .8s linear infinite; }
 /* 状态指示器保留较慢旋转，让减少动态效果模式仍能辨识正在加载。 */
 @media (prefers-reduced-motion: reduce) { .action-spinner, .backend-loading, .project-more .action-spinner, .running-spinner, .sidebar-refresh-spinner, .stream-character-spinner, .send-button-running::before { animation-duration: 1.6s; } }
-.conversation-usage-popover { position: fixed; z-index: 8; width: 224px; max-width: calc(100vw - 24px); padding: 16px; overflow-y: auto; border: .6px solid #d7d7d7; border-radius: 22px; background: #fff; color: #111; box-shadow: 0 8px 26px #00000012; text-align: left; outline: none; }
+.conversation-usage-popover { position: fixed; z-index: 8; width: 300px; max-width: calc(100vw - 24px); padding: 16px; overflow-y: auto; border: .6px solid #d7d7d7; border-radius: 22px; background: #fff; color: #111; box-shadow: 0 8px 26px #00000012; text-align: left; outline: none; }
 .conversation-usage-popover > strong { font-size: .8125rem; line-height: 1.25rem; font-weight: min(900, calc(650 + var(--bold-text-weight-offset))); }
 .conversation-usage-popover dl { display: flex; flex-direction: column; gap: 10px; margin: 13px 0 0; }
 .conversation-usage-popover dl > div { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; font-size: .6875rem; line-height: 1.0625rem; }
-.conversation-usage-popover dt { color: #929292; }
+.conversation-usage-popover dt { color: #929292; flex: 0 0 auto; white-space: nowrap; }
 .conversation-usage-popover dd { margin: 0; color: #111; font-weight: min(900, calc(600 + var(--bold-text-weight-offset))); white-space: nowrap; }
 .approval-backdrop { z-index: 10; background: rgba(0,0,0,.28); }
 .approval-sheet { max-height: 75dvh; }
