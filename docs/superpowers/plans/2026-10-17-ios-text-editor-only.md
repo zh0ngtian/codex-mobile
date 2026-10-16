@@ -37,3 +37,12 @@
 ## 已有基线
 
 当前 `origin/main` 为 `1153c9f`，最近输入栏字体/间距变更已在 `49cfaeb`。使用已附加且干净的隔离工作区，新分支 `codex/ios-composer-web-controls-20261017`。两份关联 UI 测试基线 11 项通过，日志在仓库外本任务 `baseline.log`。
+
+## 本地验收完成
+
+- 运行源码固定为 `57c35dade2674e3b4f36a625f77b77ee816abcdb`，网页与原生源码文件 SHA-256 在私有 validation 留存，并与最终测试前后核对一致。全量 132 文件、1517 项通过，TypeScript 和完整 NativeUI Swift 5 iOS SDK 类型检查通过；发布 Python 回归 166 项、现役协调器恢复回归 30 项通过。
+- iPhone 17 Pro（iOS 26.5）、正常系统字号、竖屏的最终 8 项真实 UI 全部通过：新旧网页布局的原生文字和网页选项、模型/推理/Fast/权限选择后续输、附件菜单与系统 Files 取消后草稿/光标保留、网页发送一次且请求正文完整、增长上限与清空缩回、关闭原生输入回到网页编辑。另针对质量发现的颜色问题，在同一设备的隔离 App 内设置 dark 宿主，确认原生编辑器仍按网页浅底使用可读文字颜色。
+- 已验证并修复的真实问题：键盘缩小 bounds 早于网页矩形时不能禁用 UITextView 交互，否则会失焦；观察焦点与显式请求版本分离；React commit 后重放对应正文/版本的 UTF-16 选区；网页控件 pointerdown 到 click 完成期间保持输入栏几何，取消和完成时清理。
+- 网页选项保留 aria-pressed 语义，XCTest 中映射 Switch；父任务早期只查 Button 的误判已更正，未据此修改菜单产品行为。文件取消后重新点击文字中部会自然改变光标，最终验收先用原生选区探针核对位置，再明确在末尾继续编辑，没有新增取消后自动弹键盘行为。
+- 规格及质量独立审查依序通过，全部 P2 已关闭。原始 RED/GREEN、8 项完整 xcresult、截图、探针、fixture 和源文件散列保存在仓库外 `~/Library/Application Support/CodexMobile/validation/ios-composer-web-controls-20261017/`；各轮失败保留原样，不将混合失败批次宣称全通过。
+- 测试全部采用离线内存协议响应，未创建真实远端会话。正式交付继续使用现役 OTA-only 项目，待协调器成功 receipt 与固定 IPA/HTTPS OTA 完整下载回验；尚未进行真机覆盖安装及数据保留验收。
