@@ -451,6 +451,7 @@ function BackendWorkspace({
   const [pendingAction, setPendingAction] = useState("");
   const [notice, setNotice] = useState("");
   const [picker, setPicker] = useState<ComposerPicker>(null);
+  const composerFocusRestoreRef = useRef<(() => void) | undefined>(undefined);
   const [skillCatalog, setSkillCatalog] = useState<{
     cwd: string | null;
     skills: InstalledSkill[];
@@ -4259,7 +4260,7 @@ function BackendWorkspace({
           imageReading={imageReading}
           draftSaving={draftSaving}
           draftSaveStatus={draftSaveStatus}
-          onSaveDraft={() => void saveNewChatDraft()}
+          onSaveDraft={saveNewChatDraft}
           busy={conversationBusy}
           operationPending={conversationOperationPending}
           steering={steering}
@@ -4300,6 +4301,7 @@ function BackendWorkspace({
           }
           imageInputRef={imageInputRef}
           onBack={onOpenSidebar}
+          onNewChat={() => startNewChat()}
           onNewChatBackendChange={(backendId) =>
             onSwitchNewChatBackend(backendId, draft, draftImages, draftFiles, savedDraftRef.current)
           }
@@ -4325,8 +4327,9 @@ function BackendWorkspace({
           }
           onSelectImages={selectImages}
           onSelectLocation={selectCurrentLocation}
-          onOpenAgentSettings={() => setPicker("agent")}
-          onOpenPermissionSettings={() => setPicker("permission")}
+          onOpenAgentSettings={(restore) => { composerFocusRestoreRef.current = restore; setPicker("agent"); }}
+          onOpenSpeedSettings={(restore) => { composerFocusRestoreRef.current = restore; setPicker("speed"); }}
+          onOpenPermissionSettings={(restore) => { composerFocusRestoreRef.current = restore; setPicker("permission"); }}
           onDraftChange={setDraft}
           historyEdit={historyEdit}
           onEditUserMessage={beginHistoricalMessageEdit}
@@ -4398,6 +4401,7 @@ function BackendWorkspace({
         selectedSpeedLabel={selectedSpeedLabel}
         selectedPermissionModeId={selectedPermissionModeId}
         onPickerChange={setPicker}
+        onRestoreComposerFocus={() => { const restore = composerFocusRestoreRef.current; composerFocusRestoreRef.current = undefined; restore?.(); }}
         onChooseEffort={chooseEffort}
         onChooseModel={chooseModel}
         onChooseSpeed={chooseSpeed}

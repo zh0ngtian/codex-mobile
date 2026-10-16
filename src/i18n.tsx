@@ -13,6 +13,15 @@ export type LanguagePreference = "system" | Locale;
 const LANGUAGE_STORAGE_KEY = "codex-mobile:language";
 
 const english: Record<string, string> = {
+  "完成": "Done",
+  "用量与额度": "Usage and limits",
+  "上下文余量": "Context remaining",
+  "套餐剩余": "Plan remaining",
+  "时间剩余": "Time remaining",
+  "选择速度": "Choose speed",
+  "选择模型与思考强度": "Choose model and reasoning effort",
+  "模型与思考强度": "Model and reasoning effort",
+  "思考强度": "Reasoning effort",
   "返回设备": "Back to devices",
   "返回设置": "Back to settings",
   "应用": "App",

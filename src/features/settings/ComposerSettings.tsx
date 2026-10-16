@@ -1,3 +1,5 @@
+import { useWebInterface } from "../web-ui/preference";
+import { ModernComposerSettings } from "./ModernComposerSettings";
 import { Chevron } from "../../ui/icons";
 import { t } from "../../i18n";
 import {
@@ -14,7 +16,7 @@ export type ComposerPicker =
   | "permission"
   | null;
 
-export function ComposerSettings({
+function LegacyComposerSettings({
   picker,
   effortOptions,
   speedOptions,
@@ -189,4 +191,11 @@ export function ComposerSettings({
       </section>
     </div>
   );
+}
+
+export type ComposerSettingsProps = Parameters<typeof LegacyComposerSettings>[0] & { onRestoreComposerFocus?: () => void };
+
+export function ComposerSettings(props: ComposerSettingsProps) {
+  const { modern } = useWebInterface();
+  return modern ? <ModernComposerSettings {...props} /> : <LegacyComposerSettings {...props} />;
 }
