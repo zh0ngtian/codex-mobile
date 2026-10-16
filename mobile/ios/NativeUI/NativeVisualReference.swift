@@ -2,11 +2,11 @@ import Foundation
 
 /// 独立离线对照资料。仅 reference 启动参数使用；项目/设备名为公开演示值。
 enum NativeVisualReference {
-    static func snapshot() -> NativeSnapshot {
+    static func snapshot(chinese: Bool = false) -> NativeSnapshot {
         var value = NativeSnapshot()
         value.ready = true
         value.connection = "online"
-        value.locale = "en"
+        value.locale = chinese ? "zh-CN" : "en"
         value.title = "说明 Sidechat 支持方式"
         value.threadId = "visual-conversation"
         value.backendId = "visual-device"
@@ -17,17 +17,22 @@ enum NativeVisualReference {
         value.backends = [NativeBackend(id: "visual-device", title: "DEMO5VYDY4", connected: true)]
         value.model = "GPT-5"
         value.modelValue = "gpt-5"
-        value.models = [NativeOption(id: "gpt-5", title: "GPT-5", value: "gpt-5")]
+        value.models = [NativeOption(id: "gpt-5", title: "GPT-5", value: "gpt-5"), NativeOption(id: "gpt-5-mini", title: "GPT-5 Mini", value: "gpt-5-mini"), NativeOption(id: "o3", title: "o3", value: "o3")]
         value.effort = "Medium"
         value.effortValue = "medium"
-        value.efforts = [NativeOption(id: "medium", title: "Medium", value: "medium")]
+        value.efforts = [NativeOption(id: "low", title: "Low", value: "low"), NativeOption(id: "medium", title: "Medium", value: "medium"), NativeOption(id: "high", title: "High", value: "high")]
         value.speed = "Standard"
         value.speedValue = "standard"
         value.speeds = [NativeOption(id: "standard", title: "Standard", value: "standard")]
-        value.permission = "Read Only"
+        value.permission = chinese ? "只读" : "Read Only"
         value.permissionValue = "read-only"
-        value.permissions = [NativeOption(id: "read-only", title: "Read Only", value: "read-only")]
-        value.contextUsage = NativeContextUsage(used: 24000, total: 200000, usedPercent: 12, remainingPercent: 88)
+        value.permissions = [
+            NativeOption(id: "read-only", title: chinese ? "只读" : "Read Only", value: "read-only", subtitle: chinese ? "编辑文件或运行命令需要批准" : "Editing files or running commands requires approval"),
+            NativeOption(id: "default", title: chinese ? "工作区写入" : "Workspace Write", value: "default", subtitle: chinese ? "在沙盒中运行命令" : "Run commands in the sandbox"),
+            NativeOption(id: "full-access", title: chinese ? "完全访问" : "Full Access", value: "full-access", subtitle: chinese ? "完全访问计算机（风险较高）" : "Full access to the computer (higher risk)")
+        ]
+        value.contextUsage = NativeContextUsage(used: 14000, total: 200000, usedPercent: 7, remainingPercent: 93)
+        value.sevenDayRateLimit = NativeRateLimit(remainingPercent: 72, resetsAt: Date.now.timeIntervalSince1970 + 10080 * 60 * 0.43, windowDurationMins: 10080)
         value.messages = [
             NativeMessage(id: "visual-user", role: "user", text: "简单说一下你是怎么支持 sidechat 的"),
             NativeMessage(id: "visual-assistant", role: "assistant", text: """

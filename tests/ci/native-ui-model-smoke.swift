@@ -13,6 +13,29 @@ struct NativeStoreSmoke {
         }
         defaults.removeObject(forKey: NativeUIStore.preferenceKey)
         NativeComposerPresentationSmoke.verify()
+        let adjustment = NativeComposerAdjustment(kind: .model, contextID: "b:t:1", wasFocused: true)
+        precondition(adjustment.restoredFocus(contextID: "b:t:1", editable: true, sidebarOpen: false) == true, "调节完成恢复原输入焦点")
+        precondition(adjustment.restoredFocus(contextID: "b:t:2", editable: true, sidebarOpen: false) == nil, "过期调节面板不能聚焦另一会话")
+        precondition(adjustment.restoredFocus(contextID: "b:t:1", editable: false, sidebarOpen: false) == nil, "只读或等待态不恢复键盘")
+        precondition(adjustment.restoredFocus(contextID: "b:t:1", editable: true, sidebarOpen: true) == nil, "侧栏展开时不恢复键盘")
+        precondition(NativeComposerAdjustment(kind: .permission, contextID: "b:t:1", wasFocused: false).restoredFocus(contextID: "b:t:1", editable: true, sidebarOpen: false) == false, "原先收起的输入保持收起")
+        precondition(NativeRateLimit(remainingPercent: 72, resetsAt: 2000, windowDurationMins: 10).remainingTimePercent(at: Date(timeIntervalSince1970: 1700)) == 50)
+        precondition(NativeRateLimit(remainingPercent: 72, resetsAt: nil, windowDurationMins: 10).remainingTimePercent(at: Date(timeIntervalSince1970: 1700)) == nil, "没有可靠重置时间不能伪造时间余量")
+        precondition(NativeRateLimit(remainingPercent: 72, resetsAt: 2000, windowDurationMins: 0).remainingTimePercent(at: Date(timeIntervalSince1970: 1700)) == nil)
+        precondition(NativeRateLimit(remainingPercent: 72, resetsAt: 2000, windowDurationMins: 10).remainingTimePercent(at: Date(timeIntervalSince1970: 2100)) == 0)
+        let adjustmentStore = NativeUIStore(arguments: [])
+        var adjustmentSnapshot = NativeSnapshot()
+        adjustmentSnapshot.ready = true
+        adjustmentSnapshot.contextId = "b:t:1"
+        adjustmentSnapshot.draft = "保留草稿"
+        adjustmentStore.receive(adjustmentSnapshot)
+        var adjustmentCommands: [NativeCommand] = []
+        adjustmentStore.sendCommand = { adjustmentCommands.append($0) }
+        adjustmentStore.chooseComposerOption("model.select", value: "model", contextID: "old-context")
+        precondition(adjustmentCommands.isEmpty, "调节面板不能更改另一个上下文的模型")
+        adjustmentStore.chooseComposerOption("model.select", value: "model", contextID: "b:t:1")
+        precondition(adjustmentCommands.count == 1 && adjustmentCommands[0].params["contextId"] == .string("b:t:1"))
+        precondition(adjustmentStore.draft == "保留草稿", "选择配置不得清空草稿")
         let normal = NativeUIStore(arguments: [])
         precondition(!normal.nativeEnabled, "首次应默认旧界面")
         defaults.set(true, forKey: NativeUIStore.preferenceKey)
@@ -102,7 +125,7 @@ struct NativeStoreSmoke {
         precondition(decoded.version == 1 && decoded.messages.count == 2)
         // 旧 v1 JSON 没有新增的 optional 展示元数据，仍必须可解码。
         precondition(decoded.projectName == nil && decoded.backendName == nil && decoded.listBackendId == nil)
-        precondition(decoded.speeds == nil && decoded.permissions == nil && decoded.contextUsage == nil)
+        precondition(decoded.speeds == nil && decoded.permissions == nil && decoded.contextUsage == nil && decoded.sevenDayRateLimit == nil)
         precondition(decoded.messages.allSatisfy { $0.timestamp == nil })
         let oldGroup = try JSONDecoder().decode(NativeGroup.self, from: Data(#"{"id":"old","title":"旧分组","items":[]}"#.utf8))
         precondition(oldGroup.category == nil && oldGroup.newCommand == nil && oldGroup.subtitle == nil && oldGroup.loading == nil)
@@ -118,11 +141,13 @@ struct NativeStoreSmoke {
         metadata.permissionValue = "workspace-write"
         metadata.permissions = [NativeOption(id: "workspace-write", title: "工作区", value: "workspace-write")]
         metadata.contextUsage = NativeContextUsage(used: 250, total: 1000, usedPercent: 25, remainingPercent: 75)
+        metadata.sevenDayRateLimit = NativeRateLimit(remainingPercent: 72, resetsAt: 1800000000, windowDurationMins: 10080)
         metadata.messages[0].timestamp = 100
         metadata.groups = [NativeGroup(id: "project", title: "项目", items: [], category: "project", subtitle: "Mac", loading: "loading", newCommand: NativeCommand(id: "new", name: "thread.new", params: ["backendId": .string("b"), "cwd": .string("")]))]
         let metadataRoundtrip = try JSONDecoder().decode(NativeSnapshot.self, from: JSONEncoder().encode(metadata))
         precondition(metadataRoundtrip.projectName == "项目" && metadataRoundtrip.backendName == "Mac" && metadataRoundtrip.listBackendId == "all")
         precondition(metadataRoundtrip.contextUsage?.remainingPercent == 75 && metadataRoundtrip.messages[0].timestamp == 100)
+        precondition(metadataRoundtrip.sevenDayRateLimit?.windowDurationMins == 10080 && metadataRoundtrip.sevenDayRateLimit?.resetsAt == 1800000000)
         precondition(metadataRoundtrip.speeds?.first?.value == "priority" && metadataRoundtrip.permissions?.first?.value == "workspace-write")
         precondition(metadataRoundtrip.groups[0].newCommand?.params["cwd"] == .string(""))
         reference.command("thread.new")

@@ -12,6 +12,34 @@ function controller(overrides: Partial<NativeWorkspaceController> = {}): NativeW
  ...overrides };
 }
 describe('核心会话controller适配', () => {
+ it.each([undefined, { secondary: { windowDurationMins: 10080, usedPercent: 28, resetsAt: 1800000000 } }])('有无额度快照都经真实window桥打开照片和文件选择器：%j', async rateLimits => {
+  const target = window as Window & { codexMobilePickAttachments?: (kind: string) => Promise<File[]> };
+  const previous = target.codexMobilePickAttachments;
+  const picked: string[] = []; const selected: File[][] = [];
+  target.codexMobilePickAttachments = async kind => { picked.push(kind); return [new File(['attachment'], `${kind}.txt`, { type: 'text/plain' })]; };
+  try {
+   const c = controller({ extended: { state: { rateLimits }, callbacks: {} }, selectFiles: async files => { selected.push(files); } });
+   const adapter = createWorkspaceAdapter(c, { panelId: null, query: '', setPanel() {}, setQuery() {} });
+   await adapter.handlers['attachment.pick']!({ kind: 'photos' });
+   await adapter.handlers['attachment.pick']!({ kind: 'files' });
+   expect(picked).toEqual(['photos', 'files']);
+   expect(selected.map(files => files.map(file => file.name))).toEqual([['photos.txt'], ['files.txt']]);
+  } finally {
+   if (previous) target.codexMobilePickAttachments = previous;
+   else delete target.codexMobilePickAttachments;
+  }
+ });
+ it('顶部额度投影只使用真实七天窗口，保留重置时间并安全限制上下文边界', () => {
+  const snapshot = (state: Record<string, unknown>) => createWorkspaceAdapter(controller({ extended: { state, callbacks: {} } }), { panelId: null, query: '', setPanel() {}, setQuery() {} }).snapshot;
+  expect(snapshot({ rateLimits: { rateLimits: { primary: { windowDurationMins: 300, usedPercent: 90 }, secondary: { windowDurationMins: 10080, usedPercent: 28, resetsAt: 1800000000 } } } }).sevenDayRateLimit).toEqual({ remainingPercent: 72, windowDurationMins: 10080, resetsAt: 1800000000 });
+  expect(snapshot({ rateLimits: { secondary: { windowDurationMins: 10080, usedPercent: 140 } } }).sevenDayRateLimit).toEqual({ remainingPercent: 0, windowDurationMins: 10080 });
+  expect(snapshot({ rateLimits: { secondary: { windowDurationMins: 10080, usedPercent: 20, resetsAt: null } } }).sevenDayRateLimit).not.toHaveProperty('resetsAt');
+  expect(snapshot({ rateLimits: { primary: { usedPercent: 28 } } }).sevenDayRateLimit).toBeUndefined();
+  expect(snapshot({ rateLimits: { secondary: { windowDurationMins: 10080, usedPercent: null } } }).sevenDayRateLimit).toBeUndefined();
+  expect(snapshot({ rateLimits: { secondary: { windowDurationMins: Infinity, usedPercent: 28 } } }).sevenDayRateLimit).toBeUndefined();
+  expect(snapshot({ tokenUsage: { last: { totalTokens: -10 }, modelContextWindow: 100 } }).contextUsage).toEqual({ used: 0, total: 100, usedPercent: 0, remainingPercent: 100 });
+  expect(snapshot({ tokenUsage: { last: { totalTokens: 150 }, modelContextWindow: 100 } }).contextUsage).toEqual({ used: 100, total: 100, usedPercent: 100, remainingPercent: 0 });
+ });
  it('头部与聚焦配置仅投影业务展示元数据，上下文使用本轮用量且速度不硬编码', () => {
   const c = controller({ active: { id: 't', cwd: 'C:\\Work\\项目', turns: [] }, extended: { state: {
    speedOptions: [{ id: null, label: '标准' }, { id: 'priority', label: '优先' }], selectedServiceTier: 'priority',

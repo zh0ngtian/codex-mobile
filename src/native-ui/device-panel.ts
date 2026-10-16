@@ -4,11 +4,13 @@ import type { NativePanelItem, NativeSnapshot } from './protocol';
 /** 此投影只挑选字段；完整设备凭证只在显式编辑表单中进入secureField。 */
 export function projectDevicePanel(c: any): NativeSnapshot['panel'] {
  if (!c.open) return undefined;
+ // 设备确认只在设备子页呈现；离开时不执行或丢弃尚未确认的操作。
+ const confirmation = !c.page || c.page === 'devices' ? c.confirmation : null;
  const field = (id: string, title: string, value: string, secure = false): NativePanelItem => ({ id, kind: secure ? 'secureField' : 'textField', title, value, disabled: c.testing, command: nativeCommand('device.change', { field: id, draftId: c.draft?.id }) });
  const choice = (id: string, title: string, value: string, options: string[][], name: string): NativePanelItem => ({ id, kind: 'singleChoice', title, value, options: options.map(([v, label]) => ({ id: v, value: v, title: t(label) })), command: nativeCommand(name), disabled: c.testing });
  const items: NativePanelItem[] = [];
- if (c.confirmation) {
-  items.push({ id: 'device-confirmation', kind: 'text', text: c.confirmation.message }, nativeAction('confirm', t('确认'), c.confirmation.name, { id: c.confirmation.id, confirmed: true }), nativeAction('back', t('取消'), 'device.cancel'));
+ if (confirmation) {
+  items.push({ id: 'device-confirmation', kind: 'text', text: confirmation.message }, nativeAction('confirm', t('确认'), confirmation.name, { id: confirmation.id, confirmed: true }), nativeAction('back', t('取消'), 'device.cancel'));
  } else if (c.draft) items.push(field('name', t('设备名称'), c.draft.name), field('gatewayUrl', t('网关地址'), c.draft.gatewayUrl, true), nativeAction('scan', t('扫描网关二维码'), 'device.scan'), { ...nativeAction('save', t(c.testing ? '正在测试…' : '测试并保存'), 'device.save'), disabled: c.testing }, { ...nativeAction('cancel', t('取消'), 'device.cancel'), disabled: c.testing });
  else {
   for (const [index, backend] of c.registry.backends.entries()) {
@@ -22,7 +24,7 @@ export function projectDevicePanel(c: any): NativeSnapshot['panel'] {
   items.push(nativeAction('add', t('添加设备'), 'device.add'));
  }
  if (c.error) items.push({ id: 'devices-error', kind: 'text', title: t('错误'), text: c.error });
- if (!c.confirmation) {
+ if (!confirmation) {
   items.push(choice('transport', t('传输方式'), c.transportMode, [['http', 'HTTP'], ['stream', '流式']], 'settings.transport'), choice('language', t('语言'), c.preference, [['system', '跟随系统'], ['zh-CN', '中文'], ['en', '英文']], 'settings.language'), choice('font', t('字体大小'), c.font.size, [['small', '小'], ['standard', '标准'], ['large', '大'], ['extra-large', '特大']], 'settings.font'));
   if (c.font.saveError) items.push({ id: 'font-error', kind: 'text', text: t('字号已应用，但无法保存；重启后可能恢复原字号') });
   if (c.hasPush) {
@@ -39,7 +41,9 @@ export function projectDevicePanel(c: any): NativeSnapshot['panel'] {
   }
  }
  const prefixes: Record<string, string[]> = { devices: ['device', 'devices-error', 'name', 'gatewayUrl', 'scan', 'save', 'cancel', 'add', ...c.registry.backends.map((b: any) => b.id)], language: ['language'], font: ['font'], transport: ['transport'], notifications: ['push', 'bark'], updates: ['app-version', 'check-update'] };
- const page = c.page === 'settings' ? undefined : c.page;
- const visible = page && prefixes[page] && !c.confirmation ? items.filter(item => prefixes[page].some(prefix => item.id === prefix || item.id.startsWith(`${prefix}-`))) : items;
- return { id: page && page !== 'devices' ? `settings:${page}` : 'devices', title: t(c.confirmation ? '确认设备操作' : c.draft ? '设备连接' : '管理设备'), items: visible, dismissible: !c.testing };
+ const page = c.page;
+ const root = page === 'settings';
+ const visible = root ? items.filter(item => ['language', 'font', 'font-error', 'transport', 'push', 'app-version', 'check-update'].includes(item.id)) : page && prefixes[page] && !confirmation ? items.filter(item => prefixes[page].some(prefix => item.id === prefix || item.id.startsWith(`${prefix}-`))) : items;
+ const titles: Record<string, string> = { settings: t('设置'), language: t('语言'), font: t('字体大小'), transport: t('传输方式'), notifications: t('通知'), updates: t('应用更新') };
+ return { id: root ? 'settings:root' : page && page !== 'devices' ? `settings:${page}` : 'devices', title: titles[page] ?? t(confirmation ? '确认设备操作' : c.draft ? '设备连接' : '管理设备'), items: visible, dismissible: !c.testing };
 }

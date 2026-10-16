@@ -13,7 +13,6 @@ struct NativeSidebarView: View {
                         Button(backend.title) { store.command("backend.select", ["id": .string(backend.id)]) }
                     }
                     Divider()
-                    Button(store.label("管理设备", "Manage Devices")) { store.command("settings.open", ["id": .string("devices")]) }
                     Button(store.label("草稿", "Drafts")) { store.command("drafts.open") }
                     Button(store.label("设置", "Settings")) { store.settingsOpen = true }.accessibilityIdentifier("native-settings-open")
                     Button(store.label("刷新", "Refresh")) { store.command("navigation.refresh") }.accessibilityIdentifier("native-sidebar-refresh")
@@ -24,7 +23,7 @@ struct NativeSidebarView: View {
                 } label: {
                     VStack(spacing: 3) {
                         HStack(spacing: 7) {
-                            Text("Codex Mobile").modifier(NativeScaledFont(size: 18, scale: store.snapshot.fontScale, weight: .bold, relativeTo: .headline))
+                            Text("Codex").modifier(NativeScaledFont(size: 18, scale: store.snapshot.fontScale, weight: .bold, relativeTo: .headline))
                             Image(systemName: "chevron.down").font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)
                         }
                         HStack(spacing: 5) {

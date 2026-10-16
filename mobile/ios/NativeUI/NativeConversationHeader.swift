@@ -20,17 +20,19 @@ struct NativeConversationHeader: View {
                             .font(.system(size: titleSize * store.snapshot.fontScale, weight: .bold)).lineLimit(1)
                         NativeConversationSubtitle(project: store.snapshot.projectName, backend: store.snapshot.backendName, scale: store.snapshot.fontScale)
                     }.frame(maxWidth: .infinity, alignment: .leading)
-                    HStack(spacing: 4) {
+                    HStack(spacing: 0) {
+                        NativeContextUsageButton(store: store)
                         Button { store.command("thread.new") } label: {
-                            Image(systemName: "square.and.pencil").font(.system(size: 23)).frame(width: 48, height: 44)
+                            Image(systemName: "square.and.pencil").font(.system(size: 23)).frame(width: 44, height: 44)
                         }.accessibilityLabel(store.label("新对话", "New Conversation")).accessibilityIdentifier("native-new-thread")
                             .disabled(!store.snapshot.ready || store.snapshot.pending == true || store.awaitingNewConversation)
                         Menu {
                             ForEach(store.snapshot.conversationActions ?? []) { item in NativePanelItemView(item: item, store: store, scope: .message("conversation:\(store.threadKey)")) }
+                            Button(store.label("工作区", "Workspace"), systemImage: "folder") { store.command("panel.open", ["id": .string("workspace")]) }
                         } label: {
-                            Image(systemName: "ellipsis").font(.system(size: 22, weight: .semibold)).frame(width: 48, height: 44)
+                            Image(systemName: "ellipsis").font(.system(size: 22, weight: .semibold)).frame(width: 44, height: 44)
                         }.accessibilityLabel(store.label("会话操作", "Conversation Actions"))
-                    }.buttonStyle(.plain).padding(.horizontal, 5)
+                    }.buttonStyle(.plain).padding(.horizontal, 4)
                         .background(NativePalette.controlFill, in: .capsule)
                         .background(.ultraThinMaterial, in: .capsule)
                         .overlay { Capsule().stroke(.primary.opacity(0.12), lineWidth: 0.5) }

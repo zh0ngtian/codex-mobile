@@ -50,14 +50,11 @@ final class NativeUIUITests: XCTestCase {
         XCTAssertFalse(app.buttons["native-send"].isEnabled)
     }
 
-    func testVisualReferenceProjectAndRecentNewConversationUseSameLauncher() {
+    func testVisualReferenceProjectOmitsNewActionAndRecentKeepsLauncher() {
         let app = XCUIApplication()
         app.launchArguments = ["--native-ui-reference-visual", "--native-ui-reference-visual-sidebar"]
         app.launch()
-        app.buttons["native-group-new-visual-project-0"].tap()
-        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["Hello, let’s get started"].exists)
-        app.buttons["native-sidebar-open"].tap()
+        XCTAssertFalse(app.buttons["native-group-new-visual-project-0"].exists)
         let recent = app.buttons["native-group-new-visual-recent"]
         if !recent.isHittable { app.otherElements["native-sidebar"].scrollViews.firstMatch.swipeUp() }
         recent.tap()
@@ -109,10 +106,99 @@ final class NativeUIUITests: XCTestCase {
         app.launchArguments = ["--native-ui-reference-visual", "--native-ui-reference-visual-focused"]
         app.launch()
         XCTAssertTrue(app.buttons["native-model-menu"].waitForExistence(timeout: 5))
-        XCTAssertEqual(app.buttons["native-model-menu"].value as? String, "gpt-5")
-        XCTAssertEqual(app.buttons["native-effort-menu"].value as? String, "medium")
-        XCTAssertEqual(app.buttons["native-speed-menu"].value as? String, "standard")
-        XCTAssertEqual(app.buttons["native-permission-menu"].value as? String, "read-only")
+        XCTAssertEqual(app.buttons["native-model-menu"].value as? String, "GPT-5 Medium")
+        XCTAssertFalse(app.buttons["native-effort-menu"].exists)
+        XCTAssertEqual(app.buttons["native-speed-menu"].value as? String, "Standard")
+        XCTAssertEqual(app.buttons["native-permission-menu"].value as? String, "Read Only")
+        let input = app.descendants(matching: .any)["native-composer-input"]
+        input.typeText("configuration draft")
+        app.buttons["native-model-menu"].tap()
+        XCTAssertTrue(app.buttons["High"].waitForExistence(timeout: 5))
+        app.buttons["High"].tap()
+        app.buttons["Done"].tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        XCTAssertTrue((input.value as? String)?.contains("configuration draft") == true)
+        XCTAssertEqual(app.buttons["native-model-menu"].value as? String, "GPT-5 High")
+        app.buttons["native-speed-menu"].tap()
+        app.buttons["Standard"].tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        app.buttons["native-permission-menu"].tap()
+        XCTAssertTrue(app.buttons["Full Access"].waitForExistence(timeout: 5))
+        app.buttons["Full Access"].tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        XCTAssertTrue((input.value as? String)?.contains("configuration draft") == true)
+    }
+
+    func testBusyComposerLargestTextPortraitKeepsActionsVisible() {
+        XCUIDevice.shared.orientation = .portrait
+        let app = XCUIApplication()
+        app.launchArguments = ["--native-ui-reference-conversation", "--native-ui-reference-busy", "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
+        app.launch()
+        let send = app.buttons["native-send"]
+        let stop = app.buttons["native-stop"]
+        XCTAssertTrue(send.waitForExistence(timeout: 5), app.debugDescription)
+        XCTAssertTrue(stop.waitForExistence(timeout: 5), app.debugDescription)
+        capture("最大辅助字号-竖屏忙碌输入操作", app: app)
+        XCTAssertTrue(send.isHittable, app.debugDescription)
+        XCTAssertTrue(stop.isHittable, app.debugDescription)
+        for action in [send, stop] {
+            XCTAssertGreaterThanOrEqual(action.frame.minX, app.frame.minX, "\(action.identifier) 左边界超出屏幕")
+            XCTAssertLessThanOrEqual(action.frame.maxX, app.frame.maxX, "\(action.identifier) 右边界超出屏幕")
+        }
+    }
+
+    func testContextRingPresentsNativeUsagePopover() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--native-ui-reference-visual"]
+        app.launch()
+        XCTAssertTrue(app.buttons["native-context-usage"].waitForExistence(timeout: 5))
+        app.buttons["native-context-usage"].tap()
+        XCTAssertTrue(app.staticTexts["Usage and Limits"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "93%")).firstMatch.exists, app.debugDescription)
+        XCTAssertTrue(app.staticTexts["Plan Remaining"].exists)
+        XCTAssertTrue(app.staticTexts["Time Remaining"].exists)
+    }
+
+    func testVisualReferencePreviewScreenshots() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--native-ui-reference-visual", "--native-ui-reference-visual-zh"]
+        app.launch()
+        XCTAssertTrue(app.buttons["native-context-usage"].waitForExistence(timeout: 5))
+        capture("预览对照-对话", app: app)
+        app.buttons["native-context-usage"].tap()
+        XCTAssertTrue(app.staticTexts["用量与额度"].waitForExistence(timeout: 5))
+        capture("预览对照-用量", app: app)
+        app.staticTexts["Worked for 24s"].tap()
+        XCTAssertTrue(app.staticTexts["用量与额度"].waitForNonExistence(timeout: 5), app.debugDescription)
+        let input = app.descendants(matching: .any)["native-composer-input"]
+        let inputReady = XCTNSPredicateExpectation(predicate: NSPredicate(format: "hittable == true"), object: input)
+        XCTAssertEqual(XCTWaiter.wait(for: [inputReady], timeout: 5), .completed, app.debugDescription)
+        input.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        input.typeText("请继续说明一下具体的实现步骤。")
+        capture("预览对照-聚焦输入", app: app)
+        app.buttons["native-model-menu"].tap()
+        XCTAssertTrue(app.buttons["High"].waitForExistence(timeout: 5))
+        capture("预览对照-模型", app: app)
+        app.buttons["完成"].tap()
+        app.buttons["native-permission-menu"].tap()
+        XCTAssertTrue(app.buttons["完全访问"].waitForExistence(timeout: 5))
+        capture("预览对照-权限", app: app)
+        app.buttons["关闭"].tap()
+        app.buttons["native-sidebar-open"].tap()
+        XCTAssertTrue(app.buttons["native-sidebar-device-menu"].waitForExistence(timeout: 5))
+        capture("预览对照-侧栏", app: app)
+        app.buttons["native-sidebar-device-menu"].tap()
+        app.buttons["native-settings-open"].tap()
+        XCTAssertTrue(app.switches["native-ui-preference"].waitForExistence(timeout: 5))
+        capture("预览对照-设置", app: app)
+    }
+
+    private func capture(_ name: String, app: XCUIApplication) {
+        let attachment = XCTAttachment(screenshot: app.screenshot())
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
     }
 
     func testReferenceUsesNativeRootAndHasNoVoiceEntry() {
@@ -133,7 +219,7 @@ final class NativeUIUITests: XCTestCase {
         app.buttons["native-sidebar-device-menu"].tap()
         app.buttons["native-settings-open"].tap()
         XCTAssertTrue(app.switches["native-ui-preference"].waitForExistence(timeout: 3))
-        app.buttons["完成"].tap()
+        app.buttons["native-settings-close"].tap()
         app.buttons["native-sidebar-close"].tap()
         app.buttons["native-new-thread"].tap()
         XCTAssertTrue(app.staticTexts["你好，让我们开始吧"].exists)
@@ -205,16 +291,22 @@ final class NativeUIUITests: XCTestCase {
         waitForExpectations(timeout: 3)
     }
 
-    func testSettingsChildPageReturnsWithinSettings() {
+    func testSettingsInlineLanguageAndChildPageReturnWithinSettings() {
         let app = reference()
         app.buttons["native-sidebar-open"].tap()
         app.buttons["native-sidebar-device-menu"].tap()
         app.buttons["native-settings-open"].tap()
         app.buttons["语言"].tap()
-        XCTAssertTrue(app.staticTexts["语言设置"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["跟随系统"].waitForExistence(timeout: 5))
+        app.buttons["中文"].tap()
+        XCTAssertTrue(app.switches["native-ui-preference"].exists)
+        app.buttons["设备"].tap()
+        XCTAssertTrue(app.staticTexts["设备"].waitForExistence(timeout: 5))
         app.navigationBars.buttons["设置"].tap()
         XCTAssertTrue(app.switches["native-ui-preference"].waitForExistence(timeout: 3))
-        app.buttons["完成"].tap()
+        XCTAssertTrue(app.buttons["native-settings-version"].exists)
+        XCTAssertFalse(app.buttons["应用更新"].exists)
+        app.buttons["native-settings-close"].tap()
     }
 
     func testRichContentUsesNativeTableAndScriptFreeIsolatedPreview() {
@@ -330,7 +422,7 @@ final class NativeUIUITests: XCTestCase {
             initialToggle.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
             waitForToggle(initialToggle, value: "0")
         }
-        app.buttons["完成"].tap()
+        app.buttons["native-settings-close"].tap()
         app.buttons["native-sidebar-close"].tap()
         input.tap()
         input.typeText("CM_SWITCH_DRAFT_20261014")

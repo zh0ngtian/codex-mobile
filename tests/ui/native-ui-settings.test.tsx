@@ -36,6 +36,46 @@ it('全局字号操作立即投影新的fontScale', async () => {
  await act(async () => { await runtime.dispatch({ id: 'font', name: 'settings.font', params: { value: 'large' } }); });
  expect(runtime.snapshot().fontScale).toBe(1.125); runtime.dispose();
 });
+it('设置首页投影既有偏好和真实版本，原地选择后继续留在首页', async () => {
+ const runtime = new NativeRuntime(() => {});
+ render(<BackendManagerSheet nativeRuntime={runtime} nativePage="settings" open registry={{ version: 1, backends: [], selectedBackendId: '' }} summaries={{}} onClose={() => {}} onChange={() => {}} appUpdate={{ supported: true, manualCheckSupported: true, currentVersion: '0.2.321', checking: false, onCheck() {} }} />);
+ expect(runtime.snapshot().panel?.id).toBe('settings:root');
+ expect(runtime.snapshot().panel?.items.find(i => i.id === 'app-version')?.text).toContain('0.2.321');
+ expect(runtime.snapshot().panel?.items.find(i => i.id === 'language')?.options).toHaveLength(3);
+ expect(runtime.snapshot().panel?.items.find(i => i.id === 'font')?.options).toHaveLength(4);
+ expect(runtime.snapshot().panel?.items.some(i => i.id === 'check-update')).toBe(true);
+ expect(runtime.snapshot().panel?.items.some(i => i.id === 'add')).toBe(false);
+ await act(async () => { await runtime.dispatch({ id: 'root-font', name: 'settings.font', params: { value: 'standard' } }); });
+ expect(runtime.snapshot().panel?.id).toBe('settings:root');
+ expect(runtime.snapshot().panel?.items.find(i => i.id === 'font')?.value).toBe('standard');
+ runtime.dispose();
+});
+it('设备操作待确认时返回设置首页仍投影真实偏好，未确认的设备变更不执行', async () => {
+ const runtime = new NativeRuntime(() => {}); const changes: unknown[] = [];
+ const backend = { id: 'b', name: 'Mac', baseUrl: 'http://localhost', token: 'SECRET', enabled: true, order: 0 };
+ const props = { nativeRuntime: runtime, open: true, registry: { version: 1 as const, backends: [backend, { ...backend, id: 'other', order: 1 }], selectedBackendId: 'b' }, summaries: { b: { backendId: 'b', connection: 'online' as const, busy: true, approvalCount: 0, queuedCount: 1, error: '' } }, onClose() {}, onChange: (v: unknown) => changes.push(v) };
+ const { rerender } = render(<BackendManagerSheet {...props} nativePage="devices" />);
+ await act(async () => { await runtime.dispatch({ id: 'pending-remove', name: 'device.remove', params: { id: 'b' } }); });
+ expect(runtime.snapshot().panel?.items.some(item => item.id === 'device-confirmation')).toBe(true);
+ rerender(<BackendManagerSheet {...props} nativePage="settings" />);
+ expect(runtime.snapshot().panel?.id).toBe('settings:root');
+ expect(runtime.snapshot().panel?.items.find(item => item.id === 'language')?.options).toHaveLength(3);
+ expect(runtime.snapshot().panel?.items.find(item => item.id === 'font')?.options).toHaveLength(4);
+ expect(runtime.snapshot().panel?.items.some(item => item.id === 'confirm')).toBe(false);
+ await act(async () => { const result = await runtime.dispatch({ id: 'pending-root-font', name: 'settings.font', params: { value: 'standard' } }); expect(result.ok, result.error).toBe(true); });
+ expect(runtime.snapshot().panel?.items.find(item => item.id === 'font')?.value).toBe('standard');
+ expect(changes).toHaveLength(0);
+ rerender(<BackendManagerSheet {...props} nativePage="devices" />);
+ expect(runtime.snapshot().panel?.items.some(item => item.id === 'device-confirmation')).toBe(true);
+ await act(async () => { await runtime.dispatch({ id: 'cancel-remove', name: 'device.cancel', params: {} }); });
+ expect(runtime.snapshot().panel?.items.some(item => item.id === 'device-confirmation')).toBe(false);
+ expect(changes).toHaveLength(0); runtime.dispose();
+});
+it.each([['notifications', '通知'], ['updates', '应用更新'], ['transport', '传输方式'], ['language', '语言'], ['font', '字体大小']])('设置子页%s使用对应标题', (page, title) => {
+ const runtime = new NativeRuntime(() => {});
+ render(<BackendManagerSheet nativeRuntime={runtime} nativePage={page} open registry={{ version: 1, backends: [], selectedBackendId: '' }} summaries={{}} onClose={() => {}} onChange={() => {}} />);
+ expect(runtime.snapshot().panel?.title).toBe(title); runtime.dispose();
+});
 it('原生表单连续命令同步保留全部字段并同步占用probe，避免不同UUID重复保存', async () => {
  const runtime = new NativeRuntime(() => {}); const probes: any[] = []; let finish!: (v: any) => void;
  render(<BackendManagerSheet nativeRuntime={runtime} open registry={{ version: 1, backends: [], selectedBackendId: '' }} summaries={{}} onClose={() => {}} onChange={() => {}} probe={b => { probes.push(b); return new Promise(r => { finish = r; }); }} />);
