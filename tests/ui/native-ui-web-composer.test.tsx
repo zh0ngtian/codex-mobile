@@ -34,7 +34,8 @@ it('独立输入偏好命令严格验证布尔值并使用全局事务', async (
  expect(saved).toBe(false); runtime.dispose();
 });
 
-import { createRef } from 'react';
+import { createRef, useState } from 'react';
+import { ComposerSettings, type ComposerPicker } from '../../src/features/settings/ComposerSettings';
 import { ConversationPage } from '../../src/features/conversation/ConversationPage';
 import { useOverlayScrollIsolation } from '../../src/ui/overlay-scroll';
 const pageProps = {
@@ -243,5 +244,36 @@ it.each(['skill', 'plugin'] as const)('旧context的%s插入动画回调不能�
  runtime.setWorkspace('a', { ...emptyNativeSnapshot(), ready: true, contextId: 'a:new' }, {});
  act(() => callbacks.forEach(callback => callback(0)));
  expect(runtime.snapshot().webComposer?.focused).toBe(false);
+ view.unmount(); runtime.dispose();
+});
+
+it.each([
+ [false, '选择模型、智能与速度', '智能'], [false, '选择审批与权限模式', '权限模式'],
+ [true, '选择模型与思考强度', '模型与思考强度'], [true, '选择审批与权限模式', '权限模式'], [true, '选择速度', '速度'],
+] as const)('设置按钮的pointerdown→原生失焦→click保留工具栏并打开网页选项（modern=%s，%s）', (modern, buttonName, title) => {
+ hybrid(); localStorage.setItem(WEB_INTERFACE_KEY, modern ? 'modern' : 'legacy');
+ const runtime = new bridge.NativeRuntime(() => {});
+ runtime.setNavigation({ selectedBackendId: 'a', backends: [], groups: [] }); runtime.setWorkspace('a', { ...emptyNativeSnapshot(), ready: true, contextId: 'a:t' }, {});
+ const modernCSS = readFileSync('src/features/web-ui/modern.css', 'utf8');
+ const configurationCSS = modernCSS.split('\n').filter(line => line.includes('.modern-composer-configuration {')).join('\n');
+ function Handoff() {
+  const [picker, setPicker] = useState<ComposerPicker>(null);
+  return <WebInterfaceProvider><style>{configurationCSS}</style>
+   <ConversationPage {...pageProps} nativeRuntime={runtime} nativeContextId="a:t" conversationVisible webOverlayOpen={picker !== null}
+    onOpenAgentSettings={() => setPicker('agent')} onOpenPermissionSettings={() => setPicker('permission')} onOpenSpeedSettings={() => setPicker('speed')} />
+   <ComposerSettings picker={picker} effortOptions={[]} speedOptions={[]} permissionModes={[]} models={[]} selectedEffort={null} selectedModel="" selectedModelLabel="Codex" selectedServiceTier={null} selectedSpeedLabel="普通" selectedPermissionModeId={null}
+    onPickerChange={setPicker} onChooseEffort={() => {}} onChooseModel={() => {}} onChooseSpeed={() => {}} onChoosePermissionMode={() => {}} />
+  </WebInterfaceProvider>;
+ }
+ const view = render(<Handoff />);
+ const state = (focused: boolean) => act(() => window.dispatchEvent(new CustomEvent('codex-mobile-native-editor-state', { detail: { contextId: 'a:t', focused, selectionStart: 2, selectionEnd: 4 } })));
+ state(true);
+ const trigger = screen.getByRole('button', { name: buttonName });
+ fireEvent.pointerDown(trigger);
+ state(false);
+ if (modern) expect(view.container.querySelector('.composer-wrap')).toHaveAttribute('data-expanded', 'true');
+ expect(screen.getByRole('button', { name: buttonName })).toBeVisible();
+ fireEvent.click(trigger);
+ expect(screen.getByRole(modern ? 'dialog' : 'region', { name: title })).toBeVisible();
  view.unmount(); runtime.dispose();
 });

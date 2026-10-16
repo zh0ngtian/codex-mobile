@@ -451,7 +451,11 @@ export function ConversationPage({
   });
   const nativeTextEditor = useNativeWebComposer(nativeRuntime, backendId, nativeContextId, conversationVisible,
     webOverlayOpen || statusOpen || actionsOpen || Boolean(historyEdit || previewImage || queuedFollowUpEdit) || attachmentMenuOpen || realtimeActive, composerInputRef,
-    (focused, caret) => { setComposerFocused(focused); if (focused) syncSkillMention(draft, caret); });
+    (focused, caret) => {
+      // 与网页form的blur使用同一交接保护：配置按钮pointerdown后不能在click前折叠工具栏。
+      if (focused || !settingsFocusRef.current) setComposerFocused(focused);
+      if (focused) syncSkillMention(draft, caret);
+    });
   const nativeComposer = nativeTextEditor.enabled;
   useLayoutEffect(() => {
     const composer = composerRef.current;
