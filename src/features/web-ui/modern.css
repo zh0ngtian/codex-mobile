@@ -137,13 +137,6 @@
 [data-web-interface="modern"] .context-usage-ring { display: block; width: 25px; height: 25px; }
 [data-web-interface="modern"] .context-ring-track { stroke: #dcdcdc; }
 [data-web-interface="modern"] .context-ring-progress { stroke: #101010; }
-[data-web-interface="modern"] .modern-usage-popover { position: absolute; z-index: 8; top: 56px; right: -92px; width: min(224px,calc(100vw - 32px)); padding: 16px; border-radius: 22px; background: #fcfcfc; box-shadow: 0 0 0 .6px #d7d7d7,0 8px 26px #00000012; text-align: left; outline: none; }
-[data-web-interface="modern"] .modern-usage-popover::before { position: absolute; content: ""; top: -5px; right: 109px; width: 10px; height: 10px; transform: rotate(45deg); border-left: .6px solid #d7d7d7; border-top: .6px solid #d7d7d7; background: #fcfcfc; }
-[data-web-interface="modern"] .modern-usage-popover > strong { font-size: .8125rem; line-height: 1.25rem; font-weight: min(900, calc(650 + var(--bold-text-weight-offset))); }
-[data-web-interface="modern"] .modern-usage-popover dl { display: flex; flex-direction: column; gap: 10px; margin: 13px 0 0; }
-[data-web-interface="modern"] .modern-usage-popover dl > div { display: flex; justify-content: space-between; gap: 10px; font-size: .6875rem; line-height: 1.0625rem; }
-[data-web-interface="modern"] .modern-usage-popover dt { color: #929292; }
-[data-web-interface="modern"] .modern-usage-popover dd { margin: 0; font-weight: min(900, calc(600 + var(--bold-text-weight-offset))); }
 [data-web-interface="modern"] .conversation-scroll { background: #fff; }
 [data-web-interface="modern"] .timeline { padding-top: 16px; }
 [data-web-interface="modern"] .user-message { max-width: 86%; }

@@ -8,7 +8,7 @@ export function useModernPopover(open: boolean, root: RefObject<HTMLElement | nu
     const previous = document.activeElement;
     panel.current?.focus({ preventScroll: true });
     const outside = (event: PointerEvent) => {
-      if (event.target instanceof Node && !root.current?.contains(event.target)) close.current();
+      if (event.target instanceof Node && !root.current?.contains(event.target) && !panel.current?.contains(event.target)) close.current();
     };
     const keyboard = (event: KeyboardEvent) => {
       if (event.key === "Escape") { event.preventDefault(); close.current(); }

@@ -14,7 +14,7 @@ import { FONT_SCALES, readFontSize } from '../ui/font-size';
 import { effortLabel } from '../ui/settings';
 import { groupConversationTurns } from '../ui/conversation';
 import { projectNameOf } from '../features/threads/thread-list-model';
-import { contextUsageView, sevenDayRateLimitView } from '../features/conversation/ConversationControls';
+import { contextUsageMetrics, formatTokenCount, rateLimitMetrics } from '../features/conversation/usage-metrics';
 import { copyText } from '../ui/copy';
 import type { NativeRuntime } from './runtime';
 import { useNativeWorkspace } from './adapters';
@@ -82,10 +82,10 @@ export function createWorkspaceAdapter(c: NativeWorkspaceController, panel: Pane
   const hasInput = !!c.draft.trim() || !!c.draftImages.length || !!c.draftFiles.length;
   const business = workspaceBusinessPanels(c, panel, messages);
   if (business.historyMessage) business.historyMessage.historyEdit = business.historyEdit;
-  const context = contextUsageView(state.tokenUsage);
-  const limits = state.rateLimits?.rateLimits ?? state.rateLimits;
-  const rateLimitWindow = [limits?.secondary, limits?.primary].find(entry => Number.isFinite(Number(entry?.windowDurationMins)) && Number(entry?.windowDurationMins) >= 7 * 24 * 60);
-  const quota = rateLimitWindow?.usedPercent != null ? sevenDayRateLimitView({ secondary: rateLimitWindow }) : null;
+  const context = contextUsageMetrics(state.tokenUsage);
+  const conversationTokenUsage = formatTokenCount(state.tokenUsage?.total?.totalTokens);
+  const sevenDayRateLimit = rateLimitMetrics(state.rateLimits, 10080);
+  const fiveHourRateLimit = rateLimitMetrics(state.rateLimits, 300);
   const conversationActions = [...business.actions, nativeAction('mentions', 'Skill / Plugin', 'panel.open', { id: 'mentions' })];
   if (!c.active?.id) conversationActions.push({ ...nativeAction('save-draft', c.draftSaveStatus || t('保存草稿'), 'draft.save'), disabled: !hasInput || c.draftSaving || c.imageReading || c.busy || c.pending });
   if (c.loadState === 'error') conversationActions.push(nativeAction('retry', t('重试'), 'thread.retry'));
@@ -114,8 +114,9 @@ export function createWorkspaceAdapter(c: NativeWorkspaceController, panel: Pane
     permissions: Array.isArray(state.permissionModes) ? options(state.permissionModes) : undefined,
     permissionValue: typeof state.selectedPermissionModeId === 'string' ? state.selectedPermissionModeId : undefined,
     contextUsage: context ? { ...context, used: Math.min(context.total, Math.max(0, context.used)) } : undefined,
-    sevenDayRateLimit: quota && rateLimitWindow ? { remainingPercent: quota.remainingPercent, windowDurationMins: Number(rateLimitWindow.windowDurationMins),
-      ...(rateLimitWindow.resetsAt != null && Number.isFinite(Number(rateLimitWindow.resetsAt)) && Number(rateLimitWindow.resetsAt) > 0 ? { resetsAt: Number(rateLimitWindow.resetsAt) } : {}) } : undefined,
+    conversationTokenUsage: conversationTokenUsage ?? undefined,
+    sevenDayRateLimit: sevenDayRateLimit ?? undefined,
+    fiveHourRateLimit: fiveHourRateLimit ?? undefined,
     pending: c.pending || c.imageReading || c.draftSaving, loading: c.loadState, conversationActions,
     badge: c.syncStale ? t('正在同步') : undefined, error: c.error || c.loadError || undefined,
     panel: (panel.presentation !== 'composer' || panel.panelId ? business.panel : undefined) ?? projectPanel(c, panel),

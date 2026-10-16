@@ -37,8 +37,28 @@ describe('核心会话controller适配', () => {
   expect(snapshot({ rateLimits: { primary: { usedPercent: 28 } } }).sevenDayRateLimit).toBeUndefined();
   expect(snapshot({ rateLimits: { secondary: { windowDurationMins: 10080, usedPercent: null } } }).sevenDayRateLimit).toBeUndefined();
   expect(snapshot({ rateLimits: { secondary: { windowDurationMins: Infinity, usedPercent: 28 } } }).sevenDayRateLimit).toBeUndefined();
-  expect(snapshot({ tokenUsage: { last: { totalTokens: -10 }, modelContextWindow: 100 } }).contextUsage).toEqual({ used: 0, total: 100, usedPercent: 0, remainingPercent: 100 });
+  expect(snapshot({ tokenUsage: { last: { totalTokens: -10 }, modelContextWindow: 100 } }).contextUsage).toBeUndefined();
   expect(snapshot({ tokenUsage: { last: { totalTokens: 150 }, modelContextWindow: 100 } }).contextUsage).toEqual({ used: 100, total: 100, usedPercent: 100, remainingPercent: 0 });
+ });
+ it.each([[950, '950'], [1000, '1K'], [128450, '128.5K'], [999999, '1M'], [3084000, '3.1M']])('对话累计 %s Token 投影为 %s，严格区分七天与五小时额度', (tokens, formatted) => {
+  const project = (state: Record<string, unknown>) => createWorkspaceAdapter(controller({ extended: { state, callbacks: {} } }), { panelId: null, query: '', setPanel() {}, setQuery() {} }).snapshot;
+  const usage = { last: { totalTokens: 17500 }, total: { totalTokens: tokens }, modelContextWindow: 250000 };
+  const limits = { primary: { usedPercent: 28, windowDurationMins: 10080 }, secondary: { usedPercent: 57, windowDurationMins: 300 } };
+  const result = project({ tokenUsage: usage, rateLimits: { rateLimits: limits } });
+  expect(result).toMatchObject({ conversationTokenUsage: formatted, contextUsage: { remainingPercent: 93 }, sevenDayRateLimit: { remainingPercent: 72, windowDurationMins: 10080 }, fiveHourRateLimit: { remainingPercent: 43, windowDurationMins: 300 } });
+  expect(project({ tokenUsage: usage, rateLimits: { primary: limits.secondary, secondary: limits.primary } }).fiveHourRateLimit?.remainingPercent).toBe(43);
+ });
+ it.each([null, undefined, -1, NaN, Infinity])('原生卡片严格拒绝无效用量 %s，累计缺失不回退 last', value => {
+  const project = (state: Record<string, unknown>) => createWorkspaceAdapter(controller({ extended: { state, callbacks: {} } }), { panelId: null, query: '', setPanel() {}, setQuery() {} }).snapshot;
+  const result = project({ tokenUsage: { last: { totalTokens: value }, total: { totalTokens: value }, modelContextWindow: 250000 }, rateLimits: { primary: { usedPercent: value, windowDurationMins: 300 }, secondary: { usedPercent: value, windowDurationMins: 10080 } } });
+  expect(result.contextUsage).toBeUndefined(); expect(result.conversationTokenUsage).toBeUndefined();
+  expect(result.sevenDayRateLimit).toBeUndefined(); expect(result.fiveHourRateLimit).toBeUndefined();
+  expect(project({ tokenUsage: { last: { totalTokens: 1000 }, modelContextWindow: 250000 } }).conversationTokenUsage).toBeUndefined();
+  expect(project({ tokenUsage: { total: { totalTokens: 1000 }, modelContextWindow: 250000 } }).contextUsage).toBeUndefined();
+ });
+ it.each([0, -1, NaN, null, 301, 20160])('原生卡片不将不匹配窗口 %s 充当七天或五小时', duration => {
+  const result = createWorkspaceAdapter(controller({ extended: { state: { rateLimits: { primary: { usedPercent: 10, windowDurationMins: duration }, secondary: { usedPercent: 10, windowDurationMins: duration } } }, callbacks: {} } }), { panelId: null, query: '', setPanel() {}, setQuery() {} }).snapshot;
+  expect(result.sevenDayRateLimit).toBeUndefined(); expect(result.fiveHourRateLimit).toBeUndefined();
  });
  it('头部与聚焦配置仅投影业务展示元数据，上下文使用本轮用量且速度不硬编码', () => {
   const c = controller({ active: { id: 't', cwd: 'C:\\Work\\项目', turns: [] }, extended: { state: {

@@ -32,7 +32,9 @@ enum NativeVisualReference {
             NativeOption(id: "full-access", title: chinese ? "完全访问" : "Full Access", value: "full-access", subtitle: chinese ? "完全访问计算机（风险较高）" : "Full access to the computer (higher risk)")
         ]
         value.contextUsage = NativeContextUsage(used: 14000, total: 200000, usedPercent: 7, remainingPercent: 93)
-        value.sevenDayRateLimit = NativeRateLimit(remainingPercent: 72, resetsAt: Date.now.timeIntervalSince1970 + 10080 * 60 * 0.43, windowDurationMins: 10080)
+        value.sevenDayRateLimit = NativeRateLimit(remainingPercent: 72, windowDurationMins: 10080)
+        value.fiveHourRateLimit = NativeRateLimit(remainingPercent: 43, windowDurationMins: 300)
+        value.conversationTokenUsage = "128.5K"
         value.messages = [
             NativeMessage(id: "visual-user", role: "user", text: "简单说一下你是怎么支持 sidechat 的"),
             NativeMessage(id: "visual-assistant", role: "assistant", text: """

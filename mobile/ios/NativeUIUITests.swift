@@ -330,8 +330,28 @@ final class NativeUIUITests: XCTestCase {
         app.buttons["native-context-usage"].tap()
         XCTAssertTrue(app.staticTexts["Usage and Limits"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "93%")).firstMatch.exists, app.debugDescription)
-        XCTAssertTrue(app.staticTexts["Plan Remaining"].exists)
+        XCTAssertTrue(app.staticTexts["Cycle Remaining"].exists)
         XCTAssertTrue(app.staticTexts["Time Remaining"].exists)
+        XCTAssertTrue(app.staticTexts["Conversation Tokens"].exists)
+        XCTAssertTrue(app.staticTexts["128.5K"].exists)
+    }
+
+    func testUsageCardShowsCompactConversationTokenAndLimits() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--native-ui-reference-visual", "--native-ui-reference-visual-zh"]
+        app.launch()
+        let trigger = app.buttons["native-context-usage"]
+        XCTAssertTrue(trigger.waitForExistence(timeout: 5))
+        trigger.tap()
+        XCTAssertTrue(app.staticTexts["用量与额度"].waitForExistence(timeout: 5))
+        for label in ["上下文余量", "周期剩余", "时间剩余", "对话 Token", "93%", "72%", "43%", "128.5K"] {
+            XCTAssertTrue(app.staticTexts[label].exists, label)
+        }
+        capture("对话用量卡片", app: app)
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.15, dy: 0.55)).tap()
+        XCTAssertTrue(app.staticTexts["用量与额度"].waitForNonExistence(timeout: 5))
+        trigger.tap()
+        XCTAssertTrue(app.staticTexts["128.5K"].waitForExistence(timeout: 5))
     }
 
     func testVisualReferencePreviewScreenshots() {

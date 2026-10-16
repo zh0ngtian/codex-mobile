@@ -48,13 +48,13 @@ import { TurnCard } from "./Timeline";
 import {
   ContextUsageButton,
   ConversationActionMenu,
-  ConversationStatusSheet,
 } from "./ConversationControls";
 import { ImagePreviewSheet } from "./sheets/ImagePreviewSheet";
 import { useConversationAutoScroll } from "./conversation-scroll";
 import { useRealtimeConversation } from "./useRealtimeConversation";
 import { t } from "../../i18n";
 import { useWebInterface } from "../web-ui/preference";
+import { ConversationUsagePopover } from "./ConversationUsagePopover";
 import { ModernContextUsage, NewChatDraftMenu } from "./ModernConversationControls";
 import videoPoster from "../../assets/video-poster.svg";
 import { RunProgress } from "./RunProgress";
@@ -311,6 +311,7 @@ export function ConversationPage({
     backends.find((backend) => backend.id === backendId) ?? null;
   const [previewImage, setPreviewImage] = useState<DraftImage | null>(null);
   const [statusOpen, setStatusOpen] = useState(false);
+  const usageButtonRef = useRef<HTMLButtonElement>(null);
   const [actionsOpen, setActionsOpen] = useState(false);
   const [composerMaximized, setComposerMaximized] = useState(false);
   const [attachmentMenuOpen, setAttachmentMenuOpen] = useState(false);
@@ -608,9 +609,11 @@ export function ConversationPage({
             {modern ? <ModernContextUsage tokenUsage={tokenUsage} rateLimits={rateLimits} open={statusOpen}
               onToggle={() => { setActionsOpen(false); setStatusOpen(current => !current); }} onClose={() => setStatusOpen(false)} /> : <ContextUsageButton
               tokenUsage={tokenUsage}
+              open={statusOpen}
+              buttonRef={usageButtonRef}
               onClick={() => {
                 setActionsOpen(false);
-                setStatusOpen(true);
+                setStatusOpen(current => !current);
               }}
             />}
             {modern && <button type="button" className="round-button" aria-label={t("新建对话")} onClick={onNewChat} disabled={!onNewChat}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4H5a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7" /><path d="m15 3 5 5M10 17l-3 1 1-4L18 4a2.1 2.1 0 0 1 3 3z" /></svg></button>}
@@ -1408,9 +1411,9 @@ export function ConversationPage({
           />
         )}
 
-      <ConversationStatusSheet
+      <ConversationUsagePopover
         open={!modern && statusOpen}
-        thread={active}
+        anchorRef={usageButtonRef}
         tokenUsage={tokenUsage}
         rateLimits={rateLimits}
         onClose={() => setStatusOpen(false)}

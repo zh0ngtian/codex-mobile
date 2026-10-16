@@ -127,35 +127,35 @@ describe("新版会话真实数据与操作", () => {
     expect(container.querySelector(".context-ring-track")).not.toBeNull();
     expect(container.querySelector(".context-ring-progress")).toBeNull();
   });
-  it("用量弹层只有三个余量行，优先七天窗口并支持 Escape 和外部关闭", () => {
+  it("用量卡片展示四行，分别使用七天和五小时额度并支持关闭", () => {
     vi.spyOn(Date, "now").mockReturnValue(1_800_000_000_000);
-    const { view, container } = setup({ rateLimits: { rateLimits: { primary: { usedPercent: 99, windowDurationMins: 300 }, secondary: { usedPercent: 28, windowDurationMins: 10080, resetsAt: 1_800_302_400 } } } });
+    const { view, container } = setup({ tokenUsage: { last: { totalTokens: 25 }, total: { totalTokens: 128450 }, modelContextWindow: 100 }, rateLimits: { rateLimits: { primary: { usedPercent: 99, windowDurationMins: 300 }, secondary: { usedPercent: 28, windowDurationMins: 10080, resetsAt: 1_800_302_400 } } } });
     const trigger = view.getByRole("button", { name: "查看上下文占用情况" });
     fireEvent.click(trigger);
-    const dialog = view.getByRole("dialog", { name: "用量与额度" });
-    expect(Array.from(dialog.querySelectorAll("dt")).map(row => row.textContent)).toEqual(["上下文余量", "套餐剩余", "时间剩余"]);
-    expect(Array.from(dialog.querySelectorAll("dd")).map(row => row.textContent)).toEqual(["75%", "72%", "50%"]);
-    expect(dialog.textContent).not.toMatch(/已用|100|token/);
+    const dialog = within(document.body).getByRole("dialog", { name: "用量与额度" });
+    expect(Array.from(dialog.querySelectorAll("dt")).map(row => row.textContent)).toEqual(["上下文余量", "周期剩余", "时间剩余", "对话 Token"]);
+    expect(Array.from(dialog.querySelectorAll("dd")).map(row => row.textContent)).toEqual(["75%", "72%", "1%", "128.5K"]);
+    expect(dialog.textContent).not.toMatch(/已用|重置/);
     expect(document.activeElement).toBe(dialog);
     fireEvent.keyDown(dialog, { key: "Escape" });
-    expect(view.queryByRole("dialog")).toBeNull();
+    expect(within(document.body).queryByRole("dialog", { name: "用量与额度" })).toBeNull();
     expect(document.activeElement).toBe(trigger);
     fireEvent.click(trigger);
     fireEvent.pointerDown(container.querySelector(".conversation-scroll")!);
-    expect(view.queryByRole("dialog")).toBeNull();
+    expect(within(document.body).queryByRole("dialog", { name: "用量与额度" })).toBeNull();
     vi.restoreAllMocks();
   });
   it.each([
     [null, "暂无数据", "暂无数据"],
     [{ secondary: { usedPercent: null, windowDurationMins: 10080, resetsAt: null } }, "暂无数据", "暂无数据"],
-    [{ primary: { usedPercent: 150, windowDurationMins: 10080, resetsAt: 1 } }, "0%", "0%"],
-    [{ primary: { usedPercent: -20, windowDurationMins: 10080, resetsAt: 9_000_000_000 } }, "100%", "100%"],
+    [{ primary: { usedPercent: 150, windowDurationMins: 10080, resetsAt: 1 } }, "0%", "暂无数据"],
+    [{ primary: { usedPercent: -20, windowDurationMins: 10080, resetsAt: 9_000_000_000 } }, "暂无数据", "暂无数据"],
     [{ primary: { usedPercent: Infinity, windowDurationMins: Infinity, resetsAt: Infinity } }, "暂无数据", "暂无数据"],
-  ])("套餐和时间处理未知值、边界 %j", (rateLimits, quota, time) => {
+  ])("周期和五小时额度处理未知值、边界 %j", (rateLimits, quota, time) => {
     const { view } = setup({ tokenUsage: { last: { totalTokens: null }, modelContextWindow: 100 }, rateLimits });
     fireEvent.click(view.getByRole("button", { name: "查看上下文占用情况" }));
-    const dialog = view.getByRole("dialog", { name: "用量与额度" });
-    expect(Array.from(dialog.querySelectorAll("dd")).map(row => row.textContent)).toEqual(["暂无数据", quota, time]);
+    const dialog = within(document.body).getByRole("dialog", { name: "用量与额度" });
+    expect(Array.from(dialog.querySelectorAll("dd")).map(row => row.textContent)).toEqual(["暂无数据", quota, time, "暂无数据"]);
   });
   it.each([false, true])("新聊天菜单只在保存成功后关闭：%s", async success => {
     const onSaveDraft = vi.fn(async () => success);
@@ -186,7 +186,7 @@ describe("新版会话真实数据与操作", () => {
     const { container, view } = setup({ tokenUsage: { last: { totalTokens: null }, total: { totalTokens: 80 }, modelContextWindow: 100 } });
     expect(container.querySelector(".context-ring-progress")).toBeNull();
     fireEvent.click(view.getByRole("button", { name: "查看上下文占用情况" }));
-    expect(view.getByText("上下文余量").nextElementSibling?.textContent).toBe("暂无数据");
+    expect(within(document.body).getByText("上下文余量").nextElementSibling?.textContent).toBe("暂无数据");
   });
   it("输入转到工具栏按钮焦点时保持展开，避免点击前按钮消失", () => {
     const { container, view } = setup(); const input = view.getByRole("textbox");
