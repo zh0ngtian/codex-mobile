@@ -17,7 +17,6 @@
       "sha256": "ce613391e27dd033abdace18f93fbda2fc065e654d21abd584938037f78ded10",
       "downloadUrl": "http://192.168.123.79:8765/channels/codex-mobile/latest.apk",
       "platform": "apk",
-      "signed": false,
       "verification": [
         "JSON",
         "HEAD",
