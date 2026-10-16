@@ -2,11 +2,12 @@ import SwiftUI
 
 struct NativeRootView: View {
     @Bindable var store: NativeUIStore
+    let availableHeight: CGFloat
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var body: some View {
         ZStack {
             NativePalette.canvas.ignoresSafeArea()
-            NativeConversationView(store: store)
+            NativeConversationView(store: store, availableHeight: availableHeight)
                 .opacity(store.sidebarOpen ? 0 : 1)
                 .allowsHitTesting(!store.sidebarOpen)
                 .accessibilityHidden(store.sidebarOpen)

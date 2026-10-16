@@ -24,7 +24,7 @@ struct NativeStoreSmoke {
         let inlineMessage = try JSONDecoder().decode(NativeMessage.self, from: inlineJSON)
         let inlineRoundtrip = try JSONSerialization.jsonObject(with: JSONEncoder().encode(inlineMessage)) as! [String: Any]
         precondition((inlineRoundtrip["historyEdit"] as? [String: Any])?["id"] as? String == "history-edit:t:turn:m", "真实原生DTO必须保留消息原位编辑而不丢弃字段")
-        let adjustment = NativeComposerAdjustment(kind: .model, contextID: "b:t:1", wasFocused: true)
+        let adjustment = NativeComposerAdjustment(kind: .permission, contextID: "b:t:1", wasFocused: true)
         precondition(adjustment.restoredFocus(contextID: "b:t:1", editable: true, sidebarOpen: false) == true, "调节完成恢复原输入焦点")
         precondition(adjustment.restoredFocus(contextID: "b:t:2", editable: true, sidebarOpen: false) == nil, "过期调节面板不能聚焦另一会话")
         precondition(adjustment.restoredFocus(contextID: "b:t:1", editable: false, sidebarOpen: false) == nil, "只读或等待态不恢复键盘")
@@ -48,12 +48,17 @@ struct NativeStoreSmoke {
         adjustmentSnapshot.draft = "保留草稿"
         adjustmentStore.receive(adjustmentSnapshot)
         var adjustmentCommands: [NativeCommand] = []
+        adjustmentStore.setCaretOffset(2)
         adjustmentStore.sendCommand = { adjustmentCommands.append($0) }
-        adjustmentStore.chooseComposerOption("model.select", value: "model", contextID: "old-context")
-        precondition(adjustmentCommands.isEmpty, "调节面板不能更改另一个上下文的模型")
+        let optionSelectionRevision = adjustmentStore.selectionRevision
+        for name in ["model.select", "effort.select", "speed.select"] {
+            adjustmentStore.chooseComposerOption(name, value: "old-option", contextID: "old-context")
+        }
+        precondition(adjustmentCommands.isEmpty, "旧系统菜单回调不能更改另一个上下文的模型、思考或速度")
         adjustmentStore.chooseComposerOption("model.select", value: "model", contextID: "b:t:1")
         precondition(adjustmentCommands.count == 1 && adjustmentCommands[0].params["contextId"] == .string("b:t:1"))
         precondition(adjustmentStore.draft == "保留草稿", "选择配置不得清空草稿")
+        precondition(adjustmentStore.caretOffset == 2 && adjustmentStore.selectionRevision == optionSelectionRevision, "选择配置不得重置光标或组字选区")
         let normal = NativeUIStore(arguments: [])
         precondition(!normal.nativeEnabled, "首次应默认旧界面")
         defaults.set(true, forKey: NativeUIStore.preferenceKey)

@@ -1,10 +1,14 @@
 import Foundation
 
-/// 最大化时为编辑器本身预留全部预算行；普通输入继续随内容自然增长。
+/// 编辑器从一行按内容自然增长，超出当前宿主预算后在控件内部滚动。
 enum NativeComposerLineLimits {
-    static func resolve(maximized: Bool, availableHeight: Double, lineHeight: Double, compact: Bool, accessibility: Bool) -> ClosedRange<Int> {
-        guard maximized else { return 1...(compact ? (accessibility ? 1 : 2) : (accessibility ? 3 : 6)) }
-        let lines = max(1, Int((availableHeight - 80) / max(24, lineHeight)))
-        return lines...lines
+    static func resolve(availableHeight: Double, lineHeight: Double, compact: Bool, accessibility: Bool, chromeHeight: Double = 80) -> ClosedRange<Int> {
+        let preferred = compact ? (accessibility ? 1 : 2) : (accessibility ? 3 : 6)
+        let safeHeight = availableHeight.isFinite ? max(0, availableHeight) : 0
+        let safeLine = lineHeight.isFinite && lineHeight > 0 ? max(1, lineHeight) : 24
+        let chrome = chromeHeight.isFinite ? max(0, chromeHeight) : 80
+        // 先限制到自然行数上限，避免极大有限高度转换成 Int 时溢出。
+        let budget = Int(min(Double(preferred), max(0, safeHeight - chrome) / safeLine))
+        return 1...max(1, budget)
     }
 }
