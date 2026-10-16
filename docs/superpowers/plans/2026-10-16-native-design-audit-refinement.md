@@ -36,6 +36,17 @@
 
 ## 四、交付
 
-- [ ] 相关回归、Swift编译与关键UI通过；提交并推送本次代码。
-- [ ] 在既有排他租约下沿用本机 OTA-only 流程，版本高于所有固定渠道；不触发GitHub Release、APK或软件源更新。
-- [ ] 回验签名身份、HTTPS OTA及固定IPA清单/HEAD/完整GET/散列，保存验收凭证。测试使用离线资料，不创建真实任务；模拟器用后关闭。
+- [x] 相关回归、Swift编译与关键UI通过；提交并推送本次代码。
+- [x] 在既有排他租约下沿用本机 OTA-only 流程，版本高于所有固定渠道；不触发GitHub Release、APK或软件源更新。
+- [x] 回验签名身份、HTTPS OTA及固定IPA清单/HEAD/完整GET/散列，保存验收凭证。测试使用离线资料，不创建真实任务；模拟器用后关闭。
+
+## 实际验收
+
+- 代码提交：`e568d72a41a9de0aa3cd2209a547456bf207cd62`，已推送 `codex/native-preview-alignment-20261016`。
+- TypeScript、45项投影/设置/Swift smoke通过；四种UI流程分别覆盖项目折叠/分页、设备/通知导航、附件草稿恢复和七屏视觉对照。
+- 新截图与归一化比较：`.mobile-build/design-audit-20261016/`；长期副本位于 `/Users/zhongtian/.codex/visualizations/2026/10/16/01a1433c-545b-78c0-9522-eb1bcb3cf80d/native-design-audit/`。本轮已修正旧报告过宽的验收结论，详见 `design-qa.md`。
+- OTA `0.2.180` / `2180` 已签名，4,841,462字节，SHA-256 `119595bcaed4ebe0d06f73e33bec45d07f7453fb0113dd07e4da55aa3c420af4`。使用现有发布数据库和排他租约；发布完成后已释放租约。
+- [固定OTA安装页](https://192.168.123.79:8766/channels/codex-mobile/current/install.html)，[固定IPA](http://192.168.123.79:8765/channels/codex-mobile/latest.ipa)。HTTPS渠道检查和固定IPA独立HEAD/完整GET均通过。
+- GitHub最新Release与固定APK仍为0.2.178，没有更新软件源；之后正式批次须纳入本次源码，当前未推进main。
+- 测试仅用离线fixture，未创建远端会话；专用模拟器已关闭。未声称完成真机覆盖安装和数据保留验收。
+- [公开验收凭证](evidence/2026-10-16-native-design-audit-ota-release.json)。
