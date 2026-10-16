@@ -10,7 +10,7 @@ final class NativeUIStore {
         didSet { if settingsOpen { cancelComposerPresentation() } }
     }
     var search = ""
-    var attachmentOpen = false
+    private(set) var attachmentOpen = false
     private(set) var composerPresentation: NativeComposerPresentationEvent?
     private var composerIntent: NativeComposerPresentationIntent?
     var awaitingNewConversation: Bool { composerIntent != nil }
@@ -352,11 +352,20 @@ final class NativeUIStore {
         composerPresentation = nil
         switch event.presentation {
         case .focus: break
-        case .attachments: attachmentOpen = true
+        case .attachments: setComposerAttachmentOpen(true, contextID: contextID)
         case .photos: command("attachment.pick", ["kind": .string("photos")])
         case .files: command("attachment.pick", ["kind": .string("files")])
         }
         return event.presentation
+    }
+    func composerAttachmentIsOpen(contextID: String?) -> Bool {
+        contextID == snapshot.contextId && attachmentOpen
+    }
+    /// View 消失和 UIKit 菜单结束可能晚于新会话呈现，只接受所属会话的读写。
+    func setComposerAttachmentOpen(_ isOpen: Bool, contextID: String?) {
+        guard contextID == snapshot.contextId else { return }
+        if isOpen, !composerCanEdit || sidebarOpen { return }
+        attachmentOpen = isOpen
     }
     func chooseComposerOption(_ name: String, value: String, contextID: String?) {
         guard NativeComposerMenuContext(contextID: contextID).allowsExecution(contextID: snapshot.contextId, editable: composerCanEdit, sidebarOpen: sidebarOpen),

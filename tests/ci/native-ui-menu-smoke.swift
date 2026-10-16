@@ -50,6 +50,18 @@ enum NativeComposerMenuSmoke {
         }
         check(commands.count == 4, "每个选择只派发一次")
         check(store.draft == value.draft && store.caretOffset == 3 && store.selectionRevision == revision, "附件选择不重设草稿、光标或中文组字选区")
+        store.setComposerAttachmentOpen(true, contextID: "old-context")
+        check(store.attachmentOpen, "当前会话可以打开附件菜单")
+        var next = value
+        next.contextId = "new-context"; next.threadId = nil; next.draft = ""
+        store.receive(next)
+        store.setComposerAttachmentOpen(true, contextID: "new-context")
+        store.setComposerAttachmentOpen(false, contextID: "old-context")
+        check(store.attachmentOpen, "旧输入栏消失或旧UIKit结束回调不能清除新会话附件请求")
+        store.setComposerAttachmentOpen(false, contextID: "new-context")
+        check(!store.attachmentOpen, "当前菜单关闭仍须正确清理呈现状态")
+        store.setComposerAttachmentOpen(true, contextID: "old-context")
+        check(!store.attachmentOpen, "旧UIKit显示回调也不能重新打开新会话附件菜单")
         for state in ["stale", "read-only", "not-ready", "pending", "sidebar", "awaiting"] {
             var blocked = value
             if state == "stale" { blocked.contextId = "new-context" }
@@ -59,6 +71,8 @@ enum NativeComposerMenuSmoke {
             blocked.sidebarOpen = state == "sidebar"
             store.receive(blocked)
             if state == "awaiting" { store.startNewConversation(presentation: .attachments) }
+            store.setComposerAttachmentOpen(true, contextID: "old-context")
+            check(!store.attachmentOpen, "\(state) 不能打开旧上下文附件菜单")
             let count = commands.count
             for action in NativeComposerAttachmentAction.allCases {
                 store.chooseComposerAttachment(action, contextID: "old-context")

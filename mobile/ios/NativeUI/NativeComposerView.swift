@@ -3,6 +3,7 @@ import UIKit
 
 struct NativeComposerView: View {
     @Bindable var store: NativeUIStore
+    let contextID: String?
     var onFocusChanged: (Bool) -> Void = { _ in }
     let availableHeight: CGFloat
     @State private var supplementaryContentHeight: CGFloat = 0
@@ -61,11 +62,11 @@ struct NativeComposerView: View {
                     .onChange(of: selection) { updateCaret() }
                     .onChange(of: store.selectionRevision, initial: true) { updateSelection() }
                 HStack(spacing: 2) {
-                    NativeComposerAttachmentMenu(store: store, contextID: store.snapshot.contextId,
-                        isEnabled: store.composerCanEdit && !store.sidebarOpen, isOpen: $store.attachmentOpen,
+                    NativeComposerAttachmentMenu(store: store, contextID: contextID,
+                        isEnabled: store.composerCanEdit && !store.sidebarOpen, isOpen: attachmentPresentation,
                         fontSize: toolbarSize * store.snapshot.fontScale)
                         .frame(width: 44, height: 44)
-                    if expanded { NativeComposerConfigurationView(store: store) }
+                    if expanded { NativeComposerConfigurationView(store: store, contextID: contextID) }
                     Spacer(minLength: 0)
                     if canInterrupt && hasDraft {
                         Button(store.label("停止", "Stop"), systemImage: "stop.circle") { store.command("turn.stop") }
@@ -100,10 +101,10 @@ struct NativeComposerView: View {
         .onChange(of: store.composerPresentation?.id, initial: true) { applyPresentation() }
         .onChange(of: store.awaitingNewConversation) { if store.awaitingNewConversation { focused = false } }
         .onChange(of: store.composerCanEdit) {
-            if !store.composerCanEdit { focused = false; store.attachmentOpen = false }
+            if !store.composerCanEdit { focused = false; store.setComposerAttachmentOpen(false, contextID: contextID) }
         }
         .onChange(of: focused) { onFocusChanged(focused) }
-        .onDisappear { store.attachmentOpen = false; onFocusChanged(false) }
+        .onDisappear { store.setComposerAttachmentOpen(false, contextID: contextID); onFocusChanged(false) }
         .onChange(of: store.sidebarOpen) { if store.sidebarOpen { focused = false } }
 
     }
@@ -116,7 +117,7 @@ struct NativeComposerView: View {
             accessibility: dynamicTypeSize.isAccessibilitySize, chromeHeight: layoutBudget.editorChromeHeight)
     }
     private func applyPresentation() {
-        guard let presentation = store.consumeComposerPresentation(contextID: store.snapshot.contextId) else { return }
+        guard let presentation = store.consumeComposerPresentation(contextID: contextID) else { return }
         focused = presentation == .focus
     }
     private func submit() { store.command(canInterrupt && !hasDraft ? "turn.stop" : "message.send") }
@@ -142,7 +143,11 @@ struct NativeComposerView: View {
     private var inputAvailableHeight: CGFloat {
         availableHeight - supplementaryHeight - layoutBudget.supplementarySpacing - layoutBudget.outerHeight
     }
-    private var expanded: Bool { focused || (canInterrupt && hasDraft) || store.attachmentOpen || !store.snapshot.attachments.isEmpty || store.draft.contains("\n") || store.draft.count > 48 }
+    private var attachmentPresentation: Binding<Bool> {
+        Binding(get: { store.composerAttachmentIsOpen(contextID: contextID) },
+                set: { store.setComposerAttachmentOpen($0, contextID: contextID) })
+    }
+    private var expanded: Bool { focused || (canInterrupt && hasDraft) || store.composerAttachmentIsOpen(contextID: contextID) || !store.snapshot.attachments.isEmpty || store.draft.contains("\n") || store.draft.count > 48 }
     private var placeholder: String {
         if let name = store.snapshot.backendName { return store.label("在 \(name) 上工作", "Work on \(name)") }
         return store.label("向 Codex 提问", "Ask Codex")

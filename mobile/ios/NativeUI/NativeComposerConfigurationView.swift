@@ -2,12 +2,13 @@ import SwiftUI
 
 struct NativeComposerConfigurationView: View {
     let store: NativeUIStore
+    let contextID: String?
 
     var body: some View {
         HStack(spacing: 0) {
             Menu {
                 ForEach(store.snapshot.permissions ?? []) { option in
-                    let context = store.snapshot.contextId
+                    let context = contextID
                     Button { store.chooseComposerOption("permission.select", value: option.value, contextID: context) } label: {
                         Label(option.title, systemImage: NativeComposerSymbols.permissionSymbol(option.value))
                     }
@@ -23,7 +24,7 @@ struct NativeComposerConfigurationView: View {
             .accessibilityIdentifier("native-permission-menu")
             Menu {
                 ForEach(store.snapshot.speeds ?? []) { option in
-                    let context = store.snapshot.contextId
+                    let context = contextID
                     Button { store.chooseComposerOption("speed.select", value: option.value, contextID: context) } label: {
                         Text(option.title)
                     }
@@ -38,7 +39,7 @@ struct NativeComposerConfigurationView: View {
             Menu {
                 Section(store.label("模型", "Model")) {
                     ForEach(store.snapshot.models) { option in
-                        let context = store.snapshot.contextId
+                        let context = contextID
                         Button { store.chooseComposerOption("model.select", value: option.value, contextID: context) } label: {
                             Text(option.title)
                         }
@@ -46,7 +47,7 @@ struct NativeComposerConfigurationView: View {
                 }
                 Section(store.label("思考强度", "Reasoning Effort")) {
                     ForEach(store.snapshot.efforts) { option in
-                        let context = store.snapshot.contextId
+                        let context = contextID
                         Button { store.chooseComposerOption("effort.select", value: option.value, contextID: context) } label: {
                             Text(option.title)
                         }

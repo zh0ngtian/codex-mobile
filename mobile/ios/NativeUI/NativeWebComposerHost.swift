@@ -20,7 +20,7 @@ struct NativeWebComposerHost: View {
                         }
                         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { supplementaryHeight = $0 }
                     }
-                    NativeComposerView(store: store, availableHeight: availableHeight - (hasSupplementaryContent ? supplementaryHeight + 4 : 0)).id(store.contextKey)
+                    NativeComposerView(store: store, contextID: store.snapshot.contextId, availableHeight: availableHeight - (hasSupplementaryContent ? supplementaryHeight + 4 : 0)).id(store.contextKey)
                 }
                 .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("native-web-composer")

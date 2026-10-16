@@ -111,3 +111,11 @@
 - 新菜单上下文合同替换旧 sheet 的恢复合同；真实 Swift smoke 覆盖四项附件动作、原上下文、不可编辑/等待/侧栏拒绝、草稿与 selectionRevision 保持，以及模型/推理单一标签。宿主 17 项全部 GREEN（`composer-menu-green.log`）；最终相关六文件 65 项通过（`composer-menu-final-tests.log`），包含原生 runtime、workspace、附件及新对话业务回归。
 - `npm run typecheck`、完整 NativeUI iOS SDK Swift 类型检查（与工程一致的 Swift 5 模式）和 NativeUIUITests 的 XCTest 类型检查均通过；日志分别为 `composer-menu-typecheck.log`、`composer-menu-swift-typecheck.log`、`composer-menu-xctest-typecheck.log`。首轮额外 Swift 6 全目录检查触及既有 Markdown NSCache 并发诊断，未将该无关代码纳入本次菜单修改。
 - UIKit 新按钮保留正常命中测试，使用系统 `willEndFor` 完成回调清理状态，随后才执行原附件命令；不再保留附件或权限 sheet。实际系统菜单、目录溢出、图标、可见推理标签、快捷入口与系统选择器验收继续由主任务执行。
+
+### 菜单拥有者时序修复
+
+- 2026-10-16：主任务真实 full-native UI 验收确认侧栏“新建并添加附件”进入新上下文后未自动打开菜单（`sidebar-native-live.xcresult`）。手动附件、真实文件选择器取消重开、审核、可见推理标签与十一项模型目录已通过。
+- 真实 Swift store 补充新旧拥有者回归先 RED：新会话打开附件请求后，旧上下文关闭回调清除新请求（`composer-menu-owner-red.log`）。
+- 两种宿主显式传入输入栏创建时的上下文，消费意图、附件 Binding、清理回调和配置菜单均绑定该值。Store 附件状态改为私有写入，带上下文的 setter 拒绝旧菜单关闭和显示回调，并在打开时继续检查编辑与侧栏门禁；新建、导航与权威换上下文的主动清理保留。
+- Store 回归同时覆盖原有新建 ACK/快照确认后消费附件的真实路径，保证旧拥有者清理不影响新请求，当前拥有者关闭仍生效；实际 full-native 快捷入口和文件选择器回归由主任务接续复验。
+- 本次拥有者修复的相关六文件 65 项通过，`npm run typecheck` 与完整 NativeUI Swift 5 iOS SDK 类型检查均通过、无诊断；对应 `composer-menu-owner-green.log`、`composer-menu-owner-typecheck.log`、`composer-menu-owner-swift-typecheck.log`。

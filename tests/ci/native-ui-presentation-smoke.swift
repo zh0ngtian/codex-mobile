@@ -134,7 +134,10 @@ enum NativeComposerPresentationSmoke {
             check(store.consumeComposerPresentation(contextID: "new-context") == presentation, "附件呈现也经过同一确认")
             if presentation == .attachments {
                 check(store.attachmentOpen && log.values.count == 1, "附件菜单只在新 context 显示，不提前调用 picker")
-                store.attachmentOpen = false
+                store.setComposerAttachmentOpen(false, contextID: "old-context")
+                check(store.attachmentOpen && store.composerAttachmentIsOpen(contextID: "new-context"), "旧输入栏销毁不能清除新建附件消费后的呈现请求")
+                check(!store.composerAttachmentIsOpen(contextID: "old-context"), "旧按钮也不能读取新会话呈现状态作为重开请求")
+                store.setComposerAttachmentOpen(false, contextID: "new-context")
             } else {
                 check(log.values.count == 2 && log.values.last?.name == "attachment.pick", "照片/文件消费时只派发一次 picker")
                 check(log.values.last?.params["contextId"] == .string("new-context"), "picker 保留现有业务 context gate")

@@ -63,6 +63,13 @@ describe("SwiftUI 原生宿主契约", () => {
     const configuration = source("NativeComposerConfigurationView");
     const attachments = source("NativeComposerAttachmentMenu");
     expect(composer).toContain("NativeComposerAttachmentMenu(");
+    expect(composer).toContain("let contextID: String?");
+    expect(composer).toContain("isOpen: attachmentPresentation");
+    expect(composer).toContain("store.consumeComposerPresentation(contextID: contextID)");
+    expect(composer).not.toMatch(/\$store\.attachmentOpen|store\.attachmentOpen\s*=/);
+    for (const host of ["NativeConversationView", "NativeWebComposerHost"]) {
+      expect(source(host)).toContain("NativeComposerView(store: store, contextID: store.snapshot.contextId,");
+    }
     expect(composer).not.toContain(".sheet(");
     expect(configuration).toContain("ForEach(store.snapshot.permissions ?? [])");
     expect(configuration).toContain("NativeComposerSymbols.permissionSymbol(option.value)");
