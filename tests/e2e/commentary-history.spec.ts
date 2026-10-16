@@ -1,11 +1,17 @@
 import { expect, test, type Page } from "@playwright/test";
+import sharp from "sharp";
 
-async function setup(page: Page, pagination = false, hold = false) {
+test.use({ timezoneId: "Asia/Shanghai" });
+
+async function setup(page: Page, pagination = false, hold = false, media = false) {
+  const previews = media ? await Promise.all(["#93c5fd", "#fca5a5"].map(background =>
+    sharp({ create: { width: 280, height: 140, channels: 3, background } }).png().toBuffer(),
+  )) : [];
   const user = { id: "u", type: "userMessage", text: "检查历史恢复" };
   const final = { id: "f", type: "agentMessage", phase: "final_answer", text: "历史检查完成" };
   const commentary = [
-    { id: "c1", type: "agentMessage", phase: "commentary", text: "先检查历史数据" },
-    { id: "c2", type: "agentMessage", phase: "commentary", text: "历史数据已经核对" },
+    { id: "c1", type: "agentMessage", phase: "commentary", text: "先检查历史数据", ...(media ? { timestamp: Date.parse("2026-10-15T01:07:35Z") / 1000 } : {}) },
+    { id: "c2", type: "agentMessage", phase: "commentary", text: "历史数据已经核对", ...(media ? { timestamp: Date.parse("2026-10-15T01:09:04Z") / 1000 } : {}) },
   ];
   const done = { id: "done", status: "completed", itemsView: "summary", items: [user, final] };
   const newest = { id: "newest", status: "completed", itemsView: "summary", items: [
@@ -22,6 +28,10 @@ async function setup(page: Page, pagination = false, hold = false) {
     if (url.pathname === "/api/projects") return route.fulfill({ json: { projects: ["/tmp/project"], projectlessThreadIds: [] } });
     if (url.pathname === "/api/host") return route.fulfill({ json: { hostId: "test", appServerReady: true, httpPolling: true } });
     if (url.pathname === "/api/events") return route.fulfill({ json: { epoch: "test", cursor: 0, messages: [], requests: [], active: false, updatedAt: Date.now(), reset: false } });
+    if (url.pathname === "/api/images/preview") return route.fulfill({
+      contentType: "image/png", body: previews[url.searchParams.get("path")?.includes("step2") ? 1 : 0],
+      headers: { "x-codex-image-preview": "1" },
+    });
     if (url.pathname !== "/api/rpc") return route.fulfill({ json: {} });
     const { message } = route.request().postDataJSON();
     if (message.method === "mobile/turns/commentary") runningRecovery++;
@@ -29,8 +39,10 @@ async function setup(page: Page, pagination = false, hold = false) {
       details++;
       if (hold) await wait;
       const target = pagination && !message.params.cursor ? newest : done;
-      return route.fulfill({ json: { id: message.id, result: { data: [{ id: target.id, changeStatsUnavailable: true, items: [],
-        ...(target.id === "done" ? { commentaryItems: commentary, messageOrder: ["u", "c1", "c2", "f"] } : {}),
+      return route.fulfill({ json: { id: message.id, result: { data: [{ id: target.id, changeStatsUnavailable: true, items: media ? [
+        { id: "i1", type: "imageView", path: "/tmp/step1.png" }, { id: "i2", type: "imageView", path: "/tmp/step2.png" },
+      ] : [],
+        ...(target.id === "done" ? { commentaryItems: commentary, messageOrder: media ? ["u", "c1", "i1", "c2", "i2", "f"] : ["u", "c1", "c2", "f"] } : {}),
       }], nextCursor: null } } });
     }
     if (message.method === "thread/turns/list") summaries++;
@@ -86,4 +98,31 @@ test("更早历史页也恢复 commentary 按钮", async ({ page }) => {
   await verifyToggle(page);
   await expect.poll(() => f.counts().details).toBe(2);
   expect(f.counts().runningRecovery).toBe(0);
+});
+
+test("历史图片紧随各自 commentary，时间显示到分钟且刷新后不移到末尾", async ({ page }) => {
+  await setup(page, false, false, true);
+  for (const refresh of [false, true]) {
+    if (refresh) {
+      await page.getByRole("button", { name: "会话操作", exact: true }).click();
+      await page.getByRole("button", { name: "刷新会话", exact: true }).click();
+    }
+    await expect(page.getByText("历史检查完成")).toBeVisible();
+    const toggle = page.getByRole("button", { name: "之前的 2 条消息" });
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await expect(page.getByRole("button", { name: "查看图片 step1.png" })).toHaveCount(0);
+    await toggle.click();
+    const history = page.locator(".previous-messages");
+    await expect(history.locator(".commentary-message")).toHaveCount(2);
+    await expect(history.getByText("2026-10-15 09:07", { exact: true })).toBeVisible();
+    await expect(history.getByText("2026-10-15 09:09", { exact: true })).toBeVisible();
+    await expect(history.getByRole("button", { name: "查看图片 step1.png" })).toBeVisible();
+    await expect(history.getByRole("button", { name: "查看图片 step2.png" })).toBeVisible();
+    await expect.poll(() => history.locator(".message-image-button img").evaluateAll(images => images.every(image => (image as HTMLImageElement).complete && (image as HTMLImageElement).naturalWidth === 280))).toBe(true);
+    const order = await history.evaluate(el => Array.from(el.querySelectorAll('.markdown-body, button[aria-label^="查看图片"], time')).map(node => node.getAttribute("aria-label") || node.textContent));
+    expect(order).toEqual(["先检查历史数据", "查看图片 step1.png", "2026-10-15 09:07", "历史数据已经核对", "查看图片 step2.png", "2026-10-15 09:09"]);
+    await expect(page.locator(".turn-responses > .message-images, .process-images")).toHaveCount(0);
+    if (!refresh) await toggle.click();
+  }
+  await page.locator(".turn-card").screenshot({ path: `.mobile-build/commentary-images-time-${test.info().project.name}.png` });
 });

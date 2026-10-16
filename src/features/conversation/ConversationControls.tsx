@@ -2,6 +2,8 @@ import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { presentNativeActionMenu, type MenuAnchor } from "../../ui/native-action-menu";
 import { AppIcon, titleOf, type DisplayRecord } from "../../ui/app-display";
 import { ActionSheet } from "../../ui/ActionSheet";
+import { useWebInterface } from "../web-ui/preference";
+import { useModernPopover } from "../web-ui/usePopoverFocus";
 import { getActiveLocale, t } from "../../i18n";
 
 type AnyRecord = Record<string, any>;
@@ -207,6 +209,8 @@ function OpenConversationActionMenu({
   onArchive,
   anchor,
 }: Omit<ConversationActionMenuProps, "open">) {
+  const { modern } = useWebInterface();
+  const menuRef = useRef<HTMLElement>(null);
   const pinned = thread.isPinned === true;
   const actions = [
     {
@@ -254,6 +258,7 @@ function OpenConversationActionMenu({
     },
   ];
   const [fallback, setFallback] = useState(false);
+  useModernPopover(modern && fallback, menuRef, menuRef, onClose);
   const latest = useRef({ actions, onClose });
   latest.current = { actions, onClose };
   useEffect(() => {
@@ -281,7 +286,7 @@ function OpenConversationActionMenu({
         aria-label={t("关闭会话操作")}
         onClick={onClose}
       />
-      <section className="conversation-action-menu" aria-label={t("会话操作")}>
+      <section ref={menuRef} tabIndex={modern ? -1 : undefined} className="conversation-action-menu" aria-label={t("会话操作")}>
         <p>{titleOf(thread)}</p>
         <div>
           {actions.map((action) => (

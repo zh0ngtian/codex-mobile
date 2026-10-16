@@ -86,7 +86,7 @@ describe("HTTP 会话", () => {
     expect(reply).toEqual({ id: 99, result: { turnId: 'live', items: [
       { id: 'u', type: 'userMessage', text: '开始' },
       { id: 'c', type: 'agentMessage', phase: 'commentary', text: '处理中' },
-    ] } });
+    ], messageOrder: ['u', 'c'] } });
     expect(f.received.at(-1)).toEqual({ id: transport === 'http' ? expect.any(String) : 99, method: 'thread/turns/list', params: { threadId: 't', limit: 1, sortDirection: 'desc', itemsView: 'full' } });
     expect(JSON.stringify(reply).length).toBeLessThan(1024);
     expect(await readdir(join(f.root, 'codex-mobile-http')).catch(() => [])).toEqual([]);
@@ -470,7 +470,7 @@ describe("HTTP 会话", () => {
         { id: "view", type: "imageView", path: "/tmp/view.png", backfilled: true },
         { id: "saved", type: "imageGeneration", savedPath: "/tmp/saved.png", backfilled: true },
         { id: "local", type: "imageGeneration", result: "/tmp/local.png", backfilled: true },
-      ] },
+      ], messageOrder: ["view", "saved", "local", "ignored"] },
       { id: "files", loadedChangeStats: { additions: 3, deletions: 2 }, items: [] },
       { id: "fallback", loadedChangeStats: { additions: 7, deletions: 8 }, items: [] },
     ], nextCursor: "older" } });
@@ -822,4 +822,67 @@ describe("HTTP 会话", () => {
     expect(f.connections).toHaveLength(1); expect(f.connections[0].readyState).toBe(WebSocket.OPEN);
     expect((await f.rpc({ id: 8, method: "thread/list", params: {} })).status).toBe(200);
   });
+});
+
+const timestampThread = '01a12457-49bd-79c3-abdb-cfdf41878cfc';
+const commentaryStamp = '2026-10-10T13:44:22.123Z';
+async function timestampRollout(root: string) {
+  const directory = join(root, 'sessions', '2026', '10', '10');
+  await mkdir(directory, { recursive: true });
+  await writeFile(join(directory, `rollout-2026-10-10T13-44-22-${timestampThread}_01a1396f-d4a4-7431-9c9b-85f85528d46b.jsonl`), [
+    { type: 'session_meta', payload: { id: timestampThread } },
+    { timestamp: commentaryStamp, type: 'response_item', payload: { type: 'message', role: 'assistant', id: 'c', content: [{ text: '原始过程' }] } },
+  ].map(line => JSON.stringify(line)).join('\n') + '\n');
+}
+it.each([
+  ['http', 'mobile/turns/details'], ['http', 'mobile/turns/commentary'],
+  ['http', 'thread/turns/list'], ['ws', 'mobile/turns/commentary'], ['ws', 'thread/turns/list'],
+])('%s %s 从真实续写文件补时间，无匹配消息保持未知', async (transport, method) => {
+  const f = await fixture(); await f.init(); await timestampRollout(f.root);
+  f.respond((socket, request) => socket.send(JSON.stringify({ id: request.id, result: { data: [{
+    id: 'live', status: 'inProgress', items: [
+      { id: 'c', type: 'agentMessage', phase: 'commentary', text: '原始过程' },
+      { id: 'unknown', type: 'agentMessage', phase: 'commentary', text: '未知时间' },
+      { id: 'image', type: 'imageView', path: '/tmp/image.png' },
+      { id: 'c2', type: 'agentMessage', phase: 'commentary', text: '下一张' },
+      { id: 'image2', type: 'imageGeneration', savedPath: '/tmp/image2.png' },
+    ],
+  }], nextCursor: null } })));
+  const message = { id: 99, method, params: { threadId: timestampThread, turnId: 'live', itemsView: 'full' } };
+  let reply: any;
+  if (transport === 'http') reply = await (await f.rpc(message)).json();
+  else {
+    const socket = new WebSocket(`ws://127.0.0.1:${f.port()}/ws?token=secret`);
+    cleanup.push(async () => { socket.terminate(); });
+    await new Promise<void>(resolve => socket.once('open', resolve));
+    const response = new Promise<any>(resolve => socket.once('message', raw => resolve(JSON.parse(raw.toString()))));
+    socket.send(JSON.stringify(message)); reply = await response;
+  }
+  const items = method === 'mobile/turns/commentary' ? reply.result.items :
+    method === 'mobile/turns/details' ? reply.result.data[0].commentaryItems : reply.result.data[0].items;
+  expect(items.find((item: any) => item.id === 'c').timestamp).toBe(Date.parse(commentaryStamp) / 1000);
+  expect(items.find((item: any) => item.id === 'unknown').timestamp).toBeUndefined();
+  if (method === 'mobile/turns/details') expect(reply.result.data[0].messageOrder).toEqual(['c', 'unknown', 'image', 'c2', 'image2']);
+});
+it.each(['http', 'ws'])('%s 实时 commentary 补真实时间且后继完成事件保持顺序', async transport => {
+  const f = await fixture(); await f.init(); await timestampRollout(f.root);
+  const messages: any[] = [];
+  if (transport === 'ws') {
+    const socket = new WebSocket(`ws://127.0.0.1:${f.port()}/ws?token=secret`);
+    cleanup.push(async () => { socket.terminate(); });
+    await new Promise<void>(resolve => socket.once('open', resolve));
+    socket.on('message', raw => messages.push(JSON.parse(raw.toString())));
+    for (let n = 0; n < 30 && f.connections.length < 2; n++) await wait();
+  }
+  f.send({ method: 'item/completed', params: { threadId: timestampThread, turnId: 'live', item: {
+    id: 'c', type: 'agentMessage', phase: 'commentary', text: '原始过程',
+  } } });
+  f.send({ method: 'turn/completed', params: { threadId: timestampThread, turn: { id: 'live', status: 'completed' } } });
+  for (let n = 0; n < 30; n++) {
+    await wait();
+    if (transport === 'http') messages.splice(0, messages.length, ...(await f.events()).messages);
+    if (messages.length === 2) break;
+  }
+  expect(messages.map(message => message.method)).toEqual(['item/completed', 'turn/completed']);
+  expect(messages[0].params.item.timestamp).toBe(Date.parse(commentaryStamp) / 1000);
 });

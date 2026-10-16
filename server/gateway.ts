@@ -8,6 +8,7 @@ import WebSocket, { WebSocketServer } from "ws";
 import type { CodexProjectState } from "./codex-projects.js";
 import { readImageGenerationError } from "./image-generation-error.js";
 import { TurnChangeHistory } from "./turn-change-history.js";
+import { MessageTimestamps } from "./message-timestamps.js";
 import { compactTurnDetails, compactTurnCommentary, turnCommentaryRequest, validTurnCommentaryParams } from "./turn-details.js";
 import { FollowUps } from "./follow-ups.js";
 import { HttpSessions } from "./http-session.js";
@@ -121,6 +122,7 @@ function applyCors(
 }
 
 export async function createGateway(options: GatewayOptions): Promise<Gateway> {
+  const timestamps = new MessageTimestamps(options.codexHome ?? process.env.CODEX_HOME ?? join(homedir(), ".codex"));
   const changeHistory = new TurnChangeHistory(options.codexHome ?? process.env.CODEX_HOME ?? join(homedir(), ".codex"));
   const notifications = new BarkNotifications({ codexHome: options.codexHome ?? process.env.CODEX_HOME ?? join(homedir(), ".codex"), displayName: options.displayName ?? options.hostname ?? options.hostId ?? "Codex", fetch: options.barkFetch });
   const httpSessions = new HttpSessions({ ...options, changeHistory, notifications });
@@ -640,12 +642,16 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
           await changeHistory.cancelStart(request.params.threadId);
         }
         let output: WebSocket.RawData | string = data;
+        if (message?.method === "item/completed") {
+          const projected = await timestamps.notification(message);
+          if (projected !== message) output = JSON.stringify(projected);
+        }
         if (request?.method === "mobile/turns/commentary" && message?.error == null) {
-          output = JSON.stringify({ ...message, result: compactTurnCommentary(message!.result, request.params!.turnId) });
+          output = JSON.stringify({ ...message, result: compactTurnCommentary(await timestamps.result(request.params!.threadId, message!.result), request.params!.turnId) });
         }
         if (request?.method === "thread/turns/list" && request.params?.itemsView === "full" &&
           message?.error == null && Array.isArray(message?.result?.data)) {
-          const full = message!.result;
+          const full = await timestamps.result(request.params!.threadId, message!.result);
           const stats = Object.fromEntries(await Promise.all(full.data.map(async (turn: Record<string, any>) =>
             [String(turn.id), await changeHistory.get(request.params!.threadId, turn)],
           )));

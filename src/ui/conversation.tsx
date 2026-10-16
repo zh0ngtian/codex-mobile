@@ -883,7 +883,11 @@ export function applyCompletedTurn(
 
 export function groupTurnItems(turn: ConversationRecord) {
   const items = (turn.items ?? []) as ConversationRecord[];
-  const userIndex = items.findIndex((item) => item.type === "userMessage");
+  const firstMessageIndex = items.findIndex((item) =>
+    ["userMessage", "agentMessage", "imageView", "imageGeneration", "videoGeneration"].includes(item.type),
+  );
+  // 没有首条用户消息的延续快照中，后到的用户插话仍须留在原位。
+  const userIndex = items[firstMessageIndex]?.type === "userMessage" ? firstMessageIndex : -1;
   return {
     id: turn.id,
     running: ["inProgress", "in_progress", "running"].includes(turn.status),

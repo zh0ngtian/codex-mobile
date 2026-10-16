@@ -8,6 +8,8 @@ import { titleOf } from '../ui/app-display';
 import { insertSkillMention, skillMentionAt, type InstalledSkill } from '../app-server/skills';
 import { insertPluginMention, type InstalledPlugin } from '../app-server/plugins';
 import { t } from '../i18n';
+import { formatMessageTimestamp } from '../ui/message-timestamp';
+import { orderedTurnMedia, commentaryMediaEntries } from '../ui/timeline-media';
 import type { NativeCommand, NativeGroup, NativeMessage, NativePanelItem } from './protocol';
 
 type RecordValue = Record<string, any>;
@@ -35,65 +37,75 @@ export function projectConversation(active: RecordValue | null, imageURL: (path:
     const turnId = String(turn.id);
     const duration = turnDurationMs(turn);
     const status = duration == null ? undefined : `${t('用时')} ${Math.floor(duration / 1000)} ${t('秒')}`;
-    // 与Web Timeline相同，按用户插话拆段，不能把整轮用户消息提前集中展示。
-    for (const segment of splitTurnResponseSegments(turn.items ?? [])) {
+    const mediaBlocks = (item: RecordValue): NativePanelItem[] => {
+      const video = videoPathForItem(item);
+      return video ? [{ id: `${turnId}:${item.id}:video`, kind: 'video', title: video.split('/').at(-1), value: mediaURL ? mediaURL(video) : imageURL(video) }]
+        : imageBlocks(item, `${turnId}:${item.id}`);
+    };
+    // Web 与原生共用顺序和去重规则，截图跟随所属 commentary。
+    for (const segment of splitTurnResponseSegments(orderedTurnMedia(turn.items ?? []))) {
       const segmentID = `${turnId}:${segment[0]?.id ?? 'activity'}`;
       const hasFinal = segment.some(item => item.type === 'agentMessage' && item.phase !== 'commentary');
       const running = ['inProgress', 'in_progress', 'running'].includes(String(turn.status));
       const collapse = hasFinal || !running;
-      const commentary = segment.filter(item => item.type === 'agentMessage' && item.phase === 'commentary');
-      let historyInserted = false;
       const tools: NativePanelItem[] = [];
-      for (const item of segment) {
+      let history: NativePanelItem[] = [];
+      let historyCount = 0;
+      let historyID = '';
+      const flushHistory = () => {
+        if (!historyCount) return;
+        messages.push({ id: `${historyID}:history`, role: 'activity', text: '', blocks: [{ id: `${historyID}:commentary`, kind: 'disclosure', title: `${t('历史过程')} (${historyCount})`, children: history }] });
+        history = []; historyCount = 0;
+      };
+      for (const entry of commentaryMediaEntries(segment)) {
+        const item = entry.item;
         const id = `${turnId}:${item.id}`;
+        if (item.type === 'agentMessage' && item.phase === 'commentary' && collapse) {
+          if (!historyCount) historyID = id;
+          const timestamp = formatMessageTimestamp(item.timestamp);
+          history.push({ id, kind: 'markdown', text: nativeItemText(item) });
+          history.push(...entry.media.flatMap(mediaBlocks));
+          if (timestamp) history.push({ id: `${id}:timestamp`, kind: 'text', text: timestamp });
+          historyCount += 1;
+          continue;
+        }
+        // 独立媒体、final 和用户插话在原始位置结束当前历史区。
+        if (item.type === 'userMessage' || item.type === 'agentMessage' || ['imageView', 'imageGeneration', 'videoGeneration'].includes(item.type)) flushHistory();
         if (item.type === 'userMessage') {
           messages.push({ id, role: 'user', text: nativeItemText(item), blocks: imageBlocks(item, id),
             ...(typeof turn.startedAt === 'number' && Number.isFinite(turn.startedAt) && turn.startedAt > 0 ? { timestamp: turn.startedAt } : {}),
             actions: [nativeAction(`${id}:copy`, t('复制'), 'message.copy', { id }), nativeAction(`${id}:edit`, t('编辑'), 'message.edit', { turnId, messageId: String(item.id) })] });
         } else if (item.type === 'agentMessage') {
-          if (item.phase === 'commentary' && collapse) {
-            if (!historyInserted) messages.push({ id: `${segmentID}:history`, role: 'activity', text: '', blocks: [{ id: `${segmentID}:commentary`, kind: 'disclosure', title: `${t('历史过程')} (${commentary.length})`,
-              children: commentary.map(entry => ({ id: `${turnId}:${entry.id}`, kind: 'markdown', text: nativeItemText(entry) })) }] });
-            historyInserted = true;
-          } else messages.push({ id, role: 'assistant', text: nativeItemText(item), status: item.phase === 'commentary' ? undefined : status,
-            ...(item.phase !== 'commentary' && !running && typeof turn.completedAt === 'number' && Number.isFinite(turn.completedAt) && turn.completedAt > 0 ? { timestamp: turn.completedAt } : {}),
+          const commentary = item.phase === 'commentary';
+          const timestamp = commentary ? formatMessageTimestamp(item.timestamp) : '';
+          const blocks = entry.media.flatMap(mediaBlocks);
+          if (timestamp) blocks.push({ id: `${id}:timestamp`, kind: 'text', text: timestamp });
+          messages.push({ id, role: 'assistant', text: nativeItemText(item), status: commentary ? undefined : status,
+            ...(!commentary && !running && typeof turn.completedAt === 'number' && Number.isFinite(turn.completedAt) && turn.completedAt > 0 ? { timestamp: turn.completedAt } : {}),
+            ...(blocks.length ? { blocks } : {}),
             actions: [nativeAction(`${id}:copy`, t('复制'), 'message.copy', { id })] });
         } else if ((item.type === 'imageGeneration' || item.type === 'videoGeneration') && item.status === 'failed') {
-          tools.push(nativeAction(`${id}:failure`, t(item.type === 'videoGeneration' ? '视频生成未完成' : '图像生成未完成'), 'panel.open', { id: `tool:${turnId}:${item.id}` }));
+          messages.push({ id, role: 'activity', text: '', blocks: [nativeAction(`${id}:failure`, t(item.type === 'videoGeneration' ? '视频生成未完成' : '图像生成未完成'), 'panel.open', { id: `tool:${turnId}:${item.id}` })] });
         } else if (item.type === 'videoGeneration' && !videoPathForItem(item)) {
-          tools.push(nativeAction(`${id}:video`, t(['inProgress', 'in_progress', 'running'].includes(String(item.status)) ? '正在生成视频' : '视频生成未提供可播放文件'), 'panel.open', { id: `tool:${turnId}:${item.id}` }));
+          messages.push({ id, role: 'activity', text: '', blocks: [nativeAction(`${id}:video`, t(['inProgress', 'in_progress', 'running'].includes(String(item.status)) ? '正在生成视频' : '视频生成未提供可播放文件'), 'panel.open', { id: `tool:${turnId}:${item.id}` })] });
+        } else if (mediaBlocks(item).length) {
+          messages.push({ id, role: 'activity', text: '', blocks: mediaBlocks(item) });
         } else if (item.type === 'contextCompaction') {
           messages.push({ id, role: 'activity', text: t('上下文已压缩') });
         } else if (item.type === 'reasoning') {
           const reasoning = item.text ?? (Array.isArray(item.summary) ? item.summary.map((p: any) => typeof p === 'string' ? p : p.text ?? '').join('\n') : item.summary) ?? (Array.isArray(item.content) ? item.content.map((p: any) => p.text ?? '').join('\n') : item.content) ?? '';
           if (reasoning) messages.push({ id, role: 'activity', text: '', blocks: [{ id: `${id}:reasoning`, kind: 'disclosure', title: t('思考过程'), children: [{ id: `${id}:text`, kind: 'markdown', text: String(reasoning) }] }] });
-        } else if (!imageSourcesForItem(item).length && !videoPathForItem(item)) {
+        } else {
           tools.push(nativeAction(`${id}:tool`, toolActivityRowLabel(item), 'panel.open', { id: `tool:${turnId}:${item.id}` }));
         }
       }
+      flushHistory();
       if (tools.length) messages.push({ id: `${segmentID}:tools`, role: 'activity', text: '', blocks: [{ id: `${segmentID}:tools`, kind: 'disclosure', title: `${t('工具')} (${tools.length})`, children: tools }] });
     }
-    // 媒体独立于commentary，跨整个逻辑turn去重，生成结果优先于同源过程截图。
-    const generated = (turn.items ?? []).filter((item: RecordValue) => (item.type === 'imageGeneration' || item.type === 'videoGeneration') && item.status !== 'failed');
-    const mediaSources = (item: RecordValue) => { const video = videoPathForItem(item); return video ? [{ source: video, name: video.split('/').at(-1) || t('视频'), local: true }] : imageSourcesForItem(item); };
-    const generatedSources = new Set(generated.flatMap((item: RecordValue) => mediaSources(item).map(media => media.source)));
-    const seen = new Set<string>();
-    const generatedImages: NativePanelItem[] = [];
-    const screenshots: NativePanelItem[] = [];
-    for (const item of [...generated, ...(turn.items ?? []).filter((entry: RecordValue) => entry.type === 'imageView')]) {
-      for (const [index, image] of mediaSources(item).entries()) {
-        if (seen.has(image.source) || (item.type === 'imageView' && generatedSources.has(image.source))) continue;
-        seen.add(image.source);
-        const video = videoPathForItem(item);
-        const block: NativePanelItem = { id: `${turnId}:${item.id}:image:${index}`, kind: video ? 'video' : 'image', title: image.name, value: video && mediaURL ? mediaURL(video) : image.local ? imageURL(image.source) : image.source,
-          ...(!video && image.local && originalImageURL ? { previewURL: originalImageURL(image.source) } : {}) };
-        if (item.type === 'imageGeneration' || item.type === 'videoGeneration') generatedImages.push(block); else screenshots.push(block);
-      }
-    }
-    const mediaBlocks: NativePanelItem[] = [...generatedImages, ...(screenshots.length > 1 ? [{ id: `${turnId}:screenshots`, kind: 'disclosure', title: `${t('过程截图')} (${screenshots.length})`, children: screenshots }] : screenshots)];
+    const changeBlocks: NativePanelItem[] = [];
     const changes = summarizeTurnChanges(turn);
-    if (turn.liveDiff || changes.additions || changes.deletions) mediaBlocks.push(nativeAction(`${turnId}:changes`, `${t('文件变更')} +${changes.additions} −${changes.deletions}`, 'panel.open', { id: `changes:${turnId}` }));
-    if (mediaBlocks.length) messages.push({ id: `${turnId}:media`, role: 'activity', text: '', blocks: mediaBlocks });
+    if (turn.liveDiff || changes.additions || changes.deletions) changeBlocks.push(nativeAction(`${turnId}:changes`, `${t('文件变更')} +${changes.additions} −${changes.deletions}`, 'panel.open', { id: `changes:${turnId}` }));
+    if (changeBlocks.length) messages.push({ id: `${turnId}:changes`, role: 'activity', text: '', blocks: changeBlocks });
   }
   return messages;
 }
