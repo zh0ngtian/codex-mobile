@@ -1,0 +1,66 @@
+{
+  "batchId": "4d8da967-2996-4f7d-9e0a-cbbe1b5ba8c8",
+  "taskId": "native-preview-alignment-20261016",
+  "status": "complete",
+  "sourceCommit": "4c3dae37665640189b0adb4fec330a11f3d54716",
+  "frozenCommit": "991dde36fe4e8d669f18b6787d67e32f8074ebd1",
+  "version": "0.2.178",
+  "buildNumber": "2178",
+  "githubRelease": "https://github.com/zh0ngtian/codex-mobile/releases/tag/v0.2.178",
+  "buildRun": "https://github.com/zh0ngtian/codex-mobile/actions/runs/38860896755",
+  "developmentRun": "https://github.com/zh0ngtian/codex-mobile/actions/runs/38860896760",
+  "otaInstall": "https://192.168.123.79:8766/channels/codex-mobile/current/install.html",
+  "channels": [
+    {
+      "version": "0.2.178",
+      "size": 4754147,
+      "sha256": "ce613391e27dd033abdace18f93fbda2fc065e654d21abd584938037f78ded10",
+      "downloadUrl": "http://192.168.123.79:8765/channels/codex-mobile/latest.apk",
+      "platform": "apk",
+      "signed": false,
+      "verification": [
+        "JSON",
+        "HEAD",
+        "full GET",
+        "size",
+        "SHA-256"
+      ]
+    },
+    {
+      "version": "0.2.178",
+      "size": 4706092,
+      "sha256": "01b78d02729c0f2b75d98b90578c228ab88e11a00751e83673d77dfdebec3391",
+      "downloadUrl": "http://192.168.123.79:8765/channels/codex-mobile/latest.ipa",
+      "platform": "ipa",
+      "signed": true,
+      "verification": [
+        "JSON",
+        "HEAD",
+        "full GET",
+        "size",
+        "SHA-256"
+      ]
+    }
+  ],
+  "unsignedSource": {
+    "version": "0.2.178",
+    "developerName": "zh0ngtian",
+    "downloadURL": "https://github.com/zh0ngtian/codex-mobile/releases/download/v0.2.178/CodexMobile-v0.2.178-unsigned.ipa",
+    "notes": "- 按最新设计稿调整 iOS 原生界面：顶部加入上下文已用圆环，点击可查看上下文余量、套餐额度及重置窗口剩余时间。\n- 输入框聚焦后以文字显示当前模型与思考强度，模型和思考强度合并为分组选择面板；切换配置后保留草稿与键盘状态。\n- 权限面板增加图标、访问范围说明和选中标记，速度与附件入口沿用系统原生控件。\n- 精简侧栏设备菜单和项目行操作，设置改为应用、连接、通知分组，语言和字号可直接选择，版本与更新检查移至底部。\n",
+    "size": 4688408,
+    "sha256": "8a56b4f99580dfdfef05be8052e7a0f0b49f9848d532b137b4db7ebb2220e2f5",
+    "signed": false
+  },
+  "validation": {
+    "typescriptTests": 1279,
+    "typescriptFiles": 123,
+    "releaseAdapterTests": 157,
+    "coordinatorRecoveryTests": 30,
+    "swiftTypecheck": "passed",
+    "nativeKeyUITests": 8,
+    "largestAccessibilityTextPortrait": "passed",
+    "visualQA": "passed"
+  },
+  "deviceInstall": "未进行真机覆盖安装与数据保留验收",
+  "testSessions": "本轮只使用离线参考，未创建真实远端测试会话；专用模拟器已关闭"
+}

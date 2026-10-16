@@ -37,6 +37,14 @@
 - [x] 排队独占模拟器；同状态同画布捕获设计稿与原生截图，统一密度并并排比较。
 - [x] XCTest 验证新调节面板、用量、设置导航、草稿与大字体布局，保存截图及日志。
 - [x] 修复 P0/P1/P2 并复拍，`design-qa.md` 记录五类视觉表面及最终 passed/blocked；不得以编译代替视觉验收。
-- [ ] 运行 ready 必需 `adapter-regression`、`coordinator-recovery`、`build-contract`、`typecheck`，提交符合中文 Conventional Commits 规范的变更并推送固定 SHA。
-- [ ] 更新中文用户变化日志；任务 `native-preview-alignment-20261016` 持续 heartbeat；ready 后等待协调批次成功，核对 GitHub APK/unsigned IPA、固定 LAN 双端、已签名 HTTPS OTA 及软件源版本/日志。
-- [ ] 归档本轮创建的测试会话；交付固定 OTA、APK、IPA 链接及版本/大小/SHA-256，明确模拟器与真机验证边界。
+- [x] 运行 ready 必需 `adapter-regression`、`coordinator-recovery`、`build-contract`、`typecheck`，提交符合中文 Conventional Commits 规范的变更并推送固定 SHA。
+- [x] 更新中文用户变化日志；任务 `native-preview-alignment-20261016` 持续 heartbeat；ready 后等待协调批次成功，核对 GitHub APK/unsigned IPA、固定 LAN 双端、已签名 HTTPS OTA 及软件源版本/日志。
+- [x] 归档本轮创建的测试会话；交付固定 OTA、APK、IPA 链接及版本/大小/SHA-256，明确模拟器与真机验证边界。
+
+## 交付记录
+
+- 代码提交 `4c3dae37665640189b0adb4fec330a11f3d54716` 已推送并由协调器纳入成功批次 `4d8da967-2996-4f7d-9e0a-cbbe1b5ba8c8`，冻结 `991dde36fe4e8d669f18b6787d67e32f8074ebd1`；版本 `0.2.178` / `2178`。
+- GitHub 双端、固定 LAN APK/Ad Hoc 已签名 IPA、HTTPS OTA 及软件源 unsigned 版本/中文日志均核对；另独立对固定双端执行 JSON、HEAD 与完整 GET 大小/散列比对。
+- 123文件1279项回归、157项发布适配器、30项协调器恢复、Swift编译/类型检查和8项去重关键原生UI场景通过；视觉验收见根目录 `design-qa.md`。有一次未修改的旧网关30ms异步用例在并发构建时偶发失败，独立16项与最终全套1279项重跑均通过，未扩大到服务端修改。
+- 未创建真实远端测试会话；专用模拟器已关闭。未进行真机覆盖安装与数据保留验收。
+- 公开交付摘要见 [发布凭证](evidence/2026-10-16-native-preview-alignment-release.json)，权威共同凭证为本机 ReleaseCoordinator receipts 中的同批 JSON。

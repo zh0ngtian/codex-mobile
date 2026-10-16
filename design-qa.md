@@ -40,3 +40,7 @@ final result: passed
 - 迭代历史：用量层级/背景/尺寸修正；模型默认Form的颜色/密度/标题方位修正；权限字号和高度修正；Circle中心命中区域修正；最后将完成按钮背景由依赖层级的primary改为确定系统label颜色，再次复拍黑底白字。最初错误证据保留为 `usage-before-comparison.png` 与 `before-model-comparison.png`，后续证据为最终同图。权限旧版本比较左侧最初误用了更早设计，最终已纠正为 `iteration-2/permission-final-screen.png`，该旧左图不用于结论。
 - 无剩余P0/P1/P2。P3/有意差异：iOS27原生浮动sheet与popover圆角、底部安全区和系统键盘布局；模型选项/选中值、版本、台数和日期来自真实状态或脱敏fixture；系统图标保留SF Symbols。正文存在原生排版的细小行距差异，不影响结构、密度与阅读。
 - 最终检查清单：字体与层级、留白和分组、色彩/选中/禁用、图标清晰度、真实文案与无假数据、关键操作与最大辅助字号已复核。
+
+## 正式交付
+
+`0.2.178` / `2178` 已由批次 `4d8da967-2996-4f7d-9e0a-cbbe1b5ba8c8` 验收成功。GitHub双端、已签名IPA/OTA、LAN固定下载及unsigned软件源均通过，独立HEAD/完整GET比对一致；本页的界面截图来自同一运行代码的离线模拟器验证，测试包版本字段为本地工程版本，正式包已注入统一版本。渠道数据见 `docs/superpowers/plans/evidence/2026-10-16-native-preview-alignment-release.json`。
