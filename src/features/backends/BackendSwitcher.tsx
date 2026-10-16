@@ -3,6 +3,7 @@ import type {
   BackendRuntimeSummary,
 } from "../../backends/types";
 import { t } from "../../i18n";
+import { AppIcon } from "../../ui/app-display";
 
 function statusLabel(summary: BackendRuntimeSummary | undefined) {
   if (!summary || summary.connection === "connecting") return t("连接中");
@@ -41,6 +42,7 @@ export function BackendSwitcher({
         aria-pressed={presentation === "tabs" ? selectedBackendId === "all" : undefined}
         onClick={() => onSelect("all")}
       >
+        {presentation === "menu" && <span className="backend-menu-device-icon" aria-hidden="true"><AppIcon name="device" /></span>}
         <strong>{t("全部")}</strong>
         {!!allApprovalCount && (
           <b className="backend-approval-count">{allApprovalCount}</b>
@@ -68,7 +70,12 @@ export function BackendSwitcher({
             key={backend.id}
             onClick={() => onSelect(backend.id)}
           >
-            {loading ? (
+            {presentation === "menu" ? (
+              <span className="backend-menu-device-icon" aria-hidden="true">
+                <AppIcon name="device" />
+                {loading ? <i className="action-spinner backend-loading" /> : <i className={`status-dot ${status}`} />}
+              </span>
+            ) : loading ? (
               <i
                 className="action-spinner backend-loading"
                 aria-label={t("正在加载机器会话")}

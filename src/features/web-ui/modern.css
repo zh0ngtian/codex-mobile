@@ -15,13 +15,17 @@
 [data-web-interface="modern"] .modern-device-subtitle > svg { width: 13px; height: 13px; }
 [data-web-interface="modern"] .modern-device-subtitle .status-dot { width: 6px; height: 6px; flex-shrink: 0; margin: 0; }
 [data-web-interface="modern"] .modern-device-menu { position: absolute; top: calc(var(--safe-area-top) + 61px); left: clamp(16px,20%,78px); right: 16px; z-index: 5; max-height: min(65dvh,520px); overflow-y: auto; overscroll-behavior: contain; padding: 6px; border-radius: 19px; background: #fcfcfc; box-shadow: 0 0 0 .5px #0000001f,0 8px 40px #0000001f; }
-[data-web-interface="modern"] .modern-device-menu .backend-switcher { display: flex; flex-direction: column; align-items: stretch; gap: 0; padding: 0; overflow: visible; }
+[data-web-interface="modern"] .modern-menu-caption { margin: 0; padding: 6px 12px; color: #999; font-size: .625rem; line-height: 1rem; }
+[data-web-interface="modern"] .modern-device-menu .backend-switcher { display: flex; flex-direction: column; align-items: stretch; gap: 0; margin: 0; padding: 0; overflow: visible; }
 [data-web-interface="modern"] .modern-device-menu button { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 44px; padding: 10px 12px; border: 0; border-radius: 10px; background: transparent; text-align: left; font-size: .8125rem; white-space: normal; }
 [data-web-interface="modern"] .modern-device-menu button:hover { background: #f0f0f0; }
 [data-web-interface="modern"] .modern-device-menu button[aria-checked="true"] { background: #f2f2f2; }
 [data-web-interface="modern"] .modern-device-menu button[aria-checked="true"]::after { content: "✓"; margin-left: auto; color: #cf0275; }
 [data-web-interface="modern"] .modern-device-menu button strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-weight: min(900, calc(550 + var(--bold-text-weight-offset))); }
 [data-web-interface="modern"] .modern-device-menu button svg { width: 20px; height: 20px; }
+[data-web-interface="modern"] .modern-device-menu .backend-menu-device-icon { position: relative; display: grid; place-items: center; flex: 0 0 20px; width: 20px; height: 20px; }
+[data-web-interface="modern"] .modern-device-menu .backend-menu-device-icon .status-dot { position: absolute; right: -3px; bottom: -2px; width: 7px; height: 7px; margin: 0; border: 1px solid #fcfcfc; }
+[data-web-interface="modern"] .modern-device-menu .backend-menu-device-icon .backend-loading { position: absolute; right: -4px; bottom: -3px; width: 11px; height: 11px; }
 [data-web-interface="modern"] .modern-menu-divider { height: 1px; margin: 5px; background: #e7e7e7; }
 [data-web-interface="modern"] .modern-sidebar-search { display: flex; align-items: center; gap: 8px; margin: 6px 20px 0; padding: 0 12px; min-height: 42px; border-radius: 14px; background: #f3f3f3; color: #777; }
 [data-web-interface="modern"] .modern-sidebar-search svg { width: 18px; height: 18px; }

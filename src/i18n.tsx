@@ -30,6 +30,7 @@ const english: Record<string, string> = {
   "关闭侧栏": "Close sidebar",
   "搜索会话": "Search conversations",
   "设备菜单": "Device menu",
+  "连接的设备": "Connected devices",
   "新建对话": "New conversation",
   "界面模式": "Interface mode",
   "使用原生界面": "Use native interface",

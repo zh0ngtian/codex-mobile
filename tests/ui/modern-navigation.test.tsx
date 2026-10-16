@@ -138,6 +138,27 @@ describe("新版侧栏", () => {
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
   });
 
+  it("iOS 触摸设置时焦点事件没有目标也能进入设置页", () => {
+    function SidebarWithSettings() {
+      const [open, setOpen] = useState(false);
+      return <>
+        <ThreadListPage {...listProps} onManageBackends={() => setOpen(true)} />
+        <BackendManagerSheet open={open} registry={{ version: 1, selectedBackendId: "mini", backends }}
+          summaries={summaries} onChange={vi.fn()} onClose={() => setOpen(false)} />
+      </>;
+    }
+    render(<SidebarWithSettings />, { wrapper: Wrapper });
+    fireEvent.click(screen.getByRole("button", { name: /Codex.*Mac mini/ }));
+    const first = screen.getByRole("menuitemradio", { name: "全部设备" });
+    first.focus();
+    const settings = screen.getByRole("menuitem", { name: "设置" });
+    fireEvent.pointerDown(settings);
+    fireEvent.blur(first, { relatedTarget: null });
+    expect(settings).toBeInTheDocument();
+    fireEvent.click(settings);
+    expect(screen.getByRole("dialog", { name: "设置" })).toBeInTheDocument();
+  });
+
   it.each([false, true])("设备菜单 Tab 关闭并将焦点移到可见的相邻控件（反向：%s）", (shiftKey) => {
     render(<ThreadListPage {...listProps} />, { wrapper: Wrapper });
     const title = screen.getByRole("button", { name: /Codex.*Mac mini/ });
