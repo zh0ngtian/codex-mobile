@@ -3,6 +3,7 @@
 ## 现役说明
 
 - [项目 README](../README.md)：使用方法、架构、配置、客户端能力与边界。
+- [非原生界面交互说明](non-native-ui-interactions.md)：旧版与新版网页界面的页面清单、按钮功能、跳转路径及状态差异。
 - [自动安装指南](../install.md)：macOS npm 网关安装和开机启动。
 - [仓库协作约定](../AGENTS.md)与 [Git 提交规范](commit-conventions.md)：开发、验证和交付要求。
 - [发布协调说明](release-coordination.md)：本项目 releasectl 配置、适配器入口、必要验证、共同凭证及实际验收状态。
