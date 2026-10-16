@@ -1,8 +1,8 @@
-import { createRef, type ComponentProps, type FormEvent } from "react";
-import { act, fireEvent, render, waitFor, within } from "@testing-library/react";
+import { createRef, useRef, useState, type ComponentProps, type FormEvent } from "react";
+import { act, cleanup, fireEvent, render, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ConversationPage } from "../../src/features/conversation/ConversationPage";
-import { ComposerSettings } from "../../src/features/settings/ComposerSettings";
+import { ComposerSettings, type ComposerPicker } from "../../src/features/settings/ComposerSettings";
 
 const preference = vi.hoisted(() => ({ modern: true }));
 vi.mock("../../src/features/web-ui/preference", () => ({ useWebInterface: () => preference }));
@@ -41,6 +41,18 @@ function settingsProps() {
     onChooseEffort: vi.fn(), onChooseModel: vi.fn(), onChooseSpeed: vi.fn(), onChoosePermissionMode: vi.fn(),
   } as unknown as ComponentProps<typeof ComposerSettings>;
 }
+function SettingsConversation({ overrides = {} }: { overrides?: Partial<Props> }) {
+  const [initial] = useState(() => props({ draft: "", onOpenSpeedSettings: vi.fn() }));
+  const [picker, setPicker] = useState<ComposerPicker>(null);
+  const restore = useRef<(() => void) | undefined>(undefined);
+  const open = (next: ComposerPicker) => (callback?: () => void) => { restore.current = callback; setPicker(next); };
+  return <>
+    <ConversationPage {...initial} {...overrides} onOpenAgentSettings={open("model")} onOpenPermissionSettings={open("permission")} onOpenSpeedSettings={open("speed")} />
+    <ComposerSettings {...settingsProps()} picker={picker} onPickerChange={setPicker} onRestoreComposerFocus={() => {
+      const callback = restore.current; restore.current = undefined; callback?.();
+    }} />
+  </>;
+}
 function emulateComposerLayout(fontScale = 1) {
   const sheet = document.createElement("style");
   sheet.dataset.composerMeasurementTest = "true";
@@ -55,7 +67,7 @@ function emulateComposerLayout(fontScale = 1) {
   });
 }
 beforeEach(() => { preference.modern = true; });
-afterEach(() => { vi.restoreAllMocks(); document.querySelectorAll("[data-composer-measurement-test]").forEach(sheet => sheet.remove()); });
+afterEach(() => { cleanup(); vi.restoreAllMocks(); document.querySelectorAll("[data-composer-measurement-test]").forEach(sheet => sheet.remove()); });
 
 describe("新版会话真实数据与操作", () => {
   it("顶部按进度环、新聊天、更多排列，真实进度从十二点顺时针绘制", () => {
@@ -215,6 +227,33 @@ describe("新版会话真实数据与操作", () => {
     rerender(<ConversationPage {...current} draft="" />); fireEvent.click(view.getByRole("button", { name: "停止" })); expect(current.onInterrupt).toHaveBeenCalledOnce();
     rerender(<ConversationPage {...current} accessMode="readOnly" />); expect(view.getByRole("textbox").hasAttribute("disabled")).toBe(true);
     expect(view.getByRole("button", { name: "选择模型与思考强度" }).hasAttribute("disabled")).toBe(true);
+  });
+  it.each([
+    ["选择模型与思考强度", "GPT-5"], ["选择审批与权限模式", "工作区"], ["选择速度", "正常"],
+  ])("键盘从 %s 打开设置后，关闭或选择回到原按钮且工具栏可见", (name, choice) => {
+    const { container } = render(<SettingsConversation />); const view = within(container);
+    const input = view.getByRole("textbox"); const trigger = view.getByRole("button", { name });
+    for (const select of [false, true]) {
+      act(() => input.focus()); fireEvent.keyDown(input, { key: "Tab", shiftKey: true }); act(() => trigger.focus());
+      fireEvent.keyDown(trigger, { key: "Enter" }); fireEvent.click(trigger);
+      const panel = view.getByRole("dialog"); expect(document.activeElement).toBe(panel);
+      if (select) fireEvent.click(within(panel).getByRole("button", { name: choice === "GPT-5" ? choice : new RegExp(`^${choice}`) }));
+      else fireEvent.keyDown(panel, { key: "Escape" });
+      expect(view.queryByRole("dialog")).toBeNull();
+      expect(document.activeElement).toBe(trigger);
+      expect(container.querySelector(".composer-wrap")?.getAttribute("data-expanded")).toBe("true");
+      expect(document.activeElement).not.toBe(input);
+    }
+  });
+  it.each(["navigate", "history"])("键盘设置的触发按钮在 %s 后不恢复焦点", destination => {
+    const { container, rerender } = render(<SettingsConversation />); const view = within(container);
+    const input = view.getByRole("textbox"); const trigger = view.getByRole("button", { name: "选择模型与思考强度" });
+    act(() => input.focus()); act(() => trigger.focus()); fireEvent.click(trigger);
+    const overrides: Partial<Props> = destination === "navigate" ? { active: { id: "other", turns: [] } } :
+      { historyEdit: { target: { messageId: "history", turnId: "turn" } as any, text: "历史消息", submitting: false } };
+    rerender(<SettingsConversation overrides={overrides} />);
+    fireEvent.keyDown(view.getByRole("dialog"), { key: "Escape" });
+    expect(document.activeElement).not.toBe(trigger); expect(document.activeElement).not.toBe(input);
   });
   it("开始历史编辑或组件卸载后，旧设置回调不能抢回输入焦点", () => {
     const onOpenAgentSettings = vi.fn(); const { view, current, rerender, unmount } = setup({ onOpenAgentSettings });

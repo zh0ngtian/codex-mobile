@@ -8,6 +8,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { flushSync } from "react-dom";
 import { AppServerClient } from "../../app-server/client";
 import {
   createHistoricalMessageEditTarget,
@@ -466,9 +467,16 @@ export function ConversationPage({
       input.setSelectionRange(start, end);
     };
   };
-  const openSettings = (callback: ((restore?: () => void) => void) | undefined) => {
+  const openSettings = (callback: ((restore?: () => void) => void) | undefined, trigger: HTMLButtonElement) => {
     if (document.activeElement === composerInputRef.current) captureSettingsFocus();
-    const restore = settingsFocusRef.current;
+    const revision = composerIdentityRef.current.revision;
+    const restore = settingsFocusRef.current ?? (document.activeElement === trigger ? () => {
+      const current = composerIdentityRef.current;
+      if (!trigger.isConnected || trigger.disabled || !composerRef.current?.contains(trigger) || current.revision !== revision || current.historyEdit) return;
+      // 键盘入口返回原按钮；先同步显示工具栏，避免浏览器拒绝聚焦 display:none 的控件。
+      flushSync(() => setComposerFocused(true));
+      trigger.focus({ preventScroll: true });
+    } : undefined);
     settingsFocusRef.current = undefined;
     callback?.(restore);
   };
@@ -1264,13 +1272,13 @@ export function ConversationPage({
             )}
           </div>
           {modern && <div className="modern-composer-configuration" onPointerDownCapture={captureSettingsFocus}>
-            <button type="button" className="modern-permission-button" aria-label={t("选择审批与权限模式")} title={selectedPermissionLabel} disabled={!interactive || Boolean(historyEdit)} onClick={() => openSettings(onOpenPermissionSettings)}>
+            <button type="button" className="modern-permission-button" aria-label={t("选择审批与权限模式")} title={selectedPermissionLabel} disabled={!interactive || Boolean(historyEdit)} onClick={(event) => openSettings(onOpenPermissionSettings, event.currentTarget)}>
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v8c0 4-3.5 7-7 9-3.5-2-7-5-7-9z" /><path d="M12 8v5m0 3v.1" /></svg>
             </button>
-            <button type="button" className={`modern-speed-button${selectedServiceTier ? " is-fast" : ""}`} aria-label={t("选择速度")} disabled={!interactive || Boolean(historyEdit) || !onOpenSpeedSettings} onClick={() => openSettings(onOpenSpeedSettings)}>
+            <button type="button" className={`modern-speed-button${selectedServiceTier ? " is-fast" : ""}`} aria-label={t("选择速度")} disabled={!interactive || Boolean(historyEdit) || !onOpenSpeedSettings} onClick={(event) => openSettings(onOpenSpeedSettings, event.currentTarget)}>
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14 2-11 12h8l-1 8 11-12h-8z" /></svg>
             </button>
-            <button type="button" className="modern-model-effort-button" aria-label={t("选择模型与思考强度")} disabled={!interactive || Boolean(historyEdit)} onClick={() => openSettings(onOpenAgentSettings)}>
+            <button type="button" className="modern-model-effort-button" aria-label={t("选择模型与思考强度")} disabled={!interactive || Boolean(historyEdit)} onClick={(event) => openSettings(onOpenAgentSettings, event.currentTarget)}>
               <span>{selectedModelLabel}</span><small>{effortLabel(selectedEffort)}</small>
             </button>
           </div>}
