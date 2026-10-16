@@ -13,6 +13,15 @@ export type LanguagePreference = "system" | Locale;
 const LANGUAGE_STORAGE_KEY = "codex-mobile:language";
 
 const english: Record<string, string> = {
+  "返回设备": "Back to devices",
+  "返回设置": "Back to settings",
+  "应用": "App",
+  "连接": "Connection",
+  "{count} 台设备": "{count} devices",
+  "关闭侧栏": "Close sidebar",
+  "搜索会话": "Search conversations",
+  "设备菜单": "Device menu",
+  "新建对话": "New conversation",
   "界面模式": "Interface mode",
   "使用原生界面": "Use native interface",
   "Web 界面": "Web interface",

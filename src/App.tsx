@@ -5182,6 +5182,7 @@ function ConfiguredApp({
         <aside className="conversation-sidebar" aria-label={t("会话列表")}>
           <ThreadListPage
             sidebarOpen={sidebarOpen}
+            onCloseSidebar={closeSidebar}
             backends={registry.backends}
             summaries={summaries}
             selectedBackendId={listBackendId}

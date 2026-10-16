@@ -34,6 +34,8 @@ import {
 } from "./thread-list-model";
 import { projectCollapseKey } from "./project-collapse";
 import { t } from "../../i18n";
+import { useWebInterface } from "../web-ui/preference";
+import { ModernSidebarHeader } from "./ModernSidebarHeader";
 
 export type ThreadManagementAction =
   | "pin"
@@ -47,6 +49,7 @@ const LONG_PRESS_MOVE_TOLERANCE_PX = 10;
 
 export function ThreadListPage({
   sidebarOpen = true,
+  onCloseSidebar,
   backends,
   summaries,
   selectedBackendId,
@@ -78,6 +81,7 @@ export function ThreadListPage({
   onToggleProjectCollapsed,
 }: {
   sidebarOpen?: boolean;
+  onCloseSidebar?: () => void;
   backends: BackendConfig[];
   summaries: Record<string, BackendRuntimeSummary>;
   selectedBackendId: string;
@@ -111,6 +115,8 @@ export function ThreadListPage({
   onToggleProject: (backendId: string, cwd: string) => void;
   onToggleProjectCollapsed: (backendId: string, cwd: string) => void;
 }) {
+  const { modern } = useWebInterface();
+  const [searchOpen, setSearchOpen] = useState(Boolean(query.trim()));
   const [managedThread, setManagedThread] =
     useState<AggregatedThreadItem | null>(null);
   const [menuAnchor, setMenuAnchor] = useState<MenuAnchor>();
@@ -160,10 +166,14 @@ export function ThreadListPage({
   }, [collapsedProjectKeys]);
   useEffect(() => clearLongPress, []);
   useEffect(() => {
+    if (modern && sidebarOpen && query.trim()) setSearchOpen(true);
+  }, [modern, sidebarOpen, query]);
+  useEffect(() => {
     if (sidebarOpen) return;
     clearLongPress();
     suppressClickRef.current = null;
     setManagedThread(null);
+    setSearchOpen(false);
   }, [sidebarOpen]);
   useEffect(() => {
     const sidebar = sidebarRef.current;
@@ -306,7 +316,24 @@ export function ThreadListPage({
   return (
     <section className="thread-list-page" ref={sidebarRef}>
       <div className="thread-list-sticky">
-        <header className="list-header">
+        {modern ? <ModernSidebarHeader
+          sidebarOpen={sidebarOpen}
+          backends={backends} summaries={summaries} selectedBackendId={selectedBackendId}
+          loadingBackendIds={loadingBackendIds} onSelect={onSelectBackend}
+          connection={selectedBackend ? selectedSummary?.connection ?? "connecting" : onlineCount ? "online" : "connecting"}
+          subtitle={selectedBackend
+            ? `${selectedBackend.name}${selectedSummary?.connection === "online" ? "" : ` · ${selectedSummary?.connection === "offline" ? t("已断开") : t("连接中")}`}`
+            : t("全部设备")}
+          status={selectedBackend
+            ? `${selectedBackend.name} · ${selectedSummary?.connection === "online" ? t("已连接") : selectedSummary?.connection === "offline" ? t("已断开") : t("连接中")}`
+            : t("{count} 台机器 · {online} 台已连接", { count: enabledBackends.length, online: onlineCount })}
+          searchOpen={searchOpen} refreshing={refreshing} onCloseSidebar={onCloseSidebar}
+          onToggleSearch={() => {
+            if (searchOpen) onQueryChange("");
+            setSearchOpen(!searchOpen);
+          }} onOpenDrafts={onOpenDrafts}
+          onManageBackends={onManageBackends} onRefresh={onRefresh}
+        /> : <><header className="list-header">
           <div>
             <h1>Codex Mobile</h1>
             <p>
@@ -366,7 +393,12 @@ export function ThreadListPage({
           selectedBackendId={selectedBackendId}
           loadingBackendIds={loadingBackendIds}
           onSelect={onSelectBackend}
-        />
+        /></>}
+        {modern && searchOpen && <label className="modern-sidebar-search" aria-busy={searching}>
+          <AppIcon name="search" />
+          <input type="search" aria-label={t("搜索聊天")} placeholder={t("搜索聊天")} value={query}
+            onChange={event => onQueryChange(event.target.value)} autoFocus />
+        </label>}
       </div>
       <div className="thread-list">
         {query.trim() && searching && (
@@ -417,6 +449,7 @@ export function ThreadListPage({
                 {allGroups.pinned.map((thread) => renderRow(thread, false))}
               </section>
             )}
+            {modern && projectGroups.length > 0 && !query.trim() && <h2 className="modern-projects-heading">{t("项目")}</h2>}
             {projectGroups
               .filter(
                 (group) =>
@@ -604,7 +637,14 @@ export function ThreadListPage({
         onRename={() => void runThreadAction("rename")}
         onArchive={() => void runThreadAction("archive")}
       />
-      <footer className="list-actions">
+      {modern ? <footer className="modern-sidebar-launcher"
+        onTouchStart={event => event.stopPropagation()} onTouchMove={event => event.stopPropagation()}
+        onTouchEnd={event => event.stopPropagation()} onTouchCancel={event => event.stopPropagation()}>
+        <button type="button" aria-label={t("新建对话")} onClick={onNewChat}>
+          <span className="modern-launcher-plus" aria-hidden="true">＋</span><span>Ask Codex</span>
+          <span className="modern-launcher-send"><AppIcon name="send" /></span>
+        </button>
+      </footer> : <footer className="list-actions">
         <label className="search-box" aria-busy={searching}><AppIcon name="search" /><input value={query} onChange={(event) => onQueryChange(event.target.value)} placeholder={t("搜索聊天")} /></label>
         <button
           className="new-chat"
@@ -612,7 +652,7 @@ export function ThreadListPage({
         >
           <AppIcon name="compose" />{t("聊天")}
         </button>
-      </footer>
+      </footer>}
     </section>
   );
 }

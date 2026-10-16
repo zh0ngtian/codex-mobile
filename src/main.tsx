@@ -8,6 +8,7 @@ import {
   type AndroidWebViewBridge,
 } from "./ui/runtime-environment";
 import "./styles.css";
+import "./features/web-ui/modern.css";
 import { applyFontSize, readFontSize } from "./ui/font-size";
 
 applyFontSize(readFontSize());
