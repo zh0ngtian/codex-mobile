@@ -41,8 +41,21 @@ function settingsProps() {
     onChooseEffort: vi.fn(), onChooseModel: vi.fn(), onChooseSpeed: vi.fn(), onChoosePermissionMode: vi.fn(),
   } as unknown as ComponentProps<typeof ComposerSettings>;
 }
+function emulateComposerLayout(fontScale = 1) {
+  const sheet = document.createElement("style");
+  sheet.dataset.composerMeasurementTest = "true";
+  sheet.textContent = `.composer textarea { min-height:48px; line-height:${22 * fontScale}px; padding:14px 3px 12px; }
+    .composer-wrap[data-expanded="true"] textarea { min-height:50px; padding:15px 11px 9px; }`;
+  document.head.append(sheet);
+  vi.spyOn(HTMLTextAreaElement.prototype, "scrollHeight", "get").mockImplementation(function (this: HTMLTextAreaElement) {
+    const style = getComputedStyle(this);
+    const rows = this.value.split("\n").reduce((count, line) => count + Math.max(1, Math.ceil(line.length / 14)), 0);
+    const contentHeight = rows * parseFloat(style.lineHeight) + parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
+    return Math.ceil(Math.max(parseFloat(style.minHeight) || 0, contentHeight));
+  });
+}
 beforeEach(() => { preference.modern = true; });
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => { vi.restoreAllMocks(); document.querySelectorAll("[data-composer-measurement-test]").forEach(sheet => sheet.remove()); });
 
 describe("新版会话真实数据与操作", () => {
   it("顶部按进度环、新聊天、更多排列，真实进度从十二点顺时针绘制", () => {
@@ -128,6 +141,31 @@ describe("新版会话真实数据与操作", () => {
     act(() => input.focus()); const button = view.getByRole("button", { name: "选择模型与思考强度" });
     fireEvent.pointerDown(button); act(() => button.focus());
     expect(container.querySelector(".composer-wrap")?.getAttribute("data-expanded")).toBe("true");
+  });
+  it.each(["", "单行草稿"])("展开态最小高度不让空或单行输入失焦后锁定展开：%j", draft => {
+    emulateComposerLayout(); const { container, view } = setup({ draft });
+    const input = view.getByRole("textbox") as HTMLTextAreaElement;
+    act(() => input.focus()); input.setSelectionRange(0, Math.min(2, draft.length));
+    expect(container.querySelector(".composer-wrap")?.getAttribute("data-expanded")).toBe("true");
+    act(() => input.blur());
+    expect(container.querySelector(".composer-wrap")?.getAttribute("data-expanded")).toBe("false");
+    expect(view.getByRole("textbox")).toBe(input); expect(input.value).toBe(draft);
+    expect([input.selectionStart, input.selectionEnd]).toEqual([0, Math.min(2, draft.length)]);
+  });
+  it.each([1, 1.5])("真实换行、长文、附件失焦保持展开，字号倍率 %s", fontScale => {
+    emulateComposerLayout(fontScale);
+    const { container, view, current, rerender } = setup({ draft: "第一行\n第二行" });
+    const input = view.getByRole("textbox") as HTMLTextAreaElement;
+    act(() => input.focus()); act(() => input.blur());
+    expect(container.querySelector(".composer-wrap")?.getAttribute("data-expanded")).toBe("true");
+    rerender(<ConversationPage {...current} draft="这是一段足够长以便模拟输入框自然换行的连续草稿文字" />);
+    act(() => input.focus()); act(() => input.blur());
+    expect(container.querySelector(".composer-wrap")?.getAttribute("data-expanded")).toBe("true");
+    rerender(<ConversationPage {...current} draft="" draftImages={[{ id: "image", name: "图片", url: "data:image/png;base64," } as any]} />);
+    expect(container.querySelector(".composer-wrap")?.getAttribute("data-expanded")).toBe("true");
+    rerender(<ConversationPage {...current} draft="单行" />); act(() => input.focus()); act(() => input.blur());
+    expect(container.querySelector(".composer-wrap")?.getAttribute("data-expanded")).toBe("false");
+    expect(view.getByRole("textbox")).toBe(input);
   });
   it("真实多行高度受上限约束，内容清空时同一输入框恢复", () => {
     let height = 110;

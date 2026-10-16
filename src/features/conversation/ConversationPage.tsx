@@ -478,13 +478,18 @@ export function ConversationPage({
     if (!modern) { input.style.removeProperty("height"); return; }
     const resize = () => {
       input.style.height = "auto";
+      // scrollHeight 包含 CSS 最小高度；测量内容时去除下限，避免单行被误判为换行。
+      const previousMinHeight = input.style.minHeight;
+      input.style.minHeight = "0";
       const style = getComputedStyle(input);
       const lineHeight = parseFloat(style.lineHeight) || 22;
       const padding = (parseFloat(style.paddingTop) || 0) + (parseFloat(style.paddingBottom) || 0);
-      const multiline = input.scrollHeight > lineHeight + padding + 2;
+      const contentHeight = input.scrollHeight;
+      input.style.minHeight = previousMinHeight;
+      const multiline = contentHeight > lineHeight + padding + 2;
       // 聚焦期间按真实宽度测量；失焦后保留换行状态，防止宽窄布局往返抖动。
       if (composerFocused || !composerExpanded || !draft) setComposerWrapped(multiline);
-      input.style.height = `${Math.min(154, Math.max(lineHeight + padding, input.scrollHeight))}px`;
+      input.style.height = `${Math.min(154, Math.max(lineHeight + padding, contentHeight))}px`;
     };
     resize();
     if (typeof ResizeObserver === "undefined") return;
