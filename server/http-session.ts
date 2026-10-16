@@ -8,6 +8,7 @@ import { TurnChangeHistory } from "./turn-change-history.js";
 import { compactTurnDetails, compactTurnCommentary, turnCommentaryRequest, validTurnCommentaryParams } from "./turn-details.js";
 import { isNavigationResume } from "./rpc-replay.js";
 import { InlineImages } from "./inline-images.js";
+import { MessageTimestamps } from "./message-timestamps.js";
 import type { BarkNotifications } from "./bark-notifications.js";
 
 export interface RpcMessage {
@@ -143,7 +144,7 @@ class Session {
   storageBytes = 0;
   invalidatedSocket?: WebSocket;
 
-  constructor(readonly id: string, private upstreamUrl: string, private root: string, private changeHistory: TurnChangeHistory, private images: InlineImages, private notifications?: BarkNotifications, private hostedObserver?: (message?: RpcMessage) => void, private hostedReply?: (requestId: string, message: RpcMessage) => Promise<RpcMessage | undefined>) {
+  constructor(readonly id: string, private upstreamUrl: string, private root: string, private changeHistory: TurnChangeHistory, private images: InlineImages, private timestamps: MessageTimestamps, private notifications?: BarkNotifications, private hostedObserver?: (message?: RpcMessage) => void, private hostedReply?: (requestId: string, message: RpcMessage) => Promise<RpcMessage | undefined>) {
     this.loadPromise = this.load();
   }
 
@@ -269,7 +270,7 @@ class Session {
           const message = JSON.parse(raw.toString());
           if (message.method && message.id == null && !message.method.startsWith("thread/realtime/")) {
             this.notificationQueue = this.notificationQueue.then(async () => {
-              const projected = await this.images.notification(message);
+              const projected = await this.timestamps.notification(await this.images.notification(message));
               if (this.socket === socket) this.receive(projected);
             }).catch(() => { socket.terminate(); });
           } else this.receive(message);
@@ -628,7 +629,7 @@ class Session {
           else if (message.method === "mobile/turns/commentary") {
             const upstream: RpcMessage = { id: message.id, ...turnCommentaryRequest(message.params!) };
             result = await this.exchange(upstream, submittedSocket);
-            if (result.error == null) result = { ...result, result: compactTurnCommentary(result.result as Record<string, any>, message.params!.turnId) };
+            if (result.error == null) result = { ...result, result: compactTurnCommentary(await this.timestamps.result(message.params!.threadId, result.result as Record<string, any>), message.params!.turnId) };
           }
           else if (message.method === "mobile/turns/details") {
             const params = message.params!;
@@ -639,7 +640,7 @@ class Session {
             result = await this.exchange(upstream, submittedSocket);
             if (this.socket === submittedSocket && this.epoch === submittedEpoch) this.observeRpcState(upstream, result);
             if (result.error == null) {
-              const full = result.result as Record<string, any>;
+              const full = await this.timestamps.result(params.threadId, result.result as Record<string, any>);
               const stats = Object.fromEntries(await Promise.all((full.data ?? []).map(async (turn: Record<string, any>) =>
                 [String(turn.id), await this.changeHistory.get(params.threadId, turn)],
               )));
@@ -647,6 +648,9 @@ class Session {
             }
           }
           else result = await this.exchange(message, submittedSocket);
+        }
+        if (result.error == null && message.method === "thread/turns/list" && message.params?.itemsView === "full") {
+          result = { ...result, result: await this.timestamps.result(message.params.threadId, result.result as Record<string, any>) };
         }
         if (result.error == null && result.result && typeof result.result === "object" && ["thread/resume", "thread/read", "thread/turns/list", "thread/items/list", "mobile/turns/details"].includes(message.method ?? "")) {
           result = { ...result, result: await this.images.result(result.result as Record<string, any>) };
@@ -721,10 +725,12 @@ export class HttpSessions {
   private root: string;
   private changeHistory: TurnChangeHistory;
   private images: InlineImages;
+  private timestamps: MessageTimestamps;
   private hostedRequests = new Map<string, { message: RpcMessage; originalId: string | number; epoch: string }>();
   private hostedListeners = new Set<(message: RpcMessage) => void>();
   constructor(private options: { upstreamUrl: string; codexHome?: string; changeHistory?: TurnChangeHistory; notifications?: BarkNotifications }) {
     this.root = join(options.codexHome ?? process.env.CODEX_HOME ?? join(homedir(), ".codex"), "codex-mobile-http");
+    this.timestamps = new MessageTimestamps(options.codexHome ?? process.env.CODEX_HOME ?? join(homedir(), ".codex"));
     this.images = new InlineImages(join(options.codexHome ?? process.env.CODEX_HOME ?? join(homedir(), ".codex"), "codex-mobile-inline-images"));
     this.changeHistory = options.changeHistory ?? new TurnChangeHistory(options.codexHome ?? process.env.CODEX_HOME ?? join(homedir(), ".codex"));
     this.timer = setInterval(() => {
@@ -743,7 +749,7 @@ export class HttpSessions {
     const existing = this.sessions.get(id);
     if (existing) return existing;
     if (this.sessions.size >= MAX_SESSIONS) throw new HttpError(429, "Too many sessions");
-    const session = new Session(id, this.options.upstreamUrl, this.root, this.changeHistory, this.images, this.options.notifications,
+    const session = new Session(id, this.options.upstreamUrl, this.root, this.changeHistory, this.images, this.timestamps, this.options.notifications,
       id === HOSTED_SESSION_ID ? (message) => this.observeHosted(message) : undefined,
       id !== HOSTED_SESSION_ID ? (requestId, message) => this.replyHosted(requestId, message) : undefined);
     // Loading errors are returned by APIs rather than emitted as unhandled rejections.

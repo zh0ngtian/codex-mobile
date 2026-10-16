@@ -107,7 +107,7 @@ describe("会话图片按需加载", () => {
     expect(screen.getByRole('button', { name: '重试' })).not.toBeNull();
   });
 
-  it("多张过程截图默认折叠，展开后才读取，且不重复放入之前消息", async () => {
+  it("commentary 所属多张截图随历史展开才读取且不重复", async () => {
     const request = vi.fn().mockResolvedValue({ dataBase64: "aGVsbG8=" });
     render(<TurnCard client={{ request } as never} turn={{ id: "turn", status: "completed", items: [
       { id: "u", type: "userMessage", text: "检查" },
@@ -117,24 +117,22 @@ describe("会话图片按需加载", () => {
       { id: "f", type: "agentMessage", phase: "final_answer", text: "完成" },
     ] }} />);
     expect(request).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "过程截图（2）" }));
+    fireEvent.click(screen.getByRole("button", { name: /之前的 1 条消息/ }));
     await screen.findByRole("button", { name: "查看图片 a.png" });
     expect(request).toHaveBeenCalledTimes(2);
-    fireEvent.click(screen.getByRole("button", { name: /之前的 1 条消息/ }));
     expect(screen.getAllByRole("button", { name: "查看图片 a.png" })).toHaveLength(1);
   });
 
-  it("最终回复之后的过程截图也只在过程截图展开区显示", async () => {
+  it("没有 commentary 的截图按 final 前后原始位置显示", async () => {
     const request = vi.fn().mockResolvedValue({ dataBase64: "aGVsbG8=" });
-    render(<TurnCard client={{ request } as never} turn={{ id: "after", status: "completed", items: [
+    const { container } = render(<TurnCard client={{ request } as never} turn={{ id: "after", status: "completed", items: [
       { id: "i1", type: "imageView", path: "/tmp/a.png" },
       { id: "f", type: "agentMessage", phase: "final_answer", text: "完成" },
       { id: "i2", type: "imageView", path: "/tmp/b.png" },
     ] }} />);
-    expect(request).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "过程截图（2）" }));
     await screen.findByRole("button", { name: "查看图片 b.png" });
-    expect(screen.getAllByRole("button", { name: "查看图片 b.png" })).toHaveLength(1);
+    expect(request).toHaveBeenCalledTimes(2);
+    expect([...container.querySelectorAll(".turn-responses > .message-images, .turn-responses > .assistant-message")].map(node => node.textContent || node.querySelector("img")?.getAttribute("alt"))).toEqual(["a.png", "完成", "b.png"]);
   });
 
   it.each(["completed", "inProgress"])("%s 回合的单张查看图片正常显示", async (status) => {
@@ -161,18 +159,16 @@ describe("会话图片按需加载", () => {
     ] }} />);
     await screen.findByRole("button", { name: "查看图片 generated.png" });
     expect(screen.getAllByRole("button", { name: "查看图片 generated.png" })).toHaveLength(1);
-    if (status === "completed") {
-      expect(request).toHaveBeenCalledTimes(1);
-      fireEvent.click(screen.getByRole("button", { name: "过程截图（2）" }));
-    }
     await screen.findByRole("button", { name: "查看图片 shot-b.png" });
-    expect(screen.getAllByRole("button", { name: "查看图片 shot-a.png" })).toHaveLength(1);
+    expect(screen.queryByRole("button", { name: "查看图片 shot-a.png" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "之前的 1 条消息" }));
-    expect(container.querySelector(".previous-messages .message-images")).toBeNull();
+    await screen.findByRole("button", { name: "查看图片 shot-a.png" });
+    expect(screen.getAllByRole("button", { name: "查看图片 shot-a.png" })).toHaveLength(1);
+    expect(container.querySelector(".previous-messages .commentary-message .message-images")).not.toBeNull();
     expect(request).toHaveBeenCalledTimes(3);
   });
 
-  it.each(["completed", "inProgress"])("%s 回合跨用户插话统一归集截图与生成产物", async (status) => {
+  it.each(["completed", "inProgress"])("%s 回合跨用户插话保持截图与生成产物原始位置并去重", async (status) => {
     const request = vi.fn().mockResolvedValue({ dataBase64: "aGVsbG8=" });
     render(<TurnCard client={{ request } as never} turn={{ id: "steered-media", status, items: [
       { id: "user", type: "userMessage", text: "检查截图" },
@@ -190,14 +186,7 @@ describe("会话图片按需加载", () => {
     expect(screen.getByText("初次检查完成")).toBeTruthy();
     expect(screen.getByText("继续检查")).toBeTruthy();
     expect(screen.getByText("全部检查完成")).toBeTruthy();
-    if (status === "completed") {
-      expect(request).toHaveBeenCalledTimes(1);
-      expect(screen.getAllByRole("button", { name: "过程截图（2）" })).toHaveLength(1);
-      expect(screen.queryByRole("button", { name: "查看图片 steer-a.png" })).toBeNull();
-      fireEvent.click(screen.getByRole("button", { name: "过程截图（2）" }));
-    } else {
-      expect(screen.queryByRole("button", { name: /过程截图/ })).toBeNull();
-    }
+    expect(screen.queryByRole("button", { name: /过程截图/ })).toBeNull();
     await screen.findByRole("button", { name: "查看图片 steer-b.png" });
     expect(screen.getAllByRole("button", { name: "查看图片 steer-a.png" })).toHaveLength(1);
     expect(request).toHaveBeenCalledTimes(3);
