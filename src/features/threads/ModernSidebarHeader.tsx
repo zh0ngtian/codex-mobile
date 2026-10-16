@@ -54,7 +54,8 @@ export function ModernSidebarHeader({
 
   return <header ref={headerRef} className="modern-sidebar-header"
     onBlur={event => {
-      if (!event.currentTarget.contains(event.relatedTarget)) setMenuOpen(false);
+      // iOS WebKit 在触摸菜单项时可能不给 relatedTarget；此时外部 pointerdown 才是关闭依据。
+      if (event.relatedTarget && !event.currentTarget.contains(event.relatedTarget)) setMenuOpen(false);
     }}
     onTouchStart={event => event.stopPropagation()} onTouchMove={event => event.stopPropagation()}
     onTouchEnd={event => event.stopPropagation()} onTouchCancel={event => event.stopPropagation()}>
@@ -90,10 +91,11 @@ export function ModernSidebarHeader({
           : (index + (event.key === "ArrowDown" ? 1 : -1) + items.length) % items.length;
         items[next]?.focus();
       }}>
+      <p className="modern-menu-caption">{t("连接的设备")}</p>
       <BackendSwitcher {...switcher} presentation="menu" onSelect={id => { closeMenu(); switcher.onSelect(id); }} />
       <div className="modern-menu-divider" />
       <button type="button" role="menuitem" onClick={() => runAction(onOpenDrafts)}><AppIcon name="draft" />{t("草稿")}</button>
-      <button type="button" role="menuitem" onClick={() => runAction(onManageBackends)}><AppIcon name="more" />{t("设置")}</button>
+      <button type="button" role="menuitem" onClick={() => runAction(onManageBackends)}><AppIcon name="settings" />{t("设置")}</button>
       <button type="button" role="menuitem" aria-label={t("刷新会话列表")} aria-busy={refreshing} onClick={() => runAction(onRefresh)}>
         {refreshing ? <i className="sidebar-refresh-spinner" aria-hidden="true" /> : <AppIcon name="refresh" />}{t("刷新")}
       </button>
