@@ -297,6 +297,22 @@ final class NativeUIUITests: XCTestCase {
         capture("审查-Bark通知", app: app)
     }
 
+    func testDeviceMenuKeepsCompactRowsAndOpensSettings() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--native-ui-reference-visual", "--native-ui-reference-visual-zh", "--native-ui-reference-visual-sidebar"]
+        app.launch()
+        app.buttons["native-sidebar-device-menu"].tap()
+        XCTAssertTrue(app.staticTexts["连接的设备"].waitForExistence(timeout: 5))
+        let settings = app.buttons["native-settings-open"]
+        XCTAssertTrue(settings.isHittable)
+        XCTAssertLessThanOrEqual(settings.frame.height, 55)
+        XCTAssertLessThan(settings.frame.minY, app.frame.midY)
+        capture("审查-设备菜单对齐", app: app)
+        settings.tap()
+        XCTAssertTrue(app.switches["native-ui-preference"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.staticTexts["连接的设备"].exists)
+    }
+
     func testReferenceNotificationsAuditScreenshot() {
         let app = XCUIApplication()
         app.launchArguments = ["--native-ui-reference-visual", "--native-ui-reference-visual-zh", "--native-ui-reference-visual-sidebar"]
