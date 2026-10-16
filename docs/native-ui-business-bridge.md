@@ -146,4 +146,4 @@ Task2b 分模块 RED→GREEN 日志位于 `.mobile-build/native-reference/task2b
 
 最大化和还原使用同一个原生 TextField，只有切换会话上下文时重置局部输入状态。`selectionRevision` 只在权威正文或 UTF-16 光标变化时推进，本地绑定和相同草稿 echo 不强制重设 TextSelection，以保留中文组字状态。
 
-关联自动化已验证真实 ConversationPage 呈现、遮罩、布局与恢复、检查点事务、真实 Swift Store/DTO/偏好以及可信 JavaScript 生成与执行。模拟器、真机覆盖安装和正式发布结果由整合阶段单独验收，不以这些自动化结果代替。
+关联自动化已验证真实 ConversationPage 呈现、遮罩、布局与恢复、检查点事务、真实 Swift Store/DTO/偏好以及可信 JavaScript 生成与执行。2026-10-16 整合后全量 1458 项测试通过，iOS 27 离线模拟器的 11 个输入、开关、组字、布局与错误场景分别通过，实际范围见[本轮验证记录](superpowers/plans/2026-10-16-native-web-composer.md#2026-10-16-本地验证记录)。未创建真实远端测试会话，未进行真机覆盖安装或数据保留验收；正式渠道交付仍以协调器成功凭证为准。
