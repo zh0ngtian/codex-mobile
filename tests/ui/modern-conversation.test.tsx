@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render, waitFor, within } from "@testing-libra
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ConversationPage } from "../../src/features/conversation/ConversationPage";
 import { ComposerSettings, type ComposerPicker } from "../../src/features/settings/ComposerSettings";
+import { ACTION_MENU_EVENT } from "../../src/ui/native-action-menu";
 
 const preference = vi.hoisted(() => ({ modern: true }));
 vi.mock("../../src/features/web-ui/preference", () => ({ useWebInterface: () => preference }));
@@ -70,6 +71,45 @@ beforeEach(() => { preference.modern = true; });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); document.querySelectorAll("[data-composer-measurement-test]").forEach(sheet => sheet.remove()); });
 
 describe("新版会话真实数据与操作", () => {
+  it.each([false, true])("原生重命名取消后下一次点击立即重新打开菜单（新版：%s）", async (modern) => {
+    preference.modern = modern;
+    const show = vi.fn();
+    (window as any).CodexMobileActionMenu = { show, dismiss: vi.fn() };
+    try {
+      const onRename = vi.fn(async () => false);
+      const { view, unmount } = setup({ onRename });
+      const trigger = view.getByRole("button", { name: "会话操作" });
+      fireEvent.click(trigger);
+      const request = JSON.parse(show.mock.calls[0][0]);
+      await act(async () => window.dispatchEvent(new CustomEvent(ACTION_MENU_EVENT, {
+        detail: { requestId: request.requestId, actionId: "rename" },
+      })));
+      expect(onRename).toHaveBeenCalledOnce();
+      expect(view.getByText("真实会话标题")).toBeTruthy();
+      expect(trigger.getAttribute("aria-expanded")).toBe("false");
+      fireEvent.click(trigger);
+      expect(show).toHaveBeenCalledTimes(2);
+      const reopened = JSON.parse(show.mock.calls[1][0]);
+      expect(reopened.requestId).not.toBe(request.requestId);
+      expect(reopened.actions.some((action: { id: string }) => action.id === "rename")).toBe(true);
+      unmount();
+    } finally {
+      delete (window as any).CodexMobileActionMenu;
+    }
+  });
+
+  it.each([false, true])("网页重命名取消后保留可见的原菜单（新版：%s）", async (modern) => {
+    preference.modern = modern;
+    const onRename = vi.fn(async () => false);
+    const { view } = setup({ onRename });
+    const trigger = view.getByRole("button", { name: "会话操作" });
+    fireEvent.click(trigger);
+    await act(async () => fireEvent.click(view.getByRole("button", { name: "重命名" })));
+    expect(onRename).toHaveBeenCalledOnce();
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
+    expect(view.getByRole("button", { name: "重命名" })).toBeTruthy();
+  });
+
   it("顶部按进度环、新聊天、更多排列，真实进度从十二点顺时针绘制", () => {
     const onNewChat = vi.fn();
     const { container, view } = setup({ onNewChat });

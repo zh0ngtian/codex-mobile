@@ -1,12 +1,17 @@
 import { act, fireEvent, render, within } from "@testing-library/react";
 import { cloneElement } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ThreadListPage } from "../../src/features/threads/ThreadListPage";
 import { aggregateThreads } from "../../src/features/threads/thread-list-model";
 import type {
   BackendConfig,
   BackendRuntimeSummary,
 } from "../../src/backends/types";
+import { ACTION_MENU_EVENT } from "../../src/ui/native-action-menu";
+
+const preference = vi.hoisted(() => ({ modern: false }));
+vi.mock("../../src/features/web-ui/preference", () => ({ useWebInterface: () => preference }));
+beforeEach(() => { preference.modern = false; });
 
 const backend: BackendConfig = {
   id: "mini",
@@ -126,6 +131,30 @@ function renderList(
 }
 
 describe("会话侧边栏列表", () => {
+  it.each([false, true])("原生重命名取消后同一侧栏会话可再次重命名，保留原后端与目标（新版：%s）", async (modern) => {
+    preference.modern = modern;
+    const show = vi.fn();
+    (window as any).CodexMobileActionMenu = { show, dismiss: vi.fn() };
+    try {
+      const onManageThread = vi.fn().mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+      const { container, unmount } = renderList("all", { onManageThread });
+      const row = within(container).getByRole("button", { name: /关注会话/ });
+      for (let attempt = 0; attempt < 2; attempt++) {
+        fireEvent.contextMenu(row);
+        expect(show).toHaveBeenCalledTimes(attempt + 1);
+        const request = JSON.parse(show.mock.calls[attempt][0]);
+        await act(async () => window.dispatchEvent(new CustomEvent(ACTION_MENU_EVENT, {
+          detail: { requestId: request.requestId, actionId: "rename" },
+        })));
+        expect(onManageThread).toHaveBeenNthCalledWith(attempt + 1, threads[0], "rename");
+      }
+      expect(onManageThread.mock.calls[0][0]).toMatchObject({ backendId: "mini", threadId: "pinned" });
+      unmount();
+    } finally {
+      delete (window as any).CodexMobileActionMenu;
+    }
+  });
+
   it("草稿入口位于刷新左侧，点击打开草稿列表", () => {
     const { container, element, rerender } = renderList("all");
     const onOpenDrafts = vi.fn();
