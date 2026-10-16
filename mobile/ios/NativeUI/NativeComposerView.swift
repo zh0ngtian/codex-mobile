@@ -8,9 +8,11 @@ struct NativeComposerView: View {
     @State private var supplementaryContentHeight: CGFloat = 0
     @State private var queuedContentHeight: CGFloat = 0
     @State private var attachmentContentHeight: CGFloat = 0
+    @State private var toolbarHeight: CGFloat = 44
     @Environment(\.verticalSizeClass) private var verticalSizeClass
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @ScaledMetric(relativeTo: .body) private var textSize = 14
+    @ScaledMetric(relativeTo: .body) private var toolbarSize = 16
     @FocusState private var focused: Bool
     @State private var selection: TextSelection?
     @State private var adjustment: NativeComposerAdjustment?
@@ -81,7 +83,8 @@ struct NativeComposerView: View {
                     }.buttonStyle(.plain).disabled(!canSend && !(canInterrupt && !hasDraft))
                         .accessibilityLabel(canInterrupt && !hasDraft ? store.label("停止", "Stop") : store.snapshot.busy ? store.label("排队发送", "Queue Message") : store.label("发送", "Send"))
                         .accessibilityIdentifier("native-send")
-                }.modifier(NativeScaledFont(size: 16, scale: store.snapshot.fontScale, weight: .semibold))
+                }.font(.system(size: toolbarSize * store.snapshot.fontScale, weight: .semibold))
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { toolbarHeight = $0 }
                 .padding(.horizontal, 4).padding(.bottom, expanded ? 4 : 2)
             }
             .frame(minHeight: layoutBudget.editorMinimumHeight)
@@ -179,7 +182,7 @@ struct NativeComposerView: View {
     private var inputLineHeight: CGFloat { UIFont.systemFont(ofSize: textSize * store.snapshot.fontScale, weight: .medium).lineHeight }
     private var layoutBudget: NativeComposerLayoutBudget {
         NativeComposerLayoutBudget.resolve(availableHeight: Double(availableHeight), lineHeight: Double(inputLineHeight),
-            toolbarLineHeight: Double(UIFont.systemFont(ofSize: textSize * (16.0 / 14.0) * store.snapshot.fontScale, weight: .semibold).lineHeight),
+            toolbarHeight: Double(max(toolbarHeight, ceil(UIFont.systemFont(ofSize: toolbarSize * store.snapshot.fontScale, weight: .semibold).lineHeight) + 1)),
             expanded: expanded, focused: focused, compact: verticalSizeClass == .compact,
             hasSupplementaryContent: hasSupplementaryContent)
     }

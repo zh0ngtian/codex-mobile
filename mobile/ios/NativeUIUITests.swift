@@ -155,7 +155,7 @@ final class NativeUIUITests: XCTestCase {
         XCUIDevice.shared.orientation = .portrait
         defer { XCUIDevice.shared.orientation = .portrait }
         let app = XCUIApplication()
-        app.launchArguments = ["--native-ui-reference-visual", "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXL"]
+        app.launchArguments = ["--native-ui-reference-visual", "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
         app.launch()
         app.buttons["native-new-thread"].tap()
         let input = app.descendants(matching: .any)["native-composer-input"]
@@ -176,6 +176,7 @@ final class NativeUIUITests: XCTestCase {
             print("Landscape frames: app=\(app.frame) input=\(input.frame) send=\(send.frame) keyboard=\(app.keyboards.firstMatch.frame)")
         }
         XCTAssertTrue(send.isHittable)
+        XCTAssertLessThanOrEqual(input.frame.maxY, app.buttons["native-model-menu"].frame.minY, "最大辅助字号下输入不能覆盖工具栏")
         input.typeText(" tail")
         XCTAssertTrue((input.value as? String)?.contains("tail") == true)
         XCTAssertTrue(app.buttons["native-send"].isEnabled)

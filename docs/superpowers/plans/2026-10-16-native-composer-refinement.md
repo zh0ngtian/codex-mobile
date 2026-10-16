@@ -138,3 +138,10 @@ Menu {
 - 新增仓库 XCTest `testLandscapeAttachmentKeepsEditorAndActionsAboveKeyboard`，等待父任务继续同场景实际复验；本地不操作模拟器或 `.mobile-build`。
 - 最终行数合同由视图传入 `NativeComposerLayoutBudget.editorChromeHeight`，按实际字体行高与工具栏净空计算；80pt 仅作为无效 chrome 数值的防护默认，不再作为真实输入的固定扣除值。旋转首帧的旧方向环境也须满足整个输入容器不超过 178pt 的数学边界。
 - 本地修复后关联 3 文件 25 项通过，原生 Swift 与 XCTest 源码 iOS 类型检查、TypeScript 类型检查通过；日志分别为 `green-attachment-budget.log`、`swift-typecheck-attachment-budget.log`、`ui-tests-typecheck-attachment-budget.log`、`typecheck-attachment-budget.log`。
+
+### 实际 UI 修复：最大辅助字号工具栏净空
+
+- `.mobile-build/refinement-final.xcresult` 的实际 RED 显示输入底边 325.333pt 大于模型菜单顶边 320pt；其他四个布局、输入与配置场景已通过。
+- 数学回归先对“完整 60pt 工具栏 + 4pt 底距 + 1pt 舍入净空”要求运行 RED，旧居中溢出平均公式按预期失败。
+- 工具栏所有文字与图标改由同一个 16pt `ScaledMetric` 字体绘制并计算首帧行高保护；实际整行高度测量后参与编辑器 padding 和最低高度预算，不降低字号或 44pt 操作范围，不重建 TextField。
+- 修复后关联 3 文件 25 项通过，原生 Swift、XCTest 源码和 TypeScript 类型检查通过；日志为 `red-toolbar-clearance.log`、`green-toolbar-clearance.log`、`swift-typecheck-toolbar-clearance.log`、`ui-tests-typecheck-toolbar-clearance.log`、`typecheck-toolbar-clearance.log`。仓库横屏输入测试提升到最大辅助字号并加入文字与工具栏不重叠断言，实际 UI 由父任务继续复验。
