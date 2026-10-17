@@ -1,5 +1,7 @@
 # 移动端构建
 
+源码默认版本为 `0.3.0`。版本分配下限 `mobile-version-floor.json` 中的 `0.2.999` 是排除式门槛，并非已发布版本；分配器合并所有已知渠道版本后递增，因此当前已知最高版本为 `0.2.191` 时下次分配 `0.3.0`，若已有更高版本则继续递增。
+
 GitHub Actions 与本地构建共用 `android/build-recipe.yml` 和 `ios/build-recipe.yml` 中的固定 PakePlus 容器、工具版本及构建脚本。recipe 只描述构建步骤，自动触发、artifact 上传与 GitHub Release 发布由 `.github/workflows/build-mobile.yml` 管理。iOS 云端构建不读取本机签名材料。
 
 配置字段：

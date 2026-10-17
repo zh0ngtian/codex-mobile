@@ -1,6 +1,6 @@
 {
   "name": "codex-mobile",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Mobile-first web client and gateway for Codex app-server",
   "license": "Apache-2.0",
   "type": "module",

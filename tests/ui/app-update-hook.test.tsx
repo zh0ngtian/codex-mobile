@@ -59,6 +59,16 @@ describe("App 更新控制器", () => {
     expect(fetchRelease).not.toHaveBeenCalled();
   });
 
+  it("无原生版本桥且未配置 VITE_APP_VERSION 时使用 0.3.0", () => {
+    vi.stubEnv("VITE_APP_VERSION", "");
+    const { result } = renderHook(() =>
+      useAppUpdate({ bridge: null, fetchRelease: async () => releasePayload, storage }),
+    );
+
+    expect(result.current.state.currentVersion).toBe("0.3.0");
+    expect(result.current.supported).toBe(false);
+  });
+
   const iosModes = [["网页", false], ["原生", true]] as const;
 
   function prepareIos(nativeUI = false) {
