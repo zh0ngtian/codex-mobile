@@ -269,7 +269,7 @@ describe("SwiftUI 原生宿主契约", () => {
     expect(bridge).toContain("message.frameInfo.isMainFrame");
   });
   it("离线基准不挂载业务 WebView，正式模式复用旧实例", () => {
-    expect(source("NativeUIHost")).toMatch(/if !store.isReference \{\s+legacy/);
+    expect(source("NativeUIHost")).toMatch(/if !store.isReference && !isConversationFixture \{\s+legacy/);
     expect(source("NativeUIBridge")).not.toContain("WKWebView(frame:");
     expect(source("NativeUIBridge")).not.toContain("static let shared");
     expect(source("NativeUIHost")).toContain("@State private var bridge = NativeUIBridge()");

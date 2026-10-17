@@ -33,6 +33,7 @@ struct NativeSnapshot: Codable {
     var sidebarOpen: Bool? = nil
     var search: String? = nil
     var loading: String? = nil
+    var olderTurnsState: String? = nil
     var permission: String? = nil
     var pending: Bool? = nil
     var canInterrupt: Bool? = nil

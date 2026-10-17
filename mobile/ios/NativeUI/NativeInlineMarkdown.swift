@@ -7,7 +7,7 @@ enum NativeInlineMarkdown {
         var text = (try? AttributedString(markdown: prepared.markdown, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(prepared.markdown)
         prepared.restore(&text)
         for run in text.runs where run.link != nil {
-            text[run.range].underlineStyle = .init(pattern: .dash)
+            text[run.range].underlineStyle = .init(pattern: .dot)
         }
         return text
     }

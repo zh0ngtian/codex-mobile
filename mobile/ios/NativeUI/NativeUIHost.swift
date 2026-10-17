@@ -5,12 +5,19 @@ struct NativeUIHost<Legacy: View>: View {
     @State private var bridge = NativeUIBridge()
     @Environment(\.scenePhase) private var scenePhase
     private var store: NativeUIStore { bridge.store }
+    private var isConversationFixture: Bool {
+        #if DEBUG
+        bridge.conversationFixture != nil
+        #else
+        false
+        #endif
+    }
     init(@ViewBuilder legacy: () -> Legacy) { self.legacy = legacy() }
     var body: some View {
         GeometryReader { geometry in
             ZStack {
                 // 同一个 WebView 始终挂在真实视图树中，继续执行数据与已有系统桥。
-                if !store.isReference {
+                if !store.isReference && !isConversationFixture {
                     legacy
                     .opacity(store.nativeEnabled && !store.showLegacyForRecovery ? 0.01 : 1)
                     .allowsHitTesting(!store.nativeEnabled || store.showLegacyForRecovery)
@@ -35,6 +42,11 @@ struct NativeUIHost<Legacy: View>: View {
         }
         #if DEBUG
         .overlay(alignment: .topLeading) {
+            if let fixture = bridge.conversationFixture {
+                Text("\(fixture.historyRequestCount)")
+                    .font(.system(size: 1)).frame(width: 1, height: 1).allowsHitTesting(false)
+                    .accessibilityIdentifier("history-request-count")
+            }
             if ProcessInfo.processInfo.arguments.contains("--native-ui-preference-probe") {
                 Text(store.savedNativePreference ? "1" : "0")
                     .font(.system(size: 1)).frame(width: 1, height: 1).allowsHitTesting(false)

@@ -7,6 +7,12 @@ struct ConversationScreen: View {
     @State private var liveExpanded = true
     @State private var atBottom = true
     @State private var loadingHistory = false
+    @State private var historyPull = HistoryPullState()
+    @State private var historyOffset: Double = 0
+    @State private var historyAnchor: UUID?
+    @State private var historyAnchorID: String?
+    @State private var historyWasPrepended = false
+    @State private var scrollIsIdle = true
     var body: some View {
         if let conversation = session.conversation(conversationID) {
             ScrollViewReader { proxy in
@@ -20,24 +26,16 @@ struct ConversationScreen: View {
                                 Button(preferences.text("重试", "Retry")) { Task { await session.refreshConversation(conversationID) } }
                             }
                         } else {
-                            if conversation.loadedOlderTurns < conversation.olderTurns {
-                                Button { loadEarlier(proxy) } label: {
-                                    HStack {
-                                        if conversation.historyLoading {
-                                            ProgressView()
-                                                .controlSize(.small)
-                                                .tint(AgentTheme.ink.opacity(0.6))
-                                        }
-                                        Text(conversation.historyError ? preferences.text("加载失败，点击重试", "Could not load. Retry") : preferences.text("加载更早消息", "Load earlier messages"))
-                                    }
-                                    .font(.subheadline).frame(maxWidth: .infinity, minHeight: 44)
-                                }
-                                .overlay {
-                                    RoundedRectangle(cornerRadius: 12)
-                                        .strokeBorder(Color.primary.opacity(0.18), lineWidth: 1)
-                                }
-                                .disabled(conversation.historyLoading)
-                                .accessibilityIdentifier("history.loadEarlier")
+                            if loadingHistory || conversation.historyLoading {
+                                ProgressView()
+                                    .controlSize(.small)
+                                    .tint(AgentTheme.ink.opacity(0.6))
+                                    .frame(maxWidth: .infinity, minHeight: 24)
+                                    .accessibilityLabel(preferences.text("正在加载历史消息", "Loading earlier messages"))
+                            } else if conversation.historyError {
+                                Text(preferences.text("加载失败，再次下拉重试", "Could not load. Pull down again to retry"))
+                                    .font(.caption).foregroundStyle(.secondary)
+                                    .frame(maxWidth: .infinity)
                             }
                             ForEach(conversation.messages) { message in
                                 MessageView(message: message, conversationID: conversationID).id(message.id)
@@ -52,21 +50,71 @@ struct ConversationScreen: View {
                     }
                     .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 14)
                 }
+                .scrollBounceBehavior(.always)
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("conversation.timeline")
                 .scrollDismissesKeyboard(.interactively)
                 .scrollIndicators(.hidden)
-                .onScrollGeometryChange(for: CGFloat.self) { geometry in
-                    geometry.contentOffset.y + geometry.contentInsets.top
-                } action: { oldValue, newValue in
-                    if oldValue > 0 && newValue <= 0 && !loadingHistory && !conversation.historyError { loadEarlier(proxy) }
+                .onScrollPhaseChange { _, phase, context in
+                    let offset = Double(context.geometry.contentOffset.y + context.geometry.contentInsets.top)
+                    scrollIsIdle = phase == .idle
+                    switch phase {
+                    case .tracking, .interacting:
+                        historyPull.dragBegan(at: offset)
+                    case .decelerating:
+                        historyPull.dragEnded(at: offset, willDecelerate: true)
+                    case .idle:
+                        historyPull.dragEnded(at: offset, willDecelerate: false)
+                        historyPull.settled(at: offset)
+                        restoreHistoryAnchor(proxy)
+                    case .animating:
+                        historyPull.programmaticScrollBegan()
+                    @unknown default: break
+                    }
+                }
+                .onScrollGeometryChange(for: Double.self) { geometry in
+                    Double(geometry.contentOffset.y + geometry.contentInsets.top)
+                } action: { _, offset in
+                    historyOffset = offset
+                    if historyPull.positionChanged(to: offset,
+                        canLoad: conversation.loadedOlderTurns < conversation.olderTurns,
+                        isLoading: loadingHistory || conversation.historyLoading) {
+                        loadEarlier(proxy)
+                    }
                 }
                 .onScrollGeometryChange(for: Bool.self) { geometry in
                     geometry.contentOffset.y + geometry.containerSize.height >= geometry.contentSize.height - 90
                 } action: { _, value in atBottom = value }
-                .onChange(of: conversation.messages.count) { oldCount, newCount in
-                    guard !loadingHistory, newCount > oldCount else { return }
-                    if atBottom || conversation.messages.last?.isUser == true { proxy.scrollTo("bottom", anchor: .bottom) }
+                .onChange(of: conversation.messages.map(\.id)) { oldIDs, newIDs in
+                    if let previous = historyAnchor,
+                       let anchor = session.historyScrollMessageID(in: conversationID, previousID: previous, anchorID: historyAnchorID),
+                       newIDs.first != anchor {
+                        historyAnchor = anchor
+                        historyWasPrepended = true
+                        restoreHistoryAnchor(proxy)
+                        return
+                    }
+                    guard !loadingHistory, newIDs.count > oldIDs.count, newIDs.last != oldIDs.last else { return }
+                    if atBottom || conversation.messages.last?.isUser == true {
+                        historyPull.programmaticScrollBegan()
+                        proxy.scrollTo("bottom", anchor: .bottom)
+                    }
                 }
-                .onChange(of: conversation.queue.count) { if atBottom { proxy.scrollTo("bottom", anchor: .bottom) } }
+                .onChange(of: conversation.historyLoading) {
+                    restoreHistoryAnchor(proxy)
+                }
+                .onChange(of: conversation.queue.count) {
+                    if atBottom {
+                        historyPull.programmaticScrollBegan()
+                        proxy.scrollTo("bottom", anchor: .bottom)
+                    }
+                }
+                .onChange(of: conversationID) {
+                    resetHistory()
+                }
+                .onChange(of: session.nativeSnapshot.contextId) {
+                    resetHistory()
+                }
             }
             .background {
                 LinearGradient(colors: [AgentTheme.page, AgentTheme.page, AgentTheme.code], startPoint: .top, endPoint: .bottom).ignoresSafeArea(edges: .bottom)
@@ -77,13 +125,39 @@ struct ConversationScreen: View {
         } else { ContentUnavailableView(preferences.text("会话不可用", "Conversation unavailable"), systemImage: "bubble.left") }
     }
     private func loadEarlier(_ proxy: ScrollViewProxy) {
-        guard !loadingHistory else { return }
-        let anchor = session.conversation(conversationID)?.messages.first?.id
+        guard !loadingHistory, let conversation = session.conversation(conversationID),
+              !conversation.historyLoading, conversation.loadedOlderTurns < conversation.olderTurns else { return }
+        let context = session.nativeSnapshot.contextId
+        historyAnchor = conversation.messages.first?.id
+        historyAnchorID = historyAnchor.flatMap { session.historyScrollAnchor(for: $0) }
+        historyWasPrepended = false
         loadingHistory = true
         Task {
             await session.loadEarlier(conversationID)
-            if let anchor { proxy.scrollTo(anchor, anchor: .top) }
+            guard !Task.isCancelled, session.selectedConversationID == conversationID,
+                  session.nativeSnapshot.contextId == context else { return }
+            // 等手势结束且加载提示移除后恢复，避免手指仍在拖动时覆盖 scrollTo。
+            if session.conversation(conversationID)?.messages.first?.id == historyAnchor {
+                historyAnchor = nil; historyAnchorID = nil
+            }
             loadingHistory = false
+            historyPull.loadingFinished(at: historyOffset)
+            restoreHistoryAnchor(proxy)
         }
+    }
+    private func restoreHistoryAnchor(_ proxy: ScrollViewProxy) {
+        guard scrollIsIdle, !loadingHistory,
+              session.conversation(conversationID)?.historyLoading == false,
+              historyWasPrepended, let anchor = historyAnchor else { return }
+        historyPull.programmaticScrollBegan()
+        proxy.scrollTo(anchor, anchor: .top)
+        historyAnchor = nil
+        historyAnchorID = nil
+        historyWasPrepended = false
+    }
+    private func resetHistory() {
+        historyPull.reset()
+        historyAnchor = nil; historyAnchorID = nil
+        loadingHistory = false; historyWasPrepended = false; scrollIsIdle = true
     }
 }
