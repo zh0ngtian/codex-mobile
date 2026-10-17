@@ -1,2 +1,1 @@
-- 应用图标改为白底黑色 apple.intelligence 标志。
-- 应用版本从 0.3.0 开始。
+- 应用图标由 Regular 改为 Light 字重，线条更细。

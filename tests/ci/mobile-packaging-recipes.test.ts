@@ -130,7 +130,7 @@ describe("移动 App 本地构建配置", () => {
       .toBuffer({ resolveWithObject: true });
     const sourceHash = createHash("sha256").update(readFileSync(sourcePath)).digest("hex");
 
-    expect(sourceHash).toBe("173f86a63e412af2d635f15d8ec4d8a3326cdfb8c95bb0af13b9caa08b366857");
+    expect(sourceHash).toBe("c3cd3925bd0edc9236a446f730ebaaaffb1dea773627fc4eb90e28c51b39d83c");
     expect(source.info.width).toBe(1024);
     expect(source.info.height).toBe(1024);
     expect(source.info.channels).toBe(3);
@@ -154,7 +154,7 @@ describe("移动 App 本地构建配置", () => {
         }
       }
     }
-    expect(blackPixels).toBeGreaterThan(100_000);
+    expect(blackPixels).toBeGreaterThan(0);
     expect(icon.data.equals(source.data)).toBe(true);
   });
 
