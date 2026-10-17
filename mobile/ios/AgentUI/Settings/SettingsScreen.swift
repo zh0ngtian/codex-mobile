@@ -7,49 +7,29 @@ struct SettingsScreen: View {
 
     var body: some View {
         NavigationStack(path: $path) {
-            ScrollView {
-                VStack(spacing: 0) {
-                    SettingsSection(title: preferences.text("应用", "Application"), topSpacing: 20) {
-                        NavigationLink(value: SettingsRoute.language) {
-                            SettingsRow(title: preferences.text("语言", "Language"), symbol: "globe", value: preferences.languageTitle)
-                        }
-                        SettingsDivider()
-                        NavigationLink(value: SettingsRoute.devices) {
-                            SettingsRow(title: preferences.text("设备", "Devices"), symbol: "desktopcomputer", value: "\(session.devices.count)/8")
-                        }
-                        SettingsDivider()
-                        NavigationLink(value: SettingsRoute.transport) {
-                            SettingsRow(title: preferences.text("传输方式", "Transport"), symbol: "arrow.left.arrow.right", value: preferences.transport)
-                        }
-                        SettingsDivider()
-                        NavigationLink(value: SettingsRoute.notifications) {
-                            SettingsRow(title: preferences.text("通知", "Notifications"), symbol: "bell", value: notificationSummary)
-                        }
-                    }
-                    AppearanceSection()
-                    SettingsSection(title: preferences.text("界面", "Interface")) {
-                        Toggle(isOn: Binding(get: { preferences.nativeInterfaceEnabled }, set: preferences.changeNativeInterface)) {
-                            Label(preferences.text("原生界面", "Native interface"), systemImage: "iphone")
-                        }
-                        .padding(16)
-                        .disabled(!preferences.canChangeNativeInterface || preferences.nativeInterfaceSaving)
-                        .accessibilityIdentifier("native-ui-preference")
-                        if preferences.nativeInterfaceSaving { ProgressView().padding(.bottom, 12) }
-                        if let error = preferences.nativeInterfaceError {
-                            Text(error).font(.body).foregroundStyle(.red).padding(.horizontal, 16)
-                        }
-                        Text(preferences.text("关闭后，下次完整启动使用网页界面。", "When off, the next full launch uses the web interface."))
-                            .font(.body).foregroundStyle(.secondary).padding(16)
-                    }
-                    SettingsSection(title: preferences.text("关于", "About")) {
-                        SettingsRow(title: preferences.text("当前版本", "Current version"), symbol: "info.circle", value: version, disclosure: false)
-                    }
+            Form {
+                Section(preferences.text("应用", "Application")) {
+                    NavigationLink(value: SettingsRoute.language) { SettingsRow(title: preferences.text("语言", "Language"), symbol: "globe", value: preferences.languageTitle) }
+                    NavigationLink(value: SettingsRoute.devices) { SettingsRow(title: preferences.text("设备", "Devices"), symbol: "desktopcomputer", value: "\(session.devices.count)/8") }
+                    NavigationLink(value: SettingsRoute.transport) { SettingsRow(title: preferences.text("传输方式", "Transport"), symbol: "arrow.left.arrow.right", value: preferences.transport) }
+                    NavigationLink(value: SettingsRoute.notifications) { SettingsRow(title: preferences.text("通知", "Notifications"), symbol: "bell", value: notificationSummary) }
                 }
-                .padding(.horizontal, 16)
-                .buttonStyle(.plain)
+                AppearanceSection()
+                Section {
+                    Toggle(isOn: Binding(get: { preferences.nativeInterfaceEnabled }, set: preferences.changeNativeInterface)) {
+                        Label(preferences.text("原生界面", "Native interface"), systemImage: "iphone")
+                    }
+                    .disabled(!preferences.canChangeNativeInterface || preferences.nativeInterfaceSaving)
+                    .accessibilityIdentifier("native-ui-preference")
+                    if preferences.nativeInterfaceSaving { ProgressView() }
+                    if let error = preferences.nativeInterfaceError { Text(error).foregroundStyle(.red) }
+                } header: { Text(preferences.text("界面", "Interface")) }
+                footer: { Text(preferences.text("关闭后，下次完整启动使用网页界面。", "When off, the next full launch uses the web interface.")) }
+                Section(preferences.text("关于", "About")) {
+                    LabeledContent { Text(version).foregroundStyle(.secondary) } label: { Label(preferences.text("当前版本", "Current version"), systemImage: "info.circle") }
+                }
             }
-            .scrollIndicators(.hidden)
-            .background(AgentTheme.settings)
+            .accessibilityIdentifier("settings.form")
             .navigationTitle(preferences.text("设置", "Settings"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { SettingsCloseButton() }

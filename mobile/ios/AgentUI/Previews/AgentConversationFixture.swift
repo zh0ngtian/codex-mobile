@@ -28,6 +28,8 @@ final class AgentConversationFixture {
         value.backends = [NativeBackend(id: "conversation-ui-device", title: "界面夹具", connected: true)]
         value.models = [NativeOption(id: "model-a", title: "Model A", value: "model-a"), NativeOption(id: "model-b", title: "Model B", value: "model-b")]
         value.model = "Model A"; value.modelValue = "model-a"
+        value.efforts = [NativeOption(id: "low", title: "Low", value: "low"), NativeOption(id: "medium", title: "Medium", value: "medium"), NativeOption(id: "high", title: "High", value: "high")]
+        value.effortValue = "low"
         value.olderTurnsState = "idle"
         value.conversationActions = [NativePanelItem(id: "older", kind: "action", title: "加载更早消息", command: NativeCommand(name: "thread.older"))]
         let history = NativeMessage(id: "history", role: "activity", text: "", blocks: [NativePanelItem(id: "history-block", kind: "disclosure", title: "历史过程 (2)")], turnId: "fixture-turn", commentary: entries, commentaryBlockId: "history-block", commentaryCanAttachToReply: true)
@@ -88,7 +90,12 @@ final class AgentConversationFixture {
 
     private func publish() { store.receive(snapshot); session.receive(snapshot) }
     private func dispatch(_ command: NativeCommand) {
-        if command.name == "newchat.project", ProcessInfo.processInfo.arguments.contains("--agent-project-name-fixture") {
+        if ["effort.select", "model.select"].contains(command.name), case .string(let value) = command.params["value"] {
+            if command.name == "effort.select" { snapshot.effortValue = value }
+            else { snapshot.modelValue = value }
+            snapshot.commandResults = [NativeCommandResult(id: command.id, name: command.name, ok: true, contextId: snapshot.contextId)]
+            publish()
+        } else if command.name == "newchat.project", ProcessInfo.processInfo.arguments.contains("--agent-project-name-fixture") {
             if case .string(let path) = command.params["value"] { snapshot.cwd = path }
             snapshot.commandResults = [NativeCommandResult(id: command.id, name: command.name, ok: true, contextId: snapshot.contextId)]
             publish()

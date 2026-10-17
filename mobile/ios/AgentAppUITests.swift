@@ -315,6 +315,7 @@ final class AgentAppUITests: XCTestCase {
         XCTAssertEqual(usage.frame.height, actions.frame.height, accuracy: 1)
         let input = app.textFields["message-input"]
         input.tap()
+        XCTAssertTrue(app.buttons["composer.model"].waitForExistence(timeout: 5), "聚焦输入后应显示模型入口")
         app.buttons["composer.model"].tap()
         XCTAssertTrue(app.buttons["reasoning.model"].waitForExistence(timeout: 5))
         app.buttons["reasoning.reset"].tap()
@@ -368,6 +369,50 @@ final class AgentAppUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["已复制"].waitForExistence(timeout: 3))
         XCTAssertFalse(time.exists, "长按复制不应切换发送时间")
         XCTAssertTrue(app.staticTexts["用时 1 小时 2 分钟 3 秒"].exists)
+    }
+
+    func testUsesSystemNavigationAndSettingsForm() {
+        let app = launchConversationFixture()
+        XCTAssertTrue(app.navigationBars["对话界面回归"].waitForExistence(timeout: 5), "页头应由真实系统导航栏提供")
+        captureConversation("系统导航栏-干净状态", app: app)
+        app.buttons["会话列表"].tap()
+        app.buttons["sidebar.codexMenu"].tap()
+        app.buttons["设置"].tap()
+        XCTAssertTrue(app.navigationBars["设置"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.descendants(matching: .any)["settings.form"].exists, "设置应使用系统表单")
+        captureConversation("系统设置表单", app: app)
+        app.buttons["settings.appearance"].tap()
+        XCTAssertTrue(app.buttons["深色"].waitForExistence(timeout: 3))
+        app.buttons["深色"].tap()
+        app.buttons["settings.appearance"].tap()
+        app.buttons["浅色"].tap()
+        app.buttons["settings.close"].tap()
+        app.buttons["收起侧栏"].tap()
+        XCTAssertTrue(app.navigationBars["对话界面回归"].waitForExistence(timeout: 5))
+        let fixtureError = app.staticTexts["此界面夹具不执行真实业务"]
+        expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: fixtureError)
+        waitForExpectations(timeout: 5)
+        captureConversation("系统导航栏与消息", app: app)
+    }
+
+    func testSystemSliderUsesGatewayEffortValues() {
+        let app = launchConversationFixture()
+        app.textFields["message-input"].tap()
+        XCTAssertTrue(app.buttons["composer.model"].waitForExistence(timeout: 5))
+        app.buttons["composer.model"].tap()
+        let slider = app.sliders["reasoning.slider"]
+        XCTAssertTrue(slider.waitForExistence(timeout: 5), "思考强度应为系统Slider")
+        XCTAssertTrue(slider.isEnabled)
+        slider.adjust(toNormalizedSliderPosition: 1)
+        expectation(for: NSPredicate(format: "value CONTAINS %@", "高"), evaluatedWith: slider)
+        waitForExpectations(timeout: 5)
+        captureConversation("原生Slider与真实档位绑定", app: app)
+        app.buttons["reasoning.model"].tap()
+        XCTAssertTrue(app.navigationBars["模型"].waitForExistence(timeout: 5))
+        app.buttons["Model B"].tap()
+        XCTAssertTrue(app.buttons["composer.model"].waitForExistence(timeout: 5))
+        if !app.buttons["reasoning.model"].exists { app.buttons["composer.model"].tap() }
+        XCTAssertTrue((app.buttons["reasoning.model"].value as? String)?.hasPrefix("Model B") == true, "模型选择仍须使用真实能力目录对应的业务值")
     }
 
     func testConfigureProvidedGateway() throws {

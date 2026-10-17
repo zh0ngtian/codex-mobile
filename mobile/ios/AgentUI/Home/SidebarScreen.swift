@@ -24,11 +24,10 @@ struct SidebarScreen: View {
                     Text("Ask Codex").font(AgentTheme.body).lineLimit(1)
                 }
                 .frame(maxWidth: .infinity, minHeight: 46)
-                .background(AgentTheme.card, in: .rect(cornerRadius: 15))
-                .overlay { RoundedRectangle(cornerRadius: 15).strokeBorder(AgentTheme.line) }
                 .contentShape(.rect)
             }
-            .buttonStyle(.plain)
+            .modifier(AgentGlassButton())
+            .controlSize(.large)
             .accessibilityLabel(preferences.text("Ask Codex，开始新对话", "Ask Codex, start a new conversation"))
             .accessibilityIdentifier("sidebar.askCodex")
             .padding(.horizontal, 8)

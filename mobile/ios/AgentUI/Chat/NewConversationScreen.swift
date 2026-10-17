@@ -21,8 +21,8 @@ struct NewConversationScreen: View {
             .padding(.horizontal, 20).padding(.top, 10)
         }
         .background(AgentTheme.page)
-        .safeAreaInset(edge: .top, spacing: 0) { ConversationHeader(conversationID: nil) }
-        .safeAreaInset(edge: .bottom, spacing: 0) { ComposerBar(conversationID: nil) }
-        .toolbarVisibility(.hidden, for: .navigationBar)
+        .modifier(ConversationHeader(conversationID: nil))
+        .modifier(ConversationComposerInset(conversationID: nil))
+
     }
 }

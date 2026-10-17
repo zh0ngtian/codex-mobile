@@ -20,68 +20,64 @@ struct ComposerBar: View {
     }
     var body: some View {
         @Bindable var session = session
-        VStack(spacing: 8) {
-            if !candidates.isEmpty {
-                MentionCandidates(candidates: candidates, selected: selectedMention, choose: chooseMention)
-            }
-            if showReasoning {
-                ReasoningControl(openModels: { present(.model) })
-                    .background(OutsideTapDismiss { showReasoning = false })
-                    .transition(.opacity)
-            }
-            VStack(spacing: 2) {
-                if !session.composer.attachments.isEmpty { ComposerAttachmentStrip() }
-                HStack(spacing: 0) {
-                    if !expanded { InlineIconButton(title: preferences.text("添加附件", "Add attachment"), symbol: "plus") { present(.attachments) } }
-                    TextField(preferences.text("向 Codex 提问", "Ask Codex"), text: $session.composer.text, axis: .vertical)
-                        .font(AgentTheme.body)
-                        .lineLimit(1...6)
-                        .focused($focused)
-                        .submitLabel(.send)
-                        .onSubmit(submit)
-                        .onKeyPress(keys: [.upArrow, .downArrow, .return, .tab, .escape], action: handleKey)
-                        .frame(minHeight: expanded ? 42 : 47)
-                        .padding(.horizontal, expanded ? 12 : 2)
-                        .disabled(!session.composerCanEdit || session.historyEdit != nil || session.selectedConversation?.readOnly == true || !session.composer.attachmentsReady)
-                        .accessibilityIdentifier("message-input")
-                    if !expanded { ComposerSubmitButton(action: submit) }
+        AgentGlassGroup {
+            VStack(spacing: 8) {
+                if !candidates.isEmpty {
+                    MentionCandidates(candidates: candidates, selected: selectedMention, choose: chooseMention)
                 }
-                if expanded {
+                if showReasoning {
+                    ReasoningControl(openModels: { present(.model) })
+                        .background(OutsideTapDismiss { showReasoning = false })
+                        .transition(.opacity)
+                }
+                VStack(spacing: 2) {
+                    if !session.composer.attachments.isEmpty { ComposerAttachmentStrip() }
                     HStack(spacing: 0) {
-                        InlineIconButton(title: preferences.text("添加附件", "Add attachment"), symbol: "plus") { present(.attachments) }
-                        InlineIconButton(title: preferences.text("权限模式", "Permission profile"), symbol: session.composer.configuration.permission.symbol,
-                                         color: session.composer.configuration.permission == .fullAccess ? .orange : AgentTheme.ink) { present(.permissions) }
-                        Spacer(minLength: 2)
-                        Button { withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.16)) { showReasoning.toggle() } } label: {
-                            HStack(spacing: 4) {
-                                Text(session.composer.configuration.model).font(.body)
-                                Image(systemName: "chevron.up.chevron.down").font(.caption2)
+                        if !expanded { InlineIconButton(title: preferences.text("添加附件", "Add attachment"), symbol: "plus") { present(.attachments) } }
+                        TextField(preferences.text("向 Codex 提问", "Ask Codex"), text: $session.composer.text, axis: .vertical)
+                            .font(AgentTheme.body)
+                            .lineLimit(1...6)
+                            .focused($focused)
+                            .submitLabel(.send)
+                            .onSubmit(submit)
+                            .onKeyPress(keys: [.upArrow, .downArrow, .return, .tab, .escape], action: handleKey)
+                            .frame(minHeight: expanded ? 42 : 47)
+                            .padding(.horizontal, expanded ? 12 : 2)
+                            .disabled(!session.composerCanEdit || session.historyEdit != nil || session.selectedConversation?.readOnly == true || !session.composer.attachmentsReady)
+                            .accessibilityIdentifier("message-input")
+                        if !expanded { ComposerSubmitButton(action: submit) }
+                    }
+                    if expanded {
+                        HStack(spacing: 0) {
+                            InlineIconButton(title: preferences.text("添加附件", "Add attachment"), symbol: "plus") { present(.attachments) }
+                            InlineIconButton(title: preferences.text("权限模式", "Permission profile"), symbol: session.composer.configuration.permission.symbol,
+                                             color: session.composer.configuration.permission == .fullAccess ? .orange : AgentTheme.ink) { present(.permissions) }
+                            Spacer(minLength: 2)
+                            Button { withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.16)) { showReasoning.toggle() } } label: {
+                                HStack(spacing: 4) {
+                                    Text(session.composer.configuration.model).font(.body)
+                                    Image(systemName: "chevron.up.chevron.down").font(.caption2)
+                                }
+                                .foregroundStyle(.secondary).frame(minHeight: 44)
                             }
-                            .foregroundStyle(.secondary).frame(minHeight: 44)
+                            .accessibilityLabel(preferences.text("模型和思考强度", "Model and reasoning"))
+                            .accessibilityIdentifier("composer.model")
+                            ComposerSubmitButton(action: submit)
                         }
-                        .accessibilityLabel(preferences.text("模型和思考强度", "Model and reasoning"))
-                        .accessibilityIdentifier("composer.model")
-                        ComposerSubmitButton(action: submit)
                     }
                 }
-            }
-            .padding(.horizontal, 4)
-            .padding(.vertical, expanded ? 4 : 0)
-            .background(.regularMaterial, in: .rect(cornerRadius: expanded ? 25 : 32))
-            .overlay { RoundedRectangle(cornerRadius: expanded ? 25 : 32).strokeBorder(Color.primary.opacity(0.13), lineWidth: 0.6) }
-            .shadow(color: .black.opacity(0.035), radius: 9, y: 3)
-            .frame(maxWidth: expanded ? .infinity : 328)
-            if session.selectedConversation?.readOnly == true {
-                Text(preferences.text("只读会话", "Read-only conversation")).font(.body).foregroundStyle(.secondary)
+                .padding(.horizontal, 4)
+                .padding(.vertical, expanded ? 4 : 0)
+                .modifier(AgentGlassSurface(cornerRadius: expanded ? 25 : 32))
+                .frame(maxWidth: expanded ? .infinity : 328)
+                if session.selectedConversation?.readOnly == true {
+                    Text(preferences.text("只读会话", "Read-only conversation")).font(.body).foregroundStyle(.secondary)
+                }
             }
         }
         .padding(.horizontal, expanded ? 12 : 20)
         .padding(.vertical, 8)
         .frame(maxWidth: .infinity)
-        .background {
-            LinearGradient(colors: [AgentTheme.page.opacity(showReasoning ? 1 : 0), AgentTheme.code.opacity(0.98)], startPoint: .top, endPoint: .bottom)
-                .ignoresSafeArea(edges: .bottom)
-        }
         .onChange(of: focused) { session.inputFocused = focused }
         .onChange(of: session.composer.text) { selectedMention = 0; mentionsDismissed = false }
         .onChange(of: mentionQuery) { _, query in session.searchMentions(query ?? "") }

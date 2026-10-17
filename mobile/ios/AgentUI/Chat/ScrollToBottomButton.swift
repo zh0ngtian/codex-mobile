@@ -9,14 +9,11 @@ struct ScrollToBottomButton: View {
             Image(systemName: "arrow.down")
                 .font(.system(size: 15))
                 .foregroundStyle(AgentTheme.ink)
-                .frame(width: 28, height: 28)
-                .background(.regularMaterial, in: .circle)
-                .overlay { Circle().strokeBorder(AgentTheme.line, lineWidth: 0.5) }
-                .shadow(color: .black.opacity(0.06), radius: 3, y: 1)
-                .frame(width: 44, height: 44)
-                .contentShape(.circle)
+                .frame(width: 16, height: 16)
         }
-        .buttonStyle(.plain)
+        .modifier(AgentGlassButton(circular: true))
+        .controlSize(.regular)
+
         .accessibilityLabel(preferences.text("回到底部", "Scroll to bottom"))
         .accessibilityIdentifier("conversation.scrollToBottom")
     }

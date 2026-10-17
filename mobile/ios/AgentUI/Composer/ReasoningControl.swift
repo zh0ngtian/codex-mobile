@@ -61,9 +61,7 @@ struct ReasoningControl: View {
                 .padding(.horizontal, 18)
         }
         .padding(.vertical, 16)
-        .background(AgentTheme.card, in: .rect(cornerRadius: 26))
-        .overlay { RoundedRectangle(cornerRadius: 26).strokeBorder(AgentTheme.line, lineWidth: 1) }
-        .shadow(color: .black.opacity(0.025), radius: 5, y: 2)
+        .modifier(AgentGlassSurface(cornerRadius: 26))
     }
 
     private func selectEffort(_ index: Int) {

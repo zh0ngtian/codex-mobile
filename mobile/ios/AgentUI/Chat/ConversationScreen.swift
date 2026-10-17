@@ -6,6 +6,7 @@ struct ConversationScreen: View {
     let conversationID: UUID
     @State private var liveExpanded = true
     @State private var atBottom = true
+    @State private var scrollAccess = NativeConversationScrollAccess()
     @State private var loadingHistory = false
     @State private var historyPull = HistoryPullState()
     @State private var historyOffset: Double = 0
@@ -49,6 +50,7 @@ struct ConversationScreen: View {
                         }
                     }
                     .padding(.horizontal, 16).padding(.top, 8)
+                    .background(NativeConversationScrollResolver(access: scrollAccess))
                 }
                 .scrollBounceBehavior(.always)
                 .accessibilityElement(children: .contain)
@@ -60,6 +62,7 @@ struct ConversationScreen: View {
                     scrollIsIdle = phase == .idle
                     switch phase {
                     case .tracking, .interacting:
+                        scrollAccess.stopFollowing()
                         historyPull.dragBegan(at: offset)
                     case .decelerating:
                         historyPull.dragEnded(at: offset, willDecelerate: true)
@@ -97,7 +100,7 @@ struct ConversationScreen: View {
                     guard !loadingHistory, newIDs.count > oldIDs.count, newIDs.last != oldIDs.last else { return }
                     if atBottom || conversation.messages.last?.isUser == true {
                         historyPull.programmaticScrollBegan()
-                        proxy.scrollTo("bottom", anchor: .bottom)
+                        scrollAccess.scrollToBottom()
                     }
                 }
                 .onChange(of: conversation.historyLoading) {
@@ -106,7 +109,7 @@ struct ConversationScreen: View {
                 .onChange(of: conversation.queue.count) {
                     if atBottom {
                         historyPull.programmaticScrollBegan()
-                        proxy.scrollTo("bottom", anchor: .bottom)
+                        scrollAccess.scrollToBottom()
                     }
                 }
                 .onChange(of: conversationID) {
@@ -117,25 +120,23 @@ struct ConversationScreen: View {
                 }
                 .overlay(alignment: .bottom) {
                     if !atBottom && !conversation.detailError {
-                        ScrollToBottomButton { scrollToLatest(proxy) }
+                        ScrollToBottomButton { scrollToLatest() }
                             .padding(.bottom, 4)
                             .transition(.opacity)
                     }
                 }
                 .animation(.easeOut(duration: 0.15), value: atBottom)
             }
-            .background {
-                LinearGradient(colors: [AgentTheme.page, AgentTheme.page, AgentTheme.code], startPoint: .top, endPoint: .bottom).ignoresSafeArea(edges: .bottom)
-            }
-            .safeAreaInset(edge: .top, spacing: 0) { ConversationHeader(conversationID: conversationID) }
-            .safeAreaInset(edge: .bottom, spacing: 0) { ComposerBar(conversationID: conversationID) }
-            .toolbarVisibility(.hidden, for: .navigationBar)
+            .background(AgentTheme.page)
+            .modifier(ConversationHeader(conversationID: conversationID))
+            .modifier(ConversationComposerInset(conversationID: conversationID))
+
         } else { ContentUnavailableView(preferences.text("会话不可用", "Conversation unavailable"), systemImage: "bubble.left") }
     }
-    private func scrollToLatest(_ proxy: ScrollViewProxy) {
+    private func scrollToLatest() {
         historyPull.programmaticScrollBegan()
         historyAnchor = nil; historyAnchorID = nil; historyWasPrepended = false
-        withAnimation(.easeOut(duration: 0.22)) { proxy.scrollTo("bottom", anchor: .bottom) }
+        scrollAccess.scrollToBottom()
     }
     private func loadEarlier(_ proxy: ScrollViewProxy) {
         guard !loadingHistory, let conversation = session.conversation(conversationID),
@@ -169,6 +170,7 @@ struct ConversationScreen: View {
         historyWasPrepended = false
     }
     private func resetHistory() {
+        scrollAccess.stopFollowing()
         historyPull.reset()
         historyAnchor = nil; historyAnchorID = nil
         loadingHistory = false; historyWasPrepended = false; scrollIsIdle = true

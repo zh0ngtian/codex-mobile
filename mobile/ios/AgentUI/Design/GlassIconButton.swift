@@ -11,9 +11,7 @@ struct GlassIconButton: View {
             .labelStyle(.iconOnly)
             .font(.body)
             .foregroundStyle(AgentTheme.ink)
-            .frame(width: size, height: size)
-            .background(.regularMaterial, in: .circle)
-            .overlay { Circle().strokeBorder(AgentTheme.line, lineWidth: 0.6) }
-            .buttonStyle(.plain)
+            .modifier(AgentGlassButton(circular: true))
+            .controlSize(.large)
     }
 }

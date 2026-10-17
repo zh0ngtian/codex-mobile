@@ -13,8 +13,10 @@ struct NewTaskTargets: View {
                 }
             } label: {
                 Label(session.currentDevice?.name ?? preferences.text("选择机器", "Choose computer"), systemImage: "laptopcomputer")
-                    .font(.body).lineLimit(1).frame(maxWidth: .infinity, minHeight: 44)
+                    .font(.body).lineLimit(1).frame(maxWidth: .infinity)
             }
+            .modifier(AgentGlassButton())
+            .controlSize(.large)
             .tint(AgentTheme.ink)
             .accessibilityIdentifier("new.computer")
             Menu {
@@ -26,14 +28,15 @@ struct NewTaskTargets: View {
                 }
             } label: {
                 Label(session.composer.project.map { session.projectTitle(for: $0) } ?? preferences.text("选择项目", "Choose project"), systemImage: "folder")
-                    .font(.body).lineLimit(1).frame(maxWidth: .infinity, minHeight: 44)
+                    .font(.body).lineLimit(1).frame(maxWidth: .infinity)
             }
+            .modifier(AgentGlassButton())
+            .controlSize(.large)
             .tint(AgentTheme.ink)
             .accessibilityIdentifier("new.project")
         }
         .foregroundStyle(AgentTheme.ink)
-        .padding(.horizontal, 10)
-        .background(AgentTheme.code, in: .rect(cornerRadius: 18))
+
     }
     private func chooseProject(_ project: String?) { session.composer.project = project; session.configurationDidChange() }
 }

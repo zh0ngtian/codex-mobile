@@ -47,7 +47,7 @@ struct RootView: View {
                 .animation(.easeInOut(duration: 0.22), value: sidebarIsVisible)
             }
             .background(AgentTheme.page)
-            .toolbarVisibility(.hidden, for: .navigationBar)
+            .toolbarVisibility(!sidebarIsVisible && session.nativeSnapshot.ready && !session.devices.isEmpty ? .visible : .hidden, for: .navigationBar)
         }
         .foregroundStyle(AgentTheme.ink)
         .sheet(item: modalBinding, onDismiss: modalDidDismiss) { destination in

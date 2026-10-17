@@ -10,15 +10,14 @@ struct ComposerSubmitButton: View {
     var body: some View {
         Button(action: action) {
             Group {
-                if guiding { ProgressView().tint(preferences.accent.foreground) }
-                else { Image(systemName: stopping ? "stop.fill" : "arrow.up").font(.body.bold()) }
+                if guiding { ProgressView() }
+                else { Image(systemName: stopping ? "stop.fill" : "arrow.up").font(.body) }
             }
-            .foregroundStyle(preferences.accent.foreground)
-            .frame(width: 30, height: 30)
-            .background(preferences.accent.color.opacity(enabled ? 1 : 0.3), in: .circle)
-            .frame(width: 44, height: 44)
+            .frame(width: 20, height: 20)
         }
-        .buttonStyle(.plain)
+        .modifier(AgentGlassButton(prominent: true, circular: true))
+        .controlSize(.large)
+        .tint(preferences.accent.color)
         .disabled(!enabled)
         .accessibilityLabel(label)
         .accessibilityIdentifier("composer.submit")
