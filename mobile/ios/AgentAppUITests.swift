@@ -119,6 +119,7 @@ final class AgentAppUITests: XCTestCase {
         XCTAssertLessThan(zeta.frame.minY, alpha.frame.minY)
         XCTAssertLessThan(alpha.frame.minY, middle.frame.minY)
         XCTAssertEqual(app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "运行中")).count, 0)
+        XCTAssertFalse(app.staticTexts["未读"].exists, "侧栏保留未读圆点但不显示未读文字")
         XCTAssertTrue(app.activityIndicators.matching(NSPredicate(format: "identifier BEGINSWITH %@", "sidebar.running.")).firstMatch.exists, app.debugDescription)
         captureConversation("项目顺序与运行图标", app: app)
     }
@@ -219,6 +220,33 @@ final class AgentAppUITests: XCTestCase {
         return app
     }
 
+    func testUsageLabelsAndMissingCacheDetails() {
+        let app = XCUIApplication()
+        let base = ["--native-ui-live", "--agent-conversation-fixture", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
+        app.launchArguments = base + ["--agent-startup-loading-fixture"]
+        app.launch()
+        XCTAssertTrue(app.staticTexts["正在连接…"].waitForExistence(timeout: 5))
+        captureConversation("启动加载-中性色", app: app)
+        app.launchArguments = base + ["--agent-usage-polish-fixture"]
+        app.launch()
+        XCTAssertTrue(app.buttons["header.usage"].waitForExistence(timeout: 5))
+        captureConversation("用量圆圈-四分之一", app: app)
+        app.buttons["header.usage"].tap()
+        XCTAssertTrue(app.staticTexts["额度剩余"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.staticTexts["周期剩余"].exists)
+        let input = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "12.3K")).firstMatch
+        XCTAssertTrue(input.exists)
+        XCTAssertFalse(input.label.contains("("))
+        XCTAssertFalse(input.label.contains("缓存"))
+        captureConversation("额度与无缓存数据", app: app)
+        app.launchArguments = base + ["--agent-usage-polish-fixture", "--agent-usage-cache-fixture"]
+        app.launch()
+        XCTAssertTrue(app.buttons["header.usage"].waitForExistence(timeout: 5))
+        app.buttons["header.usage"].tap()
+        let cached = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "缓存命中 0%")).firstMatch
+        XCTAssertTrue(cached.waitForExistence(timeout: 5), "真实零命中率仍应展示")
+    }
+
     func testConfigureProvidedGateway() throws {
         let app = try launchConnectedApp()
         XCTAssertTrue(app.staticTexts["验收 Mac"].exists)
@@ -243,7 +271,7 @@ final class AgentAppUITests: XCTestCase {
         captureConversation("真实网关-执行过程", app: app)
         app.buttons["header.usage"].tap()
         XCTAssertTrue(app.staticTexts["上下文余量"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["周期剩余"].exists)
+        XCTAssertTrue(app.staticTexts["额度剩余"].exists)
         XCTAssertTrue(app.staticTexts["输入 Token"].exists)
         app.buttons["header.usage"].tap()
         app.buttons["conversation.actions"].tap()

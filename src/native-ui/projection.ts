@@ -1,5 +1,5 @@
 import { videoPathForItem } from '../features/conversation/sheets/RemoteFileSheets';
-import { groupConversationTurns, splitTurnResponseSegments, imageSourcesForItem, isThreadRunning, turnDurationMs, stripGitDirectives, automationAgentMessageText, summarizeTurnChanges, toolActivityRowLabel } from '../ui/conversation';
+import { groupConversationTurns, splitTurnResponseSegments, imageSourcesForItem, isThreadRunning, turnDurationMs, stripGitDirectives, automationAgentMessageText, toolActivityRowLabel } from '../ui/conversation';
 import { extractGeneratedTitle, stripConversationTitleRequest } from '../app-server/conversation-title';
 import { groupThreadsByProject, splitAllThreads, type AggregatedThreadItem } from '../features/threads/thread-list-model';
 import { projectCollapseKey } from '../features/threads/project-collapse';
@@ -133,10 +133,6 @@ export function projectConversation(active: RecordValue | null, imageURL: (path:
         messages.push({ id: `${segmentID}:tools`, role: 'activity', text: '', scrollAnchorId: scrollAnchor(segment[0], 'tools'), scrollAnchorIds: [...new Set(aliases)], blocks: [{ id: `${segmentID}:tools`, kind: 'disclosure', title: `${t('工具')} (${tools.length})`, children: tools }] });
       }
     }
-    const changeBlocks: NativePanelItem[] = [];
-    const changes = summarizeTurnChanges(turn);
-    if (turn.liveDiff || changes.additions || changes.deletions) changeBlocks.push(nativeAction(`${turnId}:changes`, t('文件变更'), 'panel.open', { id: `changes:${turnId}` }));
-    if (changeBlocks.length) messages.push({ id: `${turnId}:changes`, role: 'activity', text: '', blocks: changeBlocks });
   }
   return messages;
 }

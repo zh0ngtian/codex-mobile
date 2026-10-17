@@ -97,6 +97,7 @@ struct RootView: View {
     @ViewBuilder private var mainContent: some View {
         if !session.nativeSnapshot.ready {
             ProgressView(preferences.text("正在连接…", "Connecting…"))
+                .tint(AgentTheme.ink.opacity(0.6))
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if session.devices.isEmpty {
             VStack(spacing: 16) {

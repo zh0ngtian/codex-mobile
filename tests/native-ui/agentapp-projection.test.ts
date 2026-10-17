@@ -130,7 +130,7 @@ describe('AgentApp 真实展示契约', () => {
     const anchors = anchored.map(message => message.scrollAnchorId);
     expect(anchors.every(anchor => typeof anchor === 'string' && anchor.length > 0)).toBe(true);
     expect(new Set(anchors).size).toBe(anchored.length);
-    expect(messages.find(message => message.id === 'turn:changes')?.scrollAnchorId).toBeUndefined();
+    expect(messages.some(message => message.id === 'turn:changes')).toBe(false);
   });
 
   it('tools-only前插user后聚合单锚点变化，旧锚点仍属于新成员别名', () => {

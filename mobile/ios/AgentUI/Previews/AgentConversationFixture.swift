@@ -38,7 +38,7 @@ final class AgentConversationFixture {
             value.groups = [("z", "Zeta"), ("a", "Alpha"), ("m", "Middle")].map { key, title in
                 let item = NativeNavigationItem(id: "row-" + key, title: "任务 " + title,
                     command: NativeCommand(name: "thread.open", params: ["backendId": .string("conversation-ui-device"), "threadId": .string("thread-" + key)]),
-                    running: key == "z")
+                    isUnread: key == "a", running: key == "z")
                 return NativeGroup(id: "project-" + key, title: title, items: [item], collapsed: false, category: "project", cwd: "/" + title)
             }
         }
@@ -56,6 +56,12 @@ final class AgentConversationFixture {
                 NativePanelItem(id: "preview-file", kind: "html", title: "preview.html", value: "data:text/html;base64," + html.base64EncodedString()),
             ]))
         }
+        if ProcessInfo.processInfo.arguments.contains("--agent-usage-polish-fixture") {
+            value.tokenUsage = NativeTokenUsage(lastRequestTokens: 250, modelContextWindow: 1000, inputTokens: 12345, cachedInputTokens: ProcessInfo.processInfo.arguments.contains("--agent-usage-cache-fixture") ? 0 : nil, outputTokens: 25)
+            value.sevenDayRateLimit = NativeRateLimit(remainingPercent: 60)
+            value.fiveHourRateLimit = NativeRateLimit(remainingPercent: 80)
+        }
+        if ProcessInfo.processInfo.arguments.contains("--agent-startup-loading-fixture") { value.ready = false }
         value.messages = value.messages.map { message in
             var anchored = message
             anchored.scrollAnchorId = message.id

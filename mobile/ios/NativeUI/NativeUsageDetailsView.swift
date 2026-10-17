@@ -12,7 +12,7 @@ struct NativeUsageDetailsView: View {
             } else {
                 NativeUsageDetailRow(title: store.label("上下文余量", "Context Remaining"), value: store.label("暂无数据", "Unavailable"))
             }
-            NativeUsageDetailRow(title: store.label("周期剩余", "Cycle Remaining"), value: store.snapshot.sevenDayRateLimit?.safeRemainingPercent.map(percent) ?? store.label("暂无数据", "Unavailable"))
+            NativeUsageDetailRow(title: store.label("额度剩余", "Quota Remaining"), value: store.snapshot.sevenDayRateLimit?.safeRemainingPercent.map(percent) ?? store.label("暂无数据", "Unavailable"))
                 .accessibilityHint(store.label("后端提供的 7 天额度剩余", "Remaining limit in the backend's 7-day window"))
             NativeUsageDetailRow(title: store.label("时间剩余", "Time Remaining"), value: store.snapshot.fiveHourRateLimit?.safeRemainingPercent.map(percent) ?? store.label("暂无数据", "Unavailable"))
                 .accessibilityHint(store.label("后端提供的 5 小时额度剩余", "Remaining limit in the backend's 5-hour window"))
@@ -26,7 +26,7 @@ struct NativeUsageDetailsView: View {
     private var inputTokenValue: String {
         guard let input = store.snapshot.inputTokenUsage else { return store.label("暂无数据", "Unavailable") }
         guard let hit = store.snapshot.inputCacheHitPercent else {
-            return store.label("\(input)（缓存命中暂无数据）", "\(input) (Cache hit unavailable)")
+            return input
         }
         let percentage = hit.formatted(.number.precision(.fractionLength(0...1)))
         return store.label("\(input)（缓存命中 \(percentage)%）", "\(input) (Cache hit \(percentage)%)")

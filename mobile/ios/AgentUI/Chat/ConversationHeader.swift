@@ -25,6 +25,7 @@ struct ConversationHeader: View {
                 Button { usagePresented.toggle() } label: {
                     Circle().trim(from: 0, to: max(0.02, conversation?.usage?.contextRemaining.map { 1 - $0 } ?? 0.02))
                         .stroke(AgentTheme.ink, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                        .rotationEffect(.degrees(-90))
                         .background { Circle().stroke(AgentTheme.line, lineWidth: 2) }
                         .frame(width: 17, height: 17).frame(width: 38, height: 44)
                 }

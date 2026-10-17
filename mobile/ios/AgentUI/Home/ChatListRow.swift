@@ -97,7 +97,7 @@ struct ChatListRow: View {
         case .running: return nil
         case .waitingApproval: return preferences.text("待审批", "Approval needed")
         case .waitingAnswer: return preferences.text("待回答", "Answer needed")
-        case .idle: return conversation.isUnread ? preferences.text("未读", "Unread") : nil
+        case .idle: return nil
         }
     }
     private var accessibilityTitle: String {

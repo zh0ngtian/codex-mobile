@@ -30,7 +30,8 @@ struct ProjectRow: View {
             .accessibilityLabel(preferences.text("\(expanded ? "收起" : "展开")项目 \(displayName)", "\(expanded ? "Collapse" : "Expand") project \(displayName)"))
             if expanded {
                 if session.loadingProjects.contains(name) {
-                    ProgressView().controlSize(.small).frame(maxWidth: .infinity, minHeight: 38)
+                    ProgressView().controlSize(.small).tint(AgentTheme.ink.opacity(0.6))
+                        .frame(maxWidth: .infinity, minHeight: 38)
                 } else if session.projectErrors.contains(name) {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(preferences.text("加载失败", "Load failed")).foregroundStyle(.secondary)

@@ -41,6 +41,7 @@ struct SidebarConversationList: View {
             switch navigationState {
             case .loading:
                 ProgressView(preferences.text("正在加载…", "Loading…"))
+                    .tint(AgentTheme.ink.opacity(0.6))
                     .font(AgentTheme.small).frame(maxWidth: .infinity, minHeight: 44)
                     .accessibilityIdentifier("sidebar.loading")
             case .failed(let error):
