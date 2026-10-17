@@ -20,7 +20,7 @@
 - [x] 合并 `928ea6b081ea8e600f6b54b0ea69f3faeb90457c`，保留所有有效提交祖先；删除/修改冲突中继续删除 Modern*、web-ui 样式及混合输入桥，仅移植当前非原生与完整原生的用量展示。
 - [x] 核对 `ConversationPage`、`ConversationControls`、新增 `ConversationUsagePopover`/`usage-metrics`、runtime投影/Swift DTO、原生卡片与样式消费者。保留卡片关闭、隐藏、上下文切换与焦点恢复行为；普通网页输入高度观察、检查点、原生偏好及人工恢复保持原实现。
 - [x] 更新 README、原生桥接说明和中文 release notes，同时准确描述界面精简与五行用量；专用现代回归继续删除，保留两套现役回归。
-- [ ] 运行新增用量回归与界面清理回归，确认 GREEN；运行 TypeScript、完整 Vitest、完整 NativeUI Swift SDK 类型检查。提交中文合并提交并推送固定 SHA。
+- [x] 运行新增用量回归与界面清理回归，确认 GREEN；运行 TypeScript、完整 Vitest、完整 NativeUI Swift SDK 类型检查。提交中文合并提交并推送固定 SHA。
 
 ## 任务二：修复协调器恢复合并顺序
 
@@ -30,7 +30,11 @@
 
 ## 任务三：联合验收与双端交付
 
-- [ ] iPhone 17 Pro 正常字号竖屏，在离线生产 App 验证两个界面、两个用量卡片及唯一界面开关；卡片关闭/隐藏/切换不串会话，网页与完整原生输入仍可用。保存证据并清理 QA App/runner，释放共享模拟器；如创建真实测试会话及时归档。
+- [x] iPhone 17 Pro 正常字号竖屏，在离线生产 App 验证两个界面、两个用量卡片及唯一界面开关；卡片关闭/隐藏/切换不串会话，网页与完整原生输入仍可用。保存证据并清理 QA App/runner，释放共享模拟器；如创建真实测试会话及时归档。
 - [ ] 必要发布门禁 `adapter-regression`、`coordinator-recovery`、`build-contract`、`typecheck` 全部真实通过；先规格审查再质量审查，推送并 ready 关联修复任务 `ui-usage-integration-repair-20261017`。
 - [ ] 协调器生成成功子批次 receipt，逐项核对旧任务、界面清理来源和修复任务祖先；原界面清理登记归并到此凭证，不重复触发第二次发包。
 - [ ] 核对双端统一新版本、GitHub unsigned IPA、已签名 HTTPS OTA/LAN IPA、APK 与软件源展示的中文更新日志、署名、大小和 SHA-256；独立 HEAD/完整 GET 回验后保存最终记录并交付固定链接。
+
+## 联合本地验收
+
+运行源码 `a2eb7ea` 保留旧用量任务 `5430ca3`、`928ea6b` 及界面清理 `b5cfaf2` 的全部祖先。RED 两项缺卡片，相关七文件155项通过；完整131文件1486项、TypeScript、完整NativeUI iOS SDK类型检查通过。规格与代码质量独立审查均通过。iPhone 17 Pro、正常字号、竖屏最终五项离线UI验收全部通过；两个卡片数值与关闭、隐藏生命周期、两套输入及唯一界面开关均验收。QA App/runner已卸载，共享锁释放，无远端测试会话。原始日志、xcresult、截图及不变的运行源码散列保存在仓库外validation目录；旧 design-qa.md 仅描述旧任务当时验收。上游协调器0.1.6修复正在独立审查，正式关联恢复尚未开始。

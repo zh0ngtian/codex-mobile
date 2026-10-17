@@ -1,0 +1,49 @@
+{
+  "task": "ui-usage-integration-repair-20261017",
+  "runtimeCommit": "a2eb7eaa2a565e7e439fadbbfbbb68e1bc75c9ee",
+  "sourceAncestors": [
+    "5430ca3dc2918d4e66c4279f58b7cb2ad813d9a9",
+    "928ea6b081ea8e600f6b54b0ea69f3faeb90457c",
+    "b5cfaf2efba9ccd5d856f606ec8acd7ba191cc36"
+  ],
+  "checkedAt": "2026-10-17T02:36:07.130071+00:00",
+  "checks": {
+    "vitest": {
+      "status": "passed",
+      "files": 131,
+      "tests": 1486
+    },
+    "typecheck": "passed",
+    "nativeSwiftSDKTypecheck": "passed",
+    "adapterRegression": {
+      "status": "passed",
+      "tests": 166
+    },
+    "specReview": "passed",
+    "qualityReview": "passed"
+  },
+  "simulator": {
+    "status": "passed",
+    "tests": 5,
+    "device": "iPhone 17 Pro",
+    "runtime": "iOS 26.5",
+    "systemTextSize": "normal",
+    "orientation": "portrait",
+    "scenarios": [
+      "旧偏好使用网页输入与网页菜单",
+      "非原生设置只有原生界面开关",
+      "完整原生输入与设置保留",
+      "网页五行用量、外部关闭及隐藏工作区关闭",
+      "原生五行用量及关闭后继续输入"
+    ],
+    "runtimeSourcesUnchanged": true,
+    "cleanup": "QA App/runner卸载，锁释放，无远端测试会话"
+  },
+  "release": {
+    "status": "pending",
+    "repairsBatch": "d4a8466f-087e-451f-9f13-704753535102"
+  },
+  "limitations": [
+    "未进行真机覆盖安装及数据保留验证"
+  ]
+}
