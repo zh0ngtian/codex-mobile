@@ -532,22 +532,12 @@ button, a, summary, [role="button"] { -webkit-tap-highlight-color: transparent; 
 .backend-loading, .project-more .action-spinner, .running-spinner, .sidebar-refresh-spinner { display: block; flex: 0 0 auto; border: 0; border-radius: 50%; background: conic-gradient(from 0deg, transparent 0deg 36deg, var(--spinner-tail) 92deg, var(--spinner-mid) 220deg, var(--spinner-head) 330deg 360deg); -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - var(--spinner-stroke, 2px)), #000 0); mask: radial-gradient(farthest-side, transparent calc(100% - var(--spinner-stroke, 2px)), #000 0); animation: thread-spin .8s linear infinite; }
 /* 状态指示器保留较慢旋转，让减少动态效果模式仍能辨识正在加载。 */
 @media (prefers-reduced-motion: reduce) { .action-spinner, .backend-loading, .project-more .action-spinner, .running-spinner, .sidebar-refresh-spinner, .stream-character-spinner, .send-button-running::before { animation-duration: 1.6s; } }
-.conversation-sheet-backdrop { z-index: 21; background: rgba(0,0,0,.24); }
-.conversation-status-sheet { min-height: 47dvh; max-height: 82dvh; box-shadow: 0 -18px 50px rgba(0,0,0,.12); }
-.conversation-status-sheet .action-sheet-body { padding: 0 24px calc(env(safe-area-inset-bottom) + 28px); }
-.conversation-status-sheet > header { display: grid; grid-template-columns: 44px minmax(0,1fr) 44px; align-items: center; }
-.conversation-status-sheet > header::before { content: ""; }
-.conversation-status-sheet h2 { margin: 0; text-align: center; font-size: 1.3125rem; }
-.conversation-status-sheet > header button { width: 44px; height: 44px; border: 0; border-radius: 50%; background: transparent; display: grid; place-items: center; }
-.conversation-status-sheet > header svg { width: 27px; height: 27px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
-.conversation-status-sheet dl { display: grid; gap: 19px; margin: 26px 0 0; }
-.conversation-status-sheet dl > div { display: grid; grid-template-columns: 92px minmax(0,1fr); gap: 10px; align-items: start; }
-.conversation-status-sheet dt { color: #666; }
-.conversation-status-sheet dd { min-width: 0; margin: 0; overflow-wrap: anywhere; line-height: 1.45; }
-.conversation-status-sheet code { font: 0.875rem/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
-.conversation-status-sheet dd:has(button) { display: grid; grid-template-columns: minmax(0,1fr) 44px; gap: 6px; align-items: start; }
-.conversation-status-sheet dd button { width: 44px; height: 44px; margin-top: -10px; border: 0; border-radius: 50%; background: transparent; display: grid; place-items: center; }
-.conversation-status-sheet dd button svg { width: 25px; height: 25px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.conversation-usage-popover { position: fixed; z-index: 8; width: 300px; max-width: calc(100vw - 24px); padding: 16px; overflow-y: auto; border: .6px solid #d7d7d7; border-radius: 22px; background: #fff; color: #111; box-shadow: 0 8px 26px #00000012; text-align: left; outline: none; }
+.conversation-usage-popover > strong { font-size: .8125rem; line-height: 1.25rem; font-weight: min(900, calc(650 + var(--bold-text-weight-offset))); }
+.conversation-usage-popover dl { display: flex; flex-direction: column; gap: 10px; margin: 13px 0 0; }
+.conversation-usage-popover dl > div { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; font-size: .6875rem; line-height: 1.0625rem; }
+.conversation-usage-popover dt { color: #929292; flex: 0 0 auto; white-space: nowrap; }
+.conversation-usage-popover dd { margin: 0; color: #111; font-weight: min(900, calc(600 + var(--bold-text-weight-offset))); white-space: nowrap; }
 .approval-backdrop { z-index: 10; background: rgba(0,0,0,.28); }
 .approval-sheet { max-height: 75dvh; }
 .approval-sheet .action-sheet-header { padding: 20px 24px 12px; }

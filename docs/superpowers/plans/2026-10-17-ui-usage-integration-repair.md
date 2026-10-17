@@ -16,10 +16,10 @@
 
 ## 任务一：整合已批准的两个功能
 
-- [ ] 先把旧用量卡片回归作为本分支新增测试运行，确认缺失字段和组件的 RED，保留日志。
-- [ ] 合并 `928ea6b081ea8e600f6b54b0ea69f3faeb90457c`，保留所有有效提交祖先；删除/修改冲突中继续删除 Modern*、web-ui 样式及混合输入桥，仅移植当前非原生与完整原生的用量展示。
-- [ ] 核对 `ConversationPage`、`ConversationControls`、新增 `ConversationUsagePopover`/`usage-metrics`、runtime投影/Swift DTO、原生卡片与样式消费者。保留卡片关闭、隐藏、上下文切换与焦点恢复行为；普通网页输入高度观察、检查点、原生偏好及人工恢复保持原实现。
-- [ ] 更新 README、原生桥接说明和中文 release notes，同时准确描述界面精简与五行用量；专用现代回归继续删除，保留两套现役回归。
+- [x] 先把旧用量卡片回归作为本分支新增测试运行，确认缺失字段和组件的 RED，保留日志。
+- [x] 合并 `928ea6b081ea8e600f6b54b0ea69f3faeb90457c`，保留所有有效提交祖先；删除/修改冲突中继续删除 Modern*、web-ui 样式及混合输入桥，仅移植当前非原生与完整原生的用量展示。
+- [x] 核对 `ConversationPage`、`ConversationControls`、新增 `ConversationUsagePopover`/`usage-metrics`、runtime投影/Swift DTO、原生卡片与样式消费者。保留卡片关闭、隐藏、上下文切换与焦点恢复行为；普通网页输入高度观察、检查点、原生偏好及人工恢复保持原实现。
+- [x] 更新 README、原生桥接说明和中文 release notes，同时准确描述界面精简与五行用量；专用现代回归继续删除，保留两套现役回归。
 - [ ] 运行新增用量回归与界面清理回归，确认 GREEN；运行 TypeScript、完整 Vitest、完整 NativeUI Swift SDK 类型检查。提交中文合并提交并推送固定 SHA。
 
 ## 任务二：修复协调器恢复合并顺序

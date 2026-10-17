@@ -4218,6 +4218,7 @@ function BackendWorkspace({
     <main className="app-shell">
       {active ? (
         <ConversationPage
+          conversationVisible={conversationVisible}
           nativeContextId={nativeContextId}
           active={active}
           backendId={backend.id}

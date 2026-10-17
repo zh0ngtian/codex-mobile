@@ -50,5 +50,9 @@ struct NativeSnapshot: Codable {
     var permissionValue: String? = nil
     var permissions: [NativeOption]? = nil
     var contextUsage: NativeContextUsage? = nil
+    var inputTokenUsage: String? = nil
+    var outputTokenUsage: String? = nil
+    var inputCacheHitPercent: Double? = nil
+    var fiveHourRateLimit: NativeRateLimit? = nil
     var sevenDayRateLimit: NativeRateLimit? = nil
 }

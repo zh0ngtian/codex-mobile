@@ -45,12 +45,12 @@ import { TurnCard } from "./Timeline";
 import {
   ContextUsageButton,
   ConversationActionMenu,
-  ConversationStatusSheet,
 } from "./ConversationControls";
 import { ImagePreviewSheet } from "./sheets/ImagePreviewSheet";
 import { useConversationAutoScroll } from "./conversation-scroll";
 import { useRealtimeConversation } from "./useRealtimeConversation";
 import { t } from "../../i18n";
+import { ConversationUsagePopover } from "./ConversationUsagePopover";
 import videoPoster from "../../assets/video-poster.svg";
 import { RunProgress } from "./RunProgress";
 import type { HttpSyncState } from "../../backends/http-transport";
@@ -201,6 +201,7 @@ export function ConversationPage({
   onOpenPermissionSettings,
   onDraftChange,
   nativeContextId = '',
+  conversationVisible = true,
   historyEdit = null,
   onEditUserMessage,
   onHistoryEditTextChange = () => undefined,
@@ -212,6 +213,7 @@ export function ConversationPage({
   onQueuedFollowUpCancel = () => undefined,
 }: {
   nativeContextId?: string;
+  conversationVisible?: boolean;
   active: DisplayRecord;
   backendId: string;
   backendName: string;
@@ -292,6 +294,7 @@ export function ConversationPage({
     backends.find((backend) => backend.id === backendId) ?? null;
   const [previewImage, setPreviewImage] = useState<DraftImage | null>(null);
   const [statusOpen, setStatusOpen] = useState(false);
+  const usageButtonRef = useRef<HTMLButtonElement>(null);
   const [actionsOpen, setActionsOpen] = useState(false);
   const [composerMaximized, setComposerMaximized] = useState(false);
   const [attachmentMenuOpen, setAttachmentMenuOpen] = useState(false);
@@ -337,6 +340,9 @@ export function ConversationPage({
     setSkillMention(null);
     setQueuedFollowUpEdit(null);
   }, [active.id, backendId, nativeContextId]);
+  useEffect(() => {
+    if (!conversationVisible) setStatusOpen(false);
+  }, [conversationVisible]);
   useEffect(() => {
     if (
       queuedFollowUpEdit &&
@@ -530,9 +536,11 @@ export function ConversationPage({
           >
             <ContextUsageButton
               tokenUsage={tokenUsage}
+              open={conversationVisible && statusOpen}
+              buttonRef={usageButtonRef}
               onClick={() => {
                 setActionsOpen(false);
-                setStatusOpen(true);
+                setStatusOpen(current => !current);
               }}
             />
 
@@ -1319,9 +1327,9 @@ export function ConversationPage({
           />
         )}
 
-      <ConversationStatusSheet
-        open={statusOpen}
-        thread={active}
+      <ConversationUsagePopover
+        open={conversationVisible && statusOpen}
+        anchorRef={usageButtonRef}
         tokenUsage={tokenUsage}
         rateLimits={rateLimits}
         onClose={() => setStatusOpen(false)}

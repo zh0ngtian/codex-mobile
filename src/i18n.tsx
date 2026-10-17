@@ -14,6 +14,14 @@ const LANGUAGE_STORAGE_KEY = "codex-mobile:language";
 
 const english: Record<string, string> = {
   "完成": "Done",
+  "用量与额度": "Usage and limits",
+  "上下文余量": "Context remaining",
+  "周期剩余": "Cycle remaining",
+  "输入 Token": "Input tokens",
+  "输出 Token": "Output tokens",
+  "{tokens}（缓存命中 {percent}%）": "{tokens} (Cache hit {percent}%)",
+  "{tokens}（缓存命中暂无数据）": "{tokens} (Cache hit unavailable)",
+  "时间剩余": "Time remaining",
   "应用": "App",
   "连接": "Connection",
   "搜索会话": "Search conversations",
