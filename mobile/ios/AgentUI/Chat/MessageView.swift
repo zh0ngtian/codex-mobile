@@ -19,8 +19,10 @@ struct MessageView: View {
                 ForEach(message.outputs.filter { $0.kind == .code }) { output in
                     CodeCard(code: output.content, language: output.name)
                 }
-                OutputCards(items: message.outputs)
-                MessageActions(message: message, includeCommentary: progressExpanded)
+                if !message.outputs.isEmpty { OutputCards(items: message.outputs) }
+                if MessagePresentation.showsResponseActions(for: message) {
+                    MessageActions(message: message, includeCommentary: progressExpanded)
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)

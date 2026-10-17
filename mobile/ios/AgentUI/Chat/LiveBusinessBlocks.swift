@@ -7,23 +7,26 @@ struct LiveBusinessBlocks: View {
 
     var body: some View {
         if let message = session.nativeMessage(messageID), let store = session.nativeStore {
-            VStack(alignment: .leading, spacing: 10) {
-                ForEach((message.blocks ?? []).compactMap(filtered)) { item in
-                    if item.kind == "markdown" || item.kind == "text" {
-                        AssistantBody(text: item.text ?? item.value ?? "")
-                    } else if item.kind == "code" || item.kind == "diff" {
-                        CodeCard(code: item.text ?? item.value ?? "", language: item.kind == "diff" ? "diff" : item.title ?? "Code")
-                    } else {
-                        NativePanelItemView(item: item, store: store, scope: .message(message.id))
-                            .padding(12)
-                            .background(AgentTheme.card, in: .rect(cornerRadius: 16))
-                            .overlay { RoundedRectangle(cornerRadius: 16).strokeBorder(AgentTheme.line) }
+            let items = message.presentationBlocks.compactMap(filtered)
+            if !items.isEmpty {
+                VStack(alignment: .leading, spacing: 10) {
+                    ForEach(items) { item in
+                        if item.kind == "markdown" || item.kind == "text" {
+                            AssistantBody(text: item.text ?? item.value ?? "")
+                        } else if item.kind == "code" || item.kind == "diff" {
+                            CodeCard(code: item.text ?? item.value ?? "", language: item.kind == "diff" ? "diff" : item.title ?? "Code")
+                        } else {
+                            NativePanelItemView(item: item, store: store, scope: .message(message.id))
+                                .padding(12)
+                                .background(AgentTheme.card, in: .rect(cornerRadius: 16))
+                                .overlay { RoundedRectangle(cornerRadius: 16).strokeBorder(AgentTheme.line) }
+                        }
                     }
                 }
-            }
-            .contextMenu {
-                ForEach(message.actions ?? []) { item in
-                    NativePanelItemView(item: item, store: store, scope: .message(message.id))
+                .contextMenu {
+                    ForEach(message.actions ?? []) { item in
+                        NativePanelItemView(item: item, store: store, scope: .message(message.id))
+                    }
                 }
             }
         }

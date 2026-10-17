@@ -60,7 +60,7 @@ export function bindWorkspaceCommands(snapshot: NativeSnapshot): NativeSnapshot 
   const item = (value: NativePanelItem): NativePanelItem => ({ ...value, command: contextual(value.command), children: value.children?.map(item) });
   return { ...snapshot,
     attachments: snapshot.attachments.map(value => ({ ...value, command: contextual(value.command) })),
-    messages: snapshot.messages.map(message => ({ ...message, blocks: message.blocks?.map(item), actions: message.actions?.map(item), historyEdit: message.historyEdit ? { ...message.historyEdit, items: message.historyEdit.items.map(item) } : undefined })),
+    messages: snapshot.messages.map(message => ({ ...message, blocks: message.blocks?.map(item), commentary: message.commentary?.map(entry => ({ ...entry, blocks: entry.blocks?.map(item) })), actions: message.actions?.map(item), historyEdit: message.historyEdit ? { ...message.historyEdit, items: message.historyEdit.items.map(item) } : undefined })),
     queued: snapshot.queued.map(entry => ({ ...entry, command: contextual(entry.command), actions: entry.actions?.map(item) })),
     conversationActions: snapshot.conversationActions?.map(item),
     panel: snapshot.panel ? { ...snapshot.panel, items: snapshot.panel.items.map(item) } : undefined,
@@ -134,7 +134,7 @@ export function createWorkspaceAdapter(c: NativeWorkspaceController, panel: Pane
     sevenDayRateLimit: sevenDayRateLimit ?? undefined,
     fiveHourRateLimit: fiveHourRateLimit ?? undefined,
     tokenUsage: projectNativeTokenUsage(state.tokenUsage), approvalPanel,
-    pending: c.pending || c.imageReading || c.draftSaving, loading: c.loadState, conversationActions,
+    pending: c.pending || c.imageReading || c.draftSaving, loading: c.loadState, olderTurnsState: c.olderTurnsState, conversationActions,
     badge: c.syncStale ? t('正在同步') : undefined, error: c.error || c.loadError || undefined,
     panel: business.panel ?? projectPanel(c, panel),
   };
@@ -163,7 +163,8 @@ export function createWorkspaceAdapter(c: NativeWorkspaceController, panel: Pane
       if (await c.selectFiles(files) === false) throw new Error(t('附件未导入，请保留选择后重试'));
     },
     'location.insert': async () => { if (!await c.selectLocation()) throw new Error(t('无法获取当前位置')); },
-    'draft.save': async () => { if (await c.saveDraft() === false) throw new Error(t('无法保存草稿')); }, 'thread.retry': () => c.retry(), 'thread.older': () => c.loadOlder(),
+    'draft.save': async () => { if (await c.saveDraft() === false) throw new Error(t('无法保存草稿')); }, 'thread.retry': () => c.retry(),
+    'thread.older': async () => { if (await c.loadOlder() === false) throw new Error(t('加载失败')); },
     'message.copy': async p => { const message = messages.find(item => item.id === p.id); if (!message) throw new Error(t('消息已更新')); if (!await copyText(message.text)) throw new Error(t('复制失败')); },
     'message.edit': p => c.editMessage(String(p.turnId), String(p.messageId)),
     'mention.search': p => panel.setQuery(String(p.value)),

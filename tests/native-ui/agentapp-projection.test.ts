@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { aggregateThreads } from '../../src/features/threads/thread-list-model';
-import { projectNavigation } from '../../src/native-ui/projection';
+import { projectConversation, projectNavigation } from '../../src/native-ui/projection';
 import { projectNativeBackends, projectNativePreferences } from '../../src/native-ui/device-panel';
-import { createWorkspaceAdapter, type NativeWorkspaceController } from '../../src/native-ui/workspace-adapter';
+import { bindWorkspaceCommands, createWorkspaceAdapter, type NativeWorkspaceController } from '../../src/native-ui/workspace-adapter';
 import { NativeRuntime } from '../../src/native-ui/runtime';
 import { emptyNativeSnapshot } from '../../src/native-ui/protocol';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -67,6 +67,47 @@ describe('AgentApp 真实展示契约', () => {
     expect(snapshot.cwd).toBe('/真实/项目');
     expect(snapshot.messages[0]).toMatchObject({ turnId: 'turn', itemId: 'comment', phase: 'commentary' });
     expect(createWorkspaceAdapter(controller({ active: { cwd: '/新项目', turns: [] } }), panel).snapshot.cwd).toBe('/新项目');
+  });
+
+  it('已完成历史使用显式commentary条目，真实时间与所属媒体不与工具推理混合', () => {
+    const timestamp = new Date(2026, 9, 17, 10, 44).getTime() / 1000;
+    const messages = projectConversation({ turns: [{ id: 'turn', status: 'completed', items: [
+      { id: 'c1', type: 'agentMessage', phase: 'commentary', text: '正在读取项目上下文。', timestamp },
+      { id: 'screen', type: 'imageView', path: '/screen.png' },
+      { id: 'reasoning', type: 'reasoning', text: '内部推理' },
+      { id: 'tool', type: 'commandExecution', command: 'ls' },
+      { id: 'c2', type: 'agentMessage', phase: 'commentary', text: '已检查相关文件，正在整理结果。' },
+      { id: 'final', type: 'agentMessage', phase: 'final_answer', text: '完成' },
+    ] }] }, path => `thumb:${path}`, path => `original:${path}`);
+    const history = messages.find(message => message.id === 'turn:c1:history')!;
+    expect(history).toMatchObject({ commentaryBlockId: 'turn:c1:commentary', commentary: [
+      { id: 'turn:c1', text: '正在读取项目上下文。', timestamp, blocks: [{ id: 'turn:screen:image:0', kind: 'image', value: 'thumb:/screen.png', previewURL: 'original:/screen.png' }] },
+      { id: 'turn:c2', text: '已检查相关文件，正在整理结果。' },
+    ] });
+    expect(history.commentary?.[1].timestamp).toBeUndefined();
+    expect(history.blocks?.[0]).toMatchObject({ kind: 'disclosure', title: '历史过程 (2)' });
+    expect(messages.flatMap(message => message.blocks ?? []).some(block => block.id.endsWith(':reasoning'))).toBe(true);
+    expect(messages.flatMap(message => message.blocks ?? []).find(block => block.id.endsWith(':tools'))?.children).toHaveLength(1);
+    expect(messages.find(message => message.id === 'turn:final')?.text).toBe('完成');
+  });
+
+  it.each([undefined, 0, -1, Number.NaN, Number.POSITIVE_INFINITY])('历史时间缺失或非法时不生成时间：%s', timestamp => {
+    const messages = projectConversation({ turns: [{ id: 'turn', status: 'completed', items: [{ id: 'c', type: 'agentMessage', phase: 'commentary', text: '过程', timestamp }] }] }, path => path);
+    expect(messages[0].commentary).toEqual([{ id: 'turn:c', text: '过程', blocks: [] }]);
+  });
+
+  it('历史条目内的操作同样绑定创建快照时的会话上下文', () => {
+    const snapshot = bindWorkspaceCommands({ ...emptyNativeSnapshot(), contextId: 'original-context', messages: [{ id: 'history', role: 'activity', text: '',
+      commentary: [{ id: 'entry', text: '过程', blocks: [{ id: 'entry:action', kind: 'action', command: { name: 'panel.open', params: { id: 'media' } } }] }] }] });
+    expect(snapshot.messages[0].commentary?.[0].blocks?.[0].command?.params).toEqual({ id: 'media', contextId: 'original-context' });
+  });
+
+  it('历史加载保留原始状态，业务明确返回false时给出失败ACK', async () => {
+    const adapter = createWorkspaceAdapter(controller({ olderTurnsState: 'error', loadOlder: async () => false }), panel);
+    expect(adapter.snapshot.olderTurnsState).toBe('error');
+    await expect(adapter.handlers['thread.older']!({})).rejects.toThrow('加载失败');
+    const legacy = createWorkspaceAdapter(controller({ loadOlder: async () => undefined as any }), panel);
+    await expect(legacy.handlers['thread.older']!({})).resolves.toBeUndefined();
   });
 
   it('附件容量在解码前严格核对，最大单项和总容量仍可用', () => {

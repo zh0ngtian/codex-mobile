@@ -12,7 +12,10 @@ export interface NativeNavigationItem { id: string; title: string; subtitle?: st
 export interface NativeGroup { id: string; title: string; items: NativeNavigationItem[]; command?: NativeCommand; actions?: NativePanelItem[]; collapsed?: boolean;
   category?: 'pinned' | 'project' | 'recent' | 'search'; subtitle?: string; loading?: string; newCommand?: NativeCommand;
   backendId?: string; cwd?: string; hasMore?: boolean; allItems?: NativeNavigationItem[] }
-export interface NativeMessage { id: string; role: string; text: string; status?: string; blocks?: NativePanelItem[]; actions?: NativePanelItem[]; timestamp?: number; historyEdit?: NativeSnapshot['panel']; turnId?: string; itemId?: string; phase?: string }
+export interface NativeCommentaryEntry { id: string; text: string; timestamp?: number; blocks?: NativePanelItem[] }
+export interface NativeMessage { id: string; role: string; text: string; status?: string; blocks?: NativePanelItem[]; actions?: NativePanelItem[]; timestamp?: number; historyEdit?: NativeSnapshot['panel']; turnId?: string; itemId?: string; phase?: string;
+  /** 新界面使用语义条目；旧v1界面继续读取commentaryBlockId指向的disclosure。 */
+  commentary?: NativeCommentaryEntry[]; commentaryBlockId?: string }
 export interface NativeAttachment { id: string; name: string; detail?: string; imageURL?: string; type?: string; command?: NativeCommand; size?: number }
 export interface NativeBackend { id: string; title: string; subtitle?: string; connected?: boolean; gatewayAddress?: string; enabled?: boolean;
   connectionState?: string; projects?: string[]; approvalCount?: number; queuedCount?: number }
@@ -30,6 +33,7 @@ export interface NativeSnapshot {
   richContent?: NativePanelItem[];
   error?: string; badge?: string; panel?: { id: string; title: string; items: NativePanelItem[]; dismissible?: boolean };
   commandResults?: NativeResult[]; sidebarOpen?: boolean; search?: string; loading?: string;
+  olderTurnsState?: string;
   canInterrupt?: boolean; conversationActions?: NativePanelItem[]; permission?: string; pending?: boolean; mentions?: NativeOption[];
   projectName?: string; backendName?: string; listBackendId?: string;
   modelValue?: string; effortValue?: string; speed?: string; speedValue?: string; speeds?: NativeOption[];

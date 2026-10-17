@@ -8,17 +8,18 @@ struct UserMessageView: View {
     @State private var expanded = false
     @State private var fullHeight: CGFloat = 0
     @State private var visibleHeight: CGFloat = 0
+    private var displayText: String { UserMessageText.visible(message.text) }
     var body: some View {
         HStack {
             Spacer(minLength: 30)
             VStack(alignment: .leading, spacing: 8) {
-                if !message.text.isEmpty {
-                    Text(message.text).font(AgentTheme.body.weight(.medium))
+                if !displayText.isEmpty {
+                    Text(displayText).font(AgentTheme.body.weight(.medium))
                         .foregroundStyle(preferences.accent.color)
                         .lineLimit(expanded ? nil : 6).textSelection(.enabled)
                         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { visibleHeight = $0 }
                         .background {
-                            Text(message.text).font(AgentTheme.body.weight(.medium))
+                            Text(displayText).font(AgentTheme.body.weight(.medium))
                                 .fixedSize(horizontal: false, vertical: true)
                                 .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { fullHeight = $0 }
                                 .hidden().accessibilityHidden(true)

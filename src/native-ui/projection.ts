@@ -10,7 +10,7 @@ import { insertPluginMention, type InstalledPlugin } from '../app-server/plugins
 import { t } from '../i18n';
 import { formatMessageTimestamp } from '../ui/message-timestamp';
 import { orderedTurnMedia, commentaryMediaEntries } from '../ui/timeline-media';
-import type { NativeCommand, NativeGroup, NativeMessage, NativePanelItem } from './protocol';
+import type { NativeCommand, NativeCommentaryEntry, NativeGroup, NativeMessage, NativePanelItem } from './protocol';
 
 type RecordValue = Record<string, any>;
 export function nativeCommand(name: string, params: Record<string, unknown> = {}): NativeCommand {
@@ -50,12 +50,15 @@ export function projectConversation(active: RecordValue | null, imageURL: (path:
       const collapse = hasFinal || !running;
       const tools: NativePanelItem[] = [];
       let history: NativePanelItem[] = [];
+      let commentary: NativeCommentaryEntry[] = [];
       let historyCount = 0;
       let historyID = '';
       const flushHistory = () => {
         if (!historyCount) return;
-        messages.push({ id: `${historyID}:history`, role: 'activity', text: '', blocks: [{ id: `${historyID}:commentary`, kind: 'disclosure', title: `${t('历史过程')} (${historyCount})`, children: history }] });
-        history = []; historyCount = 0;
+        const commentaryBlockId = `${historyID}:commentary`;
+        messages.push({ id: `${historyID}:history`, role: 'activity', text: '', commentary, commentaryBlockId,
+          blocks: [{ id: commentaryBlockId, kind: 'disclosure', title: `${t('历史过程')} (${historyCount})`, children: history }] });
+        history = []; commentary = []; historyCount = 0;
       };
       for (const entry of commentaryMediaEntries(segment)) {
         const item = entry.item;
@@ -63,8 +66,12 @@ export function projectConversation(active: RecordValue | null, imageURL: (path:
         if (item.type === 'agentMessage' && item.phase === 'commentary' && collapse) {
           if (!historyCount) historyID = id;
           const timestamp = formatMessageTimestamp(item.timestamp);
-          history.push({ id, kind: 'markdown', text: nativeItemText(item) });
-          history.push(...entry.media.flatMap(mediaBlocks));
+          const text = nativeItemText(item);
+          const blocks = entry.media.flatMap(mediaBlocks);
+          commentary.push({ id, text, blocks,
+            ...(typeof item.timestamp === 'number' && Number.isFinite(item.timestamp) && item.timestamp > 0 ? { timestamp: item.timestamp } : {}) });
+          history.push({ id, kind: 'markdown', text });
+          history.push(...blocks);
           if (timestamp) history.push({ id: `${id}:timestamp`, kind: 'text', text: timestamp });
           historyCount += 1;
           continue;

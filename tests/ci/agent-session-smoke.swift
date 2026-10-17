@@ -3,6 +3,8 @@ import Foundation
 @main
 struct AgentSessionSmoke {
     @MainActor static func main() async {
+        verifyUserMessagePresentation()
+        verifyCommentaryPresentation()
         let empty = AppSession()
         precondition(empty.devices.isEmpty && empty.conversations.isEmpty && empty.accountQuotas.isEmpty, "真实网关就绪前不得填充示例状态")
         let store = NativeUIStore(arguments: [])
@@ -153,6 +155,56 @@ struct AgentSessionSmoke {
         await verifyDelayedDeviceForm()
         await verifyPendingProjectsAndQuestions()
         print("Agent session smoke passed")
+    }
+    @MainActor static func verifyCommentaryPresentation() {
+        let session = AppSession()
+        let data = Data(#"{"id":"history","role":"activity","text":"","commentaryBlockId":"legacy-history","commentary":[{"id":"c1","text":"正在读取项目上下文。","timestamp":1792205040,"blocks":[{"id":"screen","kind":"image","value":"https://example.invalid/screen.png"}]},{"id":"c2","text":"已检查相关文件，正在整理结果。","blocks":[]}],"blocks":[{"id":"legacy-history","kind":"disclosure","title":"任意本地化旧标题","children":[{"id":"legacy-image","kind":"image","value":"https://example.invalid/screen.png"}]},{"id":"reasoning","kind":"disclosure","title":"思考过程","children":[{"id":"r","kind":"markdown","text":"真实推理"}]}]}"#.utf8)
+        let native = try! JSONDecoder().decode(NativeMessage.self, from: data)
+        let message = session.message(native)
+        precondition(message.commentary.count == 2, "历史过程必须从明确的commentary条目映射，不能继续作为通用卡片")
+        precondition(message.commentary.map(\.text) == ["正在读取项目上下文。", "已检查相关文件，正在整理结果。"])
+        precondition(message.commentary.first?.outputs?.first?.remoteURL == "https://example.invalid/screen.png")
+        precondition(message.outputs.isEmpty, "commentary所属媒体只随历史显示，不得在历史外重复展示")
+        let encoded = try! JSONSerialization.jsonObject(with: JSONEncoder().encode(message.commentary)) as! [[String: Any]]
+        precondition(encoded[1]["createdAt"] == nil, "缺失时间不能伪造当前时间")
+        let roundTrip = try! JSONSerialization.jsonObject(with: JSONEncoder().encode(native)) as! [String: Any]
+        precondition(roundTrip["commentaryBlockId"] as? String == "legacy-history", "Swift DTO须保留显式legacy区块身份，不能按标题猜测历史语义")
+        precondition(native.presentationBlocks.map(\.id) == ["reasoning"], "只移除语义已替代的旧历史，不能丢失其他推理或工具")
+        precondition(message.commentary[0].createdAt?.timeIntervalSince1970 == 1792205040, "历史时间必须来自原条目")
+        precondition(message.commentary[1].timestampLabel.isEmpty, "未知历史时间不显示伪造时间")
+        var localDate = DateComponents()
+        localDate.year = 2026; localDate.month = 10; localDate.day = 17; localDate.hour = 10; localDate.minute = 44
+        var known = message.commentary[0]
+        known.createdAt = Calendar.current.date(from: localDate)
+        precondition(known.timestampLabel == "10:44", "历史时间必须使用真实HH:mm，不随语言切换成AM/PM")
+        precondition(session.message(native).commentary.map(\.id) == message.commentary.map(\.id), "快照更新不能更换历史条目身份")
+        precondition(!MessagePresentation.showsResponseActions(for: message), "仅历史activity不能产生空白复制行")
+        var snapshot = NativeSnapshot()
+        snapshot.backendId = "device"; snapshot.threadId = "thread"; snapshot.contextId = "context"
+        snapshot.olderTurnsState = "error"
+        session.receive(snapshot)
+        precondition(session.selectedConversation?.historyError == true && session.selectedConversation?.historyLoading == false, "历史加载失败必须映射到原生重试状态")
+        snapshot.olderTurnsState = "loading"
+        session.receive(snapshot)
+        precondition(session.selectedConversation?.historyLoading == true && session.selectedConversation?.historyError == false, "重试加载必须清除旧失败并等待真实加载")
+        snapshot.olderTurnsState = "exhausted"
+        session.receive(snapshot)
+        precondition(session.selectedConversation?.historyLoading == false && session.selectedConversation?.historyError == false)
+    }
+    static func verifyUserMessagePresentation() {
+        let original = "\n第一行\n\n第二行  \n \t\n"
+        precondition(UserMessageText.visible(original) == "\n第一行\n\n第二行  ", "可见文本仅去掉末尾空白行，保留开头、中间换行和最后正文行内容")
+        precondition(UserMessageText.visible("正文\r\n\r\n") == "正文", "兼容CRLF空白行")
+        precondition(UserMessageText.visible("\n正文\n中间\n末尾") == "\n正文\n中间\n末尾")
+        precondition(UserMessageText.visible("\n\n").isEmpty)
+        let user = ChatMessage(isUser: true, text: original)
+        precondition(user.text == original, "复制和历史编辑始终保留原始消息")
+        precondition(!MessagePresentation.showsResponseActions(for: user))
+        precondition(!MessagePresentation.showsResponseActions(for: ChatMessage(isUser: false, text: "", kind: "activity")))
+        precondition(!MessagePresentation.showsResponseActions(for: ChatMessage(isUser: false, text: "上下文已压缩", kind: "activity")))
+        precondition(!MessagePresentation.showsResponseActions(for: ChatMessage(isUser: false, text: "", kind: "assistant")))
+        precondition(MessagePresentation.showsResponseActions(for: ChatMessage(isUser: false, text: "真实回复", kind: "assistant")))
+        precondition(MessagePresentation.showsResponseActions(for: ChatMessage(isUser: false, text: "", kind: "assistant", outputs: [OutputItem(name: "swift", kind: .code, content: "let value = 1")])))
     }
     @MainActor static func verifyDeviceAndImportAcknowledgements() async {
         let store = NativeUIStore(arguments: [])

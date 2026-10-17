@@ -88,7 +88,9 @@ extension AppSession {
                 return QueuedMessage(id: key, text: queued.inputText ?? queued.title, attachments: (queued.attachments ?? []).map(attachment), attachmentCount: queued.attachmentCount, configuration: frozen, configurationKnown: queued.configuration != nil, state: state, error: queued.error)
             }
             let older = snapshot.conversationActions?.first { $0.command?.name == "thread.older" }
-            thread.olderTurns = older == nil ? 0 : 1; thread.loadedOlderTurns = 0; thread.historyLoading = older?.disabled == true
+            thread.olderTurns = older == nil ? 0 : 1; thread.loadedOlderTurns = 0
+            thread.historyLoading = snapshot.olderTurnsState == "loading" || older?.disabled == true
+            thread.historyError = snapshot.olderTurnsState == "error"
             if let tokens = snapshot.tokenUsage {
                 thread.usage = UsageMetrics(lastRequestTokens: tokens.lastRequestTokens, contextCapacity: tokens.modelContextWindow, cumulativeInputTokens: tokens.inputTokens, cachedInputTokens: tokens.cachedInputTokens, cumulativeOutputTokens: tokens.outputTokens)
             } else { thread.usage = nil }
@@ -125,13 +127,20 @@ extension AppSession {
     func message(_ value: NativeMessage) -> ChatMessage {
         let id = scopedID("message", nativeSnapshot.contextId ?? "", value.id); rawMessageIDs[id] = value.id
         let created = value.timestamp.map { Date(timeIntervalSince1970: $0 > 10_000_000_000 ? $0 / 1000 : $0) } ?? Date(timeIntervalSince1970: 0)
-        let blocks = flatten(value.blocks ?? [])
+        let blocks = flatten(value.presentationBlocks)
         let outputs = value.role == "user" ? [] : blocks.filter { ["image", "video", "html", "source"].contains($0.kind) }.map(output)
         let attachments: [AttachmentItem] = value.role == "user" ? blocks.filter { $0.kind == "image" }.map { item in
             AttachmentItem(id: scopedID("message-attachment", nativeSnapshot.contextId ?? "", value.id, item.id), name: item.title ?? item.id, kind: .image, remoteURL: item.previewURL ?? item.value)
         } : []
 
-        return ChatMessage(id: id, isUser: value.role == "user", text: value.text, kind: value.role, duration: value.status ?? "", timestamp: value.timestamp == nil ? "" : created.formatted(date: .omitted, time: .shortened), createdAt: created, attachments: attachments, outputs: outputs)
+        let commentary = (value.commentary ?? []).map { entry in
+            let timestamp = entry.timestamp.flatMap { time in
+                time.isFinite && time > 0 ? Date(timeIntervalSince1970: time > 10_000_000_000 ? time / 1000 : time) : nil
+            }
+            let media = flatten(entry.blocks ?? []).filter { ["image", "video", "html", "source"].contains($0.kind) }.map(output)
+            return ProgressEntry(id: scopedID("commentary", nativeSnapshot.contextId ?? "", value.id, entry.id), text: entry.text, createdAt: timestamp, outputs: media)
+        }
+        return ChatMessage(id: id, isUser: value.role == "user", text: value.text, kind: value.role, duration: value.status ?? "", timestamp: value.timestamp == nil ? "" : created.formatted(date: .omitted, time: .shortened), createdAt: created, attachments: attachments, commentary: commentary, outputs: outputs)
     }
     func attachment(_ value: NativeAttachment) -> AttachmentItem {
         let id = scopedID("attachment", nativeSnapshot.contextId ?? "", value.id); rawAttachmentIDs[id] = value.id
