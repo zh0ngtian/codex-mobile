@@ -30,6 +30,7 @@ it('有搜索词时只出现搜索结果组，搜索完成仍保持搜索类别�
   const groups = navigation({ threads, query: '匹配', searching, backends: [{ id: 'a', name: '甲' }], filter: 'projects' });
   expect(groups).toHaveLength(1); expect(groups[0]).toMatchObject({ id: 'search', category: 'search', items: [{ id: 'a:p' }] });
   expect(groups[0].title).toBe(searching ? '搜索中…' : '搜索结果');
+  expect(groups[0].loading).toBe(searching ? 'loading' : undefined);
  }
  expect(navigation({ query: '没有匹配' })[0]).toMatchObject({ category: 'search', items: [] });
  const failed = navigation({ query: '失败', error: '设备连接中断' });

@@ -109,4 +109,17 @@ describe('AgentApp 真实展示契约', () => {
     expect(selected).toHaveLength(1);
     runtime.dispose();
   });
+
+  it('附件原子预验证遵守真实图片上限、已选数量与累计40MiB，业务拒绝保留失败回执', async () => {
+    let calls = 0;
+    const selectFiles = async () => { calls += 1; };
+    const payload = (name: string, type: string, bytes: number) => ({ name, type, data: 'YWFh'.repeat(Math.floor(bytes / 3)) + (bytes % 3 === 2 ? 'YWE=' : bytes % 3 === 1 ? 'YQ==' : '') });
+    const invoke = (overrides: Partial<NativeWorkspaceController>, items: unknown[]) => createWorkspaceAdapter(controller({ selectFiles, ...overrides }), panel).handlers['attachment.import']!({ items });
+    await expect(Promise.resolve().then(() => invoke({}, [payload('too-large.png', 'image/png', 15 * 1024 * 1024)]))).rejects.toThrow('10 MB');
+    const prior = new File(['x'], 'previous.txt', { type: 'text/plain' });
+    await expect(Promise.resolve().then(() => invoke({ draftFiles: [{ id: 'previous', name: prior.name, type: prior.type, size: 30 * 1024 * 1024, file: prior, previewUrl: 'blob:private' }] }, [payload('new.txt', 'text/plain', 15 * 1024 * 1024)]))).rejects.toThrow('40 MB');
+    await expect(Promise.resolve().then(() => invoke({ draftImages: Array.from({ length: 4 }, (_, i) => ({ id: String(i), name: `${i}.png`, type: 'image/png', size: 1, url: 'data:image/png;base64,YQ==' })) }, [payload('new.png', 'image/png', 1)]))).rejects.toThrow('4');
+    expect(calls).toBe(0);
+    await expect(Promise.resolve().then(() => invoke({ selectFiles: async () => { throw new Error('真实读取失败'); } }, [payload('new.png', 'image/png', 1)]))).rejects.toThrow('真实读取失败');
+  });
 });

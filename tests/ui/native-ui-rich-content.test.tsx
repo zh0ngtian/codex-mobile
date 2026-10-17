@@ -95,18 +95,18 @@ it('相对变更文件按真实cwd规范化为可解析路径，缺cwd时保留d
  expect(project().items[0].children!.some(item => item.command?.name === 'file.open')).toBe(false); expect(project().items[0].children!.some(item => item.kind === 'diff')).toBe(true);
  expect(project('relative-cwd').items[0].children!.some(item => item.command?.name === 'file.open')).toBe(false);
 });
-it('草稿音视频仅在点击时读取真实File并提供dataURI预览，普通文件无预览动作', async () => {
+it('草稿文件仅在点击时读取真实File并提供dataURI预览，普通文本也保留预览动作', async () => {
  const attachments = await import('../../src/ui/attachments'); const reader = vi.spyOn(attachments, 'readFileAsDataUrl');
  const runtime = new NativeRuntime(() => {}); runtime.setNavigation({ selectedBackendId: 'b', backends: [], groups: [] });
  const files = [new File(['VIDEO'], 'clip.mp4', { type: 'video/mp4' }), new File(['AUDIO'], 'sound.m4a', { type: 'audio/mp4' }), new File(['TEXT'], 'plain.txt', { type: 'text/plain' })].map((file, index) => ({ id: `draft-${index}`, name: file.name, type: file.type, size: file.size, file, previewUrl: 'blob:LOCAL_ONLY' }));
  const controller = c({ draftFiles: files }); const { rerender } = renderHook(() => useNativeConversationAdapter(runtime, controller));
  expect(reader).not.toHaveBeenCalled(); const projected = runtime.snapshot().attachments;
- expect(projected[0].type).toBe('video/mp4'); expect(projected[0].command?.name).toBe('attachment.preview'); expect(projected[0].command?.params.contextId).toBe('ctx'); expect(projected[2].command).toBeUndefined(); expect(JSON.stringify(runtime.snapshot())).not.toContain('blob:');
+ expect(projected[0].type).toBe('video/mp4'); expect(projected[0].command?.name).toBe('attachment.preview'); expect(projected[0].command?.params.contextId).toBe('ctx'); expect(projected[2].command?.name).toBe('attachment.preview'); expect(JSON.stringify(runtime.snapshot())).not.toContain('blob:');
  await act(async () => { expect((await runtime.dispatch({ id: 'preview-video', name: 'attachment.preview', params: { contextId: 'ctx', id: 'draft-0' } })).ok).toBe(true); });
  expect(reader).toHaveBeenCalledTimes(1); expect(runtime.snapshot().panel?.items.find(item => item.kind === 'video')?.value).toBe('data:video/mp4;base64,VklERU8=');
  rerender(); expect(reader).toHaveBeenCalledTimes(1);
  await act(async () => { await runtime.dispatch({ id: 'preview-audio', name: 'attachment.preview', params: { contextId: 'ctx', id: 'draft-1' } }); }); expect(runtime.snapshot().panel?.items.find(item => item.kind === 'audio')?.value).toBe('data:audio/mp4;base64,QVVESU8=');
- await act(async () => { expect((await runtime.dispatch({ id: 'preview-text', name: 'attachment.preview', params: { contextId: 'ctx', id: 'draft-2' } })).ok).toBe(false); }); reader.mockRestore(); runtime.dispose();
+ await act(async () => { expect((await runtime.dispatch({ id: 'preview-text', name: 'attachment.preview', params: { contextId: 'ctx', id: 'draft-2' } })).ok).toBe(true); }); expect(runtime.snapshot().panel?.items.find(item => item.kind === 'source')?.text).toBe('TEXT'); reader.mockRestore(); runtime.dispose();
 });
 it.each(['close', 'remove', 'context'])('草稿媒体读取完成遇到%s后不会重开或污染预览', async reason => {
  const attachments = await import('../../src/ui/attachments'); let finish!: (value: string) => void;

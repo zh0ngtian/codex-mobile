@@ -10,7 +10,18 @@ import { nativeAction, nativeCommand, nativeItemText } from './projection';
 import type { NativeWorkspaceController } from './workspace-adapter';
 import type { NativePanelItem, NativeSnapshot, NativeHandlers } from './protocol';
 
-export interface NativeAttachmentPreview { id: string; name: string; type: string; file: File; contextId: string; status: 'loading' | 'ready' | 'error'; value?: string; error?: string }
+export interface NativeAttachmentPreview { id: string; name: string; type: string; file: File; contextId: string; status: 'loading' | 'ready' | 'error'; value?: string; error?: string; kind?: string; text?: string; limited?: boolean }
+export const NATIVE_ATTACHMENT_TEXT_PREVIEW_LIMIT = 2 * 1024 * 1024;
+function localAttachmentKind(name: string, type: string): string {
+ if (/^audio\//.test(type)) return 'audio';
+ if (/^video\//.test(type)) return 'video';
+ if (type === 'image/svg+xml' || /\.svg$/i.test(name)) return 'html';
+ if (/^image\//.test(type)) return 'image';
+ if (/\.(md|markdown)$/i.test(name) || type === 'text/markdown') return 'markdown';
+ if (/\.(html?|xhtml)$/i.test(name) || ['text/html', 'application/xhtml+xml'].includes(type)) return 'html';
+ if (/^text\//.test(type) || /^application\/(?:json|(?:[\w.-]+\+)?xml|javascript|x-javascript|yaml|toml)$/.test(type) || /\.(?:txt|csv|tsv|log|json|jsonl|ndjson|js|jsx|ts|tsx|swift|py|rb|go|rs|java|kt|kts|c|cc|cpp|h|hpp|m|mm|sh|bash|zsh|fish|yml|yaml|toml|ini|conf|config|css|scss|sass|less|xml|sql|graphql|gql|vue|svelte|r|pl|php|dart|lock|properties|gitignore|gitattributes|env)$/i.test(name)) return 'source';
+ return 'file';
+}
 export interface NativeFileState { href: string; path: string; line: number | null; status: 'loading' | 'ready' | 'error'; text: string; bytes?: number; binary?: boolean; error?: string; mode: string }
 const describe = (id: string, title: string, value: unknown, kind = 'text'): NativePanelItem => ({ id, kind, title, text: typeof value === 'string' ? value : JSON.stringify(value, null, 2) });
 export function projectToolPanel(c: NativeWorkspaceController, id: string, diagnostics: Record<string, ImageGenerationError | null> = {}): NativeSnapshot['panel'] {
@@ -74,10 +85,18 @@ export function projectFilePanel(c: NativeWorkspaceController, state?: NativeFil
  }
  return { id: `file:${state.path}`, title: t('远程文件'), items };
 }
-/** 本地媒体内容仅在用户点击后读取，快照只投影当前打开的单个媒体。 */
+/** 本地文件仅在用户点击后读取，下载保留原字节，源码/HTML不取得业务桥或文件路径。 */
 export function projectAttachmentPreview(preview?: NativeAttachmentPreview | null): NativeSnapshot['panel'] {
  if (!preview) return undefined;
- const items: NativePanelItem[] = preview.status === 'ready' ? [{ id: 'draft-media', kind: preview.type.startsWith('audio/') ? 'audio' : 'video', title: preview.name, value: preview.value }] : preview.status === 'error' ? [{ id: 'draft-media-error', kind: 'text', text: preview.error }, nativeAction('draft-media-retry', t('重试'), 'attachment.preview', { id: preview.id })] : [{ id: 'draft-media-loading', kind: 'text', title: t('正在读取文件…'), text: preview.name }];
+ const items: NativePanelItem[] = [];
+ if (preview.status === 'ready') {
+  items.push({ id: 'draft-download', kind: 'file', title: preview.name, text: t('下载原始文件'), value: preview.value });
+  if (preview.limited) items.push({ id: 'draft-preview-limit', kind: 'text', text: t('文件超过 2 MB 文本预览上限，可下载原始文件查看') });
+  else if (preview.kind === 'file') items.push({ id: 'draft-binary', kind: 'text', text: t('二进制或非 UTF-8 文件暂不支持文本预览，可下载原始文件查看') });
+  else items.push({ id: 'draft-content', kind: preview.kind ?? 'file', title: preview.name, previewURL: preview.value,
+    ...(['source', 'markdown'].includes(preview.kind ?? '') ? { text: preview.text ?? '' } : { value: preview.kind === 'html' ? preview.text ?? '' : preview.value }) });
+ } else if (preview.status === 'error') items.push({ id: 'draft-media-error', kind: 'text', text: preview.error }, nativeAction('draft-media-retry', t('重试'), 'attachment.preview', { id: preview.id }));
+ else items.push({ id: 'draft-media-loading', kind: 'text', title: t('正在读取文件…'), text: preview.name });
  return { id: `attachment:${preview.id}`, title: preview.name, items };
 }
 /** 只解析当前实际Markdown中的资源。复杂绘图复用既有strict引擎与离屏布局。 */
@@ -137,7 +156,6 @@ export function useNativeRichContent(c: NativeWorkspaceController, enabled: bool
   'attachment.preview': async p => {
    const draft = currentFiles.current.find(file => file.id === p.id);
    if (!draft) throw new Error(t('附件已移除'));
-   if (!/^(audio|video)\//.test(draft.type)) throw new Error(t('附件不支持预览'));
    if (draft.file.size > MAX_FILE_BYTES || draft.size > MAX_FILE_BYTES) throw new Error(t('{name} 超过 100 MB', { name: draft.name }));
    const token = ++epoch.current; const contextId = c.contextId;
    const preview: NativeAttachmentPreview = { id: draft.id, name: draft.name, type: draft.type, file: draft.file, contextId, status: 'loading' };
@@ -147,10 +165,21 @@ export function useNativeRichContent(c: NativeWorkspaceController, enabled: bool
     let reading = attachmentReads.current.get(draft.file);
     if (!reading) { reading = readFileAsDataUrl(draft.file).finally(() => { attachmentReads.current.delete(draft.file); }); attachmentReads.current.set(draft.file, reading); }
     const value = await reading;
-    if (valid()) setAttachmentPreview({ ...preview, status: 'ready', value });
+    if (!valid()) throw new Error(t('附件已变化，请重新打开'));
+    let kind = localAttachmentKind(draft.name, draft.type);
+    const textKind = ['source', 'markdown', 'html'].includes(kind);
+    const limited = textKind && draft.file.size > NATIVE_ATTACHMENT_TEXT_PREVIEW_LIMIT;
+    let text: string | undefined;
+    if (textKind && !limited) {
+     const encoded = value.match(/^data:[^,]*;base64,([A-Za-z0-9+/=]*)$/)?.[1];
+     if (encoded === undefined) throw new Error(t('附件内容格式无效'));
+     const bytes = Uint8Array.from(atob(encoded), character => character.charCodeAt(0));
+     try { text = new TextDecoder('utf-8', { fatal: true }).decode(bytes); if (bytes.includes(0)) kind = 'file'; }
+     catch { kind = 'file'; }
+    }
+    setAttachmentPreview({ ...preview, status: 'ready', value, kind, text, limited });
    } catch (error) {
-    if (!valid()) return;
-    setAttachmentPreview({ ...preview, status: 'error', error: error instanceof Error ? error.message : String(error) }); throw error;
+    if (valid()) setAttachmentPreview({ ...preview, status: 'error', error: error instanceof Error ? error.message : String(error) }); throw error;
    }
   },
   'file.open': async p => {

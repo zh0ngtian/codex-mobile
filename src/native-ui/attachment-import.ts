@@ -1,4 +1,5 @@
 import { t } from '../i18n';
+import { isNativeImageFile, MAX_DRAFT_FILES, MAX_DRAFT_IMAGES, MAX_IMAGE_BYTES, MAX_TOTAL_IMAGE_BYTES, type DraftFile, type DraftImage } from '../ui/attachments';
 
 export const NATIVE_ATTACHMENT_FILE_LIMIT = 20 * 1024 * 1024;
 export const NATIVE_ATTACHMENT_TOTAL_LIMIT = 40 * 1024 * 1024;
@@ -26,4 +27,21 @@ export function nativeImportedFiles(value: unknown): File[] {
     const bytes = Uint8Array.from(decoded, character => character.charCodeAt(0));
     return new File([bytes], item.name, { type: item.type });
   });
+}
+
+/** 与共享附件业务的图片/数量约束一致，并把原草稿纳入原生总容量。整批校验不修改草稿。 */
+export function assertNativeAttachmentSelection(files: File[], images: DraftImage[], documents: DraftFile[]) {
+  const selectedImages = files.filter(isNativeImageFile);
+  const selectedFiles = files.filter(file => !isNativeImageFile(file));
+  for (const file of files) {
+    if (!Number.isSafeInteger(file.size) || file.size < 0) throw new Error(t('附件大小无效'));
+    if (isNativeImageFile(file) && file.size > MAX_IMAGE_BYTES) throw new Error(t('{name} 超过 10 MB', { name: file.name }));
+    if (file.size > NATIVE_ATTACHMENT_FILE_LIMIT) throw new Error(t('单个附件不能超过 20 MB'));
+  }
+  if (images.length + selectedImages.length > MAX_DRAFT_IMAGES) throw new Error(t('最多上传 {count} 张图片', { count: MAX_DRAFT_IMAGES }));
+  if (documents.length + selectedFiles.length > MAX_DRAFT_FILES) throw new Error(t('最多上传 {count} 个文件', { count: MAX_DRAFT_FILES }));
+  const imageBytes = [...images, ...selectedImages].reduce((total, file) => total + file.size, 0);
+  if (!Number.isFinite(imageBytes) || imageBytes > MAX_TOTAL_IMAGE_BYTES) throw new Error(t('图片总大小不能超过 20 MB'));
+  const totalBytes = [...images, ...documents, ...files].reduce((total, file) => total + file.size, 0);
+  if (!Number.isFinite(totalBytes) || totalBytes > NATIVE_ATTACHMENT_TOTAL_LIMIT) throw new Error(t('附件总大小不能超过 40 MB'));
 }

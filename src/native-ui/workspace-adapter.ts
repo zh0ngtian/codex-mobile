@@ -18,7 +18,7 @@ import type { NativeRuntime } from './runtime';
 import { useNativeWorkspace } from './adapters';
 import { nativeAction, nativeCommand, projectConversation, insertNativeMentionAt } from './projection';
 import { emptyNativeSnapshot, type NativeHandlers, type NativeSnapshot, type NativePanelItem, type NativeCommand } from './protocol';
-import { nativeImportedFiles } from './attachment-import';
+import { assertNativeAttachmentSelection, nativeImportedFiles } from './attachment-import';
 
 type RecordValue = Record<string, any>;
 /** 现有 BackendWorkspace 的业务控制器。对象仅在 JS 内传递，绝不直接发布给 Swift。
@@ -32,7 +32,7 @@ export interface NativeWorkspaceController {
   loadState: string; loadError?: string; olderTurnsState: string; error: string; syncStale?: boolean; draftSaveStatus?: string;
   setDraft: (value: string, revision?: number, caretOffset?: number) => void; send: () => Promise<boolean | void>; stop: () => Promise<void>;
   chooseModel: (value: string) => void; chooseEffort: (value: string) => void; removeAttachment: (id: string) => void;
-  selectFiles: (files: File[]) => Promise<void>; selectLocation: () => Promise<boolean>; saveDraft: () => Promise<boolean | void>;
+  selectFiles: (files: File[]) => Promise<boolean | void>; selectLocation: () => Promise<boolean>; saveDraft: () => Promise<boolean | void>;
   retry: () => void; loadOlder: () => Promise<boolean>; editMessage: (turnId: string, messageId: string) => void;
   cancelQueued: (id: string, confirmed?: boolean) => Promise<void>; sendQueued: (id: string) => Promise<void>; editQueued: (id: string, value: string) => Promise<boolean>;
   /** 后续完整panel仍通过显式命令白名单扩展，不创建另一业务层。 */
@@ -105,7 +105,7 @@ export function createWorkspaceAdapter(c: NativeWorkspaceController, panel: Pane
     backendName: c.backend.name, projectName: !c.active?.id && !c.active?.cwd ? t('无项目') : projectNameOf(c.active ?? {}),
     draftRevision: c.draftRevision, caretOffset, mentions, richContent: panel.richContent, connection: c.connection, busy: c.busy, draft: c.draft, canSend: hasInput && !c.readOnly && !c.imageReading && !c.draftSaving,
     canInterrupt: c.busy && !!c.active?.id && !c.readOnly, readOnly: c.readOnly, messages,
-    attachments: [...c.draftImages.map(image => ({ id: image.id, name: image.name, type: image.type, imageURL: image.url, size: image.size, detail: `${image.size} B` })), ...c.draftFiles.map(file => ({ id: file.id, name: file.name, type: file.type, size: file.size, detail: `${file.size} B`, ...(/^(audio|video)\//.test(file.type) ? { command: nativeCommand('attachment.preview', { id: file.id }) } : {}) }))],
+    attachments: [...c.draftImages.map(image => ({ id: image.id, name: image.name, type: image.type, imageURL: image.url, size: image.size, detail: `${image.size} B` })), ...c.draftFiles.map(file => ({ id: file.id, name: file.name, type: file.type, size: file.size, detail: `${file.size} B`, command: nativeCommand('attachment.preview', { id: file.id }) }))],
     queued: c.queued.map(item => {
       const s = c.extended?.state ?? {}; const locked = item.state === 'sending' || item.state === 'uncertain';
       const canAct = !s.steering && !s.queueSaving && !locked && (c.busy ? !!s.steerable : !!item.failed);
@@ -154,11 +154,13 @@ export function createWorkspaceAdapter(c: NativeWorkspaceController, panel: Pane
       const context = c.contextId;
       const files = await pick(String(p.kind));
       // Controller selectFiles 再核对 context；取消无修改。
-      if (files.length && context === c.contextId) await c.selectFiles(files);
+      if (files.length && context === c.contextId && await c.selectFiles(files) === false) throw new Error(t('附件未导入，请保留选择后重试'));
     },
-    'attachment.import': p => {
+    'attachment.import': async p => {
       if (c.imageReading || c.draftSaving) throw new Error(t('当前无法导入附件'));
-      return c.selectFiles(nativeImportedFiles(p.items));
+      const files = nativeImportedFiles(p.items);
+      assertNativeAttachmentSelection(files, c.draftImages, c.draftFiles);
+      if (await c.selectFiles(files) === false) throw new Error(t('附件未导入，请保留选择后重试'));
     },
     'location.insert': async () => { if (!await c.selectLocation()) throw new Error(t('无法获取当前位置')); },
     'draft.save': async () => { if (await c.saveDraft() === false) throw new Error(t('无法保存草稿')); }, 'thread.retry': () => c.retry(), 'thread.older': () => c.loadOlder(),

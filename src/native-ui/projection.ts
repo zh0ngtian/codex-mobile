@@ -132,7 +132,7 @@ export function projectNavigation(input: NavigationInput): NativeGroup[] {
       ].map(([action, title]) => nativeAction(`${item.backendId}:${item.threadId}:${action}`, title, 'thread.manage', { ...params, action })),
     };
   };
-  if (input.query?.trim()) return [{ id: 'search', category: 'search', title: input.searching ? t('搜索中…') : t('搜索结果'), items: input.threads.map(row),
+  if (input.query?.trim()) return [{ id: 'search', category: 'search', title: input.searching ? t('搜索中…') : t('搜索结果'), loading: input.searching ? 'loading' : undefined, items: input.threads.map(row),
     ...(input.error ? { subtitle: input.error, actions: [nativeAction('search-retry', t('重试'), 'navigation.refresh')] } : {}) }];
   const split = splitAllThreads(input.threads);
   const groups: NativeGroup[] = [{ id: 'favorites', category: 'pinned', title: t('关注'), items: split.pinned.map(row) }];

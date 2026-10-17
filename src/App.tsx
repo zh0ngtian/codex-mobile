@@ -7,6 +7,7 @@ import { isNativeUIEnabled, type NativeRuntime } from "./native-ui/runtime";
 import { projectNavigation } from "./native-ui/projection";
 import { projectNativeBackends, projectNativePreferences } from "./native-ui/device-panel";
 import { readFontSize } from "./ui/font-size";
+import { assertNativeAttachmentSelection } from "./native-ui/attachment-import";
 import { resolveNativeNewChatTarget, type NativeNewChatTarget } from "./native-ui/new-chat-target";
 import { isClientForeground } from "./native-ui/foreground";
 import { DraftsSheet } from "./features/drafts/DraftsSheet";
@@ -3291,20 +3292,23 @@ function BackendWorkspace({
     } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)); }
   }
 
-  async function selectImages(files: FileList | File[] | null) {
+  async function selectImages(files: FileList | File[] | null, atomic = false) {
     if (
       !files?.length ||
       historyEdit ||
       (active?.id && activeThreadAccessMode !== "interactive")
-    ) return;
+    ) { if (atomic) throw new Error(t("当前无法导入附件")); return; }
+    const selected = Array.from(files);
+    if (atomic) assertNativeAttachmentSelection(selected, currentDraftRef.current.images, currentDraftRef.current.files);
     const generation = imageReadGenerationRef.current.begin();
     const existingBytes = draftImages.reduce(
       (total, image) => total + image.size,
       0,
     );
     setImageReading(true);
+    let preparedFiles: DraftFile[] = [];
+    let committed = false;
     try {
-      const selected = Array.from(files);
       const imageFiles = selected.filter(isNativeImageFile);
       const attachmentFiles = selected.filter((file) => !isNativeImageFile(file));
       const result = await prepareImageFiles(
@@ -3313,17 +3317,32 @@ function BackendWorkspace({
         undefined,
         existingBytes,
       );
-      if (!imageReadGenerationRef.current.isCurrent(generation)) return;
+      if (!imageReadGenerationRef.current.isCurrent(generation)) { if (atomic) throw new Error(t("附件读取已取消或会话已切换")); return; }
       const attachmentResult = prepareAttachmentFiles(
         attachmentFiles,
         draftFiles.length,
       );
-      setDraftImages((current) => mergeDraftImages(current, result.images));
-      setDraftFiles((current) => [...current, ...attachmentResult.files].slice(0, 4));
+      preparedFiles = attachmentResult.files;
       const errors = [...result.errors, ...attachmentResult.errors];
+      if (atomic && errors.length) throw new Error(errors.join("；"));
+      if (atomic) {
+        assertNativeAttachmentSelection(selected, currentDraftRef.current.images, currentDraftRef.current.files);
+        const nextImages = mergeDraftImages(currentDraftRef.current.images, result.images);
+        const nextFiles = [...currentDraftRef.current.files, ...attachmentResult.files];
+        currentDraftRef.current = { ...currentDraftRef.current, images: nextImages, files: nextFiles };
+        setDraftImages(nextImages); setDraftFiles(nextFiles);
+      } else {
+        setDraftImages((current) => mergeDraftImages(current, result.images));
+        setDraftFiles((current) => [...current, ...attachmentResult.files].slice(0, 4));
+      }
+      committed = true;
       if (errors.length) setError(errors.join("；"));
       else setError("");
+    } catch (reason) {
+      if (atomic && imageReadGenerationRef.current.isCurrent(generation)) setError(reason instanceof Error ? reason.message : String(reason));
+      throw reason;
     } finally {
+      if (atomic && !committed) preparedFiles.forEach(file => URL.revokeObjectURL(file.previewUrl));
       if (imageReadGenerationRef.current.isCurrent(generation)) {
         setImageReading(false);
       }
@@ -4195,7 +4214,7 @@ function BackendWorkspace({
     },
     selectFiles: async files => {
       if (`${backend.id}:context:${draftContextGenerationRef.current}` !== nativeContextId) throw new Error(t("会话已切换，请重试"));
-      await selectImages(files);
+      return await selectImages(files, true);
     },
     selectLocation: selectCurrentLocation, saveDraft: saveNewChatDraft, retry: retryThreadDetail, loadOlder: loadOlderTurns,
     editMessage: (turnId, messageId) => {
