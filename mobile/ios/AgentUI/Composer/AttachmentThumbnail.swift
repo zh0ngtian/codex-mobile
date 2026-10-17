@@ -6,17 +6,17 @@ struct AttachmentThumbnail: View {
 
     var body: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 9).fill(.tint.opacity(0.08))
+            RoundedRectangle(cornerRadius: 9).fill(Color.primary.opacity(0.05))
             if item.state == .processing {
                 ProgressView().controlSize(.small)
             } else if item.state == .failed {
                 Image(systemName: "exclamationmark.triangle").foregroundStyle(.secondary)
             } else if item.kind == .image, let asset = item.assetName {
-                Image(asset).resizable().scaledToFill()
+                Image(asset).renderingMode(.original).resizable().scaledToFill()
             } else if let image {
-                Image(uiImage: image).resizable().scaledToFill()
+                Image(uiImage: image).renderingMode(.original).resizable().scaledToFill()
             } else {
-                Image(systemName: item.kind.symbol).foregroundStyle(.tint)
+                Image(systemName: item.kind.symbol).foregroundStyle(.secondary)
             }
         }
         .clipShape(.rect(cornerRadius: 9)).accessibilityHidden(true)

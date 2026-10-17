@@ -50,6 +50,7 @@ struct NativeImagePreview: View {
                 Button(label("确定", "OK")) { exportError = nil }
             } message: { Text(exportError ?? "") }
         }
+        .tint(.primary)
     }
 
     private func load() async {

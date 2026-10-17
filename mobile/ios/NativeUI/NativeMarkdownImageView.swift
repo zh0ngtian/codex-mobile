@@ -16,5 +16,6 @@ struct NativeMarkdownImageView: View {
                 }
             }
         }
+        .foregroundStyle(.primary).tint(.primary)
     }
 }

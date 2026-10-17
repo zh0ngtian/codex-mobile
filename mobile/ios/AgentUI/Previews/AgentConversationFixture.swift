@@ -1,6 +1,7 @@
 #if DEBUG
 import Foundation
 import Observation
+import UIKit
 
 /// 只由显式 UI 回归参数启用；不挂载业务 WebView，不连接网关或伪造真实验收。
 @MainActor @Observable
@@ -45,6 +46,15 @@ final class AgentConversationFixture {
             value.messages += (1...14).map { index in
                 NativeMessage(id: "long-\(index)", role: "assistant", text: "阅读位置 \(index)\n用于验证再次下拉时加载旧消息，并保持原有阅读位置。\n重复正文只在独立的界面回归夹具中出现。")
             }
+        }
+        if ProcessInfo.processInfo.arguments.contains("--agent-preview-polish-fixture") {
+            value.messages[0].text = String(repeating: "短行\n", count: 6) + "展开后的正文仅用于核对强调色，完整文字不会改变气泡的宽度。"
+            let image = UIImage(systemName: "photo")!.withTintColor(.gray, renderingMode: .alwaysOriginal).pngData()!
+            let html = Data("<html><body style='font: -apple-system-body'>Neutral preview file</body></html>".utf8)
+            value.messages.append(NativeMessage(id: "preview-assets", role: "assistant", text: "预览附件", blocks: [
+                NativePanelItem(id: "preview-image", kind: "image", title: "preview.png", value: "data:image/png;base64," + image.base64EncodedString()),
+                NativePanelItem(id: "preview-file", kind: "html", title: "preview.html", value: "data:text/html;base64," + html.base64EncodedString()),
+            ]))
         }
         value.messages = value.messages.map { message in
             var anchored = message

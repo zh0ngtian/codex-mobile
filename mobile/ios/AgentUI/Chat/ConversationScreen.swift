@@ -45,10 +45,10 @@ struct ConversationScreen: View {
                             }
                             if conversation.phase == .running { ThinkingIndicator() }
                             QueuedMessagesView(conversationID: conversationID)
-                            Color.clear.frame(height: 1).id("bottom")
+                            Color.clear.frame(height: 1).padding(.bottom, 14).id("bottom")
                         }
                     }
-                    .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 14)
+                    .padding(.horizontal, 16).padding(.top, 8)
                 }
                 .scrollBounceBehavior(.always)
                 .accessibilityElement(children: .contain)
@@ -83,7 +83,7 @@ struct ConversationScreen: View {
                     }
                 }
                 .onScrollGeometryChange(for: Bool.self) { geometry in
-                    geometry.contentOffset.y + geometry.containerSize.height >= geometry.contentSize.height - 90
+                    geometry.visibleRect.maxY >= geometry.contentSize.height - 2
                 } action: { _, value in atBottom = value }
                 .onChange(of: conversation.messages.map(\.id)) { oldIDs, newIDs in
                     if let previous = historyAnchor,
@@ -115,6 +115,14 @@ struct ConversationScreen: View {
                 .onChange(of: session.nativeSnapshot.contextId) {
                     resetHistory()
                 }
+                .overlay(alignment: .bottom) {
+                    if !atBottom && !conversation.detailError {
+                        ScrollToBottomButton { scrollToLatest(proxy) }
+                            .padding(.bottom, 4)
+                            .transition(.opacity)
+                    }
+                }
+                .animation(.easeOut(duration: 0.15), value: atBottom)
             }
             .background {
                 LinearGradient(colors: [AgentTheme.page, AgentTheme.page, AgentTheme.code], startPoint: .top, endPoint: .bottom).ignoresSafeArea(edges: .bottom)
@@ -123,6 +131,11 @@ struct ConversationScreen: View {
             .safeAreaInset(edge: .bottom, spacing: 0) { ComposerBar(conversationID: conversationID) }
             .toolbarVisibility(.hidden, for: .navigationBar)
         } else { ContentUnavailableView(preferences.text("会话不可用", "Conversation unavailable"), systemImage: "bubble.left") }
+    }
+    private func scrollToLatest(_ proxy: ScrollViewProxy) {
+        historyPull.programmaticScrollBegan()
+        historyAnchor = nil; historyAnchorID = nil; historyWasPrepended = false
+        withAnimation(.easeOut(duration: 0.22)) { proxy.scrollTo("bottom", anchor: .bottom) }
     }
     private func loadEarlier(_ proxy: ScrollViewProxy) {
         guard !loadingHistory, let conversation = session.conversation(conversationID),

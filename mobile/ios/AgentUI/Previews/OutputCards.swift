@@ -26,6 +26,8 @@ struct OutputCards: View {
                 }
             }
         }
+        .foregroundStyle(AgentTheme.ink)
+        .tint(AgentTheme.ink)
     }
 
     private func open(_ item: OutputItem) {

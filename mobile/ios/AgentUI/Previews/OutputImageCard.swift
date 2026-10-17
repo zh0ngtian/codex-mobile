@@ -15,7 +15,7 @@ struct OutputImageCard: View {
                     NativeHTMLWebView(html: html, scrollEnabled: false, interactive: false, onOpenLink: { _ in })
                         .frame(height: 180).allowsHitTesting(false)
                 } else if let image {
-                    Image(uiImage: image).resizable().scaledToFit().frame(maxHeight: 180)
+                    Image(uiImage: image).renderingMode(.original).resizable().scaledToFit().frame(maxHeight: 180)
                 } else if failed {
                     Image(systemName: "photo.badge.exclamationmark").font(.title).frame(height: 90)
                 } else { ProgressView().frame(height: 90) }
@@ -27,6 +27,8 @@ struct OutputImageCard: View {
             .overlay { RoundedRectangle(cornerRadius: 16).strokeBorder(AgentTheme.line) }
         }
         .buttonStyle(.plain)
+        .foregroundStyle(AgentTheme.ink)
+        .tint(AgentTheme.ink)
         .accessibilityLabel(item.name)
         .accessibilityHint(preferences.text("打开图片预览", "Open image preview"))
         .task(id: item.id, load)

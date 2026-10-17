@@ -138,6 +138,44 @@ final class AgentAppUITests: XCTestCase {
         XCTAssertFalse(app.progressIndicators["正在加载历史消息"].exists)
     }
 
+    func testReturnToBottomAndNeutralPreviews() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-conversation-long-fixture", "--agent-preview-polish-fixture", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
+        app.launch()
+        let jump = app.buttons["conversation.scrollToBottom"]
+        XCTAssertTrue(jump.waitForExistence(timeout: 8), "离开底部时应显示回到底部按钮")
+        guard jump.exists else { return }
+        XCTAssertTrue(app.buttons["展开更多"].exists)
+        captureConversation("回到底部-阅读中", app: app)
+        jump.tap()
+        expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: jump)
+        waitForExpectations(timeout: 5)
+        let image = app.buttons["preview.png"]
+        let file = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "preview.html")).firstMatch
+        XCTAssertTrue(image.isHittable)
+        XCTAssertTrue(file.isHittable)
+        captureConversation("回到底部-预览卡片", app: app)
+        file.tap()
+        XCTAssertTrue(app.navigationBars["preview.html"].waitForExistence(timeout: 5))
+        captureConversation("中性文件预览", app: app)
+        app.buttons["关闭"].tap()
+        image.tap()
+        XCTAssertTrue(app.staticTexts["缩放 100%"].waitForExistence(timeout: 8))
+        captureConversation("中性图片预览", app: app)
+        app.buttons["关闭"].tap()
+        expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: app.navigationBars["preview.png"])
+        waitForExpectations(timeout: 5)
+        let timeline = app.scrollViews["conversation.timeline"]
+        let from = timeline.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.2))
+        let to = timeline.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.75))
+        from.press(forDuration: 0.05, thenDragTo: to, withVelocity: .slow, thenHoldForDuration: 0.1)
+        XCTAssertTrue(jump.waitForExistence(timeout: 5))
+        jump.tap()
+        expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: jump)
+        waitForExpectations(timeout: 5)
+        XCTAssertTrue(image.isHittable)
+    }
+
     private func launchConnectedApp() throws -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments = ["--native-ui-live", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]

@@ -16,11 +16,11 @@ struct NativeImageView: View {
                     NativeHTMLWebView(html: html, scrollEnabled: false, interactive: false, onOpenLink: { _ in })
                         .frame(height: 240).allowsHitTesting(false)
                 } else if let localImage {
-                    Image(uiImage: localImage).resizable().scaledToFit()
+                    Image(uiImage: localImage).renderingMode(.original).resizable().scaledToFit()
                 } else if let url = NativeImageData.remoteURL(source) {
                     AsyncImage(url: url) { phase in
                         switch phase {
-                        case .success(let image): image.resizable().scaledToFit()
+                        case .success(let image): image.renderingMode(.original).resizable().scaledToFit()
                         case .failure: Label(label("缩略图加载失败，点按查看原图", "Thumbnail unavailable. Tap to view the original."), systemImage: "arrow.clockwise")
                         default: ProgressView()
                         }
@@ -34,6 +34,7 @@ struct NativeImageView: View {
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
+        .foregroundStyle(.primary).tint(.primary)
         .accessibilityLabel(title.isEmpty ? label("查看图片", "View Image") : "\(label("查看图片", "View Image")) \(title)")
         .task(id: source, loadImage)
         .sheet(isPresented: $previewOpen) {

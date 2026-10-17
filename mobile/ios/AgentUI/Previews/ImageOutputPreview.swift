@@ -12,7 +12,7 @@ struct ImageOutputPreview: View {
             GeometryReader { geometry in
                 let fit = min(geometry.size.width / image.size.width, geometry.size.height / image.size.height)
                 ScrollView([.horizontal, .vertical]) {
-                    Image(uiImage: image)
+                    Image(uiImage: image).renderingMode(.original)
                         .resizable().interpolation(.high)
                         .frame(width: image.size.width * fit * zoom, height: image.size.height * fit * zoom)
                         .frame(minWidth: geometry.size.width, minHeight: geometry.size.height)

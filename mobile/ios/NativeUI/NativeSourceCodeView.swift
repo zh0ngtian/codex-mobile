@@ -34,7 +34,7 @@ struct NativeSourceCodeView: View {
                             }
                             .font(.body.monospaced())
                             .padding(.horizontal, 12).padding(.vertical, 3)
-                            .background(targetLine == index + 1 ? NativePalette.bubble : .clear)
+                            .background(targetLine == index + 1 ? Color.primary.opacity(0.07) : .clear)
                             .id(index + 1)
                         }
                     }.padding(.vertical, 8)

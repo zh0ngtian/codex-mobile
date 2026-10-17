@@ -7,9 +7,9 @@ struct OutputCardLabel: View {
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: item.previewSymbol)
-                .font(.title3).foregroundStyle(.tint)
+                .font(.title3).foregroundStyle(.secondary)
                 .frame(width: 38, height: 42)
-                .background(.tint.opacity(0.08), in: .rect(cornerRadius: 11))
+                .background(Color.primary.opacity(0.05), in: .rect(cornerRadius: 11))
             VStack(alignment: .leading, spacing: 3) {
                 Text(item.name).font(.body).lineLimit(1)
                 Text(item.kind == .web
@@ -22,6 +22,7 @@ struct OutputCardLabel: View {
                 .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
         }
         .padding(10)
+        .foregroundStyle(AgentTheme.ink)
         .contentShape(.rect(cornerRadius: 16))
     }
 }

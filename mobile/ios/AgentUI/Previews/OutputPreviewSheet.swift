@@ -68,6 +68,7 @@ struct OutputPreviewSheet: View {
                           defaultFilename: item.name, onCompletion: exported)
             .task(id: item.id.uuidString + "-" + String(retryCount), load)
         }
+        .tint(AgentTheme.ink)
     }
 
     private var supportsTabs: Bool { [.markdown, .html, .mermaid].contains(item.kind) }

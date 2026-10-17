@@ -12,7 +12,7 @@ struct PreviewCodeView: View {
                     ForEach(PreviewSourceLine.lines(from: source)) { line in
                         HStack(alignment: .top, spacing: 14) {
                             Text(line.id, format: .number.grouping(.never))
-                                .foregroundStyle(line.id == targetLine ? Color.accentColor : .secondary)
+                                .foregroundStyle(line.id == targetLine ? AgentTheme.ink : .secondary)
                                 .frame(minWidth: 34, alignment: .trailing)
                                 .accessibilityHidden(true)
                             Text(line.text.isEmpty ? " " : line.text)
@@ -22,7 +22,7 @@ struct PreviewCodeView: View {
                         .font(.system(.body, design: .monospaced))
                         .padding(.horizontal, 14).padding(.vertical, 5)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(line.id == targetLine ? Color.accentColor.opacity(0.12) : .clear)
+                        .background(line.id == targetLine ? Color.primary.opacity(0.07) : .clear)
                         .id(line.id)
                         .accessibilityElement(children: .combine)
                         .accessibilityLabel(preferences.text("第 \(line.id) 行，\(line.text)", "Line \(line.id), \(line.text)"))
