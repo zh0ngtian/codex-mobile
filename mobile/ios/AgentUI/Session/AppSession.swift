@@ -224,6 +224,15 @@ final class AppSession {
     func projectIsExpanded(_ project: String) -> Bool { !searchText.isEmpty || expandedProjects.contains(project) }
     func projectConversations(_ project: String) -> [Conversation] { visibleConversations.filter { !$0.isPinned && projectMembers[project]?.contains($0.id) == true } }
     func projectDisplayName(_ key: String) -> String { projectGroups[key]?.title ?? key }
+    func projectTitle(for path: String) -> String {
+        let backend = currentDevice.flatMap { rawDeviceIDs[$0.id] }
+        if let group = scopedProjects.compactMap({ projectGroups[$0] }).first(where: { group in
+            let cwd = group.cwd ?? group.command.flatMap { string($0.params["cwd"]) }
+            let owner = group.backendId ?? group.command.flatMap { string($0.params["backendId"]) }
+            return cwd == path && (backend == nil || owner == backend)
+        }) { return group.title }
+        return path.split(whereSeparator: { $0 == "/" || $0 == "\\" }).last.map(String.init) ?? path
+    }
     func reopenPendingRequests() {
         guard canReopenPendingRequests, let command = nativeSnapshot.conversationActions?.first(where: { $0.command?.name == "approval.reopen" && $0.disabled != true })?.command else { return }
         reopenRequestIntent = true

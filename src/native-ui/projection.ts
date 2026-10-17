@@ -98,8 +98,9 @@ export function projectConversation(active: RecordValue | null, imageURL: (path:
         // 独立媒体、final 和用户插话在原始位置结束当前历史区。
         if (item.type === 'userMessage' || item.type === 'agentMessage' || ['imageView', 'imageGeneration', 'videoGeneration'].includes(item.type)) flushHistory(isFinal);
         if (item.type === 'userMessage') {
+          const sentAt = [item.timestamp, turn.startedAt].find(value => typeof value === 'number' && Number.isFinite(value) && value > 0);
           messages.push({ id, role: 'user', text: nativeItemText(item), scrollAnchorId: scrollAnchor(item, 'user'), blocks: imageBlocks(item, id), turnId, itemId: String(item.id),
-            ...(typeof turn.startedAt === 'number' && Number.isFinite(turn.startedAt) && turn.startedAt > 0 ? { timestamp: turn.startedAt } : {}),
+            ...(sentAt == null ? {} : { timestamp: sentAt }),
             actions: [nativeAction(`${id}:copy`, t('复制'), 'message.copy', { id }), nativeAction(`${id}:edit`, t('编辑'), 'message.edit', { turnId, messageId: String(item.id) })] });
         } else if (item.type === 'agentMessage') {
           const commentary = item.phase === 'commentary';

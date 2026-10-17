@@ -58,12 +58,16 @@ it('折叠项目不暴露分页、重试和加载状态，展开后恢复真实�
  expect(loading.actions?.[0]).toMatchObject({ title: '加载中…', disabled: true });
 });
 
-it('消息时间仅投影真实turn开始和final完成时间，未知时间不填当前时间', () => {
+it('消息时间优先使用真实发送时间，其次turn开始时间，未知时间不填当前时间', () => {
  const turns = [{ id: 'known', startedAt: 100, completedAt: 150, items: [{ id: 'u', type: 'userMessage', text: '问' }, { id: 'c', type: 'agentMessage', phase: 'commentary', text: '过程' }, { id: 'f', type: 'agentMessage', phase: 'final_answer', text: '答' }] },
   { id: 'unknown', items: [{ id: 'u2', type: 'userMessage', text: '再问' }, { id: 'f2', type: 'agentMessage', phase: 'final_answer', text: '再答' }] }];
  const messages = projectConversation({ turns }, path => path);
  expect(messages.find(message => message.id === 'known:u')?.timestamp).toBe(100);
  expect(messages.find(message => message.id === 'known:f')?.timestamp).toBe(150);
+ const explicit = projectConversation({ turns: [{ id: 'sent', startedAt: 100, items: [{ id: 'u', type: 'userMessage', text: '问', timestamp: 120 }] }] }, path => path);
+ expect(explicit[0]?.timestamp).toBe(120);
+ const fallback = projectConversation({ turns: [{ id: 'sent', startedAt: 100, items: [{ id: 'u', type: 'userMessage', text: '问', timestamp: -1 }] }] }, path => path);
+ expect(fallback[0]?.timestamp).toBe(100);
  expect(messages.filter(message => message.id.startsWith('unknown:')).every(message => message.timestamp === undefined)).toBe(true);
  for (const timestamp of [0, -1, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
   const invalid = projectConversation({ turns: [{ id: 'invalid', startedAt: timestamp, completedAt: timestamp, items: [{ id: 'u', type: 'userMessage', text: '问' }, { id: 'f', type: 'agentMessage', phase: 'final_answer', text: '答' }] }] }, path => path);

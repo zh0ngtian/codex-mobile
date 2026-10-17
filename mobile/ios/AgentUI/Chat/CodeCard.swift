@@ -15,9 +15,8 @@ struct CodeCard: View {
                     .labelStyle(.iconOnly).font(.body).frame(width: 44, height: 44)
             }
             ScrollView(.horizontal) {
-                Text(code).font(.system(.body, design: .monospaced))
-                    .foregroundStyle(Color(red: 0.19, green: 0.43, blue: 0.14))
-                    .textSelection(.enabled).padding(.vertical, 8)
+                NativeSelectableText(text: NativeSelectableMarkdown.code(code, color: UIColor(red: 0.19, green: 0.43, blue: 0.14, alpha: 1)), identifier: "code.selectable")
+                    .padding(.vertical, 8)
             }.scrollIndicators(.hidden)
         }
         .padding(.horizontal, 16).padding(.vertical, 7)

@@ -29,7 +29,7 @@ final class AgentConversationFixture {
         value.conversationActions = [NativePanelItem(id: "older", kind: "action", title: "加载更早消息", command: NativeCommand(name: "thread.older"))]
         let history = NativeMessage(id: "history", role: "activity", text: "", blocks: [NativePanelItem(id: "history-block", kind: "disclosure", title: "历史过程 (2)")], turnId: "fixture-turn", commentary: entries, commentaryBlockId: "history-block", commentaryCanAttachToReply: true)
         value.messages = [
-            NativeMessage(id: "question", role: "user", text: "请检查项目上下文。\n\n", turnId: "fixture-turn"),
+            NativeMessage(id: "question", role: "user", text: "请检查项目上下文。\n\n", timestamp: date.addingTimeInterval(-60).timeIntervalSince1970, turnId: "fixture-turn"),
             history,
             NativeMessage(id: "answer", role: "assistant", text: "已完成检查。查看 [网页链接](https://example.com) 与 [文件链接](/tmp/example.swift#L12)。", turnId: "fixture-turn", phase: "final_answer"),
         ]
@@ -58,8 +58,17 @@ final class AgentConversationFixture {
         }
         if ProcessInfo.processInfo.arguments.contains("--agent-usage-polish-fixture") {
             value.tokenUsage = NativeTokenUsage(lastRequestTokens: 250, modelContextWindow: 1000, inputTokens: 12345, cachedInputTokens: ProcessInfo.processInfo.arguments.contains("--agent-usage-cache-fixture") ? 0 : nil, outputTokens: 25)
-            value.sevenDayRateLimit = NativeRateLimit(remainingPercent: 60)
+            value.sevenDayRateLimit = NativeRateLimit(remainingPercent: 60, resetsAt: date.addingTimeInterval(7 * 86400).timeIntervalSince1970, windowDurationMins: 10080)
             value.fiveHourRateLimit = NativeRateLimit(remainingPercent: 80)
+        }
+        if ProcessInfo.processInfo.arguments.contains("--agent-selectable-answer-fixture") {
+            value.messages = [value.messages[0], NativeMessage(id: "selectable-answer", role: "assistant", text: "第一段包含 **加粗文字**、`行内代码` 和 [网页链接](https://example.com)。\n\n第二段支持跨段自由选择文字，并保留系统的选择手柄。\n\n## Markdown 标题\n\n> 引用正文\n\n- 列表正文\n\n```swift\nlet greeting = \"Hello\"\nprint(greeting)\n```\n\n| 参数 | 含义 |\n| --- | --- |\n| 名称 | 可选择的表格正文 |", phase: "final_answer")]
+        }
+        if ProcessInfo.processInfo.arguments.contains("--agent-project-name-fixture") {
+            value.threadId = nil
+            value.cwd = "/Users/test/WorkSpace/MyProject"
+            value.backends[0].projects = [value.cwd!, "/Users/test/WorkSpace/AnotherProject"]
+            value.messages = []
         }
         if ProcessInfo.processInfo.arguments.contains("--agent-startup-loading-fixture") { value.ready = false }
         value.messages = value.messages.map { message in
@@ -74,7 +83,11 @@ final class AgentConversationFixture {
 
     private func publish() { store.receive(snapshot); session.receive(snapshot) }
     private func dispatch(_ command: NativeCommand) {
-        if command.name == "thread.older" {
+        if command.name == "newchat.project", ProcessInfo.processInfo.arguments.contains("--agent-project-name-fixture") {
+            if case .string(let path) = command.params["value"] { snapshot.cwd = path }
+            snapshot.commandResults = [NativeCommandResult(id: command.id, name: command.name, ok: true, contextId: snapshot.contextId)]
+            publish()
+        } else if command.name == "thread.older" {
             historyRequestCount += 1
             snapshot.olderTurnsState = "loading"
             if snapshot.conversationActions?.isEmpty == false { snapshot.conversationActions?[0].disabled = true }

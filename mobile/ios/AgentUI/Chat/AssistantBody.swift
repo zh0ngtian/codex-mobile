@@ -8,9 +8,12 @@ struct AssistantBody: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            ForEach(blocks) { block in
-                blockView(block)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+            ForEach(segments) { segment in
+                Group {
+                    if let block = segment.block { blockView(block) }
+                    else { NativeSelectableText(text: NativeSelectableMarkdown.blocks(segment.text), openLink: openLink) }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
         .font(AgentTheme.chatBody)
@@ -22,6 +25,29 @@ struct AssistantBody: View {
             session.nativeStore?.command("file.open", ["href": .string(url.absoluteString)])
             return .handled
         })
+    }
+
+    private struct Segment: Identifiable {
+        let id: Int
+        var text: [NativeMarkdownBlock] = []
+        var block: NativeMarkdownBlock?
+    }
+    private var segments: [Segment] {
+        var result: [Segment] = []
+        for block in blocks {
+            let selectable = [.text, .heading, .list, .quote].contains(block.kind) &&
+                !NativeMarkdownInlinePart.parse(block.text, scope: block.scope).contains { $0.destination != nil }
+            if selectable {
+                if result.last?.block == nil, !result.isEmpty { result[result.count - 1].text.append(block) }
+                else { result.append(Segment(id: block.id, text: [block])) }
+            } else { result.append(Segment(id: block.id, block: block)) }
+        }
+        return result
+    }
+    private func openLink(_ url: URL) {
+        if ["http", "https", "mailto", "tel"].contains(url.scheme?.lowercased() ?? "") {
+            UIApplication.shared.open(url)
+        } else { session.nativeStore?.command("file.open", ["href": .string(url.absoluteString)]) }
     }
 
     @ViewBuilder private func blockView(_ block: NativeMarkdownBlock) -> some View {
@@ -74,8 +100,7 @@ struct AssistantBody: View {
                 if let destination = part.destination {
                     NativeMarkdownImageView(source: destination, title: part.text, store: session.nativeStore)
                 } else {
-                    Text(NativeInlineMarkdown.text(part.text, scope: part.scope))
-                        .lineSpacing(6)
+                    NativeSelectableText(text: NativeSelectableMarkdown.inline(part.text, scope: part.scope), openLink: openLink)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }

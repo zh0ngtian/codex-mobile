@@ -17,7 +17,7 @@ struct NativeCodeView: View {
             }.padding(.horizontal, 12)
             Divider()
             ScrollView(.horizontal) {
-                Text(NativeCodeHighlight.text(text, language: language)).font(.body.monospaced()).textSelection(.enabled).padding(12)
+                NativeSelectableText(text: NativeSelectableMarkdown.code(text, language: language), identifier: "code.selectable").padding(12)
             }
         }.background(NativePalette.code, in: .rect(cornerRadius: 12))
     }

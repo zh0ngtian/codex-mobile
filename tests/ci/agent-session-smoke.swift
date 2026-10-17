@@ -4,6 +4,7 @@ import Foundation
 struct AgentSessionSmoke {
     @MainActor static func main() async {
         verifyBusinessProjectOrder()
+        verifyProjectChoiceNames()
         verifyHistoryAggregateScrollAliases()
         verifyHistoryScrollAnchors()
         verifyOriginalTailCommentary()
@@ -542,6 +543,20 @@ struct AgentSessionSmoke {
         precondition(!session.questions.isEmpty, "同一权威请求不能被本地成功标记永远屏蔽")
         state.approvalPanel = nil; state.approvalCount = 0; publish()
         precondition(session.questions.isEmpty && !session.hasDeferredQuestion, "权威请求消失后才清理已确认答案")
+    }
+
+    @MainActor static func verifyProjectChoiceNames() {
+        let session = AppSession()
+        var snapshot = NativeSnapshot()
+        snapshot.ready = true; snapshot.backendId = "a"; snapshot.listBackendId = "all"
+        snapshot.backends = [NativeBackend(id: "a", title: "甲", connected: true), NativeBackend(id: "b", title: "乙", connected: true)]
+        snapshot.groups = [NativeGroup(id: "b-shared", title: "乙设备别名", items: [], category: "project", backendId: "b", cwd: "/work/shared"),
+                           NativeGroup(id: "a-shared", title: "业务项目名称", items: [], category: "project", backendId: "a", cwd: "/work/shared")]
+        session.receive(snapshot)
+        precondition(session.projectTitle(for: "/work/shared") == "业务项目名称", "同路径项目名须匹配当前设备的业务名称")
+        precondition(session.projectTitle(for: "/Users/test/WorkSpace/MyProject/") == "MyProject")
+        precondition(session.projectTitle(for: #"C:\Work\AnotherProject"#) == "AnotherProject")
+        precondition(session.projectTitle(for: "/") == "/")
     }
 
     @MainActor static func verifyBusinessProjectOrder() {

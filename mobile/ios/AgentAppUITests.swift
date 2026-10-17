@@ -38,6 +38,11 @@ final class AgentAppUITests: XCTestCase {
         XCTAssertFalse(app.buttons["history.loadEarlier"].exists)
         XCTAssertTrue(app.buttons["commentary-history-toggle"].waitForExistence(timeout: 8))
         XCTAssertFalse(app.staticTexts["正在读取项目上下文。"].exists)
+        let time = app.staticTexts["message.user-time"]
+        let bubble = app.otherElements["message.user-bubble"].firstMatch
+        XCTAssertEqual(time.label, "10:43")
+        XCTAssertEqual(time.frame.minX, bubble.frame.minX, accuracy: 1)
+        XCTAssertGreaterThan(time.frame.minY, bubble.frame.maxY, "发送时间必须放在气泡左下角外侧")
         captureConversation("历史过程-折叠", app: app)
         app.buttons["commentary-history-toggle"].tap()
         XCTAssertTrue(app.staticTexts["正在读取项目上下文。"].waitForExistence(timeout: 5))
@@ -234,6 +239,9 @@ final class AgentAppUITests: XCTestCase {
         app.buttons["header.usage"].tap()
         XCTAssertTrue(app.staticTexts["额度剩余"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.staticTexts["周期剩余"].exists)
+        XCTAssertTrue(app.staticTexts["刷新时间"].exists)
+        XCTAssertFalse(app.staticTexts["剩余时间"].exists)
+        XCTAssertTrue(app.staticTexts["7 天 · 2026/10/24 10:44"].exists, app.debugDescription)
         let input = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "12.3K")).firstMatch
         XCTAssertTrue(input.exists)
         XCTAssertFalse(input.label.contains("("))
@@ -245,6 +253,50 @@ final class AgentAppUITests: XCTestCase {
         app.buttons["header.usage"].tap()
         let cached = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "缓存命中 0%")).firstMatch
         XCTAssertTrue(cached.waitForExistence(timeout: 5), "真实零命中率仍应展示")
+    }
+
+    func testAnswerSupportsNativeTextSelection() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-selectable-answer-fixture", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
+        app.launch()
+        let answer = app.textViews["assistant.selectable"].firstMatch
+        XCTAssertTrue(answer.waitForExistence(timeout: 8))
+        XCTAssertTrue((answer.value as? String)?.contains("第二段支持跨段自由选择文字") == true)
+        XCTAssertTrue((answer.value as? String)?.contains("Markdown 标题") == true, "相邻段落、标题和列表须能连续选中")
+        answer.coordinate(withNormalizedOffset: CGVector(dx: 0.25, dy: 0.04)).press(forDuration: 1.2)
+        XCTAssertTrue(app.menuItems.matching(NSPredicate(format: "label IN %@", ["复制", "Copy"])).firstMatch.waitForExistence(timeout: 5), app.debugDescription)
+        captureConversation("回答文字选择与点虚线", app: app)
+        app.buttons["header.usage"].tap()
+        app.buttons["header.usage"].tap()
+        XCTAssertTrue(app.textViews["code.selectable"].exists)
+        XCTAssertTrue(app.textViews.matching(identifier: "markdown.selectable").count > 0, "表格正文也应可选择")
+        captureConversation("Markdown与代码表格", app: app)
+    }
+
+    func testNewConversationProjectUsesNameAndKeepsPathTarget() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-project-name-fixture", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
+        app.launch()
+        let project = app.buttons["new.project"]
+        XCTAssertTrue(project.waitForExistence(timeout: 8))
+        XCTAssertEqual(project.label, "MyProject")
+        project.tap()
+        XCTAssertTrue(app.buttons["AnotherProject"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["/Users/test/WorkSpace/AnotherProject"].exists)
+        app.buttons["AnotherProject"].tap()
+        XCTAssertEqual(project.label, "AnotherProject")
+        captureConversation("新对话项目名称", app: app)
+    }
+
+    func testLiveSevenDayRefreshInNewConversation() throws {
+        let app = try launchConnectedApp()
+        app.buttons["sidebar.askCodex"].tap()
+        app.buttons["header.usage"].tap()
+        XCTAssertTrue(app.staticTexts["刷新时间"].waitForExistence(timeout: 8))
+        let refresh = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "7 天 · ")).firstMatch
+        XCTAssertTrue(refresh.waitForExistence(timeout: 20), "真实账户七天窗口刷新时间在新对话中也应可见")
+        captureConversation("真实网关-新对话七天刷新时间", app: app)
+        app.buttons["header.usage"].tap()
     }
 
     func testConfigureProvidedGateway() throws {
@@ -263,7 +315,7 @@ final class AgentAppUITests: XCTestCase {
         let send = app.buttons["composer.submit"]
         XCTAssertTrue(send.isEnabled)
         send.tap()
-        let response = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", marker)).firstMatch
+        let response = app.textViews.matching(NSPredicate(format: "value BEGINSWITH %@", marker)).firstMatch
         XCTAssertTrue(response.waitForExistence(timeout: 150), "应收到真实网关的模型回复")
         let history = app.buttons["commentary-history-toggle"].firstMatch
         XCTAssertTrue(history.waitForExistence(timeout: 8), "真实执行进展应进入参考历史组件")

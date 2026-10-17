@@ -21,11 +21,11 @@ struct NewTaskTargets: View {
                 Button(preferences.text("无项目", "No project")) { chooseProject(nil) }
                 ForEach(session.currentDevice?.projects ?? [], id: \.self) { project in
                     Button { chooseProject(project) } label: {
-                        Label(project, systemImage: session.composer.project == project ? "checkmark" : "folder")
+                        Label(session.projectTitle(for: project), systemImage: session.composer.project == project ? "checkmark" : "folder")
                     }
                 }
             } label: {
-                Label(session.composer.project ?? preferences.text("选择项目", "Choose project"), systemImage: "folder")
+                Label(session.composer.project.map { session.projectTitle(for: $0) } ?? preferences.text("选择项目", "Choose project"), systemImage: "folder")
                     .font(.body).lineLimit(1).frame(maxWidth: .infinity, minHeight: 44)
             }
             .tint(AgentTheme.ink)
