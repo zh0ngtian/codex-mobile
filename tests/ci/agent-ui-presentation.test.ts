@@ -42,3 +42,26 @@ it.skipIf(process.platform !== 'darwin')('复制会话ID保留网关原值，缺
     expect(result.stdout).toContain('Agent conversation ID smoke passed');
   } finally { rmSync(directory, { recursive: true, force: true }); }
 }, 210_000);
+
+it.skipIf(process.platform !== 'darwin')('附件总预算包含真实已导入size且不重复累计本地数据', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'agent-ui-attachment-budget-'));
+  try {
+    const files = ['mobile/ios/AgentUI/Session/AttachmentItem.swift', 'mobile/ios/AgentUI/Session/AttachmentKind.swift', 'mobile/ios/AgentUI/Session/AttachmentState.swift', 'mobile/ios/AgentUI/Composer/AttachmentImportLimits.swift', 'mobile/ios/AgentUI/Composer/AttachmentImportError.swift', 'tests/ci/agent-ui-attachment-budget-smoke.swift'];
+    const compile = spawnSync('xcrun', ['swiftc', ...files, '-o', join(directory, 'smoke')], { encoding: 'utf8', timeout: 180_000 });
+    expect(compile.status, compile.stderr).toBe(0);
+    const result = spawnSync(join(directory, 'smoke'), [], { encoding: 'utf8', timeout: 15_000 });
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toContain('Agent attachment budget smoke passed');
+  } finally { rmSync(directory, { recursive: true, force: true }); }
+}, 210_000);
+
+it.skipIf(process.platform !== 'darwin')('侧栏严格区分加载、失败与已完成的空搜索结果', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'agent-ui-navigation-state-'));
+  try {
+    const compile = spawnSync('xcrun', ['swiftc', 'mobile/ios/AgentUI/Home/SidebarNavigationState.swift', 'tests/ci/agent-ui-navigation-state-smoke.swift', '-o', join(directory, 'smoke')], { encoding: 'utf8', timeout: 180_000 });
+    expect(compile.status, compile.stderr).toBe(0);
+    const result = spawnSync(join(directory, 'smoke'), [], { encoding: 'utf8', timeout: 15_000 });
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toContain('Agent navigation state smoke passed');
+  } finally { rmSync(directory, { recursive: true, force: true }); }
+}, 210_000);

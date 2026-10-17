@@ -41,6 +41,10 @@ struct QueuedMessageCard: View {
                     .foregroundStyle(.secondary)
             }
             FlowAttachmentSummary(attachments: message.attachments)
+            if message.attachments.isEmpty, let count = message.attachmentCount, count > 0 {
+                Label(preferences.text("\(count) 个附件", "\(count) attachments"), systemImage: "paperclip")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             if let error = message.error {
                 FlowErrorBanner(message: error)
             }
@@ -118,7 +122,7 @@ struct QueuedMessageCard: View {
             && conversation?.queue.contains(where: { $0.state == .guiding }) == false
     }
     private var editedHasContent: Bool {
-        !editedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !message.attachments.isEmpty
+        !editedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !message.attachments.isEmpty || (message.attachmentCount ?? 0) > 0
     }
 
     private func beginEdit() {

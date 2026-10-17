@@ -11,7 +11,7 @@ enum AttachmentImportLimits {
 
     static func retainedBytes(in items: [AttachmentItem]) -> Int {
         items.reduce(0) { total, item in
-            min(totalBytes, total + min(item.data?.count ?? 0, totalBytes))
+            min(totalBytes, total + min(max(item.data?.count ?? 0, max(0, item.byteCount ?? 0)), totalBytes))
         }
     }
 }

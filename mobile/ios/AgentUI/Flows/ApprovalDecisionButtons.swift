@@ -12,23 +12,23 @@ struct ApprovalDecisionButtons: View {
                     .font(.subheadline)
                     .frame(minHeight: 44)
             }
-            ForEach(request.decisions) { decision in
-                Button(role: decision.isDestructive ? .destructive : nil) {
-                    submit(decision)
+            ForEach(request.choices) { choice in
+                Button(role: choice.decision?.isDestructive == true ? .destructive : nil) {
+                    submit(choice.id)
                 } label: {
-                    Label(decision.title(using: preferences), systemImage: decision.symbol)
+                    Label(choice.title, systemImage: choice.decision?.symbol ?? "questionmark.circle")
                         .font(.body.weight(.semibold))
                         .frame(maxWidth: .infinity, minHeight: 44)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 3)
                 }
                 .buttonStyle(.bordered)
-                .disabled(request.submitting)
+                .disabled(request.submitting || choice.disabled)
             }
         }
     }
 
-    private func submit(_ decision: ApprovalDecision) {
-        Task { await session.submitApproval(request.id, decision: decision) }
+    private func submit(_ choiceID: UUID) {
+        Task { await session.submitApproval(request.id, choiceID: choiceID) }
     }
 }

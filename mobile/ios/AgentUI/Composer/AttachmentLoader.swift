@@ -18,7 +18,7 @@ actor AttachmentLoader {
         try Task.checkCancellation()
         let kind = Self.kind(for: url)
         if kind == .image { try validateImage(data) }
-        return AttachmentItem(id: id, name: url.lastPathComponent, kind: kind, data: data, mimeType: UTType(filenameExtension: url.pathExtension)?.preferredMIMEType)
+        return AttachmentItem(id: id, name: url.lastPathComponent, kind: kind, data: data, mimeType: UTType(filenameExtension: url.pathExtension)?.preferredMIMEType, byteCount: data.count)
     }
 
     func photo(_ item: PhotosPickerItem, id: UUID, name: String,
@@ -30,7 +30,7 @@ actor AttachmentLoader {
         try Task.checkCancellation()
         let data = transfer.data
         try AttachmentImportLimits.validate(byteCount: data.count, availableBytes: availableBytes)
-        return AttachmentItem(id: id, name: name, kind: .image, data: data, mimeType: item.supportedContentTypes.first?.preferredMIMEType)
+        return AttachmentItem(id: id, name: name, kind: .image, data: data, mimeType: item.supportedContentTypes.first?.preferredMIMEType, byteCount: data.count)
     }
 
     func imageData(at url: URL) throws -> Data {

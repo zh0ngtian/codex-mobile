@@ -38,7 +38,20 @@ struct SidebarConversationList: View {
                 Button(preferences.text("加载更多搜索结果", "Load more search results"), systemImage: "arrow.down") { session.loadMoreConversations() }
                     .font(AgentTheme.small).frame(minHeight: 38)
             }
-            if followed.isEmpty && visibleProjects.isEmpty && ungroupedSearchResults.isEmpty {
+            switch navigationState {
+            case .loading:
+                ProgressView(preferences.text("正在加载…", "Loading…"))
+                    .font(AgentTheme.small).frame(maxWidth: .infinity, minHeight: 44)
+                    .accessibilityIdentifier("sidebar.loading")
+            case .failed(let error):
+                VStack(alignment: .leading, spacing: 7) {
+                    Label(error, systemImage: "exclamationmark.triangle").foregroundStyle(.secondary)
+                    Button(preferences.text("重试", "Retry"), systemImage: "arrow.clockwise") { session.retryNavigation() }
+                        .frame(minHeight: 44)
+                        .accessibilityIdentifier("sidebar.retry")
+                }
+                .font(AgentTheme.small).padding(.vertical, 12)
+            case .empty:
                 VStack(alignment: .leading, spacing: 7) {
                     Image(systemName: session.searchText.isEmpty ? "bubble.left" : "magnifyingglass")
                         .font(.title3)
@@ -47,8 +60,14 @@ struct SidebarConversationList: View {
                 }
                 .foregroundStyle(.secondary)
                 .padding(.vertical, 18)
+            case .populated: EmptyView()
             }
         }
+    }
+
+    private var navigationState: SidebarNavigationState {
+        SidebarNavigationState(loading: session.navigationLoading, error: session.navigationError,
+                               empty: followed.isEmpty && visibleProjects.isEmpty && ungroupedSearchResults.isEmpty)
     }
 
     private var followed: [Conversation] { session.visibleConversations.filter(\.isPinned) }
