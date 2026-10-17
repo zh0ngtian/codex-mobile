@@ -7,7 +7,6 @@ import { applyRuntimeEnvironment } from "../../../src/ui/runtime-environment";
 import { applyFontSize, readFontSize } from "../../../src/ui/font-size";
 import "../../../src/polyfills";
 import "../../../src/styles.css";
-import "../../../src/features/web-ui/modern.css";
 
 const now = Math.floor(Date.now() / 1000);
 const answer = `项目里的 Sidechat 本质是**从主聊天分叉出的临时独立聊天**：

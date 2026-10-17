@@ -28,7 +28,7 @@ export function useNativeRuntime(navigation: NativeNavigation, handlers: NativeH
   const [cachedRuntime] = useState(() => enabled ? new NativeRuntime(publishNativeSnapshot, () => preferenceRef.current?.changed()) : null);
   const runtime = enabled ? cachedRuntime : null;
   useLayoutEffect(() => { runtime?.listen(); return () => runtime?.dispose(); }, [runtime]);
-  useCommittedRegistration({ ...handlers, ...(preference ? { 'settings.native-ui': (params: NativeParams) => preference.change(params.enabled as boolean), 'settings.native-composer': (params: NativeParams) => preference.changeComposer(params.enabled as boolean) } : {}) }, committed => runtime?.setNavigation({ ...navigation, error: preference?.error || navigation.error }, committed));
+  useCommittedRegistration({ ...handlers, ...(preference ? { 'settings.native-ui': (params: NativeParams) => preference.change(params.enabled as boolean) } : {}) }, committed => runtime?.setNavigation({ ...navigation, error: preference?.error || navigation.error }, committed));
   return runtime;
 }
 export function useNativeWorkspace(runtime: NativeRuntime | null, id: string, value: NativeSnapshot, handlers: NativeHandlers) {

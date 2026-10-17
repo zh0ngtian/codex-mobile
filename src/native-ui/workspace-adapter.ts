@@ -1,5 +1,3 @@
-import { isNativeUIEnabled } from './runtime';
-import { hasOverlayPresence, subscribeOverlayPresence } from '../ui/overlay-scroll';
 import type { ImageGenerationError } from '../backends/image-generation-error';
 import { projectToolPanel, projectFilePanel, projectAttachmentPreview, type NativeAttachmentPreview, useNativeRichContent, type NativeFileState } from './rich-content';
 import { workspaceBusinessPanels } from './workspace-panels';
@@ -39,7 +37,7 @@ export interface NativeWorkspaceController {
   /** 后续完整panel仍通过显式命令白名单扩展，不创建另一业务层。 */
   extended?: { state: RecordValue; callbacks: Record<string, (...args: any[]) => any> };
 }
-interface PanelState { presentation?: 'full' | 'composer'; panelId: string | null; query: string; setPanel: (id: string | null) => void; setQuery: (query: string) => void; getQuery?: () => string; file?: NativeFileState | null; attachmentPreview?: NativeAttachmentPreview | null; richContent?: NativePanelItem[]; customAnswers?: Set<string>; setCustomAnswer?: (key: string, custom: boolean) => void; richHandlers?: NativeHandlers; closeRich?: () => void; diagnostics?: Record<string, ImageGenerationError | null>; loadDiagnostic?: (id: string) => Promise<void> }
+interface PanelState { panelId: string | null; query: string; setPanel: (id: string | null) => void; setQuery: (query: string) => void; getQuery?: () => string; file?: NativeFileState | null; attachmentPreview?: NativeAttachmentPreview | null; richContent?: NativePanelItem[]; customAnswers?: Set<string>; setCustomAnswer?: (key: string, custom: boolean) => void; richHandlers?: NativeHandlers; closeRich?: () => void; diagnostics?: Record<string, ImageGenerationError | null>; loadDiagnostic?: (id: string) => Promise<void> }
 function projectPanel(c: NativeWorkspaceController, panel: PanelState): NativeSnapshot['panel'] {
   const id = panel.panelId;
   if (!id || ['approval', 'history-edit', 'confirm-history'].includes(id) || id.startsWith('confirm-queue:') || id.startsWith('queue-edit:')) return undefined;
@@ -118,7 +116,7 @@ export function createWorkspaceAdapter(c: NativeWorkspaceController, panel: Pane
       ...(rateLimitWindow.resetsAt != null && Number.isFinite(Number(rateLimitWindow.resetsAt)) && Number(rateLimitWindow.resetsAt) > 0 ? { resetsAt: Number(rateLimitWindow.resetsAt) } : {}) } : undefined,
     pending: c.pending || c.imageReading || c.draftSaving, loading: c.loadState, conversationActions,
     badge: c.syncStale ? t('正在同步') : undefined, error: c.error || c.loadError || undefined,
-    panel: (panel.presentation !== 'composer' || panel.panelId ? business.panel : undefined) ?? projectPanel(c, panel),
+    panel: business.panel ?? projectPanel(c, panel),
   };
   const handlers: NativeHandlers = {
     'draft.set': p => c.setDraft(String(p.value), Number(p.revision), typeof p.caretOffset === 'number' ? p.caretOffset : String(p.value).length),
@@ -183,9 +181,6 @@ export function useNativeConversationAdapter(runtime: NativeRuntime | null, c: N
   const [customAnswers, setCustomAnswers] = useState<Set<string>>(new Set());
   const setCustomAnswer = (key: string, custom: boolean) => setCustomAnswers(values => { const next = new Set(values); if (custom) next.add(key); else next.delete(key); return next; });
   const rich = useNativeRichContent(c, !!runtime, setPanel);
-  useLayoutEffect(() => subscribeOverlayPresence(() => {
-    if (!isNativeUIEnabled() && hasOverlayPresence()) { setPanel(null); rich.close(); }
-  }), [c.contextId]);
   const [draftAck, setDraftAck] = useState({ contextId: c.contextId, revision: 0, text: c.draft, caretOffset: c.draft.length });
   const draftAckRef = useRef(draftAck); draftAckRef.current = draftAck;
   useEffect(() => { setPanel(null); setQuery(''); setCustomAnswers(new Set()); }, [c.contextId]);
@@ -197,6 +192,6 @@ export function useNativeConversationAdapter(runtime: NativeRuntime | null, c: N
       const next = { contextId: c.contextId, revision: revision ?? (draftAckRef.current.contextId === c.contextId ? draftAckRef.current.revision : 0), text: value, caretOffset: caretOffset ?? value.length };
       draftAckRef.current = next;
       setDraftAck(next);
-  } }, { presentation: isNativeUIEnabled() ? 'full' : 'composer', panelId: panelContext === c.contextId ? panelId : null, query, setPanel, setQuery, getQuery: () => queryRef.current, customAnswers, setCustomAnswer, file: rich.file, attachmentPreview: rich.attachmentPreview, richContent: rich.resources, richHandlers: rich.handlers, closeRich: rich.close, diagnostics: rich.diagnostics, loadDiagnostic: rich.loadDiagnostic }) : { snapshot: emptyNativeSnapshot(), handlers: {} };
+  } }, { panelId: panelContext === c.contextId ? panelId : null, query, setPanel, setQuery, getQuery: () => queryRef.current, customAnswers, setCustomAnswer, file: rich.file, attachmentPreview: rich.attachmentPreview, richContent: rich.resources, richHandlers: rich.handlers, closeRich: rich.close, diagnostics: rich.diagnostics, loadDiagnostic: rich.loadDiagnostic }) : { snapshot: emptyNativeSnapshot(), handlers: {} };
   useNativeWorkspace(runtime, c.backend.id, adapter.snapshot, adapter.handlers);
 }

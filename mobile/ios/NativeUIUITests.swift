@@ -735,11 +735,14 @@ final class NativeUIUITests: XCTestCase {
         let manager = app.webViews.buttons["管理设备"]
         if !manager.isHittable { app.webViews.buttons["打开会话列表"].tap() }
         manager.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
-        // iOS 27 的 WebKit AX 在这个 aria-modal 中没有返回 checkbox。
-        // 本用例固定402×874验收机型，坐标来自实际设置页截图；重启后原生根与草稿仍须真实通过。
+        // WebKit 对网页 checkbox 和关联标签使用不同 AX 类型，按真实可见标签定位。
+        let interfaceToggle = app.webViews.descendants(matching: .any)
+            .matching(NSPredicate(format: "label == %@", "使用原生界面")).firstMatch
+        XCTAssertTrue(interfaceToggle.waitForExistence(timeout: 10), app.debugDescription)
+        XCTAssertTrue(interfaceToggle.isHittable, app.debugDescription)
         let settingsImage = XCTAttachment(screenshot: app.screenshot())
-        settingsImage.name = "旧界面可见切换开关"; settingsImage.lifetime = .keepAlways; add(settingsImage)
-        app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 30, dy: 247)).tap()
+        settingsImage.name = "非原生界面可见切换开关"; settingsImage.lifetime = .keepAlways; add(settingsImage)
+        interfaceToggle.tap()
         let savedPreference = app.staticTexts["native-ui-saved-preference"]
         expectation(for: NSPredicate(format: "label == %@", "1"), evaluatedWith: savedPreference)
         waitForExpectations(timeout: 20)

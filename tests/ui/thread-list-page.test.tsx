@@ -1,6 +1,6 @@
 import { act, fireEvent, render, within } from "@testing-library/react";
 import { cloneElement } from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { ThreadListPage } from "../../src/features/threads/ThreadListPage";
 import { aggregateThreads } from "../../src/features/threads/thread-list-model";
 import type {
@@ -8,10 +8,6 @@ import type {
   BackendRuntimeSummary,
 } from "../../src/backends/types";
 import { ACTION_MENU_EVENT } from "../../src/ui/native-action-menu";
-
-const preference = vi.hoisted(() => ({ modern: false }));
-vi.mock("../../src/features/web-ui/preference", () => ({ useWebInterface: () => preference }));
-beforeEach(() => { preference.modern = false; });
 
 const backend: BackendConfig = {
   id: "mini",
@@ -131,8 +127,7 @@ function renderList(
 }
 
 describe("会话侧边栏列表", () => {
-  it.each([false, true])("原生重命名取消后同一侧栏会话可再次重命名，保留原后端与目标（新版：%s）", async (modern) => {
-    preference.modern = modern;
+  it("原生重命名取消后同一侧栏会话可再次重命名，保留原后端与目标", async () => {
     const show = vi.fn();
     (window as any).CodexMobileActionMenu = { show, dismiss: vi.fn() };
     try {

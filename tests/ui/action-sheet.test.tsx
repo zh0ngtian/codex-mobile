@@ -228,32 +228,6 @@ describe("ActionSheet", () => {
     trigger.remove();
   });
 
-  it("显式切换内容后定位焦点，普通重渲染保留输入焦点，关闭仍恢复最初入口", () => {
-    const trigger = document.createElement("button");
-    document.body.append(trigger);
-    trigger.focus();
-    const content = (page: string, value = "") => <ActionSheet title="设置" onClose={() => undefined}
-      focusResetKey={page} initialFocusSelector={page === "root" ? "#settings-entry" : "#settings-back"}>
-      {page === "root" ? <button id="settings-entry">字体大小</button> : <>
-        <button id="settings-back">返回设置</button>
-        <input aria-label="设置输入" value={value} onChange={() => undefined} />
-      </>}
-    </ActionSheet>;
-    const { rerender, unmount } = render(content("root"));
-    expect(screen.getByRole("button", { name: "字体大小" })).toHaveFocus();
-    rerender(content("font"));
-    expect(screen.getByRole("button", { name: "返回设置" })).toHaveFocus();
-    const input = screen.getByRole("textbox", { name: "设置输入" });
-    input.focus();
-    rerender(content("font", "未保存"));
-    expect(input).toHaveFocus();
-    rerender(content("root"));
-    expect(screen.getByRole("button", { name: "字体大小" })).toHaveFocus();
-    unmount();
-    expect(trigger).toHaveFocus();
-    trigger.remove();
-  });
-
   it("不可通过遮罩关闭时也禁用 Escape", () => {
     const onClose = vi.fn();
     const { container } = render(

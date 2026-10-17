@@ -12,7 +12,7 @@ const posts: any[] = []; const messages: any[] = [];
 const registry = { version: 1 as const, selectedBackendId: 'a', backends: ['a', 'b'].map((id, order) => ({ id, hostId: id, name: id, enabled: true, order, baseUrl: `https://${id}.invalid`, token: '' })) };
 function command(id: string, name: string, params: Record<string, unknown> = {}) { window.dispatchEvent(new CustomEvent('codex-mobile-native-command', { detail: { id, name, params } })); }
 function host(active: boolean) { Object.assign(window, { __CODEX_IOS_HOST__: true, __CODEX_NATIVE_UI__: active, webkit: { messageHandlers: { nativeUI: { postMessage(message: any) {
- messages.push(message); if (message.type === 'nativePreference') { const complete = (window as any).codexMobileNativePreferenceComplete; queueMicrotask(() => complete({ id: message.id, enabled: message.enabled ?? (message.kind === 'composer' ? true : active), active: message.kind === 'composer' ? true : active })); }
+ messages.push(message); if (message.type === 'nativePreference') { const complete = (window as any).codexMobileNativePreferenceComplete; queueMicrotask(() => complete({ id: message.id, enabled: message.enabled ?? active, active })); }
  } } } }, codexMobilePublishNativeSnapshot: (snapshot: any) => posts.push(snapshot) }); }
 beforeEach(() => { vi.stubGlobal('indexedDB', new IDBFactory()); vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { headers: { 'content-type': 'application/json' } }))); });
 afterEach(() => { cleanup(); localStorage.clear(); posts.length = 0; messages.length = 0; for (const key of ['__CODEX_IOS_HOST__', '__CODEX_NATIVE_UI__', '__CODEX_NATIVE_UI_RECOVERED__', 'webkit', 'codexMobilePublishNativeSnapshot', 'codexMobileNativePreference', 'codexMobileNativePreferenceComplete']) delete (window as any)[key]; vi.unstubAllGlobals(); vi.restoreAllMocks(); });
@@ -173,17 +173,4 @@ it('人工恢复结束等待中的原生确认，后续确认走可见Web对话�
  await act(async () => { (window as any).__CODEX_NATIVE_UI_RECOVERED__ = true; window.dispatchEvent(new Event('codex-mobile-native-recovery')); });
  expect(result.current.runtime).toBeNull(); expect(await pending).toBe(false);
  expect(await result.current.confirm('恢复后的确认')).toBe(false); expect(webConfirm).toHaveBeenCalledWith('恢复后的确认');
-});
-
-it('独立原生输入开关从宿主读取并经同一检查点保存且不热切换', async () => {
- host(false);
- (window as any).webkit.messageHandlers.nativeUI.postMessage = (message: any) => {
-  messages.push(message); if (message.type === 'nativePreference') queueMicrotask(() => (window as any).codexMobileNativePreferenceComplete({ id: message.id, enabled: message.enabled ?? (message.kind === 'composer'), active: message.kind === 'composer' }));
- };
- render(<AppBootstrap initialRegistry={{ version: 1, selectedBackendId: '', backends: [] }} />);
- const toggle = await screen.findByRole('checkbox', { name: '使用原生输入框' });
- await waitFor(() => expect(toggle).toBeChecked()); fireEvent.click(toggle);
- await waitFor(() => expect(toggle).not.toBeChecked());
- expect(messages.some(message => message.kind === 'composer' && message.enabled === false)).toBe(true);
- expect(await nativeSwitchStore.load()).not.toBeNull(); expect((window as any).__CODEX_NATIVE_UI__).toBe(false);
 });

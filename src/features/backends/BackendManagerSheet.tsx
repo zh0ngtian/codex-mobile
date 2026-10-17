@@ -1,7 +1,4 @@
 import { useNativeSwitch } from '../../native-ui/switch-context';
-import { AppIcon } from "../../ui/app-display";
-import { ModernSettingsRoot, type SettingsPage } from "./ModernSettingsRoot";
-import { useWebInterface } from '../web-ui/preference';
 import { useNativeGlobalPanel } from '../../native-ui/adapters';
 import { projectDevicePanel } from '../../native-ui/device-panel';
 import type { NativeRuntime } from '../../native-ui/runtime';
@@ -97,7 +94,6 @@ export function BackendManagerSheet({
   scanQrCode?: () => Promise<string>;
 }) {
   const nativeSwitch = useNativeSwitch();
-  const webInterface = useWebInterface();
   const { preference, setPreference } = useI18n();
   const font = useFontSizeSettings();
   const push = usePushSettingsState(notificationPreference ?? { mode: 'system', barkUrl: '' }, onNotificationPreferenceSave ?? (() => {}));
@@ -112,12 +108,6 @@ export function BackendManagerSheet({
   const [testing, setTesting] = useState(false);
   const [error, setError] = useState("");
   const [qrScannerOpen, setQrScannerOpen] = useState(false);
-  const [settingsPage, setSettingsPage] = useState<SettingsPage>("root");
-  const settingsEntryRef = useRef<SettingsPage | null>(null);
-  const usedModernNavigation = useRef(false);
-  useEffect(() => {
-    if (open && webInterface.modern) usedModernNavigation.current = true;
-  }, [open, webInterface.modern]);
 
   useEffect(() => {
     if (!open) {
@@ -125,9 +115,6 @@ export function BackendManagerSheet({
       setError("");
       setTesting(false);
       setQrScannerOpen(false);
-      setSettingsPage("root");
-      settingsEntryRef.current = null;
-      usedModernNavigation.current = false;
     } else if (!registry.backends.length) {
       setDraft((current) => current ?? newBackendDraft(0));
     }
@@ -285,25 +272,10 @@ export function BackendManagerSheet({
   });
   if (!open) return null;
 
-  const modern = webInterface.modern;
-  const pageTitles: Record<SettingsPage, string> = {
-    root: t("设置"), devices: t("设备"), language: t("语言"), font: t("字体大小"),
-    transport: t("传输方式"), notifications: t("通知"),
-  };
-  const webToggle = (
-    <section className="backend-language-settings web-interface-settings" aria-label={t("Web 界面")}>
-      <label><input type="checkbox" checked={webInterface.enabled}
-        onChange={event => webInterface.change(event.target.checked)} />{t("使用新版界面")}</label>
-      <small>{t("保存后立即生效，仅影响 Web 界面")}</small>
-      {webInterface.error && <small role="alert">{webInterface.error}</small>}
-    </section>
-  );
   const nativeToggle = nativeSwitch && (
     <section className="backend-language-settings" aria-label={t("界面模式")}>
       <label><input type="checkbox" checked={nativeSwitch.enabled} disabled={nativeSwitch.loading || nativeSwitch.pending}
         onChange={event => { void nativeSwitch.change(event.target.checked).catch(() => {}); }} />{t("使用原生界面")}</label>
-      <label><input type="checkbox" checked={nativeSwitch.composerEnabled} disabled={nativeSwitch.loading || nativeSwitch.pending}
-        onChange={event => { void nativeSwitch.changeComposer(event.target.checked).catch(() => {}); }} />{t("使用原生输入框")}</label>
       <small>{t("下次完整启动 App 时生效")}</small>
     </section>
   );
@@ -527,54 +499,21 @@ export function BackendManagerSheet({
       </button>
     </>
   );
-  const goBack = () => {
-    if (draft) {
-      setCurrentDraft(null);
-      setError("");
-      setSettingsPage("devices");
-    } else {
-      setSettingsPage("root");
-    }
-  };
   return (
     <>
       <ActionSheet
-        title={draft ? t("设备连接") : modern ? pageTitles[settingsPage] : t("管理设备")}
+        title={draft ? t("设备连接") : t("管理设备")}
         onClose={onClose}
         closeLabel={t("关闭")}
         closeOnBackdrop={false}
-        focusResetKey={modern ? `modern:${settingsPage}:${draft?.id ?? ""}` : usedModernNavigation.current ? "legacy" : undefined}
-        initialFocusSelector={!modern ? ".web-interface-settings input" : draft || settingsPage !== "root"
-          ? ".modern-settings-back"
-          : settingsEntryRef.current ? `[data-settings-page="${settingsEntryRef.current}"]` : undefined}
-        className={`backend-manager-sheet${modern ? " modern-settings-sheet" : ""}`}
-        headerActions={modern && (draft || settingsPage !== "root") ? <button
-          type="button" className="modern-settings-back" aria-label={draft ? t("返回设备") : t("返回设置")}
-          onClick={goBack}><AppIcon name="back" /></button> : undefined}
+        className="backend-manager-sheet"
         backdropClassName="backend-manager-backdrop"
       >
-        {modern ? <div className={`modern-settings-content${!draft && settingsPage === "root" ? " is-root" : ""}`}>
-          {draft ? <>{deviceContent}{webToggle}</> : settingsPage === "root" ? <ModernSettingsRoot
-            language={t(preference === "system" ? "跟随系统" : preference === "zh-CN" ? "中文" : "英文")}
-            fontSize={t(({ small: "小", standard: "标准", large: "大", "extra-large": "特大" } as const)[font.size])}
-            deviceCount={registry.backends.length} transport={t(transportMode === "http" ? "HTTP" : "流式")}
-            notification={notificationPreference && onNotificationPreferenceSave ? t(push.mode === "system" ? "系统推送" : "Bark 推送") : undefined}
-            webToggle={webToggle} nativeToggle={nativeToggle} currentVersion={appUpdate?.currentVersion} onNavigate={page => {
-              settingsEntryRef.current = page;
-              setSettingsPage(page);
-            }}
-          /> : <>
-            {settingsPage === "devices" && deviceContent}
-            {settingsPage === "language" && languageForm}
-            {settingsPage === "font" && <FontSizeSettingsForm state={font} />}
-            {settingsPage === "transport" && transportForm}
-            {settingsPage === "notifications" && pushForm}
-          </>}
-        </div> : <>
-          {webToggle}{nativeToggle}{transportForm}{pushForm}<FontSizeSettingsForm state={font} />
+        <>
+          {nativeToggle}{transportForm}{pushForm}<FontSizeSettingsForm state={font} />
           {deviceContent}
           {!draft && <>{languageForm}{updateSection}</>}
-        </>}
+        </>
       </ActionSheet>
       <GatewayQrScannerSheet
         open={qrScannerOpen}

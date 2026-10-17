@@ -1,20 +1,16 @@
 import { flushSync } from 'react-dom';
 import { getActiveLocale, t } from '../i18n';
 import { FONT_SCALES, readFontSize } from '../ui/font-size';
-import { emptyNativeSnapshot, type NativeHandlers, type NativeNavigation, type NativeSnapshot, type NativeResult, type NativeParams, type NativeWebComposerPresentation } from './protocol';
+import { emptyNativeSnapshot, type NativeHandlers, type NativeNavigation, type NativeSnapshot, type NativeResult, type NativeParams } from './protocol';
 
-type NativeWindow = Window & { __CODEX_NATIVE_UI__?: boolean; __CODEX_NATIVE_COMPOSER__?: boolean; __CODEX_NATIVE_UI_RECOVERED__?: boolean; webkit?: { messageHandlers?: { nativeUI?: { postMessage: (value: unknown) => void } } }; codexMobilePublishNativeSnapshot?: (snapshot: NativeSnapshot) => void };
+type NativeWindow = Window & { __CODEX_NATIVE_UI__?: boolean; __CODEX_NATIVE_UI_RECOVERED__?: boolean; webkit?: { messageHandlers?: { nativeUI?: { postMessage: (value: unknown) => void } } }; codexMobilePublishNativeSnapshot?: (snapshot: NativeSnapshot) => void };
 export function isNativeUIEnabled() {
   if (typeof window === 'undefined') return false;
   const target = window as NativeWindow;
   return target.__CODEX_NATIVE_UI__ === true && target.__CODEX_NATIVE_UI_RECOVERED__ !== true && typeof target.webkit?.messageHandlers?.nativeUI?.postMessage === 'function';
 }
-export function isNativeBridgeEnabled() {
-  if (typeof window === 'undefined') return false;
-  const target = window as NativeWindow;
-  return (target.__CODEX_NATIVE_UI__ === true || target.__CODEX_NATIVE_COMPOSER__ === true) && target.__CODEX_NATIVE_UI_RECOVERED__ !== true && typeof target.webkit?.messageHandlers?.nativeUI?.postMessage === 'function';
-}
-const globalNames = new Set(['settings.native-composer', 'settings.native-ui', 'backend.select', 'navigation.search', 'navigation.sidebar', 'navigation.refresh', 'thread.new', 'thread.open', 'thread.manage', 'project.toggle', 'project.more', 'project.retry', 'navigation.filter', 'confirmation.answer', 'settings.open', 'drafts.open', 'device.add', 'device.edit', 'device.change', 'device.save', 'device.cancel', 'device.scan', 'device.toggle', 'device.remove', 'device.move', 'settings.language', 'settings.font', 'settings.transport', 'settings.push.mode', 'settings.push.url', 'settings.push.save', 'settings.update.check', 'drafts.restore', 'drafts.remove', 'drafts.retry', 'update.install', 'update.retry', 'update.close']);
+export const isNativeBridgeEnabled = isNativeUIEnabled;
+const globalNames = new Set(['settings.native-ui', 'backend.select', 'navigation.search', 'navigation.sidebar', 'navigation.refresh', 'thread.new', 'thread.open', 'thread.manage', 'project.toggle', 'project.more', 'project.retry', 'navigation.filter', 'confirmation.answer', 'settings.open', 'drafts.open', 'device.add', 'device.edit', 'device.change', 'device.save', 'device.cancel', 'device.scan', 'device.toggle', 'device.remove', 'device.move', 'settings.language', 'settings.font', 'settings.transport', 'settings.push.mode', 'settings.push.url', 'settings.push.save', 'settings.update.check', 'drafts.restore', 'drafts.remove', 'drafts.retry', 'update.install', 'update.retry', 'update.close']);
 const workspaceNames = new Set(['draft.set', 'draft.save', 'message.send', 'turn.stop', 'model.select', 'effort.select', 'attachment.pick', 'attachment.preview', 'attachment.remove', 'location.insert', 'mention.search', 'mention.insert', 'thread.retry', 'thread.older', 'message.edit', 'message.copy', 'queue.cancel', 'queue.send', 'queue.edit', 'speed.select', 'permission.select', 'newchat.backend', 'newchat.project', 'workspace.thread', 'workspace.rename.change', 'workspace.rename.submit', 'approval.answer', 'approval.decide', 'approval.submit', 'approval.dismiss', 'approval.reopen', 'history.change', 'history.cancel', 'history.submit', 'queue.change', 'file.open', 'file.mode', 'diagram.render']);
 // Task2b 只能经此处显式扩展可调用命令，不能把任意名字转发成 RPC。
 const panelNames = new Set(['panel.open', 'panel.close']);
@@ -35,7 +31,7 @@ const stringKeys: Record<string, string[]> = {
   'drafts.restore': ['id'], 'drafts.remove': ['id'], 'file.open': ['href'], 'file.mode': ['value'], 'diagram.render': ['source'],
 };
 function validate(name: string, params: NativeParams) {
-  if (['settings.native-ui', 'settings.native-composer'].includes(name) && typeof params.enabled !== 'boolean') throw new Error(t('原生界面设置无效'));
+  if (name === 'settings.native-ui' && typeof params.enabled !== 'boolean') throw new Error(t('原生界面设置无效'));
   if (name === 'thread.new' && (params.backendId !== undefined || params.cwd !== undefined) && (typeof params.backendId !== 'string' || typeof params.cwd !== 'string')) throw new Error(t('项目目标无效'));
   if (![globalNames, workspaceNames, panelNames].some(set => set.has(name))) throw new Error(t('不支持的原生命令'));
   for (const key of stringKeys[name] ?? []) if (typeof params[key] !== 'string') throw new Error(t("参数 {key} 必须是字符串", { key }));
@@ -55,7 +51,6 @@ export class NativeRuntime {
   private navigation: NativeNavigation = { selectedBackendId: '', backends: [], groups: [] };
   private globalHandlers: NativeHandlers = {};
   private globalPanels = new Map<string, { panel: NativeSnapshot['panel']; handlers: NativeHandlers }>();
-  private webComposers = new Map<string, NativeWebComposerPresentation>();
   private workspaces = new Map<string, Workspace>();
   private results: NativeResult[] = [];
   private requests = new Map<string, Promise<NativeResult>>();
@@ -89,23 +84,15 @@ export class NativeRuntime {
     this.schedule();
   }
   removeWorkspace(id: string) { this.workspaces.delete(id); this.schedule(); }
-  setWebComposer(id: string, value: NativeWebComposerPresentation | undefined, expectedContextId?: string) {
-    // 首次挂载可早于父workspace的layout effect；后续更新与清理必须匹配登记身份。
-    if (expectedContextId !== undefined && this.webComposers.get(id)?.contextId !== expectedContextId) return;
-    if (value) this.webComposers.set(id, value); else this.webComposers.delete(id);
-    this.schedule();
-  }
   snapshot(): NativeSnapshot {
     const workspace = this.workspaces.get(this.navigation.selectedBackendId);
-    const presentation = this.webComposers.get(this.navigation.selectedBackendId);
-    const webComposer = presentation?.contextId === workspace?.value.contextId ? presentation : undefined;
     const globalPanel = [...this.globalPanels.values()].filter(v => v.panel).at(-1)?.panel;
     return { ...(workspace?.value ?? emptyNativeSnapshot()), locale: getActiveLocale(), fontScale: FONT_SCALES[readFontSize()], ...(globalPanel ? { ready: true, panel: globalPanel } : {}), backends: this.navigation.backends,
       groups: this.navigation.groups.map(group => ({ ...group, items: group.items.map(item => item.command?.name === 'thread.open' ? { ...item,
         selected: item.command.params.backendId === this.navigation.selectedBackendId && item.command.params.threadId === workspace?.value.threadId } : item) })),
       sidebarOpen: this.navigation.sidebarOpen, search: this.navigation.search, listBackendId: this.navigation.listBackendId,
       draftRevision: workspace?.revision ?? 0, ...(workspace?.echo !== undefined ? { draft: workspace.echo, caretOffset: workspace.echoCaret ?? workspace.echo.length } : {}),
-      webComposer, commandResults: [...this.results], error: this.commandError || workspace?.value.error || this.navigation.error || undefined };
+      commandResults: [...this.results], error: this.commandError || workspace?.value.error || this.navigation.error || undefined };
   }
   private schedule() {
     if (this.timer || this.disposed) return;
@@ -155,8 +142,6 @@ export class NativeRuntime {
         if (typeof params.contextId !== 'string' || params.contextId !== workspace.value.contextId) throw new Error(t('会话已切换，请重试'));
         if (workspace.value.readOnly && !['message.copy', 'attachment.preview', 'thread.retry', 'thread.older', 'panel.open', 'panel.close', 'history.change', 'history.cancel', 'history.submit', 'approval.answer', 'approval.decide', 'approval.submit', 'approval.dismiss', 'approval.reopen', 'file.open', 'file.mode', 'diagram.render'].includes(name)) throw new Error(t('当前会话只读'));
       }
-      const presentation = this.webComposers.get(this.navigation.selectedBackendId);
-      if (isNativeBridgeEnabled() && !isNativeUIEnabled() && (!presentation || presentation.contextId !== workspace?.value.contextId || !presentation.visible || presentation.blocked) && !globalNames.has(name) && name !== 'panel.close') throw new Error(t('当前会话输入不可用'));
       if (!handler) throw new Error(t("此操作尚未接入：{name}", { name }));
       if (name === 'draft.set' && workspace) {
         if (Number(params.revision) <= workspace.revision) throw new Error(t('草稿版本已过期'));
@@ -185,7 +170,7 @@ export class NativeRuntime {
     if (this.timer) clearTimeout(this.timer);
     this.timer = undefined;
     window.removeEventListener('codex-mobile-native-command', this.listener); this.listening = false;
-    this.workspaces.clear(); this.webComposers.clear(); this.globalHandlers = {}; this.globalPanels.clear();
+    this.workspaces.clear(); this.globalHandlers = {}; this.globalPanels.clear();
   }
 }
 export function publishNativeSnapshot(snapshot: NativeSnapshot) {

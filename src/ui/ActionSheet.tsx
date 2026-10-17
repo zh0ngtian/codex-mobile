@@ -36,8 +36,6 @@ export function ActionSheet({
   titleAlign = "left",
   className = "",
   backdropClassName = "",
-  focusResetKey,
-  initialFocusSelector,
 }: {
   open?: boolean;
   title: ReactNode;
@@ -56,9 +54,6 @@ export function ActionSheet({
   titleAlign?: "left" | "center";
   className?: string;
   backdropClassName?: string;
-  /** 仅显式导航变化时重新定位焦点；普通表单更新保持当前焦点。 */
-  focusResetKey?: string;
-  initialFocusSelector?: string;
 }) {
   const titleId = useId();
   const backdropRef = useRef<HTMLDivElement | null>(null);
@@ -80,16 +75,6 @@ export function ActionSheet({
       previousFocusRef.current = null;
     };
   }, [open]);
-
-  useEffect(() => {
-    if (!open || focusResetKey === undefined) return;
-    const sheet = sheetRef.current;
-    const preferred = initialFocusSelector
-      ? sheet?.querySelector<HTMLElement>(initialFocusSelector)
-      : null;
-    const first = sheet?.querySelector<HTMLElement>(focusableSelector);
-    (preferred ?? first ?? sheet)?.focus({ preventScroll: true });
-  }, [open, focusResetKey, initialFocusSelector]);
 
   if (!open) return null;
   const closeAction = onClose ? (

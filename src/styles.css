@@ -667,14 +667,3 @@ button, a, summary, [role="button"] { -webkit-tap-highlight-color: transparent; 
 .saved-draft-delete { flex-shrink: 0; min-width: 44px; min-height: 44px; padding: 0 8px; border: 0; border-radius: 12px; color: #a52a2a; background: #fff4f4; }
 .new-chat-draft-actions > button:active, .saved-draft-open:active { background: #eaeaea; }
 @media (max-width: 340px) { .list-header { gap: 6px; } .list-header h1 { font-size: 1.1rem; } .list-header-actions { gap: 4px; } }
-
-/* textarea 继续测量内容与占位；只有文字编辑矩形由原生覆盖。 */
-textarea[data-native-text-proxy="true"] { opacity: 0; pointer-events: none; }
-.composer textarea[data-native-text-proxy="true"]:disabled { opacity: .65; }
-[data-native-composer="true"] .composer { grid-template-columns: 42px minmax(0, 1fr) 42px; }
-[data-native-composer="true"] .timeline { padding-bottom: calc(var(--composer-height, 180px) + 12px); }
-[data-native-composer="true"] .error-banner { position: static; left: auto; bottom: auto; transform: none; width: 100%; margin: 12px 0 0; }
-
-[data-text-editor-only="true"] button > svg { flex: 0 0 23px; width: 23px; height: 23px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
-[data-text-editor-only="true"] button > svg + span { flex: 1; }
-[data-native-composer="true"] .modern-speed-button svg[data-icon="speed-off"] { fill: none; stroke: currentColor; stroke-width: 1.7; }
