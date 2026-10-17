@@ -1,6 +1,22 @@
 import { t } from '../i18n';
 import { nativeAction, nativeCommand } from './projection';
-import type { NativePanelItem, NativeSnapshot } from './protocol';
+import type { BackendConfig } from '../backends/types';
+import type { NativeBackend, NativePanelItem, NativeSettingsPreferences, NativeSnapshot } from './protocol';
+/** 设备常驻展示数据不携带query、fragment、用户名、口令或完整注册表。 */
+export function projectNativeBackends(backends: BackendConfig[], summaries: Record<string, { connection?: string; error?: string; approvalCount?: number; queuedCount?: number }>, snapshots: Record<string, { projects?: string[] }> = {}): NativeBackend[] {
+ return backends.map(backend => {
+  let gatewayAddress: string | undefined;
+  try { const url = new URL(backend.baseUrl); if (['http:', 'https:'].includes(url.protocol)) gatewayAddress = `${url.origin}${url.pathname === '/' ? '' : url.pathname}`; } catch { /* 损坏地址只在显式编辑表单中显示。 */ }
+  const summary = summaries[backend.id];
+  const connectionState = backend.enabled ? summary?.connection ?? 'offline' : 'paused';
+  return { id: backend.id, title: backend.name, connected: connectionState === 'online', enabled: backend.enabled, gatewayAddress, connectionState,
+   projects: snapshots[backend.id]?.projects?.filter(path => typeof path === 'string') ?? [],
+   ...(summary?.approvalCount !== undefined ? { approvalCount: summary.approvalCount } : {}), ...(summary?.queuedCount !== undefined ? { queuedCount: summary.queuedCount } : {}) };
+ });
+}
+export function projectNativePreferences(input: { language: string; transportMode: string; fontSize: string; notification: { mode: string; barkUrl: string } }): NativeSettingsPreferences {
+ return { language: input.language, transportMode: input.transportMode, fontSize: input.fontSize, notificationMode: input.notification.mode, barkConfigured: !!input.notification.barkUrl.trim() };
+}
 /** 此投影只挑选字段；完整设备凭证只在显式编辑表单中进入secureField。 */
 export function projectDevicePanel(c: any): NativeSnapshot['panel'] {
  if (!c.open) return undefined;

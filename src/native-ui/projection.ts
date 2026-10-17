@@ -72,7 +72,7 @@ export function projectConversation(active: RecordValue | null, imageURL: (path:
         // 独立媒体、final 和用户插话在原始位置结束当前历史区。
         if (item.type === 'userMessage' || item.type === 'agentMessage' || ['imageView', 'imageGeneration', 'videoGeneration'].includes(item.type)) flushHistory();
         if (item.type === 'userMessage') {
-          messages.push({ id, role: 'user', text: nativeItemText(item), blocks: imageBlocks(item, id),
+          messages.push({ id, role: 'user', text: nativeItemText(item), blocks: imageBlocks(item, id), turnId, itemId: String(item.id),
             ...(typeof turn.startedAt === 'number' && Number.isFinite(turn.startedAt) && turn.startedAt > 0 ? { timestamp: turn.startedAt } : {}),
             actions: [nativeAction(`${id}:copy`, t('复制'), 'message.copy', { id }), nativeAction(`${id}:edit`, t('编辑'), 'message.edit', { turnId, messageId: String(item.id) })] });
         } else if (item.type === 'agentMessage') {
@@ -80,7 +80,7 @@ export function projectConversation(active: RecordValue | null, imageURL: (path:
           const timestamp = commentary ? formatMessageTimestamp(item.timestamp) : '';
           const blocks = entry.media.flatMap(mediaBlocks);
           if (timestamp) blocks.push({ id: `${id}:timestamp`, kind: 'text', text: timestamp });
-          messages.push({ id, role: 'assistant', text: nativeItemText(item), status: commentary ? undefined : status,
+          messages.push({ id, role: 'assistant', text: nativeItemText(item), status: commentary ? undefined : status, turnId, itemId: String(item.id), phase: typeof item.phase === 'string' ? item.phase : undefined,
             ...(!commentary && !running && typeof turn.completedAt === 'number' && Number.isFinite(turn.completedAt) && turn.completedAt > 0 ? { timestamp: turn.completedAt } : {}),
             ...(blocks.length ? { blocks } : {}),
             actions: [nativeAction(`${id}:copy`, t('复制'), 'message.copy', { id })] });
@@ -122,6 +122,8 @@ export function projectNavigation(input: NavigationInput): NativeGroup[] {
   const row = (item: AggregatedThreadItem) => {
     const params = { backendId: item.backendId, threadId: item.threadId };
     return { id: `${item.backendId}:${item.threadId}`, title: titleOf(item.thread), subtitle: input.listBackendId === 'all' ? `${item.backendName} · ${item.projectName}` : item.projectName,
+      backendId: item.backendId, threadId: item.threadId, cwd: item.thread.isProjectless === true || item.thread.cwd === PROJECTLESS_GROUP_ID ? '' : String(item.thread.cwd ?? ''),
+      isPinned: item.pinned, isUnread: item.unread, running: isThreadRunning(item.thread.status), timestamp: item.timestamp,
       badge: isThreadRunning(item.thread.status) ? t('运行中') : item.unread ? t('未读') : undefined,
       selected: input.selectedBackendId === item.backendId && input.activeThreadId === item.threadId,
       command: nativeCommand('thread.open', params),
@@ -144,9 +146,11 @@ export function projectNavigation(input: NavigationInput): NativeGroup[] {
       const actions: NativePanelItem[] = [];
       if (!collapsed && states[group.cwd] === 'error') actions.push(nativeAction(`${key}:retry`, t('重试'), 'project.retry', params));
       if (!collapsed && hasMore[group.cwd]) actions.push({ ...nativeAction(`${key}:more`, input.loadingProjectKeys.has(key) ? t('加载中…') : t('加载更多'), 'project.more', params), disabled: input.loadingProjectKeys.has(key) });
-      groups.push({ id: key, category: 'project', title: group.projectName, subtitle: backendName, collapsed, loading: collapsed ? undefined : states[group.cwd],
+      const allItems = group.threads.map(row);
+      groups.push({ id: key, category: 'project', title: group.projectName, subtitle: backendName, backendId, cwd: group.cwd === PROJECTLESS_GROUP_ID ? '' : group.cwd,
+        hasMore: !!hasMore[group.cwd], allItems, collapsed, loading: collapsed ? undefined : states[group.cwd],
         command: nativeCommand('project.toggle', params), newCommand: nativeCommand('thread.new', { backendId, cwd: group.cwd === PROJECTLESS_GROUP_ID ? '' : group.cwd }),
-        actions, items: collapsed ? [] : group.threads.map(row) });
+        actions, items: collapsed ? [] : allItems });
     }
   };
   if (input.listBackendId === 'all') {

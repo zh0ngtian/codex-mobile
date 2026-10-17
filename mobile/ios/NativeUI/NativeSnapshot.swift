@@ -8,6 +8,7 @@ struct NativeSnapshot: Codable {
     var title = "Codex Mobile"
     var threadId: String? = nil
     var backendId: String? = nil
+    var cwd: String? = nil
     var connection = "disconnected"
     var busy = false
     var draft = ""
@@ -55,4 +56,25 @@ struct NativeSnapshot: Codable {
     var inputCacheHitPercent: Double? = nil
     var fiveHourRateLimit: NativeRateLimit? = nil
     var sevenDayRateLimit: NativeRateLimit? = nil
+    var tokenUsage: NativeTokenUsage? = nil
+    var preferences: NativeSettingsPreferences? = nil
+    var approvalPanel: NativePanel? = nil
+}
+
+struct NativeTokenUsage: Codable {
+    var lastRequestTokens: Double? = nil
+    var modelContextWindow: Double? = nil
+    var inputTokens: Double? = nil
+    var cachedInputTokens: Double? = nil
+    var outputTokens: Double? = nil
+    var totalTokens: Double? = nil
+    var reasoningOutputTokens: Double? = nil
+}
+
+struct NativeSettingsPreferences: Codable {
+    var language: String? = nil
+    var transportMode: String? = nil
+    var fontSize: String? = nil
+    var notificationMode: String? = nil
+    var barkConfigured: Bool? = nil
 }

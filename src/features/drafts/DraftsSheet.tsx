@@ -47,7 +47,12 @@ export function DraftsSheet({ onClose, onOpenDraft, nativeRuntime }: {
     ...(loading ? [{ id: 'drafts-loading', kind: 'text', text: t('正在读取草稿…') }] : []),
     ...(!loading && !drafts.length ? [{ id: 'drafts-empty', kind: 'text', text: t('暂无草稿') }] : []),
     ...(error ? [{ id: 'drafts-error', kind: 'text', text: error }, nativeAction('drafts-retry', t('重试'), 'drafts.retry')] : []),
-    ...drafts.map(d => ({ id: d.id, kind: 'section', title: d.text.trim().replace(/\s+/g, ' ').slice(0, 100) || t('附件草稿'), text: `${d.backendName} · ${d.cwd || t('无项目')} · ${d.images.length} ${t('图片')} · ${d.files.length} ${t('文件')} · ${new Date(d.updatedAt).toLocaleString()}`, children: [
+    ...drafts.map(d => ({ id: d.id, kind: 'section', title: d.text.trim().replace(/\s+/g, ' ').slice(0, 100) || t('附件草稿'), text: `${d.backendName} · ${d.cwd || t('无项目')} · ${d.images.length} ${t('图片')} · ${d.files.length} ${t('文件')} · ${new Date(d.updatedAt).toLocaleString()}`,
+      value: JSON.stringify({ backendId: d.backendId, backendName: d.backendName, cwd: d.cwd, text: d.text, updatedAt: d.updatedAt,
+        settings: d.settings ? { model: d.settings.model, effort: d.settings.effort, serviceTier: d.settings.serviceTier, permissions: d.settings.permissions, approvalPolicy: d.settings.approvalPolicy, approvalsReviewer: d.settings.approvalsReviewer } : undefined,
+        images: d.images.map(image => ({ id: image.id, name: image.name, type: image.type, size: image.size, url: image.url })),
+        files: d.files.map(file => ({ id: file.id, name: file.name, type: file.type, size: file.size })),
+      }), children: [
       { ...nativeAction(`${d.id}:restore`, t('恢复'), 'drafts.restore', { id: d.id }), disabled: deleting || loading }, { ...nativeAction(`${d.id}:remove`, t('删除'), 'drafts.remove', { id: d.id }), disabled: deleting || loading },
     ] })),
   ] }, {

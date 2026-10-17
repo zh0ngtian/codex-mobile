@@ -105,12 +105,17 @@ export function BackendManagerSheet({
   const setCurrentDraft = (next: BackendDraft | null) => { draftRef.current = next; setDraft(next); };
   useLayoutEffect(() => { draftRef.current = draft; }, [draft]);
   const testingRef = useRef(false);
+  const testSequence = useRef(0);
+  const cancelProbe = useRef<(() => void) | null>(null);
   const [testing, setTesting] = useState(false);
   const [error, setError] = useState("");
   const [qrScannerOpen, setQrScannerOpen] = useState(false);
 
   useEffect(() => {
     if (!open) {
+      testSequence.current += 1;
+      cancelProbe.current?.(); cancelProbe.current = null;
+      testingRef.current = false;
       setDraft(null);
       setError("");
       setTesting(false);
@@ -119,6 +124,7 @@ export function BackendManagerSheet({
       setDraft((current) => current ?? newBackendDraft(0));
     }
   }, [open, registry.backends.length]);
+  useEffect(() => () => { testSequence.current += 1; cancelProbe.current?.(); cancelProbe.current = null; }, []);
 
   const applyScannedGateway = useCallback((value: string) => {
     try {
@@ -169,7 +175,9 @@ export function BackendManagerSheet({
   const submit = async (event?: Pick<FormEvent, "preventDefault">) => {
     event?.preventDefault();
     const currentDraft = draftRef.current;
-    if (!currentDraft || testingRef.current) return;
+    if (!currentDraft || testingRef.current) return { saved: false, error: t('设备表单已关闭或正在测试') };
+    const sequence = ++testSequence.current;
+    const cancelled = new Promise<never>((_, reject) => { cancelProbe.current = () => reject(new Error(t('设备测试已取消'))); });
     testingRef.current = true;
     setTesting(true);
     setError("");
@@ -183,7 +191,8 @@ export function BackendManagerSheet({
         enabled: currentDraft.enabled,
         order: currentDraft.order,
       };
-      const host = await probe({ ...candidate, transportMode });
+      const host = await Promise.race([probe({ ...candidate, transportMode }), cancelled]);
+      if (sequence !== testSequence.current || draftRef.current?.id !== currentDraft.id) return { saved: false, error: t('设备测试已取消') };
       const hostId = host.hostId.trim();
       if (!hostId) throw new Error(t("设备身份响应无效"));
       const next = upsertBackend(registry, {
@@ -193,11 +202,13 @@ export function BackendManagerSheet({
       });
       onChange(next);
       setCurrentDraft(null);
+      return { saved: true };
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : String(reason));
+      const message = reason instanceof Error ? reason.message : String(reason);
+      if (sequence === testSequence.current) setError(message);
+      return { saved: false, error: message };
     } finally {
-      testingRef.current = false;
-      setTesting(false);
+      if (sequence === testSequence.current) { cancelProbe.current = null; testingRef.current = false; setTesting(false); }
     }
   };
 
@@ -248,8 +259,12 @@ export function BackendManagerSheet({
     'device.add': () => { guard(); setCurrentDraft(newBackendDraft(registry.backends.length)); setError(''); },
     'device.edit': p => editBackend(getBackend(p.id)),
     'device.change': p => { guard(); if (!draftRef.current || (p.draftId !== undefined && p.draftId !== draftRef.current.id) || !['name', 'gatewayUrl'].includes(String(p.field))) throw new Error(t('设备表单已关闭')); setCurrentDraft({ ...draftRef.current!, [String(p.field)]: String(p.value) }); },
-    'device.save': () => submit(),
-    'device.cancel': () => { guard(); setConfirmation(null); setCurrentDraft(null); setError(''); },
+    'device.save': async () => { const result = await submit(); if (!result.saved) throw new Error(result.error); },
+    'device.cancel': p => {
+      testSequence.current += 1; cancelProbe.current?.(); cancelProbe.current = null;
+      testingRef.current = false; setTesting(false); setConfirmation(null); setError('');
+      if (p.testOnly !== true) setCurrentDraft(null);
+    },
     'device.scan': () => { guard(); return openQrScanner(); },
     'device.move': p => { guard(); updateRegistry(() => moveBackend(registry, getBackend(p.id).id, Number(p.direction) as -1 | 1)); },
     'device.toggle': p => {
@@ -267,7 +282,7 @@ export function BackendManagerSheet({
     'settings.transport': p => { guard(); if (!['http', 'stream'].includes(String(p.value))) throw new Error(t('选项不可用')); onTransportModeChange?.(p.value as TransportMode); },
     'settings.push.mode': p => { if (!['system', 'bark'].includes(String(p.value))) throw new Error(t('选项不可用')); push.setMode(p.value as any); push.setError(''); push.setSaved(false); },
     'settings.push.url': p => { push.setUrl(String(p.value)); push.setError(''); push.setSaved(false); },
-    'settings.push.save': () => push.save(),
+    'settings.push.save': () => { const result = push.save(); if (!result.saved) throw new Error(result.error); },
     'settings.update.check': () => { if (!appUpdate?.manualCheckSupported || appUpdate.checking) throw new Error(t('检查更新不可用')); appUpdate.onCheck(); },
   });
   if (!open) return null;

@@ -87,7 +87,7 @@ export function workspaceBusinessPanels(c: NativeWorkspaceController, panel: Sta
    if (perms?.network?.enabled != null) items.push(text('permissions:network', t('网络访问'), t(perms.network.enabled ? '允许联网' : '禁用联网')));
    for (const access of ['read', 'write']) if (perms?.fileSystem?.[access]) items.push(text(`permissions:${access}`, t(access === 'read' ? '读取路径' : '写入路径'), perms.fileSystem[access].join('\n')));
    for (const [index, entry] of (perms?.fileSystem?.entries ?? []).entries()) items.push(text(`permissions:entry:${index}`, entry.access, entry.path.path ?? entry.path.pattern ?? JSON.stringify(entry.path.value)));
-   items.push(...approvalDecisions(request).map((decision, index) => ({ ...nativeAction(`approval-decision:${index}`, decisionLabel(decision), 'approval.decide', { requestKey, index }), disabled })));
+   items.push(...approvalDecisions(request).map((decision, index) => ({ ...nativeAction(`approval-decision:${index}`, decisionLabel(decision), 'approval.decide', { requestKey, index }), value: JSON.stringify(decision), disabled })));
   }
   result = { id: `approval:${requestKey}`, dismissible: request.method === 'item/tool/requestUserInput' && !disabled, title: t(request.method === 'item/tool/requestUserInput' ? 'Codex 需要你的回答' : '需要你的确认'), items };
  } else if (edit && historyMessage && id === 'confirm-history') {

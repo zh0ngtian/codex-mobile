@@ -6,17 +6,25 @@ export interface NativePanelItem {
   id: string; kind: string; title?: string; text?: string; value?: string; previewURL?: string; values?: string[];
   line?: number; options?: NativeOption[]; command?: NativeCommand; children?: NativePanelItem[]; disabled?: boolean;
 }
-export interface NativeNavigationItem { id: string; title: string; subtitle?: string; badge?: string; selected?: boolean; command?: NativeCommand; actions?: NativePanelItem[] }
+export interface NativeNavigationItem { id: string; title: string; subtitle?: string; badge?: string; selected?: boolean; command?: NativeCommand; actions?: NativePanelItem[];
+  backendId?: string; threadId?: string; cwd?: string; isPinned?: boolean; isUnread?: boolean; running?: boolean; timestamp?: number;
+  inputText?: string; queueState?: string; attachmentCount?: number; revision?: number; error?: string; attachments?: NativeAttachment[]; configuration?: NativeQueueConfiguration }
 export interface NativeGroup { id: string; title: string; items: NativeNavigationItem[]; command?: NativeCommand; actions?: NativePanelItem[]; collapsed?: boolean;
-  category?: 'pinned' | 'project' | 'recent' | 'search'; subtitle?: string; loading?: string; newCommand?: NativeCommand }
-export interface NativeMessage { id: string; role: string; text: string; status?: string; blocks?: NativePanelItem[]; actions?: NativePanelItem[]; timestamp?: number; historyEdit?: NativeSnapshot['panel'] }
-export interface NativeAttachment { id: string; name: string; detail?: string; imageURL?: string; type?: string; command?: NativeCommand }
+  category?: 'pinned' | 'project' | 'recent' | 'search'; subtitle?: string; loading?: string; newCommand?: NativeCommand;
+  backendId?: string; cwd?: string; hasMore?: boolean; allItems?: NativeNavigationItem[] }
+export interface NativeMessage { id: string; role: string; text: string; status?: string; blocks?: NativePanelItem[]; actions?: NativePanelItem[]; timestamp?: number; historyEdit?: NativeSnapshot['panel']; turnId?: string; itemId?: string; phase?: string }
+export interface NativeAttachment { id: string; name: string; detail?: string; imageURL?: string; type?: string; command?: NativeCommand; size?: number }
+export interface NativeBackend { id: string; title: string; subtitle?: string; connected?: boolean; gatewayAddress?: string; enabled?: boolean;
+  connectionState?: string; projects?: string[]; approvalCount?: number; queuedCount?: number }
+export interface NativeSettingsPreferences { language?: string; transportMode?: string; fontSize?: string; notificationMode?: string; barkConfigured?: boolean }
+export interface NativeTokenUsage { lastRequestTokens?: number; modelContextWindow?: number; inputTokens?: number; cachedInputTokens?: number; outputTokens?: number; totalTokens?: number; reasoningOutputTokens?: number }
+export interface NativeQueueConfiguration { model?: string; effort?: string; serviceTier?: string; permission?: string }
 export interface NativeResult { id: string; name: string; ok: boolean; contextId?: string; error?: string; fieldKey?: string; fieldRevision?: number }
 export interface NativeSnapshot {
   version: 1; ready: boolean; locale: string; fontScale: number; title: string;
-  threadId?: string; backendId?: string; contextId?: string; draftRevision?: number; caretOffset?: number;
+  threadId?: string; backendId?: string; cwd?: string; contextId?: string; draftRevision?: number; caretOffset?: number;
   connection: string; busy: boolean; draft: string; canSend: boolean; readOnly: boolean;
-  backends: Array<{ id: string; title: string; subtitle?: string; connected?: boolean }>;
+  backends: NativeBackend[];
   groups: NativeGroup[]; messages: NativeMessage[]; attachments: NativeAttachment[]; queued: NativeNavigationItem[];
   approvalCount: number; model: string; effort: string; models: NativeOption[]; efforts: NativeOption[];
   richContent?: NativePanelItem[];
@@ -30,6 +38,7 @@ export interface NativeSnapshot {
   inputTokenUsage?: string; outputTokenUsage?: string; inputCacheHitPercent?: number;
   fiveHourRateLimit?: { remainingPercent: number; resetsAt?: number; windowDurationMins?: number };
   sevenDayRateLimit?: { remainingPercent: number; resetsAt?: number; windowDurationMins?: number };
+  tokenUsage?: NativeTokenUsage; preferences?: NativeSettingsPreferences; approvalPanel?: NativeSnapshot['panel'];
 }
 export function emptyNativeSnapshot(): NativeSnapshot {
   return { version: 1, ready: false, locale: 'zh-CN', fontScale: 1, title: 'Codex Mobile', connection: 'disconnected', busy: false,
@@ -38,4 +47,4 @@ export function emptyNativeSnapshot(): NativeSnapshot {
 }
 export type NativeHandler = (params: NativeParams) => unknown | Promise<unknown>;
 export type NativeHandlers = Partial<Record<string, NativeHandler>>;
-export interface NativeNavigation { selectedBackendId: string; listBackendId?: string; backends: NativeSnapshot['backends']; groups: NativeGroup[]; sidebarOpen?: boolean; search?: string; error?: string }
+export interface NativeNavigation { selectedBackendId: string; listBackendId?: string; backends: NativeSnapshot['backends']; groups: NativeGroup[]; sidebarOpen?: boolean; search?: string; error?: string; preferences?: NativeSettingsPreferences }

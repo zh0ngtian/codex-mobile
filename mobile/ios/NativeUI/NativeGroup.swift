@@ -11,4 +11,8 @@ struct NativeGroup: Codable, Identifiable {
     var subtitle: String? = nil
     var loading: String? = nil
     var newCommand: NativeCommand? = nil
+    var backendId: String? = nil
+    var cwd: String? = nil
+    var hasMore: Bool? = nil
+    var allItems: [NativeNavigationItem]? = nil
 }

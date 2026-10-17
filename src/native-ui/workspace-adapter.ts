@@ -18,6 +18,7 @@ import type { NativeRuntime } from './runtime';
 import { useNativeWorkspace } from './adapters';
 import { nativeAction, nativeCommand, projectConversation, insertNativeMentionAt } from './projection';
 import { emptyNativeSnapshot, type NativeHandlers, type NativeSnapshot, type NativePanelItem, type NativeCommand } from './protocol';
+import { nativeImportedFiles } from './attachment-import';
 
 type RecordValue = Record<string, any>;
 /** 现有 BackendWorkspace 的业务控制器。对象仅在 JS 内传递，绝不直接发布给 Swift。
@@ -63,7 +64,16 @@ export function bindWorkspaceCommands(snapshot: NativeSnapshot): NativeSnapshot 
     queued: snapshot.queued.map(entry => ({ ...entry, command: contextual(entry.command), actions: entry.actions?.map(item) })),
     conversationActions: snapshot.conversationActions?.map(item),
     panel: snapshot.panel ? { ...snapshot.panel, items: snapshot.panel.items.map(item) } : undefined,
+    approvalPanel: snapshot.approvalPanel ? { ...snapshot.approvalPanel, items: snapshot.approvalPanel.items.map(item) } : undefined,
   };
+}
+function projectNativeTokenUsage(usage: RecordValue | undefined): NativeSnapshot['tokenUsage'] {
+  if (!usage) return undefined;
+  const values = { lastRequestTokens: usage.last?.totalTokens, modelContextWindow: usage.modelContextWindow,
+    inputTokens: usage.total?.inputTokens, cachedInputTokens: usage.total?.cachedInputTokens, outputTokens: usage.total?.outputTokens,
+    totalTokens: usage.total?.totalTokens, reasoningOutputTokens: usage.total?.reasoningOutputTokens };
+  const entries = Object.entries(values).filter(([, value]) => typeof value === 'number' && Number.isFinite(value) && value >= 0);
+  return entries.length ? Object.fromEntries(entries) : undefined;
 }
 export function createWorkspaceAdapter(c: NativeWorkspaceController, panel: PanelState): { snapshot: NativeSnapshot; handlers: NativeHandlers } {
   const state = c.extended?.state ?? {};
@@ -79,6 +89,7 @@ export function createWorkspaceAdapter(c: NativeWorkspaceController, panel: Pane
   ] : [];
   const hasInput = !!c.draft.trim() || !!c.draftImages.length || !!c.draftFiles.length;
   const business = workspaceBusinessPanels(c, panel, messages);
+  const approvalPanel = state.approval ? workspaceBusinessPanels(c, { ...panel, panelId: 'approval' }, messages).panel : undefined;
   if (business.historyMessage) business.historyMessage.historyEdit = business.historyEdit;
   const context = contextUsageMetrics(state.tokenUsage);
   const inputTokenUsage = formatTokenCount(state.tokenUsage?.total?.inputTokens);
@@ -90,16 +101,20 @@ export function createWorkspaceAdapter(c: NativeWorkspaceController, panel: Pane
   if (c.loadState === 'error') conversationActions.push(nativeAction('retry', t('重试'), 'thread.retry'));
   if (c.olderTurnsState !== 'exhausted') conversationActions.push({ ...nativeAction('older', c.olderTurnsState === 'loading' ? t('加载中…') : c.olderTurnsState === 'error' ? t('重试加载历史') : t('加载更早消息'), 'thread.older'), disabled: c.olderTurnsState === 'loading' });
   const snapshot: NativeSnapshot = { ...emptyNativeSnapshot(), ready: true, locale: getActiveLocale(), fontScale: FONT_SCALES[readFontSize()],
-    title: String(c.active?.name || c.active?.preview || t('新对话')), backendId: c.backend.id, threadId: c.active?.id ? String(c.active.id) : undefined, contextId: c.contextId,
+    title: String(c.active?.name || c.active?.preview || t('新对话')), backendId: c.backend.id, threadId: c.active?.id ? String(c.active.id) : undefined, cwd: typeof c.active?.cwd === 'string' ? c.active.cwd : undefined, contextId: c.contextId,
     backendName: c.backend.name, projectName: !c.active?.id && !c.active?.cwd ? t('无项目') : projectNameOf(c.active ?? {}),
     draftRevision: c.draftRevision, caretOffset, mentions, richContent: panel.richContent, connection: c.connection, busy: c.busy, draft: c.draft, canSend: hasInput && !c.readOnly && !c.imageReading && !c.draftSaving,
     canInterrupt: c.busy && !!c.active?.id && !c.readOnly, readOnly: c.readOnly, messages,
-    attachments: [...c.draftImages.map(image => ({ id: image.id, name: image.name, type: image.type, imageURL: image.url, detail: `${image.size} B` })), ...c.draftFiles.map(file => ({ id: file.id, name: file.name, type: file.type, detail: `${file.size} B`, ...(/^(audio|video)\//.test(file.type) ? { command: nativeCommand('attachment.preview', { id: file.id }) } : {}) }))],
+    attachments: [...c.draftImages.map(image => ({ id: image.id, name: image.name, type: image.type, imageURL: image.url, size: image.size, detail: `${image.size} B` })), ...c.draftFiles.map(file => ({ id: file.id, name: file.name, type: file.type, size: file.size, detail: `${file.size} B`, ...(/^(audio|video)\//.test(file.type) ? { command: nativeCommand('attachment.preview', { id: file.id }) } : {}) }))],
     queued: c.queued.map(item => {
       const s = c.extended?.state ?? {}; const locked = item.state === 'sending' || item.state === 'uncertain';
       const canAct = !s.steering && !s.queueSaving && !locked && (c.busy ? !!s.steerable : !!item.failed);
       const status = item.state === 'sending' ? t('发送中') : item.state === 'uncertain' ? t('待确认') : canAct ? t(c.busy ? '改为引导' : '重试') : t('排队中');
       return { id: String(item.id), title: String(item.text), subtitle: `${status}${item.error ? ` · ${item.error}` : ''}`,
+        backendId: c.backend.id, threadId: typeof item.threadId === 'string' ? item.threadId : undefined,
+        inputText: typeof item.inputText === 'string' ? item.inputText : undefined, queueState: item.state ?? (item.failed ? 'failed' : 'queued'),
+        attachmentCount: Number.isSafeInteger(item.attachmentCount) ? item.attachmentCount : undefined,
+        revision: Number.isSafeInteger(item.revision) ? item.revision : undefined, error: typeof item.error === 'string' ? item.error : undefined,
         command: canAct ? nativeCommand('queue.send', { id: item.id }) : undefined,
         actions: [{ ...nativeAction(`${item.id}:edit`, t('编辑'), 'panel.open', { id: `queue-edit:${item.id}` }), disabled: locked || !!s.steering || !!s.queueSaving }, { ...nativeAction(`${item.id}:cancel`, t('移除'), 'queue.cancel', { id: item.id }), disabled: item.state === 'sending' || !!s.steering || !!s.queueSaving }] };
     }),
@@ -118,6 +133,7 @@ export function createWorkspaceAdapter(c: NativeWorkspaceController, panel: Pane
     inputCacheHitPercent: inputCacheHitPercent(state.tokenUsage) ?? undefined,
     sevenDayRateLimit: sevenDayRateLimit ?? undefined,
     fiveHourRateLimit: fiveHourRateLimit ?? undefined,
+    tokenUsage: projectNativeTokenUsage(state.tokenUsage), approvalPanel,
     pending: c.pending || c.imageReading || c.draftSaving, loading: c.loadState, conversationActions,
     badge: c.syncStale ? t('正在同步') : undefined, error: c.error || c.loadError || undefined,
     panel: business.panel ?? projectPanel(c, panel),
@@ -139,6 +155,10 @@ export function createWorkspaceAdapter(c: NativeWorkspaceController, panel: Pane
       const files = await pick(String(p.kind));
       // Controller selectFiles 再核对 context；取消无修改。
       if (files.length && context === c.contextId) await c.selectFiles(files);
+    },
+    'attachment.import': p => {
+      if (c.imageReading || c.draftSaving) throw new Error(t('当前无法导入附件'));
+      return c.selectFiles(nativeImportedFiles(p.items));
     },
     'location.insert': async () => { if (!await c.selectLocation()) throw new Error(t('无法获取当前位置')); },
     'draft.save': async () => { if (await c.saveDraft() === false) throw new Error(t('无法保存草稿')); }, 'thread.retry': () => c.retry(), 'thread.older': () => c.loadOlder(),

@@ -5,6 +5,8 @@ import { useNativeRuntime, useNativeWorkspace } from "./native-ui/adapters";
 import { useNativeConversationAdapter } from "./native-ui/workspace-adapter";
 import { isNativeUIEnabled, type NativeRuntime } from "./native-ui/runtime";
 import { projectNavigation } from "./native-ui/projection";
+import { projectNativeBackends, projectNativePreferences } from "./native-ui/device-panel";
+import { readFontSize } from "./ui/font-size";
 import { resolveNativeNewChatTarget, type NativeNewChatTarget } from "./native-ui/new-chat-target";
 import { isClientForeground } from "./native-ui/foreground";
 import { DraftsSheet } from "./features/drafts/DraftsSheet";
@@ -4455,7 +4457,10 @@ function UnconfiguredApp({ registry, setRegistry, managerOpen, setManagerOpen, a
  notificationPreference: NotificationPreference; saveNotificationPreference: (value: NotificationPreference) => void; failedNotificationDevices: string[];
  nativeSettingsPage: string; setNativeSettingsPage: (value: string) => void;
 }) {
-  const nativeRuntime = useNativeRuntime({ selectedBackendId: 'bootstrap', backends: [], groups: [] }, { 'settings.open': p => { setNativeSettingsPage(String(p.id || 'devices')); setManagerOpen(true); } });
+  const { preference: languagePreference } = useI18n();
+  const nativeRuntime = useNativeRuntime({ selectedBackendId: 'bootstrap', backends: [], groups: [],
+    preferences: projectNativePreferences({ language: languagePreference, transportMode, fontSize: readFontSize(), notification: notificationPreference }),
+  }, { 'settings.open': p => { setNativeSettingsPage(String(p.id || 'devices')); setManagerOpen(true); } });
   useNativeWorkspace(nativeRuntime, 'bootstrap', { ...emptyNativeSnapshot(), ready: true, title: t('添加设备'), conversationActions: [{ id: 'add-device', kind: 'action', title: t('添加设备'), command: { name: 'settings.open', params: {} } }] }, {});
   return (
     <main className="app-shell">
@@ -4531,6 +4536,7 @@ function ConfiguredApp({
   failedNotificationDevices: string[];
   onRegistryChange: (registry: BackendRegistry) => void;
 }) {
+  const { preference: languagePreference } = useI18n();
   const [registry, setRegistry] = useState(initialRegistry);
   useSwitchRegistry(registry);
   useEffect(() => { onRegistryChange(registry); }, [registry, onRegistryChange]);
@@ -5077,10 +5083,8 @@ function ConfiguredApp({
   };
   const nativeRuntime = useNativeRuntime({
     selectedBackendId: selectedBackend?.id ?? "", listBackendId, sidebarOpen, search: query, groups: nativeGroups,
-    backends: [{ id: "all", title: t("全部设备"), connected: true }, ...mountedBackends.map(backend => ({
-      id: backend.id, title: backend.name, connected: summaries[backend.id]?.connection === "online",
-      subtitle: summaries[backend.id]?.error || summaries[backend.id]?.connection,
-    }))],
+    backends: [{ id: "all", title: t("全部设备"), connected: true }, ...projectNativeBackends(registry.backends, summaries, snapshots)],
+    preferences: projectNativePreferences({ language: languagePreference, transportMode, fontSize: readFontSize(), notification: notificationPreference }),
   }, {
     "settings.open": p => { setNativeSettingsPage(String(p.id || "devices")); setManagerOpen(true); },
     "drafts.open": () => setDraftsOpen(true),

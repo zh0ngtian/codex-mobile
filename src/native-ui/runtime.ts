@@ -1,6 +1,7 @@
 import { flushSync } from 'react-dom';
 import { getActiveLocale, t } from '../i18n';
 import { FONT_SCALES, readFontSize } from '../ui/font-size';
+import { validateNativeAttachmentImport } from './attachment-import';
 import { emptyNativeSnapshot, type NativeHandlers, type NativeNavigation, type NativeSnapshot, type NativeResult, type NativeParams } from './protocol';
 
 type NativeWindow = Window & { __CODEX_NATIVE_UI__?: boolean; __CODEX_NATIVE_UI_RECOVERED__?: boolean; webkit?: { messageHandlers?: { nativeUI?: { postMessage: (value: unknown) => void } } }; codexMobilePublishNativeSnapshot?: (snapshot: NativeSnapshot) => void };
@@ -11,7 +12,7 @@ export function isNativeUIEnabled() {
 }
 export const isNativeBridgeEnabled = isNativeUIEnabled;
 const globalNames = new Set(['settings.native-ui', 'backend.select', 'navigation.search', 'navigation.sidebar', 'navigation.refresh', 'thread.new', 'thread.open', 'thread.manage', 'project.toggle', 'project.more', 'project.retry', 'navigation.filter', 'confirmation.answer', 'settings.open', 'drafts.open', 'device.add', 'device.edit', 'device.change', 'device.save', 'device.cancel', 'device.scan', 'device.toggle', 'device.remove', 'device.move', 'settings.language', 'settings.font', 'settings.transport', 'settings.push.mode', 'settings.push.url', 'settings.push.save', 'settings.update.check', 'drafts.restore', 'drafts.remove', 'drafts.retry', 'update.install', 'update.retry', 'update.close']);
-const workspaceNames = new Set(['draft.set', 'draft.save', 'message.send', 'turn.stop', 'model.select', 'effort.select', 'attachment.pick', 'attachment.preview', 'attachment.remove', 'location.insert', 'mention.search', 'mention.insert', 'thread.retry', 'thread.older', 'message.edit', 'message.copy', 'queue.cancel', 'queue.send', 'queue.edit', 'speed.select', 'permission.select', 'newchat.backend', 'newchat.project', 'workspace.thread', 'workspace.rename.change', 'workspace.rename.submit', 'approval.answer', 'approval.decide', 'approval.submit', 'approval.dismiss', 'approval.reopen', 'history.change', 'history.cancel', 'history.submit', 'queue.change', 'file.open', 'file.mode', 'diagram.render']);
+const workspaceNames = new Set(['draft.set', 'draft.save', 'message.send', 'turn.stop', 'model.select', 'effort.select', 'attachment.import', 'attachment.pick', 'attachment.preview', 'attachment.remove', 'location.insert', 'mention.search', 'mention.insert', 'thread.retry', 'thread.older', 'message.edit', 'message.copy', 'queue.cancel', 'queue.send', 'queue.edit', 'speed.select', 'permission.select', 'newchat.backend', 'newchat.project', 'workspace.thread', 'workspace.rename.change', 'workspace.rename.submit', 'approval.answer', 'approval.decide', 'approval.submit', 'approval.dismiss', 'approval.reopen', 'history.change', 'history.cancel', 'history.submit', 'queue.change', 'file.open', 'file.mode', 'diagram.render']);
 // Task2b 只能经此处显式扩展可调用命令，不能把任意名字转发成 RPC。
 const panelNames = new Set(['panel.open', 'panel.close']);
 const stringKeys: Record<string, string[]> = {
@@ -31,6 +32,7 @@ const stringKeys: Record<string, string[]> = {
   'drafts.restore': ['id'], 'drafts.remove': ['id'], 'file.open': ['href'], 'file.mode': ['value'], 'diagram.render': ['source'],
 };
 function validate(name: string, params: NativeParams) {
+  if (name === 'attachment.import') validateNativeAttachmentImport(params.items);
   if (name === 'settings.native-ui' && typeof params.enabled !== 'boolean') throw new Error(t('原生界面设置无效'));
   if (name === 'thread.new' && (params.backendId !== undefined || params.cwd !== undefined) && (typeof params.backendId !== 'string' || typeof params.cwd !== 'string')) throw new Error(t('项目目标无效'));
   if (![globalNames, workspaceNames, panelNames].some(set => set.has(name))) throw new Error(t('不支持的原生命令'));
@@ -38,6 +40,7 @@ function validate(name: string, params: NativeParams) {
   if (params.confirmed !== undefined && typeof params.confirmed !== 'boolean') throw new Error(t('确认参数无效'));
   if (name === 'approval.decide' && (!Number.isSafeInteger(params.index) || Number(params.index) < 0)) throw new Error(t('审批决定无效'));
   if (name === 'device.move' && ![-1, 1].includes(Number(params.direction))) throw new Error(t('排序方向无效'));
+  if (name === 'device.cancel' && params.testOnly !== undefined && typeof params.testOnly !== 'boolean') throw new Error(t('取消测试参数无效'));
   if (name === 'draft.set' && (!Number.isSafeInteger(params.revision) || Number(params.revision) < 1)) throw new Error(t('草稿版本无效'));
   if (name === 'draft.set' && params.caretOffset !== undefined && (!Number.isSafeInteger(params.caretOffset) || Number(params.caretOffset) < 0 || Number(params.caretOffset) > String(params.value).length)) throw new Error(t('草稿版本无效'));
   if (name === 'navigation.sidebar' && typeof params.open !== 'boolean') throw new Error(t('侧栏状态无效'));
@@ -88,9 +91,13 @@ export class NativeRuntime {
     const workspace = this.workspaces.get(this.navigation.selectedBackendId);
     const globalPanel = [...this.globalPanels.values()].filter(v => v.panel).at(-1)?.panel;
     return { ...(workspace?.value ?? emptyNativeSnapshot()), locale: getActiveLocale(), fontScale: FONT_SCALES[readFontSize()], ...(globalPanel ? { ready: true, panel: globalPanel } : {}), backends: this.navigation.backends,
-      groups: this.navigation.groups.map(group => ({ ...group, items: group.items.map(item => item.command?.name === 'thread.open' ? { ...item,
-        selected: item.command.params.backendId === this.navigation.selectedBackendId && item.command.params.threadId === workspace?.value.threadId } : item) })),
+      groups: this.navigation.groups.map(group => {
+        const select = (item: typeof group.items[number]) => item.command?.name === 'thread.open' ? { ...item,
+          selected: item.command.params.backendId === this.navigation.selectedBackendId && item.command.params.threadId === workspace?.value.threadId } : item;
+        return { ...group, items: group.items.map(select), allItems: group.allItems?.map(select) };
+      }),
       sidebarOpen: this.navigation.sidebarOpen, search: this.navigation.search, listBackendId: this.navigation.listBackendId,
+      preferences: this.navigation.preferences ? { ...this.navigation.preferences, fontSize: readFontSize() } : undefined,
       draftRevision: workspace?.revision ?? 0, ...(workspace?.echo !== undefined ? { draft: workspace.echo, caretOffset: workspace.echoCaret ?? workspace.echo.length } : {}),
       commandResults: [...this.results], error: this.commandError || workspace?.value.error || this.navigation.error || undefined };
   }

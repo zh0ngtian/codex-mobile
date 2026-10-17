@@ -22,8 +22,11 @@ export function usePushSettingsState(preference: NotificationPreference, onSave:
     try {
       const barkUrl = mode === "bark" ? parseBarkPushUrl(url) : preference.barkUrl;
       onSave({ mode, barkUrl }); setUrl(barkUrl); setSaved(true);
+      return { saved: true };
     } catch (reason) {
-      setError(reason instanceof Error ? t(reason.message) : t("无法保存推送设置"));
+      const message = reason instanceof Error ? t(reason.message) : t("无法保存推送设置");
+      setError(message);
+      return { saved: false, error: message };
     }
   };
   return { mode, setMode, url, setUrl, error, setError, saved, setSaved, save };

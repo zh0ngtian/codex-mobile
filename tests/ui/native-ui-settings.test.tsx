@@ -79,7 +79,7 @@ it('通知单选、Bark安全字段和保存继续使用真实回调并保留校
  expect(runtime.snapshot().panel?.items.find(item => item.id === 'push')?.value).toBe('bark');
  expect(runtime.snapshot().panel?.items.find(item => item.id === 'bark-url')?.kind).toBe('secureField');
  await send('settings.push.url', { value: 'invalid-bark-link' });
- await send('settings.push.save');
+ await act(async () => { expect((await runtime.dispatch({ id: crypto.randomUUID(), name: 'settings.push.save', params: {} })).ok).toBe(false); });
  expect(saves).toHaveLength(0);
  expect(runtime.snapshot().panel?.items.find(item => item.id === 'push-status')?.text).toBeTruthy();
  await send('settings.push.url', { value: 'https://api.day.app/VALID_DEVICE_KEY' });
