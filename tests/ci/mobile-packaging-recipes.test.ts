@@ -5,10 +5,11 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
+import sharp from "sharp";
 
 function readProjectFile(path: string) {
   return readFileSync(path, "utf8");
@@ -118,18 +119,79 @@ describe("移动 App 本地构建配置", () => {
     expect(readProjectFile("vite.config.ts")).toContain('base: "./"');
   });
 
-  it("移动图标合成后裁掉圆角矩形外侧透明留白", () => {
-    const composer = readProjectFile("scripts/compose-mobile-app-icon.sh");
+  it("生产移动图标是无透明通道的白底黑色 1024 像素 PNG", async () => {
+    const metadata = await sharp("docs/assets/app-icon/codex-mobile-app-icon-1024.png").metadata();
+    const icon = await sharp("docs/assets/app-icon/codex-mobile-app-icon-1024.png")
+      .raw()
+      .toBuffer({ resolveWithObject: true });
 
-    expect(composer).toContain("crop=824:824:100:100");
-    expect(composer).toContain("color=c=white:s=824x824");
-    expect(composer).toContain(
-      "fillborders=left=100:right=100:top=100:bottom=100:mode=smear",
+    expect(metadata.format).toBe("png");
+    expect(metadata.width).toBe(1024);
+    expect(metadata.height).toBe(1024);
+    expect(metadata.space).toBe("srgb");
+    expect(metadata.hasAlpha).toBe(false);
+    expect(icon.info.channels).toBe(3);
+
+    let blackPixels = 0;
+    for (let y = 0; y < icon.info.height; y += 1) {
+      for (let x = 0; x < icon.info.width; x += 1) {
+        const offset = (y * icon.info.width + x) * icon.info.channels;
+        const red = icon.data[offset];
+        const green = icon.data[offset + 1];
+        const blue = icon.data[offset + 2];
+        if (red < 16 && green < 16 && blue < 16) blackPixels += 1;
+        if (x < 64 || x >= icon.info.width - 64 || y < 64 || y >= icon.info.height - 64) {
+          expect([red, green, blue]).toEqual([255, 255, 255]);
+        }
+      }
+    }
+    expect(blackPixels).toBeGreaterThan(200_000);
+  });
+
+  it("图标生成入口离线铺白并生成与官方原件一致的 RGB 像素", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "codex mobile icon "));
+    const output = "generated icon.png";
+    const outputPath = join(directory, output);
+    const source = resolve("docs/assets/app-icon/chatgpt-official-ios-1024.png");
+    const production = resolve("docs/assets/app-icon/codex-mobile-app-icon-1024.png");
+    const script = resolve("scripts/compose-mobile-app-icon.sh");
+    try {
+      const result = spawnSync(
+        "sh",
+        [script, "--output", output],
+        { cwd: directory, encoding: "utf8" },
+      );
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.stdout.trim()).toBe(output);
+
+      const expected = await sharp(source)
+        .flatten({ background: "#ffffff" })
+        .removeAlpha()
+        .raw()
+        .toBuffer();
+      const generated = await sharp(outputPath).removeAlpha().raw().toBuffer();
+      const productionPixels = await sharp(production).removeAlpha().raw().toBuffer();
+      expect(generated.equals(expected)).toBe(true);
+      expect(generated.equals(productionPixels)).toBe(true);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("图标生成入口显示帮助并拒绝未知参数", () => {
+    const help = spawnSync("sh", ["scripts/compose-mobile-app-icon.sh", "--help"], {
+      encoding: "utf8",
+    });
+    expect(help.status, help.stderr).toBe(0);
+    expect(help.stdout).toContain("--output <路径>");
+
+    const unknown = spawnSync(
+      "sh",
+      ["scripts/compose-mobile-app-icon.sh", "--legacy-option"],
+      { encoding: "utf8" },
     );
-    expect(composer).toContain("geq=r=255:g=255:b=255:a='255*Y/103'");
-    expect(composer).toContain("overlay=x=0:y=920");
-    expect(composer).toContain("format=rgb24");
-    expect(composer).toContain("scale=1024:1024:flags=lanczos");
+    expect(unknown.status).not.toBe(0);
+    expect(unknown.stderr).toContain("未知参数：--legacy-option");
   });
 
   it("Android 只构建一个不绑定后端的 Codex Mobile App", () => {
