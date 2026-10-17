@@ -1,0 +1,187 @@
+{
+  "date": "2026-10-17",
+  "task": "apple-intelligence-030-release-20261017",
+  "batchId": "7229da73-9f60-4b14-9388-ca375fad0e18",
+  "status": "complete",
+  "coordinatorVersion": "0.1.6",
+  "requestedSourceCommit": "4ca6b4d6b728ce3e7f00727b459eafc0b27081ca",
+  "frozenCommit": "3502c1fe86534e881fade350b06122f1265e1c16",
+  "sourceVerification": {
+    "sourceCommit": "4ca6b4d6b728ce3e7f00727b459eafc0b27081ca",
+    "frozenCommit": "3502c1fe86534e881fade350b06122f1265e1c16",
+    "changedFiles": [
+      ".release-batch.json"
+    ],
+    "runtimeTreeMatchesRequestedSource": true,
+    "iconSha256": "173f86a63e412af2d635f15d8ec4d8a3326cdfb8c95bb0af13b9caa08b366857"
+  },
+  "version": "0.3.0",
+  "buildNumber": "3000",
+  "githubRelease": "https://github.com/zh0ngtian/codex-mobile/releases/tag/v0.3.0",
+  "receipt": "~/Library/Application Support/ReleaseCoordinator/receipts/7229da73-9f60-4b14-9388-ca375fad0e18.json",
+  "validationDirectory": "~/Library/Application Support/ReleaseCoordinator/validations/apple-intelligence-030-release-20261017",
+  "localValidation": {
+    "buildAndUpdateTests": 145,
+    "adapterRegression": 167,
+    "coordinatorRecovery": 42,
+    "typecheck": "passed"
+  },
+  "ci": {
+    "buildRunId": 39018994516,
+    "status": "success",
+    "developmentRunId": 39018994511
+  },
+  "checks": {
+    "apk": {
+      "version": "0.3.0",
+      "size": 4718127,
+      "sha256": "b5a2f45858ffc7fad8a8fa241b400360c3731f3b84b004913fbe166ced181835",
+      "downloadUrl": "http://192.168.123.79:8765/channels/codex-mobile/latest.apk",
+      "headAndFullGet": "passed"
+    },
+    "ipa": {
+      "version": "0.3.0",
+      "size": 3061089,
+      "sha256": "77030344f3a95d751ee646f5dd8d906c90b554d7d28290ae59d6645e2a68acbd",
+      "downloadUrl": "http://192.168.123.79:8765/channels/codex-mobile/latest.ipa",
+      "signed": true,
+      "headAndFullGet": "passed"
+    },
+    "ota": {
+      "installUrl": "https://192.168.123.79:8766/channels/codex-mobile/current/install.html",
+      "manifest": "passed",
+      "version": "0.3.0"
+    },
+    "source": {
+      "version": "0.3.0",
+      "buildVersion": "3000",
+      "developerName": "zh0ngtian",
+      "downloadURL": "https://github.com/zh0ngtian/codex-mobile/releases/download/v0.3.0/CodexMobile-v0.3.0-unsigned.ipa",
+      "sha256": "1433929c3cefef11af6671cb2edfa1d0eb65fb436a9d2e86ba419ab7f38efbc3",
+      "versionDescription": "- 应用图标改为白底黑色 apple.intelligence 标志。\n- 应用版本从 0.3.0 开始。\n"
+    },
+    "github": {
+      "releaseUrl": "https://github.com/zh0ngtian/codex-mobile/releases/tag/v0.3.0",
+      "tag": "v0.3.0",
+      "tagCommit": "3502c1fe86534e881fade350b06122f1265e1c16",
+      "notes": "- 应用图标改为白底黑色 apple.intelligence 标志。\n- 应用版本从 0.3.0 开始。\n",
+      "packages": {
+        "android": {
+          "filename": "CodexMobile-v0.3.0.apk",
+          "size": 4718127,
+          "sha256": "b5a2f45858ffc7fad8a8fa241b400360c3731f3b84b004913fbe166ced181835",
+          "downloadUrl": "https://github.com/zh0ngtian/codex-mobile/releases/download/v0.3.0/CodexMobile-v0.3.0.apk",
+          "signed": true,
+          "headAndFullGet": "passed"
+        },
+        "ios": {
+          "filename": "CodexMobile-v0.3.0-unsigned.ipa",
+          "size": 3043617,
+          "sha256": "1433929c3cefef11af6671cb2edfa1d0eb65fb436a9d2e86ba419ab7f38efbc3",
+          "downloadUrl": "https://github.com/zh0ngtian/codex-mobile/releases/download/v0.3.0/CodexMobile-v0.3.0-unsigned.ipa",
+          "signed": false,
+          "headAndFullGet": "passed"
+        }
+      },
+      "receipts": [
+        {
+          "filename": "android-build.json",
+          "platform": "android",
+          "sourceCommit": "3502c1fe86534e881fade350b06122f1265e1c16",
+          "runId": "39018994516"
+        },
+        {
+          "filename": "ios-build.json",
+          "platform": "ios",
+          "sourceCommit": "3502c1fe86534e881fade350b06122f1265e1c16",
+          "runId": "39018994516"
+        }
+      ]
+    },
+    "ipaBundle": {
+      "version": "0.3.0",
+      "bundleId": "vip.loock.codexmobile",
+      "icons": [],
+      "compiledIconCatalog": "Payload/PakePlus.app/Assets.car"
+    },
+    "apkIcons": [
+      "res/mipmap-hdpi-v4/ic_launcher_background.png",
+      "res/mipmap-hdpi-v4/ic_launcher_foreground.png",
+      "res/mipmap-mdpi-v4/ic_launcher_background.png",
+      "res/mipmap-mdpi-v4/ic_launcher_foreground.png",
+      "res/mipmap-xhdpi-v4/ic_launcher_background.png",
+      "res/mipmap-xhdpi-v4/ic_launcher_foreground.png",
+      "res/mipmap-xxhdpi-v4/ic_launcher_background.png",
+      "res/mipmap-xxhdpi-v4/ic_launcher_foreground.png",
+      "res/mipmap-xxxhdpi-v4/ic_launcher_background.png",
+      "res/mipmap-xxxhdpi-v4/ic_launcher_foreground.png"
+    ]
+  },
+  "icon": {
+    "sourceSha256": "173f86a63e412af2d635f15d8ec4d8a3326cdfb8c95bb0af13b9caa08b366857",
+    "packageExtraction": {
+      "iosRendition": "AppIcon-60.0x60.0@3x.png",
+      "checks": [
+        {
+          "file": "ipa-extracted-icon.png",
+          "width": 180,
+          "height": 180,
+          "darkPixels": 3453,
+          "nonwhiteEdgePixels": 0,
+          "status": "passed"
+        },
+        {
+          "file": "android-0-ic_launcher_foreground.png",
+          "width": 72,
+          "height": 72,
+          "darkPixels": 159,
+          "nonwhiteEdgePixels": 0,
+          "status": "passed"
+        },
+        {
+          "file": "android-1-ic_launcher_foreground.png",
+          "width": 48,
+          "height": 48,
+          "darkPixels": 51,
+          "nonwhiteEdgePixels": 0,
+          "status": "passed"
+        },
+        {
+          "file": "android-2-ic_launcher_foreground.png",
+          "width": 96,
+          "height": 96,
+          "darkPixels": 348,
+          "nonwhiteEdgePixels": 0,
+          "status": "passed"
+        },
+        {
+          "file": "android-3-ic_launcher_foreground.png",
+          "width": 144,
+          "height": 144,
+          "darkPixels": 920,
+          "nonwhiteEdgePixels": 0,
+          "status": "passed"
+        },
+        {
+          "file": "android-4-ic_launcher_foreground.png",
+          "width": 192,
+          "height": 192,
+          "darkPixels": 1723,
+          "nonwhiteEdgePixels": 0,
+          "status": "passed"
+        }
+      ]
+    }
+  },
+  "signing": {
+    "signed": true,
+    "method": "Ad Hoc",
+    "bundleId": "vip.loock.codexmobile",
+    "teamId": "SC456JW7RP",
+    "applicationIdentifier": "SC456JW7RP.app.jade6694.grapefruit3766",
+    "entitlementsSha256": "1e84a4c1ba74b9e374c364f26fefa112ceeea09de1a0ba0600403a763eb7952f",
+    "identityAndKeychainContinuity": "passed"
+  },
+  "testSessionsCreated": [],
+  "physicalDeviceInstallOrDesktopRenderingVerified": false
+}
