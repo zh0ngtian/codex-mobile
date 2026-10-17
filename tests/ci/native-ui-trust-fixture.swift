@@ -39,6 +39,7 @@ struct NativeUITrustFixture {
                 "standardizedURL": privateTrusted.standardizedFileURL.absoluteString,
                 "bootstrap": NativeUITrust.bootstrap(trustedURL: privateTrusted, enabled: true)!,
                 "composerBootstrap": NativeUITrust.bootstrap(trustedURL: privateTrusted, enabled: false, composerEnabled: true)!,
+                "editorState": NativeUITrust.webTextEditorState(contextId: "中文\"\\上下文", focused: true, start: 2, end: 4, draftRevision: 7, trustedURL: privateTrusted)!,
                 "composerLayout": NativeUITrust.composerLayout(contextId: "中文\"\\上下文", top: 470.5, webViewHeight: 844, trustedURL: privateTrusted)!,
                 "dispatch": NativeUITrust.dispatch(command, trustedURL: privateTrusted)!,
                 "preference": NativeUITrust.completePreference(id: "switch-test", enabled: true, active: false, error: nil, trustedURL: privateTrusted)!,

@@ -67,7 +67,7 @@ describe("SwiftUI 原生宿主契约", () => {
     expect(composer).toContain("isOpen: attachmentPresentation");
     expect(composer).toContain("store.consumeComposerPresentation(contextID: contextID)");
     expect(composer).not.toMatch(/\$store\.attachmentOpen|store\.attachmentOpen\s*=/);
-    for (const host of ["NativeConversationView", "NativeWebComposerHost"]) {
+    for (const host of ["NativeConversationView"]) {
       expect(source(host)).toContain("NativeComposerView(store: store, contextID: store.snapshot.contextId,");
     }
     expect(composer).not.toContain(".sheet(");
@@ -86,6 +86,21 @@ describe("SwiftUI 原生宿主契约", () => {
     expect(attachments).toContain("willEndFor");
     expect(attachments).toContain("animator.addCompletion");
     expect(attachments).not.toContain("hitTest(");
+  });
+  it("混合宿主只在现有WKWebView内承载文字编辑器，不挂工具栏或原生菜单", () => {
+    const host = source("NativeWebComposerHost");
+    expect(host).not.toContain("NativeComposerView(");
+    expect(host).not.toContain(".sheet(");
+    expect(source("NativeUIHost")).not.toContain("NativeWebComposerHost(store:");
+    expect(source("NativeUIBridge")).toContain("NativeWebTextEditor");
+  });
+  it("混合文字编辑器局部遵循网页浅色外观，完整原生界面继续使用系统主题", () => {
+    const editor = source("NativeWebTextEditor");
+    expect(editor).toContain("input.overrideUserInterfaceStyle = .light");
+    expect(editor).toContain("input.addSubview(placeholder)");
+    expect(editor).toContain("input.textColor = .label");
+    expect(editor).toContain(".foregroundColor: UIColor.label");
+    expect(source("NativeUIHost")).not.toContain(".preferredColorScheme(.light)");
   });
   it("具有离线原生根、输入、侧栏及设置 UI 验收", () => {
     expect(existsSync("mobile/ios/NativeUI/NativeRootView.swift"), "缺少真实 SwiftUI 根").toBe(true);
@@ -186,6 +201,9 @@ describe("SwiftUI 原生宿主契约", () => {
       const composerPage = surface(privatePage.trustedURL);
       composerPage.run(privatePage.composerBootstrap);
       expect(composerPage.target.__CODEX_NATIVE_UI__).toBe(false); expect(composerPage.target.__CODEX_NATIVE_COMPOSER__).toBe(true);
+      const editorEvent = vi.fn(); composerPage.target.addEventListener('codex-mobile-native-editor-state', editorEvent);
+      composerPage.run(privatePage.editorState);
+      expect(editorEvent.mock.calls[0][0].detail).toEqual({ contextId: '中文"\\上下文', focused: true, selectionStart: 2, selectionEnd: 4, draftRevision: 7 });
       const layoutEvent = vi.fn(); composerPage.target.addEventListener('codex-mobile-native-composer-layout', layoutEvent);
       composerPage.run(privatePage.composerLayout);
       expect(layoutEvent.mock.calls[0][0].detail).toEqual({ contextId: '中文"\\上下文', top: 470.5, webViewHeight: 844 });
@@ -231,10 +249,12 @@ describe("SwiftUI 原生宿主契约", () => {
         expect(rejected.target.__CODEX_IOS_HOST__).toBeUndefined();
         expect(rejected.target.codexMobilePublishNativeSnapshot).toBeUndefined();
         expect(rejected.postMessage).not.toHaveBeenCalled();
+        const rejectedEditor = vi.fn(); rejected.target.addEventListener('codex-mobile-native-editor-state', rejectedEditor);
         const callbacks = ["codexMobileNativeCommand", "codexMobileNativePreferenceComplete", "codexMobileSetNativeActive", "codexMobileQRComplete", "codexMobileUseLegacyRecovery"];
         for (const callback of callbacks) rejected.target[callback] = vi.fn();
-        for (const script of [privatePage.dispatch, privatePage.preference, privatePage.lifecycleInactive, privatePage.lifecycleActive, privatePage.qr, privatePage.recovery]) rejected.run(script);
+        for (const script of [privatePage.editorState, privatePage.dispatch, privatePage.preference, privatePage.lifecycleInactive, privatePage.lifecycleActive, privatePage.qr, privatePage.recovery]) rejected.run(script);
         for (const callback of callbacks) expect(rejected.target[callback]).not.toHaveBeenCalled();
+        expect(rejectedEditor).not.toHaveBeenCalled();
         // 导航后，已安装 bootstrap 闭包内的生命周期与恢复入口同样拒绝。
         page.location.href = href;
         page.location.protocol = new URL(href).protocol;

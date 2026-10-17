@@ -21,11 +21,7 @@ struct NativeUIHost<Legacy: View>: View {
                 }
             }
             .frame(width: geometry.size.width, height: geometry.size.height)
-            .overlay(alignment: .bottom) {
-                if store.composerEnabled && !store.nativeEnabled && !store.showLegacyForRecovery {
-                    NativeWebComposerHost(store: store, availableHeight: geometry.size.height)
-                }
-            }
+
         }
         #if DEBUG
         .overlay(alignment: .topLeading) {

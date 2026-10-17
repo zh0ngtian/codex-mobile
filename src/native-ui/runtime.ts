@@ -90,7 +90,8 @@ export class NativeRuntime {
   }
   removeWorkspace(id: string) { this.workspaces.delete(id); this.schedule(); }
   setWebComposer(id: string, value: NativeWebComposerPresentation | undefined, expectedContextId?: string) {
-    if (!value && expectedContextId !== undefined && this.webComposers.get(id)?.contextId !== expectedContextId) return;
+    // 首次挂载可早于父workspace的layout effect；后续更新与清理必须匹配登记身份。
+    if (expectedContextId !== undefined && this.webComposers.get(id)?.contextId !== expectedContextId) return;
     if (value) this.webComposers.set(id, value); else this.webComposers.delete(id);
     this.schedule();
   }

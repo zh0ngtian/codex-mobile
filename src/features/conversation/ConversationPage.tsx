@@ -302,11 +302,13 @@ export function ConversationPage({
   const [composerFocused, setComposerFocused] = useState(false);
   const [composerWrapped, setComposerWrapped] = useState(false);
   const settingsFocusRef = useRef<(() => void) | undefined>(undefined);
-  const composerIdentityRef = useRef({ id: active.id, backendId, historyEdit, active, revision: 0 });
+  const formControlHandoffRef = useRef<{ target: HTMLElement; pointerId: number; revision: number } | undefined>(undefined);
+  const composerIdentityRef = useRef({ id: active.id, backendId, nativeContextId, historyEdit, active, revision: 0 });
   const previousIdentity = composerIdentityRef.current;
-  const changedComposer = previousIdentity.id !== active.id || previousIdentity.backendId !== backendId ||
+  const changedComposer = previousIdentity.id !== active.id || previousIdentity.backendId !== backendId || previousIdentity.nativeContextId !== nativeContextId ||
     Boolean(previousIdentity.historyEdit) !== Boolean(historyEdit) || (!active.id && previousIdentity.active !== active);
-  composerIdentityRef.current = { id: active.id, backendId, historyEdit, active, revision: previousIdentity.revision + Number(changedComposer) };
+  composerIdentityRef.current = { id: active.id, backendId, nativeContextId, historyEdit, active, revision: previousIdentity.revision + Number(changedComposer) };
+  const hasFormControlHandoff = () => formControlHandoffRef.current?.revision === composerIdentityRef.current.revision;
   const selectedBackend =
     backends.find((backend) => backend.id === backendId) ?? null;
   const [previewImage, setPreviewImage] = useState<DraftImage | null>(null);
@@ -354,10 +356,11 @@ export function ConversationPage({
     setStatusOpen(false);
     setActionsOpen(false);
     settingsFocusRef.current = undefined;
+    formControlHandoffRef.current = undefined;
     setAttachmentMenuOpen(false);
     setSkillMention(null);
     setQueuedFollowUpEdit(null);
-  }, [active.id, backendId]);
+  }, [active.id, backendId, nativeContextId]);
   useEffect(() => {
     if (
       queuedFollowUpEdit &&
@@ -404,6 +407,7 @@ export function ConversationPage({
     setSkillMention(skillMentionAt(value, cursor ?? value.length));
   };
   const chooseSkill = (skill: InstalledSkill) => {
+    const revision = composerIdentityRef.current.revision;
     const input = composerInputRef.current;
     const mention = skillMentionAt(
       draft,
@@ -414,11 +418,13 @@ export function ConversationPage({
     onDraftChange(next.text);
     setSkillMention(null);
     window.requestAnimationFrame(() => {
-      composerInputRef.current?.focus({ preventScroll: true });
-      composerInputRef.current?.setSelectionRange(next.cursor, next.cursor);
+      if (!input?.isConnected || input.disabled || composerInputRef.current !== input || composerIdentityRef.current.revision !== revision) return;
+      input.focus({ preventScroll: true });
+      input.setSelectionRange(next.cursor, next.cursor);
     });
   };
   const choosePlugin = (plugin: InstalledPlugin) => {
+    const revision = composerIdentityRef.current.revision;
     const input = composerInputRef.current;
     const mention = skillMentionAt(
       draft,
@@ -429,8 +435,9 @@ export function ConversationPage({
     onDraftChange(next.text);
     setSkillMention(null);
     window.requestAnimationFrame(() => {
-      composerInputRef.current?.focus({ preventScroll: true });
-      composerInputRef.current?.setSelectionRange(next.cursor, next.cursor);
+      if (!input?.isConnected || input.disabled || composerInputRef.current !== input || composerIdentityRef.current.revision !== revision) return;
+      input.focus({ preventScroll: true });
+      input.setSelectionRange(next.cursor, next.cursor);
     });
   };
   const {
@@ -445,12 +452,47 @@ export function ConversationPage({
     ready: loadState === "ready",
     historyEditMessageId: historyEdit?.target.messageId,
   });
-  const nativeComposer = useNativeWebComposer(nativeRuntime, backendId, nativeContextId, conversationVisible,
-    webOverlayOpen || statusOpen || actionsOpen || Boolean(historyEdit || previewImage || queuedFollowUpEdit) || attachmentMenuOpen || realtimeActive, scrollRef);
+  const nativeTextEditor = useNativeWebComposer(nativeRuntime, backendId, nativeContextId, conversationVisible,
+    webOverlayOpen || statusOpen || actionsOpen || Boolean(historyEdit || previewImage || queuedFollowUpEdit) || attachmentMenuOpen || realtimeActive, composerInputRef,
+    (focused, caret) => {
+      // 与网页form的blur使用同一交接保护：控件pointerdown后不能在click前折叠或移位。
+      if (focused || (!settingsFocusRef.current && !hasFormControlHandoff())) setComposerFocused(focused);
+      if (focused) syncSkillMention(draft, caret);
+    });
+  const nativeComposer = nativeTextEditor.enabled;
+  const finishFormControlHandoff = () => {
+    const handoff = formControlHandoffRef.current;
+    formControlHandoffRef.current = undefined;
+    if (!handoff || handoff.revision !== composerIdentityRef.current.revision) return;
+    settingsFocusRef.current = undefined;
+    setComposerFocused(nativeTextEditor.isFocused());
+  };
+  useEffect(() => {
+    if (!nativeComposer) return;
+    const outside = (event: PointerEvent) => {
+      const handoff = formControlHandoffRef.current;
+      if (handoff && event.target instanceof Node && !handoff.target.contains(event.target)) finishFormControlHandoff();
+    };
+    const release = (event: PointerEvent) => {
+      if ((event.pointerId ?? 0) === formControlHandoffRef.current?.pointerId) outside(event);
+    };
+    const cancel = (event: PointerEvent) => {
+      if ((event.pointerId ?? 0) === formControlHandoffRef.current?.pointerId) finishFormControlHandoff();
+    };
+    document.addEventListener("pointerdown", outside);
+    document.addEventListener("pointerup", release);
+    document.addEventListener("pointercancel", cancel);
+    return () => {
+      document.removeEventListener("pointerdown", outside);
+      document.removeEventListener("pointerup", release);
+      document.removeEventListener("pointercancel", cancel);
+      formControlHandoffRef.current = undefined;
+    };
+  }, [nativeComposer, nativeContextId]);
   useLayoutEffect(() => {
     const composer = composerRef.current;
     const scroll = scrollRef.current;
-    if (nativeComposer || !composer || !scroll) return;
+    if (!composer || !scroll) return;
     // 排队、编辑、附件及字号变化都需要为整个输入区预留实际高度。
     const updateInset = () => {
       scroll.style.setProperty("--composer-height", `${composer.getBoundingClientRect().height}px`);
@@ -468,7 +510,7 @@ export function ConversationPage({
   const captureSettingsFocus = () => {
     const input = composerInputRef.current;
     settingsFocusRef.current = undefined;
-    if (!input || document.activeElement !== input || input.disabled) return;
+    if (!input || (!nativeTextEditor.isFocused() && document.activeElement !== input) || input.disabled) return;
     const identity = composerIdentityRef.current;
     const start = input.selectionStart;
     const end = input.selectionEnd;
@@ -480,7 +522,7 @@ export function ConversationPage({
     };
   };
   const openSettings = (callback: ((restore?: () => void) => void) | undefined, trigger: HTMLButtonElement) => {
-    if (document.activeElement === composerInputRef.current) captureSettingsFocus();
+    if (nativeTextEditor.isFocused() || document.activeElement === composerInputRef.current) captureSettingsFocus();
     const revision = composerIdentityRef.current.revision;
     const restore = settingsFocusRef.current ?? (document.activeElement === trigger ? () => {
       const current = composerIdentityRef.current;
@@ -495,7 +537,7 @@ export function ConversationPage({
   useLayoutEffect(() => {
     const input = composerInputRef.current;
     if (!input) return;
-    if (!modern) { input.style.removeProperty("height"); return; }
+    if (!modern && !nativeComposer) { input.style.removeProperty("height"); return; }
     const resize = () => {
       input.style.height = "auto";
       // scrollHeight 包含 CSS 最小高度；测量内容时去除下限，避免单行被误判为换行。
@@ -509,7 +551,7 @@ export function ConversationPage({
       const multiline = contentHeight > lineHeight + padding + 2;
       // 聚焦期间按真实宽度测量；失焦后保留换行状态，防止宽窄布局往返抖动。
       if (composerFocused || !composerExpanded || !draft) setComposerWrapped(multiline);
-      input.style.height = `${Math.min(154, Math.max(lineHeight + padding, contentHeight))}px`;
+      input.style.height = `${Math.min(modern ? 154 : 120, Math.max(lineHeight + padding, contentHeight))}px`;
     };
     resize();
     if (typeof ResizeObserver === "undefined") return;
@@ -520,7 +562,7 @@ export function ConversationPage({
     });
     observer.observe(input);
     return () => observer.disconnect();
-  }, [modern, draft, composerExpanded, composerFocused]);
+  }, [modern, draft, composerExpanded, composerFocused, nativeComposer]);
   const requestOlderTurns = () => {
     if (!["idle", "error"].includes(olderTurnsState)) return;
     beginPrependPreservation();
@@ -577,7 +619,6 @@ export function ConversationPage({
             </button>}
           </div>
         )}
-    {nativeComposer && pendingSteerText && <div className="pending-steer-message" role="status" aria-label={t("已发送引导")}>{pendingSteerText}</div>}
   </>;
   return (
     <section className="conversation" data-native-composer={nativeComposer ? "true" : undefined}>
@@ -820,22 +861,32 @@ export function ConversationPage({
               <div className="empty-state">{t("开始一次新的 Codex 对话")}</div>
             )}
             <RunProgress thread={active} busy={busy} sync={syncState} operationPending={operationPending} />
-            {nativeComposer && <>{composerStatus}{businessError}</>}
+            {nativeComposer && businessError}
           </div>
         </div>
       </div>
       {!nativeComposer && businessError}
-      {!nativeComposer && <form
+      <form
         ref={composerRef}
         className={`composer-wrap${
           composerMaximized && !modern ? " composer-wrap-maximized" : ""
         }`}
         aria-busy={imageReading}
         data-expanded={modern ? composerExpanded : undefined}
+        onPointerDownCapture={(event) => {
+          if (!nativeComposer || !nativeTextEditor.isFocused() || event.button > 0 || !(event.target instanceof Element)) return;
+          const target = event.target.closest<HTMLElement>("button, input, select, a, audio, video, [role=button], [role=menuitem]");
+          if (!target || !event.currentTarget.contains(target) || target.matches(":disabled")) return;
+          formControlHandoffRef.current = { target, pointerId: event.pointerId ?? 0, revision: composerIdentityRef.current.revision };
+        }}
+        onClick={finishFormControlHandoff}
+        onPointerUp={(event) => { if (event.defaultPrevented) finishFormControlHandoff(); }}
+        onTouchEnd={(event) => { if (event.defaultPrevented) finishFormControlHandoff(); }}
         onBlur={(event) => {
-          if (!settingsFocusRef.current && !(event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget))) setComposerFocused(false);
+          if (!settingsFocusRef.current && !hasFormControlHandoff() && !(event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget))) setComposerFocused(false);
         }}
         onSubmit={(event) => {
+          finishFormControlHandoff();
           if (historyEdit) event.preventDefault();
           else {
             // 在清空草稿或切换会话前结束编辑，避免键盘收起时 WebKit 继续追踪旧光标。
@@ -1046,12 +1097,12 @@ export function ConversationPage({
             ))}
           </div>
         )}
-        {!modern && <div className="chips">
+        {!modern && <div className="chips" onPointerDownCapture={captureSettingsFocus}>
           <button
             type="button"
             aria-label={t("选择模型、智能与速度")}
             disabled={!interactive}
-            onClick={() => onOpenAgentSettings()}
+            onClick={(event) => openSettings(onOpenAgentSettings, event.currentTarget)}
           >
             {selectedServiceTier ? "⚡ " : ""}
             {selectedModelLabel} {effortLabel(selectedEffort)}
@@ -1060,7 +1111,7 @@ export function ConversationPage({
             type="button"
             aria-label={t("选择审批与权限模式")}
             disabled={!interactive}
-            onClick={() => onOpenPermissionSettings()}
+            onClick={(event) => openSettings(onOpenPermissionSettings, event.currentTarget)}
           >
             {selectedPermissionLabel}
           </button>
@@ -1260,12 +1311,14 @@ export function ConversationPage({
                   role="menuitem"
                   disabled={locationPending}
                   onClick={() => {
+                    const revision = composerIdentityRef.current.revision;
+                    const input = composerInputRef.current;
                     setLocationPending(true);
                     void onSelectLocation()
                       .then((selected) => {
-                        if (selected) {
+                        if (selected && input?.isConnected && composerInputRef.current === input && composerIdentityRef.current.revision === revision) {
                           setAttachmentMenuOpen(false);
-                          composerInputRef.current?.focus({ preventScroll: true });
+                          input.focus({ preventScroll: true });
                         }
                       })
                       .finally(() => setLocationPending(false));
@@ -1286,7 +1339,7 @@ export function ConversationPage({
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v8c0 4-3.5 7-7 9-3.5-2-7-5-7-9z" /><path d="M12 8v5m0 3v.1" /></svg>
             </button>
             <button type="button" className={`modern-speed-button${selectedServiceTier ? " is-fast" : ""}`} aria-label={t("选择速度")} disabled={!interactive || Boolean(historyEdit) || !onOpenSpeedSettings} onClick={(event) => openSettings(onOpenSpeedSettings, event.currentTarget)}>
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14 2-11 12h8l-1 8 11-12h-8z" /></svg>
+              {nativeComposer ? <AppIcon name={selectedServiceTier ? "speed" : "speed-off"} /> : <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14 2-11 12h8l-1 8 11-12h-8z" /></svg>}
             </button>
             <button type="button" className="modern-model-effort-button" aria-label={t("选择模型与思考强度")} disabled={!interactive || Boolean(historyEdit)} onClick={(event) => openSettings(onOpenAgentSettings, event.currentTarget)}>
               <span>{selectedModelLabel}</span><small>{effortLabel(selectedEffort)}</small>
@@ -1294,6 +1347,9 @@ export function ConversationPage({
           </div>}
           <textarea
             ref={composerInputRef}
+            aria-hidden={nativeComposer ? true : undefined}
+            tabIndex={nativeComposer ? -1 : undefined}
+            data-native-text-proxy={nativeComposer ? "true" : undefined}
             aria-label={t("向 Codex 提问")}
             value={draft}
             disabled={
@@ -1353,7 +1409,7 @@ export function ConversationPage({
             placeholder={t("向 Codex 提问")}
             rows={1}
           />
-          <button
+          {!nativeComposer && <button
             type="button"
             className="composer-size-button"
             disabled={Boolean(historyEdit)}
@@ -1364,7 +1420,7 @@ export function ConversationPage({
             onClick={() => setComposerMaximized((current) => !current)}
           >
             <AppIcon name={composerMaximized ? "minimize" : "maximize"} />
-          </button>
+          </button>}
           <button
             type={busy && !canQueue ? "button" : "submit"}
             onClick={
@@ -1398,7 +1454,7 @@ export function ConversationPage({
             )}
           </button>
         </div>
-      </form>}
+      </form>
         {previewImage && (
           <ImagePreviewSheet
             src={previewImage.url}

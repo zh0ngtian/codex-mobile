@@ -18,6 +18,48 @@ enum NativeWebComposerSmoke {
             let invalidBodyFontSize = try decodedBodyFontSize(payload + ",\"bodyFontSize\":" + rawSize + "}")
             precondition(invalidBodyFontSize == nil, "无效字号不能进入布局或影响旧快照解码")
         }
+        let editorJSON = payload + #","rect":{"x":0,"y":500,"width":300,"height":48},"viewportWidth":393,"viewportHeight":852,"selectionStart":2,"selectionEnd":4,"focused":true,"focusRevision":3}"#
+        let editor = try JSONDecoder().decode(NativeWebComposerPresentation.self, from: Data(editorJSON.utf8))
+        precondition(editor.rect?.x == 0 && editor.rect?.height == 48 && editor.selectionStart == 2 && editor.selectionEnd == 4 && editor.focused == true, "文字矩形和UTF16选区须跨桥保留，x=0合法")
+        for geometry in [
+            #""rect":{"x":-1,"y":500,"width":300,"height":48},"viewportWidth":393,"viewportHeight":852"#,
+            #""rect":{"x":0,"y":500,"width":400,"height":48},"viewportWidth":393,"viewportHeight":852"#,
+            #""rect":{"x":0,"y":850,"width":300,"height":48},"viewportWidth":393,"viewportHeight":852"#,
+            #""rect":{"x":0,"y":0,"width":300,"height":0},"viewportWidth":393,"viewportHeight":852"#,
+            #""rect":{"x":0,"y":0,"width":300,"height":48},"viewportWidth":0,"viewportHeight":852"#,
+            #""rect":{"x":0,"y":0,"width":300,"height":48}"#,
+            #""rect":{"x":"NaN","y":0,"width":300,"height":48},"viewportWidth":393,"viewportHeight":852"#
+        ] {
+            let decoder = JSONDecoder()
+            decoder.nonConformingFloatDecodingStrategy = .convertFromString(positiveInfinity: "Infinity", negativeInfinity: "-Infinity", nan: "NaN")
+            let rejected = try decoder.decode(NativeWebComposerPresentation.self, from: Data((payload + "," + geometry + "}").utf8))
+            precondition(rejected.rect == nil, "无效或越出viewport的矩形不能覆盖网页按钮")
+        }
+        let editorStore = NativeUIStore(arguments: [])
+        var editorSnapshot = NativeSnapshot()
+        editorSnapshot.ready = true; editorSnapshot.contextId = "editor:new"; editorSnapshot.draft = "甲😀尾"; editorSnapshot.caretOffset = 3
+        editorSnapshot.webComposer = NativeWebComposerPresentation(contextId: "editor:new", visible: true, blocked: false)
+        editorStore.receive(editorSnapshot)
+        var editorCommands: [NativeCommand] = []
+        editorStore.sendCommand = { editorCommands.append($0) }
+        let originalSelectionRevision = editorStore.selectionRevision
+        editorStore.updateWebDraft("甲😀输入尾", caret: 5, contextID: "editor:new")
+        precondition(editorCommands.count == 1 && editorCommands[0].name == "draft.set" && editorStore.caretOffset == 5, "原生文字沿现有draft.set一次提交正文与UTF16光标")
+        precondition(editorStore.selectionRevision == originalSelectionRevision, "本地输入不重置marked text选区")
+        editorStore.updateWebDraft("迟到", caret: 2, contextID: "editor:old")
+        editorStore.updateWebDraft("非法", caret: 99, contextID: "editor:new")
+        precondition(editorCommands.count == 1 && editorStore.draft == "甲😀输入尾", "旧context与越界选区不得改当前草稿")
+        editorSnapshot.webComposer?.blocked = true; editorStore.receive(editorSnapshot)
+        editorStore.updateWebDraft("遮罩迟到", caret: 0, contextID: "editor:new")
+        precondition(editorCommands.count == 1 && editorStore.draft == "甲😀输入尾", "遮罩期间拒绝迟到输入，旧echo不倒退本地草稿")
+        var focusState = NativeWebEditorFocusState()
+        precondition(focusState.request(revision: 0, focused: false, resuming: false) == false)
+        precondition(focusState.request(revision: 0, focused: false, resuming: false) == nil, "用户已原生聚焦后，同revision旧false回声不能收键盘")
+        precondition(focusState.request(revision: 1, focused: true, resuming: false) == true, "显式网页focus请求可聚焦")
+        precondition(focusState.request(revision: 0, focused: false, resuming: false) == nil, "低版本焦点请求不能覆盖新请求")
+        precondition(focusState.request(revision: 1, focused: false, resuming: false) == nil, "同revision原生观察false不能当新命令")
+        precondition(focusState.request(revision: 1, focused: true, resuming: true) == true, "同context遮罩关闭后恢复已请求焦点")
+        precondition(focusState.request(revision: 2, focused: false, resuming: false) == false, "发送前显式blur可收键盘")
         let natural = NativeComposerLineLimits.resolve(availableHeight: 500, lineHeight: 24, compact: false, accessibility: false)
         let restricted = NativeComposerLineLimits.resolve(availableHeight: 128, lineHeight: 24, compact: false, accessibility: false)
         precondition(natural == 1...6, "竖屏输入从一行按内容自然增长，最多六行")

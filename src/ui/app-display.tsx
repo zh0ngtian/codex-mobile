@@ -33,9 +33,21 @@ export function AppIcon({
     | "search"
     | "settings"
     | "send"
-    | "stop";
+    | "stop"
+    | "speed"
+    | "speed-off"
+    | "shield"
+    | "shield-check"
+    | "shield-off"
+    | "lock";
 }) {
   const paths = {
+    speed: <path d="m14 2-11 12h8l-1 8 11-12h-8z" />,
+    "speed-off": <><path d="m12 5 2-3-1 8h8l-4 5M9 9l-6 5h8l-1 8 4-5" /><path d="m3 3 18 18" /></>,
+    shield: <path d="M5 4h14v8c0 4-3.5 7-7 9-3.5-2-7-5-7-9z" />,
+    "shield-check": <><path d="M5 4h14v8c0 4-3.5 7-7 9-3.5-2-7-5-7-9z" /><path d="m8 12 3 3 5-6" /></>,
+    "shield-off": <><path d="M5 8v4c0 4 3.5 7 7 9 1.5-.8 2.8-1.8 4-3M9 4h10v8l-.5 2" /><path d="m3 3 18 18" /></>,
+    lock: <><rect x="5" y="10" width="14" height="11" rx="2" /><path d="M8 10V7a4 4 0 018 0v3M12 14v3" /></>,
     archive: <><path d="M4 7h16v13H4z" /><path d="M3 4h18v3H3zM9 11h6" /></>,
     back: <path d="M15 18l-6-6 6-6M9 12h11" />,
     close: <path d="m7 7 10 10M17 7 7 17" />,

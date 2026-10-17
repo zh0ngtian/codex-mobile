@@ -14,6 +14,9 @@ final class NativeUIBridge: NSObject, WKScriptMessageHandler {
     private var legacyVisible = true
     private var active = true
     private var needsLifecycleSync = true
+    private lazy var webTextEditor = NativeWebTextEditor(store: store) { [weak self] contextID, focused, start, end in
+        self?.reportWebTextEditorState(contextID: contextID, focused: focused, start: start, end: end)
+    }
     private var composerLayout: (contextID: String, top: CGFloat, height: CGFloat)?
     override init() {
         super.init()
@@ -37,6 +40,7 @@ final class NativeUIBridge: NSObject, WKScriptMessageHandler {
             controller.addUserScript(WKUserScript(source: script, injectionTime: .atDocumentStart, forMainFrameOnly: true))
         }
         store.sendCommand = { [weak self] command in self?.dispatch(command) }
+        updateWebTextEditor()
     }
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         guard let trustedURL, message.name == "nativeUI", message.webView === webView,
@@ -84,6 +88,7 @@ final class NativeUIBridge: NSObject, WKScriptMessageHandler {
             if ProcessInfo.processInfo.arguments.contains("--native-ui-trace") { print("Native snapshot panel=\(value.panel?.id ?? "none")") }
             #endif
             store.receive(value)
+            updateWebTextEditor()
             if needsLifecycleSync { applyLifecycle() }
         } catch {
             #if DEBUG
@@ -93,6 +98,16 @@ final class NativeUIBridge: NSObject, WKScriptMessageHandler {
             #endif
             store.snapshot.error = "原生界面数据无法读取：\(error.localizedDescription)"
         }
+    }
+    private func updateWebTextEditor() {
+        guard let webView, let trustedURL, NativeUITrust.accepts(webView.url, trustedURL: trustedURL) else { webTextEditor.hide(); return }
+        webTextEditor.update(in: webView, active: active && legacyVisible && !recoveryRequested)
+    }
+    private func reportWebTextEditorState(contextID: String, focused: Bool, start: Int, end: Int) {
+        guard active, legacyVisible, store.webComposerVisible, store.composerCanEdit, contextID == store.snapshot.contextId,
+              let webView, let trustedURL, NativeUITrust.accepts(webView.url, trustedURL: trustedURL),
+              let script = NativeUITrust.webTextEditorState(contextId: contextID, focused: focused, start: start, end: end, draftRevision: store.webEditorDraftRevision, trustedURL: trustedURL) else { return }
+        webView.evaluateJavaScript(script, completionHandler: nil)
     }
     func reportComposerLayout(_ probe: UIView, contextID: String) {
         guard store.webComposerVisible, contextID == store.snapshot.contextId,
@@ -117,6 +132,7 @@ final class NativeUIBridge: NSObject, WKScriptMessageHandler {
     }
     func recoverLegacy() {
         recoveryRequested = true
+        webTextEditor.hide()
         guard let trustedURL, let webView, NativeUITrust.accepts(webView.url, trustedURL: trustedURL),
               let script = NativeUITrust.recoverLegacy(trustedURL: trustedURL) else { return }
         webView.evaluateJavaScript(script, completionHandler: nil)
@@ -124,9 +140,11 @@ final class NativeUIBridge: NSObject, WKScriptMessageHandler {
     func setLegacyVisible(_ visible: Bool) {
         legacyVisible = visible
         webView?.accessibilityElementsHidden = !visible
+        updateWebTextEditor()
     }
     func setActive(_ active: Bool) {
         self.active = active
+        updateWebTextEditor()
         needsLifecycleSync = true
         applyLifecycle()
     }

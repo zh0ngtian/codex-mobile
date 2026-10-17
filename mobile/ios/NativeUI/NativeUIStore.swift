@@ -29,6 +29,7 @@ final class NativeUIStore {
     private var pendingFields: [NativeFieldKey: Int] = [:]
     private var fieldRevision = 0
     private var draftRevision = 0
+    var webEditorDraftRevision: Int { draftRevision }
     private var pendingSearchRevision: Int? = nil
     private var pendingSidebarRevision: Int? = nil
     private var receivedResultIDs: Set<String> = []
@@ -510,6 +511,13 @@ final class NativeUIStore {
         guard composerCanEdit else { return }
         draftRevision += 1
         command("draft.set", ["value": .string(draft), "revision": .number(Double(draftRevision)), "caretOffset": .number(Double(caretOffset))])
+    }
+    /// UITextView 一次提交正文和 UTF-16 光标，不重置本地组字选区。
+    func updateWebDraft(_ text: String, caret: Int, contextID: String) {
+        guard webComposerVisible, composerCanEdit, snapshot.contextId == contextID, caret >= 0, caret <= text.utf16.count else { return }
+        guard draft != text || caretOffset != caret else { return }
+        draft = text; caretOffset = caret
+        updateDraft()
     }
     func setCaretOffset(_ offset: Int) {
         guard composerCanEdit else { return }
