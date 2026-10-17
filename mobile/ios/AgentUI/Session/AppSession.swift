@@ -72,6 +72,11 @@ final class AppSession {
     @ObservationIgnored var preparedDeviceForm = false
     @ObservationIgnored var projectMembers: [String: Set<UUID>] = [:]
     @ObservationIgnored var requestCommands: [UUID: [UUID: NativeCommand]] = [:]
+    @ObservationIgnored var questionMemory: [UUID: QuestionRequest] = [:]
+    @ObservationIgnored var questionBackends: [UUID: String] = [:]
+    @ObservationIgnored var resolvedQuestionIDs: [UUID: String] = [:]
+    @ObservationIgnored var postponedQuestionIDs: Set<UUID> = []
+    @ObservationIgnored var reopenRequestIntent = false
     @ObservationIgnored var questionPanels: [UUID: NativePanel] = [:]
     @ObservationIgnored var pendingCommands: [String: (context: String?, continuation: CheckedContinuation<Bool, Never>)] = [:]
     @ObservationIgnored var commandTimeouts: [String: Task<Void, Never>] = [:]
@@ -86,6 +91,11 @@ final class AppSession {
     var visibleConversations: [Conversation] { conversations.filter { !$0.isArchived && (searchText.isEmpty || navigationIDs.contains($0.id)) && (selectedDeviceID == nil || $0.deviceID == selectedDeviceID) && device($0.deviceID)?.enabled == true } }
     var scopedProjects: [String] { projectGroups.keys.sorted() }
     var isBusy: Bool { nativeSnapshot.busy }
+    var composerCanEdit: Bool { nativeStore?.composerCanEdit == true }
+    var canReopenPendingRequests: Bool {
+        nativeSnapshot.ready && nativeSnapshot.approvalCount > 0 && nativeStore?.awaitingNewConversation != true && nativeSnapshot.conversationActions?.contains { $0.command?.name == "approval.reopen" && $0.disabled != true } == true
+    }
+    var hasDeferredQuestion: Bool { canReopenPendingRequests && questionMemory.values.contains { $0.conversationID == selectedConversationID } }
     var canSubmit: Bool { !submissionPending && historyEdit == nil && nativeStore?.composerCanSend == true && composer.hasContent && composer.attachmentsReady }
     var canSaveDraft: Bool { !submissionPending && nativeStore?.composerCanEdit == true && selectedConversationID == nil && composer.hasContent && composer.attachmentsReady && !isBusy }
     var pendingOtherDevices: [BackendDevice] { devices.filter { $0.enabled && $0.id != selectedDeviceID && pendingCount(for: $0.id) > 0 } }
@@ -212,6 +222,12 @@ final class AppSession {
     func toggleProject(_ project: String) { perform(projectGroups[project]?.command) }
     func projectIsExpanded(_ project: String) -> Bool { !searchText.isEmpty || expandedProjects.contains(project) }
     func projectConversations(_ project: String) -> [Conversation] { visibleConversations.filter { !$0.isPinned && projectMembers[project]?.contains($0.id) == true } }
+    func projectDisplayName(_ key: String) -> String { projectGroups[key]?.title ?? key }
+    func reopenPendingRequests() {
+        guard canReopenPendingRequests, let command = nativeSnapshot.conversationActions?.first(where: { $0.command?.name == "approval.reopen" && $0.disabled != true })?.command else { return }
+        reopenRequestIntent = true
+        perform(command)
+    }
     func projectHasMore(_ project: String) -> Bool { projectGroups[project]?.actions?.contains { $0.command?.name == "project.more" } == true }
     func loadMoreProject(_ project: String) { perform(projectGroups[project]?.actions?.first { $0.command?.name == "project.more" }?.command) }
     func loadMoreConversations() { for project in scopedProjects where projectHasMore(project) { loadMoreProject(project) } }

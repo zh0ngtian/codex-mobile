@@ -11,7 +11,7 @@ extension AppSession {
             resolve(result.id, ok: result.ok, error: result.error)
         }
         if previousContext != snapshot.contextId {
-            historyEdit = nil
+            historyEdit = nil; reopenRequestIntent = false
             for (id, pending) in pendingCommands where pending.context != nil && pending.context != snapshot.contextId { resolve(id, ok: false, error: "会话已切换，请返回原会话核对操作结果。") }
         }
         navigationLoading = snapshot.groups.contains { $0.category == "search" && $0.loading == "loading" }
@@ -36,9 +36,8 @@ extension AppSession {
         for group in snapshot.groups {
             var projectKey: String?
             if group.category == "project" {
-                // 同名项目按设备区分标签；同一标签的原始 cwd 保留在 command 中。
-                var key = group.title
-                if projectGroups[key] != nil { key = "\(group.subtitle ?? string(group.command?.params["backendId"]) ?? "") · \(group.title)" }
+                // 展示名可以重复，展开与分页始终绑定真实 group 身份。
+                let key = group.id
                 projectGroups[key] = group
                 projectKey = key
                 if group.collapsed != true { expandedProjects.insert(key) }
@@ -54,14 +53,15 @@ extension AppSession {
                 if group.category == "search", let cwd = item.cwd, !cwd.isEmpty {
                     let name = URL(fileURLWithPath: cwd).lastPathComponent
                     let label = selectedDeviceID == nil ? "\(devices.first { rawDeviceIDs[$0.id] == backend }?.name ?? backend) · \(name)" : name
-                    if projectGroups[label] == nil { projectGroups[label] = NativeGroup(id: "search:\(backend):\(cwd)", title: label, items: []) }
-                    projectMembers[label, default: []].insert(id)
-                    expandedProjects.insert(label)
+                    let key = "search-project|" + [group.id, backend, cwd].map { "\($0.utf8.count):\($0)" }.joined()
+                    if projectGroups[key] == nil { projectGroups[key] = NativeGroup(id: key, title: label, items: []) }
+                    projectMembers[key, default: []].insert(id)
+                    expandedProjects.insert(key)
                 }
                 var thread = listed[id] ?? old[id] ?? Conversation(id: id, title: item.title, deviceID: scopedID("device", backend))
                 thread.title = item.title
                 thread.project = item.cwd ?? (group.category == "project" ? group.title : item.subtitle)
-                if thread.project == "无项目" || thread.project == "No project" { thread.project = nil }
+                if thread.project == "" || thread.project == "无项目" || thread.project == "No project" { thread.project = nil }
                 thread.isPinned = item.isPinned ?? (group.category == "pinned")
                 thread.isUnread = item.isUnread ?? false
                 thread.phase = item.running == true ? .running : .idle
@@ -156,7 +156,7 @@ extension AppSession {
         case "text": kind = .text
         default: kind = .binary
         }
-        previewItem = OutputItem(id: scopedID("attachment-preview", nativeSnapshot.contextId ?? "", panel.id), name: download.title ?? panel.title, kind: kind, content: content?.text ?? "", remoteURL: source, line: content?.line)
+        previewItem = OutputItem(id: scopedID("attachment-preview", nativeSnapshot.contextId ?? "", panel.id), name: download.title ?? panel.title, kind: kind, content: content?.text ?? panel.items.filter { ["draft-preview-limit", "draft-binary"].contains($0.id) }.compactMap(\.text).joined(separator: "\n"), remoteURL: source, line: content?.line)
         presentedAttachmentPanelID = panel.id
     }
     func projectDrafts(_ panel: NativePanel?) {
