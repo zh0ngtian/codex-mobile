@@ -86,6 +86,43 @@ final class AgentAppUITests: XCTestCase {
         add(attachment)
     }
 
+    private func launchSidebarPolishFixture() -> XCUIApplication {
+        let app = XCUIApplication()
+        app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-sidebar-polish-fixture", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
+        app.launch()
+        XCTAssertTrue(app.staticTexts["history-request-count"].waitForExistence(timeout: 8))
+        return app
+    }
+
+    func testExpandedUserBubbleKeepsCollapsedWidth() {
+        let app = launchSidebarPolishFixture()
+        let bubble = app.otherElements["message.user-bubble"].firstMatch
+        XCTAssertTrue(bubble.waitForExistence(timeout: 5))
+        let collapsed = bubble.frame
+        app.buttons["展开更多"].tap()
+        XCTAssertTrue(app.buttons["收起"].waitForExistence(timeout: 5))
+        XCTAssertEqual(bubble.frame.width, collapsed.width, accuracy: 1)
+        XCTAssertGreaterThan(bubble.frame.height, collapsed.height)
+        captureConversation("用户气泡-展开宽度", app: app)
+        app.buttons["收起"].tap()
+        XCTAssertTrue(app.buttons["展开更多"].waitForExistence(timeout: 5))
+        XCTAssertEqual(bubble.frame.width, collapsed.width, accuracy: 1)
+    }
+
+    func testSidebarPreservesBusinessProjectOrderAndUsesSpinner() {
+        let app = launchSidebarPolishFixture()
+        app.buttons["会话列表"].tap()
+        let zeta = app.buttons["收起项目 Zeta"]
+        let alpha = app.buttons["收起项目 Alpha"]
+        let middle = app.buttons["收起项目 Middle"]
+        XCTAssertTrue(zeta.waitForExistence(timeout: 5))
+        XCTAssertLessThan(zeta.frame.minY, alpha.frame.minY)
+        XCTAssertLessThan(alpha.frame.minY, middle.frame.minY)
+        XCTAssertEqual(app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "运行中")).count, 0)
+        XCTAssertTrue(app.activityIndicators.matching(NSPredicate(format: "identifier BEGINSWITH %@", "sidebar.running.")).firstMatch.exists, app.debugDescription)
+        captureConversation("项目顺序与运行图标", app: app)
+    }
+
     func testReopeningSameConversationReleasesHistoryRequest() {
         let app = launchConversationFixture(long: true, resetContext: true)
         let timeline = app.scrollViews["conversation.timeline"]

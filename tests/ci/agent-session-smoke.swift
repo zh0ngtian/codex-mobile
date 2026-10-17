@@ -3,6 +3,7 @@ import Foundation
 @main
 struct AgentSessionSmoke {
     @MainActor static func main() async {
+        verifyBusinessProjectOrder()
         verifyHistoryAggregateScrollAliases()
         verifyHistoryScrollAnchors()
         verifyOriginalTailCommentary()
@@ -543,4 +544,25 @@ struct AgentSessionSmoke {
         precondition(session.questions.isEmpty && !session.hasDeferredQuestion, "权威请求消失后才清理已确认答案")
     }
 
+    @MainActor static func verifyBusinessProjectOrder() {
+        let session = AppSession()
+        var snapshot = NativeSnapshot()
+        snapshot.ready = true
+        snapshot.backendId = "device"; snapshot.listBackendId = "device"
+        snapshot.backends = [NativeBackend(id: "device", title: "设备", connected: true)]
+        snapshot.groups = ["z", "a", "m"].map { NativeGroup(id: $0, title: $0, items: [], category: "project") }
+        session.receive(snapshot)
+        precondition(session.scopedProjects == ["z", "a", "m"], "项目必须保留业务快照顺序，不能按字典键排序")
+        snapshot.groups = [snapshot.groups[1], snapshot.groups[0]]
+        session.receive(snapshot)
+        precondition(session.scopedProjects == ["a", "z"], "业务重排及移除项目后必须同步当前顺序")
+        let items = ["/Zeta", "/Alpha", "/Zeta"].enumerated().map { index, path in
+            NativeNavigationItem(id: "search-\(index)", title: path,
+                command: NativeCommand(name: "thread.open", params: ["backendId": .string("device"), "threadId": .string("thread-\(index)")]), cwd: path)
+        }
+        snapshot.search = "查询"
+        snapshot.groups = [NativeGroup(id: "search", title: "结果", items: items, category: "search")]
+        session.receive(snapshot)
+        precondition(session.scopedProjects.map(session.projectDisplayName) == ["Zeta", "Alpha"], "搜索项目按首次出现排序，同项目结果不能重复建组")
+    }
 }

@@ -49,6 +49,7 @@ final class AppSession {
     var projectPageCounts: [String: Int] = [:]
     var projectErrors: Set<String> = []
     var loadingProjects: Set<String> = []
+    var scopedProjects: [String] = []
     var navigationLoading = false
     var navigationError: String?
     var nativeSnapshot = NativeSnapshot()
@@ -90,7 +91,6 @@ final class AppSession {
     var currentDevice: BackendDevice? { (selectedConversation?.deviceID ?? composer.deviceID ?? selectedDeviceID).flatMap(device) }
     var currentCapabilities: DeviceCapabilities { currentDevice?.capabilities ?? DeviceCapabilities() }
     var visibleConversations: [Conversation] { conversations.filter { !$0.isArchived && (searchText.isEmpty || navigationIDs.contains($0.id)) && (selectedDeviceID == nil || $0.deviceID == selectedDeviceID) && device($0.deviceID)?.enabled == true } }
-    var scopedProjects: [String] { projectGroups.keys.sorted() }
     var isBusy: Bool { nativeSnapshot.busy }
     var composerCanEdit: Bool { nativeStore?.composerCanEdit == true }
     var canReopenPendingRequests: Bool {

@@ -123,7 +123,8 @@ struct SidebarActivitySummary: View {
     var body: some View {
         HStack(spacing: 4) {
             if conversations.contains(where: { $0.phase == .running }) {
-                Circle().fill(.green).frame(width: 5, height: 5)
+                ProgressView().progressViewStyle(.circular).controlSize(.mini)
+                    .tint(.secondary).frame(width: 12, height: 12)
             }
             if pendingCount > 0 {
                 Text("\(pendingCount)")

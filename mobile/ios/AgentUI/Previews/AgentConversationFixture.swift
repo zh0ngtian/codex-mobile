@@ -32,6 +32,15 @@ final class AgentConversationFixture {
             history,
             NativeMessage(id: "answer", role: "assistant", text: "已完成检查。查看 [网页链接](https://example.com) 与 [文件链接](/tmp/example.swift#L12)。", turnId: "fixture-turn", phase: "final_answer"),
         ]
+        if ProcessInfo.processInfo.arguments.contains("--agent-sidebar-polish-fixture") {
+            value.messages[0].text = String(repeating: "短行\n", count: 6) + "这是一条展开后才显示的较长正文，用于确认消息气泡在展开更多和收起时保持同样的宽度。"
+            value.groups = [("z", "Zeta"), ("a", "Alpha"), ("m", "Middle")].map { key, title in
+                let item = NativeNavigationItem(id: "row-" + key, title: "任务 " + title,
+                    command: NativeCommand(name: "thread.open", params: ["backendId": .string("conversation-ui-device"), "threadId": .string("thread-" + key)]),
+                    running: key == "z")
+                return NativeGroup(id: "project-" + key, title: title, items: [item], collapsed: false, category: "project", cwd: "/" + title)
+            }
+        }
         if ProcessInfo.processInfo.arguments.contains("--agent-conversation-long-fixture") {
             value.messages += (1...14).map { index in
                 NativeMessage(id: "long-\(index)", role: "assistant", text: "阅读位置 \(index)\n用于验证再次下拉时加载旧消息，并保持原有阅读位置。\n重复正文只在独立的界面回归夹具中出现。")

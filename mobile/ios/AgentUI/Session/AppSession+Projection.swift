@@ -29,7 +29,7 @@ extension AppSession {
             return BackendDevice(id: id, name: backend.title, gatewayAddress: backend.gatewayAddress ?? "", enabled: backend.enabled ?? true, connection: connection, projects: backend.projects ?? [], capabilities: DeviceCapabilities(models: models, effortLevels: effort, supportsFast: active && (snapshot.speeds ?? []).contains { $0.value == "fast" || $0.value == "priority" }, permissions: permissions.reduce(into: [ApprovalMode]()) { if !$0.contains($1) { $0.append($1) } }), savedConfiguration: active ? configuration(snapshot) : ComposerConfiguration(), accountKey: backend.id)
         }
         selectedDeviceID = snapshot.listBackendId == "all" ? nil : (snapshot.listBackendId ?? snapshot.backendId).map { scopedID("device", $0) }
-        projectGroups = [:]; projectMembers = [:]; navigationIDs = []; expandedProjects = []; projectErrors = []; loadingProjects = []
+        projectGroups = [:]; scopedProjects = []; projectMembers = [:]; navigationIDs = []; expandedProjects = []; projectErrors = []; loadingProjects = []
         var listed: [UUID: Conversation] = [:]
         var ordered: [UUID] = []
         let old = Dictionary(uniqueKeysWithValues: conversations.map { ($0.id, $0) })
@@ -40,6 +40,7 @@ extension AppSession {
             if group.category == "project", !projectless {
                 // 展示名可以重复，展开与分页始终绑定真实 group 身份。
                 let key = group.id
+                if projectGroups[key] == nil { scopedProjects.append(key) }
                 projectGroups[key] = group
                 projectKey = key
                 if group.collapsed != true { expandedProjects.insert(key) }
@@ -56,7 +57,10 @@ extension AppSession {
                     let name = URL(fileURLWithPath: cwd).lastPathComponent
                     let label = selectedDeviceID == nil ? "\(devices.first { rawDeviceIDs[$0.id] == backend }?.name ?? backend) · \(name)" : name
                     let key = "search-project|" + [group.id, backend, cwd].map { "\($0.utf8.count):\($0)" }.joined()
-                    if projectGroups[key] == nil { projectGroups[key] = NativeGroup(id: key, title: label, items: []) }
+                    if projectGroups[key] == nil {
+                        scopedProjects.append(key)
+                        projectGroups[key] = NativeGroup(id: key, title: label, items: [])
+                    }
                     projectMembers[key, default: []].insert(id)
                     expandedProjects.insert(key)
                 }

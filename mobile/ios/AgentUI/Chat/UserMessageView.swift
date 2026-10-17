@@ -8,22 +8,20 @@ struct UserMessageView: View {
     @State private var expanded = false
     @State private var fullHeight: CGFloat = 0
     @State private var visibleHeight: CGFloat = 0
+    @State private var fullTextWidth: CGFloat = 0
+    private static let leadingSpace: CGFloat = 30
+    private static let rowSpacing: CGFloat = 8
+    private static let horizontalPadding: CGFloat = 16
     private var displayText: String { UserMessageText.visible(message.text) }
     var body: some View {
-        HStack {
-            Spacer(minLength: 30)
+        HStack(spacing: Self.rowSpacing) {
+            Spacer(minLength: Self.leadingSpace)
             VStack(alignment: .leading, spacing: 8) {
                 if !displayText.isEmpty {
                     Text(displayText).font(AgentTheme.body.weight(.medium))
                         .foregroundStyle(preferences.accent.color)
                         .lineLimit(expanded ? nil : 6).textSelection(.enabled)
                         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { visibleHeight = $0 }
-                        .background {
-                            Text(displayText).font(AgentTheme.body.weight(.medium))
-                                .fixedSize(horizontal: false, vertical: true)
-                                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { fullHeight = $0 }
-                                .hidden().accessibilityHidden(true)
-                        }
                 }
                 if expanded || fullHeight > visibleHeight + 1 {
                     Button(expanded ? preferences.text("收起", "Show less") : preferences.text("展开更多", "Show more")) { expanded.toggle() }
@@ -31,8 +29,11 @@ struct UserMessageView: View {
                 }
                 if !message.attachments.isEmpty { MessageAttachmentCards(attachments: message.attachments) }
             }
-            .padding(.horizontal, 16).padding(.vertical, 10)
+            .frame(minWidth: fullTextWidth, alignment: .leading)
+            .padding(.horizontal, Self.horizontalPadding).padding(.vertical, 10)
             .background(preferences.accent.color.opacity(0.075), in: .rect(cornerRadius: 23))
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("message.user-bubble")
             .contextMenu {
                 Group {
                     Button(preferences.text("复制", "Copy"), systemImage: "doc.on.doc") { Clipboard.copy(message.text); session.toast = preferences.text("已复制", "Copied") }
@@ -42,6 +43,17 @@ struct UserMessageView: View {
                 }
                 .tint(AgentTheme.ink)
             }
+        }
+        .overlay {
+            // 完整正文在相同的最大可用宽度下测量，不受六行折叠及按钮文案影响。
+            Text(displayText).font(AgentTheme.body.weight(.medium))
+                .fixedSize(horizontal: false, vertical: true)
+                .onGeometryChange(for: CGSize.self) { $0.size } action: { size in
+                    fullTextWidth = size.width; fullHeight = size.height
+                }
+                .padding(.leading, Self.leadingSpace + Self.rowSpacing)
+                .padding(.horizontal, Self.horizontalPadding)
+                .hidden().accessibilityHidden(true).allowsHitTesting(false)
         }
     }
 }

@@ -18,9 +18,16 @@ struct ChatListRow: View {
                             .lineLimit(2)
                             .frame(maxWidth: .infinity, alignment: .leading)
                         if showsStatusMarker {
-                            Circle().fill(statusColor).frame(width: 6, height: 6)
-                                .padding(.top, 6)
-                                .accessibilityHidden(true)
+                            if showsRunningSpinner {
+                                ProgressView().progressViewStyle(.circular).controlSize(.mini)
+                                    .tint(.secondary).frame(width: 12, height: 12).padding(.top, 3)
+                                    .accessibilityLabel(preferences.text("正在执行", "Working"))
+                                    .accessibilityIdentifier("sidebar.running.\(conversation.id)")
+                            } else {
+                                Circle().fill(statusColor).frame(width: 6, height: 6)
+                                    .padding(.top, 6)
+                                    .accessibilityHidden(true)
+                            }
                         }
                     }
                     if statusTitle != nil || pendingCount > 0 {
@@ -61,6 +68,9 @@ struct ChatListRow: View {
         session.approvals.filter { $0.conversationID == conversation.id }.count + session.questions.filter { $0.conversationID == conversation.id }.count
     }
     private var hasTrailingActivity: Bool { conversation.phase == .running }
+    private var showsRunningSpinner: Bool {
+        conversation.phase == .running && session.device(conversation.deviceID).map { $0.enabled && $0.connection == .connected } == true
+    }
     private var showsStatusMarker: Bool {
         conversation.phase != .idle || session.device(conversation.deviceID)?.connection != .connected
     }
@@ -84,7 +94,7 @@ struct ChatListRow: View {
             if device.connection == .connecting { return preferences.text("连接中", "Connecting") }
         }
         switch conversation.phase {
-        case .running: return preferences.text("运行中", "Running")
+        case .running: return nil
         case .waitingApproval: return preferences.text("待审批", "Approval needed")
         case .waitingAnswer: return preferences.text("待回答", "Answer needed")
         case .idle: return conversation.isUnread ? preferences.text("未读", "Unread") : nil
