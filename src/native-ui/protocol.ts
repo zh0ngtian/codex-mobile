@@ -16,6 +16,8 @@ export interface NativeCommentaryEntry { id: string; text: string; timestamp?: n
 export interface NativeMessage { id: string; role: string; text: string; status?: string; blocks?: NativePanelItem[]; actions?: NativePanelItem[]; timestamp?: number; historyEdit?: NativeSnapshot['panel']; turnId?: string; itemId?: string; phase?: string;
   /** 独立于分组turn前缀的展示锚点，不用于真实业务动作。 */
   scrollAnchorId?: string;
+  /** 仅历史与工具聚合行提供成员别名，以便前插成员后恢复旧锚点。 */
+  scrollAnchorIds?: string[];
   /** 新界面使用语义条目；旧v1界面继续读取commentaryBlockId指向的disclosure。 */
   commentary?: NativeCommentaryEntry[]; commentaryBlockId?: string;
   /** 仅原始顺序中连续commentary及附属媒体后直接是final时为true。 */

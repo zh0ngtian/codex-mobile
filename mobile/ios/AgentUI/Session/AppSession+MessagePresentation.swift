@@ -7,7 +7,10 @@ extension AppSession {
         guard let messages = conversation(conversationID)?.messages else { return nil }
         if messages.contains(where: { $0.id == previousID }) { return previousID }
         guard let anchorID, !anchorID.isEmpty else { return nil }
-        return messages.first { nativeMessage($0.id)?.scrollAnchorId == anchorID }?.id
+        return messages.first {
+            guard let native = nativeMessage($0.id) else { return false }
+            return native.scrollAnchorId == anchorID || native.scrollAnchorIds?.contains(anchorID) == true
+        }?.id
     }
 
     /// 只组装原型的展示归属；wire 快照与全部 raw 身份映射保持不变。

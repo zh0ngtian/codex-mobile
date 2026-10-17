@@ -65,19 +65,22 @@ export function projectConversation(active: RecordValue | null, imageURL: (path:
       let historyCount = 0;
       let historyID = '';
       let historyAnchor: string | undefined;
+      let historyAnchors: string[] = [];
       let historyInterrupted = false;
       const flushHistory = (nextIsFinal = false) => {
         if (!historyCount) return;
         const commentaryBlockId = `${historyID}:commentary`;
-        messages.push({ id: `${historyID}:history`, role: 'activity', text: '', scrollAnchorId: historyAnchor, commentary, commentaryBlockId, commentaryCanAttachToReply: nextIsFinal && !historyInterrupted,
+        messages.push({ id: `${historyID}:history`, role: 'activity', text: '', scrollAnchorId: historyAnchor, scrollAnchorIds: [...new Set(historyAnchors)], commentary, commentaryBlockId, commentaryCanAttachToReply: nextIsFinal && !historyInterrupted,
           blocks: [{ id: commentaryBlockId, kind: 'disclosure', title: `${t('历史过程')} (${historyCount})`, children: history }] });
-        history = []; commentary = []; historyCount = 0; historyInterrupted = false;
+        history = []; commentary = []; historyAnchors = []; historyCount = 0; historyInterrupted = false;
       };
       for (const entry of commentaryMediaEntries(segment)) {
         const item = entry.item;
         const id = `${turnId}:${item.id}`;
         if (item.type === 'agentMessage' && item.phase === 'commentary' && collapse) {
           if (!historyCount) { historyID = id; historyAnchor = scrollAnchor(item, 'history'); }
+          const anchor = scrollAnchor(item, 'history');
+          if (anchor) historyAnchors.push(anchor);
           const timestamp = formatMessageTimestamp(item.timestamp);
           const text = nativeItemText(item);
           const blocks = entry.media.flatMap(mediaBlocks);
@@ -125,7 +128,10 @@ export function projectConversation(active: RecordValue | null, imageURL: (path:
         }
       }
       flushHistory();
-      if (tools.length) messages.push({ id: `${segmentID}:tools`, role: 'activity', text: '', scrollAnchorId: scrollAnchor(segment[0], 'tools'), blocks: [{ id: `${segmentID}:tools`, kind: 'disclosure', title: `${t('工具')} (${tools.length})`, children: tools }] });
+      if (tools.length) {
+        const aliases = segment.flatMap(item => { const anchor = scrollAnchor(item, 'tools'); return anchor ? [anchor] : []; });
+        messages.push({ id: `${segmentID}:tools`, role: 'activity', text: '', scrollAnchorId: scrollAnchor(segment[0], 'tools'), scrollAnchorIds: [...new Set(aliases)], blocks: [{ id: `${segmentID}:tools`, kind: 'disclosure', title: `${t('工具')} (${tools.length})`, children: tools }] });
+      }
     }
     const changeBlocks: NativePanelItem[] = [];
     const changes = summarizeTurnChanges(turn);

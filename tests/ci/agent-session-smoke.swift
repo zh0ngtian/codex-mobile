@@ -3,6 +3,7 @@ import Foundation
 @main
 struct AgentSessionSmoke {
     @MainActor static func main() async {
+        verifyHistoryAggregateScrollAliases()
         verifyHistoryScrollAnchors()
         verifyOriginalTailCommentary()
         verifyReferenceCommentaryPlacement()
@@ -158,6 +159,31 @@ struct AgentSessionSmoke {
         await verifyDelayedDeviceForm()
         await verifyPendingProjectsAndQuestions()
         print("Agent session smoke passed")
+    }
+    @MainActor static func verifyHistoryAggregateScrollAliases() {
+        let session = AppSession()
+        var state = NativeSnapshot()
+        state.backendId = "device"; state.threadId = "thread"; state.contextId = "aggregate-scroll"
+        func aggregate(_ wireID: String, anchor: String, aliases: [String]) -> NativeMessage {
+            let object: [String: Any] = ["id": wireID, "role": "activity", "text": "", "scrollAnchorId": anchor, "scrollAnchorIds": aliases]
+            return try! JSONDecoder().decode(NativeMessage.self, from: JSONSerialization.data(withJSONObject: object))
+        }
+        for (before, after) in [
+            (aggregate("continuation:tool:tools", anchor: "tool:tools", aliases: ["tool:tools"]), aggregate("older:user:tools", anchor: "user:tools", aliases: ["user:tools", "tool:tools"])),
+            (aggregate("continuation:c2:history", anchor: "c2:history", aliases: ["c2:history"]), aggregate("older:c1:history", anchor: "c1:history", aliases: ["c1:history", "c2:history"]))
+        ] {
+            state.messages = [before]; session.receive(state)
+            let conversationID = session.selectedConversationID!
+            let previousID = session.selectedConversation!.messages[0].id
+            let captured = session.historyScrollAnchor(for: previousID)
+            state.messages = [after]; session.receive(state)
+            let currentID = session.selectedConversation!.messages[0].id
+            precondition(currentID != previousID && session.historyScrollAnchor(for: currentID) != captured)
+            precondition(session.historyScrollMessageID(in: conversationID, previousID: previousID, anchorID: captured) == currentID, "聚合首成员改变后必须通过成员别名恢复新UUID")
+            precondition(session.historyScrollMessageID(in: conversationID, previousID: currentID, anchorID: "未知别名") == currentID, "别名恢复不能改变现有UUID优先规则")
+            let roundTrip = try! JSONSerialization.jsonObject(with: JSONEncoder().encode(after)) as! [String: Any]
+            precondition((roundTrip["scrollAnchorIds"] as? [String])?.count == 2, "Swift DTO必须保留聚合成员别名")
+        }
     }
     @MainActor static func verifyHistoryScrollAnchors() {
         let session = AppSession()

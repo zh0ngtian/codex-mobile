@@ -133,6 +133,28 @@ describe('AgentApp 真实展示契约', () => {
     expect(messages.find(message => message.id === 'turn:changes')?.scrollAnchorId).toBeUndefined();
   });
 
+  it('tools-only前插user后聚合单锚点变化，旧锚点仍属于新成员别名', () => {
+    const continuation = { id: 'continuation', status: 'completed', items: [{ id: 'tool', type: 'commandExecution', command: 'ls' }] };
+    const before = projectConversation({ turns: [continuation] }, path => path)[0];
+    const after = projectConversation({ turns: [{ id: 'older', status: 'completed', items: [{ id: 'user', type: 'userMessage', text: '更早问题' }] }, continuation] }, path => path).find(message => message.id.endsWith(':tools'))!;
+    expect(before.scrollAnchorId).toBe('tool:tools');
+    expect(after.scrollAnchorId).toBe('user:tools');
+    expect(after).toMatchObject({ scrollAnchorIds: ['user:tools', 'tool:tools'] });
+    expect(after.scrollAnchorIds).toContain(before.scrollAnchorId);
+  });
+
+  it('history前插较早commentary后保留全部原始成员别名，非聚合行不生成别名', () => {
+    const continuation = { id: 'continuation', status: 'completed', items: [{ id: 'c2', type: 'agentMessage', phase: 'commentary', text: '过程二' }] };
+    const before = projectConversation({ turns: [continuation] }, path => path)[0];
+    const after = projectConversation({ turns: [{ id: 'older', status: 'completed', items: [{ id: 'c1', type: 'agentMessage', phase: 'commentary', text: '过程一' }] }, continuation] }, path => path)[0];
+    expect(before.scrollAnchorId).toBe('c2:history');
+    expect(after.scrollAnchorId).toBe('c1:history');
+    expect(after).toMatchObject({ scrollAnchorIds: ['c1:history', 'c2:history'] });
+    expect(after.scrollAnchorIds).toContain(before.scrollAnchorId);
+    const final = projectConversation({ turns: [{ id: 'turn', items: [{ id: 'f', type: 'agentMessage', phase: 'final_answer', text: '完成' }] }] }, path => path)[0];
+    expect(final.scrollAnchorIds).toBeUndefined();
+  });
+
   it('tool之后的commentary按原始末段标记，工具仍按旧wire尾置且媒体归属不变', () => {
     const messages = projectConversation({ turns: [{ id: 'turn', status: 'inProgress', items: [
       { id: 'u', type: 'userMessage', text: '问题' },
