@@ -226,6 +226,13 @@ struct AgentSessionSmoke {
         state.groups = [NativeGroup(id: "search", title: "搜索结果", items: [NativeNavigationItem(id: "t", title: "无项目真实结果", command: NativeCommand(name: "thread.open", params: ["backendId": .string("b"), "threadId": .string("t")]), cwd: "")], category: "search")]
         publish()
         precondition(session.selectedConversation?.project == nil, "空cwd必须归一化为无项目以免搜索结果被UI漏掉")
+        let projectless = NativeNavigationItem(id: "t", title: "无项目真实会话", command: NativeCommand(name: "thread.open", params: ["backendId": .string("b"), "threadId": .string("t")]), cwd: "")
+        state.groups = [NativeGroup(id: "real-projectless", title: "无项目", items: [projectless], command: NativeCommand(name: "project.toggle", params: ["backendId": .string("b"), "cwd": .string("codex-mobile://projectless")]), category: "project", cwd: "codex-mobile://projectless")]
+        publish()
+        precondition(session.scopedProjects.isEmpty && session.conversation(session.selectedConversationID!) != nil, "非搜索无项目会话不得变成项目组或丢弃真实会话数据")
+        state.groups = [NativeGroup(id: "search", title: "搜索结果", items: [projectless], category: "search")]
+        publish()
+        precondition(session.visibleConversations.contains { $0.id == session.selectedConversationID && $0.project == nil }, "无项目会话在真实搜索结果中仍须可见")
         state.groups = (0..<3).map { index in
             let cwd = "/root\(index)/app"
             return NativeGroup(id: "project-\(index)", title: "app", items: [NativeNavigationItem(id: "thread-\(index)", title: "真实会话\(index)", command: NativeCommand(name: "thread.open", params: ["backendId": .string("b"), "threadId": .string("thread-\(index)")]), cwd: cwd)], command: NativeCommand(name: "project.toggle", params: ["backendId": .string("b"), "cwd": .string(cwd)]), actions: [NativePanelItem(id: "more-\(index)", kind: "action", command: NativeCommand(name: "project.more", params: ["backendId": .string("b"), "cwd": .string(cwd)]))], category: "project", backendId: "b", cwd: cwd)
@@ -257,17 +264,61 @@ struct AgentSessionSmoke {
         precondition(!session.canReopenPendingRequests && !session.hasDeferredQuestion)
         state.approvalCount = 1; state.approvalPanel = panel; publish()
         precondition(session.questions.first?.answers.isEmpty == true, "真实请求解决后必须清除保密内存答案")
+        func submittingPanel(_ busy: Bool, error: String? = nil) -> NativePanel {
+            var value = panel
+            func project(_ item: NativePanelItem) -> NativePanelItem { var item = item; if item.command != nil { item.disabled = busy }; item.children = item.children?.map(project); return item }
+            value.items = value.items.map(project)
+            if busy { value.items.append(NativePanelItem(id: "approval-pending", kind: "text", text: "正在提交，请等待确认…")) }
+            if let error { value.items.append(NativePanelItem(id: "approval-error", kind: "text", text: error)) }
+            return value
+        }
+        for (failure, uncertain) in [("网络提交失败", false), ("操作结果待确认", true)] {
+            let pendingQuestion = session.questions.first!
+            let retained = "失败后保留：" + failure
+            session.setAnswer(requestID: pendingQuestion.id, questionID: field.id, answer: QuestionAnswer(custom: true, text: retained))
+            var replyCommand: NativeCommand?
+            store.sendCommand = { command in
+                commands.append(command)
+                if command.name == "approval.submit" { replyCommand = command; return }
+                state.commandResults = [NativeCommandResult(id: command.id, name: command.name, ok: true, contextId: state.contextId)]
+                publish()
+            }
+            let replying = Task { await session.submitAnswers(pendingQuestion.id) }
+            for _ in 0..<50 { if replyCommand != nil { break }; await Task.yield() }
+            state.approvalPanel = submittingPanel(true); publish()
+            precondition(replyCommand != nil && state.approvalPanel?.items.first(where: { $0.id == "submit" })?.disabled == true && session.questions.first?.submitting == true && session.questions.first?.answers[field.id]?.text == retained, "慢ACK未确认前必须保留答案并锁住表单")
+            session.setAnswer(requestID: pendingQuestion.id, questionID: field.id, answer: QuestionAnswer(custom: true, text: "不能覆盖发送中的答案"))
+            session.postponeQuestion()
+            precondition(session.activeQuestionID == pendingQuestion.id && session.questions.first?.answers[field.id]?.text == retained, "慢ACK期间不能编辑或隐藏发送中的表单")
+            state.approvalPanel = submittingPanel(uncertain, error: failure)
+            state.commandResults = [NativeCommandResult(id: replyCommand!.id, name: "approval.submit", ok: false, contextId: state.contextId, error: failure)]
+            publish(); await replying.value
+            precondition(session.questions.first?.submitting == uncertain && session.questions.first?.answers[field.id]?.text == retained && session.questions.first?.error == failure, "失败ACK必须保留答案并服从业务panel的真实提交锁定状态")
+            if uncertain {
+                let beforeRetry = commands.count
+                session.setAnswer(requestID: pendingQuestion.id, questionID: field.id, answer: QuestionAnswer(custom: true, text: "不能改待确认答案"))
+                session.postponeQuestion(); await session.submitAnswers(pendingQuestion.id)
+                precondition(commands.count == beforeRetry && session.activeQuestionID == pendingQuestion.id && session.questions.first?.answers[field.id]?.text == retained, "uncertain权威panel未解锁前不得改答、稍后或重发")
+                state.approvalPanel = submittingPanel(false, error: failure); publish()
+                precondition(session.questions.first?.submitting == false, "业务权威解除提交锁后才允许重试")
+            }
+            session.postponeQuestion(); state.approvalPanel = nil; publish()
+            session.reopenPendingRequests(); state.approvalPanel = panel; publish()
+            precondition(session.questions.first?.answers[field.id]?.text == retained && session.questions.first?.submitting == false, "失败或待确认后重新打开不能丢答案或一直锁住")
+        }
         let resolved = session.questions.first!
-        session.setAnswer(requestID: resolved.id, questionID: field.id, answer: QuestionAnswer(custom: true, text: "提交后必须清除"))
+        session.setAnswer(requestID: resolved.id, questionID: field.id, answer: QuestionAnswer(custom: true, text: "投影收敛前仍须保留"))
         store.sendCommand = { command in
             commands.append(command)
             state.commandResults = [NativeCommandResult(id: command.id, name: command.name, ok: true, contextId: state.contextId)]
             publish()
         }
         await session.submitAnswers(resolved.id)
-        precondition(session.questions.isEmpty && !session.hasDeferredQuestion, "真实提交ACK成功后必须立即清除问题与保密答案")
+        precondition(session.questions.first?.answers[field.id]?.text == "投影收敛前仍须保留", "命令ACK先到但权威请求仍在时不能丢答案或屏蔽同请求")
         publish()
-        precondition(session.questions.isEmpty, "成功ACK后的旧panel不能重新泄露或弹出已解决问题")
+        precondition(!session.questions.isEmpty, "同一权威请求不能被本地成功标记永远屏蔽")
+        state.approvalPanel = nil; state.approvalCount = 0; publish()
+        precondition(session.questions.isEmpty && !session.hasDeferredQuestion, "权威请求消失后才清理已确认答案")
     }
 
 }

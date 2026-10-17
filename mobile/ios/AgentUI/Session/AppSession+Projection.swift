@@ -35,7 +35,9 @@ extension AppSession {
         let old = Dictionary(uniqueKeysWithValues: conversations.map { ($0.id, $0) })
         for group in snapshot.groups {
             var projectKey: String?
-            if group.category == "project" {
+            let groupCWD = group.cwd ?? group.command.flatMap { string($0.params["cwd"]) }
+            let projectless = groupCWD == "codex-mobile://projectless"
+            if group.category == "project", !projectless {
                 // 展示名可以重复，展开与分页始终绑定真实 group 身份。
                 let key = group.id
                 projectGroups[key] = group
@@ -60,7 +62,7 @@ extension AppSession {
                 }
                 var thread = listed[id] ?? old[id] ?? Conversation(id: id, title: item.title, deviceID: scopedID("device", backend))
                 thread.title = item.title
-                thread.project = item.cwd ?? (group.category == "project" ? group.title : item.subtitle)
+                thread.project = projectless ? nil : (item.cwd ?? (group.category == "project" ? group.cwd ?? group.title : nil))
                 if thread.project == "" || thread.project == "无项目" || thread.project == "No project" { thread.project = nil }
                 thread.isPinned = item.isPinned ?? (group.category == "pinned")
                 thread.isUnread = item.isUnread ?? false

@@ -74,7 +74,8 @@ final class AppSession {
     @ObservationIgnored var requestCommands: [UUID: [UUID: NativeCommand]] = [:]
     @ObservationIgnored var questionMemory: [UUID: QuestionRequest] = [:]
     @ObservationIgnored var questionBackends: [UUID: String] = [:]
-    @ObservationIgnored var resolvedQuestionIDs: [UUID: String] = [:]
+    @ObservationIgnored var confirmedQuestionReplies: [UUID: String] = [:]
+    @ObservationIgnored var answerSubmissionsInFlight: Set<UUID> = []
     @ObservationIgnored var postponedQuestionIDs: Set<UUID> = []
     @ObservationIgnored var reopenRequestIntent = false
     @ObservationIgnored var questionPanels: [UUID: NativePanel] = [:]
