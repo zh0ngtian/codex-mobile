@@ -3,6 +3,7 @@ import Foundation
 @main
 struct AgentSessionSmoke {
     @MainActor static func main() async {
+        verifyReferenceCommentaryPlacement()
         verifyUserMessagePresentation()
         verifyCommentaryPresentation()
         let empty = AppSession()
@@ -155,6 +156,83 @@ struct AgentSessionSmoke {
         await verifyDelayedDeviceForm()
         await verifyPendingProjectsAndQuestions()
         print("Agent session smoke passed")
+    }
+    @MainActor static func verifyReferenceCommentaryPlacement() {
+        let session = AppSession()
+        var state = NativeSnapshot()
+        state.backendId = "device"; state.threadId = "thread"; state.contextId = "placement-context"
+        let image = NativePanelItem(id: "screen", kind: "image", value: "https://example.invalid/screen.png")
+        let first = NativeCommentaryEntry(id: "turn:c1", text: "读取项目", timestamp: 1792205040, blocks: [image])
+        let second = NativeCommentaryEntry(id: "turn:c2", text: "整理结果", blocks: [])
+        func history(_ id: String, entries: [NativeCommentaryEntry], extra: [NativePanelItem] = [], attach: Bool? = true) -> NativeMessage {
+            let value = NativeMessage(id: id, role: "activity", text: "", blocks: [NativePanelItem(id: id + ":legacy", kind: "disclosure", title: "旧历史", children: [image])] + extra, commentary: entries, commentaryBlockId: id + ":legacy")
+            var object = try! JSONSerialization.jsonObject(with: JSONEncoder().encode(value)) as! [String: Any]
+            if let attach { object["commentaryCanAttachToReply"] = attach }
+            return try! JSONDecoder().decode(NativeMessage.self, from: JSONSerialization.data(withJSONObject: object))
+        }
+        let user = NativeMessage(id: "user", role: "user", text: "问题")
+        let final = NativeMessage(id: "final", role: "assistant", text: "最终回答", phase: "final_answer")
+        let earlier = history("history", entries: [first, second])
+        state.messages = [user, earlier, final]
+        session.receive(state)
+        let completed = session.selectedConversation!
+        precondition(completed.messages.count == 2, "完成后的历史必须属于最终回复，不能多出独立timeline行")
+        precondition(completed.messages.last?.text == "最终回答" && completed.messages.last?.commentary.map(\.text) == ["读取项目", "整理结果"], "沿用原型同一MessageView顶部的commentary入口")
+        precondition(completed.messages.last?.commentary.first?.outputs?.first?.remoteURL == image.value && completed.messages.last?.outputs.isEmpty == true, "媒体仅留在所属历史内")
+        precondition(completed.messages.last?.commentary.last?.createdAt == nil, "合并历史不能补造缺失时间")
+        precondition(session.nativeSnapshot.messages.count == 3, "只改变呈现投影，原始wire记录必须保留")
+        let historyID = session.scopedID("message", state.contextId!, earlier.id)
+        precondition(session.nativeMessage(historyID)?.id == earlier.id, "隐藏历史行仍需保留raw身份映射")
+        precondition(session.nativeMessage(completed.messages.last!.id)?.id == final.id, "最终回复操作仍指向原始final")
+        let stableProgressIDs = completed.messages.last!.commentary.map(\.id)
+
+        state.messages = [history("h1", entries: [first]), history("h2", entries: [second]), final]
+        session.receive(state)
+        precondition(session.selectedConversation?.messages.count == 1 && session.selectedConversation?.messages.first?.commentary.map(\.text) == ["读取项目", "整理结果"], "可连续合并的纯历史按原顺序归入紧随final")
+        state.messages = [history("unmarked", entries: [first], attach: nil), final]
+        session.receive(state)
+        precondition(session.selectedConversation?.messages.count == 2 && session.selectedConversation?.messages.last?.commentary.isEmpty == true, "缺少上游连续性标记时不能仅按Native相邻猜测合并")
+        state.messages = [history("separated", entries: [first], attach: false), final]
+        session.receive(state)
+        precondition(session.selectedConversation?.messages.count == 2 && session.selectedConversation?.messages.last?.commentary.isEmpty == true, "上游存在分隔时明确false必须阻止合并")
+        state.messages = [earlier, user, final]
+        session.receive(state)
+        precondition(session.selectedConversation?.messages.count == 3 && session.selectedConversation?.messages.last?.commentary.isEmpty == true, "不得跨用户插话移动历史")
+        let reasoning = NativeMessage(id: "reasoning", role: "activity", text: "", blocks: [NativePanelItem(id: "reasoning-block", kind: "disclosure", title: "思考过程")])
+        state.messages = [earlier, reasoning, final]
+        session.receive(state)
+        precondition(session.selectedConversation?.messages.count == 3 && session.selectedConversation?.messages.last?.commentary.isEmpty == true, "不得跨推理或工具重新排序历史")
+        state.messages = [history("mixed", entries: [first], extra: reasoning.blocks!), final]
+        session.receive(state)
+        precondition(session.selectedConversation?.messages.count == 2 && session.selectedConversation?.messages.first?.commentary.count == 1 && session.selectedConversation?.messages.last?.commentary.isEmpty == true, "包含其他真实块的history不能整行并入final")
+        state.messages = [earlier]
+        session.receive(state)
+        precondition(session.selectedConversation?.messages.count == 1 && session.selectedConversation?.liveCommentary.isEmpty == true, "未收到final时不能合成最终回复")
+
+        let liveFirst = NativeMessage(id: "turn:c1", role: "assistant", text: "读取项目", blocks: [image, NativePanelItem(id: "turn:c1:timestamp", kind: "text", text: "旧日期时间")], actions: [NativePanelItem(id: "copy", kind: "action", command: NativeCommand(name: "message.copy"))], timestamp: first.timestamp, phase: "commentary")
+        let liveSecond = NativeMessage(id: "turn:c2", role: "assistant", text: "整理结果", phase: "commentary")
+        state.busy = true; state.messages = [user, liveFirst, liveSecond]
+        session.receive(state)
+        precondition(session.selectedConversation?.messages.map(\.text) == ["问题"], "运行中末段commentary应使用原型liveCommentary入口")
+        precondition(session.selectedConversation?.liveCommentary.map(\.text) == ["读取项目", "整理结果"])
+        precondition(session.selectedConversation?.liveCommentary.map(\.id) == stableProgressIDs, "live到完成历史保留条目稳定身份")
+        precondition(session.selectedConversation?.liveCommentary.first?.outputs?.first?.remoteURL == image.value && session.selectedConversation?.liveCommentary.last?.createdAt == nil)
+        state.messages = [liveFirst, user, liveSecond]
+        session.receive(state)
+        precondition(session.selectedConversation?.messages.map(\.text) == ["读取项目", "问题"] && session.selectedConversation?.liveCommentary.map(\.text) == ["整理结果"], "live只能提取当前末段，不能跨用户插话")
+        state.messages = [liveFirst, reasoning, liveSecond]
+        session.receive(state)
+        precondition(session.selectedConversation?.messages.count == 2 && session.selectedConversation?.liveCommentary.map(\.text) == ["整理结果"], "live不能跨推理移动较早commentary")
+        state.messages = [liveFirst, reasoning]
+        session.receive(state)
+        precondition(session.selectedConversation?.messages.count == 2 && session.selectedConversation?.liveCommentary.isEmpty == true, "尾部真实推理存在时不搬移之前commentary")
+        var mixedLive = liveFirst; mixedLive.blocks?.append(NativePanelItem(id: "extra", kind: "action", title: "实际工具入口"))
+        state.messages = [mixedLive]
+        session.receive(state)
+        precondition(session.selectedConversation?.messages.count == 1 && session.selectedConversation?.liveCommentary.isEmpty == true, "不能为复用live组件丢弃其他真实块")
+        state.busy = false; state.messages = [liveFirst]
+        session.receive(state)
+        precondition(session.selectedConversation?.messages.count == 1 && session.selectedConversation?.liveCommentary.isEmpty == true, "非运行态不能把旧commentary放到当前live过程")
     }
     @MainActor static func verifyCommentaryPresentation() {
         let session = AppSession()

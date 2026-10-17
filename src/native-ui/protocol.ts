@@ -15,7 +15,9 @@ export interface NativeGroup { id: string; title: string; items: NativeNavigatio
 export interface NativeCommentaryEntry { id: string; text: string; timestamp?: number; blocks?: NativePanelItem[] }
 export interface NativeMessage { id: string; role: string; text: string; status?: string; blocks?: NativePanelItem[]; actions?: NativePanelItem[]; timestamp?: number; historyEdit?: NativeSnapshot['panel']; turnId?: string; itemId?: string; phase?: string;
   /** 新界面使用语义条目；旧v1界面继续读取commentaryBlockId指向的disclosure。 */
-  commentary?: NativeCommentaryEntry[]; commentaryBlockId?: string }
+  commentary?: NativeCommentaryEntry[]; commentaryBlockId?: string;
+  /** 仅原始顺序中连续commentary及附属媒体后直接是final时为true。 */
+  commentaryCanAttachToReply?: boolean }
 export interface NativeAttachment { id: string; name: string; detail?: string; imageURL?: string; type?: string; command?: NativeCommand; size?: number }
 export interface NativeBackend { id: string; title: string; subtitle?: string; connected?: boolean; gatewayAddress?: string; enabled?: boolean;
   connectionState?: string; projects?: string[]; approvalCount?: number; queuedCount?: number }

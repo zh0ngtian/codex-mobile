@@ -11,9 +11,9 @@ struct CommentaryHistoryView: View {
                 Button { expanded.toggle() } label: {
                     HStack(spacing: 6) {
                         Text(preferences.text("之前的 \(entries.count) 条消息", "\(entries.count) earlier messages"))
-                        Image(systemName: expanded ? "chevron.down" : "chevron.right").font(.system(size: 10, weight: .medium))
+                        Image(systemName: expanded ? "chevron.down" : "chevron.right").font(.caption)
                     }
-                    .font(AgentTheme.small).foregroundStyle(AgentTheme.ink.opacity(0.4)).frame(minHeight: 44)
+                    .font(AgentTheme.small).foregroundStyle(.secondary).frame(minHeight: 44)
                 }
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("commentary-history-toggle")
@@ -26,7 +26,7 @@ struct CommentaryHistoryView: View {
                         if !entry.timestampLabel.isEmpty {
                             Text(entry.timestampLabel).font(.caption).foregroundStyle(.secondary)
                         }
-                        if entry.id != entries.last?.id { Divider().opacity(0.3) }
+                        if entry.id != entries.last?.id { Divider() }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }

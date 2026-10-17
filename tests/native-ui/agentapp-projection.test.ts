@@ -80,7 +80,7 @@ describe('AgentApp 真实展示契约', () => {
       { id: 'final', type: 'agentMessage', phase: 'final_answer', text: '完成' },
     ] }] }, path => `thumb:${path}`, path => `original:${path}`);
     const history = messages.find(message => message.id === 'turn:c1:history')!;
-    expect(history).toMatchObject({ commentaryBlockId: 'turn:c1:commentary', commentary: [
+    expect(history).toMatchObject({ commentaryCanAttachToReply: false, commentaryBlockId: 'turn:c1:commentary', commentary: [
       { id: 'turn:c1', text: '正在读取项目上下文。', timestamp, blocks: [{ id: 'turn:screen:image:0', kind: 'image', value: 'thumb:/screen.png', previewURL: 'original:/screen.png' }] },
       { id: 'turn:c2', text: '已检查相关文件，正在整理结果。' },
     ] });
@@ -89,6 +89,37 @@ describe('AgentApp 真实展示契约', () => {
     expect(messages.flatMap(message => message.blocks ?? []).some(block => block.id.endsWith(':reasoning'))).toBe(true);
     expect(messages.flatMap(message => message.blocks ?? []).find(block => block.id.endsWith(':tools'))?.children).toHaveLength(1);
     expect(messages.find(message => message.id === 'turn:final')?.text).toBe('完成');
+  });
+
+  it('运行中commentary传递真实时间以复用原型liveCommentary，缺失时间不补造', () => {
+    const messages = projectConversation({ turns: [{ id: 'turn', status: 'inProgress', items: [
+      { id: 'c1', type: 'agentMessage', phase: 'commentary', text: '读取项目', timestamp: 1792205040 },
+      { id: 'c2', type: 'agentMessage', phase: 'commentary', text: '整理结果' },
+    ] }] }, path => path);
+    expect(messages[0]).toMatchObject({ id: 'turn:c1', role: 'assistant', phase: 'commentary', timestamp: 1792205040 });
+    expect(messages[1].timestamp).toBeUndefined();
+    expect(messages[0].blocks?.at(-1)?.kind).toBe('text');
+  });
+
+  it.each(['reasoning', 'commandExecution', 'userMessage', 'imageGeneration'])('原始过程被%s隔开时不因最终Native相邻而绑定到final', type => {
+    const messages = projectConversation({ turns: [{ id: 'turn', status: 'completed', items: [
+      { id: 'c', type: 'agentMessage', phase: 'commentary', text: '较早过程' },
+      { id: 'separator', type, text: '分隔', command: 'ls', savedPath: '/standalone.png' },
+      { id: 'final', type: 'agentMessage', phase: 'final_answer', text: '完成' },
+    ] }] }, path => path);
+    expect(messages.find(message => message.id === 'turn:c:history')).toMatchObject({ commentaryCanAttachToReply: false });
+  });
+
+  it('仅连续commentary与附属媒体后直接进入final时标记可以绑定，未完成则不绑定', () => {
+    const items = [
+      { id: 'c1', type: 'agentMessage', phase: 'commentary', text: '过程一' },
+      { id: 'image', type: 'imageView', path: '/screen.png' },
+      { id: 'c2', type: 'agentMessage', phase: 'commentary', text: '过程二' },
+    ];
+    const completed = projectConversation({ turns: [{ id: 'turn', status: 'completed', items: [...items, { id: 'final', type: 'agentMessage', phase: 'final_answer', text: '完成' }] }] }, path => path);
+    expect(completed[0]).toMatchObject({ commentaryCanAttachToReply: true, commentary: [{ id: 'turn:c1' }, { id: 'turn:c2' }] });
+    const noFinal = projectConversation({ turns: [{ id: 'turn', status: 'completed', items }] }, path => path);
+    expect(noFinal[0]).toMatchObject({ commentaryCanAttachToReply: false });
   });
 
   it.each([undefined, 0, -1, Number.NaN, Number.POSITIVE_INFINITY])('历史时间缺失或非法时不生成时间：%s', timestamp => {

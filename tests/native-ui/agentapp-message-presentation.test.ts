@@ -17,6 +17,9 @@ it('历史使用灰色条目标题、真实HH:mm和原生分隔线，业务区�
   expect(history).toContain('AgentTheme.chatBody');
   expect(history).toContain('entry.timestampLabel');
   expect(history).toContain('Divider()');
+  expect(history).toContain('"chevron.right").font(.caption)');
+  expect(history).toContain('.font(AgentTheme.small).foregroundStyle(.secondary)');
+  expect(history).not.toContain('.opacity(');
   expect(history).not.toMatch(/\.background\(|strokeBorder|NativePanelItemView/);
   expect(view('LiveBusinessBlocks')).toContain('message.presentationBlocks');
   expect(view('MessageView')).toContain('MessagePresentation.showsResponseActions(for: message)');

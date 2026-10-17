@@ -77,7 +77,9 @@ extension AppSession {
             thread.title = snapshot.title; thread.readOnly = snapshot.readOnly
             if let cwd = snapshot.cwd { thread.project = cwd.isEmpty ? nil : cwd }
             thread.configuration = configuration(snapshot)
-            thread.messages = snapshot.messages.map(message)
+            let presentation = conversationMessages(snapshot.messages, running: snapshot.busy)
+            thread.messages = presentation.messages
+            thread.liveCommentary = presentation.liveCommentary
             thread.phase = snapshot.busy ? .running : .idle
             thread.detailError = snapshot.loading == "error"
             thread.queue = snapshot.queued.map { queued in
@@ -133,13 +135,7 @@ extension AppSession {
             AttachmentItem(id: scopedID("message-attachment", nativeSnapshot.contextId ?? "", value.id, item.id), name: item.title ?? item.id, kind: .image, remoteURL: item.previewURL ?? item.value)
         } : []
 
-        let commentary = (value.commentary ?? []).map { entry in
-            let timestamp = entry.timestamp.flatMap { time in
-                time.isFinite && time > 0 ? Date(timeIntervalSince1970: time > 10_000_000_000 ? time / 1000 : time) : nil
-            }
-            let media = flatten(entry.blocks ?? []).filter { ["image", "video", "html", "source"].contains($0.kind) }.map(output)
-            return ProgressEntry(id: scopedID("commentary", nativeSnapshot.contextId ?? "", value.id, entry.id), text: entry.text, createdAt: timestamp, outputs: media)
-        }
+        let commentary = (value.commentary ?? []).map(progressEntry)
         return ChatMessage(id: id, isUser: value.role == "user", text: value.text, kind: value.role, duration: value.status ?? "", timestamp: value.timestamp == nil ? "" : created.formatted(date: .omitted, time: .shortened), createdAt: created, attachments: attachments, commentary: commentary, outputs: outputs)
     }
     func attachment(_ value: NativeAttachment) -> AttachmentItem {

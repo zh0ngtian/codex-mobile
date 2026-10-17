@@ -53,12 +53,13 @@ export function projectConversation(active: RecordValue | null, imageURL: (path:
       let commentary: NativeCommentaryEntry[] = [];
       let historyCount = 0;
       let historyID = '';
-      const flushHistory = () => {
+      let historyInterrupted = false;
+      const flushHistory = (nextIsFinal = false) => {
         if (!historyCount) return;
         const commentaryBlockId = `${historyID}:commentary`;
-        messages.push({ id: `${historyID}:history`, role: 'activity', text: '', commentary, commentaryBlockId,
+        messages.push({ id: `${historyID}:history`, role: 'activity', text: '', commentary, commentaryBlockId, commentaryCanAttachToReply: nextIsFinal && !historyInterrupted,
           blocks: [{ id: commentaryBlockId, kind: 'disclosure', title: `${t('历史过程')} (${historyCount})`, children: history }] });
-        history = []; commentary = []; historyCount = 0;
+        history = []; commentary = []; historyCount = 0; historyInterrupted = false;
       };
       for (const entry of commentaryMediaEntries(segment)) {
         const item = entry.item;
@@ -76,8 +77,11 @@ export function projectConversation(active: RecordValue | null, imageURL: (path:
           historyCount += 1;
           continue;
         }
+        const isFinal = item.type === 'agentMessage' && item.phase !== 'commentary';
+        // 工具与推理沿用既有投影顺序，但不能让缓冲后的历史被误判为紧邻final。
+        if (historyCount && !isFinal) historyInterrupted = true;
         // 独立媒体、final 和用户插话在原始位置结束当前历史区。
-        if (item.type === 'userMessage' || item.type === 'agentMessage' || ['imageView', 'imageGeneration', 'videoGeneration'].includes(item.type)) flushHistory();
+        if (item.type === 'userMessage' || item.type === 'agentMessage' || ['imageView', 'imageGeneration', 'videoGeneration'].includes(item.type)) flushHistory(isFinal);
         if (item.type === 'userMessage') {
           messages.push({ id, role: 'user', text: nativeItemText(item), blocks: imageBlocks(item, id), turnId, itemId: String(item.id),
             ...(typeof turn.startedAt === 'number' && Number.isFinite(turn.startedAt) && turn.startedAt > 0 ? { timestamp: turn.startedAt } : {}),
@@ -88,6 +92,7 @@ export function projectConversation(active: RecordValue | null, imageURL: (path:
           const blocks = entry.media.flatMap(mediaBlocks);
           if (timestamp) blocks.push({ id: `${id}:timestamp`, kind: 'text', text: timestamp });
           messages.push({ id, role: 'assistant', text: nativeItemText(item), status: commentary ? undefined : status, turnId, itemId: String(item.id), phase: typeof item.phase === 'string' ? item.phase : undefined,
+            ...(commentary && typeof item.timestamp === 'number' && Number.isFinite(item.timestamp) && item.timestamp > 0 ? { timestamp: item.timestamp } : {}),
             ...(!commentary && !running && typeof turn.completedAt === 'number' && Number.isFinite(turn.completedAt) && turn.completedAt > 0 ? { timestamp: turn.completedAt } : {}),
             ...(blocks.length ? { blocks } : {}),
             actions: [nativeAction(`${id}:copy`, t('复制'), 'message.copy', { id })] });
