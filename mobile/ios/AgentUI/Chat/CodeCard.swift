@@ -8,14 +8,14 @@ struct CodeCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
             HStack {
-                Text(language).font(AgentTheme.small.bold())
+                Text(language).font(AgentTheme.small)
                 Spacer()
                 Button(copied ? preferences.text("已复制", "Copied") : preferences.text("复制代码", "Copy code"),
                        systemImage: copied ? "checkmark" : "square.on.square", action: copy)
-                    .labelStyle(.iconOnly).font(.subheadline).frame(width: 44, height: 44)
+                    .labelStyle(.iconOnly).font(.body).frame(width: 44, height: 44)
             }
             ScrollView(.horizontal) {
-                Text(code).font(.system(.footnote, design: .monospaced))
+                Text(code).font(.system(.body, design: .monospaced))
                     .foregroundStyle(Color(red: 0.19, green: 0.43, blue: 0.14))
                     .textSelection(.enabled).padding(.vertical, 8)
             }.scrollIndicators(.hidden)

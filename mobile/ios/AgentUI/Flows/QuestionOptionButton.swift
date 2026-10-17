@@ -16,11 +16,11 @@ struct QuestionOptionButton: View {
                     .padding(.top, 2)
                 VStack(alignment: .leading, spacing: 4) {
                     Text(title)
-                        .font(.body.weight(.medium))
+                        .font(.body)
                         .foregroundStyle(.primary)
                     if !detail.isEmpty {
                         Text(detail)
-                            .font(.subheadline)
+                            .font(.body)
                             .foregroundStyle(.secondary)
                     }
                 }

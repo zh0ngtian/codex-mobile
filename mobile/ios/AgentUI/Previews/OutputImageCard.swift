@@ -20,7 +20,7 @@ struct OutputImageCard: View {
                     Image(systemName: "photo.badge.exclamationmark").font(.title).frame(height: 90)
                 } else { ProgressView().frame(height: 90) }
                 Label(item.name, systemImage: "arrow.up.left.and.arrow.down.right")
-                    .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    .font(.body).foregroundStyle(.secondary).lineLimit(1)
             }
             .padding(10).frame(maxWidth: .infinity)
             .background(AgentTheme.card, in: .rect(cornerRadius: 16))

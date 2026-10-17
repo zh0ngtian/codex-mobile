@@ -27,7 +27,7 @@ it.skipIf(process.platform !== 'darwin')('真实二维码只导入有效的HTTP�
   } finally { rmSync(directory, { recursive: true, force: true }); }
 }, 210_000);
 
-it.skipIf(process.platform !== 'darwin')('AgentApp原生字号在iOS18最低版本可编译并保持字体比例', () => {
+it.skipIf(process.platform !== 'darwin')('AgentApp系统默认文字样式在iOS18最低版本可编译', () => {
   const result = spawnSync('xcrun', ['--sdk', 'iphonesimulator', 'swiftc', '-typecheck', '-target', 'arm64-apple-ios18.0-simulator', 'mobile/ios/AgentUI/Design/AgentTheme.swift', 'mobile/ios/AgentUI/Settings/SettingsRow.swift'], { encoding: 'utf8', timeout: 180_000 });
   expect(result.status, result.stderr).toBe(0);
 }, 210_000);

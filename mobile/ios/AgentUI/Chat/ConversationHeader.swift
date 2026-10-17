@@ -14,7 +14,7 @@ struct ConversationHeader: View {
             }
             VStack(alignment: .leading, spacing: 3) {
                 Text(conversation?.title ?? preferences.text("新对话", "New conversation"))
-                    .font(AgentTheme.body.bold()).lineLimit(1)
+                    .font(AgentTheme.body).lineLimit(1)
                 if let conversation {
                     Text("\(conversation.project ?? preferences.text("无项目", "No project")) · \(session.device(conversation.deviceID)?.name ?? "")")
                         .font(AgentTheme.caption).foregroundStyle(.secondary).lineLimit(1)

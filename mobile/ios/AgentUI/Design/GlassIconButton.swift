@@ -9,7 +9,7 @@ struct GlassIconButton: View {
     var body: some View {
         Button(title, systemImage: symbol, action: action)
             .labelStyle(.iconOnly)
-            .font(.title3)
+            .font(.body)
             .foregroundStyle(AgentTheme.ink)
             .frame(width: size, height: size)
             .background(.regularMaterial, in: .circle)

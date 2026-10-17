@@ -13,7 +13,7 @@ struct ProjectRow: View {
                 HStack(spacing: 8) {
                     ProjectFolderIcon(isExpanded: expanded)
                     Text(displayName)
-                        .font(AgentTheme.body.bold())
+                        .font(AgentTheme.body)
                         .lineLimit(2)
                         .multilineTextAlignment(.leading)
                     if !expanded && conversations.contains(where: \.isUnread) {
@@ -37,7 +37,7 @@ struct ProjectRow: View {
                         Button(preferences.text("重试", "Retry"), systemImage: "arrow.clockwise") { session.retryProject(name) }
                             .frame(minHeight: 36)
                     }
-                    .font(AgentTheme.small.weight(.medium))
+                    .font(AgentTheme.small)
                     .padding(.leading, 10)
                 } else {
                     ForEach(conversations) { conversation in
@@ -46,7 +46,7 @@ struct ProjectRow: View {
                     if session.projectHasMore(name) {
                         Button { session.loadMoreProject(name) } label: {
                             Text(preferences.text("加载更多", "Load more"))
-                                .font(AgentTheme.small.weight(.medium))
+                                .font(AgentTheme.small)
                                 .foregroundStyle(.secondary)
                                 .frame(maxWidth: .infinity, minHeight: 38, alignment: .leading)
                                 .padding(.leading, 10)

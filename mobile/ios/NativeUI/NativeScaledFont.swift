@@ -1,12 +1,8 @@
 import SwiftUI
 
 struct NativeScaledFont: ViewModifier {
-    let scale: Double
-    let weight: Font.Weight
-    @ScaledMetric private var size: Double
+    // 保留业务组件的调用接口，文字不再套用自定义字号、缩放或字重。
     init(size: Double, scale: Double, weight: Font.Weight = .regular, relativeTo: Font.TextStyle = .body) {
-        self.scale = scale; self.weight = weight
-        _size = ScaledMetric(wrappedValue: size, relativeTo: relativeTo)
     }
-    func body(content: Content) -> some View { content.font(.system(size: size * scale, weight: weight)) }
+    func body(content: Content) -> some View { content.font(.body) }
 }

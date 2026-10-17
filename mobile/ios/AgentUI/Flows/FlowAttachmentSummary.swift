@@ -8,11 +8,11 @@ struct FlowAttachmentSummary: View {
         if !attachments.isEmpty {
             VStack(alignment: .leading, spacing: 8) {
                 Label(preferences.text("\(attachments.count) 个附件", "\(attachments.count) attachments"), systemImage: "paperclip")
-                    .font(.caption)
+                    .font(.body)
                     .foregroundStyle(.secondary)
                 ForEach(attachments) { attachment in
                     Label(attachment.name, systemImage: attachment.kind.symbol)
-                        .font(.subheadline)
+                        .font(.body)
                         .lineLimit(2)
                         .foregroundStyle(attachment.state == .failed ? Color.red : Color.secondary)
                         .frame(maxWidth: .infinity, alignment: .leading)

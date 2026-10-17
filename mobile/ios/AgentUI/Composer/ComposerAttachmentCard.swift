@@ -12,8 +12,8 @@ struct ComposerAttachmentCard: View {
                 HStack(spacing: 9) {
                     AttachmentThumbnail(item: item).frame(width: 42, height: 42)
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(item.name).font(.caption.weight(.semibold)).lineLimit(1)
-                        Text(status).font(.caption2).foregroundStyle(.secondary).lineLimit(2)
+                        Text(item.name).font(.body).lineLimit(1)
+                        Text(status).font(.body).foregroundStyle(.secondary).lineLimit(2)
                     }
                     .frame(width: 105, alignment: .leading)
                 }
@@ -22,7 +22,7 @@ struct ComposerAttachmentCard: View {
             .buttonStyle(.plain).disabled(item.state == .processing)
             .accessibilityHint(item.state == .failed ? preferences.text("查看完整错误信息", "Read the full error") : preferences.text("打开附件预览", "Open attachment preview"))
             Button(preferences.text("移除附件", "Remove attachment"), systemImage: "xmark.circle.fill", action: remove)
-                .labelStyle(.iconOnly).font(.subheadline).foregroundStyle(.secondary)
+                .labelStyle(.iconOnly).font(.body).foregroundStyle(.secondary)
                 .frame(width: 44, height: 44)
         }
         .background(AgentTheme.card, in: .rect(cornerRadius: 15))

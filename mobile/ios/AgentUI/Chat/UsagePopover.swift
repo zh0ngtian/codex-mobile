@@ -10,7 +10,7 @@ struct UsagePopover: View {
     private var quota: AccountQuota? { session.accountQuota(for: deviceID) }
     var body: some View {
         VStack(alignment: .leading, spacing: 15) {
-            Text(preferences.text("用量与额度", "Usage and limits")).font(.headline)
+            Text(preferences.text("用量与额度", "Usage and limits")).font(.body)
             UsageRow(title: preferences.text("上下文余量", "Context remaining"), value: percentage(metrics?.contextRemaining))
             UsageRow(title: preferences.text("周期剩余", "Cycle remaining"), value: percentage(quota?.sevenDayRemaining))
             UsageRow(title: preferences.text("时间剩余", "Time remaining"), value: percentage(quota?.fiveHourRemaining))

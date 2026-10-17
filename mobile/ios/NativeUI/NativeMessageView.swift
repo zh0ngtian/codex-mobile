@@ -13,7 +13,7 @@ struct NativeMessageView: View {
                 } else {
                     HStack(alignment: .top) {
                         Spacer(minLength: 96)
-                        NativeMarkdownView(text: message.text, scale: store.snapshot.fontScale, store: store, compact: true, weight: .semibold)
+                        NativeMarkdownView(text: message.text, scale: store.snapshot.fontScale, store: store, compact: true)
                             .padding(.horizontal, 13).padding(.vertical, 12)
                             .foregroundStyle(NativePalette.bubbleText)
                             .background(NativePalette.bubble, in: .rect(cornerRadius: NativeVisualMetrics.bubbleRadius))

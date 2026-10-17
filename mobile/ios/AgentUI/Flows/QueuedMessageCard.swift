@@ -14,12 +14,12 @@ struct QueuedMessageCard: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
                 Label(message.state.title(using: preferences), systemImage: message.state.symbol)
-                    .font(.caption.weight(.semibold))
+                    .font(.body)
                     .foregroundStyle(message.state.color)
                 if busy { ProgressView().controlSize(.small) }
                 Spacer(minLength: 0)
                 Text(message.configurationKnown ? message.configuration.model : preferences.text("配置未返回", "Configuration unavailable"))
-                    .font(.caption)
+                    .font(.body)
                     .foregroundStyle(.secondary)
             }
             if editing {
@@ -32,25 +32,25 @@ struct QueuedMessageCard: View {
                     .accessibilityLabel(preferences.text("队列消息正文", "Queued message text"))
             } else if !message.text.isEmpty {
                 Text(message.text)
-                    .font(.subheadline)
+                    .font(.body)
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
             } else {
                 Text(preferences.text("仅附件消息", "Attachments only"))
-                    .font(.subheadline)
+                    .font(.body)
                     .foregroundStyle(.secondary)
             }
             FlowAttachmentSummary(attachments: message.attachments)
             if message.attachments.isEmpty, let count = message.attachmentCount, count > 0 {
                 Label(preferences.text("\(count) 个附件", "\(count) attachments"), systemImage: "paperclip")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(.body).foregroundStyle(.secondary)
             }
             if let error = message.error {
                 FlowErrorBanner(message: error)
             }
             if message.state == .uncertain {
                 Text(preferences.text("消息可能已送达。确认结果前，后续队列会暂停。", "This message may have been delivered. The remaining queue is paused until the result is confirmed."))
-                    .font(.caption)
+                    .font(.body)
                     .foregroundStyle(.secondary)
             }
             if editing {
@@ -63,7 +63,7 @@ struct QueuedMessageCard: View {
                         .frame(minHeight: 44).disabled(savingEdit)
                 }
                 Text(preferences.text("已有附件和发送配置会保留。", "Existing attachments and send settings are kept."))
-                    .font(.caption)
+                    .font(.body)
                     .foregroundStyle(.secondary)
             } else {
                 HStack(spacing: 14) {
@@ -84,7 +84,7 @@ struct QueuedMessageCard: View {
                         .disabled(!canRetry)
                     if !canRetry && modificationAllowed {
                         Text(preferences.text("当前回合结束后可重试。", "Retry when the current turn is idle."))
-                            .font(.caption)
+                            .font(.body)
                             .foregroundStyle(.secondary)
                     }
                 }

@@ -7,7 +7,7 @@ struct SettingsSection<Content: View>: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(title).font(AgentTheme.font(.subheadline, size: 14, baseSize: 15).bold()).foregroundStyle(.secondary).padding(.horizontal, 16)
+            Text(title).font(.body).foregroundStyle(.secondary).padding(.horizontal, 16)
             VStack(spacing: 0) { content }
                 .background(AgentTheme.card, in: .rect(cornerRadius: 24))
         }

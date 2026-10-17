@@ -12,8 +12,8 @@ struct PermissionProfileSheet: View {
                         HStack(spacing: 14) {
                             Image(systemName: mode.symbol).frame(width: 25).foregroundStyle(mode == .fullAccess ? .orange : AgentTheme.ink)
                             VStack(alignment: .leading, spacing: 4) {
-                                Text(title(mode)).font(.headline)
-                                Text(detail(mode)).font(.subheadline).foregroundStyle(.secondary)
+                                Text(title(mode)).font(.body)
+                                Text(detail(mode)).font(.body).foregroundStyle(.secondary)
                             }
                             Spacer()
                             if session.composer.configuration.permission == mode { Image(systemName: "checkmark").bold() }

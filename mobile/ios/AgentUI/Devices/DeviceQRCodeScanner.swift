@@ -23,9 +23,9 @@ struct DeviceQRCodeScanner: View {
                         .foregroundStyle(.secondary)
                         .padding(.top, 24)
                     VStack(spacing: 10) {
-                        Text(preferences.text("扫描网关二维码", "Scan gateway QR code")).font(.title3.bold())
+                        Text(preferences.text("扫描网关二维码", "Scan gateway QR code")).font(.body)
                         Text(preferences.text("扫描网关连接二维码，或从照片中识别地址。识别后只填入连接表单，不会自动保存设备。", "Scan a gateway connection QR code, or read one from a photo. Recognition fills the connection form without saving a device."))
-                            .font(.subheadline)
+                            .font(.body)
                             .foregroundStyle(.secondary)
                             .multilineTextAlignment(.center)
                     }
@@ -41,10 +41,10 @@ struct DeviceQRCodeScanner: View {
                     if isReading { ProgressView(preferences.text("正在识别…", "Reading…")) }
                     if let error {
                         Label(error, systemImage: "exclamationmark.triangle")
-                            .font(.footnote).foregroundStyle(.red)
+                            .font(.body).foregroundStyle(.red)
                     }
                     Text(preferences.text("填入后，请在连接表单点击“测试并保存”。", "After filling the form, tap Test and Save to continue."))
-                        .font(.footnote)
+                        .font(.body)
                         .foregroundStyle(.secondary)
                 }
                 .padding(24)

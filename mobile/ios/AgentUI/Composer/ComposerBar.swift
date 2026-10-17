@@ -50,7 +50,7 @@ struct ComposerBar: View {
                         Spacer(minLength: 2)
                         Button { withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.16)) { showReasoning.toggle() } } label: {
                             HStack(spacing: 4) {
-                                Text(session.composer.configuration.model).font(.caption.bold())
+                                Text(session.composer.configuration.model).font(.body)
                                 Image(systemName: "chevron.up.chevron.down").font(.caption2)
                             }
                             .foregroundStyle(.secondary).frame(minHeight: 44)
@@ -68,7 +68,7 @@ struct ComposerBar: View {
             .shadow(color: .black.opacity(0.035), radius: 9, y: 3)
             .frame(maxWidth: expanded ? .infinity : 328)
             if session.selectedConversation?.readOnly == true {
-                Text(preferences.text("只读会话", "Read-only conversation")).font(.caption).foregroundStyle(.secondary)
+                Text(preferences.text("只读会话", "Read-only conversation")).font(.body).foregroundStyle(.secondary)
             }
         }
         .padding(.horizontal, expanded ? 12 : 20)

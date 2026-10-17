@@ -9,13 +9,13 @@ struct StagedAttachmentRow: View {
         HStack(spacing: 12) {
             AttachmentThumbnail(item: item).frame(width: 42, height: 42)
             VStack(alignment: .leading, spacing: 4) {
-                Text(item.name).font(.subheadline).lineLimit(2)
+                Text(item.name).font(.body).lineLimit(2)
                 if item.state == .processing {
-                    Text(preferences.text("正在处理…", "Processing…")).font(.caption).foregroundStyle(.secondary)
+                    Text(preferences.text("正在处理…", "Processing…")).font(.body).foregroundStyle(.secondary)
                 } else if item.state == .failed {
-                    Text(item.error ?? preferences.text("读取失败", "Read failed")).font(.caption).foregroundStyle(.secondary)
+                    Text(item.error ?? preferences.text("读取失败", "Read failed")).font(.body).foregroundStyle(.secondary)
                 } else {
-                    Text(preferences.text("已就绪", "Ready")).font(.caption).foregroundStyle(.secondary)
+                    Text(preferences.text("已就绪", "Ready")).font(.body).foregroundStyle(.secondary)
                 }
             }
             Spacer(minLength: 0)

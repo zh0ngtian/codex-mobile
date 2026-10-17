@@ -18,14 +18,14 @@ struct UserMessageView: View {
             Spacer(minLength: Self.leadingSpace)
             VStack(alignment: .leading, spacing: 8) {
                 if !displayText.isEmpty {
-                    Text(displayText).font(AgentTheme.body.weight(.medium))
+                    Text(displayText).font(AgentTheme.body)
                         .foregroundStyle(preferences.accent.color)
                         .lineLimit(expanded ? nil : 6).textSelection(.enabled)
                         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { visibleHeight = $0 }
                 }
                 if expanded || fullHeight > visibleHeight + 1 {
                     Button(expanded ? preferences.text("收起", "Show less") : preferences.text("展开更多", "Show more")) { expanded.toggle() }
-                        .font(.caption.bold()).frame(minHeight: 44)
+                        .font(.body).frame(minHeight: 44)
                 }
                 if !message.attachments.isEmpty { MessageAttachmentCards(attachments: message.attachments) }
             }
@@ -46,7 +46,7 @@ struct UserMessageView: View {
         }
         .overlay {
             // 完整正文在相同的最大可用宽度下测量，不受六行折叠及按钮文案影响。
-            Text(displayText).font(AgentTheme.body.weight(.medium))
+            Text(displayText).font(AgentTheme.body)
                 .fixedSize(horizontal: false, vertical: true)
                 .onGeometryChange(for: CGSize.self) { $0.size } action: { size in
                     fullTextWidth = size.width; fullHeight = size.height

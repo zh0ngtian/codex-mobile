@@ -19,7 +19,7 @@ struct PreviewCodeView: View {
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .textSelection(.enabled)
                         }
-                        .font(.system(.footnote, design: .monospaced))
+                        .font(.system(.body, design: .monospaced))
                         .padding(.horizontal, 14).padding(.vertical, 5)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .background(line.id == targetLine ? Color.accentColor.opacity(0.12) : .clear)

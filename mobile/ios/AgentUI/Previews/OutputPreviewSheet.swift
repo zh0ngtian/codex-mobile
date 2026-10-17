@@ -23,7 +23,7 @@ struct OutputPreviewSheet: View {
                     Spacer()
                     if let loaded { Text(ByteCountFormatter.string(fromByteCount: Int64(loaded.data.count), countStyle: .file)) }
                 }
-                .font(.caption).foregroundStyle(.secondary).padding(.horizontal, 20).padding(.vertical, 10)
+                .font(.body).foregroundStyle(.secondary).padding(.horizontal, 20).padding(.vertical, 10)
                 if supportsTabs {
                     Picker(preferences.text("显示方式", "Display mode"), selection: $selectedTab) {
                         Text(preferences.text("预览", "Preview")).tag(PreviewTab.preview)
@@ -42,7 +42,7 @@ struct OutputPreviewSheet: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
                 if let actionMessage {
-                    Text(actionMessage).font(.caption).foregroundStyle(.secondary)
+                    Text(actionMessage).font(.body).foregroundStyle(.secondary)
                         .padding(12).frame(maxWidth: .infinity)
                         .background(.thinMaterial).accessibilityAddTraits(.updatesFrequently)
                 }

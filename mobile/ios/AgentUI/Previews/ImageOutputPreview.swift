@@ -31,13 +31,13 @@ struct ImageOutputPreview: View {
                 Button(preferences.text("缩小", "Zoom out"), systemImage: "minus.magnifyingglass", action: zoomOut)
                     .labelStyle(.iconOnly).frame(width: 44, height: 44).disabled(zoom <= 1)
                 Text("\(Int((zoom * 100).rounded()))%")
-                    .font(.subheadline.monospacedDigit().weight(.medium)).frame(minWidth: 58)
+                    .font(.body.monospacedDigit()).frame(minWidth: 58)
                     .accessibilityLabel(preferences.text("缩放 \(Int((zoom * 100).rounded()))%", "Zoom \(Int((zoom * 100).rounded()))%"))
                 Button(preferences.text("放大", "Zoom in"), systemImage: "plus.magnifyingglass", action: zoomIn)
                     .labelStyle(.iconOnly).frame(width: 44, height: 44).disabled(zoom >= 4)
                 Spacer()
                 Button(preferences.text("还原", "Reset"), systemImage: "arrow.counterclockwise", action: reset)
-                    .font(.subheadline).frame(minHeight: 44)
+                    .font(.body).frame(minHeight: 44)
             }
             .buttonStyle(.borderless).controlSize(.large).padding(.horizontal, 20).padding(.vertical, 12)
         }

@@ -34,7 +34,7 @@ struct ConversationScreen: View {
                                     .accessibilityLabel(preferences.text("正在加载历史消息", "Loading earlier messages"))
                             } else if conversation.historyError {
                                 Text(preferences.text("加载失败，再次下拉重试", "Could not load. Pull down again to retry"))
-                                    .font(.caption).foregroundStyle(.secondary)
+                                    .font(.body).foregroundStyle(.secondary)
                                     .frame(maxWidth: .infinity)
                             }
                             ForEach(conversation.messages) { message in

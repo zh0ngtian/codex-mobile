@@ -14,7 +14,7 @@ struct MermaidFlowchartStep: View {
                     .font(.title3).foregroundStyle(.secondary)
                     .accessibilityLabel(preferences.text("然后", "Then"))
             }
-            Text(label).font(.subheadline.weight(.medium)).multilineTextAlignment(.center)
+            Text(label).font(.body).multilineTextAlignment(.center)
                 .padding(.horizontal, 24).padding(.vertical, 18).frame(minWidth: 180)
                 .background(.tint.opacity(0.07), in: .rect(cornerRadius: 16))
                 .overlay { RoundedRectangle(cornerRadius: 16).strokeBorder(.tint.opacity(0.35)) }

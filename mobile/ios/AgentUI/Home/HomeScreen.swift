@@ -56,7 +56,7 @@ struct SidebarConversationList: View {
                     Image(systemName: session.searchText.isEmpty ? "bubble.left" : "magnifyingglass")
                         .font(.title3)
                     Text(session.searchText.isEmpty ? preferences.text("暂无会话", "No conversations") : preferences.text("没有匹配的会话", "No matches"))
-                        .font(AgentTheme.body.weight(.medium))
+                        .font(AgentTheme.body)
                 }
                 .foregroundStyle(.secondary)
                 .padding(.vertical, 18)
@@ -100,7 +100,7 @@ struct SidebarConversationList: View {
                             .lineLimit(1)
                         Text(preferences.text("\(session.pendingCount(for: device.id)) 项待处理", "\(session.pendingCount(for: device.id)) pending"))
                     }
-                    .font(AgentTheme.small.weight(.medium))
+                    .font(AgentTheme.small)
                     .foregroundStyle(.orange)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(7)
@@ -128,7 +128,7 @@ struct SidebarActivitySummary: View {
             }
             if pendingCount > 0 {
                 Text("\(pendingCount)")
-                    .font(AgentTheme.sidebarDetail.bold())
+                    .font(AgentTheme.sidebarDetail)
                     .foregroundStyle(.orange)
             }
         }

@@ -6,8 +6,8 @@ struct DeviceManagerRowContent: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(device.name).font(.headline).foregroundStyle(AgentTheme.ink)
-            Text(gatewayHost).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
+            Text(device.name).font(.body).foregroundStyle(AgentTheme.ink)
+            Text(gatewayHost).font(.body).foregroundStyle(.secondary).lineLimit(1)
             DeviceStatusBadge(device: device)
         }
         .padding(.vertical, 7)

@@ -7,11 +7,11 @@ struct MentionCandidates: View {
     let choose: (NativeOption) -> Void
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text(preferences.text("项目 Skill / 插件", "Project skills / plugins")).font(.caption).foregroundStyle(.secondary).padding(10)
+            Text(preferences.text("项目 Skill / 插件", "Project skills / plugins")).font(.body).foregroundStyle(.secondary).padding(10)
             ForEach(candidates) { candidate in
                 Button { choose(candidate) } label: {
                     Label(candidate.title, systemImage: "at")
-                        .font(.subheadline)
+                        .font(.body)
                         .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                         .padding(.horizontal, 12)
                         .background(candidates.firstIndex(where: { $0.id == candidate.id }) == selected ? Color.primary.opacity(0.06) : .clear)

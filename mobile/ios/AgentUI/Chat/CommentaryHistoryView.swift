@@ -24,7 +24,7 @@ struct CommentaryHistoryView: View {
                         Text(entry.text).font(AgentTheme.chatBody).textSelection(.enabled)
                         if let outputs = entry.outputs, !outputs.isEmpty { OutputCards(items: outputs) }
                         if !entry.timestampLabel.isEmpty {
-                            Text(entry.timestampLabel).font(.caption).foregroundStyle(.secondary)
+                            Text(entry.timestampLabel).font(.body).foregroundStyle(.secondary)
                         }
                         Divider()
                     }

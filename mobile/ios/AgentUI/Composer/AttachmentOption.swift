@@ -9,7 +9,7 @@ struct AttachmentOption: View {
         Button(action: action) {
             VStack(spacing: 12) {
                 Image(systemName: symbol).font(.title2)
-                Text(title).font(.subheadline.weight(.medium))
+                Text(title).font(.body)
             }
             .foregroundStyle(AgentTheme.ink)
             .frame(maxWidth: .infinity, minHeight: 88)

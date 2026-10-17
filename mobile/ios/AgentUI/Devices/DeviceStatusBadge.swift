@@ -10,7 +10,7 @@ struct DeviceStatusBadge: View {
             HStack(spacing: 10) { statusLabels }
             VStack(alignment: .leading, spacing: 4) { statusLabels }
         }
-        .font(.caption)
+        .font(.body)
         .accessibilityElement(children: .combine)
     }
 

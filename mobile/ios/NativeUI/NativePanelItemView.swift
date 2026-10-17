@@ -29,7 +29,7 @@ struct NativePanelItemView: View {
                     if item.command != nil {
                         Button(item.title ?? store.label("查看文件", "View File"), systemImage: "doc") { store.perform(item.command) }
                     } else if let title = item.title { Label(title, systemImage: "doc") }
-                    if let text = item.text { Text(text).font(.caption).foregroundStyle(.secondary).textSelection(.enabled) }
+                    if let text = item.text { Text(text).font(.body).foregroundStyle(.secondary).textSelection(.enabled) }
                     if let source = item.value { NativeFileDownloadView(source: source, title: item.title ?? "file") }
                 }
             case "link":

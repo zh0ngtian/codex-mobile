@@ -27,7 +27,7 @@ struct DraftsScreen: View {
                         }
                     } else {
                         Text(preferences.text("恢复会还原正文、附件、设备、项目和发送配置，不会自动发送。", "Restoring brings back the text, attachments, device, project, and send settings. You can review them before sending."))
-                            .font(.footnote)
+                            .font(.body)
                             .foregroundStyle(.secondary)
                             .padding(.bottom, 2)
                         ForEach(session.drafts) { draft in

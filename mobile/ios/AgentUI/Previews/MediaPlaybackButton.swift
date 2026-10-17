@@ -8,7 +8,7 @@ struct MediaPlaybackButton: View {
     var body: some View {
         Button(playback.isPaused ? preferences.text("播放", "Play") : preferences.text("暂停", "Pause"),
                systemImage: playback.isPaused ? "play.fill" : "pause.fill", action: playback.togglePlayback)
-            .font(.subheadline.weight(.semibold))
+            .font(.body)
             .frame(minWidth: 110, minHeight: 44)
             .buttonStyle(.borderedProminent)
             .accessibilityIdentifier(identifier)

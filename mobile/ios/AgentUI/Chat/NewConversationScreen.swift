@@ -9,13 +9,13 @@ struct NewConversationScreen: View {
                 NewTaskTargets()
                 VStack(spacing: 12) {
                     Image(systemName: "sparkle").font(.largeTitle).foregroundStyle(.secondary)
-                    Text(preferences.text("有什么可以帮你？", "What can I help with?")).font(.title2.bold())
+                    Text(preferences.text("有什么可以帮你？", "What can I help with?")).font(.body)
                     Text(preferences.text("选择机器与项目，然后输入任务。", "Choose a computer and project, then describe your task."))
-                        .font(.subheadline).foregroundStyle(.secondary)
+                        .font(.body).foregroundStyle(.secondary)
                 }
                 .padding(.top, 100)
                 if let error = session.persistenceError {
-                    Text(preferences.runtimeText(error)).font(.caption).foregroundStyle(.red)
+                    Text(preferences.runtimeText(error)).font(.body).foregroundStyle(.red)
                 }
             }
             .padding(.horizontal, 20).padding(.top, 10)

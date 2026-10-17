@@ -21,7 +21,7 @@ struct SidebarScreen: View {
             Button { session.beginNewConversation() } label: {
                 HStack(spacing: 6) {
                     Image(systemName: "square.and.pencil").font(AgentTheme.body.weight(.semibold))
-                    Text("Ask Codex").font(AgentTheme.body.weight(.semibold)).lineLimit(1)
+                    Text("Ask Codex").font(AgentTheme.body).lineLimit(1)
                 }
                 .frame(maxWidth: .infinity, minHeight: 46)
                 .background(AgentTheme.card, in: .rect(cornerRadius: 15))

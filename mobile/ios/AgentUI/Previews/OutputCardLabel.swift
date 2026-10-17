@@ -11,11 +11,11 @@ struct OutputCardLabel: View {
                 .frame(width: 38, height: 42)
                 .background(.tint.opacity(0.08), in: .rect(cornerRadius: 11))
             VStack(alignment: .leading, spacing: 3) {
-                Text(item.name).font(.subheadline.weight(.semibold)).lineLimit(1)
+                Text(item.name).font(.body).lineLimit(1)
                 Text(item.kind == .web
                      ? preferences.text("在浏览器中打开", "Open in browser")
                      : preferences.text("查看产出", "View output"))
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(.body).foregroundStyle(.secondary)
             }
             Spacer(minLength: 8)
             Image(systemName: item.kind == .web ? "arrow.up.right" : "chevron.right")

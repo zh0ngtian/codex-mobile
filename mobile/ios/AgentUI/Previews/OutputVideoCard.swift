@@ -18,7 +18,7 @@ struct OutputVideoCard: View {
                     .padding(.vertical, 10)
             } else if readFailed {
                 Label(preferences.text("读取失败，点击文件查看重试选项", "Read failed. Open the file for retry options"), systemImage: "exclamationmark.triangle")
-                    .font(.caption).foregroundStyle(.secondary).padding(18)
+                    .font(.body).foregroundStyle(.secondary).padding(18)
             } else {
                 ProgressView().frame(height: 190)
             }

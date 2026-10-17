@@ -25,7 +25,7 @@ struct ReasoningControl: View {
                 Button(action: openModels) {
                     VStack(spacing: 6) {
                         Text(effortTitle)
-                            .font(.title3.weight(.semibold))
+                            .font(.body)
                             .foregroundStyle(accent)
                         HStack(spacing: 4) {
                             Text(session.composer.configuration.model)

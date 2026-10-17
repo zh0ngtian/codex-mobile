@@ -9,7 +9,7 @@ struct UsageRow: View {
             Spacer(minLength: 4)
             Text(value).monospacedDigit().multilineTextAlignment(.trailing)
         }
-        .font(.subheadline)
+        .font(.body)
         .accessibilityElement(children: .combine)
     }
 }

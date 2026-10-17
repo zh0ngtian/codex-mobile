@@ -10,15 +10,15 @@ struct QueuedMessagesView: View {
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
                     Label(preferences.text("待发送消息", "Message queue"), systemImage: "rectangle.stack")
-                        .font(.subheadline.weight(.semibold))
+                        .font(.body)
                     Spacer()
                     Text(conversation.queue.count, format: .number)
-                        .font(.caption.monospacedDigit())
+                        .font(.body.monospacedDigit())
                         .foregroundStyle(.secondary)
                 }
                 if !conversation.canModify {
                     Label(preferences.text("此会话为只读，队列操作已停用", "This conversation is read only. Queue actions are unavailable."), systemImage: "lock")
-                        .font(.caption)
+                        .font(.body)
                         .foregroundStyle(.secondary)
                 }
                 ForEach(conversation.queue) { message in

@@ -13,7 +13,7 @@ struct OperationApprovalSheet: View {
                         ApprovalRequestDetails(request: request)
                         ApprovalDecisionButtons(request: request)
                         Text(preferences.text("作出决定后才能继续此任务。", "Choose a decision to continue this task."))
-                            .font(.footnote)
+                            .font(.body)
                             .foregroundStyle(.secondary)
                             .frame(maxWidth: .infinity, alignment: .center)
                     }

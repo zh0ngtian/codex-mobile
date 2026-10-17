@@ -14,7 +14,7 @@ struct HistoryEditView: View {
                 .accessibilityIdentifier("history.editor")
             if !message.attachments.isEmpty { FlowAttachmentSummary(attachments: message.attachments) }
             Text(preferences.text("重发不会撤销已经发生的文件修改、命令或外部操作。", "Resending does not undo file changes, commands, or external actions."))
-                .font(.caption).foregroundStyle(.secondary)
+                .font(.body).foregroundStyle(.secondary)
             HStack {
                 Button(preferences.text("取消", "Cancel"), action: session.cancelHistoryEdit)
                 Spacer()

@@ -6,12 +6,12 @@ struct NativeSourceCodeView: View {
     let title: String
     var targetLine: Int? = nil
     let scale: Double
-    @ScaledMetric(relativeTo: .callout) private var fontSize = 12
+    @ScaledMetric(relativeTo: .body) private var fontSize = 17
     @Environment(\.locale) private var locale
     private var lines: [String] { text.components(separatedBy: "\n") }
     var body: some View {
         let sourceLines = lines
-        let gutterWidth = CGFloat(max(3, String(sourceLines.count).count)) * fontSize * scale * 0.7
+        let gutterWidth = CGFloat(max(3, String(sourceLines.count).count)) * fontSize * 0.7
         VStack(alignment: .leading, spacing: 0) {
             HStack {
                 Text(title).lineLimit(1)
@@ -32,7 +32,7 @@ struct NativeSourceCodeView: View {
                                     .fixedSize(horizontal: true, vertical: false)
                                     .frame(maxWidth: .infinity, alignment: .leading)
                             }
-                            .font(.system(size: fontSize * scale, design: .monospaced))
+                            .font(.body.monospaced())
                             .padding(.horizontal, 12).padding(.vertical, 3)
                             .background(targetLine == index + 1 ? NativePalette.bubble : .clear)
                             .id(index + 1)

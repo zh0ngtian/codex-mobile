@@ -11,14 +11,14 @@ struct QuestionAnswerField: View {
         VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 5) {
                 Text(question.title)
-                    .font(.headline)
+                    .font(.body)
                 if !question.detail.isEmpty {
                     Text(question.detail)
-                        .font(.subheadline)
+                        .font(.body)
                         .foregroundStyle(.secondary)
                 }
                 Text(preferences.text("必填", "Required"))
-                    .font(.caption)
+                    .font(.body)
                     .foregroundStyle(.secondary)
             }
             ForEach(question.options) { option in

@@ -11,7 +11,7 @@ struct ModelSheet: View {
                     ForEach(session.currentCapabilities.models, id: \.self) { model in
                         Button { choose(model) } label: {
                             HStack {
-                                Text(model).font(.headline)
+                                Text(model).font(.body)
                                 Spacer()
                                 if session.composer.configuration.model == model { Image(systemName: "checkmark").bold() }
                             }

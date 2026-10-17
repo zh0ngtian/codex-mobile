@@ -70,7 +70,7 @@ struct RootView: View {
         .overlay(alignment: .top) {
             if let toast = session.toast {
                 Text(preferences.runtimeText(toast))
-                    .font(.footnote.weight(.medium))
+                    .font(.body)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 10)
@@ -104,10 +104,10 @@ struct RootView: View {
                 if session.draftReadError || session.persistenceError != nil {
                     VStack(spacing: 10) {
                         Label(preferences.runtimeText(session.persistenceError ?? "本地记录读取失败，请在草稿箱重试。"), systemImage: "exclamationmark.triangle")
-                            .font(.footnote)
+                            .font(.body)
                             .foregroundStyle(.secondary)
                         Text(preferences.text("已保存内容仍保留。", "Saved data is still preserved."))
-                            .font(.footnote)
+                            .font(.body)
                             .foregroundStyle(.secondary)
                         Button(preferences.text("重新读取本地记录", "Retry reading local records"), systemImage: "arrow.clockwise") {
                             session.reloadDrafts()
@@ -161,7 +161,7 @@ struct RootView: View {
             HStack(spacing: 9) {
                 Image(systemName: "hand.raised.fill")
                 Text(preferences.text("\(device.name) 有 \(session.pendingCount(for: device.id)) 项待处理请求", "\(device.name) has \(session.pendingCount(for: device.id)) pending requests"))
-                    .font(.caption.weight(.medium))
+                    .font(.body)
                     .lineLimit(2)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 Image(systemName: "chevron.right").font(.caption2.bold())

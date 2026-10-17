@@ -36,10 +36,10 @@ struct SettingsScreen: View {
                         .accessibilityIdentifier("native-ui-preference")
                         if preferences.nativeInterfaceSaving { ProgressView().padding(.bottom, 12) }
                         if let error = preferences.nativeInterfaceError {
-                            Text(error).font(.footnote).foregroundStyle(.red).padding(.horizontal, 16)
+                            Text(error).font(.body).foregroundStyle(.red).padding(.horizontal, 16)
                         }
                         Text(preferences.text("关闭后，下次完整启动使用网页界面。", "When off, the next full launch uses the web interface."))
-                            .font(.footnote).foregroundStyle(.secondary).padding(16)
+                            .font(.body).foregroundStyle(.secondary).padding(16)
                     }
                     SettingsSection(title: preferences.text("关于", "About")) {
                         SettingsRow(title: preferences.text("当前版本", "Current version"), symbol: "info.circle", value: version, disclosure: false)

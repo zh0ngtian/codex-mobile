@@ -12,9 +12,9 @@ struct QuestionFormSheet: View {
                     VStack(alignment: .leading, spacing: 24) {
                         VStack(alignment: .leading, spacing: 8) {
                             Label(preferences.text("Codex 需要你的回答", "Codex needs your answer"), systemImage: "text.bubble.fill")
-                                .font(.title2.bold())
+                                .font(.body)
                             Text(preferences.text("请回答所有问题后提交。你也可以稍后继续。", "Answer every question to submit. You can also continue later."))
-                                .font(.subheadline)
+                                .font(.body)
                                 .foregroundStyle(.secondary)
                         }
                         ForEach(request.questions) { question in

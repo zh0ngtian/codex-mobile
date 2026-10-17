@@ -8,10 +8,10 @@ struct FlowDetailRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
             Text(title)
-                .font(.caption)
+                .font(.body)
                 .foregroundStyle(.secondary)
             Text(value)
-                .font(monospaced ? .system(.subheadline, design: .monospaced) : .subheadline)
+                .font(monospaced ? .system(.body, design: .monospaced) : .body)
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }

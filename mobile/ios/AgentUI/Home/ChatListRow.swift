@@ -13,7 +13,7 @@ struct ChatListRow: View {
                 VStack(alignment: .leading, spacing: 5) {
                     HStack(alignment: .top, spacing: 4) {
                         Text(conversation.title)
-                            .font(AgentTheme.body.weight(conversation.isUnread ? .bold : .medium))
+                            .font(AgentTheme.body)
                             .multilineTextAlignment(.leading)
                             .lineLimit(2)
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -40,7 +40,7 @@ struct ChatListRow: View {
                                     .foregroundStyle(.orange)
                             }
                         }
-                        .font(AgentTheme.sidebarDetail.weight(.medium))
+                        .font(AgentTheme.sidebarDetail)
                         .foregroundStyle(.secondary)
                     }
                     if session.selectedDeviceID == nil, let device = session.device(conversation.deviceID) {

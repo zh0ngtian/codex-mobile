@@ -9,10 +9,10 @@ struct ConversationStatusBanners: View {
             if conversation.readOnly || session.device(conversation.deviceID)?.connection != .connected || session.device(conversation.deviceID)?.enabled != true {
                 HStack {
                     Label(preferences.text("历史可读，当前不可交互", "History is readable; interaction is unavailable"), systemImage: "lock")
-                        .font(.subheadline)
+                        .font(.body)
                     Spacer()
                     Button(preferences.text("重新连接", "Reconnect")) { Task { await session.reconnectConversation(conversation.id) } }
-                        .font(.subheadline.bold()).frame(minHeight: 44)
+                        .font(.body).frame(minHeight: 44)
                 }
                 .padding(12).background(AgentTheme.code, in: .rect(cornerRadius: 14))
             }
@@ -22,7 +22,7 @@ struct ConversationStatusBanners: View {
                     Spacer()
                     Button(session.hasDeferredQuestion ? preferences.text("继续回答", "Continue answering") : preferences.text("查看待处理请求", "View pending requests")) { session.reopenPendingRequests() }
                 }
-                .font(.subheadline).padding(12).background(.orange.opacity(0.08), in: .rect(cornerRadius: 14))
+                .font(.body).padding(12).background(.orange.opacity(0.08), in: .rect(cornerRadius: 14))
             }
         }
     }

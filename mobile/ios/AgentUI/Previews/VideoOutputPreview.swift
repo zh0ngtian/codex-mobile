@@ -25,7 +25,7 @@ struct VideoOutputPreview: View {
                 ProgressView().frame(height: 230)
             }
             Text(preferences.text("点击播放按钮开始播放；点按视频可显示系统进度控件。右上角可下载媒体文件。", "Use Play to start; tap the video to reveal the system timeline. Download the media file from the toolbar."))
-                .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                .font(.body).foregroundStyle(.secondary).multilineTextAlignment(.center)
             Spacer(minLength: 0)
         }
         .padding(20)

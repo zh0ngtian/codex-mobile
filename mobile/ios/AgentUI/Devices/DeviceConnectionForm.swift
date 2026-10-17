@@ -47,7 +47,6 @@ struct DeviceConnectionForm: View {
                     HStack(spacing: 10) {
                         if session.deviceTesting { ProgressView() }
                         Text(session.deviceTesting ? preferences.text("正在连接测试…", "Testing connection…") : preferences.text("测试并保存", "Test and Save"))
-                            .fontWeight(.semibold)
                     }
                     .frame(maxWidth: .infinity)
                 }
@@ -69,7 +68,7 @@ struct DeviceConnectionForm: View {
                 Section {
                     Label(preferences.text("连接未保存，请检查地址后重试。", "Connection not saved. Check the URL and try again."), systemImage: "exclamationmark.triangle")
                         .foregroundStyle(.red)
-                    Text(preferences.runtimeText(error)).font(.footnote).foregroundStyle(.secondary)
+                    Text(preferences.runtimeText(error)).font(.body).foregroundStyle(.secondary)
                 }
             }
             if let deviceID, session.device(deviceID) != nil {

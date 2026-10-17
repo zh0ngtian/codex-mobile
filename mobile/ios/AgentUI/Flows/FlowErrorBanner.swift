@@ -6,7 +6,7 @@ struct FlowErrorBanner: View {
 
     var body: some View {
         Label(preferences.runtimeText(message), systemImage: "exclamationmark.circle.fill")
-            .font(.subheadline)
+            .font(.body)
             .foregroundStyle(.red)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(14)

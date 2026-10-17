@@ -9,7 +9,7 @@ struct ApprovalDecisionButtons: View {
         VStack(spacing: 8) {
             if request.submitting {
                 ProgressView(preferences.text("正在提交决定…", "Submitting decision…"))
-                    .font(.subheadline)
+                    .font(.body)
                     .frame(minHeight: 44)
             }
             ForEach(request.choices) { choice in
@@ -17,7 +17,7 @@ struct ApprovalDecisionButtons: View {
                     submit(choice.id)
                 } label: {
                     Label(choice.title, systemImage: choice.decision?.symbol ?? "questionmark.circle")
-                        .font(.body.weight(.semibold))
+                        .font(.body)
                         .frame(maxWidth: .infinity, minHeight: 44)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 3)

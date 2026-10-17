@@ -31,7 +31,7 @@ struct HomeHeader: View {
                     }
                 } label: {
                     HStack(spacing: 4) {
-                        Text("Codex").font(AgentTheme.font(.headline, size: 18, baseSize: 17, design: .rounded).bold())
+                        Text("Codex").font(.body)
                         Image(systemName: "chevron.down").font(.caption2.bold())
                     }
                     .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
@@ -51,7 +51,7 @@ struct HomeHeader: View {
             HStack(spacing: 4) {
                 Circle().fill(scopeColor).frame(width: 5, height: 5)
                 Text(scopeTitle)
-                    .font(AgentTheme.small.weight(.medium))
+                    .font(AgentTheme.small)
                     .lineLimit(1)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 Button(action: toggleSearch) {

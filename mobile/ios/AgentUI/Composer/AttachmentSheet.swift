@@ -25,12 +25,12 @@ struct AttachmentSheet: View {
                     Button(preferences.text("选择文件", "Choose files"), systemImage: "folder", action: chooseFiles)
                     if pickerError {
                         Label(preferences.text("无法打开所选文件。已保留现有输入，请重新选择。", "Could not open the selected files. Your input is preserved; choose again."), systemImage: "exclamationmark.triangle")
-                            .font(.footnote).foregroundStyle(.secondary)
+                            .font(.body).foregroundStyle(.secondary)
                     }
                 } header: { Text(preferences.text("从本机添加", "Add from your device")) }
                 footer: { Text(preferences.text("附件内存上限：单个文件 20 MiB，输入框已有附件与待添加附件合计 40 MiB。", "Attachment memory limit: 20 MiB per file, 40 MiB total for existing and staged input attachments.")) }
                 if let importError {
-                    Label(importError, systemImage: "exclamationmark.triangle").font(.footnote).foregroundStyle(.red)
+                    Label(importError, systemImage: "exclamationmark.triangle").font(.body).foregroundStyle(.red)
                 }
                 if !imports.items.isEmpty {
                     Section {
@@ -39,7 +39,7 @@ struct AttachmentSheet: View {
                         }
                         if imports.items.contains(where: { $0.state == .failed }) {
                             Text(preferences.text("请移除失败的附件后继续添加。", "Remove failed attachments before adding the remaining files."))
-                                .font(.caption).foregroundStyle(.secondary)
+                                .font(.body).foregroundStyle(.secondary)
                         }
                     } header: { Text(preferences.text("待添加附件", "Attachments to add")) }
                 }

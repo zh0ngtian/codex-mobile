@@ -11,7 +11,7 @@ struct DraftCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text(summary)
-                .font(.body.weight(.medium))
+                .font(.body)
                 .lineLimit(4)
                 .frame(maxWidth: .infinity, alignment: .leading)
             VStack(alignment: .leading, spacing: 7) {
@@ -26,7 +26,7 @@ struct DraftCard: View {
                 }
                 .foregroundStyle(.secondary)
             }
-            .font(.caption)
+            .font(.body)
             FlowAttachmentSummary(attachments: draft.composition.attachments)
             if let restoreError {
                 FlowErrorBanner(message: restoreError)

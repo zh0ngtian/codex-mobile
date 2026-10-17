@@ -5,7 +5,6 @@ struct NativeMarkdownTableView: View {
     let scale: Double
     var store: NativeUIStore? = nil
     var cellScopes: [[NativeMarkdownHTMLScope]] = []
-    @ScaledMetric(relativeTo: .body) private var bodySize = 14.5
     var body: some View {
         ScrollView(.horizontal) {
             Grid(alignment: .topLeading, horizontalSpacing: 0, verticalSpacing: 0) {
@@ -13,7 +12,7 @@ struct NativeMarkdownTableView: View {
                     GridRow {
                         ForEach(Array(cells.enumerated()), id: \.offset) { columnIndex, text in
                             NativeInlineContentView(text: text, store: store, scope: cellScope(row: rowIndex, column: columnIndex))
-                                .font(.system(size: bodySize * scale, weight: rowIndex == 0 ? .bold : .medium))
+                                .font(.body)
                                 .lineLimit(nil)
                                 .padding(10)
                                 .frame(width: 260, alignment: .topLeading)

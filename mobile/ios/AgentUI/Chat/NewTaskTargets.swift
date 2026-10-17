@@ -13,7 +13,7 @@ struct NewTaskTargets: View {
                 }
             } label: {
                 Label(session.currentDevice?.name ?? preferences.text("选择机器", "Choose computer"), systemImage: "laptopcomputer")
-                    .font(.subheadline).lineLimit(1).frame(maxWidth: .infinity, minHeight: 44)
+                    .font(.body).lineLimit(1).frame(maxWidth: .infinity, minHeight: 44)
             }
             .tint(AgentTheme.ink)
             .accessibilityIdentifier("new.computer")
@@ -26,7 +26,7 @@ struct NewTaskTargets: View {
                 }
             } label: {
                 Label(session.composer.project ?? preferences.text("选择项目", "Choose project"), systemImage: "folder")
-                    .font(.subheadline).lineLimit(1).frame(maxWidth: .infinity, minHeight: 44)
+                    .font(.body).lineLimit(1).frame(maxWidth: .infinity, minHeight: 44)
             }
             .tint(AgentTheme.ink)
             .accessibilityIdentifier("new.project")

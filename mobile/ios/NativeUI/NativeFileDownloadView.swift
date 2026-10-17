@@ -15,7 +15,7 @@ struct NativeFileDownloadView: View {
             Button(downloading ? label("正在下载…", "Downloading…") : label("下载文件", "Download File"), systemImage: "arrow.down.doc") {
                 task = Task { await download() }
             }.disabled(downloading)
-            if let error { Text(error).font(.caption).foregroundStyle(.red).textSelection(.enabled) }
+            if let error { Text(error).font(.body).foregroundStyle(.red).textSelection(.enabled) }
         }
         .fileMover(isPresented: $pickerOpen, file: savedFile) { result in
             if case .failure(let reason) = result { error = reason.localizedDescription }

@@ -22,7 +22,7 @@ struct MarkdownBlockView: View {
                 .overlay(alignment: .leading) { RoundedRectangle(cornerRadius: 2).fill(.tint.opacity(0.4)).frame(width: 3) }
         case "code":
             ScrollView(.horizontal) {
-                Text(block.text).font(.system(.footnote, design: .monospaced))
+                Text(block.text).font(.system(.body, design: .monospaced))
                     .frame(maxWidth: .infinity, alignment: .leading).padding(16)
             }
             .background(AgentTheme.code, in: .rect(cornerRadius: 14))

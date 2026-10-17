@@ -7,7 +7,7 @@ struct ApprovalRequestDetails: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Label(preferences.text("需要你的批准", "Your approval is needed"), systemImage: "hand.raised.fill")
-                .font(.title2.bold())
+                .font(.body)
                 .padding(.bottom, 2)
             Text(request.reason)
                 .font(.body)
