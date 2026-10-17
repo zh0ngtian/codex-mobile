@@ -35,9 +35,15 @@
   python3 -B -m unittest discover -s tests -p 'test_*.py'
   ```
 
-- [ ] 按中文 Conventional Commits 规范完成差异、暂存清单检查，提交并推送固定 SHA，再提交 ready。正式版本预期按现役版本递增到 `0.3.1`；实际版本以成功批次 receipt 为准。
-- [ ] 等待 GitHub 双端构建和本机签名、各渠道及必要开发 CI 成功。确认冻结来源包含任务 SHA、图标为本次 Light 原图、签名身份与钥匙串组连续。
-- [ ] 读取共同成功 receipt，独立核对 GitHub 标签、APK/unsigned IPA、固定 APK/已签名 IPA 的 HEAD/完整 GET、大小和 SHA-256，并核对 OTA 安装页及软件源同版本中文日志和署名。
-- [ ] 保存并提交推送发布验收摘要；交付 GitHub Release、固定 OTA 安装页和固定 APK/IPA 的实际版本、大小、SHA-256 及 IPA 已签名说明。
+- [x] 按中文 Conventional Commits 规范完成差异、暂存清单检查，提交并推送固定 SHA，再提交 ready。正式版本预期按现役版本递增到 `0.3.1`；实际版本以成功批次 receipt 为准。
+- [x] 等待 GitHub 双端构建和本机签名、各渠道及必要开发 CI 成功。确认冻结来源包含任务 SHA、图标为本次 Light 原图、签名身份与钥匙串组连续。
+- [x] 读取共同成功 receipt，独立核对 GitHub 标签、APK/unsigned IPA、固定 APK/已签名 IPA 的 HEAD/完整 GET、大小和 SHA-256，并核对 OTA 安装页及软件源同版本中文日志和署名。
+- [x] 保存并提交推送发布验收摘要；交付 GitHub Release、固定 OTA 安装页和固定 APK/IPA 的实际版本、大小、SHA-256 及 IPA 已签名说明。
 
 本次只调整用户明确选择的图标字重。不创建测试会话，不执行设备覆盖安装，不将包内图标与渠道检查称为真机桌面渲染或数据保留验收。
+
+## 实际完成记录
+
+2026-10-17：成功批次 `3b1980c7-7220-44b2-a3a0-41e7840e011c` 发布 `0.3.1 / 3001`。来源提交 `548c34391e739575dffd238eade81b9647ef63f9`，冻结提交 `d005cc62ae28d82865fc88bcaa0352abb38e2083` 仅增加本批发布清单，Light 原图与生产图散列均为 `c3cd3925bd0edc9236a446f730ebaaaffb1dea773627fc4eb90e28c51b39d83c`。
+
+[GitHub Release v0.3.1](https://github.com/zh0ngtian/codex-mobile/releases/tag/v0.3.1)、正式双端 CI `39022857593`、必要开发 CI 与全部渠道均成功。GitHub APK/unsigned IPA、固定 LAN 包和 OTA 元数据的 HEAD/完整 GET 校验、软件源中文日志与署名回验通过，Ad Hoc 升级身份及钥匙串组连续。最终 IPA 的 180px 主图标近黑像素为 2651，低于 0.3.0 Regular 的 3453；Android 各分辨率图标亦已提取核对。未执行真机覆盖安装或桌面显示验收。详情见 [发布凭证摘要](evidence/2026-10-17-apple-intelligence-light-release.json)。
