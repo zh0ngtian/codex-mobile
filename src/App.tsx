@@ -3860,10 +3860,10 @@ function BackendWorkspace({
     if (!active?.id) setNewChatPermissionMode(mode);
     setPicker(null);
   };
-  const replyToRequest = (result: unknown) => {
+  const replyToRequest = async (result: unknown) => {
     const client = clientRef.current;
-    if (!approval || !client) return;
-    void approvalRequests.submit(result, client, (requestId, confirmed) => {
+    if (!approval || !client) return { ok: false, error: t("尚未连接 app-server") };
+    return approvalRequests.submit(result, client, (requestId, confirmed) => {
       rememberPendingOperation(requestId, {
         threadId: String((approval.params as AnyRecord)?.threadId ?? ""),
         draftContext: draftContextGenerationRef.current,

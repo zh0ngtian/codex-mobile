@@ -106,6 +106,11 @@ export function workspaceBusinessPanels(c: NativeWorkspaceController, panel: Sta
  const currentRequest = (p: any) => { const live = cb.currentApproval ? cb.currentApproval() : { request, submitting: disabled }; if (!live?.request || p.requestKey !== approvalKey(live.request) || live.submitting) throw new Error(t('审批请求已变化或正在提交')); return live.request; };
  const currentEdit = (p: any, requireTarget = true) => { const live = cb.currentHistoryEdit ? cb.currentHistoryEdit() : edit; if (!live || p.editKey !== historyEditKey(live) || (p.turnId != null && p.turnId !== live.target.turnId) || (p.messageId != null && p.messageId !== live.target.messageId) || live.submitting) throw new Error(t('编辑消息已变化或正在提交')); if (requireTarget && !historyMessage) throw new Error(t('目标消息已变化，请取消编辑后重新选择')); return live; };
  const select = (values: any[], value: unknown) => { const match = values.find(o => String(o.id ?? '') === value); if (!match) throw new Error(t('选项不可用')); return match; };
+ const submitApproval = async (response: unknown) => {
+  if (!cb.replyToRequest) throw new Error(t('尚未连接 app-server'));
+  const result = await cb.replyToRequest(response);
+  if (result === false || result?.ok === false) throw new Error(result?.error || t('提交结果尚未确认，请保留回答'));
+ };
  const handlers: NativeHandlers = {
   'speed.select': p => cb.chooseSpeed?.(select(s.speedOptions ?? [], p.value).id),
   'permission.select': p => cb.choosePermissionMode?.(select(s.permissionModes ?? [], p.value).id),
@@ -120,8 +125,8 @@ export function workspaceBusinessPanels(c: NativeWorkspaceController, panel: Sta
    if (typeof chosen !== 'string' || (q.options?.length && !q.isOther && chosen !== '' && !q.options.some(o => o.label === chosen))) throw new Error(t('回答选项无效'));
    panel.setCustomAnswer?.(`${p.requestKey}:${q.id}`, p.custom === true && !!q.isOther); cb.answerApproval?.(q.id, chosen);
   },
-  'approval.decide': p => { const r = currentRequest(p); if (!Number.isSafeInteger(p.index)) throw new Error(t('审批决定无效')); const decision = approvalDecisions(r)[Number(p.index)]; if (decision === undefined) throw new Error(t('审批决定无效')); const response = approvalResponse(r, decision); if (!response) throw new Error(t('审批决定无效')); return cb.replyToRequest?.(response); },
-  'approval.submit': p => { const r = currentRequest(p); const response = questionResponse(r, cb.currentApproval?.()?.answers ?? answers); if (!response) throw new Error(t('请回答所有问题后提交。')); return cb.replyToRequest?.(response); },
+  'approval.decide': p => { const r = currentRequest(p); if (!Number.isSafeInteger(p.index)) throw new Error(t('审批决定无效')); const decision = approvalDecisions(r)[Number(p.index)]; if (decision === undefined) throw new Error(t('审批决定无效')); const response = approvalResponse(r, decision); if (!response) throw new Error(t('审批决定无效')); return submitApproval(response); },
+  'approval.submit': p => { const r = currentRequest(p); const response = questionResponse(r, cb.currentApproval?.()?.answers ?? answers); if (!response) throw new Error(t('请回答所有问题后提交。')); return submitApproval(response); },
   'approval.dismiss': p => { currentRequest(p); cb.dismissApproval?.(); panel.setPanel(null); },
   'approval.reopen': () => { cb.reopenApproval?.(); panel.setPanel('approval'); },
   'history.change': p => { currentEdit(p); cb.changeHistoricalMessageEditText?.(String(p.value)); },

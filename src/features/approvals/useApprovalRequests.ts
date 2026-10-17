@@ -2,10 +2,12 @@ import { useCallback, useRef, useState } from "react";
 import type { RpcMessage } from "../../app-server/client";
 import { HttpOperationPendingError } from "../../backends/http-transport";
 import { approvalKey, supportedApprovalMethods } from "./approval-model";
+import { t } from "../../i18n";
 
 type Entry = { request: RpcMessage; answers: Record<string, string>; error: string; submission?: symbol; releasePending?: () => void };
 type Responder = { respond: (id: number | string, result: unknown) => void | Promise<void> };
 type RememberPending = (id: string, confirmed: (response: RpcMessage) => void) => void | (() => void);
+export type ApprovalSubmissionResult = { ok: true } | { ok: false; error: string; pending?: boolean };
 
 /** 请求状态与草稿一起存放，任何异步结果只能完成它所属的那次提交。 */
 export function useApprovalRequests() {
@@ -51,31 +53,38 @@ export function useApprovalRequests() {
     if (!first || first.submission) return;
     update(entriesRef.current.map((entry, index) => index ? entry : { ...entry, answers: { ...entry.answers, [id]: value }, error: "" }));
   }, [update]);
-  const submit = useCallback(async (result: unknown, client: Responder, remember: RememberPending, displayed?: RpcMessage) => {
+  const submit = useCallback(async (result: unknown, client: Responder, remember: RememberPending, displayed?: RpcMessage): Promise<ApprovalSubmissionResult> => {
     const first = entriesRef.current[0];
-    if (!first || first.submission || (displayed && approvalKey(first.request) !== approvalKey(displayed))) return;
+    const unavailable = (): ApprovalSubmissionResult => ({ ok: false, error: t("审批请求已变化或正在提交") });
+    if (!first || first.submission || (displayed && approvalKey(first.request) !== approvalKey(displayed))) return unavailable();
     const token = Symbol("approval-submission");
+    let completed: ApprovalSubmissionResult | undefined;
     update(entriesRef.current.map((entry, index) => index ? entry : { ...entry, submission: token, releasePending: undefined, error: "" }));
     const finish = (response: RpcMessage) => {
       const current = entriesRef.current;
       if (!current.some((entry) => entry.submission === token)) return;
+      completed = response.error ? { ok: false, error: response.error.message } : { ok: true };
       update(response.error ? current.map((entry) => entry.submission === token ? { ...entry, submission: undefined, releasePending: undefined, error: response.error!.message } : entry)
         : current.filter((entry) => entry.submission !== token));
     };
     try {
       await client.respond(first.request.id!, result);
       finish({ result: {} });
+      return completed ?? unavailable();
     } catch (reason) {
       if (reason instanceof HttpOperationPendingError) {
-        if (!entriesRef.current.some((entry) => entry.submission === token)) return;
+        if (!entriesRef.current.some((entry) => entry.submission === token)) return unavailable();
         const releasePending = remember(reason.requestId, finish);
         if (releasePending) {
           if (entriesRef.current.some((entry) => entry.submission === token)) {
             update(entriesRef.current.map((entry) => entry.submission === token ? { ...entry, releasePending } : entry));
           } else releasePending();
         }
+        return completed ?? { ok: false, error: reason.message, pending: true };
       } else {
-        finish({ error: { code: -1, message: reason instanceof Error ? reason.message : String(reason) } });
+        const error = reason instanceof Error ? reason.message : String(reason);
+        finish({ error: { code: -1, message: error } });
+        return { ok: false, error };
       }
     }
   }, [update]);
