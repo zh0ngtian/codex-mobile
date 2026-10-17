@@ -21,7 +21,7 @@ struct MessageView: View {
                 }
                 if !message.outputs.isEmpty { OutputCards(items: message.outputs) }
                 if MessagePresentation.showsResponseActions(for: message) {
-                    MessageActions(message: message, includeCommentary: progressExpanded)
+                    MessageActions(message: message)
                 }
             }
         }
