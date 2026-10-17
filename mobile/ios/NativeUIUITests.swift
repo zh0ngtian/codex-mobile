@@ -330,8 +330,30 @@ final class NativeUIUITests: XCTestCase {
         app.buttons["native-context-usage"].tap()
         XCTAssertTrue(app.staticTexts["Usage and Limits"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "93%")).firstMatch.exists, app.debugDescription)
-        XCTAssertTrue(app.staticTexts["Plan Remaining"].exists)
+        XCTAssertTrue(app.staticTexts["Cycle Remaining"].exists)
         XCTAssertTrue(app.staticTexts["Time Remaining"].exists)
+        XCTAssertTrue(app.staticTexts["Input Tokens"].exists)
+        XCTAssertTrue(app.staticTexts["Output Tokens"].exists)
+        XCTAssertTrue(app.staticTexts["100K (Cache hit 80%)"].exists)
+        XCTAssertTrue(app.staticTexts["28.5K"].exists)
+    }
+
+    func testUsageCardShowsCompactConversationTokenAndLimits() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--native-ui-reference-visual", "--native-ui-reference-visual-zh"]
+        app.launch()
+        let trigger = app.buttons["native-context-usage"]
+        XCTAssertTrue(trigger.waitForExistence(timeout: 5))
+        trigger.tap()
+        XCTAssertTrue(app.staticTexts["用量与额度"].waitForExistence(timeout: 5))
+        for label in ["上下文余量", "周期剩余", "时间剩余", "输入 Token", "输出 Token", "93%", "72%", "43%", "100K（缓存命中 80%）", "28.5K"] {
+            XCTAssertTrue(app.staticTexts[label].exists, label)
+        }
+        capture("对话用量卡片", app: app)
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.15, dy: 0.55)).tap()
+        XCTAssertTrue(app.staticTexts["用量与额度"].waitForNonExistence(timeout: 5))
+        trigger.tap()
+        XCTAssertTrue(app.staticTexts["100K（缓存命中 80%）"].waitForExistence(timeout: 5))
     }
 
     func testVisualReferencePreviewScreenshots() {
@@ -735,11 +757,14 @@ final class NativeUIUITests: XCTestCase {
         let manager = app.webViews.buttons["管理设备"]
         if !manager.isHittable { app.webViews.buttons["打开会话列表"].tap() }
         manager.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
-        // iOS 27 的 WebKit AX 在这个 aria-modal 中没有返回 checkbox。
-        // 本用例固定402×874验收机型，坐标来自实际设置页截图；重启后原生根与草稿仍须真实通过。
+        // WebKit 对网页 checkbox 和关联标签使用不同 AX 类型，按真实可见标签定位。
+        let interfaceToggle = app.webViews.descendants(matching: .any)
+            .matching(NSPredicate(format: "label == %@", "使用原生界面")).firstMatch
+        XCTAssertTrue(interfaceToggle.waitForExistence(timeout: 10), app.debugDescription)
+        XCTAssertTrue(interfaceToggle.isHittable, app.debugDescription)
         let settingsImage = XCTAttachment(screenshot: app.screenshot())
-        settingsImage.name = "旧界面可见切换开关"; settingsImage.lifetime = .keepAlways; add(settingsImage)
-        app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 30, dy: 247)).tap()
+        settingsImage.name = "非原生界面可见切换开关"; settingsImage.lifetime = .keepAlways; add(settingsImage)
+        interfaceToggle.tap()
         let savedPreference = app.staticTexts["native-ui-saved-preference"]
         expectation(for: NSPredicate(format: "label == %@", "1"), evaluatedWith: savedPreference)
         waitForExpectations(timeout: 20)

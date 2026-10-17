@@ -1,5 +1,3 @@
-import { isNativeUIEnabled } from './runtime';
-import { hasOverlayPresence, subscribeOverlayPresence } from '../ui/overlay-scroll';
 import type { ImageGenerationError } from '../backends/image-generation-error';
 import { projectToolPanel, projectFilePanel, projectAttachmentPreview, type NativeAttachmentPreview, useNativeRichContent, type NativeFileState } from './rich-content';
 import { workspaceBusinessPanels } from './workspace-panels';
@@ -14,7 +12,7 @@ import { FONT_SCALES, readFontSize } from '../ui/font-size';
 import { effortLabel } from '../ui/settings';
 import { groupConversationTurns } from '../ui/conversation';
 import { projectNameOf } from '../features/threads/thread-list-model';
-import { contextUsageView, sevenDayRateLimitView } from '../features/conversation/ConversationControls';
+import { contextUsageMetrics, formatTokenCount, inputCacheHitPercent, rateLimitMetrics } from '../features/conversation/usage-metrics';
 import { copyText } from '../ui/copy';
 import type { NativeRuntime } from './runtime';
 import { useNativeWorkspace } from './adapters';
@@ -39,7 +37,7 @@ export interface NativeWorkspaceController {
   /** 后续完整panel仍通过显式命令白名单扩展，不创建另一业务层。 */
   extended?: { state: RecordValue; callbacks: Record<string, (...args: any[]) => any> };
 }
-interface PanelState { presentation?: 'full' | 'composer'; panelId: string | null; query: string; setPanel: (id: string | null) => void; setQuery: (query: string) => void; getQuery?: () => string; file?: NativeFileState | null; attachmentPreview?: NativeAttachmentPreview | null; richContent?: NativePanelItem[]; customAnswers?: Set<string>; setCustomAnswer?: (key: string, custom: boolean) => void; richHandlers?: NativeHandlers; closeRich?: () => void; diagnostics?: Record<string, ImageGenerationError | null>; loadDiagnostic?: (id: string) => Promise<void> }
+interface PanelState { panelId: string | null; query: string; setPanel: (id: string | null) => void; setQuery: (query: string) => void; getQuery?: () => string; file?: NativeFileState | null; attachmentPreview?: NativeAttachmentPreview | null; richContent?: NativePanelItem[]; customAnswers?: Set<string>; setCustomAnswer?: (key: string, custom: boolean) => void; richHandlers?: NativeHandlers; closeRich?: () => void; diagnostics?: Record<string, ImageGenerationError | null>; loadDiagnostic?: (id: string) => Promise<void> }
 function projectPanel(c: NativeWorkspaceController, panel: PanelState): NativeSnapshot['panel'] {
   const id = panel.panelId;
   if (!id || ['approval', 'history-edit', 'confirm-history'].includes(id) || id.startsWith('confirm-queue:') || id.startsWith('queue-edit:')) return undefined;
@@ -82,10 +80,11 @@ export function createWorkspaceAdapter(c: NativeWorkspaceController, panel: Pane
   const hasInput = !!c.draft.trim() || !!c.draftImages.length || !!c.draftFiles.length;
   const business = workspaceBusinessPanels(c, panel, messages);
   if (business.historyMessage) business.historyMessage.historyEdit = business.historyEdit;
-  const context = contextUsageView(state.tokenUsage);
-  const limits = state.rateLimits?.rateLimits ?? state.rateLimits;
-  const rateLimitWindow = [limits?.secondary, limits?.primary].find(entry => Number.isFinite(Number(entry?.windowDurationMins)) && Number(entry?.windowDurationMins) >= 7 * 24 * 60);
-  const quota = rateLimitWindow?.usedPercent != null ? sevenDayRateLimitView({ secondary: rateLimitWindow }) : null;
+  const context = contextUsageMetrics(state.tokenUsage);
+  const inputTokenUsage = formatTokenCount(state.tokenUsage?.total?.inputTokens);
+  const outputTokenUsage = formatTokenCount(state.tokenUsage?.total?.outputTokens);
+  const sevenDayRateLimit = rateLimitMetrics(state.rateLimits, 10080);
+  const fiveHourRateLimit = rateLimitMetrics(state.rateLimits, 300);
   const conversationActions = [...business.actions, nativeAction('mentions', 'Skill / Plugin', 'panel.open', { id: 'mentions' })];
   if (!c.active?.id) conversationActions.push({ ...nativeAction('save-draft', c.draftSaveStatus || t('保存草稿'), 'draft.save'), disabled: !hasInput || c.draftSaving || c.imageReading || c.busy || c.pending });
   if (c.loadState === 'error') conversationActions.push(nativeAction('retry', t('重试'), 'thread.retry'));
@@ -114,11 +113,14 @@ export function createWorkspaceAdapter(c: NativeWorkspaceController, panel: Pane
     permissions: Array.isArray(state.permissionModes) ? options(state.permissionModes) : undefined,
     permissionValue: typeof state.selectedPermissionModeId === 'string' ? state.selectedPermissionModeId : undefined,
     contextUsage: context ? { ...context, used: Math.min(context.total, Math.max(0, context.used)) } : undefined,
-    sevenDayRateLimit: quota && rateLimitWindow ? { remainingPercent: quota.remainingPercent, windowDurationMins: Number(rateLimitWindow.windowDurationMins),
-      ...(rateLimitWindow.resetsAt != null && Number.isFinite(Number(rateLimitWindow.resetsAt)) && Number(rateLimitWindow.resetsAt) > 0 ? { resetsAt: Number(rateLimitWindow.resetsAt) } : {}) } : undefined,
+    inputTokenUsage: inputTokenUsage ?? undefined,
+    outputTokenUsage: outputTokenUsage ?? undefined,
+    inputCacheHitPercent: inputCacheHitPercent(state.tokenUsage) ?? undefined,
+    sevenDayRateLimit: sevenDayRateLimit ?? undefined,
+    fiveHourRateLimit: fiveHourRateLimit ?? undefined,
     pending: c.pending || c.imageReading || c.draftSaving, loading: c.loadState, conversationActions,
     badge: c.syncStale ? t('正在同步') : undefined, error: c.error || c.loadError || undefined,
-    panel: (panel.presentation !== 'composer' || panel.panelId ? business.panel : undefined) ?? projectPanel(c, panel),
+    panel: business.panel ?? projectPanel(c, panel),
   };
   const handlers: NativeHandlers = {
     'draft.set': p => c.setDraft(String(p.value), Number(p.revision), typeof p.caretOffset === 'number' ? p.caretOffset : String(p.value).length),
@@ -183,9 +185,6 @@ export function useNativeConversationAdapter(runtime: NativeRuntime | null, c: N
   const [customAnswers, setCustomAnswers] = useState<Set<string>>(new Set());
   const setCustomAnswer = (key: string, custom: boolean) => setCustomAnswers(values => { const next = new Set(values); if (custom) next.add(key); else next.delete(key); return next; });
   const rich = useNativeRichContent(c, !!runtime, setPanel);
-  useLayoutEffect(() => subscribeOverlayPresence(() => {
-    if (!isNativeUIEnabled() && hasOverlayPresence()) { setPanel(null); rich.close(); }
-  }), [c.contextId]);
   const [draftAck, setDraftAck] = useState({ contextId: c.contextId, revision: 0, text: c.draft, caretOffset: c.draft.length });
   const draftAckRef = useRef(draftAck); draftAckRef.current = draftAck;
   useEffect(() => { setPanel(null); setQuery(''); setCustomAnswers(new Set()); }, [c.contextId]);
@@ -197,6 +196,6 @@ export function useNativeConversationAdapter(runtime: NativeRuntime | null, c: N
       const next = { contextId: c.contextId, revision: revision ?? (draftAckRef.current.contextId === c.contextId ? draftAckRef.current.revision : 0), text: value, caretOffset: caretOffset ?? value.length };
       draftAckRef.current = next;
       setDraftAck(next);
-  } }, { presentation: isNativeUIEnabled() ? 'full' : 'composer', panelId: panelContext === c.contextId ? panelId : null, query, setPanel, setQuery, getQuery: () => queryRef.current, customAnswers, setCustomAnswer, file: rich.file, attachmentPreview: rich.attachmentPreview, richContent: rich.resources, richHandlers: rich.handlers, closeRich: rich.close, diagnostics: rich.diagnostics, loadDiagnostic: rich.loadDiagnostic }) : { snapshot: emptyNativeSnapshot(), handlers: {} };
+  } }, { panelId: panelContext === c.contextId ? panelId : null, query, setPanel, setQuery, getQuery: () => queryRef.current, customAnswers, setCustomAnswer, file: rich.file, attachmentPreview: rich.attachmentPreview, richContent: rich.resources, richHandlers: rich.handlers, closeRich: rich.close, diagnostics: rich.diagnostics, loadDiagnostic: rich.loadDiagnostic }) : { snapshot: emptyNativeSnapshot(), handlers: {} };
   useNativeWorkspace(runtime, c.backend.id, adapter.snapshot, adapter.handlers);
 }

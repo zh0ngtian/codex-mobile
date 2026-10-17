@@ -1,0 +1,51 @@
+{
+  "task": "remove-modern-web-native-input-20261017",
+  "sourceCommit": "0427c0c4a50ffce74e225bc579166538902ca0be",
+  "scope": [
+    "删除新版Web界面和独立原生输入框模式",
+    "保留当前非原生与完整原生界面",
+    "升级保留useNativeUI选择，旧modern/composer偏好不再生效"
+  ],
+  "checks": {
+    "vitest": {
+      "files": 129,
+      "tests": 1394,
+      "status": "passed"
+    },
+    "typecheck": "passed",
+    "nativeSwiftSDKTypecheck": "passed",
+    "uiTestSwiftTypecheck": "passed",
+    "adapterRegression": {
+      "tests": 166,
+      "status": "passed"
+    },
+    "coordinatorRecovery": {
+      "tests": 35,
+      "status": "passed"
+    }
+  },
+  "simulator": {
+    "status": "passed",
+    "device": "iPhone 17 Pro",
+    "runtime": "iOS 26.5",
+    "systemTextSize": "normal",
+    "orientation": "portrait",
+    "tests": 3,
+    "fixture": "离线HTTP内存响应，生产App/SwiftUI与WKWebView",
+    "scenarios": [
+      "旧偏好升级后使用网页输入、模型与附件操作",
+      "非原生设置仅保留完整原生界面开关",
+      "完整原生输入、发送可用状态与设置开关保留"
+    ],
+    "runtimeSourceHashesStable": true,
+    "cleanup": "QA App与runner已卸载，模拟器锁已释放，未创建远端测试会话"
+  },
+  "release": {
+    "status": "pending",
+    "project": "codex-mobile-lan-production"
+  },
+  "limitations": [
+    "未验证真机覆盖安装及数据保留",
+    "保留的真实网关双界面切换用例本轮仅更新定位并通过类型检查；未执行真实网关测试"
+  ]
+}

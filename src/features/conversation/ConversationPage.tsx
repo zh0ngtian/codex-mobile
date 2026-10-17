@@ -1,5 +1,3 @@
-import { useNativeWebComposer } from '../../native-ui/web-composer';
-import type { NativeRuntime } from '../../native-ui/runtime';
 import {
   type FormEvent,
   type RefObject,
@@ -10,7 +8,6 @@ import {
   useRef,
   useState,
 } from "react";
-import { flushSync } from "react-dom";
 import { AppServerClient } from "../../app-server/client";
 import {
   createHistoricalMessageEditTarget,
@@ -48,14 +45,12 @@ import { TurnCard } from "./Timeline";
 import {
   ContextUsageButton,
   ConversationActionMenu,
-  ConversationStatusSheet,
 } from "./ConversationControls";
 import { ImagePreviewSheet } from "./sheets/ImagePreviewSheet";
 import { useConversationAutoScroll } from "./conversation-scroll";
 import { useRealtimeConversation } from "./useRealtimeConversation";
 import { t } from "../../i18n";
-import { useWebInterface } from "../web-ui/preference";
-import { ModernContextUsage, NewChatDraftMenu } from "./ModernConversationControls";
+import { ConversationUsagePopover } from "./ConversationUsagePopover";
 import videoPoster from "../../assets/video-poster.svg";
 import { RunProgress } from "./RunProgress";
 import type { HttpSyncState } from "../../backends/http-transport";
@@ -189,7 +184,6 @@ export function ConversationPage({
   pluginsLoading = false,
   imageInputRef,
   onBack,
-  onNewChat,
   onNewChatBackendChange,
   onNewChatProjectChange,
   onPin,
@@ -204,13 +198,10 @@ export function ConversationPage({
   onSelectImages,
   onSelectLocation,
   onOpenAgentSettings,
-  onOpenSpeedSettings,
   onOpenPermissionSettings,
   onDraftChange,
-  nativeRuntime = null,
   nativeContextId = '',
-  conversationVisible = false,
-  webOverlayOpen = false,
+  conversationVisible = true,
   historyEdit = null,
   onEditUserMessage,
   onHistoryEditTextChange = () => undefined,
@@ -221,10 +212,8 @@ export function ConversationPage({
   onQueuedFollowUpEdit = () => undefined,
   onQueuedFollowUpCancel = () => undefined,
 }: {
-  nativeRuntime?: NativeRuntime | null;
   nativeContextId?: string;
   conversationVisible?: boolean;
-  webOverlayOpen?: boolean;
   active: DisplayRecord;
   backendId: string;
   backendName: string;
@@ -266,7 +255,6 @@ export function ConversationPage({
   pluginsLoading?: boolean;
   imageInputRef: RefObject<HTMLInputElement | null>;
   onBack: () => void;
-  onNewChat?: () => void;
   onNewChatBackendChange: (backendId: string) => void;
   onNewChatProjectChange: (cwd: string) => void;
   onPin: () => Promise<boolean>;
@@ -280,9 +268,8 @@ export function ConversationPage({
   onRemoveFile: (fileId: string) => void;
   onSelectImages: (files: FileList | null) => Promise<void>;
   onSelectLocation: () => Promise<boolean>;
-  onOpenAgentSettings: (restoreComposerFocus?: () => void) => void;
-  onOpenSpeedSettings?: (restoreComposerFocus?: () => void) => void;
-  onOpenPermissionSettings: (restoreComposerFocus?: () => void) => void;
+  onOpenAgentSettings: () => void;
+  onOpenPermissionSettings: () => void;
   onDraftChange: (value: string) => void;
   historyEdit?: {
     target: HistoricalMessageEditTarget;
@@ -298,21 +285,16 @@ export function ConversationPage({
   onQueuedFollowUpEdit?: (id: string, text: string) => void | boolean | Promise<boolean>;
   onQueuedFollowUpCancel?: (id: string) => void;
 }) {
-  const { modern } = useWebInterface();
-  const [composerFocused, setComposerFocused] = useState(false);
-  const [composerWrapped, setComposerWrapped] = useState(false);
-  const settingsFocusRef = useRef<(() => void) | undefined>(undefined);
-  const formControlHandoffRef = useRef<{ target: HTMLElement; pointerId: number; revision: number } | undefined>(undefined);
   const composerIdentityRef = useRef({ id: active.id, backendId, nativeContextId, historyEdit, active, revision: 0 });
   const previousIdentity = composerIdentityRef.current;
   const changedComposer = previousIdentity.id !== active.id || previousIdentity.backendId !== backendId || previousIdentity.nativeContextId !== nativeContextId ||
     Boolean(previousIdentity.historyEdit) !== Boolean(historyEdit) || (!active.id && previousIdentity.active !== active);
   composerIdentityRef.current = { id: active.id, backendId, nativeContextId, historyEdit, active, revision: previousIdentity.revision + Number(changedComposer) };
-  const hasFormControlHandoff = () => formControlHandoffRef.current?.revision === composerIdentityRef.current.revision;
   const selectedBackend =
     backends.find((backend) => backend.id === backendId) ?? null;
   const [previewImage, setPreviewImage] = useState<DraftImage | null>(null);
   const [statusOpen, setStatusOpen] = useState(false);
+  const usageButtonRef = useRef<HTMLButtonElement>(null);
   const [actionsOpen, setActionsOpen] = useState(false);
   const [composerMaximized, setComposerMaximized] = useState(false);
   const [attachmentMenuOpen, setAttachmentMenuOpen] = useState(false);
@@ -341,7 +323,6 @@ export function ConversationPage({
   const isNewChat = !active.id;
   const hasDraft = Boolean(draft.trim() || draftImages.length || draftFiles.length);
   const canQueue = busy && !isNewChat && hasDraft;
-  const composerExpanded = composerFocused || composerWrapped || draft.includes("\n") || draftImages.length > 0 || draftFiles.length > 0 || composerMaximized;
   const canSaveDraft = !draftSaving && !imageReading && !busy && !operationPending && hasDraft;
   const realtime = useRealtimeConversation({
     client,
@@ -355,12 +336,13 @@ export function ConversationPage({
     setComposerMaximized(false);
     setStatusOpen(false);
     setActionsOpen(false);
-    settingsFocusRef.current = undefined;
-    formControlHandoffRef.current = undefined;
     setAttachmentMenuOpen(false);
     setSkillMention(null);
     setQueuedFollowUpEdit(null);
   }, [active.id, backendId, nativeContextId]);
+  useEffect(() => {
+    if (!conversationVisible) setStatusOpen(false);
+  }, [conversationVisible]);
   useEffect(() => {
     if (
       queuedFollowUpEdit &&
@@ -452,43 +434,6 @@ export function ConversationPage({
     ready: loadState === "ready",
     historyEditMessageId: historyEdit?.target.messageId,
   });
-  const nativeTextEditor = useNativeWebComposer(nativeRuntime, backendId, nativeContextId, conversationVisible,
-    webOverlayOpen || statusOpen || actionsOpen || Boolean(historyEdit || previewImage || queuedFollowUpEdit) || attachmentMenuOpen || realtimeActive, composerInputRef,
-    (focused, caret) => {
-      // 与网页form的blur使用同一交接保护：控件pointerdown后不能在click前折叠或移位。
-      if (focused || (!settingsFocusRef.current && !hasFormControlHandoff())) setComposerFocused(focused);
-      if (focused) syncSkillMention(draft, caret);
-    });
-  const nativeComposer = nativeTextEditor.enabled;
-  const finishFormControlHandoff = () => {
-    const handoff = formControlHandoffRef.current;
-    formControlHandoffRef.current = undefined;
-    if (!handoff || handoff.revision !== composerIdentityRef.current.revision) return;
-    settingsFocusRef.current = undefined;
-    setComposerFocused(nativeTextEditor.isFocused());
-  };
-  useEffect(() => {
-    if (!nativeComposer) return;
-    const outside = (event: PointerEvent) => {
-      const handoff = formControlHandoffRef.current;
-      if (handoff && event.target instanceof Node && !handoff.target.contains(event.target)) finishFormControlHandoff();
-    };
-    const release = (event: PointerEvent) => {
-      if ((event.pointerId ?? 0) === formControlHandoffRef.current?.pointerId) outside(event);
-    };
-    const cancel = (event: PointerEvent) => {
-      if ((event.pointerId ?? 0) === formControlHandoffRef.current?.pointerId) finishFormControlHandoff();
-    };
-    document.addEventListener("pointerdown", outside);
-    document.addEventListener("pointerup", release);
-    document.addEventListener("pointercancel", cancel);
-    return () => {
-      document.removeEventListener("pointerdown", outside);
-      document.removeEventListener("pointerup", release);
-      document.removeEventListener("pointercancel", cancel);
-      formControlHandoffRef.current = undefined;
-    };
-  }, [nativeComposer, nativeContextId]);
   useLayoutEffect(() => {
     const composer = composerRef.current;
     const scroll = scrollRef.current;
@@ -502,67 +447,10 @@ export function ConversationPage({
     const observer = new ResizeObserver(updateInset);
     observer.observe(composer);
     return () => { observer.disconnect(); scroll.style.removeProperty("--composer-height"); };
-  }, [scrollRef, nativeComposer]);
+  }, [scrollRef]);
   const interactive =
     loadState === "ready" &&
     accessMode === "interactive";
-  // 设置在 pointerdown 前记录输入焦点与选区，允许按钮正常产生 WebKit click。
-  const captureSettingsFocus = () => {
-    const input = composerInputRef.current;
-    settingsFocusRef.current = undefined;
-    if (!input || (!nativeTextEditor.isFocused() && document.activeElement !== input) || input.disabled) return;
-    const identity = composerIdentityRef.current;
-    const start = input.selectionStart;
-    const end = input.selectionEnd;
-    settingsFocusRef.current = () => {
-      const current = composerIdentityRef.current;
-      if (!input.isConnected || input.disabled || composerInputRef.current !== input || current.revision !== identity.revision || current.historyEdit) return;
-      input.focus({ preventScroll: true });
-      input.setSelectionRange(start, end);
-    };
-  };
-  const openSettings = (callback: ((restore?: () => void) => void) | undefined, trigger: HTMLButtonElement) => {
-    if (nativeTextEditor.isFocused() || document.activeElement === composerInputRef.current) captureSettingsFocus();
-    const revision = composerIdentityRef.current.revision;
-    const restore = settingsFocusRef.current ?? (document.activeElement === trigger ? () => {
-      const current = composerIdentityRef.current;
-      if (!trigger.isConnected || trigger.disabled || !composerRef.current?.contains(trigger) || current.revision !== revision || current.historyEdit) return;
-      // 键盘入口返回原按钮；先同步显示工具栏，避免浏览器拒绝聚焦 display:none 的控件。
-      flushSync(() => setComposerFocused(true));
-      trigger.focus({ preventScroll: true });
-    } : undefined);
-    settingsFocusRef.current = undefined;
-    callback?.(restore);
-  };
-  useLayoutEffect(() => {
-    const input = composerInputRef.current;
-    if (!input) return;
-    if (!modern && !nativeComposer) { input.style.removeProperty("height"); return; }
-    const resize = () => {
-      input.style.height = "auto";
-      // scrollHeight 包含 CSS 最小高度；测量内容时去除下限，避免单行被误判为换行。
-      const previousMinHeight = input.style.minHeight;
-      input.style.minHeight = "0";
-      const style = getComputedStyle(input);
-      const lineHeight = parseFloat(style.lineHeight) || 22;
-      const padding = (parseFloat(style.paddingTop) || 0) + (parseFloat(style.paddingBottom) || 0);
-      const contentHeight = input.scrollHeight;
-      input.style.minHeight = previousMinHeight;
-      const multiline = contentHeight > lineHeight + padding + 2;
-      // 聚焦期间按真实宽度测量；失焦后保留换行状态，防止宽窄布局往返抖动。
-      if (composerFocused || !composerExpanded || !draft) setComposerWrapped(multiline);
-      input.style.height = `${Math.min(modern ? 154 : 120, Math.max(lineHeight + padding, contentHeight))}px`;
-    };
-    resize();
-    if (typeof ResizeObserver === "undefined") return;
-    let width = input.getBoundingClientRect().width;
-    const observer = new ResizeObserver(() => {
-      const nextWidth = input.getBoundingClientRect().width;
-      if (nextWidth !== width) { width = nextWidth; resize(); }
-    });
-    observer.observe(input);
-    return () => observer.disconnect();
-  }, [modern, draft, composerExpanded, composerFocused, nativeComposer]);
   const requestOlderTurns = () => {
     if (!["idle", "error"].includes(olderTurnsState)) return;
     beginPrependPreservation();
@@ -593,7 +481,7 @@ export function ConversationPage({
             </button>
           </div>
         )}
-        {(!modern || nativeComposer) && realtimeActive && (
+        {realtimeActive && (
           <RealtimeControls
             status={
               realtime.state.status as "connecting" | "listening" | "stopping"
@@ -614,54 +502,54 @@ export function ConversationPage({
         {isNewChat && onSaveDraft && (
           <div className="new-chat-draft-actions">
             <span role="status">{draftSaveStatus}</span>
-            {!modern && <button type="button" disabled={!canSaveDraft} onClick={() => { void onSaveDraft(); }}>
+            <button type="button" disabled={!canSaveDraft} onClick={() => { void onSaveDraft(); }}>
               {draftSaving ? t("正在保存…") : t("保存草稿")}
-            </button>}
+            </button>
           </div>
         )}
   </>;
   return (
-    <section className="conversation" data-native-composer={nativeComposer ? "true" : undefined}>
+    <section className="conversation">
       <header className="conversation-header">
         <button
           className="round-button"
           aria-label={t("打开会话列表")}
           onClick={onBack}
         >
-          {modern ? <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5-7 7 7 7" /></svg> : <AppIcon name="menu" />}
+          <AppIcon name="menu" />
         </button>
         <div className="thread-heading">
           <strong>{titleOf(active)}</strong>
           <span>
-            {modern ? <><span className="modern-project-subtitle">{active.isProjectless ? t("无项目") : pathBasename(active.cwd ?? "") || t("无项目")}</span><span aria-hidden="true">·</span><span className="modern-device-subtitle-name">{backendName}</span></> : <>
+            <>
               <i className={`status-dot ${connection}`} />
               {backendName} · {active.isProjectless ? t("无项目") : pathBasename(active.cwd ?? "") || t("无项目")} ·{" "}
               {connection === "online" ? t("已连接") : t("连接中")}
-            </>}
+            </>
           </span>
         </div>
-        {(modern || !!active.id) && (
+        {(!!active.id) && (
           <div
             className="conversation-header-actions"
             role="group"
             aria-label={t("会话详情操作")}
           >
-            {modern ? <ModernContextUsage tokenUsage={tokenUsage} rateLimits={rateLimits} open={statusOpen}
-              onToggle={() => { setActionsOpen(false); setStatusOpen(current => !current); }} onClose={() => setStatusOpen(false)} /> : <ContextUsageButton
+            <ContextUsageButton
               tokenUsage={tokenUsage}
+              open={conversationVisible && statusOpen}
+              buttonRef={usageButtonRef}
               onClick={() => {
                 setActionsOpen(false);
-                setStatusOpen(true);
+                setStatusOpen(current => !current);
               }}
-            />}
-            {modern && <button type="button" className="round-button" aria-label={t("新建对话")} onClick={onNewChat} disabled={!onNewChat}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4H5a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7" /><path d="m15 3 5 5M10 17l-3 1 1-4L18 4a2.1 2.1 0 0 1 3 3z" /></svg></button>}
+            />
+
             <button
               className="round-button"
               type="button"
               aria-label={t("会话操作")}
               aria-expanded={actionsOpen}
-              onClick={(event) => {
-                if (modern) event.currentTarget.focus({ preventScroll: true });
+              onClick={() => {
                 setStatusOpen(false);
                 setActionsOpen((current) => !current);
               }}
@@ -671,9 +559,9 @@ export function ConversationPage({
           </div>
         )}
       </header>
-      {modern && isNewChat && actionsOpen && <NewChatDraftMenu canSave={canSaveDraft && interactive && Boolean(onSaveDraft)} saving={draftSaving} onSave={onSaveDraft} onClose={() => setActionsOpen(false)} />}
+
       <ConversationActionMenu
-        open={actionsOpen && (!modern || !isNewChat)}
+        open={actionsOpen}
         readOnly={accessMode === "readOnly"}
         thread={active}
         pendingAction={pendingAction}
@@ -861,32 +749,19 @@ export function ConversationPage({
               <div className="empty-state">{t("开始一次新的 Codex 对话")}</div>
             )}
             <RunProgress thread={active} busy={busy} sync={syncState} operationPending={operationPending} />
-            {nativeComposer && businessError}
+
           </div>
         </div>
       </div>
-      {!nativeComposer && businessError}
+      {businessError}
       <form
         ref={composerRef}
         className={`composer-wrap${
-          composerMaximized && !modern ? " composer-wrap-maximized" : ""
+          composerMaximized ? " composer-wrap-maximized" : ""
         }`}
         aria-busy={imageReading}
-        data-expanded={modern ? composerExpanded : undefined}
-        onPointerDownCapture={(event) => {
-          if (!nativeComposer || !nativeTextEditor.isFocused() || event.button > 0 || !(event.target instanceof Element)) return;
-          const target = event.target.closest<HTMLElement>("button, input, select, a, audio, video, [role=button], [role=menuitem]");
-          if (!target || !event.currentTarget.contains(target) || target.matches(":disabled")) return;
-          formControlHandoffRef.current = { target, pointerId: event.pointerId ?? 0, revision: composerIdentityRef.current.revision };
-        }}
-        onClick={finishFormControlHandoff}
-        onPointerUp={(event) => { if (event.defaultPrevented) finishFormControlHandoff(); }}
-        onTouchEnd={(event) => { if (event.defaultPrevented) finishFormControlHandoff(); }}
-        onBlur={(event) => {
-          if (!settingsFocusRef.current && !hasFormControlHandoff() && !(event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget))) setComposerFocused(false);
-        }}
+
         onSubmit={(event) => {
-          finishFormControlHandoff();
           if (historyEdit) event.preventDefault();
           else {
             // 在清空草稿或切换会话前结束编辑，避免键盘收起时 WebKit 继续追踪旧光标。
@@ -1097,12 +972,12 @@ export function ConversationPage({
             ))}
           </div>
         )}
-        {!modern && <div className="chips" onPointerDownCapture={captureSettingsFocus}>
+        <div className="chips">
           <button
             type="button"
             aria-label={t("选择模型、智能与速度")}
             disabled={!interactive}
-            onClick={(event) => openSettings(onOpenAgentSettings, event.currentTarget)}
+            onClick={onOpenAgentSettings}
           >
             {selectedServiceTier ? "⚡ " : ""}
             {selectedModelLabel} {effortLabel(selectedEffort)}
@@ -1111,11 +986,11 @@ export function ConversationPage({
             type="button"
             aria-label={t("选择审批与权限模式")}
             disabled={!interactive}
-            onClick={(event) => openSettings(onOpenPermissionSettings, event.currentTarget)}
+            onClick={onOpenPermissionSettings}
           >
             {selectedPermissionLabel}
           </button>
-        </div>}
+        </div>
         {skillMention && (
           <section
             id="installed-mention-options"
@@ -1334,22 +1209,11 @@ export function ConversationPage({
               </div>
             )}
           </div>
-          {modern && <div className="modern-composer-configuration" onPointerDownCapture={captureSettingsFocus}>
-            <button type="button" className="modern-permission-button" aria-label={t("选择审批与权限模式")} title={selectedPermissionLabel} disabled={!interactive || Boolean(historyEdit)} onClick={(event) => openSettings(onOpenPermissionSettings, event.currentTarget)}>
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v8c0 4-3.5 7-7 9-3.5-2-7-5-7-9z" /><path d="M12 8v5m0 3v.1" /></svg>
-            </button>
-            <button type="button" className={`modern-speed-button${selectedServiceTier ? " is-fast" : ""}`} aria-label={t("选择速度")} disabled={!interactive || Boolean(historyEdit) || !onOpenSpeedSettings} onClick={(event) => openSettings(onOpenSpeedSettings, event.currentTarget)}>
-              {nativeComposer ? <AppIcon name={selectedServiceTier ? "speed" : "speed-off"} /> : <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14 2-11 12h8l-1 8 11-12h-8z" /></svg>}
-            </button>
-            <button type="button" className="modern-model-effort-button" aria-label={t("选择模型与思考强度")} disabled={!interactive || Boolean(historyEdit)} onClick={(event) => openSettings(onOpenAgentSettings, event.currentTarget)}>
-              <span>{selectedModelLabel}</span><small>{effortLabel(selectedEffort)}</small>
-            </button>
-          </div>}
+
           <textarea
             ref={composerInputRef}
-            aria-hidden={nativeComposer ? true : undefined}
-            tabIndex={nativeComposer ? -1 : undefined}
-            data-native-text-proxy={nativeComposer ? "true" : undefined}
+
+
             aria-label={t("向 Codex 提问")}
             value={draft}
             disabled={
@@ -1375,7 +1239,6 @@ export function ConversationPage({
                 event.currentTarget.selectionStart,
               )
             }
-            onFocus={() => setComposerFocused(true)}
             onBlur={() => setSkillMention(null)}
             onKeyDown={(event) => {
               if (!skillMention || event.nativeEvent.isComposing) return;
@@ -1409,7 +1272,7 @@ export function ConversationPage({
             placeholder={t("向 Codex 提问")}
             rows={1}
           />
-          {!nativeComposer && <button
+          <button
             type="button"
             className="composer-size-button"
             disabled={Boolean(historyEdit)}
@@ -1420,7 +1283,7 @@ export function ConversationPage({
             onClick={() => setComposerMaximized((current) => !current)}
           >
             <AppIcon name={composerMaximized ? "minimize" : "maximize"} />
-          </button>}
+          </button>
           <button
             type={busy && !canQueue ? "button" : "submit"}
             onClick={
@@ -1464,9 +1327,9 @@ export function ConversationPage({
           />
         )}
 
-      <ConversationStatusSheet
-        open={!modern && statusOpen}
-        thread={active}
+      <ConversationUsagePopover
+        open={conversationVisible && statusOpen}
+        anchorRef={usageButtonRef}
         tokenUsage={tokenUsage}
         rateLimits={rateLimits}
         onClose={() => setStatusOpen(false)}

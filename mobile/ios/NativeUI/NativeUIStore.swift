@@ -14,8 +14,7 @@ final class NativeUIStore {
     private(set) var composerPresentation: NativeComposerPresentationEvent?
     private var composerIntent: NativeComposerPresentationIntent?
     var awaitingNewConversation: Bool { composerIntent != nil }
-    var webComposerVisible: Bool { snapshot.webComposer?.isVisible(composerEnabled: composerEnabled, nativeEnabled: nativeEnabled, recovery: showLegacyForRecovery, ready: snapshot.ready, sidebarOpen: sidebarOpen, contextId: snapshot.contextId) == true }
-    var composerCanEdit: Bool { (nativeEnabled || snapshot.webComposer == nil || webComposerVisible) && snapshot.ready && !snapshot.readOnly && snapshot.pending != true && !awaitingNewConversation }
+    var composerCanEdit: Bool { snapshot.ready && !snapshot.readOnly && snapshot.pending != true && !awaitingNewConversation }
     var composerCanSend: Bool {
         composerCanEdit && (isReference ? !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !snapshot.attachments.isEmpty : snapshot.canSend)
     }
@@ -29,7 +28,6 @@ final class NativeUIStore {
     private var pendingFields: [NativeFieldKey: Int] = [:]
     private var fieldRevision = 0
     private var draftRevision = 0
-    var webEditorDraftRevision: Int { draftRevision }
     private var pendingSearchRevision: Int? = nil
     private var pendingSidebarRevision: Int? = nil
     private var receivedResultIDs: Set<String> = []
@@ -40,10 +38,8 @@ final class NativeUIStore {
     private(set) var selectionRevision = 0
     private var preferenceRuntimeReady = false
     var canChangeNativePreference: Bool { snapshot.ready && preferenceRuntimeReady }
-    var savedComposerPreference = NativeUIPreference(storageKey: NativeUIPreference.composerKey, defaultEnabled: true).enabled
     var savedNativePreference = NativeUIPreference().enabled
     var preferenceSaving = false
-    @ObservationIgnored private var preferenceKind = "interface"
     @ObservationIgnored private var preferenceCommandID: String?
     @ObservationIgnored private var preferenceTimeout: Task<Void, Never>?
     var preferenceError: String? = nil
@@ -55,7 +51,6 @@ final class NativeUIStore {
     let visualReferenceFocused: Bool
     let isReference: Bool
     let nativeEnabled: Bool
-    let composerEnabled: Bool
     static let preferenceKey = NativeUIPreference.key
     // 与共享运行时的全局命令域一致，导航回执不属于某个工作区。
     private static let globalCommands: Set<String> = [
@@ -64,14 +59,12 @@ final class NativeUIStore {
         "settings.open", "drafts.open", "device.add", "device.edit", "device.change", "device.save", "device.cancel", "device.scan",
         "device.toggle", "device.remove", "device.move", "settings.language", "settings.font", "settings.transport",
         "settings.push.mode", "settings.push.url", "settings.push.save", "settings.update.check", "drafts.restore", "drafts.remove", "drafts.retry",
-        "update.install", "update.retry", "update.close", "confirmation.answer", "settings.native-ui", "settings.native-composer"
+        "update.install", "update.retry", "update.close", "confirmation.answer", "settings.native-ui"
     ]
 
     static let launchPreference = NativeUIPreference().enabled
-    static let launchComposerPreference = NativeUIPreference(storageKey: NativeUIPreference.composerKey, defaultEnabled: true).enabled
 
     init(arguments: [String] = ProcessInfo.processInfo.arguments) {
-        composerEnabled = Self.launchComposerPreference
         visualReferenceFocused = arguments.contains("--native-ui-reference-visual-focused")
         isReference = arguments.contains("--native-ui-reference-history") || arguments.contains("--native-ui-reference") || arguments.contains("--native-ui-reference-conversation") || arguments.contains("--native-ui-reference-visual")
         #if DEBUG
@@ -134,16 +127,15 @@ final class NativeUIStore {
             draft = snapshot.draft
         }
     }
-    func requestNativePreference(_ enabled: Bool, kind: String = "interface") {
-        guard ["interface", "composer"].contains(kind), !preferenceSaving, enabled != (kind == "composer" ? savedComposerPreference : savedNativePreference) else { return }
+    func requestNativePreference(_ enabled: Bool) {
+        guard !preferenceSaving, enabled != savedNativePreference else { return }
         guard !isReference, canChangeNativePreference, sendCommand != nil else {
             preferenceError = label("连接尚未就绪，请稍后重试", "The connection is not ready. Please retry.")
             return
         }
         preferenceError = nil
         preferenceSaving = true
-        preferenceKind = kind
-        let command = NativeCommand(name: kind == "composer" ? "settings.native-composer" : "settings.native-ui", params: ["enabled": .bool(enabled)])
+        let command = NativeCommand(name: "settings.native-ui", params: ["enabled": .bool(enabled)])
         preferenceCommandID = command.id
         preferenceTimeout?.cancel()
         preferenceTimeout = Task { [weak self] in
@@ -156,12 +148,11 @@ final class NativeUIStore {
 
     func expireNativePreferenceRequest(_ id: String) {
         guard preferenceCommandID == id, preferenceSaving else { return }
-        receivedNativePreference(preferenceKind == "composer" ? savedComposerPreference : savedNativePreference, kind: preferenceKind, error: label("界面设置保存超时，请重试", "Saving the interface setting timed out. Please retry."))
+        receivedNativePreference(savedNativePreference, error: label("界面设置保存超时，请重试", "Saving the interface setting timed out. Please retry."))
     }
 
-    func receivedNativePreference(_ enabled: Bool, kind: String = "interface", error: String? = nil) {
-        if kind == "composer" { savedComposerPreference = enabled } else { savedNativePreference = enabled }
-        guard preferenceCommandID == nil || preferenceKind == kind else { return }
+    func receivedNativePreference(_ enabled: Bool, error: String? = nil) {
+        savedNativePreference = enabled
         preferenceTimeout?.cancel()
         preferenceTimeout = nil
         preferenceCommandID = nil
@@ -172,7 +163,7 @@ final class NativeUIStore {
 
     func failNativePreference(_ command: NativeCommand, error: String) {
         guard command.id == preferenceCommandID else { return }
-        receivedNativePreference(preferenceKind == "composer" ? savedComposerPreference : savedNativePreference, kind: preferenceKind, error: error)
+        receivedNativePreference(savedNativePreference, error: error)
     }
 
     func receive(_ value: NativeSnapshot) {
@@ -208,7 +199,7 @@ final class NativeUIStore {
             }
         }
         for result in value.commandResults ?? [] {
-            if result.name == (preferenceKind == "composer" ? "settings.native-composer" : "settings.native-ui"), result.id == preferenceCommandID {
+            if result.name == "settings.native-ui", result.id == preferenceCommandID {
                 preferenceTimeout?.cancel()
                 preferenceTimeout = nil
                 preferenceCommandID = nil
@@ -511,13 +502,6 @@ final class NativeUIStore {
         guard composerCanEdit else { return }
         draftRevision += 1
         command("draft.set", ["value": .string(draft), "revision": .number(Double(draftRevision)), "caretOffset": .number(Double(caretOffset))])
-    }
-    /// UITextView 一次提交正文和 UTF-16 光标，不重置本地组字选区。
-    func updateWebDraft(_ text: String, caret: Int, contextID: String) {
-        guard webComposerVisible, composerCanEdit, snapshot.contextId == contextID, caret >= 0, caret <= text.utf16.count else { return }
-        guard draft != text || caretOffset != caret else { return }
-        draft = text; caretOffset = caret
-        updateDraft()
     }
     func setCaretOffset(_ offset: Int) {
         guard composerCanEdit else { return }

@@ -1,7 +1,6 @@
 import Foundation
 
 struct NativeSnapshot: Codable {
-    var webComposer: NativeWebComposerPresentation? = nil
     var version = 1
     var ready = false
     var locale = "zh-CN"
@@ -51,5 +50,9 @@ struct NativeSnapshot: Codable {
     var permissionValue: String? = nil
     var permissions: [NativeOption]? = nil
     var contextUsage: NativeContextUsage? = nil
+    var inputTokenUsage: String? = nil
+    var outputTokenUsage: String? = nil
+    var inputCacheHitPercent: Double? = nil
+    var fiveHourRateLimit: NativeRateLimit? = nil
     var sevenDayRateLimit: NativeRateLimit? = nil
 }

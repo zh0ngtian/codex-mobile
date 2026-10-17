@@ -1,6 +1,5 @@
 import { transportUuid } from '../backends/http-transport';
-export type NativePreferenceKind = 'interface' | 'composer';
-export interface NativePreferenceInput { enabled?: boolean; kind?: NativePreferenceKind }
+export interface NativePreferenceInput { enabled?: boolean }
 export interface NativePreference { enabled: boolean; active: boolean }
 type PreferenceResponse = Partial<NativePreference> & { id: string; error?: string };
 type HostWindow = Window & {

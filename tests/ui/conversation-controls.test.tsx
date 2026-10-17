@@ -1,10 +1,9 @@
 import { act, fireEvent, render, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import {
+  ContextUsageButton,
   ConversationActionMenu,
-  ConversationStatusSheet,
   contextUsageView,
-  sevenDayRateLimitView,
 } from "../../src/features/conversation/ConversationControls";
 import { ACTION_MENU_EVENT } from "../../src/ui/native-action-menu";
 
@@ -57,40 +56,17 @@ describe("对话详情控制", () => {
     });
   });
 
-  it("优先使用 7 天窗口并显示剩余比例", () => {
-    expect(
-      sevenDayRateLimitView({
-        rateLimits: {
-          primary: { usedPercent: 20, windowDurationMins: 300 },
-          secondary: {
-            usedPercent: 29,
-            windowDurationMins: 10_080,
-            resetsAt: 1_800_000_000,
-          },
-        },
-      }),
-    ).toEqual({
-      remainingPercent: 71,
-      resetsAt: 1_800_000_000,
-    });
-  });
-
-  it("状态面板在缺失用量时显示暂无数据", () => {
+  it("上下文按钮保留无障碍名称并声明卡片开关状态", () => {
     const { container } = render(
-      <ConversationStatusSheet
+      <ContextUsageButton
         open
-        thread={{ id: "thread-1", cwd: "/tmp/project" }}
         tokenUsage={null}
-        rateLimits={null}
-        onClose={() => undefined}
+        onClick={() => undefined}
       />,
     );
-    const view = within(container);
-
-    expect(view.getByRole("dialog", { name: "状态" })).not.toBeNull();
-    expect(view.getAllByText("暂无数据")).toHaveLength(2);
-    expect(view.getByText("thread-1")).not.toBeNull();
-    expect(view.getByText("/tmp/project")).not.toBeNull();
+    const button = within(container).getByRole("button", { name: "查看上下文占用情况" });
+    expect(button).toHaveAttribute("aria-expanded", "true");
+    expect(button).toHaveAttribute("aria-haspopup", "dialog");
   });
 
   it("操作面板根据持久化字段切换关注文案", () => {

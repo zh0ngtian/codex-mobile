@@ -1,7 +1,6 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { BackendManagerSheet } from '../../src/features/backends/BackendManagerSheet';
-import { WebInterfaceProvider } from '../../src/features/web-ui/preference';
 import { FontSizeSettings } from '../../src/features/settings/FontSizeSettings';
 import { NativeRuntime } from '../../src/native-ui/runtime';
 import { applyFontSize, FONT_SCALES, FONT_SIZE_STORAGE_KEY, readFontSize } from '../../src/ui/font-size';
@@ -37,19 +36,15 @@ it('iOS 未保存或保存值损坏时保留现有小字号默认值', () => {
   expect(readFontSize()).toBe('small');
 });
 
-it.each(['legacy', 'modern'])('iOS %s 网页设置可以调整字号并在重新挂载后恢复', mode => {
-  window.localStorage.setItem('codex-mobile:web-interface', mode);
+it('iOS 网页设置可以调整字号并在重新挂载后恢复', () => {
   const registry = { version: 1 as const, backends: [{ id: 'mac', name: 'Mac', baseUrl: 'https://gateway.example', token: '', enabled: true, order: 0 }], selectedBackendId: 'mac' };
-  const mount = () => render(<WebInterfaceProvider><BackendManagerSheet {...props} registry={registry} /></WebInterfaceProvider>);
-  const openFont = () => { if (mode === 'modern') fireEvent.click(screen.getByRole('button', { name: '字体大小' })); };
+  const mount = () => render(<BackendManagerSheet {...props} registry={registry} />);
   const view = mount();
-  openFont();
   fireEvent.click(screen.getByRole('button', { name: '特大' }));
   expect(document.documentElement.style.getPropertyValue('--app-font-scale')).toBe('1.25');
   expect(window.localStorage.getItem(FONT_SIZE_STORAGE_KEY)).toBe('extra-large');
   view.unmount();
   mount();
-  openFont();
   expect(screen.getByRole('button', { name: '特大' })).toHaveAttribute('aria-pressed', 'true');
   expect(document.documentElement.style.getPropertyValue('--app-font-scale')).toBe('1.25');
 });

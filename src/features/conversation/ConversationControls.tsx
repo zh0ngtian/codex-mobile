@@ -1,10 +1,7 @@
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type RefObject } from "react";
 import { presentNativeActionMenu, type MenuAnchor } from "../../ui/native-action-menu";
 import { AppIcon, titleOf, type DisplayRecord } from "../../ui/app-display";
-import { ActionSheet } from "../../ui/ActionSheet";
-import { useWebInterface } from "../web-ui/preference";
-import { useModernPopover } from "../web-ui/usePopoverFocus";
-import { getActiveLocale, t } from "../../i18n";
+import { t } from "../../i18n";
 
 type AnyRecord = Record<string, any>;
 
@@ -60,128 +57,32 @@ export function sevenDayRateLimitView(
   };
 }
 
-function formatCount(value: number) {
-  return new Intl.NumberFormat(getActiveLocale(), {
-    notation: value >= 10_000 ? "compact" : "standard",
-    maximumFractionDigits: 0,
-  }).format(value);
-}
-
-function formatResetTime(timestamp: number | null) {
-  if (!timestamp) return "";
-  return new Intl.DateTimeFormat(getActiveLocale(), {
-    year: "numeric",
-    month: "numeric",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(new Date(timestamp * 1000));
-}
-
 export function ContextUsageButton({
   tokenUsage,
+  open = false,
+  buttonRef,
   onClick,
 }: {
   tokenUsage: AnyRecord | null;
+  open?: boolean;
+  buttonRef?: RefObject<HTMLButtonElement | null>;
   onClick: () => void;
 }) {
   const usage = contextUsageView(tokenUsage);
   const degrees = Math.round((usage?.usedPercent ?? 0) * 3.6);
   return (
     <button
+      ref={buttonRef}
       className="context-usage-button"
       type="button"
       aria-label={t("查看上下文占用情况")}
-      onClick={onClick}
+      aria-expanded={open}
+      aria-haspopup="dialog"
+      onClick={(event) => { event.currentTarget.focus({ preventScroll: true }); onClick(); }}
       style={{ "--usage-degrees": `${degrees}deg` } as CSSProperties}
     >
       <i />
     </button>
-  );
-}
-
-export function ConversationStatusSheet({
-  open,
-  thread,
-  tokenUsage,
-  rateLimits,
-  onClose,
-}: {
-  open: boolean;
-  thread: DisplayRecord;
-  tokenUsage: AnyRecord | null;
-  rateLimits: AnyRecord | null;
-  onClose: () => void;
-}) {
-  if (!open) return null;
-  const usage = contextUsageView(tokenUsage);
-  const sevenDay = sevenDayRateLimitView(rateLimits);
-  const copyThreadId = () => {
-    void navigator.clipboard?.writeText(String(thread.id ?? ""));
-  };
-  return (
-    <ActionSheet
-      open={open}
-      title={t("状态")}
-      ariaLabel={t("状态")}
-      onClose={onClose}
-      closeLabel={t("关闭状态")}
-      closeIcon={<AppIcon name="close" />}
-      showHandle
-      titleAlign="center"
-      className="conversation-status-sheet"
-      backdropClassName="conversation-sheet-backdrop"
-    >
-        <dl>
-          <div>
-            <dt>{t("对话线程：")}</dt>
-            <dd>
-              <code>{thread.id || t("暂无数据")}</code>
-              {!!thread.id && (
-                <button
-                  type="button"
-                  aria-label={t("复制会话 ID")}
-                  onClick={copyThreadId}
-                >
-                  <AppIcon name="copy" />
-                </button>
-              )}
-            </dd>
-          </div>
-          <div>
-            <dt>{t("目录：")}</dt>
-            <dd><code>{thread.cwd || t("暂无数据")}</code></dd>
-          </div>
-          <div>
-            <dt>{t("上下文：")}</dt>
-            <dd>
-              {usage
-                ? t("剩余 {remaining}%（已用 {used} / {total}）", {
-                    remaining: Math.round(usage.remainingPercent),
-                    used: formatCount(usage.used),
-                    total: formatCount(usage.total),
-                  })
-                : t("暂无数据")}
-            </dd>
-          </div>
-          <div>
-            <dt>{t("7 天限制：")}</dt>
-            <dd>
-              {sevenDay
-                ? `${t("剩余 {remaining}%", {
-                    remaining: Math.round(sevenDay.remainingPercent),
-                  })}${
-                    sevenDay.resetsAt
-                      ? t("（将于 {time} 重置）", {
-                          time: formatResetTime(sevenDay.resetsAt),
-                        })
-                      : ""
-                  }`
-                : t("暂无数据")}
-            </dd>
-          </div>
-        </dl>
-    </ActionSheet>
   );
 }
 
@@ -209,8 +110,6 @@ function OpenConversationActionMenu({
   onArchive,
   anchor,
 }: Omit<ConversationActionMenuProps, "open">) {
-  const { modern } = useWebInterface();
-  const menuRef = useRef<HTMLElement>(null);
   const pinned = thread.isPinned === true;
   const actions = [
     {
@@ -258,7 +157,6 @@ function OpenConversationActionMenu({
     },
   ];
   const [fallback, setFallback] = useState(false);
-  useModernPopover(modern && fallback, menuRef, menuRef, onClose);
   const latest = useRef({ actions, onClose });
   latest.current = { actions, onClose };
   useEffect(() => {
@@ -290,7 +188,7 @@ function OpenConversationActionMenu({
         aria-label={t("关闭会话操作")}
         onClick={onClose}
       />
-      <section ref={menuRef} tabIndex={modern ? -1 : undefined} className="conversation-action-menu" aria-label={t("会话操作")}>
+      <section className="conversation-action-menu" aria-label={t("会话操作")}>
         <p>{titleOf(thread)}</p>
         <div>
           {actions.map((action) => (
