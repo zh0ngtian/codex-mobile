@@ -4,7 +4,7 @@ set -eu
 
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 project_dir=$(dirname -- "$script_dir")
-source_icon="$project_dir/docs/assets/app-icon/chatgpt-official-ios-1024.png"
+source_icon="$project_dir/docs/assets/app-icon/apple-intelligence-symbol-1024.png"
 output_icon="$project_dir/docs/assets/app-icon/codex-mobile-app-icon-1024.png"
 
 usage() {
@@ -17,7 +17,7 @@ usage() {
   --output <路径>  指定生成图标的 PNG 路径
   -h, --help       显示帮助
 
-默认使用仓库内的 ChatGPT 官方图标原件，离线铺白后生成 1024×1024 PNG。
+默认使用仓库内的白底黑色 Apple Intelligence SF Symbol 原件，离线铺白后生成 1024×1024 PNG。
 HELP
 }
 
@@ -45,7 +45,7 @@ while [ "$#" -gt 0 ]; do
 done
 
 if [ ! -f "$source_icon" ]; then
-  echo "找不到仓库内的 ChatGPT 官方图标原件：$source_icon" >&2
+  echo "找不到仓库内的 Apple Intelligence SF Symbol 原件：$source_icon" >&2
   exit 1
 fi
 
@@ -62,7 +62,7 @@ sharp(source)
   .toFile(output)
   .then(() => process.stdout.write(`${output}\n`))
   .catch((error) => {
-    console.error(`无法读取官方原件或生成 PNG：${error.message}`);
+    console.error(`无法读取 Apple Intelligence SF Symbol 原件或生成 PNG：${error.message}`);
     process.exitCode = 1;
   });
 NODE

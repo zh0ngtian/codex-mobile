@@ -96,7 +96,7 @@ export class AppServerClient {
 
   async initialize() {
     const result = await this.request("initialize", {
-      clientInfo: { name: "codex-mobile-web", title: "Codex Mobile Web", version: "0.2.0" },
+      clientInfo: { name: "codex-mobile-web", title: "Codex Mobile Web", version: "0.3.0" },
       capabilities: { experimentalApi: true },
     });
     await this.notify("initialized", {});

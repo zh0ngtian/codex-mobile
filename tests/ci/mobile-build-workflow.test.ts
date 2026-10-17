@@ -16,22 +16,27 @@ function resolveVersion(tags: string[], requested?: string) {
 }
 
 describe("GitHub 双端自动构建", () => {
-  it("统一版本高于正式版本、临时 unsigned IPA 及仓库下限", () => {
-    const result = resolveVersion(["v0.2.146", "unsigned-ipa-0.2.147-123-1"]);
+  it("当前正式版本后递增到 0.3.0，空标签时也从该版本起步", () => {
+    const result = resolveVersion(["v0.2.191"]);
     expect(result.status, result.stderr).toBe(0);
-    expect(JSON.parse(result.stdout)).toMatchObject({ app_version: "0.2.148", app_version_code: "2148", release_tag: "v0.2.148" });
-    expect(JSON.parse(resolveVersion([]).stdout).app_version).toBe("0.2.123");
+    expect(JSON.parse(result.stdout)).toMatchObject({ app_version: "0.3.0", app_version_code: "3000", release_tag: "v0.3.0" });
+    expect(JSON.parse(resolveVersion([]).stdout)).toMatchObject({ app_version: "0.3.0", app_version_code: "3000" });
+  });
+  it("统一版本高于正式版本、临时 unsigned IPA 及仓库下限", () => {
+    const result = resolveVersion(["v0.3.146", "unsigned-ipa-0.3.147-123-1"]);
+    expect(result.status, result.stderr).toBe(0);
+    expect(JSON.parse(result.stdout)).toMatchObject({ app_version: "0.3.148", app_version_code: "3148", release_tag: "v0.3.148" });
   });
   it("允许更高的手动版本，拒绝重用或倒退", () => {
-    expect(resolveVersion(["v0.2.147"], "0.2.148").status).toBe(0);
-    for (const version of ["0.2.147", "0.2.146"]) {
-      expect(resolveVersion(["v0.2.147"], version).stderr).toContain("必须高于");
+    expect(resolveVersion(["v0.3.147"], "0.3.148").status).toBe(0);
+    for (const version of ["0.3.147", "0.3.146"]) {
+      expect(resolveVersion(["v0.3.147"], version).stderr).toContain("必须高于");
     }
   });
   it("正确进位并拒绝 Android 无法表示的版本", () => {
     expect(JSON.parse(resolveVersion(["v0.2.999"]).stdout).app_version).toBe("0.3.0");
     expect(JSON.parse(resolveVersion(["v0.999.999"]).stdout).app_version).toBe("1.0.0");
-    for (const version of ["0.2.1000", "2101.0.0", "0.2.148-beta", "invalid"]) {
+    for (const version of ["0.2.1000", "2101.0.0", "0.3.148-beta", "invalid"]) {
       expect(resolveVersion([], version).status).not.toBe(0);
     }
   });

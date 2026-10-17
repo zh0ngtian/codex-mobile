@@ -7,6 +7,7 @@ import {
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 import sharp from "sharp";
@@ -120,11 +121,19 @@ describe("移动 App 本地构建配置", () => {
   });
 
   it("生产移动图标是无透明通道的白底黑色 1024 像素 PNG", async () => {
-    const metadata = await sharp("docs/assets/app-icon/codex-mobile-app-icon-1024.png").metadata();
-    const icon = await sharp("docs/assets/app-icon/codex-mobile-app-icon-1024.png")
+    const sourcePath = "docs/assets/app-icon/apple-intelligence-symbol-1024.png";
+    const productionPath = "docs/assets/app-icon/codex-mobile-app-icon-1024.png";
+    const source = await sharp(sourcePath).raw().toBuffer({ resolveWithObject: true });
+    const metadata = await sharp(productionPath).metadata();
+    const icon = await sharp(productionPath)
       .raw()
       .toBuffer({ resolveWithObject: true });
+    const sourceHash = createHash("sha256").update(readFileSync(sourcePath)).digest("hex");
 
+    expect(sourceHash).toBe("173f86a63e412af2d635f15d8ec4d8a3326cdfb8c95bb0af13b9caa08b366857");
+    expect(source.info.width).toBe(1024);
+    expect(source.info.height).toBe(1024);
+    expect(source.info.channels).toBe(3);
     expect(metadata.format).toBe("png");
     expect(metadata.width).toBe(1024);
     expect(metadata.height).toBe(1024);
@@ -145,14 +154,15 @@ describe("移动 App 本地构建配置", () => {
         }
       }
     }
-    expect(blackPixels).toBeGreaterThan(200_000);
+    expect(blackPixels).toBeGreaterThan(100_000);
+    expect(icon.data.equals(source.data)).toBe(true);
   });
 
-  it("图标生成入口离线铺白并生成与官方原件一致的 RGB 像素", async () => {
+  it("图标生成入口离线铺白并生成与选定 SF Symbol 一致的 RGB 像素", async () => {
     const directory = mkdtempSync(join(tmpdir(), "codex mobile icon "));
     const output = "generated icon.png";
     const outputPath = join(directory, output);
-    const source = resolve("docs/assets/app-icon/chatgpt-official-ios-1024.png");
+    const source = resolve("docs/assets/app-icon/apple-intelligence-symbol-1024.png");
     const production = resolve("docs/assets/app-icon/codex-mobile-app-icon-1024.png");
     const script = resolve("scripts/compose-mobile-app-icon.sh");
     try {
