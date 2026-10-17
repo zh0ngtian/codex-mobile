@@ -6,6 +6,7 @@ struct ConversationScreen: View {
     let conversationID: UUID
     @State private var liveExpanded = true
     @State private var atBottom = true
+    @State private var awaitingBottomAnchor = false
     @State private var scrollAccess = NativeConversationScrollAccess()
     @State private var loadingHistory = false
     @State private var historyPull = HistoryPullState()
@@ -14,6 +15,9 @@ struct ConversationScreen: View {
     @State private var historyAnchorID: String?
     @State private var historyWasPrepended = false
     @State private var scrollIsIdle = true
+    #if DEBUG
+    @State private var diagnosticHistoryRequests = 0
+    #endif
     var body: some View {
         if let conversation = session.conversation(conversationID) {
             ScrollViewReader { proxy in
@@ -55,6 +59,16 @@ struct ConversationScreen: View {
                 .scrollBounceBehavior(.always)
                 .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("conversation.timeline")
+                .background(alignment: .topLeading) {
+                    #if DEBUG
+                    if ProcessInfo.processInfo.arguments.contains("--agent-scroll-diagnostics") {
+                        VStack {
+                            Text(String(Int(historyOffset))).accessibilityIdentifier("scroll.diagnostic-offset")
+                            Text(String(diagnosticHistoryRequests)).accessibilityIdentifier("scroll.diagnostic-history")
+                        }.font(.system(size: 1)).opacity(0.01)
+                    }
+                    #endif
+                }
                 .scrollDismissesKeyboard(.interactively)
                 .scrollIndicators(.hidden)
                 .onScrollPhaseChange { _, phase, context in
@@ -62,6 +76,7 @@ struct ConversationScreen: View {
                     scrollIsIdle = phase == .idle
                     switch phase {
                     case .tracking, .interacting:
+                        awaitingBottomAnchor = false
                         scrollAccess.stopFollowing()
                         historyPull.dragBegan(at: offset)
                     case .decelerating:
@@ -70,6 +85,7 @@ struct ConversationScreen: View {
                         historyPull.dragEnded(at: offset, willDecelerate: false)
                         historyPull.settled(at: offset)
                         restoreHistoryAnchor(proxy)
+                        resumeBottomFollowingIfReached()
                     case .animating:
                         historyPull.programmaticScrollBegan()
                     @unknown default: break
@@ -87,7 +103,10 @@ struct ConversationScreen: View {
                 }
                 .onScrollGeometryChange(for: Bool.self) { geometry in
                     geometry.visibleRect.maxY >= geometry.contentSize.height - 2
-                } action: { _, value in atBottom = value }
+                } action: { _, value in
+                    atBottom = value
+                    resumeBottomFollowingIfReached()
+                }
                 .onChange(of: conversation.messages.map(\.id)) { oldIDs, newIDs in
                     if let previous = historyAnchor,
                        let anchor = session.historyScrollMessageID(in: conversationID, previousID: previous, anchorID: historyAnchorID),
@@ -120,7 +139,7 @@ struct ConversationScreen: View {
                 }
                 .overlay(alignment: .bottom) {
                     if !atBottom && !conversation.detailError {
-                        ScrollToBottomButton { scrollToLatest() }
+                        ScrollToBottomButton { scrollToLatest(proxy) }
                             .padding(.bottom, 4)
                             .transition(.opacity)
                     }
@@ -133,14 +152,25 @@ struct ConversationScreen: View {
 
         } else { ContentUnavailableView(preferences.text("会话不可用", "Conversation unavailable"), systemImage: "bubble.left") }
     }
-    private func scrollToLatest() {
+    private func scrollToLatest(_ proxy: ScrollViewProxy) {
         historyPull.programmaticScrollBegan()
         historyAnchor = nil; historyAnchorID = nil; historyWasPrepended = false
-        scrollAccess.scrollToBottom()
+        // 让LazyVStack按末尾ID实现目标条目，不能跳到仍在估算的contentSize坐标。
+        scrollAccess.stopFollowing()
+        awaitingBottomAnchor = true
+        proxy.scrollTo("bottom", anchor: .bottom)
+    }
+    private func resumeBottomFollowingIfReached() {
+        guard awaitingBottomAnchor, atBottom, scrollIsIdle else { return }
+        awaitingBottomAnchor = false
+        scrollAccess.resumeFollowing()
     }
     private func loadEarlier(_ proxy: ScrollViewProxy) {
         guard !loadingHistory, let conversation = session.conversation(conversationID),
               !conversation.historyLoading, conversation.loadedOlderTurns < conversation.olderTurns else { return }
+        #if DEBUG
+        diagnosticHistoryRequests += 1
+        #endif
         let context = session.nativeSnapshot.contextId
         historyAnchor = conversation.messages.first?.id
         historyAnchorID = historyAnchor.flatMap { session.historyScrollAnchor(for: $0) }
@@ -170,6 +200,7 @@ struct ConversationScreen: View {
         historyWasPrepended = false
     }
     private func resetHistory() {
+        awaitingBottomAnchor = false
         scrollAccess.stopFollowing()
         historyPull.reset()
         historyAnchor = nil; historyAnchorID = nil

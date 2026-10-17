@@ -7,7 +7,6 @@ struct SidebarScreen: View {
     var body: some View {
         VStack(spacing: 0) {
             HomeHeader()
-            Divider()
             if session.searchVisible { SidebarSearchField() }
             ScrollView {
                 SidebarConversationList()
@@ -17,21 +16,31 @@ struct SidebarScreen: View {
             }
             .scrollIndicators(.hidden)
             .scrollDismissesKeyboard(.interactively)
-            Divider()
-            Button { session.beginNewConversation() } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "square.and.pencil").font(AgentTheme.body.weight(.semibold))
-                    Text("Ask Codex").font(AgentTheme.body).lineLimit(1)
+            HStack {
+                Button { session.beginNewConversation() } label: {
+                    Label("Chat", systemImage: "square.and.pencil")
+                        .font(.body).foregroundStyle(.white)
+                        .padding(.horizontal, 8)
+                        .frame(minHeight: 20)
                 }
-                .frame(maxWidth: .infinity, minHeight: 46)
-                .contentShape(.rect)
+                .modifier(AgentGlassButton(prominent: true))
+                .controlSize(.large)
+                .tint(preferences.accent.color)
+                .accessibilityLabel(preferences.text("Chat，开始新对话", "Chat, start a new conversation"))
+                .accessibilityIdentifier("sidebar.askCodex")
+                Spacer()
+                Button { session.settingsPresented = true } label: {
+                    Image(systemName: "gearshape").font(.title3)
+                        .frame(width: 20, height: 20)
+                }
+                .modifier(AgentGlassButton(circular: true))
+                .controlSize(.large)
+                .tint(AgentTheme.ink)
+                .accessibilityLabel(preferences.text("设置", "Settings"))
+                .accessibilityIdentifier("sidebar.settings")
             }
-            .modifier(AgentGlassButton())
-            .controlSize(.large)
-            .accessibilityLabel(preferences.text("Ask Codex，开始新对话", "Ask Codex, start a new conversation"))
-            .accessibilityIdentifier("sidebar.askCodex")
-            .padding(.horizontal, 8)
-            .padding(.vertical, 10)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
         }
         .background(AgentTheme.page)
         .foregroundStyle(AgentTheme.ink)

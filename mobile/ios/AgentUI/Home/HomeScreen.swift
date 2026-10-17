@@ -3,34 +3,12 @@ import SwiftUI
 struct SidebarConversationList: View {
     @Environment(AppSession.self) private var session
     @Environment(AppPreferences.self) private var preferences
-    @State private var followingExpanded = true
 
     var body: some View {
         LazyVStack(alignment: .leading, spacing: 0) {
             if !session.pendingOtherDevices.isEmpty { pendingDevices }
-            if !followed.isEmpty {
-                Button { followingExpanded.toggle() } label: {
-                    HStack(spacing: 4) {
-                        UnreadIndicator(isUnread: !followingExpanded && followed.contains(where: \.isUnread))
-                        Text(preferences.text("关注", "Following"))
-                        Image(systemName: followingExpanded ? "chevron.down" : "chevron.right")
-                            .font(.caption2.bold())
-                        Spacer(minLength: 0)
-                        if !followingExpanded { SidebarActivitySummary(conversations: followed) }
-                    }
-                    .font(AgentTheme.sectionTitle)
-                    .frame(minHeight: 36)
-                    .contentShape(.rect)
-                }
-                .buttonStyle(.plain)
-                if followingExpanded {
-                    ForEach(followed) { conversation in ChatListRow(conversation: conversation) }
-                }
-            }
-            if !visibleProjects.isEmpty {
-                sectionTitle(preferences.text("项目", "Projects"))
-                ForEach(visibleProjects, id: \.self) { name in ProjectRow(name: name) }
-            }
+            ForEach(followed) { conversation in ChatListRow(conversation: conversation) }
+            ForEach(visibleProjects, id: \.self) { name in ProjectRow(name: name) }
             if !ungroupedSearchResults.isEmpty {
                 ForEach(ungroupedSearchResults) { conversation in ChatListRow(conversation: conversation) }
             }
@@ -79,14 +57,6 @@ struct SidebarConversationList: View {
     private var visibleProjects: [String] {
         if session.searchText.isEmpty { return session.scopedProjects }
         return session.scopedProjects.filter { session.projectDisplayName($0).localizedStandardContains(session.searchText) || !session.projectConversations($0).isEmpty }
-    }
-
-    private func sectionTitle(_ title: String) -> some View {
-        Text(title)
-            .font(AgentTheme.sectionTitle)
-            .foregroundStyle(.secondary)
-            .padding(.top, 10)
-            .padding(.bottom, 2)
     }
 
     private var pendingDevices: some View {

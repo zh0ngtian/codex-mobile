@@ -52,16 +52,14 @@ struct ComposerBar: View {
                             InlineIconButton(title: preferences.text("添加附件", "Add attachment"), symbol: "plus") { present(.attachments) }
                             InlineIconButton(title: preferences.text("权限模式", "Permission profile"), symbol: session.composer.configuration.permission.symbol,
                                              color: session.composer.configuration.permission == .fullAccess ? .orange : AgentTheme.ink) { present(.permissions) }
-                            Spacer(minLength: 2)
                             Button { withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.16)) { showReasoning.toggle() } } label: {
-                                HStack(spacing: 4) {
-                                    Text(session.composer.configuration.model).font(.body)
-                                    Image(systemName: "chevron.up.chevron.down").font(.caption2)
-                                }
-                                .foregroundStyle(.secondary).frame(minHeight: 44)
+                                Text(session.composer.configuration.model).font(.body)
+                                    .foregroundStyle(.secondary).frame(minHeight: 44, alignment: .leading)
                             }
+                            .buttonStyle(.plain)
                             .accessibilityLabel(preferences.text("模型和思考强度", "Model and reasoning"))
                             .accessibilityIdentifier("composer.model")
+                            Spacer(minLength: 2)
                             ComposerSubmitButton(action: submit)
                         }
                     }

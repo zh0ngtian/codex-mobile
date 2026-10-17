@@ -22,17 +22,17 @@ struct HomeHeader: View {
                         Button { session.draftsPresented = true } label: {
                             Label(preferences.text("草稿箱", "Drafts"), systemImage: "doc.text")
                         }
-                        Button { session.settingsPresented = true } label: {
-                            Label(preferences.text("设置", "Settings"), systemImage: "gearshape")
-                        }
                         Button { Task { await session.refreshAll() } } label: {
                             Label(preferences.text("刷新", "Refresh"), systemImage: "arrow.clockwise")
                         }
                     }
                 } label: {
                     HStack(spacing: 4) {
-                        Text("Codex").font(.body)
-                        Image(systemName: "chevron.down").font(.caption2.bold())
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Codex").font(.body)
+                            Text(scopeTitle).font(.body).foregroundStyle(.secondary).lineLimit(1)
+                        }
+                        Image(systemName: "chevron.down").font(.caption2)
                     }
                     .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                     .contentShape(.rect)
@@ -40,50 +40,24 @@ struct HomeHeader: View {
                 .tint(AgentTheme.ink)
                 .accessibilityLabel(preferences.text("Codex 菜单", "Codex menu"))
                 .accessibilityIdentifier("sidebar.codexMenu")
-                Button { session.sidebarVisible = false } label: {
-                    Image(systemName: "sidebar.left")
-                        .font(.body.weight(.medium))
-                        .frame(width: 32, height: 44)
-                        .contentShape(.rect)
-                }
-                .accessibilityLabel(preferences.text("收起侧栏", "Close sidebar"))
-            }
-            HStack(spacing: 4) {
-                Circle().fill(scopeColor).frame(width: 5, height: 5)
-                Text(scopeTitle)
-                    .font(AgentTheme.small)
-                    .lineLimit(1)
-                    .frame(maxWidth: .infinity, alignment: .leading)
                 Button(action: toggleSearch) {
                     Image(systemName: session.searchVisible ? "xmark" : "magnifyingglass")
-                        .font(.subheadline.weight(.medium))
-                        .frame(width: 30, height: 38)
+                        .font(.title3.weight(.regular))
+                        .frame(width: 44, height: 44)
                         .contentShape(.rect)
                 }
                 .accessibilityLabel(session.searchVisible ? preferences.text("收起并清空搜索", "Close and clear search") : preferences.text("搜索会话", "Search conversations"))
                 .accessibilityIdentifier("sidebar.search")
             }
-            .foregroundStyle(.secondary)
         }
         .buttonStyle(.plain)
-        .padding(.horizontal, 9)
-        .padding(.top, 2)
-        .padding(.bottom, 4)
+        .padding(.horizontal, 16)
+        .padding(.top, 6)
+        .padding(.bottom, 10)
     }
 
     private var scopedDevice: BackendDevice? { session.selectedDeviceID.flatMap(session.device) }
     private var scopeTitle: String { scopedDevice?.name ?? preferences.text("全部设备", "All devices") }
-    private var scopeColor: Color {
-        guard let device = scopedDevice else { return .green }
-        guard device.enabled else { return .secondary }
-        switch device.connection {
-        case .connected: return .green
-        case .connecting: return .orange
-        case .failed: return .red
-        case .paused: return .secondary
-        }
-    }
-
     private func deviceMenuTitle(_ device: BackendDevice) -> String {
         guard device.enabled else { return "\(device.name) · \(preferences.text("已暂停", "Paused"))" }
         switch device.connection {

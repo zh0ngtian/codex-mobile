@@ -61,6 +61,7 @@ struct ChatListRow: View {
         .buttonStyle(.plain)
         .contextMenu { ConversationMenuActions(conversationID: conversation.id).tint(AgentTheme.ink) }
         .accessibilityLabel(accessibilityTitle)
+        .accessibilityValue(conversation.isPinned ? preferences.text("已关注", "Following") : "")
         .accessibilityIdentifier("sidebar.conversation.\(conversation.id)")
     }
 

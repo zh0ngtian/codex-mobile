@@ -24,19 +24,14 @@ struct ConversationHeader: ViewModifier {
             .modifier(ConversationSubtitle(title: title, subtitle: subtitle))
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button { session.sidebarVisible = true } label: { Image(systemName: "line.3.horizontal.decrease").fontWeight(.light) }
+                    Button { session.sidebarVisible = true } label: { Image(systemName: "line.3.horizontal").fontWeight(.regular) }
                         .accessibilityLabel(preferences.text("会话列表", "Conversation list"))
                 }
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     Button { usagePresented.toggle() } label: {
-                        ZStack {
-                            Circle().strokeBorder(AgentTheme.line, lineWidth: 2)
-                            if let used = contextUsed, used > 0 {
-                                Circle().inset(by: 1).trim(from: 0, to: used)
-                                    .stroke(AgentTheme.ink, style: StrokeStyle(lineWidth: 2, lineCap: .round))
-                                    .rotationEffect(.degrees(-90))
-                            }
-                        }.frame(width: 20, height: 20)
+                        Image(systemName: "circle").fontWeight(.regular)
+                            .foregroundStyle(contextUsed == nil ? .tertiary : .primary)
+                            .frame(width: 20, height: 20)
                     }
                     .accessibilityLabel(preferences.text("用量与额度", "Usage and limits"))
                     .accessibilityIdentifier("header.usage")
@@ -44,7 +39,7 @@ struct ConversationHeader: ViewModifier {
                     .popover(isPresented: $usagePresented) {
                         UsagePopover(conversationID: conversationID, deviceID: conversation?.deviceID ?? session.composer.deviceID, dismiss: { usagePresented = false })
                     }
-                    Button { session.beginNewConversation() } label: { Image(systemName: "square.and.pencil").fontWeight(.light).frame(width: 20, height: 20) }
+                    Button { session.beginNewConversation() } label: { Image(systemName: "square.and.pencil").fontWeight(.regular).frame(width: 20, height: 20) }
                         .accessibilityLabel(preferences.text("新建对话", "New conversation"))
                         .accessibilityIdentifier("header.newConversation")
                     Menu {
@@ -53,7 +48,7 @@ struct ConversationHeader: ViewModifier {
                             Button(preferences.text("保存草稿", "Save draft"), systemImage: "square.and.arrow.down") { _ = session.saveDraft() }
                                 .disabled(!session.canSaveDraft)
                         }
-                    } label: { Image(systemName: "ellipsis").fontWeight(.light).frame(width: 20, height: 20) }
+                    } label: { Image(systemName: "ellipsis").fontWeight(.regular).frame(width: 20, height: 20) }
                     .accessibilityLabel(preferences.text("会话操作", "Conversation actions"))
                     .accessibilityIdentifier("conversation.actions")
                 }

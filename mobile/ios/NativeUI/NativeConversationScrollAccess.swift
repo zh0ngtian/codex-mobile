@@ -19,8 +19,15 @@ import UIKit
     }
     func scrollToBottom() { following = true; alignBottom(animated: true) }
     func stopFollowing() { following = false }
+    // 只有语义定位已落到底部后才恢复高度回填跟随，不发起新的坐标跳转。
+    func resumeFollowing() { following = true }
     private func alignBottom(animated: Bool) {
         guard let scrollView else { return }
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--agent-scroll-diagnostics") {
+            NSLog("CODEX_SCROLL before offset=%f content=%f viewport=%f animated=%d", scrollView.contentOffset.y, scrollView.contentSize.height, scrollView.bounds.height, animated ? 1 : 0)
+        }
+        #endif
         scrollView.layoutIfNeeded()
         let y = max(-scrollView.adjustedContentInset.top,
                     scrollView.contentSize.height - scrollView.bounds.height + scrollView.adjustedContentInset.bottom)

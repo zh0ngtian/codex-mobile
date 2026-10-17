@@ -7,7 +7,7 @@ import { PROJECTLESS_GROUP_ID, type ProjectThreadLoadState } from '../app-server
 import { titleOf } from '../ui/app-display';
 import { insertSkillMention, skillMentionAt, type InstalledSkill } from '../app-server/skills';
 import { insertPluginMention, type InstalledPlugin } from '../app-server/plugins';
-import { getActiveLocale, t } from '../i18n';
+import { t } from '../i18n';
 import { formatMessageTimestamp } from '../ui/message-timestamp';
 import { orderedTurnMedia, commentaryMediaEntries } from '../ui/timeline-media';
 import type { NativeCommand, NativeCommentaryEntry, NativeGroup, NativeMessage, NativePanelItem } from './protocol';
@@ -42,7 +42,7 @@ export function projectConversation(active: RecordValue | null, imageURL: (path:
     const hours = duration == null ? 0 : Math.floor(duration / 3_600_000);
     const minutes = duration == null ? 0 : Math.floor(duration / 60_000) % 60;
     const seconds = duration == null ? 0 : Math.floor(duration / 1000) % 60;
-    const status = duration == null ? undefined : `${t('用时')}${getActiveLocale() === 'en' ? ' ' : ''}${hours ? `${hours}${t('小时')}` : ''}${minutes ? `${minutes}${t('分钟')}` : ''}${seconds}${t('秒')}`;
+    const status = duration == null ? undefined : `${hours ? `${hours}${t('小时')}` : ''}${minutes ? `${minutes}${t('分钟')}` : ''}${seconds}${t('秒')}`;
     const running = ['inProgress', 'in_progress', 'running'].includes(String(turn.status));
     const orderedItems = orderedTurnMedia(turn.items ?? []);
     const liveCommentaryIDs = new Set<string>();

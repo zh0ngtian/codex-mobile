@@ -38,7 +38,7 @@ final class AgentConversationFixture {
             history,
             NativeMessage(id: "answer", role: "assistant", text: "已完成检查。查看 [网页链接](https://example.com) 与 [文件链接](/tmp/example.swift#L12)。", timestamp: date.addingTimeInterval(120).timeIntervalSince1970, turnId: "fixture-turn", phase: "final_answer"),
         ]
-        value.messages[2].status = "用时1小时2分钟3秒"
+        value.messages[2].status = "1小时2分钟3秒"
         if ProcessInfo.processInfo.arguments.contains("--agent-short-question-fixture") { value.messages[0].text = "好" }
         if ProcessInfo.processInfo.arguments.contains("--agent-sidebar-polish-fixture") {
             value.messages[0].text = String(repeating: "短行\n", count: 6) + "这是一条展开后才显示的较长正文，用于确认消息气泡在展开更多和收起时保持同样的宽度。"
@@ -106,7 +106,14 @@ final class AgentConversationFixture {
 
     private func publish() { store.receive(snapshot); session.receive(snapshot) }
     private func dispatch(_ command: NativeCommand) {
-        if ["effort.select", "model.select"].contains(command.name), case .string(let value) = command.params["value"] {
+        if ["navigation.sidebar", "navigation.search", "settings.open"].contains(command.name) {
+            if case .bool(let open) = command.params["open"], command.name == "navigation.sidebar" { snapshot.sidebarOpen = open }
+            if case .string(let text) = command.params["value"], command.name == "navigation.search" { snapshot.search = text }
+            let fieldKey: String? = { if case .string(let key) = command.params["fieldKey"] { return key }; return nil }()
+            let revision: Int? = { if case .number(let value) = command.params["fieldRevision"] { return Int(value) }; return nil }()
+            snapshot.commandResults = [NativeCommandResult(id: command.id, name: command.name, ok: true, contextId: snapshot.contextId, fieldKey: fieldKey, fieldRevision: revision)]
+            publish()
+        } else if ["effort.select", "model.select"].contains(command.name), case .string(let value) = command.params["value"] {
             if command.name == "effort.select" { snapshot.effortValue = value }
             else {
                 snapshot.modelValue = value
