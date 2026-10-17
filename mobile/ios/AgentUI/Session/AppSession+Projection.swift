@@ -14,6 +14,10 @@ extension AppSession {
             historyEdit = nil
             for (id, pending) in pendingCommands where pending.context != nil && pending.context != snapshot.contextId { resolve(id, ok: false, error: "会话已切换，请返回原会话核对操作结果。") }
         }
+        navigationLoading = snapshot.groups.contains { $0.category == "search" && $0.loading == "loading" }
+        let navigationFailure = snapshot.groups.first { $0.id == "list-error" || ($0.category == "search" && $0.subtitle?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false) }
+        navigationError = navigationFailure.map { $0.id == "list-error" ? $0.title : $0.subtitle ?? "" }
+        navigationRetryCommand = navigationFailure?.actions?.compactMap(\.command).first ?? navigationFailure?.items.compactMap(\.command).first
         devices = snapshot.backends.filter { $0.id != "all" }.map { backend in
             let id = scopedID("device", backend.id); rawDeviceIDs[id] = backend.id
             let active = snapshot.backendId == backend.id
@@ -79,7 +83,7 @@ extension AppSession {
                 let stateText = queued.queueState ?? "queued"
                 let state: QueueState = stateText == "sending" ? .sending : stateText == "uncertain" ? .uncertain : stateText == "steering" ? .guiding : stateText == "failed" ? .failed : .queued
                 let frozen = queued.configuration.map { ComposerConfiguration(model: $0.model ?? "", reasoning: 0, speed: ["fast", "priority"].contains($0.serviceTier ?? "") ? .fast : .normal, permission: permissionMode($0.permission ?? "")) } ?? ComposerConfiguration()
-                return QueuedMessage(id: key, text: queued.inputText ?? queued.title, attachments: (queued.attachments ?? []).map(attachment), configuration: frozen, configurationKnown: queued.configuration != nil, state: state, error: queued.error)
+                return QueuedMessage(id: key, text: queued.inputText ?? queued.title, attachments: (queued.attachments ?? []).map(attachment), attachmentCount: queued.attachmentCount, configuration: frozen, configurationKnown: queued.configuration != nil, state: state, error: queued.error)
             }
             let older = snapshot.conversationActions?.first { $0.command?.name == "thread.older" }
             thread.olderTurns = older == nil ? 0 : 1; thread.loadedOlderTurns = 0; thread.historyLoading = older?.disabled == true
@@ -106,6 +110,7 @@ extension AppSession {
         let approvalPanel = snapshot.approvalPanel ?? (snapshot.panel?.id.hasPrefix("approval:") == true ? snapshot.panel : nil)
         projectRequests(approvalPanel)
         projectDrafts(snapshot.panel)
+        projectAttachmentPreview(snapshot.panel)
         if let edit = historyEdit, let raw = rawMessageIDs[edit.messageID], let panel = snapshot.messages.first(where: { $0.id == raw })?.historyEdit, let field = panel.items.first(where: { $0.id == "history-text" }), let text = field.value, edit.text.isEmpty { historyEdit?.text = text }
     }
 
@@ -129,13 +134,30 @@ extension AppSession {
     func attachment(_ value: NativeAttachment) -> AttachmentItem {
         let id = scopedID("attachment", nativeSnapshot.contextId ?? "", value.id); rawAttachmentIDs[id] = value.id
         let type = value.type ?? ""; let kind: AttachmentKind = type.hasPrefix("image/") ? .image : type.hasPrefix("audio/") ? .audio : type.hasPrefix("video/") ? .video : .file
-        return AttachmentItem(id: id, name: value.name, kind: kind, remoteURL: value.imageURL, mimeType: value.type)
+        return AttachmentItem(id: id, name: value.name, kind: kind, remoteURL: value.imageURL, mimeType: value.type, byteCount: value.size)
     }
     func output(_ item: NativePanelItem) -> OutputItem {
         let kind: OutputKind = item.kind == "image" ? .image : item.kind == "video" ? .video : item.kind == "html" ? .html : item.kind == "source" ? .code : item.kind == "markdown" ? .markdown : .binary
         let value = item.previewURL ?? item.value
         let remote = value.flatMap { $0.hasPrefix("http://") || $0.hasPrefix("https://") || $0.hasPrefix("data:") ? $0 : nil }
         return OutputItem(id: scopedID("output", nativeSnapshot.contextId ?? "", item.id), name: item.title ?? item.id, kind: kind, content: item.text ?? (remote == nil ? value ?? "" : ""), remoteURL: remote, line: item.line)
+    }
+    func projectAttachmentPreview(_ panel: NativePanel?) {
+        guard let panel, panel.id.hasPrefix("attachment:"), let download = panel.items.first(where: { $0.id == "draft-download" }), let source = download.value, source.hasPrefix("data:") else { presentedAttachmentPanelID = nil; return }
+        guard presentedAttachmentPanelID != panel.id else { return }
+        let content = panel.items.first { $0.id == "draft-content" }
+        let kind: OutputKind
+        switch content?.kind {
+        case "source": kind = .code
+        case "markdown": kind = .markdown
+        case "html": kind = .html
+        case "image": kind = .image
+        case "audio", "video": kind = .video
+        case "text": kind = .text
+        default: kind = .binary
+        }
+        previewItem = OutputItem(id: scopedID("attachment-preview", nativeSnapshot.contextId ?? "", panel.id), name: download.title ?? panel.title, kind: kind, content: content?.text ?? "", remoteURL: source, line: content?.line)
+        presentedAttachmentPanelID = panel.id
     }
     func projectDrafts(_ panel: NativePanel?) {
         guard let panel, panel.id == "drafts" else { return }
@@ -148,7 +170,7 @@ extension AppSession {
             let attachments = ((record.images ?? []) + (record.files ?? [])).map { attachment -> AttachmentItem in
                 let type = attachment.type ?? ""
                 let kind: AttachmentKind = type.hasPrefix("image/") ? .image : type.hasPrefix("audio/") ? .audio : type.hasPrefix("video/") ? .video : .file
-                return AttachmentItem(id: scopedID("draft-attachment", item.id, attachment.id ?? attachment.name ?? ""), name: attachment.name ?? "", kind: kind, remoteURL: attachment.url, mimeType: attachment.type)
+                return AttachmentItem(id: scopedID("draft-attachment", item.id, attachment.id ?? attachment.name ?? ""), name: attachment.name ?? "", kind: kind, remoteURL: attachment.url, mimeType: attachment.type, byteCount: attachment.size)
             }
             let composition = ComposerDraft(deviceID: scopedID("device", backend), project: record.cwd, text: record.text ?? "", attachments: attachments, configuration: configuration, savedDraftID: id)
             return DraftRecord(id: id, composition: composition, updatedAt: Date(timeIntervalSince1970: updated / 1000))
@@ -169,5 +191,5 @@ private struct NativeSavedDraftPresentation: Decodable {
     var images: [Attachment]?
     var files: [Attachment]?
     struct Settings: Decodable { var model: String?; var effort: String?; var serviceTier: String?; var permissions: String? }
-    struct Attachment: Decodable { var id: String?; var name: String?; var type: String?; var url: String? }
+    struct Attachment: Decodable { var id: String?; var name: String?; var type: String?; var url: String?; var size: Int? }
 }

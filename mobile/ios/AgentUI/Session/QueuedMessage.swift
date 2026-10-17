@@ -4,6 +4,7 @@ struct QueuedMessage: Identifiable, Codable, Equatable, Sendable {
     var id = UUID()
     var text: String
     var attachments: [AttachmentItem] = []
+    var attachmentCount: Int?
     var mentions: [String] = []
     var configuration: ComposerConfiguration
     var configurationKnown = true

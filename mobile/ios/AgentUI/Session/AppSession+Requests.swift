@@ -25,9 +25,11 @@ extension AppSession {
             activeApprovalID = nil
             if let index = index(thread) { conversations[index].phase = .waitingAnswer }
         } else {
-            var commands: [ApprovalDecision: NativeCommand] = [:]
+            var commands: [UUID: NativeCommand] = [:]
+            var choices: [ApprovalChoice] = []
             for item in items where item.command?.name == "approval.decide" {
-                guard let value = item.value, let data = value.data(using: .utf8), let raw = try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed]), let command = item.command else { continue }
+                guard let command = item.command else { continue }
+                let raw = item.value?.data(using: .utf8).flatMap { try? JSONSerialization.jsonObject(with: $0, options: [.fragmentsAllowed]) }
                 let decision: ApprovalDecision?
                 if let string = raw as? String {
                     decision = ["accept": .allowOnce, "acceptForSession": .allowSession, "decline": .deny, "cancel": .cancelTurn][string]
@@ -36,10 +38,15 @@ extension AppSession {
                     else if let amendment = object["applyNetworkPolicyAmendment"] as? [String: Any], let policy = amendment["network_policy_amendment"] as? [String: Any] { decision = policy["action"] as? String == "deny" ? .blockHost : .rememberHost }
                     else { decision = nil }
                 } else { decision = nil }
-                if let decision { commands[decision] = command }
+                let choiceID = scopedID("approval-choice", backend, panel.id, item.id, item.value ?? "", command.id)
+                choices.append(ApprovalChoice(id: choiceID, title: item.title ?? item.text ?? panel.title, decision: decision, rawValue: item.value, disabled: item.disabled == true))
+                commands[choiceID] = command
             }
             let prior = approvals.first { $0.id == id }
-            var request = ApprovalRequest(id: id, conversationID: thread, reason: items.first { $0.id == "approval:reason" }?.text ?? panel.title, command: items.first { $0.id == "approval:command" }?.text, directory: items.first { $0.id == "approval:cwd" }?.text, host: items.first { $0.id == "network" }?.text, paths: items.filter { $0.id.hasPrefix("permissions:") }.compactMap(\.text), decisions: ApprovalDecision.allCases.filter { commands[$0] != nil })
+            let paths = items.filter { $0.id == "approval:grantRoot" || ["permissions:read", "permissions:write"].contains($0.id) || $0.id.hasPrefix("permissions:entry:") }.compactMap(\.text).reduce(into: [String]()) { paths, value in
+                if !paths.contains(value) { paths.append(value) }
+            }
+            var request = ApprovalRequest(id: id, conversationID: thread, reason: items.first { $0.id == "approval:reason" }?.text ?? panel.title, command: items.first { $0.id == "approval:command" }?.text, directory: items.first { $0.id == "approval:cwd" }?.text, host: items.first { $0.id == "network" }?.text, paths: paths, decisions: ApprovalDecision.allCases.filter { semantic in choices.contains { $0.decision == semantic } }, choices: choices)
             request.submitting = prior?.submitting ?? false; request.error = items.first { $0.id == "approval-error" }?.text ?? prior?.error
             approvals = [request]; questions = []; requestCommands[id] = commands
             if selectedConversationID == thread { activeApprovalID = id }; activeQuestionID = nil
@@ -47,7 +54,12 @@ extension AppSession {
         }
     }
     func submitApproval(_ id: UUID, decision: ApprovalDecision) async {
-        guard let index = approvals.firstIndex(where: { $0.id == id }), !approvals[index].submitting, let command = requestCommands[id]?[decision] else { return }
+        let matching = approval(id)?.choices.filter { $0.decision == decision } ?? []
+        guard matching.count == 1, let choice = matching.first else { toast = "存在多个审批目标，请选择具体操作。"; return }
+        await submitApproval(id, choiceID: choice.id)
+    }
+    func submitApproval(_ id: UUID, choiceID: UUID) async {
+        guard let index = approvals.firstIndex(where: { $0.id == id }), !approvals[index].submitting, approvals[index].choices.contains(where: { $0.id == choiceID && !$0.disabled }), let command = requestCommands[id]?[choiceID] else { return }
         approvals[index].submitting = true; approvals[index].error = nil
         let ok = await request(command.name, command.params)
         if let index = approvals.firstIndex(where: { $0.id == id }) { approvals[index].submitting = false; if !ok { approvals[index].error = toast } }

@@ -49,8 +49,11 @@ final class AppSession {
     var projectPageCounts: [String: Int] = [:]
     var projectErrors: Set<String> = []
     var loadingProjects: Set<String> = []
+    var navigationLoading = false
+    var navigationError: String?
     var nativeSnapshot = NativeSnapshot()
     var submissionPending = false
+    @ObservationIgnored var presentedAttachmentPanelID: String?
     @ObservationIgnored var nativeStore: NativeUIStore?
     @ObservationIgnored var projecting = false
     @ObservationIgnored var identifiers: [String: UUID] = [:]
@@ -61,13 +64,14 @@ final class AppSession {
     @ObservationIgnored var rawQueueIDs: [UUID: String] = [:]
     @ObservationIgnored var rawDraftIDs: [UUID: String] = [:]
     @ObservationIgnored var projectGroups: [String: NativeGroup] = [:]
+    @ObservationIgnored var navigationRetryCommand: NativeCommand?
     @ObservationIgnored var navigationIDs: Set<UUID> = []
     @ObservationIgnored var deviceOperation = 0
     @ObservationIgnored var deviceFieldRevision = 0
     @ObservationIgnored var preparedDeviceID: UUID?
     @ObservationIgnored var preparedDeviceForm = false
     @ObservationIgnored var projectMembers: [String: Set<UUID>] = [:]
-    @ObservationIgnored var requestCommands: [UUID: [ApprovalDecision: NativeCommand]] = [:]
+    @ObservationIgnored var requestCommands: [UUID: [UUID: NativeCommand]] = [:]
     @ObservationIgnored var questionPanels: [UUID: NativePanel] = [:]
     @ObservationIgnored var pendingCommands: [String: (context: String?, continuation: CheckedContinuation<Bool, Never>)] = [:]
     @ObservationIgnored var commandTimeouts: [String: Task<Void, Never>] = [:]
@@ -146,6 +150,7 @@ final class AppSession {
     func perform(_ command: NativeCommand?) { nativeStore?.perform(command) }
     func closeNativePanel() { nativeStore?.closePanel(expectedID: nativePanel?.id) }
     func openSettingsPage(_ id: String) { fire("settings.open", ["id": .string(id)]) }
+    func retryNavigation() { perform(navigationRetryCommand) }
     func searchDidChange() { nativeStore?.sidebarSearchText = searchText }
     func searchMentions(_ value: String) { fire("mention.search", ["value": .string(value)]) }
     func insertMention(_ option: NativeOption) { fire("mention.insert", ["id": .string(option.value)]) }

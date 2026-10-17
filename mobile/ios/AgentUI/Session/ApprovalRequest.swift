@@ -9,6 +9,7 @@ struct ApprovalRequest: Identifiable, Codable, Equatable, Sendable {
     var host: String?
     var paths: [String] = []
     var decisions: [ApprovalDecision] = [.allowOnce, .allowSession, .deny, .cancelTurn]
+    var choices: [ApprovalChoice] = []
     var submitting = false
     var error: String?
 }

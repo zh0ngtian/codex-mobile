@@ -10,4 +10,5 @@ struct AttachmentItem: Identifiable, Codable, Equatable, Sendable {
     var error: String?
     var remoteURL: String?
     var mimeType: String?
+    var byteCount: Int?
 }

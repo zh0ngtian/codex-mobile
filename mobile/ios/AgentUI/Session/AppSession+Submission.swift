@@ -15,13 +15,17 @@ extension AppSession {
         return queued ? .queued(target) : .started(target)
     }
     func stopRun(_ id: UUID, advanceQueue: Bool) { stopResponse(in: id) }
+    func queuedContentExists(conversationID: UUID, id: UUID, text: String) -> Bool {
+        guard let queued = conversation(conversationID)?.queue.first(where: { $0.id == id }) else { return false }
+        return !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !queued.attachments.isEmpty || (queued.attachmentCount ?? 0) > 0
+    }
     @discardableResult func editQueuedMessage(conversationID: UUID, id: UUID, text: String) -> Bool {
-        guard canInteract(conversationID), let raw = rawQueueIDs[id], !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
+        guard canInteract(conversationID), let raw = rawQueueIDs[id], queuedContentExists(conversationID: conversationID, id: id, text: text) else { return false }
         fire("queue.edit", ["id": .string(raw), "value": .string(text)])
         return true
     }
     func editQueuedMessageAndWait(conversationID: UUID, id: UUID, text: String) async -> Bool {
-        guard canInteract(conversationID), let raw = rawQueueIDs[id], !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || conversation(conversationID)?.queue.first(where: { $0.id == id })?.attachments.isEmpty == false else { return false }
+        guard canInteract(conversationID), let raw = rawQueueIDs[id], queuedContentExists(conversationID: conversationID, id: id, text: text) else { return false }
         return await request("queue.edit", ["id": .string(raw), "value": .string(text)])
     }
     @discardableResult func cancelQueuedMessage(conversationID: UUID, id: UUID, confirmed: Bool = false) -> Bool {

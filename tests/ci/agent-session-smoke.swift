@@ -50,6 +50,17 @@ struct AgentSessionSmoke {
         publish(state)
         precondition(session.selectedConversation?.queue.first?.state == .uncertain, "队列状态必须来自真实字段")
         precondition(session.selectedConversation?.queue.first?.configuration.model == "", "没有返回的队列模型不能套用当前模型")
+        state.queued = [NativeNavigationItem(id: "queue:raw", title: "附件队列", inputText: "原始文本", queueState: "queued", attachmentCount: 2)]
+        publish(state)
+        let attachmentQueue = session.selectedConversation!.queue.first!
+        let queueEditing = Task { await session.editQueuedMessageAndWait(conversationID: selected, id: attachmentQueue.id, text: "") }
+        for _ in 0..<30 { if commands.last?.name == "queue.edit" { break }; await Task.yield() }
+        precondition(commands.last?.name == "queue.edit" && commands.last?.params["value"] == .string(""), "真实仅附件队列必须允许清空正文后保存")
+        let queueEdit = commands.last!
+        state.commandResults = [NativeCommandResult(id: queueEdit.id, name: queueEdit.name, ok: true, contextId: state.contextId)]
+        publish(state)
+        let queueSaved = await queueEditing.value
+        precondition(queueSaved, "仅附件编辑必须等待真实业务确认")
         let remote = "data:image/png;base64,aGVsbG8="
         state.attachments = [NativeAttachment(id: "file:opaque", name: "preview.png", imageURL: remote, type: "image/png")]
         publish(state)
@@ -58,9 +69,10 @@ struct AgentSessionSmoke {
         precondition(commands.last?.params["id"] == .string("file:opaque"))
         session.importAttachments([AttachmentItem(name: "测试.txt", data: Data("真实文件".utf8), mimeType: "text/plain")])
         precondition(commands.last?.name == "attachment.import", "附件必须进入现有上传业务")
-        state.approvalPanel = NativePanel(id: "approval:number:123", title: "真实审批", items: [NativePanelItem(id: "approval-thread-id", kind: "text", text: "thread:arbitrary"), NativePanelItem(id: "approval:reason", kind: "text", text: "请求命令权限"), NativePanelItem(id: "approval-decision:0", kind: "action", value: "\"accept\"", command: NativeCommand(name: "approval.decide", params: ["requestKey": .string("number:123"), "index": .number(0)]))])
+        state.approvalPanel = NativePanel(id: "approval:number:123", title: "真实审批", items: [NativePanelItem(id: "approval-thread-id", kind: "text", text: "thread:arbitrary"), NativePanelItem(id: "approval:reason", kind: "text", text: "请求写入文件权限"), NativePanelItem(id: "approval:grantRoot", kind: "text", text: "/write/root"), NativePanelItem(id: "permissions:write", kind: "text", text: "/extra/path"), NativePanelItem(id: "permissions:entry:0", kind: "text", text: "/extra/path"), NativePanelItem(id: "approval-decision:0", kind: "action", value: "\"accept\"", command: NativeCommand(name: "approval.decide", params: ["requestKey": .string("number:123"), "index": .number(0)]))])
         publish(state)
         precondition(session.approvals.first?.decisions == [.allowOnce])
+        precondition(session.approvals.first?.paths == ["/write/root", "/extra/path"], "真实fileChange写入根目录和附加权限路径必须完整保留且去重")
         let approval = session.approvals.first!.id
         let approvalTask = Task { await session.submitApproval(approval, decision: .allowOnce) }
         for _ in 0..<30 { if commands.last?.name == "approval.decide" { break }; await Task.yield() }
@@ -69,12 +81,37 @@ struct AgentSessionSmoke {
         state.commandResults = [NativeCommandResult(id: decision.id, name: decision.name, ok: false, contextId: state.contextId, error: "审批提交失败")]
         publish(state); await approvalTask.value
         precondition(session.approvals.first?.error == "审批提交失败" && session.approvals.first?.submitting == false)
+        state.approvalPanel = NativePanel(id: "approval:number:multi-host", title: "真实网络审批", items: [NativePanelItem(id: "approval-thread-id", kind: "text", text: "thread:arbitrary"), NativePanelItem(id: "host-one", kind: "action", title: "允许并记住主机：one.example", value: "{\"applyNetworkPolicyAmendment\":{\"network_policy_amendment\":{\"action\":\"allow\",\"host\":\"one.example\"}}}", command: NativeCommand(name: "approval.decide", params: ["requestKey": .string("number:multi-host"), "index": .number(0)])), NativePanelItem(id: "host-two", kind: "action", title: "允许并记住主机：two.example", value: "{\"applyNetworkPolicyAmendment\":{\"network_policy_amendment\":{\"action\":\"allow\",\"host\":\"two.example\"}}}", command: NativeCommand(name: "approval.decide", params: ["requestKey": .string("number:multi-host"), "index": .number(1)]))])
+        publish(state)
+        let ambiguousRequest = session.approvals.first!.id
+        let beforeAmbiguous = commands.count
+        let ambiguous = Task { await session.submitApproval(ambiguousRequest, decision: .rememberHost) }
+        for _ in 0..<20 { await Task.yield() }
+        precondition(commands.count == beforeAmbiguous, "同语义多个审批决定不能静默只选择最后一个主机")
+        await ambiguous.value
+        let hostChoices = session.approvals.first!.choices
+        precondition(hostChoices.count == 2 && Set(hostChoices.map(\.id)).count == 2 && hostChoices[0].title.contains("one.example") && hostChoices[1].title.contains("two.example"), "每个真实主机决定必须保留独立身份和目标标题")
+        let beforeExact = commands.count
+        let exact = Task { await session.submitApproval(ambiguousRequest, choiceID: hostChoices[0].id) }
+        for _ in 0..<30 { if commands.count > beforeExact { break }; await Task.yield() }
+        let exactCommand = commands.last!
+        precondition(exactCommand.params["requestKey"] == .string("number:multi-host") && exactCommand.params["index"] == .number(0), "选择第一个主机不能改为提交最后一个主机index")
+        state.commandResults = [NativeCommandResult(id: exactCommand.id, name: exactCommand.name, ok: true, contextId: state.contextId)]
+        publish(state); await exact.value
         state.approvalPanel = nil; state.commandResults = nil; state.attachments = []; state.queued = []
         publish(state)
         let priorGroups = state.groups
-        state.search = "真实搜索"; state.groups = [NativeGroup(id: "search", title: "搜索结果", items: [NativeNavigationItem(id: "found", title: "搜索到的真实会话", command: openB, backendId: "device:beta", threadId: "thread:arbitrary", cwd: "/work/b")], category: "search")]
+        state.search = "真实搜索"; state.groups = [NativeGroup(id: "search", title: "搜索结果", items: [NativeNavigationItem(id: "found", title: "搜索到的真实会话", command: openB, backendId: "device:beta", threadId: "thread:arbitrary", cwd: "/work/b")], actions: [NativePanelItem(id: "search-retry", kind: "action", command: NativeCommand(name: "navigation.refresh"))], category: "search", subtitle: "真实查询失败", loading: "loading")]
         publish(state)
+        precondition(session.navigationLoading && session.navigationError == "真实查询失败", "搜索进度和真实错误不能伪装成没有匹配")
+        session.retryNavigation()
+        precondition(commands.last?.name == "navigation.refresh", "导航重试必须调用真实原始业务动作")
         precondition(!session.scopedProjects.isEmpty && session.scopedProjects.flatMap { session.projectConversations($0) }.contains { $0.title == "搜索到的真实会话" }, "仅search分组的有项目结果不能消失")
+        state.groups = [NativeGroup(id: "list-error", title: "真实列表失败", items: [NativeNavigationItem(id: "retry", title: "重试", command: NativeCommand(name: "navigation.refresh"))])]
+        publish(state)
+        precondition(!session.navigationLoading && session.navigationError == "真实列表失败", "普通列表真实失败也必须可见")
+        session.retryNavigation()
+        precondition(commands.last?.name == "navigation.refresh")
         state.search = ""; state.groups = priorGroups; state.threadId = nil; state.contextId = "new-context"; state.draftRevision = 0
         publish(state)
         session.composer.project = "/real/raw-project"
@@ -105,6 +142,9 @@ struct AgentSessionSmoke {
         state.panel = NativePanel(id: "drafts", title: "草稿", items: [NativePanelItem(id: "draft:raw", kind: "section", title: "截断摘要", value: "{\"backendId\":\"device:alpha\",\"cwd\":\"/project\",\"text\":\"完整草稿正文\",\"updatedAt\":1234000,\"images\":[],\"files\":[]}")])
         publish(state)
         precondition(session.drafts.first?.composition.text == "完整草稿正文" && session.drafts.first?.composition.deviceID == session.devices.first?.id && session.drafts.first?.updatedAt.timeIntervalSince1970 == 1234, "草稿展示必须保留真实目标、正文和更新时间")
+        state.panel = NativePanel(id: "attachment:file-raw", title: "本地真实.md", items: [NativePanelItem(id: "draft-download", kind: "file", title: "本地真实.md", value: "data:text/markdown;base64,IyBsb2NhbA=="), NativePanelItem(id: "draft-content", kind: "markdown", text: "# local", previewURL: "data:text/markdown;base64,IyBsb2NhbA==")])
+        publish(state)
+        precondition(session.previewItem?.name == "本地真实.md" && session.previewItem?.kind == .markdown && session.previewItem?.remoteURL == "data:text/markdown;base64,IyBsb2NhbA==", "本地文件业务预览必须将真实原字节交给AgentApp预览下载")
         state.panel = nil; publish(state)
         let aDevice = session.devices.first!.id
         session.beginNewConversation(deviceID: aDevice)
