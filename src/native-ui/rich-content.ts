@@ -3,7 +3,7 @@ import { fetchImageGenerationError, type ImageGenerationError } from '../backend
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { t } from '../i18n';
 import { remoteFileDownloadUrl, remoteFilePreviewUrl, remoteImagePreviewUrl } from '../backends/file-upload';
-import { groupConversationTurns, parseRemoteFileHref, summarizeFileChange } from '../ui/conversation';
+import { groupConversationTurns, parseRemoteFileHref } from '../ui/conversation';
 import { isPreviewableImagePath, isPreviewableVideoPath, decodeBase64File, remoteMarkdownImage } from '../features/conversation/sheets/RemoteFileSheets';
 import { renderMermaidSvg } from '../ui/mermaid';
 import { nativeAction, nativeCommand, nativeItemText } from './projection';
@@ -26,7 +26,6 @@ export interface NativeFileState { href: string; path: string; line: number | nu
 const describe = (id: string, title: string, value: unknown, kind = 'text'): NativePanelItem => ({ id, kind, title, text: typeof value === 'string' ? value : JSON.stringify(value, null, 2) });
 export function projectToolPanel(c: NativeWorkspaceController, id: string, diagnostics: Record<string, ImageGenerationError | null> = {}): NativeSnapshot['panel'] {
  const diffItems = (changes: any[], prefix: string): NativePanelItem[] => changes.map((change, i) => {
-  const stats = summarizeFileChange(change);
   const rawPath = typeof change.path === 'string' ? change.path : '';
   let href = parseRemoteFileHref(rawPath) ? rawPath : null;
   const cwd = typeof c.active?.cwd === 'string' ? c.active.cwd : '';
@@ -34,7 +33,7 @@ export function projectToolPanel(c: NativeWorkspaceController, id: string, diagn
    const resolved = remoteMarkdownImage(`${cwd.replace(/\/+$/, '')}/__native_context__.md`, rawPath);
    if (resolved.local && parseRemoteFileHref(resolved.source)) href = resolved.source;
   }
-  return { id: `${prefix}:${i}`, kind: 'disclosure', title: `${change.path || t('未命名文件')} +${stats.additions} −${stats.deletions}`, children: [
+  return { id: `${prefix}:${i}`, kind: 'disclosure', title: change.path || t('未命名文件'), children: [
    ...(href ? [nativeAction(`${prefix}:${i}:file`, t('打开文件'), 'file.open', { href })] : []), { id: `${prefix}:${i}:diff`, kind: 'diff', text: change.diff || t('暂无 Diff 内容') },
   ] };
  });

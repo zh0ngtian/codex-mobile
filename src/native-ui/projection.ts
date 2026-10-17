@@ -135,7 +135,7 @@ export function projectConversation(active: RecordValue | null, imageURL: (path:
     }
     const changeBlocks: NativePanelItem[] = [];
     const changes = summarizeTurnChanges(turn);
-    if (turn.liveDiff || changes.additions || changes.deletions) changeBlocks.push(nativeAction(`${turnId}:changes`, `${t('文件变更')} +${changes.additions} −${changes.deletions}`, 'panel.open', { id: `changes:${turnId}` }));
+    if (turn.liveDiff || changes.additions || changes.deletions) changeBlocks.push(nativeAction(`${turnId}:changes`, t('文件变更'), 'panel.open', { id: `changes:${turnId}` }));
     if (changeBlocks.length) messages.push({ id: `${turnId}:changes`, role: 'activity', text: '', blocks: changeBlocks });
   }
   return messages;

@@ -6,12 +6,12 @@ const engine = vi.hoisted(() => ({ initialize: vi.fn(), render: vi.fn(async (_id
 vi.mock('mermaid', () => ({ default: engine }));
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 function c(overrides: any = {}): NativeWorkspaceController { return { backend: { id: 'b', name: 'Mac', baseUrl: 'http://gateway', token: 'TOKEN', enabled: true, order: 0 }, active: { id: 't', turns: [] }, contextId: 'ctx', connection: 'online', draft: '', draftImages: [], draftFiles: [], busy: false, readOnly: false, imageReading: false, draftSaving: false, pending: false, models: [], selectedModel: '', selectedModelLabel: '', effortOptions: [], selectedEffort: null, permission: '', skills: [], plugins: [], queued: [], approvalCount: 0, loadState: 'ready', olderTurnsState: 'exhausted', error: '', setDraft() {}, send: async () => {}, stop: async () => {}, chooseModel() {}, chooseEffort() {}, removeAttachment() {}, selectFiles: async () => {}, selectLocation: async () => true, saveDraft: async () => {}, retry() {}, loadOlder: async () => true, editMessage() {}, cancelQueued: async () => {}, sendQueued: async () => {}, editQueued: async () => true, ...overrides }; }
-it('命令和文件变更面板挑选真实业务字段与diff统计，不以整对象JSON替代详情', () => {
+it('命令和文件变更面板保留真实业务字段与diff内容，文件标题不展示增删行数', () => {
  const state = c({ active: { id: 't', turns: [{ id: 'turn', items: [{ id: 'cmd', type: 'commandExecution', command: 'ls -la', cwd: '/app', status: 'completed', exitCode: 0, aggregatedOutput: 'hello', hidden: 'NOLEAK' }, { id: 'change', type: 'fileChange', changes: [{ path: '/app/a.ts', diff: '@@ -1 +1 @@\n-old\n+new' }] }] }] } });
  const panel = (id: string) => createWorkspaceAdapter(state, { panelId: id, query: '', setPanel() {}, setQuery() {} }).snapshot.panel;
  expect(panel('tool:turn:cmd')?.items.find(i => i.id.endsWith(':command'))?.text).toBe('ls -la');
  expect(JSON.stringify(panel('tool:turn:cmd'))).not.toContain('NOLEAK');
- const diff = panel('changes:turn')!; expect(JSON.stringify(diff)).toContain('+1'); expect(JSON.stringify(diff)).toContain('file.open'); expect(JSON.stringify(diff)).not.toContain('"changes"');
+ const diff = panel('changes:turn')!; expect(diff.items[0].title).toBe('/app/a.ts'); expect(JSON.stringify(diff)).toContain('@@ -1 +1 @@'); expect(JSON.stringify(diff)).toContain('file.open'); expect(JSON.stringify(diff)).not.toContain('"changes"');
 });
 it('本地Markdown图片提供鉴权资源，Mermaid只渲染实际源码并复用strict引擎', async () => {
  const runtime = new NativeRuntime(() => {}); runtime.setNavigation({ selectedBackendId: 'b', backends: [], groups: [] });
