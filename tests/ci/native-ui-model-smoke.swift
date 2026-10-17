@@ -20,6 +20,27 @@ struct NativeStoreSmoke {
         let inlineRoundtrip = try JSONSerialization.jsonObject(with: JSONEncoder().encode(inlineMessage)) as! [String: Any]
         precondition((inlineRoundtrip["historyEdit"] as? [String: Any])?["id"] as? String == "history-edit:t:turn:m", "真实原生DTO必须保留消息原位编辑而不丢弃字段")
         NativeComposerMenuSmoke.verify()
+        let importStore = NativeUIStore(arguments: [])
+        var importedCommands: [NativeCommand] = []
+        importStore.sendCommand = { importedCommands.append($0) }
+        let importPayload: [String: NativeJSONValue] = ["items": .array([.object(["name": .string("note.txt"), "type": .string("text/plain"), "data": .string("aGk=")])])]
+        importStore.command("attachment.import", importPayload)
+        precondition(importedCommands.isEmpty, "运行时未就绪不能开始原生附件导入")
+        var importSnapshot = NativeSnapshot()
+        importSnapshot.ready = true
+        importSnapshot.contextId = "import-context"
+        importStore.receive(importSnapshot)
+        importStore.command("attachment.import", importPayload)
+        precondition(importedCommands.count == 1 && importedCommands[0].params["contextId"] == .string("import-context"))
+        importSnapshot.pending = true
+        importStore.receive(importSnapshot)
+        importStore.command("attachment.import", importPayload)
+        precondition(importedCommands.count == 1, "发送或读取附件期间不能导入另一批内容")
+        importSnapshot.pending = false
+        importSnapshot.readOnly = true
+        importStore.receive(importSnapshot)
+        importStore.command("attachment.import", importPayload)
+        precondition(importedCommands.count == 1, "只读会话不能导入可发送附件")
         precondition(NativeRateLimit(remainingPercent: 72, resetsAt: 2000, windowDurationMins: 10).remainingTimePercent(at: Date(timeIntervalSince1970: 1700)) == 50)
         precondition(NativeRateLimit(remainingPercent: 72, resetsAt: nil, windowDurationMins: 10).remainingTimePercent(at: Date(timeIntervalSince1970: 1700)) == nil, "没有可靠重置时间不能伪造时间余量")
         precondition(NativeRateLimit(remainingPercent: 72, resetsAt: 2000, windowDurationMins: 0).remainingTimePercent(at: Date(timeIntervalSince1970: 1700)) == nil)

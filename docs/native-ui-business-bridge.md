@@ -1,6 +1,14 @@
 # 原生会话业务桥接线地图
 
-本文记录 Task2a 与 Task2b 的实际业务接线。SwiftUI 仍复用既有单个 WKWebView 中的 React、客户端与数据状态；没有新增 HTTP、WebSocket 或 RPC 协议栈。默认网页模式不会订阅原生命令，也不会计算原生会话投影。
+本文记录原生呈现层与共享业务的实际接线。SwiftUI 仍复用既有单个 WKWebView 中的 React、客户端与数据状态；没有新增 HTTP、WebSocket 或 RPC 协议栈。默认网页模式不会订阅原生命令，也不会计算原生会话投影。
+
+## AgentApp 呈现层
+
+2026-10-17 的迁移将 AgentApp 页面、主题及资源纳入 `mobile/ios/AgentUI/`。生产原生宿主挂载其中的 `RootView`，注入共享 `NativeUIStore` 驱动的 `AppSession` 与 `AppPreferences`。独立原型的 `@main`、模拟连接、示例会话和模拟执行器不进入应用。旧 `NativeUI/` 继续提供可信桥、DTO、上下文/回执处理和历史回归夹具；生产页面采用 AgentUI。
+
+`NativeUIBridge` 接收快照后先更新既有 store，再同步 AgentApp 的呈现状态。原生动作仍通过 NativeCommand 执行共享业务；设备原始标识、会话原始标识与呈现 UUID 保持显式映射。外观和强调色属于本机呈现偏好，语言、传输和通知等设置回到共享业务拥有者。构建 recipe 递归纳入 AgentUI 源码与资源，应用保持唯一 WebView、原 Bundle ID 和 iOS 18 最低版本。
+
+本轮仅准备模拟器验收，未触发任何正式发布；验证范围与证据见[本轮迁移设计](superpowers/specs/2026-10-17-agentapp-native-integration-design.md)。
 
 ## 协议与隔离
 
@@ -126,8 +134,10 @@ ConfiguredApp 使用真实 `scopedThreads`、`projectDirectories`、`collapsedPr
 
 Task2b 分模块 RED→GREEN 日志位于 `.mobile-build/native-reference/task2b-*.log`。最终关联回归覆盖原生 dispatcher/面板/实际 App 发送与历史编辑、设备/推送/字号、审批、草稿、Mermaid、图片与更新；纯 TypeScript 侧检查不能替代 Swift 整合、模拟器或真机验收。
 
-## 2026-10-16 设计稿对齐
+## 2026-10-16 旧呈现对齐记录
 
+
+本节的菜单、布局和字号描述仅保留旧 `NativeUI` 呈现的实现背景；2026-10-17 起生产页面由上文 AgentUI 接管。用量数据口径与共享协议继续沿用。
 原生与网页对话顶部的圆圈打开五行用量卡片：上下文余量、周期剩余、时间剩余、输入 Token（含缓存命中率）、输出 Token。共享 `usage-metrics.ts` 严格使用 `last.totalTokens / modelContextWindow` 推导上下文，按 `windowDurationMins` 的 10080 与 300 分别识别七天和五小时额度，不根据窗口位置或重置倒计时猜测。输入与输出 Token 只读当前会话 `total.inputTokens`、`total.outputTokens`，格式化为十进制 K/M 字符串后分别通过可选 `inputTokenUsage`、`outputTokenUsage` 传给 Swift。缓存命中率为累计 `total.cachedInputTokens / total.inputTokens * 100`，最多一位小数，经可选 `inputCacheHitPercent` 传递；输入须大于 0，缓存数须有限、非负且不超过输入，否则缓存率显示「暂无数据」，不能把零分母当成 0%；新增可选 `fiveHourRateLimit` 与既有 `sevenDayRateLimit` 同结构。缺失、负数和非有限数值不转成 0，显示「暂无数据」；0 Token 与实际耗尽额度仍正常显示。切换会话时关闭卡片，原生沿用系统 popover、网页沿用现有焦点与关闭逻辑并通过 body portal 避免顶部裁剪。不新增请求、持久化或数据源；可选字段继续兼容旧快照。
 
 附件、权限、速度及模型/思考强度统一使用 iOS 系统弹出菜单。权限直接遍历权威 `snapshot.permissions`，选项显示审核、只读或完全访问的 SF Symbol，并保留说明的辅助功能 hint。模型与思考强度共用 SwiftUI `Menu`，以 `.menuOrder(.fixed)` 固定两个平级 `Section` 和接口原始顺序，完整列出目录，超屏滚动交给系统，不增加自定义分页或滚动容器；Fast、模型和思考选项不绘制选中勾。模型按钮使用单一可见 `Text` 显示“模型 · 思考强度”，空值显示智能语义，长名称中间截断以保留末尾强度。选项创建时捕获 `contextId`，选择仍走既有 `chooseComposerOption`；过期、不可编辑、等待新会话或侧栏打开时拒绝执行。
@@ -142,9 +152,9 @@ Task2b 分模块 RED→GREEN 日志位于 `.mobile-build/native-reference/task2b
 
 宿主只保存并冻结 `codexMobile.useNativeUI`，默认 false。旧 `codexMobile.useNativeComposer` 和 `codex-mobile:web-interface` 不再影响启动或呈现。原生界面设置继续通过 `settings.native-ui` 和 `NativeSwitchBoundary` 完成检查点事务、失败回滚和并发锁，在下次完整启动时生效。
 
-非原生界面使用正常网页 textarea，附件、发送、排队、模型、权限、Skill/Plugin、选区和焦点均沿现有网页回调，不创建 NativeRuntime、不发布原生会话投影。完整原生界面继续使用 `NativeComposerView` 与同一业务 WKWebView 的 runtime，保留 `draftRevision`、UTF-16 光标、附件系统菜单、模型和推理选择、队列及历史编辑。
+非原生界面使用正常网页 textarea，附件、发送、排队、模型、权限、Skill/Plugin、选区和焦点均沿现有网页回调，不创建 NativeRuntime、不发布原生会话投影。完整原生界面使用 `AgentUI/Composer/ComposerBar.swift` 与同一业务 WKWebView 的 runtime，输入经 `NativeUIStore` 的 `draftRevision` 同步，附件、模型、推理、队列与历史编辑继续发送明确的业务命令。
 
-完整原生输入按手动换行或自动折行自然增高，达到 `NativeComposerLineLimits` 和 `NativeComposerLayoutBudget` 根据宿主、辅助区、工具栏及有效字号计算的上限后在框内滚动，删除文字后缩回。只有会话上下文变化才重置局部输入状态；`selectionRevision` 只在权威正文或 UTF-16 光标变化时推进，相同草稿 echo 不强制重设 TextSelection，保留中文组字状态。
+AgentUI 输入区保持原型的收起与展开两态，正文最多显示六行后在框内滚动。真实业务暂不可编辑、等待新会话上下文或只读时禁用输入；本地编辑经共享 revision 回执收敛，旧快照不能覆盖尚未确认的文字。旧 `NativeComposerLineLimits`、布局预算与 TextSelection 路径仅用于旧呈现的离线回归。
 
 两个界面仍共用设备、会话、草稿和发送配置。可信主文档校验、人工恢复当前非原生界面和前后台恢复机制保持原有边界。实际界面验收限定 iPhone 17 Pro、正常字号、竖屏；构建验签和模拟器验证不代表真机覆盖安装与数据保留已验证。
 

@@ -23,6 +23,7 @@ struct RootView: View {
                         mainContent
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .accessibilityElement(children: .contain)
                     .allowsHitTesting(!sidebarIsVisible)
                     .accessibilityHidden(sidebarIsVisible)
                     if sidebarIsVisible {
@@ -33,6 +34,7 @@ struct RootView: View {
                             .accessibilityLabel(preferences.text("收起会话侧栏", "Close conversation sidebar"))
                             .accessibilityAddTraits(.isButton)
                         SidebarScreen()
+                            .accessibilityElement(children: .contain)
                             .frame(width: geometry.size.width * 4 / 5, height: geometry.size.height)
                             .background(AgentTheme.page.ignoresSafeArea(edges: .vertical))
                             .overlay(alignment: .trailing) { Rectangle().fill(AgentTheme.line).frame(width: 0.5) }
@@ -211,7 +213,8 @@ struct RootView: View {
     }
 
     private func isOwnedPanel(_ id: String) -> Bool {
-        id == "devices" || id == "drafts" || id.hasPrefix("settings:") || id.hasPrefix("approval:") || id.hasPrefix("history-edit:")
+        id == "devices" || id == "drafts" || id.hasPrefix("settings:") || id.hasPrefix("approval:") || id.hasPrefix("history-edit:") ||
+        (id.hasPrefix("attachment:") && session.previewItem != nil)
     }
 
     private var modalBinding: Binding<AppModal?> {
@@ -233,7 +236,7 @@ struct RootView: View {
             guard session.activeQuestionID == id, let request = session.question(id) else { return false }
             return session.canInteract(request.conversationID)
         case .preview(let item): return session.previewItem?.id == item.id
-        case .nativePanel(let id): return session.nativePanel?.id == id
+        case .nativePanel(let id): return session.nativePanel?.id == id && !isOwnedPanel(id)
         }
     }
 
@@ -268,8 +271,9 @@ struct RootView: View {
             case .approval, .question: break
             case .preview(let item):
                 if session.previewItem?.id == item.id { session.previewItem = nil }
+                if session.nativePanel?.id.hasPrefix("attachment:") == true { session.closeNativePanel() }
             case .nativePanel(let id):
-                if session.nativePanel?.id == id { session.closeNativePanel() }
+                if session.nativePanel?.id == id, !(id.hasPrefix("attachment:") && session.previewItem != nil) { session.closeNativePanel() }
             }
         }
         lastPresentedModal = nil

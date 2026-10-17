@@ -15,6 +15,7 @@ it.skipIf(process.platform !== "darwin")("iOS 准备在包含空格、单引号�
     copyFileSync("scripts/prepare-ios.mjs", join(project, "scripts/prepare-ios.mjs"));
     copyFileSync("mobile/ios/build-recipe.yml", join(project, "mobile/ios/build-recipe.yml"));
     cpSync("mobile/ios/NativeUI", join(project, "mobile/ios/NativeUI"), { recursive: true });
+    cpSync("mobile/ios/AgentUI", join(project, "mobile/ios/AgentUI"), { recursive: true });
     writeFileSync(join(project, "package.json"), '{"type":"module","version":"0.2.165"}');
     symlinkSync(resolve("node_modules"), join(project, "node_modules"), "dir");
     const bridges = ["InAppBrowserViewController.swift", "AttachmentPickerBridge.swift", "AppUpdateBridge.swift", "ActionMenuBridge.swift", "KeyboardDismissal.swift", "JavaScriptTextInputBridge.swift"];
@@ -27,6 +28,7 @@ it.skipIf(process.platform !== "darwin")("iOS 准备在包含空格、单引号�
       { cwd: project, env: { ...process.env, PATH: `${fakeBin}:${process.env.PATH}` }, encoding: "utf8" });
     expect(result.status, result.stdout + result.stderr).toBe(0);
     expect(readFileSync(join(project, ".mobile-build/ios/pakeplus/PakePlus/NativeUI/NativeRootView.swift"), "utf8")).toBe(readFileSync("mobile/ios/NativeUI/NativeRootView.swift", "utf8"));
+    expect(readFileSync(join(project, ".mobile-build/ios/pakeplus/PakePlus/AgentUI/App/RootView.swift"), "utf8")).toBe(readFileSync("mobile/ios/AgentUI/App/RootView.swift", "utf8"));
     for (const name of bridges) expect(readFileSync(join(project, ".mobile-build/ios/pakeplus/PakePlus", name), "utf8")).toBe(`fixture ${name}\n`);
   } finally { rmSync(temporary, { recursive: true, force: true }); }
 });

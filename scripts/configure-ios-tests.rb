@@ -39,7 +39,7 @@ project.save
 target = project.targets.find { |t| t.name == 'CodexMobileUITests' }
 if target
   target.build_configurations.each { |config| config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '18.0' }
-  ['SmallFontKeyboardUITests.swift', 'HorizontalScrollUITests.swift', 'NativeUIUITests.swift'].each do |name|
+  ['SmallFontKeyboardUITests.swift', 'HorizontalScrollUITests.swift', 'NativeUIUITests.swift', 'AgentAppUITests.swift'].each do |name|
     extra_path = File.join(root, 'mobile/ios', name)
     unless project.files.any? { |f| f.real_path.to_s == extra_path }
       group = project.main_group.find_subpath('CodexMobileUITests', false)
@@ -57,6 +57,7 @@ source.new_file(ARGV[1] ? File.expand_path(ARGV[1]) : File.join(root, 'mobile/io
 source.new_file(File.join(root, 'mobile/ios/SmallFontKeyboardUITests.swift')).tap { |f| target.source_build_phase.add_file_reference(f) }
 native_path = File.join(root, 'mobile/ios/NativeUIUITests.swift')
 target.source_build_phase.add_file_reference(source.new_file(native_path))
+target.source_build_phase.add_file_reference(source.new_file(File.join(root, 'mobile/ios/AgentAppUITests.swift')))
 extra_path = File.join(root, 'mobile/ios/HorizontalScrollUITests.swift')
 unless project.files.any? { |f| f.real_path.to_s == extra_path }
   target.source_build_phase.add_file_reference(source.new_file(extra_path))

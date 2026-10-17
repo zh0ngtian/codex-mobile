@@ -4,7 +4,9 @@ import UIKit
 
 @MainActor
 final class NativeUIBridge: NSObject, WKScriptMessageHandler {
-    let store = NativeUIStore()
+    let store: NativeUIStore
+    let agentSession: AppSession
+    let agentPreferences: AppPreferences
     // 业务 WebView 由既有 WebView representable 创建并拥有；桥仅保留弱引用，绝不创建第二个实例。
     private weak var webView: WKWebView?
     // 与业务 WebView.loadFileURL 使用同一资源 URL，保留 WebKit 实际加载的 /private 路径。
@@ -15,7 +17,12 @@ final class NativeUIBridge: NSObject, WKScriptMessageHandler {
     private var active = true
     private var needsLifecycleSync = true
     override init() {
+        let store = NativeUIStore()
+        self.store = store
+        agentSession = AppSession(store: store)
+        agentPreferences = AppPreferences()
         super.init()
+        agentPreferences.connect(store: store)
         store.copyText = { [weak store] text in
             UIPasteboard.general.string = text
             UIAccessibility.post(notification: .announcement, argument: store?.label("已复制", "Copied"))
@@ -80,6 +87,8 @@ final class NativeUIBridge: NSObject, WKScriptMessageHandler {
             if ProcessInfo.processInfo.arguments.contains("--native-ui-trace") { print("Native snapshot panel=\(value.panel?.id ?? "none")") }
             #endif
             store.receive(value)
+            agentSession.receive(value)
+            agentPreferences.receive(value)
             if needsLifecycleSync { applyLifecycle() }
         } catch {
             #if DEBUG

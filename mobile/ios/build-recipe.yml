@@ -66,6 +66,7 @@ steps:
       ];
       const allowedUrls = new Set([
         "https://api.day.app/DeviceKey",
+        "https://api.day.app/BARK_DEVICE_KEY",
         "http://host.local:18766/?token=xxx",
         "http://192.168.123.79:8765/channels/codex-mobile/latest.json",
         "http://192.168.123.79:8765/channels/codex-mobile/latest.apk",
@@ -238,6 +239,12 @@ steps:
       for source in mobile/ios/NativeUI/*.swift; do
         cmp "$source" "pakeplus/PakePlus/NativeUI/$(basename "$source")"
       done
+      test -s mobile/ios/AgentUI/App/RootView.swift
+      cp -R mobile/ios/AgentUI pakeplus/PakePlus/AgentUI
+      test -s pakeplus/PakePlus/AgentUI/Composer/ComposerBar.swift
+      test -s pakeplus/PakePlus/AgentUI/Assets.xcassets/ProjectFolderOpen.imageset/Contents.json
+      test ! -e pakeplus/PakePlus/AgentUI/App/AgentApp.swift
+      test ! -e pakeplus/PakePlus/AgentUI/Info.plist
   - name: Harden and test the iOS host
     working-directory: pakeplus
     shell: bash

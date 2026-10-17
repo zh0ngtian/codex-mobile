@@ -72,7 +72,8 @@ struct SidebarConversationList: View {
 
     private var followed: [Conversation] { session.visibleConversations.filter(\.isPinned) }
     private var ungroupedSearchResults: [Conversation] {
-        session.visibleConversations.filter { !$0.isPinned && $0.project == nil }
+        guard !session.searchText.isEmpty else { return [] }
+        return session.visibleConversations.filter { !$0.isPinned && $0.project == nil }
     }
     private var visibleProjects: [String] {
         if session.searchText.isEmpty { return session.scopedProjects }

@@ -36,6 +36,7 @@ struct SidebarScreen: View {
         }
         .background(AgentTheme.page)
         .foregroundStyle(AgentTheme.ink)
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("sidebar.panel")
     }
 }

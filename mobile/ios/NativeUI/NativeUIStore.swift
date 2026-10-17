@@ -377,7 +377,7 @@ final class NativeUIStore {
         if ["thread.open", "backend.select", "drafts.restore", "drafts.open", "settings.open", "navigation.filter", "newchat.backend", "newchat.project"].contains(name) {
             cancelComposerPresentation()
         }
-        let editingCommands: Set<String> = ["draft.set", "draft.save", "model.select", "effort.select", "speed.select", "permission.select", "attachment.pick", "attachment.remove", "location.insert", "mention.search", "mention.insert"]
+        let editingCommands: Set<String> = ["draft.set", "draft.save", "model.select", "effort.select", "speed.select", "permission.select", "attachment.pick", "attachment.import", "attachment.remove", "location.insert", "mention.search", "mention.insert"]
         if editingCommands.contains(name), !composerCanEdit { return }
         if name == "panel.open", ["permission", "mentions"].contains({ if case .string(let id) = params["id"] { return id }; return "" }()), !composerCanEdit { return }
         if name == "panel.open", !snapshot.ready || awaitingNewConversation { return }

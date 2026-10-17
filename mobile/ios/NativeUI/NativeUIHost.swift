@@ -17,7 +17,17 @@ struct NativeUIHost<Legacy: View>: View {
                     .accessibilityHidden(store.nativeEnabled && !store.showLegacyForRecovery)
                 }
                 if store.nativeEnabled && !store.showLegacyForRecovery {
-                    NativeRootView(store: store, availableHeight: geometry.size.height)
+                    if store.isReference {
+                        NativeRootView(store: store, availableHeight: geometry.size.height)
+                    } else {
+                        RootView()
+                            .accessibilityElement(children: .contain)
+                            .accessibilityIdentifier("agent-ui-root")
+                            .environment(bridge.agentSession)
+                            .environment(bridge.agentPreferences)
+                            .environment(\.locale, Locale(identifier: bridge.agentPreferences.isEnglish ? "en" : "zh-Hans"))
+                            .tint(bridge.agentPreferences.accent.color)
+                    }
                 }
             }
             .frame(width: geometry.size.width, height: geometry.size.height)
@@ -38,5 +48,8 @@ struct NativeUIHost<Legacy: View>: View {
             if recovery { bridge.recoverLegacy() }
         }
         .onChange(of: scenePhase, initial: true) { _, phase in bridge.setActive(phase == .active) }
+        .onChange(of: bridge.agentPreferences.appearance, initial: true) { _, appearance in
+            AppAppearanceController.apply(appearance)
+        }
     }
 }
