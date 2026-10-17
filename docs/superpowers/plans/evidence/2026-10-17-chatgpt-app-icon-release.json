@@ -1,0 +1,154 @@
+{
+  "date": "2026-10-17",
+  "task": "chatgpt-app-icon-20261017",
+  "batchId": "8f7c48e2-0f2f-4431-ba27-bca37a3ba053",
+  "status": "complete",
+  "coordinatorVersion": "0.1.6",
+  "sourceCommit": "63d98c06f01d61431e072c6ee4c95185215ba303",
+  "frozenCommit": "081628fda1a5d73989d119305f81272a701e4684",
+  "version": "0.2.191",
+  "buildNumber": "2191",
+  "receipt": "~/Library/Application Support/ReleaseCoordinator/receipts/8f7c48e2-0f2f-4431-ba27-bca37a3ba053.json",
+  "validationDirectory": "~/Library/Application Support/ReleaseCoordinator/validations/chatgpt-app-icon-20261017",
+  "validation": {
+    "adapterRegression": 166,
+    "coordinatorRecovery": 42,
+    "buildContract": 126,
+    "typecheck": "passed",
+    "iconRegression": 12,
+    "specReview": "passed",
+    "qualityReview": "passed",
+    "tdd": [
+      "旧图边缘非纯白时像素回归失败，替换后通过",
+      "仓库外执行找不到sharp时生成回归失败，修复模块解析后通过"
+    ]
+  },
+  "icon": {
+    "officialSource": "https://help.openai.com/en/articles/7905742-what-does-the-official-chatgpt-ios-app-icon-look-like",
+    "officialSha256": "e799e2fa0d4149a2ec28fc595c8bfb4990bcbb478649791b42acff7cde6e805e",
+    "productionSha256": "7d5258604c557a305006eb587c1806fdc6bf472528ae6ba58e9c8d737ddf1621",
+    "appearance": "白底黑色扁平结形标志，无手机叠层与渐变",
+    "packageChecks": [
+      {
+        "file": "ipa-extracted-icon.png",
+        "width": 180,
+        "height": 180,
+        "edgeInvalid": 0,
+        "darkPixels": 5809,
+        "status": "passed"
+      },
+      {
+        "file": "android-1-ic_launcher_foreground.png",
+        "width": 72,
+        "height": 72,
+        "edgeInvalid": 0,
+        "darkPixels": 284,
+        "status": "passed"
+      },
+      {
+        "file": "android-3-ic_launcher_foreground.png",
+        "width": 48,
+        "height": 48,
+        "edgeInvalid": 0,
+        "darkPixels": 94,
+        "status": "passed"
+      },
+      {
+        "file": "android-5-ic_launcher_foreground.png",
+        "width": 96,
+        "height": 96,
+        "edgeInvalid": 0,
+        "darkPixels": 606,
+        "status": "passed"
+      },
+      {
+        "file": "android-7-ic_launcher_foreground.png",
+        "width": 144,
+        "height": 144,
+        "edgeInvalid": 0,
+        "darkPixels": 1538,
+        "status": "passed"
+      },
+      {
+        "file": "android-9-ic_launcher_foreground.png",
+        "width": 192,
+        "height": 192,
+        "edgeInvalid": 0,
+        "darkPixels": 2928,
+        "status": "passed"
+      }
+    ],
+    "iosExtraction": {
+      "entry": "Payload/PakePlus.app/Assets.car",
+      "primaryIcon": "AppIcon",
+      "rendition": "AppIcon-60.0x60.0@3x.png",
+      "width": 180,
+      "height": 180
+    }
+  },
+  "channels": {
+    "apk": {
+      "version": "0.2.191",
+      "size": 4722231,
+      "sha256": "0bde339759099819748fef9c5e719c446a2393933ffe3b58f7aa378918fc18ba",
+      "downloadUrl": "http://192.168.123.79:8765/channels/codex-mobile/latest.apk",
+      "signed": false,
+      "headAndFullGet": "passed"
+    },
+    "ipa": {
+      "version": "0.2.191",
+      "size": 3110845,
+      "sha256": "dade182a87c994dc96d68c8c447da835c1f1670791a8ba294722ca085653f811",
+      "downloadUrl": "http://192.168.123.79:8765/channels/codex-mobile/latest.ipa",
+      "signed": true,
+      "headAndFullGet": "passed"
+    },
+    "ota": {
+      "installUrl": "https://192.168.123.79:8766/channels/codex-mobile/current/install.html",
+      "manifest": "passed",
+      "version": "0.2.191"
+    },
+    "source": {
+      "version": "0.2.191",
+      "buildVersion": "2191",
+      "developerName": "zh0ngtian",
+      "downloadURL": "https://github.com/zh0ngtian/codex-mobile/releases/download/v0.2.191/CodexMobile-v0.2.191-unsigned.ipa",
+      "sha256": "b72fb2a886554bc6101e18a39658946da58878c72ee947fa8677623f8aa3fbe4",
+      "versionDescription": "- 应用图标更新为与 ChatGPT 手机端一致的白底黑色标志，移除手机叠层和渐变效果。\n"
+    },
+    "ipaBundle": {
+      "version": "0.2.191",
+      "bundleId": "vip.loock.codexmobile",
+      "icons": [],
+      "compiledIconCatalog": "Payload/PakePlus.app/Assets.car"
+    },
+    "apkIcons": [
+      "res/mipmap-hdpi-v4/ic_launcher_background.png",
+      "res/mipmap-hdpi-v4/ic_launcher_foreground.png",
+      "res/mipmap-mdpi-v4/ic_launcher_background.png",
+      "res/mipmap-mdpi-v4/ic_launcher_foreground.png",
+      "res/mipmap-xhdpi-v4/ic_launcher_background.png",
+      "res/mipmap-xhdpi-v4/ic_launcher_foreground.png",
+      "res/mipmap-xxhdpi-v4/ic_launcher_background.png",
+      "res/mipmap-xxhdpi-v4/ic_launcher_foreground.png",
+      "res/mipmap-xxxhdpi-v4/ic_launcher_background.png",
+      "res/mipmap-xxxhdpi-v4/ic_launcher_foreground.png"
+    ]
+  },
+  "githubRelease": "https://github.com/zh0ngtian/codex-mobile/releases/tag/v0.2.191",
+  "ci": {
+    "runId": 39005497391,
+    "status": "success",
+    "development": "success"
+  },
+  "signing": {
+    "signed": true,
+    "method": "Ad Hoc",
+    "bundleId": "vip.loock.codexmobile",
+    "teamId": "SC456JW7RP",
+    "applicationIdentifier": "SC456JW7RP.app.jade6694.grapefruit3766",
+    "entitlementsSha256": "1e84a4c1ba74b9e374c364f26fefa112ceeea09de1a0ba0600403a763eb7952f"
+  },
+  "testSessionsCreated": [],
+  "physicalDeviceInstallVerified": false
+}

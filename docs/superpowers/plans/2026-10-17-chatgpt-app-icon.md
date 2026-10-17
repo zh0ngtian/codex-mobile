@@ -42,7 +42,11 @@
   ```
 
   分别记录为 `adapter-regression`、`coordinator-recovery`、`build-contract`、`typecheck`，并包含图标专项 RED/GREEN 结果。
-- [ ] 阅读并遵循 `docs/commit-conventions.md`，执行 `git diff --check`、`git diff --cached --check` 和暂存清单核对。提交中文 Conventional Commit（正文含新增功能、主要修改），推送分支。
-- [ ] 使用真实固定 SHA 和通过的 validation.json 执行 `releasectl ready`，等待成功 batch receipt。main 整合、版本分配、正式构建、签名与渠道更新都交给协调器。
-- [ ] 核对 task SHA 包含证据、GitHub 双端 Release、固定 LAN APK/已签名 IPA、HTTPS OTA、软件源 unsigned 版本和中文日志；独立 GET 固定产物核对大小和 SHA-256。
-- [ ] 将成功凭证摘要写入本仓库证据文件，勾选计划，提交推送。交付正文给出固定 OTA 安装页、APK/IPA 链接、实际版本、大小、SHA-256 和 IPA 已签名说明。停止 heartbeat。
+- [x] 阅读并遵循 `docs/commit-conventions.md`，执行 `git diff --check`、`git diff --cached --check` 和暂存清单核对。提交中文 Conventional Commit（正文含新增功能、主要修改），推送分支。
+- [x] 使用真实固定 SHA 和通过的 validation.json 执行 `releasectl ready`，等待成功 batch receipt。main 整合、版本分配、正式构建、签名与渠道更新都交给协调器。
+- [x] 核对 task SHA 包含证据、GitHub 双端 Release、固定 LAN APK/已签名 IPA、HTTPS OTA、软件源 unsigned 版本和中文日志；独立 GET 固定产物核对大小和 SHA-256。
+- [x] 将成功凭证摘要写入本仓库证据文件，勾选计划，提交推送。交付正文给出固定 OTA 安装页、APK/IPA 链接、实际版本、大小、SHA-256 和 IPA 已签名说明。停止 heartbeat。
+
+## 实际完成记录
+
+2026-10-17：成功批次 `8f7c48e2-0f2f-4431-ba27-bca37a3ba053` 发布 `0.2.191` / `2191`，冻结提交 `081628fda1a5d73989d119305f81272a701e4684` 包含任务提交 `63d98c06f01d61431e072c6ee4c95185215ba303`。全部渠道、中文日志、署名和固定包完整下载回验通过；IPA 编译资源目录及 Android 各分辨率图标已提取并核对。详见 [本次发布凭证摘要](evidence/2026-10-17-chatgpt-app-icon-release.json)。未创建测试会话，未进行真机覆盖安装或数据保留验收。
