@@ -24,6 +24,17 @@ enum UsageFormatting {
         return value
     }
 
+    static func refreshTime(_ timestamp: Double?, timeZone: TimeZone = .current) -> String? {
+        guard let timestamp, timestamp.isFinite, timestamp > 0 else { return nil }
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = timeZone
+        formatter.dateFormat = "yyyy/MM/dd HH:mm"
+        let value = formatter.string(from: Date(timeIntervalSince1970: timestamp))
+        return value.isEmpty ? nil : value
+    }
+
     private static func decimal(_ value: Double) -> String {
         if value == 0 { return "0" }
         let rounded = value <= Double.greatestFiniteMagnitude / 10 ? (value * 10).rounded() / 10 : value

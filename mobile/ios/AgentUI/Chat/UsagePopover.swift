@@ -13,7 +13,7 @@ struct UsagePopover: View {
             Text(preferences.text("用量与额度", "Usage and limits")).font(.body)
             UsageRow(title: preferences.text("上下文余量", "Context remaining"), value: percentage(metrics?.contextRemaining))
             UsageRow(title: preferences.text("额度剩余", "Quota remaining"), value: percentage(quota?.sevenDayRemaining))
-            UsageRow(title: preferences.text("时间剩余", "Time remaining"), value: percentage(quota?.fiveHourRemaining))
+            UsageRow(title: preferences.text("刷新时间", "Refresh time"), value: refreshValue)
             UsageRow(title: preferences.text("输入 Token", "Input tokens"), value: inputValue)
             UsageRow(title: preferences.text("输出 Token", "Output tokens"), value: UsageFormatting.tokens(metrics?.cumulativeOutputTokens) ?? noData)
         }
@@ -24,6 +24,10 @@ struct UsagePopover: View {
     }
     private var noData: String { preferences.text("暂无数据", "No data available") }
     private func percentage(_ value: Double?) -> String { UsageFormatting.percentage(value) ?? noData }
+    private var refreshValue: String {
+        guard let time = UsageFormatting.refreshTime(quota?.sevenDayResetsAt) else { return noData }
+        return preferences.text("7 天 · \(time)", "7 days · \(time)")
+    }
     private var inputValue: String {
         let tokens = UsageFormatting.tokens(metrics?.cumulativeInputTokens) ?? noData
         let cached = UsageFormatting.cachePercentage(input: metrics?.cumulativeInputTokens, cached: metrics?.cachedInputTokens)

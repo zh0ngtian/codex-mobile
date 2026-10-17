@@ -14,13 +14,18 @@ struct NativeUsageDetailsView: View {
             }
             NativeUsageDetailRow(title: store.label("额度剩余", "Quota Remaining"), value: store.snapshot.sevenDayRateLimit?.safeRemainingPercent.map(percent) ?? store.label("暂无数据", "Unavailable"))
                 .accessibilityHint(store.label("后端提供的 7 天额度剩余", "Remaining limit in the backend's 7-day window"))
-            NativeUsageDetailRow(title: store.label("时间剩余", "Time Remaining"), value: store.snapshot.fiveHourRateLimit?.safeRemainingPercent.map(percent) ?? store.label("暂无数据", "Unavailable"))
-                .accessibilityHint(store.label("后端提供的 5 小时额度剩余", "Remaining limit in the backend's 5-hour window"))
+            NativeUsageDetailRow(title: store.label("刷新时间", "Refresh Time"), value: refreshValue)
+                .accessibilityHint(store.label("后端提供的 7 天窗口刷新时间", "Refresh time of the backend's 7-day window"))
             NativeUsageDetailRow(title: store.label("输入 Token", "Input Tokens"), value: inputTokenValue)
             NativeUsageDetailRow(title: store.label("输出 Token", "Output Tokens"), value: store.snapshot.outputTokenUsage ?? store.label("暂无数据", "Unavailable"))
         }
         .font(.caption).padding(16).frame(idealWidth: 300)
         .accessibilityIdentifier("native-usage-details")
+    }
+
+    private var refreshValue: String {
+        guard let time = UsageFormatting.refreshTime(store.snapshot.sevenDayRateLimit?.resetsAt) else { return store.label("暂无数据", "Unavailable") }
+        return store.label("7 天 · \(time)", "7 days · \(time)")
     }
 
     private var inputTokenValue: String {

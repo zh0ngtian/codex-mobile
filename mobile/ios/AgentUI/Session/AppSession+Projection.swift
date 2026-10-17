@@ -101,8 +101,10 @@ extension AppSession {
                 thread.usage = UsageMetrics(lastRequestTokens: tokens.lastRequestTokens, contextCapacity: tokens.modelContextWindow, cumulativeInputTokens: tokens.inputTokens, cachedInputTokens: tokens.cachedInputTokens, cumulativeOutputTokens: tokens.outputTokens)
             } else { thread.usage = nil }
             if listed[id] == nil { ordered.append(id) }; listed[id] = thread
-            accountQuotas[backend] = AccountQuota(sevenDayRemaining: snapshot.sevenDayRateLimit?.safeRemainingPercent.map { $0 / 100 }, fiveHourRemaining: snapshot.fiveHourRateLimit?.safeRemainingPercent.map { $0 / 100 })
         } else { selectedConversationID = nil }
+        if let backend = snapshot.backendId {
+            accountQuotas[backend] = AccountQuota(sevenDayRemaining: snapshot.sevenDayRateLimit?.safeRemainingPercent.map { $0 / 100 }, fiveHourRemaining: snapshot.fiveHourRateLimit?.safeRemainingPercent.map { $0 / 100 }, sevenDayResetsAt: snapshot.sevenDayRateLimit?.resetsAt)
+        }
         conversations = ordered.compactMap { listed[$0] }
         var editor = composer
         editor.deviceID = snapshot.backendId.map { scopedID("device", $0) }
