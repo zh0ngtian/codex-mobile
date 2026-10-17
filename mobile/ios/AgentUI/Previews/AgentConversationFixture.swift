@@ -31,7 +31,7 @@ final class AgentConversationFixture {
         value.messages = [
             NativeMessage(id: "question", role: "user", text: "请检查项目上下文。\n\n", timestamp: date.addingTimeInterval(-60).timeIntervalSince1970, turnId: "fixture-turn"),
             history,
-            NativeMessage(id: "answer", role: "assistant", text: "已完成检查。查看 [网页链接](https://example.com) 与 [文件链接](/tmp/example.swift#L12)。", turnId: "fixture-turn", phase: "final_answer"),
+            NativeMessage(id: "answer", role: "assistant", text: "已完成检查。查看 [网页链接](https://example.com) 与 [文件链接](/tmp/example.swift#L12)。", timestamp: date.addingTimeInterval(120).timeIntervalSince1970, turnId: "fixture-turn", phase: "final_answer"),
         ]
         if ProcessInfo.processInfo.arguments.contains("--agent-sidebar-polish-fixture") {
             value.messages[0].text = String(repeating: "短行\n", count: 6) + "这是一条展开后才显示的较长正文，用于确认消息气泡在展开更多和收起时保持同样的宽度。"

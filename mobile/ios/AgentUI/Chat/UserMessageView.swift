@@ -16,40 +16,42 @@ struct UserMessageView: View {
     var body: some View {
         HStack(spacing: Self.rowSpacing) {
             Spacer(minLength: Self.leadingSpace)
-            VStack(alignment: .leading, spacing: 6) {
-                VStack(alignment: .leading, spacing: 8) {
-                    if !displayText.isEmpty {
-                        Text(displayText).font(AgentTheme.body)
-                            .foregroundStyle(preferences.accent.color)
-                            .lineLimit(expanded ? nil : 6).textSelection(.enabled)
-                            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { visibleHeight = $0 }
-                    }
-                    if expanded || fullHeight > visibleHeight + 1 {
-                        Button(expanded ? preferences.text("收起", "Show less") : preferences.text("展开更多", "Show more")) { expanded.toggle() }
-                            .font(.body).frame(minHeight: 44)
-                            .foregroundStyle(preferences.accent.color)
-                    }
-                    if !message.attachments.isEmpty { MessageAttachmentCards(attachments: message.attachments) }
+            VStack(alignment: .leading, spacing: 8) {
+                if !displayText.isEmpty {
+                    Text(displayText).font(AgentTheme.body)
+                        .foregroundStyle(preferences.accent.color)
+                        .lineLimit(expanded ? nil : 6).textSelection(.enabled)
+                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { visibleHeight = $0 }
                 }
-                .frame(minWidth: fullTextWidth, alignment: .leading)
-                .padding(.horizontal, Self.horizontalPadding).padding(.vertical, 10)
-                .background(preferences.accent.color.opacity(0.075), in: .rect(cornerRadius: 23))
-                .accessibilityElement(children: .contain)
-                .accessibilityIdentifier("message.user-bubble")
-                .contextMenu {
-                    Group {
-                        Button(preferences.text("复制", "Copy"), systemImage: "doc.on.doc") { Clipboard.copy(message.text); session.toast = preferences.text("已复制", "Copied") }
-                        if session.canEditHistory(conversationID) {
-                            Button(preferences.text("编辑", "Edit"), systemImage: "pencil") { session.beginHistoryEdit(conversationID: conversationID, messageID: message.id) }
-                        }
-                    }
-                    .tint(AgentTheme.ink)
+                if expanded || fullHeight > visibleHeight + 1 {
+                    Button(expanded ? preferences.text("收起", "Show less") : preferences.text("展开更多", "Show more")) { expanded.toggle() }
+                        .font(.body).frame(minHeight: 44)
+                        .foregroundStyle(preferences.accent.color)
                 }
-                if !message.timestamp.isEmpty {
-                    Text(message.createdAt, format: .dateTime.hour().minute())
-                        .font(.body).foregroundStyle(.secondary)
+                if !message.attachments.isEmpty { MessageAttachmentCards(attachments: message.attachments) }
+                if !message.timestampLabel.isEmpty {
+                    Text(message.timestampLabel).font(.body).hidden().accessibilityHidden(true)
+                }
+            }
+            .frame(minWidth: fullTextWidth, alignment: .leading)
+            .overlay(alignment: .bottomTrailing) {
+                if !message.timestampLabel.isEmpty {
+                    Text(message.timestampLabel).font(.body).foregroundStyle(.secondary)
                         .accessibilityIdentifier("message.user-time")
                 }
+            }
+            .padding(.horizontal, Self.horizontalPadding).padding(.vertical, 10)
+            .background(preferences.accent.color.opacity(0.075), in: .rect(cornerRadius: 23))
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("message.user-bubble")
+            .contextMenu {
+                Group {
+                    Button(preferences.text("复制", "Copy"), systemImage: "doc.on.doc") { Clipboard.copy(message.text); session.toast = preferences.text("已复制", "Copied") }
+                    if session.canEditHistory(conversationID) {
+                        Button(preferences.text("编辑", "Edit"), systemImage: "pencil") { session.beginHistoryEdit(conversationID: conversationID, messageID: message.id) }
+                    }
+                }
+                .tint(AgentTheme.ink)
             }
         }
         .overlay {

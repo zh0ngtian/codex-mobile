@@ -348,7 +348,12 @@ struct AgentSessionSmoke {
         localDate.year = 2026; localDate.month = 10; localDate.day = 17; localDate.hour = 10; localDate.minute = 44
         var known = message.commentary[0]
         known.createdAt = Calendar.current.date(from: localDate)
-        precondition(known.timestampLabel == "10:44", "历史时间必须使用真实HH:mm，不随语言切换成AM/PM")
+        precondition(known.timestampLabel == "10月17日 10:44", "历史时间应包含月日和24小时分钟")
+        let sent = session.message(NativeMessage(id: "sent", role: "user", text: "消息", timestamp: known.createdAt!.timeIntervalSince1970))
+        let reply = session.message(NativeMessage(id: "reply", role: "assistant", text: "回复", timestamp: known.createdAt!.timeIntervalSince1970 * 1000))
+        precondition(sent.timestampLabel == known.timestampLabel && reply.timestampLabel == known.timestampLabel, "双方消息与执行过程使用同一月日时间格式，兼容真实秒及毫秒时间戳")
+        precondition(session.message(NativeMessage(id: "unknown", role: "assistant", text: "未知时间")).timestampLabel.isEmpty, "未知时间不能伪造月日")
+        precondition(MessageTimeFormatting.string(from: Date(timeIntervalSince1970: 1792649814), timeZone: TimeZone(identifier: "Asia/Shanghai")!) == "10月22日 14:16", "消息日期与时间使用设备本地时区")
         precondition(session.message(native).commentary.map(\.id) == message.commentary.map(\.id), "快照更新不能更换历史条目身份")
         precondition(!MessagePresentation.showsResponseActions(for: message), "仅历史activity不能产生空白复制行")
         var snapshot = NativeSnapshot()
