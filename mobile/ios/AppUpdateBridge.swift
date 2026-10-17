@@ -13,7 +13,7 @@ final class CodexMobileAppUpdateBridge: NSObject, WKScriptMessageHandler {
         let info = Bundle.main.infoDictionary ?? [:]
         let install = info["CodexMobileInstallURL"] as? String ?? ""
         let config: [String: String] = [
-            "version": info["CFBundleShortVersionString"] as? String ?? "0.2.0",
+            "version": info["CFBundleShortVersionString"] as? String ?? "0.3.0",
             "apiUrl": info["CodexMobileUpdateURL"] as? String ?? "",
             "installUrl": install,
             "bundleId": Bundle.main.bundleIdentifier ?? "",

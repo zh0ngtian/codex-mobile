@@ -100,6 +100,17 @@ class ReleaseAdapterTests(unittest.TestCase):
         for v in ['0.2.1000', '2101.0.0', '0.0.0']:
             with self.assertRaises(ValueError): m.version_code(v)
 
+    def test_real_repository_floor_reserves_030_then_increments_future_versions(self):
+        m = self.load()
+        floor = json.loads((ROOT / 'mobile-version-floor.json').read_text())['version']
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'version.json'
+            first = m.reserve_version(path, [floor, '0.2.191'], 'fingerprint-030')
+            self.assertEqual((first['version'], first['buildNumber']), ('0.3.0', '3000'))
+            self.assertEqual(m.reserve_version(path, [floor, '0.2.191'], 'fingerprint-030'), first)
+            future = m.reserve_version(Path(tmp) / 'future.json', [floor, '0.3.4'], 'fingerprint-future')
+            self.assertEqual((future['version'], future['buildNumber']), ('0.3.5', '3005'))
+
     def test_remote_success_after_lost_response_does_not_publish_again(self):
         m = self.load()
         with tempfile.TemporaryDirectory() as tmp:

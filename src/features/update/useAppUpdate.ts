@@ -64,7 +64,7 @@ function bridgeVersion(bridge: Pick<AndroidAppUpdateBridge, "appVersion"> | null
   } catch {
     // Older containers may expose a partial bridge.
   }
-  return import.meta.env.VITE_APP_VERSION?.trim().replace(/^v/, "") || "0.2.0";
+  return import.meta.env.VITE_APP_VERSION?.trim().replace(/^v/, "") || "0.3.0";
 }
 
 async function fetchLatestRelease(apiUrl = APP_UPDATE_API_URL) {
