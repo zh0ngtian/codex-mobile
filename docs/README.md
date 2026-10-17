@@ -3,12 +3,12 @@
 ## 现役说明
 
 - [项目 README](../README.md)：使用方法、架构、配置、客户端能力与边界。
+- [交互与功能对齐约定](interaction-alignment.md)：AgentApp 基线、最新用户确认、覆盖关系、待验收项与后续变更记录；交互和功能修改须同步维护。
 - [自动安装指南](../install.md)：macOS npm 网关安装和开机启动。
 - [仓库协作约定](../AGENTS.md)与 [Git 提交规范](commit-conventions.md)：开发、验证和交付要求。
 - [发布协调说明](release-coordination.md)：本项目 releasectl 配置、适配器入口、必要验证、共同凭证及实际验收状态。
 - [iOS OTA 发布](ios-ota-release.md)：本机签名、身份连续性、固定渠道、软件源发布文档入口及安装诊断。
 - [原生 iOS 界面桥接](native-ui-business-bridge.md)：双向切换、检查点与共享业务边界。
-- [原生界面视觉目标](research/native-visual-refresh-2026-10-15/design-spec.md)：2026-10-15 最新截图对应的对话、全屏侧栏和输入两态映射。
 - [iOS 模拟器验证](ios-simulator-verification.md)：可复用操作步骤与按日期保留的验收结果。
 - [协议基准](../protocol/app-server-v2/README.md)：固定快照的版本、来源和使用边界。
 
@@ -24,6 +24,8 @@
 固定链接随新版本更新。历史记录里的版本、大小、散列只描述当次发布；应读取当前清单，再用 HEAD 和完整 GET 校验当前下载。渠道可用和构建验签不等于真机覆盖安装、数据保留已验证。
 
 ## 历史资料
+
+- [2026-10-15 原生视觉参考](research/native-visual-refresh-2026-10-15/design-spec.md)：旧截图与布局映射；后续已确认的 AgentApp 交互及视觉要求以[交互与功能约定](interaction-alignment.md)为准。
 
 - [DeepSeek iOS 真机界面探索](research/deepseek-ios-2026-10-14/README.md)：2026-10-14 的页面、导航、截图、脱敏 UI 层级、资源清单与未验证范围，供后续原生界面设计参考；不是已批准的实施方案。
 

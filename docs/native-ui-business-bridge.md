@@ -4,6 +4,8 @@
 
 ## AgentApp 呈现层
 
+AgentApp 的现行交互、字号、字重与配色统一见[交互与功能约定](interaction-alignment.md)；下文旧 `NativeUI` 组件的外观示例不能覆盖后续用户确认。本文继续负责共享业务、命令、上下文与隔离机制。
+
 2026-10-17 的迁移将 AgentApp 页面、主题及资源纳入 `mobile/ios/AgentUI/`。生产原生宿主挂载其中的 `RootView`，注入共享 `NativeUIStore` 驱动的 `AppSession` 与 `AppPreferences`。独立原型的 `@main`、模拟连接、示例会话和模拟执行器不进入应用。旧 `NativeUI/` 继续提供可信桥、DTO、上下文/回执处理和历史回归夹具；生产页面采用 AgentUI。
 
 `NativeUIBridge` 接收快照后先更新既有 store，再同步 AgentApp 的呈现状态。原生动作仍通过 NativeCommand 执行共享业务；设备原始标识、会话原始标识与呈现 UUID 保持显式映射。外观和强调色属于本机呈现偏好，语言、传输和通知等设置回到共享业务拥有者。构建 recipe 递归纳入 AgentUI 源码与资源，应用保持唯一 WebView、原 Bundle ID 和 iOS 18 最低版本。
@@ -62,7 +64,7 @@ ConfiguredApp 使用真实 `scopedThreads`、`projectDirectories`、`collapsedPr
 | `turn.stop` | `interrupt` |
 | `draft.save` | `saveNewChatDraft`，仅对新对话展示；失败有错误回执 |
 | `model.select / effort.select {value}` | 目录校验后调用 `chooseModel` / `chooseEffort`，沿用既有设置更新和错误处理 |
-| `attachment.pick {kind}` | `codexMobilePickAttachments('photos'|'files')` 返回真实 File[]，再走原 `selectImages` 校验、准备、上传流程 |
+| `attachment.pick {kind}` | `codexMobilePickAttachments('photos'\|'files')` 返回真实 File[]，再走原 `selectImages` 校验、准备、上传流程 |
 | `attachment.remove {id}` | 原 draftImages/draftFiles 删除逻辑与 object URL 清理 |
 | `location.insert` | `selectCurrentLocation` |
 | `mention.search {value}` | 原生目录面板筛选；Skill/Plugin 目录来自原有 listInstalledSkills / listInstalledPlugins |
