@@ -38,7 +38,7 @@ final class AgentConversationFixture {
             history,
             NativeMessage(id: "answer", role: "assistant", text: "已完成检查。查看 [网页链接](https://example.com) 与 [文件链接](/tmp/example.swift#L12)。", timestamp: date.addingTimeInterval(120).timeIntervalSince1970, turnId: "fixture-turn", phase: "final_answer"),
         ]
-        value.messages[2].status = "用时 1 小时 2 分钟 3 秒"
+        value.messages[2].status = "用时1小时2分钟3秒"
         if ProcessInfo.processInfo.arguments.contains("--agent-short-question-fixture") { value.messages[0].text = "好" }
         if ProcessInfo.processInfo.arguments.contains("--agent-sidebar-polish-fixture") {
             value.messages[0].text = String(repeating: "短行\n", count: 6) + "这是一条展开后才显示的较长正文，用于确认消息气泡在展开更多和收起时保持同样的宽度。"
@@ -77,6 +77,22 @@ final class AgentConversationFixture {
             value.backends[0].projects = [value.cwd!, "/Users/test/WorkSpace/AnotherProject"]
             value.messages = []
         }
+        if ProcessInfo.processInfo.arguments.contains("--agent-reference-type-fixture") {
+            value.cwd = "/Users/test/WorkSpace/AgentApp"
+            value.messages = [NativeMessage(id: "reference-question", role: "user", text: "罗马的凯撒是同性恋吗？"), NativeMessage(id: "reference-answer", role: "assistant", text: "**尤利乌斯·凯撒确实曾被指与男性发生性关系，但没有足够证据证明他是同性恋。** 如果相关传闻属实，按照现代分类，他可能更接近双性恋。\n\n### 1. 凯撒与比提尼亚国王的绯闻\n\n公元前80年前后，年轻的凯撒出使小亚细亚的比提尼亚王国，与国王尼科美德四世（Nicomedes IV）建立了密切关系。\n\n后来，罗马政敌不断指控凯撒是国王的男宠，甚至嘲讽他是「比提尼亚王后」。", phase: "final_answer")]
+        }
+        if ProcessInfo.processInfo.arguments.contains("--agent-running-commentary-fixture") {
+            value.busy = true
+            value.messages = [value.messages[0], NativeMessage(id: "independent-commentary", role: "assistant", text: "准备读取项目。", phase: "commentary"),
+                NativeMessage(id: "tool-call", role: "activity", text: "不应显示的工具调用", activityKind: "tool"),
+                NativeMessage(id: "tail-commentary", role: "assistant", text: "正在整理项目。", phase: "commentary", commentaryIsLiveTail: true)]
+        }
+        if ProcessInfo.processInfo.arguments.contains("--agent-model-efforts-fixture") {
+            value.models[0].efforts = value.efforts
+            value.models[0].defaultEffort = "medium"
+            value.models[1].efforts = [NativeOption(id: "high", title: "High", value: "high")]
+            value.models[1].defaultEffort = "high"
+        }
         if ProcessInfo.processInfo.arguments.contains("--agent-startup-loading-fixture") { value.ready = false }
         value.messages = value.messages.map { message in
             var anchored = message
@@ -92,7 +108,12 @@ final class AgentConversationFixture {
     private func dispatch(_ command: NativeCommand) {
         if ["effort.select", "model.select"].contains(command.name), case .string(let value) = command.params["value"] {
             if command.name == "effort.select" { snapshot.effortValue = value }
-            else { snapshot.modelValue = value }
+            else {
+                snapshot.modelValue = value
+                if let model = snapshot.models.first(where: { $0.value == value }), let efforts = model.efforts {
+                    snapshot.efforts = efforts; snapshot.effortValue = model.defaultEffort ?? efforts.first?.value ?? ""
+                }
+            }
             snapshot.commandResults = [NativeCommandResult(id: command.id, name: command.name, ok: true, contextId: snapshot.contextId)]
             publish()
         } else if command.name == "newchat.project", ProcessInfo.processInfo.arguments.contains("--agent-project-name-fixture") {

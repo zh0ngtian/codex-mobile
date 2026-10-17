@@ -5,12 +5,20 @@ import UIKit
 @MainActor enum NativeSystemTypography {
     static func resolved(_ source: NSAttributedString, size: DynamicTypeSize, bold: Bool) -> NSAttributedString {
         let result = NSMutableAttributedString(attributedString: source)
-        let traits = UITraitCollection(preferredContentSizeCategory: category(size))
+        let traits = UITraitCollection { traits in
+            traits.preferredContentSizeCategory = category(size)
+            traits.legibilityWeight = bold ? .bold : .regular
+        }
         source.enumerateAttributes(in: NSRange(location: 0, length: source.length)) { attributes, range, _ in
             guard let original = attributes[.font] as? UIFont else { return }
             let raw = attributes[.nativeFontStyle] as? String ?? original.fontDescriptor.object(forKey: .textStyle) as? String ?? UIFont.TextStyle.body.rawValue
-            let base = UIFont.preferredFont(forTextStyle: UIFont.TextStyle(rawValue: raw), compatibleWith: traits)
-            let strong = bold || (attributes[.nativeStrong] as? Bool ?? original.fontDescriptor.symbolicTraits.contains(.traitBold))
+            let style = UIFont.TextStyle(rawValue: raw)
+            let preferred = UIFont.preferredFont(forTextStyle: style, compatibleWith: traits)
+            // 回复基准17pt走系统字体缩放曲线；当前XS取整15pt，对齐参考正文。
+            let pointSize = style == .body ? UIFontMetrics(forTextStyle: .body).scaledValue(for: 17, compatibleWith: traits).rounded() : preferred.pointSize
+            let base = UIFont(descriptor: preferred.fontDescriptor, size: pointSize)
+            // 系统正文描述符自行响应粗体文本；不能将所有普通文字转换为 Markdown strong。
+            let strong = attributes[.nativeStrong] as? Bool ?? original.fontDescriptor.symbolicTraits.contains(.traitBold)
             let mono = attributes[.nativeMonospaced] as? Bool ?? original.fontDescriptor.symbolicTraits.contains(.traitMonoSpace)
             let italic = attributes[.nativeItalic] as? Bool ?? original.fontDescriptor.symbolicTraits.contains(.traitItalic)
             var font = mono ? UIFont.monospacedSystemFont(ofSize: base.pointSize, weight: strong ? .bold : .regular) : base

@@ -227,5 +227,19 @@ it.each(['inProgress','completed'])('原生 %s 的无图 commentary 仍在正文
 
 it('任务用时按真实毫秒分解为小时分钟秒，不把分钟当成小时', () => {
  const messages = projectConversation({ turns: [{ id: 'timed', status: 'completed', durationMs: 3_723_000, items: [{ id: 'f', type: 'agentMessage', phase: 'final_answer', text: '完成' }] }] }, path => path);
- expect(messages[0]?.status).toBe('用时 1 小时 2 分钟 3 秒');
+ expect(messages[0]?.status).toBe('用时1小时2分钟3秒');
+});
+
+it.each([[15_000, '用时15秒'], [60_000, '用时1分钟0秒'], [3_603_000, '用时1小时3秒'], [0, '用时0秒']])('用时 %s 省略零小时和零分钟并紧凑显示', (durationMs, expected) => {
+ const messages = projectConversation({ turns: [{ id: 't', status: 'completed', durationMs, items: [{ id: 'f', type: 'agentMessage', text: '完成' }] }] }, path => path);
+ expect(messages[0]?.status).toBe(expected);
+});
+
+it('工具与推理保留原始记录并标明隐藏类型，commentary不受影响', () => {
+ const messages = projectConversation({ turns: [{ id: 't', status: 'inProgress', items: [
+  { id: 'c', type: 'agentMessage', phase: 'commentary', text: '读取项目' },
+  { id: 'r', type: 'reasoning', text: '推理' }, { id: 'tool', type: 'commandExecution', command: 'ls' },
+ ] }] }, path => path);
+ expect(messages.find(m => m.phase === 'commentary')?.text).toBe('读取项目');
+ expect(messages.filter(m => m.activityKind).map(m => m.activityKind)).toEqual(['reasoning', 'tool']);
 });

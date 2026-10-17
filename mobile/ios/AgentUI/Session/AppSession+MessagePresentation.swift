@@ -21,6 +21,7 @@ extension AppSession {
         var messages: [ChatMessage] = []
         var index = 0
         while index < values.count {
+            if values[index].hidesExecutionActivity { index += 1; continue }
             if liveIndexSet.contains(index) { index += 1; continue }
             guard isAttachableHistory(values[index]) else {
                 messages.append(projected[index]); index += 1

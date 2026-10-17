@@ -7,7 +7,7 @@ import { PROJECTLESS_GROUP_ID, type ProjectThreadLoadState } from '../app-server
 import { titleOf } from '../ui/app-display';
 import { insertSkillMention, skillMentionAt, type InstalledSkill } from '../app-server/skills';
 import { insertPluginMention, type InstalledPlugin } from '../app-server/plugins';
-import { t } from '../i18n';
+import { getActiveLocale, t } from '../i18n';
 import { formatMessageTimestamp } from '../ui/message-timestamp';
 import { orderedTurnMedia, commentaryMediaEntries } from '../ui/timeline-media';
 import type { NativeCommand, NativeCommentaryEntry, NativeGroup, NativeMessage, NativePanelItem } from './protocol';
@@ -39,7 +39,10 @@ export function projectConversation(active: RecordValue | null, imageURL: (path:
   for (const turn of turns) {
     const turnId = String(turn.id);
     const duration = turnDurationMs(turn);
-    const status = duration == null ? undefined : `${t('用时')} ${Math.floor(duration / 3_600_000)} ${t('小时')} ${Math.floor(duration / 60_000) % 60} ${t('分钟')} ${Math.floor(duration / 1000) % 60} ${t('秒')}`;
+    const hours = duration == null ? 0 : Math.floor(duration / 3_600_000);
+    const minutes = duration == null ? 0 : Math.floor(duration / 60_000) % 60;
+    const seconds = duration == null ? 0 : Math.floor(duration / 1000) % 60;
+    const status = duration == null ? undefined : `${t('用时')}${getActiveLocale() === 'en' ? ' ' : ''}${hours ? `${hours}${t('小时')}` : ''}${minutes ? `${minutes}${t('分钟')}` : ''}${seconds}${t('秒')}`;
     const running = ['inProgress', 'in_progress', 'running'].includes(String(turn.status));
     const orderedItems = orderedTurnMedia(turn.items ?? []);
     const liveCommentaryIDs = new Set<string>();
@@ -123,7 +126,7 @@ export function projectConversation(active: RecordValue | null, imageURL: (path:
           messages.push({ id, role: 'activity', text: t('上下文已压缩'), scrollAnchorId: scrollAnchor(item, 'activity') });
         } else if (item.type === 'reasoning') {
           const reasoning = item.text ?? (Array.isArray(item.summary) ? item.summary.map((p: any) => typeof p === 'string' ? p : p.text ?? '').join('\n') : item.summary) ?? (Array.isArray(item.content) ? item.content.map((p: any) => p.text ?? '').join('\n') : item.content) ?? '';
-          if (reasoning) messages.push({ id, role: 'activity', text: '', scrollAnchorId: scrollAnchor(item, 'activity'), blocks: [{ id: `${id}:reasoning`, kind: 'disclosure', title: t('思考过程'), children: [{ id: `${id}:text`, kind: 'markdown', text: String(reasoning) }] }] });
+          if (reasoning) messages.push({ id, role: 'activity', activityKind: 'reasoning', text: '', scrollAnchorId: scrollAnchor(item, 'activity'), blocks: [{ id: `${id}:reasoning`, kind: 'disclosure', title: t('思考过程'), children: [{ id: `${id}:text`, kind: 'markdown', text: String(reasoning) }] }] });
         } else {
           tools.push(nativeAction(`${id}:tool`, toolActivityRowLabel(item), 'panel.open', { id: `tool:${turnId}:${item.id}` }));
         }
@@ -131,7 +134,7 @@ export function projectConversation(active: RecordValue | null, imageURL: (path:
       flushHistory();
       if (tools.length) {
         const aliases = segment.flatMap(item => { const anchor = scrollAnchor(item, 'tools'); return anchor ? [anchor] : []; });
-        messages.push({ id: `${segmentID}:tools`, role: 'activity', text: '', scrollAnchorId: scrollAnchor(segment[0], 'tools'), scrollAnchorIds: [...new Set(aliases)], blocks: [{ id: `${segmentID}:tools`, kind: 'disclosure', title: `${t('工具')} (${tools.length})`, children: tools }] });
+        messages.push({ id: `${segmentID}:tools`, role: 'activity', activityKind: 'tool', text: '', scrollAnchorId: scrollAnchor(segment[0], 'tools'), scrollAnchorIds: [...new Set(aliases)], blocks: [{ id: `${segmentID}:tools`, kind: 'disclosure', title: `${t('工具')} (${tools.length})`, children: tools }] });
       }
     }
   }

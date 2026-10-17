@@ -11,7 +11,7 @@ struct ConversationHeader: ViewModifier {
     private var title: String { conversation?.title ?? preferences.text("新对话", "New conversation") }
     private var subtitle: String {
         guard let conversation else { return "Codex" }
-        return "\(conversation.project ?? preferences.text("无项目", "No project")) · \(session.device(conversation.deviceID)?.name ?? "")"
+        return "\(conversation.project.map { session.projectTitle(for: $0) } ?? preferences.text("无项目", "No project")) · \(session.device(conversation.deviceID)?.name ?? "")"
     }
     private var contextUsed: Double? {
         guard let remaining = conversation?.usage?.contextRemaining, remaining.isFinite else { return nil }
@@ -24,7 +24,7 @@ struct ConversationHeader: ViewModifier {
             .modifier(ConversationSubtitle(title: title, subtitle: subtitle))
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button { session.sidebarVisible = true } label: { Image(systemName: "line.3.horizontal.decrease") }
+                    Button { session.sidebarVisible = true } label: { Image(systemName: "line.3.horizontal.decrease").fontWeight(.light) }
                         .accessibilityLabel(preferences.text("会话列表", "Conversation list"))
                 }
                 ToolbarItemGroup(placement: .topBarTrailing) {
@@ -44,7 +44,7 @@ struct ConversationHeader: ViewModifier {
                     .popover(isPresented: $usagePresented) {
                         UsagePopover(conversationID: conversationID, deviceID: conversation?.deviceID ?? session.composer.deviceID, dismiss: { usagePresented = false })
                     }
-                    Button { session.beginNewConversation() } label: { Image(systemName: "square.and.pencil").frame(width: 20, height: 20) }
+                    Button { session.beginNewConversation() } label: { Image(systemName: "square.and.pencil").fontWeight(.light).frame(width: 20, height: 20) }
                         .accessibilityLabel(preferences.text("新建对话", "New conversation"))
                         .accessibilityIdentifier("header.newConversation")
                     Menu {
@@ -53,7 +53,7 @@ struct ConversationHeader: ViewModifier {
                             Button(preferences.text("保存草稿", "Save draft"), systemImage: "square.and.arrow.down") { _ = session.saveDraft() }
                                 .disabled(!session.canSaveDraft)
                         }
-                    } label: { Image(systemName: "ellipsis").frame(width: 20, height: 20) }
+                    } label: { Image(systemName: "ellipsis").fontWeight(.light).frame(width: 20, height: 20) }
                     .accessibilityLabel(preferences.text("会话操作", "Conversation actions"))
                     .accessibilityIdentifier("conversation.actions")
                 }

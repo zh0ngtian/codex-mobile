@@ -335,6 +335,40 @@ final class AgentAppUITests: XCTestCase {
         captureConversation("新对话全灰圆环", app: app)
     }
 
+    func testReferenceTypographyAndProjectSubtitle() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-reference-type-fixture", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
+        app.launch()
+        let answer = app.textViews["assistant.selectable"].firstMatch
+        XCTAssertTrue(answer.waitForExistence(timeout: 8))
+        XCTAssertTrue((answer.value as? String)?.contains("尤利乌斯·凯撒") == true)
+        XCTAssertFalse(app.staticTexts["/Users/test/WorkSpace/AgentApp"].exists)
+        XCTAssertTrue(app.staticTexts["AgentApp · 界面夹具"].exists)
+        XCTAssertLessThan(app.buttons["composer.submit"].frame.width, 44, "发送按钮视觉尺寸应缩小")
+        captureConversation("参考文字-普通与加粗", app: app)
+    }
+
+    func testOnlyCommentaryAndModelSpecificEfforts() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-running-commentary-fixture", "--agent-model-efforts-fixture", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
+        app.launch()
+        XCTAssertTrue(app.staticTexts["正在整理项目。"].waitForExistence(timeout: 8))
+        XCTAssertFalse(app.staticTexts["不应显示的工具调用"].exists)
+        XCTAssertEqual(app.descendants(matching: .any).matching(identifier: "commentary.separator").count, 2)
+        captureConversation("运行过程-只显示commentary与灰线", app: app)
+        app.textFields["message-input"].tap()
+        app.buttons["composer.model"].tap()
+        XCTAssertTrue(app.buttons["reasoning.model"].waitForExistence(timeout: 5))
+        app.buttons["reasoning.reset"].tap()
+        XCTAssertTrue((app.buttons["reasoning.model"].value as? String)?.contains("中") == true)
+        app.buttons["reasoning.model"].tap()
+        app.buttons["Model B"].tap()
+        XCTAssertTrue(app.buttons["reasoning.model"].waitForExistence(timeout: 5))
+        XCTAssertTrue((app.buttons["reasoning.model"].value as? String)?.contains("高") == true)
+        XCTAssertFalse(app.sliders.firstMatch.isEnabled, "只有一个有效强度的模型不能显示可拖动的多档选择")
+        captureConversation("模型独立强度", app: app)
+    }
+
     func testSystemTypeAndBoldTextAffectSelectableAnswer() {
         let app = launchConversationFixture()
         let original = app.textViews["assistant.selectable"].firstMatch.frame.height
@@ -368,7 +402,7 @@ final class AgentAppUITests: XCTestCase {
         copy.tap()
         XCTAssertTrue(app.staticTexts["已复制"].waitForExistence(timeout: 3))
         XCTAssertFalse(time.exists, "长按复制不应切换发送时间")
-        XCTAssertTrue(app.staticTexts["用时 1 小时 2 分钟 3 秒"].exists)
+        XCTAssertTrue(app.staticTexts["用时1小时2分钟3秒"].exists)
     }
 
     func testUsesSystemNavigationAndSettingsForm() {

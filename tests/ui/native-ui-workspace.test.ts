@@ -339,3 +339,15 @@ it('审批成功与历史提交、队列移除真实rerender后不保留空瞬�
  await act(async () => { removeQueue(); }); await act(async () => { await runtime.dispatch({ id: 'queue-warning', name: 'queue.cancel', params: { contextId: 'b:t:1', id: 'q' } }); }); expect(runtime.snapshot().panel?.id).toBe('confirm-queue:q');
  await act(async () => { await runtime.dispatch({ id: 'queue-done', name: 'queue.cancel', params: { contextId: 'b:t:1', id: 'q', confirmed: true } }); }); expect(runtime.snapshot().panel).toBeUndefined(); runtime.dispose(); cleanup();
 });
+
+it('每个模型独立投影真实强度目录与默认值，不借用当前模型选项', () => {
+ const c = controller({ models: [
+  { model: 'a', displayName: 'A', defaultReasoningEffort: 'high', supportedReasoningEfforts: [{ reasoningEffort: 'low', description: '低' }, { reasoningEffort: 'high', description: '高' }] },
+  { model: 'b', displayName: 'B', defaultReasoningEffort: 'medium', supportedReasoningEfforts: [{ reasoningEffort: 'medium', description: '中' }] },
+  { model: 'c', displayName: 'C' },
+ ] });
+ const { snapshot } = createWorkspaceAdapter(c, { panelId: null, query: '', setPanel() {}, setQuery() {} });
+ expect(snapshot.models[0]).toMatchObject({ defaultEffort: 'high', efforts: [{ value: 'low' }, { value: 'high' }] });
+ expect(snapshot.models[1]).toMatchObject({ defaultEffort: 'medium', efforts: [{ value: 'medium' }] });
+ expect(snapshot.models[2]).toMatchObject({ efforts: [] });
+});

@@ -3,6 +3,8 @@ import Foundation
 @main
 struct AgentSessionSmoke {
     @MainActor static func main() async {
+        verifyIndependentModelEfforts()
+        verifyHiddenExecutionActivities()
         verifyBusinessProjectOrder()
         verifyProjectChoiceNames()
         verifyHistoryAggregateScrollAliases()
@@ -217,6 +219,44 @@ struct AgentSessionSmoke {
         precondition(session.historyScrollMessageID(in: conversationID, previousID: previousID, anchorID: "不匹配") == nil)
         precondition(session.historyScrollMessageID(in: UUID(), previousID: previousID, anchorID: anchor) == nil)
         precondition(session.historyScrollAnchor(for: UUID()) == nil)
+    }
+    @MainActor static func verifyIndependentModelEfforts() {
+        let store = NativeUIStore(arguments: [])
+        let session = AppSession(store: store)
+        var state = NativeSnapshot()
+        state.ready = true; state.connection = "online"; state.backendId = "device"; state.contextId = "models"
+        state.backends = [NativeBackend(id: "device", title: "Mac", connected: true)]
+        let low = NativeOption(id: "low", title: "低", value: "low")
+        let high = NativeOption(id: "high", title: "高", value: "high")
+        let medium = NativeOption(id: "medium", title: "中", value: "medium")
+        state.models = [NativeOption(id: "a", title: "A", value: "a", efforts: [low, high], defaultEffort: "high"), NativeOption(id: "b", title: "B", value: "b", efforts: [medium], defaultEffort: "medium")]
+        state.modelValue = "a"; state.efforts = [low, high]; state.effortValue = "low"
+        var commands: [NativeCommand] = []
+        store.sendCommand = { commands.append($0) }
+        store.receive(state); session.receive(state)
+        precondition(session.currentCapabilities.levels(for: "A") == ["低", "高"])
+        precondition(session.currentCapabilities.levels(for: "B") == ["中"])
+        precondition(session.currentCapabilities.levels(for: "unknown").isEmpty)
+        session.composer.configuration.model = "B"; session.composer.configuration.reasoning = 1
+        session.configurationDidChange()
+        precondition(commands.map(\.name) == ["model.select"], "模型切换不能顺带提交旧模型的强度下标")
+        state.modelValue = "b"; state.efforts = [medium]; state.effortValue = "medium"
+        store.receive(state); session.receive(state)
+        precondition(session.composer.configuration.model == "B" && session.composer.configuration.reasoning == 0)
+    }
+    @MainActor static func verifyHiddenExecutionActivities() {
+        let session = AppSession()
+        var state = NativeSnapshot()
+        state.backendId = "device"; state.threadId = "thread"; state.contextId = "hidden-tools"
+        state.messages = [NativeMessage(id: "commentary", role: "assistant", text: "正在读取项目", phase: "commentary"),
+            NativeMessage(id: "tool", role: "activity", text: "工具调用", activityKind: "tool"),
+            NativeMessage(id: "reasoning", role: "activity", text: "推理", activityKind: "reasoning"),
+            NativeMessage(id: "plan", role: "activity", text: "执行计划", activityKind: "plan"),
+            NativeMessage(id: "final", role: "assistant", text: "完成", phase: "final_answer")]
+        session.receive(state)
+        precondition(session.selectedConversation?.messages.map(\.text) == ["正在读取项目", "完成"], "执行过程只展示commentary")
+        precondition(session.selectedConversation?.messages.first?.kind == "commentary", "独立commentary保留灰线语义")
+        precondition(session.nativeSnapshot.messages.count == 5, "隐藏工具仅影响展示，不得删除业务记录")
     }
     static func markLive(_ value: NativeMessage, _ marked: Bool? = true) -> NativeMessage {
         var object = try! JSONSerialization.jsonObject(with: JSONEncoder().encode(value)) as! [String: Any]

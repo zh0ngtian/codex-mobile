@@ -9,7 +9,7 @@ import { filterInstalledSkills, skillMentionAt, skillDisplayName, skillDescripti
 import { filterInstalledPlugins, pluginDisplayName, pluginDescription, type InstalledPlugin } from '../app-server/plugins';
 import { getActiveLocale, t } from '../i18n';
 import { FONT_SCALES, readFontSize } from '../ui/font-size';
-import { effortLabel } from '../ui/settings';
+import { effortLabel, effortOptionsForModel } from '../ui/settings';
 import { groupConversationTurns } from '../ui/conversation';
 import { projectNameOf } from '../features/threads/thread-list-model';
 import { contextUsageMetrics, formatTokenCount, inputCacheHitPercent, rateLimitMetrics } from '../features/conversation/usage-metrics';
@@ -79,7 +79,7 @@ export function createWorkspaceAdapter(c: NativeWorkspaceController, panel: Pane
   const state = c.extended?.state ?? {};
   const options = (entries: RecordValue[]) => entries.map(option => ({ id: String(option.id ?? ''), value: String(option.id ?? ''), title: String(option.label ?? option.id ?? ''), ...(option.description ? { subtitle: String(option.description) } : {}) }));
   const messages = projectConversation(c.active, path => remoteImagePreviewUrl(c.backend, path), path => remoteImagePreviewUrl(c.backend, path, false), path => remoteFilePreviewUrl(c.backend, path));
-  if (c.busy && c.active?.mobilePlan?.length) messages.push({ id: 'running-plan', role: 'activity', text: '', blocks: [{ id: 'plan', kind: 'section', title: t('执行计划'), children: c.active.mobilePlan.map((step: any, index: number) => ({ id: `plan:${index}:${step.step}`, kind: 'text', title: `${step.status === 'completed' ? '✓' : step.status === 'inProgress' ? '●' : '○'} ${step.step}`, text: step.status })) }] });
+  if (c.busy && c.active?.mobilePlan?.length) messages.push({ id: 'running-plan', role: 'activity', activityKind: 'plan', text: '', blocks: [{ id: 'plan', kind: 'section', title: t('执行计划'), children: c.active.mobilePlan.map((step: any, index: number) => ({ id: `plan:${index}:${step.step}`, kind: 'text', title: `${step.status === 'completed' ? '✓' : step.status === 'inProgress' ? '●' : '○'} ${step.step}`, text: step.status })) }] });
   if (c.extended?.state.pendingSteerText) messages.push({ id: 'pending-steer', role: 'activity', text: String(c.extended.state.pendingSteerText), status: t('正在引导') });
   const caretOffset = Math.max(0, Math.min(c.draft.length, c.caretOffset ?? c.draft.length));
   const mention = skillMentionAt(c.draft, caretOffset);
@@ -119,7 +119,9 @@ export function createWorkspaceAdapter(c: NativeWorkspaceController, panel: Pane
         actions: [{ ...nativeAction(`${item.id}:edit`, t('编辑'), 'panel.open', { id: `queue-edit:${item.id}` }), disabled: locked || !!s.steering || !!s.queueSaving }, { ...nativeAction(`${item.id}:cancel`, t('移除'), 'queue.cancel', { id: item.id }), disabled: item.state === 'sending' || !!s.steering || !!s.queueSaving }] };
     }),
     approvalCount: c.approvalCount, model: c.selectedModelLabel, effort: effortLabel(c.selectedEffort), permission: c.permission,
-    models: c.models.map(model => ({ id: String(model.model), title: String(model.displayName || model.model), value: String(model.model) })),
+    models: c.models.map(model => ({ id: String(model.model), title: String(model.displayName || model.model), value: String(model.model),
+      efforts: effortOptionsForModel(model).map(option => ({ id: option.id, value: option.id, title: option.label })),
+      ...(typeof model.defaultReasoningEffort === 'string' ? { defaultEffort: model.defaultReasoningEffort } : {}) })),
     efforts: c.effortOptions.map(option => ({ id: option.id, title: option.label, value: option.id })),
     modelValue: c.selectedModel, effortValue: c.selectedEffort ?? '',
     speeds: Array.isArray(state.speedOptions) ? options(state.speedOptions) : undefined,

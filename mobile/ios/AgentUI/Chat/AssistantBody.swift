@@ -61,7 +61,7 @@ struct AssistantBody: View {
                 .font(AgentTheme.small).frame(minHeight: 44)
             }
         case .heading:
-            Text(inline(block)).font(block.level == 1 ? .title.bold() : block.level == 2 ? .title2.bold() : .headline)
+            Text(inline(block)).font(.body.bold())
                 .accessibilityAddTraits(.isHeader)
         case .list:
             HStack(alignment: .firstTextBaseline, spacing: 10) {

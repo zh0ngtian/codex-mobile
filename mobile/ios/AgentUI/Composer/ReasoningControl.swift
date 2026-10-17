@@ -71,6 +71,9 @@ struct ReasoningControl: View {
     }
 
     private func resetEffort() {
-        selectEffort(min(Int(ComposerConfiguration().reasoning), max(0, levels.count - 1)))
+        let model = session.nativeSnapshot.models.first { $0.title == session.composer.configuration.model }
+        let options = model?.efforts ?? session.nativeSnapshot.efforts
+        let index = options.firstIndex { $0.value == model?.defaultEffort } ?? 0
+        selectEffort(index)
     }
 }

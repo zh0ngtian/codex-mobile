@@ -16,7 +16,7 @@ struct ComposerSubmitButton: View {
             .frame(width: 20, height: 20)
         }
         .modifier(AgentGlassButton(prominent: true, circular: true))
-        .controlSize(.large)
+        .controlSize(.regular)
         .tint(preferences.accent.color)
         .disabled(!enabled)
         .accessibilityLabel(label)

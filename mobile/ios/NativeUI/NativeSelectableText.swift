@@ -41,6 +41,7 @@ struct NativeSelectableText: UIViewRepresentable {
     func updateUIView(_ view: UITextView, context: Context) {
         context.coordinator.openLink = openLink
         view.accessibilityIdentifier = identifier
+        view.traitOverrides.legibilityWeight = legibilityWeight == .bold ? .bold : .regular
         let text = systemText
         guard !view.attributedText.isEqual(to: text) else { return }
         let selection = view.selectedRange
