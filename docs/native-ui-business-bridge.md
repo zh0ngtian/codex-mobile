@@ -112,8 +112,8 @@ ConfiguredApp 使用真实 `scopedThreads`、`projectDirectories`、`collapsedPr
 
 ### 双向切换与启动检查点
 
-- iOS 首次默认网页界面配合原生输入框，完整原生界面仍默认关闭；Swift 在进程首次读取偏好后冻结本次模式。两边设置共用 `settings.native-ui` / `NativeSwitchBoundary`，只有专用 IndexedDB 检查点完整事务成功后，才请求宿主保存下次启动偏好；宿主写入失败恢复原值。
-- `codexMobileNativePreference({enabled?, kind?: "interface" | "composer"})` 通过可信首页桥读取或保存偏好，回传 `{enabled, active}`；当前运行模式不随偏好变化。未就绪或恢复失败时禁用切换；丢失回执有按请求 ID 匹配的有界错误回收。
+- iOS 首次默认非原生界面及网页输入框，完整原生界面默认关闭；Swift 在进程首次读取偏好后冻结本次模式。升级保留既有原生界面选择，旧新版 Web 和独立 composer 偏好不再读取。两边设置共用 `settings.native-ui` / `NativeSwitchBoundary`，只有专用 IndexedDB 检查点完整事务成功后，才请求宿主保存下次启动偏好；宿主写入失败恢复原值。
+- `codexMobileNativePreference({enabled?})` 通过可信首页桥读取或保存偏好，回传 `{enabled, active}`；当前运行模式不随偏好变化。未就绪或恢复失败时禁用切换；丢失回执有按请求 ID 匹配的有界错误回收。
 - 检查点使用独立数据库，不进入手动草稿列表。保存全部已挂载工作区正文、图片、文件完整二进制、设备、项目、线程与发送配置。设置使用明确白名单；不复制 HTTP session/pending writes、审批秘密答案或待确认写操作。
 - 已准备切换后继续编辑，会串行合并最新状态；同一 File 的二进制读取缓存避免每个字符重复读取。存储失败显示错误、保留当前输入。冷启动先恢复目标与内容再挂载业务；已有线程的首轮 resume 保留本地发送选择，同时同步服务器消息、访问状态，之后普通重连仍采用服务器设置。
 - 人工“使用旧界面恢复”只揭示当前 WK，设置一次性呈现恢复标记并解除原生确认，不重载文档、不重挂业务工作区、不重连传输、不改变持久偏好。原生专用 runtime 停止发布，旧 Web 的设置、面板和确认恢复原有操作。
@@ -132,25 +132,21 @@ Task2b 分模块 RED→GREEN 日志位于 `.mobile-build/native-reference/task2b
 
 附件、权限、速度及模型/思考强度统一使用 iOS 系统弹出菜单。权限直接遍历权威 `snapshot.permissions`，选项显示审核、只读或完全访问的 SF Symbol，并保留说明的辅助功能 hint。模型与思考强度共用 SwiftUI `Menu`，以 `.menuOrder(.fixed)` 固定两个平级 `Section` 和接口原始顺序，完整列出目录，超屏滚动交给系统，不增加自定义分页或滚动容器；Fast、模型和思考选项不绘制选中勾。模型按钮使用单一可见 `Text` 显示“模型 · 思考强度”，空值显示智能语义，长名称中间截断以保留末尾强度。选项创建时捕获 `contextId`，选择仍走既有 `chooseComposerOption`；过期、不可编辑、等待新会话或侧栏打开时拒绝执行。
 
-附件入口由单一职责 `NativeComposerAttachmentMenu` 包装可交互 `UIButton/UIMenu`，同时支持直接点击和 `consumeComposerPresentation(.attachments)` 的程序打开，均不再呈现 sheet。三项顺序为照片 `photo`、文件 `paperclip`、当前位置 `location`，沿用 `attachment.pick/photos`、`attachment.pick/files` 和 `location.insert`。加号菜单不再列出 Skill 与插件，其他既有 Skill、插件和提及能力保持不变。菜单上下文在创建时固定；两种宿主将该上下文作为输入栏的不可变参数，附件呈现使用按上下文隔离的 Binding，旧输入栏消失、禁编辑或 UIKit 结束回调只能清理所属会话，不能清除新会话已消费的打开请求。`willEndFor` 动画结束后清理呈现状态，再由 store 重新检查原会话并派发命令，避免系统菜单与后续照片/文件选择器争用呈现。取消后可以重新打开；菜单本身不改变输入焦点，不替换 TextField、草稿或 TextSelection，也不推进 selectionRevision。
+附件入口由单一职责 `NativeComposerAttachmentMenu` 包装可交互 `UIButton/UIMenu`，同时支持直接点击和 `consumeComposerPresentation(.attachments)` 的程序打开，均不再呈现 sheet。三项顺序为照片 `photo`、文件 `paperclip`、当前位置 `location`，沿用 `attachment.pick/photos`、`attachment.pick/files` 和 `location.insert`。加号菜单不再列出 Skill 与插件，其他既有 Skill、插件和提及能力保持不变。菜单上下文在创建时固定；完整原生宿主将该上下文作为输入栏的不可变参数，附件呈现使用按上下文隔离的 Binding，旧输入栏消失、禁编辑或 UIKit 结束回调只能清理所属会话，不能清除新会话已消费的打开请求。`willEndFor` 动画结束后清理呈现状态，再由 store 重新检查原会话并派发命令，避免系统菜单与后续照片/文件选择器争用呈现。取消后可以重新打开；菜单本身不改变输入焦点，不替换 TextField、草稿或 TextSelection，也不推进 selectionRevision。
 
 速度菜单继续使用权威 `snapshot.speedValue`，空值及 `default`/`normal` 默认别名显示 `bolt.slash`，非默认服务档位（包括旧 `fast` 与真实目录中的 `priority`）显示 `bolt.fill`；图标和辅助功能值共用 `isFastEnabled` 判断 Fast 开关；不建立乐观速度状态。输入栏的附件、权限、速度、停止和发送图标采用独立的 20pt 基准，模型/思考文字保留 16pt 基准；权限和速度的系统菜单标签显式使用图标字体。整行间距为 4pt、配置组内间距为 8pt，附件与权限靠左，配置组在权限后使用弹性留白，使速度、模型/思考和发送靠右；模型文字保持自然宽度，长名称中间截断。图标和文字继续使用 `ScaledMetric` 跟随 Dynamic Type，并各乘一次所选应用字号比例，默认 small（0.875）；点击范围至少 44pt，发送圆底扩大至 32pt。侧栏项目行不再带新建图标，最近对话和底部新建入口继续保留。设置首页展示现有偏好的实时投影，语言直接选择，iOS 恢复四档字号选择及保存错误反馈，版本行只展示已安装版本。iOS 不做启动、前台或手动更新检查，不接收升级事件，也不在 App 内触发 OTA 安装；Android 更新流程保持原有行为。
 
-## 网页原生输入框
+## 两种界面的输入边界
 
-两个 UserDefaults 偏好独立保存：`codexMobile.useNativeUI` 默认 false，`codexMobile.useNativeComposer` 默认 true。启动时冻结两个值，同进程的新 scene 不提前使用保存值；完整原生模式优先。独立输入开关通过 `settings.native-composer` 复用 `NativeSwitchBoundary` 的检查点事务、增量保存、失败恢复及并发锁，不能直接绕过网页保存草稿。
+现役代码只保留当前非原生界面与完整原生界面。新版 Web 的组件、样式、Provider 和开关，以及网页原生文字编辑器、布局代理、几何/焦点/选区桥接、独立 composer 偏好和命令均已移除。历史计划和验收记录仅描述当时实现。
 
-`isNativeUIEnabled` 保持整页呈现和前后台语义；`isNativeBridgeEnabled` 只扩展 runtime 的创建、监听和发布。每个 scene 继续使用既有单个业务 WebView 和一个 runtime；两个可信启动 flag 分开注入，消息和布局脚本仍校验原始 Bundle 首页、主 frame 和同一 WebView。
+宿主只保存并冻结 `codexMobile.useNativeUI`，默认 false。旧 `codexMobile.useNativeComposer` 和 `codex-mobile:web-interface` 不再影响启动或呈现。原生界面设置继续通过 `settings.native-ui` 和 `NativeSwitchBoundary` 完成检查点事务、失败回滚和并发锁，在下次完整启动时生效。
 
-真实挂载的 `ConversationPage` 保留完整网页 form：附件、发送、停止、排队、模型、推理、Fast、访问权限按钮和菜单，以及附件、队列和 Skill / Plugin 候选都由既有网页组件与回调拥有。仅文字编辑由常驻 `NativeWebTextEditor`（UIKit `UITextView`）替换；混合模式不再挂 `NativeComposerView`、原生 sheet 或原生附件菜单，完整原生界面的对应组件独立保留。混合模式的模型、推理和速度菜单保留 `aria-pressed` 语义并去掉视觉勾选；Fast 开关使用不同图标，模型按钮继续显示当前推理强度。
+非原生界面使用正常网页 textarea，附件、发送、排队、模型、权限、Skill/Plugin、选区和焦点均沿现有网页回调，不创建 NativeRuntime、不发布原生会话投影。完整原生界面继续使用 `NativeComposerView` 与同一业务 WKWebView 的 runtime，保留 `draftRevision`、UTF-16 光标、附件系统菜单、模型和推理选择、队列及历史编辑。
 
-网页 textarea 作为不可访问、不可命中的布局代理继续持有草稿并测量换行，发布当前 context 的有限矩形、viewport 尺寸、字体、内边距、焦点请求和 UTF-16 选区。`bodyFontSize` 仍保留当前正文基准（旧版 16、新版 14.2），代理与原生文字统一使用该正文基准乘一次应用缩放，并共用已缩放的字号与行高；代理不受普通网页 textarea 的 16px 防自动缩放下限影响。Swift 忽略无效数值、空矩形及越出 viewport 的矩形，键盘先缩小宿主而网页矩形尚未更新时，当前编辑器暂时透明并禁止命中，保留同 context 的 first responder 与输入，避免收键盘反向触发布局循环；桥仅将编辑器附加到现有可信业务 WKWebView 的对应矩形内，不能命中按钮或网页遮罩；没有第二个业务 WebView。混合文字编辑器局部固定浅色 trait，让透明背景上的正文、typingAttributes 与占位符遵循网页浅色输入栏；完整原生界面继续使用系统主题。只有网页 form 测得的完整高度用于历史底部留白，附件、提示及队列都计入布局。
+完整原生输入按手动换行或自动折行自然增高，达到 `NativeComposerLineLimits` 和 `NativeComposerLayoutBudget` 根据宿主、辅助区、工具栏及有效字号计算的上限后在框内滚动，删除文字后缩回。只有会话上下文变化才重置局部输入状态；`selectionRevision` 只在权威正文或 UTF-16 光标变化时推进，相同草稿 echo 不强制重设 TextSelection，保留中文组字状态。
 
-输入沿现有 `draft.set`、`draftRevision` 和 `caretOffset` 同步，不引入原生发送路径。原生选区观察附带 `draftRevision`；hook 保存绑定正文、版本及 context 的 UTF-16 选区，在对应 React 正文提交后重放，避免未聚焦代理更新 value 时把光标推到末尾。旧版本或旧 context 的回报不能覆盖新选区。显式网页焦点请求以 `focusRevision` 单调消费，同版本原生焦点观察 echo 不会收起键盘。常驻 UITextView 在输入中不重建；相同 echo 不重设文字或选区，有 marked text 时保留输入法组合。Skill、插件、位置插入以及设置关闭仍通过现有 textarea 引用请求原生焦点和 UTF-16 选区。首次挂载登记可早于父 workspace 的 layout effect，后续几何与清理必须匹配已登记 context；旧 context 的输入、焦点、几何、设置恢复和清理均不能覆盖新会话。
-
-公共遮罩、网页侧栏、历史编辑、预览、会话菜单、队列编辑、realtime、不可编辑状态和宿主后台均隐藏并禁用原生编辑器；禁编辑的代理仍显示原有草稿且不可输入。网页 form 控件在 pointerdown 到 click 之间使用绑定当前 context 的交接保护，原生失焦观察与 form 的 blur 都不能提前折叠工具栏或移走按钮；普通点击完成、控件在 touchend/pointerup 内完成并取消尾随 click、指针取消或区域外抬手时立即清理，不增加延迟、重试或额外发送路径。设置按钮另保存关闭选项后的焦点与选区；关闭网页设置时可恢复同 context 原生焦点与选区，切换会话后旧回调失效。自然增缩和最大高度由网页 textarea 测量决定（旧版 120px、新版 154px），超限后原生框内滚动；混合模式没有最大化按钮。关闭原生输入开关并重启后恢复网页 textarea，草稿继续经原有检查点保存。
-
-自动化覆盖真实 React 网页按钮和回调、代理矩形、UTF-16 选区、设置焦点恢复、遮罩、后台和 context 竞态，以及真实 Swift Store/DTO 与可信 JavaScript 生成执行。实际界面验收限定 iPhone 17 Pro、正常字号、竖屏；构建验签和模拟器验证不代表真机覆盖安装与数据保留已验证。
+两个界面仍共用设备、会话、草稿和发送配置。可信主文档校验、人工恢复当前非原生界面和前后台恢复机制保持原有边界。实际界面验收限定 iPhone 17 Pro、正常字号、竖屏；构建验签和模拟器验证不代表真机覆盖安装与数据保留已验证。
 
 ### 网页重命名文本输入
 

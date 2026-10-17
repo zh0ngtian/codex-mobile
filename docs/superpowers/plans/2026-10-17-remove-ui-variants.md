@@ -19,7 +19,7 @@
 - `mobile/ios/NativeUI/{NativeUIBridge,NativeUIStore,NativeUIHost,NativeUITrust,NativeUIPreference,NativeSettingsView,NativeSnapshot}.swift`、`NativeWeb*.swift`、`mobile/ios/KeyboardDismissal.swift`、必要构建入口：删除网页原生编辑器、布局与偏好桥，保留完整原生输入框、文本选区和可信主文档校验。
 - `tests/ui/*`、`tests/ci/*`、`tests/fixtures/*`、`mobile/ios/NativeUIUITests.swift`：删除专用模式用例与 fixture，保留两套现役界面有效业务回归。
 
-- [ ] 在 `tests/ui/ui-modes.test.tsx` 新增真实设置行为：localStorage 预留 `codex-mobile:web-interface=modern`，渲染 BackendManagerSheet 后仍是“管理设备”；不能出现“使用新版界面”或“使用原生输入框”。参考断言：
+- [x] 在 `tests/ui/ui-modes.test.tsx` 新增真实设置行为：localStorage 预留 `codex-mobile:web-interface=modern`，渲染 BackendManagerSheet 后仍是“管理设备”；不能出现“使用新版界面”或“使用原生输入框”。参考断言：
 
 ```tsx
 localStorage.setItem('codex-mobile:web-interface', 'modern');
@@ -29,18 +29,22 @@ expect(screen.queryByLabelText('使用新版界面')).toBeNull();
 expect(screen.queryByLabelText('使用原生输入框')).toBeNull();
 ```
 
-- [ ] 新增旧 composer 启动标记不能激活 runtime 的行为回归；保留原生启动与恢复的正向测试。Swift 偏好 smoke 验证旧 composer 值不改变原生界面选择。
-- [ ] 运行 `NODE_OPTIONS=--no-experimental-webstorage npm test -- tests/ui/ui-modes.test.tsx --maxWorkers=2`，保存因旧实现不满足要求而失败的 RED 日志。
-- [ ] 最小删除上述分支、协议和专用文件，将当前非原生分支提升为唯一 Web 实现。不得将 `modern=false` 或 `composer=false` 的失效开关和死代码留在运行代码中。
-- [ ] 更新受影响回归，验证网页输入、发送、附件、菜单与草稿和完整原生切换/检查点仍有效。运行 `NODE_OPTIONS=--no-experimental-webstorage npm test -- --maxWorkers=2`、`npm run typecheck`，预期全部通过；检查完整 NativeUI 的 iOS SDK 类型检查。
-- [ ] 运行 `git diff --check` 并自审；使用中文 Conventional Commit，正文包含“新增功能”“主要修改”。不得自行正式发布。
+- [x] 新增旧 composer 启动标记不能激活 runtime 的行为回归；保留原生启动与恢复的正向测试。Swift 偏好 smoke 验证旧 composer 值不改变原生界面选择。
+- [x] 运行 `NODE_OPTIONS=--no-experimental-webstorage npm test -- tests/ui/ui-modes.test.tsx --maxWorkers=2`，保存因旧实现不满足要求而失败的 RED 日志。
+- [x] 最小删除上述分支、协议和专用文件，将当前非原生分支提升为唯一 Web 实现。不得将 `modern=false` 或 `composer=false` 的失效开关和死代码留在运行代码中。
+- [x] 更新受影响回归，验证网页输入、发送、附件、菜单与草稿和完整原生切换/检查点仍有效。运行 `NODE_OPTIONS=--no-experimental-webstorage npm test -- --maxWorkers=2`、`npm run typecheck`，预期全部通过；检查完整 NativeUI 的 iOS SDK 类型检查。
+- [x] 运行 `git diff --check` 并自审；使用中文 Conventional Commit，正文包含“新增功能”“主要修改”。不得自行正式发布。
 
 ## 任务二：文档、审查、验证与交付
 
-- [ ] 更新 README、桥接说明与中文 `release/notes.md`，准确写明仅保留两个界面、原生切换生效时机和已确认升级行为。
+- [x] 更新 README、桥接说明与中文 `release/notes.md`，准确写明仅保留两个界面、原生切换生效时机和已确认升级行为。
 - [ ] 先由独立审查核对删除范围、升级行为与保留功能，再审查代码质量并修复实质问题。
-- [ ] 排队取得共用模拟器使用权；iPhone 17 Pro 正常字号竖屏验证网页 textarea 和完整原生输入、设置中唯一界面开关、旧偏好升级；使用离线 QA fixture。释放模拟器、卸载 QA App；真实测试会话如有则归档。
-- [ ] 执行发布门禁：`python3 -B -m unittest discover -s tests/ci -p 'test_*.py'`（adapter-regression）、现役协调器恢复回归（coordinator-recovery）、`NODE_OPTIONS=--no-experimental-webstorage npm test -- tests/ci --maxWorkers=2`（build-contract）、`npm run typecheck`（typecheck），保留命令、退出码和完整日志。
+- [x] 排队取得共用模拟器使用权；iPhone 17 Pro 正常字号竖屏验证网页 textarea 和完整原生输入、设置中唯一界面开关、旧偏好升级；使用离线 QA fixture。释放模拟器、卸载 QA App；真实测试会话如有则归档。
+- [x] 执行发布门禁：`python3 -B -m unittest discover -s tests/ci -p 'test_*.py'`（adapter-regression）、现役协调器恢复回归（coordinator-recovery）、`NODE_OPTIONS=--no-experimental-webstorage npm test -- tests/ci --maxWorkers=2`（build-contract）、`npm run typecheck`（typecheck），保留命令、退出码和完整日志。
 - [ ] 提交并推送固定任务 SHA，生成真实 validation.json 后 ready；持续 heartbeat，等待所在双端批次成功 receipt。
 - [ ] 核对 receipt 的 SHA/任务祖先、双端产物、签名、固定 LAN 与 HTTPS OTA、软件源 unsigned 版本和中文日志。以固定清单、HEAD 和完整 GET 再次核对版本、大小和 SHA-256。
 - [ ] 保存验收记录并提交推送；归档本次隔离工作区。最终回复提供固定 OTA 安装页和本次 APK、已签名 IPA 的固定下载链接、版本、大小和散列。
+
+## 本地验证记录
+
+源码提交 `0427c0c`；全量129文件1394项、TypeScript、完整NativeUI iOS SDK与XCUITest源码类型检查通过，发布适配器166项和现役协调器恢复35项通过。iPhone 17 Pro正常字号竖屏的最终3项离线UI验收全通过，运行源码散列前后相同；仅保留的UI测试固定坐标改为标签定位，未改变App代码。QA App与runner已卸载，锁已释放，无远端测试会话。详见[验收摘要](evidence/2026-10-17-remove-ui-variants.json)。独立审查与正式双端协调发布仍在进行。
