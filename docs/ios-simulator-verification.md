@@ -171,3 +171,21 @@ iPhone 17 Pro / iOS26.5最终四项XCTest通过：反复收起URL草稿、短/�
 | [IPA（Ad Hoc已签名）](http://192.168.123.79:8765/channels/codex-mobile/latest.ipa) | 0.2.136 | 3,772,782 | `fa06e45d8bd4fa9e1151b2a8d50561da47fff62adba781de7295dd90865b0174` |
 
 APK证书与0.2.135一致；IPA签名身份、权限摘要与钥匙串组保持连续。最终证据保存在 `.mobile-build/keyboard-approval-release/verification/`，安装包和发布验收记录保存在同目录的 `release/0.2.136/`。已停止专用测试网关，模拟器与发布锁均在收尾释放；临时依赖检出和测试构建清理后归档worktree。
+
+
+## 2026-10-17 AgentApp 原生迁移（未发布）
+
+源码分支为 `codex/agentapp-native-integration`，本轮运行代码提交为 `a1c9cb2`。原生呈现完整采用 AgentApp 页面与主题，实际状态和操作仍通过现有唯一 WKWebView 与 NativeUIBridge 复用真实业务。无示例设备、模拟执行器或第二套会话持久化。
+
+| 验证 | 结果 |
+| --- | --- |
+| 全量 Vitest（139 个文件、1520 项，含实际 Swift 执行与跨语言 DTO） | 通过 |
+| TypeScript 与内置前端构建 | 通过 |
+| iPhone 17 Pro / iOS 26.5、正常字号、竖屏 Debug 构建 | 通过 |
+| 6 项 XCTest：原生与侧栏控件、搜索设置、真实设备探测、原生偏好、消息往返及五行用量 | 通过 |
+| 测试会话归档、移除测试探针后冷启动原生界面 | 通过 |
+| 规格及代码审查发现的身份、附件、项目、审批和未确认回答问题 | 已修复并复验 |
+
+用户提供的网关已在模拟器内完成真实测试保存并选中，访问口令不进入源码、提交或此记录。应用留在已连接设备的新对话页面，等待用户人工验收。旧模拟器中已有设备配置保留。
+
+[结构化证据](superpowers/plans/evidence/2026-10-17-agentapp-native-simulator.json)指向本机保留的 `.mobile-build/agentapp-acceptance/` 日志与结果包。源码 Bundle ID 和 iOS 18 最低版本保持；Debug 版本字段沿用 0.2.190，仅用于本机验收，不代表新渠道交付。本次未合并 main、未生成或发布 APK/IPA、未签名、未修改 OTA/LAN/GitHub Release/软件源，也未部署网关。相机、定位授权及真机覆盖安装不在本次模拟器验证范围。
