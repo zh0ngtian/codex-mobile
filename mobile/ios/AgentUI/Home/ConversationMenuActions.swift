@@ -26,12 +26,15 @@ struct ConversationMenuActions: View {
             }
             .disabled(menuBusy || !conversation.canModify)
             Button {
-                Clipboard.copy(conversationID.uuidString)
-                session.toast = preferences.text("已复制会话 ID", "Conversation ID copied")
+                if ConversationIDClipboard.copy(session.rawConversationID(conversationID), write: Clipboard.copy) {
+                    session.toast = preferences.text("已复制会话 ID", "Conversation ID copied")
+                } else {
+                    session.toast = preferences.text("真实会话 ID 尚未就绪，请刷新后重试。", "The conversation ID is not ready. Refresh and try again.")
+                }
             } label: {
                 Label(preferences.text("复制 ID", "Copy ID"), systemImage: "number")
             }
-            .disabled(menuBusy)
+            .disabled(menuBusy || session.rawConversationID(conversationID)?.isEmpty != false)
             Button {
                 session.renameTargetID = conversationID
             } label: {

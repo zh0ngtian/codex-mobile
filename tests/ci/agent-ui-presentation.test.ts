@@ -31,3 +31,14 @@ it.skipIf(process.platform !== 'darwin')('AgentApp原生字号在iOS18最低版�
   const result = spawnSync('xcrun', ['--sdk', 'iphonesimulator', 'swiftc', '-typecheck', '-target', 'arm64-apple-ios18.0-simulator', 'mobile/ios/AgentUI/Design/AgentTheme.swift', 'mobile/ios/AgentUI/Settings/SettingsRow.swift'], { encoding: 'utf8', timeout: 180_000 });
   expect(result.status, result.stderr).toBe(0);
 }, 210_000);
+
+it.skipIf(process.platform !== 'darwin')('复制会话ID保留网关原值，缺少映射时不得写剪贴板', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'agent-ui-conversation-id-'));
+  try {
+    const compile = spawnSync('xcrun', ['swiftc', 'mobile/ios/AgentUI/Home/ConversationIDClipboard.swift', 'tests/ci/agent-ui-conversation-id-smoke.swift', '-o', join(directory, 'smoke')], { encoding: 'utf8', timeout: 180_000 });
+    expect(compile.status, compile.stderr).toBe(0);
+    const result = spawnSync(join(directory, 'smoke'), [], { encoding: 'utf8', timeout: 15_000 });
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toContain('Agent conversation ID smoke passed');
+  } finally { rmSync(directory, { recursive: true, force: true }); }
+}, 210_000);
