@@ -12,7 +12,7 @@ struct ProjectRow: View {
             } label: {
                 HStack(spacing: 8) {
                     ProjectFolderIcon(isExpanded: expanded)
-                    Text(name)
+                    Text(displayName)
                         .font(AgentTheme.body.bold())
                         .lineLimit(2)
                         .multilineTextAlignment(.leading)
@@ -27,7 +27,7 @@ struct ProjectRow: View {
                 .contentShape(.rect)
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(preferences.text("\(expanded ? "收起" : "展开")项目 \(name)", "\(expanded ? "Collapse" : "Expand") project \(name)"))
+            .accessibilityLabel(preferences.text("\(expanded ? "收起" : "展开")项目 \(displayName)", "\(expanded ? "Collapse" : "Expand") project \(displayName)"))
             if expanded {
                 if session.loadingProjects.contains(name) {
                     ProgressView().controlSize(.small).frame(maxWidth: .infinity, minHeight: 38)
@@ -67,6 +67,7 @@ struct ProjectRow: View {
         }
     }
 
+    private var displayName: String { session.projectDisplayName(name) }
     private var expanded: Bool { session.projectIsExpanded(name) }
     private var conversations: [Conversation] { session.projectConversations(name) }
 

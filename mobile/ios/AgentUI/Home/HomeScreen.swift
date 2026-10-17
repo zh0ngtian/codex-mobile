@@ -76,7 +76,7 @@ struct SidebarConversationList: View {
     }
     private var visibleProjects: [String] {
         if session.searchText.isEmpty { return session.scopedProjects }
-        return session.scopedProjects.filter { !session.projectConversations($0).isEmpty }
+        return session.scopedProjects.filter { session.projectDisplayName($0).localizedStandardContains(session.searchText) || !session.projectConversations($0).isEmpty }
     }
 
     private func sectionTitle(_ title: String) -> some View {

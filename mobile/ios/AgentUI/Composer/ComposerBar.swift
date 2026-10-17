@@ -38,7 +38,7 @@ struct ComposerBar: View {
                         .onKeyPress(keys: [.upArrow, .downArrow, .return, .tab, .escape], action: handleKey)
                         .frame(minHeight: expanded ? 42 : 47)
                         .padding(.horizontal, expanded ? 12 : 2)
-                        .disabled(session.historyEdit != nil || session.selectedConversation?.readOnly == true || !session.composer.attachmentsReady)
+                        .disabled(!session.composerCanEdit || session.historyEdit != nil || session.selectedConversation?.readOnly == true || !session.composer.attachmentsReady)
                         .accessibilityIdentifier("message-input")
                     if !expanded { ComposerSubmitButton(action: submit) }
                 }

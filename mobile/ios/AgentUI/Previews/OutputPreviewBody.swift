@@ -29,7 +29,7 @@ struct OutputPreviewBody: View {
             ContentUnavailableView {
                 Label(preferences.text("无法预览此文件", "Preview unavailable"), systemImage: "doc.zipper")
             } description: {
-                Text(preferences.text("这是二进制文件。点击右上角下载按钮保存后打开。", "This is a binary file. Use Download in the toolbar to save and open it."))
+                Text(item.content.isEmpty ? preferences.text("点击右上角下载按钮保存后打开。", "Use Download in the toolbar to save and open this file.") : item.content)
             }
         case .web:
             WebOutputPreview(address: source)

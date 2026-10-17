@@ -16,12 +16,11 @@ struct ConversationStatusBanners: View {
                 }
                 .padding(12).background(AgentTheme.code, in: .rect(cornerRadius: 14))
             }
-            if let request = session.questions.first(where: { $0.conversationID == conversation.id }), session.activeQuestionID != request.id {
+            if session.selectedConversationID == conversation.id, session.canReopenPendingRequests, session.activeQuestionID == nil, session.activeApprovalID == nil {
                 HStack {
-                    Label(preferences.text("Codex 需要你的回答", "Codex needs your answer"), systemImage: "questionmark.bubble")
+                    Label(session.hasDeferredQuestion ? preferences.text("Codex 需要你的回答", "Codex needs your answer") : preferences.text("有待处理请求", "Pending requests"), systemImage: "questionmark.bubble")
                     Spacer()
-                    Button(preferences.text("继续回答", "Continue answering")) { session.activeQuestionID = request.id }
-                        .disabled(!session.canInteract(conversation.id))
+                    Button(session.hasDeferredQuestion ? preferences.text("继续回答", "Continue answering") : preferences.text("查看待处理请求", "View pending requests")) { session.reopenPendingRequests() }
                 }
                 .font(.subheadline).padding(12).background(.orange.opacity(0.08), in: .rect(cornerRadius: 14))
             }
