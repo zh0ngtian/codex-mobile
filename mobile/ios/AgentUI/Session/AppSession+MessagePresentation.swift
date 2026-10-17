@@ -1,6 +1,15 @@
 import Foundation
 
 extension AppSession {
+    func historyScrollAnchor(for messageID: UUID) -> String? { nativeMessage(messageID)?.scrollAnchorId }
+
+    func historyScrollMessageID(in conversationID: UUID, previousID: UUID, anchorID: String?) -> UUID? {
+        guard let messages = conversation(conversationID)?.messages else { return nil }
+        if messages.contains(where: { $0.id == previousID }) { return previousID }
+        guard let anchorID, !anchorID.isEmpty else { return nil }
+        return messages.first { nativeMessage($0.id)?.scrollAnchorId == anchorID }?.id
+    }
+
     /// 只组装原型的展示归属；wire 快照与全部 raw 身份映射保持不变。
     func conversationMessages(_ values: [NativeMessage], running: Bool) -> (messages: [ChatMessage], liveCommentary: [ProgressEntry]) {
         let projected = values.map(message)

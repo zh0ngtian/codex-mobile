@@ -3,6 +3,7 @@ import Foundation
 @main
 struct AgentSessionSmoke {
     @MainActor static func main() async {
+        verifyHistoryScrollAnchors()
         verifyOriginalTailCommentary()
         verifyReferenceCommentaryPlacement()
         verifyUserMessagePresentation()
@@ -157,6 +158,37 @@ struct AgentSessionSmoke {
         await verifyDelayedDeviceForm()
         await verifyPendingProjectsAndQuestions()
         print("Agent session smoke passed")
+    }
+    @MainActor static func verifyHistoryScrollAnchors() {
+        let session = AppSession()
+        var state = NativeSnapshot()
+        state.backendId = "device"; state.threadId = "thread"; state.contextId = "scroll-context"
+        func reply(_ wireID: String, anchor: String = "f1:assistant") -> NativeMessage {
+            let object: [String: Any] = ["id": wireID, "role": "assistant", "text": "相同原条目", "phase": "final_answer", "scrollAnchorId": anchor,
+                "actions": [["id": "copy", "kind": "action", "command": ["name": "message.copy", "params": ["id": wireID]]]]]
+            return try! JSONDecoder().decode(NativeMessage.self, from: JSONSerialization.data(withJSONObject: object))
+        }
+        let original = reply("continuation:f1")
+        let roundTrip = try! JSONSerialization.jsonObject(with: JSONEncoder().encode(original)) as! [String: Any]
+        precondition(roundTrip["scrollAnchorId"] as? String == "f1:assistant", "稳定锚点元数据必须由Swift DTO无损保留")
+        state.messages = [original]; session.receive(state)
+        let conversationID = session.selectedConversationID!
+        let previousID = session.selectedConversation!.messages.first!.id
+        let anchor = session.historyScrollAnchor(for: previousID)
+        precondition(anchor == "f1:assistant", "分页前必须能捕获独立于wire分组id的锚点")
+        state.messages = [NativeMessage(id: "older:user", role: "user", text: "更早消息"), original]
+        session.receive(state)
+        precondition(session.historyScrollMessageID(in: conversationID, previousID: previousID, anchorID: "故意不匹配的锚点") == previousID, "普通分页仍应优先保留现有UUID")
+        state.messages = [NativeMessage(id: "older:user", role: "user", text: "更早消息"), reply("older:f1")]
+        session.receive(state)
+        let currentID = session.selectedConversation!.messages.last!.id
+        precondition(currentID != previousID, "展示锚点不能改变现有ChatMessage UUID语义")
+        precondition(session.historyScrollMessageID(in: conversationID, previousID: previousID, anchorID: anchor) == currentID, "continuation归并改变wire前缀后必须按稳定锚点找回新UUID")
+        precondition(session.nativeMessage(currentID)?.actions?.first?.command?.params["id"] == .string("older:f1"), "滚动恢复不能重写真实业务动作id")
+        precondition(session.historyScrollMessageID(in: conversationID, previousID: previousID, anchorID: nil) == nil)
+        precondition(session.historyScrollMessageID(in: conversationID, previousID: previousID, anchorID: "不匹配") == nil)
+        precondition(session.historyScrollMessageID(in: UUID(), previousID: previousID, anchorID: anchor) == nil)
+        precondition(session.historyScrollAnchor(for: UUID()) == nil)
     }
     static func markLive(_ value: NativeMessage, _ marked: Bool? = true) -> NativeMessage {
         var object = try! JSONSerialization.jsonObject(with: JSONEncoder().encode(value)) as! [String: Any]

@@ -29,6 +29,8 @@ export function nativeItemText(item: RecordValue): string {
 /** final 与其他正文立即投影；commentary 折叠计数独立于工具和推理。 */
 export function projectConversation(active: RecordValue | null, imageURL: (path: string) => string, originalImageURL?: (path: string) => string, mediaURL?: (path: string) => string): NativeMessage[] {
   const messages: NativeMessage[] = [];
+  const scrollAnchor = (item: RecordValue | undefined, role: string): string | undefined =>
+    typeof item?.id === 'string' && item.id ? `${item.id}:${role}` : undefined;
   const imageBlocks = (item: RecordValue, prefix: string): NativePanelItem[] => imageSourcesForItem(item).map((image, index) => ({
     id: `${prefix}:image:${index}`, kind: 'image', title: image.name, value: image.local ? imageURL(image.source) : image.source,
     ...(image.local && originalImageURL ? { previewURL: originalImageURL(image.source) } : {}),
@@ -62,11 +64,12 @@ export function projectConversation(active: RecordValue | null, imageURL: (path:
       let commentary: NativeCommentaryEntry[] = [];
       let historyCount = 0;
       let historyID = '';
+      let historyAnchor: string | undefined;
       let historyInterrupted = false;
       const flushHistory = (nextIsFinal = false) => {
         if (!historyCount) return;
         const commentaryBlockId = `${historyID}:commentary`;
-        messages.push({ id: `${historyID}:history`, role: 'activity', text: '', commentary, commentaryBlockId, commentaryCanAttachToReply: nextIsFinal && !historyInterrupted,
+        messages.push({ id: `${historyID}:history`, role: 'activity', text: '', scrollAnchorId: historyAnchor, commentary, commentaryBlockId, commentaryCanAttachToReply: nextIsFinal && !historyInterrupted,
           blocks: [{ id: commentaryBlockId, kind: 'disclosure', title: `${t('历史过程')} (${historyCount})`, children: history }] });
         history = []; commentary = []; historyCount = 0; historyInterrupted = false;
       };
@@ -74,7 +77,7 @@ export function projectConversation(active: RecordValue | null, imageURL: (path:
         const item = entry.item;
         const id = `${turnId}:${item.id}`;
         if (item.type === 'agentMessage' && item.phase === 'commentary' && collapse) {
-          if (!historyCount) historyID = id;
+          if (!historyCount) { historyID = id; historyAnchor = scrollAnchor(item, 'history'); }
           const timestamp = formatMessageTimestamp(item.timestamp);
           const text = nativeItemText(item);
           const blocks = entry.media.flatMap(mediaBlocks);
@@ -92,7 +95,7 @@ export function projectConversation(active: RecordValue | null, imageURL: (path:
         // 独立媒体、final 和用户插话在原始位置结束当前历史区。
         if (item.type === 'userMessage' || item.type === 'agentMessage' || ['imageView', 'imageGeneration', 'videoGeneration'].includes(item.type)) flushHistory(isFinal);
         if (item.type === 'userMessage') {
-          messages.push({ id, role: 'user', text: nativeItemText(item), blocks: imageBlocks(item, id), turnId, itemId: String(item.id),
+          messages.push({ id, role: 'user', text: nativeItemText(item), scrollAnchorId: scrollAnchor(item, 'user'), blocks: imageBlocks(item, id), turnId, itemId: String(item.id),
             ...(typeof turn.startedAt === 'number' && Number.isFinite(turn.startedAt) && turn.startedAt > 0 ? { timestamp: turn.startedAt } : {}),
             actions: [nativeAction(`${id}:copy`, t('复制'), 'message.copy', { id }), nativeAction(`${id}:edit`, t('编辑'), 'message.edit', { turnId, messageId: String(item.id) })] });
         } else if (item.type === 'agentMessage') {
@@ -100,29 +103,29 @@ export function projectConversation(active: RecordValue | null, imageURL: (path:
           const timestamp = commentary ? formatMessageTimestamp(item.timestamp) : '';
           const blocks = entry.media.flatMap(mediaBlocks);
           if (timestamp) blocks.push({ id: `${id}:timestamp`, kind: 'text', text: timestamp });
-          messages.push({ id, role: 'assistant', text: nativeItemText(item), status: commentary ? undefined : status, turnId, itemId: String(item.id), phase: typeof item.phase === 'string' ? item.phase : undefined,
+          messages.push({ id, role: 'assistant', text: nativeItemText(item), scrollAnchorId: scrollAnchor(item, 'assistant'), status: commentary ? undefined : status, turnId, itemId: String(item.id), phase: typeof item.phase === 'string' ? item.phase : undefined,
             ...(commentary ? { commentaryIsLiveTail: liveCommentaryIDs.has(String(item.id)) } : {}),
             ...(commentary && typeof item.timestamp === 'number' && Number.isFinite(item.timestamp) && item.timestamp > 0 ? { timestamp: item.timestamp } : {}),
             ...(!commentary && !running && typeof turn.completedAt === 'number' && Number.isFinite(turn.completedAt) && turn.completedAt > 0 ? { timestamp: turn.completedAt } : {}),
             ...(blocks.length ? { blocks } : {}),
             actions: [nativeAction(`${id}:copy`, t('复制'), 'message.copy', { id })] });
         } else if ((item.type === 'imageGeneration' || item.type === 'videoGeneration') && item.status === 'failed') {
-          messages.push({ id, role: 'activity', text: '', blocks: [nativeAction(`${id}:failure`, t(item.type === 'videoGeneration' ? '视频生成未完成' : '图像生成未完成'), 'panel.open', { id: `tool:${turnId}:${item.id}` })] });
+          messages.push({ id, role: 'activity', text: '', scrollAnchorId: scrollAnchor(item, 'activity'), blocks: [nativeAction(`${id}:failure`, t(item.type === 'videoGeneration' ? '视频生成未完成' : '图像生成未完成'), 'panel.open', { id: `tool:${turnId}:${item.id}` })] });
         } else if (item.type === 'videoGeneration' && !videoPathForItem(item)) {
-          messages.push({ id, role: 'activity', text: '', blocks: [nativeAction(`${id}:video`, t(['inProgress', 'in_progress', 'running'].includes(String(item.status)) ? '正在生成视频' : '视频生成未提供可播放文件'), 'panel.open', { id: `tool:${turnId}:${item.id}` })] });
+          messages.push({ id, role: 'activity', text: '', scrollAnchorId: scrollAnchor(item, 'activity'), blocks: [nativeAction(`${id}:video`, t(['inProgress', 'in_progress', 'running'].includes(String(item.status)) ? '正在生成视频' : '视频生成未提供可播放文件'), 'panel.open', { id: `tool:${turnId}:${item.id}` })] });
         } else if (mediaBlocks(item).length) {
-          messages.push({ id, role: 'activity', text: '', blocks: mediaBlocks(item) });
+          messages.push({ id, role: 'activity', text: '', scrollAnchorId: scrollAnchor(item, 'activity'), blocks: mediaBlocks(item) });
         } else if (item.type === 'contextCompaction') {
-          messages.push({ id, role: 'activity', text: t('上下文已压缩') });
+          messages.push({ id, role: 'activity', text: t('上下文已压缩'), scrollAnchorId: scrollAnchor(item, 'activity') });
         } else if (item.type === 'reasoning') {
           const reasoning = item.text ?? (Array.isArray(item.summary) ? item.summary.map((p: any) => typeof p === 'string' ? p : p.text ?? '').join('\n') : item.summary) ?? (Array.isArray(item.content) ? item.content.map((p: any) => p.text ?? '').join('\n') : item.content) ?? '';
-          if (reasoning) messages.push({ id, role: 'activity', text: '', blocks: [{ id: `${id}:reasoning`, kind: 'disclosure', title: t('思考过程'), children: [{ id: `${id}:text`, kind: 'markdown', text: String(reasoning) }] }] });
+          if (reasoning) messages.push({ id, role: 'activity', text: '', scrollAnchorId: scrollAnchor(item, 'activity'), blocks: [{ id: `${id}:reasoning`, kind: 'disclosure', title: t('思考过程'), children: [{ id: `${id}:text`, kind: 'markdown', text: String(reasoning) }] }] });
         } else {
           tools.push(nativeAction(`${id}:tool`, toolActivityRowLabel(item), 'panel.open', { id: `tool:${turnId}:${item.id}` }));
         }
       }
       flushHistory();
-      if (tools.length) messages.push({ id: `${segmentID}:tools`, role: 'activity', text: '', blocks: [{ id: `${segmentID}:tools`, kind: 'disclosure', title: `${t('工具')} (${tools.length})`, children: tools }] });
+      if (tools.length) messages.push({ id: `${segmentID}:tools`, role: 'activity', text: '', scrollAnchorId: scrollAnchor(segment[0], 'tools'), blocks: [{ id: `${segmentID}:tools`, kind: 'disclosure', title: `${t('工具')} (${tools.length})`, children: tools }] });
     }
     const changeBlocks: NativePanelItem[] = [];
     const changes = summarizeTurnChanges(turn);

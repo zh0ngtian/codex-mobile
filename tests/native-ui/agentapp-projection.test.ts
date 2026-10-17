@@ -101,6 +101,38 @@ describe('AgentApp 真实展示契约', () => {
     expect(messages[0].blocks?.at(-1)?.kind).toBe('text');
   });
 
+  it('assistant-only continuation跨页合并时原条目滚动锚点稳定，wire及动作仍使用原分组id', () => {
+    const continuation = { id: 'continuation', status: 'completed', items: [{ id: 'f1', type: 'agentMessage', phase: 'final_answer', text: '相同原始条目' }] };
+    const before = projectConversation({ turns: [continuation] }, path => path)[0];
+    const after = projectConversation({ turns: [{ id: 'older', status: 'completed', items: [{ id: 'u0', type: 'userMessage', text: '更早问题' }] }, continuation] }, path => path).find(message => message.text === before.text)!;
+    expect(before.id).toBe('continuation:f1');
+    expect(after.id).toBe('older:f1');
+    expect(before).toMatchObject({ scrollAnchorId: 'f1:assistant' });
+    expect(after.scrollAnchorId).toBe(before.scrollAnchorId);
+    expect(after.actions?.[0].command?.params).toEqual({ id: 'older:f1' });
+  });
+
+  it('历史和工具汇总使用各自角色后缀，原始item生成的锚点完整且不碰撞', () => {
+    const messages = projectConversation({ turns: [{ id: 'turn', status: 'completed', liveDiff: 'diff', items: [
+      { id: 'c', type: 'agentMessage', phase: 'commentary', text: '过程' },
+      { id: 'tool', type: 'commandExecution', command: 'ls' },
+      { id: 'r', type: 'reasoning', text: '推理' },
+      { id: 'f', type: 'agentMessage', phase: 'final_answer', text: '完成' },
+      { id: 'image', type: 'imageGeneration', savedPath: '/result.png' },
+      { id: 'compact', type: 'contextCompaction' },
+      { id: 'u', type: 'userMessage', text: '用户' },
+      { id: 'bad', type: 'videoGeneration', status: 'failed' },
+      { id: 'pending', type: 'videoGeneration', status: 'inProgress' },
+    ] }] }, path => path);
+    expect(messages.find(message => message.id === 'turn:c:history')).toMatchObject({ scrollAnchorId: 'c:history' });
+    expect(messages.find(message => message.id === 'turn:c:tools')).toMatchObject({ scrollAnchorId: 'c:tools' });
+    const anchored = messages.filter(message => message.id !== 'turn:changes');
+    const anchors = anchored.map(message => message.scrollAnchorId);
+    expect(anchors.every(anchor => typeof anchor === 'string' && anchor.length > 0)).toBe(true);
+    expect(new Set(anchors).size).toBe(anchored.length);
+    expect(messages.find(message => message.id === 'turn:changes')?.scrollAnchorId).toBeUndefined();
+  });
+
   it('tool之后的commentary按原始末段标记，工具仍按旧wire尾置且媒体归属不变', () => {
     const messages = projectConversation({ turns: [{ id: 'turn', status: 'inProgress', items: [
       { id: 'u', type: 'userMessage', text: '问题' },
