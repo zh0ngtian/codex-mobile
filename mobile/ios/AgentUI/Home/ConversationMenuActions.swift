@@ -1,0 +1,51 @@
+import SwiftUI
+
+struct ConversationMenuActions: View {
+    @Environment(AppSession.self) private var session
+    @Environment(AppPreferences.self) private var preferences
+    let conversationID: UUID
+
+    var body: some View {
+        if let conversation = session.conversation(conversationID) {
+            Button {
+                session.togglePin(conversationID)
+            } label: {
+                Label(conversation.isPinned ? preferences.text("取消关注", "Unfollow") : preferences.text("关注", "Follow"), systemImage: conversation.isPinned ? "pin.slash" : "pin")
+            }
+            .disabled(menuBusy)
+            Button {
+                Task { await session.refreshConversation(conversationID) }
+            } label: {
+                Label(preferences.text("刷新", "Refresh"), systemImage: "arrow.clockwise")
+            }
+            .disabled(menuBusy)
+            Button {
+                session.clone(conversationID)
+            } label: {
+                Label(preferences.text("复制会话", "Duplicate conversation"), systemImage: "plus.square.on.square")
+            }
+            .disabled(menuBusy || !conversation.canModify)
+            Button {
+                Clipboard.copy(conversationID.uuidString)
+                session.toast = preferences.text("已复制会话 ID", "Conversation ID copied")
+            } label: {
+                Label(preferences.text("复制 ID", "Copy ID"), systemImage: "number")
+            }
+            .disabled(menuBusy)
+            Button {
+                session.renameTargetID = conversationID
+            } label: {
+                Label(preferences.text("重命名", "Rename"), systemImage: "pencil")
+            }
+            .disabled(menuBusy || !conversation.canModify)
+            Button(role: .destructive) {
+                if !session.archive(conversationID) { session.archiveTargetID = conversationID }
+            } label: {
+                Label(preferences.text("归档", "Archive"), systemImage: "archivebox")
+            }
+            .disabled(menuBusy || !conversation.canModify)
+        }
+    }
+
+    private var menuBusy: Bool { session.menuBusyID != nil }
+}

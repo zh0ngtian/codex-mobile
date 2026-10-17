@@ -1,0 +1,84 @@
+import SwiftUI
+
+struct AssistantBody: View {
+    @Environment(AppSession.self) private var session
+    @Environment(AppPreferences.self) private var preferences
+    let text: String
+    @State private var blocks: [NativeMarkdownBlock] = []
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            ForEach(blocks) { block in
+                blockView(block)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .font(AgentTheme.chatBody)
+        .textSelection(.enabled)
+        .tint(AgentTheme.ink)
+        .task(id: text) { blocks = NativeMarkdownBlock.parse(text) }
+        .environment(\.openURL, OpenURLAction { url in
+            if ["http", "https", "mailto", "tel"].contains(url.scheme?.lowercased() ?? "") { return .systemAction }
+            session.nativeStore?.command("file.open", ["href": .string(url.absoluteString)])
+            return .handled
+        })
+    }
+
+    @ViewBuilder private func blockView(_ block: NativeMarkdownBlock) -> some View {
+        switch block.kind {
+        case .code:
+            CodeCard(code: block.text, language: block.language.isEmpty ? "Code" : block.language)
+            if block.language.lowercased() == "mermaid" {
+                Button(preferences.text("预览图表", "Preview diagram"), systemImage: "point.3.connected.trianglepath.dotted") {
+                    session.nativeStore?.command("diagram.render", ["source": .string(block.text)])
+                }
+                .font(AgentTheme.small).frame(minHeight: 44)
+            }
+        case .heading:
+            Text(inline(block)).font(block.level == 1 ? .title.bold() : block.level == 2 ? .title2.bold() : .headline)
+                .accessibilityAddTraits(.isHeader)
+        case .list:
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                if let checked = block.checked {
+                    Image(systemName: checked ? "checkmark.square" : "square").foregroundStyle(.secondary)
+                } else { Text(block.marker).foregroundStyle(.secondary).accessibilityHidden(true) }
+                inlineContent(block)
+            }
+            .padding(.leading, CGFloat(block.depth) * 16)
+        case .quote:
+            inlineContent(block).foregroundStyle(.secondary)
+                .padding(.leading, 14).padding(.vertical, 4)
+                .overlay(alignment: .leading) { RoundedRectangle(cornerRadius: 2).fill(.tint.opacity(0.4)).frame(width: 3) }
+        case .rule: Divider().padding(.vertical, 4)
+        case .table:
+            NativeMarkdownTableView(rows: block.rows, scale: 1, store: session.nativeStore, cellScopes: block.cellScopes)
+        case .image:
+            if let destination = block.destination {
+                NativeMarkdownImageView(source: destination, title: block.text, store: session.nativeStore)
+            }
+        case .text: inlineContent(block)
+        }
+    }
+
+    private func inline(_ block: NativeMarkdownBlock) -> AttributedString {
+        var value = NativeInlineMarkdown.text(block.text, scope: block.scope)
+        for run in value.runs where run.inlinePresentationIntent?.contains(.code) == true {
+            value[run.range].foregroundColor = .gray
+        }
+        return value
+    }
+
+    private func inlineContent(_ block: NativeMarkdownBlock) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(NativeMarkdownInlinePart.parse(block.text, scope: block.scope)) { part in
+                if let destination = part.destination {
+                    NativeMarkdownImageView(source: destination, title: part.text, store: session.nativeStore)
+                } else {
+                    Text(NativeInlineMarkdown.text(part.text, scope: part.scope))
+                        .lineSpacing(6)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+        }
+    }
+}
