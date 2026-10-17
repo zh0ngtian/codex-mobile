@@ -17,7 +17,9 @@ export interface NativeMessage { id: string; role: string; text: string; status?
   /** 新界面使用语义条目；旧v1界面继续读取commentaryBlockId指向的disclosure。 */
   commentary?: NativeCommentaryEntry[]; commentaryBlockId?: string;
   /** 仅原始顺序中连续commentary及附属媒体后直接是final时为true。 */
-  commentaryCanAttachToReply?: boolean }
+  commentaryCanAttachToReply?: boolean;
+  /** 由normalized原始顺序确定当前运行turn的连续commentary尾段，不能按Native工具汇总位置猜测。 */
+  commentaryIsLiveTail?: boolean }
 export interface NativeAttachment { id: string; name: string; detail?: string; imageURL?: string; type?: string; command?: NativeCommand; size?: number }
 export interface NativeBackend { id: string; title: string; subtitle?: string; connected?: boolean; gatewayAddress?: string; enabled?: boolean;
   connectionState?: string; projects?: string[]; approvalCount?: number; queuedCount?: number }

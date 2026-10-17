@@ -15,6 +15,7 @@ struct NativeMessage: Codable, Identifiable {
     var commentary: [NativeCommentaryEntry]? = nil
     var commentaryBlockId: String? = nil
     var commentaryCanAttachToReply: Bool? = nil
+    var commentaryIsLiveTail: Bool? = nil
 
     /// 仅替换有明确语义对应的旧历史区块；同消息里的其他工具或推理仍保留。
     var presentationBlocks: [NativePanelItem] {

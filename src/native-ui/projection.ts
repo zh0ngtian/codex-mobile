@@ -33,20 +33,29 @@ export function projectConversation(active: RecordValue | null, imageURL: (path:
     id: `${prefix}:image:${index}`, kind: 'image', title: image.name, value: image.local ? imageURL(image.source) : image.source,
     ...(image.local && originalImageURL ? { previewURL: originalImageURL(image.source) } : {}),
   }));
-  for (const turn of groupConversationTurns(active?.turns ?? [])) {
+  const turns = groupConversationTurns(active?.turns ?? []);
+  for (const turn of turns) {
     const turnId = String(turn.id);
     const duration = turnDurationMs(turn);
     const status = duration == null ? undefined : `${t('用时')} ${Math.floor(duration / 1000)} ${t('秒')}`;
+    const running = ['inProgress', 'in_progress', 'running'].includes(String(turn.status));
+    const orderedItems = orderedTurnMedia(turn.items ?? []);
+    const liveCommentaryIDs = new Set<string>();
+    if (running && turn === turns.at(-1)) {
+      for (const { item } of commentaryMediaEntries(orderedItems).reverse()) {
+        if (item.type !== 'agentMessage' || item.phase !== 'commentary') break;
+        liveCommentaryIDs.add(String(item.id));
+      }
+    }
     const mediaBlocks = (item: RecordValue): NativePanelItem[] => {
       const video = videoPathForItem(item);
       return video ? [{ id: `${turnId}:${item.id}:video`, kind: 'video', title: video.split('/').at(-1), value: mediaURL ? mediaURL(video) : imageURL(video) }]
         : imageBlocks(item, `${turnId}:${item.id}`);
     };
     // Web 与原生共用顺序和去重规则，截图跟随所属 commentary。
-    for (const segment of splitTurnResponseSegments(orderedTurnMedia(turn.items ?? []))) {
+    for (const segment of splitTurnResponseSegments(orderedItems)) {
       const segmentID = `${turnId}:${segment[0]?.id ?? 'activity'}`;
       const hasFinal = segment.some(item => item.type === 'agentMessage' && item.phase !== 'commentary');
-      const running = ['inProgress', 'in_progress', 'running'].includes(String(turn.status));
       const collapse = hasFinal || !running;
       const tools: NativePanelItem[] = [];
       let history: NativePanelItem[] = [];
@@ -92,6 +101,7 @@ export function projectConversation(active: RecordValue | null, imageURL: (path:
           const blocks = entry.media.flatMap(mediaBlocks);
           if (timestamp) blocks.push({ id: `${id}:timestamp`, kind: 'text', text: timestamp });
           messages.push({ id, role: 'assistant', text: nativeItemText(item), status: commentary ? undefined : status, turnId, itemId: String(item.id), phase: typeof item.phase === 'string' ? item.phase : undefined,
+            ...(commentary ? { commentaryIsLiveTail: liveCommentaryIDs.has(String(item.id)) } : {}),
             ...(commentary && typeof item.timestamp === 'number' && Number.isFinite(item.timestamp) && item.timestamp > 0 ? { timestamp: item.timestamp } : {}),
             ...(!commentary && !running && typeof turn.completedAt === 'number' && Number.isFinite(turn.completedAt) && turn.completedAt > 0 ? { timestamp: turn.completedAt } : {}),
             ...(blocks.length ? { blocks } : {}),

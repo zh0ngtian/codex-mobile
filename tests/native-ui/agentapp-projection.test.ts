@@ -101,6 +101,38 @@ describe('AgentApp 真实展示契约', () => {
     expect(messages[0].blocks?.at(-1)?.kind).toBe('text');
   });
 
+  it('tool之后的commentary按原始末段标记，工具仍按旧wire尾置且媒体归属不变', () => {
+    const messages = projectConversation({ turns: [{ id: 'turn', status: 'inProgress', items: [
+      { id: 'u', type: 'userMessage', text: '问题' },
+      { id: 'tool', type: 'commandExecution', command: 'ls' },
+      { id: 'c', type: 'agentMessage', phase: 'commentary', text: '工具之后' },
+      { id: 'screen', type: 'imageView', path: '/screen.png' },
+    ] }] }, path => `thumb:${path}`, path => `original:${path}`);
+    expect(messages.map(message => message.id)).toEqual(['turn:u', 'turn:c', 'turn:u:tools']);
+    expect(messages[1]).toMatchObject({ commentaryIsLiveTail: true, blocks: [{ kind: 'image', previewURL: 'original:/screen.png' }] });
+  });
+
+  it.each(['commandExecution', 'reasoning', 'userMessage', 'imageGeneration'])('commentary之后出现%s时不能标为原始live末段', type => {
+    const messages = projectConversation({ turns: [{ id: 'turn', status: 'inProgress', items: [
+      { id: 'c', type: 'agentMessage', phase: 'commentary', text: '较早过程' },
+      { id: 'separator', type, command: 'ls', text: '分隔', savedPath: '/standalone.png' },
+    ] }] }, path => path);
+    expect(messages.find(message => message.id === 'turn:c')).toMatchObject({ commentaryIsLiveTail: false });
+  });
+
+  it('用户插话阻断之前过程，只有最新连续commentary与附属媒体标为live末段', () => {
+    const messages = projectConversation({ turns: [{ id: 'turn', status: 'inProgress', items: [
+      { id: 'old', type: 'agentMessage', phase: 'commentary', text: '插话前' },
+      { id: 'u', type: 'userMessage', text: '插话' },
+      { id: 'tool', type: 'commandExecution', command: 'ls' },
+      { id: 'new1', type: 'agentMessage', phase: 'commentary', text: '新过程一' },
+      { id: 'screen', type: 'imageView', path: '/screen.png' },
+      { id: 'new2', type: 'agentMessage', phase: 'commentary', text: '新过程二' },
+    ] }] }, path => path);
+    expect(messages.filter(message => message.commentaryIsLiveTail).map(message => message.id)).toEqual(['turn:new1', 'turn:new2']);
+    expect(messages.find(message => message.id === 'turn:old')).toMatchObject({ commentaryIsLiveTail: false });
+  });
+
   it.each(['reasoning', 'commandExecution', 'userMessage', 'imageGeneration'])('原始过程被%s隔开时不因最终Native相邻而绑定到final', type => {
     const messages = projectConversation({ turns: [{ id: 'turn', status: 'completed', items: [
       { id: 'c', type: 'agentMessage', phase: 'commentary', text: '较早过程' },

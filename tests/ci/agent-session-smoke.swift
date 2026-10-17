@@ -3,6 +3,7 @@ import Foundation
 @main
 struct AgentSessionSmoke {
     @MainActor static func main() async {
+        verifyOriginalTailCommentary()
         verifyReferenceCommentaryPlacement()
         verifyUserMessagePresentation()
         verifyCommentaryPresentation()
@@ -157,6 +158,39 @@ struct AgentSessionSmoke {
         await verifyPendingProjectsAndQuestions()
         print("Agent session smoke passed")
     }
+    static func markLive(_ value: NativeMessage, _ marked: Bool? = true) -> NativeMessage {
+        var object = try! JSONSerialization.jsonObject(with: JSONEncoder().encode(value)) as! [String: Any]
+        object.removeValue(forKey: "commentaryIsLiveTail")
+        if let marked { object["commentaryIsLiveTail"] = marked }
+        return try! JSONDecoder().decode(NativeMessage.self, from: JSONSerialization.data(withJSONObject: object))
+    }
+    @MainActor static func verifyOriginalTailCommentary() {
+        let session = AppSession()
+        var state = NativeSnapshot()
+        state.backendId = "device"; state.threadId = "thread"; state.contextId = "original-tail"; state.busy = true
+        let user = NativeMessage(id: "user", role: "user", text: "问题")
+        let image = NativePanelItem(id: "screen", kind: "image", value: "https://example.invalid/screen.png")
+        let commentary = markLive(NativeMessage(id: "tail", role: "assistant", text: "工具执行后的最新过程", blocks: [image], phase: "commentary"))
+        let tools = NativeMessage(id: "tools", role: "activity", text: "", blocks: [NativePanelItem(id: "tools-block", kind: "disclosure", title: "工具")])
+        // 原始顺序是user→tool→commentary，旧wire将工具汇总放在commentary之后。
+        state.messages = [user, commentary, tools]
+        session.receive(state)
+        precondition(session.selectedConversation?.messages.map(\.kind) == ["user", "activity"] && session.selectedConversation?.liveCommentary.map(\.text) == [commentary.text], "原始最新commentary必须沿用live入口，不能被wire尾部工具汇总阻断")
+        precondition(session.selectedConversation?.liveCommentary.first?.outputs?.first?.remoteURL == image.value && session.selectedConversation?.messages.last?.outputs.isEmpty == true, "归属媒体只随live条目展示")
+        precondition(session.nativeSnapshot.messages.map(\.id) == ["user", "tail", "tools"], "不能重写旧wire工具与过程顺序")
+        let rawID = session.scopedID("message", state.contextId!, commentary.id)
+        precondition(session.nativeMessage(rawID)?.id == commentary.id, "提取后的commentary仍保留原始操作身份")
+        state.messages = [user, markLive(commentary, false), tools]
+        session.receive(state)
+        precondition(session.selectedConversation?.messages.count == 3 && session.selectedConversation?.liveCommentary.isEmpty == true, "commentary→tool时明确false不能把旧过程搬到底部")
+        state.messages = [user, markLive(commentary, nil)]
+        session.receive(state)
+        precondition(session.selectedConversation?.messages.count == 2 && session.selectedConversation?.liveCommentary.isEmpty == true, "旧wire缺少原始尾段标记时应保守保留")
+        let latest = markLive(NativeMessage(id: "latest", role: "assistant", text: "用户插话后的最新过程", phase: "commentary"))
+        state.messages = [markLive(commentary, false), user, latest, tools]
+        session.receive(state)
+        precondition(session.selectedConversation?.messages.map(\.text) == [commentary.text, "问题", ""] && session.selectedConversation?.liveCommentary.map(\.text) == [latest.text], "用户插话之前的过程不能移到最新live尾段")
+    }
     @MainActor static func verifyReferenceCommentaryPlacement() {
         let session = AppSession()
         var state = NativeSnapshot()
@@ -209,21 +243,21 @@ struct AgentSessionSmoke {
         session.receive(state)
         precondition(session.selectedConversation?.messages.count == 1 && session.selectedConversation?.liveCommentary.isEmpty == true, "未收到final时不能合成最终回复")
 
-        let liveFirst = NativeMessage(id: "turn:c1", role: "assistant", text: "读取项目", blocks: [image, NativePanelItem(id: "turn:c1:timestamp", kind: "text", text: "旧日期时间")], actions: [NativePanelItem(id: "copy", kind: "action", command: NativeCommand(name: "message.copy"))], timestamp: first.timestamp, phase: "commentary")
-        let liveSecond = NativeMessage(id: "turn:c2", role: "assistant", text: "整理结果", phase: "commentary")
+        let liveFirst = markLive(NativeMessage(id: "turn:c1", role: "assistant", text: "读取项目", blocks: [image, NativePanelItem(id: "turn:c1:timestamp", kind: "text", text: "旧日期时间")], actions: [NativePanelItem(id: "copy", kind: "action", command: NativeCommand(name: "message.copy"))], timestamp: first.timestamp, phase: "commentary"))
+        let liveSecond = markLive(NativeMessage(id: "turn:c2", role: "assistant", text: "整理结果", phase: "commentary"))
         state.busy = true; state.messages = [user, liveFirst, liveSecond]
         session.receive(state)
         precondition(session.selectedConversation?.messages.map(\.text) == ["问题"], "运行中末段commentary应使用原型liveCommentary入口")
         precondition(session.selectedConversation?.liveCommentary.map(\.text) == ["读取项目", "整理结果"])
         precondition(session.selectedConversation?.liveCommentary.map(\.id) == stableProgressIDs, "live到完成历史保留条目稳定身份")
         precondition(session.selectedConversation?.liveCommentary.first?.outputs?.first?.remoteURL == image.value && session.selectedConversation?.liveCommentary.last?.createdAt == nil)
-        state.messages = [liveFirst, user, liveSecond]
+        state.messages = [markLive(liveFirst, false), user, liveSecond]
         session.receive(state)
         precondition(session.selectedConversation?.messages.map(\.text) == ["读取项目", "问题"] && session.selectedConversation?.liveCommentary.map(\.text) == ["整理结果"], "live只能提取当前末段，不能跨用户插话")
-        state.messages = [liveFirst, reasoning, liveSecond]
+        state.messages = [markLive(liveFirst, false), reasoning, liveSecond]
         session.receive(state)
         precondition(session.selectedConversation?.messages.count == 2 && session.selectedConversation?.liveCommentary.map(\.text) == ["整理结果"], "live不能跨推理移动较早commentary")
-        state.messages = [liveFirst, reasoning]
+        state.messages = [markLive(liveFirst, false), reasoning]
         session.receive(state)
         precondition(session.selectedConversation?.messages.count == 2 && session.selectedConversation?.liveCommentary.isEmpty == true, "尾部真实推理存在时不搬移之前commentary")
         var mixedLive = liveFirst; mixedLive.blocks?.append(NativePanelItem(id: "extra", kind: "action", title: "实际工具入口"))
