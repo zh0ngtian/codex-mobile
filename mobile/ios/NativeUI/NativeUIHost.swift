@@ -34,6 +34,9 @@ struct NativeUIHost<Legacy: View>: View {
                             .environment(bridge.agentPreferences)
                             .environment(\.locale, Locale(identifier: bridge.agentPreferences.isEnglish ? "en" : "zh-Hans"))
                             .tint(bridge.agentPreferences.accent.color)
+                            #if DEBUG
+                            .modifier(AgentTypographyFixture())
+                            #endif
                     }
                 }
             }
@@ -54,6 +57,9 @@ struct NativeUIHost<Legacy: View>: View {
             }
         }
         #endif
+        .background {
+            if #available(iOS 18.0, *) { NativeProMotionSupport().frame(width: 0, height: 0).accessibilityHidden(true) }
+        }
         .environment(\.nativeUIBridge, bridge)
         .onChange(of: store.showLegacyForRecovery, initial: true) { _, recovery in
             bridge.setLegacyVisible(!store.nativeEnabled || recovery)

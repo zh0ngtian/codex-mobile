@@ -43,13 +43,15 @@ struct UsageRefreshSmoke {
         session.receive(snapshot)
         precondition(session.accountQuota(for: session.currentDevice!.id)?.sevenDayResetsAt == nil, "只有五小时窗口时不能冒充七天刷新时间")
 
-        let shanghai = TimeZone(identifier: "Asia/Shanghai")!
-        let utc = TimeZone(secondsFromGMT: 0)!
-        precondition(UsageFormatting.refreshTime(1792649814, timeZone: shanghai) == "2026/10/22 14:16", "后端Unix秒应显示完整本地日期时间")
-        precondition(UsageFormatting.refreshTime(1792649814, timeZone: utc) == "2026/10/22 06:16", "日期时间必须随设备时区转换")
-        for invalid: Double? in [nil, 0, -1, .nan, .infinity, -.infinity] {
-            precondition(UsageFormatting.refreshTime(invalid, timeZone: shanghai) == nil, "无效刷新时间不能由当前时间或窗口长度推算")
-            precondition(AccountQuota(sevenDayResetsAt: invalid).sevenDayResetsAt == nil, "账户模型不能保存无效时间")
+        precondition(UsageFormatting.refreshTime(Date().timeIntervalSince1970 + 111 * 3600 + 30) == "4d15h (66%)", "刷新时间应显示剩余天小时及七天窗口比例")
+        let now = Date(timeIntervalSince1970: 1792649814)
+        precondition(UsageFormatting.refreshTime(now.timeIntervalSince1970 + 111 * 3600, now: now) == "4d15h (66%)")
+        precondition(UsageFormatting.refreshTime(now.timeIntervalSince1970 + 168 * 3600, now: now) == "7d0h (100%)")
+        precondition(UsageFormatting.refreshTime(now.timeIntervalSince1970 + 3599, now: now) == "0d0h (1%)", "剩余小时向下取整，百分比按真实剩余秒计算")
+        precondition(UsageFormatting.refreshTime(now.timeIntervalSince1970 - 1, now: now) == "0d0h (0%)", "已过期不显示负倒计时")
+        for invalid: Double? in [nil, 0, -1, .nan, .infinity, -.infinity, .greatestFiniteMagnitude] {
+            precondition(UsageFormatting.refreshTime(invalid, now: now) == nil, "无效刷新时间不补造倒计时")
+            if invalid != .greatestFiniteMagnitude { precondition(AccountQuota(sevenDayResetsAt: invalid).sevenDayResetsAt == nil) }
         }
         let legacy = try JSONDecoder().decode(AccountQuota.self, from: Data("{\"sevenDayRemaining\":0.52}".utf8))
         precondition(legacy.sevenDayRemaining == 0.52 && legacy.sevenDayResetsAt == nil, "旧账户缓存没有刷新时间时不补造时间")

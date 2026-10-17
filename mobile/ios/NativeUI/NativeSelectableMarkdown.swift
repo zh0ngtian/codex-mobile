@@ -2,11 +2,15 @@ import UIKit
 import SwiftUI
 
 extension NSAttributedString.Key {
+    static let nativeFontStyle = NSAttributedString.Key("CodexMobileFontStyle")
+    static let nativeStrong = NSAttributedString.Key("CodexMobileStrong")
+    static let nativeItalic = NSAttributedString.Key("CodexMobileItalic")
+    static let nativeMonospaced = NSAttributedString.Key("CodexMobileMonospaced")
     static let nativeQuoteRule = NSAttributedString.Key("CodexMobileQuoteRule")
 }
 
 @MainActor enum NativeSelectableMarkdown {
-    static func inline(_ source: String, scope: NativeMarkdownHTMLScope = .init(), font: UIFont = .preferredFont(forTextStyle: .body), color: UIColor = .label) -> NSAttributedString {
+    static func inline(_ source: String, scope: NativeMarkdownHTMLScope = .init(), font: UIFont = .preferredFont(forTextStyle: .body), color: UIColor = .label, strong: Bool = false) -> NSAttributedString {
         let value = NativeInlineMarkdown.text(source, scope: scope)
         let result = NSMutableAttributedString(string: String(value.characters))
         for run in value.runs {
@@ -21,7 +25,10 @@ extension NSAttributedString.Key {
             if let descriptor = selectedFont.fontDescriptor.withSymbolicTraits(traits) {
                 selectedFont = UIFont(descriptor: descriptor, size: selectedFont.pointSize)
             }
-            result.addAttributes([.font: selectedFont, .foregroundColor: intent.contains(.code) ? UIColor.secondaryLabel : color], range: range)
+            result.addAttributes([.font: selectedFont, .foregroundColor: intent.contains(.code) ? UIColor.secondaryLabel : color,
+                                  .nativeFontStyle: font.fontDescriptor.object(forKey: .textStyle) as? String ?? UIFont.TextStyle.body.rawValue,
+                                  .nativeStrong: strong || intent.contains(.stronglyEmphasized),
+                                  .nativeItalic: intent.contains(.emphasized), .nativeMonospaced: intent.contains(.code)], range: range)
             if let link = run.link {
                 result.addAttributes([.link: link, .foregroundColor: UIColor.label,
                                       .underlineStyle: NSUnderlineStyle.single.rawValue | NSUnderlineStyle.patternDot.rawValue], range: range)
@@ -36,7 +43,7 @@ extension NSAttributedString.Key {
 
     static func code(_ source: String, language: String? = nil, color: UIColor = .label) -> NSAttributedString {
         let font = UIFont.monospacedSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .body).pointSize, weight: .regular)
-        let result = NSMutableAttributedString(string: source, attributes: [.font: font, .foregroundColor: color])
+        let result = NSMutableAttributedString(string: source, attributes: [.font: font, .foregroundColor: color, .nativeStrong: false, .nativeMonospaced: true, .nativeFontStyle: UIFont.TextStyle.body.rawValue])
         if let language {
             let diff = language.lowercased() == "diff"
             let pattern = diff ? "(?m)^[+-].*$" : #""(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'"#
@@ -71,7 +78,7 @@ extension NSAttributedString.Key {
                 paragraph.headIndent = paragraph.firstLineHeadIndent + (prefix as NSString).size(withAttributes: [.font: font]).width + 4
             }
             if block.kind == .quote { paragraph.firstLineHeadIndent = 14; paragraph.headIndent = 14 }
-            part.append(inline(block.text, scope: block.scope, font: font, color: block.kind == .quote ? .secondaryLabel : .label))
+            part.append(inline(block.text, scope: block.scope, font: font, color: block.kind == .quote ? .secondaryLabel : .label, strong: block.kind == .heading))
             if index < blocks.count - 1 { part.append(NSAttributedString(string: "\n", attributes: [.font: font])) }
             let range = NSRange(location: 0, length: part.length)
             part.addAttribute(.paragraphStyle, value: paragraph, range: range)

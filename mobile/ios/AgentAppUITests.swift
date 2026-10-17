@@ -34,16 +34,20 @@ final class AgentAppUITests: XCTestCase {
         let app = launchConversationFixture()
         let question = app.staticTexts["请检查项目上下文。"]
         XCTAssertTrue(question.waitForExistence(timeout: 8))
-        XCTAssertLessThan(question.frame.height, 30, "尾部空白行不应增加用户文字高度")
+        let bubble = app.otherElements["message.user-bubble"].firstMatch
+        XCTAssertLessThan(bubble.frame.height, 45, "单行气泡只占一行正文及上下内边距，尾部空白不增加高度")
         XCTAssertFalse(app.buttons["history.loadEarlier"].exists)
         XCTAssertTrue(app.buttons["commentary-history-toggle"].waitForExistence(timeout: 8))
         XCTAssertFalse(app.staticTexts["正在读取项目上下文。"].exists)
         let time = app.staticTexts["message.user-time"]
-        let bubble = app.otherElements["message.user-bubble"].firstMatch
+        XCTAssertFalse(time.exists, "发送时间默认隐藏")
+        bubble.tap()
+        XCTAssertTrue(time.waitForExistence(timeout: 3))
         XCTAssertEqual(time.label, "10月17日 10:43")
-        XCTAssertEqual(time.frame.maxX, bubble.frame.maxX - 16, accuracy: 1)
-        XCTAssertGreaterThan(time.frame.minY, question.frame.maxY)
-        XCTAssertEqual(time.frame.maxY, bubble.frame.maxY - 10, accuracy: 1, "发送时间必须放在气泡内右下角")
+        XCTAssertEqual(time.frame.maxX, bubble.frame.maxX, accuracy: 1)
+        XCTAssertGreaterThan(time.frame.minY, bubble.frame.maxY, "发送时间显示在气泡右下角外侧")
+        bubble.tap()
+        XCTAssertFalse(time.exists, "再次单击应隐藏时间")
         XCTAssertTrue(app.staticTexts["10月17日 10:46"].exists, "回复时间使用相同格式且保留原位置")
         captureConversation("历史过程-折叠", app: app)
         app.buttons["commentary-history-toggle"].tap()
@@ -243,7 +247,7 @@ final class AgentAppUITests: XCTestCase {
         XCTAssertFalse(app.staticTexts["周期剩余"].exists)
         XCTAssertTrue(app.staticTexts["刷新时间"].exists)
         XCTAssertFalse(app.staticTexts["剩余时间"].exists)
-        XCTAssertTrue(app.staticTexts["7 天 · 2026/10/24 10:44"].exists, app.debugDescription)
+        XCTAssertTrue(app.staticTexts["4d15h (66%)"].exists, app.debugDescription)
         let input = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "12.3K")).firstMatch
         XCTAssertTrue(input.exists)
         XCTAssertFalse(input.label.contains("("))
@@ -295,10 +299,75 @@ final class AgentAppUITests: XCTestCase {
         app.buttons["sidebar.askCodex"].tap()
         app.buttons["header.usage"].tap()
         XCTAssertTrue(app.staticTexts["刷新时间"].waitForExistence(timeout: 8))
-        let refresh = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "7 天 · ")).firstMatch
+        let refresh = app.staticTexts.matching(NSPredicate(format: "label MATCHES %@", "[0-9]+d[0-9]+h \\([0-9]+%\\)")).firstMatch
         XCTAssertTrue(refresh.waitForExistence(timeout: 20), "真实账户七天窗口刷新时间在新对话中也应可见")
         captureConversation("真实网关-新对话七天刷新时间", app: app)
         app.buttons["header.usage"].tap()
+    }
+
+    func testHeaderAndOutsideModelDismissal() {
+        let app = launchConversationFixture()
+        let usage = app.buttons["header.usage"]
+        let create = app.buttons["header.newConversation"]
+        let actions = app.buttons["conversation.actions"]
+        XCTAssertEqual(usage.frame.width, create.frame.width, accuracy: 1)
+        XCTAssertEqual(usage.frame.width, actions.frame.width, accuracy: 1)
+        XCTAssertEqual(usage.frame.height, actions.frame.height, accuracy: 1)
+        let input = app.textFields["message-input"]
+        input.tap()
+        app.buttons["composer.model"].tap()
+        XCTAssertTrue(app.buttons["reasoning.model"].waitForExistence(timeout: 5))
+        app.buttons["reasoning.reset"].tap()
+        XCTAssertTrue(app.buttons["reasoning.model"].exists, "面板内部操作不能触发外侧关闭")
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.2)).tap()
+        XCTAssertFalse(app.buttons["reasoning.model"].exists, "模型与思考强度选择框应在外侧单击后关闭")
+        app.buttons["composer.model"].tap()
+        app.buttons["reasoning.model"].tap()
+        XCTAssertTrue(app.navigationBars["模型"].waitForExistence(timeout: 5))
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.2)).tap()
+        expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: app.navigationBars["模型"])
+        waitForExpectations(timeout: 5)
+        captureConversation("模型框外单击关闭", app: app)
+        app.launchArguments.append("--agent-project-name-fixture")
+        app.launch()
+        XCTAssertEqual(app.buttons["header.usage"].value as? String, "暂无上下文用量")
+        captureConversation("新对话全灰圆环", app: app)
+    }
+
+    func testSystemTypeAndBoldTextAffectSelectableAnswer() {
+        let app = launchConversationFixture()
+        let original = app.textViews["assistant.selectable"].firstMatch.frame.height
+        app.launchArguments.append("--agent-typography-fixture")
+        app.launch()
+        let answer = app.textViews["assistant.selectable"].firstMatch
+        XCTAssertTrue(answer.waitForExistence(timeout: 5))
+        XCTAssertGreaterThan(answer.frame.height, original + 10, "可选择正文必须跟随系统字号与粗体环境重新排版")
+        captureConversation("系统大字号和粗体-原生正文", app: app)
+    }
+
+    func testUserTimestampTogglePreservesBubbleAndCopy() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-short-question-fixture", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
+        app.launch()
+        let bubble = app.otherElements["message.user-bubble"].firstMatch
+        XCTAssertTrue(bubble.waitForExistence(timeout: 5))
+        let width = bubble.frame.width
+        let time = app.staticTexts["message.user-time"]
+        XCTAssertFalse(time.exists)
+        bubble.tap()
+        XCTAssertTrue(time.waitForExistence(timeout: 3))
+        XCTAssertEqual(bubble.frame.width, width, accuracy: 1, "显示外侧时间不能撑宽短气泡")
+        XCTAssertEqual(time.frame.maxX, bubble.frame.maxX, accuracy: 1)
+        captureConversation("短气泡外侧时间与参考色", app: app)
+        bubble.tap()
+        XCTAssertFalse(time.exists)
+        bubble.press(forDuration: 1.2)
+        let copy = app.buttons["复制"]
+        XCTAssertTrue(copy.waitForExistence(timeout: 5), app.debugDescription)
+        copy.tap()
+        XCTAssertTrue(app.staticTexts["已复制"].waitForExistence(timeout: 3))
+        XCTAssertFalse(time.exists, "长按复制不应切换发送时间")
+        XCTAssertTrue(app.staticTexts["用时 1 小时 2 分钟 3 秒"].exists)
     }
 
     func testConfigureProvidedGateway() throws {

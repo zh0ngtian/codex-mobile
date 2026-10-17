@@ -252,6 +252,8 @@ steps:
       set -euo pipefail
       plist="PakePlus/Info.plist"
       /usr/libexec/PlistBuddy -c "Set :DEBUG false" "$plist"
+      /usr/libexec/PlistBuddy -c "Add :CADisableMinimumFrameDurationOnPhone bool true" "$plist" 2>/dev/null \
+        || /usr/libexec/PlistBuddy -c "Set :CADisableMinimumFrameDurationOnPhone true" "$plist"
       /usr/libexec/PlistBuddy \
         -c "Delete :NSAppTransportSecurity:NSAllowsArbitraryLoads" \
         "$plist"

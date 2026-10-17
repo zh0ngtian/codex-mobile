@@ -6,6 +6,12 @@ enum AgentAccent: String, CaseIterable, Identifiable {
     case magenta = "Magenta", purple = "Purple", black = "Black"
 
     var id: String { rawValue }
+    func userMessageText(in scheme: ColorScheme) -> Color {
+        self == .pink && scheme == .light ? Color(red: 204 / 255, green: 0, blue: 120 / 255) : color
+    }
+    func userMessageBackground(in scheme: ColorScheme) -> Color {
+        self == .pink && scheme == .light ? Color(red: 1, green: 239 / 255, blue: 244 / 255) : color.opacity(0.075)
+    }
     var foreground: Color {
         switch self {
         case .black: AgentTheme.page

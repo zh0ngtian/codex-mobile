@@ -24,7 +24,11 @@ struct ComposerBar: View {
             if !candidates.isEmpty {
                 MentionCandidates(candidates: candidates, selected: selectedMention, choose: chooseMention)
             }
-            if showReasoning { ReasoningControl(openModels: { present(.model) }).transition(.opacity) }
+            if showReasoning {
+                ReasoningControl(openModels: { present(.model) })
+                    .background(OutsideTapDismiss { showReasoning = false })
+                    .transition(.opacity)
+            }
             VStack(spacing: 2) {
                 if !session.composer.attachments.isEmpty { ComposerAttachmentStrip() }
                 HStack(spacing: 0) {

@@ -6,6 +6,11 @@ struct NativeSelectableText: UIViewRepresentable {
     let text: NSAttributedString
     var identifier = "assistant.selectable"
     var openLink: (URL) -> Void = { _ in }
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.legibilityWeight) private var legibilityWeight
+    private var systemText: NSAttributedString {
+        NativeSystemTypography.resolved(text, size: dynamicTypeSize, bold: legibilityWeight == .bold)
+    }
 
     func makeCoordinator() -> Coordinator { Coordinator(openLink: openLink) }
 
@@ -36,6 +41,7 @@ struct NativeSelectableText: UIViewRepresentable {
     func updateUIView(_ view: UITextView, context: Context) {
         context.coordinator.openLink = openLink
         view.accessibilityIdentifier = identifier
+        let text = systemText
         guard !view.attributedText.isEqual(to: text) else { return }
         let selection = view.selectedRange
         view.attributedText = text
@@ -44,7 +50,7 @@ struct NativeSelectableText: UIViewRepresentable {
     }
 
     func sizeThatFits(_ proposal: ProposedViewSize, uiView: UITextView, context: Context) -> CGSize? {
-        let natural = text.boundingRect(with: CGSize(width: 100_000, height: 100_000),
+        let natural = uiView.attributedText.boundingRect(with: CGSize(width: 100_000, height: 100_000),
                                         options: [.usesLineFragmentOrigin, .usesFontLeading], context: nil)
         let width = max(1, proposal.width ?? ceil(natural.width))
         uiView.textContainer.size = CGSize(width: width, height: .greatestFiniteMagnitude)

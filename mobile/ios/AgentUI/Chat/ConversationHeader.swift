@@ -7,6 +7,14 @@ struct ConversationHeader: View {
     let conversationID: UUID?
     @State private var usagePresented = false
     private var conversation: Conversation? { conversationID.flatMap(session.conversation) }
+    private var contextUsed: Double? {
+        guard let remaining = conversation?.usage?.contextRemaining, remaining.isFinite else { return nil }
+        return min(1, max(0, 1 - remaining))
+    }
+    private func headerIcon(_ symbol: String) -> some View {
+        Image(systemName: symbol).font(.system(size: 20))
+            .frame(width: 20, height: 20).frame(width: 44, height: 44).contentShape(.rect)
+    }
     var body: some View {
         HStack(spacing: 10) {
             GlassIconButton(title: preferences.text("会话列表", "Conversation list"), symbol: "line.3.horizontal.decrease") {
@@ -23,29 +31,36 @@ struct ConversationHeader: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             HStack(spacing: 0) {
                 Button { usagePresented.toggle() } label: {
-                    Circle().trim(from: 0, to: max(0.02, conversation?.usage?.contextRemaining.map { 1 - $0 } ?? 0.02))
-                        .stroke(AgentTheme.ink, style: StrokeStyle(lineWidth: 2, lineCap: .round))
-                        .rotationEffect(.degrees(-90))
-                        .background { Circle().stroke(AgentTheme.line, lineWidth: 2) }
-                        .frame(width: 17, height: 17).frame(width: 38, height: 44)
+                    ZStack {
+                        Circle().stroke(AgentTheme.line, lineWidth: 2)
+                        if let used = contextUsed, used > 0 {
+                            Circle().trim(from: 0, to: used)
+                                .stroke(AgentTheme.ink, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                                .rotationEffect(.degrees(-90))
+                        }
+                    }
+                    .frame(width: 20, height: 20).frame(width: 44, height: 44).contentShape(.rect)
                 }
                 .accessibilityLabel(preferences.text("用量与额度", "Usage and limits"))
                 .accessibilityIdentifier("header.usage")
+                .accessibilityValue(contextUsed.map { "已用 \(Int(($0 * 100).rounded()))%" } ?? "暂无上下文用量")
                 .popover(isPresented: $usagePresented) {
                     UsagePopover(conversationID: conversationID,
                                  deviceID: conversation?.deviceID ?? session.composer.deviceID,
                                  dismiss: { usagePresented = false })
                 }
-                InlineIconButton(title: preferences.text("新建对话", "New conversation"), symbol: "square.and.pencil") { session.beginNewConversation() }
-                Menu(preferences.text("会话操作", "Conversation actions"), systemImage: "ellipsis") {
+                Button { session.beginNewConversation() } label: { headerIcon("square.and.pencil") }
+                    .accessibilityLabel(preferences.text("新建对话", "New conversation"))
+                    .accessibilityIdentifier("header.newConversation")
+                Menu {
                     if let conversationID { ConversationMenuActions(conversationID: conversationID) }
                     else {
                         Button(preferences.text("保存草稿", "Save draft"), systemImage: "square.and.arrow.down") { _ = session.saveDraft() }
                             .disabled(!session.canSaveDraft)
                     }
-                }
+                } label: { headerIcon("ellipsis") }
+                .accessibilityLabel(preferences.text("会话操作", "Conversation actions"))
                 .tint(AgentTheme.ink)
-                .labelStyle(.iconOnly).frame(width: 36, height: 44)
                 .accessibilityIdentifier("conversation.actions")
             }
             .padding(.horizontal, 3)

@@ -223,3 +223,9 @@ it.each(['inProgress','completed'])('原生 %s 的无图 commentary 仍在正文
   expect(messages[0].blocks?.map(b=>[b.kind,b.text])).toEqual([['text','2026-10-15 09:07']]);
  }
 });
+
+
+it('任务用时按真实毫秒分解为小时分钟秒，不把分钟当成小时', () => {
+ const messages = projectConversation({ turns: [{ id: 'timed', status: 'completed', durationMs: 3_723_000, items: [{ id: 'f', type: 'agentMessage', phase: 'final_answer', text: '完成' }] }] }, path => path);
+ expect(messages[0]?.status).toBe('用时 1 小时 2 分钟 3 秒');
+});

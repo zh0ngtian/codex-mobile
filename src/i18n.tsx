@@ -160,6 +160,8 @@ const english: Record<string, string> = {
   "会话操作未完成": "The conversation action did not complete",
   "此操作在当前上下文不可用": "This action is unavailable in the current context",
   "用时": "Duration",
+  "分钟": "min",
+  "小时": "h",
   "秒": "seconds",
   "执行命令": "Run command",
   "历史过程": "Previous commentary",

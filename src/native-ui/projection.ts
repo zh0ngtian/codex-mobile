@@ -39,7 +39,7 @@ export function projectConversation(active: RecordValue | null, imageURL: (path:
   for (const turn of turns) {
     const turnId = String(turn.id);
     const duration = turnDurationMs(turn);
-    const status = duration == null ? undefined : `${t('用时')} ${Math.floor(duration / 1000)} ${t('秒')}`;
+    const status = duration == null ? undefined : `${t('用时')} ${Math.floor(duration / 3_600_000)} ${t('小时')} ${Math.floor(duration / 60_000) % 60} ${t('分钟')} ${Math.floor(duration / 1000) % 60} ${t('秒')}`;
     const running = ['inProgress', 'in_progress', 'running'].includes(String(turn.status));
     const orderedItems = orderedTurnMedia(turn.items ?? []);
     const liveCommentaryIDs = new Set<string>();

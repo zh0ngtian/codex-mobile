@@ -2,6 +2,7 @@
 import Foundation
 import Observation
 import UIKit
+import SwiftUI
 
 /// 只由显式 UI 回归参数启用；不挂载业务 WebView，不连接网关或伪造真实验收。
 @MainActor @Observable
@@ -25,6 +26,8 @@ final class AgentConversationFixture {
         value.backendId = "conversation-ui-device"; value.listBackendId = value.backendId
         value.threadId = "conversation-ui-thread"; value.title = "对话界面回归"; value.sidebarOpen = false
         value.backends = [NativeBackend(id: "conversation-ui-device", title: "界面夹具", connected: true)]
+        value.models = [NativeOption(id: "model-a", title: "Model A", value: "model-a"), NativeOption(id: "model-b", title: "Model B", value: "model-b")]
+        value.model = "Model A"; value.modelValue = "model-a"
         value.olderTurnsState = "idle"
         value.conversationActions = [NativePanelItem(id: "older", kind: "action", title: "加载更早消息", command: NativeCommand(name: "thread.older"))]
         let history = NativeMessage(id: "history", role: "activity", text: "", blocks: [NativePanelItem(id: "history-block", kind: "disclosure", title: "历史过程 (2)")], turnId: "fixture-turn", commentary: entries, commentaryBlockId: "history-block", commentaryCanAttachToReply: true)
@@ -33,6 +36,8 @@ final class AgentConversationFixture {
             history,
             NativeMessage(id: "answer", role: "assistant", text: "已完成检查。查看 [网页链接](https://example.com) 与 [文件链接](/tmp/example.swift#L12)。", timestamp: date.addingTimeInterval(120).timeIntervalSince1970, turnId: "fixture-turn", phase: "final_answer"),
         ]
+        value.messages[2].status = "用时 1 小时 2 分钟 3 秒"
+        if ProcessInfo.processInfo.arguments.contains("--agent-short-question-fixture") { value.messages[0].text = "好" }
         if ProcessInfo.processInfo.arguments.contains("--agent-sidebar-polish-fixture") {
             value.messages[0].text = String(repeating: "短行\n", count: 6) + "这是一条展开后才显示的较长正文，用于确认消息气泡在展开更多和收起时保持同样的宽度。"
             value.groups = [("z", "Zeta"), ("a", "Alpha"), ("m", "Middle")].map { key, title in
@@ -58,7 +63,7 @@ final class AgentConversationFixture {
         }
         if ProcessInfo.processInfo.arguments.contains("--agent-usage-polish-fixture") {
             value.tokenUsage = NativeTokenUsage(lastRequestTokens: 250, modelContextWindow: 1000, inputTokens: 12345, cachedInputTokens: ProcessInfo.processInfo.arguments.contains("--agent-usage-cache-fixture") ? 0 : nil, outputTokens: 25)
-            value.sevenDayRateLimit = NativeRateLimit(remainingPercent: 60, resetsAt: date.addingTimeInterval(7 * 86400).timeIntervalSince1970, windowDurationMins: 10080)
+            value.sevenDayRateLimit = NativeRateLimit(remainingPercent: 60, resetsAt: Date().addingTimeInterval(111 * 3600 + 1800).timeIntervalSince1970, windowDurationMins: 10080)
             value.fiveHourRateLimit = NativeRateLimit(remainingPercent: 80)
         }
         if ProcessInfo.processInfo.arguments.contains("--agent-selectable-answer-fixture") {
@@ -120,6 +125,15 @@ final class AgentConversationFixture {
             snapshot.commandResults = [NativeCommandResult(id: command.id, name: command.name, ok: false, contextId: snapshot.contextId, error: "此界面夹具不执行真实业务")]
             publish()
         }
+    }
+}
+struct AgentTypographyFixture: ViewModifier {
+    @Environment(\.dynamicTypeSize) private var size
+    @Environment(\.legibilityWeight) private var weight
+    func body(content: Content) -> some View {
+        let enabled = ProcessInfo.processInfo.arguments.contains("--agent-typography-fixture")
+        content.environment(\.dynamicTypeSize, enabled ? .xxxLarge : size)
+            .environment(\.legibilityWeight, enabled ? .bold : weight)
     }
 }
 #endif

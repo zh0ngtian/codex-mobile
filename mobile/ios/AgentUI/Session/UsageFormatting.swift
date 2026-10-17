@@ -24,15 +24,13 @@ enum UsageFormatting {
         return value
     }
 
-    static func refreshTime(_ timestamp: Double?, timeZone: TimeZone = .current) -> String? {
+    static func refreshTime(_ timestamp: Double?, now: Date = .now) -> String? {
         guard let timestamp, timestamp.isFinite, timestamp > 0 else { return nil }
-        let formatter = DateFormatter()
-        formatter.calendar = Calendar(identifier: .gregorian)
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = timeZone
-        formatter.dateFormat = "yyyy/MM/dd HH:mm"
-        let value = formatter.string(from: Date(timeIntervalSince1970: timestamp))
-        return value.isEmpty ? nil : value
+        let seconds = max(0, timestamp - now.timeIntervalSince1970)
+        guard seconds.isFinite, seconds / 3600 < Double(Int.max / 100) else { return nil }
+        let hours = Int(seconds / 3600)
+        let percent = Int((seconds / (7 * 24 * 3600) * 100).rounded())
+        return "\(hours / 24)d\(hours % 24)h (\(percent)%)"
     }
 
     private static func decimal(_ value: Double) -> String {
