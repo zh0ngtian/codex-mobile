@@ -41,8 +41,66 @@
     "cleanup": "QA App与runner已卸载，模拟器锁已释放，未创建远端测试会话"
   },
   "release": {
-    "status": "pending",
-    "project": "codex-mobile-lan-production"
+    "status": "complete",
+    "batchId": "d5a83a02-263f-4e7d-9899-9dca506733ce",
+    "version": "0.2.190",
+    "buildNumber": "2190",
+    "frozenCommit": "c18ece3359a7bad7a8c7097c9e4546798b6326d4",
+    "coordinatorVersion": "0.1.6",
+    "recoveryOf": "d4a8466f-087e-451f-9f13-704753535102",
+    "recoveryChain": [
+      "85f2355c-fc76-4c00-a635-a7271e1362e5",
+      "d4a8466f-087e-451f-9f13-704753535102"
+    ],
+    "taskSources": [
+      {
+        "id": "conversation-usage-card-20261017",
+        "sha": "5430ca3dc2918d4e66c4279f58b7cb2ad813d9a9"
+      },
+      {
+        "id": "conversation-usage-card-repair-20261017",
+        "sha": "928ea6b081ea8e600f6b54b0ea69f3faeb90457c"
+      },
+      {
+        "id": "ui-usage-integration-repair-20261017",
+        "sha": "e7b9462126be1d532e1561525df8393e2d8852d1"
+      }
+    ],
+    "artifacts": {
+      "apk": {
+        "version": "0.2.190",
+        "size": 4754387,
+        "sha256": "8e10229afebcbe8ecb982a705b6261b7bddff1e87a04548b32048a8c5c85204b",
+        "signed": false,
+        "downloadUrl": "http://192.168.123.79:8765/channels/codex-mobile/latest.apk"
+      },
+      "ipa": {
+        "version": "0.2.190",
+        "size": 4847522,
+        "sha256": "f7f53fc5ada000741bdb1812e14c53abd83af281a82218297d669f6e7c0fedb3",
+        "signed": true,
+        "downloadUrl": "http://192.168.123.79:8765/channels/codex-mobile/latest.ipa"
+      }
+    },
+    "otaInstallPage": "https://192.168.123.79:8766/channels/codex-mobile/current/install.html",
+    "githubRelease": "https://github.com/zh0ngtian/codex-mobile/releases/tag/v0.2.190",
+    "unsignedSource": {
+      "version": "0.2.190",
+      "buildVersion": "2190",
+      "size": 4829666,
+      "sha256": "8b8cf9efbfb5a751e5f9815831c3271f005f33613b6f0b0ed71fcb0ad4f84cac",
+      "signed": false,
+      "downloadURL": "https://github.com/zh0ngtian/codex-mobile/releases/download/v0.2.190/CodexMobile-v0.2.190-unsigned.ipa",
+      "developerName": "zh0ngtian"
+    },
+    "independentChannelGet": "passed",
+    "softwareSourceNotes": "passed",
+    "identityContinuity": "passed",
+    "failedHistoryUnchanged": 17,
+    "originalUsageTasks": "recovered with this same receipt",
+    "cleanup": "QA App/runner清理，模拟器释放，受管开发worktree已归档，上游worktree已清理",
+    "deliveryTask": "ui-usage-integration-repair-20261017",
+    "originalRegistration": "withdrawn after consolidation; original source b5cfaf2 included in frozen commit"
   },
   "limitations": [
     "未验证真机覆盖安装及数据保留",

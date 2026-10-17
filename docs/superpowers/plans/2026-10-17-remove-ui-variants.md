@@ -38,13 +38,28 @@ expect(screen.queryByLabelText('使用原生输入框')).toBeNull();
 ## 任务二：文档、审查、验证与交付
 
 - [x] 更新 README、桥接说明与中文 `release/notes.md`，准确写明仅保留两个界面、原生切换生效时机和已确认升级行为。
-- [ ] 先由独立审查核对删除范围、升级行为与保留功能，再审查代码质量并修复实质问题。
+- [x] 先由独立审查核对删除范围、升级行为与保留功能，再审查代码质量并修复实质问题。
 - [x] 排队取得共用模拟器使用权；iPhone 17 Pro 正常字号竖屏验证网页 textarea 和完整原生输入、设置中唯一界面开关、旧偏好升级；使用离线 QA fixture。释放模拟器、卸载 QA App；真实测试会话如有则归档。
 - [x] 执行发布门禁：`python3 -B -m unittest discover -s tests/ci -p 'test_*.py'`（adapter-regression）、现役协调器恢复回归（coordinator-recovery）、`NODE_OPTIONS=--no-experimental-webstorage npm test -- tests/ci --maxWorkers=2`（build-contract）、`npm run typecheck`（typecheck），保留命令、退出码和完整日志。
-- [ ] 提交并推送固定任务 SHA，生成真实 validation.json 后 ready；持续 heartbeat，等待所在双端批次成功 receipt。
-- [ ] 核对 receipt 的 SHA/任务祖先、双端产物、签名、固定 LAN 与 HTTPS OTA、软件源 unsigned 版本和中文日志。以固定清单、HEAD 和完整 GET 再次核对版本、大小和 SHA-256。
-- [ ] 保存验收记录并提交推送；归档本次隔离工作区。最终回复提供固定 OTA 安装页和本次 APK、已签名 IPA 的固定下载链接、版本、大小和散列。
+- [x] 提交并推送固定任务 SHA，生成真实 validation.json 后 ready；持续 heartbeat，等待所在双端批次成功 receipt。
+- [x] 核对 receipt 的 SHA/任务祖先、双端产物、签名、固定 LAN 与 HTTPS OTA、软件源 unsigned 版本和中文日志。以固定清单、HEAD 和完整 GET 再次核对版本、大小和 SHA-256。
+- [x] 保存验收记录并提交推送；归档本次隔离工作区。最终回复提供固定 OTA 安装页和本次 APK、已签名 IPA 的固定下载链接、版本、大小和散列。
 
 ## 本地验证记录
 
 源码提交 `0427c0c`；全量129文件1394项、TypeScript、完整NativeUI iOS SDK与XCUITest源码类型检查通过，发布适配器166项和现役协调器恢复35项通过。iPhone 17 Pro正常字号竖屏的最终3项离线UI验收全通过，运行源码散列前后相同；仅保留的UI测试固定坐标改为标签定位，未改变App代码。QA App与runner已卸载，锁已释放，无远端测试会话。详见[验收摘要](evidence/2026-10-17-remove-ui-variants.json)。独立审查与正式双端协调发布仍在进行。
+
+## 正式联合交付完成
+
+2026-10-17 已通过关联修复批次 `d5a83a02-263f-4e7d-9899-9dca506733ce` 完成双端 `0.2.190`（2190）发布。冻结提交为 `c18ece3359a7bad7a8c7097c9e4546798b6326d4`，保留旧用量两个任务和本次界面清理的全部来源；旧用量任务均 recovered 到同一成功凭证。原界面清理登记已归并到关联修复任务，不再单独重复发包。
+
+协调器0.1.6已审查、升级并实际完成关联恢复，17个旧失败批次完整行未变。GitHub双端、固定LAN APK/已签名IPA、HTTPS OTA、软件源unsigned订阅及必要开发CI均验收成功。父任务再次对固定JSON、HEAD和完整GET、OTA安装manifest及签名身份连续性完成独立核对；软件源版本、构建号、URL、大小、散列、中文日志与动态读取的当前GitHub署名一致。
+
+[固定OTA安装页](https://192.168.123.79:8766/channels/codex-mobile/current/install.html)
+
+| 产物 | 版本 | 大小（字节） | SHA-256 |
+| --- | --- | --- | --- |
+| [APK](http://192.168.123.79:8765/channels/codex-mobile/latest.apk) | 0.2.190 | 4754387 | `8e10229afebcbe8ecb982a705b6261b7bddff1e87a04548b32048a8c5c85204b` |
+| [IPA（Ad Hoc已签名）](http://192.168.123.79:8765/channels/codex-mobile/latest.ipa) | 0.2.190 | 4847522 | `f7f53fc5ada000741bdb1812e14c53abd83af281a82218297d669f6e7c0fedb3` |
+
+五项最终联合模拟器验收及1486项回归已通过；所有QA使用离线内存数据，无远端测试会话。QA App/runner已卸载、锁已释放，本次受管worktree已归档，上游修复worktree已清理，必要原始证据均保存在仓库外长期目录。未进行真机覆盖安装及数据保留验收。
