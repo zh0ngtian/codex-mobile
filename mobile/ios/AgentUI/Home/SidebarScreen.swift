@@ -40,7 +40,18 @@ struct SidebarScreen: View {
                 .tint(chatTint)
                 .clipShape(.capsule)
                 .overlay {
-                    Capsule().strokeBorder(.white.opacity(0.28), lineWidth: 0.65).allowsHitTesting(false)
+                    Capsule()
+                        .fill(LinearGradient(stops: [
+                            .init(color: .white.opacity(0.12), location: 0),
+                            .init(color: .white.opacity(0.025), location: 0.16),
+                            .init(color: .clear, location: 0.32),
+                            .init(color: .clear, location: 1)
+                        ], startPoint: .top, endPoint: .bottom))
+                        .overlay {
+                            Capsule().strokeBorder(LinearGradient(colors: [.white.opacity(0.55), .white.opacity(0.2)],
+                                                                  startPoint: .top, endPoint: .bottom), lineWidth: 0.8)
+                        }
+                        .allowsHitTesting(false)
                 }
                 .shadow(color: .black.opacity(0.02), radius: 2, y: 1)
                 .accessibilityLabel(preferences.text("Chat，开始新对话", "Chat, start a new conversation"))
