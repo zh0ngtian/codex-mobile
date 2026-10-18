@@ -12,8 +12,8 @@ it.skipIf(process.platform !== 'darwin')('附件直接选择后原子导入，�
   try {
     const files = [...native.map(name => `mobile/ios/NativeUI/${name}.swift`), ...session, ...composer.map(name => `mobile/ios/AgentUI/Composer/${name}.swift`), 'tests/ci/composer-attachment-flow-smoke.swift'];
     const frozen = files.map((path, index) => { const copy = join(directory, `input-${index}.swift`); copyFileSync(path, copy); return copy; });
-    const compile = spawnSync('xcrun', ['swiftc', ...frozen, '-o', join(directory, 'smoke')], { encoding: 'utf8', timeout: 180_000 });
-    expect(compile.status, compile.stderr).toBe(0);
+    const compile = spawnSync('xcrun', ['swiftc', '-whole-module-optimization', ...frozen, '-o', join(directory, 'smoke')], { encoding: 'utf8', timeout: 180_000 });
+    expect(compile.status, compile.error?.message ?? compile.stderr).toBe(0);
     const result = spawnSync(join(directory, 'smoke'), [], { encoding: 'utf8', timeout: 20_000 });
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toContain('Composer attachment flow smoke passed');
