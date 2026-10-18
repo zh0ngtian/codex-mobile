@@ -19,23 +19,15 @@ struct SidebarScreen: View {
             HStack {
                 Button { session.beginNewConversation() } label: {
                     Label("Chat", systemImage: "square.and.pencil")
-                        .font(.body).foregroundStyle(.white)
-                        .padding(.horizontal, 8)
-                        .frame(minHeight: 20)
                 }
                 .modifier(AgentGlassButton(prominent: true))
-                .controlSize(.large)
-                .tint(preferences.accent.color)
                 .accessibilityLabel(preferences.text("Chat，开始新对话", "Chat, start a new conversation"))
                 .accessibilityIdentifier("sidebar.askCodex")
                 Spacer()
                 Button { session.settingsPresented = true } label: {
-                    Image(systemName: "gearshape").font(.title3)
-                        .frame(width: 20, height: 20)
+                    Image(systemName: "gearshape")
                 }
-                .modifier(AgentGlassButton(circular: true))
-                .controlSize(.large)
-                .tint(AgentTheme.ink)
+                .modifier(AgentGlassButton())
                 .accessibilityLabel(preferences.text("设置", "Settings"))
                 .accessibilityIdentifier("sidebar.settings")
             }
