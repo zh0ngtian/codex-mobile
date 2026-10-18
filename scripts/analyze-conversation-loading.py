@@ -54,7 +54,7 @@ def analyze(raw, output):
              'data': {key: value for key, value in entry['data'].items() if key != 'confirmedAtMs'}} for entry in trial['events']]})
     output.mkdir(parents=True, exist_ok=True)
     with (output / 'samples.csv').open('w') as file:
-        writer = csv.DictWriter(file, fieldnames=list(samples[0])); writer.writeheader(); writer.writerows(samples)
+        writer = csv.DictWriter(file, fieldnames=list(samples[0]), lineterminator='\n'); writer.writeheader(); writer.writerows(samples)
     (output / 'trials.json').write_text(json.dumps(anonymous, ensure_ascii=False, indent=2) + '\n')
     summary = {}
     for mode in ['repeat', 'process-first']:
