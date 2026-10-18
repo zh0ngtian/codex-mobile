@@ -19,7 +19,7 @@ struct ChatListRow: View {
                         if showsStatusMarker {
                             if showsRunningSpinner {
                                 ProgressView().progressViewStyle(.circular).controlSize(.mini)
-                                    .tint(.secondary).frame(width: 12, height: 12).padding(.top, 3)
+                                    .tint(.secondary).frame(width: 12, height: 12).padding(.leading, 2).padding(.top, 3)
                                     .accessibilityLabel(preferences.text("正在执行", "Working"))
                                     .accessibilityIdentifier("sidebar.running.\(conversation.id)")
                             } else {
