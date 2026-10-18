@@ -10,9 +10,9 @@
 - [x] 核对分支/远端与干净工作区；整合时仅文档末尾冲突，保留双方验收记录。
 - [x] 复核分支已有TDD及独立模拟器记录，运行HTTP优先级、列表、传输、项目目录及RPC相关回归。
 - [x] 完成adapter-regression、coordinator-recovery、build-contract及typecheck四项门禁，必要时补充前端构建。
-- [ ] 独立合入审查，提交推送整合SHA、验证文件绑定同一SHA后ready。
-- [ ] 等待协调批次完成，核对main包含用户分支、GitHub双端附件、Ad Hoc身份、HTTPS OTA、固定APK/IPA和unsigned软件源更新日志。
-- [ ] 记录成功receipt及本次产物版本、大小和SHA-256，提供固定OTA与下载入口。失败时保留失败批次，仅关联最新失败叶节点修复。
+- [x] 独立合入审查，提交推送整合SHA、验证文件绑定同一SHA后ready。
+- [x] 等待协调批次完成，核对main包含用户分支、GitHub双端附件、Ad Hoc身份、HTTPS OTA、固定APK/IPA和unsigned软件源更新日志。
+- [x] 记录成功receipt及本次产物版本、大小和SHA-256，提供固定OTA与下载入口。失败时保留失败批次，仅关联最新失败叶节点修复。
 
 现役渠道在本批成功前仍为0.3.8；初始分支报告的“加载失败”英文映射缺失已由并发推进的main提交补齐；本次整合保留该修复，原报告作为历史证据。
 
@@ -30,3 +30,16 @@
 批次`a1545b74-cf4c-4962-b926-62554cad7fe3`已推进main冻结`bd5989e43ffc58e24944073074781d8252cc7ef9`并预留0.3.9（3009），Android成功；iOS契约的两项Swift编译达到180秒上限，正式Release步骤跳过，未发布0.3.9。云端其他大型Smoke编译158/164秒。驱动诊断确认47个输入原生成47个frontend作业，整模块模式仅1个；四个大型契约改用WMO，不增加优化等级、不改编译/执行上限、不跳过Smoke或业务断言。四文件20项本机Smoke通过（10.81秒），只读复审无阻塞问题。修复任务`conversation-priority-release-ci-20261019`关联此最新失败叶节点，失败现场保持不变。
 
 CI修复后的四项门禁重新通过：167项发布适配回归、42项协调恢复回归、138项构建契约与typecheck；大型Swift契约20项复验通过。客户端运行源码与上一轮1582项全量回归和前端构建通过的冻结源码一致，本轮只调整测试编译方式和诊断。
+
+批次`74655b9a-49d3-4940-9ba2-cd6e09217afd`的本机GitHub GET在四次有界重试后仍连续EOF，协调状态失败；云端双端构建随后成功生成0.3.10 Release，但未完成本批固定渠道交付。失败批次、现场和既有Release均保留。相同查询连续三次成功后，任务`conversation-priority-release-network-20261019`显式关联最新失败叶节点，以同一已验证源码提交`8cd72957b7700e315313a83929081f25f65b9478`重新ready，未变更业务代码或放宽门禁。
+
+最终成功批次`54a8ae23-3da2-43f1-a7bc-113b25bf3c82`发布**0.3.11（3011）**，冻结SHA`55277d007c3f876d5f94dc2725d4b4606e7fb170`。十个必要阶段全部完成，三项祖先任务均为recovered并指向同一成功批次；原请求分支`9cbde17`及后续修复均为冻结提交祖先。正式CI`39152420839`、必要开发CI`39152420849`成功。
+
+[GitHub Release](https://github.com/zh0ngtian/codex-mobile/releases/tag/v0.3.11)包含APK和unsigned IPA；[固定OTA安装页](https://192.168.123.79:8766/channels/codex-mobile/current/install.html)与固定下载渠道完整回验。签名保留原Bundle ID、Team、application-identifier、完整权限散列和钥匙串组，软件源unsigned订阅版本/大小/散列/署名及中文更新日志均核对一致。独立复核固定清单、HEAD、完整GET、受信HTTPS与GitHub标签、附件及更新日志。
+
+| 产物 | 大小（bytes） | SHA-256 |
+| --- | --- | --- |
+| [固定APK](http://192.168.123.79:8765/channels/codex-mobile/latest.apk) | 4724335 | `81cdd7d2bcbac7d38e39a3f2c1b823ae87261e0aeb89aafa6b644f7547bbc20e` |
+| [固定IPA（Ad Hoc已签名）](http://192.168.123.79:8765/channels/codex-mobile/latest.ipa) | 4654632 | `15c185b3ffc681699c46aa7fe5de9ab79508e960d5ece6c79a65cb10614b7441` |
+
+成功凭证：本机`ReleaseCoordinator/receipts/54a8ae23-3da2-43f1-a7bc-113b25bf3c82.json`；独立回验：`validations/conversation-priority-release-network-20261019/final-channel-verification.json`。本轮无新业务测试会话，无需归档；未部署网关，未执行真机覆盖安装或数据保留验收。
