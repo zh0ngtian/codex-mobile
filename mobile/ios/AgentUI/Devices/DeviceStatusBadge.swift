@@ -14,7 +14,7 @@ struct DeviceStatusBadge: View {
         .accessibilityElement(children: .combine)
     }
 
-    @ContentBuilder private var statusLabels: some View {
+    @ViewBuilder private var statusLabels: some View {
         Label(connectionTitle, systemImage: connectionSymbol)
             .foregroundStyle(connectionColor)
         if isBusy {
