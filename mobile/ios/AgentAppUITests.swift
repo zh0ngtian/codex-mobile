@@ -94,7 +94,9 @@ final class AgentAppUITests: XCTestCase {
         XCTAssertEqual(search.frame.height, chat.frame.height, accuracy: 0.5)
         XCTAssertEqual(more.frame.height, chat.frame.height, accuracy: 0.5)
         XCTAssertEqual(more.frame.midY, chat.frame.midY, accuracy: 0.5)
-        captureConversation("侧栏-三个按钮等高", app: app)
+        XCTAssertEqual(search.frame.midY, more.frame.midY, accuracy: 0.5, "搜索移动到底部与更多同排")
+        XCTAssertLessThan(search.frame.maxX, more.frame.minX, "搜索在更多左边")
+        captureConversation("侧栏-三个按钮底部同排", app: app)
     }
 
     func testDeviceManagerAddsBeyondEightDevices() {
@@ -361,7 +363,7 @@ final class AgentAppUITests: XCTestCase {
         XCTAssertFalse(app.buttons["sidebar.settings"].exists, "设置只在省略号菜单内显示")
         XCTAssertLessThan(chat.frame.maxX, more.frame.minX)
         XCTAssertEqual(chat.frame.midY, more.frame.midY, accuracy: 2)
-        XCTAssertLessThan(app.buttons["sidebar.search"].frame.maxY, app.buttons["收起项目 Zeta"].frame.minY)
+        XCTAssertEqual(app.buttons["sidebar.search"].frame.midY, more.frame.midY, accuracy: 1)
         captureConversation("侧栏-参考展开布局", app: app)
         more.tap()
         XCTAssertTrue(app.buttons["sidebar.drafts"].waitForExistence(timeout: 5))
@@ -690,6 +692,9 @@ final class AgentAppUITests: XCTestCase {
             XCTAssertEqual(drawer.frame.midY, button.frame.midY, accuracy: 1)
         }
         captureConversation("导航栏-紧凑同高", app: app)
+        actions.tap()
+        XCTAssertTrue(app.buttons["复制会话 ID"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["复制 ID"].exists)
     }
 
     func testPermissionModeUsesContextMenuAndSelectsBusinessOption() {
@@ -700,14 +705,14 @@ final class AgentAppUITests: XCTestCase {
         XCTAssertTrue(permission.waitForExistence(timeout: 5))
         permission.tap()
         XCTAssertFalse(app.navigationBars["权限模式"].exists, "权限选择直接使用菜单，不打开sheet")
-        let full = app.buttons["permission.option.full-access"]
+        let full = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "完全访问权限,")).firstMatch
         XCTAssertTrue(full.waitForExistence(timeout: 5))
         captureConversation("权限模式-原生context菜单", app: app)
         guard full.exists else { return }
         full.tap()
         XCTAssertEqual(permission.value as? String, "完全访问权限")
         permission.tap()
-        app.buttons["permission.option.default"].tap()
+        app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "默认权限,")).firstMatch.tap()
         XCTAssertEqual(permission.value as? String, "默认权限")
         permission.tap()
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.2)).tap()

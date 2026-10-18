@@ -36,7 +36,7 @@ struct ComposerPermissionMenu: View {
     }
 }
 
-private struct PermissionMenuOption: Identifiable, Equatable {
+struct PermissionMenuOption: Identifiable, Equatable {
     let id: String
     let value: String
     let title: String
@@ -58,22 +58,8 @@ private struct PermissionOptionsMenu: View, Equatable {
         lhs.title == rhs.title && lhs.menuTitle == rhs.menuTitle && lhs.enabled == rhs.enabled
     }
     var body: some View {
-        Menu {
-            ForEach(options) { option in
-                Button { choose(option.value) } label: {
-                    Text(option.title)
-                    Text(option.detail)
-                    Image(systemName: option.symbol)
-                }
-                .accessibilityIdentifier("permission.option." + option.value)
-            }
-        } label: {
-            Image(systemName: mode.symbol).font(.subheadline).imageScale(.large)
-                .foregroundStyle(mode == .fullAccess ? .orange : AgentTheme.ink)
-                .frame(width: 40, height: 44).contentShape(.rect)
-        }
-        .menuIndicator(.hidden).menuOrder(.fixed).buttonStyle(.plain).tint(AgentTheme.ink)
-        .disabled(!enabled || options.isEmpty)
-        .accessibilityLabel(menuTitle).accessibilityValue(title).accessibilityIdentifier("composer.permission")
+        NativePermissionMenuButton(options: options, context: context, mode: mode, title: title,
+            menuTitle: menuTitle, enabled: enabled, choose: choose)
+            .frame(width: 40, height: 44)
     }
 }

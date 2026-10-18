@@ -32,7 +32,7 @@ struct ConversationMenuActions: View {
                     session.toast = preferences.text("真实会话 ID 尚未就绪，请刷新后重试。", "The conversation ID is not ready. Refresh and try again.")
                 }
             } label: {
-                Label(preferences.text("复制 ID", "Copy ID"), systemImage: "number")
+                Label(preferences.text("复制会话 ID", "Copy conversation ID"), systemImage: "number")
             }
             .disabled(menuBusy || session.rawConversationID(conversationID)?.isEmpty != false)
             Button {
