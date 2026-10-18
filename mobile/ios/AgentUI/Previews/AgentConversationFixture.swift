@@ -145,6 +145,10 @@ final class AgentConversationFixture {
         if ProcessInfo.processInfo.arguments.contains("--agent-model-catalog-fixture") {
             value.models += (0...59).map { NativeOption(id: "catalog-\($0)", title: "Catalog Model \($0)", value: "catalog-\($0)") }
         }
+        if ProcessInfo.processInfo.arguments.contains("--agent-running-scroll-fixture") {
+            value.busy = true
+            value.messages.append(NativeMessage(id: "streaming-scroll", role: "assistant", text: "运行中的新增进展。", phase: "commentary", commentaryIsLiveTail: true))
+        }
         if ProcessInfo.processInfo.arguments.contains("--agent-submit-fixture") { value.canSend = true; value.draft = "触感检查" }
         if ProcessInfo.processInfo.arguments.contains("--agent-startup-loading-fixture") { value.ready = false }
         value.messages = value.messages.map { message in
@@ -178,6 +182,17 @@ final class AgentConversationFixture {
                     NativePanelItem(id: "allow-once", kind: "action", title: "仅允许这次", value: "\"accept\"", command: NativeCommand(name: "approval.decide", params: ["requestId": .string("arriving-fixture"), "decision": .string("accept")])),
                 ])
                 self.publish()
+            }
+        }
+        if ProcessInfo.processInfo.arguments.contains("--agent-running-scroll-fixture"), !ProcessInfo.processInfo.arguments.contains("--agent-no-stream-fixture") {
+            Task { [weak self] in
+                for tick in 0..<300 {
+                    try? await Task.sleep(for: .milliseconds(150))
+                    guard !Task.isCancelled, let self,
+                          let index = self.snapshot.messages.firstIndex(where: { $0.id == "streaming-scroll" }) else { return }
+                    self.snapshot.messages[index].text += "\n运行中的持续输出第\(tick)行。"
+                    self.publish()
+                }
             }
         }
         if ProcessInfo.processInfo.arguments.contains("--agent-model-catalog-fixture") {

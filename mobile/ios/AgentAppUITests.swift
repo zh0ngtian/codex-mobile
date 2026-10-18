@@ -197,6 +197,53 @@ final class AgentAppUITests: XCTestCase {
         captureConversation("回到底部-连续动画", app: app)
     }
 
+    func testRunningReturnToBottomKeepsAnimationDuringOutput() { assertRunningReturn(streaming: true) }
+    func testRunningReturnToBottomWithoutNewOutput() { assertRunningReturn(streaming: false) }
+
+    private func assertRunningReturn(streaming: Bool) {
+        let app = XCUIApplication()
+        app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-conversation-long-fixture", "--agent-running-scroll-fixture", "--agent-scroll-diagnostics", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
+        if !streaming { app.launchArguments.append("--agent-no-stream-fixture") }
+        app.launch()
+        let button = app.buttons["conversation.scrollToBottom"]
+        XCTAssertTrue(button.waitForExistence(timeout: 8))
+        XCTAssertTrue(app.buttons["composer.submit"].label == "停止")
+        button.tap()
+        expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: button)
+        waitForExpectations(timeout: 8)
+        let trace = app.staticTexts["scroll.diagnostic-return"].label.split(separator: ",").compactMap { Double($0) }
+        let elapsed = Int(app.staticTexts["scroll.diagnostic-return-ms"].label) ?? 0
+        print("RUNNING_RETURN_OFFSETS", trace, "ELAPSED", elapsed, "EVENTS", app.staticTexts["scroll.diagnostic-events"].label)
+        XCTAssertGreaterThan(trace.count, 5, "持续输出期间回底也必须经过连续中间位置")
+        XCTAssertGreaterThanOrEqual(elapsed, 850, "持续输出不能把回底动画替换成瞬移")
+        if let start = trace.first, let end = trace.last, end > start {
+            let largestStep = zip(trace, trace.dropFirst()).map { $1 - $0 }.max() ?? 0
+            XCTAssertLessThan(largestStep / (end - start), 0.3, "不能在最后一次位置更新补跳过大段距离")
+        }
+        if streaming {
+            let offset = app.staticTexts["scroll.diagnostic-offset"]
+            let previous = Double(offset.label) ?? 0
+            expectation(for: NSPredicate { _, _ in (Double(offset.label) ?? 0) > previous + 20 }, evaluatedWith: offset)
+            waitForExpectations(timeout: 4)
+            XCTAssertFalse(button.exists, "到达底部后应继续跟随持续输出")
+            let timeline = app.scrollViews["conversation.timeline"]
+            let from = timeline.coordinate(withNormalizedOffset: CGVector(dx: 0.75, dy: 0.3))
+            let to = timeline.coordinate(withNormalizedOffset: CGVector(dx: 0.75, dy: 0.7))
+            from.press(forDuration: 0.05, thenDragTo: to, withVelocity: .slow, thenHoldForDuration: 0.1)
+            XCTAssertTrue(button.waitForExistence(timeout: 3), "用户开始阅读旧内容后应取消跟随")
+            let readingOffset = Double(offset.label) ?? 0
+            let deadline = Date().addingTimeInterval(0.6)
+            expectation(for: NSPredicate { _, _ in Date() >= deadline }, evaluatedWith: app)
+            waitForExpectations(timeout: 2)
+            XCTAssertEqual(Double(offset.label) ?? 0, readingOffset, accuracy: 4, "后续输出不能抢回阅读位置")
+            button.tap()
+            expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: button)
+            waitForExpectations(timeout: 8)
+        }
+        XCTAssertTrue(Self.hasRenderedConversationText(app.screenshot().image))
+        captureConversation("运行中回底-持续输出的连续动画", app: app)
+    }
+
     func testHistoryEditAutomaticallyFocusesAndShowsContrastingSave() {
         let app = launchInteractionFixture("--agent-edit-history-fixture")
         app.otherElements["message.user-bubble"].firstMatch.press(forDuration: 1)
