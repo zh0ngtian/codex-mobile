@@ -21,3 +21,9 @@
 ## 本地验证结果
 
 2026-10-18：adapter-regression 167 项、coordinator-recovery 42 项、build-contract 137 项及 typecheck 均通过；额外原生代码回归154项、iPhone 17 Pro界面回归25项通过。几何断言先红后绿，独立只读审查无阻塞问题，README旧菜单说明已同步。正式发布结果以协调器成功receipt为准。
+
+## 发布中发现的 SDK 兼容问题
+
+首批 b899793a… 在读取 GitHub API 时因 EOF 失败，关联批次 f267250c… 仍在构建。云端首批 iOS 编译日志确认 `DeviceStatusBadge.statusLabels` 的 `@ContentBuilder` 不被 Xcode 26.3/iOS 26.2 SDK 识别，而本机 SDK 的 Release 编译通过，说明模拟器调试构建不足以证明云端 SDK 兼容。按实际编译失败作为红灯，改用既有 `@ViewBuilder`，不调整业务或界面，并追加 Release 编译与现役必需检查。最终修复任务须绑定最新失败叶节点，不能重跑或改写旧失败批次。
+
+兼容修复后本机 Release 模拟器整 App 编译通过；167项适配器、42项协调恢复、137项构建契约及typecheck重新通过。独立只读审查无阻塞问题。云端 SDK 兼容性最终以新批次实际编译通过确认。
