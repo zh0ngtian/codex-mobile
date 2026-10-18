@@ -27,7 +27,7 @@ struct ComposerBar: View {
                 VStack(spacing: 2) {
                     if !session.composer.attachments.isEmpty { ComposerAttachmentStrip() }
                     HStack(spacing: 0) {
-                        if !expanded { InlineIconButton(title: preferences.text("添加附件", "Add attachment"), symbol: "plus", imageScale: .large) { present(.attachments) } }
+                        if !expanded { InlineIconButton(title: preferences.text("添加附件", "Add attachment"), symbol: "plus", font: .subheadline, imageScale: .large, width: 40) { present(.attachments) } }
                         TextField(preferences.text("向 Codex 提问", "Ask Codex"), text: $session.composer.text, axis: .vertical)
                             .font(AgentTheme.body)
                             .lineLimit(1...6)
@@ -43,10 +43,10 @@ struct ComposerBar: View {
                     }
                     if expanded {
                         HStack(spacing: 0) {
-                            InlineIconButton(title: preferences.text("添加附件", "Add attachment"), symbol: "plus", imageScale: .large) { present(.attachments) }
+                            InlineIconButton(title: preferences.text("添加附件", "Add attachment"), symbol: "plus", font: .subheadline, imageScale: .large, width: 40) { present(.attachments) }
                             InlineIconButton(title: preferences.text("权限模式", "Permission profile"), symbol: session.composer.configuration.permission.symbol,
-                                             imageScale: .large, color: session.composer.configuration.permission == .fullAccess ? .orange : AgentTheme.ink) { present(.permissions) }
-                            HStack(spacing: 10) {
+                                             font: .subheadline, imageScale: .large, color: session.composer.configuration.permission == .fullAccess ? .orange : AgentTheme.ink, width: 40) { present(.permissions) }
+                            HStack(spacing: 8) {
                                 RunSpeedButton()
                                 ComposerModelMenu()
                                 ComposerEffortMenu()

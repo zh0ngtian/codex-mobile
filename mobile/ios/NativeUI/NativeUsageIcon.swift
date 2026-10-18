@@ -6,6 +6,5 @@ struct NativeUsageIcon: View {
         Image(systemName: "circle")
             .fontWeight(.regular)
             .foregroundStyle(.black)
-            .background(.white, in: .circle)
     }
 }

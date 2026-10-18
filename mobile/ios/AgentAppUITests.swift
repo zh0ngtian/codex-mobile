@@ -182,12 +182,6 @@ final class AgentAppUITests: XCTestCase {
         return app
     }
 
-    func testUserMessageCollapseThresholdIsDoubled() {
-        let app = launchInteractionFixture("--agent-collapse-threshold-fixture")
-        XCTAssertFalse(app.buttons["展开更多"].waitForExistence(timeout: 2), "十一行消息不应按旧六行阈值折叠")
-        captureConversation("用户消息-翻倍折叠阈值", app: app)
-    }
-
     func testReturnToBottomUsesContinuousMotion() {
         let app = XCUIApplication()
         app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-conversation-long-fixture", "--agent-scroll-diagnostics", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
@@ -478,19 +472,139 @@ final class AgentAppUITests: XCTestCase {
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.2)).tap()
     }
 
-    func testExpandedUserBubbleKeepsCollapsedWidth() {
+    func testLongUserMessageNeverCollapses() {
         let app = launchSidebarPolishFixture()
         let bubble = app.otherElements["message.user-bubble"].firstMatch
         XCTAssertTrue(bubble.waitForExistence(timeout: 5))
-        let collapsed = bubble.frame
-        app.buttons["展开更多"].tap()
-        XCTAssertTrue(app.buttons["收起"].waitForExistence(timeout: 5))
-        XCTAssertEqual(bubble.frame.width, collapsed.width, accuracy: 1)
-        XCTAssertGreaterThan(bubble.frame.height, collapsed.height)
-        captureConversation("用户气泡-展开宽度", app: app)
-        app.buttons["收起"].tap()
-        XCTAssertTrue(app.buttons["展开更多"].waitForExistence(timeout: 5))
-        XCTAssertEqual(bubble.frame.width, collapsed.width, accuracy: 1)
+        XCTAssertFalse(app.buttons["展开更多"].exists)
+        XCTAssertFalse(app.buttons["收起"].exists)
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "这是一条展开后才显示")).firstMatch.exists)
+        XCTAssertGreaterThan(bubble.frame.height, 260)
+        captureConversation("用户气泡-长消息完整显示", app: app)
+    }
+
+    func testQueuedMessageActionsShareOneRow() {
+        let app = launchInteractionFixture("--agent-queue-controls-fixture")
+        let edit = app.buttons["编辑"]
+        let cancel = app.buttons["取消排队消息"]
+        let steer = app.buttons["改为引导"]
+        XCTAssertTrue(edit.waitForExistence(timeout: 5)); XCTAssertTrue(steer.exists)
+        XCTAssertEqual(edit.frame.midY, cancel.frame.midY, accuracy: 1)
+        XCTAssertEqual(edit.frame.midY, steer.frame.midY, accuracy: 1)
+        XCTAssertLessThan(cancel.frame.minX, edit.frame.minX)
+        XCTAssertLessThan(edit.frame.maxX, steer.frame.minX)
+        captureConversation("队列按钮-同排", app: app)
+    }
+
+    func testTableUsesNaturalSingleLineColumns() {
+        let app = launchInteractionFixture("--agent-table-controls-fixture")
+        let number = app.textViews.matching(NSPredicate(format: "value == '#' ")).firstMatch
+        XCTAssertTrue(number.waitForExistence(timeout: 8))
+        XCTAssertLessThan(number.frame.width, 60, "短列应按内容宽度布局")
+        let long = app.textViews.matching(NSPredicate(format: "value BEGINSWITH %@", "这段表格正文必须")).firstMatch
+        XCTAssertTrue(long.exists)
+        XCTAssertLessThan(long.frame.height, 28, "表格长单元格不能折行")
+        let table = app.scrollViews["markdown.table"]
+        XCTAssertTrue(table.exists)
+        guard table.exists else { return }
+        captureConversation("表格-自然列宽初始位置", app: app)
+        let before = long.frame.minX
+        table.swipeLeft()
+        XCTAssertLessThan(long.frame.minX, before, "超宽内容应可横向滚动")
+        XCTAssertFalse(app.otherElements["sidebar.panel"].exists)
+        captureConversation("表格-紧凑字体与横向滚动", app: app)
+    }
+
+    func testImagePreviewToolbarPositionsAreSwapped() {
+        let app = launchInteractionFixture("--agent-preview-polish-fixture")
+        app.buttons["preview.png"].tap()
+        let close = app.buttons["关闭"]
+        let download = app.buttons["下载"]
+        XCTAssertTrue(close.waitForExistence(timeout: 8))
+        XCTAssertLessThan(download.frame.midX, close.frame.midX)
+        captureConversation("图片预览-下载左关闭右", app: app)
+        close.tap()
+    }
+
+    func testInlineImagePreviewAlsoUsesDownloadLeftCloseRight() {
+        let app = launchInteractionFixture("--agent-inline-image-preview-fixture")
+        let image = app.buttons["查看图片 内联预览图片"]
+        XCTAssertTrue(image.waitForExistence(timeout: 8)); image.tap()
+        let download = app.buttons["下载原图"]
+        let close = app.buttons["关闭"]
+        XCTAssertTrue(close.waitForExistence(timeout: 8))
+        XCTAssertLessThan(download.frame.midX, close.frame.midX)
+        captureConversation("内联图片-下载左关闭右", app: app)
+        close.tap()
+    }
+
+    func testBusinessConfirmationUsesSmallSystemAlert() {
+        let app = launchInteractionFixture("--agent-confirmation-controls-fixture")
+        let alert = app.alerts["确认操作"]
+        XCTAssertTrue(alert.waitForExistence(timeout: 5), "业务确认不应呈现整页sheet")
+        guard alert.exists else { return }
+        XCTAssertLessThan(alert.frame.height, app.frame.height * 0.5)
+        captureConversation("归档确认-系统小弹窗", app: app)
+        alert.buttons["取消"].tap()
+        XCTAssertTrue(app.textViews.matching(NSPredicate(format: "value == '已取消'")).firstMatch.waitForExistence(timeout: 5))
+    }
+
+    func testApprovalWaitsUntilConfirmationAlertFinishes() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-confirmation-controls-fixture", "--agent-approval-during-confirmation-fixture", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
+        app.launch()
+        let alert = app.alerts["确认操作"]
+        XCTAssertTrue(alert.waitForExistence(timeout: 5))
+        let deadline = Date().addingTimeInterval(7)
+        expectation(for: NSPredicate { _, _ in Date() >= deadline }, evaluatedWith: app)
+        waitForExpectations(timeout: 9)
+        XCTAssertTrue(alert.exists, "新审批到达不能抢走尚未回答的确认弹窗")
+        XCTAssertFalse(app.navigationBars["操作审批"].exists)
+        guard alert.exists else { return }
+        alert.buttons["取消"].tap()
+        XCTAssertTrue(app.navigationBars["操作审批"].waitForExistence(timeout: 8), "确认结束后继续呈现已排队审批")
+        captureConversation("确认结束-顺序呈现审批", app: app)
+    }
+
+    func testConversationHeaderIsCompactAndAligned() {
+        let app = launchConversationFixture()
+        let drawer = app.buttons["会话列表"]
+        let usage = app.buttons["header.usage"]
+        let compose = app.buttons["header.newConversation"]
+        let actions = app.buttons["conversation.actions"]
+        XCTAssertTrue(usage.waitForExistence(timeout: 8))
+        XCTAssertLessThanOrEqual(actions.frame.midX - usage.frame.midX, 90)
+        for button in [usage, compose, actions] {
+            XCTAssertEqual(drawer.frame.midY, button.frame.midY, accuracy: 1)
+        }
+        captureConversation("导航栏-紧凑同高", app: app)
+    }
+
+    func testComposerIconsAreMoreCompact() {
+        let app = launchConversationFixture()
+        app.textFields["message-input"].tap()
+        let add = app.buttons["添加附件"]
+        let permission = app.buttons["权限模式"]
+        let fast = app.buttons["composer.fast"]
+        XCTAssertTrue(fast.waitForExistence(timeout: 5))
+        XCTAssertLessThanOrEqual(permission.frame.midX - add.frame.midX, 41)
+        XCTAssertLessThanOrEqual(fast.frame.midX - permission.frame.midX, 41)
+        captureConversation("输入图标-字号与紧凑间距", app: app)
+    }
+
+    func testUnreadMarkersUseTrailingStatusSlot() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-sidebar-polish-fixture", "-accent", "Pink", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
+        app.launch()
+        app.buttons["会话列表"].tap()
+        let unread = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "任务 Alpha")).firstMatch
+        XCTAssertTrue(unread.waitForExistence(timeout: 5))
+        XCTAssertGreaterThan(Self.iconInkPixels(app.screenshot().image, element: CGRect(x: unread.frame.maxX - 26, y: unread.frame.minY, width: 26, height: 30), screen: app.frame), 15)
+        app.buttons["收起项目 Alpha"].tap()
+        let project = app.buttons["展开项目 Alpha"]
+        XCTAssertTrue(project.waitForExistence(timeout: 5))
+        XCTAssertGreaterThan(Self.iconInkPixels(app.screenshot().image, element: CGRect(x: project.frame.maxX - 26, y: project.frame.minY, width: 26, height: 30), screen: app.frame), 15)
+        captureConversation("未读点-会话与项目右侧状态槽", app: app)
     }
 
     func testSidebarPreservesBusinessProjectOrderAndUsesSpinner() {
@@ -530,7 +644,7 @@ final class AgentAppUITests: XCTestCase {
         let jump = app.buttons["conversation.scrollToBottom"]
         XCTAssertTrue(jump.waitForExistence(timeout: 8), "离开底部时应显示回到底部按钮")
         guard jump.exists else { return }
-        XCTAssertTrue(app.buttons["展开更多"].exists)
+        XCTAssertFalse(app.buttons["展开更多"].exists)
         captureConversation("回到底部-阅读中", app: app)
         jump.tap()
         expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: jump)
@@ -995,7 +1109,7 @@ final class AgentAppUITests: XCTestCase {
         app.buttons["conversation.actions"].tap()
         XCTAssertTrue(app.buttons["归档"].waitForExistence(timeout: 8))
         app.buttons["归档"].tap()
-        let confirm = app.buttons.matching(NSPredicate(format: "label BEGINSWITH '确认'")).firstMatch
+        let confirm = app.alerts["确认操作"].buttons["确认"]
         XCTAssertTrue(confirm.waitForExistence(timeout: 8), "普通归档也应二次确认，不能立即移除会话")
         guard confirm.exists else { return } // 旧实现此时已归档本测试新建的会话。
         app.buttons["取消"].tap()

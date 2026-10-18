@@ -17,9 +17,6 @@ struct ProjectRow: View {
                         .font(AgentTheme.body)
                         .lineLimit(2)
                         .multilineTextAlignment(.leading)
-                    if !expanded && conversations.contains(where: \.isUnread) {
-                        UnreadIndicator(isUnread: true)
-                    }
                     Spacer(minLength: 0)
                     if !expanded { SidebarActivitySummary(conversations: conversations) }
                 }

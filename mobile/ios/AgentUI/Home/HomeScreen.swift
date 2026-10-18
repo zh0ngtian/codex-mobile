@@ -96,6 +96,8 @@ struct SidebarActivitySummary: View {
             if conversations.contains(where: { $0.phase == .running }) {
                 ProgressView().progressViewStyle(.circular).controlSize(.mini)
                     .tint(.secondary).frame(width: 12, height: 12)
+            } else if unreadCount > 0 {
+                UnreadIndicator(isUnread: true).frame(width: 12, height: 12)
             }
             if pendingCount > 0 {
                 Text("\(pendingCount)")

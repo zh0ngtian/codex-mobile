@@ -50,10 +50,10 @@ struct OutputPreviewSheet: View {
             .background(AgentTheme.page)
             .navigationTitle(item.name).navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
+                ToolbarItem(placement: item.kind == .image ? .topBarTrailing : .topBarLeading) {
                     Button(preferences.text("关闭", "Close"), systemImage: "xmark", action: close)
                 }
-                ToolbarItemGroup(placement: .topBarTrailing) {
+                ToolbarItemGroup(placement: item.kind == .image ? .topBarLeading : .topBarTrailing) {
                     if supportsCopy {
                         Button(preferences.text("复制源码", "Copy source"), systemImage: "document.on.document", action: copySource)
                             .disabled(loaded == nil)

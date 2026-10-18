@@ -35,8 +35,8 @@ struct NativeImagePreview: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .navigationTitle(title).navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .confirmationAction) { Button(label("完成", "Done")) { dismiss() } }
-                ToolbarItem(placement: .primaryAction) {
+                ToolbarItem(placement: .topBarTrailing) { Button(label("关闭", "Close"), systemImage: "xmark") { dismiss() } }
+                ToolbarItem(placement: .topBarLeading) {
                     Button(label("下载原图", "Save Original"), systemImage: "arrow.down.doc") { exportOpen = true }
                         .disabled(exportDocument == nil)
                 }
