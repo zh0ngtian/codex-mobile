@@ -8,9 +8,9 @@ struct RunSpeedButton: View {
         Button { session.toggleMenuFast(context: context) } label: {
             Image(systemName: session.composer.configuration.speed.symbol)
                 .symbolVariant(.none)
-                .font(.body).imageScale(.large)
+                .font(.subheadline).imageScale(.large)
                 .foregroundStyle(AgentTheme.ink)
-                .frame(width: 44, height: 44)
+                .frame(width: 40, height: 44)
                 .contentShape(.rect)
         }
         .buttonStyle(.plain)

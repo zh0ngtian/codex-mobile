@@ -66,15 +66,20 @@ struct QueuedMessageCard: View {
                     .font(.body)
                     .foregroundStyle(.secondary)
             } else {
-                HStack(spacing: 14) {
-                    Button(preferences.text("编辑", "Edit"), systemImage: "pencil", action: beginEdit)
-                        .frame(minHeight: 44)
-                        .disabled(!canEdit)
-                    Spacer(minLength: 0)
-                    Button(preferences.text("取消排队", "Remove"), systemImage: "xmark", role: .destructive, action: cancel)
+                HStack(spacing: 12) {
+                    Button(preferences.text("取消", "Remove"), role: .destructive, action: cancel)
                         .frame(minHeight: 44)
                         .disabled(!canCancel)
                         .accessibilityLabel(preferences.text("取消排队消息", "Remove queued message"))
+                    Button(preferences.text("编辑", "Edit"), action: beginEdit)
+                        .frame(minHeight: 44)
+                        .disabled(!canEdit)
+                    if message.state == .queued {
+                        Button(preferences.text("改为引导", "Use as guidance"), action: steer)
+                            .frame(minHeight: 44)
+                            .disabled(!canSteer)
+                    }
+                    Spacer(minLength: 0)
                 }
                 .buttonStyle(.borderless)
                 if message.state == .failed {
@@ -88,12 +93,7 @@ struct QueuedMessageCard: View {
                             .foregroundStyle(.secondary)
                     }
                 }
-                if message.state == .queued {
-                    Button(preferences.text("改为引导", "Use as guidance"), systemImage: "arrow.turn.up.right", action: steer)
-                        .buttonStyle(.bordered)
-                        .frame(minHeight: 44)
-                        .disabled(!canSteer)
-                }
+
             }
         }
         .padding(14)

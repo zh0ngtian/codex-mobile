@@ -7,10 +7,6 @@ struct UserMessageView: View {
     let conversationID: UUID
     @Environment(\.colorScheme) private var colorScheme
     @State private var showTimestamp = false
-    @State private var expanded = false
-    @State private var fullHeight: CGFloat = 0
-    @State private var visibleHeight: CGFloat = 0
-    @State private var fullTextWidth: CGFloat = 0
     private static let leadingSpace: CGFloat = 30
     private static let rowSpacing: CGFloat = 8
     private static let horizontalPadding: CGFloat = 16
@@ -23,18 +19,11 @@ struct UserMessageView: View {
                     if !displayText.isEmpty {
                         Text(displayText).font(AgentTheme.body)
                             .foregroundStyle(preferences.accent.userMessageText(in: colorScheme))
-                            .lineLimit(expanded ? nil : 12).textSelection(.enabled)
-                            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { visibleHeight = $0 }
-                    }
-                    if expanded || fullHeight > visibleHeight + 1 {
-                        Button(expanded ? preferences.text("收起", "Show less") : preferences.text("展开更多", "Show more")) { expanded.toggle() }
-                            .buttonStyle(.plain)
-                            .font(AgentTheme.body).frame(minHeight: 44)
-                            .foregroundStyle(preferences.accent.userMessageText(in: colorScheme))
+                            .fixedSize(horizontal: false, vertical: true)
+                            .textSelection(.enabled)
                     }
                     if !message.attachments.isEmpty { MessageAttachmentCards(attachments: message.attachments) }
                 }
-                .frame(minWidth: fullTextWidth, alignment: .leading)
                 .padding(.horizontal, Self.horizontalPadding).padding(.vertical, 10)
                 .background(preferences.accent.userMessageBackground(in: colorScheme), in: .rect(cornerRadius: 23))
                 .contentShape(.rect)
@@ -55,17 +44,6 @@ struct UserMessageView: View {
                         .accessibilityIdentifier("message.user-time")
                 }
             }
-        }
-        .overlay {
-            // 完整正文在相同的最大可用宽度下测量，不受十二行折叠及按钮文案影响。
-            Text(displayText).font(AgentTheme.body)
-                .fixedSize(horizontal: false, vertical: true)
-                .onGeometryChange(for: CGSize.self) { $0.size } action: { size in
-                    fullTextWidth = size.width; fullHeight = size.height
-                }
-                .padding(.leading, Self.leadingSpace + Self.rowSpacing)
-                .padding(.horizontal, Self.horizontalPadding)
-                .hidden().accessibilityHidden(true).allowsHitTesting(false)
         }
     }
 }

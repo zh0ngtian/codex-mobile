@@ -48,7 +48,7 @@ describe("SwiftUI 原生宿主契约", () => {
     expect(source("NativeMarkdownBlockView")).toContain("compact: compact, scope: block.scope");
     expect(source("NativeMarkdownBlockView")).toContain("cellScopes: block.cellScopes");
     expect(source("NativeInlineContentView")).toContain("NativeMarkdownInlinePart.parse(text, scope: scope)");
-    expect(source("NativeInlineContentView")).toContain("NativeSelectableMarkdown.inline(part.text, scope: part.scope)");
+    expect(source("NativeInlineContentView")).toContain("NativeSelectableMarkdown.inline(part.text, scope: part.scope, font: .preferredFont(forTextStyle: textStyle), strong: strong)");
     expect(source("NativeSelectableMarkdown")).toContain("NativeInlineMarkdown.text(source, scope: scope)");
     expect(source("NativeInlineContentView")).toContain(".task(id: scope.identity + [text])");
     expect(source("NativeMarkdownTableView")).toContain("scope: cellScope(row: rowIndex, column: columnIndex)");

@@ -49,9 +49,6 @@ final class AgentConversationFixture {
         if ProcessInfo.processInfo.arguments.contains("--agent-steering-status-fixture") {
             value.messages.append(NativeMessage(id: "pending-steer", role: "activity", text: "正在引导的消息", status: "正在引导"))
         }
-        if ProcessInfo.processInfo.arguments.contains("--agent-collapse-threshold-fixture") {
-            value.messages[0].text = String(repeating: "折叠阈值检查\n", count: 10) + "第十一行"
-        }
         if ProcessInfo.processInfo.arguments.contains("--agent-edit-history-fixture") {
             value.messages[0].actions = [NativePanelItem(id: "edit", kind: "action", title: "编辑", command: NativeCommand(name: "message.edit", params: ["id": .string("question")]))]
         }
@@ -66,6 +63,20 @@ final class AgentConversationFixture {
             let url = "data:image/png;base64," + image.pngData()!.base64EncodedString()
             value.attachments = [NativeAttachment(id: "portrait", name: "竖屏测试.png", imageURL: url)]
             value.attachments[0].type = "image/png"
+        }
+        if ProcessInfo.processInfo.arguments.contains("--agent-queue-controls-fixture") {
+            value.busy = true
+            value.messages = []
+            value.queued = [NativeNavigationItem(id: "queue-controls", title: "队列按钮布局检查", inputText: "队列按钮布局检查", queueState: "queued", configuration: NativeQueueConfiguration(model: "Model A", effort: "low", permission: "workspace-write"))]
+        }
+        if ProcessInfo.processInfo.arguments.contains("--agent-table-controls-fixture") {
+            value.messages = [NativeMessage(id: "table-controls", role: "assistant", text: "| # | 问题 | 修复情况 |\n| --- | --- | --- |\n| 1 | 短列 | 这段表格正文必须在同一行完整显示并支持横向滚动，不能因为固定列宽自动折成多行。 |\n| 2 | 编辑消息 | 保留 **加粗** 和 [链接](https://example.com) |", phase: "final_answer")]
+        }
+        if ProcessInfo.processInfo.arguments.contains("--agent-confirmation-controls-fixture") {
+            value.panel = NativePanel(id: "confirmation:workspace:fixture:1", title: "确认操作", items: [
+                NativePanelItem(id: "confirmation-yes", kind: "action", title: "确认", text: "归档后，此会话将从列表中移除。确定归档吗？", command: NativeCommand(name: "confirmation.answer", params: ["key": .string("confirmation:workspace:fixture:1"), "confirmed": .bool(true)])),
+                NativePanelItem(id: "confirmation-no", kind: "action", title: "取消", command: NativeCommand(name: "confirmation.answer", params: ["key": .string("confirmation:workspace:fixture:1"), "confirmed": .bool(false)])),
+            ])
         }
         if ProcessInfo.processInfo.arguments.contains("--agent-short-question-fixture") { value.messages[0].text = "好" }
         if ProcessInfo.processInfo.arguments.contains("--agent-sidebar-polish-fixture") {
@@ -94,6 +105,11 @@ final class AgentConversationFixture {
                 NativePanelItem(id: "preview-image", kind: "image", title: "preview.png", value: "data:image/png;base64," + image.base64EncodedString()),
                 NativePanelItem(id: "preview-file", kind: "html", title: "preview.html", value: "data:text/html;base64," + html.base64EncodedString()),
             ]))
+        }
+        if ProcessInfo.processInfo.arguments.contains("--agent-inline-image-preview-fixture") {
+            let image = UIImage(systemName: "photo")!.withTintColor(.gray, renderingMode: .alwaysOriginal).pngData()!
+            let source = "data:image/png;base64," + image.base64EncodedString()
+            value.messages = [NativeMessage(id: "inline-image", role: "assistant", text: "![内联预览图片](\(source))", phase: "final_answer")]
         }
         if ProcessInfo.processInfo.arguments.contains("--agent-usage-polish-fixture") {
             value.tokenUsage = NativeTokenUsage(lastRequestTokens: 250, modelContextWindow: 1000, inputTokens: 12345, cachedInputTokens: ProcessInfo.processInfo.arguments.contains("--agent-usage-cache-fixture") ? 0 : nil, outputTokens: 25)
@@ -151,6 +167,18 @@ final class AgentConversationFixture {
                 self.publish()
             }
         }
+        if ProcessInfo.processInfo.arguments.contains("--agent-approval-during-confirmation-fixture") {
+            Task { [weak self] in
+                try? await Task.sleep(for: .seconds(6))
+                guard let self else { return }
+                self.snapshot.approvalCount = 1
+                self.snapshot.approvalPanel = NativePanel(id: "approval:arriving-fixture", title: "操作审批", items: [
+                    NativePanelItem(id: "approval-thread-id", kind: "text", text: "conversation-ui-thread"),
+                    NativePanelItem(id: "allow-once", kind: "action", title: "仅允许这次", value: "\"accept\"", command: NativeCommand(name: "approval.decide", params: ["requestId": .string("arriving-fixture"), "decision": .string("accept")])),
+                ])
+                self.publish()
+            }
+        }
         if ProcessInfo.processInfo.arguments.contains("--agent-model-catalog-fixture") {
             Task { [weak self] in
                 for tick in 0..<600 {
@@ -165,7 +193,12 @@ final class AgentConversationFixture {
 
     private func publish() { store.receive(snapshot); session.receive(snapshot) }
     private func dispatch(_ command: NativeCommand) {
-        if command.name == "project.toggle", case .string(let id) = command.params["id"],
+        if command.name == "confirmation.answer" {
+            let approved = command.params["confirmed"] == .bool(true)
+            snapshot.panel = nil
+            snapshot.messages = [NativeMessage(id: "confirmation-result", role: "assistant", text: approved ? "确认已执行" : "已取消", phase: "final_answer")]
+            publish()
+        } else if command.name == "project.toggle", case .string(let id) = command.params["id"],
            let index = snapshot.groups.firstIndex(where: { $0.id == id }) {
             snapshot.groups[index].collapsed = !(snapshot.groups[index].collapsed ?? false)
             publish()

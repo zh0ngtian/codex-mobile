@@ -24,32 +24,40 @@ struct ConversationHeader: ViewModifier {
             .modifier(ConversationSubtitle(title: title, subtitle: subtitle))
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button { session.sidebarVisible = true } label: { Image(systemName: "line.3.horizontal").fontWeight(.regular) }
+                    Button { session.sidebarVisible = true } label: { Image(systemName: "line.3.horizontal").font(.system(size: 20, weight: .regular)).frame(width: 20, height: 20) }
+                        .frame(width: 44, height: 44)
                         .accessibilityLabel(preferences.text("会话列表", "Conversation list"))
                 }
-                ToolbarItemGroup(placement: .topBarTrailing) {
-                    Button { usagePresented.toggle() } label: {
-                        NativeUsageIcon()
-                            .frame(width: 20, height: 20)
-                    }
-                    .accessibilityLabel(preferences.text("用量与额度", "Usage and limits"))
-                    .accessibilityIdentifier("header.usage")
-                    .accessibilityValue(contextUsed.map { "已用 \(Int(($0 * 100).rounded()))%" } ?? "暂无上下文用量")
-                    .popover(isPresented: $usagePresented) {
-                        UsagePopover(conversationID: conversationID, deviceID: conversation?.deviceID ?? session.composer.deviceID, dismiss: { usagePresented = false })
-                    }
-                    Button { session.beginNewConversation() } label: { Image(systemName: "square.and.pencil").fontWeight(.regular).frame(width: 20, height: 20) }
-                        .accessibilityLabel(preferences.text("新建对话", "New conversation"))
-                        .accessibilityIdentifier("header.newConversation")
-                    Menu {
-                        if let conversationID { ConversationMenuActions(conversationID: conversationID) }
-                        else {
-                            Button(preferences.text("保存草稿", "Save draft"), systemImage: "square.and.arrow.down") { _ = session.saveDraft() }
-                                .disabled(!session.canSaveDraft)
+                ToolbarItem(placement: .topBarTrailing) {
+                    HStack(spacing: 0) {
+                        Button { usagePresented.toggle() } label: {
+                            NativeUsageIcon()
+                                .frame(width: 20, height: 20)
                         }
-                    } label: { Image(systemName: "ellipsis").fontWeight(.regular).frame(width: 20, height: 20) }
-                    .accessibilityLabel(preferences.text("会话操作", "Conversation actions"))
-                    .accessibilityIdentifier("conversation.actions")
+                        .frame(width: 44, height: 44)
+                        .accessibilityLabel(preferences.text("用量与额度", "Usage and limits"))
+                        .accessibilityIdentifier("header.usage")
+                        .accessibilityValue(contextUsed.map { "已用 \(Int(($0 * 100).rounded()))%" } ?? "暂无上下文用量")
+                        .popover(isPresented: $usagePresented) {
+                            UsagePopover(conversationID: conversationID, deviceID: conversation?.deviceID ?? session.composer.deviceID, dismiss: { usagePresented = false })
+                        }
+                        Button { session.beginNewConversation() } label: { Image(systemName: "square.and.pencil").fontWeight(.regular).frame(width: 20, height: 20) }
+                            .frame(width: 44, height: 44)
+                            .accessibilityLabel(preferences.text("新建对话", "New conversation"))
+                            .accessibilityIdentifier("header.newConversation")
+                        Menu {
+                            if let conversationID { ConversationMenuActions(conversationID: conversationID) }
+                            else {
+                                Button(preferences.text("保存草稿", "Save draft"), systemImage: "square.and.arrow.down") { _ = session.saveDraft() }
+                                    .disabled(!session.canSaveDraft)
+                            }
+                        } label: { Image(systemName: "ellipsis").fontWeight(.regular).frame(width: 20, height: 20) }
+                        .frame(width: 44, height: 44)
+                        .accessibilityLabel(preferences.text("会话操作", "Conversation actions"))
+                        .accessibilityIdentifier("conversation.actions")
+                    }
+                    .font(.system(size: 20, weight: .regular))
+                    .buttonStyle(.plain)
                 }
             }
             .tint(AgentTheme.ink)

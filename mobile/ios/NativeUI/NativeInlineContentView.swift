@@ -5,6 +5,8 @@ struct NativeInlineContentView: View {
     let store: NativeUIStore?
     var compact = false
     var scope = NativeMarkdownHTMLScope()
+    var textStyle: UIFont.TextStyle = .body
+    var strong = false
     @State private var parts: [NativeMarkdownInlinePart] = []
     @Environment(\.openURL) private var openURL
     var body: some View {
@@ -12,7 +14,7 @@ struct NativeInlineContentView: View {
             ForEach(parts) { part in
                 if let source = part.destination { NativeMarkdownImageView(source: source, title: part.text, store: store) }
                 else {
-                    NativeSelectableText(text: NativeSelectableMarkdown.inline(part.text, scope: part.scope),
+                    NativeSelectableText(text: NativeSelectableMarkdown.inline(part.text, scope: part.scope, font: .preferredFont(forTextStyle: textStyle), strong: strong),
                                          identifier: "markdown.selectable", openLink: { openURL($0) })
                         .frame(maxWidth: compact ? nil : .infinity, alignment: .leading)
                 }

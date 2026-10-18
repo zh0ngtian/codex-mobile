@@ -9,7 +9,6 @@ struct ChatListRow: View {
     var body: some View {
         Button { session.open(conversation.id) } label: {
             HStack(alignment: .top, spacing: 8) {
-                UnreadIndicator(isUnread: conversation.isUnread).padding(.top, 6)
                 VStack(alignment: .leading, spacing: 5) {
                     HStack(alignment: .top, spacing: 4) {
                         Text(conversation.title)
@@ -28,6 +27,9 @@ struct ChatListRow: View {
                                     .padding(.top, 6)
                                     .accessibilityHidden(true)
                             }
+                        } else if conversation.isUnread {
+                            UnreadIndicator(isUnread: true)
+                                .frame(width: 12, height: 12).padding(.top, 3)
                         }
                     }
                     if statusTitle != nil || pendingCount > 0 {
@@ -51,7 +53,7 @@ struct ChatListRow: View {
                     }
                 }
             }
-            .padding(.leading, conversation.isPinned ? 0 : 5)
+            .padding(.leading, conversation.isPinned ? 14 : 19)
             .padding(.trailing, 5)
             .padding(.leading, indented ? 20 : 0)
             .padding(.vertical, 6)

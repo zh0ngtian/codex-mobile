@@ -6,7 +6,7 @@ const view = (name: string) => readFileSync(`mobile/ios/AgentUI/Chat/${name}.swi
 it('用户气泡正文与高度测量使用相同可见文本，复制继续使用原文', () => {
   const source = view('UserMessageView');
   expect(source).toContain('UserMessageText.visible(message.text)');
-  expect(source.match(/Text\(displayText\)/g)).toHaveLength(2);
+  expect(source.match(/Text\(displayText\)/g)).toHaveLength(1);
   expect(source).not.toContain('Text(message.text)');
   expect(source).toContain('Clipboard.copy(message.text)');
 });

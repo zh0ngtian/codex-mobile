@@ -9,6 +9,8 @@ struct RootView: View {
     @State private var addDeviceRequested = false
     @State private var offeredFirstDevice = false
     @State private var renameText = ""
+    @State private var answeredConfirmationID: String?
+    @State private var confirmationClosingID: String?
 
     var body: some View {
         AgentDrawer(isOpen: Binding(get: { sidebarIsVisible }, set: { session.sidebarVisible = $0 }),
@@ -28,10 +30,30 @@ struct RootView: View {
             }
         }
         .foregroundStyle(AgentTheme.ink)
+        .background {
+            ConfirmationDismissalObserver(closingID: confirmationClosingID, panelID: session.nativePanel?.id) { id in
+                guard confirmationClosingID == id else { return }
+                confirmationClosingID = nil
+                synchronizePresentation()
+            }
+            .frame(width: 0, height: 0).accessibilityHidden(true)
+        }
         .sheet(item: modalBinding, onDismiss: modalDidDismiss) { destination in
             modalContent(destination)
                 .presentationDetents([.large])
                 .interactiveDismissDisabled(destination.requiresExplicitDismissal || (session.nativePanel?.dismissible == false && destination.id.hasPrefix("native-panel-")))
+        }
+        .alert(confirmationPanel?.title ?? preferences.text("确认操作", "Confirm"), isPresented: confirmationPresented, presenting: confirmationPanel) { panel in
+            ForEach(panel.items.filter { $0.id == "confirmation-yes" || $0.id == "confirmation-no" }) { item in
+                Button(item.title ?? "", role: item.id == "confirmation-no" ? .cancel : .destructive) {
+                    confirmationClosingID = panel.id
+                    answeredConfirmationID = panel.id
+                    session.perform(item.command)
+                }
+                .disabled(item.disabled == true)
+            }
+        } message: { panel in
+            Text(panel.items.first(where: { $0.id == "confirmation-yes" })?.text ?? "")
         }
         .alert(preferences.text("重命名会话", "Rename conversation"), isPresented: renamePresented, presenting: session.renameTargetID) { id in
             TextField(preferences.text("会话名称", "Conversation name"), text: $renameText)
@@ -40,7 +62,7 @@ struct RootView: View {
                 .disabled(!canSaveRename(id))
         }
         .tint(AgentTheme.ink)
-        .confirmationDialog(preferences.text("归档并丢弃排队消息？", "Archive and discard queued messages?"), isPresented: archivePresented, titleVisibility: .visible, presenting: session.archiveTargetID) { id in
+        .alert(preferences.text("归档并丢弃排队消息？", "Archive and discard queued messages?"), isPresented: archivePresented, presenting: session.archiveTargetID) { id in
             Button(preferences.text("归档并丢弃队列", "Archive and discard queue"), role: .destructive) { confirmArchive(id) }
             Button(preferences.text("取消", "Cancel"), role: .cancel) { session.archiveTargetID = nil }
         } message: { _ in
@@ -71,6 +93,10 @@ struct RootView: View {
         .onChange(of: session.inputModalPresented) { synchronizePresentation() }
         .onChange(of: session.renameTargetID) { renameTargetChanged() }
         .onChange(of: session.archiveTargetID) { synchronizePresentation() }
+        .onChange(of: session.nativePanel?.id) {
+            answeredConfirmationID = nil
+            synchronizePresentation()
+        }
     }
 
     @ViewBuilder private var mainContent: some View {
@@ -118,7 +144,7 @@ struct RootView: View {
     private var canUseSidebarGesture: Bool {
         !session.devices.isEmpty && !session.inputModalPresented &&
         session.historyEdit == nil && modal == nil && !waitingForDismissal &&
-        session.renameTargetID == nil && session.archiveTargetID == nil
+        session.renameTargetID == nil && session.archiveTargetID == nil && confirmationPanel == nil && confirmationClosingID == nil
     }
     private func otherDeviceBanner(_ device: BackendDevice) -> some View {
         Button {
@@ -181,7 +207,7 @@ struct RootView: View {
     }
 
     private func isOwnedPanel(_ id: String) -> Bool {
-        id == "devices" || id == "drafts" || id.hasPrefix("settings:") || id.hasPrefix("approval:") || id.hasPrefix("history-edit:") ||
+        confirmationPanel?.id == id || id == "devices" || id == "drafts" || id.hasPrefix("settings:") || id.hasPrefix("approval:") || id.hasPrefix("history-edit:") ||
         (id.hasPrefix("attachment:") && session.previewItem != nil)
     }
 
@@ -216,7 +242,7 @@ struct RootView: View {
             }
             return
         }
-        guard !waitingForDismissal, !session.inputModalPresented,
+        guard !waitingForDismissal, !session.inputModalPresented, confirmationPanel == nil, confirmationClosingID == nil,
               session.renameTargetID == nil, session.archiveTargetID == nil,
               let requestedModal = presentationRequests.first else { return }
         session.inputFocused = false
@@ -249,6 +275,21 @@ struct RootView: View {
         synchronizePresentation()
     }
 
+    private var confirmationPanel: NativePanel? {
+        guard let panel = session.nativePanel, panel.id.hasPrefix("confirmation:"),
+              ["confirmation-yes", "confirmation-no"].allSatisfy({ id in
+                  panel.items.contains { $0.id == id && $0.command?.name == "confirmation.answer" }
+              }) else { return nil }
+        return panel
+    }
+    private var confirmationPresented: Binding<Bool> {
+        Binding(get: {
+            guard let panel = confirmationPanel else { return false }
+            return confirmationClosingID == nil && answeredConfirmationID != panel.id && modal == nil && !waitingForDismissal && session.renameTargetID == nil
+        }, set: { _ in
+            // 系统alert仅由显式按钮结算；不把自动关闭回写成第二个取消请求。
+        })
+    }
     private var renamePresented: Binding<Bool> {
         Binding(get: { session.renameTargetID != nil }, set: { if !$0 { session.renameTargetID = nil } })
     }
