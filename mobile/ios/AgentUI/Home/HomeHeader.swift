@@ -41,15 +41,10 @@ struct HomeHeader: View {
                 .accessibilityLabel(preferences.text("Codex 菜单", "Codex menu"))
                 .accessibilityIdentifier("sidebar.codexMenu")
                 .accessibilityValue(scopeTitle)
-                Button(action: toggleSearch) {
-                    Image(systemName: session.searchVisible ? "xmark" : "magnifyingglass")
-                        .font(.title3.weight(.light))
-                        .frame(width: 44, height: 44)
-                        .contentShape(.rect)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(session.searchVisible ? preferences.text("收起并清空搜索", "Close and clear search") : preferences.text("搜索会话", "Search conversations"))
-                .accessibilityIdentifier("sidebar.search")
+                SidebarIconButton(
+                    systemImage: session.searchVisible ? "xmark" : "magnifyingglass",
+                    title: session.searchVisible ? preferences.text("收起并清空搜索", "Close and clear search") : preferences.text("搜索会话", "Search conversations"),
+                    identifier: "sidebar.search", action: toggleSearch)
             }
         }
         .buttonStyle(.plain)

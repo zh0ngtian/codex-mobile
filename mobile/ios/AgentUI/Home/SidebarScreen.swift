@@ -57,22 +57,8 @@ struct SidebarScreen: View {
                 .accessibilityLabel(preferences.text("Chat，开始新对话", "Chat, start a new conversation"))
                 .accessibilityIdentifier("sidebar.askCodex")
                 Spacer()
-                Button { session.settingsPresented = true } label: {
-                    Image(systemName: "gearshape")
-                        .font(.title3.weight(.light))
-                        .frame(width: 22, height: 32)
-                        .foregroundStyle(AgentTheme.ink)
-                }
-                .modifier(AgentGlassButton(circular: true))
-                .controlSize(.regular)
-                .tint(AgentTheme.page)
-                .clipShape(.circle)
-                .overlay {
-                    Circle().strokeBorder(AgentTheme.ink.opacity(0.08), lineWidth: 0.5).allowsHitTesting(false)
-                }
-                .shadow(color: .black.opacity(0.02), radius: 2, y: 1)
-                .accessibilityLabel(preferences.text("设置", "Settings"))
-                .accessibilityIdentifier("sidebar.settings")
+                SidebarIconButton(systemImage: "gearshape", title: preferences.text("设置", "Settings"),
+                                  identifier: "sidebar.settings") { session.settingsPresented = true }
             }
             .padding(.leading, 34)
             .padding(.trailing, 20)
