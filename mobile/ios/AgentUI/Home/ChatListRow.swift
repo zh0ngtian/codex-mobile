@@ -51,7 +51,8 @@ struct ChatListRow: View {
                     }
                 }
             }
-            .padding(.horizontal, 5)
+            .padding(.leading, conversation.isPinned ? 0 : 5)
+            .padding(.trailing, 5)
             .padding(.leading, indented ? 20 : 0)
             .padding(.vertical, 6)
             .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
@@ -61,6 +62,7 @@ struct ChatListRow: View {
         .buttonStyle(.plain)
         .contextMenu { ConversationMenuActions(conversationID: conversation.id).tint(AgentTheme.ink) }
         .accessibilityLabel(accessibilityTitle)
+        .accessibilityValue(conversation.isPinned ? preferences.text("已关注", "Following") : "")
         .accessibilityIdentifier("sidebar.conversation.\(conversation.id)")
     }
 

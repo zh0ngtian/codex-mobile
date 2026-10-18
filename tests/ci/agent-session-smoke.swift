@@ -3,6 +3,10 @@ import Foundation
 @main
 struct AgentSessionSmoke {
     @MainActor static func main() async {
+        verifyComposerMenuBusinessValues()
+        verifyInteractiveSidebarBounds()
+        verifyIndependentModelEfforts()
+        verifyHiddenExecutionActivities()
         verifyBusinessProjectOrder()
         verifyProjectChoiceNames()
         verifyHistoryAggregateScrollAliases()
@@ -217,6 +221,111 @@ struct AgentSessionSmoke {
         precondition(session.historyScrollMessageID(in: conversationID, previousID: previousID, anchorID: "不匹配") == nil)
         precondition(session.historyScrollMessageID(in: UUID(), previousID: previousID, anchorID: anchor) == nil)
         precondition(session.historyScrollAnchor(for: UUID()) == nil)
+    }
+    @MainActor static func verifyComposerMenuBusinessValues() {
+        let store = NativeUIStore(arguments: [])
+        let session = AppSession(store: store)
+        var state = NativeSnapshot()
+        state.ready = true; state.connection = "online"; state.backendId = "device"; state.contextId = "menu-context"
+        state.backends = [NativeBackend(id: "device", title: "Mac", connected: true)]
+        state.models = [NativeOption(id: "a", title: "A", value: "raw-a"), NativeOption(id: "b", title: "B", value: "raw-b")]
+        state.modelValue = "raw-a"
+        state.efforts = [NativeOption(id: "low", title: "低", value: "effort-low"), NativeOption(id: "high", title: "高", value: "effort-high")]
+        state.effortValue = "effort-low"
+        state.speeds = [NativeOption(id: "normal", title: "普通速度", value: ""), NativeOption(id: "fast", title: "Fast", value: "priority")]
+        state.speedValue = ""
+        var commands: [NativeCommand] = []
+        store.sendCommand = { commands.append($0) }
+        func publish() { store.receive(state); session.receive(state) }
+        publish()
+        session.toggleMenuFast(context: "menu-context")
+        session.toggleMenuFast(context: "menu-context")
+        precondition(commands.map { $0.params["value"] } == [.string("priority"), .string("")], "连续点击Fast即使快照尚未更新也必须提交最后的关闭意图")
+        publish(); commands.removeAll()
+        session.chooseMenuEffort("effort-high", context: "menu-context")
+        session.chooseMenuEffort("effort-low", context: "menu-context")
+        precondition(commands.map { $0.params["value"] } == [.string("effort-high"), .string("effort-low")], "强度连续选择必须以最后一次为准")
+        publish(); commands.removeAll()
+        session.chooseMenuModel("raw-b", context: "menu-context")
+        session.chooseMenuModel("raw-a", context: "menu-context")
+        precondition(commands.map { $0.params["value"] } == [.string("raw-b"), .string("raw-a")], "模型连续选择必须以最后一次为准")
+        publish(); commands.removeAll()
+        session.chooseMenuEffort("effort-high", context: "menu-context")
+        precondition(commands.last?.name == "effort.select" && commands.last?.params["value"] == .string("effort-high"))
+        publish(); commands.removeAll()
+        session.chooseMenuModel("raw-b", context: "old-context")
+        session.chooseMenuEffort("effort-high", context: "old-context")
+        session.toggleMenuFast(context: "old-context")
+        precondition(commands.isEmpty, "旧会话菜单不能向当前会话提交")
+        session.toggleMenuFast(context: "menu-context")
+        precondition(commands.last?.name == "speed.select" && commands.last?.params["value"] == .string("priority"))
+        state.speedValue = "priority"; publish(); commands.removeAll()
+        session.toggleMenuFast(context: "menu-context")
+        precondition(commands.last?.params["value"] == .string(""), "关闭Fast仍使用业务提供的普通速度值")
+        publish(); commands.removeAll()
+        session.chooseMenuModel("raw-b", context: "menu-context")
+        precondition(commands.map(\.name) == ["model.select"] && commands.last?.params["value"] == .string("raw-b"))
+        commands.removeAll()
+        session.chooseMenuEffort("effort-high", context: "menu-context")
+        session.toggleMenuFast(context: "menu-context")
+        precondition(commands.isEmpty, "切换模型等待快照时不能提交旧模型的档位或速度")
+        state.readOnly = true; publish()
+        session.toggleMenuFast(context: "menu-context")
+        session.chooseMenuModel("raw-b", context: "menu-context")
+        precondition(commands.isEmpty)
+    }
+    static func verifyInteractiveSidebarBounds() {
+        precondition(SidebarPresentation.width(in: 400) == 320)
+        precondition(SidebarPresentation.offset(isOpen: false, translation: 120, containerWidth: 400) == 120)
+        precondition(SidebarPresentation.offset(isOpen: true, translation: -100, containerWidth: 400) == 220)
+        precondition(SidebarPresentation.offset(isOpen: false, translation: 800, containerWidth: 400) == 320)
+        precondition(SidebarPresentation.offset(isOpen: true, translation: -800, containerWidth: 400) == 0)
+        precondition(!SidebarPresentation.accepts(startX: 8, dx: 30, dy: 100, isOpen: false), "纵向阅读不触发抽屉")
+        precondition(SidebarPresentation.accepts(startX: 120, dx: 100, dy: 0, isOpen: false), "普通内容区右滑也应打开侧栏")
+        precondition(SidebarPresentation.accepts(startX: 8, dx: 100, dy: 3, isOpen: false))
+        precondition(SidebarPresentation.accepts(startX: 250, dx: -100, dy: 3, isOpen: true))
+        precondition(SidebarPresentation.targetIsOpen(isOpen: false, predictedTranslation: 260, containerWidth: 400))
+        precondition(!SidebarPresentation.targetIsOpen(isOpen: false, predictedTranslation: 60, containerWidth: 400), "不足半程应回到原位")
+        precondition(!SidebarPresentation.targetIsOpen(isOpen: true, predictedTranslation: -250, containerWidth: 400))
+        precondition(SidebarPresentation.width(in: .nan) == 0)
+    }
+    @MainActor static func verifyIndependentModelEfforts() {
+        let store = NativeUIStore(arguments: [])
+        let session = AppSession(store: store)
+        var state = NativeSnapshot()
+        state.ready = true; state.connection = "online"; state.backendId = "device"; state.contextId = "models"
+        state.backends = [NativeBackend(id: "device", title: "Mac", connected: true)]
+        let low = NativeOption(id: "low", title: "低", value: "low")
+        let high = NativeOption(id: "high", title: "高", value: "high")
+        let medium = NativeOption(id: "medium", title: "中", value: "medium")
+        state.models = [NativeOption(id: "a", title: "A", value: "a", efforts: [low, high], defaultEffort: "high"), NativeOption(id: "b", title: "B", value: "b", efforts: [medium], defaultEffort: "medium")]
+        state.modelValue = "a"; state.efforts = [low, high]; state.effortValue = "low"
+        var commands: [NativeCommand] = []
+        store.sendCommand = { commands.append($0) }
+        store.receive(state); session.receive(state)
+        precondition(session.currentCapabilities.levels(for: "A") == ["低", "高"])
+        precondition(session.currentCapabilities.levels(for: "B") == ["中"])
+        precondition(session.currentCapabilities.levels(for: "unknown").isEmpty)
+        session.composer.configuration.model = "B"; session.composer.configuration.reasoning = 1
+        session.configurationDidChange()
+        precondition(commands.map(\.name) == ["model.select"], "模型切换不能顺带提交旧模型的强度下标")
+        state.modelValue = "b"; state.efforts = [medium]; state.effortValue = "medium"
+        store.receive(state); session.receive(state)
+        precondition(session.composer.configuration.model == "B" && session.composer.configuration.reasoning == 0)
+    }
+    @MainActor static func verifyHiddenExecutionActivities() {
+        let session = AppSession()
+        var state = NativeSnapshot()
+        state.backendId = "device"; state.threadId = "thread"; state.contextId = "hidden-tools"
+        state.messages = [NativeMessage(id: "commentary", role: "assistant", text: "正在读取项目", phase: "commentary"),
+            NativeMessage(id: "tool", role: "activity", text: "工具调用", activityKind: "tool"),
+            NativeMessage(id: "reasoning", role: "activity", text: "推理", activityKind: "reasoning"),
+            NativeMessage(id: "plan", role: "activity", text: "执行计划", activityKind: "plan"),
+            NativeMessage(id: "final", role: "assistant", text: "完成", phase: "final_answer")]
+        session.receive(state)
+        precondition(session.selectedConversation?.messages.map(\.text) == ["正在读取项目", "完成"], "执行过程只展示commentary")
+        precondition(session.selectedConversation?.messages.first?.kind == "commentary", "独立commentary保留灰线语义")
+        precondition(session.nativeSnapshot.messages.count == 5, "隐藏工具仅影响展示，不得删除业务记录")
     }
     static func markLive(_ value: NativeMessage, _ marked: Bool? = true) -> NativeMessage {
         var object = try! JSONSerialization.jsonObject(with: JSONEncoder().encode(value)) as! [String: Any]

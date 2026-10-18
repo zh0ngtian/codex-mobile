@@ -11,43 +11,21 @@ struct RootView: View {
     @State private var renameText = ""
 
     var body: some View {
-        NavigationStack {
-            GeometryReader { geometry in
-                ZStack(alignment: .leading) {
-                    VStack(spacing: 0) {
-                        if !session.sidebarVisible {
-                            if let device = bannerDevice {
-                                otherDeviceBanner(device)
-                            }
-                        }
-                        mainContent
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .accessibilityElement(children: .contain)
-                    .allowsHitTesting(!sidebarIsVisible)
-                    .accessibilityHidden(sidebarIsVisible)
-                    if sidebarIsVisible {
-                        Color.black.opacity(0.18)
-                            .ignoresSafeArea()
-                            .contentShape(.rect)
-                            .onTapGesture { session.sidebarVisible = false }
-                            .accessibilityLabel(preferences.text("收起会话侧栏", "Close conversation sidebar"))
-                            .accessibilityAddTraits(.isButton)
-                        SidebarScreen()
-                            .accessibilityElement(children: .contain)
-                            .frame(width: geometry.size.width * 4 / 5, height: geometry.size.height)
-                            .background(AgentTheme.page.ignoresSafeArea(edges: .vertical))
-                            .overlay(alignment: .trailing) { Rectangle().fill(AgentTheme.line).frame(width: 0.5) }
-                            .transition(.move(edge: .leading))
-                            .zIndex(1)
-                    }
+        AgentDrawer(isOpen: Binding(get: { sidebarIsVisible }, set: { session.sidebarVisible = $0 }),
+                    gesturesEnabled: canUseSidebarGesture) {
+            NavigationStack {
+                VStack(spacing: 0) {
+                    if !session.sidebarVisible, let device = bannerDevice { otherDeviceBanner(device) }
+                    mainContent
                 }
-                .contentShape(.rect)
-                .simultaneousGesture(sidebarGesture)
-                .animation(.easeInOut(duration: 0.22), value: sidebarIsVisible)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(AgentTheme.page)
+                .toolbarVisibility(session.nativeSnapshot.ready && !session.devices.isEmpty ? .visible : .hidden, for: .navigationBar)
             }
-            .background(AgentTheme.page)
-            .toolbarVisibility(!sidebarIsVisible && session.nativeSnapshot.ready && !session.devices.isEmpty ? .visible : .hidden, for: .navigationBar)
+        } sidebar: {
+            NavigationStack {
+                SidebarScreen().toolbarVisibility(.hidden, for: .navigationBar)
+            }
         }
         .foregroundStyle(AgentTheme.ink)
         .sheet(item: modalBinding, onDismiss: modalDidDismiss) { destination in
@@ -61,6 +39,7 @@ struct RootView: View {
             Button(preferences.text("保存", "Save")) { saveRename(id) }
                 .disabled(!canSaveRename(id))
         }
+        .tint(AgentTheme.ink)
         .confirmationDialog(preferences.text("归档并丢弃排队消息？", "Archive and discard queued messages?"), isPresented: archivePresented, titleVisibility: .visible, presenting: session.archiveTargetID) { id in
             Button(preferences.text("归档并丢弃队列", "Archive and discard queue"), role: .destructive) { confirmArchive(id) }
             Button(preferences.text("取消", "Cancel"), role: .cancel) { session.archiveTargetID = nil }
@@ -137,23 +116,10 @@ struct RootView: View {
         session.selectedDeviceID == nil ? nil : session.pendingOtherDevices.first
     }
     private var canUseSidebarGesture: Bool {
-        !session.devices.isEmpty && !session.inputFocused && !session.inputModalPresented &&
+        !session.devices.isEmpty && !session.inputModalPresented &&
         session.historyEdit == nil && modal == nil && !waitingForDismissal &&
         session.renameTargetID == nil && session.archiveTargetID == nil
     }
-    private var sidebarGesture: some Gesture {
-        DragGesture(minimumDistance: 24, coordinateSpace: .local)
-            .onEnded { value in
-                guard canUseSidebarGesture,
-                      abs(value.translation.width) > max(45, abs(value.translation.height) * 1.3) else { return }
-                if sidebarIsVisible && value.translation.width < 0 {
-                    session.sidebarVisible = false
-                } else if !sidebarIsVisible && value.startLocation.x <= 24 && value.translation.width > 0 {
-                    session.sidebarVisible = true
-                }
-            }
-    }
-
     private func otherDeviceBanner(_ device: BackendDevice) -> some View {
         Button {
             session.selectListDevice(device.id)

@@ -26,7 +26,7 @@ struct CommentaryHistoryView: View {
                         if !entry.timestampLabel.isEmpty {
                             Text(entry.timestampLabel).font(.body).foregroundStyle(.secondary)
                         }
-                        Divider()
+                        Divider().accessibilityIdentifier("commentary.separator")
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }

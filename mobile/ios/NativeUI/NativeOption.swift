@@ -5,4 +5,6 @@ struct NativeOption: Codable, Identifiable {
     var title: String
     var value: String
     var subtitle: String? = nil
+    var efforts: [NativeOption]? = nil
+    var defaultEffort: String? = nil
 }

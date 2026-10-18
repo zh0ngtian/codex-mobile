@@ -19,12 +19,9 @@ struct OutputImageCard: View {
                 } else if failed {
                     Image(systemName: "photo.badge.exclamationmark").font(.title).frame(height: 90)
                 } else { ProgressView().frame(height: 90) }
-                Label(item.name, systemImage: "arrow.up.left.and.arrow.down.right")
-                    .font(.body).foregroundStyle(.secondary).lineLimit(1)
             }
-            .padding(10).frame(maxWidth: .infinity)
-            .background(AgentTheme.card, in: .rect(cornerRadius: 16))
-            .overlay { RoundedRectangle(cornerRadius: 16).strokeBorder(AgentTheme.line) }
+            .frame(maxWidth: .infinity)
+            .clipShape(.rect(cornerRadius: 16))
         }
         .buttonStyle(.plain)
         .foregroundStyle(AgentTheme.ink)

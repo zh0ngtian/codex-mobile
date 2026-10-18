@@ -30,6 +30,10 @@ final class AgentConversationFixture {
         value.model = "Model A"; value.modelValue = "model-a"
         value.efforts = [NativeOption(id: "low", title: "Low", value: "low"), NativeOption(id: "medium", title: "Medium", value: "medium"), NativeOption(id: "high", title: "High", value: "high")]
         value.effortValue = "low"
+        if ProcessInfo.processInfo.arguments.contains("--agent-fast-fixture") {
+            value.speeds = [NativeOption(id: "normal", title: "普通速度", value: ""), NativeOption(id: "fast", title: "Fast", value: "priority")]
+            value.speedValue = ""
+        }
         value.olderTurnsState = "idle"
         value.conversationActions = [NativePanelItem(id: "older", kind: "action", title: "加载更早消息", command: NativeCommand(name: "thread.older"))]
         let history = NativeMessage(id: "history", role: "activity", text: "", blocks: [NativePanelItem(id: "history-block", kind: "disclosure", title: "历史过程 (2)")], turnId: "fixture-turn", commentary: entries, commentaryBlockId: "history-block", commentaryCanAttachToReply: true)
@@ -38,7 +42,7 @@ final class AgentConversationFixture {
             history,
             NativeMessage(id: "answer", role: "assistant", text: "已完成检查。查看 [网页链接](https://example.com) 与 [文件链接](/tmp/example.swift#L12)。", timestamp: date.addingTimeInterval(120).timeIntervalSince1970, turnId: "fixture-turn", phase: "final_answer"),
         ]
-        value.messages[2].status = "用时 1 小时 2 分钟 3 秒"
+        value.messages[2].status = "1小时2分钟3秒"
         if ProcessInfo.processInfo.arguments.contains("--agent-short-question-fixture") { value.messages[0].text = "好" }
         if ProcessInfo.processInfo.arguments.contains("--agent-sidebar-polish-fixture") {
             value.messages[0].text = String(repeating: "短行\n", count: 6) + "这是一条展开后才显示的较长正文，用于确认消息气泡在展开更多和收起时保持同样的宽度。"
@@ -48,6 +52,10 @@ final class AgentConversationFixture {
                     isUnread: key == "a", running: key == "z")
                 return NativeGroup(id: "project-" + key, title: title, items: [item], collapsed: false, category: "project", cwd: "/" + title)
             }
+        }
+        if ProcessInfo.processInfo.arguments.contains("--agent-sidebar-polish-fixture") {
+            value.groups.insert(NativeGroup(id: "fixture-pinned", title: "", items: [NativeNavigationItem(
+                id: "pinned-fixture", title: "关注的会话", command: NativeCommand(name: "thread.open", params: ["backendId": .string("conversation-ui-device"), "threadId": .string("conversation-ui-thread")]), isPinned: true)], category: "pinned"), at: 0)
         }
         if ProcessInfo.processInfo.arguments.contains("--agent-conversation-long-fixture") {
             value.messages += (1...14).map { index in
@@ -77,22 +85,83 @@ final class AgentConversationFixture {
             value.backends[0].projects = [value.cwd!, "/Users/test/WorkSpace/AnotherProject"]
             value.messages = []
         }
+        if ProcessInfo.processInfo.arguments.contains("--agent-reference-type-fixture") {
+            value.cwd = "/Users/test/WorkSpace/AgentApp"
+            value.messages = [NativeMessage(id: "reference-question", role: "user", text: "罗马的凯撒是同性恋吗？"), NativeMessage(id: "reference-answer", role: "assistant", text: "**尤利乌斯·凯撒确实曾被指与男性发生性关系，但没有足够证据证明他是同性恋。** 如果相关传闻属实，按照现代分类，他可能更接近双性恋。\n\n### 1. 凯撒与比提尼亚国王的绯闻\n\n公元前80年前后，年轻的凯撒出使小亚细亚的比提尼亚王国，与国王尼科美德四世（Nicomedes IV）建立了密切关系。\n\n后来，罗马政敌不断指控凯撒是国王的男宠，甚至嘲讽他是「比提尼亚王后」。", phase: "final_answer")]
+        }
+        if ProcessInfo.processInfo.arguments.contains("--agent-running-commentary-fixture") {
+            value.busy = true
+            value.messages = [value.messages[0], NativeMessage(id: "independent-commentary", role: "assistant", text: "准备读取项目。", phase: "commentary"),
+                NativeMessage(id: "tool-call", role: "activity", text: "不应显示的工具调用", activityKind: "tool"),
+                NativeMessage(id: "tail-commentary", role: "assistant", text: "正在整理项目。", phase: "commentary", commentaryIsLiveTail: true)]
+        }
+        if ProcessInfo.processInfo.arguments.contains("--agent-model-efforts-fixture") {
+            value.models[0].efforts = value.efforts
+            value.models[0].defaultEffort = "medium"
+            value.models[1].efforts = [NativeOption(id: "high", title: "High", value: "high")]
+            value.models[1].defaultEffort = "high"
+        }
+        if ProcessInfo.processInfo.arguments.contains("--agent-model-catalog-fixture") {
+            value.models += (0...59).map { NativeOption(id: "catalog-\($0)", title: "Catalog Model \($0)", value: "catalog-\($0)") }
+        }
+        if ProcessInfo.processInfo.arguments.contains("--agent-submit-fixture") { value.canSend = true; value.draft = "触感检查" }
         if ProcessInfo.processInfo.arguments.contains("--agent-startup-loading-fixture") { value.ready = false }
         value.messages = value.messages.map { message in
             var anchored = message
             anchored.scrollAnchorId = message.id
             return anchored
         }
+        let deferredMessages = value.messages
+        if ProcessInfo.processInfo.arguments.contains("--agent-delayed-report-fixture") { value.messages = []; value.loading = "loading" }
         snapshot = value
         store.sendCommand = { [weak self] command in self?.dispatch(command) }
         publish()
+        if ProcessInfo.processInfo.arguments.contains("--agent-delayed-report-fixture") {
+            Task { [weak self] in
+                try? await Task.sleep(for: .seconds(8))
+                guard let self else { return }
+                self.snapshot.loading = "ready"
+                self.snapshot.messages = deferredMessages
+                let paragraphs = (1...85).map { "**第\($0)段分析。** 这是长报告的分段正文，包含普通文字和加粗文字，用于重现首次加载后异步 Markdown 布局与底部定位之间的竞争。正文通过真实的原生 Markdown 解析和系统文本视图排版，不能依赖短文本的高度估算。" }.joined(separator: "\n\n")
+                self.snapshot.messages.append(NativeMessage(id: "large-report", role: "assistant", text: paragraphs + "\n\n报告末尾标记。", timestamp: Date().timeIntervalSince1970, phase: "final_answer"))
+                self.publish()
+            }
+        }
+        if ProcessInfo.processInfo.arguments.contains("--agent-model-catalog-fixture") {
+            Task { [weak self] in
+                for tick in 0..<600 {
+                    try? await Task.sleep(for: .milliseconds(250))
+                    guard let self else { return }
+                    self.snapshot.tokenUsage = NativeTokenUsage(lastRequestTokens: Double(tick))
+                    self.publish()
+                }
+            }
+        }
     }
 
     private func publish() { store.receive(snapshot); session.receive(snapshot) }
     private func dispatch(_ command: NativeCommand) {
-        if ["effort.select", "model.select"].contains(command.name), case .string(let value) = command.params["value"] {
+        if ProcessInfo.processInfo.arguments.contains("--agent-submit-fixture"), ["message.send", "turn.stop"].contains(command.name) {
+            snapshot.busy = command.name == "message.send"
+            snapshot.draft = ""; snapshot.canSend = false
+            snapshot.commandResults = [NativeCommandResult(id: command.id, name: command.name, ok: true, contextId: snapshot.contextId)]
+            publish()
+        } else if ["navigation.sidebar", "navigation.search", "settings.open"].contains(command.name) {
+            if case .bool(let open) = command.params["open"], command.name == "navigation.sidebar" { snapshot.sidebarOpen = open }
+            if case .string(let text) = command.params["value"], command.name == "navigation.search" { snapshot.search = text }
+            let fieldKey: String? = { if case .string(let key) = command.params["fieldKey"] { return key }; return nil }()
+            let revision: Int? = { if case .number(let value) = command.params["fieldRevision"] { return Int(value) }; return nil }()
+            snapshot.commandResults = [NativeCommandResult(id: command.id, name: command.name, ok: true, contextId: snapshot.contextId, fieldKey: fieldKey, fieldRevision: revision)]
+            publish()
+        } else if ["effort.select", "model.select", "speed.select"].contains(command.name), case .string(let value) = command.params["value"] {
             if command.name == "effort.select" { snapshot.effortValue = value }
-            else { snapshot.modelValue = value }
+            else if command.name == "speed.select" { snapshot.speedValue = value }
+            else {
+                snapshot.modelValue = value
+                if let model = snapshot.models.first(where: { $0.value == value }), let efforts = model.efforts {
+                    snapshot.efforts = efforts; snapshot.effortValue = model.defaultEffort ?? efforts.first?.value ?? ""
+                }
+            }
             snapshot.commandResults = [NativeCommandResult(id: command.id, name: command.name, ok: true, contextId: snapshot.contextId)]
             publish()
         } else if command.name == "newchat.project", ProcessInfo.processInfo.arguments.contains("--agent-project-name-fixture") {
@@ -141,6 +210,20 @@ struct AgentTypographyFixture: ViewModifier {
         let enabled = ProcessInfo.processInfo.arguments.contains("--agent-typography-fixture")
         content.environment(\.dynamicTypeSize, enabled ? .xxxLarge : size)
             .environment(\.legibilityWeight, enabled ? .bold : weight)
+    }
+}
+/// 显式布局回归参数下记录真实表面范围，避免辅助功能容器只返回子控件并集。
+struct AgentComposerGeometryFixture: ViewModifier {
+    @State private var frame = CGRect.zero
+    func body(content: Content) -> some View {
+        if ProcessInfo.processInfo.arguments.contains("--agent-composer-geometry-fixture") {
+            content.onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame = $0 }
+                .overlay(alignment: .topLeading) {
+                    Text("\(frame.minX),\(frame.minY),\(frame.width),\(frame.height)")
+                        .font(.system(size: 1)).opacity(0.01).allowsHitTesting(false)
+                        .accessibilityIdentifier("composer.geometry")
+                }
+        } else { content }
     }
 }
 #endif

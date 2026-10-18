@@ -211,7 +211,11 @@ final class AppSession {
             return
         }
         let config = composer.configuration
-        if let model = nativeSnapshot.models.first(where: { $0.title == config.model }), model.value != nativeSnapshot.modelValue { store.chooseComposerOption("model.select", value: model.value, contextID: nativeSnapshot.contextId) }
+        if let model = nativeSnapshot.models.first(where: { $0.title == config.model }), model.value != nativeSnapshot.modelValue {
+            store.chooseComposerOption("model.select", value: model.value, contextID: nativeSnapshot.contextId)
+            // 由真实业务按新模型支持档位归一化；不能继续提交旧目录里的下标。
+            return
+        }
         let effort = Int(config.reasoning.rounded())
         if nativeSnapshot.efforts.indices.contains(effort), nativeSnapshot.efforts[effort].value != nativeSnapshot.effortValue { store.chooseComposerOption("effort.select", value: nativeSnapshot.efforts[effort].value, contextID: nativeSnapshot.contextId) }
         let speed = nativeSnapshot.speeds?.first(where: { ($0.value == "fast" || $0.value == "priority") == (config.speed == .fast) })

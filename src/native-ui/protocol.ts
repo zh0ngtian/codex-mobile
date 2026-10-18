@@ -1,7 +1,7 @@
 /** v1 仅包含可序列化的展示数据；禁止传递 BackendConfig 或客户端对象。 */
 export type NativeParams = Record<string, unknown>;
 export interface NativeCommand { id?: string; name: string; params: NativeParams }
-export interface NativeOption { id: string; title: string; value: string; subtitle?: string }
+export interface NativeOption { id: string; title: string; value: string; subtitle?: string; efforts?: NativeOption[]; defaultEffort?: string }
 export interface NativePanelItem {
   id: string; kind: string; title?: string; text?: string; value?: string; previewURL?: string; values?: string[];
   line?: number; options?: NativeOption[]; command?: NativeCommand; children?: NativePanelItem[]; disabled?: boolean;
@@ -13,7 +13,7 @@ export interface NativeGroup { id: string; title: string; items: NativeNavigatio
   category?: 'pinned' | 'project' | 'recent' | 'search'; subtitle?: string; loading?: string; newCommand?: NativeCommand;
   backendId?: string; cwd?: string; hasMore?: boolean; allItems?: NativeNavigationItem[] }
 export interface NativeCommentaryEntry { id: string; text: string; timestamp?: number; blocks?: NativePanelItem[] }
-export interface NativeMessage { id: string; role: string; text: string; status?: string; blocks?: NativePanelItem[]; actions?: NativePanelItem[]; timestamp?: number; historyEdit?: NativeSnapshot['panel']; turnId?: string; itemId?: string; phase?: string;
+export interface NativeMessage { id: string; role: string; text: string; activityKind?: 'tool' | 'reasoning' | 'plan'; status?: string; blocks?: NativePanelItem[]; actions?: NativePanelItem[]; timestamp?: number; historyEdit?: NativeSnapshot['panel']; turnId?: string; itemId?: string; phase?: string;
   /** 独立于分组turn前缀的展示锚点，不用于真实业务动作。 */
   scrollAnchorId?: string;
   /** 仅历史与工具聚合行提供成员别名，以便前插成员后恢复旧锚点。 */

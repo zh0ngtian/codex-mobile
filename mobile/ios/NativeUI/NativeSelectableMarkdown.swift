@@ -36,7 +36,7 @@ extension NSAttributedString.Key {
             if intent.contains(.strikethrough) { result.addAttribute(.strikethroughStyle, value: NSUnderlineStyle.single.rawValue, range: range) }
         }
         let paragraph = NSMutableParagraphStyle()
-        paragraph.lineSpacing = 6
+        paragraph.lineSpacing = 3
         result.addAttribute(.paragraphStyle, value: paragraph, range: NSRange(location: 0, length: result.length))
         return result
     }
@@ -60,15 +60,11 @@ extension NSAttributedString.Key {
     static func blocks(_ blocks: [NativeMarkdownBlock]) -> NSAttributedString {
         let result = NSMutableAttributedString(string: "")
         for (index, block) in blocks.enumerated() {
-            let font: UIFont
-            if block.kind == .heading {
-                let style: UIFont.TextStyle = block.level == 1 ? .title1 : block.level == 2 ? .title2 : .headline
-                let base = UIFont.preferredFont(forTextStyle: style)
-                font = UIFont(descriptor: base.fontDescriptor.withSymbolicTraits(.traitBold) ?? base.fontDescriptor, size: base.pointSize)
-            } else { font = .preferredFont(forTextStyle: .body) }
+            // 标题保留正文基准字号，用独立的 strong 语义表达字重。
+            let font = UIFont.preferredFont(forTextStyle: .body)
             let paragraph = NSMutableParagraphStyle()
-            paragraph.lineSpacing = 6
-            paragraph.paragraphSpacing = index == blocks.count - 1 ? 0 : 12
+            paragraph.lineSpacing = 3
+            paragraph.paragraphSpacing = index == blocks.count - 1 ? 0 : block.kind == .heading ? 8 : blocks[index + 1].kind == .heading ? 24 : 16
             let part = NSMutableAttributedString(string: "")
             if block.kind == .list {
                 let marker = block.checked.map { $0 ? "☑" : "☐" } ?? block.marker

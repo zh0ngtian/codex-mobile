@@ -23,6 +23,7 @@ struct MessageView: View {
                 if MessagePresentation.showsResponseActions(for: message) {
                     MessageActions(message: message)
                 }
+                if message.kind == "commentary" { Divider().accessibilityIdentifier("commentary.separator") }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)

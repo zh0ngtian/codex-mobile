@@ -25,8 +25,11 @@ extension AppSession {
             let connection: DeviceConnectionState = rawState == "online" ? .connected : rawState == "connecting" ? .connecting : rawState == "paused" ? .paused : .failed
             let models = active ? snapshot.models.map(\.title) : []
             let effort = active ? snapshot.efforts.map(\.title) : []
+            let effortsByModel = active ? snapshot.models.reduce(into: [String: [String]]()) { result, model in
+                result[model.title] = model.efforts?.map(\.title) ?? (model.value == snapshot.modelValue ? effort : [])
+            } : [:]
             let permissions = active ? (snapshot.permissions ?? []).map { permissionMode($0.value) } : []
-            return BackendDevice(id: id, name: backend.title, gatewayAddress: backend.gatewayAddress ?? "", enabled: backend.enabled ?? true, connection: connection, projects: backend.projects ?? [], capabilities: DeviceCapabilities(models: models, effortLevels: effort, supportsFast: active && (snapshot.speeds ?? []).contains { $0.value == "fast" || $0.value == "priority" }, permissions: permissions.reduce(into: [ApprovalMode]()) { if !$0.contains($1) { $0.append($1) } }), savedConfiguration: active ? configuration(snapshot) : ComposerConfiguration(), accountKey: backend.id)
+            return BackendDevice(id: id, name: backend.title, gatewayAddress: backend.gatewayAddress ?? "", enabled: backend.enabled ?? true, connection: connection, projects: backend.projects ?? [], capabilities: DeviceCapabilities(models: models, effortLevels: effort, effortsByModel: effortsByModel, supportsFast: active && (snapshot.speeds ?? []).contains { $0.value == "fast" || $0.value == "priority" }, permissions: permissions.reduce(into: [ApprovalMode]()) { if !$0.contains($1) { $0.append($1) } }), savedConfiguration: active ? configuration(snapshot) : ComposerConfiguration(), accountKey: backend.id)
         }
         selectedDeviceID = snapshot.listBackendId == "all" ? nil : (snapshot.listBackendId ?? snapshot.backendId).map { scopedID("device", $0) }
         projectGroups = [:]; scopedProjects = []; projectMembers = [:]; navigationIDs = []; expandedProjects = []; projectErrors = []; loadingProjects = []
@@ -142,7 +145,7 @@ extension AppSession {
         } : []
 
         let commentary = (value.commentary ?? []).map(progressEntry)
-        return ChatMessage(id: id, isUser: value.role == "user", text: value.text, kind: value.role, duration: value.status ?? "", timestamp: value.timestamp == nil ? "" : created.formatted(date: .omitted, time: .shortened), createdAt: created, attachments: attachments, commentary: commentary, outputs: outputs)
+        return ChatMessage(id: id, isUser: value.role == "user", text: value.text, kind: value.phase == "commentary" ? "commentary" : value.role, duration: value.status ?? "", timestamp: value.timestamp == nil ? "" : created.formatted(date: .omitted, time: .shortened), createdAt: created, attachments: attachments, commentary: commentary, outputs: outputs)
     }
     func attachment(_ value: NativeAttachment) -> AttachmentItem {
         let id = scopedID("attachment", nativeSnapshot.contextId ?? "", value.id); rawAttachmentIDs[id] = value.id

@@ -18,6 +18,8 @@ struct NativeMessage: Codable, Identifiable {
     var commentaryIsLiveTail: Bool? = nil
     var scrollAnchorId: String? = nil
     var scrollAnchorIds: [String]? = nil
+    var activityKind: String? = nil
+    var hidesExecutionActivity: Bool { ["tool", "reasoning", "plan"].contains(activityKind ?? "") }
 
     /// 仅替换有明确语义对应的旧历史区块；同消息里的其他工具或推理仍保留。
     var presentationBlocks: [NativePanelItem] {
