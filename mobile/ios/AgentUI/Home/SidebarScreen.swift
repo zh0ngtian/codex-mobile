@@ -19,10 +19,12 @@ struct SidebarScreen: View {
                 SidebarConversationList()
                     .padding(.horizontal, 8)
                     .padding(.top, 10)
-                    .padding(.bottom, 16)
+                    .padding(.bottom, 94)
             }
             .scrollIndicators(.hidden)
             .scrollDismissesKeyboard(.interactively)
+        }
+        .overlay(alignment: .bottom) {
             HStack {
                 Button { session.beginNewConversation() } label: {
                     HStack(spacing: 12) {
@@ -57,12 +59,11 @@ struct SidebarScreen: View {
                 .accessibilityLabel(preferences.text("Chat，开始新对话", "Chat, start a new conversation"))
                 .accessibilityIdentifier("sidebar.askCodex")
                 Spacer()
-                SidebarIconButton(systemImage: "gearshape", title: preferences.text("设置", "Settings"),
-                                  identifier: "sidebar.settings") { session.settingsPresented = true }
+                SidebarMoreMenu()
             }
             .padding(.leading, 34)
             .padding(.trailing, 20)
-            .padding(.top, 12)
+            .padding(.bottom, 8)
         }
         .background(AgentTheme.page)
         .foregroundStyle(AgentTheme.ink)

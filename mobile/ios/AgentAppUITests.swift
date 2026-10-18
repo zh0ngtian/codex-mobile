@@ -18,7 +18,7 @@ final class AgentAppUITests: XCTestCase {
         app.launch()
         XCTAssertTrue(app.buttons["header.usage"].waitForExistence(timeout: 12))
         app.buttons["会话列表"].tap()
-        XCTAssertTrue(app.descendants(matching: .any)["sidebar.codexMenu"].waitForExistence(timeout: 8), app.debugDescription)
+        XCTAssertTrue(app.descendants(matching: .any)["sidebar.more"].waitForExistence(timeout: 8), app.debugDescription)
     }
 
     private func launchConversationFixture(long: Bool = false, resetContext: Bool = false) -> XCUIApplication {
@@ -113,13 +113,21 @@ final class AgentAppUITests: XCTestCase {
         XCTAssertFalse(app.buttons["关注"].exists)
         XCTAssertFalse(app.staticTexts["项目"].exists)
         let chat = app.buttons["sidebar.askCodex"]
-        let settings = app.buttons["sidebar.settings"]
-        XCTAssertTrue(settings.exists)
-        XCTAssertLessThan(chat.frame.maxX, settings.frame.minX)
-        XCTAssertEqual(chat.frame.midY, settings.frame.midY, accuracy: 2)
+        let more = app.buttons["sidebar.more"]
+        XCTAssertTrue(more.exists)
+        XCTAssertFalse(app.staticTexts["Codex"].exists)
+        XCTAssertFalse(app.staticTexts["界面夹具"].exists)
+        XCTAssertFalse(app.buttons["sidebar.settings"].exists, "设置只在省略号菜单内显示")
+        XCTAssertLessThan(chat.frame.maxX, more.frame.minX)
+        XCTAssertEqual(chat.frame.midY, more.frame.midY, accuracy: 2)
         XCTAssertLessThan(app.buttons["sidebar.search"].frame.maxY, app.buttons["收起项目 Zeta"].frame.minY)
         captureConversation("侧栏-参考展开布局", app: app)
-        settings.tap()
+        more.tap()
+        XCTAssertTrue(app.buttons["sidebar.drafts"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["sidebar.refresh"].exists)
+        XCTAssertTrue(app.buttons["全部设备"].exists)
+        captureConversation("侧栏-底部省略号菜单", app: app)
+        app.buttons["sidebar.settings"].tap()
         XCTAssertTrue(app.navigationBars["设置"].waitForExistence(timeout: 5))
         app.buttons["settings.close"].tap()
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.3)).tap()
@@ -129,7 +137,8 @@ final class AgentAppUITests: XCTestCase {
         XCTAssertTrue(model.waitForExistence(timeout: 5))
         let fast = app.buttons["composer.fast"]
         XCTAssertLessThan(fast.frame.minX - permissions.frame.maxX, 8)
-        XCTAssertLessThan(model.frame.minX - fast.frame.midX, 30, "闪电和模型名应紧随权限图标，不能被推到右侧")
+        XCTAssertGreaterThanOrEqual(model.frame.minX - fast.frame.maxX, 8, "模型和闪电留出更大间距")
+        XCTAssertGreaterThan(app.buttons["composer.effort"].frame.minX, model.frame.maxX)
         captureConversation("输入栏-模型靠左", app: app)
     }
 
@@ -263,7 +272,7 @@ final class AgentAppUITests: XCTestCase {
         XCTAssertFalse(app.navigationBars["模型"].exists)
         XCTAssertFalse(app.images["checkmark"].exists, "模型与强度菜单不显示勾选")
         app.buttons["model.option.model-b"].tap()
-        model.tap()
+        app.buttons["composer.effort"].tap()
         XCTAssertTrue(app.buttons["effort.option.high"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["effort.option.low"].exists, "每个模型只列自己支持的强度")
         captureConversation("原生模型菜单-真实强度档位", app: app)
@@ -364,8 +373,9 @@ final class AgentAppUITests: XCTestCase {
         let addressField = any("device.address")
         if !addressField.waitForExistence(timeout: 3) {
             XCTAssertTrue(any("header.usage").waitForExistence(timeout: 12))
-            if !any("sidebar.codexMenu").exists { app.buttons["会话列表"].tap() }
-            XCTAssertTrue(any("sidebar.codexMenu").waitForExistence(timeout: 8))
+            if !any("sidebar.more").exists { app.buttons["会话列表"].tap() }
+            XCTAssertTrue(any("sidebar.more").waitForExistence(timeout: 8))
+            any("sidebar.more").tap()
             any("sidebar.settings").tap()
             XCTAssertTrue(app.navigationBars["设置"].waitForExistence(timeout: 8))
             app.staticTexts["设备"].tap()
@@ -385,9 +395,9 @@ final class AgentAppUITests: XCTestCase {
         }
         if any("settings.close").exists { any("settings.close").tap() }
         if app.buttons["完成设备设置"].exists { app.buttons["完成设备设置"].tap() }
-        if !any("sidebar.codexMenu").exists, app.buttons["会话列表"].exists { app.buttons["会话列表"].tap() }
-        XCTAssertTrue(any("sidebar.codexMenu").waitForExistence(timeout: 15))
-        let scopeMenu = any("sidebar.codexMenu")
+        if !any("sidebar.more").exists, app.buttons["会话列表"].exists { app.buttons["会话列表"].tap() }
+        XCTAssertTrue(any("sidebar.more").waitForExistence(timeout: 15))
+        let scopeMenu = any("sidebar.more")
         if scopeMenu.value as? String != name {
             scopeMenu.tap()
             let target = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", name)).firstMatch
@@ -598,14 +608,15 @@ final class AgentAppUITests: XCTestCase {
         captureConversation("运行过程-只显示commentary与灰线", app: app)
         app.textFields["message-input"].tap()
         let model = app.buttons["composer.model"]
-        model.tap()
+        let effort = app.buttons["composer.effort"]
+        effort.tap()
         XCTAssertTrue(app.buttons["effort.option.medium"].waitForExistence(timeout: 5))
         app.buttons["effort.option.medium"].tap()
-        XCTAssertTrue((model.value as? String)?.contains("Medium") == true)
+        XCTAssertEqual(effort.value as? String, "Medium")
         model.tap()
         app.buttons["model.option.model-b"].tap()
         XCTAssertTrue((model.value as? String)?.hasPrefix("Model B") == true)
-        model.tap()
+        effort.tap()
         XCTAssertTrue(app.buttons["effort.option.high"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["effort.option.low"].exists)
         XCTAssertFalse(app.sliders.firstMatch.exists, "思考强度使用菜单档位，不再显示滑杆")
@@ -654,6 +665,7 @@ final class AgentAppUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["对话界面回归"].waitForExistence(timeout: 5), "页头应由真实系统导航栏提供")
         captureConversation("系统导航栏-干净状态", app: app)
         app.buttons["会话列表"].tap()
+        app.buttons["sidebar.more"].tap()
         app.buttons["sidebar.settings"].tap()
         XCTAssertTrue(app.navigationBars["设置"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.descendants(matching: .any)["settings.form"].exists, "设置应使用系统表单")
@@ -676,29 +688,62 @@ final class AgentAppUITests: XCTestCase {
         captureConversation("系统导航栏与消息", app: app)
     }
 
+    func testRenameAlertUsesNeutralControlsAndCancelPreservesName() {
+        let app = launchConversationFixture()
+        app.buttons["conversation.actions"].tap()
+        app.buttons["重命名"].tap()
+        let alert = app.alerts["重命名会话"]
+        XCTAssertTrue(alert.waitForExistence(timeout: 5))
+        let name = alert.textFields.firstMatch
+        XCTAssertEqual(name.value as? String, "对话界面回归")
+        name.tap(); name.typeText(" 调整")
+        XCTAssertTrue(alert.buttons["保存"].isEnabled)
+        captureConversation("重命名-中性弹窗", app: app)
+        alert.buttons["取消"].tap()
+        XCTAssertTrue(app.navigationBars["对话界面回归"].waitForExistence(timeout: 5))
+    }
+
+    func testSendAndStopKeepBusinessActionsWithSystemFeedback() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-submit-fixture", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
+        app.launch()
+        XCTAssertTrue(app.buttons["发送"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.buttons["composer.submit"].isEnabled)
+        app.buttons["composer.submit"].tap()
+        XCTAssertTrue(app.buttons["停止"].waitForExistence(timeout: 5), "发送仍经过原业务命令并切换为运行状态")
+        captureConversation("提交触感-发送后的停止入口", app: app)
+        app.buttons["composer.submit"].tap()
+        XCTAssertTrue(app.buttons["发送"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["composer.submit"].isEnabled, "停止后保留空输入的发送禁用规则")
+    }
+
     func testSystemMenuUsesGatewayEffortValues() {
         let app = launchConversationFixture()
         app.launchArguments.append("--agent-model-efforts-fixture")
         app.launch()
         app.textFields["message-input"].tap()
         let model = app.buttons["composer.model"]
-        XCTAssertTrue(model.waitForExistence(timeout: 5))
+        let effort = app.buttons["composer.effort"]
+        XCTAssertTrue(effort.waitForExistence(timeout: 5), "强度应在模型右边单独选择")
         model.tap()
+        XCTAssertFalse(app.buttons["effort.option.high"].exists, "模型菜单只列模型")
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.2)).tap()
+        effort.tap()
         app.buttons["effort.option.high"].tap()
-        XCTAssertTrue((model.value as? String)?.contains("High") == true)
+        XCTAssertEqual(effort.value as? String, "High")
         model.tap()
         app.buttons["model.option.model-b"].tap()
         XCTAssertTrue((model.value as? String)?.hasPrefix("Model B") == true)
-        model.tap()
+        effort.tap()
         XCTAssertTrue(app.buttons["effort.option.high"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["effort.option.medium"].exists)
-        captureConversation("原生菜单与真实模型强度", app: app)
+        captureConversation("独立强度菜单-当前模型真实档位", app: app)
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.2)).tap()
     }
 
     func testConfigureProvidedGateway() throws {
         let app = try launchConnectedApp()
-        XCTAssertTrue(app.staticTexts["验收 Mac"].exists)
+        XCTAssertEqual(app.descendants(matching: .any).matching(identifier: "sidebar.more").firstMatch.value as? String, "验收 Mac")
     }
 
     func testLiveMessageRoundTripAndArchive() throws {
@@ -737,6 +782,7 @@ final class AgentAppUITests: XCTestCase {
         app.buttons["sidebar.search"].tap()
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
         app.buttons["sidebar.search"].tap()
+        app.buttons["sidebar.more"].tap()
         app.buttons["sidebar.settings"].tap()
         XCTAssertTrue(app.navigationBars["设置"].waitForExistence(timeout: 8))
         XCTAssertTrue(app.buttons["设备"].exists || app.staticTexts["设备"].exists)
@@ -745,6 +791,7 @@ final class AgentAppUITests: XCTestCase {
 
     func testKeepNativeInterfaceEnabledForAcceptance() throws {
         let app = try launchConnectedApp()
+        app.buttons["sidebar.more"].tap()
         app.buttons["sidebar.settings"].tap()
         let toggle = app.switches["native-ui-preference"]
         for _ in 0..<3 where !toggle.isHittable { app.swipeUp() }

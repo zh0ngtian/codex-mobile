@@ -53,6 +53,10 @@ final class AgentConversationFixture {
                 return NativeGroup(id: "project-" + key, title: title, items: [item], collapsed: false, category: "project", cwd: "/" + title)
             }
         }
+        if ProcessInfo.processInfo.arguments.contains("--agent-sidebar-polish-fixture") {
+            value.groups.insert(NativeGroup(id: "fixture-pinned", title: "", items: [NativeNavigationItem(
+                id: "pinned-fixture", title: "关注的会话", command: NativeCommand(name: "thread.open", params: ["backendId": .string("conversation-ui-device"), "threadId": .string("conversation-ui-thread")]), isPinned: true)], category: "pinned"), at: 0)
+        }
         if ProcessInfo.processInfo.arguments.contains("--agent-conversation-long-fixture") {
             value.messages += (1...14).map { index in
                 NativeMessage(id: "long-\(index)", role: "assistant", text: "阅读位置 \(index)\n用于验证再次下拉时加载旧消息，并保持原有阅读位置。\n重复正文只在独立的界面回归夹具中出现。")
@@ -100,6 +104,7 @@ final class AgentConversationFixture {
         if ProcessInfo.processInfo.arguments.contains("--agent-model-catalog-fixture") {
             value.models += (0...59).map { NativeOption(id: "catalog-\($0)", title: "Catalog Model \($0)", value: "catalog-\($0)") }
         }
+        if ProcessInfo.processInfo.arguments.contains("--agent-submit-fixture") { value.canSend = true; value.draft = "触感检查" }
         if ProcessInfo.processInfo.arguments.contains("--agent-startup-loading-fixture") { value.ready = false }
         value.messages = value.messages.map { message in
             var anchored = message
@@ -136,7 +141,12 @@ final class AgentConversationFixture {
 
     private func publish() { store.receive(snapshot); session.receive(snapshot) }
     private func dispatch(_ command: NativeCommand) {
-        if ["navigation.sidebar", "navigation.search", "settings.open"].contains(command.name) {
+        if ProcessInfo.processInfo.arguments.contains("--agent-submit-fixture"), ["message.send", "turn.stop"].contains(command.name) {
+            snapshot.busy = command.name == "message.send"
+            snapshot.draft = ""; snapshot.canSend = false
+            snapshot.commandResults = [NativeCommandResult(id: command.id, name: command.name, ok: true, contextId: snapshot.contextId)]
+            publish()
+        } else if ["navigation.sidebar", "navigation.search", "settings.open"].contains(command.name) {
             if case .bool(let open) = command.params["open"], command.name == "navigation.sidebar" { snapshot.sidebarOpen = open }
             if case .string(let text) = command.params["value"], command.name == "navigation.search" { snapshot.search = text }
             let fieldKey: String? = { if case .string(let key) = command.params["fieldKey"] { return key }; return nil }()

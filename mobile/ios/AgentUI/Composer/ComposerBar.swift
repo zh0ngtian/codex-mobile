@@ -7,6 +7,7 @@ struct ComposerBar: View {
     @State private var activeSheet: ComposerSheet?
     @State private var selectedMention = 0
     @State private var mentionsDismissed = false
+    @State private var submitFeedback = 0
     @FocusState private var focused: Bool
     private var expanded: Bool { focused || session.composer.text.contains("\n") || !session.composer.attachments.isEmpty }
     private var mentionQuery: String? {
@@ -45,8 +46,11 @@ struct ComposerBar: View {
                             InlineIconButton(title: preferences.text("添加附件", "Add attachment"), symbol: "plus", imageScale: .large) { present(.attachments) }
                             InlineIconButton(title: preferences.text("权限模式", "Permission profile"), symbol: session.composer.configuration.permission.symbol,
                                              imageScale: .large, color: session.composer.configuration.permission == .fullAccess ? .orange : AgentTheme.ink) { present(.permissions) }
-                            RunSpeedButton()
-                            ComposerModelMenu()
+                            HStack(spacing: 10) {
+                                RunSpeedButton()
+                                ComposerModelMenu()
+                                ComposerEffortMenu()
+                            }
                             Spacer(minLength: 2)
                             ComposerSubmitButton(action: submit)
                         }
@@ -64,6 +68,7 @@ struct ComposerBar: View {
         .padding(.horizontal, expanded ? 12 : 20)
         .padding(.vertical, 8)
         .frame(maxWidth: .infinity)
+        .sensoryFeedback(.impact, trigger: submitFeedback)
         .onChange(of: focused) { session.inputFocused = focused }
         .onChange(of: session.composer.text) { selectedMention = 0; mentionsDismissed = false }
         .onChange(of: mentionQuery) { _, query in session.searchMentions(query ?? "") }
@@ -105,8 +110,13 @@ struct ComposerBar: View {
     }
     private func submit() {
         if !candidates.isEmpty { chooseMention(candidates[min(selectedMention, candidates.count - 1)]); return }
-        if session.isBusy && !session.composer.hasContent, let id = session.selectedConversationID { session.stopResponse(in: id); return }
+        if session.isBusy && !session.composer.hasContent, let id = session.selectedConversationID {
+            submitFeedback += 1
+            session.stopResponse(in: id)
+            return
+        }
         guard session.canSubmit else { return }
+        submitFeedback += 1
         _ = session.submitCurrent()
         focused = false
     }

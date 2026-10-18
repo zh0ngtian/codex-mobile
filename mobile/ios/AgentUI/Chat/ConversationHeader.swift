@@ -29,7 +29,7 @@ struct ConversationHeader: ViewModifier {
                 }
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     Button { usagePresented.toggle() } label: {
-                        NativeUsageIcon(unavailable: contextUsed == nil)
+                        NativeUsageIcon(unavailable: conversationID != nil && contextUsed == nil)
                             .frame(width: 20, height: 20)
                     }
                     .accessibilityLabel(preferences.text("用量与额度", "Usage and limits"))

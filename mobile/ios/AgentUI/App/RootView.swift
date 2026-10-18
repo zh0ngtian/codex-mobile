@@ -39,6 +39,7 @@ struct RootView: View {
             Button(preferences.text("保存", "Save")) { saveRename(id) }
                 .disabled(!canSaveRename(id))
         }
+        .tint(AgentTheme.ink)
         .confirmationDialog(preferences.text("归档并丢弃排队消息？", "Archive and discard queued messages?"), isPresented: archivePresented, titleVisibility: .visible, presenting: session.archiveTargetID) { id in
             Button(preferences.text("归档并丢弃队列", "Archive and discard queue"), role: .destructive) { confirmArchive(id) }
             Button(preferences.text("取消", "Cancel"), role: .cancel) { session.archiveTargetID = nil }
