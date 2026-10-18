@@ -385,6 +385,7 @@ const english: Record<string, string> = {
   "正在加载项目会话": "Loading project conversations",
   "重试加载 {name} 会话": "Retry loading conversations for {name}",
   "加载失败，点击重试": "Loading failed. Tap to retry",
+  "加载失败": "Loading failed",
   "加载中": "Loading",
   "更多": "More",
   "展开显示": "Show more",

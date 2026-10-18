@@ -28,3 +28,9 @@
 - 本轮仅提交推送修复分支，正常构建已安装并启动于独立测试模拟器CodexMobile-RequestPriority-iPhone17Pro（iPhone17Pro/iOS26.5），不带诊断参数和请求地址改写；不推进main或发布渠道，不归档用户已有会话。
 
 [基线样本](baseline-samples.csv) · [修复样本](fixed-samples.csv) · [基线统计](baseline-summary.json) · [修复统计](fixed-summary.json) · [验证清单](validation.json)
+
+## 后续主分支整合
+
+用户随后授权将代码合并main。整合保留main现有iOS27界面改动，补齐曾报告的既有“加载失败”英文映射；原性能数据和首次验证结果保留为历史证据。仅合并源码，不更改版本、发布清单或固定渠道。
+
+整合后全量145个文件、1578项测试全部通过，typecheck通过。原先单项翻译检查失败已消除；更新后的合并验证单列于validation.json，保留首次性能采样时的历史验证结果。
