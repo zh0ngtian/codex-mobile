@@ -2,6 +2,7 @@ import { isClientForeground } from "../native-ui/foreground";
 import type { RpcMessage } from "../app-server/client";
 import { t } from "../i18n";
 import { isNavigationResume } from "../../server/rpc-replay";
+import { httpRequestScheduler, type HttpRequestPriority } from "./http-request-scheduler";
 
 export interface HttpSyncState { updatedAt: number | null; stale: boolean }
 interface Config { baseUrl: string; token: string; id: string }
@@ -65,6 +66,7 @@ export class HttpRpcTransport extends EventTarget {
   private updatedAt: number | null = null;
   private timer: ReturnType<typeof setTimeout> | undefined;
   private readonly controllers = new Set<AbortController>();
+  private readonly requestLifetime = new AbortController();
   private readonly seenRequests = new Set<string>();
   private readonly answeredRequests = new Set<string>();
   private latestRequests: RpcMessage[] = [];
@@ -165,7 +167,13 @@ export class HttpRpcTransport extends EventTarget {
     }
   }
 
-  async send(raw: string, timeoutMs = 10_000): Promise<void> {
+  async send(raw: string, timeoutMs = 10_000, priority: HttpRequestPriority = "foreground"): Promise<void> {
+    if (this.readyState !== 1) throw new Error(t("设备尚未连接，请稍后重试"));
+    return httpRequestScheduler.run(new URL(this.config.baseUrl).origin, priority, this.requestLifetime.signal,
+      () => this.sendNow(raw, timeoutMs));
+  }
+
+  private async sendNow(raw: string, timeoutMs: number): Promise<void> {
     if (this.readyState !== 1) throw new Error(t("设备尚未连接，请稍后重试"));
     const message = JSON.parse(raw) as RpcMessage;
     if (message.method?.startsWith("thread/realtime/")) {
@@ -414,6 +422,7 @@ export class HttpRpcTransport extends EventTarget {
     clearTimeout(this.operationTimer);
     this.operationTimer = undefined;
     this.operationDueAt = 0;
+    this.requestLifetime.abort(new Error(t("设备尚未连接，请稍后重试")));
     this.controllers.forEach((controller) => controller.abort());
     this.closeRealtime();
     document.removeEventListener("visibilitychange", this.onResume);

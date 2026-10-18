@@ -1,10 +1,11 @@
 import { isThreadRunning } from "../ui/conversation";
 import { isVisibleThread } from "../features/threads/thread-visibility";
+import type { AppServerRequestOptions } from "./client";
 
 type ThreadRecord = Record<string, any>;
 
 interface ThreadListClient {
-  request(method: string, params: unknown): Promise<any>;
+  request(method: string, params: unknown, options?: AppServerRequestOptions): Promise<any>;
 }
 
 interface ThreadListResponse {
@@ -362,9 +363,12 @@ export function createLatestThreadListLoader(
         ...(options.pinnedThreadIds ?? []),
         ...(options.prioritizedThreadIds ?? []),
       ]);
+      const background: ThreadListClient = {
+        request: (method, params) => client.request(method, params, { priority: "background" }),
+      };
       currentPinnedThreadIds = explicitIds;
       const priorityRequest = explicitIds.size || options.includeRunningThreads
-        ? loadPrioritizedThreadRecords(client, explicitIds, options.includeRunningThreads === true)
+        ? loadPrioritizedThreadRecords(background, explicitIds, options.includeRunningThreads === true)
           .then((threads) => {
             if (sequence !== latestSequence) return;
             currentPinnedThreadIds = new Set([
@@ -378,10 +382,10 @@ export function createLatestThreadListLoader(
       const loadProjects = () => {
         if (sequence !== latestSequence) return Promise.resolve();
         const projectRequests = projects.length
-          ? projects.map((cwd) => loadProject(client, cwd, sequence, options))
+          ? projects.map((cwd) => loadProject(background, cwd, sequence, options))
           : projectlessThreadIds.length
             ? []
-            : [client.request("thread/list", { limit: 50, sortKey: "recency_at" })
+            : [background.request("thread/list", { limit: 50, sortKey: "recency_at" })
               .then((result: ThreadListResponse) => {
                 if (sequence === latestSequence) {
                   callbacks.onData?.(markProjectlessThreads(
@@ -390,7 +394,7 @@ export function createLatestThreadListLoader(
                 }
               })];
         if (projectlessThreadIds.length) {
-          projectRequests.push(loadProjectless(client, projectlessThreadIds, sequence, options));
+          projectRequests.push(loadProjectless(background, projectlessThreadIds, sequence, options));
         }
         return Promise.all(projectRequests).then(() => undefined);
       };

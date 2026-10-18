@@ -951,7 +951,8 @@ function BackendWorkspace({
         readLocalProjectlessThreadIds(window.localStorage, backend.id),
       );
       try {
-        const projectState = await fetchBackendProjectState(backend);
+        const projectState = await fetchBackendProjectState(backend, "background", client.signal);
+        if (client !== clientRef.current || client.signal?.aborted) return;
         directories = projectState.projects;
         nextProjectlessThreadIds = mergeProjectlessThreadIds(
           projectState.projectlessThreadIds,
@@ -963,6 +964,7 @@ function BackendWorkspace({
           setThreadListState("ready");
         }
       } catch {
+        if (client !== clientRef.current || client.signal?.aborted) return;
         if (directories.length || nextProjectlessThreadIds.length) {
           setThreadListState("ready");
         }

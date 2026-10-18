@@ -3,6 +3,7 @@ import { HttpRpcTransport, transportUuid } from "./http-transport";
 import type { BackendConfig } from "./types";
 import { t } from "../i18n";
 import { backendWebSocketUrl } from "./connection-manager";
+import { httpRequestScheduler, type HttpRequestPriority } from "./http-request-scheduler";
 
 export interface GatewayHostInfo {
   hostId: string;
@@ -20,28 +21,43 @@ export interface BackendProjectState {
 
 export async function fetchBackendProjectState(
   config: BackendConfig,
+  priority: HttpRequestPriority = "foreground",
+  signal?: AbortSignal,
 ): Promise<BackendProjectState> {
-  const response = await fetch(
-    withToken(config.baseUrl, "/api/projects", config.token),
-    { method: "GET", mode: "cors" },
-  );
-  if (!response.ok) throw new Error(t("项目目录接口返回 {status}", { status: response.status }));
-  const payload = (await response.json()) as {
-    projects?: unknown;
-    projectlessThreadIds?: unknown;
-  };
-  return {
-    projects: Array.isArray(payload.projects)
-      ? payload.projects.filter(
-          (project): project is string => typeof project === "string",
-        )
-      : [],
-    projectlessThreadIds: Array.isArray(payload.projectlessThreadIds)
-      ? payload.projectlessThreadIds.filter(
-          (threadId): threadId is string => typeof threadId === "string",
-        )
-      : [],
-  };
+  const controller = new AbortController();
+  const cancel = () => controller.abort(signal?.reason);
+  signal?.addEventListener("abort", cancel, { once: true });
+  if (signal?.aborted) cancel();
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await httpRequestScheduler.run(new URL(config.baseUrl).origin, priority, controller.signal, async () => {
+      timeout = setTimeout(() => controller.abort(new Error(t("{method} 请求超时", { method: "/api/projects" }))), 10_000);
+      const response = await fetch(
+        withToken(config.baseUrl, "/api/projects", config.token),
+        { method: "GET", mode: "cors", signal: controller.signal },
+      );
+      if (!response.ok) throw new Error(t("项目目录接口返回 {status}", { status: response.status }));
+      const payload = (await response.json()) as {
+        projects?: unknown;
+        projectlessThreadIds?: unknown;
+      };
+      return {
+        projects: Array.isArray(payload.projects)
+          ? payload.projects.filter(
+              (project): project is string => typeof project === "string",
+            )
+          : [],
+        projectlessThreadIds: Array.isArray(payload.projectlessThreadIds)
+          ? payload.projectlessThreadIds.filter(
+              (threadId): threadId is string => typeof threadId === "string",
+            )
+          : [],
+      };
+    });
+  } finally {
+    clearTimeout(timeout);
+    signal?.removeEventListener("abort", cancel);
+  }
 }
 
 export async function fetchBackendProjects(config: BackendConfig) {
