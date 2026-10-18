@@ -951,7 +951,7 @@ function BackendWorkspace({
         readLocalProjectlessThreadIds(window.localStorage, backend.id),
       );
       try {
-        const projectState = await fetchBackendProjectState(backend);
+        const projectState = await fetchBackendProjectState(backend, "background");
         directories = projectState.projects;
         nextProjectlessThreadIds = mergeProjectlessThreadIds(
           projectState.projectlessThreadIds,

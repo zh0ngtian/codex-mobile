@@ -1,5 +1,6 @@
 import { startLoadRpc, endLoadRpc, type LoadRpcProfile } from '../diagnostics/conversation-load-profile';
 import { t } from "../i18n";
+import type { HttpRequestPriority } from "../backends/http-request-scheduler";
 
 const MAX_APP_SERVER_MESSAGE_BYTES = 16 * 1024 * 1024;
 
@@ -39,7 +40,7 @@ export interface AppServerSocket {
   readyState: number;
   managesHttpTimeout?: boolean;
   addEventListener(type: string, listener: (event: any) => void): void;
-  send(data: string, timeoutMs?: number): void | Promise<void>;
+  send(data: string, timeoutMs?: number, priority?: HttpRequestPriority): void | Promise<void>;
   close(code?: number, reason?: string): void;
   openRealtime?: () => Promise<void>;
   closeRealtime?: () => void;
@@ -48,6 +49,7 @@ export interface AppServerSocket {
 
 export interface AppServerRequestOptions {
   timeoutMs?: number;
+  priority?: HttpRequestPriority;
 }
 
 export class AppServerRpcError extends Error {
@@ -136,7 +138,7 @@ export class AppServerClient {
       };
       this.pending.set(id, pending);
       try {
-        const sending = this.send({ id, method, params }, options.timeoutMs ?? this.requestTimeoutMs);
+        const sending = this.send({ id, method, params }, options.timeoutMs ?? this.requestTimeoutMs, options.priority);
         if (sending) void sending.catch((reason) => {
           if (!this.pending.delete(id)) return;
           clearTimeout(timeout);
@@ -180,13 +182,13 @@ export class AppServerClient {
     return () => this.threadMetadataListeners.delete(listener);
   }
 
-  private send(message: RpcMessage, timeoutMs?: number) {
+  private send(message: RpcMessage, timeoutMs?: number, priority?: HttpRequestPriority) {
     const payload = JSON.stringify(message);
     const bytes = new TextEncoder().encode(payload).byteLength;
     if (bytes > MAX_APP_SERVER_MESSAGE_BYTES) {
       throw new Error(messageTooLarge(bytes, MAX_APP_SERVER_MESSAGE_BYTES));
     }
-    return this.socket.send(payload, timeoutMs);
+    return this.socket.send(payload, timeoutMs, priority);
   }
 
   private publishTurnAcceptance(request: { method?: string; params?: any }, response: RpcMessage) {

@@ -18,6 +18,22 @@ function deferred<T>() {
 }
 
 describe("会话列表轮询加载器", () => {
+  it("自动刷新摘要与项目均让出前台通道，手动加载项目仍使用前台", async () => {
+    const request = vi.fn(async (method: string, _params: unknown, _options?: { priority?: string }) => method === "thread/loaded/list"
+      ? { data: ["running"], nextCursor: null }
+      : method === "thread/read"
+        ? { thread: { id: "running", status: { type: "active" } } }
+        : { data: [], nextCursor: null });
+    const client = { request };
+    const loader = createLatestThreadListLoader({});
+    await loader.load(client, ["/project"], ["loose"], { includeRunningThreads: true });
+    expect(request.mock.calls.length).toBeGreaterThan(3);
+    expect(request.mock.calls.every((call) => call[2]?.priority === "background")).toBe(true);
+    request.mockClear();
+    await loader.loadProject(client, "/project");
+    expect(request.mock.calls.every((call) => call[2] === undefined)).toBe(true);
+  });
+
   it("运行中补取和显式置顶不会重新带出子 Agent", async () => {
     const records: Record<string, any> = {
       child: { id: "child", source: { subAgent: "review" }, status: { type: "active" } },
@@ -106,7 +122,7 @@ describe("会话列表轮询加载器", () => {
     expect(onPinnedData.mock.calls[0][0]).toHaveLength(3);
     expect(onPinnedData.mock.calls[0][0].every((thread: any) => !("turns" in thread))).toBe(true);
     expect(client.request.mock.calls.filter(([method, params]) => method === "thread/read" && params.threadId === "manual")).toHaveLength(1);
-    expect(client.request).toHaveBeenCalledWith("thread/loaded/list", { limit: 100, cursor: "next" });
+    expect(client.request).toHaveBeenCalledWith("thread/loaded/list", { limit: 100, cursor: "next" }, { priority: "background" });
     expect(onProjectData).toHaveBeenCalledWith("/a", records.slice(3), false, null);
   });
 
@@ -236,7 +252,7 @@ describe("会话列表轮询加载器", () => {
     const onPinnedData = vi.fn();
     const loader = createLatestThreadListLoader({ onProjectData, onPinnedData });
     await loader.load(client, ["/project/a"], ["old-pin"], { pinnedThreadIds: ["old-pin", "old-pin"] });
-    expect(client.request).toHaveBeenCalledWith("thread/read", { threadId: "old-pin", includeTurns: false });
+    expect(client.request).toHaveBeenCalledWith("thread/read", { threadId: "old-pin", includeTurns: false }, { priority: "background" });
     expect(client.request.mock.calls.filter(([method]) => method === "thread/read")).toHaveLength(1);
     expect(onPinnedData).toHaveBeenCalledWith([{ id: "old-pin", cwd: "/project/a", isProjectless: true }]);
     expect(onProjectData).toHaveBeenCalledWith("/project/a", recent, true, "older");
@@ -462,7 +478,7 @@ describe("会话列表轮询加载器", () => {
       limit: 5,
       cwd: "/project/a",
       sortKey: "recency_at",
-    });
+    }, { priority: "background" });
     expect(onProjectStart).toHaveBeenCalledWith("/project/a");
     expect(onProjectStart).toHaveBeenCalledWith("/project/b");
 
@@ -520,7 +536,7 @@ describe("会话列表轮询加载器", () => {
       limit: 5,
       cwd: "/project/a",
       sortKey: "recency_at",
-    });
+    }, { priority: "background" });
     expect(onProjectStart).not.toHaveBeenCalled();
     expect(onProjectData).toHaveBeenCalledWith(
       "/project/a",
@@ -572,7 +588,7 @@ describe("会话列表轮询加载器", () => {
     expect(client.request).toHaveBeenCalledWith("thread/list", {
       limit: 50,
       sortKey: "recency_at",
-    });
+    }, { priority: "background" });
     expect(onProjectData).toHaveBeenCalledWith(
       "/workspace/project",
       [

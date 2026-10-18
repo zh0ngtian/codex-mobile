@@ -3,6 +3,7 @@ import { HttpRpcTransport, transportUuid } from "./http-transport";
 import type { BackendConfig } from "./types";
 import { t } from "../i18n";
 import { backendWebSocketUrl } from "./connection-manager";
+import { httpRequestScheduler, type HttpRequestPriority } from "./http-request-scheduler";
 
 export interface GatewayHostInfo {
   hostId: string;
@@ -20,28 +21,31 @@ export interface BackendProjectState {
 
 export async function fetchBackendProjectState(
   config: BackendConfig,
+  priority: HttpRequestPriority = "foreground",
 ): Promise<BackendProjectState> {
-  const response = await fetch(
-    withToken(config.baseUrl, "/api/projects", config.token),
-    { method: "GET", mode: "cors" },
-  );
-  if (!response.ok) throw new Error(t("项目目录接口返回 {status}", { status: response.status }));
-  const payload = (await response.json()) as {
-    projects?: unknown;
-    projectlessThreadIds?: unknown;
-  };
-  return {
-    projects: Array.isArray(payload.projects)
-      ? payload.projects.filter(
-          (project): project is string => typeof project === "string",
-        )
-      : [],
-    projectlessThreadIds: Array.isArray(payload.projectlessThreadIds)
-      ? payload.projectlessThreadIds.filter(
-          (threadId): threadId is string => typeof threadId === "string",
-        )
-      : [],
-  };
+  return httpRequestScheduler.run(new URL(config.baseUrl).origin, priority, undefined, async () => {
+    const response = await fetch(
+      withToken(config.baseUrl, "/api/projects", config.token),
+      { method: "GET", mode: "cors" },
+    );
+    if (!response.ok) throw new Error(t("项目目录接口返回 {status}", { status: response.status }));
+    const payload = (await response.json()) as {
+      projects?: unknown;
+      projectlessThreadIds?: unknown;
+    };
+    return {
+      projects: Array.isArray(payload.projects)
+        ? payload.projects.filter(
+            (project): project is string => typeof project === "string",
+          )
+        : [],
+      projectlessThreadIds: Array.isArray(payload.projectlessThreadIds)
+        ? payload.projectlessThreadIds.filter(
+            (threadId): threadId is string => typeof threadId === "string",
+          )
+        : [],
+    };
+  });
 }
 
 export async function fetchBackendProjects(config: BackendConfig) {
