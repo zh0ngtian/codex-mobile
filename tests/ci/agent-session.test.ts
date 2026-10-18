@@ -11,7 +11,7 @@ it.skipIf(process.platform !== 'darwin')('AgentApp 会话使用真实快照且�
   try {
     const inputs = [...native.map(name => `mobile/ios/NativeUI/${name}.swift`), ...session.map(name => `mobile/ios/AgentUI/Session/${name}`), 'tests/ci/agent-session-smoke.swift'];
     const frozen = inputs.map((path,index) => { const target = join(directory, `input-${index}.swift`); copyFileSync(path,target); return target; });
-    const compilation = spawnSync('xcrun', ['swiftc', ...frozen, '-o', join(directory,'smoke')], {encoding:'utf8',timeout:180000});
+    const compilation = spawnSync('xcrun', ['swiftc', '-whole-module-optimization', ...frozen, '-o', join(directory,'smoke')], {encoding:'utf8',timeout:180000});
     expect(compilation.status, compilation.stderr).toBe(0);
     const result = spawnSync(join(directory,'smoke'), [], {encoding:'utf8',timeout:20000});
     expect(result.status, result.stderr).toBe(0);

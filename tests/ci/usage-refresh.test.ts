@@ -11,7 +11,7 @@ it.skipIf(process.platform !== 'darwin')('账户刷新时间保留真实窗口�
   try {
     const paths = [...native.map(name => `mobile/ios/NativeUI/${name}.swift`), ...session.map(name => `mobile/ios/AgentUI/Session/${name}`), 'tests/ci/usage-refresh-smoke.swift'];
     const frozen = paths.map((path, index) => { const target = join(directory, `input-${index}.swift`); copyFileSync(path, target); return target; });
-    const compiled = spawnSync('xcrun', ['swiftc', ...frozen, '-o', join(directory, 'smoke')], { encoding: 'utf8', timeout: 180_000 });
+    const compiled = spawnSync('xcrun', ['swiftc', '-whole-module-optimization', ...frozen, '-o', join(directory, 'smoke')], { encoding: 'utf8', timeout: 180_000 });
     expect(compiled.status, compiled.error?.message ?? compiled.stderr).toBe(0);
     const result = spawnSync(join(directory, 'smoke'), [], { encoding: 'utf8', timeout: 20_000 });
     expect(result.status, result.error?.message ?? result.stderr).toBe(0);
