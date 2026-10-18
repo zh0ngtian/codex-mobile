@@ -401,10 +401,10 @@ final class AgentAppUITests: XCTestCase {
         app.resetAuthorizationStatus(for: .location)
         defer { app.resetAuthorizationStatus(for: .location) }
         app.buttons["添加附件"].tap()
-        XCTAssertTrue(app.buttons["选择当前位置"].waitForExistence(timeout: 5))
-        XCTAssertFalse(app.staticTexts["当前位置"].exists)
+        XCTAssertTrue(app.buttons["当前位置"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["选择当前位置"].exists)
         XCTAssertFalse(app.buttons["添加"].exists)
-        app.buttons["选择当前位置"].tap()
+        app.buttons["当前位置"].tap()
         let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
         let permission = springboard.alerts.firstMatch
         XCTAssertTrue(permission.waitForExistence(timeout: 5), "选择位置就应请求权限，不等待添加")
@@ -573,7 +573,7 @@ final class AgentAppUITests: XCTestCase {
         app.buttons["添加附件"].tap()
         XCTAssertTrue(app.buttons["选择图片"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["选择文件"].exists)
-        XCTAssertTrue(app.buttons["选择当前位置"].exists)
+        XCTAssertTrue(app.buttons["当前位置"].exists)
         XCTAssertFalse(app.navigationBars["添加到对话"].exists, "加号直接菜单，不先打开附件sheet")
         XCTAssertFalse(app.buttons["添加"].exists)
         captureConversation("附件-直接context菜单", app: app)
@@ -657,19 +657,66 @@ final class AgentAppUITests: XCTestCase {
         captureConversation("输入图标-字号与紧凑间距", app: app)
     }
 
-    func testUnreadMarkersUseTrailingStatusSlot() {
+    func testSidebarStatusMarkersFollowNames() {
         let app = XCUIApplication()
-        app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-sidebar-polish-fixture", "-accent", "Pink", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
+        app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-sidebar-polish-fixture", "-accent", "Black", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
         app.launch()
         app.buttons["会话列表"].tap()
         let unread = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "任务 Alpha")).firstMatch
         XCTAssertTrue(unread.waitForExistence(timeout: 5))
-        XCTAssertGreaterThan(Self.iconInkPixels(app.screenshot().image, element: CGRect(x: unread.frame.maxX - 26, y: unread.frame.minY, width: 26, height: 30), screen: app.frame), 15)
+        // 仅有一个可访问标题的Button会把文字AX frame扩成整行，因此用行内最右侧的深色像素定位未读点。
+        let unreadX = Self.lastInkX(app.screenshot().image, in: unread.frame, screen: app.frame)
+        XCTAssertNotNil(unreadX)
+        if let unreadX {
+            XCTAssertGreaterThan(unreadX - unread.frame.minX, 50)
+            XCTAssertLessThan(unreadX - unread.frame.minX, 150, "未读点紧跟短名称，不靠列表最右侧")
+        }
+        let runningTitle = app.staticTexts["任务 Zeta"]
+        let running = app.activityIndicators.matching(NSPredicate(format: "identifier BEGINSWITH %@", "sidebar.running.")).firstMatch
+        XCTAssertLessThanOrEqual(running.frame.minX - runningTitle.frame.maxX, 12)
+        XCTAssertGreaterThanOrEqual(running.frame.minX - runningTitle.frame.maxX, 0)
         app.buttons["收起项目 Alpha"].tap()
         let project = app.buttons["展开项目 Alpha"]
         XCTAssertTrue(project.waitForExistence(timeout: 5))
-        XCTAssertGreaterThan(Self.iconInkPixels(app.screenshot().image, element: CGRect(x: project.frame.maxX - 26, y: project.frame.minY, width: 26, height: 30), screen: app.frame), 15)
-        captureConversation("未读点-会话与项目右侧状态槽", app: app)
+        let projectX = Self.lastInkX(app.screenshot().image, in: project.frame, screen: app.frame)
+        XCTAssertNotNil(projectX)
+        if let projectX { XCTAssertLessThan(projectX - project.frame.minX, 130, "项目未读点紧跟名称") }
+        captureConversation("状态标记-紧跟项目与会话名称", app: app)
+    }
+
+    private static func lastInkX(_ image: UIImage, in rect: CGRect, screen: CGRect) -> CGFloat? {
+        guard let source = image.cgImage else { return nil }
+        let scale = CGFloat(source.width) / screen.width
+        let sidebarRect = rect.intersection(CGRect(x: 0, y: 0, width: screen.width * 0.8, height: screen.height))
+        let area = CGRect(x: sidebarRect.minX * scale, y: sidebarRect.minY * scale, width: sidebarRect.width * scale, height: sidebarRect.height * scale).integral
+        guard let cropped = source.cropping(to: area) else { return nil }
+        let width = cropped.width, height = cropped.height
+        var bytes = [UInt8](repeating: 0, count: width * height * 4)
+        bytes.withUnsafeMutableBytes { buffer in
+            let context = CGContext(data: buffer.baseAddress, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+            context.draw(cropped, in: CGRect(x: 0, y: 0, width: width, height: height))
+        }
+        var last: Int?
+        for index in stride(from: 0, to: bytes.count, by: 4) {
+            let red = Int(bytes[index]), green = Int(bytes[index + 1]), blue = Int(bytes[index + 2])
+            if red < 60 && green < 60 && blue < 60 {
+                last = max(last ?? 0, (index / 4) % width)
+            }
+        }
+        return last.map { (area.minX + CGFloat($0)) / scale }
+    }
+
+    func testSidebarLongConversationTitleStaysOnOneLine() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-sidebar-polish-fixture", "--agent-sidebar-long-title-fixture", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
+        app.launch()
+        app.buttons["会话列表"].tap()
+        let title = app.staticTexts["这是一条非常长的会话名称，用来验证侧栏始终只有一行并在末尾省略完整内容"]
+        XCTAssertTrue(title.waitForExistence(timeout: 5))
+        XCTAssertLessThanOrEqual(title.frame.height, 24, "侧栏会话名只占一行")
+        let spinner = app.activityIndicators.matching(NSPredicate(format: "identifier BEGINSWITH %@", "sidebar.running.")).firstMatch
+        XCTAssertTrue(spinner.isHittable)
+        captureConversation("侧栏长会话名-单行保留状态", app: app)
     }
 
     func testSidebarPreservesBusinessProjectOrderAndUsesSpinner() {

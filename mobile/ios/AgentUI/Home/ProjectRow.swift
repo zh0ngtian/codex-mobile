@@ -21,8 +21,8 @@ struct ProjectRow: View {
                         .font(AgentTheme.body)
                         .lineLimit(2)
                         .multilineTextAlignment(.leading)
+                    if !expanded { SidebarActivitySummary(conversations: conversations).fixedSize() }
                     Spacer(minLength: 0)
-                    if !expanded { SidebarActivitySummary(conversations: conversations) }
                 }
                 .padding(.leading, 14)
                 .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
@@ -71,12 +71,11 @@ struct ProjectRow: View {
             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
                 contentHeight = height
                 if expanded {
-                    if revealID != nil { updateReveal() }
-                    else { revealedHeight = height; contentsVisible = true }
+                    updateReveal()
                 }
             }
             .opacity(contentsVisible ? 1 : 0)
-            .animation(nil, value: contentsVisible)
+            .animation(contentsVisible && !reduceMotion ? .easeOut(duration: 0.18) : nil, value: contentsVisible)
             .frame(height: revealedHeight, alignment: .top)
             .clipped()
             .allowsHitTesting(expanded)
@@ -88,7 +87,7 @@ struct ProjectRow: View {
     }
 
     private func updateReveal() {
-        // 高度变化期间不绘制会话文字，避免相邻项目标题穿过退出中的文字。
+        // 先拉开空间再渐显会话；收起立即隐藏文字，避免后续项目标题与退出文字重叠。
         let id = UUID()
         revealID = id
         contentsVisible = false

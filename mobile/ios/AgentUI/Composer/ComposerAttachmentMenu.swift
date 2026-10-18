@@ -11,7 +11,7 @@ struct ComposerAttachmentMenu: View {
                 .accessibilityIdentifier("composer.attachments.photos")
             Button(preferences.text("选择文件", "Choose files"), systemImage: "folder") { choose(.files) }
                 .accessibilityIdentifier("composer.attachments.files")
-            Button(preferences.text("选择当前位置", "Select current location"), systemImage: "location") { choose(.location) }
+            Button(preferences.text("当前位置", "Current location"), systemImage: "location") { choose(.location) }
                 .accessibilityIdentifier("composer.attachments.location")
         } label: {
             Image(systemName: "plus").font(.subheadline).imageScale(.large)

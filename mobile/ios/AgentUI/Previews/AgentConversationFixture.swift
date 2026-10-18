@@ -83,7 +83,7 @@ final class AgentConversationFixture {
         if ProcessInfo.processInfo.arguments.contains("--agent-sidebar-polish-fixture") {
             value.messages[0].text = String(repeating: "短行\n", count: 14) + "这是一条展开后才显示的较长正文，用于确认消息气泡在展开更多和收起时保持同样的宽度。"
             value.groups = [("z", "Zeta"), ("a", "Alpha"), ("m", "Middle")].map { key, title in
-                let item = NativeNavigationItem(id: "row-" + key, title: "任务 " + title,
+                let item = NativeNavigationItem(id: "row-" + key, title: key == "z" && ProcessInfo.processInfo.arguments.contains("--agent-sidebar-long-title-fixture") ? "这是一条非常长的会话名称，用来验证侧栏始终只有一行并在末尾省略完整内容" : "任务 " + title,
                     command: NativeCommand(name: "thread.open", params: ["backendId": .string("conversation-ui-device"), "threadId": .string("thread-" + key)]),
                     isUnread: key == "a", running: key == "z")
                 return NativeGroup(id: "project-" + key, title: title, items: [item], command: NativeCommand(name: "project.toggle", params: ["id": .string("project-" + key)]), collapsed: false, category: "project", cwd: "/" + title)
