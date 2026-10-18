@@ -6,7 +6,6 @@ struct ComposerBar: View {
     @Environment(AppSession.self) private var session
     @Environment(AppPreferences.self) private var preferences
     let conversationID: UUID?
-    @State private var activeSheet: ComposerSheet?
     @State private var selectedMention = 0
     @State private var mentionsDismissed = false
     @State private var submitFeedback = 0
@@ -58,8 +57,7 @@ struct ComposerBar: View {
                     if expanded {
                         HStack(spacing: 0) {
                             attachmentMenu
-                            InlineIconButton(title: preferences.text("权限模式", "Permission profile"), symbol: session.composer.configuration.permission.symbol,
-                                             font: .subheadline, imageScale: .large, color: session.composer.configuration.permission == .fullAccess ? .orange : AgentTheme.ink, width: 40) { present(.permissions) }
+                            ComposerPermissionMenu()
                             HStack(spacing: 8) {
                                 RunSpeedButton()
                                 ComposerModelMenu()
@@ -103,13 +101,7 @@ struct ComposerBar: View {
         .onChange(of: photosPresented) { updateModalState() }
         .onChange(of: filesPresented) { updateModalState() }
         .task(id: attachmentWork?.id) { await performAttachmentWork() }
-        .sheet(item: $activeSheet, onDismiss: { session.inputModalPresented = false }) { sheet in
-            switch sheet {
-            case .permissions: PermissionProfileSheet().presentationDetents([.medium, .large])
-            }
-        }
     }
-    private func present(_ sheet: ComposerSheet) { session.inputModalPresented = true; activeSheet = sheet }
     private var attachmentPickerHost: some View {
         let selection = pickerSelection
         return Color.clear.frame(width: 0, height: 0)
@@ -176,7 +168,7 @@ struct ComposerBar: View {
         attachmentFlow.reset()
         updateModalState()
     }
-    private func updateModalState() { session.inputModalPresented = activeSheet != nil || photosPresented || filesPresented }
+    private func updateModalState() { session.inputModalPresented = photosPresented || filesPresented }
     private func performAttachmentWork() async {
         guard let work = attachmentWork else { return }
         let succeeded: Bool

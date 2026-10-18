@@ -692,6 +692,29 @@ final class AgentAppUITests: XCTestCase {
         captureConversation("导航栏-紧凑同高", app: app)
     }
 
+    func testPermissionModeUsesContextMenuAndSelectsBusinessOption() {
+        let app = launchInteractionFixture("--agent-permission-menu-fixture")
+        let input = app.textFields["message-input"]
+        input.tap()
+        let permission = app.buttons["权限模式"]
+        XCTAssertTrue(permission.waitForExistence(timeout: 5))
+        permission.tap()
+        XCTAssertFalse(app.navigationBars["权限模式"].exists, "权限选择直接使用菜单，不打开sheet")
+        let full = app.buttons["permission.option.full-access"]
+        XCTAssertTrue(full.waitForExistence(timeout: 5))
+        captureConversation("权限模式-原生context菜单", app: app)
+        guard full.exists else { return }
+        full.tap()
+        XCTAssertEqual(permission.value as? String, "完全访问权限")
+        permission.tap()
+        app.buttons["permission.option.default"].tap()
+        XCTAssertEqual(permission.value as? String, "默认权限")
+        permission.tap()
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.2)).tap()
+        XCTAssertFalse(full.exists, "点击其他区域关闭菜单")
+        XCTAssertEqual(permission.value as? String, "默认权限", "取消菜单不改变权限")
+    }
+
     func testComposerIconsAreMoreCompact() {
         let app = launchConversationFixture()
         app.textFields["message-input"].tap()

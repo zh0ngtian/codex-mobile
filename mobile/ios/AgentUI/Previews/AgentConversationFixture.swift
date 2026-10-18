@@ -30,6 +30,10 @@ final class AgentConversationFixture {
         value.model = "Model A"; value.modelValue = "model-a"
         value.efforts = [NativeOption(id: "low", title: "Low", value: "low"), NativeOption(id: "medium", title: "Medium", value: "medium"), NativeOption(id: "high", title: "High", value: "high")]
         value.effortValue = "low"
+        if ProcessInfo.processInfo.arguments.contains("--agent-permission-menu-fixture") {
+            value.permissions = [NativeOption(id: "default", title: "默认权限", value: "default"), NativeOption(id: "auto-review", title: "自动审核", value: "auto-review"), NativeOption(id: "read-only", title: "只读", value: "read-only"), NativeOption(id: "full-access", title: "完全访问权限", value: "full-access"), NativeOption(id: "custom", title: "自定义", value: "custom")]
+            value.permissionValue = "default"
+        }
         if ProcessInfo.processInfo.arguments.contains("--agent-fast-fixture") {
             value.speeds = [NativeOption(id: "normal", title: "普通速度", value: ""), NativeOption(id: "fast", title: "Fast", value: "priority")]
             value.speedValue = ""
@@ -266,8 +270,9 @@ final class AgentConversationFixture {
             let revision: Int? = { if case .number(let value) = command.params["fieldRevision"] { return Int(value) }; return nil }()
             snapshot.commandResults = [NativeCommandResult(id: command.id, name: command.name, ok: true, contextId: snapshot.contextId, fieldKey: fieldKey, fieldRevision: revision)]
             publish()
-        } else if ["effort.select", "model.select", "speed.select"].contains(command.name), case .string(let value) = command.params["value"] {
-            if command.name == "effort.select" { snapshot.effortValue = value }
+        } else if ["effort.select", "model.select", "speed.select", "permission.select"].contains(command.name), case .string(let value) = command.params["value"] {
+            if command.name == "permission.select" { snapshot.permissionValue = value }
+            else if command.name == "effort.select" { snapshot.effortValue = value }
             else if command.name == "speed.select" { snapshot.speedValue = value }
             else {
                 snapshot.modelValue = value

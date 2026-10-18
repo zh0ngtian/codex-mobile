@@ -14,6 +14,12 @@ extension AppSession {
         composer.configuration.reasoning = Double(index)
         nativeStore?.chooseComposerOption("effort.select", value: value, contextID: context)
     }
+    func chooseMenuPermission(_ value: String, context: String?) {
+        guard composerCanEdit, historyEdit == nil, !sidebarVisible, context == nativeSnapshot.contextId,
+              nativeSnapshot.permissions?.contains(where: { $0.value == value }) == true else { return }
+        composer.configuration.permission = permissionMode(value)
+        nativeStore?.chooseComposerOption("permission.select", value: value, contextID: context)
+    }
     func toggleMenuFast(context: String?) {
         guard composerCanEdit, historyEdit == nil, !sidebarVisible, currentCapabilities.supportsFast,
               context == nativeSnapshot.contextId,
