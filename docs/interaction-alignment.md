@@ -454,9 +454,19 @@
 用户要求只测当前模拟器关注会话的加载耗时分布。本轮没有优化或改变业务行为；添加显式DEBUG参数才开启的本地阶段探针，不记录正文、原始会话ID、网关或凭据。当前所选范围读取到1条关注会话，完成1次预热、10次同进程重开和3次重启后首次点开。新数据首帧中位数分别402ms、456ms，补齐/界面稳定中位数1065ms、1199ms；具体口径、限制、阶段分摊和脱敏数据见[计时报告](performance/2026-10-18-conversation-loading/README.md)。这些为墙钟时间和下一显示机会，不等于CPU时间或像素级首帧；不含App启动和连接建立，也不清理服务端缓存。57项相关协议/请求/诊断回归及typecheck通过，13次正式加载均成功，未创建或归档真实会话。恢复正常模拟器时移除计时参数，不发布。
 
 
-## 2026-10-18 原生交互改动正式发布（协调中）
+## 2026-10-18 原生交互改动正式发布（已交付0.3.8）
 
-用户明确要求把当前分支合入main并发布GitHub Release，覆盖此前仅模拟器的交付范围。任务`native-polish-release-20261018`已登记到默认双端客户端协调目标；所有用户可见改动沿用受控中文更新日志，本地计时探针默认关闭。正式main推进、版本分配和渠道发布均由协调器处理，成功以最终receipt为准，当前不宣称已发布；不执行真机安装。
+用户明确要求把当前分支合入main并发布GitHub Release，覆盖此前仅模拟器的交付范围。本轮登记到默认双端客户端协调目标；所有用户可见改动沿用受控中文更新日志，本地计时探针默认关闭。正式main推进、版本分配和渠道发布均由协调器处理，最终交付及失败关联记录见下文；不执行真机安装。
 
 
 本轮初始ready任务未关联最新失败叶节点，未成批后已withdrawn；实际关联任务`native-polish-release-linked-20261018`在新批次`86cae3ec-78ab-4d71-aeb3-f7c735ba15f2`已推进main，0.3.7（3007）云端iOS因`RootView.body`表达式类型检查超时而失败，GitHub Release及渠道均未发布。现以`native-polish-compile-repair-20261018`关联该失败叶节点，仅拆小根视图编译表达式，保留现有界面和交互；本地Release/iphoneos编译及3项模拟器弹窗回归通过，正式发布仍待新的成功receipt。
+
+
+0.3.8（3008）已完成正式交付：[GitHub Release](https://github.com/zh0ngtian/codex-mobile/releases/tag/v0.3.8)。成功批次`d08a8057-9c22-449b-8271-2ce1dad00089`为complete，冻结源码`8ef3dda83f2ca6f39e26b667d9e6b28bc84d3722`已在main；前序失败任务均recovered并指向此批次。双端云端构建、开发CI、本机Release/iphoneos构建、Ad Hoc签名、HTTPS OTA、固定LAN双端及unsigned软件源均通过共同receipt验收。额外完整下载复核固定包大小及SHA-256，签名身份与权限连续；软件源实际中文更新日志与GitHub和受控文件一致。正常App已退出测试夹具，保留模拟器既有网关配置，未执行真机安装。
+
+[固定OTA安装页](https://192.168.123.79:8766/channels/codex-mobile/current/install.html)
+
+| 0.3.8产物 | 大小（字节） | SHA-256 |
+| --- | --- | --- |
+| [APK](http://192.168.123.79:8765/channels/codex-mobile/latest.apk) | 4,723,603 | `fb8ef6abf6cf05e2582f6911a73fd76cfce6811bf9aaa437ab7009bd6a779798` |
+| [IPA（Ad Hoc已签名）](http://192.168.123.79:8765/channels/codex-mobile/latest.ipa) | 4,656,382 | `5675c0cafbcaf5fd230f08aae4eeb97195713417cf9a2ea9d83077a5e85871a3` |

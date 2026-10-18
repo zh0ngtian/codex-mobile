@@ -14,8 +14,8 @@
 - [x] 在协调器仓库运行`python3 -B -m unittest discover -s tests -p 'test_*.py'`，记录coordinator-recovery。
 - [x] 运行`NODE_OPTIONS=--no-experimental-webstorage npm test -- tests/ci --maxWorkers=2 --testTimeout=60000`及`npm run typecheck`，记录build-contract和typecheck。
 - [x] 提交推送固定SHA，生成绑定该SHA的验证文件，调用ready交给协调器。
-- [ ] 等待main、GitHub构建/Release、本机签名、OTA、LAN双端和unsigned软件源回验；错误批次保持不可变，必要时只从最新失败叶节点关联修复。
-- [ ] 核对成功receipt、任务祖先、Release附件、固定渠道完整下载散列和签名身份，更新交付记录并提供固定安装入口。
+- [x] 等待main、GitHub构建/Release、本机签名、OTA、LAN双端和unsigned软件源回验；错误批次保持不可变，必要时只从最新失败叶节点关联修复。
+- [x] 核对成功receipt、任务祖先、Release附件、固定渠道完整下载散列和签名身份，更新交付记录并提供固定安装入口。
 
 本次不执行真机安装。之前“仅模拟器”范围被本次明确发布授权覆盖；旧取消批次不恢复或改写。
 
@@ -27,3 +27,10 @@
 修复任务`native-polish-compile-repair-20261018`仅关联上述最新失败叶节点。将根视图的抽屉、sheet、三类alert和toast拆为独立opaque视图表达式，保留原修饰器顺序、状态归属和回调。以真实云端编译失败作为红例；本机Release/iphoneos编译通过，iPhone 17 Pro的业务小确认弹窗、确认结束后呈现审批、重命名取消三项回归通过（`/tmp/root-expression-compile-repair-1018.xcresult`）。继续完成门禁复检及正式CI验收，不复用失败版的安装包。
 
 修复后167项发布适配回归、42项协调器恢复回归、138项构建契约与typecheck全部通过；独立审查将具名视图展开后逐项比对修饰器及回调顺序，未发现阻塞或重要问题。模拟器已退出夹具并恢复正常业务启动，本轮未创建测试会话。
+
+
+## 最终交付
+
+2026-10-18发布0.3.8（3008），[GitHub Release](https://github.com/zh0ngtian/codex-mobile/releases/tag/v0.3.8)。成功批次`d08a8057-9c22-449b-8271-2ce1dad00089`冻结提交`8ef3dda83f2ca6f39e26b667d9e6b28bc84d3722`已在main。修复任务complete，前序两个失败批次的任务均recovered并指向同一成功子批次；旧失败现场未改写。main、双端CI/Release、本机设备构建、签名、HTTPS OTA、固定APK/IPA、unsigned软件源和最终verify全部有同一receipt的成功凭证。
+
+固定JSON、HEAD和完整GET复核通过，HTTPS使用既有CA验证；Ad Hoc包Bundle ID、Team、application-identifier、钥匙串组及完整entitlements摘要与现役基准连续。GitHub及软件源只含unsigned IPA，软件源版本、大小、散列、开发者署名和实际中文更新日志已核对。交付证据保留在本机ReleaseCoordinator的`receipts/d08a8057-9c22-449b-8271-2ce1dad00089.json`和`validations/native-polish-compile-repair-20261018/final-channel-verification.json`。未执行本版本真机安装。
