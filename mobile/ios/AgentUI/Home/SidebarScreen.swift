@@ -3,6 +3,13 @@ import SwiftUI
 struct SidebarScreen: View {
     @Environment(AppSession.self) private var session
     @Environment(AppPreferences.self) private var preferences
+    @ScaledMetric(relativeTo: .body) private var chatTextSize: CGFloat = 18.25
+    @ScaledMetric(relativeTo: .body) private var chatIconSize: CGFloat = 21
+
+    // 粉色玻璃会与背景合成，局部加深 tint 以贴近参考；其他主题沿用原强调色。
+    private var chatTint: Color {
+        preferences.accent == .pink ? Color(red: 1, green: 0.14, blue: 0.60) : preferences.accent.color
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -18,21 +25,47 @@ struct SidebarScreen: View {
             .scrollDismissesKeyboard(.interactively)
             HStack {
                 Button { session.beginNewConversation() } label: {
-                    Label("Chat", systemImage: "square.and.pencil")
+                    HStack(spacing: 12) {
+                        Image(systemName: "square.and.pencil")
+                            .font(.system(size: chatIconSize, weight: .regular))
+                        Text("Chat")
+                            .font(.system(size: chatTextSize, weight: .semibold))
+                    }
+                    .foregroundStyle(preferences.accent.foreground)
+                    .padding(.horizontal, 5.5)
+                    .frame(minHeight: 31)
                 }
                 .modifier(AgentGlassButton(prominent: true))
+                .controlSize(.regular)
+                .tint(chatTint)
+                .clipShape(.capsule)
+                .overlay {
+                    Capsule().strokeBorder(.white.opacity(0.28), lineWidth: 0.65).allowsHitTesting(false)
+                }
+                .shadow(color: .black.opacity(0.02), radius: 2, y: 1)
                 .accessibilityLabel(preferences.text("Chat，开始新对话", "Chat, start a new conversation"))
                 .accessibilityIdentifier("sidebar.askCodex")
                 Spacer()
                 Button { session.settingsPresented = true } label: {
                     Image(systemName: "gearshape")
+                        .font(.title3.weight(.light))
+                        .frame(width: 22, height: 32)
+                        .foregroundStyle(AgentTheme.ink)
                 }
-                .modifier(AgentGlassButton())
+                .modifier(AgentGlassButton(circular: true))
+                .controlSize(.regular)
+                .tint(AgentTheme.page)
+                .clipShape(.circle)
+                .overlay {
+                    Circle().strokeBorder(AgentTheme.ink.opacity(0.08), lineWidth: 0.5).allowsHitTesting(false)
+                }
+                .shadow(color: .black.opacity(0.02), radius: 2, y: 1)
                 .accessibilityLabel(preferences.text("设置", "Settings"))
                 .accessibilityIdentifier("sidebar.settings")
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
+            .padding(.leading, 34)
+            .padding(.trailing, 20)
+            .padding(.top, 12)
         }
         .background(AgentTheme.page)
         .foregroundStyle(AgentTheme.ink)

@@ -43,14 +43,18 @@ struct HomeHeader: View {
                 .accessibilityValue(scopeTitle)
                 Button(action: toggleSearch) {
                     Image(systemName: session.searchVisible ? "xmark" : "magnifyingglass")
+                        .font(.title3.weight(.light))
+                        .frame(width: 44, height: 44)
+                        .contentShape(.rect)
                 }
-                .modifier(AgentGlassButton())
+                .buttonStyle(.plain)
                 .accessibilityLabel(session.searchVisible ? preferences.text("收起并清空搜索", "Close and clear search") : preferences.text("搜索会话", "Search conversations"))
                 .accessibilityIdentifier("sidebar.search")
             }
         }
         .buttonStyle(.plain)
-        .padding(.horizontal, 16)
+        .padding(.leading, 16)
+        .padding(.trailing, 22)
         .padding(.top, 6)
         .padding(.bottom, 10)
     }
