@@ -35,7 +35,7 @@ struct ComposerBar: View {
                             .submitLabel(.send)
                             .onSubmit(submit)
                             .onKeyPress(keys: [.upArrow, .downArrow, .return, .tab, .escape], action: handleKey)
-                            .frame(minHeight: expanded ? 42 : 47)
+                            .frame(minHeight: expanded ? 42 : 58)
                             .padding(.horizontal, expanded ? 12 : 2)
                             .disabled(!session.composerCanEdit || session.historyEdit != nil || session.selectedConversation?.readOnly == true || !session.composer.attachmentsReady)
                             .accessibilityIdentifier("message-input")
@@ -56,10 +56,15 @@ struct ComposerBar: View {
                         }
                     }
                 }
-                .padding(.horizontal, 4)
-                .padding(.vertical, expanded ? 4 : 0)
+                .padding(.leading, 4)
+                .padding(.trailing, 12)
+                .padding(.top, expanded ? 4 : 0)
+                .padding(.bottom, expanded ? 8 : 0)
                 .modifier(AgentGlassSurface(cornerRadius: expanded ? 25 : 32))
                 .frame(maxWidth: expanded ? .infinity : 328)
+                #if DEBUG
+                .modifier(AgentComposerGeometryFixture())
+                #endif
                 if session.selectedConversation?.readOnly == true {
                     Text(preferences.text("只读会话", "Read-only conversation")).font(.body).foregroundStyle(.secondary)
                 }

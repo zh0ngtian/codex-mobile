@@ -703,6 +703,33 @@ final class AgentAppUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["对话界面回归"].waitForExistence(timeout: 5))
     }
 
+    func testSubmitPositionMatchesCompactAndExpandedReference() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-composer-geometry-fixture", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
+        app.launch()
+        let geometry = app.staticTexts["composer.geometry"]
+        XCTAssertTrue(geometry.waitForExistence(timeout: 8))
+        func surface() -> CGRect {
+            let parts = geometry.label.split(separator: ",").compactMap { Double($0) }
+            guard parts.count == 4 else { XCTFail("缺少真实输入框范围"); return .zero }
+            return CGRect(x: parts[0], y: parts[1], width: parts[2], height: parts[3])
+        }
+        let submit = app.buttons["composer.submit"]
+        let compact = surface()
+        print("COMPOSER_COMPACT", compact, submit.frame)
+        XCTAssertEqual(compact.maxX - submit.frame.maxX, 12, accuracy: 1.5)
+        XCTAssertEqual(compact.maxY - submit.frame.maxY, 12, accuracy: 1.5)
+        XCTAssertEqual(compact.midY, submit.frame.midY, accuracy: 1)
+        captureConversation("发送按钮位置-收起", app: app)
+        app.textFields["message-input"].tap()
+        XCTAssertTrue(app.buttons["composer.effort"].waitForExistence(timeout: 5))
+        let expanded = surface()
+        print("COMPOSER_EXPANDED", expanded, submit.frame)
+        XCTAssertEqual(expanded.maxX - submit.frame.maxX, 12, accuracy: 1.5)
+        XCTAssertEqual(expanded.maxY - submit.frame.maxY, 13, accuracy: 1.5)
+        captureConversation("发送按钮位置-展开", app: app)
+    }
+
     func testSendAndStopKeepBusinessActionsWithSystemFeedback() {
         let app = XCUIApplication()
         app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-submit-fixture", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]

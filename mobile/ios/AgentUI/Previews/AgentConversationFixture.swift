@@ -212,4 +212,18 @@ struct AgentTypographyFixture: ViewModifier {
             .environment(\.legibilityWeight, enabled ? .bold : weight)
     }
 }
+/// 显式布局回归参数下记录真实表面范围，避免辅助功能容器只返回子控件并集。
+struct AgentComposerGeometryFixture: ViewModifier {
+    @State private var frame = CGRect.zero
+    func body(content: Content) -> some View {
+        if ProcessInfo.processInfo.arguments.contains("--agent-composer-geometry-fixture") {
+            content.onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame = $0 }
+                .overlay(alignment: .topLeading) {
+                    Text("\(frame.minX),\(frame.minY),\(frame.width),\(frame.height)")
+                        .font(.system(size: 1)).opacity(0.01).allowsHitTesting(false)
+                        .accessibilityIdentifier("composer.geometry")
+                }
+        } else { content }
+    }
+}
 #endif
