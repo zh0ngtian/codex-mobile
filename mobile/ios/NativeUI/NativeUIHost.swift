@@ -50,6 +50,11 @@ struct NativeUIHost<Legacy: View>: View {
                     .font(.system(size: 1)).frame(width: 1, height: 1).allowsHitTesting(false)
                     .accessibilityIdentifier("history-request-count")
             }
+            if NativeConversationLoadProfile.enabled {
+                Text(NativeConversationLoadProfile.shared.status)
+                    .font(.system(size: 1)).frame(width: 1, height: 1).opacity(0.01).allowsHitTesting(false)
+                    .accessibilityIdentifier("load-profile.status")
+            }
             if ProcessInfo.processInfo.arguments.contains("--native-ui-preference-probe") {
                 Text(store.savedNativePreference ? "1" : "0")
                     .font(.system(size: 1)).frame(width: 1, height: 1).allowsHitTesting(false)

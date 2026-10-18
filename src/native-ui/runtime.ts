@@ -1,3 +1,4 @@
+import { beginLoadProfile, profileReadySnapshot } from '../diagnostics/conversation-load-profile';
 import { flushSync } from 'react-dom';
 import { getActiveLocale, t } from '../i18n';
 import { FONT_SCALES, readFontSize } from '../ui/font-size';
@@ -138,6 +139,7 @@ export class NativeRuntime {
       if (!id || id.length > 200 || !params || Array.isArray(params) || typeof params !== 'object') throw new Error(t('命令格式无效'));
       if (this.inFlight.size > 64) throw new Error(t('待处理命令过多，请稍后重试'));
       validate(name, params);
+      if (name === 'thread.open') beginLoadProfile(id, String(params.threadId));
       const workspace = this.workspaces.get(this.navigation.selectedBackendId);
       const globalPanelAlias = name === 'panel.open' && ['devices', 'settings', 'language', 'font', 'transport', 'notifications', 'updates', 'drafts'].includes(String(params.id));
       const aliasHandler = globalPanelAlias ? this.globalHandlers[params.id === 'drafts' ? 'drafts.open' : 'settings.open'] : undefined;
@@ -182,6 +184,7 @@ export class NativeRuntime {
 }
 export function publishNativeSnapshot(snapshot: NativeSnapshot) {
   if (!isNativeBridgeEnabled()) return;
+  profileReadySnapshot(snapshot);
   const target = window as NativeWindow;
   if (target.codexMobilePublishNativeSnapshot) target.codexMobilePublishNativeSnapshot(snapshot);
   else target.webkit!.messageHandlers!.nativeUI!.postMessage({ type: 'snapshot', snapshot });

@@ -1,3 +1,4 @@
+import { markLoadProfile } from './diagnostics/conversation-load-profile';
 import { NativeSwitchBoundary, useNativeSwitch, useSwitchRegistry, useSwitchWorkspace } from './native-ui/switch-context';
 import { emptyNativeSnapshot } from './native-ui/protocol';
 import { useNativeConfirmation } from './native-ui/confirmation';
@@ -2327,6 +2328,7 @@ function BackendWorkspace({
     try {
       if (!client) throw new Error(t("设备尚未连接，请稍后重试"));
       const session = await resumeThreadSession(client, threadId);
+      markLoadProfile(threadId, 'details-ready', { turns: session.thread?.turns?.length ?? 0 });
       if (sequence !== openSequenceRef.current || client !== clientRef.current) {
         if (activeThreadTargetRef.current !== threadId) {
           void client
@@ -2375,6 +2377,7 @@ function BackendWorkspace({
       setSelectedPermission(session.activePermissionProfile?.id ?? "");
       setConversationLoadState("ready");
       setConversationLoadError("");
+      markLoadProfile(threadId, 'state-updated');
 
       if (session.thread.cwd) {
         void client
@@ -2430,6 +2433,7 @@ function BackendWorkspace({
   }, [projects, threads]);
 
   function openThread(thread: AnyRecord) {
+    markLoadProfile(String(thread.id), 'workspace-open');
     const sequence = ++openSequenceRef.current;
     markThreadRead(String(thread.id));
     resetDraftContext();

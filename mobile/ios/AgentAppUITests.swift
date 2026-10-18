@@ -862,9 +862,9 @@ final class AgentAppUITests: XCTestCase {
         XCTAssertTrue(image.isHittable)
     }
 
-    private func launchConnectedApp() throws -> XCUIApplication {
+    private func launchConnectedApp(extraLaunchArguments: [String] = []) throws -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments = ["--native-ui-live", "--agent-scroll-diagnostics", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
+        app.launchArguments = ["--native-ui-live", "--agent-scroll-diagnostics", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"] + extraLaunchArguments
         app.launch()
         let gateway = ProcessInfo.processInfo.environment["CODEX_TEST_GATEWAY"]
             ?? ProcessInfo.processInfo.environment["TEST_RUNNER_CODEX_TEST_GATEWAY"]
@@ -895,6 +895,49 @@ final class AgentAppUITests: XCTestCase {
         }
         XCTAssertTrue(any("sidebar.askCodex").waitForExistence(timeout: 12))
         return app
+    }
+
+    func testProfileCurrentPinnedConversationLoading() throws {
+        func value(_ key: String, _ fallback: Int) -> Int {
+            Int(ProcessInfo.processInfo.environment[key] ?? ProcessInfo.processInfo.environment["TEST_RUNNER_" + key] ?? "") ?? fallback
+        }
+        let warmSamples = value("CODEX_PROFILE_WARM_SAMPLES", 10)
+        let coldSamples = value("CODEX_PROFILE_COLD_SAMPLES", 3)
+        let profileArgs = ["--conversation-load-profile"]
+        var app = try launchConnectedApp(extraLaunchArguments: profileArgs)
+        let pinned = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND value == %@", "sidebar.conversation.", "已关注"))
+        XCTAssertTrue(pinned.firstMatch.waitForExistence(timeout: 15))
+        let titles = pinned.allElementsBoundByIndex.map { row in
+            row.staticTexts.firstMatch.exists ? row.staticTexts.firstMatch.label : row.label.components(separatedBy: "，")[0]
+        }
+        XCTAssertFalse(titles.isEmpty)
+        print("PROFILE_TARGETS", titles.enumerated().map { "\($0.offset):\($0.element)" })
+        func open(_ title: String, index: Int, round: Int, mode: String) {
+            if !app.buttons["sidebar.askCodex"].exists { app.buttons["会话列表"].tap() }
+            let row = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND value == %@ AND label BEGINSWITH %@", "sidebar.conversation.", "已关注", title)).firstMatch
+            XCTAssertTrue(row.waitForExistence(timeout: 12), title)
+            let status = app.staticTexts["load-profile.status"]
+            let previous = status.label
+            row.tap()
+            expectation(for: NSPredicate { _, _ in status.label.hasPrefix("done:") && status.label != previous }, evaluatedWith: status)
+            waitForExpectations(timeout: 22)
+            print("PROFILE_SAMPLE", mode, index, round, status.label)
+            if round == 0 || mode == "cold" {
+                XCTAssertTrue(Self.hasRenderedConversationText(app.screenshot().image))
+                captureConversation("加载计时-\(mode)-\(index)-\(round)", app: app)
+            }
+        }
+        for round in 0...max(0, warmSamples) {
+            for (index, title) in titles.enumerated() { open(title, index: index, round: round, mode: round == 0 ? "warmup" : "warm") }
+        }
+        if coldSamples > 0 {
+            for round in 0..<coldSamples {
+                for (index, title) in titles.enumerated() {
+                    app = try launchConnectedApp(extraLaunchArguments: profileArgs + ["--profile-cold"])
+                    open(title, index: index, round: round, mode: "cold")
+                }
+            }
+        }
     }
 
     func testUsageLabelsAndMissingCacheDetails() {

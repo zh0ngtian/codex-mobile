@@ -62,9 +62,16 @@ struct ConversationScreen: View {
                         }
                     }
                     .padding(.horizontal, 16).padding(.top, 8)
-                    .background(NativeConversationScrollResolver(access: scrollAccess) {
-                        withTransaction(Transaction(animation: nil)) { proxy.scrollTo("bottom", anchor: .bottom) }
-                    })
+                    .background {
+                        NativeConversationScrollResolver(access: scrollAccess) {
+                            withTransaction(Transaction(animation: nil)) { proxy.scrollTo("bottom", anchor: .bottom) }
+                        }
+                        #if DEBUG
+                        if NativeConversationLoadProfile.enabled {
+                            NativeLoadRenderProbe(threadID: session.nativeSnapshot.threadId, ready: session.nativeSnapshot.loading == "ready")
+                        }
+                        #endif
+                    }
                 }
                 .scrollBounceBehavior(.always)
                 .accessibilityElement(children: .contain)

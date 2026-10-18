@@ -1,0 +1,1614 @@
+[
+  {
+    "sample": 1,
+    "mode": "repeat",
+    "events": [
+      {
+        "phase": "native-command",
+        "elapsedMs": 0.0,
+        "data": {}
+      },
+      {
+        "phase": "js-command",
+        "elapsedMs": 1.166,
+        "data": {}
+      },
+      {
+        "phase": "workspace-open",
+        "elapsedMs": 12.166,
+        "data": {}
+      },
+      {
+        "phase": "rpc-start",
+        "elapsedMs": 12.166,
+        "data": {
+          "method": "thread/resume",
+          "request": 4
+        }
+      },
+      {
+        "phase": "rpc-end",
+        "elapsedMs": 707.166,
+        "data": {
+          "durationMs": 695,
+          "method": "thread/resume",
+          "ok": true,
+          "request": 4
+        }
+      },
+      {
+        "phase": "details-ready",
+        "elapsedMs": 708.166,
+        "data": {
+          "turns": 5
+        }
+      },
+      {
+        "phase": "rpc-start",
+        "elapsedMs": 708.166,
+        "data": {
+          "method": "thread/turns/list",
+          "request": 5
+        }
+      },
+      {
+        "phase": "state-updated",
+        "elapsedMs": 708.166,
+        "data": {}
+      },
+      {
+        "phase": "js-ready-snapshot",
+        "elapsedMs": 745.166,
+        "data": {
+          "messages": 9,
+          "textChars": 1459
+        }
+      },
+      {
+        "phase": "native-snapshot",
+        "elapsedMs": 766.173,
+        "data": {}
+      },
+      {
+        "phase": "native-serialized",
+        "elapsedMs": 767.925,
+        "data": {
+          "bytes": 384184
+        }
+      },
+      {
+        "phase": "native-decoded",
+        "elapsedMs": 773.336,
+        "data": {}
+      },
+      {
+        "phase": "native-store",
+        "elapsedMs": 773.539,
+        "data": {}
+      },
+      {
+        "phase": "native-projected",
+        "elapsedMs": 774.483,
+        "data": {
+          "messages": 9,
+          "textChars": 1459
+        }
+      },
+      {
+        "phase": "native-layout",
+        "elapsedMs": 813.862,
+        "data": {}
+      },
+      {
+        "phase": "native-first-frame",
+        "elapsedMs": 832.492,
+        "data": {}
+      },
+      {
+        "phase": "rpc-end",
+        "elapsedMs": 884.166,
+        "data": {
+          "durationMs": 176,
+          "method": "thread/turns/list",
+          "ok": true,
+          "request": 5
+        }
+      },
+      {
+        "phase": "native-stable",
+        "elapsedMs": 1448.256,
+        "data": {
+          "snapshots": 6
+        }
+      }
+    ]
+  },
+  {
+    "sample": 2,
+    "mode": "repeat",
+    "events": [
+      {
+        "phase": "native-command",
+        "elapsedMs": 0.0,
+        "data": {}
+      },
+      {
+        "phase": "js-command",
+        "elapsedMs": 0.3,
+        "data": {}
+      },
+      {
+        "phase": "workspace-open",
+        "elapsedMs": 9.3,
+        "data": {}
+      },
+      {
+        "phase": "rpc-start",
+        "elapsedMs": 9.3,
+        "data": {
+          "method": "thread/resume",
+          "request": 7
+        }
+      },
+      {
+        "phase": "rpc-end",
+        "elapsedMs": 739.3,
+        "data": {
+          "durationMs": 730,
+          "method": "thread/resume",
+          "ok": true,
+          "request": 7
+        }
+      },
+      {
+        "phase": "details-ready",
+        "elapsedMs": 739.3,
+        "data": {
+          "turns": 5
+        }
+      },
+      {
+        "phase": "rpc-start",
+        "elapsedMs": 739.3,
+        "data": {
+          "method": "thread/turns/list",
+          "request": 8
+        }
+      },
+      {
+        "phase": "state-updated",
+        "elapsedMs": 740.3,
+        "data": {}
+      },
+      {
+        "phase": "js-ready-snapshot",
+        "elapsedMs": 777.3,
+        "data": {
+          "messages": 9,
+          "textChars": 1459
+        }
+      },
+      {
+        "phase": "native-snapshot",
+        "elapsedMs": 789.558,
+        "data": {}
+      },
+      {
+        "phase": "native-serialized",
+        "elapsedMs": 791.612,
+        "data": {
+          "bytes": 384390
+        }
+      },
+      {
+        "phase": "native-decoded",
+        "elapsedMs": 797.089,
+        "data": {}
+      },
+      {
+        "phase": "native-store",
+        "elapsedMs": 797.179,
+        "data": {}
+      },
+      {
+        "phase": "native-projected",
+        "elapsedMs": 798.136,
+        "data": {
+          "messages": 9,
+          "textChars": 1459
+        }
+      },
+      {
+        "phase": "native-layout",
+        "elapsedMs": 840.152,
+        "data": {}
+      },
+      {
+        "phase": "native-first-frame",
+        "elapsedMs": 850.845,
+        "data": {}
+      },
+      {
+        "phase": "rpc-end",
+        "elapsedMs": 924.3,
+        "data": {
+          "durationMs": 185,
+          "method": "thread/turns/list",
+          "ok": true,
+          "request": 8
+        }
+      },
+      {
+        "phase": "native-stable",
+        "elapsedMs": 1478.806,
+        "data": {
+          "snapshots": 8
+        }
+      }
+    ]
+  },
+  {
+    "sample": 3,
+    "mode": "repeat",
+    "events": [
+      {
+        "phase": "native-command",
+        "elapsedMs": 0.0,
+        "data": {}
+      },
+      {
+        "phase": "js-command",
+        "elapsedMs": -0.076,
+        "data": {}
+      },
+      {
+        "phase": "workspace-open",
+        "elapsedMs": 7.924,
+        "data": {}
+      },
+      {
+        "phase": "rpc-start",
+        "elapsedMs": 7.924,
+        "data": {
+          "method": "thread/resume",
+          "request": 10
+        }
+      },
+      {
+        "phase": "rpc-end",
+        "elapsedMs": 288.924,
+        "data": {
+          "durationMs": 281,
+          "method": "thread/resume",
+          "ok": true,
+          "request": 10
+        }
+      },
+      {
+        "phase": "details-ready",
+        "elapsedMs": 288.924,
+        "data": {
+          "turns": 5
+        }
+      },
+      {
+        "phase": "rpc-start",
+        "elapsedMs": 288.924,
+        "data": {
+          "method": "thread/turns/list",
+          "request": 11
+        }
+      },
+      {
+        "phase": "state-updated",
+        "elapsedMs": 288.924,
+        "data": {}
+      },
+      {
+        "phase": "js-ready-snapshot",
+        "elapsedMs": 327.924,
+        "data": {
+          "messages": 9,
+          "textChars": 1459
+        }
+      },
+      {
+        "phase": "native-snapshot",
+        "elapsedMs": 340.521,
+        "data": {}
+      },
+      {
+        "phase": "native-serialized",
+        "elapsedMs": 342.469,
+        "data": {
+          "bytes": 384596
+        }
+      },
+      {
+        "phase": "native-decoded",
+        "elapsedMs": 347.963,
+        "data": {}
+      },
+      {
+        "phase": "native-store",
+        "elapsedMs": 348.051,
+        "data": {}
+      },
+      {
+        "phase": "native-projected",
+        "elapsedMs": 348.967,
+        "data": {
+          "messages": 9,
+          "textChars": 1459
+        }
+      },
+      {
+        "phase": "native-layout",
+        "elapsedMs": 400.369,
+        "data": {}
+      },
+      {
+        "phase": "native-first-frame",
+        "elapsedMs": 415.921,
+        "data": {}
+      },
+      {
+        "phase": "rpc-end",
+        "elapsedMs": 480.924,
+        "data": {
+          "durationMs": 192,
+          "method": "thread/turns/list",
+          "ok": true,
+          "request": 11
+        }
+      },
+      {
+        "phase": "native-stable",
+        "elapsedMs": 1009.125,
+        "data": {
+          "snapshots": 8
+        }
+      }
+    ]
+  },
+  {
+    "sample": 4,
+    "mode": "repeat",
+    "events": [
+      {
+        "phase": "native-command",
+        "elapsedMs": 0.0,
+        "data": {}
+      },
+      {
+        "phase": "js-command",
+        "elapsedMs": 0.86,
+        "data": {}
+      },
+      {
+        "phase": "workspace-open",
+        "elapsedMs": 9.86,
+        "data": {}
+      },
+      {
+        "phase": "rpc-start",
+        "elapsedMs": 9.86,
+        "data": {
+          "method": "thread/resume",
+          "request": 13
+        }
+      },
+      {
+        "phase": "rpc-end",
+        "elapsedMs": 402.86,
+        "data": {
+          "durationMs": 393,
+          "method": "thread/resume",
+          "ok": true,
+          "request": 13
+        }
+      },
+      {
+        "phase": "details-ready",
+        "elapsedMs": 402.86,
+        "data": {
+          "turns": 5
+        }
+      },
+      {
+        "phase": "rpc-start",
+        "elapsedMs": 402.86,
+        "data": {
+          "method": "thread/turns/list",
+          "request": 14
+        }
+      },
+      {
+        "phase": "state-updated",
+        "elapsedMs": 402.86,
+        "data": {}
+      },
+      {
+        "phase": "js-ready-snapshot",
+        "elapsedMs": 441.86,
+        "data": {
+          "messages": 9,
+          "textChars": 1459
+        }
+      },
+      {
+        "phase": "native-snapshot",
+        "elapsedMs": 454.871,
+        "data": {}
+      },
+      {
+        "phase": "native-serialized",
+        "elapsedMs": 456.833,
+        "data": {
+          "bytes": 384802
+        }
+      },
+      {
+        "phase": "native-decoded",
+        "elapsedMs": 462.092,
+        "data": {}
+      },
+      {
+        "phase": "native-store",
+        "elapsedMs": 462.175,
+        "data": {}
+      },
+      {
+        "phase": "native-projected",
+        "elapsedMs": 464.279,
+        "data": {
+          "messages": 9,
+          "textChars": 1459
+        }
+      },
+      {
+        "phase": "native-layout",
+        "elapsedMs": 518.698,
+        "data": {}
+      },
+      {
+        "phase": "native-first-frame",
+        "elapsedMs": 541.541,
+        "data": {}
+      },
+      {
+        "phase": "rpc-end",
+        "elapsedMs": 619.86,
+        "data": {
+          "durationMs": 217,
+          "method": "thread/turns/list",
+          "ok": true,
+          "request": 14
+        }
+      },
+      {
+        "phase": "native-stable",
+        "elapsedMs": 1483.421,
+        "data": {
+          "snapshots": 8
+        }
+      }
+    ]
+  },
+  {
+    "sample": 5,
+    "mode": "repeat",
+    "events": [
+      {
+        "phase": "native-command",
+        "elapsedMs": 0.0,
+        "data": {}
+      },
+      {
+        "phase": "js-command",
+        "elapsedMs": -0.204,
+        "data": {}
+      },
+      {
+        "phase": "workspace-open",
+        "elapsedMs": 6.796,
+        "data": {}
+      },
+      {
+        "phase": "rpc-start",
+        "elapsedMs": 6.796,
+        "data": {
+          "method": "thread/resume",
+          "request": 16
+        }
+      },
+      {
+        "phase": "rpc-end",
+        "elapsedMs": 152.796,
+        "data": {
+          "durationMs": 146,
+          "method": "thread/resume",
+          "ok": true,
+          "request": 16
+        }
+      },
+      {
+        "phase": "details-ready",
+        "elapsedMs": 152.796,
+        "data": {
+          "turns": 5
+        }
+      },
+      {
+        "phase": "rpc-start",
+        "elapsedMs": 152.796,
+        "data": {
+          "method": "thread/turns/list",
+          "request": 17
+        }
+      },
+      {
+        "phase": "state-updated",
+        "elapsedMs": 153.796,
+        "data": {}
+      },
+      {
+        "phase": "js-ready-snapshot",
+        "elapsedMs": 190.796,
+        "data": {
+          "messages": 9,
+          "textChars": 1459
+        }
+      },
+      {
+        "phase": "native-snapshot",
+        "elapsedMs": 203.007,
+        "data": {}
+      },
+      {
+        "phase": "native-serialized",
+        "elapsedMs": 204.791,
+        "data": {
+          "bytes": 385008
+        }
+      },
+      {
+        "phase": "native-decoded",
+        "elapsedMs": 210.964,
+        "data": {}
+      },
+      {
+        "phase": "native-store",
+        "elapsedMs": 211.054,
+        "data": {}
+      },
+      {
+        "phase": "native-projected",
+        "elapsedMs": 212.155,
+        "data": {
+          "messages": 9,
+          "textChars": 1459
+        }
+      },
+      {
+        "phase": "native-layout",
+        "elapsedMs": 260.145,
+        "data": {}
+      },
+      {
+        "phase": "native-first-frame",
+        "elapsedMs": 275.984,
+        "data": {}
+      },
+      {
+        "phase": "rpc-end",
+        "elapsedMs": 358.796,
+        "data": {
+          "durationMs": 206.00000000000728,
+          "method": "thread/turns/list",
+          "ok": true,
+          "request": 17
+        }
+      },
+      {
+        "phase": "native-stable",
+        "elapsedMs": 893.575,
+        "data": {
+          "snapshots": 6
+        }
+      }
+    ]
+  },
+  {
+    "sample": 6,
+    "mode": "repeat",
+    "events": [
+      {
+        "phase": "native-command",
+        "elapsedMs": 0.0,
+        "data": {}
+      },
+      {
+        "phase": "js-command",
+        "elapsedMs": -0.367,
+        "data": {}
+      },
+      {
+        "phase": "workspace-open",
+        "elapsedMs": 5.633,
+        "data": {}
+      },
+      {
+        "phase": "rpc-start",
+        "elapsedMs": 5.633,
+        "data": {
+          "method": "thread/resume",
+          "request": 19
+        }
+      },
+      {
+        "phase": "rpc-end",
+        "elapsedMs": 334.633,
+        "data": {
+          "durationMs": 329,
+          "method": "thread/resume",
+          "ok": true,
+          "request": 19
+        }
+      },
+      {
+        "phase": "details-ready",
+        "elapsedMs": 334.633,
+        "data": {
+          "turns": 5
+        }
+      },
+      {
+        "phase": "rpc-start",
+        "elapsedMs": 334.633,
+        "data": {
+          "method": "thread/turns/list",
+          "request": 20
+        }
+      },
+      {
+        "phase": "state-updated",
+        "elapsedMs": 334.633,
+        "data": {}
+      },
+      {
+        "phase": "js-ready-snapshot",
+        "elapsedMs": 375.633,
+        "data": {
+          "messages": 9,
+          "textChars": 1459
+        }
+      },
+      {
+        "phase": "native-snapshot",
+        "elapsedMs": 389.378,
+        "data": {}
+      },
+      {
+        "phase": "native-serialized",
+        "elapsedMs": 391.35,
+        "data": {
+          "bytes": 385214
+        }
+      },
+      {
+        "phase": "native-decoded",
+        "elapsedMs": 399.054,
+        "data": {}
+      },
+      {
+        "phase": "native-store",
+        "elapsedMs": 399.169,
+        "data": {}
+      },
+      {
+        "phase": "native-projected",
+        "elapsedMs": 400.793,
+        "data": {
+          "messages": 9,
+          "textChars": 1459
+        }
+      },
+      {
+        "phase": "native-layout",
+        "elapsedMs": 455.163,
+        "data": {}
+      },
+      {
+        "phase": "native-first-frame",
+        "elapsedMs": 477.158,
+        "data": {}
+      },
+      {
+        "phase": "rpc-end",
+        "elapsedMs": 543.633,
+        "data": {
+          "durationMs": 209.00000000000728,
+          "method": "thread/turns/list",
+          "ok": true,
+          "request": 20
+        }
+      },
+      {
+        "phase": "native-stable",
+        "elapsedMs": 1122.169,
+        "data": {
+          "snapshots": 6
+        }
+      }
+    ]
+  },
+  {
+    "sample": 7,
+    "mode": "repeat",
+    "events": [
+      {
+        "phase": "native-command",
+        "elapsedMs": 0.0,
+        "data": {}
+      },
+      {
+        "phase": "js-command",
+        "elapsedMs": -0.792,
+        "data": {}
+      },
+      {
+        "phase": "workspace-open",
+        "elapsedMs": 5.208,
+        "data": {}
+      },
+      {
+        "phase": "rpc-start",
+        "elapsedMs": 6.208,
+        "data": {
+          "method": "thread/resume",
+          "request": 22
+        }
+      },
+      {
+        "phase": "rpc-end",
+        "elapsedMs": 231.208,
+        "data": {
+          "durationMs": 224.99999999999272,
+          "method": "thread/resume",
+          "ok": true,
+          "request": 22
+        }
+      },
+      {
+        "phase": "details-ready",
+        "elapsedMs": 231.208,
+        "data": {
+          "turns": 5
+        }
+      },
+      {
+        "phase": "rpc-start",
+        "elapsedMs": 231.208,
+        "data": {
+          "method": "thread/turns/list",
+          "request": 23
+        }
+      },
+      {
+        "phase": "state-updated",
+        "elapsedMs": 231.208,
+        "data": {}
+      },
+      {
+        "phase": "js-ready-snapshot",
+        "elapsedMs": 275.208,
+        "data": {
+          "messages": 9,
+          "textChars": 1459
+        }
+      },
+      {
+        "phase": "native-snapshot",
+        "elapsedMs": 289.432,
+        "data": {}
+      },
+      {
+        "phase": "native-serialized",
+        "elapsedMs": 291.303,
+        "data": {
+          "bytes": 385420
+        }
+      },
+      {
+        "phase": "native-decoded",
+        "elapsedMs": 299.002,
+        "data": {}
+      },
+      {
+        "phase": "native-store",
+        "elapsedMs": 299.342,
+        "data": {}
+      },
+      {
+        "phase": "native-projected",
+        "elapsedMs": 300.72,
+        "data": {
+          "messages": 9,
+          "textChars": 1459
+        }
+      },
+      {
+        "phase": "native-layout",
+        "elapsedMs": 352.544,
+        "data": {}
+      },
+      {
+        "phase": "native-first-frame",
+        "elapsedMs": 372.85,
+        "data": {}
+      },
+      {
+        "phase": "rpc-end",
+        "elapsedMs": 427.208,
+        "data": {
+          "durationMs": 196,
+          "method": "thread/turns/list",
+          "ok": true,
+          "request": 23
+        }
+      },
+      {
+        "phase": "native-stable",
+        "elapsedMs": 983.784,
+        "data": {
+          "snapshots": 8
+        }
+      }
+    ]
+  },
+  {
+    "sample": 8,
+    "mode": "repeat",
+    "events": [
+      {
+        "phase": "native-command",
+        "elapsedMs": 0.0,
+        "data": {}
+      },
+      {
+        "phase": "js-command",
+        "elapsedMs": -0.376,
+        "data": {}
+      },
+      {
+        "phase": "workspace-open",
+        "elapsedMs": 7.624,
+        "data": {}
+      },
+      {
+        "phase": "rpc-start",
+        "elapsedMs": 7.624,
+        "data": {
+          "method": "thread/resume",
+          "request": 25
+        }
+      },
+      {
+        "phase": "rpc-end",
+        "elapsedMs": 260.624,
+        "data": {
+          "durationMs": 253,
+          "method": "thread/resume",
+          "ok": true,
+          "request": 25
+        }
+      },
+      {
+        "phase": "details-ready",
+        "elapsedMs": 260.624,
+        "data": {
+          "turns": 5
+        }
+      },
+      {
+        "phase": "rpc-start",
+        "elapsedMs": 260.624,
+        "data": {
+          "method": "thread/turns/list",
+          "request": 26
+        }
+      },
+      {
+        "phase": "state-updated",
+        "elapsedMs": 261.624,
+        "data": {}
+      },
+      {
+        "phase": "js-ready-snapshot",
+        "elapsedMs": 299.624,
+        "data": {
+          "messages": 9,
+          "textChars": 1459
+        }
+      },
+      {
+        "phase": "native-snapshot",
+        "elapsedMs": 312.977,
+        "data": {}
+      },
+      {
+        "phase": "native-serialized",
+        "elapsedMs": 315.014,
+        "data": {
+          "bytes": 385626
+        }
+      },
+      {
+        "phase": "native-decoded",
+        "elapsedMs": 320.502,
+        "data": {}
+      },
+      {
+        "phase": "native-store",
+        "elapsedMs": 320.589,
+        "data": {}
+      },
+      {
+        "phase": "native-projected",
+        "elapsedMs": 321.555,
+        "data": {
+          "messages": 9,
+          "textChars": 1459
+        }
+      },
+      {
+        "phase": "native-layout",
+        "elapsedMs": 367.823,
+        "data": {}
+      },
+      {
+        "phase": "native-first-frame",
+        "elapsedMs": 388.153,
+        "data": {}
+      },
+      {
+        "phase": "rpc-end",
+        "elapsedMs": 445.624,
+        "data": {
+          "durationMs": 185.00000000000728,
+          "method": "thread/turns/list",
+          "ok": true,
+          "request": 26
+        }
+      },
+      {
+        "phase": "native-stable",
+        "elapsedMs": 971.292,
+        "data": {
+          "snapshots": 6
+        }
+      }
+    ]
+  },
+  {
+    "sample": 9,
+    "mode": "repeat",
+    "events": [
+      {
+        "phase": "native-command",
+        "elapsedMs": 0.0,
+        "data": {}
+      },
+      {
+        "phase": "js-command",
+        "elapsedMs": -0.732,
+        "data": {}
+      },
+      {
+        "phase": "workspace-open",
+        "elapsedMs": 6.268,
+        "data": {}
+      },
+      {
+        "phase": "rpc-start",
+        "elapsedMs": 6.268,
+        "data": {
+          "method": "thread/resume",
+          "request": 28
+        }
+      },
+      {
+        "phase": "rpc-end",
+        "elapsedMs": 147.268,
+        "data": {
+          "durationMs": 141,
+          "method": "thread/resume",
+          "ok": true,
+          "request": 28
+        }
+      },
+      {
+        "phase": "details-ready",
+        "elapsedMs": 147.268,
+        "data": {
+          "turns": 5
+        }
+      },
+      {
+        "phase": "rpc-start",
+        "elapsedMs": 147.268,
+        "data": {
+          "method": "thread/turns/list",
+          "request": 29
+        }
+      },
+      {
+        "phase": "state-updated",
+        "elapsedMs": 148.268,
+        "data": {}
+      },
+      {
+        "phase": "js-ready-snapshot",
+        "elapsedMs": 185.268,
+        "data": {
+          "messages": 9,
+          "textChars": 1459
+        }
+      },
+      {
+        "phase": "native-snapshot",
+        "elapsedMs": 200.396,
+        "data": {}
+      },
+      {
+        "phase": "native-serialized",
+        "elapsedMs": 202.255,
+        "data": {
+          "bytes": 385851
+        }
+      },
+      {
+        "phase": "native-decoded",
+        "elapsedMs": 208.019,
+        "data": {}
+      },
+      {
+        "phase": "native-store",
+        "elapsedMs": 208.12,
+        "data": {}
+      },
+      {
+        "phase": "native-projected",
+        "elapsedMs": 209.071,
+        "data": {
+          "messages": 9,
+          "textChars": 1459
+        }
+      },
+      {
+        "phase": "native-layout",
+        "elapsedMs": 256.288,
+        "data": {}
+      },
+      {
+        "phase": "native-first-frame",
+        "elapsedMs": 264.251,
+        "data": {}
+      },
+      {
+        "phase": "rpc-end",
+        "elapsedMs": 366.268,
+        "data": {
+          "durationMs": 219,
+          "method": "thread/turns/list",
+          "ok": true,
+          "request": 29
+        }
+      },
+      {
+        "phase": "native-stable",
+        "elapsedMs": 921.662,
+        "data": {
+          "snapshots": 7
+        }
+      }
+    ]
+  },
+  {
+    "sample": 10,
+    "mode": "repeat",
+    "events": [
+      {
+        "phase": "native-command",
+        "elapsedMs": 0.0,
+        "data": {}
+      },
+      {
+        "phase": "js-command",
+        "elapsedMs": 3.656,
+        "data": {}
+      },
+      {
+        "phase": "workspace-open",
+        "elapsedMs": 11.656,
+        "data": {}
+      },
+      {
+        "phase": "rpc-start",
+        "elapsedMs": 11.656,
+        "data": {
+          "method": "thread/resume",
+          "request": 31
+        }
+      },
+      {
+        "phase": "rpc-end",
+        "elapsedMs": 199.656,
+        "data": {
+          "durationMs": 188,
+          "method": "thread/resume",
+          "ok": true,
+          "request": 31
+        }
+      },
+      {
+        "phase": "details-ready",
+        "elapsedMs": 199.656,
+        "data": {
+          "turns": 5
+        }
+      },
+      {
+        "phase": "rpc-start",
+        "elapsedMs": 199.656,
+        "data": {
+          "method": "thread/turns/list",
+          "request": 32
+        }
+      },
+      {
+        "phase": "state-updated",
+        "elapsedMs": 199.656,
+        "data": {}
+      },
+      {
+        "phase": "js-ready-snapshot",
+        "elapsedMs": 241.656,
+        "data": {
+          "messages": 9,
+          "textChars": 1459
+        }
+      },
+      {
+        "phase": "native-snapshot",
+        "elapsedMs": 257.574,
+        "data": {}
+      },
+      {
+        "phase": "native-serialized",
+        "elapsedMs": 259.267,
+        "data": {
+          "bytes": 386058
+        }
+      },
+      {
+        "phase": "native-decoded",
+        "elapsedMs": 266.476,
+        "data": {}
+      },
+      {
+        "phase": "native-store",
+        "elapsedMs": 266.618,
+        "data": {}
+      },
+      {
+        "phase": "native-projected",
+        "elapsedMs": 268.504,
+        "data": {
+          "messages": 9,
+          "textChars": 1459
+        }
+      },
+      {
+        "phase": "native-layout",
+        "elapsedMs": 318.99,
+        "data": {}
+      },
+      {
+        "phase": "native-first-frame",
+        "elapsedMs": 327.292,
+        "data": {}
+      },
+      {
+        "phase": "rpc-end",
+        "elapsedMs": 429.656,
+        "data": {
+          "durationMs": 230,
+          "method": "thread/turns/list",
+          "ok": true,
+          "request": 32
+        }
+      },
+      {
+        "phase": "native-stable",
+        "elapsedMs": 1121.049,
+        "data": {
+          "snapshots": 7
+        }
+      }
+    ]
+  },
+  {
+    "sample": 11,
+    "mode": "process-first",
+    "events": [
+      {
+        "phase": "native-command",
+        "elapsedMs": 0.0,
+        "data": {}
+      },
+      {
+        "phase": "js-command",
+        "elapsedMs": 0.564,
+        "data": {}
+      },
+      {
+        "phase": "workspace-open",
+        "elapsedMs": 6.564,
+        "data": {}
+      },
+      {
+        "phase": "rpc-start",
+        "elapsedMs": 6.564,
+        "data": {
+          "method": "thread/resume",
+          "request": 1
+        }
+      },
+      {
+        "phase": "rpc-end",
+        "elapsedMs": 64.564,
+        "data": {
+          "durationMs": 58,
+          "method": "thread/resume",
+          "ok": true,
+          "request": 1
+        }
+      },
+      {
+        "phase": "details-ready",
+        "elapsedMs": 64.564,
+        "data": {
+          "turns": 5
+        }
+      },
+      {
+        "phase": "rpc-start",
+        "elapsedMs": 64.564,
+        "data": {
+          "method": "thread/turns/list",
+          "request": 2
+        }
+      },
+      {
+        "phase": "state-updated",
+        "elapsedMs": 65.564,
+        "data": {}
+      },
+      {
+        "phase": "js-ready-snapshot",
+        "elapsedMs": 126.564,
+        "data": {
+          "messages": 9,
+          "textChars": 1459
+        }
+      },
+      {
+        "phase": "native-snapshot",
+        "elapsedMs": 196.688,
+        "data": {}
+      },
+      {
+        "phase": "native-serialized",
+        "elapsedMs": 198.444,
+        "data": {
+          "bytes": 383978
+        }
+      },
+      {
+        "phase": "native-decoded",
+        "elapsedMs": 205.212,
+        "data": {}
+      },
+      {
+        "phase": "native-store",
+        "elapsedMs": 205.321,
+        "data": {}
+      },
+      {
+        "phase": "native-projected",
+        "elapsedMs": 208.697,
+        "data": {
+          "messages": 9,
+          "textChars": 1459
+        }
+      },
+      {
+        "phase": "native-layout",
+        "elapsedMs": 327.051,
+        "data": {}
+      },
+      {
+        "phase": "rpc-end",
+        "elapsedMs": 186.564,
+        "data": {
+          "durationMs": 122,
+          "method": "thread/turns/list",
+          "ok": true,
+          "request": 2
+        }
+      },
+      {
+        "phase": "native-first-frame",
+        "elapsedMs": 342.316,
+        "data": {}
+      },
+      {
+        "phase": "native-stable",
+        "elapsedMs": 1182.584,
+        "data": {
+          "snapshots": 6
+        }
+      }
+    ]
+  },
+  {
+    "sample": 12,
+    "mode": "process-first",
+    "events": [
+      {
+        "phase": "native-command",
+        "elapsedMs": 0.0,
+        "data": {}
+      },
+      {
+        "phase": "js-command",
+        "elapsedMs": -0.534,
+        "data": {}
+      },
+      {
+        "phase": "workspace-open",
+        "elapsedMs": 5.466,
+        "data": {}
+      },
+      {
+        "phase": "rpc-start",
+        "elapsedMs": 6.466,
+        "data": {
+          "method": "thread/resume",
+          "request": 1
+        }
+      },
+      {
+        "phase": "rpc-end",
+        "elapsedMs": 70.466,
+        "data": {
+          "durationMs": 64,
+          "method": "thread/resume",
+          "ok": true,
+          "request": 1
+        }
+      },
+      {
+        "phase": "details-ready",
+        "elapsedMs": 70.466,
+        "data": {
+          "turns": 5
+        }
+      },
+      {
+        "phase": "rpc-start",
+        "elapsedMs": 70.466,
+        "data": {
+          "method": "thread/turns/list",
+          "request": 2
+        }
+      },
+      {
+        "phase": "state-updated",
+        "elapsedMs": 71.466,
+        "data": {}
+      },
+      {
+        "phase": "js-ready-snapshot",
+        "elapsedMs": 134.466,
+        "data": {
+          "messages": 9,
+          "textChars": 1459
+        }
+      },
+      {
+        "phase": "native-snapshot",
+        "elapsedMs": 215.261,
+        "data": {}
+      },
+      {
+        "phase": "native-serialized",
+        "elapsedMs": 216.994,
+        "data": {
+          "bytes": 383981
+        }
+      },
+      {
+        "phase": "native-decoded",
+        "elapsedMs": 225.345,
+        "data": {}
+      },
+      {
+        "phase": "native-store",
+        "elapsedMs": 225.416,
+        "data": {}
+      },
+      {
+        "phase": "native-projected",
+        "elapsedMs": 228.226,
+        "data": {
+          "messages": 9,
+          "textChars": 1459
+        }
+      },
+      {
+        "phase": "native-layout",
+        "elapsedMs": 362.832,
+        "data": {}
+      },
+      {
+        "phase": "rpc-end",
+        "elapsedMs": 298.466,
+        "data": {
+          "durationMs": 228,
+          "method": "thread/turns/list",
+          "ok": true,
+          "request": 2
+        }
+      },
+      {
+        "phase": "native-first-frame",
+        "elapsedMs": 456.389,
+        "data": {}
+      },
+      {
+        "phase": "native-stable",
+        "elapsedMs": 1198.93,
+        "data": {
+          "snapshots": 6
+        }
+      }
+    ]
+  },
+  {
+    "sample": 13,
+    "mode": "process-first",
+    "events": [
+      {
+        "phase": "native-command",
+        "elapsedMs": 0.0,
+        "data": {}
+      },
+      {
+        "phase": "js-command",
+        "elapsedMs": -0.442,
+        "data": {}
+      },
+      {
+        "phase": "workspace-open",
+        "elapsedMs": 9.558,
+        "data": {}
+      },
+      {
+        "phase": "rpc-start",
+        "elapsedMs": 9.558,
+        "data": {
+          "method": "thread/resume",
+          "request": 1
+        }
+      },
+      {
+        "phase": "rpc-end",
+        "elapsedMs": 93.558,
+        "data": {
+          "durationMs": 84,
+          "method": "thread/resume",
+          "ok": true,
+          "request": 1
+        }
+      },
+      {
+        "phase": "details-ready",
+        "elapsedMs": 93.558,
+        "data": {
+          "turns": 5
+        }
+      },
+      {
+        "phase": "rpc-start",
+        "elapsedMs": 94.558,
+        "data": {
+          "method": "thread/turns/list",
+          "request": 2
+        }
+      },
+      {
+        "phase": "state-updated",
+        "elapsedMs": 94.558,
+        "data": {}
+      },
+      {
+        "phase": "js-ready-snapshot",
+        "elapsedMs": 152.558,
+        "data": {
+          "messages": 9,
+          "textChars": 1459
+        }
+      },
+      {
+        "phase": "native-snapshot",
+        "elapsedMs": 218.947,
+        "data": {}
+      },
+      {
+        "phase": "native-serialized",
+        "elapsedMs": 220.926,
+        "data": {
+          "bytes": 383978
+        }
+      },
+      {
+        "phase": "native-decoded",
+        "elapsedMs": 227.741,
+        "data": {}
+      },
+      {
+        "phase": "native-store",
+        "elapsedMs": 227.795,
+        "data": {}
+      },
+      {
+        "phase": "native-projected",
+        "elapsedMs": 230.622,
+        "data": {
+          "messages": 9,
+          "textChars": 1459
+        }
+      },
+      {
+        "phase": "native-layout",
+        "elapsedMs": 387.986,
+        "data": {}
+      },
+      {
+        "phase": "rpc-end",
+        "elapsedMs": 248.558,
+        "data": {
+          "durationMs": 154,
+          "method": "thread/turns/list",
+          "ok": true,
+          "request": 2
+        }
+      },
+      {
+        "phase": "native-first-frame",
+        "elapsedMs": 517.843,
+        "data": {}
+      },
+      {
+        "phase": "native-stable",
+        "elapsedMs": 1267.988,
+        "data": {
+          "snapshots": 6
+        }
+      }
+    ]
+  }
+]

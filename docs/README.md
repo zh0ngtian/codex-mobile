@@ -10,6 +10,7 @@
 - [iOS OTA 发布](ios-ota-release.md)：本机签名、身份连续性、固定渠道、软件源发布文档入口及安装诊断。
 - [原生 iOS 界面桥接](native-ui-business-bridge.md)：双向切换、检查点与共享业务边界。
 - [iOS 模拟器验证](ios-simulator-verification.md)：可复用操作步骤与按日期保留的验收结果。
+- [2026-10-18 关注会话加载耗时](performance/2026-10-18-conversation-loading/README.md)：分阶段计时、重复打开/重启后首次打开的分布及脱敏原始样本；模拟器Debug数据。
 - [协议基准](../protocol/app-server-v2/README.md)：固定快照的版本、来源和使用边界。
 
 ## 当前发布入口
