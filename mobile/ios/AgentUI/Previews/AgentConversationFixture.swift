@@ -97,15 +97,41 @@ final class AgentConversationFixture {
             value.models[1].efforts = [NativeOption(id: "high", title: "High", value: "high")]
             value.models[1].defaultEffort = "high"
         }
+        if ProcessInfo.processInfo.arguments.contains("--agent-model-catalog-fixture") {
+            value.models += (0...59).map { NativeOption(id: "catalog-\($0)", title: "Catalog Model \($0)", value: "catalog-\($0)") }
+        }
         if ProcessInfo.processInfo.arguments.contains("--agent-startup-loading-fixture") { value.ready = false }
         value.messages = value.messages.map { message in
             var anchored = message
             anchored.scrollAnchorId = message.id
             return anchored
         }
+        let deferredMessages = value.messages
+        if ProcessInfo.processInfo.arguments.contains("--agent-delayed-report-fixture") { value.messages = []; value.loading = "loading" }
         snapshot = value
         store.sendCommand = { [weak self] command in self?.dispatch(command) }
         publish()
+        if ProcessInfo.processInfo.arguments.contains("--agent-delayed-report-fixture") {
+            Task { [weak self] in
+                try? await Task.sleep(for: .seconds(8))
+                guard let self else { return }
+                self.snapshot.loading = "ready"
+                self.snapshot.messages = deferredMessages
+                let paragraphs = (1...85).map { "**第\($0)段分析。** 这是长报告的分段正文，包含普通文字和加粗文字，用于重现首次加载后异步 Markdown 布局与底部定位之间的竞争。正文通过真实的原生 Markdown 解析和系统文本视图排版，不能依赖短文本的高度估算。" }.joined(separator: "\n\n")
+                self.snapshot.messages.append(NativeMessage(id: "large-report", role: "assistant", text: paragraphs + "\n\n报告末尾标记。", timestamp: Date().timeIntervalSince1970, phase: "final_answer"))
+                self.publish()
+            }
+        }
+        if ProcessInfo.processInfo.arguments.contains("--agent-model-catalog-fixture") {
+            Task { [weak self] in
+                for tick in 0..<600 {
+                    try? await Task.sleep(for: .milliseconds(250))
+                    guard let self else { return }
+                    self.snapshot.tokenUsage = NativeTokenUsage(lastRequestTokens: Double(tick))
+                    self.publish()
+                }
+            }
+        }
     }
 
     private func publish() { store.receive(snapshot); session.receive(snapshot) }

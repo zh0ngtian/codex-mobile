@@ -6,15 +6,8 @@ struct NativeContextUsageButton: View {
 
     var body: some View {
         Button { detailsOpen.toggle() } label: {
-            ZStack {
-                Circle().inset(by: NativeVisualMetrics.headerIconStroke / 2)
-                    .stroke(.primary.opacity(0.14), lineWidth: NativeVisualMetrics.headerIconStroke)
-                if let percent = store.snapshot.contextUsage?.safeUsedPercent, percent > 0 {
-                    Circle().inset(by: NativeVisualMetrics.headerIconStroke / 2).trim(from: 0, to: percent / 100)
-                        .stroke(.primary, style: StrokeStyle(lineWidth: NativeVisualMetrics.headerIconStroke, lineCap: .round))
-                        .rotationEffect(.degrees(-90))
-                }
-            }.frame(width: NativeVisualMetrics.headerIconSize, height: NativeVisualMetrics.headerIconSize)
+            NativeUsageIcon(unavailable: store.snapshot.contextUsage?.safeUsedPercent == nil)
+                .frame(width: NativeVisualMetrics.headerIconSize, height: NativeVisualMetrics.headerIconSize)
                 .frame(width: NativeVisualMetrics.controlHeight, height: NativeVisualMetrics.controlHeight).contentShape(.rect)
         }
         .accessibilityLabel(store.label("查看用量与额度", "View Usage and Limits"))

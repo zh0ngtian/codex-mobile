@@ -29,8 +29,7 @@ struct ConversationHeader: ViewModifier {
                 }
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     Button { usagePresented.toggle() } label: {
-                        Image(systemName: "circle").fontWeight(.regular)
-                            .foregroundStyle(contextUsed == nil ? .tertiary : .primary)
+                        NativeUsageIcon(unavailable: contextUsed == nil)
                             .frame(width: 20, height: 20)
                     }
                     .accessibilityLabel(preferences.text("用量与额度", "Usage and limits"))

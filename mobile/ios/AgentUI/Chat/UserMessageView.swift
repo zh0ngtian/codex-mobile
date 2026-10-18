@@ -28,8 +28,9 @@ struct UserMessageView: View {
                     }
                     if expanded || fullHeight > visibleHeight + 1 {
                         Button(expanded ? preferences.text("收起", "Show less") : preferences.text("展开更多", "Show more")) { expanded.toggle() }
-                            .font(.body).frame(minHeight: 44)
-                            .foregroundStyle(preferences.accent.color)
+                            .buttonStyle(.plain)
+                            .font(AgentTheme.body).frame(minHeight: 44)
+                            .foregroundStyle(preferences.accent.userMessageText(in: colorScheme))
                     }
                     if !message.attachments.isEmpty { MessageAttachmentCards(attachments: message.attachments) }
                 }

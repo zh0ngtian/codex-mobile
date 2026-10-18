@@ -6,7 +6,7 @@ struct ConversationScreen: View {
     let conversationID: UUID
     @State private var liveExpanded = true
     @State private var atBottom = true
-    @State private var awaitingBottomAnchor = false
+    @State private var followsLatest = true
     @State private var scrollAccess = NativeConversationScrollAccess()
     @State private var loadingHistory = false
     @State private var historyPull = HistoryPullState()
@@ -22,7 +22,8 @@ struct ConversationScreen: View {
         if let conversation = session.conversation(conversationID) {
             ScrollViewReader { proxy in
                 ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 22) {
+                    // 已加载的一页消息必须有真实高度；长 UITextView 的惰性估算会留下空白可视区。
+                    VStack(alignment: .leading, spacing: 22) {
                         ConversationStatusBanners(conversation: conversation)
                         if conversation.detailError {
                             ContentUnavailableView {
@@ -78,7 +79,7 @@ struct ConversationScreen: View {
                     scrollIsIdle = phase == .idle
                     switch phase {
                     case .tracking, .interacting:
-                        awaitingBottomAnchor = false
+                        followsLatest = false
                         scrollAccess.stopFollowing()
                         historyPull.dragBegan(at: offset)
                     case .decelerating:
@@ -87,6 +88,7 @@ struct ConversationScreen: View {
                         historyPull.dragEnded(at: offset, willDecelerate: false)
                         historyPull.settled(at: offset)
                         restoreHistoryAnchor(proxy)
+                        if atBottom { followsLatest = true }
                         resumeBottomFollowingIfReached()
                     case .animating:
                         historyPull.programmaticScrollBegan()
@@ -119,7 +121,8 @@ struct ConversationScreen: View {
                         return
                     }
                     guard !loadingHistory, newIDs.count > oldIDs.count, newIDs.last != oldIDs.last else { return }
-                    if atBottom || conversation.messages.last?.isUser == true {
+                    // 新内容先改变几何高度，不能拿本帧的 atBottom 反推用户是否离开底部。
+                    if followsLatest || conversation.messages.last?.isUser == true {
                         historyPull.programmaticScrollBegan()
                         scrollAccess.scrollToBottom()
                     }
@@ -128,7 +131,7 @@ struct ConversationScreen: View {
                     restoreHistoryAnchor(proxy)
                 }
                 .onChange(of: conversation.queue.count) {
-                    if atBottom {
+                    if followsLatest {
                         historyPull.programmaticScrollBegan()
                         scrollAccess.scrollToBottom()
                     }
@@ -139,6 +142,13 @@ struct ConversationScreen: View {
                 .onChange(of: session.nativeSnapshot.contextId) {
                     resetHistory()
                 }
+                .overlay {
+                    if session.nativeSnapshot.loading == "loading", conversation.messages.isEmpty, conversation.liveCommentary.isEmpty {
+                        ProgressView(preferences.text("正在加载对话…", "Loading conversation…"))
+                            .tint(AgentTheme.ink.opacity(0.6))
+                            .accessibilityIdentifier("conversation.loading")
+                    }
+                }
                 .overlay(alignment: .bottom) {
                     if !atBottom && !conversation.detailError {
                         ScrollToBottomButton { scrollToLatest(proxy) }
@@ -146,7 +156,6 @@ struct ConversationScreen: View {
                             .transition(.opacity)
                     }
                 }
-                .animation(.easeOut(duration: 0.15), value: atBottom)
             }
             .background(AgentTheme.page)
             .modifier(ConversationHeader(conversationID: conversationID))
@@ -157,14 +166,13 @@ struct ConversationScreen: View {
     private func scrollToLatest(_ proxy: ScrollViewProxy) {
         historyPull.programmaticScrollBegan()
         historyAnchor = nil; historyAnchorID = nil; historyWasPrepended = false
-        // 让LazyVStack按末尾ID实现目标条目，不能跳到仍在估算的contentSize坐标。
+        // 统一通过末尾消息锚点定位，保留附件高度变化时的跟随。
         scrollAccess.stopFollowing()
-        awaitingBottomAnchor = true
+        followsLatest = true
         proxy.scrollTo("bottom", anchor: .bottom)
     }
     private func resumeBottomFollowingIfReached() {
-        guard awaitingBottomAnchor, atBottom, scrollIsIdle else { return }
-        awaitingBottomAnchor = false
+        guard followsLatest, atBottom, scrollIsIdle else { return }
         scrollAccess.resumeFollowing()
     }
     private func loadEarlier(_ proxy: ScrollViewProxy) {
@@ -202,7 +210,7 @@ struct ConversationScreen: View {
         historyWasPrepended = false
     }
     private func resetHistory() {
-        awaitingBottomAnchor = false
+        followsLatest = true
         scrollAccess.stopFollowing()
         historyPull.reset()
         historyAnchor = nil; historyAnchorID = nil

@@ -4,7 +4,7 @@ struct AssistantBody: View {
     @Environment(AppSession.self) private var session
     @Environment(AppPreferences.self) private var preferences
     let text: String
-    @State private var blocks: [NativeMarkdownBlock] = []
+    private var blocks: [NativeMarkdownBlock] { NativeMarkdownDocumentCache.blocks(for: text) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -19,7 +19,6 @@ struct AssistantBody: View {
         .font(AgentTheme.chatBody)
         .textSelection(.enabled)
         .tint(AgentTheme.ink)
-        .task(id: text) { blocks = NativeMarkdownBlock.parse(text) }
         .environment(\.openURL, OpenURLAction { url in
             if ["http", "https", "mailto", "tel"].contains(url.scheme?.lowercased() ?? "") { return .systemAction }
             session.nativeStore?.command("file.open", ["href": .string(url.absoluteString)])

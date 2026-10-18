@@ -40,6 +40,7 @@ struct HomeHeader: View {
                 .tint(AgentTheme.ink)
                 .accessibilityLabel(preferences.text("Codex 菜单", "Codex menu"))
                 .accessibilityIdentifier("sidebar.codexMenu")
+                .accessibilityValue(scopeTitle)
                 Button(action: toggleSearch) {
                     Image(systemName: session.searchVisible ? "xmark" : "magnifyingglass")
                         .font(.title3.weight(.regular))

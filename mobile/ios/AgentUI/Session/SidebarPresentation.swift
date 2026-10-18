@@ -8,7 +8,7 @@ enum SidebarPresentation {
     static func accepts(startX: Double, dx: Double, dy: Double, isOpen: Bool) -> Bool {
         guard startX.isFinite, startX >= 0, dx.isFinite, dy.isFinite,
               abs(dx) >= 12, abs(dx) > abs(dy) * 1.3 else { return false }
-        return isOpen ? dx < 0 : (startX <= 44 && dx > 0)
+        return isOpen ? dx < 0 : dx > 0
     }
     static func offset(isOpen: Bool, translation: Double, containerWidth: Double) -> Double {
         let limit = width(in: containerWidth)

@@ -13,6 +13,7 @@ struct AttachmentSheet: View {
     @State private var photosPresented = false
     @State private var filesPresented = false
     @State private var locationSelected = false
+    @State private var locationAuthorization = NativeLocationAuthorization()
     @State private var pickerError = false
     @State private var committing = false
     @State private var importError: String?
@@ -44,13 +45,12 @@ struct AttachmentSheet: View {
                     } header: { Text(preferences.text("待添加附件", "Attachments to add")) }
                 }
                 Section {
-                    Label(preferences.text("当前位置", "Current location"), systemImage: "location")
                     Button(locationSelected ? preferences.text("已选择当前位置", "Current location selected") : preferences.text("选择当前位置", "Select current location"), systemImage: locationSelected ? "checkmark.circle.fill" : "plus.circle", action: chooseLocation)
                     if locationSelected {
                         Button(preferences.text("移除位置", "Remove location"), role: .destructive, action: removeLocation)
                     }
                 } header: { Text(preferences.text("位置", "Location")) }
-                footer: { Text(preferences.text("添加时会请求真实定位，并把坐标、地图链接和精度插入输入框。定位失败时保留现有输入。", "Adding requests your location and inserts coordinates, a map link, and accuracy into the composer. Your input is preserved if location fails.")) }
+                footer: { Text(preferences.text("选择当前位置时请求定位权限，添加后将坐标、地图链接和精度插入输入框。定位失败时保留现有输入。", "Selecting your location requests permission. Adding inserts coordinates, a map link, and accuracy into the composer. Your input is preserved if location fails.")) }
             }
             .disabled(committing)
             .navigationTitle(preferences.text("添加到对话", "Add to conversation"))
@@ -87,7 +87,7 @@ struct AttachmentSheet: View {
             if (error as NSError).code != CocoaError.userCancelled.rawValue { pickerError = true }
         }
     }
-    private func chooseLocation() { locationSelected = true }
+    private func chooseLocation() { locationAuthorization.request(); locationSelected = true }
     private func removeLocation() { locationSelected = false }
     private func cancel() { imports.cancelAll(); dismiss() }
     private func commit() async {

@@ -44,6 +44,7 @@ final class NativeUIBridge: NSObject, WKScriptMessageHandler {
         }
         self.webView = webView
         webView.accessibilityElementsHidden = !legacyVisible
+        webView.isHidden = !legacyVisible
         let controller = webView.configuration.userContentController
         controller.removeScriptMessageHandler(forName: "nativeUI")
         controller.add(self, name: "nativeUI")
@@ -116,6 +117,9 @@ final class NativeUIBridge: NSObject, WKScriptMessageHandler {
     func setLegacyVisible(_ visible: Bool) {
         legacyVisible = visible
         webView?.accessibilityElementsHidden = !visible
+        // WKWebView 的远程 AX 子树可能越过 SwiftUI opacity；原生界面下不参与绘制或读屏。
+        // 实例仍挂载，保留同一份 JavaScript 业务与 WebSocket 连接。
+        webView?.isHidden = !visible
     }
     func setActive(_ active: Bool) {
         self.active = active

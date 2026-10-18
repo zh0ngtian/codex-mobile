@@ -1,4 +1,5 @@
 import XCTest
+import UIKit
 
 /// 独立界面夹具及本地网关验收；连接凭证不进入源码或测试附件。
 @MainActor
@@ -134,8 +135,8 @@ final class AgentAppUITests: XCTestCase {
 
     func testSidebarRespondsToHorizontalGestures() {
         let app = launchSidebarPolishFixture()
-        let openFrom = app.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.45))
-        let openTo = app.coordinate(withNormalizedOffset: CGVector(dx: 0.7, dy: 0.45))
+        let openFrom = app.coordinate(withNormalizedOffset: CGVector(dx: 0.25, dy: 0.45))
+        let openTo = app.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.45))
         openFrom.press(forDuration: 0.05, thenDragTo: openTo, withVelocity: .slow, thenHoldForDuration: 0.1)
         let sidebar = app.otherElements["sidebar.panel"]
         XCTAssertTrue(sidebar.waitForExistence(timeout: 5))
@@ -151,6 +152,89 @@ final class AgentAppUITests: XCTestCase {
         waitForExpectations(timeout: 5)
         XCTAssertTrue(app.buttons["会话列表"].isHittable)
         captureConversation("手势收起-恢复主界面", app: app)
+    }
+
+    func testDelayedLongReportShowsBottomAfterInitialLayout() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-delayed-report-fixture", "--agent-scroll-diagnostics", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
+        app.launch()
+        XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "conversation.loading").firstMatch.waitForExistence(timeout: 3), "详情尚未返回时显示中性的加载提示，不能只有白屏")
+        let replyTime = app.staticTexts.matching(identifier: "message.reply-time").matching(NSPredicate(format: "label != %@", "10月17日 10:46")).firstMatch
+        XCTAssertTrue(replyTime.waitForExistence(timeout: 10))
+        let deadline = Date().addingTimeInterval(2)
+        let visible = NSPredicate { _, _ in Date() >= deadline && replyTime.isHittable && replyTime.frame.minY > 120 && replyTime.frame.maxY < app.frame.height - 50 }
+        expectation(for: visible, evaluatedWith: app)
+        waitForExpectations(timeout: 12)
+        captureConversation("长报告-首次加载到底部", app: app)
+        XCTAssertTrue(Self.hasRenderedConversationText(app.screenshot().image), "实际正文区域必须有文字像素")
+        XCTAssertFalse(app.buttons["conversation.scrollToBottom"].exists)
+    }
+
+    func testPinnedConversationRepeatedEntryRemainsVisible() throws {
+        let app = try launchConnectedApp()
+        let pinned = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND value == %@", "sidebar.conversation.", "已关注")).firstMatch
+        XCTAssertTrue(pinned.waitForExistence(timeout: 15))
+        let target = pinned.identifier
+        for index in 1...4 {
+            if index > 1 {
+                app.buttons["header.newConversation"].tap()
+                app.buttons["会话列表"].tap()
+            }
+            app.buttons.matching(identifier: target).firstMatch.tap()
+            let timeline = app.scrollViews["conversation.timeline"]
+            XCTAssertTrue(timeline.waitForExistence(timeout: 15))
+            let deadline = Date().addingTimeInterval(2)
+            let visible = NSPredicate { _, _ in
+                Date() >= deadline && Self.hasRenderedConversationText(app.screenshot().image)
+            }
+            expectation(for: visible, evaluatedWith: app)
+            waitForExpectations(timeout: 15)
+            captureConversation("真实置顶会话-反复进入\(index)", app: app)
+        }
+    }
+
+    func testSelectLocationRequestsPermissionBeforeAdding() {
+        let app = launchConversationFixture()
+        app.resetAuthorizationStatus(for: .location)
+        defer { app.resetAuthorizationStatus(for: .location) }
+        app.buttons["添加附件"].tap()
+        XCTAssertTrue(app.buttons["选择当前位置"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.staticTexts["当前位置"].exists)
+        XCTAssertTrue(app.buttons["添加"].isEnabled == false)
+        app.buttons["选择当前位置"].tap()
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let permission = springboard.alerts.firstMatch
+        XCTAssertTrue(permission.waitForExistence(timeout: 5), "选择位置就应请求权限，不等待添加")
+        captureConversation("选择位置-即时权限", app: springboard)
+        permission.buttons.firstMatch.tap()
+        app.buttons["取消"].tap()
+        XCTAssertFalse(app.staticTexts["我的当前位置"].exists, "取消不修改输入")
+    }
+
+    func testLongModelMenuKeepsScrollPositionDuringSnapshots() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-model-catalog-fixture", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
+        app.launch()
+        XCTAssertTrue(app.textFields["message-input"].waitForExistence(timeout: 8))
+        app.textFields["message-input"].tap()
+        XCTAssertTrue(app.buttons["composer.model"].waitForExistence(timeout: 8))
+        app.buttons["composer.model"].tap()
+        let last = app.buttons["model.option.catalog-59"]
+        let menu = app.collectionViews.firstMatch
+        XCTAssertTrue(menu.waitForExistence(timeout: 5), app.debugDescription)
+        for _ in 0..<15 {
+            if last.exists && last.isHittable { break }
+            menu.swipeUp(velocity: .fast)
+        }
+        XCTAssertTrue(last.isHittable, "应能滚到模型列表末尾")
+        // 等待多次无关业务快照，不应重建菜单并回到顶部。
+        let deadline = Date().addingTimeInterval(2)
+        let stayedAtBottom = NSPredicate { _, _ in Date() >= deadline && last.exists && last.isHittable }
+        let stable = XCTNSPredicateExpectation(predicate: stayedAtBottom, object: app)
+        wait(for: [stable], timeout: 5)
+        captureConversation("长模型菜单-底部保持", app: app)
+        last.tap()
+        XCTAssertTrue((app.buttons["composer.model"].value as? String)?.hasPrefix("Catalog Model 59") == true)
     }
 
     func testImageHasNoCaptionAndModelUsesMenuWithFast() {
@@ -303,10 +387,13 @@ final class AgentAppUITests: XCTestCase {
         if app.buttons["完成设备设置"].exists { app.buttons["完成设备设置"].tap() }
         if !any("sidebar.codexMenu").exists, app.buttons["会话列表"].exists { app.buttons["会话列表"].tap() }
         XCTAssertTrue(any("sidebar.codexMenu").waitForExistence(timeout: 15))
-        any("sidebar.codexMenu").tap()
-        let target = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", name)).firstMatch
-        XCTAssertTrue(target.waitForExistence(timeout: 10))
-        target.tap()
+        let scopeMenu = any("sidebar.codexMenu")
+        if scopeMenu.value as? String != name {
+            scopeMenu.tap()
+            let target = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", name)).firstMatch
+            XCTAssertTrue(target.waitForExistence(timeout: 10))
+            target.tap()
+        }
         XCTAssertTrue(any("sidebar.askCodex").waitForExistence(timeout: 12))
         return app
     }
@@ -385,15 +472,31 @@ final class AgentAppUITests: XCTestCase {
             app.buttons.matching(identifier: target.0).firstMatch.tap()
             let timeline = app.descendants(matching: .any).matching(identifier: "conversation.timeline").firstMatch
             XCTAssertTrue(timeline.waitForExistence(timeout: 20))
+            captureConversation("真实关注会话\(index + 1)-首次进入", app: app)
+            let initiallyVisible = NSPredicate { _, _ in
+                let viewport = CGRect(x: 0, y: 120, width: app.frame.width, height: app.frame.height - 240)
+                return app.textViews.matching(identifier: "assistant.selectable").allElementsBoundByIndex.contains {
+                    let rect = $0.frame.intersection(viewport)
+                    return !rect.isNull && rect.width > 20 && rect.height > 10
+                }
+            }
+            expectation(for: initiallyVisible, evaluatedWith: app)
+            waitForExpectations(timeout: 12)
             let from = timeline.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.2))
             let to = timeline.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.85))
             let offset = app.staticTexts["scroll.diagnostic-offset"]
             XCTAssertTrue(offset.waitForExistence(timeout: 5))
             XCTAssertTrue(app.textViews["assistant.selectable"].firstMatch.waitForExistence(timeout: 15))
             from.press(forDuration: 0.05, thenDragTo: to, withVelocity: .fast, thenHoldForDuration: 0.05)
-            for _ in 0..<40 {
-                if (Int(offset.label) ?? 0) <= 2 { break }
+            var stalled = 0
+            for step in 0..<40 {
+                let before = Int(offset.label) ?? 0
+                if before <= 2 { break }
                 from.press(forDuration: 0.05, thenDragTo: to, withVelocity: .fast, thenHoldForDuration: 0.05)
+                let after = Int(offset.label) ?? 0
+                print("PINNED_SCROLL_STEP", step, before, after)
+                stalled = abs(after - before) < 2 ? stalled + 1 : 0
+                if stalled >= 3 { break }
             }
             XCTAssertLessThanOrEqual(Int(offset.label) ?? 99999, 2, "必须先到真实会话最顶部")
             captureConversation("真实关注会话\(index + 1)-顶部", app: app)
@@ -406,17 +509,34 @@ final class AgentAppUITests: XCTestCase {
             jump.tap()
             expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: jump)
             waitForExpectations(timeout: 12)
-            let visibleText = NSPredicate { _, _ in
-                let viewport = CGRect(x: 0, y: 120, width: app.frame.width, height: app.frame.height - 240)
-                return app.textViews.matching(identifier: "assistant.selectable").allElementsBoundByIndex.contains { element in
-                    let rect = element.frame.intersection(viewport)
-                    return !rect.isNull && rect.width > 20 && rect.height > 10
-                }
-            }
+            // 最终验收直接检查正文区域的实际像素，捕获“AX 节点仍在但页面已白”的故障。
+            let visibleText = NSPredicate { _, _ in Self.hasRenderedConversationText(app.screenshot().image) }
             expectation(for: visibleText, evaluatedWith: app)
             waitForExpectations(timeout: 8)
             captureConversation("真实关注会话\(index + 1)-回到底部", app: app)
         }
+    }
+
+    private static func hasRenderedConversationText(_ image: UIImage) -> Bool {
+        guard let source = image.cgImage,
+              let cropped = source.cropping(to: CGRect(x: Double(source.width) * 0.08, y: Double(source.height) * 0.2,
+                                                       width: Double(source.width) * 0.84, height: Double(source.height) * 0.58)) else { return false }
+        let width = 96, height = 160
+        var bytes = [UInt8](repeating: 0, count: width * height * 4)
+        let rendered = bytes.withUnsafeMutableBytes { buffer -> Bool in
+            guard let context = CGContext(data: buffer.baseAddress, width: width, height: height, bitsPerComponent: 8,
+                                          bytesPerRow: width * 4, space: CGColorSpaceCreateDeviceRGB(),
+                                          bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return false }
+            context.draw(cropped, in: CGRect(x: 0, y: 0, width: width, height: height))
+            return true
+        }
+        guard rendered else { return false }
+        let luminances = stride(from: 0, to: bytes.count, by: 4).map { (Int(bytes[$0]) + Int(bytes[$0 + 1]) + Int(bytes[$0 + 2])) / 3 }
+        let background = luminances.sorted()[luminances.count / 2]
+        let ink = luminances.filter { abs($0 - background) > 80 }.count
+        let ratio = Double(ink) / Double(luminances.count)
+        print("CONVERSATION_RENDERED_INK", source.width, source.height, background, ratio)
+        return ratio > 0.01
     }
 
     func testLiveSevenDayRefreshInNewConversation() throws {
@@ -543,6 +663,10 @@ final class AgentAppUITests: XCTestCase {
         app.buttons["深色"].tap()
         app.buttons["settings.appearance"].tap()
         app.buttons["浅色"].tap()
+        app.buttons["settings.accent"].tap()
+        XCTAssertTrue(app.buttons["粉色"].waitForExistence(timeout: 3))
+        captureConversation("强调色-预览点与文字间距", app: app)
+        app.buttons["粉色"].tap()
         app.buttons["settings.close"].tap()
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.3)).tap()
         XCTAssertTrue(app.navigationBars["对话界面回归"].waitForExistence(timeout: 5))

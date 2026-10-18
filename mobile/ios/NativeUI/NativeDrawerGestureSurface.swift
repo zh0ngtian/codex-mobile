@@ -40,6 +40,7 @@ struct NativeDrawerGestureSurface: UIViewRepresentable {
         private weak var host: UIView?
         private var pan: UIPanGestureRecognizer?
         private var startedOpen = false
+        private weak var touchedView: UIView?
         init(_ parent: NativeDrawerGestureSurface) { self.parent = parent }
         func attach(from view: UIView) {
             guard view.window != nil else { return }
@@ -66,12 +67,20 @@ struct NativeDrawerGestureSurface: UIViewRepresentable {
         }
         func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
             guard parent.enabled, let host, let touched = touch.view else { return false }
+            touchedView = touched
             return touched.isDescendant(of: host)
         }
         func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
             guard parent.enabled, let pan = gestureRecognizer as? UIPanGestureRecognizer, let host else { return false }
             let velocity = pan.velocity(in: host)
             let start = pan.location(in: host).x - pan.translation(in: host).x
+            var ancestor = touchedView
+            while let view = ancestor, view !== host {
+                if let text = view as? UITextView, text.isEditable || text.selectedRange.length > 0 { return false }
+                if start > 44, let scroll = view as? UIScrollView,
+                   scroll.isScrollEnabled, scroll.contentSize.width > scroll.bounds.width + 2 { return false }
+                ancestor = view.superview
+            }
             return SidebarPresentation.accepts(startX: start, dx: velocity.x, dy: velocity.y, isOpen: parent.isOpen)
         }
         func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {

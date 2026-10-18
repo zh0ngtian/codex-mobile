@@ -281,7 +281,7 @@ struct AgentSessionSmoke {
         precondition(SidebarPresentation.offset(isOpen: false, translation: 800, containerWidth: 400) == 320)
         precondition(SidebarPresentation.offset(isOpen: true, translation: -800, containerWidth: 400) == 0)
         precondition(!SidebarPresentation.accepts(startX: 8, dx: 30, dy: 100, isOpen: false), "纵向阅读不触发抽屉")
-        precondition(!SidebarPresentation.accepts(startX: 120, dx: 100, dy: 0, isOpen: false), "内容区内部横向滚动不争抢边缘手势")
+        precondition(SidebarPresentation.accepts(startX: 120, dx: 100, dy: 0, isOpen: false), "普通内容区右滑也应打开侧栏")
         precondition(SidebarPresentation.accepts(startX: 8, dx: 100, dy: 3, isOpen: false))
         precondition(SidebarPresentation.accepts(startX: 250, dx: -100, dy: 3, isOpen: true))
         precondition(SidebarPresentation.targetIsOpen(isOpen: false, predictedTranslation: 260, containerWidth: 400))

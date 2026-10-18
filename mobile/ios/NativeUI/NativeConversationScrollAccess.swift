@@ -8,9 +8,12 @@ import UIKit
     private var contentSizeObservation: NSKeyValueObservation?
     private var following = false
     private var requestQueued = false
+    private var needsAnchor = false
 
     func attach(_ view: UIScrollView, resolver: NativeConversationScrollResolver.ResolverView) {
         self.resolver = resolver
+        // 首次请求可能先于 UIKit 容器挂载；同一容器入窗后也要补发尚未执行的锚点。
+        defer { if needsAnchor { requestBottomAnchor() } }
         guard scrollView !== view else { return }
         scrollView = view
         contentSizeObservation = view.observe(\.contentSize, options: [.old, .new]) { [weak self] _, change in
@@ -19,18 +22,20 @@ import UIKit
         }
     }
     func scrollToBottom() { following = true; requestBottomAnchor() }
-    func stopFollowing() { following = false }
+    func stopFollowing() { following = false; needsAnchor = false }
     func resumeFollowing() { following = true }
 
     private func requestBottomAnchor() {
-        guard following, !requestQueued else { return }
+        guard following else { return }
+        needsAnchor = true
+        guard !requestQueued else { return }
         requestQueued = true
         Task { @MainActor [weak self] in
             await Task.yield()
             guard let self else { return }
             self.requestQueued = false
             guard self.following else { return }
-            self.resolver?.scrollToBottomAnchor()
+            if self.resolver?.scrollToBottomAnchor() == true { self.needsAnchor = false }
         }
     }
 }
@@ -56,9 +61,10 @@ struct NativeConversationScrollResolver: UIViewRepresentable {
             resolve()
             DispatchQueue.main.async { [weak self] in self?.resolve() }
         }
-        func scrollToBottomAnchor() {
-            guard window != nil else { return }
-            scrollToBottom?()
+        func scrollToBottomAnchor() -> Bool {
+            guard window != nil, let scrollToBottom else { return false }
+            scrollToBottom()
+            return true
         }
         func resolve() {
             var ancestor = superview
