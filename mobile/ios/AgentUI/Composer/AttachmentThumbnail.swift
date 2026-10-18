@@ -5,21 +5,25 @@ struct AttachmentThumbnail: View {
     @State private var image: UIImage?
 
     var body: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 9).fill(Color.primary.opacity(0.05))
-            if item.state == .processing {
-                ProgressView().controlSize(.small)
-            } else if item.state == .failed {
-                Image(systemName: "exclamationmark.triangle").foregroundStyle(.secondary)
-            } else if item.kind == .image, let asset = item.assetName {
-                Image(asset).renderingMode(.original).resizable().scaledToFill()
-            } else if let image {
-                Image(uiImage: image).renderingMode(.original).resizable().scaledToFill()
-            } else {
-                Image(systemName: item.kind.symbol).foregroundStyle(.secondary)
+        GeometryReader { geometry in
+            ZStack {
+                RoundedRectangle(cornerRadius: 9).fill(Color.primary.opacity(0.05))
+                if item.state == .processing {
+                    ProgressView().controlSize(.small)
+                } else if item.state == .failed {
+                    Image(systemName: "exclamationmark.triangle").foregroundStyle(.secondary)
+                } else if item.kind == .image, let asset = item.assetName {
+                    Image(asset).renderingMode(.original).resizable().scaledToFill()
+                } else if let image {
+                    Image(uiImage: image).renderingMode(.original).resizable().scaledToFill()
+                } else {
+                    Image(systemName: item.kind.symbol).foregroundStyle(.secondary)
+                }
             }
+            .frame(width: geometry.size.width, height: geometry.size.height)
+            .clipShape(.rect(cornerRadius: 9))
         }
-        .clipShape(.rect(cornerRadius: 9)).accessibilityHidden(true)
+        .accessibilityHidden(true)
         .task(id: item, loadThumbnail)
     }
 

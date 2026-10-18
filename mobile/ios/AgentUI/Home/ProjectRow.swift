@@ -3,6 +3,7 @@ import SwiftUI
 struct ProjectRow: View {
     @Environment(AppSession.self) private var session
     @Environment(AppPreferences.self) private var preferences
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let name: String
 
     var body: some View {
@@ -66,6 +67,8 @@ struct ProjectRow: View {
                 }
             }
         }
+        .clipped()
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.25), value: expanded)
     }
 
     private var displayName: String { session.projectDisplayName(name) }

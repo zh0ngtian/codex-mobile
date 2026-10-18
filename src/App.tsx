@@ -3433,21 +3433,12 @@ function BackendWorkspace({
     const client = clientRef.current;
     const threadId = String(thread.id ?? "");
     if (!threadId || pendingAction) return false;
-    if (
-      action === "archive" &&
-      hasQueuedFollowUpsForThread(queuedFollowUpsRef.current, threadId)
-    ) {
-      const count = queuedFollowUpsForThread(
-        queuedFollowUpsRef.current,
-        threadId,
-      ).length;
-      if (
-        !await confirmWorkspaceAction(
-          t("此会话仍有 {count} 条排队消息，归档会丢弃这些消息。确定归档吗？", {
-            count,
-          }),
-        )
-      ) return false;
+    if (action === "archive") {
+      const count = queuedFollowUpsForThread(queuedFollowUpsRef.current, threadId).length;
+      const message = count > 0
+        ? t("此会话仍有 {count} 条排队消息，归档会丢弃这些消息。确定归档吗？", { count })
+        : t("归档后，此会话将从列表中移除。确定归档吗？");
+      if (!await confirmWorkspaceAction(message)) return false;
     }
     setPendingAction(action);
     setError("");
@@ -3653,19 +3644,11 @@ function BackendWorkspace({
       activeThreadAccessMode !== "interactive"
     ) return false;
     const threadId = String(thread.id);
-    if (hasQueuedFollowUpsForThread(queuedFollowUpsRef.current, threadId)) {
-      const count = queuedFollowUpsForThread(
-        queuedFollowUpsRef.current,
-        threadId,
-      ).length;
-      if (
-        !await confirmWorkspaceAction(
-          t("此会话仍有 {count} 条排队消息，归档会丢弃这些消息。确定归档吗？", {
-            count,
-          }),
-        )
-      ) return false;
-    }
+    const count = queuedFollowUpsForThread(queuedFollowUpsRef.current, threadId).length;
+    const message = count > 0
+      ? t("此会话仍有 {count} 条排队消息，归档会丢弃这些消息。确定归档吗？", { count })
+      : t("归档后，此会话将从列表中移除。确定归档吗？");
+    if (!await confirmWorkspaceAction(message)) return false;
     setPendingAction("archive");
     setError("");
     try {

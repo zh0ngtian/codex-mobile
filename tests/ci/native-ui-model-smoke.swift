@@ -82,6 +82,14 @@ struct NativeStoreSmoke {
         }
         precondition(adjustmentCommands.count == commandsBeforeSidebarMenu, "侧栏展开后旧菜单不能继续更改模型、推理、速度或审核模式")
         adjustmentStore.sidebarOpen = false
+        let duplicateTime = NativePanelItem(id: "commentary:timestamp", kind: "text", text: "2026-10-18 14:40")
+        let authoredTime = NativePanelItem(id: "authored-date", kind: "text", text: "2026-10-18 14:40")
+        var commentaryTime = NativeMessage(id: "commentary", role: "assistant", text: "执行进展", blocks: [duplicateTime, authoredTime])
+        commentaryTime.phase = "commentary"
+        precondition(commentaryTime.presentationBlocks.map(\.id) == ["authored-date"], "commentary只过滤带明确ID的重复时间块，正文日期必须保留")
+        precondition(commentaryTime.blocks?.count == 2, "原始wire数据不能被删除")
+        commentaryTime.phase = "final_answer"
+        precondition(commentaryTime.presentationBlocks.count == 2, "普通回复中的文本块保持")
         let normal = NativeUIStore(arguments: [])
         precondition(normal.nativeEnabled, "首次应默认原生界面")
         defaults.set(false, forKey: NativeUIStore.preferenceKey)

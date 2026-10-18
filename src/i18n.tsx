@@ -471,6 +471,8 @@ const english: Record<string, string> = {
   "{count} 个附件会保留": "{count} attachment(s) will be kept",
   "此会话仍有 {count} 条排队消息，归档会丢弃这些消息。确定归档吗？":
     "This conversation still has {count} queued message(s). Archiving will discard them. Archive anyway?",
+  "归档后，此会话将从列表中移除。确定归档吗？":
+    "This conversation will be removed from the list. Archive it?",
   "待发送图片": "Images to send",
   "待发送文件": "Files to send",
   "预览 {name}": "Preview {name}",

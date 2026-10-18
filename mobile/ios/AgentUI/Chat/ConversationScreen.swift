@@ -3,6 +3,7 @@ import SwiftUI
 struct ConversationScreen: View {
     @Environment(AppSession.self) private var session
     @Environment(AppPreferences.self) private var preferences
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let conversationID: UUID
     @State private var liveExpanded = true
     @State private var atBottom = true
@@ -15,8 +16,11 @@ struct ConversationScreen: View {
     @State private var historyAnchorID: String?
     @State private var historyWasPrepended = false
     @State private var scrollIsIdle = true
+    @State private var returnToken: UUID?
     #if DEBUG
     @State private var diagnosticHistoryRequests = 0
+    @State private var diagnosticReturnOffsets: [Double] = []
+    @State private var diagnosticReturning = false
     #endif
     var body: some View {
         if let conversation = session.conversation(conversationID) {
@@ -68,6 +72,7 @@ struct ConversationScreen: View {
                         VStack {
                             Text(String(Int(historyOffset))).accessibilityIdentifier("scroll.diagnostic-offset")
                             Text(String(diagnosticHistoryRequests)).accessibilityIdentifier("scroll.diagnostic-history")
+                            Text(diagnosticReturnOffsets.map { String(Int($0)) }.joined(separator: ",")).accessibilityIdentifier("scroll.diagnostic-return")
                         }.font(.system(size: 1)).opacity(0.01)
                     }
                     #endif
@@ -79,6 +84,7 @@ struct ConversationScreen: View {
                     scrollIsIdle = phase == .idle
                     switch phase {
                     case .tracking, .interacting:
+                        returnToken = nil
                         followsLatest = false
                         scrollAccess.stopFollowing()
                         historyPull.dragBegan(at: offset)
@@ -99,6 +105,9 @@ struct ConversationScreen: View {
                     Double(geometry.contentOffset.y + geometry.contentInsets.top)
                 } action: { _, offset in
                     historyOffset = offset
+                    #if DEBUG
+                    if diagnosticReturning, abs(offset - (diagnosticReturnOffsets.last ?? offset)) > 0.5 { diagnosticReturnOffsets.append(offset) }
+                    #endif
                     if historyPull.positionChanged(to: offset,
                         canLoad: conversation.loadedOlderTurns < conversation.olderTurns,
                         isLoading: loadingHistory || conversation.historyLoading) {
@@ -109,7 +118,19 @@ struct ConversationScreen: View {
                     geometry.visibleRect.maxY >= geometry.contentSize.height - 2
                 } action: { _, value in
                     atBottom = value
+                    #if DEBUG
+                    if value { diagnosticReturning = false }
+                    #endif
                     resumeBottomFollowingIfReached()
+                }
+                .task(id: session.historyEdit?.messageID) {
+                    guard let edit = session.historyEdit, edit.conversationID == conversationID else { return }
+                    followsLatest = false
+                    scrollAccess.stopFollowing()
+                    historyPull.programmaticScrollBegan()
+                    await Task.yield()
+                    guard !Task.isCancelled, session.historyEdit?.messageID == edit.messageID else { return }
+                    proxy.scrollTo(edit.messageID, anchor: .top)
                 }
                 .onChange(of: conversation.messages.map(\.id)) { oldIDs, newIDs in
                     if let previous = historyAnchor,
@@ -120,7 +141,7 @@ struct ConversationScreen: View {
                         restoreHistoryAnchor(proxy)
                         return
                     }
-                    guard !loadingHistory, newIDs.count > oldIDs.count, newIDs.last != oldIDs.last else { return }
+                    guard returnToken == nil, !loadingHistory, newIDs.count > oldIDs.count, newIDs.last != oldIDs.last else { return }
                     // 新内容先改变几何高度，不能拿本帧的 atBottom 反推用户是否离开底部。
                     if followsLatest || conversation.messages.last?.isUser == true {
                         historyPull.programmaticScrollBegan()
@@ -131,7 +152,7 @@ struct ConversationScreen: View {
                     restoreHistoryAnchor(proxy)
                 }
                 .onChange(of: conversation.queue.count) {
-                    if followsLatest {
+                    if followsLatest && returnToken == nil {
                         historyPull.programmaticScrollBegan()
                         scrollAccess.scrollToBottom()
                     }
@@ -168,11 +189,30 @@ struct ConversationScreen: View {
         historyAnchor = nil; historyAnchorID = nil; historyWasPrepended = false
         // 统一通过末尾消息锚点定位，保留附件高度变化时的跟随。
         scrollAccess.stopFollowing()
-        followsLatest = true
-        proxy.scrollTo("bottom", anchor: .bottom)
+        followsLatest = false
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--agent-scroll-diagnostics") { diagnosticReturnOffsets = [historyOffset]; diagnosticReturning = true }
+        #endif
+        let token = UUID()
+        returnToken = token
+        let finish = {
+            guard returnToken == token, session.selectedConversationID == conversationID else { return }
+            returnToken = nil
+            followsLatest = true
+            if atBottom { scrollAccess.resumeFollowing() }
+            else { scrollAccess.scrollToBottom() }
+        }
+        if reduceMotion {
+            proxy.scrollTo("bottom", anchor: .bottom)
+            finish()
+        } else {
+            withAnimation(.easeIn(duration: 0.55), completionCriteria: .logicallyComplete) {
+                proxy.scrollTo("bottom", anchor: .bottom)
+            } completion: { finish() }
+        }
     }
     private func resumeBottomFollowingIfReached() {
-        guard followsLatest, atBottom, scrollIsIdle else { return }
+        guard returnToken == nil, followsLatest, atBottom, scrollIsIdle else { return }
         scrollAccess.resumeFollowing()
     }
     private func loadEarlier(_ proxy: ScrollViewProxy) {
@@ -210,6 +250,7 @@ struct ConversationScreen: View {
         historyWasPrepended = false
     }
     private func resetHistory() {
+        returnToken = nil
         followsLatest = true
         scrollAccess.stopFollowing()
         historyPull.reset()

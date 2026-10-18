@@ -20,6 +20,7 @@ struct ComposerAttachmentCard: View {
                 .padding(.leading, 10).padding(.vertical, 10)
             }
             .buttonStyle(.plain).disabled(item.state == .processing)
+            .accessibilityIdentifier("composer.attachment.\(item.id)")
             .foregroundStyle(AgentTheme.ink).tint(AgentTheme.ink)
             .accessibilityHint(item.state == .failed ? preferences.text("查看完整错误信息", "Read the full error") : preferences.text("打开附件预览", "Open attachment preview"))
             Button(preferences.text("移除附件", "Remove attachment"), systemImage: "xmark.circle.fill", action: remove)
