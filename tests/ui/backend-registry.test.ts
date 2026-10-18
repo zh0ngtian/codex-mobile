@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   BACKEND_REGISTRY_STORAGE_KEY,
-  MAX_BACKENDS,
   assignBackendHostId,
   createDefaultBackendRegistry,
   formatBackendGatewayUrl,
@@ -194,7 +193,7 @@ describe("多后端配置存储", () => {
     });
   });
 
-  it("新增或更新后端时拒绝重复地址并限制数量", () => {
+  it("新增或更新后端时拒绝重复地址且不限制数量", () => {
     let registry = createDefaultBackendRegistry("http://127.0.0.1:4173");
     registry = upsertBackend(registry, {
       id: "mini",
@@ -216,7 +215,7 @@ describe("多后端配置存储", () => {
       }),
     ).toThrow("后端地址已存在");
 
-    for (let index = registry.backends.length; index < MAX_BACKENDS; index += 1) {
+    for (let index = registry.backends.length; index < 24; index += 1) {
       registry = upsertBackend(registry, {
         id: `host-${index}`,
         name: `Host ${index}`,
@@ -227,16 +226,23 @@ describe("多后端配置存储", () => {
       });
     }
 
-    expect(() =>
-      upsertBackend(registry, {
-        id: "overflow",
-        name: "Overflow",
-        baseUrl: "http://192.168.100.99:4173",
-        token: "",
-        enabled: true,
-        order: MAX_BACKENDS,
-      }),
-    ).toThrow(`最多只能保存 ${MAX_BACKENDS} 个后端`);
+    expect(registry.backends).toHaveLength(24);
+    const storage = new MemoryStorage();
+    saveBackendRegistry(storage, registry);
+    expect(loadBackendRegistry(storage, "http://127.0.0.1:4173")).toEqual(registry);
+  });
+
+  it("恢复超过八台的既有配置时不截断设备或排序", () => {
+    const storage = new MemoryStorage();
+    const registry = {
+      version: 1 as const, selectedBackendId: "device-23",
+      backends: Array.from({ length: 24 }, (_, index) => ({
+        id: `device-${index}`, name: `设备 ${index}`, baseUrl: `http://gateway-${index}.local:18766`,
+        token: "", enabled: true, order: index,
+      })),
+    };
+    storage.setItem(BACKEND_REGISTRY_STORAGE_KEY, JSON.stringify(registry));
+    expect(loadBackendRegistry(storage, "null")).toEqual(registry);
   });
 
   it("拒绝通过不同 URL 重复保存同一真实设备身份", () => {

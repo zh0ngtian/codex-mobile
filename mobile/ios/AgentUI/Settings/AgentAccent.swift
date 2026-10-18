@@ -15,7 +15,7 @@ enum AgentAccent: String, CaseIterable, Identifiable {
     var foreground: Color {
         switch self {
         case .black: AgentTheme.page
-        case .lime, .yellow, .cyan: .black
+        case .lime, .yellow, .cyan, .green, .orange: .black
         default: .white
         }
     }

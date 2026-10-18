@@ -83,10 +83,10 @@ struct NativeStoreSmoke {
         precondition(adjustmentCommands.count == commandsBeforeSidebarMenu, "侧栏展开后旧菜单不能继续更改模型、推理、速度或审核模式")
         adjustmentStore.sidebarOpen = false
         let normal = NativeUIStore(arguments: [])
-        precondition(!normal.nativeEnabled, "首次应默认旧界面")
-        defaults.set(true, forKey: NativeUIStore.preferenceKey)
-        precondition(!normal.nativeEnabled, "当前启动不能热切换")
-        precondition(!NativeUIStore(arguments: []).nativeEnabled, "同进程新窗口不能提前启用新偏好")
+        precondition(normal.nativeEnabled, "首次应默认原生界面")
+        defaults.set(false, forKey: NativeUIStore.preferenceKey)
+        precondition(normal.nativeEnabled, "当前启动不能热切换")
+        precondition(NativeUIStore(arguments: []).nativeEnabled, "同进程新窗口不能提前切换到网页界面")
         let secondScene = NativeUIStore(arguments: [])
         normal.draft = "第一窗口"
         secondScene.draft = "第二窗口"
@@ -109,14 +109,14 @@ struct NativeStoreSmoke {
         switchStore.requestNativePreference(true)
         precondition(switchCommands.count == 1 && switchStore.preferenceSaving)
         precondition(switchCommands[0].name == "settings.native-ui" && switchCommands[0].params == ["enabled": .bool(true)], "切换只能请求共享检查点流程，不直接修改偏好")
-        precondition(!switchStore.savedNativePreference && !switchStore.nativeEnabled)
+        precondition(!switchStore.savedNativePreference && switchStore.nativeEnabled)
         var failedSwitch = NativeSnapshot()
         failedSwitch.commandResults = [NativeCommandResult(id: switchCommands[0].id, name: "settings.native-ui", ok: false, error: "附件保存失败")]
         switchStore.receive(failedSwitch)
         precondition(!switchStore.preferenceSaving && !switchStore.savedNativePreference && switchStore.preferenceError == "附件保存失败")
         switchStore.requestNativePreference(true)
         switchStore.receivedNativePreference(true)
-        precondition(switchStore.savedNativePreference && !switchStore.preferenceSaving && switchStore.preferenceError == nil && !switchStore.nativeEnabled)
+        precondition(switchStore.savedNativePreference && !switchStore.preferenceSaving && switchStore.preferenceError == nil && switchStore.nativeEnabled)
         let unavailableSwitch = NativeUIStore(arguments: [])
         unavailableSwitch.savedNativePreference = false
         var unavailableCommands: [NativeCommand] = []

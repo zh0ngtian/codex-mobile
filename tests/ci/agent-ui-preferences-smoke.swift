@@ -20,6 +20,7 @@ enum AgentAccent: String {
         let defaults = UserDefaults(suiteName: suite)!
         defer { defaults.removePersistentDomain(forName: suite) }
         let preferences = AppPreferences(defaults: defaults)
+        precondition(preferences.accent == .black, "未保存强调色时默认黑色")
         let store = NativeUIStore()
         preferences.connect(store: store)
         var snapshot = NativeSnapshot()
@@ -37,6 +38,7 @@ enum AgentAccent: String {
         precondition(store.commands.last?.1["value"] == .string("http"))
         preferences.accent = .blue
         precondition(defaults.string(forKey: "accent") == "Blue")
+        precondition(AppPreferences(defaults: defaults).accent == .blue, "保留已保存强调色")
         preferences.appearance = .dark
         precondition(defaults.string(forKey: "appearance") == "Dark")
         precondition(store.commands.count == 2, "外观偏好只保存在本机")

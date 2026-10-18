@@ -5,18 +5,26 @@ struct CommentaryHistoryView: View {
     let entries: [ProgressEntry]
     @Binding var expanded: Bool
     var completed = true
+    var duration = ""
+    private var summary: String {
+        duration.isEmpty ? preferences.text("执行过程", "Execution details") : preferences.text("用时\(duration)", "Worked for \(duration)")
+    }
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
             if completed {
-                Button { expanded.toggle() } label: {
-                    HStack(spacing: 6) {
-                        Text(preferences.text("之前的 \(entries.count) 条消息", "\(entries.count) earlier messages"))
-                        Image(systemName: expanded ? "chevron.down" : "chevron.right").font(.caption)
+                if entries.isEmpty {
+                    Text(summary).font(AgentTheme.small).foregroundStyle(.secondary)
+                } else {
+                    Button { expanded.toggle() } label: {
+                        HStack(spacing: 6) {
+                            Text(summary)
+                            Image(systemName: expanded ? "chevron.down" : "chevron.right").font(.caption)
+                        }
+                        .font(AgentTheme.small).foregroundStyle(.secondary).frame(minHeight: 44)
                     }
-                    .font(AgentTheme.small).foregroundStyle(.secondary).frame(minHeight: 44)
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("commentary-history-toggle")
                 }
-                .buttonStyle(.plain)
-                .accessibilityIdentifier("commentary-history-toggle")
             }
             if expanded || !completed {
                 ForEach(entries) { entry in

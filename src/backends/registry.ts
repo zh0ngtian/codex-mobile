@@ -6,7 +6,6 @@ import { t } from "../i18n";
 
 export const BACKEND_REGISTRY_STORAGE_KEY =
   "codex-mobile.backend-registry.v1";
-export const MAX_BACKENDS = 8;
 
 export function parseBackendGatewayUrl(value: string) {
   let url: URL;
@@ -153,7 +152,6 @@ function normalizedBackends(value: unknown) {
     seenIds.add(id);
     seenUrls.add(baseUrl);
     if (hostId) seenHostIds.add(hostId);
-    if (result.length >= MAX_BACKENDS) break;
   }
   return result
     .sort((left, right) => left.order - right.order)
@@ -300,9 +298,6 @@ export function upsertBackend(
     )
   ) {
     throw new Error(t("设备身份已存在"));
-  }
-  if (existingIndex < 0 && registry.backends.length >= MAX_BACKENDS) {
-    throw new Error(t("最多只能保存 {count} 个后端", { count: MAX_BACKENDS }));
   }
   const next: BackendConfig = {
     id: value.id.trim(),

@@ -23,13 +23,12 @@ struct DeviceManagerScreen: View {
                     }
                     .onMove(perform: move)
                 } header: {
-                    Text(preferences.text("已添加 \(session.devices.count)/8 台设备", "\(session.devices.count)/8 devices added"))
+                    Text(preferences.text("已添加 \(session.devices.count) 台设备", "\(session.devices.count) devices added"))
                 } footer: {
-                    Text(preferences.text("点击设备编辑连接。排序会同步到设备菜单，最多添加八台设备。", "Tap a device to edit its connection. The device menu uses this order. You can add up to eight devices."))
+                    Text(preferences.text("点击设备编辑连接。排序会同步到设备菜单。", "Tap a device to edit its connection. The device menu uses this order."))
                 }
                 Section {
                     Button(preferences.text("添加设备", "Add device"), systemImage: "plus", action: showAdd)
-                        .disabled(session.devices.count >= 8)
                         .accessibilityIdentifier("devices.add")
                 }
             }

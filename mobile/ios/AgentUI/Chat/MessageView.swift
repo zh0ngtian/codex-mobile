@@ -11,8 +11,8 @@ struct MessageView: View {
                 if session.historyEdit?.messageID == message.id { HistoryEditView(message: message) }
                 else { UserMessageView(message: message, conversationID: conversationID) }
             } else {
-                if !message.commentary.isEmpty {
-                    CommentaryHistoryView(entries: message.commentary, expanded: $progressExpanded)
+                if !message.commentary.isEmpty || !message.duration.isEmpty {
+                    CommentaryHistoryView(entries: message.commentary, expanded: $progressExpanded, duration: message.duration)
                 }
                 if !message.text.isEmpty { AssistantBody(text: message.text) }
                 LiveBusinessBlocks(messageID: message.id)

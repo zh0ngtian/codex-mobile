@@ -42,7 +42,13 @@ final class AgentConversationFixture {
             history,
             NativeMessage(id: "answer", role: "assistant", text: "已完成检查。查看 [网页链接](https://example.com) 与 [文件链接](/tmp/example.swift#L12)。", timestamp: date.addingTimeInterval(120).timeIntervalSince1970, turnId: "fixture-turn", phase: "final_answer"),
         ]
-        value.messages[2].status = "1小时2分钟3秒"
+        value.messages[2].status = ProcessInfo.processInfo.arguments.contains("--agent-no-duration-fixture") ? nil : "1小时2分钟3秒"
+        if ProcessInfo.processInfo.arguments.contains("--agent-many-devices-fixture") {
+            value.backends += (1...11).map { NativeBackend(id: "extra-device-\($0)", title: "额外设备 \($0)", connected: true) }
+        }
+        if ProcessInfo.processInfo.arguments.contains("--agent-steering-status-fixture") {
+            value.messages.append(NativeMessage(id: "pending-steer", role: "activity", text: "正在引导的消息", status: "正在引导"))
+        }
         if ProcessInfo.processInfo.arguments.contains("--agent-short-question-fixture") { value.messages[0].text = "好" }
         if ProcessInfo.processInfo.arguments.contains("--agent-sidebar-polish-fixture") {
             value.messages[0].text = String(repeating: "短行\n", count: 6) + "这是一条展开后才显示的较长正文，用于确认消息气泡在展开更多和收起时保持同样的宽度。"
@@ -214,6 +220,7 @@ struct AgentTypographyFixture: ViewModifier {
 }
 /// 显式布局回归参数下记录真实表面范围，避免辅助功能容器只返回子控件并集。
 struct AgentComposerGeometryFixture: ViewModifier {
+    @Environment(\.accessibilityShowBorders) private var showBorders
     @State private var frame = CGRect.zero
     func body(content: Content) -> some View {
         if ProcessInfo.processInfo.arguments.contains("--agent-composer-geometry-fixture") {
@@ -222,6 +229,7 @@ struct AgentComposerGeometryFixture: ViewModifier {
                     Text("\(frame.minX),\(frame.minY),\(frame.width),\(frame.height)")
                         .font(.system(size: 1)).opacity(0.01).allowsHitTesting(false)
                         .accessibilityIdentifier("composer.geometry")
+                        .accessibilityValue(showBorders ? "on" : "off")
                 }
         } else { content }
     }

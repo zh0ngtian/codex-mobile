@@ -33,7 +33,7 @@ describe("SwiftUI 原生宿主契约", () => {
       expect(result.stdout).toMatch(/Native inline history \d+ assertions passed/);
     } finally { rmSync(directory, { force: true, recursive: true }); }
   }, swiftContractTimeout);
-  it.skipIf(process.platform !== "darwin")("原生偏好首次关闭，保存失败回滚且不影响已冻结启动模式", () => {
+  it.skipIf(process.platform !== "darwin")("原生偏好默认开启，保留明确选择并在保存失败时回滚", () => {
     const directory = mkdtempSync(join(tmpdir(), "native-preference-"));
     try {
       const compile = spawnSync("xcrun", ["swiftc", "mobile/ios/NativeUI/NativeUIPreference.swift", "tests/ci/native-ui-preference-smoke.swift", "-o", join(directory, "preference")], { encoding: "utf8", timeout: swiftCompileTimeout });

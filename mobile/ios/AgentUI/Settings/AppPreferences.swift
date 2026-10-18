@@ -120,7 +120,7 @@ final class AppPreferences {
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         appearance = AgentAppearance(rawValue: defaults.string(forKey: "appearance") ?? "") ?? .system
-        accent = AgentAccent(rawValue: defaults.string(forKey: "accent") ?? "") ?? .pink
+        accent = AgentAccent(rawValue: defaults.string(forKey: "accent") ?? "") ?? .black
         language = "System"
         transport = "HTTP"
         notificationMethod = "System"

@@ -61,6 +61,119 @@ final class AgentAppUITests: XCTestCase {
         XCTAssertFalse(app.staticTexts["正在读取项目上下文。"].exists)
     }
 
+    func testCompletedDurationMovesToProcessHeader() {
+        let app = launchConversationFixture()
+        let history = app.buttons["commentary-history-toggle"]
+        XCTAssertTrue(history.waitForExistence(timeout: 5))
+        XCTAssertTrue(history.label.contains("用时1小时2分钟3秒"), history.label)
+        XCTAssertFalse(app.staticTexts["1小时2分钟3秒"].exists, "回复末尾不能重复显示用时")
+        XCTAssertTrue(app.staticTexts["message.reply-time"].exists)
+        history.tap()
+        XCTAssertTrue(app.staticTexts["正在读取项目上下文。"].waitForExistence(timeout: 5))
+        captureConversation("用时-过程入口", app: app)
+    }
+
+    func testUnknownDurationKeepsProcessDisclosure() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-no-duration-fixture", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
+        app.launch()
+        let history = app.buttons["commentary-history-toggle"]
+        XCTAssertTrue(history.waitForExistence(timeout: 8))
+        XCTAssertTrue(history.label.contains("执行过程"), history.label)
+        history.tap()
+        XCTAssertTrue(app.staticTexts["正在读取项目上下文。"].waitForExistence(timeout: 5))
+        captureConversation("无可靠用时-执行过程", app: app)
+    }
+
+    func testSidebarControlHeightsMatchChat() {
+        let app = launchSidebarPolishFixture()
+        app.buttons["会话列表"].tap()
+        let search = app.buttons["sidebar.search"], more = app.buttons["sidebar.more"], chat = app.buttons["sidebar.askCodex"]
+        XCTAssertTrue(search.waitForExistence(timeout: 5))
+        print("SIDEBAR_CONTROL_HEIGHTS", search.frame, more.frame, chat.frame)
+        XCTAssertEqual(search.frame.height, chat.frame.height, accuracy: 0.5)
+        XCTAssertEqual(more.frame.height, chat.frame.height, accuracy: 0.5)
+        XCTAssertEqual(more.frame.midY, chat.frame.midY, accuracy: 0.5)
+        captureConversation("侧栏-三个按钮等高", app: app)
+    }
+
+    func testDeviceManagerAddsBeyondEightDevices() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-many-devices-fixture", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
+        app.launch()
+        XCTAssertTrue(app.buttons["header.usage"].waitForExistence(timeout: 8))
+        app.buttons["会话列表"].tap()
+        app.buttons["sidebar.more"].tap()
+        app.buttons["sidebar.settings"].tap()
+        let devices = app.buttons.matching(NSPredicate(format: "label BEGINSWITH '设备'")).firstMatch
+        XCTAssertTrue(devices.waitForExistence(timeout: 5))
+        devices.tap()
+        XCTAssertTrue(app.navigationBars["设备"].waitForExistence(timeout: 5))
+        let list = app.collectionViews.firstMatch.exists ? app.collectionViews.firstMatch : app.scrollViews.firstMatch
+        let add = app.buttons["devices.add"]
+        for _ in 0..<6 { if add.isHittable { break }; list.swipeUp() }
+        XCTAssertTrue(add.exists)
+        XCTAssertTrue(add.isEnabled, "已有12台设备时仍可继续添加")
+        captureConversation("设备-超过八台仍可添加", app: app)
+    }
+
+    func testUsageCircleIsBlackWithoutContextData() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "-accent", "Black", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
+        app.launch()
+        let usage = app.buttons["header.usage"]
+        XCTAssertTrue(usage.waitForExistence(timeout: 8))
+        XCTAssertGreaterThan(Self.iconInkPixels(app.screenshot().image, element: usage.frame, screen: app.frame), 15, "缺少用量数据也使用黑色圆圈")
+        captureConversation("用量-固定黑色", app: app)
+    }
+
+    func testAllAccentColorsKeepUsageAndSubmitIconsDistinct() {
+        for accent in ["Black", "Blue", "Cyan", "Green", "Lime", "Yellow", "Orange", "Pink", "Magenta", "Purple"] {
+            let app = XCUIApplication()
+            app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-submit-fixture", "--agent-composer-geometry-fixture", "-accent", accent, "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
+            app.launch()
+            let usage = app.buttons["header.usage"]
+            XCTAssertTrue(usage.waitForExistence(timeout: 8))
+            XCTAssertGreaterThan(Self.iconInkPixels(app.screenshot().image, element: usage.frame, screen: app.frame), 15, accent + " 的用量图标应始终为黑色")
+            if let expected = ProcessInfo.processInfo.environment["EXPECTED_BUTTON_BORDERS"] {
+                XCTAssertEqual(app.staticTexts["composer.geometry"].value as? String, expected, "核对真实系统Show Borders环境")
+            }
+            let input = app.textFields["message-input"]
+            input.tap(); input.typeText("颜色检查")
+            let submit = app.buttons["composer.submit"]
+            XCTAssertTrue(submit.isEnabled)
+            let light = ["Black", "Blue", "Pink", "Magenta", "Purple"].contains(accent)
+            XCTAssertGreaterThan(Self.iconInkPixels(app.screenshot().image, element: submit.frame, screen: app.frame, light: light), 15, accent + " 的发送图标应与底色可辨")
+            captureConversation("强调色-" + accent, app: app)
+            app.terminate()
+        }
+    }
+
+    private static func iconInkPixels(_ image: UIImage, element: CGRect, screen: CGRect, light: Bool = false) -> Int {
+        guard let source = image.cgImage else { return 0 }
+        let scale = CGFloat(source.width) / screen.width
+        let icon = CGRect(x: (element.midX - 10) * scale, y: (element.midY - 10) * scale, width: 20 * scale, height: 20 * scale)
+        guard let cropped = source.cropping(to: icon) else { return 0 }
+        let width = 40, height = 40
+        var bytes = [UInt8](repeating: 0, count: width * height * 4)
+        bytes.withUnsafeMutableBytes { buffer in
+            let context = CGContext(data: buffer.baseAddress, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+            context.draw(cropped, in: CGRect(x: 0, y: 0, width: width, height: height))
+        }
+        let count = stride(from: 0, to: bytes.count, by: 4).filter { light ? (bytes[$0] > 235 && bytes[$0 + 1] > 235 && bytes[$0 + 2] > 235) : (bytes[$0] < 50 && bytes[$0 + 1] < 50 && bytes[$0 + 2] < 50) }.count
+        print("ICON_INK_PIXELS", count, light, element)
+        return count
+    }
+
+    func testSteeringStatusIsNotDisplayedAsDuration() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-steering-status-fixture", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
+        app.launch()
+        XCTAssertTrue(app.textViews.matching(NSPredicate(format: "value == %@", "正在引导的消息")).firstMatch.waitForExistence(timeout: 8))
+        XCTAssertFalse(app.staticTexts["用时正在引导"].exists)
+        captureConversation("业务状态-不显示为耗时", app: app)
+    }
+
     func testHistoryRequiresAnotherPullAndPreservesReadingAnchor() {
         let app = launchConversationFixture(long: true)
         let timeline = app.scrollViews["conversation.timeline"]
@@ -821,6 +934,11 @@ final class AgentAppUITests: XCTestCase {
         let app = try launchConnectedApp()
         app.buttons["sidebar.more"].tap()
         app.buttons["sidebar.settings"].tap()
+        let accent = app.buttons["settings.accent"]
+        XCTAssertTrue(accent.waitForExistence(timeout: 5))
+        accent.tap()
+        XCTAssertTrue(app.buttons["黑色"].waitForExistence(timeout: 5))
+        app.buttons["黑色"].tap()
         let toggle = app.switches["native-ui-preference"]
         for _ in 0..<3 where !toggle.isHittable { app.swipeUp() }
         XCTAssertTrue(toggle.waitForExistence(timeout: 8))
@@ -829,5 +947,11 @@ final class AgentAppUITests: XCTestCase {
         expectation(for: enabled, evaluatedWith: toggle)
         waitForExpectations(timeout: 12)
         app.buttons["settings.close"].tap()
+        let chat = app.buttons["sidebar.askCodex"]
+        XCTAssertGreaterThan(Self.iconInkPixels(app.screenshot().image, element: chat.frame, screen: app.frame), 500, "直接核对黑色强调色的实际填充")
+        chat.tap()
+        XCTAssertTrue(app.buttons["header.usage"].waitForExistence(timeout: 5))
+        XCTAssertGreaterThan(Self.iconInkPixels(app.screenshot().image, element: app.buttons["header.usage"].frame, screen: app.frame), 15)
+        captureConversation("真实网关-黑色原生界面验收", app: app)
     }
 }

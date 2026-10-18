@@ -1,5 +1,7 @@
 import SwiftUI
 
+enum SidebarControlMetrics { static let contentHeight: CGFloat = 31 }
+
 /// 搜索按钮与省略号菜单复用相同的独立圆形玻璃表面。
 struct SidebarIconButton: View {
     let systemImage: String
@@ -18,7 +20,7 @@ struct SidebarIconLabel: View {
     var body: some View {
         Image(systemName: systemImage)
             .font(.title3.weight(.light))
-            .frame(width: 22, height: 32)
+            .frame(width: 22, height: SidebarControlMetrics.contentHeight)
             .foregroundStyle(AgentTheme.ink)
     }
 }
