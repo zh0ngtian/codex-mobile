@@ -31,7 +31,7 @@ async function setup(native = true, projectState = { projects: [] as string[], p
  if (native) Object.assign(window, { __CODEX_NATIVE_UI__: true, webkit: { messageHandlers: { nativeUI: { postMessage() {} } } }, codexMobilePublishNativeSnapshot: (s: unknown) => posts.push(s) });
  vi.stubGlobal('fetch', vi.fn(async (url: string, options?: RequestInit) => {
   if (String(url).includes('/api/follow-ups')) {
-   if (options?.body) { const action = JSON.parse(String(options.body)); if (action.action === 'enqueue') queueItems.push({ ...action, revision: 1, state: 'queued' }); }
+   if (options?.body) { const action = JSON.parse(String(options.body)); if (action.action === 'enqueue') queueItems.push({ ...action, revision: 1, state: 'queued' }); if (action.action === 'cancel') queueItems = queueItems.filter(item => item.id !== action.id); }
    return new Response(JSON.stringify({ items: queueItems }));
   }
   return new Response(JSON.stringify(projectState));
@@ -395,4 +395,31 @@ it('新对话连续输入与保存草稿使用同一实时草稿且不会发送�
  const contextId = await setup();
  await act(async () => { command('save-input', 'draft.set', { contextId, value: '立即保存的最新草稿', revision: 1 }); command('save-current', 'draft.save', { contextId }); });
  expect(save).toHaveBeenCalledTimes(1); expect(save.mock.calls[0][0].text).toBe('立即保存的最新草稿'); expect(boundary.requests.some(r => r.method === 'turn/start')).toBe(false); save.mockRestore();
+});
+
+it.each([['workspace.thread', false], ['thread.manage', false], ['workspace.thread', true], ['thread.manage', true]] as const)('%s 归档先确认（存在队列：%s），取消不改队列，确认仅归档一次', async (entry, queued) => {
+ const contextId = await setup(); boundary.immediateSend = true;
+ await act(async () => { command('archive-seed-draft', 'draft.set', { contextId, value: '归档确认测试', revision: 1 }); command('archive-seed-send', 'message.send', { contextId }); });
+ await waitFor(() => expect(posts.at(-1)?.threadId).toBe('sent-thread'));
+ if (queued) {
+  await act(async () => { command('archive-queue-draft', 'draft.set', { contextId, value: '归档前保留队列', revision: 2 }); command('archive-queue-send', 'message.send', { contextId }); });
+  await waitFor(() => expect(queueItems).toHaveLength(1));
+ }
+ const params = entry === 'workspace.thread' ? { contextId, action: 'archive' } : { backendId: 'a', threadId: 'sent-thread', action: 'archive' };
+ await act(async () => { command('archive-cancelled', entry, params); });
+ await waitFor(() => expect(posts.at(-1)?.panel?.id).toMatch(/^confirmation:/));
+ expect(boundary.requests.filter(r => r.method === 'thread/archive')).toHaveLength(0);
+ const cancel = posts.at(-1).panel.items.find((i: any) => i.id === 'confirmation-no').command;
+ await act(async () => { command('archive-answer-no', cancel.name, cancel.params); });
+ await waitFor(() => expect(posts.at(-1)?.panel?.id ?? '').not.toMatch(/^confirmation:/));
+ expect(boundary.requests.filter(r => r.method === 'thread/archive')).toHaveLength(0);
+ expect(posts.at(-1).threadId).toBe('sent-thread');
+ expect(queueItems).toHaveLength(queued ? 1 : 0);
+ await act(async () => { command('archive-confirmed', entry, params); });
+ await waitFor(() => expect(posts.at(-1)?.panel?.id).toMatch(/^confirmation:/));
+ const yes = posts.at(-1).panel.items.find((i: any) => i.id === 'confirmation-yes').command;
+ await act(async () => { command('archive-answer-yes', yes.name, yes.params); });
+ await waitFor(() => expect(boundary.requests.filter(r => r.method === 'thread/archive')).toHaveLength(1));
+ expect(boundary.requests.find(r => r.method === 'thread/archive')?.params.threadId).toBe('sent-thread');
+ expect(queueItems).toHaveLength(0);
 });

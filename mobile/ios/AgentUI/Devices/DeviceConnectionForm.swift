@@ -50,7 +50,7 @@ struct DeviceConnectionForm: View {
                     }
                     .frame(maxWidth: .infinity)
                 }
-                .disabled(session.deviceTesting || !initialized || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || address.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || deviceLimitReached)
+                .disabled(session.deviceTesting || !initialized || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || address.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 .accessibilityIdentifier("device.testAndSave")
                 if session.deviceTesting {
                     Button(preferences.text("取消测试", "Cancel test"), role: .cancel, action: cancelTest)
@@ -58,9 +58,6 @@ struct DeviceConnectionForm: View {
                 }
             } footer: {
                 Text(preferences.text("将连接网关验证访问权限，成功后保存连接。失败时保留输入供你重试。", "The gateway connection and access are tested before saving. Your input is preserved if testing fails."))
-            }
-            if deviceLimitReached {
-                Section { Label(preferences.text("最多可添加八台设备。请先移除一台设备。", "You can add up to eight devices. Remove a device first."), systemImage: "exclamationmark.circle").foregroundStyle(.orange) }
             }
             if let localError {
                 Section { Label(localError, systemImage: "exclamationmark.triangle").foregroundStyle(.red) }
@@ -109,7 +106,6 @@ struct DeviceConnectionForm: View {
         .onDisappear(perform: cancelTest)
     }
 
-    private var deviceLimitReached: Bool { deviceID == nil && session.devices.count >= 8 }
     private var deviceTitle: String { deviceID.flatMap(session.device)?.name ?? name }
 
     private func initialize() async {
@@ -137,7 +133,6 @@ struct DeviceConnectionForm: View {
     private func testAndSave() {
         guard !session.deviceTesting, saveTask == nil else { return }
         clearErrors()
-        guard !deviceLimitReached else { return }
         if let deviceID, session.device(deviceID) == nil {
             localError = preferences.text("此设备已被移除，请返回设备列表。", "This device has been removed. Return to the device list.")
             return

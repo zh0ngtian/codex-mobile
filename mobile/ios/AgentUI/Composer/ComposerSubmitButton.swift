@@ -10,7 +10,7 @@ struct ComposerSubmitButton: View {
     var body: some View {
         Button(action: action) {
             Group {
-                if guiding { ProgressView() }
+                if guiding { ProgressView().tint(.secondary) }
                 else { Image(systemName: stopping ? "stop.fill" : "arrow.up").font(.body) }
             }
             .frame(width: 20, height: 20)
@@ -32,12 +32,14 @@ struct ComposerSubmitButton: View {
 private struct ComposerSubmitAppearance: ViewModifier {
     @Environment(\.accessibilityShowBorders) private var showBorders
     let accent: AgentAccent
+    @Environment(\.isEnabled) private var isEnabled
     @ViewBuilder func body(content: Content) -> some View {
         if showBorders {
             content.buttonStyle(FilledComposerSubmitStyle(accent: accent))
         } else {
             content.modifier(AgentGlassButton(prominent: true, circular: true))
                 .controlSize(.regular).tint(accent.color)
+                .foregroundStyle(isEnabled ? accent.foreground : Color.primary.opacity(0.25))
         }
     }
 }

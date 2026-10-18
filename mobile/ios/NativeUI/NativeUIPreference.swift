@@ -12,7 +12,7 @@ struct NativeUIPreference {
         self.synchronize = synchronize ?? { defaults.synchronize() }
     }
 
-    var enabled: Bool { defaults.bool(forKey: Self.key) }
+    var enabled: Bool { defaults.object(forKey: Self.key) == nil ? true : defaults.bool(forKey: Self.key) }
 
     func save(_ enabled: Bool) throws {
         let previous = defaults.object(forKey: Self.key)

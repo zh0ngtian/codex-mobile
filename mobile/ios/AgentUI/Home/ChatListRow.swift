@@ -56,7 +56,6 @@ struct ChatListRow: View {
             .padding(.leading, indented ? 20 : 0)
             .padding(.vertical, 6)
             .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-            .background(session.selectedConversationID == conversation.id ? Color.accentColor.opacity(0.09) : .clear, in: .rect(cornerRadius: 9))
             .contentShape(.rect)
         }
         .buttonStyle(.plain)

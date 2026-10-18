@@ -10,7 +10,7 @@ struct SettingsScreen: View {
             Form {
                 Section(preferences.text("应用", "Application")) {
                     NavigationLink(value: SettingsRoute.language) { SettingsRow(title: preferences.text("语言", "Language"), symbol: "globe", value: preferences.languageTitle) }
-                    NavigationLink(value: SettingsRoute.devices) { SettingsRow(title: preferences.text("设备", "Devices"), symbol: "desktopcomputer", value: "\(session.devices.count)/8") }
+                    NavigationLink(value: SettingsRoute.devices) { SettingsRow(title: preferences.text("设备", "Devices"), symbol: "desktopcomputer", value: "\(session.devices.count)") }
                     NavigationLink(value: SettingsRoute.transport) { SettingsRow(title: preferences.text("传输方式", "Transport"), symbol: "arrow.left.arrow.right", value: preferences.transport) }
                     NavigationLink(value: SettingsRoute.notifications) { SettingsRow(title: preferences.text("通知", "Notifications"), symbol: "bell", value: notificationSummary) }
                 }

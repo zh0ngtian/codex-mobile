@@ -35,7 +35,7 @@ struct SidebarScreen: View {
                     }
                     .foregroundStyle(preferences.accent.foreground)
                     .padding(.horizontal, 5.5)
-                    .frame(minHeight: 31)
+                    .frame(minHeight: SidebarControlMetrics.contentHeight)
                 }
                 .modifier(AgentGlassButton(prominent: true))
                 .controlSize(.regular)

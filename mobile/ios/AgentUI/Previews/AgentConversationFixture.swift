@@ -42,15 +42,39 @@ final class AgentConversationFixture {
             history,
             NativeMessage(id: "answer", role: "assistant", text: "已完成检查。查看 [网页链接](https://example.com) 与 [文件链接](/tmp/example.swift#L12)。", timestamp: date.addingTimeInterval(120).timeIntervalSince1970, turnId: "fixture-turn", phase: "final_answer"),
         ]
-        value.messages[2].status = "1小时2分钟3秒"
+        value.messages[2].status = ProcessInfo.processInfo.arguments.contains("--agent-no-duration-fixture") ? nil : "1小时2分钟3秒"
+        if ProcessInfo.processInfo.arguments.contains("--agent-many-devices-fixture") {
+            value.backends += (1...11).map { NativeBackend(id: "extra-device-\($0)", title: "额外设备 \($0)", connected: true) }
+        }
+        if ProcessInfo.processInfo.arguments.contains("--agent-steering-status-fixture") {
+            value.messages.append(NativeMessage(id: "pending-steer", role: "activity", text: "正在引导的消息", status: "正在引导"))
+        }
+        if ProcessInfo.processInfo.arguments.contains("--agent-collapse-threshold-fixture") {
+            value.messages[0].text = String(repeating: "折叠阈值检查\n", count: 10) + "第十一行"
+        }
+        if ProcessInfo.processInfo.arguments.contains("--agent-edit-history-fixture") {
+            value.messages[0].actions = [NativePanelItem(id: "edit", kind: "action", title: "编辑", command: NativeCommand(name: "message.edit", params: ["id": .string("question")]))]
+        }
+        if ProcessInfo.processInfo.arguments.contains("--agent-duplicate-time-fixture") {
+            value.busy = true
+            value.messages = [NativeMessage(id: "earlier", role: "assistant", text: "较早的执行进展。", blocks: [NativePanelItem(id: "earlier:timestamp", kind: "text", text: "2026-10-18 10:44")], timestamp: date.addingTimeInterval(86400).timeIntervalSince1970, phase: "commentary", commentaryIsLiveTail: false)]
+        }
+        if ProcessInfo.processInfo.arguments.contains("--agent-portrait-thumbnail-fixture") {
+            let image = UIGraphicsImageRenderer(size: CGSize(width: 40, height: 240)).image { context in
+                UIColor.red.setFill(); context.cgContext.fill(CGRect(x: 0, y: 0, width: 40, height: 240))
+            }
+            let url = "data:image/png;base64," + image.pngData()!.base64EncodedString()
+            value.attachments = [NativeAttachment(id: "portrait", name: "竖屏测试.png", imageURL: url)]
+            value.attachments[0].type = "image/png"
+        }
         if ProcessInfo.processInfo.arguments.contains("--agent-short-question-fixture") { value.messages[0].text = "好" }
         if ProcessInfo.processInfo.arguments.contains("--agent-sidebar-polish-fixture") {
-            value.messages[0].text = String(repeating: "短行\n", count: 6) + "这是一条展开后才显示的较长正文，用于确认消息气泡在展开更多和收起时保持同样的宽度。"
+            value.messages[0].text = String(repeating: "短行\n", count: 14) + "这是一条展开后才显示的较长正文，用于确认消息气泡在展开更多和收起时保持同样的宽度。"
             value.groups = [("z", "Zeta"), ("a", "Alpha"), ("m", "Middle")].map { key, title in
                 let item = NativeNavigationItem(id: "row-" + key, title: "任务 " + title,
                     command: NativeCommand(name: "thread.open", params: ["backendId": .string("conversation-ui-device"), "threadId": .string("thread-" + key)]),
                     isUnread: key == "a", running: key == "z")
-                return NativeGroup(id: "project-" + key, title: title, items: [item], collapsed: false, category: "project", cwd: "/" + title)
+                return NativeGroup(id: "project-" + key, title: title, items: [item], command: NativeCommand(name: "project.toggle", params: ["id": .string("project-" + key)]), collapsed: false, category: "project", cwd: "/" + title)
             }
         }
         if ProcessInfo.processInfo.arguments.contains("--agent-sidebar-polish-fixture") {
@@ -63,7 +87,7 @@ final class AgentConversationFixture {
             }
         }
         if ProcessInfo.processInfo.arguments.contains("--agent-preview-polish-fixture") {
-            value.messages[0].text = String(repeating: "短行\n", count: 6) + "展开后的正文仅用于核对强调色，完整文字不会改变气泡的宽度。"
+            value.messages[0].text = String(repeating: "短行\n", count: 14) + "展开后的正文仅用于核对强调色，完整文字不会改变气泡的宽度。"
             let image = UIImage(systemName: "photo")!.withTintColor(.gray, renderingMode: .alwaysOriginal).pngData()!
             let html = Data("<html><body style='font: -apple-system-body'>Neutral preview file</body></html>".utf8)
             value.messages.append(NativeMessage(id: "preview-assets", role: "assistant", text: "预览附件", blocks: [
@@ -141,7 +165,20 @@ final class AgentConversationFixture {
 
     private func publish() { store.receive(snapshot); session.receive(snapshot) }
     private func dispatch(_ command: NativeCommand) {
-        if ProcessInfo.processInfo.arguments.contains("--agent-submit-fixture"), ["message.send", "turn.stop"].contains(command.name) {
+        if command.name == "project.toggle", case .string(let id) = command.params["id"],
+           let index = snapshot.groups.firstIndex(where: { $0.id == id }) {
+            snapshot.groups[index].collapsed = !(snapshot.groups[index].collapsed ?? false)
+            publish()
+        } else if command.name == "message.edit", ProcessInfo.processInfo.arguments.contains("--agent-edit-history-fixture") {
+            snapshot.messages[0].historyEdit = NativePanel(id: "history-edit:question", title: "编辑消息", items: [
+                NativePanelItem(id: "history-text", kind: "multilineField", value: snapshot.messages[0].text, command: NativeCommand(name: "history.change")),
+                NativePanelItem(id: "cancel", kind: "action", title: "取消", command: NativeCommand(name: "history.cancel")),
+                NativePanelItem(id: "submit", kind: "action", title: "保存并重发", command: NativeCommand(name: "history.submit")),
+            ])
+            publish()
+        } else if command.name == "history.cancel" {
+            snapshot.messages[0].historyEdit = nil; publish()
+        } else if ProcessInfo.processInfo.arguments.contains("--agent-submit-fixture"), ["message.send", "turn.stop"].contains(command.name) {
             snapshot.busy = command.name == "message.send"
             snapshot.draft = ""; snapshot.canSend = false
             snapshot.commandResults = [NativeCommandResult(id: command.id, name: command.name, ok: true, contextId: snapshot.contextId)]
@@ -214,6 +251,7 @@ struct AgentTypographyFixture: ViewModifier {
 }
 /// 显式布局回归参数下记录真实表面范围，避免辅助功能容器只返回子控件并集。
 struct AgentComposerGeometryFixture: ViewModifier {
+    @Environment(\.accessibilityShowBorders) private var showBorders
     @State private var frame = CGRect.zero
     func body(content: Content) -> some View {
         if ProcessInfo.processInfo.arguments.contains("--agent-composer-geometry-fixture") {
@@ -222,6 +260,7 @@ struct AgentComposerGeometryFixture: ViewModifier {
                     Text("\(frame.minX),\(frame.minY),\(frame.width),\(frame.height)")
                         .font(.system(size: 1)).opacity(0.01).allowsHitTesting(false)
                         .accessibilityIdentifier("composer.geometry")
+                        .accessibilityValue(showBorders ? "on" : "off")
                 }
         } else { content }
     }

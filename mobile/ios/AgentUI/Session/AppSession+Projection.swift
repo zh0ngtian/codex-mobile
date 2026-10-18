@@ -145,7 +145,7 @@ extension AppSession {
         } : []
 
         let commentary = (value.commentary ?? []).map(progressEntry)
-        return ChatMessage(id: id, isUser: value.role == "user", text: value.text, kind: value.phase == "commentary" ? "commentary" : value.role, duration: value.status ?? "", timestamp: value.timestamp == nil ? "" : created.formatted(date: .omitted, time: .shortened), createdAt: created, attachments: attachments, commentary: commentary, outputs: outputs)
+        return ChatMessage(id: id, isUser: value.role == "user", text: value.text, kind: value.phase == "commentary" ? "commentary" : value.role, duration: value.role == "assistant" && value.phase != "commentary" ? value.status ?? "" : "", timestamp: value.timestamp == nil ? "" : created.formatted(date: .omitted, time: .shortened), createdAt: created, attachments: attachments, commentary: commentary, outputs: outputs)
     }
     func attachment(_ value: NativeAttachment) -> AttachmentItem {
         let id = scopedID("attachment", nativeSnapshot.contextId ?? "", value.id); rawAttachmentIDs[id] = value.id

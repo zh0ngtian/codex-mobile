@@ -6,7 +6,7 @@ struct NativeContextUsageButton: View {
 
     var body: some View {
         Button { detailsOpen.toggle() } label: {
-            NativeUsageIcon(unavailable: store.snapshot.contextUsage?.safeUsedPercent == nil)
+            NativeUsageIcon()
                 .frame(width: NativeVisualMetrics.headerIconSize, height: NativeVisualMetrics.headerIconSize)
                 .frame(width: NativeVisualMetrics.controlHeight, height: NativeVisualMetrics.controlHeight).contentShape(.rect)
         }

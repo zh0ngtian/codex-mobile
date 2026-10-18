@@ -23,7 +23,7 @@ struct UserMessageView: View {
                     if !displayText.isEmpty {
                         Text(displayText).font(AgentTheme.body)
                             .foregroundStyle(preferences.accent.userMessageText(in: colorScheme))
-                            .lineLimit(expanded ? nil : 6).textSelection(.enabled)
+                            .lineLimit(expanded ? nil : 12).textSelection(.enabled)
                             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { visibleHeight = $0 }
                     }
                     if expanded || fullHeight > visibleHeight + 1 {
@@ -57,7 +57,7 @@ struct UserMessageView: View {
             }
         }
         .overlay {
-            // 完整正文在相同的最大可用宽度下测量，不受六行折叠及按钮文案影响。
+            // 完整正文在相同的最大可用宽度下测量，不受十二行折叠及按钮文案影响。
             Text(displayText).font(AgentTheme.body)
                 .fixedSize(horizontal: false, vertical: true)
                 .onGeometryChange(for: CGSize.self) { $0.size } action: { size in

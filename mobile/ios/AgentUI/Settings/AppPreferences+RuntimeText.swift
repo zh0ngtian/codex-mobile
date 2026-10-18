@@ -10,7 +10,6 @@ extension AppPreferences {
 
     private static let runtimeTranslations: [String: String] = [
         "请输入设备名称和带 token 的完整 HTTP(S) 网关地址。": "Enter a device name and a full HTTP(S) gateway URL containing a token.",
-        "最多保存 8 台设备。": "You can save up to eight devices.",
         "通知对应的设备或会话不可用": "The device or conversation for this notification is unavailable.",
         "本地记录读取失败，请在草稿箱重试。": "Could not read local records. Retry in Drafts.",
         "本地保存失败，请重试。": "Could not save locally. Try again.",

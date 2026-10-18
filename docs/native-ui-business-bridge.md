@@ -122,7 +122,7 @@ ConfiguredApp 使用真实 `scopedThreads`、`projectDirectories`、`collapsedPr
 
 ### 双向切换与启动检查点
 
-- iOS 首次默认非原生界面及网页输入框，完整原生界面默认关闭；Swift 在进程首次读取偏好后冻结本次模式。升级保留既有原生界面选择，旧新版 Web 和独立 composer 偏好不再读取。两边设置共用 `settings.native-ui` / `NativeSwitchBoundary`，只有专用 IndexedDB 检查点完整事务成功后，才请求宿主保存下次启动偏好；宿主写入失败恢复原值。
+- iOS 首次默认完整原生界面及黑色强调色；Swift 在进程首次读取偏好后冻结本次模式。升级保留既有原生界面选择，旧新版 Web 和独立 composer 偏好不再读取。两边设置共用 `settings.native-ui` / `NativeSwitchBoundary`，只有专用 IndexedDB 检查点完整事务成功后，才请求宿主保存下次启动偏好；宿主写入失败恢复原值。
 - `codexMobileNativePreference({enabled?})` 通过可信首页桥读取或保存偏好，回传 `{enabled, active}`；当前运行模式不随偏好变化。未就绪或恢复失败时禁用切换；丢失回执有按请求 ID 匹配的有界错误回收。
 - 检查点使用独立数据库，不进入手动草稿列表。保存全部已挂载工作区正文、图片、文件完整二进制、设备、项目、线程与发送配置。设置使用明确白名单；不复制 HTTP session/pending writes、审批秘密答案或待确认写操作。
 - 已准备切换后继续编辑，会串行合并最新状态；同一 File 的二进制读取缓存避免每个字符重复读取。存储失败显示错误、保留当前输入。冷启动先恢复目标与内容再挂载业务；已有线程的首轮 resume 保留本地发送选择，同时同步服务器消息、访问状态，之后普通重连仍采用服务器设置。
@@ -152,7 +152,7 @@ Task2b 分模块 RED→GREEN 日志位于 `.mobile-build/native-reference/task2b
 
 现役代码只保留当前非原生界面与完整原生界面。新版 Web 的组件、样式、Provider 和开关，以及网页原生文字编辑器、布局代理、几何/焦点/选区桥接、独立 composer 偏好和命令均已移除。历史计划和验收记录仅描述当时实现。
 
-宿主只保存并冻结 `codexMobile.useNativeUI`，默认 false。旧 `codexMobile.useNativeComposer` 和 `codex-mobile:web-interface` 不再影响启动或呈现。原生界面设置继续通过 `settings.native-ui` 和 `NativeSwitchBoundary` 完成检查点事务、失败回滚和并发锁，在下次完整启动时生效。
+宿主只保存并冻结 `codexMobile.useNativeUI`，未保存偏好时默认 true，显式 false 仍保留。旧 `codexMobile.useNativeComposer` 和 `codex-mobile:web-interface` 不再影响启动或呈现。原生界面设置继续通过 `settings.native-ui` 和 `NativeSwitchBoundary` 完成检查点事务、失败回滚和并发锁，在下次完整启动时生效。
 
 非原生界面使用正常网页 textarea，附件、发送、排队、模型、权限、Skill/Plugin、选区和焦点均沿现有网页回调，不创建 NativeRuntime、不发布原生会话投影。完整原生界面使用 `AgentUI/Composer/ComposerBar.swift` 与同一业务 WKWebView 的 runtime，输入经 `NativeUIStore` 的 `draftRevision` 同步，附件、模型、推理、队列与历史编辑继续发送明确的业务命令。
 

@@ -461,6 +461,14 @@ struct AgentSessionSmoke {
         let sent = session.message(NativeMessage(id: "sent", role: "user", text: "消息", timestamp: known.createdAt!.timeIntervalSince1970))
         let reply = session.message(NativeMessage(id: "reply", role: "assistant", text: "回复", timestamp: known.createdAt!.timeIntervalSince1970 * 1000))
         precondition(sent.timestampLabel == known.timestampLabel && reply.timestampLabel == known.timestampLabel, "双方消息与执行过程使用同一月日时间格式，兼容真实秒及毫秒时间戳")
+        precondition(session.message(NativeMessage(id: "pending-steer", role: "activity", text: "正在引导的消息", status: "正在引导")).duration.isEmpty, "真实pending-steer状态不能当作耗时")
+        var commentaryStatus = NativeMessage(id: "commentary-status", role: "assistant", text: "执行中", status: "处理中")
+        commentaryStatus.phase = "commentary"
+        precondition(session.message(commentaryStatus).duration.isEmpty, "commentary状态不是整轮用时")
+        precondition(session.message(NativeMessage(id: "timed-reply", role: "assistant", text: "完成", status: "1分钟2秒")).duration == "1分钟2秒", "保留真实assistant用时，兼容缺省final phase")
+        var zeroDurationReply = NativeMessage(id: "zero-duration", role: "assistant", text: "完成", status: "0秒")
+        zeroDurationReply.phase = "final_answer"
+        precondition(session.message(zeroDurationReply).duration == "0秒", "显式final的真实零秒仍应显示")
         precondition(session.message(NativeMessage(id: "unknown", role: "assistant", text: "未知时间")).timestampLabel.isEmpty, "未知时间不能伪造月日")
         precondition(MessageTimeFormatting.string(from: Date(timeIntervalSince1970: 1792649814), timeZone: TimeZone(identifier: "Asia/Shanghai")!) == "10月22日 14:16", "消息日期与时间使用设备本地时区")
         precondition(session.message(native).commentary.map(\.id) == message.commentary.map(\.id), "快照更新不能更换历史条目身份")

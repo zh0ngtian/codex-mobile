@@ -23,8 +23,10 @@ struct NativeMessage: Codable, Identifiable {
 
     /// 仅替换有明确语义对应的旧历史区块；同消息里的其他工具或推理仍保留。
     var presentationBlocks: [NativePanelItem] {
-        guard commentary?.isEmpty == false, let commentaryBlockId else { return blocks ?? [] }
-        return (blocks ?? []).filter { $0.id != commentaryBlockId }
+        (blocks ?? []).filter { block in
+            if role == "assistant", phase == "commentary", block.kind == "text", block.id == id + ":timestamp" { return false }
+            return !(commentary?.isEmpty == false && block.id == commentaryBlockId)
+        }
     }
 }
 
