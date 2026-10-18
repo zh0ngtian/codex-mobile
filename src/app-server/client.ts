@@ -80,6 +80,9 @@ export class AppServerClient {
   private requestListeners = new Set<RequestListener>();
   private threadMetadataListeners = new Set<ThreadMetadataListener>();
   private readonly requestTimeoutMs: number;
+  private readonly connectionLifetime = new AbortController();
+
+  get signal(): AbortSignal { return this.connectionLifetime.signal; }
 
   constructor(
     private readonly socket: AppServerSocket,
@@ -89,6 +92,7 @@ export class AppServerClient {
     socket.addEventListener("message", (event) => this.receive(String(event.data)));
     socket.addEventListener("close", () => {
       const error = new Error(t("与 app-server 的连接已断开"));
+      this.connectionLifetime.abort(error);
       for (const [id, waiter] of this.pending) {
         // HTTP send 自己区分未确认写入；关闭事件不能抢先把它变成普通失败。
         clearTimeout(waiter.timeout);

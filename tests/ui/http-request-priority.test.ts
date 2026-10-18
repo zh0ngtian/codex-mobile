@@ -144,4 +144,107 @@ describe("HTTP前台会话优先于后台刷新", () => {
     calls[2].finish();
     expect(await project).toEqual({ projects: ["/project"], projectlessThreadIds: [] });
   });
+
+  it("关闭连接取消排队的项目目录请求，不能在名额释放后继续派发", async () => {
+    const { calls, create, request, fetcher } = harness();
+    vi.stubGlobal("fetch", fetcher);
+    const origin = "http://cancel-project.test";
+    const a = create("active-project", origin), b = create("closing-project", origin);
+    await vi.advanceTimersByTimeAsync(0);
+    request(a.client, "thread/read", { priority: "background" });
+    request(a.client, "thread/read", { priority: "background" });
+    let settled = false;
+    const project = fetchBackendProjectState({ id: "closing-project", name: "Mac", baseUrl: origin, token: "test", enabled: true, order: 0 }, "background", b.client.signal)
+      .catch((error: Error) => error).then((value) => { settled = true; return value; });
+    try {
+      b.transport.close();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(settled).toBe(true);
+      expect(await project).toBeInstanceOf(Error);
+      calls.forEach((call) => call.finish());
+      await vi.advanceTimersByTimeAsync(0);
+      expect(calls.some((call) => call.method === "projects")).toBe(false);
+    } finally {
+      calls.forEach((call) => call.finish());
+      await vi.advanceTimersByTimeAsync(0);
+      calls.forEach((call) => call.finish());
+      await vi.advanceTimersByTimeAsync(0);
+    }
+  });
+
+  it("关闭连接中止已派发的目录请求并释放后台名额", async () => {
+    const { calls, create, request, fetcher } = harness();
+    vi.stubGlobal("fetch", fetcher);
+    const origin = "http://active-project.test";
+    const a = create("active-project", origin), b = create("waiting-project", origin);
+    await vi.advanceTimersByTimeAsync(0);
+    const project = fetchBackendProjectState({ id: "active-project", name: "Mac", baseUrl: origin, token: "test", enabled: true, order: 0 }, "background", a.client.signal).catch((error: Error) => error);
+    request(b.client, "thread/read", { priority: "background" });
+    const queued = request(b.client, "thread/read", { priority: "background" });
+    try {
+      expect(calls).toHaveLength(2);
+      a.transport.close();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(calls).toHaveLength(3);
+      expect(await project).toBeInstanceOf(Error);
+      calls.forEach((call) => call.finish());
+      await queued;
+    } finally {
+      calls.forEach((call) => call.finish());
+      await vi.advanceTimersByTimeAsync(0);
+    }
+  });
+
+  it("目录请求的网络超时从派发起计算，超时后释放共享后台名额", async () => {
+    const { calls, create, request, fetcher } = harness();
+    vi.stubGlobal("fetch", fetcher);
+    const origin = "http://timeout-project.test";
+    const { client } = create("timeout-project", origin);
+    await vi.advanceTimersByTimeAsync(0);
+    const project = () => fetchBackendProjectState({ id: "timeout-project", name: "Mac", baseUrl: origin, token: "test", enabled: true, order: 0 }, "background", client.signal).catch((error: Error) => error);
+    const first = project(), second = project();
+    const queued = request(client, "thread/read", { priority: "background" });
+    try {
+      expect(calls).toHaveLength(2);
+      await vi.advanceTimersByTimeAsync(10_001);
+      expect(calls).toHaveLength(3);
+      expect(await first).toBeInstanceOf(Error);
+      expect(await second).toBeInstanceOf(Error);
+      calls[2].finish();
+      await queued;
+    } finally {
+      calls.forEach((call) => call.finish());
+      await vi.advanceTimersByTimeAsync(0);
+    }
+  });
+
+  it("目录请求排队不消耗网络超时", async () => {
+    const { calls, create, request, fetcher } = harness();
+    vi.stubGlobal("fetch", fetcher);
+    const origin = "http://queued-project-timeout.test";
+    const { client } = create("queued-project-timeout", origin);
+    await vi.advanceTimersByTimeAsync(0);
+    request(client, "thread/read", { priority: "background", timeoutMs: 60_000 });
+    request(client, "thread/read", { priority: "background", timeoutMs: 60_000 });
+    let settled = false;
+    const project = fetchBackendProjectState({ id: "queued-project-timeout", name: "Mac", baseUrl: origin, token: "test", enabled: true, order: 0 }, "background", client.signal)
+      .catch((error: Error) => error).then((value) => { settled = true; return value; });
+    try {
+      await vi.advanceTimersByTimeAsync(15_000);
+      expect(settled).toBe(false);
+      expect(calls).toHaveLength(2);
+      calls[0].finish();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(calls[2].method).toBe("projects");
+      await vi.advanceTimersByTimeAsync(9_999);
+      expect(settled).toBe(false);
+      await vi.advanceTimersByTimeAsync(2);
+      expect(settled).toBe(true);
+      expect(await project).toBeInstanceOf(Error);
+    } finally {
+      calls.forEach((call) => call.finish());
+      await vi.advanceTimersByTimeAsync(0);
+    }
+  });
+
 });
