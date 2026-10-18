@@ -7,7 +7,7 @@ struct SidebarMoreMenu: View {
         let devices = session.devices.map { device in
             SidebarDeviceMenuOption(id: device.id, title: title(device), selected: session.selectedDeviceID == device.id)
         }
-        SidebarMoreMenuContents(devices: devices, allSelected: session.selectedDeviceID == nil,
+        SidebarMoreMenuContents(devices: devices,
             english: preferences.isEnglish,
             scopeTitle: session.selectedDeviceID.flatMap(session.device)?.name ?? preferences.text("全部设备", "All devices"),
             select: { session.selectListDevice($0) }, drafts: { session.draftsPresented = true },
@@ -34,7 +34,6 @@ private struct SidebarDeviceMenuOption: Identifiable, Equatable {
 /// 设备连接/范围真正变化时更新，避免无关消息快照反复重建菜单。
 private struct SidebarMoreMenuContents: View, Equatable {
     let devices: [SidebarDeviceMenuOption]
-    let allSelected: Bool
     let english: Bool
     let scopeTitle: String
     let select: (UUID?) -> Void
@@ -42,15 +41,12 @@ private struct SidebarMoreMenuContents: View, Equatable {
     let refresh: () -> Void
     let settings: () -> Void
     static func == (lhs: Self, rhs: Self) -> Bool {
-        lhs.devices == rhs.devices && lhs.allSelected == rhs.allSelected && lhs.english == rhs.english && lhs.scopeTitle == rhs.scopeTitle
+        lhs.devices == rhs.devices && lhs.english == rhs.english && lhs.scopeTitle == rhs.scopeTitle
     }
     var body: some View {
         Menu {
             Group {
                 Section(english ? "Device scope" : "设备范围") {
-                    Button { select(nil) } label: {
-                        Label(english ? "All devices" : "全部设备", systemImage: allSelected ? "checkmark" : "desktopcomputer")
-                    }
                     ForEach(devices) { device in
                         Button { select(device.id) } label: {
                             Label(device.title, systemImage: device.selected ? "checkmark" : "laptopcomputer")

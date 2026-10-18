@@ -20,7 +20,7 @@ struct SidebarIconLabel: View {
     var body: some View {
         Image(systemName: systemImage)
             .font(.title3.weight(.light))
-            .frame(width: 22, height: SidebarControlMetrics.contentHeight)
+            .frame(width: SidebarControlMetrics.contentHeight, height: SidebarControlMetrics.contentHeight)
             .foregroundStyle(AgentTheme.ink)
     }
 }

@@ -4,6 +4,8 @@
 
 Codex Mobile iOS 复用当前 React 前端，内置于固定提交的 PakePlus SwiftUI / WKWebView 容器。设备地址和口令由用户在 App 中添加，构建产物不携带私人网关配置。
 
+当前本机验收设备为iPhone 17 Pro / iOS 27.0；原26.5设备已在保留App数据的情况下原地升级，升级前完整副本仍保留。带日期的旧章节继续保留当时版本与证据。
+
 ## 生成与运行
 
 要求 macOS、Xcode、Node.js 20.9+、Git、jq。首次运行先执行 `npm ci`。
@@ -20,7 +22,7 @@ xcodebuild \
   -project .mobile-build/ios/pakeplus/PakePlus.xcodeproj \
   -scheme PakePlus \
   -configuration Debug \
-  -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.5' \
+  -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=27.0' \
   -derivedDataPath .mobile-build/ios-derived-data build
 ```
 
@@ -49,7 +51,7 @@ ruby scripts/configure-ios-tests.rb
 xcodebuild \
   -project .mobile-build/ios/pakeplus/PakePlus.xcodeproj \
   -scheme CodexMobileUITests \
-  -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.5' \
+  -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=27.0' \
   -derivedDataPath .mobile-build/ios-derived-data \
   -parallel-testing-enabled NO \
   -resultBundlePath .mobile-build/ios-ui-tests.xcresult test
@@ -202,3 +204,14 @@ python3 scripts/analyze-conversation-loading.py <按startedAtMs合并的JSON数�
 ```
 
 本轮数据与说明见[测量报告](performance/2026-10-18-conversation-loading/README.md)。最后恢复不带计时参数的正常App；不把Debug模拟器测量作为真机或Release版本性能结论。
+
+
+## 2026-10-19 升级iOS 27与底部按钮外框回归
+
+使用`simctl upgrade 240244F5-0BEC-4553-A346-32F7D5AD34FC com.apple.CoreSimulator.SimRuntime.iOS-27-0`原地升级现有iPhone 17 Pro；升级前26.5副本`8BE7C3CC-115D-4036-8F5F-93EFCB0B431A`保留。系统语言、App数据与已有网关继续可用；模拟器运行时已实读27.0，不复用其他项目的27.0设备。
+
+`testSidebarControlHeightsMatchChat`在旧实现中首先失败，实测Chat=45pt、搜索/更多=36pt；改为正方形内容后实测三个按钮均45pt，两个圆形按钮均45×45pt，并核对前后截图可见外圈。新对话星星已移除，项目选择与完整路径命令继续通过。四项不同界面检查、26项相关原生契约和typecheck通过；iOS 27菜单项测试按真实可见文案定位，避免旧ID不再暴露造成误判。
+
+结果保留在`/tmp/ios27-sidebar-red-1019.xcresult`、`/tmp/ios27-sidebar-green-1019.xcresult`、`/tmp/ios27-sidebar-interactions-1019.xcresult`和`/tmp/ios27-sidebar-menu-green-1019.xcresult`，前后外圈截图为`/tmp/ios27-sidebar-before-after-1019.png`。本轮未创建业务会话。源码推送main，模拟器保留正常App供用户验收，未发布新包；原有动画对系统减弱动态效果的遵循保持。
+
+用户追加移除侧栏更多菜单的“全部设备”，已先失败后删除，再通过夹具菜单与真实网关搜索/设置两项回归（`/tmp/ios27-sidebar-no-all-green-1019.xcresult`）；具体设备、草稿箱、刷新和设置保留。

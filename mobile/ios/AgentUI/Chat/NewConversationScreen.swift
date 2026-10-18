@@ -8,7 +8,6 @@ struct NewConversationScreen: View {
             VStack(spacing: 30) {
                 NewTaskTargets()
                 VStack(spacing: 12) {
-                    Image(systemName: "sparkle").font(.largeTitle).foregroundStyle(.secondary)
                     Text(preferences.text("有什么可以帮你？", "What can I help with?")).font(.body)
                     Text(preferences.text("选择机器与项目，然后输入任务。", "Choose a computer and project, then describe your task."))
                         .font(.body).foregroundStyle(.secondary)
