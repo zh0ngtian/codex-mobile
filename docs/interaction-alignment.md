@@ -457,3 +457,6 @@
 ## 2026-10-18 原生交互改动正式发布（协调中）
 
 用户明确要求把当前分支合入main并发布GitHub Release，覆盖此前仅模拟器的交付范围。任务`native-polish-release-20261018`已登记到默认双端客户端协调目标；所有用户可见改动沿用受控中文更新日志，本地计时探针默认关闭。正式main推进、版本分配和渠道发布均由协调器处理，成功以最终receipt为准，当前不宣称已发布；不执行真机安装。
+
+
+本轮初始ready任务未关联最新失败叶节点，未成批后已withdrawn；实际关联任务`native-polish-release-linked-20261018`在新批次`86cae3ec-78ab-4d71-aeb3-f7c735ba15f2`已推进main，0.3.7（3007）云端iOS因`RootView.body`表达式类型检查超时而失败，GitHub Release及渠道均未发布。现以`native-polish-compile-repair-20261018`关联该失败叶节点，仅拆小根视图编译表达式，保留现有界面和交互；本地Release/iphoneos编译及3项模拟器弹窗回归通过，正式发布仍待新的成功receipt。

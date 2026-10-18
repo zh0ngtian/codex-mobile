@@ -13,6 +13,25 @@ struct RootView: View {
     @State private var confirmationClosingID: String?
 
     var body: some View {
+        archivePresentation
+            .overlay(alignment: .top) { toastContent }
+            .task(id: session.toast) { await clearToastLater() }
+            .task {
+                offerFirstDeviceIfNeeded()
+                synchronizePresentation()
+            }
+            .onChange(of: canOfferFirstDevice) { offerFirstDeviceIfNeeded() }
+            .onChange(of: presentationRequests) { synchronizePresentation() }
+            .onChange(of: session.inputModalPresented) { synchronizePresentation() }
+            .onChange(of: session.renameTargetID) { renameTargetChanged() }
+            .onChange(of: session.archiveTargetID) { synchronizePresentation() }
+            .onChange(of: session.nativePanel?.id) {
+                answeredConfirmationID = nil
+                synchronizePresentation()
+            }
+    }
+
+    private var drawerContent: some View {
         AgentDrawer(isOpen: Binding(get: { sidebarIsVisible }, set: { session.sidebarVisible = $0 }),
                     gesturesEnabled: canUseSidebarGesture) {
             NavigationStack {
@@ -38,64 +57,67 @@ struct RootView: View {
             }
             .frame(width: 0, height: 0).accessibilityHidden(true)
         }
-        .sheet(item: modalBinding, onDismiss: modalDidDismiss) { destination in
-            modalContent(destination)
-                .presentationDetents([.large])
-                .interactiveDismissDisabled(destination.requiresExplicitDismissal || (session.nativePanel?.dismissible == false && destination.id.hasPrefix("native-panel-")))
-        }
-        .alert(confirmationPanel?.title ?? preferences.text("确认操作", "Confirm"), isPresented: confirmationPresented, presenting: confirmationPanel) { panel in
-            ForEach(panel.items.filter { $0.id == "confirmation-yes" || $0.id == "confirmation-no" }) { item in
-                Button(item.title ?? "", role: item.id == "confirmation-no" ? .cancel : .destructive) {
-                    confirmationClosingID = panel.id
-                    answeredConfirmationID = panel.id
-                    session.perform(item.command)
+    }
+
+    private var sheetPresentation: some View {
+        drawerContent
+            .sheet(item: modalBinding, onDismiss: modalDidDismiss) { destination in
+                modalContent(destination)
+                    .presentationDetents([.large])
+                    .interactiveDismissDisabled(destination.requiresExplicitDismissal || (session.nativePanel?.dismissible == false && destination.id.hasPrefix("native-panel-")))
+            }
+    }
+
+    private var confirmationPresentation: some View {
+        sheetPresentation
+            .alert(confirmationPanel?.title ?? preferences.text("确认操作", "Confirm"), isPresented: confirmationPresented, presenting: confirmationPanel) { panel in
+                ForEach(panel.items.filter { $0.id == "confirmation-yes" || $0.id == "confirmation-no" }) { item in
+                    Button(item.title ?? "", role: item.id == "confirmation-no" ? .cancel : .destructive) {
+                        confirmationClosingID = panel.id
+                        answeredConfirmationID = panel.id
+                        session.perform(item.command)
+                    }
+                    .disabled(item.disabled == true)
                 }
-                .disabled(item.disabled == true)
+            } message: { panel in
+                Text(panel.items.first(where: { $0.id == "confirmation-yes" })?.text ?? "")
             }
-        } message: { panel in
-            Text(panel.items.first(where: { $0.id == "confirmation-yes" })?.text ?? "")
-        }
-        .alert(preferences.text("重命名会话", "Rename conversation"), isPresented: renamePresented, presenting: session.renameTargetID) { id in
-            TextField(preferences.text("会话名称", "Conversation name"), text: $renameText)
-            Button(preferences.text("取消", "Cancel"), role: .cancel) { session.renameTargetID = nil }
-            Button(preferences.text("保存", "Save")) { saveRename(id) }
-                .disabled(!canSaveRename(id))
-        }
-        .tint(AgentTheme.ink)
-        .alert(preferences.text("归档并丢弃排队消息？", "Archive and discard queued messages?"), isPresented: archivePresented, presenting: session.archiveTargetID) { id in
-            Button(preferences.text("归档并丢弃队列", "Archive and discard queue"), role: .destructive) { confirmArchive(id) }
-            Button(preferences.text("取消", "Cancel"), role: .cancel) { session.archiveTargetID = nil }
-        } message: { _ in
-            Text(preferences.text("归档后会话将从列表移除。排队记录会被清除，已发生的操作不会被撤销。", "This conversation will leave the list and its queue will be cleared. Operations that already occurred remain in effect."))
-        }
-        .overlay(alignment: .top) {
-            if let toast = session.toast {
-                Text(preferences.runtimeText(toast))
-                    .font(.body)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
-                    .background(.regularMaterial, in: .capsule)
-                    .shadow(color: .black.opacity(0.06), radius: 10, y: 4)
-                    .padding(.horizontal, 20)
-                    .padding(.top, 8)
-                    .allowsHitTesting(false)
-                    .accessibilityAddTraits(.updatesFrequently)
+    }
+
+    private var renamePresentation: some View {
+        confirmationPresentation
+            .alert(preferences.text("重命名会话", "Rename conversation"), isPresented: renamePresented, presenting: session.renameTargetID) { id in
+                TextField(preferences.text("会话名称", "Conversation name"), text: $renameText)
+                Button(preferences.text("取消", "Cancel"), role: .cancel) { session.renameTargetID = nil }
+                Button(preferences.text("保存", "Save")) { saveRename(id) }
+                    .disabled(!canSaveRename(id))
             }
-        }
-        .task(id: session.toast) { await clearToastLater() }
-        .task {
-            offerFirstDeviceIfNeeded()
-            synchronizePresentation()
-        }
-        .onChange(of: canOfferFirstDevice) { offerFirstDeviceIfNeeded() }
-        .onChange(of: presentationRequests) { synchronizePresentation() }
-        .onChange(of: session.inputModalPresented) { synchronizePresentation() }
-        .onChange(of: session.renameTargetID) { renameTargetChanged() }
-        .onChange(of: session.archiveTargetID) { synchronizePresentation() }
-        .onChange(of: session.nativePanel?.id) {
-            answeredConfirmationID = nil
-            synchronizePresentation()
+            .tint(AgentTheme.ink)
+    }
+
+    private var archivePresentation: some View {
+        renamePresentation
+            .alert(preferences.text("归档并丢弃排队消息？", "Archive and discard queued messages?"), isPresented: archivePresented, presenting: session.archiveTargetID) { id in
+                Button(preferences.text("归档并丢弃队列", "Archive and discard queue"), role: .destructive) { confirmArchive(id) }
+                Button(preferences.text("取消", "Cancel"), role: .cancel) { session.archiveTargetID = nil }
+            } message: { _ in
+                Text(preferences.text("归档后会话将从列表移除。排队记录会被清除，已发生的操作不会被撤销。", "This conversation will leave the list and its queue will be cleared. Operations that already occurred remain in effect."))
+            }
+    }
+
+    @ViewBuilder private var toastContent: some View {
+        if let toast = session.toast {
+            Text(preferences.runtimeText(toast))
+                .font(.body)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+                .background(.regularMaterial, in: .capsule)
+                .shadow(color: .black.opacity(0.06), radius: 10, y: 4)
+                .padding(.horizontal, 20)
+                .padding(.top, 8)
+                .allowsHitTesting(false)
+                .accessibilityAddTraits(.updatesFrequently)
         }
     }
 
