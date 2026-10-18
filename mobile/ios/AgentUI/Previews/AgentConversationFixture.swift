@@ -30,6 +30,10 @@ final class AgentConversationFixture {
         value.model = "Model A"; value.modelValue = "model-a"
         value.efforts = [NativeOption(id: "low", title: "Low", value: "low"), NativeOption(id: "medium", title: "Medium", value: "medium"), NativeOption(id: "high", title: "High", value: "high")]
         value.effortValue = "low"
+        if ProcessInfo.processInfo.arguments.contains("--agent-fast-fixture") {
+            value.speeds = [NativeOption(id: "normal", title: "普通速度", value: ""), NativeOption(id: "fast", title: "Fast", value: "priority")]
+            value.speedValue = ""
+        }
         value.olderTurnsState = "idle"
         value.conversationActions = [NativePanelItem(id: "older", kind: "action", title: "加载更早消息", command: NativeCommand(name: "thread.older"))]
         let history = NativeMessage(id: "history", role: "activity", text: "", blocks: [NativePanelItem(id: "history-block", kind: "disclosure", title: "历史过程 (2)")], turnId: "fixture-turn", commentary: entries, commentaryBlockId: "history-block", commentaryCanAttachToReply: true)
@@ -113,8 +117,9 @@ final class AgentConversationFixture {
             let revision: Int? = { if case .number(let value) = command.params["fieldRevision"] { return Int(value) }; return nil }()
             snapshot.commandResults = [NativeCommandResult(id: command.id, name: command.name, ok: true, contextId: snapshot.contextId, fieldKey: fieldKey, fieldRevision: revision)]
             publish()
-        } else if ["effort.select", "model.select"].contains(command.name), case .string(let value) = command.params["value"] {
+        } else if ["effort.select", "model.select", "speed.select"].contains(command.name), case .string(let value) = command.params["value"] {
             if command.name == "effort.select" { snapshot.effortValue = value }
+            else if command.name == "speed.select" { snapshot.speedValue = value }
             else {
                 snapshot.modelValue = value
                 if let model = snapshot.models.first(where: { $0.value == value }), let efforts = model.efforts {

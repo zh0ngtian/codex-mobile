@@ -126,8 +126,64 @@ final class AgentAppUITests: XCTestCase {
         let permissions = app.buttons["权限模式"]
         let model = app.buttons["composer.model"]
         XCTAssertTrue(model.waitForExistence(timeout: 5))
-        XCTAssertLessThan(model.frame.minX - permissions.frame.midX, 30, "模型文字应紧随权限图标的44pt触区，不能被推到右侧")
+        let fast = app.buttons["composer.fast"]
+        XCTAssertLessThan(fast.frame.minX - permissions.frame.maxX, 8)
+        XCTAssertLessThan(model.frame.minX - fast.frame.midX, 30, "闪电和模型名应紧随权限图标，不能被推到右侧")
         captureConversation("输入栏-模型靠左", app: app)
+    }
+
+    func testSidebarRespondsToHorizontalGestures() {
+        let app = launchSidebarPolishFixture()
+        let openFrom = app.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.45))
+        let openTo = app.coordinate(withNormalizedOffset: CGVector(dx: 0.7, dy: 0.45))
+        openFrom.press(forDuration: 0.05, thenDragTo: openTo, withVelocity: .slow, thenHoldForDuration: 0.1)
+        let sidebar = app.otherElements["sidebar.panel"]
+        XCTAssertTrue(sidebar.waitForExistence(timeout: 5))
+        XCTAssertEqual(sidebar.frame.width / app.frame.width, 0.8, accuracy: 0.02)
+        // 主页面作为整块表面向右移动，原来的按钮不会消失或留在原位。
+        let surface = app.buttons["drawer.close-surface"]
+        XCTAssertEqual(surface.frame.minX / app.frame.width, 0.8, accuracy: 0.025)
+        captureConversation("手势展开-主界面圆角阴影", app: app)
+        let closeFrom = app.coordinate(withNormalizedOffset: CGVector(dx: 0.68, dy: 0.45))
+        let closeTo = app.coordinate(withNormalizedOffset: CGVector(dx: 0.05, dy: 0.45))
+        closeFrom.press(forDuration: 0.05, thenDragTo: closeTo, withVelocity: .slow, thenHoldForDuration: 0.1)
+        expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: sidebar)
+        waitForExpectations(timeout: 5)
+        XCTAssertTrue(app.buttons["会话列表"].isHittable)
+        captureConversation("手势收起-恢复主界面", app: app)
+    }
+
+    func testImageHasNoCaptionAndModelUsesMenuWithFast() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-preview-polish-fixture", "--agent-model-efforts-fixture", "--agent-fast-fixture", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
+        app.launch()
+        let image = app.buttons["preview.png"]
+        XCTAssertTrue(image.waitForExistence(timeout: 8))
+        XCTAssertFalse(image.staticTexts["preview.png"].exists, "图片下方不显示文件名")
+        XCTAssertFalse(image.images["arrow.up.left.and.arrow.down.right"].exists)
+        image.tap()
+        XCTAssertTrue(app.navigationBars["preview.png"].waitForExistence(timeout: 5))
+        app.buttons["关闭"].tap()
+        app.textFields["message-input"].tap()
+        let model = app.buttons["composer.model"]
+        let fast = app.buttons["composer.fast"]
+        XCTAssertTrue(fast.waitForExistence(timeout: 5))
+        XCTAssertLessThan(fast.frame.midX, model.frame.minX)
+        XCTAssertEqual(fast.value as? String, "普通速度")
+        fast.tap()
+        XCTAssertEqual(fast.value as? String, "Fast")
+        fast.tap()
+        XCTAssertEqual(fast.value as? String, "普通速度")
+        model.tap()
+        XCTAssertTrue(app.buttons["model.option.model-b"].waitForExistence(timeout: 5), "点击模型名直接打开原生菜单")
+        XCTAssertFalse(app.navigationBars["模型"].exists)
+        XCTAssertFalse(app.images["checkmark"].exists, "模型与强度菜单不显示勾选")
+        app.buttons["model.option.model-b"].tap()
+        model.tap()
+        XCTAssertTrue(app.buttons["effort.option.high"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["effort.option.low"].exists, "每个模型只列自己支持的强度")
+        captureConversation("原生模型菜单-真实强度档位", app: app)
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.2)).tap()
     }
 
     func testExpandedUserBubbleKeepsCollapsedWidth() {
@@ -386,18 +442,13 @@ final class AgentAppUITests: XCTestCase {
         input.tap()
         XCTAssertTrue(app.buttons["composer.model"].waitForExistence(timeout: 5), "聚焦输入后应显示模型入口")
         app.buttons["composer.model"].tap()
-        XCTAssertTrue(app.buttons["reasoning.model"].waitForExistence(timeout: 5))
-        app.buttons["reasoning.reset"].tap()
-        XCTAssertTrue(app.buttons["reasoning.model"].exists, "面板内部操作不能触发外侧关闭")
-        app.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.2)).tap()
-        XCTAssertFalse(app.buttons["reasoning.model"].exists, "模型与思考强度选择框应在外侧单击后关闭")
-        app.buttons["composer.model"].tap()
-        app.buttons["reasoning.model"].tap()
-        XCTAssertTrue(app.navigationBars["模型"].waitForExistence(timeout: 5))
-        app.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.2)).tap()
-        expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: app.navigationBars["模型"])
+        let option = app.buttons["model.option.model-b"]
+        XCTAssertTrue(option.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.navigationBars["模型"].exists)
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.2)).tap()
+        expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: option)
         waitForExpectations(timeout: 5)
-        captureConversation("模型框外单击关闭", app: app)
+        captureConversation("原生模型菜单外单击关闭", app: app)
         app.launchArguments.append("--agent-project-name-fixture")
         app.launch()
         XCTAssertEqual(app.buttons["header.usage"].value as? String, "暂无上下文用量")
@@ -426,16 +477,20 @@ final class AgentAppUITests: XCTestCase {
         XCTAssertEqual(app.descendants(matching: .any).matching(identifier: "commentary.separator").count, 2)
         captureConversation("运行过程-只显示commentary与灰线", app: app)
         app.textFields["message-input"].tap()
-        app.buttons["composer.model"].tap()
-        XCTAssertTrue(app.buttons["reasoning.model"].waitForExistence(timeout: 5))
-        app.buttons["reasoning.reset"].tap()
-        XCTAssertTrue((app.buttons["reasoning.model"].value as? String)?.contains("中") == true)
-        app.buttons["reasoning.model"].tap()
-        app.buttons["Model B"].tap()
-        XCTAssertTrue(app.buttons["reasoning.model"].waitForExistence(timeout: 5))
-        XCTAssertTrue((app.buttons["reasoning.model"].value as? String)?.contains("高") == true)
-        XCTAssertFalse(app.sliders.firstMatch.isEnabled, "只有一个有效强度的模型不能显示可拖动的多档选择")
-        captureConversation("模型独立强度", app: app)
+        let model = app.buttons["composer.model"]
+        model.tap()
+        XCTAssertTrue(app.buttons["effort.option.medium"].waitForExistence(timeout: 5))
+        app.buttons["effort.option.medium"].tap()
+        XCTAssertTrue((model.value as? String)?.contains("Medium") == true)
+        model.tap()
+        app.buttons["model.option.model-b"].tap()
+        XCTAssertTrue((model.value as? String)?.hasPrefix("Model B") == true)
+        model.tap()
+        XCTAssertTrue(app.buttons["effort.option.high"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["effort.option.low"].exists)
+        XCTAssertFalse(app.sliders.firstMatch.exists, "思考强度使用菜单档位，不再显示滑杆")
+        captureConversation("模型独立强度菜单", app: app)
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.2)).tap()
     }
 
     func testSystemTypeAndBoldTextAffectSelectableAnswer() {
@@ -497,24 +552,24 @@ final class AgentAppUITests: XCTestCase {
         captureConversation("系统导航栏与消息", app: app)
     }
 
-    func testSystemSliderUsesGatewayEffortValues() {
+    func testSystemMenuUsesGatewayEffortValues() {
         let app = launchConversationFixture()
+        app.launchArguments.append("--agent-model-efforts-fixture")
+        app.launch()
         app.textFields["message-input"].tap()
-        XCTAssertTrue(app.buttons["composer.model"].waitForExistence(timeout: 5))
-        app.buttons["composer.model"].tap()
-        let slider = app.sliders["reasoning.slider"]
-        XCTAssertTrue(slider.waitForExistence(timeout: 5), "思考强度应为系统Slider")
-        XCTAssertTrue(slider.isEnabled)
-        slider.adjust(toNormalizedSliderPosition: 1)
-        expectation(for: NSPredicate(format: "value CONTAINS %@", "高"), evaluatedWith: slider)
-        waitForExpectations(timeout: 5)
-        captureConversation("原生Slider与真实档位绑定", app: app)
-        app.buttons["reasoning.model"].tap()
-        XCTAssertTrue(app.navigationBars["模型"].waitForExistence(timeout: 5))
-        app.buttons["Model B"].tap()
-        XCTAssertTrue(app.buttons["composer.model"].waitForExistence(timeout: 5))
-        if !app.buttons["reasoning.model"].exists { app.buttons["composer.model"].tap() }
-        XCTAssertTrue((app.buttons["reasoning.model"].value as? String)?.hasPrefix("Model B") == true, "模型选择仍须使用真实能力目录对应的业务值")
+        let model = app.buttons["composer.model"]
+        XCTAssertTrue(model.waitForExistence(timeout: 5))
+        model.tap()
+        app.buttons["effort.option.high"].tap()
+        XCTAssertTrue((model.value as? String)?.contains("High") == true)
+        model.tap()
+        app.buttons["model.option.model-b"].tap()
+        XCTAssertTrue((model.value as? String)?.hasPrefix("Model B") == true)
+        model.tap()
+        XCTAssertTrue(app.buttons["effort.option.high"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["effort.option.medium"].exists)
+        captureConversation("原生菜单与真实模型强度", app: app)
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.2)).tap()
     }
 
     func testConfigureProvidedGateway() throws {

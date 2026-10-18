@@ -3,10 +3,8 @@ import SwiftUI
 struct ComposerBar: View {
     @Environment(AppSession.self) private var session
     @Environment(AppPreferences.self) private var preferences
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let conversationID: UUID?
     @State private var activeSheet: ComposerSheet?
-    @State private var showReasoning = false
     @State private var selectedMention = 0
     @State private var mentionsDismissed = false
     @FocusState private var focused: Bool
@@ -25,15 +23,10 @@ struct ComposerBar: View {
                 if !candidates.isEmpty {
                     MentionCandidates(candidates: candidates, selected: selectedMention, choose: chooseMention)
                 }
-                if showReasoning {
-                    ReasoningControl(openModels: { present(.model) })
-                        .background(OutsideTapDismiss { showReasoning = false })
-                        .transition(.opacity)
-                }
                 VStack(spacing: 2) {
                     if !session.composer.attachments.isEmpty { ComposerAttachmentStrip() }
                     HStack(spacing: 0) {
-                        if !expanded { InlineIconButton(title: preferences.text("添加附件", "Add attachment"), symbol: "plus") { present(.attachments) } }
+                        if !expanded { InlineIconButton(title: preferences.text("添加附件", "Add attachment"), symbol: "plus", imageScale: .large) { present(.attachments) } }
                         TextField(preferences.text("向 Codex 提问", "Ask Codex"), text: $session.composer.text, axis: .vertical)
                             .font(AgentTheme.body)
                             .lineLimit(1...6)
@@ -49,16 +42,11 @@ struct ComposerBar: View {
                     }
                     if expanded {
                         HStack(spacing: 0) {
-                            InlineIconButton(title: preferences.text("添加附件", "Add attachment"), symbol: "plus") { present(.attachments) }
+                            InlineIconButton(title: preferences.text("添加附件", "Add attachment"), symbol: "plus", imageScale: .large) { present(.attachments) }
                             InlineIconButton(title: preferences.text("权限模式", "Permission profile"), symbol: session.composer.configuration.permission.symbol,
-                                             color: session.composer.configuration.permission == .fullAccess ? .orange : AgentTheme.ink) { present(.permissions) }
-                            Button { withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.16)) { showReasoning.toggle() } } label: {
-                                Text(session.composer.configuration.model).font(.body)
-                                    .foregroundStyle(.secondary).frame(minHeight: 44, alignment: .leading)
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel(preferences.text("模型和思考强度", "Model and reasoning"))
-                            .accessibilityIdentifier("composer.model")
+                                             imageScale: .large, color: session.composer.configuration.permission == .fullAccess ? .orange : AgentTheme.ink) { present(.permissions) }
+                            RunSpeedButton()
+                            ComposerModelMenu()
                             Spacer(minLength: 2)
                             ComposerSubmitButton(action: submit)
                         }
@@ -79,11 +67,11 @@ struct ComposerBar: View {
         .onChange(of: focused) { session.inputFocused = focused }
         .onChange(of: session.composer.text) { selectedMention = 0; mentionsDismissed = false }
         .onChange(of: mentionQuery) { _, query in session.searchMentions(query ?? "") }
-        .onChange(of: session.selectedConversationID) { focused = false; showReasoning = false }
+        .onChange(of: session.selectedConversationID) { focused = false }
+        .onChange(of: session.sidebarVisible) { if session.sidebarVisible { focused = false } }
         .onDisappear { session.inputFocused = false }
         .sheet(item: $activeSheet, onDismiss: { session.inputModalPresented = false }) { sheet in
             switch sheet {
-            case .model: ModelSheet().presentationDetents([.medium, .large])
             case .permissions: PermissionProfileSheet().presentationDetents([.medium, .large])
             case .attachments:
                 AttachmentSheet(add: addAttachments, insertLocation: insertLocation).presentationDetents([.large])
@@ -120,6 +108,6 @@ struct ComposerBar: View {
         if session.isBusy && !session.composer.hasContent, let id = session.selectedConversationID { session.stopResponse(in: id); return }
         guard session.canSubmit else { return }
         _ = session.submitCurrent()
-        focused = false; showReasoning = false
+        focused = false
     }
 }
