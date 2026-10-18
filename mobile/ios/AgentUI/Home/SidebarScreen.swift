@@ -13,7 +13,6 @@ struct SidebarScreen: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HomeHeader()
             if session.searchVisible { SidebarSearchField() }
             ScrollView {
                 SidebarConversationList()
@@ -59,6 +58,7 @@ struct SidebarScreen: View {
                 .accessibilityLabel(preferences.text("Chat，开始新对话", "Chat, start a new conversation"))
                 .accessibilityIdentifier("sidebar.askCodex")
                 Spacer()
+                SidebarSearchButton()
                 SidebarMoreMenu()
             }
             .padding(.leading, 34)

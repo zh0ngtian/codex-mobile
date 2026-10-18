@@ -21,6 +21,9 @@ struct ConversationScreen: View {
     @State private var diagnosticHistoryRequests = 0
     @State private var diagnosticReturnOffsets: [Double] = []
     @State private var diagnosticReturning = false
+    @State private var diagnosticReturnStarted = 0.0
+    @State private var diagnosticReturnElapsed = 0.0
+    @State private var diagnosticReturnEvents: [String] = []
     #endif
     var body: some View {
         if let conversation = session.conversation(conversationID) {
@@ -59,9 +62,16 @@ struct ConversationScreen: View {
                         }
                     }
                     .padding(.horizontal, 16).padding(.top, 8)
-                    .background(NativeConversationScrollResolver(access: scrollAccess) {
-                        withTransaction(Transaction(animation: nil)) { proxy.scrollTo("bottom", anchor: .bottom) }
-                    })
+                    .background {
+                        NativeConversationScrollResolver(access: scrollAccess) {
+                            withTransaction(Transaction(animation: nil)) { proxy.scrollTo("bottom", anchor: .bottom) }
+                        }
+                        #if DEBUG
+                        if NativeConversationLoadProfile.enabled {
+                            NativeLoadRenderProbe(threadID: session.nativeSnapshot.threadId, ready: session.nativeSnapshot.loading == "ready")
+                        }
+                        #endif
+                    }
                 }
                 .scrollBounceBehavior(.always)
                 .accessibilityElement(children: .contain)
@@ -73,6 +83,8 @@ struct ConversationScreen: View {
                             Text(String(Int(historyOffset))).accessibilityIdentifier("scroll.diagnostic-offset")
                             Text(String(diagnosticHistoryRequests)).accessibilityIdentifier("scroll.diagnostic-history")
                             Text(diagnosticReturnOffsets.map { String(Int($0)) }.joined(separator: ",")).accessibilityIdentifier("scroll.diagnostic-return")
+                            Text(String(Int(diagnosticReturnElapsed))).accessibilityIdentifier("scroll.diagnostic-return-ms")
+                            Text(diagnosticReturnEvents.joined(separator: ";")).accessibilityIdentifier("scroll.diagnostic-events")
                         }.font(.system(size: 1)).opacity(0.01)
                     }
                     #endif
@@ -82,6 +94,9 @@ struct ConversationScreen: View {
                 .onScrollPhaseChange { _, phase, context in
                     let offset = Double(context.geometry.contentOffset.y + context.geometry.contentInsets.top)
                     scrollIsIdle = phase == .idle
+                    #if DEBUG
+                    if returnToken != nil, ProcessInfo.processInfo.arguments.contains("--agent-scroll-diagnostics") { diagnosticReturnEvents.append("phase:\(phase):\(Int(offset))") }
+                    #endif
                     switch phase {
                     case .tracking, .interacting:
                         returnToken = nil
@@ -106,7 +121,7 @@ struct ConversationScreen: View {
                 } action: { _, offset in
                     historyOffset = offset
                     #if DEBUG
-                    if diagnosticReturning, abs(offset - (diagnosticReturnOffsets.last ?? offset)) > 0.5 { diagnosticReturnOffsets.append(offset) }
+                    if diagnosticReturning, abs(offset - (diagnosticReturnOffsets.last ?? offset)) > 0.5 { diagnosticReturnOffsets.append(offset); diagnosticReturnElapsed = (Date.timeIntervalSinceReferenceDate - diagnosticReturnStarted) * 1000 }
                     #endif
                     if historyPull.positionChanged(to: offset,
                         canLoad: conversation.loadedOlderTurns < conversation.olderTurns,
@@ -117,6 +132,9 @@ struct ConversationScreen: View {
                 .onScrollGeometryChange(for: Bool.self) { geometry in
                     geometry.visibleRect.maxY >= geometry.contentSize.height - 2
                 } action: { _, value in
+                    #if DEBUG
+                    if returnToken != nil, ProcessInfo.processInfo.arguments.contains("--agent-scroll-diagnostics") { diagnosticReturnEvents.append("bottom:\(value):\(Int(historyOffset))") }
+                    #endif
                     atBottom = value
                     #if DEBUG
                     if value { diagnosticReturning = false }
@@ -191,28 +209,37 @@ struct ConversationScreen: View {
         scrollAccess.stopFollowing()
         followsLatest = false
         #if DEBUG
-        if ProcessInfo.processInfo.arguments.contains("--agent-scroll-diagnostics") { diagnosticReturnOffsets = [historyOffset]; diagnosticReturning = true }
+        if ProcessInfo.processInfo.arguments.contains("--agent-scroll-diagnostics") { diagnosticReturnOffsets = [historyOffset]; diagnosticReturnStarted = Date.timeIntervalSinceReferenceDate; diagnosticReturnElapsed = 0; diagnosticReturning = true }
         #endif
         let token = UUID()
         returnToken = token
+        #if DEBUG
+        if diagnosticReturning { diagnosticReturnEvents = ["start:\(Int(historyOffset))"] }
+        #endif
         let finish = {
+            #if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("--agent-scroll-diagnostics") { diagnosticReturnEvents.append("finish:\(Int(historyOffset)):\(atBottom):\(Int((Date.timeIntervalSinceReferenceDate - diagnosticReturnStarted) * 1000))") }
+            #endif
             guard returnToken == token, session.selectedConversationID == conversationID else { return }
-            returnToken = nil
-            followsLatest = true
-            if atBottom { scrollAccess.resumeFollowing() }
-            else { scrollAccess.scrollToBottom() }
+            // 持续输出时系统可能提前完成动画事务；交接以实际到达底部且滚动停止为准。
+            resumeBottomFollowingIfReached()
         }
         if reduceMotion {
             proxy.scrollTo("bottom", anchor: .bottom)
             finish()
         } else {
-            withAnimation(.easeIn(duration: 0.55), completionCriteria: .logicallyComplete) {
+            withAnimation(.easeInOut(duration: 1.2), completionCriteria: .logicallyComplete) {
                 proxy.scrollTo("bottom", anchor: .bottom)
             } completion: { finish() }
         }
     }
     private func resumeBottomFollowingIfReached() {
-        guard returnToken == nil, followsLatest, atBottom, scrollIsIdle else { return }
+        guard atBottom, scrollIsIdle else { return }
+        if returnToken != nil {
+            returnToken = nil
+            followsLatest = true
+        }
+        guard followsLatest else { return }
         scrollAccess.resumeFollowing()
     }
     private func loadEarlier(_ proxy: ScrollViewProxy) {

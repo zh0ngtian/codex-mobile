@@ -51,6 +51,11 @@ final class NativeUIBridge: NSObject, WKScriptMessageHandler {
         if let script = NativeUITrust.bootstrap(trustedURL: trustedURL, enabled: store.nativeEnabled) {
             controller.addUserScript(WKUserScript(source: script, injectionTime: .atDocumentStart, forMainFrameOnly: true))
         }
+        #if DEBUG
+        if NativeConversationLoadProfile.enabled {
+            controller.addUserScript(WKUserScript(source: "window.__CODEX_LOAD_PROFILE__ = true;", injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        }
+        #endif
         store.sendCommand = { [weak self] command in self?.dispatch(command) }
     }
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
@@ -58,6 +63,9 @@ final class NativeUIBridge: NSObject, WKScriptMessageHandler {
               message.frameInfo.isMainFrame,
               NativeUITrust.accepts(message.frameInfo.request.url, trustedURL: trustedURL),
               let object = message.body as? [String: Any] else { return }
+        #if DEBUG
+        if object["type"] as? String == "loadProfile" { NativeConversationLoadProfile.shared.receive(object); return }
+        #endif
         if object["type"] as? String == "ready" { applyLifecycle(); if recoveryRequested { recoverLegacy() }; return }
         if object["type"] as? String == "nativePreference", let id = object["id"] as? String, !id.isEmpty, id.count <= 200 {
             let validKind = NativeUIPreference.accepts(kind: object["kind"])
@@ -89,14 +97,30 @@ final class NativeUIBridge: NSObject, WKScriptMessageHandler {
             return
         }
         guard object["type"] as? String == "snapshot", let snapshot = object["snapshot"] else { return }
+        #if DEBUG
+        let profileReceived = NativeConversationLoadProfile.enabled ? NativeConversationLoadProfile.now : 0
+        #endif
         do {
             let data = try JSONSerialization.data(withJSONObject: snapshot)
+            #if DEBUG
+            let profileSerialized = NativeConversationLoadProfile.enabled ? NativeConversationLoadProfile.now : 0
+            #endif
             let value = try JSONDecoder().decode(NativeSnapshot.self, from: data)
             #if DEBUG
             if ProcessInfo.processInfo.arguments.contains("--native-ui-trace") { print("Native snapshot panel=\(value.panel?.id ?? "none")") }
             #endif
+            #if DEBUG
+            let profileDecoded = NativeConversationLoadProfile.enabled ? NativeConversationLoadProfile.now : 0
+            #endif
             store.receive(value)
+            #if DEBUG
+            let profileStore = NativeConversationLoadProfile.enabled ? NativeConversationLoadProfile.now : 0
+            #endif
             agentSession.receive(value)
+            #if DEBUG
+            let profileProjected = NativeConversationLoadProfile.enabled ? NativeConversationLoadProfile.now : 0
+            NativeConversationLoadProfile.shared.snapshot(value, received: profileReceived, serialized: profileSerialized, decoded: profileDecoded, store: profileStore, projected: profileProjected, bytes: data.count)
+            #endif
             agentPreferences.receive(value)
             if needsLifecycleSync { applyLifecycle() }
         } catch {
@@ -136,6 +160,7 @@ final class NativeUIBridge: NSObject, WKScriptMessageHandler {
     }
     private func dispatch(_ command: NativeCommand) {
         #if DEBUG
+        NativeConversationLoadProfile.shared.begin(command)
         if ProcessInfo.processInfo.arguments.contains("--native-ui-trace") { print("Native command \(command.name)") }
         #endif
         guard let trustedURL, let webView, NativeUITrust.accepts(webView.url, trustedURL: trustedURL),

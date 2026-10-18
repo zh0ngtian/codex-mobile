@@ -234,6 +234,8 @@ struct AgentSessionSmoke {
         state.effortValue = "effort-low"
         state.speeds = [NativeOption(id: "normal", title: "普通速度", value: ""), NativeOption(id: "fast", title: "Fast", value: "priority")]
         state.speedValue = ""
+        state.permissions = [NativeOption(id: "default", title: "默认权限", value: "default"), NativeOption(id: "full", title: "完全访问权限", value: "fullAccess")]
+        state.permissionValue = "default"
         var commands: [NativeCommand] = []
         store.sendCommand = { commands.append($0) }
         func publish() { store.receive(state); session.receive(state) }
@@ -253,6 +255,14 @@ struct AgentSessionSmoke {
         session.chooseMenuEffort("effort-high", context: "menu-context")
         precondition(commands.last?.name == "effort.select" && commands.last?.params["value"] == .string("effort-high"))
         publish(); commands.removeAll()
+        session.chooseMenuPermission("fullAccess", context: "menu-context")
+        session.chooseMenuPermission("default", context: "menu-context")
+        precondition(commands.map(\.name) == ["permission.select", "permission.select"] && commands.map { $0.params["value"] } == [.string("fullAccess"), .string("default")], "权限保留业务raw value，连续选择不能被旧快照丢弃")
+        precondition(commands.allSatisfy { $0.params["contextId"] == .string("menu-context") } && session.composer.configuration.permission == .ask)
+        commands.removeAll()
+        session.chooseMenuPermission("not-supported", context: "menu-context")
+        precondition(commands.isEmpty, "目录未提供的权限不能提交")
+        session.chooseMenuPermission("fullAccess", context: "old-context")
         session.chooseMenuModel("raw-b", context: "old-context")
         session.chooseMenuEffort("effort-high", context: "old-context")
         session.toggleMenuFast(context: "old-context")
@@ -272,7 +282,17 @@ struct AgentSessionSmoke {
         state.readOnly = true; publish()
         session.toggleMenuFast(context: "menu-context")
         session.chooseMenuModel("raw-b", context: "menu-context")
+        session.chooseMenuPermission("fullAccess", context: "menu-context")
         precondition(commands.isEmpty)
+        state.readOnly = false; state.sidebarOpen = true; publish()
+        session.chooseMenuPermission("fullAccess", context: "menu-context")
+        precondition(commands.isEmpty, "侧栏打开时旧权限菜单不能执行")
+        state.sidebarOpen = false; state.pending = true; publish()
+        session.chooseMenuPermission("fullAccess", context: "menu-context")
+        precondition(commands.isEmpty, "业务pending时不能修改权限")
+        state.pending = false; state.busy = true; publish()
+        session.chooseMenuPermission("fullAccess", context: "menu-context")
+        precondition(commands.last?.name == "permission.select" && commands.last?.params["value"] == .string("fullAccess"), "运行中仍按既有规则为后续提交选择权限")
     }
     static func verifyInteractiveSidebarBounds() {
         precondition(SidebarPresentation.width(in: 400) == 320)

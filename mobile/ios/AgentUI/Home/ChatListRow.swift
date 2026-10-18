@@ -14,12 +14,12 @@ struct ChatListRow: View {
                         Text(conversation.title)
                             .font(AgentTheme.body)
                             .multilineTextAlignment(.leading)
-                            .lineLimit(2)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
                         if showsStatusMarker {
                             if showsRunningSpinner {
                                 ProgressView().progressViewStyle(.circular).controlSize(.mini)
-                                    .tint(.secondary).frame(width: 12, height: 12).padding(.top, 3)
+                                    .tint(.secondary).frame(width: 12, height: 12).padding(.leading, 2).padding(.top, 3)
                                     .accessibilityLabel(preferences.text("正在执行", "Working"))
                                     .accessibilityIdentifier("sidebar.running.\(conversation.id)")
                             } else {
@@ -31,6 +31,7 @@ struct ChatListRow: View {
                             UnreadIndicator(isUnread: true)
                                 .frame(width: 12, height: 12).padding(.top, 3)
                         }
+                        Spacer(minLength: 0)
                     }
                     if statusTitle != nil || pendingCount > 0 {
                         HStack(spacing: 4) {

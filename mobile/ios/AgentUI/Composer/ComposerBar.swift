@@ -1,15 +1,27 @@
 import SwiftUI
+import PhotosUI
+import UniformTypeIdentifiers
 
 struct ComposerBar: View {
     @Environment(AppSession.self) private var session
     @Environment(AppPreferences.self) private var preferences
     let conversationID: UUID?
-    @State private var activeSheet: ComposerSheet?
     @State private var selectedMention = 0
     @State private var mentionsDismissed = false
     @State private var submitFeedback = 0
+    @State private var attachmentFlow = ComposerAttachmentFlow()
+    @State private var pickerSelection: ComposerAttachmentSelection?
+    @State private var selectedPhotos: [PhotosPickerItem] = []
+    @State private var photosPresented = false
+    @State private var filesPresented = false
+    @State private var attachmentWork: ComposerAttachmentWork?
+    @State private var locationAuthorization = NativeLocationAuthorization()
     @FocusState private var focused: Bool
-    private var expanded: Bool { focused || session.composer.text.contains("\n") || !session.composer.attachments.isEmpty }
+    private var expanded: Bool { focused || session.composer.text.contains("\n") || !session.composer.attachments.isEmpty || !attachmentFlow.items.isEmpty || attachmentFlow.error != nil || attachmentFlow.isLocating }
+    private var hasPendingAttachment: Bool { !attachmentFlow.items.isEmpty || attachmentFlow.isBusy }
+    private var attachmentBlocksSubmission: Bool {
+        ComposerAttachmentSubmitGate.blocks(pending: hasPendingAttachment, busy: session.isBusy, hasContent: session.composer.hasContent)
+    }
     private var mentionQuery: String? {
         guard !mentionsDismissed, let last = session.composer.text.split(whereSeparator: \.isWhitespace).last, last.hasPrefix("@") else { return nil }
         return String(last.dropFirst())
@@ -26,8 +38,9 @@ struct ComposerBar: View {
                 }
                 VStack(spacing: 2) {
                     if !session.composer.attachments.isEmpty { ComposerAttachmentStrip() }
+                    ComposerPendingAttachments(flow: attachmentFlow, retry: retryAttachments, clear: cancelAttachments)
                     HStack(spacing: 0) {
-                        if !expanded { InlineIconButton(title: preferences.text("添加附件", "Add attachment"), symbol: "plus", font: .subheadline, imageScale: .large, width: 40) { present(.attachments) } }
+                        if !expanded { attachmentMenu }
                         TextField(preferences.text("向 Codex 提问", "Ask Codex"), text: $session.composer.text, axis: .vertical)
                             .font(AgentTheme.body)
                             .lineLimit(1...6)
@@ -39,20 +52,19 @@ struct ComposerBar: View {
                             .padding(.horizontal, expanded ? 12 : 2)
                             .disabled(!session.composerCanEdit || session.historyEdit != nil || session.selectedConversation?.readOnly == true || !session.composer.attachmentsReady)
                             .accessibilityIdentifier("message-input")
-                        if !expanded { ComposerSubmitButton(action: submit) }
+                        if !expanded { ComposerSubmitButton(action: submit).disabled(attachmentBlocksSubmission) }
                     }
                     if expanded {
                         HStack(spacing: 0) {
-                            InlineIconButton(title: preferences.text("添加附件", "Add attachment"), symbol: "plus", font: .subheadline, imageScale: .large, width: 40) { present(.attachments) }
-                            InlineIconButton(title: preferences.text("权限模式", "Permission profile"), symbol: session.composer.configuration.permission.symbol,
-                                             font: .subheadline, imageScale: .large, color: session.composer.configuration.permission == .fullAccess ? .orange : AgentTheme.ink, width: 40) { present(.permissions) }
+                            attachmentMenu
+                            ComposerPermissionMenu()
                             HStack(spacing: 8) {
                                 RunSpeedButton()
                                 ComposerModelMenu()
                                 ComposerEffortMenu()
                             }
                             Spacer(minLength: 2)
-                            ComposerSubmitButton(action: submit)
+                            ComposerSubmitButton(action: submit).disabled(attachmentBlocksSubmission)
                         }
                     }
                 }
@@ -78,25 +90,99 @@ struct ComposerBar: View {
         .onChange(of: session.composer.text) { selectedMention = 0; mentionsDismissed = false }
         .onChange(of: mentionQuery) { _, query in session.searchMentions(query ?? "") }
         .onChange(of: session.selectedConversationID) { focused = false }
+        .onChange(of: session.nativeSnapshot.contextId) { cancelAttachments() }
+        .onChange(of: session.composer.id) { cancelAttachments() }
         .onChange(of: session.sidebarVisible) { if session.sidebarVisible { focused = false } }
-        .onDisappear { session.inputFocused = false }
-        .sheet(item: $activeSheet, onDismiss: { session.inputModalPresented = false }) { sheet in
-            switch sheet {
-            case .permissions: PermissionProfileSheet().presentationDetents([.medium, .large])
-            case .attachments:
-                AttachmentSheet(add: addAttachments, insertLocation: insertLocation).presentationDetents([.large])
-            }
+        .onDisappear {
+            session.inputFocused = false
+            if !photosPresented && !filesPresented { cancelAttachments() }
+        }
+        .background { attachmentPickerHost }
+        .onChange(of: photosPresented) { updateModalState() }
+        .onChange(of: filesPresented) { updateModalState() }
+        .task(id: attachmentWork?.id) { await performAttachmentWork() }
+    }
+    private var attachmentPickerHost: some View {
+        let selection = pickerSelection
+        return Color.clear.frame(width: 0, height: 0)
+            .fileImporter(isPresented: $filesPresented, allowedContentTypes: [.item], allowsMultipleSelection: true) { filesSelected($0, selection: selection) }
+            .photosPicker(isPresented: $photosPresented, selection: photoSelection(for: selection), matching: .images, preferredItemEncoding: .current)
+            .id(selection?.id)
+    }
+    private var attachmentMenu: some View {
+        let contextID = session.nativeSnapshot.contextId
+        let composerID = session.composer.id
+        return ComposerAttachmentMenu(enabled: session.composerCanEdit && session.historyEdit == nil && attachmentFlow.canSelect && !photosPresented && !filesPresented) { action in
+            guard session.nativeSnapshot.contextId == contextID, session.composer.id == composerID else { return }
+            chooseAttachment(action)
+        }
+        .id("\(contextID ?? "")|\(composerID)")
+    }
+    private func chooseAttachment(_ action: NativeComposerAttachmentAction) {
+        guard let selection = attachmentFlow.begin(in: session) else { return }
+        focused = false
+        pickerSelection = selection
+        switch action {
+        case .photos: selectedPhotos = []; photosPresented = true
+        case .files: filesPresented = true
+        case .location: attachmentWork = ComposerAttachmentWork(selection: selection, operation: .location)
+        }
+        updateModalState()
+    }
+    private func photoSelection(for selection: ComposerAttachmentSelection?) -> Binding<[PhotosPickerItem]> {
+        Binding {
+            pickerSelection == selection ? selectedPhotos : []
+        } set: { photos in
+            guard let selection, pickerSelection == selection, attachmentFlow.isCurrent(selection, in: session) else { return }
+            selectedPhotos = photos
+            guard !photos.isEmpty else { return }
+            attachmentWork = ComposerAttachmentWork(selection: selection, operation: .photos(photos))
+            pickerSelection = nil
+            photosPresented = false
+            selectedPhotos = []
+            updateModalState()
         }
     }
-    private func present(_ sheet: ComposerSheet) { session.inputModalPresented = true; activeSheet = sheet }
-    private func addAttachments(_ items: [AttachmentItem]) async -> Bool {
-        let imported = await session.importAttachmentsAndWait(items)
-        if imported { focused = true }
-        return imported
+    private func filesSelected(_ result: Result<[URL], Error>, selection: ComposerAttachmentSelection?) {
+        guard let selection, pickerSelection == selection, attachmentFlow.isCurrent(selection, in: session) else { return }
+        pickerSelection = nil
+        filesPresented = false
+        switch result {
+        case .success(let urls):
+            if urls.isEmpty { attachmentFlow.cancelSelection(selection) }
+            else { attachmentWork = ComposerAttachmentWork(selection: selection, operation: .files(urls)) }
+        case .failure(let error):
+            if (error as NSError).code == CocoaError.userCancelled.rawValue { attachmentFlow.cancelSelection(selection) }
+            else { attachmentFlow.pickerFailed(preferences.text("无法打开所选文件。已保留现有输入，请重新选择。", "Could not open the selected files. Your input is preserved; choose again."), selection: selection, in: session) }
+        }
+        updateModalState()
     }
-    private func insertLocation(_ text: String) {
-        if !session.composer.text.isEmpty { session.composer.text += "\n" }
-        session.composer.text += text; focused = true
+    private func retryAttachments() {
+        guard let selection = attachmentFlow.selection else { return }
+        attachmentWork = ComposerAttachmentWork(selection: selection, operation: .retry)
+    }
+    private func cancelAttachments() {
+        attachmentWork = nil; pickerSelection = nil; selectedPhotos = []
+        photosPresented = false; filesPresented = false
+        locationAuthorization.cancelPendingRequests()
+        attachmentFlow.reset()
+        updateModalState()
+    }
+    private func updateModalState() { session.inputModalPresented = photosPresented || filesPresented }
+    private func performAttachmentWork() async {
+        guard let work = attachmentWork else { return }
+        let succeeded: Bool
+        switch work.operation {
+        case .files(let urls): succeeded = await attachmentFlow.loadFiles(urls, selection: work.selection, in: session, isEnglish: preferences.isEnglish)
+        case .photos(let photos): succeeded = await attachmentFlow.loadPhotos(photos, selection: work.selection, in: session, isEnglish: preferences.isEnglish)
+        case .retry: succeeded = await attachmentFlow.retry(in: session, isEnglish: preferences.isEnglish)
+        case .location:
+            succeeded = await attachmentFlow.insertLocation(selection: work.selection, in: session, isEnglish: preferences.isEnglish) { await locationAuthorization.requestAuthorization() }
+        }
+        guard attachmentWork?.id == work.id, !Task.isCancelled else { return }
+        attachmentWork = nil
+        if succeeded, session.nativeSnapshot.contextId == work.selection.contextID, session.composer.id == work.selection.composerID,
+           session.composerCanEdit, session.historyEdit == nil { focused = true }
     }
     private func chooseMention(_ value: NativeOption) {
         session.insertMention(value)
@@ -114,12 +200,13 @@ struct ComposerBar: View {
         return .handled
     }
     private func submit() {
-        if !candidates.isEmpty { chooseMention(candidates[min(selectedMention, candidates.count - 1)]); return }
         if session.isBusy && !session.composer.hasContent, let id = session.selectedConversationID {
             submitFeedback += 1
             session.stopResponse(in: id)
             return
         }
+        guard !hasPendingAttachment else { return }
+        if !candidates.isEmpty { chooseMention(candidates[min(selectedMention, candidates.count - 1)]); return }
         guard session.canSubmit else { return }
         submitFeedback += 1
         _ = session.submitCurrent()

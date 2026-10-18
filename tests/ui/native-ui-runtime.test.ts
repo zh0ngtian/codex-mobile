@@ -56,6 +56,22 @@ describe('原生业务桥', () => {
     expect(runtime.snapshot().error).toBe('网络失败');
     runtime.dispose();
   });
+  it('只读workspace仍拒绝写入和会话写动作，非法列表管理参数不进入业务回调', async () => {
+    const runtime = new NativeRuntime(() => {});
+    const manage = vi.fn(); const write = vi.fn();
+    runtime.setNavigation({ selectedBackendId: 'b', backends: [], groups: [] }, { 'thread.manage': manage });
+    runtime.setWorkspace('b', { ...workspace(), readOnly: true }, { 'draft.set': write, 'workspace.thread': write, 'permission.select': write });
+    for (const [name, params] of [
+      ['draft.set', { value: '不能覆盖', revision: 1 }],
+      ['workspace.thread', { action: 'duplicate' }],
+      ['permission.select', { value: 'full-access' }],
+    ] as const) {
+      expect(await runtime.dispatch(command(`readonly-${name}`, name, { contextId: 'b:t', ...params }))).toMatchObject({ ok: false, error: '当前会话只读' });
+    }
+    expect((await runtime.dispatch(command('invalid-manage', 'thread.manage', { backendId: 'b', threadId: 't', action: 'unknown' }))).ok).toBe(false);
+    expect(write).not.toHaveBeenCalled(); expect(manage).not.toHaveBeenCalled();
+    runtime.dispose();
+  });
   it('只合并当前设备，节流流式输出并在更新后取最新 adapter', async () => {
     vi.useFakeTimers(); const posts: any[] = []; const values: string[] = [];
     const runtime = new NativeRuntime(s => posts.push(s));

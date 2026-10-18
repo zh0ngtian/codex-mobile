@@ -30,6 +30,10 @@ final class AgentConversationFixture {
         value.model = "Model A"; value.modelValue = "model-a"
         value.efforts = [NativeOption(id: "low", title: "Low", value: "low"), NativeOption(id: "medium", title: "Medium", value: "medium"), NativeOption(id: "high", title: "High", value: "high")]
         value.effortValue = "low"
+        if ProcessInfo.processInfo.arguments.contains("--agent-permission-menu-fixture") {
+            value.permissions = [NativeOption(id: "default", title: "默认权限", value: "default"), NativeOption(id: "auto-review", title: "自动审核", value: "auto-review"), NativeOption(id: "read-only", title: "只读", value: "read-only"), NativeOption(id: "full-access", title: "完全访问权限", value: "full-access"), NativeOption(id: "custom", title: "自定义", value: "custom")]
+            value.permissionValue = "default"
+        }
         if ProcessInfo.processInfo.arguments.contains("--agent-fast-fixture") {
             value.speeds = [NativeOption(id: "normal", title: "普通速度", value: ""), NativeOption(id: "fast", title: "Fast", value: "priority")]
             value.speedValue = ""
@@ -64,13 +68,14 @@ final class AgentConversationFixture {
             value.attachments = [NativeAttachment(id: "portrait", name: "竖屏测试.png", imageURL: url)]
             value.attachments[0].type = "image/png"
         }
+        if ProcessInfo.processInfo.arguments.contains("--agent-delayed-attachment-import-fixture") { value.busy = true }
         if ProcessInfo.processInfo.arguments.contains("--agent-queue-controls-fixture") {
             value.busy = true
             value.messages = []
             value.queued = [NativeNavigationItem(id: "queue-controls", title: "队列按钮布局检查", inputText: "队列按钮布局检查", queueState: "queued", configuration: NativeQueueConfiguration(model: "Model A", effort: "low", permission: "workspace-write"))]
         }
         if ProcessInfo.processInfo.arguments.contains("--agent-table-controls-fixture") {
-            value.messages = [NativeMessage(id: "table-controls", role: "assistant", text: "| # | 问题 | 修复情况 |\n| --- | --- | --- |\n| 1 | 短列 | 这段表格正文必须在同一行完整显示并支持横向滚动，不能因为固定列宽自动折成多行。 |\n| 2 | 编辑消息 | 保留 **加粗** 和 [链接](https://example.com) |", phase: "final_answer")]
+            value.messages = [NativeMessage(id: "table-controls", role: "assistant", text: "| # | 问题 | 修复情况 |\n| --- | --- | --- |\n| 1 | 短列 | 这段表格正文必须完整显示，长内容恢复换行，并继续支持横向查看，不能截断或丢失文字。 |\n| 2 | 编辑消息 | 保留 **加粗** 和 [链接](https://example.com) |", phase: "final_answer")]
         }
         if ProcessInfo.processInfo.arguments.contains("--agent-confirmation-controls-fixture") {
             value.panel = NativePanel(id: "confirmation:workspace:fixture:1", title: "确认操作", items: [
@@ -82,7 +87,7 @@ final class AgentConversationFixture {
         if ProcessInfo.processInfo.arguments.contains("--agent-sidebar-polish-fixture") {
             value.messages[0].text = String(repeating: "短行\n", count: 14) + "这是一条展开后才显示的较长正文，用于确认消息气泡在展开更多和收起时保持同样的宽度。"
             value.groups = [("z", "Zeta"), ("a", "Alpha"), ("m", "Middle")].map { key, title in
-                let item = NativeNavigationItem(id: "row-" + key, title: "任务 " + title,
+                let item = NativeNavigationItem(id: "row-" + key, title: key == "z" && ProcessInfo.processInfo.arguments.contains("--agent-sidebar-long-title-fixture") ? "这是一条非常长的会话名称，用来验证侧栏始终只有一行并在末尾省略完整内容" : "任务 " + title,
                     command: NativeCommand(name: "thread.open", params: ["backendId": .string("conversation-ui-device"), "threadId": .string("thread-" + key)]),
                     isUnread: key == "a", running: key == "z")
                 return NativeGroup(id: "project-" + key, title: title, items: [item], command: NativeCommand(name: "project.toggle", params: ["id": .string("project-" + key)]), collapsed: false, category: "project", cwd: "/" + title)
@@ -144,6 +149,10 @@ final class AgentConversationFixture {
         if ProcessInfo.processInfo.arguments.contains("--agent-model-catalog-fixture") {
             value.models += (0...59).map { NativeOption(id: "catalog-\($0)", title: "Catalog Model \($0)", value: "catalog-\($0)") }
         }
+        if ProcessInfo.processInfo.arguments.contains("--agent-running-scroll-fixture") {
+            value.busy = true
+            value.messages.append(NativeMessage(id: "streaming-scroll", role: "assistant", text: "运行中的新增进展。", phase: "commentary", commentaryIsLiveTail: true))
+        }
         if ProcessInfo.processInfo.arguments.contains("--agent-submit-fixture") { value.canSend = true; value.draft = "触感检查" }
         if ProcessInfo.processInfo.arguments.contains("--agent-startup-loading-fixture") { value.ready = false }
         value.messages = value.messages.map { message in
@@ -179,6 +188,17 @@ final class AgentConversationFixture {
                 self.publish()
             }
         }
+        if ProcessInfo.processInfo.arguments.contains("--agent-running-scroll-fixture"), !ProcessInfo.processInfo.arguments.contains("--agent-no-stream-fixture") {
+            Task { [weak self] in
+                for tick in 0..<300 {
+                    try? await Task.sleep(for: .milliseconds(150))
+                    guard !Task.isCancelled, let self,
+                          let index = self.snapshot.messages.firstIndex(where: { $0.id == "streaming-scroll" }) else { return }
+                    self.snapshot.messages[index].text += "\n运行中的持续输出第\(tick)行。"
+                    self.publish()
+                }
+            }
+        }
         if ProcessInfo.processInfo.arguments.contains("--agent-model-catalog-fixture") {
             Task { [weak self] in
                 for tick in 0..<600 {
@@ -193,7 +213,34 @@ final class AgentConversationFixture {
 
     private func publish() { store.receive(snapshot); session.receive(snapshot) }
     private func dispatch(_ command: NativeCommand) {
-        if command.name == "confirmation.answer" {
+        if command.name == "draft.set", ProcessInfo.processInfo.arguments.contains("--agent-attachment-menu-fixture") {
+            if case .string(let text) = command.params["value"] { snapshot.draft = text; snapshot.canSend = !text.isEmpty || !snapshot.attachments.isEmpty }
+            if case .number(let revision) = command.params["revision"] { snapshot.draftRevision = Int(revision) }
+            let fieldKey: String? = { if case .string(let key) = command.params["fieldKey"] { return key }; return nil }()
+            let revision: Int? = { if case .number(let value) = command.params["fieldRevision"] { return Int(value) }; return nil }()
+            snapshot.commandResults = [NativeCommandResult(id: command.id, name: command.name, ok: true, contextId: snapshot.contextId, fieldKey: fieldKey, fieldRevision: revision)]
+            publish()
+        } else if command.name == "attachment.import", ProcessInfo.processInfo.arguments.contains("--agent-attachment-menu-fixture"), case .array(let items) = command.params["items"] {
+            var accepted: [NativeAttachment] = []
+            for (index, value) in items.enumerated() {
+                guard case .object(let fields) = value, case .string(let name) = fields["name"], case .string(let type) = fields["type"], case .string(let data) = fields["data"] else { continue }
+                accepted.append(NativeAttachment(id: command.id + "-" + String(index), name: name, imageURL: type.hasPrefix("image/") ? "data:" + type + ";base64," + data : nil, type: type, size: Data(base64Encoded: data)?.count))
+            }
+            let apply = { [weak self] in
+                guard let self else { return }
+                self.snapshot.attachments += accepted
+                self.snapshot.canSend = !self.snapshot.attachments.isEmpty || !self.snapshot.draft.isEmpty
+                self.snapshot.commandResults = [NativeCommandResult(id: command.id, name: command.name, ok: true, contextId: self.snapshot.contextId)]
+                self.publish()
+            }
+            if ProcessInfo.processInfo.arguments.contains("--agent-delayed-attachment-import-fixture") {
+                Task { try? await Task.sleep(for: .seconds(6)); guard !Task.isCancelled else { return }; apply() }
+            } else { apply() }
+        } else if command.name == "turn.stop", ProcessInfo.processInfo.arguments.contains("--agent-attachment-menu-fixture") {
+            snapshot.busy = false
+            snapshot.commandResults = [NativeCommandResult(id: command.id, name: command.name, ok: true, contextId: snapshot.contextId)]
+            publish()
+        } else if command.name == "confirmation.answer" {
             let approved = command.params["confirmed"] == .bool(true)
             snapshot.panel = nil
             snapshot.messages = [NativeMessage(id: "confirmation-result", role: "assistant", text: approved ? "确认已执行" : "已取消", phase: "final_answer")]
@@ -223,8 +270,9 @@ final class AgentConversationFixture {
             let revision: Int? = { if case .number(let value) = command.params["fieldRevision"] { return Int(value) }; return nil }()
             snapshot.commandResults = [NativeCommandResult(id: command.id, name: command.name, ok: true, contextId: snapshot.contextId, fieldKey: fieldKey, fieldRevision: revision)]
             publish()
-        } else if ["effort.select", "model.select", "speed.select"].contains(command.name), case .string(let value) = command.params["value"] {
-            if command.name == "effort.select" { snapshot.effortValue = value }
+        } else if ["effort.select", "model.select", "speed.select", "permission.select"].contains(command.name), case .string(let value) = command.params["value"] {
+            if command.name == "permission.select" { snapshot.permissionValue = value }
+            else if command.name == "effort.select" { snapshot.effortValue = value }
             else if command.name == "speed.select" { snapshot.speedValue = value }
             else {
                 snapshot.modelValue = value

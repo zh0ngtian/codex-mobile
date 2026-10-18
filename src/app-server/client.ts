@@ -1,3 +1,4 @@
+import { startLoadRpc, endLoadRpc, type LoadRpcProfile } from '../diagnostics/conversation-load-profile';
 import { t } from "../i18n";
 
 const MAX_APP_SERVER_MESSAGE_BYTES = 16 * 1024 * 1024;
@@ -22,6 +23,7 @@ type RequestListener = (message: RpcMessage) => void;
 type ThreadMetadataListener = (thread: Record<string, any>) => void;
 
 interface PendingRequest {
+  profile?: LoadRpcProfile;
   method: string;
   params: unknown;
   resolve: (value: unknown) => void;
@@ -122,6 +124,7 @@ export class AppServerClient {
         }
       }, options.timeoutMs ?? this.requestTimeoutMs);
       const pending: PendingRequest = {
+        profile: startLoadRpc(method, params),
         method,
         params: ["turn/start", "turn/steer"].includes(method) ? {
           threadId: (params as any)?.threadId,
@@ -211,6 +214,7 @@ export class AppServerClient {
       if (!waiter) return;
       this.pending.delete(message.id);
       clearTimeout(waiter.timeout);
+      endLoadRpc(waiter.profile, !message.error);
       if (message.error) {
         const size = message.error.data as { actualBytes?: unknown; limitBytes?: unknown } | undefined;
         const detail = message.error.code === -32001 &&

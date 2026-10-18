@@ -94,7 +94,9 @@ final class AgentAppUITests: XCTestCase {
         XCTAssertEqual(search.frame.height, chat.frame.height, accuracy: 0.5)
         XCTAssertEqual(more.frame.height, chat.frame.height, accuracy: 0.5)
         XCTAssertEqual(more.frame.midY, chat.frame.midY, accuracy: 0.5)
-        captureConversation("侧栏-三个按钮等高", app: app)
+        XCTAssertEqual(search.frame.midY, more.frame.midY, accuracy: 0.5, "搜索移动到底部与更多同排")
+        XCTAssertLessThan(search.frame.maxX, more.frame.minX, "搜索在更多左边")
+        captureConversation("侧栏-三个按钮底部同排", app: app)
     }
 
     func testDeviceManagerAddsBeyondEightDevices() {
@@ -192,8 +194,56 @@ final class AgentAppUITests: XCTestCase {
         let trace = app.staticTexts["scroll.diagnostic-return"].label.split(separator: ",").compactMap { Double($0) }
         print("RETURN_OFFSETS", trace)
         XCTAssertGreaterThan(trace.count, 3, "回到底部必须经过连续的中间位置")
+        XCTAssertGreaterThanOrEqual(Int(app.staticTexts["scroll.diagnostic-return-ms"].label) ?? 0, 850, "回底动画应有可感知的持续时间，不能快速跳转")
         XCTAssertTrue(Self.hasRenderedConversationText(app.screenshot().image), "动画结束不能出现空白")
         captureConversation("回到底部-连续动画", app: app)
+    }
+
+    func testRunningReturnToBottomKeepsAnimationDuringOutput() { assertRunningReturn(streaming: true) }
+    func testRunningReturnToBottomWithoutNewOutput() { assertRunningReturn(streaming: false) }
+
+    private func assertRunningReturn(streaming: Bool) {
+        let app = XCUIApplication()
+        app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-conversation-long-fixture", "--agent-running-scroll-fixture", "--agent-scroll-diagnostics", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
+        if !streaming { app.launchArguments.append("--agent-no-stream-fixture") }
+        app.launch()
+        let button = app.buttons["conversation.scrollToBottom"]
+        XCTAssertTrue(button.waitForExistence(timeout: 8))
+        XCTAssertTrue(app.buttons["composer.submit"].label == "停止")
+        button.tap()
+        expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: button)
+        waitForExpectations(timeout: 8)
+        let trace = app.staticTexts["scroll.diagnostic-return"].label.split(separator: ",").compactMap { Double($0) }
+        let elapsed = Int(app.staticTexts["scroll.diagnostic-return-ms"].label) ?? 0
+        print("RUNNING_RETURN_OFFSETS", trace, "ELAPSED", elapsed, "EVENTS", app.staticTexts["scroll.diagnostic-events"].label)
+        XCTAssertGreaterThan(trace.count, 5, "持续输出期间回底也必须经过连续中间位置")
+        XCTAssertGreaterThanOrEqual(elapsed, 850, "持续输出不能把回底动画替换成瞬移")
+        if let start = trace.first, let end = trace.last, end > start {
+            let largestStep = zip(trace, trace.dropFirst()).map { $1 - $0 }.max() ?? 0
+            XCTAssertLessThan(largestStep / (end - start), 0.3, "不能在最后一次位置更新补跳过大段距离")
+        }
+        if streaming {
+            let offset = app.staticTexts["scroll.diagnostic-offset"]
+            let previous = Double(offset.label) ?? 0
+            expectation(for: NSPredicate { _, _ in (Double(offset.label) ?? 0) > previous + 20 }, evaluatedWith: offset)
+            waitForExpectations(timeout: 4)
+            XCTAssertFalse(button.exists, "到达底部后应继续跟随持续输出")
+            let timeline = app.scrollViews["conversation.timeline"]
+            let from = timeline.coordinate(withNormalizedOffset: CGVector(dx: 0.75, dy: 0.3))
+            let to = timeline.coordinate(withNormalizedOffset: CGVector(dx: 0.75, dy: 0.7))
+            from.press(forDuration: 0.05, thenDragTo: to, withVelocity: .slow, thenHoldForDuration: 0.1)
+            XCTAssertTrue(button.waitForExistence(timeout: 3), "用户开始阅读旧内容后应取消跟随")
+            let readingOffset = Double(offset.label) ?? 0
+            let deadline = Date().addingTimeInterval(0.6)
+            expectation(for: NSPredicate { _, _ in Date() >= deadline }, evaluatedWith: app)
+            waitForExpectations(timeout: 2)
+            XCTAssertEqual(Double(offset.label) ?? 0, readingOffset, accuracy: 4, "后续输出不能抢回阅读位置")
+            button.tap()
+            expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: button)
+            waitForExpectations(timeout: 8)
+        }
+        XCTAssertTrue(Self.hasRenderedConversationText(app.screenshot().image))
+        captureConversation("运行中回底-持续输出的连续动画", app: app)
     }
 
     func testHistoryEditAutomaticallyFocusesAndShowsContrastingSave() {
@@ -313,7 +363,7 @@ final class AgentAppUITests: XCTestCase {
         XCTAssertFalse(app.buttons["sidebar.settings"].exists, "设置只在省略号菜单内显示")
         XCTAssertLessThan(chat.frame.maxX, more.frame.minX)
         XCTAssertEqual(chat.frame.midY, more.frame.midY, accuracy: 2)
-        XCTAssertLessThan(app.buttons["sidebar.search"].frame.maxY, app.buttons["收起项目 Zeta"].frame.minY)
+        XCTAssertEqual(app.buttons["sidebar.search"].frame.midY, more.frame.midY, accuracy: 1)
         captureConversation("侧栏-参考展开布局", app: app)
         more.tap()
         XCTAssertTrue(app.buttons["sidebar.drafts"].waitForExistence(timeout: 5))
@@ -396,21 +446,79 @@ final class AgentAppUITests: XCTestCase {
     }
 
     func testSelectLocationRequestsPermissionBeforeAdding() {
-        let app = launchConversationFixture()
+        let app = launchInteractionFixture("--agent-attachment-menu-fixture")
         app.resetAuthorizationStatus(for: .location)
         defer { app.resetAuthorizationStatus(for: .location) }
         app.buttons["添加附件"].tap()
-        XCTAssertTrue(app.buttons["选择当前位置"].waitForExistence(timeout: 5))
-        XCTAssertFalse(app.staticTexts["当前位置"].exists)
-        XCTAssertTrue(app.buttons["添加"].isEnabled == false)
-        app.buttons["选择当前位置"].tap()
+        XCTAssertTrue(app.buttons["当前位置"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["选择当前位置"].exists)
+        XCTAssertFalse(app.buttons["添加"].exists)
+        app.buttons["当前位置"].tap()
         let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
         let permission = springboard.alerts.firstMatch
         XCTAssertTrue(permission.waitForExistence(timeout: 5), "选择位置就应请求权限，不等待添加")
-        captureConversation("选择位置-即时权限", app: springboard)
-        permission.buttons.firstMatch.tap()
-        app.buttons["取消"].tap()
-        XCTAssertFalse(app.staticTexts["我的当前位置"].exists, "取消不修改输入")
+        captureConversation("选择位置-直接菜单即时权限", app: springboard)
+        if permission.buttons["不允许"].exists { permission.buttons["不允许"].tap() }
+        else { permission.buttons.firstMatch.tap() }
+        XCTAssertFalse(app.staticTexts["我的当前位置"].exists, "未授权不修改输入")
+        XCTAssertFalse(app.navigationBars["添加到对话"].exists)
+    }
+
+    func testAttachmentPhotoAndFilePickerCancellationPreservesDraft() {
+        let app = launchInteractionFixture("--agent-attachment-menu-fixture")
+        let input = app.textFields["message-input"]
+        input.tap(); input.typeText("取消选择后保留的草稿")
+        app.buttons["添加附件"].tap(); app.buttons["选择图片"].tap()
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label == '取消' OR label == 'Cancel'")).firstMatch.waitForExistence(timeout: 8))
+        XCTAssertFalse(app.navigationBars["添加到对话"].exists)
+        captureConversation("附件-直接照片选择器", app: app)
+        app.buttons.matching(NSPredicate(format: "label == '取消' OR label == 'Cancel'")).firstMatch.tap()
+        XCTAssertEqual(input.value as? String, "取消选择后保留的草稿")
+        app.buttons["添加附件"].tap(); app.buttons["选择文件"].tap()
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label == '取消' OR label == 'Cancel'")).firstMatch.waitForExistence(timeout: 8))
+        captureConversation("附件-直接文件选择器", app: app)
+        app.buttons.matching(NSPredicate(format: "label == '取消' OR label == 'Cancel'")).firstMatch.tap()
+        XCTAssertEqual(input.value as? String, "取消选择后保留的草稿")
+        XCTAssertFalse(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'composer.attachment.'")).firstMatch.exists)
+    }
+
+    func testPhotoSelectionAutomaticallyImportsIntoComposer() {
+        let app = launchInteractionFixture("--agent-attachment-menu-fixture")
+        app.buttons["添加附件"].tap(); app.buttons["选择图片"].tap()
+        let photo = app.images.matching(identifier: "PXGGridLayout-Info").firstMatch
+        XCTAssertTrue(photo.waitForExistence(timeout: 8), app.debugDescription)
+        guard photo.exists else { return }
+        photo.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        let add = app.navigationBars["照片"].buttons["Add"]
+        XCTAssertTrue(add.waitForExistence(timeout: 5), "使用系统照片选择器的完成按钮")
+        add.tap()
+        let attachment = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'composer.attachment.'")).firstMatch
+        XCTAssertTrue(attachment.waitForExistence(timeout: 15), "系统picker结束后应自动导入，无第二次添加确认")
+        XCTAssertFalse(app.navigationBars["添加到对话"].exists)
+        expectation(for: NSPredicate(format: "isEnabled == true"), evaluatedWith: app.buttons["composer.submit"])
+        waitForExpectations(timeout: 10)
+        captureConversation("附件-照片自动加入输入区", app: app)
+    }
+
+    func testPendingPhotoImportKeepsRunningTaskStoppable() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-attachment-menu-fixture", "--agent-delayed-attachment-import-fixture", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
+        app.launch()
+        app.buttons["添加附件"].tap(); app.buttons["选择图片"].tap()
+        let photo = app.images.matching(identifier: "PXGGridLayout-Info").firstMatch
+        XCTAssertTrue(photo.waitForExistence(timeout: 8)); photo.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        let add = app.navigationBars["照片"].buttons["Add"]
+        XCTAssertTrue(add.waitForExistence(timeout: 5), "使用系统照片选择器的完成按钮")
+        add.tap()
+        let pending = app.staticTexts["正在添加附件…"]
+        XCTAssertTrue(pending.waitForExistence(timeout: 3))
+        let stop = app.buttons["composer.submit"]
+        XCTAssertEqual(stop.label, "停止")
+        XCTAssertTrue(stop.isEnabled, "附件ACK等待期间仍应能停止当前任务")
+        captureConversation("附件等待-停止可用", app: app)
+        stop.tap()
+        expectation(for: NSPredicate(format: "label == '发送' AND isEnabled == true"), evaluatedWith: stop)
+        waitForExpectations(timeout: 12)
     }
 
     func testLongModelMenuKeepsScrollPositionDuringSnapshots() {
@@ -496,23 +604,29 @@ final class AgentAppUITests: XCTestCase {
         captureConversation("队列按钮-同排", app: app)
     }
 
-    func testTableUsesNaturalSingleLineColumns() {
+    func testTableWrapsLongCellsAndKeepsShortColumnsCompact() {
         let app = launchInteractionFixture("--agent-table-controls-fixture")
         let number = app.textViews.matching(NSPredicate(format: "value == '#' ")).firstMatch
         XCTAssertTrue(number.waitForExistence(timeout: 8))
-        XCTAssertLessThan(number.frame.width, 60, "短列应按内容宽度布局")
+        XCTAssertLessThan(number.frame.width, 60)
         let long = app.textViews.matching(NSPredicate(format: "value BEGINSWITH %@", "这段表格正文必须")).firstMatch
         XCTAssertTrue(long.exists)
-        XCTAssertLessThan(long.frame.height, 28, "表格长单元格不能折行")
-        let table = app.scrollViews["markdown.table"]
-        XCTAssertTrue(table.exists)
-        guard table.exists else { return }
-        captureConversation("表格-自然列宽初始位置", app: app)
-        let before = long.frame.minX
-        table.swipeLeft()
-        XCTAssertLessThan(long.frame.minX, before, "超宽内容应可横向滚动")
-        XCTAssertFalse(app.otherElements["sidebar.panel"].exists)
-        captureConversation("表格-紧凑字体与横向滚动", app: app)
+        XCTAssertGreaterThan(long.frame.height, 28, "表格长内容应恢复换行")
+        XCTAssertLessThanOrEqual(long.frame.width, 260)
+        XCTAssertTrue(app.scrollViews["markdown.table"].exists)
+        captureConversation("表格-长内容恢复换行", app: app)
+    }
+
+    func testAttachmentButtonOpensMenuWithoutIntermediateSheet() {
+        let app = launchConversationFixture()
+        app.buttons["添加附件"].tap()
+        XCTAssertTrue(app.buttons["选择图片"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["选择文件"].exists)
+        XCTAssertTrue(app.buttons["当前位置"].exists)
+        XCTAssertFalse(app.navigationBars["添加到对话"].exists, "加号直接菜单，不先打开附件sheet")
+        XCTAssertFalse(app.buttons["添加"].exists)
+        captureConversation("附件-直接context菜单", app: app)
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.25)).tap()
     }
 
     func testImagePreviewToolbarPositionsAreSwapped() {
@@ -578,6 +692,32 @@ final class AgentAppUITests: XCTestCase {
             XCTAssertEqual(drawer.frame.midY, button.frame.midY, accuracy: 1)
         }
         captureConversation("导航栏-紧凑同高", app: app)
+        actions.tap()
+        XCTAssertTrue(app.buttons["复制会话 ID"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["复制 ID"].exists)
+    }
+
+    func testPermissionModeUsesContextMenuAndSelectsBusinessOption() {
+        let app = launchInteractionFixture("--agent-permission-menu-fixture")
+        let input = app.textFields["message-input"]
+        input.tap()
+        let permission = app.buttons["权限模式"]
+        XCTAssertTrue(permission.waitForExistence(timeout: 5))
+        permission.tap()
+        XCTAssertFalse(app.navigationBars["权限模式"].exists, "权限选择直接使用菜单，不打开sheet")
+        let full = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "完全访问权限,")).firstMatch
+        XCTAssertTrue(full.waitForExistence(timeout: 5))
+        captureConversation("权限模式-原生context菜单", app: app)
+        guard full.exists else { return }
+        full.tap()
+        XCTAssertEqual(permission.value as? String, "完全访问权限")
+        permission.tap()
+        app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "默认权限,")).firstMatch.tap()
+        XCTAssertEqual(permission.value as? String, "默认权限")
+        permission.tap()
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.2)).tap()
+        XCTAssertFalse(full.exists, "点击其他区域关闭菜单")
+        XCTAssertEqual(permission.value as? String, "默认权限", "取消菜单不改变权限")
     }
 
     func testComposerIconsAreMoreCompact() {
@@ -592,19 +732,66 @@ final class AgentAppUITests: XCTestCase {
         captureConversation("输入图标-字号与紧凑间距", app: app)
     }
 
-    func testUnreadMarkersUseTrailingStatusSlot() {
+    func testSidebarStatusMarkersFollowNames() {
         let app = XCUIApplication()
-        app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-sidebar-polish-fixture", "-accent", "Pink", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
+        app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-sidebar-polish-fixture", "-accent", "Black", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
         app.launch()
         app.buttons["会话列表"].tap()
         let unread = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "任务 Alpha")).firstMatch
         XCTAssertTrue(unread.waitForExistence(timeout: 5))
-        XCTAssertGreaterThan(Self.iconInkPixels(app.screenshot().image, element: CGRect(x: unread.frame.maxX - 26, y: unread.frame.minY, width: 26, height: 30), screen: app.frame), 15)
+        // 仅有一个可访问标题的Button会把文字AX frame扩成整行，因此用行内最右侧的深色像素定位未读点。
+        let unreadX = Self.lastInkX(app.screenshot().image, in: unread.frame, screen: app.frame)
+        XCTAssertNotNil(unreadX)
+        if let unreadX {
+            XCTAssertGreaterThan(unreadX - unread.frame.minX, 50)
+            XCTAssertLessThan(unreadX - unread.frame.minX, 150, "未读点紧跟短名称，不靠列表最右侧")
+        }
+        let runningTitle = app.staticTexts["任务 Zeta"]
+        let running = app.activityIndicators.matching(NSPredicate(format: "identifier BEGINSWITH %@", "sidebar.running.")).firstMatch
+        XCTAssertLessThanOrEqual(running.frame.minX - runningTitle.frame.maxX, 12)
+        XCTAssertGreaterThanOrEqual(running.frame.minX - runningTitle.frame.maxX, 0)
         app.buttons["收起项目 Alpha"].tap()
         let project = app.buttons["展开项目 Alpha"]
         XCTAssertTrue(project.waitForExistence(timeout: 5))
-        XCTAssertGreaterThan(Self.iconInkPixels(app.screenshot().image, element: CGRect(x: project.frame.maxX - 26, y: project.frame.minY, width: 26, height: 30), screen: app.frame), 15)
-        captureConversation("未读点-会话与项目右侧状态槽", app: app)
+        let projectX = Self.lastInkX(app.screenshot().image, in: project.frame, screen: app.frame)
+        XCTAssertNotNil(projectX)
+        if let projectX { XCTAssertLessThan(projectX - project.frame.minX, 130, "项目未读点紧跟名称") }
+        captureConversation("状态标记-紧跟项目与会话名称", app: app)
+    }
+
+    private static func lastInkX(_ image: UIImage, in rect: CGRect, screen: CGRect) -> CGFloat? {
+        guard let source = image.cgImage else { return nil }
+        let scale = CGFloat(source.width) / screen.width
+        let sidebarRect = rect.intersection(CGRect(x: 0, y: 0, width: screen.width * 0.8, height: screen.height))
+        let area = CGRect(x: sidebarRect.minX * scale, y: sidebarRect.minY * scale, width: sidebarRect.width * scale, height: sidebarRect.height * scale).integral
+        guard let cropped = source.cropping(to: area) else { return nil }
+        let width = cropped.width, height = cropped.height
+        var bytes = [UInt8](repeating: 0, count: width * height * 4)
+        bytes.withUnsafeMutableBytes { buffer in
+            let context = CGContext(data: buffer.baseAddress, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+            context.draw(cropped, in: CGRect(x: 0, y: 0, width: width, height: height))
+        }
+        var last: Int?
+        for index in stride(from: 0, to: bytes.count, by: 4) {
+            let red = Int(bytes[index]), green = Int(bytes[index + 1]), blue = Int(bytes[index + 2])
+            if red < 60 && green < 60 && blue < 60 {
+                last = max(last ?? 0, (index / 4) % width)
+            }
+        }
+        return last.map { (area.minX + CGFloat($0)) / scale }
+    }
+
+    func testSidebarLongConversationTitleStaysOnOneLine() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-sidebar-polish-fixture", "--agent-sidebar-long-title-fixture", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
+        app.launch()
+        app.buttons["会话列表"].tap()
+        let title = app.staticTexts["这是一条非常长的会话名称，用来验证侧栏始终只有一行并在末尾省略完整内容"]
+        XCTAssertTrue(title.waitForExistence(timeout: 5))
+        XCTAssertLessThanOrEqual(title.frame.height, 24, "侧栏会话名只占一行")
+        let spinner = app.activityIndicators.matching(NSPredicate(format: "identifier BEGINSWITH %@", "sidebar.running.")).firstMatch
+        XCTAssertTrue(spinner.isHittable)
+        captureConversation("侧栏长会话名-单行保留状态", app: app)
     }
 
     func testSidebarPreservesBusinessProjectOrderAndUsesSpinner() {
@@ -675,9 +862,9 @@ final class AgentAppUITests: XCTestCase {
         XCTAssertTrue(image.isHittable)
     }
 
-    private func launchConnectedApp() throws -> XCUIApplication {
+    private func launchConnectedApp(extraLaunchArguments: [String] = []) throws -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments = ["--native-ui-live", "--agent-scroll-diagnostics", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
+        app.launchArguments = ["--native-ui-live", "--agent-scroll-diagnostics", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"] + extraLaunchArguments
         app.launch()
         let gateway = ProcessInfo.processInfo.environment["CODEX_TEST_GATEWAY"]
             ?? ProcessInfo.processInfo.environment["TEST_RUNNER_CODEX_TEST_GATEWAY"]
@@ -708,6 +895,49 @@ final class AgentAppUITests: XCTestCase {
         }
         XCTAssertTrue(any("sidebar.askCodex").waitForExistence(timeout: 12))
         return app
+    }
+
+    func testProfileCurrentPinnedConversationLoading() throws {
+        func value(_ key: String, _ fallback: Int) -> Int {
+            Int(ProcessInfo.processInfo.environment[key] ?? ProcessInfo.processInfo.environment["TEST_RUNNER_" + key] ?? "") ?? fallback
+        }
+        let warmSamples = value("CODEX_PROFILE_WARM_SAMPLES", 10)
+        let coldSamples = value("CODEX_PROFILE_COLD_SAMPLES", 3)
+        let profileArgs = ["--conversation-load-profile"]
+        var app = try launchConnectedApp(extraLaunchArguments: profileArgs)
+        let pinned = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND value == %@", "sidebar.conversation.", "已关注"))
+        XCTAssertTrue(pinned.firstMatch.waitForExistence(timeout: 15))
+        let titles = pinned.allElementsBoundByIndex.map { row in
+            row.staticTexts.firstMatch.exists ? row.staticTexts.firstMatch.label : row.label.components(separatedBy: "，")[0]
+        }
+        XCTAssertFalse(titles.isEmpty)
+        print("PROFILE_TARGETS", titles.enumerated().map { "\($0.offset):\($0.element)" })
+        func open(_ title: String, index: Int, round: Int, mode: String) {
+            if !app.buttons["sidebar.askCodex"].exists { app.buttons["会话列表"].tap() }
+            let row = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND value == %@ AND label BEGINSWITH %@", "sidebar.conversation.", "已关注", title)).firstMatch
+            XCTAssertTrue(row.waitForExistence(timeout: 12), title)
+            let status = app.staticTexts["load-profile.status"]
+            let previous = status.label
+            row.tap()
+            expectation(for: NSPredicate { _, _ in status.label.hasPrefix("done:") && status.label != previous }, evaluatedWith: status)
+            waitForExpectations(timeout: 22)
+            print("PROFILE_SAMPLE", mode, index, round, status.label)
+            if round == 0 || mode == "cold" {
+                XCTAssertTrue(Self.hasRenderedConversationText(app.screenshot().image))
+                captureConversation("加载计时-\(mode)-\(index)-\(round)", app: app)
+            }
+        }
+        for round in 0...max(0, warmSamples) {
+            for (index, title) in titles.enumerated() { open(title, index: index, round: round, mode: round == 0 ? "warmup" : "warm") }
+        }
+        if coldSamples > 0 {
+            for round in 0..<coldSamples {
+                for (index, title) in titles.enumerated() {
+                    app = try launchConnectedApp(extraLaunchArguments: profileArgs + ["--profile-cold"])
+                    open(title, index: index, round: round, mode: "cold")
+                }
+            }
+        }
     }
 
     func testUsageLabelsAndMissingCacheDetails() {
@@ -1082,7 +1312,7 @@ final class AgentAppUITests: XCTestCase {
         let collapse = app.buttons["收起项目 Zeta"]
         XCTAssertTrue(collapse.waitForExistence(timeout: 5)); collapse.tap()
         XCTAssertTrue(app.buttons["展开项目 Zeta"].waitForExistence(timeout: 5))
-        XCTAssertFalse(app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "任务 Zeta")).firstMatch.exists)
+        XCTAssertFalse(app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "任务 Zeta")).firstMatch.isHittable, "收起后会话不能被看到或点击")
         app.buttons["展开项目 Zeta"].tap()
         XCTAssertTrue(collapse.waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "任务 Zeta")).firstMatch.waitForExistence(timeout: 5))
@@ -1096,11 +1326,22 @@ final class AgentAppUITests: XCTestCase {
         XCTAssertTrue(input.waitForExistence(timeout: 8))
         input.tap()
         let marker = "AGENTUI-" + String(UUID().uuidString.prefix(8))
-        input.typeText("这是原生客户端验收测试。请先发送一条简短执行进展，再调用工具查询当前工作目录，最后只回复：" + marker + "。只读验证，不要修改文件。")
+        input.typeText("这是原生客户端验收测试。请先发送一条简短执行进展，再调用工具等待12秒并查询当前工作目录，最后只回复：" + marker + "。只读验证，不要修改文件。")
         let send = app.buttons["composer.submit"]
         XCTAssertTrue(send.isEnabled)
         send.tap()
         let response = app.textViews.matching(NSPredicate(format: "value BEGINSWITH %@", marker)).firstMatch
+        XCTAssertTrue(app.buttons["conversation.actions"].waitForExistence(timeout: 10))
+        app.buttons["conversation.actions"].tap()
+        let pin = app.buttons["关注"]
+        XCTAssertTrue(pin.waitForExistence(timeout: 5))
+        if pin.exists { pin.tap() }
+        app.buttons["conversation.actions"].tap()
+        let unpin = app.buttons["取消关注"]
+        XCTAssertTrue(unpin.waitForExistence(timeout: 8), "运行中关注应成功回写")
+        XCTAssertFalse(app.staticTexts["会话操作未完成"].exists)
+        if unpin.exists { unpin.tap() }
+        XCTAssertFalse(app.staticTexts["会话操作未完成"].exists)
         XCTAssertTrue(response.waitForExistence(timeout: 150), "应收到真实网关的模型回复")
         let history = app.buttons["commentary-history-toggle"].firstMatch
         XCTAssertTrue(history.waitForExistence(timeout: 8), "真实执行进展应进入参考历史组件")

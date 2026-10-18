@@ -95,7 +95,7 @@ struct SidebarActivitySummary: View {
         HStack(spacing: 4) {
             if conversations.contains(where: { $0.phase == .running }) {
                 ProgressView().progressViewStyle(.circular).controlSize(.mini)
-                    .tint(.secondary).frame(width: 12, height: 12)
+                    .tint(.secondary).frame(width: 12, height: 12).padding(.leading, 2)
             } else if unreadCount > 0 {
                 UnreadIndicator(isUnread: true).frame(width: 12, height: 12)
             }

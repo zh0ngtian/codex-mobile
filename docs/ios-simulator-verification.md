@@ -189,3 +189,16 @@ APK证书与0.2.135一致；IPA签名身份、权限摘要与钥匙串组保持�
 用户提供的网关已在模拟器内完成真实测试保存并选中，访问口令不进入源码、提交或此记录。应用留在已连接设备的新对话页面，等待用户人工验收。旧模拟器中已有设备配置保留。
 
 [结构化证据](superpowers/plans/evidence/2026-10-17-agentapp-native-simulator.json)指向本机保留的 `.mobile-build/agentapp-acceptance/` 日志与结果包。源码 Bundle ID 和 iOS 18 最低版本保持；Debug 版本字段沿用 0.2.190，仅用于本机验收，不代表新渠道交付。本次未合并 main、未生成或发布 APK/IPA、未签名、未修改 OTA/LAN/GitHub Release/软件源，也未部署网关。相机、定位授权及真机覆盖安装不在本次模拟器验证范围。
+
+
+## 2026-10-18 当前关注会话的分阶段计时
+
+在0.3.6（3006）Debug上显式传入`--conversation-load-profile`，运行`AgentAppUITests/testProfileCurrentPinnedConversationLoading`。测试参数`CODEX_PROFILE_WARM_SAMPLES`和`CODEX_PROFILE_COLD_SAMPLES`分别控制同进程重复与进程重启后的样本数，默认10与3；另自动预热1次。当前环境使用iPhone 17 Pro、iOS26.5竖屏，只读取已存在的关注会话。冷进程的计时从网关已连接后点开会话开始，非App启动性能测试。
+
+本地测量文件位于App Documents中的`conversation-load-profile-*.json`，仅显式开启时生成，保存阶段、数量和散列；不包含正文及连接信息。提取后可运行：
+
+```bash
+python3 scripts/analyze-conversation-loading.py <按startedAtMs合并的JSON数组> docs/performance/<本次目录>
+```
+
+本轮数据与说明见[测量报告](performance/2026-10-18-conversation-loading/README.md)。最后恢复不带计时参数的正常App；不把Debug模拟器测量作为真机或Release版本性能结论。
