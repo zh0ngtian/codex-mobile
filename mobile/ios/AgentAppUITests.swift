@@ -715,6 +715,7 @@ final class AgentAppUITests: XCTestCase {
         app.buttons["composer.submit"].tap()
         XCTAssertTrue(app.buttons["发送"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["composer.submit"].isEnabled, "停止后保留空输入的发送禁用规则")
+        captureConversation("提交触感-停止后的禁用发送按钮", app: app)
     }
 
     func testSystemMenuUsesGatewayEffortValues() {
