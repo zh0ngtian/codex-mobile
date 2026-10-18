@@ -24,5 +24,14 @@
   "distribution": "独立分支与测试模拟器；未合入main或发布",
   "normalSimulatorBuild": "passed",
   "normalSimulatorLaunch": "passed",
-  "diagnosticGatewayStopped": true
+  "diagnosticGatewayStopped": true,
+  "mergeValidation": {
+    "baseMain": "f534154eda7ff8c78e9ac8dca30ee7af72a22184",
+    "fullPassed": 1578,
+    "fullFailed": 0,
+    "filesPassed": 145,
+    "typecheck": "passed",
+    "existingTranslationGap": "已补齐加载失败→Loading failed",
+    "distribution": "用户授权仅源码合并main；未更改发布清单或版本"
+  }
 }
