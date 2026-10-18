@@ -4996,14 +4996,17 @@ function ConfiguredApp({
         }
       }
       return new Promise<boolean>((resolve) => {
-        setCommand({
-          id: ++commandIdRef.current,
-          backendId: item.backendId,
-          type: "manage",
-          thread: item.thread,
-          managementAction: action,
-          name,
-          onComplete: resolve,
+        // 先将携带完成回调的命令交给 workspace，避免同批导航覆盖后永久等待 ACK。
+        flushSync(() => {
+          setCommand({
+            id: ++commandIdRef.current,
+            backendId: item.backendId,
+            type: "manage",
+            thread: item.thread,
+            managementAction: action,
+            name,
+            onComplete: resolve,
+          });
         });
       });
     },

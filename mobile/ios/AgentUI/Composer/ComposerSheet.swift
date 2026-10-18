@@ -1,3 +1,3 @@
 import Foundation
 
-enum ComposerSheet: String, Identifiable { case permissions, attachments; var id: String { rawValue } }
+enum ComposerSheet: String, Identifiable { case permissions; var id: String { rawValue } }

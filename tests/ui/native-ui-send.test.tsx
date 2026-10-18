@@ -397,6 +397,63 @@ it('新对话连续输入与保存草稿使用同一实时草稿且不会发送�
  expect(save).toHaveBeenCalledTimes(1); expect(save.mock.calls[0][0].text).toBe('立即保存的最新草稿'); expect(boundary.requests.some(r => r.method === 'turn/start')).toBe(false); save.mockRestore();
 });
 
+it('列表关注运行中会话等待真实管理结果，重复请求只切换一次且不影响运行回合', async () => {
+ const contextId = await setup(); boundary.immediateSend = true;
+ await act(async () => { command('pin-seed-draft', 'draft.set', { contextId, value: '运行中关注测试', revision: 1 }); command('pin-seed-send', 'message.send', { contextId }); });
+ await waitFor(() => expect(posts.at(-1)?.busy).toBe(true));
+ await waitFor(() => expect(posts.at(-1)?.groups.flatMap((group: any) => group.items).some((item: any) => item.threadId === 'sent-thread' && item.running)).toBe(true));
+ const params = { backendId: 'a', threadId: 'sent-thread', action: 'pin' };
+ await act(async () => { command('pin-running', 'thread.manage', params); command('pin-running', 'thread.manage', params); });
+ await waitFor(() => expect(posts.at(-1)?.commandResults?.find((result: any) => result.id === 'pin-running')).toMatchObject({ ok: true }));
+ expect(localStorage.getItem('codex-mobile:pinned:a')).toBe('["sent-thread"]');
+ expect(posts.at(-1).groups.find((group: any) => group.category === 'pinned').items).toEqual(expect.arrayContaining([expect.objectContaining({ threadId: 'sent-thread', isPinned: true, running: true })]));
+ expect(posts.at(-1).busy).toBe(true);
+ expect(boundary.requests.filter(request => ['thread/start', 'turn/start'].includes(request.method))).toHaveLength(2);
+ expect(boundary.requests.some(request => request.method === 'turn/interrupt')).toBe(false);
+ await act(async () => boundary.options.onNotification('a', { method: 'thread/name/updated', params: { threadId: 'sent-thread', threadName: '持续运行中的会话' } }, boundary.client));
+ await waitFor(() => expect(posts.at(-1)?.title).toBe('持续运行中的会话'));
+ expect(localStorage.getItem('codex-mobile:pinned:a')).toBe('["sent-thread"]');
+ expect(posts.at(-1).commandResults.filter((result: any) => result.id === 'pin-running')).toHaveLength(1);
+ await act(async () => { command('unpin-running', 'thread.manage', params); });
+ await waitFor(() => expect(posts.at(-1)?.commandResults?.find((result: any) => result.id === 'unpin-running')).toMatchObject({ ok: true }));
+ expect(localStorage.getItem('codex-mobile:pinned:a')).toBe('[]');
+ expect(posts.at(-1).busy).toBe(true);
+});
+
+it('关注运行中会话与打开命令在同一flush到达时不丢管理回执或永久占用管理锁', async () => {
+ const contextId = await setup(); boundary.immediateSend = true;
+ await act(async () => { command('pin-open-draft', 'draft.set', { contextId, value: '关注和导航并发', revision: 1 }); command('pin-open-send', 'message.send', { contextId }); });
+ await waitFor(() => expect(posts.at(-1)?.groups.flatMap((group: any) => group.items).some((item: any) => item.threadId === 'sent-thread' && item.running)).toBe(true));
+ const target = { backendId: 'a', threadId: 'sent-thread' };
+ await act(async () => { command('pin-before-open', 'thread.manage', { ...target, action: 'pin' }); command('open-after-pin', 'thread.open', target); });
+ await waitFor(() => expect(posts.at(-1)?.commandResults?.find((result: any) => result.id === 'open-after-pin')).toMatchObject({ ok: true }));
+ await act(async () => { command('unpin-after-open', 'thread.manage', { ...target, action: 'pin' }); });
+ await waitFor(() => expect(posts.at(-1)?.commandResults?.find((result: any) => result.id === 'unpin-after-open')).toEqual({ id: 'unpin-after-open', name: 'thread.manage', ok: true }));
+ expect(posts.at(-1).commandResults.find((result: any) => result.id === 'pin-before-open')).toMatchObject({ ok: true });
+ expect(posts.at(-1).commandResults.filter((result: any) => result.id === 'pin-before-open')).toHaveLength(1);
+ expect(localStorage.getItem('codex-mobile:pinned:a')).toBe('[]');
+});
+
+it('管理确认在途时仍拒绝其他管理动作，取消完成后关注可以恢复', async () => {
+ const contextId = await setup(); boundary.immediateSend = true;
+ await act(async () => { command('pin-pending-draft', 'draft.set', { contextId, value: '管理锁测试', revision: 1 }); command('pin-pending-send', 'message.send', { contextId }); });
+ await waitFor(() => expect(posts.at(-1)?.threadId).toBe('sent-thread'));
+ const target = { backendId: 'a', threadId: 'sent-thread' };
+ await act(async () => { command('archive-before-pin', 'thread.manage', { ...target, action: 'archive' }); });
+ await waitFor(() => expect(posts.at(-1)?.panel?.id).toMatch(/^confirmation:/));
+ await act(async () => { command('pin-during-confirmation', 'thread.manage', { ...target, action: 'pin' }); });
+ await waitFor(() => expect(posts.at(-1)?.commandResults?.find((result: any) => result.id === 'pin-during-confirmation')).toMatchObject({ ok: false, error: '会话操作未完成' }));
+ expect(localStorage.getItem('codex-mobile:pinned:a')).toBeNull();
+ const cancel = posts.at(-1).panel.items.find((item: any) => item.id === 'confirmation-no').command;
+ await act(async () => { command('cancel-before-pin', cancel.name, cancel.params); });
+ await waitFor(() => expect(posts.at(-1)?.commandResults?.some((result: any) => result.id === 'archive-before-pin')).toBe(true));
+ await act(async () => { command('pin-after-cancel', 'thread.manage', { ...target, action: 'pin' }); });
+ await waitFor(() => expect(posts.at(-1)?.commandResults?.find((result: any) => result.id === 'pin-after-cancel')).toMatchObject({ ok: true }));
+ expect(localStorage.getItem('codex-mobile:pinned:a')).toBe('["sent-thread"]');
+ expect(posts.at(-1).busy).toBe(true);
+ expect(boundary.requests.some(request => request.method === 'thread/archive')).toBe(false);
+});
+
 it.each([['workspace.thread', false], ['thread.manage', false], ['workspace.thread', true], ['thread.manage', true]] as const)('%s 归档先确认（存在队列：%s），取消不改队列，确认仅归档一次', async (entry, queued) => {
  const contextId = await setup(); boundary.immediateSend = true;
  await act(async () => { command('archive-seed-draft', 'draft.set', { contextId, value: '归档确认测试', revision: 1 }); command('archive-seed-send', 'message.send', { contextId }); });

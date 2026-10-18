@@ -5,6 +5,10 @@ struct ProjectRow: View {
     @Environment(AppPreferences.self) private var preferences
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let name: String
+    @State private var contentHeight: CGFloat = 0
+    @State private var revealedHeight: CGFloat = 0
+    @State private var contentsVisible = false
+    @State private var revealID: UUID?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -26,7 +30,7 @@ struct ProjectRow: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel(preferences.text("\(expanded ? "收起" : "展开")项目 \(displayName)", "\(expanded ? "Collapse" : "Expand") project \(displayName)"))
-            if expanded {
+            VStack(alignment: .leading, spacing: 0) {
                 if session.loadingProjects.contains(name) {
                     ProgressView().controlSize(.small).tint(AgentTheme.ink.opacity(0.6))
                         .frame(maxWidth: .infinity, minHeight: 38)
@@ -63,9 +67,43 @@ struct ProjectRow: View {
                     }
                 }
             }
+            .fixedSize(horizontal: false, vertical: true)
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
+                contentHeight = height
+                if expanded {
+                    if revealID != nil { updateReveal() }
+                    else { revealedHeight = height; contentsVisible = true }
+                }
+            }
+            .opacity(contentsVisible ? 1 : 0)
+            .animation(nil, value: contentsVisible)
+            .frame(height: revealedHeight, alignment: .top)
+            .clipped()
+            .allowsHitTesting(expanded)
+            .accessibilityElement(children: .contain)
+            .accessibilityHidden(!expanded)
         }
-        .clipped()
-        .animation(reduceMotion ? nil : .easeInOut(duration: 0.25), value: expanded)
+        .onChange(of: expanded) { updateReveal() }
+        .onAppear { revealedHeight = expanded ? contentHeight : 0; contentsVisible = expanded }
+    }
+
+    private func updateReveal() {
+        // 高度变化期间不绘制会话文字，避免相邻项目标题穿过退出中的文字。
+        let id = UUID()
+        revealID = id
+        contentsVisible = false
+        let target = expanded ? contentHeight : 0
+        if reduceMotion {
+            revealedHeight = target; contentsVisible = expanded; revealID = nil
+        } else {
+            withAnimation(.easeInOut(duration: 0.25), completionCriteria: .removed) {
+                revealedHeight = target
+            } completion: {
+                guard revealID == id else { return }
+                revealID = nil
+                contentsVisible = expanded
+            }
+        }
     }
 
     private var displayName: String { session.projectDisplayName(name) }

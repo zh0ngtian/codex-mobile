@@ -15,7 +15,8 @@ struct NativeMarkdownTableView: View {
                         ForEach(Array(cells.enumerated()), id: \.offset) { columnIndex, text in
                             NativeInlineContentView(text: text, store: store, compact: true,
                                 scope: cellScope(row: rowIndex, column: columnIndex), textStyle: .subheadline, strong: rowIndex == 0)
-                                .fixedSize(horizontal: true, vertical: true)
+                                .frame(maxWidth: 260, alignment: .leading)
+                                .fixedSize(horizontal: false, vertical: true)
                                 .padding(.vertical, 12)
                                 .padding(.trailing, 20)
                         }

@@ -64,13 +64,14 @@ final class AgentConversationFixture {
             value.attachments = [NativeAttachment(id: "portrait", name: "竖屏测试.png", imageURL: url)]
             value.attachments[0].type = "image/png"
         }
+        if ProcessInfo.processInfo.arguments.contains("--agent-delayed-attachment-import-fixture") { value.busy = true }
         if ProcessInfo.processInfo.arguments.contains("--agent-queue-controls-fixture") {
             value.busy = true
             value.messages = []
             value.queued = [NativeNavigationItem(id: "queue-controls", title: "队列按钮布局检查", inputText: "队列按钮布局检查", queueState: "queued", configuration: NativeQueueConfiguration(model: "Model A", effort: "low", permission: "workspace-write"))]
         }
         if ProcessInfo.processInfo.arguments.contains("--agent-table-controls-fixture") {
-            value.messages = [NativeMessage(id: "table-controls", role: "assistant", text: "| # | 问题 | 修复情况 |\n| --- | --- | --- |\n| 1 | 短列 | 这段表格正文必须在同一行完整显示并支持横向滚动，不能因为固定列宽自动折成多行。 |\n| 2 | 编辑消息 | 保留 **加粗** 和 [链接](https://example.com) |", phase: "final_answer")]
+            value.messages = [NativeMessage(id: "table-controls", role: "assistant", text: "| # | 问题 | 修复情况 |\n| --- | --- | --- |\n| 1 | 短列 | 这段表格正文必须完整显示，长内容恢复换行，并继续支持横向查看，不能截断或丢失文字。 |\n| 2 | 编辑消息 | 保留 **加粗** 和 [链接](https://example.com) |", phase: "final_answer")]
         }
         if ProcessInfo.processInfo.arguments.contains("--agent-confirmation-controls-fixture") {
             value.panel = NativePanel(id: "confirmation:workspace:fixture:1", title: "确认操作", items: [
@@ -193,7 +194,34 @@ final class AgentConversationFixture {
 
     private func publish() { store.receive(snapshot); session.receive(snapshot) }
     private func dispatch(_ command: NativeCommand) {
-        if command.name == "confirmation.answer" {
+        if command.name == "draft.set", ProcessInfo.processInfo.arguments.contains("--agent-attachment-menu-fixture") {
+            if case .string(let text) = command.params["value"] { snapshot.draft = text; snapshot.canSend = !text.isEmpty || !snapshot.attachments.isEmpty }
+            if case .number(let revision) = command.params["revision"] { snapshot.draftRevision = Int(revision) }
+            let fieldKey: String? = { if case .string(let key) = command.params["fieldKey"] { return key }; return nil }()
+            let revision: Int? = { if case .number(let value) = command.params["fieldRevision"] { return Int(value) }; return nil }()
+            snapshot.commandResults = [NativeCommandResult(id: command.id, name: command.name, ok: true, contextId: snapshot.contextId, fieldKey: fieldKey, fieldRevision: revision)]
+            publish()
+        } else if command.name == "attachment.import", ProcessInfo.processInfo.arguments.contains("--agent-attachment-menu-fixture"), case .array(let items) = command.params["items"] {
+            var accepted: [NativeAttachment] = []
+            for (index, value) in items.enumerated() {
+                guard case .object(let fields) = value, case .string(let name) = fields["name"], case .string(let type) = fields["type"], case .string(let data) = fields["data"] else { continue }
+                accepted.append(NativeAttachment(id: command.id + "-" + String(index), name: name, imageURL: type.hasPrefix("image/") ? "data:" + type + ";base64," + data : nil, type: type, size: Data(base64Encoded: data)?.count))
+            }
+            let apply = { [weak self] in
+                guard let self else { return }
+                self.snapshot.attachments += accepted
+                self.snapshot.canSend = !self.snapshot.attachments.isEmpty || !self.snapshot.draft.isEmpty
+                self.snapshot.commandResults = [NativeCommandResult(id: command.id, name: command.name, ok: true, contextId: self.snapshot.contextId)]
+                self.publish()
+            }
+            if ProcessInfo.processInfo.arguments.contains("--agent-delayed-attachment-import-fixture") {
+                Task { try? await Task.sleep(for: .seconds(6)); guard !Task.isCancelled else { return }; apply() }
+            } else { apply() }
+        } else if command.name == "turn.stop", ProcessInfo.processInfo.arguments.contains("--agent-attachment-menu-fixture") {
+            snapshot.busy = false
+            snapshot.commandResults = [NativeCommandResult(id: command.id, name: command.name, ok: true, contextId: snapshot.contextId)]
+            publish()
+        } else if command.name == "confirmation.answer" {
             let approved = command.params["confirmed"] == .bool(true)
             snapshot.panel = nil
             snapshot.messages = [NativeMessage(id: "confirmation-result", role: "assistant", text: approved ? "确认已执行" : "已取消", phase: "final_answer")]

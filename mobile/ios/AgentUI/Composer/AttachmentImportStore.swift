@@ -50,6 +50,8 @@ final class AttachmentImportStore {
 
     func remove(_ id: UUID) { tasks.removeValue(forKey: id)?.cancel(); items.removeAll { $0.id == id } }
     func cancelAll() { for task in tasks.values { task.cancel() }; tasks.removeAll(); precedingImport = nil }
+    func reset() { cancelAll(); items.removeAll() }
+    func waitForCompletion() async { await precedingImport?.value }
 
     func checkCommitBudget(existingByteCount: Int, isEnglish: Bool) -> Bool {
         self.existingByteCount = max(0, existingByteCount)
