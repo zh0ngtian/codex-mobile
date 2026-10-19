@@ -1,0 +1,86 @@
+{
+  "status": "released",
+  "task": "codex-mobile-20261019-media-effort-alignment",
+  "taskSource": "bc619b831382f035b03b946ae60f7043b648834a",
+  "batch": "b0bc6727-7082-40dc-aab5-24c1063c7fe8",
+  "frozenSha": "39d40a9511517a2549d1388b42639a1dc805ef18",
+  "version": "0.3.15",
+  "buildNumber": "3015",
+  "githubRelease": "https://github.com/zh0ngtian/codex-mobile/releases/tag/v0.3.15",
+  "installUrl": "https://192.168.123.79:8766/channels/codex-mobile/current/install.html",
+  "apk": {
+    "url": "http://192.168.123.79:8765/channels/codex-mobile/latest.apk",
+    "version": "0.3.15",
+    "size": 4724631,
+    "sha256": "22b02db15200bab209717717eb52092a4b07bbcea1117920a9bb2177289d6077"
+  },
+  "ipa": {
+    "url": "http://192.168.123.79:8765/channels/codex-mobile/latest.ipa",
+    "version": "0.3.15",
+    "size": 4677367,
+    "sha256": "1b2178ff7a93bffce790d984440b1249b410d1bf32a979027def28ecce83c568",
+    "signed": true
+  },
+  "unsignedIpa": {
+    "appId": "bdf9cfa5-6c34-49ca-82fb-31a85ad9e6da",
+    "buildVersion": "3015",
+    "developerName": "zh0ngtian",
+    "downloadURL": "https://github.com/zh0ngtian/codex-mobile/releases/download/v0.3.15/CodexMobile-v0.3.15-unsigned.ipa",
+    "sha256": "329613342c894c89b1f35267136567c382a4ed171b00f42020ad3f9407929f23",
+    "signed": false,
+    "size": 4674525,
+    "sourceCommit": "39d40a9511517a2549d1388b42639a1dc805ef18",
+    "syncOperation": {
+      "attestationId": "bdf9cfa5-6c34-49ca-82fb-31a85ad9e6da:417008689:655542533:2026-10-19T07:20:43Z:4674525",
+      "attestationIntent": true,
+      "attestationVerified": true,
+      "jobId": "21c2990f-457a-4812-9042-7396b0b6ecd6",
+      "releaseId": "bdf9cfa5-6c34-49ca-82fb-31a85ad9e6da",
+      "sha256": "329613342c894c89b1f35267136567c382a4ed171b00f42020ad3f9407929f23",
+      "status": "waiting-for-unsigned-subscription",
+      "syncIntentAt": 1792394530.219319,
+      "syncJobIds": [
+        "21c2990f-457a-4812-9042-7396b0b6ecd6"
+      ],
+      "updatedAt": 1792394555.1751318
+    },
+    "version": "0.3.15"
+  },
+  "validation": {
+    "fullSuite": {
+      "files": 146,
+      "tests": 1607
+    },
+    "adapter": 204,
+    "coordinator": 59,
+    "simulator": {
+      "device": "iPhone 17 Pro",
+      "runtime": "iOS 27.0",
+      "textSize": "normal",
+      "orientation": "portrait",
+      "tests": 7
+    },
+    "reviews": [
+      "spec",
+      "quality"
+    ],
+    "channels": [
+      "GitHub APK/unsigned IPA",
+      "LAN APK/Ad Hoc IPA",
+      "HTTPS OTA",
+      "unsigned source"
+    ],
+    "independent": [
+      "JSON manifests",
+      "HEAD",
+      "full GET",
+      "trusted HTTPS",
+      "identity/entitlements/keychain continuity",
+      "source notes/developer attribution"
+    ],
+    "remoteTestConversationsCreated": false,
+    "realDeviceUpgradeVerified": false
+  },
+  "receipt": "ReleaseCoordinator/receipts/b0bc6727-7082-40dc-aab5-24c1063c7fe8.json",
+  "verifiedAt": 1792394644.0073779
+}
