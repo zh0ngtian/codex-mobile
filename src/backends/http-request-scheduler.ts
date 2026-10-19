@@ -1,6 +1,7 @@
-export type HttpRequestPriority = "foreground" | "background";
+export type HttpRequestPriority = "foreground" | "background" | "background-visible";
 
 interface QueuedRequest {
+  priority: HttpRequestPriority;
   start(): void;
 }
 interface OriginRequests {
@@ -21,6 +22,7 @@ class HttpRequestScheduler {
       this.origins.set(origin, state);
     }
     const current = state;
+    const channel = priority === "foreground" ? "foreground" : "background";
     const idle = () => {
       if (!current.foreground && !current.background && !current.queued.length) this.origins.delete(origin);
     };
@@ -30,13 +32,14 @@ class HttpRequestScheduler {
     };
     return new Promise<T>((resolve, reject) => {
       const queued: QueuedRequest = {
+        priority,
         start: () => {
           signal?.removeEventListener("abort", cancel);
-          current[priority]++;
+          current[channel]++;
           void (async () => {
             try { resolve(await operation()); }
             catch (error) { reject(error); }
-            finally { current[priority]--; drain(); }
+            finally { current[channel]--; drain(); }
           })();
         },
       };
@@ -50,7 +53,10 @@ class HttpRequestScheduler {
       };
       if (priority === "foreground") queued.start();
       else {
-        current.queued.push(queued);
+        const ordinary = priority === "background-visible"
+          ? current.queued.findIndex(request => request.priority === "background") : -1;
+        if (ordinary < 0) current.queued.push(queued);
+        else current.queued.splice(ordinary, 0, queued);
         signal?.addEventListener("abort", cancel, { once: true });
         drain();
       }

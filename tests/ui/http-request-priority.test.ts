@@ -41,6 +41,28 @@ function harness() {
 }
 
 describe("HTTP前台会话优先于后台刷新", () => {
+  it("展开项目补页先于普通后台队列，但仍共享两个名额并让出前台", async () => {
+    const { calls, create, request } = harness();
+    const { client } = create("visible-background", "http://visible-background.test");
+    await vi.advanceTimersByTimeAsync(0);
+    const first = request(client, "thread/read", { priority: "background" });
+    const second = request(client, "thread/read", { priority: "background" });
+    const collapsed = request(client, "thread/loaded/list", { priority: "background" });
+    const visible = request(client, "thread/list", { priority: "background-visible" });
+    expect(calls).toHaveLength(2);
+    const foreground = request(client, "thread/resume");
+    expect(calls).toHaveLength(3);
+    calls[0].finish(); await vi.advanceTimersByTimeAsync(0);
+    expect(calls).toHaveLength(3);
+    calls[2].finish(); await vi.advanceTimersByTimeAsync(0);
+    expect(calls[3].method).toBe("thread/list");
+    expect(calls).toHaveLength(4);
+    calls[3].finish(); await vi.advanceTimersByTimeAsync(0);
+    expect(calls[4].method).toBe("thread/loaded/list");
+    calls.forEach(call => call.finish());
+    await Promise.all([first, second, collapsed, visible, foreground]);
+  });
+
   it("冷启动额度查询未结束时，后续后台列表仍完成关键初始化", async () => {
     const { calls, create } = harness();
     const { client } = create("bootstrap-rate-limits", "http://bootstrap-rate-limits.test");

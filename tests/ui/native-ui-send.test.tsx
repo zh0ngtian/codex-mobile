@@ -76,6 +76,17 @@ function assertSwiftNavigationSnapshots(snapshots: any[]) {
 }
 
 // 只替换外部连接与HTTP边界，以下断言经过真实App业务状态、导航投影和NativeRuntime发布。
+it('冷启动目录挂起时立即打开原生侧栏共用整轮刷新，不重复请求目录', async () => {
+ const directory = deferredRead();
+ boundary.projectBarrier = directory.promise;
+ await setup(true, { projects: ['/pending'], projectlessThreadIds: [] }, false);
+ await waitFor(() => expect(vi.mocked(fetch).mock.calls.filter(([url]) => String(url).includes('/api/projects'))).toHaveLength(1));
+ await act(async () => command('startup-open-sidebar', 'navigation.sidebar', { open: true }));
+ expect(vi.mocked(fetch).mock.calls.filter(([url]) => String(url).includes('/api/projects'))).toHaveLength(1);
+ await act(async () => directory.resolve());
+ await waitFor(() => expect(posts.at(-1).navigationLoading).toBe(false));
+});
+
 it('真实App冷启动在目录、优先摘要和首批普通会话未完成前持续加载，成功空项目才ready', async () => {
  const directory = deferredRead(); const priority = deferredRead(); const page = deferredRead(); const projectless = deferredRead();
  boundary.projectBarrier = directory.promise; boundary.priorityBarrier = priority.promise; boundary.listBarrier = page.promise; boundary.threadReadBarrier = projectless.promise;
@@ -199,7 +210,7 @@ it.each([
    const more = group().actions.find((action: any) => action.command?.name === 'project.more');
    expect(more.disabled).toBe(false);
    await act(async () => { command(`projectless-more-${targetCount}`, more.command.name, more.command.params); });
-   expect(loadProjectless).toHaveBeenLastCalledWith(boundary.client, projectlessThreadIds, targetCount, new Set(prioritizedIds));
+   expect(loadProjectless).toHaveBeenLastCalledWith(boundary.client, projectlessThreadIds, targetCount, new Set(prioritizedIds.filter(id => id !== 'running')), new Set(prioritizedIds.filter(id => id === 'pin')));
    await waitFor(() => expect(ordinaryIds()).toEqual(ordinary.slice(0, targetCount).map(thread => thread.id)));
    await waitFor(() => expect(group().actions.find((action: any) => action.command?.name === 'project.more').disabled).toBe(false));
    expectRetainedSummaries();

@@ -138,7 +138,8 @@ final class AgentConversationFixture {
            let index = value.groups.firstIndex(where: { $0.id == "project-z" }) {
             let rows = (1...12).map { number in
                 NativeNavigationItem(id: "page-row-\(number)", title: "分页会话 \(number)",
-                    command: NativeCommand(name: "thread.open", params: ["backendId": .string("conversation-ui-device"), "threadId": .string("page-thread-\(number)")]))
+                    command: NativeCommand(name: "thread.open", params: ["backendId": .string("conversation-ui-device"), "threadId": .string("page-thread-\(number)")]),
+                    running: number == 2 && ProcessInfo.processInfo.arguments.contains("--agent-sidebar-running-count-fixture"))
             }
             value.groups[index].items = rows
             value.groups[index].allItems = rows

@@ -11,6 +11,7 @@ import { isNativeUIEnabled, type NativeRuntime } from "./native-ui/runtime";
 import { projectNavigation, projectNavigationLoading } from "./native-ui/projection";
 import { projectNativeBackends, projectNativePreferences } from "./native-ui/device-panel";
 import { readFontSize } from "./ui/font-size";
+import { createLatestClientRefresh } from "./app-server/latest-client-refresh";
 import { assertNativeAttachmentSelection } from "./native-ui/attachment-import";
 import { resolveNativeNewChatTarget, type NativeNewChatTarget } from "./native-ui/new-chat-target";
 import { isClientForeground } from "./native-ui/foreground";
@@ -286,8 +287,10 @@ interface BackendThreadSnapshot {
   projectlessThreadIds: string[];
   projectThreadStates: Record<string, ProjectThreadLoadState>;
   projectHasMore: Record<string, boolean>;
+  projectLoadedCounts: Record<string, number>;
   loadingProjectCwd: string;
   refreshing: boolean;
+  threadListRefreshing: boolean;
   threadListState: ThreadListState;
   openingThreadId: string;
   searchQuery: string;
@@ -655,8 +658,6 @@ function BackendWorkspace({
   const readPrioritizedThreadIds = () => new Set([
     ...readLocalPinned(),
     ...readLocalUnread(),
-    ...threadsRef.current.filter((thread) => isThreadRunning(thread.status))
-      .map((thread) => String(thread.id)),
   ]);
   const setLocalPinned = (threadId: string, sourceThread?: AnyRecord) => {
     const isPinned = toggleThreadPinned(localStorage, backend.id, threadId);
@@ -723,6 +724,10 @@ function BackendWorkspace({
   const threadListLoaderRef = useRef<ReturnType<
     typeof createLatestThreadListLoader
   > | null>(null);
+  const threadRefreshRef = useRef<ReturnType<typeof createLatestClientRefresh<AppServerClient>> | null>(null);
+  if (!threadRefreshRef.current) threadRefreshRef.current = createLatestClientRefresh<AppServerClient>();
+  const [threadListRefreshing, setThreadListRefreshing] = useState(false);
+  const [projectLoadedCounts, setProjectLoadedCounts] = useState<Record<string, number>>({});
   const decorateThreads = (data: AnyRecord[]): AnyRecord[] => {
     const localUnread = readLocalUnread();
     return applyPinnedThreadState(data, readLocalPinned()).map((thread) => ({
@@ -742,7 +747,7 @@ function BackendWorkspace({
         setThreads((current) =>
           mergeThreadListPage(current, decorateThreads(data), readPrioritizedThreadIds()),
         );
-        setThreadListState("ready");
+        if (data.length) setThreadListState("ready");
       },
       onPinnedData(data) {
         // 同步已结束运行的摘要，使其按最新状态回到普通列表。
@@ -762,6 +767,7 @@ function BackendWorkspace({
         }));
       },
       onProjectData(cwd, data, hasMore, nextCursor) {
+        setProjectLoadedCounts(current => ({ ...current, [cwd]: data.length }));
         const nextProjectThreads = decorateThreads(data);
         setProjectNextCursors((current) => ({
           ...current,
@@ -798,7 +804,7 @@ function BackendWorkspace({
           ...current,
           [cwd]: "ready",
         }));
-        setThreadListState("ready");
+        if (data.length) setThreadListState("ready");
       },
       onProjectError(cwd) {
         setProjectThreadStates((current) => ({
@@ -963,48 +969,59 @@ function BackendWorkspace({
     options: { silent?: boolean } = {},
   ) {
     if (!client || client !== clientRef.current) return;
-    try {
-      let projectCatalogReadSucceeded = false;
-      let directories = projects;
-      let nextProjectlessThreadIds = mergeProjectlessThreadIds(
-        projectlessThreadIds,
-        readLocalProjectlessThreadIds(window.localStorage, backend.id),
-      );
+    return threadRefreshRef.current!.run(client, async () => {
+      if (client !== clientRef.current || client.signal?.aborted) return;
+      setThreadListRefreshing(true);
       try {
-        const projectState = await fetchBackendProjectState(backend, "background", client.signal);
-        if (client !== clientRef.current || client.signal?.aborted) return;
-        projectCatalogReadSucceeded = true;
-        directories = projectState.projects;
-        nextProjectlessThreadIds = mergeProjectlessThreadIds(
-          projectState.projectlessThreadIds,
+        let projectCatalogReadSucceeded = false;
+        let directories = projects;
+        let nextProjectlessThreadIds = mergeProjectlessThreadIds(
+          projectlessThreadIds,
           readLocalProjectlessThreadIds(window.localStorage, backend.id),
         );
-        setProjects(directories);
-        setProjectlessThreadIds(nextProjectlessThreadIds);
-      } catch {
+        try {
+          const projectState = await fetchBackendProjectState(backend, "background", client.signal);
+          if (client !== clientRef.current || client.signal?.aborted) return;
+          projectCatalogReadSucceeded = true;
+          directories = projectState.projects;
+          nextProjectlessThreadIds = mergeProjectlessThreadIds(
+            projectState.projectlessThreadIds,
+            readLocalProjectlessThreadIds(window.localStorage, backend.id),
+          );
+          setProjects(directories);
+          setProjectlessThreadIds(nextProjectlessThreadIds);
+        } catch {
+          if (client !== clientRef.current || client.signal?.aborted) return;
+        }
+        const collapsed = readCollapsedProjectKeys(window.localStorage);
+        await threadListLoaderRef.current!.load(
+          client,
+          directories,
+          nextProjectlessThreadIds,
+          {
+            ...options,
+            pinnedThreadIds: [...readLocalPinned()],
+            prioritizedThreadIds: [...readPrioritizedThreadIds()],
+            includeRunningThreads: true,
+            rememberedRunningThreadIds: threadsRef.current.filter(thread => isThreadRunning(thread.status)).map(thread => String(thread.id)),
+            preferredProjectCwds: [...directories, PROJECTLESS_GROUP_ID].filter(cwd =>
+              !collapsed.has(projectCollapseKey(backend.id, cwd))),
+          },
+        );
+        // 目录失败或线程总加载失败都不能证明保存项目已失效，保留待恢复上下文供重试。
+        if (projectCatalogReadSucceeded && client === clientRef.current && !client.signal?.aborted) {
+          setNewChatProjectCatalogReady(true);
+        }
+      } catch (reason) {
         if (client !== clientRef.current || client.signal?.aborted) return;
+        setThreadListState((current) =>
+          current === "loading" ? "error" : current,
+        );
+        throw reason;
+      } finally {
+        if (client === clientRef.current && !client.signal?.aborted) setThreadListRefreshing(false);
       }
-      await threadListLoaderRef.current!.load(
-        client,
-        directories,
-        nextProjectlessThreadIds,
-        {
-          ...options,
-          pinnedThreadIds: [...readLocalPinned()],
-          prioritizedThreadIds: [...readPrioritizedThreadIds()],
-          includeRunningThreads: true,
-        },
-      );
-      // 目录失败或线程总加载失败都不能证明保存项目已失效，保留待恢复上下文供重试。
-      if (projectCatalogReadSucceeded && client === clientRef.current && !client.signal?.aborted) {
-        setNewChatProjectCatalogReady(true);
-      }
-    } catch (reason) {
-      setThreadListState((current) =>
-        current === "loading" ? "error" : current,
-      );
-      throw reason;
-    }
+    });
   }
 
   function applyActiveThreadSnapshot(incoming: AnyRecord) {
@@ -1186,8 +1203,10 @@ function BackendWorkspace({
       projectlessThreadIds,
       projectThreadStates,
       projectHasMore,
+      projectLoadedCounts,
       loadingProjectCwd,
       refreshing,
+      threadListRefreshing,
       threadListState,
       openingThreadId,
       searchQuery: resolvedSearchQuery,
@@ -1211,8 +1230,10 @@ function BackendWorkspace({
     projectlessThreadIds,
     projectThreadStates,
     projectHasMore,
+    projectLoadedCounts,
     loadingProjectCwd,
     refreshing,
+    threadListRefreshing,
   ]);
 
   useEffect(() => {
@@ -1780,6 +1801,7 @@ function BackendWorkspace({
       },
       onReady: (_backendId, source) => {
         const client = source as AppServerClient;
+        if (clientRef.current !== client) threadListLoaderRef.current!.invalidate();
         if (projectlessLoadRef.current?.client !== client) {
           projectlessLoadRef.current = null;
           setLoadingProjectCwd((current) => current === PROJECTLESS_GROUP_ID ? "" : current);
@@ -4217,7 +4239,9 @@ function BackendWorkspace({
         cwd,
         cursor,
         new Set([...readPrioritizedThreadIds(), ...projectlessThreadIds]),
+        new Set([...readLocalPinned(), ...projectlessThreadIds]),
       );
+      setProjectLoadedCounts(current => ({ ...current, [cwd]: (current[cwd] ?? 0) + result.threads.length }));
       if (result.hasMore) {
         fullyLoadedProjectCwdsRef.current.delete(cwd);
       } else {
@@ -4269,8 +4293,10 @@ function BackendWorkspace({
         projectlessThreadIds,
         targetCount,
         readPrioritizedThreadIds(),
+        readLocalPinned(),
       );
       if (!isCurrent()) return;
+      setProjectLoadedCounts(current => isCurrent() ? ({ ...current, [PROJECTLESS_GROUP_ID]: result.threads.length }) : current);
       if (result.hasMore) {
         fullyLoadedProjectCwdsRef.current.delete(PROJECTLESS_GROUP_ID);
       } else {
@@ -4396,10 +4422,11 @@ function BackendWorkspace({
           void threadListLoaderRef.current!.loadProjectless(
             client,
             projectlessThreadIds,
-            { prioritizedThreadIds: [...readPrioritizedThreadIds()] },
+            { pinnedThreadIds: [...readLocalPinned()], prioritizedThreadIds: [...readPrioritizedThreadIds()] },
           );
         } else {
           void threadListLoaderRef.current!.loadProject(client, command.cwd, {
+            pinnedThreadIds: [...readLocalPinned()],
             prioritizedThreadIds: [...readPrioritizedThreadIds()],
           });
         }
@@ -5008,8 +5035,10 @@ function ConfiguredApp({
         previous.projectlessThreadIds === snapshot.projectlessThreadIds &&
         previous.projectThreadStates === snapshot.projectThreadStates &&
         previous.projectHasMore === snapshot.projectHasMore &&
+        previous.projectLoadedCounts === snapshot.projectLoadedCounts &&
         previous.loadingProjectCwd === snapshot.loadingProjectCwd &&
         previous.refreshing === snapshot.refreshing &&
+        previous.threadListRefreshing === snapshot.threadListRefreshing &&
         previous.threadListState === snapshot.threadListState &&
         previous.openingThreadId === snapshot.openingThreadId &&
         previous.searchQuery === snapshot.searchQuery &&
@@ -5151,7 +5180,7 @@ function ConfiguredApp({
   const loadingBackendIds = new Set(
     Object.values(snapshots)
       .filter((snapshot) =>
-        Object.values(snapshot.projectThreadStates ?? {}).some(
+        snapshot.threadListRefreshing || Object.values(snapshot.projectThreadStates ?? {}).some(
           (state) => state === "loading",
         ),
       )
@@ -5171,11 +5200,10 @@ function ConfiguredApp({
 
   const toggleProject = useCallback(
     (backendId: string, cwd: string) => {
-      const loadedCount = (snapshots[backendId]?.threads ?? []).filter(
+      const loadedCount = snapshots[backendId]?.projectLoadedCounts[cwd] ?? (snapshots[backendId]?.threads ?? []).filter(
         (thread) =>
           thread.isPinned !== true &&
-          thread.isUnread !== true &&
-          !isThreadRunning(thread.status) &&
+          (thread.isUnread !== true || isThreadRunning(thread.status)) &&
           (cwd === PROJECTLESS_GROUP_ID
             ? thread.isProjectless === true
             : thread.isProjectless !== true &&

@@ -244,13 +244,13 @@ final class AppSession {
         let limit = projectPageCounts[project] ?? 5
         var ordinaryCount = 0
         return loaded.filter { conversation in
-            if conversation.isUnread || conversation.phase == .running { return true }
+            if conversation.isUnread && conversation.phase != .running { return true }
             ordinaryCount += 1
             return ordinaryCount <= limit
         }
     }
     private func ordinaryProjectConversationCount(_ project: String) -> Int {
-        allProjectConversations(project).filter { !$0.isUnread && $0.phase != .running }.count
+        allProjectConversations(project).filter { !$0.isUnread || $0.phase == .running }.count
     }
     func projectDisplayName(_ key: String) -> String { projectGroups[key]?.title ?? key }
     func projectTitle(for path: String) -> String {

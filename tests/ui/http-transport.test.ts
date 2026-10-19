@@ -22,6 +22,47 @@ const events = (overrides = {}) => new Response(JSON.stringify({
 }));
 
 describe("HTTP 文字传输", () => {
+  it("只读 POST 耗尽预算后不另开五秒对账，保持连接可用", async () => {
+    vi.useFakeTimers();
+    let reconciles = 0;
+    const transport = setup((async (url, init) => {
+      if (String(url).includes("/api/operations")) reconciles++;
+      return new Promise((_resolve, reject) => init?.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError"))));
+    }) as typeof fetch, "read-deadline");
+    await vi.advanceTimersByTimeAsync(0);
+    const client = new AppServerClient(transport, { requestTimeoutMs: 100 });
+    let settled = false;
+    const read = client.request("thread/read", { threadId: "slow" }).catch(() => { settled = true; });
+    await vi.advanceTimersByTimeAsync(100);
+    expect(settled).toBe(true);
+    expect(reconciles).toBe(0);
+    await read;
+    expect(transport.readyState).toBe(1);
+  });
+
+  it("只读对账只使用剩余预算，不因对账或重试退避延长截止时间", async () => {
+    vi.useFakeTimers();
+    let posts = 0;
+    const transport = setup((async (url, init) => {
+      if (String(url).includes("/api/rpc")) {
+        posts++;
+        await new Promise(resolve => setTimeout(resolve, 60));
+        throw new TypeError("lost response");
+      }
+      return new Promise((_resolve, reject) => init?.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError"))));
+    }) as typeof fetch, "read-reconcile-deadline");
+    await vi.advanceTimersByTimeAsync(0);
+    const client = new AppServerClient(transport, { requestTimeoutMs: 100 });
+    let settled = false;
+    const read = client.request("thread/list", {}).catch(() => { settled = true; });
+    await vi.advanceTimersByTimeAsync(99);
+    expect(settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(settled).toBe(true);
+    expect(posts).toBe(1);
+    await read;
+  });
+
   it("清除旧普通会话打开的待确认项，保留设置覆盖和消息发送", () => {
     const writesKey = "codex-mobile:http-writes:resume-recovery:12345678-1234-4234-8234-123456789abc";
     const records = [

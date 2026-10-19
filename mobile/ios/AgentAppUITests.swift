@@ -100,7 +100,8 @@ final class AgentAppUITests: XCTestCase {
 
     func testProjectCollapseResetsFiveRowsButDrawerClosePreservesTen() throws {
         let app = XCUIApplication()
-        app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-sidebar-polish-fixture", "--agent-sidebar-pagination-fixture", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
+        app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-sidebar-polish-fixture", "--agent-sidebar-pagination-fixture", "--agent-sidebar-running-count-fixture", "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryL", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
+        XCUIDevice.shared.orientation = .portrait
         app.launch()
         app.buttons["会话列表"].tap()
         let sixth = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "分页会话 6")).firstMatch
@@ -114,15 +115,22 @@ final class AgentAppUITests: XCTestCase {
         XCTAssertEqual(moreX, titleX, accuracy: 1.5, "项目分页文字左端应与普通会话名称对齐")
         captureConversation("项目分页-文字左边缘对齐", app: app)
         XCTAssertFalse(sixth.exists, "初次只直接展示五条")
+        let pageRows = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "分页会话 "))
+        XCTAssertEqual(pageRows.count, 5, "运行会话也必须占首批五条的名额")
+        XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "sidebar.running.")).firstMatch.exists)
         more.tap()
         XCTAssertTrue(sixth.waitForExistence(timeout: 5))
+        XCTAssertEqual(pageRows.count, 10)
         app.buttons["drawer.close-surface"].tap()
         app.buttons["会话列表"].tap()
         XCTAssertTrue(sixth.exists, "关闭边栏保留已展开的十条")
         app.buttons["收起项目 Zeta"].tap()
         app.buttons["展开项目 Zeta"].tap()
         XCTAssertFalse(sixth.exists, "显式折叠再展开仅直接显示五条")
+        XCTAssertEqual(pageRows.count, 5)
         XCTAssertTrue(more.exists)
+        Thread.sleep(forTimeInterval: 0.6)
+        XCTAssertNotNil(Self.firstTextInkX(app.screenshot().image, in: firstTitle.frame, screen: app.frame), "折叠重开后的首行文字必须实际可见")
         captureConversation("项目分页-折叠后恢复五条", app: app)
     }
     func testReturnToBottomCanInterruptScrolling() {

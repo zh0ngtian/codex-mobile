@@ -437,10 +437,12 @@ export function ThreadListPage({
                 const projectThreadState =
                   projectThreadStates[group.cwd] ??
                   (group.threads.length ? "ready" : "idle");
-                const visibleLimit = projectVisibleLimits[projectKey] ?? group.threads.length;
+                const visibleLimit = projectVisibleLimits[projectKey] ?? PROJECT_THREAD_BATCH_SIZE;
+                let countedThreads = 0;
                 const displayedThreads = query.trim()
                   ? group.threads
-                  : group.threads.slice(0, visibleLimit);
+                  : group.threads.filter(thread => thread.unread || ++countedThreads <= visibleLimit);
+                const loadedCount = group.threads.filter(thread => !thread.unread).length;
                 const hasServerMore =
                   projectHasMore[group.cwd] ??
                   group.threads.length >= PROJECT_THREAD_BATCH_SIZE;
@@ -542,7 +544,7 @@ export function ThreadListPage({
                                 ...previous,
                                 [projectKey]: nextLimit,
                               }));
-                              if (hasServerMore && nextLimit > group.threads.length) {
+                              if (hasServerMore && nextLimit > loadedCount) {
                                 onToggleProject(selectedBackendId, group.cwd);
                               }
                             }}
