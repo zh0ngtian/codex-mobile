@@ -42,6 +42,12 @@ GitHub 403 只有明确包含 `API rate limit exceeded` 或 `secondary rate limi
 
 正式 CI 首次等待时将 epoch 秒 `waitStartedAt` 与 `waitDeadlineAt`（起点加一小时）写入 progress 的 `operations.build`，进程或服务重启不重新计时。预算过期后仍先查询同一 run/attempt：已完成且成功可继续验收，确认仍运行才报告等待超时；真实完成失败依旧失败。适配器协议的本地实现及隔离回归不等同于现役服务已更新，实际安装与批次状态仍以对应验收凭证为准。
 
+### 2026-10-19 只读恢复实际启用
+
+原协调器服务已升级为0.1.7，审查源码`99c518e`，不可变runtime逐字节核对通过；项目适配器审查源码`d4b31c1`已合入main。核心59项、项目203项回归及核心四组平台/Python CI通过，规格/质量复审通过。对最终适配器与已安装runtime的真实HTTP断连、服务进程重启联合验收确认：原批次、版本、冻结SHA和CI run不变，prepare与构建次数均为1。原72批次、81任务和6项目配置核对未变。
+
+此验收只使用临时状态及模拟产物，本轮没有新的App发布或网关部署；固定APK/IPA仍为0.3.11。[完整记录](plans/2026-10-19-release-query-recovery.md)含实际源码和证据位置。已失败的历史批次依旧不可resume；本机制用于已冻结且尚未失败的批次，不回写旧失败记录。
+
 客户端每批发布前更新受控的 `release/notes.md`，只列本版本实际用户变化。GitHub Release、LAN 和 OTA 共用冻结工作区的日志读取器；显式 manifest 日志优先，当前 canonical manifest 缺少此字段时读取该文件，缺失、空白或与 HEAD 不一致均失败。软件源沿用该 GitHub Release 日志，不用批次 ID 或分发模板代替。
 
 私有 options 引用原 `CodexMobile/ios-release.local.json`、现有 LAN 发布器、现有网关目录/label；软件源管理仅引用该服务既有私有 credentials，凭据不复制、不进入 Git/命令参数或共同凭证。维护软件源仍遵循 [现役上游说明](https://github.com/zh0ngtian/SignOs/blob/main/distribution/source-aggregator/README.md)，只操作本仓库既有 unsigned 订阅，保留完整署名和展示信息，不维护另一个签名包订阅。
