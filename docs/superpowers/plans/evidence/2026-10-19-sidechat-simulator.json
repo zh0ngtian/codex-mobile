@@ -1,8 +1,8 @@
 {
   "date": "2026-10-19",
-  "status": "main-integrated-not-published",
+  "status": "joint-release-published",
   "branch": "codex/sidechat",
-  "scope": "source-integration-only",
+  "scope": "joint-client-and-gateway-release",
   "device": {
     "name": "iPhone 17 Pro",
     "os": "iOS 27.0",
@@ -76,13 +76,21 @@
   },
   "deployment": {
     "mainAdvanced": true,
-    "clientPublished": false,
-    "productionGatewayDeployed": false,
+    "clientPublished": true,
+    "productionGatewayDeployed": true,
     "temporaryGatewayDevice": "Sidechat 验收",
-    "integrationRequestedByUser": true
+    "integrationRequestedByUser": true,
+    "publicationRequestedByUser": true
   },
-  "remaining": [
-    "formal-client-publication",
-    "production-gateway-deployment"
-  ]
+  "remaining": [],
+  "jointRelease": {
+    "version": "0.3.17",
+    "clientBatch": "8b5c6bc7-0aa7-4f0e-91c1-5add42278dfc",
+    "gatewayBatch": "cd8e1130-61a5-4b7f-a6f0-1f6b50ca6a4f",
+    "evidence": "2026-10-19-entry-sidechat-release.json",
+    "fullSuiteTests": 1670,
+    "sidechatFocusedTests": 34,
+    "sidechatUiPassed": 2,
+    "testBranchesRemaining": 0
+  }
 }

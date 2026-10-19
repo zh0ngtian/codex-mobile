@@ -1,5 +1,5 @@
 {
-  "status": "联合验证通过，待正式发布",
+  "status": "已验证，已联合发布0.3.17",
   "task": "native-entry-position-20261019",
   "sourceBase": "9ef2cce2f4dc1f5ca6e8f3fd98236c042d7b391d",
   "simulator": {
@@ -159,11 +159,17 @@
     "使用模拟器与用户提供录屏，未进行真机覆盖安装及数据保留验收。"
   ],
   "publication": {
-    "readySubmitted": false,
-    "versionAllocated": false,
+    "readySubmitted": true,
+    "versionAllocated": true,
     "mainIntegrated": "95f62345311222ab187157ed42c9750b0cd48d40",
     "authorization": "用户明确回复一起发布，包含Sidechat配套生产网关",
-    "gatewayTask": "native-entry-position-gateway-20261019"
+    "gatewayTask": "native-entry-position-gateway-20261019",
+    "version": "0.3.17",
+    "clientBatch": "8b5c6bc7-0aa7-4f0e-91c1-5add42278dfc",
+    "gatewayBatch": "cd8e1130-61a5-4b7f-a6f0-1f6b50ca6a4f",
+    "clientFrozenSha": "a9316f32de1a4c87b31cdc8fc79bf7d5d48863ba",
+    "gatewayFrozenSha": "1f215f542355fee2b279a8c3aa28906d655ece3f",
+    "verification": "全部必要渠道及两份共同成功凭证核对通过"
   },
   "jointValidation": {
     "vitest": {

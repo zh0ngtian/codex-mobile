@@ -26,9 +26,9 @@
 - [x] 同步 `docs/interaction-alignment.md` 现行要求、验收和状态，更新中文 `release/notes.md`，只列本次用户变化。
 - [x] 执行 `python3 -B -m unittest discover -s tests/ci -p 'test_*.py'`、协调器59项回归、`NODE_OPTIONS=--no-experimental-webstorage npm test -- tests/ci --maxWorkers=2 --testTimeout=60000` 及 `npm run typecheck`，分别212、59、140项及类型检查通过，实际日志已保存。
 - [x] 独立审查和`git diff --check`通过，按中文Conventional Commits提交并推送修复分支。
-- [ ] 用户确认发布范围后整合最新main、补齐受影响验证，再提交ready。
-- [ ] 等待协调器main、GitHub双端构建/Release、本机签名、OTA、固定APK/IPA、unsigned软件源及共同成功receipt；失败按最新失败叶节点关联修复。
-- [ ] 独立核对固定JSON、HEAD、完整GET、版本、大小与SHA-256及软件源中文日志/署名；恢复正常模拟器App、释放锁并同步交付记录。
+- [x] 用户确认发布范围后整合最新main、补齐受影响验证，再提交ready。
+- [x] 等待协调器main、GitHub双端构建/Release、本机签名、OTA、固定APK/IPA、unsigned软件源及共同成功receipt；失败按最新失败叶节点关联修复。
+- [x] 独立核对固定JSON、HEAD、完整GET、版本、大小与SHA-256及软件源中文日志/署名；恢复正常模拟器App、释放锁并同步交付记录。
 
 原始录屏和前一轮逐帧证据保留于主工作区 `.mobile-build/investigation-entry-recording-20261019/`。未取得实际逐帧及成功批次证据前，不标记修复已验证或已发布。
 
@@ -48,7 +48,11 @@
 - [x] 合并后运行全量Vitest、typecheck、服务端构建、适配器与协调恢复回归。
 - [x] iPhone17Pro正常字号竖屏复验普通会话逐帧位置与Sidechat往返/关闭；创建的临时分支及时关闭。
 - [x] 独立合并审查通过，中文提交并推送统一SHA。
-- [ ] 网关先ready并核对成功凭证，再对客户端ready同一SHA。
-- [ ] 等待两个成功批次，独立核对APK、签名IPA、OTA、unsigned软件源及生产网关。
+- [x] 网关先ready并核对成功凭证，再对客户端ready同一SHA。
+- [x] 等待两个成功批次，独立核对APK、签名IPA、OTA、unsigned软件源及生产网关。
 
 联合审查按红绿回归修复5项Sidechat边界：原草稿在同步入队前保留；恢复保留对象身份、在途及UUID锁；关闭后拒绝迟到恢复；审批完成通知传递全局队列；实时busy开始/完成优先于旧read。原4项管理器回归、2项App失败输入回归及正反busy时序先失败后通过；加入已入队失败不重复恢复及上传期间继续编辑覆盖，最终3文件34项通过，独立复审无剩余阻塞。iOS关闭菜单统一以元素中心点击，保留原菜单消失和确认/取消断言；测试失败创建的临时分支已按创建时间准确关闭，旧分支保留。
+
+## 正式联合交付
+
+正式联合发布已完成：客户端版本0.3.17（3017），客户端成功批次`8b5c6bc7-0aa7-4f0e-91c1-5add42278dfc`、冻结main`a9316f32de1a4c87b31cdc8fc79bf7d5d48863ba`；网关成功批次`cd8e1130-61a5-4b7f-a6f0-1f6b50ca6a4f`、冻结main`1f215f542355fee2b279a8c3aa28906d655ece3f`。两目标ready同一源码`fbfc111b96a8d99dfe7e313322e05dd24ba664f6`，均已核对源码包含与必要CI成功。固定APK/已签名IPA和HTTPS IPA经独立HEAD/完整GET校验，OTA清单、manifest、安装页、签名身份/完整权限与钥匙串组、unsigned软件源版本、中文日志和既有署名均通过。生产网关独立认证探测确认Sidechat路由生效，未创建生产测试会话。模拟器已恢复无测试参数的正常App并移除探针，锁已释放；本轮临时分支已全部关闭，旧分支保留。详见[公共交付凭证](evidence/2026-10-19-entry-sidechat-release.json)。未进行真机覆盖安装和数据保留验收。
