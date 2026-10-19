@@ -1,0 +1,121 @@
+{
+  "date": "2026-10-19",
+  "status": "已验证，未发布",
+  "implementationSha": "f18b74ad5eb166598f8334c1cf4de5b749d0e127",
+  "environment": {
+    "device": "iPhone 17 Pro",
+    "os": "iOS 27.0",
+    "orientation": "竖屏",
+    "fontSize": "正常",
+    "configuration": "Debug",
+    "version": "0.3.8 (3008，仅本地测试身份)"
+  },
+  "checks": {
+    "vitest": {
+      "files": 146,
+      "tests": 1618,
+      "passed": true,
+      "log": "/private/tmp/codex-sidebar-empty-flash-20261019/full-suite-verified.log"
+    },
+    "typecheck": {
+      "passed": true,
+      "log": "/private/tmp/codex-sidebar-empty-flash-20261019/favorites-error-typecheck.log"
+    },
+    "frontendBuild": {
+      "passed": true,
+      "log": "/private/tmp/codex-sidebar-empty-flash-20261019/frontend-build-verified.log"
+    },
+    "simulatorBuild": {
+      "passed": true
+    },
+    "specReview": {
+      "passed": true,
+      "independentTests": 46,
+      "independentReproTests": 4
+    },
+    "qualityReview": {
+      "passed": true,
+      "independentTests": 95
+    }
+  },
+  "ui": {
+    "test": "AgentAppUITests/testColdStartupSidebarDoesNotFlashUnconfirmedEmptyState",
+    "normal": {
+      "passed": true,
+      "observationWindowSeconds": 6,
+      "rounds": [
+        {
+          "round": 1,
+          "observations": 7,
+          "sawGlobalLoading": false,
+          "sawRealConversation": true
+        },
+        {
+          "round": 2,
+          "observations": 7,
+          "sawGlobalLoading": false,
+          "sawRealConversation": true
+        },
+        {
+          "round": 3,
+          "observations": 7,
+          "sawGlobalLoading": false,
+          "sawRealConversation": true
+        }
+      ],
+      "resultBundle": "/private/tmp/codex-sidebar-empty-flash-20261019/after-fix.xcresult"
+    },
+    "controlledDirectoryDelay": {
+      "passed": true,
+      "delayMilliseconds": 8000,
+      "observationWindowSeconds": 12,
+      "rounds": [
+        {
+          "round": 1,
+          "observations": 18,
+          "sawGlobalLoading": true,
+          "sawRealConversation": true
+        },
+        {
+          "round": 2,
+          "observations": 18,
+          "sawGlobalLoading": true,
+          "sawRealConversation": true
+        },
+        {
+          "round": 3,
+          "observations": 13,
+          "sawGlobalLoading": false,
+          "sawRealConversation": true
+        }
+      ],
+      "resultBundle": "/private/tmp/codex-sidebar-empty-flash-20261019/controlled-delay-verified.xcresult",
+      "method": "仅本机生成index在业务module前包装fetch，每origin首次/api/projects等待8秒后发真实请求；不修改产品源码、后端、会话或设备配置。",
+      "priorAttempt": "6秒观察窗口下首次延迟轮在窗口内尚无会话，判失败；未出现错误空态断言失败。延长观察窗口后重跑通过，不作为耗时性能门槛。"
+    }
+  },
+  "limitations": [
+    "XCTest为同步AX查询，0.05秒循环不是逐帧或固定50ms采样；正常3轮未观测到全局加载态，受控3轮中2轮明确观测到加载再转真实会话。",
+    "初始各阶段、成功真空、失败重试、搜索独立和静默刷新由确定性真实App→runtime→生产Swift DTO及Swift AppSession测试补充；不以UI采样证明每帧。",
+    "本次是空态状态修复验收，没有重新生成性能分布；前轮30+30次性能报告仍只对应报告标注的源码。",
+    "仅模拟器，无真机覆盖安装验收。"
+  ],
+  "restoredArtifact": {
+    "normalIndexSha256": "99891e5e15f8c22033e858f3a8a0ae09e59f2655260983778d71e00ca6576910",
+    "nativeExecutableSha256": "24594123461a593b74d7f477903f9d47038a7a443d722dfe3da6c99a91690d56",
+    "debugDylibSha256": "5bceaa2ebbee98d7c0441e0da37ff5cb77056344f0373f3111dec4796d4a2c41",
+    "frontendAssetsVerified": 64,
+    "version": "0.3.8",
+    "build": "3008",
+    "controlledInjectionRemoved": true,
+    "launchArgs": []
+  },
+  "cleanup": {
+    "simulatorLockReleased": true,
+    "testConversationsCreated": 0,
+    "messagesSent": 0,
+    "controlledInjectionRemoved": true,
+    "releaseOrDeploy": false,
+    "normalAppLaunchedWithoutArguments": true
+  }
+}

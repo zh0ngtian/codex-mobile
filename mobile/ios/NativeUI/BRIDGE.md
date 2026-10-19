@@ -20,6 +20,8 @@ Swift 通过 `window.codexMobileNativeCommand(command)` 发出 `codex-mobile-nat
 
 可选字段：`threadId, backendId, panel, error, badge`。
 
+`navigationLoading?: boolean` 表示普通会话导航列表的首次读取进度，与对话详情的 `loading` 分开。原生首帧默认加载；收到旧快照缺少该字段时，沿用 `!ready` 兼容。搜索使用搜索分组自己的 `loading`，普通列表错误优先显示错误与重试。已知项目（含无项目）在首次请求状态尚未建立或为 `idle` 时，业务将项目分组 `loading` 投影为 `"loading"`；成功返回空数据后才以 `"ready"` 显示空态，失败为 `"error"`。目录及空优先摘要不能提前结束首次列表加载，已有数据的静默刷新保留原有内容。
+
 对话用量卡片另有可选展示字段：`contextUsage` 由最近请求 `last.totalTokens / modelContextWindow` 投影；`sevenDayRateLimit` 与 `fiveHourRateLimit` 分别严格匹配 10080 和 300 分钟的额度窗口（`{remainingPercent, windowDurationMins, resetsAt?}`），时间剩余显示五小时额度百分比。`inputTokenUsage?: string` 与 `outputTokenUsage?: string` 分别由当前会话累计 `total.inputTokens`、`total.outputTokens` 在共享业务层格式化为十进制 K/M（最多一位小数，如 `100K`、`28.5K`）；Swift 只展示字符串。`inputCacheHitPercent?: number` 为 `total.cachedInputTokens / total.inputTokens * 100`，最多一位小数；只有输入大于 0、缓存数非负且不超过输入时才投影。输入、输出的真实 0 正常显示，零输入的缓存率显示「暂无数据」。卡片共五行：三项额度、输入 Token 附缓存命中率、输出 Token。缺失或无效数据省略对应字段，原生显示「暂无数据」，不新增请求、持久化或数据源。旧快照缺少这些字段仍可解码。连接状态为字符串，原生只显示，不解释协议。model/effort 为显示标签；models/efforts 的 option.value 为发回的真实业务选择值。
 
 - backend: `{id,title,subtitle?,connected?}`。
