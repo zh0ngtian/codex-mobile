@@ -75,6 +75,10 @@ struct ConversationScreen: View {
                         #endif
                     }
                 }
+                // 首次定位和高度回填均在布局阶段处理；异步scrollTo会漏掉中间显示帧。
+                // 用户阅读、手动回底动画和历史前插期间不启用此自动对齐。
+                .defaultScrollAnchor(.bottom, for: .initialOffset)
+                .defaultScrollAnchor(followsLatest && returnToken == nil && !loadingHistory ? .bottom : nil, for: .sizeChanges)
                 .scrollBounceBehavior(.always)
                 .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("conversation.timeline")

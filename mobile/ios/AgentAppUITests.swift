@@ -89,6 +89,7 @@ final class AgentAppUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-conversation-long-fixture", "--agent-scroll-diagnostics", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
         app.launch()
+        readEarlierMessages(app, toStart: true)
         let jump = app.buttons["conversation.scrollToBottom"]
         XCTAssertTrue(jump.waitForExistence(timeout: 8))
         let timeline = app.scrollViews["conversation.timeline"]
@@ -166,11 +167,29 @@ final class AgentAppUITests: XCTestCase {
     private func launchConversationFixture(long: Bool = false, resetContext: Bool = false) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
-        if long { app.launchArguments.append("--agent-conversation-long-fixture") }
+        if long { app.launchArguments += ["--agent-conversation-long-fixture", "--agent-scroll-diagnostics"] }
         if resetContext { app.launchArguments.append("--agent-conversation-reset-context") }
         app.launch()
         XCTAssertTrue(app.staticTexts["history-request-count"].waitForExistence(timeout: 8))
         return app
+    }
+
+    /// 夹具与真实会话都从底部进入；阅读、分页和回底用例先执行真实的上翻手势。
+    private func readEarlierMessages(_ app: XCUIApplication, toStart: Bool = false) {
+        let timeline = app.scrollViews["conversation.timeline"]
+        XCTAssertTrue(timeline.waitForExistence(timeout: 8))
+        let question = app.staticTexts["请检查项目上下文。"]
+        let offset = app.staticTexts["scroll.diagnostic-offset"]
+        let from = timeline.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.3))
+        let to = timeline.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.8))
+        for _ in 0..<(toStart ? 12 : 1) {
+            if toStart && question.exists && question.isHittable && abs(Double(offset.label) ?? .greatestFiniteMagnitude) <= 2 { return }
+            from.press(forDuration: 0.05, thenDragTo: to, withVelocity: .slow, thenHoldForDuration: 0.1)
+        }
+        if toStart {
+            XCTAssertTrue(question.isHittable, "分页用例必须先实际滚到首条消息")
+            XCTAssertEqual(Double(offset.label) ?? .greatestFiniteMagnitude, 0, accuracy: 2, "分页前必须实际到顶，不能仅凭首消息可见判断")
+        }
     }
 
     func testConversationUsesReferenceHistoryComponentAndTrimmedUserText() {
@@ -334,6 +353,7 @@ final class AgentAppUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-conversation-long-fixture", "--agent-scroll-diagnostics", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
         app.launch()
+        readEarlierMessages(app)
         let button = app.buttons["conversation.scrollToBottom"]
         XCTAssertTrue(button.waitForExistence(timeout: 8))
         button.tap()
@@ -353,6 +373,7 @@ final class AgentAppUITests: XCTestCase {
         app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-conversation-long-fixture", "--agent-running-scroll-fixture", "--agent-scroll-diagnostics", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
         if !streaming { app.launchArguments.append("--agent-no-stream-fixture") }
         app.launch()
+        readEarlierMessages(app)
         let button = app.buttons["conversation.scrollToBottom"]
         XCTAssertTrue(button.waitForExistence(timeout: 8))
         XCTAssertTrue(app.buttons["composer.submit"].label == "停止")
@@ -461,7 +482,7 @@ final class AgentAppUITests: XCTestCase {
         let headerY = header.frame.minY
         let from = timeline.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.3))
         let to = timeline.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.8))
-        from.press(forDuration: 0.05, thenDragTo: to, withVelocity: .slow, thenHoldForDuration: 0.1)
+        readEarlierMessages(app, toStart: true)
         XCTAssertEqual(counter.label, "0", "第一次到顶及同一手势下拉不加载")
         let priorY = question.frame.minY
         captureConversation("首次下拉-未加载", app: app)
@@ -1086,7 +1107,7 @@ final class AgentAppUITests: XCTestCase {
         let from = timeline.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.3))
         let to = timeline.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.8))
         func pull() { from.press(forDuration: 0.05, thenDragTo: to, withVelocity: .slow, thenHoldForDuration: 0.1) }
-        pull(); pull()
+        readEarlierMessages(app, toStart: true); pull()
         XCTAssertEqual(counter.label, "1")
         pull(); pull()
         expectation(for: NSPredicate(format: "label == '2'"), evaluatedWith: counter)
@@ -1098,6 +1119,7 @@ final class AgentAppUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-conversation-long-fixture", "--agent-preview-polish-fixture", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
         app.launch()
+        readEarlierMessages(app)
         let jump = app.buttons["conversation.scrollToBottom"]
         XCTAssertTrue(jump.waitForExistence(timeout: 8), "离开底部时应显示回到底部按钮")
         guard jump.exists else { return }
@@ -1247,6 +1269,36 @@ final class AgentAppUITests: XCTestCase {
                     app = try launchConnectedApp(extraLaunchArguments: profileArgs + ["--profile-cold"])
                     open(title, index: index, round: round, mode: "cold")
                 }
+            }
+        }
+    }
+
+    func testProfileRecordedConversationEntryPositions() throws {
+        let app = try launchConnectedApp(extraLaunchArguments: ["--conversation-load-profile"])
+        let terms = ["修复 iOS 会话闪烁", "按参考图重做 UI 按键"]
+        for round in 0..<5 {
+            for (index, term) in terms.enumerated() {
+                if !app.buttons["sidebar.more"].isHittable { app.buttons["会话列表"].tap() }
+                let expand = app.buttons["展开项目 codex-mobile"]
+                if expand.exists { expand.tap() }
+                let row = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label BEGINSWITH %@", "sidebar.conversation.", term)).firstMatch
+                for _ in 0..<12 {
+                    if row.exists { break }
+                    let more = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND identifier ENDSWITH %@", "sidebar.more.", "/codex-mobile")).firstMatch
+                    guard more.waitForExistence(timeout: 8) else { break }
+                    more.tap()
+                    RunLoop.current.run(until: Date().addingTimeInterval(0.4))
+                }
+                XCTAssertTrue(row.waitForExistence(timeout: 15), "复现用户录屏中的真实会话")
+                guard row.exists else { return }
+                let status = app.staticTexts["load-profile.status"]
+                let previous = status.label
+                row.tap()
+                expectation(for: NSPredicate { _, _ in status.label.hasPrefix("done:") && status.label != previous }, evaluatedWith: status)
+                waitForExpectations(timeout: 22)
+                print("ENTRY_POSITION_SAMPLE", round, index, status.label)
+                XCTAssertTrue(Self.hasRenderedConversationText(app.screenshot().image))
+                if round == 0 { captureConversation("首屏位置-录屏会话\(index)", app: app) }
             }
         }
     }

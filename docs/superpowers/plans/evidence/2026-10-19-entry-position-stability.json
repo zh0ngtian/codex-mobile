@@ -1,0 +1,168 @@
+{
+  "status": "已验证，待确认发布范围，未发布",
+  "task": "native-entry-position-20261019",
+  "sourceBase": "9ef2cce2f4dc1f5ca6e8f3fd98236c042d7b391d",
+  "simulator": {
+    "model": "iPhone 17 Pro",
+    "runtime": "iOS 27.0",
+    "orientation": "portrait",
+    "textSize": "normal",
+    "isolatedInstance": true
+  },
+  "userRecording": {
+    "jumpSeconds": [
+      3.55,
+      3.566667,
+      3.583333
+    ],
+    "sha256": "4fc142b172f95640093ef840c95a376ab0383fb18e938e2004fb6d4e61058294"
+  },
+  "baseline": {
+    "passed": false,
+    "trials": 10,
+    "sampledFrames": 490,
+    "visibleFrames": 390,
+    "wrongFrames": 5,
+    "maximumGapPoints": 118.33333333333348
+  },
+  "fixedRuns": [
+    {
+      "passed": true,
+      "trials": 10,
+      "sampledFrames": 532,
+      "visibleFrames": 431,
+      "wrongFrames": 0,
+      "maximumGapPoints": 0
+    },
+    {
+      "passed": true,
+      "trials": 10,
+      "sampledFrames": 460,
+      "visibleFrames": 362,
+      "wrongFrames": 0,
+      "maximumGapPoints": 0
+    }
+  ],
+  "pairedPresentedGeometry": {
+    "baseline": [
+      {
+        "shownHeight": 2336.333,
+        "shownY": -1619.333,
+        "shownBottom": 717.0,
+        "offset": 1619.333,
+        "presentedOffset": 1619.333
+      },
+      {
+        "shownHeight": 2454.667,
+        "shownY": -1619.333,
+        "shownBottom": 835.333,
+        "offset": 1619.333,
+        "presentedOffset": 1619.333
+      },
+      {
+        "shownHeight": 2454.667,
+        "shownY": -1737.667,
+        "shownBottom": 717.0,
+        "offset": 1737.667,
+        "presentedOffset": 1737.667
+      }
+    ],
+    "fixed": [
+      {
+        "shownHeight": 2336.333,
+        "shownY": -1619.333,
+        "shownBottom": 717.0,
+        "offset": 1619.333,
+        "presentedOffset": 1619.333
+      },
+      {
+        "shownHeight": 2454.667,
+        "shownY": -1737.667,
+        "shownBottom": 717.0,
+        "offset": 1737.667,
+        "presentedOffset": 1737.667
+      },
+      {
+        "shownHeight": 2454.667,
+        "shownY": -1737.667,
+        "shownBottom": 717.0,
+        "offset": 1737.667,
+        "presentedOffset": 1737.667
+      }
+    ]
+  },
+  "measurement": "同一呈现树各层自身bounds转换，检查内容底边和视口；要求可见且有效的呈现采样。模型offset不作为显示位置验收依据。",
+  "checks": {
+    "adapterRegression": 212,
+    "coordinatorRecovery": 59,
+    "buildContract": 140,
+    "typecheck": "passed",
+    "analyzerRegression": 8,
+    "ui": {
+      "uniqueTests": 12,
+      "latestPassed": 12,
+      "tests": {
+        "testComposerReferenceToolbarAndBalancedTextInsets": {
+          "status": "passed",
+          "evidenceGroup": "entry-position-verified-suite"
+        },
+        "testConversationEntryDoesNotInheritSidebarAnimation": {
+          "status": "passed",
+          "evidenceGroup": "entry-position-verified-suite"
+        },
+        "testDelayedLongReportShowsBottomAfterInitialLayout": {
+          "status": "passed",
+          "evidenceGroup": "entry-position-verified-suite"
+        },
+        "testHistoryRequiresAnotherPullAndPreservesReadingAnchor": {
+          "status": "passed",
+          "evidenceGroup": "entry-position-fixture-preconditions"
+        },
+        "testProfileRecordedConversationEntryPositions": {
+          "status": "passed",
+          "evidenceGroup": "entry-position-verified-suite"
+        },
+        "testReopeningSameConversationReleasesHistoryRequest": {
+          "status": "passed",
+          "evidenceGroup": "entry-position-fixture-preconditions"
+        },
+        "testReturnToBottomAndNeutralPreviews": {
+          "status": "passed",
+          "evidenceGroup": "entry-position-verified-suite"
+        },
+        "testReturnToBottomCanInterruptScrolling": {
+          "status": "passed",
+          "evidenceGroup": "entry-position-fixture-preconditions"
+        },
+        "testReturnToBottomUsesContinuousMotion": {
+          "status": "passed",
+          "evidenceGroup": "entry-position-verified-suite"
+        },
+        "testRunningReturnToBottomKeepsAnimationDuringOutput": {
+          "status": "passed",
+          "evidenceGroup": "entry-position-verified-suite"
+        },
+        "testRunningReturnToBottomWithoutNewOutput": {
+          "status": "passed",
+          "evidenceGroup": "entry-position-verified-suite"
+        },
+        "testSidebarTopRefreshMatchesMoreButtonAndRunsRefresh": {
+          "status": "passed",
+          "evidenceGroup": "entry-position-verified-suite"
+        }
+      }
+    },
+    "independentReview": "呈现采样与测试前置问题已修正，未发现生产阻塞问题"
+  },
+  "testConversationsCreated": 0,
+  "limitations": [
+    "使用模拟器与用户提供录屏，未进行真机覆盖安装及数据保留验收。"
+  ],
+  "publication": {
+    "readySubmitted": false,
+    "versionAllocated": false,
+    "newMain": "95f62345311222ab187157ed42c9750b0cd48d40",
+    "pendingDecision": "新main含用户此前要求仅合入而未发布的Sidechat及配套网关；待确认是否一并发布。",
+    "integratedIntoTestedBranch": false
+  }
+}

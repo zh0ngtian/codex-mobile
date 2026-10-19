@@ -47,9 +47,18 @@ struct NativeLoadRenderProbe: UIViewRepresentable {
             var ancestor = superview
             while let view = ancestor, !(view is UIScrollView) { ancestor = view.superview }
             if let scroll = ancestor as? UIScrollView {
-                let shown = layer.presentation()?.convert(bounds, to: window?.layer.presentation()) ?? convert(bounds, to: window)
+                // 同一呈现树内转换各自的bounds，不能混用模型高度与上一显示帧的偏移。
+                let contentLayer = layer.presentation()
+                let viewportLayer = scroll.layer.presentation()
+                let windowLayer = window?.layer.presentation()
+                let shown = contentLayer.map { $0.convert($0.bounds, to: windowLayer) } ?? convert(bounds, to: window)
+                let viewport = viewportLayer.map { $0.convert($0.bounds, to: windowLayer) } ?? scroll.convert(scroll.bounds, to: window)
                 let x = (shown.minX * 3).rounded() / 3
                 let next = "\(scroll.contentSize.height):\(scroll.contentOffset.y):\(scroll.bounds.width):\(x)"
+                profile.scroll("native-frame", view: scroll, data: ["shownX": Double(x), "shownY": Double(shown.minY),
+                    "shownHeight": Double(shown.height), "shownBottom": Double(shown.maxY),
+                    "viewportTop": Double(viewport.minY), "viewportBottom": Double(viewport.maxY),
+                    "presentationReady": contentLayer != nil && viewportLayer != nil && windowLayer != nil])
                 if next != signature { signature = next; lastVisualChange = now }
             }
             let lastChange = max(lastVisualChange, profile.lastUpdate)

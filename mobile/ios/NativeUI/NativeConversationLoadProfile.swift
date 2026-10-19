@@ -2,6 +2,7 @@
 import Foundation
 import Observation
 import CryptoKit
+import UIKit
 
 /// 显式本地参数才启用；磁盘仅保存阶段、计数和散列，不保存会话正文/地址/凭据。
 @MainActor @Observable final class NativeConversationLoadProfile {
@@ -21,6 +22,7 @@ import CryptoKit
         var pending: Set<Int> = []
         var lastUpdate = Date().timeIntervalSince1970 * 1000
         var snapshots = 0
+        var lastContext: String?
         init(id: String, thread: String, backend: String) {
             self.id = id; self.thread = thread
             threadKey = SHA256.hash(data: Data((backend + ":" + thread).utf8)).prefix(8).map { String(format: "%02x", $0) }.joined()
@@ -56,7 +58,12 @@ import CryptoKit
         mark(phase, at: wall, data: data)
     }
     func snapshot(_ snapshot: NativeSnapshot, received: Double, serialized: Double, decoded: Double, store: Double, projected: Double, bytes: Int) {
-        guard Self.enabled, let value = trial, snapshot.threadId == value.thread, snapshot.loading == "ready" else { return }
+        guard Self.enabled, let value = trial, snapshot.threadId == value.thread else { return }
+        mark("snapshot-state", at: received, data: ["loading": snapshot.loading ?? "", "messages": snapshot.messages.count,
+            "contextChanged": value.lastContext != snapshot.contextId, "busy": snapshot.busy,
+            "textChars": snapshot.messages.reduce(0) { $0 + $1.text.count }])
+        value.lastContext = snapshot.contextId
+        guard snapshot.loading == "ready" else { return }
         value.snapshots += 1; value.lastUpdate = Self.now
         guard !value.ready else { return }
         value.ready = true
@@ -69,6 +76,18 @@ import CryptoKit
     func mark(_ phase: String, at: Double = NativeConversationLoadProfile.now, data: [String: Any] = [:]) {
         guard Self.enabled, let value = trial else { return }
         value.events.append(["phase": phase, "atMs": at, "elapsedMs": at - value.started, "data": data])
+    }
+    func scroll(_ phase: String, view: UIScrollView?, data extra: [String: Any] = [:]) {
+        guard Self.enabled, trial != nil, let view else { return }
+        var data = extra
+        data["scroll"] = String(ObjectIdentifier(view).hashValue)
+        data["offset"] = Double(view.contentOffset.y)
+        data["presentedOffset"] = Double(view.layer.presentation()?.bounds.origin.y ?? view.contentOffset.y)
+        data["contentHeight"] = Double(view.contentSize.height)
+        data["viewportHeight"] = Double(view.bounds.height)
+        data["topInset"] = Double(view.adjustedContentInset.top)
+        data["bottomInset"] = Double(view.adjustedContentInset.bottom)
+        mark(phase, data: data)
     }
     func finish(at wall: Double, timedOut: Bool = false) {
         guard let value = trial else { return }
