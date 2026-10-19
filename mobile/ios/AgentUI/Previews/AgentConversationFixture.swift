@@ -9,6 +9,7 @@ import SwiftUI
 final class AgentConversationFixture {
     static let argument = "--agent-conversation-fixture"
     private(set) var historyRequestCount = 0
+    private var deferredCommentary: NativeMessage?
     private var navigationRefreshCount = 0
     private let store: NativeUIStore
     private let session: AppSession
@@ -52,6 +53,10 @@ final class AgentConversationFixture {
             NativeMessage(id: "answer", role: "assistant", text: "已完成检查。查看 [网页链接](https://example.com) 与 [文件链接](/tmp/example.swift#L12)。", timestamp: date.addingTimeInterval(120).timeIntervalSince1970, turnId: "fixture-turn", phase: "final_answer"),
         ]
         value.messages[2].status = ProcessInfo.processInfo.arguments.contains("--agent-no-duration-fixture") ? nil : "1小时2分钟3秒"
+        if ProcessInfo.processInfo.arguments.contains("--agent-commentary-backfill-fixture") {
+            deferredCommentary = history
+            value.messages.removeAll { $0.id == history.id }
+        }
         if ProcessInfo.processInfo.arguments.contains("--agent-steered-replies-fixture") {
             func history(_ id: String, _ text: String) -> NativeMessage {
                 NativeMessage(id: id, role: "activity", text: "", turnId: "fixture-turn",
@@ -310,6 +315,12 @@ final class AgentConversationFixture {
             snapshot.title = "会话进入回归"
             snapshot.messages = [NativeMessage(id: "entry-answer", role: "assistant", text: "会话进入标记。正文应当直接显示，不能继承侧栏的透明度转场。", phase: "final_answer")]
             snapshot.sidebarOpen = false
+            snapshot.commandResults = [NativeCommandResult(id: command.id, name: command.name, ok: true, contextId: snapshot.contextId)]
+            publish()
+        } else if command.name == "thread.manage", command.params["action"] == .string("refresh"),
+                  ProcessInfo.processInfo.arguments.contains("--agent-commentary-backfill-fixture"), let history = deferredCommentary {
+            snapshot.messages.insert(history, at: 1)
+            deferredCommentary = nil
             snapshot.commandResults = [NativeCommandResult(id: command.id, name: command.name, ok: true, contextId: snapshot.contextId)]
             publish()
         } else if command.name == "navigation.refresh" {

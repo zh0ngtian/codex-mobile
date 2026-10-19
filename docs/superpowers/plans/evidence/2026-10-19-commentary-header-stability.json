@@ -1,0 +1,106 @@
+{
+  "status": "已验证，待发布验收",
+  "task": "native-commentary-header-stability-20261019",
+  "scope": "iOS执行过程真实数据回填时入口行高稳定；默认双端客户端发布，不部署网关",
+  "video": {
+    "videoSha256": "f5d7b35d3681fd46c1f69721ffaca4303b07f85e885bb7792ba80f4eb08263ab",
+    "samples": [
+      {
+        "frame": 49,
+        "time": 0.816667,
+        "bubbleTextTopPixels": 939,
+        "bubbleTextBottomPixels": 976
+      },
+      {
+        "frame": 50,
+        "time": 0.833333,
+        "bubbleTextTopPixels": 939,
+        "bubbleTextBottomPixels": 976
+      },
+      {
+        "frame": 51,
+        "time": 0.85,
+        "bubbleTextTopPixels": 939,
+        "bubbleTextBottomPixels": 976
+      },
+      {
+        "frame": 52,
+        "time": 0.866667,
+        "bubbleTextTopPixels": 858,
+        "bubbleTextBottomPixels": 895
+      }
+    ],
+    "shiftPixels": -81,
+    "scale": 3,
+    "shiftPoints": -27.0
+  },
+  "rootCause": "空entries的用时Text未设置44pt最小行高，异步回填后过程Button使局部重排",
+  "fix": "纯用时Text保持与过程Button相同的44pt最小行高，保留纯文字语义及正文异步加载",
+  "red": {
+    "durationCenterBefore": 218.5,
+    "durationCenterAfter": 230.33333587646484,
+    "replyTimeBefore": 271.66666666666663,
+    "replyTimeAfter": 295.3333333333333,
+    "expectedFailureAssertions": 2
+  },
+  "green": {
+    "durationCenterBefore": 230.33333333333331,
+    "durationCenterAfter": 230.33333587646484,
+    "replyTimeBefore": 295.3333333333333,
+    "replyTimeAfter": 295.3333333333333,
+    "tolerancePoints": 1,
+    "pixelTransitionFrames": 41,
+    "pixelBounds": {
+      "duration": [
+        [
+          670,
+          714
+        ]
+      ],
+      "reply": [
+        [
+          795,
+          841
+        ]
+      ],
+      "replyTime": [
+        [
+          896,
+          939
+        ]
+      ]
+    },
+    "videoSha256": "1a524303af8a8fb43ae7d8b1ad36a886e3e0766f10c7bf9ed2527b5a50e49c7c",
+    "pixelPositionsStable": true
+  },
+  "verification": {
+    "simulator": "iPhone17Pro / iOS27，正常字号、竖屏",
+    "uiDistinctPassed": 6,
+    "uiCases": [
+      "testCommentaryBackfillDoesNotMoveDurationOrReply",
+      "testCompletedDurationMovesToProcessHeader",
+      "testUnknownDurationKeepsProcessDisclosure",
+      "testConversationUsesReferenceHistoryComponentAndTrimmedUserText",
+      "testSteeredRepliesStayInsideProcessBeforeFinalAnswer",
+      "testProfileRecordedConversationEntryPositions"
+    ],
+    "realEntryTrials": 10,
+    "bottomFrames": 413,
+    "bottomVisibleFrames": 313,
+    "bottomRegressions": 0,
+    "adapterRegression": 212,
+    "coordinatorRecovery": 59,
+    "buildContractFiles": 18,
+    "buildContractTests": 140,
+    "typecheck": "passed",
+    "independentReview": "无Critical/Important，补充留白点击及文档复核通过",
+    "existingTimestampTest": "旧版本中心点击同样失败；改为气泡留白点击并等待消失后，旧实现与修复实现均通过。不宣称正文中心点击问题已修复。",
+    "realTestConversationsCreated": 0,
+    "deviceInstall": "未进行真机覆盖安装与数据保留验收"
+  },
+  "publication": {
+    "readySubmitted": false,
+    "gatewayDeployed": false
+  },
+  "verifiedAt": 1792413356.614895
+}
