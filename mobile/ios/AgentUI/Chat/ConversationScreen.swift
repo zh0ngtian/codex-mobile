@@ -228,7 +228,7 @@ struct ConversationScreen: View {
             proxy.scrollTo("bottom", anchor: .bottom)
             finish()
         } else {
-            withAnimation(.easeInOut(duration: 1.2), completionCriteria: .logicallyComplete) {
+            withAnimation(.easeIn(duration: 0.55), completionCriteria: .logicallyComplete) {
                 proxy.scrollTo("bottom", anchor: .bottom)
             } completion: { finish() }
         }
