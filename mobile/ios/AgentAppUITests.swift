@@ -821,12 +821,12 @@ final class AgentAppUITests: XCTestCase {
 
     func testSidebarStatusMarkersFollowNames() {
         let app = XCUIApplication()
-        app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-sidebar-polish-fixture", "-accent", "Black", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
+        app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-sidebar-polish-fixture", "-accent", "Pink", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
         app.launch()
         app.buttons["会话列表"].tap()
         let unread = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "任务 Alpha")).firstMatch
         XCTAssertTrue(unread.waitForExistence(timeout: 5))
-        // 仅有一个可访问标题的Button会把文字AX frame扩成整行，因此用行内最右侧的深色像素定位未读点。
+        // 标题AX frame可能扩成整行，用行内最右侧的文字或强调色像素定位状态。
         let unreadX = Self.lastInkX(app.screenshot().image, in: unread.frame, screen: app.frame)
         XCTAssertNotNil(unreadX)
         if let unreadX {
@@ -837,6 +837,7 @@ final class AgentAppUITests: XCTestCase {
         let running = app.activityIndicators.matching(NSPredicate(format: "identifier BEGINSWITH %@", "sidebar.running.")).firstMatch
         XCTAssertLessThanOrEqual(running.frame.minX - runningTitle.frame.maxX, 12)
         XCTAssertGreaterThanOrEqual(running.frame.minX - runningTitle.frame.maxX, 0)
+        captureConversation("未读强调色-会话", app: app)
         app.buttons["收起项目 Alpha"].tap()
         let project = app.buttons["展开项目 Alpha"]
         XCTAssertTrue(project.waitForExistence(timeout: 5))
@@ -861,7 +862,8 @@ final class AgentAppUITests: XCTestCase {
         var last: Int?
         for index in stride(from: 0, to: bytes.count, by: 4) {
             let red = Int(bytes[index]), green = Int(bytes[index + 1]), blue = Int(bytes[index + 2])
-            if red < 60 && green < 60 && blue < 60 {
+            let colored = max(red, green, blue) - min(red, green, blue) > 60
+            if (red < 60 && green < 60 && blue < 60) || colored {
                 last = max(last ?? 0, (index / 4) % width)
             }
         }

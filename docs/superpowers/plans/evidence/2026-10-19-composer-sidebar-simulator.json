@@ -50,5 +50,23 @@
     "localScreenshots": ".mobile-build/acceptance-evidence/multiline-no-icons/",
     "userAcceptance": "pending",
     "published": false
+  },
+  "unreadAccentFollowUp": {
+    "request": "未读标记使用强调色",
+    "scope": [
+      "会话未读圆点",
+      "折叠项目未读汇总圆点"
+    ],
+    "theme": "Pink",
+    "existingUITest": "testSidebarStatusMarkersFollowNames",
+    "result": "passed",
+    "sidebarPinkPixels": {
+      "conversation": 240,
+      "collapsedProject": 240
+    },
+    "resultBundle": "test_sim_2026-10-19T02-24-29-619Z_pid39162_0b6af936.xcresult",
+    "localScreenshots": ".mobile-build/acceptance-evidence/unread-accent/",
+    "userAcceptance": "pending",
+    "published": false
   }
 }
