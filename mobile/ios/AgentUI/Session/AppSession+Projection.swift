@@ -164,6 +164,10 @@ extension AppSession {
         let remote = value.flatMap { $0.hasPrefix("http://") || $0.hasPrefix("https://") || $0.hasPrefix("data:") ? $0 : nil }
         return OutputItem(id: scopedID("output", nativeSnapshot.contextId ?? "", item.id), name: item.title ?? item.id, kind: kind, content: item.text ?? (remote == nil ? value ?? "" : ""), remoteURL: remote, line: item.line)
     }
+    func ownsAttachmentPreviewPanel(_ id: String) -> Bool {
+        // 预览已关闭、业务panel尚未回执时，仍由原预览占有，避免再弹出普通sheet。
+        id.hasPrefix("attachment:") && (previewItem != nil || presentedAttachmentPanelID == id)
+    }
     func projectAttachmentPreview(_ panel: NativePanel?) {
         guard let panel, panel.id.hasPrefix("attachment:"), let download = panel.items.first(where: { $0.id == "draft-download" }), let source = download.value, source.hasPrefix("data:") else { presentedAttachmentPanelID = nil; return }
         guard presentedAttachmentPanelID != panel.id else { return }
