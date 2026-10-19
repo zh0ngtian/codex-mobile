@@ -15,7 +15,8 @@ struct ComposerAttachmentMenu: View {
                 .accessibilityIdentifier("composer.attachments.location")
         } label: {
             Image(systemName: "plus").font(.subheadline).imageScale(.large)
-                .foregroundStyle(AgentTheme.ink).frame(width: 40, height: 44).contentShape(.rect)
+                .foregroundStyle(AgentTheme.ink)
+                .modifier(ComposerControlSurface(circular: true))
         }
         .menuIndicator(.hidden).menuOrder(.fixed).buttonStyle(.plain).tint(AgentTheme.ink)
         .disabled(!enabled)

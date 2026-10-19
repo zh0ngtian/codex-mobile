@@ -1,0 +1,42 @@
+{
+  "date": "2026-10-19",
+  "scope": "iOS原生界面，仅模拟器验收",
+  "device": "iPhone 17 Pro",
+  "runtime": "iOS 27.0",
+  "orientation": "portrait",
+  "textSize": "normal",
+  "codeTests": 33,
+  "distinctUITestsPassed": 15,
+  "typecheck": "passed",
+  "build": "passed",
+  "userAcceptance": "pending",
+  "published": false,
+  "realDeviceInstalled": false,
+  "realThreadsCreated": 0,
+  "rawScroll": {
+    "duringAnimation": {
+      "startCount": 3,
+      "phaseAtStart": "animating",
+      "firstMotionMs": 43
+    },
+    "duringDeceleration": {
+      "startCount": 5,
+      "phaseAtStart": "decelerating",
+      "firstMotionMs": 30,
+      "finalOffset": 1216,
+      "events": "phaseAtStart:decelerating;interrupted:0;start:0;phase:idle:0;finish:0:false:2;phase:animating:0;firstMotion:30;bottom:true:1070;phase:idle:1216",
+      "buttonHiddenAtBottom": true
+    }
+  },
+  "resultBundles": [
+    "test_sim_2026-10-19T01-36-24-678Z_pid39162_334e064c.xcresult",
+    "test_sim_2026-10-19T01-38-51-738Z_pid39162_53abce5f.xcresult",
+    "test_sim_2026-10-19T01-46-12-661Z_pid39162_b52c9fa8.xcresult",
+    "test_sim_2026-10-19T01-57-51-007Z_pid39162_cf765403.xcresult"
+  ],
+  "notes": [
+    "第二、三组出现的菜单选择失败已由最终六项回归修复和覆盖，不将旧失败宣称通过",
+    "菜单重叠命中根因是父输入栏的interactive玻璃；移除整体交互，保留内部原生控件及真实命令",
+    "完整本机证据位于工作区.mobile-build/acceptance-evidence；共享结果包位于Library/Developer/XcodeBuildMCP/workspaces/codex-mobile-e2b7e5b8d624/result-bundles"
+  ]
+}

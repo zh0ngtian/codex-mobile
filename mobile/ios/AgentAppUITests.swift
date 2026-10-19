@@ -4,6 +4,85 @@ import UIKit
 /// 独立界面夹具及本地网关验收；连接凭证不进入源码或测试附件。
 @MainActor
 final class AgentAppUITests: XCTestCase {
+    func testProjectCollapseResetsFiveRowsButDrawerClosePreservesTen() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-sidebar-polish-fixture", "--agent-sidebar-pagination-fixture", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
+        app.launch()
+        app.buttons["会话列表"].tap()
+        let sixth = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "分页会话 6")).firstMatch
+        let more = app.buttons["sidebar.more.project-z"]
+        XCTAssertTrue(more.waitForExistence(timeout: 5))
+        XCTAssertFalse(sixth.exists, "初次只直接展示五条")
+        more.tap()
+        XCTAssertTrue(sixth.waitForExistence(timeout: 5))
+        app.buttons["drawer.close-surface"].tap()
+        app.buttons["会话列表"].tap()
+        XCTAssertTrue(sixth.exists, "关闭边栏保留已展开的十条")
+        app.buttons["收起项目 Zeta"].tap()
+        app.buttons["展开项目 Zeta"].tap()
+        XCTAssertFalse(sixth.exists, "显式折叠再展开仅直接显示五条")
+        XCTAssertTrue(more.exists)
+        captureConversation("项目分页-折叠后恢复五条", app: app)
+    }
+    func testReturnToBottomCanInterruptScrolling() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-conversation-long-fixture", "--agent-scroll-diagnostics", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
+        app.launch()
+        let jump = app.buttons["conversation.scrollToBottom"]
+        XCTAssertTrue(jump.waitForExistence(timeout: 8))
+        let timeline = app.scrollViews["conversation.timeline"]
+        let start = timeline.coordinate(withNormalizedOffset: CGVector(dx: 0.7, dy: 0.7))
+        let end = timeline.coordinate(withNormalizedOffset: CGVector(dx: 0.7, dy: 0.3))
+        start.press(forDuration: 0.01, thenDragTo: end, withVelocity: .fast, thenHoldForDuration: 0)
+        jump.tap()
+        let events = app.staticTexts["scroll.diagnostic-events"]
+        XCTAssertTrue(events.label.contains("interrupted:"), "点击应主动中止当前滚动，再启动末尾锚点动画")
+        expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: jump)
+        waitForExpectations(timeout: 4)
+        XCTAssertTrue(Self.hasRenderedConversationText(app.screenshot().image))
+        captureConversation("滚动未结束-点击立即回底", app: app)
+    }
+
+    func testComposerReferenceToolbarAndBalancedTextInsets() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-submit-fixture", "--agent-permission-menu-fixture", "--agent-fast-fixture", "--agent-composer-reference-fixture", "--agent-composer-geometry-fixture", "-accent", "Pink", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
+        app.launch()
+        let input = app.textFields["message-input"]
+        XCTAssertTrue(input.waitForExistence(timeout: 8))
+        let controls = ["composer.attachments", "composer.permission", "composer.model", "composer.effort", "composer.fast", "composer.submit"].map { app.buttons[$0] }
+        for control in controls {
+            XCTAssertTrue(control.exists, "参考图工具行在有内容时应完整显示")
+            XCTAssertGreaterThan(control.frame.midY, input.frame.maxY, "工具行应独立位于文字下方")
+            XCTAssertEqual(control.frame.midY, controls[0].frame.midY, accuracy: 1)
+        }
+        for (left, right) in zip(controls, controls.dropFirst()) {
+            XCTAssertGreaterThanOrEqual(right.frame.minX, left.frame.maxX - 1)
+        }
+        let parts = app.staticTexts["composer.geometry"].label.split(separator: ",").compactMap { Double($0) }
+        XCTAssertEqual(parts.count, 4)
+        if parts.count == 4 {
+            let topGap = input.frame.minY - parts[1]
+            let bottomGap = parts[1] + parts[3] - controls.last!.frame.maxY
+            XCTAssertGreaterThanOrEqual(topGap, 10, "有内容时文字不能贴住输入框上边缘")
+            XCTAssertEqual(topGap, bottomGap, accuracy: 2, "输入框顶部与工具行下方留白对齐")
+        }
+        captureConversation("参考输入栏-外置权限与均衡留白", app: app)
+    }
+
+    func testSidebarReopeningPreservesProjectFrame() {
+        let app = launchSidebarPolishFixture()
+        app.buttons["会话列表"].tap()
+        let expanded = app.buttons["收起项目 Zeta"]
+        XCTAssertTrue(expanded.waitForExistence(timeout: 5))
+        let nextProject = app.buttons["收起项目 Alpha"]
+        let initialY = nextProject.frame.minY
+        app.buttons["drawer.close-surface"].tap()
+        app.buttons["会话列表"].tap()
+        XCTAssertTrue(expanded.exists)
+        XCTAssertEqual(nextProject.frame.minY, initialY, accuracy: 1, "关闭边栏不能把项目高度归零再展开")
+        captureConversation("侧栏重开-项目保持展开", app: app)
+    }
+
     func testAgentAppControlsAreAccessible() {
         let app = XCUIApplication()
         app.launchArguments = ["--native-ui-live", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
@@ -383,8 +462,8 @@ final class AgentAppUITests: XCTestCase {
         let model = app.buttons["composer.model"]
         XCTAssertTrue(model.waitForExistence(timeout: 5))
         let fast = app.buttons["composer.fast"]
-        XCTAssertLessThan(fast.frame.minX - permissions.frame.maxX, 8)
-        XCTAssertGreaterThanOrEqual(model.frame.minX - fast.frame.maxX, 8, "模型和闪电留出更大间距")
+        XCTAssertEqual(model.frame.minX - permissions.frame.maxX, 6, accuracy: 1)
+        XCTAssertGreaterThan(fast.frame.minX, app.buttons["composer.effort"].frame.maxX)
         XCTAssertGreaterThan(app.buttons["composer.effort"].frame.minX, model.frame.maxX)
         captureConversation("输入栏-模型靠左", app: app)
     }
@@ -533,7 +612,7 @@ final class AgentAppUITests: XCTestCase {
         app.textFields["message-input"].tap()
         XCTAssertTrue(app.buttons["composer.model"].waitForExistence(timeout: 8))
         app.buttons["composer.model"].tap()
-        let last = app.buttons["model.option.catalog-59"]
+        let last = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Catalog Model 59")).firstMatch
         let menu = app.collectionViews.firstMatch
         XCTAssertTrue(menu.waitForExistence(timeout: 5), app.debugDescription)
         for _ in 0..<15 {
@@ -548,7 +627,8 @@ final class AgentAppUITests: XCTestCase {
         wait(for: [stable], timeout: 5)
         captureConversation("长模型菜单-底部保持", app: app)
         last.tap()
-        XCTAssertTrue((app.buttons["composer.model"].value as? String)?.hasPrefix("Catalog Model 59") == true)
+        expectation(for: NSPredicate(format: "value BEGINSWITH %@", "Catalog Model 59"), evaluatedWith: app.buttons["composer.model"])
+        waitForExpectations(timeout: 5)
     }
 
     func testImageHasNoCaptionAndModelUsesMenuWithFast() {
@@ -566,20 +646,20 @@ final class AgentAppUITests: XCTestCase {
         let model = app.buttons["composer.model"]
         let fast = app.buttons["composer.fast"]
         XCTAssertTrue(fast.waitForExistence(timeout: 5))
-        XCTAssertLessThan(fast.frame.midX, model.frame.minX)
+        XCTAssertGreaterThan(fast.frame.minX, app.buttons["composer.effort"].frame.maxX)
         XCTAssertEqual(fast.value as? String, "普通速度")
         fast.tap()
         XCTAssertEqual(fast.value as? String, "Fast")
         fast.tap()
         XCTAssertEqual(fast.value as? String, "普通速度")
         model.tap()
-        XCTAssertTrue(app.buttons["model.option.model-b"].waitForExistence(timeout: 5), "点击模型名直接打开原生菜单")
+        XCTAssertTrue(app.buttons["Model B"].waitForExistence(timeout: 5), "点击模型名直接打开原生菜单")
         XCTAssertFalse(app.navigationBars["模型"].exists)
         XCTAssertFalse(app.images["checkmark"].exists, "模型与强度菜单不显示勾选")
-        app.buttons["model.option.model-b"].tap()
+        app.buttons["Model B"].tap()
         app.buttons["composer.effort"].tap()
-        XCTAssertTrue(app.buttons["effort.option.high"].waitForExistence(timeout: 5))
-        XCTAssertFalse(app.buttons["effort.option.low"].exists, "每个模型只列自己支持的强度")
+        XCTAssertTrue(app.buttons["High"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["Low"].exists, "每个模型只列自己支持的强度")
         captureConversation("原生模型菜单-真实强度档位", app: app)
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.2)).tap()
     }
@@ -732,7 +812,8 @@ final class AgentAppUITests: XCTestCase {
         let fast = app.buttons["composer.fast"]
         XCTAssertTrue(fast.waitForExistence(timeout: 5))
         XCTAssertLessThanOrEqual(permission.frame.midX - add.frame.midX, 41)
-        XCTAssertLessThanOrEqual(fast.frame.midX - permission.frame.midX, 41)
+        XCTAssertEqual(add.frame.height, fast.frame.height, accuracy: 1)
+        XCTAssertEqual(permission.frame.height, fast.frame.height, accuracy: 1)
         captureConversation("输入图标-字号与紧凑间距", app: app)
     }
 
@@ -1108,7 +1189,7 @@ final class AgentAppUITests: XCTestCase {
         input.tap()
         XCTAssertTrue(app.buttons["composer.model"].waitForExistence(timeout: 5), "聚焦输入后应显示模型入口")
         app.buttons["composer.model"].tap()
-        let option = app.buttons["model.option.model-b"]
+        let option = app.buttons["Model B"]
         XCTAssertTrue(option.waitForExistence(timeout: 5))
         XCTAssertFalse(app.navigationBars["模型"].exists)
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.2)).tap()
@@ -1146,15 +1227,15 @@ final class AgentAppUITests: XCTestCase {
         let model = app.buttons["composer.model"]
         let effort = app.buttons["composer.effort"]
         effort.tap()
-        XCTAssertTrue(app.buttons["effort.option.medium"].waitForExistence(timeout: 5))
-        app.buttons["effort.option.medium"].tap()
+        XCTAssertTrue(app.buttons["Medium"].waitForExistence(timeout: 5))
+        app.buttons["Medium"].tap()
         XCTAssertEqual(effort.value as? String, "Medium")
         model.tap()
-        app.buttons["model.option.model-b"].tap()
+        app.buttons["Model B"].tap()
         XCTAssertTrue((model.value as? String)?.hasPrefix("Model B") == true)
         effort.tap()
-        XCTAssertTrue(app.buttons["effort.option.high"].waitForExistence(timeout: 5))
-        XCTAssertFalse(app.buttons["effort.option.low"].exists)
+        XCTAssertTrue(app.buttons["High"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["Low"].exists)
         XCTAssertFalse(app.sliders.firstMatch.exists, "思考强度使用菜单档位，不再显示滑杆")
         captureConversation("模型独立强度菜单", app: app)
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.2)).tap()
@@ -1254,15 +1335,15 @@ final class AgentAppUITests: XCTestCase {
         let compact = surface()
         print("COMPOSER_COMPACT", compact, submit.frame)
         XCTAssertEqual(compact.maxX - submit.frame.maxX, 12, accuracy: 1.5)
-        XCTAssertEqual(compact.maxY - submit.frame.maxY, 12, accuracy: 1.5)
-        XCTAssertEqual(compact.midY, submit.frame.midY, accuracy: 1)
+        XCTAssertEqual(compact.maxY - submit.frame.maxY, 17, accuracy: 1.5)
+        XCTAssertGreaterThan(submit.frame.minY, app.textFields["message-input"].frame.maxY)
         captureConversation("发送按钮位置-收起", app: app)
         app.textFields["message-input"].tap()
         XCTAssertTrue(app.buttons["composer.effort"].waitForExistence(timeout: 5))
         let expanded = surface()
         print("COMPOSER_EXPANDED", expanded, submit.frame)
         XCTAssertEqual(expanded.maxX - submit.frame.maxX, 12, accuracy: 1.5)
-        XCTAssertEqual(expanded.maxY - submit.frame.maxY, 13, accuracy: 1.5)
+        XCTAssertEqual(expanded.maxY - submit.frame.maxY, 17, accuracy: 1.5)
         captureConversation("发送按钮位置-展开", app: app)
     }
 
@@ -1290,17 +1371,21 @@ final class AgentAppUITests: XCTestCase {
         let effort = app.buttons["composer.effort"]
         XCTAssertTrue(effort.waitForExistence(timeout: 5), "强度应在模型右边单独选择")
         model.tap()
-        XCTAssertFalse(app.buttons["effort.option.high"].exists, "模型菜单只列模型")
+        XCTAssertFalse(app.buttons["High"].exists, "模型菜单只列模型")
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.2)).tap()
         effort.tap()
-        app.buttons["effort.option.high"].tap()
-        XCTAssertEqual(effort.value as? String, "High")
+        XCTAssertTrue(app.buttons["High"].waitForExistence(timeout: 5))
+        app.buttons["High"].tap()
+        expectation(for: NSPredicate(format: "value == 'High'"), evaluatedWith: effort)
+        waitForExpectations(timeout: 5)
         model.tap()
-        app.buttons["model.option.model-b"].tap()
-        XCTAssertTrue((model.value as? String)?.hasPrefix("Model B") == true)
+        XCTAssertTrue(app.buttons["Model B"].waitForExistence(timeout: 5))
+        app.buttons["Model B"].tap()
+        expectation(for: NSPredicate(format: "value BEGINSWITH 'Model B'"), evaluatedWith: model)
+        waitForExpectations(timeout: 5)
         effort.tap()
-        XCTAssertTrue(app.buttons["effort.option.high"].waitForExistence(timeout: 5))
-        XCTAssertFalse(app.buttons["effort.option.medium"].exists)
+        XCTAssertTrue(app.buttons["High"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["Medium"].exists)
         captureConversation("独立强度菜单-当前模型真实档位", app: app)
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.2)).tap()
     }

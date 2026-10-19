@@ -16,6 +16,7 @@ struct ConversationScreen: View {
     @State private var historyAnchorID: String?
     @State private var historyWasPrepended = false
     @State private var scrollIsIdle = true
+    @State private var scrollPhase = ScrollPhase.idle
     @State private var returnToken: UUID?
     #if DEBUG
     @State private var diagnosticHistoryRequests = 0
@@ -24,6 +25,7 @@ struct ConversationScreen: View {
     @State private var diagnosticReturnStarted = 0.0
     @State private var diagnosticReturnElapsed = 0.0
     @State private var diagnosticReturnEvents: [String] = []
+    @State private var diagnosticReturnStarts = 0
     #endif
     var body: some View {
         if let conversation = session.conversation(conversationID) {
@@ -85,6 +87,7 @@ struct ConversationScreen: View {
                             Text(diagnosticReturnOffsets.map { String(Int($0)) }.joined(separator: ",")).accessibilityIdentifier("scroll.diagnostic-return")
                             Text(String(Int(diagnosticReturnElapsed))).accessibilityIdentifier("scroll.diagnostic-return-ms")
                             Text(diagnosticReturnEvents.joined(separator: ";")).accessibilityIdentifier("scroll.diagnostic-events")
+                            Text(String(diagnosticReturnStarts)).accessibilityIdentifier("scroll.diagnostic-starts")
                         }.font(.system(size: 1)).opacity(0.01)
                     }
                     #endif
@@ -94,6 +97,7 @@ struct ConversationScreen: View {
                 .onScrollPhaseChange { _, phase, context in
                     let offset = Double(context.geometry.contentOffset.y + context.geometry.contentInsets.top)
                     scrollIsIdle = phase == .idle
+                    scrollPhase = phase
                     #if DEBUG
                     if returnToken != nil, ProcessInfo.processInfo.arguments.contains("--agent-scroll-diagnostics") { diagnosticReturnEvents.append("phase:\(phase):\(Int(offset))") }
                     #endif
@@ -121,7 +125,10 @@ struct ConversationScreen: View {
                 } action: { _, offset in
                     historyOffset = offset
                     #if DEBUG
-                    if diagnosticReturning, abs(offset - (diagnosticReturnOffsets.last ?? offset)) > 0.5 { diagnosticReturnOffsets.append(offset); diagnosticReturnElapsed = (Date.timeIntervalSinceReferenceDate - diagnosticReturnStarted) * 1000 }
+                    if diagnosticReturning, abs(offset - (diagnosticReturnOffsets.last ?? offset)) > 0.5 {
+                        if diagnosticReturnOffsets.count == 1 { diagnosticReturnEvents.append("firstMotion:\(Int((Date.timeIntervalSinceReferenceDate - diagnosticReturnStarted) * 1000))") }
+                        diagnosticReturnOffsets.append(offset); diagnosticReturnElapsed = (Date.timeIntervalSinceReferenceDate - diagnosticReturnStarted) * 1000
+                    }
                     #endif
                     if historyPull.positionChanged(to: offset,
                         canLoad: conversation.loadedOlderTurns < conversation.olderTurns,
@@ -203,6 +210,10 @@ struct ConversationScreen: View {
         } else { ContentUnavailableView(preferences.text("会话不可用", "Conversation unavailable"), systemImage: "bubble.left") }
     }
     private func scrollToLatest(_ proxy: ScrollViewProxy) {
+        #if DEBUG
+        let phaseAtStart = scrollPhase
+        #endif
+        scrollAccess.interruptScrolling()
         historyPull.programmaticScrollBegan()
         historyAnchor = nil; historyAnchorID = nil; historyWasPrepended = false
         // 统一通过末尾消息锚点定位，保留附件高度变化时的跟随。
@@ -214,7 +225,7 @@ struct ConversationScreen: View {
         let token = UUID()
         returnToken = token
         #if DEBUG
-        if diagnosticReturning { diagnosticReturnEvents = ["start:\(Int(historyOffset))"] }
+        if diagnosticReturning { diagnosticReturnStarts += 1; diagnosticReturnEvents = ["phaseAtStart:\(phaseAtStart)", "interrupted:\(Int(historyOffset))", "start:\(Int(historyOffset))"] }
         #endif
         let finish = {
             #if DEBUG

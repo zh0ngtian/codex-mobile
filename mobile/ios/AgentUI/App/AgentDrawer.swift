@@ -17,13 +17,11 @@ struct AgentDrawer<Content: View, Sidebar: View>: View {
             let offset = SidebarPresentation.offset(isOpen: isOpen, translation: translation ?? 0, containerWidth: width)
             let progress = offset / max(sidebarWidth, 1)
             ZStack(alignment: .leading) {
-                if progress > 0 || isOpen {
-                    sidebar
-                        .frame(width: sidebarWidth, height: geometry.size.height)
-                        .background(AgentTheme.page)
-                        .allowsHitTesting(isOpen && translation == nil)
-                        .accessibilityHidden(!isOpen)
-                }
+                sidebar
+                    .frame(width: sidebarWidth, height: geometry.size.height)
+                    .background(AgentTheme.page)
+                    .allowsHitTesting(isOpen && translation == nil)
+                    .accessibilityHidden(!isOpen)
                 content
                     .allowsHitTesting(!isOpen && translation == nil)
                     .accessibilityHidden(isOpen)

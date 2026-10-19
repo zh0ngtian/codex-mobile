@@ -24,6 +24,7 @@ struct ComposerMenuOption: Identifiable, Equatable {
 
 /// 只由选项、当前值及作用域驱动，消息、用量和回执更新不重建展开中的菜单。
 struct ComposerOptionMenu: View, Equatable {
+    @Environment(AppPreferences.self) private var preferences
     let options: [ComposerMenuOption]
     let context: String?
     let title: String
@@ -31,9 +32,10 @@ struct ComposerOptionMenu: View, Equatable {
     let identifier: String
     let optionPrefix: String
     let enabled: Bool
+    var effortProgress: Double? = nil
     let choose: (String) -> Void
     static func == (lhs: Self, rhs: Self) -> Bool {
-        lhs.options == rhs.options && lhs.context == rhs.context && lhs.title == rhs.title &&
+        lhs.effortProgress == rhs.effortProgress && lhs.options == rhs.options && lhs.context == rhs.context && lhs.title == rhs.title &&
         lhs.section == rhs.section && lhs.identifier == rhs.identifier && lhs.optionPrefix == rhs.optionPrefix && lhs.enabled == rhs.enabled
     }
     var body: some View {
@@ -45,8 +47,22 @@ struct ComposerOptionMenu: View, Equatable {
                 }
             }
         } label: {
-            Text(title).font(.body).lineLimit(1).foregroundStyle(AgentTheme.ink)
-                .frame(minHeight: 44, alignment: .leading)
+            HStack(spacing: 5) {
+                if identifier == "composer.model", title.localizedCaseInsensitiveContains("gpt") {
+                    Image("ModelProviderOpenAI").resizable().scaledToFit().frame(width: 16, height: 16)
+                }
+                if identifier == "composer.effort" {
+                    ZStack {
+                        ComposerEffortArc(fraction: 1).stroke(.secondary.opacity(0.4), style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                        ComposerEffortArc(fraction: effortProgress ?? 0).stroke(preferences.accent.color, style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                    }
+                    .frame(width: 16, height: 11)
+                    .accessibilityHidden(true)
+                }
+                Text(title).lineLimit(1).minimumScaleFactor(0.9).truncationMode(.middle)
+            }
+            .font(.footnote).foregroundStyle(AgentTheme.ink)
+            .modifier(ComposerControlSurface())
         }
         .menuIndicator(.hidden).menuOrder(.fixed).buttonStyle(.plain).tint(AgentTheme.ink)
         .disabled(!enabled || options.isEmpty)

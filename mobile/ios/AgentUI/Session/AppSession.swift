@@ -224,9 +224,18 @@ final class AppSession {
     }
     func manage(_ id: UUID, action: String, value: String? = nil) { guard let raw = rawThreadIDs[id] else { return }; var params: [String: NativeJSONValue] = ["backendId": .string(raw.backend), "threadId": .string(raw.thread), "action": .string(action)]; if let value { params["value"] = .string(value) }; fire("thread.manage", params) }
     func togglePin(_ id: UUID) { manage(id, action: "pin") }
-    func toggleProject(_ project: String) { perform(projectGroups[project]?.command) }
+    func toggleProject(_ project: String) {
+        if projectIsExpanded(project) { projectPageCounts[project] = 5 }
+        perform(projectGroups[project]?.command)
+    }
     func projectIsExpanded(_ project: String) -> Bool { !searchText.isEmpty || expandedProjects.contains(project) }
-    func projectConversations(_ project: String) -> [Conversation] { visibleConversations.filter { !$0.isPinned && projectMembers[project]?.contains($0.id) == true } }
+    func allProjectConversations(_ project: String) -> [Conversation] {
+        visibleConversations.filter { !$0.isPinned && projectMembers[project]?.contains($0.id) == true }
+    }
+    func projectConversations(_ project: String) -> [Conversation] {
+        let loaded = allProjectConversations(project)
+        return searchText.isEmpty ? Array(loaded.prefix(projectPageCounts[project] ?? 5)) : loaded
+    }
     func projectDisplayName(_ key: String) -> String { projectGroups[key]?.title ?? key }
     func projectTitle(for path: String) -> String {
         let backend = currentDevice.flatMap { rawDeviceIDs[$0.id] }
@@ -242,8 +251,17 @@ final class AppSession {
         reopenRequestIntent = true
         perform(command)
     }
-    func projectHasMore(_ project: String) -> Bool { projectGroups[project]?.actions?.contains { $0.command?.name == "project.more" } == true }
-    func loadMoreProject(_ project: String) { perform(projectGroups[project]?.actions?.first { $0.command?.name == "project.more" }?.command) }
+    func projectHasMore(_ project: String) -> Bool {
+        (searchText.isEmpty && allProjectConversations(project).count > (projectPageCounts[project] ?? 5)) ||
+        projectGroups[project]?.actions?.contains { $0.command?.name == "project.more" } == true
+    }
+    func loadMoreProject(_ project: String) {
+        let shown = projectPageCounts[project] ?? 5
+        projectPageCounts[project] = shown + 5
+        if allProjectConversations(project).count <= shown {
+            perform(projectGroups[project]?.actions?.first { $0.command?.name == "project.more" }?.command)
+        }
+    }
     func loadMoreConversations() { for project in scopedProjects where projectHasMore(project) { loadMoreProject(project) } }
     func retryProject(_ project: String) { perform(projectGroups[project]?.actions?.first { $0.command?.name == "project.retry" }?.command) }
     func refreshConversation(_ id: UUID) async { manage(id, action: "refresh") }

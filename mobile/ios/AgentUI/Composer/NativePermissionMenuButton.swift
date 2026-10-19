@@ -3,6 +3,7 @@ import UIKit
 
 /// 先构造完整的系统菜单项，标题与说明由同一次原生呈现提交。
 struct NativePermissionMenuButton: UIViewRepresentable {
+    let tint: Color
     let options: [PermissionMenuOption]
     let context: String?
     let mode: ApprovalMode
@@ -56,7 +57,7 @@ struct NativePermissionMenuButton: UIViewRepresentable {
             button.isEnabled = parent.enabled && !parent.options.isEmpty
             button.accessibilityLabel = parent.menuTitle
             button.accessibilityValue = parent.title
-            button.tintColor = parent.mode == .fullAccess ? .systemOrange : .label
+            button.tintColor = UIColor(parent.tint)
             button.setImage(UIImage(systemName: parent.mode.symbol), for: .normal)
             button.setPreferredSymbolConfiguration(UIImage.SymbolConfiguration(textStyle: .subheadline, scale: .large), forImageIn: .normal)
             if presented {

@@ -38,6 +38,10 @@ final class AgentConversationFixture {
             value.speeds = [NativeOption(id: "normal", title: "普通速度", value: ""), NativeOption(id: "fast", title: "Fast", value: "priority")]
             value.speedValue = ""
         }
+        if ProcessInfo.processInfo.arguments.contains("--agent-composer-reference-fixture") {
+            value.models[0].title = "GPT-6.1 Sol"; value.model = "GPT-6.1 Sol"
+            value.effortValue = "high"; value.speedValue = "priority"; value.permissionValue = "full-access"
+        }
         value.olderTurnsState = "idle"
         value.conversationActions = [NativePanelItem(id: "older", kind: "action", title: "加载更早消息", command: NativeCommand(name: "thread.older"))]
         let history = NativeMessage(id: "history", role: "activity", text: "", blocks: [NativePanelItem(id: "history-block", kind: "disclosure", title: "历史过程 (2)")], turnId: "fixture-turn", commentary: entries, commentaryBlockId: "history-block", commentaryCanAttachToReply: true)
@@ -96,6 +100,15 @@ final class AgentConversationFixture {
         if ProcessInfo.processInfo.arguments.contains("--agent-sidebar-polish-fixture") {
             value.groups.insert(NativeGroup(id: "fixture-pinned", title: "", items: [NativeNavigationItem(
                 id: "pinned-fixture", title: "关注的会话", command: NativeCommand(name: "thread.open", params: ["backendId": .string("conversation-ui-device"), "threadId": .string("conversation-ui-thread")]), isPinned: true)], category: "pinned"), at: 0)
+        }
+        if ProcessInfo.processInfo.arguments.contains("--agent-sidebar-pagination-fixture"),
+           let index = value.groups.firstIndex(where: { $0.id == "project-z" }) {
+            let rows = (1...12).map { number in
+                NativeNavigationItem(id: "page-row-\(number)", title: "分页会话 \(number)",
+                    command: NativeCommand(name: "thread.open", params: ["backendId": .string("conversation-ui-device"), "threadId": .string("page-thread-\(number)")]))
+            }
+            value.groups[index].items = rows
+            value.groups[index].allItems = rows
         }
         if ProcessInfo.processInfo.arguments.contains("--agent-conversation-long-fixture") {
             value.messages += (1...14).map { index in
