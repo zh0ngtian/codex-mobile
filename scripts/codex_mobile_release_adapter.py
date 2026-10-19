@@ -149,24 +149,37 @@ class Adapter:
         atomic_json(self.progress_path, {**old, 'githubReadNotBefore':not_before, 'updatedAt':now})
         raise TransientReadError('GitHub 明确限流，已保存只读等待窗口，请稍后核对')
 
+    @staticmethod
+    def gh_http_response(output):
+        # --include 的响应头在 stdout；旧 JSON-only 替身保持兼容。
+        normalized = output.replace('\r\n', '\n')
+        if not normalized.startswith('HTTP/'):
+            return None, '', output
+        headers, separator, body = normalized.partition('\n\n')
+        status = re.fullmatch(r'HTTP/\d+(?:\.\d+)?\s+(\d{3})(?:\s+.*)?', headers.splitlines()[0])
+        if not status: raise RuntimeError('GitHub GET 返回无效 HTTP 状态')
+        return int(status[1]), headers, body if separator else ''
+
     def gh_json(self, path, missing=False):
         # 此入口只有 GET；POST 的响应丢失必须由对应阶段独立对账。
         self.github_read_cooldown()
         for attempt in range(4):
             try:
-                result = subprocess.run(['gh', 'api', path], cwd=self.work, text=True, capture_output=True, timeout=45)
+                result = subprocess.run(['gh', 'api', path, '--include'], cwd=self.work, text=True, capture_output=True, timeout=45)
             except subprocess.TimeoutExpired:
                 if attempt == 3: raise TransientReadError('GitHub GET 超时，有限重试已耗尽') from None
                 time.sleep(2 ** attempt); continue
-            if missing and result.returncode and 'HTTP 404' in result.stderr: return None
-            if not result.returncode:
-                try: return json.loads(result.stdout)
+            status, headers, body = self.gh_http_response(result.stdout)
+            if missing and (status == 404 or result.returncode and 'HTTP 404' in result.stderr): return None
+            if not result.returncode and (status is None or 200 <= status < 300):
+                try: return json.loads(body)
                 except json.JSONDecodeError as error:
                     if not self.incomplete_json(error): raise RuntimeError('GitHub GET 返回无效 JSON') from None
                     message = 'GitHub GET response incomplete EOF'
             else:
                 message = result.stderr.strip()
-                rate_hint = message + '\n' + result.stdout
+                if status is not None and status >= 400: message = f'HTTP {status}\n' + message
+                rate_hint = headers + '\n' + message + '\n' + body
                 if (re.search(r'HTTP\s*[: ]\s*(403|429)\b', message, re.I)
                         and re.search(r'API rate limit exceeded|secondary rate limit', rate_hint, re.I)):
                     self.defer_github_rate_limit(rate_hint)

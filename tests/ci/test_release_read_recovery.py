@@ -335,6 +335,44 @@ m.main()
                     self.assertEqual(run.call_count, 1); sleep.assert_not_called()
                 self.assertEqual(adapter.read_progress()['githubReadNotBefore'], expected)
 
+    def included_fixture(self, name):
+        return (fixtures.ROOT / 'tests/fixtures/release-read-recovery' / ('gh-include-' + name + '.http')).read_text()
+
+    def test_real_gh_include_success_parses_only_body_and_keeps_path_argument(self):
+        output = self.included_fixture('success')
+        with patch.object(self.m.subprocess, 'run', return_value=self.reply(0, '', output)) as run:
+            self.assertEqual(self.a.gh_json('test/read'), {'rate':{'remaining':4999,'reset':2000},'resources':{}})
+        self.assertEqual(run.call_args.args[0], ['gh','api','test/read','--include'])
+
+    def test_real_gh_include_404_reads_status_from_stdout_and_preserves_missing_semantics(self):
+        for stderr in ['gh: Not Found (HTTP 404)\n', '']:
+            with self.subTest(stderr=bool(stderr)), patch.object(self.m.subprocess, 'run', return_value=self.reply(1, stderr, self.included_fixture('missing'))) as run:
+                self.assertIsNone(self.a.gh_json('test/missing', missing=True)); run.assert_called_once()
+        with patch.object(self.m.subprocess, 'run', return_value=self.reply(1, '', self.included_fixture('missing'))) as run:
+            with self.assertRaises(RuntimeError) as caught: self.a.gh_json('test/missing')
+            self.assertNotIsInstance(caught.exception, self.m.TransientReadError); run.assert_called_once()
+
+    def test_real_gh_include_rate_headers_extend_seconds_date_and_reset_cooldowns(self):
+        for headers, expected in [('Retry-After: 120', 1120), ('Retry-After: Thu, 01 Jan 1970 00:30:00 GMT', 1800), ('X-Ratelimit-Reset: 1900', 1900), ('Retry-After: 120\nX-Ratelimit-Reset: 2000', 2000)]:
+            with self.subTest(headers=headers), tempfile.TemporaryDirectory() as temporary:
+                adapter = self.m.Adapter(self.fixture.context(Path(temporary)))
+                structure = self.included_fixture('missing').split('\n\n',1)[0].splitlines()
+                output = '\n'.join(['HTTP/2.0 403 Forbidden',structure[1],headers]) + '\n\n' + '{"message":"API rate limit exceeded","status":"403"}'
+                # gh 的真实分布：头只在 stdout，stderr 只有状态诊断。
+                with patch.object(self.m.time, 'time', return_value=1000), patch.object(self.m.subprocess, 'run', return_value=self.reply(1, 'gh: API rate limit exceeded (HTTP 403)\n', output)) as run, patch.object(self.m.time, 'sleep') as sleep:
+                    with self.assertRaises(self.m.TransientReadError): adapter.gh_json('test/read')
+                    run.assert_called_once(); sleep.assert_not_called()
+                    self.assertEqual(run.call_args.args[0][-1], '--include')
+                self.assertEqual(adapter.read_progress()['githubReadNotBefore'], expected)
+
+    def test_real_gh_include_truncated_json_retries_body_without_changing_classification(self):
+        headers = self.included_fixture('success').split('\n\n',1)[0]
+        for body, transient in [('{"workflow_runs":', True), ('<html>login</html>', False)]:
+            with self.subTest(transient=transient), patch.object(self.m.subprocess, 'run', return_value=self.reply(0, '', headers + '\n\n' + body)) as run, patch.object(self.m.time, 'sleep'):
+                with self.assertRaises(RuntimeError) as caught: self.a.gh_json('test/read')
+                self.assertEqual(isinstance(caught.exception, self.m.TransientReadError), transient)
+                self.assertEqual(run.call_count, 4 if transient else 1)
+
     def completed(self): return {'id':123,'status':'completed','conclusion':'success','run_attempt':1}
 
     def seed(self, folder, platform):
