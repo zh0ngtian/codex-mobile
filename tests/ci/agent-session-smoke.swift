@@ -3,7 +3,9 @@ import Foundation
 @main
 struct AgentSessionSmoke {
     @MainActor static func main() async {
+        verifyStartupNavigationLoading()
         verifySteeringReplyHistory()
+        verifyProjectPriorityWindowAndLoadingGuard()
         verifyProjectFiveConversationWindow()
         verifyComposerMenuBusinessValues()
         verifyInteractiveSidebarBounds()
@@ -174,6 +176,43 @@ struct AgentSessionSmoke {
         await verifyDelayedDeviceForm()
         await verifyPendingProjectsAndQuestions()
         print("Agent session smoke passed")
+    }
+    @MainActor static func verifyStartupNavigationLoading() {
+        let session = AppSession()
+        precondition(session.navigationLoading, "原生首帧未取得业务快照前必须加载")
+        var state = NativeSnapshot()
+        session.receive(state)
+        precondition(session.navigationLoading, "未就绪旧空快照不得判空")
+        state.ready = true; session.receive(state)
+        precondition(!session.navigationLoading, "兼容未携带字段的ready旧夹具")
+        func navigation(_ loading: Bool, _ value: NativeSnapshot) -> NativeSnapshot {
+            var object = try! JSONSerialization.jsonObject(with: JSONEncoder().encode(value)) as! [String: Any]
+            object["navigationLoading"] = loading
+            let decoded = try! JSONDecoder().decode(NativeSnapshot.self, from: JSONSerialization.data(withJSONObject: object))
+            let roundTrip = try! JSONSerialization.jsonObject(with: JSONEncoder().encode(decoded)) as! [String: Any]
+            precondition(roundTrip["navigationLoading"] as? Bool == loading, "Swift DTO必须保留导航加载字段")
+            return decoded
+        }
+        state.loading = "ready"; session.receive(navigation(true, state))
+        precondition(session.navigationLoading, "详情ready不得结束列表首次查询")
+        state.loading = "loading"; session.receive(navigation(false, state))
+        precondition(!session.navigationLoading, "详情加载不得污染成功空列表")
+        state.groups = [NativeGroup(id: "list-error", title: "真实失败", items: [NativeNavigationItem(id: "retry", title: "重试", command: NativeCommand(name: "navigation.refresh"))])]
+        session.receive(navigation(true, state))
+        precondition(!session.navigationLoading && session.navigationError == "真实失败", "普通列表真实失败不能被加载字段盖住")
+        state.search = "空结果"; state.groups = [NativeGroup(id: "search", title: "搜索结果", items: [], category: "search")]
+        session.receive(navigation(true, state))
+        precondition(!session.navigationLoading, "成功空搜索不能沿用普通列表加载")
+        state.groups[0].loading = "loading"; state.groups[0].subtitle = "上轮搜索错误"
+        session.receive(navigation(false, state))
+        precondition(session.navigationLoading && session.navigationError == "上轮搜索错误", "搜索本轮加载仍优先于上轮错误")
+        state.search = ""; state.groups = [NativeGroup(id: "pending", title: "项目", items: [], category: "project", loading: "loading")]
+        session.receive(navigation(false, state))
+        precondition(session.loadingProjects == ["pending"] && session.projectConversations("pending").isEmpty, "空项目pending必须投影为加载")
+        state.groups[0].loading = "ready"; session.receive(navigation(false, state))
+        precondition(session.loadingProjects.isEmpty && session.projectErrors.isEmpty, "成功空项目才能退出加载")
+        state.groups[0].loading = "error"; session.receive(navigation(false, state))
+        precondition(session.projectErrors == ["pending"], "空项目真实失败必须投影为错误")
     }
     @MainActor static func verifyHistoryAggregateScrollAliases() {
         let session = AppSession()
@@ -602,9 +641,21 @@ struct AgentSessionSmoke {
         publish()
         precondition(session.selectedConversation?.project == nil, "空cwd必须归一化为无项目以免搜索结果被UI漏掉")
         let projectless = NativeNavigationItem(id: "t", title: "无项目真实会话", command: NativeCommand(name: "thread.open", params: ["backendId": .string("b"), "threadId": .string("t")]), cwd: "")
-        state.groups = [NativeGroup(id: "real-projectless", title: "无项目", items: [projectless], command: NativeCommand(name: "project.toggle", params: ["backendId": .string("b"), "cwd": .string("codex-mobile://projectless")]), category: "project", cwd: "codex-mobile://projectless")]
-        publish()
-        precondition(session.scopedProjects.isEmpty && session.conversation(session.selectedConversationID!) != nil, "非搜索无项目会话不得变成项目组或丢弃真实会话数据")
+        for groupCWD in ["codex-mobile://projectless", ""] {
+            state.groups = [NativeGroup(id: "real-projectless", title: "无项目", items: [projectless], command: NativeCommand(name: "project.toggle", params: ["backendId": .string("b"), "cwd": .string("codex-mobile://projectless")]), actions: [NativePanelItem(id: "projectless-more", kind: "action", command: NativeCommand(name: "project.more", params: ["backendId": .string("b"), "cwd": .string("codex-mobile://projectless")]))], category: "project", cwd: groupCWD)]
+            publish()
+            precondition(session.scopedProjects == ["real-projectless"], "无项目必须复用真实分组展示与分页")
+            precondition(session.projectConversations("real-projectless").map(\.id) == [session.selectedConversationID!], "无项目成员必须保留并显示在所属分组")
+            precondition(session.conversation(session.selectedConversationID!)?.project == nil, "无项目分组不能成为会话工作目录")
+            precondition(session.projectHasMore("real-projectless"), "存在后续会话时保留加载更多")
+            session.loadMoreProject("real-projectless")
+            precondition(commands.last?.name == "project.more" && commands.last?.params["cwd"] == .string("codex-mobile://projectless"), "加载更多必须派发无项目真实分页动作")
+            state.groups[0].actions?[0].disabled = true
+            publish()
+            let commandCount = commands.count
+            session.loadMoreProject("real-projectless")
+            precondition(commands.count == commandCount, "分页动作禁用期间不能再次派发加载更多")
+        }
         state.groups = [NativeGroup(id: "search", title: "搜索结果", items: [projectless], category: "search")]
         publish()
         precondition(session.visibleConversations.contains { $0.id == session.selectedConversationID && $0.project == nil }, "无项目会话在真实搜索结果中仍须可见")
@@ -743,13 +794,13 @@ struct AgentSessionSmoke {
         let rows = (1...12).map { index in
             NativeNavigationItem(id: "row-\(index)", title: "会话 \(index)",
                 command: NativeCommand(name: "thread.open", params: ["backendId": .string("device"), "threadId": .string("thread-\(index)")]),
-                cwd: "/project", isUnread: index == 12)
+                cwd: "/project")
         }
         snapshot.groups = [NativeGroup(id: "project", title: "项目", items: rows, command: NativeCommand(name: "project.toggle"), collapsed: false, category: "project", allItems: rows)]
         func publish() { store.receive(snapshot); session.receive(snapshot) }
         publish()
         precondition(session.projectConversations("project").count == 5, "原生项目首次只展示五条，不能因缓存已加载而全部展开")
-        precondition(session.allProjectConversations("project").contains { $0.isUnread }, "五条窗口外的未读仍必须参与项目摘要")
+        precondition(session.allProjectConversations("project").count == 12, "五条窗口外的缓存仍必须参与项目摘要")
         precondition(session.projectHasMore("project"), "缓存中剩余会话仍必须提供展开入口")
         session.loadMoreProject("project")
         precondition(session.projectConversations("project").count == 10 && commands.isEmpty, "缓存中展开下一批五条不应重复请求业务分页")
@@ -765,5 +816,58 @@ struct AgentSessionSmoke {
         session.searchText = "会话"
         precondition(session.projectConversations("project").count == 12, "搜索结果不受五条窗口限制")
         precondition(!session.projectHasMore("project"), "搜索已展示全部缓存时不能显示无效的更多入口")
+    }
+
+    @MainActor static func verifyProjectPriorityWindowAndLoadingGuard() {
+        for cwd in ["/project", "codex-mobile://projectless"] {
+            let store = NativeUIStore(arguments: [])
+            let session = AppSession(store: store)
+            var commands: [NativeCommand] = []
+            store.sendCommand = { commands.append($0) }
+            var snapshot = NativeSnapshot()
+            snapshot.ready = true; snapshot.backendId = "device"; snapshot.listBackendId = "device"
+            snapshot.backends = [NativeBackend(id: "device", title: "设备", connected: true)]
+            func row(_ id: String, unread: Bool = false, running: Bool = false, pinned: Bool = false) -> NativeNavigationItem {
+                NativeNavigationItem(id: id, title: id,
+                    command: NativeCommand(name: "thread.open", params: ["backendId": .string("device"), "threadId": .string(id)]),
+                    cwd: cwd == "codex-mobile://projectless" ? nil : cwd, isPinned: pinned, isUnread: unread, running: running)
+            }
+            let ordinary = (1...12).map { row("ordinary-\($0)") }
+            let rows = ordinary + [row("unread", unread: true), row("running", running: true), row("pinned", pinned: true)]
+            let params: [String: NativeJSONValue] = ["backendId": .string("device"), "cwd": .string(cwd)]
+            let more = NativePanelItem(id: "more", kind: "action", command: NativeCommand(name: "project.more", params: params))
+            snapshot.groups = [NativeGroup(id: "group", title: "分组", items: rows,
+                command: NativeCommand(name: "project.toggle", params: params), actions: [more], collapsed: false,
+                category: "project", allItems: rows)]
+            func publish() { store.receive(snapshot); session.receive(snapshot) }
+            func visibleOrdinary() -> Int { session.projectConversations("group").filter { !$0.isUnread && $0.phase != .running }.count }
+            func remoteCommands() -> Int { commands.filter { $0.name == "project.more" }.count }
+            publish()
+            precondition(visibleOrdinary() == 5 && session.projectConversations("group").count == 7, "每组首批须为五条普通加全部未读和运行摘要，关注不重复占项目名额")
+            precondition(session.allProjectConversations("group").count == 14, "摘要覆盖窗口外全部缓存且排除关注")
+            if cwd == "codex-mobile://projectless" { precondition(session.allProjectConversations("group").allSatisfy { $0.project == nil }, "无项目不能被展示分组伪造目录") }
+            snapshot.groups[0].actions?[0].disabled = true; publish()
+            session.loadMoreProject("group")
+            precondition(!session.canLoadMoreProject("group") && visibleOrdinary() == 5 && remoteCommands() == 0, "加载中即便有缓存也不得扩大窗口或发重复命令")
+            snapshot.groups[0].actions?[0].disabled = false; publish()
+            session.loadMoreProject("group")
+            precondition(visibleOrdinary() == 10 && session.projectConversations("group").count == 12 && remoteCommands() == 0, "缓存普通每次增加五条且独立摘要不占名额，不重复拉取")
+            session.sidebarVisible = false; session.sidebarVisible = true
+            precondition(visibleOrdinary() == 10, "关闭侧栏保留普通窗口")
+            session.loadMoreProject("group")
+            precondition(visibleOrdinary() == 12 && remoteCommands() == 0, "缓存余量先本地展开")
+            snapshot.groups[0].actions?[0].disabled = true; publish()
+            let previousWindow = session.projectPageCounts["group"]
+            session.loadMoreProject("group")
+            precondition(session.projectPageCounts["group"] == previousWindow && remoteCommands() == 0, "缓存耗尽且加载中不得扩大窗口或发送命令")
+            snapshot.groups[0].actions?[0].disabled = false; publish()
+            session.loadMoreProject("group")
+            precondition(remoteCommands() == 1 && commands.last?.params["cwd"] == .string(cwd), "缓存耗尽后才按真实分组调用远端更多")
+            snapshot.groups[0].collapsed = true; publish()
+            snapshot.groups[0].collapsed = false; publish()
+            precondition(visibleOrdinary() == 5 && session.projectConversations("group").count == 7, "显式折叠重开复位普通五条，独立摘要仍显示")
+            session.searchText = "ordinary"
+            precondition(session.projectConversations("group").count == 14, "搜索显示全部非关注缓存，不受普通窗口限制")
+        }
     }
 }

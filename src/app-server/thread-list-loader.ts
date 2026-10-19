@@ -1,6 +1,6 @@
 import { isThreadRunning } from "../ui/conversation";
 import { isVisibleThread } from "../features/threads/thread-visibility";
-import type { AppServerRequestOptions } from "./client";
+import { AppServerRpcError, type AppServerRequestOptions } from "./client";
 
 type ThreadRecord = Record<string, any>;
 
@@ -135,17 +135,6 @@ function markProjectlessThreads(
   );
 }
 
-function projectlessThreadsFromPage(
-  threads: ThreadRecord[],
-  threadIds: Set<string>,
-) {
-  return threads.flatMap((thread) =>
-    threadIds.has(String(thread.id ?? ""))
-      ? [{ ...thread, isProjectless: true }]
-      : [],
-  );
-}
-
 async function loadProjectlessThreadPage(
   client: ThreadListClient,
   threadIds: string[],
@@ -169,43 +158,37 @@ export async function loadProjectlessThreadRecords(
   targetCount: number,
   pinnedThreadIds: Set<string> = new Set(),
 ) {
-  const targetIds = new Set(threadIds.filter((id) => !pinnedThreadIds.has(id)));
+  const targetIds = new Set(threadIds.filter((id) => id && !pinnedThreadIds.has(id)));
   const effectiveTargetCount = Math.min(
     Math.max(0, Math.floor(targetCount)),
     targetIds.size,
   );
   if (!effectiveTargetCount) return { threads: [], hasMore: false };
-  const found: ThreadRecord[] = [];
-  const seenCursors = new Set<string>();
-  let cursor: string | null = null;
-  do {
-    const result: ThreadListResponse = await client.request("thread/list", {
-      limit: 50,
-      sortKey: "recency_at",
-      ...(cursor ? { cursor } : {}),
-    });
-    found.push(...projectlessThreadsFromPage(result.data, targetIds));
-    if (dedupeThreadsById(found).length >= effectiveTargetCount) {
-      const threads = dedupeThreadsById(found);
-      return {
-        threads: threads.slice(0, effectiveTargetCount),
-        hasMore:
-          threads.length > effectiveTargetCount ||
-          (Boolean(result.nextCursor) &&
-            targetIds.size > effectiveTargetCount),
-      };
+  // 本机标记的 ID 不保证有序；只核对本分组轻量摘要，才能取到真正最近的普通会话。
+  const found = await Promise.all([...targetIds].map(async (threadId) => {
+    try {
+      const result = await client.request("thread/read", { threadId, includeTurns: false });
+      const thread = result.thread;
+      if (String(thread?.id ?? "") !== threadId || !isVisibleThread(thread) ||
+        thread.archived === true ||
+        (typeof thread.path === "string" && /(?:^|[\\/])archived_sessions(?:[\\/]|$)/.test(thread.path))) {
+        return null;
+      }
+      const { turns: _turns, ...metadata } = thread;
+      return { ...metadata, isProjectless: true } as ThreadRecord;
+    } catch (error) {
+      // 上游对已从持久化索引消失的遗留 ID 返回此精确错误；其他读取失败需交给分组错误状态。
+      if (error instanceof AppServerRpcError && error.code === -32600 &&
+        error.message === `thread not loaded: ${threadId}`) return null;
+      throw error;
     }
-    const nextCursor = result.nextCursor ?? null;
-    if (!nextCursor || seenCursors.has(nextCursor)) {
-      break;
-    }
-    seenCursors.add(nextCursor);
-    cursor = nextCursor;
-  } while (cursor);
-  const threads = dedupeThreadsById(found).slice(0, effectiveTargetCount);
+  }));
+  const threads = dedupeThreadsById(found.filter((thread): thread is ThreadRecord => thread !== null))
+    .sort((left, right) => threadTimestamp(right) - threadTimestamp(left) ||
+      (String(left.id) < String(right.id) ? -1 : String(left.id) > String(right.id) ? 1 : 0));
   return {
-    threads,
-    hasMore: false,
+    threads: threads.slice(0, effectiveTargetCount),
+    hasMore: threads.length > effectiveTargetCount,
   };
 }
 

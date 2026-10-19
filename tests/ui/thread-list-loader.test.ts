@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { AppServerRpcError } from "../../src/app-server/client";
 import {
   createLatestThreadListLoader,
   dedupeThreadsById,
@@ -60,7 +61,8 @@ describe("会话列表轮询加载器", () => {
       { id: "internal", ephemeral: true },
       ...Array.from({ length: 6 }, (_, i) => ({ id: `regular-${i}` })),
     ];
-    const client = { request: vi.fn(async (_method: string, params: any) => {
+    const client = { request: vi.fn(async (method: string, params: any) => {
+      if (method === "thread/read") return { thread: records.find((thread) => thread.id === params.threadId) };
       const offset = Number(params.cursor ?? 0);
       const end = offset + params.limit;
       return { data: records.slice(offset, end), nextCursor: end < records.length ? String(end) : null };
@@ -195,10 +197,11 @@ describe("会话列表轮询加载器", () => {
 
   it("无项目置顶不占普通对话目标数量", async () => {
     const records = ["pin", ...Array.from({ length: 6 }, (_, i) => `regular-${i}`)].map((id, i) => ({ id, updatedAt: 100 - i }));
-    const client = { request: vi.fn().mockResolvedValue({ data: records, nextCursor: null }) };
+    const client = { request: vi.fn(async (_method: string, params: any) => ({ thread: records.find((thread) => thread.id === params.threadId) })) };
     const result = await loadProjectlessThreadRecords(client, records.map((thread) => thread.id), 5, new Set(["pin"]));
     expect(result.threads.map((thread) => thread.id)).toEqual(Array.from({ length: 5 }, (_, i) => `regular-${i}`));
     expect(result.hasMore).toBe(true);
+    expect(client.request.mock.calls.some(([, params]) => params.threadId === "pin")).toBe(false);
     const pinsOnly = { request: vi.fn() };
     expect(await loadProjectlessThreadRecords(pinsOnly, ["pin"], 5, new Set(["pin"])))
       .toEqual({ threads: [], hasMore: false });
@@ -228,7 +231,7 @@ describe("会话列表轮询加载器", () => {
     const records = ["pin", ...Array.from({ length: 6 }, (_, i) => `regular-${i}`)]
       .map((id, i) => ({ id, updatedAt: 100 - i }));
     const client = { request: vi.fn(async (method: string, params: any) =>
-      method === "thread/read" ? { thread: { id: params.threadId } } : { data: records, nextCursor: null }) };
+      method === "thread/read" ? { thread: records.find((thread) => thread.id === params.threadId) } : { data: records, nextCursor: null }) };
     const onData = vi.fn();
     const onProjectData = vi.fn();
     const onPinnedData = vi.fn();
@@ -237,7 +240,7 @@ describe("会话列表轮询加载器", () => {
     expect(onData).not.toHaveBeenCalled();
     expect(onProjectData).toHaveBeenCalledWith(PROJECTLESS_GROUP_ID,
       records.slice(1, 6).map((thread) => ({ ...thread, isProjectless: true })), true, null);
-    expect(onPinnedData).toHaveBeenCalledWith([{ id: "pin", isProjectless: true }]);
+    expect(onPinnedData).toHaveBeenCalledWith([{ ...records[0], isProjectless: true }]);
   });
 
   it("最近五条之外的置顶对话独立补取摘要并恢复无项目标记", async () => {
@@ -393,48 +396,127 @@ describe("会话列表轮询加载器", () => {
     expect(nextProjectThreadLimit(10)).toBe(15);
   });
 
-  it("无项目历史收集到目标数量后停止，不读取剩余全部", async () => {
-    const client = {
-      request: vi
-        .fn()
-        .mockResolvedValueOnce({
-          data: [
-            { id: "projectless-1", updatedAt: 30 },
-            { id: "project-1", updatedAt: 20 },
-          ],
-          nextCursor: "older-page",
-        })
-        .mockResolvedValueOnce({
-          data: [
-            { id: "projectless-2", updatedAt: 10 },
-            { id: "projectless-3", updatedAt: 5 },
-          ],
-          nextCursor: "remaining-page",
-        }),
-    };
-
-    await expect(
-      loadProjectlessThreadRecords(
-        client,
-        ["projectless-1", "projectless-2", "projectless-3"],
-        2,
-      ),
-    ).resolves.toEqual({
-      threads: [
-        { id: "projectless-1", updatedAt: 30, isProjectless: true },
-        { id: "projectless-2", updatedAt: 10, isProjectless: true },
-      ],
-      hasMore: true,
+  it("无项目只核对去重后的已知摘要，乱序 ID 按任务时间返回前五条和前十条", async () => {
+    const records = Array.from({ length: 12 }, (_, index) => ({
+      id: `recent-${index}`, recencyAt: 100 - index, updatedAt: index,
+      turns: [{ id: "must-not-be-returned" }],
+    }));
+    const ids = [9, 5, 2, 11, 0, 4, 7, 1, 6, 3, 10, 8, 9].map((index) => records[index].id);
+    const request = vi.fn(async (method: string, params: any) => {
+      if (method !== "thread/read") throw new Error("不得扫描全局会话");
+      return { thread: records.find((thread) => thread.id === params.threadId) };
     });
-    expect(client.request).toHaveBeenCalledTimes(2);
+    const expected = records.map(({ turns: _turns, ...thread }) => ({ ...thread, isProjectless: true }));
+    expect(await loadProjectlessThreadRecords({ request }, ids, 5))
+      .toEqual({ threads: expected.slice(0, 5), hasMore: true });
+    expect(request).toHaveBeenCalledTimes(12);
+    expect(request.mock.calls.every(([method, params]) => method === "thread/read" &&
+      params.includeTurns === false && Object.keys(params).length === 2)).toBe(true);
+    request.mockClear();
+    expect(await loadProjectlessThreadRecords({ request }, ids, 10))
+      .toEqual({ threads: expected.slice(0, 10), hasMore: true });
+    expect(request).toHaveBeenCalledTimes(12);
+    expect(await loadProjectlessThreadRecords({ request }, ids, 15))
+      .toEqual({ threads: expected, hasMore: false });
+  });
+
+  it("无项目排序回退更新时间和创建时间，同一时间按 ID 稳定排序并保留零任务时间", async () => {
+    const records = [
+      { id: "tie-b", recencyAt: 10 }, { id: "zero", recencyAt: 0, updatedAt: 100 },
+      { id: "created", createdAt: 20 }, { id: "tie-a", recencyAt: 10 },
+      { id: "updated", recencyAt: null, updatedAt: 30 },
+    ];
+    const client = { request: vi.fn(async (_method: string, params: any) => ({ thread: records.find((thread) => thread.id === params.threadId) })) };
+    const result = await loadProjectlessThreadRecords(client, records.map((thread) => thread.id), 5);
+    expect(result.threads.map((thread) => thread.id)).toEqual(["updated", "created", "tie-a", "tie-b", "zero"]);
+    expect(result.hasMore).toBe(false);
+  });
+
+  it("无项目过滤明确归档、归档路径和辅助会话，剩余有效摘要决定是否还有更多", async () => {
+    const records = [
+      { id: "archived-flag", archived: true },
+      { id: "archived-unix", path: "/home/.codex/archived_sessions/rollout.jsonl" },
+      { id: "archived-windows", path: "C:\\Users\\me\\.codex\\archived_sessions\\rollout.jsonl" },
+      { id: "child", parentThreadId: "main" },
+      { id: "temporary", ephemeral: true },
+      { id: "review", source: { subAgent: "review" } },
+      { id: "main", archived: false, path: "/home/.codex/sessions/rollout.jsonl", updatedAt: 20 },
+      { id: "older", updatedAt: 10 },
+    ];
+    const client = { request: vi.fn(async (_method: string, params: any) => ({ thread: params.threadId === "mismatched"
+      ? { id: "unrelated", updatedAt: 100 } : records.find((thread) => thread.id === params.threadId) })) };
+    const result = await loadProjectlessThreadRecords(client, [...records.map((thread) => thread.id), "mismatched"], 5);
+    expect(result).toEqual({ threads: records.slice(-2).map((thread) => ({ ...thread, isProjectless: true })), hasMore: false });
+    expect(client.request.mock.calls.every(([method, params]) => method === "thread/read" && params.includeTurns === false)).toBe(true);
+  });
+
+  it.each([
+    new Error("network unavailable"),
+    new AppServerRpcError("access denied", -32000),
+    new AppServerRpcError("thread not loaded: another-id", -32600),
+    new AppServerRpcError("thread not loaded: unloaded", -32000),
+    new AppServerRpcError("cannot read thread: unloaded", -32600),
+    new Error("thread not loaded: unloaded"),
+  ])("无项目非确定缺失的读取错误原样上抛：%s", async (failure) => {
+    const client = { request: vi.fn(async () => { throw failure; }) };
+    await expect(loadProjectlessThreadRecords(client, ["unloaded"], 5)).rejects.toBe(failure);
+    expect(client.request).toHaveBeenCalledOnce();
+    expect(client.request).toHaveBeenCalledWith("thread/read", { threadId: "unloaded", includeTurns: false });
+  });
+
+  it("无项目精确跳过上游已不可读取的遗留 ID，未 loaded 的持久化摘要仍保留", async () => {
+    const request = vi.fn(async (_method: string, params: any) => {
+      if (params.threadId === "missing") throw new AppServerRpcError("thread not loaded: missing", -32600);
+      return { thread: { id: params.threadId, updatedAt: 10, turns: [] } };
+    });
+    expect(await loadProjectlessThreadRecords({ request }, ["missing", "persisted-unloaded"], 5))
+      .toEqual({ threads: [{ id: "persisted-unloaded", updatedAt: 10, isProjectless: true }], hasMore: false });
+    expect(request).toHaveBeenCalledTimes(2);
+    expect(request.mock.calls.every(([method, params]) => method === "thread/read" && params.includeTurns === false)).toBe(true);
+  });
+
+  it("无项目普通批次先排除关注和未读，独立摘要各读取一次且不占五条名额", async () => {
+    const records = ["pin", "unread", ...Array.from({ length: 6 }, (_, index) => `regular-${index}`)]
+      .map((id, index) => ({ id, updatedAt: 100 - index }));
+    const request = vi.fn(async (_method: string, params: any) => ({ thread: records.find((thread) => thread.id === params.threadId) }));
+    const onPinnedData = vi.fn();
+    const onProjectData = vi.fn();
+    await createLatestThreadListLoader({ onPinnedData, onProjectData })
+      .load({ request }, [], records.map((thread) => thread.id), {
+        pinnedThreadIds: ["pin"], prioritizedThreadIds: ["unread", "pin"],
+      });
+    expect(onPinnedData).toHaveBeenCalledWith(records.slice(0, 2).map((thread) => ({ ...thread, isProjectless: true })));
+    expect(onProjectData).toHaveBeenCalledWith(PROJECTLESS_GROUP_ID,
+      records.slice(2, 7).map((thread) => ({ ...thread, isProjectless: true })), true, null);
+    expect(request.mock.calls.every(([method, params]) => method === "thread/read" && params.includeTurns === false)).toBe(true);
+    expect(request.mock.calls.filter(([, params]) => params.threadId === "pin")).toHaveLength(1);
+    expect(request.mock.calls.filter(([, params]) => params.threadId === "unread")).toHaveLength(1);
+  });
+
+  it("无项目网络失败提交现有分组错误状态，不回退全局扫描", async () => {
+    const failure = new Error("network unavailable");
+    const request = vi.fn(async () => { throw failure; });
+    const onProjectError = vi.fn();
+    const onProjectData = vi.fn();
+    const onSettled = vi.fn();
+    await createLatestThreadListLoader({ onProjectError, onProjectData, onSettled }).load({ request }, [], ["loose"]);
+    expect(onProjectError).toHaveBeenCalledWith(PROJECTLESS_GROUP_ID, failure);
+    expect(onProjectData).not.toHaveBeenCalled();
+    expect(onSettled).toHaveBeenCalledOnce();
+    expect(request).toHaveBeenCalledExactlyOnceWith("thread/read", { threadId: "loose", includeTurns: false }, { priority: "background" });
+  });
+
+  it("无项目目标为零或候选全被独立摘要排除时不发送请求", async () => {
+    const client = { request: vi.fn() };
+    expect(await loadProjectlessThreadRecords(client, ["loose"], 0)).toEqual({ threads: [], hasMore: false });
+    expect(await loadProjectlessThreadRecords(client, ["pin", "unread", "pin"], 5, new Set(["pin", "unread"])))
+      .toEqual({ threads: [], hasMore: false });
+    expect(client.request).not.toHaveBeenCalled();
   });
 
   it("无项目目标数量不超过已知会话数", async () => {
     const client = {
-      request: vi.fn().mockResolvedValue({
-        data: [{ id: "only-projectless", updatedAt: 10 }],
-        nextCursor: "unneeded-page",
-      }),
+      request: vi.fn().mockResolvedValue({ thread: { id: "only-projectless", updatedAt: 10 } }),
     };
 
     await expect(
@@ -548,15 +630,14 @@ describe("会话列表轮询加载器", () => {
 
   it("读取桌面端标记的无项目会话并从项目分组排除", async () => {
     const client = {
-      request: vi.fn((_method: string, params: { cwd?: string }) => {
-        if (!params.cwd) {
+      request: vi.fn((method: string, _params: { cwd?: string }) => {
+        if (method === "thread/read") {
           return Promise.resolve({
-            data: [{
+            thread: {
               id: "projectless-thread",
               cwd: "/workspace/project",
               updatedAt: 30,
-            }],
-            nextCursor: null,
+            },
           });
         }
         return Promise.resolve({
@@ -585,9 +666,9 @@ describe("会话列表轮询加载器", () => {
       ["projectless-thread"],
     );
 
-    expect(client.request).toHaveBeenCalledWith("thread/list", {
-      limit: 50,
-      sortKey: "recency_at",
+    expect(client.request).toHaveBeenCalledWith("thread/read", {
+      threadId: "projectless-thread",
+      includeTurns: false,
     }, { priority: "background" });
     expect(onProjectData).toHaveBeenCalledWith(
       "/workspace/project",

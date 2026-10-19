@@ -50,7 +50,7 @@ final class AppSession {
     var projectErrors: Set<String> = []
     var loadingProjects: Set<String> = []
     var scopedProjects: [String] = []
-    var navigationLoading = false
+    var navigationLoading = true
     var navigationError: String?
     var nativeSnapshot = NativeSnapshot()
     var submissionPending = false
@@ -240,7 +240,17 @@ final class AppSession {
     }
     func projectConversations(_ project: String) -> [Conversation] {
         let loaded = allProjectConversations(project)
-        return searchText.isEmpty ? Array(loaded.prefix(projectPageCounts[project] ?? 5)) : loaded
+        guard searchText.isEmpty else { return loaded }
+        let limit = projectPageCounts[project] ?? 5
+        var ordinaryCount = 0
+        return loaded.filter { conversation in
+            if conversation.isUnread || conversation.phase == .running { return true }
+            ordinaryCount += 1
+            return ordinaryCount <= limit
+        }
+    }
+    private func ordinaryProjectConversationCount(_ project: String) -> Int {
+        allProjectConversations(project).filter { !$0.isUnread && $0.phase != .running }.count
     }
     func projectDisplayName(_ key: String) -> String { projectGroups[key]?.title ?? key }
     func projectTitle(for path: String) -> String {
@@ -258,13 +268,18 @@ final class AppSession {
         perform(command)
     }
     func projectHasMore(_ project: String) -> Bool {
-        (searchText.isEmpty && allProjectConversations(project).count > (projectPageCounts[project] ?? 5)) ||
+        (searchText.isEmpty && ordinaryProjectConversationCount(project) > (projectPageCounts[project] ?? 5)) ||
         projectGroups[project]?.actions?.contains { $0.command?.name == "project.more" } == true
     }
+    func canLoadMoreProject(_ project: String) -> Bool {
+        let action = projectGroups[project]?.actions?.first { $0.command?.name == "project.more" }
+        return action?.disabled != true && projectHasMore(project)
+    }
     func loadMoreProject(_ project: String) {
+        guard canLoadMoreProject(project) else { return }
         let shown = projectPageCounts[project] ?? 5
         projectPageCounts[project] = shown + 5
-        if allProjectConversations(project).count <= shown {
+        if ordinaryProjectConversationCount(project) <= shown {
             perform(projectGroups[project]?.actions?.first { $0.command?.name == "project.more" }?.command)
         }
     }

@@ -156,6 +156,18 @@ interface NavigationInput {
   backends?: Array<{ id: string; name: string }>;
   backendSnapshots?: Record<string, { projects: string[]; projectlessThreadIds: string[]; projectThreadStates: Record<string, ProjectThreadLoadState>; projectHasMore: Record<string, boolean> }>;
 }
+export function projectNavigationLoading(input: {
+  loading: boolean; hasContent: boolean; backendIds: readonly string[];
+  backendSnapshots: Record<string, { threadListState: 'loading' | 'ready' | 'error' } | undefined>;
+}): boolean {
+  if (input.loading) return true;
+  if (input.hasContent) return false;
+  // 任一设备成功空不能确认整个范围为空；未提供首查快照的设备也仍在等待。
+  return input.backendIds.some(id => {
+    const state = input.backendSnapshots[id]?.threadListState;
+    return state === undefined || state === 'loading';
+  });
+}
 export function projectNavigation(input: NavigationInput): NativeGroup[] {
   const row = (item: AggregatedThreadItem) => {
     const params = { backendId: item.backendId, threadId: item.threadId };
@@ -174,19 +186,24 @@ export function projectNavigation(input: NavigationInput): NativeGroup[] {
     ...(input.error ? { subtitle: input.error, actions: [nativeAction('search-retry', t('重试'), 'navigation.refresh')] } : {}) }];
   const split = splitAllThreads(input.threads);
   const groups: NativeGroup[] = [{ id: 'favorites', category: 'pinned', title: t('关注'), items: split.pinned.map(row) }];
-  if (input.filter === 'favorites') return groups;
+  const failure: NativeGroup | undefined = input.error ? { id: 'list-error', title: input.error, items: [{ id: 'retry', title: t('重试'), command: nativeCommand('navigation.refresh') }] } : undefined;
+  if (input.filter === 'favorites') return failure ? [...groups, failure] : groups;
   const appendProjects = (backendId: string, threads: AggregatedThreadItem[], directories: string[], hasProjectless: boolean,
     states: Record<string, ProjectThreadLoadState>, hasMore: Record<string, boolean>, backendName?: string) => {
     for (const group of groupThreadsByProject(threads, [...(hasProjectless ? [PROJECTLESS_GROUP_ID] : []), ...directories])) {
       const key = projectCollapseKey(backendId, group.cwd);
       const collapsed = input.collapsedProjectKeys.has(key);
       const params = { backendId, cwd: group.cwd };
+      // 项目目录先于首批会话返回；未知/idle空组尚未获得成功空结果。
+      const state = states[group.cwd];
+      const knownProject = directories.includes(group.cwd) || (hasProjectless && group.cwd === PROJECTLESS_GROUP_ID);
+      const loading = !state || state === 'idle' ? (knownProject || !group.threads.length ? 'loading' : 'ready') : state;
       const actions: NativePanelItem[] = [];
       if (!collapsed && states[group.cwd] === 'error') actions.push(nativeAction(`${key}:retry`, t('重试'), 'project.retry', params));
       if (!collapsed && hasMore[group.cwd]) actions.push({ ...nativeAction(`${key}:more`, input.loadingProjectKeys.has(key) ? t('加载中…') : t('加载更多'), 'project.more', params), disabled: input.loadingProjectKeys.has(key) });
       const allItems = group.threads.map(row);
       groups.push({ id: key, category: 'project', title: group.projectName, subtitle: backendName, backendId, cwd: group.cwd === PROJECTLESS_GROUP_ID ? '' : group.cwd,
-        hasMore: !!hasMore[group.cwd], allItems, collapsed, loading: collapsed ? undefined : states[group.cwd],
+        hasMore: !!hasMore[group.cwd], allItems, collapsed, loading: collapsed ? undefined : loading,
         command: nativeCommand('project.toggle', params), newCommand: nativeCommand('thread.new', { backendId, cwd: group.cwd === PROJECTLESS_GROUP_ID ? '' : group.cwd }),
         actions, items: collapsed ? [] : allItems });
     }
@@ -198,7 +215,7 @@ export function projectNavigation(input: NavigationInput): NativeGroup[] {
     }
   } else appendProjects(input.listBackendId, input.threads, input.projectDirectories, input.hasProjectlessThreads, input.projectThreadStates, input.projectHasMore);
   if (input.filter !== 'projects') groups.push({ id: 'recent', category: 'recent', title: t('最近会话'), items: split.recent.map(row) });
-  if (input.error) groups.push({ id: 'list-error', title: input.error, items: [{ id: 'retry', title: t('重试'), command: nativeCommand('navigation.refresh') }] });
+  if (failure) groups.push(failure);
   return groups;
 }
 export type NativeMention = { kind: 'skill'; skill: InstalledSkill } | { kind: 'plugin'; plugin: InstalledPlugin };

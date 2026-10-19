@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { AppServerClient, type AppServerRequestOptions } from "../../src/app-server/client";
 import { HttpRpcTransport } from "../../src/backends/http-transport";
 import { fetchBackendProjectState } from "../../src/backends/probe";
+import { runWorkspaceBootstrap } from "../../src/backends/workspace-bootstrap";
 
 const transports: HttpRpcTransport[] = [];
 afterEach(async () => {
@@ -40,6 +41,44 @@ function harness() {
 }
 
 describe("HTTP前台会话优先于后台刷新", () => {
+  it("冷启动额度查询未结束时，后续后台列表仍完成关键初始化", async () => {
+    const { calls, create } = harness();
+    const { client } = create("bootstrap-rate-limits", "http://bootstrap-rate-limits.test");
+    await vi.advanceTimersByTimeAsync(0);
+    let initialized = false;
+    let rateLimitsSettled = false;
+    const bootstrap = runWorkspaceBootstrap({
+      loadThreads: async () => {
+        await client.request("thread/list", { cwd: "/first", limit: 5 }, { priority: "background" });
+        await client.request("thread/list", { cwd: "/next", limit: 5 }, { priority: "background" });
+      },
+      loadSettings: () => client.request("config/read", { includeLayers: false }),
+      loadRateLimits: async (options?: AppServerRequestOptions) => {
+        await client.request("account/rateLimits/read", undefined, options);
+        rateLimitsSettled = true;
+      },
+    }).then((settings) => { initialized = true; return settings; });
+    try {
+      calls.find((call) => call.method === "config/read")!.finish();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(calls.some((call) => call.method === "account/rateLimits/read")).toBe(true);
+      calls.find((call) => call.method === "thread/list")!.finish();
+      await vi.advanceTimersByTimeAsync(0);
+      const lists = calls.filter((call) => call.method === "thread/list");
+      expect(lists).toHaveLength(2);
+      lists[1].finish();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(initialized).toBe(true);
+      expect(rateLimitsSettled).toBe(false);
+      expect(await bootstrap).toEqual({ method: "config/read" });
+    } finally {
+      calls.forEach((call) => call.finish());
+      await vi.advanceTimersByTimeAsync(0);
+      calls.forEach((call) => call.finish());
+      await bootstrap;
+    }
+  });
+
   it("同网关不同设备共用后台名额，打开会话立即发出且刷新最终全部完成", async () => {
     const { calls, create, request } = harness();
     const a = create("device-a"), b = create("device-b");

@@ -40,6 +40,8 @@ export interface NativeSnapshot {
   approvalCount: number; model: string; effort: string; models: NativeOption[]; efforts: NativeOption[];
   richContent?: NativePanelItem[];
   error?: string; badge?: string; panel?: { id: string; title: string; items: NativePanelItem[]; dismissible?: boolean };
+  /** 会话列表首查进度，独立于详情loading；旧快照缺省时由ready兼容。 */
+  navigationLoading?: boolean;
   commandResults?: NativeResult[]; sidebarOpen?: boolean; search?: string; loading?: string;
   olderTurnsState?: string;
   canInterrupt?: boolean; conversationActions?: NativePanelItem[]; permission?: string; pending?: boolean; mentions?: NativeOption[];
@@ -59,4 +61,4 @@ export function emptyNativeSnapshot(): NativeSnapshot {
 }
 export type NativeHandler = (params: NativeParams) => unknown | Promise<unknown>;
 export type NativeHandlers = Partial<Record<string, NativeHandler>>;
-export interface NativeNavigation { selectedBackendId: string; listBackendId?: string; backends: NativeSnapshot['backends']; groups: NativeGroup[]; sidebarOpen?: boolean; search?: string; error?: string; preferences?: NativeSettingsPreferences }
+export interface NativeNavigation { selectedBackendId: string; listBackendId?: string; backends: NativeSnapshot['backends']; groups: NativeGroup[]; navigationLoading?: boolean; sidebarOpen?: boolean; search?: string; error?: string; preferences?: NativeSettingsPreferences }
