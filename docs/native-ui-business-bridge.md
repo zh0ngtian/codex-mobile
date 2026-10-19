@@ -163,3 +163,11 @@ AgentUI 输入区保持原型的收起与展开两态，正文最多显示六行
 ### 网页重命名文本输入
 
 网页会话与侧栏继续调用现有 `window.prompt` 并由既有 `thread/name/set` 完成重命名。生成的主 WebView Coordinator 实现 `runJavaScriptTextInputPanelWithPrompt`，交给单一职责 `CodexMobileJavaScriptTextInputBridge` 显示系统文本框并预填 `defaultText`；保存返回输入，取消返回 nil。仅接受可信内置首页的主 frame，按钮文字提前同步 App 的 `document.documentElement.lang`，不在 prompt 挂起期间求值网页 JS。请求绑定独立标识并只完成一次，导航开始时取消挂起弹窗，重复或旧 action 不能完成新请求。完整原生 `NativeTextPrompt` 业务路径继续保留。
+
+## Sidechat 临时分支
+
+`sidechat.create/open/return/close` 使用当前 workspace 的 contextId 校验，open/close 必须带分支 id，旧上下文不能操作新聊天。`NativeSnapshot.sidechatActive/sidechatParentId/sidechatActions` 只投影展示和动作，复用 ConversationScreen、ComposerBar、审批和既有附件功能；分支菜单不提供普通聊天归档、关注或复制动作。主聊天因另一writer占用而只读时，创建分支仍可用，不开放主聊天发送权限。
+
+共享客户端通过受鉴权 `mobile/sidechat/rpc` 访问网关专用 memoryOnly Session。实际 fork、turn/start 和 interrupt 仍由同一上游 App Server 执行；daemon 内存投影保留分叉后消息，read 不依赖官方 ephemeral 不支持的 resume/turns/list。客户端切换检查点不保存分支草稿，也不会把分支 ID 当普通持久聊天恢复。
+
+本轮仅临时网关和模拟器验收，未部署现役网关或发布安装包。

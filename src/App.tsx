@@ -1,3 +1,4 @@
+import { useSidechatExpiry } from './sidechat/use-expiry';
 import { SidechatSessions, gatewaySidechatClient } from './sidechat/sessions';
 import { markLoadProfile } from './diagnostics/conversation-load-profile';
 import { NativeSwitchBoundary, useNativeSwitch, useSwitchRegistry, useSwitchWorkspace } from './native-ui/switch-context';
@@ -2359,17 +2360,10 @@ function BackendWorkspace({
       setActive(side.thread); setBusy(side.busy || side.sending); setError(side.error);
     }
   }), [sidechats]);
-  useEffect(() => {
-    const timer = window.setInterval(() => {
-      const client = clientRef.current;
-      if (!client) return;
-      const opened = sidechats.get(String(activeRef.current?.id ?? ''));
-      void sidechats.expire(gatewaySidechatClient(client)).then(() => {
-        if (opened && !sidechats.get(opened.id)) openThread(sidechatParentsRef.current.get(opened.parentId) ?? { id: opened.parentId });
-      }).catch(reason => setError(String(reason.message ?? reason)));
-    }, 60_000);
-    return () => window.clearInterval(timer);
-  }, [sidechats]);
+  useSidechatExpiry(sidechats, () => clientRef.current, () => String(activeRef.current?.id ?? ''),
+    side => openThread(sidechatParentsRef.current.get(side.parentId) ?? { id: side.parentId }),
+    reason => setError(String((reason as Error).message ?? reason)));
+
 
   async function createSidechat() {
     const client = clientRef.current; const current = activeRef.current;
@@ -2390,14 +2384,14 @@ function BackendWorkspace({
     const side = sidechats.get(id);
     const current = String(activeRef.current?.id ?? '');
     const parent = sidechats.get(current)?.parentId ?? current;
-    if (!side || side.parentId !== parent) throw new Error('Sidechat 已失效或不属于当前主聊天');
-    if (side.restoring) throw new Error('Sidechat 正在恢复，请稍候');
+    if (!side || side.parentId !== parent) throw new Error(t('Sidechat 已失效或不属于当前主聊天'));
+    if (side.restoring) throw new Error(t('Sidechat 正在恢复，请稍候'));
     openThread(side.thread);
   }
   async function closeSidechat(id: string) {
     const client = clientRef.current; const side = sidechats.get(id);
     const current = String(activeRef.current?.id ?? '');
-    if (!client || !side || side.parentId !== (sidechats.get(current)?.parentId ?? current)) throw new Error('Sidechat 不可用');
+    if (!client || !side || side.parentId !== (sidechats.get(current)?.parentId ?? current)) throw new Error(t('Sidechat 不可用'));
     await sidechats.close(gatewaySidechatClient(client), id);
     if (String(activeRef.current?.id ?? '') === id) openThread(sidechatParentsRef.current.get(side.parentId) ?? { id: side.parentId });
   }
@@ -4336,10 +4330,10 @@ function BackendWorkspace({
   const activeSidechat = sidechats.get(String(active?.id ?? ''));
   const sidechatParentId = activeSidechat?.parentId ?? String(active?.id ?? '');
   const sidechatActions = active?.id ? [
-    ...(activeSidechat ? [{ id: 'sidechat-return', kind: 'action', title: '返回主聊天', command: { name: 'sidechat.return', params: {} } }] : []),
-    { id: 'sidechat-create', kind: 'action', title: '新建 Sidechat', command: { name: 'sidechat.create', params: {} } },
+    ...(activeSidechat ? [{ id: 'sidechat-return', kind: 'action', title: t('返回主聊天'), command: { name: 'sidechat.return', params: {} } }] : []),
+    { id: 'sidechat-create', kind: 'action', title: t('新建 Sidechat'), command: { name: 'sidechat.create', params: {} } },
     ...sidechats.forParent(sidechatParentId).filter(side => side.id !== activeSidechat?.id).map(side => ({ id: `sidechat:${side.id}`, kind: 'action', title: side.thread.name + (side.busy ? ' · 执行中' : ''), command: { name: 'sidechat.open', params: { id: side.id } } })),
-    ...(activeSidechat ? [{ id: 'sidechat-close', kind: 'action', title: '关闭 Sidechat', command: { name: 'sidechat.close', params: { id: activeSidechat.id } } }] : []),
+    ...(activeSidechat ? [{ id: 'sidechat-close', kind: 'action', title: t('关闭 Sidechat'), command: { name: 'sidechat.close', params: { id: activeSidechat.id } } }] : []),
   ] : [];
   useEffect(() => {
     if (!activeSidechat) return;
@@ -4355,7 +4349,7 @@ function BackendWorkspace({
     selectedModelLabel, effortOptions, selectedEffort, permission: selectedPermissionLabel,
     skills: skillCatalog.cwd === (active?.cwd ?? null) ? skillCatalog.skills : [],
     plugins: pluginCatalog.cwd === (active?.cwd ?? null) ? pluginCatalog.plugins : [],
-    queued: activeSidechat ? activeSidechat.queue.filter((_, index) => !activeSidechat.sending || index > 0).map(item => ({ id: item.id, text: item.text, threadId: activeSidechat.id, failed: !!activeSidechat.error, state: activeSidechat.error ? 'failed' : 'queued' })) : queuedFollowUps.filter(item => item.threadId === String(active?.id ?? "") && (item.threadId || item.draftContext === draftContextGenerationRef.current)),
+    queued: activeSidechat ? activeSidechat.queue.filter((_, index) => !activeSidechat.sending || index > 0).map(item => ({ id: item.id, text: item.text, threadId: activeSidechat.id, failed: !!activeSidechat.error, state: activeSidechat.unconfirmed ? 'uncertain' : activeSidechat.error ? 'failed' : 'queued' })) : queuedFollowUps.filter(item => item.threadId === String(active?.id ?? "") && (item.threadId || item.draftContext === draftContextGenerationRef.current)),
     approvalCount: requests.length, loadState: conversationLoadState, loadError: conversationLoadError || activeThreadResumeError,
     olderTurnsState, error, syncStale: syncState?.stale, draftSaveStatus,
     getDraft: () => currentDraftRef.current.text,
@@ -4431,7 +4425,7 @@ function BackendWorkspace({
               ? pendingSteerMessage.text
               : ""
           }
-          queuedFollowUps={activeSidechat ? activeSidechat.queue.filter((_, index) => !activeSidechat.sending || index > 0).map(item => ({ id: item.id, text: item.text, failed: !!activeSidechat.error, error: activeSidechat.error })) : queuedFollowUps.filter(
+          queuedFollowUps={activeSidechat ? activeSidechat.queue.filter((_, index) => !activeSidechat.sending || index > 0).map(item => ({ id: item.id, text: item.text, failed: !!activeSidechat.error, error: activeSidechat.error, state: activeSidechat.unconfirmed ? 'uncertain' as const : 'queued' as const })) : queuedFollowUps.filter(
             (followUp) => followUp.threadId === String(active.id ?? "") && (followUp.threadId || followUp.draftContext === draftContextGenerationRef.current),
           )}
           accessMode={activeThreadAccessMode}

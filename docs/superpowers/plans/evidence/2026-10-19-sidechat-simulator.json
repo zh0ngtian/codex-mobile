@@ -1,0 +1,54 @@
+{
+  "date": "2026-10-19",
+  "status": "simulator-verified-awaiting-user",
+  "branch": "codex/sidechat",
+  "scope": "development-only",
+  "device": {
+    "name": "iPhone 17 Pro",
+    "os": "iOS 27.0",
+    "font": "normal",
+    "orientation": "portrait"
+  },
+  "validation": {
+    "fullVitest": {
+      "files": 150,
+      "passed": 1657
+    },
+    "subsequentCleanupVitest": {
+      "files": 5,
+      "passed": 88
+    },
+    "typecheck": "passed",
+    "serverBuild": "passed",
+    "realProtocolAndGateway": "passed",
+    "xctest": {
+      "passed": 1,
+      "failed": 0,
+      "durationSeconds": 88.866,
+      "covers": [
+        "create-from-readonly-main",
+        "new-messages-only",
+        "shared-directory-warning",
+        "real-reply",
+        "multiple-branches",
+        "return",
+        "app-restart-restore",
+        "close-all-test-branches"
+      ]
+    }
+  },
+  "cleanup": {
+    "testMainThreadsArchived": true,
+    "testSidechatsClosed": true,
+    "existingUserMainReadOnly": true
+  },
+  "deployment": {
+    "mainAdvanced": false,
+    "clientPublished": false,
+    "productionGatewayDeployed": false,
+    "temporaryGatewayDevice": "Sidechat 验收"
+  },
+  "remaining": [
+    "user-simulator-acceptance"
+  ]
+}

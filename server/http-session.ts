@@ -61,6 +61,7 @@ type Operation = {
   durable?: boolean;
   connectionEpoch?: string;
   imageRead?: boolean;
+  threadId?: string; method?: string;
 };
 type Event = { cursor: number; message: RpcMessage; bytes: number };
 type Snapshot = { id: string; entries: Event[]; bytes: number; cursor: number; expiresAt: number };
@@ -332,6 +333,26 @@ class Session {
     this.project(message);
   }
 
+  forgetThread(threadId: string) {
+    const belongs = (message: RpcMessage) => message.params?.threadId === threadId || message.params?.thread?.id === threadId;
+    this.history = this.history.filter(event => !belongs(event.message));
+    this.historyBytes = this.history.reduce((sum, event) => sum + event.bytes, 0);
+    for (const [key, event] of this.snapshots) if (belongs(event.message)) this.snapshots.delete(key);
+    this.snapshotBytes = [...this.snapshots.values()].reduce((sum, event) => sum + event.bytes, 0);
+    for (const [key, message] of this.items) if (belongs(message)) this.items.delete(key);
+    for (const [key, message] of this.pending) if (belongs(message)) this.pending.delete(key);
+    for (const key of this.running) if (key.startsWith(`${threadId}:`)) this.running.delete(key);
+    for (const [key, operation] of this.operations) if (this.memoryOnly && operation.threadId === threadId && operation.method !== 'thread/unsubscribe') this.operations.delete(key);
+    const snapshots = new Set([...this.frozenSnapshots.values(), ...[...this.snapshotPages.values()].map(page => page.snapshot)]);
+    for (const snapshot of snapshots) {
+      const old = snapshot.entries;
+      for (const page of this.snapshotPages.values()) if (page.snapshot === snapshot) page.start = old.slice(0, page.start).filter(event => !belongs(event.message)).length;
+      snapshot.entries = old.filter(event => !belongs(event.message));
+      snapshot.bytes = snapshot.entries.reduce((sum, event) => sum + event.bytes, 0);
+    }
+    this.frozenBytes = [...this.frozenSnapshots.values()].reduce((sum, snapshot) => sum + snapshot.bytes, 0);
+  }
+
   private itemKey(params: Record<string, any>) { return `${params.threadId}:${params.turnId}:${params.item?.id ?? params.itemId}`; }
 
   private project(raw: RpcMessage) {
@@ -584,7 +605,7 @@ class Session {
       if (!oldest) throw new HttpError(429, "Too many pending read operations");
       this.operations.delete(oldest.requestId);
     }
-    const operation: Operation = { requestId, signature, status: "pending", durable, imageRead: message.method === "fs/readFile" };
+    const operation: Operation = { requestId, signature, status: "pending", durable, imageRead: message.method === "fs/readFile", ...(this.memoryOnly ? { threadId: message.params?.threadId, method: message.method } : {}) };
     this.operations.set(requestId, operation);
     const execution = async () => {
       let recorded = false;
@@ -661,6 +682,7 @@ class Session {
           await this.changeHistory.cancelStart(message.params.threadId);
         }
         if (this.socket === submittedSocket && this.epoch === submittedEpoch) this.observeRpcState(message, result);
+        if (this.memoryOnly && (result.result as any)?.thread?.id) operation.threadId = (result.result as any).thread.id;
         operation.status = "completed"; operation.message = result;
         await this.save(operation);
         return result;
@@ -910,7 +932,10 @@ export class HttpSessions {
         if (method === 'thread/fork') { this.sidechats.register(params, response.result as Record<string, any>); this.sidechatIds.add((response.result as any).thread.id); }
         if (method === 'turn/start') this.sidechats.observe({ method: 'turn/started', params: { threadId: params.threadId, turn: (response.result as any).turn } });
         if (method === 'thread/settings/update') this.sidechats.settings(params.threadId, params);
-        if (method === 'thread/unsubscribe') { this.sidechats.remove(params.threadId); this.sidechatIds.delete(params.threadId); this.broadcastHosted({ method: 'thread/closed', params: { threadId: params.threadId } }); }
+        if (method === 'thread/unsubscribe') {
+          for (const [key, entry] of this.hostedRequests) if (entry.message.params?.threadId === params.threadId) this.hostedRequests.delete(key);
+          for (const retained of this.sessions.values()) retained.forgetThread(params.threadId);
+          this.sidechats.remove(params.threadId); this.sidechatIds.delete(params.threadId); this.broadcastHosted({ method: 'thread/closed', params: { threadId: params.threadId } }); }
       }
       return { ...response, id: envelope.id };
     } catch (error) { if (error instanceof HttpError) throw error; return { id: envelope.id, error: { code: -32001, message: error instanceof Error ? error.message : 'Sidechat 不可用' } }; }

@@ -162,7 +162,7 @@ function OpenConversationActionMenu({
   const actions = [
     ...(sidechatOnly ? [] : ordinaryActions),
     ...sidechatActions.map(item => ({ id: item.id, label: item.title ?? 'Sidechat', icon: 'copy' as const,
-      onClick: () => onSidechatAction?.(item.command!.name, typeof item.command?.params.id === 'string' ? item.command.params.id : undefined), requiresWrite: item.command?.name === 'sidechat.create', danger: item.command?.name === 'sidechat.close' })),
+      onClick: () => onSidechatAction?.(item.command!.name, typeof item.command?.params.id === 'string' ? item.command.params.id : undefined), requiresWrite: false, danger: item.command?.name === 'sidechat.close' })),
   ];
   const [fallback, setFallback] = useState(false);
   const latest = useRef({ actions, onClose });

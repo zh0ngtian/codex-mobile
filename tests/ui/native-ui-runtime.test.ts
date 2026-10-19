@@ -206,3 +206,12 @@ it('导航加载字段独立于详情加载透传，缺失字段不污染ready�
  expect({ ...emptyNativeSnapshot(), ready: true }.navigationLoading).toBeUndefined();
  runtime.dispose();
 });
+
+it('主聊天只读时可创建独立Sidechat，仍拒绝向主聊天发送', async () => {
+ const runtime = new NativeRuntime(() => {}); const create = vi.fn(); const send = vi.fn();
+ runtime.setNavigation({selectedBackendId:'b',backends:[],groups:[]});
+ runtime.setWorkspace('b',{...workspace(),readOnly:true},{'sidechat.create':create,'message.send':send});
+ expect((await runtime.dispatch(command('side-readonly','sidechat.create',{contextId:'b:t'}))).ok).toBe(true);
+ expect((await runtime.dispatch(command('main-readonly','message.send',{contextId:'b:t'}))).ok).toBe(false);
+ expect(create).toHaveBeenCalledOnce(); expect(send).not.toHaveBeenCalled();runtime.dispose();
+});

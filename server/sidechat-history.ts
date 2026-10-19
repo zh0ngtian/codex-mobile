@@ -10,6 +10,7 @@ export class SidechatHistory {
   has(id: unknown) { return typeof id === 'string' && this.entries.has(id); }
   register(params: Value, result: Value) {
     if (!result.thread?.id || result.thread.ephemeral !== true) throw new Error('Codex 未返回临时 Sidechat');
+    if (this.entries.has(result.thread.id)) return this.read(result.thread.id);
     const thread = { ...result.thread, turns: [] };
     this.entries.set(thread.id, { settings: { ...result, thread: undefined }, thread, parentId: params.threadId, forkTurnId: params.lastTurnId, lastActiveAt: this.now(), busy: false });
     return this.read(thread.id);

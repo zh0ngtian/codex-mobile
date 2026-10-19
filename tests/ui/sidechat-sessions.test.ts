@@ -77,3 +77,26 @@ it('App重连只读daemon内存投影，失效不重建或调用官方持久历�
  request.mockRejectedValueOnce(new Error('Sidechat 已失效'));
  await expect(restored.restore({ request })).rejects.toThrow('失效'); expect(restored.all()).toHaveLength(0);
 });
+
+it('发送结果待确认时禁止重新发送，按原请求UUID恢复确认结果', async () => {
+ const { HttpOperationPendingError } = await import('../../src/backends/http-transport');
+ const f = fixture();const side = await f.sessions.create({request:f.request},{id:'main'});
+ const request = { method:'mobile/sidechat/rpc',params:{method:'turn/start',params:{threadId:side.id}} };
+ f.request.mockRejectedValueOnce(new HttpOperationPendingError('request-uncertain',request));
+ await expect(f.sessions.submit({request:f.request},side.id,[{type:'text',text:'只发送一次'}],{})).rejects.toThrow();
+ await expect(f.sessions.retry(side.id)).rejects.toThrow('待确认');
+ f.sessions.observe({method:'mobile/operation/confirmed',params:{requestId:'request-uncertain',request,response:{result:{turn:{id:'confirmed',status:'inProgress',items:[]}}}}});
+ expect(side.queue).toHaveLength(0);expect(side.thread.turns.at(-1).id).toBe('confirmed');expect(side.busy).toBe(true);
+});
+
+it('摘要误标完成时按fork的权威拒绝排除运行回合，仍精确选择最近结束回合', async () => {
+ const { AppServerRpcError } = await import('../../src/app-server/client');
+ const f = fixture(); const forks: string[] = [];
+ const request = vi.fn(async (method: string, params: any) => {
+  if (method === 'thread/turns/list') return { data: [{id:'actually-running',status:'completed'},{id:'real-done',status:'completed'}],nextCursor:null };
+  if (method === 'thread/fork') { forks.push(params.lastTurnId); if (params.lastTurnId === 'actually-running') throw new AppServerRpcError("lastTurnId 'actually-running' identifies an in-progress turn", -32600); }
+  return f.request(method,params);
+ });
+ const side = await f.sessions.create({request},{id:'main'});
+ expect(forks).toEqual(['actually-running','real-done']);expect(side.forkTurnId).toBe('real-done');
+});

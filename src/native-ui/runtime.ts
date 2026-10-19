@@ -150,7 +150,7 @@ export class NativeRuntime {
       if (!globalNames.has(name) && !(panelNames.has(name) && globalHandler)) {
         if (!workspace?.value.ready) throw new Error(t('会话尚未就绪'));
         if (typeof params.contextId !== 'string' || params.contextId !== workspace.value.contextId) throw new Error(t('会话已切换，请重试'));
-        if (workspace.value.readOnly && !['sidechat.return', 'sidechat.open', 'sidechat.close', 'message.copy', 'attachment.preview', 'thread.retry', 'thread.older', 'panel.open', 'panel.close', 'history.change', 'history.cancel', 'history.submit', 'approval.answer', 'approval.decide', 'approval.submit', 'approval.dismiss', 'approval.reopen', 'file.open', 'file.mode', 'diagram.render'].includes(name)) throw new Error(t('当前会话只读'));
+        if (workspace.value.readOnly && !['sidechat.create', 'sidechat.return', 'sidechat.open', 'sidechat.close', 'message.copy', 'attachment.preview', 'thread.retry', 'thread.older', 'panel.open', 'panel.close', 'history.change', 'history.cancel', 'history.submit', 'approval.answer', 'approval.decide', 'approval.submit', 'approval.dismiss', 'approval.reopen', 'file.open', 'file.mode', 'diagram.render'].includes(name)) throw new Error(t('当前会话只读'));
       }
       if (!handler) throw new Error(t("此操作尚未接入：{name}", { name }));
       if (name === 'draft.set' && workspace) {

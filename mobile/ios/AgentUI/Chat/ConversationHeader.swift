@@ -31,6 +31,7 @@ struct ConversationHeader: ViewModifier {
                     } label: { Image(systemName: session.nativeSnapshot.sidechatActive == true ? "chevron.left" : "line.3.horizontal").font(.system(size: 16, weight: .regular)).frame(width: 16, height: 16) }
                         .frame(width: 44, height: 44)
                         .accessibilityLabel(session.nativeSnapshot.sidechatActive == true ? preferences.text("返回主聊天", "Return to main chat") : preferences.text("会话列表", "Conversation list"))
+                        .accessibilityIdentifier(session.nativeSnapshot.sidechatActive == true ? "sidechat.return" : "line.3.horizontal")
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     HStack(spacing: 0) {
