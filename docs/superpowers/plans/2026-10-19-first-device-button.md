@@ -33,7 +33,7 @@ XCTAssertGreaterThan(Self.iconInkPixels(app.screenshot().image, element: button.
 - [x] 同步设备连接现行要求、验收要点及变更记录，明确本地已验证、未发布状态。
 - [x] 完成 `adapter-regression`、`coordinator-recovery`、`build-contract`、`typecheck`，将命令和日志保留在仓库外 validation 目录。本轮撤回发布，不提交 ready 凭证。
 - [x] 按中文 Conventional Commits 提交并推送修复分支，保留模拟器及截图供用户验收。
-- [x] 用户要求“不用发布，在模拟器给我验收”；已将协调任务置为 withdrawn，未 ready、未形成批次、未推进 main、未发布安装包。
+- [x] 用户要求“不用发布，在模拟器给我验收”；模拟器阶段已将协调任务置为 withdrawn，未 ready、未形成批次、未推进 main、未发布安装包。随后用户要求仅源码合入main，按下节执行。
 
 本轮不创建远端测试聊天，不执行真机安装或网关部署。模拟器与本地日志只证明本次界面回归，不声明真机覆盖安装或数据保留验证。
 
@@ -46,3 +46,13 @@ XCTAssertGreaterThan(Self.iconInkPixels(app.screenshot().image, element: button.
 - 在上游release-coordinator执行`python3 -B -m unittest discover -s tests -p 'test_*.py'`：最终59项通过，`coordinator-recovery-idle.log`；此前两次并发运行分别在10秒时序等待断言失败，失败日志及17项定向复跑通过日志均保留。
 - `npm test -- tests/ci --maxWorkers=2 --testTimeout=60000`：140项通过，`build-contract.log`；`npm run typecheck`及`npm run build`通过。
 - 真实业务尝试中未确认表单取消回执，不计为设备列表验收；最终改用现有DEBUG夹具的明确无设备场景。已选择正确的独立模拟器，并停在浅色设备列表；使用者可点击添加设备或完成查看首页。
+
+## 3. 按用户要求仅合入main
+
+用户随后明确要求“合入main分支”，保留此前不发布要求。先在本任务独立分支整合最新main；仅交互文档末尾追加记录冲突，保留双方条目。代码自动合并后复核无设备与视频预览夹具各自的显式参数，保留main已验证的视频关闭修复。
+
+- [x] 整合main并保留双方交互记录，更新本轮已整合、未发布状态。
+- [x] 运行原生会话、桥接、呈现与容器相关回归及typecheck，4文件共25项通过；日志为`main-merge-regression.log`、`main-merge-presentation.log`、`main-merge-typecheck.log`。
+- [x] 在现役协调器共享`codex-mobile-main-production`租约保护下快进本地主分支并非强制推送；回验远端包含修复提交`517d3d2`，本机租约与推送凭证保存为`main-merge.json`。
+
+本次不变更`.release-batch.json`、不登记ready、不分配版本、不构建或发布APK/IPA；已完成的独立模拟器验收页面继续保留。
