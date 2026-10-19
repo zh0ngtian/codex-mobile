@@ -1,8 +1,8 @@
 {
   "date": "2026-10-19",
-  "status": "simulator-verified-awaiting-user",
+  "status": "main-integrated-not-published",
   "branch": "codex/sidechat",
-  "scope": "development-only",
+  "scope": "source-integration-only",
   "device": {
     "name": "iPhone 17 Pro",
     "os": "iOS 27.0",
@@ -60,6 +60,13 @@
         "user-message-deduplication",
         "daemon-invalid-return-to-main"
       ]
+    },
+    "mainIntegration": {
+      "vitestFiles": 150,
+      "vitestPassed": 1660,
+      "typecheck": "passed",
+      "serverBuild": "passed",
+      "latestMainBase": "9ef2cce2f4dc1f5ca6e8f3fd98236c042d7b391d"
     }
   },
   "cleanup": {
@@ -68,12 +75,14 @@
     "existingUserMainReadOnly": true
   },
   "deployment": {
-    "mainAdvanced": false,
+    "mainAdvanced": true,
     "clientPublished": false,
     "productionGatewayDeployed": false,
-    "temporaryGatewayDevice": "Sidechat 验收"
+    "temporaryGatewayDevice": "Sidechat 验收",
+    "integrationRequestedByUser": true
   },
   "remaining": [
-    "user-simulator-acceptance"
+    "formal-client-publication",
+    "production-gateway-deployment"
   ]
 }

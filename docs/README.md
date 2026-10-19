@@ -43,4 +43,4 @@
 
 历史测试产物通常在被 Git 忽略的 `.mobile-build/` 中，只在原机器可用。清理前先核对是否仍为唯一证据；源码中的截图与文档引用按仓库相对路径维护。
 
-- [Sidechat 已批准设计](superpowers/specs/2026-10-19-sidechat-design.md)与[实施计划](superpowers/plans/2026-10-19-sidechat.md)：开发分支与模拟器验收，尚未发布。
+- [Sidechat 已批准设计](superpowers/specs/2026-10-19-sidechat-design.md)与[实施计划](superpowers/plans/2026-10-19-sidechat.md)：模拟器验证通过，源码已合入main；客户端与生产网关尚未发布。
