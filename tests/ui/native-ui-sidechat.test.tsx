@@ -18,6 +18,7 @@ vi.mock('../../src/backends/connection-manager', () => ({ BackendConnectionManag
    if (method === boundary.pendingMethod) throw new HttpOperationPendingError(`pending-${params.threadId}-${method}`, { id: 'pending-rpc', method, params });
    if (method === 'thread/revert' && boundary.delayRevert) return new Promise(resolve => { boundary.releaseRevert = () => resolve({ thread: { id: params.threadId, turns: [] } }); });
    if (method === 'turn/start') { const turnId = params.threadId === 'thread-b' ? 'turn-b' : 'turn-live'; if (boundary.failSend) throw new Error('真实发送失败'); if (boundary.immediateSend) return { turn: { id: turnId, status: 'inProgress', items: [] } }; return new Promise((resolve, reject) => { boundary.release = () => resolve({ turn: { id: turnId, status: 'inProgress', items: [] } }); boundary.rejectStart = () => reject(new Error('旧会话发送失败')); }); }
+   if (method === 'read') throw new Error('Sidechat 已失效');
    if (method === 'thread/fork') return { thread: { id: `side-${boundary.requests.filter(r => r.method === 'thread/fork').length}`, cwd: '/work', ephemeral: true, turns: [{ id: 'inherited', items: [{ type: 'agentMessage', text: '不得显示的继承正文' }] }] }, model: 'gpt', reasoningEffort: 'high' };
    if (method === 'thread/turns/list') return { data: [{ id: 'done-main', status: 'completed', items: [] }], nextCursor: null };
    return { data: [], items: [], marketplaces: [], nextCursor: null };
@@ -69,4 +70,16 @@ it('Sidechat沿真实App路由创建、隐藏历史、独立发送、返回与�
  await waitFor(() => expect(posts.at(-1)?.threadId).toBe('sent-thread'));
  expect(boundary.requests.some(r => r.method === 'thread/unsubscribe' && r.params.threadId === 'side-1')).toBe(true);
  expect(queueItems).toEqual([]);
+});
+
+it('daemon重启导致分支失效时回到主聊天，不能把已失效分支当普通聊天继续使用', async () => {
+ boundary.immediateSend = true; const initial = await setup();
+ await act(async () => { command('main-draft', 'draft.set', {contextId:initial,value:'主任务',revision:1}); command('main-send','message.send',{contextId:initial}); });
+ await waitFor(() => expect(posts.at(-1)?.threadId).toBe('sent-thread'));
+ await act(async () => command('create','sidechat.create',{contextId:posts.at(-1).contextId}));
+ await waitFor(() => expect(posts.at(-1)?.threadId).toBe('side-1'));
+ await act(async () => boundary.options.onReady('a',boundary.client));
+ await waitFor(() => expect(posts.at(-1)?.threadId).toBe('sent-thread'));
+ expect(posts.at(-1)?.sidechatActive).toBe(false);
+ expect(boundary.requests.filter(r=>r.method==='thread/fork')).toHaveLength(1);
 });

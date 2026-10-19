@@ -26,9 +26,11 @@ final class SidechatUITests: XCTestCase {
         }
         func menu(_ title: String) {
             app.buttons["conversation.actions"].tap()
-            let action = app.buttons[title].firstMatch
+            let menu = app.collectionViews.firstMatch
+            XCTAssertTrue(menu.waitForExistence(timeout: 8), app.debugDescription)
+            let action = menu.buttons[title].firstMatch
             XCTAssertTrue(action.waitForExistence(timeout: 8), app.debugDescription)
-            action.tap()
+            action.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
         }
         func capture(_ name: String) {
             let attachment = XCTAttachment(screenshot: app.screenshot())
@@ -44,6 +46,7 @@ final class SidechatUITests: XCTestCase {
         app.buttons["composer.submit"].tap()
         let answer = app.textViews.matching(NSPredicate(format: "identifier == %@ AND value == %@", "assistant.selectable", "SIDECHAT_IOS_OK")).firstMatch
         XCTAssertTrue(answer.waitForExistence(timeout: 90), app.debugDescription)
+        XCTAssertEqual(app.otherElements.matching(identifier: "message.user-bubble").count, 1, "真实消息应替换临时用户气泡")
         capture("Sidechat-真实独立回复与共享目录提示")
         app.buttons["sidechat.return"].tap()
         XCTAssertTrue(app.buttons["conversation.actions"].waitForExistence(timeout: 15))

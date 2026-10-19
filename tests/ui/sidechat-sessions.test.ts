@@ -100,3 +100,12 @@ it('摘要误标完成时按fork的权威拒绝排除运行回合，仍精确选
  const side = await f.sessions.create({request},{id:'main'});
  expect(forks).toEqual(['actually-running','real-done']);expect(side.forkTurnId).toBe('real-done');
 });
+
+it('真实用户消息替换发送中的临时气泡，同一条输入只显示一次', async () => {
+ const f=fixture();const side=await f.sessions.create({request:f.request},{id:'main'});
+ await f.sessions.submit({request:f.request},side.id,[{type:'text',text:'只有一条用户消息'}],{});
+ const item={id:'server-user',type:'userMessage',content:[{type:'text',text:'只有一条用户消息'}]};
+ f.sessions.observe({method:'item/started',params:{threadId:side.id,turnId:'new-1',item}});
+ f.sessions.observe({method:'item/completed',params:{threadId:side.id,turnId:'new-1',item}});
+ expect(side.thread.turns[0].items.filter((entry:any)=>entry.type==='userMessage')).toEqual([item]);
+});

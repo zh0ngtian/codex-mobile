@@ -1773,10 +1773,10 @@ function BackendWorkspace({
         clientRef.current = client;
         if (!sidechatRestoredRef.current) {
           sidechatRestoredRef.current = true;
-          void sidechats.restore(gatewaySidechatClient(client)).catch(reason => setError(String(reason.message ?? reason)));
+          restoreSidechats(client);
         } else {
           for (const side of sidechats.all()) side.client = gatewaySidechatClient(client);
-          void sidechats.restore(gatewaySidechatClient(client)).catch(reason => setError(String(reason.message ?? reason)));
+          restoreSidechats(client);
         }
         readyClientRef.current = null;
         const workspaceResumeSnapshot = {
@@ -2364,6 +2364,17 @@ function BackendWorkspace({
     side => openThread(sidechatParentsRef.current.get(side.parentId) ?? { id: side.parentId }),
     reason => setError(String((reason as Error).message ?? reason)));
 
+
+  function restoreSidechats(client: AppServerClient) {
+    const selected = sidechats.get(String(activeRef.current?.id ?? ''));
+    void sidechats.restore(gatewaySidechatClient(client)).catch(reason => {
+      if (clientRef.current !== client) return;
+      if (selected && !sidechats.get(selected.id) && String(activeRef.current?.id ?? '') === selected.id) {
+        openThread(sidechatParentsRef.current.get(selected.parentId) ?? { id: selected.parentId });
+      }
+      setError(String(reason.message ?? reason));
+    });
+  }
 
   async function createSidechat() {
     const client = clientRef.current; const current = activeRef.current;

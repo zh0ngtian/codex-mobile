@@ -127,7 +127,7 @@ export class SidechatSessions {
     if (s.closing || s.unconfirmed || s.busy || s.sending || !s.client || !s.queue.length) return;
     const entry = s.queue[0]; s.sending = true; s.busy = true; s.error = '';
     const pendingId = `pending-${entry.id}`;
-    s.thread = { ...s.thread, mobilePlan: [], turns: [...s.thread.turns, createPendingTurn(pendingId, { id: `user-${entry.id}`, type: 'userMessage', content: entry.input })] }; this.changed();
+    s.thread = { ...s.thread, mobilePlan: [], turns: [...s.thread.turns, createPendingTurn(pendingId, { id: `local-${entry.id}`, type: 'userMessage', content: entry.input })] }; this.changed();
     try {
       const result = await s.client.request('turn/start', { ...entry.settings, threadId: s.id, input: entry.input });
       if (!result.turn?.id) throw new Error(t('Sidechat 发送响应无效'));

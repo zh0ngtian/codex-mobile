@@ -24,7 +24,7 @@
     "xctest": {
       "passed": 1,
       "failed": 0,
-      "durationSeconds": 88.866,
+      "durationSeconds": 95.226,
       "covers": [
         "create-from-readonly-main",
         "new-messages-only",
@@ -33,7 +33,16 @@
         "multiple-branches",
         "return",
         "app-restart-restore",
-        "close-all-test-branches"
+        "close-all-test-branches",
+        "single-user-bubble-after-server-confirmation"
+      ]
+    },
+    "latestNativeBusinessVitest": {
+      "files": 2,
+      "passed": 12,
+      "covers": [
+        "user-message-deduplication",
+        "daemon-invalid-return-to-main"
       ]
     }
   },
