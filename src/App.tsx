@@ -4898,6 +4898,8 @@ function ConfiguredApp({
       const loadedCount = (snapshots[backendId]?.threads ?? []).filter(
         (thread) =>
           thread.isPinned !== true &&
+          thread.isUnread !== true &&
+          !isThreadRunning(thread.status) &&
           (cwd === PROJECTLESS_GROUP_ID
             ? thread.isProjectless === true
             : thread.isProjectless !== true &&

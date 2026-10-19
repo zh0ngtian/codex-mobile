@@ -2,7 +2,8 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { afterEach, expect, it, vi } from 'vitest';
 import { AppBootstrap } from '../../src/App';
 import { HttpOperationPendingError } from '../../src/backends/http-transport';
-const boundary = vi.hoisted(() => ({ requests: [] as Array<{ method: string; params: any; options?: { priority?: string } }>, options: null as any, client: null as any, release: null as null | (() => void), failSend: false, immediateSend: false, nextThreadId: 'sent-thread', delayRevert: false, pendingMethod: '', releaseRevert: null as null | (() => void), rejectStart: null as null | (() => void) }));
+import * as threadListLoader from '../../src/app-server/thread-list-loader';
+const boundary = vi.hoisted(() => ({ requests: [] as Array<{ method: string; params: any; options?: { priority?: string } }>, threadRecords: [] as Array<Record<string, any>>, options: null as any, client: null as any, release: null as null | (() => void), failSend: false, immediateSend: false, nextThreadId: 'sent-thread', delayRevert: false, pendingMethod: '', releaseRevert: null as null | (() => void), rejectStart: null as null | (() => void) }));
 vi.mock('../../src/backends/connection-manager', () => ({ BackendConnectionManager: class {
  constructor(private options: any) { boundary.options = options; }
  client() { return boundary.client; } socket() { return null; } close() {} reconnect() {}
@@ -13,6 +14,8 @@ vi.mock('../../src/backends/connection-manager', () => ({ BackendConnectionManag
    if (method === 'model/list') return { data: [{ model: 'gpt', displayName: 'GPT', isDefault: true, supportedReasoningEfforts: [{ reasoningEffort: 'high', description: '' }] }] };
    if (method === 'permissionProfile/list') return { data: [{ id: ':workspace', allowed: true }] };
    if (method === 'config/read') return { config: { model: 'gpt', sandbox_mode: 'workspace-write', model_reasoning_effort: 'high' } };
+   if (method === 'thread/loaded/list') return { data: boundary.threadRecords.filter(thread => thread.status?.type === 'active').map(thread => thread.id), nextCursor: null };
+   if (method === 'thread/read' && boundary.threadRecords.some(thread => thread.id === params.threadId)) return { thread: boundary.threadRecords.find(thread => thread.id === params.threadId) };
    if (method === 'thread/start') return { thread: { id: boundary.nextThreadId, cwd: null, turns: [] }, model: 'gpt' };
    if (method === boundary.pendingMethod) throw new HttpOperationPendingError(`pending-${params.threadId}-${method}`, { id: 'pending-rpc', method, params });
    if (method === 'thread/revert' && boundary.delayRevert) return new Promise(resolve => { boundary.releaseRevert = () => resolve({ thread: { id: params.threadId, turns: [] } }); });
@@ -27,7 +30,7 @@ vi.mock('../../src/backends/connection-manager', () => ({ BackendConnectionManag
 } }));
 const posts: any[] = []; let queueItems: any[] = [];
 function command(id: string, name: string, params: Record<string, unknown> = {}) { window.dispatchEvent(new CustomEvent('codex-mobile-native-command', { detail: { id, name, params } })); }
-afterEach(() => { cleanup(); boundary.requests = []; boundary.client = null; boundary.options = null; boundary.release = null; boundary.failSend = false; boundary.immediateSend = false; boundary.nextThreadId = 'sent-thread'; boundary.delayRevert = false; boundary.pendingMethod = ''; boundary.releaseRevert = null; boundary.rejectStart = null; queueItems = []; posts.length = 0; localStorage.clear(); delete (window as any).__CODEX_NATIVE_UI__; delete (window as any).webkit; delete (window as any).codexMobilePublishNativeSnapshot; vi.unstubAllGlobals(); });
+afterEach(() => { cleanup(); boundary.requests = []; boundary.threadRecords = []; boundary.client = null; boundary.options = null; boundary.release = null; boundary.failSend = false; boundary.immediateSend = false; boundary.nextThreadId = 'sent-thread'; boundary.delayRevert = false; boundary.pendingMethod = ''; boundary.releaseRevert = null; boundary.rejectStart = null; queueItems = []; posts.length = 0; localStorage.clear(); delete (window as any).__CODEX_NATIVE_UI__; delete (window as any).webkit; delete (window as any).codexMobilePublishNativeSnapshot; vi.unstubAllGlobals(); });
 async function setup(native = true, projectState = { projects: [] as string[], projectlessThreadIds: [] as string[] }) {
  if (native) Object.assign(window, { __CODEX_NATIVE_UI__: true, webkit: { messageHandlers: { nativeUI: { postMessage() {} } } }, codexMobilePublishNativeSnapshot: (s: unknown) => posts.push(s) });
  vi.stubGlobal('fetch', vi.fn(async (url: string, options?: RequestInit) => {
@@ -45,6 +48,46 @@ async function setup(native = true, projectState = { projects: [] as string[], p
 it('真实App冷启动将额度查询的后台选项传给客户端', async () => {
  await setup();
  expect(boundary.requests.find(request => request.method === 'account/rateLimits/read')?.options).toEqual({ priority: 'background' });
+});
+it.each([
+ ['未读', ['unread']],
+ ['运行中', ['running']],
+ ['关注、未读和运行中', ['pin', 'unread', 'running']],
+] as Array<[string, string[]]>)('无项目有%s独立摘要时，真实加载更多路由按五条增加普通会话并保留摘要', async (_label, prioritizedIds) => {
+ const ordinary = Array.from({ length: 17 }, (_, index) => ({ id: `regular-${index}`, cwd: null, recencyAt: 100 - index, status: { type: 'idle' }, turns: [] }));
+ boundary.threadRecords = [
+  ...prioritizedIds.map(id => ({ id, cwd: null, recencyAt: 1, status: { type: id === 'running' ? 'active' : 'idle' }, turns: [] })),
+  ...ordinary,
+ ];
+ if (prioritizedIds.includes('pin')) localStorage.setItem('codex-mobile:pinned:a', '["pin"]');
+ if (prioritizedIds.includes('unread')) localStorage.setItem('codex-mobile:unread:a', '["unread"]');
+ const projectlessThreadIds = boundary.threadRecords.map(thread => thread.id);
+ const loadProjectless = vi.spyOn(threadListLoader, 'loadProjectlessThreadRecords');
+ const group = () => posts.at(-1)?.groups.find((entry: any) => entry.category === 'project' && entry.cwd === '');
+ const ordinaryIds = () => group()?.items.filter((item: any) => !item.isPinned && !item.isUnread && !item.running).map((item: any) => item.threadId);
+ const expectRetainedSummaries = () => {
+  for (const id of prioritizedIds) {
+   const expected = { threadId: id, ...(id === 'pin' ? { isPinned: true } : id === 'unread' ? { isUnread: true } : { running: true }) };
+   expect(group().items).toEqual(expect.arrayContaining([expect.objectContaining(expected)]));
+   if (id === 'pin') expect(posts.at(-1).groups.find((entry: any) => entry.category === 'pinned').items).toEqual(expect.arrayContaining([expect.objectContaining(expected)]));
+  }
+ };
+ try {
+  await setup(true, { projects: [], projectlessThreadIds });
+  await waitFor(() => expect(ordinaryIds()).toEqual(ordinary.slice(0, 5).map(thread => thread.id)));
+  expectRetainedSummaries();
+  for (const targetCount of [10, 15]) {
+   const more = group().actions.find((action: any) => action.command?.name === 'project.more');
+   expect(more.disabled).toBe(false);
+   await act(async () => { command(`projectless-more-${targetCount}`, more.command.name, more.command.params); });
+   expect(loadProjectless).toHaveBeenLastCalledWith(boundary.client, projectlessThreadIds, targetCount, new Set(prioritizedIds));
+   await waitFor(() => expect(ordinaryIds()).toEqual(ordinary.slice(0, targetCount).map(thread => thread.id)));
+   await waitFor(() => expect(group().actions.find((action: any) => action.command?.name === 'project.more').disabled).toBe(false));
+   expectRetainedSummaries();
+  }
+ } finally {
+  loadProjectless.mockRestore();
+ }
 });
 it('项目新对话沿真实App命令路由，点击不启动thread，无项目空串覆盖保存目录，无参保留旧默认目录', async () => {
  localStorage.setItem('codex-mobile:new-chat-project:a', '/saved');
