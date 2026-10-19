@@ -203,13 +203,14 @@ final class AgentAppUITests: XCTestCase {
         XCTAssertFalse(app.staticTexts["正在读取项目上下文。"].exists)
         let time = app.staticTexts["message.user-time"]
         XCTAssertFalse(time.exists, "发送时间默认隐藏")
-        bubble.tap()
+        // 点击气泡留白，避免系统正文选择层接管测试点击。
+        bubble.coordinate(withNormalizedOffset: CGVector(dx: 0.04, dy: 0.5)).tap()
         XCTAssertTrue(time.waitForExistence(timeout: 3))
         XCTAssertEqual(time.label, "10月17日 10:43")
         XCTAssertEqual(time.frame.maxX, bubble.frame.maxX, accuracy: 1)
         XCTAssertGreaterThan(time.frame.minY, bubble.frame.maxY, "发送时间显示在气泡右下角外侧")
-        bubble.tap()
-        XCTAssertFalse(time.exists, "再次单击应隐藏时间")
+        bubble.coordinate(withNormalizedOffset: CGVector(dx: 0.04, dy: 0.5)).tap()
+        XCTAssertTrue(time.waitForNonExistence(timeout: 3), "再次单击应隐藏时间")
         XCTAssertTrue(app.staticTexts["10月17日 10:46"].exists, "回复时间使用相同格式且保留原位置")
         captureConversation("历史过程-折叠", app: app)
         app.buttons["commentary-history-toggle"].tap()
@@ -232,6 +233,34 @@ final class AgentAppUITests: XCTestCase {
         history.tap()
         XCTAssertTrue(app.staticTexts["正在读取项目上下文。"].waitForExistence(timeout: 5))
         captureConversation("用时-过程入口", app: app)
+    }
+
+    func testCommentaryBackfillDoesNotMoveDurationOrReply() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-commentary-backfill-fixture", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
+        app.launch()
+        let summary = app.staticTexts["用时1小时2分钟3秒"]
+        let replyTime = app.staticTexts["message.reply-time"]
+        let history = app.buttons["commentary-history-toggle"]
+        XCTAssertTrue(summary.waitForExistence(timeout: 8))
+        XCTAssertTrue(replyTime.exists)
+        XCTAssertFalse(history.exists, "没有真实过程内容时仍是用时文字，不能提前显示假展开入口")
+        let summaryY = summary.frame.midY
+        let replyY = replyTime.frame.minY
+        captureConversation("过程回填前-仅用时", app: app)
+        app.buttons["conversation.actions"].tap()
+        let refresh = app.collectionViews.firstMatch.buttons["刷新"].firstMatch
+        XCTAssertTrue(refresh.waitForExistence(timeout: 5))
+        refresh.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        XCTAssertTrue(history.waitForExistence(timeout: 5))
+        print("COMMENTARY_HEADER_LAYOUT", summaryY, history.frame.midY, replyY, replyTime.frame.minY)
+        XCTAssertEqual(history.frame.midY, summaryY, accuracy: 1, "箭头补出不能移动用时文字基线")
+        XCTAssertEqual(replyTime.frame.minY, replyY, accuracy: 1, "过程数据回填不能让原有正文发生重排")
+        captureConversation("过程回填后-稳定展开入口", app: app)
+        history.tap()
+        XCTAssertTrue(app.staticTexts["正在读取项目上下文。"].waitForExistence(timeout: 5))
+        history.tap()
+        XCTAssertFalse(app.staticTexts["正在读取项目上下文。"].exists)
     }
 
     func testUnknownDurationKeepsProcessDisclosure() {
