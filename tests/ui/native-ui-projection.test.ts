@@ -260,3 +260,13 @@ it('已知空项目和无项目首次未知或idle状态保持加载，成功空
  // 无目录旧服务端从成功全局分页推导的分组已有真实内容，不应永久等待不存在的逐项目请求。
  expect(navigation({ listBackendId: 'a', threads }).find(group => group.category === 'project')).toMatchObject({ loading: 'ready', items: [{ threadId: 'existing' }] });
 });
+
+
+it('关注筛选保留普通列表真实失败与原重试命令，不额外显示项目或最近分组', () => {
+ const groups = navigation({ filter: 'favorites', error: '真实读取失败', listBackendId: 'a', projectDirectories: ['/hidden'] });
+ expect(groups).toMatchObject([
+  { id: 'favorites', category: 'pinned', items: [] },
+  { id: 'list-error', title: '真实读取失败', items: [{ title: '重试', command: { name: 'navigation.refresh' } }] },
+ ]);
+ expect(groups).toHaveLength(2);
+});

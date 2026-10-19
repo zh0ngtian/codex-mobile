@@ -179,7 +179,8 @@ export function projectNavigation(input: NavigationInput): NativeGroup[] {
     ...(input.error ? { subtitle: input.error, actions: [nativeAction('search-retry', t('重试'), 'navigation.refresh')] } : {}) }];
   const split = splitAllThreads(input.threads);
   const groups: NativeGroup[] = [{ id: 'favorites', category: 'pinned', title: t('关注'), items: split.pinned.map(row) }];
-  if (input.filter === 'favorites') return groups;
+  const failure: NativeGroup | undefined = input.error ? { id: 'list-error', title: input.error, items: [{ id: 'retry', title: t('重试'), command: nativeCommand('navigation.refresh') }] } : undefined;
+  if (input.filter === 'favorites') return failure ? [...groups, failure] : groups;
   const appendProjects = (backendId: string, threads: AggregatedThreadItem[], directories: string[], hasProjectless: boolean,
     states: Record<string, ProjectThreadLoadState>, hasMore: Record<string, boolean>, backendName?: string) => {
     for (const group of groupThreadsByProject(threads, [...(hasProjectless ? [PROJECTLESS_GROUP_ID] : []), ...directories])) {
@@ -207,7 +208,7 @@ export function projectNavigation(input: NavigationInput): NativeGroup[] {
     }
   } else appendProjects(input.listBackendId, input.threads, input.projectDirectories, input.hasProjectlessThreads, input.projectThreadStates, input.projectHasMore);
   if (input.filter !== 'projects') groups.push({ id: 'recent', category: 'recent', title: t('最近会话'), items: split.recent.map(row) });
-  if (input.error) groups.push({ id: 'list-error', title: input.error, items: [{ id: 'retry', title: t('重试'), command: nativeCommand('navigation.refresh') }] });
+  if (failure) groups.push(failure);
   return groups;
 }
 export type NativeMention = { kind: 'skill'; skill: InstalledSkill } | { kind: 'plugin'; plugin: InstalledPlugin };

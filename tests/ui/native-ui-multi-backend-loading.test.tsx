@@ -7,6 +7,7 @@ const boundary = vi.hoisted(() => ({
  requests: [] as Array<{ backendId: string; method: string; options?: { priority?: string } }>,
  directoryBarriers: {} as Record<string, Promise<void>>,
  pageBarriers: {} as Record<string, Promise<void>>,
+ failures: {} as Record<string, boolean>, failedBackends: [] as string[],
  threads: {} as Record<string, Array<Record<string, unknown>>>,
 }));
 vi.mock('../../src/backends/connection-manager', () => ({ BackendConnectionManager: class {
@@ -21,7 +22,7 @@ vi.mock('../../src/backends/connection-manager', () => ({ BackendConnectionManag
    if (method === 'model/list') return { data: [{ model: 'gpt', displayName: 'GPT', isDefault: true, supportedReasoningEfforts: [] }] };
    if (method === 'permissionProfile/list') return { data: [{ id: ':workspace', allowed: true }] };
    if (method === 'config/read') return { config: { model: 'gpt', sandbox_mode: 'workspace-write' } };
-   if (method === 'thread/list') { await boundary.pageBarriers[backend.id]; return { data: boundary.threads[backend.id] ?? [], nextCursor: null }; }
+   if (method === 'thread/list') { await boundary.pageBarriers[backend.id]; if (boundary.failures[backend.id]) { boundary.failedBackends.push(backend.id); throw new Error('真实列表读取失败'); } return { data: boundary.threads[backend.id] ?? [], nextCursor: null }; }
    return { data: [], items: [], marketplaces: [], nextCursor: null };
   } };
   this.value = client;
@@ -42,7 +43,7 @@ function command(id: string, name: string, params: Record<string, unknown>) {
 afterEach(async () => {
  cleanup();
  await act(async () => pending.splice(0).forEach(resolve => resolve()));
- boundary.requests = []; boundary.directoryBarriers = {}; boundary.pageBarriers = {}; boundary.threads = {}; posts.length = 0;
+ boundary.requests = []; boundary.directoryBarriers = {}; boundary.pageBarriers = {}; boundary.failures = {}; boundary.failedBackends = []; boundary.threads = {}; posts.length = 0;
  localStorage.clear(); vi.unstubAllGlobals();
  delete (window as any).__CODEX_NATIVE_UI__; delete (window as any).webkit; delete (window as any).codexMobilePublishNativeSnapshot;
 });
@@ -114,4 +115,29 @@ it('A成功空而范围内B业务快照尚未到达时导航继续加载，全�
  expect(projectNavigationLoading({ ...input, backendIds: ['a'] })).toBe(false);
  expect(projectNavigationLoading({ ...input, hasContent: true })).toBe(false);
  expect(projectNavigationLoading({ ...input, loading: true, hasContent: true })).toBe(true);
+});
+
+
+it('关注筛选中B首查失败保留真实错误与重试，成功重试后才能显示空结果', async () => {
+ const page = deferred(); boundary.pageBarriers.b = page.promise; boundary.failures.b = true;
+ boundary.threads.a = [{ id: 'existing-a', name: 'A普通会话', cwd: '/a', turns: [] }];
+ await setup();
+ await act(async () => command('favorites-before-failure', 'navigation.filter', { value: 'favorites' }));
+ await waitFor(() => expect(posts.at(-1)).toMatchObject({ navigationLoading: true, groups: [{ category: 'pinned', items: [] }] }));
+ await act(async () => page.resolve());
+ await waitFor(() => expect(boundary.failedBackends).toContain('b'));
+ await act(async () => command('favorites-failure-observed', 'navigation.filter', { value: 'favorites' }));
+ await waitFor(() => expect(posts.at(-1)?.commandResults?.some((result: any) => result.id === 'favorites-failure-observed')).toBe(true));
+ const failure = () => posts.at(-1).groups.find((group: any) => group.id === 'list-error');
+ expect(posts.at(-1).navigationLoading).toBe(false);
+ expect(failure()).toMatchObject({ title: '真实列表读取失败', items: [{ title: '重试', command: { name: 'navigation.refresh' } }] });
+ const retry = deferred(); boundary.pageBarriers.b = retry.promise; boundary.failures.b = false;
+ const action = failure().items[0].command;
+ await act(async () => command('favorites-retry', action.name, action.params));
+ await waitFor(() => expect(posts.at(-1)?.navigationLoading).toBe(true));
+ expect(failure()).toBeUndefined();
+ await act(async () => retry.resolve());
+ await waitFor(() => expect(posts.at(-1)?.navigationLoading).toBe(false));
+ expect(posts.at(-1).groups).toMatchObject([{ category: 'pinned', items: [] }]);
+ expect(failure()).toBeUndefined();
 });
