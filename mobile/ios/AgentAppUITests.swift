@@ -333,7 +333,7 @@ final class AgentAppUITests: XCTestCase {
         let trace = app.staticTexts["scroll.diagnostic-return"].label.split(separator: ",").compactMap { Double($0) }
         print("RETURN_OFFSETS", trace)
         XCTAssertGreaterThan(trace.count, 3, "回到底部必须经过连续的中间位置")
-        XCTAssertGreaterThanOrEqual(Int(app.staticTexts["scroll.diagnostic-return-ms"].label) ?? 0, 850, "回底动画应有可感知的持续时间，不能快速跳转")
+        XCTAssertGreaterThanOrEqual(Int(app.staticTexts["scroll.diagnostic-return-ms"].label) ?? 0, 350, "回底按主分支约0.55秒动画连续滚动，不能快速跳转")
         XCTAssertTrue(Self.hasRenderedConversationText(app.screenshot().image), "动画结束不能出现空白")
         captureConversation("回到底部-连续动画", app: app)
     }
@@ -356,7 +356,7 @@ final class AgentAppUITests: XCTestCase {
         let elapsed = Int(app.staticTexts["scroll.diagnostic-return-ms"].label) ?? 0
         print("RUNNING_RETURN_OFFSETS", trace, "ELAPSED", elapsed, "EVENTS", app.staticTexts["scroll.diagnostic-events"].label)
         XCTAssertGreaterThan(trace.count, 5, "持续输出期间回底也必须经过连续中间位置")
-        XCTAssertGreaterThanOrEqual(elapsed, 850, "持续输出不能把回底动画替换成瞬移")
+        XCTAssertGreaterThanOrEqual(elapsed, 350, "约0.55秒回底动画不能被持续输出替换成瞬移")
         if let start = trace.first, let end = trace.last, end > start {
             let largestStep = zip(trace, trace.dropFirst()).map { $1 - $0 }.max() ?? 0
             XCTAssertLessThan(largestStep / (end - start), 0.3, "不能在最后一次位置更新补跳过大段距离")

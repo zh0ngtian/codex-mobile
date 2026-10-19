@@ -28,6 +28,26 @@
 
 适配器命令为 `python3 {workspace}/scripts/codex_mobile_release_adapter.py`，接收上游 `run/check <阶段> --context <文件>` 协议。共享持久状态实现为 `scripts/release_coordination/state.py`；网关阶段为 `scripts/release_coordination/gateway.py`。本机使用现有 Python 3.11、Node.js、Git、gh、curl、Xcode 和原发布工具，不增加运行时依赖。
 
+已冻结阶段的只读网络核对若在有限重试后仍遇到 EOF、不完整 JSON、连接/DNS/超时、HTTP 408/429/5xx，适配器抛出 `TransientReadError`，由 `check` / `run` 入口以退出码 0 输出唯一一行 JSON：
+
+```json
+{"done":false,"retryable":{"kind":"transient-read","reason":"脱敏后的非空原因"}}
+```
+
+该响应只能含上述字段，不能同时包含 `result`；它表示需要继续只读核对，不是阶段完成或写操作可盲目重做。支持此协议的协调器可在同一冻结批次中等待后再核对，保留原版本、SHA、CI run/attempt 和已验收平台产物；已完整下载的一端不重复下载，候选来源、大小与 SHA-256 校验仍执行。下载意图记录 `downloading` / `interrupted` / `downloaded`；来源回执已校验、下载响应尚未确认且仅 payload 截断的候选只重下该端，原半包保留诊断。已成功退出下载或已验收 partial 的回执/文件缺失、大小/散列错误均永久失败，不能用重下掩盖来源或完整性不匹配。GitHub GET 保留四次有界重试；HTTP GET/HEAD、完整只读下载、`gh run download`、`git ls-remote/fetch` 的真实网络故障采用相同异常边界；只读 `command` 入口有 180 秒子进程超时，GitHub GET 单次超时仍为 45 秒，HTTP curl 请求仍有 120 秒上限，写命令保持原执行语义。
+
+GitHub 403 只有明确包含 `API rate limit exceeded` 或 `secondary rate limit` 时按限流进入等待；403 也可能来自限流，参见 [GitHub 官方 REST 限流说明](https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api)。适配器将最早再次读取时间 `githubReadNotBefore` 持久化到 progress，至少等待 60 秒；响应已有可解析 `Retry-After`（秒或 HTTP 日期）或 `x-ratelimit-reset` 时取更晚时间。等待窗口内直接返回只读暂时故障，不实际重发 GET，进程重启也保留窗口。
+
+`prepare` 查询失败仍非零并停止冻结，不使用此协议。HTTP 401、普通 403 权限错误（即使同时含 EOF）、证书无效、curl 23 本地写入失败、配置错误、真实 CI 失败、来源/大小/散列不匹配均为永久错误。POST、渠道发布、签名和 main push 不因错误文本含“网络”就成为可重执行操作；响应丢失继续按各阶段原有证据对账，无法确认时保留失败现场。
+
+正式 CI 首次等待时将 epoch 秒 `waitStartedAt` 与 `waitDeadlineAt`（起点加一小时）写入 progress 的 `operations.build`，进程或服务重启不重新计时。预算过期后仍先查询同一 run/attempt：已完成且成功可继续验收，确认仍运行才报告等待超时；真实完成失败依旧失败。适配器协议的本地实现及隔离回归不等同于现役服务已更新，实际安装与批次状态仍以对应验收凭证为准。
+
+### 2026-10-19 只读恢复实际启用
+
+原协调器服务已升级为0.1.7，审查源码`99c518e`，不可变runtime逐字节核对通过；项目适配器审查源码`d4b31c1`已合入main。核心59项、项目203项回归及核心四组平台/Python CI通过，规格/质量复审通过。对最终适配器与已安装runtime的真实HTTP断连、服务进程重启联合验收确认：原批次、版本、冻结SHA和CI run不变，prepare与构建次数均为1。原72批次、81任务和6项目配置核对未变。
+
+此验收只使用临时状态及模拟产物，本轮没有新的App发布或网关部署；固定APK/IPA仍为0.3.11。[完整记录](plans/2026-10-19-release-query-recovery.md)含实际源码和证据位置。已失败的历史批次依旧不可resume；本机制用于已冻结且尚未失败的批次，不回写旧失败记录。
+
 客户端每批发布前更新受控的 `release/notes.md`，只列本版本实际用户变化。GitHub Release、LAN 和 OTA 共用冻结工作区的日志读取器；显式 manifest 日志优先，当前 canonical manifest 缺少此字段时读取该文件，缺失、空白或与 HEAD 不一致均失败。软件源沿用该 GitHub Release 日志，不用批次 ID 或分发模板代替。
 
 私有 options 引用原 `CodexMobile/ios-release.local.json`、现有 LAN 发布器、现有网关目录/label；软件源管理仅引用该服务既有私有 credentials，凭据不复制、不进入 Git/命令参数或共同凭证。维护软件源仍遵循 [现役上游说明](https://github.com/zh0ngtian/SignOs/blob/main/distribution/source-aggregator/README.md)，只操作本仓库既有 unsigned 订阅，保留完整署名和展示信息，不维护另一个签名包订阅。

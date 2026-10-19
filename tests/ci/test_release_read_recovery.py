@@ -1,0 +1,454 @@
+"""冻结批次只读故障协议、等待预算与部分下载恢复；不访问生产状态。"""
+import io
+import json
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
+from types import SimpleNamespace
+import unittest
+from unittest.mock import patch
+
+import test_release_adapter as fixtures
+
+
+class ReleaseReadRecoveryTests(unittest.TestCase):
+    def setUp(self):
+        self.fixture = fixtures.ReleaseAdapterTests()
+        self.m = self.fixture.load()
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.base = Path(self.temporary.name)
+        self.context = self.fixture.context(self.base)
+        self.a = self.m.Adapter(self.context)
+
+    def reply(self, code=1, error='Get API: EOF', output=''):
+        return SimpleNamespace(returncode=code, stderr=error, stdout=output)
+
+    def test_github_network_exhaustion_is_typed_and_bounded(self):
+        for error in ['EOF', 'dial tcp: connection reset by peer', 'Temporary failure in name resolution', 'HTTP 408', 'HTTP 429', 'HTTP 501', 'HTTP 503']:
+            with self.subTest(error=error), patch.object(self.m.subprocess, 'run', return_value=self.reply(error=error)) as run, patch.object(self.m.time, 'sleep'):
+                with self.assertRaises(self.m.TransientReadError): self.a.gh_json('test/read')
+                self.assertEqual(run.call_count, 4)
+
+    def test_github_timeout_and_incomplete_json_are_typed(self):
+        for failure in [subprocess.TimeoutExpired('gh', 45), self.reply(0, '', '{"workflow_runs":')]:
+            with self.subTest(failure=type(failure).__name__), patch.object(self.m.subprocess, 'run', side_effect=failure if isinstance(failure, Exception) else None, return_value=failure) as run, patch.object(self.m.time, 'sleep'):
+                with self.assertRaises(self.m.TransientReadError): self.a.gh_json('test/read')
+                self.assertEqual(run.call_count, 4)
+
+    def test_authentication_and_invalid_json_are_permanent(self):
+        for reply in [self.reply(error='HTTP 401: unauthorized EOF'), self.reply(error='HTTP 403: forbidden'), self.reply(error='x509: certificate signed by unknown authority EOF'), self.reply(0, '', '<html>login</html>')]:
+            with self.subTest(error=reply.stderr), patch.object(self.m.subprocess, 'run', return_value=reply) as run, patch.object(self.m.time, 'sleep'):
+                with self.assertRaises(RuntimeError) as caught: self.a.gh_json('test/read')
+                self.assertNotIsInstance(caught.exception, self.m.TransientReadError)
+                self.assertEqual(run.call_count, 1)
+
+    def test_http_transport_and_transient_status_exhaustion_are_typed(self):
+        for reply in [self.reply(6, 'Could not resolve host'), self.reply(28, 'Operation timed out'), self.reply(56, 'Recv failure: Connection reset'), self.reply(0, '', 'busy\n429'), self.reply(0, '', 'busy\n507')]:
+            for method in ['GET', 'HEAD']:
+                with self.subTest(code=reply.returncode, method=method), patch.object(self.m.subprocess, 'run', return_value=reply) as run, patch.object(self.m.time, 'sleep'):
+                    with self.assertRaises(self.m.TransientReadError): self.a.request('https://read.test/?token=PRIVATE', method)
+                    self.assertEqual(run.call_count, 4)
+
+    def test_http_local_tls_and_authorization_failures_are_not_retryable(self):
+        for reply in [self.reply(23, 'Failed writing received data'), self.reply(60, 'SSL certificate problem'), self.reply(3, 'URL rejected'), self.reply(56, 'EOF', '\n403'), self.reply(0, '', 'denied\n401'), self.reply(0, '', 'denied\n403')]:
+            with self.subTest(code=reply.returncode, output=reply.stdout), patch.object(self.m.subprocess, 'run', return_value=reply) as run, patch.object(self.m.time, 'sleep'):
+                with self.assertRaises(RuntimeError) as caught: self.a.request('https://read.test')
+                self.assertNotIsInstance(caught.exception, self.m.TransientReadError)
+                self.assertEqual(run.call_count, 1)
+
+    def test_post_never_retries_or_becomes_retryable(self):
+        for reply in [self.reply(56, 'connection EOF'), self.reply(0, '', 'busy\n503'), self.reply(0, '', 'missing\n404')]:
+            with self.subTest(code=reply.returncode), patch.object(self.m.subprocess, 'run', return_value=reply) as run, patch.object(self.m.time, 'sleep'):
+                with self.assertRaises(RuntimeError) as caught: self.a.request('https://write.test', 'POST', data={})
+                self.assertNotIsInstance(caught.exception, self.m.TransientReadError)
+                self.assertEqual(run.call_count, 1)
+
+    def test_readonly_command_network_errors_are_typed_but_writes_are_not(self):
+        for args in [['gh', 'run', 'download', '123'], ['git', 'ls-remote', 'origin'], ['git', 'fetch', 'origin'], ['curl', '-fsSL', 'https://read.test']]:
+            with self.subTest(args=args), patch.object(self.m.subprocess, 'run', return_value=self.reply(56, 'connection reset by peer')):
+                with self.assertRaises(self.m.TransientReadError): self.a.command(args, read_only=True)
+        with patch.object(self.m.subprocess, 'run', return_value=self.reply(1, 'connection reset by peer')):
+            with self.assertRaises(RuntimeError) as caught: self.a.command(['git', 'push', 'origin', 'main'])
+            self.assertNotIsInstance(caught.exception, self.m.TransientReadError)
+
+    def test_readonly_download_local_write_and_tls_errors_are_permanent(self):
+        for code in [23, 60]:
+            with self.subTest(code=code), patch.object(self.m.subprocess, 'run', return_value=self.reply(code, 'connection EOF')):
+                with self.assertRaises(RuntimeError) as caught: self.a.command(['curl', '-fsSL', 'https://read.test'], read_only=True)
+                self.assertNotIsInstance(caught.exception, self.m.TransientReadError)
+
+    def test_main_remote_queries_are_explicitly_readonly(self):
+        calls = []
+        def command(args, **kwargs):
+            calls.append((args, kwargs))
+            return 'c' * 40 + '\trefs/heads/main' if args[1] == 'ls-remote' else ''
+        with patch.object(self.a, 'command', side_effect=command), patch.object(self.m.subprocess, 'run', return_value=self.reply(0, '', '')):
+            self.a.main_check()
+        self.assertEqual([call[0][1] for call in calls], ['ls-remote', 'fetch'])
+        self.assertTrue(all(call[1].get('read_only') for call in calls))
+
+    def test_cli_check_and_run_emit_only_exact_retryable_protocol(self):
+        context = self.base / 'context.json'; context.write_text(json.dumps(self.context))
+        for action in ['check', 'run']:
+            program = '''import sys
+sys.path.insert(0, sys.argv[1])
+import codex_mobile_release_adapter as m
+m.Adapter.assert_frozen=lambda self: None
+def fail(*args): raise m.TransientReadError('EOF https://read.test/?token=PRIVATE_TOKEN -----BEGIN PRIVATE KEY-----\\nPRIVATE_KEY\\n-----END PRIVATE KEY-----')
+m.Adapter.check_phase=fail
+m.Adapter.run_phase=fail
+sys.argv=['adapter',sys.argv[2],'build','--context',sys.argv[3]]
+m.main()
+'''
+            result = subprocess.run([sys.executable, '-B', '-c', program, str(fixtures.ROOT / 'scripts'), action, str(context)], text=True, capture_output=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            payload = json.loads(result.stdout)
+            self.assertEqual(set(payload), {'done', 'retryable'})
+            self.assertIs(payload['done'], False)
+            self.assertEqual(set(payload['retryable']), {'kind', 'reason'})
+            self.assertEqual(payload['retryable']['kind'], 'transient-read')
+            self.assertTrue(payload['retryable']['reason'].strip())
+            self.assertEqual(len(result.stdout.splitlines()), 1)
+            self.assertNotIn('PRIVATE_TOKEN', result.stdout + result.stderr)
+            self.assertNotIn('PRIVATE_KEY', result.stdout + result.stderr)
+
+    def test_prepare_remains_nonzero_and_no_retryable_stdout(self):
+        with patch.object(self.m.Adapter, 'prepare', side_effect=self.m.TransientReadError('EOF')), patch.object(sys, 'argv', ['adapter', 'run', 'prepare', '--context', str(self.base / 'context.json')]), patch.object(self.m, 'read_json', return_value=self.context), patch('sys.stdout', new_callable=io.StringIO) as output:
+            with self.assertRaises(self.m.TransientReadError): self.m.main()
+        self.assertEqual(output.getvalue(), '')
+
+    def test_ci_failure_and_integrity_mismatch_remain_permanent(self):
+        for status in ['failure', 'cancelled', 'timed_out']:
+            with self.subTest(status=status), patch.object(self.a, 'ci_run', return_value={'id':123, 'status':'completed', 'conclusion':status, 'run_attempt':1}):
+                with self.assertRaises(ValueError): self.a.run_build()
+        self.a.progress('build', runId=123, attempt=1)
+        bad = self.seed(self.a.root / 'ci-partials/android', 'android'); Path(bad['path']).write_bytes(b'changed')
+        with patch.object(self.a, 'ci_run', return_value=self.completed()), patch.object(self.a, 'command') as download:
+            with self.assertRaisesRegex(ValueError, '损坏|散列'): self.a.run_build()
+            download.assert_not_called()
+
+    def test_wait_deadline_survives_new_adapter_and_still_queries_after_expiry(self):
+        with patch.object(self.m.time, 'time', return_value=1000), patch.object(self.a, 'ci_run', side_effect=self.m.TransientReadError('EOF')):
+            with self.assertRaises(self.m.TransientReadError): self.a.run_build()
+        operation = self.a.read_progress()['operations']['build']
+        self.assertEqual(operation['waitStartedAt'], 1000)
+        self.assertEqual(operation['waitDeadlineAt'], 4600)
+        resumed = self.m.Adapter(self.context)
+        with patch.object(self.m.time, 'time', return_value=5000), patch.object(resumed, 'ci_run', return_value={'id':123,'status':'in_progress','run_attempt':1}) as query:
+            with self.assertRaises(TimeoutError): resumed.run_build()
+            query.assert_called_once()
+        with patch.object(self.m.time, 'time', return_value=5000), patch.object(resumed, 'ci_run', return_value=self.completed()) as query, patch.object(resumed, 'build_artifacts', return_value={'verified':True}):
+            resumed.run_build(); query.assert_called_once()
+        self.assertEqual(resumed.read_progress()['operations']['build']['waitDeadlineAt'], 4600)
+
+    def test_existing_partial_is_reused_across_transient_download_and_restart(self):
+        self.a.progress('build', runId=123, attempt=1)
+        self.seed(self.a.root / 'ci-partials/android', 'android')
+        with patch.object(self.a, 'ci_run', return_value=self.completed()), patch.object(self.a, 'command', side_effect=self.m.TransientReadError('EOF')):
+            with self.assertRaises(self.m.TransientReadError): self.a.run_build()
+        resumed = self.m.Adapter(self.context); downloads = []
+        def download(args, **kwargs):
+            self.assertIs(kwargs.get('read_only'), True)
+            platform = args[args.index('--name') + 1].removeprefix('codex-mobile-'); downloads.append(platform)
+            self.seed(Path(args[args.index('--dir') + 1]), platform)
+        with patch.object(resumed, 'ci_run', return_value=self.completed()), patch.object(resumed, 'command', side_effect=download): resumed.run_build()
+        self.assertEqual(downloads, ['ios'])
+        self.assertIsNotNone(resumed.build_artifacts())
+        self.assertEqual(resumed.read_progress()['operations']['build']['runId'], 123)
+        self.assertEqual(resumed.read_progress()['operations']['build']['attempt'], 1)
+
+    def test_recorded_run_attempt_cannot_be_replaced(self):
+        self.a.progress('build', runId=123, attempt=1)
+        run = {**self.completed(), 'head_sha':self.a.frozen_sha, 'run_attempt':2}
+        with patch.object(self.a, 'gh_json', return_value={'workflow_runs':[run]}):
+            with self.assertRaisesRegex(ValueError, 'attempt|运行'): self.a.ci_run()
+
+    def test_download_verified_network_failure_is_typed_and_integrity_failure_is_not(self):
+        expected = {'size':3, 'sha256':'c'*64}
+        output = self.a.root / 'verified.ipa'
+        with patch.object(self.a, 'request', return_value='content-length: 3'), patch.object(self.m.subprocess, 'run', return_value=self.reply(56, 'EOF')):
+            with self.assertRaises(self.m.TransientReadError): self.a.download_verified('https://read.test/?token=PRIVATE', expected, output)
+        self.assertFalse(output.exists())
+        def damaged(args, **kwargs):
+            self.assertIs(kwargs.get('read_only'), True)
+            Path(args[args.index('--output')+1]).write_bytes(b'bad')
+        with patch.object(self.a, 'request', return_value='content-length: 3'), patch.object(self.a, 'command', side_effect=damaged):
+            with self.assertRaisesRegex(ValueError, 'SHA-256'): self.a.download_verified('https://read.test', expected, output)
+        self.assertFalse(output.exists())
+
+    def test_interrupted_candidate_with_wrong_source_is_not_silently_redownloaded(self):
+        self.a.progress('build', runId=123, attempt=1)
+        folder = self.a.root / 'download-android-existing'
+        self.seed(folder, 'android')
+        receipt = self.m.read_json(folder / 'android-build.json'); receipt['sourceCommit'] = 'a'*40
+        self.m.atomic_json(folder / 'android-build.json', receipt)
+        self.m.atomic_json(self.a.root / 'download-android.json', {'candidate':str(folder),'runId':123,'attempt':1})
+        with patch.object(self.a, 'ci_run', return_value=self.completed()), patch.object(self.a, 'command') as download:
+            with self.assertRaisesRegex(ValueError, 'sourceCommit'): self.a.run_build()
+            download.assert_not_called()
+
+    def test_http_incomplete_json_is_typed_only_for_reads(self):
+        for method, count in [('GET', 4), ('POST', 1)]:
+            with self.subTest(method=method), patch.object(self.a, 'request', return_value='{"partial":') as request, patch.object(self.m.time, 'sleep'):
+                with self.assertRaises(RuntimeError) as caught: self.a.url_json('https://read.test', method=method)
+                self.assertEqual(isinstance(caught.exception, self.m.TransientReadError), method == 'GET')
+                self.assertEqual(request.call_count, count)
+
+    def test_readonly_marker_cannot_authorize_network_write_commands(self):
+        for args in [['git','push','origin','main'], ['gh','api','--method','POST','test'], ['curl','--request','POST','https://write.test'], ['curl','-dsecret','https://write.test']]:
+            with self.subTest(args=args), patch.object(self.m.subprocess, 'run') as run:
+                with self.assertRaises(ValueError): self.a.command(args, read_only=True)
+                run.assert_not_called()
+
+    def test_build_check_persists_budget_before_network_query(self):
+        with patch.object(self.m.time, 'time', return_value=2000), patch.object(self.a, 'ci_run', side_effect=self.m.TransientReadError('EOF')):
+            with self.assertRaises(self.m.TransientReadError): self.a.build_check()
+        self.assertEqual(self.a.read_progress()['operations']['build']['waitDeadlineAt'], 5600)
+
+    def test_write_failure_is_not_reclassified_by_failed_read_reconciliation(self):
+        with patch.object(self.a, 'check_phase', side_effect=[{'done':False}, self.m.TransientReadError('EOF')]), patch.object(self.a, 'execute_phase', side_effect=RuntimeError('publication response lost')):
+            with self.assertRaises(RuntimeError) as caught: self.a.run_phase('ipa')
+        self.assertNotIsInstance(caught.exception, self.m.TransientReadError)
+        self.assertEqual(str(caught.exception), 'publication response lost')
+
+    def test_interrupted_candidate_payload_truncation_redownloads_only_missing_platform(self):
+        for state in [None, 'interrupted']:
+            with self.subTest(state=state), tempfile.TemporaryDirectory() as temporary:
+                adapter = self.m.Adapter(self.fixture.context(Path(temporary)))
+                adapter.progress('build', runId=123, attempt=1)
+                self.seed(adapter.root / 'ci-partials/android', 'android')
+                candidate = adapter.root / 'download-ios-interrupted'
+                item = self.seed(candidate, 'ios'); Path(item['path']).write_bytes(b'i')
+                intent = {'candidate':str(candidate),'runId':123,'attempt':1}
+                if state: intent['downloadState'] = state
+                self.m.atomic_json(adapter.root / 'download-ios.json', intent)
+                downloads = []
+                def download(args, **kwargs):
+                    platform = args[args.index('--name')+1].removeprefix('codex-mobile-'); downloads.append(platform)
+                    self.seed(Path(args[args.index('--dir')+1]), platform)
+                with patch.object(adapter, 'ci_run', return_value=self.completed()), patch.object(adapter, 'command', side_effect=download): adapter.run_build()
+                self.assertEqual(downloads, ['ios']); self.assertIsNotNone(adapter.build_artifacts())
+                self.assertEqual(Path(item['path']).read_bytes(), b'i', '中断候选保留诊断，不覆盖原半包')
+
+    def test_successfully_returned_download_integrity_error_is_permanent_on_restart(self):
+        self.a.progress('build', runId=123, attempt=1)
+        self.seed(self.a.root / 'ci-partials/android', 'android')
+        def download(args, **kwargs):
+            candidate = Path(args[args.index('--dir')+1]); item = self.seed(candidate, 'ios')
+            Path(item['path']).write_bytes(b'i')
+        with patch.object(self.a, 'ci_run', return_value=self.completed()), patch.object(self.a, 'command', side_effect=download):
+            with self.assertRaisesRegex(ValueError, '损坏|散列'): self.a.run_build()
+        self.assertEqual(self.m.read_json(self.a.root / 'download-ios.json')['downloadState'], 'downloaded')
+        resumed = self.m.Adapter(self.context)
+        with patch.object(resumed, 'ci_run', return_value=self.completed()), patch.object(resumed, 'command') as second_download:
+            with self.assertRaisesRegex(ValueError, '损坏|散列'): resumed.run_build()
+            second_download.assert_not_called()
+
+    def test_readonly_subprocess_timeout_is_bounded_and_writes_keep_original_semantics(self):
+        for args in [['gh','run','download','123'], ['git','fetch','origin']]:
+            with self.subTest(args=args), patch.object(self.m.subprocess, 'run', side_effect=subprocess.TimeoutExpired(args, 180)) as run:
+                with self.assertRaises(self.m.TransientReadError): self.a.command(args, read_only=True)
+                self.assertEqual(run.call_args.kwargs['timeout'], 180)
+        with patch.object(self.m.subprocess, 'run', side_effect=subprocess.TimeoutExpired('git push', 9)) as run:
+            with self.assertRaises(subprocess.TimeoutExpired): self.a.command(['git','push','origin','main'])
+            self.assertNotIn('timeout', run.call_args.kwargs)
+
+    def test_normal_command_stderr_keeps_complete_multiline_sanitized_diagnostics(self):
+        diagnostic = ('compiler diagnostic details\n' * 80) + 'https://read.test/?token=PRIVATE\n'
+        with patch.object(self.m.subprocess, 'run', return_value=self.reply(0, diagnostic, 'ok')), patch('sys.stderr', new_callable=io.StringIO) as stderr:
+            self.assertEqual(self.a.command(['compiler']), 'ok')
+        self.assertEqual(stderr.getvalue().count('compiler diagnostic details\n'), 80)
+        self.assertNotIn('PRIVATE', stderr.getvalue())
+
+    def test_protocol_reason_redacts_authorization_headers_and_private_json_values(self):
+        for secret in ['Authorization: Bearer AUTH_PRIVATE', '{"token": "JSON_PRIVATE"}', 'Cookie: session=COOKIE_PRIVATE']:
+            with self.subTest(secret=secret):
+                reason = str(self.m.TransientReadError('EOF ' + secret))
+                for value in ['AUTH_PRIVATE', 'JSON_PRIVATE', 'COOKIE_PRIVATE']: self.assertNotIn(value, reason)
+                self.assertTrue(reason.strip())
+
+    def test_downloaded_candidate_missing_required_files_fails_again_after_restart(self):
+        for missing in ['receipt', 'payload', 'folder']:
+            with self.subTest(missing=missing), tempfile.TemporaryDirectory() as temporary:
+                context = self.fixture.context(Path(temporary)); adapter = self.m.Adapter(context)
+                adapter.progress('build', runId=123, attempt=1)
+                self.seed(adapter.root / 'ci-partials/android', 'android')
+                def incomplete(args, **kwargs):
+                    folder = Path(args[args.index('--dir')+1]); item = self.seed(folder, 'ios')
+                    if missing == 'receipt': (folder / 'ios-build.json').unlink()
+                    else: Path(item['path']).unlink()
+                with patch.object(adapter, 'ci_run', return_value=self.completed()), patch.object(adapter, 'command', side_effect=incomplete):
+                    with self.assertRaises(ValueError): adapter.run_build()
+                intent = self.m.read_json(adapter.root / 'download-ios.json')
+                self.assertEqual(intent['downloadState'], 'downloaded')
+                if missing == 'folder':
+                    import shutil
+                    shutil.rmtree(intent['candidate'])
+                resumed = self.m.Adapter(context); downloads = []
+                def complete_download(args, **kwargs):
+                    downloads.append(args); self.seed(Path(args[args.index('--dir')+1]), 'ios')
+                with patch.object(resumed, 'ci_run', return_value=self.completed()), patch.object(resumed, 'command', side_effect=complete_download):
+                    with self.assertRaises(ValueError): resumed.run_build()
+                self.assertEqual(downloads, [], '已确认退出的残缺下载不可用重下掩盖')
+
+    def test_verified_partial_missing_receipt_or_payload_is_permanent(self):
+        for missing in ['receipt', 'payload', 'folder']:
+            with self.subTest(missing=missing), tempfile.TemporaryDirectory() as temporary:
+                context = self.fixture.context(Path(temporary)); adapter = self.m.Adapter(context)
+                adapter.progress('build', runId=123, attempt=1)
+                folder = adapter.root / 'ci-partials/android'; item = self.seed(folder, 'android')
+                self.m.atomic_json(adapter.root / 'download-android.json', {'candidate':str(adapter.root / 'already-moved-candidate'),'runId':123,'attempt':1,'downloadState':'downloaded'})
+                if missing == 'receipt': (folder / 'android-build.json').unlink()
+                elif missing == 'payload': Path(item['path']).unlink()
+                else:
+                    import shutil
+                    shutil.rmtree(folder)
+                resumed = self.m.Adapter(context); downloads = []
+                def complete_download(args, **kwargs):
+                    platform = args[args.index('--name')+1].removeprefix('codex-mobile-'); downloads.append(platform)
+                    self.seed(Path(args[args.index('--dir')+1]), platform)
+                with patch.object(resumed, 'ci_run', return_value=self.completed()), patch.object(resumed, 'command', side_effect=complete_download):
+                    with self.assertRaises(ValueError): resumed.run_build()
+                self.assertEqual(downloads, [], '已验收产物缺失必须保留失败现场')
+
+    def test_explicit_github_403_rate_limit_persists_cooldown_without_requery(self):
+        with patch.object(self.m.time, 'time', return_value=1000), patch.object(self.m.subprocess, 'run', return_value=self.reply(error='gh: API rate limit exceeded (HTTP 403)')) as run, patch.object(self.m.time, 'sleep') as sleep:
+            with self.assertRaises(self.m.TransientReadError): self.a.gh_json('test/read')
+            self.assertEqual(run.call_count, 1); sleep.assert_not_called()
+        self.assertEqual(self.a.read_progress()['githubReadNotBefore'], 1060)
+        resumed = self.m.Adapter(self.context)
+        with patch.object(self.m.time, 'time', return_value=1030), patch.object(self.m.subprocess, 'run') as run:
+            with self.assertRaises(self.m.TransientReadError): resumed.gh_json('test/read')
+            run.assert_not_called()
+        with patch.object(self.m.time, 'time', return_value=1060), patch.object(self.m.subprocess, 'run', return_value=self.reply(0, '', '{"ok":true}')) as run:
+            self.assertEqual(resumed.gh_json('test/read'), {'ok':True}); run.assert_called_once()
+
+    def test_explicit_secondary_rate_limit_honors_longer_retry_after_or_reset(self):
+        for hint, expected in [('Retry-After: 120', 1120), ('X-RateLimit-Reset: 1800', 1800), ('Retry-After: Thu, 01 Jan 1970 00:30:00 GMT', 1800)]:
+            with self.subTest(hint=hint), tempfile.TemporaryDirectory() as temporary:
+                adapter = self.m.Adapter(self.fixture.context(Path(temporary)))
+                error = 'gh: secondary rate limit (HTTP 403)\n' + hint
+                with patch.object(self.m.time, 'time', return_value=1000), patch.object(self.m.subprocess, 'run', return_value=self.reply(error=error)) as run, patch.object(self.m.time, 'sleep') as sleep:
+                    with self.assertRaises(self.m.TransientReadError): adapter.gh_json('test/read')
+                    self.assertEqual(run.call_count, 1); sleep.assert_not_called()
+                self.assertEqual(adapter.read_progress()['githubReadNotBefore'], expected)
+
+    def included_fixture(self, name):
+        return (fixtures.ROOT / 'tests/fixtures/release-read-recovery' / ('gh-include-' + name + '.http')).read_text()
+
+    def test_real_gh_include_success_parses_only_body_and_keeps_path_argument(self):
+        output = self.included_fixture('success')
+        with patch.object(self.m.subprocess, 'run', return_value=self.reply(0, '', output)) as run:
+            self.assertEqual(self.a.gh_json('test/read'), {'rate':{'remaining':4999,'reset':2000},'resources':{}})
+        self.assertEqual(run.call_args.args[0], ['gh','api','test/read','--include'])
+
+    def test_real_gh_include_404_reads_status_from_stdout_and_preserves_missing_semantics(self):
+        for stderr in ['gh: Not Found (HTTP 404)\n', '']:
+            with self.subTest(stderr=bool(stderr)), patch.object(self.m.subprocess, 'run', return_value=self.reply(1, stderr, self.included_fixture('missing'))) as run:
+                self.assertIsNone(self.a.gh_json('test/missing', missing=True)); run.assert_called_once()
+        with patch.object(self.m.subprocess, 'run', return_value=self.reply(1, '', self.included_fixture('missing'))) as run:
+            with self.assertRaises(RuntimeError) as caught: self.a.gh_json('test/missing')
+            self.assertNotIsInstance(caught.exception, self.m.TransientReadError); run.assert_called_once()
+
+    def test_real_gh_include_rate_headers_extend_seconds_date_and_reset_cooldowns(self):
+        for headers, expected in [('Retry-After: 120', 1120), ('Retry-After: Thu, 01 Jan 1970 00:30:00 GMT', 1800), ('X-Ratelimit-Reset: 1900', 1900), ('Retry-After: 120\nX-Ratelimit-Reset: 2000', 2000)]:
+            with self.subTest(headers=headers), tempfile.TemporaryDirectory() as temporary:
+                adapter = self.m.Adapter(self.fixture.context(Path(temporary)))
+                structure = self.included_fixture('missing').split('\n\n',1)[0].splitlines()
+                output = '\n'.join(['HTTP/2.0 403 Forbidden',structure[1],headers]) + '\n\n' + '{"message":"API rate limit exceeded","status":"403"}'
+                # gh 的真实分布：头只在 stdout，stderr 只有状态诊断。
+                with patch.object(self.m.time, 'time', return_value=1000), patch.object(self.m.subprocess, 'run', return_value=self.reply(1, 'gh: API rate limit exceeded (HTTP 403)\n', output)) as run, patch.object(self.m.time, 'sleep') as sleep:
+                    with self.assertRaises(self.m.TransientReadError): adapter.gh_json('test/read')
+                    run.assert_called_once(); sleep.assert_not_called()
+                    self.assertEqual(run.call_args.args[0][-1], '--include')
+                self.assertEqual(adapter.read_progress()['githubReadNotBefore'], expected)
+
+    def test_real_gh_include_truncated_json_retries_body_without_changing_classification(self):
+        headers = self.included_fixture('success').split('\n\n',1)[0]
+        for body, transient in [('{"workflow_runs":', True), ('<html>login</html>', False)]:
+            with self.subTest(transient=transient), patch.object(self.m.subprocess, 'run', return_value=self.reply(0, '', headers + '\n\n' + body)) as run, patch.object(self.m.time, 'sleep'):
+                with self.assertRaises(RuntimeError) as caught: self.a.gh_json('test/read')
+                self.assertEqual(isinstance(caught.exception, self.m.TransientReadError), transient)
+                self.assertEqual(run.call_count, 4 if transient else 1)
+
+    def source_post_failure_scenario(self, kind):
+        self.a.progress('build', runId=123, attempt=1)
+        artifacts = {platform:self.seed(self.a.root / 'ci-artifacts', platform) for platform in ('android','ios')}
+        for item in artifacts.values(): item['downloadUrl'] = 'https://github.test/' + Path(item['path']).name
+        unsigned = artifacts['ios']
+        credentials = self.a.root / 'source-credentials.json'
+        self.m.atomic_json(credentials, {'url':'https://source.test','token':'mock-token'})
+        self.a.options.update(source_credentials=str(credentials), source_url='https://source.test/feed')
+        entry = {'id':'entry-a','kind':'github','repository':self.a.repo,'presentation':{'developerName':'alice'}}
+        if kind == 'attest':
+            entry['current'] = {'downloadURL':unsigned['downloadUrl'],'metadata':{'version':self.a.version,'buildVersion':self.a.build_number},'inspection':{'fullBytes':unsigned['size']}}
+        catalog = {'revision':7,'entries':[entry],'jobs':[]}
+        feed = {'apps':[{'bundleIdentifier':self.a.config['target'],'downloadURL':unsigned['downloadUrl'],'version':'0.2.163'}]}
+        post_error = RuntimeError('HTTP 401'); calls = []; posted = False
+        def url_json(url, **kwargs):
+            nonlocal posted
+            method = kwargs.get('method','GET'); calls.append((method, url))
+            if url.endswith('/feed'): return feed
+            if method == 'POST':
+                self.assertTrue(url.endswith('/' + kind)); posted = True; raise post_error
+            if url.endswith('/api/catalog'):
+                if posted: raise self.m.TransientReadError('GET EOF')
+                return catalog
+            raise AssertionError('unexpected external API')
+        def gh_json(path, **kwargs):
+            if '/actions/workflows/' in path: return {'workflow_runs':[{**self.completed(),'head_sha':self.a.frozen_sha}]}
+            if '/releases/tags/' in path:
+                return {'id':1,'html_url':'https://github.test/release','assets':[{'name':Path(item['path']).name,'size':item['size'],'digest':'sha256:'+item['sha256'],'browser_download_url':item['downloadUrl']} for item in artifacts.values()]}
+            if '/commits/' in path: return {'sha':self.a.frozen_sha}
+            if path == 'user': return {'login':'alice'}
+            raise AssertionError('unexpected GitHub API')
+        return url_json, gh_json, calls, post_error
+
+    def test_nested_source_sync_and_attest_keep_original_post_error_when_reconciliation_read_fails(self):
+        for kind in ['sync', 'attest']:
+            with self.subTest(kind=kind), tempfile.TemporaryDirectory() as temporary:
+                self.context = self.fixture.context(Path(temporary)); self.a = self.m.Adapter(self.context)
+                url_json, gh_json, calls, post_error = self.source_post_failure_scenario(kind)
+                with patch.object(self.a, 'url_json', side_effect=url_json), patch.object(self.a, 'gh_json', side_effect=gh_json):
+                    with self.assertRaises(RuntimeError) as caught: self.a.run_phase('source')
+                self.assertIs(caught.exception, post_error)
+                self.assertNotIsInstance(caught.exception, self.m.TransientReadError)
+                self.assertEqual([method for method, _ in calls].count('POST'), 1)
+
+    def test_nested_source_post_error_cli_is_nonzero_without_retryable_output(self):
+        for kind in ['sync', 'attest']:
+            with self.subTest(kind=kind):
+                program = """import json, sys
+from unittest.mock import patch
+sys.path.insert(0, sys.argv[1])
+from test_release_read_recovery import ReleaseReadRecoveryTests
+case=ReleaseReadRecoveryTests();case.setUp()
+try:
+    url,gh,calls,error=case.source_post_failure_scenario(sys.argv[2])
+    context=case.base/'cli-context.json';context.write_text(json.dumps(case.context))
+    sys.argv=['adapter','run','source','--context',str(context)]
+    with patch.object(case.m.Adapter,'assert_frozen',lambda self:None),patch.object(case.m.Adapter,'url_json',lambda self,address,**kwargs:url(address,**kwargs)),patch.object(case.m.Adapter,'gh_json',lambda self,path,**kwargs:gh(path,**kwargs)):
+        case.m.main()
+finally:
+    case.doCleanups()
+"""
+                result = subprocess.run([sys.executable,'-B','-c',program,str(fixtures.ROOT/'tests/ci'),kind],text=True,capture_output=True)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual(result.stdout, '')
+                self.assertIn('HTTP 401', result.stderr)
+                self.assertNotIn('GET EOF', result.stderr)
+
+    def completed(self): return {'id':123,'status':'completed','conclusion':'success','run_attempt':1}
+
+    def seed(self, folder, platform):
+        folder.mkdir(parents=True, exist_ok=True)
+        name = 'CodexMobile-v0.2.164' + ('.apk' if platform == 'android' else '-unsigned.ipa')
+        path = folder / name; path.write_bytes(platform.encode())
+        value = {'sourceCommit':self.a.frozen_sha,'batchId':'batch-test','version':'0.2.164','buildNumber':'2164','platform':platform,'sha256':self.m.sha256(path),'size':path.stat().st_size,'runId':'123','runAttempt':'1','tasks':[{'id':'task-a','sha':'a'*40}]}
+        self.m.atomic_json(folder / (platform + '-build.json'), value)
+        return {**value, 'path':str(path)}
+
+
+if __name__ == '__main__': unittest.main()
