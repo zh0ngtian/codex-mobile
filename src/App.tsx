@@ -2944,16 +2944,25 @@ function BackendWorkspace({
     if (sidechats.get(threadId)) {
       if (sendingDraftContextsRef.current.has(draftContext)) return false;
       sendingDraftContextsRef.current.add(draftContext);
-      currentDraftRef.current = { text: '', images: [], files: [] };
-      setDraft(''); setDraftImages([]); setDraftFiles([]);
+      const originalDraft = currentDraftRef.current;
+      const client = clientRef.current;
       try {
         const uploaded = await Promise.all(pendingFiles.map(file => uploadFile(backend, file.file)));
-        await sidechats.submit(gatewaySidechatClient(clientRef.current!), threadId, buildTurnInput(text, pendingImages, uploaded, pendingSkills, pendingPlugins), {
+        if (draftContext !== draftContextGenerationRef.current || clientRef.current !== client) throw new Error(t('会话已切换，请重试'));
+        await sidechats.submit(gatewaySidechatClient(client), threadId, buildTurnInput(text, pendingImages, uploaded, pendingSkills, pendingPlugins), {
           ...(selectedModel ? { model: selectedModel } : {}), ...(selectedEffort ? { effort: selectedEffort } : {}),
           serviceTier: effectiveSelectedServiceTier, ...(selectedPermission ? { permissions: selectedPermission } : {}),
           approvalPolicy: selectedApprovalPolicy, approvalsReviewer: selectedApprovalsReviewer,
+        }, () => {
+          // 上传/校验失败前保留输入；仅在原输入已进入分支内存队列后清理。
+          const current = currentDraftRef.current;
+          const next = { text: current.text === originalDraft.text ? '' : current.text,
+            images: current.images.filter(item => !pendingImages.some(original => original.id === item.id)),
+            files: current.files.filter(item => !pendingFiles.some(original => original.id === item.id)) };
+          currentDraftRef.current = next;
+          setDraft(next.text); setDraftImages(next.images); setDraftFiles(next.files);
+          pendingFiles.forEach(file => URL.revokeObjectURL(file.previewUrl));
         });
-        pendingFiles.forEach(file => URL.revokeObjectURL(file.previewUrl));
         return true;
       } catch (reason) {
         if (draftContext === draftContextGenerationRef.current) setError(String((reason as Error).message ?? reason));

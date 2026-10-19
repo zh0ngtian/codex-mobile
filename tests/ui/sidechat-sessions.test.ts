@@ -109,3 +109,61 @@ it('真实用户消息替换发送中的临时气泡，同一条输入只显示�
  f.sessions.observe({method:'item/completed',params:{threadId:side.id,turnId:'new-1',item}});
  expect(side.thread.turns[0].items.filter((entry:any)=>entry.type==='userMessage')).toEqual([item]);
 });
+
+it('重连恢复保留待确认UUID，原回合完成后不会重复发送', async () => {
+ const { HttpOperationPendingError } = await import('../../src/backends/http-transport');
+ const f=fixture();const side=await f.sessions.create({request:f.request},{id:'main'});
+ const original={method:'mobile/sidechat/rpc',params:{method:'turn/start',params:{threadId:side.id}}};
+ f.request.mockRejectedValueOnce(new HttpOperationPendingError('uncertain-restore',original));
+ await expect(f.sessions.submit({request:f.request},side.id,[{type:'text',text:'只执行一次'}],{})).rejects.toThrow();
+ const read=vi.fn(async()=>({parentId:'main',forkTurnId:'done',busy:true,thread:{id:side.id,ephemeral:true,turns:[{id:'accepted',status:'inProgress',items:[]}]}}));
+ await f.sessions.restore({request:read});
+ f.sessions.observe({method:'turn/completed',params:{threadId:side.id,turn:{id:'accepted',status:'completed',items:[]}}});
+ await Promise.resolve();
+ expect(read.mock.calls).toHaveLength(1);
+ await expect(f.sessions.retry(side.id)).rejects.toThrow('待确认');
+ f.sessions.observe({method:'mobile/operation/confirmed',params:{requestId:'uncertain-restore',request:original,response:{result:{turn:{id:'accepted',status:'completed',items:[]}}}}});
+ expect(f.sessions.get(side.id)?.queue).toHaveLength(0);
+});
+
+it('恢复期间在途发送的迟到成功仍清理同一队列且不重发', async () => {
+ const f=fixture();const side=await f.sessions.create({request:f.request},{id:'main'});
+ let finish!: (value:any)=>void;
+ f.request.mockImplementationOnce(()=>new Promise(resolve=>{finish=resolve;}));
+ const send=f.sessions.submit({request:f.request},side.id,[{type:'text',text:'在途仅发送一次'}],{});
+ const read=vi.fn(async()=>({parentId:'main',forkTurnId:'done',busy:true,thread:{id:side.id,ephemeral:true,turns:[{id:'accepted',status:'inProgress',items:[]}]}}));
+ await f.sessions.restore({request:read});
+ finish({turn:{id:'accepted',status:'inProgress',items:[]}});await send;
+ f.sessions.observe({method:'turn/completed',params:{threadId:side.id,turn:{id:'accepted',status:'completed',items:[]}}});
+ await Promise.resolve();
+ expect(read.mock.calls).toHaveLength(1);
+ expect(f.sessions.get(side.id)?.queue).toHaveLength(0);
+});
+
+it('关闭后的迟到恢复响应不能复活分支或正文', async () => {
+ const f=fixture();const side=await f.sessions.create({request:f.request},{id:'main'});
+ let finish!: (value:any)=>void;
+ const restore=f.sessions.restore({request:()=>new Promise(resolve=>{finish=resolve;})});
+ await f.sessions.close({request:f.request},side.id);expect(f.sessions.all()).toHaveLength(0);
+ finish({parentId:'main',forkTurnId:'done',busy:false,thread:{id:side.id,ephemeral:true,turns:[{id:'old',items:[{text:'已关闭正文'}]}]}});await restore;
+ expect(f.sessions.all()).toHaveLength(0);
+ expect([...f.data.values()].join('')).not.toContain(side.id);
+});
+
+it('分支审批已解决通知继续交给全局审批管理器', async () => {
+ const f=fixture();const side=await f.sessions.create({request:f.request},{id:'main'});
+ expect(f.sessions.observe({method:'serverRequest/resolved',params:{threadId:side.id,requestId:42}})).toBe(false);
+});
+
+it.each([true,false])('读取期间收到新回合状态后不被旧busy=%s覆盖', async staleBusy => {
+ const f=fixture();const side=await f.sessions.create({request:f.request},{id:'main'});
+ if(staleBusy)f.sessions.observe({method:'turn/started',params:{threadId:side.id,turn:{id:'real',status:'inProgress',items:[]}}});
+ let finish!:(value:any)=>void;
+ const restoring=f.sessions.restore({request:()=>new Promise(resolve=>{finish=resolve;})});
+ f.sessions.observe({method:staleBusy?'turn/completed':'turn/started',params:{threadId:side.id,turn:{id:'real',status:staleBusy?'completed':'inProgress',items:[]}}});
+ finish({parentId:'main',forkTurnId:'done',busy:staleBusy,thread:{id:side.id,ephemeral:true,turns:staleBusy?[{id:'real',status:'inProgress',items:[]}]:[]}});await restoring;
+ expect(f.sessions.get(side.id)?.busy).toBe(!staleBusy);
+ const before=f.request.mock.calls.filter(([method])=>method==='turn/start').length;
+ await f.sessions.submit({request:f.request},side.id,[{type:'text',text:'恢复后的新输入'}],{});
+ expect(f.request.mock.calls.filter(([method])=>method==='turn/start').length-before).toBe(staleBusy?1:0);
+});

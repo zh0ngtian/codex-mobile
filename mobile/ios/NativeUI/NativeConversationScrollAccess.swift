@@ -1,7 +1,7 @@
 import SwiftUI
 import UIKit
 
-/// 底部定位始终由ScrollViewReader的末尾ID执行；UIKit只观察高度回填，不写估算坐标。
+/// 显式底部定位由ScrollViewReader的末尾ID执行；UIKit观察高度回填，不写估算坐标。
 @MainActor final class NativeConversationScrollAccess {
     private weak var scrollView: UIScrollView?
     private weak var resolver: NativeConversationScrollResolver.ResolverView?
@@ -16,14 +16,18 @@ import UIKit
         defer { if needsAnchor { requestBottomAnchor() } }
         guard scrollView !== view else { return }
         scrollView = view
+        trace("scroll-attach")
         contentSizeObservation = view.observe(\.contentSize, options: [.old, .new]) { [weak self] _, change in
             guard change.oldValue != change.newValue else { return }
-            Task { @MainActor [weak self] in self?.requestBottomAnchor() }
+            Task { @MainActor [weak self] in
+                self?.trace("scroll-height-change")
+                self?.requestBottomAnchor()
+            }
         }
     }
-    func scrollToBottom() { following = true; requestBottomAnchor() }
-    func stopFollowing() { following = false; needsAnchor = false }
-    func resumeFollowing() { following = true }
+    func scrollToBottom() { following = true; trace("scroll-bottom-request"); requestBottomAnchor() }
+    func stopFollowing() { following = false; needsAnchor = false; trace("scroll-stop") }
+    func resumeFollowing() { following = true; trace("scroll-resume") }
 
     /// 显式回底不等待惯性或上一段动画；只冻结当前实际位置，目标仍由末尾ID定位。
     func interruptScrolling() {
@@ -40,13 +44,22 @@ import UIKit
         needsAnchor = true
         guard !requestQueued else { return }
         requestQueued = true
+        trace("scroll-anchor-queued")
         Task { @MainActor [weak self] in
             await Task.yield()
             guard let self else { return }
             self.requestQueued = false
             guard self.following else { return }
+            self.trace("scroll-anchor-before")
             if self.resolver?.scrollToBottomAnchor() == true { self.needsAnchor = false }
+            self.trace("scroll-anchor-after")
         }
+    }
+    private func trace(_ phase: String) {
+        #if DEBUG
+        NativeConversationLoadProfile.shared.scroll(phase, view: scrollView,
+            data: ["following": following, "needsAnchor": needsAnchor, "queued": requestQueued])
+        #endif
     }
 }
 

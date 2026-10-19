@@ -114,3 +114,62 @@ it('daemon重启导致分支失效时回到主聊天，不能把已失效分支�
  expect(posts.at(-1)?.sidechatActive).toBe(false);
  expect(boundary.requests.filter(r=>r.method==='thread/fork')).toHaveLength(1);
 });
+
+async function openSidechatForSend() {
+ boundary.immediateSend = true;
+ const initial = await setup();
+ await act(async () => { command('seed-draft','draft.set',{contextId:initial,value:'只读主聊天',revision:1}); command('seed-send','message.send',{contextId:initial}); });
+ await waitFor(() => expect(posts.at(-1)?.threadId).toBe('sent-thread'));
+ await act(async () => command('create-for-send','sidechat.create',{contextId:posts.at(-1).contextId}));
+ await waitFor(() => expect(posts.at(-1)?.threadId).toBe('side-1'));
+ return posts.at(-1).contextId as string;
+}
+
+it('Sidechat附件上传失败保留正文和原始附件，不提前清空输入', async () => {
+ const contextId=await openSidechatForSend();
+ const BaseURL=URL;
+ vi.stubGlobal('URL',class extends BaseURL {static createObjectURL(){return 'blob:sidechat-test';}static revokeObjectURL(){}});
+ const originalFetch=vi.mocked(fetch).getMockImplementation()!;
+ vi.mocked(fetch).mockImplementation(async(...args:Parameters<typeof fetch>)=>String(args[0]).includes('/api/uploads/file')?new Response('',{status:503}):originalFetch(...args));
+ await act(async()=>{
+  command('draft-upload','draft.set',{contextId,value:'保留这条正文',revision:1});
+  command('import-upload','attachment.import',{contextId,items:[{name:'note.txt',type:'text/plain',data:btoa('file bytes')}]});
+ });
+ await waitFor(()=>expect(posts.at(-1)?.attachments).toHaveLength(1));
+ const attachmentId=posts.at(-1).attachments[0].id;
+ await act(async()=>command('send-upload-error','message.send',{contextId}));
+ await waitFor(()=>expect(posts.at(-1)?.commandResults?.some((r:any)=>r.id==='send-upload-error'&&!r.ok)).toBe(true));
+ expect(posts.at(-1).draft).toBe('保留这条正文');
+ expect(posts.at(-1).attachments.map((a:any)=>a.id)).toContain(attachmentId);
+ expect(boundary.requests.some(r=>r.method==='turn/start'&&r.params.threadId==='side-1')).toBe(false);
+});
+
+it('Sidechat入队前已失效时保留正文', async () => {
+ const contextId=await openSidechatForSend();
+ await act(async()=>{command('draft-reject','draft.set',{contextId,value:'还没入队的正文',revision:1});boundary.options.onNotification('a',{method:'thread/closed',params:{threadId:'side-1'}});});
+ await act(async()=>command('send-unavailable','message.send',{contextId}));
+ await waitFor(()=>expect(posts.at(-1)?.commandResults?.some((r:any)=>r.id==='send-unavailable'&&!r.ok)).toBe(true));
+ expect(posts.at(-1).draft).toBe('还没入队的正文');
+});
+
+it('Sidechat原输入已入队后发送失败只留队列，避免草稿重复恢复', async () => {
+ const contextId=await openSidechatForSend();boundary.failSend=true;
+ await act(async()=>{command('draft-queued-error','draft.set',{contextId,value:'失败条目保留一次',revision:1});command('send-queued-error','message.send',{contextId});});
+ await waitFor(()=>expect(posts.at(-1)?.queued.some((item:any)=>item.title==='失败条目保留一次')).toBe(true));
+ expect(posts.at(-1).draft).toBe('');expect(posts.at(-1).queued).toHaveLength(1);
+});
+
+it('上传期间继续编辑时只清理已入队附件，保留后续新正文', async () => {
+ const contextId=await openSidechatForSend();const BaseURL=URL;
+ vi.stubGlobal('URL',class extends BaseURL {static createObjectURL(){return 'blob:sidechat-edit';}static revokeObjectURL(){}});
+ const originalFetch=vi.mocked(fetch).getMockImplementation()!;let finish!:(response:Response)=>void;
+ vi.mocked(fetch).mockImplementation(async(...args:Parameters<typeof fetch>)=>String(args[0]).includes('/api/uploads/file')?new Promise(resolve=>{finish=resolve;}):originalFetch(...args));
+ await act(async()=>{command('draft-first','draft.set',{contextId,value:'先发送的正文',revision:1});command('import-first','attachment.import',{contextId,items:[{name:'note.txt',type:'text/plain',data:btoa('bytes')}]});});
+ await waitFor(()=>expect(posts.at(-1)?.attachments).toHaveLength(1));
+ act(()=>command('send-first','message.send',{contextId}));await waitFor(()=>expect(finish).toBeTypeOf('function'));
+ await act(async()=>command('draft-next','draft.set',{contextId,value:'上传期间的新正文',revision:2}));
+ await act(async()=>finish(new Response(JSON.stringify({path:'/tmp/note.txt',name:'note.txt',type:'text/plain',size:5}))));
+ await waitFor(()=>expect(posts.at(-1)?.commandResults?.some((r:any)=>r.id==='send-first'&&r.ok)).toBe(true));
+ expect(posts.at(-1).draft).toBe('上传期间的新正文');expect(posts.at(-1).attachments).toHaveLength(0);
+ expect(boundary.requests.find(r=>r.method==='turn/start'&&r.params.threadId==='side-1')?.params.input[0].text).toBe('先发送的正文');
+});

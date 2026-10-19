@@ -3,6 +3,22 @@ import XCTest
 /// 显式指定测试网关设备及可读主聊天；只向临时Sidechat发送测试消息。
 @MainActor
 final class SidechatUITests: XCTestCase {
+    private func tapVisibleMenuItem(_ title: String, in app: XCUIApplication) {
+        let menu = app.collectionViews.firstMatch
+        XCTAssertTrue(menu.waitForExistence(timeout: 8), app.debugDescription)
+        let action = menu.buttons[title].firstMatch
+        XCTAssertTrue(action.waitForExistence(timeout: 8), app.debugDescription)
+        for _ in 0..<3 {
+            if action.frame.minY >= menu.frame.minY + 4 && action.frame.maxY <= menu.frame.maxY - 4 { break }
+            if action.frame.maxY > menu.frame.maxY - 4 { menu.swipeUp() } else { menu.swipeDown() }
+        }
+        let visible = action.frame.intersection(menu.frame.insetBy(dx: 0, dy: 4))
+        XCTAssertGreaterThan(visible.height, 20, "菜单项必须实际可见，不能点击滚动裁剪区或滚动条")
+        app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: visible.midX, dy: visible.midY)).tap()
+        let dismissed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: menu)
+        XCTAssertEqual(XCTWaiter.wait(for: [dismissed], timeout: 8), .completed, app.debugDescription)
+    }
+
     func testSidechatRoundTripSwitchRestoreAndClose() throws {
         continueAfterFailure = false
         let environment = ProcessInfo.processInfo.environment
@@ -26,11 +42,7 @@ final class SidechatUITests: XCTestCase {
         }
         func menu(_ title: String) {
             app.buttons["conversation.actions"].tap()
-            let menu = app.collectionViews.firstMatch
-            XCTAssertTrue(menu.waitForExistence(timeout: 8), app.debugDescription)
-            let action = menu.buttons[title].firstMatch
-            XCTAssertTrue(action.waitForExistence(timeout: 8), app.debugDescription)
-            action.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+            tapVisibleMenuItem(title, in: app)
             if title == "关闭 Sidechat" {
                 let alert = app.alerts["确认操作"]
                 XCTAssertTrue(alert.waitForExistence(timeout: 8))
@@ -90,14 +102,7 @@ final class SidechatUITests: XCTestCase {
         row.tap()
         func menu(_ title: String) {
             app.buttons["conversation.actions"].tap()
-            let collection = app.collectionViews.firstMatch
-            XCTAssertTrue(collection.waitForExistence(timeout: 8))
-            let action = collection.buttons[title].firstMatch
-            XCTAssertTrue(action.waitForExistence(timeout: 8))
-            XCTAssertTrue(action.isHittable, app.debugDescription)
-            action.tap()
-            let dismissed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: collection)
-            XCTAssertEqual(XCTWaiter.wait(for: [dismissed], timeout: 8), .completed, app.debugDescription)
+            tapVisibleMenuItem(title, in: app)
         }
         menu("新建 Sidechat")
         let back = app.buttons["sidechat.return"]
