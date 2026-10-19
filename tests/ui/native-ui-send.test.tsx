@@ -3,7 +3,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { AppBootstrap } from '../../src/App';
 import { HttpOperationPendingError } from '../../src/backends/http-transport';
 import * as threadListLoader from '../../src/app-server/thread-list-loader';
-const boundary = vi.hoisted(() => ({ requests: [] as Array<{ method: string; params: any; options?: { priority?: string } }>, threadRecords: [] as Array<Record<string, any>>, options: null as any, client: null as any, release: null as null | (() => void), failSend: false, immediateSend: false, nextThreadId: 'sent-thread', delayRevert: false, pendingMethod: '', releaseRevert: null as null | (() => void), rejectStart: null as null | (() => void) }));
+const boundary = vi.hoisted(() => ({ requests: [] as Array<{ method: string; params: any; options?: { priority?: string } }>, threadRecords: [] as Array<Record<string, any>>, threadReadBarrier: null as Promise<void> | null, options: null as any, client: null as any, release: null as null | (() => void), failSend: false, immediateSend: false, nextThreadId: 'sent-thread', delayRevert: false, pendingMethod: '', releaseRevert: null as null | (() => void), rejectStart: null as null | (() => void) }));
 vi.mock('../../src/backends/connection-manager', () => ({ BackendConnectionManager: class {
  constructor(private options: any) { boundary.options = options; }
  client() { return boundary.client; } socket() { return null; } close() {} reconnect() {}
@@ -14,8 +14,9 @@ vi.mock('../../src/backends/connection-manager', () => ({ BackendConnectionManag
    if (method === 'model/list') return { data: [{ model: 'gpt', displayName: 'GPT', isDefault: true, supportedReasoningEfforts: [{ reasoningEffort: 'high', description: '' }] }] };
    if (method === 'permissionProfile/list') return { data: [{ id: ':workspace', allowed: true }] };
    if (method === 'config/read') return { config: { model: 'gpt', sandbox_mode: 'workspace-write', model_reasoning_effort: 'high' } };
+   if (method === 'thread/list' && params.cwd) { const records = boundary.threadRecords.filter(thread => thread.cwd === params.cwd); const offset = Number(params.cursor ?? 0); const end = offset + params.limit; return { data: records.slice(offset, end), nextCursor: end < records.length ? String(end) : null }; }
    if (method === 'thread/loaded/list') return { data: boundary.threadRecords.filter(thread => thread.status?.type === 'active').map(thread => thread.id), nextCursor: null };
-   if (method === 'thread/read' && boundary.threadRecords.some(thread => thread.id === params.threadId)) return { thread: boundary.threadRecords.find(thread => thread.id === params.threadId) };
+   if (method === 'thread/read' && boundary.threadRecords.some(thread => thread.id === params.threadId)) { const thread = boundary.threadRecords.find(thread => thread.id === params.threadId); await boundary.threadReadBarrier; return { thread }; }
    if (method === 'thread/start') return { thread: { id: boundary.nextThreadId, cwd: null, turns: [] }, model: 'gpt' };
    if (method === boundary.pendingMethod) throw new HttpOperationPendingError(`pending-${params.threadId}-${method}`, { id: 'pending-rpc', method, params });
    if (method === 'thread/revert' && boundary.delayRevert) return new Promise(resolve => { boundary.releaseRevert = () => resolve({ thread: { id: params.threadId, turns: [] } }); });
@@ -30,7 +31,12 @@ vi.mock('../../src/backends/connection-manager', () => ({ BackendConnectionManag
 } }));
 const posts: any[] = []; let queueItems: any[] = [];
 function command(id: string, name: string, params: Record<string, unknown> = {}) { window.dispatchEvent(new CustomEvent('codex-mobile-native-command', { detail: { id, name, params } })); }
-afterEach(() => { cleanup(); boundary.requests = []; boundary.threadRecords = []; boundary.client = null; boundary.options = null; boundary.release = null; boundary.failSend = false; boundary.immediateSend = false; boundary.nextThreadId = 'sent-thread'; boundary.delayRevert = false; boundary.pendingMethod = ''; boundary.releaseRevert = null; boundary.rejectStart = null; queueItems = []; posts.length = 0; localStorage.clear(); delete (window as any).__CODEX_NATIVE_UI__; delete (window as any).webkit; delete (window as any).codexMobilePublishNativeSnapshot; vi.unstubAllGlobals(); });
+function deferredRead() {
+ let resolve!: () => void; let reject!: (reason: Error) => void;
+ const promise = new Promise<void>((done, fail) => { resolve = done; reject = fail; });
+ return { promise, resolve, reject };
+}
+afterEach(() => { cleanup(); boundary.requests = []; boundary.threadRecords = []; boundary.threadReadBarrier = null; boundary.client = null; boundary.options = null; boundary.release = null; boundary.failSend = false; boundary.immediateSend = false; boundary.nextThreadId = 'sent-thread'; boundary.delayRevert = false; boundary.pendingMethod = ''; boundary.releaseRevert = null; boundary.rejectStart = null; queueItems = []; posts.length = 0; localStorage.clear(); delete (window as any).__CODEX_NATIVE_UI__; delete (window as any).webkit; delete (window as any).codexMobilePublishNativeSnapshot; vi.unstubAllGlobals(); });
 async function setup(native = true, projectState = { projects: [] as string[], projectlessThreadIds: [] as string[] }) {
  if (native) Object.assign(window, { __CODEX_NATIVE_UI__: true, webkit: { messageHandlers: { nativeUI: { postMessage() {} } } }, codexMobilePublishNativeSnapshot: (s: unknown) => posts.push(s) });
  vi.stubGlobal('fetch', vi.fn(async (url: string, options?: RequestInit) => {
@@ -86,6 +92,134 @@ it.each([
    expectRetainedSummaries();
   }
  } finally {
+  loadProjectless.mockRestore();
+ }
+});
+async function setupProjectlessPaginationRace(withOtherProject = false) {
+ boundary.threadRecords = [
+  { id: 'unread', cwd: null, recencyAt: 1, status: { type: 'idle' }, turns: [] },
+  ...Array.from({ length: 17 }, (_, index) => ({ id: `regular-${index}`, name: `旧连接-${index}`, cwd: null, recencyAt: 100 - index, status: { type: 'idle' }, turns: [] })),
+ ];
+ const projectlessThreadIds = boundary.threadRecords.map(thread => thread.id);
+ if (withOtherProject) boundary.threadRecords.push(...Array.from({ length: 11 }, (_, index) => ({ id: `other-${index}`, cwd: '/other', recencyAt: 100 - index, status: { type: 'idle' }, turns: [] })));
+ localStorage.setItem('codex-mobile:unread:a', '["unread"]');
+ await setup(true, { projects: withOtherProject ? ['/other'] : [], projectlessThreadIds });
+ const group = () => posts.at(-1)?.groups.find((entry: any) => entry.category === 'project' && entry.cwd === '');
+ const ordinaryIds = () => group()?.items.filter((item: any) => !item.isPinned && !item.isUnread && !item.running).map((item: any) => item.threadId);
+ const more = () => group()?.actions.find((action: any) => action.command?.name === 'project.more');
+ const expectedIds = (count: number) => Array.from({ length: count }, (_, index) => `regular-${index}`);
+ const loadMore = async (id: string) => {
+  const action = more();
+  await act(async () => { command(id, action.command.name, action.command.params); });
+ };
+ await waitFor(() => expect(ordinaryIds()).toEqual(expectedIds(5)));
+ return { group, ordinaryIds, more, expectedIds, loadMore };
+}
+it('无项目分页悬挂时拒绝disabled原生命令且快速重复点击只读取一轮，完成后继续加载十五条', async () => {
+ const { group, ordinaryIds, more, expectedIds, loadMore } = await setupProjectlessPaginationRace();
+ const first = deferredRead();
+ boundary.threadReadBarrier = first.promise;
+ const loadProjectless = vi.spyOn(threadListLoader, 'loadProjectlessThreadRecords');
+ try {
+  await loadMore('pending-more-a');
+  await waitFor(() => expect(more()?.disabled).toBe(true));
+  await act(async () => {
+   const params = more().command.params;
+   command('pending-more-b', 'project.more', params);
+   command('pending-more-c', 'project.more', params);
+  });
+  await waitFor(() => expect(posts.at(-1)?.commandResults?.find((result: any) => result.id === 'pending-more-c')).toBeDefined());
+  expect(posts.at(-1)?.commandResults?.find((result: any) => result.id === 'pending-more-b')).toMatchObject({ ok: false });
+  expect(posts.at(-1)?.commandResults?.find((result: any) => result.id === 'pending-more-c')).toMatchObject({ ok: false });
+  expect(loadProjectless).toHaveBeenCalledTimes(1);
+  expect(ordinaryIds()).toEqual(expectedIds(5));
+  await act(async () => { first.resolve(); });
+  await waitFor(() => expect(ordinaryIds()).toEqual(expectedIds(10)));
+  await waitFor(() => expect(more()?.disabled).toBe(false));
+  boundary.threadReadBarrier = null;
+  await loadMore('pending-more-next');
+  await waitFor(() => expect(ordinaryIds()).toEqual(expectedIds(15)));
+  expect(loadProjectless).toHaveBeenCalledTimes(2);
+  expect(loadProjectless.mock.calls.map(call => call[2])).toEqual([10, 15]);
+  expect(group().items).toEqual(expect.arrayContaining([expect.objectContaining({ threadId: 'unread', isUnread: true })]));
+ } finally {
+  await act(async () => { first.resolve(); });
+  loadProjectless.mockRestore();
+ }
+});
+it('其他项目完成加载让共享loading恢复后，同一连接的无项目在途请求仍同步去重', async () => {
+ const { ordinaryIds, more, expectedIds, loadMore } = await setupProjectlessPaginationRace(true);
+ const first = deferredRead();
+ boundary.threadReadBarrier = first.promise;
+ const loadProjectless = vi.spyOn(threadListLoader, 'loadProjectlessThreadRecords');
+ try {
+  await loadMore('locked-projectless-first');
+  await waitFor(() => expect(more()?.disabled).toBe(true));
+  const other = posts.at(-1).groups.find((entry: any) => entry.cwd === '/other');
+  const otherMore = other.actions.find((action: any) => action.command?.name === 'project.more');
+  await act(async () => { command('other-project-more', otherMore.command.name, otherMore.command.params); });
+  await waitFor(() => expect(posts.at(-1).groups.find((entry: any) => entry.cwd === '/other').items).toHaveLength(10));
+  await waitFor(() => expect(more()?.disabled).toBe(false));
+  await loadMore('locked-projectless-duplicate');
+  expect(loadProjectless).toHaveBeenCalledTimes(1);
+  expect(ordinaryIds()).toEqual(expectedIds(5));
+  await act(async () => { first.resolve(); });
+  await waitFor(() => expect(ordinaryIds()).toEqual(expectedIds(10)));
+ } finally {
+  await act(async () => { first.resolve(); });
+  loadProjectless.mockRestore();
+ }
+});
+it.each(['success', 'error'].flatMap(outcome => ['loading', 'completed'].map(stage => ({ outcome, stage }))))('旧连接无项目分页$outcome在新分页$stage时返回，不回写旧结果、错误或清除新loading', async ({ outcome, stage }) => {
+ const { group, ordinaryIds, more, expectedIds, loadMore } = await setupProjectlessPaginationRace();
+ const old = deferredRead(), next10 = deferredRead(), next15 = deferredRead();
+ const loadProjectless = vi.spyOn(threadListLoader, 'loadProjectlessThreadRecords');
+ try {
+  boundary.threadReadBarrier = old.promise;
+  await loadMore('old-client-more');
+  expect(loadProjectless).toHaveBeenCalledTimes(1);
+  const previous = boundary.client;
+  const replacement = { ...previous };
+  boundary.threadReadBarrier = null;
+  boundary.threadRecords = boundary.threadRecords.map(thread => ({ ...thread, name: `新连接-${thread.id}` }));
+  await act(async () => {
+   boundary.options.onConnection('a', 'offline');
+   boundary.options.onConnection('a', 'connecting');
+   boundary.client = replacement;
+   boundary.options.onConnection('a', 'online');
+   boundary.options.onReady('a', replacement);
+  });
+  await waitFor(() => expect(group()?.items.find((item: any) => item.threadId === 'regular-0')?.title).toBe('新连接-regular-0'));
+  boundary.threadReadBarrier = next10.promise;
+  await loadMore('new-client-ten');
+  expect(loadProjectless).toHaveBeenCalledTimes(2);
+  await act(async () => { next10.resolve(); });
+  await waitFor(() => expect(ordinaryIds()).toEqual(expectedIds(10)));
+  await waitFor(() => expect(more()?.disabled).toBe(false));
+  boundary.threadReadBarrier = next15.promise;
+  await loadMore('new-client-fifteen');
+  expect(loadProjectless.mock.calls.map(call => call[2])).toEqual([10, 10, 15]);
+  await waitFor(() => expect(more()?.disabled).toBe(true));
+  if (stage === 'completed') {
+   await act(async () => { next15.resolve(); });
+   await waitFor(() => expect(ordinaryIds()).toEqual(expectedIds(15)));
+   await waitFor(() => expect(more()?.disabled).toBe(false));
+  }
+  await act(async () => {
+   if (outcome === 'error') old.reject(new Error('旧连接分页失败'));
+   else old.resolve();
+   await loadProjectless.mock.results[0].value.catch(() => undefined);
+  });
+  await act(async () => { command('old-response-observed', 'navigation.filter', { value: 'projects' }); });
+  await waitFor(() => expect(posts.at(-1)?.commandResults?.find((result: any) => result.id === 'old-response-observed')).toMatchObject({ ok: true }));
+  expect(ordinaryIds()).toEqual(expectedIds(stage === 'loading' ? 10 : 15));
+  expect(group().items.find((item: any) => item.threadId === 'regular-0')?.title).toBe('新连接-regular-0');
+  expect(more()?.disabled).toBe(stage === 'loading');
+  expect(posts.at(-1)?.error ?? '').not.toContain('旧连接分页失败');
+  await act(async () => { next15.resolve(); });
+  await waitFor(() => expect(ordinaryIds()).toEqual(expectedIds(15)));
+ } finally {
+  await act(async () => { old.resolve(); next10.resolve(); next15.resolve(); });
   loadProjectless.mockRestore();
  }
 });

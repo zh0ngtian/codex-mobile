@@ -465,6 +465,7 @@ function BackendWorkspace({
     loading: boolean;
   }>({ cwd: null, plugins: [], loading: false });
   const clientRef = useRef<AppServerClient | null>(null);
+  const projectlessLoadRef = useRef<{ client: AppServerClient; pending: boolean } | null>(null);
   const readyClientRef = useRef<AppServerClient | null>(null);
   const connectionManagerRef = useRef<BackendConnectionManager | null>(null);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
@@ -1236,6 +1237,10 @@ function BackendWorkspace({
         if (disposed) return;
         setConnection(status);
         if (status === "online") setError("");
+        if (status === "connecting" || status === "offline") {
+          projectlessLoadRef.current = null;
+          setLoadingProjectCwd((current) => current === PROJECTLESS_GROUP_ID ? "" : current);
+        }
         if (
           connectionError &&
           connectionError !== t("无法连接设备网关")
@@ -1745,6 +1750,10 @@ function BackendWorkspace({
       },
       onReady: (_backendId, source) => {
         const client = source as AppServerClient;
+        if (projectlessLoadRef.current?.client !== client) {
+          projectlessLoadRef.current = null;
+          setLoadingProjectCwd((current) => current === PROJECTLESS_GROUP_ID ? "" : current);
+        }
         client.onThreadMetadata((thread) => {
           if (!disposed && manager.client(backend.id) === source) {
             finalAnswerCompletionRef.current.rememberThread(thread);
@@ -2007,6 +2016,7 @@ function BackendWorkspace({
         connectionManagerRef.current = null;
       }
       clientRef.current = null;
+      projectlessLoadRef.current = null;
       readyClientRef.current = null;
     };
   }, [backend.baseUrl, backend.id, backend.token, backend.transportMode]);
@@ -4027,7 +4037,11 @@ function BackendWorkspace({
 
   async function loadProjectlessThreads(targetCount: number) {
     const client = clientRef.current;
-    if (!client) return;
+    const currentRequest = projectlessLoadRef.current;
+    if (!client || (currentRequest?.client === client && currentRequest.pending)) return;
+    const request = { client, pending: true };
+    projectlessLoadRef.current = request;
+    const isCurrent = () => projectlessLoadRef.current === request && clientRef.current === client;
     setLoadingProjectCwd(PROJECTLESS_GROUP_ID);
     try {
       const result = await loadProjectlessThreadRecords(
@@ -4036,33 +4050,44 @@ function BackendWorkspace({
         targetCount,
         readPrioritizedThreadIds(),
       );
+      if (!isCurrent()) return;
       if (result.hasMore) {
         fullyLoadedProjectCwdsRef.current.delete(PROJECTLESS_GROUP_ID);
       } else {
         fullyLoadedProjectCwdsRef.current.add(PROJECTLESS_GROUP_ID);
       }
-      setProjectHasMore((current) => ({
-        ...current,
-        [PROJECTLESS_GROUP_ID]: result.hasMore,
-      }));
-      setThreads((current) => [
-        ...current.filter(
-          (thread) => projectGroupIdOf(thread) !== PROJECTLESS_GROUP_ID,
-        ),
-        ...mergeThreadListPage(
-          current.filter(
-            (thread) => projectGroupIdOf(thread) === PROJECTLESS_GROUP_ID,
+      setProjectHasMore((current) => {
+        if (!isCurrent()) return current;
+        return { ...current, [PROJECTLESS_GROUP_ID]: result.hasMore };
+      });
+      setThreads((current) => {
+        if (!isCurrent()) return current;
+        return [
+          ...current.filter(
+            (thread) => projectGroupIdOf(thread) !== PROJECTLESS_GROUP_ID,
           ),
-          decorateThreads(result.threads),
-          readPrioritizedThreadIds(),
-        ),
-      ]);
+          ...mergeThreadListPage(
+            current.filter(
+              (thread) => projectGroupIdOf(thread) === PROJECTLESS_GROUP_ID,
+            ),
+            decorateThreads(result.threads),
+            readPrioritizedThreadIds(),
+          ),
+        ];
+      });
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : String(reason));
+      if (isCurrent()) {
+        const message = reason instanceof Error ? reason.message : String(reason);
+        setError((current) => isCurrent() ? message : current);
+      }
     } finally {
-      setLoadingProjectCwd((current) =>
-        current === PROJECTLESS_GROUP_ID ? "" : current,
-      );
+      if (isCurrent()) {
+        // 保留身份供已排队的状态更新复核；下一轮请求会替换它。
+        request.pending = false;
+        setLoadingProjectCwd((current) =>
+          isCurrent() && current === PROJECTLESS_GROUP_ID ? "" : current,
+        );
+      }
     }
   }
 
@@ -5089,7 +5114,7 @@ function ConfiguredApp({
   }) : [];
   const performNativeProject = (name: string, params: Record<string, unknown>) => {
     const group = nativeGroups.find(group => group.command?.params.backendId === params.backendId && group.command?.params.cwd === params.cwd);
-    const allowed = group?.command?.name === name || group?.actions?.some(action => action.command?.name === name);
+    const allowed = group?.command?.name === name || group?.actions?.some(action => action.command?.name === name && !action.disabled);
     if (!allowed) throw new Error(t("会话列表已更新，请刷新"));
     if (name === "project.toggle") toggleProjectCollapsed(String(params.backendId), String(params.cwd));
     else if (name === "project.more") toggleProject(String(params.backendId), String(params.cwd));
