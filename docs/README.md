@@ -13,6 +13,7 @@
 - [2026-10-18 关注会话加载耗时](performance/2026-10-18-conversation-loading/README.md)：分阶段计时、重复打开/重启后首次打开的分布及脱敏原始样本；模拟器Debug数据。
 - [2026-10-19 冷启动边栏列表耗时](performance/2026-10-19-sidebar-cold-start/README.md)：30次进程冷启动的首批会话、全部分组、阶段耗时及请求形态；模拟器Debug数据，终点为原生快照派发。
 - [2026-10-19 冷启动边栏优化复测](performance/2026-10-19-sidebar-startup-optimized/README.md)：额度后台调度、无项目定向摘要及每组五条分页；同原生容器各30次对照，模拟器验证完成、未发布。
+- [2026-10-19 真机冷启动边栏耗时](performance/2026-10-19-sidebar-real-device/README.md)：已安装 0.3.18 的 20 次进程冷启动、3 次低查询对照、上屏终点与长尾边界；真机测量完成，后续优化方案未实施。
 - [协议基准](../protocol/app-server-v2/README.md)：固定快照的版本、来源和使用边界。
 
 ## 当前发布入口
