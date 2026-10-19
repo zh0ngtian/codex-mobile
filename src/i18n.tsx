@@ -486,6 +486,8 @@ const english: Record<string, string> = {
     "Failed to update conversation model settings: {message}",
   "选择审批与权限模式": "Choose approval and permission mode",
   "选择图片": "Choose images",
+  "选择照片和视频": "Choose photos and videos",
+  "照片和视频": "Photos and videos",
   "选择图片或视频": "Choose images or video",
   "选择文件": "Choose files",
   "添加附件": "Add attachment",

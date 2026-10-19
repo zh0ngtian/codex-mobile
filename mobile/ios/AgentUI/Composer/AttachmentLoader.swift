@@ -5,7 +5,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 actor AttachmentLoader {
-    func file(at url: URL, id: UUID, availableBytes: Int = AttachmentImportLimits.totalBytes) throws -> AttachmentItem {
+    func file(at url: URL, id: UUID, availableBytes: Int = AttachmentImportLimits.totalBytes, contentType: UTType? = nil) throws -> AttachmentItem {
         try Task.checkCancellation()
         let scoped = url.startAccessingSecurityScopedResource()
         defer { if scoped { url.stopAccessingSecurityScopedResource() } }
@@ -14,11 +14,16 @@ actor AttachmentLoader {
             throw AttachmentImportError.fileSizeUnavailable
         }
         try AttachmentImportLimits.validate(byteCount: size, availableBytes: availableBytes)
-        let data = try readBoundedFile(url, size: size, availableBytes: availableBytes)
+        let data = try Self.readBoundedFile(url, size: size, availableBytes: availableBytes)
         try Task.checkCancellation()
-        let kind = Self.kind(for: url)
+        let fileType = UTType(filenameExtension: url.pathExtension)
+        let type = fileType.flatMap { fileType in
+            guard let contentType else { return fileType }
+            return fileType.conforms(to: contentType) ? fileType : nil
+        } ?? contentType
+        let kind = Self.kind(for: type)
         if kind == .image { try validateImage(data) }
-        return AttachmentItem(id: id, name: url.lastPathComponent, kind: kind, data: data, mimeType: UTType(filenameExtension: url.pathExtension)?.preferredMIMEType, byteCount: data.count)
+        return AttachmentItem(id: id, name: url.lastPathComponent, kind: kind, data: data, mimeType: type?.preferredMIMEType, byteCount: data.count)
     }
 
     func photo(_ item: PhotosPickerItem, id: UUID, name: String,
@@ -30,7 +35,8 @@ actor AttachmentLoader {
         try Task.checkCancellation()
         let data = transfer.data
         try AttachmentImportLimits.validate(byteCount: data.count, availableBytes: availableBytes)
-        return AttachmentItem(id: id, name: name, kind: .image, data: data, mimeType: item.supportedContentTypes.first?.preferredMIMEType, byteCount: data.count)
+        let type = item.supportedContentTypes.first { Self.kind(for: $0) == transfer.kind }
+        return AttachmentItem(id: id, name: transfer.name.isEmpty ? name : transfer.name, kind: transfer.kind, data: data, mimeType: transfer.mimeType ?? type?.preferredMIMEType, byteCount: data.count)
     }
 
     func imageData(at url: URL) throws -> Data {
@@ -41,10 +47,11 @@ actor AttachmentLoader {
         return data
     }
 
-    private func readBoundedFile(_ url: URL, size: Int, availableBytes: Int) throws -> Data {
+    nonisolated static func readBoundedFile(_ url: URL, size: Int, availableBytes: Int, perFileBytes: Int = AttachmentImportLimits.perFileBytes) throws -> Data {
+        try AttachmentImportLimits.validate(byteCount: size, availableBytes: availableBytes, perFileBytes: perFileBytes)
         let handle = try FileHandle(forReadingFrom: url)
         defer { try? handle.close() }
-        let limit = min(AttachmentImportLimits.perFileBytes, max(0, availableBytes))
+        let limit = min(perFileBytes, max(0, availableBytes))
         var data = Data()
         data.reserveCapacity(min(size, limit))
         while true {
@@ -52,7 +59,7 @@ actor AttachmentLoader {
             let chunkSize = min(64 * 1_024, limit - data.count + 1)
             guard let chunk = try handle.read(upToCount: chunkSize), !chunk.isEmpty else { break }
             data.append(chunk)
-            try AttachmentImportLimits.validate(byteCount: data.count, availableBytes: availableBytes)
+            try AttachmentImportLimits.validate(byteCount: data.count, availableBytes: availableBytes, perFileBytes: perFileBytes)
         }
         return data
     }
@@ -64,7 +71,11 @@ actor AttachmentLoader {
     }
 
     nonisolated static func kind(for url: URL) -> AttachmentKind {
-        guard let type = UTType(filenameExtension: url.pathExtension) else { return .file }
+        kind(for: UTType(filenameExtension: url.pathExtension))
+    }
+
+    nonisolated static func kind(for type: UTType?) -> AttachmentKind {
+        guard let type else { return .file }
         if type.conforms(to: .image) { return .image }
         if type.conforms(to: .movie) { return .video }
         if type.conforms(to: .audio) { return .audio }

@@ -22,7 +22,7 @@ struct AttachmentSheet: View {
         NavigationStack {
             List {
                 Section {
-                    Button(preferences.text("选择图片", "Choose images"), systemImage: "photo.on.rectangle", action: choosePhotos)
+                    Button(preferences.text("选择照片和视频", "Choose photos and videos"), systemImage: "photo.on.rectangle", action: choosePhotos)
                     Button(preferences.text("选择文件", "Choose files"), systemImage: "folder", action: chooseFiles)
                     if pickerError {
                         Label(preferences.text("无法打开所选文件。已保留现有输入，请重新选择。", "Could not open the selected files. Your input is preserved; choose again."), systemImage: "exclamationmark.triangle")
@@ -65,7 +65,7 @@ struct AttachmentSheet: View {
                 }
             }
             .fileImporter(isPresented: $filesPresented, allowedContentTypes: [.item], allowsMultipleSelection: true, onCompletion: filesSelected)
-            .photosPicker(isPresented: $photosPresented, selection: $selectedPhotos, matching: .images, preferredItemEncoding: .current)
+            .photosPicker(isPresented: $photosPresented, selection: $selectedPhotos, matching: .any(of: [.images, .videos]), preferredItemEncoding: .current)
             .onChange(of: selectedPhotos, photoSelectionChanged)
             .onDisappear(perform: disappeared)
             .interactiveDismissDisabled(committing)

@@ -100,7 +100,7 @@ struct ComposerBar: View {
         let selection = pickerSelection
         return Color.clear.frame(width: 0, height: 0)
             .fileImporter(isPresented: $filesPresented, allowedContentTypes: [.item], allowsMultipleSelection: true) { filesSelected($0, selection: selection) }
-            .photosPicker(isPresented: $photosPresented, selection: photoSelection(for: selection), matching: .images, preferredItemEncoding: .current)
+            .photosPicker(isPresented: $photosPresented, selection: photoSelection(for: selection), matching: .any(of: [.images, .videos]), preferredItemEncoding: .current)
             .id(selection?.id)
     }
     private var attachmentMenu: some View {
