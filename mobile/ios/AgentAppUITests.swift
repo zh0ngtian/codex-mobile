@@ -4,6 +4,46 @@ import UIKit
 /// 独立界面夹具及本地网关验收；连接凭证不进入源码或测试附件。
 @MainActor
 final class AgentAppUITests: XCTestCase {
+    func testFirstDeviceButtonKeepsHorizontalLabelAndContrast() {
+        // 在独立模拟器的离线无设备夹具执行，不连接网关或创建远端会话。
+        for appearance in ["Light", "Dark"] {
+            let app = XCUIApplication()
+            app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-no-devices-fixture", "-appearance", appearance, "-accent", "Pink", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
+            app.launch()
+            let back = app.buttons["取消并返回设备列表"]
+            if back.waitForExistence(timeout: 3) {
+                back.tap()
+                XCTAssertTrue(back.waitForNonExistence(timeout: 15))
+                app.buttons["完成设备设置"].tap()
+            }
+            let button = app.buttons.matching(identifier: "devices.addFirst").firstMatch
+            XCTAssertTrue(button.waitForExistence(timeout: 15))
+            assertFirstDeviceButton(button, app: app, appearance: appearance, location: "首页")
+            button.tap()
+            XCTAssertTrue(app.textFields["device.name"].waitForExistence(timeout: 5))
+            XCTAssertTrue(app.textViews["device.address"].exists || app.textFields["device.address"].exists)
+            back.tap()
+            XCTAssertTrue(back.waitForNonExistence(timeout: 15), "取消后应返回真实设备列表，不能检查弹层后面的按钮")
+            XCTAssertTrue(app.navigationBars["设备"].waitForExistence(timeout: 5))
+            guard let listButton = app.buttons.matching(identifier: "devices.addFirst").allElementsBoundByIndex.first(where: { $0.isHittable }) else {
+                XCTFail("设备列表应显示可操作的添加设备按钮")
+                return
+            }
+            assertFirstDeviceButton(listButton, app: app, appearance: appearance, location: "设备列表")
+            app.terminate()
+        }
+    }
+
+    private func assertFirstDeviceButton(_ button: XCUIElement, app: XCUIApplication, appearance: String, location: String) {
+        XCTAssertTrue(button.label.contains("添加设备"))
+        XCTAssertTrue(button.isHittable, "截图和尺寸验收必须来自当前可交互页面")
+        captureConversation("首台设备-" + location + "-" + appearance, app: app)
+        XCTAssertGreaterThan(button.frame.width, button.frame.height * 1.8, "添加设备应为横向图文按钮")
+        XCTAssertGreaterThanOrEqual(button.frame.height, 44)
+        XCTAssertLessThanOrEqual(button.frame.height, 60, "按钮不能被空状态布局拉成竖向胶囊")
+        XCTAssertGreaterThan(Self.iconInkPixels(app.screenshot().image, element: button.frame, screen: app.frame, light: appearance == "Light"), 15, "图文应与中性填充色保持明暗反差")
+    }
+
     func testSteeredRepliesStayInsideProcessBeforeFinalAnswer() {
         let app = XCUIApplication()
         app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-steered-replies-fixture", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
