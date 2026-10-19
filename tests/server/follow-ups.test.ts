@@ -234,3 +234,19 @@ describe("网关托管追问队列", () => {
     expect((await f.post(f.enqueue("a"))).status).toBe(429);
   }, 20_000);
 });
+
+it('新桌面格式的混合附件和引用在入队、编辑及实际调度时完整保留', async () => {
+ const { encodeUserMessage, decodeUserMessage, replaceUserMessageBody } = await import('../../server/user-message-format.js');
+ const f = await fixture(); f.active.set('compat', 'busy');
+ const raw = encodeUserMessage('原问题', [{ name: '照片.jpg', path: '/tmp/photo.jpg', isImage: true }, { name: '文档.txt', path: '/tmp/doc.txt' }], [{ text: '$quoted-skill' }]);
+ const body = f.enqueue('compat', raw, { text: '原问题', attachmentCount: 2, extraInput: [{ type: 'localImage', path: '/tmp/photo.jpg' }] });
+ expect((await f.post(body)).status).toBe(200);
+ await f.restart();
+ const queued = (await f.list())[0]; expect(queued.attachmentCount).toBe(2);
+ const edited = { action: 'edit', id: body.id, revision: queued.revision, inputText: replaceUserMessageBody(raw, '新问题'), text: '新问题', mentions: [] };
+ expect((await f.post(edited)).status).toBe(200);
+ f.complete('compat'); await until(() => f.starts().length === 1);
+ const input = f.starts()[0].params.input;
+ expect(input).toHaveLength(2); expect(input[1]).toEqual({ type: 'localImage', path: '/tmp/photo.jpg' });
+ expect(decodeUserMessage(input[0].text)).toMatchObject({ body: '新问题', attachments: [{ path: '/tmp/photo.jpg' }, { path: '/tmp/doc.txt' }], references: [{ text: '$quoted-skill' }] });
+});

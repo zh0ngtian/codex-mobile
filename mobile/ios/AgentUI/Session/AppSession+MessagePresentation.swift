@@ -1,6 +1,18 @@
 import Foundation
 
 extension AppSession {
+    func referenceMessageID(_ reference: NativeMessageReference) -> UUID? {
+        guard let source = reference.source, let native = nativeSnapshot.messages.first(where: { $0.itemId == source.messageId }) else { return nil }
+        let text = (native.rawText ?? native.text) as NSString
+        guard source.startOffset >= 0, source.endOffset > source.startOffset, source.endOffset <= text.length,
+              text.substring(with: NSRange(location: source.startOffset, length: source.endOffset - source.startOffset)) == reference.text else { return nil }
+        return selectedConversation?.messages.first { rawMessageIDs[$0.id] == native.id }?.id
+    }
+    func revealReference(_ reference: NativeMessageReference) {
+        guard let id = referenceMessageID(reference) else { return }
+        referenceTarget = id; referenceRequestRevision += 1
+    }
+
     func historyScrollAnchor(for messageID: UUID) -> String? { nativeMessage(messageID)?.scrollAnchorId }
 
     func historyScrollMessageID(in conversationID: UUID, previousID: UUID, anchorID: String?) -> UUID? {

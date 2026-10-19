@@ -190,8 +190,9 @@ final class CodexMobileAttachmentPickerBridge: NSObject, WKScriptMessageHandler,
                     let scoped = url.startAccessingSecurityScopedResource()
                     defer { if scoped { url.stopAccessingSecurityScopedResource() } }
                     let data = try Data(contentsOf: url)
-                    let mime = UTType(filenameExtension: url.pathExtension)?.preferredMIMEType ?? "application/octet-stream"
-                    return ["name": url.lastPathComponent, "type": mime, "data": data.base64EncodedString()]
+                    let type = UTType(filenameExtension: url.pathExtension)
+                    let image = try AttachmentLoader.compatibleImage(data: data, name: url.lastPathComponent, type: type)
+                    return ["name": image.name, "type": image.mimeType ?? "application/octet-stream", "data": image.data.base64EncodedString()]
                 }
                 DispatchQueue.main.async { self?.finish(id: id, files: files) }
             } catch {

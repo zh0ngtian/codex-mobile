@@ -1,5 +1,5 @@
 import type { BackendConfig } from "./types";
-import type { UploadedFile } from "../ui/attachments";
+import type { DraftImage, UploadedFile } from "../ui/attachments";
 import { t } from "../i18n";
 
 type Fetcher = typeof fetch;
@@ -64,4 +64,16 @@ export async function uploadFile(
     throw new Error(t("文件上传响应无效"));
   }
   return result as UploadedFile;
+}
+
+/** 图片先保存到当前网关宿主，再用同一路径声明附件与localImage，桌面刷新后也能恢复。 */
+export async function uploadDraftImages(backend: BackendConfig, images: DraftImage[], fetcher: Fetcher = fetch): Promise<DraftImage[]> {
+  return Promise.all(images.map(async image => {
+    if (image.path) return image;
+    const encoded = image.url.match(/^data:([^;,]+);base64,([A-Za-z0-9+/=]+)$/);
+    if (!encoded || encoded[1] !== image.type) throw new Error(t('附件内容格式无效'));
+    const bytes = Uint8Array.from(atob(encoded[2]), character => character.charCodeAt(0));
+    const file = await uploadFile(backend, new File([bytes], image.name, { type: image.type }), fetcher);
+    return { ...image, path: file.path };
+  }));
 }

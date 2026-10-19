@@ -1,3 +1,5 @@
+import { decodeUserMessage, type MessageReference } from '../../server/user-message-format';
+import { responseAnnotationDisplay } from '../features/conversation/response-annotations';
 import { messageItemText as nativeItemText } from '../features/conversation/message-text';
 export { messageItemText as nativeItemText } from '../features/conversation/message-text';
 import { quoteSource } from '../features/conversation/message-quotes';
@@ -23,7 +25,7 @@ export function nativeAction(id: string, title: string, name: string, params: Re
   return { id, kind: 'action', title, command: nativeCommand(name, params) };
 }
 /** final 与其他正文立即投影；commentary 折叠计数独立于工具和推理。 */
-export function projectConversation(active: RecordValue | null, imageURL: (path: string) => string, originalImageURL?: (path: string) => string, mediaURL?: (path: string) => string, backendId?: string): NativeMessage[] {
+export function projectConversation(active: RecordValue | null, imageURL: (path: string) => string, originalImageURL?: (path: string) => string, mediaURL?: (path: string) => string, backendId?: string, fileURL?: (path: string) => string): NativeMessage[] {
   const messages: NativeMessage[] = [];
   const scrollAnchor = (item: RecordValue | undefined, role: string): string | undefined =>
     typeof item?.id === 'string' && item.id ? `${item.id}:${role}` : undefined;
@@ -60,6 +62,7 @@ export function projectConversation(active: RecordValue | null, imageURL: (path:
     };
     // 先按 wire 顺序绑定媒体，再使用两端共享的引导和旧回答呈现契约。
     const grouped = groupTurnItems(turn);
+    let responseReferences: MessageReference[] = [];
     const presentation = turnResponsePresentation(grouped.responses, { running, collapseWithoutFinal: true });
     const entries = [...(grouped.user ? [{ item: grouped.user, media: [], history: false, supersededAnswer: false }] : []), ...presentation.entries];
     {
@@ -105,7 +108,17 @@ export function projectConversation(active: RecordValue | null, imageURL: (path:
         if (item.type === 'userMessage' || item.type === 'agentMessage' || ['imageView', 'imageGeneration', 'videoGeneration'].includes(item.type)) flushHistory(isFinal);
         if (item.type === 'userMessage') {
           const sentAt = [item.timestamp, turn.startedAt].find(value => typeof value === 'number' && Number.isFinite(value) && value > 0);
-          messages.push({ id, quoteSource: sourceFor(item), role: 'user', text: nativeItemText(item), scrollAnchorId: scrollAnchor(item, 'user'), blocks: imageBlocks(item, id), turnId, itemId: String(item.id),
+          const rawText = nativeItemText(item);
+          const parsed = decodeUserMessage(rawText);
+          responseReferences = parsed.references;
+          const images = imageSourcesForItem(item);
+          const blocks = imageBlocks(item, id).map((block, index) => ({ ...block, title: parsed.attachments.find(file => file.path === images[index]?.source)?.name ?? block.title }));
+          for (const [index, file] of parsed.attachments.entries()) {
+            if (images.some(image => image.source === file.path)) continue;
+            if (file.isImage) blocks.push({ id: `${id}:file:${index}`, kind: 'image', title: file.name, value: imageURL(file.path), ...(originalImageURL ? { previewURL: originalImageURL(file.path) } : {}) });
+            else blocks.push({ id: `${id}:file:${index}`, kind: 'file', title: file.name, value: fileURL ? fileURL(file.path) : mediaURL ? mediaURL(file.path) : file.path });
+          }
+          messages.push({ id, quoteSource: sourceFor(item), role: 'user', text: parsed.body, rawText, references: parsed.references, scrollAnchorId: scrollAnchor(item, 'user'), blocks, turnId, itemId: String(item.id),
             ...(sentAt == null ? {} : { timestamp: sentAt }),
             actions: [nativeAction(`${id}:copy`, t('复制'), 'message.copy', { id }), nativeAction(`${id}:edit`, t('编辑'), 'message.edit', { turnId, messageId: String(item.id) })] });
         } else if (item.type === 'agentMessage') {
@@ -114,7 +127,7 @@ export function projectConversation(active: RecordValue | null, imageURL: (path:
           const blocks = entry.media.flatMap(mediaBlocks);
           if (timestamp) blocks.push({ id: `${id}:timestamp`, kind: 'text', text: timestamp });
           const finalStatus = !commentary && !entry.supersededAnswer && (!running || item === presentation.final) ? status : undefined;
-          messages.push({ id, quoteSource: sourceFor(item), role: 'assistant', text: nativeItemText(item), scrollAnchorId: scrollAnchor(item, 'assistant'), status: finalStatus, turnId, itemId: String(item.id), phase: typeof item.phase === 'string' ? item.phase : undefined,
+          messages.push({ id, quoteSource: sourceFor(item), role: 'assistant', rawText: nativeItemText(item), references: responseReferences, text: responseAnnotationDisplay(nativeItemText(item), responseReferences, t('引用')), scrollAnchorId: scrollAnchor(item, 'assistant'), status: finalStatus, turnId, itemId: String(item.id), phase: typeof item.phase === 'string' ? item.phase : undefined,
             ...(entry.supersededAnswer ? { commentaryCanAttachToReply: true, commentary: [{ id, quoteSource: sourceFor(item), text: nativeItemText(item), blocks: [...blocks], isPreviousReply: true,
               ...(typeof item.timestamp === 'number' && Number.isFinite(item.timestamp) && item.timestamp > 0 ? { timestamp: item.timestamp } : {}) }] } : {}),
             ...(commentary ? { commentaryIsLiveTail: liveCommentaryIDs.has(String(item.id)) } : {}),

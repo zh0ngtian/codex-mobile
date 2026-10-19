@@ -1,3 +1,4 @@
+import { decodeUserMessage } from '../../server/user-message-format';
 import { parseRemoteFileHref } from './remote-file-target';
 export { parseRemoteFileHref } from './remote-file-target';
 export type { RemoteFileTarget } from './remote-file-target';
@@ -371,7 +372,7 @@ export function imageSourcesForItem(
   item: ConversationRecord,
 ): ImageSource[] {
   if (item.type === "userMessage") {
-    return (item.content ?? []).flatMap((part: ConversationRecord) => {
+    const images: ImageSource[] = (item.content ?? []).flatMap((part: ConversationRecord) => {
       if (part.type === "localImage" && part.path) {
         return [
           {
@@ -392,6 +393,13 @@ export function imageSourcesForItem(
       }
       return [];
     });
+    const raw = (item.content ?? []).filter((part: ConversationRecord) => part.type === 'text').map((part: ConversationRecord) => part.text ?? '').join('\n');
+    for (const file of decodeUserMessage(raw).attachments) {
+      const image = images.find(image => image.source === file.path);
+      if (image) image.name = file.name;
+      else if (file.isImage) images.push({ source: file.path, name: file.name, local: true });
+    }
+    return images;
   }
   if (item.type === "imageView" && item.path) {
     return [

@@ -1,3 +1,4 @@
+import { decodeUserMessage, replaceUserMessageBody } from '../../server/user-message-format';
 import { AppServerRpcError } from "./client";
 import { stripConversationTitleRequest } from "./conversation-title";
 
@@ -88,7 +89,7 @@ export function createHistoricalMessageEditTarget(
   const input = [...precedingInput, ...messageInput];
   const primaryTextIndex = messageTextIndex < 0 ? -1 : precedingInput.length + messageTextIndex;
   const text = messageTextIndex >= 0
-    ? String(messageInput[messageTextIndex].text ?? "")
+    ? decodeUserMessage(String(messageInput[messageTextIndex].text ?? "")).body
     : "";
   return {
     turnId,
@@ -100,7 +101,7 @@ export function createHistoricalMessageEditTarget(
     precedingMessageCount: messageIndex,
     rollbackTurnCount: turns.length - turnIndex,
     hasLaterTurns: turnIndex < turns.length - 1 || messageIndex < userMessages.length - 1,
-    attachmentCount: input.filter(isAttachmentInput).length,
+    attachmentCount: input.filter(isAttachmentInput).length + input.filter(part => part.type === "text").flatMap(part => decodeUserMessage(String(part.text ?? "")).attachments).filter(file => !input.some(part => part.type === "localImage" && part.path === file.path)).length,
   };
 }
 
@@ -116,11 +117,11 @@ export function buildEditedHistoryInput(
         : { ...part },
   );
   if (target.primaryTextIndex >= 0) {
-    if (text) {
+    if (text || decodeUserMessage(String(input[target.primaryTextIndex].text ?? "")).prefix) {
       input[target.primaryTextIndex] = {
         ...input[target.primaryTextIndex],
         type: "text",
-        text,
+        text: replaceUserMessageBody(String(input[target.primaryTextIndex].text ?? ""), text),
         text_elements: [],
       };
     } else {

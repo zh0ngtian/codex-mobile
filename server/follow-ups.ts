@@ -1,3 +1,4 @@
+import { messageAttachmentCount } from "./user-message-format.js";
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, open, readFile, rename, unlink, chmod } from "node:fs/promises";
 import { join, dirname } from "node:path";
@@ -206,7 +207,7 @@ export class FollowUps {
     if (body.action === "enqueue") {
       validateText(body.inputText, body.text); validateInputs(body.extraInput); validateSettings(body.settings);
       if (typeof body.threadId !== "string" || !body.threadId.trim() || body.threadId.length > 256) throw new QueueError(400, "会话 ID 无效");
-      const count = body.extraInput.filter((entry) => ["image", "localImage", "text"].includes(String(entry.type))).length;
+      const count = messageAttachmentCount(body.inputText as string, body.extraInput);
       if (body.attachmentCount !== count) throw new QueueError(400, "附件数量与输入不一致");
       if (!(body.inputText as string).trim() && !body.extraInput.length) throw new QueueError(400, "追问不能为空");
       const content = { threadId: body.threadId, inputText: body.inputText as string, text: body.text as string, attachmentCount: count, extraInput: body.extraInput, settings: body.settings };

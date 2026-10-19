@@ -152,6 +152,14 @@ struct ConversationScreen: View {
                     #endif
                     resumeBottomFollowingIfReached()
                 }
+                .task(id: session.referenceRequestRevision) {
+                    guard let target = session.referenceTarget, conversation.messages.contains(where: { $0.id == target }) else { return }
+                    followsLatest = false
+                    scrollAccess.stopFollowing()
+                    historyPull.programmaticScrollBegan()
+                    proxy.scrollTo(target, anchor: .center)
+                    session.referenceTarget = nil
+                }
                 .task(id: session.historyEdit?.messageID) {
                     guard let edit = session.historyEdit, edit.conversationID == conversationID else { return }
                     followsLatest = false

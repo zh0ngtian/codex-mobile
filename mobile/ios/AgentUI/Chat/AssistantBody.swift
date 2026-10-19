@@ -5,6 +5,8 @@ struct AssistantBody: View {
     @Environment(AppPreferences.self) private var preferences
     let text: String
     var quoteSource: NativeQuoteSource? = nil
+    var references: [NativeMessageReference] = []
+    @State private var selectedReference: Int? = nil
     private var blocks: [NativeMarkdownBlock] { NativeMarkdownDocumentCache.blocks(for: text) }
 
     var body: some View {
@@ -15,6 +17,12 @@ struct AssistantBody: View {
                     else { NativeSelectableText(text: NativeSelectableMarkdown.blocks(segment.text), openLink: openLink) }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .sheet(isPresented: Binding(get: { selectedReference != nil }, set: { if !$0 { selectedReference = nil } })) {
+            if let index = selectedReference, references.indices.contains(index) {
+                ScrollView { MessageReferenceCards(references: [references[index]], firstIndex: index + 1, expanded: true, onRevealSource: { selectedReference = nil }).padding() }
+                    .presentationDetents([.medium, .large]).presentationDragIndicator(.visible)
             }
         }
         .selectionQuoteSource(quoteSource)
@@ -46,6 +54,7 @@ struct AssistantBody: View {
         return result
     }
     private func openLink(_ url: URL) {
+        if let fragment = url.fragment, fragment.hasPrefix("codex-annotation-"), let number = Int(fragment.dropFirst("codex-annotation-".count)), references.indices.contains(number - 1) { selectedReference = number - 1; return }
         if ["http", "https", "mailto", "tel"].contains(url.scheme?.lowercased() ?? "") {
             UIApplication.shared.open(url)
         } else { session.nativeStore?.command("file.open", ["href": .string(url.absoluteString)]) }

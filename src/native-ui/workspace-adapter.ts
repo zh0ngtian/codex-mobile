@@ -5,7 +5,7 @@ import { workspaceBusinessPanels } from './workspace-panels';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { BackendConfig } from '../backends/types';
 import type { DraftFile, DraftImage } from '../ui/attachments';
-import { remoteImagePreviewUrl, remoteFilePreviewUrl } from '../backends/file-upload';
+import { remoteImagePreviewUrl, remoteFilePreviewUrl, remoteFileDownloadUrl } from '../backends/file-upload';
 import { filterInstalledSkills, skillMentionAt, skillDisplayName, skillDescription, type InstalledSkill } from '../app-server/skills';
 import { filterInstalledPlugins, pluginDisplayName, pluginDescription, type InstalledPlugin } from '../app-server/plugins';
 import { getActiveLocale, t } from '../i18n';
@@ -80,7 +80,7 @@ function projectNativeTokenUsage(usage: RecordValue | undefined): NativeSnapshot
 export function createWorkspaceAdapter(c: NativeWorkspaceController, panel: PanelState): { snapshot: NativeSnapshot; handlers: NativeHandlers } {
   const state = c.extended?.state ?? {};
   const options = (entries: RecordValue[]) => entries.map(option => ({ id: String(option.id ?? ''), value: String(option.id ?? ''), title: String(option.label ?? option.id ?? ''), ...(option.description ? { subtitle: String(option.description) } : {}) }));
-  const messages = projectConversation(c.active, path => remoteImagePreviewUrl(c.backend, path), path => remoteImagePreviewUrl(c.backend, path, false), path => remoteFilePreviewUrl(c.backend, path), c.backend.id);
+  const messages = projectConversation(c.active, path => remoteImagePreviewUrl(c.backend, path), path => remoteImagePreviewUrl(c.backend, path, false), path => remoteFilePreviewUrl(c.backend, path), c.backend.id, path => remoteFileDownloadUrl(c.backend, path));
   if (state.sidechatActive) for (const message of messages) message.actions = message.actions?.filter(action => action.command?.name !== 'message.edit');
   if (c.busy && c.active?.mobilePlan?.length) messages.push({ id: 'running-plan', role: 'activity', activityKind: 'plan', text: '', blocks: [{ id: 'plan', kind: 'section', title: t('执行计划'), children: c.active.mobilePlan.map((step: any, index: number) => ({ id: `plan:${index}:${step.step}`, kind: 'text', title: `${step.status === 'completed' ? '✓' : step.status === 'inProgress' ? '●' : '○'} ${step.step}`, text: step.status })) }] });
   if (c.extended?.state.pendingSteerText) messages.push({ id: 'pending-steer', role: 'activity', text: String(c.extended.state.pendingSteerText), status: t('正在引导') });
@@ -179,7 +179,7 @@ export function createWorkspaceAdapter(c: NativeWorkspaceController, panel: Pane
     'location.insert': async () => { if (!await c.selectLocation()) throw new Error(t('无法获取当前位置')); },
     'draft.save': async () => { if (await c.saveDraft() === false) throw new Error(t('无法保存草稿')); }, 'thread.retry': () => c.retry(),
     'thread.older': async () => { if (await c.loadOlder() === false) throw new Error(t('加载失败')); },
-    'message.copy': async p => { const message = messages.find(item => item.id === p.id); if (!message) throw new Error(t('消息已更新')); if (!await copyText(message.text)) throw new Error(t('复制失败')); },
+    'message.copy': async p => { const message = messages.find(item => item.id === p.id); if (!message) throw new Error(t('消息已更新')); if (!await copyText(message.rawText ?? message.text)) throw new Error(t('复制失败')); },
     'message.edit': p => c.editMessage(String(p.turnId), String(p.messageId)),
     'mention.search': p => panel.setQuery(String(p.value)),
     'mention.insert': p => {

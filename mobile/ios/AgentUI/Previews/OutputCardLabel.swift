@@ -3,6 +3,7 @@ import SwiftUI
 struct OutputCardLabel: View {
     @Environment(AppPreferences.self) private var preferences
     let item: OutputItem
+    var subtitle: String? = nil
 
     var body: some View {
         HStack(spacing: 12) {
@@ -12,9 +13,9 @@ struct OutputCardLabel: View {
                 .background(Color.primary.opacity(0.05), in: .rect(cornerRadius: 11))
             VStack(alignment: .leading, spacing: 3) {
                 Text(item.name).font(.body).lineLimit(1)
-                Text(item.kind == .web
+                Text(subtitle ?? (item.kind == .web
                      ? preferences.text("在浏览器中打开", "Open in browser")
-                     : preferences.text("查看产出", "View output"))
+                     : preferences.text("查看产出", "View output")))
                     .font(.body).foregroundStyle(.secondary)
             }
             Spacer(minLength: 8)

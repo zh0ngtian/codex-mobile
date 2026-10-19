@@ -24,7 +24,7 @@ it('合并逻辑回合后仍携带选文所属物理回合',()=>{
 });
 it('引用全文保持符号和来源，可读文本不改变提问',()=>{
  const quote=validateMessageQuote({source,renderedText:'重点',start:0,end:2,text:'重点'},'backend',active);
- expect(quoteInput('问题',[quote])).toContain('助手消息');
+ expect(quoteInput('问题',[quote])).toContain('<response-annotations>');
  expect(quoteInput('问题',[quote])).not.toContain('physical');
  expect(quoteInput('问题',[quote])).toContain('重点');expect(quoteInput('问题',[])).toBe('问题');
 });

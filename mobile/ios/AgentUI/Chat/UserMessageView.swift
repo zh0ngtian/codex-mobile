@@ -16,6 +16,7 @@ struct UserMessageView: View {
             Spacer(minLength: Self.leadingSpace)
             VStack(alignment: .trailing, spacing: 6) {
                 VStack(alignment: .leading, spacing: 8) {
+                    if !message.references.isEmpty { MessageReferenceCards(references: message.references) }
                     if !displayText.isEmpty {
                         NativeSelectableText(text: NSAttributedString(string: displayText, attributes: [.font: UIFont.preferredFont(forTextStyle: .body), .foregroundColor: UIColor(preferences.accent.userMessageText(in: colorScheme))]), identifier: "user.selectable", onTap: { showTimestamp.toggle() }, fitsContentWidth: true)
                             .selectionQuoteSource(message.quoteSource)
@@ -30,7 +31,7 @@ struct UserMessageView: View {
                         .onTapGesture { showTimestamp.toggle() }
                         .contextMenu {
                             Group {
-                                Button(preferences.text("复制", "Copy"), systemImage: "doc.on.doc") { Clipboard.copy(message.text); session.toast = preferences.text("已复制", "Copied") }
+                                Button(preferences.text("复制", "Copy"), systemImage: "doc.on.doc") { Clipboard.copy(message.rawText ?? message.text); session.toast = preferences.text("已复制", "Copied") }
                                 if session.canEditHistory(conversationID) {
                                     Button(preferences.text("编辑", "Edit"), systemImage: "pencil") { session.beginHistoryEdit(conversationID: conversationID, messageID: message.id) }
                                 }

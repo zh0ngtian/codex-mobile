@@ -22,7 +22,12 @@ actor AttachmentLoader {
             return fileType.conforms(to: contentType) ? fileType : nil
         } ?? contentType
         let kind = Self.kind(for: type)
-        if kind == .image { try validateImage(data) }
+        if kind == .image {
+            try validateImage(data)
+            let image = try Self.compatibleImage(data: data, name: url.lastPathComponent, type: type)
+            try AttachmentImportLimits.validate(byteCount: image.data.count, availableBytes: availableBytes)
+            return AttachmentItem(id: id, name: image.name, kind: .image, data: image.data, mimeType: image.mimeType, byteCount: image.data.count)
+        }
         return AttachmentItem(id: id, name: url.lastPathComponent, kind: kind, data: data, mimeType: type?.preferredMIMEType, byteCount: data.count)
     }
 
@@ -62,6 +67,22 @@ actor AttachmentLoader {
             try AttachmentImportLimits.validate(byteCount: data.count, availableBytes: availableBytes, perFileBytes: perFileBytes)
         }
         return data
+    }
+
+    /// 仅HEIC/HEIF生成JPEG。原始字节不进入草稿、桥载荷或上传；保留编码方向。
+    nonisolated static func compatibleImage(data: Data, name: String, type: UTType?) throws -> (data: Data, name: String, mimeType: String?) {
+        let suffix = (name as NSString).pathExtension.lowercased()
+        let needsJPEG = type?.conforms(to: .heic) == true || type?.conforms(to: .heif) == true || ["heic", "heif"].contains(suffix)
+        guard needsJPEG else { return (data, name, type?.preferredMIMEType) }
+        try Task.checkCancellation()
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil), CGImageSourceGetCount(source) > 0 else { throw AttachmentImportError.unreadableImage }
+        let result = NSMutableData()
+        guard let destination = CGImageDestinationCreateWithData(result, UTType.jpeg.identifier as CFString, 1, nil) else { throw AttachmentImportError.unreadableImage }
+        var properties = (CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]) ?? [:]
+        properties[kCGImageDestinationLossyCompressionQuality] = 0.95
+        CGImageDestinationAddImageFromSource(destination, source, 0, properties as CFDictionary)
+        guard CGImageDestinationFinalize(destination), result.length > 0 else { throw AttachmentImportError.unreadableImage }
+        return (result as Data, (name as NSString).deletingPathExtension + ".jpg", "image/jpeg")
     }
 
     private func validateImage(_ data: Data) throws {

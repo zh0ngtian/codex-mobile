@@ -688,6 +688,7 @@ const english: Record<string, string> = {
   "完全访问权限": "Full access",
   "完全访问计算机（风险较高）": "Full computer access (higher risk)",
   "新对话": "New chat",
+  "查看来源": "View source",
   "复制": "Copy",
   "已复制": "Copied",
   "复制失败": "Copy failed",

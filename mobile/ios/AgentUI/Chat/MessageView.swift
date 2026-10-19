@@ -14,7 +14,7 @@ struct MessageView: View {
                 if !message.commentary.isEmpty || !message.duration.isEmpty {
                     CommentaryHistoryView(entries: message.commentary, expanded: $progressExpanded, duration: message.duration)
                 }
-                if !message.text.isEmpty { AssistantBody(text: message.text, quoteSource: message.quoteSource) }
+                if !message.text.isEmpty { AssistantBody(text: message.text, quoteSource: message.quoteSource, references: message.references) }
                 LiveBusinessBlocks(messageID: message.id)
                 ForEach(message.outputs.filter { $0.kind == .code }) { output in
                     CodeCard(code: output.content, language: output.name).selectionQuoteSource(message.quoteSource, region: "code")
