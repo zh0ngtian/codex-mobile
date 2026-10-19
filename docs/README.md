@@ -12,6 +12,7 @@
 - [iOS 模拟器验证](ios-simulator-verification.md)：可复用操作步骤与按日期保留的验收结果。
 - [2026-10-18 关注会话加载耗时](performance/2026-10-18-conversation-loading/README.md)：分阶段计时、重复打开/重启后首次打开的分布及脱敏原始样本；模拟器Debug数据。
 - [2026-10-19 冷启动边栏列表耗时](performance/2026-10-19-sidebar-cold-start/README.md)：30次进程冷启动的首批会话、全部分组、阶段耗时及请求形态；模拟器Debug数据，终点为原生快照派发。
+- [2026-10-19 冷启动边栏优化复测](performance/2026-10-19-sidebar-startup-optimized/README.md)：额度后台调度、无项目定向摘要及每组五条分页；同原生容器各30次对照，模拟器验证完成、未发布。
 - [协议基准](../protocol/app-server-v2/README.md)：固定快照的版本、来源和使用边界。
 
 ## 当前发布入口

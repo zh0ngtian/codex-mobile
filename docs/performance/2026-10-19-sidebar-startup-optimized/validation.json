@@ -1,0 +1,39 @@
+{
+  "samplesPerCase": 30,
+  "calibrationSamplesPerCase": 2,
+  "fullTests": {
+    "files": 145,
+    "passed": 1605,
+    "command": "NODE_OPTIONS=--no-experimental-webstorage npm test"
+  },
+  "typecheckAndFrontendBuild": true,
+  "simulatorBuild": true,
+  "specReview": "通过",
+  "qualityReview": "通过，分页重入问题已修复",
+  "perGroupInitialOrdinaryRowsAtMostFive": true,
+  "allSummaryReadsExcludeTurns": true,
+  "unexpectedErrorsPerCase": 0,
+  "percentilesIndependentlyRecomputed": true,
+  "sameNativeExecutableAndDylib": true,
+  "sameMeasurementProbe": true,
+  "fixedGlobalListPages": 0,
+  "fixedListStartsBeforeQuotaCompletes": 30,
+  "restoredNormalFixedPackage": {
+    "index.html": true,
+    "index-DR7ok9DL.js": true,
+    "PakePlus": true,
+    "PakePlus.debug.dylib": true
+  },
+  "collectorStopped": true,
+  "simulatorLockReleased": true,
+  "testConversationsCreated": 0,
+  "releaseOrDeploymentPerformed": false,
+  "privacyFieldsChecked": true,
+  "simulatorUI": {
+    "noProjectRows": 4,
+    "projectRowsBeforeMore": 7,
+    "projectRowsAfterMore": 12,
+    "finalRestoredPackageSidebarAvailable": true,
+    "finalInitialRowsIncludingPriority": 6
+  }
+}
