@@ -6,16 +6,31 @@ extension AppSession {
     func historyScrollMessageID(in conversationID: UUID, previousID: UUID, anchorID: String?) -> UUID? {
         guard let messages = conversation(conversationID)?.messages else { return nil }
         if messages.contains(where: { $0.id == previousID }) { return previousID }
-        guard let anchorID, !anchorID.isEmpty else { return nil }
+        let matchesAnchor: (NativeMessage) -> Bool = { value in
+            guard let anchorID, !anchorID.isEmpty else { return false }
+            return value.scrollAnchorId == anchorID || value.scrollAnchorIds?.contains(anchorID) == true
+        }
+        let source = nativeMessage(previousID) ?? nativeSnapshot.messages.first(where: matchesAnchor)
+        let entryIDs = Set((source?.commentary ?? []).map { scopedID("commentary", nativeSnapshot.contextId ?? "", $0.id) })
         return messages.first {
             guard let native = nativeMessage($0.id) else { return false }
-            return native.scrollAnchorId == anchorID || native.scrollAnchorIds?.contains(anchorID) == true
+            return matchesAnchor(native) || $0.commentary.contains { entryIDs.contains($0.id) }
         }?.id
     }
 
     /// 只组装原型的展示归属；wire 快照与全部 raw 身份映射保持不变。
     func conversationMessages(_ values: [NativeMessage], running: Bool) -> (messages: [ChatMessage], liveCommentary: [ProgressEntry]) {
-        let projected = values.map(message)
+        let projected = values.map { value in
+            var result = message(value)
+            if isPreviousReplyHistory(value) {
+                result.text = ""
+                result.kind = "activity"
+                result.duration = ""
+                result.timestamp = ""
+                result.outputs = []
+            }
+            return result
+        }
         let liveIndexes = running ? values.indices.filter { isLiveCommentary(values[$0]) } : []
         let liveIndexSet = Set(liveIndexes)
         var messages: [ChatMessage] = []
@@ -39,7 +54,13 @@ extension AppSession {
                 messages.append(reply)
                 index = next + 1
             } else {
-                messages.append(contentsOf: projected[index..<next])
+                if (index..<next).contains(where: { isPreviousReplyHistory(values[$0]) }) {
+                    var history = projected[index]
+                    history.commentary = entries
+                    messages.append(history)
+                } else {
+                    messages.append(contentsOf: projected[index..<next])
+                }
                 index = next
             }
         }
@@ -55,12 +76,18 @@ extension AppSession {
             time.isFinite && time > 0 ? Date(timeIntervalSince1970: time > 10_000_000_000 ? time / 1000 : time) : nil
         }
         let media = flatten(entry.blocks ?? []).filter { ["image", "video", "html", "source"].contains($0.kind) }.map(output)
-        return ProgressEntry(id: scopedID("commentary", nativeSnapshot.contextId ?? "", entry.id), text: entry.text, createdAt: timestamp, outputs: media)
+        return ProgressEntry(id: scopedID("commentary", nativeSnapshot.contextId ?? "", entry.id), text: entry.text, createdAt: timestamp, outputs: media, isPreviousReply: entry.isPreviousReply)
     }
 
     private func isAttachableHistory(_ value: NativeMessage) -> Bool {
-        value.commentaryCanAttachToReply == true && value.role == "activity" && value.text.isEmpty && value.commentary?.isEmpty == false &&
+        if isPreviousReplyHistory(value) { return true }
+        return value.commentaryCanAttachToReply == true && value.role == "activity" && value.text.isEmpty && value.commentary?.isEmpty == false &&
         value.presentationBlocks.isEmpty && value.actions?.isEmpty != false && value.status?.isEmpty != false
+    }
+
+    private func isPreviousReplyHistory(_ value: NativeMessage) -> Bool {
+        value.commentaryCanAttachToReply == true && value.role == "assistant" && value.phase != "commentary" &&
+        value.commentary?.count == 1 && value.commentary?.first?.id == value.id && value.commentary?.first?.isPreviousReply == true
     }
 
     private func isLiveCommentary(_ value: NativeMessage) -> Bool {

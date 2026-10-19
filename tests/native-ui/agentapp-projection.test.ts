@@ -166,12 +166,25 @@ describe('AgentApp 真实展示契约', () => {
     expect(messages[1]).toMatchObject({ commentaryIsLiveTail: true, blocks: [{ kind: 'image', previewURL: 'original:/screen.png' }] });
   });
 
-  it.each(['commandExecution', 'reasoning', 'userMessage', 'imageGeneration'])('commentary之后出现%s时不能标为原始live末段', type => {
+  it.each(['commandExecution', 'reasoning', 'imageGeneration'])('commentary之后出现%s时不能标为原始live末段', type => {
     const messages = projectConversation({ turns: [{ id: 'turn', status: 'inProgress', items: [
       { id: 'c', type: 'agentMessage', phase: 'commentary', text: '较早过程' },
       { id: 'separator', type, command: 'ls', text: '分隔', savedPath: '/standalone.png' },
     ] }] }, path => path);
     expect(messages.find(message => message.id === 'turn:c')).toMatchObject({ commentaryIsLiveTail: false });
+  });
+
+  it('commentary之后的人类引导集中在过程前，原commentary保留为历史且不标为live', () => {
+    const messages = projectConversation({ turns: [{ id: 'turn', status: 'inProgress', items: [
+      { id: 'c', type: 'agentMessage', phase: 'commentary', text: '引导前过程' },
+      { id: 'steer', type: 'userMessage', text: '继续检查' },
+    ] }] }, path => path);
+    expect(messages[0]).toMatchObject({ id: 'turn:steer', role: 'user', itemId: 'steer', text: '继续检查' });
+    const history = messages.find(message => message.id === 'turn:c:history')!;
+    expect(history).toMatchObject({ scrollAnchorId: 'c:history', scrollAnchorIds: ['c:history'], commentaryCanAttachToReply: false,
+      commentary: [{ id: 'turn:c', text: '引导前过程', blocks: [] }] });
+    expect(history.commentaryIsLiveTail).not.toBe(true);
+    expect(messages.find(message => message.id === 'turn:c')).toBeUndefined();
   });
 
   it('用户插话阻断之前过程，只有最新连续commentary与附属媒体标为live末段', () => {
@@ -184,16 +197,39 @@ describe('AgentApp 真实展示契约', () => {
       { id: 'new2', type: 'agentMessage', phase: 'commentary', text: '新过程二' },
     ] }] }, path => path);
     expect(messages.filter(message => message.commentaryIsLiveTail).map(message => message.id)).toEqual(['turn:new1', 'turn:new2']);
-    expect(messages.find(message => message.id === 'turn:old')).toMatchObject({ commentaryIsLiveTail: false });
+    expect(messages[0]).toMatchObject({ id: 'turn:u', role: 'user', text: '插话' });
+    expect(messages.find(message => message.id === 'turn:old:history')).toMatchObject({ commentary: [{ id: 'turn:old', text: '插话前' }] });
+    expect(messages.find(message => message.id === 'turn:old:history')?.commentaryIsLiveTail).not.toBe(true);
+    expect(messages.find(message => message.id === 'turn:new1')?.blocks).toEqual([{ id: 'turn:screen:image:0', kind: 'image', title: 'screen.png', value: '/screen.png' }]);
+    expect(messages.find(message => message.id === 'turn:old')).toBeUndefined();
   });
 
-  it.each(['reasoning', 'commandExecution', 'userMessage', 'imageGeneration'])('原始过程被%s隔开时不因最终Native相邻而绑定到final', type => {
+  it.each(['reasoning', 'commandExecution', 'imageGeneration'])('原始过程被%s隔开时不因最终Native相邻而绑定到final', type => {
     const messages = projectConversation({ turns: [{ id: 'turn', status: 'completed', items: [
       { id: 'c', type: 'agentMessage', phase: 'commentary', text: '较早过程' },
       { id: 'separator', type, text: '分隔', command: 'ls', savedPath: '/standalone.png' },
       { id: 'final', type: 'agentMessage', phase: 'final_answer', text: '完成' },
     ] }] }, path => path);
     expect(messages.find(message => message.id === 'turn:c:history')).toMatchObject({ commentaryCanAttachToReply: false });
+  });
+
+  it('同回合引导集中后允许之前过程归入最后回答，下一逻辑回合保持独立', () => {
+    const messages = projectConversation({ turns: [
+      { id: 'turn', status: 'completed', items: [
+        { id: 'initial', type: 'userMessage', text: '初始问题' },
+        { id: 'c', type: 'agentMessage', phase: 'commentary', text: '引导前过程' },
+        { id: 'steer', type: 'userMessage', text: '继续检查' },
+        { id: 'final', type: 'agentMessage', phase: 'final_answer', text: '本轮完成' },
+      ] },
+      { id: 'next', status: 'completed', items: [
+        { id: 'next-user', type: 'userMessage', text: '下一轮问题' },
+        { id: 'next-c', type: 'agentMessage', phase: 'commentary', text: '下一轮过程' },
+        { id: 'next-final', type: 'agentMessage', phase: 'final_answer', text: '下一轮完成' },
+      ] },
+    ] }, path => path);
+    expect(messages.map(message => message.id)).toEqual(['turn:initial', 'turn:steer', 'turn:c:history', 'turn:final', 'next:next-user', 'next:next-c:history', 'next:next-final']);
+    expect(messages.find(message => message.id === 'turn:c:history')).toMatchObject({ commentaryCanAttachToReply: true, commentary: [{ id: 'turn:c', text: '引导前过程' }] });
+    expect(messages.find(message => message.id === 'next:next-c:history')).toMatchObject({ commentary: [{ id: 'next:next-c', text: '下一轮过程' }] });
   });
 
   it('仅连续commentary与附属媒体后直接进入final时标记可以绑定，未完成则不绑定', () => {

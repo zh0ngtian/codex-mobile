@@ -7,7 +7,7 @@ struct ComposerPermissionMenu: View {
     var body: some View {
         let context = session.nativeSnapshot.contextId
         let mode = session.composer.configuration.permission
-        PermissionOptionsMenu(options: (session.nativeSnapshot.permissions ?? []).map { option in
+        PermissionOptionsMenu(accent: preferences.accent, options: (session.nativeSnapshot.permissions ?? []).map { option in
             let optionMode = session.permissionMode(option.value)
             return PermissionMenuOption(id: option.id, value: option.value, title: title(optionMode), detail: detail(optionMode), symbol: optionMode.symbol)
         }, context: context, mode: mode, title: title(mode),
@@ -45,6 +45,7 @@ struct PermissionMenuOption: Identifiable, Equatable {
 }
 
 private struct PermissionOptionsMenu: View, Equatable {
+    let accent: AgentAccent
     let options: [PermissionMenuOption]
     let context: String?
     let mode: ApprovalMode
@@ -54,12 +55,13 @@ private struct PermissionOptionsMenu: View, Equatable {
     let choose: (String) -> Void
 
     static func == (lhs: Self, rhs: Self) -> Bool {
-        lhs.options == rhs.options && lhs.context == rhs.context && lhs.mode == rhs.mode &&
+        lhs.accent == rhs.accent && lhs.options == rhs.options && lhs.context == rhs.context && lhs.mode == rhs.mode &&
         lhs.title == rhs.title && lhs.menuTitle == rhs.menuTitle && lhs.enabled == rhs.enabled
     }
     var body: some View {
-        NativePermissionMenuButton(options: options, context: context, mode: mode, title: title,
+        NativePermissionMenuButton(tint: accent.color, options: options, context: context, mode: mode, title: title,
             menuTitle: menuTitle, enabled: enabled, choose: choose)
-            .frame(width: 40, height: 44)
+            .frame(width: 34, height: 44)
+            .background { Capsule().fill(ComposerControlSurface.fill).frame(width: 34, height: 34) }
     }
 }

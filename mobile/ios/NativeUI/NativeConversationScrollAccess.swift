@@ -25,6 +25,16 @@ import UIKit
     func stopFollowing() { following = false; needsAnchor = false }
     func resumeFollowing() { following = true }
 
+    /// 显式回底不等待惯性或上一段动画；只冻结当前实际位置，目标仍由末尾ID定位。
+    func interruptScrolling() {
+        guard let scrollView else { return }
+        scrollView.setContentOffset(scrollView.contentOffset, animated: false)
+        if scrollView.isTracking || scrollView.isDragging {
+            scrollView.panGestureRecognizer.isEnabled = false
+            scrollView.panGestureRecognizer.isEnabled = true
+        }
+    }
+
     private func requestBottomAnchor() {
         guard following else { return }
         needsAnchor = true

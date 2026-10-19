@@ -38,6 +38,10 @@ final class AgentConversationFixture {
             value.speeds = [NativeOption(id: "normal", title: "普通速度", value: ""), NativeOption(id: "fast", title: "Fast", value: "priority")]
             value.speedValue = ""
         }
+        if ProcessInfo.processInfo.arguments.contains("--agent-composer-reference-fixture") {
+            value.models[0].title = "GPT-6.1 Sol"; value.model = "GPT-6.1 Sol"
+            value.effortValue = "high"; value.speedValue = "priority"; value.permissionValue = "full-access"
+        }
         value.olderTurnsState = "idle"
         value.conversationActions = [NativePanelItem(id: "older", kind: "action", title: "加载更早消息", command: NativeCommand(name: "thread.older"))]
         let history = NativeMessage(id: "history", role: "activity", text: "", blocks: [NativePanelItem(id: "history-block", kind: "disclosure", title: "历史过程 (2)")], turnId: "fixture-turn", commentary: entries, commentaryBlockId: "history-block", commentaryCanAttachToReply: true)
@@ -47,6 +51,27 @@ final class AgentConversationFixture {
             NativeMessage(id: "answer", role: "assistant", text: "已完成检查。查看 [网页链接](https://example.com) 与 [文件链接](/tmp/example.swift#L12)。", timestamp: date.addingTimeInterval(120).timeIntervalSince1970, turnId: "fixture-turn", phase: "final_answer"),
         ]
         value.messages[2].status = ProcessInfo.processInfo.arguments.contains("--agent-no-duration-fixture") ? nil : "1小时2分钟3秒"
+        if ProcessInfo.processInfo.arguments.contains("--agent-steered-replies-fixture") {
+            func history(_ id: String, _ text: String) -> NativeMessage {
+                NativeMessage(id: id, role: "activity", text: "", turnId: "fixture-turn",
+                    commentary: [NativeCommentaryEntry(id: id + "-entry", text: text, timestamp: date.timeIntervalSince1970)], commentaryCanAttachToReply: true)
+            }
+            func oldReply(_ id: String, _ text: String) -> NativeMessage {
+                var entry = NativeCommentaryEntry(id: id, text: text, timestamp: date.timeIntervalSince1970)
+                entry.isPreviousReply = true
+                return NativeMessage(id: id, role: "assistant", text: text,
+                    actions: [NativePanelItem(id: id + "-copy", kind: "action", command: NativeCommand(name: "message.copy", params: ["id": .string(id)]))],
+                    turnId: "fixture-turn", phase: "final_answer", commentary: [entry], commentaryCanAttachToReply: true)
+            }
+            value.messages = [
+                NativeMessage(id: "initial", role: "user", text: "先检查问题。", turnId: "fixture-turn"),
+                NativeMessage(id: "steer-1", role: "user", text: "先修复测试。", turnId: "fixture-turn"),
+                NativeMessage(id: "steer-2", role: "user", text: "再检查构建。", turnId: "fixture-turn"),
+                history("history-1", "第一段执行进展。"), oldReply("old-final-1", "中途旧回答一，**保留加粗**。"),
+                history("history-2", "第二段执行进展。"), oldReply("old-final-2", "中途旧回答二。"),
+                NativeMessage(id: "last-final", role: "assistant", text: "最终回答：完成所有调整。", status: "22秒", turnId: "fixture-turn", phase: "final_answer")
+            ]
+        }
         if ProcessInfo.processInfo.arguments.contains("--agent-many-devices-fixture") {
             value.backends += (1...11).map { NativeBackend(id: "extra-device-\($0)", title: "额外设备 \($0)", connected: true) }
         }
@@ -96,6 +121,15 @@ final class AgentConversationFixture {
         if ProcessInfo.processInfo.arguments.contains("--agent-sidebar-polish-fixture") {
             value.groups.insert(NativeGroup(id: "fixture-pinned", title: "", items: [NativeNavigationItem(
                 id: "pinned-fixture", title: "关注的会话", command: NativeCommand(name: "thread.open", params: ["backendId": .string("conversation-ui-device"), "threadId": .string("conversation-ui-thread")]), isPinned: true)], category: "pinned"), at: 0)
+        }
+        if ProcessInfo.processInfo.arguments.contains("--agent-sidebar-pagination-fixture"),
+           let index = value.groups.firstIndex(where: { $0.id == "project-z" }) {
+            let rows = (1...12).map { number in
+                NativeNavigationItem(id: "page-row-\(number)", title: "分页会话 \(number)",
+                    command: NativeCommand(name: "thread.open", params: ["backendId": .string("conversation-ui-device"), "threadId": .string("page-thread-\(number)")]))
+            }
+            value.groups[index].items = rows
+            value.groups[index].allItems = rows
         }
         if ProcessInfo.processInfo.arguments.contains("--agent-conversation-long-fixture") {
             value.messages += (1...14).map { index in
@@ -154,6 +188,10 @@ final class AgentConversationFixture {
             value.messages.append(NativeMessage(id: "streaming-scroll", role: "assistant", text: "运行中的新增进展。", phase: "commentary", commentaryIsLiveTail: true))
         }
         if ProcessInfo.processInfo.arguments.contains("--agent-submit-fixture") { value.canSend = true; value.draft = "触感检查" }
+        if ProcessInfo.processInfo.arguments.contains("--agent-multiline-composer-fixture") {
+            value.canSend = true
+            value.draft = "第一行：检查输入框顶部留白\n第二行：检查多行文字间距\n第三行：检查下方按钮对齐"
+        }
         if ProcessInfo.processInfo.arguments.contains("--agent-startup-loading-fixture") { value.ready = false }
         value.messages = value.messages.map { message in
             var anchored = message

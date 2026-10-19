@@ -8,14 +8,13 @@ import {
   MarkdownMessage,
   parseAutomationHeartbeat,
   shouldCollapseUserMessage,
-  splitCompletedTurnResponses,
-  splitTurnResponseSegments,
   stripGitDirectives,
   summarizeTurnChanges,
   hasTurnChangeStats,
   turnDurationMs,
   type ImageSource,
 } from "../../ui/conversation";
+import { turnResponsePresentation, type TurnResponseEntry } from "../../ui/turn-response-presentation";
 import {
   CopyButton,
   copyText,
@@ -37,7 +36,6 @@ import {
   ImageGenerationFailure,
 } from "./sheets/ToolSheets";
 import { formatMessageTimestamp } from "../../ui/message-timestamp";
-import { orderedTurnMedia, commentaryMediaEntries } from "../../ui/timeline-media";
 import "./timeline-timestamps.css";
 
 export { formatMessageTimestamp } from "../../ui/message-timestamp";
@@ -608,7 +606,7 @@ export function TurnCard({
       total + receivedItemCharacterCount(item),
     0,
   );
-  const completedSegments = splitTurnResponseSegments(orderedTurnMedia(grouped.responses));
+  const presentation = turnResponsePresentation(grouped.responses, { running: grouped.running });
   const changeStats = turn.groupChangeStats ?? summarizeTurnChanges(turn);
   const changeStatsReady = hasTurnChangeStats(turn);
   const changedLines = changeStats.additions + changeStats.deletions;
@@ -617,30 +615,6 @@ export function TurnCard({
     durationMs != null && durationMs > 60_000
       ? formatTurnDuration(durationMs)
       : null;
-  let durationSegmentIndex = -1;
-  if (durationLabel) {
-    for (let index = completedSegments.length - 1; index >= 0; index -= 1) {
-      if (
-        splitCompletedTurnResponses(completedSegments[index]).previousCount > 0
-      ) {
-        durationSegmentIndex = index;
-        break;
-      }
-    }
-  }
-  let copySegmentIndex = -1;
-  let finalSegmentIndex = -1;
-  for (let index = completedSegments.length - 1; index >= 0; index -= 1) {
-    const segment = completedSegments[index];
-    if (
-      copySegmentIndex < 0 &&
-      segment?.some((item) => item.type === "agentMessage")
-    ) copySegmentIndex = index;
-    if (finalSegmentIndex < 0 && splitCompletedTurnResponses(segment).final) {
-      finalSegmentIndex = index;
-    }
-    if (copySegmentIndex >= 0 && finalSegmentIndex >= 0) break;
-  }
   return (
     <section className="turn-card">
       {grouped.user && (
@@ -655,26 +629,22 @@ export function TurnCard({
         </div>
       )}
       <div className="turn-responses" ref={responsesRef}>
-        {completedSegments.map((items, index) => (
-          <CompletedResponseSegment
-            key={items[0]?.id ?? index}
-            items={items}
-            running={grouped.running}
-            actionsForMessage={actionsForMessage}
-            client={client}
-            backend={backend}
-            threadId={threadId}
-            copyTarget={responsesRef}
-            showCopy={!grouped.running && index === copySegmentIndex}
-            completedAt={!grouped.running && index === finalSegmentIndex ? turn.completedAt : null}
-            finalDurationLabel={
-              !grouped.running && index === finalSegmentIndex && durationMs != null
-                ? formatTurnDuration(durationMs)
-                : null
-            }
-            durationLabel={!grouped.running && index === durationSegmentIndex ? durationLabel : null}
-          />
-        ))}
+        <CompletedResponseSegment
+          presentation={presentation}
+          actionsForMessage={actionsForMessage}
+          client={client}
+          backend={backend}
+          threadId={threadId}
+          copyTarget={responsesRef}
+          showCopy={!grouped.running}
+          completedAt={!grouped.running ? turn.completedAt : null}
+          finalDurationLabel={
+            !grouped.running && durationMs != null
+              ? formatTurnDuration(durationMs)
+              : null
+          }
+          durationLabel={!grouped.running ? durationLabel : null}
+        />
         {grouped.running && (
           <StreamCharacterCount
             count={streamingCharacterCount}
@@ -703,8 +673,7 @@ export function TurnCard({
 }
 
 function CompletedResponseSegment({
-  items,
-  running,
+  presentation,
   actionsForMessage,
   client,
   backend,
@@ -715,8 +684,7 @@ function CompletedResponseSegment({
   finalDurationLabel,
   durationLabel,
 }: {
-  items: AnyRecord[];
-  running: boolean;
+  presentation: ReturnType<typeof turnResponsePresentation>;
   actionsForMessage: (item: AnyRecord) => UserMessageActionProps;
   client: AppServerClient | null;
   backend?: BackendConfig | null;
@@ -727,19 +695,17 @@ function CompletedResponseSegment({
   finalDurationLabel: string | null;
   durationLabel: string | null;
 }) {
-  const completed = splitCompletedTurnResponses(items, { allowLegacyFinal: !running });
   const [showPrevious, setShowPrevious] = useState(false);
-  const hasFinal = Boolean(completed.final);
-  // A segment's explicit final starts a new display phase, even while the turn is running.
+  const hasFinal = Boolean(presentation.final);
+  // 最新响应开始输出 final 时收起过程，后续流式更新保留手动展开状态。
   useEffect(() => setShowPrevious(false), [hasFinal]);
-  const entries = commentaryMediaEntries(items);
-  const previousCount = hasFinal ? entries.filter(entry => entry.item.type === "agentMessage" && entry.item.phase === "commentary").length : 0;
-  const renderEntry = (entry: ReturnType<typeof commentaryMediaEntries>[number], index: number) => {
-    const commentary = entry.item.type === "agentMessage" && entry.item.phase === "commentary";
+  const { entries, historyCount: previousCount } = presentation;
+  const renderEntry = (entry: TurnResponseEntry, index: number) => {
+    const commentary = entry.item.type === "agentMessage" && (entry.item.phase === "commentary" || entry.history);
     const message = <TimelineItem
       item={entry.item} client={client} backend={backend} threadId={threadId}
-      timestamp={entry.item === completed.final ? completedAt : undefined}
-      finalDurationLabel={entry.item === completed.final ? finalDurationLabel : undefined}
+      timestamp={entry.item === presentation.final ? completedAt : undefined}
+      finalDurationLabel={entry.item === presentation.final ? finalDurationLabel : undefined}
       {...actionsForMessage(entry.item)}
     />;
     return commentary ? <div className="commentary-message" key={entry.item.id ?? index}>
@@ -751,11 +717,10 @@ function CompletedResponseSegment({
   // 相邻的过程消息共享一个历史区；独立媒体与 final 仍留在原始位置。
   const chunks: Array<{ history: boolean; entries: typeof entries }> = [];
   for (const entry of entries) {
-    const commentary = entry.item.type === "agentMessage" && entry.item.phase === "commentary";
     const visible = entry.item.type === "userMessage" || entry.item.type === "agentMessage" ||
       ["imageView", "imageGeneration", "videoGeneration"].includes(entry.item.type);
     if (!visible) continue;
-    const history = hasFinal && commentary;
+    const history = entry.history;
     if (chunks.at(-1)?.history === history) chunks.at(-1)!.entries.push(entry);
     else chunks.push({ history, entries: [entry] });
   }
@@ -778,6 +743,6 @@ function CompletedResponseSegment({
         {showPrevious && <div className="previous-messages">{chunk.entries.map(renderEntry)}</div>}
       </Fragment>;
     })}
-    {completed.final && showCopy && <CopyButton text={() => visibleAssistantText(copyTarget.current)} label={t("复制本回合 AI 消息")} className="turn-message-copy" />}
+    {presentation.final && showCopy && <CopyButton text={() => visibleAssistantText(copyTarget.current)} label={t("复制本回合 AI 消息")} className="turn-message-copy" />}
   </>;
 }

@@ -12,9 +12,13 @@ it('项目新建目标使用已挂载设备和当前投影，空串是明确无�
  expect(resolveNativeNewChatTarget({ contextId: 'old' }, backends, groups)).toBeUndefined();
 });
 it('设备卸载、过期项目和无效或单边参数不能回落成无参新建', () => {
- for (const params of [{ backendId: 'b', cwd: '/removed' }, { backendId: 'removed', cwd: '/p' }, { backendId: 'b', cwd: null }, { backendId: 'b' }, { cwd: '/p' }]) {
+ for (const params of [{ backendId: 'b', cwd: '/removed' }, { backendId: 'removed', cwd: '/p' }, { backendId: 'b', cwd: null }, { cwd: '/p' }]) {
   expect(() => resolveNativeNewChatTarget(params, backends, groups)).toThrow();
  }
  expect(() => resolveNativeNewChatTarget({ backendId: 'b', cwd: '/p' }, [{ id: 'a' }], groups)).toThrow();
  expect(() => resolveNativeNewChatTarget({ backendId: 'b', cwd: '/p' }, backends, [])).toThrow();
+});
+it('仅指定设备的新建目标保留项目未指定语义，由该设备恢复上次项目', () => {
+ expect(resolveNativeNewChatTarget({ backendId: 'b' }, backends, [])).toEqual({ backendId: 'b' });
+ expect(() => resolveNativeNewChatTarget({ backendId: 'removed' }, backends, groups)).toThrow('设备已移除');
 });

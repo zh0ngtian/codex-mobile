@@ -3,6 +3,8 @@ import Foundation
 @main
 struct AgentSessionSmoke {
     @MainActor static func main() async {
+        verifySteeringReplyHistory()
+        verifyProjectFiveConversationWindow()
         verifyComposerMenuBusinessValues()
         verifyInteractiveSidebarBounds()
         verifyIndependentModelEfforts()
@@ -159,8 +161,15 @@ struct AgentSessionSmoke {
         precondition(session.previewItem?.name == "本地真实.md" && session.previewItem?.kind == .markdown && session.previewItem?.remoteURL == "data:text/markdown;base64,IyBsb2NhbA==", "本地文件业务预览必须将真实原字节交给AgentApp预览下载")
         state.panel = nil; publish(state)
         let aDevice = session.devices.first!.id
+        state.listBackendId = "device:alpha"; publish(state)
+        session.beginNewConversation()
+        precondition(commands.last?.name == "thread.new" && commands.last?.params["backendId"] == nil && commands.last?.params["cwd"] == nil, "普通新建必须交给Web偏好恢复上次机器与项目")
+        store.cancelComposerPresentation()
         session.beginNewConversation(deviceID: aDevice)
-        precondition(commands.last?.name == "thread.new" && commands.last?.params["backendId"] == .string("device:alpha") && commands.last?.params["cwd"] == .string(""), "有目标设备的新会话必须提供明确cwd")
+        precondition(commands.last?.name == "thread.new" && commands.last?.params["backendId"] == .string("device:alpha") && commands.last?.params["cwd"] == nil, "指定机器新建也必须恢复该机器上次项目")
+        store.cancelComposerPresentation()
+        session.beginNewConversation(project: "", deviceID: aDevice)
+        precondition(commands.last?.params["backendId"] == .string("device:alpha") && commands.last?.params["cwd"] == .string(""), "显式无项目必须继续覆盖上次项目")
         await verifyDeviceAndImportAcknowledgements()
         await verifyDelayedDeviceForm()
         await verifyPendingProjectsAndQuestions()
@@ -721,5 +730,40 @@ struct AgentSessionSmoke {
         snapshot.groups = [NativeGroup(id: "search", title: "结果", items: items, category: "search")]
         session.receive(snapshot)
         precondition(session.scopedProjects.map(session.projectDisplayName) == ["Zeta", "Alpha"], "搜索项目按首次出现排序，同项目结果不能重复建组")
+    }
+
+    @MainActor static func verifyProjectFiveConversationWindow() {
+        let store = NativeUIStore(arguments: [])
+        let session = AppSession(store: store)
+        var commands: [NativeCommand] = []
+        store.sendCommand = { commands.append($0) }
+        var snapshot = NativeSnapshot()
+        snapshot.ready = true; snapshot.backendId = "device"; snapshot.listBackendId = "device"
+        snapshot.backends = [NativeBackend(id: "device", title: "设备", connected: true)]
+        let rows = (1...12).map { index in
+            NativeNavigationItem(id: "row-\(index)", title: "会话 \(index)",
+                command: NativeCommand(name: "thread.open", params: ["backendId": .string("device"), "threadId": .string("thread-\(index)")]),
+                cwd: "/project", isUnread: index == 12)
+        }
+        snapshot.groups = [NativeGroup(id: "project", title: "项目", items: rows, command: NativeCommand(name: "project.toggle"), collapsed: false, category: "project", allItems: rows)]
+        func publish() { store.receive(snapshot); session.receive(snapshot) }
+        publish()
+        precondition(session.projectConversations("project").count == 5, "原生项目首次只展示五条，不能因缓存已加载而全部展开")
+        precondition(session.allProjectConversations("project").contains { $0.isUnread }, "五条窗口外的未读仍必须参与项目摘要")
+        precondition(session.projectHasMore("project"), "缓存中剩余会话仍必须提供展开入口")
+        session.loadMoreProject("project")
+        precondition(session.projectConversations("project").count == 10 && commands.isEmpty, "缓存中展开下一批五条不应重复请求业务分页")
+        session.sidebarVisible = false; session.sidebarVisible = true
+        precondition(session.projectIsExpanded("project") && session.projectConversations("project").count == 10, "侧栏开关不能折叠项目或重置窗口")
+        snapshot.groups[0].collapsed = true; publish()
+        snapshot.groups[0].collapsed = false; publish()
+        precondition(session.projectConversations("project").count == 5, "显式折叠项目后重新打开须恢复五条窗口")
+        session.loadMoreProject("project"); session.loadMoreProject("project")
+        precondition(session.projectConversations("project").count == 12 && !session.projectHasMore("project"), "全部缓存展开后不能保留空的更多入口")
+        snapshot.groups[0].collapsed = true; publish()
+        snapshot.groups[0].collapsed = false; publish()
+        session.searchText = "会话"
+        precondition(session.projectConversations("project").count == 12, "搜索结果不受五条窗口限制")
+        precondition(!session.projectHasMore("project"), "搜索已展示全部缓存时不能显示无效的更多入口")
     }
 }

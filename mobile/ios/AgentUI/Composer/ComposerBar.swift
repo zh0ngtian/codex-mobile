@@ -17,7 +17,6 @@ struct ComposerBar: View {
     @State private var attachmentWork: ComposerAttachmentWork?
     @State private var locationAuthorization = NativeLocationAuthorization()
     @FocusState private var focused: Bool
-    private var expanded: Bool { focused || session.composer.text.contains("\n") || !session.composer.attachments.isEmpty || !attachmentFlow.items.isEmpty || attachmentFlow.error != nil || attachmentFlow.isLocating }
     private var hasPendingAttachment: Bool { !attachmentFlow.items.isEmpty || attachmentFlow.isBusy }
     private var attachmentBlocksSubmission: Bool {
         ComposerAttachmentSubmitGate.blocks(pending: hasPendingAttachment, busy: session.isBusy, hasContent: session.composer.hasContent)
@@ -36,11 +35,12 @@ struct ComposerBar: View {
                 if !candidates.isEmpty {
                     MentionCandidates(candidates: candidates, selected: selectedMention, choose: chooseMention)
                 }
-                VStack(spacing: 2) {
+                VStack(spacing: 10) {
                     if !session.composer.attachments.isEmpty { ComposerAttachmentStrip() }
-                    ComposerPendingAttachments(flow: attachmentFlow, retry: retryAttachments, clear: cancelAttachments)
+                    if !attachmentFlow.items.isEmpty || attachmentFlow.error != nil || attachmentFlow.isLocating {
+                        ComposerPendingAttachments(flow: attachmentFlow, retry: retryAttachments, clear: cancelAttachments)
+                    }
                     HStack(spacing: 0) {
-                        if !expanded { attachmentMenu }
                         TextField(preferences.text("向 Codex 提问", "Ask Codex"), text: $session.composer.text, axis: .vertical)
                             .font(AgentTheme.body)
                             .lineLimit(1...6)
@@ -48,32 +48,26 @@ struct ComposerBar: View {
                             .submitLabel(.send)
                             .onSubmit(submit)
                             .onKeyPress(keys: [.upArrow, .downArrow, .return, .tab, .escape], action: handleKey)
-                            .frame(minHeight: expanded ? 42 : 58)
-                            .padding(.horizontal, expanded ? 12 : 2)
+                            .frame(minHeight: 24)
+                            .padding(.horizontal, 4)
                             .disabled(!session.composerCanEdit || session.historyEdit != nil || session.selectedConversation?.readOnly == true || !session.composer.attachmentsReady)
                             .accessibilityIdentifier("message-input")
-                        if !expanded { ComposerSubmitButton(action: submit).disabled(attachmentBlocksSubmission) }
                     }
-                    if expanded {
-                        HStack(spacing: 0) {
-                            attachmentMenu
-                            ComposerPermissionMenu()
-                            HStack(spacing: 8) {
-                                RunSpeedButton()
-                                ComposerModelMenu()
-                                ComposerEffortMenu()
-                            }
-                            Spacer(minLength: 2)
-                            ComposerSubmitButton(action: submit).disabled(attachmentBlocksSubmission)
-                        }
+                    HStack(spacing: 6) {
+                        attachmentMenu
+                        ComposerPermissionMenu()
+                        ComposerModelMenu()
+                        ComposerEffortMenu()
+                        RunSpeedButton()
+                        Spacer(minLength: 0)
+                        ComposerSubmitButton(action: submit).disabled(attachmentBlocksSubmission)
                     }
                 }
-                .padding(.leading, 4)
-                .padding(.trailing, 12)
-                .padding(.top, expanded ? 4 : 0)
-                .padding(.bottom, expanded ? 8 : 0)
-                .modifier(AgentGlassSurface(cornerRadius: expanded ? 25 : 32))
-                .frame(maxWidth: expanded ? .infinity : 328)
+                .padding(.horizontal, 12)
+                .padding(.top, 17)
+                .padding(.bottom, 12)
+                .modifier(AgentGlassSurface(cornerRadius: 28))
+                .frame(maxWidth: .infinity)
                 #if DEBUG
                 .modifier(AgentComposerGeometryFixture())
                 #endif
@@ -82,7 +76,7 @@ struct ComposerBar: View {
                 }
             }
         }
-        .padding(.horizontal, expanded ? 12 : 20)
+        .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .frame(maxWidth: .infinity)
         .sensoryFeedback(.impact, trigger: submitFeedback)

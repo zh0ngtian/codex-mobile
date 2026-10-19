@@ -29,7 +29,11 @@ struct CommentaryHistoryView: View {
             if expanded || !completed {
                 ForEach(entries) { entry in
                     VStack(alignment: .leading, spacing: 8) {
-                        Text(entry.text).font(AgentTheme.chatBody).textSelection(.enabled)
+                        if entry.isPreviousReply == true {
+                            AssistantBody(text: entry.text)
+                        } else {
+                            Text(entry.text).font(AgentTheme.chatBody).textSelection(.enabled)
+                        }
                         if let outputs = entry.outputs, !outputs.isEmpty { OutputCards(items: outputs) }
                         if !entry.timestampLabel.isEmpty {
                             Text(entry.timestampLabel).font(.body).foregroundStyle(.secondary)

@@ -9,6 +9,7 @@ struct ProjectRow: View {
     @State private var revealedHeight: CGFloat = 0
     @State private var contentsVisible = false
     @State private var revealID: UUID?
+    @State private var measured = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -21,7 +22,7 @@ struct ProjectRow: View {
                         .font(AgentTheme.body)
                         .lineLimit(2)
                         .multilineTextAlignment(.leading)
-                    if !expanded { SidebarActivitySummary(conversations: conversations).fixedSize() }
+                    if !expanded { SidebarActivitySummary(conversations: session.allProjectConversations(name)).fixedSize() }
                     Spacer(minLength: 0)
                 }
                 .padding(.leading, 14)
@@ -70,7 +71,11 @@ struct ProjectRow: View {
             .fixedSize(horizontal: false, vertical: true)
             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
                 contentHeight = height
-                if expanded {
+                if !measured {
+                    measured = true
+                    revealedHeight = expanded ? height : 0
+                    contentsVisible = expanded
+                } else if expanded {
                     updateReveal()
                 }
             }

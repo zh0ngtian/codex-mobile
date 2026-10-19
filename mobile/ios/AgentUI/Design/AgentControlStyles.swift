@@ -5,7 +5,8 @@ struct AgentGlassSurface: ViewModifier {
     var cornerRadius: CGFloat = 24
     func body(content: Content) -> some View {
         if #available(iOS 26.0, *) {
-            content.glassEffect(.regular.interactive(), in: .rect(cornerRadius: cornerRadius))
+            // 输入栏仅借用玻璃材质；整块表面交互会抢走与其重叠的系统菜单项点击。
+            content.glassEffect(.regular, in: .rect(cornerRadius: cornerRadius))
         } else {
             content.background(.regularMaterial, in: .rect(cornerRadius: cornerRadius))
         }

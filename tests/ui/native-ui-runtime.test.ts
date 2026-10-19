@@ -5,18 +5,19 @@ import { emptyNativeSnapshot } from '../../src/native-ui/protocol';
 afterEach(() => { vi.useRealTimers(); delete (window as any).__CODEX_NATIVE_UI__; delete (window as any).webkit; });
 const command = (id: string, name: string, params: Record<string, unknown> = {}) => ({ id, name, params });
 const workspace = (contextId = 'b:t') => ({ ...emptyNativeSnapshot(), backendId: 'b', contextId, threadId: 't', ready: true });
-it('列表设备独立于当前对话投影，项目新建参数成对校验且成功ACK不伪造新上下文', async () => {
+it('列表设备独立于当前对话投影，新建设备可单独指定，明确项目仍校验参数且ACK不伪造新上下文', async () => {
  const runtime = new NativeRuntime(() => {}); const calls: unknown[] = [];
  runtime.setNavigation({ selectedBackendId: 'b', listBackendId: 'all', backends: [], groups: [] }, { 'thread.new': p => calls.push(p) });
  runtime.setWorkspace('b', workspace(), {});
  expect(runtime.snapshot()).toMatchObject({ backendId: 'b', listBackendId: 'all', contextId: 'b:t' });
  expect((await runtime.dispatch(command('project', 'thread.new', { backendId: 'other', cwd: '' }))).ok).toBe(true);
+ expect((await runtime.dispatch(command('device-memory', 'thread.new', { backendId: 'other' }))).ok).toBe(true);
  expect(runtime.snapshot().contextId).toBe('b:t');
- for (const params of [{ backendId: 'other' }, { cwd: '/p' }, { backendId: 'other', cwd: null }, { backendId: 3, cwd: '/p' }]) {
+ for (const params of [{ cwd: '/p' }, { backendId: 'other', cwd: null }, { backendId: 3, cwd: '/p' }, { backendId: 3 }]) {
   expect((await runtime.dispatch(command(`bad-${JSON.stringify(params)}`, 'thread.new', params))).ok).toBe(false);
  }
  expect((await runtime.dispatch(command('legacy-new', 'thread.new'))).ok).toBe(true);
- expect(calls).toEqual([{ backendId: 'other', cwd: '' }, {}]); runtime.dispose();
+ expect(calls).toEqual([{ backendId: 'other', cwd: '' }, { backendId: 'other' }, {}]); runtime.dispose();
 });
 describe('原生业务桥', () => {
   it('只有新 flag 与 handler 同时存在才启用，旧残留不启用', () => {

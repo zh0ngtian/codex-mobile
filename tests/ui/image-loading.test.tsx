@@ -183,12 +183,14 @@ describe("会话图片按需加载", () => {
     ] }} />);
     await screen.findByRole("button", { name: "查看图片 steer-generated.png" });
     expect(screen.getAllByRole("button", { name: "查看图片 steer-generated.png" })).toHaveLength(1);
-    expect(screen.getByText("初次检查完成")).toBeTruthy();
+    expect(screen.queryByText("初次检查完成")).toBeNull();
     expect(screen.getByText("继续检查")).toBeTruthy();
     expect(screen.getByText("全部检查完成")).toBeTruthy();
     expect(screen.queryByRole("button", { name: /过程截图/ })).toBeNull();
     await screen.findByRole("button", { name: "查看图片 steer-b.png" });
     expect(screen.getAllByRole("button", { name: "查看图片 steer-a.png" })).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: "之前的 1 条消息" }));
+    expect(screen.getByText("初次检查完成").closest(".previous-messages")).not.toBeNull();
     expect(request).toHaveBeenCalledTimes(3);
   });
 

@@ -119,15 +119,46 @@ describe('真实业务原生投影', () => {
   });
 });
 
-it('同回合助手→用户插话→助手保持真实顺序，运行时无final的commentary直接显示', () => {
+it('引导后运行时旧final保留原身份并收入过程，最新commentary直接显示', () => {
  const messages = projectConversation({ id: 't', turns: [{ id: 'turn', status: 'inProgress', items: [
   { id: 'u1', type: 'userMessage', content: [{ type: 'text', text: '第一问' }] },
   { id: 'a1', type: 'agentMessage', phase: 'final_answer', text: '第一答' },
   { id: 'u2', type: 'userMessage', content: [{ type: 'text', text: '插话' }] },
   { id: 'c2', type: 'agentMessage', phase: 'commentary', text: '继续检查' },
  ] }] }, path => path);
- expect(messages.filter(m => m.text).map(m => m.text)).toEqual(['第一问', '第一答', '插话', '继续检查']);
+ expect(messages.filter(m => m.role === 'user').map(m => m.text)).toEqual(['第一问', '插话']);
+ const oldAnswer = messages.find(m => m.id === 'turn:a1')!;
+ expect(oldAnswer).toMatchObject({ text: '第一答', phase: 'final_answer', itemId: 'a1', commentaryCanAttachToReply: true,
+  commentary: [{ id: 'turn:a1', text: '第一答', isPreviousReply: true }], actions: [{ command: { name: 'message.copy', params: { id: 'turn:a1' } } }] });
+ expect(messages.find(m => m.id === 'turn:c2')?.commentaryIsLiveTail).toBe(true);
+ expect(messages.find(m => m.id === 'turn:c2')?.status).toBeUndefined();
  expect(messages.find(m => m.id === 'turn:c2')?.blocks?.some(b => b.kind === 'disclosure')).not.toBe(true);
+});
+
+it('同轮引导按原顺序集中到最后final前，旧回答保留动作及媒体归属且不跨逻辑回合', () => {
+ const turns = [{ id: 'turn', status: 'completed', items: [
+  { id: 'u', type: 'userMessage', text: '最初提问' },
+  { id: 'c1', type: 'agentMessage', phase: 'commentary', text: '原过程' },
+  { id: 'i1', type: 'imageView', path: '/commentary.png' },
+  { id: 'f1', type: 'agentMessage', phase: 'final_answer', text: '旧回答' },
+  { id: 'u2', type: 'userMessage', text: '第一条引导', content: [{ type: 'text', text: '第一条引导' }, { type: 'localImage', path: '/user.png' }] },
+  { id: 'i2', type: 'imageView', path: '/independent.png' },
+  { id: 'f2', type: 'agentMessage', phase: 'final_answer', text: '中间回答' },
+  { id: 'u3', type: 'userMessage', text: '第二条引导' },
+  { id: 'c2', type: 'agentMessage', phase: 'commentary', text: '最后过程' },
+  { id: 'f3', type: 'agentMessage', phase: 'final_answer', text: '最后回答' },
+ ] }, { id: 'next', status: 'completed', items: [{ id: 'nu', type: 'userMessage', text: '下一回合' }, { id: 'nf', type: 'agentMessage', phase: 'final_answer', text: '下一回答' }] }];
+ const wire = JSON.stringify(turns);
+ const messages = projectConversation({ turns }, p => `thumb:${p}`, p => `original:${p}`);
+ expect(messages.slice(0, 3).map(m => m.id)).toEqual(['turn:u', 'turn:u2', 'turn:u3']);
+ expect(messages.find(m => m.id === 'turn:u2')).toMatchObject({ itemId: 'u2', blocks: [{ value: 'thumb:/user.png' }], actions: [expect.anything(), { command: { name: 'message.edit', params: { turnId: 'turn', messageId: 'u2' } } }] });
+ for (const id of ['f1', 'f2']) expect(messages.find(m => m.id === `turn:${id}`)).toMatchObject({ itemId: id, phase: 'final_answer', commentaryCanAttachToReply: true, commentary: [{ id: `turn:${id}`, isPreviousReply: true }] });
+ expect(messages.flatMap(m => m.commentary ?? []).filter(c => ['turn:c1', 'turn:c2'].includes(c.id)).every(c => c.isPreviousReply === undefined)).toBe(true);
+ expect(messages.find(m => m.id === 'turn:f3')?.commentaryCanAttachToReply).not.toBe(true);
+ expect(messages.flatMap(m => m.commentary ?? []).flatMap(c => c.blocks ?? []).map(b => b.value)).toEqual(['thumb:/commentary.png']);
+ expect(messages.find(m => m.id === 'turn:i2')?.blocks?.[0].value).toBe('thumb:/independent.png');
+ expect(messages.slice(-2).map(m => m.text)).toEqual(['下一回合', '下一回答']);
+ expect(JSON.stringify(turns)).toBe(wire);
 });
 it('同回合生成图与截图跨插话去重，独立截图在原位置显示', () => {
  const messages = projectConversation({ id: 't', turns: [{ id: 'turn', status: 'completed', items: [
@@ -143,7 +174,7 @@ it('同回合生成图与截图跨插话去重，独立截图在原位置显示'
  const blocks = messages.flatMap(m => m.blocks ?? []);
  expect(blocks.filter(b => b.value?.endsWith('/gen.png'))).toHaveLength(1);
  expect(blocks.filter(b => b.kind === 'image').map(b => b.value)).toEqual(['https://images.invalid/gen.png','https://images.invalid/screen1.png','https://images.invalid/screen2.png']);
- expect(messages.map(m => m.id)).toEqual(['turn:u','turn:g1','turn:u2','turn:s1','turn:s2']);
+ expect(messages.map(m => m.id)).toEqual(['turn:u','turn:u2','turn:g1','turn:s1','turn:s2']);
 });
 
 it('全部设备的项目入口仍按真实项目与无项目分组，含未加载空项目和分页动作', () => {
@@ -233,6 +264,23 @@ it('任务用时按真实毫秒分解为小时分钟秒，不把分钟当成小�
 it.each([[15_000, '15秒'], [60_000, '1分钟0秒'], [3_603_000, '1小时3秒'], [0, '0秒']])('用时 %s 省略零小时和零分钟并紧凑显示', (durationMs, expected) => {
  const messages = projectConversation({ turns: [{ id: 't', status: 'completed', durationMs, items: [{ id: 'f', type: 'agentMessage', text: '完成' }] }] }, path => path);
  expect(messages[0]?.status).toBe(expected);
+});
+
+it('引导后的运行延续回合不把旧完成用时赋给无phase的实时正文，完成后仍显示整轮用时', () => {
+ const initial = { id: 'first', status: 'completed', startedAt: 100, completedAt: 120, items: [
+  { id: 'user', type: 'userMessage', text: '初始问题' },
+  { id: 'old', type: 'agentMessage', phase: 'final_answer', text: '旧回答' },
+  { id: 'steer', type: 'userMessage', text: '继续检查' },
+ ] };
+ const continuation = { id: 'continuation', status: 'inProgress', items: [
+  { id: 'current', type: 'agentMessage', text: '正在生成的新正文' },
+ ] };
+ const running = projectConversation({ turns: [initial, continuation] }, path => path);
+ expect(running.find(message => message.id === 'first:current')).toMatchObject({ text: '正在生成的新正文', phase: undefined });
+ expect(running.find(message => message.id === 'first:current')?.status).toBeUndefined();
+ expect(running.find(message => message.id === 'first:current')?.timestamp).toBeUndefined();
+ const completed = projectConversation({ turns: [initial, { ...continuation, status: 'completed', completedAt: 150 }] }, path => path);
+ expect(completed.find(message => message.id === 'first:current')).toMatchObject({ status: '50秒', timestamp: 150 });
 });
 
 it('工具与推理保留原始记录并标明隐藏类型，commentary不受影响', () => {
