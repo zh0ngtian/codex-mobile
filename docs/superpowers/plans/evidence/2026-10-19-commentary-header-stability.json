@@ -1,5 +1,5 @@
 {
-  "status": "已验证，待发布验收",
+  "status": "已验证，已发布0.3.18",
   "task": "native-commentary-header-stability-20261019",
   "scope": "iOS执行过程真实数据回填时入口行高稳定；默认双端客户端发布，不部署网关",
   "video": {
@@ -96,11 +96,21 @@
     "independentReview": "无Critical/Important，补充留白点击及文档复核通过",
     "existingTimestampTest": "旧版本中心点击同样失败；改为气泡留白点击并等待消失后，旧实现与修复实现均通过。不宣称正文中心点击问题已修复。",
     "realTestConversationsCreated": 0,
-    "deviceInstall": "未进行真机覆盖安装与数据保留验收"
+    "deviceInstall": "未进行真机覆盖安装与数据保留验收",
+    "normalSimulatorRestoredBeforeLockRelease": true,
+    "temporaryTestProbesRemoved": true,
+    "simulatorLockReleasedByThisTask": true
   },
   "publication": {
-    "readySubmitted": false,
-    "gatewayDeployed": false
+    "readySubmitted": true,
+    "gatewayDeployed": false,
+    "version": "0.3.18",
+    "buildNumber": "3018",
+    "batch": "efce76eb-5f6f-4c55-878a-fc3c5793adf7",
+    "frozenSha": "0124e1e46853b987e078b93d01bc7de047ce288f",
+    "sourceCommit": "ebfa1c20f5a6c600a65bb419d4a268793861c136",
+    "receiptVerified": true,
+    "allRequiredChannelsVerified": true
   },
   "verifiedAt": 1792413356.614895
 }

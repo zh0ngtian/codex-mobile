@@ -24,8 +24,8 @@
 ## 发布
 
 - [x] 复用现有独立受保护worktree，切换新分支`codex/native-commentary-header-stability-20261019`；登记客户端任务`native-commentary-header-stability-20261019`，持续heartbeat。
-- [ ] 验证后提交ready，等待默认双端客户端成功批次；本次不改网关运行代码，不部署网关。
-- [ ] 完整核对固定APK/签名IPA、HTTPS OTA、unsigned软件源及实际成功receipt；恢复无探针正常模拟器App，释放锁并保存交付证据。
+- [x] 验证后提交ready，等待默认双端客户端成功批次；本次不改网关运行代码，不部署网关。
+- [x] 完整核对固定APK/签名IPA、HTTPS OTA、unsigned软件源及实际成功receipt；恢复无探针正常模拟器App，释放锁并保存交付证据。
 
 ## 本地验收结果
 
@@ -35,3 +35,7 @@
 - 旧气泡中心点击用例在原生产实现也失败；测试改为气泡留白点击并等待元素消失，原/新实现均通过，未修改气泡业务代码或宣称正文中心点击已修复。
 - 212项发布适配、59项协调恢复、18文件140项构建契约、typecheck及独立审查均通过，无真实测试会话需归档。
 - 详细验证见[脱敏证据](evidence/2026-10-19-commentary-header-stability.json)；原始录屏、失败/通过xcresult及日志保存在仓库外发布协调器验证目录。
+
+## 正式交付
+
+正式发布已完成：版本0.3.18（3018），成功批次`efce76eb-5f6f-4c55-878a-fc3c5793adf7`，冻结main`0124e1e46853b987e078b93d01bc7de047ce288f`；源码`ebfa1c20f5a6c600a65bb419d4a268793861c136`已包含于共同成功凭证。GitHub双端Release、Ad Hoc已签名HTTPS OTA、固定LAN APK/IPA及unsigned软件源均通过验收。另独立HEAD/完整GET核对固定APK、IPA及HTTPS IPA的版本、大小与SHA-256，安装页/manifest、完整签名身份与钥匙串权限、中文更新日志和原开发者署名均符合要求。正常模拟器App已恢复，生成源码及无临时探针已核对，本任务释放锁后不再占用共用模拟器。未部署网关、未新建真实测试会话、未进行真机覆盖安装与数据保留验收。详见[公共交付凭证](evidence/2026-10-19-commentary-header-release.json)。
