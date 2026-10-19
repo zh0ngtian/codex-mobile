@@ -14,14 +14,14 @@
 
 - [x] 将最新远端main合入任务分支，保留已发布功能；有冲突时就地核对实现，若需要新增行为修复，先补失败测试再修改。
 - [x] 更新`release/notes.md`为本批实际用户变化；完成全量与定向回归、typecheck、适配器及构建契约必要检查。既有TDD与模拟器证据见空态修复计划及性能报告；整合影响到相应界面时追加必要验证。
-- [ ] 提交、推送固定SHA，写入真实validation文件，按必需检查提交ready。
-- [ ] 等待共同成功receipt，核对任务SHA包含、正式CI、APK、已签名IPA、HTTPS OTA及软件源unsigned版本/中文更新日志/署名。
-- [ ] 对固定JSON、包HEAD和完整GET核对版本、大小、SHA-256；更新当前交互状态及正式交付证据，提交推送收尾文档。
-- [ ] 交付固定OTA安装页、APK与已签名IPA链接及版本、大小、SHA-256；不把构建或模拟器结果当作真机覆盖安装验收。
+- [x] 提交、推送固定SHA，写入真实validation文件，按必需检查提交ready。
+- [x] 等待共同成功receipt，核对任务SHA包含、正式CI、APK、已签名IPA、HTTPS OTA及软件源unsigned版本/中文更新日志/署名。
+- [x] 对固定JSON、包HEAD和完整GET核对版本、大小、SHA-256；更新当前交互状态及正式交付证据，提交推送收尾文档。
+- [x] 交付固定OTA安装页、APK与已签名IPA链接及版本、大小、SHA-256；不把构建或模拟器结果当作真机覆盖安装验收。
 
 ## 当前状态
 
-已整合最新main并完成验证，准备推送固定SHA和提交ready；正式渠道尚待共同receipt验收。
+正式发布0.3.16（3016）已完成，任务状态complete，全部渠道与任务包含证据由共同成功receipt核对。
 
 ## 分页整合回归范围
 
@@ -35,4 +35,18 @@
 
 iPhone 17 Pro/iOS27、正常字号、竖屏的两个定向用例通过：三轮真实冷启动无错误空态并最终显示会话，及项目5→10、关闭侧栏保留窗口、显式折叠重开复位与分页文字对齐。无参数正常模拟器App已恢复，原生文件及前端64资源核对一致，模拟器锁已释放；没有创建测试会话或发送消息。仅本地Debug身份沿用0.3.15/3015，正式新版本仍由协调器分配。
 
-本机完整验证目录为`ReleaseCoordinator/validations/codex-mobile-20261019-sidebar-startup/`，含RED/GREEN、全量JSON、UI结果包和正常产物恢复记录。此项尚未正式发布。
+本机完整验证目录为`ReleaseCoordinator/validations/codex-mobile-20261019-sidebar-startup/`，含RED/GREEN、全量JSON、UI结果包和正常产物恢复记录。后续正式发布已完成，凭证见下文。
+
+## 正式交付完成
+
+成功批次`67d45d61-1c22-424e-bdd2-9eba1b54e670`，冻结main`8c89e0f46e88aa449cde084bc8606d67ecf678a5`，版本**0.3.16（3016）**。任务源码`6da76f7b2daf3b6be464475995048b22912d0f58`已被冻结提交包含，正式CI`39224117352`和开发CI`39224117195`成功，所有阶段验收通过。
+
+[固定OTA安装页](https://192.168.123.79:8766/channels/codex-mobile/current/install.html)、[固定APK](http://192.168.123.79:8765/channels/codex-mobile/latest.apk)和[Ad Hoc已签名IPA](http://192.168.123.79:8765/channels/codex-mobile/latest.ipa)已通过清单、HEAD、完整GET、版本/大小/SHA-256独立回验，HTTPS IPA同样完整下载且使用现有CA验证TLS。签名身份、完整权限和钥匙串组与0.3.15保持一致；软件源为同版本GitHub unsigned IPA，实际中文日志与本次改动一致，现有开发者署名保留并核对当前GitHub账号。
+
+| 包 | 大小（bytes） | SHA-256 |
+| --- | --- | --- |
+| APK | 4725083 | `9589432b8f5896058cf1ed140328970f6876d393ffe1c4c7ce8c3c0d34ebca39` |
+| IPA（Ad Hoc已签名） | 4681376 | `a2f8679ab640aeeb8482fcb92649c5dd927be39b554d8cc77cfc461fd6d1a7bc` |
+| GitHub unsigned IPA | 4677242 | `0bdc2b2cdd5fb8f83b7f1a1198dff5bc5458f4ee22da41e878dc565ded649b87` |
+
+[公共交付凭证](evidence/2026-10-19-sidebar-cold-start-release.json)保留来源与校验值。本机共同receipt和独立回验长期保存在ReleaseCoordinator状态目录。未部署网关、未进行真机覆盖安装与数据保留验收。模拟器保持已验证的正常Debug版本，无延迟注入，锁已释放；无测试会话需要归档。此收尾仅修改文档，不触发客户端构建或发布。
