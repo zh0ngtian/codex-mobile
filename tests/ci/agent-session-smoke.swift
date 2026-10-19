@@ -593,9 +593,16 @@ struct AgentSessionSmoke {
         publish()
         precondition(session.selectedConversation?.project == nil, "空cwd必须归一化为无项目以免搜索结果被UI漏掉")
         let projectless = NativeNavigationItem(id: "t", title: "无项目真实会话", command: NativeCommand(name: "thread.open", params: ["backendId": .string("b"), "threadId": .string("t")]), cwd: "")
-        state.groups = [NativeGroup(id: "real-projectless", title: "无项目", items: [projectless], command: NativeCommand(name: "project.toggle", params: ["backendId": .string("b"), "cwd": .string("codex-mobile://projectless")]), category: "project", cwd: "codex-mobile://projectless")]
-        publish()
-        precondition(session.scopedProjects.isEmpty && session.conversation(session.selectedConversationID!) != nil, "非搜索无项目会话不得变成项目组或丢弃真实会话数据")
+        for groupCWD in ["codex-mobile://projectless", ""] {
+            state.groups = [NativeGroup(id: "real-projectless", title: "无项目", items: [projectless], command: NativeCommand(name: "project.toggle", params: ["backendId": .string("b"), "cwd": .string("codex-mobile://projectless")]), actions: [NativePanelItem(id: "projectless-more", kind: "action", command: NativeCommand(name: "project.more", params: ["backendId": .string("b"), "cwd": .string("codex-mobile://projectless")]))], category: "project", cwd: groupCWD)]
+            publish()
+            precondition(session.scopedProjects == ["real-projectless"], "无项目必须复用真实分组展示与分页")
+            precondition(session.projectConversations("real-projectless").map(\.id) == [session.selectedConversationID!], "无项目成员必须保留并显示在所属分组")
+            precondition(session.conversation(session.selectedConversationID!)?.project == nil, "无项目分组不能成为会话工作目录")
+            precondition(session.projectHasMore("real-projectless"), "存在后续会话时保留加载更多")
+            session.loadMoreProject("real-projectless")
+            precondition(commands.last?.name == "project.more" && commands.last?.params["cwd"] == .string("codex-mobile://projectless"), "加载更多必须派发无项目真实分页动作")
+        }
         state.groups = [NativeGroup(id: "search", title: "搜索结果", items: [projectless], category: "search")]
         publish()
         precondition(session.visibleConversations.contains { $0.id == session.selectedConversationID && $0.project == nil }, "无项目会话在真实搜索结果中仍须可见")

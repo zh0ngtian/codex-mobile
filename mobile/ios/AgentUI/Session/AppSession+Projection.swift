@@ -38,9 +38,9 @@ extension AppSession {
         let old = Dictionary(uniqueKeysWithValues: conversations.map { ($0.id, $0) })
         for group in snapshot.groups {
             var projectKey: String?
-            let groupCWD = group.cwd ?? group.command.flatMap { string($0.params["cwd"]) }
+            let groupCWD = group.command.flatMap { string($0.params["cwd"]) } ?? group.cwd
             let projectless = groupCWD == "codex-mobile://projectless"
-            if group.category == "project", !projectless {
+            if group.category == "project" {
                 // 展示名可以重复，展开与分页始终绑定真实 group 身份。
                 let key = group.id
                 if projectGroups[key] == nil { scopedProjects.append(key) }
