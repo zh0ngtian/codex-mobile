@@ -26,3 +26,13 @@ it('网页多段用户文本保留分隔，不把正文和下一段粘连', () =
  const { container } = render(<TurnCard client={null} turn={{ id: 'turn', status: 'completed', items: [{ id: 'user', type: 'userMessage', content: [{ type: 'text', text: '第一段' }, { type: 'text', text: '第二段' }] }] }} />);
  expect(container.querySelector('.user-markdown')?.textContent).toBe('第一段\n第二段');
 });
+it('网页首条附件消息只显示用户正文，不显示自动标题说明', async () => {
+ const { buildTurnInput } = await import('../../src/ui/attachments');
+ const { appendConversationTitleRequest } = await import('../../src/app-server/conversation-title');
+ const content = buildTurnInput(appendConversationTitleRequest('我'), [], [{ name: '首条.txt', path: '/tmp/first.txt', type: 'text/plain', size: 1 }]);
+ const { container } = render(<TurnCard client={null} turn={{ id: 'first-turn', status: 'completed', items: [{ id: 'first-user', type: 'userMessage', content }] }} />);
+ expect(screen.getByText('我')).toBeVisible();
+ expect(screen.getByRole('link', { name: '首条.txt' })).toBeVisible();
+ expect(container.textContent).not.toContain('conversation_title_request');
+ expect(container.textContent).not.toContain('请根据这条用户消息');
+});

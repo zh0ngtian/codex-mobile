@@ -19,7 +19,7 @@ import XCTest
         }
         if !app.buttons["sidebar.search"].isHittable { app.buttons["会话列表"].tap() }
         XCTAssertTrue(app.buttons["sidebar.search"].waitForExistence(timeout: 20)); app.buttons["sidebar.search"].tap()
-        let search = any("sidebar.searchField", app); XCTAssertTrue(search.waitForExistence(timeout: 8)); search.tap(); search.typeText(title)
+        let search = any("sidebar.searchField", app); XCTAssertTrue(search.waitForExistence(timeout: 8)); search.tap(); search.typeText(env["TEST_RUNNER_COMPAT_QUERY"] ?? env["COMPAT_QUERY"] ?? title)
         let row = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'sidebar.conversation.' AND label == %@", title)).firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: 30), app.debugDescription); row.tap()
         XCTAssertTrue(app.buttons["conversation.actions"].waitForExistence(timeout: 20)); return app
@@ -65,4 +65,35 @@ import XCTest
         XCTAssertTrue(answer.waitForExistence(timeout: 100), app.debugDescription)
         XCTAssertFalse(any("composer.quote", app).exists); capture("手机发送后-引用图片与回复", app)
     }
+    /// 对用户指定聊天只读验收，不发送、不保存重发、不归档用户聊天。
+    func test30FirstAttachmentMessageHidesTitleRequest() throws {
+        var app = try openTestChat()
+        func verifyFirstMessage(_ app: XCUIApplication) {
+            let first = app.textViews.matching(NSPredicate(format: "identifier == 'user.selectable' AND value == %@", "我")).firstMatch
+            let timeline = any("conversation.timeline", app)
+            for _ in 0..<5 { if first.exists && first.isHittable { break }; timeline.swipeDown() }
+            XCTAssertTrue(first.waitForExistence(timeout: 12), app.debugDescription)
+            XCTAssertTrue(first.isHittable)
+            let texts = app.textViews.matching(identifier: "user.selectable").allElementsBoundByIndex.compactMap { $0.value as? String }.joined(separator: "\n")
+            XCTAssertFalse(texts.contains("conversation_title_request")); XCTAssertFalse(texts.contains("请根据这条用户消息"))
+            XCTAssertEqual(app.buttons.matching(identifier: "compat-photo.jpg").count, 1)
+            XCTAssertTrue(app.buttons["composer.attachments"].isEnabled, "共享后端应恢复该聊天的正常输入")
+            capture("用户样本首条消息-仅正文和一张图片", app)
+        }
+        verifyFirstMessage(app)
+        let bubble = app.descendants(matching: .any).matching(identifier: "message.user-bubble").containing(NSPredicate(format: "identifier == 'user.selectable' AND value == %@", "我")).firstMatch
+        XCTAssertTrue(bubble.exists)
+        bubble.coordinate(withNormalizedOffset: CGVector(dx: 0.99, dy: 0.5)).press(forDuration: 1.2)
+        let menu = app.collectionViews.containing(.button, identifier: "编辑").firstMatch
+        XCTAssertTrue(menu.waitForExistence(timeout: 8), app.debugDescription)
+        menu.buttons.matching(NSPredicate(format: "label == %@", "编辑")).firstMatch.tap()
+        let editor = any("history.editor", app); XCTAssertTrue(editor.waitForExistence(timeout: 10))
+        XCTAssertEqual(editor.value as? String, "我", "历史编辑只恢复用户问题，不带内部标题请求")
+        capture("首条消息历史编辑-正文干净并保留图片", app)
+        app.buttons.matching(NSPredicate(format: "label == %@", "取消")).firstMatch.tap()
+        let cancelled = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: editor)
+        XCTAssertEqual(XCTWaiter.wait(for: [cancelled], timeout: 6), .completed)
+        app.terminate(); app = try openTestChat(); verifyFirstMessage(app)
+    }
+
 }

@@ -93,6 +93,93 @@
     "deviceName": "Compatibility QA",
     "sourceVersionLabelUnchanged": "0.3.17",
     "deviceApkOrIpaBuilt": false,
+    "userAcceptance": "pending",
+    "sharedWithDesktop": true,
+    "upstream": "ws://127.0.0.1:14550/rpc",
+    "extraAppServerStopped": true
+  },
+  "acceptanceBackendCorrection": {
+    "date": "2026-10-20",
+    "approvedByUser": true,
+    "reason": "最初验收网关另起独立app-server，桌面已持有的会话发生active writer冲突；本次接回桌面共享后端",
+    "gateway": "http://127.0.0.1:18826",
+    "sharedUpstream": "ws://127.0.0.1:14550/rpc",
+    "frontendAddressAndCredentialsChanged": false,
+    "oldBackendLoadedThreads": 0,
+    "pendingQueueBeforeSwitch": 0,
+    "extraAppServerPid": 20776,
+    "extraAppServerPort": 18824,
+    "extraAppServerStopped": true,
+    "httpResumeChecks": [
+      {
+        "threadId": "01a154e4-eede-74a2-9e30-392e74d8d47f",
+        "resumeSucceeded": true,
+        "activeWriterConflict": false,
+        "canAcceptDirectInput": true,
+        "status": "idle"
+      },
+      {
+        "threadId": "01a1549c-b1ba-7522-92d8-18e9b40eefa6",
+        "resumeSucceeded": true,
+        "activeWriterConflict": false,
+        "canAcceptDirectInput": true,
+        "status": "active"
+      }
+    ],
+    "messagesSentOrEdited": 0,
+    "appRebuilt": false,
+    "productionGatewayChanged": false,
+    "uiVerified": true,
+    "uiEvidence": "test30FirstAttachmentMessageHidesTitleRequest：composer.attachments启用，正常输入可用"
+  },
+  "firstAttachmentMessageCorrection": {
+    "date": "2026-10-20",
+    "threadId": "01a154e4-eede-74a2-9e30-392e74d8d47f",
+    "reason": "首条标题请求先于附件包装加入，包装末尾换行绕过原有后缀识别，内部请求泄漏到气泡",
+    "fix": "在完整合法包装正文边界内识别同一内部标题请求，覆盖带文字与仅附件首条消息；不改历史",
+    "red": {
+      "failed": 3,
+      "passed": 10,
+      "log": "/tmp/codex-first-message-red.log"
+    },
+    "green": {
+      "files": 12,
+      "passed": 163,
+      "logs": [
+        "/tmp/codex-first-message-green.log",
+        "/tmp/codex-first-message-app-regression.log"
+      ]
+    },
+    "typecheck": "passed",
+    "frontendBuild": {
+      "result": "passed",
+      "versionLabel": "0.3.17"
+    },
+    "ui": {
+      "case": "test30FirstAttachmentMessageHidesTitleRequest",
+      "passed": true,
+      "caseSeconds": 56.547,
+      "totalSeconds": 70.108,
+      "xcresult": ".mobile-build/compat-evidence/first-message-ui.xcresult",
+      "checks": [
+        "首条气泡仅我和一张图片",
+        "重开一致",
+        "编辑仅恢复我且保留图片",
+        "正常输入可用"
+      ],
+      "screenshotsVisuallyVerified": true,
+      "screenshots": {
+        "firstMessage": ".mobile-build/compat-evidence/first-message-ui-attachments/069C135B-640E-4E9E-A519-DFC103FD6CAA.png",
+        "historyEditor": ".mobile-build/compat-evidence/first-message-ui-attachments/F1B80E4F-7B8D-4FC0-9661-AEEE489D6DCF.png",
+        "reopened": ".mobile-build/compat-evidence/first-message-ui-attachments/8BDCA43E-7A80-416D-9F08-9B968B995074.png"
+      }
+    },
+    "messagesSentOrEdited": 0,
+    "userThreadArchived": false,
+    "userThreadHistoryUnchanged": true,
+    "deviceApkOrIpaBuilt": false,
+    "mergedToMain": false,
+    "released": false,
     "userAcceptance": "pending"
   }
 }

@@ -79,3 +79,18 @@ it('带引用标记的回答仍能按实际显示文字继续选文', async () =
  const renderedText = '回答 引用 1';
  expect(validateMessageQuote({ source: quoteSource('backend', 'thread', 'turn', item), renderedText, start: 0, end: renderedText.length, text: renderedText }, 'backend', thread).text).toBe(renderedText);
 });
+
+it.each(['我', ''])('首条带图片消息在自动标题请求回读后仍与即时显示一致：%s', async body => {
+ const { appendConversationTitleRequest } = await import('../../src/app-server/conversation-title');
+ const input = buildTurnInput(appendConversationTitleRequest(body), [image]);
+ const project = (content: unknown[]) => projectConversation({ id: 'first-thread', turns: [{ id: 'first-turn', items: [{ id: 'first-message', type: 'userMessage', content }] }] }, path => `thumbnail:${path}`, path => `original:${path}`);
+ const optimistic = project(buildOptimisticUserContent(body, [image]))[0];
+ const restored = project(input)[0];
+ expect(restored.text).toBe(body);
+ expect(restored.rawText).not.toContain('conversation_title_request');
+ expect(restored.blocks).toEqual(optimistic.blocks);
+ expect(restored.text).toBe(optimistic.text);
+ const target = createHistoricalMessageEditTarget([{ id: 'first-turn', items: [{ id: 'first-message', type: 'userMessage', content: input }] }], 'first-turn')!;
+ expect(target.text).toBe(body);
+ expect(target.attachmentCount).toBe(1);
+});
