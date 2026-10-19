@@ -14,6 +14,8 @@ struct CommentaryHistoryView: View {
             if completed {
                 if entries.isEmpty {
                     Text(summary).font(AgentTheme.small).foregroundStyle(.secondary)
+                        // 与过程入口的点击区域同高，异步补齐箭头时不重排正文。
+                        .frame(minHeight: 44, alignment: .leading)
                 } else {
                     Button { expanded.toggle() } label: {
                         HStack(spacing: 6) {

@@ -1,0 +1,71 @@
+{
+  "version": "0.3.18",
+  "buildNumber": "3018",
+  "sourceCommit": "ebfa1c20f5a6c600a65bb419d4a268793861c136",
+  "frozenSha": "0124e1e46853b987e078b93d01bc7de047ce288f",
+  "clientBatch": "efce76eb-5f6f-4c55-878a-fc3c5793adf7",
+  "apk": {
+    "version": "0.3.18",
+    "url": "http://192.168.123.79:8765/channels/codex-mobile/latest.apk",
+    "size": 4733055,
+    "headSize": 4733055,
+    "sha256": "b16116097987c454ed21f3bb241bc8f1d0553a37bafb076374a0a26959ba6a02"
+  },
+  "ipa": {
+    "version": "0.3.18",
+    "url": "http://192.168.123.79:8765/channels/codex-mobile/latest.ipa",
+    "size": 4701866,
+    "headSize": 4701866,
+    "sha256": "1f5afd8c386934fb6dc4daa79fb7f7903a769af3ca17b63c0ccefa5a25e7911a",
+    "signed": true,
+    "signing": {
+      "signed": true,
+      "bundleId": "vip.loock.codexmobile",
+      "teamId": "SC456JW7RP",
+      "applicationIdentifier": "SC456JW7RP.app.jade6694.grapefruit3766",
+      "keychainAccessGroups": [
+        "SC456JW7RP.*",
+        "com.apple.token"
+      ],
+      "entitlementsSha256": "1e84a4c1ba74b9e374c364f26fefa112ceeea09de1a0ba0600403a763eb7952f"
+    }
+  },
+  "installUrl": "https://192.168.123.79:8766/channels/codex-mobile/current/install.html",
+  "unsignedIpa": {
+    "version": "0.3.18",
+    "size": 4696114,
+    "sha256": "f47276a68abeff61a843344438ee72ac9643b4669e8f32fcd835cbb47210cea4",
+    "downloadURL": "https://github.com/zh0ngtian/codex-mobile/releases/download/v0.3.18/CodexMobile-v0.3.18-unsigned.ipa",
+    "signed": false
+  },
+  "developerName": "zh0ngtian",
+  "notesVerified": true,
+  "gatewayDeployed": false,
+  "status": "已验证，已发布",
+  "githubRelease": "https://github.com/zh0ngtian/codex-mobile/releases/tag/v0.3.18",
+  "verification": {
+    "uiDistinctPassed": 6,
+    "pixelTransitionFrames": 41,
+    "pixelPositionsStable": true,
+    "realEntries": 10,
+    "bottomFrames": 413,
+    "bottomVisibleFrames": 313,
+    "bottomRegressions": 0,
+    "adapterRegression": 212,
+    "coordinatorRecovery": 59,
+    "buildContractTests": 140,
+    "typecheck": "passed",
+    "independentReview": "无Critical/Important",
+    "formalCi": 39253638593,
+    "developmentCi": 39253638642,
+    "normalSimulatorRestoredBeforeLockRelease": true,
+    "temporaryTestProbesRemoved": true,
+    "simulatorLockReleasedByThisTask": true,
+    "testConversationsCreated": 0,
+    "deviceInstall": "未进行真机覆盖安装与数据保留验收"
+  },
+  "receiptPaths": [
+    "ReleaseCoordinator/receipts/efce76eb-5f6f-4c55-878a-fc3c5793adf7.json"
+  ],
+  "verifiedAt": 1792414821.50447
+}

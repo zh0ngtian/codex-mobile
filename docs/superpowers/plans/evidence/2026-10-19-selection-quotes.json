@@ -130,8 +130,34 @@
   },
   "delivery": {
     "branch": "codex/selection-quotes",
-    "mainMerged": false,
+    "mainMerged": true,
     "released": false,
+    "userAcceptance": "pending"
+  },
+  "integration": {
+    "date": "2026-10-19",
+    "scope": "用户明确要求仅合入main，沿用暂不发布要求",
+    "featureSource": "2661bd1a5fd1c2dcc2956cd34f76f51c833b124c",
+    "mainBefore": "c96aa68",
+    "conflicts": [
+      "docs/interaction-alignment.md",
+      "mobile/ios/AgentUI/Previews/AgentConversationFixture.swift"
+    ],
+    "resolution": "保留双方文档记录及独立DEBUG测试入口；保留main已合入的过程入口、视频预览和设备按钮修复",
+    "validation": {
+      "command": "NODE_OPTIONS=--no-experimental-webstorage npm test -- --maxWorkers=4 --testTimeout=60000",
+      "files": 153,
+      "tests": 1707,
+      "passed": true,
+      "durationSeconds": 63.12,
+      "typecheck": "passed",
+      "swiftFixtureParse": "passed",
+      "log": "/Users/zhongtian/.codex/worktrees/selection-quotes/codex-mobile/.mobile-build/selection-evidence/main-merge-vitest.log"
+    },
+    "releaseManifestChanged": false,
+    "devicePackagesBuilt": false,
+    "productionGatewayDeployed": false,
+    "simulatorReinstalled": false,
     "userAcceptance": "pending"
   }
 }

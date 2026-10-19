@@ -233,7 +233,7 @@ struct RootView: View {
 
     private func isOwnedPanel(_ id: String) -> Bool {
         confirmationPanel?.id == id || id == "devices" || id == "drafts" || id.hasPrefix("settings:") || id.hasPrefix("approval:") || id.hasPrefix("history-edit:") ||
-        (id.hasPrefix("attachment:") && session.previewItem != nil)
+        session.ownsAttachmentPreviewPanel(id)
     }
 
     private var modalBinding: Binding<AppModal?> {
@@ -292,7 +292,7 @@ struct RootView: View {
                 if session.previewItem?.id == item.id { session.previewItem = nil }
                 if session.nativePanel?.id.hasPrefix("attachment:") == true { session.closeNativePanel() }
             case .nativePanel(let id):
-                if session.nativePanel?.id == id, !(id.hasPrefix("attachment:") && session.previewItem != nil) { session.closeNativePanel() }
+                if session.nativePanel?.id == id, !session.ownsAttachmentPreviewPanel(id) { session.closeNativePanel() }
             }
         }
         lastPresentedModal = nil

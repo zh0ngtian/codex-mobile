@@ -4,6 +4,46 @@ import UIKit
 /// 独立界面夹具及本地网关验收；连接凭证不进入源码或测试附件。
 @MainActor
 final class AgentAppUITests: XCTestCase {
+    func testFirstDeviceButtonKeepsHorizontalLabelAndContrast() {
+        // 在独立模拟器的离线无设备夹具执行，不连接网关或创建远端会话。
+        for appearance in ["Light", "Dark"] {
+            let app = XCUIApplication()
+            app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-no-devices-fixture", "-appearance", appearance, "-accent", "Pink", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
+            app.launch()
+            let back = app.buttons["取消并返回设备列表"]
+            if back.waitForExistence(timeout: 3) {
+                back.tap()
+                XCTAssertTrue(back.waitForNonExistence(timeout: 15))
+                app.buttons["完成设备设置"].tap()
+            }
+            let button = app.buttons.matching(identifier: "devices.addFirst").firstMatch
+            XCTAssertTrue(button.waitForExistence(timeout: 15))
+            assertFirstDeviceButton(button, app: app, appearance: appearance, location: "首页")
+            button.tap()
+            XCTAssertTrue(app.textFields["device.name"].waitForExistence(timeout: 5))
+            XCTAssertTrue(app.textViews["device.address"].exists || app.textFields["device.address"].exists)
+            back.tap()
+            XCTAssertTrue(back.waitForNonExistence(timeout: 15), "取消后应返回真实设备列表，不能检查弹层后面的按钮")
+            XCTAssertTrue(app.navigationBars["设备"].waitForExistence(timeout: 5))
+            guard let listButton = app.buttons.matching(identifier: "devices.addFirst").allElementsBoundByIndex.first(where: { $0.isHittable }) else {
+                XCTFail("设备列表应显示可操作的添加设备按钮")
+                return
+            }
+            assertFirstDeviceButton(listButton, app: app, appearance: appearance, location: "设备列表")
+            app.terminate()
+        }
+    }
+
+    private func assertFirstDeviceButton(_ button: XCUIElement, app: XCUIApplication, appearance: String, location: String) {
+        XCTAssertTrue(button.label.contains("添加设备"))
+        XCTAssertTrue(button.isHittable, "截图和尺寸验收必须来自当前可交互页面")
+        captureConversation("首台设备-" + location + "-" + appearance, app: app)
+        XCTAssertGreaterThan(button.frame.width, button.frame.height * 1.8, "添加设备应为横向图文按钮")
+        XCTAssertGreaterThanOrEqual(button.frame.height, 44)
+        XCTAssertLessThanOrEqual(button.frame.height, 60, "按钮不能被空状态布局拉成竖向胶囊")
+        XCTAssertGreaterThan(Self.iconInkPixels(app.screenshot().image, element: button.frame, screen: app.frame, light: appearance == "Light"), 15, "图文应与中性填充色保持明暗反差")
+    }
+
     func testSteeredRepliesStayInsideProcessBeforeFinalAnswer() {
         let app = XCUIApplication()
         app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-steered-replies-fixture", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
@@ -203,13 +243,14 @@ final class AgentAppUITests: XCTestCase {
         XCTAssertFalse(app.staticTexts["正在读取项目上下文。"].exists)
         let time = app.staticTexts["message.user-time"]
         XCTAssertFalse(time.exists, "发送时间默认隐藏")
-        bubble.tap()
+        // 点击气泡留白，避免系统正文选择层接管测试点击。
+        bubble.coordinate(withNormalizedOffset: CGVector(dx: 0.04, dy: 0.5)).tap()
         XCTAssertTrue(time.waitForExistence(timeout: 3))
         XCTAssertEqual(time.label, "10月17日 10:43")
         XCTAssertEqual(time.frame.maxX, bubble.frame.maxX, accuracy: 1)
         XCTAssertGreaterThan(time.frame.minY, bubble.frame.maxY, "发送时间显示在气泡右下角外侧")
-        bubble.tap()
-        XCTAssertFalse(time.exists, "再次单击应隐藏时间")
+        bubble.coordinate(withNormalizedOffset: CGVector(dx: 0.04, dy: 0.5)).tap()
+        XCTAssertTrue(time.waitForNonExistence(timeout: 3), "再次单击应隐藏时间")
         XCTAssertTrue(app.staticTexts["10月17日 10:46"].exists, "回复时间使用相同格式且保留原位置")
         captureConversation("历史过程-折叠", app: app)
         app.buttons["commentary-history-toggle"].tap()
@@ -232,6 +273,34 @@ final class AgentAppUITests: XCTestCase {
         history.tap()
         XCTAssertTrue(app.staticTexts["正在读取项目上下文。"].waitForExistence(timeout: 5))
         captureConversation("用时-过程入口", app: app)
+    }
+
+    func testCommentaryBackfillDoesNotMoveDurationOrReply() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-commentary-backfill-fixture", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
+        app.launch()
+        let summary = app.staticTexts["用时1小时2分钟3秒"]
+        let replyTime = app.staticTexts["message.reply-time"]
+        let history = app.buttons["commentary-history-toggle"]
+        XCTAssertTrue(summary.waitForExistence(timeout: 8))
+        XCTAssertTrue(replyTime.exists)
+        XCTAssertFalse(history.exists, "没有真实过程内容时仍是用时文字，不能提前显示假展开入口")
+        let summaryY = summary.frame.midY
+        let replyY = replyTime.frame.minY
+        captureConversation("过程回填前-仅用时", app: app)
+        app.buttons["conversation.actions"].tap()
+        let refresh = app.collectionViews.firstMatch.buttons["刷新"].firstMatch
+        XCTAssertTrue(refresh.waitForExistence(timeout: 5))
+        refresh.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        XCTAssertTrue(history.waitForExistence(timeout: 5))
+        print("COMMENTARY_HEADER_LAYOUT", summaryY, history.frame.midY, replyY, replyTime.frame.minY)
+        XCTAssertEqual(history.frame.midY, summaryY, accuracy: 1, "箭头补出不能移动用时文字基线")
+        XCTAssertEqual(replyTime.frame.minY, replyY, accuracy: 1, "过程数据回填不能让原有正文发生重排")
+        captureConversation("过程回填后-稳定展开入口", app: app)
+        history.tap()
+        XCTAssertTrue(app.staticTexts["正在读取项目上下文。"].waitForExistence(timeout: 5))
+        history.tap()
+        XCTAssertFalse(app.staticTexts["正在读取项目上下文。"].exists)
     }
 
     func testUnknownDurationKeepsProcessDisclosure() {
@@ -916,6 +985,37 @@ final class AgentAppUITests: XCTestCase {
         XCTAssertLessThan(download.frame.midX, close.frame.midX)
         captureConversation("图片预览-下载左关闭右", app: app)
         close.tap()
+    }
+
+    func testVideoAttachmentPreviewClosesWithoutReopeningPanel() {
+        let app = launchInteractionFixture("--agent-video-preview-fixture")
+        let attachment = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'composer.attachment.' AND label CONTAINS 'preview.mp4'")).firstMatch
+        XCTAssertTrue(attachment.waitForExistence(timeout: 8))
+        for attempt in 0..<3 {
+            attachment.tap()
+            let bar = app.navigationBars["preview.mp4"]
+            XCTAssertTrue(bar.waitForExistence(timeout: 8))
+            let close = bar.buttons["关闭"]
+            let download = bar.buttons["下载"]
+            XCTAssertTrue(download.waitForExistence(timeout: 8))
+            expectation(for: NSPredicate(format: "enabled == true"), evaluatedWith: download)
+            waitForExpectations(timeout: 8)
+            XCTAssertLessThan(download.frame.midX, close.frame.midX)
+            XCTAssertTrue(app.buttons["preview.playback-toggle"].waitForExistence(timeout: 8))
+            if attempt == 0 { captureConversation("视频预览-下载左关闭右", app: app) }
+            if attempt == 1 { bar.swipeDown() } else { close.tap() }
+            expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: close)
+            waitForExpectations(timeout: 5)
+            let deadline = Date().addingTimeInterval(4)
+            repeat {
+                XCTAssertFalse(app.buttons["完成"].exists, "关闭回执延迟期间不得再弹出底层附件页面")
+                XCTAssertFalse(app.buttons["关闭"].exists, "关闭后的预览不能被旧快照重新打开")
+                RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+            } while Date() < deadline
+            XCTAssertTrue(attachment.exists, "预览关闭后保留已选视频")
+            XCTAssertEqual(app.textFields["message-input"].value as? String, "视频预览关闭后保留的草稿")
+        }
+        captureConversation("视频预览-三次关闭直接返回对话", app: app)
     }
 
     func testInlineImagePreviewAlsoUsesDownloadLeftCloseRight() {

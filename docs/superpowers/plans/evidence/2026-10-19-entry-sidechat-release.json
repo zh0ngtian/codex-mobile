@@ -1,0 +1,83 @@
+{
+  "version": "0.3.17",
+  "buildNumber": "3017",
+  "sourceCommit": "fbfc111b96a8d99dfe7e313322e05dd24ba664f6",
+  "frozenSha": "a9316f32de1a4c87b31cdc8fc79bf7d5d48863ba",
+  "clientBatch": "8b5c6bc7-0aa7-4f0e-91c1-5add42278dfc",
+  "apk": {
+    "version": "0.3.17",
+    "url": "http://192.168.123.79:8765/channels/codex-mobile/latest.apk",
+    "size": 4733123,
+    "headSize": 4733123,
+    "sha256": "e96890f706eed82d06480663b0be801c18b03ddfcc02cace0b8ad1cb07ac35d7"
+  },
+  "ipa": {
+    "version": "0.3.17",
+    "url": "http://192.168.123.79:8765/channels/codex-mobile/latest.ipa",
+    "size": 4702101,
+    "headSize": 4702101,
+    "sha256": "9bd2469f3ff55cf52e7c21662653210f97a61bbec0652fe09996e510c9d3e9df",
+    "signed": true,
+    "signing": {
+      "signed": true,
+      "bundleId": "vip.loock.codexmobile",
+      "teamId": "SC456JW7RP",
+      "applicationIdentifier": "SC456JW7RP.app.jade6694.grapefruit3766",
+      "keychainAccessGroups": [
+        "SC456JW7RP.*",
+        "com.apple.token"
+      ],
+      "entitlementsSha256": "1e84a4c1ba74b9e374c364f26fefa112ceeea09de1a0ba0600403a763eb7952f"
+    }
+  },
+  "installUrl": "https://192.168.123.79:8766/channels/codex-mobile/current/install.html",
+  "unsignedIpa": {
+    "version": "0.3.17",
+    "size": 4695986,
+    "sha256": "6b4e89d03402ce267d11612d89ceaf6495c517cc88f10dba26cfb1ec62e33416",
+    "downloadURL": "https://github.com/zh0ngtian/codex-mobile/releases/download/v0.3.17/CodexMobile-v0.3.17-unsigned.ipa",
+    "signed": false
+  },
+  "developerName": "zh0ngtian",
+  "notesVerified": true,
+  "gatewayProbePassed": true,
+  "status": "已验证，已联合发布",
+  "gatewayBatch": "cd8e1130-61a5-4b7f-a6f0-1f6b50ca6a4f",
+  "gatewayFrozenSha": "1f215f542355fee2b279a8c3aa28906d655ece3f",
+  "gateway": {
+    "deploymentId": "cd8e1130-61a5-4b7f-a6f0-1f6b50ca6a4f:1f215f542355fee2b279a8c3aa28906d655ece3f",
+    "sha": "1f215f542355fee2b279a8c3aa28906d655ece3f",
+    "label": "com.minis.codex-mobile-gateway",
+    "pid": 19823,
+    "serverDigest": "c433dee8f58b5c8aeb220ca83fa8f827fc1f7fd21430fbc1e5a3bdb76ff607bf",
+    "binDigest": "a44e7f0434b7926b382b679abb712f36eb3b93ce6708cc77332437781f8015a3",
+    "frontendDigest": "82c243e7f812096f2be3270347cfab2c74ab4df0df44ec06f2db25f1a2ae821b"
+  },
+  "githubRelease": "https://github.com/zh0ngtian/codex-mobile/releases/tag/v0.3.17",
+  "verification": {
+    "fullSuiteFiles": 150,
+    "fullSuiteTests": 1670,
+    "adapterRegression": 212,
+    "coordinatorRecovery": 59,
+    "sidechatFocusedTests": 34,
+    "ordinaryUiBeforeIntegration": 12,
+    "jointOrdinaryUi": 4,
+    "jointSidechatUi": 2,
+    "positionEntries": 30,
+    "validVisibleFrames": 1120,
+    "positionErrors": 0,
+    "formalCi": 39247003055,
+    "clientDevelopmentCi": 39247003067,
+    "gatewayDevelopmentCi": 39246713062,
+    "normalSimulatorRestored": true,
+    "simulatorLockReleased": true,
+    "testSidechatsRemaining": 0,
+    "priorSidechatsPreserved": 1,
+    "deviceInstall": "未进行真机覆盖安装及数据保留验收"
+  },
+  "receiptPaths": [
+    "ReleaseCoordinator/receipts/cd8e1130-61a5-4b7f-a6f0-1f6b50ca6a4f.json",
+    "ReleaseCoordinator/receipts/8b5c6bc7-0aa7-4f0e-91c1-5add42278dfc.json"
+  ],
+  "verifiedAt": 1792411456.8222249
+}
