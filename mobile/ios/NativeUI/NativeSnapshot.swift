@@ -34,6 +34,7 @@ struct NativeSnapshot: Codable {
     var draftRevision: Int? = nil
     var commandResults: [NativeCommandResult]? = nil
     var sidebarOpen: Bool? = nil
+    var navigationLoading: Bool? = nil
     var search: String? = nil
     var loading: String? = nil
     var olderTurnsState: String? = nil

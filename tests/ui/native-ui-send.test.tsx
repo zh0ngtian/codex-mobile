@@ -1,23 +1,34 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { AppBootstrap } from '../../src/App';
 import { HttpOperationPendingError } from '../../src/backends/http-transport';
-const boundary = vi.hoisted(() => ({ requests: [] as Array<{ method: string; params: any }>, options: null as any, client: null as any, release: null as null | (() => void), failSend: false, immediateSend: false, nextThreadId: 'sent-thread', delayRevert: false, pendingMethod: '', releaseRevert: null as null | (() => void), rejectStart: null as null | (() => void) }));
+import * as threadListLoader from '../../src/app-server/thread-list-loader';
+const boundary = vi.hoisted(() => ({ requests: [] as Array<{ method: string; params: any; options?: { priority?: string } }>, threadRecords: [] as Array<Record<string, any>>, threadReadBarrier: null as Promise<void> | null, projectBarrier: null as Promise<void> | null, priorityBarrier: null as Promise<void> | null, listBarrier: null as Promise<void> | null, searchBarrier: null as Promise<void> | null, listFailure: false, options: null as any, client: null as any, release: null as null | (() => void), failSend: false, immediateSend: false, nextThreadId: 'sent-thread', delayRevert: false, pendingMethod: '', releaseRevert: null as null | (() => void), rejectStart: null as null | (() => void) }));
 vi.mock('../../src/backends/connection-manager', () => ({ BackendConnectionManager: class {
  constructor(private options: any) { boundary.options = options; }
  client() { return boundary.client; } socket() { return null; } close() {} reconnect() {}
  sync(backends: any[]) {
   if (!backends.length) return;
-  const client = { onNotification() { return () => {}; }, onThreadMetadata() { return () => {}; }, request: async (method: string, params: any) => {
-   boundary.requests.push({ method, params });
+  const client = { onNotification() { return () => {}; }, onThreadMetadata() { return () => {}; }, request: async (method: string, params: any, options?: { priority?: string }) => {
+   boundary.requests.push({ method, params, options });
    if (method === 'model/list') return { data: [{ model: 'gpt', displayName: 'GPT', isDefault: true, supportedReasoningEfforts: [{ reasoningEffort: 'high', description: '' }] }] };
    if (method === 'permissionProfile/list') return { data: [{ id: ':workspace', allowed: true }] };
    if (method === 'config/read') return { config: { model: 'gpt', sandbox_mode: 'workspace-write', model_reasoning_effort: 'high' } };
+   if (method === 'thread/list') { await boundary.listBarrier; if (boundary.listFailure) throw new Error('列表查询失败'); }
+   if (method === 'thread/search') { await boundary.searchBarrier; return { data: [], nextCursor: null }; }
+   if (method === 'thread/read') { const thread = boundary.threadRecords.find(thread => thread.id === params.threadId); await boundary.threadReadBarrier; if (thread) return { thread }; }
+   if (method === 'thread/list' && params.cwd) { const records = boundary.threadRecords.filter(thread => thread.cwd === params.cwd); const offset = Number(params.cursor ?? 0); const end = offset + params.limit; return { data: records.slice(offset, end), nextCursor: end < records.length ? String(end) : null }; }
+   if (method === 'thread/loaded/list') { await boundary.priorityBarrier; return { data: boundary.threadRecords.filter(thread => thread.status?.type === 'active').map(thread => thread.id), nextCursor: null }; }
    if (method === 'thread/start') return { thread: { id: boundary.nextThreadId, cwd: null, turns: [] }, model: 'gpt' };
    if (method === boundary.pendingMethod) throw new HttpOperationPendingError(`pending-${params.threadId}-${method}`, { id: 'pending-rpc', method, params });
    if (method === 'thread/revert' && boundary.delayRevert) return new Promise(resolve => { boundary.releaseRevert = () => resolve({ thread: { id: params.threadId, turns: [] } }); });
    if (method === 'turn/start') { const turnId = params.threadId === 'thread-b' ? 'turn-b' : 'turn-live'; if (boundary.failSend) throw new Error('真实发送失败'); if (boundary.immediateSend) return { turn: { id: turnId, status: 'inProgress', items: [] } }; return new Promise((resolve, reject) => { boundary.release = () => resolve({ turn: { id: turnId, status: 'inProgress', items: [] } }); boundary.rejectStart = () => reject(new Error('旧会话发送失败')); }); }
    if (method === 'thread/turns/list') return { data: [], nextCursor: null };
+   if (method === 'thread/read' && params.threadId === 'unloaded') return { thread: { id: 'unloaded', cwd: null, turns: [] } };
    return { data: [], items: [], marketplaces: [], nextCursor: null };
   } };
   boundary.client = client;
@@ -26,21 +37,305 @@ vi.mock('../../src/backends/connection-manager', () => ({ BackendConnectionManag
 } }));
 const posts: any[] = []; let queueItems: any[] = [];
 function command(id: string, name: string, params: Record<string, unknown> = {}) { window.dispatchEvent(new CustomEvent('codex-mobile-native-command', { detail: { id, name, params } })); }
-afterEach(() => { cleanup(); boundary.requests = []; boundary.client = null; boundary.options = null; boundary.release = null; boundary.failSend = false; boundary.immediateSend = false; boundary.nextThreadId = 'sent-thread'; boundary.delayRevert = false; boundary.pendingMethod = ''; boundary.releaseRevert = null; boundary.rejectStart = null; queueItems = []; posts.length = 0; localStorage.clear(); delete (window as any).__CODEX_NATIVE_UI__; delete (window as any).webkit; delete (window as any).codexMobilePublishNativeSnapshot; vi.unstubAllGlobals(); });
-async function setup(native = true, projectState = { projects: [] as string[], projectlessThreadIds: [] as string[] }) {
+const pendingReads: Array<() => void> = [];
+function deferredRead() {
+ let resolve!: () => void; let reject!: (reason: Error) => void;
+ const promise = new Promise<void>((done, fail) => { resolve = done; reject = fail; });
+ pendingReads.push(resolve);
+ return { promise, resolve, reject };
+}
+afterEach(async () => { cleanup(); await act(async () => { pendingReads.splice(0).forEach(resolve => resolve()); }); boundary.requests = []; boundary.threadRecords = []; boundary.threadReadBarrier = null; boundary.projectBarrier = null; boundary.priorityBarrier = null; boundary.listBarrier = null; boundary.searchBarrier = null; boundary.listFailure = false; boundary.client = null; boundary.options = null; boundary.release = null; boundary.failSend = false; boundary.immediateSend = false; boundary.nextThreadId = 'sent-thread'; boundary.delayRevert = false; boundary.pendingMethod = ''; boundary.releaseRevert = null; boundary.rejectStart = null; queueItems = []; posts.length = 0; localStorage.clear(); delete (window as any).__CODEX_NATIVE_UI__; delete (window as any).webkit; delete (window as any).codexMobilePublishNativeSnapshot; vi.unstubAllGlobals(); });
+async function setup(native = true, projectState = { projects: [] as string[], projectlessThreadIds: [] as string[] }, waitForSettings = true) {
  if (native) Object.assign(window, { __CODEX_NATIVE_UI__: true, webkit: { messageHandlers: { nativeUI: { postMessage() {} } } }, codexMobilePublishNativeSnapshot: (s: unknown) => posts.push(s) });
  vi.stubGlobal('fetch', vi.fn(async (url: string, options?: RequestInit) => {
   if (String(url).includes('/api/follow-ups')) {
    if (options?.body) { const action = JSON.parse(String(options.body)); if (action.action === 'enqueue') queueItems.push({ ...action, revision: 1, state: 'queued' }); if (action.action === 'cancel') queueItems = queueItems.filter(item => item.id !== action.id); }
    return new Response(JSON.stringify({ items: queueItems }));
   }
+  if (String(url).includes('/api/projects')) await boundary.projectBarrier;
   return new Response(JSON.stringify(projectState));
  }));
  render(<AppBootstrap initialRegistry={{ version: 1, selectedBackendId: 'a', backends: [{ id: 'a', hostId: 'host', name: 'Mac', enabled: true, order: 0, baseUrl: 'https://gateway.invalid', token: 'SECRET' }] }} />);
- if (native) await waitFor(() => expect(posts.at(-1)?.models?.[0]?.value).toBe('gpt'));
+ if (native) await waitFor(() => expect(waitForSettings ? posts.at(-1)?.models?.[0]?.value === 'gpt' : posts.at(-1)?.ready).toBe(true));
  else await waitFor(() => expect(boundary.requests.some(request => request.method === 'model/list')).toBe(true));
  return posts.at(-1)?.contextId as string;
 }
+
+function assertSwiftNavigationSnapshots(snapshots: any[]) {
+ if (process.platform !== 'darwin') return;
+ const directory = mkdtempSync(join(tmpdir(), 'native-startup-navigation-'));
+ try {
+  const names = ['NativeJSONValue', 'NativeCommand', 'NativeCommandResult', 'NativeOption', 'NativeBackend', 'NativeNavigationItem', 'NativeGroup', 'NativeAttachment', 'NativeMessage', 'NativePanelItem', 'NativePanel', 'NativeContextUsage', 'NativeRateLimit', 'NativeSnapshot'];
+  const executable = join(directory, 'decode');
+  const compiled = spawnSync('xcrun', ['swiftc', ...names.map(name => `mobile/ios/NativeUI/${name}.swift`), 'tests/ci/native-ui-decode.swift', '-o', executable], { encoding: 'utf8', timeout: 90_000 });
+  expect(compiled.status, compiled.error?.message ?? compiled.stderr).toBe(0);
+  const result = spawnSync(executable, ['--navigation'], { input: JSON.stringify(snapshots), encoding: 'utf8', timeout: 15_000 });
+  expect(result.status, result.error?.message ?? result.stderr).toBe(0);
+  expect(result.stdout).toContain('Native navigation snapshots decoded');
+ } finally { rmSync(directory, { recursive: true, force: true }); }
+}
+
+// 只替换外部连接与HTTP边界，以下断言经过真实App业务状态、导航投影和NativeRuntime发布。
+it('真实App冷启动在目录、优先摘要和首批普通会话未完成前持续加载，成功空项目才ready', async () => {
+ const directory = deferredRead(); const priority = deferredRead(); const page = deferredRead(); const projectless = deferredRead();
+ boundary.projectBarrier = directory.promise; boundary.priorityBarrier = priority.promise; boundary.listBarrier = page.promise; boundary.threadReadBarrier = projectless.promise;
+ await setup(true, { projects: ['/pending'], projectlessThreadIds: ['missing'] }, false);
+ expect(posts.at(-1)).toMatchObject({ ready: true, navigationLoading: true });
+ const startupSnapshots = [posts.at(-1)];
+ expect(posts.at(-1).groups.filter((group: any) => group.category === 'project')).toEqual([]);
+ await act(async () => directory.resolve());
+ const groups = () => posts.at(-1).groups.filter((group: any) => group.category === 'project');
+ await waitFor(() => expect(groups()).toHaveLength(2));
+ expect(groups().every((group: any) => group.loading === 'loading' && !group.items.length)).toBe(true);
+ startupSnapshots.push(posts.at(-1));
+ expect(posts.at(-1).navigationLoading).toBe(true);
+ const project = groups().find((group: any) => group.cwd === '/pending');
+ await act(async () => command('collapse-pending', 'project.toggle', project.command.params));
+ await waitFor(() => expect(groups().find((group: any) => group.cwd === '/pending').collapsed).toBe(true));
+ await act(async () => command('expand-pending', 'project.toggle', project.command.params));
+ await waitFor(() => expect(groups().find((group: any) => group.cwd === '/pending')).toMatchObject({ collapsed: false, loading: 'loading' }));
+ await act(async () => priority.resolve());
+ await waitFor(() => expect(boundary.requests.some(request => request.method === 'thread/list')).toBe(true));
+ expect(groups().every((group: any) => group.loading === 'loading')).toBe(true);
+ expect(posts.at(-1).navigationLoading).toBe(true);
+ await act(async () => { page.resolve(); projectless.resolve(); });
+ await waitFor(() => expect(groups().every((group: any) => group.loading === 'ready')).toBe(true));
+ expect(posts.at(-1).navigationLoading).toBe(false);
+ expect(groups().every((group: any) => !group.items.length)).toBe(true);
+ assertSwiftNavigationSnapshots([...startupSnapshots, posts.at(-1)]);
+}, 120_000);
+it('真实App空优先摘要不能提前结束普通列表首查，成功真空列表才停止加载', async () => {
+ const page = deferredRead(); boundary.listBarrier = page.promise;
+ await setup(true, undefined, false);
+ await waitFor(() => expect(boundary.requests.some(request => request.method === 'thread/list')).toBe(true));
+ expect(posts.at(-1)).toMatchObject({ ready: true, navigationLoading: true });
+ await act(async () => page.resolve());
+ await waitFor(() => expect(posts.at(-1)?.navigationLoading).toBe(false));
+ expect(posts.at(-1).groups.every((group: any) => !group.items.length)).toBe(true);
+});
+it('真实App普通列表首次失败可见且重试期间加载，成功后退出错误', async () => {
+ boundary.listFailure = true;
+ await setup(true, undefined, false);
+ const failure = () => posts.at(-1)?.groups.find((group: any) => group.id === 'list-error');
+ await waitFor(() => expect(failure()).toBeDefined());
+ expect(posts.at(-1).navigationLoading).toBe(false);
+ const page = deferredRead(); boundary.listBarrier = page.promise; boundary.listFailure = false;
+ await act(async () => command('retry-empty-list', failure().items[0].command.name));
+ await waitFor(() => expect(posts.at(-1)?.navigationLoading).toBe(true));
+ await act(async () => page.resolve());
+ await waitFor(() => expect(posts.at(-1)?.navigationLoading).toBe(false));
+ expect(failure()).toBeUndefined();
+});
+it('真实App项目首查失败保留重试动作，重试成功空项目成为ready', async () => {
+ boundary.listFailure = true;
+ await setup(true, { projects: ['/failed'], projectlessThreadIds: [] });
+ const project = () => posts.at(-1)?.groups.find((group: any) => group.cwd === '/failed');
+ await waitFor(() => expect(project()?.loading).toBe('error'));
+ expect(posts.at(-1).navigationLoading).toBe(false);
+ const page = deferredRead(); boundary.listBarrier = page.promise; boundary.listFailure = false;
+ const retry = project().actions.find((action: any) => action.command?.name === 'project.retry');
+ await act(async () => command('retry-empty-project', retry.command.name, retry.command.params));
+ await waitFor(() => expect(project()?.loading).toBe('loading'));
+ await act(async () => page.resolve());
+ await waitFor(() => expect(project()).toMatchObject({ loading: 'ready', items: [] }));
+});
+it('真实App搜索空结果不沿用仍在进行的普通列表加载', async () => {
+ const page = deferredRead(); const search = deferredRead(); boundary.listBarrier = page.promise; boundary.searchBarrier = search.promise;
+ await setup(true, undefined, false);
+ await act(async () => { command('open-empty-search', 'navigation.sidebar', { open: true }); command('query-empty-search', 'navigation.search', { value: '不存在的结果' }); });
+ await waitFor(() => expect(posts.at(-1)?.groups[0]).toMatchObject({ category: 'search', loading: 'loading' }));
+ expect(posts.at(-1).navigationLoading).toBe(true);
+ await act(async () => search.resolve());
+ await waitFor(() => expect(posts.at(-1)?.groups[0]).toMatchObject({ category: 'search', items: [], loading: undefined }));
+ expect(posts.at(-1).navigationLoading).toBe(true);
+ await act(async () => page.resolve());
+});
+it('真实App已有项目会话在展开侧栏触发的静默刷新期间保留内容且不闪加载', async () => {
+ boundary.threadRecords = [{ id: 'existing', name: '已有会话', cwd: '/existing', turns: [] }];
+ await setup(true, { projects: ['/existing'], projectlessThreadIds: [] });
+ const project = () => posts.at(-1)?.groups.find((group: any) => group.cwd === '/existing');
+ await waitFor(() => expect(project()?.items[0]?.threadId).toBe('existing'));
+ const before = boundary.requests.filter(request => request.method === 'thread/list').length;
+ const page = deferredRead(); boundary.listBarrier = page.promise;
+ await act(async () => command('open-for-silent-refresh', 'navigation.sidebar', { open: true }));
+ await waitFor(() => expect(boundary.requests.filter(request => request.method === 'thread/list').length).toBeGreaterThan(before));
+ expect(project()).toMatchObject({ loading: 'ready', items: [{ threadId: 'existing' }] });
+ expect(posts.at(-1).navigationLoading).toBe(false);
+ await act(async () => page.resolve());
+});
+
+it('真实App冷启动将额度查询的后台选项传给客户端', async () => {
+ await setup();
+ expect(boundary.requests.find(request => request.method === 'account/rateLimits/read')?.options).toEqual({ priority: 'background' });
+});
+it.each([
+ ['未读', ['unread']],
+ ['运行中', ['running']],
+ ['关注、未读和运行中', ['pin', 'unread', 'running']],
+] as Array<[string, string[]]>)('无项目有%s独立摘要时，真实加载更多路由按五条增加普通会话并保留摘要', async (_label, prioritizedIds) => {
+ const ordinary = Array.from({ length: 17 }, (_, index) => ({ id: `regular-${index}`, cwd: null, recencyAt: 100 - index, status: { type: 'idle' }, turns: [] }));
+ boundary.threadRecords = [
+  ...prioritizedIds.map(id => ({ id, cwd: null, recencyAt: 1, status: { type: id === 'running' ? 'active' : 'idle' }, turns: [] })),
+  ...ordinary,
+ ];
+ if (prioritizedIds.includes('pin')) localStorage.setItem('codex-mobile:pinned:a', '["pin"]');
+ if (prioritizedIds.includes('unread')) localStorage.setItem('codex-mobile:unread:a', '["unread"]');
+ const projectlessThreadIds = boundary.threadRecords.map(thread => thread.id);
+ const loadProjectless = vi.spyOn(threadListLoader, 'loadProjectlessThreadRecords');
+ const group = () => posts.at(-1)?.groups.find((entry: any) => entry.category === 'project' && entry.cwd === '');
+ const ordinaryIds = () => group()?.items.filter((item: any) => !item.isPinned && !item.isUnread && !item.running).map((item: any) => item.threadId);
+ const expectRetainedSummaries = () => {
+  for (const id of prioritizedIds) {
+   const expected = { threadId: id, ...(id === 'pin' ? { isPinned: true } : id === 'unread' ? { isUnread: true } : { running: true }) };
+   expect(group().items).toEqual(expect.arrayContaining([expect.objectContaining(expected)]));
+   if (id === 'pin') expect(posts.at(-1).groups.find((entry: any) => entry.category === 'pinned').items).toEqual(expect.arrayContaining([expect.objectContaining(expected)]));
+  }
+ };
+ try {
+  await setup(true, { projects: [], projectlessThreadIds });
+  await waitFor(() => expect(ordinaryIds()).toEqual(ordinary.slice(0, 5).map(thread => thread.id)));
+  expectRetainedSummaries();
+  for (const targetCount of [10, 15]) {
+   const more = group().actions.find((action: any) => action.command?.name === 'project.more');
+   expect(more.disabled).toBe(false);
+   await act(async () => { command(`projectless-more-${targetCount}`, more.command.name, more.command.params); });
+   expect(loadProjectless).toHaveBeenLastCalledWith(boundary.client, projectlessThreadIds, targetCount, new Set(prioritizedIds));
+   await waitFor(() => expect(ordinaryIds()).toEqual(ordinary.slice(0, targetCount).map(thread => thread.id)));
+   await waitFor(() => expect(group().actions.find((action: any) => action.command?.name === 'project.more').disabled).toBe(false));
+   expectRetainedSummaries();
+  }
+ } finally {
+  loadProjectless.mockRestore();
+ }
+});
+async function setupProjectlessPaginationRace(withOtherProject = false) {
+ boundary.threadRecords = [
+  { id: 'unread', cwd: null, recencyAt: 1, status: { type: 'idle' }, turns: [] },
+  ...Array.from({ length: 17 }, (_, index) => ({ id: `regular-${index}`, name: `旧连接-${index}`, cwd: null, recencyAt: 100 - index, status: { type: 'idle' }, turns: [] })),
+ ];
+ const projectlessThreadIds = boundary.threadRecords.map(thread => thread.id);
+ if (withOtherProject) boundary.threadRecords.push(...Array.from({ length: 11 }, (_, index) => ({ id: `other-${index}`, cwd: '/other', recencyAt: 100 - index, status: { type: 'idle' }, turns: [] })));
+ localStorage.setItem('codex-mobile:unread:a', '["unread"]');
+ await setup(true, { projects: withOtherProject ? ['/other'] : [], projectlessThreadIds });
+ const group = () => posts.at(-1)?.groups.find((entry: any) => entry.category === 'project' && entry.cwd === '');
+ const ordinaryIds = () => group()?.items.filter((item: any) => !item.isPinned && !item.isUnread && !item.running).map((item: any) => item.threadId);
+ const more = () => group()?.actions.find((action: any) => action.command?.name === 'project.more');
+ const expectedIds = (count: number) => Array.from({ length: count }, (_, index) => `regular-${index}`);
+ const loadMore = async (id: string) => {
+  const action = more();
+  await act(async () => { command(id, action.command.name, action.command.params); });
+ };
+ await waitFor(() => expect(ordinaryIds()).toEqual(expectedIds(5)));
+ return { group, ordinaryIds, more, expectedIds, loadMore };
+}
+it('无项目分页悬挂时拒绝disabled原生命令且快速重复点击只读取一轮，完成后继续加载十五条', async () => {
+ const { group, ordinaryIds, more, expectedIds, loadMore } = await setupProjectlessPaginationRace();
+ const first = deferredRead();
+ boundary.threadReadBarrier = first.promise;
+ const loadProjectless = vi.spyOn(threadListLoader, 'loadProjectlessThreadRecords');
+ try {
+  await loadMore('pending-more-a');
+  await waitFor(() => expect(more()?.disabled).toBe(true));
+  await act(async () => {
+   const params = more().command.params;
+   command('pending-more-b', 'project.more', params);
+   command('pending-more-c', 'project.more', params);
+  });
+  await waitFor(() => expect(posts.at(-1)?.commandResults?.find((result: any) => result.id === 'pending-more-c')).toBeDefined());
+  expect(posts.at(-1)?.commandResults?.find((result: any) => result.id === 'pending-more-b')).toMatchObject({ ok: false });
+  expect(posts.at(-1)?.commandResults?.find((result: any) => result.id === 'pending-more-c')).toMatchObject({ ok: false });
+  expect(loadProjectless).toHaveBeenCalledTimes(1);
+  expect(ordinaryIds()).toEqual(expectedIds(5));
+  await act(async () => { first.resolve(); });
+  await waitFor(() => expect(ordinaryIds()).toEqual(expectedIds(10)));
+  await waitFor(() => expect(more()?.disabled).toBe(false));
+  boundary.threadReadBarrier = null;
+  await loadMore('pending-more-next');
+  await waitFor(() => expect(ordinaryIds()).toEqual(expectedIds(15)));
+  expect(loadProjectless).toHaveBeenCalledTimes(2);
+  expect(loadProjectless.mock.calls.map(call => call[2])).toEqual([10, 15]);
+  expect(group().items).toEqual(expect.arrayContaining([expect.objectContaining({ threadId: 'unread', isUnread: true })]));
+ } finally {
+  await act(async () => { first.resolve(); });
+  loadProjectless.mockRestore();
+ }
+});
+it('其他项目完成加载让共享loading恢复后，同一连接的无项目在途请求仍同步去重', async () => {
+ const { ordinaryIds, more, expectedIds, loadMore } = await setupProjectlessPaginationRace(true);
+ const first = deferredRead();
+ boundary.threadReadBarrier = first.promise;
+ const loadProjectless = vi.spyOn(threadListLoader, 'loadProjectlessThreadRecords');
+ try {
+  await loadMore('locked-projectless-first');
+  await waitFor(() => expect(more()?.disabled).toBe(true));
+  const other = posts.at(-1).groups.find((entry: any) => entry.cwd === '/other');
+  const otherMore = other.actions.find((action: any) => action.command?.name === 'project.more');
+  await act(async () => { command('other-project-more', otherMore.command.name, otherMore.command.params); });
+  await waitFor(() => expect(posts.at(-1).groups.find((entry: any) => entry.cwd === '/other').items).toHaveLength(10));
+  await waitFor(() => expect(more()?.disabled).toBe(false));
+  await loadMore('locked-projectless-duplicate');
+  expect(loadProjectless).toHaveBeenCalledTimes(1);
+  expect(ordinaryIds()).toEqual(expectedIds(5));
+  await act(async () => { first.resolve(); });
+  await waitFor(() => expect(ordinaryIds()).toEqual(expectedIds(10)));
+ } finally {
+  await act(async () => { first.resolve(); });
+  loadProjectless.mockRestore();
+ }
+});
+it.each(['success', 'error'].flatMap(outcome => ['loading', 'completed'].map(stage => ({ outcome, stage }))))('旧连接无项目分页$outcome在新分页$stage时返回，不回写旧结果、错误或清除新loading', async ({ outcome, stage }) => {
+ const { group, ordinaryIds, more, expectedIds, loadMore } = await setupProjectlessPaginationRace();
+ const old = deferredRead(), next10 = deferredRead(), next15 = deferredRead();
+ const loadProjectless = vi.spyOn(threadListLoader, 'loadProjectlessThreadRecords');
+ try {
+  boundary.threadReadBarrier = old.promise;
+  await loadMore('old-client-more');
+  expect(loadProjectless).toHaveBeenCalledTimes(1);
+  const previous = boundary.client;
+  const replacement = { ...previous };
+  boundary.threadReadBarrier = null;
+  boundary.threadRecords = boundary.threadRecords.map(thread => ({ ...thread, name: `新连接-${thread.id}` }));
+  await act(async () => {
+   boundary.options.onConnection('a', 'offline');
+   boundary.options.onConnection('a', 'connecting');
+   boundary.client = replacement;
+   boundary.options.onConnection('a', 'online');
+   boundary.options.onReady('a', replacement);
+  });
+  await waitFor(() => expect(group()?.items.find((item: any) => item.threadId === 'regular-0')?.title).toBe('新连接-regular-0'));
+  boundary.threadReadBarrier = next10.promise;
+  await loadMore('new-client-ten');
+  expect(loadProjectless).toHaveBeenCalledTimes(2);
+  await act(async () => { next10.resolve(); });
+  await waitFor(() => expect(ordinaryIds()).toEqual(expectedIds(10)));
+  await waitFor(() => expect(more()?.disabled).toBe(false));
+  boundary.threadReadBarrier = next15.promise;
+  await loadMore('new-client-fifteen');
+  expect(loadProjectless.mock.calls.map(call => call[2])).toEqual([10, 10, 15]);
+  await waitFor(() => expect(more()?.disabled).toBe(true));
+  if (stage === 'completed') {
+   await act(async () => { next15.resolve(); });
+   await waitFor(() => expect(ordinaryIds()).toEqual(expectedIds(15)));
+   await waitFor(() => expect(more()?.disabled).toBe(false));
+  }
+  await act(async () => {
+   if (outcome === 'error') old.reject(new Error('旧连接分页失败'));
+   else old.resolve();
+   await loadProjectless.mock.results[0].value.catch(() => undefined);
+  });
+  await act(async () => { command('old-response-observed', 'navigation.filter', { value: 'projects' }); });
+  await waitFor(() => expect(posts.at(-1)?.commandResults?.find((result: any) => result.id === 'old-response-observed')).toMatchObject({ ok: true }));
+  expect(ordinaryIds()).toEqual(expectedIds(stage === 'loading' ? 10 : 15));
+  expect(group().items.find((item: any) => item.threadId === 'regular-0')?.title).toBe('新连接-regular-0');
+  expect(more()?.disabled).toBe(stage === 'loading');
+  expect(posts.at(-1)?.error ?? '').not.toContain('旧连接分页失败');
+  await act(async () => { next15.resolve(); });
+  await waitFor(() => expect(ordinaryIds()).toEqual(expectedIds(15)));
+ } finally {
+  await act(async () => { old.resolve(); next10.resolve(); next15.resolve(); });
+  loadProjectless.mockRestore();
+ }
+});
 it('项目新对话沿真实App命令路由，点击不启动thread，无项目空串覆盖保存目录，无参保留旧默认目录', async () => {
  localStorage.setItem('codex-mobile:new-chat-project:a', '/saved');
  await setup(true, { projects: ['/saved', '/target'], projectlessThreadIds: ['unloaded'] });

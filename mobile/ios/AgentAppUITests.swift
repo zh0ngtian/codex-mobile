@@ -1170,6 +1170,44 @@ final class AgentAppUITests: XCTestCase {
         return app
     }
 
+    func testColdStartupSidebarDoesNotFlashUnconfirmedEmptyState() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--native-ui-live", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
+        for round in 1...3 {
+            app.terminate()
+            app.launch()
+            let open = app.buttons["会话列表"]
+            XCTAssertTrue(open.waitForExistence(timeout: 12), "复用模拟器现有设备，导航可用即展开，不能先等待列表就绪")
+            open.tap()
+            XCTAssertTrue(app.otherElements["sidebar.panel"].waitForExistence(timeout: 5))
+            let empty = app.descendants(matching: .any).matching(identifier: "sidebar.empty").firstMatch
+            let projectEmpty = app.descendants(matching: .any).matching(NSPredicate(format:
+                "identifier BEGINSWITH %@ AND identifier ENDSWITH %@", "sidebar.project.empty.", "/codex-mobile")).firstMatch
+            let rows = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "sidebar.conversation."))
+            let loading = app.descendants(matching: .any).matching(identifier: "sidebar.loading").firstMatch
+            let projectLoading = app.descendants(matching: .any).matching(NSPredicate(format:
+                "identifier BEGINSWITH %@", "sidebar.project.loading.")).firstMatch
+            let retry = app.descendants(matching: .any).matching(identifier: "sidebar.retry").firstMatch
+            // 包含受控慢目录响应后的真实分页，不将观察窗口当作启动耗时门槛。
+            let deadline = Date().addingTimeInterval(12)
+            var sawConversation = false
+            var sawLoading = false
+            var observations = 0
+            repeat {
+                XCTAssertFalse(empty.exists, "已有真实会话的启动查询不能先显示全局暂无会话")
+                XCTAssertFalse(projectEmpty.exists, "当前仓库有真实会话，首轮分页前不能显示项目空态")
+                XCTAssertTrue(loading.exists || projectLoading.exists || rows.firstMatch.exists || retry.exists,
+                    "启动侧栏须呈现加载、真实内容或错误，不能只有未确认空态")
+                sawConversation = sawConversation || rows.firstMatch.exists
+                sawLoading = sawLoading || loading.exists
+                observations += 1
+                RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+            } while Date() < deadline
+            XCTAssertTrue(sawConversation, "加载后必须呈现现有真实会话，不能用永久加载掩盖空态")
+            print("SIDEBAR_COLD_EMPTY_STATE", round, "observations", observations, "loading", sawLoading, "conversation", sawConversation)
+        }
+    }
+
     func testProfileCurrentPinnedConversationLoading() throws {
         func value(_ key: String, _ fallback: Int) -> Int {
             Int(ProcessInfo.processInfo.environment[key] ?? ProcessInfo.processInfo.environment["TEST_RUNNER_" + key] ?? "") ?? fallback

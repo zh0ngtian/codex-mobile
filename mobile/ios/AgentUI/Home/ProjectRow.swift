@@ -35,6 +35,7 @@ struct ProjectRow: View {
                 if session.loadingProjects.contains(name) {
                     ProgressView().controlSize(.small).tint(AgentTheme.ink.opacity(0.6))
                         .frame(maxWidth: .infinity, minHeight: 38)
+                        .accessibilityIdentifier("sidebar.project.loading.\(name)")
                 } else if session.projectErrors.contains(name) {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(preferences.text("加载失败", "Load failed")).foregroundStyle(.secondary)
@@ -57,10 +58,12 @@ struct ProjectRow: View {
                                 .contentShape(.rect)
                         }
                         .buttonStyle(.plain)
+                        .disabled(!session.canLoadMoreProject(name))
                         .accessibilityIdentifier("sidebar.more.\(name)")
                     }
                     if conversations.isEmpty {
                         Text(preferences.text("暂无会话", "No conversations"))
+                            .accessibilityIdentifier("sidebar.project.empty.\(name)")
                             .font(AgentTheme.small)
                             .foregroundStyle(.tertiary)
                             .padding(.leading, 10)

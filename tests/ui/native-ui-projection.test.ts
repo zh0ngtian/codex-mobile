@@ -291,3 +291,30 @@ it('工具与推理保留原始记录并标明隐藏类型，commentary不受影
  expect(messages.find(m => m.phase === 'commentary')?.text).toBe('读取项目');
  expect(messages.filter(m => m.activityKind).map(m => m.activityKind)).toEqual(['reasoning', 'tool']);
 });
+
+
+it('已知空项目和无项目首次未知或idle状态保持加载，成功空、失败与已有内容保留真实状态', () => {
+ const pendingStates: Array<Parameters<typeof projectNavigation>[0]['projectThreadStates']> = [{}, { '/empty': 'idle', [PROJECTLESS_GROUP_ID]: 'idle' }];
+ for (const projectThreadStates of pendingStates) {
+  const groups = navigation({ listBackendId: 'a', projectDirectories: ['/empty'], hasProjectlessThreads: true, projectThreadStates });
+  expect(groups.filter(group => group.category === 'project').map(group => group.loading)).toEqual(['loading', 'loading']);
+ }
+ const ready = navigation({ listBackendId: 'a', projectDirectories: ['/empty'], projectThreadStates: { '/empty': 'ready' } });
+ expect(ready.find(group => group.category === 'project')).toMatchObject({ loading: 'ready', items: [] });
+ const failed = navigation({ listBackendId: 'a', projectDirectories: ['/empty'], projectThreadStates: { '/empty': 'error' } });
+ expect(failed.find(group => group.category === 'project')).toMatchObject({ loading: 'error', actions: [{ command: { name: 'project.retry' } }] });
+ const threads = aggregateThreads([{ id: 'a', name: '甲' }], { a: [{ id: 'existing', cwd: '/existing' }] });
+ expect(navigation({ listBackendId: 'a', threads, projectDirectories: ['/existing'] }).find(group => group.category === 'project')).toMatchObject({ loading: 'loading', items: [{ threadId: 'existing' }] });
+ // 无目录旧服务端从成功全局分页推导的分组已有真实内容，不应永久等待不存在的逐项目请求。
+ expect(navigation({ listBackendId: 'a', threads }).find(group => group.category === 'project')).toMatchObject({ loading: 'ready', items: [{ threadId: 'existing' }] });
+});
+
+
+it('关注筛选保留普通列表真实失败与原重试命令，不额外显示项目或最近分组', () => {
+ const groups = navigation({ filter: 'favorites', error: '真实读取失败', listBackendId: 'a', projectDirectories: ['/hidden'] });
+ expect(groups).toMatchObject([
+  { id: 'favorites', category: 'pinned', items: [] },
+  { id: 'list-error', title: '真实读取失败', items: [{ title: '重试', command: { name: 'navigation.refresh' } }] },
+ ]);
+ expect(groups).toHaveLength(2);
+});

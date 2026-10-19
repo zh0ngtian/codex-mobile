@@ -1,0 +1,17 @@
+{
+  "samples": 30,
+  "successfulSamples": 30,
+  "percentilesIndependentlyRecomputed": true,
+  "restoredOriginalPackage": {
+    "index.html": true,
+    "index-DnEFzkNg.js": true,
+    "PakePlus": true
+  },
+  "simulatorLockReleased": true,
+  "loopbackCollectorStopped": true,
+  "testConversationsCreated": 0,
+  "clientBuildOrReleasePerformed": false,
+  "privacyFieldsChecked": true,
+  "repositoryRuntimeCodeModified": false,
+  "temporaryDiagnosticInjection": true
+}

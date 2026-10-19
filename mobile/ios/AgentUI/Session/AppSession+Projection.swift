@@ -14,8 +14,12 @@ extension AppSession {
             historyEdit = nil; reopenRequestIntent = false
             for (id, pending) in pendingCommands where pending.context != nil && pending.context != snapshot.contextId { resolve(id, ok: false, error: "会话已切换，请返回原会话核对操作结果。") }
         }
-        navigationLoading = snapshot.groups.contains { $0.category == "search" && $0.loading == "loading" }
+        let searchGroups = snapshot.groups.filter { $0.category == "search" }
         let navigationFailure = snapshot.groups.first { $0.id == "list-error" || ($0.category == "search" && $0.subtitle?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false) }
+        // 搜索使用自己的请求进度；普通列表失败必须能越过尚未完成的加载标志。
+        navigationLoading = searchGroups.isEmpty
+            ? navigationFailure == nil && (snapshot.navigationLoading ?? !snapshot.ready)
+            : searchGroups.contains { $0.loading == "loading" }
         navigationError = navigationFailure.map { $0.id == "list-error" ? $0.title : $0.subtitle ?? "" }
         navigationRetryCommand = navigationFailure?.actions?.compactMap(\.command).first ?? navigationFailure?.items.compactMap(\.command).first
         devices = snapshot.backends.filter { $0.id != "all" }.map { backend in
@@ -39,9 +43,9 @@ extension AppSession {
         let old = Dictionary(uniqueKeysWithValues: conversations.map { ($0.id, $0) })
         for group in snapshot.groups {
             var projectKey: String?
-            let groupCWD = group.cwd ?? group.command.flatMap { string($0.params["cwd"]) }
+            let groupCWD = group.command.flatMap { string($0.params["cwd"]) } ?? group.cwd
             let projectless = groupCWD == "codex-mobile://projectless"
-            if group.category == "project", !projectless {
+            if group.category == "project" {
                 // 展示名可以重复，展开与分页始终绑定真实 group 身份。
                 let key = group.id
                 if projectGroups[key] == nil { scopedProjects.append(key) }
