@@ -89,7 +89,7 @@ describe("会话输入框最大化", () => {
     expect(focusedAtSubmit).toBe(false);
   });
 
-  it("加号菜单区分图片、文件和当前位置", async () => {
+  it("加号菜单区分照片和视频、文件和当前位置", async () => {
     const onSelectLocation = vi.fn(async () => true);
     const { container } = renderComposer(undefined, onSelectLocation);
     const view = within(container);
@@ -99,11 +99,11 @@ describe("会话输入框最大化", () => {
 
     expect(addButton.getAttribute("aria-expanded")).toBe("true");
     const menu = view.getByRole("menu", { name: "附件菜单" });
-    expect(within(menu).getByRole("menuitem", { name: "图片" })).not.toBeNull();
+    expect(within(menu).getByRole("menuitem", { name: "照片和视频" })).not.toBeNull();
     expect(within(menu).getByRole("menuitem", { name: "文件" })).not.toBeNull();
     const location = within(menu).getByRole("menuitem", { name: "当前位置" });
-    expect(view.getByLabelText("选择图片").getAttribute("accept")).toBe(
-      "image/png,image/jpeg,image/webp,image/gif",
+    expect(view.getByLabelText("选择照片和视频").getAttribute("accept")).toBe(
+      "image/png,image/jpeg,image/webp,image/gif,video/*",
     );
     expect(view.getByLabelText("选择文件").getAttribute("accept")).toBe("*/*");
 

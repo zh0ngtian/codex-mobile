@@ -53,7 +53,7 @@ struct ProjectRow: View {
                                 .font(AgentTheme.small)
                                 .foregroundStyle(.secondary)
                                 .frame(maxWidth: .infinity, minHeight: 38, alignment: .leading)
-                                .padding(.leading, 10)
+                                .padding(.leading, 39)
                                 .contentShape(.rect)
                         }
                         .buttonStyle(.plain)

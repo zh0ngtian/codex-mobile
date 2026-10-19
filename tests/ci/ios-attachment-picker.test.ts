@@ -10,7 +10,7 @@ function install() {
   const postMessage = vi.fn();
   (window as any).webkit = { messageHandlers: { attachmentPicker: { postMessage } } };
   new Function(script!)();
-  document.body.innerHTML = '<div class="attachment-picker"><input type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple><input type="file" accept="*/*" multiple></div><input id="other" type="file">';
+  document.body.innerHTML = '<div class="attachment-picker"><input type="file" accept="image/png,image/jpeg,image/webp,image/gif,video/*" multiple><input type="file" accept="*/*" multiple></div><input id="other" type="file">';
   const inputs = Array.from(document.querySelectorAll<HTMLInputElement>(".attachment-picker input"));
   return { inputs, postMessage, complete: (window as any).codexMobileAttachmentsComplete };
 }
@@ -83,11 +83,36 @@ describe("iOS 原生附件选择", () => {
     expect(bytes).toEqual([0, 1, 2, 255]);
   });
 
+  it("照片入口混选视频时保留视频原始名称、MIME、字节及选择顺序", async () => {
+    const { inputs, postMessage, complete } = install();
+    vi.stubGlobal("DataTransfer", class {
+      files: File[] = [];
+      items = { add: (file: File) => this.files.push(file) };
+    });
+    Object.defineProperty(inputs[0], "files", { writable: true, value: null });
+    inputs[0].click();
+    expect(postMessage.mock.calls[0][0]).toMatchObject({ kind: "photos", multiple: true });
+    complete({ id: postMessage.mock.calls[0][0].id, files: [
+      { name: "原片.MOV", type: "video/quicktime", data: "AAEC/w==" },
+      { name: "照片.png", type: "image/png", data: "aGVsbG8=" },
+    ] });
+    const files = Array.from(inputs[0].files!);
+    expect(files.map(file => [file.name, file.type, file.size])).toEqual([
+      ["原片.MOV", "video/quicktime", 4], ["照片.png", "image/png", 5],
+    ]);
+    const bytes = await new Promise<number[]>(resolve => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(Array.from(new Uint8Array(reader.result as ArrayBuffer)));
+      reader.readAsArrayBuffer(files[0]);
+    });
+    expect(bytes).toEqual([0, 1, 2, 255]);
+  });
+
   it("本地构建将桥安装到主 WebView，保留相册和文件原生多选", () => {
     expect(existsSync("mobile/ios/AttachmentPickerBridge.swift"), "缺少 iOS 原生附件桥").toBe(true);
     const source = readFileSync("mobile/ios/AttachmentPickerBridge.swift", "utf8");
     expect(source).toContain("PHPickerViewController");
-    expect(source).toContain("configuration.filter = .images");
+    expect(source).toContain("configuration.filter = .any(of: [.images, .videos])");
     expect(source).toContain("UIDocumentPickerViewController");
     expect(source).toContain("asCopy: true");
     expect(source).toContain("allowsMultipleSelection");

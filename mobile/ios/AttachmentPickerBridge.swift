@@ -48,7 +48,7 @@ final class CodexMobileAttachmentPickerBridge: NSObject, WKScriptMessageHandler,
         const id = nextID();
         pending.set(id, input);
         const types = input.accept.split(',').map(type => type.trim().toLowerCase()).filter(Boolean);
-        handler.postMessage({ id, kind: types.length && types.every(type => type.startsWith('image/')) ? 'photos' : 'files', multiple: input.multiple });
+        handler.postMessage({ id, kind: types.length && types.every(type => type.startsWith('image/') || type.startsWith('video/')) ? 'photos' : 'files', multiple: input.multiple });
       };
       window.codexMobileAttachmentsComplete = result => {
         const route = pending.get(result.id);
@@ -88,7 +88,7 @@ final class CodexMobileAttachmentPickerBridge: NSObject, WKScriptMessageHandler,
         let picker: UIViewController
         if kind == "photos" {
             var configuration = PHPickerConfiguration()
-            configuration.filter = .images
+            configuration.filter = .any(of: [.images, .videos])
             configuration.selectionLimit = multiple ? 0 : 1
             configuration.selection = .ordered
             configuration.preferredAssetRepresentationMode = .current
@@ -124,8 +124,40 @@ final class CodexMobileAttachmentPickerBridge: NSObject, WKScriptMessageHandler,
         guard pendingID == id else { return }
         guard index < results.count else { finish(id: id, files: files); return }
         let provider = results[index].itemProvider
-        guard let identifier = provider.registeredTypeIdentifiers.first(where: { UTType($0)?.conforms(to: .image) == true })
-        else { finish(id: id, files: [], error: "无法读取所选图片"); return }
+        let identifier = provider.registeredTypeIdentifiers.first { UTType($0)?.conforms(to: .movie) == true }
+            ?? provider.registeredTypeIdentifiers.first { UTType($0)?.conforms(to: .image) == true }
+        guard let identifier, let type = UTType(identifier) else {
+            finish(id: id, files: [], error: "无法读取所选照片或视频"); return
+        }
+        if type.conforms(to: .movie) {
+            let suggestedName = provider.suggestedName
+            let usedBytes = files.reduce(0) { total, file in
+                let encoded = file["data"] ?? ""
+                return total + encoded.count / 4 * 3 - (encoded.hasSuffix("==") ? 2 : encoded.hasSuffix("=") ? 1 : 0)
+            }
+            let availableBytes = max(0, AttachmentImportLimits.totalBytes - usedBytes)
+            provider.loadFileRepresentation(forTypeIdentifier: identifier) { [weak self] url, error in
+                do {
+                    guard let url else { throw error ?? AttachmentImportError.missingData }
+                    let values = try url.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey])
+                    guard values.isRegularFile == true, let size = values.fileSize else { throw AttachmentImportError.fileSizeUnavailable }
+                    // The provider owns this URL only for the duration of the callback.
+                    let data = try AttachmentLoader.readBoundedFile(url, size: size, availableBytes: availableBytes)
+                    let originalName = suggestedName ?? url.lastPathComponent
+                    let fileType = UTType(filenameExtension: url.pathExtension)
+                    let nameType = UTType(filenameExtension: (originalName as NSString).pathExtension)
+                    let actualType = [fileType, nameType, type].compactMap { $0 }.first { $0.conforms(to: .movie) } ?? type
+                    let ext = actualType.preferredFilenameExtension
+                    var name = originalName
+                    if (name as NSString).pathExtension.isEmpty, let ext, !ext.isEmpty { name += ".\(ext)" }
+                    let file = ["name": name, "type": actualType.preferredMIMEType ?? "application/octet-stream", "data": data.base64EncodedString()]
+                    DispatchQueue.main.async { self?.loadPhotos(results, index: index + 1, files: files + [file], id: id) }
+                } catch {
+                    DispatchQueue.main.async { self?.finish(id: id, files: [], error: AttachmentImportError.message(for: error, isEnglish: false)) }
+                }
+            }
+            return
+        }
         provider.loadDataRepresentation(forTypeIdentifier: identifier) { [weak self] data, error in
             var file: [String: String]?
             if let data, let type = UTType(identifier) {

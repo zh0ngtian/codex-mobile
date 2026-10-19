@@ -7,7 +7,7 @@ struct ComposerAttachmentMenu: View {
 
     var body: some View {
         Menu {
-            Button(preferences.text("选择图片", "Choose images"), systemImage: "photo.on.rectangle") { choose(.photos) }
+            Button(preferences.text("选择照片和视频", "Choose photos and videos"), systemImage: "photo.on.rectangle") { choose(.photos) }
                 .accessibilityIdentifier("composer.attachments.photos")
             Button(preferences.text("选择文件", "Choose files"), systemImage: "folder") { choose(.files) }
                 .accessibilityIdentifier("composer.attachments.files")

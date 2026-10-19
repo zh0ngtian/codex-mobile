@@ -33,9 +33,11 @@ final class AttachmentImportStore {
         self.existingByteCount = max(0, existingByteCount)
         for photo in photos {
             let id = UUID()
-            let suffix = photo.supportedContentTypes.first?.preferredFilenameExtension ?? "jpg"
-            let name = "Photo-\(id.uuidString.prefix(6)).\(suffix)"
-            items.append(AttachmentItem(id: id, name: name, kind: .image, state: .processing))
+            let type = photo.supportedContentTypes.first { $0.conforms(to: .movie) || $0.conforms(to: .image) }
+            let kind = AttachmentLoader.kind(for: type)
+            let suffix = type?.preferredFilenameExtension ?? "jpg"
+            let name = "\(kind == .video ? "Video" : "Photo")-\(id.uuidString.prefix(6)).\(suffix)"
+            items.append(AttachmentItem(id: id, name: name, kind: kind, state: .processing))
             let preceding = precedingImport
             let task = Task {
                 await preceding?.value
