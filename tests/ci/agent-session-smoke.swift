@@ -602,6 +602,11 @@ struct AgentSessionSmoke {
             precondition(session.projectHasMore("real-projectless"), "存在后续会话时保留加载更多")
             session.loadMoreProject("real-projectless")
             precondition(commands.last?.name == "project.more" && commands.last?.params["cwd"] == .string("codex-mobile://projectless"), "加载更多必须派发无项目真实分页动作")
+            state.groups[0].actions?[0].disabled = true
+            publish()
+            let commandCount = commands.count
+            session.loadMoreProject("real-projectless")
+            precondition(commands.count == commandCount, "分页动作禁用期间不能再次派发加载更多")
         }
         state.groups = [NativeGroup(id: "search", title: "搜索结果", items: [projectless], category: "search")]
         publish()

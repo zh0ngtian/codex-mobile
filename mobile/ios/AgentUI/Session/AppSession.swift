@@ -243,7 +243,14 @@ final class AppSession {
         perform(command)
     }
     func projectHasMore(_ project: String) -> Bool { projectGroups[project]?.actions?.contains { $0.command?.name == "project.more" } == true }
-    func loadMoreProject(_ project: String) { perform(projectGroups[project]?.actions?.first { $0.command?.name == "project.more" }?.command) }
+    func canLoadMoreProject(_ project: String) -> Bool {
+        guard let action = projectGroups[project]?.actions?.first(where: { $0.command?.name == "project.more" }) else { return false }
+        return action.disabled != true
+    }
+    func loadMoreProject(_ project: String) {
+        guard canLoadMoreProject(project) else { return }
+        perform(projectGroups[project]?.actions?.first { $0.command?.name == "project.more" }?.command)
+    }
     func loadMoreConversations() { for project in scopedProjects where projectHasMore(project) { loadMoreProject(project) } }
     func retryProject(_ project: String) { perform(projectGroups[project]?.actions?.first { $0.command?.name == "project.retry" }?.command) }
     func refreshConversation(_ id: UUID) async { manage(id, action: "refresh") }

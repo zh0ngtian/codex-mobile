@@ -56,6 +56,7 @@ struct ProjectRow: View {
                                 .contentShape(.rect)
                         }
                         .buttonStyle(.plain)
+                        .disabled(!session.canLoadMoreProject(name))
                         .accessibilityIdentifier("sidebar.more.\(name)")
                     }
                     if conversations.isEmpty {
