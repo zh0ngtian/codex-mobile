@@ -45,10 +45,12 @@ final class AgentAppUITests: XCTestCase {
 
     func testComposerReferenceToolbarAndBalancedTextInsets() {
         let app = XCUIApplication()
-        app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-submit-fixture", "--agent-permission-menu-fixture", "--agent-fast-fixture", "--agent-composer-reference-fixture", "--agent-composer-geometry-fixture", "-accent", "Pink", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
+        app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-submit-fixture", "--agent-permission-menu-fixture", "--agent-fast-fixture", "--agent-composer-reference-fixture", "--agent-multiline-composer-fixture", "--agent-composer-geometry-fixture", "-accent", "Pink", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
         app.launch()
         let input = app.textFields["message-input"]
         XCTAssertTrue(input.waitForExistence(timeout: 8))
+        XCTAssertTrue((input.value as? String)?.contains("第三行：检查下方按钮对齐") == true)
+        XCTAssertGreaterThan(input.frame.height, 55, "三行文字应自然撑高输入区")
         let controls = ["composer.attachments", "composer.permission", "composer.model", "composer.effort", "composer.fast", "composer.submit"].map { app.buttons[$0] }
         for control in controls {
             XCTAssertTrue(control.exists, "参考图工具行在有内容时应完整显示")

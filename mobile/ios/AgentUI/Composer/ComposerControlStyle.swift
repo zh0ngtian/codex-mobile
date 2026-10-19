@@ -13,13 +13,3 @@ struct ComposerControlSurface: ViewModifier {
             .contentShape(.rect)
     }
 }
-
-struct ComposerEffortArc: Shape {
-    var fraction: Double
-    func path(in rect: CGRect) -> Path {
-        Path { path in
-            path.addArc(center: CGPoint(x: rect.midX, y: rect.maxY - 2), radius: rect.width / 2 - 1.5,
-                        startAngle: .degrees(180), endAngle: .degrees(180 + 180 * min(max(fraction, 0), 1)), clockwise: false)
-        }
-    }
-}

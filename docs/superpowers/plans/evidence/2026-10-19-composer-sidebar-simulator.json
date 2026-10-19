@@ -38,5 +38,17 @@
     "第二、三组出现的菜单选择失败已由最终六项回归修复和覆盖，不将旧失败宣称通过",
     "菜单重叠命中根因是父输入栏的interactive玻璃；移除整体交互，保留内部原生控件及真实命令",
     "完整本机证据位于工作区.mobile-build/acceptance-evidence；共享结果包位于Library/Developer/XcodeBuildMCP/workspaces/codex-mobile-e2b7e5b8d624/result-bundles"
-  ]
+  ],
+  "followUp": {
+    "request": "去掉模型和推理强度名称旁图标，使用多行输入截图",
+    "nameIcons": false,
+    "multilineLines": 3,
+    "simulatorBuild": "passed",
+    "layoutTest": "passed",
+    "screenshotReview": "passed",
+    "resultBundle": "test_sim_2026-10-19T02-19-37-497Z_pid39162_1a4c0f3e.xcresult",
+    "localScreenshots": ".mobile-build/acceptance-evidence/multiline-no-icons/",
+    "userAcceptance": "pending",
+    "published": false
+  }
 }

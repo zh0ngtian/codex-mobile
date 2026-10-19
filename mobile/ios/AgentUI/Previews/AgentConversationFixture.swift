@@ -167,6 +167,10 @@ final class AgentConversationFixture {
             value.messages.append(NativeMessage(id: "streaming-scroll", role: "assistant", text: "运行中的新增进展。", phase: "commentary", commentaryIsLiveTail: true))
         }
         if ProcessInfo.processInfo.arguments.contains("--agent-submit-fixture") { value.canSend = true; value.draft = "触感检查" }
+        if ProcessInfo.processInfo.arguments.contains("--agent-multiline-composer-fixture") {
+            value.canSend = true
+            value.draft = "第一行：检查输入框顶部留白\n第二行：检查多行文字间距\n第三行：检查下方按钮对齐"
+        }
         if ProcessInfo.processInfo.arguments.contains("--agent-startup-loading-fixture") { value.ready = false }
         value.messages = value.messages.map { message in
             var anchored = message
