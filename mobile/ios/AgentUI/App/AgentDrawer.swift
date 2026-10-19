@@ -47,12 +47,12 @@ struct AgentDrawer<Content: View, Sidebar: View>: View {
             }
             .background(NativeDrawerGestureSurface(isOpen: isOpen, enabled: gesturesEnabled, width: width,
                 changed: { translation = $0 }, ended: { target in
-                    withAnimation(reduceMotion ? nil : .interactiveSpring(response: 0.5, dampingFraction: 0.88)) {
+                    withAnimation(reduceMotion ? nil : .interactiveSpring(response: 0.3, dampingFraction: 0.88)) {
                         isOpen = target
                         translation = nil
                     }
                 }))
-            .animation(reduceMotion ? nil : .interactiveSpring(response: 0.5, dampingFraction: 0.88), value: isOpen)
+            .animation(reduceMotion ? nil : .interactiveSpring(response: 0.3, dampingFraction: 0.88), value: isOpen)
         }
         .ignoresSafeArea()
         .background(AgentTheme.page)
