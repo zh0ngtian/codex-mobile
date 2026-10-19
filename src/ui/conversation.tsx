@@ -1,3 +1,6 @@
+import { parseRemoteFileHref } from './remote-file-target';
+export { parseRemoteFileHref } from './remote-file-target';
+export type { RemoteFileTarget } from './remote-file-target';
 import { createContext, isValidElement, useContext, type ComponentProps, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import { t } from "../i18n";
@@ -8,11 +11,7 @@ import { MermaidBlock } from "./mermaid";
 
 export type ConversationRecord = Record<string, any>;
 
-export type RemoteFileTarget = {
-  path: string;
-  line: number | null;
-  column: number | null;
-};
+
 
 const gitDirectivePattern =
   /^\s*::git-[a-z0-9-]+\{[^\r\n]*\}\s*$/i;
@@ -89,41 +88,6 @@ export function stripGitDirectives(text: string) {
   return visibleLines.join("\n");
 }
 
-const remoteFileRoots = [
-  "/Users/",
-  "/home/",
-  "/tmp/",
-  "/private/",
-  "/var/",
-  "/opt/",
-  "/workspace/",
-  "/workspaces/",
-  "/repo/",
-  "/app/",
-];
-
-export function parseRemoteFileHref(
-  href: string | null | undefined,
-): RemoteFileTarget | null {
-  if (!href) return null;
-  let decoded = href;
-  try {
-    decoded = href.startsWith("file://")
-      ? new URL(href).pathname
-      : decodeURIComponent(href);
-  } catch {
-    return null;
-  }
-  if (!remoteFileRoots.some((root) => decoded.startsWith(root))) return null;
-  const location = decoded.match(/^(.*?):(\d+)(?::(\d+))?$/);
-  const path = location?.[1] ?? decoded;
-  if (!path || path.endsWith("/")) return null;
-  return {
-    path,
-    line: location ? Number(location[2]) : null,
-    column: location?.[3] ? Number(location[3]) : null,
-  };
-}
 
 export function removePendingTurn(
   thread: ConversationRecord,

@@ -30,9 +30,9 @@ struct CommentaryHistoryView: View {
                 ForEach(entries) { entry in
                     VStack(alignment: .leading, spacing: 8) {
                         if entry.isPreviousReply == true {
-                            AssistantBody(text: entry.text)
+                            AssistantBody(text: entry.text, quoteSource: entry.quoteSource)
                         } else {
-                            Text(entry.text).font(AgentTheme.chatBody).textSelection(.enabled)
+                            NativeSelectableText(text: NSAttributedString(string: entry.text, attributes: [.font: UIFont.preferredFont(forTextStyle: .body), .foregroundColor: UIColor.label]), identifier: "commentary.selectable").selectionQuoteSource(entry.quoteSource)
                         }
                         if let outputs = entry.outputs, !outputs.isEmpty { OutputCards(items: outputs) }
                         if !entry.timestampLabel.isEmpty {

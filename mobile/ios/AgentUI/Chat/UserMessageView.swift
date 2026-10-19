@@ -17,28 +17,31 @@ struct UserMessageView: View {
             VStack(alignment: .trailing, spacing: 6) {
                 VStack(alignment: .leading, spacing: 8) {
                     if !displayText.isEmpty {
-                        Text(displayText).font(AgentTheme.body)
-                            .foregroundStyle(preferences.accent.userMessageText(in: colorScheme))
-                            .fixedSize(horizontal: false, vertical: true)
-                            .textSelection(.enabled)
+                        NativeSelectableText(text: NSAttributedString(string: displayText, attributes: [.font: UIFont.preferredFont(forTextStyle: .body), .foregroundColor: UIColor(preferences.accent.userMessageText(in: colorScheme))]), identifier: "user.selectable", onTap: { showTimestamp.toggle() }, fitsContentWidth: true)
+                            .selectionQuoteSource(message.quoteSource)
                     }
                     if !message.attachments.isEmpty { MessageAttachmentCards(attachments: message.attachments) }
                 }
                 .padding(.horizontal, Self.horizontalPadding).padding(.vertical, 10)
-                .background(preferences.accent.userMessageBackground(in: colorScheme), in: .rect(cornerRadius: 23))
+                .background {
+                    RoundedRectangle(cornerRadius: 23)
+                        .fill(preferences.accent.userMessageBackground(in: colorScheme))
+                        .contentShape(.rect)
+                        .onTapGesture { showTimestamp.toggle() }
+                        .contextMenu {
+                            Group {
+                                Button(preferences.text("复制", "Copy"), systemImage: "doc.on.doc") { Clipboard.copy(message.text); session.toast = preferences.text("已复制", "Copied") }
+                                if session.canEditHistory(conversationID) {
+                                    Button(preferences.text("编辑", "Edit"), systemImage: "pencil") { session.beginHistoryEdit(conversationID: conversationID, messageID: message.id) }
+                                }
+                            }
+                            .tint(AgentTheme.ink)
+                        }
+                }
                 .contentShape(.rect)
-                .onTapGesture { showTimestamp.toggle() }
                 .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("message.user-bubble")
-                .contextMenu {
-                    Group {
-                        Button(preferences.text("复制", "Copy"), systemImage: "doc.on.doc") { Clipboard.copy(message.text); session.toast = preferences.text("已复制", "Copied") }
-                        if session.canEditHistory(conversationID) {
-                            Button(preferences.text("编辑", "Edit"), systemImage: "pencil") { session.beginHistoryEdit(conversationID: conversationID, messageID: message.id) }
-                        }
-                    }
-                    .tint(AgentTheme.ink)
-                }
+
                 if showTimestamp && !message.timestampLabel.isEmpty {
                     Text(message.timestampLabel).font(.body).foregroundStyle(.secondary)
                         .accessibilityIdentifier("message.user-time")

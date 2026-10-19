@@ -343,7 +343,7 @@ final class AgentAppUITests: XCTestCase {
 
     private func launchInteractionFixture(_ flag: String) -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", flag, "-accent", "Black", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
+        app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", flag, "-accent", "Black", "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryL", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
         app.launch()
         XCTAssertTrue(app.staticTexts["history-request-count"].waitForExistence(timeout: 8))
         return app
@@ -415,7 +415,7 @@ final class AgentAppUITests: XCTestCase {
 
     func testHistoryEditAutomaticallyFocusesAndShowsContrastingSave() {
         let app = launchInteractionFixture("--agent-edit-history-fixture")
-        app.otherElements["message.user-bubble"].firstMatch.press(forDuration: 1)
+        app.otherElements["message.user-bubble"].firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.97, dy: 0.5)).press(forDuration: 1)
         app.buttons["编辑"].tap()
         let editor = app.descendants(matching: .any).matching(identifier: "history.editor").firstMatch
         XCTAssertTrue(editor.waitForExistence(timeout: 5))
@@ -510,7 +510,7 @@ final class AgentAppUITests: XCTestCase {
 
     private func launchSidebarPolishFixture() -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-sidebar-polish-fixture", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
+        app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-sidebar-polish-fixture", "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryL", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
         app.launch()
         XCTAssertTrue(app.staticTexts["history-request-count"].waitForExistence(timeout: 8))
         return app
@@ -849,14 +849,24 @@ final class AgentAppUITests: XCTestCase {
     }
 
     func testLongUserMessageNeverCollapses() {
-        let app = launchSidebarPolishFixture()
+        let app = launchInteractionFixture("--agent-long-user-selection-fixture")
         let bubble = app.otherElements["message.user-bubble"].firstMatch
         XCTAssertTrue(bubble.waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["展开更多"].exists)
         XCTAssertFalse(app.buttons["收起"].exists)
-        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "这是一条展开后才显示")).firstMatch.exists)
+        let text = app.textViews["user.selectable"].firstMatch
+        XCTAssertTrue(text.waitForExistence(timeout: 5))
+        XCTAssertTrue((text.value as? String)?.contains("第200行：完整长消息末尾") == true, "UITextView完整保留长消息末尾")
+        XCTAssertEqual((text.value as? String)?.split(separator: "\n").count, 200)
         XCTAssertGreaterThan(bubble.frame.height, 260)
-        captureConversation("用户气泡-长消息完整显示", app: app)
+        let timeline = app.descendants(matching: .any).matching(identifier: "conversation.timeline").firstMatch
+        for _ in 0..<8 {
+            if text.frame.maxY > timeline.frame.minY + 20 && text.frame.maxY <= timeline.frame.maxY { break }
+            if text.frame.maxY > timeline.frame.maxY { timeline.swipeUp() } else { timeline.swipeDown() }
+        }
+        XCTAssertGreaterThan(text.frame.maxY, timeline.frame.minY + 20)
+        XCTAssertLessThanOrEqual(text.frame.maxY, timeline.frame.maxY, "滚动后第200行真实落在阅读区域内")
+        captureConversation("用户气泡-200行完整末尾", app: app)
     }
 
     func testQueuedMessageActionsShareOneRow() {
@@ -1341,7 +1351,7 @@ final class AgentAppUITests: XCTestCase {
 
     func testAnswerSupportsNativeTextSelection() {
         let app = XCUIApplication()
-        app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-selectable-answer-fixture", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
+        app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-selectable-answer-fixture", "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryL", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
         app.launch()
         let answer = app.textViews["assistant.selectable"].firstMatch
         XCTAssertTrue(answer.waitForExistence(timeout: 8))
@@ -1350,8 +1360,7 @@ final class AgentAppUITests: XCTestCase {
         answer.coordinate(withNormalizedOffset: CGVector(dx: 0.25, dy: 0.04)).press(forDuration: 1.2)
         XCTAssertTrue(app.menuItems.matching(NSPredicate(format: "label IN %@", ["复制", "Copy"])).firstMatch.waitForExistence(timeout: 5), app.debugDescription)
         captureConversation("回答文字选择与点虚线", app: app)
-        app.buttons["header.usage"].tap()
-        app.buttons["header.usage"].tap()
+        app.menuItems.matching(NSPredicate(format: "label IN %@", ["复制", "Copy"])).firstMatch.tap()
         XCTAssertTrue(app.textViews["code.selectable"].exists)
         XCTAssertTrue(app.textViews.matching(identifier: "markdown.selectable").count > 0, "表格正文也应可选择")
         captureConversation("Markdown与代码表格", app: app)
@@ -1538,11 +1547,12 @@ final class AgentAppUITests: XCTestCase {
 
     func testUserTimestampTogglePreservesBubbleAndCopy() {
         let app = XCUIApplication()
-        app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-short-question-fixture", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
+        app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-short-question-fixture", "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryL", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
         app.launch()
         let bubble = app.otherElements["message.user-bubble"].firstMatch
         XCTAssertTrue(bubble.waitForExistence(timeout: 5))
         let width = bubble.frame.width
+        XCTAssertLessThan(width, 120, "单字用户气泡保持自然文字宽度，不能被UITextView撑满")
         let time = app.staticTexts["message.user-time"]
         XCTAssertFalse(time.exists)
         bubble.tap()
@@ -1552,13 +1562,13 @@ final class AgentAppUITests: XCTestCase {
         captureConversation("短气泡外侧时间与参考色", app: app)
         bubble.tap()
         XCTAssertFalse(time.exists)
-        bubble.press(forDuration: 1.2)
+        bubble.coordinate(withNormalizedOffset: CGVector(dx: 0.97, dy: 0.5)).press(forDuration: 1.2)
         let copy = app.buttons["复制"]
         XCTAssertTrue(copy.waitForExistence(timeout: 5), app.debugDescription)
         copy.tap()
         XCTAssertTrue(app.staticTexts["已复制"].waitForExistence(timeout: 3))
         XCTAssertFalse(time.exists, "长按复制不应切换发送时间")
-        XCTAssertTrue(app.staticTexts["1小时2分钟3秒"].exists)
+        XCTAssertTrue(app.buttons["用时1小时2分钟3秒"].exists)
     }
 
     func testUsesSystemNavigationAndSettingsForm() {

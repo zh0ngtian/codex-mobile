@@ -66,7 +66,7 @@ extension AppSession {
         }
         let live = liveIndexes.map { index in
             let value = values[index]
-            return progressEntry(NativeCommentaryEntry(id: value.id, text: value.text, timestamp: value.timestamp, blocks: value.blocks))
+            return progressEntry(NativeCommentaryEntry(id: value.id, text: value.text, timestamp: value.timestamp, blocks: value.blocks, quoteSource: value.quoteSource))
         }
         return (messages, live)
     }
@@ -76,7 +76,7 @@ extension AppSession {
             time.isFinite && time > 0 ? Date(timeIntervalSince1970: time > 10_000_000_000 ? time / 1000 : time) : nil
         }
         let media = flatten(entry.blocks ?? []).filter { ["image", "video", "html", "source"].contains($0.kind) }.map(output)
-        return ProgressEntry(id: scopedID("commentary", nativeSnapshot.contextId ?? "", entry.id), text: entry.text, createdAt: timestamp, outputs: media, isPreviousReply: entry.isPreviousReply)
+        return ProgressEntry(id: scopedID("commentary", nativeSnapshot.contextId ?? "", entry.id), text: entry.text, createdAt: timestamp, outputs: media, quoteSource: entry.quoteSource, isPreviousReply: entry.isPreviousReply)
     }
 
     private func isAttachableHistory(_ value: NativeMessage) -> Bool {

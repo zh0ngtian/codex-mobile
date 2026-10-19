@@ -13,6 +13,7 @@ final class AgentConversationFixture {
     private let store: NativeUIStore
     private let session: AppSession
     private var snapshot: NativeSnapshot
+    private let selectionQuotes = AgentSelectionQuotesFixture()
 
     init(store: NativeUIStore, session: AppSession) {
         self.store = store
@@ -109,6 +110,9 @@ final class AgentConversationFixture {
                 NativePanelItem(id: "confirmation-no", kind: "action", title: "取消", command: NativeCommand(name: "confirmation.answer", params: ["key": .string("confirmation:workspace:fixture:1"), "confirmed": .bool(false)])),
             ])
         }
+        if ProcessInfo.processInfo.arguments.contains("--agent-long-user-selection-fixture") {
+            value.messages = [NativeMessage(id: "long-user", role: "user", text: (1...200).map { $0 == 200 ? "第200行：完整长消息末尾" : "第\($0)行：长消息完整显示" }.joined(separator: "\n"))]
+        }
         if ProcessInfo.processInfo.arguments.contains("--agent-short-question-fixture") { value.messages[0].text = "好" }
         if ProcessInfo.processInfo.arguments.contains("--agent-sidebar-polish-fixture") {
             value.messages[0].text = String(repeating: "短行\n", count: 14) + "这是一条展开后才显示的较长正文，用于确认消息气泡在展开更多和收起时保持同样的宽度。"
@@ -202,6 +206,7 @@ final class AgentConversationFixture {
         let deferredMessages = value.messages
         if ProcessInfo.processInfo.arguments.contains("--agent-delayed-report-fixture") { value.messages = []; value.loading = "loading" }
         if ProcessInfo.processInfo.arguments.contains("--agent-entry-transition-fixture") { value.threadId = nil; value.messages = [] }
+        if ProcessInfo.processInfo.arguments.contains(AgentSelectionQuotesFixture.argument) { selectionQuotes.configure(&value) }
         snapshot = value
         store.sendCommand = { [weak self] command in self?.dispatch(command) }
         publish()
@@ -253,6 +258,8 @@ final class AgentConversationFixture {
 
     private func publish() { store.receive(snapshot); session.receive(snapshot) }
     private func dispatch(_ command: NativeCommand) {
+        if ProcessInfo.processInfo.arguments.contains(AgentSelectionQuotesFixture.argument), selectionQuotes.handle(command, snapshot: &snapshot) { publish(); return }
+
         if command.name == "draft.set", ProcessInfo.processInfo.arguments.contains("--agent-attachment-menu-fixture") {
             if case .string(let text) = command.params["value"] { snapshot.draft = text; snapshot.canSend = !text.isEmpty || !snapshot.attachments.isEmpty }
             if case .number(let revision) = command.params["revision"] { snapshot.draftRevision = Int(revision) }

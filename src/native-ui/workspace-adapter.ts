@@ -1,3 +1,4 @@
+import { validateMessageQuote } from '../features/conversation/message-quotes';
 import type { ImageGenerationError } from '../backends/image-generation-error';
 import { projectToolPanel, projectFilePanel, projectAttachmentPreview, type NativeAttachmentPreview, useNativeRichContent, type NativeFileState } from './rich-content';
 import { workspaceBusinessPanels } from './workspace-panels';
@@ -79,7 +80,7 @@ function projectNativeTokenUsage(usage: RecordValue | undefined): NativeSnapshot
 export function createWorkspaceAdapter(c: NativeWorkspaceController, panel: PanelState): { snapshot: NativeSnapshot; handlers: NativeHandlers } {
   const state = c.extended?.state ?? {};
   const options = (entries: RecordValue[]) => entries.map(option => ({ id: String(option.id ?? ''), value: String(option.id ?? ''), title: String(option.label ?? option.id ?? ''), ...(option.description ? { subtitle: String(option.description) } : {}) }));
-  const messages = projectConversation(c.active, path => remoteImagePreviewUrl(c.backend, path), path => remoteImagePreviewUrl(c.backend, path, false), path => remoteFilePreviewUrl(c.backend, path));
+  const messages = projectConversation(c.active, path => remoteImagePreviewUrl(c.backend, path), path => remoteImagePreviewUrl(c.backend, path, false), path => remoteFilePreviewUrl(c.backend, path), c.backend.id);
   if (state.sidechatActive) for (const message of messages) message.actions = message.actions?.filter(action => action.command?.name !== 'message.edit');
   if (c.busy && c.active?.mobilePlan?.length) messages.push({ id: 'running-plan', role: 'activity', activityKind: 'plan', text: '', blocks: [{ id: 'plan', kind: 'section', title: t('执行计划'), children: c.active.mobilePlan.map((step: any, index: number) => ({ id: `plan:${index}:${step.step}`, kind: 'text', title: `${step.status === 'completed' ? '✓' : step.status === 'inProgress' ? '●' : '○'} ${step.step}`, text: step.status })) }] });
   if (c.extended?.state.pendingSteerText) messages.push({ id: 'pending-steer', role: 'activity', text: String(c.extended.state.pendingSteerText), status: t('正在引导') });
@@ -103,6 +104,7 @@ export function createWorkspaceAdapter(c: NativeWorkspaceController, panel: Pane
   if (c.loadState === 'error') conversationActions.push(nativeAction('retry', t('重试'), 'thread.retry'));
   if (c.olderTurnsState !== 'exhausted') conversationActions.push({ ...nativeAction('older', c.olderTurnsState === 'loading' ? t('加载中…') : c.olderTurnsState === 'error' ? t('重试加载历史') : t('加载更早消息'), 'thread.older'), disabled: c.olderTurnsState === 'loading' });
   const snapshot: NativeSnapshot = { ...emptyNativeSnapshot(), ready: true, locale: getActiveLocale(), fontScale: FONT_SCALES[readFontSize()],
+    quotes: state.quotes ?? [], quoteFocusToken: state.quoteFocusToken,
     sidechatActive: state.sidechatActive === true, sidechatParentId: state.sidechatParentId, sidechatActions: state.sidechatActions,
     title: String(c.active?.name || c.active?.preview || t('新对话')), backendId: c.backend.id, threadId: c.active?.id ? String(c.active.id) : undefined, cwd: typeof c.active?.cwd === 'string' ? c.active.cwd : undefined, contextId: c.contextId,
     backendName: c.backend.name, projectName: !c.active?.id && !c.active?.cwd ? t('无项目') : projectNameOf(c.active ?? {}),
@@ -144,6 +146,9 @@ export function createWorkspaceAdapter(c: NativeWorkspaceController, panel: Pane
     panel: business.panel ?? projectPanel(c, panel),
   };
   const handlers: NativeHandlers = {
+    'message.quote': p => c.extended?.callbacks.addQuote(validateMessageQuote(p, c.backend.id, c.active)),
+    'sidechat.quote': p => { if (state.sidechatActive) throw new Error(t('请从主聊天创建 Sidechat')); return c.extended?.callbacks.createSidechat(validateMessageQuote(p, c.backend.id, c.active)); },
+    'quote.remove': p => { if (!state.quotes?.some((quote: any) => quote.id === p.id)) throw new Error(t('引用已移除')); c.extended?.callbacks.removeQuote(String(p.id)); },
     'sidechat.create': () => c.extended?.callbacks.createSidechat(),
     'sidechat.open': p => c.extended?.callbacks.openSidechat(String(p.id)),
     'sidechat.return': () => c.extended?.callbacks.returnFromSidechat(),

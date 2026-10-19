@@ -1,3 +1,5 @@
+import { QuoteCards, SelectionQuotesProvider } from './SelectionQuotes';
+import type { MessageQuote, SelectionQuote } from './message-quotes';
 import type { NativePanelItem } from '../../native-ui/protocol';
 import {
   type FormEvent,
@@ -156,6 +158,7 @@ export function ConversationPage({
   client,
   error,
   syncState = null,
+  quotes = [], quoteFocusToken, onRemoveQuote, onSelectionQuote,
   draft,
   draftImages,
   draftFiles,
@@ -228,6 +231,7 @@ export function ConversationPage({
   client: AppServerClient | null;
   error: string;
   syncState?: HttpSyncState | null;
+  quotes?: MessageQuote[]; quoteFocusToken?: string; onRemoveQuote?: (id: string) => void; onSelectionQuote?: (quote: SelectionQuote, side: boolean) => void;
   draft: string;
   draftImages: DraftImage[];
   draftFiles: DraftFile[];
@@ -511,7 +515,9 @@ export function ConversationPage({
           </div>
         )}
   </>;
+  useEffect(() => { if (quoteFocusToken) composerInputRef.current?.focus({ preventScroll: true }); }, [quoteFocusToken]);
   return (
+    <SelectionQuotesProvider active={active} backendId={backendId} sidechat={sidechatActive} readOnly={accessMode !== 'interactive' || !!historyEdit} select={onSelectionQuote}>
     <section className="conversation">
       <header className="conversation-header">
         <button
@@ -918,6 +924,7 @@ export function ConversationPage({
             )}
           </div>
         )}
+        <QuoteCards quotes={quotes} remove={onRemoveQuote} />
         {draftImages.length > 0 && (
           <div className="draft-images" aria-label={t("待发送图片")}>
             {draftImages.map((image) => (
@@ -1341,6 +1348,6 @@ export function ConversationPage({
         rateLimits={rateLimits}
         onClose={() => setStatusOpen(false)}
       />
-    </section>
+    </section></SelectionQuotesProvider>
   );
 }

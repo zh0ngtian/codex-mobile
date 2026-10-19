@@ -215,3 +215,18 @@ it('主聊天只读时可创建独立Sidechat，仍拒绝向主聊天发送', as
  expect((await runtime.dispatch(command('main-readonly','message.send',{contextId:'b:t'}))).ok).toBe(false);
  expect(create).toHaveBeenCalledOnce(); expect(send).not.toHaveBeenCalled();runtime.dispose();
 });
+
+it('选文命令按公开桥校验嵌套范围与上下文，只读只允许选文分叉',async()=>{
+ const runtime=new NativeRuntime(()=>{});const quoted=vi.fn();const side=vi.fn();
+ runtime.setNavigation({selectedBackendId:'b',backends:[],groups:[]});
+ runtime.setWorkspace('b',workspace(),{'message.quote':quoted,'sidechat.quote':side,'quote.remove':quoted});
+ const selection={contextId:'b:t',source:{backendId:'b',threadId:'t',turnId:'physical',itemId:'item',region:'body',revision:'2:123'},renderedText:'文字',start:0,end:2,text:'文字'};
+ expect((await runtime.dispatch(command('quote-bridge','message.quote',selection))).ok).toBe(true);
+ expect((await runtime.dispatch(command('quote-stale','message.quote',{...selection,contextId:'b:old'}))).ok).toBe(false);
+ expect((await runtime.dispatch(command('quote-forged-range','message.quote',{...selection,start:1}))).ok).toBe(false);
+ expect((await runtime.dispatch(command('quote-missing-source','sidechat.quote',{...selection,source:undefined}))).ok).toBe(false);
+ runtime.setWorkspace('b',{...workspace(),readOnly:true},{'message.quote':quoted,'sidechat.quote':side});
+ expect((await runtime.dispatch(command('quote-readonly-add','message.quote',selection))).ok).toBe(false);
+ expect((await runtime.dispatch(command('quote-readonly-side','sidechat.quote',selection))).ok).toBe(true);
+ expect(quoted).toHaveBeenCalledTimes(1);expect(side).toHaveBeenCalledTimes(1);runtime.dispose();
+});

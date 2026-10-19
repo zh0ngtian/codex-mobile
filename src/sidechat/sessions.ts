@@ -1,5 +1,6 @@
+import { quoteInput, type MessageQuote } from '../features/conversation/message-quotes';
 import { t } from '../i18n';
-import { HttpOperationPendingError } from '../backends/http-transport';
+import { HttpOperationPendingError, transportUuid } from '../backends/http-transport';
 import type { RpcMessage } from '../app-server/client';
 import { applyCompletedTurn, applyTurnDiff, applyTurnItem, applyTurnStarted, createPendingTurn, reconcileRecentTurns } from '../ui/conversation';
 
@@ -16,7 +17,7 @@ export const SIDECHAT_TTL = 24 * 60 * 60 * 1000;
 export interface SidechatLink { id: string; parentId: string; forkTurnId: string; createdAt: number; lastActiveAt: number; turnIds: string[] }
 export interface SidechatSession extends SidechatLink {
   thread: RecordValue; settings: RecordValue; busy: boolean; sending: boolean; closing: boolean; error: string;
-  queue: { id: string; input: RecordValue[]; settings: RecordValue; text: string }[];
+  queue: { id: string; input: RecordValue[]; settings: RecordValue; text: string; question?: string; quotes?: MessageQuote[] }[];
   client?: SidechatClient; restoring?: boolean; unconfirmed?: { requestId: string; entryId: string };
 }
 const terminal = new Set(['completed', 'interrupted', 'failed']);
@@ -117,16 +118,21 @@ export class SidechatSessions {
     if (message.method === 'thread/tokenUsage/updated') s.thread = { ...s.thread, tokenUsage: p.tokenUsage };
     if (message.method === 'turn/completed') { s.thread = applyCompletedTurn(s.thread, p); this.setBusy(s, false); s.lastActiveAt = this.now(); }
     if (message.method === 'thread/status/changed') s.thread = { ...s.thread, status: p.status };
-    if (message.method === 'thread/closed') { s.error = 'Sidechat 已失效，daemon 可能已重启，请返回主聊天重新创建'; this.setBusy(s, false); s.queue = []; }
+    if (message.method === 'thread/closed') {
+      // 自己确认关闭/过期时由close完成清理与导航；外部失效立即移除，不能恢复旧正文草稿。
+      if (s.closing) return true;
+      s.error = t('Sidechat 已失效，daemon 可能已重启，请返回主聊天重新创建'); this.setBusy(s, false); s.queue = [];
+      this.sessions.delete(id); this.hiddenTurns.delete(id); this.changed(); return true;
+    }
     if (turnId && !turnId.startsWith('pending-') && !s.turnIds.includes(turnId)) s.turnIds.push(turnId);
     this.changed();
     if (message.method === 'turn/completed' && !s.closing) void this.drain(s).catch(() => undefined);
     return true;
   }
-  async submit(client: SidechatClient, id: string, input: RecordValue[], settings: RecordValue, accepted?: () => void) {
+  async submit(client: SidechatClient, id: string, input: RecordValue[], settings: RecordValue, accepted?: () => void, draft?: { question: string; quotes: MessageQuote[] }) {
     const s = this.get(id); if (!s || s.closing || s.error) throw new Error(s?.error || 'Sidechat 不可用');
     s.client = client;
-    const entry = { id: crypto.randomUUID(), input, settings, text: input.filter(i => i.type === 'text').map(i => i.text).join('\n') || '附件' };
+    const entry = { id: transportUuid(), input, settings, text: draft?.question || input.filter(i => i.type === 'text').map(i => i.text).join('\n') || '附件', ...(draft ? {question: draft.question, quotes: draft.quotes} : {}) };
     s.queue.push(entry); s.lastActiveAt = this.now(); accepted?.(); this.changed();
     if (!s.busy && !s.sending) await this.drain(s);
   }
@@ -159,9 +165,10 @@ export class SidechatSessions {
   editQueued(id: string, queueId: string, text: string) {
     const s = this.get(id); const entry = s?.queue.find(item => item.id === queueId);
     if (!s || !entry || s.sending) return false;
-    if (entry.input[0]?.type === 'text') entry.input = [{ ...entry.input[0], text }, ...entry.input.slice(1)];
-    else entry.input = [{ type: 'text', text }, ...entry.input];
-    entry.text = text; this.changed(); return true;
+    const content = quoteInput(text, entry.quotes ?? []);
+    if (entry.input[0]?.type === 'text') entry.input = [{ ...entry.input[0], text: content }, ...entry.input.slice(1)];
+    else entry.input = [{ type: 'text', text: content }, ...entry.input];
+    entry.text = text; entry.question = text; this.changed(); return true;
   }
   async retry(id: string) { const s = this.get(id); if (s?.unconfirmed) throw new Error(t('请求结果待确认，不能重新发送')); if (!s || s.busy || s.sending) return; s.error = ''; await this.drain(s); }
   removeQueued(id: string, queueId: string) { const s = this.get(id); if (s && !s.sending) { s.queue = s.queue.filter(q => q.id !== queueId); this.changed(); } }

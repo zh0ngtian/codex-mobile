@@ -6,7 +6,8 @@ const view = (name: string) => readFileSync(`mobile/ios/AgentUI/Chat/${name}.swi
 it('用户气泡正文与高度测量使用相同可见文本，复制继续使用原文', () => {
   const source = view('UserMessageView');
   expect(source).toContain('UserMessageText.visible(message.text)');
-  expect(source.match(/Text\(displayText\)/g)).toHaveLength(1);
+  expect(source.match(/NSAttributedString\(string: displayText/g)).toHaveLength(1);
+  expect(source).toContain('identifier: "user.selectable"');
   expect(source).not.toContain('Text(message.text)');
   expect(source).toContain('Clipboard.copy(message.text)');
 });
@@ -16,7 +17,7 @@ it('历史用时入口使用真实月日时分和原生分隔线，业务区块�
   expect(history).toContain('preferences.text("用时\\(duration)"');
   expect(history).toContain('preferences.text("执行过程"');
   expect(history).not.toContain('之前的');
-  expect(history).toContain('AgentTheme.chatBody');
+  expect(history).toContain('UIFont.preferredFont(forTextStyle: .body)');
   expect(history).toContain('entry.timestampLabel');
   expect(history).toContain('Divider()');
   expect(history).toContain('"chevron.right").font(.caption)');

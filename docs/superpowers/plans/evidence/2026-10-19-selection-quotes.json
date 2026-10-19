@@ -1,0 +1,137 @@
+{
+  "date": "2026-10-19",
+  "status": "simulator-verified-awaiting-user-acceptance-unpublished",
+  "scope": {
+    "forkRule": "最近已结束回合，选文独立引用",
+    "simulator": "iPhone 17 Pro",
+    "runtime": "iOS 27.0",
+    "orientation": "portrait",
+    "font": "normal",
+    "release": false,
+    "productionGatewayDeployed": false
+  },
+  "baseline": {
+    "source": "a9316f32de1a4c87b31cdc8fc79bf7d5d48863ba",
+    "command": "NODE_OPTIONS=--no-experimental-webstorage npm test -- --reporter=dot",
+    "files": 150,
+    "tests": 1670,
+    "passed": true,
+    "log": "/Users/zhongtian/.codex/worktrees/selection-quotes/codex-mobile/.mobile-build/selection-evidence/baseline-vitest.log"
+  },
+  "uiRed": {
+    "result": "缺少加入聊天入口的断言按预期失败；真实系统编辑菜单已出现Copy/Look Up/Translate",
+    "xcresult": "/Users/zhongtian/.codex/worktrees/selection-quotes/codex-mobile/.mobile-build/selection-baseline.xcresult",
+    "screenshot": "/Users/zhongtian/.codex/worktrees/selection-quotes/codex-mobile/.mobile-build/selection-baseline-attachments/DBF2DF4A-FF52-4332-9C4C-07197496806A.png"
+  },
+  "temporaryGateway": {
+    "address": "http://127.0.0.1:18806",
+    "testMainId": "01a15401-e4a8-7003-96ab-24330d4ed7e7",
+    "testMainStatus": "archived",
+    "archivedVia": "codex-app set_thread_archived",
+    "testDeviceRemoved": true,
+    "temporaryServicesStopped": true,
+    "closedBranches": [
+      "01a1545c-c208-7ea2-a5e4-a73900d10051"
+    ]
+  },
+  "automated": {
+    "command": "NODE_OPTIONS=--no-experimental-webstorage npm test -- --maxWorkers=1 --testTimeout=60000",
+    "files": 153,
+    "tests": 1707,
+    "passed": true,
+    "durationSeconds": 445.86,
+    "typecheck": "passed",
+    "log": "/Users/zhongtian/.codex/worktrees/selection-quotes/codex-mobile/.mobile-build/selection-evidence/final-vitest-serial.log",
+    "resourceRetry": {
+      "priorAttemptFailed": 11,
+      "priorPassed": 1696,
+      "hostLoadObserved": 520.21,
+      "log": "/Users/zhongtian/.codex/worktrees/selection-quotes/codex-mobile/.mobile-build/selection-evidence/resource-constrained-full-attempt.log",
+      "productionChangesForRetry": false
+    }
+  },
+  "review": {
+    "spec": "passed after five fixes",
+    "quality": "passed after four P2 fixes",
+    "unresolvedImportantIssues": 0
+  },
+  "ui": {
+    "uniqueFunctionalCasesPassed": 9,
+    "groups": [
+      {
+        "cases": [
+          "testCodeAndTableSelectionMenus",
+          "testSelectionPreparesSidechatWithoutSendingAndReturnsDraft",
+          "testUserAndExpandedCommentarySelectionMenus"
+        ],
+        "result": "/Users/zhongtian/.codex/worktrees/selection-quotes/codex-mobile/.mobile-build/selection-normal-size.xcresult",
+        "passed": 3,
+        "note": "同一早期集合的多引用用例失败，另在最终集合修正测试选择操作后通过"
+      },
+      {
+        "cases": [
+          "testBodySelectionAppendsCardsPreservesDraftAndAttachment"
+        ],
+        "result": "/Users/zhongtian/.codex/worktrees/selection-quotes/codex-mobile/.mobile-build/selection-multiple-quotes.xcresult",
+        "passed": 1
+      },
+      {
+        "cases": [
+          "testAnswerSupportsNativeTextSelection",
+          "testHistoryEditAutomaticallyFocusesAndShowsContrastingSave",
+          "testLongUserMessageNeverCollapses",
+          "testUserTimestampTogglePreservesBubbleAndCopy"
+        ],
+        "result": "/Users/zhongtian/.codex/worktrees/selection-quotes/codex-mobile/.mobile-build/selection-existing-normal-final.xcresult",
+        "passed": 4
+      },
+      {
+        "cases": [
+          "testLiveSelectionAsksInSidechatAndClosesBranch"
+        ],
+        "result": "/Users/zhongtian/.codex/worktrees/selection-quotes/codex-mobile/.mobile-build/selection-live-readonly-fork.xcresult",
+        "passed": 1
+      }
+    ],
+    "cleanup": {
+      "passed": true,
+      "result": "/Users/zhongtian/.codex/worktrees/selection-quotes/codex-mobile/.mobile-build/selection-device-cleanup-final.xcresult"
+    },
+    "liveProtocol": {
+      "trace": "/Users/zhongtian/.codex/worktrees/selection-quotes/codex-mobile/.mobile-build/selection-evidence/qa-rpc.jsonl",
+      "forkTurnId": "01a15401-e708-7b60-b7e2-6d627f79954e",
+      "ephemeral": true,
+      "excludeTurns": true,
+      "quotedText": "文字",
+      "reply": "SELECTION_QUOTE_OK",
+      "branchRemovedVerifiedByRead": true,
+      "mainReadOnly": true
+    },
+    "harnessCorrections": [
+      "使用原生 CollectionView 范围定位菜单和设备，排除隐藏网页的同名控件",
+      "专用设备地址使用非空测试 token 参数",
+      "只读主聊天的菜单验收目标为在 Sidechat 中提问"
+    ],
+    "screenshots": {
+      "menu": "/Users/zhongtian/.codex/worktrees/selection-quotes/codex-mobile/.mobile-build/selection-evidence/multiple-attachments/ABE6D4D7-C461-4CD8-BCCA-7D10B4D39538.png",
+      "quoteCard": "/Users/zhongtian/.codex/worktrees/selection-quotes/codex-mobile/.mobile-build/selection-evidence/multiple-attachments/B7AC9672-9425-4101-9F5A-4EF4240FF4CB.png",
+      "liveReply": "/Users/zhongtian/.codex/worktrees/selection-quotes/codex-mobile/.mobile-build/selection-evidence/live-attachments/8E826F0B-77E4-46F2-B773-203B5D5FDE04.png"
+    }
+  },
+  "build": {
+    "web": "passed via ios:prepare",
+    "simulatorDebug": "passed",
+    "probeRemoved": true,
+    "installed": true,
+    "launchedWithoutTestArguments": true,
+    "versionUnchanged": "0.3.17",
+    "devicePackagesBuilt": false,
+    "log": "~/Library/Developer/XcodeBuildMCP/workspaces/codex-mobile-e2b7e5b8d624/logs/build_sim_2026-10-19T13-37-37-395Z_pid14758_f023d119.log"
+  },
+  "delivery": {
+    "branch": "codex/selection-quotes",
+    "mainMerged": false,
+    "released": false,
+    "userAcceptance": "pending"
+  }
+}

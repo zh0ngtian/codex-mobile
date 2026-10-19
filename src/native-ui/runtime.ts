@@ -1,3 +1,4 @@
+import { validateSelectionShape } from '../features/conversation/message-quotes';
 import { beginLoadProfile, profileReadySnapshot } from '../diagnostics/conversation-load-profile';
 import { flushSync } from 'react-dom';
 import { getActiveLocale, t } from '../i18n';
@@ -13,7 +14,7 @@ export function isNativeUIEnabled() {
 }
 export const isNativeBridgeEnabled = isNativeUIEnabled;
 const globalNames = new Set(['settings.native-ui', 'backend.select', 'navigation.search', 'navigation.sidebar', 'navigation.refresh', 'thread.new', 'thread.open', 'thread.manage', 'project.toggle', 'project.more', 'project.retry', 'navigation.filter', 'confirmation.answer', 'settings.open', 'drafts.open', 'device.add', 'device.edit', 'device.change', 'device.save', 'device.cancel', 'device.scan', 'device.toggle', 'device.remove', 'device.move', 'settings.language', 'settings.font', 'settings.transport', 'settings.push.mode', 'settings.push.url', 'settings.push.save', 'settings.update.check', 'drafts.restore', 'drafts.remove', 'drafts.retry', 'update.install', 'update.retry', 'update.close']);
-const workspaceNames = new Set(['sidechat.create', 'sidechat.open', 'sidechat.return', 'sidechat.close', 'draft.set', 'draft.save', 'message.send', 'turn.stop', 'model.select', 'effort.select', 'attachment.import', 'attachment.pick', 'attachment.preview', 'attachment.remove', 'location.insert', 'mention.search', 'mention.insert', 'thread.retry', 'thread.older', 'message.edit', 'message.copy', 'queue.cancel', 'queue.send', 'queue.edit', 'speed.select', 'permission.select', 'newchat.backend', 'newchat.project', 'workspace.thread', 'workspace.rename.change', 'workspace.rename.submit', 'approval.answer', 'approval.decide', 'approval.submit', 'approval.dismiss', 'approval.reopen', 'history.change', 'history.cancel', 'history.submit', 'queue.change', 'file.open', 'file.mode', 'diagram.render']);
+const workspaceNames = new Set(['message.quote', 'sidechat.quote', 'quote.remove', 'sidechat.create', 'sidechat.open', 'sidechat.return', 'sidechat.close', 'draft.set', 'draft.save', 'message.send', 'turn.stop', 'model.select', 'effort.select', 'attachment.import', 'attachment.pick', 'attachment.preview', 'attachment.remove', 'location.insert', 'mention.search', 'mention.insert', 'thread.retry', 'thread.older', 'message.edit', 'message.copy', 'queue.cancel', 'queue.send', 'queue.edit', 'speed.select', 'permission.select', 'newchat.backend', 'newchat.project', 'workspace.thread', 'workspace.rename.change', 'workspace.rename.submit', 'approval.answer', 'approval.decide', 'approval.submit', 'approval.dismiss', 'approval.reopen', 'history.change', 'history.cancel', 'history.submit', 'queue.change', 'file.open', 'file.mode', 'diagram.render']);
 // Task2b 只能经此处显式扩展可调用命令，不能把任意名字转发成 RPC。
 const panelNames = new Set(['panel.open', 'panel.close']);
 const stringKeys: Record<string, string[]> = {
@@ -21,7 +22,7 @@ const stringKeys: Record<string, string[]> = {
   'draft.set': ['value', 'contextId'], 'model.select': ['value'], 'effort.select': ['value'], 'attachment.pick': ['kind'],
   'attachment.preview': ['id'], 'attachment.remove': ['id'], 'backend.select': ['id'], 'navigation.search': ['value'], 'thread.open': ['backendId', 'threadId'],
   'thread.manage': ['backendId', 'threadId', 'action'], 'project.toggle': ['backendId', 'cwd'], 'project.more': ['backendId', 'cwd'],
-  'sidechat.open': ['id'], 'sidechat.close': ['id'],
+  'quote.remove': ['id'], 'sidechat.open': ['id'], 'sidechat.close': ['id'],
   'project.retry': ['backendId', 'cwd'], 'navigation.filter': ['value'], 'mention.search': ['value'], 'mention.insert': ['id'],
   'panel.open': ['id'], 'panel.close': ['id'], 'message.edit': ['turnId', 'messageId'], 'message.copy': ['id'],
   'queue.cancel': ['id'], 'queue.send': ['id'], 'queue.edit': ['id'], 'queue.change': ['id', 'value'],
@@ -34,6 +35,7 @@ const stringKeys: Record<string, string[]> = {
   'drafts.restore': ['id'], 'drafts.remove': ['id'], 'file.open': ['href'], 'file.mode': ['value'], 'diagram.render': ['source'],
 };
 function validate(name: string, params: NativeParams) {
+  if (['message.quote', 'sidechat.quote'].includes(name)) validateSelectionShape(params);
   if (name === 'attachment.import') validateNativeAttachmentImport(params.items);
   if (name === 'settings.native-ui' && typeof params.enabled !== 'boolean') throw new Error(t('原生界面设置无效'));
   if (name === 'thread.new' && (params.backendId !== undefined || params.cwd !== undefined) && (typeof params.backendId !== 'string' || (params.cwd !== undefined && typeof params.cwd !== 'string'))) throw new Error(t('项目目标无效'));
@@ -150,7 +152,7 @@ export class NativeRuntime {
       if (!globalNames.has(name) && !(panelNames.has(name) && globalHandler)) {
         if (!workspace?.value.ready) throw new Error(t('会话尚未就绪'));
         if (typeof params.contextId !== 'string' || params.contextId !== workspace.value.contextId) throw new Error(t('会话已切换，请重试'));
-        if (workspace.value.readOnly && !['sidechat.create', 'sidechat.return', 'sidechat.open', 'sidechat.close', 'message.copy', 'attachment.preview', 'thread.retry', 'thread.older', 'panel.open', 'panel.close', 'history.change', 'history.cancel', 'history.submit', 'approval.answer', 'approval.decide', 'approval.submit', 'approval.dismiss', 'approval.reopen', 'file.open', 'file.mode', 'diagram.render'].includes(name)) throw new Error(t('当前会话只读'));
+        if (workspace.value.readOnly && !['sidechat.quote', 'sidechat.create', 'sidechat.return', 'sidechat.open', 'sidechat.close', 'message.copy', 'attachment.preview', 'thread.retry', 'thread.older', 'panel.open', 'panel.close', 'history.change', 'history.cancel', 'history.submit', 'approval.answer', 'approval.decide', 'approval.submit', 'approval.dismiss', 'approval.reopen', 'file.open', 'file.mode', 'diagram.render'].includes(name)) throw new Error(t('当前会话只读'));
       }
       if (!handler) throw new Error(t("此操作尚未接入：{name}", { name }));
       if (name === 'draft.set' && workspace) {

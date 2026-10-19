@@ -4,6 +4,7 @@ struct AssistantBody: View {
     @Environment(AppSession.self) private var session
     @Environment(AppPreferences.self) private var preferences
     let text: String
+    var quoteSource: NativeQuoteSource? = nil
     private var blocks: [NativeMarkdownBlock] { NativeMarkdownDocumentCache.blocks(for: text) }
 
     var body: some View {
@@ -16,6 +17,7 @@ struct AssistantBody: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
+        .selectionQuoteSource(quoteSource)
         .font(AgentTheme.chatBody)
         .textSelection(.enabled)
         .tint(AgentTheme.ink)
@@ -52,7 +54,7 @@ struct AssistantBody: View {
     @ViewBuilder private func blockView(_ block: NativeMarkdownBlock) -> some View {
         switch block.kind {
         case .code:
-            CodeCard(code: block.text, language: block.language.isEmpty ? "Code" : block.language)
+            CodeCard(code: block.text, language: block.language.isEmpty ? "Code" : block.language).selectionQuoteSource(quoteSource, region: "code")
             if block.language.lowercased() == "mermaid" {
                 Button(preferences.text("预览图表", "Preview diagram"), systemImage: "point.3.connected.trianglepath.dotted") {
                     session.nativeStore?.command("diagram.render", ["source": .string(block.text)])
@@ -76,7 +78,7 @@ struct AssistantBody: View {
                 .overlay(alignment: .leading) { RoundedRectangle(cornerRadius: 2).fill(.tint.opacity(0.4)).frame(width: 3) }
         case .rule: Divider().padding(.vertical, 4)
         case .table:
-            NativeMarkdownTableView(rows: block.rows, scale: 1, store: session.nativeStore, cellScopes: block.cellScopes)
+            NativeMarkdownTableView(rows: block.rows, scale: 1, store: session.nativeStore, cellScopes: block.cellScopes).selectionQuoteSource(quoteSource, region: "table")
         case .image:
             if let destination = block.destination {
                 NativeMarkdownImageView(source: destination, title: block.text, store: session.nativeStore)

@@ -1,0 +1,9 @@
+.selection-quote-boundary { min-width: 0; }
+.selection-quote-menu { position: fixed; z-index: 1000; display: flex; padding: 4px; gap: 3px; border-radius: 12px; background: var(--surface, #fff); color: var(--text, #181818); box-shadow: 0 3px 22px #0003; }
+.selection-quote-menu button { border: 0; padding: 10px; border-radius: 8px; background: transparent; color: inherit; }
+.composer-quotes { display: grid; gap: 6px; max-height: 220px; overflow: auto; }
+.composer-quote { display: flex; align-items: start; padding: 10px 12px; border: 1px solid #8885; border-radius: 12px; text-align: left; }
+.composer-quote details { flex: 1; min-width: 0; } .composer-quote summary { font-size: 13px; cursor: pointer; }
+.composer-quote summary span { font-size: 14px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; white-space: pre-wrap; opacity: .75; margin-top: 4px; }
+.composer-quote details[open] summary span { display: none; } .composer-quote p { white-space: pre-wrap; margin: 8px 0 0; }
+.composer-quote button { background: none; border: 0; color: inherit; min-width: 36px; min-height: 36px; }

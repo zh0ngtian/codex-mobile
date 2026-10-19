@@ -1,3 +1,4 @@
+import type { MessageQuote, QuoteSource } from '../features/conversation/message-quotes';
 /** v1 仅包含可序列化的展示数据；禁止传递 BackendConfig 或客户端对象。 */
 export type NativeParams = Record<string, unknown>;
 export interface NativeCommand { id?: string; name: string; params: NativeParams }
@@ -12,8 +13,8 @@ export interface NativeNavigationItem { id: string; title: string; subtitle?: st
 export interface NativeGroup { id: string; title: string; items: NativeNavigationItem[]; command?: NativeCommand; actions?: NativePanelItem[]; collapsed?: boolean;
   category?: 'pinned' | 'project' | 'recent' | 'search'; subtitle?: string; loading?: string; newCommand?: NativeCommand;
   backendId?: string; cwd?: string; hasMore?: boolean; allItems?: NativeNavigationItem[] }
-export interface NativeCommentaryEntry { id: string; text: string; timestamp?: number; blocks?: NativePanelItem[]; isPreviousReply?: boolean }
-export interface NativeMessage { id: string; role: string; text: string; activityKind?: 'tool' | 'reasoning' | 'plan'; status?: string; blocks?: NativePanelItem[]; actions?: NativePanelItem[]; timestamp?: number; historyEdit?: NativeSnapshot['panel']; turnId?: string; itemId?: string; phase?: string;
+export interface NativeCommentaryEntry { quoteSource?: QuoteSource; id: string; text: string; timestamp?: number; blocks?: NativePanelItem[]; isPreviousReply?: boolean }
+export interface NativeMessage { quoteSource?: QuoteSource; id: string; role: string; text: string; activityKind?: 'tool' | 'reasoning' | 'plan'; status?: string; blocks?: NativePanelItem[]; actions?: NativePanelItem[]; timestamp?: number; historyEdit?: NativeSnapshot['panel']; turnId?: string; itemId?: string; phase?: string;
   /** 独立于分组turn前缀的展示锚点，不用于真实业务动作。 */
   scrollAnchorId?: string;
   /** 仅历史与工具聚合行提供成员别名，以便前插成员后恢复旧锚点。 */
@@ -32,6 +33,7 @@ export interface NativeTokenUsage { lastRequestTokens?: number; modelContextWind
 export interface NativeQueueConfiguration { model?: string; effort?: string; serviceTier?: string; permission?: string }
 export interface NativeResult { id: string; name: string; ok: boolean; contextId?: string; error?: string; fieldKey?: string; fieldRevision?: number }
 export interface NativeSnapshot {
+  quotes?: MessageQuote[]; quoteFocusToken?: string;
   sidechatActive?: boolean; sidechatParentId?: string; sidechatActions?: NativePanelItem[];
   version: 1; ready: boolean; locale: string; fontScale: number; title: string;
   threadId?: string; backendId?: string; cwd?: string; contextId?: string; draftRevision?: number; caretOffset?: number;

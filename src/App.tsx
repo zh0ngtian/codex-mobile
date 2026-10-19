@@ -1,3 +1,4 @@
+import { quoteInput, splitQuoteInput, validateMessageQuote, type MessageQuote, type SelectionQuote } from './features/conversation/message-quotes';
 import { useSidechatExpiry } from './sidechat/use-expiry';
 import { SidechatSessions, gatewaySidechatClient } from './sidechat/sessions';
 import { markLoadProfile } from './diagnostics/conversation-load-profile';
@@ -31,7 +32,7 @@ import {
   useState,
 } from "react";
 import { AppServerClient, type RpcMessage } from "./app-server/client";
-import { HttpOperationPendingError } from "./backends/http-transport";
+import { HttpOperationPendingError, transportUuid } from "./backends/http-transport";
 import {
   buildEditedHistoryInput,
   createHistoricalMessageEditTarget,
@@ -257,6 +258,8 @@ interface AutomaticTitleState {
 }
 
 interface QueuedFollowUp extends QueuedFollowUpPreview {
+  quotes?: MessageQuote[];
+  referencePrefix?: string;
   hosted?: boolean;
   revision?: number;
   threadId: string;
@@ -384,6 +387,12 @@ function BackendWorkspace({
   const [searchError, setSearchError] = useState("");
   const [searchRefreshVersion, setSearchRefreshVersion] = useState(0);
   const [active, setActive] = useState<AnyRecord | null>(() => restoredWorkspace?.thread ? { ...restoredWorkspace.thread, turns: [] } : isNativeUIEnabled() ? { id: "", turns: [], preview: t("新对话"), cwd: null } : null);
+  const [quotes, setQuotesState] = useState<MessageQuote[]>([]);
+  const quotesRef = useRef<MessageQuote[]>([]);
+  const [quoteFocusToken, setQuoteFocusToken] = useState('');
+  const setQuotes = (value: SetStateAction<MessageQuote[]>) => { quotesRef.current = typeof value === 'function' ? value(quotesRef.current) : value; setQuotesState(quotesRef.current); };
+  const familyDraftsRef = useRef(new Map<string, { text: string; images: DraftImage[]; files: DraftFile[]; quotes: MessageQuote[]; inputRevision: number }>());
+  const sidechatDraftIdsRef = useRef(new Set<string>());
   const [draft, setDraft] = useState(restoredWorkspace?.text ?? "");
   const savedDraftRef = useRef<SavedDraftReference | undefined>(restoredWorkspace?.savedDraftReference);
   const restoredDraftSettingsRef = useRef<SavedNewChatDraft["settings"] | null>(restoredWorkspace?.settings ?? null);
@@ -391,6 +400,7 @@ function BackendWorkspace({
   const checkpointThreadSettingsRef = useRef(restoredWorkspace?.thread?.id ?? null);
   const draftSavingRef = useRef(false);
   const draftContentVersionRef = useRef(0);
+  const draftInputRevisionRef = useRef(0);
   const [draftSaving, setDraftSaving] = useState(false);
   const [draftSaveStatus, setDraftSaveStatus] = useState("");
   const [draftImages, setDraftImages] = useState<DraftImage[]>(restoredWorkspace?.images ?? []);
@@ -518,7 +528,7 @@ function BackendWorkspace({
   const queueMutatingRef = useRef(false);
   const queueSubmissionsRef = useRef(new Map<string, HostedQueueSubmission>());
   const queueSubmittingThreadIdsRef = useRef(new Set<string>());
-  const unconfirmedQueueDraftsRef = useRef(new Map<string, { text: string; images: DraftImage[]; files: DraftFile[] }>());
+  const unconfirmedQueueDraftsRef = useRef(new Map<string, { text: string; images: DraftImage[]; files: DraftFile[]; quotes: MessageQuote[]; inputRevision: number }>());
   const completionEventCatchUpRef = useRef(false);
   const questionNotificationRef = useRef(new QuestionNotificationTracker());
   const finalAnswerCompletionRef = useRef(new FinalAnswerCompletionTracker());
@@ -932,6 +942,7 @@ function BackendWorkspace({
       queuedFollowUpsRef.current.forEach((followUp) => {
         followUp.files.forEach((file) => URL.revokeObjectURL(file.previewUrl));
       });
+      familyDraftsRef.current.forEach(draft => draft.files.forEach(file => URL.revokeObjectURL(file.previewUrl)));
       unconfirmedQueueDraftsRef.current.forEach((draft) => draft.files.forEach((file) => URL.revokeObjectURL(file.previewUrl)));
     },
     [],
@@ -1295,7 +1306,17 @@ function BackendWorkspace({
             setSyncState({ updatedAt: params.updatedAt ?? null, stale: params.stale === true });
             return;
           }
-          if (sidechats.observe(message)) return;
+          const closedSide = message.method === 'thread/closed' ? sidechats.get(String(params.threadId ?? '')) : undefined;
+          if (sidechats.observe(message)) {
+            if (closedSide && !closedSide.closing && !sidechats.get(closedSide.id)) {
+              if (String(activeRef.current?.id ?? '') === closedSide.id) {
+                openThread(sidechatParentsRef.current.get(closedSide.parentId) ?? { id: closedSide.parentId });
+                setError(t('Sidechat 已失效，daemon 可能已重启，请返回主聊天重新创建'));
+              }
+              clearFamilyDraft(closedSide.id);
+            }
+            return;
+          }
           questionNotificationRef.current.observe(message, completionEventCatchUpRef.current);
           if (approvalRequests.onNotification(message)) return;
           for (const tracker of [finalAnswerCompletionRef.current, mobileCompletionRef.current]) {
@@ -2148,6 +2169,7 @@ function BackendWorkspace({
     replaceQueuedFollowUps([
       ...queuedFollowUpsRef.current.filter((item) => !item.hosted),
       ...items.map((item) => ({ ...item, hosted: true,
+        inputText: splitQuoteInput(item.inputText).question, referencePrefix: splitQuoteInput(item.inputText).referencePrefix,
         draftContext: draftContextGenerationRef.current,
         images: [], files: [], skills: [], plugins: [], failed: item.state === "failed",
       })),
@@ -2354,14 +2376,16 @@ function BackendWorkspace({
 
   useEffect(() => sidechats.subscribe(() => {
     setSidechatRevision(value => value + 1);
-    const side = sidechats.get(String(activeRef.current?.id ?? ''));
+    const selectedId = String(activeRef.current?.id ?? '');
+    for (const id of sidechatDraftIdsRef.current) if (id !== selectedId && !sidechats.get(id)) clearFamilyDraft(id);
+    const side = sidechats.get(selectedId);
     if (side) {
       activeRef.current = side.thread;
       setActive(side.thread); setBusy(side.busy || side.sending); setError(side.error);
     }
   }), [sidechats]);
   useSidechatExpiry(sidechats, () => clientRef.current, () => String(activeRef.current?.id ?? ''),
-    side => openThread(sidechatParentsRef.current.get(side.parentId) ?? { id: side.parentId }),
+    side => { openThread(sidechatParentsRef.current.get(side.parentId) ?? { id: side.parentId }); clearFamilyDraft(side.id); },
     reason => setError(String((reason as Error).message ?? reason)));
 
 
@@ -2372,19 +2396,45 @@ function BackendWorkspace({
       if (selected && !sidechats.get(selected.id) && String(activeRef.current?.id ?? '') === selected.id) {
         openThread(sidechatParentsRef.current.get(selected.parentId) ?? { id: selected.parentId });
       }
+      for (const id of sidechatDraftIdsRef.current) if (!sidechats.get(id)) clearFamilyDraft(id);
       setError(String(reason.message ?? reason));
     });
   }
 
-  async function createSidechat() {
+  function addQuote(quote: MessageQuote) {
+    if (activeThreadAccessMode !== 'interactive' || historyEditRef.current) throw new Error(t('当前会话只读'));
+    setQuotes(current => [...current, quote]); setQuoteFocusToken(transportUuid());
+  }
+  function cacheFamilyDraft() {
+    const id = String(activeRef.current?.id ?? '');
+    if (id && (sidechats.get(id) || sidechats.forParent(id).length)) {
+      familyDraftsRef.current.set(id, { ...currentDraftRef.current, quotes: [...quotesRef.current], inputRevision: draftInputRevisionRef.current });
+    }
+  }
+  function clearFamilyDraft(id: string) {
+    const saved = familyDraftsRef.current.get(id);
+    saved?.files.forEach(file => URL.revokeObjectURL(file.previewUrl));
+    familyDraftsRef.current.delete(id); sidechatDraftIdsRef.current.delete(id);
+    for (const [parentId, draft] of familyDraftsRef.current) {
+      if (!sidechats.get(parentId) && !sidechats.forParent(parentId).length) {
+        const activeURLs = new Set([...currentDraftRef.current.files, ...[...unconfirmedQueueDraftsRef.current.values()].flatMap(draft => draft.files)].map(file => file.previewUrl));
+        draft.files.forEach(file => { if (!activeURLs.has(file.previewUrl)) URL.revokeObjectURL(file.previewUrl); });
+        familyDraftsRef.current.delete(parentId);
+      }
+    }
+  }
+  async function createSidechat(quote?: MessageQuote) {
     const client = clientRef.current; const current = activeRef.current;
     if (!client || !current?.id) throw new Error(t('设备尚未连接，请稍后重试'));
+    if (quote && sidechats.get(String(current.id))) throw new Error(t('请从主聊天创建 Sidechat'));
     const parentId = sidechats.get(String(current.id))?.parentId ?? String(current.id);
     const parent = sidechatParentsRef.current.get(parentId) ?? (current.id === parentId ? current : { id: parentId, cwd: current.cwd });
     sidechatParentsRef.current.set(parentId, parent);
     const sequence = openSequenceRef.current;
     const side = await sidechats.create(gatewaySidechatClient(client), parent);
-    if (sequence === openSequenceRef.current) openThread(side.thread);
+    sidechatDraftIdsRef.current.add(side.id);
+    if (quote) familyDraftsRef.current.set(side.id, { text: '', images: [], files: [], quotes: [quote], inputRevision: 0 });
+    if (sequence === openSequenceRef.current) { openThread(side.thread); if (quote) setQuoteFocusToken(transportUuid()); }
     return true;
   }
   function returnFromSidechat() {
@@ -2408,6 +2458,7 @@ function BackendWorkspace({
     if (context !== draftContextGenerationRef.current || clientRef.current !== client || sidechats.get(id) !== side) throw new Error(t('会话已切换，请重试'));
     await sidechats.close(gatewaySidechatClient(client), id);
     if (String(activeRef.current?.id ?? '') === id) openThread(sidechatParentsRef.current.get(side.parentId) ?? { id: side.parentId });
+    clearFamilyDraft(id);
   }
 
   async function loadThreadDetail(threadId: string, sequence: number) {
@@ -2541,21 +2592,25 @@ function BackendWorkspace({
 
   function openThread(thread: AnyRecord) {
     markLoadProfile(String(thread.id), 'workspace-open');
+    const nextId = String(thread.id);
+    cacheFamilyDraft();
     const sequence = ++openSequenceRef.current;
-    markThreadRead(String(thread.id));
+    markThreadRead(nextId);
     resetDraftContext();
-    rebindQueuedThread(String(thread.id));
-    setImageReading(queueSubmittingThreadIdsRef.current.has(String(thread.id)));
-    const unconfirmedDraft = unconfirmedQueueDraftsRef.current.get(String(thread.id));
-    setDraft(unconfirmedDraft?.text ?? "");
-    setDraftImages(unconfirmedDraft?.images ?? []);
-    setDraftFiles((current) => {
-      current.forEach((file) => {
-        const retained = [...unconfirmedQueueDraftsRef.current.values()].some((pending) => pending.files.some((original) => original.id === file.id));
-        if (!retained) URL.revokeObjectURL(file.previewUrl);
-      });
-      return unconfirmedDraft?.files ?? [];
-    });
+    setQuotes([]);
+    rebindQueuedThread(nextId);
+    setImageReading(queueSubmittingThreadIdsRef.current.has(nextId));
+    const unconfirmedDraft = unconfirmedQueueDraftsRef.current.get(nextId);
+    const saved = familyDraftsRef.current.get(nextId);
+    const restored = saved ?? unconfirmedDraft;
+    draftInputRevisionRef.current = restored?.inputRevision ?? 0;
+    const next = { text: restored?.text ?? '', images: restored?.images ?? [], files: restored?.files ?? [] };
+    for (const file of currentDraftRef.current.files) {
+      const retained = [...familyDraftsRef.current.values(), ...unconfirmedQueueDraftsRef.current.values()].some(draft => draft.files.some(item => item.id === file.id));
+      if (!retained) URL.revokeObjectURL(file.previewUrl);
+    }
+    currentDraftRef.current = next;
+    setDraft(next.text); setDraftImages(next.images); setDraftFiles(next.files); setQuotes(saved?.quotes ?? unconfirmedDraft?.quotes ?? []);
     setOpeningThreadId(thread.id);
     setError("");
     setBusy(false);
@@ -2574,6 +2629,7 @@ function BackendWorkspace({
     });
     const side = sidechats.get(String(thread.id));
     if (side) {
+      sidechatDraftIdsRef.current.add(side.id);
       activeRef.current = side.thread; setActive(side.thread);
       setBusy(side.busy || side.sending); setError(side.error);
       syncStartedThreadSettings(side.settings);
@@ -2660,7 +2716,7 @@ function BackendWorkspace({
     pendingSkills: InstalledSkill[];
     pendingPlugins: InstalledPlugin[];
     draftContext: number;
-    onFailure: () => void;
+    onFailure: (sourceThreadId?: string) => void;
     onSent?: () => void;
   }) {
     let client = clientRef.current;
@@ -2842,9 +2898,9 @@ function BackendWorkspace({
               setBusy(false);
               setStartingThreadContext(null);
               setActive((current) => current?.id === threadId ? removePendingTurn(current, pendingTurnId) : current);
-              onFailure();
               setError(response.error.message);
             }
+            onFailure(threadId);
             return;
           }
           if (reason.request.method === "thread/start") {
@@ -2900,9 +2956,9 @@ function BackendWorkspace({
             ? removePendingTurn(current, pendingTurnId)
             : current,
         );
-        onFailure();
         setError(reason instanceof Error ? reason.message : String(reason));
       }
+      onFailure(String(thread?.id ?? ''));
     } finally {
       if (draftContext === draftContextGenerationRef.current) {
         setImageReading(false);
@@ -2922,6 +2978,9 @@ function BackendWorkspace({
   async function sendMessage() {
     if (draftSavingRef.current || (active?.id && activeThreadAccessMode !== "interactive")) return false;
     const text = currentDraftRef.current.text.trim();
+    const pendingQuotes = [...quotesRef.current];
+    const inputRevision = draftInputRevisionRef.current;
+    const inputText = quoteInput(text, pendingQuotes);
     const pendingImages = currentDraftRef.current.images;
     const pendingFiles = currentDraftRef.current.files;
     const pendingSkills = skillsReferencedInText(
@@ -2949,20 +3008,21 @@ function BackendWorkspace({
       try {
         const uploaded = await Promise.all(pendingFiles.map(file => uploadFile(backend, file.file)));
         if (draftContext !== draftContextGenerationRef.current || clientRef.current !== client) throw new Error(t('会话已切换，请重试'));
-        await sidechats.submit(gatewaySidechatClient(client), threadId, buildTurnInput(text, pendingImages, uploaded, pendingSkills, pendingPlugins), {
+        await sidechats.submit(gatewaySidechatClient(client), threadId, buildTurnInput(inputText, pendingImages, uploaded, pendingSkills, pendingPlugins), {
           ...(selectedModel ? { model: selectedModel } : {}), ...(selectedEffort ? { effort: selectedEffort } : {}),
           serviceTier: effectiveSelectedServiceTier, ...(selectedPermission ? { permissions: selectedPermission } : {}),
           approvalPolicy: selectedApprovalPolicy, approvalsReviewer: selectedApprovalsReviewer,
         }, () => {
           // 上传/校验失败前保留输入；仅在原输入已进入分支内存队列后清理。
           const current = currentDraftRef.current;
-          const next = { text: current.text === originalDraft.text ? '' : current.text,
+          const next = { text: draftInputRevisionRef.current === inputRevision && current.text === originalDraft.text ? '' : current.text,
             images: current.images.filter(item => !pendingImages.some(original => original.id === item.id)),
             files: current.files.filter(item => !pendingFiles.some(original => original.id === item.id)) };
           currentDraftRef.current = next;
+          setQuotes(current => current.filter(quote => !pendingQuotes.some(sent => sent.id === quote.id)));
           setDraft(next.text); setDraftImages(next.images); setDraftFiles(next.files);
           pendingFiles.forEach(file => URL.revokeObjectURL(file.previewUrl));
-        });
+        }, { question: text, quotes: pendingQuotes });
         return true;
       } catch (reason) {
         if (draftContext === draftContextGenerationRef.current) setError(String((reason as Error).message ?? reason));
@@ -2982,7 +3042,7 @@ function BackendWorkspace({
       queueSubmittingThreadIdsRef.current.add(threadId);
       requestRunCompletionNotificationPermission();
       setImageReading(true);
-      unconfirmedQueueDraftsRef.current.set(threadId, { text, images: pendingImages, files: pendingFiles });
+      unconfirmedQueueDraftsRef.current.set(threadId, { text, images: pendingImages, files: pendingFiles, quotes: pendingQuotes, inputRevision });
       let submission = queueSubmissionsRef.current.get(threadId);
       if (!submission) { submission = new HostedQueueSubmission(); queueSubmissionsRef.current.set(threadId, submission); }
       try {
@@ -2994,12 +3054,12 @@ function BackendWorkspace({
           approvalPolicy: selectedApprovalPolicy,
           approvalsReviewer: selectedApprovalsReviewer,
         } : {};
-        const signature = JSON.stringify({ threadId, text, images: pendingImages,
+        const signature = JSON.stringify({ threadId, text: inputText, quotes: pendingQuotes, images: pendingImages,
           files: pendingFiles.map((file) => ({ id: file.id, name: file.name, size: file.size, type: file.type })),
         });
         const action = await submission.prepare(signature, async () => {
           const uploadedFiles = await Promise.all(pendingFiles.map((file) => uploadFile(backend, file.file)));
-          return { threadId, inputText: text,
+          return { threadId, inputText,
             text: followUpPreviewText(text, pendingImages, pendingFiles),
             attachmentCount: pendingImages.length + pendingFiles.length,
             extraInput: buildTurnInput("", pendingImages, uploadedFiles, pendingSkills, pendingPlugins), settings,
@@ -3008,10 +3068,24 @@ function BackendWorkspace({
         await mutateHostedQueue(action);
         submission.confirmed(action.id);
         unconfirmedQueueDraftsRef.current.delete(threadId);
+        const cached = familyDraftsRef.current.get(threadId);
+        if (cached) familyDraftsRef.current.set(threadId, {
+          ...cached, text: cached.inputRevision === inputRevision && cached.text.trim() === text ? '' : cached.text,
+          quotes: cached.quotes.filter(quote => !pendingQuotes.some(sent => sent.id === quote.id)),
+          images: cached.images.filter(image => !pendingImages.some(sent => sent.id === image.id)),
+          files: cached.files.filter(file => !pendingFiles.some(sent => sent.id === file.id)),
+        });
         pendingFiles.forEach((file) => URL.revokeObjectURL(file.previewUrl));
         if (String(activeRef.current?.id ?? "") === threadId) {
-          // 上传期间仍可能输入新内容，只清理本次成功托管的草稿与附件。
-          setDraft((current) => current.trim() === text ? "" : current);
+          // 上传期间仍可能输入新内容，只清理本次成功托管的草稿与附件；同步更新业务ref，避免紧随ACK的导航缓存旧输入。
+          const current = currentDraftRef.current;
+          currentDraftRef.current = {
+            text: draftInputRevisionRef.current === inputRevision && current.text.trim() === text ? '' : current.text,
+            images: current.images.filter(image => !pendingImages.some(sent => sent.id === image.id)),
+            files: current.files.filter(file => !pendingFiles.some(sent => sent.id === file.id)),
+          };
+          setQuotes(current => current.filter(quote => !pendingQuotes.some(sent => sent.id === quote.id)));
+          setDraft((current) => draftInputRevisionRef.current === inputRevision && current.trim() === text ? "" : current);
           setDraftImages((current) => current.filter((image) => !pendingImages.some((original) => original.id === image.id)));
           setDraftFiles((current) => current.filter((file) => !pendingFiles.some((original) => original.id === file.id)));
           setError("");
@@ -3028,6 +3102,7 @@ function BackendWorkspace({
     // 在首个await和React提交前占用当前草稿与发送上下文；不同请求UUID也不能重复消费。
     sendingDraftContextsRef.current.add(draftContext);
     currentDraftRef.current = { text: "", images: [], files: [] };
+    setQuotes([]);
     const savedDraft = savedDraftRef.current;
     requestRunCompletionNotificationPermission();
     invalidateImageReads();
@@ -3036,7 +3111,7 @@ function BackendWorkspace({
     setDraftFiles([]);
     setError("");
     return startTurnMessage({
-      text,
+      text: inputText,
       pendingImages,
       pendingFiles,
       pendingSkills,
@@ -3049,14 +3124,14 @@ function BackendWorkspace({
           if (draftContext === draftContextGenerationRef.current) setError(t("消息已发送，但无法移除本地草稿"));
         });
       } : undefined,
-      onFailure: () => {
+      onFailure: (sourceThreadId) => {
         const currentDraft = currentDraftRef.current;
-        const threadId = String(activeRef.current?.id ?? "");
-        if (currentDraft.text.trim() || currentDraft.images.length || currentDraft.files.length) {
+        const failedThreadId = sourceThreadId || threadId;
+        if (draftContext !== draftContextGenerationRef.current || String(activeRef.current?.id ?? "") !== failedThreadId || currentDraft.text.trim() || currentDraft.images.length || currentDraft.files.length || quotesRef.current.length) {
           // 后续新草稿保持可编辑；失败的原输入和附件留在现有手动重试队列。
           replaceQueuedFollowUps([{
             id: `failed-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-            threadId, draftContext, inputText: text,
+            threadId: failedThreadId, draftContext, inputText: text, quotes: pendingQuotes,
             text: followUpPreviewText(text, pendingImages, pendingFiles),
             attachmentCount: pendingImages.length + pendingFiles.length,
             images: pendingImages, files: pendingFiles,
@@ -3064,6 +3139,7 @@ function BackendWorkspace({
           }, ...queuedFollowUpsRef.current]);
           return false;
         }
+        setQuotes(pendingQuotes);
         currentDraftRef.current = { text, images: pendingImages, files: pendingFiles };
         setDraft((current) => current || text);
         setDraftImages((current) => mergeDraftImages(current, pendingImages));
@@ -3180,8 +3256,9 @@ function BackendWorkspace({
     }
 
     const input = buildEditedHistoryInput(target, text);
+    const questionText = splitQuoteInput(text).question;
     const referencedSkills = skillsReferencedInText(
-      text,
+      questionText,
       skillCatalog.cwd === (thread.cwd ?? null) ? skillCatalog.skills : [],
     );
     for (const skill of referencedSkills) {
@@ -3194,7 +3271,7 @@ function BackendWorkspace({
       }
     }
     const referencedPlugins = pluginsReferencedInText(
-      text,
+      questionText,
       pluginCatalog.cwd === (thread.cwd ?? null) ? pluginCatalog.plugins : [],
     );
     for (const plugin of referencedPlugins) {
@@ -3383,7 +3460,7 @@ function BackendWorkspace({
       // 明确失败的普通发送保留手动恢复入口；它从未进入自动排队调度。
       if (busy || !followUp.failed) return;
       replaceQueuedFollowUps(removeQueuedFollowUp(queuedFollowUpsRef.current, id));
-      await startTurnMessage({ text: followUp.inputText, pendingImages: followUp.images,
+      await startTurnMessage({ text: quoteInput(followUp.inputText, followUp.quotes ?? []), pendingImages: followUp.images,
         pendingFiles: followUp.files, pendingSkills: followUp.skills, pendingPlugins: followUp.plugins,
         draftContext: followUp.draftContext,
         onFailure: () => replaceQueuedFollowUps([{ ...followUp, failed: true }, ...queuedFollowUpsRef.current.filter((entry) => entry.id !== id)]),
@@ -3419,7 +3496,7 @@ function BackendWorkspace({
       return true;
     }
     try {
-      await mutateHostedQueue({ action: "edit", id, revision: followUp.revision!, inputText: text,
+      await mutateHostedQueue({ action: "edit", id, revision: followUp.revision!, inputText: followUp.referencePrefix ? followUp.referencePrefix + text : quoteInput(text, followUp.quotes ?? []),
         text: text || t("{count} 个附件", { count: followUp.attachmentCount ?? 0 }),
         mentions: buildTurnInput("", [], [], referencedSkills, referencedPlugins),
       });
@@ -4042,9 +4119,11 @@ function BackendWorkspace({
       (typeof cwd === "string"
         ? cwd || null
         : newChatProjectCatalogReady ? rememberedNewChatProject() : null);
+    cacheFamilyDraft();
     openSequenceRef.current += 1;
     activeThreadTargetRef.current = null;
     resetDraftContext();
+    setQuotes([]);
     // 项目目录仍在加载时，等首次目录/会话读取完成再确认保存项目是否存在。
     pendingNewChatProjectRef.current = !savedDraft && typeof cwd !== "string" && !newChatProjectCatalogReady
       ? draftContextGenerationRef.current : null;
@@ -4060,13 +4139,15 @@ function BackendWorkspace({
     setError("");
     setDraftFiles(current => {
       current.forEach(file => {
-        const pending = [...unconfirmedQueueDraftsRef.current.values()].some(draft => draft.files.some(original => original.previewUrl === file.previewUrl));
+        const pending = [...unconfirmedQueueDraftsRef.current.values(), ...familyDraftsRef.current.values()].some(draft => draft.files.some(original => original.previewUrl === file.previewUrl));
         if (!pending && !nextDraftFiles.some(next => next.previewUrl === file.previewUrl)) URL.revokeObjectURL(file.previewUrl);
       });
       return nextDraftFiles;
     });
     savedDraftRef.current = savedDraft ?? savedDraftReference;
     restoredDraftSettingsRef.current = savedDraft?.settings ?? null;
+    draftInputRevisionRef.current = 0;
+    currentDraftRef.current = { text: nextDraft, images: nextDraftImages, files: nextDraftFiles };
     setDraft(nextDraft);
     setDraftImages(nextDraftImages);
     setConversationLoadState("ready");
@@ -4372,11 +4453,11 @@ function BackendWorkspace({
     selectedModelLabel, effortOptions, selectedEffort, permission: selectedPermissionLabel,
     skills: skillCatalog.cwd === (active?.cwd ?? null) ? skillCatalog.skills : [],
     plugins: pluginCatalog.cwd === (active?.cwd ?? null) ? pluginCatalog.plugins : [],
-    queued: activeSidechat ? activeSidechat.queue.filter((_, index) => !activeSidechat.sending || index > 0).map(item => ({ id: item.id, text: item.text, threadId: activeSidechat.id, failed: !!activeSidechat.error, state: activeSidechat.unconfirmed ? 'uncertain' : activeSidechat.error ? 'failed' : 'queued' })) : queuedFollowUps.filter(item => item.threadId === String(active?.id ?? "") && (item.threadId || item.draftContext === draftContextGenerationRef.current)),
+    queued: activeSidechat ? activeSidechat.queue.filter((_, index) => !activeSidechat.sending || index > 0).map(item => ({ id: item.id, text: item.text, inputText: item.question ?? item.text, threadId: activeSidechat.id, failed: !!activeSidechat.error, state: activeSidechat.unconfirmed ? 'uncertain' : activeSidechat.error ? 'failed' : 'queued' })) : queuedFollowUps.filter(item => item.threadId === String(active?.id ?? "") && (item.threadId || item.draftContext === draftContextGenerationRef.current)),
     approvalCount: requests.length, loadState: conversationLoadState, loadError: conversationLoadError || activeThreadResumeError,
     olderTurnsState, error, syncStale: syncState?.stale, draftSaveStatus,
     getDraft: () => currentDraftRef.current.text,
-    setDraft: value => { currentDraftRef.current = { ...currentDraftRef.current, text: value }; setDraft(value); },
+    setDraft: value => { draftInputRevisionRef.current += 1; currentDraftRef.current = { ...currentDraftRef.current, text: value }; setDraft(value); },
     send: sendMessage, stop: interrupt, chooseModel, chooseEffort,
     removeAttachment: id => {
       setDraftImages(current => current.filter(item => item.id !== id));
@@ -4394,11 +4475,11 @@ function BackendWorkspace({
     },
     cancelQueued: cancelQueuedFollowUp, sendQueued: actOnQueuedFollowUp, editQueued: editQueuedFollowUp,
     extended: {
-      state: { sidechatActive: !!activeSidechat, sidechatParentId, sidechatActions, approvalThreadTitle: approval ? completionThreadTitle({ threadId: String((approval.params as AnyRecord)?.threadId ?? ""), threads, activeThread: active, fallback: t("新对话") }) : undefined, historyEdit, pendingSteerText: pendingSteerMessage?.threadId === String(active?.id) ? pendingSteerMessage.text : null, steering, queueSaving, steerable: !activeSidechat && Boolean(activeTurnId(active)), requests, approval, userAnswers, approvalSubmitting: approvalRequests.submitting, approvalError: approvalRequests.error, permissionModes, selectedPermissionModeId,
+      state: { quotes, quoteFocusToken, sidechatActive: !!activeSidechat, sidechatParentId, sidechatActions, approvalThreadTitle: approval ? completionThreadTitle({ threadId: String((approval.params as AnyRecord)?.threadId ?? ""), threads, activeThread: active, fallback: t("新对话") }) : undefined, historyEdit, pendingSteerText: pendingSteerMessage?.threadId === String(active?.id) ? pendingSteerMessage.text : null, steering, queueSaving, steerable: !activeSidechat && Boolean(activeTurnId(active)), requests, approval, userAnswers, approvalSubmitting: approvalRequests.submitting, approvalError: approvalRequests.error, permissionModes, selectedPermissionModeId,
         selectedServiceTier: displayedServiceTier, speedOptions, pendingAction, tokenUsage: tokenUsageByThread[active?.id] ?? null, rateLimits,
         projectOptions, backends, draftSaveStatus, activeThreadAccessMode, activeThreadResumeError },
       callbacks: { currentHistoryEdit: () => historyEditRef.current, currentApproval: approvalRequests.current, readRemoteFile: (path: string) => { const client = clientRef.current; if (!client) throw new Error(t('尚未连接 app-server')); return client.request<{ dataBase64: string }>('fs/readFile', { path }); }, chooseSpeed, choosePermissionMode, replyToRequest, changeHistoricalMessageEditText, cancelHistoricalMessageEdit,
-        createSidechat, openSidechat, returnFromSidechat, closeSidechat, submitHistoricalMessageEdit, chooseNewChatProject, togglePinned, duplicateActiveThread, renameThread, archiveThread,
+        addQuote, removeQuote: (id: string) => setQuotes(current => current.filter(quote => quote.id !== id)), createSidechat, openSidechat, returnFromSidechat, closeSidechat, submitHistoricalMessageEdit, chooseNewChatProject, togglePinned, duplicateActiveThread, renameThread, archiveThread,
         reopenApproval: approvalRequests.reopen, answerApproval: approvalRequests.answer,
         dismissApproval: approvalRequests.dismiss,
         switchNewChatBackend: (id: string) => { const content = currentDraftRef.current; return onSwitchNewChatBackend(id, content.text, content.images, content.files, savedDraftRef.current); } },
@@ -4409,6 +4490,13 @@ function BackendWorkspace({
     <main className="app-shell">
       {active ? (
         <ConversationPage
+          quotes={quotes}
+          quoteFocusToken={quoteFocusToken}
+          onRemoveQuote={id => setQuotes(current => current.filter(quote => quote.id !== id))}
+          onSelectionQuote={async (selection: SelectionQuote, side: boolean) => { try {
+            const quote = validateMessageQuote(selection, backend.id, activeRef.current);
+            if (side) await createSidechat(quote); else addQuote(quote);
+          } catch (reason) { setError(String((reason as Error).message ?? reason)); } }}
           sidechatActive={!!activeSidechat}
           sidechatActions={sidechatActions}
           onSidechatAction={async (name, id) => { try {
@@ -4505,7 +4593,7 @@ function BackendWorkspace({
           onSelectLocation={selectCurrentLocation}
           onOpenAgentSettings={() => setPicker("agent")}
           onOpenPermissionSettings={() => setPicker("permission")}
-          onDraftChange={setDraft}
+          onDraftChange={value => { draftInputRevisionRef.current += 1; currentDraftRef.current = { ...currentDraftRef.current, text: value }; setDraft(value); }}
           historyEdit={historyEdit}
           onEditUserMessage={beginHistoricalMessageEdit}
           onHistoryEditTextChange={changeHistoricalMessageEditText}

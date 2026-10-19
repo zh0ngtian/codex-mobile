@@ -12,6 +12,7 @@ struct NativeMessage: Codable, Identifiable {
     var turnId: String? = nil
     var itemId: String? = nil
     var phase: String? = nil
+    var quoteSource: NativeQuoteSource? = nil
     var commentary: [NativeCommentaryEntry]? = nil
     var commentaryBlockId: String? = nil
     var commentaryCanAttachToReply: Bool? = nil
@@ -36,4 +37,39 @@ struct NativeCommentaryEntry: Codable, Identifiable {
     var timestamp: Double? = nil
     var blocks: [NativePanelItem]? = nil
     var isPreviousReply: Bool? = nil
+    var quoteSource: NativeQuoteSource? = nil
+}
+
+
+struct NativeQuoteSource: Codable, Equatable, Hashable, Sendable {
+    var backendId: String
+    var threadId: String
+    var turnId: String
+    var itemId: String
+    var region: String
+    var revision: String
+    var params: [String: NativeJSONValue] {
+        ["backendId": .string(backendId), "threadId": .string(threadId), "turnId": .string(turnId), "itemId": .string(itemId), "region": .string(region), "revision": .string(revision)]
+    }
+    func label(english: Bool) -> String {
+        switch region { case "user": english ? "User message" : "用户消息"; case "commentary": english ? "Execution details" : "执行过程"; case "code": english ? "Code" : "代码"; case "table": english ? "Table" : "表格"; default: english ? "Assistant message" : "助手消息" }
+    }
+}
+struct NativeMessageQuote: Codable, Identifiable, Equatable, Sendable {
+    var id: String
+    var source: NativeQuoteSource
+    var text: String
+}
+/// TextKit 的范围始终基于实际显示文字，UTF-16偏移不会被当成Markdown源码偏移。
+struct NativeQuoteSelection {
+    var source: NativeQuoteSource
+    var renderedText: String
+    var range: NSRange
+    func params(contextID: String) -> [String: NativeJSONValue]? {
+        let value = renderedText as NSString
+        guard range.location != NSNotFound, range.location >= 0, range.length > 0, range.location <= value.length, range.length <= value.length - range.location else { return nil }
+        let selected = value.substring(with: range)
+        guard !selected.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        return ["contextId": .string(contextID), "source": .object(source.params), "renderedText": .string(renderedText), "start": .number(Double(range.location)), "end": .number(Double(NSMaxRange(range))), "text": .string(selected)]
+    }
 }

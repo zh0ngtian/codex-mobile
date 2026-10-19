@@ -1,7 +1,9 @@
+import { messageItemText as nativeItemText } from '../features/conversation/message-text';
+export { messageItemText as nativeItemText } from '../features/conversation/message-text';
+import { quoteSource } from '../features/conversation/message-quotes';
 import { videoPathForItem } from '../features/conversation/sheets/RemoteFileSheets';
-import { groupConversationTurns, groupTurnItems, imageSourcesForItem, isThreadRunning, turnDurationMs, stripGitDirectives, automationAgentMessageText, toolActivityRowLabel } from '../ui/conversation';
+import { groupConversationTurns, groupTurnItems, imageSourcesForItem, isThreadRunning, turnDurationMs, toolActivityRowLabel } from '../ui/conversation';
 import { turnResponsePresentation } from '../ui/turn-response-presentation';
-import { extractGeneratedTitle, stripConversationTitleRequest } from '../app-server/conversation-title';
 import { groupThreadsByProject, splitAllThreads, type AggregatedThreadItem } from '../features/threads/thread-list-model';
 import { projectCollapseKey } from '../features/threads/project-collapse';
 import { PROJECTLESS_GROUP_ID, type ProjectThreadLoadState } from '../app-server/thread-list-loader';
@@ -20,15 +22,8 @@ export function nativeCommand(name: string, params: Record<string, unknown> = {}
 export function nativeAction(id: string, title: string, name: string, params: Record<string, unknown> = {}): NativePanelItem {
   return { id, kind: 'action', title, command: nativeCommand(name, params) };
 }
-export function nativeItemText(item: RecordValue): string {
-  let text = Array.isArray(item.content) ? item.content.map((part: RecordValue) => String(part.text ?? '')).join('')
-    : String(item.aggregatedOutput ?? item.text ?? (typeof item.content === 'string' ? item.content : '') ?? '');
-  if (item.type === 'userMessage') text = stripConversationTitleRequest(text);
-  if (item.type === 'agentMessage') text = stripGitDirectives(automationAgentMessageText(extractGeneratedTitle(text).text));
-  return text;
-}
 /** final 与其他正文立即投影；commentary 折叠计数独立于工具和推理。 */
-export function projectConversation(active: RecordValue | null, imageURL: (path: string) => string, originalImageURL?: (path: string) => string, mediaURL?: (path: string) => string): NativeMessage[] {
+export function projectConversation(active: RecordValue | null, imageURL: (path: string) => string, originalImageURL?: (path: string) => string, mediaURL?: (path: string) => string, backendId?: string): NativeMessage[] {
   const messages: NativeMessage[] = [];
   const scrollAnchor = (item: RecordValue | undefined, role: string): string | undefined =>
     typeof item?.id === 'string' && item.id ? `${item.id}:${role}` : undefined;
@@ -36,6 +31,11 @@ export function projectConversation(active: RecordValue | null, imageURL: (path:
     id: `${prefix}:image:${index}`, kind: 'image', title: image.name, value: image.local ? imageURL(image.source) : image.source,
     ...(image.local && originalImageURL ? { previewURL: originalImageURL(image.source) } : {}),
   }));
+  const physicalSources = new Map<object, ReturnType<typeof quoteSource>>();
+  for (const turn of active?.turns ?? []) for (const item of turn.items ?? []) {
+    if (['userMessage', 'agentMessage'].includes(item.type) && backendId && active?.id && turn.id && item.id) physicalSources.set(item, quoteSource(backendId, String(active.id), String(turn.id), item));
+  }
+  const sourceFor = (item: RecordValue) => physicalSources.get(item);
   const turns = groupConversationTurns(active?.turns ?? []);
   for (const turn of turns) {
     const turnId = String(turn.id);
@@ -90,7 +90,7 @@ export function projectConversation(active: RecordValue | null, imageURL: (path:
           const timestamp = formatMessageTimestamp(item.timestamp);
           const text = nativeItemText(item);
           const blocks = entry.media.flatMap(mediaBlocks);
-          commentary.push({ id, text, blocks,
+          commentary.push({ id, text, blocks, quoteSource: sourceFor(item),
             ...(typeof item.timestamp === 'number' && Number.isFinite(item.timestamp) && item.timestamp > 0 ? { timestamp: item.timestamp } : {}) });
           history.push({ id, kind: 'markdown', text });
           history.push(...blocks);
@@ -105,7 +105,7 @@ export function projectConversation(active: RecordValue | null, imageURL: (path:
         if (item.type === 'userMessage' || item.type === 'agentMessage' || ['imageView', 'imageGeneration', 'videoGeneration'].includes(item.type)) flushHistory(isFinal);
         if (item.type === 'userMessage') {
           const sentAt = [item.timestamp, turn.startedAt].find(value => typeof value === 'number' && Number.isFinite(value) && value > 0);
-          messages.push({ id, role: 'user', text: nativeItemText(item), scrollAnchorId: scrollAnchor(item, 'user'), blocks: imageBlocks(item, id), turnId, itemId: String(item.id),
+          messages.push({ id, quoteSource: sourceFor(item), role: 'user', text: nativeItemText(item), scrollAnchorId: scrollAnchor(item, 'user'), blocks: imageBlocks(item, id), turnId, itemId: String(item.id),
             ...(sentAt == null ? {} : { timestamp: sentAt }),
             actions: [nativeAction(`${id}:copy`, t('复制'), 'message.copy', { id }), nativeAction(`${id}:edit`, t('编辑'), 'message.edit', { turnId, messageId: String(item.id) })] });
         } else if (item.type === 'agentMessage') {
@@ -114,8 +114,8 @@ export function projectConversation(active: RecordValue | null, imageURL: (path:
           const blocks = entry.media.flatMap(mediaBlocks);
           if (timestamp) blocks.push({ id: `${id}:timestamp`, kind: 'text', text: timestamp });
           const finalStatus = !commentary && !entry.supersededAnswer && (!running || item === presentation.final) ? status : undefined;
-          messages.push({ id, role: 'assistant', text: nativeItemText(item), scrollAnchorId: scrollAnchor(item, 'assistant'), status: finalStatus, turnId, itemId: String(item.id), phase: typeof item.phase === 'string' ? item.phase : undefined,
-            ...(entry.supersededAnswer ? { commentaryCanAttachToReply: true, commentary: [{ id, text: nativeItemText(item), blocks: [...blocks], isPreviousReply: true,
+          messages.push({ id, quoteSource: sourceFor(item), role: 'assistant', text: nativeItemText(item), scrollAnchorId: scrollAnchor(item, 'assistant'), status: finalStatus, turnId, itemId: String(item.id), phase: typeof item.phase === 'string' ? item.phase : undefined,
+            ...(entry.supersededAnswer ? { commentaryCanAttachToReply: true, commentary: [{ id, quoteSource: sourceFor(item), text: nativeItemText(item), blocks: [...blocks], isPreviousReply: true,
               ...(typeof item.timestamp === 'number' && Number.isFinite(item.timestamp) && item.timestamp > 0 ? { timestamp: item.timestamp } : {}) }] } : {}),
             ...(commentary ? { commentaryIsLiveTail: liveCommentaryIDs.has(String(item.id)) } : {}),
             ...(commentary && typeof item.timestamp === 'number' && Number.isFinite(item.timestamp) && item.timestamp > 0 ? { timestamp: item.timestamp } : {}),

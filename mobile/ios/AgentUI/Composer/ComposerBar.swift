@@ -32,6 +32,7 @@ struct ComposerBar: View {
         @Bindable var session = session
         AgentGlassGroup {
             VStack(spacing: 8) {
+                if let quotes = session.nativeSnapshot.quotes, !quotes.isEmpty { ComposerQuoteCards(quotes: quotes) }
                 if !candidates.isEmpty {
                     MentionCandidates(candidates: candidates, selected: selectedMention, choose: chooseMention)
                 }
@@ -81,6 +82,17 @@ struct ComposerBar: View {
         .frame(maxWidth: .infinity)
         .tint(AgentTheme.ink)
         .sensoryFeedback(.impact, trigger: submitFeedback)
+        .task(id: session.nativeSnapshot.quoteFocusToken) {
+            let token = session.nativeSnapshot.quoteFocusToken
+            let context = session.nativeSnapshot.contextId
+            guard token != nil, session.nativeSnapshot.quotes?.isEmpty == false else { return }
+            // 先让同一快照的会话切换清理焦点，再聚焦已经得到业务确认的引用输入。
+            await Task.yield()
+            guard !Task.isCancelled, session.nativeSnapshot.quoteFocusToken == token,
+                  session.nativeSnapshot.contextId == context, session.nativeSnapshot.quotes?.isEmpty == false,
+                  session.composerCanEdit, session.historyEdit == nil, !session.nativeSnapshot.readOnly else { return }
+            focused = true
+        }
         .onChange(of: focused) { session.inputFocused = focused }
         .onChange(of: session.composer.text) { selectedMention = 0; mentionsDismissed = false }
         .onChange(of: mentionQuery) { _, query in session.searchMentions(query ?? "") }

@@ -144,3 +144,17 @@ export function remarkFileReferences(options: FileReferencesOptions) {
     transformReferences(tree, options, { htmlTags: [], attachments: false });
   };
 }
+
+
+/** 原生展示兼容预处理复用同一HTML/链接/代码范围，不在受保护区域修正文字符号。 */
+export function nativeDisplayTextRanges(tree: Root): Array<{start: number; end: number}> {
+  const ranges: Array<{start: number; end: number}> = []; const htmlTags: string[] = [];
+  const visit = (node: Nodes, protectedText = false) => {
+    if (node.type === 'html') { updateHtmlScope(node.value, htmlTags); return; }
+    if (node.type === 'code' || node.type === 'inlineCode') return;
+    const blocked = protectedText || node.type === 'link' || node.type === 'linkReference';
+    if (node.type === 'text' && !blocked && !htmlTags.length && node.position) ranges.push({start:node.position.start.offset ?? 0,end:node.position.end.offset ?? 0});
+    if ('children' in node) for (const child of node.children) visit(child, blocked);
+  };
+  visit(tree); return ranges;
+}

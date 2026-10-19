@@ -1,3 +1,4 @@
+import { SelectionQuoteBoundary } from './SelectionQuotes';
 import { Fragment, useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { AppServerClient } from "../../app-server/client";
 import type { BackendConfig } from "../../backends/types";
@@ -162,12 +163,12 @@ function UserBubble({
   }, []);
   useEffect(() => setConfirming(false), [inlineEdit?.hasLaterTurns]);
   const [menuAnchor, setMenuAnchor] = useState<MenuAnchor | null>(null);
-  const longPress = useLongPress((anchor) => setMenuAnchor((current) => current ?? anchor), Boolean(inlineEdit));
+  const longPress = useLongPress((anchor) => setMenuAnchor((current) => current ?? anchor), Boolean(inlineEdit), ".user-message-text");
   useEffect(() => {
     if (inlineEdit) setMenuAnchor(null);
   }, [inlineEdit]);
   const bubble = (
-    <div className={`user-bubble${inlineEdit ? " user-bubble-editing" : ""}`} {...longPress}>
+    <SelectionQuoteBoundary item={item}><div className={`user-bubble${inlineEdit ? " user-bubble-editing" : ""}`} {...longPress}>
       {inlineEdit ? (
         <div className="history-message-editor">
           <textarea
@@ -303,7 +304,7 @@ function UserBubble({
           className="user-message-timestamp"
         />
       )}
-    </div>
+    </div></SelectionQuoteBoundary>
   );
   const actions = !inlineEdit && onEditUserMessage ? (
     <div className="user-message-actions" role="group" aria-label={t("历史消息操作")}>
@@ -408,7 +409,7 @@ function TimelineItem({
     return displayText ? <div className="reasoning">{displayText}</div> : null;
   }
   return displayText ? (
-    <div className="assistant-message">
+    <SelectionQuoteBoundary item={item}><div className="assistant-message">
       <MarkdownMessage
         text={displayText}
         renderImage={(source, alt) => (
@@ -442,7 +443,7 @@ function TimelineItem({
           )}
         </div>
       )}
-    </div>
+    </div></SelectionQuoteBoundary>
   ) : null;
 }
 

@@ -1,6 +1,8 @@
 import Foundation
 
 struct NativeSnapshot: Codable {
+    var quotes: [NativeMessageQuote]? = nil
+    var quoteFocusToken: String? = nil
     var sidechatActive: Bool? = nil
     var sidechatParentId: String? = nil
     var sidechatActions: [NativePanelItem]? = nil

@@ -13,6 +13,11 @@ export type LanguagePreference = "system" | Locale;
 const LANGUAGE_STORAGE_KEY = "codex-mobile:language";
 
 const english: Record<string, string> = {
+  "执行过程": "Execution details",
+  "加入聊天": "Add to chat", "在 Sidechat 中提问": "Ask in side chat", "待发送引用": "Quoted text", "移除引用": "Remove quote",
+  "选文已变化，请重新选择": "The selection changed. Select the text again.", "消息已更新，请重新选择": "The message changed. Select the text again.", "引用已移除": "The quote was removed",
+  "用户消息": "User message", "助手消息": "Assistant message", "代码": "Code", "表格": "Table", "引用": "Quote", "来源": "Source", "问题": "Question",
+
   "Sidechat 已失效或不属于当前主聊天": "Sidechat expired or belongs to a different main chat",
   "Sidechat 正在恢复，请稍候": "Restoring Sidechat. Please wait.",
   "Sidechat 不可用": "Sidechat is unavailable",

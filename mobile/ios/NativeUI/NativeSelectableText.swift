@@ -6,6 +6,9 @@ struct NativeSelectableText: UIViewRepresentable {
     let text: NSAttributedString
     var identifier = "assistant.selectable"
     var openLink: (URL) -> Void = { _ in }
+    var onTap: (() -> Void)? = nil
+    var fitsContentWidth = false
+    @Environment(\.nativeSelectionActions) private var selectionActions
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.legibilityWeight) private var legibilityWeight
     private var systemText: NSAttributedString {
@@ -32,6 +35,10 @@ struct NativeSelectableText: UIViewRepresentable {
         view.tintColor = .label
         view.dataDetectorTypes = []
         view.delegate = context.coordinator
+        let tap = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.tapped(_:)))
+        tap.cancelsTouchesInView = false
+        tap.delegate = context.coordinator
+        view.addGestureRecognizer(tap)
         view.linkTextAttributes = [.foregroundColor: UIColor.label,
                                    .underlineStyle: NSUnderlineStyle.single.rawValue | NSUnderlineStyle.patternDot.rawValue]
         view.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
@@ -40,6 +47,8 @@ struct NativeSelectableText: UIViewRepresentable {
 
     func updateUIView(_ view: UITextView, context: Context) {
         context.coordinator.openLink = openLink
+        context.coordinator.onTap = onTap
+        context.coordinator.selectionActions = selectionActions
         view.accessibilityIdentifier = identifier
         view.traitOverrides.legibilityWeight = legibilityWeight == .bold ? .bold : .regular
         let text = systemText
@@ -53,15 +62,31 @@ struct NativeSelectableText: UIViewRepresentable {
     func sizeThatFits(_ proposal: ProposedViewSize, uiView: UITextView, context: Context) -> CGSize? {
         let natural = uiView.attributedText.boundingRect(with: CGSize(width: 100_000, height: 100_000),
                                         options: [.usesLineFragmentOrigin, .usesFontLeading], context: nil)
-        let width = max(1, proposal.width ?? ceil(natural.width))
+        let available = max(1, proposal.width ?? ceil(natural.width))
+        let width = fitsContentWidth ? min(available, max(1, ceil(natural.width))) : available
         uiView.textContainer.size = CGSize(width: width, height: .greatestFiniteMagnitude)
         uiView.layoutManager.ensureLayout(for: uiView.textContainer)
         let used = uiView.layoutManager.usedRect(for: uiView.textContainer)
         return CGSize(width: width, height: ceil(used.maxY))
     }
 
-    @MainActor final class Coordinator: NSObject, UITextViewDelegate {
+    @MainActor final class Coordinator: NSObject, UITextViewDelegate, UIGestureRecognizerDelegate {
         var openLink: (URL) -> Void
+        var onTap: (() -> Void)?
+        @objc func tapped(_ recognizer: UITapGestureRecognizer) {
+            guard recognizer.state == .ended, let view = recognizer.view as? UITextView, view.selectedRange.length == 0 else { return }
+            onTap?()
+        }
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+            onTap != nil && (gestureRecognizer.view as? UITextView)?.selectedRange.length == 0
+        }
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool { true }
+        var selectionActions: ((String, NSRange) -> [UIMenuElement])?
+        func textView(_ textView: UITextView, editMenuForTextIn range: NSRange, suggestedActions: [UIMenuElement]) -> UIMenu? {
+            let actions = selectionActions?(textView.attributedText.string, range) ?? []
+            let quoteMenu = actions.isEmpty ? [] : [UIMenu(options: .displayInline, children: actions)]
+            return UIMenu(children: quoteMenu + suggestedActions)
+        }
         init(openLink: @escaping (URL) -> Void) { self.openLink = openLink }
         func textView(_ textView: UITextView, primaryActionFor textItem: UITextItem, defaultAction: UIAction) -> UIAction? {
             guard case .link(let url) = textItem.content else { return defaultAction }
@@ -111,5 +136,16 @@ final class NativeDottedTextLayoutManager: NSLayoutManager {
                                                 width: 3, height: used.height), cornerRadius: 1.5).fill()
             }
         }
+    }
+}
+
+
+private struct NativeSelectionActionsKey: EnvironmentKey {
+    static let defaultValue: ((String, NSRange) -> [UIMenuElement])? = nil
+}
+extension EnvironmentValues {
+    var nativeSelectionActions: ((String, NSRange) -> [UIMenuElement])? {
+        get { self[NativeSelectionActionsKey.self] }
+        set { self[NativeSelectionActionsKey.self] = newValue }
     }
 }
