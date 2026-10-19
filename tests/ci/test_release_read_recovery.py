@@ -373,6 +373,73 @@ m.main()
                 self.assertEqual(isinstance(caught.exception, self.m.TransientReadError), transient)
                 self.assertEqual(run.call_count, 4 if transient else 1)
 
+    def source_post_failure_scenario(self, kind):
+        self.a.progress('build', runId=123, attempt=1)
+        artifacts = {platform:self.seed(self.a.root / 'ci-artifacts', platform) for platform in ('android','ios')}
+        for item in artifacts.values(): item['downloadUrl'] = 'https://github.test/' + Path(item['path']).name
+        unsigned = artifacts['ios']
+        credentials = self.a.root / 'source-credentials.json'
+        self.m.atomic_json(credentials, {'url':'https://source.test','token':'mock-token'})
+        self.a.options.update(source_credentials=str(credentials), source_url='https://source.test/feed')
+        entry = {'id':'entry-a','kind':'github','repository':self.a.repo,'presentation':{'developerName':'alice'}}
+        if kind == 'attest':
+            entry['current'] = {'downloadURL':unsigned['downloadUrl'],'metadata':{'version':self.a.version,'buildVersion':self.a.build_number},'inspection':{'fullBytes':unsigned['size']}}
+        catalog = {'revision':7,'entries':[entry],'jobs':[]}
+        feed = {'apps':[{'bundleIdentifier':self.a.config['target'],'downloadURL':unsigned['downloadUrl'],'version':'0.2.163'}]}
+        post_error = RuntimeError('HTTP 401'); calls = []; posted = False
+        def url_json(url, **kwargs):
+            nonlocal posted
+            method = kwargs.get('method','GET'); calls.append((method, url))
+            if url.endswith('/feed'): return feed
+            if method == 'POST':
+                self.assertTrue(url.endswith('/' + kind)); posted = True; raise post_error
+            if url.endswith('/api/catalog'):
+                if posted: raise self.m.TransientReadError('GET EOF')
+                return catalog
+            raise AssertionError('unexpected external API')
+        def gh_json(path, **kwargs):
+            if '/actions/workflows/' in path: return {'workflow_runs':[{**self.completed(),'head_sha':self.a.frozen_sha}]}
+            if '/releases/tags/' in path:
+                return {'id':1,'html_url':'https://github.test/release','assets':[{'name':Path(item['path']).name,'size':item['size'],'digest':'sha256:'+item['sha256'],'browser_download_url':item['downloadUrl']} for item in artifacts.values()]}
+            if '/commits/' in path: return {'sha':self.a.frozen_sha}
+            if path == 'user': return {'login':'alice'}
+            raise AssertionError('unexpected GitHub API')
+        return url_json, gh_json, calls, post_error
+
+    def test_nested_source_sync_and_attest_keep_original_post_error_when_reconciliation_read_fails(self):
+        for kind in ['sync', 'attest']:
+            with self.subTest(kind=kind), tempfile.TemporaryDirectory() as temporary:
+                self.context = self.fixture.context(Path(temporary)); self.a = self.m.Adapter(self.context)
+                url_json, gh_json, calls, post_error = self.source_post_failure_scenario(kind)
+                with patch.object(self.a, 'url_json', side_effect=url_json), patch.object(self.a, 'gh_json', side_effect=gh_json):
+                    with self.assertRaises(RuntimeError) as caught: self.a.run_phase('source')
+                self.assertIs(caught.exception, post_error)
+                self.assertNotIsInstance(caught.exception, self.m.TransientReadError)
+                self.assertEqual([method for method, _ in calls].count('POST'), 1)
+
+    def test_nested_source_post_error_cli_is_nonzero_without_retryable_output(self):
+        for kind in ['sync', 'attest']:
+            with self.subTest(kind=kind):
+                program = """import json, sys
+from unittest.mock import patch
+sys.path.insert(0, sys.argv[1])
+from test_release_read_recovery import ReleaseReadRecoveryTests
+case=ReleaseReadRecoveryTests();case.setUp()
+try:
+    url,gh,calls,error=case.source_post_failure_scenario(sys.argv[2])
+    context=case.base/'cli-context.json';context.write_text(json.dumps(case.context))
+    sys.argv=['adapter','run','source','--context',str(context)]
+    with patch.object(case.m.Adapter,'assert_frozen',lambda self:None),patch.object(case.m.Adapter,'url_json',lambda self,address,**kwargs:url(address,**kwargs)),patch.object(case.m.Adapter,'gh_json',lambda self,path,**kwargs:gh(path,**kwargs)):
+        case.m.main()
+finally:
+    case.doCleanups()
+"""
+                result = subprocess.run([sys.executable,'-B','-c',program,str(fixtures.ROOT/'tests/ci'),kind],text=True,capture_output=True)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual(result.stdout, '')
+                self.assertIn('HTTP 401', result.stderr)
+                self.assertNotIn('GET EOF', result.stderr)
+
     def completed(self): return {'id':123,'status':'completed','conclusion':'success','run_attempt':1}
 
     def seed(self, folder, platform):

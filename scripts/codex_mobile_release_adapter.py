@@ -708,7 +708,8 @@ class Adapter:
             try:self.url_json(base+'/api/entries/'+entry_id+'/attest',method='POST',headers=headers,
                               data={'revision':catalog['revision'],'sha256':expected['sha256']})
             except Exception as error:
-                reconciled=self.url_json(base+'/api/catalog',headers=headers)
+                try:reconciled=self.url_json(base+'/api/catalog',headers=headers)
+                except Exception:raise error from None
                 live=next(e for e in reconciled['entries'] if e['id']==entry_id)
                 if live.get('current',{}).get('sha256')==expected['sha256']:
                     catalog=reconciled;continue
@@ -765,8 +766,9 @@ class Adapter:
         # A boolean intent does not prove a request reached the remote service.
         old_job_ids={j['id'] for j in catalog.get('jobs',[]) if j['entryId']==entry_id}
         try:self.url_json(base+'/api/entries/'+entry_id+'/sync',method='POST',headers=headers,data={})
-        except Exception:
-            reconciled=self.url_json(base+'/api/catalog',headers=headers)
+        except Exception as error:
+            try:reconciled=self.url_json(base+'/api/catalog',headers=headers)
+            except Exception:raise error from None
             confirmed=[j for j in reconciled.get('jobs',[]) if j['entryId']==entry_id and j['id'] not in old_job_ids]
             if not confirmed:raise
         else:reconciled=self.url_json(base+'/api/catalog',headers=headers)
