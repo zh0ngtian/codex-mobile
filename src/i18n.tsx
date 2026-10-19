@@ -22,6 +22,7 @@ const english: Record<string, string> = {
   "新建 Sidechat": "New Sidechat",
   " · 执行中": " · Running",
   "关闭 Sidechat": "Close Sidechat",
+  "确定关闭 Sidechat 吗？正在执行的任务将停止，临时聊天和待发消息会被清理，已发生的文件修改不会撤销。": "Close Sidechat? Running tasks will stop and temporary messages and queued input will be cleared. File changes already made will remain.",
   "正在创建 Sidechat，请稍候": "Creating Sidechat. Please wait.",
   "请从主聊天创建 Sidechat": "Create Sidechat from the main chat",
   "主聊天还没有已结束的回合，请在一轮结束后创建 Sidechat": "The main chat has no finished turn yet. Create Sidechat after a turn ends.",

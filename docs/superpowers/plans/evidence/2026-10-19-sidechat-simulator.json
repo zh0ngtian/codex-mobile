@@ -37,6 +37,22 @@
         "single-user-bubble-after-server-confirmation"
       ]
     },
+    "closeConfirmation": {
+      "vitestFiles": 4,
+      "vitestPassed": 17,
+      "typecheck": "passed",
+      "xctestPassed": 1,
+      "durationSeconds": 43.581,
+      "covers": [
+        "system-confirmation-before-close",
+        "cancel-preserves-branch-running-queue-and-draft",
+        "stale-context-cannot-close",
+        "confirm-then-close-and-return"
+      ],
+      "screenshotReviewed": true,
+      "testSidechatsClosed": true,
+      "existingUserSidechatsPreserved": true
+    },
     "latestNativeBusinessVitest": {
       "files": 2,
       "passed": 12,

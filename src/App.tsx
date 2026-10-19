@@ -2403,6 +2403,9 @@ function BackendWorkspace({
     const client = clientRef.current; const side = sidechats.get(id);
     const current = String(activeRef.current?.id ?? '');
     if (!client || !side || side.parentId !== (sidechats.get(current)?.parentId ?? current)) throw new Error(t('Sidechat 不可用'));
+    const context = draftContextGenerationRef.current;
+    if (!await confirmWorkspaceAction(t('确定关闭 Sidechat 吗？正在执行的任务将停止，临时聊天和待发消息会被清理，已发生的文件修改不会撤销。'))) return;
+    if (context !== draftContextGenerationRef.current || clientRef.current !== client || sidechats.get(id) !== side) throw new Error(t('会话已切换，请重试'));
     await sidechats.close(gatewaySidechatClient(client), id);
     if (String(activeRef.current?.id ?? '') === id) openThread(sidechatParentsRef.current.get(side.parentId) ?? { id: side.parentId });
   }
