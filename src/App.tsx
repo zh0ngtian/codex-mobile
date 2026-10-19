@@ -1785,10 +1785,11 @@ function BackendWorkspace({
                     })
                     .catch(() => ({ config: {} })),
                 ]),
-                loadRateLimits: async () => {
+                loadRateLimits: async (options) => {
                   const result = await client.request<AnyRecord>(
                     "account/rateLimits/read",
                     undefined,
+                    options,
                   );
                   if (
                     !disposed &&
