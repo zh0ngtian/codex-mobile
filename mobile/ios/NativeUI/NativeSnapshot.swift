@@ -1,6 +1,9 @@
 import Foundation
 
 struct NativeSnapshot: Codable {
+    var sidechatActive: Bool? = nil
+    var sidechatParentId: String? = nil
+    var sidechatActions: [NativePanelItem]? = nil
     var version = 1
     var ready = false
     var locale = "zh-CN"

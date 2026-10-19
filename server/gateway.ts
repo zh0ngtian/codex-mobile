@@ -588,6 +588,11 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
       if (!isBinary) {
         try {
           const message = JSON.parse(rawMessageText(data));
+          if (message.method === 'mobile/sidechat/rpc' || (httpSessions.sidechats.has(message.params?.threadId) && ['thread/settings/update', 'turn/interrupt'].includes(message.method))) {
+            const envelope = message.method === 'mobile/sidechat/rpc' ? message : { ...message, params: { method: message.method, params: message.params } };
+            void httpSessions.sidechatRpc(envelope).then(response => { if (client.readyState === WebSocket.OPEN) client.send(JSON.stringify(response)); }).catch(error => { if (client.readyState === WebSocket.OPEN) client.send(JSON.stringify({ id: message.id, error: { code: -32000, message: error.message } })); });
+            return;
+          }
           if (!message.method && typeof message.id === "string" && message.id.startsWith("hosted:")) {
             void httpSessions.replyHosted(randomUUID(), message).catch((error) => { if (client.readyState === WebSocket.OPEN) client.send(JSON.stringify({ id: message.id, error: { code: -32000, message: error.message } })); });
             return;
@@ -627,7 +632,7 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
         if (request?.method === "initialize" && message.error == null && !unsubscribeHosted) {
           unsubscribeHosted = httpSessions.subscribeHosted((event) => {
             // App-server supplies subscribed events; gateway adds connection-local approvals and mobile origin authorization.
-            if ((event.id != null || event.method === "serverRequest/resolved" || event.method === "mobile/turn/accepted") && client.readyState === WebSocket.OPEN) client.send(JSON.stringify(event));
+            if ((event.id != null || event.method === "serverRequest/resolved" || event.method === "mobile/turn/accepted" || httpSessions.sidechats.has(event.params?.threadId) || event.method === "thread/closed") && client.readyState === WebSocket.OPEN) client.send(JSON.stringify(event));
           });
         }
         notifications.observeRpc(request, message);

@@ -10,6 +10,10 @@
 
 注入专门 developer instructions：继承历史仅供参考；只执行本 Sidechat 新提出的请求；默认只读探索，修改必须由用户在此明确提出；不得创建子代理。分叉配置关闭 multi_agent。页面持续显示“文件目录与主聊天共享，获准修改会影响同一目录”。不把提示称为文件隔离或独立容器。
 
+## 已批准的恢复补充（方案 A）
+
+真实 App Server 0.144.1 的 ephemeral 分叉不支持 `thread/resume`、`thread/turns/list` 或 `thread/read includeTurns`。用户选择方案 A：新增专用网关内存会话，持续持有上游订阅和新增消息投影，手机更换连接或重启后通过 `mobile/sidechat/rpc` 的 read 操作恢复；daemon 重启后明确失效。Sidechat 专用通道绕开 HTTP 操作 WAL、内联图片落盘、回合文件变更历史落盘；普通聊天的持久化行为保持原样。先使用临时测试网关验证，不部署生产网关。
+
 ## 结构与数据
 
 `src/sidechat/sessions.ts` 负责关联记录、内存投影、创建、回合事件、发送及内存队列、关闭和过期。持久记录白名单只允许设备/主聊天/分支/分叉回合/新增回合 ID 和时间；不存正文、附件、指令或执行结果。消息真实来源是 Codex，内存投影只用于界面显示。
