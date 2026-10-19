@@ -1,5 +1,40 @@
 import Foundation
 
+extension AgentSessionSmoke {
+    @MainActor static func verifyAttachmentPreviewDismissal() {
+        for kind in ["video", "markdown"] {
+            let store = NativeUIStore(arguments: [])
+            let session = AppSession(store: store)
+            var commands: [NativeCommand] = []
+            store.sendCommand = { commands.append($0) }
+            var snapshot = NativeSnapshot()
+            snapshot.ready = true; snapshot.contextId = "preview-context"
+            let panelID = "attachment:local-file"
+            snapshot.panel = NativePanel(id: panelID, title: "local-file", items: [
+                NativePanelItem(id: "draft-download", kind: "file", title: "local-file", value: "data:application/octet-stream;base64,AA=="),
+                NativePanelItem(id: "draft-content", kind: kind),
+            ])
+            func publish() { store.receive(snapshot); session.receive(snapshot) }
+            publish()
+            let firstPreviewID = session.previewItem?.id
+            precondition(firstPreviewID != nil && session.ownsAttachmentPreviewPanel(panelID))
+            session.previewItem = nil
+            session.closeNativePanel()
+            precondition(commands.last?.name == "panel.close" && commands.last?.params["id"] == .string(panelID))
+            precondition(session.nativePanel?.id == panelID, "回执到达前保留真实业务快照，覆盖关闭预览的竞态窗口")
+            precondition(session.ownsAttachmentPreviewPanel(panelID), "预览关闭后等待回执的附件panel不能再次呈现为普通sheet")
+            publish()
+            precondition(session.previewItem == nil && session.ownsAttachmentPreviewPanel(panelID), "迟到的相同附件快照不能重开预览或普通sheet")
+            precondition(!session.ownsAttachmentPreviewPanel("attachment:another-file"), "关闭中的附件不能吞掉不同附件的加载或错误面板")
+            let panel = snapshot.panel
+            snapshot.panel = nil; publish()
+            precondition(!session.ownsAttachmentPreviewPanel(panelID), "业务panel清除后必须释放预览归属")
+            snapshot.panel = panel; publish()
+            precondition(session.previewItem?.id == firstPreviewID && session.ownsAttachmentPreviewPanel(panelID), "关闭回执后同一附件仍能重新打开")
+        }
+    }
+}
+
 @main
 struct AgentSessionSmoke {
     @MainActor static func main() async {
@@ -19,6 +54,7 @@ struct AgentSessionSmoke {
         verifyReferenceCommentaryPlacement()
         verifyUserMessagePresentation()
         verifyCommentaryPresentation()
+        verifyAttachmentPreviewDismissal()
         let empty = AppSession()
         precondition(empty.devices.isEmpty && empty.conversations.isEmpty && empty.accountQuotas.isEmpty, "真实网关就绪前不得填充示例状态")
         let store = NativeUIStore(arguments: [])

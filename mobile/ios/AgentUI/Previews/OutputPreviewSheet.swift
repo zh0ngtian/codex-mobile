@@ -50,10 +50,10 @@ struct OutputPreviewSheet: View {
             .background(AgentTheme.page)
             .navigationTitle(item.name).navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: item.kind == .image ? .topBarTrailing : .topBarLeading) {
+                ToolbarItem(placement: hasDownloadLeading ? .topBarTrailing : .topBarLeading) {
                     Button(preferences.text("关闭", "Close"), systemImage: "xmark", action: close)
                 }
-                ToolbarItemGroup(placement: item.kind == .image ? .topBarLeading : .topBarTrailing) {
+                ToolbarItemGroup(placement: hasDownloadLeading ? .topBarLeading : .topBarTrailing) {
                     if supportsCopy {
                         Button(preferences.text("复制源码", "Copy source"), systemImage: "document.on.document", action: copySource)
                             .disabled(loaded == nil)
@@ -72,6 +72,7 @@ struct OutputPreviewSheet: View {
     }
 
     private var supportsTabs: Bool { [.markdown, .html, .mermaid].contains(item.kind) }
+    private var hasDownloadLeading: Bool { [.image, .video].contains(item.kind) }
     private var supportsCopy: Bool { [.text, .code, .markdown, .html, .mermaid].contains(item.kind) }
     private var exportType: UTType { UTType(filenameExtension: (item.name as NSString).pathExtension) ?? .data }
 

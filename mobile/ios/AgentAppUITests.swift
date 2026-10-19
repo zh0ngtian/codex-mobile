@@ -908,6 +908,37 @@ final class AgentAppUITests: XCTestCase {
         close.tap()
     }
 
+    func testVideoAttachmentPreviewClosesWithoutReopeningPanel() {
+        let app = launchInteractionFixture("--agent-video-preview-fixture")
+        let attachment = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'composer.attachment.' AND label CONTAINS 'preview.mp4'")).firstMatch
+        XCTAssertTrue(attachment.waitForExistence(timeout: 8))
+        for attempt in 0..<3 {
+            attachment.tap()
+            let bar = app.navigationBars["preview.mp4"]
+            XCTAssertTrue(bar.waitForExistence(timeout: 8))
+            let close = bar.buttons["关闭"]
+            let download = bar.buttons["下载"]
+            XCTAssertTrue(download.waitForExistence(timeout: 8))
+            expectation(for: NSPredicate(format: "enabled == true"), evaluatedWith: download)
+            waitForExpectations(timeout: 8)
+            XCTAssertLessThan(download.frame.midX, close.frame.midX)
+            XCTAssertTrue(app.buttons["preview.playback-toggle"].waitForExistence(timeout: 8))
+            if attempt == 0 { captureConversation("视频预览-下载左关闭右", app: app) }
+            if attempt == 1 { bar.swipeDown() } else { close.tap() }
+            expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: close)
+            waitForExpectations(timeout: 5)
+            let deadline = Date().addingTimeInterval(4)
+            repeat {
+                XCTAssertFalse(app.buttons["完成"].exists, "关闭回执延迟期间不得再弹出底层附件页面")
+                XCTAssertFalse(app.buttons["关闭"].exists, "关闭后的预览不能被旧快照重新打开")
+                RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+            } while Date() < deadline
+            XCTAssertTrue(attachment.exists, "预览关闭后保留已选视频")
+            XCTAssertEqual(app.textFields["message-input"].value as? String, "视频预览关闭后保留的草稿")
+        }
+        captureConversation("视频预览-三次关闭直接返回对话", app: app)
+    }
+
     func testInlineImagePreviewAlsoUsesDownloadLeftCloseRight() {
         let app = launchInteractionFixture("--agent-inline-image-preview-fixture")
         let image = app.buttons["查看图片 内联预览图片"]
