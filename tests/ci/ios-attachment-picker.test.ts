@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { parse } from "yaml";
+import { MAX_FILE_BYTES } from "../../src/ui/attachments";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 function install() {
@@ -106,6 +107,16 @@ describe("iOS 原生附件选择", () => {
       reader.readAsArrayBuffer(files[0]);
     });
     expect(bytes).toEqual([0, 1, 2, 255]);
+  });
+
+  it("网页视频沿用文件附件100MiB上限，不套用原生40MiB批次预算", () => {
+    const source = readFileSync("mobile/ios/AttachmentPickerBridge.swift", "utf8");
+    const configuredMiB = source.match(/static let fileAttachmentLimit = (\d+) \* 1_024 \* 1_024/)?.[1];
+    expect(Number(configuredMiB) * 1024 * 1024).toBe(MAX_FILE_BYTES);
+    const videoBranch = source.slice(source.indexOf("if type.conforms(to: .movie) {"), source.indexOf("provider.loadDataRepresentation"));
+    expect(videoBranch).not.toContain("AttachmentImportLimits.totalBytes");
+    expect(videoBranch).toContain("availableBytes: Self.fileAttachmentLimit, perFileBytes: Self.fileAttachmentLimit");
+    expect(videoBranch).toContain("100 MiB");
   });
 
   it("本地构建将桥安装到主 WebView，保留相册和文件原生多选", () => {

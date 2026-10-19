@@ -4,7 +4,7 @@ enum AttachmentImportLimits {
     static let perFileBytes = 20 * 1_024 * 1_024
     static let totalBytes = 40 * 1_024 * 1_024
 
-    static func validate(byteCount: Int, availableBytes: Int) throws {
+    static func validate(byteCount: Int, availableBytes: Int, perFileBytes: Int = AttachmentImportLimits.perFileBytes) throws {
         if byteCount > perFileBytes { throw AttachmentImportError.fileLimit }
         if byteCount > max(0, availableBytes) { throw AttachmentImportError.batchLimit }
     }

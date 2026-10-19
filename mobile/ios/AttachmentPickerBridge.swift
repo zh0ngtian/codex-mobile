@@ -8,6 +8,7 @@ final class CodexMobileAttachmentPickerBridge: NSObject, WKScriptMessageHandler,
     PHPickerViewControllerDelegate, UIDocumentPickerDelegate, UIAdaptivePresentationControllerDelegate {
     private weak var webView: WKWebView?
     private var pendingID: String?
+    private static let fileAttachmentLimit = 100 * 1_024 * 1_024
 
     static func configure(_ webView: WKWebView) {
         let bridge = CodexMobileAttachmentPickerBridge()
@@ -131,18 +132,13 @@ final class CodexMobileAttachmentPickerBridge: NSObject, WKScriptMessageHandler,
         }
         if type.conforms(to: .movie) {
             let suggestedName = provider.suggestedName
-            let usedBytes = files.reduce(0) { total, file in
-                let encoded = file["data"] ?? ""
-                return total + encoded.count / 4 * 3 - (encoded.hasSuffix("==") ? 2 : encoded.hasSuffix("=") ? 1 : 0)
-            }
-            let availableBytes = max(0, AttachmentImportLimits.totalBytes - usedBytes)
             provider.loadFileRepresentation(forTypeIdentifier: identifier) { [weak self] url, error in
                 do {
                     guard let url else { throw error ?? AttachmentImportError.missingData }
                     let values = try url.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey])
                     guard values.isRegularFile == true, let size = values.fileSize else { throw AttachmentImportError.fileSizeUnavailable }
                     // The provider owns this URL only for the duration of the callback.
-                    let data = try AttachmentLoader.readBoundedFile(url, size: size, availableBytes: availableBytes)
+                    let data = try AttachmentLoader.readBoundedFile(url, size: size, availableBytes: Self.fileAttachmentLimit, perFileBytes: Self.fileAttachmentLimit)
                     let originalName = suggestedName ?? url.lastPathComponent
                     let fileType = UTType(filenameExtension: url.pathExtension)
                     let nameType = UTType(filenameExtension: (originalName as NSString).pathExtension)
@@ -153,7 +149,10 @@ final class CodexMobileAttachmentPickerBridge: NSObject, WKScriptMessageHandler,
                     let file = ["name": name, "type": actualType.preferredMIMEType ?? "application/octet-stream", "data": data.base64EncodedString()]
                     DispatchQueue.main.async { self?.loadPhotos(results, index: index + 1, files: files + [file], id: id) }
                 } catch {
-                    DispatchQueue.main.async { self?.finish(id: id, files: [], error: AttachmentImportError.message(for: error, isEnglish: false)) }
+                    let message = error as? AttachmentImportError == .fileLimit
+                        ? "此文件超过 100 MiB 单文件上限，请选择较小的文件。"
+                        : AttachmentImportError.message(for: error, isEnglish: false)
+                    DispatchQueue.main.async { self?.finish(id: id, files: [], error: message) }
                 }
             }
             return

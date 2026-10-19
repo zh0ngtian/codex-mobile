@@ -47,11 +47,11 @@ actor AttachmentLoader {
         return data
     }
 
-    nonisolated static func readBoundedFile(_ url: URL, size: Int, availableBytes: Int) throws -> Data {
-        try AttachmentImportLimits.validate(byteCount: size, availableBytes: availableBytes)
+    nonisolated static func readBoundedFile(_ url: URL, size: Int, availableBytes: Int, perFileBytes: Int = AttachmentImportLimits.perFileBytes) throws -> Data {
+        try AttachmentImportLimits.validate(byteCount: size, availableBytes: availableBytes, perFileBytes: perFileBytes)
         let handle = try FileHandle(forReadingFrom: url)
         defer { try? handle.close() }
-        let limit = min(AttachmentImportLimits.perFileBytes, max(0, availableBytes))
+        let limit = min(perFileBytes, max(0, availableBytes))
         var data = Data()
         data.reserveCapacity(min(size, limit))
         while true {
@@ -59,7 +59,7 @@ actor AttachmentLoader {
             let chunkSize = min(64 * 1_024, limit - data.count + 1)
             guard let chunk = try handle.read(upToCount: chunkSize), !chunk.isEmpty else { break }
             data.append(chunk)
-            try AttachmentImportLimits.validate(byteCount: data.count, availableBytes: availableBytes)
+            try AttachmentImportLimits.validate(byteCount: data.count, availableBytes: availableBytes, perFileBytes: perFileBytes)
         }
         return data
     }

@@ -44,6 +44,7 @@ import Foundation
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: folder) }
+        try verifyWebVideoFileBudget(folder: folder)
         try await verifyPhotoFileTransfer(folder: folder)
         let small = folder.appendingPathComponent("small.txt")
         try Data("small".utf8).write(to: small)
@@ -103,6 +104,32 @@ import Foundation
         precondition(located && harness.commands.last?.name == "location.insert" && harness.commands.last?.params["contextId"] == .string("draft-c"), "授权后必须走现有定位业务并绑定原context")
         try await verifyBudgetAndInterruptedImport(small: small, folder: folder)
         print("Composer attachment flow smoke passed")
+    }
+    static func verifyWebVideoFileBudget(folder: URL) throws {
+        let webLimit = 100 * 1_024 * 1_024
+        let video = folder.appendingPathComponent("web-video.mov")
+        _ = FileManager.default.createFile(atPath: video.path, contents: nil)
+        let handle = try FileHandle(forWritingTo: video)
+        defer { try? handle.close() }
+        try handle.truncate(atOffset: UInt64(21 * 1_024 * 1_024))
+        do {
+            _ = try AttachmentLoader.readBoundedFile(video, size: 21 * 1_024 * 1_024, availableBytes: webLimit)
+            preconditionFailure("原生默认单文件上限必须仍为20MiB")
+        } catch { precondition(error as? AttachmentImportError == .fileLimit) }
+        let data = try AttachmentLoader.readBoundedFile(video, size: 21 * 1_024 * 1_024, availableBytes: webLimit, perFileBytes: webLimit)
+        precondition(data.count == 21 * 1_024 * 1_024, "网页视频必须沿用100MiB单文件上限，不能缩小为原生20MiB")
+        try AttachmentImportLimits.validate(byteCount: webLimit, availableBytes: webLimit, perFileBytes: webLimit)
+        try handle.truncate(atOffset: UInt64(webLimit + 1))
+        do {
+            _ = try AttachmentLoader.readBoundedFile(video, size: webLimit + 1, availableBytes: webLimit, perFileBytes: webLimit)
+            preconditionFailure("网页视频超过100MiB必须在文件读取前拒绝")
+        } catch { precondition(error as? AttachmentImportError == .fileLimit) }
+        let growing = folder.appendingPathComponent("growing-web-video.mov")
+        try Data(repeating: 0, count: 33).write(to: growing)
+        do {
+            _ = try AttachmentLoader.readBoundedFile(growing, size: 0, availableBytes: 32, perFileBytes: 32)
+            preconditionFailure("自定义单文件上限也必须限制实际读取，不能依赖文件大小元数据")
+        } catch { precondition(error as? AttachmentImportError == .fileLimit) }
     }
     static func verifyPhotoFileTransfer(folder: URL) async throws {
         let video = folder.appendingPathComponent("原片.MOV")
