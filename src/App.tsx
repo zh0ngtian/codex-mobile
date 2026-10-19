@@ -5,7 +5,7 @@ import { useNativeConfirmation } from './native-ui/confirmation';
 import { useNativeRuntime, useNativeWorkspace } from "./native-ui/adapters";
 import { useNativeConversationAdapter } from "./native-ui/workspace-adapter";
 import { isNativeUIEnabled, type NativeRuntime } from "./native-ui/runtime";
-import { projectNavigation } from "./native-ui/projection";
+import { projectNavigation, projectNavigationLoading } from "./native-ui/projection";
 import { projectNativeBackends, projectNativePreferences } from "./native-ui/device-panel";
 import { readFontSize } from "./ui/font-size";
 import { assertNativeAttachmentSelection } from "./native-ui/attachment-import";
@@ -5116,7 +5116,12 @@ function ConfiguredApp({
   };
   const nativeRuntime = useNativeRuntime({
     selectedBackendId: selectedBackend?.id ?? "", listBackendId, sidebarOpen, search: query, groups: nativeGroups,
-    navigationLoading: threadListState === "loading",
+    navigationLoading: projectNavigationLoading({
+      loading: threadListState === "loading",
+      hasContent: nativeGroups.some(group => group.category === "project" || group.items.some(item => item.command?.name === "thread.open")),
+      backendIds: listBackendId === "all" ? mountedBackends.map(backend => backend.id) : [listBackendId],
+      backendSnapshots: snapshots,
+    }),
     backends: [{ id: "all", title: t("全部设备"), connected: true }, ...projectNativeBackends(registry.backends, summaries, snapshots)],
     preferences: projectNativePreferences({ language: languagePreference, transportMode, fontSize: readFontSize(), notification: notificationPreference }),
   }, {

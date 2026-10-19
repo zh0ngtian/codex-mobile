@@ -149,6 +149,18 @@ interface NavigationInput {
   backends?: Array<{ id: string; name: string }>;
   backendSnapshots?: Record<string, { projects: string[]; projectlessThreadIds: string[]; projectThreadStates: Record<string, ProjectThreadLoadState>; projectHasMore: Record<string, boolean> }>;
 }
+export function projectNavigationLoading(input: {
+  loading: boolean; hasContent: boolean; backendIds: readonly string[];
+  backendSnapshots: Record<string, { threadListState: 'loading' | 'ready' | 'error' } | undefined>;
+}): boolean {
+  if (input.loading) return true;
+  if (input.hasContent) return false;
+  // 任一设备成功空不能确认整个范围为空；未提供首查快照的设备也仍在等待。
+  return input.backendIds.some(id => {
+    const state = input.backendSnapshots[id]?.threadListState;
+    return state === undefined || state === 'loading';
+  });
+}
 export function projectNavigation(input: NavigationInput): NativeGroup[] {
   const row = (item: AggregatedThreadItem) => {
     const params = { backendId: item.backendId, threadId: item.threadId };
