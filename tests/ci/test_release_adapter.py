@@ -1,6 +1,7 @@
 import concurrent.futures
 import importlib.util
 import json
+import os
 import plistlib
 from pathlib import Path
 import subprocess
@@ -292,6 +293,92 @@ class ReleaseAdapterTests(unittest.TestCase):
                 legacy.build_unsigned('0.2.164',{'bundleId':'vip.loock.codexmobile','baseUrl':'https://ota.test'},a.root/'candidate.ipa',retained_root=retained)
             self.assertFalse(any(call[0]=='xcodebuild' for call in calls))
             self.assertTrue(any(call[0]=='ditto' for call in calls))
+
+    def test_iosbuild_cli_keeps_subprocess_progress_out_of_protocol_stdout(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp); work = root/'work'; scripts = work/'scripts'; scripts.mkdir(parents=True)
+            for name in ('release-ios.py', 'ios_sign.py', 'ios_ota.py'):
+                (scripts/name).write_bytes((ROOT/'scripts'/name).read_bytes())
+            (work/'.gitignore').write_text('.mobile-build/\n__pycache__/\n')
+            config = {'bundleId': 'vip.loock.codexmobile', 'udid': 'REGISTERED', 'profile': 'profile',
+                      'p12': 'p12', 'passwordFile': 'password', 'baseUrl': 'https://ota.test',
+                      'localRoot': str(root/'channel'), 'caFile': 'ca.pem'}
+            for name in ('profile', 'p12', 'password', 'ca.pem'):
+                (root/name).write_text('fixture'); (root/name).chmod(0o600)
+            config_path = root/'ios-config.json'; config_path.write_text(json.dumps(config)); config_path.chmod(0o600)
+            def git(*args):
+                return subprocess.run(['git', *args], cwd=work, check=True, capture_output=True, text=True).stdout.strip()
+            git('init', '-q'); git('config', 'user.email', 'test@example.com'); git('config', 'user.name', 'Test')
+            git('add', '.'); git('commit', '-qm', 'source fixture')
+            source_sha = git('rev-parse', 'HEAD')
+            context = self.context(root)
+            context['tasks'][0]['sha'] = source_sha
+            context['config']['options']['ios_config'] = str(config_path)
+            manifest = {'batchId': context['id'], 'project': context['project'], 'scope': context['scope'],
+                        'target': context['config']['target'], 'environment': context['config']['environment'],
+                        'tasks': [{'id': 'task-a', 'sha': source_sha}],
+                        'prepared': {'version': '0.2.164', 'buildNumber': '2164'}}
+            manifest_path = work/'.release-batch.json'; manifest_path.write_text(json.dumps(manifest))
+            git('add', '.release-batch.json'); git('commit', '-qm', 'freeze fixture')
+            context['frozen'].update(sha=git('rev-parse', 'HEAD'), tasks=manifest['tasks'],
+                                     manifestSha256=self.load().sha256(manifest_path))
+            context_path = root/'context.json'; context_path.write_text(json.dumps(context))
+            commands = root/'bin'; commands.mkdir()
+            def external(name, source):
+                path = commands/name
+                path.write_text('#!' + sys.executable + '\n' + source)
+                path.chmod(0o700)
+            external('node', '''import os, sys
+from pathlib import Path
+assert Path(sys.argv[1]).name == 'prepare-ios.mjs'
+build = Path('.mobile-build/ios/pakeplus'); build.mkdir(parents=True)
+(build/'version').write_text(sys.argv[sys.argv.index('--version') + 1])
+os.write(1, b'PREPARE_STDOUT_PROGRESS\\n')
+os.write(2, b'PREPARE_STDERR_PROGRESS\\n')
+''')
+            external('xcodebuild', '''import os, plistlib, sys
+from pathlib import Path
+version = Path('.mobile-build/ios/pakeplus/version').read_text()
+app = Path(sys.argv[sys.argv.index('-derivedDataPath') + 1])/'Build/Products/Release-iphoneos/PakePlus.app'
+app.mkdir(parents=True)
+(app/'Info.plist').write_bytes(plistlib.dumps({'CFBundleIdentifier': os.environ['APP_ID'],
+    'CFBundleShortVersionString': version, 'CFBundleVersion': str(sum(int(p)*f for p,f in zip(version.split('.'), (1000000,1000,1)))),
+    'CFBundleExecutable': 'PakePlus'}))
+(app/'PakePlus').write_bytes(b'compiled executable')
+os.write(1, b'XCODE_STDOUT_PROGRESS\\n** BUILD SUCCEEDED **\\n')
+os.write(2, b'XCODE_STDERR_DIAGNOSTIC\\n')
+''')
+            external('ditto', '''import os, sys, zipfile
+from pathlib import Path
+payload = Path(sys.argv[-2])
+with zipfile.ZipFile(sys.argv[-1], 'w') as archive:
+    for path in payload.rglob('*'):
+        if path.is_file(): archive.write(path, path.relative_to(payload.parent))
+os.write(1, b'DITTO_STDOUT_PROGRESS\\n')
+os.write(2, b'DITTO_STDERR_PROGRESS\\n')
+''')
+            result = subprocess.run([sys.executable, '-B', str(ROOT/'scripts/codex_mobile_release_adapter.py'),
+                                     'run', 'iosbuild', '--context', str(context_path)], cwd=ROOT,
+                                    env={**os.environ, 'PATH': str(commands) + os.pathsep + os.environ.get('PATH', '')},
+                                    capture_output=True, text=True, timeout=30)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            # 和协调引擎一样解析完整stdout，不能跳过进度行或只读取末行。
+            try:
+                receipt = json.loads(result.stdout)
+            except json.JSONDecodeError:
+                self.fail('适配器stdout必须是唯一JSON，实际包含子进程输出：' + repr(result.stdout[:160]))
+            self.assertEqual(len(result.stdout.splitlines()), 1)
+            self.assertTrue(receipt['done'])
+            self.assertEqual(receipt['result']['sourceCommit'], context['frozen']['sha'])
+            self.assertEqual(receipt['result']['version'], '0.2.164')
+            for progress in ('PREPARE_STDOUT_PROGRESS', 'PREPARE_STDERR_PROGRESS', 'DITTO_STDOUT_PROGRESS', 'DITTO_STDERR_PROGRESS'):
+                self.assertIn(progress, result.stderr)
+            log = root/'artifacts/codex-mobile/batch-test/device-build/compile.log'
+            self.assertIn('XCODE_STDOUT_PROGRESS', log.read_text())
+            self.assertIn('XCODE_STDERR_DIAGNOSTIC', log.read_text())
+            self.assertIn('** BUILD SUCCEEDED **', log.read_text())
+            self.assertNotIn('XCODE_', result.stdout + result.stderr)
+            self.assertTrue(Path(receipt['result']['path']).is_file())
 
     def test_final_delivery_requires_development_ci_for_the_frozen_commit(self):
         m=self.load()
