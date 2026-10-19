@@ -9,7 +9,7 @@ struct RunSpeedButton: View {
             Image(systemName: session.composer.configuration.speed.symbol)
                 .symbolVariant(.none)
                 .font(.subheadline).imageScale(.large)
-                .foregroundStyle(session.composer.configuration.speed == .fast ? preferences.accent.color : AgentTheme.ink)
+                .foregroundStyle(AgentTheme.ink)
                 .modifier(ComposerControlSurface(circular: true))
         }
         .buttonStyle(.plain)

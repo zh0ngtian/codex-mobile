@@ -79,6 +79,7 @@ struct ComposerBar: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .frame(maxWidth: .infinity)
+        .tint(AgentTheme.ink)
         .sensoryFeedback(.impact, trigger: submitFeedback)
         .onChange(of: focused) { session.inputFocused = focused }
         .onChange(of: session.composer.text) { selectedMention = 0; mentionsDismissed = false }
