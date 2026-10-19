@@ -3,6 +3,7 @@ import {
   approvalPolicyDescription,
   approvalPolicyLabel,
   defaultNewChatPermissionMode,
+  effortLabel,
   effortOptionsForModel,
   modelOptionMeta,
   normalizeModelSettings,
@@ -50,9 +51,19 @@ describe("移动端模型与审批设置", () => {
         ],
       }),
     ).toEqual([
-      { id: "low", label: "低", description: "更快响应" },
-      { id: "medium", label: "中", description: "平衡速度与质量" },
+      { id: "low", label: "low", description: "更快响应" },
+      { id: "medium", label: "medium", description: "平衡速度与质量" },
     ]);
+  });
+
+  it("思考强度保留目录顺序与未知英文原值，空目录不补选项", () => {
+    const values = ["high", "future-effort", "low", "medium"];
+    expect(effortOptionsForModel({ supportedReasoningEfforts: values.map(reasoningEffort => ({ reasoningEffort, description: reasoningEffort })) }))
+      .toEqual(values.map(value => ({ id: value, label: value, description: value })));
+    for (const value of values) expect(effortLabel(value)).toBe(value);
+    expect(effortOptionsForModel(null)).toEqual([]);
+    expect(effortOptionsForModel({})).toEqual([]);
+    expect(effortOptionsForModel({ supportedReasoningEfforts: [] })).toEqual([]);
   });
 
   it("速度选项只包含正常与当前模型 serviceTiers 返回项", () => {

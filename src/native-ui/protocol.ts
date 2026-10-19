@@ -12,7 +12,7 @@ export interface NativeNavigationItem { id: string; title: string; subtitle?: st
 export interface NativeGroup { id: string; title: string; items: NativeNavigationItem[]; command?: NativeCommand; actions?: NativePanelItem[]; collapsed?: boolean;
   category?: 'pinned' | 'project' | 'recent' | 'search'; subtitle?: string; loading?: string; newCommand?: NativeCommand;
   backendId?: string; cwd?: string; hasMore?: boolean; allItems?: NativeNavigationItem[] }
-export interface NativeCommentaryEntry { id: string; text: string; timestamp?: number; blocks?: NativePanelItem[] }
+export interface NativeCommentaryEntry { id: string; text: string; timestamp?: number; blocks?: NativePanelItem[]; isPreviousReply?: boolean }
 export interface NativeMessage { id: string; role: string; text: string; activityKind?: 'tool' | 'reasoning' | 'plan'; status?: string; blocks?: NativePanelItem[]; actions?: NativePanelItem[]; timestamp?: number; historyEdit?: NativeSnapshot['panel']; turnId?: string; itemId?: string; phase?: string;
   /** 独立于分组turn前缀的展示锚点，不用于真实业务动作。 */
   scrollAnchorId?: string;
@@ -20,7 +20,7 @@ export interface NativeMessage { id: string; role: string; text: string; activit
   scrollAnchorIds?: string[];
   /** 新界面使用语义条目；旧v1界面继续读取commentaryBlockId指向的disclosure。 */
   commentary?: NativeCommentaryEntry[]; commentaryBlockId?: string;
-  /** 仅原始顺序中连续commentary及附属媒体后直接是final时为true。 */
+  /** 连续历史可归入紧随final；旧回答保留原消息身份，同时以isPreviousReply条目收入过程。 */
   commentaryCanAttachToReply?: boolean;
   /** 由normalized原始顺序确定当前运行turn的连续commentary尾段，不能按Native工具汇总位置猜测。 */
   commentaryIsLiveTail?: boolean }

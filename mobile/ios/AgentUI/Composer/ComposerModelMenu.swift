@@ -45,8 +45,9 @@ struct ComposerOptionMenu: View, Equatable {
                 }
             }
         } label: {
-            Text(title).font(.body).lineLimit(1).foregroundStyle(AgentTheme.ink)
-                .frame(minHeight: 44, alignment: .leading)
+            Text(title).lineLimit(1).minimumScaleFactor(0.9).truncationMode(.middle)
+            .font(.footnote).foregroundStyle(AgentTheme.ink)
+            .modifier(ComposerControlSurface())
         }
         .menuIndicator(.hidden).menuOrder(.fixed).buttonStyle(.plain).tint(AgentTheme.ink)
         .disabled(!enabled || options.isEmpty)

@@ -35,4 +35,5 @@ struct NativeCommentaryEntry: Codable, Identifiable {
     var text: String
     var timestamp: Double? = nil
     var blocks: [NativePanelItem]? = nil
+    var isPreviousReply: Bool? = nil
 }

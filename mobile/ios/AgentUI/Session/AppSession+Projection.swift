@@ -36,6 +36,7 @@ extension AppSession {
             return BackendDevice(id: id, name: backend.title, gatewayAddress: backend.gatewayAddress ?? "", enabled: backend.enabled ?? true, connection: connection, projects: backend.projects ?? [], capabilities: DeviceCapabilities(models: models, effortLevels: effort, effortsByModel: effortsByModel, supportsFast: active && (snapshot.speeds ?? []).contains { $0.value == "fast" || $0.value == "priority" }, permissions: permissions.reduce(into: [ApprovalMode]()) { if !$0.contains($1) { $0.append($1) } }), savedConfiguration: active ? configuration(snapshot) : ComposerConfiguration(), accountKey: backend.id)
         }
         selectedDeviceID = snapshot.listBackendId == "all" ? nil : (snapshot.listBackendId ?? snapshot.backendId).map { scopedID("device", $0) }
+        let previouslyExpanded = expandedProjects
         projectGroups = [:]; scopedProjects = []; projectMembers = [:]; navigationIDs = []; expandedProjects = []; projectErrors = []; loadingProjects = []
         var listed: [UUID: Conversation] = [:]
         var ordered: [UUID] = []
@@ -51,6 +52,7 @@ extension AppSession {
                 projectGroups[key] = group
                 projectKey = key
                 if group.collapsed != true { expandedProjects.insert(key) }
+                else if previouslyExpanded.contains(key) { projectPageCounts[key] = 5 }
                 if group.loading == "error" { projectErrors.insert(key) }
                 if group.loading == "loading" { loadingProjects.insert(key) }
             }

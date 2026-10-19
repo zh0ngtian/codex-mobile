@@ -353,6 +353,7 @@ function BackendWorkspace({
   const [connection, setConnection] = useState<ConnectionState>("connecting");
   const [threads, setThreads] = useState<AnyRecord[]>([]);
   const [projects, setProjects] = useState<string[]>([]);
+  const [newChatProjectCatalogReady, setNewChatProjectCatalogReady] = useState(false);
   const [projectlessThreadIds, setProjectlessThreadIds] = useState<string[]>(
     () => readLocalProjectlessThreadIds(window.localStorage, backend.id),
   );
@@ -471,6 +472,7 @@ function BackendWorkspace({
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const imageReadGenerationRef = useRef(new ImageReadGeneration());
   const draftContextGenerationRef = useRef(0);
+  const pendingNewChatProjectRef = useRef<number | null>(null);
   const activeRef = useRef<AnyRecord | null>(active);
   const threadsRef = useRef<AnyRecord[]>([]);
   const modelsRef = useRef<AnyRecord[]>([]);
@@ -945,6 +947,7 @@ function BackendWorkspace({
   ) {
     if (!client || client !== clientRef.current) return;
     try {
+      let projectCatalogReadSucceeded = false;
       let directories = projects;
       let nextProjectlessThreadIds = mergeProjectlessThreadIds(
         projectlessThreadIds,
@@ -953,6 +956,7 @@ function BackendWorkspace({
       try {
         const projectState = await fetchBackendProjectState(backend, "background", client.signal);
         if (client !== clientRef.current || client.signal?.aborted) return;
+        projectCatalogReadSucceeded = true;
         directories = projectState.projects;
         nextProjectlessThreadIds = mergeProjectlessThreadIds(
           projectState.projectlessThreadIds,
@@ -974,6 +978,10 @@ function BackendWorkspace({
           includeRunningThreads: true,
         },
       );
+      // 目录失败或线程总加载失败都不能证明保存项目已失效，保留待恢复上下文供重试。
+      if (projectCatalogReadSucceeded && client === clientRef.current && !client.signal?.aborted) {
+        setNewChatProjectCatalogReady(true);
+      }
     } catch (reason) {
       setThreadListState((current) =>
         current === "loading" ? "error" : current,
@@ -2439,6 +2447,26 @@ function BackendWorkspace({
     return options;
   }, [projects, threads]);
 
+  function rememberedNewChatProject() {
+    const savedCwd = window.localStorage.getItem(`codex-mobile:new-chat-project:${backend.id}`);
+    return savedCwd === "" ? null :
+      projectOptions.find((project) => project.cwd === savedCwd)?.cwd || projectOptions[0]?.cwd || null;
+  }
+
+  useEffect(() => {
+    const context = pendingNewChatProjectRef.current;
+    if (!newChatProjectCatalogReady || context === null) return;
+    pendingNewChatProjectRef.current = null;
+    if (context !== draftContextGenerationRef.current) return;
+    const cwd = rememberedNewChatProject();
+    setActive((current) => {
+      if (!current || current.id || context !== draftContextGenerationRef.current) return current;
+      const next = { ...current, cwd };
+      activeRef.current = next;
+      return next;
+    });
+  }, [newChatProjectCatalogReady, projectOptions]);
+
   function openThread(thread: AnyRecord) {
     markLoadProfile(String(thread.id), 'workspace-open');
     const sequence = ++openSequenceRef.current;
@@ -3890,20 +3918,16 @@ function BackendWorkspace({
     savedDraft?: SavedNewChatDraft,
     savedDraftReference?: SavedDraftReference,
   ) => {
-    const savedCwd = window.localStorage.getItem(
-      `codex-mobile:new-chat-project:${backend.id}`,
-    );
     const selectedCwd = savedDraft ? savedDraft.cwd :
       (typeof cwd === "string"
         ? cwd || null
-        : savedCwd === ""
-          ? null
-          : projectOptions.find((project) => project.cwd === savedCwd)?.cwd ||
-            projectOptions[0]?.cwd ||
-            null);
+        : newChatProjectCatalogReady ? rememberedNewChatProject() : null);
     openSequenceRef.current += 1;
     activeThreadTargetRef.current = null;
     resetDraftContext();
+    // 项目目录仍在加载时，等首次目录/会话读取完成再确认保存项目是否存在。
+    pendingNewChatProjectRef.current = !savedDraft && typeof cwd !== "string" && !newChatProjectCatalogReady
+      ? draftContextGenerationRef.current : null;
     const defaultPermissionMode =
       defaultNewChatPermissionMode(
         permissionProfiles as Array<{ id: string; allowed?: boolean }>,
@@ -3967,6 +3991,7 @@ function BackendWorkspace({
   };
 
   const chooseNewChatProject = (cwd: string) => {
+    pendingNewChatProjectRef.current = null;
     window.localStorage.setItem(
       `codex-mobile:new-chat-project:${backend.id}`,
       cwd,
@@ -5045,12 +5070,11 @@ function ConfiguredApp({
     const savedBackendId = window.localStorage.getItem(
       "codex-mobile:new-chat-backend",
     );
-    const backendId = target?.backendId ?? (
+    const backendId = target?.backendId ?? mountedBackends.find(
+      (backend) => backend.id === savedBackendId,
+    )?.id ?? (
       listBackendId === "all"
-        ? mountedBackends.find(
-            (backend) => backend.id === savedBackendId,
-          )?.id ??
-          selectedBackend?.id ??
+        ? selectedBackend?.id ??
           mountedBackends[0]?.id
         : listBackendId);
     if (!backendId) return;

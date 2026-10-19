@@ -129,7 +129,7 @@ def build_unsigned(version, config, output, *, retained_root=None):
             completed=(prior.get('CFBundleIdentifier')==config['bundleId'] and prior.get('CFBundleShortVersionString')==version
                        and str(prior.get('CFBundleVersion'))==expected_build and (app/prior.get('CFBundleExecutable','')).is_file())
         if not completed:
-            subprocess.run(['node', str(SCRIPTS/'prepare-ios.mjs'), '--version', version], cwd=ROOT, env=env, check=True)
+            subprocess.run(['node', str(SCRIPTS/'prepare-ios.mjs'), '--version', version], cwd=ROOT, env=env, check=True, stdout=sys.stderr)
             project = ROOT/'.mobile-build/ios/pakeplus'
             if log.exists():
                 import uuid
@@ -149,7 +149,7 @@ def build_unsigned(version, config, output, *, retained_root=None):
         if package.exists():shutil.rmtree(package)
         (package/'Payload').mkdir(parents=True)
         shutil.copytree(app, package/'Payload/PakePlus.app', symlinks=True)
-        subprocess.run(['ditto', '-c', '-k', '--keepParent', str(package/'Payload'), str(output)], check=True)
+        subprocess.run(['ditto', '-c', '-k', '--keepParent', str(package/'Payload'), str(output)], check=True, stdout=sys.stderr)
 
 
 def publish_local(source, root, release):

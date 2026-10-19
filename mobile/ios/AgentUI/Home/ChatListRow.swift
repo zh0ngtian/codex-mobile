@@ -87,7 +87,7 @@ struct ChatListRow: View {
         switch conversation.phase {
         case .running: return .green
         case .waitingApproval, .waitingAnswer: return .orange
-        case .idle: return conversation.isUnread ? .accentColor : .secondary.opacity(0.4)
+        case .idle: return conversation.isUnread ? preferences.accent.color : .secondary.opacity(0.4)
         }
     }
     private var statusTitle: String? {

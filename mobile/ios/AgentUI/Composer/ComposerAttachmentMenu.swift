@@ -7,7 +7,7 @@ struct ComposerAttachmentMenu: View {
 
     var body: some View {
         Menu {
-            Button(preferences.text("选择图片", "Choose images"), systemImage: "photo.on.rectangle") { choose(.photos) }
+            Button(preferences.text("选择照片和视频", "Choose photos and videos"), systemImage: "photo.on.rectangle") { choose(.photos) }
                 .accessibilityIdentifier("composer.attachments.photos")
             Button(preferences.text("选择文件", "Choose files"), systemImage: "folder") { choose(.files) }
                 .accessibilityIdentifier("composer.attachments.files")
@@ -15,7 +15,8 @@ struct ComposerAttachmentMenu: View {
                 .accessibilityIdentifier("composer.attachments.location")
         } label: {
             Image(systemName: "plus").font(.subheadline).imageScale(.large)
-                .foregroundStyle(AgentTheme.ink).frame(width: 40, height: 44).contentShape(.rect)
+                .foregroundStyle(AgentTheme.ink)
+                .modifier(ComposerControlSurface(circular: true))
         }
         .menuIndicator(.hidden).menuOrder(.fixed).buttonStyle(.plain).tint(AgentTheme.ink)
         .disabled(!enabled)

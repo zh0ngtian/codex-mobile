@@ -36,10 +36,6 @@ export interface PermissionMode {
   approvalsReviewer: ApprovalsReviewer;
 }
 
-const effortLabels: Record<string, string> = {
-  low: "低", medium: "中", high: "高", xhigh: "极高", max: "最高", ultra: "超高",
-};
-
 const permissionProfileLabels: Record<string, string> = {
   ":read-only": "只读",
   ":workspace": "工作区访问",
@@ -89,13 +85,13 @@ export function modelOptionMeta(model: ModelCatalogEntry) {
 export function effortOptionsForModel(model: ModelCatalogEntry | null | undefined) {
   return (model?.supportedReasoningEfforts ?? []).map((option) => ({
     id: option.reasoningEffort,
-    label: t(effortLabels[option.reasoningEffort] ?? option.reasoningEffort),
+    label: option.reasoningEffort,
     description: option.description,
   }));
 }
 
 export function effortLabel(effort: string | null | undefined) {
-  return effort ? t(effortLabels[effort] ?? effort) : t("智能");
+  return effort || t("智能");
 }
 
 export function speedOptionsForModel(model: ModelCatalogEntry | null | undefined) {

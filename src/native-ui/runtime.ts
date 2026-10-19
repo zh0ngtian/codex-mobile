@@ -35,7 +35,7 @@ const stringKeys: Record<string, string[]> = {
 function validate(name: string, params: NativeParams) {
   if (name === 'attachment.import') validateNativeAttachmentImport(params.items);
   if (name === 'settings.native-ui' && typeof params.enabled !== 'boolean') throw new Error(t('原生界面设置无效'));
-  if (name === 'thread.new' && (params.backendId !== undefined || params.cwd !== undefined) && (typeof params.backendId !== 'string' || typeof params.cwd !== 'string')) throw new Error(t('项目目标无效'));
+  if (name === 'thread.new' && (params.backendId !== undefined || params.cwd !== undefined) && (typeof params.backendId !== 'string' || (params.cwd !== undefined && typeof params.cwd !== 'string'))) throw new Error(t('项目目标无效'));
   if (![globalNames, workspaceNames, panelNames].some(set => set.has(name))) throw new Error(t('不支持的原生命令'));
   for (const key of stringKeys[name] ?? []) if (typeof params[key] !== 'string') throw new Error(t("参数 {key} 必须是字符串", { key }));
   if (params.confirmed !== undefined && typeof params.confirmed !== 'boolean') throw new Error(t('确认参数无效'));

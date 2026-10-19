@@ -1109,9 +1109,9 @@ export function ConversationPage({
               ref={photoInputRef}
               className="visually-hidden"
               type="file"
-              accept="image/png,image/jpeg,image/webp,image/gif"
+              accept="image/png,image/jpeg,image/webp,image/gif,video/*"
               multiple
-              aria-label={t("选择图片")}
+              aria-label={t("选择照片和视频")}
               onChange={(event) => {
                 const input = event.currentTarget;
                 void onSelectImages(input.files).finally(() => {
@@ -1167,7 +1167,7 @@ export function ConversationPage({
                   }}
                 >
                   <AppIcon name="image" />
-                  <span>{t("图片")}</span>
+                  <span>{t("照片和视频")}</span>
                 </button>
                 <button
                   type="button"

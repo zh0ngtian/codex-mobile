@@ -1,8 +1,11 @@
 import SwiftUI
 
-enum SidebarControlMetrics { static let contentHeight: CGFloat = 31 }
+enum SidebarControlMetrics {
+    static let contentHeight: CGFloat = 31
+    static let trailingInset: CGFloat = 20
+}
 
-/// 搜索按钮与省略号菜单复用相同的独立圆形玻璃表面。
+/// 搜索、刷新按钮与省略号菜单复用相同的独立圆形玻璃表面。
 struct SidebarIconButton: View {
     let systemImage: String
     let title: String

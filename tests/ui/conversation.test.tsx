@@ -362,7 +362,7 @@ describe("移动端对话格式", () => {
     expect(view.queryByText("1分")).toBeNull();
   });
 
-  it("多个引导折叠段只在最后一个入口展示整轮耗时", () => {
+  it("引导后的旧回答与 commentary 合并为同一个整轮过程入口", () => {
     const { container } = render(
       <TurnCard
         turn={{
@@ -395,13 +395,12 @@ describe("移动端对话格式", () => {
     const view = within(container);
 
     expect(
-      view.getByRole("button", { name: "之前的 1 条消息" }),
-    ).not.toBeNull();
-    expect(
       view.getByRole("button", {
-        name: "之前的 1 条消息 · 2分5秒",
+        name: "之前的 3 条消息 · 2分5秒",
       }),
     ).not.toBeNull();
+    expect(view.getAllByRole("button", { name: /之前的/ })).toHaveLength(1);
+    expect(view.queryByText("第一次完成")).toBeNull();
     expect(view.getAllByText("· 2分5秒")).toHaveLength(1);
   });
 
@@ -437,7 +436,7 @@ describe("移动端对话格式", () => {
       .getByText("调整裁剪方式")
       .closest(".user-bubble");
     const toggle = view.getByRole("button", {
-      name: "之前的 1 条消息",
+      name: "之前的 2 条消息",
     });
 
     expect(steeringBubble?.nextElementSibling).toBe(toggle);
@@ -548,7 +547,7 @@ describe("移动端对话格式", () => {
     expect(view.queryByText("正在检查代码")).toBeNull();
   });
 
-  it("引导后新回复段显示 commentary，旧回复段保持 final 和折叠过程", () => {
+  it("引导后尚无新 final 时旧回答收入过程，最新 commentary 继续实时展示", () => {
     const { container } = render(<TurnCard turn={{ id: "steered-phase", status: "inProgress", items: [
       { id: "u1", type: "userMessage", text: "先检查" },
       { id: "c1", type: "agentMessage", phase: "commentary", text: "第一段过程" },
@@ -558,10 +557,13 @@ describe("移动端对话格式", () => {
       { id: "cmd", type: "commandExecution", command: "npm run build" },
     ] }} client={null} />);
     const view = within(container);
-    expect(view.getByText("第一段结果")).toBeTruthy();
+    expect(view.queryByText("第一段结果")).toBeNull();
     expect(view.queryByText("第一段过程")).toBeNull();
     expect(view.getByText("继续构建")).toBeTruthy();
     expect(view.getByText("第二段过程")).toBeTruthy();
+    expect(container.querySelector(".final-answer-metadata")).toBeNull();
+    fireEvent.click(view.getByRole("button", { name: "之前的 2 条消息" }));
+    expect(view.getByText("第一段结果").closest(".previous-messages")).not.toBeNull();
     expect(view.queryByRole("button", { name: "已执行 npm run build" })).toBeNull();
   });
 
@@ -1139,7 +1141,7 @@ describe("移动端对话格式", () => {
     ).toBeNull();
   });
 
-  it("人类引导把同一 Turn 切成独立显示段且单条 AI 回复不折叠", () => {
+  it("人类引导集中在最后回答前，旧回答仅在展开过程后显示且保留原文", () => {
     const earlyAnswer = {
       id: "a-shanghai",
       type: "agentMessage",
@@ -1182,13 +1184,14 @@ describe("移动端对话格式", () => {
     );
     const view = within(container);
 
-    expect(view.getByText("上海是一座现代化城市")).not.toBeNull();
+    expect(view.queryByText("上海是一座现代化城市")).toBeNull();
     expect(view.getByText("改北京的介绍吧").closest(".user-bubble"))
       .not.toBeNull();
     expect(
       view.getByText("北京是古都与现代活力交融的城市"),
     ).not.toBeNull();
-    expect(view.queryByRole("button", { name: /之前的/ })).toBeNull();
+    fireEvent.click(view.getByRole("button", { name: "之前的 1 条消息" }));
+    expect(view.getByText("上海是一座现代化城市").closest(".previous-messages")).not.toBeNull();
   });
 
   it("已完成的历史用户消息支持编辑", () => {
@@ -1284,8 +1287,13 @@ describe("移动端对话格式", () => {
 
     expect(view.getAllByText("先修复测试")).toHaveLength(1);
     expect(view.getAllByText("再运行构建")).toHaveLength(1);
-    expect(view.getAllByText("测试已修复")).toHaveLength(1);
+    expect(view.queryByText("测试已修复")).toBeNull();
     expect(view.getAllByText("构建已通过")).toHaveLength(1);
+    const responseNodes = Array.from(container.querySelector(".turn-responses")!.children);
+    expect(responseNodes.slice(0, 3).map(node => node.textContent)).toEqual(["先修复测试", "再运行构建", "之前的 2 条消息"]);
+    fireEvent.click(view.getByRole("button", { name: "之前的 2 条消息" }));
+    expect(view.getAllByText("测试已修复")).toHaveLength(1);
+    expect(view.getByText("开始检查").closest(".previous-messages")).not.toBeNull();
   });
 
   it("没有 AI 最终回复时不丢弃过程 item", () => {
@@ -2130,7 +2138,8 @@ it('运行转完成后截图随各自 commentary 折叠，用户插话和多个 
   {id:'extra-final',type:'agentMessage',phase:'final_answer',text:'最终补充'},
  ]}}/>);
  expect(within(container).queryByText('第二步')).toBeNull();
- for(const toggle of within(container).getAllByRole('button',{name:'之前的 1 条消息'})) fireEvent.click(toggle);
+ expect(container.querySelectorAll('.turn-responses > .assistant-message')).toHaveLength(1);
+ fireEvent.click(within(container).getByRole('button',{name:'之前的 4 条消息'}));
  expect([...container.querySelectorAll('.commentary-message, .turn-responses > .assistant-message, .turn-responses > .user-message')].map(el=>el.textContent)).toEqual(expect.arrayContaining(['第一步2026-10-15 10:01','第二步2026-10-15 10:02','初次完成','再次完成','最终补充']));
  expect(container.querySelectorAll('.commentary-message .message-images')).toHaveLength(2);
 });
