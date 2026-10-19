@@ -4,6 +4,60 @@ import UIKit
 /// 独立界面夹具及本地网关验收；连接凭证不进入源码或测试附件。
 @MainActor
 final class AgentAppUITests: XCTestCase {
+    func testSteeredRepliesStayInsideProcessBeforeFinalAnswer() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-steered-replies-fixture", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
+        app.launch()
+        let firstGuide = app.staticTexts["先修复测试。"]
+        let secondGuide = app.staticTexts["再检查构建。"]
+        let history = app.buttons["commentary-history-toggle"]
+        let final = app.textViews.matching(NSPredicate(format: "value BEGINSWITH %@", "最终回答：完成所有调整。")).firstMatch
+        let oldFirst = app.textViews.matching(NSPredicate(format: "value BEGINSWITH %@", "中途旧回答一")).firstMatch
+        let oldSecond = app.textViews.matching(NSPredicate(format: "value BEGINSWITH %@", "中途旧回答二")).firstMatch
+        XCTAssertTrue(final.waitForExistence(timeout: 8))
+        XCTAssertEqual(app.buttons.matching(identifier: "commentary-history-toggle").count, 1)
+        XCTAssertLessThan(firstGuide.frame.maxY, secondGuide.frame.minY)
+        XCTAssertLessThan(secondGuide.frame.maxY, history.frame.minY)
+        XCTAssertLessThan(history.frame.maxY, final.frame.minY)
+        XCTAssertFalse(oldFirst.exists)
+        XCTAssertFalse(oldSecond.exists)
+        captureConversation("引导归并-仅最终回答外显", app: app)
+        history.tap()
+        XCTAssertTrue(oldFirst.waitForExistence(timeout: 5))
+        XCTAssertTrue(oldSecond.exists)
+        XCTAssertFalse((oldFirst.value as? String)?.contains("**") == true, "旧回答进入过程后继续使用Markdown正文渲染")
+        captureConversation("引导归并-过程展开保留旧回答", app: app)
+    }
+
+    func testNewConversationRestoresLastMachineAndProject() throws {
+        // 只检查未提交的新对话目标，不发送消息，不创建远端测试会话。
+        let app = try launchConnectedApp()
+        app.buttons["sidebar.askCodex"].tap()
+        let computer = app.buttons["new.computer"]
+        let project = app.buttons["new.project"]
+        XCTAssertTrue(computer.waitForExistence(timeout: 15))
+        let rememberedComputer = computer.label
+        project.tap()
+        let target = app.buttons["codex-mobile"]
+        XCTAssertTrue(target.waitForExistence(timeout: 10), "当前验收机器应提供本仓库项目")
+        target.tap()
+        expectation(for: NSPredicate(format: "label == 'codex-mobile'"), evaluatedWith: project)
+        waitForExpectations(timeout: 10)
+        app.buttons["header.newConversation"].tap()
+        expectation(for: NSPredicate(format: "label == 'codex-mobile'"), evaluatedWith: project)
+        waitForExpectations(timeout: 10)
+        XCTAssertEqual(computer.label, rememberedComputer)
+        captureConversation("新对话-重复新建恢复机器和项目", app: app)
+        app.terminate()
+        app.launch()
+        XCTAssertTrue(app.buttons["header.newConversation"].waitForExistence(timeout: 20))
+        app.buttons["header.newConversation"].tap()
+        expectation(for: NSPredicate(format: "label == 'codex-mobile'"), evaluatedWith: project)
+        waitForExpectations(timeout: 15)
+        XCTAssertEqual(computer.label, rememberedComputer)
+        captureConversation("新对话-重启后恢复机器和项目", app: app)
+    }
+
     func testProjectCollapseResetsFiveRowsButDrawerClosePreservesTen() {
         let app = XCUIApplication()
         app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-sidebar-polish-fixture", "--agent-sidebar-pagination-fixture", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]

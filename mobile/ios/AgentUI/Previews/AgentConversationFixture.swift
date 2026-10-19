@@ -51,6 +51,27 @@ final class AgentConversationFixture {
             NativeMessage(id: "answer", role: "assistant", text: "已完成检查。查看 [网页链接](https://example.com) 与 [文件链接](/tmp/example.swift#L12)。", timestamp: date.addingTimeInterval(120).timeIntervalSince1970, turnId: "fixture-turn", phase: "final_answer"),
         ]
         value.messages[2].status = ProcessInfo.processInfo.arguments.contains("--agent-no-duration-fixture") ? nil : "1小时2分钟3秒"
+        if ProcessInfo.processInfo.arguments.contains("--agent-steered-replies-fixture") {
+            func history(_ id: String, _ text: String) -> NativeMessage {
+                NativeMessage(id: id, role: "activity", text: "", turnId: "fixture-turn",
+                    commentary: [NativeCommentaryEntry(id: id + "-entry", text: text, timestamp: date.timeIntervalSince1970)], commentaryCanAttachToReply: true)
+            }
+            func oldReply(_ id: String, _ text: String) -> NativeMessage {
+                var entry = NativeCommentaryEntry(id: id, text: text, timestamp: date.timeIntervalSince1970)
+                entry.isPreviousReply = true
+                return NativeMessage(id: id, role: "assistant", text: text,
+                    actions: [NativePanelItem(id: id + "-copy", kind: "action", command: NativeCommand(name: "message.copy", params: ["id": .string(id)]))],
+                    turnId: "fixture-turn", phase: "final_answer", commentary: [entry], commentaryCanAttachToReply: true)
+            }
+            value.messages = [
+                NativeMessage(id: "initial", role: "user", text: "先检查问题。", turnId: "fixture-turn"),
+                NativeMessage(id: "steer-1", role: "user", text: "先修复测试。", turnId: "fixture-turn"),
+                NativeMessage(id: "steer-2", role: "user", text: "再检查构建。", turnId: "fixture-turn"),
+                history("history-1", "第一段执行进展。"), oldReply("old-final-1", "中途旧回答一，**保留加粗**。"),
+                history("history-2", "第二段执行进展。"), oldReply("old-final-2", "中途旧回答二。"),
+                NativeMessage(id: "last-final", role: "assistant", text: "最终回答：完成所有调整。", status: "22秒", turnId: "fixture-turn", phase: "final_answer")
+            ]
+        }
         if ProcessInfo.processInfo.arguments.contains("--agent-many-devices-fixture") {
             value.backends += (1...11).map { NativeBackend(id: "extra-device-\($0)", title: "额外设备 \($0)", connected: true) }
         }

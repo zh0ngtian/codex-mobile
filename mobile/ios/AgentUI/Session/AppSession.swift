@@ -197,8 +197,14 @@ final class AppSession {
     @discardableResult func createConversation(project: String? = nil) -> UUID { beginNewConversation(project: project); return composer.id }
     func beginNewConversation(project: String? = nil, deviceID: UUID? = nil) {
         var params: [String: NativeJSONValue] = [:]
-        if let id = deviceID ?? selectedDeviceID, let raw = rawDeviceIDs[id] { params["backendId"] = .string(raw); params["cwd"] = .string("") }
-        if let project { params["cwd"] = .string(projectGroups[project]?.command.flatMap { string($0.params["cwd"]) } ?? project) }
+        if let deviceID, let raw = rawDeviceIDs[deviceID] { params["backendId"] = .string(raw) }
+        if let project {
+            let command = projectGroups[project]?.newCommand ?? projectGroups[project]?.command
+            if params["backendId"] == nil {
+                params["backendId"] = command?.params["backendId"] ?? selectedDeviceID.flatMap { rawDeviceIDs[$0] }.map(NativeJSONValue.string)
+            }
+            params["cwd"] = .string(command.flatMap { string($0.params["cwd"]) } ?? project)
+        }
         nativeStore?.startNewConversation(params: params)
     }
     func open(_ id: UUID) { guard let raw = rawThreadIDs[id] else { return }; fire("thread.open", ["backendId": .string(raw.backend), "threadId": .string(raw.thread)]) }

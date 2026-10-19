@@ -3,6 +3,7 @@ import Foundation
 @main
 struct AgentSessionSmoke {
     @MainActor static func main() async {
+        verifySteeringReplyHistory()
         verifyProjectFiveConversationWindow()
         verifyComposerMenuBusinessValues()
         verifyInteractiveSidebarBounds()
@@ -160,8 +161,15 @@ struct AgentSessionSmoke {
         precondition(session.previewItem?.name == "本地真实.md" && session.previewItem?.kind == .markdown && session.previewItem?.remoteURL == "data:text/markdown;base64,IyBsb2NhbA==", "本地文件业务预览必须将真实原字节交给AgentApp预览下载")
         state.panel = nil; publish(state)
         let aDevice = session.devices.first!.id
+        state.listBackendId = "device:alpha"; publish(state)
+        session.beginNewConversation()
+        precondition(commands.last?.name == "thread.new" && commands.last?.params["backendId"] == nil && commands.last?.params["cwd"] == nil, "普通新建必须交给Web偏好恢复上次机器与项目")
+        store.cancelComposerPresentation()
         session.beginNewConversation(deviceID: aDevice)
-        precondition(commands.last?.name == "thread.new" && commands.last?.params["backendId"] == .string("device:alpha") && commands.last?.params["cwd"] == .string(""), "有目标设备的新会话必须提供明确cwd")
+        precondition(commands.last?.name == "thread.new" && commands.last?.params["backendId"] == .string("device:alpha") && commands.last?.params["cwd"] == nil, "指定机器新建也必须恢复该机器上次项目")
+        store.cancelComposerPresentation()
+        session.beginNewConversation(project: "", deviceID: aDevice)
+        precondition(commands.last?.params["backendId"] == .string("device:alpha") && commands.last?.params["cwd"] == .string(""), "显式无项目必须继续覆盖上次项目")
         await verifyDeviceAndImportAcknowledgements()
         await verifyDelayedDeviceForm()
         await verifyPendingProjectsAndQuestions()

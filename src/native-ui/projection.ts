@@ -1,5 +1,6 @@
 import { videoPathForItem } from '../features/conversation/sheets/RemoteFileSheets';
-import { groupConversationTurns, splitTurnResponseSegments, imageSourcesForItem, isThreadRunning, turnDurationMs, stripGitDirectives, automationAgentMessageText, toolActivityRowLabel } from '../ui/conversation';
+import { groupConversationTurns, groupTurnItems, imageSourcesForItem, isThreadRunning, turnDurationMs, stripGitDirectives, automationAgentMessageText, toolActivityRowLabel } from '../ui/conversation';
+import { turnResponsePresentation } from '../ui/turn-response-presentation';
 import { extractGeneratedTitle, stripConversationTitleRequest } from '../app-server/conversation-title';
 import { groupThreadsByProject, splitAllThreads, type AggregatedThreadItem } from '../features/threads/thread-list-model';
 import { projectCollapseKey } from '../features/threads/project-collapse';
@@ -57,11 +58,13 @@ export function projectConversation(active: RecordValue | null, imageURL: (path:
       return video ? [{ id: `${turnId}:${item.id}:video`, kind: 'video', title: video.split('/').at(-1), value: mediaURL ? mediaURL(video) : imageURL(video) }]
         : imageBlocks(item, `${turnId}:${item.id}`);
     };
-    // Web 与原生共用顺序和去重规则，截图跟随所属 commentary。
-    for (const segment of splitTurnResponseSegments(orderedItems)) {
+    // 先按 wire 顺序绑定媒体，再使用两端共享的引导和旧回答呈现契约。
+    const grouped = groupTurnItems(turn);
+    const presentation = turnResponsePresentation(grouped.responses, { running });
+    const entries = [...(grouped.user ? [{ item: grouped.user, media: [], history: false, supersededAnswer: false }] : []), ...presentation.entries];
+    {
+      const segment = orderedItems;
       const segmentID = `${turnId}:${segment[0]?.id ?? 'activity'}`;
-      const hasFinal = segment.some(item => item.type === 'agentMessage' && item.phase !== 'commentary');
-      const collapse = hasFinal || !running;
       const tools: NativePanelItem[] = [];
       let history: NativePanelItem[] = [];
       let commentary: NativeCommentaryEntry[] = [];
@@ -77,10 +80,10 @@ export function projectConversation(active: RecordValue | null, imageURL: (path:
           blocks: [{ id: commentaryBlockId, kind: 'disclosure', title: `${t('历史过程')} (${historyCount})`, children: history }] });
         history = []; commentary = []; historyAnchors = []; historyCount = 0; historyInterrupted = false;
       };
-      for (const entry of commentaryMediaEntries(segment)) {
+      for (const entry of entries) {
         const item = entry.item;
         const id = `${turnId}:${item.id}`;
-        if (item.type === 'agentMessage' && item.phase === 'commentary' && collapse) {
+        if (item.type === 'agentMessage' && item.phase === 'commentary' && entry.history) {
           if (!historyCount) { historyID = id; historyAnchor = scrollAnchor(item, 'history'); }
           const anchor = scrollAnchor(item, 'history');
           if (anchor) historyAnchors.push(anchor);
@@ -110,10 +113,14 @@ export function projectConversation(active: RecordValue | null, imageURL: (path:
           const timestamp = commentary ? formatMessageTimestamp(item.timestamp) : '';
           const blocks = entry.media.flatMap(mediaBlocks);
           if (timestamp) blocks.push({ id: `${id}:timestamp`, kind: 'text', text: timestamp });
-          messages.push({ id, role: 'assistant', text: nativeItemText(item), scrollAnchorId: scrollAnchor(item, 'assistant'), status: commentary ? undefined : status, turnId, itemId: String(item.id), phase: typeof item.phase === 'string' ? item.phase : undefined,
+          const finalStatus = !commentary && !entry.supersededAnswer && (!running || item === presentation.final) ? status : undefined;
+          messages.push({ id, role: 'assistant', text: nativeItemText(item), scrollAnchorId: scrollAnchor(item, 'assistant'), status: finalStatus, turnId, itemId: String(item.id), phase: typeof item.phase === 'string' ? item.phase : undefined,
+            ...(entry.supersededAnswer ? { commentaryCanAttachToReply: true, commentary: [{ id, text: nativeItemText(item), blocks: [...blocks], isPreviousReply: true,
+              ...(typeof item.timestamp === 'number' && Number.isFinite(item.timestamp) && item.timestamp > 0 ? { timestamp: item.timestamp } : {}) }] } : {}),
             ...(commentary ? { commentaryIsLiveTail: liveCommentaryIDs.has(String(item.id)) } : {}),
             ...(commentary && typeof item.timestamp === 'number' && Number.isFinite(item.timestamp) && item.timestamp > 0 ? { timestamp: item.timestamp } : {}),
-            ...(!commentary && !running && typeof turn.completedAt === 'number' && Number.isFinite(turn.completedAt) && turn.completedAt > 0 ? { timestamp: turn.completedAt } : {}),
+            ...(entry.supersededAnswer && typeof item.timestamp === 'number' && Number.isFinite(item.timestamp) && item.timestamp > 0 ? { timestamp: item.timestamp } : {}),
+            ...(!commentary && !entry.supersededAnswer && !running && typeof turn.completedAt === 'number' && Number.isFinite(turn.completedAt) && turn.completedAt > 0 ? { timestamp: turn.completedAt } : {}),
             ...(blocks.length ? { blocks } : {}),
             actions: [nativeAction(`${id}:copy`, t('复制'), 'message.copy', { id })] });
         } else if ((item.type === 'imageGeneration' || item.type === 'videoGeneration') && item.status === 'failed') {
