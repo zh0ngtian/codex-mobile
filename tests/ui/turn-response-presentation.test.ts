@@ -34,6 +34,15 @@ it.each([true, false])('最后引导后没有回答时不复用旧 final，runni
   expect(result.entries.map(entry => [entry.item.id, entry.history])).toEqual([['steer', false], ['old', true], ['live', false]]);
 });
 
+it.each([
+  [false, true, true], [false, false, false], [true, true, false],
+] as const)('纯commentary保留显式历史策略，running=%s collapseWithoutFinal=%s', (running, collapseWithoutFinal, history) => {
+  const item = { id: 'commentary', type: 'agentMessage', phase: 'commentary', text: '真实过程' };
+  const result = turnResponsePresentation([item], { running, collapseWithoutFinal });
+  expect(result.final).toBeNull();
+  expect(result.entries).toMatchObject([{ item, history }]);
+});
+
 it('已完成的旧协议消息只将最后引导后的最后一条作为回答', () => {
   const old = { id: 'old', type: 'agentMessage', text: '旧协议旧回答' };
   const final = { id: 'final', type: 'agentMessage', text: '旧协议最终回答' };

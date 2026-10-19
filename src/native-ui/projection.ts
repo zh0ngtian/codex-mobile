@@ -60,7 +60,7 @@ export function projectConversation(active: RecordValue | null, imageURL: (path:
     };
     // 先按 wire 顺序绑定媒体，再使用两端共享的引导和旧回答呈现契约。
     const grouped = groupTurnItems(turn);
-    const presentation = turnResponsePresentation(grouped.responses, { running });
+    const presentation = turnResponsePresentation(grouped.responses, { running, collapseWithoutFinal: true });
     const entries = [...(grouped.user ? [{ item: grouped.user, media: [], history: false, supersededAnswer: false }] : []), ...presentation.entries];
     {
       const segment = orderedItems;

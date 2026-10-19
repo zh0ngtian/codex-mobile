@@ -6,8 +6,10 @@ export type TurnResponseEntry = ReturnType<typeof commentaryMediaEntries>[number
   supersededAnswer: boolean;
 };
 
-/** 仅整理单个逻辑回合的展示；先绑定媒体，再移动引导，始终保留原 item。 */
-export function turnResponsePresentation(responses: ConversationRecord[], { running }: { running: boolean }) {
+/** 仅整理单个逻辑回合的展示；先绑定媒体，再移动引导，始终保留原 item。
+ * collapseWithoutFinal 保留各端已结束但无 final 时的既有过程策略，不影响引导与旧回答归属。
+ */
+export function turnResponsePresentation(responses: ConversationRecord[], { running, collapseWithoutFinal = false }: { running: boolean; collapseWithoutFinal?: boolean }) {
   const ordered = orderedTurnMedia(responses);
   const steering = ordered.filter(item => item.type === 'userMessage');
   const lastSteeringIndex = steering.length ? ordered.lastIndexOf(steering.at(-1)!) : -1;
@@ -18,7 +20,7 @@ export function turnResponsePresentation(responses: ConversationRecord[], { runn
     const commentary = assistant && entry.item.phase === 'commentary';
     const supersededAnswer = assistant && !commentary && steering.length > 0 &&
       (ordered.indexOf(entry.item) < lastSteeringIndex || (final != null && entry.item !== final));
-    const history = supersededAnswer || (commentary && (final != null || ordered.indexOf(entry.item) < lastSteeringIndex));
+    const history = supersededAnswer || (commentary && ((!running && collapseWithoutFinal) || final != null || ordered.indexOf(entry.item) < lastSteeringIndex));
     return { ...entry, history, supersededAnswer };
   });
   return {

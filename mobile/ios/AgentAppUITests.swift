@@ -38,7 +38,7 @@ final class AgentAppUITests: XCTestCase {
         XCTAssertTrue(computer.waitForExistence(timeout: 15))
         let rememberedComputer = computer.label
         project.tap()
-        let target = app.buttons["codex-mobile"]
+        let target = app.buttons["codex-mobile"].firstMatch
         XCTAssertTrue(target.waitForExistence(timeout: 10), "当前验收机器应提供本仓库项目")
         target.tap()
         expectation(for: NSPredicate(format: "label == 'codex-mobile'"), evaluatedWith: project)
