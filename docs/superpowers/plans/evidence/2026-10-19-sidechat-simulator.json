@@ -1,0 +1,88 @@
+{
+  "date": "2026-10-19",
+  "status": "main-integrated-not-published",
+  "branch": "codex/sidechat",
+  "scope": "source-integration-only",
+  "device": {
+    "name": "iPhone 17 Pro",
+    "os": "iOS 27.0",
+    "font": "normal",
+    "orientation": "portrait"
+  },
+  "validation": {
+    "fullVitest": {
+      "files": 150,
+      "passed": 1657
+    },
+    "subsequentCleanupVitest": {
+      "files": 5,
+      "passed": 88
+    },
+    "typecheck": "passed",
+    "serverBuild": "passed",
+    "realProtocolAndGateway": "passed",
+    "xctest": {
+      "passed": 1,
+      "failed": 0,
+      "durationSeconds": 95.226,
+      "covers": [
+        "create-from-readonly-main",
+        "new-messages-only",
+        "shared-directory-warning",
+        "real-reply",
+        "multiple-branches",
+        "return",
+        "app-restart-restore",
+        "close-all-test-branches",
+        "single-user-bubble-after-server-confirmation"
+      ]
+    },
+    "closeConfirmation": {
+      "vitestFiles": 4,
+      "vitestPassed": 17,
+      "typecheck": "passed",
+      "xctestPassed": 1,
+      "durationSeconds": 43.581,
+      "covers": [
+        "system-confirmation-before-close",
+        "cancel-preserves-branch-running-queue-and-draft",
+        "stale-context-cannot-close",
+        "confirm-then-close-and-return"
+      ],
+      "screenshotReviewed": true,
+      "testSidechatsClosed": true,
+      "existingUserSidechatsPreserved": true
+    },
+    "latestNativeBusinessVitest": {
+      "files": 2,
+      "passed": 12,
+      "covers": [
+        "user-message-deduplication",
+        "daemon-invalid-return-to-main"
+      ]
+    },
+    "mainIntegration": {
+      "vitestFiles": 150,
+      "vitestPassed": 1660,
+      "typecheck": "passed",
+      "serverBuild": "passed",
+      "latestMainBase": "9ef2cce2f4dc1f5ca6e8f3fd98236c042d7b391d"
+    }
+  },
+  "cleanup": {
+    "testMainThreadsArchived": true,
+    "testSidechatsClosed": true,
+    "existingUserMainReadOnly": true
+  },
+  "deployment": {
+    "mainAdvanced": true,
+    "clientPublished": false,
+    "productionGatewayDeployed": false,
+    "temporaryGatewayDevice": "Sidechat 验收",
+    "integrationRequestedByUser": true
+  },
+  "remaining": [
+    "formal-client-publication",
+    "production-gateway-deployment"
+  ]
+}

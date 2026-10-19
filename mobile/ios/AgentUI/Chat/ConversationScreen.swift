@@ -216,6 +216,11 @@ struct ConversationScreen: View {
                 }
             }
             #endif
+            .safeAreaInset(edge: .top, spacing: 0) {
+                if session.nativeSnapshot.sidechatActive == true {
+                    SidechatSharedDirectoryBanner()
+                }
+            }
             .modifier(ConversationHeader(conversationID: conversationID))
             .modifier(ConversationComposerInset(conversationID: conversationID))
 

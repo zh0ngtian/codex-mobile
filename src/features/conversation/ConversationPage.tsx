@@ -1,3 +1,4 @@
+import type { NativePanelItem } from '../../native-ui/protocol';
 import {
   type FormEvent,
   type RefObject,
@@ -169,6 +170,7 @@ export function ConversationPage({
   steerable,
   pendingSteerText,
   queuedFollowUps,
+  sidechatActive = false, sidechatActions = [], onSidechatAction,
   accessMode,
   resumeError,
   tokenUsage,
@@ -254,6 +256,7 @@ export function ConversationPage({
   skillsLoading?: boolean;
   pluginsLoading?: boolean;
   imageInputRef: RefObject<HTMLInputElement | null>;
+  sidechatActive?: boolean; sidechatActions?: NativePanelItem[]; onSidechatAction?: (name: string, id?: string) => Promise<void>;
   onBack: () => void;
   onNewChatBackendChange: (backendId: string) => void;
   onNewChatProjectChange: (cwd: string) => void;
@@ -513,8 +516,8 @@ export function ConversationPage({
       <header className="conversation-header">
         <button
           className="round-button"
-          aria-label={t("打开会话列表")}
-          onClick={onBack}
+          aria-label={sidechatActive ? "返回主聊天" : t("打开会话列表")}
+          onClick={() => { if (sidechatActive) void onSidechatAction?.("sidechat.return"); else onBack(); }}
         >
           <AppIcon name="menu" />
         </button>
@@ -560,7 +563,11 @@ export function ConversationPage({
         )}
       </header>
 
+      {sidechatActive && <p className="sidechat-shared-directory" role="note">文件目录与主聊天共享，获准修改会影响同一目录。</p>}
       <ConversationActionMenu
+        sidechatOnly={sidechatActive}
+        sidechatActions={sidechatActions}
+        onSidechatAction={(name, id) => { setActionsOpen(false); void onSidechatAction?.(name, id); }}
         open={actionsOpen}
         readOnly={accessMode === "readOnly"}
         thread={active}
@@ -700,7 +707,7 @@ export function ConversationPage({
                   : undefined,
               );
               const canEditHistory = Boolean(
-                target &&
+                !sidechatActive && target &&
                 onEditUserMessage &&
                 !historyEdit &&
                 interactive &&

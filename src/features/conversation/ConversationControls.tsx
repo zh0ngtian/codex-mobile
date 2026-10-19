@@ -1,3 +1,4 @@
+import type { NativePanelItem } from '../../native-ui/protocol';
 import { useEffect, useRef, useState, type CSSProperties, type RefObject } from "react";
 import { presentNativeActionMenu, type MenuAnchor } from "../../ui/native-action-menu";
 import { AppIcon, titleOf, type DisplayRecord } from "../../ui/app-display";
@@ -91,6 +92,7 @@ export function ConversationActionMenu(props: ConversationActionMenuProps) {
 }
 
 type ConversationActionMenuProps = {
+  sidechatOnly?: boolean; sidechatActions?: NativePanelItem[]; onSidechatAction?: (name: string, id?: string) => void;
   open: boolean; readOnly?: boolean; thread: DisplayRecord; pendingAction: string;
   anchor?: MenuAnchor;
   onClose: () => void; onPin: () => void; onRefresh: () => void;
@@ -98,6 +100,7 @@ type ConversationActionMenuProps = {
 };
 
 function OpenConversationActionMenu({
+  sidechatOnly = false, sidechatActions = [], onSidechatAction,
   readOnly = false,
   thread,
   pendingAction,
@@ -111,7 +114,7 @@ function OpenConversationActionMenu({
   anchor,
 }: Omit<ConversationActionMenuProps, "open">) {
   const pinned = thread.isPinned === true;
-  const actions = [
+  const ordinaryActions = [
     {
       id: "pin",
       label: pinned ? t("取消关注") : t("关注"),
@@ -155,6 +158,11 @@ function OpenConversationActionMenu({
       danger: true,
       requiresWrite: true,
     },
+  ];
+  const actions = [
+    ...(sidechatOnly ? [] : ordinaryActions),
+    ...sidechatActions.map(item => ({ id: item.id, label: item.title ?? 'Sidechat', icon: 'copy' as const,
+      onClick: () => onSidechatAction?.(item.command!.name, typeof item.command?.params.id === 'string' ? item.command.params.id : undefined), requiresWrite: false, danger: item.command?.name === 'sidechat.close' })),
   ];
   const [fallback, setFallback] = useState(false);
   const latest = useRef({ actions, onClose });

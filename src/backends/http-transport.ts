@@ -100,6 +100,7 @@ export class HttpRpcTransport extends EventTarget {
         const saved = JSON.parse(localStorage.getItem(this.writesKey) ?? "[]");
         for (const pair of saved) {
           if (!Array.isArray(pair) || typeof pair[0] !== "string" || typeof pair[1]?.requestId !== "string" || !pair[1]?.message) continue;
+          if (pair[1].message.method === 'mobile/sidechat/rpc') continue;
           const operation = persistentWrite(pair[1]);
           this.writes.set(operation.message.method ? pair[0] : responseSignature(operation.message, operation.epoch), operation);
         }
@@ -140,7 +141,7 @@ export class HttpRpcTransport extends EventTarget {
 
   private saveWrites() {
     try {
-      localStorage.setItem(this.writesKey, JSON.stringify([...this.writes].map(([signature, operation]) => [
+      localStorage.setItem(this.writesKey, JSON.stringify([...this.writes].filter(([, operation]) => operation.message.method !== 'mobile/sidechat/rpc').map(([signature, operation]) => [
         operation.message.method ? signature : responseSignature(operation.message, operation.epoch), persistentWrite(operation),
       ])));
     }
@@ -187,7 +188,8 @@ export class HttpRpcTransport extends EventTarget {
       await this.firstPoll;
       if (!this.epoch || this.readyState !== 1) throw new Error(t("设备尚未连接，请稍后重试"));
     }
-    const signature = !message.method || (!readMethods.has(message.method) && !isNavigationResume(message))
+    const sidechatRead = message.method === 'mobile/sidechat/rpc' && (message.params as any)?.method === 'read';
+    const signature = !message.method || (!sidechatRead && !readMethods.has(message.method) && !isNavigationResume(message))
       ? (message.method ? JSON.stringify({ method: message.method, params: message.params }) : responseSignature(message, this.epoch)) : null;
     if (signature && !this.writes.has(signature) && this.writes.size >= 32) throw new Error(t("请求结果待确认，请刷新会话后检查，勿重复发送"));
     const existing = signature ? this.writes.get(signature) : undefined;

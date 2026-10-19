@@ -549,3 +549,20 @@ describe("HTTP 文字传输", () => {
     expect(confirmed).toMatchObject([{ requestId: ids[0], request: rpcMessages[0], response: { result: { accepted: true } } }]);
   });
 });
+
+it('Sidechat在HTTP请求仍待确认时也不把正文或指令写入localStorage', async () => {
+ let release: (() => void) | undefined;
+ const transport = setup((async (url, init) => {
+  if (String(url).includes('/api/events')) return events({ active: false });
+  const message = JSON.parse(String(init?.body)).message;
+  if (message.method === 'mobile/sidechat/rpc') return new Promise<Response>(resolve => { release = () => resolve(new Response(JSON.stringify({ result: { turn: { id: 'side-turn' } } }))); });
+  return new Response(JSON.stringify({ result: {} }));
+ }) as typeof fetch, 'sidechat-privacy');
+ await vi.waitFor(() => expect(transport.readyState).toBe(1));
+ const client = new AppServerClient(transport); await client.initialize();
+ const pending = client.request('mobile/sidechat/rpc', { method: 'turn/start', params: { threadId: 'side', input: [{ type: 'text', text: 'SIDECHAT_LOCAL_PRIVATE_BODY' }] } });
+ await vi.waitFor(() => expect(release).toBeTypeOf('function'));
+ const disk = Object.keys(localStorage).map(key => localStorage.getItem(key)).join('');
+ expect(disk).not.toContain('SIDECHAT_LOCAL_PRIVATE_BODY');
+ release!(); await pending;
+});

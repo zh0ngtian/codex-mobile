@@ -32,6 +32,7 @@ export interface NativeTokenUsage { lastRequestTokens?: number; modelContextWind
 export interface NativeQueueConfiguration { model?: string; effort?: string; serviceTier?: string; permission?: string }
 export interface NativeResult { id: string; name: string; ok: boolean; contextId?: string; error?: string; fieldKey?: string; fieldRevision?: number }
 export interface NativeSnapshot {
+  sidechatActive?: boolean; sidechatParentId?: string; sidechatActions?: NativePanelItem[];
   version: 1; ready: boolean; locale: string; fontScale: number; title: string;
   threadId?: string; backendId?: string; cwd?: string; contextId?: string; draftRevision?: number; caretOffset?: number;
   connection: string; busy: boolean; draft: string; canSend: boolean; readOnly: boolean;

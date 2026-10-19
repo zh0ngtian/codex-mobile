@@ -6,7 +6,9 @@ struct ConversationMenuActions: View {
     let conversationID: UUID
 
     var body: some View {
-        if let conversation = session.conversation(conversationID) {
+        if session.selectedConversationID == conversationID, session.nativeSnapshot.sidechatActive == true {
+            SidechatMenuActions()
+        } else if let conversation = session.conversation(conversationID) {
             Button {
                 session.togglePin(conversationID)
             } label: {
@@ -47,6 +49,9 @@ struct ConversationMenuActions: View {
                 Label(preferences.text("归档", "Archive"), systemImage: "archivebox")
             }
             .disabled(menuBusy || !conversation.canModify)
+            if session.selectedConversationID == conversationID {
+                Section("Sidechat") { SidechatMenuActions() }
+            }
         }
     }
 

@@ -1,3 +1,5 @@
+import { useSidechatExpiry } from './sidechat/use-expiry';
+import { SidechatSessions, gatewaySidechatClient } from './sidechat/sessions';
 import { markLoadProfile } from './diagnostics/conversation-load-profile';
 import { NativeSwitchBoundary, useNativeSwitch, useSwitchRegistry, useSwitchWorkspace } from './native-ui/switch-context';
 import { emptyNativeSnapshot } from './native-ui/protocol';
@@ -348,6 +350,10 @@ function BackendWorkspace({
   silentRefreshVersion,
   searchQuery,
 }: BackendWorkspaceProps) {
+  const [sidechats] = useState(() => new SidechatSessions(backend.id, window.localStorage));
+  const [, setSidechatRevision] = useState(0);
+  const sidechatRestoredRef = useRef(false);
+  const sidechatParentsRef = useRef(new Map<string, AnyRecord>());
   const restoredWorkspace = useNativeSwitch()?.restored.get(backend.id);
   const confirmWorkspaceAction = useNativeConfirmation(isNativeUIEnabled() ? nativeRuntime : null, `workspace:${backend.id}`);
   const [connection, setConnection] = useState<ConnectionState>("connecting");
@@ -1034,7 +1040,7 @@ function BackendWorkspace({
     const threadId = String(
       activeThreadTargetRef.current ?? activeRef.current?.id ?? "",
     );
-    if (!threadId || client !== clientRef.current) return;
+    if (!threadId || client !== clientRef.current || sidechats.get(threadId)) return;
     const pendingThrough = pendingSequenceRef.current;
     const sequence = ++threadReconcileSequenceRef.current;
     const openSequence = openSequenceRef.current;
@@ -1289,6 +1295,7 @@ function BackendWorkspace({
             setSyncState({ updatedAt: params.updatedAt ?? null, stale: params.stale === true });
             return;
           }
+          if (sidechats.observe(message)) return;
           questionNotificationRef.current.observe(message, completionEventCatchUpRef.current);
           if (approvalRequests.onNotification(message)) return;
           for (const tracker of [finalAnswerCompletionRef.current, mobileCompletionRef.current]) {
@@ -1764,6 +1771,13 @@ function BackendWorkspace({
           }
         });
         clientRef.current = client;
+        if (!sidechatRestoredRef.current) {
+          sidechatRestoredRef.current = true;
+          restoreSidechats(client);
+        } else {
+          for (const side of sidechats.all()) side.client = gatewaySidechatClient(client);
+          restoreSidechats(client);
+        }
         readyClientRef.current = null;
         const workspaceResumeSnapshot = {
           threadId: activeRef.current?.id
@@ -1904,7 +1918,7 @@ function BackendWorkspace({
             setRefreshing(false);
             const currentThread = activeRef.current;
             if (
-              currentThread?.id &&
+              currentThread?.id && !sidechats.get(String(currentThread.id)) &&
               shouldResumeWorkspaceThread(workspaceResumeSnapshot, {
                 threadId: String(currentThread.id),
                 openSequence: openSequenceRef.current,
@@ -2338,6 +2352,64 @@ function BackendWorkspace({
     }
   }
 
+  useEffect(() => sidechats.subscribe(() => {
+    setSidechatRevision(value => value + 1);
+    const side = sidechats.get(String(activeRef.current?.id ?? ''));
+    if (side) {
+      activeRef.current = side.thread;
+      setActive(side.thread); setBusy(side.busy || side.sending); setError(side.error);
+    }
+  }), [sidechats]);
+  useSidechatExpiry(sidechats, () => clientRef.current, () => String(activeRef.current?.id ?? ''),
+    side => openThread(sidechatParentsRef.current.get(side.parentId) ?? { id: side.parentId }),
+    reason => setError(String((reason as Error).message ?? reason)));
+
+
+  function restoreSidechats(client: AppServerClient) {
+    const selected = sidechats.get(String(activeRef.current?.id ?? ''));
+    void sidechats.restore(gatewaySidechatClient(client)).catch(reason => {
+      if (clientRef.current !== client) return;
+      if (selected && !sidechats.get(selected.id) && String(activeRef.current?.id ?? '') === selected.id) {
+        openThread(sidechatParentsRef.current.get(selected.parentId) ?? { id: selected.parentId });
+      }
+      setError(String(reason.message ?? reason));
+    });
+  }
+
+  async function createSidechat() {
+    const client = clientRef.current; const current = activeRef.current;
+    if (!client || !current?.id) throw new Error(t('设备尚未连接，请稍后重试'));
+    const parentId = sidechats.get(String(current.id))?.parentId ?? String(current.id);
+    const parent = sidechatParentsRef.current.get(parentId) ?? (current.id === parentId ? current : { id: parentId, cwd: current.cwd });
+    sidechatParentsRef.current.set(parentId, parent);
+    const sequence = openSequenceRef.current;
+    const side = await sidechats.create(gatewaySidechatClient(client), parent);
+    if (sequence === openSequenceRef.current) openThread(side.thread);
+    return true;
+  }
+  function returnFromSidechat() {
+    const side = sidechats.get(String(activeRef.current?.id ?? ''));
+    if (side) openThread(sidechatParentsRef.current.get(side.parentId) ?? { id: side.parentId });
+  }
+  function openSidechat(id: string) {
+    const side = sidechats.get(id);
+    const current = String(activeRef.current?.id ?? '');
+    const parent = sidechats.get(current)?.parentId ?? current;
+    if (!side || side.parentId !== parent) throw new Error(t('Sidechat 已失效或不属于当前主聊天'));
+    if (side.restoring) throw new Error(t('Sidechat 正在恢复，请稍候'));
+    openThread(side.thread);
+  }
+  async function closeSidechat(id: string) {
+    const client = clientRef.current; const side = sidechats.get(id);
+    const current = String(activeRef.current?.id ?? '');
+    if (!client || !side || side.parentId !== (sidechats.get(current)?.parentId ?? current)) throw new Error(t('Sidechat 不可用'));
+    const context = draftContextGenerationRef.current;
+    if (!await confirmWorkspaceAction(t('确定关闭 Sidechat 吗？正在执行的任务将停止，临时聊天和待发消息会被清理，已发生的文件修改不会撤销。'))) return;
+    if (context !== draftContextGenerationRef.current || clientRef.current !== client || sidechats.get(id) !== side) throw new Error(t('会话已切换，请重试'));
+    await sidechats.close(gatewaySidechatClient(client), id);
+    if (String(activeRef.current?.id ?? '') === id) openThread(sidechatParentsRef.current.get(side.parentId) ?? { id: side.parentId });
+  }
+
   async function loadThreadDetail(threadId: string, sequence: number) {
     const client = clientRef.current;
     try {
@@ -2500,10 +2572,18 @@ function BackendWorkspace({
       ...thread,
       turns: thread.turns ?? [],
     });
-    void loadThreadDetail(thread.id, sequence);
+    const side = sidechats.get(String(thread.id));
+    if (side) {
+      activeRef.current = side.thread; setActive(side.thread);
+      setBusy(side.busy || side.sending); setError(side.error);
+      syncStartedThreadSettings(side.settings);
+      setActiveSettingsSynchronized(true); setConversationLoadState('ready'); setOpeningThreadId('');
+      sidechats.touch(side.id);
+    } else void loadThreadDetail(thread.id, sequence);
   }
 
   function retryThreadDetail() {
+    if (sidechats.get(String(activeRef.current?.id ?? ''))) { setError('Sidechat 为临时聊天；失效后请返回主聊天重新创建'); return; }
     const threadId = activeRef.current?.id;
     if (!threadId) return;
     const sequence = ++openSequenceRef.current;
@@ -2861,6 +2941,34 @@ function BackendWorkspace({
     }
     const draftContext = draftContextGenerationRef.current;
     const threadId = String(activeRef.current?.id ?? "");
+    if (sidechats.get(threadId)) {
+      if (sendingDraftContextsRef.current.has(draftContext)) return false;
+      sendingDraftContextsRef.current.add(draftContext);
+      const originalDraft = currentDraftRef.current;
+      const client = clientRef.current;
+      try {
+        const uploaded = await Promise.all(pendingFiles.map(file => uploadFile(backend, file.file)));
+        if (draftContext !== draftContextGenerationRef.current || clientRef.current !== client) throw new Error(t('会话已切换，请重试'));
+        await sidechats.submit(gatewaySidechatClient(client), threadId, buildTurnInput(text, pendingImages, uploaded, pendingSkills, pendingPlugins), {
+          ...(selectedModel ? { model: selectedModel } : {}), ...(selectedEffort ? { effort: selectedEffort } : {}),
+          serviceTier: effectiveSelectedServiceTier, ...(selectedPermission ? { permissions: selectedPermission } : {}),
+          approvalPolicy: selectedApprovalPolicy, approvalsReviewer: selectedApprovalsReviewer,
+        }, () => {
+          // 上传/校验失败前保留输入；仅在原输入已进入分支内存队列后清理。
+          const current = currentDraftRef.current;
+          const next = { text: current.text === originalDraft.text ? '' : current.text,
+            images: current.images.filter(item => !pendingImages.some(original => original.id === item.id)),
+            files: current.files.filter(item => !pendingFiles.some(original => original.id === item.id)) };
+          currentDraftRef.current = next;
+          setDraft(next.text); setDraftImages(next.images); setDraftFiles(next.files);
+          pendingFiles.forEach(file => URL.revokeObjectURL(file.previewUrl));
+        });
+        return true;
+      } catch (reason) {
+        if (draftContext === draftContextGenerationRef.current) setError(String((reason as Error).message ?? reason));
+        return false;
+      } finally { sendingDraftContextsRef.current.delete(draftContext); }
+    }
     const conversationBusy = sendingDraftContextsRef.current.has(draftContext) || busyRef.current || (threadId
       ? [...pendingOperationsRef.current.values()].some((operation) => operation.threadId === threadId)
       : startingThreadContext === draftContext);
@@ -2969,6 +3077,7 @@ function BackendWorkspace({
   }
 
   function beginHistoricalMessageEdit(target: HistoricalMessageEditTarget) {
+    if (sidechats.get(String(activeRef.current?.id ?? ''))) { setError('临时 Sidechat 暂不支持回退编辑，请发送新的补充消息'); return; }
     const thread = activeRef.current;
     const threadId = String(thread?.id ?? "");
     const currentTarget = createHistoricalMessageEditTarget(
@@ -3266,6 +3375,8 @@ function BackendWorkspace({
   }
 
   async function actOnQueuedFollowUp(id: string) {
+    const side = sidechats.get(String(activeRef.current?.id ?? ''));
+    if (side) { await sidechats.retry(side.id); return; }
     const followUp = queuedFollowUpsRef.current.find((entry) => entry.id === id);
     if (!followUp || steering) return;
     if (!followUp.hosted) {
@@ -3295,6 +3406,8 @@ function BackendWorkspace({
   }
 
   async function editQueuedFollowUp(id: string, inputText: string) {
+    const side = sidechats.get(String(activeRef.current?.id ?? ''));
+    if (side) return sidechats.editQueued(side.id, id, inputText);
     const followUp = queuedFollowUpsRef.current.find((entry) => entry.id === id);
     if (!followUp) return false;
     const text = inputText.trim();
@@ -3316,6 +3429,8 @@ function BackendWorkspace({
   }
 
   async function cancelQueuedFollowUp(id: string, confirmed = false) {
+    const side = sidechats.get(String(activeRef.current?.id ?? ''));
+    if (side) { sidechats.removeQueued(side.id, id); return; }
     const followUp = queuedFollowUpsRef.current.find((entry) => entry.id === id);
     if (!followUp) return;
     if (!followUp.hosted) {
@@ -3410,6 +3525,8 @@ function BackendWorkspace({
   }
 
   async function interrupt() {
+    const sideId = String(activeRef.current?.id ?? '');
+    if (sidechats.get(sideId) && clientRef.current) { await sidechats.stop(gatewaySidechatClient(clientRef.current), sideId); return; }
     if (activeThreadAccessMode !== "interactive") return;
     const turn = active?.turns?.at(-1);
     if (!turn) return;
@@ -3604,6 +3721,7 @@ function BackendWorkspace({
   }
 
   async function duplicateActiveThread() {
+    if (sidechats.get(String(activeRef.current?.id ?? ''))) return false;
     const thread = activeRef.current;
     if (!thread || activeThreadAccessMode !== "interactive") return false;
     return manageListedThread(thread, "duplicate");
@@ -3630,6 +3748,7 @@ function BackendWorkspace({
   }
 
   async function renameThread(explicitName?: string) {
+    if (sidechats.get(String(activeRef.current?.id ?? ''))) return false;
     const client = clientRef.current;
     const thread = activeRef.current;
     if (
@@ -3674,6 +3793,7 @@ function BackendWorkspace({
   }
 
   async function archiveThread() {
+    if (sidechats.get(String(activeRef.current?.id ?? ''))) return false;
     const client = clientRef.current;
     const thread = activeRef.current;
     if (
@@ -4147,8 +4267,10 @@ function BackendWorkspace({
 
   useSwitchWorkspace(backend.id, {
     backendId: backend.id, backendName: backend.name, cwd: active?.cwd ?? null,
-    text: draft, images: draftImages, files: draftFiles,
-    thread: active ? { id: String(active.id ?? ''), cwd: active.cwd ?? null, preview: active.preview, isProjectless: active.isProjectless } : null,
+    text: sidechats.get(String(active?.id ?? '')) ? '' : draft,
+    images: sidechats.get(String(active?.id ?? '')) ? [] : draftImages,
+    files: sidechats.get(String(active?.id ?? '')) ? [] : draftFiles,
+    thread: sidechats.get(String(active?.id ?? '')) ? { id: sidechats.get(String(active!.id))!.parentId, cwd: active?.cwd ?? null } : active ? { id: String(active.id ?? ''), cwd: active.cwd ?? null, preview: active.preview, isProjectless: active.isProjectless } : null,
     savedDraftReference: savedDraftRef.current,
     settings: { model: selectedModel, effort: selectedEffort, serviceTier: effectiveSelectedServiceTier,
       permissions: newChatPermissionMode?.permissions ?? selectedPermission,
@@ -4228,6 +4350,20 @@ function BackendWorkspace({
     return operation?.draftContext === draftContextGenerationRef.current && (!operation.threadId || operation.threadId === String(active?.id ?? ""));
   });
 
+  const activeSidechat = sidechats.get(String(active?.id ?? ''));
+  const sidechatParentId = activeSidechat?.parentId ?? String(active?.id ?? '');
+  const sidechatActions = active?.id ? [
+    ...(activeSidechat ? [{ id: 'sidechat-return', kind: 'action', title: t('返回主聊天'), command: { name: 'sidechat.return', params: {} } }] : []),
+    { id: 'sidechat-create', kind: 'action', title: t('新建 Sidechat'), command: { name: 'sidechat.create', params: {} } },
+    ...sidechats.forParent(sidechatParentId).filter(side => side.id !== activeSidechat?.id).map(side => ({ id: `sidechat:${side.id}`, kind: 'action', title: side.thread.name + (side.busy ? ' · 执行中' : ''), command: { name: 'sidechat.open', params: { id: side.id } } })),
+    ...(activeSidechat ? [{ id: 'sidechat-close', kind: 'action', title: t('关闭 Sidechat'), command: { name: 'sidechat.close', params: { id: activeSidechat.id } } }] : []),
+  ] : [];
+  useEffect(() => {
+    if (!activeSidechat) return;
+    Object.assign(activeSidechat.settings, { model: selectedModel, reasoningEffort: selectedEffort, serviceTier: effectiveSelectedServiceTier,
+      approvalPolicy: selectedApprovalPolicy, approvalsReviewer: selectedApprovalsReviewer,
+      activePermissionProfile: selectedPermission ? { id: selectedPermission } : null });
+  }, [activeSidechat, selectedModel, selectedEffort, effectiveSelectedServiceTier, selectedPermission, selectedApprovalPolicy, selectedApprovalsReviewer]);
   const nativeContextId = `${backend.id}:context:${draftContextGenerationRef.current}`;
   useNativeConversationAdapter(nativeRuntime, {
     backend, active, contextId: nativeContextId, connection, draft, draftImages, draftFiles,
@@ -4236,7 +4372,7 @@ function BackendWorkspace({
     selectedModelLabel, effortOptions, selectedEffort, permission: selectedPermissionLabel,
     skills: skillCatalog.cwd === (active?.cwd ?? null) ? skillCatalog.skills : [],
     plugins: pluginCatalog.cwd === (active?.cwd ?? null) ? pluginCatalog.plugins : [],
-    queued: queuedFollowUps.filter(item => item.threadId === String(active?.id ?? "") && (item.threadId || item.draftContext === draftContextGenerationRef.current)),
+    queued: activeSidechat ? activeSidechat.queue.filter((_, index) => !activeSidechat.sending || index > 0).map(item => ({ id: item.id, text: item.text, threadId: activeSidechat.id, failed: !!activeSidechat.error, state: activeSidechat.unconfirmed ? 'uncertain' : activeSidechat.error ? 'failed' : 'queued' })) : queuedFollowUps.filter(item => item.threadId === String(active?.id ?? "") && (item.threadId || item.draftContext === draftContextGenerationRef.current)),
     approvalCount: requests.length, loadState: conversationLoadState, loadError: conversationLoadError || activeThreadResumeError,
     olderTurnsState, error, syncStale: syncState?.stale, draftSaveStatus,
     getDraft: () => currentDraftRef.current.text,
@@ -4258,11 +4394,11 @@ function BackendWorkspace({
     },
     cancelQueued: cancelQueuedFollowUp, sendQueued: actOnQueuedFollowUp, editQueued: editQueuedFollowUp,
     extended: {
-      state: { approvalThreadTitle: approval ? completionThreadTitle({ threadId: String((approval.params as AnyRecord)?.threadId ?? ""), threads, activeThread: active, fallback: t("新对话") }) : undefined, historyEdit, pendingSteerText: pendingSteerMessage?.threadId === String(active?.id) ? pendingSteerMessage.text : null, steering, queueSaving, steerable: Boolean(activeTurnId(active)), requests, approval, userAnswers, approvalSubmitting: approvalRequests.submitting, approvalError: approvalRequests.error, permissionModes, selectedPermissionModeId,
+      state: { sidechatActive: !!activeSidechat, sidechatParentId, sidechatActions, approvalThreadTitle: approval ? completionThreadTitle({ threadId: String((approval.params as AnyRecord)?.threadId ?? ""), threads, activeThread: active, fallback: t("新对话") }) : undefined, historyEdit, pendingSteerText: pendingSteerMessage?.threadId === String(active?.id) ? pendingSteerMessage.text : null, steering, queueSaving, steerable: !activeSidechat && Boolean(activeTurnId(active)), requests, approval, userAnswers, approvalSubmitting: approvalRequests.submitting, approvalError: approvalRequests.error, permissionModes, selectedPermissionModeId,
         selectedServiceTier: displayedServiceTier, speedOptions, pendingAction, tokenUsage: tokenUsageByThread[active?.id] ?? null, rateLimits,
         projectOptions, backends, draftSaveStatus, activeThreadAccessMode, activeThreadResumeError },
       callbacks: { currentHistoryEdit: () => historyEditRef.current, currentApproval: approvalRequests.current, readRemoteFile: (path: string) => { const client = clientRef.current; if (!client) throw new Error(t('尚未连接 app-server')); return client.request<{ dataBase64: string }>('fs/readFile', { path }); }, chooseSpeed, choosePermissionMode, replyToRequest, changeHistoricalMessageEditText, cancelHistoricalMessageEdit,
-        submitHistoricalMessageEdit, chooseNewChatProject, togglePinned, duplicateActiveThread, renameThread, archiveThread,
+        createSidechat, openSidechat, returnFromSidechat, closeSidechat, submitHistoricalMessageEdit, chooseNewChatProject, togglePinned, duplicateActiveThread, renameThread, archiveThread,
         reopenApproval: approvalRequests.reopen, answerApproval: approvalRequests.answer,
         dismissApproval: approvalRequests.dismiss,
         switchNewChatBackend: (id: string) => { const content = currentDraftRef.current; return onSwitchNewChatBackend(id, content.text, content.images, content.files, savedDraftRef.current); } },
@@ -4273,6 +4409,14 @@ function BackendWorkspace({
     <main className="app-shell">
       {active ? (
         <ConversationPage
+          sidechatActive={!!activeSidechat}
+          sidechatActions={sidechatActions}
+          onSidechatAction={async (name, id) => { try {
+            if (name === 'sidechat.create') await createSidechat();
+            if (name === 'sidechat.open') openSidechat(id!);
+            if (name === 'sidechat.return') returnFromSidechat();
+            if (name === 'sidechat.close') await closeSidechat(id!);
+          } catch (reason) { setError(String((reason as Error).message ?? reason)); } }}
           conversationVisible={conversationVisible}
           nativeContextId={nativeContextId}
           active={active}
@@ -4298,13 +4442,13 @@ function BackendWorkspace({
           operationPending={conversationOperationPending}
           steering={steering}
           queueSaving={queueSaving}
-          steerable={Boolean(activeTurnId(active))}
+          steerable={!activeSidechat && Boolean(activeTurnId(active))}
           pendingSteerText={
             pendingSteerMessage?.threadId === String(active.id)
               ? pendingSteerMessage.text
               : ""
           }
-          queuedFollowUps={queuedFollowUps.filter(
+          queuedFollowUps={activeSidechat ? activeSidechat.queue.filter((_, index) => !activeSidechat.sending || index > 0).map(item => ({ id: item.id, text: item.text, failed: !!activeSidechat.error, error: activeSidechat.error, state: activeSidechat.unconfirmed ? 'uncertain' as const : 'queued' as const })) : queuedFollowUps.filter(
             (followUp) => followUp.threadId === String(active.id ?? "") && (followUp.threadId || followUp.draftContext === draftContextGenerationRef.current),
           )}
           accessMode={activeThreadAccessMode}

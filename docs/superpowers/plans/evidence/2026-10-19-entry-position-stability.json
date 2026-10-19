@@ -1,5 +1,5 @@
 {
-  "status": "已验证，待确认发布范围，未发布",
+  "status": "联合验证通过，待正式发布",
   "task": "native-entry-position-20261019",
   "sourceBase": "9ef2cce2f4dc1f5ca6e8f3fd98236c042d7b391d",
   "simulator": {
@@ -161,8 +161,49 @@
   "publication": {
     "readySubmitted": false,
     "versionAllocated": false,
-    "newMain": "95f62345311222ab187157ed42c9750b0cd48d40",
-    "pendingDecision": "新main含用户此前要求仅合入而未发布的Sidechat及配套网关；待确认是否一并发布。",
-    "integratedIntoTestedBranch": false
+    "mainIntegrated": "95f62345311222ab187157ed42c9750b0cd48d40",
+    "authorization": "用户明确回复一起发布，包含Sidechat配套生产网关",
+    "gatewayTask": "native-entry-position-gateway-20261019"
+  },
+  "jointValidation": {
+    "vitest": {
+      "files": 150,
+      "tests": 1670,
+      "passed": true
+    },
+    "typecheck": "passed",
+    "serverBuild": "passed",
+    "adapterRegression": 212,
+    "coordinatorRecovery": 59,
+    "sidechatFocusedTests": 34,
+    "sidechatReview": "5项均已按红绿回归修复，独立复审通过",
+    "position": {
+      "trials": 10,
+      "frames": 435,
+      "visibleFrames": 327,
+      "passed": true,
+      "wrongFrames": 0
+    },
+    "sidechatUI": {
+      "passed": 2,
+      "failed": 0,
+      "durationsSeconds": [
+        39.655,
+        103.517
+      ],
+      "covers": [
+        "关闭前二次确认及取消保留",
+        "真实独立回复",
+        "多个分支切换",
+        "App重启恢复",
+        "关闭全部本轮分支"
+      ],
+      "cleanup": [
+        {
+          "testBranchesRemaining": 0,
+          "priorBranchesPreserved": 1
+        }
+      ]
+    }
   }
 }

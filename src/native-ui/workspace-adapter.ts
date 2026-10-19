@@ -63,6 +63,7 @@ export function bindWorkspaceCommands(snapshot: NativeSnapshot): NativeSnapshot 
     messages: snapshot.messages.map(message => ({ ...message, blocks: message.blocks?.map(item), commentary: message.commentary?.map(entry => ({ ...entry, blocks: entry.blocks?.map(item) })), actions: message.actions?.map(item), historyEdit: message.historyEdit ? { ...message.historyEdit, items: message.historyEdit.items.map(item) } : undefined })),
     queued: snapshot.queued.map(entry => ({ ...entry, command: contextual(entry.command), actions: entry.actions?.map(item) })),
     conversationActions: snapshot.conversationActions?.map(item),
+    sidechatActions: snapshot.sidechatActions?.map(item),
     panel: snapshot.panel ? { ...snapshot.panel, items: snapshot.panel.items.map(item) } : undefined,
     approvalPanel: snapshot.approvalPanel ? { ...snapshot.approvalPanel, items: snapshot.approvalPanel.items.map(item) } : undefined,
   };
@@ -79,6 +80,7 @@ export function createWorkspaceAdapter(c: NativeWorkspaceController, panel: Pane
   const state = c.extended?.state ?? {};
   const options = (entries: RecordValue[]) => entries.map(option => ({ id: String(option.id ?? ''), value: String(option.id ?? ''), title: String(option.label ?? option.id ?? ''), ...(option.description ? { subtitle: String(option.description) } : {}) }));
   const messages = projectConversation(c.active, path => remoteImagePreviewUrl(c.backend, path), path => remoteImagePreviewUrl(c.backend, path, false), path => remoteFilePreviewUrl(c.backend, path));
+  if (state.sidechatActive) for (const message of messages) message.actions = message.actions?.filter(action => action.command?.name !== 'message.edit');
   if (c.busy && c.active?.mobilePlan?.length) messages.push({ id: 'running-plan', role: 'activity', activityKind: 'plan', text: '', blocks: [{ id: 'plan', kind: 'section', title: t('执行计划'), children: c.active.mobilePlan.map((step: any, index: number) => ({ id: `plan:${index}:${step.step}`, kind: 'text', title: `${step.status === 'completed' ? '✓' : step.status === 'inProgress' ? '●' : '○'} ${step.step}`, text: step.status })) }] });
   if (c.extended?.state.pendingSteerText) messages.push({ id: 'pending-steer', role: 'activity', text: String(c.extended.state.pendingSteerText), status: t('正在引导') });
   const caretOffset = Math.max(0, Math.min(c.draft.length, c.caretOffset ?? c.draft.length));
@@ -101,6 +103,7 @@ export function createWorkspaceAdapter(c: NativeWorkspaceController, panel: Pane
   if (c.loadState === 'error') conversationActions.push(nativeAction('retry', t('重试'), 'thread.retry'));
   if (c.olderTurnsState !== 'exhausted') conversationActions.push({ ...nativeAction('older', c.olderTurnsState === 'loading' ? t('加载中…') : c.olderTurnsState === 'error' ? t('重试加载历史') : t('加载更早消息'), 'thread.older'), disabled: c.olderTurnsState === 'loading' });
   const snapshot: NativeSnapshot = { ...emptyNativeSnapshot(), ready: true, locale: getActiveLocale(), fontScale: FONT_SCALES[readFontSize()],
+    sidechatActive: state.sidechatActive === true, sidechatParentId: state.sidechatParentId, sidechatActions: state.sidechatActions,
     title: String(c.active?.name || c.active?.preview || t('新对话')), backendId: c.backend.id, threadId: c.active?.id ? String(c.active.id) : undefined, cwd: typeof c.active?.cwd === 'string' ? c.active.cwd : undefined, contextId: c.contextId,
     backendName: c.backend.name, projectName: !c.active?.id && !c.active?.cwd ? t('无项目') : projectNameOf(c.active ?? {}),
     draftRevision: c.draftRevision, caretOffset, mentions, richContent: panel.richContent, connection: c.connection, busy: c.busy, draft: c.draft, canSend: hasInput && !c.readOnly && !c.imageReading && !c.draftSaving,
@@ -141,6 +144,10 @@ export function createWorkspaceAdapter(c: NativeWorkspaceController, panel: Pane
     panel: business.panel ?? projectPanel(c, panel),
   };
   const handlers: NativeHandlers = {
+    'sidechat.create': () => c.extended?.callbacks.createSidechat(),
+    'sidechat.open': p => c.extended?.callbacks.openSidechat(String(p.id)),
+    'sidechat.return': () => c.extended?.callbacks.returnFromSidechat(),
+    'sidechat.close': p => c.extended?.callbacks.closeSidechat(String(p.id)),
     'draft.set': p => c.setDraft(String(p.value), Number(p.revision), typeof p.caretOffset === 'number' ? p.caretOffset : String(p.value).length),
     'message.send': async () => {
       if (c.imageReading || c.draftSaving) throw new Error(t('当前无法发送消息'));

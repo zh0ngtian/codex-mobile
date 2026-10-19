@@ -1275,7 +1275,13 @@ final class AgentAppUITests: XCTestCase {
 
     func testProfileRecordedConversationEntryPositions() throws {
         let app = try launchConnectedApp(extraLaunchArguments: ["--conversation-load-profile"])
-        let terms = ["修复 iOS 会话闪烁", "按参考图重做 UI 按键"]
+        let environment = ProcessInfo.processInfo.environment
+        let configured = environment["CODEX_ENTRY_POSITION_TITLES"] ?? environment["TEST_RUNNER_CODEX_ENTRY_POSITION_TITLES"]
+        let terms: [String]
+        if let configured {
+            terms = try JSONDecoder().decode([String].self, from: Data(configured.utf8))
+            XCTAssertEqual(terms.count, 2, "逐帧对照需要两类明确指定的会话")
+        } else { terms = ["修复 iOS 会话闪烁", "按参考图重做 UI 按键"] }
         for round in 0..<5 {
             for (index, term) in terms.enumerated() {
                 if !app.buttons["sidebar.more"].isHittable { app.buttons["会话列表"].tap() }

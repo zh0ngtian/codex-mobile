@@ -24,9 +24,14 @@ struct ConversationHeader: ViewModifier {
             .modifier(ConversationSubtitle(title: title, subtitle: subtitle))
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button { session.sidebarVisible = true } label: { Image(systemName: "line.3.horizontal").font(.system(size: 16, weight: .regular)).frame(width: 16, height: 16) }
+                    Button {
+                        if session.nativeSnapshot.sidechatActive == true {
+                            session.perform(session.nativeSnapshot.sidechatActions?.first { $0.command?.name == "sidechat.return" }?.command)
+                        } else { session.sidebarVisible = true }
+                    } label: { Image(systemName: session.nativeSnapshot.sidechatActive == true ? "chevron.left" : "line.3.horizontal").font(.system(size: 16, weight: .regular)).frame(width: 16, height: 16) }
                         .frame(width: 44, height: 44)
-                        .accessibilityLabel(preferences.text("会话列表", "Conversation list"))
+                        .accessibilityLabel(session.nativeSnapshot.sidechatActive == true ? preferences.text("返回主聊天", "Return to main chat") : preferences.text("会话列表", "Conversation list"))
+                        .accessibilityIdentifier(session.nativeSnapshot.sidechatActive == true ? "sidechat.return" : "line.3.horizontal")
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     HStack(spacing: 0) {
