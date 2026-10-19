@@ -9,6 +9,7 @@ import SwiftUI
 final class AgentConversationFixture {
     static let argument = "--agent-conversation-fixture"
     private(set) var historyRequestCount = 0
+    private var navigationRefreshCount = 0
     private let store: NativeUIStore
     private let session: AppSession
     private var snapshot: NativeSnapshot
@@ -200,6 +201,7 @@ final class AgentConversationFixture {
         }
         let deferredMessages = value.messages
         if ProcessInfo.processInfo.arguments.contains("--agent-delayed-report-fixture") { value.messages = []; value.loading = "loading" }
+        if ProcessInfo.processInfo.arguments.contains("--agent-entry-transition-fixture") { value.threadId = nil; value.messages = [] }
         snapshot = value
         store.sendCommand = { [weak self] command in self?.dispatch(command) }
         publish()
@@ -301,6 +303,20 @@ final class AgentConversationFixture {
             snapshot.draft = ""; snapshot.canSend = false
             snapshot.commandResults = [NativeCommandResult(id: command.id, name: command.name, ok: true, contextId: snapshot.contextId)]
             publish()
+        } else if command.name == "thread.open", ProcessInfo.processInfo.arguments.contains("--agent-entry-transition-fixture"),
+                  case .string(let thread) = command.params["threadId"] {
+            snapshot.threadId = thread
+            snapshot.contextId = "entry:" + thread
+            snapshot.title = "会话进入回归"
+            snapshot.messages = [NativeMessage(id: "entry-answer", role: "assistant", text: "会话进入标记。正文应当直接显示，不能继承侧栏的透明度转场。", phase: "final_answer")]
+            snapshot.sidebarOpen = false
+            snapshot.commandResults = [NativeCommandResult(id: command.id, name: command.name, ok: true, contextId: snapshot.contextId)]
+            publish()
+        } else if command.name == "navigation.refresh" {
+            navigationRefreshCount += 1
+            snapshot.error = "navigation-refresh-count:\(navigationRefreshCount)"
+            snapshot.commandResults = [NativeCommandResult(id: command.id, name: command.name, ok: true, contextId: snapshot.contextId)]
+            publish()
         } else if ["navigation.sidebar", "navigation.search", "settings.open"].contains(command.name) {
             if case .bool(let open) = command.params["open"], command.name == "navigation.sidebar" { snapshot.sidebarOpen = open }
             if case .string(let text) = command.params["value"], command.name == "navigation.search" { snapshot.search = text }
@@ -356,6 +372,49 @@ final class AgentConversationFixture {
         } else {
             snapshot.commandResults = [NativeCommandResult(id: command.id, name: command.name, ok: false, contextId: snapshot.contextId, error: "此界面夹具不执行真实业务")]
             publish()
+        }
+    }
+}
+
+/// 只在显式进入回归夹具内采样实际显示图层，捕获页面插入时的透明度转场。
+struct AgentEntryAnimationProbe: UIViewRepresentable {
+    func makeUIView(context: Context) -> ProbeView { ProbeView() }
+    func updateUIView(_ view: ProbeView, context: Context) {}
+    static func dismantleUIView(_ view: ProbeView, coordinator: ()) { view.stop() }
+    final class ProbeView: UIView {
+        private var link: CADisplayLink?
+        private var frames = 0
+        private var faded = false
+        override init(frame: CGRect) {
+            super.init(frame: frame)
+            isAccessibilityElement = true
+            accessibilityIdentifier = "entry.animation"
+            accessibilityValue = "sampling"
+        }
+        required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            stop()
+            guard window != nil else { return }
+            frames = 0
+            accessibilityValue = faded ? "fading" : "sampling"
+            let link = CADisplayLink(target: self, selector: #selector(tick))
+            self.link = link
+            link.add(to: .main, forMode: .common)
+        }
+        func stop() { link?.invalidate(); link = nil }
+        @objc private func tick() {
+            frames += 1
+            var current: CALayer? = layer
+            while let value = current {
+                let opacity = value.presentation()?.opacity ?? value.opacity
+                if opacity > 0.01 && opacity < 0.99 { faded = true; accessibilityValue = "fading" }
+                current = value.superlayer
+            }
+            if frames >= 45 {
+                if !faded { accessibilityValue = "none" }
+                stop()
+            }
         }
     }
 }
