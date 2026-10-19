@@ -58,7 +58,7 @@ final class AgentAppUITests: XCTestCase {
         captureConversation("新对话-重启后恢复机器和项目", app: app)
     }
 
-    func testProjectCollapseResetsFiveRowsButDrawerClosePreservesTen() {
+    func testProjectCollapseResetsFiveRowsButDrawerClosePreservesTen() throws {
         let app = XCUIApplication()
         app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-sidebar-polish-fixture", "--agent-sidebar-pagination-fixture", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
         app.launch()
@@ -66,6 +66,13 @@ final class AgentAppUITests: XCTestCase {
         let sixth = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "分页会话 6")).firstMatch
         let more = app.buttons["sidebar.more.project-z"]
         XCTAssertTrue(more.waitForExistence(timeout: 5))
+        let firstTitle = app.buttons["分页会话 1"].firstMatch
+        XCTAssertTrue(firstTitle.exists)
+        let screenshot = app.screenshot().image
+        let moreX = try XCTUnwrap(Self.firstTextInkX(screenshot, in: more.frame, screen: app.frame))
+        let titleX = try XCTUnwrap(Self.firstTextInkX(screenshot, in: firstTitle.frame, screen: app.frame))
+        XCTAssertEqual(moreX, titleX, accuracy: 1.5, "项目分页文字左端应与普通会话名称对齐")
+        captureConversation("项目分页-文字左边缘对齐", app: app)
         XCTAssertFalse(sixth.exists, "初次只直接展示五条")
         more.tap()
         XCTAssertTrue(sixth.waitForExistence(timeout: 5))
@@ -651,7 +658,7 @@ final class AgentAppUITests: XCTestCase {
         let app = launchInteractionFixture("--agent-attachment-menu-fixture")
         let input = app.textFields["message-input"]
         input.tap(); input.typeText("取消选择后保留的草稿")
-        app.buttons["添加附件"].tap(); app.buttons["选择图片"].tap()
+        app.buttons["添加附件"].tap(); app.buttons["选择照片和视频"].tap()
         XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label == '取消' OR label == 'Cancel'")).firstMatch.waitForExistence(timeout: 8))
         XCTAssertFalse(app.navigationBars["添加到对话"].exists)
         captureConversation("附件-直接照片选择器", app: app)
@@ -667,8 +674,8 @@ final class AgentAppUITests: XCTestCase {
 
     func testPhotoSelectionAutomaticallyImportsIntoComposer() {
         let app = launchInteractionFixture("--agent-attachment-menu-fixture")
-        app.buttons["添加附件"].tap(); app.buttons["选择图片"].tap()
-        let photo = app.images.matching(identifier: "PXGGridLayout-Info").firstMatch
+        app.buttons["添加附件"].tap(); app.buttons["选择照片和视频"].tap()
+        let photo = app.images.matching(identifier: "PXGGridLayout-Info").matching(NSPredicate(format: "NOT (label CONTAINS[c] 'video' OR label CONTAINS '视频')")).firstMatch
         XCTAssertTrue(photo.waitForExistence(timeout: 8), app.debugDescription)
         guard photo.exists else { return }
         photo.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
@@ -683,11 +690,67 @@ final class AgentAppUITests: XCTestCase {
         captureConversation("附件-照片自动加入输入区", app: app)
     }
 
+    func testPhotoPickerImportsVideoAndImageTogether() {
+        let app = launchInteractionFixture("--agent-attachment-menu-fixture")
+        app.buttons["添加附件"].tap()
+        app.buttons["选择照片和视频"].tap()
+        let assets = app.images.matching(identifier: "PXGGridLayout-Info")
+        XCTAssertTrue(assets.firstMatch.waitForExistence(timeout: 8))
+        let video = assets.matching(NSPredicate(format: "label CONTAINS[c] 'video' OR label CONTAINS '视频'")).firstMatch
+        let photo = assets.matching(NSPredicate(format: "NOT (label CONTAINS[c] 'video' OR label CONTAINS '视频')")).firstMatch
+        XCTAssertTrue(video.exists, "系统相册中应能选择预先导入的视频：\(app.debugDescription)")
+        XCTAssertTrue(photo.exists)
+        guard video.exists, photo.exists else { return }
+        video.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        photo.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        let add = app.navigationBars["照片"].buttons["Add"]
+        XCTAssertTrue(add.waitForExistence(timeout: 5))
+        add.tap()
+        let attachments = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'composer.attachment.'"))
+        expectation(for: NSPredicate { _, _ in attachments.count == 2 }, evaluatedWith: app)
+        waitForExpectations(timeout: 20)
+        XCTAssertEqual(attachments.count, 2, "图片和视频应在同一批次自动加入输入区")
+        XCTAssertTrue(attachments.matching(NSPredicate(format: "label CONTAINS[c] '.mp4' OR label CONTAINS[c] '.mov'")).firstMatch.exists)
+        XCTAssertTrue(app.buttons["composer.submit"].isEnabled)
+        captureConversation("附件-照片视频混选自动导入", app: app)
+    }
+
+    func testLiveReasoningMenuUsesFetchedEnglishEfforts() throws {
+        let app = try launchConnectedApp()
+        app.buttons["sidebar.askCodex"].tap()
+        let model = app.buttons["composer.model"]
+        let effort = app.buttons["composer.effort"]
+        XCTAssertTrue(model.waitForExistence(timeout: 15))
+        let raw = ProcessInfo.processInfo.environment["CODEX_TEST_EFFORT_CATALOG"]
+            ?? ProcessInfo.processInfo.environment["TEST_RUNNER_CODEX_TEST_EFFORT_CATALOG"]
+        let data = try XCTUnwrap(raw?.data(using: .utf8), "验收前须从真实model/list拉取期望目录")
+        let catalog = try JSONDecoder().decode([String: [String]].self, from: data)
+        let modelName = try XCTUnwrap(model.value as? String)
+        let expected = try XCTUnwrap(catalog[modelName], "当前模型必须存在于真实目录：\(modelName)")
+        XCTAssertFalse(expected.isEmpty)
+        XCTAssertTrue(effort.isEnabled)
+        let originalValue = effort.value as? String
+        effort.tap()
+        for value in expected { XCTAssertTrue(app.buttons[value].waitForExistence(timeout: 5), "缺少接口档位：\(value)") }
+        let displayed = app.collectionViews.firstMatch.buttons.allElementsBoundByIndex.map(\.label)
+        XCTAssertEqual(displayed, expected, "菜单必须精确保留当前模型的真实英文选项及顺序")
+        app.buttons[expected.last!].tap()
+        expectation(for: NSPredicate(format: "value == %@", expected.last!), evaluatedWith: effort)
+        waitForExpectations(timeout: 8)
+        captureConversation("真实目录-英文思考强度", app: app)
+        if let originalValue, expected.contains(originalValue), originalValue != expected.last {
+            effort.tap()
+            app.buttons[originalValue].tap()
+            expectation(for: NSPredicate(format: "value == %@", originalValue), evaluatedWith: effort)
+            waitForExpectations(timeout: 8)
+        }
+    }
+
     func testPendingPhotoImportKeepsRunningTaskStoppable() {
         let app = XCUIApplication()
         app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-attachment-menu-fixture", "--agent-delayed-attachment-import-fixture", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
         app.launch()
-        app.buttons["添加附件"].tap(); app.buttons["选择图片"].tap()
+        app.buttons["添加附件"].tap(); app.buttons["选择照片和视频"].tap()
         let photo = app.images.matching(identifier: "PXGGridLayout-Info").firstMatch
         XCTAssertTrue(photo.waitForExistence(timeout: 8)); photo.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
         let add = app.navigationBars["照片"].buttons["Add"]
@@ -804,7 +867,7 @@ final class AgentAppUITests: XCTestCase {
     func testAttachmentButtonOpensMenuWithoutIntermediateSheet() {
         let app = launchConversationFixture()
         app.buttons["添加附件"].tap()
-        XCTAssertTrue(app.buttons["选择图片"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["选择照片和视频"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["选择文件"].exists)
         XCTAssertTrue(app.buttons["当前位置"].exists)
         XCTAssertFalse(app.navigationBars["添加到对话"].exists, "加号直接菜单，不先打开附件sheet")
@@ -966,6 +1029,26 @@ final class AgentAppUITests: XCTestCase {
             }
         }
         return last.map { (area.minX + CGFloat($0)) / scale }
+    }
+
+    private static func firstTextInkX(_ image: UIImage, in rect: CGRect, screen: CGRect) -> CGFloat? {
+        guard let source = image.cgImage else { return nil }
+        let scale = CGFloat(source.width) / screen.width
+        let area = CGRect(x: rect.minX * scale, y: rect.minY * scale, width: rect.width * scale, height: rect.height * scale).integral
+        guard let cropped = source.cropping(to: area) else { return nil }
+        let width = cropped.width, height = cropped.height
+        var bytes = [UInt8](repeating: 0, count: width * height * 4)
+        bytes.withUnsafeMutableBytes { buffer in
+            let context = CGContext(data: buffer.baseAddress, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+            context.draw(cropped, in: CGRect(x: 0, y: 0, width: width, height: height))
+        }
+        var first: Int?
+        for index in stride(from: 0, to: bytes.count, by: 4) {
+            if bytes[index] < 180, bytes[index + 1] < 180, bytes[index + 2] < 180 {
+                first = min(first ?? width, (index / 4) % width)
+            }
+        }
+        return first.map { (area.minX + CGFloat($0)) / scale }
     }
 
     func testSidebarLongConversationTitleStaysOnOneLine() {
