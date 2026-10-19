@@ -736,7 +736,6 @@ function BackendWorkspace({
             new Set(current.map((thread) => String(thread.id))),
           ),
         );
-        setThreadListState("ready");
       },
       onProjectStart(cwd) {
         setProjectThreadStates((current) => ({
@@ -961,14 +960,8 @@ function BackendWorkspace({
         );
         setProjects(directories);
         setProjectlessThreadIds(nextProjectlessThreadIds);
-        if (directories.length || nextProjectlessThreadIds.length) {
-          setThreadListState("ready");
-        }
       } catch {
         if (client !== clientRef.current || client.signal?.aborted) return;
-        if (directories.length || nextProjectlessThreadIds.length) {
-          setThreadListState("ready");
-        }
       }
       await threadListLoaderRef.current!.load(
         client,
@@ -1199,6 +1192,7 @@ function BackendWorkspace({
 
   useEffect(() => {
     if (!refreshVersion) return;
+    setError("");
     const sequence = ++refreshSequenceRef.current;
     fullyLoadedProjectCwdsRef.current.clear();
     setThreadListState((current) =>
@@ -5122,6 +5116,7 @@ function ConfiguredApp({
   };
   const nativeRuntime = useNativeRuntime({
     selectedBackendId: selectedBackend?.id ?? "", listBackendId, sidebarOpen, search: query, groups: nativeGroups,
+    navigationLoading: threadListState === "loading",
     backends: [{ id: "all", title: t("全部设备"), connected: true }, ...projectNativeBackends(registry.backends, summaries, snapshots)],
     preferences: projectNativePreferences({ language: languagePreference, transportMode, fontSize: readFontSize(), notification: notificationPreference }),
   }, {

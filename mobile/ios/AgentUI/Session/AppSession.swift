@@ -50,7 +50,7 @@ final class AppSession {
     var projectErrors: Set<String> = []
     var loadingProjects: Set<String> = []
     var scopedProjects: [String] = []
-    var navigationLoading = false
+    var navigationLoading = true
     var navigationError: String?
     var nativeSnapshot = NativeSnapshot()
     var submissionPending = false

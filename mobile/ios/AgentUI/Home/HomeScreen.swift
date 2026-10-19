@@ -36,6 +36,7 @@ struct SidebarConversationList: View {
                         .font(.title3)
                     Text(session.searchText.isEmpty ? preferences.text("暂无会话", "No conversations") : preferences.text("没有匹配的会话", "No matches"))
                         .font(AgentTheme.body)
+                        .accessibilityIdentifier("sidebar.empty")
                 }
                 .foregroundStyle(.secondary)
                 .padding(.vertical, 18)

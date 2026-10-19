@@ -3,6 +3,7 @@ import Foundation
 @main
 struct AgentSessionSmoke {
     @MainActor static func main() async {
+        verifyStartupNavigationLoading()
         verifyComposerMenuBusinessValues()
         verifyInteractiveSidebarBounds()
         verifyIndependentModelEfforts()
@@ -165,6 +166,43 @@ struct AgentSessionSmoke {
         await verifyDelayedDeviceForm()
         await verifyPendingProjectsAndQuestions()
         print("Agent session smoke passed")
+    }
+    @MainActor static func verifyStartupNavigationLoading() {
+        let session = AppSession()
+        precondition(session.navigationLoading, "原生首帧未取得业务快照前必须加载")
+        var state = NativeSnapshot()
+        session.receive(state)
+        precondition(session.navigationLoading, "未就绪旧空快照不得判空")
+        state.ready = true; session.receive(state)
+        precondition(!session.navigationLoading, "兼容未携带字段的ready旧夹具")
+        func navigation(_ loading: Bool, _ value: NativeSnapshot) -> NativeSnapshot {
+            var object = try! JSONSerialization.jsonObject(with: JSONEncoder().encode(value)) as! [String: Any]
+            object["navigationLoading"] = loading
+            let decoded = try! JSONDecoder().decode(NativeSnapshot.self, from: JSONSerialization.data(withJSONObject: object))
+            let roundTrip = try! JSONSerialization.jsonObject(with: JSONEncoder().encode(decoded)) as! [String: Any]
+            precondition(roundTrip["navigationLoading"] as? Bool == loading, "Swift DTO必须保留导航加载字段")
+            return decoded
+        }
+        state.loading = "ready"; session.receive(navigation(true, state))
+        precondition(session.navigationLoading, "详情ready不得结束列表首次查询")
+        state.loading = "loading"; session.receive(navigation(false, state))
+        precondition(!session.navigationLoading, "详情加载不得污染成功空列表")
+        state.groups = [NativeGroup(id: "list-error", title: "真实失败", items: [NativeNavigationItem(id: "retry", title: "重试", command: NativeCommand(name: "navigation.refresh"))])]
+        session.receive(navigation(true, state))
+        precondition(!session.navigationLoading && session.navigationError == "真实失败", "普通列表真实失败不能被加载字段盖住")
+        state.search = "空结果"; state.groups = [NativeGroup(id: "search", title: "搜索结果", items: [], category: "search")]
+        session.receive(navigation(true, state))
+        precondition(!session.navigationLoading, "成功空搜索不能沿用普通列表加载")
+        state.groups[0].loading = "loading"; state.groups[0].subtitle = "上轮搜索错误"
+        session.receive(navigation(false, state))
+        precondition(session.navigationLoading && session.navigationError == "上轮搜索错误", "搜索本轮加载仍优先于上轮错误")
+        state.search = ""; state.groups = [NativeGroup(id: "pending", title: "项目", items: [], category: "project", loading: "loading")]
+        session.receive(navigation(false, state))
+        precondition(session.loadingProjects == ["pending"] && session.projectConversations("pending").isEmpty, "空项目pending必须投影为加载")
+        state.groups[0].loading = "ready"; session.receive(navigation(false, state))
+        precondition(session.loadingProjects.isEmpty && session.projectErrors.isEmpty, "成功空项目才能退出加载")
+        state.groups[0].loading = "error"; session.receive(navigation(false, state))
+        precondition(session.projectErrors == ["pending"], "空项目真实失败必须投影为错误")
     }
     @MainActor static func verifyHistoryAggregateScrollAliases() {
         let session = AppSession()

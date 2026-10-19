@@ -190,3 +190,18 @@ it('全局面板按实际打开顺序展示，后台组件render不会抢走当�
  runtime.setGlobalPanel('devices', { id: 'devices', title: '', items: [] }, {}); expect(runtime.snapshot().panel?.id).toBe('devices');
  runtime.setGlobalPanel('drafts', { id: 'drafts', title: '更新标题', items: [] }, {}); expect(runtime.snapshot().panel?.id).toBe('devices'); runtime.dispose();
 });
+
+
+it('导航加载字段独立于详情加载透传，缺失字段不污染ready夹具', () => {
+ const runtime = new NativeRuntime(() => {});
+ runtime.setNavigation({ selectedBackendId: 'b', backends: [], groups: [], navigationLoading: true });
+ runtime.setWorkspace('b', { ...workspace(), loading: 'ready' }, {});
+ expect(runtime.snapshot()).toMatchObject({ navigationLoading: true, loading: 'ready' });
+ runtime.setNavigation({ selectedBackendId: 'b', backends: [], groups: [], navigationLoading: false });
+ runtime.setWorkspace('b', { ...workspace(), loading: 'loading' }, {});
+ expect(runtime.snapshot()).toMatchObject({ navigationLoading: false, loading: 'loading' });
+ runtime.setNavigation({ selectedBackendId: 'b', backends: [], groups: [] });
+ expect(runtime.snapshot().navigationLoading).toBeUndefined();
+ expect({ ...emptyNativeSnapshot(), ready: true }.navigationLoading).toBeUndefined();
+ runtime.dispose();
+});

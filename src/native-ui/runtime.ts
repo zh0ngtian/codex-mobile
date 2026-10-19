@@ -97,7 +97,7 @@ export class NativeRuntime {
           selected: item.command.params.backendId === this.navigation.selectedBackendId && item.command.params.threadId === workspace?.value.threadId } : item;
         return { ...group, items: group.items.map(select), allItems: group.allItems?.map(select) };
       }),
-      sidebarOpen: this.navigation.sidebarOpen, search: this.navigation.search, listBackendId: this.navigation.listBackendId,
+      navigationLoading: this.navigation.navigationLoading, sidebarOpen: this.navigation.sidebarOpen, search: this.navigation.search, listBackendId: this.navigation.listBackendId,
       preferences: this.navigation.preferences ? { ...this.navigation.preferences, fontSize: readFontSize() } : undefined,
       draftRevision: workspace?.revision ?? 0, ...(workspace?.echo !== undefined ? { draft: workspace.echo, caretOffset: workspace.echoCaret ?? workspace.echo.length } : {}),
       commandResults: [...this.results], error: this.commandError || workspace?.value.error || this.navigation.error || undefined };

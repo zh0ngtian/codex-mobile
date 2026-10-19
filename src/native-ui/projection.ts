@@ -174,12 +174,16 @@ export function projectNavigation(input: NavigationInput): NativeGroup[] {
       const key = projectCollapseKey(backendId, group.cwd);
       const collapsed = input.collapsedProjectKeys.has(key);
       const params = { backendId, cwd: group.cwd };
+      // 项目目录先于首批会话返回；未知/idle空组尚未获得成功空结果。
+      const state = states[group.cwd];
+      const knownProject = directories.includes(group.cwd) || (hasProjectless && group.cwd === PROJECTLESS_GROUP_ID);
+      const loading = !state || state === 'idle' ? (knownProject || !group.threads.length ? 'loading' : 'ready') : state;
       const actions: NativePanelItem[] = [];
       if (!collapsed && states[group.cwd] === 'error') actions.push(nativeAction(`${key}:retry`, t('重试'), 'project.retry', params));
       if (!collapsed && hasMore[group.cwd]) actions.push({ ...nativeAction(`${key}:more`, input.loadingProjectKeys.has(key) ? t('加载中…') : t('加载更多'), 'project.more', params), disabled: input.loadingProjectKeys.has(key) });
       const allItems = group.threads.map(row);
       groups.push({ id: key, category: 'project', title: group.projectName, subtitle: backendName, backendId, cwd: group.cwd === PROJECTLESS_GROUP_ID ? '' : group.cwd,
-        hasMore: !!hasMore[group.cwd], allItems, collapsed, loading: collapsed ? undefined : states[group.cwd],
+        hasMore: !!hasMore[group.cwd], allItems, collapsed, loading: collapsed ? undefined : loading,
         command: nativeCommand('project.toggle', params), newCommand: nativeCommand('thread.new', { backendId, cwd: group.cwd === PROJECTLESS_GROUP_ID ? '' : group.cwd }),
         actions, items: collapsed ? [] : allItems });
     }

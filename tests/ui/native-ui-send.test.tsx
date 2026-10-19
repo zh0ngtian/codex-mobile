@@ -1,9 +1,13 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { AppBootstrap } from '../../src/App';
 import { HttpOperationPendingError } from '../../src/backends/http-transport';
 import * as threadListLoader from '../../src/app-server/thread-list-loader';
-const boundary = vi.hoisted(() => ({ requests: [] as Array<{ method: string; params: any; options?: { priority?: string } }>, threadRecords: [] as Array<Record<string, any>>, threadReadBarrier: null as Promise<void> | null, options: null as any, client: null as any, release: null as null | (() => void), failSend: false, immediateSend: false, nextThreadId: 'sent-thread', delayRevert: false, pendingMethod: '', releaseRevert: null as null | (() => void), rejectStart: null as null | (() => void) }));
+const boundary = vi.hoisted(() => ({ requests: [] as Array<{ method: string; params: any; options?: { priority?: string } }>, threadRecords: [] as Array<Record<string, any>>, threadReadBarrier: null as Promise<void> | null, projectBarrier: null as Promise<void> | null, priorityBarrier: null as Promise<void> | null, listBarrier: null as Promise<void> | null, searchBarrier: null as Promise<void> | null, listFailure: false, options: null as any, client: null as any, release: null as null | (() => void), failSend: false, immediateSend: false, nextThreadId: 'sent-thread', delayRevert: false, pendingMethod: '', releaseRevert: null as null | (() => void), rejectStart: null as null | (() => void) }));
 vi.mock('../../src/backends/connection-manager', () => ({ BackendConnectionManager: class {
  constructor(private options: any) { boundary.options = options; }
  client() { return boundary.client; } socket() { return null; } close() {} reconnect() {}
@@ -14,9 +18,11 @@ vi.mock('../../src/backends/connection-manager', () => ({ BackendConnectionManag
    if (method === 'model/list') return { data: [{ model: 'gpt', displayName: 'GPT', isDefault: true, supportedReasoningEfforts: [{ reasoningEffort: 'high', description: '' }] }] };
    if (method === 'permissionProfile/list') return { data: [{ id: ':workspace', allowed: true }] };
    if (method === 'config/read') return { config: { model: 'gpt', sandbox_mode: 'workspace-write', model_reasoning_effort: 'high' } };
+   if (method === 'thread/list') { await boundary.listBarrier; if (boundary.listFailure) throw new Error('列表查询失败'); }
+   if (method === 'thread/search') { await boundary.searchBarrier; return { data: [], nextCursor: null }; }
+   if (method === 'thread/read') { const thread = boundary.threadRecords.find(thread => thread.id === params.threadId); await boundary.threadReadBarrier; if (thread) return { thread }; }
    if (method === 'thread/list' && params.cwd) { const records = boundary.threadRecords.filter(thread => thread.cwd === params.cwd); const offset = Number(params.cursor ?? 0); const end = offset + params.limit; return { data: records.slice(offset, end), nextCursor: end < records.length ? String(end) : null }; }
-   if (method === 'thread/loaded/list') return { data: boundary.threadRecords.filter(thread => thread.status?.type === 'active').map(thread => thread.id), nextCursor: null };
-   if (method === 'thread/read' && boundary.threadRecords.some(thread => thread.id === params.threadId)) { const thread = boundary.threadRecords.find(thread => thread.id === params.threadId); await boundary.threadReadBarrier; return { thread }; }
+   if (method === 'thread/loaded/list') { await boundary.priorityBarrier; return { data: boundary.threadRecords.filter(thread => thread.status?.type === 'active').map(thread => thread.id), nextCursor: null }; }
    if (method === 'thread/start') return { thread: { id: boundary.nextThreadId, cwd: null, turns: [] }, model: 'gpt' };
    if (method === boundary.pendingMethod) throw new HttpOperationPendingError(`pending-${params.threadId}-${method}`, { id: 'pending-rpc', method, params });
    if (method === 'thread/revert' && boundary.delayRevert) return new Promise(resolve => { boundary.releaseRevert = () => resolve({ thread: { id: params.threadId, turns: [] } }); });
@@ -31,26 +37,133 @@ vi.mock('../../src/backends/connection-manager', () => ({ BackendConnectionManag
 } }));
 const posts: any[] = []; let queueItems: any[] = [];
 function command(id: string, name: string, params: Record<string, unknown> = {}) { window.dispatchEvent(new CustomEvent('codex-mobile-native-command', { detail: { id, name, params } })); }
+const pendingReads: Array<() => void> = [];
 function deferredRead() {
  let resolve!: () => void; let reject!: (reason: Error) => void;
  const promise = new Promise<void>((done, fail) => { resolve = done; reject = fail; });
+ pendingReads.push(resolve);
  return { promise, resolve, reject };
 }
-afterEach(() => { cleanup(); boundary.requests = []; boundary.threadRecords = []; boundary.threadReadBarrier = null; boundary.client = null; boundary.options = null; boundary.release = null; boundary.failSend = false; boundary.immediateSend = false; boundary.nextThreadId = 'sent-thread'; boundary.delayRevert = false; boundary.pendingMethod = ''; boundary.releaseRevert = null; boundary.rejectStart = null; queueItems = []; posts.length = 0; localStorage.clear(); delete (window as any).__CODEX_NATIVE_UI__; delete (window as any).webkit; delete (window as any).codexMobilePublishNativeSnapshot; vi.unstubAllGlobals(); });
-async function setup(native = true, projectState = { projects: [] as string[], projectlessThreadIds: [] as string[] }) {
+afterEach(async () => { cleanup(); await act(async () => { pendingReads.splice(0).forEach(resolve => resolve()); }); boundary.requests = []; boundary.threadRecords = []; boundary.threadReadBarrier = null; boundary.projectBarrier = null; boundary.priorityBarrier = null; boundary.listBarrier = null; boundary.searchBarrier = null; boundary.listFailure = false; boundary.client = null; boundary.options = null; boundary.release = null; boundary.failSend = false; boundary.immediateSend = false; boundary.nextThreadId = 'sent-thread'; boundary.delayRevert = false; boundary.pendingMethod = ''; boundary.releaseRevert = null; boundary.rejectStart = null; queueItems = []; posts.length = 0; localStorage.clear(); delete (window as any).__CODEX_NATIVE_UI__; delete (window as any).webkit; delete (window as any).codexMobilePublishNativeSnapshot; vi.unstubAllGlobals(); });
+async function setup(native = true, projectState = { projects: [] as string[], projectlessThreadIds: [] as string[] }, waitForSettings = true) {
  if (native) Object.assign(window, { __CODEX_NATIVE_UI__: true, webkit: { messageHandlers: { nativeUI: { postMessage() {} } } }, codexMobilePublishNativeSnapshot: (s: unknown) => posts.push(s) });
  vi.stubGlobal('fetch', vi.fn(async (url: string, options?: RequestInit) => {
   if (String(url).includes('/api/follow-ups')) {
    if (options?.body) { const action = JSON.parse(String(options.body)); if (action.action === 'enqueue') queueItems.push({ ...action, revision: 1, state: 'queued' }); if (action.action === 'cancel') queueItems = queueItems.filter(item => item.id !== action.id); }
    return new Response(JSON.stringify({ items: queueItems }));
   }
+  if (String(url).includes('/api/projects')) await boundary.projectBarrier;
   return new Response(JSON.stringify(projectState));
  }));
  render(<AppBootstrap initialRegistry={{ version: 1, selectedBackendId: 'a', backends: [{ id: 'a', hostId: 'host', name: 'Mac', enabled: true, order: 0, baseUrl: 'https://gateway.invalid', token: 'SECRET' }] }} />);
- if (native) await waitFor(() => expect(posts.at(-1)?.models?.[0]?.value).toBe('gpt'));
+ if (native) await waitFor(() => expect(waitForSettings ? posts.at(-1)?.models?.[0]?.value === 'gpt' : posts.at(-1)?.ready).toBe(true));
  else await waitFor(() => expect(boundary.requests.some(request => request.method === 'model/list')).toBe(true));
  return posts.at(-1)?.contextId as string;
 }
+
+function assertSwiftNavigationSnapshots(snapshots: any[]) {
+ if (process.platform !== 'darwin') return;
+ const directory = mkdtempSync(join(tmpdir(), 'native-startup-navigation-'));
+ try {
+  const names = ['NativeJSONValue', 'NativeCommand', 'NativeCommandResult', 'NativeOption', 'NativeBackend', 'NativeNavigationItem', 'NativeGroup', 'NativeAttachment', 'NativeMessage', 'NativePanelItem', 'NativePanel', 'NativeContextUsage', 'NativeRateLimit', 'NativeSnapshot'];
+  const executable = join(directory, 'decode');
+  const compiled = spawnSync('xcrun', ['swiftc', ...names.map(name => `mobile/ios/NativeUI/${name}.swift`), 'tests/ci/native-ui-decode.swift', '-o', executable], { encoding: 'utf8', timeout: 90_000 });
+  expect(compiled.status, compiled.error?.message ?? compiled.stderr).toBe(0);
+  const result = spawnSync(executable, ['--navigation'], { input: JSON.stringify(snapshots), encoding: 'utf8', timeout: 15_000 });
+  expect(result.status, result.error?.message ?? result.stderr).toBe(0);
+  expect(result.stdout).toContain('Native navigation snapshots decoded');
+ } finally { rmSync(directory, { recursive: true, force: true }); }
+}
+
+// 只替换外部连接与HTTP边界，以下断言经过真实App业务状态、导航投影和NativeRuntime发布。
+it('真实App冷启动在目录、优先摘要和首批普通会话未完成前持续加载，成功空项目才ready', async () => {
+ const directory = deferredRead(); const priority = deferredRead(); const page = deferredRead(); const projectless = deferredRead();
+ boundary.projectBarrier = directory.promise; boundary.priorityBarrier = priority.promise; boundary.listBarrier = page.promise; boundary.threadReadBarrier = projectless.promise;
+ await setup(true, { projects: ['/pending'], projectlessThreadIds: ['missing'] }, false);
+ expect(posts.at(-1)).toMatchObject({ ready: true, navigationLoading: true });
+ const startupSnapshots = [posts.at(-1)];
+ expect(posts.at(-1).groups.filter((group: any) => group.category === 'project')).toEqual([]);
+ await act(async () => directory.resolve());
+ const groups = () => posts.at(-1).groups.filter((group: any) => group.category === 'project');
+ await waitFor(() => expect(groups()).toHaveLength(2));
+ expect(groups().every((group: any) => group.loading === 'loading' && !group.items.length)).toBe(true);
+ startupSnapshots.push(posts.at(-1));
+ expect(posts.at(-1).navigationLoading).toBe(true);
+ const project = groups().find((group: any) => group.cwd === '/pending');
+ await act(async () => command('collapse-pending', 'project.toggle', project.command.params));
+ await waitFor(() => expect(groups().find((group: any) => group.cwd === '/pending').collapsed).toBe(true));
+ await act(async () => command('expand-pending', 'project.toggle', project.command.params));
+ await waitFor(() => expect(groups().find((group: any) => group.cwd === '/pending')).toMatchObject({ collapsed: false, loading: 'loading' }));
+ await act(async () => priority.resolve());
+ await waitFor(() => expect(boundary.requests.some(request => request.method === 'thread/list')).toBe(true));
+ expect(groups().every((group: any) => group.loading === 'loading')).toBe(true);
+ expect(posts.at(-1).navigationLoading).toBe(true);
+ await act(async () => { page.resolve(); projectless.resolve(); });
+ await waitFor(() => expect(groups().every((group: any) => group.loading === 'ready')).toBe(true));
+ expect(posts.at(-1).navigationLoading).toBe(false);
+ expect(groups().every((group: any) => !group.items.length)).toBe(true);
+ assertSwiftNavigationSnapshots([...startupSnapshots, posts.at(-1)]);
+}, 120_000);
+it('真实App空优先摘要不能提前结束普通列表首查，成功真空列表才停止加载', async () => {
+ const page = deferredRead(); boundary.listBarrier = page.promise;
+ await setup(true, undefined, false);
+ await waitFor(() => expect(boundary.requests.some(request => request.method === 'thread/list')).toBe(true));
+ expect(posts.at(-1)).toMatchObject({ ready: true, navigationLoading: true });
+ await act(async () => page.resolve());
+ await waitFor(() => expect(posts.at(-1)?.navigationLoading).toBe(false));
+ expect(posts.at(-1).groups.every((group: any) => !group.items.length)).toBe(true);
+});
+it('真实App普通列表首次失败可见且重试期间加载，成功后退出错误', async () => {
+ boundary.listFailure = true;
+ await setup(true, undefined, false);
+ const failure = () => posts.at(-1)?.groups.find((group: any) => group.id === 'list-error');
+ await waitFor(() => expect(failure()).toBeDefined());
+ expect(posts.at(-1).navigationLoading).toBe(false);
+ const page = deferredRead(); boundary.listBarrier = page.promise; boundary.listFailure = false;
+ await act(async () => command('retry-empty-list', failure().items[0].command.name));
+ await waitFor(() => expect(posts.at(-1)?.navigationLoading).toBe(true));
+ await act(async () => page.resolve());
+ await waitFor(() => expect(posts.at(-1)?.navigationLoading).toBe(false));
+ expect(failure()).toBeUndefined();
+});
+it('真实App项目首查失败保留重试动作，重试成功空项目成为ready', async () => {
+ boundary.listFailure = true;
+ await setup(true, { projects: ['/failed'], projectlessThreadIds: [] });
+ const project = () => posts.at(-1)?.groups.find((group: any) => group.cwd === '/failed');
+ await waitFor(() => expect(project()?.loading).toBe('error'));
+ expect(posts.at(-1).navigationLoading).toBe(false);
+ const page = deferredRead(); boundary.listBarrier = page.promise; boundary.listFailure = false;
+ const retry = project().actions.find((action: any) => action.command?.name === 'project.retry');
+ await act(async () => command('retry-empty-project', retry.command.name, retry.command.params));
+ await waitFor(() => expect(project()?.loading).toBe('loading'));
+ await act(async () => page.resolve());
+ await waitFor(() => expect(project()).toMatchObject({ loading: 'ready', items: [] }));
+});
+it('真实App搜索空结果不沿用仍在进行的普通列表加载', async () => {
+ const page = deferredRead(); const search = deferredRead(); boundary.listBarrier = page.promise; boundary.searchBarrier = search.promise;
+ await setup(true, undefined, false);
+ await act(async () => { command('open-empty-search', 'navigation.sidebar', { open: true }); command('query-empty-search', 'navigation.search', { value: '不存在的结果' }); });
+ await waitFor(() => expect(posts.at(-1)?.groups[0]).toMatchObject({ category: 'search', loading: 'loading' }));
+ expect(posts.at(-1).navigationLoading).toBe(true);
+ await act(async () => search.resolve());
+ await waitFor(() => expect(posts.at(-1)?.groups[0]).toMatchObject({ category: 'search', items: [], loading: undefined }));
+ expect(posts.at(-1).navigationLoading).toBe(true);
+ await act(async () => page.resolve());
+});
+it('真实App已有项目会话在展开侧栏触发的静默刷新期间保留内容且不闪加载', async () => {
+ boundary.threadRecords = [{ id: 'existing', name: '已有会话', cwd: '/existing', turns: [] }];
+ await setup(true, { projects: ['/existing'], projectlessThreadIds: [] });
+ const project = () => posts.at(-1)?.groups.find((group: any) => group.cwd === '/existing');
+ await waitFor(() => expect(project()?.items[0]?.threadId).toBe('existing'));
+ const before = boundary.requests.filter(request => request.method === 'thread/list').length;
+ const page = deferredRead(); boundary.listBarrier = page.promise;
+ await act(async () => command('open-for-silent-refresh', 'navigation.sidebar', { open: true }));
+ await waitFor(() => expect(boundary.requests.filter(request => request.method === 'thread/list').length).toBeGreaterThan(before));
+ expect(project()).toMatchObject({ loading: 'ready', items: [{ threadId: 'existing' }] });
+ expect(posts.at(-1).navigationLoading).toBe(false);
+ await act(async () => page.resolve());
+});
+
 it('真实App冷启动将额度查询的后台选项传给客户端', async () => {
  await setup();
  expect(boundary.requests.find(request => request.method === 'account/rateLimits/read')?.options).toEqual({ priority: 'background' });
