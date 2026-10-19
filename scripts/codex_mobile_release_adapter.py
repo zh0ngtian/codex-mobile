@@ -5,6 +5,7 @@ import contextlib
 import hashlib
 import importlib.util
 import json
+import math
 import os
 from pathlib import Path
 import plistlib
@@ -21,6 +22,21 @@ import zipfile
 from release_coordination.state import atomic_json, read_json, sha256, reserve_version, version_code
 
 LAN = 'http://192.168.123.79:8765/channels/codex-mobile'
+
+
+def sanitized_diagnostic(message, *, compact=False):
+    text = re.sub(r'-----BEGIN [^-]*PRIVATE KEY-----.*?(?:-----END [^-]*PRIVATE KEY-----|$)', '[已脱敏私钥]', str(message), flags=re.S)
+    text = re.sub(r'https?://[^\s<>\"\']+', '[已脱敏地址]', text, flags=re.I)
+    text = re.sub(r'(?i)\bBearer\s+\S+', 'Bearer [已脱敏]', text)
+    text = re.sub(r'''(?im)\b(?:authorization|cookie)["']?\s*[:=][^\r\n]*''', '[已脱敏凭据]', text)
+    text = re.sub(r'''(?i)\b(?:token|password|secret)["']?\s*[:=]\s*(?:"[^"]*"|'[^']*'|[^\s,;]+)''', '[已脱敏凭据]', text)
+    return re.sub(r'\s+', ' ', text).strip()[:512] if compact else text
+
+
+class TransientReadError(RuntimeError):
+    """只能证明只读核对暂时不可用，不能证明任何外部写入未发生。"""
+    def __init__(self, reason):
+        super().__init__(sanitized_diagnostic(reason, compact=True) or '只读网络核对暂时失败，请稍后重试')
 
 
 class Adapter:
@@ -45,37 +61,86 @@ class Adapter:
                 raise ValueError('OTA-only 项目、身份、环境、作用域或发布阶段不匹配')
         self._ios_config = None
 
-    def command(self, args, cwd=None, input=None):
-        result = subprocess.run([str(arg) for arg in args], cwd=cwd or self.work, input=input,
-                                text=True, capture_output=True, env={**os.environ, 'GIT_TERMINAL_PROMPT': '0'})
-        if result.stderr: print(result.stderr, file=sys.stderr, end='')
-        if result.returncode: raise RuntimeError(f'{Path(str(args[0])).name} exited {result.returncode}')
+    @staticmethod
+    def network_read_command(args):
+        args = [str(arg) for arg in args]
+        executable = Path(args[0]).name
+        if executable == 'git': return len(args) > 1 and args[1] in ('ls-remote', 'fetch')
+        if executable == 'gh': return args[1:3] == ['run', 'download']
+        if executable != 'curl': return False
+        for index, argument in enumerate(args[1:], 1):
+            if argument.startswith(('--data', '--form', '--upload-file', '--json', '--config', '-d', '-F', '-T', '-K')) or argument == '--next':
+                return False
+            if argument in ('--request', '-X') and (index + 1 >= len(args) or args[index + 1] not in ('GET', 'HEAD')):
+                return False
+            if argument.startswith('--request=') and argument.split('=', 1)[1] not in ('GET', 'HEAD'): return False
+            if argument.startswith('-X') and argument != '-X' and argument[2:] not in ('GET', 'HEAD'): return False
+        return True
+
+    def command(self, args, cwd=None, input=None, *, read_only=False):
+        if read_only and not self.network_read_command(args): raise ValueError('只读标记只允许已知网络查询或下载命令')
+        try:
+            result = subprocess.run([str(arg) for arg in args], cwd=cwd or self.work, input=input,
+                                    text=True, capture_output=True, env={**os.environ, 'GIT_TERMINAL_PROMPT': '0'},
+                                    **({'timeout': 180} if read_only else {}))
+        except subprocess.TimeoutExpired:
+            if read_only: raise TransientReadError('只读命令网络超时') from None
+            raise
+        if result.returncode:
+            executable = Path(str(args[0])).name
+            if read_only and self.transient_read_error(result.stderr, result.returncode if executable == 'curl' else None):
+                raise TransientReadError(executable + ' 只读核对暂时失败（EOF、网络中断或远端繁忙）')
+            if result.stderr: print(sanitized_diagnostic(result.stderr), file=sys.stderr, end='')
+            raise RuntimeError(f'{executable} exited {result.returncode}')
+        if result.stderr: print(sanitized_diagnostic(result.stderr), file=sys.stderr, end='')
         return result.stdout.strip()
 
-    def git(self, *args): return self.command(['git', *args])
+    def git(self, *args):
+        if args and args[0] in ('ls-remote', 'fetch'):
+            return self.command(['git', *args], read_only=True)
+        return self.command(['git', *args])
 
     @staticmethod
-    def transient_read_error(message):
-        return bool(re.search(r'EOF|timed?\s*out|timeout|connection (reset|refused|aborted)|temporar|HTTP (408|429|500|502|503|504)|empty reply|could not resolve|failure when receiving',message,re.I))
+    def transient_read_error(message, curl_code=None):
+        # 本地写入、证书与鉴权优先于任何模糊的 EOF/connection 字样。
+        network_codes = (5, 6, 7, 16, 18, 28, 52, 55, 56, 92, 95)
+        if curl_code is not None and curl_code not in (*network_codes, 22): return False
+        if re.search(r'HTTP(?:/\d(?:\.\d)?)?\s*[: ]\s*(401|403|404)\b|authentication failed|permission denied|x509:|certificate (?:problem|verify failed|signed by unknown authority|has expired)|SSL certificate|unable to get local issuer|no space left|failed writing|failed to (?:write|save)|invalid configuration', message, re.I):
+            return False
+        if curl_code in network_codes: return True
+        statuses = re.findall(r'(?:HTTP(?:/\d(?:\.\d)?)?\s*[: ]\s*|returned error:\s*)(\d{3})\b', message, re.I)
+        if statuses: return any(value in ('408', '429') or value.startswith('5') for value in statuses)
+        return bool(re.search(r'\bEOF\b|timed?\s*out|timeout|connection (?:reset|refused|aborted|closed)|empty reply|could not resolve (?:host|proxy)|temporary failure in name resolution|failure when receiving|remote end hung up|early EOF|network is unreachable|no route to host|no such host|context deadline exceeded|unexpected disconnect|closed by remote host|TLS connection was non-properly terminated|curl (?:18|28|52|55|56|92)\b', message, re.I))
+
+    @staticmethod
+    def incomplete_json(error):
+        document = error.doc.rstrip()
+        tail = document[error.pos:]
+        return (not document or error.msg.startswith('Unterminated string') or error.pos >= len(document)
+                or bool(tail) and any(literal.startswith(tail) for literal in ('true', 'false', 'null')))
 
     def gh_json(self, path, missing=False):
-        # This helper only issues GET; a failed POST is reconciled by its owning phase instead.
+        # 此入口只有 GET；POST 的响应丢失必须由对应阶段独立对账。
         for attempt in range(4):
             try:
-                result = subprocess.run(['gh', 'api', path], cwd=self.work, text=True, capture_output=True,timeout=45)
+                result = subprocess.run(['gh', 'api', path], cwd=self.work, text=True, capture_output=True, timeout=45)
             except subprocess.TimeoutExpired:
-                if attempt==3:raise RuntimeError('GitHub GET timed out after bounded retries') from None
-                time.sleep(2**attempt);continue
-            if missing and result.returncode and 'HTTP 404' in result.stderr:return None
+                if attempt == 3: raise TransientReadError('GitHub GET 超时，有限重试已耗尽') from None
+                time.sleep(2 ** attempt); continue
+            if missing and result.returncode and 'HTTP 404' in result.stderr: return None
             if not result.returncode:
-                try:return json.loads(result.stdout)
-                except json.JSONDecodeError:error='GitHub GET response incomplete EOF'
-            else:error=result.stderr.strip()
-            if attempt==3 or not self.transient_read_error(error):raise RuntimeError('GitHub API 无法核对: '+error)
-            time.sleep(2**attempt)
+                try: return json.loads(result.stdout)
+                except json.JSONDecodeError as error:
+                    if not self.incomplete_json(error): raise RuntimeError('GitHub GET 返回无效 JSON') from None
+                    message = 'GitHub GET response incomplete EOF'
+            else: message = result.stderr.strip()
+            if not self.transient_read_error(message):
+                raise RuntimeError('GitHub API 无法核对: ' + sanitized_diagnostic(message))
+            if attempt == 3: raise TransientReadError('GitHub GET 暂时失败（EOF、连接中断或远端繁忙），有限重试已耗尽')
+            time.sleep(2 ** attempt)
 
     def request(self, url, method='GET', data=None, headers=None, ca=None):
-        # curl 与当前软件源/局域网服务兼容；凭据只通过 stdin，不写到命令参数或日志。
+        # 凭据仅走 stdin，不写进命令参数或诊断。
         config = []
         for key, value in (headers or {}).items():
             if '\n' in value or '\r' in value: raise ValueError('无效 HTTP header')
@@ -84,29 +149,42 @@ class Adapter:
         if ca: args.extend(['--cacert', str(ca)])
         if method == 'HEAD': args.append('--head')
         if headers: args.extend(['--config', '-'])
-        if data is not None:
-            # body contains only public operation options; management token is a header.
-            args.extend(['--data-binary', json.dumps(data)])
-        attempts=4 if method in ('GET','HEAD') else 1
+        if data is not None: args.extend(['--data-binary', json.dumps(data)])
+        read_only = method in ('GET', 'HEAD')
+        attempts = 4 if read_only else 1
         for attempt in range(attempts):
-            result = subprocess.run(args, text=True, input='\n'.join(config) if headers else None, capture_output=True)
-            if result.returncode:
-                error='HTTP 连接失败: '+result.stderr.strip()
-                # curl transport failures are safe to retry for GET/HEAD only.
-                transient=True
+            try:
+                result = subprocess.run(args, text=True, input='\n'.join(config) if headers else None, capture_output=True)
+            except subprocess.TimeoutExpired:
+                transient = True
+                message = 'HTTP 网络超时'
             else:
-                try:body,status=result.stdout.rsplit('\n',1)
-                except ValueError:body,status='','000'
-                if status=='404':return None
-                if status.startswith('2'):return body
-                error=f'HTTP {status}: {url.split("?")[0]}'
-                transient=status in ('000','408','429','500','502','503','504')
-            if attempt==attempts-1 or not transient:raise RuntimeError(error)
-            time.sleep(2**attempt)
+                if result.returncode:
+                    status = result.stdout.rsplit('\n', 1)[-1]
+                    permanent_status = bool(re.fullmatch(r'4\d{2}', status)) and status not in ('408', '429')
+                    transient = not permanent_status and self.transient_read_error(result.stderr, result.returncode)
+                    message = 'HTTP ' + status if permanent_status else 'HTTP 连接失败: curl exited ' + str(result.returncode)
+                else:
+                    try: body, status = result.stdout.rsplit('\n', 1)
+                    except ValueError: body, status = '', ''
+                    if status == '404' and read_only: return None
+                    if re.fullmatch(r'2\d{2}', status): return body
+                    message = 'HTTP ' + status if re.fullmatch(r'\d{3}', status) else 'HTTP 返回状态无效'
+                    transient = status in ('408', '429') or bool(re.fullmatch(r'5\d{2}', status))
+            if not transient or not read_only: raise RuntimeError(message)
+            if attempt == attempts - 1: raise TransientReadError(message + '，只读有限重试已耗尽')
+            time.sleep(2 ** attempt)
 
     def url_json(self, url, **kwargs):
-        body = self.request(url, **kwargs)
-        return json.loads(body) if body is not None else None
+        read_only = kwargs.get('method', 'GET') in ('GET', 'HEAD')
+        for attempt in range(4 if read_only else 1):
+            body = self.request(url, **kwargs)
+            if body is None: return None
+            try: return json.loads(body)
+            except json.JSONDecodeError as error:
+                if not read_only or not self.incomplete_json(error): raise RuntimeError('HTTP 返回无效 JSON') from None
+                if attempt == 3: raise TransientReadError('HTTP GET 返回不完整 JSON，有限重试已耗尽') from None
+                time.sleep(2 ** attempt)
 
     def download_verified(self, url, expected, output, ca=None):
         headers = self.request(url, 'HEAD', ca=ca)
@@ -115,10 +193,10 @@ class Adapter:
         if not lengths or int(lengths[-1]) != expected['size']: raise ValueError('HEAD 文件大小不匹配')
         output = Path(output); output.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         candidate = output.with_name('.get-' + uuid.uuid4().hex)
-        args = ['curl', '-fsSL', '--retry','3','--retry-delay','1','--retry-connrefused','--retry-all-errors', '--max-time', '180', '--output', str(candidate), url]
+        args = ['curl', '-fsSL', '--retry','3','--retry-delay','1','--retry-connrefused', '--max-time', '180', '--output', str(candidate), url]
         if ca: args.extend(['--cacert', str(ca)])
         try:
-            self.command(args)
+            self.command(args, read_only=True)
             if candidate.stat().st_size != expected['size'] or sha256(candidate) != expected['sha256']:
                 raise ValueError('完整 GET 文件大小或 SHA-256 不匹配')
             os.replace(candidate, output)
@@ -244,10 +322,13 @@ class Adapter:
     def ci_run(self):
         rows = self.gh_json(f'repos/{self.repo}/actions/workflows/build-mobile.yml/runs?head_sha={self.frozen_sha}&per_page=100')['workflow_runs']
         matches = [r for r in rows if r['head_sha'] == self.frozen_sha]
-        recorded = self.read_progress().get('operations', {}).get('build', {}).get('runId')
+        operation = self.read_progress().get('operations', {}).get('build', {})
+        recorded = operation.get('runId')
         if recorded:
             matches = [r for r in matches if r['id'] == recorded]
             if not matches: raise ValueError('已记录 CI run 与冻结提交不匹配或丢失')
+            if operation.get('attempt') is not None and str(matches[0].get('run_attempt', 1)) != str(operation['attempt']):
+                raise ValueError('已记录 CI run/attempt 改变，不能借用重新运行的产物')
         if len(matches) > 1: raise ValueError('同一冻结 SHA 存在重复正式 CI，保留诊断后人工关联修复')
         return matches[0] if matches else None
 
@@ -277,6 +358,18 @@ class Adapter:
             raise ValueError('CI 产物损坏或来源散列不匹配')
         return {**receipt,'path':str(path)}
 
+    def download_candidate_artifact(self, folder, platform, intent):
+        receipt = read_json(folder / f'{platform}-build.json')
+        if not receipt: return None
+        # 未确认下载只能放过 payload 截断，不能放过回执来源错误。
+        self.validate_build_receipt(receipt, platform)
+        filename = f'CodexMobile-v{self.version}' + ('.apk' if platform == 'android' else '-unsigned.ipa')
+        path = folder / filename
+        state = (intent or {}).get('downloadState')
+        if state in (None, 'downloading', 'interrupted') and path.is_file() and path.stat().st_size < receipt['size']:
+            return None
+        return self.platform_artifact(folder, platform)
+
     def build_artifacts(self, folder=None):
         folder=folder or self.root/'ci-artifacts';result={}
         for platform in ('android','ios'):
@@ -285,11 +378,27 @@ class Adapter:
             result[platform]=item
         return result
 
+    def build_wait_budget(self):
+        operation = self.read_progress().get('operations', {}).get('build', {})
+        started = operation.get('waitStartedAt', time.time())
+        if isinstance(started, bool) or not isinstance(started, (int, float)) or not math.isfinite(started) or started < 0:
+            raise ValueError('CI 等待起点记录无效，不能重新开启计时')
+        deadline = operation.get('waitDeadlineAt', started + 3600)
+        if (isinstance(deadline, bool) or not isinstance(deadline, (int, float)) or not math.isfinite(deadline)
+                or deadline < started or deadline > started + 3600):
+            raise ValueError('CI 等待预算记录无效，不能重新开启计时')
+        if 'waitStartedAt' not in operation or 'waitDeadlineAt' not in operation:
+            self.progress('build', waitStartedAt=started, waitDeadlineAt=deadline)
+        return started, deadline
+
     def build_check(self):
+        _, deadline = self.build_wait_budget()
         run = self.ci_run()
         if not run: return {'done':False, 'result':{}}
         self.progress('build',runId=run['id'],attempt=run.get('run_attempt',1),status=run['status'],url=run.get('html_url'))
-        if run['status'] != 'completed': return {'done':False,'result':{'runId':run['id']}}
+        if run['status'] != 'completed':
+            if time.time() >= deadline: raise TimeoutError('等待正式 CI 超时；远端运行不会被取消')
+            return {'done':False,'result':{'runId':run['id']}}
         if run['conclusion'] != 'success': raise ValueError(f'冻结提交 CI run {run["id"]} 失败: {run["conclusion"]}')
         release = self.gh_json(f'repos/{self.repo}/releases/tags/v{self.version}', missing=True)
         if not release: return {'done':False,'result':{'runId':run['id']}}
@@ -307,33 +416,45 @@ class Adapter:
                               'releaseUrl':release['html_url'],'sourceCommit':self.frozen_sha,'batchId':self.context['id'],'artifacts':artifacts}}
 
     def run_build(self):
-        deadline=time.monotonic()+3600; run=None
-        while time.monotonic()<deadline:
-            run=self.ci_run()
+        started, deadline = self.build_wait_budget()
+        while True:
+            # 恢复时先查询实际完成状态；预算过期也能接纳已成功的同一运行。
+            run = self.ci_run()
             if run:
-                self.progress('build',runId=run['id'],attempt=run.get('run_attempt',1),status=run['status'],url=run.get('html_url'))
-                if run['status']=='completed':
-                    if run['conclusion']!='success': raise ValueError('正式 CI 失败，保留失败批次并关联修复')
+                self.progress('build', runId=run['id'], attempt=run.get('run_attempt', 1), status=run['status'], url=run.get('html_url'))
+                if run['status'] == 'completed':
+                    if run['conclusion'] != 'success': raise ValueError('正式 CI 失败，保留失败批次并关联修复')
                     break
-            elif time.monotonic()>deadline-3480: raise ValueError('推送后没有对应冻结提交 CI，不能借用其他构建')
+                if time.time() >= deadline: raise TimeoutError('等待正式 CI 超时；远端运行不会被取消')
+            elif time.time() >= started + 120:
+                raise ValueError('推送后没有对应冻结提交 CI，不能借用其他构建')
             time.sleep(10)
-        else: raise TimeoutError('等待正式 CI 超时；远端运行不会被取消')
         if not self.build_artifacts():
             partials=self.root/'ci-partials';partials.mkdir(exist_ok=True,mode=0o700)
             for platform in ('android','ios'):
                 current=partials/platform
                 if current.exists() and self.platform_artifact(current,platform):continue
                 intent=read_json(self.root/f'download-{platform}.json')
+                if intent and (str(intent.get('runId')) != str(run['id']) or str(intent.get('attempt', run.get('run_attempt', 1))) != str(run.get('run_attempt', 1))):
+                    raise ValueError('CI 下载候选不属于已记录 run/attempt')
                 candidate=Path(intent['candidate']) if intent else self.root/(f'download-{platform}-'+uuid.uuid4().hex)
                 if candidate.parent!=self.root:raise ValueError('CI 下载候选路径不属于本批')
                 complete=False
-                if candidate.exists():
-                    try:complete=bool(self.platform_artifact(candidate,platform))
-                    except (ValueError,OSError):complete=False
+                if candidate.exists(): complete=bool(self.download_candidate_artifact(candidate,platform,intent))
                 if not complete:
                     candidate=self.root/(f'download-{platform}-'+uuid.uuid4().hex);candidate.mkdir(mode=0o700)
-                    atomic_json(self.root/f'download-{platform}.json',{'candidate':str(candidate),'runId':run['id']})
-                    self.command(['gh','run','download',str(run['id']),'--repo',self.repo,'--name','codex-mobile-'+platform,'--dir',str(candidate)])
+                    intent = {'candidate':str(candidate),'runId':run['id'],'attempt':run.get('run_attempt',1),'downloadState':'downloading'}
+                    intent_path = self.root / f'download-{platform}.json'
+                    atomic_json(intent_path, intent)
+                    try:
+                        self.command(['gh','run','download',str(run['id']),'--repo',self.repo,'--name','codex-mobile-'+platform,'--dir',str(candidate)], read_only=True)
+                    except TransientReadError:
+                        atomic_json(intent_path, {**intent, 'downloadState':'interrupted'})
+                        raise
+                    except Exception:
+                        atomic_json(intent_path, {**intent, 'downloadState':'failed'})
+                        raise
+                    atomic_json(intent_path, {**intent, 'downloadState':'downloaded'})
                     if not self.platform_artifact(candidate,platform):raise ValueError('CI 单端下载未完整验收')
                 if current.exists():os.replace(current,self.root/(f'incomplete-{platform}-'+uuid.uuid4().hex))
                 os.replace(candidate,current)
@@ -728,14 +849,18 @@ def main():
     parser.add_argument('action',choices=['check','run']);parser.add_argument('phase');parser.add_argument('--context',required=True)
     args=parser.parse_args();adapter=Adapter(read_json(args.context))
     # Imported legacy build helpers use inherited stdout; reserve stdout for the protocol JSON.
-    with contextlib.redirect_stdout(sys.stderr):
-        if args.phase=='prepare':
-            if args.action!='run':raise ValueError('prepare 仅由协调器运行')
-            result=adapter.prepare()
-        else:
-            adapter.assert_frozen()
-            result=adapter.check_phase(args.phase) if args.action=='check' else adapter.run_phase(args.phase)
-    print(json.dumps(result,ensure_ascii=False))
+    try:
+        with contextlib.redirect_stdout(sys.stderr):
+            if args.phase == 'prepare':
+                if args.action != 'run': raise ValueError('prepare 仅由协调器运行')
+                result = adapter.prepare()
+            else:
+                adapter.assert_frozen()
+                result = adapter.check_phase(args.phase) if args.action == 'check' else adapter.run_phase(args.phase)
+    except TransientReadError as error:
+        if args.phase == 'prepare': raise
+        result = {'done': False, 'retryable': {'kind': 'transient-read', 'reason': str(error)}}
+    print(json.dumps(result, ensure_ascii=False))
 
 
 if __name__=='__main__':
