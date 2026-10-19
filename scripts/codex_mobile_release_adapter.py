@@ -2,6 +2,7 @@
 """Codex Mobile 的真实阶段适配器；复用发布主机上的 releasectl 服务。"""
 import argparse
 import contextlib
+from email.utils import parsedate_to_datetime
 import hashlib
 import importlib.util
 import json
@@ -119,8 +120,38 @@ class Adapter:
         return (not document or error.msg.startswith('Unterminated string') or error.pos >= len(document)
                 or bool(tail) and any(literal.startswith(tail) for literal in ('true', 'false', 'null')))
 
+    def github_read_cooldown(self):
+        not_before = self.read_progress().get('githubReadNotBefore', 0)
+        if isinstance(not_before, bool) or not isinstance(not_before, (int, float)) or not math.isfinite(not_before) or not_before < 0:
+            raise ValueError('GitHub 读取等待记录无效')
+        if time.time() < not_before:
+            raise TransientReadError('GitHub 只读限流等待窗口尚未结束')
+
+    def defer_github_rate_limit(self, message):
+        now = time.time(); not_before = now + 60
+        for hint in re.findall(r"(?im)\bretry[-_]after[\"']?\s*[:=]\s*([^\r\n]+)", message):
+            hint = hint.strip().strip('\"\' ,}')
+            if hint.isdigit():
+                try: candidate = now + int(hint)
+                except OverflowError: continue
+            else:
+                try:
+                    date = parsedate_to_datetime(hint)
+                    if date.tzinfo is None: continue
+                    candidate = date.timestamp()
+                except (TypeError, ValueError, OverflowError): continue
+            if math.isfinite(candidate): not_before = max(not_before, candidate)
+        for reset in re.findall(r"(?i)\b(?:x-ratelimit-reset|reset)[\"']?\s*[:=]\s*[\"']?(\d+)", message):
+            try: candidate = float(reset)
+            except (ValueError, OverflowError): continue
+            if math.isfinite(candidate): not_before = max(not_before, candidate)
+        old = self.read_progress()
+        atomic_json(self.progress_path, {**old, 'githubReadNotBefore':not_before, 'updatedAt':now})
+        raise TransientReadError('GitHub 明确限流，已保存只读等待窗口，请稍后核对')
+
     def gh_json(self, path, missing=False):
         # 此入口只有 GET；POST 的响应丢失必须由对应阶段独立对账。
+        self.github_read_cooldown()
         for attempt in range(4):
             try:
                 result = subprocess.run(['gh', 'api', path], cwd=self.work, text=True, capture_output=True, timeout=45)
@@ -133,7 +164,12 @@ class Adapter:
                 except json.JSONDecodeError as error:
                     if not self.incomplete_json(error): raise RuntimeError('GitHub GET 返回无效 JSON') from None
                     message = 'GitHub GET response incomplete EOF'
-            else: message = result.stderr.strip()
+            else:
+                message = result.stderr.strip()
+                rate_hint = message + '\n' + result.stdout
+                if (re.search(r'HTTP\s*[: ]\s*(403|429)\b', message, re.I)
+                        and re.search(r'API rate limit exceeded|secondary rate limit', rate_hint, re.I)):
+                    self.defer_github_rate_limit(rate_hint)
             if not self.transient_read_error(message):
                 raise RuntimeError('GitHub API 无法核对: ' + sanitized_diagnostic(message))
             if attempt == 3: raise TransientReadError('GitHub GET 暂时失败（EOF、连接中断或远端繁忙），有限重试已耗尽')
@@ -359,16 +395,22 @@ class Adapter:
         return {**receipt,'path':str(path)}
 
     def download_candidate_artifact(self, folder, platform, intent):
+        state = (intent or {}).get('downloadState')
+        if state not in (None, 'downloading', 'interrupted', 'downloaded'):
+            raise ValueError('CI 下载状态未通过确认，保留失败现场')
         receipt = read_json(folder / f'{platform}-build.json')
-        if not receipt: return None
+        if not receipt:
+            if state == 'downloaded': raise ValueError('已确认 CI 下载缺少来源回执')
+            return None
         # 未确认下载只能放过 payload 截断，不能放过回执来源错误。
         self.validate_build_receipt(receipt, platform)
         filename = f'CodexMobile-v{self.version}' + ('.apk' if platform == 'android' else '-unsigned.ipa')
         path = folder / filename
-        state = (intent or {}).get('downloadState')
         if state in (None, 'downloading', 'interrupted') and path.is_file() and path.stat().st_size < receipt['size']:
             return None
-        return self.platform_artifact(folder, platform)
+        artifact = self.platform_artifact(folder, platform)
+        if not artifact and state == 'downloaded': raise ValueError('已确认 CI 下载缺少产物文件')
+        return artifact
 
     def build_artifacts(self, folder=None):
         folder=folder or self.root/'ci-artifacts';result={}
@@ -433,14 +475,16 @@ class Adapter:
             partials=self.root/'ci-partials';partials.mkdir(exist_ok=True,mode=0o700)
             for platform in ('android','ios'):
                 current=partials/platform
-                if current.exists() and self.platform_artifact(current,platform):continue
+                if current.exists():
+                    if self.platform_artifact(current,platform): continue
+                    raise ValueError('已验收 CI 单端产物缺少回执或文件')
                 intent=read_json(self.root/f'download-{platform}.json')
                 if intent and (str(intent.get('runId')) != str(run['id']) or str(intent.get('attempt', run.get('run_attempt', 1))) != str(run.get('run_attempt', 1))):
                     raise ValueError('CI 下载候选不属于已记录 run/attempt')
                 candidate=Path(intent['candidate']) if intent else self.root/(f'download-{platform}-'+uuid.uuid4().hex)
                 if candidate.parent!=self.root:raise ValueError('CI 下载候选路径不属于本批')
                 complete=False
-                if candidate.exists(): complete=bool(self.download_candidate_artifact(candidate,platform,intent))
+                if candidate.exists() or intent: complete=bool(self.download_candidate_artifact(candidate,platform,intent))
                 if not complete:
                     candidate=self.root/(f'download-{platform}-'+uuid.uuid4().hex);candidate.mkdir(mode=0o700)
                     intent = {'candidate':str(candidate),'runId':run['id'],'attempt':run.get('run_attempt',1),'downloadState':'downloading'}

@@ -269,6 +269,72 @@ m.main()
                 for value in ['AUTH_PRIVATE', 'JSON_PRIVATE', 'COOKIE_PRIVATE']: self.assertNotIn(value, reason)
                 self.assertTrue(reason.strip())
 
+    def test_downloaded_candidate_missing_required_files_fails_again_after_restart(self):
+        for missing in ['receipt', 'payload', 'folder']:
+            with self.subTest(missing=missing), tempfile.TemporaryDirectory() as temporary:
+                context = self.fixture.context(Path(temporary)); adapter = self.m.Adapter(context)
+                adapter.progress('build', runId=123, attempt=1)
+                self.seed(adapter.root / 'ci-partials/android', 'android')
+                def incomplete(args, **kwargs):
+                    folder = Path(args[args.index('--dir')+1]); item = self.seed(folder, 'ios')
+                    if missing == 'receipt': (folder / 'ios-build.json').unlink()
+                    else: Path(item['path']).unlink()
+                with patch.object(adapter, 'ci_run', return_value=self.completed()), patch.object(adapter, 'command', side_effect=incomplete):
+                    with self.assertRaises(ValueError): adapter.run_build()
+                intent = self.m.read_json(adapter.root / 'download-ios.json')
+                self.assertEqual(intent['downloadState'], 'downloaded')
+                if missing == 'folder':
+                    import shutil
+                    shutil.rmtree(intent['candidate'])
+                resumed = self.m.Adapter(context); downloads = []
+                def complete_download(args, **kwargs):
+                    downloads.append(args); self.seed(Path(args[args.index('--dir')+1]), 'ios')
+                with patch.object(resumed, 'ci_run', return_value=self.completed()), patch.object(resumed, 'command', side_effect=complete_download):
+                    with self.assertRaises(ValueError): resumed.run_build()
+                self.assertEqual(downloads, [], '已确认退出的残缺下载不可用重下掩盖')
+
+    def test_verified_partial_missing_receipt_or_payload_is_permanent(self):
+        for missing in ['receipt', 'payload', 'folder']:
+            with self.subTest(missing=missing), tempfile.TemporaryDirectory() as temporary:
+                context = self.fixture.context(Path(temporary)); adapter = self.m.Adapter(context)
+                adapter.progress('build', runId=123, attempt=1)
+                folder = adapter.root / 'ci-partials/android'; item = self.seed(folder, 'android')
+                self.m.atomic_json(adapter.root / 'download-android.json', {'candidate':str(adapter.root / 'already-moved-candidate'),'runId':123,'attempt':1,'downloadState':'downloaded'})
+                if missing == 'receipt': (folder / 'android-build.json').unlink()
+                elif missing == 'payload': Path(item['path']).unlink()
+                else:
+                    import shutil
+                    shutil.rmtree(folder)
+                resumed = self.m.Adapter(context); downloads = []
+                def complete_download(args, **kwargs):
+                    platform = args[args.index('--name')+1].removeprefix('codex-mobile-'); downloads.append(platform)
+                    self.seed(Path(args[args.index('--dir')+1]), platform)
+                with patch.object(resumed, 'ci_run', return_value=self.completed()), patch.object(resumed, 'command', side_effect=complete_download):
+                    with self.assertRaises(ValueError): resumed.run_build()
+                self.assertEqual(downloads, [], '已验收产物缺失必须保留失败现场')
+
+    def test_explicit_github_403_rate_limit_persists_cooldown_without_requery(self):
+        with patch.object(self.m.time, 'time', return_value=1000), patch.object(self.m.subprocess, 'run', return_value=self.reply(error='gh: API rate limit exceeded (HTTP 403)')) as run, patch.object(self.m.time, 'sleep') as sleep:
+            with self.assertRaises(self.m.TransientReadError): self.a.gh_json('test/read')
+            self.assertEqual(run.call_count, 1); sleep.assert_not_called()
+        self.assertEqual(self.a.read_progress()['githubReadNotBefore'], 1060)
+        resumed = self.m.Adapter(self.context)
+        with patch.object(self.m.time, 'time', return_value=1030), patch.object(self.m.subprocess, 'run') as run:
+            with self.assertRaises(self.m.TransientReadError): resumed.gh_json('test/read')
+            run.assert_not_called()
+        with patch.object(self.m.time, 'time', return_value=1060), patch.object(self.m.subprocess, 'run', return_value=self.reply(0, '', '{"ok":true}')) as run:
+            self.assertEqual(resumed.gh_json('test/read'), {'ok':True}); run.assert_called_once()
+
+    def test_explicit_secondary_rate_limit_honors_longer_retry_after_or_reset(self):
+        for hint, expected in [('Retry-After: 120', 1120), ('X-RateLimit-Reset: 1800', 1800), ('Retry-After: Thu, 01 Jan 1970 00:30:00 GMT', 1800)]:
+            with self.subTest(hint=hint), tempfile.TemporaryDirectory() as temporary:
+                adapter = self.m.Adapter(self.fixture.context(Path(temporary)))
+                error = 'gh: secondary rate limit (HTTP 403)\n' + hint
+                with patch.object(self.m.time, 'time', return_value=1000), patch.object(self.m.subprocess, 'run', return_value=self.reply(error=error)) as run, patch.object(self.m.time, 'sleep') as sleep:
+                    with self.assertRaises(self.m.TransientReadError): adapter.gh_json('test/read')
+                    self.assertEqual(run.call_count, 1); sleep.assert_not_called()
+                self.assertEqual(adapter.read_progress()['githubReadNotBefore'], expected)
+
     def completed(self): return {'id':123,'status':'completed','conclusion':'success','run_attempt':1}
 
     def seed(self, folder, platform):

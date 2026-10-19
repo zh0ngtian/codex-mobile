@@ -34,9 +34,11 @@
 {"done":false,"retryable":{"kind":"transient-read","reason":"脱敏后的非空原因"}}
 ```
 
-该响应只能含上述字段，不能同时包含 `result`；它表示需要继续只读核对，不是阶段完成或写操作可盲目重做。支持此协议的协调器可在同一冻结批次中等待后再核对，保留原版本、SHA、CI run/attempt 和已验收平台产物；已完整下载的一端不重复下载，候选来源、大小与 SHA-256 校验仍执行。下载意图记录 `downloading` / `interrupted` / `downloaded`；来源回执已校验、下载响应尚未确认且仅 payload 截断的候选只重下该端，原半包保留诊断。已成功退出下载或已验收 partial 的大小/散列错误仍永久失败，不能用重下掩盖来源或完整性不匹配。GitHub GET 保留四次有界重试；HTTP GET/HEAD、完整只读下载、`gh run download`、`git ls-remote/fetch` 的真实网络故障采用相同异常边界；只读 `command` 入口有 180 秒子进程超时，GitHub GET 单次超时仍为 45 秒，HTTP curl 请求仍有 120 秒上限，写命令保持原执行语义。
+该响应只能含上述字段，不能同时包含 `result`；它表示需要继续只读核对，不是阶段完成或写操作可盲目重做。支持此协议的协调器可在同一冻结批次中等待后再核对，保留原版本、SHA、CI run/attempt 和已验收平台产物；已完整下载的一端不重复下载，候选来源、大小与 SHA-256 校验仍执行。下载意图记录 `downloading` / `interrupted` / `downloaded`；来源回执已校验、下载响应尚未确认且仅 payload 截断的候选只重下该端，原半包保留诊断。已成功退出下载或已验收 partial 的回执/文件缺失、大小/散列错误均永久失败，不能用重下掩盖来源或完整性不匹配。GitHub GET 保留四次有界重试；HTTP GET/HEAD、完整只读下载、`gh run download`、`git ls-remote/fetch` 的真实网络故障采用相同异常边界；只读 `command` 入口有 180 秒子进程超时，GitHub GET 单次超时仍为 45 秒，HTTP curl 请求仍有 120 秒上限，写命令保持原执行语义。
 
-`prepare` 查询失败仍非零并停止冻结，不使用此协议。HTTP 401/403、证书无效、curl 23 本地写入失败、配置错误、真实 CI 失败、来源/大小/散列不匹配均为永久错误。POST、渠道发布、签名和 main push 不因错误文本含“网络”就成为可重执行操作；响应丢失继续按各阶段原有证据对账，无法确认时保留失败现场。
+GitHub 403 只有明确包含 `API rate limit exceeded` 或 `secondary rate limit` 时按限流进入等待；403 也可能来自限流，参见 [GitHub 官方 REST 限流说明](https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api)。适配器将最早再次读取时间 `githubReadNotBefore` 持久化到 progress，至少等待 60 秒；响应已有可解析 `Retry-After`（秒或 HTTP 日期）或 `x-ratelimit-reset` 时取更晚时间。等待窗口内直接返回只读暂时故障，不实际重发 GET，进程重启也保留窗口。
+
+`prepare` 查询失败仍非零并停止冻结，不使用此协议。HTTP 401、普通 403 权限错误（即使同时含 EOF）、证书无效、curl 23 本地写入失败、配置错误、真实 CI 失败、来源/大小/散列不匹配均为永久错误。POST、渠道发布、签名和 main push 不因错误文本含“网络”就成为可重执行操作；响应丢失继续按各阶段原有证据对账，无法确认时保留失败现场。
 
 正式 CI 首次等待时将 epoch 秒 `waitStartedAt` 与 `waitDeadlineAt`（起点加一小时）写入 progress 的 `operations.build`，进程或服务重启不重新计时。预算过期后仍先查询同一 run/attempt：已完成且成功可继续验收，确认仍运行才报告等待超时；真实完成失败依旧失败。适配器协议的本地实现及隔离回归不等同于现役服务已更新，实际安装与批次状态仍以对应验收凭证为准。
 
