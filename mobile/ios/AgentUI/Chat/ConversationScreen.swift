@@ -204,6 +204,14 @@ struct ConversationScreen: View {
                 }
             }
             .background(AgentTheme.page)
+            #if DEBUG
+            .background(alignment: .topLeading) {
+                if ProcessInfo.processInfo.arguments.contains("--agent-entry-transition-fixture") ||
+                   ProcessInfo.processInfo.arguments.contains("--agent-entry-diagnostics") {
+                    AgentEntryAnimationProbe().frame(width: 1, height: 1)
+                }
+            }
+            #endif
             .modifier(ConversationHeader(conversationID: conversationID))
             .modifier(ConversationComposerInset(conversationID: conversationID))
 

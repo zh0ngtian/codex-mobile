@@ -13,6 +13,15 @@ struct SidebarScreen: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            HStack {
+                Spacer()
+                SidebarIconButton(systemImage: "arrow.clockwise", title: preferences.text("刷新", "Refresh"),
+                                  identifier: "sidebar.refreshTop") {
+                    Task { await session.refreshAll() }
+                }
+            }
+            .padding(.trailing, SidebarControlMetrics.trailingInset)
+            .padding(.vertical, 8)
             if session.searchVisible { SidebarSearchField() }
             ScrollView {
                 SidebarConversationList()
@@ -62,7 +71,7 @@ struct SidebarScreen: View {
                 SidebarMoreMenu()
             }
             .padding(.leading, 34)
-            .padding(.trailing, 20)
+            .padding(.trailing, SidebarControlMetrics.trailingInset)
             .padding(.bottom, 8)
         }
         .background(AgentTheme.page)

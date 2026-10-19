@@ -524,6 +524,41 @@ final class AgentAppUITests: XCTestCase {
         captureConversation("输入栏-模型靠左", app: app)
     }
 
+    func testSidebarTopRefreshMatchesMoreButtonAndRunsRefresh() {
+        let app = launchSidebarPolishFixture()
+        app.buttons["会话列表"].tap()
+        let refresh = app.buttons["sidebar.refreshTop"]
+        XCTAssertTrue(refresh.waitForExistence(timeout: 5), "侧栏右上角直接提供刷新")
+        guard refresh.exists else { return }
+        let more = app.buttons["sidebar.more"]
+        XCTAssertEqual(refresh.frame.midX, more.frame.midX, accuracy: 1)
+        XCTAssertEqual(refresh.frame.width, more.frame.width, accuracy: 1)
+        XCTAssertEqual(refresh.frame.height, more.frame.height, accuracy: 1)
+        XCTAssertLessThan(refresh.frame.maxY, app.frame.height / 4)
+        captureConversation("侧栏-顶部刷新与更多对齐", app: app)
+        refresh.tap()
+        XCTAssertTrue(app.staticTexts["navigation-refresh-count:1"].waitForExistence(timeout: 5), "复用真实 navigation.refresh 命令")
+        XCTAssertTrue(more.isHittable, "刷新后保留侧栏")
+    }
+
+    func testConversationEntryDoesNotInheritSidebarAnimation() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-sidebar-polish-fixture", "--agent-entry-transition-fixture", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
+        app.launch()
+        XCTAssertTrue(app.buttons["会话列表"].waitForExistence(timeout: 8))
+        app.buttons["会话列表"].tap()
+        let thread = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND value == %@", "sidebar.conversation.", "已关注")).firstMatch
+        XCTAssertTrue(thread.waitForExistence(timeout: 5))
+        thread.tap()
+        let probe = app.descendants(matching: .any).matching(identifier: "entry.animation").firstMatch
+        XCTAssertTrue(probe.waitForExistence(timeout: 5))
+        expectation(for: NSPredicate(format: "value == %@ OR value == %@", "none", "fading"), evaluatedWith: probe)
+        waitForExpectations(timeout: 5)
+        XCTAssertEqual(probe.value as? String, "none", "进入会话不能继承侧栏动画；否则新旧页面会产生半透明叠帧")
+        XCTAssertTrue(app.textViews["assistant.selectable"].waitForExistence(timeout: 5))
+        captureConversation("会话进入-无透明度转场", app: app)
+    }
+
     func testSidebarRespondsToHorizontalGestures() {
         let app = launchSidebarPolishFixture()
         let openFrom = app.coordinate(withNormalizedOffset: CGVector(dx: 0.25, dy: 0.45))
@@ -539,7 +574,7 @@ final class AgentAppUITests: XCTestCase {
         let closeFrom = app.coordinate(withNormalizedOffset: CGVector(dx: 0.68, dy: 0.45))
         let closeTo = app.coordinate(withNormalizedOffset: CGVector(dx: 0.05, dy: 0.45))
         closeFrom.press(forDuration: 0.05, thenDragTo: closeTo, withVelocity: .slow, thenHoldForDuration: 0.1)
-        expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: sidebar)
+        expectation(for: NSPredicate { _, _ in !app.buttons["sidebar.more"].isHittable }, evaluatedWith: sidebar)
         waitForExpectations(timeout: 5)
         XCTAssertTrue(app.buttons["会话列表"].isHittable)
         captureConversation("手势收起-恢复主界面", app: app)
@@ -562,7 +597,11 @@ final class AgentAppUITests: XCTestCase {
     }
 
     func testPinnedConversationRepeatedEntryRemainsVisible() throws {
-        let app = try launchConnectedApp()
+        let app = try launchConnectedApp(extraLaunchArguments: ["--agent-entry-diagnostics"])
+        let refresh = app.buttons["sidebar.refreshTop"]
+        XCTAssertTrue(refresh.waitForExistence(timeout: 5))
+        refresh.tap()
+        XCTAssertTrue(app.buttons["sidebar.more"].isHittable, "真实刷新完成后保留侧栏")
         let pinned = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND value == %@", "sidebar.conversation.", "已关注")).firstMatch
         XCTAssertTrue(pinned.waitForExistence(timeout: 15))
         let target = pinned.identifier
@@ -580,6 +619,11 @@ final class AgentAppUITests: XCTestCase {
             }
             expectation(for: visible, evaluatedWith: app)
             waitForExpectations(timeout: 15)
+            let probe = app.descendants(matching: .any).matching(identifier: "entry.animation").firstMatch
+            XCTAssertTrue(probe.waitForExistence(timeout: 5))
+            expectation(for: NSPredicate(format: "value == %@ OR value == %@", "none", "fading"), evaluatedWith: probe)
+            waitForExpectations(timeout: 5)
+            XCTAssertEqual(probe.value as? String, "none", "真实会话进入也不能出现透明度闪动")
             captureConversation("真实置顶会话-反复进入\(index)", app: app)
         }
     }
@@ -1027,9 +1071,12 @@ final class AgentAppUITests: XCTestCase {
         }
         if any("settings.close").exists { any("settings.close").tap() }
         if app.buttons["完成设备设置"].exists { app.buttons["完成设备设置"].tap() }
-        if !any("sidebar.more").exists, app.buttons["会话列表"].exists { app.buttons["会话列表"].tap() }
+        // 侧栏常驻布局后，节点存在不代表已展开；等待真实可点击状态再操作。
+        if !any("sidebar.more").isHittable, app.buttons["会话列表"].isHittable { app.buttons["会话列表"].tap() }
         XCTAssertTrue(any("sidebar.more").waitForExistence(timeout: 15))
         let scopeMenu = any("sidebar.more")
+        expectation(for: NSPredicate { _, _ in scopeMenu.isHittable }, evaluatedWith: scopeMenu)
+        waitForExpectations(timeout: 5)
         if scopeMenu.value as? String != name {
             scopeMenu.tap()
             let target = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", name)).firstMatch
