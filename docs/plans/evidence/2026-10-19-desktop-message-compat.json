@@ -1,12 +1,12 @@
 {
   "date": "2026-10-19",
-  "status": "simulator-verified-awaiting-user-acceptance-unpublished",
+  "status": "user-simulator-accepted-main-merged-unpublished",
   "scope": {
     "newMessagesOnly": true,
     "historicalMigration": false,
     "heicOriginalRetainedInDraftOrUpload": false,
     "productionGatewayDeployed": false,
-    "mainMerged": false,
+    "mainMerged": true,
     "release": false
   },
   "source": {
@@ -93,7 +93,7 @@
     "deviceName": "Compatibility QA",
     "sourceVersionLabelUnchanged": "0.3.17",
     "deviceApkOrIpaBuilt": false,
-    "userAcceptance": "pending",
+    "userAcceptance": "passed",
     "sharedWithDesktop": true,
     "upstream": "ws://127.0.0.1:14550/rpc",
     "extraAppServerStopped": true
@@ -178,8 +178,24 @@
     "userThreadArchived": false,
     "userThreadHistoryUnchanged": true,
     "deviceApkOrIpaBuilt": false,
-    "mergedToMain": false,
+    "mergedToMain": true,
     "released": false,
-    "userAcceptance": "pending"
+    "userAcceptance": "passed"
+  },
+  "mainIntegration": {
+    "date": "2026-10-20",
+    "userInstruction": "验收通过，合入 main，先不用发布。",
+    "acceptedSourceCommit": "87a4609658e235aec2770656feb27b6b84a05401",
+    "mainBase": "5a684ab625edb055df60bc8691932ac3d2b7656d",
+    "mode": "fast-forward",
+    "sharedLeaseScope": "codex-mobile-main-production",
+    "runtimeChangesSinceAcceptance": false,
+    "conflicts": false,
+    "releaseManifestChanged": false,
+    "versionChanged": false,
+    "readySubmitted": false,
+    "deviceApkOrIpaBuilt": false,
+    "productionGatewayDeployed": false,
+    "released": false
   }
 }
