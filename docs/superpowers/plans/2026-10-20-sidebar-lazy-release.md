@@ -12,19 +12,19 @@
 
 ### 1. 登记与整合
 
-- [x] 记录开发分支 `5ae0847`，最新远端main基线 `e0062a17154b40e573681e6e53994db987979759`。
+- [x] 记录开发分支 `5ae0847`，初始远端main基线 `e0062a17154b40e573681e6e53994db987979759`；整合期间更新至 `96800a898cb7cc23c0c087f6394b96935b0190b0`，已纳入。
 - [x] 登记 `sidebar-lazy-release-20261020-client` / `sidebar-lazy-release-20261020-gateway`，持续heartbeat。
-- [ ] `git merge --no-commit --no-ff origin/main`，保留双方交互文档；核对 `src/App.tsx`、原生投影及Swift会话五条窗口的合并结果。
-- [ ] 更新 `release/notes.md`，只列本次相对已发布渠道的用户变化。
+- [x] `git merge --no-commit --no-ff origin/main`，保留双方交互文档；核对 `src/App.tsx`、原生投影及Swift会话五条窗口的合并结果。
+- [x] 更新 `release/notes.md`，只列本次相对已发布渠道的用户变化。
 
 ### 2. 整合验证与必要修复
 
 - [ ] `NODE_OPTIONS=--no-experimental-webstorage npm test -- --maxWorkers=2 --testTimeout=60000`，验证边栏与主分支消息、执行过程行为兼容。
-- [ ] `npm run typecheck && npm run build && npm run build:server`。
-- [ ] `python3 -B -m unittest discover -s tests/ci -p 'test_*.py'`；其中适配器回归、恢复回归单列真实日志。
-- [ ] `NODE_OPTIONS=--no-experimental-webstorage npm test -- tests/ci --maxWorkers=2 --testTimeout=60000`，记录build-contract门禁。
-- [ ] 如发现阻挡发布的缺陷：先增加最小失败回归并确认失败原因，再做最小修复，定向通过后执行受影响集合；不得修改测试掩盖失败。
-- [ ] 原生客户端自动合并涉及当前main其他Swift改动，使用独立iPhone17Pro正常字号竖屏完成必要整合构建/行为核对；同一模拟器独占。
+- [x] `npm run typecheck && npm run build && npm run build:server`。
+- [x] `python3 -B -m unittest discover -s tests/ci -p 'test_*.py'`；其中适配器回归、恢复回归单列真实日志。
+- [x] `NODE_OPTIONS=--no-experimental-webstorage npm test -- tests/ci --maxWorkers=2 --testTimeout=60000`，记录build-contract门禁。
+- [x] 如发现阻挡发布的缺陷：先增加最小失败回归并确认失败原因，再做最小修复，定向通过后执行受影响集合；不得修改测试掩盖失败。
+- [x] 原生客户端自动合并涉及当前main其他Swift改动，使用独立iPhone17Pro正常字号竖屏完成必要整合构建/行为核对；同一模拟器独占。
 
 ### 3. 推送并交协调器发布
 
@@ -40,3 +40,8 @@
 - [ ] 核对网关部署摘要、实际launchd进程、监听与认证接口；不把模拟器验证当作真机覆盖安装。
 - [ ] 更新交互状态与发布凭证记录，提交并推送文档；停止本任务heartbeat。
 - [ ] 最终提供固定OTA安装页、APK与已签名IPA的版本、字节大小和完整SHA-256。
+
+## 整合检查记录
+
+- 首轮完整回归161文件1843项中1841通过，2项图片过程测试仍使用运行时默认折叠的旧断言；对应测试与运行呈现源码和main逐字节一致。按已批准的运行时默认展开要求，补查初始展开状态并验证手动折叠/重开，保留原图片按路径去重、原始位置与请求数断言，定向2文件33项通过；不修改生产呈现代码。
+- 发布Python212项、构建契约20文件143项、类型检查与前后端构建通过。原生临时工程首轮因残留嵌套assets与平铺资源重复而未进入测试，清理生成目录后重试通过2项，耗时61.2秒；包含五条窗口及运行过程完成状态，真实源码同步核对。
