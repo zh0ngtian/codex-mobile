@@ -581,6 +581,7 @@ button, a, summary, [role="button"] { -webkit-tap-highlight-color: transparent; 
 .markdown-body ul, .markdown-body ol { padding-left: 1.4em; }
 .markdown-body blockquote { margin-left: 0; padding-left: 13px; border-left: 3px solid #ddd; color: #606060; }
 .markdown-body code { border-radius: 5px; background: #f0f0f0; padding: 2px 5px; font: .88em ui-monospace, SFMono-Regular, Menlo, monospace; }
+.markdown-body :not(pre) > code { word-break: break-all; overflow-wrap: anywhere; }
 .markdown-code-block { position: relative; margin: 0 0 13px; }
 .markdown-body .markdown-code-block pre { margin: 0; overflow: auto; border-radius: 14px; background: #f5f5f5; padding: 13px 48px 13px 13px; }
 .code-block-copy { position: absolute; top: 6px; right: 6px; }

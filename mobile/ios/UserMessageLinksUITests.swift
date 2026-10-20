@@ -9,7 +9,11 @@ import UIKit
         let source = "前文 [教程](\(href)) 后文\n[换行的长链接标签用于覆盖跨行命中区域](\(href))"
         let text = NativeSelectableMarkdown.inline(source)
         XCTAssertEqual(text.string, "前文 教程 后文\n换行的长链接标签用于覆盖跨行命中区域")
-        let view = UITextView(frame: CGRect(x: 0, y: 0, width: 150, height: 300))
+        let storage = NSTextStorage()
+        let manager = NativeDottedTextLayoutManager()
+        let container = NSTextContainer(size: CGSize(width: 150, height: CGFloat.greatestFiniteMagnitude))
+        storage.addLayoutManager(manager); manager.addTextContainer(container)
+        let view = UITextView(frame: CGRect(x: 0, y: 0, width: 150, height: 300), textContainer: container)
         view.textContainerInset = .zero
         view.textContainer.lineFragmentPadding = 0
         view.attributedText = text

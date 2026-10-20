@@ -6,6 +6,7 @@ extension NSAttributedString.Key {
     static let nativeStrong = NSAttributedString.Key("CodexMobileStrong")
     static let nativeItalic = NSAttributedString.Key("CodexMobileItalic")
     static let nativeMonospaced = NSAttributedString.Key("CodexMobileMonospaced")
+    static let nativeInlineCode = NSAttributedString.Key("CodexMobileInlineCode")
     static let nativeQuoteRule = NSAttributedString.Key("CodexMobileQuoteRule")
 }
 
@@ -28,7 +29,8 @@ extension NSAttributedString.Key {
             result.addAttributes([.font: selectedFont, .foregroundColor: intent.contains(.code) ? UIColor.secondaryLabel : color,
                                   .nativeFontStyle: font.fontDescriptor.object(forKey: .textStyle) as? String ?? UIFont.TextStyle.body.rawValue,
                                   .nativeStrong: strong || intent.contains(.stronglyEmphasized),
-                                  .nativeItalic: intent.contains(.emphasized), .nativeMonospaced: intent.contains(.code)], range: range)
+                                  .nativeItalic: intent.contains(.emphasized), .nativeMonospaced: intent.contains(.code),
+                                  .nativeInlineCode: intent.contains(.code)], range: range)
             if let link = run.link {
                 result.addAttributes([.link: link, .foregroundColor: UIColor.label,
                                       .underlineStyle: NSUnderlineStyle.single.rawValue | NSUnderlineStyle.patternDot.rawValue], range: range)

@@ -8,6 +8,18 @@ it.each(['查看 网页链接 与 文件链接','符号：> & 重点','😀！�
  const result=validateMessageQuote({source,renderedText,start:0,end:renderedText.length,text:renderedText},'backend',active);
  expect(result.text).toBe(renderedText);
 });
+it('用户消息渲染链接后按可见标签选择，保留原始消息身份',()=>{
+ const href='https://example.com/blogs/?post=usersettings';
+ const original=`看下这个教程 [${href}](${href})\n`;
+ const user={id:'user-link',type:'userMessage',content:[{type:'text',text:original}]};
+ const thread={id:'thread',turns:[{id:'physical',items:[user]}]};
+ const renderedText=`看下这个教程 ${href}`;
+ const source=quoteSource('backend','thread','physical',user);
+ const result=validateMessageQuote({source,renderedText,start:renderedText.indexOf(href),end:renderedText.length,text:href},'backend',thread);
+ expect(result).toMatchObject({source,text:href});
+ expect(result.desktopSource).toBeUndefined();
+ expect(user.content[0].text).toBe(original);
+});
 it('按显示范围选择第二次重复文字并拒绝伪造或过期来源',()=>{
  const repeated={id:'repeat',type:'agentMessage',text:'前文。重复，重复。'};
  const thread={id:'thread',turns:[{id:'physical',items:[repeated]}]};
