@@ -1,0 +1,201 @@
+{
+  "date": "2026-10-19",
+  "status": "user-simulator-accepted-main-merged-unpublished",
+  "scope": {
+    "newMessagesOnly": true,
+    "historicalMigration": false,
+    "heicOriginalRetainedInDraftOrUpload": false,
+    "productionGatewayDeployed": false,
+    "mainMerged": true,
+    "release": false
+  },
+  "source": {
+    "branch": "codex/desktop-message-compat",
+    "base": "5a684ab625edb055df60bc8691932ac3d2b7656d"
+  },
+  "automated": {
+    "full": {
+      "files": 155,
+      "tests": 1718,
+      "passed": true,
+      "command": "NODE_OPTIONS=--no-experimental-webstorage npm test -- --maxWorkers=1 --testTimeout=60000 --reporter=dot",
+      "durationSeconds": 226.85,
+      "log": "/Users/zhongtian/.codex/worktrees/desktop-message-compat/codex-mobile/.mobile-build/compat-evidence/full-serial.log"
+    },
+    "additionalWebCases": {
+      "passed": 2,
+      "log": "/Users/zhongtian/.codex/worktrees/desktop-message-compat/codex-mobile/.mobile-build/compat-evidence/web-ui.log"
+    },
+    "postReviewTargeted": {
+      "passed": 12,
+      "log": "/Users/zhongtian/.codex/worktrees/desktop-message-compat/codex-mobile/.mobile-build/compat-evidence/post-review.log"
+    },
+    "priorParallelAttempt": {
+      "passed": 1717,
+      "failed": 1,
+      "cause": "并行构建期间HTTP空闲会话测试的计时竞态；该测试独立59项与最终串行全量均通过，未改其实现或断言",
+      "log": "/Users/zhongtian/.codex/worktrees/desktop-message-compat/codex-mobile/.mobile-build/compat-evidence/prior-parallel-flake.log"
+    },
+    "typecheck": "passed",
+    "webBuild": "passed",
+    "serverBuild": "passed",
+    "heic": "真实HEIC生成可解码JPEG，文件名/MIME/字节数及旋转方向通过，坏文件明确失败"
+  },
+  "ui": {
+    "simulator": "iPhone 17 Pro 附件引用验收",
+    "udid": "43A305BA-4665-4724-A40A-30FDF14D35F0",
+    "runtime": "iOS 27.0",
+    "font": "normal",
+    "orientation": "portrait",
+    "cases": [
+      {
+        "name": "test10DesktopAttachmentsReferencesAndReload",
+        "passed": true,
+        "durationSeconds": 50.502
+      },
+      {
+        "name": "test20PhoneQuotesAndHEICSend",
+        "passed": true,
+        "durationSeconds": 49.25
+      }
+    ],
+    "xcresult": "/Users/zhongtian/.codex/worktrees/desktop-message-compat/codex-mobile/.mobile-build/compat-evidence/live-ui-4.xcresult",
+    "screenshots": {
+      "attachmentsAndExpandedQuote": "/Users/zhongtian/.codex/worktrees/desktop-message-compat/codex-mobile/.mobile-build/compat-evidence/ui-4-attachments/06BB8FA6-1C6A-4871-B194-2238D9B01618.png",
+      "filePreview": "/Users/zhongtian/.codex/worktrees/desktop-message-compat/codex-mobile/.mobile-build/compat-evidence/ui-4-attachments/BDD725A6-F8ED-4B58-A424-1B63C69C99FF.png",
+      "phoneSend": "/Users/zhongtian/.codex/worktrees/desktop-message-compat/codex-mobile/.mobile-build/compat-evidence/ui-4-attachments/BB6385CD-FF71-4806-BAC0-98237460DF4C.png"
+    },
+    "fixes": "引用展开改为显式按钮与独立正文布局，来源按钮不再裁切；测试按原生菜单ID定位，处理测试模拟器系统通知提示"
+  },
+  "desktop": {
+    "installedVersion": "26.1013.40934",
+    "installedBuild": "20770",
+    "format": "只读核对本机桌面解析器的附件和response-annotations规则",
+    "actualConversationRead": "已核对手机实际发送的JPEG、本地图片路径、引用快照、来源范围及带标记的真实回复",
+    "visualAutomation": "直接访问桌面App被Computer Use工具禁止，桌面视觉效果待人工确认"
+  },
+  "cleanup": {
+    "archived": [
+      "01a154c2-80c4-7fe0-b381-eb677a28a11c",
+      "01a154c4-0bda-7d71-9e3a-f03d853b363a",
+      "01a154cd-b57b-7431-ba95-50b2595a3861",
+      "01a154d1-5bc9-77e3-90dd-22dfba3f4eab"
+    ],
+    "originalUserThreadUntouched": "01a15402-23f6-7f60-aeb6-4a73df712e7f",
+    "temporaryGatewayLeftForUserAcceptance": true
+  },
+  "handoff": {
+    "normalAppInstalled": true,
+    "launchedWithoutTestArguments": true,
+    "testProbesRemoved": true,
+    "testRunnerUninstalled": true,
+    "temporaryGateway": "http://127.0.0.1:18826",
+    "deviceName": "Compatibility QA",
+    "sourceVersionLabelUnchanged": "0.3.17",
+    "deviceApkOrIpaBuilt": false,
+    "userAcceptance": "passed",
+    "sharedWithDesktop": true,
+    "upstream": "ws://127.0.0.1:14550/rpc",
+    "extraAppServerStopped": true
+  },
+  "acceptanceBackendCorrection": {
+    "date": "2026-10-20",
+    "approvedByUser": true,
+    "reason": "最初验收网关另起独立app-server，桌面已持有的会话发生active writer冲突；本次接回桌面共享后端",
+    "gateway": "http://127.0.0.1:18826",
+    "sharedUpstream": "ws://127.0.0.1:14550/rpc",
+    "frontendAddressAndCredentialsChanged": false,
+    "oldBackendLoadedThreads": 0,
+    "pendingQueueBeforeSwitch": 0,
+    "extraAppServerPid": 20776,
+    "extraAppServerPort": 18824,
+    "extraAppServerStopped": true,
+    "httpResumeChecks": [
+      {
+        "threadId": "01a154e4-eede-74a2-9e30-392e74d8d47f",
+        "resumeSucceeded": true,
+        "activeWriterConflict": false,
+        "canAcceptDirectInput": true,
+        "status": "idle"
+      },
+      {
+        "threadId": "01a1549c-b1ba-7522-92d8-18e9b40eefa6",
+        "resumeSucceeded": true,
+        "activeWriterConflict": false,
+        "canAcceptDirectInput": true,
+        "status": "active"
+      }
+    ],
+    "messagesSentOrEdited": 0,
+    "appRebuilt": false,
+    "productionGatewayChanged": false,
+    "uiVerified": true,
+    "uiEvidence": "test30FirstAttachmentMessageHidesTitleRequest：composer.attachments启用，正常输入可用"
+  },
+  "firstAttachmentMessageCorrection": {
+    "date": "2026-10-20",
+    "threadId": "01a154e4-eede-74a2-9e30-392e74d8d47f",
+    "reason": "首条标题请求先于附件包装加入，包装末尾换行绕过原有后缀识别，内部请求泄漏到气泡",
+    "fix": "在完整合法包装正文边界内识别同一内部标题请求，覆盖带文字与仅附件首条消息；不改历史",
+    "red": {
+      "failed": 3,
+      "passed": 10,
+      "log": "/tmp/codex-first-message-red.log"
+    },
+    "green": {
+      "files": 12,
+      "passed": 163,
+      "logs": [
+        "/tmp/codex-first-message-green.log",
+        "/tmp/codex-first-message-app-regression.log"
+      ]
+    },
+    "typecheck": "passed",
+    "frontendBuild": {
+      "result": "passed",
+      "versionLabel": "0.3.17"
+    },
+    "ui": {
+      "case": "test30FirstAttachmentMessageHidesTitleRequest",
+      "passed": true,
+      "caseSeconds": 56.547,
+      "totalSeconds": 70.108,
+      "xcresult": ".mobile-build/compat-evidence/first-message-ui.xcresult",
+      "checks": [
+        "首条气泡仅我和一张图片",
+        "重开一致",
+        "编辑仅恢复我且保留图片",
+        "正常输入可用"
+      ],
+      "screenshotsVisuallyVerified": true,
+      "screenshots": {
+        "firstMessage": ".mobile-build/compat-evidence/first-message-ui-attachments/069C135B-640E-4E9E-A519-DFC103FD6CAA.png",
+        "historyEditor": ".mobile-build/compat-evidence/first-message-ui-attachments/F1B80E4F-7B8D-4FC0-9661-AEEE489D6DCF.png",
+        "reopened": ".mobile-build/compat-evidence/first-message-ui-attachments/8BDCA43E-7A80-416D-9F08-9B968B995074.png"
+      }
+    },
+    "messagesSentOrEdited": 0,
+    "userThreadArchived": false,
+    "userThreadHistoryUnchanged": true,
+    "deviceApkOrIpaBuilt": false,
+    "mergedToMain": true,
+    "released": false,
+    "userAcceptance": "passed"
+  },
+  "mainIntegration": {
+    "date": "2026-10-20",
+    "userInstruction": "验收通过，合入 main，先不用发布。",
+    "acceptedSourceCommit": "87a4609658e235aec2770656feb27b6b84a05401",
+    "mainBase": "5a684ab625edb055df60bc8691932ac3d2b7656d",
+    "mode": "fast-forward",
+    "sharedLeaseScope": "codex-mobile-main-production",
+    "runtimeChangesSinceAcceptance": false,
+    "conflicts": false,
+    "releaseManifestChanged": false,
+    "versionChanged": false,
+    "readySubmitted": false,
+    "deviceApkOrIpaBuilt": false,
+    "productionGatewayDeployed": false,
+    "released": false
+  }
+}

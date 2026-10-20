@@ -493,6 +493,23 @@ struct AgentSessionSmoke {
         precondition(session.nativeMessage(completed.messages.last!.id)?.id == final.id, "最终回复操作仍指向原始final")
         let stableProgressIDs = completed.messages.last!.commentary.map(\.id)
 
+        var runningHistory = earlier
+        var runningFinal = final
+        runningHistory.commentaryIsRunning = true
+        runningFinal.commentaryIsRunning = true
+        state.busy = true; state.messages = [user, runningHistory, runningFinal]
+        session.receive(state)
+        let runningReply = session.selectedConversation!.messages.last!
+        precondition(runningReply.commentaryIsRunning && runningReply.commentary.map(\.id) == stableProgressIDs, "运行状态随所属过程及回答传递，合并过程默认展开")
+        state.busy = false; state.messages = [user, earlier, final]
+        session.receive(state)
+        precondition(session.selectedConversation!.messages.last!.commentaryIsRunning == false, "完成后恢复默认折叠")
+        precondition(session.selectedConversation!.messages.last! != runningReply, "展开阶段变化必须触发消息刷新")
+        state.busy = true
+        session.receive(state)
+        precondition(session.selectedConversation!.messages.last!.commentaryIsRunning == false, "其他回合执行时不能展开已有完成过程")
+        state.busy = false
+
         state.messages = [history("h1", entries: [first]), history("h2", entries: [second]), final]
         session.receive(state)
         precondition(session.selectedConversation?.messages.count == 1 && session.selectedConversation?.messages.first?.commentary.map(\.text) == ["读取项目", "整理结果"], "可连续合并的纯历史按原顺序归入紧随final")

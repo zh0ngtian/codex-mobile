@@ -1,3 +1,4 @@
+import { decodeUserMessage, replaceUserMessageBody } from '../../server/user-message-format';
 import { quoteInput, type MessageQuote } from '../features/conversation/message-quotes';
 import { t } from '../i18n';
 import { HttpOperationPendingError, transportUuid } from '../backends/http-transport';
@@ -165,7 +166,8 @@ export class SidechatSessions {
   editQueued(id: string, queueId: string, text: string) {
     const s = this.get(id); const entry = s?.queue.find(item => item.id === queueId);
     if (!s || !entry || s.sending) return false;
-    const content = quoteInput(text, entry.quotes ?? []);
+    const original = entry.input[0]?.type === 'text' ? String(entry.input[0].text ?? '') : '';
+    const content = decodeUserMessage(original).prefix ? replaceUserMessageBody(original, text) : quoteInput(text, entry.quotes ?? []);
     if (entry.input[0]?.type === 'text') entry.input = [{ ...entry.input[0], text: content }, ...entry.input.slice(1)];
     else entry.input = [{ type: 'text', text: content }, ...entry.input];
     entry.text = text; entry.question = text; this.changed(); return true;

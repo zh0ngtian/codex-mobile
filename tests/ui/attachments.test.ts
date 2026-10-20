@@ -1,3 +1,4 @@
+import { decodeUserMessage } from '../../server/user-message-format';
 import { describe, expect, it } from "vitest";
 import {
   MAX_DRAFT_IMAGES,
@@ -192,20 +193,12 @@ describe("图片输入", () => {
       size: 5,
       path: "/tmp/codex-mobile/需求.pdf",
     };
-    expect(buildTurnInput("总结这个文件", [], [file])).toEqual([
-      { type: "text", text: "总结这个文件", text_elements: [] },
-      {
-        type: "text",
-        text: "已上传文件：[需求.pdf](/tmp/codex-mobile/%E9%9C%80%E6%B1%82.pdf)\n本机路径：`/tmp/codex-mobile/需求.pdf`",
-        text_elements: [],
-      },
-    ]);
-    expect(buildOptimisticUserContent("", [], [file])).toEqual([
-      {
-        type: "text",
-        text: "已上传文件：[需求.pdf](/tmp/codex-mobile/%E9%9C%80%E6%B1%82.pdf)\n本机路径：`/tmp/codex-mobile/需求.pdf`",
-      },
-    ]);
+    const input = buildTurnInput("总结这个文件", [], [file]);
+    expect(input).toHaveLength(1);
+    expect(decodeUserMessage(String(input.find(part => part.type === 'text')!.text))).toMatchObject({ body: '总结这个文件', attachments: [{ name: file.name, path: file.path }] });
+    const optimistic = buildOptimisticUserContent('', [], [file]);
+    expect(optimistic).toHaveLength(1);
+    expect(decodeUserMessage(String(optimistic.find(part => part.type === 'text')!.text))).toMatchObject({ body: '', attachments: [{ name: file.name, path: file.path }] });
   });
 
   it("把已选择 Skill 作为结构化输入附在文本之后", () => {

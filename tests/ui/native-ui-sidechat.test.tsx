@@ -1,3 +1,4 @@
+import { decodeUserMessage } from '../../server/user-message-format';
 import { quoteInput, quoteSource } from '../../src/features/conversation/message-quotes';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
@@ -176,7 +177,7 @@ it('上传期间继续编辑时只清理已入队附件，保留后续新正文'
  await act(async()=>finish(new Response(JSON.stringify({path:'/tmp/note.txt',name:'note.txt',type:'text/plain',size:5}))));
  await waitFor(()=>expect(posts.at(-1)?.commandResults?.some((r:any)=>r.id==='send-first'&&r.ok)).toBe(true));
  expect(posts.at(-1).draft).toBe('上传期间的新正文');expect(posts.at(-1).attachments).toHaveLength(0);
- expect(boundary.requests.find(r=>r.method==='turn/start'&&r.params.threadId==='side-1')?.params.input[0].text).toBe('先发送的正文');
+ expect(decodeUserMessage(boundary.requests.find(r=>r.method==='turn/start'&&r.params.threadId==='side-1')?.params.input[0].text).body).toBe('先发送的正文');
 });
 
 
@@ -197,7 +198,7 @@ it('选文加入聊天保留问题，引用携带真实来源并在发送时冻�
  await act(async()=>command('send-selection','message.send',{contextId}));
  await waitFor(()=>expect(boundary.requests.filter(r=>r.method==='turn/start'&&r.params.threadId==='side-1')).toHaveLength(1));
  const input=[...boundary.requests].reverse().find(r=>r.method==='turn/start'&&r.params.threadId==='side-1')!.params.input;
- expect(input[0].text).toContain('重复内容');expect(input[0].text).toContain('助手消息');expect(input[0].text).toContain('解释这部分');
+ expect(input[0].text).toContain('重复内容');expect(input[0].text).toContain('<response-annotations>');expect(input[0].text).toContain('解释这部分');
  await waitFor(()=>expect(posts.at(-1).quotes).toEqual([]));
 });
 
@@ -411,10 +412,10 @@ it.each([false,true])('托管ACK消费源家族缓存且保留上传期间新编
 
 it('历史编辑仅修改引用封装的问题，不激活引用内skill/plugin',async()=>{
  boundary.immediateSend=true;boundary.quoteCatalog=true;const initial=await setup();
- await act(async()=>{command('history-quote-seed','draft.set',{contextId:initial,value:'创建主聊天',revision:1});command('history-quote-seed-send','message.send',{contextId:initial});});
- await waitFor(()=>expect(posts.at(-1)?.threadId).toBe('sent-thread'));
  const source=quoteSource('a','sent-thread','quoted-source',{id:'quoted-item',type:'agentMessage',text:'$private-skill @private-plugin'});
  const quotes=[{id:'history-quote',source,text:'$private-skill @private-plugin'}];const original=quoteInput('原问题',quotes);
+ await act(async()=>{command('history-quote-seed','draft.set',{contextId:initial,value:original,revision:1});command('history-quote-seed-send','message.send',{contextId:initial});});
+ await waitFor(()=>expect(posts.at(-1)?.threadId).toBe('sent-thread'));
  await act(async()=>boundary.options.onNotification('a',{method:'turn/completed',params:{threadId:'sent-thread',turn:{id:'turn-live',status:'completed',items:[{id:'history-source',type:'userMessage',content:[{type:'text',text:original}]}]}}}));
  await waitFor(()=>expect(posts.at(-1)?.busy).toBe(false));
  await waitFor(()=>expect(boundary.requests.some(r=>r.method==='plugin/installed')).toBe(true));
@@ -422,7 +423,7 @@ it('历史编辑仅修改引用封装的问题，不激活引用内skill/plugin'
  await waitFor(()=>expect(posts.at(-1)?.mentions.some((m:any)=>m.title==='private-plugin')).toBe(true));
  await act(async()=>command('history-quote-edit','message.edit',{contextId:initial,turnId:'turn-live',messageId:'history-source'}));
  await waitFor(()=>expect(posts.at(-1)?.messages.some((m:any)=>m.historyEdit)).toBe(true));
- const editKey='sent-thread:turn-live:history-source';const edited=quoteInput('修改后的问题',quotes);
+ const editKey='sent-thread:turn-live:history-source';const edited='修改后的问题';
  await act(async()=>{command('history-quote-change','history.change',{contextId:initial,editKey,value:edited});command('history-quote-submit','history.submit',{contextId:initial,editKey});});
  await waitFor(()=>expect(boundary.requests.filter(r=>r.method==='turn/start'&&r.params.threadId==='sent-thread')).toHaveLength(2));
  const input=boundary.requests.filter(r=>r.method==='turn/start'&&r.params.threadId==='sent-thread')[1].params.input;

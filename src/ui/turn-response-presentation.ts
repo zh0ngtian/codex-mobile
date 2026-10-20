@@ -24,6 +24,7 @@ export function turnResponsePresentation(responses: ConversationRecord[], { runn
     return { ...entry, history, supersededAnswer };
   });
   return {
+    running,
     final,
     entries: steering.length ? [...entries.filter(entry => entry.item.type === 'userMessage'), ...entries.filter(entry => entry.item.type !== 'userMessage')] : entries,
     historyCount: entries.filter(entry => entry.history).length,

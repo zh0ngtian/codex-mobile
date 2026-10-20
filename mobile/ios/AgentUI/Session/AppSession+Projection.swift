@@ -11,6 +11,7 @@ extension AppSession {
             resolve(result.id, ok: result.ok, error: result.error)
         }
         if previousContext != snapshot.contextId {
+            referenceTarget = nil
             historyEdit = nil; reopenRequestIntent = false
             for (id, pending) in pendingCommands where pending.context != nil && pending.context != snapshot.contextId { resolve(id, ok: false, error: "会话已切换，请返回原会话核对操作结果。") }
         }
@@ -146,12 +147,12 @@ extension AppSession {
         let created = value.timestamp.map { Date(timeIntervalSince1970: $0 > 10_000_000_000 ? $0 / 1000 : $0) } ?? Date(timeIntervalSince1970: 0)
         let blocks = flatten(value.presentationBlocks)
         let outputs = value.role == "user" ? [] : blocks.filter { ["image", "video", "html", "source"].contains($0.kind) }.map(output)
-        let attachments: [AttachmentItem] = value.role == "user" ? blocks.filter { $0.kind == "image" }.map { item in
-            AttachmentItem(id: scopedID("message-attachment", nativeSnapshot.contextId ?? "", value.id, item.id), name: item.title ?? item.id, kind: .image, remoteURL: item.previewURL ?? item.value)
+        let attachments: [AttachmentItem] = value.role == "user" ? blocks.filter { ["image", "file"].contains($0.kind) }.map { item in
+            AttachmentItem(id: scopedID("message-attachment", nativeSnapshot.contextId ?? "", value.id, item.id), name: item.title ?? item.id, kind: item.kind == "image" ? .image : AttachmentKind.forFileName(item.title ?? ""), remoteURL: item.previewURL ?? item.value)
         } : []
 
         let commentary = (value.commentary ?? []).map(progressEntry)
-        return ChatMessage(id: id, isUser: value.role == "user", text: value.text, kind: value.phase == "commentary" ? "commentary" : value.role, duration: value.role == "assistant" && value.phase != "commentary" ? value.status ?? "" : "", timestamp: value.timestamp == nil ? "" : created.formatted(date: .omitted, time: .shortened), createdAt: created, attachments: attachments, commentary: commentary, outputs: outputs, quoteSource: value.quoteSource)
+        return ChatMessage(id: id, isUser: value.role == "user", text: value.text, rawText: value.rawText, references: value.references ?? [], kind: value.phase == "commentary" ? "commentary" : value.role, duration: value.role == "assistant" && value.phase != "commentary" ? value.status ?? "" : "", timestamp: value.timestamp == nil ? "" : created.formatted(date: .omitted, time: .shortened), createdAt: created, attachments: attachments, commentary: commentary, commentaryIsRunning: value.commentaryIsRunning == true, outputs: outputs, quoteSource: value.quoteSource)
     }
     func attachment(_ value: NativeAttachment) -> AttachmentItem {
         let id = scopedID("attachment", nativeSnapshot.contextId ?? "", value.id); rawAttachmentIDs[id] = value.id

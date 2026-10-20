@@ -4,6 +4,8 @@ struct NativeMessage: Codable, Identifiable {
     var id: String
     var role: String
     var text: String
+    var rawText: String? = nil
+    var references: [NativeMessageReference]? = nil
     var status: String? = nil
     var blocks: [NativePanelItem]? = nil
     var actions: [NativePanelItem]? = nil
@@ -16,6 +18,7 @@ struct NativeMessage: Codable, Identifiable {
     var commentary: [NativeCommentaryEntry]? = nil
     var commentaryBlockId: String? = nil
     var commentaryCanAttachToReply: Bool? = nil
+    var commentaryIsRunning: Bool? = nil
     var commentaryIsLiveTail: Bool? = nil
     var scrollAnchorId: String? = nil
     var scrollAnchorIds: [String]? = nil
@@ -71,5 +74,17 @@ struct NativeQuoteSelection {
         let selected = value.substring(with: range)
         guard !selected.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
         return ["contextId": .string(contextID), "source": .object(source.params), "renderedText": .string(renderedText), "start": .number(Double(range.location)), "end": .number(Double(NSMaxRange(range))), "text": .string(selected)]
+    }
+}
+
+struct NativeMessageReference: Codable, Identifiable, Equatable, Hashable, Sendable {
+    var text: String
+    var annotation: String? = nil
+    var source: Source? = nil
+    var id: String { text + "|" + (annotation ?? "") + "|" + (source?.messageId ?? "") }
+    struct Source: Codable, Equatable, Hashable, Sendable {
+        var messageId: String
+        var startOffset: Int
+        var endOffset: Int
     }
 }

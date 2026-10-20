@@ -2,6 +2,12 @@
 
 本项目的协调与交付约束维护在 [仓库 AGENTS.md](../AGENTS.md)。本页说明项目配置、执行入口、不可变失败与关联修复、验证和必要例外；协调器上游合同见 [README](https://github.com/zh0ngtian/release-coordinator/blob/main/README.md) 和 [USAGE](https://github.com/zh0ngtian/release-coordinator/blob/main/USAGE.md)。
 
+## 启用条件与默认源码交付
+
+自 2026-10-20 起，普通任务默认只交付源码：开始修改时记录 main 提交，完成本次范围的验证后合入 main，完成提交并推送。合入前核对最新 main（含远端）；修改期间 main 有新提交时，对整合结果运行相关回归，通过后再提交推送；没有新提交时复用已有验证，不必重复回归。普通源码整合继续遵守共享 main 写入互斥。
+
+只有用户明确要求发布客户端或部署网关时，才登记对应发布任务并使用下文的 heartbeat、ready、冻结、构建发布及 receipt 流程。普通任务不登记发布任务、不提交 ready、不分配发布版本、不更新 `.release-batch.json`，不触发正式 APK/IPA 打包签名、渠道更新或生产网关部署；必要的开发验证构建仍按改动范围执行。客户端与网关均有源码变更本身不构成联合发布授权。
+
 ## 本机部署与作用域
 
 2026-10-13 已只读确认现有 `releasectl 0.1.3` 健康并复用，不另装服务或数据库。CLI 为 `~/.local/bin/releasectl`；状态库在 `~/Library/Application Support/ReleaseCoordinator/state.sqlite3`，runtime 由上游安装器复制为不可变目录，launchd 不指向开发 worktree。
@@ -66,7 +72,7 @@ OTA-only 使用现役 releasectl 的独立项目，不另建服务或数据库�
 
 ## 验证、冻结与各阶段
 
-ready 必需本地检查名为 `adapter-regression`、`coordinator-recovery`、`build-contract`、`typecheck`；均需真实 passed 记录及可定位的命令/结果证据。协调器 prepare 在整合 worktree 再执行锁定依赖安装、typecheck、原 `tests/ci` 契约测试和现有/新增 Python 发布回归。无构建发布的文档/规则改动按仓库例外直接提交推送，不调用 ready 触发发包。
+已获授权的发布或部署任务，ready 必需本地检查名为 `adapter-regression`、`coordinator-recovery`、`build-contract`、`typecheck`；均需真实 passed 记录及可定位的命令/结果证据。协调器 prepare 在整合 worktree 再执行锁定依赖安装、typecheck、原 `tests/ci` 契约测试和现有/新增 Python 发布回归。普通源码任务按上文默认流程验证、整合并提交推送，不调用 ready；文档/规则改动仅检查相关文字、链接与规则一致性。
 
 客户端版本仍为 `major.minor.patch`，构建号为 `major * 1000000 + minor * 1000 + patch`，minor/patch 小于 1000，构建号正数且不超过 2100000000。prepare 读取 GitHub 全部 Release 标签、仓库下限、LAN APK/IPA、HTTPS OTA 和保留的失败版本预留，原子保留一次更高版本；重试不再分配。网关批次不递增 App 版本。
 
@@ -86,11 +92,11 @@ prepare 检查原 profile、UDID、Bundle ID、Team、application-identifier、�
 
 正式 CI 只在 main 冻结清单变化时触发，使用稳定作用域、`cancel-in-progress: false`、`queue: max`；gateway 与 OTA-only 清单跳过云端客户端 build/release。手动 dispatch 需匹配已有 batch/版本/最终 SHA，不得用它另发独立版本或重复触发同批；重复正式 run 会被适配器拒绝并保留诊断。开发/PR检查使用另一并发组，仅执行原有必要检查，不发包。recipe、容器 SHA、工具版本、Android 签名及 iOS unsigned 策略保留。
 
-网关依赖声明若与已安装包不同，当前阶段阻止部署，需先完成该依赖变更所需验证和关联修复；不能假装旧依赖满足新代码。不修改服务端运行代码的协调器接入仍需按本次用户授权分别完成真实客户端发布和网关适配验收。
+网关依赖声明若与已安装包不同，当前阶段阻止部署，需先完成该依赖变更所需验证和关联修复；不能假装旧依赖满足新代码。仅修改协调器接入不自动要求客户端发布或网关部署；2026-10-13 的真实双端发布与网关验收是当次用户授权，不能作为后续任务的默认授权。
 
 ## 常用命令与完成核对
 
-在发布主机执行（任务 ID 与验证文件换为自己的实际值）：
+仅在用户明确要求对应发布或部署后，在发布主机执行（任务 ID 与验证文件换为自己的实际值）：
 
 ```bash
 ~/.local/bin/releasectl health
@@ -104,7 +110,7 @@ prepare 检查原 profile、UDID、Bundle ID、Team、application-identifier、�
 ~/.local/bin/releasectl batch --id BATCH_ID
 ```
 
-用户指定 OTA-only 时，把 register 的 project 改为 `codex-mobile-ios-ota-production`；ready、heartbeat、wait、失败关联修复及验收流程相同。网关任务使用 `codex-mobile-gateway-production`，不复用客户端队列 ID。一次改动同时影响客户端和网关运行行为时，分别在两个项目 ID 登记目标任务，ready 使用同一已推送 SHA；该工作须核对两个目标的成功 receipt 才可交付。中断且未失败的批次等待 lease 到期后由服务接管；failed 不使用 resume，也不改冻结现场。修复任务只绑定最新失败叶节点：
+用户指定 OTA-only 时，把 register 的 project 改为 `codex-mobile-ios-ota-production`；ready、heartbeat、wait、失败关联修复及验收流程相同。网关部署任务使用 `codex-mobile-gateway-production`，不复用客户端队列 ID。已获授权的发布同时覆盖客户端和网关运行行为时，分别在两个项目 ID 登记目标任务，ready 使用同一已推送 SHA；该发布须核对两个目标的成功 receipt 才可交付。中断且未失败的批次等待 lease 到期后由服务接管；failed 不使用 resume，也不改冻结现场。修复任务只绑定最新失败叶节点：
 
 ```bash
 ~/.local/bin/releasectl register --project codex-mobile-lan-production --task MY_REPAIR --repairs-batch FAILED_LEAF_ID

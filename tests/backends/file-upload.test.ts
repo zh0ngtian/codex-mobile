@@ -44,3 +44,17 @@ describe("文件上传", () => {
     );
   });
 });
+
+it('图片以原名称和实际字节上传，并返回localImage可用的宿主路径', async () => {
+ const { uploadDraftImages } = await import('../../src/backends/file-upload');
+ const fetcher = vi.fn(async (_url: unknown, options: any) => {
+  expect(options.body.name).toBe('照片.jpg'); expect(options.body.type).toBe('image/jpeg'); expect(options.body.size).toBe(3);
+  return new Response(JSON.stringify({ path: '/tmp/photo.jpg', name: '照片.jpg', type: 'image/jpeg', size: 3 }), { status: 201 });
+ });
+ const images = [{ id: 'image', name: '照片.jpg', type: 'image/jpeg', size: 3, url: 'data:image/jpeg;base64,YWJj' }];
+ const backend = { id: 'a', name: 'Mac', baseUrl: 'http://mac.local', token: 'test', enabled: true, order: 0 };
+ expect(await uploadDraftImages(backend, images, fetcher)).toEqual([{ ...images[0], path: '/tmp/photo.jpg' }]);
+ expect(images[0]).not.toHaveProperty('path');
+ await expect(uploadDraftImages(backend, [{ ...images[0], url: 'invalid' }], fetcher)).rejects.toThrow();
+ expect(fetcher).toHaveBeenCalledTimes(1);
+});

@@ -1,0 +1,87 @@
+{
+  "date": "2026-10-20",
+  "scope": "客户端同回合临时用户消息确认",
+  "baseline": "406a447",
+  "sourceCommit": "12529315663da81a78e8b8e5076faf5a3052aaa2",
+  "environment": {
+    "device": "iPhone 17 Pro",
+    "os": "iOS 27",
+    "orientation": "portrait",
+    "font": "normal",
+    "build": "Simulator Debug"
+  },
+  "reproduction": {
+    "mode": "完整App与回环HTTP协议夹具",
+    "remoteThreadsCreated": 0,
+    "actualUserThreadModified": false,
+    "startRequests": 1,
+    "commentaryRequests": 1,
+    "observedUserBubbles": 2,
+    "expectedUserBubbles": 1,
+    "xcresult": ".mobile-build/user-message-dedup-red-5.xcresult"
+  },
+  "verification": {
+    "simulatorPassed": true,
+    "xcresult": ".mobile-build/user-message-dedup-delivery.xcresult",
+    "testSeconds": 52.312,
+    "oneSendBubbles": 1,
+    "twoEqualSendsBubbles": 2,
+    "afterRelaunchBubbles": 2,
+    "unitTestFiles": 157,
+    "unitTestsPassed": 1789,
+    "unitTestsFailed": 0,
+    "focusedTestsPassed": 297,
+    "specializedTestsPassed": 66,
+    "buildContractPassed": 143,
+    "adapterTestsPassed": 212,
+    "coordinatorTestsPassed": 59,
+    "typecheck": "passed",
+    "frontendBuild": "passed",
+    "specReview": "passed",
+    "qualityReview": "passed"
+  },
+  "sourceSha256": {
+    "src/app-server/user-message-reconciliation.ts": "e7e74dd724bda149d0ffc56fe034d2a32d451e0bb8add84977ad033c6c4bf5a7",
+    "src/app-server/thread-session.ts": "d35ce2a03342d7de6efaa5cd09d2c62fd2a1efa60a978f755c40ee2ad57d1313",
+    "src/ui/conversation.tsx": "7bf62418520b0d44d43c7f6f8b66011f0ef74331390cb16e85f2e728f1260f42"
+  },
+  "screenshots": {
+    ".mobile-build/user-message-dedup-before.png": {
+      "bytes": 239569,
+      "sha256": "3f489f9c7d913cec4a41fe4b9fb646fc06b5e746b187d93a74b1a7029a365627"
+    },
+    ".mobile-build/user-message-dedup-after.png": {
+      "bytes": 213075,
+      "sha256": "7330a6c4cc3aebf7f611d93b8627dd249383fe322032f3bf5739446f56b65cfb"
+    },
+    ".mobile-build/user-message-dedup-two-sends.png": {
+      "bytes": 337515,
+      "sha256": "1a6a8adcce7d62d001212a808ad2f30f1e54e5a0eb15b3758b51ceab361c83b5"
+    },
+    ".mobile-build/user-message-dedup-reopened.png": {
+      "bytes": 323320,
+      "sha256": "037f5852eaa2849e908848bcd95472f9729d82e666aa05c9b6006095609963fc"
+    }
+  },
+  "release": {
+    "state": "用户明确本轮不发布，已撤回登记",
+    "task": "user-message-dedup-20261020",
+    "taskState": "withdrawn",
+    "readySubmitted": false,
+    "batch": null
+  },
+  "limits": [
+    "原样本手机内部的具体触发时序未捕获；模拟器以可达受控协议顺序验证。",
+    "跨ID pending回合认领保留基线，不扩大已有跨回合匹配契约。",
+    "空正文且所有附件身份缺失时等待后续可识别数据，不猜测对应输入。"
+  ],
+  "integration": {
+    "mainBefore": "22d570459e522579456c41187434d1a1d64100ed",
+    "runtimeSourceHashMatchesVerified": true,
+    "scope": "仅合入main并推送，不发布",
+    "relatedRegressionFiles": 8,
+    "relatedRegressionPassed": 297,
+    "typecheck": "passed",
+    "publication": false
+  }
+}

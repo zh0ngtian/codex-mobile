@@ -5,6 +5,7 @@ struct OutputCards: View {
     @Environment(AppPreferences.self) private var preferences
     @Environment(\.openURL) private var openURL
     let items: [OutputItem]
+    var isAttachment = false
 
     var body: some View {
         VStack(spacing: 8) {
@@ -15,7 +16,7 @@ struct OutputCards: View {
                     OutputVideoCard(item: item)
                 } else {
                     Button { open(item) } label: {
-                        OutputCardLabel(item: item)
+                        OutputCardLabel(item: item, subtitle: isAttachment ? preferences.text("打开文件", "Open file") : nil)
                             .background(AgentTheme.card, in: .rect(cornerRadius: 16))
                             .overlay { RoundedRectangle(cornerRadius: 16).strokeBorder(AgentTheme.line) }
                     }

@@ -1,3 +1,6 @@
+import { decodeUserMessage, type MessageReference } from '../../../server/user-message-format';
+import { responseAnnotationDisplay } from './response-annotations';
+import { MessageReferences } from './MessageReferences';
 import { SelectionQuoteBoundary } from './SelectionQuotes';
 import { Fragment, useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { AppServerClient } from "../../app-server/client";
@@ -59,6 +62,7 @@ type InlineUserMessageEdit = {
 };
 
 type UserMessageActionProps = {
+  responseReferences?: MessageReference[];
   onEditUserMessage?: () => void;
   inlineEdit?: InlineUserMessageEdit;
   userMessageActionsDisabled?: boolean;
@@ -90,14 +94,14 @@ function itemText(item: AnyRecord) {
   else if (typeof item.text === "string") text = item.text;
   else if (typeof item.content === "string") text = item.content;
   if (Array.isArray(item.content)) {
-    text = item.content
+    text = item.content.filter((part: AnyRecord) => typeof part.text === 'string')
       .map((part: AnyRecord) => {
         const partText = String(part.text ?? "");
         return item.type === "userMessage"
           ? stripConversationTitleRequest(partText)
           : partText;
       })
-      .join("");
+      .join("\n");
   } else if (typeof item.command === "string") text = item.command;
   else if (Array.isArray(item.command)) text = item.command.join(" ");
   else if (typeof item.output === "string") text = item.output;
@@ -151,7 +155,8 @@ function UserBubble({
 } & UserMessageActionProps) {
   const rawText = itemText(item);
   const heartbeat = parseAutomationHeartbeat(rawText);
-  const text = heartbeat?.instructions ?? rawText;
+  const parsed = decodeUserMessage(rawText);
+  const text = heartbeat?.instructions ?? parsed.body;
   const images = imageSourcesForItem(item);
   const collapsible = shouldCollapseUserMessage(text);
   const [expanded, setExpanded] = useState(false);
@@ -168,7 +173,8 @@ function UserBubble({
     if (inlineEdit) setMenuAnchor(null);
   }, [inlineEdit]);
   const bubble = (
-    <SelectionQuoteBoundary item={item}><div className={`user-bubble${inlineEdit ? " user-bubble-editing" : ""}`} {...longPress}>
+    <SelectionQuoteBoundary item={item}><div id={`message-source-${item.id}`} data-source-text={rawText} className={`user-bubble${inlineEdit ? " user-bubble-editing" : ""}`} {...longPress}>
+      {!inlineEdit && <MessageReferences references={parsed.references} />}
       {inlineEdit ? (
         <div className="history-message-editor">
           <textarea
@@ -283,6 +289,7 @@ function UserBubble({
           />
         </div>
       ) : null}
+      {!inlineEdit && parsed.attachments.some(file => !file.isImage) && <div className="message-files">{parsed.attachments.filter(file => !file.isImage).map(file => <RemoteFileLink key={file.path} href={file.path.split('/').map(encodeURIComponent).join('/')} client={client} backend={backend}>{file.name}</RemoteFileLink>)}</div>}
       <ImageGallery images={images} client={client} backend={backend} />
       {!inlineEdit && collapsible && (
         <button
@@ -320,8 +327,8 @@ function UserBubble({
       ...(onEditUserMessage ? [{ id: "edit", title: t("编辑"), icon: "pencil",
         disabled: userMessageActionsDisabled, onSelect: () => onEditUserMessage() }] : []),
       { id: "copy", title: t("复制"), icon: "doc.on.doc", disabled: !text,
-        copyText: text, onSelect: (native) => {
-          if (!native) void copyText(text);
+        copyText: rawText, onSelect: (native) => {
+          if (!native) void copyText(rawText);
         } },
     ]} /> : null;
   if (heartbeat) {
@@ -345,6 +352,7 @@ function TimelineItem({
   threadId,
   timestamp,
   finalDurationLabel,
+  responseReferences = [],
   onEditUserMessage,
   inlineEdit,
   userMessageActionsDisabled,
@@ -392,7 +400,7 @@ function TimelineItem({
     );
   }
   const displayText = type === "agentMessage"
-    ? visibleAgentMessageText(item)
+    ? responseAnnotationDisplay(visibleAgentMessageText(item), responseReferences, t('引用'))
     : text;
   const generatedVideoPath = videoPathForItem(item);
   if (backend && generatedVideoPath) {
@@ -409,7 +417,7 @@ function TimelineItem({
     return displayText ? <div className="reasoning">{displayText}</div> : null;
   }
   return displayText ? (
-    <SelectionQuoteBoundary item={item}><div className="assistant-message">
+    <SelectionQuoteBoundary item={item}><div className="assistant-message" id={`message-source-${item.id}`} data-source-text={rawText}>
       <MarkdownMessage
         text={displayText}
         renderImage={(source, alt) => (
@@ -424,12 +432,14 @@ function TimelineItem({
             alt={alt}
           />
         )}
-        renderLink={(href, children) => (
-          <RemoteFileLink href={href} client={client} backend={backend}>
-            {children}
-          </RemoteFileLink>
-        )}
+        renderLink={(href, children) => href.startsWith('#codex-annotation-') ? <a href={href} onClick={event => {
+          event.preventDefault();
+          const number = Number(href.slice('#codex-annotation-'.length));
+          const card = event.currentTarget.closest('.assistant-message')?.querySelector<HTMLDetailsElement>(`details[data-reference-index="${number}"]`);
+          if (card) { card.open = true; card.scrollIntoView({ block: 'nearest' }); }
+        }}>{children}</a> : <RemoteFileLink href={href} client={client} backend={backend}>{children}</RemoteFileLink>}
       />
+      {displayText.includes('#codex-annotation-') && <MessageReferences references={responseReferences} />}
       {!commentary && (formatMessageTimestamp(timestamp) || finalDurationLabel) && (
         <div className="final-answer-metadata">
           <MessageTimestamp
@@ -582,9 +592,15 @@ export function TurnCard({
   onEditUserMessage?: (messageId: string) => void;
 }) {
   const grouped = groupTurnItems(turn);
+  const referenceContexts = new Map<object, MessageReference[]>();
+  let currentReferences: MessageReference[] = [];
+  for (const item of turn.items ?? []) {
+    if (item.type === 'userMessage') currentReferences = decodeUserMessage(itemText(item)).references;
+    referenceContexts.set(item, currentReferences);
+  }
   const actionsForMessage = (item: AnyRecord): UserMessageActionProps => {
     const messageId = String(item.id ?? "");
-    if (grouped.running || item.type !== "userMessage" || !messageId || messageId.startsWith("local-")) return {};
+    if (grouped.running || item.type !== "userMessage" || !messageId || messageId.startsWith("local-")) return { responseReferences: referenceContexts.get(item) ?? [] };
     return {
       onEditUserMessage: onEditUserMessage ? () => onEditUserMessage(messageId) : undefined,
       inlineEdit: inlineEdit && (inlineEdit.messageId == null
@@ -696,10 +712,9 @@ function CompletedResponseSegment({
   finalDurationLabel: string | null;
   durationLabel: string | null;
 }) {
-  const [showPrevious, setShowPrevious] = useState(false);
-  const hasFinal = Boolean(presentation.final);
-  // 最新响应开始输出 final 时收起过程，后续流式更新保留手动展开状态。
-  useEffect(() => setShowPrevious(false), [hasFinal]);
+  const [showPrevious, setShowPrevious] = useState(presentation.running);
+  // 运行中默认展开，结束时收起；同一阶段的流式更新保留手动选择。
+  useEffect(() => setShowPrevious(presentation.running), [presentation.running]);
   const { entries, historyCount: previousCount } = presentation;
   const renderEntry = (entry: TurnResponseEntry, index: number) => {
     const commentary = entry.item.type === "agentMessage" && (entry.item.phase === "commentary" || entry.history);

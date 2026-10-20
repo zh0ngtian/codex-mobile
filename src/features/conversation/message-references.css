@@ -1,0 +1,9 @@
+.message-references { display: grid; gap: 8px; margin: 6px 0; }
+.message-references details { padding: 10px 12px; border-radius: 12px; background: color-mix(in srgb, currentColor 6%, transparent); }
+.message-references summary { cursor: pointer; }
+.message-references summary small { display: block; opacity: .7; }
+.message-references summary span { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; white-space: pre-wrap; }
+.message-references details[open] summary span { display: none; }
+.message-references p { white-space: pre-wrap; overflow-wrap: anywhere; margin: 8px 0; }
+.message-files { display: grid; gap: 8px; padding: 8px 0; }
+.message-files a { display: block; padding: 10px 12px; border: 1px solid color-mix(in srgb, currentColor 15%, transparent); border-radius: 12px; overflow-wrap: anywhere; }

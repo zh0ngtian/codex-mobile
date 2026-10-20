@@ -1,3 +1,5 @@
+import { normalizeHEICFiles } from './ui/heic';
+import { replaceUserMessageBody } from '../server/user-message-format';
 import { quoteInput, splitQuoteInput, validateMessageQuote, type MessageQuote, type SelectionQuote } from './features/conversation/message-quotes';
 import { useSidechatExpiry } from './sidechat/use-expiry';
 import { SidechatSessions, gatewaySidechatClient } from './sidechat/sessions';
@@ -150,7 +152,7 @@ import {
   formatCurrentLocation,
   requestCurrentPosition,
 } from "./ui/current-location";
-import { uploadFile } from "./backends/file-upload";
+import { uploadDraftImages, uploadFile } from "./backends/file-upload";
 import { followUpRequest, HostedQueueSubmission, HostedQueueError, type HostedFollowUp, type FollowUpAction } from "./backends/follow-ups";
 import type { QueuedFollowUpPreview } from "./features/conversation/ConversationPage";
 import {
@@ -2761,7 +2763,8 @@ function BackendWorkspace({
     const startingProjectless = !thread?.id && !thread?.cwd;
     let sent = false;
     try {
-      setImageReading(Boolean(pendingFiles.length));
+      setImageReading(Boolean(pendingFiles.length || pendingImages.length));
+      const uploadedImages = await uploadDraftImages(backend, pendingImages);
       const uploadedFiles = await Promise.all(
         pendingFiles.map((file) => uploadFile(backend, file.file)),
       );
@@ -2845,7 +2848,7 @@ function BackendWorkspace({
       const localItem = {
         id: `local-${pendingTurnId}`,
         type: "userMessage",
-        content: buildOptimisticUserContent(text, pendingImages, uploadedFiles),
+        content: buildOptimisticUserContent(text, uploadedImages, uploadedFiles),
       };
       const pendingSequence = ++pendingSequenceRef.current;
       if (draftContext === draftContextGenerationRef.current) {
@@ -2872,7 +2875,7 @@ function BackendWorkspace({
         threadId: thread.id,
         input: buildTurnInput(
           modelText,
-          pendingImages,
+          uploadedImages,
           uploadedFiles,
           pendingSkills,
           pendingPlugins,
@@ -3032,9 +3035,10 @@ function BackendWorkspace({
       const originalDraft = currentDraftRef.current;
       const client = clientRef.current;
       try {
+        const uploadedImages = await uploadDraftImages(backend, pendingImages);
         const uploaded = await Promise.all(pendingFiles.map(file => uploadFile(backend, file.file)));
         if (draftContext !== draftContextGenerationRef.current || clientRef.current !== client) throw new Error(t('会话已切换，请重试'));
-        await sidechats.submit(gatewaySidechatClient(client), threadId, buildTurnInput(inputText, pendingImages, uploaded, pendingSkills, pendingPlugins), {
+        await sidechats.submit(gatewaySidechatClient(client), threadId, buildTurnInput(inputText, uploadedImages, uploaded, pendingSkills, pendingPlugins), {
           ...(selectedModel ? { model: selectedModel } : {}), ...(selectedEffort ? { effort: selectedEffort } : {}),
           serviceTier: effectiveSelectedServiceTier, ...(selectedPermission ? { permissions: selectedPermission } : {}),
           approvalPolicy: selectedApprovalPolicy, approvalsReviewer: selectedApprovalsReviewer,
@@ -3084,11 +3088,14 @@ function BackendWorkspace({
           files: pendingFiles.map((file) => ({ id: file.id, name: file.name, size: file.size, type: file.type })),
         });
         const action = await submission.prepare(signature, async () => {
+          const uploadedImages = await uploadDraftImages(backend, pendingImages);
           const uploadedFiles = await Promise.all(pendingFiles.map((file) => uploadFile(backend, file.file)));
-          return { threadId, inputText,
+          const input = buildTurnInput(inputText, uploadedImages, uploadedFiles, pendingSkills, pendingPlugins);
+          const fullText = input.filter(part => part.type === 'text').map(part => part.text).join('\n');
+          return { threadId, inputText: fullText,
             text: followUpPreviewText(text, pendingImages, pendingFiles),
             attachmentCount: pendingImages.length + pendingFiles.length,
-            extraInput: buildTurnInput("", pendingImages, uploadedFiles, pendingSkills, pendingPlugins), settings,
+            extraInput: input.filter(part => part.type !== 'text'), settings,
           };
         });
         await mutateHostedQueue(action);
@@ -3260,7 +3267,7 @@ function BackendWorkspace({
       return;
     }
 
-    const text = session.text.trim();
+    const text = splitQuoteInput(session.text.trim()).question;
     let target = session.target;
     let retainedTurns = [...(thread.turns ?? [])];
     if (session.reverted) retainedTurns = retainedTurns.filter((turn) => !turn.historyEditDraft);
@@ -3522,7 +3529,7 @@ function BackendWorkspace({
       return true;
     }
     try {
-      await mutateHostedQueue({ action: "edit", id, revision: followUp.revision!, inputText: followUp.referencePrefix ? followUp.referencePrefix + text : quoteInput(text, followUp.quotes ?? []),
+      await mutateHostedQueue({ action: "edit", id, revision: followUp.revision!, inputText: followUp.referencePrefix ? replaceUserMessageBody(followUp.referencePrefix + followUp.inputText + "\n", text) : quoteInput(text, followUp.quotes ?? []),
         text: text || t("{count} 个附件", { count: followUp.attachmentCount ?? 0 }),
         mentions: buildTurnInput("", [], [], referencedSkills, referencedPlugins),
       });
@@ -3555,8 +3562,7 @@ function BackendWorkspace({
       historyEdit ||
       (active?.id && activeThreadAccessMode !== "interactive")
     ) { if (atomic) throw new Error(t("当前无法导入附件")); return; }
-    const selected = Array.from(files);
-    if (atomic) assertNativeAttachmentSelection(selected, currentDraftRef.current.images, currentDraftRef.current.files);
+    const originals = Array.from(files);
     const generation = imageReadGenerationRef.current.begin();
     const existingBytes = draftImages.reduce(
       (total, image) => total + image.size,
@@ -3566,6 +3572,9 @@ function BackendWorkspace({
     let preparedFiles: DraftFile[] = [];
     let committed = false;
     try {
+      const selected = await normalizeHEICFiles(originals);
+      if (!imageReadGenerationRef.current.isCurrent(generation)) throw new Error(t("附件读取已取消或会话已切换"));
+      if (atomic) assertNativeAttachmentSelection(selected, currentDraftRef.current.images, currentDraftRef.current.files);
       const imageFiles = selected.filter(isNativeImageFile);
       const attachmentFiles = selected.filter((file) => !isNativeImageFile(file));
       const result = await prepareImageFiles(
@@ -3596,7 +3605,7 @@ function BackendWorkspace({
       if (errors.length) setError(errors.join("；"));
       else setError("");
     } catch (reason) {
-      if (atomic && imageReadGenerationRef.current.isCurrent(generation)) setError(reason instanceof Error ? reason.message : String(reason));
+      if (imageReadGenerationRef.current.isCurrent(generation)) setError(reason instanceof Error ? reason.message : String(reason));
       throw reason;
     } finally {
       if (atomic && !committed) preparedFiles.forEach(file => URL.revokeObjectURL(file.previewUrl));

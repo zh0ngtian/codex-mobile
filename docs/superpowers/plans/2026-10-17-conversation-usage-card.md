@@ -53,8 +53,7 @@ const tokenText = input ?? t("暂无数据");
 - [x] 1. 子代理依次完成需求符合性与代码质量审查；修复问题并重验本次受影响范围。
 - [x] 2. 使用 iPhone 17 Pro、正常字号、竖屏验证卡片显示、关闭、K/M 数值与无数据状态，截图与参考图同屏比较。保存 `design-qa.md` 和仓库外图像证据，不引入不相关设备验收；创建真实测试会话时及时归档。
 - [x] 3. 运行协调器要求的 adapter-regression、coordinator-recovery、build-contract、typecheck，保存真实日志与 validation JSON；继续 heartbeat。
-- [ ] 4. 提交并推送确定 SHA，调用 `releasectl ready --task conversation-usage-card-20261017 --sha <已推送实际 SHA> --validation <实际验证文件>`，等待批次成功 receipt。不独立发包或推进 main。
-- [ ] 5. 读取 receipt，核对 GitHub APK/unsigned IPA、LAN 双端、已签名 HTTPS OTA、软件源 unsigned 版本和中文更新日志。交付固定 OTA/APK/IPA 链接、版本、大小、SHA-256 与 IPA 签名状态。
+- 原步骤4、5（已取消）：原定ready、正式发布及渠道验收不再属于本轮交付；用户于2026-10-20明确要求仅合入main、不发布，执行结果见下文。
 
 ## 自审
 
@@ -70,3 +69,13 @@ const tokenText = input ?? t("暂无数据");
 - 248 项相关网页/投影回归、17 项真实 Swift 宿主契约、124 项构建契约、166 项 Python 发布回归、30 项协调恢复与 typecheck 通过。
 - iPhone 17 Pro（iOS 26.5、正常字号、竖屏）两项原生 UI 测试通过；首轮失败来自点击被系统 popover 屏蔽的背景文字，改为明确空白坐标后，真实关闭与重开断言通过。
 - 测试全部使用内存 fixture，无真实远端测试会话需要归档；专用测试 App 已卸载并释放共享模拟器锁。视觉证据见根目录 design-qa.md；发布等待本任务最终成功 receipt，不把本地验证当作发包完成。
+
+## 缓存标签文案修订
+
+用户要求输入行改为 `100K (缓存 80%)`，网页与原生统一用英文括号和简短「缓存」标签。比例计算和 K/M 格式不变；先将精确文案断言改为新格式，观察失败后修改显示字符串，再验证网页和 iPhone 17 Pro 原生卡片。2026-10-17当时未处理协调器修复，正式发布未完成；后续交付范围以用户2026-10-20的仅源码合并要求为准。
+
+## 2026-10-20 主分支整合（不发布）
+
+基于main `b0e2cee` 合并分支提交 `2cafce3`，保留原生缺少缓存数据时不显示括号、现行额度与刷新时间、旧界面及旧测试已移除的后续改动。现役AgentUI用量卡片与保留的NativeUI组件统一使用“缓存／Cache”短标签；网页集成断言沿用当前入口。同步现行交互约定，不修改发布清单或版本，不登记ready、不构建APK/IPA、不发包或部署网关。
+
+6文件133项定向回归、typecheck与4个变更Swift文件语法检查通过；本轮不重跑模拟器UI，历史截图与原生验收仅作为当时的证据。无新增远端测试会话。日志目录为仓库外 `~/Library/Application Support/ReleaseCoordinator/validations/usage-card-main-20261020/`，最终整合提交及推送状态以Git记录为准。

@@ -109,7 +109,7 @@ describe("当前非原生对话用量卡片", () => {
     const { container } = render(<ConversationPage {...pageProps()} />);
     const { card, button } = openCard();
     const view = within(card);
-    for (const [label, value] of [["上下文余量", "60%"], ["周期剩余", "71%"], ["时间剩余", "85%"], ["输入 Token", "3M（缓存命中 80%）"], ["输出 Token", "84K"]]) {
+    for (const [label, value] of [["上下文余量", "60%"], ["周期剩余", "71%"], ["时间剩余", "85%"], ["输入 Token", "3M (缓存 80%)"], ["输出 Token", "84K"]]) {
       expect(view.getByText(label).nextElementSibling?.textContent).toBe(value);
     }
     expect(card.parentElement).toBe(document.body);
@@ -127,7 +127,7 @@ describe("当前非原生对话用量卡片", () => {
     expect(within(card).getByText("上下文余量").nextElementSibling).toHaveTextContent("50%");
     expect(within(card).getByText("周期剩余").nextElementSibling).toHaveTextContent("35%");
     expect(within(card).getByText("时间剩余").nextElementSibling).toHaveTextContent("55%");
-    expect(within(card).getByText("输入 Token").nextElementSibling).toHaveTextContent("100K（缓存命中 80%）");
+    expect(within(card).getByText("输入 Token").nextElementSibling).toHaveTextContent("100K (缓存 80%)");
     expect(within(card).getByText("输出 Token").nextElementSibling).toHaveTextContent("28.5K");
     rerender(<ConversationPage {...pageProps({ tokenUsage: { ...tokenUsage, total: null } })} />);
     expect(within(card).getByText("输入 Token").nextElementSibling).toHaveTextContent("暂无数据");
@@ -140,9 +140,9 @@ describe("当前非原生对话用量卡片", () => {
   });
 
   it.each([
-    [0, 0, "0（缓存命中暂无数据）"], [1000, null, "1K（缓存命中暂无数据）"],
-    [1000, 1001, "1K（缓存命中暂无数据）"], [1000, 333, "1K（缓存命中 33.3%）"],
-    [1000, 0, "1K（缓存命中 0%）"], [null, 0, "暂无数据"],
+    [0, 0, "0 (缓存 暂无数据)"], [1000, null, "1K (缓存 暂无数据)"],
+    [1000, 1001, "1K (缓存 暂无数据)"], [1000, 333, "1K (缓存 33.3%)"],
+    [1000, 0, "1K (缓存 0%)"], [null, 0, "暂无数据"],
   ])("输入 %s、缓存 %s 展示为 %s，输出零值仍可展示", (input, cached, expected) => {
     render(<ConversationPage {...pageProps({ tokenUsage: { last: { inputTokens: 100, cachedInputTokens: 100, outputTokens: 100 }, total: { inputTokens: input, cachedInputTokens: cached, outputTokens: 0 } } })} />);
     const view = within(openCard().card);

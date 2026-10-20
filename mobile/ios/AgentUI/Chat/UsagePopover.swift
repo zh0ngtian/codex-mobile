@@ -31,7 +31,7 @@ struct UsagePopover: View {
         let tokens = UsageFormatting.tokens(metrics?.cumulativeInputTokens) ?? noData
         let cached = UsageFormatting.cachePercentage(input: metrics?.cumulativeInputTokens, cached: metrics?.cachedInputTokens)
         guard let cached else { return tokens }
-        let cacheText = preferences.text("缓存命中 \(cached)", "Cache hit \(cached)")
+        let cacheText = preferences.text("缓存 \(cached)", "Cache \(cached)")
         return "\(tokens) (\(cacheText))"
     }
 }

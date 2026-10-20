@@ -222,6 +222,10 @@ final class AgentAppUITests: XCTestCase {
         return app
     }
 
+    private func selectableText(_ text: String, in app: XCUIApplication) -> XCUIElement {
+        app.textViews.matching(NSPredicate(format: "value == %@", text)).firstMatch
+    }
+
     /// 夹具与真实会话都从底部进入；阅读、分页和回底用例先执行真实的上翻手势。
     private func readEarlierMessages(_ app: XCUIApplication, toStart: Bool = false) {
         let timeline = app.scrollViews["conversation.timeline"]
@@ -242,13 +246,14 @@ final class AgentAppUITests: XCTestCase {
 
     func testConversationUsesReferenceHistoryComponentAndTrimmedUserText() {
         let app = launchConversationFixture()
-        let question = app.staticTexts["请检查项目上下文。"]
+        let question = selectableText("请检查项目上下文。", in: app)
+        let progress = selectableText("正在读取项目上下文。", in: app)
         XCTAssertTrue(question.waitForExistence(timeout: 8))
         let bubble = app.otherElements["message.user-bubble"].firstMatch
         XCTAssertLessThan(bubble.frame.height, 45, "单行气泡只占一行正文及上下内边距，尾部空白不增加高度")
         XCTAssertFalse(app.buttons["history.loadEarlier"].exists)
         XCTAssertTrue(app.buttons["commentary-history-toggle"].waitForExistence(timeout: 8))
-        XCTAssertFalse(app.staticTexts["正在读取项目上下文。"].exists)
+        XCTAssertFalse(progress.exists)
         let time = app.staticTexts["message.user-time"]
         XCTAssertFalse(time.exists, "发送时间默认隐藏")
         // 点击气泡留白，避免系统正文选择层接管测试点击。
@@ -262,13 +267,13 @@ final class AgentAppUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["10月17日 10:46"].exists, "回复时间使用相同格式且保留原位置")
         captureConversation("历史过程-折叠", app: app)
         app.buttons["commentary-history-toggle"].tap()
-        XCTAssertTrue(app.staticTexts["正在读取项目上下文。"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["已检查相关文件，正在整理结果。"].exists)
+        XCTAssertTrue(progress.waitForExistence(timeout: 5))
+        XCTAssertTrue(selectableText("已检查相关文件，正在整理结果。", in: app).exists)
         XCTAssertTrue(app.staticTexts["10月17日 10:44"].exists)
         XCTAssertTrue(app.staticTexts["10月17日 10:45"].exists)
         captureConversation("历史过程-展开", app: app)
         app.buttons["commentary-history-toggle"].tap()
-        XCTAssertFalse(app.staticTexts["正在读取项目上下文。"].exists)
+        XCTAssertFalse(progress.exists)
     }
 
     func testCompletedDurationMovesToProcessHeader() {
@@ -281,6 +286,35 @@ final class AgentAppUITests: XCTestCase {
         history.tap()
         XCTAssertTrue(app.staticTexts["正在读取项目上下文。"].waitForExistence(timeout: 5))
         captureConversation("用时-过程入口", app: app)
+    }
+
+    func testRunningProcessStartsExpandedAndCompletesAboveReply() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-running-history-fixture", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
+        app.launch()
+        let history = app.buttons["commentary-history-toggle"]
+        let progress = selectableText("正在读取项目上下文。", in: app)
+        XCTAssertTrue(history.waitForExistence(timeout: 8))
+        XCTAssertTrue(progress.waitForExistence(timeout: 5), "运行中不点击入口就能看到过程")
+        XCTAssertTrue(history.label.contains("执行过程"))
+        captureConversation("运行中-过程默认展开", app: app)
+        history.tap()
+        XCTAssertFalse(progress.exists, "运行中仍可手动收起过程")
+        history.tap()
+        XCTAssertTrue(progress.waitForExistence(timeout: 5))
+        app.buttons["conversation.actions"].tap()
+        let refresh = app.collectionViews.firstMatch.buttons["刷新"].firstMatch
+        XCTAssertTrue(refresh.waitForExistence(timeout: 5))
+        refresh.tap()
+        XCTAssertTrue(history.waitForExistence(timeout: 5))
+        XCTAssertTrue(history.label.contains("用时12秒"))
+        XCTAssertFalse(progress.exists, "回合完成后自动折叠")
+        let reply = app.textViews.matching(identifier: "assistant.selectable").firstMatch
+        XCTAssertTrue(reply.waitForExistence(timeout: 5))
+        XCTAssertLessThan(history.frame.maxY, reply.frame.minY, "完成过程入口位于最终回答上方")
+        captureConversation("完成后-过程折叠并位于回答上方", app: app)
+        history.tap()
+        XCTAssertTrue(progress.waitForExistence(timeout: 5))
     }
 
     func testCommentaryBackfillDoesNotMoveDurationOrReply() {
@@ -306,9 +340,9 @@ final class AgentAppUITests: XCTestCase {
         XCTAssertEqual(replyTime.frame.minY, replyY, accuracy: 1, "过程数据回填不能让原有正文发生重排")
         captureConversation("过程回填后-稳定展开入口", app: app)
         history.tap()
-        XCTAssertTrue(app.staticTexts["正在读取项目上下文。"].waitForExistence(timeout: 5))
+        XCTAssertTrue(selectableText("正在读取项目上下文。", in: app).waitForExistence(timeout: 5))
         history.tap()
-        XCTAssertFalse(app.staticTexts["正在读取项目上下文。"].exists)
+        XCTAssertFalse(selectableText("正在读取项目上下文。", in: app).exists)
     }
 
     func testUnknownDurationKeepsProcessDisclosure() {
@@ -1453,7 +1487,7 @@ final class AgentAppUITests: XCTestCase {
         app.launch()
         XCTAssertTrue(app.buttons["header.usage"].waitForExistence(timeout: 5))
         app.buttons["header.usage"].tap()
-        let cached = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "缓存命中 0%")).firstMatch
+        let cached = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "缓存 0%")).firstMatch
         XCTAssertTrue(cached.waitForExistence(timeout: 5), "真实零命中率仍应展示")
     }
 

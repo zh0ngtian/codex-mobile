@@ -104,7 +104,7 @@ Codex Desktop 很适合坐在电脑前完成开发任务，但长任务启动后
 | 前后台恢复 | 后台暂停轮询，回到前台或网络恢复时立即同步；离线保留内容并显示同步状态 |
 | 多端复用 | 同一套前端运行于 Web、Android 和 iOS，不在 App 中固化后端地址 |
 
-桌面会话中的文件引用和明确的附件列表会显示为可点击的文件名，支持中文、空格及括号等名称。点击后使用对应设备的现有文件预览或下载入口；Word、Excel 等二进制文件提供下载。代码示例中的引用保留原样，复制和编辑继续使用原始消息。
+桌面会话中的文件引用和明确的附件列表会显示为可点击的文件名，支持中文、空格及括号等名称。点击后使用对应设备的现有文件预览或下载入口；Word、Excel 等二进制文件提供下载。代码示例中的引用保留原样，复制保留原始消息。新消息兼容实现将附件和选文引用与正文分开展示，并使用桌面兼容格式发送；编辑只修改问题并保留附件与引用，HEIC导入时转JPEG且不保留原件。该改动已通过iPhone 17 Pro模拟器验证及用户验收，并合入main；尚未发布，不迁移旧消息。
 
 ### Sidechat（已合入main，未发布）
 
@@ -336,6 +336,8 @@ export CODEX_MOBILE_TOKEN='<独立口令>'
 
 ### 验证
 
+日常开发默认只交付源码：开始修改时记录 main 提交，完成本次范围的验证后合入 main，并提交推送。合入前核对最新 main（含远端）；修改期间 main 有新提交时，须对整合结果运行相关回归，通过后再提交推送；没有新提交时复用已有验证，不必重复回归。默认不发布客户端或部署生产网关；只有明确要求发布或部署时，才走下述协调流程。具体约束见 [仓库协作约定](AGENTS.md)。
+
 ```bash
 npm run typecheck
 npm test
@@ -345,7 +347,7 @@ npm run test:e2e
 
 ## 移动端构建
 
-正式发布由本机已有 `releasectl` 协调，`main` 的冻结批次清单触发 GitHub 双端构建；任意客户端任务分支推送不再自动发包。默认双端批次共用 prepare 预留版本，全部构建与校验成功后创建同一个 GitHub Release。用户指定 OTA-only 时，使用独立 `codex-mobile-ios-ota-production` 目标，仍整合到 main、分配更高版本并生成共同验收凭证，但只发布已签名 IPA 到 HTTPS OTA 和固定 LAN，不创建 GitHub Release、APK 或软件源版本。配置、任务命令和恢复验收见 [发布协调说明](docs/release-coordination.md)；npm 包继续按需手动发布。
+仅在用户明确要求发布时，由本机已有 `releasectl` 协调正式发布；普通任务合入 main 或推送分支都不发包，也不更新冻结批次清单。`main` 的冻结批次清单变化才触发 GitHub 双端构建；已授权且未指定范围的客户端发布使用双端批次，共用 prepare 预留版本，全部构建与校验成功后创建同一个 GitHub Release。用户指定 OTA-only 时，使用独立 `codex-mobile-ios-ota-production` 目标，仍整合到 main、分配更高版本并生成共同验收凭证，但只发布已签名 IPA 到 HTTPS OTA 和固定 LAN，不创建 GitHub Release、APK 或软件源版本。配置、任务命令和恢复验收见 [发布协调说明](docs/release-coordination.md)；npm 包继续按需手动发布。
 
 Android App 固定检查局域网更新清单
 `http://192.168.123.79:8765/channels/codex-mobile/latest.json`，发现新版本后从固定地址
@@ -368,8 +370,8 @@ Android 安装包保持竖屏。iOS App 在 iPhone、iPad 及应用内浏览器�
 本项目发布要求：
 
 - GitHub 双端构建和本地构建复用 `mobile/*/build-recipe.yml`，版本高于全部 GitHub Release 标签及仓库下限；本机渠道超前时，先更新 `mobile-version-floor.json` 或手动指定更高版本。npm 包按需手动测试、构建和发布。
-- 客户端任务独立开发并登记已验证提交，协调入口整合、复验、冻结并推送批次，再发布高于 Android、iOS 两个固定渠道现有版本的统一版本 APK 和已签名 IPA；APK 使用 `apk-server.py publish-channel codex-mobile`，IPA 复用适配器签名和发布阶段，并回验两端固定清单、HEAD、完整 GET 大小与 SHA-256。明确指定的 OTA-only 批次只构建和回验 IPA，复用相同发布锁和签名身份检查。
-- 改动不涉及客户端运行代码、客户端引用的共用模块、原生桥接或影响客户端产物的构建配置时，不得触发客户端 Web、APK 或 IPA 的构建与发布；仅修改文档、规则、测试、服务端或不影响客户端产物的脚本时，均遵循此规则。服务端变更仍须验证、构建服务端并部署网关。具体约束见 [AGENTS.md](AGENTS.md)。
+- 已获用户发布授权的客户端任务独立开发并登记已验证提交，协调入口整合、复验、冻结并推送批次，再发布高于 Android、iOS 两个固定渠道现有版本的统一版本 APK 和已签名 IPA；APK 使用 `apk-server.py publish-channel codex-mobile`，IPA 复用适配器签名和发布阶段，并回验两端固定清单、HEAD、完整 GET 大小与 SHA-256。明确指定的 OTA-only 批次只构建和回验 IPA，复用相同发布锁和签名身份检查。
+- 改动不涉及客户端运行代码、客户端引用的共用模块、原生桥接或影响客户端产物的构建配置时，不得触发客户端 Web、APK 或 IPA 的构建与发布；仅修改文档、规则、测试、服务端或不影响客户端产物的脚本时，均遵循此规则。服务端变更仍须验证和构建服务端，只有用户明确要求部署时才部署网关。具体约束见 [AGENTS.md](AGENTS.md)。
 
 本地构建配置与环境约定见 [构建说明](mobile/README.md)：
 

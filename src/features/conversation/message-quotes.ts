@@ -1,3 +1,4 @@
+import { decodeUserMessage, encodeUserMessage, type MessageReference } from '../../../server/user-message-format';
 import type { Root } from 'mdast';
 import { remarkFileReferences } from '../../ui/remark-file-references';
 import { parseRemoteFileHref } from '../../ui/remote-file-target';
@@ -7,6 +8,7 @@ import { toHast } from 'mdast-util-to-hast';
 import { unified } from 'unified';
 import remarkParse from 'remark-parse';
 import remarkGfm from 'remark-gfm';
+import { responseAnnotationDisplay } from './response-annotations';
 import { messageItemText } from './message-text';
 import { t } from '../../i18n';
 
@@ -14,7 +16,7 @@ export type QuoteRegion = 'user' | 'body' | 'commentary' | 'code' | 'table';
 export interface QuoteSource {
   backendId: string; threadId: string; turnId: string; itemId: string; region: QuoteRegion; revision: string;
 }
-export interface MessageQuote { id: string; source: QuoteSource; text: string }
+export interface MessageQuote { id: string; source: QuoteSource; text: string; desktopSource?: MessageReference['source'] }
 export interface SelectionQuote { source: QuoteSource; renderedText: string; start: number; end: number; text: string }
 type RecordValue = Record<string, any>;
 export function quoteRevision(text: string): string {
@@ -83,28 +85,25 @@ export function validateMessageQuote(value: unknown, backendId: string, active: 
   const { source, renderedText, text } = value;
   const turn = active?.turns?.find((turn: RecordValue) => String(turn.id) === source.turnId);
   const item = turn?.items?.find((item: RecordValue) => String(item.id) === source.itemId);
+  const precedingUser = turn?.items?.slice(0, turn.items.indexOf(item)).findLast((candidate: RecordValue) => candidate.type === 'userMessage');
+  const references = precedingUser ? decodeUserMessage(messageItemText(precedingUser)).references : [];
+  const displayed = references.length && item?.type === 'agentMessage' ? { ...item, text: responseAnnotationDisplay(messageItemText(item), references, t('引用')) } : item;
   if (source.backendId !== backendId || source.threadId !== String(active?.id ?? '') || !item || !['userMessage', 'agentMessage'].includes(item.type) ||
       !sourceRevisionMatches(source.revision, messageItemText(item)) ||
-      !matchesRenderedSnapshot(item, renderedText, source.region)) throw new Error(t('消息已更新，请重新选择'));
-  return { id: transportUuid(), source: { ...source }, text };
+      !(matchesRenderedSnapshot(item, renderedText, source.region) || matchesRenderedSnapshot(displayed, renderedText, source.region))) throw new Error(t('消息已更新，请重新选择'));
+  const raw = String(item.text ?? '');
+  const desktopSource = item.type === 'agentMessage' && raw === renderedText && raw.slice(value.start, value.end) === text
+    ? { messageId: String(item.id), startOffset: value.start, endOffset: value.end } : undefined;
+  return { id: transportUuid(), source: { ...source }, text, ...(desktopSource ? { desktopSource } : {}) };
 }
 export function quoteLabel(source: QuoteSource): string {
   return source.region === 'user' ? t('用户消息') : source.region === 'commentary' ? t('执行过程') : source.region === 'code' ? t('代码') : source.region === 'table' ? t('表格') : t('助手消息');
 }
-/** 可读且可恢复的引用封装。每行引用统一加前缀，因此选文本身包含“[问题]”也不会冒充问题边界。 */
+/** 桌面原生引用格式；来源偏移仅在原文与真实显示完全一致时携带。 */
 export function quoteInput(question: string, quotes: readonly MessageQuote[]): string {
-  if (!quotes.length) return question;
-  return quotes.map((quote, index) => `[${t('引用')} ${index + 1} · ${quoteLabel(quote.source)}]\n${quote.text.split('\n').map(line => '> ' + line).join('\n')}`).join('\n\n') + `\n\n[${t('问题')}]\n${question}`;
+  return encodeUserMessage(question, [], quotes.map(quote => ({ text: quote.text, ...(quote.desktopSource ? { source: quote.desktopSource } : {}) })));
 }
 export function splitQuoteInput(value: string): { question: string; referencePrefix?: string } {
-  const lines = value.split('\n'); let cursor = 0; let count = 0;
-  while (/^\[(?:引用|Quote) \d+ · [^\]\r\n]+\]$/u.test(lines[cursor] ?? '')) {
-    cursor++; count++; const start = cursor;
-    while (lines[cursor]?.startsWith('> ')) cursor++;
-    if (cursor === start || lines[cursor] !== '') return { question: value };
-    cursor++;
-  }
-  if (!count || !/^\[(?:问题|Question)\]$/u.test(lines[cursor] ?? '')) return { question: value };
-  const offset = lines.slice(0, cursor + 1).join('\n').length + 1;
-  return { question: value.slice(offset), referencePrefix: value.slice(0, offset) };
+  const parsed = decodeUserMessage(value);
+  return { question: parsed.body, ...(parsed.prefix ? { referencePrefix: parsed.prefix } : {}) };
 }

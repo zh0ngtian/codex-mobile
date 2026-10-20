@@ -3,6 +3,7 @@ import type {
   ApprovalsReviewer,
 } from "../ui/settings";
 import { hasTurnChangeStats, summarizeTurnChanges } from "../ui/conversation";
+import { confirmLocalUserMessages } from "./user-message-reconciliation";
 
 type AnyRecord = Record<string, any>;
 const initialTurnsLimit = 5;
@@ -30,10 +31,10 @@ export async function loadRunningTurnCommentary(client: Requester, threadId: str
 export function applyTurnCommentary(turns: AnyRecord[], detail: TurnCommentary): AnyRecord[] {
   return turns.map((turn) => {
     if (turn.id !== detail.turnId || !detail.items.length) return turn;
-    const current: AnyRecord[] = turn.items ?? [];
+    const current = confirmLocalUserMessages(turn.items ?? [], detail.items);
     const byId = new Map(current.map(item => [item.id, item]));
     for (const item of detail.items) {
-      // 回填用户必须精确匹配 ID，不能复用摘要对账的首条用户替换规则。
+      // 正式用户消息按 ID 合并；local-* 只在同回合内容得到确认后升级。
       const existing = byId.get(item.id);
       const merged = existing && (item.type === "userMessage" || existing.phase === "final_answer")
         ? { ...item, ...existing } : { ...existing, ...item };

@@ -41,6 +41,8 @@ final class AppSession {
     var archiveTargetID: UUID?
     var inputFocused = false
     var inputModalPresented = false
+    var referenceTarget: UUID?
+    var referenceRequestRevision = 0
     var historyEdit: HistoryEdit?
     var pendingNotification: NotificationTarget?
     var searchText = "" { didSet { if !projecting { searchDidChange() } } }
