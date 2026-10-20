@@ -1,10 +1,10 @@
 # Codex Mobile 交互与功能对齐约定
 
-## 2026-10-20 Windows 网关同步更新（服务端已验证，本机部署待验收）
+## 2026-10-20 Windows 网关同步更新（服务端已验证，Windows 本机已部署）
 
 整合主分支 c116165 至 Windows 兼容分支，客户端源码保持主分支原文。HTTP 操作记录、追问队列与 Bark 通知状态在 Windows 保留文件同步和原子重命名，跳过该平台不支持的目录 fsync；macOS/Linux 原有目录持久化及错误传播不变。覆盖此前新增父目录同步遗漏 Windows 兼容的行为，不更改移动端交互和消息协议。
 
-服务端 330 项通过、4 项按平台条件跳过，服务端构建通过；现役 Windows 本机网关按用户要求更新，静态前端和 app-server 保留。本记录不代表 macOS 正式网关或客户端发布。流程与验收边界见 [更新计划](superpowers/plans/2026-10-20-windows-gateway-update.md)。
+服务端 330 项通过、4 项按平台条件跳过，服务端构建通过；现役 Windows 本机网关已部署服务端提交 `5dfdaec`，本机及公网认证接口返回 200，产物摘要一致，静态前端摘要与 app-server 进程保持。本记录不代表 macOS 正式网关或客户端发布。流程与验收边界见 [更新计划](superpowers/plans/2026-10-20-windows-gateway-update.md)。
 
 ## 1. 来源、范围与当前状态
 
