@@ -38,24 +38,32 @@
 - [x] `python3 -B -m unittest discover -s tests/ci -p 'test_*.py'` 验证现有发布脚本集合。
 - [x] `NODE_OPTIONS=--no-experimental-webstorage npm test -- tests/ci --maxWorkers=2 --testTimeout=60000`，保存 `build-contract` 真实结果。
 - [x] `npm run typecheck`，保存 `typecheck` 真实结果。
-- [ ] 将四项 required checks 与日志路径写到仓库外 `~/Library/Application Support/ReleaseCoordinator/validations/table-message-menu-release-20261020/validation.json`；不填写未执行或失败检查为 passed。
-- [ ] 推送准备提交的固定 SHA 到独立远端分支，确认远端精确 SHA；执行 `releasectl ready --task table-message-menu-release-20261020 --sha <实际SHA> --validation <上述文件>`。版本与 main 推进交协调器完成。
+- [x] 将四项 required checks 与日志路径写到仓库外 `~/Library/Application Support/ReleaseCoordinator/validations/table-message-menu-release-20261020/validation.json`；不填写未执行或失败检查为 passed。
+- [x] 推送准备提交的固定 SHA 到独立远端分支，确认远端精确 SHA；执行 `releasectl ready --task table-message-menu-release-20261020 --sha <实际SHA> --validation <上述文件>`。版本与 main 推进交协调器完成。
 
 ### 4. 正式发布与渠道回验
 
-- [ ] 使用 `releasectl wait --task table-message-menu-release-20261020 --timeout 45` 等待状态变化，每轮确认真实阶段；不重建数据库、不重复独立发包。
-- [ ] 确认 APK 与已签名 IPA 使用同一新版本，严格高于 Android／iOS 固定渠道、HTTPS OTA、GitHub 标签及已有预留版本；版本仅由协调器分配。
-- [ ] 核对同一批次的 main、GitHub 双端构建、设备构建、Ad Hoc 签名、HTTPS OTA、固定 LAN APK／IPA、软件源与 verify 成功；签名保持原 Bundle ID、application-identifier、Team 和完整钥匙串权限。
-- [ ] 核对软件源最新上游文档与现有 unsigned GitHub 订阅、实际中文更新日志、当前 gh 用户及既有开发者署名保留；已签名 IPA 不上传软件源。
-- [ ] 核对成功 receipt 的任务来源与冻结 SHA；独立读取固定 JSON、HEAD 与完整 GET，比较版本、实际字节数与 SHA-256，HTTPS 保留 TLS 验证。
-- [ ] 若批次失败，保留不可变失败记录；修复先失败测试后最小实现，并登记关联最新失败叶节点的修复任务，不 resume 失败批次或用 unsigned 包替代 signed 交付。
+- [x] 使用 `releasectl wait --task table-message-menu-release-20261020 --timeout 45` 等待状态变化，每轮确认真实阶段；不重建数据库、不重复独立发包。
+- [x] 确认 APK 与已签名 IPA 使用同一新版本，严格高于 Android／iOS 固定渠道、HTTPS OTA、GitHub 标签及已有预留版本；版本仅由协调器分配。
+- [x] 核对同一批次的 main、GitHub 双端构建、设备构建、Ad Hoc 签名、HTTPS OTA、固定 LAN APK／IPA、软件源与 verify 成功；签名保持原 Bundle ID、application-identifier、Team 和完整钥匙串权限。
+- [x] 核对软件源最新上游文档与现有 unsigned GitHub 订阅、实际中文更新日志、当前 gh 用户及既有开发者署名保留；已签名 IPA 不上传软件源。
+- [x] 核对成功 receipt 的任务来源与冻结 SHA；独立读取固定 JSON、HEAD 与完整 GET，比较版本、实际字节数与 SHA-256，HTTPS 保留 TLS 验证。
+- [x] 若批次失败，保留不可变失败记录；修复先失败测试后最小实现，并登记关联最新失败叶节点的修复任务，不 resume 失败批次或用 unsigned 包替代 signed 交付。
 
 ### 5. 交付收尾
 
-- [ ] 更新 `docs/interaction-alignment.md` 的本次已发布状态与成功凭证引用，保存公共验收证据到 `docs/superpowers/plans/evidence/2026-10-20-table-message-menu-release.json`；不复制私有材料。
-- [ ] 在共享 main 锁下整合并推送文档收尾，不修改冻结清单或重建安装包；停止 heartbeat，按托管工具归档已完成 worktree。
-- [ ] 最终回复提供固定 OTA 安装页、APK 与 Ad Hoc 已签名 IPA 链接、版本、实际字节大小和完整 SHA-256。真机覆盖安装与数据保留仍待用户验收，不把构建或模拟器当作该层验收。
+- [x] 更新 `docs/interaction-alignment.md` 的本次已发布状态与成功凭证引用，保存公共验收证据到 `docs/superpowers/plans/evidence/2026-10-20-table-message-menu-release.json`；不复制私有材料。
+- [x] 在共享 main 锁下整合并推送文档收尾，不修改冻结清单或重建安装包；停止 heartbeat，按托管工具归档已完成 worktree。
+- [x] 最终回复提供固定 OTA 安装页、APK 与 Ad Hoc 已签名 IPA 链接、版本、实际字节大小和完整 SHA-256。真机覆盖安装与数据保留仍待用户验收，不把构建或模拟器当作该层验收。
 
 ## 发布准备检查
 
 规格审查与质量审查均通过；质量复核建议补充的双端同版本及高于全部现役／预留版本要求已写入渠道清单。独立worktree的6文件40项基线回归、40项适配器回归、36项恢复回归、212项完整Python回归、20文件143项构建契约及类型检查均通过。`release/notes.md`已用真实读取器核对，GitHub当前登录用户与软件源原署名均为`zh0ngtian`，保持原署名。当前固定APK、固定已签名IPA及软件源unsigned版本均为0.3.19；正式分配版本以协调器冻结结果为准。
+
+## 正式发布结果
+
+已发布 **0.3.20（3020）**。客户端成功批次 `2c691254-6aa4-4c30-a20b-41290514f884`，任务来源 `5007c4e5212e85a4b505e2df44adb408596ab73b`，冻结提交 `4ed12e0e7fa720e3a25bb5b778f9206f0fa8b84c`，包含修复提交 `7d372fa`。四项required checks及212项完整Python回归通过；协调器整合验证通过，GitHub双端正式CI `39381136147` 成功，全部必要阶段与最终verify成功，无失败或关联重发批次。
+
+GitHub APK／unsigned IPA、固定LAN APK／Ad Hoc已签名IPA、HTTPS OTA与软件源均已核对。独立完整GET确认APK为4,745,915字节，SHA-256为`bd309dfa76a14e11957cd035f976372b22fd7e1e4dea46569008a55cff820a07`；已签名IPA为4,834,512字节，SHA-256为`884c6ba4f26dee837bb676dc707a60591d0f134932abcd030910c170e1e39c28`。下载的IPA再次独立验签，Bundle ID、Team、签名App ID、完整权限散列和钥匙串组与上一成功版本一致。固定JSON、HEAD、完整GET、OTA manifest与安装页均核对通过，HTTPS保留TLS校验。软件源仅GitHub unsigned订阅，版本和中文日志与本次实际变化一致，保留原开发者署名。
+
+本次无服务端改动，未部署网关；未执行真机覆盖安装和数据保留验收。未创建测试会话。收尾仅更新文档与公开证据，不修改冻结清单、不重建安装包；参与任务heartbeat在交接协调器后停止，工作区由托管入口归档。[公共发布凭证](evidence/2026-10-20-table-message-menu-release.json)。

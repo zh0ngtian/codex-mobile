@@ -1,0 +1,63 @@
+{
+  "version": "0.3.20",
+  "buildNumber": "3020",
+  "taskSourceCommit": "5007c4e5212e85a4b505e2df44adb408596ab73b",
+  "clientBatch": "2c691254-6aa4-4c30-a20b-41290514f884",
+  "clientFrozenSha": "4ed12e0e7fa720e3a25bb5b778f9206f0fa8b84c",
+  "downloads": {
+    "apk": {
+      "url": "http://192.168.123.79:8765/channels/codex-mobile/latest.apk",
+      "version": "0.3.20",
+      "size": 4745915,
+      "sha256": "bd309dfa76a14e11957cd035f976372b22fd7e1e4dea46569008a55cff820a07"
+    },
+    "ipa": {
+      "url": "http://192.168.123.79:8765/channels/codex-mobile/latest.ipa",
+      "version": "0.3.20",
+      "size": 4834512,
+      "sha256": "884c6ba4f26dee837bb676dc707a60591d0f134932abcd030910c170e1e39c28",
+      "signed": true
+    }
+  },
+  "otaPage": "https://192.168.123.79:8766/channels/codex-mobile/current/install.html",
+  "source": {
+    "version": "0.3.20",
+    "buildVersion": "3020",
+    "downloadURL": "https://github.com/zh0ngtian/codex-mobile/releases/download/v0.3.20/CodexMobile-v0.3.20-unsigned.ipa",
+    "sha256": "c47f00274916c5d20d3a50869bf82df491f5e8130fa435579e19349bd6dd8f11",
+    "size": 4822447,
+    "localizedDescription": "- 修复会话表格长内容挤成窄列、换行后行高错误及内容重叠的问题，保持自然列宽和横向滚动。\n- 用户消息气泡长按统一显示“复制、编辑、选择文本”，正文和留白均可触发；选择文本支持系统手柄与选文引用，复制保留完整原文，编辑仍在原消息位置进行。\n",
+    "developerName": "zh0ngtian"
+  },
+  "checks": {
+    "adapter": 40,
+    "recovery": 36,
+    "python": 212,
+    "buildContract": 143,
+    "featureRegression": 40,
+    "ui": 8,
+    "typecheck": true
+  },
+  "signing": {
+    "signed": true,
+    "bundleId": "vip.loock.codexmobile",
+    "teamId": "SC456JW7RP",
+    "applicationIdentifier": "SC456JW7RP.app.jade6694.grapefruit3766",
+    "entitlementsSha256": "1e84a4c1ba74b9e374c364f26fefa112ceeea09de1a0ba0600403a763eb7952f",
+    "keychainAccessGroups": [
+      "SC456JW7RP.*",
+      "com.apple.token"
+    ],
+    "downloadedArchiveVerified": true
+  },
+  "receiptVerified": true,
+  "fixedChannelsVerified": true,
+  "deviceInstall": "真机覆盖安装与数据保留待验收",
+  "gatewayDeployed": false,
+  "githubRelease": "https://github.com/zh0ngtian/codex-mobile/releases/tag/v0.3.20",
+  "ci": {
+    "runId": 39381136147,
+    "attempt": 1,
+    "status": "success"
+  }
+}

@@ -794,10 +794,10 @@ iPhone 17 Pro、iOS 27.0、正常字号、竖屏共11个不同界面用例最终
 
 正式交付：客户端批次`0d407093-ef66-4856-96b9-f802fe0cf8ab` / 冻结`5da3e6c4311917f594a4e8a4827db7f335e448a7`，网关批次`bd7287de-0ffa-410b-865f-8eecee53cebd` / 冻结`d8510b43b753883b7019c2fc43a0c78a010dafff`，共同包含任务SHA`3507a21e0b97492be1efde79c4d238f4783afe02`。GitHub双端Release、固定LAN APK/已签名IPA、HTTPS OTA及unsigned软件源均回验通过；另完整GET复核固定APK为4,745,851字节，IPA为4,809,420字节，散列与成功凭证一致。OTA签名身份和完整钥匙串权限保持，软件源仅unsigned订阅，中文更新日志与冻结日志一致，原开发者署名保留。网关保留既有前端dist、依赖和部署身份，实际launchd进程及服务端摘要核对通过。未进行真机覆盖安装和数据保留验收。[公共发布凭证](superpowers/plans/evidence/2026-10-20-sidebar-lazy-release.json)，[iPhone固定OTA安装页](https://192.168.123.79:8766/channels/codex-mobile/current/install.html)。
 
-## 2026-10-20 表格布局与用户消息长按菜单（源码及模拟器已验证，已授权双端发布，待渠道验收）
+## 2026-10-20 表格布局与用户消息长按菜单（已发布0.3.20）
 
 用户指定会话 `01a157b1-c0db-7762-a920-f11eacd08492` 的真实表格复现长列压成逐字窄列、行高错误和相邻行重叠。现在按渲染后的自然宽度固定同列宽度，再测量换行高度；保留单列260pt上限、横向滚动、原有表头／字体／横线及富内容范围。用户气泡正文与留白共用系统 context menu，依次为“复制、编辑、选择文本”；系统关闭动画完成后再交接操作，避免旧菜单撤销新选区。选择文本保留系统手柄、复制与选文引用，退出后恢复消息菜单，单击时间与原位编辑不变。覆盖此前正文长按直接选文、背景菜单只有复制和编辑的约定。
 
 修改前两项新增UI用例复现问题；最终独立iPhone 17 Pro、iOS27、正常字号、竖屏的八项界面回归全部通过，包含原会话表格的列宽／行高／横向滚动、短列、三项菜单及顺序、系统选文与退出后编辑、时间与复制、200行长消息和用户／执行过程／代码／表格选文引用。6文件40项相关回归与类型检查通过，最终截图已核对，四个生产修改Swift文件与模拟器编译副本逐字节一致。测试只使用离线夹具，未创建真实测试会话，未修改或归档用户指定会话。
 
-开发基线为`c116165`，修复提交`7d372fa`先按默认流程合入并推送main。用户随后明确授权发布，已登记客户端任务`table-message-menu-release-20261020`，在独立worktree完成中文更新日志与发布门禁，由现役协调器整合固定SHA、分配版本、构建、签名和发布双端固定渠道；成功receipt与渠道验收尚待完成。本次无服务端改动，不部署网关，人工及真机验收仍待用户确认。[实现与验收记录](plans/2026-10-20-table-message-context-menu.md)，[发布计划](superpowers/plans/2026-10-20-table-message-menu-release.md)。
+开发基线为`c116165`，修复提交`7d372fa`先按默认流程合入并推送main；用户随后授权双端发布。客户端任务`table-message-menu-release-20261020`已成功交付0.3.20（3020），成功批次`2c691254-6aa4-4c30-a20b-41290514f884`，冻结`4ed12e0e7fa720e3a25bb5b778f9206f0fa8b84c`，包含已验证任务SHA`5007c4e5212e85a4b505e2df44adb408596ab73b`。GitHub双端Release、固定LAN APK／已签名IPA、HTTPS OTA及unsigned软件源已通过最终receipt与独立JSON／HEAD／完整GET回验；下载IPA独立验签并核对原安装身份及完整钥匙串权限连续性，中文更新日志与实际修复一致，开发者署名保留。本次无服务端改动，未部署网关；人工及真机覆盖安装、数据保留仍待用户验收。[实现与验收记录](plans/2026-10-20-table-message-context-menu.md)，[发布计划](superpowers/plans/2026-10-20-table-message-menu-release.md)，[公共发布凭证](superpowers/plans/evidence/2026-10-20-table-message-menu-release.json)。
