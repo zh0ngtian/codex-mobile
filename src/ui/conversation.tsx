@@ -614,8 +614,10 @@ export function reconcileRecentTurns(
   const mergeItems = (
     currentItems: ConversationRecord[],
     incomingItems: ConversationRecord[],
+    preserveCurrentOrder = false,
   ) => {
     const used = new Set<number>();
+    const replacements = new Map<number, ConversationRecord>();
     const ordered = incomingItems.map((incoming) => {
       let currentIndex = currentItems.findIndex(
         (current, index) => !used.has(index) && current.id === incoming.id,
@@ -637,8 +639,21 @@ export function reconcileRecentTurns(
         merged.text = current.text;
         if (current.phase != null) merged.phase = current.phase;
       }
+      replacements.set(currentIndex, merged);
       return merged;
     });
+    if (preserveCurrentOrder) {
+      // 摘要省略过程，不能用它的精简顺序重排已收到的完整回合。
+      const result = currentItems.map((item, index) => replacements.get(index) ?? item);
+      const matched = new Set(replacements.values());
+      for (let index = 0; index < ordered.length; index += 1) {
+        const item = ordered[index];
+        if (matched.has(item)) continue;
+        const next = ordered.slice(index + 1).find(candidate => matched.has(candidate));
+        result.splice(next ? result.indexOf(next) : result.length, 0, item);
+      }
+      return result;
+    }
     return [
       ...ordered,
       ...currentItems.filter((_, index) => !used.has(index)),
@@ -652,7 +667,7 @@ export function reconcileRecentTurns(
       ["inProgress", "in_progress", "running"].includes(incoming.status);
     const merged: ConversationRecord = staleProgress
       ? { ...incoming, ...current, items: mergeItems(incoming.items ?? [], current.items ?? []) }
-      : { ...current, ...incoming, items: mergeItems(current.items ?? [], incoming.items ?? []) };
+      : { ...current, ...incoming, items: mergeItems(current.items ?? [], incoming.items ?? [], incoming.itemsView === "summary") };
     delete merged.clientSequence;
     return merged;
   };

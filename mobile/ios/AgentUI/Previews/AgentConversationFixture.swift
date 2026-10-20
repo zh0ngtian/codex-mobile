@@ -60,6 +60,13 @@ final class AgentConversationFixture {
             deferredCommentary = history
             value.messages.removeAll { $0.id == history.id }
         }
+        if ProcessInfo.processInfo.arguments.contains("--agent-running-history-fixture") {
+            value.busy = true
+            value.messages[1].commentaryIsRunning = true
+            value.messages[2].commentaryIsRunning = true
+            value.messages[2].status = nil
+            value.messages[2].timestamp = nil
+        }
         if ProcessInfo.processInfo.arguments.contains("--agent-steered-replies-fixture") {
             func history(_ id: String, _ text: String) -> NativeMessage {
                 NativeMessage(id: id, role: "activity", text: "", turnId: "fixture-turn",
@@ -355,6 +362,13 @@ final class AgentConversationFixture {
             snapshot.title = "会话进入回归"
             snapshot.messages = [NativeMessage(id: "entry-answer", role: "assistant", text: "会话进入标记。正文应当直接显示，不能继承侧栏的透明度转场。", phase: "final_answer")]
             snapshot.sidebarOpen = false
+            snapshot.commandResults = [NativeCommandResult(id: command.id, name: command.name, ok: true, contextId: snapshot.contextId)]
+            publish()
+        } else if command.name == "thread.manage", command.params["action"] == .string("refresh"),
+                  ProcessInfo.processInfo.arguments.contains("--agent-running-history-fixture") {
+            snapshot.busy = false
+            for index in snapshot.messages.indices { snapshot.messages[index].commentaryIsRunning = false }
+            snapshot.messages[2].status = "12秒"
             snapshot.commandResults = [NativeCommandResult(id: command.id, name: command.name, ok: true, contextId: snapshot.contextId)]
             publish()
         } else if command.name == "thread.manage", command.params["action"] == .string("refresh"),

@@ -24,6 +24,8 @@ export interface NativeMessage { rawText?: string; references?: MessageReference
   commentary?: NativeCommentaryEntry[]; commentaryBlockId?: string;
   /** 连续历史可归入紧随final；旧回答保留原消息身份，同时以isPreviousReply条目收入过程。 */
   commentaryCanAttachToReply?: boolean;
+  /** 仅所属逻辑回合仍在运行时展开过程，不借用整个会话的busy状态。 */
+  commentaryIsRunning?: boolean;
   /** 由normalized原始顺序确定当前运行turn的连续commentary尾段，不能按Native工具汇总位置猜测。 */
   commentaryIsLiveTail?: boolean }
 export interface NativeAttachment { id: string; name: string; detail?: string; imageURL?: string; type?: string; command?: NativeCommand; size?: number }

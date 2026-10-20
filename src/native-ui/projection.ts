@@ -79,7 +79,7 @@ export function projectConversation(active: RecordValue | null, imageURL: (path:
       const flushHistory = (nextIsFinal = false) => {
         if (!historyCount) return;
         const commentaryBlockId = `${historyID}:commentary`;
-        messages.push({ id: `${historyID}:history`, role: 'activity', text: '', scrollAnchorId: historyAnchor, scrollAnchorIds: [...new Set(historyAnchors)], commentary, commentaryBlockId, commentaryCanAttachToReply: nextIsFinal && !historyInterrupted,
+        messages.push({ id: `${historyID}:history`, role: 'activity', text: '', scrollAnchorId: historyAnchor, scrollAnchorIds: [...new Set(historyAnchors)], commentary, commentaryBlockId, commentaryCanAttachToReply: nextIsFinal && !historyInterrupted, commentaryIsRunning: running,
           blocks: [{ id: commentaryBlockId, kind: 'disclosure', title: `${t('历史过程')} (${historyCount})`, children: history }] });
         history = []; commentary = []; historyAnchors = []; historyCount = 0; historyInterrupted = false;
       };
@@ -128,6 +128,7 @@ export function projectConversation(active: RecordValue | null, imageURL: (path:
           if (timestamp) blocks.push({ id: `${id}:timestamp`, kind: 'text', text: timestamp });
           const finalStatus = !commentary && !entry.supersededAnswer && (!running || item === presentation.final) ? status : undefined;
           messages.push({ id, quoteSource: sourceFor(item), role: 'assistant', rawText: nativeItemText(item), references: responseReferences, text: responseAnnotationDisplay(nativeItemText(item), responseReferences, t('引用')), scrollAnchorId: scrollAnchor(item, 'assistant'), status: finalStatus, turnId, itemId: String(item.id), phase: typeof item.phase === 'string' ? item.phase : undefined,
+            ...(!commentary ? { commentaryIsRunning: running } : {}),
             ...(entry.supersededAnswer ? { commentaryCanAttachToReply: true, commentary: [{ id, quoteSource: sourceFor(item), text: nativeItemText(item), blocks: [...blocks], isPreviousReply: true,
               ...(typeof item.timestamp === 'number' && Number.isFinite(item.timestamp) && item.timestamp > 0 ? { timestamp: item.timestamp } : {}) }] } : {}),
             ...(commentary ? { commentaryIsLiveTail: liveCommentaryIDs.has(String(item.id)) } : {}),

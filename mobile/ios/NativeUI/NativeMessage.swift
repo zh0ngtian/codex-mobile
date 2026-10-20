@@ -18,6 +18,7 @@ struct NativeMessage: Codable, Identifiable {
     var commentary: [NativeCommentaryEntry]? = nil
     var commentaryBlockId: String? = nil
     var commentaryCanAttachToReply: Bool? = nil
+    var commentaryIsRunning: Bool? = nil
     var commentaryIsLiveTail: Bool? = nil
     var scrollAnchorId: String? = nil
     var scrollAnchorIds: [String]? = nil

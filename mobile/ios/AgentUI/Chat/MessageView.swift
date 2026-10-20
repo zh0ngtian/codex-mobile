@@ -12,7 +12,7 @@ struct MessageView: View {
                 else { UserMessageView(message: message, conversationID: conversationID) }
             } else {
                 if !message.commentary.isEmpty || !message.duration.isEmpty {
-                    CommentaryHistoryView(entries: message.commentary, expanded: $progressExpanded, duration: message.duration)
+                    CommentaryHistoryView(entries: message.commentary, expanded: $progressExpanded, duration: message.commentaryIsRunning ? "" : message.duration)
                 }
                 if !message.text.isEmpty { AssistantBody(text: message.text, quoteSource: message.quoteSource, references: message.references) }
                 LiveBusinessBlocks(messageID: message.id)
@@ -27,5 +27,8 @@ struct MessageView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .onChange(of: message.commentaryIsRunning, initial: true) { _, running in
+            progressExpanded = running
+        }
     }
 }

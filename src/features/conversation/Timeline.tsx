@@ -712,10 +712,9 @@ function CompletedResponseSegment({
   finalDurationLabel: string | null;
   durationLabel: string | null;
 }) {
-  const [showPrevious, setShowPrevious] = useState(false);
-  const hasFinal = Boolean(presentation.final);
-  // 最新响应开始输出 final 时收起过程，后续流式更新保留手动展开状态。
-  useEffect(() => setShowPrevious(false), [hasFinal]);
+  const [showPrevious, setShowPrevious] = useState(presentation.running);
+  // 运行中默认展开，结束时收起；同一阶段的流式更新保留手动选择。
+  useEffect(() => setShowPrevious(presentation.running), [presentation.running]);
   const { entries, historyCount: previousCount } = presentation;
   const renderEntry = (entry: TurnResponseEntry, index: number) => {
     const commentary = entry.item.type === "agentMessage" && (entry.item.phase === "commentary" || entry.history);

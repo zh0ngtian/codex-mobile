@@ -518,7 +518,7 @@ describe("移动端对话格式", () => {
     expect(view.queryByText("测试完成")).not.toBeNull();
   });
 
-  it("final answer 开始流式输出时立即折叠过程，并保留用户手动展开状态", () => {
+  it("final answer 流式输出期间过程保持展开，回合结束后折叠", () => {
     const turn = { id: "phase-switch", status: "inProgress", items: [
       { id: "u", type: "userMessage", text: "修复代码" },
       { id: "c", type: "agentMessage", phase: "commentary", text: "正在检查代码" },
@@ -535,16 +535,16 @@ describe("移动端对话格式", () => {
     const withFinal = { ...turn, items: [...turn.items, { id: "f", type: "agentMessage", phase: "final_answer", text: "修复完成" }] };
     rerender(<TurnCard turn={withFinal} client={null} />);
     expect(view.getByText("修复完成")).toBeTruthy();
-    expect(view.queryByText("正在检查代码")).toBeNull();
-    const toggle = view.getByRole("button", { name: "之前的 1 条消息" });
-    expect(toggle.getAttribute("aria-expanded")).toBe("false");
-    fireEvent.click(toggle);
     expect(view.getByText("正在检查代码")).toBeTruthy();
-    expect(view.queryByRole("button", { name: "已读取 app.ts" })).toBeNull();
-    rerender(<TurnCard turn={{ ...withFinal, status: "completed" }} client={null} />);
+    const toggle = view.getByRole("button", { name: "之前的 1 条消息" });
     expect(toggle.getAttribute("aria-expanded")).toBe("true");
     fireEvent.click(toggle);
     expect(view.queryByText("正在检查代码")).toBeNull();
+    expect(view.queryByRole("button", { name: "已读取 app.ts" })).toBeNull();
+    rerender(<TurnCard turn={{ ...withFinal, status: "completed" }} client={null} />);
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(toggle);
+    expect(view.getByText("正在检查代码")).toBeTruthy();
   });
 
   it("引导后尚无新 final 时旧回答收入过程，最新 commentary 继续实时展示", () => {
@@ -557,13 +557,13 @@ describe("移动端对话格式", () => {
       { id: "cmd", type: "commandExecution", command: "npm run build" },
     ] }} client={null} />);
     const view = within(container);
-    expect(view.queryByText("第一段结果")).toBeNull();
-    expect(view.queryByText("第一段过程")).toBeNull();
+    expect(view.getByText("第一段结果").closest(".previous-messages")).not.toBeNull();
+    expect(view.getByText("第一段过程")).toBeTruthy();
     expect(view.getByText("继续构建")).toBeTruthy();
     expect(view.getByText("第二段过程")).toBeTruthy();
     expect(container.querySelector(".final-answer-metadata")).toBeNull();
     fireEvent.click(view.getByRole("button", { name: "之前的 2 条消息" }));
-    expect(view.getByText("第一段结果").closest(".previous-messages")).not.toBeNull();
+    expect(view.queryByText("第一段结果")).toBeNull();
     expect(view.queryByRole("button", { name: "已执行 npm run build" })).toBeNull();
   });
 
@@ -1323,6 +1323,27 @@ describe("移动端对话格式", () => {
       expect(view.queryByRole("separator", { name: "上下文已压缩" })).toBeNull();
       expect(view.getByText("继续完成任务")).toBeTruthy();
     }
+  });
+
+  it("运行中的历史过程默认展开，完成后折叠，流式更新保留手动展开选择", () => {
+    const items = [
+      { id: "u", type: "userMessage", text: "检查" },
+      { id: "c", type: "agentMessage", phase: "commentary", text: "当前检查过程" },
+      { id: "f", type: "agentMessage", phase: "final_answer", text: "最终回答" },
+    ];
+    const { container, rerender } = render(<TurnCard turn={{ id: "turn", status: "inProgress", items }} client={null} />);
+    const view = within(container);
+    expect(view.getByText("当前检查过程")).toBeVisible();
+    const toggle = view.getByRole("button", { name: /之前的/ });
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    fireEvent.click(toggle);
+    expect(view.queryByText("当前检查过程")).toBeNull();
+    rerender(<TurnCard turn={{ id: "turn", status: "inProgress", items: [...items.slice(0, 2), { ...items[2], text: "最终回答继续输出" }] }} client={null} />);
+    expect(view.queryByText("当前检查过程")).toBeNull();
+    fireEvent.click(toggle);
+    rerender(<TurnCard turn={{ id: "turn", status: "completed", items }} client={null} />);
+    expect(view.queryByText("当前检查过程")).toBeNull();
+    expect(view.getByRole("button", { name: /之前的/ })).toHaveAttribute("aria-expanded", "false");
   });
 
   it("turn/completed 只合并最终摘要，不丢失本地累计的完整过程", () => {
@@ -2132,7 +2153,7 @@ it('运行转完成后截图随各自 commentary 折叠，用户插话和多个 
  ];
  const {container,rerender}=render(<TurnCard client={null} turn={{id:'transition',status:'inProgress',items}}/>);
  expect(within(container).getByText('第二步')).toBeTruthy();
- expect(container.querySelectorAll('.commentary-message .message-images')).toHaveLength(1);
+ expect(container.querySelectorAll('.commentary-message .message-images')).toHaveLength(2);
  rerender(<TurnCard client={null} turn={{id:'transition',status:'completed',items:[...items,
   {id:'f2',type:'agentMessage',phase:'final_answer',text:'再次完成'},
   {id:'extra-final',type:'agentMessage',phase:'final_answer',text:'最终补充'},

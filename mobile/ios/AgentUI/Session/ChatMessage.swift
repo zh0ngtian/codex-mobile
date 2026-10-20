@@ -12,12 +12,13 @@ struct ChatMessage: Identifiable, Codable, Equatable, Hashable, Sendable {
     var createdAt = Date.now
     var attachments: [AttachmentItem] = []
     var commentary: [ProgressEntry] = []
+    var commentaryIsRunning = false
     var outputs: [OutputItem] = []
     var quoteSource: NativeQuoteSource? = nil
     var turnID: UUID?
     var timestampLabel: String { timestamp.isEmpty ? "" : MessageTimeFormatting.string(from: createdAt) }
     static func == (lhs: Self, rhs: Self) -> Bool {
-        lhs.rawText == rhs.rawText && lhs.references == rhs.references && lhs.id == rhs.id && lhs.isUser == rhs.isUser && lhs.text == rhs.text && lhs.attachments == rhs.attachments && lhs.commentary == rhs.commentary && lhs.outputs == rhs.outputs && lhs.kind == rhs.kind && lhs.createdAt == rhs.createdAt && lhs.duration == rhs.duration && lhs.timestamp == rhs.timestamp && lhs.turnID == rhs.turnID && lhs.quoteSource == rhs.quoteSource
+        lhs.rawText == rhs.rawText && lhs.references == rhs.references && lhs.id == rhs.id && lhs.isUser == rhs.isUser && lhs.text == rhs.text && lhs.attachments == rhs.attachments && lhs.commentary == rhs.commentary && lhs.commentaryIsRunning == rhs.commentaryIsRunning && lhs.outputs == rhs.outputs && lhs.kind == rhs.kind && lhs.createdAt == rhs.createdAt && lhs.duration == rhs.duration && lhs.timestamp == rhs.timestamp && lhs.turnID == rhs.turnID && lhs.quoteSource == rhs.quoteSource
     }
     func hash(into hasher: inout Hasher) { hasher.combine(id) }
 }

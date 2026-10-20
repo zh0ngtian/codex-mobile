@@ -20,6 +20,22 @@ function controller(overrides: Partial<NativeWorkspaceController> = {}): NativeW
 }
 
 describe('AgentApp 真实展示契约', () => {
+  it('当前回合过程在运行中默认展开，结束后折叠且不影响较早回合', () => {
+    const items = [
+      { id: 'u', type: 'userMessage', text: '检查项目' },
+      { id: 'c', type: 'agentMessage', phase: 'commentary', text: '检查过程' },
+      { id: 'f', type: 'agentMessage', phase: 'final_answer', text: '正在输出回答' },
+    ];
+    const previous = { id: 'previous', status: 'completed', items };
+    const active = { id: 'current', status: 'inProgress', items };
+    const running = projectConversation({ turns: [previous, active] }, path => path);
+    expect(running.find(message => message.id === 'current:c:history')).toMatchObject({ commentaryIsRunning: true });
+    expect(running.find(message => message.id === 'current:f')).toMatchObject({ commentaryIsRunning: true });
+    expect(running.find(message => message.id === 'previous:c:history')?.commentaryIsRunning).not.toBe(true);
+    const completed = projectConversation({ turns: [{ ...active, status: 'completed' }] }, path => path);
+    expect(completed.find(message => message.id === 'current:c:history')?.commentaryIsRunning).not.toBe(true);
+    expect(completed.find(message => message.id === 'current:f')?.commentaryIsRunning).not.toBe(true);
+  });
   it.skipIf(process.platform !== 'darwin')('Swift DTO 解码真实展示字段并无损往返', () => {
     const directory = mkdtempSync(join(tmpdir(), 'agentapp-projection-'));
     try {
