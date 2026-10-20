@@ -5,6 +5,7 @@
 - [项目 README](../README.md)：使用方法、架构、配置、客户端能力与边界。
 - [交互与功能对齐约定](interaction-alignment.md)：AgentApp 基线、最新用户确认、覆盖关系、待验收项与后续变更记录；交互和功能修改须同步维护。
 - [自动安装指南](../install.md)：macOS npm 网关安装和开机启动。
+- [Windows 独立后台服务](windows-independent-service.md)：共享连接、无终端入口、空闲更新、回退与本机历史验收。
 - [仓库协作约定](../AGENTS.md)与 [Git 提交规范](commit-conventions.md)：默认验证后合入 main、提交推送；main 在修改期间有新提交才需整合回归，默认不发布。
 - [发布协调说明](release-coordination.md)：仅在明确要求发布或部署时使用的 releasectl 配置、适配器入口、必要验证、共同凭证及实际验收状态。
 - [iOS OTA 发布](ios-ota-release.md)：本机签名、身份连续性、固定渠道、软件源发布文档入口及安装诊断。

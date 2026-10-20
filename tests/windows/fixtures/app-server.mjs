@@ -1,0 +1,20 @@
+import { createServer } from 'node:http';
+import { readFile } from 'node:fs/promises';
+import { WebSocketServer } from 'ws';
+const [port, statePath, version, fail] = process.argv.slice(2);
+if (fail === 'fail') process.exit(2);
+const server = createServer((_req, res) => res.end('ready'));
+const wss = new WebSocketServer({ server });
+wss.on('connection', (ws) => ws.on('message', async (bytes) => {
+  const r = JSON.parse(bytes.toString()); if (!Object.hasOwn(r, 'id')) return;
+  const state = JSON.parse(await readFile(statePath, 'utf8'));
+  let result;
+  if (r.method === 'initialize') result = { userAgent: `fixture/${version}` };
+  else if (r.method === 'model/list') result = { data: [] };
+  else if (r.method === 'thread/loaded/list') result = { data: ['main', 'child'], nextCursor: null };
+  else if (r.method === 'thread/read') result = { thread: { id: r.params.threadId, status: { type: r.params.threadId === 'child' && state.busy ? 'active' : 'idle', activeFlags: [] } } };
+  else if (r.method === 'thread/backgroundTerminals/list') result = { data: [], nextCursor: null };
+  else result = {};
+  ws.send(JSON.stringify({ id: r.id, result }));
+}));
+server.listen(Number(port), '127.0.0.1');
