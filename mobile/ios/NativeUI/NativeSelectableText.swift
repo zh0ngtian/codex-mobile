@@ -81,8 +81,26 @@ struct NativeSelectableText: UIViewRepresentable {
         var openLink: (URL) -> Void
         var onTap: (() -> Void)?
         @objc func tapped(_ recognizer: UITapGestureRecognizer) {
-            guard recognizer.state == .ended, let view = recognizer.view as? UITextView, view.selectedRange.length == 0 else { return }
+            guard recognizer.state == .ended, let view = recognizer.view as? UITextView else { return }
+            handleTap(at: recognizer.location(in: view), in: view)
+        }
+        func handleTap(at point: CGPoint, in view: UITextView) {
+            guard view.selectedRange.length == 0 else { return }
+            if let url = link(at: point, in: view) {
+                // 用户气泡默认关闭系统选择，仍须允许单击链接；选择模式交给 UITextView，避免打开两次。
+                if !view.isSelectable { openLink(url) }
+                return
+            }
             onTap?()
+        }
+        private func link(at point: CGPoint, in view: UITextView) -> URL? {
+            let position = CGPoint(x: point.x - view.textContainerInset.left, y: point.y - view.textContainerInset.top)
+            let manager = view.layoutManager
+            let glyph = manager.glyphIndex(for: position, in: view.textContainer)
+            guard glyph < manager.numberOfGlyphs,
+                  manager.boundingRect(forGlyphRange: NSRange(location: glyph, length: 1), in: view.textContainer).contains(position) else { return nil }
+            let character = manager.characterIndexForGlyph(at: glyph)
+            return view.attributedText.attribute(.link, at: character, effectiveRange: nil) as? URL
         }
         func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
             onTap != nil && (gestureRecognizer.view as? UITextView)?.selectedRange.length == 0

@@ -25,7 +25,7 @@ struct UserMessageView: View {
                     VStack(alignment: .leading, spacing: 8) {
                         if !message.references.isEmpty { MessageReferenceCards(references: message.references) }
                         if !displayText.isEmpty {
-                            NativeSelectableText(text: NSAttributedString(string: displayText, attributes: [.font: UIFont.preferredFont(forTextStyle: .body), .foregroundColor: UIColor(preferences.accent.userMessageText(in: colorScheme))]), identifier: "user.selectable", onTap: { showTimestamp.toggle() }, fitsContentWidth: true,
+                            NativeSelectableText(text: NativeSelectableMarkdown.inline(displayText, color: UIColor(preferences.accent.userMessageText(in: colorScheme))), identifier: "user.selectable", openLink: openLink, onTap: { showTimestamp.toggle() }, fitsContentWidth: true,
                                 selectionEnabled: selectionRequest != nil, selectionRequest: selectionRequest,
                                 onSelectionEnd: { selectionRequest = nil })
                                 .selectionQuoteSource(message.quoteSource)
@@ -55,5 +55,11 @@ struct UserMessageView: View {
                 }
             }
         }
+    }
+
+    private func openLink(_ url: URL) {
+        if ["http", "https", "mailto", "tel"].contains(url.scheme?.lowercased() ?? "") {
+            UIApplication.shared.open(url)
+        } else { session.nativeStore?.command("file.open", ["href": .string(url.absoluteString)]) }
     }
 }

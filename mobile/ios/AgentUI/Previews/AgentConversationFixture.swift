@@ -97,6 +97,9 @@ final class AgentConversationFixture {
         if ProcessInfo.processInfo.arguments.contains("--agent-edit-history-fixture") {
             value.messages[0].actions = [NativePanelItem(id: "edit", kind: "action", title: "编辑", command: NativeCommand(name: "message.edit", params: ["id": .string("question")]))]
         }
+        if ProcessInfo.processInfo.arguments.contains("--agent-user-links-fixture") {
+            value.messages[0].text = "看下这个教程 [https://example.com/blogs/?post=usersettings](https://example.com/blogs/?post=usersettings)\n"
+        }
         if ProcessInfo.processInfo.arguments.contains("--agent-duplicate-time-fixture") {
             value.busy = true
             value.messages = [NativeMessage(id: "earlier", role: "assistant", text: "较早的执行进展。", blocks: [NativePanelItem(id: "earlier:timestamp", kind: "text", text: "2026-10-18 10:44")], timestamp: date.addingTimeInterval(86400).timeIntervalSince1970, phase: "commentary", commentaryIsLiveTail: false)]

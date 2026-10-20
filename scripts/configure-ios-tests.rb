@@ -38,8 +38,8 @@ end
 project.save
 install_markdown_tests = lambda do |test_target|
   group = project.main_group.find_subpath('MarkdownRenderingRegression', true)
-  names = %w[NativeMarkdownBlock NativeMarkdownBlockKind NativeMarkdownSyntax NativeMarkdownHTMLScope NativeMarkdownDisplaySource NativeInlineMarkdown NativeTextRhythm NativeSelectableMarkdown NativeSystemTypography]
-  paths = [File.join(root, 'mobile/ios/MarkdownLayoutUITests.swift')] + names.map { |name| File.join(root, "mobile/ios/NativeUI/#{name}.swift") }
+  names = %w[NativeMarkdownBlock NativeMarkdownBlockKind NativeMarkdownSyntax NativeMarkdownHTMLScope NativeMarkdownDisplaySource NativeInlineMarkdown NativeTextRhythm NativeSelectableMarkdown NativeSystemTypography NativeSelectableText]
+  paths = %w[MarkdownLayoutUITests UserMessageLinksUITests].map { |name| File.join(root, "mobile/ios/#{name}.swift") } + names.map { |name| File.join(root, "mobile/ios/NativeUI/#{name}.swift") }
   paths.each do |path|
     reference = project.files.find { |file| file.real_path.to_s == path } || group.new_file(path)
     test_target.source_build_phase.add_file_reference(reference) unless test_target.source_build_phase.files_references.include?(reference)
