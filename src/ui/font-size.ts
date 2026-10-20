@@ -1,3 +1,5 @@
+import { isIOSNativeHost } from "../native-ui/preference";
+
 export const FONT_SIZE_STORAGE_KEY = "codex-mobile:font-size";
 export const FONT_SCALES = {
   small: 0.875,
@@ -12,9 +14,9 @@ export function readFontSize(): FontSize {
     const value = window.localStorage.getItem(FONT_SIZE_STORAGE_KEY);
     if (value && Object.hasOwn(FONT_SCALES, value)) return value as FontSize;
   } catch {
-    // 存储不可读时仍允许使用标准字号进入应用。
+    // 存储不可读时仍使用当前客户端的默认字号进入应用。
   }
-  return "standard";
+  return isIOSNativeHost() ? "small" : "standard";
 }
 
 export function applyFontSize(size: FontSize) {

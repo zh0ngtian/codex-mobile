@@ -1,10 +1,10 @@
 import { useCallback, useRef, useState } from "react";
 
-export function useSidebarRefresh(onRefresh?: () => void) {
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+export function useSidebarRefresh(onRefresh?: () => void, initiallyOpen = true) {
+  const [sidebarOpen, setSidebarOpen] = useState(initiallyOpen);
   const [refreshVersion, setRefreshVersion] = useState(0);
   const [silentRefreshVersion, setSilentRefreshVersion] = useState(0);
-  const sidebarOpenRef = useRef(true);
+  const sidebarOpenRef = useRef(initiallyOpen);
 
   const refresh = useCallback(() => {
     onRefresh?.();

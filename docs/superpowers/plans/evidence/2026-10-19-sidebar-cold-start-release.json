@@ -1,0 +1,84 @@
+{
+  "status": "已验证，已发布",
+  "task": "sidebar-cold-start-pagination-empty-state-20261019",
+  "taskSource": "6da76f7b2daf3b6be464475995048b22912d0f58",
+  "batch": "67d45d61-1c22-424e-bdd2-9eba1b54e670",
+  "frozenSha": "8c89e0f46e88aa449cde084bc8606d67ecf678a5",
+  "version": "0.3.16",
+  "buildNumber": "3016",
+  "githubRelease": "https://github.com/zh0ngtian/codex-mobile/releases/tag/v0.3.16",
+  "installUrl": "https://192.168.123.79:8766/channels/codex-mobile/current/install.html",
+  "apk": {
+    "version": "0.3.16",
+    "size": 4725083,
+    "sha256": "9589432b8f5896058cf1ed140328970f6876d393ffe1c4c7ce8c3c0d34ebca39",
+    "sourceCommit": "8c89e0f46e88aa449cde084bc8606d67ecf678a5",
+    "url": "http://192.168.123.79:8765/channels/codex-mobile/latest.apk",
+    "headSize": 4725083,
+    "notesVerified": true
+  },
+  "ipa": {
+    "version": "0.3.16",
+    "size": 4681376,
+    "sha256": "a2f8679ab640aeeb8482fcb92649c5dd927be39b554d8cc77cfc461fd6d1a7bc",
+    "sourceCommit": "8c89e0f46e88aa449cde084bc8606d67ecf678a5",
+    "url": "http://192.168.123.79:8765/channels/codex-mobile/latest.ipa",
+    "headSize": 4681376,
+    "notesVerified": true,
+    "signed": true,
+    "signing": {
+      "signed": true,
+      "bundleId": "vip.loock.codexmobile",
+      "teamId": "SC456JW7RP",
+      "applicationIdentifier": "SC456JW7RP.app.jade6694.grapefruit3766",
+      "keychainAccessGroups": [
+        "SC456JW7RP.*",
+        "com.apple.token"
+      ],
+      "entitlementsSha256": "1e84a4c1ba74b9e374c364f26fefa112ceeea09de1a0ba0600403a763eb7952f"
+    }
+  },
+  "unsignedIpa": {
+    "version": "0.3.16",
+    "size": 4677242,
+    "sha256": "0bdc2b2cdd5fb8f83b7f1a1198dff5bc5458f4ee22da41e878dc565ded649b87",
+    "downloadURL": "https://github.com/zh0ngtian/codex-mobile/releases/download/v0.3.16/CodexMobile-v0.3.16-unsigned.ipa",
+    "developerName": "zh0ngtian",
+    "notesVerified": true,
+    "signed": false
+  },
+  "validation": {
+    "fullSuite": {
+      "files": 147,
+      "tests": 1643,
+      "status": "passed"
+    },
+    "adapterRegression": 204,
+    "coordinatorRecovery": 59,
+    "buildContract": 140,
+    "typecheck": "passed",
+    "frontendBuild": "passed",
+    "specReview": "passed",
+    "qualityReview": "passed",
+    "simulator": {
+      "device": "iPhone 17 Pro",
+      "runtime": "iOS 27.0",
+      "font": "normal",
+      "orientation": "portrait",
+      "tests": 2,
+      "coldLaunchRounds": 3,
+      "status": "passed",
+      "normalAppRestored": true,
+      "lockReleased": true,
+      "testConversationsCreated": 0
+    },
+    "formalCi": 39224117352,
+    "developmentCi": 39224117195,
+    "channelVerification": "清单、HEAD及固定APK/IPA与HTTPS IPA完整GET均通过；软件源unsigned版本、中文日志和署名核对通过",
+    "signatureContinuity": "Bundle ID、Team、application-identifier、权限散列与钥匙串组和0.3.15一致",
+    "deviceInstall": "未进行真机覆盖安装及数据保留验收"
+  },
+  "receipt": "ReleaseCoordinator/receipts/67d45d61-1c22-424e-bdd2-9eba1b54e670.json",
+  "independentVerification": "ReleaseCoordinator/validations/codex-mobile-20261019-sidebar-startup/final-channel-verification.json",
+  "verifiedAt": 1792399952.107414
+}

@@ -1,3 +1,4 @@
+import { decodeUserMessage, encodeUserMessage } from '../../server/user-message-format';
 import type { InstalledSkill } from "../app-server/skills";
 import {
   pluginMentionInput,
@@ -27,6 +28,7 @@ export interface DraftImage {
   type: string;
   size: number;
   url: string;
+  path?: string;
 }
 
 export interface DraftFile {
@@ -197,59 +199,21 @@ export function mergeDraftImages(
   return merged;
 }
 
-function uploadedFileInput(file: UploadedFile) {
-  const label = file.name.replace(/([\\[\]])/g, "\\$1");
-  const href = encodeURI(file.path)
-    .replace(/\(/g, "%28")
-    .replace(/\)/g, "%29");
-  const path = file.path.replace(/`/g, "\\`");
-  return `${t("已上传文件：{name}", { name: `[${label}](${href})` })}\n${t("本机路径：{path}", { path: `\`${path}\`` })}`;
-}
-
 export function buildTurnInput(
-  text: string,
-  images: DraftImage[],
-  files: UploadedFile[] = [],
-  skills: InstalledSkill[] = [],
-  plugins: InstalledPlugin[] = [],
+  text: string, images: DraftImage[], files: UploadedFile[] = [],
+  skills: InstalledSkill[] = [], plugins: InstalledPlugin[] = [],
 ) {
+  const parsed = decodeUserMessage(text);
+  const attachments = [...parsed.attachments, ...images.flatMap(image => image.path ? [{ name: image.name, path: image.path, isImage: true }] : []), ...files.map(file => ({ name: file.name, path: file.path }))];
+  const message = encodeUserMessage(parsed.body, attachments, parsed.references);
   return [
-    ...(text
-      ? [{ type: "text" as const, text, text_elements: [] as unknown[] }]
-      : []),
-    ...images.map((image) => ({
-      type: "image" as const,
-      url: image.url,
-    })),
-    ...files.map((file) => ({
-      type: "text" as const,
-      text: uploadedFileInput(file),
-      text_elements: [] as unknown[],
-    })),
-    ...skills.map((skill) => ({
-      type: "skill" as const,
-      name: skill.name,
-      path: skill.path,
-    })),
+    ...(message ? [{ type: 'text' as const, text: message, text_elements: [] as unknown[] }] : []),
+    ...images.map(image => image.path ? { type: 'localImage' as const, path: image.path } : { type: 'image' as const, url: image.url }),
+    ...skills.map(skill => ({ type: 'skill' as const, name: skill.name, path: skill.path })),
     ...plugins.map(pluginMentionInput),
   ];
 }
-
-export function buildOptimisticUserContent(
-  text: string,
-  images: DraftImage[],
-  files: UploadedFile[] = [],
-) {
-  return [
-    ...(text ? [{ type: "text" as const, text }] : []),
-    ...images.map((image) => ({
-      type: "image" as const,
-      url: image.url,
-    })),
-    ...files.map((file) => ({
-      type: "text" as const,
-      text: uploadedFileInput(file),
-    })),
-  ];
+export function buildOptimisticUserContent(text: string, images: DraftImage[], files: UploadedFile[] = []) {
+  return buildTurnInput(text, images, files).map(part => part.type === 'text' ? { type: 'text' as const, text: part.text } : part);
 }
 import { t } from "../i18n";

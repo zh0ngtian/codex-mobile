@@ -1,0 +1,16 @@
+{
+  "os": "iOS 27.0",
+  "version": "0.3.8",
+  "build": "3008",
+  "asset": "index-DnEFzkNg.js",
+  "assetSha256": "a31bc2469492e8818e7d8f487e3e60a2e0eab896534721f0f1564344849d3e36",
+  "binarySha256": "bbeb6984d4fb2e975d757284e6ed358fd42edb6fc95d4a4a4760aa061d07d837",
+  "measurementStartedAtMs": 1792378980184.078,
+  "measurementLastLaunchAtMs": 1792379321361.6418,
+  "device": "iPhone 17 Pro",
+  "configuration": "Debug",
+  "orientation": "portrait",
+  "fontScale": 1,
+  "method": "终止并重新启动App进程；保留App数据、磁盘与服务端缓存",
+  "calibrationSamples": 2
+}

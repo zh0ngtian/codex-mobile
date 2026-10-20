@@ -1,0 +1,964 @@
+{
+  "record_date": "2026-10-14",
+  "timezone": "Asia/Shanghai",
+  "app_bundle_id": "com.deepseek.chat",
+  "installed_version": "2.6.2(2)",
+  "device_os": "iOS 27.0",
+  "raw_screenshot_count": 38,
+  "public_screenshot_count": 23,
+  "raw_records_count": 231,
+  "captures_are_sequential_not_atomic": true,
+  "privacy": "公开树已省略昵称、联系信息、既有会话标题和本地文件名；私人截图及原始 RPC 只保留本机。",
+  "states": [
+    {
+      "id": "S01",
+      "title": "新对话 / 初始空态",
+      "group": "对话",
+      "verification": "已验证",
+      "note": "蓝鲸标志、欢迎语；深度思考未选中、智能搜索选中。",
+      "tree": "trees/01-home.txt",
+      "tree_capture_time": "2026-10-14T00:29:00.152881+08:00",
+      "screenshot": "screenshots/01-home.png",
+      "screenshot_capture_time": "2026-10-14T00:29:07.024869+08:00",
+      "screenshot_scope": "公开",
+      "screenshot_dimensions_px": [
+        804,
+        1748
+      ],
+      "screen_dimensions_pt": [
+        402,
+        874
+      ],
+      "scale": 2,
+      "screenshot_bytes": 175956,
+      "screenshot_sha256": "758a5cfbcd6b8eb7d14ea33d01561c7e9abf05278af12d2bb418eba51251f17d",
+      "tree_sha256": "19ff65c0de9d156854e4299ab32c0b2fb7f1c6a01c0c275444d18caaf3fb859c",
+      "tree_valid_for_screenshot": true
+    },
+    {
+      "id": "S02",
+      "title": "历史抽屉 / 未选中会话",
+      "group": "导航",
+      "verification": "已验证",
+      "note": "历史标题、头像与昵称只保存在本机截图。",
+      "tree": "trees/02-sidebar.txt",
+      "tree_capture_time": "2026-10-14T00:29:26.901270+08:00",
+      "screenshot": null,
+      "screenshot_capture_time": "2026-10-14T00:29:27.291706+08:00",
+      "screenshot_scope": "本机",
+      "screenshot_dimensions_px": [
+        804,
+        1748
+      ],
+      "screen_dimensions_pt": [
+        402,
+        874
+      ],
+      "scale": 2,
+      "screenshot_bytes": 452312,
+      "screenshot_sha256": "4e1e42c8f4c401b28bbdde1829b76822da53f0d9708d7232de1f87bb67db2d45",
+      "tree_sha256": "f8e400f3588f560c7f8a8d3fa384d930be7780b38ce5b4afbb8c248d731b03f0",
+      "tree_valid_for_screenshot": true
+    },
+    {
+      "id": "S03",
+      "title": "设置 / 浅色",
+      "group": "设置",
+      "verification": "已验证",
+      "note": "模态容器，账户、应用、语音、关于四组以及帮助与反馈。",
+      "tree": "trees/03-settings.txt",
+      "tree_capture_time": "2026-10-14T00:29:50.033023+08:00",
+      "screenshot": "screenshots/03-settings.png",
+      "screenshot_capture_time": "2026-10-14T00:29:50.329584+08:00",
+      "screenshot_scope": "公开",
+      "screenshot_dimensions_px": [
+        804,
+        1748
+      ],
+      "screen_dimensions_pt": [
+        402,
+        874
+      ],
+      "scale": 2,
+      "screenshot_bytes": 153153,
+      "screenshot_sha256": "ce0d161f15b6f22501841d228304bdd8429ad8f91d01e542eb46eb444d5ce980",
+      "tree_sha256": "bf48c6ae806ebba681cf00e52e48536ce5a6f6d37759b22aed0ec38ab580e924",
+      "tree_valid_for_screenshot": true
+    },
+    {
+      "id": "S04",
+      "title": "外观菜单",
+      "group": "设置",
+      "verification": "已验证",
+      "note": "系统、深色、浅色；系统有选中标志。",
+      "tree": "trees/04-appearance.txt",
+      "tree_capture_time": "2026-10-14T00:30:08.300505+08:00",
+      "screenshot": "screenshots/04-appearance.png",
+      "screenshot_capture_time": "2026-10-14T00:30:08.619423+08:00",
+      "screenshot_scope": "公开",
+      "screenshot_dimensions_px": [
+        804,
+        1748
+      ],
+      "screen_dimensions_pt": [
+        402,
+        874
+      ],
+      "scale": 2,
+      "screenshot_bytes": 184523,
+      "screenshot_sha256": "b5052092bda9fb29ff9d1e26ed73267a0a0f3920f7e60d487ec731942b542694",
+      "tree_sha256": "0aff11f039c60a8acd0a13c061fdd26d914470713a0f244ac7300513c4fedd58",
+      "tree_valid_for_screenshot": true
+    },
+    {
+      "id": "S05",
+      "title": "设置 / 深色",
+      "group": "设置",
+      "verification": "已验证",
+      "note": "实际切换为深色；之后已恢复系统。",
+      "tree": "trees/05-settings-dark.txt",
+      "tree_capture_time": "2026-10-14T00:30:23.062754+08:00",
+      "screenshot": "screenshots/05-settings-dark.png",
+      "screenshot_capture_time": "2026-10-14T00:30:23.351386+08:00",
+      "screenshot_scope": "公开",
+      "screenshot_dimensions_px": [
+        804,
+        1748
+      ],
+      "screen_dimensions_pt": [
+        402,
+        874
+      ],
+      "scale": 2,
+      "screenshot_bytes": 149601,
+      "screenshot_sha256": "09ace7b688909d57df293882290d4f2f0630b6dad7b67104eaadfbabce826146",
+      "tree_sha256": "62c4f6d4545e39c759f5a375fe220742df9dd7a11bcf7ff012d9224e2593f002",
+      "tree_valid_for_screenshot": true
+    },
+    {
+      "id": "S06",
+      "title": "字体大小 / 跟随系统",
+      "group": "设置",
+      "verification": "入口已验证",
+      "note": "预览、跟随系统开关、标准刻度滑块；未拖动滑块。",
+      "tree": "trees/06-font.txt",
+      "tree_capture_time": "2026-10-14T00:30:25.397255+08:00",
+      "screenshot": "screenshots/06-font.png",
+      "screenshot_capture_time": "2026-10-14T00:30:25.669067+08:00",
+      "screenshot_scope": "公开",
+      "screenshot_dimensions_px": [
+        804,
+        1748
+      ],
+      "screen_dimensions_pt": [
+        402,
+        874
+      ],
+      "scale": 2,
+      "screenshot_bytes": 127198,
+      "screenshot_sha256": "3e694b73fe7fe353f0c9e43f5076b277f8f684cc65084bbace5691dc5213f800",
+      "tree_sha256": "4eff2a95487e3c2ceba786c6f6b43ecf37957539c1d52b95f4c069a6ea5b782e",
+      "tree_valid_for_screenshot": true
+    },
+    {
+      "id": "S07",
+      "title": "系统设置 / DeepSeek 语言入口",
+      "group": "系统",
+      "verification": "截图/OCR已验证",
+      "note": "截图为 iOS 设置页，AX 返回旧 DeepSeek 设置树，树不适用于此截图。",
+      "tree": "trees/07-language.txt",
+      "tree_capture_time": "2026-10-14T00:30:45.633659+08:00",
+      "screenshot": "screenshots/07-language.png",
+      "screenshot_capture_time": "2026-10-14T00:30:45.929416+08:00",
+      "screenshot_scope": "公开",
+      "screenshot_dimensions_px": [
+        804,
+        1748
+      ],
+      "screen_dimensions_pt": [
+        402,
+        874
+      ],
+      "scale": 2,
+      "screenshot_bytes": 155006,
+      "screenshot_sha256": "d48f5cf4eb66f834c73a03ae9e75ddcb89710d3c654a76e3274b5886109ffc29",
+      "tree_sha256": "60e62a8d4d8adb1d2e3a7b839b7728f05b80fb7fe330d442ea563541c8979a5d",
+      "tree_valid_for_screenshot": false
+    },
+    {
+      "id": "S08",
+      "title": "个性化",
+      "group": "设置",
+      "verification": "入口已验证",
+      "note": "思考内容自动折叠开启；未修改开关。",
+      "tree": "trees/08-personalization.txt",
+      "tree_capture_time": "2026-10-14T00:31:07.659621+08:00",
+      "screenshot": "screenshots/08-personalization.png",
+      "screenshot_capture_time": "2026-10-14T00:31:07.945345+08:00",
+      "screenshot_scope": "公开",
+      "screenshot_dimensions_px": [
+        804,
+        1748
+      ],
+      "screen_dimensions_pt": [
+        402,
+        874
+      ],
+      "scale": 2,
+      "screenshot_bytes": 88839,
+      "screenshot_sha256": "08846c6e6884e34d866d251a53d846f1b9bdd4d2c70eee3438039b6c5e212e92",
+      "tree_sha256": "d045b8d7372cfe78ba9adf27d1b50eeee7ff7c2f22c0b288518353e12cfc9ca9",
+      "tree_valid_for_screenshot": true
+    },
+    {
+      "id": "S09",
+      "title": "朗读音色 / 贝壳",
+      "group": "设置",
+      "verification": "入口已验证",
+      "note": "半屏 Sheet、动态蓝色形状、四个分页点、确认；未切换或确认音色。",
+      "tree": "trees/09-voice-settings.txt",
+      "tree_capture_time": "2026-10-14T00:31:28.868641+08:00",
+      "screenshot": "screenshots/09-voice-settings.png",
+      "screenshot_capture_time": "2026-10-14T00:31:29.193356+08:00",
+      "screenshot_scope": "公开",
+      "screenshot_dimensions_px": [
+        804,
+        1748
+      ],
+      "screen_dimensions_pt": [
+        402,
+        874
+      ],
+      "scale": 2,
+      "screenshot_bytes": 202991,
+      "screenshot_sha256": "5fe21da6d3e42dc5eb040a8aa0e73faa75cbb09c96b3625ce586104e9430838c",
+      "tree_sha256": "c7952f29d22ee1ff9676d198e975a785448830561cdce34a090370a68907118b",
+      "tree_valid_for_screenshot": true
+    },
+    {
+      "id": "S10",
+      "title": "朗读音色 / close 操作无变化",
+      "group": "设置",
+      "verification": "无变化已记录",
+      "note": "原始文件名误称 data；实际仍是音色面板。下拉手势退出成功。",
+      "tree": "trees/10-voice-close-noop.txt",
+      "tree_capture_time": "2026-10-14T00:31:43.517590+08:00",
+      "screenshot": null,
+      "screenshot_capture_time": "2026-10-14T00:31:43.849431+08:00",
+      "screenshot_scope": "本机",
+      "screenshot_dimensions_px": [
+        804,
+        1748
+      ],
+      "screen_dimensions_pt": [
+        402,
+        874
+      ],
+      "scale": 2,
+      "screenshot_bytes": 209532,
+      "screenshot_sha256": "6cded241f6d11c48ad3bd9e7fc40667895fb167c8106c7361cb99ee9cca33c92",
+      "tree_sha256": "2753fdef0aa1d2b8306dc70ed56ca289ed2f855f11f7eed6303875af6f5a7a96",
+      "tree_valid_for_screenshot": true
+    },
+    {
+      "id": "S11",
+      "title": "数据管理",
+      "group": "设置",
+      "verification": "入口已验证",
+      "note": "体验优化开关、共享链接、删除所有历史对话；未执行这些操作。",
+      "tree": "trees/11-data.txt",
+      "tree_capture_time": "2026-10-14T00:32:10.167995+08:00",
+      "screenshot": "screenshots/11-data.png",
+      "screenshot_capture_time": "2026-10-14T00:32:10.430728+08:00",
+      "screenshot_scope": "公开",
+      "screenshot_dimensions_px": [
+        804,
+        1748
+      ],
+      "screen_dimensions_pt": [
+        402,
+        874
+      ],
+      "scale": 2,
+      "screenshot_bytes": 127512,
+      "screenshot_sha256": "de0ec1dea66b6a8d4464c555f6cbac1b86451b5f0ea766a2752b833d632d8b8e",
+      "tree_sha256": "544a6215cc287dc9f019cf89121205ff9b552715633734b794723e14798f2148",
+      "tree_valid_for_screenshot": true
+    },
+    {
+      "id": "S12",
+      "title": "账号管理",
+      "group": "设置",
+      "verification": "入口已验证",
+      "note": "邮箱、手机、绑定状态、未成年人模式、登出与注销；联系信息已从公开树替换。",
+      "tree": "trees/12-account.txt",
+      "tree_capture_time": "2026-10-14T00:32:13.557790+08:00",
+      "screenshot": null,
+      "screenshot_capture_time": "2026-10-14T00:32:13.816815+08:00",
+      "screenshot_scope": "本机",
+      "screenshot_dimensions_px": [
+        804,
+        1748
+      ],
+      "screen_dimensions_pt": [
+        402,
+        874
+      ],
+      "scale": 2,
+      "screenshot_bytes": 131844,
+      "screenshot_sha256": "d166e3eef1140ab218ea6070a08e6bccc6e88626a32f695c6b7433fbead82a30",
+      "tree_sha256": "b6c4296b71cda7666ce6c8c569af113c8926174ffecaaa44f0baa685a9c23d15",
+      "tree_valid_for_screenshot": true
+    },
+    {
+      "id": "S13",
+      "title": "历史搜索 / 聚焦但查询为空",
+      "group": "导航",
+      "verification": "已验证",
+      "note": "首次 type 未落入字段；截图有第三方键盘和剪贴板候选；不是搜索无结果。",
+      "tree": "trees/13-search-focused-empty.txt",
+      "tree_capture_time": "2026-10-14T00:32:53.894705+08:00",
+      "screenshot": null,
+      "screenshot_capture_time": "2026-10-14T00:32:54.235432+08:00",
+      "screenshot_scope": "本机",
+      "screenshot_dimensions_px": [
+        804,
+        1748
+      ],
+      "screen_dimensions_pt": [
+        402,
+        874
+      ],
+      "scale": 2,
+      "screenshot_bytes": 247608,
+      "screenshot_sha256": "eec2f72b251c2c522968518a432714b07a76fbf580fcdd2d861f779acdb1c8f4",
+      "tree_sha256": "2bb0905d5b967b262dfb60572eb13d49e4a9df8bf80650e856156c1dcb7c5a8c",
+      "tree_valid_for_screenshot": true
+    },
+    {
+      "id": "S14",
+      "title": "历史搜索 / 无相关结果",
+      "group": "导航",
+      "verification": "已验证",
+      "note": "UI-20261014 查询已显示；返回收起键盘后的暂无相关结果。",
+      "tree": "trees/14-search-no-result.txt",
+      "tree_capture_time": "2026-10-14T00:33:22.476114+08:00",
+      "screenshot": "screenshots/14-search-no-result.png",
+      "screenshot_capture_time": "2026-10-14T00:33:22.087071+08:00",
+      "screenshot_scope": "公开",
+      "screenshot_dimensions_px": [
+        804,
+        1748
+      ],
+      "screen_dimensions_pt": [
+        402,
+        874
+      ],
+      "scale": 2,
+      "screenshot_bytes": 268633,
+      "screenshot_sha256": "a2c958b36d2590cc75401db56b3e62268d1a0dd3481b8d93d2ec523c57111496",
+      "tree_sha256": "52e30fca7038935896d4224357e65581addc87a5f065734277416bc1f548a193",
+      "tree_valid_for_screenshot": true
+    },
+    {
+      "id": "S15",
+      "title": "历史搜索 / 无结果重复截图",
+      "group": "导航",
+      "verification": "重复证据",
+      "note": "与 S14 为相同状态；不另算页面。",
+      "tree": "trees/15-search-empty-duplicate.txt",
+      "tree_capture_time": "2026-10-14T00:33:22.476114+08:00",
+      "screenshot": null,
+      "screenshot_capture_time": "2026-10-14T00:33:34.829622+08:00",
+      "screenshot_scope": "本机",
+      "screenshot_dimensions_px": [
+        804,
+        1748
+      ],
+      "screen_dimensions_pt": [
+        402,
+        874
+      ],
+      "scale": 2,
+      "screenshot_bytes": 268633,
+      "screenshot_sha256": "a2c958b36d2590cc75401db56b3e62268d1a0dd3481b8d93d2ec523c57111496",
+      "tree_sha256": "a3bf1dd7a577f921b7dade00d1bb433ac3b4efc18cb71556ce4fd550e41e9bf0",
+      "tree_valid_for_screenshot": true
+    },
+    {
+      "id": "S16",
+      "title": "附件面板",
+      "group": "附件",
+      "verification": "已验证",
+      "note": "输入卡片上移约150pt，下方拍照、相册、文件三卡；加号变关闭。",
+      "tree": "trees/16-attachment.txt",
+      "tree_capture_time": "2026-10-14T00:33:52.310096+08:00",
+      "screenshot": "screenshots/16-attachment.png",
+      "screenshot_capture_time": "2026-10-14T00:33:52.633511+08:00",
+      "screenshot_scope": "公开",
+      "screenshot_dimensions_px": [
+        804,
+        1748
+      ],
+      "screen_dimensions_pt": [
+        402,
+        874
+      ],
+      "scale": 2,
+      "screenshot_bytes": 206877,
+      "screenshot_sha256": "6b01cfd8010769576625786d939b825a97eef22447eb211e457539af77430f17",
+      "tree_sha256": "ab28e4c3cc8f08cd55ca4a08b31d4ee868f0f30d9dfbcb5b0606f2a376fd415e",
+      "tree_valid_for_screenshot": true
+    },
+    {
+      "id": "S17",
+      "title": "文件来源菜单",
+      "group": "附件",
+      "verification": "已验证",
+      "note": "实际是本地文件 / 微信文件菜单；不是系统文件选择器。",
+      "tree": "trees/17-file-source-menu.txt",
+      "tree_capture_time": "2026-10-14T00:34:01.201667+08:00",
+      "screenshot": "screenshots/17-file-source-menu.png",
+      "screenshot_capture_time": "2026-10-14T00:34:01.527404+08:00",
+      "screenshot_scope": "公开",
+      "screenshot_dimensions_px": [
+        804,
+        1748
+      ],
+      "screen_dimensions_pt": [
+        402,
+        874
+      ],
+      "scale": 2,
+      "screenshot_bytes": 243407,
+      "screenshot_sha256": "9730571349d117436981847e1fd52cb4a946bb0017b991d7b74e3f10025f41c2",
+      "tree_sha256": "0691ed29eb0c04ef0fa1d5e363018dd5b214e3ba145b7f9860213a6413fb2936",
+      "tree_valid_for_screenshot": true
+    },
+    {
+      "id": "S18",
+      "title": "系统文件选择器 / 最近项目",
+      "group": "系统",
+      "verification": "已验证",
+      "note": "系统搜索、图标菜单、最近/共享/浏览；只观察后取消，未选择或上传。",
+      "tree": "trees/18-local-files.txt",
+      "tree_capture_time": "2026-10-14T00:34:12.482995+08:00",
+      "screenshot": null,
+      "screenshot_capture_time": "2026-10-14T00:34:12.789726+08:00",
+      "screenshot_scope": "本机",
+      "screenshot_dimensions_px": [
+        804,
+        1748
+      ],
+      "screen_dimensions_pt": [
+        402,
+        874
+      ],
+      "scale": 2,
+      "screenshot_bytes": 148645,
+      "screenshot_sha256": "9e7b9c856139527abc516d02677cfc1f3945911351b70a98f410af672026011a",
+      "tree_sha256": "e9ae54b479dd0021ba18c04c406d7024d0e7be71ccd5c2963ad880fd142a1c16",
+      "tree_valid_for_screenshot": true
+    },
+    {
+      "id": "S19",
+      "title": "语音输入 / 按住说话",
+      "group": "输入",
+      "verification": "已验证",
+      "note": "切换为按住说话；未启动录音，转写与权限未验证。",
+      "tree": "trees/19-voice.txt",
+      "tree_capture_time": "2026-10-14T00:34:28.335172+08:00",
+      "screenshot": "screenshots/19-voice.png",
+      "screenshot_capture_time": "2026-10-14T00:34:28.609140+08:00",
+      "screenshot_scope": "公开",
+      "screenshot_dimensions_px": [
+        804,
+        1748
+      ],
+      "screen_dimensions_pt": [
+        402,
+        874
+      ],
+      "scale": 2,
+      "screenshot_bytes": 173945,
+      "screenshot_sha256": "d33c5058232de78884a52edb1c92a10789b64844d2a153b06932c04ce0c57406",
+      "tree_sha256": "c6bda19a8b639032d7c42d4d40f693be771d1b479d06889e21a8b0db0af05718",
+      "tree_valid_for_screenshot": true
+    },
+    {
+      "id": "S20",
+      "title": "输入聚焦 / 两个模式同时选中",
+      "group": "输入",
+      "verification": "已验证",
+      "note": "两枚胶囊都为蓝色选中；第三方键盘剪贴板区域只存本机。",
+      "tree": "trees/20-thinking-search-on.txt",
+      "tree_capture_time": "2026-10-14T00:34:46.541129+08:00",
+      "screenshot": null,
+      "screenshot_capture_time": "2026-10-14T00:34:46.097907+08:00",
+      "screenshot_scope": "本机",
+      "screenshot_dimensions_px": [
+        804,
+        1748
+      ],
+      "screen_dimensions_pt": [
+        402,
+        874
+      ],
+      "scale": 2,
+      "screenshot_bytes": 262980,
+      "screenshot_sha256": "7fcd0fab8526d773fbfd8df2cdc64ba243dd1c0982c1ee89dc519915de40dc41",
+      "tree_sha256": "66e01043e0e97693a3a479b97952ef9ee1b275a0803e49fcde500864886c4e2d",
+      "tree_valid_for_screenshot": true
+    },
+    {
+      "id": "S21",
+      "title": "输入 / 多行草稿",
+      "group": "输入",
+      "verification": "已验证",
+      "note": "TextView 值确认已输入；卡片高度150pt，发送按钮为蓝色。",
+      "tree": "trees/21-compose-filled.txt",
+      "tree_capture_time": "2026-10-14T00:35:06.924012+08:00",
+      "screenshot": null,
+      "screenshot_capture_time": "2026-10-14T00:35:07.259214+08:00",
+      "screenshot_scope": "本机",
+      "screenshot_dimensions_px": [
+        804,
+        1748
+      ],
+      "screen_dimensions_pt": [
+        402,
+        874
+      ],
+      "scale": 2,
+      "screenshot_bytes": 314847,
+      "screenshot_sha256": "e958b1fddf68efbf6ff0a4a9ab2d1271daecd9fb3f1412a8391e85fb843a44ae",
+      "tree_sha256": "cdb7f0c9cbee91daeb6533f9c0ca643b10dc148a75c899bfc8d877e341d56850",
+      "tree_valid_for_screenshot": true
+    },
+    {
+      "id": "S22",
+      "title": "回复完成 / 思考折叠 / Markdown",
+      "group": "对话",
+      "verification": "已验证",
+      "note": "原名 generating；实际已完成，显示标题、两条列表、Swift代码块及动作栏。",
+      "tree": "trees/22-response-complete.txt",
+      "tree_capture_time": "2026-10-14T00:35:16.342201+08:00",
+      "screenshot": "screenshots/22-response-complete.png",
+      "screenshot_capture_time": "2026-10-14T00:35:16.690744+08:00",
+      "screenshot_scope": "公开",
+      "screenshot_dimensions_px": [
+        804,
+        1748
+      ],
+      "screen_dimensions_pt": [
+        402,
+        874
+      ],
+      "scale": 2,
+      "screenshot_bytes": 295768,
+      "screenshot_sha256": "716fd34d5710d1700f0e9310a713adadd383fc000be9aeb78d145fb59194817c",
+      "tree_sha256": "5f34f816f1362dc6d07148e0eb9cf4bacf37a47c2f2bf6ba9140e031d1a6abc0",
+      "tree_valid_for_screenshot": true
+    },
+    {
+      "id": "S23",
+      "title": "思考标题 Button 中心点击无变化",
+      "group": "对话",
+      "verification": "无变化已记录",
+      "note": "原名 expanded；实际仍折叠。后改点 StaticText ref 才成功。",
+      "tree": "trees/23-thinking-toggle-noop.txt",
+      "tree_capture_time": "2026-10-14T00:35:31.312830+08:00",
+      "screenshot": null,
+      "screenshot_capture_time": "2026-10-14T00:35:31.639993+08:00",
+      "screenshot_scope": "本机",
+      "screenshot_dimensions_px": [
+        804,
+        1748
+      ],
+      "screen_dimensions_pt": [
+        402,
+        874
+      ],
+      "scale": 2,
+      "screenshot_bytes": 295768,
+      "screenshot_sha256": "716fd34d5710d1700f0e9310a713adadd383fc000be9aeb78d145fb59194817c",
+      "tree_sha256": "34c4d3c2575b8605f9f8e8f470c0034230276264dede9432bd68f0efdb5ae28e",
+      "tree_valid_for_screenshot": true
+    },
+    {
+      "id": "S24",
+      "title": "回复 / 思考展开",
+      "group": "对话",
+      "verification": "已验证",
+      "note": "灰色思考文本、竖线与起点；内容高度增长，转至底部按钮出现。",
+      "tree": "trees/24-thinking-expanded.txt",
+      "tree_capture_time": "2026-10-14T00:35:48.076741+08:00",
+      "screenshot": "screenshots/24-thinking-expanded.png",
+      "screenshot_capture_time": "2026-10-14T00:35:48.444684+08:00",
+      "screenshot_scope": "公开",
+      "screenshot_dimensions_px": [
+        804,
+        1748
+      ],
+      "screen_dimensions_pt": [
+        402,
+        874
+      ],
+      "scale": 2,
+      "screenshot_bytes": 417266,
+      "screenshot_sha256": "0dafb8d01fb209f6b78ce734370c714151fc1911f0f7b56a49868754c39f43c0",
+      "tree_sha256": "ba47e278d42188f041a256cd4b4affc23e29a258ffab6e27dc22e3406fdca3ec",
+      "tree_valid_for_screenshot": true
+    },
+    {
+      "id": "S25",
+      "title": "用户消息 / 长按菜单",
+      "group": "对话",
+      "verification": "已验证",
+      "note": "修改、复制、选择文本、分享四项。",
+      "tree": "trees/25-user-message-menu.txt",
+      "tree_capture_time": "2026-10-14T00:36:06.185852+08:00",
+      "screenshot": "screenshots/25-user-message-menu.png",
+      "screenshot_capture_time": "2026-10-14T00:36:06.582040+08:00",
+      "screenshot_scope": "公开",
+      "screenshot_dimensions_px": [
+        804,
+        1748
+      ],
+      "screen_dimensions_pt": [
+        402,
+        874
+      ],
+      "scale": 2,
+      "screenshot_bytes": 465852,
+      "screenshot_sha256": "03423cdcf8c36a7fcdf687dbefe5f0a6fde1407c06ee19a613bcb2e34e06c21b",
+      "tree_sha256": "a1361b035c57c48e63b8861142b5bbb8355ba12f8d8e9248e54d4e1f97f13e90",
+      "tree_valid_for_screenshot": true
+    },
+    {
+      "id": "S26",
+      "title": "修改输入",
+      "group": "输入",
+      "verification": "入口及取消已验证",
+      "note": "带修改输入提示条与 cancel editing；仅打开后取消，未重发。",
+      "tree": "trees/26-message-edit.txt",
+      "tree_capture_time": "2026-10-14T00:36:18.140921+08:00",
+      "screenshot": null,
+      "screenshot_capture_time": "2026-10-14T00:36:18.512446+08:00",
+      "screenshot_scope": "本机",
+      "screenshot_dimensions_px": [
+        804,
+        1748
+      ],
+      "screen_dimensions_pt": [
+        402,
+        874
+      ],
+      "scale": 2,
+      "screenshot_bytes": 381174,
+      "screenshot_sha256": "f67e0e91c20d05f27b83916d59d93dabcf1b2e450fe58707d2a77e3f10588ed4",
+      "tree_sha256": "709b64be9770ee2b3585f00a8f7300b834a7dcbf4e36912deaae967bdf0bb485",
+      "tree_valid_for_screenshot": true
+    },
+    {
+      "id": "S27",
+      "title": "分享 / 对话组选择",
+      "group": "分享",
+      "verification": "入口及退出已验证",
+      "note": "全选、勾选、已选择1组；生成图片、复制链接、微信、更多分享；未最终分享。",
+      "tree": "trees/27-share-selection.txt",
+      "tree_capture_time": "2026-10-14T00:36:37.237316+08:00",
+      "screenshot": "screenshots/27-share-selection.png",
+      "screenshot_capture_time": "2026-10-14T00:36:37.586360+08:00",
+      "screenshot_scope": "公开",
+      "screenshot_dimensions_px": [
+        804,
+        1748
+      ],
+      "screen_dimensions_pt": [
+        402,
+        874
+      ],
+      "scale": 2,
+      "screenshot_bytes": 254359,
+      "screenshot_sha256": "e7466075dc1e4c1454f737dab3ce0cc5b699213f3f1e7ae2f2af3b72b39f1147",
+      "tree_sha256": "bc580a9689bb66448912076914faff2ce0376f20e8bbfe787dc381206d3f815c",
+      "tree_valid_for_screenshot": true
+    },
+    {
+      "id": "S28",
+      "title": "会话标题点击无变化",
+      "group": "对话",
+      "verification": "无变化已记录",
+      "note": "原名 title-menu；实际无菜单。树残留分享选择计数，截图不显示它。",
+      "tree": "trees/28-title-tap-noop.txt",
+      "tree_capture_time": "2026-10-14T00:36:57.289238+08:00",
+      "screenshot": null,
+      "screenshot_capture_time": "2026-10-14T00:36:57.641288+08:00",
+      "screenshot_scope": "本机",
+      "screenshot_dimensions_px": [
+        804,
+        1748
+      ],
+      "screen_dimensions_pt": [
+        402,
+        874
+      ],
+      "scale": 2,
+      "screenshot_bytes": 295881,
+      "screenshot_sha256": "221d0f12fa5643e630c2a8284bedc0a0e1fd1fa83ea7e2e1eb6621b98b954800",
+      "tree_sha256": "35175c194b3375b735fe81b3f16f2111ff369155a4e3edee84c88f53f286bb7b",
+      "tree_valid_for_screenshot": true
+    },
+    {
+      "id": "S29",
+      "title": "历史抽屉 / 当前测试会话",
+      "group": "导航",
+      "verification": "已验证",
+      "note": "今天分组、蓝色选中行及 ellipsis；个人历史仍可见。",
+      "tree": "trees/29-sidebar-test.txt",
+      "tree_capture_time": "2026-10-14T00:37:08.982673+08:00",
+      "screenshot": null,
+      "screenshot_capture_time": "2026-10-14T00:37:09.378252+08:00",
+      "screenshot_scope": "本机",
+      "screenshot_dimensions_px": [
+        804,
+        1748
+      ],
+      "screen_dimensions_pt": [
+        402,
+        874
+      ],
+      "scale": 2,
+      "screenshot_bytes": 459407,
+      "screenshot_sha256": "1160352e135c1e211ab419d91ccb730b5f6cb02d0a0a315965458c2f0b60a77a",
+      "tree_sha256": "405a89127418657bd0bef27ea383e27f05451287009e5b5ecf3eb9bbbf42e57a",
+      "tree_valid_for_screenshot": true
+    },
+    {
+      "id": "S30",
+      "title": "会话操作菜单",
+      "group": "导航",
+      "verification": "已验证",
+      "note": "重命名、置顶、多选、红色删除；未执行置顶或删除。",
+      "tree": "trees/30-session-menu.txt",
+      "tree_capture_time": "2026-10-14T00:37:22.188185+08:00",
+      "screenshot": null,
+      "screenshot_capture_time": "2026-10-14T00:37:22.586884+08:00",
+      "screenshot_scope": "本机",
+      "screenshot_dimensions_px": [
+        804,
+        1748
+      ],
+      "screen_dimensions_pt": [
+        402,
+        874
+      ],
+      "scale": 2,
+      "screenshot_bytes": 494474,
+      "screenshot_sha256": "1310ccd1d999be3cc812b13ea2141ef269beeb188babded26fe838f274c3e059",
+      "tree_sha256": "3137c13b47f32f08d9d42a4c083a2c306d6891cc770b0210c415f2a476655479",
+      "tree_valid_for_screenshot": true
+    },
+    {
+      "id": "S31",
+      "title": "重命名对话弹窗",
+      "group": "导航",
+      "verification": "入口及取消已验证",
+      "note": "预填标题、取消/完成；未保存修改。",
+      "tree": "trees/31-session-rename.txt",
+      "tree_capture_time": "2026-10-14T00:37:24.907825+08:00",
+      "screenshot": null,
+      "screenshot_capture_time": "2026-10-14T00:37:25.264703+08:00",
+      "screenshot_scope": "本机",
+      "screenshot_dimensions_px": [
+        804,
+        1748
+      ],
+      "screen_dimensions_pt": [
+        402,
+        874
+      ],
+      "scale": 2,
+      "screenshot_bytes": 380437,
+      "screenshot_sha256": "8b0a37deed33e4f103217de3c7a2677858b379447dce2cbd0670fa7cfc107385",
+      "tree_sha256": "af52bb103b700ae17c25c5ea1c221317f2985baaa176c2cd794662227314d6ae",
+      "tree_valid_for_screenshot": true
+    },
+    {
+      "id": "S32",
+      "title": "历史多选",
+      "group": "导航",
+      "verification": "入口及退出已验证",
+      "note": "默认选中来源会话；顶部数量与退出，底部置顶/删除；未提交。",
+      "tree": "trees/32-session-multiselect.txt",
+      "tree_capture_time": "2026-10-14T00:37:53.870908+08:00",
+      "screenshot": null,
+      "screenshot_capture_time": "2026-10-14T00:37:54.259960+08:00",
+      "screenshot_scope": "本机",
+      "screenshot_dimensions_px": [
+        804,
+        1748
+      ],
+      "screen_dimensions_pt": [
+        402,
+        874
+      ],
+      "scale": 2,
+      "screenshot_bytes": 466641,
+      "screenshot_sha256": "f01be80bbaa44533174ee25e442c5d8a46d106c7b98482e31f57a48d3d32e502",
+      "tree_sha256": "7331ffb209cd59b3af0c34950910aba5b652a4e3d81f5ab4405b2b9bf3abd148",
+      "tree_valid_for_screenshot": true
+    },
+    {
+      "id": "S33",
+      "title": "生成中 / 正在思考",
+      "group": "对话",
+      "verification": "状态已验证",
+      "note": "正在思考、底部停止按钮、转至底部；仅捕获生成中的思考阶段。",
+      "tree": "trees/33-streaming.txt",
+      "tree_capture_time": "2026-10-14T00:38:30.721522+08:00",
+      "screenshot": "screenshots/33-streaming.png",
+      "screenshot_capture_time": "2026-10-14T00:38:31.106235+08:00",
+      "screenshot_scope": "公开",
+      "screenshot_dimensions_px": [
+        804,
+        1748
+      ],
+      "screen_dimensions_pt": [
+        402,
+        874
+      ],
+      "scale": 2,
+      "screenshot_bytes": 389191,
+      "screenshot_sha256": "6cecd0abff97a8866511a5471e31dd20e71e6063bca8ce8b4fff4f378a68b7f7",
+      "tree_sha256": "ec95832c90f443f1ea5b951692af51ca9b6abc9c6912af344292e2132939d48c",
+      "tree_valid_for_screenshot": true
+    },
+    {
+      "id": "S34",
+      "title": "长回复自然完成 / 停止未执行",
+      "group": "对话",
+      "verification": "停止结果未验证",
+      "note": "停止 ref 在点击前失效，工具明确未点击；回复自然完成，不是已停止。",
+      "tree": "trees/34-long-response-complete.txt",
+      "tree_capture_time": "2026-10-14T00:38:43.473856+08:00",
+      "screenshot": "screenshots/34-long-response-complete.png",
+      "screenshot_capture_time": "2026-10-14T00:38:43.832730+08:00",
+      "screenshot_scope": "公开",
+      "screenshot_dimensions_px": [
+        804,
+        1748
+      ],
+      "screen_dimensions_pt": [
+        402,
+        874
+      ],
+      "scale": 2,
+      "screenshot_bytes": 410473,
+      "screenshot_sha256": "dffee4734ef9993de370f51bf3902d2fefd5ae1db2915752947886fe101ecade",
+      "tree_sha256": "383ea32e574472f4e4367f1bd417556cf7bd0ebffe68e01a6076a21aeae0a5ec",
+      "tree_valid_for_screenshot": true
+    },
+    {
+      "id": "S35",
+      "title": "长回复 / 转至底部",
+      "group": "对话",
+      "verification": "已验证",
+      "note": "按钮确实到达第60条及动作栏，停止结果仍未验证。",
+      "tree": "trees/35-long-response-bottom.txt",
+      "tree_capture_time": "2026-10-14T00:38:46.546774+08:00",
+      "screenshot": "screenshots/35-long-response-bottom.png",
+      "screenshot_capture_time": "2026-10-14T00:38:46.930583+08:00",
+      "screenshot_scope": "公开",
+      "screenshot_dimensions_px": [
+        804,
+        1748
+      ],
+      "screen_dimensions_pt": [
+        402,
+        874
+      ],
+      "scale": 2,
+      "screenshot_bytes": 407075,
+      "screenshot_sha256": "fc4d33bdad721b8b9a6795c480236356c6add0a570c838c17fd6ef10297ab94f",
+      "tree_sha256": "c09d7dec016b6ca2ef114c11b59419a55873b421b5a388524894a79308dbd1f9",
+      "tree_valid_for_screenshot": true
+    },
+    {
+      "id": "S36",
+      "title": "助手消息 / 长按菜单",
+      "group": "对话",
+      "verification": "已验证",
+      "note": "复制、选择文本、重新生成、喜欢、不喜欢、朗读、分享。",
+      "tree": "trees/36-assistant-menu.txt",
+      "tree_capture_time": "2026-10-14T00:39:23.401566+08:00",
+      "screenshot": "screenshots/36-assistant-menu.png",
+      "screenshot_capture_time": "2026-10-14T00:39:23.773187+08:00",
+      "screenshot_scope": "公开",
+      "screenshot_dimensions_px": [
+        804,
+        1748
+      ],
+      "screen_dimensions_pt": [
+        402,
+        874
+      ],
+      "scale": 2,
+      "screenshot_bytes": 451165,
+      "screenshot_sha256": "e0cce79c1b4fa481cd469047dd668569e2658f06e5997b374f0a2efca76fbeb2",
+      "tree_sha256": "d6bc52aa94451aeb88998a29dbb77260d5bdb15615ecb9d46c2b42c2a4a75e7d",
+      "tree_valid_for_screenshot": true
+    },
+    {
+      "id": "S37",
+      "title": "消息文本选择",
+      "group": "对话",
+      "verification": "已验证",
+      "note": "蓝色选区和两个拖拽柄，复制/全选/分享浮动工具条；未复制或分享。",
+      "tree": "trees/37-text-selection.txt",
+      "tree_capture_time": "2026-10-14T00:39:25.536996+08:00",
+      "screenshot": "screenshots/37-text-selection.png",
+      "screenshot_capture_time": "2026-10-14T00:39:25.909696+08:00",
+      "screenshot_scope": "公开",
+      "screenshot_dimensions_px": [
+        804,
+        1748
+      ],
+      "screen_dimensions_pt": [
+        402,
+        874
+      ],
+      "scale": 2,
+      "screenshot_bytes": 497441,
+      "screenshot_sha256": "a1d75d859d3a2e15245120f04fdca07eff3d7fa7c55614fb8ff3508bd213c70f",
+      "tree_sha256": "ace155ef76bdc17b892071b7218135710bb27dc1771684a71a0af37eccf6f659",
+      "tree_valid_for_screenshot": true
+    },
+    {
+      "id": "S39",
+      "title": "新对话 / 欢迎回来",
+      "group": "对话",
+      "verification": "已验证",
+      "note": "返回空态；外观系统、思考关闭、搜索开启已恢复。树残留旧标题，截图无标题。",
+      "tree": "trees/39-final-home.txt",
+      "tree_capture_time": "2026-10-14T00:40:06.456761+08:00",
+      "screenshot": "screenshots/39-final-home.png",
+      "screenshot_capture_time": "2026-10-14T00:40:06.734649+08:00",
+      "screenshot_scope": "公开",
+      "screenshot_dimensions_px": [
+        804,
+        1748
+      ],
+      "screen_dimensions_pt": [
+        402,
+        874
+      ],
+      "scale": 2,
+      "screenshot_bytes": 176680,
+      "screenshot_sha256": "5173f2d682f2072b1afb93e1d2cd265b7528586ef3956d7bde136058741dee9f",
+      "tree_sha256": "1f1228e44c4a3da78f5b62fec8a050c9798e9e52c8ef6c60b5d4f4676a6f8a6d",
+      "tree_valid_for_screenshot": true
+    }
+  ]
+}

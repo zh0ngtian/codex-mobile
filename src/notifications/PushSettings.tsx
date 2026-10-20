@@ -8,20 +8,31 @@ export function PushSettings({ preference, onSave, failedDevices = [] }: {
   onSave: (preference: NotificationPreference) => void;
   failedDevices?: string[];
 }) {
+  const state = usePushSettingsState(preference, onSave);
+  return <PushSettingsForm state={state} failedDevices={failedDevices} />;
+}
+export function usePushSettingsState(preference: NotificationPreference, onSave: (preference: NotificationPreference) => void) {
   const [mode, setMode] = useState(preference.mode);
   const [url, setUrl] = useState(preference.barkUrl);
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
   useEffect(() => { setMode(preference.mode); setUrl(preference.barkUrl); }, [preference]);
-  const save = (event: FormEvent) => {
-    event.preventDefault(); setError(""); setSaved(false);
+  const save = (event?: Pick<FormEvent, "preventDefault">) => {
+    event?.preventDefault(); setError(""); setSaved(false);
     try {
       const barkUrl = mode === "bark" ? parseBarkPushUrl(url) : preference.barkUrl;
       onSave({ mode, barkUrl }); setUrl(barkUrl); setSaved(true);
+      return { saved: true };
     } catch (reason) {
-      setError(reason instanceof Error ? t(reason.message) : t("无法保存推送设置"));
+      const message = reason instanceof Error ? t(reason.message) : t("无法保存推送设置");
+      setError(message);
+      return { saved: false, error: message };
     }
   };
+  return { mode, setMode, url, setUrl, error, setError, saved, setSaved, save };
+}
+export function PushSettingsForm({ state, failedDevices = [] }: { state: ReturnType<typeof usePushSettingsState>; failedDevices?: string[] }) {
+  const { mode, setMode, url, setUrl, error, setError, saved, setSaved, save } = state;
   return (
     <section className="backend-language-settings push-settings" aria-label={t("推送方式")}>
       <strong>{t("推送方式")}</strong>
@@ -36,7 +47,7 @@ export function PushSettings({ preference, onSave, failedDevices = [] }: {
       </div>
       {mode === "system"
         ? <small>{t("系统推送会有延迟，并且可能会漏推送。")}</small>
-        : <small>{t("任务完成后由设备网关发送 Bark 通知，App 退出后也可接收。")}</small>}
+        : <small>{t("任务完成或需要回答时由设备网关发送 Bark 通知，App 退出后也可接收。")}</small>}
       <form className="backend-form push-settings-form" onSubmit={save} noValidate>
         {mode === "bark" && <label>
           {t("Bark 推送链接")}

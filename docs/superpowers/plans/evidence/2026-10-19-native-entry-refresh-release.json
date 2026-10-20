@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "status": "complete",
+  "task": "native-entry-refresh-20261019",
+  "taskCommit": "432314a5d7ab64fe4f309eefb6cefd814e0b61b1",
+  "batchId": "de0e10c0-575f-46d2-a155-9888b8fd2b69",
+  "frozenCommit": "49e3eb4d25447d737e871dc7aaa46093d78e5bd3",
+  "version": "0.3.14",
+  "buildNumber": "3014",
+  "githubRelease": "https://github.com/zh0ngtian/codex-mobile/releases/tag/v0.3.14",
+  "ciRun": 39204725953,
+  "developmentCi": "passed",
+  "taskIncluded": true,
+  "installUrl": "https://192.168.123.79:8766/channels/codex-mobile/current/install.html",
+  "packages": {
+    "apk": {
+      "version": "0.3.14",
+      "size": 4724611,
+      "sha256": "c65cc5c4951ce74e2045580dc40efd5c11785a7f493712afe1c4c92f9a4ee47c",
+      "downloadUrl": "http://192.168.123.79:8765/channels/codex-mobile/latest.apk"
+    },
+    "ipa": {
+      "version": "0.3.14",
+      "size": 4669224,
+      "sha256": "10a5d97aa8d004ce44fcfed45d701a7139cd41f5272d10f882d94c900c4f9bc7",
+      "downloadUrl": "http://192.168.123.79:8765/channels/codex-mobile/latest.ipa",
+      "signed": true,
+      "signing": "Ad Hoc 已签名"
+    }
+  },
+  "unsignedSource": {
+    "version": "0.3.14",
+    "buildVersion": "3014",
+    "size": 4662973,
+    "sha256": "4309de61e2322a93eb44d9f264877201234179342b0517aa6770fcb84c23a978",
+    "downloadURL": "https://github.com/zh0ngtian/codex-mobile/releases/download/v0.3.14/CodexMobile-v0.3.14-unsigned.ipa",
+    "developerName": "zh0ngtian",
+    "signed": false
+  },
+  "independentFixedChannelHeadAndFullGet": "passed",
+  "signingContinuity": "完整权限与钥匙串组与0.3.13一致",
+  "uiCases": 11,
+  "adapterTests": 204,
+  "coordinatorTests": 59,
+  "buildContractTests": 138,
+  "typecheck": "passed",
+  "normalSimulatorVersion": "0.3.14 (3014)",
+  "realDeviceInstall": "未执行",
+  "remoteTestConversationsCreated": 0,
+  "receiptPath": "/Users/zhongtian/Library/Application Support/ReleaseCoordinator/receipts/de0e10c0-575f-46d2-a155-9888b8fd2b69.json"
+}

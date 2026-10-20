@@ -152,16 +152,14 @@ function diffHunkLabel(lines: ReturnType<typeof parseUnifiedDiff>, index: number
 
 export function FileDiffSheet({
   item,
-  initialFileIndex = 0,
   onClose,
 }: {
   item: AnyRecord;
-  initialFileIndex?: number;
   onClose: () => void;
 }) {
   const changes = (item.changes ?? []) as AnyRecord[];
   const [expandedFiles, setExpandedFiles] = useState<Set<number>>(
-    () => new Set(changes.length ? [initialFileIndex] : []),
+    () => new Set(changes.length ? [0] : []),
   );
   return (
     <ActionSheet

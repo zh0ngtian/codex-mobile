@@ -51,6 +51,80 @@ async function fixture(autoPong = true) {
 }
 
 describe("HTTP 会话", () => {
+  it.each(["http", "ws"])("边栏摘要和无项目分页经 %s 聚合，热索引不再逐条读取", async transport => {
+    const f = await fixture(); await f.init();
+    const threads = Array.from({ length: 9 }, (_, i) => ({ id: `t-${i}`, recencyAt: i, status: { type: i === 1 ? "active" : "idle" }, turns: ["private"] }));
+    f.respond((socket, message) => {
+      const result = message.method === "thread/loaded/list" ? { data: threads.map(t => t.id), nextCursor: null }
+        : message.method === "thread/read" ? { thread: threads.find(t => t.id === message.params.threadId) } : {};
+      if (message.id != null) socket.send(JSON.stringify({ id: message.id, result }));
+    });
+    let sequence = 100;
+    const socket = transport === "ws" ? new WebSocket(`ws://127.0.0.1:${f.port()}/ws?token=secret`) : null;
+    if (socket) { cleanup.push(async () => { socket.terminate(); }); await new Promise<void>(resolve => socket.once("open", resolve)); }
+    const call = async (method: string, params: any) => {
+      const message = { id: sequence++, method, params };
+      if (!socket) return (await f.rpc(message)).json() as Promise<any>;
+      const result = new Promise<any>(resolve => { const listener = (raw: any) => { const reply = JSON.parse(raw.toString()); if (reply.id === message.id) { socket.off("message", listener); resolve(reply); } }; socket.on("message", listener); });
+      socket.send(JSON.stringify(message)); return result;
+    };
+    expect((await call("mobile/sidebar/summaries", { threadIds: ["t-0"], includeRunning: true })).result.data.map((t: any) => t.id)).toEqual(["t-1", "t-0"]);
+    const reads = f.received.filter(m => m.method === "thread/read").length;
+    const params = { threadIds: threads.map(t => t.id) };
+    const first = (await call("mobile/sidebar/projectless", params)).result;
+    expect(first.data.map((t: any) => t.id)).toEqual(["t-8", "t-7", "t-6", "t-5", "t-4"]);
+    expect((await call("mobile/sidebar/projectless", { ...params, cursor: first.nextCursor })).result.data).toHaveLength(4);
+    expect(f.received.filter(m => m.method === "thread/read")).toHaveLength(reads);
+    expect(f.received.filter(m => m.method === "thread/read").every(m => m.params.includeTurns === false)).toBe(true);
+    expect(f.received.some(m => m.method?.startsWith("mobile/sidebar/"))).toBe(false);
+  });
+  it('完成回合详情复用单次读取回填过程，手机不接收7MB工具输出', async () => {
+    const f = await fixture(); await f.init();
+    f.respond((socket, message) => socket.send(JSON.stringify({ id: message.id, result: { data: [{ id: 'done', status: 'completed', items: [
+      { id: 'u', type: 'userMessage', text: '检查' },
+      { id: 'c', type: 'agentMessage', phase: 'commentary', text: '检查完成前的过程' },
+      { id: 'cmd', type: 'commandExecution', aggregatedOutput: 'x'.repeat(7_000_000) },
+      { id: 'f', type: 'agentMessage', phase: 'final_answer', text: '已完成' },
+    ] }], nextCursor: 'older' } })));
+    const response = await (await f.rpc({ id: 100, method: 'mobile/turns/details', params: { threadId: 't', limit: 1 } })).json() as any;
+    expect(response.result.data[0]).toMatchObject({ commentaryItems: [{ id: 'c', type: 'agentMessage', phase: 'commentary', text: '检查完成前的过程' }], messageOrder: ['u', 'c', 'f'] });
+    expect(f.received.filter(m => m.method === 'thread/turns/list')).toHaveLength(1);
+    expect(JSON.stringify(response).length).toBeLessThan(1024);
+  });
+
+  it.each(['http', 'ws'])('commentary 通过 %s 只读投影，参数不透传且工具大正文不下发', async (transport) => {
+    const f = await fixture(); await f.init();
+    f.respond((socket, message) => socket.send(JSON.stringify({ id: message.id, result: { data: [{
+      id: 'live', status: 'inProgress', items: [
+        { id: 'u', type: 'userMessage', text: '开始' },
+        { id: 'c', type: 'agentMessage', phase: 'commentary', text: '处理中' },
+        { id: 'cmd', type: 'commandExecution', aggregatedOutput: 'x'.repeat(7_000_000) },
+      ], diff: 'secret' }], nextCursor: 'older' } })));
+    const message = { id: 99, method: 'mobile/turns/commentary', params: { threadId: 't', turnId: 'live' } };
+    let reply: any;
+    if (transport === 'http') reply = await (await f.rpc(message)).json();
+    else {
+      const socket = new WebSocket(`ws://127.0.0.1:${f.port()}/ws?token=secret`);
+      cleanup.push(async () => { socket.terminate(); });
+      await new Promise<void>(resolve => socket.once('open', resolve));
+      const response = new Promise<any>(resolve => socket.once('message', raw => resolve(JSON.parse(raw.toString()))));
+      socket.send(JSON.stringify(message)); reply = await response;
+    }
+    expect(reply).toEqual({ id: 99, result: { turnId: 'live', items: [
+      { id: 'u', type: 'userMessage', text: '开始' },
+      { id: 'c', type: 'agentMessage', phase: 'commentary', text: '处理中' },
+    ], messageOrder: ['u', 'c'] } });
+    expect(f.received.at(-1)).toEqual({ id: transport === 'http' ? expect.any(String) : 99, method: 'thread/turns/list', params: { threadId: 't', limit: 1, sortDirection: 'desc', itemsView: 'full' } });
+    expect(JSON.stringify(reply).length).toBeLessThan(1024);
+    expect(await readdir(join(f.root, 'codex-mobile-http')).catch(() => [])).toEqual([]);
+  });
+  it('commentary 请求拒绝缺失回合 ID', async () => {
+    const f = await fixture(); await f.init();
+    for (const params of [{ threadId: 't' }, { threadId: '', turnId: 'live' }, { threadId: 't', turnId: [] }]) {
+      expect((await f.rpc({ id: 99, method: 'mobile/turns/commentary', params })).status).toBe(400);
+    }
+  });
+
   it("图片会话的首次和补页文字响应保留正文，原图改为可鉴权预览的引用", async () => {
     const f = await fixture(); await f.init();
     const pixels = await sharp({ create: { width: 1200, height: 1000, channels: 3, background: "orange" } }).jpeg().toBuffer();
@@ -423,7 +497,7 @@ describe("HTTP 会话", () => {
         { id: "view", type: "imageView", path: "/tmp/view.png", backfilled: true },
         { id: "saved", type: "imageGeneration", savedPath: "/tmp/saved.png", backfilled: true },
         { id: "local", type: "imageGeneration", result: "/tmp/local.png", backfilled: true },
-      ] },
+      ], messageOrder: ["view", "saved", "local", "ignored"] },
       { id: "files", loadedChangeStats: { additions: 3, deletions: 2 }, items: [] },
       { id: "fallback", loadedChangeStats: { additions: 7, deletions: 8 }, items: [] },
     ], nextCursor: "older" } });
@@ -717,9 +791,16 @@ describe("HTTP 会话", () => {
       id: `tool${n}`, type: "mcpToolCall", output: Array.from({ length: 4 }, () => "x".repeat(32_000)),
     } } });
     f.send({ method: "turn/completed", params: { threadId: "t", turn: { id: "turn", status: "completed" } } });
-    await wait(150);
-    const firstResponse = await fetch(f.url("events", "&after=0")); expect(firstResponse.status).toBe(200);
-    let page: any = await firstResponse.json(); expect(page.reset).toBe(true);
+    // 等到生产通知队列实际完成，避免大消息仍在排队时受固定等待时间影响。
+    let page: any;
+    await vi.waitFor(async () => {
+      const response = await fetch(f.url("events", "&after=0"));
+      expect(response.status).toBe(200);
+      const candidate = await response.json() as any;
+      expect(candidate.reset).toBe(true);
+      expect(candidate.active).toBe(false);
+      page = candidate;
+    }, { timeout: 5000, interval: 20 });
     const messages = [...page.messages]; let count = 0;
     expect(page.messages).toHaveLength(1);
     expect(Buffer.byteLength(JSON.stringify(page.messages[0]))).toBeGreaterThan(64 * 1024);
@@ -768,4 +849,67 @@ describe("HTTP 会话", () => {
     expect(f.connections).toHaveLength(1); expect(f.connections[0].readyState).toBe(WebSocket.OPEN);
     expect((await f.rpc({ id: 8, method: "thread/list", params: {} })).status).toBe(200);
   });
+});
+
+const timestampThread = '01a12457-49bd-79c3-abdb-cfdf41878cfc';
+const commentaryStamp = '2026-10-10T13:44:22.123Z';
+async function timestampRollout(root: string) {
+  const directory = join(root, 'sessions', '2026', '10', '10');
+  await mkdir(directory, { recursive: true });
+  await writeFile(join(directory, `rollout-2026-10-10T13-44-22-${timestampThread}_01a1396f-d4a4-7431-9c9b-85f85528d46b.jsonl`), [
+    { type: 'session_meta', payload: { id: timestampThread } },
+    { timestamp: commentaryStamp, type: 'response_item', payload: { type: 'message', role: 'assistant', id: 'c', content: [{ text: '原始过程' }] } },
+  ].map(line => JSON.stringify(line)).join('\n') + '\n');
+}
+it.each([
+  ['http', 'mobile/turns/details'], ['http', 'mobile/turns/commentary'],
+  ['http', 'thread/turns/list'], ['ws', 'mobile/turns/commentary'], ['ws', 'thread/turns/list'],
+])('%s %s 从真实续写文件补时间，无匹配消息保持未知', async (transport, method) => {
+  const f = await fixture(); await f.init(); await timestampRollout(f.root);
+  f.respond((socket, request) => socket.send(JSON.stringify({ id: request.id, result: { data: [{
+    id: 'live', status: 'inProgress', items: [
+      { id: 'c', type: 'agentMessage', phase: 'commentary', text: '原始过程' },
+      { id: 'unknown', type: 'agentMessage', phase: 'commentary', text: '未知时间' },
+      { id: 'image', type: 'imageView', path: '/tmp/image.png' },
+      { id: 'c2', type: 'agentMessage', phase: 'commentary', text: '下一张' },
+      { id: 'image2', type: 'imageGeneration', savedPath: '/tmp/image2.png' },
+    ],
+  }], nextCursor: null } })));
+  const message = { id: 99, method, params: { threadId: timestampThread, turnId: 'live', itemsView: 'full' } };
+  let reply: any;
+  if (transport === 'http') reply = await (await f.rpc(message)).json();
+  else {
+    const socket = new WebSocket(`ws://127.0.0.1:${f.port()}/ws?token=secret`);
+    cleanup.push(async () => { socket.terminate(); });
+    await new Promise<void>(resolve => socket.once('open', resolve));
+    const response = new Promise<any>(resolve => socket.once('message', raw => resolve(JSON.parse(raw.toString()))));
+    socket.send(JSON.stringify(message)); reply = await response;
+  }
+  const items = method === 'mobile/turns/commentary' ? reply.result.items :
+    method === 'mobile/turns/details' ? reply.result.data[0].commentaryItems : reply.result.data[0].items;
+  expect(items.find((item: any) => item.id === 'c').timestamp).toBe(Date.parse(commentaryStamp) / 1000);
+  expect(items.find((item: any) => item.id === 'unknown').timestamp).toBeUndefined();
+  if (method === 'mobile/turns/details') expect(reply.result.data[0].messageOrder).toEqual(['c', 'unknown', 'image', 'c2', 'image2']);
+});
+it.each(['http', 'ws'])('%s 实时 commentary 补真实时间且后继完成事件保持顺序', async transport => {
+  const f = await fixture(); await f.init(); await timestampRollout(f.root);
+  const messages: any[] = [];
+  if (transport === 'ws') {
+    const socket = new WebSocket(`ws://127.0.0.1:${f.port()}/ws?token=secret`);
+    cleanup.push(async () => { socket.terminate(); });
+    await new Promise<void>(resolve => socket.once('open', resolve));
+    socket.on('message', raw => messages.push(JSON.parse(raw.toString())));
+    for (let n = 0; n < 30 && f.connections.length < 2; n++) await wait();
+  }
+  f.send({ method: 'item/completed', params: { threadId: timestampThread, turnId: 'live', item: {
+    id: 'c', type: 'agentMessage', phase: 'commentary', text: '原始过程',
+  } } });
+  f.send({ method: 'turn/completed', params: { threadId: timestampThread, turn: { id: 'live', status: 'completed' } } });
+  for (let n = 0; n < 30; n++) {
+    await wait();
+    if (transport === 'http') messages.splice(0, messages.length, ...(await f.events()).messages);
+    if (messages.length === 2) break;
+  }
+  expect(messages.map(message => message.method)).toEqual(['item/completed', 'turn/completed']);
+  expect(messages[0].params.item.timestamp).toBe(Date.parse(commentaryStamp) / 1000);
 });

@@ -1,0 +1,73 @@
+{
+  "version": "0.3.19",
+  "buildNumber": "3019",
+  "taskSourceCommit": "3507a21e0b97492be1efde79c4d238f4783afe02",
+  "clientBatch": "0d407093-ef66-4856-96b9-f802fe0cf8ab",
+  "clientFrozenSha": "5da3e6c4311917f594a4e8a4827db7f335e448a7",
+  "gatewayBatch": "bd7287de-0ffa-410b-865f-8eecee53cebd",
+  "gatewayFrozenSha": "d8510b43b753883b7019c2fc43a0c78a010dafff",
+  "downloads": {
+    "apk": {
+      "version": "0.3.19",
+      "buildNumber": "3019",
+      "downloadUrl": "http://192.168.123.79:8765/channels/codex-mobile/latest.apk",
+      "size": 4745851,
+      "sha256": "474c6a017202c8c4b2b873fbc0e8a099744e84cc40fa6341030cdeb394ae37db",
+      "sourceCommit": "5da3e6c4311917f594a4e8a4827db7f335e448a7"
+    },
+    "ipa": {
+      "version": "0.3.19",
+      "buildNumber": "3019",
+      "downloadUrl": "http://192.168.123.79:8765/channels/codex-mobile/latest.ipa",
+      "size": 4809420,
+      "sha256": "88232b4e0c974e498bd9d683fcd22c4396f3cfccd0de5b91be4e108056bfc9c5",
+      "signed": true,
+      "sourceCommit": "5da3e6c4311917f594a4e8a4827db7f335e448a7"
+    }
+  },
+  "otaPage": "https://192.168.123.79:8766/channels/codex-mobile/current/install.html",
+  "source": {
+    "version": "0.3.19",
+    "buildVersion": "3019",
+    "downloadURL": "https://github.com/zh0ngtian/codex-mobile/releases/download/v0.3.19/CodexMobile-v0.3.19-unsigned.ipa",
+    "size": 4800443,
+    "sha256": "5c7cf48aef91c7fb65e9ce59bf956206442d1be4652a0b9f971c9ed9435285f0",
+    "signed": false,
+    "developerName": "zh0ngtian"
+  },
+  "checks": {
+    "twoReceiptsComplete": true,
+    "fixedLanManifestHeadFullGet": true,
+    "httpsOtaMetadataAndPage": true,
+    "sourceChineseNotesMatch": true,
+    "developerPreserved": true,
+    "sourceUnsignedOnly": true,
+    "deviceInstallVerified": false,
+    "businessTests": 1843,
+    "pythonTests": 212,
+    "nativeUiTests": 2
+  },
+  "gateway": {
+    "label": "com.minis.codex-mobile-gateway",
+    "pid": 76312,
+    "serverDigest": "3bd8bb588b6ca3abc91f96933692dc635f0ead0f43c0d9fcba59161dffe08bc2",
+    "binDigest": "a44e7f0434b7926b382b679abb712f36eb3b93ce6708cc77332437781f8015a3",
+    "frontendDigest": "82c243e7f812096f2be3270347cfab2c74ab4df0df44ec06f2db25f1a2ae821b",
+    "sha": "d8510b43b753883b7019c2fc43a0c78a010dafff"
+  },
+  "ci": {
+    "clientBuild": 39367772153,
+    "clientDevelopment": 39367772181,
+    "gatewayDevelopment": 39367612632
+  },
+  "signing": {
+    "bundleId": "vip.loock.codexmobile",
+    "teamId": "SC456JW7RP",
+    "applicationIdentifier": "SC456JW7RP.app.jade6694.grapefruit3766",
+    "entitlementsSha256": "1e84a4c1ba74b9e374c364f26fefa112ceeea09de1a0ba0600403a763eb7952f",
+    "keychainAccessGroups": [
+      "SC456JW7RP.*",
+      "com.apple.token"
+    ]
+  }
+}

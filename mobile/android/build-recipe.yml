@@ -12,7 +12,7 @@ tools:
     cache: npm
     cache-dependency-path: package-lock.json
   pnpm:
-    version: 10
+    version: "10.34.6"
   JDK 17:
     distribution: temurin
     java-version: "17"

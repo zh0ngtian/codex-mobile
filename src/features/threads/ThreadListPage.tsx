@@ -21,16 +21,18 @@ import type {
   BackendRuntimeSummary,
 } from "../../backends/types";
 import type { ProjectThreadLoadState } from "../../app-server/thread-list-loader";
-import { PROJECTLESS_GROUP_ID } from "../../app-server/thread-list-loader";
+import {
+  PROJECTLESS_GROUP_ID,
+  PROJECT_THREAD_BATCH_SIZE,
+} from "../../app-server/thread-list-loader";
 import { BackendSwitcher } from "../backends/BackendSwitcher";
 import { ConversationActionMenu } from "../conversation/ConversationControls";
 import {
   groupThreadsByProject,
-  isThreadPrioritized,
   splitAllThreads,
   type AggregatedThreadItem,
 } from "./thread-list-model";
-import { projectCollapseKey } from "./project-collapse";
+import { isProjectCollapsed, projectCollapseKey } from "./project-collapse";
 import { t } from "../../i18n";
 
 export type ThreadManagementAction =
@@ -45,6 +47,7 @@ const LONG_PRESS_MOVE_TOLERANCE_PX = 10;
 
 export function ThreadListPage({
   sidebarOpen = true,
+  onCloseSidebar,
   backends,
   summaries,
   selectedBackendId,
@@ -70,11 +73,13 @@ export function ThreadListPage({
   onSelectBackend,
   onManageBackends,
   onRefresh,
+  onOpenDrafts,
   onRetryProject,
   onToggleProject,
   onToggleProjectCollapsed,
 }: {
   sidebarOpen?: boolean;
+  onCloseSidebar?: () => void;
   backends: BackendConfig[];
   summaries: Record<string, BackendRuntimeSummary>;
   selectedBackendId: string;
@@ -103,6 +108,7 @@ export function ThreadListPage({
   onSelectBackend: (backendId: string) => void;
   onManageBackends: () => void;
   onRefresh: () => void;
+  onOpenDrafts?: () => void;
   onRetryProject: (backendId: string, cwd: string) => void;
   onToggleProject: (backendId: string, cwd: string) => void;
   onToggleProjectCollapsed: (backendId: string, cwd: string) => void;
@@ -111,6 +117,7 @@ export function ThreadListPage({
     useState<AggregatedThreadItem | null>(null);
   const [menuAnchor, setMenuAnchor] = useState<MenuAnchor>();
   const [pendingThreadAction, setPendingThreadAction] = useState("");
+  const [projectVisibleLimits, setProjectVisibleLimits] = useState<Record<string, number>>({});
   const sidebarRef = useRef<HTMLElement | null>(null);
   const longPressRef = useRef<{
     timer: number;
@@ -130,7 +137,7 @@ export function ThreadListPage({
     ? summaries[selectedBackend.id]
     : undefined;
   const allGroups = splitAllThreads(visibleThreads);
-  const projectGroups = groupThreadsByProject(visibleThreads, [
+  const projectGroups = groupThreadsByProject(visibleThreads.filter((thread) => !thread.pinned), [
     ...(hasProjectlessThreads ? [PROJECTLESS_GROUP_ID] : []),
     ...projectDirectories,
   ]);
@@ -141,6 +148,18 @@ export function ThreadListPage({
       longPressRef.current = null;
     }
   };
+  useEffect(() => {
+    if (!collapsedProjectKeys.size) return;
+    setProjectVisibleLimits((previous) => {
+      const resetKeys = [...collapsedProjectKeys].filter(
+        (key) => previous[key] !== PROJECT_THREAD_BATCH_SIZE,
+      );
+      if (!resetKeys.length) return previous;
+      const next = { ...previous };
+      for (const key of resetKeys) next[key] = PROJECT_THREAD_BATCH_SIZE;
+      return next;
+    });
+  }, [collapsedProjectKeys]);
   useEffect(() => clearLongPress, []);
   useEffect(() => {
     if (sidebarOpen) return;
@@ -185,6 +204,8 @@ export function ThreadListPage({
   ) => {
     if (!sidebarOpen || event.button !== 0) return;
     clearLongPress();
+    // 新触摸属于下一次点击，不能沿用上一次长按的尾随 click 抑制。
+    suppressClickRef.current = null;
     const key = managementKey(thread);
     const anchor = elementMenuAnchor(event.currentTarget);
     const timer = window.setTimeout(() => {
@@ -287,7 +308,7 @@ export function ThreadListPage({
   return (
     <section className="thread-list-page" ref={sidebarRef}>
       <div className="thread-list-sticky">
-        <header className="list-header">
+        <><header className="list-header">
           <div>
             <h1>Codex Mobile</h1>
             <p>
@@ -311,6 +332,15 @@ export function ThreadListPage({
             </p>
           </div>
           <div className="list-header-actions">
+            <button
+              type="button"
+              className="round-button"
+              aria-label={t("草稿")}
+              title={t("草稿")}
+              onClick={onOpenDrafts}
+            >
+              <AppIcon name="draft" />
+            </button>
             <button
               className={`round-button${refreshing ? " refreshing" : ""}`}
               aria-label={t("刷新会话列表")}
@@ -338,7 +368,7 @@ export function ThreadListPage({
           selectedBackendId={selectedBackendId}
           loadingBackendIds={loadingBackendIds}
           onSelect={onSelectBackend}
-        />
+        /></>
       </div>
       <div className="thread-list">
         {query.trim() && searching && (
@@ -369,7 +399,7 @@ export function ThreadListPage({
           <>
             {!!allGroups.pinned.length && (
               <section className="thread-section">
-                <h2>{t("置顶")}</h2>
+                <h2>{t("关注")}</h2>
                 {allGroups.pinned.map((thread) => renderRow(thread, true))}
               </section>
             )}
@@ -385,7 +415,7 @@ export function ThreadListPage({
           <>
             {!!allGroups.pinned.length && (
               <section className="thread-section">
-                <h2>{t("置顶")}</h2>
+                <h2>{t("关注")}</h2>
                 {allGroups.pinned.map((thread) => renderRow(thread, false))}
               </section>
             )}
@@ -393,29 +423,35 @@ export function ThreadListPage({
               .filter(
                 (group) =>
                   !query.trim() ||
-                  group.threads.some((thread) => !isThreadPrioritized(thread)),
+                  group.threads.length > 0,
               )
               .map((group) => {
-                const recentThreads = group.threads.filter(
-                  (thread) => !isThreadPrioritized(thread),
-                );
                 const projectKey = projectCollapseKey(
                   selectedBackendId,
                   group.cwd,
                 );
                 const isExpanded =
                   Boolean(query.trim()) ||
-                  !collapsedProjectKeys.has(projectKey);
-                const isLoadingMore = loadingProjectKeys.has(projectKey);
+                  !isProjectCollapsed(collapsedProjectKeys, selectedBackendId, group.cwd);
+                const isLoadingMore = loadingProjectKeys.has(projectKey) || (!query.trim() && projectThreadStates[group.cwd] === "loading");
                 const projectThreadState =
                   projectThreadStates[group.cwd] ??
                   (group.threads.length ? "ready" : "idle");
-                const hasMore =
+                const visibleLimit = projectVisibleLimits[projectKey] ?? PROJECT_THREAD_BATCH_SIZE;
+                let countedThreads = 0;
+                const displayedThreads = query.trim()
+                  ? group.threads
+                  : group.threads.filter(thread => thread.unread || ++countedThreads <= visibleLimit);
+                const loadedCount = group.threads.filter(thread => !thread.unread).length;
+                const hasServerMore =
                   projectHasMore[group.cwd] ??
-                  group.threads.length >= 5;
+                  group.threads.length >= PROJECT_THREAD_BATCH_SIZE;
+                const hasMore = hasServerMore || displayedThreads.length < group.threads.length;
                 const showInitialLoading =
                   projectThreadState === "loading" &&
-                  group.threads.length === 0;
+                  group.threads.length === 0 &&
+                  !visibleThreads.some((thread) => thread.pinned &&
+                    (thread.isProjectless ? PROJECTLESS_GROUP_ID : String(thread.cwd ?? "")) === group.cwd);
                 const showInitialError =
                   projectThreadState === "error" &&
                   group.threads.length === 0;
@@ -426,22 +462,40 @@ export function ThreadListPage({
                         type="button"
                         className="project-heading"
                         aria-expanded={isExpanded}
-                        onClick={() =>
+                        onClick={() => {
+                          if (!isProjectCollapsed(collapsedProjectKeys, selectedBackendId, group.cwd)) {
+                            setProjectVisibleLimits((previous) => ({
+                              ...previous,
+                              [projectKey]: PROJECT_THREAD_BATCH_SIZE,
+                            }));
+                          }
                           onToggleProjectCollapsed(
                             selectedBackendId,
                             group.cwd,
-                          )
-                        }
+                          );
+                        }}
                       >
                         <AppIcon
                           name={isExpanded ? "folder-open" : "folder"}
                         />
-                        <span>{group.projectName}</span>
+                        <span className="project-heading-label">
+                          <span className="project-heading-name">{group.projectName}</span>
+                          {!isExpanded && (
+                            <span className="project-attention">
+                              {group.threads.some((thread) => isThreadRunning(thread.status)) && (
+                                <i className="running-spinner" aria-label={t("进行中")} />
+                              )}
+                              {group.threads.some((thread) => thread.unread) && (
+                                <i className="thread-unread-dot" aria-label={t("未读")} />
+                              )}
+                            </span>
+                          )}
+                        </span>
                       </button>
                     </h2>
                     {isExpanded && (
                       <>
-                        {recentThreads.map((thread) =>
+                        {displayedThreads.map((thread) =>
                           renderRow(thread, false),
                         )}
                         {showInitialLoading && (
@@ -480,12 +534,20 @@ export function ThreadListPage({
                             className="project-more"
                             disabled={isLoadingMore}
                             aria-busy={isLoadingMore}
-                            onClick={() =>
-                              onToggleProject(
-                                selectedBackendId,
-                                group.cwd,
-                              )
-                            }
+                            onClick={() => {
+                              if (query.trim()) {
+                                onToggleProject(selectedBackendId, group.cwd);
+                                return;
+                              }
+                              const nextLimit = visibleLimit + PROJECT_THREAD_BATCH_SIZE;
+                              setProjectVisibleLimits((previous) => ({
+                                ...previous,
+                                [projectKey]: nextLimit,
+                              }));
+                              if (hasServerMore && nextLimit > loadedCount) {
+                                onToggleProject(selectedBackendId, group.cwd);
+                              }
+                            }}
                           >
                             {isLoadingMore ? (
                               <>

@@ -324,7 +324,7 @@ describe("多设备界面", () => {
     confirm.mockRestore();
   });
 
-  it("iOS 在设备管理显示版本且不提供 APK 更新入口", () => {
+  it("iOS 在设备管理显示版本且不提供手动检查更新入口", () => {
     const onCheck = vi.fn();
     render(
       <BackendManagerSheet
@@ -335,6 +335,7 @@ describe("多设备界面", () => {
         onClose={() => undefined}
         appUpdate={{
           supported: false,
+          manualCheckSupported: false,
           currentVersion: "0.2.100",
           checking: false,
           onCheck,
@@ -363,6 +364,7 @@ describe("多设备界面", () => {
         onClose={() => undefined}
         appUpdate={{
           supported: true,
+          manualCheckSupported: true,
           currentVersion: "0.2.0",
           checking: false,
           onCheck: onCheckUpdate,

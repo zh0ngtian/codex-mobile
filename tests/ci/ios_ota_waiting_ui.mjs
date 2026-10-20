@@ -2,8 +2,9 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 
-const { JSDOM } = createRequire(import.meta.url)('jsdom');
+// jsdom 的依赖可能初始化 stdin 并将管道切为非阻塞；先完整读取传入页面。
 const html = readFileSync(0, 'utf8');
+const { JSDOM } = createRequire(import.meta.url)('jsdom');
 const scenario = process.argv[2];
 let now = 1000;
 let nextTimer = 0;

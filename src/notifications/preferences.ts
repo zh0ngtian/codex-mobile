@@ -1,7 +1,9 @@
+import { isClientForeground } from "../native-ui/foreground";
 import { useEffect, useState } from "react";
 import { parseBarkPushUrl, type NotificationPreference } from "../../server/notification-settings";
 import { transportUuid } from "../backends/http-transport";
 import type { BackendConfig } from "../backends/types";
+import { readPinnedThreadIds, THREAD_FOLLOWING_CHANGED_EVENT } from "../features/threads/thread-pinning";
 
 export type { NotificationPreference };
 type PreferenceStorage = Pick<Storage, "getItem" | "setItem">;
@@ -68,7 +70,7 @@ export function syncNotificationSettings(
           const response = await fetcher(url.toString(), {
             method: "POST", mode: "cors", cache: "no-store", signal: controller.signal,
             headers: { "content-type": "application/json" },
-            body: JSON.stringify({ clientId, backendId: target.id, mode, barkUrl: mode === "bark" ? preference.barkUrl : "" }),
+            body: JSON.stringify({ clientId, backendId: target.id, mode, barkUrl: mode === "bark" ? preference.barkUrl : "", followedThreadIds: mode === "bark" ? [...readPinnedThreadIds(storage, target.id)].sort() : [] }),
           });
           if (!response.ok || (await response.json()).saved !== true) throw new Error("Registration rejected");
         } finally { clearTimeout(timer); }
@@ -88,23 +90,38 @@ export function useNotificationSync(backends: BackendConfig[], preference: Notif
   useEffect(() => {
     let cancelled = false;
     let running = false;
+    let pending = false;
     const synchronize = async () => {
-      if (running) return;
+      if (cancelled) return;
+      if (running) { pending = true; return; }
       running = true;
       try {
-        const failed = await syncNotificationSettings(backends, preference, window.localStorage);
-        if (!cancelled) setFailedDevices(failed);
-      } catch {
-        if (!cancelled) setFailedDevices(backends.filter((backend) => backend.enabled).map((backend) => backend.name));
+        do {
+          pending = false;
+          try {
+            const failed = await syncNotificationSettings(backends, preference, window.localStorage);
+            if (!cancelled) setFailedDevices(failed);
+          } catch {
+            if (!cancelled) setFailedDevices(backends.filter((backend) => backend.enabled).map((backend) => backend.name));
+          }
+        } while (pending && !cancelled);
       } finally { running = false; }
     };
     void synchronize();
-    const retry = () => { if (document.visibilityState === "visible") void synchronize(); };
+    const retry = () => { if (isClientForeground()) void synchronize(); };
     const timer = window.setInterval(retry, 30_000);
+    const followingChanged = () => { void synchronize(); };
+    const storageChanged = (event: StorageEvent) => {
+      if (event.key === null || event.key?.startsWith("codex-mobile:pinned:")) followingChanged();
+    };
+    window.addEventListener(THREAD_FOLLOWING_CHANGED_EVENT, followingChanged);
+    window.addEventListener("storage", storageChanged);
     window.addEventListener("online", retry);
     document.addEventListener("visibilitychange", retry);
     return () => {
       cancelled = true; window.clearInterval(timer);
+      window.removeEventListener(THREAD_FOLLOWING_CHANGED_EVENT, followingChanged);
+      window.removeEventListener("storage", storageChanged);
       window.removeEventListener("online", retry);
       document.removeEventListener("visibilitychange", retry);
     };

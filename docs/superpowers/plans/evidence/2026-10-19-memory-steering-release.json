@@ -1,0 +1,90 @@
+{
+  "batchId": "20b9fda4-bfad-43c1-bc04-70edc059dcc7",
+  "status": "complete",
+  "recoveryOf": "926b35b9-3375-4167-ba04-b7da370f1f97",
+  "sourceCommit": "b9eaee5956d8af664663f9464e0fae7f03d14d50",
+  "version": "0.3.13",
+  "buildNumber": "3013",
+  "tasks": [
+    {
+      "id": "composer-sidebar-memory-steering-20261019",
+      "sha": "860f1ea00d336b0db3802885b21f8b194943dda7"
+    },
+    {
+      "id": "composer-sidebar-iosbuild-repair-20261019",
+      "sha": "d620a1b50ca0c20447da7d97db1b5327730f3252"
+    }
+  ],
+  "originalTaskState": "recovered",
+  "github": {
+    "releaseUrl": "https://github.com/zh0ngtian/codex-mobile/releases/tag/v0.3.13",
+    "runId": 39196602629,
+    "developmentRunId": 39196602605,
+    "conclusion": "success"
+  },
+  "packages": {
+    "android": {
+      "version": "0.3.13",
+      "url": "http://192.168.123.79:8765/channels/codex-mobile/latest.apk",
+      "size": 4724639,
+      "sha256": "014193f94c83c63235dced4eaec8e5424f963cf38987d8048ebde90d8d06bd68"
+    },
+    "ios": {
+      "version": "0.3.13",
+      "url": "http://192.168.123.79:8765/channels/codex-mobile/latest.ipa",
+      "size": 4664784,
+      "sha256": "be4e4403903d55ae3f5ba691a59d25feaa062453705c3c52aa287434b3e3f3af",
+      "signed": true
+    }
+  },
+  "ota": {
+    "version": "0.3.13",
+    "installUrl": "https://192.168.123.79:8766/channels/codex-mobile/current/install.html",
+    "pageBytes": 3822,
+    "packageSha256": "be4e4403903d55ae3f5ba691a59d25feaa062453705c3c52aa287434b3e3f3af"
+  },
+  "source": {
+    "version": "0.3.13",
+    "buildVersion": "3013",
+    "downloadURL": "https://github.com/zh0ngtian/codex-mobile/releases/download/v0.3.13/CodexMobile-v0.3.13-unsigned.ipa",
+    "size": 4659980,
+    "sha256": "91da7e1081820c3a004e2da716d58388ae278669b979dd382062cbb414b72890",
+    "developerName": "zh0ngtian",
+    "signed": false,
+    "githubLoginVerified": "zh0ngtian"
+  },
+  "validation": {
+    "fullRegression": {
+      "sourceCommit": "860f1ea00d336b0db3802885b21f8b194943dda7",
+      "files": 146,
+      "tests": 1603,
+      "status": "passed"
+    },
+    "simulator": {
+      "device": "iPhone 17 Pro",
+      "orientation": "portrait",
+      "textSize": "normal",
+      "tests": 8,
+      "status": "passed",
+      "realThreadsCreated": 0
+    },
+    "repair": {
+      "sourceCommit": "d620a1b50ca0c20447da7d97db1b5327730f3252",
+      "pythonTests": 204,
+      "buildContractTests": 138,
+      "coordinatorTests": 59,
+      "typecheck": "passed",
+      "specReview": "passed",
+      "qualityReview": "passed",
+      "clientRuntimeUnchanged": true
+    },
+    "fixedChannels": {
+      "manifest": "passed",
+      "head": "passed",
+      "fullGet": "passed",
+      "sha256": "passed"
+    },
+    "sourceNotesAligned": true
+  },
+  "deviceInstall": "未进行真机覆盖安装与数据保留验收"
+}

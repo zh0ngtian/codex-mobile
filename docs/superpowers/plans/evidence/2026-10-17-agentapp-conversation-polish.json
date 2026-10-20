@@ -1,0 +1,84 @@
+{
+  "date": "2026-10-17",
+  "scope": "simulator-only",
+  "sourceCommit": "762e61e4b3ca39e2fc757a5ac11bd2f8b9cff9f7",
+  "branch": "codex/agentapp-native-integration",
+  "reference": "/Users/zhongtian/WorkSpace/AgentApp",
+  "environment": {
+    "device": "iPhone 17 Pro",
+    "runtime": "iOS 26.5",
+    "orientation": "portrait",
+    "textSize": "normal",
+    "bundleId": "vip.loock.codexmobile",
+    "configuration": "Debug"
+  },
+  "changes": [
+    "仅展示时移除用户正文尾部空白行，复制编辑保留原文",
+    "网页及文件链接使用点状下划线",
+    "还原参考 CommentaryHistoryView 与 MessageView.commentary/liveCommentary 组合，保留真实时间和媒体",
+    "移除加载按钮；首次到顶并松手后，下一次独立下拉才加载历史"
+  ],
+  "checks": {
+    "contracts": {
+      "status": "passed",
+      "files": 7,
+      "tests": 90,
+      "failed": 0,
+      "log": ".mobile-build/conversation-polish/final-contracts.log"
+    },
+    "frontendBuild": {
+      "status": "passed",
+      "includesTypecheck": true,
+      "log": ".mobile-build/conversation-polish/final-frontend.log"
+    },
+    "pagingRed": {
+      "status": "expected-failure",
+      "tests": 2,
+      "resultBundle": ".mobile-build/conversation-polish/paging-edge-red.xcresult",
+      "method": "仅在生成工程中移除稳定锚点与 context 重置修复，实际观察坐标偏移与加载锁未释放"
+    },
+    "iosUi": {
+      "status": "passed",
+      "tests": 4,
+      "failed": 0,
+      "skipped": 0,
+      "resultBundle": ".mobile-build/conversation-polish/paging-edge-green.xcresult",
+      "cases": [
+        "testConversationUsesReferenceHistoryComponentAndTrimmedUserText",
+        "testHistoryRequiresAnotherPullAndPreservesReadingAnchor",
+        "testReopeningSameConversationReleasesHistoryRequest",
+        "testLiveMessageRoundTripAndArchive"
+      ]
+    },
+    "liveGateway": {
+      "progressMessage": true,
+      "readOnlyTool": true,
+      "finalReply": true,
+      "referenceHistoryExpanded": true,
+      "testThreadsArchived": true,
+      "credentialsCommitted": false
+    },
+    "review": {
+      "specPassed": true,
+      "qualityPassed": true,
+      "continuationAndAggregateAnchorsChecked": true,
+      "sameThreadContextResetChecked": true
+    },
+    "handoff": {
+      "coldLaunchWithoutFixtureOrNativeOverride": true,
+      "persistedNativePreference": true,
+      "connectionName": "验收 Mac",
+      "originalUserConversationOpened": true,
+      "referenceHistoryExpanded": true,
+      "screenshot": ".mobile-build/conversation-polish/handoff.jpg"
+    }
+  },
+  "distribution": {
+    "githubRelease": false,
+    "apk": false,
+    "ipa": false,
+    "httpsOta": false,
+    "gatewayDeployment": false,
+    "mainMerge": false
+  }
+}

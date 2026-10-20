@@ -50,3 +50,31 @@ it("滚动取消消息长按，静止长按可打开且不自动选中文字", (
   expect(screen.getByRole("menuitem", { name: "复制" })).toBeTruthy();
   expect(window.getSelection()?.toString()).toBe("");
 });
+
+it.each(['pointer', 'contextmenu'])('用户正文%s入口保留系统选区，气泡边缘仍能整条复制', (entry) => {
+  vi.useFakeTimers();
+  const edit = vi.fn();
+  const { container } = render(<TurnCard client={null} onEditUserMessage={edit} turn={{ id: 'selection-gesture', status: 'completed', items: [
+    { id: 'selection-user', type: 'userMessage', text: '可选择的用户消息' },
+  ] }} />);
+  const bubble = container.querySelector('.user-bubble')!;
+  const body = container.querySelector('.user-message-text')!;
+  const text = body.querySelector('p')!.firstChild!;
+  const range = document.createRange(); range.setStart(text, 0); range.setEnd(text, 4);
+  window.getSelection()!.removeAllRanges(); window.getSelection()!.addRange(range);
+  if (entry === 'pointer') {
+    fireEvent.pointerDown(body, { button: 0, clientX: 20, clientY: 20 });
+    act(() => vi.advanceTimersByTime(550));
+  } else expect(fireEvent.contextMenu(body)).toBe(true);
+  expect(window.getSelection()?.toString()).toBe('可选择的');
+  expect(screen.queryByRole('menu')).toBeNull();
+  fireEvent.pointerUp(body);
+  if (entry === 'pointer') {
+    fireEvent.pointerDown(bubble, { button: 0, clientX: 4, clientY: 4 });
+    act(() => vi.advanceTimersByTime(550));
+  } else fireEvent.contextMenu(bubble);
+  expect(screen.getByRole('menuitem', { name: '复制' })).toBeTruthy();
+  expect(window.getSelection()?.toString()).toBe('');
+  fireEvent.click(screen.getByRole('menuitem', { name: '编辑' }));
+  expect(edit).toHaveBeenCalledWith('selection-user');
+});

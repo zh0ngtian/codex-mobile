@@ -1,0 +1,43 @@
+{
+  "scope": "用户明确要求仅由 GitHub 构建并创建 Release",
+  "version": "0.2.169",
+  "buildNumber": 2169,
+  "batchId": "38cf950c-0d23-480e-b6d0-89642220e7ce",
+  "frozenSha": "f398af4a618090eda171b0d44f472a3540d6f717",
+  "windowsFixSha": "1c54d6076576268f779faab1f21e690e96ffae16",
+  "implementationSha": "5b394350bde2dc6c541c6f02b0b2e1a0e5f1f939",
+  "runId": "38400738101",
+  "runAttempt": "1",
+  "buildConclusion": "success",
+  "mainDevelopmentChecks": "https://github.com/zh0ngtian/codex-mobile/actions/runs/38400737987",
+  "releaseUrl": "https://github.com/zh0ngtian/codex-mobile/releases/tag/v0.2.169",
+  "releaseId": 411679289,
+  "packages": {
+    "apk": {
+      "url": "https://github.com/zh0ngtian/codex-mobile/releases/download/v0.2.169/CodexMobile-v0.2.169.apk",
+      "size": 4721539,
+      "sha256": "b6be49bffca4b8e59c3d2796c4b51b7187293ffbaa01b1a55011aedfd1d433d7"
+    },
+    "ipa": {
+      "url": "https://github.com/zh0ngtian/codex-mobile/releases/download/v0.2.169/CodexMobile-v0.2.169-unsigned.ipa",
+      "size": 3767228,
+      "sha256": "cc03e8a41b5b858abf28b108301a1c6a94168627ce709dd505a3ab0d55788766",
+      "signed": false
+    }
+  },
+  "verification": {
+    "fullGetAllSixAssets": true,
+    "githubDigests": true,
+    "sha256Sidecars": true,
+    "frozenBatchAndRunReceipts": true,
+    "tagTarget": true,
+    "unsignedIpaStructure": true,
+    "releaseChineseNotes": true
+  },
+  "notesCorrection": {
+    "cause": "Windows 默认原生进程管道编码将中文生成输入转为问号",
+    "method": "授权浏览器编辑 GitHub Release 正文并通过公开 API 回验",
+    "frozenRecordPreserved": true,
+    "packageBytesPreserved": true
+  }
+}

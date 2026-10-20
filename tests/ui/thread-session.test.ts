@@ -6,6 +6,8 @@ import {
   loadOlderThreadTurns,
   loadTurnChangeStatsPage,
   applyTurnChangeStats,
+  applyTurnCommentary,
+  loadRunningTurnCommentary,
   prependUniqueTurns,
   resumeThreadSession,
 } from "../../src/app-server/thread-session";
@@ -290,4 +292,201 @@ describe("恢复已有 app-server 会话", () => {
       { id: "turn-3", status: "running" },
     ]);
   });
+});
+
+
+describe('运行文本回填', () => {
+  it('只请求最新运行且尚无 final 的回合，无运行回合时不发请求', async () => {
+    const request = vi.fn().mockResolvedValue({ turnId: 'live', items: [] });
+    await loadRunningTurnCommentary({ request }, 't', [{ id: 'old', status: 'completed' }, { id: 'live', status: 'inProgress', items: [] }]);
+    expect(request).toHaveBeenCalledWith('mobile/turns/commentary', { threadId: 't', turnId: 'live' }, { timeoutMs: 60_000 });
+    request.mockClear();
+    for (const turn of [{ id: 'done', status: 'completed' }, { id: 'live', status: 'inProgress', items: [{ type: 'agentMessage', phase: 'final_answer' }] }]) {
+      expect(await loadRunningTurnCommentary({ request }, 't', [turn])).toBeNull();
+    }
+    expect(request).not.toHaveBeenCalled();
+  });
+  it('按 ID 保持插话顺序、较长实时文本与用户附件，迟到回填不影响 final 和完成状态', () => {
+    const turns = [{ id: 'live', status: 'completed', items: [
+      { id: 'u', type: 'userMessage', content: [{ type: 'text', text: '开始' }, { type: 'image', url: '/tmp/a.png' }] },
+      { id: 'c2', type: 'agentMessage', phase: 'commentary', text: '检查文件已经完成' },
+      { id: 'f', type: 'agentMessage', phase: 'final_answer', text: '完成' },
+    ] }];
+    const detail = { turnId: 'live', items: [
+      { id: 'u', type: 'userMessage', content: [{ type: 'text', text: '开始' }] },
+      { id: 'c1', type: 'agentMessage', phase: 'commentary', text: '开始检查' },
+      { id: 'steer', type: 'userMessage', text: '继续' },
+      { id: 'c2', type: 'agentMessage', phase: 'commentary', text: '检查文件' },
+    ] };
+    const once = applyTurnCommentary(turns, detail);
+    expect(applyTurnCommentary(once, detail)).toEqual(once);
+    expect(once[0].items.map((item: any) => item.id)).toEqual(['u', 'c1', 'steer', 'c2', 'f']);
+    expect(once[0].items[3].text).toBe('检查文件已经完成');
+    expect(once[0].items[0].content).toHaveLength(2);
+    expect(once[0].status).toBe('completed');
+    expect(applyTurnCommentary([{ id: 'next', items: [] }], detail)).toEqual([{ id: 'next', items: [] }]);
+  });
+});
+
+
+it('同一消息已转为最终回复时，旧 commentary 不能覆盖其阶段或正文', () => {
+  const turns = [{ id: 't', status: 'inProgress', items: [{ id: 'same', type: 'agentMessage', phase: 'final_answer', text: '最终答复' }] }];
+  expect(applyTurnCommentary(turns, { turnId: 't', items: [{ id: 'same', type: 'agentMessage', phase: 'commentary', text: '之前更长的过程说明' }] })).toEqual(turns);
+});
+
+
+describe('完成摘要的 commentary 恢复', () => {
+  const first = { id: 'c1', type: 'agentMessage', phase: 'commentary', text: '第一段过程' };
+  const second = { id: 'c2', type: 'agentMessage', phase: 'commentary', text: '第二段过程' };
+  it.each(['compact', 'full'])('复用 %s 详情读取，恢复 commentary、final与插话顺序且不截短实时文本', async (view) => {
+    const user = { id: 'u', type: 'userMessage', content: [{ type: 'text', text: '开始' }, { type: 'image', url: '/tmp/a.png' }] };
+    const f1 = { id: 'f1', type: 'agentMessage', phase: 'final_answer', text: '第一版完成' };
+    const steer = { id: 'steer', type: 'userMessage', text: '继续' };
+    const f2 = { id: 'f2', type: 'agentMessage', phase: 'final_answer', text: '最终完成' };
+    const history = [user, first, f1, steer, second, f2];
+    const request = vi.fn().mockResolvedValue({ data: [{ id: 'done', changeStatsUnavailable: true,
+      ...(view === 'compact' ? { items: [], commentaryItems: [first, second], messageOrder: history.map(i => i.id) } : { items: history }),
+    }] });
+    const detail = await loadTurnChangeStatsPage({ request }, 't');
+    const summary = [{ id: 'done', status: 'completed', itemsView: 'summary', items: [user, f1, steer, { ...second, text: '第二段过程已验证通过' }, f2] }];
+    const once = applyTurnChangeStats(summary, detail);
+    expect(once[0].items.map((i: any) => i.id)).toEqual(history.map(i => i.id));
+    expect(once[0].items[4].text).toBe('第二段过程已验证通过');
+    expect(once[0].items[0].content).toHaveLength(2);
+    expect(once[0].changeStatsUnavailable).toBe(true);
+    expect(once[0].loadedChangeStats).toBeUndefined();
+    expect(applyTurnChangeStats(once, detail)).toEqual(once);
+    expect(request).toHaveBeenCalledTimes(1);
+  });
+});
+
+
+describe('commentary 与媒体有序回填', () => {
+  const c1 = { id: 'c1', type: 'agentMessage', phase: 'commentary', text: '检查', timestamp: 1792026420 };
+  const c2 = { id: 'c2', type: 'agentMessage', phase: 'commentary', text: '验证', timestamp: 1792026540 };
+  const img1 = { id: 'i1', type: 'imageView', path: '/one.png' };
+  const img2 = { id: 'i2', type: 'imageView', path: '/two.png' };
+  const final = { id: 'f', type: 'agentMessage', phase: 'final_answer', text: '完成' };
+  it.each(['compact', 'full'])('%s 详情先合并截图再按原始顺序排序并保留分钟时间', async view => {
+    const history = [c1, img1, c2, img2, final];
+    const request = vi.fn().mockResolvedValue({ data: [{ id: 't', items: view === 'full' ? history : [img1, img2],
+      ...(view === 'compact' ? { commentaryItems: [c1,c2], messageOrder: history.map(i => i.id) } : {}) }] });
+    const details = await loadTurnChangeStatsPage({ request }, 'thread');
+    const once = applyTurnChangeStats([{ id: 't', status: 'completed', items: [{ ...c2, text: '验证已经完成' }, final] }], details);
+    expect(once[0].items.map((i: any) => i.id)).toEqual(['c1','i1','c2','i2','f']);
+    expect(once[0].items[0].timestamp).toBe(c1.timestamp);
+    expect(once[0].items[2].text).toBe('验证已经完成');
+    expect(applyTurnChangeStats(once, details)).toEqual(once);
+    const restored = applyTurnCommentary(once, { turnId: 't', items: [{ ...c1, timestamp: undefined }, c2] });
+    expect(restored[0].items.map((i: any) => i.id)).toEqual(['c1','i1','c2','i2','f']);
+    expect(restored[0].items[0].timestamp).toBe(c1.timestamp);
+  });
+  it('没有 commentary 仍按媒体位置排序', async () => {
+    const history = [img1, final, img2];
+    const request = vi.fn().mockResolvedValue({ data: [{ id:'t', items:history }] });
+    const details = await loadTurnChangeStatsPage({ request }, 'thread');
+    const result = applyTurnChangeStats([{id:'t', items:[final]}],details);
+    expect(result[0].items.map((i:any)=>i.id)).toEqual(['i1','f','i2']);
+  });
+});
+
+it('迟到的不完整顺序不能把已显示的插话与较新的截图移到旧 final 后', () => {
+ const c1={id:'c1',type:'agentMessage',phase:'commentary',text:'检查'};
+ const img={id:'i1',type:'imageView',path:'/one.png'};
+ const steer={id:'u2',type:'userMessage',text:'继续'};
+ const newImage={id:'i2',type:'imageView',path:'/two.png'};
+ const final={id:'f',type:'agentMessage',phase:'final_answer',text:'完成'};
+ const current=[{id:'t',status:'completed',items:[c1,img,steer,newImage,final]}];
+ const result=applyTurnChangeStats(current,{t:{images:[img],commentaryItems:[c1],messageOrder:['c1','i1','f'],unavailable:true}});
+ expect(result[0].items.map((i:any)=>i.id)).toEqual(['c1','i1','u2','i2','f']);
+});
+
+it('running commentary 的媒体顺序与详情并发重复回填后保持一致', async () => {
+ const c1={id:'c1',type:'agentMessage',phase:'commentary',text:'检查',timestamp:123};
+ const c2={id:'c2',type:'agentMessage',phase:'commentary',text:'验证',timestamp:456};
+ const img1={id:'i1',type:'imageView',path:'/one.png'};
+ const img2={id:'i2',type:'imageView',path:'/two.png'};
+ const history=[c1,img1,c2,img2];
+ const commentary={turnId:'t',items:[c1,c2],messageOrder:history.map(i=>i.id)};
+ const details={t:{images:[img1,img2],commentaryItems:[c1,c2],messageOrder:history.map(i=>i.id),unavailable:true}};
+ const turns=[{id:'t',status:'inProgress',items:[img1,{...c2,text:'验证全部通过'},img2]}];
+ for(const reverse of [false,true]){
+  const result=reverse?applyTurnCommentary(applyTurnChangeStats(turns,details),commentary):applyTurnChangeStats(applyTurnCommentary(turns,commentary),details);
+  expect(result[0].items.map((i:any)=>i.id)).toEqual(history.map(i=>i.id));
+  expect(result[0].items[2].text).toBe('验证全部通过');
+  expect(result[0].items[2].timestamp).toBe(456);
+ }
+});
+
+it('详情保留视频路径与无路径失败生成项，按消息顺序放回', async () => {
+ const c={id:'c',type:'agentMessage',phase:'commentary',text:'生成'};
+ const video={id:'v',type:'videoGeneration',path:'/clip.mp4',status:'completed'};
+ const failed={id:'bad',type:'imageGeneration',status:'failed'};
+ const remote={id:'g',type:'imageGeneration',result:'https://images.invalid/one.png'};
+ const final={id:'f',type:'agentMessage',phase:'final_answer',text:'完成'};
+ const history=[c,video,failed,remote,final];
+ const request=vi.fn().mockResolvedValue({data:[{id:'t',items:history}]});
+ const details=await loadTurnChangeStatsPage({request},'thread');
+ const restored=applyTurnChangeStats([{id:'t',items:[final]}],details);
+ expect(restored[0].items.map((i:any)=>i.id)).toEqual(history.map(i=>i.id));
+ expect(restored[0].items.find((i:any)=>i.id==='v')).toMatchObject(video);
+ expect(restored[0].items.find((i:any)=>i.id==='bad')).toMatchObject(failed);
+});
+
+it('无 messageOrder 的旧 commentary 根据前锚点插入，不能越过较新用户插话', () => {
+ const u1={id:'u1',type:'userMessage',text:'先检查'};
+ const c1={id:'c1',type:'agentMessage',phase:'commentary',text:'开始检查',timestamp:123};
+ const u2={id:'u2',type:'userMessage',text:'继续检查',content:[{type:'image',url:'/latest.png'}]};
+ const c2={id:'c2',type:'agentMessage',phase:'commentary',text:'继续验证'};
+ const turns=[{id:'t',status:'inProgress',items:[u1,u2,c2]}];
+ const detail={turnId:'t',items:[u1,c1]};
+ const result=applyTurnCommentary(turns,detail);
+ expect(result[0].items.map((item:any)=>item.id)).toEqual(['u1','c1','u2','c2']);
+ expect(applyTurnCommentary(result,detail)).toEqual(result);
+ expect(result[0].items[2]).toEqual(u2);
+});
+
+it.each([false,true])('回填仅按用户消息精确ID合并，不将旧用户吞并新用户，完整顺序=%s', withOrder => {
+ const u1={id:'u1',type:'userMessage',text:'旧问题'};
+ const c1={id:'c1',type:'agentMessage',phase:'commentary',text:'旧过程',timestamp:123};
+ const u2={id:'u2',type:'userMessage',text:'新问题',content:[{type:'image',url:'/latest.png'}]};
+ const c2={id:'c2',type:'agentMessage',phase:'commentary',text:'新过程',timestamp:456};
+ const detail={turnId:'t',items:[u1,c1],...(withOrder?{messageOrder:['u1','c1','u2','c2']}:{})};
+ const result=applyTurnCommentary([{id:'t',status:'inProgress',items:[u2,c2]}],detail);
+ expect(result[0].items.every(Boolean)).toBe(true);
+ expect(result[0].items).toHaveLength(4);
+ expect(result[0].items.find((item:any)=>item.id==='u1')).toEqual(u1);
+ expect(result[0].items.find((item:any)=>item.id==='u2')).toEqual(u2);
+ if(withOrder) expect(result[0].items.map((item:any)=>item.id)).toEqual(['u1','c1','u2','c2']);
+ expect(applyTurnCommentary(result,detail)).toEqual(result);
+});
+
+it('旧 running 完整顺序不包含后来的插话时，先恢复旧快照再保留较新的消息', () => {
+ const u1={id:'u1',type:'userMessage',text:'旧问题'};
+ const c1={id:'c1',type:'agentMessage',phase:'commentary',text:'旧过程',timestamp:123};
+ const u2={id:'u2',type:'userMessage',text:'新问题'};
+ const c2={id:'c2',type:'agentMessage',phase:'commentary',text:'新过程全部完成',timestamp:456};
+ const image={id:'new-image',type:'imageView',path:'/new.png'};
+ const current=[{id:'t',status:'inProgress',items:[u2,c2,image]}];
+ const detail={turnId:'t',items:[u1,c1],messageOrder:['u1','c1']};
+ const result=applyTurnCommentary(current,detail);
+ expect(result[0].items).toEqual([u1,c1,u2,c2,image]);
+ expect(applyTurnCommentary(result,detail)).toEqual(result);
+});
+
+it.each([false,true])('旧详情新增的图片不能成为较新插话的后锚点，现有首用户=%s', includeUser => {
+ const u1={id:'u1',type:'userMessage',text:'旧问题'};
+ const c1={id:'c1',type:'agentMessage',phase:'commentary',text:'旧过程',timestamp:123};
+ const oldImage={id:'old-image',type:'imageView',path:'/old.png'};
+ const u2={id:'u2',type:'userMessage',text:'新问题'};
+ const c2={id:'c2',type:'agentMessage',phase:'commentary',text:'新过程完整内容',timestamp:456};
+ const newImage={id:'new-image',type:'imageView',path:'/new.png'};
+ const tool={id:'tool',type:'commandExecution',command:'pwd',aggregatedOutput:'/project'};
+ const current=[{id:'t',status:'inProgress',items:[...(includeUser?[u1]:[]),u2,c2,newImage,tool]}];
+ const detail={t:{commentaryItems:[c1],images:[oldImage],messageOrder:['u1','c1','old-image'],unavailable:true}};
+ const result=applyTurnChangeStats(current,detail);
+ expect(result[0].items.map((item:any)=>item.id)).toEqual([...(includeUser?['u1']:[]),'c1','old-image','u2','c2','new-image','tool']);
+ expect(result[0].items.find((item:any)=>item.id==='c2')).toEqual(c2);
+ expect(result[0].items.find((item:any)=>item.id==='tool')).toEqual(tool);
+ expect(applyTurnChangeStats(result,detail)).toEqual(result);
 });

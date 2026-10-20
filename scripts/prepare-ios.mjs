@@ -21,6 +21,40 @@ function run(command, args, cwd, env) {
   if (result.status !== 0) throw new Error(`${command} 执行失败（${result.status}）`);
 }
 
+// Preserve the shell's existing quote context instead of injecting nested quotes.
+function containerPaths(source, container) {
+  const singleContent = container.replaceAll("'", "'\\''");
+  const literal = "'" + singleContent + "'";
+  const doubleContent = container.replaceAll("\\", "\\\\").replaceAll('"', '\\"').replaceAll("$", "\\$").replaceAll("`", "\\`");
+  let quote = null;
+  let heredoc = null;
+  return source.split("\n").map((line) => {
+    if (heredoc) {
+      if (line.trim() === heredoc) heredoc = null;
+      return line;
+    }
+    let output = "";
+    for (let index = 0; index < line.length;) {
+      const char = line[index];
+      if (char === "\\" && quote !== "'" && index + 1 < line.length) {
+        output += line.slice(index, index + 2); index += 2; continue;
+      }
+      if (!quote && char === "#" && (index === 0 || /\s/.test(line[index - 1]))) {
+        output += line.slice(index); break;
+      }
+      if (line.startsWith("pakeplus/", index)) {
+        output += (quote === '"' ? doubleContent : quote === "'" ? singleContent : literal) + "/";
+        index += "pakeplus/".length; continue;
+      }
+      if ((char === '"' || char === "'") && (!quote || quote === char)) quote = quote ? null : char;
+      output += char; index++;
+    }
+    const delimiter = line.match(/<<-?\s*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\1/);
+    if (delimiter) heredoc = delimiter[2];
+    return output;
+  }).join("\n");
+}
+
 async function main() {
   const { values } = parseArgs({ options: {
     version: { type: "string" }, plan: { type: "boolean", default: false },
@@ -43,7 +77,7 @@ async function main() {
     return step;
   });
   const pnpmVersion = String(recipe.tools?.pnpm?.version ?? "");
-  if (!/^\d+$/.test(pnpmVersion)) throw new Error("构建配置必须配置 pnpm 主版本");
+  if (!/^\d+\.\d+\.\d+$/.test(pnpmVersion)) throw new Error("构建配置必须固定 pnpm 精确版本");
   const appId = process.env.APP_ID || "vip.loock.codexmobile";
   const otaBaseUrl = process.env.IOS_OTA_BASE_URL || "";
   if (!/^[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$/.test(appId)) throw new Error("无效 iOS Bundle ID");
@@ -71,9 +105,8 @@ async function main() {
     for (const step of selected) {
       console.log(`\n▶ ${step.name}`);
       const cwd = step["working-directory"] ? container : root;
-      const quotedContainer = "\"" + container.replaceAll("\\", "\\\\").replaceAll("\"", "\\\"").replaceAll("$", "\\$").replaceAll("`", "\\`") + "\"";
-      const source = step["working-directory"] ? step.run : step.run.replaceAll("pakeplus/", `${quotedContainer}/`);
-      const script = source.replace(/\bpnpm\b/g, `npm exec --yes --package=pnpm@${pnpmVersion} -- pnpm`);
+      const managed = step.run.replace(/\bpnpm\b/g, `npm exec --yes --package=pnpm@${pnpmVersion} -- pnpm`);
+      const script = step["working-directory"] ? managed : containerPaths(managed, container);
       run("bash", ["-euo", "pipefail", "-c", script], cwd, env);
     }
     const icons = join(container, "PakePlus/Assets.xcassets/AppIcon.appiconset");

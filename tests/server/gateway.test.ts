@@ -5,12 +5,20 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import WebSocket, { WebSocketServer } from "ws";
 import { TurnChangeHistory } from "../../server/turn-change-history.js";
-import { createGateway } from "../../server/gateway.js";
+import { createGateway as createRealGateway, type GatewayOptions } from "../../server/gateway.js";
 
 const cleanups: Array<() => Promise<void>> = [];
+const temporaryHomes: string[] = [];
+
+async function createGateway(options: GatewayOptions) {
+  const temporaryHome = options.codexHome ? undefined : await mkdtemp(join(tmpdir(), "codex-gateway-isolated-"));
+  if (temporaryHome) temporaryHomes.push(temporaryHome);
+  return createRealGateway({ ...options, codexHome: options.codexHome ?? temporaryHome });
+}
 
 afterEach(async () => {
   await Promise.all(cleanups.splice(0).map((cleanup) => cleanup()));
+  await Promise.all(temporaryHomes.splice(0).map((directory) => rm(directory, { recursive: true, force: true })));
 });
 
 describe("透明网关", () => {
@@ -150,10 +158,9 @@ describe("透明网关", () => {
     try {
       await new Promise<void>((resolve) => client.once("open", resolve));
       client.send(JSON.stringify({ id: 8, method: "turn/start", params: { threadId } }));
-      await prepared; await new Promise((resolve) => setTimeout(resolve, 30));
+      await prepared;
+      await expect.poll(async () => JSON.parse(await readFile(join(root, "codex-mobile-turn-changes", `${threadId}.json`), "utf8")).pending).toBeUndefined();
       expect(starts).toBe(0);
-      const state = JSON.parse(await readFile(join(root, "codex-mobile-turn-changes", `${threadId}.json`), "utf8"));
-      expect(state.pending).toBeUndefined();
     } finally { snapshot.mockRestore(); client.terminate(); }
   });
 
@@ -352,6 +359,7 @@ describe("透明网关", () => {
       httpPolling: true,
       barkPush: true,
       imagePreview: true,
+      followUpQueue: true,
     });
   });
 

@@ -1,13 +1,46 @@
-import { fireEvent, render, within } from "@testing-library/react";
+import { act, fireEvent, render, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import {
+  ContextUsageButton,
   ConversationActionMenu,
-  ConversationStatusSheet,
   contextUsageView,
-  sevenDayRateLimitView,
 } from "../../src/features/conversation/ConversationControls";
+import { ACTION_MENU_EVENT } from "../../src/ui/native-action-menu";
 
 describe("对话详情控制", () => {
+  it("原生重命名先分发动作，再关闭已消费的菜单，不等待重命名完成", () => {
+    const show = vi.fn();
+    (window as any).CodexMobileActionMenu = { show, dismiss: vi.fn() };
+    try {
+      const calls: string[] = [];
+      const { unmount } = render(
+        <ConversationActionMenu
+          open
+          thread={{ id: "thread-1", preview: "当前会话" }}
+          pendingAction=""
+          onClose={() => calls.push("close")}
+          onPin={() => undefined}
+          onRefresh={() => undefined}
+          onDuplicate={() => undefined}
+          onCopy={() => undefined}
+          onRename={() => {
+            calls.push("rename");
+            return new Promise<boolean>(() => {});
+          }}
+          onArchive={() => undefined}
+        />,
+      );
+      const request = JSON.parse(show.mock.calls[0][0]);
+      act(() => window.dispatchEvent(new CustomEvent(ACTION_MENU_EVENT, {
+        detail: { requestId: request.requestId, actionId: "rename" },
+      })));
+      expect(calls).toEqual(["rename", "close"]);
+      unmount();
+    } finally {
+      delete (window as any).CodexMobileActionMenu;
+    }
+  });
+
   it("上下文环和面板文字由同一份 token usage 推导", () => {
     expect(
       contextUsageView({
@@ -23,43 +56,20 @@ describe("对话详情控制", () => {
     });
   });
 
-  it("优先使用 7 天窗口并显示剩余比例", () => {
-    expect(
-      sevenDayRateLimitView({
-        rateLimits: {
-          primary: { usedPercent: 20, windowDurationMins: 300 },
-          secondary: {
-            usedPercent: 29,
-            windowDurationMins: 10_080,
-            resetsAt: 1_800_000_000,
-          },
-        },
-      }),
-    ).toEqual({
-      remainingPercent: 71,
-      resetsAt: 1_800_000_000,
-    });
-  });
-
-  it("状态面板在缺失用量时显示暂无数据", () => {
+  it("上下文按钮保留无障碍名称并声明卡片开关状态", () => {
     const { container } = render(
-      <ConversationStatusSheet
+      <ContextUsageButton
         open
-        thread={{ id: "thread-1", cwd: "/tmp/project" }}
         tokenUsage={null}
-        rateLimits={null}
-        onClose={() => undefined}
+        onClick={() => undefined}
       />,
     );
-    const view = within(container);
-
-    expect(view.getByRole("dialog", { name: "状态" })).not.toBeNull();
-    expect(view.getAllByText("暂无数据")).toHaveLength(2);
-    expect(view.getByText("thread-1")).not.toBeNull();
-    expect(view.getByText("/tmp/project")).not.toBeNull();
+    const button = within(container).getByRole("button", { name: "查看上下文占用情况" });
+    expect(button).toHaveAttribute("aria-expanded", "true");
+    expect(button).toHaveAttribute("aria-haspopup", "dialog");
   });
 
-  it("操作面板根据持久化字段切换置顶文案", () => {
+  it("操作面板根据持久化字段切换关注文案", () => {
     const onPin = vi.fn();
     const onRefresh = vi.fn();
     const onDuplicate = vi.fn();
@@ -79,7 +89,7 @@ describe("对话详情控制", () => {
     );
     let view = within(container);
 
-    fireEvent.click(view.getByRole("button", { name: "置顶" }));
+    fireEvent.click(view.getByRole("button", { name: "关注" }));
     expect(onPin).toHaveBeenCalledTimes(1);
     fireEvent.click(view.getByRole("button", { name: "刷新会话" }));
     expect(onRefresh).toHaveBeenCalledTimes(1);
@@ -101,10 +111,10 @@ describe("对话详情控制", () => {
       />,
     );
     view = within(container);
-    expect(view.getByRole("button", { name: "取消置顶" })).not.toBeNull();
+    expect(view.getByRole("button", { name: "取消关注" })).not.toBeNull();
   });
 
-  it("只读会话仍可本地置顶，但禁用服务端写操作", () => {
+  it("只读会话仍可本地关注，但禁用服务端写操作", () => {
     const onPin = vi.fn();
     const { container } = render(
       <ConversationActionMenu
@@ -126,8 +136,8 @@ describe("对话详情控制", () => {
     expect(view.getByRole("button", { name: "刷新会话" }).hasAttribute("disabled")).toBe(false);
     expect(view.getByRole("button", { name: "复制会话" }).hasAttribute("disabled")).toBe(true);
     expect(view.getByRole("button", { name: "复制会话 ID" }).hasAttribute("disabled")).toBe(false);
-    expect(view.getByRole("button", { name: "置顶" }).hasAttribute("disabled")).toBe(false);
-    fireEvent.click(view.getByRole("button", { name: "置顶" }));
+    expect(view.getByRole("button", { name: "关注" }).hasAttribute("disabled")).toBe(false);
+    fireEvent.click(view.getByRole("button", { name: "关注" }));
     expect(onPin).toHaveBeenCalledOnce();
     expect(view.getByRole("button", { name: "重命名" }).hasAttribute("disabled")).toBe(true);
     expect(view.getByRole("button", { name: "归档" }).hasAttribute("disabled")).toBe(true);

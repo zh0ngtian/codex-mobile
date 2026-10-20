@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import WebSocket, { WebSocketServer } from "ws";
 import { createGateway, type Gateway } from "../../server/gateway.js";
+import { BarkNotifications } from "../../server/bark-notifications.js";
 
 const cleanup: Array<() => Promise<void>> = [];
 afterEach(async () => { for (const fn of cleanup.splice(0).reverse()) await fn(); });
@@ -53,6 +54,24 @@ async function fixture(failPush: boolean | number = false) {
 }
 
 describe("Bark 通知", () => {
+  it.each(["http", "stream"])("%s 模型提问立即推送且跨连接重复请求不重发，完成通知独立", async (transport) => {
+    const f = await fixture(); await f.settings();
+    if (transport === "stream") await f.stream();
+    else await f.rpc({ id: 0, method: "initialize", params: {} });
+    const question = { id: "ask", method: "item/tool/requestUserInput", params: {
+      threadId: final.params.threadId, turnId: "turn", itemId: "question-item",
+      questions: [{ id: "q", header: "方案", question: "私密问题正文", options: null }],
+    } };
+    f.send(question); await eventually(() => f.pushes.length === 1);
+    expect(f.pushes[0]).toMatchObject({ title: "Codex 需要你回答", body: "新对话" });
+    expect(f.pushes[0].url).toContain(encodeURIComponent(final.params.threadId));
+    expect(JSON.stringify(f.pushes)).not.toContain("私密问题正文");
+    f.send({ ...question, id: "another-connection" }); await wait(100);
+    expect(f.pushes).toHaveLength(1);
+    await f.start(); f.send(final); f.send(completed);
+    await eventually(() => f.pushes.length === 2);
+    expect(f.pushes[1].title).toBe("Codex 运行结束");
+  });
   it.each(["http", "stream"])("%s 只推送移动端具体指令，同会话查看与电脑后续回合静默", async (transport) => {
     const f = await fixture(); await f.settings();
     if (transport === "stream") await f.stream();
@@ -228,8 +247,10 @@ describe("Bark 通知", () => {
     f.send(final); f.send(completed); await eventually(() => f.pushes.length === 1);
     expect(f.pushes[0]).toMatchObject({ title: "Codex 运行结束", body: "新对话", group: "办公室 Mac", url: `codexmobile://thread?backendId=${encodeURIComponent(f.backendId)}&threadId=${encodeURIComponent(final.params.threadId)}`, id: expect.any(String) }); expect(JSON.stringify(f.pushes)).not.toContain("private output");
     const client = await f.stream(); await f.start(); f.send(final); f.send(completed); await wait(80); expect(f.pushes).toHaveLength(1); client.close();
-    expect((await stat(join(f.root, "codex-mobile-notifications"))).mode & 0o777).toBe(0o700);
-    expect((await stat(join(f.root, "codex-mobile-notifications", "state.json"))).mode & 0o777).toBe(0o600);
+    if (process.platform !== "win32") {
+      expect((await stat(join(f.root, "codex-mobile-notifications"))).mode & 0o777).toBe(0o700);
+      expect((await stat(join(f.root, "codex-mobile-notifications", "state.json"))).mode & 0o777).toBe(0o600);
+    }
     await f.restart(); await f.rpc({ id: 1, method: "initialize", params: {} }); await f.start(); f.send(final); f.send(completed); await wait(80); expect(f.pushes).toHaveLength(1);
     await f.settings({ clientId: f.clientId, backendId: f.backendId, mode: "system" }); f.send({ ...final, params: { ...final.params, turnId: "another" } }); f.send({ ...completed, params: { ...completed.params, turn: { id: "another", status: "completed" } } }); await wait(80); expect(f.pushes).toHaveLength(1);
     expect(await readFile(join(f.root, "codex-mobile-notifications", "state.json"), "utf8")).not.toContain(f.barkUrl);
@@ -397,4 +418,127 @@ it("推送 URL 只接受 HTTP(S) 单个设备 Key，支持自建路径前缀", a
   expect(parse(" https://api.day.app/DeviceKey123/ ")).toBe("https://api.day.app/DeviceKey123");
   expect(parse("http://localhost:8080/bark/device_key-1/")).toBe("http://localhost:8080/bark/device_key-1");
   for (const value of ["", "ftp://host/key", "https://api.day.app", "https://api.day.app/key/title", "https://host/push", "https://host/register", "https://host/ping", "https://user:pass@host/key", "https://host/key?x=1", "https://host/key#fragment", "https://host/a b", "https://host/key\n", "https://host/%2f", "https://host/%70ush", "https://host/a//key"]) expect(() => parse(value)).toThrow(/[\u4e00-\u9fff]/);
+});
+
+describe("Bark 关注订阅", () => {
+  it.each(["http", "stream"])("%s 电脑完成只通知关注手机，同地址合并、取消与重启去重", async transport => {
+    const f = await fixture();
+    const followed = { clientId: f.clientId, backendId: f.backendId, mode: "bark", barkUrl: f.barkUrl, followedThreadIds: [final.params.threadId] };
+    await f.settings(followed);
+    await f.settings({ ...followed, clientId: randomUUID(), backendId: "alias" });
+    await f.settings({ ...followed, clientId: randomUUID(), backendId: "other", barkUrl: f.barkUrl.replace("deviceKey", "otherKey"), followedThreadIds: [] });
+    if (transport === "stream") await f.stream(); else await f.rpc({ id: 0, method: "initialize", params: {} });
+    f.send(final); f.send(completed); await eventually(() => f.pushes.length === 1);
+    expect(f.pushes[0].url).not.toContain("backendId=other");
+    await f.restart(); await f.rpc({ id: 0, method: "initialize", params: {} });
+    f.send(final); f.send(completed); await wait(100); expect(f.pushes).toHaveLength(1);
+    await f.settings({ ...followed, followedThreadIds: [] });
+    // alias 仍关注，先取消别名后电脑下一轮应静默。
+    const state = JSON.parse(await readFile(join(f.root, "codex-mobile-notifications/state.json"), "utf8"));
+    for (const entry of state.subscriptions) await f.settings({ ...entry, mode: "bark", followedThreadIds: [] });
+    f.send({ ...final, params: { ...final.params, turnId: "next" } });
+    f.send({ ...completed, params: { ...completed.params, turn: { id: "next", status: "completed" } } });
+    await wait(100); expect(f.pushes).toHaveLength(1);
+  });
+  it("移动确认迟到：先通知关注地址，再向其余地址投递同回合且不重复", async () => {
+    const f = await fixture();
+    await f.settings({ clientId: f.clientId, backendId: f.backendId, mode: "bark", barkUrl: f.barkUrl, followedThreadIds: [final.params.threadId] });
+    await f.settings({ clientId: randomUUID(), backendId: "other", mode: "bark", barkUrl: f.barkUrl.replace("deviceKey", "otherKey") });
+    await f.rpc({ id: 0, method: "initialize", params: {} });
+    f.send(final); f.send(completed); await eventually(() => f.pushes.length === 1);
+    await f.start(); await eventually(() => f.pushes.length === 2);
+    f.send(final); f.send(completed); await wait(50); expect(f.pushes).toHaveLength(2);
+  });
+  it("同 Bark 地址变更关注会保存，旧设置缺失为空且无效列表拒绝", async () => {
+    const f = await fixture(); await f.settings();
+    const body = { clientId: f.clientId, backendId: f.backendId, mode: "bark", barkUrl: f.barkUrl };
+    await f.settings({ ...body, followedThreadIds: ["a", "a", "b"] });
+    const path = join(f.root, "codex-mobile-notifications/state.json");
+    expect(JSON.parse(await readFile(path, "utf8")).subscriptions[0].followedThreadIds).toEqual(["a", "b"]);
+    for (const ids of [null, "a", [""], [" "], ["bad\n"], [1], ["x".repeat(1025)], Array.from({ length: 513 }, (_, n) => String(n))]) {
+      expect((await f.settings({ ...body, followedThreadIds: ids })).status).toBe(400);
+    }
+    await f.settings(body); expect(JSON.parse(await readFile(path, "utf8")).subscriptions[0].followedThreadIds).toEqual([]);
+  });
+});
+
+it("关注订阅在无手机连接与网关重启后只读观察运行回合，旧历史不补发", async () => {
+  const f = await fixture(); let status = "inProgress";
+  f.respond((socket, message) => {
+    if (message.id == null) return;
+    const turns = [{ id: "background", status, items: status === "completed" ? [final.params.item] : [] }, { id: "historical", status: "completed", items: [final.params.item] }];
+    const offset = Number(message.params?.cursor ?? "0"), limit = message.params?.limit ?? 1;
+    const result = message.method === "thread/read" ? { thread: { id: final.params.threadId, name: "后台任务", status: { type: status === "inProgress" ? "active" : "idle" } } } : message.method === "thread/turns/list" ? {
+      data: turns.slice(offset, offset + limit), nextCursor: offset + limit < turns.length ? String(offset + limit) : null,
+    } : {};
+    socket.send(JSON.stringify({ id: message.id, result }));
+  });
+  const until = async (check: () => boolean) => { for (let n = 0; n < 120 && !check(); n++) await wait(50); expect(check()).toBe(true); };
+  await f.settings({ clientId: f.clientId, backendId: f.backendId, mode: "bark", barkUrl: f.barkUrl, followedThreadIds: [final.params.threadId] });
+  await until(() => f.requests.some(request => request.method === "thread/turns/list")); expect(f.pushes).toHaveLength(0);
+  // 网关重启时仍运行；之后完成应送达，客户端完全没有连接。
+  await f.restart(); const count = f.requests.filter(request => request.method === "thread/turns/list").length;
+  await until(() => f.requests.filter(request => request.method === "thread/turns/list").length > count);
+  status = "completed"; await until(() => f.pushes.length === 1);
+  expect(f.pushes[0].body).toBe("后台任务"); expect(f.requests.some(request => ["thread/resume", "turn/start", "turn/steer"].includes(request.method))).toBe(false);
+  await f.restart(); await wait(150); expect(f.pushes).toHaveLength(1);
+  await f.settings({ clientId: f.clientId, backendId: f.backendId, mode: "bark", barkUrl: f.barkUrl, followedThreadIds: [] });
+  const canceled = f.requests.length; await wait(3100); expect(f.requests).toHaveLength(canceled);
+}, 15_000);
+
+it("后台完成入口沿用隐藏子会话分类，稀疏摘要不能恢复推送资格", async () => {
+  const f = await fixture(); await f.settings({ clientId: f.clientId, backendId: f.backendId, mode: "bark", barkUrl: f.barkUrl, followedThreadIds: [final.params.threadId] });
+  const notifications = new BarkNotifications({ codexHome: f.root, displayName: "测试" });
+  try {
+    await notifications.initialized();
+    notifications.observeRpc({ method: "thread/read" }, { result: { thread: { id: final.params.threadId, threadSource: "subagent" } } });
+    notifications.observeRpc({ method: "thread/read" }, { result: { thread: { id: final.params.threadId, name: "稀疏摘要" } } });
+    notifications.notifyFollowedCompletion(final.params.threadId, "background-hidden");
+    await wait(100); expect(f.pushes).toHaveLength(0);
+  } finally { await notifications.close(); }
+});
+
+it("只读观察器发现已有手机来源的完成时，未关注订阅仍保留原完成通知", async () => {
+  const f = await fixture(); const body = { clientId: f.clientId, backendId: f.backendId, mode: "bark", barkUrl: f.barkUrl, followedThreadIds: [final.params.threadId] };
+  await f.settings(body); await f.settings({ ...body, clientId: randomUUID(), backendId: "other", barkUrl: f.barkUrl.replace("deviceKey", "otherKey"), followedThreadIds: [] });
+  const notifications = new BarkNotifications({ codexHome: f.root, displayName: "测试" });
+  try {
+    await notifications.initialized();
+    notifications.observeRpc({ method: "turn/start", params: { threadId: final.params.threadId } }, { result: { turn: { id: "background-mobile" } } });
+    notifications.notifyFollowedCompletion(final.params.threadId, "background-mobile");
+    await eventually(() => f.pushes.length === 2);
+  } finally { await notifications.close(); }
+});
+
+describe("Bark 重试按当前地址与资格判断", () => {
+  it.each(["mobile", "followed"])("%s 完成首次503后改关注无关会话仍成功重试", async origin => {
+    const f = await fixture(1);
+    const body = { clientId: f.clientId, backendId: f.backendId, mode: "bark", barkUrl: f.barkUrl, followedThreadIds: [final.params.threadId] };
+    await f.settings(body); await f.rpc({ id: 1, method: "initialize", params: {} }); if (origin === "mobile") await f.start();
+    f.send(final); f.send(completed); await eventually(() => f.pushes.length === 1);
+    await f.settings({ ...body, followedThreadIds: [final.params.threadId, "unrelated"] });
+    await eventually(() => f.pushes.length === 2); expect(f.pushes[1].id).toBe(f.pushes[0].id);
+  });
+  it.each(["mobile", "followed"])("%s 完成首次503后取消当前关注，仅手机来源继续重试", async origin => {
+    const f = await fixture(1);
+    const body = { clientId: f.clientId, backendId: f.backendId, mode: "bark", barkUrl: f.barkUrl, followedThreadIds: [final.params.threadId] };
+    await f.settings(body); await f.rpc({ id: 1, method: "initialize", params: {} }); if (origin === "mobile") await f.start();
+    f.send(final); f.send(completed); await eventually(() => f.pushes.length === 1);
+    await f.settings({ ...body, followedThreadIds: [] });
+    if (origin === "mobile") await eventually(() => f.pushes.length === 2);
+    else { await wait(850); expect(f.pushes).toHaveLength(1); }
+  });
+  it("同地址选中订阅注销后，其他有效关注订阅接续重试并更新跳转后端", async () => {
+    const f = await fixture(1); const body = { clientId: f.clientId, backendId: f.backendId, mode: "bark", barkUrl: f.barkUrl, followedThreadIds: [final.params.threadId] };
+    await f.settings(body); const alias = { ...body, clientId: randomUUID(), backendId: "alias" }; await f.settings(alias);
+    await f.rpc({ id: 1, method: "initialize", params: {} }); f.send(final); f.send(completed); await eventually(() => f.pushes.length === 1);
+    expect(f.pushes[0].url).toContain("backendId=alias"); await f.settings({ ...alias, mode: "system" });
+    await eventually(() => f.pushes.length === 2); expect(f.pushes[1].url).toContain(`backendId=${encodeURIComponent(f.backendId)}`); expect(f.pushes[1].id).toBe(f.pushes[0].id);
+  });
+  it.each(["unsubscribe", "url"])("首次503后 %s 导致旧地址失效，旧推送不再重试", async action => {
+    const f = await fixture(1); const body = { clientId: f.clientId, backendId: f.backendId, mode: "bark", barkUrl: f.barkUrl, followedThreadIds: [final.params.threadId] };
+    await f.settings(body); await f.rpc({ id: 1, method: "initialize", params: {} }); await f.start(); f.send(final); f.send(completed); await eventually(() => f.pushes.length === 1);
+    await f.settings(action === "unsubscribe" ? { ...body, mode: "system" } : { ...body, barkUrl: f.barkUrl.replace("deviceKey", "replacement") });
+    await wait(850); expect(f.pushes).toHaveLength(1);
+  });
 });

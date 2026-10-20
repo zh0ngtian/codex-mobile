@@ -19,6 +19,26 @@ export const test = base.extend({
       }) as typeof window.setTimeout;
       const browserFetch = window.fetch.bind(window);
       const sessions = new Map<string, any>();
+      const queues = new Map<string, any[]>();
+      const running = new Set<string>();
+      const queueRpc = async (session: any, method: string, params: any) => {
+        const id = `hosted-fixture-${Date.now()}-${Math.random()}`;
+        return new Promise<any>((resolve) => {
+          session.waiters.set(id, resolve);
+          session.socket.send(JSON.stringify({ id, method, params }));
+        });
+      };
+      const drainQueue = async (session: any, threadId: string) => {
+        const queue = queues.get(session.origin) ?? [];
+        const item = queue.find((candidate) => candidate.threadId === threadId);
+        if (!item || item.state !== "queued" || running.has(threadId)) return;
+        item.state = "sending";
+        const response = await queueRpc(session, "turn/start", { threadId, input: [...(item.inputText ? [{ type: "text", text: item.inputText, text_elements: [] }] : []), ...item.extraInput], ...item.settings });
+        if (response.error) { item.state = "failed"; return; }
+        queues.set(session.origin, queue.filter((candidate) => candidate.id !== item.id));
+        running.add(threadId);
+        session.messages.push({ cursor: ++session.cursor, message: { method: "turn/started", params: { threadId, turn: response.result.turn } } });
+      };
       (window as any).__httpFixtureProjectState = async (url: string) => {
         const session = [...sessions.values()].find((candidate) => candidate.origin === new URL(url).origin);
         if (!session) return { projects: [], projectlessThreadIds: [] };
@@ -37,8 +57,27 @@ export const test = base.extend({
           if (!response.ok) return response;
           return new Response(JSON.stringify({ ...await response.json(), httpPolling: true }), { status: response.status });
         }
-        if (!["/api/rpc", "/api/events", "/api/operations"].includes(url.pathname)) return browserFetch(input, init);
+        if (!["/api/rpc", "/api/events", "/api/operations", "/api/follow-ups"].includes(url.pathname)) return browserFetch(input, init);
         if (Function.prototype.toString.call(WebSocket).includes("[native code]")) return browserFetch(input, init);
+        if (url.pathname === "/api/follow-ups") {
+          let queue = queues.get(url.origin) ?? [];
+          if (init?.method === "POST") {
+            const action = JSON.parse(String(init.body));
+            const item = queue.find((candidate) => candidate.id === action.id);
+            if (action.action === "enqueue" && !item) queue.push({ ...action, revision: 1, state: "queued" });
+            if (action.action === "edit") Object.assign(item, { inputText: action.inputText, text: action.text, revision: item.revision + 1 });
+            if (action.action === "cancel") queue = queue.filter((candidate) => candidate.id !== action.id);
+            if (action.action === "steer") {
+              const session = [...sessions.values()].find((candidate) => candidate.origin === url.origin);
+              const result = await queueRpc(session, "turn/steer", { threadId: item.threadId, input: [...(item.inputText ? [{ type: "text", text: item.inputText, text_elements: [] }] : []), ...item.extraInput] });
+              queue = queue.filter((candidate) => candidate.id !== action.id);
+              queues.set(url.origin, queue);
+              return new Response(JSON.stringify({ items: queue, turnId: result.result.turnId }));
+            }
+            queues.set(url.origin, queue);
+          }
+          return new Response(JSON.stringify({ items: queue }));
+        }
         const key = url.searchParams.get("sessionId")!;
         let session = sessions.get(key);
         if (!session || session.socket.readyState === 3) {
@@ -52,7 +91,10 @@ export const test = base.extend({
             const message = JSON.parse(String(event.data));
             if (message.id != null && !message.method) captured.waiters.get(String(message.id))?.(message);
             else if (message.id != null) captured.requests.set(String(message.id), message);
-            else captured.messages.push({ cursor: ++captured.cursor, message });
+            else {
+              captured.messages.push({ cursor: ++captured.cursor, message });
+              if (message.method === "turn/completed") { running.delete(message.params.threadId); void drainQueue(captured, message.params.threadId); }
+            }
           });
           sessions.set(key, session);
         }
@@ -102,6 +144,8 @@ export const test = base.extend({
           session.socket.send(JSON.stringify(message));
           if (message.id != null) session.requests.delete(String(message.id));
         }
+        const thread = (result as any)?.result?.thread;
+        if (thread?.id && (thread.status?.type === "active" || thread.turns?.some((turn: any) => turn.status === "inProgress"))) running.add(thread.id);
         session.results.set(requestId, result);
         return new Response(JSON.stringify(result));
       };

@@ -1,8 +1,12 @@
+import { QuoteCards, SelectionQuotesProvider } from './SelectionQuotes';
+import type { MessageQuote, SelectionQuote } from './message-quotes';
+import type { NativePanelItem } from '../../native-ui/protocol';
 import {
   type FormEvent,
   type RefObject,
   type UIEventHandler,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -44,12 +48,12 @@ import { TurnCard } from "./Timeline";
 import {
   ContextUsageButton,
   ConversationActionMenu,
-  ConversationStatusSheet,
 } from "./ConversationControls";
 import { ImagePreviewSheet } from "./sheets/ImagePreviewSheet";
 import { useConversationAutoScroll } from "./conversation-scroll";
 import { useRealtimeConversation } from "./useRealtimeConversation";
 import { t } from "../../i18n";
+import { ConversationUsagePopover } from "./ConversationUsagePopover";
 import videoPoster from "../../assets/video-poster.svg";
 import { RunProgress } from "./RunProgress";
 import type { HttpSyncState } from "../../backends/http-transport";
@@ -63,6 +67,8 @@ export type QueuedFollowUpPreview = {
   inputText?: string;
   attachmentCount?: number;
   failed?: boolean;
+  state?: "queued" | "sending" | "failed" | "uncertain";
+  error?: string;
 };
 
 function formatRealtimeDuration(startedAt: number | null, now: number) {
@@ -152,16 +158,22 @@ export function ConversationPage({
   client,
   error,
   syncState = null,
+  quotes = [], quoteFocusToken, onRemoveQuote, onSelectionQuote,
   draft,
   draftImages,
   draftFiles,
   imageReading,
+  draftSaving = false,
+  draftSaveStatus = "",
+  onSaveDraft,
   busy,
   operationPending = false,
   steering,
+  queueSaving = false,
   steerable,
   pendingSteerText,
   queuedFollowUps,
+  sidechatActive = false, sidechatActions = [], onSidechatAction,
   accessMode,
   resumeError,
   tokenUsage,
@@ -193,6 +205,8 @@ export function ConversationPage({
   onOpenAgentSettings,
   onOpenPermissionSettings,
   onDraftChange,
+  nativeContextId = '',
+  conversationVisible = true,
   historyEdit = null,
   onEditUserMessage,
   onHistoryEditTextChange = () => undefined,
@@ -203,6 +217,8 @@ export function ConversationPage({
   onQueuedFollowUpEdit = () => undefined,
   onQueuedFollowUpCancel = () => undefined,
 }: {
+  nativeContextId?: string;
+  conversationVisible?: boolean;
   active: DisplayRecord;
   backendId: string;
   backendName: string;
@@ -215,13 +231,18 @@ export function ConversationPage({
   client: AppServerClient | null;
   error: string;
   syncState?: HttpSyncState | null;
+  quotes?: MessageQuote[]; quoteFocusToken?: string; onRemoveQuote?: (id: string) => void; onSelectionQuote?: (quote: SelectionQuote, side: boolean) => void;
   draft: string;
   draftImages: DraftImage[];
   draftFiles: DraftFile[];
   imageReading: boolean;
+  draftSaving?: boolean;
+  draftSaveStatus?: string;
+  onSaveDraft?: () => void | boolean | Promise<boolean>;
   busy: boolean;
   operationPending?: boolean;
   steering: boolean;
+  queueSaving?: boolean;
   steerable: boolean;
   pendingSteerText: string;
   queuedFollowUps: QueuedFollowUpPreview[];
@@ -239,6 +260,7 @@ export function ConversationPage({
   skillsLoading?: boolean;
   pluginsLoading?: boolean;
   imageInputRef: RefObject<HTMLInputElement | null>;
+  sidechatActive?: boolean; sidechatActions?: NativePanelItem[]; onSidechatAction?: (name: string, id?: string) => Promise<void>;
   onBack: () => void;
   onNewChatBackendChange: (backendId: string) => void;
   onNewChatProjectChange: (cwd: string) => void;
@@ -267,13 +289,19 @@ export function ConversationPage({
   onSubmitHistoryEdit?: () => void | Promise<void>;
   onInterrupt: () => void | Promise<void>;
   onQueuedFollowUpAction: (id: string) => void | Promise<void>;
-  onQueuedFollowUpEdit?: (id: string, text: string) => void;
+  onQueuedFollowUpEdit?: (id: string, text: string) => void | boolean | Promise<boolean>;
   onQueuedFollowUpCancel?: (id: string) => void;
 }) {
+  const composerIdentityRef = useRef({ id: active.id, backendId, nativeContextId, historyEdit, active, revision: 0 });
+  const previousIdentity = composerIdentityRef.current;
+  const changedComposer = previousIdentity.id !== active.id || previousIdentity.backendId !== backendId || previousIdentity.nativeContextId !== nativeContextId ||
+    Boolean(previousIdentity.historyEdit) !== Boolean(historyEdit) || (!active.id && previousIdentity.active !== active);
+  composerIdentityRef.current = { id: active.id, backendId, nativeContextId, historyEdit, active, revision: previousIdentity.revision + Number(changedComposer) };
   const selectedBackend =
     backends.find((backend) => backend.id === backendId) ?? null;
   const [previewImage, setPreviewImage] = useState<DraftImage | null>(null);
   const [statusOpen, setStatusOpen] = useState(false);
+  const usageButtonRef = useRef<HTMLButtonElement>(null);
   const [actionsOpen, setActionsOpen] = useState(false);
   const [composerMaximized, setComposerMaximized] = useState(false);
   const [attachmentMenuOpen, setAttachmentMenuOpen] = useState(false);
@@ -286,7 +314,13 @@ export function ConversationPage({
     null,
   );
   const [activeSkillIndex, setActiveSkillIndex] = useState(0);
+  const mentionPointerRef = useRef<{
+    id: number;
+    x: number;
+    y: number;
+  } | null>(null);
   const composerInputRef = useRef<HTMLTextAreaElement>(null);
+  const composerRef = useRef<HTMLFormElement>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
   const attachmentPickerRef = useRef<HTMLDivElement>(null);
   const turns = useMemo(
@@ -296,6 +330,7 @@ export function ConversationPage({
   const isNewChat = !active.id;
   const hasDraft = Boolean(draft.trim() || draftImages.length || draftFiles.length);
   const canQueue = busy && !isNewChat && hasDraft;
+  const canSaveDraft = !draftSaving && !imageReading && !busy && !operationPending && hasDraft;
   const realtime = useRealtimeConversation({
     client,
     threadId: String(active.id ?? ""),
@@ -306,10 +341,15 @@ export function ConversationPage({
   );
   useEffect(() => {
     setComposerMaximized(false);
+    setStatusOpen(false);
+    setActionsOpen(false);
     setAttachmentMenuOpen(false);
     setSkillMention(null);
     setQueuedFollowUpEdit(null);
-  }, [active.id, backendId]);
+  }, [active.id, backendId, nativeContextId]);
+  useEffect(() => {
+    if (!conversationVisible) setStatusOpen(false);
+  }, [conversationVisible]);
   useEffect(() => {
     if (
       queuedFollowUpEdit &&
@@ -356,6 +396,7 @@ export function ConversationPage({
     setSkillMention(skillMentionAt(value, cursor ?? value.length));
   };
   const chooseSkill = (skill: InstalledSkill) => {
+    const revision = composerIdentityRef.current.revision;
     const input = composerInputRef.current;
     const mention = skillMentionAt(
       draft,
@@ -366,11 +407,13 @@ export function ConversationPage({
     onDraftChange(next.text);
     setSkillMention(null);
     window.requestAnimationFrame(() => {
-      composerInputRef.current?.focus({ preventScroll: true });
-      composerInputRef.current?.setSelectionRange(next.cursor, next.cursor);
+      if (!input?.isConnected || input.disabled || composerInputRef.current !== input || composerIdentityRef.current.revision !== revision) return;
+      input.focus({ preventScroll: true });
+      input.setSelectionRange(next.cursor, next.cursor);
     });
   };
   const choosePlugin = (plugin: InstalledPlugin) => {
+    const revision = composerIdentityRef.current.revision;
     const input = composerInputRef.current;
     const mention = skillMentionAt(
       draft,
@@ -381,8 +424,9 @@ export function ConversationPage({
     onDraftChange(next.text);
     setSkillMention(null);
     window.requestAnimationFrame(() => {
-      composerInputRef.current?.focus({ preventScroll: true });
-      composerInputRef.current?.setSelectionRange(next.cursor, next.cursor);
+      if (!input?.isConnected || input.disabled || composerInputRef.current !== input || composerIdentityRef.current.revision !== revision) return;
+      input.focus({ preventScroll: true });
+      input.setSelectionRange(next.cursor, next.cursor);
     });
   };
   const {
@@ -395,7 +439,22 @@ export function ConversationPage({
     threadId: String(active.id ?? `new:${backendId}`),
     contentRevision: active.turns,
     ready: loadState === "ready",
+    historyEditMessageId: historyEdit?.target.messageId,
   });
+  useLayoutEffect(() => {
+    const composer = composerRef.current;
+    const scroll = scrollRef.current;
+    if (!composer || !scroll) return;
+    // 排队、编辑、附件及字号变化都需要为整个输入区预留实际高度。
+    const updateInset = () => {
+      scroll.style.setProperty("--composer-height", `${composer.getBoundingClientRect().height}px`);
+    };
+    updateInset();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(updateInset);
+    observer.observe(composer);
+    return () => { observer.disconnect(); scroll.style.removeProperty("--composer-height"); };
+  }, [scrollRef]);
   const interactive =
     loadState === "ready" &&
     accessMode === "interactive";
@@ -415,27 +474,70 @@ export function ConversationPage({
       requestOlderTurns();
     }
   };
+  const businessError = <ErrorBanner message={error} />;
+  const composerStatus = <>
+        {accessMode === "readOnly" && (
+          <div
+            className="readonly-thread-banner"
+            role="status"
+            title={resumeError}
+          >
+            <span>{t("该会话正在其他 Codex 客户端运行，当前为只读模式")}</span>
+            <button type="button" onClick={onRetry}>
+              {t("重新连接")}
+            </button>
+          </div>
+        )}
+        {realtimeActive && (
+          <RealtimeControls
+            status={
+              realtime.state.status as "connecting" | "listening" | "stopping"
+            }
+            startedAt={realtime.state.startedAt}
+            muted={realtime.state.muted}
+            userTranscript={realtime.state.userTranscript}
+            assistantTranscript={realtime.state.assistantTranscript}
+            onToggleMute={realtime.toggleMute}
+            onStop={() => void realtime.stop()}
+          />
+        )}
+        {imageReading && (
+          <div className="draft-image-reading" role="status" aria-live="polite">
+            {t("正在处理附件…")}
+          </div>
+        )}
+        {isNewChat && onSaveDraft && (
+          <div className="new-chat-draft-actions">
+            <span role="status">{draftSaveStatus}</span>
+            <button type="button" disabled={!canSaveDraft} onClick={() => { void onSaveDraft(); }}>
+              {draftSaving ? t("正在保存…") : t("保存草稿")}
+            </button>
+          </div>
+        )}
+  </>;
+  useEffect(() => { if (quoteFocusToken) composerInputRef.current?.focus({ preventScroll: true }); }, [quoteFocusToken]);
   return (
+    <SelectionQuotesProvider active={active} backendId={backendId} sidechat={sidechatActive} readOnly={accessMode !== 'interactive' || !!historyEdit} select={onSelectionQuote}>
     <section className="conversation">
       <header className="conversation-header">
         <button
           className="round-button"
-          aria-label={t("打开会话列表")}
-          onClick={onBack}
+          aria-label={sidechatActive ? "返回主聊天" : t("打开会话列表")}
+          onClick={() => { if (sidechatActive) void onSidechatAction?.("sidechat.return"); else onBack(); }}
         >
           <AppIcon name="menu" />
         </button>
         <div className="thread-heading">
           <strong>{titleOf(active)}</strong>
           <span>
-            <i className={`status-dot ${connection}`} />
-            {backendName} · {active.isProjectless
-              ? t("无项目")
-              : pathBasename(active.cwd ?? "") || t("无项目")} ·{" "}
-            {connection === "online" ? t("已连接") : t("连接中")}
+            <>
+              <i className={`status-dot ${connection}`} />
+              {backendName} · {active.isProjectless ? t("无项目") : pathBasename(active.cwd ?? "") || t("无项目")} ·{" "}
+              {connection === "online" ? t("已连接") : t("连接中")}
+            </>
           </span>
         </div>
-        {!!active.id && (
+        {(!!active.id) && (
           <div
             className="conversation-header-actions"
             role="group"
@@ -443,11 +545,14 @@ export function ConversationPage({
           >
             <ContextUsageButton
               tokenUsage={tokenUsage}
+              open={conversationVisible && statusOpen}
+              buttonRef={usageButtonRef}
               onClick={() => {
                 setActionsOpen(false);
-                setStatusOpen(true);
+                setStatusOpen(current => !current);
               }}
             />
+
             <button
               className="round-button"
               type="button"
@@ -463,7 +568,12 @@ export function ConversationPage({
           </div>
         )}
       </header>
+
+      {sidechatActive && <p className="sidechat-shared-directory" role="note">文件目录与主聊天共享，获准修改会影响同一目录。</p>}
       <ConversationActionMenu
+        sidechatOnly={sidechatActive}
+        sidechatActions={sidechatActions}
+        onSidechatAction={(name, id) => { setActionsOpen(false); void onSidechatAction?.(name, id); }}
         open={actionsOpen}
         readOnly={accessMode === "readOnly"}
         thread={active}
@@ -525,6 +635,7 @@ export function ConversationPage({
                   }
                 >
                   <option value="">{t("无项目")}</option>
+                  {active.cwd && !projectOptions.some(project => project.cwd === active.cwd) && <option value={active.cwd}>{pathBasename(active.cwd) || active.cwd}</option>}
                   {projectOptions.map((project) => (
                     <option value={project.cwd} key={project.cwd}>
                       {project.name}
@@ -602,7 +713,7 @@ export function ConversationPage({
                   : undefined,
               );
               const canEditHistory = Boolean(
-                target &&
+                !sidechatActive && target &&
                 onEditUserMessage &&
                 !historyEdit &&
                 interactive &&
@@ -651,15 +762,18 @@ export function ConversationPage({
               <div className="empty-state">{t("开始一次新的 Codex 对话")}</div>
             )}
             <RunProgress thread={active} busy={busy} sync={syncState} operationPending={operationPending} />
+
           </div>
         </div>
       </div>
-      <ErrorBanner message={error} />
+      {businessError}
       <form
+        ref={composerRef}
         className={`composer-wrap${
           composerMaximized ? " composer-wrap-maximized" : ""
         }`}
         aria-busy={imageReading}
+
         onSubmit={(event) => {
           if (historyEdit) event.preventDefault();
           else {
@@ -680,31 +794,7 @@ export function ConversationPage({
           }
         }}
       >
-        {accessMode === "readOnly" && (
-          <div
-            className="readonly-thread-banner"
-            role="status"
-            title={resumeError}
-          >
-            <span>{t("该会话正在其他 Codex 客户端运行，当前为只读模式")}</span>
-            <button type="button" onClick={onRetry}>
-              {t("重新连接")}
-            </button>
-          </div>
-        )}
-        {realtimeActive && (
-          <RealtimeControls
-            status={
-              realtime.state.status as "connecting" | "listening" | "stopping"
-            }
-            startedAt={realtime.state.startedAt}
-            muted={realtime.state.muted}
-            userTranscript={realtime.state.userTranscript}
-            assistantTranscript={realtime.state.assistantTranscript}
-            onToggleMute={realtime.toggleMute}
-            onStop={() => void realtime.stop()}
-          />
-        )}
+        {composerStatus}
         {(pendingSteerText || queuedFollowUps.length > 0) && (
           <div className="composer-follow-up-stack">
             {pendingSteerText && (
@@ -724,8 +814,9 @@ export function ConversationPage({
                 aria-label={t("排队消息")}
               >
                 {queuedFollowUps.map((followUp) => {
-                  const canSteerFollowUp = busy && steerable;
-                  const canRetryFollowUp = !busy && followUp.failed;
+                  const locked = followUp.state === "sending" || followUp.state === "uncertain";
+                  const canSteerFollowUp = busy && steerable && !locked;
+                  const canRetryFollowUp = !busy && followUp.failed && !locked;
                   const editing = queuedFollowUpEdit?.id === followUp.id;
                   const editedText = editing ? queuedFollowUpEdit.text.trim() : "";
                   const canSaveEdit = Boolean(
@@ -741,7 +832,7 @@ export function ConversationPage({
                           <textarea
                             aria-label={t("编辑排队消息内容")}
                             value={queuedFollowUpEdit.text}
-                            disabled={steering}
+                            disabled={steering || queueSaving || locked}
                             rows={2}
                             onChange={(event) =>
                               setQueuedFollowUpEdit({
@@ -761,7 +852,7 @@ export function ConversationPage({
                             <button
                               type="button"
                               aria-label={t("取消编辑排队消息")}
-                              disabled={steering}
+                              disabled={steering || queueSaving || locked}
                               onClick={() => setQueuedFollowUpEdit(null)}
                             >
                               {t("取消")}
@@ -769,10 +860,11 @@ export function ConversationPage({
                             <button
                               type="button"
                               aria-label={t("保存排队消息")}
-                              disabled={steering || !canSaveEdit}
+                              disabled={steering || queueSaving || locked || !canSaveEdit}
                               onClick={() => {
-                                onQueuedFollowUpEdit(followUp.id, editedText);
-                                setQueuedFollowUpEdit(null);
+                                void Promise.resolve(onQueuedFollowUpEdit(followUp.id, editedText)).then((saved) => {
+                                  if (saved !== false) setQueuedFollowUpEdit(null);
+                                });
                               }}
                             >
                               {t("保存")}
@@ -782,11 +874,12 @@ export function ConversationPage({
                       ) : (
                         <>
                           <span title={followUp.text}>{followUp.text}</span>
+                          {followUp.error && <small className="queued-follow-up-error" role="alert">{followUp.error}</small>}
                           <div className="queued-follow-up-actions">
                             <button
                               type="button"
                               aria-label={t("编辑排队消息")}
-                              disabled={steering}
+                              disabled={steering || queueSaving || locked}
                               onClick={() =>
                                 setQueuedFollowUpEdit({
                                   id: followUp.id,
@@ -799,7 +892,7 @@ export function ConversationPage({
                             <button
                               type="button"
                               aria-label={t("取消排队消息")}
-                              disabled={steering}
+                              disabled={steering || queueSaving || followUp.state === "sending"}
                               onClick={() => onQueuedFollowUpCancel(followUp.id)}
                             >
                               {t("取消")}
@@ -807,11 +900,15 @@ export function ConversationPage({
                             <button
                               type="button"
                               disabled={
-                                steering || (!canSteerFollowUp && !canRetryFollowUp)
+                                steering || queueSaving || (!canSteerFollowUp && !canRetryFollowUp)
                               }
                               onClick={() => onQueuedFollowUpAction(followUp.id)}
                             >
-                              {canSteerFollowUp
+                              {followUp.state === "sending"
+                                ? t("发送中")
+                                : followUp.state === "uncertain"
+                                  ? t("待确认")
+                                  : canSteerFollowUp
                                 ? t("改为引导")
                                 : canRetryFollowUp
                                   ? t("重试")
@@ -827,6 +924,7 @@ export function ConversationPage({
             )}
           </div>
         )}
+        <QuoteCards quotes={quotes} remove={onRemoveQuote} />
         {draftImages.length > 0 && (
           <div className="draft-images" aria-label={t("待发送图片")}>
             {draftImages.map((image) => (
@@ -888,19 +986,6 @@ export function ConversationPage({
             ))}
           </div>
         )}
-        {previewImage && (
-          <ImagePreviewSheet
-            src={previewImage.url}
-            name={previewImage.name}
-            alt={t("待发送 {name}", { name: previewImage.name })}
-            onClose={() => setPreviewImage(null)}
-          />
-        )}
-        {imageReading && (
-          <div className="draft-image-reading" role="status" aria-live="polite">
-            {t("正在处理附件…")}
-          </div>
-        )}
         <div className="chips">
           <button
             type="button"
@@ -946,7 +1031,54 @@ export function ConversationPage({
                       ? `skill:${option.skill.path}`
                       : `plugin:${option.plugin.id}`
                   }
-                  onPointerDown={(event) => event.preventDefault()}
+                  onPointerDown={(event) => {
+                    // 保持输入框焦点；mobile WebKit 会因此取消兼容 click。
+                    event.preventDefault();
+                    mentionPointerRef.current = {
+                      id: event.pointerId,
+                      x: event.clientX,
+                      y: event.clientY,
+                    };
+                  }}
+                  onPointerMove={(event) => {
+                    const pointer = mentionPointerRef.current;
+                    if (pointer && Math.hypot(
+                      event.clientX - pointer.x, event.clientY - pointer.y,
+                    ) > 10) mentionPointerRef.current = null;
+                  }}
+                  onPointerCancel={() => { mentionPointerRef.current = null; }}
+                  onPointerUp={(event) => {
+                    if (event.pointerType !== "pen") return;
+                    const pointer = mentionPointerRef.current;
+                    mentionPointerRef.current = null;
+                    if (pointer?.id !== event.pointerId) return;
+                    event.preventDefault();
+                    option.kind === "skill"
+                      ? chooseSkill(option.skill)
+                      : choosePlugin(option.plugin);
+                  }}
+                  onTouchMove={(event) => {
+                    const pointer = mentionPointerRef.current;
+                    const touch = event.touches[0];
+                    if (pointer && touch && Math.hypot(
+                      touch.clientX - pointer.x, touch.clientY - pointer.y,
+                    ) > 10) mentionPointerRef.current = null;
+                  }}
+                  onTouchCancel={() => { mentionPointerRef.current = null; }}
+                  onTouchEnd={(event) => {
+                    // 滚动结束也取消尾随 click，防止 WebKit 把滑动误当作选择。
+                    event.preventDefault();
+                    const pointer = mentionPointerRef.current;
+                    mentionPointerRef.current = null;
+                    const touch = event.changedTouches[0];
+                    if (!pointer || (touch && Math.hypot(
+                      touch.clientX - pointer.x, touch.clientY - pointer.y,
+                    ) > 10)) return;
+                    // 完成 touchend 后才移除候选，避免 iOS 尾随触摸让输入框失焦。
+                    option.kind === "skill"
+                      ? chooseSkill(option.skill)
+                      : choosePlugin(option.plugin);
+                  }}
                   onClick={() =>
                     option.kind === "skill"
                       ? chooseSkill(option.skill)
@@ -991,9 +1123,9 @@ export function ConversationPage({
               ref={photoInputRef}
               className="visually-hidden"
               type="file"
-              accept="image/png,image/jpeg,image/webp,image/gif"
+              accept="image/png,image/jpeg,image/webp,image/gif,video/*"
               multiple
-              aria-label={t("选择图片")}
+              aria-label={t("选择照片和视频")}
               onChange={(event) => {
                 const input = event.currentTarget;
                 void onSelectImages(input.files).finally(() => {
@@ -1049,7 +1181,7 @@ export function ConversationPage({
                   }}
                 >
                   <AppIcon name="image" />
-                  <span>{t("图片")}</span>
+                  <span>{t("照片和视频")}</span>
                 </button>
                 <button
                   type="button"
@@ -1068,12 +1200,14 @@ export function ConversationPage({
                   role="menuitem"
                   disabled={locationPending}
                   onClick={() => {
+                    const revision = composerIdentityRef.current.revision;
+                    const input = composerInputRef.current;
                     setLocationPending(true);
                     void onSelectLocation()
                       .then((selected) => {
-                        if (selected) {
+                        if (selected && input?.isConnected && composerInputRef.current === input && composerIdentityRef.current.revision === revision) {
                           setAttachmentMenuOpen(false);
-                          composerInputRef.current?.focus({ preventScroll: true });
+                          input.focus({ preventScroll: true });
                         }
                       })
                       .finally(() => setLocationPending(false));
@@ -1089,8 +1223,11 @@ export function ConversationPage({
               </div>
             )}
           </div>
+
           <textarea
             ref={composerInputRef}
+
+
             aria-label={t("向 Codex 提问")}
             value={draft}
             disabled={
@@ -1169,7 +1306,7 @@ export function ConversationPage({
             className={`send-button${
               busy && !canQueue ? " send-button-running" : ""
             }`}
-            aria-busy={busy && !canQueue}
+            aria-busy={(busy && !canQueue) || draftSaving}
             aria-label={
               steering
                 ? t("正在引导")
@@ -1179,7 +1316,7 @@ export function ConversationPage({
                     ? t("停止")
                     : t("发送")
             }
-            disabled={
+            disabled={draftSaving ||
               !interactive ||
               Boolean(historyEdit) ||
               steering ||
@@ -1195,13 +1332,22 @@ export function ConversationPage({
           </button>
         </div>
       </form>
-      <ConversationStatusSheet
-        open={statusOpen}
-        thread={active}
+        {previewImage && (
+          <ImagePreviewSheet
+            src={previewImage.url}
+            name={previewImage.name}
+            alt={t("待发送 {name}", { name: previewImage.name })}
+            onClose={() => setPreviewImage(null)}
+          />
+        )}
+
+      <ConversationUsagePopover
+        open={conversationVisible && statusOpen}
+        anchorRef={usageButtonRef}
         tokenUsage={tokenUsage}
         rateLimits={rateLimits}
         onClose={() => setStatusOpen(false)}
       />
-    </section>
+    </section></SelectionQuotesProvider>
   );
 }

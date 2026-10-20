@@ -1,0 +1,96 @@
+{
+  "date": "2026-10-19",
+  "status": "joint-release-published",
+  "branch": "codex/sidechat",
+  "scope": "joint-client-and-gateway-release",
+  "device": {
+    "name": "iPhone 17 Pro",
+    "os": "iOS 27.0",
+    "font": "normal",
+    "orientation": "portrait"
+  },
+  "validation": {
+    "fullVitest": {
+      "files": 150,
+      "passed": 1657
+    },
+    "subsequentCleanupVitest": {
+      "files": 5,
+      "passed": 88
+    },
+    "typecheck": "passed",
+    "serverBuild": "passed",
+    "realProtocolAndGateway": "passed",
+    "xctest": {
+      "passed": 1,
+      "failed": 0,
+      "durationSeconds": 95.226,
+      "covers": [
+        "create-from-readonly-main",
+        "new-messages-only",
+        "shared-directory-warning",
+        "real-reply",
+        "multiple-branches",
+        "return",
+        "app-restart-restore",
+        "close-all-test-branches",
+        "single-user-bubble-after-server-confirmation"
+      ]
+    },
+    "closeConfirmation": {
+      "vitestFiles": 4,
+      "vitestPassed": 17,
+      "typecheck": "passed",
+      "xctestPassed": 1,
+      "durationSeconds": 43.581,
+      "covers": [
+        "system-confirmation-before-close",
+        "cancel-preserves-branch-running-queue-and-draft",
+        "stale-context-cannot-close",
+        "confirm-then-close-and-return"
+      ],
+      "screenshotReviewed": true,
+      "testSidechatsClosed": true,
+      "existingUserSidechatsPreserved": true
+    },
+    "latestNativeBusinessVitest": {
+      "files": 2,
+      "passed": 12,
+      "covers": [
+        "user-message-deduplication",
+        "daemon-invalid-return-to-main"
+      ]
+    },
+    "mainIntegration": {
+      "vitestFiles": 150,
+      "vitestPassed": 1660,
+      "typecheck": "passed",
+      "serverBuild": "passed",
+      "latestMainBase": "9ef2cce2f4dc1f5ca6e8f3fd98236c042d7b391d"
+    }
+  },
+  "cleanup": {
+    "testMainThreadsArchived": true,
+    "testSidechatsClosed": true,
+    "existingUserMainReadOnly": true
+  },
+  "deployment": {
+    "mainAdvanced": true,
+    "clientPublished": true,
+    "productionGatewayDeployed": true,
+    "temporaryGatewayDevice": "Sidechat 验收",
+    "integrationRequestedByUser": true,
+    "publicationRequestedByUser": true
+  },
+  "remaining": [],
+  "jointRelease": {
+    "version": "0.3.17",
+    "clientBatch": "8b5c6bc7-0aa7-4f0e-91c1-5add42278dfc",
+    "gatewayBatch": "cd8e1130-61a5-4b7f-a6f0-1f6b50ca6a4f",
+    "evidence": "2026-10-19-entry-sidechat-release.json",
+    "fullSuiteTests": 1670,
+    "sidechatFocusedTests": 34,
+    "sidechatUiPassed": 2,
+    "testBranchesRemaining": 0
+  }
+}

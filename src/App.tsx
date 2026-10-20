@@ -1,6 +1,33 @@
+import { normalizeHEICFiles } from './ui/heic';
+import { replaceUserMessageBody } from '../server/user-message-format';
+import { quoteInput, splitQuoteInput, validateMessageQuote, type MessageQuote, type SelectionQuote } from './features/conversation/message-quotes';
+import { useSidechatExpiry } from './sidechat/use-expiry';
+import { SidechatSessions, gatewaySidechatClient } from './sidechat/sessions';
+import { markLoadProfile } from './diagnostics/conversation-load-profile';
+import { NativeSwitchBoundary, useNativeSwitch, useSwitchRegistry, useSwitchWorkspace } from './native-ui/switch-context';
+import { emptyNativeSnapshot } from './native-ui/protocol';
+import { useNativeConfirmation } from './native-ui/confirmation';
+import { useNativeRuntime, useNativeWorkspace } from "./native-ui/adapters";
+import { useNativeConversationAdapter } from "./native-ui/workspace-adapter";
+import { isNativeUIEnabled, type NativeRuntime } from "./native-ui/runtime";
+import { projectNavigation, projectNavigationLoading } from "./native-ui/projection";
+import { projectNativeBackends, projectNativePreferences } from "./native-ui/device-panel";
+import { readFontSize } from "./ui/font-size";
+import { createLatestClientRefresh } from "./app-server/latest-client-refresh";
+import { assertNativeAttachmentSelection } from "./native-ui/attachment-import";
+import { resolveNativeNewChatTarget, type NativeNewChatTarget } from "./native-ui/new-chat-target";
+import { isClientForeground } from "./native-ui/foreground";
+import { DraftsSheet } from "./features/drafts/DraftsSheet";
+import {
+  newChatDraftStore,
+  restoreNewChatDraft,
+  type SavedNewChatDraft,
+  type SavedDraftReference,
+} from "./features/drafts/new-chat-drafts";
 import { flushSync } from "react-dom";
 import {
   FormEvent,
+  type SetStateAction,
   useCallback,
   useEffect,
   useMemo,
@@ -8,7 +35,7 @@ import {
   useState,
 } from "react";
 import { AppServerClient, type RpcMessage } from "./app-server/client";
-import { HttpOperationPendingError } from "./backends/http-transport";
+import { HttpOperationPendingError, transportUuid } from "./backends/http-transport";
 import {
   buildEditedHistoryInput,
   createHistoricalMessageEditTarget,
@@ -58,6 +85,9 @@ import {
   loadRecoverableRecentThreadTurns,
   loadOlderThreadTurns,
   loadTurnChangeStatsPage,
+  loadRunningTurnCommentary,
+  applyTurnCommentary,
+  runningTurnNeedingCommentary,
   prependUniqueTurns,
   resumeThreadSession,
   type OlderTurnsLoadState,
@@ -65,7 +95,6 @@ import {
 } from "./app-server/thread-session";
 import {
   activeTurnId,
-  buildTurnSteerParams,
   clearPendingSteerForItem,
   clearPendingSteerForRequest,
   clearPendingSteerForThread,
@@ -88,7 +117,6 @@ import {
 import {
   ConversationPage,
   type ConversationLoadState,
-  type QueuedFollowUpPreview,
 } from "./features/conversation/ConversationPage";
 import {
   ThreadListPage,
@@ -124,7 +152,9 @@ import {
   formatCurrentLocation,
   requestCurrentPosition,
 } from "./ui/current-location";
-import { uploadFile } from "./backends/file-upload";
+import { uploadDraftImages, uploadFile } from "./backends/file-upload";
+import { followUpRequest, HostedQueueSubmission, HostedQueueError, type HostedFollowUp, type FollowUpAction } from "./backends/follow-ups";
+import type { QueuedFollowUpPreview } from "./features/conversation/ConversationPage";
 import {
   runWorkspaceBootstrap,
   shouldResumeWorkspaceThread,
@@ -189,6 +219,8 @@ import {
 } from "./features/threads/thread-list-model";
 import {
   projectCollapseKey,
+  isProjectCollapsed,
+  toggleProjectCollapsedKeys,
   readCollapsedProjectKeys,
   writeCollapsedProjectKeys,
 } from "./features/threads/project-collapse";
@@ -217,6 +249,7 @@ import {
   requestRunCompletionNotificationPermission,
   type RunCompletionNavigationTarget,
 } from "./notifications/run-completion";
+import { QuestionNotificationTracker } from "../server/question-notifications";
 import { FinalAnswerCompletionTracker } from "../server/final-answer-completion";
 import { t, useI18n } from "./i18n";
 import { readNotificationPreference, writeNotificationPreference, useNotificationSync, type NotificationPreference } from "./notifications/preferences";
@@ -230,6 +263,10 @@ interface AutomaticTitleState {
 }
 
 interface QueuedFollowUp extends QueuedFollowUpPreview {
+  quotes?: MessageQuote[];
+  referencePrefix?: string;
+  hosted?: boolean;
+  revision?: number;
   threadId: string;
   draftContext: number;
   inputText: string;
@@ -254,8 +291,10 @@ interface BackendThreadSnapshot {
   projectlessThreadIds: string[];
   projectThreadStates: Record<string, ProjectThreadLoadState>;
   projectHasMore: Record<string, boolean>;
+  projectLoadedCounts: Record<string, number>;
   loadingProjectCwd: string;
   refreshing: boolean;
+  threadListRefreshing: boolean;
   threadListState: ThreadListState;
   openingThreadId: string;
   searchQuery: string;
@@ -275,12 +314,15 @@ interface WorkspaceCommand {
   draft?: string;
   draftImages?: DraftImage[];
   draftFiles?: DraftFile[];
+  savedDraft?: SavedNewChatDraft;
+  savedDraftReference?: SavedDraftReference;
   managementAction?: ThreadManagementAction;
   name?: string;
   onComplete?: (completed: boolean) => void;
 }
 
 interface BackendWorkspaceProps {
+  nativeRuntime: NativeRuntime | null;
   backend: BackendConfig;
   conversationVisible: boolean;
   foregroundRecoveryActive: boolean;
@@ -294,6 +336,7 @@ interface BackendWorkspaceProps {
     draft: string,
     draftImages: DraftImage[],
     draftFiles: DraftFile[],
+    savedDraftReference?: SavedDraftReference,
   ) => void;
   command: WorkspaceCommand | null;
   refreshVersion: number;
@@ -302,6 +345,7 @@ interface BackendWorkspaceProps {
 }
 
 function BackendWorkspace({
+  nativeRuntime,
   backend,
   conversationVisible,
   foregroundRecoveryActive,
@@ -316,9 +360,16 @@ function BackendWorkspace({
   silentRefreshVersion,
   searchQuery,
 }: BackendWorkspaceProps) {
+  const [sidechats] = useState(() => new SidechatSessions(backend.id, window.localStorage));
+  const [, setSidechatRevision] = useState(0);
+  const sidechatRestoredRef = useRef(false);
+  const sidechatParentsRef = useRef(new Map<string, AnyRecord>());
+  const restoredWorkspace = useNativeSwitch()?.restored.get(backend.id);
+  const confirmWorkspaceAction = useNativeConfirmation(isNativeUIEnabled() ? nativeRuntime : null, `workspace:${backend.id}`);
   const [connection, setConnection] = useState<ConnectionState>("connecting");
   const [threads, setThreads] = useState<AnyRecord[]>([]);
   const [projects, setProjects] = useState<string[]>([]);
+  const [newChatProjectCatalogReady, setNewChatProjectCatalogReady] = useState(false);
   const [projectlessThreadIds, setProjectlessThreadIds] = useState<string[]>(
     () => readLocalProjectlessThreadIds(window.localStorage, backend.id),
   );
@@ -342,20 +393,46 @@ function BackendWorkspace({
   >("idle");
   const [searchError, setSearchError] = useState("");
   const [searchRefreshVersion, setSearchRefreshVersion] = useState(0);
-  const [active, setActive] = useState<AnyRecord | null>(null);
-  const [draft, setDraft] = useState("");
-  const [draftImages, setDraftImages] = useState<DraftImage[]>([]);
-  const [draftFiles, setDraftFiles] = useState<DraftFile[]>([]);
+  const [active, setActive] = useState<AnyRecord | null>(() => restoredWorkspace?.thread ? { ...restoredWorkspace.thread, turns: [] } : isNativeUIEnabled() ? { id: "", turns: [], preview: t("新对话"), cwd: null } : null);
+  const [quotes, setQuotesState] = useState<MessageQuote[]>([]);
+  const quotesRef = useRef<MessageQuote[]>([]);
+  const [quoteFocusToken, setQuoteFocusToken] = useState('');
+  const setQuotes = (value: SetStateAction<MessageQuote[]>) => { quotesRef.current = typeof value === 'function' ? value(quotesRef.current) : value; setQuotesState(quotesRef.current); };
+  const familyDraftsRef = useRef(new Map<string, { text: string; images: DraftImage[]; files: DraftFile[]; quotes: MessageQuote[]; inputRevision: number }>());
+  const sidechatDraftIdsRef = useRef(new Set<string>());
+  const [draft, setDraft] = useState(restoredWorkspace?.text ?? "");
+  const savedDraftRef = useRef<SavedDraftReference | undefined>(restoredWorkspace?.savedDraftReference);
+  const restoredDraftSettingsRef = useRef<SavedNewChatDraft["settings"] | null>(restoredWorkspace?.settings ?? null);
+  // 仅首轮同线程恢复保留检查点中的本地待发送设置；普通重连仍同步服务器设置。
+  const checkpointThreadSettingsRef = useRef(restoredWorkspace?.thread?.id ?? null);
+  const draftSavingRef = useRef(false);
+  const draftContentVersionRef = useRef(0);
+  const draftInputRevisionRef = useRef(0);
+  const [draftSaving, setDraftSaving] = useState(false);
+  const [draftSaveStatus, setDraftSaveStatus] = useState("");
+  const [draftImages, setDraftImages] = useState<DraftImage[]>(restoredWorkspace?.images ?? []);
+  const [draftFiles, setDraftFiles] = useState<DraftFile[]>(restoredWorkspace?.files ?? []);
   const currentDraftRef = useRef({ text: draft, images: draftImages, files: draftFiles });
+  const sendingDraftContextsRef = useRef(new Set<number>());
   currentDraftRef.current = { text: draft, images: draftImages, files: draftFiles };
-  const [historyEdit, setHistoryEdit] =
-    useState<HistoricalMessageEditState | null>(null);
+  const [historyEdit, setHistoryEditState] = useState<HistoricalMessageEditState | null>(null);
+  const historyEditRef = useRef<HistoricalMessageEditState | null>(null);
+  const setHistoryEdit = (next: SetStateAction<HistoricalMessageEditState | null>) => {
+    historyEditRef.current = typeof next === 'function' ? next(historyEditRef.current) : next;
+    setHistoryEditState(historyEditRef.current);
+  };
   const [imageReading, setImageReading] = useState(false);
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusyState] = useState(false);
+  const busyRef = useRef(false);
+  const setBusy = useCallback((value: boolean) => {
+    busyRef.current = value;
+    setBusyState(value);
+  }, []);
   const [startingThreadContext, setStartingThreadContext] = useState<
     number | null
   >(null);
   const [steering, setSteering] = useState(false);
+  const [queueSaving, setQueueSaving] = useState(false);
   const [pendingSteerMessage, setPendingSteerMessage] =
     useState<PendingSteerMessage | null>(null);
   const [queuedFollowUps, setQueuedFollowUps] = useState<QueuedFollowUp[]>([]);
@@ -365,14 +442,19 @@ function BackendWorkspace({
   const [syncState, setSyncState] = useState<{ updatedAt: number | null; stale: boolean } | null>(null);
   const [models, setModels] = useState<AnyRecord[]>([]);
   const [permissionProfiles, setPermissionProfiles] = useState<AnyRecord[]>([]);
-  const [selectedModel, setSelectedModel] = useState("");
-  const [selectedEffort, setSelectedEffort] = useState<string | null>(null);
-  const [selectedServiceTier, setSelectedServiceTier] = useState<string | null>(null);
-  const [selectedPermission, setSelectedPermission] = useState("");
+  const [selectedModel, setSelectedModel] = useState(restoredWorkspace?.settings.model ?? "");
+  const [selectedEffort, setSelectedEffort] = useState<string | null>(restoredWorkspace?.settings.effort ?? null);
+  const [selectedServiceTier, setSelectedServiceTier] = useState<string | null>(restoredWorkspace?.settings.serviceTier ?? null);
+  const [selectedPermission, setSelectedPermission] = useState(restoredWorkspace?.settings.permissions ?? "");
   const [selectedApprovalPolicy, setSelectedApprovalPolicy] =
-    useState<ApprovalPolicy>("on-request");
+    useState<ApprovalPolicy>(restoredWorkspace?.settings.approvalPolicy ?? "on-request");
   const [selectedApprovalsReviewer, setSelectedApprovalsReviewer] =
-    useState<ApprovalsReviewer>("user");
+    useState<ApprovalsReviewer>(restoredWorkspace?.settings.approvalsReviewer ?? "user");
+  useEffect(() => {
+    draftContentVersionRef.current += 1;
+    setDraftSaveStatus("");
+  }, [draft, draftImages, draftFiles, active?.cwd, selectedModel, selectedEffort,
+    selectedServiceTier, selectedPermission, selectedApprovalPolicy, selectedApprovalsReviewer]);
   const [initialNewChatModelSettings] = useState(() =>
     readNewChatModelSettings(window.localStorage, backend.id),
   );
@@ -385,7 +467,7 @@ function BackendWorkspace({
   const [activeThreadResumeError, setActiveThreadResumeError] = useState("");
   const [openingThreadId, setOpeningThreadId] = useState("");
   const [conversationLoadState, setConversationLoadState] =
-    useState<ConversationLoadState>("idle");
+    useState<ConversationLoadState>(() => restoredWorkspace || isNativeUIEnabled() ? "ready" : "idle");
   const [conversationLoadError, setConversationLoadError] = useState("");
   const [olderTurnsState, setOlderTurnsState] =
     useState<OlderTurnsLoadState>("exhausted");
@@ -407,12 +489,14 @@ function BackendWorkspace({
     loading: boolean;
   }>({ cwd: null, plugins: [], loading: false });
   const clientRef = useRef<AppServerClient | null>(null);
+  const projectlessLoadRef = useRef<{ client: AppServerClient; pending: boolean } | null>(null);
   const readyClientRef = useRef<AppServerClient | null>(null);
   const connectionManagerRef = useRef<BackendConnectionManager | null>(null);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const imageReadGenerationRef = useRef(new ImageReadGeneration());
   const draftContextGenerationRef = useRef(0);
-  const activeRef = useRef<AnyRecord | null>(null);
+  const pendingNewChatProjectRef = useRef<number | null>(null);
+  const activeRef = useRef<AnyRecord | null>(active);
   const threadsRef = useRef<AnyRecord[]>([]);
   const modelsRef = useRef<AnyRecord[]>([]);
   const selectedModelRef = useRef("");
@@ -422,6 +506,7 @@ function BackendWorkspace({
   const foregroundRecoveryActiveRef = useRef(foregroundRecoveryActive);
   const activeThreadTargetRef = useRef<string | null>(null);
   const openSequenceRef = useRef(0);
+  const commentaryRecoveryRef = useRef<{ client: AppServerClient; key: string; promise: Promise<void> } | null>(null);
   const olderTurnsCursorRef = useRef<string | null>(null);
   const olderTurnsGenerationRef = useRef(0);
   const olderTurnsLoadingRef = useRef(false);
@@ -446,10 +531,18 @@ function BackendWorkspace({
     Record<keyof ModelSettingsSelection, number>
   >({ model: 0, effort: 0, serviceTier: 0 });
   const queuedFollowUpsRef = useRef<QueuedFollowUp[]>([]);
-  const queuedFollowUpDispatchingRef = useRef(false);
+  const queueRequestSequenceRef = useRef(0);
+  const queueMutatingRef = useRef(false);
+  const queueSubmissionsRef = useRef(new Map<string, HostedQueueSubmission>());
+  const queueSubmittingThreadIdsRef = useRef(new Set<string>());
+  const unconfirmedQueueDraftsRef = useRef(new Map<string, { text: string; images: DraftImage[]; files: DraftFile[]; quotes: MessageQuote[]; inputRevision: number }>());
   const completionEventCatchUpRef = useRef(false);
+  const questionNotificationRef = useRef(new QuestionNotificationTracker());
   const finalAnswerCompletionRef = useRef(new FinalAnswerCompletionTracker());
-  const mobileCompletionRef = useRef(new FinalAnswerCompletionTracker({ requireMobileOrigin: true }));
+  const mobileCompletionRef = useRef(new FinalAnswerCompletionTracker({
+    requireMobileOrigin: true,
+    isThreadFollowed: (threadId) => readPinnedThreadIds(localStorage, backend.id).has(threadId),
+  }));
   const automaticTitleStatesRef = useRef(
     new Map<string, AutomaticTitleState>(),
   );
@@ -569,23 +662,27 @@ function BackendWorkspace({
   const readPrioritizedThreadIds = () => new Set([
     ...readLocalPinned(),
     ...readLocalUnread(),
-    ...threadsRef.current.filter((thread) => isThreadRunning(thread.status))
-      .map((thread) => String(thread.id)),
   ]);
-  const setLocalPinned = (threadId: string) => {
+  const setLocalPinned = (threadId: string, sourceThread?: AnyRecord) => {
     const isPinned = toggleThreadPinned(localStorage, backend.id, threadId);
     const update = (current: AnyRecord[]) =>
       current.map((entry) =>
         String(entry.id) === threadId ? { ...entry, isPinned } : entry,
       );
-    setThreads(update);
+    setThreads((current) => {
+      const next = update(current);
+      if (isPinned && sourceThread && !next.some((thread) => String(thread.id) === threadId)) {
+        next.push({ ...sourceThread, isPinned });
+      }
+      return next;
+    });
     setSearchResults(update);
     setActive((current) =>
       String(current?.id ?? "") === threadId
         ? { ...current, isPinned }
         : current,
     );
-    showNotice(isPinned ? t("已置顶") : t("已取消置顶"));
+    showNotice(isPinned ? t("已关注") : t("已取消关注"));
   };
   const writeLocalUnread = (ids: Set<string>) => {
     writeUnreadThreadIds(localStorage, backend.id, ids);
@@ -631,6 +728,10 @@ function BackendWorkspace({
   const threadListLoaderRef = useRef<ReturnType<
     typeof createLatestThreadListLoader
   > | null>(null);
+  const threadRefreshRef = useRef<ReturnType<typeof createLatestClientRefresh<AppServerClient>> | null>(null);
+  if (!threadRefreshRef.current) threadRefreshRef.current = createLatestClientRefresh<AppServerClient>();
+  const [threadListRefreshing, setThreadListRefreshing] = useState(false);
+  const [projectLoadedCounts, setProjectLoadedCounts] = useState<Record<string, number>>({});
   const decorateThreads = (data: AnyRecord[]): AnyRecord[] => {
     const localUnread = readLocalUnread();
     return applyPinnedThreadState(data, readLocalPinned()).map((thread) => ({
@@ -650,7 +751,7 @@ function BackendWorkspace({
         setThreads((current) =>
           mergeThreadListPage(current, decorateThreads(data), readPrioritizedThreadIds()),
         );
-        setThreadListState("ready");
+        if (data.length) setThreadListState("ready");
       },
       onPinnedData(data) {
         // 同步已结束运行的摘要，使其按最新状态回到普通列表。
@@ -662,7 +763,6 @@ function BackendWorkspace({
             new Set(current.map((thread) => String(thread.id))),
           ),
         );
-        setThreadListState("ready");
       },
       onProjectStart(cwd) {
         setProjectThreadStates((current) => ({
@@ -671,6 +771,7 @@ function BackendWorkspace({
         }));
       },
       onProjectData(cwd, data, hasMore, nextCursor) {
+        setProjectLoadedCounts(current => ({ ...current, [cwd]: data.length }));
         const nextProjectThreads = decorateThreads(data);
         setProjectNextCursors((current) => ({
           ...current,
@@ -707,7 +808,7 @@ function BackendWorkspace({
           ...current,
           [cwd]: "ready",
         }));
-        setThreadListState("ready");
+        if (data.length) setThreadListState("ready");
       },
       onProjectError(cwd) {
         setProjectThreadStates((current) => ({
@@ -851,12 +952,14 @@ function BackendWorkspace({
       queuedFollowUpsRef.current.forEach((followUp) => {
         followUp.files.forEach((file) => URL.revokeObjectURL(file.previewUrl));
       });
+      familyDraftsRef.current.forEach(draft => draft.files.forEach(file => URL.revokeObjectURL(file.previewUrl)));
+      unconfirmedQueueDraftsRef.current.forEach((draft) => draft.files.forEach((file) => URL.revokeObjectURL(file.previewUrl)));
     },
     [],
   );
 
   useEffect(() => {
-    if (!queuedFollowUps.length) return;
+    if (!queuedFollowUps.some((item) => !item.hosted)) return;
     const protectQueuedMessages = (event: BeforeUnloadEvent) => {
       event.preventDefault();
       event.returnValue = "";
@@ -870,46 +973,61 @@ function BackendWorkspace({
     options: { silent?: boolean } = {},
   ) {
     if (!client || client !== clientRef.current) return;
-    try {
-      let directories = projects;
-      let nextProjectlessThreadIds = mergeProjectlessThreadIds(
-        projectlessThreadIds,
-        readLocalProjectlessThreadIds(window.localStorage, backend.id),
-      );
+    return threadRefreshRef.current!.run(client, async () => {
+      if (client !== clientRef.current || client.signal?.aborted) return;
+      setThreadListRefreshing(true);
       try {
-        const projectState = await fetchBackendProjectState(backend);
-        directories = projectState.projects;
-        nextProjectlessThreadIds = mergeProjectlessThreadIds(
-          projectState.projectlessThreadIds,
+        let projectCatalogReadSucceeded = false;
+        let directories = projects;
+        let nextProjectlessThreadIds = mergeProjectlessThreadIds(
+          projectlessThreadIds,
           readLocalProjectlessThreadIds(window.localStorage, backend.id),
         );
-        setProjects(directories);
-        setProjectlessThreadIds(nextProjectlessThreadIds);
-        if (directories.length || nextProjectlessThreadIds.length) {
-          setThreadListState("ready");
+        try {
+          const projectState = await fetchBackendProjectState(backend, "background", client.signal);
+          if (client !== clientRef.current || client.signal?.aborted) return;
+          projectCatalogReadSucceeded = true;
+          directories = projectState.projects;
+          nextProjectlessThreadIds = mergeProjectlessThreadIds(
+            projectState.projectlessThreadIds,
+            readLocalProjectlessThreadIds(window.localStorage, backend.id),
+          );
+          setProjects(directories);
+          setProjectlessThreadIds(nextProjectlessThreadIds);
+        } catch {
+          if (client !== clientRef.current || client.signal?.aborted) return;
         }
-      } catch {
-        if (directories.length || nextProjectlessThreadIds.length) {
-          setThreadListState("ready");
+        const collapsed = readCollapsedProjectKeys(window.localStorage);
+        await threadListLoaderRef.current!.load(
+          client,
+          directories,
+          nextProjectlessThreadIds,
+          {
+            ...options,
+            pinnedThreadIds: [...readLocalPinned()],
+            prioritizedThreadIds: [...readPrioritizedThreadIds()],
+            includeRunningThreads: true,
+            rememberedRunningThreadIds: threadsRef.current.filter(thread => isThreadRunning(thread.status)).map(thread => String(thread.id)),
+            preferredProjectCwds: [...directories, PROJECTLESS_GROUP_ID].filter(cwd =>
+              !isProjectCollapsed(collapsed, backend.id, cwd)),
+            expandedProjectCwds: [...directories, PROJECTLESS_GROUP_ID].filter(cwd =>
+              !isProjectCollapsed(collapsed, backend.id, cwd)),
+          },
+        );
+        // 目录失败或线程总加载失败都不能证明保存项目已失效，保留待恢复上下文供重试。
+        if (projectCatalogReadSucceeded && client === clientRef.current && !client.signal?.aborted) {
+          setNewChatProjectCatalogReady(true);
         }
+      } catch (reason) {
+        if (client !== clientRef.current || client.signal?.aborted) return;
+        setThreadListState((current) =>
+          current === "loading" ? "error" : current,
+        );
+        throw reason;
+      } finally {
+        if (client === clientRef.current && !client.signal?.aborted) setThreadListRefreshing(false);
       }
-      await threadListLoaderRef.current!.load(
-        client,
-        directories,
-        nextProjectlessThreadIds,
-        {
-          ...options,
-          pinnedThreadIds: [...readLocalPinned()],
-          prioritizedThreadIds: [...readPrioritizedThreadIds()],
-          includeRunningThreads: true,
-        },
-      );
-    } catch (reason) {
-      setThreadListState((current) =>
-        current === "loading" ? "error" : current,
-      );
-      throw reason;
-    }
+    });
   }
 
   function applyActiveThreadSnapshot(incoming: AnyRecord) {
@@ -921,15 +1039,42 @@ function BackendWorkspace({
     });
   }
 
+  function backfillRunningCommentary(client: AppServerClient, threadId: string, turns: AnyRecord[]) {
+    const turn = runningTurnNeedingCommentary(turns);
+    if (!turn) return Promise.resolve();
+    const generation = openSequenceRef.current;
+    const key = `${generation}:${threadId}:${turn.id}`;
+    const pending = commentaryRecoveryRef.current;
+    if (pending?.client === client && pending.key === key) return pending.promise;
+    const recovery = { client, key, promise: Promise.resolve() };
+    recovery.promise = loadRunningTurnCommentary(client, threadId, turns).then((detail) => {
+      if (!detail || generation !== openSequenceRef.current || client !== clientRef.current ||
+        activeThreadTargetRef.current !== threadId) return;
+      setActive((current) => {
+        if (current?.id !== threadId || generation !== openSequenceRef.current || client !== clientRef.current) return current;
+        const next = { ...current, turns: applyTurnCommentary(current.turns ?? [], detail) };
+        activeRef.current = next;
+        return next;
+      });
+    }).catch(() => {
+      // 历史恢复失败不阻断首屏与实时回复；不向旧网关回退全量拉取。
+    }).finally(() => {
+      if (commentaryRecoveryRef.current === recovery) commentaryRecoveryRef.current = null;
+    });
+    commentaryRecoveryRef.current = recovery;
+    return recovery.promise;
+  }
+
   async function reconcileActiveThread(
     client: AppServerClient,
     isCurrent: () => boolean = () => true,
     completedTurnId?: string,
+    recoverCommentary = false,
   ) {
     const threadId = String(
       activeThreadTargetRef.current ?? activeRef.current?.id ?? "",
     );
-    if (!threadId || client !== clientRef.current) return;
+    if (!threadId || client !== clientRef.current || sidechats.get(threadId)) return;
     const pendingThrough = pendingSequenceRef.current;
     const sequence = ++threadReconcileSequenceRef.current;
     const openSequence = openSequenceRef.current;
@@ -976,6 +1121,7 @@ function BackendWorkspace({
         ? { ...entry, status: { type: running ? "active" : "idle" } } : entry));
       return next;
     });
+    if (recoverCommentary) void backfillRunningCommentary(client, threadId, latestTurns);
     const turnsNeedingBackfill = latestTurns.filter((turn: AnyRecord) =>
       turn.itemsView === "summary" &&
       !activeRef.current?.turns?.some((currentTurn: AnyRecord) =>
@@ -1063,8 +1209,10 @@ function BackendWorkspace({
       projectlessThreadIds,
       projectThreadStates,
       projectHasMore,
+      projectLoadedCounts,
       loadingProjectCwd,
       refreshing,
+      threadListRefreshing,
       threadListState,
       openingThreadId,
       searchQuery: resolvedSearchQuery,
@@ -1088,12 +1236,15 @@ function BackendWorkspace({
     projectlessThreadIds,
     projectThreadStates,
     projectHasMore,
+    projectLoadedCounts,
     loadingProjectCwd,
     refreshing,
+    threadListRefreshing,
   ]);
 
   useEffect(() => {
     if (!refreshVersion) return;
+    setError("");
     const sequence = ++refreshSequenceRef.current;
     fullyLoadedProjectCwdsRef.current.clear();
     setThreadListState((current) =>
@@ -1132,6 +1283,10 @@ function BackendWorkspace({
         if (disposed) return;
         setConnection(status);
         if (status === "online") setError("");
+        if (status === "connecting" || status === "offline") {
+          projectlessLoadRef.current = null;
+          setLoadingProjectCwd((current) => current === PROJECTLESS_GROUP_ID ? "" : current);
+        }
         if (
           connectionError &&
           connectionError !== t("无法连接设备网关")
@@ -1178,6 +1333,18 @@ function BackendWorkspace({
             setSyncState({ updatedAt: params.updatedAt ?? null, stale: params.stale === true });
             return;
           }
+          const closedSide = message.method === 'thread/closed' ? sidechats.get(String(params.threadId ?? '')) : undefined;
+          if (sidechats.observe(message)) {
+            if (closedSide && !closedSide.closing && !sidechats.get(closedSide.id)) {
+              if (String(activeRef.current?.id ?? '') === closedSide.id) {
+                openThread(sidechatParentsRef.current.get(closedSide.parentId) ?? { id: closedSide.parentId });
+                setError(t('Sidechat 已失效，daemon 可能已重启，请返回主聊天重新创建'));
+              }
+              clearFamilyDraft(closedSide.id);
+            }
+            return;
+          }
+          questionNotificationRef.current.observe(message, completionEventCatchUpRef.current);
           if (approvalRequests.onNotification(message)) return;
           for (const tracker of [finalAnswerCompletionRef.current, mobileCompletionRef.current]) {
             for (const thread of threadsRef.current) tracker.rememberThread(thread);
@@ -1201,7 +1368,7 @@ function BackendWorkspace({
               threadId,
               activeThreadId: String(activeRef.current?.id ?? ""),
               conversationVisible: conversationVisibleRef.current,
-              documentVisible: document.visibilityState === "visible",
+              documentVisible: isClientForeground(),
             });
             if (attentionAction === "mark-unread") {
               markThreadUnread(threadId);
@@ -1218,7 +1385,7 @@ function BackendWorkspace({
               threadId,
               activeThreadId: String(activeRef.current?.id ?? ""),
               conversationVisible: conversationVisibleRef.current,
-              documentVisible: document.visibilityState === "visible",
+              documentVisible: isClientForeground(),
             }) === "mark-unread") {
               notifyRunCompleted({
                 title: t("Codex 运行结束"),
@@ -1250,7 +1417,7 @@ function BackendWorkspace({
             return;
           }
           if (message.method === "mobile/reset") {
-            void reconcileActiveThread(client).catch(() => undefined);
+            void reconcileActiveThread(client, () => true, undefined, true).catch(() => undefined);
             return;
           }
           if (message.method === "turn/plan/updated") {
@@ -1616,6 +1783,18 @@ function BackendWorkspace({
       },
       onRequest: (_backendId, request, source) => {
           const client = source as AppServerClient;
+          for (const thread of threadsRef.current) questionNotificationRef.current.rememberThread(thread);
+          questionNotificationRef.current.rememberThread(activeRef.current);
+          const question = questionNotificationRef.current.observe(request, completionEventCatchUpRef.current);
+          if (question) {
+            markThreadUnread(question.threadId);
+            notifyRunCompleted({
+              title: t("Codex 需要你回答"),
+              body: completionThreadTitle({ threadId: question.threadId, threads: threadsRef.current,
+                activeThread: activeRef.current, fallback: t("新对话") }),
+              backendId: backend.id, threadId: question.threadId,
+            });
+          }
           if (!approvalRequests.receive(request)) {
             void Promise.resolve(client.respondError(
               request.id!,
@@ -1628,13 +1807,26 @@ function BackendWorkspace({
       },
       onReady: (_backendId, source) => {
         const client = source as AppServerClient;
+        if (clientRef.current !== client) threadListLoaderRef.current!.invalidate();
+        if (projectlessLoadRef.current?.client !== client) {
+          projectlessLoadRef.current = null;
+          setLoadingProjectCwd((current) => current === PROJECTLESS_GROUP_ID ? "" : current);
+        }
         client.onThreadMetadata((thread) => {
           if (!disposed && manager.client(backend.id) === source) {
             finalAnswerCompletionRef.current.rememberThread(thread);
             mobileCompletionRef.current.rememberThread(thread);
+            questionNotificationRef.current.rememberThread(thread);
           }
         });
         clientRef.current = client;
+        if (!sidechatRestoredRef.current) {
+          sidechatRestoredRef.current = true;
+          restoreSidechats(client);
+        } else {
+          for (const side of sidechats.all()) side.client = gatewaySidechatClient(client);
+          restoreSidechats(client);
+        }
         readyClientRef.current = null;
         const workspaceResumeSnapshot = {
           threadId: activeRef.current?.id
@@ -1667,10 +1859,11 @@ function BackendWorkspace({
                     })
                     .catch(() => ({ config: {} })),
                 ]),
-                loadRateLimits: async () => {
+                loadRateLimits: async (options) => {
                   const result = await client.request<AnyRecord>(
                     "account/rateLimits/read",
                     undefined,
+                    options,
                   );
                   if (
                     !disposed &&
@@ -1734,7 +1927,7 @@ function BackendWorkspace({
             setModels(modelResult.data);
             modelsRef.current = modelResult.data;
             setPermissionProfiles(availableProfiles);
-            if (!activeRef.current?.id) {
+            if (!activeRef.current?.id && !restoredDraftSettingsRef.current) {
               selectedModelRef.current = newChatModelSettings.model;
               selectedEffortRef.current = newChatModelSettings.effort;
               selectedServiceTierRef.current = newChatModelSettings.serviceTier;
@@ -1758,21 +1951,23 @@ function BackendWorkspace({
                 setSelectedServiceTier(normalizedActiveSettings.serviceTier);
               }
             }
+            // 状态updater可能延后执行，保留本轮恢复语义，不读取随后消费的ref。
+            const restoringDraftSettings = restoredDraftSettingsRef.current !== null;
             setSelectedPermission((current) => current || configuredPermission);
             setSelectedApprovalPolicy(
               (current) =>
-                config.approval_policy ||
+                restoringDraftSettings ? current : config.approval_policy ||
                 (configuredPermission === ":danger-full-access"
                   ? "never"
                   : current),
             );
             setSelectedApprovalsReviewer(
-              (current) => config.approvals_reviewer || current,
+              (current) => restoringDraftSettings ? current : config.approvals_reviewer || current,
             );
             setRefreshing(false);
             const currentThread = activeRef.current;
             if (
-              currentThread?.id &&
+              currentThread?.id && !sidechats.get(String(currentThread.id)) &&
               shouldResumeWorkspaceThread(workspaceResumeSnapshot, {
                 threadId: String(currentThread.id),
                 openSequence: openSequenceRef.current,
@@ -1807,25 +2002,32 @@ function BackendWorkspace({
                     ? { isProjectless: true }
                     : {}),
                 });
+                void backfillRunningCommentary(client, currentThread.id, resumed.thread.turns ?? []);
                 resetOlderTurns(resumed.nextTurnsCursor);
                 setConversationLoadState("ready");
                 setConversationLoadError("");
                 setActiveSettingsSynchronized(resumed.settingsSynchronized);
                 setActiveThreadAccessMode(resumed.accessMode);
                 setActiveThreadResumeError(resumed.resumeError ?? "");
-                selectedModelRef.current = resumed.model ?? "";
-                selectedEffortRef.current = resumedSettings.effort;
-                selectedServiceTierRef.current = resumedSettings.serviceTier;
-                setSelectedModel(resumed.model ?? "");
-                setSelectedEffort(resumedSettings.effort);
-                setSelectedServiceTier(resumedSettings.serviceTier);
-                if (resumed.approvalPolicy) {
-                  setSelectedApprovalPolicy(resumed.approvalPolicy);
+                if (checkpointThreadSettingsRef.current === String(currentThread.id)) {
+                  // 输入设置是本地下一次发送的选择；恢复只接收线程内容与访问状态，不写回服务器。
+                  checkpointThreadSettingsRef.current = null;
+                  restoredDraftSettingsRef.current = null;
+                } else {
+                  selectedModelRef.current = resumed.model ?? "";
+                  selectedEffortRef.current = resumedSettings.effort;
+                  selectedServiceTierRef.current = resumedSettings.serviceTier;
+                  setSelectedModel(resumed.model ?? "");
+                  setSelectedEffort(resumedSettings.effort);
+                  setSelectedServiceTier(resumedSettings.serviceTier);
+                  if (resumed.approvalPolicy) {
+                    setSelectedApprovalPolicy(resumed.approvalPolicy);
+                  }
+                  if (resumed.approvalsReviewer) {
+                    setSelectedApprovalsReviewer(resumed.approvalsReviewer);
+                  }
+                  setSelectedPermission(resumed.activePermissionProfile?.id ?? "");
                 }
-                if (resumed.approvalsReviewer) {
-                  setSelectedApprovalsReviewer(resumed.approvalsReviewer);
-                }
-                setSelectedPermission(resumed.activePermissionProfile?.id ?? "");
               }
             }
             if (!disposed && manager.client(backend.id) === source) {
@@ -1867,7 +2069,7 @@ function BackendWorkspace({
           (client) =>
             reconcileBackendWorkspace(
               client,
-              reconcileActiveThread,
+              (currentClient) => reconcileActiveThread(currentClient, () => true, undefined, true),
             ),
         ),
     });
@@ -1879,6 +2081,7 @@ function BackendWorkspace({
         connectionManagerRef.current = null;
       }
       clientRef.current = null;
+      projectlessLoadRef.current = null;
       readyClientRef.current = null;
     };
   }, [backend.baseUrl, backend.id, backend.token, backend.transportMode]);
@@ -1990,18 +2193,85 @@ function BackendWorkspace({
     setQueuedFollowUps(next);
   }
 
-  function discardQueuedFollowUpsForThread(threadId: string) {
-    queuedFollowUpsForThread(queuedFollowUpsRef.current, threadId).forEach(
-      (followUp) => {
+  function applyHostedQueue(items: HostedFollowUp[]) {
+    replaceQueuedFollowUps([
+      ...queuedFollowUpsRef.current.filter((item) => !item.hosted),
+      ...items.map((item) => ({ ...item, hosted: true,
+        inputText: splitQuoteInput(item.inputText).question, referencePrefix: splitQuoteInput(item.inputText).referencePrefix,
+        draftContext: draftContextGenerationRef.current,
+        images: [], files: [], skills: [], plugins: [], failed: item.state === "failed",
+      })),
+    ]);
+  }
+
+  async function refreshHostedQueue() {
+    if (queueMutatingRef.current) return;
+    const sequence = ++queueRequestSequenceRef.current;
+    const result = await followUpRequest(backend);
+    if (sequence === queueRequestSequenceRef.current) applyHostedQueue(result.items);
+  }
+
+  async function mutateHostedQueue(action: FollowUpAction) {
+    if (queueMutatingRef.current) throw new Error(t("排队消息正在同步，请稍后重试"));
+    queueMutatingRef.current = true;
+    setQueueSaving(true);
+    ++queueRequestSequenceRef.current;
+    try {
+      const result = await followUpRequest(backend, action);
+      applyHostedQueue(result.items);
+      return result;
+    } finally {
+      queueMutatingRef.current = false;
+      setQueueSaving(false);
+      void refreshHostedQueue().catch(() => undefined);
+    }
+  }
+
+  useEffect(() => {
+    if (connection !== "online") return;
+    let stopped = false;
+    let inFlight = false;
+    const refresh = async () => {
+      if (stopped || inFlight || !isClientForeground()) return;
+      inFlight = true;
+      try { await refreshHostedQueue(); } catch { /* 入队和管理操作会显式报告连接/升级错误。 */ }
+      finally { inFlight = false; }
+    };
+    void refresh();
+    const timer = window.setInterval(() => void refresh(), 2000);
+    document.addEventListener("visibilitychange", refresh);
+    window.addEventListener("online", refresh);
+    return () => {
+      stopped = true;
+      ++queueRequestSequenceRef.current;
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", refresh);
+      window.removeEventListener("online", refresh);
+    };
+  }, [connection, active?.id, backend.baseUrl, backend.token]);
+
+  function releaseQueueSubmission(threadId: string, id: string) {
+    if (queueSubmissionsRef.current.get(threadId)?.confirmed(id)) unconfirmedQueueDraftsRef.current.delete(threadId);
+  }
+
+  async function discardQueuedFollowUpsForThread(threadId: string) {
+    if (queueSubmittingThreadIdsRef.current.has(threadId)) throw new Error(t("排队消息正在同步，请稍后重试"));
+    if (queueMutatingRef.current) throw new Error(t("排队消息正在同步，请稍后重试"));
+    try { await refreshHostedQueue(); } catch (reason) {
+      // 旧网关没有托管队列；其普通会话仍可归档。
+      if (!(reason instanceof HostedQueueError && reason.status === 404 &&
+        !queuedFollowUpsRef.current.some((item) => item.hosted && item.threadId === threadId))) throw reason;
+    }
+    if (queueSubmittingThreadIdsRef.current.has(threadId)) throw new Error(t("排队消息正在同步，请稍后重试"));
+    for (const followUp of queuedFollowUpsForThread(queuedFollowUpsRef.current, threadId)) {
+      if (followUp.hosted) {
+        await mutateHostedQueue({ action: "cancel", id: followUp.id, revision: followUp.revision! });
+        releaseQueueSubmission(threadId, followUp.id);
+      } else {
         followUp.files.forEach((file) => URL.revokeObjectURL(file.previewUrl));
-      },
-    );
-    replaceQueuedFollowUps(
-      queuedFollowUpsRef.current.filter(
-        (followUp) => followUp.threadId !== threadId,
-      ),
-    );
-    queuedFollowUpDispatchingRef.current = false;
+        replaceQueuedFollowUps(removeQueuedFollowUp(queuedFollowUpsRef.current, followUp.id));
+      }
+    }
   }
 
   function rebindQueuedThread(threadId: string) {
@@ -2019,7 +2289,13 @@ function BackendWorkspace({
   }
 
   function resetDraftContext() {
+    checkpointThreadSettingsRef.current = null;
     draftContextGenerationRef.current += 1;
+    savedDraftRef.current = undefined;
+    restoredDraftSettingsRef.current = null;
+    draftSavingRef.current = false;
+    setDraftSaving(false);
+    setDraftSaveStatus("");
     invalidateImageReads();
     setPendingSteerMessage(null);
     discardHistoricalMessageEdit();
@@ -2126,11 +2402,99 @@ function BackendWorkspace({
     }
   }
 
+  useEffect(() => sidechats.subscribe(() => {
+    setSidechatRevision(value => value + 1);
+    const selectedId = String(activeRef.current?.id ?? '');
+    for (const id of sidechatDraftIdsRef.current) if (id !== selectedId && !sidechats.get(id)) clearFamilyDraft(id);
+    const side = sidechats.get(selectedId);
+    if (side) {
+      activeRef.current = side.thread;
+      setActive(side.thread); setBusy(side.busy || side.sending); setError(side.error);
+    }
+  }), [sidechats]);
+  useSidechatExpiry(sidechats, () => clientRef.current, () => String(activeRef.current?.id ?? ''),
+    side => { openThread(sidechatParentsRef.current.get(side.parentId) ?? { id: side.parentId }); clearFamilyDraft(side.id); },
+    reason => setError(String((reason as Error).message ?? reason)));
+
+
+  function restoreSidechats(client: AppServerClient) {
+    const selected = sidechats.get(String(activeRef.current?.id ?? ''));
+    void sidechats.restore(gatewaySidechatClient(client)).catch(reason => {
+      if (clientRef.current !== client) return;
+      if (selected && !sidechats.get(selected.id) && String(activeRef.current?.id ?? '') === selected.id) {
+        openThread(sidechatParentsRef.current.get(selected.parentId) ?? { id: selected.parentId });
+      }
+      for (const id of sidechatDraftIdsRef.current) if (!sidechats.get(id)) clearFamilyDraft(id);
+      setError(String(reason.message ?? reason));
+    });
+  }
+
+  function addQuote(quote: MessageQuote) {
+    if (activeThreadAccessMode !== 'interactive' || historyEditRef.current) throw new Error(t('当前会话只读'));
+    setQuotes(current => [...current, quote]); setQuoteFocusToken(transportUuid());
+  }
+  function cacheFamilyDraft() {
+    const id = String(activeRef.current?.id ?? '');
+    if (id && (sidechats.get(id) || sidechats.forParent(id).length)) {
+      familyDraftsRef.current.set(id, { ...currentDraftRef.current, quotes: [...quotesRef.current], inputRevision: draftInputRevisionRef.current });
+    }
+  }
+  function clearFamilyDraft(id: string) {
+    const saved = familyDraftsRef.current.get(id);
+    saved?.files.forEach(file => URL.revokeObjectURL(file.previewUrl));
+    familyDraftsRef.current.delete(id); sidechatDraftIdsRef.current.delete(id);
+    for (const [parentId, draft] of familyDraftsRef.current) {
+      if (!sidechats.get(parentId) && !sidechats.forParent(parentId).length) {
+        const activeURLs = new Set([...currentDraftRef.current.files, ...[...unconfirmedQueueDraftsRef.current.values()].flatMap(draft => draft.files)].map(file => file.previewUrl));
+        draft.files.forEach(file => { if (!activeURLs.has(file.previewUrl)) URL.revokeObjectURL(file.previewUrl); });
+        familyDraftsRef.current.delete(parentId);
+      }
+    }
+  }
+  async function createSidechat(quote?: MessageQuote) {
+    const client = clientRef.current; const current = activeRef.current;
+    if (!client || !current?.id) throw new Error(t('设备尚未连接，请稍后重试'));
+    if (quote && sidechats.get(String(current.id))) throw new Error(t('请从主聊天创建 Sidechat'));
+    const parentId = sidechats.get(String(current.id))?.parentId ?? String(current.id);
+    const parent = sidechatParentsRef.current.get(parentId) ?? (current.id === parentId ? current : { id: parentId, cwd: current.cwd });
+    sidechatParentsRef.current.set(parentId, parent);
+    const sequence = openSequenceRef.current;
+    const side = await sidechats.create(gatewaySidechatClient(client), parent);
+    sidechatDraftIdsRef.current.add(side.id);
+    if (quote) familyDraftsRef.current.set(side.id, { text: '', images: [], files: [], quotes: [quote], inputRevision: 0 });
+    if (sequence === openSequenceRef.current) { openThread(side.thread); if (quote) setQuoteFocusToken(transportUuid()); }
+    return true;
+  }
+  function returnFromSidechat() {
+    const side = sidechats.get(String(activeRef.current?.id ?? ''));
+    if (side) openThread(sidechatParentsRef.current.get(side.parentId) ?? { id: side.parentId });
+  }
+  function openSidechat(id: string) {
+    const side = sidechats.get(id);
+    const current = String(activeRef.current?.id ?? '');
+    const parent = sidechats.get(current)?.parentId ?? current;
+    if (!side || side.parentId !== parent) throw new Error(t('Sidechat 已失效或不属于当前主聊天'));
+    if (side.restoring) throw new Error(t('Sidechat 正在恢复，请稍候'));
+    openThread(side.thread);
+  }
+  async function closeSidechat(id: string) {
+    const client = clientRef.current; const side = sidechats.get(id);
+    const current = String(activeRef.current?.id ?? '');
+    if (!client || !side || side.parentId !== (sidechats.get(current)?.parentId ?? current)) throw new Error(t('Sidechat 不可用'));
+    const context = draftContextGenerationRef.current;
+    if (!await confirmWorkspaceAction(t('确定关闭 Sidechat 吗？正在执行的任务将停止，临时聊天和待发消息会被清理，已发生的文件修改不会撤销。'))) return;
+    if (context !== draftContextGenerationRef.current || clientRef.current !== client || sidechats.get(id) !== side) throw new Error(t('会话已切换，请重试'));
+    await sidechats.close(gatewaySidechatClient(client), id);
+    if (String(activeRef.current?.id ?? '') === id) openThread(sidechatParentsRef.current.get(side.parentId) ?? { id: side.parentId });
+    clearFamilyDraft(id);
+  }
+
   async function loadThreadDetail(threadId: string, sequence: number) {
     const client = clientRef.current;
     try {
       if (!client) throw new Error(t("设备尚未连接，请稍后重试"));
       const session = await resumeThreadSession(client, threadId);
+      markLoadProfile(threadId, 'details-ready', { turns: session.thread?.turns?.length ?? 0 });
       if (sequence !== openSequenceRef.current || client !== clientRef.current) {
         if (activeThreadTargetRef.current !== threadId) {
           void client
@@ -2153,6 +2517,7 @@ function BackendWorkspace({
           ? { isProjectless: true }
           : {}),
       });
+      void backfillRunningCommentary(client, threadId, session.thread.turns ?? []);
       void backfillTurnChangeStats(
         client,
         threadId,
@@ -2178,6 +2543,7 @@ function BackendWorkspace({
       setSelectedPermission(session.activePermissionProfile?.id ?? "");
       setConversationLoadState("ready");
       setConversationLoadError("");
+      markLoadProfile(threadId, 'state-updated');
 
       if (session.thread.cwd) {
         void client
@@ -2232,17 +2598,47 @@ function BackendWorkspace({
     return options;
   }, [projects, threads]);
 
-  function openThread(thread: AnyRecord) {
-    const sequence = ++openSequenceRef.current;
-    markThreadRead(String(thread.id));
-    resetDraftContext();
-    rebindQueuedThread(String(thread.id));
-    setDraft("");
-    setDraftImages([]);
-    setDraftFiles((current) => {
-      current.forEach((file) => URL.revokeObjectURL(file.previewUrl));
-      return [];
+  function rememberedNewChatProject() {
+    const savedCwd = window.localStorage.getItem(`codex-mobile:new-chat-project:${backend.id}`);
+    return savedCwd === "" ? null :
+      projectOptions.find((project) => project.cwd === savedCwd)?.cwd || projectOptions[0]?.cwd || null;
+  }
+
+  useEffect(() => {
+    const context = pendingNewChatProjectRef.current;
+    if (!newChatProjectCatalogReady || context === null) return;
+    pendingNewChatProjectRef.current = null;
+    if (context !== draftContextGenerationRef.current) return;
+    const cwd = rememberedNewChatProject();
+    setActive((current) => {
+      if (!current || current.id || context !== draftContextGenerationRef.current) return current;
+      const next = { ...current, cwd };
+      activeRef.current = next;
+      return next;
     });
+  }, [newChatProjectCatalogReady, projectOptions]);
+
+  function openThread(thread: AnyRecord) {
+    markLoadProfile(String(thread.id), 'workspace-open');
+    const nextId = String(thread.id);
+    cacheFamilyDraft();
+    const sequence = ++openSequenceRef.current;
+    markThreadRead(nextId);
+    resetDraftContext();
+    setQuotes([]);
+    rebindQueuedThread(nextId);
+    setImageReading(queueSubmittingThreadIdsRef.current.has(nextId));
+    const unconfirmedDraft = unconfirmedQueueDraftsRef.current.get(nextId);
+    const saved = familyDraftsRef.current.get(nextId);
+    const restored = saved ?? unconfirmedDraft;
+    draftInputRevisionRef.current = restored?.inputRevision ?? 0;
+    const next = { text: restored?.text ?? '', images: restored?.images ?? [], files: restored?.files ?? [] };
+    for (const file of currentDraftRef.current.files) {
+      const retained = [...familyDraftsRef.current.values(), ...unconfirmedQueueDraftsRef.current.values()].some(draft => draft.files.some(item => item.id === file.id));
+      if (!retained) URL.revokeObjectURL(file.previewUrl);
+    }
+    currentDraftRef.current = next;
+    setDraft(next.text); setDraftImages(next.images); setDraftFiles(next.files); setQuotes(saved?.quotes ?? unconfirmedDraft?.quotes ?? []);
     setOpeningThreadId(thread.id);
     setError("");
     setBusy(false);
@@ -2259,10 +2655,19 @@ function BackendWorkspace({
       ...thread,
       turns: thread.turns ?? [],
     });
-    void loadThreadDetail(thread.id, sequence);
+    const side = sidechats.get(String(thread.id));
+    if (side) {
+      sidechatDraftIdsRef.current.add(side.id);
+      activeRef.current = side.thread; setActive(side.thread);
+      setBusy(side.busy || side.sending); setError(side.error);
+      syncStartedThreadSettings(side.settings);
+      setActiveSettingsSynchronized(true); setConversationLoadState('ready'); setOpeningThreadId('');
+      sidechats.touch(side.id);
+    } else void loadThreadDetail(thread.id, sequence);
   }
 
   function retryThreadDetail() {
+    if (sidechats.get(String(activeRef.current?.id ?? ''))) { setError('Sidechat 为临时聊天；失效后请返回主聊天重新创建'); return; }
     const threadId = activeRef.current?.id;
     if (!threadId) return;
     const sequence = ++openSequenceRef.current;
@@ -2331,6 +2736,7 @@ function BackendWorkspace({
     pendingPlugins,
     draftContext,
     onFailure,
+    onSent,
   }: {
     text: string;
     pendingImages: DraftImage[];
@@ -2338,7 +2744,8 @@ function BackendWorkspace({
     pendingSkills: InstalledSkill[];
     pendingPlugins: InstalledPlugin[];
     draftContext: number;
-    onFailure: () => void;
+    onFailure: (sourceThreadId?: string) => void;
+    onSent?: () => void;
   }) {
     let client = clientRef.current;
     if (!client) {
@@ -2356,7 +2763,8 @@ function BackendWorkspace({
     const startingProjectless = !thread?.id && !thread?.cwd;
     let sent = false;
     try {
-      setImageReading(Boolean(pendingFiles.length));
+      setImageReading(Boolean(pendingFiles.length || pendingImages.length));
+      const uploadedImages = await uploadDraftImages(backend, pendingImages);
       const uploadedFiles = await Promise.all(
         pendingFiles.map((file) => uploadFile(backend, file.file)),
       );
@@ -2440,7 +2848,7 @@ function BackendWorkspace({
       const localItem = {
         id: `local-${pendingTurnId}`,
         type: "userMessage",
-        content: buildOptimisticUserContent(text, pendingImages, uploadedFiles),
+        content: buildOptimisticUserContent(text, uploadedImages, uploadedFiles),
       };
       const pendingSequence = ++pendingSequenceRef.current;
       if (draftContext === draftContextGenerationRef.current) {
@@ -2467,7 +2875,7 @@ function BackendWorkspace({
         threadId: thread.id,
         input: buildTurnInput(
           modelText,
-          pendingImages,
+          uploadedImages,
           uploadedFiles,
           pendingSkills,
           pendingPlugins,
@@ -2497,6 +2905,7 @@ function BackendWorkspace({
         automaticTitle.turnId = String(startedTurn.turn.id ?? "") || null;
       }
       sent = true;
+      onSent?.();
       if (draftContext === draftContextGenerationRef.current) {
         setActive((current) => {
           if (!current) return current;
@@ -2518,9 +2927,9 @@ function BackendWorkspace({
               setBusy(false);
               setStartingThreadContext(null);
               setActive((current) => current?.id === threadId ? removePendingTurn(current, pendingTurnId) : current);
-              onFailure();
               setError(response.error.message);
             }
+            onFailure(threadId);
             return;
           }
           if (reason.request.method === "thread/start") {
@@ -2550,6 +2959,7 @@ function BackendWorkspace({
               }
             }
           } else {
+            onSent?.();
             pendingFiles.forEach((file) => URL.revokeObjectURL(file.previewUrl));
             if (currentContext && currentThread) void reconcileActiveThread(confirmationClient).catch(() => undefined);
           }
@@ -2575,9 +2985,9 @@ function BackendWorkspace({
             ? removePendingTurn(current, pendingTurnId)
             : current,
         );
-        onFailure();
         setError(reason instanceof Error ? reason.message : String(reason));
       }
+      onFailure(String(thread?.id ?? ''));
     } finally {
       if (draftContext === draftContextGenerationRef.current) {
         setImageReading(false);
@@ -2591,10 +3001,17 @@ function BackendWorkspace({
 
   async function send(event: FormEvent) {
     event.preventDefault();
-    if (active?.id && activeThreadAccessMode !== "interactive") return;
-    const text = draft.trim();
-    const pendingImages = draftImages;
-    const pendingFiles = draftFiles;
+    await sendMessage();
+  }
+
+  async function sendMessage() {
+    if (draftSavingRef.current || (active?.id && activeThreadAccessMode !== "interactive")) return false;
+    const text = currentDraftRef.current.text.trim();
+    const pendingQuotes = [...quotesRef.current];
+    const inputRevision = draftInputRevisionRef.current;
+    const inputText = quoteInput(text, pendingQuotes);
+    const pendingImages = currentDraftRef.current.images;
+    const pendingFiles = currentDraftRef.current.files;
     const pendingSkills = skillsReferencedInText(
       text,
       skillCatalog.cwd === (active?.cwd ?? null) ? skillCatalog.skills : [],
@@ -2608,80 +3025,168 @@ function BackendWorkspace({
       (!text && !pendingImages.length && !pendingFiles.length) ||
       !clientRef.current
     ) {
-      return;
+      return false;
     }
     const draftContext = draftContextGenerationRef.current;
-    const conversationBusy = active?.id
-      ? busy || [...pendingOperationsRef.current.values()].some((operation) => operation.threadId === String(active.id))
-      : startingThreadContext === draftContextGenerationRef.current;
-    if (conversationBusy) {
-      const threadId = String(active?.id ?? "");
+    const threadId = String(activeRef.current?.id ?? "");
+    if (sidechats.get(threadId)) {
+      if (sendingDraftContextsRef.current.has(draftContext)) return false;
+      sendingDraftContextsRef.current.add(draftContext);
+      const originalDraft = currentDraftRef.current;
+      const client = clientRef.current;
+      try {
+        const uploadedImages = await uploadDraftImages(backend, pendingImages);
+        const uploaded = await Promise.all(pendingFiles.map(file => uploadFile(backend, file.file)));
+        if (draftContext !== draftContextGenerationRef.current || clientRef.current !== client) throw new Error(t('会话已切换，请重试'));
+        await sidechats.submit(gatewaySidechatClient(client), threadId, buildTurnInput(inputText, uploadedImages, uploaded, pendingSkills, pendingPlugins), {
+          ...(selectedModel ? { model: selectedModel } : {}), ...(selectedEffort ? { effort: selectedEffort } : {}),
+          serviceTier: effectiveSelectedServiceTier, ...(selectedPermission ? { permissions: selectedPermission } : {}),
+          approvalPolicy: selectedApprovalPolicy, approvalsReviewer: selectedApprovalsReviewer,
+        }, () => {
+          // 上传/校验失败前保留输入；仅在原输入已进入分支内存队列后清理。
+          const current = currentDraftRef.current;
+          const next = { text: draftInputRevisionRef.current === inputRevision && current.text === originalDraft.text ? '' : current.text,
+            images: current.images.filter(item => !pendingImages.some(original => original.id === item.id)),
+            files: current.files.filter(item => !pendingFiles.some(original => original.id === item.id)) };
+          currentDraftRef.current = next;
+          setQuotes(current => current.filter(quote => !pendingQuotes.some(sent => sent.id === quote.id)));
+          setDraft(next.text); setDraftImages(next.images); setDraftFiles(next.files);
+          pendingFiles.forEach(file => URL.revokeObjectURL(file.previewUrl));
+        }, { question: text, quotes: pendingQuotes });
+        return true;
+      } catch (reason) {
+        if (draftContext === draftContextGenerationRef.current) setError(String((reason as Error).message ?? reason));
+        return false;
+      } finally { sendingDraftContextsRef.current.delete(draftContext); }
+    }
+    const conversationBusy = sendingDraftContextsRef.current.has(draftContext) || busyRef.current || (threadId
+      ? [...pendingOperationsRef.current.values()].some((operation) => operation.threadId === threadId)
+      : startingThreadContext === draftContext);
+    const hasHostedQueue = queuedFollowUpsRef.current.some((item) => item.hosted && item.threadId === threadId);
+    if (conversationBusy || hasHostedQueue || queueSubmissionsRef.current.get(threadId)?.hasPending) {
       if (!threadId) {
         setError(t("当前任务正在启动，请稍后再排队"));
-        return;
+        return false;
       }
-      const queuedFollowUp: QueuedFollowUp = {
-        id: `queue-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-        threadId,
-        draftContext,
-        inputText: text,
-        text: followUpPreviewText(text, pendingImages, pendingFiles),
-        attachmentCount: pendingImages.length + pendingFiles.length,
-        images: pendingImages,
-        files: pendingFiles,
-        skills: pendingSkills,
-        plugins: pendingPlugins,
-      };
+      if (queueMutatingRef.current || queueSubmittingThreadIdsRef.current.has(threadId)) return false;
+      queueSubmittingThreadIdsRef.current.add(threadId);
       requestRunCompletionNotificationPermission();
-      invalidateImageReads();
-      setDraft("");
-      setDraftImages([]);
-      setDraftFiles([]);
-      replaceQueuedFollowUps([
-        ...queuedFollowUpsRef.current,
-        queuedFollowUp,
-      ]);
-      setError("");
-      return;
+      setImageReading(true);
+      unconfirmedQueueDraftsRef.current.set(threadId, { text, images: pendingImages, files: pendingFiles, quotes: pendingQuotes, inputRevision });
+      let submission = queueSubmissionsRef.current.get(threadId);
+      if (!submission) { submission = new HostedQueueSubmission(); queueSubmissionsRef.current.set(threadId, submission); }
+      try {
+        const settings = activeSettingsSynchronized ? {
+          ...(selectedModel ? { model: selectedModel } : {}),
+          ...(selectedEffort ? { effort: selectedEffort } : {}),
+          serviceTier: effectiveSelectedServiceTier,
+          ...(selectedPermission ? { permissions: selectedPermission } : {}),
+          approvalPolicy: selectedApprovalPolicy,
+          approvalsReviewer: selectedApprovalsReviewer,
+        } : {};
+        const signature = JSON.stringify({ threadId, text: inputText, quotes: pendingQuotes, images: pendingImages,
+          files: pendingFiles.map((file) => ({ id: file.id, name: file.name, size: file.size, type: file.type })),
+        });
+        const action = await submission.prepare(signature, async () => {
+          const uploadedImages = await uploadDraftImages(backend, pendingImages);
+          const uploadedFiles = await Promise.all(pendingFiles.map((file) => uploadFile(backend, file.file)));
+          const input = buildTurnInput(inputText, uploadedImages, uploadedFiles, pendingSkills, pendingPlugins);
+          const fullText = input.filter(part => part.type === 'text').map(part => part.text).join('\n');
+          return { threadId, inputText: fullText,
+            text: followUpPreviewText(text, pendingImages, pendingFiles),
+            attachmentCount: pendingImages.length + pendingFiles.length,
+            extraInput: input.filter(part => part.type !== 'text'), settings,
+          };
+        });
+        await mutateHostedQueue(action);
+        submission.confirmed(action.id);
+        unconfirmedQueueDraftsRef.current.delete(threadId);
+        const cached = familyDraftsRef.current.get(threadId);
+        if (cached) familyDraftsRef.current.set(threadId, {
+          ...cached, text: cached.inputRevision === inputRevision && cached.text.trim() === text ? '' : cached.text,
+          quotes: cached.quotes.filter(quote => !pendingQuotes.some(sent => sent.id === quote.id)),
+          images: cached.images.filter(image => !pendingImages.some(sent => sent.id === image.id)),
+          files: cached.files.filter(file => !pendingFiles.some(sent => sent.id === file.id)),
+        });
+        pendingFiles.forEach((file) => URL.revokeObjectURL(file.previewUrl));
+        if (String(activeRef.current?.id ?? "") === threadId) {
+          // 上传期间仍可能输入新内容，只清理本次成功托管的草稿与附件；同步更新业务ref，避免紧随ACK的导航缓存旧输入。
+          const current = currentDraftRef.current;
+          currentDraftRef.current = {
+            text: draftInputRevisionRef.current === inputRevision && current.text.trim() === text ? '' : current.text,
+            images: current.images.filter(image => !pendingImages.some(sent => sent.id === image.id)),
+            files: current.files.filter(file => !pendingFiles.some(sent => sent.id === file.id)),
+          };
+          setQuotes(current => current.filter(quote => !pendingQuotes.some(sent => sent.id === quote.id)));
+          setDraft((current) => draftInputRevisionRef.current === inputRevision && current.trim() === text ? "" : current);
+          setDraftImages((current) => current.filter((image) => !pendingImages.some((original) => original.id === image.id)));
+          setDraftFiles((current) => current.filter((file) => !pendingFiles.some((original) => original.id === file.id)));
+          setError("");
+        }
+      } catch (reason) {
+        if (draftContext === draftContextGenerationRef.current) setError(reason instanceof Error ? reason.message : String(reason));
+        return false;
+      } finally {
+        queueSubmittingThreadIdsRef.current.delete(threadId);
+        if (String(activeRef.current?.id ?? "") === threadId) setImageReading(false);
+      }
+      return true;
     }
+    // 在首个await和React提交前占用当前草稿与发送上下文；不同请求UUID也不能重复消费。
+    sendingDraftContextsRef.current.add(draftContext);
+    currentDraftRef.current = { text: "", images: [], files: [] };
+    setQuotes([]);
+    const savedDraft = savedDraftRef.current;
     requestRunCompletionNotificationPermission();
     invalidateImageReads();
     setDraft("");
     setDraftImages([]);
     setDraftFiles([]);
     setError("");
-    await startTurnMessage({
-      text,
+    return startTurnMessage({
+      text: inputText,
       pendingImages,
       pendingFiles,
       pendingSkills,
       pendingPlugins,
       draftContext,
-      onFailure: () => {
+      onSent: savedDraft ? () => {
+        void newChatDraftStore.remove(savedDraft.id, savedDraft.revision).then(() => {
+          if (savedDraftRef.current?.revision === savedDraft.revision) savedDraftRef.current = undefined;
+        }).catch(() => {
+          if (draftContext === draftContextGenerationRef.current) setError(t("消息已发送，但无法移除本地草稿"));
+        });
+      } : undefined,
+      onFailure: (sourceThreadId) => {
         const currentDraft = currentDraftRef.current;
-        const threadId = String(activeRef.current?.id ?? "");
-        if (currentDraft.text.trim() || currentDraft.images.length || currentDraft.files.length) {
+        const failedThreadId = sourceThreadId || threadId;
+        if (draftContext !== draftContextGenerationRef.current || String(activeRef.current?.id ?? "") !== failedThreadId || currentDraft.text.trim() || currentDraft.images.length || currentDraft.files.length || quotesRef.current.length) {
           // 后续新草稿保持可编辑；失败的原输入和附件留在现有手动重试队列。
           replaceQueuedFollowUps([{
             id: `failed-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-            threadId, draftContext, inputText: text,
+            threadId: failedThreadId, draftContext, inputText: text, quotes: pendingQuotes,
             text: followUpPreviewText(text, pendingImages, pendingFiles),
             attachmentCount: pendingImages.length + pendingFiles.length,
             images: pendingImages, files: pendingFiles,
             skills: pendingSkills, plugins: pendingPlugins, failed: true,
           }, ...queuedFollowUpsRef.current]);
-          return;
+          return false;
         }
+        setQuotes(pendingQuotes);
+        currentDraftRef.current = { text, images: pendingImages, files: pendingFiles };
         setDraft((current) => current || text);
         setDraftImages((current) => mergeDraftImages(current, pendingImages));
         setDraftFiles((current) =>
           current.length ? current : pendingFiles,
         );
       },
+    }).finally(() => {
+      sendingDraftContextsRef.current.delete(draftContext);
     });
   }
 
   function beginHistoricalMessageEdit(target: HistoricalMessageEditTarget) {
+    if (sidechats.get(String(activeRef.current?.id ?? ''))) { setError('临时 Sidechat 暂不支持回退编辑，请发送新的补充消息'); return; }
     const thread = activeRef.current;
     const threadId = String(thread?.id ?? "");
     const currentTarget = createHistoricalMessageEditTarget(
@@ -2726,7 +3231,7 @@ function BackendWorkspace({
   }
 
   function cancelHistoricalMessageEdit() {
-    const session = historyEdit;
+    const session = historyEditRef.current;
     if (!session || session.submitting) return;
     setActive((current) => {
       if (String(current?.id ?? "") !== session.threadId) return current;
@@ -2739,7 +3244,7 @@ function BackendWorkspace({
   }
 
   async function submitHistoricalMessageEdit() {
-    const session = historyEdit;
+    const session = historyEditRef.current;
     const client = clientRef.current;
     const thread = activeRef.current;
     const threadId = String(thread?.id ?? "");
@@ -2762,7 +3267,7 @@ function BackendWorkspace({
       return;
     }
 
-    const text = session.text.trim();
+    const text = splitQuoteInput(session.text.trim()).question;
     let target = session.target;
     let retainedTurns = [...(thread.turns ?? [])];
     if (session.reverted) retainedTurns = retainedTurns.filter((turn) => !turn.historyEditDraft);
@@ -2784,8 +3289,9 @@ function BackendWorkspace({
     }
 
     const input = buildEditedHistoryInput(target, text);
+    const questionText = splitQuoteInput(text).question;
     const referencedSkills = skillsReferencedInText(
-      text,
+      questionText,
       skillCatalog.cwd === (thread.cwd ?? null) ? skillCatalog.skills : [],
     );
     for (const skill of referencedSkills) {
@@ -2798,7 +3304,7 @@ function BackendWorkspace({
       }
     }
     const referencedPlugins = pluginsReferencedInText(
-      text,
+      questionText,
       pluginCatalog.cwd === (thread.cwd ?? null) ? pluginCatalog.plugins : [],
     );
     for (const plugin of referencedPlugins) {
@@ -2817,397 +3323,259 @@ function BackendWorkspace({
       return;
     }
 
-    setHistoryEdit((current) =>
-      current ? { ...current, submitting: true } : current,
-    );
+    const draftContext = draftContextGenerationRef.current;
+    let ownedEdit: HistoricalMessageEditState = { ...session, submitting: true };
+    let editingClient = client;
+    const ownsCurrentEdit = () => draftContext === draftContextGenerationRef.current &&
+      String(activeRef.current?.id ?? "") === threadId && historyEditRef.current === ownedEdit;
+    const isCurrentEdit = () => ownsCurrentEdit() && editingClient === clientRef.current;
+    const updateSourceStatus = (running: boolean) => {
+      setThreads((entries) => entries.map((entry) => String(entry.id) === threadId
+        ? { ...entry, status: { type: running ? "active" : "idle" } }
+        : entry));
+    };
+    const setOwnedEdit = (next: HistoricalMessageEditState) => {
+      ownedEdit = next;
+      setHistoryEdit(next);
+    };
+    setHistoryEdit(ownedEdit);
     setBusy(true);
     setError("");
+    updateSourceStatus(true);
     requestRunCompletionNotificationPermission();
     const pendingTurnId =
       `pending-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const pendingSequence = ++pendingSequenceRef.current;
     let reverted = session.reverted;
-    let pendingAdded = false;
-    const draftContext = draftContextGenerationRef.current;
+    // 请求参数在原会话授权时冻结；导航后仍完成原线程的重发，不读取新会话的设置。
+    const shouldSendSettings = activeSettingsSynchronized;
+    const resendParams = {
+      threadId,
+      input,
+      ...(shouldSendSettings && selectedModel ? { model: selectedModel } : {}),
+      ...(shouldSendSettings && selectedEffort ? { effort: selectedEffort } : {}),
+      ...(shouldSendSettings ? { serviceTier: effectiveSelectedServiceTier } : {}),
+      ...(shouldSendSettings && selectedPermission ? { permissions: selectedPermission } : {}),
+      ...(shouldSendSettings ? {
+        approvalPolicy: selectedApprovalPolicy,
+        approvalsReviewer: selectedApprovalsReviewer,
+      } : {}),
+    };
     const restoreEditing = (nextReverted: boolean, failure?: string) => {
-      if (draftContext !== draftContextGenerationRef.current || String(activeRef.current?.id ?? "") !== threadId) return;
+      updateSourceStatus(false);
+      // 解除同一个编辑的提交锁不依赖旧连接；换会话或新编辑仍由所有权隔离。
+      if (!ownsCurrentEdit()) return;
       if (nextReverted) {
         // revert 已删除原目标；仅保留用于手动编辑的本地草稿，不代表已执行回合。
         const editDraft = { id: target.turnId, status: "failed", itemsView: "summary", historyEditDraft: true, items: [{ id: target.messageId, type: "userMessage", content: buildEditedHistoryInput(target, text) }] };
-        setActive((current) => {
-          if (!current || String(current.id) !== threadId) return current;
-          const next = { ...current, turns: [...(current.turns ?? []).filter((turn: AnyRecord) => turn.id !== pendingTurnId && turn.id !== target.turnId), editDraft] };
-          activeRef.current = next;
-          return next;
-        });
+        const next = { ...activeRef.current, turns: [...(activeRef.current?.turns ?? []).filter((turn: AnyRecord) => turn.id !== pendingTurnId && turn.id !== target.turnId), editDraft] };
+        activeRef.current = next;
+        setActive(next);
       }
-      setHistoryEdit((current) => current?.threadId === threadId ? { ...current, target: nextReverted ? { ...target, hasLaterTurns: false } : target, reverted: nextReverted, submitting: false } : current);
+      setOwnedEdit({ ...ownedEdit, target: nextReverted ? { ...target, hasLaterTurns: false } : target, reverted: nextReverted, submitting: false });
       setBusy(false);
       if (failure) setError(failure);
     };
-    try {
-      let workingThread = session.reverted ? { ...thread, turns: retainedTurns } : thread;
-      if (!reverted) {
-        const revertedResult = await revertHistoricalMessage(
-          client,
-          threadId,
-          target,
-        );
-        const revertedThread =
-          (revertedResult.response as { thread?: AnyRecord } | null)?.thread;
-        const revertedTurnsCursor =
-          (revertedResult.response as { turnsBackwardsCursor?: string | null } | null)
-            ?.turnsBackwardsCursor ?? null;
-        workingThread = {
-          ...thread,
-          ...(revertedThread ?? {}),
-          id: threadId,
-          turns: retainedTurns,
-          ...(thread.isProjectless === true ? { isProjectless: true } : {}),
-        };
-        reverted = true;
+    const applyRevertedResult = (response: AnyRecord | null | undefined, method: string) => {
+      const workingThread = {
+        ...thread,
+        ...(response?.thread ?? {}),
+        id: threadId,
+        turns: retainedTurns,
+        ...(thread.isProjectless === true ? { isProjectless: true } : {}),
+      };
+      reverted = true;
+      if (isCurrentEdit()) {
         activeRef.current = workingThread;
         setActive(workingThread);
-        resetOlderTurns(
-          revertedResult.method === "thread/revert"
-            ? revertedTurnsCursor
-            : null,
-        );
-        setHistoryEdit((current) =>
-          current && current.threadId === threadId
-            ? {
-                ...current,
-                target: { ...target, hasLaterTurns: false },
-                reverted: true,
-                submitting: true,
-              }
-            : current,
-        );
+        resetOlderTurns(method === "thread/revert" ? response?.turnsBackwardsCursor ?? null : null);
+        setOwnedEdit({ ...ownedEdit, target: { ...target, hasLaterTurns: false }, reverted: true, submitting: true });
       }
-
-      const localItem = {
-        id: `local-${pendingTurnId}`,
-        type: "userMessage",
-        content: input,
-      };
-      const pendingTurn = createPendingTurn(
-        pendingTurnId,
-        localItem,
-        ++pendingSequenceRef.current,
-      );
-      const pendingThread = {
-        ...workingThread,
-        turns: [...(workingThread.turns ?? retainedTurns), pendingTurn],
-      };
-      pendingAdded = true;
-      activeRef.current = pendingThread;
-      setActive(pendingThread);
-
-      const shouldSendSettings = activeSettingsSynchronized;
-      const startedTurn = await client.request<{ turn: AnyRecord }>(
-        "turn/start",
-        {
-          threadId,
-          input,
-          ...(shouldSendSettings && selectedModel
-            ? { model: selectedModel }
-            : {}),
-          ...(shouldSendSettings && selectedEffort
-            ? { effort: selectedEffort }
-            : {}),
-          ...(shouldSendSettings
-            ? { serviceTier: effectiveSelectedServiceTier }
-            : {}),
-          ...(shouldSendSettings && selectedPermission
-            ? { permissions: selectedPermission }
-            : {}),
-          ...(shouldSendSettings
-            ? {
-                approvalPolicy: selectedApprovalPolicy,
-                approvalsReviewer: selectedApprovalsReviewer,
-              }
-            : {}),
-        },
-      );
-      setActive((current) => {
-        if (!current || String(current.id) !== threadId) return current;
-        const next = applyTurnStarted(current, {
-          threadId,
-          turn: startedTurn.turn,
-        });
+      return workingThread;
+    };
+    const finishStartedTurn = (turn: AnyRecord, responseClient: AppServerClient) => {
+      const sourceThread = String(activeRef.current?.id ?? "") === threadId ? activeRef.current : null;
+      const knownTurn = sourceThread?.turns?.find((entry: AnyRecord) => entry.id === turn.id);
+      const terminal = ["completed", "failed", "interrupted", "cancelled"].includes(String(knownTurn?.status));
+      // turn/start 回执是较早事实，不能覆盖已经收到的完成通知或恢复快照。
+      const acceptedTurn = terminal ? { ...turn, ...knownTurn } : turn;
+      const next = sourceThread ? applyTurnStarted(sourceThread, { threadId, turn: acceptedTurn }) : null;
+      const running = ["inProgress", "in_progress", "running"].includes(String(next?.turns?.at(-1)?.status ?? acceptedTurn.status));
+      // 后台源线程已由完成通知变为 idle 时，较早的 start 回执不能重新标为 active。
+      const backgroundCompleted = !sourceThread && threadsRef.current.some((entry) =>
+        String(entry.id) === threadId && entry.status?.type === "idle");
+      if (!backgroundCompleted || !running) updateSourceStatus(running);
+      if (!ownsCurrentEdit()) return;
+      if (responseClient === clientRef.current && next) {
         activeRef.current = next;
-        return next;
-      });
+        setActive(next);
+      }
+      setBusy(running);
       setHistoryEdit(null);
-    } catch (reason) {
+      const currentClient = clientRef.current;
+      if (currentClient) {
+        // 完成编辑后只在同一上下文且尚未开始另一编辑时核对服务器事实。
+        void reconcileActiveThread(currentClient, () =>
+          draftContext === draftContextGenerationRef.current &&
+          String(activeRef.current?.id ?? "") === threadId && historyEditRef.current === null,
+        ).catch(() => undefined);
+      }
+    };
+    const handleFailure = (reason: unknown, requestClient: AppServerClient) => {
       if (reason instanceof HttpOperationPendingError) {
         rememberPendingOperation(reason.requestId, {
           threadId, draftContext, pendingTurnId,
           confirmed: (response, confirmationClient) => {
-            if (draftContext !== draftContextGenerationRef.current || String(activeRef.current?.id ?? "") !== threadId) return;
+            // pending registry 已匹配原请求；仅当前连接的确认可接管原编辑的界面写入。
+            if (confirmationClient === clientRef.current) editingClient = confirmationClient;
             if (response.error) {
               restoreEditing(reverted, response.error.message);
               return;
             }
             if (["thread/revert", "thread/rollback"].includes(reason.request.method ?? "")) {
-              // RPC 已明确完成回退；先恢复已知保留前缀，解锁原编辑，网络读取只校正事实。
-              const knownThread = { ...activeRef.current, turns: retainedTurns };
-              activeRef.current = knownThread;
-              setActive(knownThread);
-              resetOlderTurns((response.result as AnyRecord)?.turnsBackwardsCursor ?? null);
-              restoreEditing(true);
-              const correctionSequence = pendingSequenceRef.current;
-              void loadRecoverableRecentThreadTurns(confirmationClient, threadId, () => threadNotificationSequenceRef.current).then((recent) => {
-                if (recent == null || draftContext !== draftContextGenerationRef.current || String(activeRef.current?.id ?? "") !== threadId || confirmationClient !== clientRef.current || pendingSequenceRef.current !== correctionSequence) return;
-                setActive((current) => {
-                  if (!current || String(current.id) !== threadId) return current;
-                  const editDrafts = (current.turns ?? []).filter((turn: AnyRecord) => turn.historyEditDraft);
-                  const next = { ...current, turns: [...reconcileRecentTurns(retainedTurns, recent, { discardPendingThrough: correctionSequence }), ...editDrafts] };
-                  activeRef.current = next;
-                  return next;
-                });
-              }).catch(() => undefined);
+              // 已确认原授权回退成功后继续原线程重发；是否仍显示该编辑只决定界面写入。
+              const workingThread = applyRevertedResult(response.result as AnyRecord, reason.request.method!);
+              void sendEditedTurn(workingThread, confirmationClient);
             } else {
-              setHistoryEdit(null);
-              void reconcileActiveThread(confirmationClient).catch(() => undefined);
+              const turn = (response.result as AnyRecord)?.turn;
+              if (turn) finishStartedTurn(turn, confirmationClient);
+              else {
+                updateSourceStatus(true);
+                if (isCurrentEdit()) {
+                  setHistoryEdit(null);
+                  void reconcileActiveThread(confirmationClient).catch(() => undefined);
+                }
+              }
             }
           },
-        }, client);
+        }, requestClient);
         return;
       }
-      setBusy(false);
-      if (pendingAdded) {
-        setActive((current) => {
-          if (!current || String(current.id) !== threadId) return current;
-          const next = removePendingTurn(current, pendingTurnId);
-          activeRef.current = next;
-          return next;
-        });
+      // 回退已经成功时，服务端原目标已删除；复用现有本地编辑草稿锚点。
+      restoreEditing(reverted, reason instanceof Error ? reason.message : String(reason));
+      if (reverted && ownsCurrentEdit() && clientRef.current) retryThreadDetail();
+    };
+    async function sendEditedTurn(workingThread: AnyRecord, requestClient: AppServerClient) {
+      const localItem = { id: `local-${pendingTurnId}`, type: "userMessage", content: input };
+      if (isCurrentEdit()) {
+        const pendingThread = {
+          ...workingThread,
+          turns: [...(workingThread.turns ?? retainedTurns), createPendingTurn(pendingTurnId, localItem, pendingSequence)],
+        };
+        activeRef.current = pendingThread;
+        setActive(pendingThread);
       }
-      setHistoryEdit((current) =>
-        current && current.threadId === threadId
-          ? {
-              ...current,
-              target: reverted
-                ? { ...target, hasLaterTurns: false }
-                : current.target,
-              reverted,
-              submitting: false,
-            }
-          : current,
-      );
-      setError(reason instanceof Error ? reason.message : String(reason));
-      if (reverted) retryThreadDetail();
+      try {
+        const startedTurn = await requestClient.request<{ turn: AnyRecord }>("turn/start", resendParams);
+        finishStartedTurn(startedTurn.turn, requestClient);
+      } catch (reason) {
+        handleFailure(reason, requestClient);
+      }
+    }
+    try {
+      let workingThread = session.reverted ? { ...thread, turns: retainedTurns } : thread;
+      if (!reverted) {
+        const result = await revertHistoricalMessage(client, threadId, target);
+        workingThread = applyRevertedResult(result.response as AnyRecord, result.method);
+      }
+      await sendEditedTurn(workingThread, client);
+    } catch (reason) {
+      handleFailure(reason, client);
     }
   }
 
   async function actOnQueuedFollowUp(id: string) {
-    const followUp = queuedFollowUpsRef.current.find(
-      (entry) => entry.id === id,
-    );
-    if (!followUp) return;
-    if (!busy) {
-      replaceQueuedFollowUps(
-        queuedFollowUpsRef.current.map((entry) =>
-          entry.id === id ? { ...entry, failed: false } : entry,
-        ),
-      );
+    const side = sidechats.get(String(activeRef.current?.id ?? ''));
+    if (side) { await sidechats.retry(side.id); return; }
+    const followUp = queuedFollowUpsRef.current.find((entry) => entry.id === id);
+    if (!followUp || steering) return;
+    if (!followUp.hosted) {
+      // 明确失败的普通发送保留手动恢复入口；它从未进入自动排队调度。
+      if (busy || !followUp.failed) return;
+      replaceQueuedFollowUps(removeQueuedFollowUp(queuedFollowUpsRef.current, id));
+      await startTurnMessage({ text: quoteInput(followUp.inputText, followUp.quotes ?? []), pendingImages: followUp.images,
+        pendingFiles: followUp.files, pendingSkills: followUp.skills, pendingPlugins: followUp.plugins,
+        draftContext: followUp.draftContext,
+        onFailure: () => replaceQueuedFollowUps([{ ...followUp, failed: true }, ...queuedFollowUpsRef.current.filter((entry) => entry.id !== id)]),
+      });
       return;
     }
-    const thread = activeRef.current;
-    const threadId = String(thread?.id ?? "");
-    const turnId = activeTurnId(thread);
-    const client = clientRef.current;
-    if (
-      !threadId ||
-      threadId !== followUp.threadId ||
-      !turnId ||
-      !client ||
-      steering
-    ) {
-      return;
-    }
-    const originalIndex = queuedFollowUpsRef.current.findIndex(
-      (entry) => entry.id === id,
-    );
-    replaceQueuedFollowUps(
-      queuedFollowUpsRef.current.filter((entry) => entry.id !== id),
-    );
-    const clientUserMessageId =
-      `steer-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    if (followUp.state === "sending" || followUp.state === "uncertain") return;
     setSteering(true);
-    setPendingSteerMessage({
-      id: clientUserMessageId,
-      threadId,
-      text: followUp.text,
-    });
     setError("");
-    let sent = false;
+    const turnId = activeTurnId(activeRef.current);
+    const steer = busy && Boolean(turnId);
+    if (steer && turnId) setPendingSteerMessage({ id: followUp.id, threadId: followUp.threadId, turnId, text: followUp.text });
     try {
-      const uploadedFiles = await Promise.all(
-        followUp.files.map((file) => uploadFile(backend, file.file)),
-      );
-      await client.request(
-        "turn/steer",
-        buildTurnSteerParams({
-          threadId,
-          turnId,
-          input: buildTurnInput(
-            followUp.inputText,
-            followUp.images,
-            uploadedFiles,
-            followUp.skills,
-            followUp.plugins,
-          ),
-          clientUserMessageId,
-        }),
-      );
-      sent = true;
+      await mutateHostedQueue({ action: steer ? "steer" : "retry", id, revision: followUp.revision! });
+      if (steer) releaseQueueSubmission(followUp.threadId, id);
+      if (steer && clientRef.current) void reconcileActiveThread(clientRef.current).catch(() => undefined);
     } catch (reason) {
-      if (reason instanceof HttpOperationPendingError) {
-        rememberPendingOperation(reason.requestId, {
-          threadId, draftContext: followUp.draftContext,
-          confirmed: (response, confirmationClient) => {
-            setPendingSteerMessage((current) => clearPendingSteerForRequest(current, clientUserMessageId));
-            if (response.error) {
-              replaceQueuedFollowUps([{ ...followUp, failed: true }, ...queuedFollowUpsRef.current.filter((entry) => entry.id !== followUp.id)]);
-              if (followUp.draftContext === draftContextGenerationRef.current) setError(response.error.message);
-            } else {
-              followUp.files.forEach((file) => URL.revokeObjectURL(file.previewUrl));
-              if (String(activeRef.current?.id ?? "") === threadId) void reconcileActiveThread(confirmationClient).catch(() => undefined);
-            }
-          },
-        }, client);
-        return;
-      }
-      setPendingSteerMessage((current) =>
-        clearPendingSteerForRequest(current, clientUserMessageId),
-      );
-      if (followUp.draftContext === draftContextGenerationRef.current) {
-        const next = queuedFollowUpsRef.current.filter(
-          (entry) => entry.id !== followUp.id,
-        );
-        next.splice(Math.min(originalIndex, next.length), 0, followUp);
-        replaceQueuedFollowUps(next);
-        setError(reason instanceof Error ? reason.message : String(reason));
-      }
-    } finally {
-      if (followUp.draftContext === draftContextGenerationRef.current) {
-        setSteering(false);
-      }
-    }
-    if (sent && followUp.draftContext === draftContextGenerationRef.current) {
-      followUp.files.forEach((file) => URL.revokeObjectURL(file.previewUrl));
-    }
+      setPendingSteerMessage((current) => clearPendingSteerForRequest(current, followUp.id));
+      setError(reason instanceof Error ? reason.message : String(reason));
+    } finally { setSteering(false); }
   }
 
-  function editQueuedFollowUp(id: string, inputText: string) {
+  async function editQueuedFollowUp(id: string, inputText: string) {
+    const side = sidechats.get(String(activeRef.current?.id ?? ''));
+    if (side) return sidechats.editQueued(side.id, id, inputText);
     const followUp = queuedFollowUpsRef.current.find((entry) => entry.id === id);
-    if (!followUp) return;
+    if (!followUp) return false;
     const text = inputText.trim();
-    if (!text && !followUp.images.length && !followUp.files.length) return;
-    const referencedSkills = skillsReferencedInText(
-      text,
-      skillCatalog.cwd === (activeRef.current?.cwd ?? null)
-        ? skillCatalog.skills
-        : [],
-    );
-    const referencedPlugins = pluginsReferencedInText(
-      text,
-      pluginCatalog.cwd === (activeRef.current?.cwd ?? null)
-        ? pluginCatalog.plugins
-        : [],
-    );
-    const updated = updateQueuedFollowUpText(
-      queuedFollowUpsRef.current,
-      id,
-      text,
-      followUpPreviewText(text, followUp.images, followUp.files),
-    ).map((entry) =>
-      entry.id === id
-        ? {
-            ...entry,
-            skills: referencedSkills,
-            plugins: referencedPlugins,
-          }
-        : entry,
-    );
-    replaceQueuedFollowUps(updated);
+    if (!text && !followUp.attachmentCount) return false;
+    const referencedSkills = skillsReferencedInText(text, skillCatalog.cwd === (activeRef.current?.cwd ?? null) ? skillCatalog.skills : []);
+    const referencedPlugins = pluginsReferencedInText(text, pluginCatalog.cwd === (activeRef.current?.cwd ?? null) ? pluginCatalog.plugins : []);
+    if (!followUp.hosted) {
+      replaceQueuedFollowUps(updateQueuedFollowUpText(queuedFollowUpsRef.current, id, text, followUpPreviewText(text, followUp.images, followUp.files)).map((entry) => entry.id === id ? { ...entry, skills: referencedSkills, plugins: referencedPlugins } : entry));
+      return true;
+    }
+    try {
+      await mutateHostedQueue({ action: "edit", id, revision: followUp.revision!, inputText: followUp.referencePrefix ? replaceUserMessageBody(followUp.referencePrefix + followUp.inputText + "\n", text) : quoteInput(text, followUp.quotes ?? []),
+        text: text || t("{count} 个附件", { count: followUp.attachmentCount ?? 0 }),
+        mentions: buildTurnInput("", [], [], referencedSkills, referencedPlugins),
+      });
+      setError("");
+      return true;
+    } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)); return false; }
   }
 
-  function cancelQueuedFollowUp(id: string) {
+  async function cancelQueuedFollowUp(id: string, confirmed = false) {
+    const side = sidechats.get(String(activeRef.current?.id ?? ''));
+    if (side) { sidechats.removeQueued(side.id, id); return; }
     const followUp = queuedFollowUpsRef.current.find((entry) => entry.id === id);
     if (!followUp) return;
-    followUp.files.forEach((file) => URL.revokeObjectURL(file.previewUrl));
-    replaceQueuedFollowUps(removeQueuedFollowUp(queuedFollowUpsRef.current, id));
-  }
-
-  useEffect(() => {
-    const activeThreadId = String(active?.id ?? "");
-    const followUp = queuedFollowUps.find(
-      (entry) => entry.threadId === activeThreadId && (entry.threadId || entry.draftContext === draftContextGenerationRef.current),
-    );
-    if (
-      busy ||
-      steering ||
-      queuedFollowUpDispatchingRef.current ||
-      pendingOperationIds.some((id) => pendingOperationsRef.current.get(id)?.threadId === activeThreadId) ||
-      !followUp ||
-      followUp.failed ||
-      connection !== "online" ||
-      conversationLoadState !== "ready" ||
-      activeThreadAccessMode !== "interactive" ||
-      activeThreadId !== followUp.threadId ||
-      !clientRef.current
-    ) {
+    if (!followUp.hosted) {
+      followUp.files.forEach((file) => URL.revokeObjectURL(file.previewUrl));
+      replaceQueuedFollowUps(removeQueuedFollowUp(queuedFollowUpsRef.current, id));
       return;
     }
-    queuedFollowUpDispatchingRef.current = true;
-    replaceQueuedFollowUps(
-      queuedFollowUpsRef.current.filter((entry) => entry.id !== followUp.id),
-    );
-    void startTurnMessage({
-      text: followUp.inputText,
-      pendingImages: followUp.images,
-      pendingFiles: followUp.files,
-      pendingSkills: followUp.skills,
-      pendingPlugins: followUp.plugins,
-      draftContext: followUp.draftContext,
-      onFailure: () => {
-        replaceQueuedFollowUps([
-          { ...followUp, failed: true },
-          ...queuedFollowUpsRef.current.filter(
-            (entry) => entry.id !== followUp.id,
-          ),
-        ]);
-      },
-    }).finally(() => {
-      queuedFollowUpDispatchingRef.current = false;
-    });
-  }, [
-    active?.id,
-    activeThreadAccessMode,
-    busy,
-    connection,
-    conversationLoadState,
-    queuedFollowUps,
-    pendingOperationIds,
-    steering,
-  ]);
+    if (followUp.state === "uncertain" && !confirmed && !await confirmWorkspaceAction(t("这条消息可能已发送。移除待确认记录不会撤销已发送的任务，确定移除吗？"))) return;
+    try {
+      await mutateHostedQueue({ action: "cancel", id, revision: followUp.revision! });
+      releaseQueueSubmission(followUp.threadId, id);
+      setError("");
+    } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)); }
+  }
 
-  async function selectImages(files: FileList | null) {
+  async function selectImages(files: FileList | File[] | null, atomic = false) {
     if (
       !files?.length ||
       historyEdit ||
       (active?.id && activeThreadAccessMode !== "interactive")
-    ) return;
+    ) { if (atomic) throw new Error(t("当前无法导入附件")); return; }
+    const originals = Array.from(files);
     const generation = imageReadGenerationRef.current.begin();
     const existingBytes = draftImages.reduce(
       (total, image) => total + image.size,
       0,
     );
     setImageReading(true);
+    let preparedFiles: DraftFile[] = [];
+    let committed = false;
     try {
-      const selected = Array.from(files);
+      const selected = await normalizeHEICFiles(originals);
+      if (!imageReadGenerationRef.current.isCurrent(generation)) throw new Error(t("附件读取已取消或会话已切换"));
+      if (atomic) assertNativeAttachmentSelection(selected, currentDraftRef.current.images, currentDraftRef.current.files);
       const imageFiles = selected.filter(isNativeImageFile);
       const attachmentFiles = selected.filter((file) => !isNativeImageFile(file));
       const result = await prepareImageFiles(
@@ -3216,17 +3584,32 @@ function BackendWorkspace({
         undefined,
         existingBytes,
       );
-      if (!imageReadGenerationRef.current.isCurrent(generation)) return;
+      if (!imageReadGenerationRef.current.isCurrent(generation)) { if (atomic) throw new Error(t("附件读取已取消或会话已切换")); return; }
       const attachmentResult = prepareAttachmentFiles(
         attachmentFiles,
         draftFiles.length,
       );
-      setDraftImages((current) => mergeDraftImages(current, result.images));
-      setDraftFiles((current) => [...current, ...attachmentResult.files].slice(0, 4));
+      preparedFiles = attachmentResult.files;
       const errors = [...result.errors, ...attachmentResult.errors];
+      if (atomic && errors.length) throw new Error(errors.join("；"));
+      if (atomic) {
+        assertNativeAttachmentSelection(selected, currentDraftRef.current.images, currentDraftRef.current.files);
+        const nextImages = mergeDraftImages(currentDraftRef.current.images, result.images);
+        const nextFiles = [...currentDraftRef.current.files, ...attachmentResult.files];
+        currentDraftRef.current = { ...currentDraftRef.current, images: nextImages, files: nextFiles };
+        setDraftImages(nextImages); setDraftFiles(nextFiles);
+      } else {
+        setDraftImages((current) => mergeDraftImages(current, result.images));
+        setDraftFiles((current) => [...current, ...attachmentResult.files].slice(0, 4));
+      }
+      committed = true;
       if (errors.length) setError(errors.join("；"));
       else setError("");
+    } catch (reason) {
+      if (imageReadGenerationRef.current.isCurrent(generation)) setError(reason instanceof Error ? reason.message : String(reason));
+      throw reason;
     } finally {
+      if (atomic && !committed) preparedFiles.forEach(file => URL.revokeObjectURL(file.previewUrl));
       if (imageReadGenerationRef.current.isCurrent(generation)) {
         setImageReading(false);
       }
@@ -3255,6 +3638,8 @@ function BackendWorkspace({
   }
 
   async function interrupt() {
+    const sideId = String(activeRef.current?.id ?? '');
+    if (sidechats.get(sideId) && clientRef.current) { await sidechats.stop(gatewaySidechatClient(clientRef.current), sideId); return; }
     if (activeThreadAccessMode !== "interactive") return;
     const turn = active?.turns?.at(-1);
     if (!turn) return;
@@ -3317,27 +3702,18 @@ function BackendWorkspace({
     const client = clientRef.current;
     const threadId = String(thread.id ?? "");
     if (!threadId || pendingAction) return false;
-    if (
-      action === "archive" &&
-      hasQueuedFollowUpsForThread(queuedFollowUpsRef.current, threadId)
-    ) {
-      const count = queuedFollowUpsForThread(
-        queuedFollowUpsRef.current,
-        threadId,
-      ).length;
-      if (
-        !window.confirm(
-          t("此会话仍有 {count} 条排队消息，归档会丢弃这些消息。确定归档吗？", {
-            count,
-          }),
-        )
-      ) return false;
+    if (action === "archive") {
+      const count = queuedFollowUpsForThread(queuedFollowUpsRef.current, threadId).length;
+      const message = count > 0
+        ? t("此会话仍有 {count} 条排队消息，归档会丢弃这些消息。确定归档吗？", { count })
+        : t("归档后，此会话将从列表中移除。确定归档吗？");
+      if (!await confirmWorkspaceAction(message)) return false;
     }
     setPendingAction(action);
     setError("");
     try {
       if (action === "pin") {
-        setLocalPinned(threadId);
+        setLocalPinned(threadId, thread);
         return true;
       }
       if (!client) {
@@ -3414,8 +3790,8 @@ function BackendWorkspace({
         showNotice(t("已重命名"));
         return true;
       }
+      await discardQueuedFollowUpsForThread(threadId);
       await client.request("thread/archive", { threadId });
-      discardQueuedFollowUpsForThread(threadId);
       markThreadRead(threadId);
       writeThreadPinned(localStorage, backend.id, threadId, false);
       setThreads((current) =>
@@ -3448,8 +3824,8 @@ function BackendWorkspace({
                 : action === "refresh"
                   ? t("刷新失败，请重试")
                   : thread.isPinned === true
-                    ? t("取消置顶失败，请重试")
-                    : t("置顶失败，请重试"),
+                    ? t("取消关注失败，请重试")
+                    : t("关注失败，请重试"),
       );
       return false;
     } finally {
@@ -3458,6 +3834,7 @@ function BackendWorkspace({
   }
 
   async function duplicateActiveThread() {
+    if (sidechats.get(String(activeRef.current?.id ?? ''))) return false;
     const thread = activeRef.current;
     if (!thread || activeThreadAccessMode !== "interactive") return false;
     return manageListedThread(thread, "duplicate");
@@ -3473,17 +3850,18 @@ function BackendWorkspace({
     setPendingAction("pin");
     setError("");
     try {
-      setLocalPinned(String(thread.id));
+      setLocalPinned(String(thread.id), thread);
       return true;
     } catch {
-      setError(nextPinned ? t("置顶失败，请重试") : t("取消置顶失败，请重试"));
+      setError(nextPinned ? t("关注失败，请重试") : t("取消关注失败，请重试"));
       return false;
     } finally {
       setPendingAction("");
     }
   }
 
-  async function renameThread() {
+  async function renameThread(explicitName?: string) {
+    if (sidechats.get(String(activeRef.current?.id ?? ''))) return false;
     const client = clientRef.current;
     const thread = activeRef.current;
     if (
@@ -3492,7 +3870,7 @@ function BackendWorkspace({
       pendingAction ||
       activeThreadAccessMode !== "interactive"
     ) return false;
-    const name = window.prompt(t("输入新的会话名称"), titleOf(thread))?.trim();
+    const name = (explicitName ?? window.prompt(t("输入新的会话名称"), titleOf(thread)))?.trim();
     if (!name || name === titleOf(thread)) return false;
     setPendingAction("rename");
     setError("");
@@ -3528,6 +3906,7 @@ function BackendWorkspace({
   }
 
   async function archiveThread() {
+    if (sidechats.get(String(activeRef.current?.id ?? ''))) return false;
     const client = clientRef.current;
     const thread = activeRef.current;
     if (
@@ -3537,24 +3916,16 @@ function BackendWorkspace({
       activeThreadAccessMode !== "interactive"
     ) return false;
     const threadId = String(thread.id);
-    if (hasQueuedFollowUpsForThread(queuedFollowUpsRef.current, threadId)) {
-      const count = queuedFollowUpsForThread(
-        queuedFollowUpsRef.current,
-        threadId,
-      ).length;
-      if (
-        !window.confirm(
-          t("此会话仍有 {count} 条排队消息，归档会丢弃这些消息。确定归档吗？", {
-            count,
-          }),
-        )
-      ) return false;
-    }
+    const count = queuedFollowUpsForThread(queuedFollowUpsRef.current, threadId).length;
+    const message = count > 0
+      ? t("此会话仍有 {count} 条排队消息，归档会丢弃这些消息。确定归档吗？", { count })
+      : t("归档后，此会话将从列表中移除。确定归档吗？");
+    if (!await confirmWorkspaceAction(message)) return false;
     setPendingAction("archive");
     setError("");
     try {
+      await discardQueuedFollowUpsForThread(threadId);
       await client.request("thread/archive", { threadId: thread.id });
-      discardQueuedFollowUpsForThread(threadId);
       markThreadRead(String(thread.id));
       writeThreadPinned(localStorage, backend.id, String(thread.id), false);
       setThreads((current) =>
@@ -3744,10 +4115,10 @@ function BackendWorkspace({
     if (!active?.id) setNewChatPermissionMode(mode);
     setPicker(null);
   };
-  const replyToRequest = (result: unknown) => {
+  const replyToRequest = async (result: unknown) => {
     const client = clientRef.current;
-    if (!approval || !client) return;
-    void approvalRequests.submit(result, client, (requestId, confirmed) => {
+    if (!approval || !client) return { ok: false, error: t("尚未连接 app-server") };
+    return approvalRequests.submit(result, client, (requestId, confirmed) => {
       rememberPendingOperation(requestId, {
         threadId: String((approval.params as AnyRecord)?.threadId ?? ""),
         draftContext: draftContextGenerationRef.current,
@@ -3777,21 +4148,21 @@ function BackendWorkspace({
     nextDraft = "",
     nextDraftImages: DraftImage[] = [],
     nextDraftFiles: DraftFile[] = [],
+    savedDraft?: SavedNewChatDraft,
+    savedDraftReference?: SavedDraftReference,
   ) => {
-    const savedCwd = window.localStorage.getItem(
-      `codex-mobile:new-chat-project:${backend.id}`,
-    );
-    const selectedCwd =
+    const selectedCwd = savedDraft ? savedDraft.cwd :
       (typeof cwd === "string"
         ? cwd || null
-        : savedCwd === ""
-          ? null
-          : projectOptions.find((project) => project.cwd === savedCwd)?.cwd ||
-            projectOptions[0]?.cwd ||
-            null);
+        : newChatProjectCatalogReady ? rememberedNewChatProject() : null);
+    cacheFamilyDraft();
     openSequenceRef.current += 1;
     activeThreadTargetRef.current = null;
     resetDraftContext();
+    setQuotes([]);
+    // 项目目录仍在加载时，等首次目录/会话读取完成再确认保存项目是否存在。
+    pendingNewChatProjectRef.current = !savedDraft && typeof cwd !== "string" && !newChatProjectCatalogReady
+      ? draftContextGenerationRef.current : null;
     const defaultPermissionMode =
       defaultNewChatPermissionMode(
         permissionProfiles as Array<{ id: string; allowed?: boolean }>,
@@ -3802,9 +4173,19 @@ function BackendWorkspace({
     setSteering(false);
     setImageReading(false);
     setError("");
+    setDraftFiles(current => {
+      current.forEach(file => {
+        const pending = [...unconfirmedQueueDraftsRef.current.values(), ...familyDraftsRef.current.values()].some(draft => draft.files.some(original => original.previewUrl === file.previewUrl));
+        if (!pending && !nextDraftFiles.some(next => next.previewUrl === file.previewUrl)) URL.revokeObjectURL(file.previewUrl);
+      });
+      return nextDraftFiles;
+    });
+    savedDraftRef.current = savedDraft ?? savedDraftReference;
+    restoredDraftSettingsRef.current = savedDraft?.settings ?? null;
+    draftInputRevisionRef.current = 0;
+    currentDraftRef.current = { text: nextDraft, images: nextDraftImages, files: nextDraftFiles };
     setDraft(nextDraft);
     setDraftImages(nextDraftImages);
-    setDraftFiles(nextDraftFiles);
     setConversationLoadState("ready");
     setConversationLoadError("");
     resetOlderTurns();
@@ -3823,15 +4204,31 @@ function BackendWorkspace({
       setSelectedApprovalPolicy(defaultPermissionMode.approvalPolicy);
       setSelectedApprovalsReviewer(defaultPermissionMode.approvalsReviewer);
     }
-    setActive({
+    if (savedDraft) {
+      const settings = savedDraft.settings;
+      setNewChatPermissionMode(null);
+      selectedModelRef.current = settings.model;
+      selectedEffortRef.current = settings.effort;
+      selectedServiceTierRef.current = settings.serviceTier;
+      setSelectedModel(settings.model);
+      setSelectedEffort(settings.effort);
+      setSelectedServiceTier(settings.serviceTier);
+      setSelectedPermission(settings.permissions);
+      setSelectedApprovalPolicy(settings.approvalPolicy);
+      setSelectedApprovalsReviewer(settings.approvalsReviewer);
+    }
+    const nextActive = {
       id: "",
       turns: [],
       preview: t("新对话"),
       cwd: selectedCwd,
-    });
+    };
+    activeRef.current = nextActive;
+    setActive(nextActive);
   };
 
   const chooseNewChatProject = (cwd: string) => {
+    pendingNewChatProjectRef.current = null;
     window.localStorage.setItem(
       `codex-mobile:new-chat-project:${backend.id}`,
       cwd,
@@ -3856,7 +4253,9 @@ function BackendWorkspace({
         cwd,
         cursor,
         new Set([...readPrioritizedThreadIds(), ...projectlessThreadIds]),
+        new Set([...readLocalPinned(), ...projectlessThreadIds]),
       );
+      setProjectLoadedCounts(current => ({ ...current, [cwd]: (current[cwd] ?? 0) + result.threads.length }));
       if (result.hasMore) {
         fullyLoadedProjectCwdsRef.current.delete(cwd);
       } else {
@@ -3896,7 +4295,11 @@ function BackendWorkspace({
 
   async function loadProjectlessThreads(targetCount: number) {
     const client = clientRef.current;
-    if (!client) return;
+    const currentRequest = projectlessLoadRef.current;
+    if (!client || (currentRequest?.client === client && currentRequest.pending)) return;
+    const request = { client, pending: true };
+    projectlessLoadRef.current = request;
+    const isCurrent = () => projectlessLoadRef.current === request && clientRef.current === client;
     setLoadingProjectCwd(PROJECTLESS_GROUP_ID);
     try {
       const result = await loadProjectlessThreadRecords(
@@ -3904,37 +4307,105 @@ function BackendWorkspace({
         projectlessThreadIds,
         targetCount,
         readPrioritizedThreadIds(),
+        readLocalPinned(),
+        projectNextCursors[PROJECTLESS_GROUP_ID],
       );
+      if (!isCurrent()) return;
+      const append = client.sidebarIndex && !!projectNextCursors[PROJECTLESS_GROUP_ID];
+      setProjectNextCursors(current => isCurrent() ? ({ ...current, [PROJECTLESS_GROUP_ID]: "nextCursor" in result ? result.nextCursor as string | null : null }) : current);
+      setProjectLoadedCounts(current => isCurrent() ? ({ ...current, [PROJECTLESS_GROUP_ID]: (append ? current[PROJECTLESS_GROUP_ID] ?? 0 : 0) + result.threads.length }) : current);
       if (result.hasMore) {
         fullyLoadedProjectCwdsRef.current.delete(PROJECTLESS_GROUP_ID);
       } else {
         fullyLoadedProjectCwdsRef.current.add(PROJECTLESS_GROUP_ID);
       }
-      setProjectHasMore((current) => ({
-        ...current,
-        [PROJECTLESS_GROUP_ID]: result.hasMore,
-      }));
-      setThreads((current) => [
-        ...current.filter(
-          (thread) => projectGroupIdOf(thread) !== PROJECTLESS_GROUP_ID,
-        ),
-        ...mergeThreadListPage(
-          current.filter(
-            (thread) => projectGroupIdOf(thread) === PROJECTLESS_GROUP_ID,
+      setProjectHasMore((current) => {
+        if (!isCurrent()) return current;
+        return { ...current, [PROJECTLESS_GROUP_ID]: result.hasMore };
+      });
+      setThreads((current) => {
+        if (!isCurrent()) return current;
+        return [
+          ...current.filter(
+            (thread) => projectGroupIdOf(thread) !== PROJECTLESS_GROUP_ID,
           ),
-          decorateThreads(result.threads),
-          readPrioritizedThreadIds(),
-        ),
-      ]);
+          ...mergeThreadListPage(
+            current.filter(
+              (thread) => projectGroupIdOf(thread) === PROJECTLESS_GROUP_ID,
+            ),
+            decorateThreads(append
+              ? dedupeThreadsById([
+                  ...current.filter(thread => projectGroupIdOf(thread) === PROJECTLESS_GROUP_ID),
+                  ...result.threads,
+                ])
+              : result.threads),
+            readPrioritizedThreadIds(),
+          ),
+        ];
+      });
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : String(reason));
+      if (isCurrent()) {
+        const message = reason instanceof Error ? reason.message : String(reason);
+        setError((current) => isCurrent() ? message : current);
+      }
     } finally {
-      setLoadingProjectCwd((current) =>
-        current === PROJECTLESS_GROUP_ID ? "" : current,
-      );
+      if (isCurrent()) {
+        // 保留身份供已排队的状态更新复核；下一轮请求会替换它。
+        request.pending = false;
+        setLoadingProjectCwd((current) =>
+          isCurrent() && current === PROJECTLESS_GROUP_ID ? "" : current,
+        );
+      }
     }
   }
 
+  async function saveNewChatDraft() {
+    const content = currentDraftRef.current;
+    if (active?.id || draftSavingRef.current || imageReading || startingThreadContext !== null || (!content.text.trim() && !content.images.length && !content.files.length)) return false;
+    const context = draftContextGenerationRef.current;
+    const contentVersion = draftContentVersionRef.current;
+    draftSavingRef.current = true;
+    setDraftSaving(true);
+    setDraftSaveStatus("");
+    try {
+      const mode = newChatPermissionMode;
+      const saved = await newChatDraftStore.save({
+        backendId: backend.id, backendName: backend.name, cwd: active?.cwd ?? null,
+        text: content.text, images: content.images, files: content.files,
+        settings: { model: selectedModel, effort: selectedEffort, serviceTier: effectiveSelectedServiceTier,
+          permissions: mode?.permissions ?? selectedPermission,
+          approvalPolicy: mode?.approvalPolicy ?? selectedApprovalPolicy,
+          approvalsReviewer: mode?.approvalsReviewer ?? selectedApprovalsReviewer },
+      }, savedDraftRef.current?.id);
+      if (context === draftContextGenerationRef.current) {
+        savedDraftRef.current = { id: saved.id, revision: saved.revision };
+        if (contentVersion === draftContentVersionRef.current || (currentDraftRef.current.text === content.text && currentDraftRef.current.images === content.images && currentDraftRef.current.files === content.files)) setDraftSaveStatus(t("草稿已保存到本地"));
+        setError("");
+      }
+      return true;
+    } catch (reason) {
+      if (context === draftContextGenerationRef.current) setError(`${t("无法保存草稿")}：${reason instanceof Error ? reason.message : String(reason)}`);
+      return false;
+    } finally {
+      if (context === draftContextGenerationRef.current) {
+        draftSavingRef.current = false;
+        setDraftSaving(false);
+      }
+    }
+  }
+
+  useSwitchWorkspace(backend.id, {
+    backendId: backend.id, backendName: backend.name, cwd: active?.cwd ?? null,
+    text: sidechats.get(String(active?.id ?? '')) ? '' : draft,
+    images: sidechats.get(String(active?.id ?? '')) ? [] : draftImages,
+    files: sidechats.get(String(active?.id ?? '')) ? [] : draftFiles,
+    thread: sidechats.get(String(active?.id ?? '')) ? { id: sidechats.get(String(active!.id))!.parentId, cwd: active?.cwd ?? null } : active ? { id: String(active.id ?? ''), cwd: active.cwd ?? null, preview: active.preview, isProjectless: active.isProjectless } : null,
+    savedDraftReference: savedDraftRef.current,
+    settings: { model: selectedModel, effort: selectedEffort, serviceTier: effectiveSelectedServiceTier,
+      permissions: newChatPermissionMode?.permissions ?? selectedPermission,
+      approvalPolicy: newChatPermissionMode?.approvalPolicy ?? selectedApprovalPolicy,
+      approvalsReviewer: newChatPermissionMode?.approvalsReviewer ?? selectedApprovalsReviewer },
+  });
   const handledCommandRef = useRef(0);
   useEffect(() => {
     if (
@@ -3953,6 +4424,8 @@ function BackendWorkspace({
         command.draft ?? "",
         command.draftImages ?? [],
         command.draftFiles ?? [],
+        command.savedDraft,
+        command.savedDraftReference,
       );
     } else if (
       command.type === "load-project" &&
@@ -3971,10 +4444,11 @@ function BackendWorkspace({
           void threadListLoaderRef.current!.loadProjectless(
             client,
             projectlessThreadIds,
-            { prioritizedThreadIds: [...readPrioritizedThreadIds()] },
+            { pinnedThreadIds: [...readLocalPinned()], prioritizedThreadIds: [...readPrioritizedThreadIds()] },
           );
         } else {
           void threadListLoaderRef.current!.loadProject(client, command.cwd, {
+            pinnedThreadIds: [...readLocalPinned()],
             prioritizedThreadIds: [...readPrioritizedThreadIds()],
           });
         }
@@ -4006,10 +4480,82 @@ function BackendWorkspace({
     return operation?.draftContext === draftContextGenerationRef.current && (!operation.threadId || operation.threadId === String(active?.id ?? ""));
   });
 
+  const activeSidechat = sidechats.get(String(active?.id ?? ''));
+  const sidechatParentId = activeSidechat?.parentId ?? String(active?.id ?? '');
+  const sidechatActions = active?.id ? [
+    ...(activeSidechat ? [{ id: 'sidechat-return', kind: 'action', title: t('返回主聊天'), command: { name: 'sidechat.return', params: {} } }] : []),
+    { id: 'sidechat-create', kind: 'action', title: t('新建 Sidechat'), command: { name: 'sidechat.create', params: {} } },
+    ...sidechats.forParent(sidechatParentId).filter(side => side.id !== activeSidechat?.id).map(side => ({ id: `sidechat:${side.id}`, kind: 'action', title: side.thread.name + (side.busy ? ' · 执行中' : ''), command: { name: 'sidechat.open', params: { id: side.id } } })),
+    ...(activeSidechat ? [{ id: 'sidechat-close', kind: 'action', title: t('关闭 Sidechat'), command: { name: 'sidechat.close', params: { id: activeSidechat.id } } }] : []),
+  ] : [];
+  useEffect(() => {
+    if (!activeSidechat) return;
+    Object.assign(activeSidechat.settings, { model: selectedModel, reasoningEffort: selectedEffort, serviceTier: effectiveSelectedServiceTier,
+      approvalPolicy: selectedApprovalPolicy, approvalsReviewer: selectedApprovalsReviewer,
+      activePermissionProfile: selectedPermission ? { id: selectedPermission } : null });
+  }, [activeSidechat, selectedModel, selectedEffort, effectiveSelectedServiceTier, selectedPermission, selectedApprovalPolicy, selectedApprovalsReviewer]);
+  const nativeContextId = `${backend.id}:context:${draftContextGenerationRef.current}`;
+  useNativeConversationAdapter(nativeRuntime, {
+    backend, active, contextId: nativeContextId, connection, draft, draftImages, draftFiles,
+    busy: conversationBusy, readOnly: Boolean(historyEdit || (active?.id && activeThreadAccessMode !== "interactive")),
+    imageReading, draftSaving, pending: conversationOperationPending, models, selectedModel,
+    selectedModelLabel, effortOptions, selectedEffort, permission: selectedPermissionLabel,
+    skills: skillCatalog.cwd === (active?.cwd ?? null) ? skillCatalog.skills : [],
+    plugins: pluginCatalog.cwd === (active?.cwd ?? null) ? pluginCatalog.plugins : [],
+    queued: activeSidechat ? activeSidechat.queue.filter((_, index) => !activeSidechat.sending || index > 0).map(item => ({ id: item.id, text: item.text, inputText: item.question ?? item.text, threadId: activeSidechat.id, failed: !!activeSidechat.error, state: activeSidechat.unconfirmed ? 'uncertain' : activeSidechat.error ? 'failed' : 'queued' })) : queuedFollowUps.filter(item => item.threadId === String(active?.id ?? "") && (item.threadId || item.draftContext === draftContextGenerationRef.current)),
+    approvalCount: requests.length, loadState: conversationLoadState, loadError: conversationLoadError || activeThreadResumeError,
+    olderTurnsState, error, syncStale: syncState?.stale, draftSaveStatus,
+    getDraft: () => currentDraftRef.current.text,
+    setDraft: value => { draftInputRevisionRef.current += 1; currentDraftRef.current = { ...currentDraftRef.current, text: value }; setDraft(value); },
+    send: sendMessage, stop: interrupt, chooseModel, chooseEffort,
+    removeAttachment: id => {
+      setDraftImages(current => current.filter(item => item.id !== id));
+      setDraftFiles(current => { const removed = current.find(item => item.id === id); if (removed) URL.revokeObjectURL(removed.previewUrl); return current.filter(item => item.id !== id); });
+    },
+    selectFiles: async files => {
+      if (`${backend.id}:context:${draftContextGenerationRef.current}` !== nativeContextId) throw new Error(t("会话已切换，请重试"));
+      return await selectImages(files, true);
+    },
+    selectLocation: selectCurrentLocation, saveDraft: saveNewChatDraft, retry: retryThreadDetail, loadOlder: loadOlderTurns,
+    editMessage: (turnId, messageId) => {
+      const target = createHistoricalMessageEditTarget(activeRef.current?.turns ?? [], turnId, messageId);
+      if (!target) throw new Error(t("消息已更新"));
+      beginHistoricalMessageEdit(target);
+    },
+    cancelQueued: cancelQueuedFollowUp, sendQueued: actOnQueuedFollowUp, editQueued: editQueuedFollowUp,
+    extended: {
+      state: { quotes, quoteFocusToken, sidechatActive: !!activeSidechat, sidechatParentId, sidechatActions, approvalThreadTitle: approval ? completionThreadTitle({ threadId: String((approval.params as AnyRecord)?.threadId ?? ""), threads, activeThread: active, fallback: t("新对话") }) : undefined, historyEdit, pendingSteerMessage: pendingSteerMessage?.threadId === String(active?.id) ? pendingSteerMessage : null, steering, queueSaving, steerable: !activeSidechat && Boolean(activeTurnId(active)), requests, approval, userAnswers, approvalSubmitting: approvalRequests.submitting, approvalError: approvalRequests.error, permissionModes, selectedPermissionModeId,
+        selectedServiceTier: displayedServiceTier, speedOptions, pendingAction, tokenUsage: tokenUsageByThread[active?.id] ?? null, rateLimits,
+        projectOptions, backends, draftSaveStatus, activeThreadAccessMode, activeThreadResumeError },
+      callbacks: { currentHistoryEdit: () => historyEditRef.current, currentApproval: approvalRequests.current, readRemoteFile: (path: string) => { const client = clientRef.current; if (!client) throw new Error(t('尚未连接 app-server')); return client.request<{ dataBase64: string }>('fs/readFile', { path }); }, chooseSpeed, choosePermissionMode, replyToRequest, changeHistoricalMessageEditText, cancelHistoricalMessageEdit,
+        addQuote, removeQuote: (id: string) => setQuotes(current => current.filter(quote => quote.id !== id)), createSidechat, openSidechat, returnFromSidechat, closeSidechat, submitHistoricalMessageEdit, chooseNewChatProject, togglePinned, duplicateActiveThread, renameThread, archiveThread,
+        reopenApproval: approvalRequests.reopen, answerApproval: approvalRequests.answer,
+        dismissApproval: approvalRequests.dismiss,
+        switchNewChatBackend: (id: string) => { const content = currentDraftRef.current; return onSwitchNewChatBackend(id, content.text, content.images, content.files, savedDraftRef.current); } },
+    },
+  });
+
   return (
     <main className="app-shell">
       {active ? (
         <ConversationPage
+          quotes={quotes}
+          quoteFocusToken={quoteFocusToken}
+          onRemoveQuote={id => setQuotes(current => current.filter(quote => quote.id !== id))}
+          onSelectionQuote={async (selection: SelectionQuote, side: boolean) => { try {
+            const quote = validateMessageQuote(selection, backend.id, activeRef.current);
+            if (side) await createSidechat(quote); else addQuote(quote);
+          } catch (reason) { setError(String((reason as Error).message ?? reason)); } }}
+          sidechatActive={!!activeSidechat}
+          sidechatActions={sidechatActions}
+          onSidechatAction={async (name, id) => { try {
+            if (name === 'sidechat.create') await createSidechat();
+            if (name === 'sidechat.open') openSidechat(id!);
+            if (name === 'sidechat.return') returnFromSidechat();
+            if (name === 'sidechat.close') await closeSidechat(id!);
+          } catch (reason) { setError(String((reason as Error).message ?? reason)); } }}
+          conversationVisible={conversationVisible}
+          nativeContextId={nativeContextId}
           active={active}
           backendId={backend.id}
           backendName={backend.name}
@@ -4026,16 +4572,20 @@ function BackendWorkspace({
           draftImages={draftImages}
           draftFiles={draftFiles}
           imageReading={imageReading}
+          draftSaving={draftSaving}
+          draftSaveStatus={draftSaveStatus}
+          onSaveDraft={saveNewChatDraft}
           busy={conversationBusy}
           operationPending={conversationOperationPending}
           steering={steering}
-          steerable={Boolean(activeTurnId(active))}
+          queueSaving={queueSaving}
+          steerable={!activeSidechat && Boolean(activeTurnId(active))}
           pendingSteerText={
             pendingSteerMessage?.threadId === String(active.id)
               ? pendingSteerMessage.text
               : ""
           }
-          queuedFollowUps={queuedFollowUps.filter(
+          queuedFollowUps={activeSidechat ? activeSidechat.queue.filter((_, index) => !activeSidechat.sending || index > 0).map(item => ({ id: item.id, text: item.text, failed: !!activeSidechat.error, error: activeSidechat.error, state: activeSidechat.unconfirmed ? 'uncertain' as const : 'queued' as const })) : queuedFollowUps.filter(
             (followUp) => followUp.threadId === String(active.id ?? "") && (followUp.threadId || followUp.draftContext === draftContextGenerationRef.current),
           )}
           accessMode={activeThreadAccessMode}
@@ -4066,7 +4616,7 @@ function BackendWorkspace({
           imageInputRef={imageInputRef}
           onBack={onOpenSidebar}
           onNewChatBackendChange={(backendId) =>
-            onSwitchNewChatBackend(backendId, draft, draftImages, draftFiles)
+            onSwitchNewChatBackend(backendId, draft, draftImages, draftFiles, savedDraftRef.current)
           }
           onNewChatProjectChange={chooseNewChatProject}
           onPin={togglePinned}
@@ -4092,7 +4642,7 @@ function BackendWorkspace({
           onSelectLocation={selectCurrentLocation}
           onOpenAgentSettings={() => setPicker("agent")}
           onOpenPermissionSettings={() => setPicker("permission")}
-          onDraftChange={setDraft}
+          onDraftChange={value => { draftInputRevisionRef.current += 1; currentDraftRef.current = { ...currentDraftRef.current, text: value }; setDraft(value); }}
           historyEdit={historyEdit}
           onEditUserMessage={beginHistoricalMessageEdit}
           onHistoryEditTextChange={changeHistoricalMessageEditText}
@@ -4129,9 +4679,20 @@ function BackendWorkspace({
           {notice}
         </div>
       )}
+      {!approval && requests[0]?.method === "item/tool/requestUserInput" && (
+        <button className="pending-question-banner" onClick={approvalRequests.reopen}>
+          <strong>{t("Codex 需要你的回答")}</strong>
+          <span>{completionThreadTitle({ threadId: String((requests[0].params as AnyRecord)?.threadId ?? ""),
+            threads, activeThread: active, fallback: t("新对话") })}</span>
+          <span>{t("继续回答")}</span>
+        </button>
+      )}
       <ApprovalSheet
         key={approval ? approvalKey(approval) : "none"}
         approval={approval}
+        onDismiss={approvalRequests.dismiss}
+        threadTitle={approval ? completionThreadTitle({ threadId: String((approval.params as AnyRecord)?.threadId ?? ""),
+          threads, activeThread: active, fallback: t("新对话") }) : undefined}
         submitting={approvalRequests.submitting}
         error={approvalRequests.error}
         userAnswers={userAnswers}
@@ -4178,12 +4739,17 @@ export function App() {
   return <AppBootstrap initialRegistry={initialRegistry} />;
 }
 
-export function AppBootstrap({
+export function AppBootstrap({ initialRegistry }: { initialRegistry: BackendRegistry }) {
+  return <NativeSwitchBoundary initialRegistry={initialRegistry}>{registry => <RestoredAppBootstrap initialRegistry={registry} />}</NativeSwitchBoundary>;
+}
+
+function RestoredAppBootstrap({
   initialRegistry,
 }: {
   initialRegistry: BackendRegistry;
 }) {
   const [registry, setRegistry] = useState(initialRegistry);
+  useSwitchRegistry(registry, !registry.backends.length);
   const [notificationPreference, setNotificationPreference] = useState(() => readNotificationPreference(window.localStorage));
   const saveNotificationPreference = (next: NotificationPreference) => {
     const saved = writeNotificationPreference(window.localStorage, next);
@@ -4195,6 +4761,7 @@ export function AppBootstrap({
     writeTransportMode(window.localStorage, mode);
     setTransportMode(mode);
   };
+  const [nativeSettingsPage, setNativeSettingsPage] = useState('devices');
   const [managerOpen, setManagerOpen] = useState(
     !initialRegistry.backends.length,
   );
@@ -4215,6 +4782,20 @@ export function AppBootstrap({
     );
   }
 
+  return <UnconfiguredApp registry={registry} setRegistry={setRegistry} managerOpen={managerOpen} setManagerOpen={setManagerOpen} appUpdate={appUpdate} transportMode={transportMode} changeTransportMode={changeTransportMode} notificationPreference={notificationPreference} saveNotificationPreference={saveNotificationPreference} failedNotificationDevices={failedNotificationDevices} nativeSettingsPage={nativeSettingsPage} setNativeSettingsPage={setNativeSettingsPage} />;
+}
+/** 与ConfiguredApp互斥挂载，空registry也只有一个业务runtime。 */
+function UnconfiguredApp({ registry, setRegistry, managerOpen, setManagerOpen, appUpdate, transportMode, changeTransportMode, notificationPreference, saveNotificationPreference, failedNotificationDevices, nativeSettingsPage, setNativeSettingsPage }: {
+ registry: BackendRegistry; setRegistry: (value: BackendRegistry) => void; managerOpen: boolean; setManagerOpen: (value: boolean) => void;
+ appUpdate: ReturnType<typeof useAppUpdate>; transportMode: TransportMode; changeTransportMode: (value: TransportMode) => void;
+ notificationPreference: NotificationPreference; saveNotificationPreference: (value: NotificationPreference) => void; failedNotificationDevices: string[];
+ nativeSettingsPage: string; setNativeSettingsPage: (value: string) => void;
+}) {
+  const { preference: languagePreference } = useI18n();
+  const nativeRuntime = useNativeRuntime({ selectedBackendId: 'bootstrap', backends: [], groups: [],
+    preferences: projectNativePreferences({ language: languagePreference, transportMode, fontSize: readFontSize(), notification: notificationPreference }),
+  }, { 'settings.open': p => { setNativeSettingsPage(String(p.id || 'devices')); setManagerOpen(true); } });
+  useNativeWorkspace(nativeRuntime, 'bootstrap', { ...emptyNativeSnapshot(), ready: true, title: t('添加设备'), conversationActions: [{ id: 'add-device', kind: 'action', title: t('添加设备'), command: { name: 'settings.open', params: {} } }] }, {});
   return (
     <main className="app-shell">
       <section className="empty-state">
@@ -4229,6 +4810,8 @@ export function AppBootstrap({
         </button>
       </section>
       <BackendManagerSheet
+        nativeRuntime={isNativeUIEnabled() ? nativeRuntime : null}
+        nativePage={nativeSettingsPage}
         open={managerOpen}
         registry={registry}
         summaries={{}}
@@ -4237,13 +4820,14 @@ export function AppBootstrap({
         notificationPreference={notificationPreference}
         onNotificationPreferenceSave={saveNotificationPreference}
         failedNotificationDevices={failedNotificationDevices}
-        onChange={(next) => {
+        onChange={(next: BackendRegistry) => {
           saveBackendRegistry(window.localStorage, next);
           setRegistry(next);
         }}
         onClose={() => setManagerOpen(false)}
         appUpdate={{
           supported: appUpdate.supported,
+          manualCheckSupported: appUpdate.manualCheckSupported,
           currentVersion: appUpdate.state.currentVersion,
           checking: appUpdate.state.phase === "checking",
           status:
@@ -4256,6 +4840,7 @@ export function AppBootstrap({
         }}
       />
       <AppUpdateSheet
+        nativeRuntime={isNativeUIEnabled() ? nativeRuntime : null}
         open={appUpdate.sheetOpen}
         state={appUpdate.state}
         onClose={() => appUpdate.setSheetOpen(false)}
@@ -4285,12 +4870,16 @@ function ConfiguredApp({
   failedNotificationDevices: string[];
   onRegistryChange: (registry: BackendRegistry) => void;
 }) {
+  const { preference: languagePreference } = useI18n();
   const [registry, setRegistry] = useState(initialRegistry);
+  useSwitchRegistry(registry);
   useEffect(() => { onRegistryChange(registry); }, [registry, onRegistryChange]);
   const [summaries, setSummaries] = useState<
     Record<string, BackendRuntimeSummary>
   >({});
+  const [nativeSettingsPage, setNativeSettingsPage] = useState('devices');
   const [managerOpen, setManagerOpen] = useState(false);
+  const [draftsOpen, setDraftsOpen] = useState(false);
   const [snapshots, setSnapshots] = useState<
     Record<string, BackendThreadSnapshot>
   >({});
@@ -4299,6 +4888,7 @@ function ConfiguredApp({
       window.localStorage.getItem("codex-mobile:list-backend") || "all",
   );
   const [query, setQuery] = useState("");
+  const [nativeNavigationFilter, setNativeNavigationFilter] = useState("sessions");
   const [collapsedProjectKeys, setCollapsedProjectKeys] = useState(() =>
     readCollapsedProjectKeys(window.localStorage),
   );
@@ -4306,6 +4896,7 @@ function ConfiguredApp({
   const [pendingCompletionTarget, setPendingCompletionTarget] =
     useState<RunCompletionNavigationTarget | null>(null);
   const commandIdRef = useRef(0);
+  const nativeManagementPending = useRef(false);
   const {
     sidebarOpen,
     refreshVersion,
@@ -4314,7 +4905,7 @@ function ConfiguredApp({
     closeSidebar,
     refresh: refreshAllBackends,
     refreshSilently: refreshAllBackendsSilently,
-  } = useSidebarRefresh();
+  } = useSidebarRefresh(undefined, !isNativeUIEnabled());
   useEffect(() => {
     if (!sidebarOpen) setQuery("");
   }, [sidebarOpen]);
@@ -4422,6 +5013,7 @@ function ConfiguredApp({
 
   const persistRegistry = useCallback((next: BackendRegistry) => {
     saveBackendRegistry(window.localStorage, next);
+    setCollapsedProjectKeys(readCollapsedProjectKeys(window.localStorage));
     setRegistry(
       loadBackendRegistry(window.localStorage, window.location.origin),
     );
@@ -4466,8 +5058,10 @@ function ConfiguredApp({
         previous.projectlessThreadIds === snapshot.projectlessThreadIds &&
         previous.projectThreadStates === snapshot.projectThreadStates &&
         previous.projectHasMore === snapshot.projectHasMore &&
+        previous.projectLoadedCounts === snapshot.projectLoadedCounts &&
         previous.loadingProjectCwd === snapshot.loadingProjectCwd &&
         previous.refreshing === snapshot.refreshing &&
+        previous.threadListRefreshing === snapshot.threadListRefreshing &&
         previous.threadListState === snapshot.threadListState &&
         previous.openingThreadId === snapshot.openingThreadId &&
         previous.searchQuery === snapshot.searchQuery &&
@@ -4609,7 +5203,7 @@ function ConfiguredApp({
   const loadingBackendIds = new Set(
     Object.values(snapshots)
       .filter((snapshot) =>
-        Object.values(snapshot.projectThreadStates ?? {}).some(
+        snapshot.threadListRefreshing || Object.values(snapshot.projectThreadStates ?? {}).some(
           (state) => state === "loading",
         ),
       )
@@ -4629,9 +5223,10 @@ function ConfiguredApp({
 
   const toggleProject = useCallback(
     (backendId: string, cwd: string) => {
-      const loadedCount = (snapshots[backendId]?.threads ?? []).filter(
+      const loadedCount = snapshots[backendId]?.projectLoadedCounts[cwd] ?? (snapshots[backendId]?.threads ?? []).filter(
         (thread) =>
           thread.isPinned !== true &&
+          (thread.isUnread !== true || isThreadRunning(thread.status)) &&
           (cwd === PROJECTLESS_GROUP_ID
             ? thread.isProjectless === true
             : thread.isProjectless !== true &&
@@ -4650,17 +5245,12 @@ function ConfiguredApp({
 
   const toggleProjectCollapsed = useCallback(
     (backendId: string, cwd: string) => {
-      const key = projectCollapseKey(backendId, cwd);
-      setCollapsedProjectKeys((current) => {
-        const next = new Set(current);
-        if (next.has(key)) {
-          next.delete(key);
-        } else {
-          next.add(key);
-        }
-        writeCollapsedProjectKeys(window.localStorage, next);
-        return next;
-      });
+      const current = readCollapsedProjectKeys(window.localStorage);
+      const opening = isProjectCollapsed(current, backendId, cwd);
+      const next = toggleProjectCollapsedKeys(current, backendId, cwd);
+      writeCollapsedProjectKeys(window.localStorage, next);
+      setCollapsedProjectKeys(next);
+      if (opening) setCommand({ id: ++commandIdRef.current, backendId, type: "retry-project", cwd });
     },
     [],
   );
@@ -4725,10 +5315,10 @@ function ConfiguredApp({
   ]);
 
   const manageThread = useCallback(
-    (item: AggregatedThreadItem, action: ThreadManagementAction) => {
+    (item: AggregatedThreadItem, action: ThreadManagementAction, nativeName?: string) => {
       let name: string | undefined;
       if (action === "rename") {
-        name = window.prompt(
+        name = nativeName ?? window.prompt(
           t("输入新的会话名称"),
           titleOf(item.thread),
         )?.trim();
@@ -4737,32 +5327,34 @@ function ConfiguredApp({
         }
       }
       return new Promise<boolean>((resolve) => {
-        setCommand({
-          id: ++commandIdRef.current,
-          backendId: item.backendId,
-          type: "manage",
-          thread: item.thread,
-          managementAction: action,
-          name,
-          onComplete: resolve,
+        // 先将携带完成回调的命令交给 workspace，避免同批导航覆盖后永久等待 ACK。
+        flushSync(() => {
+          setCommand({
+            id: ++commandIdRef.current,
+            backendId: item.backendId,
+            type: "manage",
+            thread: item.thread,
+            managementAction: action,
+            name,
+            onComplete: resolve,
+          });
         });
       });
     },
     [],
   );
 
-  const startNewChat = useCallback(() => {
+  const startNewChat = useCallback((target?: NativeNewChatTarget) => {
     const savedBackendId = window.localStorage.getItem(
       "codex-mobile:new-chat-backend",
     );
-    const backendId =
+    const backendId = target?.backendId ?? mountedBackends.find(
+      (backend) => backend.id === savedBackendId,
+    )?.id ?? (
       listBackendId === "all"
-        ? mountedBackends.find(
-            (backend) => backend.id === savedBackendId,
-          )?.id ??
-          selectedBackend?.id ??
+        ? selectedBackend?.id ??
           mountedBackends[0]?.id
-        : listBackendId;
+        : listBackendId);
     if (!backendId) return;
     window.localStorage.setItem("codex-mobile:new-chat-backend", backendId);
     selectBackend(backendId);
@@ -4770,7 +5362,7 @@ function ConfiguredApp({
       id: ++commandIdRef.current,
       backendId,
       type: "new",
-      cwd: null,
+      cwd: target?.cwd ?? null,
     });
     closeSidebar();
   }, [
@@ -4787,6 +5379,7 @@ function ConfiguredApp({
       currentDraft: string,
       currentDraftImages: DraftImage[],
       currentDraftFiles: DraftFile[],
+      savedDraftReference?: SavedDraftReference,
     ) => {
       const target = mountedBackends.find(
         (backend) => backend.id === backendId,
@@ -4802,11 +5395,74 @@ function ConfiguredApp({
         draft: currentDraft,
         draftImages: currentDraftImages,
         draftFiles: currentDraftFiles,
+        savedDraftReference,
       });
     },
     [mountedBackends, selectBackend],
   );
 
+  const nativeGroups = isNativeUIEnabled() ? projectNavigation({
+    threads: scopedThreads, listBackendId, selectedBackendId: selectedBackend?.id ?? "",
+    projectDirectories, hasProjectlessThreads, collapsedProjectKeys, projectThreadStates,
+    projectHasMore, loadingProjectKeys, filter: nativeNavigationFilter, query, searching,
+    backends: mountedBackends, backendSnapshots: snapshots,
+    error: listError || (threadListState === "error" ? t("会话列表加载失败") : ""),
+  }) : [];
+  const performNativeProject = (name: string, params: Record<string, unknown>) => {
+    const group = nativeGroups.find(group => group.command?.params.backendId === params.backendId && group.command?.params.cwd === params.cwd);
+    const allowed = group?.command?.name === name || group?.actions?.some(action => action.command?.name === name && !action.disabled);
+    if (!allowed) throw new Error(t("会话列表已更新，请刷新"));
+    if (name === "project.toggle") toggleProjectCollapsed(String(params.backendId), String(params.cwd));
+    else if (name === "project.more") toggleProject(String(params.backendId), String(params.cwd));
+    else retryProject(String(params.backendId), String(params.cwd));
+  };
+  const nativeRuntime = useNativeRuntime({
+    selectedBackendId: selectedBackend?.id ?? "", listBackendId, sidebarOpen, search: query, groups: nativeGroups,
+    navigationLoading: projectNavigationLoading({
+      loading: threadListState === "loading",
+      hasContent: nativeGroups.some(group => group.category === "project" || group.items.some(item => item.command?.name === "thread.open")),
+      backendIds: listBackendId === "all" ? mountedBackends.map(backend => backend.id) : [listBackendId],
+      backendSnapshots: snapshots,
+    }),
+    backends: [{ id: "all", title: t("全部设备"), connected: true }, ...projectNativeBackends(registry.backends, summaries, snapshots)],
+    preferences: projectNativePreferences({ language: languagePreference, transportMode, fontSize: readFontSize(), notification: notificationPreference }),
+  }, {
+    "settings.open": p => { setNativeSettingsPage(String(p.id || "devices")); setManagerOpen(true); },
+    "drafts.open": () => setDraftsOpen(true),
+    "navigation.sidebar": p => { if (p.open) openSidebar(); else closeSidebar(); },
+    "navigation.search": p => setQuery(String(p.value)),
+    "navigation.refresh": refreshAllBackends,
+    "backend.select": p => {
+      const id = String(p.id);
+      if (id !== "all" && !mountedBackends.some(backend => backend.id === id)) throw new Error(t("设备已移除"));
+      // 设备列表筛选不切换当前对话所属workspace。
+      selectListBackend(id);
+    },
+    "navigation.filter": p => {
+      const value = String(p.value);
+      if (!["favorites", "projects", "sessions"].includes(value)) throw new Error(t("导航分类无效"));
+      setNativeNavigationFilter(value);
+    },
+    "thread.new": p => startNewChat(resolveNativeNewChatTarget(p, mountedBackends, nativeGroups)),
+    "thread.open": p => {
+      const item = scopedThreads.find(item => item.backendId === p.backendId && item.threadId === p.threadId);
+      if (!item) throw new Error(t("会话列表已更新，请刷新"));
+      openThread(item);
+    },
+    "thread.manage": async p => {
+      const item = scopedThreads.find(item => item.backendId === p.backendId && item.threadId === p.threadId);
+      if (!item) throw new Error(t("会话列表已更新，请刷新"));
+      if (p.action === "rename" && typeof p.value !== "string") throw new Error(t("请输入新的会话名称"));
+      if (nativeManagementPending.current) throw new Error(t("会话操作未完成"));
+      nativeManagementPending.current = true;
+      try {
+        if (!await manageThread(item, p.action as ThreadManagementAction, typeof p.value === "string" ? p.value : undefined)) throw new Error(t("会话操作未完成"));
+      } finally { nativeManagementPending.current = false; }
+    },
+    "project.toggle": p => performNativeProject("project.toggle", p),
+    "project.more": p => performNativeProject("project.more", p),
+    "project.retry": p => performNativeProject("project.retry", p),
+  });
   if (!selectedBackend) {
     return <main className="app-shell"><div className="empty-state">{t("没有可用设备")}</div></main>;
   }
@@ -4820,6 +5476,7 @@ function ConfiguredApp({
           key={`${backend.id}:${backend.baseUrl}:${backend.token}`}
         >
           <BackendWorkspace
+            nativeRuntime={nativeRuntime}
             backend={{ ...backend, transportMode }}
             foregroundRecoveryActive={backend.id === selectedBackend.id}
             conversationVisible={
@@ -4848,6 +5505,7 @@ function ConfiguredApp({
         <aside className="conversation-sidebar" aria-label={t("会话列表")}>
           <ThreadListPage
             sidebarOpen={sidebarOpen}
+            onCloseSidebar={closeSidebar}
             backends={registry.backends}
             summaries={summaries}
             selectedBackendId={listBackendId}
@@ -4871,10 +5529,11 @@ function ConfiguredApp({
             onQueryChange={setQuery}
             onOpenThread={openThread}
             onManageThread={manageThread}
-            onNewChat={startNewChat}
+            onNewChat={() => startNewChat()}
             onSelectBackend={selectListBackend}
             onManageBackends={() => setManagerOpen(true)}
             onRefresh={refreshAllBackends}
+            onOpenDrafts={() => setDraftsOpen(true)}
             onToggleProject={toggleProject}
             onToggleProjectCollapsed={toggleProjectCollapsed}
             onRetryProject={retryProject}
@@ -4887,6 +5546,19 @@ function ConfiguredApp({
           onClick={closeSidebar}
         />
       </div>
+      {draftsOpen && <DraftsSheet nativeRuntime={isNativeUIEnabled() ? nativeRuntime : null} onClose={() => setDraftsOpen(false)} onOpenDraft={saved => {
+        const target = registry.backends.find(backend => backend.id === saved.backendId);
+        if (!target) throw new Error(t("草稿的设备已移除，无法恢复"));
+        const restored = restoreNewChatDraft(saved);
+        const nextRegistry = { ...registry, selectedBackendId: target.id,
+          backends: registry.backends.map(backend => backend.id === target.id ? { ...backend, enabled: true } : backend) };
+        persistRegistry(nextRegistry);
+        window.localStorage.setItem("codex-mobile:new-chat-backend", target.id);
+        setCommand({ id: ++commandIdRef.current, backendId: target.id, type: "new", cwd: saved.cwd,
+          draft: saved.text, draftImages: restored.images, draftFiles: restored.files, savedDraft: saved });
+        setDraftsOpen(false);
+        closeSidebar();
+      }} />}
       <BackendAttentionBanner
         backends={registry.backends}
         summaries={summaries}
@@ -4898,6 +5570,8 @@ function ConfiguredApp({
         }}
       />
       <BackendManagerSheet
+        nativeRuntime={isNativeUIEnabled() ? nativeRuntime : null}
+        nativePage={nativeSettingsPage}
         open={managerOpen}
         registry={registry}
         summaries={summaries}
@@ -4910,6 +5584,7 @@ function ConfiguredApp({
         onClose={() => setManagerOpen(false)}
         appUpdate={{
           supported: appUpdate.supported,
+          manualCheckSupported: appUpdate.manualCheckSupported,
           currentVersion: appUpdate.state.currentVersion,
           checking: appUpdate.state.phase === "checking",
           status:
@@ -4922,6 +5597,7 @@ function ConfiguredApp({
         }}
       />
       <AppUpdateSheet
+        nativeRuntime={isNativeUIEnabled() ? nativeRuntime : null}
         open={appUpdate.sheetOpen}
         state={appUpdate.state}
         onClose={() => appUpdate.setSheetOpen(false)}

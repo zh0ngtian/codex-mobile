@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import type { NativePanelItem } from '../../native-ui/protocol';
+import { useEffect, useRef, useState, type CSSProperties, type RefObject } from "react";
 import { presentNativeActionMenu, type MenuAnchor } from "../../ui/native-action-menu";
 import { AppIcon, titleOf, type DisplayRecord } from "../../ui/app-display";
-import { ActionSheet } from "../../ui/ActionSheet";
-import { getActiveLocale, t } from "../../i18n";
+import { t } from "../../i18n";
 
 type AnyRecord = Record<string, any>;
 
@@ -58,128 +58,32 @@ export function sevenDayRateLimitView(
   };
 }
 
-function formatCount(value: number) {
-  return new Intl.NumberFormat(getActiveLocale(), {
-    notation: value >= 10_000 ? "compact" : "standard",
-    maximumFractionDigits: 0,
-  }).format(value);
-}
-
-function formatResetTime(timestamp: number | null) {
-  if (!timestamp) return "";
-  return new Intl.DateTimeFormat(getActiveLocale(), {
-    year: "numeric",
-    month: "numeric",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(new Date(timestamp * 1000));
-}
-
 export function ContextUsageButton({
   tokenUsage,
+  open = false,
+  buttonRef,
   onClick,
 }: {
   tokenUsage: AnyRecord | null;
+  open?: boolean;
+  buttonRef?: RefObject<HTMLButtonElement | null>;
   onClick: () => void;
 }) {
   const usage = contextUsageView(tokenUsage);
   const degrees = Math.round((usage?.usedPercent ?? 0) * 3.6);
   return (
     <button
+      ref={buttonRef}
       className="context-usage-button"
       type="button"
       aria-label={t("查看上下文占用情况")}
-      onClick={onClick}
+      aria-expanded={open}
+      aria-haspopup="dialog"
+      onClick={(event) => { event.currentTarget.focus({ preventScroll: true }); onClick(); }}
       style={{ "--usage-degrees": `${degrees}deg` } as CSSProperties}
     >
       <i />
     </button>
-  );
-}
-
-export function ConversationStatusSheet({
-  open,
-  thread,
-  tokenUsage,
-  rateLimits,
-  onClose,
-}: {
-  open: boolean;
-  thread: DisplayRecord;
-  tokenUsage: AnyRecord | null;
-  rateLimits: AnyRecord | null;
-  onClose: () => void;
-}) {
-  if (!open) return null;
-  const usage = contextUsageView(tokenUsage);
-  const sevenDay = sevenDayRateLimitView(rateLimits);
-  const copyThreadId = () => {
-    void navigator.clipboard?.writeText(String(thread.id ?? ""));
-  };
-  return (
-    <ActionSheet
-      open={open}
-      title={t("状态")}
-      ariaLabel={t("状态")}
-      onClose={onClose}
-      closeLabel={t("关闭状态")}
-      closeIcon={<AppIcon name="close" />}
-      showHandle
-      titleAlign="center"
-      className="conversation-status-sheet"
-      backdropClassName="conversation-sheet-backdrop"
-    >
-        <dl>
-          <div>
-            <dt>{t("对话线程：")}</dt>
-            <dd>
-              <code>{thread.id || t("暂无数据")}</code>
-              {!!thread.id && (
-                <button
-                  type="button"
-                  aria-label={t("复制会话 ID")}
-                  onClick={copyThreadId}
-                >
-                  <AppIcon name="copy" />
-                </button>
-              )}
-            </dd>
-          </div>
-          <div>
-            <dt>{t("目录：")}</dt>
-            <dd><code>{thread.cwd || t("暂无数据")}</code></dd>
-          </div>
-          <div>
-            <dt>{t("上下文：")}</dt>
-            <dd>
-              {usage
-                ? t("剩余 {remaining}%（已用 {used} / {total}）", {
-                    remaining: Math.round(usage.remainingPercent),
-                    used: formatCount(usage.used),
-                    total: formatCount(usage.total),
-                  })
-                : t("暂无数据")}
-            </dd>
-          </div>
-          <div>
-            <dt>{t("7 天限制：")}</dt>
-            <dd>
-              {sevenDay
-                ? `${t("剩余 {remaining}%", {
-                    remaining: Math.round(sevenDay.remainingPercent),
-                  })}${
-                    sevenDay.resetsAt
-                      ? t("（将于 {time} 重置）", {
-                          time: formatResetTime(sevenDay.resetsAt),
-                        })
-                      : ""
-                  }`
-                : t("暂无数据")}
-            </dd>
-          </div>
-        </dl>
-    </ActionSheet>
   );
 }
 
@@ -188,6 +92,7 @@ export function ConversationActionMenu(props: ConversationActionMenuProps) {
 }
 
 type ConversationActionMenuProps = {
+  sidechatOnly?: boolean; sidechatActions?: NativePanelItem[]; onSidechatAction?: (name: string, id?: string) => void;
   open: boolean; readOnly?: boolean; thread: DisplayRecord; pendingAction: string;
   anchor?: MenuAnchor;
   onClose: () => void; onPin: () => void; onRefresh: () => void;
@@ -195,6 +100,7 @@ type ConversationActionMenuProps = {
 };
 
 function OpenConversationActionMenu({
+  sidechatOnly = false, sidechatActions = [], onSidechatAction,
   readOnly = false,
   thread,
   pendingAction,
@@ -208,10 +114,10 @@ function OpenConversationActionMenu({
   anchor,
 }: Omit<ConversationActionMenuProps, "open">) {
   const pinned = thread.isPinned === true;
-  const actions = [
+  const ordinaryActions = [
     {
       id: "pin",
-      label: pinned ? t("取消置顶") : t("置顶"),
+      label: pinned ? t("取消关注") : t("关注"),
       icon: "pin" as const,
       onClick: onPin,
       requiresWrite: false,
@@ -253,6 +159,11 @@ function OpenConversationActionMenu({
       requiresWrite: true,
     },
   ];
+  const actions = [
+    ...(sidechatOnly ? [] : ordinaryActions),
+    ...sidechatActions.map(item => ({ id: item.id, label: item.title ?? 'Sidechat', icon: 'copy' as const,
+      onClick: () => onSidechatAction?.(item.command!.name, typeof item.command?.params.id === 'string' ? item.command.params.id : undefined), requiresWrite: false, danger: item.command?.name === 'sidechat.close' })),
+  ];
   const [fallback, setFallback] = useState(false);
   const latest = useRef({ actions, onClose });
   latest.current = { actions, onClose };
@@ -264,10 +175,14 @@ function OpenConversationActionMenu({
       copyText: action.id === "copy" ? String(thread.id ?? "") : undefined,
       onSelect: (native) => {
         if (native && action.id === "copy") latest.current.onClose();
-        else latest.current.actions.find((entry) => entry.id === action.id)?.onClick();
+        else {
+          latest.current.actions.find((entry) => entry.id === action.id)?.onClick();
+          // 原生菜单已消费；先让重命名捕获会话目标，再同步收起，取消也能立即重开。
+          if (native && action.id === "rename") latest.current.onClose();
+        }
       },
     })), anchor ?? { x: window.innerWidth / 2, y: 80, width: 1, height: 1 },
-    // 等动作回调处理结束再关闭；保留异步 runThreadAction 的目标。
+    // 原生直接取消时收起；动作选择由上方回调在捕获目标后处理。
     (actionId) => { if (!actionId) latest.current.onClose(); });
     setFallback(!dispose);
     return dispose ?? undefined;

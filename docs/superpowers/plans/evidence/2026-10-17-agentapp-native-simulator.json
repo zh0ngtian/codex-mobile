@@ -1,0 +1,75 @@
+{
+  "date": "2026-10-17",
+  "scope": "simulator-only",
+  "sourceCommit": "a1c9cb2d3f83d23cec6582c2681fd2976a4b2f8f",
+  "branch": "codex/agentapp-native-integration",
+  "environment": {
+    "device": "iPhone 17 Pro",
+    "runtime": "iOS 26.5",
+    "orientation": "portrait",
+    "textSize": "normal",
+    "bundleId": "vip.loock.codexmobile",
+    "minimumIos": "18.0",
+    "configuration": "Debug"
+  },
+  "checks": {
+    "vitest": {
+      "status": "passed",
+      "files": 139,
+      "tests": 1520,
+      "failed": 0,
+      "command": "NODE_OPTIONS=--no-experimental-webstorage npm test -- --maxWorkers=2 --testTimeout=60000",
+      "log": ".mobile-build/agentapp-acceptance/final-regression.log"
+    },
+    "frontendBuild": {
+      "status": "passed",
+      "command": "NODE_OPTIONS=--no-experimental-webstorage VITE_APP_VERSION=0.2.190 npm run build",
+      "log": ".mobile-build/agentapp-acceptance/frontend-final.log"
+    },
+    "iosUi": {
+      "status": "passed",
+      "tests": 6,
+      "failed": 0,
+      "resultBundle": ".mobile-build/agentapp-acceptance/ui-acceptance.xcresult",
+      "cases": [
+        "testAgentAppControlsAreAccessible",
+        "testAgentAppSidebarControlsAreAccessible",
+        "testAgentAppSidebarSearchAndSettings",
+        "testConfigureProvidedGateway",
+        "testKeepNativeInterfaceEnabledForAcceptance",
+        "testLiveMessageRoundTripAndArchive"
+      ]
+    },
+    "liveGateway": {
+      "nativeProbeAndSelection": true,
+      "messageRoundTrip": true,
+      "fiveUsageRows": true,
+      "testThreadsArchived": true,
+      "credentialsCommitted": false
+    },
+    "handoff": {
+      "productionWebViewConstructorRestored": true,
+      "coldLaunchWithoutNativeDebugOverride": true,
+      "nativeInterfacePreferenceSaved": true,
+      "screenshot": ".mobile-build/agentapp-acceptance/handoff.jpg"
+    },
+    "review": {
+      "specFindingsResolved": true,
+      "qualityFindingsResolved": true,
+      "replyAckFailureAndPendingRechecked": true
+    }
+  },
+  "distribution": {
+    "githubRelease": false,
+    "apk": false,
+    "ipa": false,
+    "httpsOta": false,
+    "gatewayDeployment": false,
+    "mainMerge": false
+  },
+  "limits": [
+    "相机、定位授权和真机覆盖安装不属于本次模拟器证据。",
+    "现有队列协议未返回冻结发送配置时，原生明确显示配置未返回。",
+    "本地文本附件预览上限为2 MiB，超限保留原字节下载。"
+  ]
+}

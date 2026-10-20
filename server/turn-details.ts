@@ -50,6 +50,25 @@ function imageReferences(items: RecordValue[]): RecordValue[] {
   });
 }
 
+function messageTimestamp(item: RecordValue) {
+  return typeof item.timestamp === "number" && Number.isFinite(item.timestamp) && item.timestamp > 0
+    ? { timestamp: item.timestamp } : {};
+}
+
+function orderedMessageIds(items: RecordValue[]): string[] {
+  return items.filter((item) => ["userMessage", "agentMessage", "imageView", "imageGeneration", "videoGeneration"].includes(item.type) &&
+    typeof item.id === "string" && !!item.id).map((item) => item.id);
+}
+
+function commentaryDetails(items: RecordValue[]) {
+  const commentaryItems = items.filter((item) => item.type === "agentMessage" && item.phase === "commentary" &&
+    typeof item.id === "string" && typeof item.text === "string")
+    .map((item) => ({ id: item.id, type: item.type, phase: item.phase, text: item.text, ...messageTimestamp(item) }));
+  // final 和用户消息只传顺序锚点，正文/附件继续使用首屏摘要或实时数据。
+  const messageOrder = orderedMessageIds(items);
+  return { ...(commentaryItems.length ? { commentaryItems } : {}), ...(messageOrder.length ? { messageOrder } : {}) };
+}
+
 // Whitelist only the details needed for history backfill; never retain tool bodies or diffs.
 export function compactTurnDetails(result: RecordValue, savedStats: Record<string, ChangeStats | null> = {}) {
   return {
@@ -61,8 +80,47 @@ export function compactTurnDetails(result: RecordValue, savedStats: Record<strin
           ...(savedStats[String(turn.id)] ? { changeStatsSource: "history" } : {}) }
           : { changeStatsUnavailable: true }),
         items: imageReferences(turn.items ?? []),
+        ...commentaryDetails(turn.items ?? []),
       };
     }),
     nextCursor: result.nextCursor,
   };
+}
+
+
+export function validTurnCommentaryParams(params: any): boolean {
+  return !!params && !Array.isArray(params) &&
+    typeof params.threadId === "string" && !!params.threadId.trim() &&
+    typeof params.turnId === "string" && !!params.turnId.trim();
+}
+
+export function turnCommentaryRequest(params: RecordValue) {
+  return { method: "thread/turns/list", params: {
+    threadId: params.threadId, limit: 1, sortDirection: "desc", itemsView: "full",
+  } };
+}
+
+// 用户文字作为插话位置锚点；附件与工具正文不进入回填响应。
+export function compactTurnCommentary(result: RecordValue, turnId: string) {
+  const turn = (result.data ?? []).find((entry: RecordValue) => entry.id === turnId);
+  const items: RecordValue[] = [];
+  let messageOrder: string[] | undefined;
+  if (turn && ["inProgress", "in_progress", "running"].includes(turn.status) &&
+    !(turn.items ?? []).some((item: RecordValue) => item.type === "agentMessage" && item.phase === "final_answer")) {
+    messageOrder = orderedMessageIds(turn.items ?? []);
+    for (const item of turn.items ?? []) {
+      if (typeof item.id !== "string" || !item.id) continue;
+      if (item.type === "agentMessage" && item.phase === "commentary" && typeof item.text === "string") {
+        items.push({ id: item.id, type: item.type, phase: item.phase, text: item.text, ...messageTimestamp(item) });
+      } else if (item.type === "userMessage") {
+        items.push({ id: item.id, type: item.type,
+          ...(typeof item.text === "string" ? { text: item.text } : {}),
+          ...(Array.isArray(item.content) ? { content: item.content
+            .filter((part: RecordValue) => part.type === "text" && typeof part.text === "string")
+            .map((part: RecordValue) => ({ type: "text", text: part.text })) } : {}),
+        });
+      }
+    }
+  }
+  return { turnId, items, ...(messageOrder ? { messageOrder } : {}) };
 }

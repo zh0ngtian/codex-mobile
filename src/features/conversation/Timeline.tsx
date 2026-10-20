@@ -1,25 +1,24 @@
-import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
+import { decodeUserMessage, type MessageReference } from '../../../server/user-message-format';
+import { responseAnnotationDisplay } from './response-annotations';
+import { MessageReferences } from './MessageReferences';
+import { SelectionQuoteBoundary } from './SelectionQuotes';
+import { Fragment, useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { AppServerClient } from "../../app-server/client";
 import type { BackendConfig } from "../../backends/types";
 import {
   automationAgentMessageText,
-  groupTimelineEntries,
   groupTurnItems,
   imageSourcesForItem,
   MarkdownMessage,
   parseAutomationHeartbeat,
   shouldCollapseUserMessage,
-  splitCompletedTurnResponses,
-  splitTurnResponseSegments,
   stripGitDirectives,
-  summarizeToolActivity,
-  summarizeFileChange,
   summarizeTurnChanges,
   hasTurnChangeStats,
-  toolActivityRowLabel,
   turnDurationMs,
   type ImageSource,
 } from "../../ui/conversation";
+import { turnResponsePresentation, type TurnResponseEntry } from "../../ui/turn-response-presentation";
 import {
   CopyButton,
   copyText,
@@ -30,7 +29,7 @@ import {
   RemoteFileLink,
   RemoteImage,
   RemoteVideo,
-  isPreviewableVideoPath,
+  videoPathForItem,
 } from "./sheets/RemoteFileSheets";
 import { t, getActiveLocale } from "../../i18n";
 import {
@@ -38,11 +37,12 @@ import {
   stripConversationTitleRequest,
 } from "../../app-server/conversation-title";
 import {
-  FileDiffSheet,
   ImageGenerationFailure,
-  ToolDetailSheet,
 } from "./sheets/ToolSheets";
+import { formatMessageTimestamp } from "../../ui/message-timestamp";
 import "./timeline-timestamps.css";
+
+export { formatMessageTimestamp } from "../../ui/message-timestamp";
 import { ContextActionMenu } from "../../ui/ContextActionMenu";
 import { type MenuAnchor } from "../../ui/native-action-menu";
 import { useLongPress } from "../../ui/use-long-press";
@@ -62,21 +62,12 @@ type InlineUserMessageEdit = {
 };
 
 type UserMessageActionProps = {
+  responseReferences?: MessageReference[];
   onEditUserMessage?: () => void;
   inlineEdit?: InlineUserMessageEdit;
   userMessageActionsDisabled?: boolean;
 };
 
-export function formatMessageTimestamp(timestamp: number | null | undefined) {
-  if (typeof timestamp !== "number" || !Number.isFinite(timestamp)) return "";
-  const date = new Date(timestamp * 1000);
-  if (!Number.isFinite(date.getTime())) return "";
-  const pad = (value: number) => String(value).padStart(2, "0");
-  return [
-    `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`,
-    `${pad(date.getHours())}:${pad(date.getMinutes())}`,
-  ].join(" ");
-}
 
 function MessageTimestamp({
   timestamp,
@@ -103,14 +94,14 @@ function itemText(item: AnyRecord) {
   else if (typeof item.text === "string") text = item.text;
   else if (typeof item.content === "string") text = item.content;
   if (Array.isArray(item.content)) {
-    text = item.content
+    text = item.content.filter((part: AnyRecord) => typeof part.text === 'string')
       .map((part: AnyRecord) => {
         const partText = String(part.text ?? "");
         return item.type === "userMessage"
           ? stripConversationTitleRequest(partText)
           : partText;
       })
-      .join("");
+      .join("\n");
   } else if (typeof item.command === "string") text = item.command;
   else if (Array.isArray(item.command)) text = item.command.join(" ");
   else if (typeof item.output === "string") text = item.output;
@@ -123,14 +114,6 @@ function itemText(item: AnyRecord) {
   return text;
 }
 
-function videoPathForItem(item: AnyRecord) {
-  const candidate = item.savedPath ?? item.path ?? item.result;
-  return typeof candidate === "string" &&
-    candidate.startsWith("/") &&
-    isPreviewableVideoPath(candidate)
-    ? candidate
-    : "";
-}
 
 function ImageGallery({
   images,
@@ -172,24 +155,26 @@ function UserBubble({
 } & UserMessageActionProps) {
   const rawText = itemText(item);
   const heartbeat = parseAutomationHeartbeat(rawText);
-  const text = heartbeat?.instructions ?? rawText;
+  const parsed = decodeUserMessage(rawText);
+  const text = heartbeat?.instructions ?? parsed.body;
   const images = imageSourcesForItem(item);
   const collapsible = shouldCollapseUserMessage(text);
   const [expanded, setExpanded] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const focusHistoryEditor = useCallback((input: HTMLTextAreaElement | null) => {
     if (!input) return;
-    input.focus();
+    input.focus({ preventScroll: true });
     input.setSelectionRange(input.value.length, input.value.length);
   }, []);
   useEffect(() => setConfirming(false), [inlineEdit?.hasLaterTurns]);
   const [menuAnchor, setMenuAnchor] = useState<MenuAnchor | null>(null);
-  const longPress = useLongPress((anchor) => setMenuAnchor((current) => current ?? anchor), Boolean(inlineEdit));
+  const longPress = useLongPress((anchor) => setMenuAnchor((current) => current ?? anchor), Boolean(inlineEdit), ".user-message-text");
   useEffect(() => {
     if (inlineEdit) setMenuAnchor(null);
   }, [inlineEdit]);
   const bubble = (
-    <div className={`user-bubble${inlineEdit ? " user-bubble-editing" : ""}`} {...longPress}>
+    <SelectionQuoteBoundary item={item}><div id={`message-source-${item.id}`} data-source-text={rawText} className={`user-bubble${inlineEdit ? " user-bubble-editing" : ""}`} {...longPress}>
+      {!inlineEdit && <MessageReferences references={parsed.references} />}
       {inlineEdit ? (
         <div className="history-message-editor">
           <textarea
@@ -304,6 +289,7 @@ function UserBubble({
           />
         </div>
       ) : null}
+      {!inlineEdit && parsed.attachments.some(file => !file.isImage) && <div className="message-files">{parsed.attachments.filter(file => !file.isImage).map(file => <RemoteFileLink key={file.path} href={file.path.split('/').map(encodeURIComponent).join('/')} client={client} backend={backend}>{file.name}</RemoteFileLink>)}</div>}
       <ImageGallery images={images} client={client} backend={backend} />
       {!inlineEdit && collapsible && (
         <button
@@ -325,7 +311,7 @@ function UserBubble({
           className="user-message-timestamp"
         />
       )}
-    </div>
+    </div></SelectionQuoteBoundary>
   );
   const actions = !inlineEdit && onEditUserMessage ? (
     <div className="user-message-actions" role="group" aria-label={t("历史消息操作")}>
@@ -341,8 +327,8 @@ function UserBubble({
       ...(onEditUserMessage ? [{ id: "edit", title: t("编辑"), icon: "pencil",
         disabled: userMessageActionsDisabled, onSelect: () => onEditUserMessage() }] : []),
       { id: "copy", title: t("复制"), icon: "doc.on.doc", disabled: !text,
-        copyText: text, onSelect: (native) => {
-          if (!native) void copyText(text);
+        copyText: rawText, onSelect: (native) => {
+          if (!native) void copyText(rawText);
         } },
     ]} /> : null;
   if (heartbeat) {
@@ -359,110 +345,6 @@ function UserBubble({
     : <>{bubble}{menu}</>;
 }
 
-function FileChangeActivity({ item }: { item: AnyRecord }) {
-  const changes = (item.changes ?? []) as AnyRecord[];
-  const summary = summarizeToolActivity([item]);
-  const [selectedFileIndex, setSelectedFileIndex] = useState<number | null>(null);
-  return (
-    <section className="file-change-activity">
-      <button type="button" className="file-change-title"
-        aria-label={toolActivityRowLabel(item)} onClick={() => setSelectedFileIndex(0)}>
-        <span className="activity-icon" aria-hidden="true">‹/›</span>
-        <strong>{toolActivityRowLabel(item)}</strong>
-        <span className="file-change-stats">
-          <span className="diff-add">+{summary.additions}</span>
-          <span className="diff-delete">-{summary.deletions}</span>
-        </span>
-        <Chevron />
-      </button>
-      <div className="file-change-files">
-        {changes.map((change, index) => {
-          const stats = summarizeFileChange(change);
-          const path = change.path || t("未命名文件");
-          return (
-            <button type="button" className="file-change-file" key={`${path}-${index}`}
-              title={path} onClick={() => setSelectedFileIndex(index)}>
-              <span className="file-change-path">{path}</span>
-              {typeof change.diff === "string" && (
-                <span className="file-change-stats">
-                  <span className="diff-add">+{stats.additions}</span>
-                  <span className="diff-delete">-{stats.deletions}</span>
-                </span>
-              )}
-            </button>
-          );
-        })}
-      </div>
-      {selectedFileIndex != null && (
-        <FileDiffSheet item={item} initialFileIndex={selectedFileIndex}
-          onClose={() => setSelectedFileIndex(null)} />
-      )}
-    </section>
-  );
-}
-
-function ToolActivity({ items }: { items: AnyRecord[] }) {
-  const summary = summarizeToolActivity(items);
-  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
-  const selected = selectedIndex == null ? null : items[selectedIndex] ?? null;
-  const [expanded, setExpanded] = useState(summary.running);
-  const parts = [
-    summary.fileCount ? t("已更改 {count} 个文件", { count: summary.fileCount }) : "",
-    summary.commandCount
-      ? t(summary.running ? "正在运行 {count} 个命令" : "已运行 {count} 个命令", {
-          count: summary.commandCount,
-        })
-      : "",
-    summary.toolCount ? t("已调用 {count} 个工具", { count: summary.toolCount }) : "",
-  ].filter(Boolean);
-  if (items.every((item) => item.type === "fileChange")) {
-    return <>{items.map((item, index) => <FileChangeActivity key={item.id ?? index} item={item} />)}</>;
-  }
-  return (
-    <>
-      <details
-        className="tool-activity"
-        open={summary.running || expanded}
-        onToggle={(event) => {
-          if (!summary.running) setExpanded(event.currentTarget.open);
-        }}
-      >
-        <summary>
-          <span className="activity-icon">‹/›</span>
-          <span className="activity-summary-text">
-            {parts.join(getActiveLocale() === "zh-CN" ? "，" : ", ") || t("工具活动")}
-            {summary.additions > 0 && <em className="diff-add">+{summary.additions}</em>}
-            {summary.deletions > 0 && <em className="diff-delete">-{summary.deletions}</em>}
-          </span>
-          <Chevron direction={summary.running || expanded ? "down" : "right"} />
-        </summary>
-        <div className="tool-activity-rows">
-          {items.map((item, index) => item.type === "fileChange" ? (
-            <FileChangeActivity key={item.id ?? index} item={item} />
-          ) : (
-            <button
-              type="button"
-              key={item.id ?? index}
-              aria-label={toolActivityRowLabel(item)}
-              onClick={() => setSelectedIndex(index)}
-            >
-              <span className={item.status === "inProgress" ? "row-running" : ""}>‹/›</span>
-              <strong>{toolActivityRowLabel(item)}</strong>
-              <Chevron />
-            </button>
-          ))}
-        </div>
-      </details>
-      {selected?.type === "fileChange" && (
-        <FileDiffSheet item={selected} onClose={() => setSelectedIndex(null)} />
-      )}
-      {selected && selected.type !== "fileChange" && (
-        <ToolDetailSheet item={selected} onClose={() => setSelectedIndex(null)} />
-      )}
-    </>
-  );
-}
-
 function TimelineItem({
   item,
   client,
@@ -470,6 +352,7 @@ function TimelineItem({
   threadId,
   timestamp,
   finalDurationLabel,
+  responseReferences = [],
   onEditUserMessage,
   inlineEdit,
   userMessageActionsDisabled,
@@ -482,6 +365,7 @@ function TimelineItem({
   finalDurationLabel?: string | null;
 } & UserMessageActionProps) {
   const type = String(item.type ?? "");
+  const commentary = type === "agentMessage" && item.phase === "commentary";
   if (type === "imageGeneration" && item.status === "failed") {
     return <ImageGenerationFailure backend={backend} threadId={threadId} itemId={String(item.id ?? "")} />;
   }
@@ -516,11 +400,16 @@ function TimelineItem({
     );
   }
   const displayText = type === "agentMessage"
-    ? visibleAgentMessageText(item)
+    ? responseAnnotationDisplay(visibleAgentMessageText(item), responseReferences, t('引用'))
     : text;
   const generatedVideoPath = videoPathForItem(item);
   if (backend && generatedVideoPath) {
     return <RemoteVideo path={generatedVideoPath} backend={backend} />;
+  }
+  if (type === "videoGeneration" && !generatedVideoPath) {
+    const label = item.status === "failed" ? t("视频生成未完成")
+      : ["inProgress", "in_progress", "running"].includes(item.status) ? t("正在生成视频") : t("视频生成未提供可播放文件");
+    return <div className="image-generation-failure" role="status"><strong>{label}</strong></div>;
   }
   const images = imageSourcesForItem(item);
   if (images.length) return <ImageGallery images={images} client={client} backend={backend} />;
@@ -528,7 +417,7 @@ function TimelineItem({
     return displayText ? <div className="reasoning">{displayText}</div> : null;
   }
   return displayText ? (
-    <div className="assistant-message">
+    <SelectionQuoteBoundary item={item}><div className="assistant-message" id={`message-source-${item.id}`} data-source-text={rawText}>
       <MarkdownMessage
         text={displayText}
         renderImage={(source, alt) => (
@@ -543,13 +432,15 @@ function TimelineItem({
             alt={alt}
           />
         )}
-        renderLink={(href, children) => (
-          <RemoteFileLink href={href} client={client} backend={backend}>
-            {children}
-          </RemoteFileLink>
-        )}
+        renderLink={(href, children) => href.startsWith('#codex-annotation-') ? <a href={href} onClick={event => {
+          event.preventDefault();
+          const number = Number(href.slice('#codex-annotation-'.length));
+          const card = event.currentTarget.closest('.assistant-message')?.querySelector<HTMLDetailsElement>(`details[data-reference-index="${number}"]`);
+          if (card) { card.open = true; card.scrollIntoView({ block: 'nearest' }); }
+        }}>{children}</a> : <RemoteFileLink href={href} client={client} backend={backend}>{children}</RemoteFileLink>}
       />
-      {(formatMessageTimestamp(timestamp) || finalDurationLabel) && (
+      {displayText.includes('#codex-annotation-') && <MessageReferences references={responseReferences} />}
+      {!commentary && (formatMessageTimestamp(timestamp) || finalDurationLabel) && (
         <div className="final-answer-metadata">
           <MessageTimestamp
             timestamp={timestamp}
@@ -562,7 +453,7 @@ function TimelineItem({
           )}
         </div>
       )}
-    </div>
+    </div></SelectionQuoteBoundary>
   ) : null;
 }
 
@@ -701,9 +592,15 @@ export function TurnCard({
   onEditUserMessage?: (messageId: string) => void;
 }) {
   const grouped = groupTurnItems(turn);
+  const referenceContexts = new Map<object, MessageReference[]>();
+  let currentReferences: MessageReference[] = [];
+  for (const item of turn.items ?? []) {
+    if (item.type === 'userMessage') currentReferences = decodeUserMessage(itemText(item)).references;
+    referenceContexts.set(item, currentReferences);
+  }
   const actionsForMessage = (item: AnyRecord): UserMessageActionProps => {
     const messageId = String(item.id ?? "");
-    if (grouped.running || item.type !== "userMessage" || !messageId || messageId.startsWith("local-")) return {};
+    if (grouped.running || item.type !== "userMessage" || !messageId || messageId.startsWith("local-")) return { responseReferences: referenceContexts.get(item) ?? [] };
     return {
       onEditUserMessage: onEditUserMessage ? () => onEditUserMessage(messageId) : undefined,
       inlineEdit: inlineEdit && (inlineEdit.messageId == null
@@ -726,25 +623,7 @@ export function TurnCard({
       total + receivedItemCharacterCount(item),
     0,
   );
-  const renderEntries = (items: AnyRecord[]) =>
-    groupTimelineEntries(items).map((entry, index) =>
-      entry.kind === "activity" ? (
-        <ToolActivity
-          key={`activity-${entry.items[0]?.id ?? index}`}
-          items={entry.items}
-        />
-      ) : (
-        <TimelineItem
-          key={entry.item.id ?? index}
-          item={entry.item}
-          client={client}
-          backend={backend}
-          threadId={threadId}
-          {...actionsForMessage(entry.item)}
-        />
-      ),
-    );
-  const completedSegments = splitTurnResponseSegments(grouped.responses);
+  const presentation = turnResponsePresentation(grouped.responses, { running: grouped.running });
   const changeStats = turn.groupChangeStats ?? summarizeTurnChanges(turn);
   const changeStatsReady = hasTurnChangeStats(turn);
   const changedLines = changeStats.additions + changeStats.deletions;
@@ -753,30 +632,6 @@ export function TurnCard({
     durationMs != null && durationMs > 60_000
       ? formatTurnDuration(durationMs)
       : null;
-  let durationSegmentIndex = -1;
-  if (durationLabel) {
-    for (let index = completedSegments.length - 1; index >= 0; index -= 1) {
-      if (
-        splitCompletedTurnResponses(completedSegments[index]).previousCount > 0
-      ) {
-        durationSegmentIndex = index;
-        break;
-      }
-    }
-  }
-  let copySegmentIndex = -1;
-  let finalSegmentIndex = -1;
-  for (let index = completedSegments.length - 1; index >= 0; index -= 1) {
-    const segment = completedSegments[index];
-    if (
-      copySegmentIndex < 0 &&
-      segment?.some((item) => item.type === "agentMessage")
-    ) copySegmentIndex = index;
-    if (finalSegmentIndex < 0 && splitCompletedTurnResponses(segment).final) {
-      finalSegmentIndex = index;
-    }
-    if (copySegmentIndex >= 0 && finalSegmentIndex >= 0) break;
-  }
   return (
     <section className="turn-card">
       {grouped.user && (
@@ -791,38 +646,27 @@ export function TurnCard({
         </div>
       )}
       <div className="turn-responses" ref={responsesRef}>
-        {grouped.running ? (
-          <>
-            {renderEntries(grouped.responses)}
-            <StreamCharacterCount
-              count={streamingCharacterCount}
-              startedAt={turn.startedAt}
-            />
-          </>
-        ) : (
-          completedSegments.map((items, index) => (
-            <CompletedResponseSegment
-              key={items[0]?.id ?? index}
-              items={items}
-              actionsForMessage={actionsForMessage}
-              client={client}
-              backend={backend}
-              threadId={threadId}
-              copyTarget={responsesRef}
-              showCopy={index === copySegmentIndex}
-              completedAt={
-                index === finalSegmentIndex ? turn.completedAt : null
-              }
-              finalDurationLabel={
-                index === finalSegmentIndex && durationMs != null
-                  ? formatTurnDuration(durationMs)
-                  : null
-              }
-              durationLabel={
-                index === durationSegmentIndex ? durationLabel : null
-              }
-            />
-          ))
+        <CompletedResponseSegment
+          presentation={presentation}
+          actionsForMessage={actionsForMessage}
+          client={client}
+          backend={backend}
+          threadId={threadId}
+          copyTarget={responsesRef}
+          showCopy={!grouped.running}
+          completedAt={!grouped.running ? turn.completedAt : null}
+          finalDurationLabel={
+            !grouped.running && durationMs != null
+              ? formatTurnDuration(durationMs)
+              : null
+          }
+          durationLabel={!grouped.running ? durationLabel : null}
+        />
+        {grouped.running && (
+          <StreamCharacterCount
+            count={streamingCharacterCount}
+            startedAt={turn.startedAt}
+          />
         )}
       </div>
       {!grouped.running && (changeStatsReady || turn.changeStatsUnavailable) && (
@@ -846,7 +690,7 @@ export function TurnCard({
 }
 
 function CompletedResponseSegment({
-  items,
+  presentation,
   actionsForMessage,
   client,
   backend,
@@ -857,7 +701,7 @@ function CompletedResponseSegment({
   finalDurationLabel,
   durationLabel,
 }: {
-  items: AnyRecord[];
+  presentation: ReturnType<typeof turnResponsePresentation>;
   actionsForMessage: (item: AnyRecord) => UserMessageActionProps;
   client: AppServerClient | null;
   backend?: BackendConfig | null;
@@ -868,116 +712,53 @@ function CompletedResponseSegment({
   finalDurationLabel: string | null;
   durationLabel: string | null;
 }) {
-  const completed = splitCompletedTurnResponses(items);
-  const processImages = completed.previous.filter(item => item.type === "imageView");
-  const foldImages = processImages.length > 1;
-  const [showProcessImages, setShowProcessImages] = useState(false);
-  const [showPrevious, setShowPrevious] = useState(() =>
-    completed.previous.some((item) => item.type === "imageGeneration" && item.status === "failed"),
-  );
-  const guidingMessages = completed.beforeFinal.filter(
-    (item) => item.type === "userMessage",
-  );
-  const processBeforeFinal = completed.beforeFinal.filter(
-    (item) => item.type !== "userMessage" && !(foldImages && item.type === "imageView"),
-  );
-  const renderEntries = (entries: AnyRecord[]) =>
-    groupTimelineEntries(entries).map((entry, index) =>
-      entry.kind === "activity" ? (
-        <ToolActivity
-          key={`activity-${entry.items[0]?.id ?? index}`}
-          items={entry.items}
-        />
-      ) : (
-        <TimelineItem
-          key={entry.item.id ?? index}
-          item={entry.item}
-          client={client}
-          backend={backend}
-          threadId={threadId}
-          {...actionsForMessage(entry.item)}
-        />
-      ),
-    );
-  const renderUnfoldedEntries = (entries: AnyRecord[]) =>
-    renderEntries(
-      entries.filter(
-        (item) =>
-          item.type === "userMessage" ||
-          item.type === "fileChange" ||
-          item.type === "imageView" ||
-          (item.type === "imageGeneration" && item.status !== "failed") ||
-          Boolean(videoPathForItem(item)) ||
-          (
-            completed.previousCount === 0 &&
-            item.type === "contextCompaction"
-          ),
-      ),
-    );
-  return (
-    <>
-      {renderEntries(guidingMessages)}
-      {completed.previousCount > 0 && (
-        <>
-          <button
-            type="button"
-            className="previous-messages-toggle"
-            aria-expanded={showPrevious}
-            aria-label={`${t("之前的 {count} 条消息", { count: completed.previousCount })}${
-              durationLabel ? ` · ${durationLabel}` : ""
-            }`}
-            onClick={() => setShowPrevious((current) => !current)}
-          >
-            {t("之前的 {count} 条消息", { count: completed.previousCount })}
-            {durationLabel && (
-              <span className="turn-duration">· {durationLabel}</span>
-            )}
-            <Chevron direction={showPrevious ? "down" : "right"} />
-          </button>
-          {showPrevious && (
-            <div className="previous-messages">
-              {renderEntries(processBeforeFinal)}
-            </div>
-          )}
-        </>
-      )}
-      {!showPrevious && renderUnfoldedEntries(processBeforeFinal)}
-      {foldImages && <>
-        <button type="button" className="previous-messages-toggle process-images-toggle"
-          aria-expanded={showProcessImages}
-          onClick={() => setShowProcessImages(current => !current)}>
-          {t("过程截图（{count}）", { count: processImages.length })}
-          <Chevron direction={showProcessImages ? "down" : "right"} />
-        </button>
-        {showProcessImages && <div className="process-images">{renderEntries(processImages)}</div>}
-      </>}
-      {completed.final && (
-        <>
-          <TimelineItem
-            item={completed.final}
-            client={client}
-            backend={backend}
-            timestamp={completedAt}
-            finalDurationLabel={finalDurationLabel}
-          />
-          {showCopy && (
-            <CopyButton
-              text={() => visibleAssistantText(copyTarget.current)}
-              label={t("复制本回合 AI 消息")}
-              className="turn-message-copy"
-            />
-          )}
-        </>
-      )}
-      {showPrevious ? (
-        completed.afterFinal.length > 0 && (
-          <div className="previous-messages after-final">
-            {renderEntries(completed.afterFinal.filter(item => !(foldImages && item.type === "imageView")))}
-          </div>
-        )
-      ) : (
-        renderUnfoldedEntries(completed.afterFinal.filter(item => !(foldImages && item.type === "imageView")))
-      )}
-    </>
-  );
+  const [showPrevious, setShowPrevious] = useState(presentation.running);
+  // 运行中默认展开，结束时收起；同一阶段的流式更新保留手动选择。
+  useEffect(() => setShowPrevious(presentation.running), [presentation.running]);
+  const { entries, historyCount: previousCount } = presentation;
+  const renderEntry = (entry: TurnResponseEntry, index: number) => {
+    const commentary = entry.item.type === "agentMessage" && (entry.item.phase === "commentary" || entry.history);
+    const message = <TimelineItem
+      item={entry.item} client={client} backend={backend} threadId={threadId}
+      timestamp={entry.item === presentation.final ? completedAt : undefined}
+      finalDurationLabel={entry.item === presentation.final ? finalDurationLabel : undefined}
+      {...actionsForMessage(entry.item)}
+    />;
+    return commentary ? <div className="commentary-message" key={entry.item.id ?? index}>
+      {message}
+      {entry.media.map((media, mediaIndex) => <TimelineItem key={media.id ?? mediaIndex} item={media} client={client} backend={backend} threadId={threadId} />)}
+      <MessageTimestamp timestamp={entry.item.timestamp} className="commentary-timestamp" />
+    </div> : <Fragment key={entry.item.id ?? index}>{message}</Fragment>;
+  };
+  // 相邻的过程消息共享一个历史区；独立媒体与 final 仍留在原始位置。
+  const chunks: Array<{ history: boolean; entries: typeof entries }> = [];
+  for (const entry of entries) {
+    const visible = entry.item.type === "userMessage" || entry.item.type === "agentMessage" ||
+      ["imageView", "imageGeneration", "videoGeneration"].includes(entry.item.type);
+    if (!visible) continue;
+    const history = entry.history;
+    if (chunks.at(-1)?.history === history) chunks.at(-1)!.entries.push(entry);
+    else chunks.push({ history, entries: [entry] });
+  }
+  let toggleInserted = false;
+  return <>
+    {chunks.map((chunk, index) => {
+      if (!chunk.history) return <Fragment key={chunk.entries[0]?.item.id ?? index}>{chunk.entries.map(renderEntry)}</Fragment>;
+      const showToggle = !toggleInserted;
+      toggleInserted = true;
+      return <Fragment key={chunk.entries[0]?.item.id ?? index}>
+        {showToggle && <button
+          type="button" className="previous-messages-toggle" aria-expanded={showPrevious}
+          aria-label={`${t("之前的 {count} 条消息", { count: previousCount })}${durationLabel ? ` · ${durationLabel}` : ""}`}
+          onClick={() => setShowPrevious(current => !current)}
+        >
+          {t("之前的 {count} 条消息", { count: previousCount })}
+          {durationLabel && <span className="turn-duration">· {durationLabel}</span>}
+          <Chevron direction={showPrevious ? "down" : "right"} />
+        </button>}
+        {showPrevious && <div className="previous-messages">{chunk.entries.map(renderEntry)}</div>}
+      </Fragment>;
+    })}
+    {presentation.final && showCopy && <CopyButton text={() => visibleAssistantText(copyTarget.current)} label={t("复制本回合 AI 消息")} className="turn-message-copy" />}
+  </>;
 }

@@ -1,0 +1,37 @@
+{
+  "sourceBase": "15042e6c03a1f3026826b9f56d463eebd286500b",
+  "branch": "codex/conversation-request-priority",
+  "unit": {
+    "relatedPassed": 82,
+    "fullPassed": 1577,
+    "fullFailed": 1,
+    "baselineFailure": "tests/ui/i18n.test.tsx: 加载失败英文翻译缺失，未修改基线独立复现"
+  },
+  "typecheck": "passed",
+  "frontendBuild": "passed",
+  "simulator": {
+    "device": "iPhone 17 Pro",
+    "os": "26.5",
+    "orientation": "portrait",
+    "font": "normal",
+    "baselineSamples": 10,
+    "fixedSamples": 10,
+    "warmupExcludedPerGroup": 1,
+    "tests": "2 XCTest passed; 0 failed; 0 skipped",
+    "sharedSimulatorModified": false,
+    "name": "CodexMobile-RequestPriority-iPhone17Pro"
+  },
+  "distribution": "独立分支与测试模拟器；未合入main或发布",
+  "normalSimulatorBuild": "passed",
+  "normalSimulatorLaunch": "passed",
+  "diagnosticGatewayStopped": true,
+  "mergeValidation": {
+    "baseMain": "f534154eda7ff8c78e9ac8dca30ee7af72a22184",
+    "fullPassed": 1578,
+    "fullFailed": 0,
+    "filesPassed": 145,
+    "typecheck": "passed",
+    "existingTranslationGap": "已补齐加载失败→Loading failed",
+    "distribution": "用户授权仅源码合并main；未更改发布清单或版本"
+  }
+}

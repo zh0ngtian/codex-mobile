@@ -1,0 +1,19 @@
+{
+  "probeSha256": "b2d202bdf876be047984d8812088e0f8d871bce4855b9ee70034b4c004aca77b",
+  "os": "iOS 27.0",
+  "version": "0.3.8",
+  "build": "3008",
+  "asset": "index-DnEFzkNg.js",
+  "codeSha": "219fad454779f25a252d20c0eddb200696025441",
+  "nativeDylibSha256": "bc07beece21850f5f34080120eaf29ca78534e3647995f91a8b8628c289adcd2",
+  "assetSha256": "a31bc2469492e8818e7d8f487e3e60a2e0eab896534721f0f1564344849d3e36",
+  "binarySha256": "e80d66fb60afc5741dbfd9425891a8dcb19d9588670c208be2ea67748baaadf4",
+  "device": "iPhone 17 Pro",
+  "configuration": "Debug",
+  "fontScale": 1,
+  "orientation": "portrait",
+  "measurementStartedAtMs": 1792389673672.956,
+  "measurementLastLaunchAtMs": 1792390031503.367,
+  "calibrationSamples": 2,
+  "method": "保留设备配置、HTTP会话、App数据及服务端/磁盘缓存；每次终止后重新启动进程；原生容器共用，仅Web业务资源分别使用基线/修复源码"
+}

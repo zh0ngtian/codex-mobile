@@ -8,6 +8,7 @@ final class CodexMobileAttachmentPickerBridge: NSObject, WKScriptMessageHandler,
     PHPickerViewControllerDelegate, UIDocumentPickerDelegate, UIAdaptivePresentationControllerDelegate {
     private weak var webView: WKWebView?
     private var pendingID: String?
+    private static let fileAttachmentLimit = 100 * 1_024 * 1_024
 
     static func configure(_ webView: WKWebView) {
         let bridge = CodexMobileAttachmentPickerBridge()
@@ -23,6 +24,20 @@ final class CodexMobileAttachmentPickerBridge: NSObject, WKScriptMessageHandler,
       window.codexMobileAttachmentsDispose?.();
       const pending = new Map();
       let sequence = 0;
+      const nextID = () => Date.now().toString(36) + '-' + (++sequence);
+      const decodeFiles = files => (files || []).map(file => {
+        const binary = atob(file.data);
+        const bytes = Uint8Array.from(binary, character => character.charCodeAt(0));
+        return new File([bytes], file.name, { type: file.type });
+      });
+      window.codexMobilePickAttachments = kind => new Promise((resolve, reject) => {
+        const handler = window.webkit?.messageHandlers?.attachmentPicker;
+        if (!handler || !['photos', 'files'].includes(kind)) { reject(new Error('附件选择器不可用')); return; }
+        const id = nextID();
+        pending.set(id, { resolve, reject });
+        try { handler.postMessage({ id, kind, multiple: true }); }
+        catch (error) { pending.delete(id); reject(error); }
+      });
       const click = event => {
         const input = event.target;
         if (!(input instanceof HTMLInputElement) || input.disabled ||
@@ -31,27 +46,31 @@ final class CodexMobileAttachmentPickerBridge: NSObject, WKScriptMessageHandler,
         if (!handler) return;
         event.preventDefault();
         event.stopImmediatePropagation();
-        const id = Date.now().toString(36) + '-' + (++sequence);
+        const id = nextID();
         pending.set(id, input);
         const types = input.accept.split(',').map(type => type.trim().toLowerCase()).filter(Boolean);
-        handler.postMessage({ id, kind: types.length && types.every(type => type.startsWith('image/')) ? 'photos' : 'files', multiple: input.multiple });
+        handler.postMessage({ id, kind: types.length && types.every(type => type.startsWith('image/') || type.startsWith('video/')) ? 'photos' : 'files', multiple: input.multiple });
       };
       window.codexMobileAttachmentsComplete = result => {
-        const input = pending.get(result.id);
+        const route = pending.get(result.id);
         pending.delete(result.id);
-        if (!input?.isConnected || !result.files?.length) return;
-        const transfer = new DataTransfer();
-        for (const file of result.files) {
-          const binary = atob(file.data);
-          const bytes = Uint8Array.from(binary, character => character.charCodeAt(0));
-          transfer.items.add(new File([bytes], file.name, { type: file.type }));
+        if (!route) return;
+        if (route.resolve) {
+          if (result.error) { route.reject(new Error(result.error)); return; }
+          try { route.resolve(decodeFiles(result.files)); } catch (error) { route.reject(error); }
+          return;
         }
+        const input = route;
+        if (!input.isConnected || !result.files?.length || result.error) return;
+        const transfer = new DataTransfer();
+        for (const file of decodeFiles(result.files)) transfer.items.add(file);
         input.files = transfer.files;
         input.dispatchEvent(new Event('change', { bubbles: true }));
       };
       document.addEventListener('click', click, true);
       window.codexMobileAttachmentsDispose = () => {
         document.removeEventListener('click', click, true);
+        for (const route of pending.values()) route.reject?.(new Error('附件选择已结束'));
         pending.clear();
       };
     })();
@@ -62,7 +81,7 @@ final class CodexMobileAttachmentPickerBridge: NSObject, WKScriptMessageHandler,
               let body = message.body as? [String: Any], let id = body["id"] as? String,
               let kind = body["kind"] as? String, kind == "photos" || kind == "files" else { return }
         guard pendingID == nil, let presenter = presenter(), presenter.presentedViewController == nil else {
-            reply(id: id, files: [])
+            reply(id: id, files: [], error: "已有选择器正在使用，请关闭后重试")
             return
         }
         pendingID = id
@@ -70,7 +89,7 @@ final class CodexMobileAttachmentPickerBridge: NSObject, WKScriptMessageHandler,
         let picker: UIViewController
         if kind == "photos" {
             var configuration = PHPickerConfiguration()
-            configuration.filter = .images
+            configuration.filter = .any(of: [.images, .videos])
             configuration.selectionLimit = multiple ? 0 : 1
             configuration.selection = .ordered
             configuration.preferredAssetRepresentationMode = .current
@@ -106,8 +125,38 @@ final class CodexMobileAttachmentPickerBridge: NSObject, WKScriptMessageHandler,
         guard pendingID == id else { return }
         guard index < results.count else { finish(id: id, files: files); return }
         let provider = results[index].itemProvider
-        guard let identifier = provider.registeredTypeIdentifiers.first(where: { UTType($0)?.conforms(to: .image) == true })
-        else { finish(id: id, files: [], error: "无法读取所选图片"); return }
+        let identifier = provider.registeredTypeIdentifiers.first { UTType($0)?.conforms(to: .movie) == true }
+            ?? provider.registeredTypeIdentifiers.first { UTType($0)?.conforms(to: .image) == true }
+        guard let identifier, let type = UTType(identifier) else {
+            finish(id: id, files: [], error: "无法读取所选照片或视频"); return
+        }
+        if type.conforms(to: .movie) {
+            let suggestedName = provider.suggestedName
+            provider.loadFileRepresentation(forTypeIdentifier: identifier) { [weak self] url, error in
+                do {
+                    guard let url else { throw error ?? AttachmentImportError.missingData }
+                    let values = try url.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey])
+                    guard values.isRegularFile == true, let size = values.fileSize else { throw AttachmentImportError.fileSizeUnavailable }
+                    // The provider owns this URL only for the duration of the callback.
+                    let data = try AttachmentLoader.readBoundedFile(url, size: size, availableBytes: Self.fileAttachmentLimit, perFileBytes: Self.fileAttachmentLimit)
+                    let originalName = suggestedName ?? url.lastPathComponent
+                    let fileType = UTType(filenameExtension: url.pathExtension)
+                    let nameType = UTType(filenameExtension: (originalName as NSString).pathExtension)
+                    let actualType = [fileType, nameType, type].compactMap { $0 }.first { $0.conforms(to: .movie) } ?? type
+                    let ext = actualType.preferredFilenameExtension
+                    var name = originalName
+                    if (name as NSString).pathExtension.isEmpty, let ext, !ext.isEmpty { name += ".\(ext)" }
+                    let file = ["name": name, "type": actualType.preferredMIMEType ?? "application/octet-stream", "data": data.base64EncodedString()]
+                    DispatchQueue.main.async { self?.loadPhotos(results, index: index + 1, files: files + [file], id: id) }
+                } catch {
+                    let message = error as? AttachmentImportError == .fileLimit
+                        ? "此文件超过 100 MiB 单文件上限，请选择较小的文件。"
+                        : AttachmentImportError.message(for: error, isEnglish: false)
+                    DispatchQueue.main.async { self?.finish(id: id, files: [], error: message) }
+                }
+            }
+            return
+        }
         provider.loadDataRepresentation(forTypeIdentifier: identifier) { [weak self] data, error in
             var file: [String: String]?
             if let data, let type = UTType(identifier) {
@@ -141,8 +190,9 @@ final class CodexMobileAttachmentPickerBridge: NSObject, WKScriptMessageHandler,
                     let scoped = url.startAccessingSecurityScopedResource()
                     defer { if scoped { url.stopAccessingSecurityScopedResource() } }
                     let data = try Data(contentsOf: url)
-                    let mime = UTType(filenameExtension: url.pathExtension)?.preferredMIMEType ?? "application/octet-stream"
-                    return ["name": url.lastPathComponent, "type": mime, "data": data.base64EncodedString()]
+                    let type = UTType(filenameExtension: url.pathExtension)
+                    let image = try AttachmentLoader.compatibleImage(data: data, name: url.lastPathComponent, type: type)
+                    return ["name": image.name, "type": image.mimeType ?? "application/octet-stream", "data": image.data.base64EncodedString()]
                 }
                 DispatchQueue.main.async { self?.finish(id: id, files: files) }
             } catch {
@@ -162,7 +212,7 @@ final class CodexMobileAttachmentPickerBridge: NSObject, WKScriptMessageHandler,
     private func finish(id: String, files: [[String: String]], error: String? = nil) {
         guard pendingID == id else { return }
         pendingID = nil
-        reply(id: id, files: files)
+        reply(id: id, files: files, error: error)
         if let error, let presenter = presenter() {
             let alert = UIAlertController(title: "无法读取附件", message: error, preferredStyle: .alert)
             alert.addAction(UIAlertAction(title: "确定", style: .default))
@@ -170,8 +220,10 @@ final class CodexMobileAttachmentPickerBridge: NSObject, WKScriptMessageHandler,
         }
     }
 
-    private func reply(id: String, files: [[String: String]]) {
-        guard let data = try? JSONSerialization.data(withJSONObject: ["id": id, "files": files]),
+    private func reply(id: String, files: [[String: String]], error: String? = nil) {
+        var result: [String: Any] = ["id": id, "files": files]
+        if let error { result["error"] = error }
+        guard let data = try? JSONSerialization.data(withJSONObject: result),
               let json = String(data: data, encoding: .utf8) else { return }
         webView?.evaluateJavaScript("window.codexMobileAttachmentsComplete?.(\(json))", completionHandler: nil)
     }

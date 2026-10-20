@@ -8,9 +8,12 @@ import WebSocket, { WebSocketServer } from "ws";
 import type { CodexProjectState } from "./codex-projects.js";
 import { readImageGenerationError } from "./image-generation-error.js";
 import { TurnChangeHistory } from "./turn-change-history.js";
-import { compactTurnDetails } from "./turn-details.js";
+import { MessageTimestamps } from "./message-timestamps.js";
+import { compactTurnDetails, compactTurnCommentary, turnCommentaryRequest, validTurnCommentaryParams } from "./turn-details.js";
+import { FollowUps } from "./follow-ups.js";
 import { HttpSessions } from "./http-session.js";
 import { BarkNotifications } from "./bark-notifications.js";
+import { FollowedThreadNotifications } from "./followed-thread-notifications.js";
 import { ImagePreviews } from "./image-preview.js";
 import { downloadFile } from "./file-download.js";
 
@@ -119,9 +122,18 @@ function applyCors(
 }
 
 export async function createGateway(options: GatewayOptions): Promise<Gateway> {
+  const timestamps = new MessageTimestamps(options.codexHome ?? process.env.CODEX_HOME ?? join(homedir(), ".codex"));
   const changeHistory = new TurnChangeHistory(options.codexHome ?? process.env.CODEX_HOME ?? join(homedir(), ".codex"));
   const notifications = new BarkNotifications({ codexHome: options.codexHome ?? process.env.CODEX_HOME ?? join(homedir(), ".codex"), displayName: options.displayName ?? options.hostname ?? options.hostId ?? "Codex", fetch: options.barkFetch });
   const httpSessions = new HttpSessions({ ...options, changeHistory, notifications });
+  const followUps = await FollowUps.open(options.codexHome ?? process.env.CODEX_HOME ?? join(homedir(), ".codex"), httpSessions);
+  const followedNotifications = new FollowedThreadNotifications({
+    sessions: httpSessions, followedThreadIds: () => notifications.followedThreadIds,
+    notifyCompletion: (threadId, turnId) => notifications.notifyFollowedCompletion(threadId, turnId),
+    rememberThread: thread => notifications.observeRpc({ method: "thread/read" }, { result: { thread } }),
+  });
+  const unsubscribeFollowing = notifications.subscribeFollowing(() => { void followedNotifications.poll(); });
+  void notifications.initialized().then(() => followedNotifications.start()).catch(() => {});
   const imagePreviews = new ImagePreviews();
   const server: Server = createServer(async (request, response) => {
     const url = new URL(request.url ?? "/", "http://gateway.local");
@@ -139,6 +151,7 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
       "/api/rpc",
       "/api/events",
       "/api/operations",
+      "/api/follow-ups",
     ].includes(url.pathname) || fileDownload;
     const apiRequest =
       url.pathname === "/api" || url.pathname.startsWith("/api/");
@@ -174,6 +187,10 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
     if (controlRequest && request.method === "OPTIONS") {
       response.statusCode = 204;
       response.end();
+      return;
+    }
+    if (url.pathname === "/api/follow-ups") {
+      await followUps.handle(request, response);
       return;
     }
     if (url.pathname === "/api/notifications/settings") {
@@ -220,6 +237,7 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
           gatewayVersion: options.gatewayVersion ?? "0.1.0",
           appServerReady,
           httpPolling: true,
+          followUpQueue: true,
           barkPush: true,
           imagePreview: true,
         }),
@@ -426,6 +444,8 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
     const upstream = new WebSocket(options.upstreamUrl);
     sockets.add(upstream);
     const pending: Array<{ data: WebSocket.RawData; binary: boolean }> = [];
+    let unsubscribeHosted: (() => void) | undefined;
+    client.on("close", () => unsubscribeHosted?.());
     let detached = false;
     let lastCompletionAt = 0;
     let retentionTimer: NodeJS.Timeout | undefined;
@@ -520,6 +540,13 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
         if (!isBinary) {
           try {
             const request = JSON.parse(rawMessageText(data));
+            if (request.method === "mobile/turns/commentary") {
+              if (request.id == null || !validTurnCommentaryParams(request.params)) {
+                if (client.readyState === WebSocket.OPEN) client.send(JSON.stringify({ id: request.id ?? null, error: { code: -32602, message: "Invalid turn commentary parameters" } }));
+                return;
+              }
+              data = Buffer.from(JSON.stringify({ id: request.id, ...turnCommentaryRequest(request.params) }));
+            }
             if (request.method && request.id != null) {
               requests.set(request.id, request);
               if (requests.size > 512) requests.delete(requests.keys().next().value!);
@@ -561,6 +588,20 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
       if (!isBinary) {
         try {
           const message = JSON.parse(rawMessageText(data));
+          if (["mobile/sidebar/summaries", "mobile/sidebar/projectless"].includes(message.method)) {
+            void httpSessions.sidebarRpc(message).then(reply => { if (client.readyState === WebSocket.OPEN) client.send(JSON.stringify(reply)); })
+              .catch(error => { if (client.readyState === WebSocket.OPEN) client.send(JSON.stringify({ id: message.id, error: { code: -32000, message: error.message } })); });
+            return;
+          }
+          if (message.method === 'mobile/sidechat/rpc' || (httpSessions.sidechats.has(message.params?.threadId) && ['thread/settings/update', 'turn/interrupt'].includes(message.method))) {
+            const envelope = message.method === 'mobile/sidechat/rpc' ? message : { ...message, params: { method: message.method, params: message.params } };
+            void httpSessions.sidechatRpc(envelope).then(response => { if (client.readyState === WebSocket.OPEN) client.send(JSON.stringify(response)); }).catch(error => { if (client.readyState === WebSocket.OPEN) client.send(JSON.stringify({ id: message.id, error: { code: -32000, message: error.message } })); });
+            return;
+          }
+          if (!message.method && typeof message.id === "string" && message.id.startsWith("hosted:")) {
+            void httpSessions.replyHosted(randomUUID(), message).catch((error) => { if (client.readyState === WebSocket.OPEN) client.send(JSON.stringify({ id: message.id, error: { code: -32000, message: error.message } })); });
+            return;
+          }
           if (message.method === "turn/start" && message.id != null && typeof message.params?.threadId === "string") pendingStarts.set(message.id, message.params.threadId);
           if (!message.method && message.id != null) approvals.delete(message.id);
         } catch { /* 上游验证消息格式。 */ }
@@ -593,6 +634,12 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
       if (message) observeState(message, request);
       if (request && message) {
         requests.delete(message.id);
+        if (request?.method === "initialize" && message.error == null && !unsubscribeHosted) {
+          unsubscribeHosted = httpSessions.subscribeHosted((event) => {
+            // App-server supplies subscribed events; gateway adds connection-local approvals and mobile origin authorization.
+            if ((event.id != null || event.method === "serverRequest/resolved" || event.method === "mobile/turn/accepted" || httpSessions.sidechats.has(event.params?.threadId) || event.method === "thread/closed") && client.readyState === WebSocket.OPEN) client.send(JSON.stringify(event));
+          });
+        }
         notifications.observeRpc(request, message);
         const thread = message.result?.thread;
         if (thread?.id) changeHistory.observe({ method: "thread/started", params: { thread } });
@@ -605,9 +652,16 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
           await changeHistory.cancelStart(request.params.threadId);
         }
         let output: WebSocket.RawData | string = data;
+        if (message?.method === "item/completed") {
+          const projected = await timestamps.notification(message);
+          if (projected !== message) output = JSON.stringify(projected);
+        }
+        if (request?.method === "mobile/turns/commentary" && message?.error == null) {
+          output = JSON.stringify({ ...message, result: compactTurnCommentary(await timestamps.result(request.params!.threadId, message!.result), request.params!.turnId) });
+        }
         if (request?.method === "thread/turns/list" && request.params?.itemsView === "full" &&
           message?.error == null && Array.isArray(message?.result?.data)) {
-          const full = message!.result;
+          const full = await timestamps.result(request.params!.threadId, message!.result);
           const stats = Object.fromEntries(await Promise.all(full.data.map(async (turn: Record<string, any>) =>
             [String(turn.id), await changeHistory.get(request.params!.threadId, turn)],
           )));
@@ -622,7 +676,9 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
         }
         if (client.readyState === WebSocket.OPEN) client.send(output, { binary: isBinary });
       }).catch(() => {
-        if (client.readyState === WebSocket.OPEN) client.send(data, { binary: isBinary });
+        if (client.readyState === WebSocket.OPEN) client.send(request?.method === "mobile/turns/commentary"
+          ? JSON.stringify({ id: message?.id, error: { code: -32000, message: "Commentary recovery unavailable" } })
+          : data, { binary: isBinary });
       });
     });
     upstream.on("error", () => {
@@ -661,6 +717,9 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
   return {
     port: address.port,
     async close() {
+      unsubscribeFollowing();
+      await followedNotifications.close();
+      await followUps.close();
       await httpSessions.close();
       await notifications.close();
       for (const socket of sockets) socket.terminate();

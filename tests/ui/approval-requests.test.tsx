@@ -1,11 +1,24 @@
 import { act, renderHook } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { useApprovalRequests } from "../../src/features/approvals/useApprovalRequests";
+import { useApprovalRequests, type ApprovalSubmissionResult } from "../../src/features/approvals/useApprovalRequests";
 import { approvalResponse, questionResponse } from "../../src/features/approvals/approval-model";
 import { HttpOperationPendingError } from "../../src/backends/http-transport";
 import type { RpcMessage } from "../../src/app-server/client";
 const question = (id: string | number): RpcMessage => ({ id, method: "item/tool/requestUserInput", params: { threadId: "t1", questions: [{ id: "q", header: "问题", question: "答案？", options: null, isOther: true, isSecret: false }] } });
 describe("App 审批请求状态", () => {
+  it("稍后回答保留草稿，轮询不会重新弹出，主动打开后继续回答", () => {
+    const { result } = renderHook(useApprovalRequests);
+    act(() => result.current.receive(question(1)));
+    act(() => result.current.answer("q", "回答草稿"));
+    act(() => result.current.dismiss());
+    expect(result.current.approval).toBeNull();
+    expect(result.current.requests).toHaveLength(1);
+    act(() => result.current.onNotification({ method: "mobile/requests", params: { requests: [question(1)] } }));
+    expect(result.current.approval).toBeNull();
+    act(() => result.current.reopen());
+    expect(result.current.approval?.id).toBe(1);
+    expect(result.current.userAnswers).toEqual({ q: "回答草稿" });
+  });
   it("同步快照保留当前草稿，resolved 按请求与线程移除，不把回答带到下一条", () => {
     const { result } = renderHook(useApprovalRequests);
     act(() => { result.current.receive(question(1)); result.current.receive(question("1")); });
@@ -24,7 +37,7 @@ describe("App 审批请求状态", () => {
     act(() => result.current.answer("q", "保留"));
     let reject!: (reason: Error) => void;
     const respond = vi.fn(() => new Promise<void>((_resolve, fail) => { reject = fail; }));
-    let pending!: Promise<void>;
+    let pending!: Promise<ApprovalSubmissionResult>;
     act(() => { pending = result.current.submit({ answers: {} }, { respond }, vi.fn()); });
     await act(() => result.current.submit({ answers: {} }, { respond }, vi.fn()));
     expect(respond).toHaveBeenCalledOnce();
@@ -58,7 +71,7 @@ describe("App 审批请求状态", () => {
     const { result } = renderHook(useApprovalRequests);
     act(() => result.current.receive(question(1)));
     let finish!: () => void;
-    let pending!: Promise<void>;
+    let pending!: Promise<ApprovalSubmissionResult>;
     act(() => { pending = result.current.submit({}, { respond: () => new Promise<void>((resolve) => { finish = resolve; }) }, vi.fn()); });
     act(() => { result.current.reset(); result.current.receive(question(1)); });
     act(() => result.current.answer("q", "新连接"));
@@ -93,7 +106,7 @@ describe("App 审批请求状态", () => {
     const { result } = renderHook(useApprovalRequests);
     act(() => result.current.receive(question(1)));
     let reject!: (reason: Error) => void;
-    let sending!: Promise<void>;
+    let sending!: Promise<ApprovalSubmissionResult>;
     const remember = vi.fn();
     act(() => { sending = result.current.submit({}, { respond: () => new Promise<void>((_resolve, fail) => { reject = fail; }) }, remember); });
     act(() => result.current.onNotification({ method: "mobile/requests", params: { requests: [] } }));

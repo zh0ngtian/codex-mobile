@@ -1,0 +1,97 @@
+{
+  "date": "2026-10-14",
+  "branch": "codex/native-ios-deepseek-20261014",
+  "defaultInterface": "web",
+  "minimumIOS": "18.0",
+  "automated": {
+    "vitest": {
+      "files": 121,
+      "tests": 1214,
+      "status": "passed",
+      "workers": 2,
+      "runtime": "Node 24"
+    },
+    "serviceBuildContract": {
+      "files": 11,
+      "tests": 106,
+      "status": "passed",
+      "runtime": "Node 26"
+    },
+    "releasePython": {
+      "tests": 157,
+      "status": "passed"
+    },
+    "coordinatorRecovery": {
+      "tests": 30,
+      "status": "passed"
+    },
+    "formalCI": {
+      "runId": 38593533435,
+      "status": "passed",
+      "iosBuildContracts": 106,
+      "coldSwiftCompileRepair": "将Swift契约编译设90秒、执行15秒、整体120秒，保留全部真实断言"
+    }
+  },
+  "simulator": {
+    "device": "iPhone 16 Pro",
+    "system": "iOS 27.0",
+    "udid": "15603299-0ABD-486F-B4B1-C1F3B8ACBDD1",
+    "nativeSuite": {
+      "tests": 16,
+      "status": "passed",
+      "result": "test_sim_2026-10-14T14-48-12-455Z_pid23807_8e98b80d.xcresult"
+    },
+    "liveRoundtripAndArchive": {
+      "status": "passed",
+      "result": "test_sim_2026-10-14T14-17-05-755Z_pid23807_4a2c906a.xcresult"
+    },
+    "switchTextAndImage": {
+      "status": "passed",
+      "route": "native → native → Web → native，完整进程重启",
+      "result": "test_sim_2026-10-14T14-42-05-393Z_pid23807_066029d3.xcresult"
+    },
+    "darkAccessibilityLarge": {
+      "tests": 2,
+      "status": "passed",
+      "result": "test_sim_2026-10-14T14-52-55-232Z_pid23807_966b4fb5.xcresult"
+    }
+  },
+  "ipad": {
+    "device": "iPad Pro 13-inch (M5)",
+    "system": "iOS 27.0",
+    "status": "rendered",
+    "build": "build_run_sim_2026-10-14T15-25-53-675Z_pid23807_01570109.log",
+    "scope": "核对实际截图中的正文、顶部与输入卡基本布局；未声称完整iPad自动化交互通过"
+  },
+  "legacy": {
+    "bottomSafeArea": "passed",
+    "repeatedURLDraftKeyboard": "passed",
+    "keyboardResult": "test_sim_2026-10-14T15-09-07-708Z_pid23807_ed8541e3.xcresult",
+    "keyboardProbe": "didHide后500ms真实绘制位置最大位移，保留≤1pt断言；静止视口变化和12pt真实尾跳对照均通过",
+    "additionalChineseInputAndSend": "iOS27辅助功能/焦点时序用例仍存在基线失败，未记为通过",
+    "comparisonWithoutNativeHost": "test_sim_2026-10-14T15-24-33-982Z_pid23807_a37d0539.xcresult，在原ZStack对照也未获得输入焦点；未为此修改旧Web生产输入/发送逻辑"
+  },
+  "complexFeatures": "审批、历史编辑、队列、工具/Diff及文件等以实际App控制器回归和原生参考/富内容UI覆盖；不声称均已在真机上逐项端到端验证",
+  "archivedTestThreads": [
+    "01a13ac2-84a4-7352-9841-fb9fc6cf3a4d",
+    "01a13ac4-6e64-7c61-b46a-74beeadcc6dc",
+    "01a13ac6-7f72-7752-8748-f60e8fe14747",
+    "01a13af7-f538-7b93-a818-633e6423116c"
+  ],
+  "physicalDevice": {
+    "name": "Yao iPhone 17 Pro",
+    "state": "deferred-by-user",
+    "deviceConnection": "发布前再次检查时已连接且开发者模式可用",
+    "uiAutomation": "自动化工具启动被系统未信任开发者证书阻止，未取得可操作READY",
+    "installationOrUpgradeDataRetentionVerified": false,
+    "scope": "用户明确要求先不用真机，以模拟器验证完成本轮验收；没有执行应用覆盖安装或声称真机数据保留已验证"
+  },
+  "evidenceLocation": "原始日志及截图位于本轮worktree的.mobile-build/native-reference；xcresult保存在~/Library/Developer/XcodeBuildMCP/workspaces/codex-mobile-e2b7e5b8d624/result-bundles。此文件是验证记录，发布版本以成功批次凭证和在线固定清单为准。",
+  "releaseAcceptance": "native-release-acceptance.json",
+  "followUpIssue": {
+    "date": "2026-10-15",
+    "version": "0.2.175",
+    "symptom": "真机管理设备中原生开关未显示，完整重启仍复现；原模拟器验收未覆盖private路径别名差异",
+    "rootCauseEvidence": "../../superpowers/plans/evidence/2026-10-15-native-switch-missing-root-cause.json"
+  }
+}

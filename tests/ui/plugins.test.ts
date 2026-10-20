@@ -78,6 +78,11 @@ describe("插件 @ 提及", () => {
     });
   });
 
+  it("中文紧邻插件标记仍发送结构化提及", () => {
+    expect(pluginsReferencedInText("请用@pages 写文档", plugins)).toEqual([plugins[1]]);
+    expect(pluginsReferencedInText("mail@pages", plugins)).toEqual([]);
+  });
+
   it("把文本中的插件标记解析为结构化提及", () => {
     expect(
       pluginsReferencedInText("请用 @creative-production 再交给 @pages。", plugins),

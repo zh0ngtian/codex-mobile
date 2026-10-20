@@ -3,10 +3,15 @@ import type {
   BackendRegistry,
 } from "./types";
 import { t } from "../i18n";
+import {
+  collapseNewBackendProjects,
+  collapsedProjectsStorageKey,
+  readCollapsedProjectKeys,
+  writeCollapsedProjectKeys,
+} from "../features/threads/project-collapse";
 
 export const BACKEND_REGISTRY_STORAGE_KEY =
   "codex-mobile.backend-registry.v1";
-export const MAX_BACKENDS = 8;
 
 export function parseBackendGatewayUrl(value: string) {
   let url: URL;
@@ -153,7 +158,6 @@ function normalizedBackends(value: unknown) {
     seenIds.add(id);
     seenUrls.add(baseUrl);
     if (hostId) seenHostIds.add(hostId);
-    if (result.length >= MAX_BACKENDS) break;
   }
   return result
     .sort((left, right) => left.order - right.order)
@@ -269,10 +273,26 @@ export function saveBackendRegistry(
     return;
   }
   const fallbackOrigin = registry.backends[0].baseUrl;
-  storage.setItem(
-    BACKEND_REGISTRY_STORAGE_KEY,
-    JSON.stringify(normalizedRegistry(registry, fallbackOrigin)),
-  );
+  const next = normalizedRegistry(registry, fallbackOrigin);
+  let previousIds: string[] = [];
+  try {
+    const previous = JSON.parse(storage.getItem(BACKEND_REGISTRY_STORAGE_KEY) ?? "null");
+    previousIds = Array.isArray(previous?.backends)
+      ? previous.backends.flatMap((backend: BackendConfig | null) => typeof backend?.id === "string" ? [backend.id] : [])
+      : [];
+  } catch { /* 损坏的注册表沿用现有重新建立行为。 */ }
+  const addedIds = next.backends.filter(backend => !previousIds.includes(backend.id)).map(backend => backend.id);
+  const previousCollapse = storage.getItem(collapsedProjectsStorageKey);
+  if (addedIds.length) writeCollapsedProjectKeys(storage, collapseNewBackendProjects(readCollapsedProjectKeys(storage), addedIds));
+  try {
+    storage.setItem(BACKEND_REGISTRY_STORAGE_KEY, JSON.stringify(next));
+  } catch (error) {
+    if (addedIds.length) {
+      if (previousCollapse === null) storage.removeItem(collapsedProjectsStorageKey);
+      else storage.setItem(collapsedProjectsStorageKey, previousCollapse);
+    }
+    throw error;
+  }
 }
 
 export function upsertBackend(
@@ -300,9 +320,6 @@ export function upsertBackend(
     )
   ) {
     throw new Error(t("设备身份已存在"));
-  }
-  if (existingIndex < 0 && registry.backends.length >= MAX_BACKENDS) {
-    throw new Error(t("最多只能保存 {count} 个后端", { count: MAX_BACKENDS }));
   }
   const next: BackendConfig = {
     id: value.id.trim(),

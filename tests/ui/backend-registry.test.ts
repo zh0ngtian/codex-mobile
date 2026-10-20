@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   BACKEND_REGISTRY_STORAGE_KEY,
-  MAX_BACKENDS,
   assignBackendHostId,
   createDefaultBackendRegistry,
   formatBackendGatewayUrl,
@@ -14,6 +13,7 @@ import {
   setBackendEnabled,
   upsertBackend,
 } from "../../src/backends/registry";
+import { isProjectCollapsed, readCollapsedProjectKeys, toggleProjectCollapsedKeys, writeCollapsedProjectKeys } from "../../src/features/threads/project-collapse";
 
 class MemoryStorage implements Storage {
   private values = new Map<string, string>();
@@ -44,6 +44,26 @@ class MemoryStorage implements Storage {
 }
 
 describe("多后端配置存储", () => {
+  it("新注册设备默认折叠，既有设备的展开记忆不被保存配置覆盖", () => {
+    const storage = new MemoryStorage(), registry = createDefaultBackendRegistry("http://device.test");
+    saveBackendRegistry(storage, registry);
+    expect(isProjectCollapsed(readCollapsedProjectKeys(storage), "current-origin", "/a")).toBe(true);
+    writeCollapsedProjectKeys(storage, toggleProjectCollapsedKeys(readCollapsedProjectKeys(storage), "current-origin", "/a"));
+    saveBackendRegistry(storage, registry);
+    expect(isProjectCollapsed(readCollapsedProjectKeys(storage), "current-origin", "/a")).toBe(false);
+    const legacy = new MemoryStorage(); legacy.setItem(BACKEND_REGISTRY_STORAGE_KEY, JSON.stringify(registry));
+    saveBackendRegistry(legacy, registry);
+    expect(isProjectCollapsed(readCollapsedProjectKeys(legacy), "current-origin", "/a")).toBe(false);
+  });
+
+  it("注册表保存失败撤回新设备的默认折叠标记", () => {
+    const storage = new MemoryStorage(), write = storage.setItem.bind(storage);
+    writeCollapsedProjectKeys(storage, new Set(["old:/folded"]));
+    storage.setItem = (key, value) => { if (key === BACKEND_REGISTRY_STORAGE_KEY) throw new Error("quota"); write(key, value); };
+    expect(() => saveBackendRegistry(storage, createDefaultBackendRegistry("http://device.test"))).toThrow("quota");
+    expect(readCollapsedProjectKeys(storage)).toEqual(new Set(["old:/folded"]));
+    expect(storage.getItem(BACKEND_REGISTRY_STORAGE_KEY)).toBeNull();
+  });
   it("首次打开时把当前 origin 建为默认后端", () => {
     expect(createDefaultBackendRegistry("http://192.168.100.8:4173/")).toEqual({
       version: 1,
@@ -194,7 +214,7 @@ describe("多后端配置存储", () => {
     });
   });
 
-  it("新增或更新后端时拒绝重复地址并限制数量", () => {
+  it("新增或更新后端时拒绝重复地址且不限制数量", () => {
     let registry = createDefaultBackendRegistry("http://127.0.0.1:4173");
     registry = upsertBackend(registry, {
       id: "mini",
@@ -216,7 +236,7 @@ describe("多后端配置存储", () => {
       }),
     ).toThrow("后端地址已存在");
 
-    for (let index = registry.backends.length; index < MAX_BACKENDS; index += 1) {
+    for (let index = registry.backends.length; index < 24; index += 1) {
       registry = upsertBackend(registry, {
         id: `host-${index}`,
         name: `Host ${index}`,
@@ -227,16 +247,23 @@ describe("多后端配置存储", () => {
       });
     }
 
-    expect(() =>
-      upsertBackend(registry, {
-        id: "overflow",
-        name: "Overflow",
-        baseUrl: "http://192.168.100.99:4173",
-        token: "",
-        enabled: true,
-        order: MAX_BACKENDS,
-      }),
-    ).toThrow(`最多只能保存 ${MAX_BACKENDS} 个后端`);
+    expect(registry.backends).toHaveLength(24);
+    const storage = new MemoryStorage();
+    saveBackendRegistry(storage, registry);
+    expect(loadBackendRegistry(storage, "http://127.0.0.1:4173")).toEqual(registry);
+  });
+
+  it("恢复超过八台的既有配置时不截断设备或排序", () => {
+    const storage = new MemoryStorage();
+    const registry = {
+      version: 1 as const, selectedBackendId: "device-23",
+      backends: Array.from({ length: 24 }, (_, index) => ({
+        id: `device-${index}`, name: `设备 ${index}`, baseUrl: `http://gateway-${index}.local:18766`,
+        token: "", enabled: true, order: index,
+      })),
+    };
+    storage.setItem(BACKEND_REGISTRY_STORAGE_KEY, JSON.stringify(registry));
+    expect(loadBackendRegistry(storage, "null")).toEqual(registry);
   });
 
   it("拒绝通过不同 URL 重复保存同一真实设备身份", () => {

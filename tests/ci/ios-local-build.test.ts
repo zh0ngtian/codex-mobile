@@ -29,7 +29,7 @@ describe("iOS 本地工程准备", () => {
     expect(output.version).toBe("0.2.91");
     expect(output.projectPath).toMatch(/\.mobile-build\/ios\/pakeplus\/PakePlus.xcodeproj$/);
     expect(output.scheme).toBe("PakePlus");
-    expect(output.packageManager).toBe("pnpm@10");
+    expect(output.packageManager).toBe("pnpm@10.34.6");
     expect(output.steps).toEqual([
       "Install Codex Mobile app icon", "Build embedded frontend",
       "Configure PakePlus for embedded HTML", "Install PakePlus dependencies",

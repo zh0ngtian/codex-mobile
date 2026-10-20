@@ -15,7 +15,7 @@ tools:
     cache: npm
     cache-dependency-path: package-lock.json
   pnpm:
-    version: 10
+    version: "10.34.6"
 steps:
   - name: Install Codex Mobile app icon
     shell: bash
@@ -66,6 +66,7 @@ steps:
       ];
       const allowedUrls = new Set([
         "https://api.day.app/DeviceKey",
+        "https://api.day.app/BARK_DEVICE_KEY",
         "http://host.local:18766/?token=xxx",
         "http://192.168.123.79:8765/channels/codex-mobile/latest.json",
         "http://192.168.123.79:8765/channels/codex-mobile/latest.apk",
@@ -231,6 +232,19 @@ steps:
       cmp mobile/ios/ActionMenuBridge.swift pakeplus/PakePlus/ActionMenuBridge.swift
       cp mobile/ios/KeyboardDismissal.swift pakeplus/PakePlus/KeyboardDismissal.swift
       cmp mobile/ios/KeyboardDismissal.swift pakeplus/PakePlus/KeyboardDismissal.swift
+      cp mobile/ios/JavaScriptTextInputBridge.swift pakeplus/PakePlus/JavaScriptTextInputBridge.swift
+      cmp mobile/ios/JavaScriptTextInputBridge.swift pakeplus/PakePlus/JavaScriptTextInputBridge.swift
+      mkdir -p pakeplus/PakePlus/NativeUI
+      cp mobile/ios/NativeUI/*.swift pakeplus/PakePlus/NativeUI/
+      for source in mobile/ios/NativeUI/*.swift; do
+        cmp "$source" "pakeplus/PakePlus/NativeUI/$(basename "$source")"
+      done
+      test -s mobile/ios/AgentUI/App/RootView.swift
+      cp -R mobile/ios/AgentUI pakeplus/PakePlus/AgentUI
+      test -s pakeplus/PakePlus/AgentUI/Composer/ComposerBar.swift
+      test -s pakeplus/PakePlus/AgentUI/Assets.xcassets/ProjectFolderOpen.imageset/Contents.json
+      test ! -e pakeplus/PakePlus/AgentUI/App/AgentApp.swift
+      test ! -e pakeplus/PakePlus/AgentUI/Info.plist
   - name: Harden and test the iOS host
     working-directory: pakeplus
     shell: bash
@@ -238,6 +252,8 @@ steps:
       set -euo pipefail
       plist="PakePlus/Info.plist"
       /usr/libexec/PlistBuddy -c "Set :DEBUG false" "$plist"
+      /usr/libexec/PlistBuddy -c "Add :CADisableMinimumFrameDurationOnPhone bool true" "$plist" 2>/dev/null \
+        || /usr/libexec/PlistBuddy -c "Set :CADisableMinimumFrameDurationOnPhone true" "$plist"
       /usr/libexec/PlistBuddy \
         -c "Delete :NSAppTransportSecurity:NSAllowsArbitraryLoads" \
         "$plist"
@@ -290,8 +306,8 @@ steps:
       for setting, value in (
           ("MARKETING_VERSION", native_version),
           ("CURRENT_PROJECT_VERSION", str(build_number)),
-          ("INFOPLIST_KEY_UISupportedInterfaceOrientations", "UIInterfaceOrientationPortrait"),
-          ("INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad", "UIInterfaceOrientationPortrait"),
+          ("INFOPLIST_KEY_UISupportedInterfaceOrientations", '"UIInterfaceOrientationPortrait"'),
+          ("INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad", '"UIInterfaceOrientationPortrait"'),
       ):
           project, count = re.subn(
               rf"{setting} = [^;]+;",
@@ -300,10 +316,17 @@ steps:
           )
           if count != 2:
               raise SystemExit(f"Pinned PakePlus {setting} settings changed")
+      project, deployment_count = re.subn(
+          r"IPHONEOS_DEPLOYMENT_TARGET = [^;]+;", "IPHONEOS_DEPLOYMENT_TARGET = 18.0;", project,
+      )
+      if deployment_count < 2:
+          raise SystemExit("Pinned PakePlus deployment target settings changed")
       project_path.write_text(project)
       plist_path = Path("PakePlus/Info.plist")
       info = plistlib.loads(plist_path.read_bytes())
       info["UIRequiresFullScreen"] = True
+      for key in ("UISupportedInterfaceOrientations", "UISupportedInterfaceOrientations~ipad"):
+          info[key] = ["UIInterfaceOrientationPortrait"]
       info["CFBundleURLTypes"] = [{
           "CFBundleURLName": "Codex Mobile conversation",
           "CFBundleURLSchemes": ["codexmobile"],
@@ -325,6 +348,10 @@ steps:
       keyboard_safe_area = ".ignoresSafeArea(edges: [.all])\n            .allowsHitTesting"
       if content.count(keyboard_safe_area) != 1:
           raise SystemExit("Pinned PakePlus keyboard safe area hook changed")
+      root_anchor = "        ZStack {"
+      if content.count(root_anchor) != 1:
+          raise SystemExit("Pinned PakePlus root container changed")
+      content = content.replace(root_anchor, "        NativeUIHost {", 1)
       content_path.write_text(content.replace(
           keyboard_safe_area,
           ".ignoresSafeArea(.container, edges: [.all])\n"
@@ -376,6 +403,8 @@ steps:
       source = source.replace(
           webview_constructor,
           "let webView = CodexMobileWebView(frame: .zero, configuration: webConfiguration)\n"
+          "        context.environment.nativeUIBridge?.attach(webView)\n"
+          "        context.coordinator.javaScriptTextInput.configure(webView)\n"
           "        CodexMobileAttachmentPickerBridge.configure(webView)\n"
           "        CodexMobileAppUpdateBridge.configure(webView)\n"
           "        if #available(iOS 16.0, *) { CodexMobileActionMenuBridge.configure(webView) }",
@@ -424,6 +453,7 @@ steps:
       source = source.replace(
           coordinator_fields,
           coordinator_fields
+          + "    let javaScriptTextInput = CodexMobileJavaScriptTextInputBridge()\n"
           + "    weak var realtimeWebView: WKWebView?\n"
           + "    private var realtimeAudioEngine: AVAudioEngine?\n"
           + "    private var realtimeAudioConverter: AVAudioConverter?\n"
@@ -487,6 +517,12 @@ steps:
           raise SystemExit("Pinned PakePlus WKUIDelegate hook changed")
       source = source.replace(
           ui_delegate_anchor,
+          "    func webView(_ webView: WKWebView, runJavaScriptTextInputPanelWithPrompt prompt: String,\n"
+          "                 defaultText: String?, initiatedByFrame frame: WKFrameInfo,\n"
+          "                 completionHandler: @escaping (String?) -> Void) {\n"
+          "        javaScriptTextInput.present(webView, prompt: prompt, defaultText: defaultText,\n"
+          "                                    frame: frame, completionHandler: completionHandler)\n"
+          "    }\n\n"
           "    func webView(\n"
           "        _ webView: WKWebView,\n"
           "        createWebViewWith configuration: WKWebViewConfiguration,\n"
@@ -1040,10 +1076,13 @@ steps:
 
       info = plistlib.loads(Path(sys.argv[1]).read_bytes())
       for key in ("UISupportedInterfaceOrientations", "UISupportedInterfaceOrientations~ipad"):
-          if info.get(key) != ["UIInterfaceOrientationPortrait"]:
-              raise SystemExit(f"Final iOS app must be portrait-only: {key}")
+          orientations = info.get(key, [])
+          if orientations != ["UIInterfaceOrientationPortrait"]:
+              raise SystemExit(f"Final iOS app must only support upright portrait: {key}")
       if info.get("UIRequiresFullScreen") is not True:
-          raise SystemExit("Final iOS app must require full screen for portrait lock")
+          raise SystemExit("Final iOS app must require full screen on iPad")
+      if info.get("MinimumOSVersion") != "18.0":
+          raise SystemExit("Final iOS app requires iOS 18.0")
       PY
       find "$app" -maxdepth 1 -type f -name 'index-*.js' -print -quit \
         | grep -q .

@@ -4,6 +4,18 @@
 
 Codex Mobile iOS 复用当前 React 前端，内置于固定提交的 PakePlus SwiftUI / WKWebView 容器。设备地址和口令由用户在 App 中添加，构建产物不携带私人网关配置。
 
+当前本机验收设备为iPhone 17 Pro / iOS 27.0；原26.5设备已在保留App数据的情况下原地升级，升级前完整副本仍保留。带日期的旧章节继续保留当时版本与证据。
+
+## 多任务并行验证
+
+允许按任务创建独立的 iPhone 17 Pro 模拟器并行验证，验收范围仍为正常字号、竖屏。同一模拟器同一时间只由一个任务使用，复用同一实例时仍须排队。
+
+- 并行任务按模拟器 UDID 指定目标；下方命令中的名称选择器须替换为 `-destination 'platform=iOS Simulator,id=<本任务模拟器 UDID>'`，避免同型号实例混用。
+- 各任务隔离生成工程、DerivedData 和测试结果目录；启动测试网关时使用独立端口与 runtime 文件，避免相互覆盖或干扰。
+- 验证完成后及时归档测试会话，关闭本任务启动的测试网关并释放模拟器使用权。
+
+2026-10-19 规则变更：允许多个独立模拟器并行验证，排队范围限定为同一实例；此前带日期记录中的共用模拟器排队描述保留为当时的执行记录。
+
 ## 生成与运行
 
 要求 macOS、Xcode、Node.js 20.9+、Git、jq。首次运行先执行 `npm ci`。
@@ -20,7 +32,7 @@ xcodebuild \
   -project .mobile-build/ios/pakeplus/PakePlus.xcodeproj \
   -scheme PakePlus \
   -configuration Debug \
-  -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.5' \
+  -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=27.0' \
   -derivedDataPath .mobile-build/ios-derived-data build
 ```
 
@@ -49,7 +61,7 @@ ruby scripts/configure-ios-tests.rb
 xcodebuild \
   -project .mobile-build/ios/pakeplus/PakePlus.xcodeproj \
   -scheme CodexMobileUITests \
-  -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.5' \
+  -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=27.0' \
   -derivedDataPath .mobile-build/ios-derived-data \
   -parallel-testing-enabled NO \
   -resultBundlePath .mobile-build/ios-ui-tests.xcresult test
@@ -171,3 +183,45 @@ iPhone 17 Pro / iOS26.5最终四项XCTest通过：反复收起URL草稿、短/�
 | [IPA（Ad Hoc已签名）](http://192.168.123.79:8765/channels/codex-mobile/latest.ipa) | 0.2.136 | 3,772,782 | `fa06e45d8bd4fa9e1151b2a8d50561da47fff62adba781de7295dd90865b0174` |
 
 APK证书与0.2.135一致；IPA签名身份、权限摘要与钥匙串组保持连续。最终证据保存在 `.mobile-build/keyboard-approval-release/verification/`，安装包和发布验收记录保存在同目录的 `release/0.2.136/`。已停止专用测试网关，模拟器与发布锁均在收尾释放；临时依赖检出和测试构建清理后归档worktree。
+
+
+## 2026-10-17 AgentApp 原生迁移（未发布）
+
+源码分支为 `codex/agentapp-native-integration`，本轮运行代码提交为 `a1c9cb2`。原生呈现完整采用 AgentApp 页面与主题，实际状态和操作仍通过现有唯一 WKWebView 与 NativeUIBridge 复用真实业务。无示例设备、模拟执行器或第二套会话持久化。
+
+| 验证 | 结果 |
+| --- | --- |
+| 全量 Vitest（139 个文件、1520 项，含实际 Swift 执行与跨语言 DTO） | 通过 |
+| TypeScript 与内置前端构建 | 通过 |
+| iPhone 17 Pro / iOS 26.5、正常字号、竖屏 Debug 构建 | 通过 |
+| 6 项 XCTest：原生与侧栏控件、搜索设置、真实设备探测、原生偏好、消息往返及五行用量 | 通过 |
+| 测试会话归档、移除测试探针后冷启动原生界面 | 通过 |
+| 规格及代码审查发现的身份、附件、项目、审批和未确认回答问题 | 已修复并复验 |
+
+用户提供的网关已在模拟器内完成真实测试保存并选中，访问口令不进入源码、提交或此记录。应用留在已连接设备的新对话页面，等待用户人工验收。旧模拟器中已有设备配置保留。
+
+[结构化证据](superpowers/plans/evidence/2026-10-17-agentapp-native-simulator.json)指向本机保留的 `.mobile-build/agentapp-acceptance/` 日志与结果包。源码 Bundle ID 和 iOS 18 最低版本保持；Debug 版本字段沿用 0.2.190，仅用于本机验收，不代表新渠道交付。本次未合并 main、未生成或发布 APK/IPA、未签名、未修改 OTA/LAN/GitHub Release/软件源，也未部署网关。相机、定位授权及真机覆盖安装不在本次模拟器验证范围。
+
+
+## 2026-10-18 当前关注会话的分阶段计时
+
+在0.3.6（3006）Debug上显式传入`--conversation-load-profile`，运行`AgentAppUITests/testProfileCurrentPinnedConversationLoading`。测试参数`CODEX_PROFILE_WARM_SAMPLES`和`CODEX_PROFILE_COLD_SAMPLES`分别控制同进程重复与进程重启后的样本数，默认10与3；另自动预热1次。当前环境使用iPhone 17 Pro、iOS26.5竖屏，只读取已存在的关注会话。冷进程的计时从网关已连接后点开会话开始，非App启动性能测试。
+
+本地测量文件位于App Documents中的`conversation-load-profile-*.json`，仅显式开启时生成，保存阶段、数量和散列；不包含正文及连接信息。提取后可运行：
+
+```bash
+python3 scripts/analyze-conversation-loading.py <按startedAtMs合并的JSON数组> docs/performance/<本次目录>
+```
+
+本轮数据与说明见[测量报告](performance/2026-10-18-conversation-loading/README.md)。最后恢复不带计时参数的正常App；不把Debug模拟器测量作为真机或Release版本性能结论。
+
+
+## 2026-10-19 升级iOS 27与底部按钮外框回归
+
+使用`simctl upgrade 240244F5-0BEC-4553-A346-32F7D5AD34FC com.apple.CoreSimulator.SimRuntime.iOS-27-0`原地升级现有iPhone 17 Pro；升级前26.5副本`8BE7C3CC-115D-4036-8F5F-93EFCB0B431A`保留。系统语言、App数据与已有网关继续可用；模拟器运行时已实读27.0，不复用其他项目的27.0设备。
+
+`testSidebarControlHeightsMatchChat`在旧实现中首先失败，实测Chat=45pt、搜索/更多=36pt；改为正方形内容后实测三个按钮均45pt，两个圆形按钮均45×45pt，并核对前后截图可见外圈。新对话星星已移除，项目选择与完整路径命令继续通过。四项不同界面检查、26项相关原生契约和typecheck通过；iOS 27菜单项测试按真实可见文案定位，避免旧ID不再暴露造成误判。
+
+结果保留在`/tmp/ios27-sidebar-red-1019.xcresult`、`/tmp/ios27-sidebar-green-1019.xcresult`、`/tmp/ios27-sidebar-interactions-1019.xcresult`和`/tmp/ios27-sidebar-menu-green-1019.xcresult`，前后外圈截图为`/tmp/ios27-sidebar-before-after-1019.png`。本轮未创建业务会话。源码推送main，模拟器保留正常App供用户验收，未发布新包；原有动画对系统减弱动态效果的遵循保持。
+
+用户追加移除侧栏更多菜单的“全部设备”，已先失败后删除，再通过夹具菜单与真实网关搜索/设置两项回归（`/tmp/ios27-sidebar-no-all-green-1019.xcresult`）；具体设备、草稿箱、刷新和设置保留。

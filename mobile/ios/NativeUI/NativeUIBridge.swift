@@ -1,0 +1,180 @@
+import Foundation
+import WebKit
+import UIKit
+
+@MainActor
+final class NativeUIBridge: NSObject, WKScriptMessageHandler {
+    let store: NativeUIStore
+    let agentSession: AppSession
+    let agentPreferences: AppPreferences
+    #if DEBUG
+    private(set) var conversationFixture: AgentConversationFixture?
+    #endif
+    // 业务 WebView 由既有 WebView representable 创建并拥有；桥仅保留弱引用，绝不创建第二个实例。
+    private weak var webView: WKWebView?
+    // 与业务 WebView.loadFileURL 使用同一资源 URL，保留 WebKit 实际加载的 /private 路径。
+    private let trustedURL = Bundle.main.url(forResource: "index", withExtension: "html")
+    private let qrPresenter = NativeQRPresenter()
+    private var recoveryRequested = false
+    private var legacyVisible = true
+    private var active = true
+    private var needsLifecycleSync = true
+    override init() {
+        let store = NativeUIStore()
+        self.store = store
+        agentSession = AppSession(store: store)
+        agentPreferences = AppPreferences()
+        super.init()
+        agentPreferences.connect(store: store)
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains(AgentConversationFixture.argument) {
+            conversationFixture = AgentConversationFixture(store: store, session: agentSession)
+        }
+        #endif
+        store.copyText = { [weak store] text in
+            UIPasteboard.general.string = text
+            UIAccessibility.post(notification: .announcement, argument: store?.label("已复制", "Copied"))
+        }
+    }
+    func attach(_ webView: WKWebView) {
+        guard self.webView !== webView else { return }
+        guard let trustedURL else {
+            store.snapshot.error = store.label("内置首页资源不可用", "The bundled home page is unavailable")
+            return
+        }
+        self.webView = webView
+        webView.accessibilityElementsHidden = !legacyVisible
+        webView.isHidden = !legacyVisible
+        let controller = webView.configuration.userContentController
+        controller.removeScriptMessageHandler(forName: "nativeUI")
+        controller.add(self, name: "nativeUI")
+        if let script = NativeUITrust.bootstrap(trustedURL: trustedURL, enabled: store.nativeEnabled) {
+            controller.addUserScript(WKUserScript(source: script, injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        }
+        #if DEBUG
+        if NativeConversationLoadProfile.enabled {
+            controller.addUserScript(WKUserScript(source: "window.__CODEX_LOAD_PROFILE__ = true;", injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        }
+        #endif
+        store.sendCommand = { [weak self] command in self?.dispatch(command) }
+    }
+    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        guard let trustedURL, message.name == "nativeUI", message.webView === webView,
+              message.frameInfo.isMainFrame,
+              NativeUITrust.accepts(message.frameInfo.request.url, trustedURL: trustedURL),
+              let object = message.body as? [String: Any] else { return }
+        #if DEBUG
+        if object["type"] as? String == "loadProfile" { NativeConversationLoadProfile.shared.receive(object); return }
+        #endif
+        if object["type"] as? String == "ready" { applyLifecycle(); if recoveryRequested { recoverLegacy() }; return }
+        if object["type"] as? String == "nativePreference", let id = object["id"] as? String, !id.isEmpty, id.count <= 200 {
+            let validKind = NativeUIPreference.accepts(kind: object["kind"])
+            let preference = NativeUIPreference()
+            var failure: String?
+            if !validKind { failure = store.label("界面偏好参数无效", "Invalid interface preference") }
+            else if let raw = object["enabled"] {
+                if let number = raw as? NSNumber, CFGetTypeID(number) == CFBooleanGetTypeID() {
+                    do { try preference.save(number.boolValue) }
+                    catch { failure = store.label("界面偏好保存失败，请重试", "Could not save the interface preference. Please retry.") }
+                } else { failure = store.label("界面偏好参数无效", "Invalid interface preference") }
+            }
+            if validKind {
+                if object["enabled"] != nil { store.receivedNativePreference(preference.enabled, error: failure) }
+                else { store.savedNativePreference = preference.enabled }
+            }
+            if let webView, let script = NativeUITrust.completePreference(id: id, enabled: preference.enabled, active: store.nativeEnabled, error: failure, trustedURL: trustedURL) {
+                webView.evaluateJavaScript(script, completionHandler: nil)
+            }
+            return
+        }
+        if object["type"] as? String == "scanQR", let id = object["id"] as? String, id.count <= 200, let webView {
+            qrPresenter.scan(id: id, webView: webView, chinese: store.snapshot.locale.hasPrefix("zh")) { [weak self] value, error in
+                guard let self, let trustedURL = self.trustedURL,
+                      NativeUITrust.accepts(webView.url, trustedURL: trustedURL),
+                      let script = NativeUITrust.completeQR(id: id, value: value, error: error, trustedURL: trustedURL) else { return }
+                webView.evaluateJavaScript(script, completionHandler: nil)
+            }
+            return
+        }
+        guard object["type"] as? String == "snapshot", let snapshot = object["snapshot"] else { return }
+        #if DEBUG
+        let profileReceived = NativeConversationLoadProfile.enabled ? NativeConversationLoadProfile.now : 0
+        #endif
+        do {
+            let data = try JSONSerialization.data(withJSONObject: snapshot)
+            #if DEBUG
+            let profileSerialized = NativeConversationLoadProfile.enabled ? NativeConversationLoadProfile.now : 0
+            #endif
+            let value = try JSONDecoder().decode(NativeSnapshot.self, from: data)
+            #if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("--native-ui-trace") { print("Native snapshot panel=\(value.panel?.id ?? "none")") }
+            #endif
+            #if DEBUG
+            let profileDecoded = NativeConversationLoadProfile.enabled ? NativeConversationLoadProfile.now : 0
+            #endif
+            store.receive(value)
+            #if DEBUG
+            let profileStore = NativeConversationLoadProfile.enabled ? NativeConversationLoadProfile.now : 0
+            #endif
+            agentSession.receive(value)
+            #if DEBUG
+            let profileProjected = NativeConversationLoadProfile.enabled ? NativeConversationLoadProfile.now : 0
+            NativeConversationLoadProfile.shared.snapshot(value, received: profileReceived, serialized: profileSerialized, decoded: profileDecoded, store: profileStore, projected: profileProjected, bytes: data.count)
+            #endif
+            agentPreferences.receive(value)
+            if needsLifecycleSync { applyLifecycle() }
+        } catch {
+            #if DEBUG
+            if case DecodingError.keyNotFound(let key, let context) = error {
+                print("Native UI missing key: \((context.codingPath.map(\.stringValue) + [key.stringValue]).joined(separator: "."))")
+            }
+            #endif
+            store.snapshot.error = "原生界面数据无法读取：\(error.localizedDescription)"
+        }
+    }
+    func recoverLegacy() {
+        recoveryRequested = true
+        guard let trustedURL, let webView, NativeUITrust.accepts(webView.url, trustedURL: trustedURL),
+              let script = NativeUITrust.recoverLegacy(trustedURL: trustedURL) else { return }
+        webView.evaluateJavaScript(script, completionHandler: nil)
+    }
+    func setLegacyVisible(_ visible: Bool) {
+        legacyVisible = visible
+        webView?.accessibilityElementsHidden = !visible
+        // WKWebView 的远程 AX 子树可能越过 SwiftUI opacity；原生界面下不参与绘制或读屏。
+        // 实例仍挂载，保留同一份 JavaScript 业务与 WebSocket 连接。
+        webView?.isHidden = !visible
+    }
+    func setActive(_ active: Bool) {
+        self.active = active
+        needsLifecycleSync = true
+        applyLifecycle()
+    }
+    private func applyLifecycle() {
+        guard let trustedURL, let webView, NativeUITrust.accepts(webView.url, trustedURL: trustedURL),
+              let script = NativeUITrust.lifecycle(active: active, trustedURL: trustedURL) else { return }
+        needsLifecycleSync = false
+        webView.evaluateJavaScript(script) { [weak self] _, error in
+            if error != nil { self?.needsLifecycleSync = true }
+        }
+    }
+    private func dispatch(_ command: NativeCommand) {
+        #if DEBUG
+        NativeConversationLoadProfile.shared.begin(command)
+        if ProcessInfo.processInfo.arguments.contains("--native-ui-trace") { print("Native command \(command.name)") }
+        #endif
+        guard let trustedURL, let webView, NativeUITrust.accepts(webView.url, trustedURL: trustedURL),
+              let script = NativeUITrust.dispatch(command, trustedURL: trustedURL) else {
+            let message = store.label("连接尚未就绪，请稍后重试", "The connection is not ready. Please retry.")
+            store.commandError = message
+            store.failNativePreference(command, error: message)
+            return
+        }
+        webView.evaluateJavaScript(script) { [weak self] _, error in
+            if let error {
+                self?.store.snapshot.error = error.localizedDescription
+                self?.store.failNativePreference(command, error: error.localizedDescription)
+            }
+        }
+    }
+}

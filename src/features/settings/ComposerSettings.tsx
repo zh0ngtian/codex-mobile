@@ -14,7 +14,7 @@ export type ComposerPicker =
   | "permission"
   | null;
 
-export function ComposerSettings({
+function ComposerSettingsForm({
   picker,
   effortOptions,
   speedOptions,
@@ -189,4 +189,10 @@ export function ComposerSettings({
       </section>
     </div>
   );
+}
+
+export type ComposerSettingsProps = Parameters<typeof ComposerSettingsForm>[0];
+
+export function ComposerSettings(props: ComposerSettingsProps) {
+  return <ComposerSettingsForm {...props} />;
 }

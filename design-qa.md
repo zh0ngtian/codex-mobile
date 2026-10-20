@@ -1,48 +1,44 @@
-# 内置浏览器 Design QA（历史记录）
-
-本文保留 2026-10-02 内置浏览器实现时的比较结论，关联 [实施计划](docs/superpowers/plans/2026-10-02-in-app-browser.md)。2026-10-10 复核时，下列 `test-results/` 和 `/tmp/` 截图已不存在，会话参考图也未入库；因此 `passed` 仅代表当时记录，不能作为当前版本的可重放视觉验收。现役能力见 [README](README.md#核心能力)。
-
-- source visual truth path: 原实施会话用户消息中的第 1 张参考截图（会话内附件，无本地文件路径）
-- source pixels: 918 × 2048
-- implementation screenshot path: `test-results/in-app-browser/implementation.png`
-- implementation pixels: 984 × 2136
-- CSS size: 不适用；Android 真机原生 Activity，设备逻辑宽度 375 dp
-- density normalization: 参考图与真机截图按屏幕宽高比例对齐；状态栏、系统图标和设备安全区视为系统基础设施，不作为 App 内容差异
-- viewport: Android 12 真机，984 × 2136 px，420 dpi override
-- state: HTTP 页面加载完成，右上角操作菜单展开
-
-## Full-view comparison evidence
-
-参考图和真机最终截图均包含浅色状态栏、关闭按钮、动态网页标题、右上三点菜单、深色网页内容与右上悬浮白色操作面板。面板右对齐、圆角、四行操作顺序和页面遮挡关系一致；最终面板宽度约为屏幕的 45%，与参考图约 43% 接近。
-
-## Focused region comparison evidence
-
-菜单区域需要单独检查，因为首轮全图中它是主要偏差来源。最终实现使用 Google Material Icons Round 的 `open_in_new`、`refresh`、`desktop_windows` 和 `fullscreen` 图标；四项文案、图标顺序、行对齐和单行显示均与参考图一致。标题栏使用 Material Toolbar 的关闭和纵向三点图标，标题来自页面 HTML title。
-
-## Required fidelity surfaces
-
-- Fonts and typography: 标题采用 Material Subtitle2，菜单为 12sp 粗体；真机中最长文案保持单行，没有截断或溢出。系统字体与参考设备字体存在设备级差异，属可接受差异。
-- Spacing and layout rhythm: 48dp 顶栏、48dp 菜单触控行、右对齐 160dp 面板、16dp 圆角；关闭、标题、三点与菜单内容保持稳定对齐。
-- Colors and visual tokens: 顶栏为接近参考图的浅灰白，文字为近黑色，菜单图标使用深灰绿色；网页内容颜色由目标网页自身决定。
-- Image quality and asset fidelity: 所有非系统菜单图标均来自 Google Material Icons Round 矢量资源，没有使用文字字符、CSS 图形或占位图。
-- Copy and content: “在外部浏览器中打开”“重新加载”“桌面版网页”“全屏打开”与参考图一致；桌面版启用后明确切换为“手机版网页”。
-
-## Comparison history
-
-1. 首轮：菜单为 336dp、18sp，覆盖约 90% 屏宽；图标使用 Android 旧式内建资源。判定为 P1。
-   - 修复：改用 Material Icons Round，重新按参考图测量面板与文字比例。
-   - 后证据：`/tmp/codex-mobile-browser-menu-v2.png`，图标正确但面板仍偏宽。
-2. 第二轮：菜单收窄到 272dp、16sp，层级正确，但仍明显宽于参考图。判定为 P2。
-   - 修复：最终收窄为 160dp、12sp，压缩内边距并保留 48dp 触控行。
-   - 后证据：`test-results/in-app-browser/implementation.png`，最长文案单行显示，面板比例与参考图接近。
-3. 交互检查：验证主 WebView 点击 HTTP 链接进入独立 Activity；刷新、桌面版切换、全屏工具栏隐藏与返回恢复、外部浏览器、关闭均通过真机操作。
-
-## Findings
-
-没有仍需处理的 P0、P1 或 P2 差异。
-
-## Follow-up Polish
-
-- P3：不同 Android 厂商的系统状态栏高度与图标排列会和参考设备不同，这是系统基础设施差异，不在 App 内仿制。
+# 对话用量与额度卡片验收（2026-10-17）
 
 final result: passed
+
+## 对照来源与状态
+
+- 源视觉：用户提供的卡片截图，长期副本 `/Users/zhongtian/Library/Application Support/ReleaseCoordinator/validations/conversation-usage-card-20261017/reference.png`，474×292 像素，仅包含三行用量卡片，没有设备 viewport 或可确定的 CSS 密度。
+- 用户批准的修改：三项额度后加入输入 Token（缓存命中百分比）与输出 Token；K/M 缩写；周期为七天、时间为五小时额度。
+- 原生全屏证据：同目录 `native-cache-label-full.png`，iPhone 17 Pro，iOS 26.5、正常字号、竖屏，402×874 CSS 点，1206×2622 像素，3 倍密度。使用离线 NativeVisualReference，未请求生产网关。
+- 全景：已打开全屏截图核对头部圆圈、系统 popover 锚点、卡片与正文、底部输入框关系，卡片完整位于屏幕内。
+- 聚焦比较：同目录 `comparison-cache-label.png` 同屏放置原图与原生卡片裁剪；源图缩为448×276、原生901×550裁剪缩为600×366，保留正常字形比例。现役原生卡片为容纳缓存后缀从224点扩到300点，并从三行扩为五行，因此不将两侧强拉同宽或宣称像素完全相同。
+- 网页证据：同目录 `web-cache-label.png`。真实 ConversationPage 的现代、传统入口已分别打开；最新五行文字为93%、72%、43%、100K (缓存 80%)、28.5K。最终页面加载和交互后没有新的浏览器 console error。
+
+## 视觉检查
+
+- 字体与层级：沿用现役系统中文字体；标题深色半粗，标签灰色，数值深色加粗。缓存后缀与输入数值同一行，未截断或挤压标签。
+- 间距与布局：保留圆角卡片、左标签右数值、正常行距及系统 popover 箭头。增加两行和宽度属于已批准功能的布局适配；右侧数值整列对齐，没有出屏。
+- 颜色：白底、灰色标签、深色数值与参考一致；原生系统阴影和圆角采用现役原生 popover。
+- 图像与资源：目标为文字卡片，无需生成位图素材；沿用原来的圆圈按钮和系统 popover。参考图低清晰度不是实现缺陷。
+- 文案与内容：使用已确认的「周期剩余」「输入 Token」「输出 Token」，有意替换原图的套餐标签及原来的重置时间倒计时口径。缓存率取累计缓存输入/累计输入，缺少数据不显示虚构百分比。
+
+## 交互、发现与修复记录
+
+- 现代和传统网页均验证展开、Escape、外部点击、再次触发、焦点恢复、实时更新、跨会话/后端关闭，以及缺少数据状态。
+- 原生测试 `testContextRingPresentsNativeUsagePopover` 与 `testUsageCardShowsCompactConversationTokenAndLimits` 两项通过；中文样例断言覆盖五行、缓存命中、外点关闭和重开。
+- 首轮原生测试把不可命中的背景静态文本作为点击目标，属于测试命中方式错误；改用卡片外明确空白坐标后，同一关闭与重开断言通过。最终结果保存在同目录 `cache-label-native.xcresult`，2通过、0失败。
+- 独立审查发现网页 portal 在保留挂载的工作区隐藏时残留（P2）。正式回归先出现传统/现代两例失败，修复 d9aaa87 让可见性直接约束 portal、隐藏时清除展开状态，返回不自动重开；最终248项相关回归全部通过，质量复审 approved。
+- 最终没有剩余 P0/P1/P2 或 P3 视觉与交互问题。未验证真机覆盖安装与数据保留；本轮界面验收按仓库要求只覆盖 iPhone 17 Pro 正常字号竖屏。
+
+## 完成检查
+
+- [x] 同屏比较源图与最新五行实现。
+- [x] 字体、布局、色彩、资源、文案五项检查。
+- [x] 浏览器真实渲染与交互、原生模拟器编译和两项UI验收。
+- [x] 修复质量审查发现的工作区隐藏问题，独立复审通过。
+- [x] 无真实远端测试会话，测试App已卸载、共享模拟器锁已释放。
+
+## 缓存文案验收更新
+
+输入行已按用户最新要求改为 `100K (缓存 80%)`，英文括号、数值后的空格与简短标签均核对。2026-10-17的现代/传统网页134项相关测试及类型检查通过，iPhone 17 Pro 正常字号竖屏两项原生测试再次通过。数据计算和卡片布局未变；当时只更新显示字符串，发布因协调器合并恢复问题未完成。该记录是历史验收，不代表当前主分支已重新完成模拟器验收或正式发布。
+
+## 2026-10-20 仅源码整合
+
+用户要求将 `codex/conversation-usage-card` 合入主分支且不发布。保留主分支已删除的旧界面测试，将同一文案断言更新到现行网页集成测试；短标签同时适配现役 `AgentUI/Chat/UsagePopover.swift`。保留原生缓存缺失时只显示 Token 数及现行“额度剩余／刷新时间”行为。整合后6文件133项相关回归、typecheck和4个变更Swift文件的语法检查通过，日志位于仓库外 `ReleaseCoordinator/validations/usage-card-main-20261020/`。本轮没有运行新的模拟器或真机界面验收，没有创建远端测试会话；没有构建APK/IPA、修改发布清单、登记ready、发布或部署网关。

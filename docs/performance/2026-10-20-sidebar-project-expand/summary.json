@@ -1,0 +1,40 @@
+{
+  "data": {
+    "commandToReadyMs": {
+      "count": 20,
+      "minMs": 77.0,
+      "p50Ms": 91.0,
+      "p95Ms": 113.0,
+      "maxMs": 120.0
+    },
+    "listRpcMs": {
+      "count": 20,
+      "minMs": 38.0,
+      "p50Ms": 52.0,
+      "p95Ms": 73.0,
+      "maxMs": 81.0
+    },
+    "upstreamListMs": {
+      "count": 20,
+      "minMs": 31.0,
+      "p50Ms": 39.0,
+      "p95Ms": 64.0,
+      "maxMs": 71.0
+    }
+  },
+  "startupInitializeAborts": 2,
+  "visual": {
+    "count": 3,
+    "firstNativeExpansionFrameTo90PercentMs": [
+      511.667,
+      513.333,
+      525.0
+    ],
+    "firstNativeExpansionFrameTo25PercentMs": [
+      411.667,
+      398.333,
+      408.333
+    ],
+    "touchToPixelsMeasured": false
+  }
+}

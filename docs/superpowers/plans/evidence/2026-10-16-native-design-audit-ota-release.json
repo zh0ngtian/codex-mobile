@@ -1,0 +1,30 @@
+{
+  "version": "0.2.180",
+  "buildNumber": "2180",
+  "size": 4841462,
+  "sha256": "119595bcaed4ebe0d06f73e33bec45d07f7453fb0113dd07e4da55aa3c420af4",
+  "signed": true,
+  "sourceCommit": "e568d72a41a9de0aa3cd2209a547456bf207cd62",
+  "installUrl": "https://192.168.123.79:8766/channels/codex-mobile/current/install.html",
+  "fixedIpaUrl": "http://192.168.123.79:8765/channels/codex-mobile/latest.ipa",
+  "githubReleasePublished": false,
+  "apkPublished": false,
+  "softwareSourceUpdated": false,
+  "distribution": "ota-only",
+  "githubLatestRelease": "v0.2.178",
+  "apkVersionUnchanged": "0.2.178",
+  "signatureIdentityPreserved": true,
+  "verification": [
+    "TypeScript typecheck: passed",
+    "Projection/settings/Swift smoke: 45 passed",
+    "Project disclosure, pagination and native screenshot flow: passed",
+    "Device form and system/Bark notification navigation: passed",
+    "Attachment cancel restores draft and focus: passed",
+    "Independent quality review: no unresolved P1/P2",
+    "HTTPS JSON/manifest/install page/HEAD/full GET: passed",
+    "Fixed IPA independent JSON/HEAD/full GET/size/SHA-256: passed"
+  ],
+  "deviceInstall": "未进行真机覆盖安装与数据保留验收",
+  "futureFormalBatch": "源码已推送到任务分支，后续正式批次须纳入本次源提交；本轮不推进正式main或触发双端Release",
+  "visualEvidence": "/Users/zhongtian/.codex/visualizations/2026/10/16/01a1433c-545b-78c0-9522-eb1bcb3cf80d/native-design-audit"
+}

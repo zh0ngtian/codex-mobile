@@ -1,0 +1,4 @@
+sample,startFrame,startPTS,readableFrame,readablePTS,fiveAt90PercentMs,fiveAt25PercentMs,startFrameGapMs,endFrameGapMs,commandToReadySnapshotMs
+1,95,3.945,131,4.456667,511.667,411.667,11.667,20.0,99
+2,117,4.495,153,5.008333,513.333,398.333,36.667,15.0,93
+3,105,3.925,141,4.45,525.0,408.333,18.333,1.667,96

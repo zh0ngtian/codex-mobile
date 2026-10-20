@@ -1,6 +1,8 @@
+import { isClientForeground } from "../native-ui/foreground";
 import type { RpcMessage } from "../app-server/client";
 import { t } from "../i18n";
 import { isNavigationResume } from "../../server/rpc-replay";
+import { httpRequestScheduler, type HttpRequestPriority } from "./http-request-scheduler";
 
 export interface HttpSyncState { updatedAt: number | null; stale: boolean }
 interface Config { baseUrl: string; token: string; id: string }
@@ -8,7 +10,7 @@ interface PollResponse {
   epoch: string; cursor: number; messages: RpcMessage[]; requests: RpcMessage[];
   active: boolean; updatedAt: number; reset: boolean; hasMore?: boolean;
 }
-const readMethods = new Set(["initialize", "initialized", "thread/list", "thread/read", "thread/loaded/list", "thread/turns/list", "thread/items/list", "permissionProfile/list", "plugin/list", "model/list", "config/read", "configRequirements/read", "account/read", "account/rateLimits/read", "skills/list", "mcpServerStatus/list", "collaborationMode/list", "app/list", "fs/readFile"]);
+const readMethods = new Set(["initialize", "initialized", "thread/list", "thread/read", "thread/loaded/list", "thread/turns/list", "thread/items/list", "mobile/sidebar/summaries", "mobile/sidebar/projectless", "mobile/turns/commentary", "permissionProfile/list", "plugin/list", "model/list", "config/read", "configRequirements/read", "account/read", "account/rateLimits/read", "skills/list", "mcpServerStatus/list", "collaborationMode/list", "app/list", "fs/readFile"]);
 interface PendingWrite { requestId: string; message: RpcMessage; epoch?: string; queryOnly?: true }
 const responseSignature = (message: RpcMessage, epoch?: string) => JSON.stringify({ id: message.id, epoch });
 function persistentWrite(operation: PendingWrite): PendingWrite {
@@ -64,6 +66,7 @@ export class HttpRpcTransport extends EventTarget {
   private updatedAt: number | null = null;
   private timer: ReturnType<typeof setTimeout> | undefined;
   private readonly controllers = new Set<AbortController>();
+  private readonly requestLifetime = new AbortController();
   private readonly seenRequests = new Set<string>();
   private readonly answeredRequests = new Set<string>();
   private latestRequests: RpcMessage[] = [];
@@ -97,6 +100,7 @@ export class HttpRpcTransport extends EventTarget {
         const saved = JSON.parse(localStorage.getItem(this.writesKey) ?? "[]");
         for (const pair of saved) {
           if (!Array.isArray(pair) || typeof pair[0] !== "string" || typeof pair[1]?.requestId !== "string" || !pair[1]?.message) continue;
+          if (pair[1].message.method === 'mobile/sidechat/rpc') continue;
           const operation = persistentWrite(pair[1]);
           this.writes.set(operation.message.method ? pair[0] : responseSignature(operation.message, operation.epoch), operation);
         }
@@ -137,7 +141,7 @@ export class HttpRpcTransport extends EventTarget {
 
   private saveWrites() {
     try {
-      localStorage.setItem(this.writesKey, JSON.stringify([...this.writes].map(([signature, operation]) => [
+      localStorage.setItem(this.writesKey, JSON.stringify([...this.writes].filter(([, operation]) => operation.message.method !== 'mobile/sidechat/rpc').map(([signature, operation]) => [
         operation.message.method ? signature : responseSignature(operation.message, operation.epoch), persistentWrite(operation),
       ])));
     }
@@ -164,7 +168,13 @@ export class HttpRpcTransport extends EventTarget {
     }
   }
 
-  async send(raw: string, timeoutMs = 10_000): Promise<void> {
+  async send(raw: string, timeoutMs = 10_000, priority: HttpRequestPriority = "foreground"): Promise<void> {
+    if (this.readyState !== 1) throw new Error(t("设备尚未连接，请稍后重试"));
+    return httpRequestScheduler.run(new URL(this.config.baseUrl).origin, priority, this.requestLifetime.signal,
+      () => this.sendNow(raw, timeoutMs));
+  }
+
+  private async sendNow(raw: string, timeoutMs: number): Promise<void> {
     if (this.readyState !== 1) throw new Error(t("设备尚未连接，请稍后重试"));
     const message = JSON.parse(raw) as RpcMessage;
     if (message.method?.startsWith("thread/realtime/")) {
@@ -178,7 +188,8 @@ export class HttpRpcTransport extends EventTarget {
       await this.firstPoll;
       if (!this.epoch || this.readyState !== 1) throw new Error(t("设备尚未连接，请稍后重试"));
     }
-    const signature = !message.method || (!readMethods.has(message.method) && !isNavigationResume(message))
+    const sidechatRead = message.method === 'mobile/sidechat/rpc' && (message.params as any)?.method === 'read';
+    const signature = !message.method || (!sidechatRead && !readMethods.has(message.method) && !isNavigationResume(message))
       ? (message.method ? JSON.stringify({ method: message.method, params: message.params }) : responseSignature(message, this.epoch)) : null;
     if (signature && !this.writes.has(signature) && this.writes.size >= 32) throw new Error(t("请求结果待确认，请刷新会话后检查，勿重复发送"));
     const existing = signature ? this.writes.get(signature) : undefined;
@@ -200,6 +211,11 @@ export class HttpRpcTransport extends EventTarget {
     let failure: unknown;
     let mayHaveBeenAccepted = Boolean(existing);
     const deadline = Date.now() + timeoutMs;
+    const remainingReadBudget = () => {
+      const remaining = deadline - Date.now();
+      if (!signature && remaining <= 0) throw new Error(t("{method} 请求超时", { method: message.method ?? "HTTP" }));
+      return Math.max(1, remaining);
+    };
     const fallbackDetails = async () => {
       if (signature || wireOperation.message.method !== "mobile/turns/details" || response?.error?.code !== -32601) return;
       this.detailsUnsupported = true;
@@ -207,14 +223,14 @@ export class HttpRpcTransport extends EventTarget {
       requestId = transportUuid();
       wireOperation = { ...operation, requestId, message: original };
       response = undefined;
-      response = await this.fetchJson("/api/rpc", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(wireOperation) }, {}, Math.max(1, deadline - Date.now()));
+      response = await this.fetchJson("/api/rpc", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(wireOperation) }, {}, remainingReadBudget());
     };
     if (signature) this.inflightWrites.add(requestId);
     if (signature && message.method && message.id != null) this.inflightRpcWrites.set(message.id, operation);
     try {
       for (let attempt = 0; attempt < 3 && this.readyState === 1; attempt++) {
         try {
-          response = await this.fetchJson("/api/rpc", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(wireOperation) }, {}, Math.max(1, deadline - Date.now()));
+          response = await this.fetchJson("/api/rpc", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(wireOperation) }, {}, remainingReadBudget());
           await fallbackDetails();
           break;
         } catch (reason) {
@@ -228,13 +244,16 @@ export class HttpRpcTransport extends EventTarget {
           mayHaveBeenAccepted = true;
         }
         if (this.readyState !== 1) break;
+        if (!signature && Date.now() >= deadline) break;
         try {
-          const result = await this.fetchJson("/api/operations", {}, { requestId }, 5_000);
+          const result = await this.fetchJson("/api/operations", {}, { requestId }, signature ? 5_000 : Math.min(5_000, remainingReadBudget()));
           if (result.status === "completed" && result.message) { response = result.message; await fallbackDetails(); break; }
           if (result.status === "uncertain") break;
         } catch { /* 404 和弱网都不能证明操作未提交。 */ }
         if (Date.now() >= deadline || attempt === 2) break;
-        await new Promise((resolve) => setTimeout(resolve, 300 * (attempt + 1)));
+        const retryDelay = 300 * (attempt + 1);
+        if (!signature && deadline - Date.now() <= retryDelay) break;
+        await new Promise((resolve) => setTimeout(resolve, retryDelay));
       }
       if (!response || this.readyState !== 1) {
         if (signature) throw new HttpOperationPendingError(requestId, operation.message, failure);
@@ -266,12 +285,12 @@ export class HttpRpcTransport extends EventTarget {
 
   private scheduleOperations(delay = this.writes.size ? 3_000 : 15_000) {
     const dueAt = Date.now() + delay;
-    if (this.readyState === 1 && this.initialized && document.visibilityState === "visible"
+    if (this.readyState === 1 && this.initialized && isClientForeground()
       && this.operationTimer !== undefined && this.operationDueAt <= dueAt) return;
     clearTimeout(this.operationTimer);
     this.operationTimer = undefined;
     this.operationDueAt = 0;
-    if (this.readyState !== 1 || !this.initialized || document.visibilityState !== "visible") return;
+    if (this.readyState !== 1 || !this.initialized || !isClientForeground()) return;
     this.operationDueAt = dueAt;
     this.operationTimer = setTimeout(() => {
       this.operationTimer = undefined;
@@ -281,7 +300,7 @@ export class HttpRpcTransport extends EventTarget {
   }
 
   private async reconcileOperations() {
-    if (this.reconciling || !this.initialized || this.readyState !== 1 || document.visibilityState !== "visible") return;
+    if (this.reconciling || !this.initialized || this.readyState !== 1 || !isClientForeground()) return;
     this.reconciling = true;
     const entries = [...this.writes];
     const start = entries.length ? this.reconcileOffset % entries.length : 0;
@@ -293,7 +312,7 @@ export class HttpRpcTransport extends EventTarget {
         if (!operation.message.method && !this.epoch) continue;
         try {
           const result = await this.fetchJson("/api/operations", {}, { requestId: operation.requestId }, 5_000);
-          if (this.readyState !== 1 || document.visibilityState !== "visible") return;
+          if (this.readyState !== 1 || !isClientForeground()) return;
           if (result.status !== "completed" || !result.message || this.inflightWrites.has(operation.requestId) || this.writes.get(signature) !== operation) continue;
           this.writes.delete(signature);
           this.saveWrites();
@@ -320,23 +339,23 @@ export class HttpRpcTransport extends EventTarget {
     clearTimeout(this.operationTimer);
     this.operationTimer = undefined;
     this.operationDueAt = 0;
-    if (document.visibilityState === "visible") { void this.poll(); void this.reconcileOperations(); }
+    if (isClientForeground()) { void this.poll(); void this.reconcileOperations(); }
   };
 
   private schedule(delay?: number) {
     clearTimeout(this.timer);
-    if (this.readyState !== 1 || !this.initialized || document.visibilityState !== "visible") return;
+    if (this.readyState !== 1 || !this.initialized || !isClientForeground()) return;
     this.timer = setTimeout(() => void this.poll(), delay ?? (this.hasMore && !this.failures ? 0 : this.failures
       ? Math.min(30_000, 3_000 * 2 ** this.failures) : this.active ? 3_000 : 15_000));
   }
 
   private async poll() {
-    if (!this.initialized || this.polling || this.readyState !== 1 || document.visibilityState !== "visible") return;
+    if (!this.initialized || this.polling || this.readyState !== 1 || !isClientForeground()) return;
     clearTimeout(this.timer);
     this.polling = true;
     try {
       const payload = await this.fetchJson("/api/events", {}, { after: String(this.cursor) }) as PollResponse;
-      if (this.readyState !== 1 || document.visibilityState !== "visible") return;
+      if (this.readyState !== 1 || !isClientForeground()) return;
       if (this.epoch && this.epoch !== payload.epoch) { this.close(4001, "gateway session changed"); return; }
       this.epoch = payload.epoch;
       this.active = payload.active || payload.requests.length > 0;
@@ -413,6 +432,7 @@ export class HttpRpcTransport extends EventTarget {
     clearTimeout(this.operationTimer);
     this.operationTimer = undefined;
     this.operationDueAt = 0;
+    this.requestLifetime.abort(new Error(t("设备尚未连接，请稍后重试")));
     this.controllers.forEach((controller) => controller.abort());
     this.closeRealtime();
     document.removeEventListener("visibilitychange", this.onResume);

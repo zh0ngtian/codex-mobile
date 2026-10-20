@@ -105,3 +105,57 @@ test("审批待确认后从快照消失，即使操作查询持续 uncertain 也
   await expect.poll(() => turnPosts).toBe(1);
   expect(approvalPosts).toBe(1);
 });
+
+test("新模型提问发送系统通知，稍后回答可恢复多行草稿并准确提交", async ({ page }) => {
+  const thread = { id: "question-thread", name: "项目规划", preview: "规划", status: { type: "idle" }, turns: [], updatedAt: Math.floor(Date.now() / 1000) };
+  let requests: any[] = [];
+  let submitted: any;
+  let ask = false;
+  await page.addInitScript(() => {
+    localStorage.setItem("codex-mobile:language", "zh-CN");
+    localStorage.setItem("codex-mobile.backend-registry.v1", JSON.stringify({ version: 1, selectedBackendId: "test", backends: [{ id: "test", name: "测试设备", baseUrl: location.origin, token: "", enabled: true, order: 0 }] }));
+    (window as any).testNotifications = [];
+    (window as any).JsBridge = { showCompletionNotification: (...args: unknown[]) => (window as any).testNotifications.push(args) };
+  });
+  await page.route("**/api/**", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname === "/api/host") return route.fulfill({ json: { hostId: "test", appServerReady: true, httpPolling: true } });
+    if (url.pathname === "/api/projects") return route.fulfill({ json: { projects: [], projectlessThreadIds: [thread.id] } });
+    if (url.pathname === "/api/events") {
+      if (ask && !submitted) requests = [{ id: "live-question", method: "item/tool/requestUserInput", params: { threadId: thread.id, turnId: "turn", itemId: "ask-item", questions: [{ id: "plan", header: "方案", question: "请描述你的方案", options: null, isOther: true, isSecret: false }] } }];
+      return route.fulfill({ json: { epoch: "questions", cursor: 0, messages: [], requests, active: true, updatedAt: Date.now(), reset: false } });
+    }
+    if (url.pathname !== "/api/rpc") return route.fulfill({ json: {} });
+    const { message } = route.request().postDataJSON();
+    if (!message.method) { submitted = message; requests = []; return route.fulfill({ json: { id: message.id, result: null } }); }
+    const responses: Record<string, unknown> = {
+      "thread/list": { data: [thread], nextCursor: null }, "thread/read": { thread }, "thread/resume": { thread },
+      "permissionProfile/list": { data: [{ id: ":workspace", allowed: true }] },
+      "model/list": { data: [{ id: "test", model: "test", displayName: "Test", isDefault: true, supportedReasoningEfforts: [], serviceTiers: [] }] },
+      "config/read": { config: { model: "test", sandbox_mode: "workspace-write" } },
+    };
+    return route.fulfill({ json: { id: message.id, result: responses[message.method] ?? {} } });
+  });
+  await page.goto("/");
+  await expect(page.getByText("项目规划").first()).toBeVisible();
+  await expect.poll(() => page.evaluate(() => (window as any).testNotifications.length)).toBe(0);
+  ask = true;
+  await expect(page.getByRole("dialog", { name: "Codex 需要你的回答" })).toBeVisible({ timeout: 20_000 });
+  await expect.poll(() => page.evaluate(() => (window as any).testNotifications.length)).toBe(1);
+  expect(await page.evaluate(() => (window as any).testNotifications[0])).toEqual(["Codex 需要你回答", "项目规划", "test", thread.id]);
+  await page.getByLabel("请描述你的方案").fill("先检查协议\n再实现界面");
+  await page.getByRole("button", { name: "稍后回答" }).click();
+  await expect(page.getByRole("dialog", { name: "Codex 需要你的回答" })).toHaveCount(0);
+  await page.getByRole("button", { name: /继续回答/ }).click();
+  await expect(page.getByLabel("请描述你的方案")).toHaveValue("先检查协议\n再实现界面");
+  await page.emulateMedia({ reducedMotion: "reduce", colorScheme: "dark" });
+  await page.evaluate(() => document.documentElement.style.setProperty("--app-font-scale", "1.25"));
+  await page.screenshot({ path: "test-results/model-question-375.png" });
+  await page.setViewportSize({ width: 812, height: 375 });
+  await expect(page.getByRole("button", { name: "提交回答" })).toBeInViewport();
+  await page.screenshot({ path: "test-results/model-question-landscape.png" });
+  await page.getByRole("button", { name: "提交回答" }).click();
+  await expect(page.getByRole("dialog", { name: "Codex 需要你的回答" })).toHaveCount(0);
+  expect(submitted).toEqual({ id: "live-question", result: { answers: { plan: { answers: ["先检查协议\n再实现界面"] } } } });
+  expect(await page.evaluate(() => (window as any).testNotifications.length)).toBe(1);
+});

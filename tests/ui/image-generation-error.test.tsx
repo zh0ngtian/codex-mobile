@@ -33,13 +33,13 @@ describe("图像生成失败详情", () => {
     expect(screen.queryByText(/性相关内容/)).toBeNull();
   });
 
-  it("真实会话直接展示失败原因并携带会话与条目 ID 查询", async () => {
+  it.each(["completed", "inProgress"])("%s 真实会话直接展示失败原因并携带会话与条目 ID 查询", async (status) => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ error: {
       code: "moderation_blocked", stage: "output", categories: ["sexual"], requestId: "req-image-1",
     } }) });
     vi.stubGlobal("fetch", fetchMock);
     render(<TurnCard threadId="thread-1" backend={backend} client={null} turn={{
-      id: "turn-1", status: "completed", items: [
+      id: "turn-1", status, items: [
         { id: "user-1", type: "userMessage", text: "修复图片" },
         item,
       ],

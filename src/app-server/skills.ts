@@ -63,7 +63,7 @@ export function skillMentionAt(
   cursor: number,
 ): SkillMentionQuery | null {
   const beforeCursor = text.slice(0, Math.max(0, cursor));
-  const match = /(^|\s)@([^\s@]*)$/u.exec(beforeCursor);
+  const match = /(^|[\s\p{Script=Han}\p{Ps}\p{Pi}，。！？；：、"'])@([^\s@]*)$/u.exec(beforeCursor);
   if (!match) return null;
   const start = match.index + match[1].length;
   return {
@@ -103,7 +103,7 @@ export function skillsReferencedInText(
   skills: InstalledSkill[],
 ) {
   const names = new Set(
-    [...text.matchAll(/(?:^|\s)\$([^\s$]+)/gu)].map((match) =>
+    [...text.matchAll(/(?:^|[\s\p{Script=Han}\p{Ps}\p{Pi}，。！？；：、"'])\$([^\s$]+)/gu)].map((match) =>
       match[1].replace(/[.,!?;:，。！？；：]+$/u, ""),
     ),
   );

@@ -6,7 +6,7 @@ import { approvalDecisions, questionResponse, type ApprovalDecision, type InputQ
 import "./approvals.css";
 
 type AnyRecord = Record<string, any>;
-function decisionLabel(decision: ApprovalDecision): string {
+export function decisionLabel(decision: ApprovalDecision): string {
   if (typeof decision === "string") return t({ accept: "允许", acceptForSession: "本会话允许", decline: "拒绝", cancel: "取消本轮" }[decision]);
   if ("acceptWithExecpolicyAmendment" in decision) return `${t("允许并记住命令前缀")}：${decision.acceptWithExecpolicyAmendment.execpolicy_amendment.join(" ")}`;
   const rule = decision.applyNetworkPolicyAmendment.network_policy_amendment;
@@ -35,13 +35,17 @@ function Question({ question, answer, disabled, onChange }: { question: InputQue
       </label>)}
       {question.isOther && <label className="question-option"><input type="radio" name={id} checked={custom} onChange={() => { setOther(true); onChange(""); }} /><span>{t("其他（自行填写）")}</span></label>}
     </div>}
-    {(!options.length || (question.isOther && custom)) && <input
+    {(!options.length || (question.isOther && custom)) && (question.isSecret ? <input
       aria-label={options.length ? `${t("自定义回答")}：${question.header}` : question.question}
       aria-describedby={`${id}-prompt`} autoComplete="off" type={question.isSecret ? "password" : "text"}
-      value={answer} onChange={(event) => onChange(event.target.value)} />}
+      value={answer} onChange={(event) => onChange(event.target.value)} /> : <textarea
+      aria-label={options.length ? `${t("自定义回答")}：${question.header}` : question.question}
+      aria-describedby={`${id}-prompt`} autoComplete="off" rows={3}
+      value={answer} onChange={(event) => onChange(event.target.value)} />)}
   </fieldset>;
 }
-export function ApprovalSheet({ approval, submitting = false, error = "", userAnswers, onAnswerChange, onSubmitAnswers, onDecision }: {
+export function ApprovalSheet({ approval, submitting = false, error = "", userAnswers, onDismiss, threadTitle, onAnswerChange, onSubmitAnswers, onDecision }: {
+  onDismiss?: () => void; threadTitle?: string;
   approval: RpcMessage | null; submitting?: boolean; error?: string; userAnswers: Record<string, string>;
   onAnswerChange: (questionId: string, value: string) => void; onSubmitAnswers: () => void; onDecision: (decision: ApprovalDecision) => void;
 }) {
@@ -49,13 +53,15 @@ export function ApprovalSheet({ approval, submitting = false, error = "", userAn
   const params = (approval.params ?? {}) as AnyRecord;
   const requestsInput = approval.method === "item/tool/requestUserInput";
   const title = t(requestsInput ? "Codex 需要你的回答" : approval.method?.includes("fileChange") ? "允许修改文件？" : approval.method?.includes("permissions") ? "授予附加权限？" : "允许运行此操作？");
-  return <ActionSheet title={<div><small>{t("需要你的确认")}</small><h2>{title}</h2></div>} ariaLabel={title} className="approval-sheet" backdropClassName="approval-backdrop" closeOnBackdrop={false}
-    footer={requestsInput ? <button className="approve" disabled={submitting || !questionResponse(approval, userAnswers)} onClick={onSubmitAnswers}>{t("提交回答")}</button>
+  return <ActionSheet title={<div><small>{t(requestsInput ? "等待回答" : "需要你的确认")}</small><h2>{title}</h2></div>} ariaLabel={title} className="approval-sheet" backdropClassName="approval-backdrop" closeOnBackdrop={false}
+    onClose={requestsInput ? onDismiss : undefined} closeLabel={t("收起问题")} closeDisabled={submitting}
+    footer={requestsInput ? <>{onDismiss && <button disabled={submitting} onClick={onDismiss}>{t("稍后回答")}</button>}<button className="approve" disabled={submitting || !questionResponse(approval, userAnswers)} onClick={onSubmitAnswers}>{t("提交回答")}</button></>
       : approvalDecisions(approval).map((decision, index) => <button key={index} className={decision === "accept" ? "approve" : ""} disabled={submitting} onClick={() => onDecision(decision)}>{decisionLabel(decision)}</button>)}>
     {error && <p role="alert" className="approval-error">{error}</p>}
     {submitting && <p role="status">{t("正在提交，请等待确认…")}</p>}
     {requestsInput ? <>
-      <p className="approval-hint">{t("请回答所有问题后提交。")}</p>
+      {threadTitle && <p className="approval-thread-title">{threadTitle}</p>}
+      <p className="approval-hint">{t("共 {count} 个问题", { count: String(params.questions?.length ?? 0) })} · {t("请回答所有问题后提交。")}</p>
       {(params.questions ?? []).map((question: InputQuestion) => <Question key={`${typeof approval.id}:${approval.id}:${question.id}`} question={question} answer={userAnswers[question.id] ?? ""} disabled={submitting} onChange={(value) => onAnswerChange(question.id, value)} />)}
     </> : <>
       {params.reason && <p>{params.reason}</p>}

@@ -17,6 +17,15 @@ function show(approval: RpcMessage, extra = {}) {
   return { ...render(<Harness />), onDecision, onSubmitAnswers };
 }
 describe("审批与问题表单", () => {
+  it("问题显示会话与数量并可稍后回答，自由回答支持多行", () => {
+    const onDismiss = vi.fn();
+    show(request("tool/requestUserInput", { questions: [{ ...question, options: null }] }), { onDismiss, threadTitle: "规划旅行" });
+    expect(screen.getByText("规划旅行")).toBeTruthy();
+    expect(screen.getByText(/共 1 个问题/)).toBeTruthy();
+    expect(screen.getByLabelText(question.question).tagName).toBe("TEXTAREA");
+    fireEvent.click(screen.getByRole("button", { name: "稍后回答" }));
+    expect(onDismiss).toHaveBeenCalledOnce();
+  });
   it("将命令原因和目录展示为可读详情，只提供服务器允许的决策", () => {
     const amendment = { acceptWithExecpolicyAmendment: { execpolicy_amendment: ["npm", "test"] } };
     const { onDecision } = show(request("commandExecution/requestApproval", { command: "npm test", cwd: "/work/app", reason: "验证改动", availableDecisions: [amendment, "cancel"] }));

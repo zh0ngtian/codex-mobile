@@ -37,7 +37,7 @@ test("Windows 项目显示短名称，新聊天继续使用完整工作目录", 
     return route.fulfill({ json: { id: message.id, result: responses[message.method] ?? {} } });
   });
   await page.goto("/");
-  await expect(page.locator(".project-heading span")).toHaveText(names);
+  await expect(page.locator(".project-heading")).toHaveText(names);
   await page.getByRole("button", { name: "聊天", exact: true }).click();
   const projectSelector = page.getByLabel("选择项目");
   await expect(projectSelector.locator("option")).toHaveText(["无项目", ...names]);

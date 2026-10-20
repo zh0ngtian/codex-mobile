@@ -1,0 +1,127 @@
+{
+  "acceptedOn": "2026-10-13",
+  "coordinator": {
+    "version": "0.1.3",
+    "startup": "macOS user login LaunchAgent",
+    "existingServiceAndDatabaseReused": true
+  },
+  "tests": {
+    "python": 153,
+    "buildContract": 78,
+    "coordinator": 19,
+    "ownerInterruption": "actual SIGKILL and lease expiry: one publication, same frozen SHA",
+    "extraUIFailures": 5,
+    "deviceReinstall": "not verified"
+  },
+  "client": {
+    "receiptId": "ddfe5aa2-4a4b-49df-974f-ff8780af235e",
+    "frozen": {
+      "buildNumber": "2167",
+      "environment": "lan-production",
+      "manifestSha256": "feb3cb731f30a90a29a9bf89864deceb6efe51ed2e96c3a938d79264769dae36",
+      "sha": "798fba3b4d049f079d6c3cc4655dab7b430b89dd",
+      "target": "vip.loock.codexmobile",
+      "tasks": [
+        {
+          "id": "codex-mobile-coordinator-20261013",
+          "sha": "14c913aaf7251e5eee5bee482ff269712de624f0"
+        },
+        {
+          "id": "codex-mobile-path-repair-20261013",
+          "sha": "8af2d3f7ed6262515583bf247137ca8a2124fe79"
+        },
+        {
+          "id": "codex-mobile-read-repair-20261013",
+          "sha": "e5df7f568de0fcd69013099e8204723253c30ed4"
+        },
+        {
+          "id": "codex-mobile-source-repair-20261013",
+          "sha": "9c0836a0e566a50ddb9eb8c42b605c1e81e28f5e"
+        }
+      ],
+      "version": "0.2.167"
+    },
+    "recoveryChain": [
+      "818f16e6-6c73-4720-9f75-0fc691468b4d",
+      "b5bd33b7-d425-4578-b3b2-a05a8d7bc0ae",
+      "aa55dea4-a060-428f-8eef-0a3969ca378d"
+    ],
+    "ciRunId": 38341442719,
+    "developmentRunId": 38341442711,
+    "apk": {
+      "version": "0.2.167",
+      "buildNumber": "2167",
+      "size": 4721095,
+      "sha256": "c1bdb3ba242a397c2a1be36bd661a7e215caf7f264e2048724c81682c2a1e104",
+      "signed": false,
+      "downloadUrl": "http://192.168.123.79:8765/channels/codex-mobile/latest.apk",
+      "sourceCommit": "798fba3b4d049f079d6c3cc4655dab7b430b89dd"
+    },
+    "ipa": {
+      "version": "0.2.167",
+      "buildNumber": "2167",
+      "size": 3790213,
+      "sha256": "7983aaa90a4bec01fdbbe99544df3b250e0d91c1ac789ecd32fc30304a7d07b3",
+      "signed": true,
+      "downloadUrl": "http://192.168.123.79:8765/channels/codex-mobile/latest.ipa",
+      "sourceCommit": "798fba3b4d049f079d6c3cc4655dab7b430b89dd"
+    },
+    "otaInstallUrl": "https://192.168.123.79:8766/channels/codex-mobile/current/install.html",
+    "unsignedSource": {
+      "appId": "bdf9cfa5-6c34-49ca-82fb-31a85ad9e6da",
+      "version": "0.2.167",
+      "buildVersion": "2167",
+      "downloadURL": "https://github.com/zh0ngtian/codex-mobile/releases/download/v0.2.167/CodexMobile-v0.2.167-unsigned.ipa",
+      "size": 3766754,
+      "sha256": "c9ab9b62812fad29f612c316a082c91e88bc9ab9d7de27df3dd85ec286b91ec0",
+      "signed": false,
+      "developerName": "zh0ngtian"
+    },
+    "tasksIncluded": [
+      "14c913aaf7251e5eee5bee482ff269712de624f0",
+      "8af2d3f7ed6262515583bf247137ca8a2124fe79",
+      "e5df7f568de0fcd69013099e8204723253c30ed4",
+      "9c0836a0e566a50ddb9eb8c42b605c1e81e28f5e"
+    ]
+  },
+  "gateway": {
+    "receiptId": "1dc61420-cbd4-4175-ac9d-8fe84e61ccc9",
+    "frozen": {
+      "buildNumber": null,
+      "environment": "production",
+      "manifestSha256": "9e80684739cd96b50e5cc196f46428413de2e741d503ce96b8e522351e82f3d1",
+      "sha": "08174d17063c9575764305c9ea1b37eb0908e7fd",
+      "target": "codex-mobile-gateway",
+      "tasks": [
+        {
+          "id": "codex-mobile-gateway-acceptance-20261013",
+          "sha": "8af2d3f7ed6262515583bf247137ca8a2124fe79"
+        },
+        {
+          "id": "codex-mobile-gateway-host-repair-20261013",
+          "sha": "b2f6091f0bcb3f7c1233811ac387e651adfafd07"
+        }
+      ],
+      "version": null
+    },
+    "recoveryChain": [
+      "9a93da69-e8a5-4a30-a228-5086bc569a47"
+    ],
+    "developmentRunId": 38343347111,
+    "manifestRunId": 38343347098,
+    "clientBuildsSkipped": true,
+    "deployment": {
+      "deploymentId": "1dc61420-cbd4-4175-ac9d-8fe84e61ccc9:08174d17063c9575764305c9ea1b37eb0908e7fd",
+      "pid": 45773,
+      "oldPid": 36808,
+      "service": "gui/501/com.minis.codex-mobile-gateway",
+      "serverDigest": "d308ea1f1b16b1623f6d8f7c759ff17ed351e02cc54c4bdfa6c4dd2d4d6e4421",
+      "frontendDigest": "82c243e7f812096f2be3270347cfab2c74ab4df0df44ec06f2db25f1a2ae821b",
+      "archiveSha256": "539179aa2e40c4809177e1b54949c31320555718d595566f1366088755bf1d77"
+    },
+    "tasksIncluded": [
+      "8af2d3f7ed6262515583bf247137ca8a2124fe79",
+      "b2f6091f0bcb3f7c1233811ac387e651adfafd07"
+    ]
+  }
+}

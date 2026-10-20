@@ -1,10 +1,12 @@
 import { isThreadRunning } from "../ui/conversation";
 import { isVisibleThread } from "../features/threads/thread-visibility";
+import { AppServerRpcError, type AppServerRequestOptions } from "./client";
 
 type ThreadRecord = Record<string, any>;
 
 interface ThreadListClient {
-  request(method: string, params: unknown): Promise<any>;
+  readonly sidebarIndex?: boolean;
+  request(method: string, params: unknown, options?: AppServerRequestOptions): Promise<any>;
 }
 
 interface ThreadListResponse {
@@ -35,14 +37,40 @@ interface ThreadListLoadOptions {
   pinnedThreadIds?: string[];
   prioritizedThreadIds?: string[];
   includeRunningThreads?: boolean;
+  rememberedRunningThreadIds?: string[];
+  preferredProjectCwds?: string[];
+  expandedProjectCwds?: string[];
 }
 
 async function loadPrioritizedThreadRecords(
   client: ThreadListClient,
   explicitIds: Set<string>,
   includeRunningThreads: boolean,
+  onData: (threads: ThreadRecord[]) => void,
 ) {
-  const ids = new Set(explicitIds);
+  if (client.sidebarIndex) {
+    const result = await client.request("mobile/sidebar/summaries", { threadIds: [...explicitIds], includeRunning: includeRunningThreads });
+    onData(dedupeThreadsById(result.data));
+    return;
+  }
+  const ids = new Set<string>();
+  const records: ThreadRecord[] = [];
+  const requests: Promise<void>[] = [];
+  const read = (threadId: string) => {
+    if (ids.has(threadId)) return;
+    ids.add(threadId);
+    requests.push((async () => {
+      const result = await client.request("thread/read", { threadId, includeTurns: false });
+      if (String(result.thread?.id ?? "") !== threadId) return;
+      const { turns: _turns, ...metadata } = result.thread;
+      if (!isListableThread(metadata) ||
+        (!explicitIds.has(threadId) && !isThreadRunning(metadata.status))) return;
+      records.push(metadata);
+      onData(dedupeThreadsById(records));
+    })().catch(() => undefined));
+  };
+  // 本机明确关注/未读不等待 loaded 目录，也不等待其他慢摘要。
+  explicitIds.forEach(read);
   if (includeRunningThreads) {
     const seenCursors = new Set<string>();
     let cursor: string | null = null;
@@ -53,29 +81,23 @@ async function loadPrioritizedThreadRecords(
           ...(cursor ? { cursor } : {}),
         });
         for (const id of result.data ?? []) {
-          if (typeof id === "string" && id) ids.add(id);
+          if (typeof id === "string" && id) read(id);
         }
         cursor = result.nextCursor ?? null;
         if (!cursor || seenCursors.has(cursor)) break;
         seenCursors.add(cursor);
       } while (cursor);
     } catch {
-      // 旧服务端或单页失败不影响已发现对话与本机主动置顶、未读摘要。
+      // 旧服务端或单页失败不影响已发现对话与本机关注、未读摘要。
     }
   }
-  const results = await Promise.allSettled(
-    [...ids].map(async (threadId) => {
-      const result = await client.request("thread/read", { threadId, includeTurns: false });
-      if (String(result.thread?.id ?? "") !== threadId) return null;
-      const { turns: _turns, ...metadata } = result.thread;
-      return explicitIds.has(threadId) || isThreadRunning(metadata.status)
-        ? metadata as ThreadRecord
-        : null;
-    }),
-  );
-  return dedupeThreadsById(results.flatMap((result) =>
-    result.status === "fulfilled" && result.value ? [result.value] : [],
-  ));
+  await Promise.all(requests);
+  if (!records.length) onData([]);
+}
+
+function isListableThread(thread: ThreadRecord) {
+  return isVisibleThread(thread) && thread.archived !== true &&
+    !(typeof thread.path === "string" && /(?:^|[\\/])archived_sessions(?:[\\/]|$)/.test(thread.path));
 }
 
 function threadTimestamp(thread: ThreadRecord) {
@@ -134,27 +156,18 @@ function markProjectlessThreads(
   );
 }
 
-function projectlessThreadsFromPage(
-  threads: ThreadRecord[],
-  threadIds: Set<string>,
-) {
-  return threads.flatMap((thread) =>
-    threadIds.has(String(thread.id ?? ""))
-      ? [{ ...thread, isProjectless: true }]
-      : [],
-  );
-}
-
 async function loadProjectlessThreadPage(
   client: ThreadListClient,
   threadIds: string[],
   pinnedThreadIds: Set<string>,
+  fixedExcludedThreadIds: Set<string>,
 ) {
   return loadProjectlessThreadRecords(
     client,
     threadIds,
     PROJECT_THREAD_BATCH_SIZE,
     pinnedThreadIds,
+    fixedExcludedThreadIds,
   );
 }
 
@@ -167,44 +180,51 @@ export async function loadProjectlessThreadRecords(
   threadIds: string[],
   targetCount: number,
   pinnedThreadIds: Set<string> = new Set(),
+  fixedExcludedThreadIds: Set<string> = pinnedThreadIds,
+  cursor?: string | null,
 ) {
-  const targetIds = new Set(threadIds.filter((id) => !pinnedThreadIds.has(id)));
+  if (client.sidebarIndex) {
+    if (targetCount <= 0 || !threadIds.length) return { threads: [], hasMore: false, nextCursor: null };
+    const data: ThreadRecord[] = [];
+    let nextCursor = cursor ?? null;
+    do {
+      const result = await client.request("mobile/sidebar/projectless", {
+        threadIds, excludedThreadIds: [...pinnedThreadIds], fixedExcludedThreadIds: [...fixedExcludedThreadIds], cursor: nextCursor,
+      });
+      data.push(...result.data); nextCursor = result.nextCursor ?? null;
+    } while (!cursor && nextCursor && data.length < targetCount);
+    return { threads: data, hasMore: !!nextCursor, nextCursor };
+  }
+  const targetIds = new Set(threadIds.filter((id) => id && !fixedExcludedThreadIds.has(id)));
   const effectiveTargetCount = Math.min(
     Math.max(0, Math.floor(targetCount)),
     targetIds.size,
   );
   if (!effectiveTargetCount) return { threads: [], hasMore: false };
-  const found: ThreadRecord[] = [];
-  const seenCursors = new Set<string>();
-  let cursor: string | null = null;
-  do {
-    const result: ThreadListResponse = await client.request("thread/list", {
-      limit: 50,
-      sortKey: "recency_at",
-      ...(cursor ? { cursor } : {}),
-    });
-    found.push(...projectlessThreadsFromPage(result.data, targetIds));
-    if (dedupeThreadsById(found).length >= effectiveTargetCount) {
-      const threads = dedupeThreadsById(found);
-      return {
-        threads: threads.slice(0, effectiveTargetCount),
-        hasMore:
-          threads.length > effectiveTargetCount ||
-          (Boolean(result.nextCursor) &&
-            targetIds.size > effectiveTargetCount),
-      };
+  // 本机 ID 不保证有序；只核对本组轻量摘要，运行与空闲共同计入最近五条。
+  const found = await Promise.all([...targetIds].map(async (threadId) => {
+    try {
+      const result = await client.request("thread/read", { threadId, includeTurns: false });
+      const thread = result.thread;
+      if (String(thread?.id ?? "") !== threadId || !isListableThread(thread)) {
+        return null;
+      }
+      if (pinnedThreadIds.has(threadId) && !isThreadRunning(thread.status)) return null;
+      const { turns: _turns, ...metadata } = thread;
+      return { ...metadata, isProjectless: true } as ThreadRecord;
+    } catch (error) {
+      // 上游对已从持久化索引消失的遗留 ID 返回此精确错误；其他读取失败需交给分组错误状态。
+      if (error instanceof AppServerRpcError && error.code === -32600 &&
+        error.message === `thread not loaded: ${threadId}`) return null;
+      throw error;
     }
-    const nextCursor = result.nextCursor ?? null;
-    if (!nextCursor || seenCursors.has(nextCursor)) {
-      break;
-    }
-    seenCursors.add(nextCursor);
-    cursor = nextCursor;
-  } while (cursor);
-  const threads = dedupeThreadsById(found).slice(0, effectiveTargetCount);
+  }));
+  const threads = dedupeThreadsById(found.filter((thread): thread is ThreadRecord => thread !== null))
+    .sort((left, right) => threadTimestamp(right) - threadTimestamp(left) ||
+      (String(left.id) < String(right.id) ? -1 : String(left.id) > String(right.id) ? 1 : 0));
   return {
-    threads,
-    hasMore: false,
+    threads: threads.slice(0, effectiveTargetCount),
+    hasMore: threads.length > effectiveTargetCount,
   };
 }
 
@@ -213,6 +233,7 @@ export async function loadProjectThreadRecords(
   cwd: string,
   cursor?: string | null,
   excludedThreadIds: Set<string> = new Set(),
+  fixedExcludedThreadIds: Set<string> = excludedThreadIds,
 ) {
   let threads: ThreadRecord[] = [];
   const seenCursors = new Set<string>(cursor ? [cursor] : []);
@@ -227,15 +248,17 @@ export async function loadProjectThreadRecords(
     });
     threads = dedupeThreadsById([
       ...threads,
-      ...result.data.filter((thread) => !excludedThreadIds.has(String(thread.id))),
+      ...result.data.filter((thread) => isListableThread(thread) &&
+        (!excludedThreadIds.has(String(thread.id)) ||
+          (isThreadRunning(thread.status) && !fixedExcludedThreadIds.has(String(thread.id))))),
     ]);
     nextCursor = result.nextCursor ?? null;
     if (nextCursor && seenCursors.has(nextCursor)) {
       return { threads, hasMore: false, nextCursor: null };
     }
-    // 子会话和置顶记录均不占普通项目本批五条的名额。
+    // 子会话、主动关注及空闲未读不占本批名额；运行会话与空闲共同计数。
     if (!nextCursor ||
-      (!excludedThreadIds.size && result.data.every(isVisibleThread)) ||
+      (!excludedThreadIds.size && result.data.every(isListableThread)) ||
       threads.length >= PROJECT_THREAD_BATCH_SIZE) {
       return {
         threads,
@@ -261,6 +284,7 @@ export function createLatestThreadListLoader(
   const projectAttempts = new Map<string, number>();
   let currentProjectlessThreadIds = new Set<string>();
   let currentPinnedThreadIds = new Set<string>();
+  let currentManualPinnedThreadIds = new Set<string>();
 
   const nextProjectAttempt = (cwd: string) => {
     const attempt = (projectAttempts.get(cwd) ?? 0) + 1;
@@ -281,6 +305,7 @@ export function createLatestThreadListLoader(
       cwd,
       null,
       new Set([...currentPinnedThreadIds, ...currentProjectlessThreadIds]),
+      new Set([...currentManualPinnedThreadIds, ...currentProjectlessThreadIds]),
     )
       .then(({ threads, hasMore, nextCursor }) => {
         if (
@@ -320,8 +345,8 @@ export function createLatestThreadListLoader(
   ) => {
     const attempt = nextProjectAttempt(PROJECTLESS_GROUP_ID);
     if (!options.silent) callbacks.onProjectStart?.(PROJECTLESS_GROUP_ID);
-    return loadProjectlessThreadPage(client, threadIds, currentPinnedThreadIds)
-      .then(({ threads, hasMore }) => {
+    return loadProjectlessThreadPage(client, threadIds, currentPinnedThreadIds, currentManualPinnedThreadIds)
+      .then(({ threads, hasMore, ...page }) => {
         if (
           sequence === latestSequence &&
           projectAttempts.get(PROJECTLESS_GROUP_ID) === attempt
@@ -330,7 +355,7 @@ export function createLatestThreadListLoader(
             PROJECTLESS_GROUP_ID,
             threads,
             hasMore,
-            null,
+            "nextCursor" in page ? page.nextCursor as string | null : null,
           );
         }
       })
@@ -348,6 +373,10 @@ export function createLatestThreadListLoader(
   };
 
   return {
+    invalidate() {
+      ++latestSequence;
+      pending = null;
+    },
     load(
       client: ThreadListClient,
       projects: string[] = [],
@@ -362,26 +391,47 @@ export function createLatestThreadListLoader(
         ...(options.pinnedThreadIds ?? []),
         ...(options.prioritizedThreadIds ?? []),
       ]);
+      // 仅同轮、同客户端复用；新刷新与手动重试必须重新取最新状态。
+      const reads = new Map<string, Promise<any>>();
+      const backgroundClient = (priority: "background" | "background-visible"): ThreadListClient => ({
+        sidebarIndex: client.sidebarIndex,
+        request: (method, params) => {
+          if (sequence !== latestSequence) return Promise.reject(new DOMException("Refresh superseded", "AbortError"));
+          const id = method === "thread/read" && (params as any)?.includeTurns === false
+            ? String((params as any).threadId) : null;
+          if (!id) return client.request(method, params, { priority });
+          let request = reads.get(id);
+          if (!request) {
+            request = client.request(method, params, { priority });
+            reads.set(id, request);
+          }
+          return request;
+        },
+      });
+      const background = backgroundClient("background");
+      const visibleBackground = backgroundClient("background-visible");
       currentPinnedThreadIds = explicitIds;
-      const priorityRequest = explicitIds.size || options.includeRunningThreads
-        ? loadPrioritizedThreadRecords(client, explicitIds, options.includeRunningThreads === true)
-          .then((threads) => {
-            if (sequence !== latestSequence) return;
-            currentPinnedThreadIds = new Set([
-              ...explicitIds, ...threads.map((thread) => String(thread.id)),
-            ]);
-            callbacks.onPinnedData?.(
-              markProjectlessThreads(threads, new Set(projectlessThreadIds)),
-            );
-          })
-        : Promise.resolve();
+      currentManualPinnedThreadIds = new Set(options.pinnedThreadIds);
+      const publishPrioritized = (threads: ThreadRecord[]) => {
+        if (sequence !== latestSequence) return;
+        callbacks.onPinnedData?.(
+          markProjectlessThreads(threads, new Set(projectlessThreadIds)),
+        );
+      };
       const loadProjects = () => {
         if (sequence !== latestSequence) return Promise.resolve();
+        const preferred = new Set(options.preferredProjectCwds);
+        const expanded = options.expandedProjectCwds === undefined ? null : new Set(options.expandedProjectCwds);
+        const visibleProjects = projects.filter(cwd => !expanded || expanded.has(cwd));
+        const loadProjectlessPage = projectlessThreadIds.length && (!expanded || expanded.has(PROJECTLESS_GROUP_ID));
+        const orderedProjects = [...visibleProjects.filter(cwd => preferred.has(cwd)), ...visibleProjects.filter(cwd => !preferred.has(cwd))];
+        const projectlessFirst = loadProjectlessPage && preferred.has(PROJECTLESS_GROUP_ID)
+          ? loadProjectless(visibleBackground, projectlessThreadIds, sequence, options) : null;
         const projectRequests = projects.length
-          ? projects.map((cwd) => loadProject(client, cwd, sequence, options))
+          ? orderedProjects.map((cwd) => loadProject(preferred.has(cwd) ? visibleBackground : background, cwd, sequence, options))
           : projectlessThreadIds.length
             ? []
-            : [client.request("thread/list", { limit: 50, sortKey: "recency_at" })
+            : [background.request("thread/list", { limit: 50, sortKey: "recency_at" })
               .then((result: ThreadListResponse) => {
                 if (sequence === latestSequence) {
                   callbacks.onData?.(markProjectlessThreads(
@@ -389,18 +439,23 @@ export function createLatestThreadListLoader(
                   ));
                 }
               })];
-        if (projectlessThreadIds.length) {
-          projectRequests.push(loadProjectless(client, projectlessThreadIds, sequence, options));
+        if (loadProjectlessPage) {
+          projectRequests.push(projectlessFirst ?? loadProjectless(background, projectlessThreadIds, sequence, options));
         }
         return Promise.all(projectRequests).then(() => undefined);
       };
-      // 先确定被动置顶集合，普通项目分页才能准确补足五条。
-      const projectRequest = options.includeRunningThreads || options.prioritizedThreadIds
-        ? priorityRequest.then(loadProjects)
-        : loadProjects();
-      const promise = Promise.all([priorityRequest, projectRequest])
-        .then(() => {
-          if (sequence === latestSequence) callbacks.onSettled?.();
+      // 运行会话也占首批五条名额，首屏不再等待全局摘要。
+      const projectRequest = loadProjects();
+      const summaryIds = new Set([...explicitIds, ...(options.rememberedRunningThreadIds ?? [])]);
+      const priorityRequest = summaryIds.size || options.includeRunningThreads
+        ? loadPrioritizedThreadRecords(background, summaryIds, options.includeRunningThreads === true, publishPrioritized)
+        : Promise.resolve();
+      const promise = Promise.allSettled([priorityRequest, projectRequest])
+        .then((results) => {
+          if (sequence !== latestSequence) return;
+          const failure = results.find(result => result.status === "rejected");
+          if (failure?.status === "rejected") throw failure.reason;
+          callbacks.onSettled?.();
         })
         .finally(() => {
           if (pending?.promise === promise) pending = null;
@@ -414,6 +469,7 @@ export function createLatestThreadListLoader(
       cwd: string,
       options: ThreadListLoadOptions = {},
     ) {
+      if (options.pinnedThreadIds) currentManualPinnedThreadIds = new Set(options.pinnedThreadIds);
       if (options.pinnedThreadIds || options.prioritizedThreadIds) {
         currentPinnedThreadIds = new Set([
           ...(options.pinnedThreadIds ?? []), ...(options.prioritizedThreadIds ?? []),
@@ -427,6 +483,7 @@ export function createLatestThreadListLoader(
       options: ThreadListLoadOptions = {},
     ) {
       currentProjectlessThreadIds = new Set(threadIds);
+      if (options.pinnedThreadIds) currentManualPinnedThreadIds = new Set(options.pinnedThreadIds);
       if (options.pinnedThreadIds || options.prioritizedThreadIds) {
         currentPinnedThreadIds = new Set([
           ...(options.pinnedThreadIds ?? []), ...(options.prioritizedThreadIds ?? []),

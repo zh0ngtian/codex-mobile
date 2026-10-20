@@ -1,0 +1,35 @@
+name: Development Checks
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: development-checks-${{ github.event.pull_request.number || github.ref }}-${{ github.ref == 'refs/heads/main' && github.sha || 'branch' }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+env:
+  NODE_OPTIONS: --no-experimental-webstorage
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.14.0'
+          cache: npm
+      - name: 安装锁定依赖
+        run: npm ci
+      - name: 验证类型
+        run: npm run typecheck
+      - name: 运行开发与构建契约测试
+        run: npm test -- tests/ci --maxWorkers=2 --testTimeout=60000
