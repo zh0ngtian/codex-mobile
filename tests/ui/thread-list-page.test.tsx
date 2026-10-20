@@ -127,6 +127,18 @@ function renderList(
 }
 
 describe("会话侧边栏列表", () => {
+  it("重新展开读取首批时，加载更多不能提前展开旧缓存", () => {
+    const data = aggregateThreads([backend], { mini: Array.from({ length: 12 }, (_, i) => ({
+      id: `reload-${i}`, preview: `缓存${i + 1}`, cwd: "/a", recencyAt: 20 - i, status: { type: "idle" },
+    })) });
+    const onToggleProject = vi.fn();
+    const { container } = renderList("mini", { visibleThreads: data, projectDirectories: ["/a"],
+      projectThreadStates: { "/a": "loading" }, projectHasMore: { "/a": true }, onToggleProject });
+    const more = container.querySelector(".project-more") as HTMLButtonElement;
+    expect(more.disabled).toBe(true); fireEvent.click(more);
+    expect(within(container).queryByText("缓存6")).toBeNull();
+    expect(onToggleProject).not.toHaveBeenCalled();
+  });
   it("原生重命名取消后同一侧栏会话可再次重命名，保留原后端与目标", async () => {
     const show = vi.fn();
     (window as any).CodexMobileActionMenu = { show, dismiss: vi.fn() };

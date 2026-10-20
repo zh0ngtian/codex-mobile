@@ -433,7 +433,7 @@ export function ThreadListPage({
                 const isExpanded =
                   Boolean(query.trim()) ||
                   !isProjectCollapsed(collapsedProjectKeys, selectedBackendId, group.cwd);
-                const isLoadingMore = loadingProjectKeys.has(projectKey);
+                const isLoadingMore = loadingProjectKeys.has(projectKey) || projectThreadStates[group.cwd] === "loading";
                 const projectThreadState =
                   projectThreadStates[group.cwd] ??
                   (group.threads.length ? "ready" : "idle");
