@@ -1,0 +1,78 @@
+{
+  "date": "2026-10-20",
+  "version": "0.3.23",
+  "buildNumber": "3023",
+  "client": {
+    "batchId": "265f5e93-c648-4caf-8bb4-3bbe0dd12d88",
+    "sourceCommit": "40fda6eec2108eb17d1aa321dd04515705e5cd52",
+    "tasks": [
+      {
+        "id": "newchat-sidechat-client-20261020",
+        "sha": "bac2ed5fb4037a49b3612aecf3bd421a46b8626a"
+      },
+      {
+        "id": "newchat-sidechat-client-repair-20261020",
+        "sha": "448cf3a6e3863e7b93ba498e614b63b147377f95"
+      }
+    ],
+    "ci": 39448513973,
+    "developmentCI": 39448513371,
+    "releaseUrl": "https://github.com/zh0ngtian/codex-mobile/releases/tag/v0.3.23"
+  },
+  "gateway": {
+    "batchId": "5ed02bd1-a5f7-4e06-b266-3f11014db3a5",
+    "sourceCommit": "7669977af62bf208a9ee287ff30e556c5cd37436",
+    "pid": 36357,
+    "authenticatedHealth": "passed",
+    "serverDigest": "5e17f4d9846c6dfaedbf5b96c15e57c010cab40c58b9699989230a34d2e7138b",
+    "binDigest": "a44e7f0434b7926b382b679abb712f36eb3b93ce6708cc77332437781f8015a3",
+    "safeRouteChecks": {
+      "turn/steer": "新版路由已生效；无效分支被拒绝，未创建会话",
+      "replay": "新版路由已生效；无效分支被拒绝，未创建会话"
+    },
+    "noProductionConversationCreated": true,
+    "finalProcessAndFilesVerified": true
+  },
+  "packages": {
+    "apk": {
+      "url": "http://192.168.123.79:8765/channels/codex-mobile/latest.apk",
+      "version": "0.3.23",
+      "size": 4748783,
+      "sha256": "6bd99b81de1b9b33e29a1205c334cd151b9bdf5653c742d62887e27519c463c5"
+    },
+    "ipa": {
+      "url": "http://192.168.123.79:8765/channels/codex-mobile/latest.ipa",
+      "version": "0.3.23",
+      "size": 4845375,
+      "sha256": "50c328b136651148896ad66efade9f524d2eeab6651d4b6db3355ec696f496a2",
+      "signed": true
+    }
+  },
+  "ota": {
+    "installPage": "https://192.168.123.79:8766/channels/codex-mobile/current/install.html",
+    "manifestUrl": "https://192.168.123.79:8766/channels/codex-mobile/releases/0.3.23/manifest.plist",
+    "httpsDownloadVerified": true
+  },
+  "signing": {
+    "bundleId": "vip.loock.codexmobile",
+    "teamId": "SC456JW7RP",
+    "applicationIdentifier": "SC456JW7RP.app.jade6694.grapefruit3766",
+    "entitlementsSha256": "1e84a4c1ba74b9e374c364f26fefa112ceeea09de1a0ba0600403a763eb7952f"
+  },
+  "source": {
+    "appID": "bdf9cfa5-6c34-49ca-82fb-31a85ad9e6da",
+    "version": "0.3.23",
+    "developerName": "zh0ngtian",
+    "downloadURL": "https://github.com/zh0ngtian/codex-mobile/releases/download/v0.3.23/CodexMobile-v0.3.23-unsigned.ipa",
+    "size": 4833206,
+    "sha256": "561d15535f4df7ac4862709f832376a9f0f742770c2145b9d1b29061acca23c3",
+    "notes": "- 从当前对话发起新对话时，自动选择当前机器和项目，无项目会话继续保持无项目。\n- 修复 Sidechat 无法发送引导消息的问题，支持编辑待发消息后改为引导，并保留引用与附件。\n- Sidechat 支持在原位置编辑历史消息并重新发送，保留此前上下文、原消息附件和未发草稿；失败时保留原分支与编辑内容。\n"
+  },
+  "recovery": {
+    "failedBatch": "f0c873c7-ee90-4ca4-b8ed-e1c437cc82c9",
+    "failedVersion": "0.3.22",
+    "recoveredBy": "265f5e93-c648-4caf-8bb4-3bbe0dd12d88"
+  },
+  "verifiedAt": 1792511166.797838,
+  "deviceInstall": "未进行真机覆盖安装与数据保留验收"
+}
