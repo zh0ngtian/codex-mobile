@@ -127,6 +127,14 @@ function renderList(
 }
 
 describe("会话侧边栏列表", () => {
+  it("搜索更多不沿用普通项目首批的加载状态", () => {
+    const onToggleProject = vi.fn();
+    const { container } = renderList("mini", { query: "最近", projectDirectories: ["/tmp/project-b"],
+      projectThreadStates: { "/tmp/project-b": "loading" }, projectHasMore: { "/tmp/project-b": true }, onToggleProject });
+    const more = container.querySelector(".project-more") as HTMLButtonElement;
+    expect(more.disabled).toBe(false); fireEvent.click(more);
+    expect(onToggleProject).toHaveBeenCalledExactlyOnceWith("mini", "/tmp/project-b");
+  });
   it("重新展开读取首批时，加载更多不能提前展开旧缓存", () => {
     const data = aggregateThreads([backend], { mini: Array.from({ length: 12 }, (_, i) => ({
       id: `reload-${i}`, preview: `缓存${i + 1}`, cwd: "/a", recencyAt: 20 - i, status: { type: "idle" },
