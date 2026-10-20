@@ -286,6 +286,7 @@ interface HistoricalMessageEditState {
 
 interface BackendThreadSnapshot {
   backendId: string;
+  conversationProject?: string;
   threads: AnyRecord[];
   projects: string[];
   projectlessThreadIds: string[];
@@ -1204,6 +1205,7 @@ function BackendWorkspace({
   useEffect(() => {
     onSnapshotChange({
       backendId: backend.id,
+      conversationProject: active?.id ? (active.isProjectless === true ? '' : active.cwd ?? '') : undefined,
       threads,
       projects,
       projectlessThreadIds,
@@ -1223,6 +1225,9 @@ function BackendWorkspace({
     });
   }, [
     backend.id,
+    active?.id,
+    active?.cwd,
+    active?.isProjectless,
     error,
     onSnapshotChange,
     openingThreadId,
@@ -3192,15 +3197,15 @@ function BackendWorkspace({
   }
 
   function beginHistoricalMessageEdit(target: HistoricalMessageEditTarget) {
-    if (sidechats.get(String(activeRef.current?.id ?? ''))) { setError('临时 Sidechat 暂不支持回退编辑，请发送新的补充消息'); return; }
     const thread = activeRef.current;
     const threadId = String(thread?.id ?? "");
+    const side = sidechats.get(threadId);
     const currentTarget = createHistoricalMessageEditTarget(
       thread?.turns ?? [],
       target.turnId,
       target.messageId,
     );
-    const hasQueuedMessage = queuedFollowUpsRef.current.some(
+    const hasQueuedMessage = Boolean(side?.queue.length || side?.editing || side?.sending || side?.steering) || queuedFollowUpsRef.current.some(
       (followUp) => followUp.threadId === threadId,
     );
     if (
@@ -3254,7 +3259,8 @@ function BackendWorkspace({
     const client = clientRef.current;
     const thread = activeRef.current;
     const threadId = String(thread?.id ?? "");
-    const hasQueuedMessage = queuedFollowUpsRef.current.some(
+    const side = sidechats.get(threadId);
+    const hasQueuedMessage = Boolean(side?.queue.length || side?.editing || side?.sending || side?.steering) || queuedFollowUpsRef.current.some(
       (followUp) => followUp.threadId === threadId,
     );
     if (!session || session.submitting) return;
@@ -3326,6 +3332,31 @@ function BackendWorkspace({
     }
     if (!input.length) {
       setError(t("历史消息不能为空"));
+      return;
+    }
+
+    if (side) {
+      const context = draftContextGenerationRef.current;
+      const owned = { ...session, submitting: true };
+      setHistoryEdit(owned); setError('');
+      try {
+        await sidechats.edit(gatewaySidechatClient(client), threadId, target, input, {
+          ...(selectedModel ? { model: selectedModel } : {}), ...(selectedEffort ? { effort: selectedEffort } : {}),
+          serviceTier: effectiveSelectedServiceTier, ...(selectedPermission ? { permissions: selectedPermission } : {}),
+          approvalPolicy: selectedApprovalPolicy, approvalsReviewer: selectedApprovalsReviewer,
+        }, next => {
+          const current = context === draftContextGenerationRef.current && String(activeRef.current?.id ?? '') === threadId;
+          if (current) cacheFamilyDraft();
+          const saved = familyDraftsRef.current.get(threadId);
+          if (saved) { familyDraftsRef.current.set(next.id, saved); familyDraftsRef.current.delete(threadId); }
+          sidechatDraftIdsRef.current.delete(threadId); sidechatDraftIdsRef.current.add(next.id);
+          if (current) { setHistoryEdit(null); openThread(next.thread); }
+        });
+      } catch (reason) {
+        if (context === draftContextGenerationRef.current && historyEditRef.current === owned) {
+          setHistoryEdit({ ...owned, submitting: false }); setError(String((reason as Error).message ?? reason));
+        }
+      }
       return;
     }
 
@@ -3494,7 +3525,15 @@ function BackendWorkspace({
 
   async function actOnQueuedFollowUp(id: string) {
     const side = sidechats.get(String(activeRef.current?.id ?? ''));
-    if (side) { await sidechats.retry(side.id); return; }
+    if (side) {
+      if (!side.busy) { await sidechats.retry(side.id); return; }
+      const client = clientRef.current; const entry = side.queue.find(q => q.id === id); const turnId = activeTurnId(side.thread);
+      if (!client || !entry || !turnId) return;
+      setPendingSteerMessage({ id, threadId: side.id, turnId, text: entry.input.filter(i => i.type === 'text').map(i => i.text).join('\n') });
+      try { await sidechats.steer(gatewaySidechatClient(client), side.id, id); }
+      catch (reason) { setPendingSteerMessage(current => clearPendingSteerForRequest(current, id)); throw reason; }
+      return;
+    }
     const followUp = queuedFollowUpsRef.current.find((entry) => entry.id === id);
     if (!followUp || steering) return;
     if (!followUp.hosted) {
@@ -4532,7 +4571,7 @@ function BackendWorkspace({
     },
     cancelQueued: cancelQueuedFollowUp, sendQueued: actOnQueuedFollowUp, editQueued: editQueuedFollowUp,
     extended: {
-      state: { quotes, quoteFocusToken, sidechatActive: !!activeSidechat, sidechatParentId, sidechatActions, approvalThreadTitle: approval ? completionThreadTitle({ threadId: String((approval.params as AnyRecord)?.threadId ?? ""), threads, activeThread: active, fallback: t("新对话") }) : undefined, historyEdit, pendingSteerMessage: pendingSteerMessage?.threadId === String(active?.id) ? pendingSteerMessage : null, steering, queueSaving, steerable: !activeSidechat && Boolean(activeTurnId(active)), requests, approval, userAnswers, approvalSubmitting: approvalRequests.submitting, approvalError: approvalRequests.error, permissionModes, selectedPermissionModeId,
+      state: { quotes, quoteFocusToken, sidechatActive: !!activeSidechat, sidechatParentId, sidechatActions, approvalThreadTitle: approval ? completionThreadTitle({ threadId: String((approval.params as AnyRecord)?.threadId ?? ""), threads, activeThread: active, fallback: t("新对话") }) : undefined, historyEdit, pendingSteerMessage: pendingSteerMessage?.threadId === String(active?.id) ? pendingSteerMessage : null, steering: steering || !!activeSidechat?.steering || !!activeSidechat?.editing, queueSaving, steerable: Boolean(activeTurnId(active)), requests, approval, userAnswers, approvalSubmitting: approvalRequests.submitting, approvalError: approvalRequests.error, permissionModes, selectedPermissionModeId,
         selectedServiceTier: displayedServiceTier, speedOptions, pendingAction, tokenUsage: tokenUsageByThread[active?.id] ?? null, rateLimits,
         projectOptions, backends, draftSaveStatus, activeThreadAccessMode, activeThreadResumeError },
       callbacks: { currentHistoryEdit: () => historyEditRef.current, currentApproval: approvalRequests.current, readRemoteFile: (path: string) => { const client = clientRef.current; if (!client) throw new Error(t('尚未连接 app-server')); return client.request<{ dataBase64: string }>('fs/readFile', { path }); }, chooseSpeed, choosePermissionMode, replyToRequest, changeHistoricalMessageEditText, cancelHistoricalMessageEdit,
@@ -4585,9 +4624,9 @@ function BackendWorkspace({
           onSaveDraft={saveNewChatDraft}
           busy={conversationBusy}
           operationPending={conversationOperationPending}
-          steering={steering}
+          steering={steering || !!activeSidechat?.steering || !!activeSidechat?.editing}
           queueSaving={queueSaving}
-          steerable={!activeSidechat && Boolean(activeTurnId(active))}
+          steerable={Boolean(activeTurnId(active))}
           pendingSteerText={
             pendingSteerMessage?.threadId === String(active.id)
               ? pendingSteerMessage.text
@@ -5061,6 +5100,7 @@ function ConfiguredApp({
       const previous = current[snapshot.backendId];
       if (
         previous &&
+        previous.conversationProject === snapshot.conversationProject &&
         previous.threads === snapshot.threads &&
         previous.projects === snapshot.projects &&
         previous.projectlessThreadIds === snapshot.projectlessThreadIds &&
@@ -5356,7 +5396,8 @@ function ConfiguredApp({
     const savedBackendId = window.localStorage.getItem(
       "codex-mobile:new-chat-backend",
     );
-    const backendId = target?.backendId ?? mountedBackends.find(
+    const currentProject = selectedBackend ? snapshots[selectedBackend.id]?.conversationProject : undefined;
+    const backendId = target?.backendId ?? (currentProject !== undefined ? selectedBackend?.id : undefined) ?? mountedBackends.find(
       (backend) => backend.id === savedBackendId,
     )?.id ?? (
       listBackendId === "all"
@@ -5370,7 +5411,7 @@ function ConfiguredApp({
       id: ++commandIdRef.current,
       backendId,
       type: "new",
-      cwd: target?.cwd ?? null,
+      cwd: target ? target.cwd ?? null : currentProject ?? null,
     });
     closeSidebar();
   }, [
@@ -5379,6 +5420,7 @@ function ConfiguredApp({
     mountedBackends,
     selectBackend,
     selectedBackend?.id,
+    snapshots,
   ]);
 
   const switchNewChatBackend = useCallback(

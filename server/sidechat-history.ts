@@ -1,7 +1,7 @@
 import type { RpcMessage } from './http-session.js';
 type Value = Record<string, any>;
 const terminal = new Set(['completed', 'failed', 'interrupted', 'cancelled']);
-interface Entry { settings: Value; thread: Value; parentId: string; forkTurnId: string; lastActiveAt: number; busy: boolean }
+interface Entry { settings: Value; thread: Value; parentId: string; forkTurnId: string; lastActiveAt: number; busy: boolean; replacement?: { sourceId: string; beforeTurnId: string } }
 /** daemon 生命周期内的完整内存投影。没有文件、数据库或转储出口。 */
 export class SidechatHistory {
   private entries = new Map<string, Entry>();
@@ -14,6 +14,24 @@ export class SidechatHistory {
     const thread = { ...result.thread, turns: [] };
     this.entries.set(thread.id, { settings: { ...result, thread: undefined }, thread, parentId: params.threadId, forkTurnId: params.lastTurnId, lastActiveAt: this.now(), busy: false });
     return this.read(thread.id);
+  }
+  replacement(id: string, beforeTurnId: string) {
+    const source = this.read(id);
+    const index = source.thread.turns.findIndex((turn: Value) => turn.id === beforeTurnId);
+    if (source.busy || index < 0 || source.thread.turns.some((turn: Value) => !terminal.has(turn.status))) throw new Error('Sidechat 正忙或编辑位置已变化');
+    return { ...source, turns: source.thread.turns.slice(0, index) };
+  }
+  registerReplacement(sourceId: string, beforeTurnId: string, result: Value) {
+    const source = this.replacement(sourceId, beforeTurnId);
+    this.register({ threadId: source.parentId, lastTurnId: source.forkTurnId }, result);
+    const entry = this.entries.get(result.thread.id)!;
+    entry.thread.turns = structuredClone(source.turns);
+    entry.replacement = { sourceId, beforeTurnId };
+  }
+  replay(id: string, sourceId: string, beforeTurnId: string) {
+    const entry = this.entries.get(id);
+    if (entry?.replacement?.sourceId !== sourceId || entry.replacement.beforeTurnId !== beforeTurnId || entry.busy) throw new Error('Sidechat 重建来源已变化');
+    return structuredClone(entry.thread.turns);
   }
   read(id: string) {
     const entry = this.entries.get(id);

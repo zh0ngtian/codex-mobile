@@ -713,7 +713,7 @@ export function ConversationPage({
                   : undefined,
               );
               const canEditHistory = Boolean(
-                !sidechatActive && target &&
+                target &&
                 onEditUserMessage &&
                 !historyEdit &&
                 interactive &&

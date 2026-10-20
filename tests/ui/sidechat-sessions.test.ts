@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { SidechatSessions, SIDECHAT_INSTRUCTIONS } from '../../src/sidechat/sessions';
+import { createHistoricalMessageEditTarget } from '../../src/app-server/history-edit';
+import { HttpOperationPendingError } from '../../src/backends/http-transport';
 
 function fixture() {
   let now = 1000;
@@ -15,6 +17,87 @@ function fixture() {
   const sessions = new SidechatSessions('host', storage, () => now);
   return { sessions, request, data, tick: (ms: number) => { now += ms; } };
 }
+
+it.each([false, true])('运行中队列按原UUID转为引导且失败保留队列，fail=%s', async fail => {
+  const f = fixture(); const client = { request: f.request }; const s = await f.sessions.create(client, { id: 'main' });
+  await f.sessions.submit(client, s.id, [{ type: 'text', text: '先执行' }], {});
+  await f.sessions.submit(client, s.id, [{ type: 'text', text: '引导原文' }, { type: 'localImage', path: '/image.png' }], {});
+  const entry = s.queue[0];
+  if (fail) f.request.mockRejectedValueOnce(new Error('引导失败'));
+  const sending = f.sessions.steer(client, s.id, entry.id);
+  if (fail) await expect(sending).rejects.toThrow('引导失败'); else await sending;
+  expect(f.request).toHaveBeenLastCalledWith('turn/steer', { threadId: s.id, expectedTurnId: 'new-1', input: entry.input, clientUserMessageId: entry.id });
+  expect(s.queue).toHaveLength(fail ? 1 : 0); expect(s.steering).toBeUndefined();
+  if (fail) {
+    f.sessions.observe({ method: 'turn/completed', params: { threadId: s.id, turn: { id: 'new-1', status: 'completed' } } });
+    await Promise.resolve();
+    expect(f.request.mock.calls.filter(([method]) => method === 'turn/start')).toHaveLength(1);
+    expect(s.queue).toHaveLength(1);
+  }
+  expect([...f.data.values()].join('')).not.toContain('引导原文');
+});
+
+it('引导结果未知时锁住原条目，完成通知不会把同一输入重复直发', async () => {
+  const f = fixture(); const client = { request: f.request }; const s = await f.sessions.create(client, { id: 'main' });
+  await f.sessions.submit(client, s.id, [{ type: 'text', text: '启动' }], {});
+  await f.sessions.submit(client, s.id, [{ type: 'text', text: '只引导一次' }], {});
+  const entry = s.queue[0];
+  const request = { method: 'mobile/sidechat/rpc', params: { method: 'turn/steer', params: { threadId: s.id } } };
+  f.request.mockRejectedValueOnce(new HttpOperationPendingError('steer-uuid', request));
+  const sending = f.sessions.steer(client, s.id, entry.id);
+  await vi.waitFor(() => expect(s.error).toContain('待确认'));
+  expect(f.sessions.editQueued(s.id, entry.id, '不能覆盖')).toBe(false);
+  f.sessions.observe({ method: 'turn/completed', params: { threadId: s.id, turn: { id: 'new-1', status: 'completed' } } });
+  await f.sessions.retry(s.id);
+  expect(f.request.mock.calls.filter(([method]) => method === 'turn/start')).toHaveLength(1);
+  f.sessions.observe({ method: 'mobile/operation/confirmed', params: { requestId: 'steer-uuid', request, response: { result: { turnId: 'new-1' } } } });
+  await sending; expect(s.queue).toEqual([]);
+});
+
+function editTurns() {
+  return ['keep', 'edit', 'later'].map(id => ({ id, status: 'completed', items: [{ id: `${id}-user`, type: 'userMessage', content: [{ type: 'text', text: id }] }, { id: `${id}-answer`, type: 'agentMessage', text: `${id}回答` }] }));
+}
+it.each(['success', 'fork-failure', 'replay-failure', 'start-failure'])('编辑重建保留前文，受理后才替换原分支：%s', async mode => {
+  const f = fixture(); const client = { request: f.request }; const s = await f.sessions.create(client, { id: 'main' });
+  s.thread.turns = editTurns(); s.turnIds = ['keep', 'edit', 'later'];
+  const target = createHistoricalMessageEditTarget(s.thread.turns, 'edit', 'edit-user')!;
+  const replaced = vi.fn(); const original = f.request.getMockImplementation()!;
+  f.request.mockImplementation(async (method, params) => {
+    if (method === 'thread/fork' && mode === 'fork-failure' || method === 'replay' && mode === 'replay-failure' || method === 'turn/start' && mode === 'start-failure') throw new Error('重建失败');
+    return original(method, params);
+  });
+  const result = f.sessions.edit(client, s.id, target, [{ type: 'text', text: '新问题' }], {}, replaced);
+  if (mode === 'success') {
+    const next = await result;
+    expect(next.thread.turns.map((turn: any) => turn.id)).toEqual(['keep', 'new-2']);
+    expect(next.parentId).toBe('main'); expect(next.forkTurnId).toBe('done'); expect(next.thread.name).toBe(s.thread.name);
+    expect(f.sessions.get(s.id)).toBeUndefined(); expect(replaced).toHaveBeenCalledOnce();
+    const restored = new SidechatSessions('host', { getItem: key => f.data.get(key) ?? null, setItem() {} });
+    expect(restored.get(next.id)?.thread.name).toBe(s.thread.name);
+    expect(f.request.mock.calls.slice(-2).map(([method]) => method)).toEqual(['turn/start', 'thread/unsubscribe']);
+  } else {
+    await expect(result).rejects.toThrow('重建失败'); expect(f.sessions.get(s.id)).toBe(s);
+    expect(s.thread.turns).toEqual(editTurns()); expect(replaced).not.toHaveBeenCalled(); expect(f.sessions.all()).toHaveLength(1);
+  }
+  expect(f.request.mock.calls.some(([method]) => ['thread/revert', 'thread/rollback', 'thread/read'].includes(method))).toBe(false);
+  expect([...f.data.values()].join('')).not.toContain('新问题');
+});
+
+it.each(['thread/fork', 'replay', 'turn/start'])('重建%s结果未知时等待原UUID后继续，不重发已受理步骤', async pendingMethod => {
+  const f = fixture(); const client = { request: f.request }; const s = await f.sessions.create(client, { id: 'main' }); s.thread.turns = editTurns();
+  const original = f.request.getMockImplementation()!; let reply: any; let request: any;
+  f.request.mockImplementation(async (method, params) => {
+    const result = await original(method, params);
+    if (method === pendingMethod) { reply = result; request = { method: 'mobile/sidechat/rpc', params: { method, params } }; throw new HttpOperationPendingError('edit-uuid', request); }
+    return result;
+  });
+  const result = f.sessions.edit(client, s.id, createHistoricalMessageEditTarget(s.thread.turns, 'edit')!, [{ type: 'text', text: '修改' }], {}, vi.fn());
+  await vi.waitFor(() => expect(s.error).toContain('待确认'));
+  expect(f.sessions.get(s.id)).toBe(s); expect(s.editing).toBe(true);
+  f.sessions.observe({ method: 'mobile/operation/confirmed', params: { requestId: 'edit-uuid', request, response: { result: reply } } });
+  const next = await result; expect(next.id).toBe('side-2'); expect(f.sessions.get(s.id)).toBeUndefined();
+  expect(f.request.mock.calls.filter(([method]) => method === pendingMethod)).toHaveLength(pendingMethod === 'thread/fork' ? 2 : 1);
+});
 
 describe('Sidechat 生命周期', () => {
   it.each(['ack', 'http-confirm'])('完成状态先到时，%s仍清理原pending而不重开回合', async mode => {

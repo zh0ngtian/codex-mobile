@@ -1,18 +1,20 @@
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { AppBootstrap } from '../../src/App';
-const server = vi.hoisted(() => ({ enabled: false, clients: new Map<string, any>(), requests: [] as string[], threadListGate: null as Promise<void> | null, failThreadList: false }));
+const server = vi.hoisted(() => ({ enabled: false, clients: new Map<string, any>(), requests: [] as string[], threads: new Map<string, any[]>(), threadListGate: null as Promise<void> | null, failThreadList: false }));
 vi.mock('../../src/backends/connection-manager', () => ({ BackendConnectionManager: class {
   constructor(private options: any) {}
   sync(backends: any[]) {
    if (!server.enabled) return;
    for (const backend of backends) {
     if (server.clients.has(backend.id)) continue;
-    const client = { onNotification() { return () => {}; }, onThreadMetadata() { return () => {}; }, request: async (method: string) => {
+    const client = { onNotification() { return () => {}; }, onThreadMetadata() { return () => {}; }, request: async (method: string, params: any) => {
      server.requests.push(method);
      if (method === 'thread/list' && server.threadListGate) await server.threadListGate;
      if (method === 'thread/list' && server.failThreadList) throw new Error('首次会话读取失败');
      if (method === 'config/read') return { config: {} };
+     if (method === 'thread/list') return { data: server.threads.get(backend.id) ?? [], nextCursor: null };
+     if (method === 'thread/read' || method === 'thread/resume') return { thread: (server.threads.get(backend.id) ?? []).find(thread => thread.id === params.threadId), initialTurnsPage: { data: [], nextCursor: null } };
      return { data: [], items: [], marketplaces: [], nextCursor: null };
     } };
     server.clients.set(backend.id, client);
@@ -23,7 +25,7 @@ vi.mock('../../src/backends/connection-manager', () => ({ BackendConnectionManag
 } }));
 const posts: any[] = [];
 function command(id: string, name: string, params: Record<string, unknown> = {}) { window.dispatchEvent(new CustomEvent('codex-mobile-native-command', { detail: { id, name, params } })); }
-afterEach(() => { cleanup(); localStorage.clear(); delete (window as any).__CODEX_NATIVE_UI__; delete (window as any).webkit; delete (window as any).codexMobilePublishNativeSnapshot; posts.length = 0; server.enabled = false; server.clients.clear(); server.requests = []; server.threadListGate = null; server.failThreadList = false; vi.unstubAllGlobals(); });
+afterEach(() => { cleanup(); localStorage.clear(); delete (window as any).__CODEX_NATIVE_UI__; delete (window as any).webkit; delete (window as any).codexMobilePublishNativeSnapshot; posts.length = 0; server.enabled = false; server.clients.clear(); server.threads.clear(); server.requests = []; server.threadListGate = null; server.failThreadList = false; vi.unstubAllGlobals(); });
 it('真实App注册导航与各设备workspace：原生关闭侧栏、切换列表筛选、创建对话和草稿均复用业务状态', async () => {
  Object.assign(window, { __CODEX_NATIVE_UI__: true, webkit: { messageHandlers: { nativeUI: { postMessage() {} } } }, codexMobilePublishNativeSnapshot: (value: unknown) => posts.push(value) });
  vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { headers: { 'content-type': 'application/json' } })));
@@ -84,6 +86,23 @@ function enableNativeMemoryTest() {
  server.enabled = true;
  Object.assign(window, { __CODEX_NATIVE_UI__: true, webkit: { messageHandlers: { nativeUI: { postMessage() {} } } }, codexMobilePublishNativeSnapshot: (snapshot: unknown) => posts.push(snapshot) });
 }
+
+it('阅读甲机器对话时无参新建继承甲项目，明确乙机器新建仍恢复乙项目', async () => {
+ enableNativeMemoryTest();
+ server.threads.set('a', [{ id: 'current-a', cwd: '/a/current', preview: '甲当前对话', turns: [] }]);
+ localStorage.setItem('codex-mobile:new-chat-backend', 'b');
+ localStorage.setItem('codex-mobile:new-chat-project:b', '/b/remembered');
+ vi.stubGlobal('fetch', vi.fn(async (url: string) => new Response(JSON.stringify({ projects: String(url).includes('a.invalid') ? ['/a/current'] : ['/b/remembered'], projectlessThreadIds: [] }))));
+ render(<AppBootstrap initialRegistry={memoryRegistry} />);
+ await waitFor(() => expect(posts.at(-1)?.groups.some((g: any) => g.items.some((item: any) => item.threadId === 'current-a'))).toBe(true));
+ await act(async () => command('open-a-current', 'thread.open', { backendId: 'a', threadId: 'current-a' }));
+ await waitFor(() => expect(posts.at(-1)?.threadId).toBe('current-a'));
+ await act(async () => command('new-current-a', 'thread.new'));
+ await waitFor(() => expect(posts.at(-1)?.threadId).toBeUndefined());
+ expect(posts.at(-1).backendId).toBe('a'); expect(posts.at(-1).cwd).toBe('/a/current');
+ await act(async () => command('new-explicit-b', 'thread.new', { backendId: 'b' }));
+ await waitFor(() => expect(posts.at(-1)?.backendId).toBe('b')); expect(posts.at(-1).cwd).toBe('/b/remembered');
+});
 it('当前机器项目目录稍后返回时仍恢复已保存的项目', async () => {
  enableNativeMemoryTest();
  localStorage.setItem('codex-mobile:new-chat-project:a', '/a/remembered');

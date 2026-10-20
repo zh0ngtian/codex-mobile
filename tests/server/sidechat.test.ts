@@ -12,7 +12,7 @@ async function fixture() {
  const root=await mkdtemp(join(tmpdir(),'sidechat-server-')); cleanup.push(()=>rm(root,{recursive:true,force:true}));
  const http=createServer(); const ws=new WebSocketServer({server:http}); const connections:WebSocket[]=[];const requests:any[]=[];
  ws.on('connection',socket=>{connections.push(socket);socket.on('message',raw=>{const m=JSON.parse(String(raw));requests.push(m);if(m.id==null)return;
- const result=m.method==='thread/fork'?{thread:{id:'side',ephemeral:true,cwd:'/work',turns:[{id:'base',items:[{text:'继承旧正文'}]}]},model:'gpt'}:m.method==='turn/start'?{turn:{id:'new',status:'inProgress',items:[]}}:{};
+ const result=m.method==='thread/fork'?{thread:{id:requests.filter(r=>r.method==='thread/fork').length===1?'side':`side-${requests.filter(r=>r.method==='thread/fork').length}`,ephemeral:true,cwd:'/work',turns:[{id:'base',items:[{text:'继承旧正文'}]}]},model:'gpt'}:m.method==='turn/start'?{turn:{id:'new',status:'inProgress',items:[]}}:{};
  socket.send(JSON.stringify({id:m.id,result}));
  });});
  await new Promise<void>(resolve=>http.listen(0,'127.0.0.1',resolve));cleanup.push(async()=>{connections.forEach(s=>s.terminate());await new Promise<void>(resolve=>ws.close(()=>resolve()));await new Promise<void>(resolve=>http.close(()=>resolve()));});
@@ -56,4 +56,28 @@ it('关闭分支同时清除HTTP重放缓冲中的正文与回合，不遗留可
  await new Promise(r=>setTimeout(r,50));expect(JSON.stringify(await f.events())).toContain('CLOSED_SIDECHAT_PRIVATE_BODY');
  await f.side('thread/unsubscribe',{threadId:'side'});
  expect(JSON.stringify(await f.events())).not.toContain('CLOSED_SIDECHAT_PRIVATE_BODY');
+});
+
+it('临时分支引导经过内存专用连接，不把正文写入操作WAL', async () => {
+ const f=await fixture();await f.side('thread/fork',fork);
+ const result=await f.side('turn/steer',{threadId:'side',expectedTurnId:'running',clientUserMessageId:'guide-id',input:[{type:'text',text:'PRIVATE_SIDECHAT_STEER'}]});
+ expect(result.error).toBeUndefined();expect(f.requests.at(-1)).toMatchObject({method:'turn/steer',params:{threadId:'side',expectedTurnId:'running',clientUserMessageId:'guide-id'}});
+ expect(await allText(f.root)).not.toContain('PRIVATE_SIDECHAT_STEER');
+});
+
+it('重建从主聊天固定分叉点复制，只注入编辑前的上下文并保留内存投影', async () => {
+ const f=await fixture();await f.side('thread/fork',fork);
+ for(const id of ['keep','edit','later'])f.send({method:'turn/completed',params:{threadId:'side',turn:{id,status:'completed',items:[{id:`${id}-user`,type:'userMessage',content:[{type:'text',text:`PRIVATE_${id}`}]},{id:`${id}-tool`,type:'commandExecution',command:'echo old',aggregatedOutput:`TOOL_${id}`},{id:`${id}-answer`,type:'agentMessage',text:`ANSWER_${id}`}]}}});
+ await new Promise(r=>setTimeout(r,50));
+ const next=await f.side('thread/fork',{threadId:'side',beforeTurnId:'edit',ephemeral:true,excludeTurns:true});
+ expect(next.error).toBeUndefined();expect(next.result.thread.id).toBe('side-2');
+ const upstream=f.requests.filter(r=>r.method==='thread/fork').at(-1);expect(upstream.params).toMatchObject({threadId:'main',lastTurnId:'base'});expect(upstream.params.beforeTurnId).toBeUndefined();
+ const replay=await f.side('replay',{threadId:'side-2',sourceThreadId:'side',beforeTurnId:'edit'});expect(replay.error).toBeUndefined();
+ const injection=f.requests.find(r=>r.method==='thread/inject_items');const data=JSON.stringify(injection.params.items);
+ expect(data).toContain('PRIVATE_keep');expect(data).toContain('TOOL_keep');expect(data).toContain('ANSWER_keep');expect(data).not.toContain('PRIVATE_edit');expect(data).not.toContain('PRIVATE_later');
+ expect(f.requests.some(r=>r.method==='command/exec')).toBe(false);
+ await f.side('thread/unsubscribe',{threadId:'side'});f.newClient();const restored=await f.side('read',{threadId:'side-2'});
+ expect(restored.result.parentId).toBe('main');expect(restored.result.forkTurnId).toBe('base');expect(restored.result.thread.turns.map((t:any)=>t.id)).toEqual(['keep']);
+ expect(await allText(f.root)).not.toContain('PRIVATE_keep');
+ expect((await f.side('replay',{threadId:'side-2',sourceThreadId:'forged',beforeTurnId:'edit'})).error).toBeDefined();
 });

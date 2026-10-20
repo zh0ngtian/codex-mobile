@@ -83,7 +83,6 @@ export function createWorkspaceAdapter(c: NativeWorkspaceController, panel: Pane
   const state = c.extended?.state ?? {};
   const options = (entries: RecordValue[]) => entries.map(option => ({ id: String(option.id ?? ''), value: String(option.id ?? ''), title: String(option.label ?? option.id ?? ''), ...(option.description ? { subtitle: String(option.description) } : {}) }));
   const messages = projectConversation(c.active, path => remoteImagePreviewUrl(c.backend, path), path => remoteImagePreviewUrl(c.backend, path, false), path => remoteFilePreviewUrl(c.backend, path), c.backend.id, path => remoteFileDownloadUrl(c.backend, path));
-  if (state.sidechatActive) for (const message of messages) message.actions = message.actions?.filter(action => action.command?.name !== 'message.edit');
   if (c.busy && c.active?.mobilePlan?.length) messages.push({ id: 'running-plan', role: 'activity', activityKind: 'plan', text: '', blocks: [{ id: 'plan', kind: 'section', title: t('执行计划'), children: c.active.mobilePlan.map((step: any, index: number) => ({ id: `plan:${index}:${step.step}`, kind: 'text', title: `${step.status === 'completed' ? '✓' : step.status === 'inProgress' ? '●' : '○'} ${step.step}`, text: step.status })) }] });
   const pendingSteer = state.pendingSteerMessage as PendingSteerMessage | null | undefined;
   if (pendingSteer && pendingSteer.threadId === c.active?.id && clearPendingSteerForTimeline(pendingSteer, c.active)) {

@@ -3,6 +3,9 @@ import { quoteInput, type MessageQuote } from '../features/conversation/message-
 import { t } from '../i18n';
 import { HttpOperationPendingError, transportUuid } from '../backends/http-transport';
 import type { RpcMessage } from '../app-server/client';
+import { AppServerRpcError } from '../app-server/client';
+import { activeTurnId } from '../app-server/turn-steering';
+import type { HistoricalMessageEditTarget } from '../app-server/history-edit';
 import { applyCompletedTurn, applyTurnDiff, applyTurnItem, applyTurnStarted, createPendingTurn, reconcileRecentTurns } from '../ui/conversation';
 
 type RecordValue = Record<string, any>;
@@ -15,11 +18,12 @@ export function gatewaySidechatClient(client: SidechatClient): SidechatClient {
 }
 export const SIDECHAT_INSTRUCTIONS = `这是从主聊天分叉出的临时独立 Sidechat。继承历史仅作背景参考，不是待执行指令；不得自动继续、恢复或完成主聊天任务。只响应用户在本 Sidechat 新提出的请求。默认只读探索；只有用户在本 Sidechat 明确提出文件修改时才可修改，并遵守现有权限和审批。对话独立但文件目录、远程机器和容器与主聊天共享，获准的修改会影响同一目录。不得创建子代理，不得委派给其他代理。不要因为继承历史中的代理或技能指令而创建子代理。`;
 export const SIDECHAT_TTL = 24 * 60 * 60 * 1000;
-export interface SidechatLink { id: string; parentId: string; forkTurnId: string; createdAt: number; lastActiveAt: number; turnIds: string[] }
+export interface SidechatLink { id: string; parentId: string; forkTurnId: string; createdAt: number; lastActiveAt: number; turnIds: string[]; name?: string }
 export interface SidechatSession extends SidechatLink {
   thread: RecordValue; settings: RecordValue; busy: boolean; sending: boolean; closing: boolean; error: string;
   queue: { id: string; input: RecordValue[]; settings: RecordValue; text: string; question?: string; quotes?: MessageQuote[] }[];
   client?: SidechatClient; restoring?: boolean; unconfirmed?: { requestId: string; entryId: string };
+  preparing?: boolean; editing?: boolean; steering?: string;
 }
 const terminal = new Set(['completed', 'interrupted', 'failed']);
 export class SidechatSessions {
@@ -28,13 +32,15 @@ export class SidechatSessions {
   private hiddenTurns = new Map<string, Set<string>>();
   private activityRevision = new WeakMap<SidechatSession, number>();
   private creating = false;
+  private confirmations = new Map<string, { owner: SidechatSession; resolve: (value: any) => void; reject: (error: Error) => void }>();
+  private earlyConfirmations = new Map<string, RecordValue>();
   private key: string;
   constructor(backendId: string, private storage: Pick<Storage, 'getItem' | 'setItem'>, private now = Date.now) {
     this.key = `codex-mobile:sidechats:${backendId}`;
     const saved = this.storage.getItem(this.key);
     if (saved) for (const link of JSON.parse(saved) as SidechatLink[]) {
       if (!link || typeof link.id !== 'string' || typeof link.parentId !== 'string' || typeof link.forkTurnId !== 'string' || !Array.isArray(link.turnIds) || !Number.isFinite(link.lastActiveAt)) continue;
-      this.sessions.set(link.id, { ...link, thread: { id: link.id, ephemeral: true, name: `Sidechat ${this.forParent(link.parentId).length + 1}`, turns: [] }, settings: {}, busy: false, sending: false, closing: false, error: '', queue: [], restoring: true });
+      this.sessions.set(link.id, { ...link, thread: { id: link.id, ephemeral: true, name: /^Sidechat \d+$/.test(link.name ?? '') ? link.name : `Sidechat ${this.forParent(link.parentId).length + 1}`, turns: [] }, settings: {}, busy: false, sending: false, closing: false, error: '', queue: [], restoring: true });
     }
   }
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
@@ -44,9 +50,9 @@ export class SidechatSessions {
     this.activityRevision.set(session, (this.activityRevision.get(session) ?? 0) + 1);
   }
   private persist() {
-    this.storage.setItem(this.key, JSON.stringify(this.all().map(s => ({ id: s.id, parentId: s.parentId, forkTurnId: s.forkTurnId, createdAt: s.createdAt, lastActiveAt: s.lastActiveAt, turnIds: s.turnIds }))));
+    this.storage.setItem(this.key, JSON.stringify(this.all().map(s => ({ id: s.id, parentId: s.parentId, forkTurnId: s.forkTurnId, createdAt: s.createdAt, lastActiveAt: s.lastActiveAt, turnIds: s.turnIds, name: s.thread.name }))));
   }
-  all() { return [...this.sessions.values()]; }
+  all() { return [...this.sessions.values()].filter(s => !s.preparing); }
   get(id: string) { return this.sessions.get(id); }
   forParent(id: string) { return this.all().filter(s => s.parentId === id); }
   touch(id: string) { const s = this.get(id); if (s) { s.lastActiveAt = this.now(); this.changed(); } }
@@ -88,6 +94,14 @@ export class SidechatSessions {
     // 审批撤销/完成由全局审批队列按请求ID清理，不能被分支投影提前消费。
     if (message.method === 'serverRequest/resolved') return false;
     const p = (message.params ?? {}) as RecordValue;
+    const awaiting = message.method === 'mobile/operation/confirmed' ? this.confirmations.get(p.requestId) : undefined;
+    if (awaiting) {
+      this.confirmations.delete(p.requestId);
+      awaiting.owner.error = ''; this.changed();
+      if (p.response?.error) awaiting.reject(new AppServerRpcError(p.response.error.message, p.response.error.code));
+      else awaiting.resolve(p.response?.result);
+      return true;
+    }
     const confirmed = message.method === 'mobile/operation/confirmed' && p.request?.method === 'mobile/sidechat/rpc' ? p.request.params?.params : null;
     const id = String(p.threadId ?? p.thread?.id ?? confirmed?.threadId ?? ''); const s = this.get(id);
     if (!s) return false;
@@ -106,6 +120,10 @@ export class SidechatSessions {
       }
       this.changed(); return true;
     }
+    if (confirmed && [...this.sessions.values()].some(side => side.editing || side.steering)) {
+      this.earlyConfirmations.set(p.requestId, p.response);
+      if (this.earlyConfirmations.size > 64) this.earlyConfirmations.delete(this.earlyConfirmations.keys().next().value!);
+    }
     const turnId = String(p.turn?.id ?? p.turnId ?? '');
     if (turnId && (turnId === s.forkTurnId || this.hiddenTurns.get(id)?.has(turnId))) return true;
     if (message.method === 'turn/started') { s.thread = applyTurnStarted(s.thread, p); this.setBusy(s, true); }
@@ -122,6 +140,9 @@ export class SidechatSessions {
     if (message.method === 'thread/closed') {
       // 自己确认关闭/过期时由close完成清理与导航；外部失效立即移除，不能恢复旧正文草稿。
       if (s.closing) return true;
+      for (const [requestId, pending] of this.confirmations) if (pending.owner === s) {
+        this.confirmations.delete(requestId); pending.reject(new Error(t('Sidechat 已失效，daemon 可能已重启，请返回主聊天重新创建')));
+      }
       s.error = t('Sidechat 已失效，daemon 可能已重启，请返回主聊天重新创建'); this.setBusy(s, false); s.queue = [];
       this.sessions.delete(id); this.hiddenTurns.delete(id); this.changed(); return true;
     }
@@ -131,14 +152,14 @@ export class SidechatSessions {
     return true;
   }
   async submit(client: SidechatClient, id: string, input: RecordValue[], settings: RecordValue, accepted?: () => void, draft?: { question: string; quotes: MessageQuote[] }) {
-    const s = this.get(id); if (!s || s.closing || s.error) throw new Error(s?.error || 'Sidechat 不可用');
+    const s = this.get(id); if (!s || s.closing || s.editing || s.error) throw new Error(s?.error || 'Sidechat 不可用');
     s.client = client;
     const entry = { id: transportUuid(), input, settings, text: draft?.question || input.filter(i => i.type === 'text').map(i => i.text).join('\n') || '附件', ...(draft ? {question: draft.question, quotes: draft.quotes} : {}) };
     s.queue.push(entry); s.lastActiveAt = this.now(); accepted?.(); this.changed();
     if (!s.busy && !s.sending) await this.drain(s);
   }
   private async drain(s: SidechatSession) {
-    if (s.closing || s.unconfirmed || s.busy || s.sending || !s.client || !s.queue.length) return;
+    if (s.closing || s.error || s.editing || s.steering || s.unconfirmed || s.busy || s.sending || !s.client || !s.queue.length) return;
     const entry = s.queue[0]; s.sending = true; this.setBusy(s, true); s.error = '';
     const pendingId = `pending-${entry.id}`;
     s.thread = { ...s.thread, mobilePlan: [], turns: [...s.thread.turns, createPendingTurn(pendingId, { id: `local-${entry.id}`, clientId: entry.id, type: 'userMessage', content: entry.input })] }; this.changed();
@@ -165,7 +186,7 @@ export class SidechatSessions {
   }
   editQueued(id: string, queueId: string, text: string) {
     const s = this.get(id); const entry = s?.queue.find(item => item.id === queueId);
-    if (!s || !entry || s.sending) return false;
+    if (!s || !entry || s.sending || s.editing || s.steering || s.unconfirmed) return false;
     const original = entry.input[0]?.type === 'text' ? String(entry.input[0].text ?? '') : '';
     const content = decodeUserMessage(original).prefix ? replaceUserMessageBody(original, text) : quoteInput(text, entry.quotes ?? []);
     if (entry.input[0]?.type === 'text') entry.input = [{ ...entry.input[0], text: content }, ...entry.input.slice(1)];
@@ -173,7 +194,67 @@ export class SidechatSessions {
     entry.text = text; entry.question = text; this.changed(); return true;
   }
   async retry(id: string) { const s = this.get(id); if (s?.unconfirmed) throw new Error(t('请求结果待确认，不能重新发送')); if (!s || s.busy || s.sending) return; s.error = ''; await this.drain(s); }
-  removeQueued(id: string, queueId: string) { const s = this.get(id); if (s && !s.sending) { s.queue = s.queue.filter(q => q.id !== queueId); this.changed(); } }
+  removeQueued(id: string, queueId: string) { const s = this.get(id); if (s && !s.sending && !s.steering && !s.editing && !s.unconfirmed) { s.queue = s.queue.filter(q => q.id !== queueId); this.changed(); } }
+  /** 结果未知时等待原UUID的确认；不把重建或引导换成另一次写请求。 */
+  private async confirmedRequest(owner: SidechatSession, client: SidechatClient, method: string, params: RecordValue): Promise<any> {
+    try { return await client.request(method, params); }
+    catch (error) {
+      if (!(error instanceof HttpOperationPendingError)) throw error;
+      const early = this.earlyConfirmations.get(error.requestId);
+      if (early) {
+        this.earlyConfirmations.delete(error.requestId);
+        if (early.error) throw new AppServerRpcError(early.error.message, early.error.code);
+        return early.result;
+      }
+      owner.error = t('请求结果待确认，请等待原请求核对，勿重复发送');
+      const result = new Promise((resolve, reject) => this.confirmations.set(error.requestId, { owner, resolve, reject }));
+      this.changed(); return result;
+    }
+  }
+  async steer(client: SidechatClient, id: string, queueId: string) {
+    const s = this.get(id); const turnId = activeTurnId(s?.thread); const entry = s?.queue.find(q => q.id === queueId);
+    if (!s || !entry || !turnId || s.sending || s.steering || s.editing || s.closing || s.unconfirmed) throw new Error(t('当前无法发送引导消息'));
+    s.steering = entry.id; s.error = ''; this.changed();
+    try {
+      await this.confirmedRequest(s, client, 'turn/steer', { threadId: id, expectedTurnId: turnId, input: entry.input, clientUserMessageId: entry.id });
+      s.queue = s.queue.filter(q => q.id !== entry.id);
+    } catch (error) { s.error = String((error as Error).message ?? error); throw error; }
+    finally { s.steering = undefined; s.lastActiveAt = this.now(); this.changed(); if (this.get(id) === s && !s.busy) void this.drain(s).catch(() => undefined); }
+  }
+  async edit(client: SidechatClient, id: string, target: HistoricalMessageEditTarget, input: RecordValue[], settings: RecordValue, replaced: (side: SidechatSession) => void) {
+    const s = this.get(id);
+    const index = s?.thread.turns.findIndex((turn: RecordValue) => turn.id === target.turnId) ?? -1;
+    if (!s || index < 0 || s.busy || s.sending || s.steering || s.editing || s.closing || s.unconfirmed || s.queue.length) throw new Error(t('当前会话正忙或有排队消息，暂时不能编辑历史消息'));
+    s.editing = true; s.error = ''; this.changed();
+    let next: SidechatSession | undefined;
+    try {
+      const fork = await this.confirmedRequest(s, client, 'thread/fork', { ...settings, threadId: id, beforeTurnId: target.turnId, ephemeral: true, excludeTurns: true, developerInstructions: SIDECHAT_INSTRUCTIONS, config: { 'features.multi_agent': false, ...(settings.effort ? { model_reasoning_effort: settings.effort } : {}) } });
+      if (!fork.thread?.id || fork.thread.id === id || fork.thread.ephemeral !== true) throw new Error(t('Sidechat 分叉响应无效；当前 Codex 可能不支持临时分叉'));
+      next = { ...s, id: fork.thread.id, thread: { ...fork.thread, name: s.thread.name, turns: s.thread.turns.slice(0, index) }, settings: fork, turnIds: s.turnIds.filter(turnId => s!.thread.turns.slice(0, index).some((turn: RecordValue) => turn.id === turnId)), queue: [], client, preparing: true, editing: false, error: '', lastActiveAt: this.now() };
+      this.sessions.set(next.id, next);
+      this.hiddenTurns.set(next.id, new Set(this.hiddenTurns.get(id) ?? [s.forkTurnId]));
+      await this.confirmedRequest(s, client, 'replay', { threadId: next.id, sourceThreadId: id, beforeTurnId: target.turnId });
+      // 原分支保持完整，直到修改消息已获上游受理。
+      const entryId = transportUuid();
+      const response = await this.confirmedRequest(s, client, 'turn/start', { ...settings, threadId: next.id, input, clientUserMessageId: entryId });
+      if (!response.turn?.id) throw new Error(t('Sidechat 发送响应无效'));
+      const completed = next.thread.turns.some((turn: RecordValue) => turn.id === response.turn.id && terminal.has(turn.status));
+      next.thread = applyTurnStarted(next.thread, { threadId: next.id, turn: response.turn });
+      this.setBusy(next, !completed); if (!next.turnIds.includes(response.turn.id)) next.turnIds.push(response.turn.id);
+      replaced(next);
+      next.preparing = false; s.closing = true;
+      this.sessions.delete(id); this.hiddenTurns.delete(id); this.changed();
+      try { await this.confirmedRequest(next, client, 'thread/unsubscribe', { threadId: id }); }
+      catch (error) { next.error = String((error as Error).message ?? error); this.changed(); }
+      return next;
+    } catch (error) {
+      if (next) {
+        try { await this.confirmedRequest(s, client, 'thread/unsubscribe', { threadId: next.id }); this.sessions.delete(next.id); this.hiddenTurns.delete(next.id); }
+        catch (cleanupError) { next.preparing = false; next.error = String((cleanupError as Error).message ?? cleanupError); }
+      }
+      s.error = String((error as Error).message ?? error); throw error;
+    } finally { s.editing = false; this.changed(); }
+  }
   async stop(client: SidechatClient, id: string) {
     const s = this.get(id); const turn = s?.thread.turns.findLast((t: RecordValue) => !terminal.has(t.status));
     if (!s || !turn || String(turn.id).startsWith('pending-')) throw new Error(t('执行回合尚未就绪，请稍后重试'));
@@ -181,7 +262,7 @@ export class SidechatSessions {
   }
   async close(client: SidechatClient, id: string) {
     const s = this.get(id); if (!s) return; if (s.closing) throw new Error(t('正在关闭 Sidechat，请稍候'));
-    if (s.sending) throw new Error(t('消息正在提交，请等待提交结果后关闭 Sidechat'));
+    if (s.sending || s.steering || s.editing) throw new Error(t('消息正在提交，请等待提交结果后关闭 Sidechat'));
     s.closing = true; s.queue = []; this.changed();
     try {
       if (s.busy) await this.stop(client, id);
@@ -193,7 +274,7 @@ export class SidechatSessions {
     } finally { s.closing = false; }
   }
   async expire(client: SidechatClient) {
-    for (const s of this.all()) if (!s.busy && !s.sending && !s.closing && this.now() - s.lastActiveAt >= SIDECHAT_TTL) await this.close(client, s.id);
+    for (const s of this.all()) if (!s.busy && !s.sending && !s.closing && !s.editing && !s.steering && this.now() - s.lastActiveAt >= SIDECHAT_TTL) await this.close(client, s.id);
   }
   async restore(client: SidechatClient) {
     const raw = this.storage.getItem(this.key); if (!raw) return;

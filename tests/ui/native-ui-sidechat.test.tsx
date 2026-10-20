@@ -131,6 +131,72 @@ async function openSidechatForSend() {
  return posts.at(-1).contextId as string;
 }
 
+it.each([false, true])('从现有对话新建继承当前项目并覆盖旧项目记忆，projectless=%s', async projectless => {
+  boundary.threadList = [{ id: 'current-project', cwd: '/current', preview: '当前项目对话' }];
+  localStorage.setItem('codex-mobile:new-chat-project:a', '/remembered');
+  await setup(true, { projects: ['/current', '/remembered'], projectlessThreadIds: projectless ? ['current-project'] : [] });
+  await act(async () => command('open-project-source', 'thread.open', { backendId: 'a', threadId: 'current-project' }));
+  await waitFor(() => expect(posts.at(-1)?.threadId).toBe('current-project'));
+  await act(async () => command('inherit-current-project', 'thread.new'));
+  await waitFor(() => expect(posts.at(-1)?.threadId).toBeUndefined());
+  expect(posts.at(-1).cwd).toBe(projectless ? undefined : '/current');
+  expect(posts.at(-1).projectName).toBe(projectless ? '无项目' : 'current');
+  expect(boundary.requests.some(r => r.method === 'thread/start')).toBe(false);
+});
+
+it('Sidechat运行中原生队列可转为引导，编辑待发文字后发送最新正文', async () => {
+  const contextId = await openSidechatForSend();
+  await act(async () => { command('side-run-text', 'draft.set', { contextId, value: '启动分支', revision: 1 }); command('side-run-send', 'message.send', { contextId }); });
+  await waitFor(() => expect(posts.at(-1)?.busy).toBe(true));
+  await act(async () => { command('side-guide-text', 'draft.set', { contextId, value: '待引导', revision: 2 }); command('side-guide-queue', 'message.send', { contextId }); });
+  await waitFor(() => expect(posts.at(-1)?.queued).toHaveLength(1));
+  const id = posts.at(-1).queued[0].id;
+  expect(posts.at(-1).queued[0].command.name).toBe('queue.send');
+  await act(async () => command('side-guide-edit', 'queue.edit', { contextId, id, value: '修改后的引导' }));
+  await act(async () => command('side-guide-steer', 'queue.send', { contextId, id }));
+  await waitFor(() => expect(boundary.requests.some(r => r.method === 'turn/steer')).toBe(true));
+  expect(boundary.requests.find(r => r.method === 'turn/steer')?.params).toMatchObject({ threadId: 'side-1', expectedTurnId: 'turn-live', clientUserMessageId: id });
+  expect(decodeUserMessage(boundary.requests.find(r => r.method === 'turn/steer')!.params.input[0].text).body).toBe('修改后的引导');
+  await waitFor(() => expect(posts.at(-1)?.queued).toEqual([])); expect(queueItems).toEqual([]);
+});
+
+it('Sidechat历史编辑确认删除后重建分支，保留前文和未发草稿', async () => {
+  const contextId = await openSidechatForSend();
+  for (const id of ['keep', 'edit', 'later']) await act(async () => boundary.options.onNotification('a', { method: 'turn/completed', params: { threadId: 'side-1', turn: { id, status: 'completed', items: [{ id: `${id}-user`, type: 'userMessage', content: [{ type: 'text', text: `${id}原文` }] }, { id: `${id}-answer`, type: 'agentMessage', text: `${id}回答` }] } } }));
+  await waitFor(() => expect(posts.at(-1)?.messages.some((m: any) => m.itemId === 'edit-user')).toBe(true));
+  expect(posts.at(-1).messages.find((m: any) => m.itemId === 'edit-user').actions.some((a: any) => a.command?.name === 'message.edit')).toBe(true);
+  await act(async () => { command('side-unsent-draft', 'draft.set', { contextId, value: '尚未发送的草稿', revision: 1 }); command('side-history-open', 'message.edit', { contextId, turnId: 'edit', messageId: 'edit-user' }); });
+  await waitFor(() => expect(posts.at(-1)?.messages.some((m: any) => m.historyEdit)).toBe(true));
+  const editKey = 'side-1:edit:edit-user';
+  await act(async () => { command('side-history-change', 'history.change', { contextId, editKey, value: '修改后的历史消息' }); command('side-history-submit', 'history.submit', { contextId, editKey }); });
+  await waitFor(() => expect(posts.at(-1)?.panel?.id).toMatch(/^confirm-history:/));
+  expect(boundary.requests.filter(r => r.method === 'thread/fork')).toHaveLength(1);
+  await act(async () => command('side-history-confirm', 'history.submit', { contextId, editKey, confirmed: true }));
+  await waitFor(() => expect(posts.at(-1)?.threadId).toBe('side-2'));
+  expect(posts.at(-1).draft).toBe('尚未发送的草稿'); expect(posts.at(-1).sidechatParentId).toBe('sent-thread');
+  expect(posts.at(-1).messages.some((m: any) => m.itemId === 'keep-user')).toBe(true);
+  expect(posts.at(-1).messages.some((m: any) => m.itemId === 'later-user')).toBe(false);
+  expect(boundary.requests.find(r => r.method === 'turn/start' && r.params.threadId === 'side-2')?.params.input[0].text).toContain('修改后的历史消息');
+  expect(boundary.requests.some(r => r.method === 'thread/unsubscribe' && r.params.threadId === 'side-1')).toBe(true);
+});
+
+it('Sidechat历史重发失败保留原分支和编辑内容，允许继续修改', async () => {
+ const contextId = await openSidechatForSend();
+ await act(async () => boundary.options.onNotification('a', { method: 'turn/completed', params: { threadId: 'side-1', turn: { id: 'source-edit', status: 'completed', items: [{ id: 'source-user', type: 'userMessage', content: [{ type: 'text', text: '原问题' }] }, { id: 'source-answer', type: 'agentMessage', text: '原回答不能丢失' }] } } }));
+ await act(async () => command('failed-side-open-edit', 'message.edit', { contextId, turnId: 'source-edit', messageId: 'source-user' }));
+ await waitFor(() => expect(posts.at(-1)?.messages.some((m: any) => m.historyEdit)).toBe(true));
+ boundary.failSend = true;
+ const editKey = 'side-1:source-edit:source-user';
+ await act(async () => { command('failed-side-change', 'history.change', { contextId, editKey, value: '保留这次修改' }); command('failed-side-submit', 'history.submit', { contextId, editKey }); });
+ await waitFor(() => expect(posts.at(-1)?.error).toContain('真实发送失败'));
+ expect(posts.at(-1).threadId).toBe('side-1');
+ const editor = posts.at(-1).messages.find((m: any) => m.historyEdit).historyEdit;
+ expect(editor.items.find((i: any) => i.id === 'history-text').value).toBe('保留这次修改');
+ expect(editor.items.find((i: any) => i.id === 'history-text').disabled).toBe(false);
+ expect(posts.at(-1).messages.some((m: any) => m.text === '原回答不能丢失')).toBe(true);
+ expect(boundary.requests.some(r => r.method === 'thread/unsubscribe' && r.params.threadId === 'side-1')).toBe(false);
+});
+
 it('Sidechat附件上传失败保留正文和原始附件，不提前清空输入', async () => {
  const contextId=await openSidechatForSend();
  const BaseURL=URL;

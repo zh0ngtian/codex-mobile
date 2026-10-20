@@ -1,4 +1,5 @@
 import { SidechatHistory } from './sidechat-history.js';
+import { sidechatReplayItems } from './sidechat-replay.js';
 import { randomUUID, createHash } from "node:crypto";
 import { mkdir, open, readFile, readdir, rename, unlink, stat } from "node:fs/promises";
 import { join, dirname } from "node:path";
@@ -935,21 +936,33 @@ export class HttpSessions {
   async sidechatRpc(envelope: RpcMessage, requestId: string = randomUUID()): Promise<RpcMessage> {
     const method = envelope.params?.method; const params = envelope.params?.params;
     if (typeof method !== 'string' || !params || Array.isArray(params) || typeof params !== 'object') throw new HttpError(400, 'Sidechat 参数无效');
-    if (!['read', 'thread/fork', 'turn/start', 'turn/interrupt', 'thread/unsubscribe', 'thread/settings/update'].includes(method)) throw new HttpError(400, '不支持的 Sidechat 操作');
+    if (!['read', 'thread/fork', 'replay', 'turn/start', 'turn/steer', 'turn/interrupt', 'thread/unsubscribe', 'thread/settings/update'].includes(method)) throw new HttpError(400, '不支持的 Sidechat 操作');
     try {
       if (method === 'read') return { id: envelope.id, result: this.sidechats.read(params.threadId) };
+      const replacement = method === 'thread/fork' && this.sidechats.has(params.threadId);
+      let upstreamParams = params;
       if (method === 'thread/fork') {
-        if (params.ephemeral !== true || params.excludeTurns !== true || typeof params.lastTurnId !== 'string' || !params.lastTurnId || typeof params.threadId !== 'string') throw new HttpError(400, 'Sidechat 必须从明确的结束回合临时分叉');
+        if (replacement) {
+          const source = this.sidechats.replacement(params.threadId, params.beforeTurnId);
+          upstreamParams = { ...params, threadId: source.parentId, lastTurnId: source.forkTurnId };
+          delete upstreamParams.beforeTurnId;
+        }
+        if (params.ephemeral !== true || params.excludeTurns !== true || typeof upstreamParams.lastTurnId !== 'string' || !upstreamParams.lastTurnId || typeof params.threadId !== 'string') throw new HttpError(400, 'Sidechat 必须从明确的结束回合临时分叉');
       } else if (!this.sidechats.has(params.threadId)) throw new Error('Sidechat 已失效，请返回主聊天重新创建');
+      if (method === 'replay') upstreamParams = { threadId: params.threadId, items: await sidechatReplayItems(this.sidechats.replay(params.threadId, params.sourceThreadId, params.beforeTurnId)) };
       const session = this.session(SIDECHAT_SESSION_ID);
       if (!session.ready || session.socket?.readyState !== WebSocket.OPEN) {
         const initialized = await session.rpc(randomUUID(), { id: 'sidechat-initialize', method: 'initialize', params: { clientInfo: { name: 'codex-mobile-sidechat', version: '1' }, capabilities: { experimentalApi: true } } });
         if (initialized.error) return { ...initialized, id: envelope.id };
       }
       if (!session.sentInitialized) await session.rpc(randomUUID(), { method: 'initialized', params: {} });
-      const response = await session.rpc(requestId, { id: `sidechat:${requestId}`, method, params });
+      const response = await session.rpc(requestId, { id: `sidechat:${requestId}`, method: method === 'replay' ? 'thread/inject_items' : method, params: upstreamParams });
       if (!response.error) {
-        if (method === 'thread/fork') { this.sidechats.register(params, response.result as Record<string, any>); this.sidechatIds.add((response.result as any).thread.id); }
+        if (method === 'thread/fork') {
+          if (replacement) this.sidechats.registerReplacement(params.threadId, params.beforeTurnId, response.result as Record<string, any>);
+          else this.sidechats.register(params, response.result as Record<string, any>);
+          this.sidechatIds.add((response.result as any).thread.id);
+        }
         if (method === 'turn/start') this.sidechats.observe({ method: 'turn/started', params: { threadId: params.threadId, turn: (response.result as any).turn } });
         if (method === 'thread/settings/update') this.sidechats.settings(params.threadId, params);
         if (method === 'thread/unsubscribe') {
