@@ -1,0 +1,57 @@
+{
+  "platform": "iPhone 17 Pro / iOS 27.0 Simulator, portrait, normal font",
+  "baselineSource": "dd704fd",
+  "indexSource": "c9f798a8fdebe0e1b7d54a15def2e3f2597a2e17",
+  "nativeExecutableSha256": "ceefef7598e7bb9e767443a8d3d1539e74d251205b0729e8abf9d887c223e43b",
+  "nativeDylibSha256": "0ad406e3042417a4d061492e330b79608398ab05e155d231a78ebc068b63390f",
+  "sourceAssetHashes": {
+    "baseline": {
+      "sourceAssetSha256": "ce5c99350615c1e4a927174dc1082be3fa9a6dd04645510a51dc9964ef078afc"
+    },
+    "index-2": {
+      "sourceAssetSha256": "c60fce74ed46cf78294b757ffce510887d1f50f742dbb4a6a61d031ebad380c0"
+    },
+    "index-4": {
+      "sourceAssetSha256": "c60fce74ed46cf78294b757ffce510887d1f50f742dbb4a6a61d031ebad380c0"
+    },
+    "index-6": {
+      "sourceAssetSha256": "c60fce74ed46cf78294b757ffce510887d1f50f742dbb4a6a61d031ebad380c0"
+    }
+  },
+  "frozenRuntimeSha256": {
+    "src/App.tsx": "a5c1f2538ba9814ac1d3712cd5f014c31a052f8eb9118d3696383b57f661f58e",
+    "src/app-server/thread-list-loader.ts": "36a6091a6134d404797a14309ff32cb14f0b17fb5e18fb049286deea0f26c490",
+    "src/app-server/client.ts": "4992e5c2e959730edd9cba686a66484a661d6e4ae5b7a433403182b66e3342f0",
+    "src/backends/http-transport.ts": "d17b9a93dbaf090271bf54d8d8a855bbdc65adff49a3cef25783f478e727b244",
+    "src/backends/http-request-scheduler.ts": "1c5b08cc14c7b6d119eccc6971468e7db7760c3ff555e3fa1aed8fd734406f67",
+    "server/sidebar-summary-index.ts": "b1dec92f18b95d9e97e86d9a37cfb9c2214318c76e5986f6afc67848bb4aae3d",
+    "server/http-session.ts": "5a0b9e8bdc4f41e81189bcfc0e9c0eb6500a7a2f604978eb202a65c2b67e54ce",
+    "server/gateway.ts": "ef99d647a182a9a42e2913b40a482fa2a5a6772fa03bb7ce41556520a23ddd24"
+  },
+  "gateway": "isolated local gateway and loopback WS proxy; same real upstream; no production deploy",
+  "formalOrder": "cold index; baseline10/index2-10; index4-10; index6-10/baseline10/index2-10",
+  "foregroundOrder": "index2-3/index4-3/index6-3; same existing conversation",
+  "notes": [
+    "formal stopped before a launch when entry SHA mismatch; later wrong probe document produced no valid six-concurrency sample; neither was attributed to a case",
+    "entry, full HTML and Info variant are checked after installation; different byte sizes prevent Simulator incremental resource reuse",
+    "pilot retained separately, including slow and failed samples",
+    "same-host tests and builds were stopped during formal timing; other host/upstream activity remained live"
+  ],
+  "finalSource": "2b16b520e5b455ac72598adf0703afd6bbd08eb1",
+  "finalRuntimeSha256": {
+    "src/App.tsx": "a5c1f2538ba9814ac1d3712cd5f014c31a052f8eb9118d3696383b57f661f58e",
+    "src/app-server/thread-list-loader.ts": "36a6091a6134d404797a14309ff32cb14f0b17fb5e18fb049286deea0f26c490",
+    "src/app-server/client.ts": "4992e5c2e959730edd9cba686a66484a661d6e4ae5b7a433403182b66e3342f0",
+    "src/backends/http-transport.ts": "d17b9a93dbaf090271bf54d8d8a855bbdc65adff49a3cef25783f478e727b244",
+    "src/backends/http-request-scheduler.ts": "a4bc8135914a27ff66eb10533037c98a8ed1bd7244589a4b0bf29f4f4e5c2cc0",
+    "server/sidebar-summary-index.ts": "5d51512f2e0ba2dde21d2d0ecfbff3a5d54ca7785daa425a3c3162aae51dad50",
+    "server/http-session.ts": "5a0b9e8bdc4f41e81189bcfc0e9c0eb6500a7a2f604978eb202a65c2b67e54ce",
+    "server/gateway.ts": "ef99d647a182a9a42e2913b40a482fa2a5a6772fa03bb7ce41556520a23ddd24"
+  },
+  "finalAssets": {
+    "index-4": {
+      "sourceAssetSha256": "21447017794e581b41a5ce22af144cbc92f075a5cbe1d4265fcd192093cd140e"
+    }
+  },
+  "finalConfirmation": "20 process cold starts at production default four; no runtime edits during confirmation"
+}

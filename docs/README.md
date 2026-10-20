@@ -15,6 +15,7 @@
 - [2026-10-19 冷启动边栏优化复测](performance/2026-10-19-sidebar-startup-optimized/README.md)：额度后台调度、无项目定向摘要及每组五条分页；同原生容器各30次对照，模拟器验证完成、未发布。
 - [2026-10-19 真机冷启动边栏耗时](performance/2026-10-19-sidebar-real-device/README.md)：已安装 0.3.18 的 20 次进程冷启动、3 次低查询对照、上屏终点与长尾边界；当时的测量和优化提案，后续实施见下条。
 - [2026-10-20 首批解耦与运行会话五条计数](performance/2026-10-20-sidebar-startup-simulator/README.md)：模拟器同容器各20次冷启动，首批明显提前、整轮未证明提速；运行计入五条及更多/折叠验收通过，未发布。
+- [2026-10-20 整轮刷新摘要索引与并发对照](performance/2026-10-20-sidebar-full-refresh-index/README.md)：网关批量摘要、无项目五条游标、2/4/6并发及前台检查；最终四并发20次P50改善、P95近乎不变，未达1秒，未发布。
 - [协议基准](../protocol/app-server-v2/README.md)：固定快照的版本、来源和使用边界。
 
 ## 当前发布入口
