@@ -85,6 +85,7 @@ import XCTest
     }
     func testCodeAndTableSelectionMenus() {
         var app = fixture()
+        app.switches["code.wrap-toggle"].firstMatch.tap()
         select(app.textViews["code.selectable"].firstMatch, app: app, x: 0.25, y: 0.5)
         app.menuItems["加入聊天"].tap(); XCTAssertTrue(any("composer.quote", in: app).waitForExistence(timeout: 5))
         app.terminate(); app = fixture()

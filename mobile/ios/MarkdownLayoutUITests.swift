@@ -66,6 +66,24 @@ import UIKit
         XCTAssertEqual(view.value as? String, code)
         XCTAssertLessThanOrEqual(view.frame.width, app.frame.width - 32, "等宽长行不能通过撑宽横向滚动区避开换行")
         XCTAssertGreaterThan(view.frame.height, 100, "长代码行须在卡片内完整换行")
+        let toggle = app.switches["code.wrap-toggle"].firstMatch
+        XCTAssertEqual(toggle.value as? String, "1", "代码块默认自动换行")
+        let wrappedHeight = view.frame.height
+        toggle.tap()
+        XCTAssertEqual(toggle.value as? String, "0")
+        XCTAssertGreaterThan(view.frame.width, app.frame.width, "关闭换行后保留原始长行并允许横向滚动")
+        XCTAssertLessThan(view.frame.height, wrappedHeight)
+        XCTAssertEqual(view.value as? String, code, "切换不得插入换行或改写代码")
+        let unwrapped = XCTAttachment(screenshot: app.screenshot()); unwrapped.name = "代码关闭换行"; unwrapped.lifetime = .keepAlways; add(unwrapped)
+        let originalX = view.frame.minX
+        view.swipeLeft()
+        XCTAssertLessThan(view.frame.minX, originalX, "关闭换行后须能实际横向滚动代码")
+        XCTAssertEqual(view.value as? String, code)
+        toggle.tap()
+        XCTAssertEqual(toggle.value as? String, "1")
+        XCTAssertLessThanOrEqual(view.frame.width, app.frame.width - 32)
+        XCTAssertEqual(view.frame.height, wrappedHeight, accuracy: 1)
+        XCTAssertEqual(view.value as? String, code)
         let screenshot = XCTAttachment(screenshot: app.screenshot()); screenshot.name = "等宽代码自动换行"; screenshot.lifetime = .keepAlways; add(screenshot)
     }
 
@@ -77,5 +95,31 @@ import UIKit
         XCTAssertTrue(body.waitForExistence(timeout: 10))
         XCTAssertTrue((body.value as? String)?.contains(digest) == true)
         let screenshot = XCTAttachment(screenshot: app.screenshot()); screenshot.name = "发布回复-列表续行与SHA"; screenshot.lifetime = .keepAlways; add(screenshot)
+    }
+
+    func testCodeWrapSwitchesAreIndependentAndCopyKeepsOriginalLines() {
+        continueAfterFailure = false
+        let code = String(repeating: "abcdef0123456789", count: 6) + "\nend"
+        let app = XCUIApplication()
+        app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-code-wrap-toggle-fixture", "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryL", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
+        app.launch()
+        let toggles = app.switches.matching(identifier: "code.wrap-toggle")
+        XCTAssertTrue(toggles.element(boundBy: 1).waitForExistence(timeout: 10))
+        let second = app.textViews.matching(NSPredicate(format: "identifier == %@ AND value == %@", "code.selectable", "second_" + code)).firstMatch
+        let secondHeight = second.frame.height
+        toggles.element(boundBy: 0).tap()
+        XCTAssertEqual(toggles.element(boundBy: 0).value as? String, "0")
+        XCTAssertEqual(toggles.element(boundBy: 1).value as? String, "1", "每个代码块独立控制换行")
+        XCTAssertEqual(second.frame.height, secondHeight, accuracy: 1)
+        XCTAssertLessThanOrEqual(second.frame.width, app.frame.width - 32)
+        let screenshot = XCTAttachment(screenshot: app.screenshot()); screenshot.name = "代码块独立换行开关"; screenshot.lifetime = .keepAlways; add(screenshot)
+
+        app.buttons.matching(identifier: "code.copy").element(boundBy: 0).tap()
+        let input = app.descendants(matching: .any).matching(identifier: "message-input").firstMatch
+        input.tap(); input.press(forDuration: 1.2)
+        let paste = app.menuItems.matching(NSPredicate(format: "label IN %@", ["粘贴", "Paste"])).firstMatch
+        XCTAssertTrue(paste.waitForExistence(timeout: 5), app.debugDescription)
+        paste.tap()
+        XCTAssertEqual(input.value as? String, code, "关闭换行后的复制必须保留完整长行与原始换行")
     }
 }

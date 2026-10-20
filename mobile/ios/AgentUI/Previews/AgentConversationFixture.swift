@@ -151,6 +151,10 @@ final class AgentConversationFixture {
             let code = String(repeating: "0123456789abcdef", count: 16) + "\nreturn " + String(repeating: "TOKEN_", count: 32)
             value.messages = [NativeMessage(id: "monospace-wrap", role: "assistant", text: "长等宽序列应完整换行，复制保留原文。\n\n```text\n" + code + "\n```", phase: "final_answer")]
         }
+        if ProcessInfo.processInfo.arguments.contains("--agent-code-wrap-toggle-fixture") {
+            let code = String(repeating: "abcdef0123456789", count: 6) + "\nend"
+            value.messages = [NativeMessage(id: "code-wrap-toggle", role: "assistant", text: "```text\n" + code + "\n```\n\n```text\nsecond_" + code + "\n```", phase: "final_answer")]
+        }
         if ProcessInfo.processInfo.arguments.contains("--agent-confirmation-controls-fixture") {
             value.panel = NativePanel(id: "confirmation:workspace:fixture:1", title: "确认操作", items: [
                 NativePanelItem(id: "confirmation-yes", kind: "action", title: "确认", text: "归档后，此会话将从列表中移除。确定归档吗？", command: NativeCommand(name: "confirmation.answer", params: ["key": .string("confirmation:workspace:fixture:1"), "confirmed": .bool(true)])),
