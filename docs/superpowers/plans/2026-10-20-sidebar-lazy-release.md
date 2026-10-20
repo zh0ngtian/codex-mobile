@@ -28,18 +28,18 @@
 
 ### 3. 推送并交协调器发布
 
-- [ ] 按中文Conventional Commits提交整合结果并推送，验证精确SHA远端存在。
-- [ ] 生成仓库外validation，包含真实passed的 `adapter-regression`、`coordinator-recovery`、`build-contract`、`typecheck` 及命令/结果日志。
-- [ ] 两任务ready同一SHA，等待协调器分别完成；不修改冻结工作区，不独立运行正式发包入口。
-- [ ] 失败保持原批次不可变；必要关联修复绑定最新失败叶节点，不resume已失败批次。
+- [x] 按中文Conventional Commits提交整合结果并推送，验证精确SHA远端存在。
+- [x] 生成仓库外validation，包含真实passed的 `adapter-regression`、`coordinator-recovery`、`build-contract`、`typecheck` 及命令/结果日志。
+- [x] 两任务ready同一SHA，等待协调器分别完成；不修改冻结工作区，不独立运行正式发包入口。
+- [x] 失败保持原批次不可变；必要关联修复绑定最新失败叶节点，不resume已失败批次。
 
 ### 4. 验收与交付
 
-- [ ] 核对客户端和网关成功receipt、任务祖先、冻结SHA与实际main。
-- [ ] 核对GitHub APK/unsigned IPA、固定LAN APK/已签名IPA、HTTPS OTA及软件源unsigned版本/中文日志/保留署名。
-- [ ] 核对网关部署摘要、实际launchd进程、监听与认证接口；不把模拟器验证当作真机覆盖安装。
-- [ ] 更新交互状态与发布凭证记录，提交并推送文档；停止本任务heartbeat。
-- [ ] 最终提供固定OTA安装页、APK与已签名IPA的版本、字节大小和完整SHA-256。
+- [x] 核对客户端和网关成功receipt、任务祖先、冻结SHA与实际main。
+- [x] 核对GitHub APK/unsigned IPA、固定LAN APK/已签名IPA、HTTPS OTA及软件源unsigned版本/中文日志/保留署名。
+- [x] 核对网关部署摘要、实际launchd进程、监听与认证接口；不把模拟器验证当作真机覆盖安装。
+- [x] 更新交互状态与发布凭证记录，提交并推送文档；停止本任务heartbeat。
+- [x] 最终提供固定OTA安装页、APK与已签名IPA的版本、字节大小和完整SHA-256。
 
 ## 整合检查记录
 
@@ -47,3 +47,9 @@
 - 发布Python212项、构建契约20文件143项、类型检查与前后端构建通过。原生临时工程首轮因残留嵌套assets与平铺资源重复而未进入测试，清理生成目录后重试通过2项，耗时61.2秒；包含五条窗口及运行过程完成状态，真实源码同步核对。
 
 最终161文件1843项完整回归通过（105.47秒），原生2项整合测试通过且已检查导出截图。类型检查、前后端构建、212项Python回归、单列适配器40项/恢复36项及构建契约143项均通过；测试后的普通模拟器安装、原注册配置已恢复，无真实测试会话。本轮没有新增生产功能或修改呈现逻辑，测试断言维护以既有已批准行为为准。
+
+## 正式发布结果
+
+已合入main并发布0.3.19（3019）。客户端成功批次`0d407093-ef66-4856-96b9-f802fe0cf8ab`，冻结`5da3e6c4311917f594a4e8a4827db7f335e448a7`；网关成功批次`bd7287de-0ffa-410b-865f-8eecee53cebd`，冻结`d8510b43b753883b7019c2fc43a0c78a010dafff`。两目标均包含已验证任务提交`3507a21e0b97492be1efde79c4d238f4783afe02`，无失败或关联重发批次。GitHub双端Release、固定LAN APK/Ad Hoc已签名IPA、HTTPS OTA、unsigned软件源均通过协调验收；另独立核对LAN JSON/HEAD/完整GET与HTTPS页面、软件源中文日志和开发者保留。网关原launchd部署、实际进程与摘要核对通过。未进行真机覆盖安装和数据保留验收。
+
+[公共发布凭证](evidence/2026-10-20-sidebar-lazy-release.json)保存版本、任务包含、渠道URL/字节数/散列和成功批次。测量数据仍为发布前样本，不冒充该正式包真机性能。文档收尾不重建安装包、不更改冻结清单。
