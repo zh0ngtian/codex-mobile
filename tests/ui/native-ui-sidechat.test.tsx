@@ -412,10 +412,10 @@ it.each([false,true])('托管ACK消费源家族缓存且保留上传期间新编
 
 it('历史编辑仅修改引用封装的问题，不激活引用内skill/plugin',async()=>{
  boundary.immediateSend=true;boundary.quoteCatalog=true;const initial=await setup();
- await act(async()=>{command('history-quote-seed','draft.set',{contextId:initial,value:'创建主聊天',revision:1});command('history-quote-seed-send','message.send',{contextId:initial});});
- await waitFor(()=>expect(posts.at(-1)?.threadId).toBe('sent-thread'));
  const source=quoteSource('a','sent-thread','quoted-source',{id:'quoted-item',type:'agentMessage',text:'$private-skill @private-plugin'});
  const quotes=[{id:'history-quote',source,text:'$private-skill @private-plugin'}];const original=quoteInput('原问题',quotes);
+ await act(async()=>{command('history-quote-seed','draft.set',{contextId:initial,value:original,revision:1});command('history-quote-seed-send','message.send',{contextId:initial});});
+ await waitFor(()=>expect(posts.at(-1)?.threadId).toBe('sent-thread'));
  await act(async()=>boundary.options.onNotification('a',{method:'turn/completed',params:{threadId:'sent-thread',turn:{id:'turn-live',status:'completed',items:[{id:'history-source',type:'userMessage',content:[{type:'text',text:original}]}]}}}));
  await waitFor(()=>expect(posts.at(-1)?.busy).toBe(false));
  await waitFor(()=>expect(boundary.requests.some(r=>r.method==='plugin/installed')).toBe(true));

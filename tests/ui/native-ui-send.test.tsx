@@ -495,7 +495,7 @@ it('历史编辑连续change与submit消费最新文本并同步占用提交状�
 });
 it('原位历史编辑失败恢复目标草稿和原附件，重试保留同轮此前消息并只回退一次', async () => {
  const contextId = await setup(); boundary.immediateSend = true;
- await act(async () => { command('history-failure-draft', 'draft.set', { contextId, value: '创建对话', revision: 1 }); command('history-failure-send', 'message.send', { contextId }); });
+ await act(async () => { command('history-failure-draft', 'draft.set', { contextId, value: '同轮此前消息', revision: 1 }); command('history-failure-send', 'message.send', { contextId }); });
  await waitFor(() => expect(posts.at(-1)?.threadId).toBe('sent-thread'));
  await act(async () => boundary.options.onNotification('a', { method: 'turn/completed', params: { threadId: 'sent-thread', turn: { id: 'turn-live', status: 'completed', items: [
   { id: 'before', type: 'userMessage', content: [{ type: 'text', text: '同轮此前消息' }, { type: 'localImage', path: '/cache/before.png' }] },
