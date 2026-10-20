@@ -3477,8 +3477,9 @@ function BackendWorkspace({
     if (followUp.state === "sending" || followUp.state === "uncertain") return;
     setSteering(true);
     setError("");
-    const steer = busy && Boolean(activeTurnId(activeRef.current));
-    if (steer) setPendingSteerMessage({ id: followUp.id, threadId: followUp.threadId, text: followUp.text });
+    const turnId = activeTurnId(activeRef.current);
+    const steer = busy && Boolean(turnId);
+    if (steer && turnId) setPendingSteerMessage({ id: followUp.id, threadId: followUp.threadId, turnId, text: followUp.text });
     try {
       await mutateHostedQueue({ action: steer ? "steer" : "retry", id, revision: followUp.revision! });
       if (steer) releaseQueueSubmission(followUp.threadId, id);
@@ -4484,7 +4485,7 @@ function BackendWorkspace({
     },
     cancelQueued: cancelQueuedFollowUp, sendQueued: actOnQueuedFollowUp, editQueued: editQueuedFollowUp,
     extended: {
-      state: { quotes, quoteFocusToken, sidechatActive: !!activeSidechat, sidechatParentId, sidechatActions, approvalThreadTitle: approval ? completionThreadTitle({ threadId: String((approval.params as AnyRecord)?.threadId ?? ""), threads, activeThread: active, fallback: t("新对话") }) : undefined, historyEdit, pendingSteerText: pendingSteerMessage?.threadId === String(active?.id) ? pendingSteerMessage.text : null, steering, queueSaving, steerable: !activeSidechat && Boolean(activeTurnId(active)), requests, approval, userAnswers, approvalSubmitting: approvalRequests.submitting, approvalError: approvalRequests.error, permissionModes, selectedPermissionModeId,
+      state: { quotes, quoteFocusToken, sidechatActive: !!activeSidechat, sidechatParentId, sidechatActions, approvalThreadTitle: approval ? completionThreadTitle({ threadId: String((approval.params as AnyRecord)?.threadId ?? ""), threads, activeThread: active, fallback: t("新对话") }) : undefined, historyEdit, pendingSteerMessage: pendingSteerMessage?.threadId === String(active?.id) ? pendingSteerMessage : null, steering, queueSaving, steerable: !activeSidechat && Boolean(activeTurnId(active)), requests, approval, userAnswers, approvalSubmitting: approvalRequests.submitting, approvalError: approvalRequests.error, permissionModes, selectedPermissionModeId,
         selectedServiceTier: displayedServiceTier, speedOptions, pendingAction, tokenUsage: tokenUsageByThread[active?.id] ?? null, rateLimits,
         projectOptions, backends, draftSaveStatus, activeThreadAccessMode, activeThreadResumeError },
       callbacks: { currentHistoryEdit: () => historyEditRef.current, currentApproval: approvalRequests.current, readRemoteFile: (path: string) => { const client = clientRef.current; if (!client) throw new Error(t('尚未连接 app-server')); return client.request<{ dataBase64: string }>('fs/readFile', { path }); }, chooseSpeed, choosePermissionMode, replyToRequest, changeHistoricalMessageEditText, cancelHistoricalMessageEdit,
