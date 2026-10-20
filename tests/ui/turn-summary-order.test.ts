@@ -59,4 +59,17 @@ describe('完成后的摘要同步顺序', () => {
     const [result] = reconcileRecentTurns([turn([final, user, commentary])], [turn([user, commentary, final])]);
     expect(itemIDs(result)).toEqual(['u', 'c', 'f']);
   });
+
+  it('摘要确认本地用户身份时去重，保留用户与过程在回答之前的位置', () => {
+    const current = turn([{ ...user, id: 'local-u' }, commentary, final]);
+    const [result] = reconcileRecentTurns([current], [summary()]);
+    expect(itemIDs(result)).toEqual(['u', 'c', 'f']);
+    expect(result.items.filter((item: Record<string, any>) => item.type === 'userMessage')).toHaveLength(1);
+  });
+
+  it('摘要中相同文字的不同正式用户消息仍独立保留，不因保序误合并', () => {
+    const steer = { ...user, id: 'steer' };
+    const [result] = reconcileRecentTurns([turn([user, commentary, final])], [summary([user, steer, final])]);
+    expect(itemIDs(result)).toEqual(['u', 'c', 'steer', 'f']);
+  });
 });

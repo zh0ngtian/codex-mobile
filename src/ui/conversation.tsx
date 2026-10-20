@@ -1,4 +1,5 @@
 import { decodeUserMessage } from '../../server/user-message-format';
+import { confirmLocalUserMessages, mergeConfirmedUserMessage, type UserMessageMatchOptions } from '../app-server/user-message-reconciliation';
 import { parseRemoteFileHref } from './remote-file-target';
 export { parseRemoteFileHref } from './remote-file-target';
 export type { RemoteFileTarget } from './remote-file-target';
@@ -490,18 +491,13 @@ export function splitTurnResponseSegments(
 function mergeTurnItems(
   currentItems: ConversationRecord[],
   incomingItems: ConversationRecord[],
+  options: UserMessageMatchOptions = {},
 ) {
-  const merged = [...currentItems];
+  const merged = confirmLocalUserMessages(currentItems, incomingItems, options);
   for (const item of incomingItems) {
-    let index = merged.findIndex((current) => current.id === item.id);
-    if (index < 0 && item.type === "userMessage") {
-      index = merged.findIndex(
-        (current) =>
-          current.type === "userMessage" &&
-          String(current.id ?? "").startsWith("local-"),
-      );
-    }
-    if (index >= 0) merged[index] = { ...merged[index], ...item };
+    const index = merged.findIndex((current) => current.id === item.id);
+    if (index >= 0) merged[index] = item.type === "userMessage"
+      ? mergeConfirmedUserMessage(merged[index], item) : { ...merged[index], ...item };
     else merged.push(item);
   }
   return merged;
@@ -529,7 +525,9 @@ export function applyTurnStarted(
   const replacement = {
     ...(existing ?? {}),
     ...incoming,
-    items: mergeTurnItems(existing?.items ?? [], incoming.items ?? []),
+    items: mergeTurnItems(existing?.items ?? [], incoming.items ?? [], {
+      allowImageSourceChange: String(existing?.id ?? "").startsWith("pending-"),
+    }),
   };
   return {
     ...thread,
@@ -614,24 +612,21 @@ export function reconcileRecentTurns(
   const mergeItems = (
     currentItems: ConversationRecord[],
     incomingItems: ConversationRecord[],
+    options: UserMessageMatchOptions,
     preserveCurrentOrder = false,
   ) => {
+    currentItems = confirmLocalUserMessages(currentItems, incomingItems, options);
     const used = new Set<number>();
     const replacements = new Map<number, ConversationRecord>();
     const ordered = incomingItems.map((incoming) => {
-      let currentIndex = currentItems.findIndex(
+      const currentIndex = currentItems.findIndex(
         (current, index) => !used.has(index) && current.id === incoming.id,
       );
-      if (currentIndex < 0 && incoming.type === "userMessage") {
-        currentIndex = currentItems.findIndex(
-          (current, index) =>
-            !used.has(index) && current.type === "userMessage",
-        );
-      }
       if (currentIndex < 0) return incoming;
       used.add(currentIndex);
       const current = currentItems[currentIndex];
-      const merged = { ...current, ...incoming };
+      const merged = incoming.type === "userMessage"
+        ? mergeConfirmedUserMessage(current, incoming) : { ...current, ...incoming };
       // 同一回复的流式文本只会追加；旧快照的短前缀不能擦掉已显示的内容。
       if (current.type === "agentMessage" && incoming.type === "agentMessage" &&
         typeof current.text === "string" && typeof incoming.text === "string" &&
@@ -665,9 +660,14 @@ export function reconcileRecentTurns(
   ) => {
     const staleProgress = ["completed", "failed", "interrupted", "cancelled"].includes(current.status) &&
       ["inProgress", "in_progress", "running"].includes(incoming.status);
+    const options = { allowImageSourceChange: pendingTurn(current) };
+    // 旧运行快照反向合并时，也要先确认已完成一侧持有的 local-*。
+    const currentItems = staleProgress
+      ? confirmLocalUserMessages(current.items ?? [], incoming.items ?? [], options)
+      : current.items ?? [];
     const merged: ConversationRecord = staleProgress
-      ? { ...incoming, ...current, items: mergeItems(incoming.items ?? [], current.items ?? []) }
-      : { ...current, ...incoming, items: mergeItems(current.items ?? [], incoming.items ?? [], incoming.itemsView === "summary") };
+      ? { ...incoming, ...current, items: mergeItems(incoming.items ?? [], currentItems, options) }
+      : { ...current, ...incoming, items: mergeItems(currentItems, incoming.items ?? [], options, incoming.itemsView === "summary") };
     delete merged.clientSequence;
     return merged;
   };
