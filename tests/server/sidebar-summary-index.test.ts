@@ -104,4 +104,11 @@ describe("网关边栏摘要索引", () => {
     const latest = await f.index.projectless(params); f.index.setEpoch("two");
     await expect(f.index.projectless({ ...params, cursor: latest.nextCursor })).rejects.toThrow(/分页/);
   });
+
+  it("其他项目的关注或未读变化不应使本组游标失效", async () => {
+    const f = fixture(), threadIds = [...f.records.keys()];
+    const first = await f.index.projectless({ threadIds, excludedThreadIds: ["another-project"] });
+    const next = await f.index.projectless({ threadIds, excludedThreadIds: [], fixedExcludedThreadIds: ["another-pin"], cursor: first.nextCursor });
+    expect(next.data.map(thread => thread.id)).toEqual(["6", "5", "4", "3", "2"]);
+  });
 });

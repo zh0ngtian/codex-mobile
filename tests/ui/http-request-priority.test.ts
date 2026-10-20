@@ -4,6 +4,12 @@ import { HttpRpcTransport } from "../../src/backends/http-transport";
 import { fetchBackendProjectState } from "../../src/backends/probe";
 import { runWorkspaceBootstrap } from "../../src/backends/workspace-bootstrap";
 
+// 保留原有双并发压力场景；生产默认四并发及不同上限另由调度器回归覆盖。
+vi.mock("../../src/backends/http-request-scheduler", async importOriginal => {
+  const actual = await importOriginal<typeof import("../../src/backends/http-request-scheduler")>();
+  return { ...actual, httpRequestScheduler: new actual.HttpRequestScheduler(2) };
+});
+
 const transports: HttpRpcTransport[] = [];
 afterEach(async () => {
   transports.splice(0).forEach((transport) => transport.close());

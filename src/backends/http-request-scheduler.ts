@@ -11,8 +11,9 @@ interface OriginRequests {
 }
 
 /** 同一网关的多个设备配置共享后台名额；前台不排在列表刷新后面。 */
-class HttpRequestScheduler {
+export class HttpRequestScheduler {
   private readonly origins = new Map<string, OriginRequests>();
+  constructor(private readonly backgroundLimit = 4) {}
 
   run<T>(origin: string, priority: HttpRequestPriority, signal: AbortSignal | undefined, operation: () => Promise<T>): Promise<T> {
     if (signal?.aborted) return Promise.reject(signal.reason);
@@ -27,7 +28,7 @@ class HttpRequestScheduler {
       if (!current.foreground && !current.background && !current.queued.length) this.origins.delete(origin);
     };
     const drain = () => {
-      while (!current.foreground && current.background < 2 && current.queued.length) current.queued.shift()!.start();
+      while (!current.foreground && current.background < this.backgroundLimit && current.queued.length) current.queued.shift()!.start();
       idle();
     };
     return new Promise<T>((resolve, reject) => {

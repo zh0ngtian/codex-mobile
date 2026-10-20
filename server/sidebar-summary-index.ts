@@ -126,8 +126,10 @@ export class SidebarSummaryIndex {
     const epoch = this.epoch;
     this.checkEpoch(epoch);
     const normalize = (ids: string[] = []) => [...new Set(ids)].sort();
+    const candidates = normalize(params.threadIds), candidateIds = new Set(candidates);
+    const relevant = (ids?: string[]) => normalize(ids).filter(id => candidateIds.has(id));
     const scope = createHash("sha256").update(JSON.stringify([
-      normalize(params.threadIds), normalize(params.excludedThreadIds), normalize(params.fixedExcludedThreadIds),
+      candidates, relevant(params.excludedThreadIds), relevant(params.fixedExcludedThreadIds),
     ])).digest("hex");
     const now = Date.now();
     for (const [key, page] of this.pages) if (page.expires < now) this.pages.delete(key);
@@ -141,7 +143,7 @@ export class SidebarSummaryIndex {
       // 游标固定顺序，状态变化仍核对；旧快照不能把已归档或结束运行的记录带回来。
       threads = (await Promise.all(page.ids.map(id => this.read(id, epoch)))).filter(accepted);
     } else {
-      const records = await Promise.all(normalize(params.threadIds).filter(id => !fixed.has(id)).map(id => this.read(id, epoch)));
+      const records = await Promise.all(candidates.filter(id => !fixed.has(id)).map(id => this.read(id, epoch)));
       threads = records.filter(accepted).sort(compare);
     }
     this.checkEpoch(epoch);
