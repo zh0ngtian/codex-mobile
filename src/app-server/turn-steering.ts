@@ -3,6 +3,7 @@ type DisplayRecord = Record<string, any>;
 export type PendingSteerMessage = {
   id: string;
   threadId: string;
+  turnId: string;
   text: string;
 };
 

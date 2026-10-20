@@ -1,4 +1,6 @@
 import { validateMessageQuote } from '../features/conversation/message-quotes';
+import { decodeUserMessage } from '../../server/user-message-format';
+import { clearPendingSteerForTimeline, type PendingSteerMessage } from '../app-server/turn-steering';
 import type { ImageGenerationError } from '../backends/image-generation-error';
 import { projectToolPanel, projectFilePanel, projectAttachmentPreview, type NativeAttachmentPreview, useNativeRichContent, type NativeFileState } from './rich-content';
 import { workspaceBusinessPanels } from './workspace-panels';
@@ -83,7 +85,22 @@ export function createWorkspaceAdapter(c: NativeWorkspaceController, panel: Pane
   const messages = projectConversation(c.active, path => remoteImagePreviewUrl(c.backend, path), path => remoteImagePreviewUrl(c.backend, path, false), path => remoteFilePreviewUrl(c.backend, path), c.backend.id, path => remoteFileDownloadUrl(c.backend, path));
   if (state.sidechatActive) for (const message of messages) message.actions = message.actions?.filter(action => action.command?.name !== 'message.edit');
   if (c.busy && c.active?.mobilePlan?.length) messages.push({ id: 'running-plan', role: 'activity', activityKind: 'plan', text: '', blocks: [{ id: 'plan', kind: 'section', title: t('执行计划'), children: c.active.mobilePlan.map((step: any, index: number) => ({ id: `plan:${index}:${step.step}`, kind: 'text', title: `${step.status === 'completed' ? '✓' : step.status === 'inProgress' ? '●' : '○'} ${step.step}`, text: step.status })) }] });
-  if (c.extended?.state.pendingSteerText) messages.push({ id: 'pending-steer', role: 'activity', text: String(c.extended.state.pendingSteerText), status: t('正在引导') });
+  const pendingSteer = state.pendingSteerMessage as PendingSteerMessage | null | undefined;
+  if (pendingSteer && pendingSteer.threadId === c.active?.id && clearPendingSteerForTimeline(pendingSteer, c.active)) {
+    const turns = c.active?.turns ?? [];
+    const targetIndex = turns.findIndex((turn: RecordValue) => turn.id === pendingSteer.turnId);
+    const group = targetIndex >= 0 ? groupConversationTurns(turns.slice(0, targetIndex + 1)).at(-1) : undefined;
+    if (group) {
+      const id = `pending-steer:${pendingSteer.id}`;
+      const parsed = decodeUserMessage(pendingSteer.text);
+      const belongsToGroup = (message: NativeSnapshot['messages'][number]) => message.id.startsWith(`${group.id}:`);
+      const processIndex = messages.findIndex(message => belongsToGroup(message) && message.role !== 'user');
+      // 与正式引导相同：位于本逻辑回合用户区，不能成为过程条目或移动较早回合。
+      const insertAt = processIndex >= 0 ? processIndex : messages.reduce((last, message, index) => belongsToGroup(message) ? index : last, -1) + 1;
+      messages.splice(insertAt, 0, { id, role: 'user', text: parsed.body, rawText: pendingSteer.text, references: parsed.references,
+        actions: [nativeAction(`${id}:copy`, t('复制'), 'message.copy', { id })] });
+    }
+  }
   const caretOffset = Math.max(0, Math.min(c.draft.length, c.caretOffset ?? c.draft.length));
   const mention = skillMentionAt(c.draft, caretOffset);
   const mentions = mention ? [

@@ -44,6 +44,7 @@ describe("运行中引导", () => {
     const pending = {
       id: "steer-1",
       threadId: "thread-1",
+      turnId: "turn-1",
       text: "先运行测试",
     };
 
@@ -57,6 +58,7 @@ describe("运行中引导", () => {
     const pending = {
       id: "steer-1",
       threadId: "thread-1",
+      turnId: "turn-1",
       text: "继续",
     };
 
@@ -105,6 +107,7 @@ describe("运行中引导", () => {
     const pending = {
       id: "steer-1",
       threadId: "thread-1",
+      turnId: "turn-1",
       text: "继续",
     };
 

@@ -20,6 +20,58 @@ function controller(overrides: Partial<NativeWorkspaceController> = {}): NativeW
 }
 
 describe('AgentApp 真实展示契约', () => {
+  it('待确认引导保持用户气泡，放在所属回合过程前且不改原始消息', () => {
+    const pending = { id: 'steer-request', threadId: 't', turnId: 'turn', text: '顺便把这个改了：运行过程中默认展开执行过程' };
+    const active = { id: 't', turns: [
+      { id: 'previous', status: 'completed', items: [{ id: 'old', type: 'agentMessage', phase: 'final_answer', text: '上轮回答' }] },
+      { id: 'turn', status: 'inProgress', items: [
+        { id: 'u', type: 'userMessage', text: '修复后合入主分支，先不发布' },
+        { id: 'c', type: 'agentMessage', phase: 'commentary', text: '正在检查' },
+      ] },
+    ] };
+    const before = JSON.stringify(active);
+    const messages = createWorkspaceAdapter(controller({ active, busy: true, extended: { state: { pendingSteerMessage: pending }, callbacks: {} } }), panel).snapshot.messages;
+    expect(messages.map(message => message.role)).toEqual(['assistant', 'user', 'user', 'assistant']);
+    expect(messages[2]).toMatchObject({ role: 'user', text: pending.text });
+    expect(messages[2].timestamp).toBeUndefined();
+    expect(messages[2].commentary).toBeUndefined();
+    expect(messages[2].actions?.map(action => action.command?.name)).toEqual(['message.copy']);
+    expect(messages[3]).toMatchObject({ phase: 'commentary', commentaryIsLiveTail: true });
+    expect(JSON.stringify(active)).toBe(before);
+  });
+
+  it('正式引导到达但临时状态尚未清理时只显示一个气泡，同文不同身份仍保留', () => {
+    const pending = { id: 'steer-request', threadId: 't', turnId: 'turn', text: '继续检查' };
+    const item = { id: 'confirmed', clientId: pending.id, type: 'userMessage', text: pending.text };
+    const snapshot = (items: any[], value = pending) => createWorkspaceAdapter(controller({ busy: true,
+      active: { id: 't', turns: [{ id: 'turn', status: 'inProgress', items }] },
+      extended: { state: { pendingSteerMessage: value }, callbacks: {} },
+    }), panel).snapshot;
+    expect(snapshot([item]).messages).toHaveLength(1);
+    expect(snapshot([{ ...item, clientId: 'other-request' }]).messages.filter(message => message.role === 'user')).toHaveLength(2);
+    expect(snapshot([item], { ...pending, threadId: 'other-thread' }).messages).toHaveLength(1);
+  });
+
+  it('延续回合的待确认引导仍在逻辑回合用户区，不进入历史过程', () => {
+    const pending = { id: 'steer-request', threadId: 't', turnId: 'continuation', text: '再检查构建' };
+    const messages = createWorkspaceAdapter(controller({ busy: true, active: { id: 't', turns: [
+      { id: 'turn', status: 'completed', items: [{ id: 'u', type: 'userMessage', text: '检查' }, { id: 'c', type: 'agentMessage', phase: 'commentary', text: '之前过程' }] },
+      { id: 'continuation', status: 'inProgress', items: [{ id: 'f', type: 'agentMessage', phase: 'final_answer', text: '流式回答' }] },
+    ] }, extended: { state: { pendingSteerMessage: pending }, callbacks: {} } }), panel).snapshot.messages;
+    expect(messages.map(message => message.role)).toEqual(['user', 'user', 'activity', 'assistant']);
+    expect(messages[1].text).toBe(pending.text);
+    expect(messages[2].commentary?.map(entry => entry.text)).toEqual(['之前过程']);
+  });
+
+  it('刚开始且尚无消息的延续回合仍显示待确认用户气泡', () => {
+    const pending = { id: 'steer-request', threadId: 't', turnId: 'continuation', text: '继续检查' };
+    const messages = createWorkspaceAdapter(controller({ busy: true, active: { id: 't', turns: [
+      { id: 'turn', status: 'completed', items: [{ id: 'u', type: 'userMessage', text: '检查' }] },
+      { id: 'continuation', status: 'inProgress', items: [] },
+    ] }, extended: { state: { pendingSteerMessage: pending }, callbacks: {} } }), panel).snapshot.messages;
+    expect(messages.map(message => [message.role, message.text])).toEqual([['user', '检查'], ['user', pending.text]]);
+  });
+
   it('当前回合过程在运行中默认展开，结束后折叠且不影响较早回合', () => {
     const items = [
       { id: 'u', type: 'userMessage', text: '检查项目' },
