@@ -30,8 +30,8 @@
 - [x] 在上游协调器源码目录执行 `python3 -B -m unittest discover -s tests -p 'test_*.py'`，预期恢复及租约回归通过，对应 `coordinator-recovery`。
 - [x] `NODE_OPTIONS=--no-experimental-webstorage npm test -- tests/ci --maxWorkers=2 --testTimeout=60000`，预期构建契约通过，对应 `build-contract`。
 - [x] `npm run typecheck` 与 `npm run build:server`，预期退出0，对应 `typecheck` 及网关部署前构建。
-- [ ] `git diff --check`、`git diff --cached --check`、核对暂存文件，使用中文 Conventional Commit 提交日志与计划并推送工作分支；不手工推进 main 或分配版本。
-- [ ] 生成真实 passed 验证 JSON，两个目标 ready 同一已推送 SHA。
+- [x] `git diff --check`、`git diff --cached --check`、核对暂存文件，使用中文 Conventional Commit 提交日志与计划并推送工作分支；不手工推进 main 或分配版本。
+- [x] 生成真实 passed 验证 JSON，两个目标 ready 同一已推送 SHA。
 
 ## 任务3：协调发布与网关部署
 
@@ -51,3 +51,16 @@
 - [ ] 核对网关实际 PID、监听、认证健康与部署文件摘要；仅作不创建生产聊天的安全路由探测。
 - [ ] 根据 receipt 同步文档和凭证，通过共享 main 锁提交推送收尾记录；停止 heartbeat，归档本次管理 worktree。
 - [ ] 交付正文给出固定 OTA 安装页、APK/IPA 下载链接、版本、大小、完整 SHA-256、IPA 已签名状态，以及网关部署结果。真机覆盖安装和数据保留仍按实际证据注明状态。
+
+## 任务5：首次客户端批次关联修复
+
+首次客户端批次 `f0c873c7-ee90-4ca4-b8ed-e1c437cc82c9` 分配0.3.22，在GitHub列表短暂遗漏已记录CI run时永久失败；原批次及仍运行的CI保留，不resume、不取消、不借用旧包。网关批次 `5ed02bd1-a5f7-4e06-b266-3f11014db3a5` 已成功部署同一原任务源码，修复只涉及发布核对脚本，不再次部署未变化的网关运行代码。
+
+**Files:** 修改 `scripts/codex_mobile_release_adapter.py`、`tests/ci/test_release_read_recovery.py`、`docs/release-coordination.md`。
+
+- [x] 对比原run列表、独立详情与冻结记录，确认run `39447223990` 的SHA、工作流及attempt与原记录一致。
+- [x] 先补列表遗漏、陈旧状态、详情身份变化/删除、已记录后的重复CI和网络故障回归；修复前得到8个失败子场景及1个错误，证实原实现会误判或忽略详情身份。
+- [x] 已记录run改用详情接口核对身份和状态，保留列表重复检查与严格SHA、路径、attempt校验；未知读结果不换run或重置预算。
+- [x] 41项只读恢复、217项完整项目发布回归、143项构建契约及类型检查通过；真实原run的详情身份已核对，未改动原批次。
+- [ ] 推送修复SHA并提交 `newchat-sidechat-client-repair-20261020` ready。
+- [ ] 等待新关联批次完成，核对原客户端任务实际recovered_by、客户端成功receipt与既有网关成功receipt，再完成渠道回验和文档收尾。

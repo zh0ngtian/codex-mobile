@@ -161,9 +161,52 @@ m.main()
 
     def test_recorded_run_attempt_cannot_be_replaced(self):
         self.a.progress('build', runId=123, attempt=1)
-        run = {**self.completed(), 'head_sha':self.a.frozen_sha, 'run_attempt':2}
-        with patch.object(self.a, 'gh_json', return_value={'workflow_runs':[run]}):
+        run = {**self.completed(), 'head_sha':self.a.frozen_sha, 'run_attempt':2, 'path':'.github/workflows/build-mobile.yml'}
+        with patch.object(self.a, 'gh_json', side_effect=lambda path, **kwargs: {'workflow_runs':[run]} if '/actions/workflows/' in path else run):
             with self.assertRaisesRegex(ValueError, 'attempt|运行'): self.a.ci_run()
+
+    def test_recorded_run_is_verified_directly_when_listing_temporarily_omits_it(self):
+        self.a.progress('build', runId=123, attempt=1)
+        run = {**self.completed(), 'head_sha':self.a.frozen_sha, 'path':'.github/workflows/build-mobile.yml'}
+        def github(path, **kwargs):
+            if '/actions/workflows/' in path: return {'workflow_runs':[]}
+            self.assertTrue(path.endswith('/actions/runs/123'))
+            self.assertTrue(kwargs.get('missing'))
+            return run
+        with patch.object(self.a, 'gh_json', side_effect=github):
+            self.assertEqual(self.a.ci_run(), run)
+        self.assertEqual(self.a.read_progress()['operations']['build']['runId'], 123)
+
+    def test_recorded_run_uses_canonical_status_instead_of_stale_listing(self):
+        self.a.progress('build', runId=123, attempt=1)
+        run = {**self.completed(), 'head_sha':self.a.frozen_sha, 'path':'.github/workflows/build-mobile.yml'}
+        with patch.object(self.a, 'gh_json', side_effect=lambda path, **kwargs: {'workflow_runs':[{**run,'status':'queued'}]} if '/actions/workflows/' in path else run):
+            self.assertEqual(self.a.ci_run()['status'], 'completed')
+
+    def test_canonical_run_identity_changes_and_actual_removal_remain_permanent(self):
+        self.a.progress('build', runId=123, attempt=1)
+        run = {**self.completed(), 'head_sha':self.a.frozen_sha, 'path':'.github/workflows/build-mobile.yml'}
+        for changed in [None, {**run,'head_sha':'c'*40}, {**run,'path':'.github/workflows/other.yml'}, {**run,'id':456}, {**run,'run_attempt':2}]:
+            with self.subTest(changed=changed), patch.object(self.a, 'gh_json', side_effect=lambda path, **kwargs: {'workflow_runs':[run]} if '/actions/workflows/' in path else changed):
+                with self.assertRaises(ValueError) as caught: self.a.ci_run()
+                self.assertNotIsInstance(caught.exception, self.m.TransientReadError)
+
+    def test_duplicate_official_runs_are_rejected_after_run_is_recorded(self):
+        self.a.progress('build', runId=123, attempt=1)
+        run = {**self.completed(), 'head_sha':self.a.frozen_sha, 'path':'.github/workflows/build-mobile.yml'}
+        with patch.object(self.a, 'gh_json', return_value={'workflow_runs':[run,{**run,'id':456}]}):
+            with self.assertRaisesRegex(ValueError, '重复'): self.a.ci_run()
+
+    def test_recorded_run_direct_read_network_error_keeps_original_identity(self):
+        self.a.progress('build', runId=123, attempt=1)
+        run = {**self.completed(), 'head_sha':self.a.frozen_sha, 'path':'.github/workflows/build-mobile.yml'}
+        def github(path, **kwargs):
+            if '/actions/workflows/' in path: return {'workflow_runs':[run]}
+            raise self.m.TransientReadError('GET EOF')
+        with patch.object(self.a, 'gh_json', side_effect=github):
+            with self.assertRaises(self.m.TransientReadError): self.a.ci_run()
+        self.assertEqual(self.a.read_progress()['operations']['build']['runId'], 123)
+        self.assertEqual(self.a.read_progress()['operations']['build']['attempt'], 1)
 
     def test_download_verified_network_failure_is_typed_and_integrity_failure_is_not(self):
         expected = {'size':3, 'sha256':'c'*64}
@@ -399,6 +442,7 @@ m.main()
             raise AssertionError('unexpected external API')
         def gh_json(path, **kwargs):
             if '/actions/workflows/' in path: return {'workflow_runs':[{**self.completed(),'head_sha':self.a.frozen_sha}]}
+            if '/actions/runs/' in path: return {**self.completed(),'head_sha':self.a.frozen_sha,'path':'.github/workflows/build-mobile.yml'}
             if '/releases/tags/' in path:
                 return {'id':1,'html_url':'https://github.test/release','assets':[{'name':Path(item['path']).name,'size':item['size'],'digest':'sha256:'+item['sha256'],'browser_download_url':item['downloadUrl']} for item in artifacts.values()]}
             if '/commits/' in path: return {'sha':self.a.frozen_sha}

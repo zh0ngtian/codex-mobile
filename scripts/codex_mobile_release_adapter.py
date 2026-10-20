@@ -371,14 +371,20 @@ class Adapter:
     def ci_run(self):
         rows = self.gh_json(f'repos/{self.repo}/actions/workflows/build-mobile.yml/runs?head_sha={self.frozen_sha}&per_page=100')['workflow_runs']
         matches = [r for r in rows if r['head_sha'] == self.frozen_sha]
+        if len(matches) > 1: raise ValueError('同一冻结 SHA 存在重复正式 CI，保留诊断后人工关联修复')
         operation = self.read_progress().get('operations', {}).get('build', {})
         recorded = operation.get('runId')
         if recorded:
-            matches = [r for r in matches if r['id'] == recorded]
-            if not matches: raise ValueError('已记录 CI run 与冻结提交不匹配或丢失')
+            # 列表索引可能暂时遗漏或滞后；已登记run的身份和状态以独立详情接口核对。
+            run = self.gh_json(f'repos/{self.repo}/actions/runs/{recorded}', missing=True)
+            if (not run or run.get('id') != recorded or run.get('head_sha') != self.frozen_sha
+                    or run.get('path') != '.github/workflows/build-mobile.yml'):
+                raise ValueError('已记录 CI run 与冻结提交不匹配或丢失')
+            if matches and matches[0]['id'] != recorded:
+                raise ValueError('同一冻结 SHA 存在重复正式 CI，保留诊断后人工关联修复')
+            matches = [run]
             if operation.get('attempt') is not None and str(matches[0].get('run_attempt', 1)) != str(operation['attempt']):
                 raise ValueError('已记录 CI run/attempt 改变，不能借用重新运行的产物')
-        if len(matches) > 1: raise ValueError('同一冻结 SHA 存在重复正式 CI，保留诊断后人工关联修复')
         return matches[0] if matches else None
 
     def validate_build_receipt(self, receipt, platform):
