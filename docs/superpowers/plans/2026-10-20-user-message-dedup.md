@@ -42,7 +42,7 @@ expect(projectConversation({ id: threadId, turns: recovered }, path => path).fil
 - [x] 同步现行发送要求、验收要点、变更记录与实现/模拟器/发布状态。
 - [x] 完成相关测试、必要客户端构建及审查；本轮仅有合成会话，没有远端测试会话需要归档；已关闭夹具服务与本任务独立模拟器。
 - [x] 遵守中文 Conventional Commits，修复提交`12529315663da81a78e8b8e5076faf5a3052aaa2`已推送到`codex/user-message-dedup-20261020`。
-- [ ] 正式发布范围经用户确认后，按协调入口完成后续批次，记录真实状态，不把分支推送当成已发布。
+- [x] 用户确认“合入主分支先别发布”；本轮只整合源码，发布登记已撤回，未ready、不触发批次。
 
 ## 调查证据
 
@@ -51,9 +51,9 @@ expect(projectConversation({ id: threadId, turns: recovered }, path => path).fil
 ## 已取得的验证证据
 
 - 旧版原生UI断言在 `.mobile-build/user-message-dedup-red-5.xcresult` 明确失败为“2不等于1”；`.mobile-build/user-message-dedup-before.png` 可见两个相同用户气泡，夹具计数只有一次发送与一次回填。早先三轮设备引导以及等待进度文字的失败仅用于完善夹具，不作为缺陷红证据。
-- 第一轮修复版 `.mobile-build/user-message-dedup-green.xcresult` 完整用例通过：一次发送1条、两次同文2条、重启重开2条。最终源码加入审查补出的迟到摘要修复后，正在执行 `.mobile-build/user-message-dedup-final.xcresult`。
+- 第一轮修复版 `.mobile-build/user-message-dedup-green.xcresult` 完整用例通过：一次发送1条、两次同文2条、重启重开2条。随后补齐迟到摘要和图片/指令组合；最终结果以 `.mobile-build/user-message-dedup-delivery.xcresult` 为准，已通过。
 - 专项最初48项中30项失败、18项通过；审查再增加2条完成后旧摘要的回归，先失败再修复，最终专项50项通过。8文件281项定向回归与类型检查通过；两个历史编辑夹具仅修正发送seed，与completed正式首用户保持一致，全部原编辑/附件/引用断言保留，并在隔离旧源码中通过。
-- Node 26运行全量时采用现有CI的 `NODE_OPTIONS=--no-experimental-webstorage`，避免实验性全局localStorage遮蔽jsdom。未设参数的初始化失败不作为业务回归；正确参数下暴露的2处不一致夹具已修正，最终全量正在运行。
+- Node 26运行全量时采用现有CI的 `NODE_OPTIONS=--no-experimental-webstorage`，避免实验性全局localStorage遮蔽jsdom。未设参数的初始化失败不作为业务回归；正确参数下暴露的2处不一致夹具已修正，最终1789项全部通过。
 - 现有发布适配器212项、协调器恢复59项通过。跨ID pending回合的文字/图片认领保持基线；本轮只修复同一已确定回合内的消息确认，不扩大已有跨回合匹配契约。空正文且所有附件身份都缺失时不猜测对应输入，等待后续带身份的数据。
 - 质量审查用真实输入工厂补出“图片+Skill/插件”组合：主聊天乐观消息没有指令片段，正式消息却有；Sidechat完整输入经过程回填后也可能省略指令，旧身份计数会拒绝确认。新增真实构造回归先红，再仅排除已知`skill`/`mention`的身份比较，同时处理保留指令但省略图片的回填补图；未知片段继续比较。本轮最终验证须包含这项修复，前一次1773项全量及模拟器绿测属于审查前版本，不能替代最终结果。
 
@@ -63,4 +63,6 @@ expect(projectConversation({ id: threadId, turns: recovered }, path => path).fil
 
 `.mobile-build/user-message-dedup-delivery.xcresult` 最终原生UI用例52.312秒通过，覆盖一次发送1条、两次同文2条及重启重开2条；最终前端资源由本worktree正常Vite构建后进入隔离原生容器，没有测试逻辑进入生产源码。最终截图为`.mobile-build/user-message-dedup-after.png`、`-two-sends.png`、`-reopened.png`，修复前为`-before.png`。[结构化证据](evidence/2026-10-20-user-message-dedup.json)记录源文件与截图散列。
 
-客户端协调任务已登记为`user-message-dedup-20261020`，尚未ready。当前main还包含上一个正式版本之后已合入、尚未发布的选文引用、附件格式、视频预览及首台设备引导等修改；正式发包会一同包含它们，按用户提供的“重要产品决定先确认”交互要求，待用户确认本轮正式发布范围后再提交ready。当前没有客户端正式安装包发布或网关部署，不把本地模拟器验收当成真机覆盖安装验收。
+用户于2026-10-20确认“合入主分支先别发布”。本轮撤回先前登记的`user-message-dedup-20261020`，未ready、无批次；仅在现役协调器共享`codex-mobile-main-production`租约保护下整合源码并推送main，不分配版本、不更新冻结清单，不执行正式安装包构建、签名、渠道发布或生产网关部署，不把模拟器验收当成真机覆盖安装验收。
+
+整合前最新main为`22d570459e522579456c41187434d1a1d64100ed`，相对本轮开发基线`406a447`只增加默认源码交付的规则文档。已整合该提交，源文件散列与验收记录逐项一致；按新规则对整合结果补跑8文件297项相关回归与typecheck，全部通过；复用既有完整全量、构建及模拟器证据。

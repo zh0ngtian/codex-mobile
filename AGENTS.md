@@ -8,11 +8,12 @@
 ## 多任务协调、合批构建与发布
 
 - 本项目的协调与交付约束以本文件为准；配置、适配器入口、失败恢复、验证要求及实际验收状态见 [发布协调说明](docs/release-coordination.md)。全局用户交互规则继续适用，不引用全局文件中不存在的发布章节。
-- 本项目需要发布的任务开始即在现有 `releasectl` 登记：默认双端客户端用 `codex-mobile-lan-production`；用户明确指定只发布 iOS OTA 时用 `codex-mobile-ios-ota-production`；网关用 `codex-mobile-gateway-production`。在独立 worktree 开发，持续 heartbeat，完成本地验证并推送固定 SHA 后提交 ready；提交、版本分配和 main 推进由协调器处理。配置及常用命令见发布协调说明。
-- 默认客户端批次覆盖 GitHub 双端 Release、固定 LAN APK/已签名 IPA、HTTPS OTA 及 unsigned IPA 软件源版本核对；独立 OTA 批次只执行 main 整合、本机 iOS 构建、签名、HTTPS OTA、固定 LAN IPA 和验收，不执行 GitHub Release、APK 或软件源阶段；服务端批次覆盖网关验证、服务端构建和部署。只改服务端不得触发客户端构建。
-- 同一改动同时影响客户端与网关运行行为时，分别登记两个目标任务并 ready 同一已推送 SHA；两份目标成功凭证均核对后，才完成该工作的交付。
+- 默认只交付源码，不发布客户端或部署生产网关；只有用户明确要求发布或部署时，才启用下述协调流程。普通开发不登记发布任务、不提交 ready、不分配发布版本或更新冻结发布清单。
+- 用户明确要求发布或部署的任务开始即在现有 `releasectl` 登记：客户端未指定范围时用双端 `codex-mobile-lan-production`；用户明确指定只发布 iOS OTA 时用 `codex-mobile-ios-ota-production`；网关部署用 `codex-mobile-gateway-production`。在独立 worktree 开发，持续 heartbeat，完成本地验证并推送固定 SHA 后提交 ready；发布提交整合、版本分配和 main 推进由协调器处理。配置及常用命令见发布协调说明。
+- 已获授权的双端客户端批次覆盖 GitHub 双端 Release、固定 LAN APK/已签名 IPA、HTTPS OTA 及 unsigned IPA 软件源版本核对；独立 OTA 批次只执行 main 整合、本机 iOS 构建、签名、HTTPS OTA、固定 LAN IPA 和验收，不执行 GitHub Release、APK 或软件源阶段；服务端部署批次覆盖网关验证、服务端构建和部署。只改服务端不得触发客户端构建。
+- 已获授权的发布同时覆盖客户端与网关运行行为时，分别登记两个目标任务并 ready 同一已推送 SHA；两份目标成功凭证均核对后，才完成该发布交付。仅合入源码的任务不触发这两个发布目标。
 - 允许创建多个模拟器并行验证，不同任务使用独立模拟器；同一模拟器同一时间只由一个任务使用，复用同一实例时仍须排队。正式发布的版本分配、构建、签名、渠道回验与部署均归协调入口，参与任务共用最终发布凭证。
-- 统一入口复用发布主机已有 `~/.local/bin/releasectl` 与数据库；适配器为 `scripts/codex_mobile_release_adapter.py`。三个目标因共同写本仓库正式 main，明确共用 `codex-mobile-main-production` 锁；不与其他仓库共用锁。多机经同一发布主机 SSH，不各建数据库。实际完成以对应成功批次 receipt 为准。
+- 统一入口复用发布主机已有 `~/.local/bin/releasectl` 与数据库；适配器为 `scripts/codex_mobile_release_adapter.py`。三个目标因共同写本仓库正式 main，明确共用 `codex-mobile-main-production` 锁；普通源码整合也须遵守 main 写入互斥，不与正式批次并发推进 main。不与其他仓库共用锁，多机经同一发布主机 SSH，不各建数据库。发布或部署实际完成以对应成功批次 receipt 为准。
 
 ## 测试与验证
 
@@ -21,9 +22,9 @@
 
 ## 构建与交付
 
-- 每次完成仓库修改后，必须提交并推送本次变更；需要发布的任务推送就绪分支不等于交付完成，须等待所在批次验收成功。不涉及构建或发布的改动按现有规则直接完成。
-- 改动不涉及客户端运行代码、客户端引用的共用模块、原生桥接或影响客户端产物的构建配置时，不得触发客户端 Web、Android APK 或 iOS IPA 的构建与发布；仅修改服务端、测试、文档、仓库规则或不影响客户端产物的脚本时，均遵循此规则。验证仅针对本次改动范围，服务端修改仍须完成必要验证、服务端构建和网关部署。
-- 客户端运行代码（包括客户端引用的共用模块、原生桥接或影响客户端产物的构建配置）由协调入口整合、验证、冻结并推送成功后，默认按批次同时构建新 APK 和 IPA，使用统一版本号且高于 Android、iOS 两个固定渠道的现有版本，并发布到 Codex Mobile 固定局域网渠道；用户明确指定 OTA-only 时，仅通过独立 OTA 目标构建发布已签名 IPA，版本仍高于全部现役渠道，源码仍须由协调器整合到 main；不得只上传 48 小时随机临时链接。
+- 每次开始修改时记录 main 提交作为基线；完成本次范围的验证后合入主分支，完成提交并推送 main 即可交付，默认不发布。合入前核对最新 main（含远端）：修改期间 main 有新提交时，须对整合结果运行相关回归，通过后再提交推送；没有新提交时复用已有验证，不必重复回归。需要发布或部署的任务推送源码不等于交付完成，仍须等待授权批次验收成功。
+- 验证仅针对本次改动范围，可执行必要的验证构建；默认不启动正式 APK/IPA 打包、签名、渠道更新或生产网关部署。改动不涉及客户端运行代码、客户端引用的共用模块、原生桥接或影响客户端产物的构建配置时，不得触发客户端 Web、Android APK 或 iOS IPA 的构建与发布；仅修改服务端、测试、文档、仓库规则或不影响客户端产物的脚本时，均遵循此规则。服务端修改须完成必要验证和服务端构建，只有用户明确要求部署时才部署网关。
+- 用户明确要求客户端发布后，客户端运行代码（包括客户端引用的共用模块、原生桥接或影响客户端产物的构建配置）由协调入口整合、验证、冻结并推送成功；未指定范围时按双端批次构建新 APK 和 IPA，使用统一版本号且高于 Android、iOS 两个固定渠道的现有版本，并发布到 Codex Mobile 固定局域网渠道。用户明确指定 OTA-only 时，仅通过独立 OTA 目标构建发布已签名 IPA，版本仍高于全部现役渠道，源码仍须由协调器整合到 main；不得只上传 48 小时随机临时链接。
 - 固定更新清单为 `http://192.168.123.79:8765/channels/codex-mobile/latest.json`，固定 APK 为 `http://192.168.123.79:8765/channels/codex-mobile/latest.apk`。
 - 使用 `/Users/zhongtian/WorkSpace/GlobalTranslation/scripts/apk-server.py publish-channel codex-mobile <APK> --version <版本> --notes <说明>` 发布；发布后必须通过固定 JSON、HEAD、GET 核对版本、文件大小和 SHA-256。
 - 涉及安装包发布的交付回复必须提供可点击的固定 OTA 安装页链接（`https://192.168.123.79:8766/channels/codex-mobile/current/install.html`）及本次实际发布安装包的固定下载链接、版本号、文件大小、SHA-256；默认双端交付同时提供 APK 和 IPA，OTA-only 交付只提供已签名 IPA，不把旧 APK 说成本次产物；IPA 还必须注明是否签名。OTA 安装页链接必须在交付回复正文中展示，不能仅保存在发布清单或部署文档中。

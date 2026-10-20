@@ -64,13 +64,24 @@
     }
   },
   "release": {
-    "state": "未发布，待确认正式发布范围",
+    "state": "用户明确本轮不发布，已撤回登记",
     "task": "user-message-dedup-20261020",
-    "readySubmitted": false
+    "taskState": "withdrawn",
+    "readySubmitted": false,
+    "batch": null
   },
   "limits": [
     "原样本手机内部的具体触发时序未捕获；模拟器以可达受控协议顺序验证。",
     "跨ID pending回合认领保留基线，不扩大已有跨回合匹配契约。",
     "空正文且所有附件身份缺失时等待后续可识别数据，不猜测对应输入。"
-  ]
+  ],
+  "integration": {
+    "mainBefore": "22d570459e522579456c41187434d1a1d64100ed",
+    "runtimeSourceHashMatchesVerified": true,
+    "scope": "仅合入main并推送，不发布",
+    "relatedRegressionFiles": 8,
+    "relatedRegressionPassed": 297,
+    "typecheck": "passed",
+    "publication": false
+  }
 }
