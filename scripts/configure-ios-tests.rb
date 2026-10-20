@@ -36,8 +36,18 @@ if File.read(webview_path).include?(probe_constructor)
     horizontal_constructor))
 end
 project.save
+install_markdown_tests = lambda do |test_target|
+  group = project.main_group.find_subpath('MarkdownRenderingRegression', true)
+  names = %w[NativeMarkdownBlock NativeMarkdownBlockKind NativeMarkdownSyntax NativeMarkdownHTMLScope NativeMarkdownDisplaySource NativeInlineMarkdown NativeTextRhythm NativeSelectableMarkdown NativeSystemTypography]
+  paths = [File.join(root, 'mobile/ios/MarkdownLayoutUITests.swift')] + names.map { |name| File.join(root, "mobile/ios/NativeUI/#{name}.swift") }
+  paths.each do |path|
+    reference = project.files.find { |file| file.real_path.to_s == path } || group.new_file(path)
+    test_target.source_build_phase.add_file_reference(reference) unless test_target.source_build_phase.files_references.include?(reference)
+  end
+end
 target = project.targets.find { |t| t.name == 'CodexMobileUITests' }
 if target
+  install_markdown_tests.call(target)
   target.build_configurations.each { |config| config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '18.0' }
   ['SmallFontKeyboardUITests.swift', 'HorizontalScrollUITests.swift', 'NativeUIUITests.swift', 'AgentAppUITests.swift'].each do |name|
     extra_path = File.join(root, 'mobile/ios', name)
@@ -52,6 +62,7 @@ if target
 end
 target = project.new_target(:ui_test_bundle, 'CodexMobileUITests', :ios, '18.0')
 target.add_dependency(app)
+install_markdown_tests.call(target)
 source = project.main_group.new_group('CodexMobileUITests')
 source.new_file(ARGV[1] ? File.expand_path(ARGV[1]) : File.join(root, 'mobile/ios/CodexMobileUITests.swift')).tap { |f| target.source_build_phase.add_file_reference(f) }
 source.new_file(File.join(root, 'mobile/ios/SmallFontKeyboardUITests.swift')).tap { |f| target.source_build_phase.add_file_reference(f) }

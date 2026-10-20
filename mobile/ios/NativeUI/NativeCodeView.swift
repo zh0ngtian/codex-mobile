@@ -16,9 +16,8 @@ struct NativeCodeView: View {
                     .modifier(NativeScaledFont(size: 12, scale: scale, relativeTo: .caption)).frame(minHeight: 44).accessibilityLabel(isChinese ? "复制代码" : "Copy Code")
             }.padding(.horizontal, 12)
             Divider()
-            ScrollView(.horizontal) {
-                NativeSelectableText(text: NativeSelectableMarkdown.code(text, language: language), identifier: "code.selectable").padding(12)
-            }
+            NativeSelectableText(text: NativeSelectableMarkdown.code(text, language: language), identifier: "code.selectable")
+                .frame(maxWidth: .infinity, alignment: .leading).padding(12)
         }.background(NativePalette.code, in: .rect(cornerRadius: 12))
     }
 }

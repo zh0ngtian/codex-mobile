@@ -64,6 +64,25 @@ struct NativeMarkdownBlock: Identifiable {
                 if let task = NativeMarkdownSyntax.groups(text, pattern: "^\\[([ xX])\\] +(.*)$") {
                     checked = task[0].lowercased() == "x"; text = task[1]
                 }
+                let contentPrefix = String(line.dropLast(list[2].count))
+                let contentIndent = contentPrefix.reduce(0) { $1 == "\t" ? ($0 / 4 + 1) * 4 : $0 + 1 }
+                var parts = [text]
+                var next = index + 1
+                while next < lines.count {
+                    if lines[next].trimmingCharacters(in: .whitespaces).isEmpty {
+                        var following = next
+                        while following < lines.count && lines[following].trimmingCharacters(in: .whitespaces).isEmpty { following += 1 }
+                        guard following < lines.count, indentation(lines[following]) >= contentIndent,
+                              !NativeMarkdownSyntax.interruptsParagraph(lines, at: following) else { break }
+                        parts.append(contentsOf: Array(repeating: "", count: following - next))
+                        next = following
+                    }
+                    guard !NativeMarkdownSyntax.interruptsParagraph(lines, at: next) else { break }
+                    parts.append(removingIndent(lines[next], columns: contentIndent))
+                    next += 1
+                }
+                text = parts.joined(separator: "\n")
+                index = next - 1
                 append(.list, text)
                 result[result.count - 1].marker = list[1].first?.isNumber == true ? list[1] : "•"
                 result[result.count - 1].depth = list[0].replacingOccurrences(of: "\t", with: "    ").count / 2
@@ -92,5 +111,15 @@ struct NativeMarkdownBlock: Identifiable {
             }
         }
         return result
+    }
+
+    private static func indentation(_ line: String) -> Int {
+        line.prefix { $0 == " " || $0 == "\t" }.reduce(0) { $1 == "\t" ? ($0 / 4 + 1) * 4 : $0 + 1 }
+    }
+
+    private static func removingIndent(_ line: String, columns: Int) -> String {
+        let prefix = line.prefix { $0 == " " || $0 == "\t" }
+        let remaining = max(0, indentation(line) - columns)
+        return String(repeating: " ", count: remaining) + line.dropFirst(prefix.count)
     }
 }
