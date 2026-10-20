@@ -4,6 +4,7 @@ struct NativeSettingsView: View {
     @Bindable var store: NativeUIStore
     @Environment(\.dismiss) private var dismiss
     @State private var detailOpen = false
+    @AppStorage("codeWrapsLines") private var wrapsCodeLines = true
 
     var body: some View {
         NavigationStack {
@@ -17,6 +18,10 @@ struct NativeSettingsView: View {
                                 NativeSettingsChoiceRow(title: store.label("语言", "Language"), symbol: "globe", item: item("language"), store: store)
                                 separator
                                 NativeSettingsChoiceRow(title: store.label("字体大小", "Font Size"), symbol: "textformat", item: item("font"), store: store)
+                                separator
+                                Toggle(isOn: $wrapsCodeLines) { Label(store.label("代码块自动换行", "Wrap code lines"), systemImage: "arrow.turn.down.left") }
+                                    .padding(.horizontal, 15).frame(minHeight: 55)
+                                    .accessibilityIdentifier("settings.code-wrap")
                                 separator
                                 Toggle(isOn: preferenceBinding) { Label(store.label("使用原生界面", "Use Native Interface"), systemImage: "laptopcomputer") }
                                     .padding(.horizontal, 15).frame(minHeight: 55)

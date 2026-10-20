@@ -5,15 +5,12 @@ struct CodeCard: View {
     let code: String
     var language = "Code"
     @State private var copied = false
-    @State private var wrapsLines = true
+    @AppStorage("codeWrapsLines") private var wrapsLines = true
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
             HStack {
                 Text(language).font(AgentTheme.small)
                 Spacer()
-                Toggle(preferences.text("自动换行", "Wrap lines"), isOn: $wrapsLines)
-                    .toggleStyle(.switch).fixedSize().font(.caption)
-                    .frame(minHeight: 44).accessibilityIdentifier("code.wrap-toggle")
                 Button(copied ? preferences.text("已复制", "Copied") : preferences.text("复制代码", "Copy code"),
                        systemImage: copied ? "checkmark" : "square.on.square", action: copy)
                     .labelStyle(.iconOnly).font(.body).frame(width: 44, height: 44)

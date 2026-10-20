@@ -4,6 +4,25 @@ import UIKit
 @MainActor final class MarkdownLayoutUITests: XCTestCase {
     private let digest = "bd309dfa76a14e11957cd035f976372b22fd7e1e4dea46569008a55cff820a07"
 
+    private func setCodeWrapping(_ enabled: Bool, in app: XCUIApplication) {
+        app.buttons["会话列表"].tap()
+        app.buttons["sidebar.more"].tap()
+        app.buttons["设置"].tap()
+        let toggle = app.switches["settings.code-wrap"]
+        XCTAssertTrue(toggle.waitForExistence(timeout: 5))
+        if !toggle.isHittable { app.swipeUp() }
+        if (toggle.value as? String == "1") != enabled {
+            toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.93, dy: 0.5)).tap()
+        }
+        let changed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", enabled ? "1" : "0"), object: toggle)
+        XCTAssertEqual(XCTWaiter.wait(for: [changed], timeout: 5), .completed)
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = enabled ? "全局代码换行-开启" : "全局代码换行-关闭"
+        screenshot.lifetime = .keepAlways; add(screenshot)
+        app.buttons["settings.close"].tap()
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.3)).tap()
+    }
+
     private func layout(_ source: String, width: CGFloat = 350) -> (NSAttributedString, NSLayoutManager, NSTextContainer) {
         let text = NativeSystemTypography.resolved(NativeSelectableMarkdown.blocks(NativeMarkdownBlock.parse(source)), size: .large, bold: false)
         let storage = NSTextStorage(attributedString: text)
@@ -119,21 +138,22 @@ import UIKit
     }
 
     func testMonospacedCodeWrapsInsideCardWithoutChangingText() {
+        continueAfterFailure = false
         let token = String(repeating: "0123456789abcdef", count: 16)
         let code = token + "\nreturn " + String(repeating: "TOKEN_", count: 32)
         let app = XCUIApplication()
         app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-monospace-wrap-fixture", "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryL", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
         app.launch()
+        setCodeWrapping(true, in: app)
         let view = app.textViews["code.selectable"].firstMatch
         XCTAssertTrue(view.waitForExistence(timeout: 10))
         XCTAssertEqual(view.value as? String, code)
         XCTAssertLessThanOrEqual(view.frame.width, app.frame.width - 32, "等宽长行不能通过撑宽横向滚动区避开换行")
         XCTAssertGreaterThan(view.frame.height, 100, "长代码行须在卡片内完整换行")
-        let toggle = app.switches["code.wrap-toggle"].firstMatch
-        XCTAssertEqual(toggle.value as? String, "1", "代码块默认自动换行")
+        XCTAssertFalse(app.switches["code.wrap-toggle"].exists, "代码块内不再提供换行开关")
+        XCTAssertFalse(app.switches["settings.code-wrap"].exists, "全局开关只出现在设置页面")
         let wrappedHeight = view.frame.height
-        toggle.tap()
-        XCTAssertEqual(toggle.value as? String, "0")
+        setCodeWrapping(false, in: app)
         XCTAssertGreaterThan(view.frame.width, app.frame.width, "关闭换行后保留原始长行并允许横向滚动")
         XCTAssertLessThan(view.frame.height, wrappedHeight)
         XCTAssertEqual(view.value as? String, code, "切换不得插入换行或改写代码")
@@ -142,8 +162,7 @@ import UIKit
         view.swipeLeft()
         XCTAssertLessThan(view.frame.minX, originalX, "关闭换行后须能实际横向滚动代码")
         XCTAssertEqual(view.value as? String, code)
-        toggle.tap()
-        XCTAssertEqual(toggle.value as? String, "1")
+        setCodeWrapping(true, in: app)
         XCTAssertLessThanOrEqual(view.frame.width, app.frame.width - 32)
         XCTAssertEqual(view.frame.height, wrappedHeight, accuracy: 1)
         XCTAssertEqual(view.value as? String, code)
@@ -160,22 +179,27 @@ import UIKit
         let screenshot = XCTAttachment(screenshot: app.screenshot()); screenshot.name = "发布回复-列表续行与SHA"; screenshot.lifetime = .keepAlways; add(screenshot)
     }
 
-    func testCodeWrapSwitchesAreIndependentAndCopyKeepsOriginalLines() {
+    func testGlobalCodeWrappingAppliesToAllBlocksPersistsAndCopyKeepsOriginalLines() {
         continueAfterFailure = false
         let code = String(repeating: "abcdef0123456789", count: 6) + "\nend"
         let app = XCUIApplication()
         app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-code-wrap-toggle-fixture", "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryL", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
         app.launch()
-        let toggles = app.switches.matching(identifier: "code.wrap-toggle")
-        XCTAssertTrue(toggles.element(boundBy: 1).waitForExistence(timeout: 10))
+        setCodeWrapping(true, in: app)
+        let first = app.textViews.matching(NSPredicate(format: "identifier == %@ AND value == %@", "code.selectable", code)).firstMatch
         let second = app.textViews.matching(NSPredicate(format: "identifier == %@ AND value == %@", "code.selectable", "second_" + code)).firstMatch
+        XCTAssertTrue(second.waitForExistence(timeout: 10))
         let secondHeight = second.frame.height
-        toggles.element(boundBy: 0).tap()
-        XCTAssertEqual(toggles.element(boundBy: 0).value as? String, "0")
-        XCTAssertEqual(toggles.element(boundBy: 1).value as? String, "1", "每个代码块独立控制换行")
-        XCTAssertEqual(second.frame.height, secondHeight, accuracy: 1)
-        XCTAssertLessThanOrEqual(second.frame.width, app.frame.width - 32)
-        let screenshot = XCTAttachment(screenshot: app.screenshot()); screenshot.name = "代码块独立换行开关"; screenshot.lifetime = .keepAlways; add(screenshot)
+        setCodeWrapping(false, in: app)
+        XCTAssertGreaterThan(first.frame.width, app.frame.width)
+        XCTAssertGreaterThan(second.frame.width, app.frame.width, "全局设置同时作用于所有代码块")
+        XCTAssertLessThan(second.frame.height, secondHeight)
+        app.terminate(); app.launch()
+        XCTAssertTrue(second.waitForExistence(timeout: 10))
+        XCTAssertGreaterThan(first.frame.width, app.frame.width, "重启保留关闭换行的选择")
+        XCTAssertGreaterThan(second.frame.width, app.frame.width)
+        XCTAssertFalse(app.switches["code.wrap-toggle"].exists)
+        let screenshot = XCTAttachment(screenshot: app.screenshot()); screenshot.name = "全局代码换行-重启保留多块设置"; screenshot.lifetime = .keepAlways; add(screenshot)
 
         app.buttons.matching(identifier: "code.copy").element(boundBy: 0).tap()
         let input = app.descendants(matching: .any).matching(identifier: "message-input").firstMatch

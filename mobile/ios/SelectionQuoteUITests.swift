@@ -85,7 +85,19 @@ import XCTest
     }
     func testCodeAndTableSelectionMenus() {
         var app = fixture()
-        app.switches["code.wrap-toggle"].firstMatch.tap()
+        app.buttons["会话列表"].tap()
+        app.buttons["sidebar.more"].tap()
+        app.buttons["设置"].tap()
+        let wrapToggle = app.switches["settings.code-wrap"]
+        XCTAssertTrue(wrapToggle.waitForExistence(timeout: 5))
+        if !wrapToggle.isHittable { app.swipeUp() }
+        if wrapToggle.value as? String == "1" {
+            wrapToggle.coordinate(withNormalizedOffset: CGVector(dx: 0.93, dy: 0.5)).tap()
+        }
+        let changed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", "0"), object: wrapToggle)
+        XCTAssertEqual(XCTWaiter.wait(for: [changed], timeout: 5), .completed)
+        app.buttons["settings.close"].tap()
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.3)).tap()
         select(app.textViews["code.selectable"].firstMatch, app: app, x: 0.25, y: 0.5)
         app.menuItems["加入聊天"].tap(); XCTAssertTrue(any("composer.quote", in: app).waitForExistence(timeout: 5))
         app.terminate(); app = fixture()

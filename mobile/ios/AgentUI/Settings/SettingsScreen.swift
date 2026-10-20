@@ -4,6 +4,7 @@ struct SettingsScreen: View {
     @Environment(AppPreferences.self) private var preferences
     @Environment(AppSession.self) private var session
     @State private var path = NavigationPath()
+    @AppStorage("codeWrapsLines") private var wrapsCodeLines = true
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -16,6 +17,10 @@ struct SettingsScreen: View {
                 }
                 AppearanceSection()
                 Section {
+                    Toggle(isOn: $wrapsCodeLines) {
+                        Label(preferences.text("代码块自动换行", "Wrap code lines"), systemImage: "arrow.turn.down.left")
+                    }
+                    .accessibilityIdentifier("settings.code-wrap")
                     Toggle(isOn: Binding(get: { preferences.nativeInterfaceEnabled }, set: preferences.changeNativeInterface)) {
                         Label(preferences.text("原生界面", "Native interface"), systemImage: "iphone")
                     }
@@ -24,7 +29,7 @@ struct SettingsScreen: View {
                     if preferences.nativeInterfaceSaving { ProgressView() }
                     if let error = preferences.nativeInterfaceError { Text(error).foregroundStyle(.red) }
                 } header: { Text(preferences.text("界面", "Interface")) }
-                footer: { Text(preferences.text("关闭后，下次完整启动使用网页界面。", "When off, the next full launch uses the web interface.")) }
+                footer: { Text(preferences.text("代码块换行设置立即生效。关闭原生界面后，下次完整启动使用网页界面。", "Code wrapping applies immediately. Turning off the native interface switches to the web interface at the next full launch.")) }
                 Section(preferences.text("关于", "About")) {
                     LabeledContent { Text(version).foregroundStyle(.secondary) } label: { Label(preferences.text("当前版本", "Current version"), systemImage: "info.circle") }
                 }
