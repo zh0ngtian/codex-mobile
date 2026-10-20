@@ -1,0 +1,114 @@
+{
+  "schemaVersion": 1,
+  "status": "已发布并部署验收通过",
+  "authorization": "双端客户端发布及生产网关升级",
+  "baseline": "dba4a9a716e21501fecf652c6fee192243d72e78",
+  "taskSource": "35178704e6ef1a4cd4f02727c512f8069a6570dd",
+  "version": "0.3.21",
+  "buildNumber": "3021",
+  "client": {
+    "taskId": "message-identity-client-20261020",
+    "batchId": "dc9855ec-8a6c-4f2b-b733-3811e8d4965d",
+    "frozenSha": "baab29931a0da273ce60013c2f0ec971a69bb3dc",
+    "completedAt": 1792484966.0729558,
+    "buildRun": 39392187492,
+    "developmentRun": 39392187383,
+    "releaseUrl": "https://github.com/zh0ngtian/codex-mobile/releases/tag/v0.3.21",
+    "apk": {
+      "version": "0.3.21",
+      "buildNumber": "3021",
+      "downloadUrl": "http://192.168.123.79:8765/channels/codex-mobile/latest.apk",
+      "size": 4747075,
+      "sha256": "e564d24c06fdd9630935cf457594e59c321080e193f3c01e41d2e497d1a25185",
+      "signed": false,
+      "json": true,
+      "head": true,
+      "completeGet": true
+    },
+    "ipa": {
+      "version": "0.3.21",
+      "buildNumber": "3021",
+      "downloadUrl": "http://192.168.123.79:8765/channels/codex-mobile/latest.ipa",
+      "size": 4844123,
+      "sha256": "663a12c96a36045bd254969228878acf3ee7ca4cab9a8d396d68f4471dd65048",
+      "signed": true,
+      "json": true,
+      "head": true,
+      "completeGet": true,
+      "bundleId": "vip.loock.codexmobile"
+    },
+    "ota": {
+      "version": "0.3.21",
+      "buildNumber": "3021",
+      "downloadUrl": "https://192.168.123.79:8766/channels/codex-mobile/releases/0.3.21/latest.ipa",
+      "size": 4844123,
+      "sha256": "663a12c96a36045bd254969228878acf3ee7ca4cab9a8d396d68f4471dd65048",
+      "signed": true,
+      "json": true,
+      "head": true,
+      "completeGet": true
+    },
+    "installUrl": "https://192.168.123.79:8766/channels/codex-mobile/current/install.html",
+    "signing": {
+      "signed": true,
+      "bundleId": "vip.loock.codexmobile",
+      "teamId": "SC456JW7RP",
+      "applicationIdentifier": "SC456JW7RP.app.jade6694.grapefruit3766",
+      "entitlementsSha256": "1e84a4c1ba74b9e374c364f26fefa112ceeea09de1a0ba0600403a763eb7952f",
+      "keychainAccessGroups": [
+        "SC456JW7RP.*",
+        "com.apple.token"
+      ]
+    },
+    "downloadedIpaSignatureVerified": true,
+    "source": {
+      "version": "0.3.21",
+      "buildVersion": "3021",
+      "downloadURL": "https://github.com/zh0ngtian/codex-mobile/releases/download/v0.3.21/CodexMobile-v0.3.21-unsigned.ipa",
+      "size": 4831881,
+      "sha256": "7083d38ae3c36a382998dbb922d94f3ed52427c3646588d1ce02f2b7491e3779",
+      "signed": false,
+      "developerName": "zh0ngtian"
+    },
+    "sourceChineseNotesMatch": true
+  },
+  "gateway": {
+    "taskId": "message-identity-gateway-20261020",
+    "batchId": "6b19b7c3-d5e6-4953-8d32-a68ba4636639",
+    "frozenSha": "2c83a6aa3fd815ff878e7ca02e9f2ac1a5f751e9",
+    "completedAt": 1792484116.262846,
+    "developmentRun": 39391957928,
+    "deploymentId": "6b19b7c3-d5e6-4953-8d32-a68ba4636639:2c83a6aa3fd815ff878e7ca02e9f2ac1a5f751e9",
+    "label": "com.minis.codex-mobile-gateway",
+    "pid": 27202,
+    "serverDigest": "86c6fd26e8a002968cbf220e57c2418f602f9741926660f08b1c0763cb34c310",
+    "frontendDigest": "82c243e7f812096f2be3270347cfab2c74ab4df0df44ec06f2db25f1a2ae821b",
+    "binDigest": "a44e7f0434b7926b382b679abb712f36eb3b93ce6708cc77332437781f8015a3",
+    "manifestDigest": "0f504be37cd822e82f975449a8f7478ca99f609930f64baa75f956cf16c45917",
+    "httpStatus": 200,
+    "listen": "192.168.123.79:18766",
+    "sourceFieldsInstalled": true
+  },
+  "checks": {
+    "businessAndBuildContract": 535,
+    "releaseRegression": 212,
+    "coordinatorRecovery": 59,
+    "typecheck": "passed",
+    "serverBuild": "passed",
+    "priorIdentitySimulatorTests": 4,
+    "device": "iPhone 17 Pro / iOS 27 / 正常字号 / 竖屏"
+  },
+  "tasksIncluded": {
+    "client": [
+      "35178704e6ef1a4cd4f02727c512f8069a6570dd"
+    ],
+    "gateway": [
+      "35178704e6ef1a4cd4f02727c512f8069a6570dd"
+    ]
+  },
+  "releaseNotes": "- 修复用户消息在实时更新、历史回填、断线恢复和发送确认交错时重复显示的问题，保留两次真实发送的同文消息。\n- 修复引导、托管追问及纯图片消息在回填中丢失身份或出现空白副本的问题，保留已有图片、文件和引用内容。\n- 修复 Markdown 列表续行对齐和等宽长内容换行，改善长内容的阅读效果。\n- 代码块新增独立的自动换行开关，默认开启；关闭后保留原始行并支持横向滚动，继续支持复制、选文和引用。\n",
+  "limitations": [
+    "未进行真机覆盖安装与数据保留验收"
+  ],
+  "privateProofDirectory": "~/Library/Application Support/ReleaseCoordinator/validations/message-identity-release-20261020/"
+}
