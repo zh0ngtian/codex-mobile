@@ -22,6 +22,13 @@ const events = (overrides = {}) => new Response(JSON.stringify({
 }));
 
 describe("HTTP 文字传输", () => {
+  it.each(["mobile/sidebar/summaries", "mobile/sidebar/projectless"])("%s 失败不会进入未知写入恢复或占用写入配额", async method => {
+    const transport = setup((async () => new Response("bad parameters", { status: 400 })) as typeof fetch, method);
+    await new Promise(resolve => setTimeout(resolve, 1));
+    const client = new AppServerClient(transport);
+    for (let i = 0; i < 33; i++) await expect(client.request(method, { threadIds: [] })).rejects.toThrow("400");
+    expect(JSON.parse(localStorage.getItem(`codex-mobile:http-writes:${method}:12345678-1234-4234-8234-123456789abc`) ?? "[]")).toEqual([]);
+  });
   it("只读 POST 耗尽预算后不另开五秒对账，保持连接可用", async () => {
     vi.useFakeTimers();
     let reconciles = 0;

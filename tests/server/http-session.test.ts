@@ -51,6 +51,33 @@ async function fixture(autoPong = true) {
 }
 
 describe("HTTP 会话", () => {
+  it.each(["http", "ws"])("边栏摘要和无项目分页经 %s 聚合，热索引不再逐条读取", async transport => {
+    const f = await fixture(); await f.init();
+    const threads = Array.from({ length: 9 }, (_, i) => ({ id: `t-${i}`, recencyAt: i, status: { type: i === 1 ? "active" : "idle" }, turns: ["private"] }));
+    f.respond((socket, message) => {
+      const result = message.method === "thread/loaded/list" ? { data: threads.map(t => t.id), nextCursor: null }
+        : message.method === "thread/read" ? { thread: threads.find(t => t.id === message.params.threadId) } : {};
+      if (message.id != null) socket.send(JSON.stringify({ id: message.id, result }));
+    });
+    let sequence = 100;
+    const socket = transport === "ws" ? new WebSocket(`ws://127.0.0.1:${f.port()}/ws?token=secret`) : null;
+    if (socket) { cleanup.push(async () => { socket.terminate(); }); await new Promise<void>(resolve => socket.once("open", resolve)); }
+    const call = async (method: string, params: any) => {
+      const message = { id: sequence++, method, params };
+      if (!socket) return (await f.rpc(message)).json() as Promise<any>;
+      const result = new Promise<any>(resolve => { const listener = (raw: any) => { const reply = JSON.parse(raw.toString()); if (reply.id === message.id) { socket.off("message", listener); resolve(reply); } }; socket.on("message", listener); });
+      socket.send(JSON.stringify(message)); return result;
+    };
+    expect((await call("mobile/sidebar/summaries", { threadIds: ["t-0"], includeRunning: true })).result.data.map((t: any) => t.id)).toEqual(["t-1", "t-0"]);
+    const reads = f.received.filter(m => m.method === "thread/read").length;
+    const params = { threadIds: threads.map(t => t.id) };
+    const first = (await call("mobile/sidebar/projectless", params)).result;
+    expect(first.data.map((t: any) => t.id)).toEqual(["t-8", "t-7", "t-6", "t-5", "t-4"]);
+    expect((await call("mobile/sidebar/projectless", { ...params, cursor: first.nextCursor })).result.data).toHaveLength(4);
+    expect(f.received.filter(m => m.method === "thread/read")).toHaveLength(reads);
+    expect(f.received.filter(m => m.method === "thread/read").every(m => m.params.includeTurns === false)).toBe(true);
+    expect(f.received.some(m => m.method?.startsWith("mobile/sidebar/"))).toBe(false);
+  });
   it('完成回合详情复用单次读取回填过程，手机不接收7MB工具输出', async () => {
     const f = await fixture(); await f.init();
     f.respond((socket, message) => socket.send(JSON.stringify({ id: message.id, result: { data: [{ id: 'done', status: 'completed', items: [

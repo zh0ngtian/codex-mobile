@@ -4294,9 +4294,12 @@ function BackendWorkspace({
         targetCount,
         readPrioritizedThreadIds(),
         readLocalPinned(),
+        projectNextCursors[PROJECTLESS_GROUP_ID],
       );
       if (!isCurrent()) return;
-      setProjectLoadedCounts(current => isCurrent() ? ({ ...current, [PROJECTLESS_GROUP_ID]: result.threads.length }) : current);
+      const append = client.sidebarIndex && !!projectNextCursors[PROJECTLESS_GROUP_ID];
+      setProjectNextCursors(current => isCurrent() ? ({ ...current, [PROJECTLESS_GROUP_ID]: "nextCursor" in result ? result.nextCursor as string | null : null }) : current);
+      setProjectLoadedCounts(current => isCurrent() ? ({ ...current, [PROJECTLESS_GROUP_ID]: (append ? current[PROJECTLESS_GROUP_ID] ?? 0 : 0) + result.threads.length }) : current);
       if (result.hasMore) {
         fullyLoadedProjectCwdsRef.current.delete(PROJECTLESS_GROUP_ID);
       } else {
@@ -4316,7 +4319,12 @@ function BackendWorkspace({
             current.filter(
               (thread) => projectGroupIdOf(thread) === PROJECTLESS_GROUP_ID,
             ),
-            decorateThreads(result.threads),
+            decorateThreads(append
+              ? dedupeThreadsById([
+                  ...current.filter(thread => projectGroupIdOf(thread) === PROJECTLESS_GROUP_ID),
+                  ...result.threads,
+                ])
+              : result.threads),
             readPrioritizedThreadIds(),
           ),
         ];

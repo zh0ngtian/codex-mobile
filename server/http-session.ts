@@ -11,6 +11,7 @@ import { isNavigationResume } from "./rpc-replay.js";
 import { InlineImages } from "./inline-images.js";
 import { MessageTimestamps } from "./message-timestamps.js";
 import type { BarkNotifications } from "./bark-notifications.js";
+import { SidebarSummaryIndex, validSidebarParams } from "./sidebar-summary-index.js";
 
 export interface RpcMessage {
   id?: string | number;
@@ -744,6 +745,11 @@ class Session {
 }
 
 export class HttpSessions {
+  private sidebar = new SidebarSummaryIndex(async (method, params) => {
+    const response = await this.hostedRpc({ id: randomUUID(), method, params });
+    if (response.error != null) throw response.error;
+    return response.result;
+  });
   private sessions = new Map<string, Session>();
   readonly sidechats = new SidechatHistory();
   private timer: NodeJS.Timeout;
@@ -830,7 +836,8 @@ export class HttpSessions {
         }
         if (!message.method && message.result === undefined && message.error === undefined) throw new HttpError(400, "Invalid RPC reply");
         if (body.epoch !== undefined && (typeof body.epoch !== "string" || !UUID.test(body.epoch))) throw new HttpError(400, "Invalid session epoch");
-        if (message.method === 'mobile/sidechat/rpc') result = await this.sidechatRpc(message, body.requestId);
+        if (["mobile/sidebar/summaries", "mobile/sidebar/projectless"].includes(message.method ?? "")) result = await this.sidebarRpc(message);
+        else if (message.method === 'mobile/sidechat/rpc') result = await this.sidechatRpc(message, body.requestId);
         else if (!message.method && typeof message.id === 'string' && this.hostedRequests.get(message.id)?.sessionId === SIDECHAT_SESSION_ID) result = await this.replyHosted(body.requestId, message);
         else if (this.sidechats.has(message.params?.threadId) && ['thread/settings/update', 'turn/interrupt'].includes(message.method ?? '')) result = await this.sidechatRpc({ ...message, params: { method: message.method, params: message.params } }, body.requestId);
         else result = await session.rpc(body.requestId, message, body.epoch);
@@ -846,6 +853,10 @@ export class HttpSessions {
   }
 
   private observeHosted(message?: RpcMessage, sessionId = HOSTED_SESSION_ID) {
+    if (sessionId === HOSTED_SESSION_ID) {
+      if (message) this.sidebar.observe(message);
+      else this.sidebar.setEpoch("");
+    }
     if (!message) {
       if (sessionId === SIDECHAT_SESSION_ID) {
         for (const id of this.sidechats.expired().concat([...this.sidechatIds])) this.broadcastHosted({ method: 'thread/closed', params: { threadId: id } });
@@ -909,6 +920,15 @@ export class HttpSessions {
   async hostedRpc(message: RpcMessage, requestId: string = randomUUID()) {
     await this.hostedReady();
     return this.session(HOSTED_SESSION_ID).rpc(requestId, message);
+  }
+
+  async sidebarRpc(message: RpcMessage): Promise<RpcMessage> {
+    if (message.id == null || !validSidebarParams(message.method!, message.params)) throw new HttpError(400, "Invalid sidebar parameters");
+    this.sidebar.setEpoch(await this.hostedReady());
+    const params = message.params as any;
+    const result = message.method === "mobile/sidebar/summaries"
+      ? await this.sidebar.summaries(params) : await this.sidebar.projectless(params);
+    return { id: message.id, result };
   }
 
   private sidechatIds = new Set<string>();

@@ -19,6 +19,34 @@ function deferred<T>() {
 }
 
 describe("会话列表轮询加载器", () => {
+  it("批量摘要失败仍等待项目任务收尾，不提前解除整轮在途状态", async () => {
+    const project = deferred<any>(), onSettled = vi.fn();
+    const client = { sidebarIndex: true, request: vi.fn((method: string) => method === "thread/list"
+      ? project.promise : Promise.reject(new Error("摘要失败"))) };
+    let ended = false;
+    const pending = createLatestThreadListLoader({ onSettled }).load(client, ["/a"], [], { includeRunningThreads: true })
+      .catch(error => { ended = true; return error; });
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(ended).toBe(false);
+    project.resolve({ data: [], nextCursor: null });
+    expect(await pending).toEqual(new Error("摘要失败"));
+    expect(onSettled).not.toHaveBeenCalled();
+  });
+  it("真实网关客户端以批量摘要和五条游标分页替代逐条读取", async () => {
+    const request = vi.fn(async (method: string, params: any): Promise<any> => {
+      if (method === "thread/list") return { data: [{ id: "project" }], nextCursor: null };
+      if (method === "mobile/sidebar/summaries") return { data: [{ id: "running", status: { type: "active" } }] };
+      if (method === "mobile/sidebar/projectless") return { data: Array.from({ length: 5 }, (_, i) => ({ id: `${params.cursor ? "next" : "first"}-${i}` })), nextCursor: params.cursor ? null : "next" };
+      throw new Error("不应逐条扫描");
+    });
+    const client = { sidebarIndex: true, request }, onProjectData = vi.fn(), onPinnedData = vi.fn();
+    await createLatestThreadListLoader({ onProjectData, onPinnedData }).load(client, ["/a"], ["known"], { includeRunningThreads: true });
+    expect(onPinnedData).toHaveBeenCalledWith([{ id: "running", status: { type: "active" } }]);
+    expect(onProjectData).toHaveBeenCalledWith(PROJECTLESS_GROUP_ID, expect.any(Array), true, "next");
+    const more = await loadProjectlessThreadRecords(client, ["known"], 10, new Set(), new Set(), "next");
+    expect(more.threads).toHaveLength(5); expect(more.hasMore).toBe(false);
+    expect(request.mock.calls.map(([m]) => m)).toEqual(["thread/list", "mobile/sidebar/projectless", "mobile/sidebar/summaries", "mobile/sidebar/projectless"]);
+  });
   it("旧运行摘要变为空闲时仍更新状态，但不再从五条分页中排除", async () => {
     const records = [{ id: "ended", status: { type: "idle" } }, ...Array.from({ length: 4 }, (_, i) => ({ id: `row-${i}` }))];
     const onPinnedData = vi.fn(), onProjectData = vi.fn();

@@ -5,6 +5,7 @@ import { AppServerRpcError, type AppServerRequestOptions } from "./client";
 type ThreadRecord = Record<string, any>;
 
 interface ThreadListClient {
+  readonly sidebarIndex?: boolean;
   request(method: string, params: unknown, options?: AppServerRequestOptions): Promise<any>;
 }
 
@@ -46,6 +47,11 @@ async function loadPrioritizedThreadRecords(
   includeRunningThreads: boolean,
   onData: (threads: ThreadRecord[]) => void,
 ) {
+  if (client.sidebarIndex) {
+    const result = await client.request("mobile/sidebar/summaries", { threadIds: [...explicitIds], includeRunning: includeRunningThreads });
+    onData(dedupeThreadsById(result.data));
+    return;
+  }
   const ids = new Set<string>();
   const records: ThreadRecord[] = [];
   const requests: Promise<void>[] = [];
@@ -174,7 +180,20 @@ export async function loadProjectlessThreadRecords(
   targetCount: number,
   pinnedThreadIds: Set<string> = new Set(),
   fixedExcludedThreadIds: Set<string> = pinnedThreadIds,
+  cursor?: string | null,
 ) {
+  if (client.sidebarIndex) {
+    if (targetCount <= 0 || !threadIds.length) return { threads: [], hasMore: false, nextCursor: null };
+    const data: ThreadRecord[] = [];
+    let nextCursor = cursor ?? null;
+    do {
+      const result = await client.request("mobile/sidebar/projectless", {
+        threadIds, excludedThreadIds: [...pinnedThreadIds], fixedExcludedThreadIds: [...fixedExcludedThreadIds], cursor: nextCursor,
+      });
+      data.push(...result.data); nextCursor = result.nextCursor ?? null;
+    } while (!cursor && nextCursor && data.length < targetCount);
+    return { threads: data, hasMore: !!nextCursor, nextCursor };
+  }
   const targetIds = new Set(threadIds.filter((id) => id && !fixedExcludedThreadIds.has(id)));
   const effectiveTargetCount = Math.min(
     Math.max(0, Math.floor(targetCount)),
@@ -326,7 +345,7 @@ export function createLatestThreadListLoader(
     const attempt = nextProjectAttempt(PROJECTLESS_GROUP_ID);
     if (!options.silent) callbacks.onProjectStart?.(PROJECTLESS_GROUP_ID);
     return loadProjectlessThreadPage(client, threadIds, currentPinnedThreadIds, currentManualPinnedThreadIds)
-      .then(({ threads, hasMore }) => {
+      .then(({ threads, hasMore, ...page }) => {
         if (
           sequence === latestSequence &&
           projectAttempts.get(PROJECTLESS_GROUP_ID) === attempt
@@ -335,7 +354,7 @@ export function createLatestThreadListLoader(
             PROJECTLESS_GROUP_ID,
             threads,
             hasMore,
-            null,
+            "nextCursor" in page ? page.nextCursor as string | null : null,
           );
         }
       })
@@ -374,6 +393,7 @@ export function createLatestThreadListLoader(
       // 仅同轮、同客户端复用；新刷新与手动重试必须重新取最新状态。
       const reads = new Map<string, Promise<any>>();
       const backgroundClient = (priority: "background" | "background-visible"): ThreadListClient => ({
+        sidebarIndex: client.sidebarIndex,
         request: (method, params) => {
           if (sequence !== latestSequence) return Promise.reject(new DOMException("Refresh superseded", "AbortError"));
           const id = method === "thread/read" && (params as any)?.includeTurns === false
@@ -426,9 +446,12 @@ export function createLatestThreadListLoader(
       const priorityRequest = summaryIds.size || options.includeRunningThreads
         ? loadPrioritizedThreadRecords(background, summaryIds, options.includeRunningThreads === true, publishPrioritized)
         : Promise.resolve();
-      const promise = Promise.all([priorityRequest, projectRequest])
-        .then(() => {
-          if (sequence === latestSequence) callbacks.onSettled?.();
+      const promise = Promise.allSettled([priorityRequest, projectRequest])
+        .then((results) => {
+          if (sequence !== latestSequence) return;
+          const failure = results.find(result => result.status === "rejected");
+          if (failure?.status === "rejected") throw failure.reason;
+          callbacks.onSettled?.();
         })
         .finally(() => {
           if (pending?.promise === promise) pending = null;

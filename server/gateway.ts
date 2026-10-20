@@ -588,6 +588,11 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
       if (!isBinary) {
         try {
           const message = JSON.parse(rawMessageText(data));
+          if (["mobile/sidebar/summaries", "mobile/sidebar/projectless"].includes(message.method)) {
+            void httpSessions.sidebarRpc(message).then(reply => { if (client.readyState === WebSocket.OPEN) client.send(JSON.stringify(reply)); })
+              .catch(error => { if (client.readyState === WebSocket.OPEN) client.send(JSON.stringify({ id: message.id, error: { code: -32000, message: error.message } })); });
+            return;
+          }
           if (message.method === 'mobile/sidechat/rpc' || (httpSessions.sidechats.has(message.params?.threadId) && ['thread/settings/update', 'turn/interrupt'].includes(message.method))) {
             const envelope = message.method === 'mobile/sidechat/rpc' ? message : { ...message, params: { method: message.method, params: message.params } };
             void httpSessions.sidechatRpc(envelope).then(response => { if (client.readyState === WebSocket.OPEN) client.send(JSON.stringify(response)); }).catch(error => { if (client.readyState === WebSocket.OPEN) client.send(JSON.stringify({ id: message.id, error: { code: -32000, message: error.message } })); });
