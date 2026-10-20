@@ -41,7 +41,7 @@ expect(projectConversation({ id: threadId, turns: recovered }, path => path).fil
 
 - [x] 同步现行发送要求、验收要点、变更记录与实现/模拟器/发布状态。
 - [x] 完成相关测试、必要客户端构建及审查；本轮仅有合成会话，没有远端测试会话需要归档；已关闭夹具服务与本任务独立模拟器。
-- [ ] 遵守中文 Conventional Commits，提交推送固定 SHA。
+- [x] 遵守中文 Conventional Commits，修复提交`12529315663da81a78e8b8e5076faf5a3052aaa2`已推送到`codex/user-message-dedup-20261020`。
 - [ ] 正式发布范围经用户确认后，按协调入口完成后续批次，记录真实状态，不把分支推送当成已发布。
 
 ## 调查证据

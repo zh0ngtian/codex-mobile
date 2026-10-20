@@ -2,6 +2,7 @@
   "date": "2026-10-20",
   "scope": "客户端同回合临时用户消息确认",
   "baseline": "406a447",
+  "sourceCommit": "12529315663da81a78e8b8e5076faf5a3052aaa2",
   "environment": {
     "device": "iPhone 17 Pro",
     "os": "iOS 27",
