@@ -2,6 +2,8 @@
 
 ## 发布协调边界
 
+普通开发默认在验证通过后合入 main 并提交推送；main 在修改期间有新提交才需整合回归，默认不发布。只有用户明确要求客户端发布或 iOS OTA 发布时，才执行本页的正式构建、签名和渠道发布流程，具体交付约束见 [仓库 AGENTS.md](../AGENTS.md)。
+
 本页描述现役 iOS 构建、签名和渠道工具；统一协调入口及目标配置见发布协调说明。客户端正式发布由协调入口使用已冻结、通过检查的批次提交与统一版本执行，参与任务读取同一发布凭证，不各自分配版本、签名或发包。现有队列、锁、阶段恢复与实际验收状态见 [发布协调说明](release-coordination.md)。项目合批规则维护在 [仓库 AGENTS.md](../AGENTS.md)。
 
 日常正式发布由适配器分阶段复用本页的构建、签名和 OTA helper，逐阶段核对冻结提交、版本和实际结果；成功编译、签名及发包不会因响应丢失被重复执行。`npm run ios:release` 组合工具继续保留历史/只读 `--plan` 用法，不作为各任务独立发包入口。签名身份、完整权限、升级连续性及渠道回验要求不变。
@@ -154,12 +156,13 @@ tail -f "$HOME/Library/Application Support/CodexMobile/ota-server/server.stderr.
 
 本机发布配置使用模板中的 `localRoot` 与 `caFile`。发布入口通过专用 `CODEX_MOBILE_OTA_CA_FILE` 为 OTA 请求追加本机 CA，保留系统公共 CA，并且不改变 npm 等构建子进程的 SSL 信任，始终执行 TLS 验证，不使用 `-k` 或关闭证书检查。先建立版本目录，HTTPS 完整回验通过后原子切换 `current`，最后验证固定入口；升级时无需重新安装 CA。TLS 证书到期前执行 `python3 scripts/ios_ota_server.py renew`，保持 CA、服务私钥与 IP 不变；已加载的 launchd 服务会自动重启使用新证书，设备无需重新信任。`init` 不覆盖现有证书。
 
-本机默认发布命令仍为：
+本机组合入口的只读预检命令如下，正式发布仍由协调器调用各阶段 helper：
 
 ```bash
 npm run ios:release -- \
   --config "$HOME/Library/Application Support/CodexMobile/ios-release.local.json" \
-  --notes '本次更新说明'
+  --notes '本次更新说明' \
+  --plan
 ```
 
 ## HTTPS 服务器与固定安装入口
@@ -235,7 +238,7 @@ python3 scripts/ios_ota.py refresh-page \
 
 ## 构建来源
 
-GitHub Actions 已恢复 Android/iOS 统一版本自动构建，iOS 云端只生成 unsigned IPA 并上传 GitHub Release。`npm run ios:prepare` 从 `mobile/ios/build-recipe.yml` 读取固定容器和原生补丁，云端与本地复用此配置；`npm run ios:release` 继续负责本机签名与固定渠道发布。签名凭据仅保存在本机仓库外，不上传 GitHub Secrets；云端 unsigned IPA 不覆盖已签名固定渠道。
+GitHub Actions 仅在已授权发布的 main 冻结批次清单变化时执行 Android/iOS 统一版本构建，iOS 云端只生成 unsigned IPA 并上传 GitHub Release。`npm run ios:prepare` 从 `mobile/ios/build-recipe.yml` 读取固定容器和原生补丁，云端与本地复用此配置；适配器分阶段复用本机构建、签名与固定渠道发布 helper，`npm run ios:release` 组合入口仅保留历史兼容与只读预检。签名凭据仅保存在本机仓库外，不上传 GitHub Secrets；云端 unsigned IPA 不覆盖已签名固定渠道。
 
 ## iOS 27 验收与边界
 
