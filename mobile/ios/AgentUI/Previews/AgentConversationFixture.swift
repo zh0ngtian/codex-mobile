@@ -133,6 +133,24 @@ final class AgentConversationFixture {
             | 桥接清理 | 替换 `NativeSnapshot → AppSession` 和字符串命令调用；最终移除业务 WebView、JS runtime、界面切换与旧界面恢复入口 |
             """, phase: "final_answer")]
         }
+        if ProcessInfo.processInfo.arguments.contains("--agent-release-reply-fixture") {
+            value.messages = [NativeMessage(id: "release-reply", role: "assistant", text: """
+            已发布 **0.3.20（3020）**，包含表格渲染和消息长按菜单修复。
+
+            [iPhone OTA 安装](https://example.com/install.html)
+
+            - [APK 下载](https://example.com/latest.apk)：4,745,915 字节\u{20}\u{20}
+              SHA-256：`bd309dfa76a14e11957cd035f976372b22fd7e1e4dea46569008a55cff820a07`
+            - [IPA 下载（Ad Hoc 已签名）](https://example.com/latest.ipa)：4,834,512 字节\u{20}\u{20}
+              SHA-256：`884c6ba4f26dee837bb676dc707a60591d0f134932abcd030910c170e1e39c28`
+
+            渠道与软件源回验通过；真机覆盖安装及数据保留待验收。
+            """, phase: "final_answer")]
+        }
+        if ProcessInfo.processInfo.arguments.contains("--agent-monospace-wrap-fixture") {
+            let code = String(repeating: "0123456789abcdef", count: 16) + "\nreturn " + String(repeating: "TOKEN_", count: 32)
+            value.messages = [NativeMessage(id: "monospace-wrap", role: "assistant", text: "长等宽序列应完整换行，复制保留原文。\n\n```text\n" + code + "\n```", phase: "final_answer")]
+        }
         if ProcessInfo.processInfo.arguments.contains("--agent-confirmation-controls-fixture") {
             value.panel = NativePanel(id: "confirmation:workspace:fixture:1", title: "确认操作", items: [
                 NativePanelItem(id: "confirmation-yes", kind: "action", title: "确认", text: "归档后，此会话将从列表中移除。确定归档吗？", command: NativeCommand(name: "confirmation.answer", params: ["key": .string("confirmation:workspace:fixture:1"), "confirmed": .bool(true)])),

@@ -14,10 +14,9 @@ struct CodeCard: View {
                        systemImage: copied ? "checkmark" : "square.on.square", action: copy)
                     .labelStyle(.iconOnly).font(.body).frame(width: 44, height: 44)
             }
-            ScrollView(.horizontal) {
-                NativeSelectableText(text: NativeSelectableMarkdown.code(code, color: UIColor(red: 0.19, green: 0.43, blue: 0.14, alpha: 1)), identifier: "code.selectable")
-                    .padding(.vertical, 8)
-            }.scrollIndicators(.hidden)
+            NativeSelectableText(text: NativeSelectableMarkdown.code(code, color: UIColor(red: 0.19, green: 0.43, blue: 0.14, alpha: 1)), identifier: "code.selectable")
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.vertical, 8)
         }
         .padding(.horizontal, 16).padding(.vertical, 7)
         .background(AgentTheme.code, in: .rect(cornerRadius: 21))

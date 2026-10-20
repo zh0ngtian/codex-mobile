@@ -438,7 +438,12 @@ final class AgentAppUITests: XCTestCase {
             let context = CGContext(data: buffer.baseAddress, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
             context.draw(cropped, in: CGRect(x: 0, y: 0, width: width, height: height))
         }
-        let count = stride(from: 0, to: bytes.count, by: 4).filter { light ? (bytes[$0] > 235 && bytes[$0 + 1] > 235 && bytes[$0 + 2] > 235) : (bytes[$0] < 50 && bytes[$0 + 1] < 50 && bytes[$0 + 2] < 50) }.count
+        var count = 0
+        for index in stride(from: 0, to: bytes.count, by: 4) {
+            let red = bytes[index], green = bytes[index + 1], blue = bytes[index + 2]
+            let matches = light ? (red > 235 && green > 235 && blue > 235) : (red < 50 && green < 50 && blue < 50)
+            if matches { count += 1 }
+        }
         print("ICON_INK_PIXELS", count, light, element)
         return count
     }

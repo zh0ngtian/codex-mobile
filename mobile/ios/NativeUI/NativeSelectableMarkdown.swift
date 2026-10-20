@@ -71,13 +71,26 @@ extension NSAttributedString.Key {
                 let prefix = marker + " "
                 part.append(NSAttributedString(string: prefix, attributes: [.font: font, .foregroundColor: UIColor.secondaryLabel]))
                 paragraph.firstLineHeadIndent = CGFloat(block.depth) * 16
-                paragraph.headIndent = paragraph.firstLineHeadIndent + (prefix as NSString).size(withAttributes: [.font: font]).width + 4
+                paragraph.headIndent = paragraph.firstLineHeadIndent + (prefix as NSString).size(withAttributes: [.font: font]).width
             }
             if block.kind == .quote { paragraph.firstLineHeadIndent = 14; paragraph.headIndent = 14 }
             part.append(inline(block.text, scope: block.scope, font: font, color: block.kind == .quote ? .secondaryLabel : .label, strong: block.kind == .heading))
             if index < blocks.count - 1 { part.append(NSAttributedString(string: "\n", attributes: [.font: font])) }
             let range = NSRange(location: 0, length: part.length)
             part.addAttribute(.paragraphStyle, value: paragraph, range: range)
+            if block.kind == .list {
+                // 换行后的段落首行与列表正文一致；条目标记只占第一行的位置。
+                var offset = 0
+                let string = part.string as NSString
+                while offset < part.length {
+                    let line = string.paragraphRange(for: NSRange(location: offset, length: 0))
+                    let style = paragraph.mutableCopy() as! NSMutableParagraphStyle
+                    if offset > 0 { style.firstLineHeadIndent = style.headIndent }
+                    if NSMaxRange(line) < part.length { style.paragraphSpacing = 0 }
+                    part.addAttribute(.paragraphStyle, value: style, range: line)
+                    offset = NSMaxRange(line)
+                }
+            }
             if block.kind == .quote { part.addAttribute(.nativeQuoteRule, value: true, range: range) }
             result.append(part)
         }
