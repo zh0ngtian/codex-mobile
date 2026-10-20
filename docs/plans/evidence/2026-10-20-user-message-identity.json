@@ -1,0 +1,97 @@
+{
+  "schemaVersion": 1,
+  "sourceFixCommit": "ce07aa3",
+  "sourceCommit": "636b3f4dfb95be28c0dab2805d66634f42682e29",
+  "baselineMain": "84084193652167f68a4b5e14f3f2e53e1551c232",
+  "integratedMain": "b4b5e99c755c3e2a2ab2b5123f5a010f688b8891",
+  "status": "validated-and-integrated-source-only",
+  "checks": [
+    {
+      "name": "integrated-regressions",
+      "files": 17,
+      "tests": 410,
+      "status": "passed"
+    },
+    {
+      "name": "typecheck",
+      "status": "passed"
+    },
+    {
+      "name": "frontend-build",
+      "status": "passed"
+    },
+    {
+      "name": "server-build",
+      "status": "passed"
+    },
+    {
+      "name": "simulator-build",
+      "status": "passed"
+    }
+  ],
+  "simulator": {
+    "id": "240244F5-0BEC-4553-A346-32F7D5AD34FC",
+    "name": "iPhone 17 Pro 默认",
+    "os": "iOS 27.0",
+    "orientation": "portrait",
+    "contentSizeCategory": "UICTContentSizeCategoryL",
+    "testBundleId": "vip.loock.codexmobile.identityqa",
+    "installedBundleId": "vip.loock.codexmobile",
+    "version": "0.3.20",
+    "build": "3020"
+  },
+  "ui": {
+    "counts": {
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0
+    },
+    "cases": [
+      {
+        "test": "testExistingUserAndPlaceholderBackfillUseOneBubble",
+        "status": "passed",
+        "durationMs": 19000
+      },
+      {
+        "test": "testGuidanceRecoveredThroughBackfillRemovesPendingBubble",
+        "status": "passed",
+        "durationMs": 43729
+      },
+      {
+        "test": "testImageOnlyBackfillDoesNotAddEmptyUserBubble",
+        "status": "passed",
+        "durationMs": 19010
+      },
+      {
+        "test": "testRecoveryAcknowledgesOneLocalBubbleAndPreservesRealRepeatedSend",
+        "status": "passed",
+        "durationMs": 46625
+      }
+    ],
+    "fixtureArchived": true,
+    "fixtureStopped": true,
+    "testAppRemoved": true
+  },
+  "originalConversation": {
+    "id": "01a157d6-4bbb-7480-9fce-d711d69cf564",
+    "observedText": "发布吧",
+    "observedUserBubbleCount": 1,
+    "readOnly": true,
+    "createdRealTestConversation": false,
+    "note": "该历史回合现已结束；运行中协议时序由独立合成夹具验收，不向用户会话发送消息。"
+  },
+  "frontend": {
+    "entry": "index-BbeNee6e.js",
+    "sha256": "d89013eec57cf0f82502d7c6d5be0e23a1adc9080b5f6b351df2e593cef22ee0",
+    "sameAsUiTestBuild": true,
+    "clientUserMessageIdVerifiedInInstalledProtocol": true
+  },
+  "delivery": {
+    "clientPublished": false,
+    "gatewayDeployed": false,
+    "releaseTaskRegistered": false,
+    "readySubmitted": false,
+    "releaseManifestChanged": false,
+    "physicalDeviceUpgradeVerified": false
+  }
+}
