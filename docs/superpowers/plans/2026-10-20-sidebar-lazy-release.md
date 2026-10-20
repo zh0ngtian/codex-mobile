@@ -19,7 +19,7 @@
 
 ### 2. 整合验证与必要修复
 
-- [ ] `NODE_OPTIONS=--no-experimental-webstorage npm test -- --maxWorkers=2 --testTimeout=60000`，验证边栏与主分支消息、执行过程行为兼容。
+- [x] `NODE_OPTIONS=--no-experimental-webstorage npm test -- --maxWorkers=2 --testTimeout=60000`，验证边栏与主分支消息、执行过程行为兼容。
 - [x] `npm run typecheck && npm run build && npm run build:server`。
 - [x] `python3 -B -m unittest discover -s tests/ci -p 'test_*.py'`；其中适配器回归、恢复回归单列真实日志。
 - [x] `NODE_OPTIONS=--no-experimental-webstorage npm test -- tests/ci --maxWorkers=2 --testTimeout=60000`，记录build-contract门禁。
@@ -45,3 +45,5 @@
 
 - 首轮完整回归161文件1843项中1841通过，2项图片过程测试仍使用运行时默认折叠的旧断言；对应测试与运行呈现源码和main逐字节一致。按已批准的运行时默认展开要求，补查初始展开状态并验证手动折叠/重开，保留原图片按路径去重、原始位置与请求数断言，定向2文件33项通过；不修改生产呈现代码。
 - 发布Python212项、构建契约20文件143项、类型检查与前后端构建通过。原生临时工程首轮因残留嵌套assets与平铺资源重复而未进入测试，清理生成目录后重试通过2项，耗时61.2秒；包含五条窗口及运行过程完成状态，真实源码同步核对。
+
+最终161文件1843项完整回归通过（105.47秒），原生2项整合测试通过且已检查导出截图。类型检查、前后端构建、212项Python回归、单列适配器40项/恢复36项及构建契约143项均通过；测试后的普通模拟器安装、原注册配置已恢复，无真实测试会话。本轮没有新增生产功能或修改呈现逻辑，测试断言维护以既有已批准行为为准。
