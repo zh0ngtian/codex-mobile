@@ -127,6 +127,26 @@ function renderList(
 }
 
 describe("会话侧边栏列表", () => {
+  it("搜索更多不沿用普通项目首批的加载状态", () => {
+    const onToggleProject = vi.fn();
+    const { container } = renderList("mini", { query: "最近", projectDirectories: ["/tmp/project-b"],
+      projectThreadStates: { "/tmp/project-b": "loading" }, projectHasMore: { "/tmp/project-b": true }, onToggleProject });
+    const more = container.querySelector(".project-more") as HTMLButtonElement;
+    expect(more.disabled).toBe(false); fireEvent.click(more);
+    expect(onToggleProject).toHaveBeenCalledExactlyOnceWith("mini", "/tmp/project-b");
+  });
+  it("重新展开读取首批时，加载更多不能提前展开旧缓存", () => {
+    const data = aggregateThreads([backend], { mini: Array.from({ length: 12 }, (_, i) => ({
+      id: `reload-${i}`, preview: `缓存${i + 1}`, cwd: "/a", recencyAt: 20 - i, status: { type: "idle" },
+    })) });
+    const onToggleProject = vi.fn();
+    const { container } = renderList("mini", { visibleThreads: data, projectDirectories: ["/a"],
+      projectThreadStates: { "/a": "loading" }, projectHasMore: { "/a": true }, onToggleProject });
+    const more = container.querySelector(".project-more") as HTMLButtonElement;
+    expect(more.disabled).toBe(true); fireEvent.click(more);
+    expect(within(container).queryByText("缓存6")).toBeNull();
+    expect(onToggleProject).not.toHaveBeenCalled();
+  });
   it("原生重命名取消后同一侧栏会话可再次重命名，保留原后端与目标", async () => {
     const show = vi.fn();
     (window as any).CodexMobileActionMenu = { show, dismiss: vi.fn() };
@@ -610,7 +630,7 @@ describe("会话侧边栏列表", () => {
     expect(onToggleProject).toHaveBeenCalledWith("mini", "/tmp/project-a");
   });
 
-  it("项目已分批加载的会话全部显示，并继续保留更多入口", () => {
+  it("项目缓存首批显示五条，点击更多展示缓存并保留远端入口", () => {
     const loadedThreads = aggregateThreads([backend], {
       mini: Array.from({ length: 8 }, (_, index) => ({
         id: `loaded-${index + 1}`,
@@ -626,6 +646,8 @@ describe("会话侧边栏列表", () => {
     });
     const view = within(container);
 
+    expect(container.querySelectorAll(".project-group .thread-row")).toHaveLength(5);
+    fireEvent.click(view.getByRole("button", { name: "更多" }));
     for (let index = 1; index <= 8; index += 1) {
       expect(view.getByText(`已加载会话 ${index}`)).not.toBeNull();
     }
@@ -650,7 +672,7 @@ describe("会话侧边栏列表", () => {
     const view = within(container);
     const heading = view.getByRole("button", { name: isProjectless ? "无项目" : "project-a" });
     const titles = () => [...container.querySelectorAll(".project-group .thread-row-title")].map(node => node.textContent);
-    expect(titles()).toEqual(loadedThreads.map(thread => thread.thread.preview));
+    expect(titles()).toEqual(loadedThreads.slice(0, 5).map(thread => thread.thread.preview));
 
     fireEvent.click(heading);
     expect(onToggleProjectCollapsed).toHaveBeenLastCalledWith("mini", cwd);
@@ -786,11 +808,11 @@ describe("会话侧边栏列表", () => {
     const projectA = view.getByRole("button", { name: "project-a" }).closest(".project-group") as HTMLElement;
     const projectB = view.getByRole("button", { name: "project-b" }).closest(".project-group") as HTMLElement;
     expect(projectA.querySelectorAll(".thread-row")).toHaveLength(5);
-    expect(projectB.querySelectorAll(".thread-row")).toHaveLength(8);
+    expect(projectB.querySelectorAll(".thread-row")).toHaveLength(5);
     expect(view.getByRole("heading", { name: "关注" }).parentElement?.querySelectorAll(".thread-row")).toHaveLength(7);
 
     rerender(cloneElement(element, { selectedBackendId: "other", backends: [backend, otherBackend], visibleThreads: loadedThreads.filter(thread => thread.backendId === "other"), collapsedProjectKeys: new Set() }));
-    expect(container.querySelectorAll(".project-group .thread-row")).toHaveLength(8);
+    expect(container.querySelectorAll(".project-group .thread-row")).toHaveLength(5);
     rerender(cloneElement(element, { selectedBackendId: "all", visibleThreads: loadedThreads, collapsedProjectKeys: new Set() }));
     expect(view.getByRole("heading", { name: "关注" }).parentElement?.querySelectorAll(".thread-row")).toHaveLength(7);
     expect(view.getByRole("heading", { name: "最近" }).parentElement?.querySelectorAll(".thread-row")).toHaveLength(24);

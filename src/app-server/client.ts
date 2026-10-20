@@ -74,6 +74,8 @@ export class AppServerConnectionUnavailableError extends Error {
 }
 
 export class AppServerClient {
+  /** Codex Mobile 网关协议；新接口失败按错误呈现，不退回逐条扫描。 */
+  readonly sidebarIndex = true;
   private nextId = 1;
   private pending = new Map<number | string, PendingRequest>();
   private notificationListeners = new Set<NotificationListener>();
@@ -238,7 +240,7 @@ export class AppServerClient {
       }
       else {
         // 在列表/搜索过滤之前登记原始来源，RPC 本身不产生完成通知。
-        if (waiter.method.startsWith("thread/") && this.threadMetadataListeners.size) {
+        if ((waiter.method.startsWith("thread/") || waiter.method.startsWith("mobile/sidebar/")) && this.threadMetadataListeners.size) {
           const result = message.result as { thread?: unknown; data?: unknown } | undefined;
           const records = [result?.thread, ...(Array.isArray(result?.data) ? result.data : [])];
           for (const record of records) {

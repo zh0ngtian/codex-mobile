@@ -7,19 +7,22 @@ import { spawnSync } from 'node:child_process';
 import { AppBootstrap } from '../../src/App';
 import { HttpOperationPendingError } from '../../src/backends/http-transport';
 import * as threadListLoader from '../../src/app-server/thread-list-loader';
-const boundary = vi.hoisted(() => ({ requests: [] as Array<{ method: string; params: any; options?: { priority?: string } }>, threadRecords: [] as Array<Record<string, any>>, threadReadBarrier: null as Promise<void> | null, projectBarrier: null as Promise<void> | null, priorityBarrier: null as Promise<void> | null, listBarrier: null as Promise<void> | null, searchBarrier: null as Promise<void> | null, listFailure: false, options: null as any, client: null as any, release: null as null | (() => void), failSend: false, immediateSend: false, nextThreadId: 'sent-thread', delayRevert: false, pendingMethod: '', releaseRevert: null as null | (() => void), rejectStart: null as null | (() => void) }));
+import { saveBackendRegistry } from '../../src/backends/registry';
+const boundary = vi.hoisted(() => ({ sidebarIndex: false, requests: [] as Array<{ method: string; params: any; options?: { priority?: string } }>, threadRecords: [] as Array<Record<string, any>>, threadReadBarrier: null as Promise<void> | null, projectBarrier: null as Promise<void> | null, priorityBarrier: null as Promise<void> | null, listBarrier: null as Promise<void> | null, searchBarrier: null as Promise<void> | null, listFailure: false, options: null as any, client: null as any, release: null as null | (() => void), failSend: false, immediateSend: false, nextThreadId: 'sent-thread', delayRevert: false, pendingMethod: '', releaseRevert: null as null | (() => void), rejectStart: null as null | (() => void) }));
 vi.mock('../../src/backends/connection-manager', () => ({ BackendConnectionManager: class {
  constructor(private options: any) { boundary.options = options; }
  client() { return boundary.client; } socket() { return null; } close() {} reconnect() {}
  sync(backends: any[]) {
   if (!backends.length) return;
-  const client = { onNotification() { return () => {}; }, onThreadMetadata() { return () => {}; }, request: async (method: string, params: any, options?: { priority?: string }) => {
+  const client = { sidebarIndex: boundary.sidebarIndex, onNotification() { return () => {}; }, onThreadMetadata() { return () => {}; }, request: async (method: string, params: any, options?: { priority?: string }) => {
    boundary.requests.push({ method, params, options });
    if (method === 'model/list') return { data: [{ model: 'gpt', displayName: 'GPT', isDefault: true, supportedReasoningEfforts: [{ reasoningEffort: 'high', description: '' }] }] };
    if (method === 'permissionProfile/list') return { data: [{ id: ':workspace', allowed: true }] };
    if (method === 'config/read') return { config: { model: 'gpt', sandbox_mode: 'workspace-write', model_reasoning_effort: 'high' } };
    if (method === 'thread/list') { await boundary.listBarrier; if (boundary.listFailure) throw new Error('列表查询失败'); }
    if (method === 'thread/search') { await boundary.searchBarrier; return { data: [], nextCursor: null }; }
+   if (method === 'mobile/sidebar/summaries') return { data: boundary.threadRecords.filter(thread => params.threadIds.includes(thread.id) || (params.includeRunning && thread.status?.type === 'active')) };
+   if (method === 'mobile/sidebar/projectless') { const rows = boundary.threadRecords.filter(thread => params.threadIds.includes(thread.id) && !params.fixedExcludedThreadIds.includes(thread.id) && (!params.excludedThreadIds.includes(thread.id) || thread.status?.type === 'active')).sort((a, b) => b.recencyAt - a.recencyAt); const offset = Number(params.cursor ?? 0); return { data: rows.slice(offset, offset + 5).map(thread => ({ ...thread, isProjectless: true })), nextCursor: offset + 5 < rows.length ? String(offset + 5) : null }; }
    if (method === 'thread/read') { const thread = boundary.threadRecords.find(thread => thread.id === params.threadId); await boundary.threadReadBarrier; if (thread) return { thread }; }
    if (method === 'thread/list' && params.cwd) { const records = boundary.threadRecords.filter(thread => thread.cwd === params.cwd); const offset = Number(params.cursor ?? 0); const end = offset + params.limit; return { data: records.slice(offset, end), nextCursor: end < records.length ? String(end) : null }; }
    if (method === 'thread/loaded/list') { await boundary.priorityBarrier; return { data: boundary.threadRecords.filter(thread => thread.status?.type === 'active').map(thread => thread.id), nextCursor: null }; }
@@ -44,7 +47,7 @@ function deferredRead() {
  pendingReads.push(resolve);
  return { promise, resolve, reject };
 }
-afterEach(async () => { cleanup(); await act(async () => { pendingReads.splice(0).forEach(resolve => resolve()); }); boundary.requests = []; boundary.threadRecords = []; boundary.threadReadBarrier = null; boundary.projectBarrier = null; boundary.priorityBarrier = null; boundary.listBarrier = null; boundary.searchBarrier = null; boundary.listFailure = false; boundary.client = null; boundary.options = null; boundary.release = null; boundary.failSend = false; boundary.immediateSend = false; boundary.nextThreadId = 'sent-thread'; boundary.delayRevert = false; boundary.pendingMethod = ''; boundary.releaseRevert = null; boundary.rejectStart = null; queueItems = []; posts.length = 0; localStorage.clear(); delete (window as any).__CODEX_NATIVE_UI__; delete (window as any).webkit; delete (window as any).codexMobilePublishNativeSnapshot; vi.unstubAllGlobals(); });
+afterEach(async () => { cleanup(); await act(async () => { pendingReads.splice(0).forEach(resolve => resolve()); }); boundary.sidebarIndex = false; boundary.requests = []; boundary.threadRecords = []; boundary.threadReadBarrier = null; boundary.projectBarrier = null; boundary.priorityBarrier = null; boundary.listBarrier = null; boundary.searchBarrier = null; boundary.listFailure = false; boundary.client = null; boundary.options = null; boundary.release = null; boundary.failSend = false; boundary.immediateSend = false; boundary.nextThreadId = 'sent-thread'; boundary.delayRevert = false; boundary.pendingMethod = ''; boundary.releaseRevert = null; boundary.rejectStart = null; queueItems = []; posts.length = 0; localStorage.clear(); delete (window as any).__CODEX_NATIVE_UI__; delete (window as any).webkit; delete (window as any).codexMobilePublishNativeSnapshot; vi.unstubAllGlobals(); });
 async function setup(native = true, projectState = { projects: [] as string[], projectlessThreadIds: [] as string[] }, waitForSettings = true) {
  if (native) Object.assign(window, { __CODEX_NATIVE_UI__: true, webkit: { messageHandlers: { nativeUI: { postMessage() {} } } }, codexMobilePublishNativeSnapshot: (s: unknown) => posts.push(s) });
  vi.stubGlobal('fetch', vi.fn(async (url: string, options?: RequestInit) => {
@@ -76,6 +79,71 @@ function assertSwiftNavigationSnapshots(snapshots: any[]) {
 }
 
 // 只替换外部连接与HTTP边界，以下断言经过真实App业务状态、导航投影和NativeRuntime发布。
+it('新设备首开全折叠，展开才查本组五条，折叠刷新跳过且无项目也按需加载', async () => {
+ boundary.sidebarIndex = true;
+ boundary.threadRecords = [
+  ...Array.from({ length: 9 }, (_, i) => ({ id: `lazy-${i}`, cwd: '/a', recencyAt: 100 - i, status: { type: i === 2 ? 'active' : 'idle' } })),
+  { id: 'b-running', cwd: '/b', recencyAt: 1, status: { type: 'active' } },
+  ...Array.from({ length: 6 }, (_, i) => ({ id: `loose-${i}`, cwd: null, recencyAt: 80 - i, status: { type: 'idle' } })),
+ ];
+ saveBackendRegistry(localStorage, { version: 1, selectedBackendId: 'a', backends: [{ id: 'a', hostId: 'host', name: 'Mac', enabled: true, order: 0, baseUrl: 'https://gateway.invalid', token: 'SECRET' }] });
+ await setup(true, { projects: ['/a', '/b'], projectlessThreadIds: boundary.threadRecords.filter(t => t.cwd === null).map(t => t.id) });
+ const groups = () => posts.at(-1)?.groups.filter((g: any) => g.category === 'project');
+ const group = (cwd: string) => groups()?.find((g: any) => g.cwd === cwd);
+ await waitFor(() => expect(posts.at(-1)?.navigationLoading).toBe(false));
+ expect(groups()).toHaveLength(3); expect(groups().every((g: any) => g.collapsed && !g.items.length)).toBe(true);
+ expect(boundary.requests.some(r => r.method === 'thread/list' || r.method === 'mobile/sidebar/projectless')).toBe(false);
+ expect(group('/b').allItems.some((item: any) => item.running)).toBe(true);
+ await act(async () => command('expand-lazy-a', 'project.toggle', group('/a').command.params));
+ await waitFor(() => expect(group('/a')).toMatchObject({ collapsed: false, loading: 'ready' }));
+ expect(group('/a').items).toHaveLength(5); expect(group('/a').items[2].running).toBe(true);
+ expect(boundary.requests.filter(r => r.method === 'thread/list').map(r => r.params)).toEqual([{ cwd: '/a', limit: 5, sortKey: 'recency_at' }]);
+ await act(async () => command('collapse-lazy-a', 'project.toggle', group('/a').command.params));
+ const summaries = boundary.requests.filter(r => r.method === 'mobile/sidebar/summaries').length;
+ await act(async () => command('refresh-collapsed', 'navigation.refresh'));
+ await waitFor(() => expect(boundary.requests.filter(r => r.method === 'mobile/sidebar/summaries').length).toBeGreaterThan(summaries));
+ expect(boundary.requests.filter(r => r.method === 'thread/list')).toHaveLength(1);
+ await act(async () => command('expand-lazy-loose', 'project.toggle', group('').command.params));
+ await waitFor(() => expect(group('')).toMatchObject({ collapsed: false, loading: 'ready' }));
+ expect(group('').items).toHaveLength(5);
+ expect(boundary.requests.filter(r => r.method === 'mobile/sidebar/projectless')).toHaveLength(1);
+ const more = group('').actions.find((a: any) => a.command?.name === 'project.more');
+ await act(async () => command('more-lazy-loose', more.command.name, more.command.params));
+ await waitFor(() => expect(group('').items).toHaveLength(6));
+ expect(group('/b').collapsed).toBe(true);
+});
+it('网关无项目每次只返回五条时，真实原生更多路由累计到十条且运行计入五条', async () => {
+ boundary.sidebarIndex = true;
+ boundary.threadRecords = [
+  ...Array.from({ length: 12 }, (_, i) => ({ id: `indexed-${i}`, cwd: null, recencyAt: 100 - i, status: { type: i === 2 ? 'active' : 'idle' } })),
+  { id: 'unread', cwd: null, recencyAt: 0, status: { type: 'idle' } },
+ ];
+ localStorage.setItem('codex-mobile:unread:a', '["unread"]');
+ await setup(true, { projects: [], projectlessThreadIds: boundary.threadRecords.map(thread => thread.id) });
+ const group = () => posts.at(-1)?.groups.find((entry: any) => entry.category === 'project' && entry.cwd === '');
+ const counted = () => group()?.items.filter((item: any) => !item.isUnread);
+ await waitFor(() => expect(counted()).toHaveLength(5));
+ expect(counted()[2]).toMatchObject({ threadId: 'indexed-2', running: true });
+ for (const count of [10, 12]) {
+  const more = group().actions.find((action: any) => action.command?.name === 'project.more');
+  await act(async () => command(`indexed-more-${count}`, more.command.name, more.command.params));
+  await waitFor(() => expect(counted()).toHaveLength(count));
+ }
+ expect(boundary.requests.filter(r => r.method === 'mobile/sidebar/projectless').map(r => r.params.cursor)).toEqual([null, '5', '10']);
+ expect(boundary.requests.filter(r => r.method === 'thread/read')).toHaveLength(0);
+ expect(group().items.filter((item: any) => item.isUnread)).toHaveLength(1);
+});
+it('冷启动目录挂起时立即打开原生侧栏共用整轮刷新，不重复请求目录', async () => {
+ const directory = deferredRead();
+ boundary.projectBarrier = directory.promise;
+ await setup(true, { projects: ['/pending'], projectlessThreadIds: [] }, false);
+ await waitFor(() => expect(vi.mocked(fetch).mock.calls.filter(([url]) => String(url).includes('/api/projects'))).toHaveLength(1));
+ await act(async () => command('startup-open-sidebar', 'navigation.sidebar', { open: true }));
+ expect(vi.mocked(fetch).mock.calls.filter(([url]) => String(url).includes('/api/projects'))).toHaveLength(1);
+ await act(async () => directory.resolve());
+ await waitFor(() => expect(posts.at(-1).navigationLoading).toBe(false));
+});
+
 it('真实App冷启动在目录、优先摘要和首批普通会话未完成前持续加载，成功空项目才ready', async () => {
  const directory = deferredRead(); const priority = deferredRead(); const page = deferredRead(); const projectless = deferredRead();
  boundary.projectBarrier = directory.promise; boundary.priorityBarrier = priority.promise; boundary.listBarrier = page.promise; boundary.threadReadBarrier = projectless.promise;
@@ -199,7 +267,7 @@ it.each([
    const more = group().actions.find((action: any) => action.command?.name === 'project.more');
    expect(more.disabled).toBe(false);
    await act(async () => { command(`projectless-more-${targetCount}`, more.command.name, more.command.params); });
-   expect(loadProjectless).toHaveBeenLastCalledWith(boundary.client, projectlessThreadIds, targetCount, new Set(prioritizedIds));
+   expect(loadProjectless).toHaveBeenLastCalledWith(boundary.client, projectlessThreadIds, targetCount, new Set(prioritizedIds.filter(id => id !== 'running')), new Set(prioritizedIds.filter(id => id === 'pin')), null);
    await waitFor(() => expect(ordinaryIds()).toEqual(ordinary.slice(0, targetCount).map(thread => thread.id)));
    await waitFor(() => expect(group().actions.find((action: any) => action.command?.name === 'project.more').disabled).toBe(false));
    expectRetainedSummaries();

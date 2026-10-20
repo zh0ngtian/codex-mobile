@@ -13,6 +13,7 @@ import {
   setBackendEnabled,
   upsertBackend,
 } from "../../src/backends/registry";
+import { isProjectCollapsed, readCollapsedProjectKeys, toggleProjectCollapsedKeys, writeCollapsedProjectKeys } from "../../src/features/threads/project-collapse";
 
 class MemoryStorage implements Storage {
   private values = new Map<string, string>();
@@ -43,6 +44,26 @@ class MemoryStorage implements Storage {
 }
 
 describe("多后端配置存储", () => {
+  it("新注册设备默认折叠，既有设备的展开记忆不被保存配置覆盖", () => {
+    const storage = new MemoryStorage(), registry = createDefaultBackendRegistry("http://device.test");
+    saveBackendRegistry(storage, registry);
+    expect(isProjectCollapsed(readCollapsedProjectKeys(storage), "current-origin", "/a")).toBe(true);
+    writeCollapsedProjectKeys(storage, toggleProjectCollapsedKeys(readCollapsedProjectKeys(storage), "current-origin", "/a"));
+    saveBackendRegistry(storage, registry);
+    expect(isProjectCollapsed(readCollapsedProjectKeys(storage), "current-origin", "/a")).toBe(false);
+    const legacy = new MemoryStorage(); legacy.setItem(BACKEND_REGISTRY_STORAGE_KEY, JSON.stringify(registry));
+    saveBackendRegistry(legacy, registry);
+    expect(isProjectCollapsed(readCollapsedProjectKeys(legacy), "current-origin", "/a")).toBe(false);
+  });
+
+  it("注册表保存失败撤回新设备的默认折叠标记", () => {
+    const storage = new MemoryStorage(), write = storage.setItem.bind(storage);
+    writeCollapsedProjectKeys(storage, new Set(["old:/folded"]));
+    storage.setItem = (key, value) => { if (key === BACKEND_REGISTRY_STORAGE_KEY) throw new Error("quota"); write(key, value); };
+    expect(() => saveBackendRegistry(storage, createDefaultBackendRegistry("http://device.test"))).toThrow("quota");
+    expect(readCollapsedProjectKeys(storage)).toEqual(new Set(["old:/folded"]));
+    expect(storage.getItem(BACKEND_REGISTRY_STORAGE_KEY)).toBeNull();
+  });
   it("首次打开时把当前 origin 建为默认后端", () => {
     expect(createDefaultBackendRegistry("http://192.168.100.8:4173/")).toEqual({
       version: 1,

@@ -4,6 +4,12 @@ import { HttpRpcTransport } from "../../src/backends/http-transport";
 import { fetchBackendProjectState } from "../../src/backends/probe";
 import { runWorkspaceBootstrap } from "../../src/backends/workspace-bootstrap";
 
+// 保留原有双并发压力场景；生产默认四并发及不同上限另由调度器回归覆盖。
+vi.mock("../../src/backends/http-request-scheduler", async importOriginal => {
+  const actual = await importOriginal<typeof import("../../src/backends/http-request-scheduler")>();
+  return { ...actual, httpRequestScheduler: new actual.HttpRequestScheduler(2) };
+});
+
 const transports: HttpRpcTransport[] = [];
 afterEach(async () => {
   transports.splice(0).forEach((transport) => transport.close());
@@ -41,6 +47,28 @@ function harness() {
 }
 
 describe("HTTP前台会话优先于后台刷新", () => {
+  it("展开项目补页先于普通后台队列，但仍共享两个名额并让出前台", async () => {
+    const { calls, create, request } = harness();
+    const { client } = create("visible-background", "http://visible-background.test");
+    await vi.advanceTimersByTimeAsync(0);
+    const first = request(client, "thread/read", { priority: "background" });
+    const second = request(client, "thread/read", { priority: "background" });
+    const collapsed = request(client, "thread/loaded/list", { priority: "background" });
+    const visible = request(client, "thread/list", { priority: "background-visible" });
+    expect(calls).toHaveLength(2);
+    const foreground = request(client, "thread/resume");
+    expect(calls).toHaveLength(3);
+    calls[0].finish(); await vi.advanceTimersByTimeAsync(0);
+    expect(calls).toHaveLength(3);
+    calls[2].finish(); await vi.advanceTimersByTimeAsync(0);
+    expect(calls[3].method).toBe("thread/list");
+    expect(calls).toHaveLength(4);
+    calls[3].finish(); await vi.advanceTimersByTimeAsync(0);
+    expect(calls[4].method).toBe("thread/loaded/list");
+    calls.forEach(call => call.finish());
+    await Promise.all([first, second, collapsed, visible, foreground]);
+  });
+
   it("冷启动额度查询未结束时，后续后台列表仍完成关键初始化", async () => {
     const { calls, create } = harness();
     const { client } = create("bootstrap-rate-limits", "http://bootstrap-rate-limits.test");

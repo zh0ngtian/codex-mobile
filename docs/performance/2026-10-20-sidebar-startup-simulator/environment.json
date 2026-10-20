@@ -1,0 +1,46 @@
+{
+  "date": "2026-10-20",
+  "timezone": "Asia/Shanghai",
+  "simulator_model": "iPhone 17 Pro",
+  "os": "iOS 27.0",
+  "configuration": "Debug",
+  "orientation": "portrait",
+  "content_size_category": "UICTContentSizeCategoryL",
+  "app_version_label": "0.3.18",
+  "baseline_source": "6f949347ad1c5ea47bc90208296a475aa96c5636",
+  "fixed_source": "674ff419298cdc4fb86684de3bd83768e933599d",
+  "baseline_samples": 20,
+  "fixed_samples": 20,
+  "order": "baseline 10 / fixed 10 / fixed 10 / baseline 10",
+  "transport": "HTTP",
+  "backends": 1,
+  "project_groups": 14,
+  "expanded_groups": 1,
+  "static_workload": false,
+  "start_local": "2026-10-20T00:57:27.471082+08:00",
+  "native_executable_sha256": "ceefef7598e7bb9e767443a8d3d1539e74d251205b0729e8abf9d887c223e43b",
+  "native_dylib_sha256": "0ad406e3042417a4d061492e330b79608398ab05e155d231a78ebc068b63390f",
+  "frontend_assets": {
+    "baseline": {
+      "assetSha256": "840d33bd4edf89af3148bb56dc0a247cff3ca130e70b80a13983008a3e443ee0"
+    },
+    "fixed": {
+      "assetSha256": "ce5c99350615c1e4a927174dc1082be3fa9a6dd04645510a51dc9964ef078afc"
+    }
+  },
+  "runtime_files": {
+    "src/App.tsx": "dfc1753734e54ad77cca5f341060aa89ae7a10c81c9e2c90f622f96f398e0522",
+    "src/app-server/thread-list-loader.ts": "af10f3edf9becbd4ca662f47629a7e2dbedf35272da46445eb4d68b03f062a49",
+    "src/app-server/latest-client-refresh.ts": "d4df9ce4ab9fabe2014a2642bf1d002835ea472c2b2ebc19a2581a23957c31ae",
+    "src/backends/http-request-scheduler.ts": "1c5b08cc14c7b6d119eccc6971468e7db7760c3ff555e3fa1aed8fd734406f67",
+    "src/backends/http-transport.ts": "c0ccc96b1f397fb757efe29ee1519652341e0872744850e06151b9c66db58524",
+    "src/features/threads/ThreadListPage.tsx": "6a1173af7f1f9ac4e8d247d8933683f2e8872ea5f2c67354bf4a750b4df12d53",
+    "mobile/ios/AgentUI/Session/AppSession.swift": "b406299538db71cdc142981e3b9b2f23cf7229538539d59ad6b08e31a94a6d9f"
+  },
+  "real_test_conversations_created": 0,
+  "published": false,
+  "end_local": "2026-10-20T01:04:30.402000+08:00",
+  "post_run_restored_to_uninstrumented_app": true,
+  "post_run_no_launch_arguments": true,
+  "collector_stopped": true
+}

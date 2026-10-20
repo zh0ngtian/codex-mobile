@@ -32,7 +32,7 @@ import {
   splitAllThreads,
   type AggregatedThreadItem,
 } from "./thread-list-model";
-import { projectCollapseKey } from "./project-collapse";
+import { isProjectCollapsed, projectCollapseKey } from "./project-collapse";
 import { t } from "../../i18n";
 
 export type ThreadManagementAction =
@@ -432,15 +432,17 @@ export function ThreadListPage({
                 );
                 const isExpanded =
                   Boolean(query.trim()) ||
-                  !collapsedProjectKeys.has(projectKey);
-                const isLoadingMore = loadingProjectKeys.has(projectKey);
+                  !isProjectCollapsed(collapsedProjectKeys, selectedBackendId, group.cwd);
+                const isLoadingMore = loadingProjectKeys.has(projectKey) || (!query.trim() && projectThreadStates[group.cwd] === "loading");
                 const projectThreadState =
                   projectThreadStates[group.cwd] ??
                   (group.threads.length ? "ready" : "idle");
-                const visibleLimit = projectVisibleLimits[projectKey] ?? group.threads.length;
+                const visibleLimit = projectVisibleLimits[projectKey] ?? PROJECT_THREAD_BATCH_SIZE;
+                let countedThreads = 0;
                 const displayedThreads = query.trim()
                   ? group.threads
-                  : group.threads.slice(0, visibleLimit);
+                  : group.threads.filter(thread => thread.unread || ++countedThreads <= visibleLimit);
+                const loadedCount = group.threads.filter(thread => !thread.unread).length;
                 const hasServerMore =
                   projectHasMore[group.cwd] ??
                   group.threads.length >= PROJECT_THREAD_BATCH_SIZE;
@@ -461,7 +463,7 @@ export function ThreadListPage({
                         className="project-heading"
                         aria-expanded={isExpanded}
                         onClick={() => {
-                          if (!collapsedProjectKeys.has(projectKey)) {
+                          if (!isProjectCollapsed(collapsedProjectKeys, selectedBackendId, group.cwd)) {
                             setProjectVisibleLimits((previous) => ({
                               ...previous,
                               [projectKey]: PROJECT_THREAD_BATCH_SIZE,
@@ -542,7 +544,7 @@ export function ThreadListPage({
                                 ...previous,
                                 [projectKey]: nextLimit,
                               }));
-                              if (hasServerMore && nextLimit > group.threads.length) {
+                              if (hasServerMore && nextLimit > loadedCount) {
                                 onToggleProject(selectedBackendId, group.cwd);
                               }
                             }}

@@ -886,17 +886,17 @@ struct AgentSessionSmoke {
                     cwd: cwd == "codex-mobile://projectless" ? nil : cwd, isPinned: pinned, isUnread: unread, running: running)
             }
             let ordinary = (1...12).map { row("ordinary-\($0)") }
-            let rows = ordinary + [row("unread", unread: true), row("running", running: true), row("pinned", pinned: true)]
+            let rows = [row("running", unread: true, running: true)] + ordinary + [row("unread", unread: true), row("pinned", pinned: true)]
             let params: [String: NativeJSONValue] = ["backendId": .string("device"), "cwd": .string(cwd)]
             let more = NativePanelItem(id: "more", kind: "action", command: NativeCommand(name: "project.more", params: params))
             snapshot.groups = [NativeGroup(id: "group", title: "分组", items: rows,
                 command: NativeCommand(name: "project.toggle", params: params), actions: [more], collapsed: false,
                 category: "project", allItems: rows)]
             func publish() { store.receive(snapshot); session.receive(snapshot) }
-            func visibleOrdinary() -> Int { session.projectConversations("group").filter { !$0.isUnread && $0.phase != .running }.count }
+            func visibleOrdinary() -> Int { session.projectConversations("group").filter { !$0.isUnread || $0.phase == .running }.count }
             func remoteCommands() -> Int { commands.filter { $0.name == "project.more" }.count }
             publish()
-            precondition(visibleOrdinary() == 5 && session.projectConversations("group").count == 7, "每组首批须为五条普通加全部未读和运行摘要，关注不重复占项目名额")
+            precondition(visibleOrdinary() == 5 && session.projectConversations("group").count == 6, "每组首批须为五条计数包含运行会话，空闲未读独立保留，关注不重复占项目名额")
             precondition(session.allProjectConversations("group").count == 14, "摘要覆盖窗口外全部缓存且排除关注")
             if cwd == "codex-mobile://projectless" { precondition(session.allProjectConversations("group").allSatisfy { $0.project == nil }, "无项目不能被展示分组伪造目录") }
             snapshot.groups[0].actions?[0].disabled = true; publish()
@@ -904,11 +904,11 @@ struct AgentSessionSmoke {
             precondition(!session.canLoadMoreProject("group") && visibleOrdinary() == 5 && remoteCommands() == 0, "加载中即便有缓存也不得扩大窗口或发重复命令")
             snapshot.groups[0].actions?[0].disabled = false; publish()
             session.loadMoreProject("group")
-            precondition(visibleOrdinary() == 10 && session.projectConversations("group").count == 12 && remoteCommands() == 0, "缓存普通每次增加五条且独立摘要不占名额，不重复拉取")
+            precondition(visibleOrdinary() == 10 && session.projectConversations("group").count == 11 && remoteCommands() == 0, "缓存每次增加五条且运行会话占名额，不重复拉取")
             session.sidebarVisible = false; session.sidebarVisible = true
             precondition(visibleOrdinary() == 10, "关闭侧栏保留普通窗口")
             session.loadMoreProject("group")
-            precondition(visibleOrdinary() == 12 && remoteCommands() == 0, "缓存余量先本地展开")
+            precondition(visibleOrdinary() == 13 && remoteCommands() == 0, "缓存余量先本地展开")
             snapshot.groups[0].actions?[0].disabled = true; publish()
             let previousWindow = session.projectPageCounts["group"]
             session.loadMoreProject("group")
@@ -918,7 +918,7 @@ struct AgentSessionSmoke {
             precondition(remoteCommands() == 1 && commands.last?.params["cwd"] == .string(cwd), "缓存耗尽后才按真实分组调用远端更多")
             snapshot.groups[0].collapsed = true; publish()
             snapshot.groups[0].collapsed = false; publish()
-            precondition(visibleOrdinary() == 5 && session.projectConversations("group").count == 7, "显式折叠重开复位普通五条，独立摘要仍显示")
+            precondition(visibleOrdinary() == 5 && session.projectConversations("group").count == 6, "显式折叠重开复位普通五条，空闲未读仍独立显示")
             session.searchText = "ordinary"
             precondition(session.projectConversations("group").count == 14, "搜索显示全部非关注缓存，不受普通窗口限制")
         }

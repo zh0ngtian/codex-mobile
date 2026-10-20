@@ -10,7 +10,7 @@ interface PollResponse {
   epoch: string; cursor: number; messages: RpcMessage[]; requests: RpcMessage[];
   active: boolean; updatedAt: number; reset: boolean; hasMore?: boolean;
 }
-const readMethods = new Set(["initialize", "initialized", "thread/list", "thread/read", "thread/loaded/list", "thread/turns/list", "thread/items/list", "mobile/turns/commentary", "permissionProfile/list", "plugin/list", "model/list", "config/read", "configRequirements/read", "account/read", "account/rateLimits/read", "skills/list", "mcpServerStatus/list", "collaborationMode/list", "app/list", "fs/readFile"]);
+const readMethods = new Set(["initialize", "initialized", "thread/list", "thread/read", "thread/loaded/list", "thread/turns/list", "thread/items/list", "mobile/sidebar/summaries", "mobile/sidebar/projectless", "mobile/turns/commentary", "permissionProfile/list", "plugin/list", "model/list", "config/read", "configRequirements/read", "account/read", "account/rateLimits/read", "skills/list", "mcpServerStatus/list", "collaborationMode/list", "app/list", "fs/readFile"]);
 interface PendingWrite { requestId: string; message: RpcMessage; epoch?: string; queryOnly?: true }
 const responseSignature = (message: RpcMessage, epoch?: string) => JSON.stringify({ id: message.id, epoch });
 function persistentWrite(operation: PendingWrite): PendingWrite {
@@ -211,6 +211,11 @@ export class HttpRpcTransport extends EventTarget {
     let failure: unknown;
     let mayHaveBeenAccepted = Boolean(existing);
     const deadline = Date.now() + timeoutMs;
+    const remainingReadBudget = () => {
+      const remaining = deadline - Date.now();
+      if (!signature && remaining <= 0) throw new Error(t("{method} 请求超时", { method: message.method ?? "HTTP" }));
+      return Math.max(1, remaining);
+    };
     const fallbackDetails = async () => {
       if (signature || wireOperation.message.method !== "mobile/turns/details" || response?.error?.code !== -32601) return;
       this.detailsUnsupported = true;
@@ -218,14 +223,14 @@ export class HttpRpcTransport extends EventTarget {
       requestId = transportUuid();
       wireOperation = { ...operation, requestId, message: original };
       response = undefined;
-      response = await this.fetchJson("/api/rpc", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(wireOperation) }, {}, Math.max(1, deadline - Date.now()));
+      response = await this.fetchJson("/api/rpc", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(wireOperation) }, {}, remainingReadBudget());
     };
     if (signature) this.inflightWrites.add(requestId);
     if (signature && message.method && message.id != null) this.inflightRpcWrites.set(message.id, operation);
     try {
       for (let attempt = 0; attempt < 3 && this.readyState === 1; attempt++) {
         try {
-          response = await this.fetchJson("/api/rpc", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(wireOperation) }, {}, Math.max(1, deadline - Date.now()));
+          response = await this.fetchJson("/api/rpc", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(wireOperation) }, {}, remainingReadBudget());
           await fallbackDetails();
           break;
         } catch (reason) {
@@ -239,13 +244,16 @@ export class HttpRpcTransport extends EventTarget {
           mayHaveBeenAccepted = true;
         }
         if (this.readyState !== 1) break;
+        if (!signature && Date.now() >= deadline) break;
         try {
-          const result = await this.fetchJson("/api/operations", {}, { requestId }, 5_000);
+          const result = await this.fetchJson("/api/operations", {}, { requestId }, signature ? 5_000 : Math.min(5_000, remainingReadBudget()));
           if (result.status === "completed" && result.message) { response = result.message; await fallbackDetails(); break; }
           if (result.status === "uncertain") break;
         } catch { /* 404 和弱网都不能证明操作未提交。 */ }
         if (Date.now() >= deadline || attempt === 2) break;
-        await new Promise((resolve) => setTimeout(resolve, 300 * (attempt + 1)));
+        const retryDelay = 300 * (attempt + 1);
+        if (!signature && deadline - Date.now() <= retryDelay) break;
+        await new Promise((resolve) => setTimeout(resolve, retryDelay));
       }
       if (!response || this.readyState !== 1) {
         if (signature) throw new HttpOperationPendingError(requestId, operation.message, failure);

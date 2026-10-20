@@ -1,0 +1,22 @@
+{
+  "measuredSource": "88990d5ae38ea2ffe6075c8070af0700997f4914",
+  "platform": "iPhone 17 Pro / iOS 27.0 Simulator, portrait, normal font",
+  "runtimeHashes": {
+    "src/App.tsx": "e5772bac5f6aaf8a518985593dbf2ae01630098fa094784e51dceeac09b3831d",
+    "src/app-server/thread-list-loader.ts": "76c6913944c460361895e146d2c58f7d9200bc244a2c714bb2d08d033cd19b90",
+    "src/backends/registry.ts": "c49ad00c43ab200dab536c5ae06e7a6d20e7546a71a328c4778421bb51425a97",
+    "src/features/threads/project-collapse.ts": "01ec9011415d18239fcbaafc0eb40cabad13a8eaf3fcf5c8c04660dc3f3fc315",
+    "src/features/threads/ThreadListPage.tsx": "95a3280bd3796b6d9412bc344206072cdfe3b58f9589bdf66a02e340646c9984",
+    "src/native-ui/projection.ts": "00da9918c550777511b1c1260c30500ea2ff3a9c5cb673f3f905ee232e904fa9"
+  },
+  "nativeExecutableSha256": "ceefef7598e7bb9e767443a8d3d1539e74d251205b0729e8abf9d887c223e43b",
+  "nativeDylibSha256": "0ad406e3042417a4d061492e330b79608398ab05e155d231a78ebc068b63390f",
+  "sourceAssets": {
+    "index-4": {
+      "sourceAssetSha256": "d416561f566a81a50503e980bfec97a3e7922acdef290636e2eb70e930ec335b"
+    }
+  },
+  "configuration": "one newly registered test backend; 13 ordinary projects plus projectless, all collapsed; warm long-lived isolated test gateway; same real upstream",
+  "endpoint": "launch command to last loader onSettled; document-relative endpoint separately; no conversation page loaded until explicit expansion",
+  "note": "Later Web-only cached-more loading protection is outside the measured native cold-start path"
+}

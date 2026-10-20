@@ -1,0 +1,30 @@
+{
+  "source": "fa69ad1c14acda5bab6d178f0540bfedf29696bb",
+  "entry": "index-CAGHlb7a.js",
+  "entrySha256": "31410d39042c815b84b863db910e071b12c9db17ca10e01d5604cd852adb9c5a",
+  "htmlSha256": "ed343b633675d60871a1b283c191b14455e0360108cf184229000685003b82a7",
+  "nativeSha256": "ceefef7598e7bb9e767443a8d3d1539e74d251205b0729e8abf9d887c223e43b",
+  "nativeDylibSha256": "0ad406e3042417a4d061492e330b79608398ab05e155d231a78ebc068b63390f",
+  "platform": "iPhone 17 Pro / iOS 27.0 Simulator",
+  "configuration": "Debug; normal font; portrait",
+  "scenario": "process cold start; known groups all collapsed; click codex-mobile after directory/summary ready",
+  "nativeContainerSource": "674ff41; native five-count container reused; no new native source changes",
+  "gateway": "isolated loopback gateway to real existing upstream; long-lived summary index; not production deployment",
+  "gatewayBundleSha256": "31cb71c3c6d6445037b79b52eb7b0b4c66ba2a0de668a5de38deb8b791646e84",
+  "cleanSamples": 20,
+  "visualSamples": 3,
+  "projectPageLimit": 5,
+  "backgroundConcurrency": 4,
+  "probe": "HTML-only seed and passive bridge/fetch observer; entry JS identical to dist; real native button taps; no command polling",
+  "visualEndpoint": "first changed folder-icon frame to all five title lines >=90% final ink contrast for five consecutive decoded frames; file-local PTS; 368x800 scaled video",
+  "visualFirstInkEndpoint": "same start; five title lines >=25% final ink contrast for five consecutive frames",
+  "quantiles": "nearest-rank ceil(n*p)",
+  "cleanup": {
+    "originalRegistryRestored": true,
+    "originalBundleRestored": true,
+    "temporaryListenersStopped": true,
+    "simulatorLockReleased": true,
+    "testConversationsCreated": 0
+  },
+  "notPublished": true
+}
