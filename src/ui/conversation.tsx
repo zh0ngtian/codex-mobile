@@ -1,5 +1,5 @@
 import { decodeUserMessage } from '../../server/user-message-format';
-import { confirmLocalUserMessages, mergeConfirmedUserMessage, type UserMessageMatchOptions } from '../app-server/user-message-reconciliation';
+import { confirmLocalUserMessages, hasUserMessageContent, mergeConfirmedUserMessage, reconcileUserMessageAliases, userMessagesMatch, type UserMessageMatchOptions } from '../app-server/user-message-reconciliation';
 import { parseRemoteFileHref } from './remote-file-target';
 export { parseRemoteFileHref } from './remote-file-target';
 export type { RemoteFileTarget } from './remote-file-target';
@@ -493,6 +493,8 @@ function mergeTurnItems(
   incomingItems: ConversationRecord[],
   options: UserMessageMatchOptions = {},
 ) {
+  const normalized = reconcileUserMessageAliases(currentItems, incomingItems, options.alignUserOrder);
+  currentItems = normalized.current; incomingItems = normalized.incoming;
   const merged = confirmLocalUserMessages(currentItems, incomingItems, options);
   for (const item of incomingItems) {
     const index = merged.findIndex((current) => current.id === item.id);
@@ -506,37 +508,43 @@ function mergeTurnItems(
 export function applyTurnStarted(
   thread: ConversationRecord,
   params: ConversationRecord,
+  options: { pendingTurnId?: string; itemsAreSnapshot?: boolean } = {},
 ) {
   if (!thread || thread.id !== params.threadId || !params.turn?.id) {
     return thread;
   }
   const incoming = params.turn as ConversationRecord;
   const turns = (thread.turns ?? []) as ConversationRecord[];
-  let index = turns.findIndex((turn) => turn.id === incoming.id);
-  if (index < 0) {
-    for (let candidate = turns.length - 1; candidate >= 0; candidate -= 1) {
-      if (String(turns[candidate]?.id ?? "").startsWith("pending-")) {
-        index = candidate;
-        break;
-      }
-    }
+  const index = turns.findIndex((turn) => turn.id === incoming.id);
+  const user = (turn: ConversationRecord | undefined) => turn?.items?.find((item: ConversationRecord) => item.type === "userMessage");
+  const pending = turns.map((turn, index) => ({ turn, index })).filter(({ turn }) => String(turn.id).startsWith("pending-"));
+  let pendingIndex = options.pendingTurnId
+    ? pending.find(entry => entry.turn.id === options.pendingTurnId)?.index ?? -1 : -1;
+  if (!options.pendingTurnId && (index < 0 || (!user(turns[index]) && ["inProgress", "in_progress", "running"].includes(turns[index].status)))) {
+    const input = user(incoming);
+    const matches = input ? pending.filter(entry => user(entry.turn) && userMessagesMatch(user(entry.turn), input, { allowImageSourceChange: true })) : [];
+    if (matches.length === 1) pendingIndex = matches[0].index;
+    else if (!input && index < 0 && pending.length === 1) pendingIndex = pending[0].index;
   }
   const existing = index >= 0 ? turns[index] : null;
-  const replacement = {
-    ...(existing ?? {}),
-    ...incoming,
-    items: mergeTurnItems(existing?.items ?? [], incoming.items ?? [], {
-      allowImageSourceChange: String(existing?.id ?? "").startsWith("pending-"),
+  const local = pendingIndex >= 0 ? turns[pendingIndex] : null;
+  const base = local && existing ? { ...local, ...existing, items: mergeTurnItems(local.items ?? [], existing.items ?? [], { alignUserOrder: true }) } : existing ?? local;
+  const staleStart = existing && ["completed", "failed", "interrupted", "cancelled"].includes(existing.status) &&
+    ["inProgress", "in_progress", "running"].includes(incoming.status);
+  const replacement: ConversationRecord = {
+    ...(base ?? {}),
+    ...(staleStart ? { ...incoming, ...existing } : incoming),
+    items: mergeTurnItems(base?.items ?? [], incoming.items ?? [], {
+      allowImageSourceChange: Boolean(local),
+      alignUserOrder: options.itemsAreSnapshot !== false,
     }),
   };
+  delete replacement.clientSequence;
+  const target = index >= 0 ? index : pendingIndex;
   return {
     ...thread,
-    turns:
-      index >= 0
-        ? turns.map((turn, turnIndex) =>
-            turnIndex === index ? replacement : turn,
-          )
-        : [...turns, replacement],
+    turns: target < 0 ? [...turns, replacement] : turns.flatMap((turn, turnIndex) =>
+      turnIndex === target ? [replacement] : turnIndex === pendingIndex ? [] : [turn]),
   };
 }
 
@@ -579,31 +587,7 @@ export function reconcileRecentTurns(
     confirmed.sort((left, right) => left.startedAt - right.startedAt);
     return [...confirmed, ...turns.filter(pendingTurn)];
   };
-  const userSignature = (turn: ConversationRecord) => {
-    const user = (turn.items ?? []).find(
-      (item: ConversationRecord) => item.type === "userMessage",
-    );
-    if (!user) return "";
-    const content = Array.isArray(user.content) ? user.content : [];
-    return content.length
-      ? content
-          .filter((part: ConversationRecord) => part.type === "text")
-          .map((part: ConversationRecord) => String(part.text ?? ""))
-          .join("\n")
-          .trim()
-      : String(user.text ?? "").trim();
-  };
-  const hasUserImage = (turn: ConversationRecord) => {
-    const user = (turn.items ?? []).find(
-      (item: ConversationRecord) => item.type === "userMessage",
-    );
-    return Array.isArray(user?.content)
-      ? user.content.some(
-          (part: ConversationRecord) =>
-            part.type === "image" || part.type === "localImage",
-        )
-      : false;
-  };
+  const firstUser = (turn: ConversationRecord) => (turn.items ?? []).find((item: ConversationRecord) => item.type === "userMessage");
   const keepUnmatchedPending = (turn: ConversationRecord) => {
     if (!pendingTurn(turn)) return true;
     if (options.discardPendingThrough == null) return true;
@@ -615,6 +599,8 @@ export function reconcileRecentTurns(
     options: UserMessageMatchOptions,
     preserveCurrentOrder = false,
   ) => {
+    const normalized = reconcileUserMessageAliases(currentItems, incomingItems, true);
+    currentItems = normalized.current; incomingItems = normalized.incoming;
     currentItems = confirmLocalUserMessages(currentItems, incomingItems, options);
     const used = new Set<number>();
     const replacements = new Map<number, ConversationRecord>();
@@ -680,35 +666,26 @@ export function reconcileRecentTurns(
         !matchedCurrentIndexes.has(currentIndex) && turn.id === incoming.id,
     );
     if (index >= 0) exactOverlapIndexes.push(index);
-    if (index < 0) {
-      const signature = userSignature(incoming);
-      if (signature) {
-        index = currentTurns.findIndex(
-          (turn, currentIndex) =>
-            !matchedCurrentIndexes.has(currentIndex) &&
-            pendingTurn(turn) &&
-            userSignature(turn) === signature,
-        );
-      }
-    }
-    if (index < 0 && serverIndex === serverTurns.length - 1) {
-      const unmatchedPending = currentTurns
+    if (index < 0 || (!firstUser(currentTurns[index]) && ["inProgress", "in_progress", "running"].includes(currentTurns[index].status))) {
+      const input = firstUser(incoming);
+      const matches = input ? currentTurns
         .map((turn, currentIndex) => ({ turn, currentIndex }))
-        .filter(
-          ({ turn, currentIndex }) =>
-            !matchedCurrentIndexes.has(currentIndex) && pendingTurn(turn),
-        );
-      if (
-        unmatchedPending.length === 1 &&
-        !userSignature(incoming) &&
-        !userSignature(unmatchedPending[0].turn) &&
-        hasUserImage(incoming) &&
-        hasUserImage(unmatchedPending[0].turn) &&
-        (incoming.items ?? []).some(
-          (item: ConversationRecord) => item.type === "userMessage",
-        )
-      ) {
-        index = unmatchedPending[0].currentIndex;
+        .filter(({ turn, currentIndex }) => !matchedCurrentIndexes.has(currentIndex) && pendingTurn(turn) && firstUser(turn) &&
+          userMessagesMatch(firstUser(turn), input, { allowImageSourceChange: true })) : [];
+      const remainingEquivalent = input ? serverTurns.slice(serverIndex).filter(candidate => {
+        const known = currentTurns.find(current => current.id === candidate.id);
+        return (!known || !firstUser(known)) && firstUser(candidate) && userMessagesMatch(firstUser(candidate), input, { allowImageSourceChange: true });
+      }).length : 0;
+      if (matches.length === 1 || (matches.length > 1 && matches.length === remainingEquivalent)) {
+        const pendingIndex = matches[0].currentIndex;
+        if (index >= 0) {
+          matchedCurrentIndexes.add(index); matchedCurrentIndexes.add(pendingIndex);
+          const known = currentTurns[index];
+          return mergeTurn(currentTurns[pendingIndex], { ...known, ...incoming,
+            items: mergeTurnItems(known.items ?? [], incoming.items ?? [], { alignUserOrder: true }),
+          });
+        }
+        index = pendingIndex;
       }
     }
     if (index >= 0) {
@@ -762,22 +739,10 @@ export function applyTurnItem(
   ) {
     return thread;
   }
-  const started = applyTurnStarted(thread, {
+  return applyTurnStarted(thread, {
     threadId: params.threadId,
-    turn: { id: params.turnId, status: "inProgress", items: [] },
-  });
-  const turns = (started.turns ?? []) as ConversationRecord[];
-  return {
-    ...started,
-    turns: turns.map((turn) =>
-      turn.id === params.turnId
-        ? {
-            ...turn,
-            items: mergeTurnItems(turn.items ?? [], [params.item]),
-          }
-        : turn,
-    ),
-  };
+    turn: { id: params.turnId, status: "inProgress", items: [params.item] },
+  }, { itemsAreSnapshot: false });
 }
 
 export function applyTurnDiff(
@@ -846,7 +811,7 @@ export function applyCompletedTurn(
   if (!turnId) return thread;
   const withTurn = applyTurnStarted(thread, {
     threadId: params.threadId,
-    turn: { ...(completedTurn ?? {}), id: turnId, items: [] },
+    turn: { ...(completedTurn ?? {}), id: turnId, items: completedTurn?.items ?? [] },
   });
   const turns = (withTurn.turns ?? []) as ConversationRecord[];
   const index = turns.findIndex((turn) => turn.id === turnId);
@@ -858,6 +823,7 @@ export function applyCompletedTurn(
     items: mergeTurnItems(
       turns[index]?.items ?? [],
       completedTurn?.items ?? [],
+      { alignUserOrder: true },
     ),
   };
   return {
@@ -869,7 +835,7 @@ export function applyCompletedTurn(
 }
 
 export function groupTurnItems(turn: ConversationRecord) {
-  const items = (turn.items ?? []) as ConversationRecord[];
+  const items = ((turn.items ?? []) as ConversationRecord[]).filter(hasUserMessageContent);
   const firstMessageIndex = items.findIndex((item) =>
     ["userMessage", "agentMessage", "imageView", "imageGeneration", "videoGeneration"].includes(item.type),
   );

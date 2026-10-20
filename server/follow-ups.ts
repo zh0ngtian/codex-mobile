@@ -164,7 +164,7 @@ export class FollowUps {
   private async send(item: RecordItem, turnId?: string) {
     const method = turnId ? "turn/steer" : "turn/start";
     const response = await this.sessions.hostedRpc({ id: item.operationId, method, params: {
-      threadId: item.threadId, input: this.input(item), ...(turnId ? { expectedTurnId: turnId, clientUserMessageId: item.id } : item.settings),
+      threadId: item.threadId, input: this.input(item), ...(turnId ? { expectedTurnId: turnId } : item.settings), clientUserMessageId: item.id,
     } }, item.operationId);
     await this.transition(item.id, (current) => this.finish(current, response));
     if (response.error != null) throw new QueueError(502, String((response.error as any)?.message ?? "追问发送失败"));

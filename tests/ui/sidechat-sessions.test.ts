@@ -17,6 +17,24 @@ function fixture() {
 }
 
 describe('Sidechat 生命周期', () => {
+  it.each(['ack', 'http-confirm'])('完成状态先到时，%s仍清理原pending而不重开回合', async mode => {
+    const { HttpOperationPendingError } = await import('../../src/backends/http-transport');
+    const f = fixture(); const side = await f.sessions.create({ request: f.request }, { id: 'main' });
+    const request = { method: 'mobile/sidechat/rpc', params: { method: 'turn/start', params: { threadId: side.id } } };
+    let finish!: (value: any) => void;
+    if (mode === 'ack') f.request.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    else f.request.mockRejectedValueOnce(new HttpOperationPendingError('request-uncertain', request));
+    const sending = f.sessions.submit({ request: f.request }, side.id, [{ type: 'text', text: '只发送一次' }], {});
+    if (mode === 'http-confirm') await expect(sending).rejects.toThrow();
+    else await vi.waitFor(() => expect(finish).toBeTypeOf('function'));
+    side.thread = { ...side.thread, turns: [{ id: 'confirmed', status: 'completed', completedAt: 999, items: [] }, ...side.thread.turns] };
+    const response = { turn: { id: 'confirmed', status: 'inProgress', items: [] } };
+    if (mode === 'ack') { finish(response); await sending; }
+    else f.sessions.observe({ method: 'mobile/operation/confirmed', params: { requestId: 'request-uncertain', request, response: { result: response } } });
+    expect(side.thread.turns).toHaveLength(1);
+    expect(side.thread.turns[0]).toMatchObject({ id: 'confirmed', status: 'completed', completedAt: 999 });
+    expect(side.busy).toBe(false); expect(side.queue).toHaveLength(0);
+  });
   it('精确分叉最近结束回合，隐藏继承消息并注入边界', async () => {
     const f = fixture();
     const side = await f.sessions.create({ request: f.request }, { id: 'main', cwd: '/work', name: '主聊天' });
@@ -59,6 +77,9 @@ describe('Sidechat 生命周期', () => {
     await f.sessions.submit({ request: f.request }, a.id, [{ type: 'text', text: '第一条' }], {});
     await f.sessions.submit({ request: f.request }, a.id, [{ type: 'text', text: '第二条' }], {});
     expect(f.request.mock.calls.filter(call => call[0] === 'turn/start')).toHaveLength(1);
+    const start = f.request.mock.calls.find(call => call[0] === 'turn/start')![1];
+    expect(start.clientUserMessageId).toMatch(/^[0-9a-f-]{36}$/i);
+    expect(a.thread.turns.at(-1).items[0].clientId).toBe(start.clientUserMessageId);
     expect([...f.data.values()].join('')).not.toContain('第二条');
     f.sessions.observe({ method: 'turn/completed', params: { threadId: a.id, turn: { id: 'new-1', status: 'completed' } } });
     await vi.waitFor(() => expect(f.request.mock.calls.filter(call => call[0] === 'turn/start')).toHaveLength(2));
@@ -107,7 +128,9 @@ it('真实用户消息替换发送中的临时气泡，同一条输入只显示�
  const item={id:'server-user',type:'userMessage',content:[{type:'text',text:'只有一条用户消息'}]};
  f.sessions.observe({method:'item/started',params:{threadId:side.id,turnId:'new-1',item}});
  f.sessions.observe({method:'item/completed',params:{threadId:side.id,turnId:'new-1',item}});
- expect(side.thread.turns[0].items.filter((entry:any)=>entry.type==='userMessage')).toEqual([item]);
+ const clientId = f.request.mock.calls.find(([method]) => method === 'turn/start')![1].clientUserMessageId;
+ expect(clientId).toMatch(/^[0-9a-f-]{36}$/i);
+ expect(side.thread.turns[0].items.filter((entry:any)=>entry.type==='userMessage')).toEqual([{ ...item, clientId }]);
 });
 
 it('重连恢复保留待确认UUID，原回合完成后不会重复发送', async () => {

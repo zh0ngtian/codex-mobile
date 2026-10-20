@@ -62,6 +62,7 @@ describe("网关托管追问队列", () => {
     const a = f.enqueue("a", "第一条"), b = f.enqueue("a", "第二条"), c = f.enqueue("b", "另一会话");
     expect((await f.post(a)).status).toBe(200); await f.post(b); await f.post(c);
     await until(() => f.starts().length === 1); expect(f.starts()[0].params.threadId).toBe("b");
+    expect(f.starts()[0].params.clientUserMessageId).toBe(c.id);
     f.complete("a"); await until(() => f.starts().length === 2);
     expect(f.starts()[1].params.input[0].text).toBe("第一条"); await sleep(300); expect(f.starts()).toHaveLength(2);
     f.complete("a"); await until(() => f.starts().length === 3); expect(f.starts()[2].params.input[0].text).toBe("第二条");

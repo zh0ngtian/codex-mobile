@@ -433,6 +433,7 @@ it('原生命令进入现有send与托管队列，慢发送不阻塞停止和继
  await waitFor(() => expect(boundary.release).toBeTypeOf('function'));
  expect(boundary.requests.filter(r => r.method === 'turn/start')).toHaveLength(1);
  expect(boundary.requests.find(r => r.method === 'turn/start')?.params.input[0].text).toContain('原生第一条');
+ expect(boundary.requests.find(r => r.method === 'turn/start')?.params.clientUserMessageId).toMatch(/^[0-9a-f-]{36}$/i);
  await act(async () => { command('stop', 'turn.stop', { contextId }); command('draft2', 'draft.set', { contextId, value: '忙时仍可排队', revision: 2 }); command('send2', 'message.send', { contextId }); });
  await waitFor(() => expect(queueItems[0]?.inputText).toBe('忙时仍可排队'));
  expect(boundary.requests.some(r => r.method === 'turn/interrupt')).toBe(true);

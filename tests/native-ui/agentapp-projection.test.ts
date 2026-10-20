@@ -10,6 +10,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { validateNativeAttachmentImport } from '../../src/native-ui/attachment-import';
+import { compactTurnCommentary } from '../../server/turn-details';
+import { applyTurnCommentary } from '../../src/app-server/thread-session';
 
 const panel = { panelId: null, query: '', setPanel() {}, setQuery() {} };
 function controller(overrides: Partial<NativeWorkspaceController> = {}): NativeWorkspaceController {
@@ -20,6 +22,18 @@ function controller(overrides: Partial<NativeWorkspaceController> = {}): NativeW
 }
 
 describe('AgentApp 真实展示契约', () => {
+  it.each([false, true])('只有回填恢复到正式引导时也按请求身份移除临时副本（摘要已有空clientId：%s）', hadSummary => {
+    const pending = { id: 'steer-request', threadId: 't', turnId: 'turn', text: '继续检查' };
+    const detail = compactTurnCommentary({ data: [{ id: 'turn', status: 'inProgress', items: [
+      { id: 'official', type: 'userMessage', clientId: pending.id, content: [{ type: 'text', text: pending.text }] },
+    ] }] }, 'turn');
+    const items = hadSummary ? [{ id: 'official', clientId: null, type: 'userMessage', content: [{ type: 'text', text: pending.text }] }] : [];
+    const turns = applyTurnCommentary([{ id: 'turn', status: 'inProgress', items }], detail);
+    const messages = createWorkspaceAdapter(controller({ active: { id: 't', turns }, busy: true,
+      extended: { state: { pendingSteerMessage: pending }, callbacks: {} },
+    }), panel).snapshot.messages.filter(item => item.role === 'user');
+    expect(messages.map(item => item.itemId)).toEqual(['official']);
+  });
   it('待确认引导保持用户气泡，放在所属回合过程前且不改原始消息', () => {
     const pending = { id: 'steer-request', threadId: 't', turnId: 'turn', text: '顺便把这个改了：运行过程中默认展开执行过程' };
     const active = { id: 't', turns: [

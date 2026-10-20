@@ -100,7 +100,7 @@ export class SidechatSessions {
       } else if (p.response?.result?.turn?.id) {
         const turn = p.response.result.turn;
         const completed = s.thread.turns.some((item: RecordValue) => item.id === turn.id && terminal.has(item.status));
-        if (!completed) s.thread = applyTurnStarted(s.thread, { threadId: id, turn });
+        s.thread = applyTurnStarted(s.thread, { threadId: id, turn }, { pendingTurnId: `pending-${entryId}` });
         this.setBusy(s, !completed); s.error = ''; s.queue = s.queue.filter(item => item.id !== entryId);
         if (!s.turnIds.includes(turn.id)) s.turnIds.push(turn.id);
       }
@@ -141,13 +141,13 @@ export class SidechatSessions {
     if (s.closing || s.unconfirmed || s.busy || s.sending || !s.client || !s.queue.length) return;
     const entry = s.queue[0]; s.sending = true; this.setBusy(s, true); s.error = '';
     const pendingId = `pending-${entry.id}`;
-    s.thread = { ...s.thread, mobilePlan: [], turns: [...s.thread.turns, createPendingTurn(pendingId, { id: `local-${entry.id}`, type: 'userMessage', content: entry.input })] }; this.changed();
+    s.thread = { ...s.thread, mobilePlan: [], turns: [...s.thread.turns, createPendingTurn(pendingId, { id: `local-${entry.id}`, clientId: entry.id, type: 'userMessage', content: entry.input })] }; this.changed();
     try {
-      const result = await s.client.request('turn/start', { ...entry.settings, threadId: s.id, input: entry.input });
+      const result = await s.client.request('turn/start', { ...entry.settings, threadId: s.id, input: entry.input, clientUserMessageId: entry.id });
       if (!result.turn?.id) throw new Error(t('Sidechat 发送响应无效'));
       s.queue = s.queue.filter(q => q.id !== entry.id);
       const alreadyCompleted = s.thread.turns.find((t: RecordValue) => t.id === result.turn.id && terminal.has(t.status));
-      if (!alreadyCompleted) s.thread = applyTurnStarted(s.thread, { threadId: s.id, turn: result.turn });
+      s.thread = applyTurnStarted(s.thread, { threadId: s.id, turn: result.turn }, { pendingTurnId: pendingId });
       this.setBusy(s, !alreadyCompleted);
       if (!s.turnIds.includes(result.turn.id)) s.turnIds.push(result.turn.id);
     } catch (error) {

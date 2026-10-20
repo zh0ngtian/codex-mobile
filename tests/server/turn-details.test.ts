@@ -44,6 +44,20 @@ describe('历史统计可用性', () => {
 
 
 describe('运行回合文本投影', () => {
+  it('保留引导请求身份和安全图片引用，不携带图片像素或工具正文', () => {
+    const result = compactTurnCommentary({ data: [{ id: 'live', status: 'inProgress', items: [
+      { id: 'u', type: 'userMessage', clientId: 'steer-request', content: [
+        { type: 'localImage', path: '/tmp/photo.jpg' },
+        { type: 'image', url: 'https://images.invalid/photo.jpg', pixels: 'PRIVATE_PIXELS' },
+        { type: 'image', url: 'data:image/png;base64,PRIVATE_PIXELS' },
+      ] },
+      { id: 'cmd', type: 'commandExecution', aggregatedOutput: 'PRIVATE_TOOL_BODY' },
+    ] }] }, 'live');
+    expect(result.items).toEqual([{ id: 'u', type: 'userMessage', clientId: 'steer-request', content: [
+      { type: 'localImage', path: '/tmp/photo.jpg' }, { type: 'image', url: 'https://images.invalid/photo.jpg' },
+    ] }]);
+    expect(JSON.stringify(result)).not.toContain('PRIVATE_');
+  });
   const turn = { id: 'live', status: 'inProgress', items: [
     { id: 'u', type: 'userMessage', content: [{ type: 'text', text: '继续' }, { type: 'image', url: 'secret-pixels' }] },
     { id: 'c', type: 'agentMessage', phase: 'commentary', text: '检查文件', toolBody: 'secret' },

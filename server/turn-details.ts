@@ -100,7 +100,15 @@ export function turnCommentaryRequest(params: RecordValue) {
   } };
 }
 
-// 用户文字作为插话位置锚点；附件与工具正文不进入回填响应。
+function userInputReference(part: RecordValue): RecordValue[] {
+  if (part.type === "text" && typeof part.text === "string") return [{ type: "text", text: part.text }];
+  const reference = (value: unknown) => typeof value === "string" && /^(?:https?:\/\/|\/|[A-Za-z]:[\\/])/.test(value);
+  if (part.type === "localImage" && reference(part.path)) return [{ type: "localImage", path: part.path }];
+  if (part.type === "image" && reference(part.url)) return [{ type: "image", url: part.url }];
+  return [];
+}
+
+// 仅传用户输入、请求身份和图片引用；图片像素与工具正文不进入回填响应。
 export function compactTurnCommentary(result: RecordValue, turnId: string) {
   const turn = (result.data ?? []).find((entry: RecordValue) => entry.id === turnId);
   const items: RecordValue[] = [];
@@ -114,10 +122,9 @@ export function compactTurnCommentary(result: RecordValue, turnId: string) {
         items.push({ id: item.id, type: item.type, phase: item.phase, text: item.text, ...messageTimestamp(item) });
       } else if (item.type === "userMessage") {
         items.push({ id: item.id, type: item.type,
+          ...(typeof item.clientId === "string" && item.clientId ? { clientId: item.clientId } : {}),
           ...(typeof item.text === "string" ? { text: item.text } : {}),
-          ...(Array.isArray(item.content) ? { content: item.content
-            .filter((part: RecordValue) => part.type === "text" && typeof part.text === "string")
-            .map((part: RecordValue) => ({ type: "text", text: part.text })) } : {}),
+          ...(Array.isArray(item.content) ? { content: item.content.flatMap(userInputReference) } : {}),
         });
       }
     }

@@ -1,8 +1,8 @@
-import { decodeUserMessage } from "../../server/user-message-format";
+import { decodeUserMessage, encodeUserMessage } from "../../server/user-message-format";
 import { stripConversationTitleRequest } from "./conversation-title";
 
 type MessageRecord = Record<string, any>;
-export type UserMessageMatchOptions = { allowImageSourceChange?: boolean };
+export type UserMessageMatchOptions = { allowImageSourceChange?: boolean; alignUserOrder?: boolean };
 type AttachmentIdentity = { kind: string; source: string };
 
 function isImagePart(part: MessageRecord) {
@@ -53,6 +53,7 @@ export function userMessagesMatch(
   options: UserMessageMatchOptions = {},
 ) {
   if (left.type !== "userMessage" || right.type !== "userMessage") return false;
+  if (left.clientId && right.clientId) return left.clientId === right.clientId;
   const previous = userInput(left);
   const incoming = userInput(right);
   if (previous.text !== incoming.text || previous.references !== incoming.references) return false;
@@ -72,6 +73,9 @@ export function userMessagesMatch(
 
 export function mergeConfirmedUserMessage(current: MessageRecord, incoming: MessageRecord): MessageRecord {
   const merged = { ...current, ...incoming };
+  if (current.clientId || incoming.clientId) merged.clientId = current.clientId || incoming.clientId;
+  const aliases = [...new Set([...(current._mobileUserMessageAliases ?? []), ...(incoming._mobileUserMessageAliases ?? [])])];
+  if (aliases.length) merged._mobileUserMessageAliases = aliases;
   const previous = userInput(current);
   const next = userInput(incoming);
   let content = next.parts;
@@ -80,10 +84,14 @@ export function mergeConfirmedUserMessage(current: MessageRecord, incoming: Mess
     content = previous.parts;
     restored = true;
   } else {
-    // 简略回填可能保留正文但省略文件包装，不能因此丢掉用户附件声明。
-    if (previous.envelope.attachments.length && !next.envelope.attachments.length &&
-      previous.text === next.text && previous.references === next.references) {
-      content = [...previous.parts.filter(part => part.type === "text"), ...content.filter(part => part.type !== "text")];
+    // 同一身份的简略回填可能省略引用或文件包装，已确认的上下文不能因此丢失。
+    const missingFiles = previous.envelope.attachments.length && !next.envelope.attachments.length;
+    const missingReferences = previous.envelope.references.length && !next.envelope.references.length;
+    if ((missingFiles || missingReferences) && previous.text === next.text) {
+      const text = encodeUserMessage(next.envelope.body,
+        next.envelope.attachments.length ? next.envelope.attachments : previous.envelope.attachments,
+        next.envelope.references.length ? next.envelope.references : previous.envelope.references);
+      content = [{ type: "text", text }, ...content.filter(part => part.type !== "text")];
       restored = true;
     }
     // 纯文本回填保留原有额外输入；回填带指令时，仍需独立补回缺失图片。
@@ -95,6 +103,76 @@ export function mergeConfirmedUserMessage(current: MessageRecord, incoming: Mess
     }
   }
   return restored ? { ...merged, content } : merged;
+}
+
+const placeholder = (id: unknown) => /^item-\d+$/.test(String(id ?? ""));
+const stable = (id: unknown) => Boolean(id) && !placeholder(id) && !String(id).startsWith("local-");
+
+/** 同回合完整用户顺序提供占位身份的证据；两个正式 ID 永远不会按正文合并。 */
+export function reconcileUserMessageAliases(
+  currentItems: MessageRecord[], incomingItems: MessageRecord[], alignUserOrder = false,
+) {
+  const aliases = new Map<string, string>();
+  const canonical = new Map<string, MessageRecord>();
+  for (const item of [...currentItems, ...incomingItems]) {
+    if (item.type !== "userMessage" || !stable(item.id)) continue;
+    canonical.set(item.id, mergeConfirmedUserMessage(canonical.get(item.id) ?? item, item));
+    for (const alias of item._mobileUserMessageAliases ?? []) if (placeholder(alias)) aliases.set(alias, item.id);
+  }
+  for (const item of incomingItems) {
+    const id = aliases.get(item.id);
+    if (id && canonical.has(id) && !userMessagesMatch(item, canonical.get(id)!)) aliases.delete(item.id);
+  }
+  const byRequest = new Map<string, string | null>();
+  for (const item of canonical.values()) if (item.clientId) {
+    const known = byRequest.get(item.clientId);
+    byRequest.set(item.clientId, known === undefined || known === item.id ? item.id : null);
+  }
+  for (const item of [...currentItems, ...incomingItems]) {
+    const id = item.clientId && byRequest.get(item.clientId);
+    if (placeholder(item.id) && id) aliases.set(item.id, id);
+  }
+  const users = (items: MessageRecord[]) => items.filter(item => item.type === "userMessage");
+  if (alignUserOrder) {
+    const previous = users(currentItems);
+    const incoming = users(incomingItems);
+    for (let index = 0; index < Math.min(previous.length, incoming.length); index++) {
+      const left = previous[index]; const right = incoming[index];
+      const leftId = aliases.get(left.id) ?? left.id;
+      const rightId = aliases.get(right.id) ?? right.id;
+      if (leftId === rightId) continue;
+      const provisional = placeholder(leftId) && stable(rightId) ? left
+        : placeholder(rightId) && stable(leftId) ? right : null;
+      const confirmed = provisional === left ? right : left;
+      if (!provisional || !userMessagesMatch(left, right)) break;
+      aliases.set(provisional.id, confirmed.id);
+    }
+  }
+  const normalize = (items: MessageRecord[]) => {
+    const result: MessageRecord[] = [];
+    for (const original of items) {
+      if (original.type !== "userMessage") { result.push(original); continue; }
+      const id = aliases.get(original.id) ?? original.id;
+      const names = [...aliases].filter(([, target]) => target === id).map(([alias]) => alias);
+      const known = canonical.get(id);
+      const item = id === original.id && !names.length ? original : {
+        ...original, id,
+        ...(known?.clientId ? { clientId: known.clientId } : {}),
+        _mobileUserMessageAliases: [...new Set([...(original._mobileUserMessageAliases ?? []), ...names])],
+      };
+      const index = result.findIndex(entry => entry.type === "userMessage" && entry.id === id);
+      if (index < 0) result.push(item);
+      else result[index] = mergeConfirmedUserMessage(result[index], item);
+    }
+    return result;
+  };
+  return { current: normalize(currentItems), incoming: normalize(incomingItems), aliases };
+}
+
+export function hasUserMessageContent(item: MessageRecord) {
+  if (item.type !== "userMessage") return true;
+  const input = userInput(item);
+  return Boolean(input.text || input.envelope.references.length || input.attachments.length);
 }
 
 export function confirmLocalUserMessages(

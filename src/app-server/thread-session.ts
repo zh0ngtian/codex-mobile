@@ -3,7 +3,7 @@ import type {
   ApprovalsReviewer,
 } from "../ui/settings";
 import { hasTurnChangeStats, summarizeTurnChanges } from "../ui/conversation";
-import { confirmLocalUserMessages } from "./user-message-reconciliation";
+import { confirmLocalUserMessages, mergeConfirmedUserMessage, reconcileUserMessageAliases } from "./user-message-reconciliation";
 
 type AnyRecord = Record<string, any>;
 const initialTurnsLimit = 5;
@@ -31,13 +31,15 @@ export async function loadRunningTurnCommentary(client: Requester, threadId: str
 export function applyTurnCommentary(turns: AnyRecord[], detail: TurnCommentary): AnyRecord[] {
   return turns.map((turn) => {
     if (turn.id !== detail.turnId || !detail.items.length) return turn;
-    const current = confirmLocalUserMessages(turn.items ?? [], detail.items);
+    const normalized = reconcileUserMessageAliases(turn.items ?? [], detail.items, true);
+    const incomingItems = normalized.incoming;
+    const current = confirmLocalUserMessages(normalized.current, incomingItems);
     const byId = new Map(current.map(item => [item.id, item]));
-    for (const item of detail.items) {
+    for (const item of incomingItems) {
       // 正式用户消息按 ID 合并；local-* 只在同回合内容得到确认后升级。
       const existing = byId.get(item.id);
-      const merged = existing && (item.type === "userMessage" || existing.phase === "final_answer")
-        ? { ...item, ...existing } : { ...existing, ...item };
+      const merged = existing && item.type === "userMessage" ? mergeConfirmedUserMessage(existing, item)
+        : existing?.phase === "final_answer" ? { ...item, ...existing } : { ...existing, ...item };
       if (existing?.type === "agentMessage" && item.type === "agentMessage" &&
         typeof existing.text === "string" && typeof item.text === "string" &&
         existing.text.length > item.text.length && existing.text.startsWith(item.text)) {
@@ -50,17 +52,18 @@ export function applyTurnCommentary(turns: AnyRecord[], detail: TurnCommentary):
     }
     // 省略媒体的旧接口保留已有锚点；缺失项插在后锚点前，或前锚点后。
     const order = current.map(item => item.id);
-    for (let index = 0; index < detail.items.length; index += 1) {
-      const id = detail.items[index].id;
+    for (let index = 0; index < incomingItems.length; index += 1) {
+      const id = incomingItems[index].id;
       if (order.includes(id)) continue;
-      const next = detail.items.slice(index + 1).find(item => order.includes(item.id));
-      const previous = detail.items.slice(0, index).reverse().find(item => order.includes(item.id));
+      const next = incomingItems.slice(index + 1).find(item => order.includes(item.id));
+      const previous = incomingItems.slice(0, index).reverse().find(item => order.includes(item.id));
       const insertAt = next ? order.indexOf(next.id)
         : previous ? order.indexOf(previous.id) + 1 : order.length;
       order.splice(insertAt, 0, id);
     }
     const items = order.map(id => byId.get(id)!);
-    return { ...turn, items: orderTurnItems(items, detail.messageOrder, current) };
+    const messageOrder = detail.messageOrder?.map(id => normalized.aliases.get(id) ?? id);
+    return { ...turn, items: orderTurnItems(items, messageOrder, current) };
   });
 }
 

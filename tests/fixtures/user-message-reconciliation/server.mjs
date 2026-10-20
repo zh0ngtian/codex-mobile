@@ -4,10 +4,14 @@ import { randomUUID } from 'node:crypto';
 // 只在回环地址模拟协议，经过 App 真实发送、恢复与桥接；不连接任何真实会话。
 const port = Number(process.env.RECONCILIATION_PORT ?? 18839);
 const steeringMode = process.env.RECONCILIATION_STEERING === '1';
+const identityMode = process.env.RECONCILIATION_IDENTITY === '1';
+const { compactTurnCommentary } = identityMode ? await import('../../../server/turn-details.ts') : {};
 const threadId = 'reconciliation-thread';
 const title = '重复气泡模拟器验收';
 let epoch, turns, events, cursor, starts, recoveries, sparse, archived;
 let queue = [], steers = 0, pendingSteer;
+let scenario = '';
+const steeringEnabled = () => steeringMode || scenario === 'steer-backfill';
 function reset() {
   epoch = randomUUID(); cursor = 0; starts = 0; recoveries = 0; sparse = false; archived = false; events = [];
   turns = [{ id: 'seed', status: 'completed', itemsView: 'summary', startedAt: 100, completedAt: 101, items: [
@@ -41,6 +45,8 @@ function rpc(message) {
     case 'permissionProfile/list': return { data: [{ id: ':workspace', allowed: true }] };
     case 'config/read': return { config: { model: 'fixture', sandbox_mode: 'workspace-write' } };
     case 'thread/list': case 'thread/search': return { data: archived ? [] : [thread()], nextCursor: null };
+    case 'mobile/sidebar/summaries': return { data: archived ? [] : [thread()] };
+    case 'mobile/sidebar/projectless': return { data: [], nextCursor: null };
     case 'thread/read': return { thread: { ...thread(), ...(params.includeTurns ? { turns } : {}) } };
     case 'thread/resume': return { thread: thread(), initialTurnsPage: { data: summary(), nextCursor: null }, model: 'fixture', approvalPolicy: 'on-request', approvalsReviewer: 'user' };
     case 'thread/loaded/list': return { data: [threadId], nextCursor: null };
@@ -49,12 +55,16 @@ function rpc(message) {
     case 'mobile/turns/commentary': {
       recoveries++; sparse = false;
       const turn = turns.find(turn => turn.id === params.turnId);
+      if (identityMode && turn) {
+        const aliased = { ...turn, items: turn.items.map((item, index) => item.type === 'userMessage' ? { ...item, id: `item-${index + 1}` } : item) };
+        return compactTurnCommentary({ data: [aliased] }, params.turnId);
+      }
       return { turnId: params.turnId, items: turn?.items ?? [], messageOrder: turn?.items.map(item => item.id) ?? [] };
     }
     case 'turn/start': {
       starts++; sparse = true;
       const turn = { id: `turn-${starts}`, status: 'inProgress', itemsView: 'full', startedAt: 200 + starts * 10, items: [
-        { id: `user-${starts}`, type: 'userMessage', content: params.input.filter(item => ['text', 'image', 'localImage'].includes(item.type)) },
+        { id: `user-${starts}`, clientId: params.clientUserMessageId ?? null, type: 'userMessage', content: params.input.filter(item => ['text', 'image', 'localImage'].includes(item.type)) },
         { id: `progress-${starts}`, type: 'agentMessage', phase: 'commentary', text: `第${starts}次回填已到达。` },
       ] };
       turns.push(turn);
@@ -76,15 +86,30 @@ const server = createServer(async (request, response) => {
   if (request.method === 'OPTIONS') { response.end(); return; }
   const url = new URL(request.url, `http://127.0.0.1:${port}`);
   let result = {};
-  if (url.pathname === '/__control/reset') reset();
-  else if (url.pathname === '/__control/confirm-steer' && pendingSteer) {
+  if (url.pathname === '/photo.png') {
+    response.setHeader('content-type', 'image/png');
+    response.end(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAACXBIWXMAAAPoAAAD6AG1e1JrAAAARUlEQVRYhe3XsREAMAhC0QzGYAzrLmaLpHmFvXcifE46+3OOBeIEJcLxhsuIwoorjEYcLyAJJCsoHVi+iklUsyqn81wHF0vNPJfDdtDJAAAAAElFTkSuQmCC', 'base64')); return;
+  }
+  if (url.pathname === '/__control/reset') { scenario = ''; reset(); }
+  else if (['/__control/seed-alias', '/__control/seed-image', '/__control/seed-steer'].includes(url.pathname)) {
+    scenario = url.pathname.endsWith('seed-steer') ? 'steer-backfill' : url.pathname.slice('/__control/'.length); reset(); starts = 1;
+    const content = scenario === 'seed-image' ? [{ type: 'image', url: `http://127.0.0.1:${port}/photo.png` }]
+      : [{ type: 'text', text: scenario === 'steer-backfill' ? '修复后合入主分支，先不发布' : '发布吧' }];
+    turns.push({ id: 'turn-1', status: 'inProgress', itemsView: 'summary', startedAt: 210, items: [
+      { id: 'official-seed', type: 'userMessage', clientId: null, content },
+      { id: 'progress-1', type: 'agentMessage', phase: 'commentary', text: '第1次回填已到达。' },
+    ] });
+  }
+  else if (['/__control/confirm-steer', '/__control/confirm-steer-backfill'].includes(url.pathname) && pendingSteer) {
     const { response: held, item } = pendingSteer;
     const turn = turns.at(-1);
     const message = { id: `confirmed-${steers}`, clientId: item.id, type: 'userMessage', content: [{ type: 'text', text: item.inputText }] };
     turn.items.push(message);
-    emit('item/completed', { threadId, turnId: turn.id, item: message });
+    if (url.pathname.endsWith('confirm-steer-backfill')) { sparse = true; emit('mobile/reset'); }
+    else emit('item/completed', { threadId, turnId: turn.id, item: message });
     const progress = { id: `after-steer-${steers}`, type: 'agentMessage', phase: 'commentary', text: '已收到引导，继续处理。' };
-    turn.items.push(progress); emit('item/completed', { threadId, turnId: turn.id, item: progress });
+    turn.items.push(progress);
+    if (!url.pathname.endsWith('confirm-steer-backfill')) emit('item/completed', { threadId, turnId: turn.id, item: progress });
     queue = queue.filter(value => value.id !== item.id);
     held.end(JSON.stringify({ items: queue, turnId: turn.id })); pendingSteer = undefined;
   }
@@ -93,8 +118,9 @@ const server = createServer(async (request, response) => {
     pendingSteer.response.end(JSON.stringify({ error: { message: '夹具拒绝本次引导' } })); pendingSteer = undefined;
   }
   else if (url.pathname === '/__control/complete') complete();
+  else if (url.pathname === '/__control/archive') archived = true;
   else if (url.pathname === '/__control/status') result = { starts, recoveries, steers, pendingSteer: !!pendingSteer, sparse, archived, turns };
-  else if (url.pathname === '/api/host') result = { hostId: 'reconciliation-host', displayName: 'Reconciliation QA', hostname: 'fixture', gatewayVersion: '0.3.18', appServerReady: true, httpPolling: true, followUpQueue: steeringMode };
+  else if (url.pathname === '/api/host') result = { hostId: 'reconciliation-host', displayName: 'Reconciliation QA', hostname: 'fixture', gatewayVersion: '0.3.20', appServerReady: true, httpPolling: true, followUpQueue: steeringEnabled() };
   else if (url.pathname === '/api/projects') result = { projects: ['/reconciliation'], projectlessThreadIds: [] };
   else if (url.pathname === '/api/events') result = { epoch, cursor, messages: events.filter(event => event.cursor > Number(url.searchParams.get('after') ?? 0)).map(event => event.message), requests: [], active: turns.at(-1).status === 'inProgress', updatedAt: Date.now(), reset: false, hasMore: false };
   else if (url.pathname === '/api/follow-ups') {

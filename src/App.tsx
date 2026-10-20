@@ -2759,6 +2759,7 @@ function BackendWorkspace({
     const initialThread = activeRef.current;
     if (!initialThread?.id) setStartingThreadContext(draftContext);
     const pendingTurnId = `pending-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const clientUserMessageId = transportUuid();
     let thread = initialThread;
     const startingProjectless = !thread?.id && !thread?.cwd;
     let sent = false;
@@ -2847,6 +2848,7 @@ function BackendWorkspace({
           : text;
       const localItem = {
         id: `local-${pendingTurnId}`,
+        clientId: clientUserMessageId,
         type: "userMessage",
         content: buildOptimisticUserContent(text, uploadedImages, uploadedFiles),
       };
@@ -2873,6 +2875,7 @@ function BackendWorkspace({
         turn: AnyRecord;
       }>(client, "turn/start", {
         threadId: thread.id,
+        clientUserMessageId,
         input: buildTurnInput(
           modelText,
           uploadedImages,
@@ -2912,7 +2915,7 @@ function BackendWorkspace({
           return applyTurnStarted(current, {
             threadId: thread!.id,
             turn: startedTurn.turn,
-          });
+          }, { pendingTurnId });
         });
       }
     } catch (reason) {
@@ -2961,6 +2964,9 @@ function BackendWorkspace({
           } else {
             onSent?.();
             pendingFiles.forEach((file) => URL.revokeObjectURL(file.previewUrl));
+            const turn = (response.result as AnyRecord)?.turn;
+            if (turn && currentContext && currentThread) setActive(current => current?.id === threadId
+              ? applyTurnStarted(current, { threadId, turn }, { pendingTurnId }) : current);
             if (currentContext && currentThread) void reconcileActiveThread(confirmationClient).catch(() => undefined);
           }
         };
@@ -3345,12 +3351,14 @@ function BackendWorkspace({
     requestRunCompletionNotificationPermission();
     const pendingTurnId =
       `pending-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const clientUserMessageId = transportUuid();
     const pendingSequence = ++pendingSequenceRef.current;
     let reverted = session.reverted;
     // 请求参数在原会话授权时冻结；导航后仍完成原线程的重发，不读取新会话的设置。
     const shouldSendSettings = activeSettingsSynchronized;
     const resendParams = {
       threadId,
+      clientUserMessageId,
       input,
       ...(shouldSendSettings && selectedModel ? { model: selectedModel } : {}),
       ...(shouldSendSettings && selectedEffort ? { effort: selectedEffort } : {}),
@@ -3399,7 +3407,7 @@ function BackendWorkspace({
       const terminal = ["completed", "failed", "interrupted", "cancelled"].includes(String(knownTurn?.status));
       // turn/start 回执是较早事实，不能覆盖已经收到的完成通知或恢复快照。
       const acceptedTurn = terminal ? { ...turn, ...knownTurn } : turn;
-      const next = sourceThread ? applyTurnStarted(sourceThread, { threadId, turn: acceptedTurn }) : null;
+      const next = sourceThread ? applyTurnStarted(sourceThread, { threadId, turn: acceptedTurn }, { pendingTurnId }) : null;
       const running = ["inProgress", "in_progress", "running"].includes(String(next?.turns?.at(-1)?.status ?? acceptedTurn.status));
       // 后台源线程已由完成通知变为 idle 时，较早的 start 回执不能重新标为 active。
       const backgroundCompleted = !sourceThread && threadsRef.current.some((entry) =>
@@ -3456,7 +3464,7 @@ function BackendWorkspace({
       if (reverted && ownsCurrentEdit() && clientRef.current) retryThreadDetail();
     };
     async function sendEditedTurn(workingThread: AnyRecord, requestClient: AppServerClient) {
-      const localItem = { id: `local-${pendingTurnId}`, type: "userMessage", content: input };
+      const localItem = { id: `local-${pendingTurnId}`, clientId: clientUserMessageId, type: "userMessage", content: input };
       if (isCurrentEdit()) {
         const pendingThread = {
           ...workingThread,

@@ -44,13 +44,61 @@ import XCTest
         XCTAssertTrue(row.waitForExistence(timeout: 20), app.debugDescription); row.tap()
         XCTAssertTrue(app.buttons["composer.attachments"].waitForExistence(timeout: 15)); return app
     }
-    private func matchingMessages(_ app: XCUIApplication) -> XCUIElementQuery {
-        app.textViews.matching(NSPredicate(format: "identifier == 'user.selectable' AND value == %@", body))
+    private func matchingMessages(_ app: XCUIApplication, text: String? = nil) -> XCUIElementQuery {
+        app.textViews.matching(NSPredicate(format: "identifier == 'user.selectable' AND value == %@", text ?? body))
     }
-    private func send(_ app: XCUIApplication) {
-        let input = element("message-input", app); input.tap(); input.typeText(body); app.buttons["composer.submit"].tap()
+    private func send(_ app: XCUIApplication, text: String? = nil) {
+        let input = element("message-input", app); input.tap(); input.typeText(text ?? body); app.buttons["composer.submit"].tap()
         let deny = XCUIApplication(bundleIdentifier: "com.apple.springboard").alerts.buttons["不允许"]
         if deny.waitForExistence(timeout: 3) { deny.tap() }
+    }
+    func testExistingUserAndPlaceholderBackfillUseOneBubble() async throws {
+        continueAfterFailure = false
+        _ = try await control("seed-alias")
+        let app = openChat()
+        try await waitForRecovery(1)
+        XCTAssertTrue(app.textViews.matching(NSPredicate(format: "value CONTAINS %@", "第1次回填已到达")).firstMatch.waitForExistence(timeout: 12))
+        XCTAssertTrue(matchingMessages(app, text: "发布吧").firstMatch.waitForExistence(timeout: 12))
+        XCTAssertEqual(matchingMessages(app, text: "发布吧").count, 1)
+        capture("UUID与item-1回填-仅一个发布吧", app)
+        app.terminate()
+    }
+    func testImageOnlyBackfillDoesNotAddEmptyUserBubble() async throws {
+        continueAfterFailure = false
+        _ = try await control("seed-image")
+        let app = openChat()
+        try await waitForRecovery(1)
+        XCTAssertTrue(app.textViews.matching(NSPredicate(format: "value CONTAINS %@", "第1次回填已到达")).firstMatch.waitForExistence(timeout: 12))
+        let bubbles = app.descendants(matching: .any).matching(identifier: "message.user-bubble")
+        let expected = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in bubbles.count == 2 }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [expected], timeout: 12), .completed, app.debugDescription)
+        XCTAssertTrue(app.buttons["photo.png"].waitForExistence(timeout: 12), app.debugDescription)
+        capture("纯图片回填-保留图片且没有空副本", app)
+        app.terminate()
+    }
+    func testGuidanceRecoveredThroughBackfillRemovesPendingBubble() async throws {
+        continueAfterFailure = false
+        _ = try await control("seed-steer")
+        let app = openChat()
+        let text = "继续检查回填身份"
+        send(app, text: text)
+        let steer = element("agent-ui-root", app).buttons["改为引导"]
+        XCTAssertTrue(steer.waitForExistence(timeout: 15), app.debugDescription); steer.tap()
+        XCTAssertTrue(matchingMessages(app, text: text).firstMatch.waitForExistence(timeout: 12))
+        XCTAssertEqual(matchingMessages(app, text: text).count, 1)
+        let before = try await control("status")["recoveries"] as? Int ?? 0
+        _ = try await control("confirm-steer-backfill")
+        try await waitForRecovery(before + 1)
+        XCTAssertTrue(app.textViews.matching(NSPredicate(format: "value == %@", "已收到引导，继续处理。")).firstMatch.waitForExistence(timeout: 15))
+        XCTAssertEqual(matchingMessages(app, text: text).count, 1)
+        capture("引导仅通过回填确认-没有临时副本", app)
+        _ = try await control("complete")
+        XCTAssertTrue(app.textViews.matching(NSPredicate(format: "identifier == 'assistant.selectable' AND value CONTAINS %@", "第1次发送处理完成")).firstMatch.waitForExistence(timeout: 15))
+        app.terminate()
+        let reopened = openChat()
+        XCTAssertTrue(matchingMessages(reopened, text: text).firstMatch.waitForExistence(timeout: 12))
+        XCTAssertEqual(matchingMessages(reopened, text: text).count, 1)
+        reopened.terminate()
     }
     private func waitForRecovery(_ count: Int) async throws {
         let deadline = Date().addingTimeInterval(20)
@@ -73,6 +121,9 @@ import XCTest
         capture("一次发送-恢复回填后气泡数量", app)
         XCTAssertEqual(matchingMessages(app).count, 1, "一次发送只能显示一个用户气泡")
         let first = try await control("status"); XCTAssertEqual(first["starts"] as? Int, 1); XCTAssertGreaterThanOrEqual(first["recoveries"] as? Int ?? 0, 1)
+        let latest = (first["turns"] as? [[String: Any]])?.last
+        let user = (latest?["items"] as? [[String: Any]])?.first(where: { $0["type"] as? String == "userMessage" })
+        XCTAssertNotNil(UUID(uuidString: user?["clientId"] as? String ?? ""), "模拟器发送必须携带稳定的请求身份")
         _ = try await control("complete")
         XCTAssertTrue(app.textViews.matching(NSPredicate(format: "identifier == 'assistant.selectable' AND value CONTAINS %@", "第1次发送处理完成")).firstMatch.waitForExistence(timeout: 15))
         send(app)
