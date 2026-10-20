@@ -44,7 +44,7 @@ it("移除两种界面后旧偏好仍使用网页输入并显示五行真实用�
   expect(screen.getByRole("textbox", { name: "向 Codex 提问" })).toHaveValue("保留网页草稿");
   fireEvent.click(screen.getByRole("button", { name: "查看上下文占用情况" }));
   const card = within(screen.getByRole("dialog", { name: "用量与额度" }));
-  for (const [label, value] of [["上下文余量", "60%"], ["周期剩余", "71%"], ["时间剩余", "85%"], ["输入 Token", "3M（缓存命中 80%）"], ["输出 Token", "84K"]]) {
+  for (const [label, value] of [["上下文余量", "60%"], ["周期剩余", "71%"], ["时间剩余", "85%"], ["输入 Token", "3M (缓存 80%)"], ["输出 Token", "84K"]]) {
     expect(card.getByText(label).nextElementSibling).toHaveTextContent(value);
   }
 });

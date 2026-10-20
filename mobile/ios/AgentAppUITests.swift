@@ -1445,7 +1445,7 @@ final class AgentAppUITests: XCTestCase {
         app.launch()
         XCTAssertTrue(app.buttons["header.usage"].waitForExistence(timeout: 5))
         app.buttons["header.usage"].tap()
-        let cached = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "缓存命中 0%")).firstMatch
+        let cached = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "缓存 0%")).firstMatch
         XCTAssertTrue(cached.waitForExistence(timeout: 5), "真实零命中率仍应展示")
     }
 

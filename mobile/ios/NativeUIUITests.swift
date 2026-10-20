@@ -334,7 +334,7 @@ final class NativeUIUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Time Remaining"].exists)
         XCTAssertTrue(app.staticTexts["Input Tokens"].exists)
         XCTAssertTrue(app.staticTexts["Output Tokens"].exists)
-        XCTAssertTrue(app.staticTexts["100K (Cache hit 80%)"].exists)
+        XCTAssertTrue(app.staticTexts["100K (Cache 80%)"].exists)
         XCTAssertTrue(app.staticTexts["28.5K"].exists)
     }
 
@@ -346,14 +346,14 @@ final class NativeUIUITests: XCTestCase {
         XCTAssertTrue(trigger.waitForExistence(timeout: 5))
         trigger.tap()
         XCTAssertTrue(app.staticTexts["用量与额度"].waitForExistence(timeout: 5))
-        for label in ["上下文余量", "周期剩余", "时间剩余", "输入 Token", "输出 Token", "93%", "72%", "43%", "100K（缓存命中 80%）", "28.5K"] {
+        for label in ["上下文余量", "周期剩余", "时间剩余", "输入 Token", "输出 Token", "93%", "72%", "43%", "100K (缓存 80%)", "28.5K"] {
             XCTAssertTrue(app.staticTexts[label].exists, label)
         }
         capture("对话用量卡片", app: app)
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.15, dy: 0.55)).tap()
         XCTAssertTrue(app.staticTexts["用量与额度"].waitForNonExistence(timeout: 5))
         trigger.tap()
-        XCTAssertTrue(app.staticTexts["100K（缓存命中 80%）"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["100K (缓存 80%)"].waitForExistence(timeout: 5))
     }
 
     func testVisualReferencePreviewScreenshots() {

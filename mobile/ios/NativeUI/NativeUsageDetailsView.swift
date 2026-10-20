@@ -32,7 +32,7 @@ struct NativeUsageDetailsView: View {
             return input
         }
         let percentage = hit.formatted(.number.precision(.fractionLength(0...1)))
-        return store.label("\(input)（缓存命中 \(percentage)%）", "\(input) (Cache hit \(percentage)%)")
+        return store.label("\(input) (缓存 \(percentage)%)", "\(input) (Cache \(percentage)%)")
     }
 
     private func percent(_ value: Double) -> String { "\(Int(value.rounded()))%" }
