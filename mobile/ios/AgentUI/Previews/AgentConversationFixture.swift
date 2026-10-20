@@ -118,6 +118,21 @@ final class AgentConversationFixture {
         if ProcessInfo.processInfo.arguments.contains("--agent-table-controls-fixture") {
             value.messages = [NativeMessage(id: "table-controls", role: "assistant", text: "| # | 问题 | 修复情况 |\n| --- | --- | --- |\n| 1 | 短列 | 这段表格正文必须完整显示，长内容恢复换行，并继续支持横向查看，不能截断或丢失文字。 |\n| 2 | 编辑消息 | 保留 **加粗** 和 [链接](https://example.com) |", phase: "final_answer")]
         }
+        if ProcessInfo.processInfo.arguments.contains("--agent-migration-table-fixture") {
+            value.messages = [NativeMessage(id: "migration-table", role: "assistant", text: """
+            | 部分 | 迁移内容 |
+            |---|---|
+            | 应用入口与构建 | 建立独立原生 iOS 工程，直接启动现有 AgentUI；逐步解除 PakePlus、`dist/index.html`、前端打包及脚本注入依赖；适配现有构建、签名和 OTA 脚本 |
+            | 通信与协议 | 将 `src/backends`、`src/app-server` 的客户端逻辑迁到 Swift，覆盖鉴权、初始化、HTTP 轮询、WebSocket、超时、重连、事件游标和能力检测 |
+            | 会话状态 | 将会话加载、分页、实时增量、历史回填、消息去重、运行状态、过程排序等迁入原生业务层 |
+            | 写操作与交互 | 迁移发送、停止、排队、引导、历史编辑、审批、结构化提问、模型和权限选择，以及 Sidechat |
+            | 多设备与侧栏 | 迁移设备注册、连接管理、项目折叠、每批五条分页、关注、未读、搜索和刷新调度 |
+            | 本地存储 | 将设备配置、凭据、偏好、草稿及附件、关注和未读等，从 localStorage/IndexedDB 迁到原生存储；另行处理未确认写操作记录 |
+            | 文件与系统能力 | 图片/文件导入、HEIC 转换、上传下载、预览、位置、扫码、通知和深链，改为由 Swift 业务直接调用 |
+            | 富内容 | 补齐 Markdown/GFM、代码、表格、Diff、图片与媒体的原生处理；单独确定 HTML、SVG、Mermaid 和外部网页的实现边界 |
+            | 桥接清理 | 替换 `NativeSnapshot → AppSession` 和字符串命令调用；最终移除业务 WebView、JS runtime、界面切换与旧界面恢复入口 |
+            """, phase: "final_answer")]
+        }
         if ProcessInfo.processInfo.arguments.contains("--agent-confirmation-controls-fixture") {
             value.panel = NativePanel(id: "confirmation:workspace:fixture:1", title: "确认操作", items: [
                 NativePanelItem(id: "confirmation-yes", kind: "action", title: "确认", text: "归档后，此会话将从列表中移除。确定归档吗？", command: NativeCommand(name: "confirmation.answer", params: ["key": .string("confirmation:workspace:fixture:1"), "confirmed": .bool(true)])),

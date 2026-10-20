@@ -993,6 +993,58 @@ final class AgentAppUITests: XCTestCase {
         captureConversation("队列按钮-同排", app: app)
     }
 
+    func testUserBodyLongPressShowsMessageMenuThenSelectsText() {
+        let app = launchInteractionFixture("--agent-edit-history-fixture")
+        let body = app.textViews["user.selectable"].firstMatch
+        XCTAssertTrue(body.waitForExistence(timeout: 5))
+        body.coordinate(withNormalizedOffset: CGVector(dx: 0.4, dy: 0.5)).press(forDuration: 1)
+        XCTAssertTrue(app.buttons["复制"].waitForExistence(timeout: 5), app.debugDescription)
+        XCTAssertTrue(app.buttons["编辑"].exists)
+        XCTAssertTrue(app.buttons["选择文本"].exists)
+        XCTAssertLessThan(app.buttons["复制"].frame.midY, app.buttons["编辑"].frame.midY)
+        XCTAssertLessThan(app.buttons["编辑"].frame.midY, app.buttons["选择文本"].frame.midY)
+        captureConversation("用户正文长按-消息菜单", app: app)
+        app.buttons["选择文本"].tap()
+        let copy = app.menuItems.matching(NSPredicate(format: "label IN %@", ["拷贝", "复制", "Copy"])).firstMatch
+        XCTAssertTrue(copy.waitForExistence(timeout: 5), app.debugDescription)
+        captureConversation("选择文本-系统手柄菜单", app: app)
+        copy.tap()
+        let bubble = app.otherElements["message.user-bubble"].firstMatch
+        bubble.coordinate(withNormalizedOffset: CGVector(dx: 0.97, dy: 0.5)).tap()
+        body.coordinate(withNormalizedOffset: CGVector(dx: 0.4, dy: 0.5)).press(forDuration: 1)
+        XCTAssertTrue(app.buttons["选择文本"].waitForExistence(timeout: 5), "退出选择后恢复消息菜单")
+        app.buttons["编辑"].tap()
+        XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "history.editor").firstMatch.waitForExistence(timeout: 5))
+    }
+
+    func testMigrationTableKeepsColumnsAlignedAndRowsFullyVisible() {
+        let app = launchInteractionFixture("--agent-migration-table-fixture")
+        let timeline = app.descendants(matching: .any).matching(identifier: "conversation.timeline").firstMatch
+        for _ in 0..<8 {
+            let header = app.textViews.matching(NSPredicate(format: "value == %@", "部分")).firstMatch
+            if header.exists && header.frame.minY > timeline.frame.minY { break }
+            timeline.swipeDown()
+        }
+        let name = app.textViews.matching(NSPredicate(format: "value == %@", "应用入口与构建")).firstMatch
+        let detail = app.textViews.matching(NSPredicate(format: "value BEGINSWITH %@", "建立独立原生 iOS 工程")).firstMatch
+        XCTAssertTrue(name.waitForExistence(timeout: 5), app.debugDescription)
+        XCTAssertTrue(detail.exists)
+        XCTAssertLessThan(name.frame.width, 180, "短列按自然内容宽度展示")
+        XCTAssertLessThanOrEqual(detail.frame.width, 260)
+        XCTAssertEqual(name.frame.minY, detail.frame.minY, accuracy: 1)
+        XCTAssertGreaterThan(detail.frame.height, 80, "长单元格完整换行，不能退化为单行或截断")
+        let next = app.textViews.matching(NSPredicate(format: "value == %@", "通信与协议")).firstMatch
+        XCTAssertGreaterThanOrEqual(next.frame.minY, detail.frame.maxY + 20, "下一行必须在最长单元格之后，不能重叠")
+        captureConversation("原会话表格-列宽换行与行高", app: app)
+        let originalX = detail.frame.minX
+        let start = detail.coordinate(withNormalizedOffset: CGVector(dx: 0.6, dy: 0.2))
+        let end = detail.coordinate(withNormalizedOffset: CGVector(dx: 0.05, dy: 0.2))
+        start.press(forDuration: 0.05, thenDragTo: end)
+        XCTAssertLessThan(detail.frame.minX, originalX - 5, "超宽表格继续支持横向滚动")
+        XCTAssertLessThanOrEqual(detail.frame.maxX, app.frame.maxX - 10, "横向滚动后可查看完整右侧内容")
+        captureConversation("原会话表格-横向查看右侧", app: app)
+    }
+
     func testTableWrapsLongCellsAndKeepsShortColumnsCompact() {
         let app = launchInteractionFixture("--agent-table-controls-fixture")
         let number = app.textViews.matching(NSPredicate(format: "value == '#' ")).firstMatch

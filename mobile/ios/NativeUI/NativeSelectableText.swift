@@ -8,6 +8,9 @@ struct NativeSelectableText: UIViewRepresentable {
     var openLink: (URL) -> Void = { _ in }
     var onTap: (() -> Void)? = nil
     var fitsContentWidth = false
+    var selectionEnabled = true
+    var selectionRequest: UUID? = nil
+    var onSelectionEnd: (() -> Void)? = nil
     @Environment(\.nativeSelectionActions) private var selectionActions
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.legibilityWeight) private var legibilityWeight
@@ -49,14 +52,18 @@ struct NativeSelectableText: UIViewRepresentable {
         context.coordinator.openLink = openLink
         context.coordinator.onTap = onTap
         context.coordinator.selectionActions = selectionActions
+        context.coordinator.onSelectionEnd = onSelectionEnd
+        view.isSelectable = selectionEnabled
         view.accessibilityIdentifier = identifier
         view.traitOverrides.legibilityWeight = legibilityWeight == .bold ? .bold : .regular
         let text = systemText
-        guard !view.attributedText.isEqual(to: text) else { return }
-        let selection = view.selectedRange
-        view.attributedText = text
-        if selection.length > 0, NSMaxRange(selection) <= text.length { view.selectedRange = selection }
-        view.invalidateIntrinsicContentSize()
+        if !view.attributedText.isEqual(to: text) {
+            let selection = view.selectedRange
+            view.attributedText = text
+            if selection.length > 0, NSMaxRange(selection) <= text.length { view.selectedRange = selection }
+            view.invalidateIntrinsicContentSize()
+        }
+        context.coordinator.applySelectionRequest(selectionRequest, to: view)
     }
 
     func sizeThatFits(_ proposal: ProposedViewSize, uiView: UITextView, context: Context) -> CGSize? {
@@ -70,7 +77,7 @@ struct NativeSelectableText: UIViewRepresentable {
         return CGSize(width: width, height: ceil(used.maxY))
     }
 
-    @MainActor final class Coordinator: NSObject, UITextViewDelegate, UIGestureRecognizerDelegate {
+    @MainActor final class Coordinator: NSObject, UITextViewDelegate, UIGestureRecognizerDelegate, @preconcurrency UIEditMenuInteractionDelegate {
         var openLink: (URL) -> Void
         var onTap: (() -> Void)?
         @objc func tapped(_ recognizer: UITapGestureRecognizer) {
@@ -82,7 +89,56 @@ struct NativeSelectableText: UIViewRepresentable {
         }
         func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool { true }
         var selectionActions: ((String, NSRange) -> [UIMenuElement])?
+        var onSelectionEnd: (() -> Void)?
+        private var selectionRequest: UUID?
+        private var hasSelection = false
+        private var requestedSelectionMenu: UIEditMenuInteraction?
+        func applySelectionRequest(_ request: UUID?, to view: UITextView) {
+            if request == nil, selectionRequest != nil { endSelection(in: view); return }
+            guard request != selectionRequest else { return }
+            selectionRequest = request
+            hasSelection = false
+            guard let request else { return }
+            // 在消息菜单关闭及 SwiftUI 更新完成后启用系统选择手柄。
+            DispatchQueue.main.async { [weak self, weak view] in
+                guard let self, let view, self.selectionRequest == request, view.window != nil else { return }
+                view.becomeFirstResponder()
+                view.selectAll(nil)
+                if self.requestedSelectionMenu == nil {
+                    let menu = UIEditMenuInteraction(delegate: self)
+                    view.addInteraction(menu)
+                    self.requestedSelectionMenu = menu
+                }
+                if let selection = view.selectedTextRange {
+                    let rect = view.firstRect(for: selection)
+                    self.requestedSelectionMenu?.presentEditMenu(with: UIEditMenuConfiguration(identifier: request as NSUUID,
+                        sourcePoint: CGPoint(x: rect.midX, y: rect.minY)))
+                }
+            }
+        }
+        func textViewDidChangeSelection(_ textView: UITextView) {
+            guard selectionRequest != nil else { return }
+            if textView.selectedRange.length > 0 { hasSelection = true }
+            else if hasSelection { endSelection(in: textView) }
+        }
+        func textViewDidEndEditing(_ textView: UITextView) { endSelection(in: textView) }
+        private func endSelection(in view: UITextView) {
+            guard selectionRequest != nil else { return }
+            selectionRequest = nil
+            hasSelection = false
+            requestedSelectionMenu?.dismissMenu()
+            view.resignFirstResponder()
+            let completion = onSelectionEnd
+            DispatchQueue.main.async { completion?() }
+        }
         func textView(_ textView: UITextView, editMenuForTextIn range: NSRange, suggestedActions: [UIMenuElement]) -> UIMenu? {
+            selectionMenu(for: textView, range: range, suggestedActions: suggestedActions)
+        }
+        func editMenuInteraction(_ interaction: UIEditMenuInteraction, menuFor configuration: UIEditMenuConfiguration, suggestedActions: [UIMenuElement]) -> UIMenu? {
+            guard let textView = interaction.view as? UITextView else { return nil }
+            return selectionMenu(for: textView, range: textView.selectedRange, suggestedActions: suggestedActions)
+        }
+        private func selectionMenu(for textView: UITextView, range: NSRange, suggestedActions: [UIMenuElement]) -> UIMenu {
             let actions = selectionActions?(textView.attributedText.string, range) ?? []
             let quoteMenu = actions.isEmpty ? [] : [UIMenu(options: .displayInline, children: actions)]
             return UIMenu(children: quoteMenu + suggestedActions)

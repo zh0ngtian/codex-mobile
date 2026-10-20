@@ -17,6 +17,10 @@ import XCTest
         for _ in 0..<5 { if text.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(text.isHittable, app.debugDescription)
         text.coordinate(withNormalizedOffset: CGVector(dx: x, dy: y)).press(forDuration: 1.2)
+        if text.identifier == "user.selectable" {
+            XCTAssertTrue(app.buttons["选择文本"].waitForExistence(timeout: 5), app.debugDescription)
+            app.buttons["选择文本"].tap()
+        }
         XCTAssertTrue(app.menuItems[expectedMenu].waitForExistence(timeout: 5), app.debugDescription)
     }
     func testBodySelectionAppendsCardsPreservesDraftAndAttachment() {
