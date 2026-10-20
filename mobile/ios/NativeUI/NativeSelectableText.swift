@@ -152,7 +152,7 @@ struct NativeSelectableText: UIViewRepresentable {
 }
 
 /// TextKit 的 patternDot 不保证圆形端点，因此直接绘制独立圆点。
-final class NativeDottedTextLayoutManager: NSLayoutManager {
+final class NativeDottedTextLayoutManager: NativeInlineCodeLayoutManager {
     override func drawUnderline(forGlyphRange glyphRange: NSRange, underlineType: NSUnderlineStyle,
                                 baselineOffset: CGFloat, lineFragmentRect lineRect: CGRect,
                                 lineFragmentGlyphRange lineGlyphRange: NSRange, containerOrigin: CGPoint) {

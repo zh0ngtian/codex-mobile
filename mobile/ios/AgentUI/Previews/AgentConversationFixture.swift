@@ -151,6 +151,17 @@ final class AgentConversationFixture {
             let code = String(repeating: "0123456789abcdef", count: 16) + "\nreturn " + String(repeating: "TOKEN_", count: 32)
             value.messages = [NativeMessage(id: "monospace-wrap", role: "assistant", text: "长等宽序列应完整换行，复制保留原文。\n\n```text\n" + code + "\n```", phase: "final_answer")]
         }
+        if ProcessInfo.processInfo.arguments.contains("--agent-inline-code-wrap-fixture") {
+            value.messages = [NativeMessage(id: "inline-code-wrap", role: "assistant", text: """
+            行内代码接着当前行的正文排版：`abcdefghijklmnop`，按剩余宽度断行。
+
+            - 列表中的行内代码同样可以拆开：``abcdefghijklmnop``，续行保持缩进。
+
+            > 引用正文也保留行内代码内部断行：`abcdefghijklmnop`。
+
+            普通英文仍按单词换行：Text before abcdefghijklmnop end.
+            """, phase: "final_answer")]
+        }
         if ProcessInfo.processInfo.arguments.contains("--agent-code-wrap-toggle-fixture") {
             let code = String(repeating: "abcdef0123456789", count: 6) + "\nend"
             value.messages = [NativeMessage(id: "code-wrap-toggle", role: "assistant", text: "```text\n" + code + "\n```\n\n```text\nsecond_" + code + "\n```", phase: "final_answer")]

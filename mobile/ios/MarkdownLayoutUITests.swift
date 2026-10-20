@@ -7,7 +7,7 @@ import UIKit
     private func layout(_ source: String, width: CGFloat = 350) -> (NSAttributedString, NSLayoutManager, NSTextContainer) {
         let text = NativeSystemTypography.resolved(NativeSelectableMarkdown.blocks(NativeMarkdownBlock.parse(source)), size: .large, bold: false)
         let storage = NSTextStorage(attributedString: text)
-        let manager = NSLayoutManager()
+        let manager = NativeInlineCodeLayoutManager()
         let container = NSTextContainer(size: CGSize(width: width, height: .greatestFiniteMagnitude))
         container.lineFragmentPadding = 0
         storage.addLayoutManager(manager); manager.addTextContainer(container); manager.ensureLayout(for: container)
@@ -22,6 +22,69 @@ import UIKit
         let line = manager.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
         let point = manager.location(forGlyphAt: glyph)
         return CGPoint(x: line.minX + point.x, y: line.minY + point.y)
+    }
+
+    func testInlineCodeUsesRemainingLineWidthAndKeepsOriginalText() {
+        for source in ["Text before `abcdefghijklmnop` end", "Text before ``abcdefghijklmnop`` end",
+                       "- Text before `abcdefghijklmnop` end", "> Text before `abcdefghijklmnop` end"] {
+            let (text, manager, _) = layout(source, width: 240)
+            let prefix = origin("Text", text: text, manager: manager)
+            let first = origin("abcd", text: text, manager: manager)
+            let last = origin("p", text: text, manager: manager)
+            XCTAssertEqual(first.y, prefix.y, accuracy: 0.5, "行内代码须利用当前行剩余空间，不能整词移到下一行")
+            XCTAssertGreaterThan(last.y, first.y, "行内代码内部须允许断行")
+            XCTAssertEqual(text.string, source.hasPrefix("- ") ? "• Text before abcdefghijklmnop end" : "Text before abcdefghijklmnop end")
+            let codeRange = (text.string as NSString).range(of: "abcdefghijklmnop")
+            var line = 0
+            manager.enumerateLineFragments(forGlyphRange: manager.glyphRange(forCharacterRange: codeRange, actualCharacterRange: nil)) { _, used, _, _, _ in
+                if line > 0 { XCTAssertGreaterThanOrEqual(used.minX, prefix.x - 0.5, "代码续行须保留列表或引用正文的缩进") }
+                line += 1
+            }
+        }
+    }
+
+    func testOrdinaryWordsStillWrapAtWordBoundariesBesideInlineCode() {
+        let (text, manager, _) = layout("Text before abcdefghijklmnop\n\nText before `abcdefghijklmnop`\n\nText before abcdefghijklmnop", width: 240)
+        let string = text.string as NSString
+        let paragraphs = string.components(separatedBy: "\n")
+        var offset = 0
+        for (index, paragraph) in paragraphs.enumerated() {
+            let range = (paragraph as NSString).range(of: "abcdefghijklmnop")
+            let glyph = manager.glyphIndexForCharacter(at: offset + range.location)
+            let endGlyph = manager.glyphIndexForCharacter(at: offset + NSMaxRange(range) - 1)
+            let firstLine = manager.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
+            let lastLine = manager.lineFragmentRect(forGlyphAt: endGlyph, effectiveRange: nil)
+            if index == 1 { XCTAssertGreaterThan(lastLine.minY, firstLine.minY) }
+            else { XCTAssertEqual(lastLine.minY, firstLine.minY, accuracy: 0.5, "普通英文仍按完整单词换行") }
+            offset += (paragraph as NSString).length + 1
+        }
+    }
+
+    func testInlineCodeWrappingRendersInConversation() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-inline-code-wrap-fixture", "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryL", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
+        app.launch()
+        let body = app.textViews["assistant.selectable"].firstMatch
+        XCTAssertTrue(body.waitForExistence(timeout: 10))
+        let value = body.value as? String ?? ""
+        XCTAssertTrue(value.contains("abcdefghijklmnop"), "视觉折行仍须保留连续的原始标识符")
+        XCTAssertFalse(value.contains("\u{200B}"), "不能插入零宽字符改变复制或选文范围")
+        XCTAssertLessThanOrEqual(body.frame.width, app.frame.width - 32)
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "行内代码按剩余宽度断行"; screenshot.lifetime = .keepAlways; add(screenshot)
+    }
+
+    func testInlineCodeWithSpacesKeepsFollowingWordsIntactAfterRelayout() {
+        let (text, manager, container) = layout("Text before `abcd efghijklmnop` ordinarywordsandmore", width: 240)
+        for width: CGFloat in [240, 220, 240] {
+            container.size.width = width
+            manager.ensureLayout(for: container)
+            XCTAssertEqual(origin("abcd", text: text, manager: manager).y,
+                           origin("Text", text: text, manager: manager).y, accuracy: 0.5)
+            XCTAssertEqual(origin("ordinary", text: text, manager: manager).y,
+                           origin("andmore", text: text, manager: manager).y, accuracy: 0.5, "代码后的普通单词不能被逐字断开")
+            XCTAssertEqual(text.string, "Text before abcd efghijklmnop ordinarywordsandmore")
+        }
     }
 
     func testDownloadListContinuationAlignsLabelAndWrappedHash() {
