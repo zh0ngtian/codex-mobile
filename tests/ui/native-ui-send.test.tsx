@@ -7,6 +7,7 @@ import { spawnSync } from 'node:child_process';
 import { AppBootstrap } from '../../src/App';
 import { HttpOperationPendingError } from '../../src/backends/http-transport';
 import * as threadListLoader from '../../src/app-server/thread-list-loader';
+import { saveBackendRegistry } from '../../src/backends/registry';
 const boundary = vi.hoisted(() => ({ sidebarIndex: false, requests: [] as Array<{ method: string; params: any; options?: { priority?: string } }>, threadRecords: [] as Array<Record<string, any>>, threadReadBarrier: null as Promise<void> | null, projectBarrier: null as Promise<void> | null, priorityBarrier: null as Promise<void> | null, listBarrier: null as Promise<void> | null, searchBarrier: null as Promise<void> | null, listFailure: false, options: null as any, client: null as any, release: null as null | (() => void), failSend: false, immediateSend: false, nextThreadId: 'sent-thread', delayRevert: false, pendingMethod: '', releaseRevert: null as null | (() => void), rejectStart: null as null | (() => void) }));
 vi.mock('../../src/backends/connection-manager', () => ({ BackendConnectionManager: class {
  constructor(private options: any) { boundary.options = options; }
@@ -78,6 +79,39 @@ function assertSwiftNavigationSnapshots(snapshots: any[]) {
 }
 
 // 只替换外部连接与HTTP边界，以下断言经过真实App业务状态、导航投影和NativeRuntime发布。
+it('新设备首开全折叠，展开才查本组五条，折叠刷新跳过且无项目也按需加载', async () => {
+ boundary.sidebarIndex = true;
+ boundary.threadRecords = [
+  ...Array.from({ length: 9 }, (_, i) => ({ id: `lazy-${i}`, cwd: '/a', recencyAt: 100 - i, status: { type: i === 2 ? 'active' : 'idle' } })),
+  { id: 'b-running', cwd: '/b', recencyAt: 1, status: { type: 'active' } },
+  ...Array.from({ length: 6 }, (_, i) => ({ id: `loose-${i}`, cwd: null, recencyAt: 80 - i, status: { type: 'idle' } })),
+ ];
+ saveBackendRegistry(localStorage, { version: 1, selectedBackendId: 'a', backends: [{ id: 'a', hostId: 'host', name: 'Mac', enabled: true, order: 0, baseUrl: 'https://gateway.invalid', token: 'SECRET' }] });
+ await setup(true, { projects: ['/a', '/b'], projectlessThreadIds: boundary.threadRecords.filter(t => t.cwd === null).map(t => t.id) });
+ const groups = () => posts.at(-1)?.groups.filter((g: any) => g.category === 'project');
+ const group = (cwd: string) => groups()?.find((g: any) => g.cwd === cwd);
+ await waitFor(() => expect(posts.at(-1)?.navigationLoading).toBe(false));
+ expect(groups()).toHaveLength(3); expect(groups().every((g: any) => g.collapsed && !g.items.length)).toBe(true);
+ expect(boundary.requests.some(r => r.method === 'thread/list' || r.method === 'mobile/sidebar/projectless')).toBe(false);
+ expect(group('/b').allItems.some((item: any) => item.running)).toBe(true);
+ await act(async () => command('expand-lazy-a', 'project.toggle', group('/a').command.params));
+ await waitFor(() => expect(group('/a')).toMatchObject({ collapsed: false, loading: 'ready' }));
+ expect(group('/a').items).toHaveLength(5); expect(group('/a').items[2].running).toBe(true);
+ expect(boundary.requests.filter(r => r.method === 'thread/list').map(r => r.params)).toEqual([{ cwd: '/a', limit: 5, sortKey: 'recency_at' }]);
+ await act(async () => command('collapse-lazy-a', 'project.toggle', group('/a').command.params));
+ const summaries = boundary.requests.filter(r => r.method === 'mobile/sidebar/summaries').length;
+ await act(async () => command('refresh-collapsed', 'navigation.refresh'));
+ await waitFor(() => expect(boundary.requests.filter(r => r.method === 'mobile/sidebar/summaries').length).toBeGreaterThan(summaries));
+ expect(boundary.requests.filter(r => r.method === 'thread/list')).toHaveLength(1);
+ await act(async () => command('expand-lazy-loose', 'project.toggle', group('').command.params));
+ await waitFor(() => expect(group('')).toMatchObject({ collapsed: false, loading: 'ready' }));
+ expect(group('').items).toHaveLength(5);
+ expect(boundary.requests.filter(r => r.method === 'mobile/sidebar/projectless')).toHaveLength(1);
+ const more = group('').actions.find((a: any) => a.command?.name === 'project.more');
+ await act(async () => command('more-lazy-loose', more.command.name, more.command.params));
+ await waitFor(() => expect(group('').items).toHaveLength(6));
+ expect(group('/b').collapsed).toBe(true);
+});
 it('网关无项目每次只返回五条时，真实原生更多路由累计到十条且运行计入五条', async () => {
  boundary.sidebarIndex = true;
  boundary.threadRecords = [

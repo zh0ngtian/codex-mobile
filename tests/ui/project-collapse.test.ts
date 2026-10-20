@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   projectCollapseKey,
+  collapseNewBackendProjects,
+  isProjectCollapsed,
+  toggleProjectCollapsedKeys,
   readCollapsedProjectKeys,
   writeCollapsedProjectKeys,
 } from "../../src/features/threads/project-collapse";
@@ -14,6 +17,20 @@ describe("项目折叠缓存", () => {
     expect(projectCollapseKey("mini", "/tmp/project")).toBe(
       "mini:/tmp/project",
     );
+  });
+
+  it("新设备所有分组默认折叠，显式展开和重启记忆只影响该分组", () => {
+    let keys = collapseNewBackendProjects(new Set(["old:/closed"]), ["new"]);
+    expect(isProjectCollapsed(keys, "old", "/open")).toBe(false);
+    expect(isProjectCollapsed(keys, "old", "/closed")).toBe(true);
+    for (const cwd of ["/a", "/future", "codex-mobile://projectless"]) expect(isProjectCollapsed(keys, "new", cwd)).toBe(true);
+    keys = toggleProjectCollapsedKeys(keys, "new", "/a");
+    writeCollapsedProjectKeys(localStorage, keys);
+    keys = readCollapsedProjectKeys(localStorage);
+    expect(isProjectCollapsed(keys, "new", "/a")).toBe(false);
+    expect(isProjectCollapsed(keys, "new", "/future")).toBe(true);
+    expect(isProjectCollapsed(toggleProjectCollapsedKeys(keys, "new", "/a"), "new", "/a")).toBe(true);
+    expect(isProjectCollapsed(collapseNewBackendProjects(keys, ["second"]), "new", "/a")).toBe(false);
   });
 
   it("写入并恢复折叠项目集合", () => {

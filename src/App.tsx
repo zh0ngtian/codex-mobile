@@ -217,6 +217,8 @@ import {
 } from "./features/threads/thread-list-model";
 import {
   projectCollapseKey,
+  isProjectCollapsed,
+  toggleProjectCollapsedKeys,
   readCollapsedProjectKeys,
   writeCollapsedProjectKeys,
 } from "./features/threads/project-collapse";
@@ -1005,7 +1007,9 @@ function BackendWorkspace({
             includeRunningThreads: true,
             rememberedRunningThreadIds: threadsRef.current.filter(thread => isThreadRunning(thread.status)).map(thread => String(thread.id)),
             preferredProjectCwds: [...directories, PROJECTLESS_GROUP_ID].filter(cwd =>
-              !collapsed.has(projectCollapseKey(backend.id, cwd))),
+              !isProjectCollapsed(collapsed, backend.id, cwd)),
+            expandedProjectCwds: [...directories, PROJECTLESS_GROUP_ID].filter(cwd =>
+              !isProjectCollapsed(collapsed, backend.id, cwd)),
           },
         );
         // 目录失败或线程总加载失败都不能证明保存项目已失效，保留待恢复上下文供重试。
@@ -4999,6 +5003,7 @@ function ConfiguredApp({
 
   const persistRegistry = useCallback((next: BackendRegistry) => {
     saveBackendRegistry(window.localStorage, next);
+    setCollapsedProjectKeys(readCollapsedProjectKeys(window.localStorage));
     setRegistry(
       loadBackendRegistry(window.localStorage, window.location.origin),
     );
@@ -5230,17 +5235,12 @@ function ConfiguredApp({
 
   const toggleProjectCollapsed = useCallback(
     (backendId: string, cwd: string) => {
-      const key = projectCollapseKey(backendId, cwd);
-      setCollapsedProjectKeys((current) => {
-        const next = new Set(current);
-        if (next.has(key)) {
-          next.delete(key);
-        } else {
-          next.add(key);
-        }
-        writeCollapsedProjectKeys(window.localStorage, next);
-        return next;
-      });
+      const current = readCollapsedProjectKeys(window.localStorage);
+      const opening = isProjectCollapsed(current, backendId, cwd);
+      const next = toggleProjectCollapsedKeys(current, backendId, cwd);
+      writeCollapsedProjectKeys(window.localStorage, next);
+      setCollapsedProjectKeys(next);
+      if (opening) setCommand({ id: ++commandIdRef.current, backendId, type: "retry-project", cwd });
     },
     [],
   );

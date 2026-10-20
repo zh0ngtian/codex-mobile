@@ -39,6 +39,7 @@ interface ThreadListLoadOptions {
   includeRunningThreads?: boolean;
   rememberedRunningThreadIds?: string[];
   preferredProjectCwds?: string[];
+  expandedProjectCwds?: string[];
 }
 
 async function loadPrioritizedThreadRecords(
@@ -420,8 +421,11 @@ export function createLatestThreadListLoader(
       const loadProjects = () => {
         if (sequence !== latestSequence) return Promise.resolve();
         const preferred = new Set(options.preferredProjectCwds);
-        const orderedProjects = [...projects.filter(cwd => preferred.has(cwd)), ...projects.filter(cwd => !preferred.has(cwd))];
-        const projectlessFirst = projectlessThreadIds.length && preferred.has(PROJECTLESS_GROUP_ID)
+        const expanded = options.expandedProjectCwds === undefined ? null : new Set(options.expandedProjectCwds);
+        const visibleProjects = projects.filter(cwd => !expanded || expanded.has(cwd));
+        const loadProjectlessPage = projectlessThreadIds.length && (!expanded || expanded.has(PROJECTLESS_GROUP_ID));
+        const orderedProjects = [...visibleProjects.filter(cwd => preferred.has(cwd)), ...visibleProjects.filter(cwd => !preferred.has(cwd))];
+        const projectlessFirst = loadProjectlessPage && preferred.has(PROJECTLESS_GROUP_ID)
           ? loadProjectless(visibleBackground, projectlessThreadIds, sequence, options) : null;
         const projectRequests = projects.length
           ? orderedProjects.map((cwd) => loadProject(preferred.has(cwd) ? visibleBackground : background, cwd, sequence, options))
@@ -435,7 +439,7 @@ export function createLatestThreadListLoader(
                   ));
                 }
               })];
-        if (projectlessThreadIds.length) {
+        if (loadProjectlessPage) {
           projectRequests.push(projectlessFirst ?? loadProjectless(background, projectlessThreadIds, sequence, options));
         }
         return Promise.all(projectRequests).then(() => undefined);

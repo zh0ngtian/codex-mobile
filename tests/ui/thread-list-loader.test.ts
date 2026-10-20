@@ -19,6 +19,29 @@ function deferred<T>() {
 }
 
 describe("会话列表轮询加载器", () => {
+  it("全部折叠只更新摘要，不预取普通项目和无项目首批；显式展开再取五条", async () => {
+    const request = vi.fn(async (method: string, params: any): Promise<any> => method === "mobile/sidebar/summaries"
+      ? { data: [{ id: "running", cwd: "/a", status: { type: "active" } }] }
+      : { data: Array.from({ length: 5 }, (_, i) => ({ id: `row-${i}` })), nextCursor: "more" });
+    const client = { sidebarIndex: true, request }, onProjectData = vi.fn(), onPinnedData = vi.fn(), onSettled = vi.fn();
+    const loader = createLatestThreadListLoader({ onProjectData, onPinnedData, onSettled });
+    await loader.load(client, ["/a", "/b"], ["n"], { expandedProjectCwds: [], includeRunningThreads: true });
+    expect(request.mock.calls.map(([m]) => m)).toEqual(["mobile/sidebar/summaries"]);
+    expect(onProjectData).not.toHaveBeenCalled(); expect(onPinnedData).toHaveBeenCalled(); expect(onSettled).toHaveBeenCalledOnce();
+    await loader.loadProject(client, "/a");
+    expect(request.mock.calls.at(-1)).toMatchObject(["thread/list", { cwd: "/a", limit: 5 }]);
+    await loader.loadProjectless(client, ["n"]);
+    expect(request.mock.calls.at(-1)?.[0]).toBe("mobile/sidebar/projectless");
+  });
+
+  it("自动刷新仅拉展开的分组，含无项目，不改变目录顺序", async () => {
+    const request = vi.fn(async () => ({ data: [], nextCursor: null }));
+    await createLatestThreadListLoader({}).load({ request, sidebarIndex: true }, ["/a", "/b", "/c"], ["n"], {
+      expandedProjectCwds: ["/b", PROJECTLESS_GROUP_ID], includeRunningThreads: true,
+    });
+    expect(request.mock.calls.filter(([method]: any) => method === "thread/list").map(([, params]: any) => params.cwd)).toEqual(["/b"]);
+    expect(request.mock.calls.filter(([method]: any) => method === "mobile/sidebar/projectless")).toHaveLength(1);
+  });
   it("批量摘要失败仍等待项目任务收尾，不提前解除整轮在途状态", async () => {
     const project = deferred<any>(), onSettled = vi.fn();
     const client = { sidebarIndex: true, request: vi.fn((method: string) => method === "thread/list"

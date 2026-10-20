@@ -5,7 +5,7 @@ import { videoPathForItem } from '../features/conversation/sheets/RemoteFileShee
 import { groupConversationTurns, groupTurnItems, imageSourcesForItem, isThreadRunning, turnDurationMs, toolActivityRowLabel } from '../ui/conversation';
 import { turnResponsePresentation } from '../ui/turn-response-presentation';
 import { groupThreadsByProject, splitAllThreads, type AggregatedThreadItem } from '../features/threads/thread-list-model';
-import { projectCollapseKey } from '../features/threads/project-collapse';
+import { isProjectCollapsed, projectCollapseKey } from '../features/threads/project-collapse';
 import { PROJECTLESS_GROUP_ID, type ProjectThreadLoadState } from '../app-server/thread-list-loader';
 import { titleOf } from '../ui/app-display';
 import { insertSkillMention, skillMentionAt, type InstalledSkill } from '../app-server/skills';
@@ -192,7 +192,7 @@ export function projectNavigation(input: NavigationInput): NativeGroup[] {
     states: Record<string, ProjectThreadLoadState>, hasMore: Record<string, boolean>, backendName?: string) => {
     for (const group of groupThreadsByProject(threads, [...(hasProjectless ? [PROJECTLESS_GROUP_ID] : []), ...directories])) {
       const key = projectCollapseKey(backendId, group.cwd);
-      const collapsed = input.collapsedProjectKeys.has(key);
+      const collapsed = isProjectCollapsed(input.collapsedProjectKeys, backendId, group.cwd);
       const params = { backendId, cwd: group.cwd };
       // 项目目录先于首批会话返回；未知/idle空组尚未获得成功空结果。
       const state = states[group.cwd];

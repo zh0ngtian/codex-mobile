@@ -32,7 +32,7 @@ import {
   splitAllThreads,
   type AggregatedThreadItem,
 } from "./thread-list-model";
-import { projectCollapseKey } from "./project-collapse";
+import { isProjectCollapsed, projectCollapseKey } from "./project-collapse";
 import { t } from "../../i18n";
 
 export type ThreadManagementAction =
@@ -432,7 +432,7 @@ export function ThreadListPage({
                 );
                 const isExpanded =
                   Boolean(query.trim()) ||
-                  !collapsedProjectKeys.has(projectKey);
+                  !isProjectCollapsed(collapsedProjectKeys, selectedBackendId, group.cwd);
                 const isLoadingMore = loadingProjectKeys.has(projectKey);
                 const projectThreadState =
                   projectThreadStates[group.cwd] ??
@@ -463,7 +463,7 @@ export function ThreadListPage({
                         className="project-heading"
                         aria-expanded={isExpanded}
                         onClick={() => {
-                          if (!collapsedProjectKeys.has(projectKey)) {
+                          if (!isProjectCollapsed(collapsedProjectKeys, selectedBackendId, group.cwd)) {
                             setProjectVisibleLimits((previous) => ({
                               ...previous,
                               [projectKey]: PROJECT_THREAD_BATCH_SIZE,
