@@ -14,8 +14,6 @@ struct OutputVideoCard: View {
                 VideoPlayer(player: playback.player)
                     .frame(height: 190)
                     .accessibilityLabel(preferences.text("内嵌视频播放器", "Inline video player"))
-                MediaPlaybackButton(playback: playback, identifier: "output.playback-toggle.\(item.id.uuidString)")
-                    .padding(.vertical, 10)
             } else if readFailed {
                 Label(preferences.text("读取失败，点击文件查看重试选项", "Read failed. Open the file for retry options"), systemImage: "exclamationmark.triangle")
                     .font(.body).foregroundStyle(.secondary).padding(18)
