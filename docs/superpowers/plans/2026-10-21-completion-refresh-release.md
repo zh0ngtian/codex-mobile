@@ -36,30 +36,38 @@
 - [x] 执行`npm run typecheck`，保存`typecheck.log`，要求退出码0。
 - [x] 在隔离目录重验本次运行恢复／投影／历史相关7文件197项功能回归，记录准确结果；复用本次基线已完成的4项原生UI证据。
 - [x] 写入`validation.json`，四个检查名精确为`adapter-regression`、`coordinator-recovery`、`build-contract`、`typecheck`，每项含真实passed、退出码、命令及证据路径。
-- [ ] `git fetch origin main`核对最新main，阅读提交规范；`git diff --check`、`git diff --cached --check`及`git diff --cached --name-status`通过后，以中文Conventional Commit提交并推送`codex/completion-refresh-release-20261021`，核对本地／远端完整SHA相同。
-- [ ] `release_task_sha=$(git rev-parse HEAD)`后执行`releasectl ready --task completion-refresh-release-20261021 --sha "$release_task_sha" --validation "/Users/zhongtian/Library/Application Support/ReleaseCoordinator/validations/codex-mobile-20261021-completion-refresh/validation.json"`；SHA与路径取实际记录，不预分配版本或手改冻结清单。
+- [x] `git fetch origin main`核对最新main，阅读提交规范；`git diff --check`、`git diff --cached --check`及`git diff --cached --name-status`通过后，以中文Conventional Commit提交并推送`codex/completion-refresh-release-20261021`，核对本地／远端完整SHA相同。
+- [x] `release_task_sha=$(git rev-parse HEAD)`后执行`releasectl ready --task completion-refresh-release-20261021 --sha "$release_task_sha" --validation "/Users/zhongtian/Library/Application Support/ReleaseCoordinator/validations/codex-mobile-20261021-completion-refresh/validation.json"`；SHA与路径取实际记录，不预分配版本或手改冻结清单。
 
 ## 任务三：协调冻结、双端发布与成功凭证
 
 **Files:** Coordinator-generated `.release-batch.json`、progress与receipt；复用`scripts/codex_mobile_release_adapter.py`和原签名／OTA入口。
 
-- [ ] 协调器完成main整合、必要回归、版本分配、冻结与推送。负责人不独立发包、签名或切换渠道。
-- [ ] `releasectl wait --task completion-refresh-release-20261021 --timeout 45`与`status`跟踪批次；暂时只读故障留在同一冻结批次恢复核对。
-- [ ] 永久失败保留原现场，只为已确认原因增加失败回归并修复，登记`--repairs-batch <最新失败叶节点>`，不resume failed、不取消CI、不借用其他包。
-- [ ] 任务complete，或recovered指向成功子批次后，读取同一成功receipt，核对任务SHA祖先、冻结SHA、正式双端CI、必要开发CI及所有发布阶段。
+- [x] 协调器完成main整合、必要回归、版本分配、冻结与推送。负责人不独立发包、签名或切换渠道。
+- [x] `releasectl wait --task completion-refresh-release-20261021 --timeout 45`与`status`跟踪批次；暂时只读故障留在同一冻结批次恢复核对。
+- [x] 永久失败保留原现场，只为已确认原因增加失败回归并修复，登记`--repairs-batch <最新失败叶节点>`，不resume failed、不取消CI、不借用其他包。
+- [x] 任务complete，或recovered指向成功子批次后，读取同一成功receipt，核对任务SHA祖先、冻结SHA、正式双端CI、必要开发CI及所有发布阶段。
 
 ## 任务四：独立渠道验收、文档收尾与交付
 
 **Files:** Create `docs/superpowers/plans/evidence/2026-10-21-completion-refresh-release.json`；Modify 本计划、`docs/interaction-alignment.md`、`README.md`、`docs/README.md`。
 
-- [ ] 对固定`latest.json`和`latest-ios.json`、APK／IPA的HEAD及完整GET，核对本批统一版本、字节数、SHA-256与receipt相同。
-- [ ] 保持TLS校验，验证固定OTA安装页、更新JSON、manifest及HTTPS版本化IPA完整下载。
-- [ ] 用本项目`ios_sign.py --verify-ipa`独立验签固定IPA，并与真实兼容基准比对Bundle ID、Team、application-identifier、全文权限摘要及钥匙串组；确认固定IPA为已签名包。
-- [ ] 核对GitHub实际Release中文正文、APK／unsigned IPA完整下载散列；软件源现有App的unsigned版本、构建号、URL、大小、SHA及中文日志均相符；保留原开发者署名并核对当前gh用户名。
-- [ ] 保存脱敏公开凭证，分别标明渠道已发布、受控回归已验证、用户现场／真机覆盖安装和数据保留待验收。
-- [ ] 以共享main写入互斥提交并推送收尾文档；无新真实测试会话时明确记录无需归档，随后归档本任务管理worktree。
-- [ ] 最终正文展示固定OTA安装页、固定APK和已签名IPA链接、实际版本、两个文件各自大小和完整SHA-256。
+- [x] 对固定`latest.json`和`latest-ios.json`、APK／IPA的HEAD及完整GET，核对本批统一版本、字节数、SHA-256与receipt相同。
+- [x] 保持TLS校验，验证固定OTA安装页、更新JSON、manifest及HTTPS版本化IPA完整下载。
+- [x] 用本项目`ios_sign.py --verify-ipa`独立验签固定IPA，并与真实兼容基准比对Bundle ID、Team、application-identifier、全文权限摘要及钥匙串组；确认固定IPA为已签名包。
+- [x] 核对GitHub实际Release中文正文、APK／unsigned IPA完整下载散列；软件源现有App的unsigned版本、构建号、URL、大小、SHA及中文日志均相符；保留原开发者署名并核对当前gh用户名。
+- [x] 保存脱敏公开凭证，分别标明渠道已发布、受控回归已验证、用户现场／真机覆盖安装和数据保留待验收。
+收尾约束：以共享main写入互斥提交并推送收尾文档；无新真实测试会话，无需归档远程会话，结束前由宿主归档本任务管理worktree。
+交付要求：最终正文展示固定OTA安装页、固定APK和已签名IPA链接、实际版本、两个文件各自大小和完整SHA-256。
 
 ### 本地门禁结果
 
 本次实际验证：217项适配器回归、59项协调器回归、20文件143项构建契约、类型检查及7文件197项相关功能回归均退出码0。原生4项UI验收结果复用基线同一生产代码的`/Users/zhongtian/WorkSpace/codex-mobile/.mobile-build/completion-refresh-20261021/process-ui-final.xcresult`，未改动运行代码，不新增模拟器或真实测试会话。
+
+## 发布与独立回验结果
+
+成功发布0.3.25（3025），批次`a9f374b1-b9f1-4147-81aa-a58ff03ac20c`，冻结`2cf6cb29b5863495c2b7caaa502a20aa5b9c4bab`；正式CI`39578683851`及开发CI`39578683888`均通过。双端固定渠道、HTTPS OTA、GitHub完整下载、iOS独立验签及权限连续性、软件源中文日志／构建号／署名全部核对通过。任务与批次均complete，未发生失败子批次；无需关联修复。
+
+任务登记至batched期间持续heartbeat；进入batched后CLI返回`Unknown or already batched task`，后续由协调器自身租约维护。全部本机门禁、原生证据、原始日志、独立下载与公开凭证位于仓库外本次validation目录。未部署网关，未创建真实测试会话；用户现场与真机覆盖安装、数据保留待验收。[公开发布凭证](evidence/2026-10-21-completion-refresh-release.json)。
+
+最终独立验收复审通过：任务与批次complete、receipt一致、任务祖先、所有下载包独立散列、签名连续性、软件源构建号／日志／署名及文档边界均已核对，未发现发布阻塞。收尾文档以共享main租约101整合；宿主归档及最终main核对结果保存于本次validation目录的`closeout.json`。

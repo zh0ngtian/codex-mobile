@@ -1,0 +1,71 @@
+{
+  "date": "2026-10-21",
+  "version": "0.3.25",
+  "buildNumber": "3025",
+  "client": {
+    "batchId": "a9f374b1-b9f1-4147-81aa-a58ff03ac20c",
+    "sourceCommit": "2cf6cb29b5863495c2b7caaa502a20aa5b9c4bab",
+    "tasks": [
+      {
+        "id": "completion-refresh-release-20261021",
+        "sha": "60e93ab8782b305192f9a6188e995cb22f747ded"
+      }
+    ],
+    "ci": 39578683851,
+    "releaseUrl": "https://github.com/zh0ngtian/codex-mobile/releases/tag/v0.3.25",
+    "developmentCI": 39578683888
+  },
+  "packages": {
+    "apk": {
+      "url": "http://192.168.123.79:8765/channels/codex-mobile/latest.apk",
+      "version": "0.3.25",
+      "size": 4748863,
+      "sha256": "243bc0b5e3a9b39fea69431d87479aaf681e8da64cb99126e24fbfe0cb6d2cf5"
+    },
+    "ipa": {
+      "url": "http://192.168.123.79:8765/channels/codex-mobile/latest.ipa",
+      "version": "0.3.25",
+      "size": 4845852,
+      "sha256": "340f4041526b7d4b2a0fa0871e9a69ebda544ca306571527bff97a086cc9a513",
+      "signed": true
+    }
+  },
+  "ota": {
+    "installPage": "https://192.168.123.79:8766/channels/codex-mobile/current/install.html",
+    "manifestUrl": "https://192.168.123.79:8766/channels/codex-mobile/releases/0.3.25/manifest.plist",
+    "httpsDownloadVerified": true
+  },
+  "signing": {
+    "bundleId": "vip.loock.codexmobile",
+    "teamId": "SC456JW7RP",
+    "applicationIdentifier": "SC456JW7RP.app.jade6694.grapefruit3766",
+    "entitlementsSha256": "1e84a4c1ba74b9e374c364f26fefa112ceeea09de1a0ba0600403a763eb7952f"
+  },
+  "source": {
+    "appID": "bdf9cfa5-6c34-49ca-82fb-31a85ad9e6da",
+    "version": "0.3.25",
+    "developerName": "zh0ngtian",
+    "downloadURL": "https://github.com/zh0ngtian/codex-mobile/releases/download/v0.3.25/CodexMobile-v0.3.25-unsigned.ipa",
+    "size": 4835629,
+    "sha256": "f0a706c4ae375c6a233ca1cc11a1d16b44d3f39312c34b66c99794cd4b27dda5",
+    "notes": "- 修复执行结束后最终回复未及时显示的问题，留在当前会话即可自动补齐，无需退出后重新进入。\n- 修复隐藏工具与推理后执行过程和用时分开的显示问题，保留可展开的完整过程与旧回答。\n- 调整侧栏顶部操作：左侧依次为搜索、刷新、设置，右上角 Chat 可直接开始新对话。\n",
+    "buildVersion": "3025"
+  },
+  "verifiedAt": 1792576505.257896,
+  "deviceInstall": "未进行真机覆盖安装与数据保留验收",
+  "featureAcceptance": "回复恢复与过程合并已通过受控通知、完整App业务和原生模拟器验收；用户现场与真机安装待验收",
+  "gateway": "本次无服务端运行改动，未部署网关",
+  "validation": {
+    "adapterRegression": 217,
+    "coordinatorRecovery": 59,
+    "buildContract": 143,
+    "runtimeRegression": 197,
+    "nativeUI": 4,
+    "typecheck": "passed"
+  },
+  "review": {
+    "spec": "passed",
+    "quality": "passed",
+    "acceptance": "passed"
+  }
+}
