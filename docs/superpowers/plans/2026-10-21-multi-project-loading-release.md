@@ -1,6 +1,6 @@
 # 多项目运行会话与消息排版双端发布 Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** 将多项目运行会话打开、全局代码块换行、行内代码断行及用户消息链接改进发布到双端固定渠道，并完成独立回验。
 
@@ -25,7 +25,7 @@
 
 - [x] 从实际 HEAD 记录上述 main 基线，在独立 worktree 准备发布。
 - [x] 将本任务登记到 `codex-mobile-lan-production` 并建立发布分支，不登记网关目标。
-- [ ] 持续执行 `~/.local/bin/releasectl heartbeat --task multi-project-loading-release-20261021`，预期现有任务续约成功；直至任务完成或按协调器规则收尾。
+- [x] 持续执行 `~/.local/bin/releasectl heartbeat --task multi-project-loading-release-20261021`，预期现有任务续约成功；直至任务完成或按协调器规则收尾。
 - [x] 核对 `git log --oneline 40fda6e..HEAD` 与交互约定，更新日志为多项目打开、全局换行偏好、行内代码断行、用户 Markdown 链接四项，不携带上版 Sidechat 日志或固定构建、分发模板说明。
 - [x] 读取 [SignOs 软件源最新文档](https://github.com/zh0ngtian/SignOs/blob/main/distribution/source-aggregator/README.md)，确认只同步现有 unsigned 订阅；读取现有开发者署名与当前 GitHub 登录用户名，留作回验依据。
 
@@ -64,8 +64,8 @@
 - [x] 执行 `npm run typecheck`，结果：类型检查退出码 0。
 - [x] 将四项真实通过记录写入 `validation.json`，保留准确检查名、命令、退出码和日志位置；不以此前 431 项功能回归替代发布门禁。
 - [x] 执行 `git fetch origin main`，核对基线与最新远端 main；新增提交由协调器整合并对整合结果完成相关回归，不手工与正式批次并发推进 main。
-- [ ] 阅读提交规范，执行 `git diff --check`、`git diff --cached --check` 及 `git diff --cached --name-status`；用中文 Conventional Commit 提交本次日志、计划及实际需要的发布修复。正文必须准确包含“新增功能”和“主要修改”。
-- [ ] 在发布工作分支完成提交并推送：
+- [x] 阅读提交规范，执行 `git diff --check`、`git diff --cached --check` 及 `git diff --cached --name-status`；用中文 Conventional Commit 提交本次日志、计划及实际需要的发布修复。正文必须准确包含“新增功能”和“主要修改”。
+- [x] 在发布工作分支完成提交并推送：
 
   ```bash
   git push origin HEAD:refs/heads/codex/multi-project-loading-release-20261021
@@ -75,7 +75,7 @@
 
   预期：本地与远端完整 SHA 相同；不手改版本或 `.release-batch.json`。
 
-- [ ] 以已推送的确定 SHA 提交 ready：
+- [x] 以已推送的确定 SHA 提交 ready：
 
   ```bash
   release_task_sha=$(git rev-parse HEAD)
@@ -90,10 +90,10 @@
 - Generated: 协调器维护的 `.release-batch.json`、持久 progress、冻结批次及 receipt。
 - Existing: `scripts/codex_mobile_release_adapter.py`、`scripts/release-ios.py`、`scripts/ios_sign.py`、`scripts/ios_ota.py`。
 
-- [ ] 由协调器完成 main 整合、必要回归、版本分配和冻结推送；统一版本高于全部现役渠道。负责人不独立正式打包、签名或上传渠道。
-- [ ] 持续 heartbeat，并使用 `~/.local/bin/releasectl wait --task multi-project-loading-release-20261021 --timeout 45` 与 `~/.local/bin/releasectl status --task multi-project-loading-release-20261021` 跟踪任务。预期同一冻结批次完成正式 CI、GitHub 双端 Release、固定 LAN APK／已签名 IPA、HTTPS OTA 和 unsigned 软件源核对。
-- [ ] 暂时只读故障等待同一冻结批次继续核对。永久失败保留原批次、错误及 CI；需要修复时先失败回归、最小修复并转绿，再以最新失败叶节点登记关联修复、推送确定 SHA 和 ready；不 resume failed、不重置等待预算、不借用旧包。
-- [ ] 只接受任务 `complete`，或 `recovered` 且 `recovered_by` 指向成功子批次。读取该成功批次的同一 receipt，核对任务 SHA 包含证据、冻结 SHA、必要 CI 及所有客户端阶段；排队或单一渠道成功不代表交付。
+- [x] 由协调器完成 main 整合、必要回归、版本分配和冻结推送；统一版本高于全部现役渠道。负责人不独立正式打包、签名或上传渠道。
+- [x] 持续 heartbeat，并使用 `~/.local/bin/releasectl wait --task multi-project-loading-release-20261021 --timeout 45` 与 `~/.local/bin/releasectl status --task multi-project-loading-release-20261021` 跟踪任务。预期同一冻结批次完成正式 CI、GitHub 双端 Release、固定 LAN APK／已签名 IPA、HTTPS OTA 和 unsigned 软件源核对。
+- [x] 暂时只读故障等待同一冻结批次继续核对。永久失败保留原批次、错误及 CI；需要修复时先失败回归、最小修复并转绿，再以最新失败叶节点登记关联修复、推送确定 SHA 和 ready；不 resume failed、不重置等待预算、不借用旧包。
+- [x] 只接受任务 `complete`，或 `recovered` 且 `recovered_by` 指向成功子批次。读取该成功批次的同一 receipt，核对任务 SHA 包含证据、冻结 SHA、必要 CI 及所有客户端阶段；排队或单一渠道成功不代表交付。
 
 ## 阶段四：独立回验、文档与交付
 
@@ -103,10 +103,17 @@
 - Create after success: `docs/superpowers/plans/evidence/2026-10-21-multi-project-loading-release.json`，只保存可公开的脱敏凭证。
 - Update: 本计划实际完成状态及结果。
 
-- [ ] 读取固定 Android 清单 `http://192.168.123.79:8765/channels/codex-mobile/latest.json` 与 iOS 清单 `http://192.168.123.79:8765/channels/codex-mobile/latest-ios.json`；对固定 [APK](http://192.168.123.79:8765/channels/codex-mobile/latest.apk) 和 [IPA](http://192.168.123.79:8765/channels/codex-mobile/latest.ipa) 分别做 HEAD、完整 GET，核对实际统一版本、字节数与 SHA-256 均匹配清单和成功 receipt。
-- [ ] 保持 TLS 校验，读取 [HTTPS OTA 安装页](https://192.168.123.79:8766/channels/codex-mobile/current/install.html)、同前缀的 `latest-ios.json` 与 manifest，并完整下载版本化 IPA；核对版本、地址、大小及散列来自本批次。
-- [ ] 核对 IPA 为 Ad Hoc 已签名，Bundle ID、Team、application-identifier、完整权限摘要及钥匙串组延续本机兼容基准；unsigned 构建包不得覆盖固定 IPA。
-- [ ] 核对 [unsigned 软件源](https://signos-source-aggregator.305301890.workers.dev/sources/yao.json) 指向本批次 GitHub `CodexMobile-*-unsigned.ipa`，中文展示日志与冻结日志一致；原开发者署名保留，当前 GitHub 用户名已有则不变、缺少则追加，不硬编码或覆盖先前开发者。
-- [ ] 按真实证据分别记录自动回归已通过、渠道已发布和现场待验收，更新交互约定及公开凭证。真机多项目运行现场、覆盖安装及数据保留没有实际证据时继续标为待验收，不能用构建验签或受控夹具替代。
-- [ ] 文档及凭证经文字、链接、敏感信息和 `git diff --check` 自查后，通过共享 main 写入互斥提交推送收尾记录；本次不部署生产网关。新增测试会话及时归档，随后结束 heartbeat 并归档管理 worktree。
-- [ ] 最终交付正文提供可点击的固定 OTA 安装页、APK、已签名 IPA 下载链接、实际版本、各自字节数和完整 SHA-256，并据实说明仍待现场或真机验收的范围。
+- [x] 读取固定 Android 清单 `http://192.168.123.79:8765/channels/codex-mobile/latest.json` 与 iOS 清单 `http://192.168.123.79:8765/channels/codex-mobile/latest-ios.json`；对固定 [APK](http://192.168.123.79:8765/channels/codex-mobile/latest.apk) 和 [IPA](http://192.168.123.79:8765/channels/codex-mobile/latest.ipa) 分别做 HEAD、完整 GET，核对实际统一版本、字节数与 SHA-256 均匹配清单和成功 receipt。
+- [x] 保持 TLS 校验，读取 [HTTPS OTA 安装页](https://192.168.123.79:8766/channels/codex-mobile/current/install.html)、同前缀的 `latest-ios.json` 与 manifest，并完整下载版本化 IPA；核对版本、地址、大小及散列来自本批次。
+- [x] 核对 IPA 为 Ad Hoc 已签名，Bundle ID、Team、application-identifier、完整权限摘要及钥匙串组延续本机兼容基准；unsigned 构建包不得覆盖固定 IPA。
+- [x] 核对 [unsigned 软件源](https://signos-source-aggregator.305301890.workers.dev/sources/yao.json) 指向本批次 GitHub `CodexMobile-*-unsigned.ipa`，中文展示日志与冻结日志一致；原开发者署名保留，当前 GitHub 用户名已有则不变、缺少则追加，不硬编码或覆盖先前开发者。
+- [x] 按真实证据分别记录自动回归已通过、渠道已发布和现场待验收，更新交互约定及公开凭证。真机多项目运行现场、覆盖安装及数据保留没有实际证据时继续标为待验收，不能用构建验签或受控夹具替代。
+- [x] 文档及凭证经文字、链接、敏感信息和 `git diff --check` 自查后，通过共享 main 写入互斥提交推送收尾记录；本次不部署生产网关。新增测试会话及时归档，随后结束 heartbeat 并归档管理 worktree。
+- [x] 最终交付正文提供可点击的固定 OTA 安装页、APK、已签名 IPA 下载链接、实际版本、各自字节数和完整 SHA-256，并据实说明仍待现场或真机验收的范围。
+
+
+## 执行结果
+
+成功发布0.3.24（3024），批次`91147766-ea35-4291-ad27-8c61040f5758`、冻结`e876569b34ac09b87ebc89728708e254b4a90214`；正式CI `39528735633`、开发CI `39528735550`均通过。全部渠道及独立下载、签名连续性、软件源中文日志和署名核对通过，详见[公开凭证](evidence/2026-10-21-multi-project-loading-release.json)。未部署网关，真机安装与真实多项目现场仍待验收。
+
+登记至ready期间持续heartbeat；任务进入batched后，现役CLI返回`Unknown or already batched task`，后续由协调器自身批次租约管理，最终任务状态为complete。独立回验脚本先修正安装页URL编码解析及兼容基准相对路径解析，再完整通过；原诊断日志保留，未因此重签、重发或改动产物。验证和下载记录保存在仓库外的本次validation目录。

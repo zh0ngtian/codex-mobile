@@ -1,0 +1,64 @@
+{
+  "date": "2026-10-21",
+  "version": "0.3.24",
+  "buildNumber": "3024",
+  "client": {
+    "batchId": "91147766-ea35-4291-ad27-8c61040f5758",
+    "sourceCommit": "e876569b34ac09b87ebc89728708e254b4a90214",
+    "tasks": [
+      {
+        "id": "multi-project-loading-release-20261021",
+        "sha": "1478f8a2aa636082a706bca6343ea111dade1742"
+      }
+    ],
+    "ci": 39528735633,
+    "releaseUrl": "https://github.com/zh0ngtian/codex-mobile/releases/tag/v0.3.24",
+    "developmentCI": 39528735550
+  },
+  "packages": {
+    "apk": {
+      "url": "http://192.168.123.79:8765/channels/codex-mobile/latest.apk",
+      "version": "0.3.24",
+      "size": 4748827,
+      "sha256": "ad582f0ab910285455ddcb060353a5df30e13297759d9c1fe3491b49b6c60685"
+    },
+    "ipa": {
+      "url": "http://192.168.123.79:8765/channels/codex-mobile/latest.ipa",
+      "version": "0.3.24",
+      "size": 4845013,
+      "sha256": "76b69578854eace7ad047d88fc09ebdd87cfaa84990b96f0209e3984525ec6ac",
+      "signed": true
+    }
+  },
+  "ota": {
+    "installPage": "https://192.168.123.79:8766/channels/codex-mobile/current/install.html",
+    "manifestUrl": "https://192.168.123.79:8766/channels/codex-mobile/releases/0.3.24/manifest.plist",
+    "httpsDownloadVerified": true
+  },
+  "signing": {
+    "bundleId": "vip.loock.codexmobile",
+    "teamId": "SC456JW7RP",
+    "applicationIdentifier": "SC456JW7RP.app.jade6694.grapefruit3766",
+    "entitlementsSha256": "1e84a4c1ba74b9e374c364f26fefa112ceeea09de1a0ba0600403a763eb7952f"
+  },
+  "source": {
+    "appID": "bdf9cfa5-6c34-49ca-82fb-31a85ad9e6da",
+    "version": "0.3.24",
+    "developerName": "zh0ngtian",
+    "downloadURL": "https://github.com/zh0ngtian/codex-mobile/releases/download/v0.3.24/CodexMobile-v0.3.24-unsigned.ipa",
+    "size": 4834836,
+    "sha256": "e9fcf8d8159d59240153948820581020bbbe18fa5c422dc09a9305db26da7b72",
+    "notes": "- 修复多项目运行会话打开拥堵，慢速的运行过程、图片和改动统计回填不再阻塞会话打开。\n- 将“代码块自动换行”移至设置的“界面”分组，统一控制代码块与 Diff，并在重启后记住选择。\n- 改进行内代码排版，允许按当前行剩余宽度在代码内部断行，保留完整原文。\n- 修复用户消息中的 Markdown 链接显示与点击，复制和编辑时保留原始 Markdown 内容。\n"
+  },
+  "verifiedAt": 1792547788.959658,
+  "deviceInstall": "未进行真机覆盖安装与数据保留验收",
+  "multiProjectAcceptance": "十项目各五运行会话经受控协议与完整App业务链路验证，真实50任务及真机现场仍待验收",
+  "gateway": "本次无服务端运行改动，未部署网关",
+  "validation": {
+    "adapterRegression": 217,
+    "coordinatorRecovery": 59,
+    "buildContract": 143,
+    "runtimeRegression": 110,
+    "typecheck": "passed"
+  }
+}
