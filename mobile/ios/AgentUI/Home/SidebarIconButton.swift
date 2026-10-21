@@ -2,6 +2,7 @@ import SwiftUI
 
 enum SidebarControlMetrics {
     static let contentHeight: CGFloat = 31
+    static let rowHeight: CGFloat = 44
     static let trailingInset: CGFloat = 20
 }
 

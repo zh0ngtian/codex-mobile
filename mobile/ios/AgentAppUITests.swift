@@ -450,6 +450,35 @@ final class AgentAppUITests: XCTestCase {
         captureConversation("侧栏-列表在透明悬浮按钮下滚动", app: app)
     }
 
+    func testSidebarControlsAlignWithConversationHeader() {
+        let app = launchSidebarPolishFixture()
+        XCUIDevice.shared.orientation = .portrait
+        let header = app.buttons["line.3.horizontal"]
+        XCTAssertTrue(header.waitForExistence(timeout: 5))
+        let headerY = header.frame.midY
+        header.tap()
+        let controls = ["sidebar.search", "sidebar.refreshTop", "sidebar.more", "sidebar.askCodex"]
+        XCTAssertTrue(app.buttons[controls[0]].waitForExistence(timeout: 5))
+        captureConversation("侧栏-与对话导航按钮水平对齐", app: app)
+        for identifier in controls {
+            let button = app.buttons[identifier]
+            print("SIDEBAR_HEADER_ALIGNMENT", identifier, "headerY", headerY, "buttonY", button.frame.midY)
+            XCTAssertEqual(button.frame.midY, headerY, accuracy: 0.5, "边栏按钮与对话页导航按钮应位于同一水平线")
+        }
+        app.buttons["sidebar.search"].tap()
+        XCTAssertTrue(app.textFields["sidebar.searchField"].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.buttons["sidebar.more"].frame.midY, headerY, accuracy: 0.5, "展开搜索不能移动按钮行")
+        app.buttons["sidebar.search"].tap()
+        app.buttons["drawer.close-surface"].tap()
+        XCTAssertEqual(header.frame.midY, headerY, accuracy: 0.5, "收起侧栏后导航按钮位置不变")
+        header.tap()
+        XCTAssertEqual(app.buttons["sidebar.askCodex"].frame.midY, headerY, accuracy: 0.5, "重开侧栏仍保持水平对齐")
+        app.buttons["sidebar.askCodex"].tap()
+        let newHeaderY = header.frame.midY
+        header.tap()
+        XCTAssertEqual(app.buttons["sidebar.askCodex"].frame.midY, newHeaderY, accuracy: 0.5, "新对话页面同样对齐")
+    }
+
     func testSidebarControlHeightsMatchChat() {
         let app = launchSidebarPolishFixture()
         app.buttons["会话列表"].tap()
