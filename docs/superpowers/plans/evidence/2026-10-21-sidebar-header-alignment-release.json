@@ -1,0 +1,65 @@
+{
+  "date": "2026-10-22",
+  "version": "0.3.28",
+  "buildNumber": "3028",
+  "client": {
+    "batchId": "d37656b1-07e2-4a58-a38c-d11ae18036f3",
+    "sourceCommit": "c4d1ea4688ae51a25bf3ce101d67529b1f637dde",
+    "receiptSha256": "7587b7a5a9629df1cb25d669a33ae5f8730599a934c054abff5c571fc7333b1a",
+    "tasks": [
+      {
+        "id": "sidebar-header-alignment-release-20261021",
+        "sha": "066ffa8d87582bfe0c98445a24ab68a28fdb405d"
+      }
+    ],
+    "ci": 39629454348,
+    "developmentCI": 39629454335,
+    "releaseUrl": "https://github.com/zh0ngtian/codex-mobile/releases/tag/v0.3.28"
+  },
+  "packages": {
+    "apk": {
+      "url": "http://192.168.123.79:8765/channels/codex-mobile/latest.apk",
+      "version": "0.3.28",
+      "buildNumber": "3028",
+      "size": 4748911,
+      "sha256": "ad1e8c9b6484b3fe3a39c9c654f641fea7e13efc6919774eebb1a32f43438a52"
+    },
+    "ipa": {
+      "url": "http://192.168.123.79:8765/channels/codex-mobile/latest.ipa",
+      "version": "0.3.28",
+      "buildNumber": "3028",
+      "size": 4850163,
+      "sha256": "6ca05dabac809969bf7371e6d713ffef0d7bbe009d825ec32ef432d7121791c7",
+      "signed": true
+    }
+  },
+  "ota": {
+    "installPage": "https://192.168.123.79:8766/channels/codex-mobile/current/install.html",
+    "manifestUrl": "https://192.168.123.79:8766/channels/codex-mobile/releases/0.3.28/manifest.plist",
+    "httpsDownloadVerified": true,
+    "tlsVerified": true
+  },
+  "signing": {
+    "bundleId": "vip.loock.codexmobile",
+    "teamId": "SC456JW7RP",
+    "applicationIdentifier": "SC456JW7RP.app.jade6694.grapefruit3766",
+    "entitlementsSha256": "1e84a4c1ba74b9e374c364f26fefa112ceeea09de1a0ba0600403a763eb7952f",
+    "keychainContinuityVerified": true,
+    "completeEntitlementsContinuityVerified": true
+  },
+  "source": {
+    "appID": "bdf9cfa5-6c34-49ca-82fb-31a85ad9e6da",
+    "bundleIdentifier": "vip.loock.codexmobile",
+    "version": "0.3.28",
+    "buildVersion": "3028",
+    "developerName": "zh0ngtian",
+    "downloadURL": "https://github.com/zh0ngtian/codex-mobile/releases/download/v0.3.28/CodexMobile-v0.3.28-unsigned.ipa",
+    "size": 4842065,
+    "sha256": "9e0cfc54a831d1e4e511f0c2308676a94297b9063d79eea1eb99cf137ed810c5",
+    "localizedDescription": "- 修复 iOS 侧栏展开后顶部按钮与对话页菜单按钮不在同一水平线的问题。\n"
+  },
+  "independentVerification": "passed",
+  "verifiedAt": 1792598793.786057,
+  "deviceInstall": "未进行真机覆盖安装与数据保留验收",
+  "gateway": "本次仅发布客户端，未部署网关"
+}

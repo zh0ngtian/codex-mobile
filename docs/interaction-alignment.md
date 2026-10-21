@@ -7,7 +7,7 @@
 - 优先级为：用户最新明确要求 → 本文的现行约定 → AgentApp 参考代码 → 对应参考截图。旧计划、旧截图和早期原型的模拟行为不能覆盖后续决定。
 - 已批准的接入方式是完整使用 AgentApp 的原生界面与交互，接入本仓库已有真实业务。消息结构和业务交互仍以参考代码为依据；用户随后确认参考 DailyMusuem 改用系统导航与控件，控件外观以原生系统组件为准，不能只按截图仿造。
 - 本次整理的接入基线为 `codex/agentapp-native-integration` 的 `c5bee58`；整理期间另只读核对了主线程的刷新时间实现 `1258513`，本轮进一步完成第 10.2 节所列的代码与模拟器验证。分支提交或模拟器验收不代表已经合入 main、发布固定渠道或完成真机覆盖安装。
-- 现役已发布客户端版本为0.3.27（3027），视频统一点击预览、移除独立播放按钮、侧栏顶部整排裁切及项目刷新修复已完成双端发布；成功批次与九项独立回验均通过，见文末记录及[公开凭证](superpowers/plans/evidence/2026-10-21-video-preview-release.json)。本次无服务端运行改动，未部署生产网关。**iPhone 17 Pro、正常字号、竖屏**相关既有模拟器验证已通过，人工现场、真机覆盖安装和数据保留仍待验收。
+- 现役已发布客户端版本为0.3.28（3028），iOS 侧栏与对话页顶部按钮对齐修复已完成双端发布；任务始于2026-10-21，于2026-10-22跨日取得成功批次并完成九项独立回验，见文末记录及[公开凭证](superpowers/plans/evidence/2026-10-21-sidebar-header-alignment-release.json)。此前0.3.27的视频预览及侧栏修复记录保留。本次无服务端运行改动，未部署生产网关。**iPhone 17 Pro、正常字号、竖屏**相关既有模拟器验证已通过，人工现场、真机覆盖安装和数据保留仍待验收。
 - 2026-10-21 双端任务 `completion-refresh-release-20261021` 已完成，成功批次 `a9f374b1-b9f1-4147-81aa-a58ff03ac20c`，版本0.3.25；该版开发及准备阶段的未发布描述为历史状态，后续发布状态以最新成功记录为准。
 - 双端任务 `sidebar-inline-release-20261021` 已完成，成功批次 `fdf811e4-ef2d-453f-8cf2-e478bc33038a`，冻结提交 `c9c23eae31b18cbc093a8c29c757f2220aee7419`。GitHub双端Release、固定LAN APK／已签名IPA、HTTPS OTA及unsigned软件源已完成成功receipt核对和独立回验；本次0.3.26已发布。
 - 双端任务 `video-image-preview-release-20261021` 已完成，成功批次 `ef4c6b02-7d97-4846-ba7a-64bd2b4d28d4`，冻结提交 `654b8a86a9f03e4a99b2c43e4f0012a61e1a651c`。GitHub双端Release、固定LAN APK／已签名IPA、HTTPS OTA及unsigned软件源已核对；下文四项功能开发阶段的“未发布”均为当时状态，后续已随0.3.27交付。
@@ -1045,12 +1045,18 @@ iPhone17Pro、iOS27、正常字号、竖屏的六项针对性回归通过，包�
 待验收：人工现场中的视频预览和侧栏操作、真机覆盖安装与数据保留。既有界面结果限于 iPhone 17 Pro、正常字号、竖屏的模拟器验证，不等同于真机现场结果。
 
 
-## 2026-10-21 侧栏与对话页顶部按钮对齐（源码及模拟器已验证，未发布）
+## 2026-10-21 侧栏与对话页顶部按钮对齐（已发布0.3.28，待现场验收）
 
 用户截图显示展开侧栏后，搜索、刷新、更多及 Chat 比右侧对话页菜单按钮更低。本轮对齐两侧按钮中心，保留现有玻璃外观、45pt侧栏按钮、透明悬浮列表及菜单行为。开发 main 基线为 `b643bcede2672155100f171e274751c65309045d`。
 
-验收要点：iPhone 17 Pro、正常字号、竖屏下，两侧顶部按钮中心差不超过0.5pt；搜索展开与收起、侧栏关闭重开、新对话均保持对齐；搜索聚焦与清空、更多菜单和列表从按钮间隙下方滚动仍正常。本轮默认仅合入并推送 main 源码，不发布安装包、不部署网关。
+验收要点：iPhone 17 Pro、正常字号、竖屏下，两侧顶部按钮中心差不超过0.5pt；搜索展开与收起、侧栏关闭重开、新对话均保持对齐；搜索聚焦与清空、更多菜单和列表从按钮间隙下方滚动仍正常。开发阶段先合入并推送 main 源码，当时未发布安装包；用户随后授权的双端客户端发布已完成，未部署网关。
 
 实现与验证：移除侧栏按钮行额外顶部8pt留白，以44pt行高居中承载原有45pt玻璃按钮，操作区初始避让改为44pt行高加底部8pt，继续使用实际高度更新。旧版回归测得侧栏按钮中心92.5pt、对话导航按钮84pt，差8.5pt，新增对齐用例按预期失败；修复后侧栏四个按钮中心均84.167pt，导航按钮84pt，误差0.167pt。三项针对性UI回归与模拟器Debug构建通过，覆盖对齐、搜索展开／清空／聚焦、侧栏关闭重开、新对话、原有按钮等高及更多设置入口，以及滚动文字实际透过按钮间隙的像素检查；截图已核对。证据保存在长期主工作区 `.mobile-build/sidebar-header-alignment-20261021/`。仅使用离线夹具，未创建远程测试会话；人工真机视觉仍待用户验收。
 
-发布准备：用户随后明确授权双端客户端发布，任务 `sidebar-header-alignment-release-20261021` 已登记目标 `codex-mobile-lan-production`，本轮准备以 main 提交 `ce52a9ea7545fcfe8ba1bbc2e8fd16724b2008ee` 为基线。上述源码交付与模拟器验证记录保留为开发阶段状态；此次仅准备中文更新日志和发布门禁，两个生产文件已与既有验收工程逐字节及编译散列核对一致，复用旧版对齐回归失败和修复后三项通过的真实证据。版本由协调器分配，不提前填写新版本或标记发布完成；取得本任务对应成功批次 receipt，并完成 GitHub 双端 Release、固定 LAN APK／已签名 IPA、HTTPS OTA 及 unsigned 软件源独立回验前，状态为已授权双端发布、等待成功凭证。本轮未创建远程测试会话，不部署生产网关；人工真机视觉、覆盖安装与数据保留仍待现场验收。
+发布结果：用户随后明确授权双端客户端发布，任务 `sidebar-header-alignment-release-20261021` 的目标为 `codex-mobile-lan-production`，发布准备基线为 main 提交 `ce52a9ea7545fcfe8ba1bbc2e8fd16724b2008ee`，任务来源为 `066ffa8d87582bfe0c98445a24ab68a28fdb405d`。任务始于2026-10-21，成功批次 `d37656b1-07e2-4a58-a38c-d11ae18036f3` 于2026-10-22（Asia/Shanghai）跨日完成，冻结提交 `c4d1ea4688ae51a25bf3ce101d67529b1f637dde`，版本0.3.28（3028）。任务与批次均complete，error为null，无失败子批次；成功receipt已核对，正式双端CI `39629454348` 与同冻结提交的开发CI `39629454335` 均成功。上述源码开发阶段的未发布描述仅表示当时状态。
+
+发布准备先完成 `npm ci`，随后217项适配器回归（12.656秒）、59项协调器恢复回归（40.949秒）、20文件143项构建契约（28.896秒）及类型检查（4.707秒）均真实退出码0；准备阶段先规格、后质量审查均通过。真实命令、起止时间、退出码和日志保存在本轮长期证据目录 `~/Library/Application Support/ReleaseCoordinator/validations/codex-mobile-20261021-sidebar-header-alignment/`。发布准备与文档收尾未修改生产源码；两个Swift生产文件与既有验收工程逐字节及编译散列一致，复用旧版对齐回归失败和修复后三项UI通过的真实证据，未重新运行UI或为文档编造红灯。三项分别为 `testSidebarControlsAlignWithConversationHeader`、`testSidebarControlHeightsMatchChat`、`testSidebarListExtendsBehindFloatingControls`，覆盖对齐及搜索／重开／新对话、按钮等高和透明间隙滚动；验证范围为 iPhone 17 Pro、iOS 27、正常字号、竖屏。
+
+2026-10-22独立只读回验九项全部通过：成功receipt及任务来源、冻结源码、固定LAN APK、固定LAN IPA、HTTPS OTA、签名连续性、GitHub Release、正式／开发CI及unsigned软件源。固定双端JSON、HEAD和完整GET的实际包版本、构建号、字节数和SHA-256与成功receipt一致；HTTPS固定安装页、JSON、版本化manifest及IPA完整下载保持项目CA的TLS校验。实际下载的已签名IPA经独立 `inspect_ipa` 验签，与真实兼容基准及其SHA-256核对Bundle ID、Team、application-identifier、完整entitlements和钥匙串组连续性均通过。GitHub APK与unsigned IPA已独立完整下载，标签指向冻结提交，大小、散列与CI身份匹配；unsigned软件源保持原订阅，其0.3.28（3028）、URL、大小、散列及单条中文更新日志一致，既有开发者署名保留并包含运行时读取的GitHub用户名，未订阅本次Ad Hoc已签名包。
+
+[固定OTA安装页](https://192.168.123.79:8766/channels/codex-mobile/current/install.html)、[固定APK](http://192.168.123.79:8765/channels/codex-mobile/latest.apk)、[固定已签名IPA](http://192.168.123.79:8765/channels/codex-mobile/latest.ipa)及本次大小、完整SHA-256见[公开发布凭证](superpowers/plans/evidence/2026-10-21-sidebar-header-alignment-release.json)，成功receipt的SHA-256为 `7587b7a5a9629df1cb25d669a33ae5f8730599a934c054abff5c571fc7333b1a`。本轮没有新建远程测试会话，未部署生产网关；人工真机视觉、覆盖安装与数据保留仍待现场验收，渠道回验和模拟器结果不能替代真机验收。文档收尾的最终规格／质量审查、共享main租约整合推送及工作区归档仍待主代理完成。

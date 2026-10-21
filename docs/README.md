@@ -23,6 +23,8 @@
 
 ## 当前发布入口
 
+现役双端客户端为0.3.28（3028），修复 iOS 侧栏与对话页顶部按钮对齐；任务始于2026-10-21，于2026-10-22跨日完成。见[发布计划](superpowers/plans/2026-10-21-sidebar-header-alignment-release.md)与[公开凭证](superpowers/plans/evidence/2026-10-21-sidebar-header-alignment-release.json)。
+
 版本以在线清单为准，不能从 package.json 的开发版本、文档示例或历史记录推断：
 
 - [Android 清单](http://192.168.123.79:8765/channels/codex-mobile/latest.json)及 [固定 APK](http://192.168.123.79:8765/channels/codex-mobile/latest.apk)。
