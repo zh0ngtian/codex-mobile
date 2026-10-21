@@ -56,6 +56,10 @@ final class AgentConversationFixture {
             NativeMessage(id: "answer", role: "assistant", text: "已完成检查。查看 [网页链接](https://example.com) 与 [文件链接](/tmp/example.swift#L12)。", timestamp: date.addingTimeInterval(120).timeIntervalSince1970, turnId: "fixture-turn", phase: "final_answer"),
         ]
         value.messages[2].status = ProcessInfo.processInfo.arguments.contains("--agent-no-duration-fixture") ? nil : "1小时2分钟3秒"
+        if ProcessInfo.processInfo.arguments.contains("--agent-history-without-reply-fixture") {
+            value.messages.removeLast()
+            value.messages.append(NativeMessage(id: "hidden-tool", role: "activity", text: "隐藏活动不可外显", activityKind: "tool"))
+        }
         if ProcessInfo.processInfo.arguments.contains("--agent-commentary-backfill-fixture") {
             deferredCommentary = history
             value.messages.removeAll { $0.id == history.id }
@@ -87,6 +91,10 @@ final class AgentConversationFixture {
                 history("history-2", "第二段执行进展。"), oldReply("old-final-2", "中途旧回答二。"),
                 NativeMessage(id: "last-final", role: "assistant", text: "最终回答：完成所有调整。", status: "22秒", turnId: "fixture-turn", phase: "final_answer")
             ]
+            if ProcessInfo.processInfo.arguments.contains("--agent-hidden-activities-fixture") {
+                value.messages.insert(NativeMessage(id: "hidden-reasoning", role: "activity", text: "", activityKind: "reasoning"), at: 5)
+                value.messages.insert(NativeMessage(id: "hidden-tool", role: "activity", text: "", activityKind: "tool"), at: value.messages.count - 1)
+            }
         }
         if ProcessInfo.processInfo.arguments.contains("--agent-many-devices-fixture") {
             value.backends += (1...11).map { NativeBackend(id: "extra-device-\($0)", title: "额外设备 \($0)", connected: true) }

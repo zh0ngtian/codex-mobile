@@ -288,6 +288,40 @@ final class AgentAppUITests: XCTestCase {
         captureConversation("用时-过程入口", app: app)
     }
 
+    func testHiddenActivitiesKeepOneProcessDurationHeader() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-steered-replies-fixture", "--agent-hidden-activities-fixture", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
+        app.launch()
+        let history = app.buttons["commentary-history-toggle"]
+        XCTAssertTrue(history.waitForExistence(timeout: 8))
+        XCTAssertEqual(app.buttons.matching(identifier: "commentary-history-toggle").count, 1, "隐藏的推理与工具不能拆出独立执行过程入口")
+        XCTAssertTrue(history.label.contains("用时22秒"), history.label)
+        let reply = selectableText("最终回答：完成所有调整。", in: app)
+        XCTAssertTrue(reply.waitForExistence(timeout: 5))
+        XCTAssertLessThan(history.frame.maxY, reply.frame.minY)
+        XCTAssertFalse(selectableText("中途旧回答二。", in: app).exists)
+        captureConversation("隐藏活动-完成后单个用时入口", app: app)
+        history.tap()
+        XCTAssertTrue(selectableText("第一段执行进展。", in: app).waitForExistence(timeout: 5))
+        XCTAssertTrue(selectableText("第二段执行进展。", in: app).exists)
+        XCTAssertTrue(selectableText("中途旧回答二。", in: app).exists)
+        XCTAssertEqual(app.buttons.matching(identifier: "commentary-history-toggle").count, 1)
+        captureConversation("隐藏活动-展开完整过程", app: app)
+    }
+
+    func testProcessWithoutReplyKeepsHiddenActivitiesInvisible() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-history-without-reply-fixture", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
+        app.launch()
+        let history = app.buttons["commentary-history-toggle"]
+        XCTAssertTrue(history.waitForExistence(timeout: 8))
+        XCTAssertTrue(history.label.contains("执行过程"))
+        XCTAssertFalse(selectableText("隐藏活动不可外显", in: app).exists)
+        history.tap()
+        XCTAssertTrue(selectableText("正在读取项目上下文。", in: app).waitForExistence(timeout: 5))
+        XCTAssertFalse(selectableText("隐藏活动不可外显", in: app).exists)
+    }
+
     func testRunningProcessStartsExpandedAndCompletesAboveReply() {
         let app = XCUIApplication()
         app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-running-history-fixture", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]

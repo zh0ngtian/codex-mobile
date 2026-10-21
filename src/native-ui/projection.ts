@@ -102,8 +102,9 @@ export function projectConversation(active: RecordValue | null, imageURL: (path:
           continue;
         }
         const isFinal = item.type === 'agentMessage' && item.phase !== 'commentary';
-        // 工具与推理沿用既有投影顺序，但不能让缓冲后的历史被误判为紧邻final。
-        if (historyCount && !isFinal) historyInterrupted = true;
+        // 工具、推理与计划在原生消息区隐藏，不拆分过程和用时；可见内容仍保留原位置。
+        const visibleSeparator = ['userMessage', 'imageView', 'imageGeneration', 'videoGeneration', 'contextCompaction'].includes(item.type);
+        if (historyCount && visibleSeparator) historyInterrupted = true;
         // 独立媒体、final 和用户插话在原始位置结束当前历史区。
         if (item.type === 'userMessage' || item.type === 'agentMessage' || ['imageView', 'imageGeneration', 'videoGeneration'].includes(item.type)) flushHistory(isFinal);
         if (item.type === 'userMessage') {

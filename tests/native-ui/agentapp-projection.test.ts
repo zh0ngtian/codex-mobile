@@ -162,7 +162,7 @@ describe('AgentApp 真实展示契约', () => {
       { id: 'final', type: 'agentMessage', phase: 'final_answer', text: '完成' },
     ] }] }, path => `thumb:${path}`, path => `original:${path}`);
     const history = messages.find(message => message.id === 'turn:c1:history')!;
-    expect(history).toMatchObject({ commentaryCanAttachToReply: false, commentaryBlockId: 'turn:c1:commentary', commentary: [
+    expect(history).toMatchObject({ commentaryCanAttachToReply: true, commentaryBlockId: 'turn:c1:commentary', commentary: [
       { id: 'turn:c1', text: '正在读取项目上下文。', timestamp, blocks: [{ id: 'turn:screen:image:0', kind: 'image', value: 'thumb:/screen.png', previewURL: 'original:/screen.png' }] },
       { id: 'turn:c2', text: '已检查相关文件，正在整理结果。' },
     ] });
@@ -286,13 +286,23 @@ describe('AgentApp 真实展示契约', () => {
     expect(messages.find(message => message.id === 'turn:old')).toBeUndefined();
   });
 
-  it.each(['reasoning', 'commandExecution', 'imageGeneration'])('原始过程被%s隔开时不因最终Native相邻而绑定到final', type => {
+  it.each(['reasoning', 'commandExecution', 'mcpToolCall', 'plan'])('隐藏的%s不拆分过程与最终回复用时入口', type => {
     const messages = projectConversation({ turns: [{ id: 'turn', status: 'completed', items: [
       { id: 'c', type: 'agentMessage', phase: 'commentary', text: '较早过程' },
       { id: 'separator', type, text: '分隔', command: 'ls', savedPath: '/standalone.png' },
       { id: 'final', type: 'agentMessage', phase: 'final_answer', text: '完成' },
     ] }] }, path => path);
+    expect(messages.find(message => message.id === 'turn:c:history')).toMatchObject({ commentaryCanAttachToReply: true });
+  });
+
+  it.each(['imageGeneration', 'contextCompaction'])('可见的%s仍阻断过程归并并保留原位置', type => {
+    const messages = projectConversation({ turns: [{ id: 'turn', status: 'completed', items: [
+      { id: 'c', type: 'agentMessage', phase: 'commentary', text: '较早过程' },
+      { id: 'separator', type, savedPath: '/standalone.png' },
+      { id: 'final', type: 'agentMessage', phase: 'final_answer', text: '完成' },
+    ] }] }, path => path);
     expect(messages.find(message => message.id === 'turn:c:history')).toMatchObject({ commentaryCanAttachToReply: false });
+    expect(messages.findIndex(message => message.id === 'turn:separator')).toBeLessThan(messages.findIndex(message => message.id === 'turn:final'));
   });
 
   it('同回合引导集中后允许之前过程归入最后回答，下一逻辑回合保持独立', () => {

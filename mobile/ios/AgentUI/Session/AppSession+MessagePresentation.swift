@@ -56,7 +56,10 @@ extension AppSession {
             }
             var next = index
             var entries: [ProgressEntry] = []
-            while next < values.count, !liveIndexSet.contains(next), isAttachableHistory(values[next]) {
+            while next < values.count, !liveIndexSet.contains(next) {
+                // 隐藏活动不能将同回合的旧回答与过程拆成多个入口。
+                if values[next].hidesExecutionActivity { next += 1; continue }
+                guard isAttachableHistory(values[next]) else { break }
                 entries.append(contentsOf: projected[next].commentary)
                 next += 1
             }
@@ -71,7 +74,7 @@ extension AppSession {
                     history.commentary = entries
                     messages.append(history)
                 } else {
-                    messages.append(contentsOf: projected[index..<next])
+                    messages.append(contentsOf: (index..<next).filter { !values[$0].hidesExecutionActivity }.map { projected[$0] })
                 }
                 index = next
             }

@@ -1722,6 +1722,12 @@ function BackendWorkspace({
             params.threadId &&
             params.status
           ) {
+            // idle 是另一条结束证据：最终 item 或 turn/completed 漏收、完成时摘要尚未落盘，
+            // 都应在当前会话重新核对正文，不能只改侧栏状态而等待用户重进。
+            if ((params.status.type ?? params.status) === "idle" &&
+              String(activeRef.current?.id ?? "") === String(params.threadId)) {
+              void reconcileActiveThread(client).catch(() => undefined);
+            }
             setActive((current) => current?.id === params.threadId
               ? { ...current, status: params.status } : current);
             setThreads((current) =>
