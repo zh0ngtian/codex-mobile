@@ -5,6 +5,8 @@ struct SidebarScreen: View {
     @Environment(AppPreferences.self) private var preferences
     @ScaledMetric(relativeTo: .body) private var chatTextSize: CGFloat = 18.25
     @ScaledMetric(relativeTo: .body) private var chatIconSize: CGFloat = 21
+    // 首帧按现役45pt按钮加上下各8pt留白避让，随后使用操作区实测高度。
+    @State private var controlsHeight: CGFloat = 61
 
     // 粉色玻璃会与背景合成，局部加深 tint 以贴近参考；其他主题沿用原强调色。
     private var chatTint: Color {
@@ -12,6 +14,25 @@ struct SidebarScreen: View {
     }
 
     var body: some View {
+        ScrollView {
+            SidebarConversationList()
+                .padding(.horizontal, 8)
+                .padding(.top, controlsHeight + 10)
+                .padding(.bottom, 24)
+        }
+        .scrollIndicators(.hidden)
+        .scrollDismissesKeyboard(.interactively)
+        .overlay(alignment: .top) {
+            controls
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { controlsHeight = $0 }
+        }
+        .background(AgentTheme.page)
+        .foregroundStyle(AgentTheme.ink)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("sidebar.panel")
+    }
+
+    private var controls: some View {
         VStack(spacing: 0) {
             HStack(spacing: 8) {
                 SidebarSearchButton()
@@ -26,19 +47,7 @@ struct SidebarScreen: View {
             .padding(.horizontal, SidebarControlMetrics.trailingInset)
             .padding(.vertical, 8)
             if session.searchVisible { SidebarSearchField() }
-            ScrollView {
-                SidebarConversationList()
-                    .padding(.horizontal, 8)
-                    .padding(.top, 10)
-                    .padding(.bottom, 24)
-            }
-            .scrollIndicators(.hidden)
-            .scrollDismissesKeyboard(.interactively)
         }
-        .background(AgentTheme.page)
-        .foregroundStyle(AgentTheme.ink)
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("sidebar.panel")
     }
 
     private var chatButton: some View {
