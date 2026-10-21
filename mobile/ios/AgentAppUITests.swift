@@ -195,8 +195,13 @@ final class AgentAppUITests: XCTestCase {
         XCTAssertTrue(probe.exists)
         app.buttons["sidebar.refreshTop"].tap()
         expectation(for: NSPredicate(format: "value BEGINSWITH 'finished;'"), evaluatedWith: probe)
-        waitForExpectations(timeout: 10)
+        // 采样仍为3秒；系统辅助功能快照在宿主繁忙时可能晚于采样完成。
+        waitForExpectations(timeout: 30)
         let result = probe.value as? String ?? ""
+        let sampling = XCTAttachment(string: result)
+        sampling.name = "项目刷新逐帧采样"
+        sampling.lifetime = .keepAlways
+        add(sampling)
         XCTAssertTrue(result.contains("faded=false"), "刷新及未读回填不能隐藏已有会话：" + result)
         XCTAssertTrue(result.contains("shrunk=false"), "刷新不能把已有五条替换成短加载区：" + result)
         XCTAssertFalse(result.contains("frames=0;"), "必须覆盖动画期间的实际显示帧")
@@ -415,6 +420,34 @@ final class AgentAppUITests: XCTestCase {
         history.tap()
         XCTAssertTrue(app.staticTexts["正在读取项目上下文。"].waitForExistence(timeout: 5))
         captureConversation("无可靠用时-执行过程", app: app)
+    }
+
+    func testSidebarListExtendsBehindFloatingControls() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-sidebar-polish-fixture", "--agent-sidebar-pagination-fixture", "-appearance", "Light", "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryL", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
+        XCUIDevice.shared.orientation = .portrait
+        app.launch()
+        app.buttons["会话列表"].tap()
+        let sidebar = app.otherElements["sidebar.panel"]
+        let list = sidebar.scrollViews.firstMatch
+        let search = app.buttons["sidebar.search"]
+        XCTAssertTrue(search.waitForExistence(timeout: 5))
+        XCTAssertTrue(list.exists)
+        XCTAssertLessThan(list.frame.minY, search.frame.minY, "滚动内容应能从按钮之间的透明区域下方通过")
+        XCTAssertGreaterThan(app.buttons["分页会话 1"].frame.minY, search.frame.maxY, "初始列表仍要避开悬浮按钮")
+        app.buttons["sidebar.more.project-z"].tap()
+        let moreY = app.buttons["sidebar.more"].frame.midY
+        let from = list.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.45))
+        let to = list.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.3))
+        from.press(forDuration: 0.05, thenDragTo: to, withVelocity: .slow, thenHoldForDuration: 0.1)
+        XCTAssertEqual(app.buttons["sidebar.more"].frame.midY, moreY, accuracy: 1)
+        let refresh = app.buttons["sidebar.refreshTop"].frame
+        let more = app.buttons["sidebar.more"].frame
+        let gap = CGRect(x: refresh.maxX + 1, y: search.frame.minY + 4,
+                         width: more.minX - refresh.maxX - 2, height: search.frame.height - 8)
+        XCTAssertNotNil(Self.firstTextInkX(app.screenshot().image, in: gap, screen: app.frame),
+                        "滚动文字必须实际透过刷新与更多按钮之间的间隙，不能只检查辅助功能坐标")
+        captureConversation("侧栏-列表在透明悬浮按钮下滚动", app: app)
     }
 
     func testSidebarControlHeightsMatchChat() {
