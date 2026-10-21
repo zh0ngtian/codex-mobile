@@ -395,24 +395,25 @@ final class AgentAppUITests: XCTestCase {
         let app = launchSidebarPolishFixture()
         app.buttons["会话列表"].tap()
         let search = app.buttons["sidebar.search"], more = app.buttons["sidebar.more"], chat = app.buttons["sidebar.askCodex"]
-        let refresh = app.buttons["sidebar.refreshTop"], settings = app.buttons["sidebar.settingsTop"]
+        let refresh = app.buttons["sidebar.refreshTop"]
         XCTAssertTrue(search.waitForExistence(timeout: 5))
-        for button in [search, refresh, settings, more] {
+        for button in [search, refresh, more] {
             XCTAssertTrue(button.isHittable)
             XCTAssertEqual(button.frame.height, chat.frame.height, accuracy: 0.5)
             XCTAssertEqual(button.frame.width, button.frame.height, accuracy: 0.5, "圆形外框必须保持正方形，避免裁圆后可见直径小于Chat高度")
             XCTAssertGreaterThanOrEqual(min(button.frame.width, button.frame.height), 44)
         }
-        for button in [search, refresh, settings] {
+        for button in [search, refresh, more] {
             XCTAssertEqual(button.frame.midY, chat.frame.midY, accuracy: 0.5)
         }
         XCTAssertLessThan(search.frame.maxX, refresh.frame.minX)
-        XCTAssertLessThan(refresh.frame.maxX, settings.frame.minX)
-        XCTAssertLessThan(settings.frame.maxX, chat.frame.minX)
-        XCTAssertEqual(chat.frame.maxX, more.frame.maxX, accuracy: 1)
+        XCTAssertLessThan(refresh.frame.maxX, more.frame.minX)
+        XCTAssertLessThan(more.frame.maxX, chat.frame.minX)
+        XCTAssertGreaterThanOrEqual(search.frame.minY, 60, "移除导航容器后仍需避开状态栏")
+        XCTAssertEqual(app.buttons.matching(identifier: "sidebar.more").count, 1, "顶部仅保留一个更多入口")
+        XCTAssertFalse(app.buttons["sidebar.settingsTop"].exists)
         XCTAssertLessThan(chat.frame.maxY, app.frame.height / 4)
-        XCTAssertGreaterThan(more.frame.minY, app.frame.height * 0.75)
-        captureConversation("侧栏-左侧搜索刷新设置与右侧Chat", app: app)
+        captureConversation("侧栏-直接排列搜索刷新更多与Chat", app: app)
         search.tap()
         let field = app.textFields["sidebar.searchField"]
         XCTAssertTrue(field.waitForExistence(timeout: 5))
@@ -424,7 +425,8 @@ final class AgentAppUITests: XCTestCase {
         XCTAssertTrue(field.waitForExistence(timeout: 5))
         XCTAssertEqual(field.value as? String, field.placeholderValue)
         search.tap()
-        settings.tap()
+        more.tap()
+        app.collectionViews.buttons["设置"].tap()
         XCTAssertTrue(app.navigationBars["设置"].waitForExistence(timeout: 5))
         app.buttons["settings.close"].tap()
         XCTAssertTrue(chat.isHittable)
@@ -698,16 +700,16 @@ final class AgentAppUITests: XCTestCase {
         XCTAssertTrue(more.exists)
         XCTAssertFalse(app.staticTexts["Codex"].exists)
         XCTAssertFalse(app.staticTexts["界面夹具"].exists)
-        XCTAssertTrue(app.buttons["sidebar.settingsTop"].isHittable, "顶部直接提供设置入口")
-        XCTAssertEqual(chat.frame.maxX, more.frame.maxX, accuracy: 1)
-        XCTAssertLessThan(chat.frame.maxY, more.frame.minY)
+        XCTAssertFalse(app.buttons["sidebar.settingsTop"].exists, "设置从更多菜单进入")
+        XCTAssertLessThan(more.frame.maxX, chat.frame.minX)
+        XCTAssertEqual(chat.frame.midY, more.frame.midY, accuracy: 1)
         XCTAssertEqual(app.buttons["sidebar.search"].frame.midY, chat.frame.midY, accuracy: 1)
         captureConversation("侧栏-参考展开布局", app: app)
         more.tap()
         XCTAssertTrue(app.buttons["草稿箱"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["刷新"].exists)
         XCTAssertFalse(app.buttons["全部设备"].exists, "侧栏菜单仅保留具体设备选项")
-        captureConversation("侧栏-底部省略号菜单", app: app)
+        captureConversation("侧栏-顶部省略号菜单", app: app)
         app.collectionViews.buttons["设置"].tap()
         XCTAssertTrue(app.navigationBars["设置"].waitForExistence(timeout: 5))
         app.buttons["settings.close"].tap()
@@ -731,7 +733,7 @@ final class AgentAppUITests: XCTestCase {
         guard refresh.exists else { return }
         let more = app.buttons["sidebar.more"]
         XCTAssertLessThan(app.buttons["sidebar.search"].frame.maxX, refresh.frame.minX)
-        XCTAssertLessThan(refresh.frame.maxX, app.buttons["sidebar.settingsTop"].frame.minX)
+        XCTAssertLessThan(refresh.frame.maxX, more.frame.minX)
         XCTAssertEqual(refresh.frame.width, more.frame.width, accuracy: 1)
         XCTAssertEqual(refresh.frame.height, more.frame.height, accuracy: 1)
         XCTAssertLessThan(refresh.frame.maxY, app.frame.height / 4)
@@ -2007,7 +2009,8 @@ final class AgentAppUITests: XCTestCase {
         app.buttons["sidebar.search"].tap()
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
         app.buttons["sidebar.search"].tap()
-        let settings = app.buttons["sidebar.settingsTop"]
+        app.buttons["sidebar.more"].tap()
+        let settings = app.collectionViews.buttons["设置"]
         XCTAssertTrue(settings.waitForExistence(timeout: 5))
         settings.tap()
         XCTAssertTrue(app.navigationBars["设置"].waitForExistence(timeout: 8))

@@ -32,6 +32,12 @@ struct RootView: View {
     }
 
     private var drawerContent: some View {
+        GeometryReader { geometry in
+            drawerContent(safeAreaInsets: geometry.safeAreaInsets)
+        }
+    }
+
+    private func drawerContent(safeAreaInsets: EdgeInsets) -> some View {
         AgentDrawer(isOpen: Binding(get: { sidebarIsVisible }, set: { session.sidebarVisible = $0 }),
                     gesturesEnabled: canUseSidebarGesture) {
             NavigationStack {
@@ -44,9 +50,9 @@ struct RootView: View {
                 .toolbarVisibility(session.nativeSnapshot.ready && !session.devices.isEmpty ? .visible : .hidden, for: .navigationBar)
             }
         } sidebar: {
-            NavigationStack {
-                SidebarScreen().toolbarVisibility(.hidden, for: .navigationBar)
-            }
+            SidebarScreen()
+                .padding(.top, safeAreaInsets.top)
+                .padding(.bottom, safeAreaInsets.bottom)
         }
         .foregroundStyle(AgentTheme.ink)
         .background {

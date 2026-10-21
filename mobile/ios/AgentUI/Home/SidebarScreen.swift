@@ -19,10 +19,7 @@ struct SidebarScreen: View {
                                   identifier: "sidebar.refreshTop") {
                     Task { await session.refreshAll() }
                 }
-                SidebarIconButton(systemImage: "gearshape", title: preferences.text("设置", "Settings"),
-                                  identifier: "sidebar.settingsTop") {
-                    session.settingsPresented = true
-                }
+                SidebarMoreMenu()
                 Spacer(minLength: 8)
                 chatButton
             }
@@ -33,18 +30,10 @@ struct SidebarScreen: View {
                 SidebarConversationList()
                     .padding(.horizontal, 8)
                     .padding(.top, 10)
-                    .padding(.bottom, 94)
+                    .padding(.bottom, 24)
             }
             .scrollIndicators(.hidden)
             .scrollDismissesKeyboard(.interactively)
-        }
-        .overlay(alignment: .bottom) {
-            HStack {
-                Spacer()
-                SidebarMoreMenu()
-            }
-            .padding(.trailing, SidebarControlMetrics.trailingInset)
-            .padding(.bottom, 8)
         }
         .background(AgentTheme.page)
         .foregroundStyle(AgentTheme.ink)
