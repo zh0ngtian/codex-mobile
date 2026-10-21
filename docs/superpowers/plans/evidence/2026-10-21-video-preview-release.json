@@ -1,0 +1,102 @@
+{
+  "date": "2026-10-21",
+  "version": "0.3.27",
+  "buildNumber": "3027",
+  "client": {
+    "batchId": "ef4c6b02-7d97-4846-ba7a-64bd2b4d28d4",
+    "sourceCommit": "654b8a86a9f03e4a99b2c43e4f0012a61e1a651c",
+    "tasks": [
+      {
+        "id": "video-image-preview-release-20261021",
+        "sha": "a407680576eb6bba16a0c5f492df3ca8fd9eee3d"
+      }
+    ],
+    "ci": 39604003362,
+    "developmentCI": 39604003447,
+    "releaseUrl": "https://github.com/zh0ngtian/codex-mobile/releases/tag/v0.3.27",
+    "state": "complete",
+    "ciStatus": "success",
+    "developmentCIStatus": "success"
+  },
+  "packages": {
+    "apk": {
+      "url": "http://192.168.123.79:8765/channels/codex-mobile/latest.apk",
+      "version": "0.3.27",
+      "buildNumber": "3027",
+      "size": 4748839,
+      "sha256": "59358454b20b1d487143bab5ce3d919221be0bfa0d45463fc531c06abf326b28"
+    },
+    "ipa": {
+      "url": "http://192.168.123.79:8765/channels/codex-mobile/latest.ipa",
+      "version": "0.3.27",
+      "buildNumber": "3027",
+      "size": 4849814,
+      "sha256": "6a6fd89fb900a21d1dbdbe47df76e266bdaadab155abb3eabfa76da3614021bd",
+      "signed": true
+    }
+  },
+  "ota": {
+    "installPage": "https://192.168.123.79:8766/channels/codex-mobile/current/install.html",
+    "manifestUrl": "https://192.168.123.79:8766/channels/codex-mobile/releases/0.3.27/manifest.plist",
+    "httpsDownloadVerified": true,
+    "tlsVerified": true
+  },
+  "signing": {
+    "bundleId": "vip.loock.codexmobile",
+    "teamId": "SC456JW7RP",
+    "applicationIdentifier": "SC456JW7RP.app.jade6694.grapefruit3766",
+    "entitlementsSha256": "1e84a4c1ba74b9e374c364f26fefa112ceeea09de1a0ba0600403a763eb7952f",
+    "keychainContinuityVerified": true,
+    "completeEntitlementsContinuityVerified": true
+  },
+  "source": {
+    "appID": "bdf9cfa5-6c34-49ca-82fb-31a85ad9e6da",
+    "bundleIdentifier": "vip.loock.codexmobile",
+    "version": "0.3.27",
+    "buildVersion": "3027",
+    "developerName": "zh0ngtian",
+    "downloadURL": "https://github.com/zh0ngtian/codex-mobile/releases/download/v0.3.27/CodexMobile-v0.3.27-unsigned.ipa",
+    "size": 4840345,
+    "sha256": "bb0d2b2ea4d761ff472733357216aebe19087a3e4cd9d9926cbe105336d597ce",
+    "localizedDescription": "- iOS 聊天视频与图片使用一致的点击预览方式：点击视频画面或文件信息行，即可打开独立预览页。\n- 移除 iOS 聊天视频下方的黑色独立播放按钮及留白，让视频画面直接衔接文件信息行。\n- 修复 iOS 侧栏顶部操作区的整排裁切，列表滚动时可从透明悬浮按钮的间隙下方经过。\n- 修复 iOS 已展开项目刷新时重复收起展开和会话闪动，刷新期间保留已有列表。\n"
+  },
+  "independentVerification": "passed",
+  "verifiedAt": 1792588560.975005,
+  "deviceInstall": "未进行真机覆盖安装与数据保留验收",
+  "gateway": "本次仅发布客户端，未部署网关",
+  "receiptSha256": "3b230e8184e7f5055410563f7fffcba064d964bfc26a57bf74fff620debfaf0b",
+  "independentVerificationChecks": {
+    "count": 9,
+    "results": {
+      "coordinatorReceipt": "passed",
+      "frozenSource": "passed",
+      "lanAPK": "passed",
+      "lanIPA": "passed",
+      "httpsOTA": "passed",
+      "signatureContinuity": "passed",
+      "githubRelease": "passed",
+      "ci": "passed",
+      "softwareSource": "passed"
+    }
+  },
+  "validation": {
+    "adapterRegression": 217,
+    "coordinatorRecovery": 59,
+    "buildContract": 143,
+    "buildContractFiles": 20,
+    "typecheck": "passed",
+    "specReview": "passed",
+    "qualityReview": "passed",
+    "nativeUI": {
+      "mode": "复用同一生产源码的既有模拟器验收，本轮未重新运行UI测试",
+      "scope": "iPhone 17 Pro、iOS 27、正常字号、竖屏",
+      "sourceComparisonFiles": 9,
+      "sourceComparison": "passed",
+      "videoChecks": "初验六项、整合后四项复验通过",
+      "sidebarChecks": "五项相关UI回归、透明间隙滚动像素断言及整合后两项复验通过",
+      "projectRefreshChecks": "92项相关回归、五项UI验收及最终main整合后逐帧复验通过"
+    }
+  },
+  "featureAcceptance": "视频统一点击预览、移除独立播放按钮、透明悬浮侧栏及项目刷新修复已通过既有模拟器验收；人工现场待验收",
+  "realTestConversationsCreated": false
+}
