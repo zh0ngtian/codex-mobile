@@ -1,0 +1,67 @@
+{
+  "date": "2026-10-21",
+  "version": "0.3.26",
+  "buildNumber": "3026",
+  "client": {
+    "batchId": "fdf811e4-ef2d-453f-8cf2-e478bc33038a",
+    "sourceCommit": "c9c23eae31b18cbc093a8c29c757f2220aee7419",
+    "tasks": [
+      {
+        "id": "sidebar-inline-release-20261021",
+        "sha": "fbf1ac08382cf94c18253242f06073fccdae59a8"
+      }
+    ],
+    "ci": 39590582189,
+    "releaseUrl": "https://github.com/zh0ngtian/codex-mobile/releases/tag/v0.3.26",
+    "developmentCI": 39590582232
+  },
+  "packages": {
+    "apk": {
+      "url": "http://192.168.123.79:8765/channels/codex-mobile/latest.apk",
+      "version": "0.3.26",
+      "size": 4748851,
+      "sha256": "c4683bcbe94e900b7c3145d619068129156212472bb9cf4f36ae979fb1c057bf"
+    },
+    "ipa": {
+      "url": "http://192.168.123.79:8765/channels/codex-mobile/latest.ipa",
+      "version": "0.3.26",
+      "size": 4846446,
+      "sha256": "c9bd6c9bd982a95f65b110f6b93c9585ccc4fb1185cab712a6ad8cd21a799b05",
+      "signed": true
+    }
+  },
+  "ota": {
+    "installPage": "https://192.168.123.79:8766/channels/codex-mobile/current/install.html",
+    "manifestUrl": "https://192.168.123.79:8766/channels/codex-mobile/releases/0.3.26/manifest.plist",
+    "httpsDownloadVerified": true
+  },
+  "signing": {
+    "bundleId": "vip.loock.codexmobile",
+    "teamId": "SC456JW7RP",
+    "applicationIdentifier": "SC456JW7RP.app.jade6694.grapefruit3766",
+    "entitlementsSha256": "1e84a4c1ba74b9e374c364f26fefa112ceeea09de1a0ba0600403a763eb7952f",
+    "keychainContinuityVerified": true,
+    "completeEntitlementsContinuityVerified": true
+  },
+  "source": {
+    "appID": "bdf9cfa5-6c34-49ca-82fb-31a85ad9e6da",
+    "version": "0.3.26",
+    "developerName": "zh0ngtian",
+    "downloadURL": "https://github.com/zh0ngtian/codex-mobile/releases/download/v0.3.26/CodexMobile-v0.3.26-unsigned.ipa",
+    "size": 4833881,
+    "sha256": "964bd3a0c6bae68d3b47efda0216b9970c72ba2cb76ccf1572f1600f98b6bc1f",
+    "notes": "- 调整 iOS 侧栏顶部操作：左侧依次为搜索、刷新、更多，右上角 Chat 可直接开始新对话；设置可从更多菜单进入。\n- 去掉侧栏顶部外层容器，按钮直接排列在侧栏背景上，保留各按钮的玻璃外观。\n- 移除侧栏底部更多按钮和预留空白，让会话列表显示更多内容。\n",
+    "buildVersion": "3026"
+  },
+  "verifiedAt": 1792582210.4089541,
+  "deviceInstall": "未进行真机覆盖安装与数据保留验收",
+  "featureAcceptance": "顶部更多与移除外层容器已通过4项原生模拟器验收；用户现场与真机安装待验收",
+  "gateway": "本次无服务端运行改动，未部署网关",
+  "validation": {
+    "adapterRegression": 217,
+    "coordinatorRecovery": 59,
+    "buildContract": 143,
+    "nativeUI": 4,
+    "typecheck": "passed"
+  }
+}

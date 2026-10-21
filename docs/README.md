@@ -51,4 +51,5 @@
 
 - [Sidechat 已批准设计](superpowers/specs/2026-10-19-sidechat-design.md)与[实施计划](superpowers/plans/2026-10-19-sidechat.md)：模拟器验证通过，源码已合入main；客户端与生产网关尚未发布。
 
+- [2026-10-21 顶部更多与直接侧栏布局双端发布](superpowers/plans/2026-10-21-sidebar-inline-release.md)：0.3.26成功批次、双端固定渠道与签名连续性独立回验；[公开凭证](superpowers/plans/evidence/2026-10-21-sidebar-inline-release.json)。
 - [2026-10-21 回复同步与侧栏操作双端发布](superpowers/plans/2026-10-21-completion-refresh-release.md)：0.3.25成功批次、双端渠道独立回验及真机待验收边界；[公开凭证](superpowers/plans/evidence/2026-10-21-completion-refresh-release.json)。
