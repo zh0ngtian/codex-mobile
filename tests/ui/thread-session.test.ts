@@ -47,7 +47,7 @@ describe("恢复已有 app-server 会话", () => {
       limit: 5,
       sortDirection: "desc",
       itemsView: "full",
-    }, { timeoutMs: 60_000 });
+    }, { timeoutMs: 60_000, priority: "background" });
     expect(applyTurnChangeStats([
       { id: "turn-1", itemsView: "summary", items: [] },
     ], stats)).toMatchObject([{
@@ -299,7 +299,7 @@ describe('运行文本回填', () => {
   it('只请求最新运行且尚无 final 的回合，无运行回合时不发请求', async () => {
     const request = vi.fn().mockResolvedValue({ turnId: 'live', items: [] });
     await loadRunningTurnCommentary({ request }, 't', [{ id: 'old', status: 'completed' }, { id: 'live', status: 'inProgress', items: [] }]);
-    expect(request).toHaveBeenCalledWith('mobile/turns/commentary', { threadId: 't', turnId: 'live' }, { timeoutMs: 60_000 });
+    expect(request).toHaveBeenCalledWith('mobile/turns/commentary', { threadId: 't', turnId: 'live' }, { timeoutMs: 60_000, priority: "background" });
     request.mockClear();
     for (const turn of [{ id: 'done', status: 'completed' }, { id: 'live', status: 'inProgress', items: [{ type: 'agentMessage', phase: 'final_answer' }] }]) {
       expect(await loadRunningTurnCommentary({ request }, 't', [turn])).toBeNull();

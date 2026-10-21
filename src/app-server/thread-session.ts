@@ -4,12 +4,18 @@ import type {
 } from "../ui/settings";
 import { hasTurnChangeStats, summarizeTurnChanges } from "../ui/conversation";
 import { confirmLocalUserMessages, mergeConfirmedUserMessage, reconcileUserMessageAliases } from "./user-message-reconciliation";
+import type { AppServerRequestOptions } from "./client";
 
 type AnyRecord = Record<string, any>;
 const initialTurnsLimit = 5;
 const threadHistoryRequestTimeoutMs = 60_000;
 const threadHistoryRequestOptions = {
   timeoutMs: threadHistoryRequestTimeoutMs,
+};
+// 自动回填与侧栏共用后台名额，避免切换多个运行会话时占满 WebKit 连接。
+const threadBackfillRequestOptions: AppServerRequestOptions = {
+  ...threadHistoryRequestOptions,
+  priority: "background",
 };
 
 export interface TurnCommentary { turnId: string; items: AnyRecord[]; messageOrder?: string[] }
@@ -24,7 +30,7 @@ export function runningTurnNeedingCommentary(turns: AnyRecord[]): AnyRecord | un
 export async function loadRunningTurnCommentary(client: Requester, threadId: string, turns: AnyRecord[]): Promise<TurnCommentary | null> {
   const turn = runningTurnNeedingCommentary(turns);
   if (!turn) return null;
-  const result = await client.request("mobile/turns/commentary", { threadId, turnId: turn.id }, threadHistoryRequestOptions);
+  const result = await client.request("mobile/turns/commentary", { threadId, turnId: turn.id }, threadBackfillRequestOptions);
   return result?.turnId === turn.id && Array.isArray(result.items) ? result : null;
 }
 
@@ -103,7 +109,7 @@ export async function loadTurnChangeStatsPage(
       sortDirection: "desc",
       itemsView: "full",
     },
-    threadHistoryRequestOptions,
+    threadBackfillRequestOptions,
   );
   return Object.fromEntries(
     (response.data ?? []).map((turn: AnyRecord) => {
@@ -181,7 +187,7 @@ interface Requester {
   request(
     method: string,
     params: unknown,
-    options?: { timeoutMs?: number },
+    options?: AppServerRequestOptions,
   ): Promise<any>;
 }
 
