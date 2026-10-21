@@ -13,14 +13,20 @@ struct SidebarScreen: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
-                Spacer()
+            HStack(spacing: 8) {
+                SidebarSearchButton()
                 SidebarIconButton(systemImage: "arrow.clockwise", title: preferences.text("刷新", "Refresh"),
                                   identifier: "sidebar.refreshTop") {
                     Task { await session.refreshAll() }
                 }
+                SidebarIconButton(systemImage: "gearshape", title: preferences.text("设置", "Settings"),
+                                  identifier: "sidebar.settingsTop") {
+                    session.settingsPresented = true
+                }
+                Spacer(minLength: 8)
+                chatButton
             }
-            .padding(.trailing, SidebarControlMetrics.trailingInset)
+            .padding(.horizontal, SidebarControlMetrics.trailingInset)
             .padding(.vertical, 8)
             if session.searchVisible { SidebarSearchField() }
             ScrollView {
@@ -34,43 +40,9 @@ struct SidebarScreen: View {
         }
         .overlay(alignment: .bottom) {
             HStack {
-                Button { session.beginNewConversation() } label: {
-                    HStack(spacing: 12) {
-                        Image(systemName: "square.and.pencil")
-                            .font(.system(size: chatIconSize, weight: .regular))
-                        Text("Chat")
-                            .font(.system(size: chatTextSize, weight: .semibold))
-                    }
-                    .foregroundStyle(preferences.accent.foreground)
-                    .padding(.horizontal, 5.5)
-                    .frame(minHeight: SidebarControlMetrics.contentHeight)
-                }
-                .modifier(AgentGlassButton(prominent: true))
-                .controlSize(.regular)
-                .tint(chatTint)
-                .clipShape(.capsule)
-                .overlay {
-                    Capsule()
-                        .fill(LinearGradient(stops: [
-                            .init(color: .white.opacity(0.12), location: 0),
-                            .init(color: .white.opacity(0.025), location: 0.16),
-                            .init(color: .clear, location: 0.32),
-                            .init(color: .clear, location: 1)
-                        ], startPoint: .top, endPoint: .bottom))
-                        .overlay {
-                            Capsule().strokeBorder(LinearGradient(colors: [.white.opacity(0.55), .white.opacity(0.2)],
-                                                                  startPoint: .top, endPoint: .bottom), lineWidth: 0.8)
-                        }
-                        .allowsHitTesting(false)
-                }
-                .shadow(color: .black.opacity(0.02), radius: 2, y: 1)
-                .accessibilityLabel(preferences.text("Chat，开始新对话", "Chat, start a new conversation"))
-                .accessibilityIdentifier("sidebar.askCodex")
                 Spacer()
-                SidebarSearchButton()
                 SidebarMoreMenu()
             }
-            .padding(.leading, 34)
             .padding(.trailing, SidebarControlMetrics.trailingInset)
             .padding(.bottom, 8)
         }
@@ -78,5 +50,41 @@ struct SidebarScreen: View {
         .foregroundStyle(AgentTheme.ink)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("sidebar.panel")
+    }
+
+    private var chatButton: some View {
+        Button { session.beginNewConversation() } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "square.and.pencil")
+                    .font(.system(size: chatIconSize, weight: .regular))
+                Text("Chat")
+                    .font(.system(size: chatTextSize, weight: .semibold))
+            }
+            .foregroundStyle(preferences.accent.foreground)
+            .padding(.horizontal, 5.5)
+            .frame(minHeight: SidebarControlMetrics.contentHeight)
+            .fixedSize(horizontal: true, vertical: false)
+        }
+        .modifier(AgentGlassButton(prominent: true))
+        .controlSize(.regular)
+        .tint(chatTint)
+        .clipShape(.capsule)
+        .overlay {
+            Capsule()
+                .fill(LinearGradient(stops: [
+                    .init(color: .white.opacity(0.12), location: 0),
+                    .init(color: .white.opacity(0.025), location: 0.16),
+                    .init(color: .clear, location: 0.32),
+                    .init(color: .clear, location: 1)
+                ], startPoint: .top, endPoint: .bottom))
+                .overlay {
+                    Capsule().strokeBorder(LinearGradient(colors: [.white.opacity(0.55), .white.opacity(0.2)],
+                                                          startPoint: .top, endPoint: .bottom), lineWidth: 0.8)
+                }
+                .allowsHitTesting(false)
+        }
+        .shadow(color: .black.opacity(0.02), radius: 2, y: 1)
+        .accessibilityLabel(preferences.text("Chat，开始新对话", "Chat, start a new conversation"))
+        .accessibilityIdentifier("sidebar.askCodex")
     }
 }

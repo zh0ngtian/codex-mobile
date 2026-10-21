@@ -7,7 +7,7 @@ import UIKit
     private func setCodeWrapping(_ enabled: Bool, in app: XCUIApplication) {
         app.buttons["会话列表"].tap()
         app.buttons["sidebar.more"].tap()
-        app.buttons["设置"].tap()
+        app.collectionViews.buttons["设置"].tap()
         let toggle = app.switches["settings.code-wrap"]
         XCTAssertTrue(toggle.waitForExistence(timeout: 5))
         if !toggle.isHittable { app.swipeUp() }

@@ -361,18 +361,39 @@ final class AgentAppUITests: XCTestCase {
         let app = launchSidebarPolishFixture()
         app.buttons["会话列表"].tap()
         let search = app.buttons["sidebar.search"], more = app.buttons["sidebar.more"], chat = app.buttons["sidebar.askCodex"]
+        let refresh = app.buttons["sidebar.refreshTop"], settings = app.buttons["sidebar.settingsTop"]
         XCTAssertTrue(search.waitForExistence(timeout: 5))
-        print("SIDEBAR_CONTROL_HEIGHTS", search.frame, more.frame, chat.frame)
-        XCTAssertEqual(search.frame.height, chat.frame.height, accuracy: 0.5)
-        XCTAssertEqual(more.frame.height, chat.frame.height, accuracy: 0.5)
-        XCTAssertEqual(more.frame.midY, chat.frame.midY, accuracy: 0.5)
-        XCTAssertEqual(search.frame.midY, more.frame.midY, accuracy: 0.5, "搜索移动到底部与更多同排")
-        for button in [search, more] {
+        for button in [search, refresh, settings, more] {
+            XCTAssertTrue(button.isHittable)
+            XCTAssertEqual(button.frame.height, chat.frame.height, accuracy: 0.5)
             XCTAssertEqual(button.frame.width, button.frame.height, accuracy: 0.5, "圆形外框必须保持正方形，避免裁圆后可见直径小于Chat高度")
             XCTAssertGreaterThanOrEqual(min(button.frame.width, button.frame.height), 44)
         }
-        XCTAssertLessThan(search.frame.maxX, more.frame.minX, "搜索在更多左边")
-        captureConversation("侧栏-三个按钮底部同排", app: app)
+        for button in [search, refresh, settings] {
+            XCTAssertEqual(button.frame.midY, chat.frame.midY, accuracy: 0.5)
+        }
+        XCTAssertLessThan(search.frame.maxX, refresh.frame.minX)
+        XCTAssertLessThan(refresh.frame.maxX, settings.frame.minX)
+        XCTAssertLessThan(settings.frame.maxX, chat.frame.minX)
+        XCTAssertEqual(chat.frame.maxX, more.frame.maxX, accuracy: 1)
+        XCTAssertLessThan(chat.frame.maxY, app.frame.height / 4)
+        XCTAssertGreaterThan(more.frame.minY, app.frame.height * 0.75)
+        captureConversation("侧栏-左侧搜索刷新设置与右侧Chat", app: app)
+        search.tap()
+        let field = app.textFields["sidebar.searchField"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        field.typeText("布局验收")
+        search.tap()
+        XCTAssertFalse(field.exists)
+        search.tap()
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        XCTAssertEqual(field.value as? String, field.placeholderValue)
+        search.tap()
+        settings.tap()
+        XCTAssertTrue(app.navigationBars["设置"].waitForExistence(timeout: 5))
+        app.buttons["settings.close"].tap()
+        XCTAssertTrue(chat.isHittable)
     }
 
     func testDeviceManagerAddsBeyondEightDevices() {
@@ -643,17 +664,17 @@ final class AgentAppUITests: XCTestCase {
         XCTAssertTrue(more.exists)
         XCTAssertFalse(app.staticTexts["Codex"].exists)
         XCTAssertFalse(app.staticTexts["界面夹具"].exists)
-        XCTAssertFalse(app.buttons["设置"].exists, "设置只在省略号菜单内显示")
-        XCTAssertLessThan(chat.frame.maxX, more.frame.minX)
-        XCTAssertEqual(chat.frame.midY, more.frame.midY, accuracy: 2)
-        XCTAssertEqual(app.buttons["sidebar.search"].frame.midY, more.frame.midY, accuracy: 1)
+        XCTAssertTrue(app.buttons["sidebar.settingsTop"].isHittable, "顶部直接提供设置入口")
+        XCTAssertEqual(chat.frame.maxX, more.frame.maxX, accuracy: 1)
+        XCTAssertLessThan(chat.frame.maxY, more.frame.minY)
+        XCTAssertEqual(app.buttons["sidebar.search"].frame.midY, chat.frame.midY, accuracy: 1)
         captureConversation("侧栏-参考展开布局", app: app)
         more.tap()
         XCTAssertTrue(app.buttons["草稿箱"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["刷新"].exists)
         XCTAssertFalse(app.buttons["全部设备"].exists, "侧栏菜单仅保留具体设备选项")
         captureConversation("侧栏-底部省略号菜单", app: app)
-        app.buttons["设置"].tap()
+        app.collectionViews.buttons["设置"].tap()
         XCTAssertTrue(app.navigationBars["设置"].waitForExistence(timeout: 5))
         app.buttons["settings.close"].tap()
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.3)).tap()
@@ -672,14 +693,15 @@ final class AgentAppUITests: XCTestCase {
         let app = launchSidebarPolishFixture()
         app.buttons["会话列表"].tap()
         let refresh = app.buttons["sidebar.refreshTop"]
-        XCTAssertTrue(refresh.waitForExistence(timeout: 5), "侧栏右上角直接提供刷新")
+        XCTAssertTrue(refresh.waitForExistence(timeout: 5), "侧栏左上角搜索右侧直接提供刷新")
         guard refresh.exists else { return }
         let more = app.buttons["sidebar.more"]
-        XCTAssertEqual(refresh.frame.midX, more.frame.midX, accuracy: 1)
+        XCTAssertLessThan(app.buttons["sidebar.search"].frame.maxX, refresh.frame.minX)
+        XCTAssertLessThan(refresh.frame.maxX, app.buttons["sidebar.settingsTop"].frame.minX)
         XCTAssertEqual(refresh.frame.width, more.frame.width, accuracy: 1)
         XCTAssertEqual(refresh.frame.height, more.frame.height, accuracy: 1)
         XCTAssertLessThan(refresh.frame.maxY, app.frame.height / 4)
-        captureConversation("侧栏-顶部刷新与更多对齐", app: app)
+        captureConversation("侧栏-顶部刷新与更多同尺寸", app: app)
         refresh.tap()
         XCTAssertTrue(app.staticTexts["navigation-refresh-count:1"].waitForExistence(timeout: 5), "复用真实 navigation.refresh 命令")
         XCTAssertTrue(more.isHittable, "刷新后保留侧栏")
@@ -1951,13 +1973,16 @@ final class AgentAppUITests: XCTestCase {
         app.buttons["sidebar.search"].tap()
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
         app.buttons["sidebar.search"].tap()
-        app.buttons["sidebar.more"].tap()
-        let settings = app.buttons["设置"]
+        let settings = app.buttons["sidebar.settingsTop"]
         XCTAssertTrue(settings.waitForExistence(timeout: 5))
         settings.tap()
         XCTAssertTrue(app.navigationBars["设置"].waitForExistence(timeout: 8))
         XCTAssertTrue(app.buttons["设备"].exists || app.staticTexts["设备"].exists)
         XCTAssertTrue(app.buttons["通知"].exists || app.staticTexts["通知"].exists)
+        app.buttons["settings.close"].tap()
+        app.buttons["sidebar.askCodex"].tap()
+        XCTAssertTrue(app.buttons["new.computer"].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.buttons["sidebar.more"].isHittable, "Chat 进入新对话后收起侧栏")
     }
 
     func testKeepNativeInterfaceEnabledForAcceptance() throws {

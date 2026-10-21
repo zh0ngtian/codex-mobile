@@ -87,7 +87,7 @@ import XCTest
         var app = fixture()
         app.buttons["会话列表"].tap()
         app.buttons["sidebar.more"].tap()
-        app.buttons["设置"].tap()
+        app.collectionViews.buttons["设置"].tap()
         let wrapToggle = app.switches["settings.code-wrap"]
         XCTAssertTrue(wrapToggle.waitForExistence(timeout: 5))
         if !wrapToggle.isHittable { app.swipeUp() }
