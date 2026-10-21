@@ -181,6 +181,32 @@ final class AgentAppUITests: XCTestCase {
         captureConversation("参考输入栏-外置权限与均衡留白", app: app)
     }
 
+    func testExpandedProjectRemainsVisibleThroughoutRefreshAndHeightUpdates() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-sidebar-polish-fixture", "--agent-sidebar-pagination-fixture", "--agent-sidebar-refresh-fixture", "-appearance", "Light", "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryL", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
+        XCUIDevice.shared.orientation = .portrait
+        app.launch()
+        app.buttons["会话列表"].tap()
+        let first = app.buttons["分页会话 1"]
+        XCTAssertTrue(first.waitForExistence(timeout: 5))
+        let nextProject = app.buttons["收起项目 Alpha"]
+        let initialY = nextProject.frame.minY
+        let probe = app.otherElements["sidebar.refresh.continuity"]
+        XCTAssertTrue(probe.exists)
+        app.buttons["sidebar.refreshTop"].tap()
+        expectation(for: NSPredicate(format: "value BEGINSWITH 'finished;'"), evaluatedWith: probe)
+        waitForExpectations(timeout: 10)
+        let result = probe.value as? String ?? ""
+        XCTAssertTrue(result.contains("faded=false"), "刷新及未读回填不能隐藏已有会话：" + result)
+        XCTAssertTrue(result.contains("shrunk=false"), "刷新不能把已有五条替换成短加载区：" + result)
+        XCTAssertFalse(result.contains("frames=0;"), "必须覆盖动画期间的实际显示帧")
+        XCTAssertFalse(result.contains("baseline=0"), "采样必须从已完成布局的五条开始")
+        XCTAssertEqual(nextProject.frame.minY, initialY, accuracy: 1)
+        XCTAssertTrue(first.isHittable)
+        XCTAssertNotNil(Self.firstTextInkX(app.screenshot().image, in: first.frame, screen: app.frame))
+        captureConversation("侧栏-刷新及高度回填保持会话可见", app: app)
+    }
+
     func testSidebarReopeningPreservesProjectFrame() {
         let app = launchSidebarPolishFixture()
         app.buttons["会话列表"].tap()

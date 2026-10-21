@@ -32,7 +32,7 @@ struct ProjectRow: View {
             .buttonStyle(.plain)
             .accessibilityLabel(preferences.text("\(expanded ? "收起" : "展开")项目 \(displayName)", "\(expanded ? "Collapse" : "Expand") project \(displayName)"))
             VStack(alignment: .leading, spacing: 0) {
-                if session.loadingProjects.contains(name) {
+                if conversations.isEmpty && session.loadingProjects.contains(name) {
                     ProgressView().controlSize(.small).tint(AgentTheme.ink.opacity(0.6))
                         .frame(maxWidth: .infinity, minHeight: 38)
                         .accessibilityIdentifier("sidebar.project.loading.\(name)")
@@ -71,6 +71,13 @@ struct ProjectRow: View {
                     }
                 }
             }
+            .background {
+                #if DEBUG
+                if name == "project-z", ProcessInfo.processInfo.arguments.contains("--agent-sidebar-refresh-fixture") {
+                    AgentSidebarRefreshProbe()
+                }
+                #endif
+            }
             .fixedSize(horizontal: false, vertical: true)
             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
                 contentHeight = height
@@ -79,7 +86,12 @@ struct ProjectRow: View {
                     revealedHeight = expanded ? height : 0
                     contentsVisible = expanded
                 } else if expanded {
-                    updateReveal()
+                    // 刷新、状态回填及分页只调整空间，不重播手动展开时的隐藏/渐显。
+                    if reduceMotion {
+                        revealedHeight = height
+                    } else {
+                        withAnimation(.easeInOut(duration: 0.25)) { revealedHeight = height }
+                    }
                 }
             }
             .opacity(contentsVisible ? 1 : 0)

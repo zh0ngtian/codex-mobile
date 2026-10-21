@@ -437,6 +437,29 @@ final class AgentConversationFixture {
             deferredCommentary = nil
             snapshot.commandResults = [NativeCommandResult(id: command.id, name: command.name, ok: true, contextId: snapshot.contextId)]
             publish()
+        } else if command.name == "navigation.refresh", ProcessInfo.processInfo.arguments.contains("--agent-sidebar-refresh-fixture"),
+                  let index = snapshot.groups.firstIndex(where: { $0.id == "project-z" }) {
+            NotificationCenter.default.post(name: AgentSidebarRefreshProbe.start, object: nil)
+            snapshot.groups[index].loading = "loading"
+            publish()
+            Task { [weak self] in
+                try? await Task.sleep(for: .seconds(1))
+                guard let self else { return }
+                self.snapshot.groups[index].loading = "ready"
+                let unread = NativeNavigationItem(id: "refresh-unread", title: "刷新补入的未读会话",
+                    command: NativeCommand(name: "thread.open", params: ["backendId": .string("conversation-ui-device"), "threadId": .string("refresh-unread")]), isUnread: true)
+                self.snapshot.groups[index].items.append(unread)
+                self.snapshot.groups[index].allItems?.append(unread)
+                self.publish()
+                try? await Task.sleep(for: .seconds(1))
+                self.snapshot.groups[index].items.removeAll { $0.id == "refresh-unread" }
+                self.snapshot.groups[index].allItems?.removeAll { $0.id == "refresh-unread" }
+                self.publish()
+                try? await Task.sleep(for: .seconds(1))
+                self.snapshot.commandResults = [NativeCommandResult(id: command.id, name: command.name, ok: true, contextId: self.snapshot.contextId)]
+                self.publish()
+                NotificationCenter.default.post(name: AgentSidebarRefreshProbe.finish, object: nil)
+            }
         } else if command.name == "navigation.refresh" {
             navigationRefreshCount += 1
             snapshot.error = "navigation-refresh-count:\(navigationRefreshCount)"
@@ -552,6 +575,55 @@ struct AgentEntryAnimationProbe: UIViewRepresentable {
         }
     }
 }
+/// 仅在显式离线回归中逐帧检查真实呈现图层，捕获两次截图之间的隐藏和高度回缩。
+struct AgentSidebarRefreshProbe: UIViewRepresentable {
+    static let start = Notification.Name("agent.sidebar.refresh.start")
+    static let finish = Notification.Name("agent.sidebar.refresh.finish")
+    func makeUIView(context: Context) -> ProbeView { ProbeView() }
+    func updateUIView(_ view: ProbeView, context: Context) {}
+    static func dismantleUIView(_ view: ProbeView, coordinator: ()) { view.stop() }
+    final class ProbeView: UIView {
+        private var link: CADisplayLink?
+        private var baselineHeight: CGFloat = 0
+        private var frames = 0
+        private var faded = false
+        private var shrunk = false
+        override init(frame: CGRect) {
+            super.init(frame: frame)
+            isAccessibilityElement = true
+            accessibilityIdentifier = "sidebar.refresh.continuity"
+            accessibilityValue = "idle"
+            NotificationCenter.default.addObserver(self, selector: #selector(start), name: AgentSidebarRefreshProbe.start, object: nil)
+            NotificationCenter.default.addObserver(self, selector: #selector(finish), name: AgentSidebarRefreshProbe.finish, object: nil)
+        }
+        required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+        func stop() { link?.invalidate(); link = nil }
+        @objc private func start() {
+            stop()
+            baselineHeight = bounds.height
+            frames = 0; faded = false; shrunk = false
+            accessibilityValue = "sampling"
+            let link = CADisplayLink(target: self, selector: #selector(tick))
+            self.link = link
+            link.add(to: .main, forMode: .common)
+        }
+        @objc private func tick() {
+            frames += 1
+            let height = layer.presentation()?.bounds.height ?? bounds.height
+            if height < baselineHeight - 1 { shrunk = true }
+            var current: CALayer? = layer
+            while let value = current {
+                if (value.presentation()?.opacity ?? value.opacity) < 0.99 { faded = true }
+                current = value.superlayer
+            }
+        }
+        @objc private func finish() {
+            tick(); stop()
+            accessibilityValue = "finished;frames=\(frames);faded=\(faded);shrunk=\(shrunk);baseline=\(Int(baselineHeight))"
+        }
+    }
+}
+
 struct AgentTypographyFixture: ViewModifier {
     @Environment(\.dynamicTypeSize) private var size
     @Environment(\.legibilityWeight) private var weight
