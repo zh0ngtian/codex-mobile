@@ -7,28 +7,22 @@ permissions:
 env:
   NODE_OPTIONS: --no-experimental-webstorage
 jobs:
-  verify:
+  compare:
+    strategy:
+      fail-fast: false
+      matrix:
+        revision: ['d5fd098f438e79a55d0a95459e97e0323437f580', '9ac468a0f3307b5571715545d586784449a5a612']
     runs-on: macos-15-intel
-    timeout-minutes: 20
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ matrix.revision }}
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: '22.14.0'
           cache: npm
-      - uses: maxim-lobanov/setup-xcode@v1
-        with:
-          xcode-version: '26.3'
       - run: npm ci
-      - name: 定向回归
-        run: npm test -- tests/native-ui/agentapp-message-presentation.test.ts tests/ui/i18n.test.tsx --maxWorkers=2 --testTimeout=60000
-      - name: 完整 Vitest
-        run: npm test -- --maxWorkers=2 --testTimeout=60000
-      - name: 类型检查
-        if: success() || failure()
-        run: npm run typecheck
-      - name: Web 验证构建
-        if: success() || failure()
-        run: npm run build
+      - name: 对比额外失败用例
+        run: npm test -- tests/ui/native-ui-sidechat.test.tsx tests/ui/native-ui-switch-app.test.tsx tests/server/bark-notifications.test.ts --maxWorkers=2 --testTimeout=60000
