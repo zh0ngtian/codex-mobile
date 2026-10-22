@@ -16,7 +16,7 @@ TDD证据复用长期主工作区`.mobile-build/file-picker-open/device-20261022
 
 ## 当前结果
 
-客户端发布与独立回验已于2026-10-22晚完成；2026-10-23跨日进行文档收尾，最终审查及main整合推送待主代理完成。任务`file-picker-copy-release-20261022`与批次`46697d9c-4a6d-481a-a206-73859004256f`均为complete，error为null，无关联失败恢复；版本0.3.29（3029）。任务来源为`cdbb01a394144ca74f1e88c9a51a75874c8d8604`，冻结SHA为`d48d3653c2166501e555dfed4abd29e2d419b9fa`，成功receipt的SHA-256为`12ebc68f54419a5c3d9a492354742d12c69f0b2ae92307db01b0a190a69dda33`。正式双端CI `39807060885`、同冻结提交开发CI `39807060369`均成功。
+客户端发布与独立回验已于2026-10-22晚完成；2026-10-23跨日完成文档收尾，最终规格／质量审查均PASS，已在共享main互斥下核对最新main并推送收尾提交。任务`file-picker-copy-release-20261022`与批次`46697d9c-4a6d-481a-a206-73859004256f`均为complete，error为null，无关联失败恢复；版本0.3.29（3029）。任务来源为`cdbb01a394144ca74f1e88c9a51a75874c8d8604`，冻结SHA为`d48d3653c2166501e555dfed4abd29e2d419b9fa`，成功receipt的SHA-256为`12ebc68f54419a5c3d9a492354742d12c69f0b2ae92307db01b0a190a69dda33`。正式双端CI `39807060885`、同冻结提交开发CI `39807060369`均成功。
 
 本次文档收尾开始时，隔离worktree的HEAD为来源SHA；`git fetch origin main`后快进至上述冻结SHA，远端没有额外main提交，未改动主工作区的暂存或未暂存内容。只更新本计划、README、文档索引、交互约定及[脱敏公共凭证](evidence/2026-10-22-file-picker-copy-release.json)，没有修改生产源码或重新构建发布。
 
@@ -52,7 +52,7 @@ TDD证据复用长期主工作区`.mobile-build/file-picker-open/device-20261022
 - [x] 保持项目CA的TLS校验验证固定OTA安装页、JSON、manifest及版本化IPA；实际下载包独立验签，核对兼容基准的Bundle ID、Team、application-identifier、完整权限和钥匙串连续性。
 - [x] 完整下载GitHub APK和unsigned IPA，比对共同receipt；核对软件源unsigned 0.3.29（3029）、URL、大小、散列、四条中文用户变化日志和当前GitHub用户署名。
 - [x] 按字段白名单写入脱敏发布凭证，更新README、文档索引和交互约定的现役0.3.29状态；仅文档收尾，不重复测试或构建发布。
-- [ ] 主代理完成最终文档规格／质量审查，并在共享main互斥下核对最新main、整合提交及推送收尾；本项在实际完成前保持待完成。
+- [x] 主代理完成最终文档规格／质量审查，两份结果均PASS；在共享main互斥下核对远端仍为冻结SHA，已将收尾提交`24ef9a4e3d606220319bd8b72caef8230d03610c`推送main，主工作区原有改动保持不变。
 - [x] 保留用户要求的模拟器现场、真机当前附件与设置；本轮没有远端测试会话。本任务heartbeat已停止，所需worktree和诊断继续保留，不关闭、归档或清理。
 
 ## 验证与边界
@@ -70,6 +70,6 @@ TDD证据复用长期主工作区`.mobile-build/file-picker-open/device-20261022
 
 固定APK为4,749,967字节，SHA-256 `952890e4d7e222e46fcbcbcc9aa072c28a2c97d0c011d51692c7d2c891894b6e`；固定Ad Hoc已签名IPA为4,853,372字节，SHA-256 `8b3e5a09af76001156f1019ef97443a68c035f6082421dc560b0d3b044f4a8d8`。签名保持Bundle ID `vip.loock.codexmobile`及application-identifier `SC456JW7RP.app.jade6694.grapefruit3766`，完整权限和钥匙串组连续性已核对。本次未部署网关，桌面置顶独立通知变更不属于本次已上线范围。
 
-知识面状态：代码与运行态为`verified-current`；文档已更新且JSON、相对链接及diff空白检查通过，最终审查和main推送为`pending`；规则只读核对、无须改动；记忆维护为`out-of-scope`；工作区按用户要求保留，清理为`out-of-scope`。本次没有重跑生产测试或构建。
+知识面状态：代码与运行态为`verified-current`；文档已更新且JSON、相对链接及diff空白检查通过，最终规格／质量审查均PASS，收尾提交已推送main，文档为`verified-current`；规则只读核对、无须改动；记忆维护为`out-of-scope`；工作区按用户要求保留，清理为`out-of-scope`。本次没有重跑生产测试或构建。
 
 最终回复正文展示[固定OTA安装页](https://192.168.123.79:8766/channels/codex-mobile/current/install.html)及本次[APK](http://192.168.123.79:8765/channels/codex-mobile/latest.apk)、[已签名IPA](http://192.168.123.79:8765/channels/codex-mobile/latest.ipa)的版本、字节数、完整SHA-256。成功receipt与独立回验均已完成；不把构建或渠道验证当成真机覆盖安装已通过。
