@@ -10,7 +10,7 @@ interface PollResponse {
   epoch: string; cursor: number; messages: RpcMessage[]; requests: RpcMessage[];
   active: boolean; updatedAt: number; reset: boolean; hasMore?: boolean;
 }
-const readMethods = new Set(["initialize", "initialized", "thread/list", "thread/read", "thread/loaded/list", "thread/turns/list", "thread/items/list", "mobile/sidebar/summaries", "mobile/sidebar/projectless", "mobile/turns/commentary", "permissionProfile/list", "plugin/list", "model/list", "config/read", "configRequirements/read", "account/read", "account/rateLimits/read", "skills/list", "mcpServerStatus/list", "collaborationMode/list", "app/list", "fs/readFile"]);
+const readMethods = new Set(["initialize", "initialized", "thread/list", "threadSection/list", "thread/read", "thread/loaded/list", "thread/turns/list", "thread/items/list", "mobile/sidebar/summaries", "mobile/sidebar/projectless", "mobile/turns/commentary", "permissionProfile/list", "plugin/list", "model/list", "config/read", "configRequirements/read", "account/read", "account/rateLimits/read", "skills/list", "mcpServerStatus/list", "collaborationMode/list", "app/list", "fs/readFile"]);
 interface PendingWrite { requestId: string; message: RpcMessage; epoch?: string; queryOnly?: true }
 const responseSignature = (message: RpcMessage, epoch?: string) => JSON.stringify({ id: message.id, epoch });
 function persistentWrite(operation: PendingWrite): PendingWrite {

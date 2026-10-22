@@ -1,3 +1,4 @@
+import { DESKTOP_PINNED_SECTION_ID } from "./desktop-thread-pins.js";
 import { createHash, randomUUID } from "node:crypto";
 import { chmod, mkdir, open, readFile, rename, stat, unlink } from "node:fs/promises";
 import { join } from "node:path";
@@ -13,12 +14,7 @@ const MAX_SUBSCRIPTIONS = 128;
 const MAX_DEDUPLICATION = 4096;
 const MAX_STATE_BYTES = 1024 * 1024;
 const MAX_PENDING_PUSHES = 128;
-type Subscription = { clientId: string; backendId: string; barkUrl: string; followedThreadIds: string[] };
-function parseFollowedThreadIds(value: unknown): string[] {
-  if (value === undefined) return [];
-  if (!Array.isArray(value) || value.length > 512 || value.some(id => typeof id !== "string" || !id.trim() || id.length > 1024 || /[\u0000-\u001f\u007f]/.test(id))) throw new Error("关注会话列表无效");
-  return [...new Set(value)];
-}
+type Subscription = { clientId: string; backendId: string; barkUrl: string };
 type State = { subscriptions: Subscription[]; delivered: string[] };
 
 /** 全网关共用订阅和去重记录，HTTP 与流式连接只提交实时事件。 */
@@ -26,6 +22,8 @@ export class BarkNotifications {
   private titles = new Map<string, { name?: string | null; preview?: string | null }>();
   private questions = new QuestionNotificationTracker();
   private completions = new FinalAnswerCompletionTracker({ requireMobileOrigin: true, isThreadFollowed: id => this.followedThreadIds.has(id) });
+  private desktopPinnedThreadIds = new Set<string>();
+  private pinnedRevision = 0;
   private followingListeners = new Set<() => void>();
   private completedTurns = new Map<string, CompletedFinalAnswer>();
   private subscriptions = new Map<string, Subscription>();
@@ -42,7 +40,13 @@ export class BarkNotifications {
     this.ready.catch(() => {});
   }
   get subscribed() { return this.subscriptions.size > 0; }
-  get followedThreadIds(): Set<string> { return new Set([...this.subscriptions.values()].flatMap(entry => entry.followedThreadIds)); }
+  get followedThreadIds(): Set<string> { return new Set(this.desktopPinnedThreadIds); }
+  get followingRevision() { return this.pinnedRevision; }
+  setFollowedThreadIds(ids: Iterable<string>, expectedRevision = this.pinnedRevision) {
+    if (expectedRevision !== this.pinnedRevision) return;
+    this.desktopPinnedThreadIds = new Set(ids);
+    this.pinnedRevision++;
+  }
   async initialized() { await this.ready; }
   subscribeFollowing(listener: () => void) { this.followingListeners.add(listener); return () => this.followingListeners.delete(listener); }
   notifyFollowedCompletion(threadId: string, turnId: string) {
@@ -61,7 +65,7 @@ export class BarkNotifications {
       if (!Array.isArray(state.subscriptions) || state.subscriptions.length > MAX_SUBSCRIPTIONS || !Array.isArray(state.delivered) || state.delivered.length > MAX_DEDUPLICATION) throw new Error("通知设置无效");
       for (const subscription of state.subscriptions) {
         if (!UUID.test(subscription.clientId) || typeof subscription.backendId !== "string" || !subscription.backendId.trim() || subscription.backendId.length > 256) throw new Error("通知订阅无效");
-        this.subscriptions.set(this.key(subscription), { ...subscription, barkUrl: parseBarkPushUrl(subscription.barkUrl), followedThreadIds: parseFollowedThreadIds(subscription.followedThreadIds) });
+        this.subscriptions.set(this.key(subscription), { clientId: subscription.clientId, backendId: subscription.backendId, barkUrl: parseBarkPushUrl(subscription.barkUrl) });
       }
       for (const id of state.delivered) { if (!/^[a-f0-9]{64}$/.test(id)) throw new Error("通知去重记录无效"); this.delivered.add(id); }
       await chmod(this.root, 0o700); await chmod(path, 0o600);
@@ -93,10 +97,10 @@ export class BarkNotifications {
       for await (const chunk of request) { const part = Buffer.from(chunk); size += part.length; if (size > MAX_STATE_BYTES) throw new Error("通知设置请求过大"); parts.push(part); }
       let body: any; try { body = JSON.parse(Buffer.concat(parts).toString("utf8")); } catch { throw new Error("通知设置必须为有效 JSON"); }
       if (!body || !UUID.test(body.clientId ?? "") || typeof body.backendId !== "string" || !body.backendId.trim() || body.backendId.length > 256 || /[\u0000-\u001f\u007f]/.test(body.backendId) || !["system", "bark"].includes(body.mode)) throw new Error("通知设置需要安装 ID、后端 ID 和有效通知方式");
-      const subscription: Subscription = { clientId: body.clientId.toLowerCase(), backendId: body.backendId, barkUrl: body.mode === "bark" ? parseBarkPushUrl(body.barkUrl) : "", followedThreadIds: parseFollowedThreadIds(body.followedThreadIds) };
+      const subscription: Subscription = { clientId: body.clientId.toLowerCase(), backendId: body.backendId, barkUrl: body.mode === "bark" ? parseBarkPushUrl(body.barkUrl) : "" };
       await this.enqueue(async () => {
         const key = this.key(subscription); const previous = this.subscriptions.get(key);
-        if ((body.mode === "bark" && previous?.barkUrl === subscription.barkUrl && JSON.stringify(previous.followedThreadIds) === JSON.stringify(subscription.followedThreadIds)) || (body.mode === "system" && !previous)) return;
+        if ((body.mode === "bark" && previous?.barkUrl === subscription.barkUrl) || (body.mode === "system" && !previous)) return;
         if (body.mode === "bark" && !previous && this.subscriptions.size >= MAX_SUBSCRIPTIONS) throw new Error("通知订阅数量已满");
         if (body.mode === "system") this.subscriptions.delete(key); else this.subscriptions.set(key, subscription);
         try { await this.save(); } catch (error) { if (previous) this.subscriptions.set(key, previous); else this.subscriptions.delete(key); throw error; }
@@ -124,6 +128,12 @@ export class BarkNotifications {
   /** RPC 历史只登记标题；成功提交指令另外登记对应回合的移动来源。 */
   observeRpc(request: { method?: string; params?: Record<string, any> }, response: { error?: unknown; result?: unknown }) {
     if (this.closed || response.error != null) return;
+    if (["thread/section/move", "thread/archive"].includes(request.method ?? "") && typeof request.params?.threadId === "string") {
+      const ids = this.followedThreadIds;
+      if (request.method === "thread/section/move" && request.params?.sectionId === DESKTOP_PINNED_SECTION_ID) ids.add(request.params.threadId);
+      else ids.delete(request.params!.threadId);
+      this.setFollowedThreadIds(ids);
+    }
     const result = response.result as Record<string, any> | undefined;
     this.rememberThread(result?.thread);
     if (request.method === "thread/list" && Array.isArray(result?.data)) {
@@ -175,7 +185,7 @@ export class BarkNotifications {
       // 同一手机可能遗留多个安装/后端订阅；注销仍独立，投递按接收地址合并。
       const destinations = new Map<string, Subscription[]>();
       for (const subscription of this.subscriptions.values()) {
-        if (questionId == null && !(subscription.followedThreadIds.includes(completed.threadId) || this.completions.isMobileTurn(completed.threadId, completed.turnId))) continue;
+        if (questionId == null && !(this.desktopPinnedThreadIds.has(completed.threadId) || this.completions.isMobileTurn(completed.threadId, completed.turnId))) continue;
         const subscriptions = destinations.get(subscription.barkUrl) ?? [];
         subscriptions.push(subscription); destinations.set(subscription.barkUrl, subscriptions);
       }
@@ -202,7 +212,7 @@ export class BarkNotifications {
     const mobileOrigin = !question && this.completions.isMobileTurn(completed.threadId, completed.turnId);
     for (let attempt = 0; attempt < 3 && !this.closed; attempt++) {
       const subscription = [...this.subscriptions.values()].filter(entry => entry.barkUrl === barkUrl &&
-        (question || mobileOrigin || this.completions.isMobileTurn(completed.threadId, completed.turnId) || entry.followedThreadIds.includes(completed.threadId))).at(-1);
+        (question || mobileOrigin || this.completions.isMobileTurn(completed.threadId, completed.turnId) || this.desktopPinnedThreadIds.has(completed.threadId))).at(-1);
       if (!subscription) return;
       const controller = new AbortController(); this.controllers.add(controller);
       const timeout = setTimeout(() => controller.abort(), 5000); timeout.unref();

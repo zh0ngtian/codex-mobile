@@ -1,3 +1,4 @@
+import { readDesktopPinnedThreads } from "./desktop-thread-pins.js";
 import { createServer, type Server } from "node:http";
 import { createReadStream } from "node:fs";
 import { mkdir, open, readFile, rm, stat } from "node:fs/promises";
@@ -129,6 +130,19 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
   const followUps = await FollowUps.open(options.codexHome ?? process.env.CODEX_HOME ?? join(homedir(), ".codex"), httpSessions);
   const followedNotifications = new FollowedThreadNotifications({
     sessions: httpSessions, followedThreadIds: () => notifications.followedThreadIds,
+    refreshFollowedThreadIds: async () => {
+      if (!notifications.subscribed) { notifications.setFollowedThreadIds([]); return; }
+      const revision = notifications.followingRevision;
+      try {
+        const threads = await readDesktopPinnedThreads(async (method, params) => {
+          const response = await httpSessions.hostedRpc({ id: randomUUID(), method, params });
+          if (response.error != null) throw Object.assign(new Error((response.error as any)?.message ?? "无法读取桌面置顶状态"), { code: (response.error as any)?.code });
+          return response.result;
+        });
+        notifications.setFollowedThreadIds(threads.map(thread => String(thread.id)), revision);
+        for (const thread of threads) notifications.observeRpc({ method: "thread/read" }, { result: { thread } });
+      } catch (error) { notifications.setFollowedThreadIds([], revision); throw error; }
+    },
     notifyCompletion: (threadId, turnId) => notifications.notifyFollowedCompletion(threadId, turnId),
     rememberThread: thread => notifications.observeRpc({ method: "thread/read" }, { result: { thread } }),
   });

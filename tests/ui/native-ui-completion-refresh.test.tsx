@@ -9,8 +9,10 @@ vi.mock('../../src/backends/connection-manager', () => ({ BackendConnectionManag
   constructor(options: any) { server.options = options; }
   client() { return server.client; } socket() { return null; } close() {} reconnect() {}
   sync(backends: any[]) {
-    server.client = { onNotification() { return () => {}; }, onThreadMetadata() { return () => {}; }, request: async (method: string) => {
+    server.client = { onNotification() { return () => {}; }, onThreadMetadata() { return () => {}; }, request: async (method: string, params: any) => {
       server.requests.push(method);
+      if (method === 'thread/list' && params?.sectionId) return { data: [], nextCursor: null };
+      if (method === 'threadSection/list') return { data: [{ id: '01984de2-8f74-7c91-a3b2-5c5e937cf318', name: 'Pinned' }], nextCursor: null };
       if (method === 'model/list') return { data: [{ model: 'test', isDefault: true, supportedReasoningEfforts: [] }] };
       if (method === 'permissionProfile/list') return { data: [{ id: ':workspace', allowed: true }] };
       if (method === 'config/read') return { config: { model: 'test', sandbox_mode: 'workspace-write' } };

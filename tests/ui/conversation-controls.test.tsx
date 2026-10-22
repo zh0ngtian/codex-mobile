@@ -114,7 +114,7 @@ describe("对话详情控制", () => {
     expect(view.getByRole("button", { name: "取消关注" })).not.toBeNull();
   });
 
-  it("只读会话仍可本地关注，但禁用服务端写操作", () => {
+  it("只读历史仍可修改关注元数据，但禁用需要交互权限的操作", () => {
     const onPin = vi.fn();
     const { container } = render(
       <ConversationActionMenu

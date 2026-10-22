@@ -10,6 +10,8 @@ vi.mock('../../src/backends/connection-manager', () => ({ BackendConnectionManag
     if (server.clients.has(backend.id)) continue;
     const client = { onNotification() { return () => {}; }, onThreadMetadata() { return () => {}; }, request: async (method: string, params: any) => {
      server.requests.push(method);
+     if (method === 'threadSection/list') return { data: [{ id: '01984de2-8f74-7c91-a3b2-5c5e937cf318', name: 'Pinned' }], nextCursor: null };
+     if (method === 'thread/list' && params?.sectionId) return { data: [], nextCursor: null };
      if (method === 'thread/list' && server.threadListGate) await server.threadListGate;
      if (method === 'thread/list' && server.failThreadList) throw new Error('首次会话读取失败');
      if (method === 'config/read') return { config: {} };

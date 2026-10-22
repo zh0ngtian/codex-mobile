@@ -4,11 +4,12 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { DESKTOP_PINNED_SECTION_ID as PIN } from '../../server/desktop-thread-pins';
 import { AppBootstrap } from '../../src/App';
 import { HttpOperationPendingError } from '../../src/backends/http-transport';
 import * as threadListLoader from '../../src/app-server/thread-list-loader';
 import { saveBackendRegistry } from '../../src/backends/registry';
-const boundary = vi.hoisted(() => ({ sidebarIndex: false, requests: [] as Array<{ method: string; params: any; options?: { priority?: string } }>, threadRecords: [] as Array<Record<string, any>>, threadReadBarrier: null as Promise<void> | null, projectBarrier: null as Promise<void> | null, priorityBarrier: null as Promise<void> | null, listBarrier: null as Promise<void> | null, searchBarrier: null as Promise<void> | null, listFailure: false, options: null as any, client: null as any, release: null as null | (() => void), failSend: false, immediateSend: false, nextThreadId: 'sent-thread', delayRevert: false, pendingMethod: '', releaseRevert: null as null | (() => void), rejectStart: null as null | (() => void) }));
+const boundary = vi.hoisted(() => ({ pins: [] as string[], pinFailure: false, pinBarrier: null as Promise<void> | null, sidebarIndex: false, requests: [] as Array<{ method: string; params: any; options?: { priority?: string } }>, threadRecords: [] as Array<Record<string, any>>, threadReadBarrier: null as Promise<void> | null, projectBarrier: null as Promise<void> | null, priorityBarrier: null as Promise<void> | null, listBarrier: null as Promise<void> | null, searchBarrier: null as Promise<void> | null, listFailure: false, options: null as any, client: null as any, release: null as null | (() => void), failSend: false, immediateSend: false, nextThreadId: 'sent-thread', delayRevert: false, pendingMethod: '', releaseRevert: null as null | (() => void), rejectStart: null as null | (() => void) }));
 vi.mock('../../src/backends/connection-manager', () => ({ BackendConnectionManager: class {
  constructor(private options: any) { boundary.options = options; }
  client() { return boundary.client; } socket() { return null; } close() {} reconnect() {}
@@ -19,11 +20,14 @@ vi.mock('../../src/backends/connection-manager', () => ({ BackendConnectionManag
    if (method === 'model/list') return { data: [{ model: 'gpt', displayName: 'GPT', isDefault: true, supportedReasoningEfforts: [{ reasoningEffort: 'high', description: '' }] }] };
    if (method === 'permissionProfile/list') return { data: [{ id: ':workspace', allowed: true }] };
    if (method === 'config/read') return { config: { model: 'gpt', sandbox_mode: 'workspace-write', model_reasoning_effort: 'high' } };
+   if (method === 'threadSection/list') return { data: [{ id: PIN, name: 'Pinned' }], nextCursor: null };
+   if (method === 'thread/list' && params.sectionId) { const data = boundary.pins.map(id => ({ ...(boundary.threadRecords.find(t => t.id === id) ?? { id }), section: { id: PIN } })); await boundary.pinBarrier; return { data, nextCursor: null }; }
+   if (method === 'thread/section/move') { if (boundary.pinFailure) throw new Error('置顶写入失败'); boundary.pins = params.sectionId === PIN ? [...new Set([...boundary.pins, params.threadId])] : boundary.pins.filter(id => id !== params.threadId); return {}; }
    if (method === 'thread/list') { await boundary.listBarrier; if (boundary.listFailure) throw new Error('列表查询失败'); }
    if (method === 'thread/search') { await boundary.searchBarrier; return { data: [], nextCursor: null }; }
    if (method === 'mobile/sidebar/summaries') return { data: boundary.threadRecords.filter(thread => params.threadIds.includes(thread.id) || (params.includeRunning && thread.status?.type === 'active')) };
    if (method === 'mobile/sidebar/projectless') { const rows = boundary.threadRecords.filter(thread => params.threadIds.includes(thread.id) && !params.fixedExcludedThreadIds.includes(thread.id) && (!params.excludedThreadIds.includes(thread.id) || thread.status?.type === 'active')).sort((a, b) => b.recencyAt - a.recencyAt); const offset = Number(params.cursor ?? 0); return { data: rows.slice(offset, offset + 5).map(thread => ({ ...thread, isProjectless: true })), nextCursor: offset + 5 < rows.length ? String(offset + 5) : null }; }
-   if (method === 'thread/read') { const thread = boundary.threadRecords.find(thread => thread.id === params.threadId); await boundary.threadReadBarrier; if (thread) return { thread }; }
+   if (method === 'thread/read') { const thread = boundary.threadRecords.find(thread => thread.id === params.threadId); await boundary.threadReadBarrier; if (thread || boundary.pins.includes(params.threadId) || params.threadId === boundary.nextThreadId) return { thread: { ...thread, id: params.threadId, section: boundary.pins.includes(params.threadId) ? { id: PIN } : null } }; }
    if (method === 'thread/list' && params.cwd) { const records = boundary.threadRecords.filter(thread => thread.cwd === params.cwd); const offset = Number(params.cursor ?? 0); const end = offset + params.limit; return { data: records.slice(offset, end), nextCursor: end < records.length ? String(end) : null }; }
    if (method === 'thread/loaded/list') { await boundary.priorityBarrier; return { data: boundary.threadRecords.filter(thread => thread.status?.type === 'active').map(thread => thread.id), nextCursor: null }; }
    if (method === 'thread/start') return { thread: { id: boundary.nextThreadId, cwd: null, turns: [] }, model: 'gpt' };
@@ -47,7 +51,7 @@ function deferredRead() {
  pendingReads.push(resolve);
  return { promise, resolve, reject };
 }
-afterEach(async () => { cleanup(); await act(async () => { pendingReads.splice(0).forEach(resolve => resolve()); }); boundary.sidebarIndex = false; boundary.requests = []; boundary.threadRecords = []; boundary.threadReadBarrier = null; boundary.projectBarrier = null; boundary.priorityBarrier = null; boundary.listBarrier = null; boundary.searchBarrier = null; boundary.listFailure = false; boundary.client = null; boundary.options = null; boundary.release = null; boundary.failSend = false; boundary.immediateSend = false; boundary.nextThreadId = 'sent-thread'; boundary.delayRevert = false; boundary.pendingMethod = ''; boundary.releaseRevert = null; boundary.rejectStart = null; queueItems = []; posts.length = 0; localStorage.clear(); delete (window as any).__CODEX_NATIVE_UI__; delete (window as any).webkit; delete (window as any).codexMobilePublishNativeSnapshot; vi.unstubAllGlobals(); });
+afterEach(async () => { cleanup(); await act(async () => { pendingReads.splice(0).forEach(resolve => resolve()); }); boundary.pins = []; boundary.pinFailure = false; boundary.pinBarrier = null; boundary.sidebarIndex = false; boundary.requests = []; boundary.threadRecords = []; boundary.threadReadBarrier = null; boundary.projectBarrier = null; boundary.priorityBarrier = null; boundary.listBarrier = null; boundary.searchBarrier = null; boundary.listFailure = false; boundary.client = null; boundary.options = null; boundary.release = null; boundary.failSend = false; boundary.immediateSend = false; boundary.nextThreadId = 'sent-thread'; boundary.delayRevert = false; boundary.pendingMethod = ''; boundary.releaseRevert = null; boundary.rejectStart = null; queueItems = []; posts.length = 0; localStorage.clear(); delete (window as any).__CODEX_NATIVE_UI__; delete (window as any).webkit; delete (window as any).codexMobilePublishNativeSnapshot; vi.unstubAllGlobals(); });
 async function setup(native = true, projectState = { projects: [] as string[], projectlessThreadIds: [] as string[] }, waitForSettings = true) {
  if (native) Object.assign(window, { __CODEX_NATIVE_UI__: true, webkit: { messageHandlers: { nativeUI: { postMessage() {} } } }, codexMobilePublishNativeSnapshot: (s: unknown) => posts.push(s) });
  vi.stubGlobal('fetch', vi.fn(async (url: string, options?: RequestInit) => {
@@ -92,17 +96,17 @@ it('新设备首开全折叠，展开才查本组五条，折叠刷新跳过且�
  const group = (cwd: string) => groups()?.find((g: any) => g.cwd === cwd);
  await waitFor(() => expect(posts.at(-1)?.navigationLoading).toBe(false));
  expect(groups()).toHaveLength(3); expect(groups().every((g: any) => g.collapsed && !g.items.length)).toBe(true);
- expect(boundary.requests.some(r => r.method === 'thread/list' || r.method === 'mobile/sidebar/projectless')).toBe(false);
+ expect(boundary.requests.some(r => r.method === 'thread/list' && !r.params?.sectionId || r.method === 'mobile/sidebar/projectless')).toBe(false);
  expect(group('/b').allItems.some((item: any) => item.running)).toBe(true);
  await act(async () => command('expand-lazy-a', 'project.toggle', group('/a').command.params));
  await waitFor(() => expect(group('/a')).toMatchObject({ collapsed: false, loading: 'ready' }));
  expect(group('/a').items).toHaveLength(5); expect(group('/a').items[2].running).toBe(true);
- expect(boundary.requests.filter(r => r.method === 'thread/list').map(r => r.params)).toEqual([{ cwd: '/a', limit: 5, sortKey: 'recency_at' }]);
+ expect(boundary.requests.filter(r => r.method === 'thread/list' && !r.params?.sectionId).map(r => r.params)).toEqual([{ cwd: '/a', limit: 5, sortKey: 'recency_at' }]);
  await act(async () => command('collapse-lazy-a', 'project.toggle', group('/a').command.params));
  const summaries = boundary.requests.filter(r => r.method === 'mobile/sidebar/summaries').length;
  await act(async () => command('refresh-collapsed', 'navigation.refresh'));
  await waitFor(() => expect(boundary.requests.filter(r => r.method === 'mobile/sidebar/summaries').length).toBeGreaterThan(summaries));
- expect(boundary.requests.filter(r => r.method === 'thread/list')).toHaveLength(1);
+ expect(boundary.requests.filter(r => r.method === 'thread/list' && !r.params?.sectionId)).toHaveLength(1);
  await act(async () => command('expand-lazy-loose', 'project.toggle', group('').command.params));
  await waitFor(() => expect(group('')).toMatchObject({ collapsed: false, loading: 'ready' }));
  expect(group('').items).toHaveLength(5);
@@ -163,7 +167,7 @@ it('真实App冷启动在目录、优先摘要和首批普通会话未完成前�
  await act(async () => command('expand-pending', 'project.toggle', project.command.params));
  await waitFor(() => expect(groups().find((group: any) => group.cwd === '/pending')).toMatchObject({ collapsed: false, loading: 'loading' }));
  await act(async () => priority.resolve());
- await waitFor(() => expect(boundary.requests.some(request => request.method === 'thread/list')).toBe(true));
+ await waitFor(() => expect(boundary.requests.some(request => request.method === 'thread/list' && !request.params?.sectionId)).toBe(true));
  expect(groups().every((group: any) => group.loading === 'loading')).toBe(true);
  expect(posts.at(-1).navigationLoading).toBe(true);
  await act(async () => { page.resolve(); projectless.resolve(); });
@@ -175,7 +179,7 @@ it('真实App冷启动在目录、优先摘要和首批普通会话未完成前�
 it('真实App空优先摘要不能提前结束普通列表首查，成功真空列表才停止加载', async () => {
  const page = deferredRead(); boundary.listBarrier = page.promise;
  await setup(true, undefined, false);
- await waitFor(() => expect(boundary.requests.some(request => request.method === 'thread/list')).toBe(true));
+ await waitFor(() => expect(boundary.requests.some(request => request.method === 'thread/list' && !request.params?.sectionId)).toBe(true));
  expect(posts.at(-1)).toMatchObject({ ready: true, navigationLoading: true });
  await act(async () => page.resolve());
  await waitFor(() => expect(posts.at(-1)?.navigationLoading).toBe(false));
@@ -223,10 +227,10 @@ it('真实App已有项目会话在展开侧栏触发的静默刷新期间保留�
  await setup(true, { projects: ['/existing'], projectlessThreadIds: [] });
  const project = () => posts.at(-1)?.groups.find((group: any) => group.cwd === '/existing');
  await waitFor(() => expect(project()?.items[0]?.threadId).toBe('existing'));
- const before = boundary.requests.filter(request => request.method === 'thread/list').length;
+ const before = boundary.requests.filter(request => request.method === 'thread/list' && !request.params?.sectionId).length;
  const page = deferredRead(); boundary.listBarrier = page.promise;
  await act(async () => command('open-for-silent-refresh', 'navigation.sidebar', { open: true }));
- await waitFor(() => expect(boundary.requests.filter(request => request.method === 'thread/list').length).toBeGreaterThan(before));
+ await waitFor(() => expect(boundary.requests.filter(request => request.method === 'thread/list' && !request.params?.sectionId).length).toBeGreaterThan(before));
  expect(project()).toMatchObject({ loading: 'ready', items: [{ threadId: 'existing' }] });
  expect(posts.at(-1).navigationLoading).toBe(false);
  await act(async () => page.resolve());
@@ -246,6 +250,7 @@ it.each([
   ...prioritizedIds.map(id => ({ id, cwd: null, recencyAt: 1, status: { type: id === 'running' ? 'active' : 'idle' }, turns: [] })),
   ...ordinary,
  ];
+ if (prioritizedIds.includes('pin')) boundary.pins = ['pin'];
  if (prioritizedIds.includes('pin')) localStorage.setItem('codex-mobile:pinned:a', '["pin"]');
  if (prioritizedIds.includes('unread')) localStorage.setItem('codex-mobile:unread:a', '["unread"]');
  const projectlessThreadIds = boundary.threadRecords.map(thread => thread.id);
@@ -807,7 +812,7 @@ it('管理确认在途时仍拒绝其他管理动作，取消完成后关注可�
  await waitFor(() => expect(posts.at(-1)?.panel?.id).toMatch(/^confirmation:/));
  await act(async () => { command('pin-during-confirmation', 'thread.manage', { ...target, action: 'pin' }); });
  await waitFor(() => expect(posts.at(-1)?.commandResults?.find((result: any) => result.id === 'pin-during-confirmation')).toMatchObject({ ok: false, error: '会话操作未完成' }));
- expect(localStorage.getItem('codex-mobile:pinned:a')).toBeNull();
+ expect(localStorage.getItem('codex-mobile:pinned:a')).toBe('[]');
  const cancel = posts.at(-1).panel.items.find((item: any) => item.id === 'confirmation-no').command;
  await act(async () => { command('cancel-before-pin', cancel.name, cancel.params); });
  await waitFor(() => expect(posts.at(-1)?.commandResults?.some((result: any) => result.id === 'archive-before-pin')).toBe(true));
@@ -843,4 +848,67 @@ it.each([['workspace.thread', false], ['thread.manage', false], ['workspace.thre
  await waitFor(() => expect(boundary.requests.filter(r => r.method === 'thread/archive')).toHaveLength(1));
  expect(boundary.requests.find(r => r.method === 'thread/archive')?.params.threadId).toBe('sent-thread');
  expect(queueItems).toHaveLength(0);
+});
+
+it('首次以桌面替换手机旧关注，桌面取消后刷新同步且不写回旧手机集合', async () => {
+ localStorage.setItem('codex-mobile:pinned:a', '["phone-old"]');
+ boundary.pins = ['desktop-only'];
+ boundary.threadRecords = [{ id: 'desktop-only', name: '桌面置顶', cwd: '/a', status: { type: 'idle' } }];
+ await setup();
+ await waitFor(() => expect(localStorage.getItem('codex-mobile:pinned:a')).toBe('["desktop-only"]'));
+ expect(boundary.requests.some(r => r.method === 'thread/section/move' || r.method === 'thread/metadata/update')).toBe(false);
+ await waitFor(() => expect(posts.at(-1).groups.find((g: any) => g.category === 'pinned').items.map((t: any) => t.threadId)).toEqual(['desktop-only']));
+ boundary.pins = [];
+ await act(async () => command('desktop-unpin-refresh', 'navigation.refresh'));
+ await waitFor(() => expect(localStorage.getItem('codex-mobile:pinned:a')).toBe('[]'));
+ await waitFor(() => expect(posts.at(-1).groups.find((g: any) => g.category === 'pinned').items).toEqual([]));
+});
+
+it('手机关注写服务端并回读后才成功，写入失败保留原关注并返回失败回执', async () => {
+ const contextId = await setup(); boundary.immediateSend = true;
+ await act(async () => { command('pin-draft', 'draft.set', { contextId, value: '双向关注', revision: 1 }); command('pin-send', 'message.send', { contextId }); });
+ await waitFor(() => expect(posts.at(-1)?.threadId).toBe('sent-thread'));
+ const target = { backendId: 'a', threadId: 'sent-thread', action: 'pin' };
+ await act(async () => command('remote-pin', 'thread.manage', target));
+ await waitFor(() => expect(boundary.pins).toEqual(['sent-thread']));
+ await waitFor(() => expect(localStorage.getItem('codex-mobile:pinned:a')).toBe('["sent-thread"]'));
+ expect(boundary.requests).toEqual(expect.arrayContaining([expect.objectContaining({ method: 'thread/section/move', params: { threadId: 'sent-thread', sectionId: PIN, beforeThreadId: null } })]));
+ boundary.pinFailure = true;
+ await act(async () => command('failed-unpin', 'thread.manage', target));
+ await waitFor(() => expect(posts.at(-1).commandResults?.find((r: any) => r.id === 'failed-unpin')?.ok).toBe(false));
+ expect(localStorage.getItem('codex-mobile:pinned:a')).toBe('["sent-thread"]');
+ expect(boundary.pins).toEqual(['sent-thread']);
+});
+
+it.each([false, true])('写入前发出的置顶刷新迟到不能撤销本次成功关注或显示旧错误，读取失败=%s', async failure => {
+ const contextId = await setup(); boundary.immediateSend = true;
+ await act(async () => { command('race-draft', 'draft.set', { contextId, value: '关注竞争', revision: 1 }); command('race-send', 'message.send', { contextId }); });
+ await waitFor(() => expect(posts.at(-1)?.threadId).toBe('sent-thread'));
+ const gate = deferredRead(); boundary.pinBarrier = gate.promise;
+ const before = boundary.requests.length;
+ await act(async () => command('race-refresh', 'navigation.refresh'));
+ await waitFor(() => expect(boundary.requests.slice(before).some(r => r.method === 'thread/list' && r.params.sectionId === PIN)).toBe(true));
+ await act(async () => command('race-pin', 'thread.manage', { backendId: 'a', threadId: 'sent-thread', action: 'pin' }));
+ await waitFor(() => expect(localStorage.getItem('codex-mobile:pinned:a')).toBe('["sent-thread"]'));
+ await act(async () => { if (failure) gate.reject(new Error('已过期的置顶读取失败')); else gate.resolve(); });
+ expect(localStorage.getItem('codex-mobile:pinned:a')).toBe('["sent-thread"]');
+ expect(posts.at(-1).error ?? '').not.toContain('已过期');
+ await waitFor(() => expect(posts.at(-1).groups.find((g: any) => g.category === 'pinned').items).toEqual(expect.arrayContaining([expect.objectContaining({ threadId: 'sent-thread' })])));
+});
+
+it('重连后的桌面置顶先返回时，旧客户端迟到响应不能覆盖新缓存和列表', async () => {
+ const gate = deferredRead(); boundary.pinBarrier = gate.promise; boundary.pins = ['old-client'];
+ await setup(true, { projects: [], projectlessThreadIds: [] }, false);
+ await waitFor(() => expect(boundary.requests.some(r => r.method === 'thread/list' && r.params.sectionId === PIN)).toBe(true));
+ const original = boundary.client;
+ const next = { ...original, request: async (method: string, params: any, options: any) => {
+  if (method === 'thread/list' && params.sectionId === PIN) return { data: [{ id: 'new-client', section: { id: PIN } }], nextCursor: null };
+  return original.request(method, params, options);
+ } };
+ boundary.client = next;
+ await act(async () => boundary.options.onReady('a', next));
+ await waitFor(() => expect(localStorage.getItem('codex-mobile:pinned:a')).toBe('["new-client"]'));
+ await act(async () => gate.resolve());
+ expect(localStorage.getItem('codex-mobile:pinned:a')).toBe('["new-client"]');
+ await waitFor(() => expect(posts.at(-1).groups.find((g: any) => g.category === 'pinned').items.some((t: any) => t.threadId === 'old-client')).toBe(false));
 });

@@ -19,7 +19,9 @@ vi.mock('../../src/backends/connection-manager', () => ({ BackendConnectionManag
   if (!backend) return;
   const client = { onNotification() { return () => {}; }, onThreadMetadata() { return () => {}; }, request: async (method: string, _params: unknown, options?: { priority?: string }) => {
    boundary.requests.push({ backendId: backend.id, method, options });
-   if (method === 'model/list') return { data: [{ model: 'gpt', displayName: 'GPT', isDefault: true, supportedReasoningEfforts: [] }] };
+   if (method === 'thread/list' && (_params as any)?.sectionId) return { data: [], nextCursor: null };
+   if (method === 'threadSection/list') return { data: [{ id: '01984de2-8f74-7c91-a3b2-5c5e937cf318', name: 'Pinned' }], nextCursor: null };
+      if (method === 'model/list') return { data: [{ model: 'gpt', displayName: 'GPT', isDefault: true, supportedReasoningEfforts: [] }] };
    if (method === 'permissionProfile/list') return { data: [{ id: ':workspace', allowed: true }] };
    if (method === 'config/read') return { config: { model: 'gpt', sandbox_mode: 'workspace-write' } };
    if (method === 'thread/list') { await boundary.pageBarriers[backend.id]; if (boundary.failures[backend.id]) { boundary.failedBackends.push(backend.id); throw new Error('真实列表读取失败'); } return { data: boundary.threads[backend.id] ?? [], nextCursor: null }; }

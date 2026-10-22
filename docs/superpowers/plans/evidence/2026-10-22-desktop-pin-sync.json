@@ -1,0 +1,71 @@
+{
+  "baselineMain": "7772b28f5e716d8e5e3759fb1e84a089158502ec",
+  "delivery": "source-only",
+  "migration": "desktop-authoritative-replace",
+  "protocol": {
+    "cliVersion": "0.163.0-alpha.11",
+    "read": [
+      "threadSection/list",
+      "thread/list.sectionId"
+    ],
+    "write": "thread/section/move",
+    "localHomeIsolated": true
+  },
+  "realAppServer": {
+    "isolatedCodexHome": true,
+    "modelTurnsStarted": 0,
+    "pinAndUnpin": "passed",
+    "testThreadArchived": true,
+    "archivePinCleared": true,
+    "requestsBeforeCleanup": 17,
+    "cleanupRequests": 2
+  },
+  "regression": {
+    "command": "NODE_OPTIONS=--no-experimental-webstorage npx vitest run",
+    "files": 167,
+    "passedTests": 1906,
+    "baselineFailures": [
+      {
+        "file": "tests/native-ui/agentapp-message-presentation.test.ts",
+        "test": "用户气泡正文与高度测量使用相同可见文本，复制继续使用原文"
+      },
+      {
+        "file": "tests/ui/i18n.test.tsx",
+        "test": "源码中直接使用的多语言键都有英文翻译",
+        "detail": "当前无法发送引导消息 缺少英文翻译"
+      }
+    ],
+    "baselineReproduction": "同一 main 基线导出到独立目录，仅运行这两个文件：2项失败、4项通过，失败内容一致",
+    "targetedAfterUpgradeHint": {
+      "files": 3,
+      "passedTests": 122
+    }
+  },
+  "builds": {
+    "typecheck": "passed",
+    "web": "passed",
+    "server": "passed",
+    "iosSimulatorBuild": "passed"
+  },
+  "nativeUI": {
+    "device": "iPhone 17 Pro",
+    "os": "iOS 27.0",
+    "orientation": "portrait",
+    "font": "normal",
+    "status": "passed",
+    "tests": 1,
+    "scenarios": [
+      "桌面已有置顶显示关注",
+      "手机取消经服务端回写",
+      "桌面再次置顶由前台轮询同步",
+      "手机重新关注回写"
+    ],
+    "test": "AgentAppUITests/testDesktopPinsSynchronizeBothDirections",
+    "resultBundle": "/Users/zhongtian/Library/Developer/XcodeBuildMCP/workspaces/codex-mobile-e2b7e5b8d624/result-bundles/test_sim_2026-10-22T08-31-13-680Z_pid58483_eaef255c.xcresult",
+    "setup": "独立模拟器、生成测试宿主预置本地协议夹具设备，不覆盖用户连接；不验收设备添加或真实推送权限",
+    "screenshotsReviewed": true,
+    "failedSetupAttempts": "前三次在初始设备配置/回执阶段失败，尚未进入置顶；最终使用预置连接的正常桥接宿主通过，临时诊断已移除"
+  },
+  "published": false,
+  "productionGatewayDeployed": false
+}

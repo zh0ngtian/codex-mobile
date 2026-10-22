@@ -1,4 +1,4 @@
-// 沿用原置顶存储键，升级后已有选择直接成为关注。
+// 沿用旧键作为服务端置顶投影缓存；首次成功同步完整替换，不迁移旧关注。
 export const THREAD_FOLLOWING_CHANGED_EVENT = "codex-mobile-following-changed";
 
 interface ThreadPinStorage {
@@ -32,6 +32,13 @@ export function readPinnedThreadIds(
   }
 }
 
+export function replacePinnedThreadIds(storage: ThreadPinStorage, backendId: string, ids: Iterable<string>) {
+  const value = JSON.stringify([...new Set(ids)].sort());
+  if (storage.getItem(storageKey(backendId)) === value) return;
+  storage.setItem(storageKey(backendId), value);
+  if (typeof window !== "undefined") window.dispatchEvent(new Event(THREAD_FOLLOWING_CHANGED_EVENT));
+}
+
 export function writeThreadPinned(
   storage: ThreadPinStorage,
   backendId: string,
@@ -41,20 +48,7 @@ export function writeThreadPinned(
   const pinned = readPinnedThreadIds(storage, backendId);
   if (isPinned) pinned.add(threadId);
   else pinned.delete(threadId);
-  storage.setItem(storageKey(backendId), JSON.stringify([...pinned].sort()));
-  if (typeof window !== "undefined") {
-    window.dispatchEvent(new Event(THREAD_FOLLOWING_CHANGED_EVENT));
-  }
-}
-
-export function toggleThreadPinned(
-  storage: ThreadPinStorage,
-  backendId: string,
-  threadId: string,
-) {
-  const isPinned = !readPinnedThreadIds(storage, backendId).has(threadId);
-  writeThreadPinned(storage, backendId, threadId, isPinned);
-  return isPinned;
+  replacePinnedThreadIds(storage, backendId, pinned);
 }
 
 export function applyPinnedThreadState<T extends ThreadRecord>(

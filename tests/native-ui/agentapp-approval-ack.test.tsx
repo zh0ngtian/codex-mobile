@@ -10,6 +10,7 @@ vi.mock('../../src/backends/connection-manager', () => ({ BackendConnectionManag
   sync(backends: any[]) {
     if (!backends.length) return;
     const client = { onNotification() { return () => {}; }, onThreadMetadata() { return () => {}; }, request: async (method: string) => {
+      if (method === 'threadSection/list') return { data: [{ id: '01984de2-8f74-7c91-a3b2-5c5e937cf318', name: 'Pinned' }], nextCursor: null };
       if (method === 'model/list') return { data: [{ model: 'model', isDefault: true, supportedReasoningEfforts: [] }] };
       if (method === 'config/read') return { config: { model: 'model', sandbox_mode: 'workspace-write' } };
       return { data: [], items: [], marketplaces: [], nextCursor: null };

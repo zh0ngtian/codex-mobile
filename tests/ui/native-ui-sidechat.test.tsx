@@ -13,11 +13,13 @@ vi.mock('../../src/backends/connection-manager', () => ({ BackendConnectionManag
   const client = { onNotification() { return () => {}; }, onThreadMetadata() { return () => {}; }, request: async (method: string, params: any) => {
    if (method === 'mobile/sidechat/rpc') { method = params.method; params = params.params; }
    boundary.requests.push({ method, params });
+   if (method === 'thread/list' && params?.sectionId) return { data: [], nextCursor: null };
    if (method === 'thread/read' && boundary.threadList.some(thread=>thread.id===params.threadId)) return {thread:boundary.threadList.find(thread=>thread.id===params.threadId)};
    if (method === 'thread/list') return {data:boundary.threadList,nextCursor:null};
    if (method === 'skills/list' && boundary.quoteCatalog) return {data:[{cwd:null,skills:[{name:'private-skill',path:'/skills/private/SKILL.md',description:'test',scope:'user',enabled:true}]}]};
    if (method === 'plugin/installed' && boundary.quoteCatalog) return {marketplaces:[{name:'test',plugins:[{id:'private-plugin',name:'private-plugin',installed:true,enabled:true,availability:'AVAILABLE'}]}]};
-   if (method === 'model/list') return { data: [{ model: 'gpt', displayName: 'GPT', isDefault: true, supportedReasoningEfforts: [{ reasoningEffort: 'high', description: '' }] }] };
+   if (method === 'threadSection/list') return { data: [{ id: '01984de2-8f74-7c91-a3b2-5c5e937cf318', name: 'Pinned' }], nextCursor: null };
+      if (method === 'model/list') return { data: [{ model: 'gpt', displayName: 'GPT', isDefault: true, supportedReasoningEfforts: [{ reasoningEffort: 'high', description: '' }] }] };
    if (method === 'permissionProfile/list') return { data: [{ id: ':workspace', allowed: true }] };
    if (method === 'config/read') return { config: { model: 'gpt', sandbox_mode: 'workspace-write', model_reasoning_effort: 'high' } };
    if (method === 'thread/start') return { thread: { id: boundary.nextThreadId, cwd: null, turns: [] }, model: 'gpt' };

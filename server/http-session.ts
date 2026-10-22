@@ -42,7 +42,7 @@ const SNAPSHOT_TTL_MS = 60_000;
 const SNAPSHOT_CURSOR_MIN = Number.MAX_SAFE_INTEGER - 1_000_000_000;
 const IDLE_MS = 30 * 60 * 1000;
 const READ_ONLY_METHODS = new Set([
-  "thread/read", "thread/list", "thread/loaded/list", "thread/archive/list",
+  "thread/read", "threadSection/list", "thread/list", "thread/loaded/list", "thread/archive/list",
   "thread/turns/list", "thread/items/list", "permissionProfile/list", "plugin/list",
   "model/list", "account/read", "account/rateLimits/read", "config/read",
   "configRequirements/read", "skills/list", "mcpServerStatus/list",

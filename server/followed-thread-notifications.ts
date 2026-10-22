@@ -16,6 +16,7 @@ export class FollowedThreadNotifications {
   constructor(private options: {
     sessions: Pick<HttpSessions, "hostedRpc">;
     followedThreadIds: () => ReadonlySet<string>;
+    refreshFollowedThreadIds?: () => Promise<void>;
     notifyCompletion: (threadId: string, turnId: string) => void;
     rememberThread?: (thread: unknown) => void;
     pollIntervalMs?: number;
@@ -31,13 +32,15 @@ export class FollowedThreadNotifications {
     const followed = new Set(this.options.followedThreadIds());
     for (const id of this.baselines.keys()) if (!followed.has(id)) this.baselines.delete(id);
     if (this.job) return this.job;
-    this.job = this.run().finally(() => { this.job = undefined; });
+    this.job = this.run().catch(() => { /* 置顶来源失败时本轮静默，下轮重新读取，不用旧手机集合。 */ }).finally(() => { this.job = undefined; });
     return this.job;
   }
   private active(threadId: string, baseline: Baseline) {
     return !this.closed && this.options.followedThreadIds().has(threadId) && this.baselines.get(threadId) === baseline;
   }
   private async run() {
+    if (this.options.refreshFollowedThreadIds) await this.options.refreshFollowedThreadIds();
+    if (this.closed) return;
     const followed = new Set(this.options.followedThreadIds());
     for (const id of this.baselines.keys()) if (!followed.has(id)) this.baselines.delete(id);
     for (const threadId of followed) {

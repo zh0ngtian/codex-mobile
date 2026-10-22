@@ -2029,6 +2029,45 @@ final class AgentAppUITests: XCTestCase {
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.2)).tap()
     }
 
+    func testDesktopPinsSynchronizeBothDirections() async throws {
+        guard let control = ProcessInfo.processInfo.environment["CODEX_TEST_PIN_CONTROL"]
+            ?? ProcessInfo.processInfo.environment["TEST_RUNNER_CODEX_TEST_PIN_CONTROL"],
+            let controlURL = URL(string: control) else { throw XCTSkip("需要独立桌面置顶协议夹具") }
+        func state(_ pinned: Bool? = nil) async throws -> [String: Any] {
+            var parts = URLComponents(url: controlURL, resolvingAgainstBaseURL: false)!
+            if let pinned { parts.queryItems = [URLQueryItem(name: "pinned", value: String(pinned))] }
+            let (data, _) = try await URLSession.shared.data(from: parts.url!)
+            return try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        }
+        let app = try launchConnectedApp()
+        let row = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "桌面同步验收")).firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 12))
+        XCTAssertEqual(row.value as? String, "已关注")
+        row.tap()
+        XCTAssertTrue(app.buttons["conversation.actions"].waitForExistence(timeout: 10))
+        app.buttons["conversation.actions"].tap()
+        XCTAssertTrue(app.buttons["取消关注"].waitForExistence(timeout: 5))
+        app.buttons["取消关注"].tap()
+        try await Task.sleep(for: .milliseconds(700))
+        let afterUnpin = try await state()
+        XCTAssertEqual(afterUnpin["pinned"] as? Bool, false)
+        _ = try await state(true)
+        try await Task.sleep(for: .seconds(4))
+        app.buttons["conversation.actions"].tap()
+        XCTAssertTrue(app.buttons["取消关注"].waitForExistence(timeout: 5), "桌面重新置顶应由前台轮询同步")
+        captureConversation("桌面置顶-自动同步到手机", app: app)
+        app.buttons["取消关注"].tap()
+        try await Task.sleep(for: .milliseconds(700))
+        app.buttons["conversation.actions"].tap()
+        XCTAssertTrue(app.buttons["关注"].waitForExistence(timeout: 5))
+        app.buttons["关注"].tap()
+        try await Task.sleep(for: .milliseconds(700))
+        let afterPin = try await state()
+        XCTAssertEqual(afterPin["pinned"] as? Bool, true)
+        XCTAssertGreaterThanOrEqual(afterPin["writes"] as? Int ?? 0, 3)
+        captureConversation("手机关注-成功回写桌面", app: app)
+    }
+
     func testConfigureProvidedGateway() throws {
         let app = try launchConnectedApp()
         XCTAssertEqual(app.descendants(matching: .any).matching(identifier: "sidebar.more").firstMatch.value as? String, "验收 Mac")

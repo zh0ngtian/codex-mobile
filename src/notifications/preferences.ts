@@ -3,7 +3,6 @@ import { useEffect, useState } from "react";
 import { parseBarkPushUrl, type NotificationPreference } from "../../server/notification-settings";
 import { transportUuid } from "../backends/http-transport";
 import type { BackendConfig } from "../backends/types";
-import { readPinnedThreadIds, THREAD_FOLLOWING_CHANGED_EVENT } from "../features/threads/thread-pinning";
 
 export type { NotificationPreference };
 type PreferenceStorage = Pick<Storage, "getItem" | "setItem">;
@@ -70,7 +69,7 @@ export function syncNotificationSettings(
           const response = await fetcher(url.toString(), {
             method: "POST", mode: "cors", cache: "no-store", signal: controller.signal,
             headers: { "content-type": "application/json" },
-            body: JSON.stringify({ clientId, backendId: target.id, mode, barkUrl: mode === "bark" ? preference.barkUrl : "", followedThreadIds: mode === "bark" ? [...readPinnedThreadIds(storage, target.id)].sort() : [] }),
+            body: JSON.stringify({ clientId, backendId: target.id, mode, barkUrl: mode === "bark" ? preference.barkUrl : "" }),
           });
           if (!response.ok || (await response.json()).saved !== true) throw new Error("Registration rejected");
         } finally { clearTimeout(timer); }
@@ -110,18 +109,10 @@ export function useNotificationSync(backends: BackendConfig[], preference: Notif
     void synchronize();
     const retry = () => { if (isClientForeground()) void synchronize(); };
     const timer = window.setInterval(retry, 30_000);
-    const followingChanged = () => { void synchronize(); };
-    const storageChanged = (event: StorageEvent) => {
-      if (event.key === null || event.key?.startsWith("codex-mobile:pinned:")) followingChanged();
-    };
-    window.addEventListener(THREAD_FOLLOWING_CHANGED_EVENT, followingChanged);
-    window.addEventListener("storage", storageChanged);
     window.addEventListener("online", retry);
     document.addEventListener("visibilitychange", retry);
     return () => {
       cancelled = true; window.clearInterval(timer);
-      window.removeEventListener(THREAD_FOLLOWING_CHANGED_EVENT, followingChanged);
-      window.removeEventListener("storage", storageChanged);
       window.removeEventListener("online", retry);
       document.removeEventListener("visibilitychange", retry);
     };

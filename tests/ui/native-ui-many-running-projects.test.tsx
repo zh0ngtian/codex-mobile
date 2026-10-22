@@ -69,7 +69,8 @@ it("十项目同时展开、每项目五个运行会话：50条列表、逐个�
         } else if (method === "model/list") result.data = [{ model: "test-model", displayName: "Test", supportedReasoningEfforts: [], isDefault: true }];
         else if (method === "permissionProfile/list") result.data = [{ id: ":workspace", allowed: true }];
         else if (method === "config/read") result = { config: { model: "test-model", sandbox_mode: "workspace-write" } };
-        else if (method === "thread/list") result.data = threads.filter(thread => thread.cwd === params.cwd);
+        else if (method === "threadSection/list") result.data = [{ id: "01984de2-8f74-7c91-a3b2-5c5e937cf318", name: "Pinned" }];
+        else if (method === "thread/list") result.data = params.sectionId ? [] : threads.filter(thread => thread.cwd === params.cwd);
         else if (method === "mobile/sidebar/summaries") result = await index.summaries(params);
         else if (method === "thread/resume") result = {
           thread: threads.find(thread => thread.id === params.threadId), model: "test-model",
@@ -117,7 +118,7 @@ it("十项目同时展开、每项目五个运行会话：50条列表、逐个�
     expect(posts.at(-1)?.navigationLoading).toBe(false);
   });
   expect(new Set(groups().flatMap(group => group.items.map(item => item.threadId))).size).toBe(50);
-  const projectReads = started.filter(call => call.method === "thread/list");
+  const projectReads = started.filter(call => call.method === "thread/list" && !call.params.sectionId);
   expect(projectReads).toHaveLength(10);
   expect(projectReads.every(call => call.params.limit === 5)).toBe(true);
   expect(summaryReads).toBe(50);
@@ -151,7 +152,7 @@ it("十项目同时展开、每项目五个运行会话：50条列表、逐个�
   expect(new Set(completed.filter(call => call.method === "mobile/turns/details").map(call => call.params.threadId)).size).toBe(50);
   expect(maxBackground).toBe(4);
   await waitFor(() => expect(posts.at(-1)?.commandResults?.find(result => result.id === "refresh-during-backfill")?.ok).toBe(true));
-  await waitFor(() => expect(started.filter(call => call.method === "thread/list")).toHaveLength(20));
+  await waitFor(() => expect(started.filter(call => call.method === "thread/list" && !call.params.sectionId)).toHaveLength(20));
   expect(summaryReads).toBe(50);
   await waitFor(() => expect(groups().every(group => group.loading === "ready" && group.items.length === 5 && group.items.every(item => item.running))).toBe(true));
 }, 20_000);

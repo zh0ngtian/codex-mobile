@@ -16,6 +16,7 @@ import { readFontSize } from "./ui/font-size";
 import { createLatestClientRefresh } from "./app-server/latest-client-refresh";
 import { assertNativeAttachmentSelection } from "./native-ui/attachment-import";
 import { resolveNativeNewChatTarget, type NativeNewChatTarget } from "./native-ui/new-chat-target";
+import { readDesktopPinnedThreads, setDesktopThreadPinned } from "../server/desktop-thread-pins";
 import { isClientForeground } from "./native-ui/foreground";
 import { DraftsSheet } from "./features/drafts/DraftsSheet";
 import {
@@ -239,7 +240,7 @@ import {
 import {
   applyPinnedThreadState,
   readPinnedThreadIds,
-  toggleThreadPinned,
+  replacePinnedThreadIds,
   writeThreadPinned,
 } from "./features/threads/thread-pinning";
 import {
@@ -492,6 +493,10 @@ function BackendWorkspace({
   const clientRef = useRef<AppServerClient | null>(null);
   const projectlessLoadRef = useRef<{ client: AppServerClient; pending: boolean } | null>(null);
   const readyClientRef = useRef<AppServerClient | null>(null);
+  const pinnedClientRef = useRef<AppServerClient | null>(null);
+  const pinnedRevisionRef = useRef(0);
+  const pinMutationRef = useRef(false);
+  const pinRefreshRef = useRef<{ client: AppServerClient; promise: Promise<void> } | null>(null);
   const connectionManagerRef = useRef<BackendConnectionManager | null>(null);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const imageReadGenerationRef = useRef(new ImageReadGeneration());
@@ -542,7 +547,7 @@ function BackendWorkspace({
   const finalAnswerCompletionRef = useRef(new FinalAnswerCompletionTracker());
   const mobileCompletionRef = useRef(new FinalAnswerCompletionTracker({
     requireMobileOrigin: true,
-    isThreadFollowed: (threadId) => readPinnedThreadIds(localStorage, backend.id).has(threadId),
+    isThreadFollowed: (threadId) => pinnedClientRef.current !== null && pinnedClientRef.current === clientRef.current && readPinnedThreadIds(localStorage, backend.id).has(threadId),
   }));
   const automaticTitleStatesRef = useRef(
     new Map<string, AutomaticTitleState>(),
@@ -664,27 +669,61 @@ function BackendWorkspace({
     ...readLocalPinned(),
     ...readLocalUnread(),
   ]);
-  const setLocalPinned = (threadId: string, sourceThread?: AnyRecord) => {
-    const isPinned = toggleThreadPinned(localStorage, backend.id, threadId);
-    const update = (current: AnyRecord[]) =>
-      current.map((entry) =>
-        String(entry.id) === threadId ? { ...entry, isPinned } : entry,
+  const setRemotePinned = async (client: AppServerClient, threadId: string, isPinned: boolean, sourceThread?: AnyRecord) => {
+    if (pinMutationRef.current) throw new Error(t("正在更新关注状态"));
+    pinMutationRef.current = true;
+    pinnedRevisionRef.current++;
+    try {
+      await setDesktopThreadPinned((method, params) => client.request(method, params), threadId, isPinned);
+      if (client !== clientRef.current || client.signal?.aborted) return false;
+      writeThreadPinned(localStorage, backend.id, threadId, isPinned);
+      const update = (current: AnyRecord[]) =>
+        current.map((entry) =>
+          String(entry.id) === threadId ? { ...entry, isPinned } : entry,
+        );
+      setThreads((current) => {
+        const next = update(current);
+        if (isPinned && sourceThread && !next.some((thread) => String(thread.id) === threadId)) {
+          next.push({ ...sourceThread, isPinned });
+        }
+        return next;
+      });
+      setSearchResults(update);
+      setActive((current) =>
+        String(current?.id ?? "") === threadId
+          ? { ...current, isPinned }
+          : current,
       );
-    setThreads((current) => {
-      const next = update(current);
-      if (isPinned && sourceThread && !next.some((thread) => String(thread.id) === threadId)) {
-        next.push({ ...sourceThread, isPinned });
-      }
-      return next;
-    });
-    setSearchResults(update);
-    setActive((current) =>
-      String(current?.id ?? "") === threadId
-        ? { ...current, isPinned }
-        : current,
-    );
-    showNotice(isPinned ? t("已关注") : t("已取消关注"));
+      showNotice(isPinned ? t("已关注") : t("已取消关注"));
+      return true;
+    } finally {
+      pinnedRevisionRef.current++;
+      pinMutationRef.current = false;
+    }
   };
+  async function syncDesktopPinned(client: AppServerClient): Promise<void> {
+    if (client !== clientRef.current || client.signal?.aborted || pinMutationRef.current) return;
+    if (pinRefreshRef.current?.client === client) return pinRefreshRef.current.promise;
+    const revision = pinnedRevisionRef.current;
+    const promise = (async () => {
+      let data: AnyRecord[];
+      try {
+        data = await readDesktopPinnedThreads((method, params) => client.request(method, params, { priority: "background" }));
+      } catch (reason) {
+        if (client !== clientRef.current || client.signal?.aborted || revision !== pinnedRevisionRef.current) return;
+        throw reason;
+      }
+      if (client !== clientRef.current || client.signal?.aborted || revision !== pinnedRevisionRef.current) return;
+      const ids = new Set(data.map(thread => String(thread.id)));
+      replacePinnedThreadIds(localStorage, backend.id, ids);
+      pinnedClientRef.current = client;
+      setThreads(current => applyPinnedThreadState(mergeThreadListPage(current, decorateThreads(data), new Set(current.map(thread => String(thread.id)))), ids));
+      setSearchResults(current => applyPinnedThreadState(current, ids));
+      setActive(current => current && current.isPinned !== ids.has(String(current.id)) ? { ...current, isPinned: ids.has(String(current.id)) } : current);
+    })().finally(() => { if (pinRefreshRef.current?.promise === promise) pinRefreshRef.current = null; });
+    pinRefreshRef.current = { client, promise };
+    return promise;
+  }
   const writeLocalUnread = (ids: Set<string>) => {
     writeUnreadThreadIds(localStorage, backend.id, ids);
   };
@@ -978,6 +1017,8 @@ function BackendWorkspace({
       if (client !== clientRef.current || client.signal?.aborted) return;
       setThreadListRefreshing(true);
       try {
+        await syncDesktopPinned(client);
+        if (client !== clientRef.current || client.signal?.aborted) return;
         let projectCatalogReadSucceeded = false;
         let directories = projects;
         let nextProjectlessThreadIds = mergeProjectlessThreadIds(
@@ -1246,6 +1287,20 @@ function BackendWorkspace({
     refreshing,
     threadListRefreshing,
   ]);
+
+  useEffect(() => {
+    const refreshPins = () => {
+      const client = clientRef.current;
+      if (!client || !isClientForeground()) return;
+      void syncDesktopPinned(client).catch(reason => {
+        if (client === clientRef.current && !client.signal?.aborted) setError(reason instanceof Error ? reason.message : String(reason));
+      });
+    };
+    const timer = window.setInterval(refreshPins, 3000);
+    window.addEventListener("online", refreshPins);
+    document.addEventListener("visibilitychange", refreshPins);
+    return () => { window.clearInterval(timer); window.removeEventListener("online", refreshPins); document.removeEventListener("visibilitychange", refreshPins); };
+  }, [backend.id]);
 
   useEffect(() => {
     if (!refreshVersion) return;
@@ -3765,14 +3820,11 @@ function BackendWorkspace({
     setPendingAction(action);
     setError("");
     try {
-      if (action === "pin") {
-        setLocalPinned(threadId, thread);
-        return true;
-      }
       if (!client) {
         setError(t("设备尚未连接，请稍后重试"));
         return false;
       }
+      if (action === "pin") return await setRemotePinned(client, threadId, thread.isPinned !== true, thread);
       if (action === "refresh") {
         const result = await client.request<{ thread: AnyRecord }>(
           "thread/read",
@@ -3845,6 +3897,8 @@ function BackendWorkspace({
       }
       await discardQueuedFollowUpsForThread(threadId);
       await client.request("thread/archive", { threadId });
+      if (thread.isPinned === true) await client.request("thread/section/move", { threadId, sectionId: null, beforeThreadId: null });
+      pinnedRevisionRef.current++;
       markThreadRead(threadId);
       writeThreadPinned(localStorage, backend.id, threadId, false);
       setThreads((current) =>
@@ -3865,6 +3919,7 @@ function BackendWorkspace({
       showNotice(t("已归档"));
       return true;
     } catch (reason) {
+      if (action === "pin" && client !== clientRef.current) return false;
       setError(
         reason instanceof Error
           ? reason.message
@@ -3899,18 +3954,7 @@ function BackendWorkspace({
       !thread?.id ||
       pendingAction
     ) return false;
-    const nextPinned = thread.isPinned !== true;
-    setPendingAction("pin");
-    setError("");
-    try {
-      setLocalPinned(String(thread.id), thread);
-      return true;
-    } catch {
-      setError(nextPinned ? t("关注失败，请重试") : t("取消关注失败，请重试"));
-      return false;
-    } finally {
-      setPendingAction("");
-    }
+    return manageListedThread(thread, "pin");
   }
 
   async function renameThread(explicitName?: string) {
@@ -3979,6 +4023,8 @@ function BackendWorkspace({
     try {
       await discardQueuedFollowUpsForThread(threadId);
       await client.request("thread/archive", { threadId: thread.id });
+      if (thread.isPinned === true) await client.request("thread/section/move", { threadId: thread.id, sectionId: null, beforeThreadId: null });
+      pinnedRevisionRef.current++;
       markThreadRead(String(thread.id));
       writeThreadPinned(localStorage, backend.id, String(thread.id), false);
       setThreads((current) =>

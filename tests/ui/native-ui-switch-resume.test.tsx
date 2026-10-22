@@ -13,7 +13,9 @@ vi.mock('../../src/backends/connection-manager', () => ({ BackendConnectionManag
  sync(backends: any[]) {
   const client = { onNotification() { return () => {}; }, onThreadMetadata() { return () => {}; }, request: async (method: string, params: any) => {
    server.requests.push({ method, params });
-   if (method === 'model/list') return { data: [
+   if (method === 'thread/list' && params?.sectionId) return { data: [], nextCursor: null };
+      if (method === 'threadSection/list') return { data: [{ id: '01984de2-8f74-7c91-a3b2-5c5e937cf318', name: 'Pinned' }], nextCursor: null };
+      if (method === 'model/list') return { data: [
     { model: 'server-model', displayName: '服务器模型', isDefault: true, supportedReasoningEfforts: [{ reasoningEffort: 'low' }], serviceTiers: [] },
     { model: 'local-model', displayName: '检查点模型', supportedReasoningEfforts: [{ reasoningEffort: 'high' }], serviceTiers: [{ id: 'priority', name: 'Fast' }] },
    ] };
