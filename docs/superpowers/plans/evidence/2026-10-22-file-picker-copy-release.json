@@ -1,0 +1,68 @@
+{
+  "date": "2026-10-22",
+  "version": "0.3.29",
+  "buildNumber": "3029",
+  "client": {
+    "batchId": "46697d9c-4a6d-481a-a206-73859004256f",
+    "sourceCommit": "d48d3653c2166501e555dfed4abd29e2d419b9fa",
+    "tasks": [
+      {
+        "id": "file-picker-copy-release-20261022",
+        "sha": "cdbb01a394144ca74f1e88c9a51a75874c8d8604"
+      }
+    ],
+    "ci": 39807060885,
+    "releaseUrl": "https://github.com/zh0ngtian/codex-mobile/releases/tag/v0.3.29",
+    "developmentCI": 39807060369,
+    "receiptSha256": "12ebc68f54419a5c3d9a492354742d12c69f0b2ae92307db01b0a190a69dda33"
+  },
+  "packages": {
+    "apk": {
+      "url": "http://192.168.123.79:8765/channels/codex-mobile/latest.apk",
+      "version": "0.3.29",
+      "size": 4749967,
+      "sha256": "952890e4d7e222e46fcbcbcc9aa072c28a2c97d0c011d51692c7d2c891894b6e"
+    },
+    "ipa": {
+      "url": "http://192.168.123.79:8765/channels/codex-mobile/latest.ipa",
+      "version": "0.3.29",
+      "size": 4853372,
+      "sha256": "8b3e5a09af76001156f1019ef97443a68c035f6082421dc560b0d3b044f4a8d8",
+      "signed": true
+    }
+  },
+  "ota": {
+    "installPage": "https://192.168.123.79:8766/channels/codex-mobile/current/install.html",
+    "manifestUrl": "https://192.168.123.79:8766/channels/codex-mobile/releases/0.3.29/manifest.plist",
+    "httpsDownloadVerified": true,
+    "tlsVerified": true
+  },
+  "signing": {
+    "bundleId": "vip.loock.codexmobile",
+    "teamId": "SC456JW7RP",
+    "applicationIdentifier": "SC456JW7RP.app.jade6694.grapefruit3766",
+    "entitlementsSha256": "1e84a4c1ba74b9e374c364f26fefa112ceeea09de1a0ba0600403a763eb7952f",
+    "keychainContinuityVerified": true,
+    "completeEntitlementsContinuityVerified": true
+  },
+  "source": {
+    "appID": "bdf9cfa5-6c34-49ca-82fb-31a85ad9e6da",
+    "version": "0.3.29",
+    "developerName": "zh0ngtian",
+    "downloadURL": "https://github.com/zh0ngtian/codex-mobile/releases/download/v0.3.29/CodexMobile-v0.3.29-unsigned.ipa",
+    "size": 4844243,
+    "sha256": "c4f65286caca4a1f580685562ba22628ae7b4ca7cb67f798ebb5a7de5d219a88",
+    "notes": "- 修复 iOS 选择 TXT 等普通文件后点击“打开”无响应的问题。\n- 恢复回复自由选文时系统默认的选区和手柄颜色。\n- 调整输入框附件位置，使首个附件与输入文字左端对齐。\n- 支持手机关注与桌面置顶双向同步。\n",
+    "buildVersion": "3029"
+  },
+  "verifiedAt": 1792684563.106727,
+  "deviceInstall": "未进行真机覆盖安装与数据保留验收",
+  "featureAcceptance": "真机0.3.28文件授权故障与复制导入对照已完成；原生修复的文件及照片两项模拟器回归通过；新版真机覆盖安装待验收",
+  "gateway": "本次仅发布客户端，未部署网关",
+  "validation": {
+    "requiredChecks": "passed",
+    "attachmentBusinessRegression": 21,
+    "nativeUI": 2,
+    "typecheck": "passed"
+  }
+}

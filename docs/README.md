@@ -23,7 +23,7 @@
 
 ## 当前发布入口
 
-现役双端客户端为0.3.28（3028），修复 iOS 侧栏与对话页顶部按钮对齐；任务始于2026-10-21，于2026-10-22跨日完成。见[发布计划](superpowers/plans/2026-10-21-sidebar-header-alignment-release.md)与[公开凭证](superpowers/plans/evidence/2026-10-21-sidebar-header-alignment-release.json)。
+现役双端客户端为0.3.29（3029），包含普通文件复制导入、系统默认选文颜色、附件左对齐及手机关注与桌面置顶双向同步；2026-10-22成功批次与独立渠道回验已完成。见[发布计划](superpowers/plans/2026-10-22-file-picker-copy-release.md)与[公共凭证](superpowers/plans/evidence/2026-10-22-file-picker-copy-release.json)。本次未部署网关，桌面置顶独立通知变更及新版真机覆盖安装、数据保留仍待验收。
 
 版本以在线清单为准，不能从 package.json 的开发版本、文档示例或历史记录推断：
 
@@ -43,6 +43,9 @@
 `plans/` 与 `superpowers/plans/` 保留设计决策、实施过程和当次验证证据，不是另一套现役操作说明。未勾选的旧计划项不自动成为当前待办；应先检查后续提交、交付记录与运行态。两处目录维持原路径，避免破坏既有引用。
 
 近期可追溯记录：
+
+- [2026-10-22 普通文件复制导入双端发布](superpowers/plans/2026-10-22-file-picker-copy-release.md)：0.3.29成功批次、双端固定渠道、签名连续性与独立回验；[公共凭证](superpowers/plans/evidence/2026-10-22-file-picker-copy-release.json)。
+- [2026-10-21 侧栏与对话页顶部按钮对齐双端发布](superpowers/plans/2026-10-21-sidebar-header-alignment-release.md)：0.3.28历史批次与当次验收；[公开凭证](superpowers/plans/evidence/2026-10-21-sidebar-header-alignment-release.json)。
 
 - [恢复网页界面](superpowers/plans/2026-10-10-remove-native-restore-web.md)：当时原生对话与边栏回退的历史记录；当前可选原生界面以 README 和桥接说明为准。
 - [键盘同步](superpowers/plans/2026-10-10-keyboard-sync.md)与 [审批回复](superpowers/plans/2026-10-10-approval-replies.md)。
