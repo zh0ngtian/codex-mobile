@@ -813,6 +813,7 @@ const english: Record<string, string> = {
     "Codex Mobile Web does not support this server request yet: {method}",
   "设备尚未连接，请稍后重试": "The device is not connected. Try again shortly",
   "会话详情返回无效，请重试": "The conversation response is invalid. Try again",
+  "当前无法发送引导消息": "Unable to send a steering message right now",
   "当前任务正在启动，请稍后再引导": "The task is starting. Try steering again shortly",
   "当前任务正在启动，请稍后再排队": "The task is starting. Try queuing again shortly",
   "{count} 张图片": "{count} images",
