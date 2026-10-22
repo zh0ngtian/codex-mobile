@@ -14,7 +14,7 @@ struct ComposerAttachmentStrip: View {
                         ComposerAttachmentCard(item: item, preview: { preview(item) }, remove: { remove(item.id) })
                     }
                 }
-                .padding(.horizontal, 16).padding(.vertical, 6)
+                .padding(.horizontal, 4).padding(.vertical, 6)
             }
             .scrollIndicators(.hidden)
             .alert(preferences.text("附件读取失败", "Attachment could not be read"), isPresented: $failurePresented) {
