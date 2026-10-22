@@ -21,6 +21,11 @@ final class AgentConversationFixture {
     init(store: NativeUIStore, session: AppSession) {
         self.store = store
         self.session = session
+        if ProcessInfo.processInfo.arguments.contains("--agent-document-import-fixture"),
+           let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first {
+            try? FileManager.default.createDirectory(at: documents, withIntermediateDirectories: true)
+            try? Data(repeating: 65, count: 123 * 1_024).write(to: documents.appendingPathComponent("普通文件导入.txt"))
+        }
         let date = Calendar.current.date(from: DateComponents(year: 2026, month: 10, day: 17, hour: 10, minute: 44))!
         let entries = [
             NativeCommentaryEntry(id: "progress-1", text: "正在读取项目上下文。", timestamp: date.timeIntervalSince1970),

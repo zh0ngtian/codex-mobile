@@ -112,7 +112,10 @@ struct ComposerBar: View {
     private var attachmentPickerHost: some View {
         let selection = pickerSelection
         return Color.clear.frame(width: 0, height: 0)
-            .fileImporter(isPresented: $filesPresented, allowedContentTypes: [.item], allowsMultipleSelection: true) { filesSelected($0, selection: selection) }
+            // UIKit先关闭系统呈现再回传文件，不能在sheet关闭时把有效结果当成取消。
+            .sheet(isPresented: $filesPresented) {
+                ComposerDocumentPicker { filesSelected($0, selection: selection) }
+            }
             .photosPicker(isPresented: $photosPresented, selection: photoSelection(for: selection), matching: .any(of: [.images, .videos]), preferredItemEncoding: .current)
             .id(selection?.id)
     }

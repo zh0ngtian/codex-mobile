@@ -1,5 +1,6 @@
 import XCTest
 import UIKit
+import Vision
 
 /// 独立界面夹具及本地网关验收；连接凭证不进入源码或测试附件。
 @MainActor
@@ -953,6 +954,71 @@ final class AgentAppUITests: XCTestCase {
         app.buttons.matching(NSPredicate(format: "label == '取消' OR label == 'Cancel'")).firstMatch.tap()
         XCTAssertEqual(input.value as? String, "取消选择后保留的草稿")
         XCTAssertFalse(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'composer.attachment.'")).firstMatch.exists)
+    }
+
+    func testDocumentCopyImportsIntoComposerAndPreservesDraft() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-attachment-menu-fixture", "--agent-document-import-fixture", "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryL", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
+        XCUIDevice.shared.orientation = .portrait
+        app.launch()
+        let input = app.textFields["message-input"]
+        XCTAssertTrue(input.waitForExistence(timeout: 10))
+        input.tap(); input.typeText("文件导入后保留的草稿")
+        app.buttons["添加附件"].tap(); app.buttons["选择文件"].tap()
+        XCTAssertTrue(app.otherElements["composer.attachments.file-picker"].waitForExistence(timeout: 8))
+        captureConversation("文件复制导入-系统选择器", app: app)
+        // 远程文档服务不总进入宿主AX树；按实际屏幕文字等待系统页面加载后再点选。
+        guard let first = pickerText(["普通文件导入", "Codex Mobile"], in: app, below: 0.18) else { return }
+        if first.text == "Codex Mobile" {
+            first.coordinate.tap()
+            guard let file = pickerText(["普通文件导入"], in: app, below: 0.18) else { return }
+            file.coordinate.tap()
+        } else { first.coordinate.tap() }
+        captureConversation("文件复制导入-选中TXT", app: app)
+        guard let open = pickerText(["打开"], in: app) else { return }
+        open.coordinate.tap()
+        let attachment = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'composer.attachment.' AND label CONTAINS '普通文件导入.txt'")).firstMatch
+        XCTAssertTrue(attachment.waitForExistence(timeout: 15), "点击打开后应加入普通文件，不需要第二次确认")
+        XCTAssertEqual(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'composer.attachment.'")).count, 1)
+        XCTAssertEqual(input.value as? String, "文件导入后保留的草稿")
+        captureConversation("文件复制导入-保留草稿与附件", app: app)
+        app.buttons["添加附件"].tap(); app.buttons["选择文件"].tap()
+        XCTAssertTrue(app.otherElements["composer.attachments.file-picker"].waitForExistence(timeout: 8))
+        guard pickerText(["普通文件导入", "Codex Mobile"], in: app, below: 0.18) != nil else { return }
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.88, dy: 0.113)).tap()
+        XCTAssertTrue(app.otherElements["composer.attachments.file-picker"].waitForNonExistence(timeout: 8))
+        XCTAssertEqual(input.value as? String, "文件导入后保留的草稿")
+        XCTAssertTrue(attachment.exists)
+        app.buttons["添加附件"].tap(); app.buttons["选择文件"].tap()
+        guard pickerText(["普通文件导入", "Codex Mobile"], in: app, below: 0.18) != nil else { return }
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.075))
+            .press(forDuration: 0.1, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.7)))
+        XCTAssertTrue(app.otherElements["composer.attachments.file-picker"].waitForNonExistence(timeout: 8))
+        XCTAssertTrue(app.buttons["添加附件"].isEnabled)
+        XCTAssertEqual(input.value as? String, "文件导入后保留的草稿")
+        XCTAssertTrue(attachment.exists)
+    }
+
+    private func pickerText(_ texts: [String], in app: XCUIApplication, below minimumY: CGFloat = 0) -> (text: String, coordinate: XCUICoordinate)? {
+        var match: (String, CGVector)?
+        let visible = NSPredicate { _, _ in
+            guard let image = app.screenshot().image.cgImage else { return false }
+            let request = VNRecognizeTextRequest()
+            request.recognitionLevel = .accurate
+            request.recognitionLanguages = ["zh-Hans", "en-US"]
+            try? VNImageRequestHandler(cgImage: image).perform([request])
+            for observation in request.results ?? [] {
+                let y = 1 - observation.boundingBox.midY
+                guard y > minimumY, let value = observation.topCandidates(1).first?.string,
+                      let text = texts.first(where: { value.contains($0) }) else { continue }
+                match = (text, CGVector(dx: observation.boundingBox.midX, dy: y))
+                return true
+            }
+            return false
+        }
+        let ready = expectation(for: visible, evaluatedWith: app)
+        XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 12), .completed, "系统文件选择器应显示\(texts)")
+        return match.map { ($0.0, app.coordinate(withNormalizedOffset: $0.1)) }
     }
 
     func testPhotoSelectionAutomaticallyImportsIntoComposer() {
