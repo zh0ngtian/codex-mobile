@@ -35,7 +35,7 @@ struct NativeSelectableText: UIViewRepresentable {
         view.isScrollEnabled = false
         view.textContainerInset = .zero
         view.adjustsFontForContentSizeCategory = true
-        view.tintColor = .label
+        view.tintColor = .systemBlue
         view.dataDetectorTypes = []
         view.delegate = context.coordinator
         let tap = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.tapped(_:)))
