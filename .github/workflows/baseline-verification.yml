@@ -1,0 +1,31 @@
+name: Baseline Test Verification
+on:
+  push:
+    branches: ['verify/baseline-tests-20261022']
+permissions:
+  contents: read
+env:
+  NODE_OPTIONS: --no-experimental-webstorage
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.14.0'
+          cache: npm
+      - run: npm ci
+      - name: 定向回归
+        run: npm test -- tests/native-ui/agentapp-message-presentation.test.ts tests/ui/i18n.test.tsx --maxWorkers=2 --testTimeout=60000
+      - name: 完整 Vitest
+        run: npm test -- --maxWorkers=2 --testTimeout=60000
+      - name: 类型检查
+        if: success() || failure()
+        run: npm run typecheck
+      - name: Web 验证构建
+        if: success() || failure()
+        run: npm run build
