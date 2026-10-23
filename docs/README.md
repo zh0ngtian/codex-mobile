@@ -23,7 +23,7 @@
 
 ## 当前发布入口
 
-现役双端客户端为0.3.29（3029），包含普通文件复制导入、系统默认选文颜色、附件左对齐及手机关注与桌面置顶双向同步；2026-10-22成功批次与独立渠道回验已完成。见[发布计划](superpowers/plans/2026-10-22-file-picker-copy-release.md)与[公共凭证](superpowers/plans/evidence/2026-10-22-file-picker-copy-release.json)。本次未部署网关，桌面置顶独立通知变更及新版真机覆盖安装、数据保留仍待验收。
+现役双端客户端为0.3.30（3030），包含网关默认模型独立总结全部用户消息、新会话自动命名、重命名候选编辑保存、独立总结按钮与旧网关提示、“新会话”占位、置顶文案及图钉、新会话欢迎文字移除、普通错误系统弹窗和英文引导错误提示修复。2026-10-23双端、HTTPS OTA、GitHub及unsigned软件源独立回验通过，配套网关已部署，桌面置顶的Bark完成通知由网关独立跟踪，配置后App退出仍可接收。见[发布计划](superpowers/plans/2026-10-23-thread-title-release.md)与[公共凭证](superpowers/plans/evidence/2026-10-23-thread-title-release.json)。线上标题接口与部署进程、摘要核对通过；真实Bark送达、新版真机覆盖安装、数据保留及用户现场验收仍待完成。
 
 版本以在线清单为准，不能从 package.json 的开发版本、文档示例或历史记录推断：
 
@@ -44,6 +44,7 @@
 
 近期可追溯记录：
 
+- [2026-10-23 会话标题总结双端发布与网关部署](superpowers/plans/2026-10-23-thread-title-release.md)：0.3.30双目标成功批次、固定渠道及签名连续性、unsigned软件源、线上标题接口与会话归档回验；[公共凭证](superpowers/plans/evidence/2026-10-23-thread-title-release.json)。
 - [2026-10-22 普通文件复制导入双端发布](superpowers/plans/2026-10-22-file-picker-copy-release.md)：0.3.29成功批次、双端固定渠道、签名连续性与独立回验；[公共凭证](superpowers/plans/evidence/2026-10-22-file-picker-copy-release.json)。
 - [2026-10-21 侧栏与对话页顶部按钮对齐双端发布](superpowers/plans/2026-10-21-sidebar-header-alignment-release.md)：0.3.28历史批次与当次验收；[公开凭证](superpowers/plans/evidence/2026-10-21-sidebar-header-alignment-release.json)。
 

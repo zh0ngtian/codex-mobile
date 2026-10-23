@@ -1,0 +1,185 @@
+{
+  "date": "2026-10-23",
+  "version": "0.3.30",
+  "buildNumber": "3030",
+  "sourceSha": "638f7f4485ce9a0d1d79d004595ac1f64041dc50",
+  "client": {
+    "batchId": "be8975a2-9316-4e25-9ffa-dfdd33298821",
+    "frozenSha": "7758986f78df8c2e1bedd753505e92083d106244",
+    "tasks": [
+      {
+        "id": "thread-title-mobile-20261023",
+        "sha": "638f7f4485ce9a0d1d79d004595ac1f64041dc50"
+      }
+    ],
+    "status": "complete",
+    "receiptSha256": "de29534c5924098e8c464f3b10461264a94b02f467c674025bfe8dd9d3d1b2af",
+    "allRequiredPhasesPresent": true,
+    "sourceIncludedInFrozenTasks": true,
+    "sourceIncludedInVerifiedTasks": true,
+    "developmentCI": {
+      "runId": 39896134988,
+      "status": "passed"
+    },
+    "releaseCI": {
+      "runId": 39896135018,
+      "status": "passed"
+    },
+    "releaseUrl": "https://github.com/zh0ngtian/codex-mobile/releases/tag/v0.3.30"
+  },
+  "gateway": {
+    "batchId": "79d9da96-dded-484d-9360-a499aa921caa",
+    "frozenSha": "264eab100def5b46d7d86303ce45894a877ae003",
+    "tasks": [
+      {
+        "id": "thread-title-gateway-20261023",
+        "sha": "638f7f4485ce9a0d1d79d004595ac1f64041dc50"
+      }
+    ],
+    "status": "complete",
+    "receiptSha256": "6a5c392c30a381b6eb14fdf482d72c2409a3e3dcfc859168bfb5331c0b8066d2",
+    "allRequiredPhasesPresent": true,
+    "sourceIncludedInFrozenTasks": true,
+    "sourceIncludedInVerifiedTasks": true,
+    "developmentCI": {
+      "runId": 39897439897,
+      "status": "passed"
+    },
+    "deployment": {
+      "sha": "264eab100def5b46d7d86303ce45894a877ae003",
+      "pid": 73987,
+      "serverDigest": "0d0161bf98e8e2ec9689bbf8d6a1a386bdb2a15d0831a284067722afe13cdbcc",
+      "binDigest": "a44e7f0434b7926b382b679abb712f36eb3b93ce6708cc77332437781f8015a3",
+      "manifestDigest": "0f504be37cd822e82f975449a8f7478ca99f609930f64baa75f956cf16c45917",
+      "frontendDigest": "82c243e7f812096f2be3270347cfab2c74ab4df0df44ec06f2db25f1a2ae821b",
+      "runtimeAndMarkerMatch": "passed",
+      "frontendPreserved": true
+    },
+    "liveTitleEndpoint": {
+      "status": "passed",
+      "authenticated": true,
+      "candidateReturned": true,
+      "originalUserMessages": 2,
+      "userMessagesAfter": 2,
+      "userMessageContentsUnchanged": true,
+      "originalNameUnchanged": true,
+      "testSessionArchived": true
+    }
+  },
+  "packages": {
+    "apk": {
+      "url": "http://192.168.123.79:8765/channels/codex-mobile/latest.apk",
+      "version": "0.3.30",
+      "size": 4751187,
+      "sha256": "e4015f06b542f201ff4119d8c17521669d2299c16fbe64474a8662c629e7f98b"
+    },
+    "ipa": {
+      "url": "http://192.168.123.79:8765/channels/codex-mobile/latest.ipa",
+      "version": "0.3.30",
+      "size": 4894462,
+      "sha256": "d5da61de757eb2a444ce73ab4ac3cc0c1f108d23642dd1b1bc50213b06df4ec8",
+      "signed": true,
+      "signingType": "Ad Hoc"
+    }
+  },
+  "ota": {
+    "installPage": "https://192.168.123.79:8766/channels/codex-mobile/current/install.html",
+    "manifestUrl": "https://192.168.123.79:8766/channels/codex-mobile/releases/0.3.30/manifest.plist",
+    "manifestJsonUrl": "https://192.168.123.79:8766/channels/codex-mobile/current/latest-ios.json",
+    "versionedIpaUrl": "https://192.168.123.79:8766/channels/codex-mobile/releases/0.3.30/latest.ipa",
+    "status": "passed",
+    "tlsVerified": true
+  },
+  "signing": {
+    "bundleId": "vip.loock.codexmobile",
+    "teamId": "SC456JW7RP",
+    "applicationIdentifier": "SC456JW7RP.app.jade6694.grapefruit3766",
+    "entitlementsSha256": "1e84a4c1ba74b9e374c364f26fefa112ceeea09de1a0ba0600403a763eb7952f",
+    "independentSignatureVerification": "passed",
+    "completeEntitlementsContinuity": "passed",
+    "keychainContinuity": "passed"
+  },
+  "source": {
+    "appID": "bdf9cfa5-6c34-49ca-82fb-31a85ad9e6da",
+    "version": "0.3.30",
+    "buildVersion": "3030",
+    "developerName": "zh0ngtian",
+    "downloadURL": "https://github.com/zh0ngtian/codex-mobile/releases/download/v0.3.30/CodexMobile-v0.3.30-unsigned.ipa",
+    "size": 4891144,
+    "sha256": "74c6464cf0f3607ad93300fb3e4506e82a0c1987b214516ff17dc68df3fd4d08",
+    "notes": "- 新会话首条消息发送后，由网关默认模型独立总结标题，不向原会话追加总结指令或消息。\n- 重命名弹窗新增“模型总结”：按钮独立位于名称输入框下方、取消／保存上方，点击后转圈等待，候选名称回填后可继续编辑并确认保存，取消保留原名称。\n- 连接旧网关时，自动总结静默跳过；手动点击“模型总结”会提示升级网关，并保留已输入的名称。\n- 未命名会话统一显示为“新会话”。\n- 会话“关注”文案统一改为“置顶”；iOS 侧栏增加图钉，并让置顶会话标题与项目名称左端对齐。\n- iOS 新会话页面移除欢迎文字、操作提示及相应留白。\n- iOS 普通错误改为系统确认弹窗，持续显示到点击“知道了”，连续错误依次呈现。\n- 修复英文界面无法发送引导消息时仍显示中文提示的问题。\n- 桌面置顶会话的完成通知由网关独立跟踪，配置 Bark 推送后，应用退出仍可接收。\n",
+    "signed": false,
+    "existingDeveloperPreserved": true,
+    "currentGitHubUsernameMatched": true,
+    "chineseNotesMatched": "passed"
+  },
+  "validation": {
+    "releasePreparation": [
+      {
+        "name": "adapter-regression",
+        "status": "passed",
+        "exitCode": 0,
+        "tests": 217
+      },
+      {
+        "name": "coordinator-recovery",
+        "status": "passed",
+        "exitCode": 0,
+        "tests": 59
+      },
+      {
+        "name": "build-contract",
+        "status": "passed",
+        "exitCode": 0,
+        "files": 20,
+        "tests": 143
+      },
+      {
+        "name": "typecheck-and-server-build",
+        "status": "passed",
+        "exitCode": 0
+      }
+    ],
+    "releasePreparationSpecReview": "passed",
+    "releasePreparationQualityReview": "passed",
+    "releaseAndDeploymentSpecReview": "passed",
+    "releaseAndDeploymentQualityReview": "passed",
+    "businessRegression": {
+      "status": "passed",
+      "files": 11,
+      "tests": 136
+    },
+    "browserFlows": {
+      "status": "passed",
+      "tests": 2
+    },
+    "nativeUI": {
+      "status": "passed",
+      "tests": 4,
+      "device": "iPhone 17 Pro",
+      "os": "iOS 27.0",
+      "environment": "Simulator",
+      "fontSize": "正常字号",
+      "orientation": "竖屏"
+    },
+    "fixedLanJsonHeadFullGet": "passed",
+    "httpsOtaPageJsonManifestFullGet": "passed",
+    "githubApkAndUnsignedIpa": "passed",
+    "unsignedSourceVersionBuildUrlSizeSha256": "passed",
+    "independentPublishedChannels": {
+      "status": "passed",
+      "exitCode": 0
+    },
+    "independentLiveGateway": {
+      "status": "passed",
+      "exitCode": 0
+    }
+  },
+  "pendingAcceptance": {
+    "deviceOverwriteInstall": "pending",
+    "deviceDataPreservation": "pending",
+    "nativeFilePickerOnDevice": "pending",
+    "realBarkDelivery": "pending",
+    "userOnSiteAcceptance": "pending"
+  }
+}
