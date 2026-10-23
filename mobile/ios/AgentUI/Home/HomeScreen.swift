@@ -7,7 +7,7 @@ struct SidebarConversationList: View {
     var body: some View {
         LazyVStack(alignment: .leading, spacing: 0) {
             if !session.pendingOtherDevices.isEmpty { pendingDevices }
-            ForEach(followed) { conversation in ChatListRow(conversation: conversation) }
+            ForEach(pinned) { conversation in ChatListRow(conversation: conversation) }
             ForEach(visibleProjects, id: \.self) { name in ProjectRow(name: name) }
             if !ungroupedSearchResults.isEmpty {
                 ForEach(ungroupedSearchResults) { conversation in ChatListRow(conversation: conversation) }
@@ -47,10 +47,10 @@ struct SidebarConversationList: View {
 
     private var navigationState: SidebarNavigationState {
         SidebarNavigationState(loading: session.navigationLoading, error: session.navigationError,
-                               empty: followed.isEmpty && visibleProjects.isEmpty && ungroupedSearchResults.isEmpty)
+                               empty: pinned.isEmpty && visibleProjects.isEmpty && ungroupedSearchResults.isEmpty)
     }
 
-    private var followed: [Conversation] { session.visibleConversations.filter(\.isPinned) }
+    private var pinned: [Conversation] { session.visibleConversations.filter(\.isPinned) }
     private var ungroupedSearchResults: [Conversation] {
         guard !session.searchText.isEmpty else { return [] }
         return session.visibleConversations.filter { !$0.isPinned && $0.project == nil }

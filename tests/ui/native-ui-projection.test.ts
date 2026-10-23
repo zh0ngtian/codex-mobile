@@ -8,7 +8,7 @@ function navigation(overrides: Partial<Parameters<typeof projectNavigation>[0]> 
   collapsedProjectKeys: new Set(), projectThreadStates: {}, projectHasMore: {}, loadingProjectKeys: new Set(), ...overrides });
 }
 
-it('默认导航同时保留关注、权威设备项目顺序和最近，关注也留在原项目，不二次截断分页', () => {
+it('默认导航同时保留置顶、权威设备项目顺序和最近，置顶也留在原项目，不二次截断分页', () => {
  const backends = [{ id: 'b', name: '乙' }, { id: 'a', name: '甲' }];
  const threads = aggregateThreads(backends, { b: [{ id: 'pin', cwd: '/b', isPinned: true }, ...Array.from({ length: 7 }, (_, i) => ({ id: `t${i}`, cwd: '/b' }))] });
  const groups = navigation({ threads, backends, backendSnapshots: {
@@ -24,7 +24,7 @@ it('默认导航同时保留关注、权威设备项目顺序和最近，关注�
  expect(groups.at(-1)).toMatchObject({ category: 'recent', items: expect.not.arrayContaining([expect.objectContaining({ id: 'b:pin' })]) });
 });
 
-it('有搜索词时只出现搜索结果组，搜索完成仍保持搜索类别并且没有重复关注或空项目', () => {
+it('有搜索词时只出现搜索结果组，搜索完成仍保持搜索类别并且没有重复置顶或空项目', () => {
  const threads = aggregateThreads([{ id: 'a', name: '甲' }], { a: [{ id: 'p', cwd: '/p', isPinned: true }] });
  for (const searching of [true, false]) {
   const groups = navigation({ threads, query: '匹配', searching, backends: [{ id: 'a', name: '甲' }], filter: 'projects' });
@@ -38,7 +38,7 @@ it('有搜索词时只出现搜索结果组，搜索完成仍保持搜索类别�
  expect(failed[0]).toMatchObject({ category: 'search', subtitle: '设备连接中断', actions: [{ command: { name: 'navigation.refresh' } }] });
 });
 
-it('单设备与现有关注/项目筛选仍保留分类，折叠不移除项目新建目标', () => {
+it('单设备与现有置顶/项目筛选仍保留分类，折叠不移除项目新建目标', () => {
  const threads = aggregateThreads([{ id: 'a', name: '甲' }], { a: [{ id: 'p', cwd: '/p', isPinned: true }] });
  const input = { threads, listBackendId: 'a', projectDirectories: ['/p'], collapsedProjectKeys: new Set(['a:/p']) };
  expect(navigation({ ...input, filter: 'favorites' }).map(group => group.category)).toEqual(['pinned']);
@@ -99,14 +99,14 @@ describe('真实业务原生投影', () => {
     expect(messages.flatMap(m => m.blocks ?? []).some(b => b.value?.includes('/tmp/a.png'))).toBe(true);
     expect(messages.map(m => m.text)).toEqual(expect.arrayContaining(['第一段', '第二段']));
   });
-  it('全部设备/关注与项目导航使用真实列表与折叠分页状态，不泄漏设备配置', () => {
+  it('全部设备/置顶与项目导航使用真实列表与折叠分页状态，不泄漏设备配置', () => {
     const threads = aggregateThreads([{ id: 'b', name: 'Mac' }], { b: [
-      { id: 'p', name: '关注', isPinned: true }, { id: 't', name: '运行', cwd: '/a', status: { type: 'active' } },
+      { id: 'p', name: '置顶', isPinned: true }, { id: 't', name: '运行', cwd: '/a', status: { type: 'active' } },
     ] });
     const groups = projectNavigation({ threads, listBackendId: 'b', selectedBackendId: 'b', activeThreadId: 't',
       projectDirectories: ['/a', '/empty'], hasProjectlessThreads: true, collapsedProjectKeys: new Set(['b:/a']),
       projectThreadStates: { '/empty': 'error' }, projectHasMore: { '/a': true }, loadingProjectKeys: new Set() });
-    expect(groups.find(g => g.id === 'favorites')?.items[0].title).toBe('关注');
+    expect(groups.find(g => g.id === 'favorites')?.items[0].title).toBe('置顶');
     expect(groups.find(g => g.id === 'b:/a')).toMatchObject({ collapsed: true, items: [], command: { name: 'project.toggle' } });
     expect(groups.find(g => g.id === 'b:/empty')?.actions?.[0].command?.name).toBe('project.retry');
     expect(JSON.stringify(groups)).not.toContain('token');
@@ -310,7 +310,7 @@ it('已知空项目和无项目首次未知或idle状态保持加载，成功空
 });
 
 
-it('关注筛选保留普通列表真实失败与原重试命令，不额外显示项目或最近分组', () => {
+it('置顶筛选保留普通列表真实失败与原重试命令，不额外显示项目或最近分组', () => {
  const groups = navigation({ filter: 'favorites', error: '真实读取失败', listBackendId: 'a', projectDirectories: ['/hidden'] });
  expect(groups).toMatchObject([
   { id: 'favorites', category: 'pinned', items: [] },

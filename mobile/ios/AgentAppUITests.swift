@@ -782,7 +782,7 @@ final class AgentAppUITests: XCTestCase {
         let app = launchSidebarPolishFixture()
         app.buttons["会话列表"].tap()
         XCTAssertTrue(app.buttons["sidebar.search"].waitForExistence(timeout: 5))
-        XCTAssertFalse(app.buttons["关注"].exists)
+        XCTAssertFalse(app.buttons["置顶"].exists)
         XCTAssertFalse(app.staticTexts["项目"].exists)
         let chat = app.buttons["sidebar.askCodex"]
         let more = app.buttons["sidebar.more"]
@@ -838,7 +838,7 @@ final class AgentAppUITests: XCTestCase {
         app.launch()
         XCTAssertTrue(app.buttons["会话列表"].waitForExistence(timeout: 8))
         app.buttons["会话列表"].tap()
-        let thread = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND value == %@", "sidebar.conversation.", "已关注")).firstMatch
+        let thread = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND value == %@", "sidebar.conversation.", "已置顶")).firstMatch
         XCTAssertTrue(thread.waitForExistence(timeout: 5))
         thread.tap()
         let probe = app.descendants(matching: .any).matching(identifier: "entry.animation").firstMatch
@@ -893,7 +893,7 @@ final class AgentAppUITests: XCTestCase {
         XCTAssertTrue(refresh.waitForExistence(timeout: 5))
         refresh.tap()
         XCTAssertTrue(app.buttons["sidebar.more"].isHittable, "真实刷新完成后保留侧栏")
-        let pinned = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND value == %@", "sidebar.conversation.", "已关注")).firstMatch
+        let pinned = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND value == %@", "sidebar.conversation.", "已置顶")).firstMatch
         XCTAssertTrue(pinned.waitForExistence(timeout: 15))
         let target = pinned.identifier
         for index in 1...4 {
@@ -1659,7 +1659,7 @@ final class AgentAppUITests: XCTestCase {
         let coldSamples = value("CODEX_PROFILE_COLD_SAMPLES", 3)
         let profileArgs = ["--conversation-load-profile"]
         var app = try launchConnectedApp(extraLaunchArguments: profileArgs)
-        let pinned = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND value == %@", "sidebar.conversation.", "已关注"))
+        let pinned = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND value == %@", "sidebar.conversation.", "已置顶"))
         XCTAssertTrue(pinned.firstMatch.waitForExistence(timeout: 15))
         let titles = pinned.allElementsBoundByIndex.map { row in
             row.staticTexts.firstMatch.exists ? row.staticTexts.firstMatch.label : row.label.components(separatedBy: "，")[0]
@@ -1668,7 +1668,7 @@ final class AgentAppUITests: XCTestCase {
         print("PROFILE_TARGETS", titles.enumerated().map { "\($0.offset):\($0.element)" })
         func open(_ title: String, index: Int, round: Int, mode: String) {
             if !app.buttons["sidebar.askCodex"].exists { app.buttons["会话列表"].tap() }
-            let row = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND value == %@ AND label BEGINSWITH %@", "sidebar.conversation.", "已关注", title)).firstMatch
+            let row = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND value == %@ AND label BEGINSWITH %@", "sidebar.conversation.", "已置顶", title)).firstMatch
             XCTAssertTrue(row.waitForExistence(timeout: 12), title)
             let status = app.staticTexts["load-profile.status"]
             let previous = status.label
@@ -1794,8 +1794,8 @@ final class AgentAppUITests: XCTestCase {
 
     func testPinnedConversationTopToBottomRemainsVisible() throws {
         let app = try launchConnectedApp()
-        let pinned = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND value == %@", "sidebar.conversation.", "已关注"))
-        XCTAssertTrue(pinned.firstMatch.waitForExistence(timeout: 15), "需要真实关注的会话进行回归")
+        let pinned = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND value == %@", "sidebar.conversation.", "已置顶"))
+        XCTAssertTrue(pinned.firstMatch.waitForExistence(timeout: 15), "需要真实置顶的会话进行回归")
         let targets = pinned.allElementsBoundByIndex.prefix(3).map { ($0.identifier, $0.label) }
         print("PINNED_SCROLL_TARGETS", targets.map { $0.1 })
         for (index, target) in targets.enumerated() {
@@ -1803,7 +1803,7 @@ final class AgentAppUITests: XCTestCase {
             app.buttons.matching(identifier: target.0).firstMatch.tap()
             let timeline = app.descendants(matching: .any).matching(identifier: "conversation.timeline").firstMatch
             XCTAssertTrue(timeline.waitForExistence(timeout: 20))
-            captureConversation("真实关注会话\(index + 1)-首次进入", app: app)
+            captureConversation("真实置顶会话\(index + 1)-首次进入", app: app)
             let initiallyVisible = NSPredicate { _, _ in
                 let viewport = CGRect(x: 0, y: 120, width: app.frame.width, height: app.frame.height - 240)
                 return app.textViews.matching(identifier: "assistant.selectable").allElementsBoundByIndex.contains {
@@ -1830,7 +1830,7 @@ final class AgentAppUITests: XCTestCase {
                 if stalled >= 3 { break }
             }
             XCTAssertLessThanOrEqual(Int(offset.label) ?? 99999, 2, "必须先到真实会话最顶部")
-            captureConversation("真实关注会话\(index + 1)-顶部", app: app)
+            captureConversation("真实置顶会话\(index + 1)-顶部", app: app)
             let historyCount = app.staticTexts["scroll.diagnostic-history"]
             let priorRequests = Int(historyCount.label) ?? 0
             from.press(forDuration: 0.05, thenDragTo: to, withVelocity: .slow, thenHoldForDuration: 0.1)
@@ -1844,7 +1844,7 @@ final class AgentAppUITests: XCTestCase {
             let visibleText = NSPredicate { _, _ in Self.hasRenderedConversationText(app.screenshot().image) }
             expectation(for: visibleText, evaluatedWith: app)
             waitForExpectations(timeout: 8)
-            captureConversation("真实关注会话\(index + 1)-回到底部", app: app)
+            captureConversation("真实置顶会话\(index + 1)-回到底部", app: app)
         }
     }
 
@@ -2108,30 +2108,30 @@ final class AgentAppUITests: XCTestCase {
         let app = try launchConnectedApp()
         let row = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "桌面同步验收")).firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: 12))
-        XCTAssertEqual(row.value as? String, "已关注")
+        XCTAssertEqual(row.value as? String, "已置顶")
         row.tap()
         XCTAssertTrue(app.buttons["conversation.actions"].waitForExistence(timeout: 10))
         app.buttons["conversation.actions"].tap()
-        XCTAssertTrue(app.buttons["取消关注"].waitForExistence(timeout: 5))
-        app.buttons["取消关注"].tap()
+        XCTAssertTrue(app.buttons["取消置顶"].waitForExistence(timeout: 5))
+        app.buttons["取消置顶"].tap()
         try await Task.sleep(for: .milliseconds(700))
         let afterUnpin = try await state()
         XCTAssertEqual(afterUnpin["pinned"] as? Bool, false)
         _ = try await state(true)
         try await Task.sleep(for: .seconds(4))
         app.buttons["conversation.actions"].tap()
-        XCTAssertTrue(app.buttons["取消关注"].waitForExistence(timeout: 5), "桌面重新置顶应由前台轮询同步")
+        XCTAssertTrue(app.buttons["取消置顶"].waitForExistence(timeout: 5), "桌面重新置顶应由前台轮询同步")
         captureConversation("桌面置顶-自动同步到手机", app: app)
-        app.buttons["取消关注"].tap()
+        app.buttons["取消置顶"].tap()
         try await Task.sleep(for: .milliseconds(700))
         app.buttons["conversation.actions"].tap()
-        XCTAssertTrue(app.buttons["关注"].waitForExistence(timeout: 5))
-        app.buttons["关注"].tap()
+        XCTAssertTrue(app.buttons["置顶"].waitForExistence(timeout: 5))
+        app.buttons["置顶"].tap()
         try await Task.sleep(for: .milliseconds(700))
         let afterPin = try await state()
         XCTAssertEqual(afterPin["pinned"] as? Bool, true)
         XCTAssertGreaterThanOrEqual(afterPin["writes"] as? Int ?? 0, 3)
-        captureConversation("手机关注-成功回写桌面", app: app)
+        captureConversation("手机置顶-成功回写桌面", app: app)
     }
 
     func testConfigureProvidedGateway() throws {
@@ -2166,12 +2166,12 @@ final class AgentAppUITests: XCTestCase {
         let response = app.textViews.matching(NSPredicate(format: "value BEGINSWITH %@", marker)).firstMatch
         XCTAssertTrue(app.buttons["conversation.actions"].waitForExistence(timeout: 10))
         app.buttons["conversation.actions"].tap()
-        let pin = app.buttons["关注"]
+        let pin = app.buttons["置顶"]
         XCTAssertTrue(pin.waitForExistence(timeout: 5))
         if pin.exists { pin.tap() }
         app.buttons["conversation.actions"].tap()
-        let unpin = app.buttons["取消关注"]
-        XCTAssertTrue(unpin.waitForExistence(timeout: 8), "运行中关注应成功回写")
+        let unpin = app.buttons["取消置顶"]
+        XCTAssertTrue(unpin.waitForExistence(timeout: 8), "运行中置顶应成功回写")
         XCTAssertFalse(app.staticTexts["会话操作未完成"].exists)
         if unpin.exists { unpin.tap() }
         XCTAssertFalse(app.staticTexts["会话操作未完成"].exists)

@@ -203,7 +203,7 @@ final class AgentConversationFixture {
         }
         if ProcessInfo.processInfo.arguments.contains("--agent-sidebar-polish-fixture") {
             value.groups.insert(NativeGroup(id: "fixture-pinned", title: "", items: [NativeNavigationItem(
-                id: "pinned-fixture", title: "关注的会话", command: NativeCommand(name: "thread.open", params: ["backendId": .string("conversation-ui-device"), "threadId": .string("conversation-ui-thread")]), isPinned: true)], category: "pinned"), at: 0)
+                id: "pinned-fixture", title: "置顶的会话", command: NativeCommand(name: "thread.open", params: ["backendId": .string("conversation-ui-device"), "threadId": .string("conversation-ui-thread")]), isPinned: true)], category: "pinned"), at: 0)
         }
         if ProcessInfo.processInfo.arguments.contains("--agent-sidebar-pagination-fixture"),
            let index = value.groups.firstIndex(where: { $0.id == "project-z" }) {

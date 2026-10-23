@@ -11,6 +11,12 @@ struct ChatListRow: View {
             HStack(alignment: .top, spacing: 8) {
                 VStack(alignment: .leading, spacing: 5) {
                     HStack(alignment: .top, spacing: 4) {
+                        if conversation.isPinned {
+                            Image(systemName: "pin.fill")
+                                .font(AgentTheme.body)
+                                .foregroundStyle(.secondary)
+                                .accessibilityHidden(true)
+                        }
                         Text(conversation.title)
                             .font(AgentTheme.body)
                             .multilineTextAlignment(.leading)
@@ -64,7 +70,7 @@ struct ChatListRow: View {
         .buttonStyle(.plain)
         .contextMenu { ConversationMenuActions(conversationID: conversation.id).tint(AgentTheme.ink) }
         .accessibilityLabel(accessibilityTitle)
-        .accessibilityValue(conversation.isPinned ? preferences.text("已关注", "Following") : "")
+        .accessibilityValue(conversation.isPinned ? preferences.text("已置顶", "Pinned") : "")
         .accessibilityIdentifier("sidebar.conversation.\(conversation.id)")
     }
 

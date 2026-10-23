@@ -158,7 +158,7 @@ const english: Record<string, string> = {
   "正在重命名": "Renaming",
   "正在归档": "Archiving",
   "正在复制会话": "Duplicating conversation",
-  "正在更新关注状态": "Updating followed status",
+  "正在更新置顶状态": "Updating pinned status",
   "正在刷新": "Refreshing",
   "等待确认": "Awaiting confirmation",
   "恢复失败": "Unable to resume",

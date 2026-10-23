@@ -12,7 +12,7 @@ struct ConversationMenuActions: View {
             Button {
                 session.togglePin(conversationID)
             } label: {
-                Label(conversation.isPinned ? preferences.text("取消关注", "Unfollow") : preferences.text("关注", "Follow"), systemImage: conversation.isPinned ? "pin.slash" : "pin")
+                Label(conversation.isPinned ? preferences.text("取消置顶", "Unpin") : preferences.text("置顶", "Pin"), systemImage: conversation.isPinned ? "pin.slash" : "pin")
             }
             .disabled(menuBusy)
             Button {

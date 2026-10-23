@@ -45,7 +45,7 @@ export function workspaceBusinessPanels(c: NativeWorkspaceController, panel: Sta
   ];
   if (!c.active?.id) items.push(choice('new-backend', t('目标设备'), c.backend.id, (s.backends ?? []).filter((b: any) => b.enabled).map((b: any) => ({ id: b.id, label: b.name })), 'newchat.backend'),
    choice('new-project', t('项目'), c.active?.cwd, [{ id: '', label: t('无项目') }, ...(s.projectOptions ?? []).map((p: any) => ({ id: typeof p === 'string' ? p : p.cwd, label: typeof p === 'string' ? p : p.name || p.cwd }))], 'newchat.project'));
-  else items.push(...[['pin', t(c.active?.isPinned ? '取消关注' : '关注')], ['duplicate', t('复制会话')], ['rename', t('重命名')], ['archive', t('归档')]].map(([action, label]) => nativeAction(`thread:${action}`, label, 'workspace.thread', { action })));
+  else items.push(...[['pin', t(c.active?.isPinned ? '取消置顶' : '置顶')], ['duplicate', t('复制会话')], ['rename', t('重命名')], ['archive', t('归档')]].map(([action, label]) => nativeAction(`thread:${action}`, label, 'workspace.thread', { action })));
   if (c.active?.id) items.push(text('thread-id', t('对话线程：'), c.active.id), text('thread-cwd', t('目录：'), c.active.cwd || t('无项目')));
   const context = contextUsageView(s.tokenUsage); if (context) items.push(text('context-remaining', t('上下文：'), t('剩余 {remaining}%（已用 {used} / {total}）', { remaining: Math.round(context.remainingPercent), used: context.used, total: context.total })));
   const usage = s.tokenUsage; if (usage) {
@@ -57,7 +57,7 @@ export function workspaceBusinessPanels(c: NativeWorkspaceController, panel: Sta
   const sevenDay = sevenDayRateLimitView(s.rateLimits); if (sevenDay) items.push(text('seven-day-remaining', t('7 天额度'), `${Math.round(sevenDay.remainingPercent)}% ${t('剩余')}`));
   const limits = s.rateLimits?.rateLimits ?? s.rateLimits;
   for (const part of ['primary', 'secondary']) if (limits?.[part]) items.push(text(`limits:${part}`, part === 'primary' ? t('主要额度') : t('长期额度'), `${limits[part].usedPercent ?? 0}% · ${limits[part].windowDurationMins ?? ''} min · ${t('重置')} ${limits[part].resetsAt ? new Date(limits[part].resetsAt * 1000).toLocaleString() : ''}`));
-  if (s.pendingAction || c.pending) items.push(text('pending', t('待处理操作'), s.pendingAction ? t(({ rename: '正在重命名', archive: '正在归档', duplicate: '正在复制会话', pin: '正在更新关注状态', refresh: '正在刷新' } as Record<string, string>)[s.pendingAction] || '等待确认') : t('等待确认')));
+  if (s.pendingAction || c.pending) items.push(text('pending', t('待处理操作'), s.pendingAction ? t(({ rename: '正在重命名', archive: '正在归档', duplicate: '正在复制会话', pin: '正在更新置顶状态', refresh: '正在刷新' } as Record<string, string>)[s.pendingAction] || '等待确认') : t('等待确认')));
   if (s.activeThreadResumeError) items.push(text('resume-error', t('恢复失败'), s.activeThreadResumeError));
   result = { id, title: t('会话设置'), items };
  } else if (id === 'thread-rename') result = { id, title: t('重命名'), items: [ { id: 'thread-name', kind: 'textField', title: t('名称'), value: panel.query, command: nativeCommand('workspace.rename.change') }, nativeAction('rename-submit', t('保存'), 'workspace.rename.submit') ] };

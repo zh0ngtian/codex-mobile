@@ -193,14 +193,14 @@ export function projectNavigation(input: NavigationInput): NativeGroup[] {
       selected: input.selectedBackendId === item.backendId && input.activeThreadId === item.threadId,
       command: nativeCommand('thread.open', params),
       actions: [
-        ['pin', item.pinned ? t('取消关注') : t('关注')], ['refresh', t('刷新')], ['duplicate', t('复制会话')], ['rename', t('重命名')], ['archive', t('归档')],
+        ['pin', item.pinned ? t('取消置顶') : t('置顶')], ['refresh', t('刷新')], ['duplicate', t('复制会话')], ['rename', t('重命名')], ['archive', t('归档')],
       ].map(([action, title]) => nativeAction(`${item.backendId}:${item.threadId}:${action}`, title, 'thread.manage', { ...params, action })),
     };
   };
   if (input.query?.trim()) return [{ id: 'search', category: 'search', title: input.searching ? t('搜索中…') : t('搜索结果'), loading: input.searching ? 'loading' : undefined, items: input.threads.map(row),
     ...(input.error ? { subtitle: input.error, actions: [nativeAction('search-retry', t('重试'), 'navigation.refresh')] } : {}) }];
   const split = splitAllThreads(input.threads);
-  const groups: NativeGroup[] = [{ id: 'favorites', category: 'pinned', title: t('关注'), items: split.pinned.map(row) }];
+  const groups: NativeGroup[] = [{ id: 'favorites', category: 'pinned', title: t('置顶'), items: split.pinned.map(row) }];
   const failure: NativeGroup | undefined = input.error ? { id: 'list-error', title: input.error, items: [{ id: 'retry', title: t('重试'), command: nativeCommand('navigation.refresh') }] } : undefined;
   if (input.filter === 'favorites') return failure ? [...groups, failure] : groups;
   const appendProjects = (backendId: string, threads: AggregatedThreadItem[], directories: string[], hasProjectless: boolean,

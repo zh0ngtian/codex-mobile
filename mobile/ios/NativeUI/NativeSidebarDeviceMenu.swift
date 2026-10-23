@@ -12,7 +12,7 @@ struct NativeSidebarDeviceMenu: View {
                     .foregroundStyle(NativePalette.secondary)
                 Spacer(minLength: 0)
                 Menu {
-                    Button(store.label("关注", "Favorites")) { filter("favorites") }
+                    Button(store.label("置顶", "Pinned")) { filter("favorites") }
                     Button(store.label("项目", "Projects")) { filter("projects") }
                     Button(store.label("会话", "Conversations")) { filter("sessions") }
                 } label: {

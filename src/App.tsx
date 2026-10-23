@@ -670,7 +670,7 @@ function BackendWorkspace({
     ...readLocalUnread(),
   ]);
   const setRemotePinned = async (client: AppServerClient, threadId: string, isPinned: boolean, sourceThread?: AnyRecord) => {
-    if (pinMutationRef.current) throw new Error(t("正在更新关注状态"));
+    if (pinMutationRef.current) throw new Error(t("正在更新置顶状态"));
     pinMutationRef.current = true;
     pinnedRevisionRef.current++;
     try {
@@ -694,7 +694,7 @@ function BackendWorkspace({
           ? { ...current, isPinned }
           : current,
       );
-      showNotice(isPinned ? t("已关注") : t("已取消关注"));
+      showNotice(isPinned ? t("已置顶") : t("已取消置顶"));
       return true;
     } finally {
       pinnedRevisionRef.current++;
@@ -3932,8 +3932,8 @@ function BackendWorkspace({
                 : action === "refresh"
                   ? t("刷新失败，请重试")
                   : thread.isPinned === true
-                    ? t("取消关注失败，请重试")
-                    : t("关注失败，请重试"),
+                    ? t("取消置顶失败，请重试")
+                    : t("置顶失败，请重试"),
       );
       return false;
     } finally {

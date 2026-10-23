@@ -399,7 +399,7 @@ export function ThreadListPage({
           <>
             {!!allGroups.pinned.length && (
               <section className="thread-section">
-                <h2>{t("关注")}</h2>
+                <h2>{t("置顶")}</h2>
                 {allGroups.pinned.map((thread) => renderRow(thread, true))}
               </section>
             )}
@@ -415,7 +415,7 @@ export function ThreadListPage({
           <>
             {!!allGroups.pinned.length && (
               <section className="thread-section">
-                <h2>{t("关注")}</h2>
+                <h2>{t("置顶")}</h2>
                 {allGroups.pinned.map((thread) => renderRow(thread, false))}
               </section>
             )}
