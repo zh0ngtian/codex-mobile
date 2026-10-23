@@ -37,24 +37,27 @@
 - [x] 复核上一轮11项UI、90项业务桥、9项呈现层及会话Swift回归记录，确认源代码未变；发布准备不重写已验收动效。
 - [x] 完成独立规格与质量审查，修正阻塞问题；按中文Conventional Commits提交推送发布分支，validation.json绑定完整SHA及四项passed门禁证据。
 
-## 任务二：协调器正式双端发布
+## 任务二：协调器正式双端发布（由关联修复批次完成）
 
-**文件：** 已推送来源及仓库外validation.json；正式产物和冻结清单由协调器生成。
+**文件：** 正式产物和冻结清单由协调器生成；0.3.33永久失败批次保持不可变，成功交付由修复任务 `new-conversation-motion-release-repair-20261023` 完成。
 
-- [ ] 以固定已推送SHA和真实validation.json执行ready；不手工推main或发起APK／IPA构建。
-- [ ] 跟随同一批次main/build/iosbuild/sign/ota/apk/ipa/source/verify，等待真实成功receipt；暂时只读失败沿用同一批次恢复，永久失败按不可变失败链登记关联修复任务。
-- [ ] 核对最终冻结SHA包含用户验收的功能提交和本发布任务来源；核对双端正式／开发CI、统一版本及长期产物。
+- [x] 关联修复来源 `0f755e22462c6e234b9748a3f53f327e3c8cbe5d` 以固定SHA和真实validation.json提交ready；不手工推main或发起APK／IPA构建。
+- [x] 修复批次 `73c0f9d2-ad52-4b4e-97cb-b6d6b1aee012` 的main/build/iosbuild/sign/ota/apk/ipa/source/verify全部完成并取得成功receipt。
+- [x] 冻结SHA `d7d5a7f39fa11452b852b73531ab156a006373da`包含用户验收功能和发布来源；统一交付0.3.34（3034）。正式CI `39989940336` attempt 1及开发CI `39989940382`成功。
+
+原批次 `8830fd0b-c53d-44e0-960d-1e31a6c59c02`／0.3.33仍为永久失败历史，未被修复批次改写或复用。
 
 ## 任务三：独立回验与交付
 
-**文件：** 新建 `docs/superpowers/plans/evidence/2026-10-23-new-conversation-motion-release.json`；更新本计划、`docs/interaction-alignment.md`、`README.md` 和 `docs/README.md`。
+**文件：** 已生成 `docs/superpowers/plans/evidence/2026-10-24-new-conversation-motion-release.json`；更新本计划、`docs/interaction-alignment.md`、`README.md` 和 `docs/README.md`。
 
-- [ ] 独立读取APK／IPA清单、HEAD及完整GET，核对版本、大小和SHA-256；使用既有项目CA核对HTTPS OTA安装页、清单、manifest和IPA。
-- [ ] 核对已下载IPA签名身份、完整权限及钥匙串连续性；不把验签或模拟器验证说成真机覆盖安装。
-- [ ] 核对GitHub unsigned IPA及软件源真实版本、构建号、URL、大小、散列、中文更新日志和原开发者署名；不上传Ad Hoc包到软件源。
-- [ ] 对成功凭证与渠道结果先规格审查、再质量审查；保存脱敏公共凭证，更新现役和已发布状态。
-- [ ] 在共享main互斥下完成纯文档收尾推送，不重复构建发布；停止任务heartbeat，保留唯一录像和验证证据。
-- [ ] 最终回复展示固定OTA安装页、APK与已签名IPA下载链接、统一版本、两包字节大小和完整SHA-256。
+- [x] 独立读取APK／IPA清单、HEAD及完整GET，核对版本、大小和SHA-256；使用既有项目CA核对HTTPS OTA安装页、清单、manifest和IPA。
+- [x] 核对已下载IPA签名身份、完整权限及钥匙串连续性；未将验签或模拟器验证说成真机覆盖安装。
+- [x] 核对GitHub unsigned IPA及软件源真实版本、构建号、URL、大小、散列、中文更新日志和原开发者署名；未上传Ad Hoc包到软件源。
+- [x] 对成功凭证、渠道结果及收尾文档完成独立规格审查、再质量审查；P0至P3均无未解决问题。
+- [x] 公共白名单凭证已复制，现役和已发布状态已更新；完整审计为197/197，SHA-256 `0836290d1c9c885c5a5e8ddc1d39b85b74891a640ce0b611d53922df7367cfc7`。
+- [x] 文档经独立审查并纳入共享main租约保护的纯文档整合；不重复构建发布，保留唯一录像和验证证据。
+- [x] 交付信息已核对齐备：固定OTA安装页、APK与已签名IPA下载链接、统一版本、两包字节大小和完整SHA-256；最终回复使用同一凭证数据。
 
 ## 首次批次发布准备实测
 
@@ -85,3 +88,18 @@
 恢复后最终验证：本机Release编译通过，三项原生发送验收3/3通过（75.4秒）。慢回执稳定覆盖等待态后，纯文字旧断言还错误要求透明节点销毁；按已批准的“淡出且不可交互”要求，改为检查节点不存在或不可命中，并结合当前截图确认按钮不可见、页头正常承接，其他状态／附件／单气泡断言与超时保持不变。生产代码仍仅两行类型转换，规格复审通过；最终测试差异的独立规格与质量复审均通过，无未解决问题，可提交ready。
 
 修复来源提交前再次核对远端main仍为 `b0e0f202506bc72bbe0f5aabdccf6938102eee8a`，无新增整合内容。本机Release与三项UI验证完成，最终构建契约21文件144项通过，其他未受测试前置条件影响的门禁日志散列复核一致。修复来源经独立规格、质量复审后推送固定SHA，仅提交关联修复任务ready，不恢复或改写原失败批次。
+
+## 关联修复批次最终交付（0.3.34，渠道审计已通过）
+
+批次 `73c0f9d2-ad52-4b4e-97cb-b6d6b1aee012` complete，冻结 `d7d5a7f39fa11452b852b73531ab156a006373da`，来源 `0f755e22462c6e234b9748a3f53f327e3c8cbe5d`，版本0.3.34（3034）。正式CI `39989940336` attempt 1全部成功（Android成功，iOS Xcode 26.3日志为 `BUILD SUCCEEDED`）；开发CI `39989940382`成功。本机Release编译成功，原生发送UI最终3/3通过（75.4秒）；217项适配器、59项协调器恢复、144项构建契约和typecheck通过。
+
+独立真实渠道审计197/197通过，完整审计文件 `channel-audit.json` 的SHA-256为 `0836290d1c9c885c5a5e8ddc1d39b85b74891a640ce0b611d53922df7367cfc7`。首轮审计因cwd解析CA相对路径而失败，审计harness改为基于配置目录解析后13/13自检通过，随后完整197项重审通过；首轮记录保留。该脚本环境问题不代表正式发布批次失败。原0.3.33永久失败链保持不变；审计还确认其恢复关系与0.3.34成功批次。
+
+| 产物 | 版本 | 大小 | SHA-256 | 固定下载地址 |
+| --- | --- | ---: | --- | --- |
+| APK | 0.3.34（3034） | 4,752,699字节 | `bdece3a1f81047a59b0edc4dd7cf9d5882928697a9afcb35ee4d002cd4ce007a` | [固定APK](http://192.168.123.79:8765/channels/codex-mobile/latest.apk) |
+| Ad Hoc已签名IPA | 0.3.34（3034） | 4,993,069字节 | `f74cd53ade21dc9c048b6874efce1f37bd5da9a034bbde11c41e4ebc90c63332` | [固定IPA](http://192.168.123.79:8765/channels/codex-mobile/latest.ipa) |
+
+HTTPS OTA安装页：[固定安装页](https://192.168.123.79:8766/channels/codex-mobile/current/install.html)，iOS清单为 `https://192.168.123.79:8766/channels/codex-mobile/current/latest-ios.json`。GitHub Release为[v0.3.34](https://github.com/zh0ngtian/codex-mobile/releases/tag/v0.3.34)；unsigned软件源IPA版本0.3.34、构建号3034、4,985,645字节、SHA-256 `1c095b321671ba0caaebd4ccff27d76a8a7abc862a07d31a2335ed226379411b`，保留开发者署名 `zh0ngtian`。
+
+本轮未部署网关。模拟器已Shutdown，离线fixture未创建真实会话；真机覆盖安装、数据保留及真实Bark送达仍未验证。成功凭证、渠道结果及收尾文档的独立规格和质量审查均通过，P0至P3无未解决问题。纯文档收尾基线为 `d7d5a7f39fa11452b852b73531ab156a006373da`；整合前远端main未新增提交，复用已完成的JSON、22个新增本地链接及差异检查，在共享main租约下提交推送。冻结清单、运行代码及已发布安装包均不变。

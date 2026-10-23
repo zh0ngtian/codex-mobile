@@ -23,9 +23,9 @@
 
 ## 当前发布入口
 
-现役双端客户端为0.3.32（3032），已交付结构化模型提问与 iOS 紧凑回答窗口，支持选项／自填、稍后恢复、失败保留以及运行中引导。配套网关已部署历史问题回填和完成通知名称修复。双端固定渠道、HTTPS OTA、GitHub及unsigned软件源独立回验通过，见[本次发布计划](superpowers/plans/2026-10-23-model-question-release.md)与[公共凭证](superpowers/plans/evidence/2026-10-23-model-question-release.json)。真机覆盖安装、数据保留及真实Bark送达仍待现场验收。
+现役双端客户端为0.3.34（3034），包含新会话首条发送连续过渡：点击发送即进入“待发送”画面，首条文字与附件交接到气泡，机器／项目由页头承接；失败可返回编辑，待确认时防止重复发送。固定APK、Ad Hoc已签名IPA、HTTPS OTA、GitHub unsigned IPA及软件源已完成197项独立回验。见[本次发布计划](superpowers/plans/2026-10-23-new-conversation-motion-release.md)与[公共凭证](superpowers/plans/evidence/2026-10-24-new-conversation-motion-release.json)。真机覆盖安装、数据保留及真实Bark送达仍待现场验收。
 
-标题总结固定 `gpt-6-luna`、`low` 和Fast已另行完成仅网关部署，成功批次 `51b36234-ea37-4ba9-a7ac-c9b4375086dd`、冻结提交 `0dea2a1`。实际安装模块的手动／automatic两种HTTP入口协议探测通过，原会话和全局设置无写入；固定客户端0.3.32的版本、大小、散列未变。探测使用回环协议替身，不调用真实模型或Bark。见[部署计划](superpowers/plans/2026-10-23-title-luna-gateway-deploy.md)与[公共凭证](superpowers/plans/evidence/2026-10-23-title-luna-gateway-deploy.json)。
+标题总结固定 `gpt-6-luna`、`low` 和Fast已另行完成仅网关部署，成功批次 `51b36234-ea37-4ba9-a7ac-c9b4375086dd`、冻结提交 `0dea2a1`。实际安装模块的手动／automatic两种HTTP入口协议探测通过，原会话和全局设置无写入；该次部署时固定客户端0.3.32的版本、大小、散列未变，客户端后续已更新至0.3.34。探测使用回环协议替身，不调用真实模型或Bark。见[部署计划](superpowers/plans/2026-10-23-title-luna-gateway-deploy.md)与[公共凭证](superpowers/plans/evidence/2026-10-23-title-luna-gateway-deploy.json)。
 
 版本以在线清单为准，不能从 package.json 的开发版本、文档示例或历史记录推断：
 
@@ -46,7 +46,7 @@
 
 近期可追溯记录：
 
-- [2026-10-23 新会话首条发送连续过渡](plans/2026-10-23-new-conversation-motion.md)：立即待发送、机器／项目与附件交接、失败保留及待确认；原生与状态层验证记录，未发布。
+- [2026-10-23 新会话首条发送连续过渡](plans/2026-10-23-new-conversation-motion.md)：已随0.3.34双端发布；保留原生与状态层验证及视觉验收记录，渠道回验见[发布计划](superpowers/plans/2026-10-23-new-conversation-motion-release.md)和[公共凭证](superpowers/plans/evidence/2026-10-24-new-conversation-motion-release.json)。
 
 - [2026-10-23 GPT-6-Luna标题总结仅网关部署](superpowers/plans/2026-10-23-title-luna-gateway-deploy.md)：固定模型、low与Fast的成功批次、安装模块双入口协议探测及客户端渠道不变回验；[公共凭证](superpowers/plans/evidence/2026-10-23-title-luna-gateway-deploy.json)。
 

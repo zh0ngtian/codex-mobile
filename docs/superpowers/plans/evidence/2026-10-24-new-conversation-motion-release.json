@@ -1,0 +1,71 @@
+{
+  "schemaVersion": 1,
+  "status": "complete",
+  "version": "0.3.34",
+  "buildNumber": "3034",
+  "sourceCommit": "0f755e22462c6e234b9748a3f53f327e3c8cbe5d",
+  "mobile": {
+    "taskId": "new-conversation-motion-release-repair-20261023",
+    "batchId": "73c0f9d2-ad52-4b4e-97cb-b6d6b1aee012",
+    "frozenCommit": "d7d5a7f39fa11452b852b73531ab156a006373da",
+    "receiptSha256": "a7e117a2e352b8bbb4073b937315cb6cf0391be3e470b1094eb1117c2a1794ea",
+    "ciRunId": 39989940336,
+    "ciAttempt": 1,
+    "releaseUrl": "https://github.com/zh0ngtian/codex-mobile/releases/tag/v0.3.34"
+  },
+  "apk": {
+    "version": "0.3.34",
+    "buildNumber": "3034",
+    "size": 4752699,
+    "sha256": "bdece3a1f81047a59b0edc4dd7cf9d5882928697a9afcb35ee4d002cd4ce007a",
+    "downloadUrl": "http://192.168.123.79:8765/channels/codex-mobile/latest.apk"
+  },
+  "ipa": {
+    "version": "0.3.34",
+    "buildNumber": "3034",
+    "size": 4993069,
+    "sha256": "f74cd53ade21dc9c048b6874efce1f37bd5da9a034bbde11c41e4ebc90c63332",
+    "downloadUrl": "http://192.168.123.79:8765/channels/codex-mobile/latest.ipa",
+    "signed": true,
+    "signing": "Ad Hoc",
+    "entitlementsSha256": "1e84a4c1ba74b9e374c364f26fefa112ceeea09de1a0ba0600403a763eb7952f"
+  },
+  "ota": {
+    "installPageUrl": "https://192.168.123.79:8766/channels/codex-mobile/current/install.html",
+    "jsonUrl": "https://192.168.123.79:8766/channels/codex-mobile/current/latest-ios.json",
+    "manifestUrl": "https://192.168.123.79:8766/channels/codex-mobile/releases/0.3.34/manifest.plist",
+    "downloadUrl": "https://192.168.123.79:8766/channels/codex-mobile/releases/0.3.34/latest.ipa",
+    "size": 4993069,
+    "sha256": "f74cd53ade21dc9c048b6874efce1f37bd5da9a034bbde11c41e4ebc90c63332",
+    "signed": true
+  },
+  "softwareSource": {
+    "version": "0.3.34",
+    "buildVersion": "3034",
+    "developerName": "zh0ngtian",
+    "downloadURL": "https://github.com/zh0ngtian/codex-mobile/releases/download/v0.3.34/CodexMobile-v0.3.34-unsigned.ipa",
+    "size": 4985645,
+    "sha256": "1c095b321671ba0caaebd4ccff27d76a8a7abc862a07d31a2335ed226379411b",
+    "signed": false
+  },
+  "notes": "- iOS 新会话点击发送后立即进入“待发送”画面，首条消息连续过渡到气泡，确认后原位显示。\n- 机器和项目选择按钮平滑退场，所选目标由会话页头继续展示，输入栏随键盘连续归位。\n- 支持文字、图片与文件、多附件及仅附件的发送过渡，保留预览和文件名，长附件确认时保持位置。\n- 发送失败保留正文与附件并支持返回编辑；结果待确认时防止重复发送，迟到确认后自动更新状态。",
+  "verification": {
+    "channelChecks": 197,
+    "projectCaVerified": true,
+    "realDeviceInstall": "not_verified",
+    "dataPreservation": "not_verified",
+    "realBarkDelivery": "not_verified",
+    "channelAuditSha256": "0836290d1c9c885c5a5e8ddc1d39b85b74891a640ce0b611d53922df7367cfc7"
+  },
+  "recovery": {
+    "originalTaskId": "new-conversation-motion-release-20261023",
+    "originalSourceCommit": "3946e676c790bf7d486e5bbf7fa3f1dd00e9f602",
+    "originalFailedBatchId": "8830fd0b-c53d-44e0-960d-1e31a6c59c02",
+    "originalFailedFrozenCommit": "b0e0f202506bc72bbe0f5aabdccf6938102eee8a",
+    "originalFailedVersion": "0.3.33",
+    "originalTaskState": "recovered",
+    "recoveredBy": "73c0f9d2-ad52-4b4e-97cb-b6d6b1aee012",
+    "repairTaskId": "new-conversation-motion-release-repair-20261023",
+    "repairSourceCommit": "0f755e22462c6e234b9748a3f53f327e3c8cbe5d"
+  }
+}
