@@ -2070,11 +2070,11 @@ final class AgentAppUITests: XCTestCase {
         app.launch()
         XCTAssertTrue(app.buttons["conversation.actions"].waitForExistence(timeout: 10))
         app.buttons["conversation.actions"].tap(); app.buttons["重命名"].tap()
-        let alert = app.alerts["重命名会话"]
+        let alert = app.otherElements["rename.dialog"]
         let summary = alert.buttons["rename.model-summary"]
         XCTAssertTrue(summary.waitForExistence(timeout: 5))
-        XCTAssertGreaterThanOrEqual(summary.frame.minY, alert.textFields.firstMatch.frame.maxY - 1)
-        XCTAssertLessThan(summary.frame.maxY, alert.buttons["保存"].frame.minY)
+        XCTAssertGreaterThanOrEqual(summary.frame.minY - alert.textFields.firstMatch.frame.maxY, 12, "模型总结必须与输入框分离")
+        XCTAssertGreaterThanOrEqual(alert.buttons["保存"].frame.minY - summary.frame.maxY, 12)
         summary.tap()
         XCTAssertTrue(alert.exists)
         XCTAssertFalse(summary.isEnabled)
@@ -2107,7 +2107,7 @@ final class AgentAppUITests: XCTestCase {
         let row = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "sidebar.conversation.")).firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: 5)); row.press(forDuration: 0.7)
         app.buttons["重命名"].tap()
-        let alert = app.alerts["重命名会话"]
+        let alert = app.otherElements["rename.dialog"]
         let original = alert.textFields.firstMatch.value as? String
         let summary = alert.buttons["rename.model-summary"]
         XCTAssertTrue(summary.waitForExistence(timeout: 5)); summary.tap()
@@ -2126,7 +2126,7 @@ final class AgentAppUITests: XCTestCase {
         app.launch()
         XCTAssertTrue(app.buttons["conversation.actions"].waitForExistence(timeout: 10))
         app.buttons["conversation.actions"].tap(); app.buttons["重命名"].tap()
-        let alert = app.alerts["重命名会话"]
+        let alert = app.otherElements["rename.dialog"]
         let field = alert.textFields.firstMatch
         field.tap(); field.typeText(" 手工输入")
         let summary = alert.buttons["rename.model-summary"]
@@ -2143,7 +2143,7 @@ final class AgentAppUITests: XCTestCase {
         let app = launchConversationFixture()
         app.buttons["conversation.actions"].tap()
         app.buttons["重命名"].tap()
-        let alert = app.alerts["重命名会话"]
+        let alert = app.otherElements["rename.dialog"]
         XCTAssertTrue(alert.waitForExistence(timeout: 5))
         let name = alert.textFields.firstMatch
         XCTAssertEqual(name.value as? String, "对话界面回归")
