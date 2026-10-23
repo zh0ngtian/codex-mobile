@@ -23,9 +23,7 @@
 
 ## 当前发布入口
 
-2026-10-23本次网关独立回验时，已核验的双端客户端为0.3.31（3031），修复 iOS 点击“模型总结”后闪退，候选名称返回后可继续编辑并保存；继承0.3.30的独立标题总结、自动命名、重命名候选确认及界面改进。双端固定渠道、HTTPS OTA、GitHub及unsigned软件源独立回验通过，来源准备与正式发布的规格、质量审查均通过，见[本次发布计划](superpowers/plans/2026-10-23-title-summary-crash-release.md)与[公共凭证](superpowers/plans/evidence/2026-10-23-title-summary-crash-release.json)。随后仅网关部署任务 `bark-auto-title-gateway-20261023` 已完成，成功批次 `f0074198-f11b-4a27-a79f-8327d3dadf56`／冻结提交 `fa1e8d6` 已独立回验进程、认证健康、文件摘要和实际部署模块的7项新格式、5项现役格式时序；见[部署计划](superpowers/plans/2026-10-23-bark-auto-title-gateway-deploy.md)与[公共凭证](superpowers/plans/evidence/2026-10-23-bark-auto-title-gateway-deploy.json)。Bark投递使用最新已保存名称，新会话完成通知先等名称保存；0.3.31请求格式成功保存可解除等待，缺少 `automatic` 标记时的总结或保存失败由登记后125秒超时释放。本次独立回验时，客户端新标记与提问窗口尚未发包，固定APK／IPA完整下载为0.3.31及原大小、散列；此记录不代表后续批次的当前状态。桌面置顶完成通知继续由网关独立跟踪；真实Bark送达、真机原生文件入口、修复版覆盖安装、数据保留和功能验收仍待现场确认。
-
-后续[模型提问与紧凑窗口联合发布](superpowers/plans/2026-10-23-model-question-release.md)的交付状态见该联合发布记录及各自成功receipt；最终版本及状态由该记录继续更新，不把准备通过或运行中视为已发布。
+现役双端客户端为0.3.32（3032），已交付结构化模型提问与 iOS 紧凑回答窗口，支持选项／自填、稍后恢复、失败保留以及运行中引导。配套网关已部署历史问题回填和完成通知名称修复。双端固定渠道、HTTPS OTA、GitHub及unsigned软件源独立回验通过，见[本次发布计划](superpowers/plans/2026-10-23-model-question-release.md)与[公共凭证](superpowers/plans/evidence/2026-10-23-model-question-release.json)。真机覆盖安装、数据保留及真实Bark送达仍待现场验收。
 
 版本以在线清单为准，不能从 package.json 的开发版本、文档示例或历史记录推断：
 
@@ -45,6 +43,10 @@
 `plans/` 与 `superpowers/plans/` 保留设计决策、实施过程和当次验证证据，不是另一套现役操作说明。未勾选的旧计划项不自动成为当前待办；应先检查后续提交、交付记录与运行态。两处目录维持原路径，避免破坏既有引用。
 
 近期可追溯记录：
+
+- [2026-10-23 Bark自动命名等待仅网关部署](superpowers/plans/2026-10-23-bark-auto-title-gateway-deploy.md)：成功批次 `f0074198-f11b-4a27-a79f-8327d3dadf56` 及12项实际部署模块隔离时序回验；其0.3.31渠道结论为当次回验时点；[公共凭证](superpowers/plans/evidence/2026-10-23-bark-auto-title-gateway-deploy.json)。
+
+- [2026-10-23 模型提问与紧凑窗口双端发布、配套网关部署](superpowers/plans/2026-10-23-model-question-release.md)：0.3.32两目标成功凭证、签名连续性、固定渠道及83项独立渠道回验；[公共凭证](superpowers/plans/evidence/2026-10-23-model-question-release.json)。
 
 - [2026-10-23 模型总结闪退修复双端发布](superpowers/plans/2026-10-23-title-summary-crash-release.md)：0.3.31成功批次、双端固定渠道、签名连续性、GitHub与unsigned软件源独立回验；本轮未重新部署网关；[公共凭证](superpowers/plans/evidence/2026-10-23-title-summary-crash-release.json)。
 - [2026-10-23 会话标题总结双端发布与网关部署](superpowers/plans/2026-10-23-thread-title-release.md)：0.3.30双目标成功批次、固定渠道及签名连续性、unsigned软件源、线上标题接口与会话归档回验；[公共凭证](superpowers/plans/evidence/2026-10-23-thread-title-release.json)。

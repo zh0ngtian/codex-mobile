@@ -1,0 +1,97 @@
+{
+  "schemaVersion": 1,
+  "status": "complete",
+  "version": "0.3.32",
+  "buildNumber": "3032",
+  "sourceCommit": "7faf4482369149e68c3cea1b74ac18f664d1347a",
+  "mobile": {
+    "taskId": "model-question-window-mobile-20261023",
+    "batchId": "232b6def-2ef0-41dd-ab45-118941dbcf92",
+    "frozenCommit": "2bde0ef6d291a077a6aeb0f749ed1c3fd6d4ccac",
+    "receiptSha256": "3275026ddcda280d676a79c57a856744c3d6eea9ee7c70789af7a21e1df7e946",
+    "phases": [
+      "apk",
+      "build",
+      "iosbuild",
+      "ipa",
+      "main",
+      "ota",
+      "prepare",
+      "sign",
+      "source",
+      "verify"
+    ],
+    "ciRunId": 39951774787,
+    "ciAttempt": 1,
+    "releaseUrl": "https://github.com/zh0ngtian/codex-mobile/releases/tag/v0.3.32"
+  },
+  "gateway": {
+    "taskId": "model-question-window-gateway-20261023",
+    "batchId": "0e8cc57d-380e-400c-8da6-56f15b7fcc12",
+    "frozenCommit": "6966c9a647c0dd19d3fcb0bf66061e4dea672d4f",
+    "receiptSha256": "8afb0497c916c9fd27c8f2d9499067880da02937530dd732aadace4263d53a71",
+    "phases": [
+      "gateway",
+      "main",
+      "prepare",
+      "verify"
+    ],
+    "deploymentId": "0e8cc57d-380e-400c-8da6-56f15b7fcc12:6966c9a647c0dd19d3fcb0bf66061e4dea672d4f",
+    "pid": 52640,
+    "serverDigest": "052a3df0bba906710ade498c6705561ed30c5dac386e1c04704a10a0da29be5a",
+    "binDigest": "a44e7f0434b7926b382b679abb712f36eb3b93ce6708cc77332437781f8015a3",
+    "frontendDigest": "82c243e7f812096f2be3270347cfab2c74ab4df0df44ec06f2db25f1a2ae821b",
+    "manifestDigest": "0f504be37cd822e82f975449a8f7478ca99f609930f64baa75f956cf16c45917"
+  },
+  "apk": {
+    "version": "0.3.32",
+    "buildNumber": "3032",
+    "size": 4752703,
+    "sha256": "34f3ed5c9b935268438cd280ff4eb361714c0fb7d6345cda78f95495830b05a7",
+    "downloadUrl": "http://192.168.123.79:8765/channels/codex-mobile/latest.apk"
+  },
+  "ipa": {
+    "version": "0.3.32",
+    "buildNumber": "3032",
+    "size": 4904232,
+    "sha256": "9462c28a0e7e843233769dd2dfa1765cd08f0baf1818add0cf7104971b96158a",
+    "downloadUrl": "http://192.168.123.79:8765/channels/codex-mobile/latest.ipa",
+    "signed": true,
+    "signing": "Ad Hoc",
+    "bundleId": "vip.loock.codexmobile",
+    "teamId": "SC456JW7RP",
+    "applicationIdentifier": "SC456JW7RP.app.jade6694.grapefruit3766",
+    "entitlementsSha256": "1e84a4c1ba74b9e374c364f26fefa112ceeea09de1a0ba0600403a763eb7952f"
+  },
+  "ota": {
+    "installPageUrl": "https://192.168.123.79:8766/channels/codex-mobile/current/install.html",
+    "manifestUrl": "https://192.168.123.79:8766/channels/codex-mobile/releases/0.3.32/manifest.plist",
+    "jsonUrl": "https://192.168.123.79:8766/channels/codex-mobile/current/latest-ios.json",
+    "downloadUrl": "https://192.168.123.79:8766/channels/codex-mobile/releases/0.3.32/latest.ipa",
+    "size": 4904232,
+    "sha256": "9462c28a0e7e843233769dd2dfa1765cd08f0baf1818add0cf7104971b96158a",
+    "signed": true
+  },
+  "softwareSource": {
+    "version": "0.3.32",
+    "buildVersion": "3032",
+    "developerName": "zh0ngtian",
+    "downloadURL": "https://github.com/zh0ngtian/codex-mobile/releases/download/v0.3.32/CodexMobile-v0.3.32-unsigned.ipa",
+    "size": 4902179,
+    "sha256": "a7d9b5eebeac630a8d22d53a9508cef8dd483ea386f9987632e77ebbff435c3b",
+    "signed": false
+  },
+  "notes": "- 模型发出结构化提问时，直接显示可选择或自行填写的回答窗口，支持稍后继续。\n- iOS 提问窗口改为参考指令排队的紧凑卡片，按内容收缩，稍后回答与提交按钮同排，多题可滚动。\n- 回答提交失败时保留答案；执行中的回答立即作为引导发送，已结束时发送新消息，保留原有未发送草稿。\n- 新会话完成通知等待自动名称保存后再发送，并在实际投递时读取最新会话名称。",
+  "verification": {
+    "sourceSpecSha256": "5ca34fce52f39cabb11727b3cb80fa6b88183e080d259947bf5b4bf40809fa7d",
+    "sourceQualitySha256": "772555d433e2d992eee0fa361dbd6dc5c8da0ec7b0b73c8d130cd7358be82814",
+    "releaseSpecSha256": "bb4c727999e92ae6b7be56437073e32cb62fa38798fe0d0d3ad36fd585a67670",
+    "releaseQualitySha256": "71e36a68b53ef189a06874b9aa9881ce3f16b271b94eae2e857fa9d57bc82374",
+    "channelAuditSha256": "5e8168f5bd4a4d0573e5aa4ab5466d56b67f5c815336e7bfc64fd331c12e0880",
+    "channelChecks": 83,
+    "projectCaVerified": true,
+    "realDeviceInstall": "not_verified",
+    "dataPreservation": "not_verified",
+    "realBarkDelivery": "not_verified"
+  }
+}
