@@ -104,12 +104,12 @@ private struct FirstMessageFlight: View, Animatable {
         let targetStart = textOnly ? CGPoint(x: source.minX - 16, y: source.minY - 10) : source.origin
         ZStack(alignment: .topLeading) {
             Image(uiImage: image).resizable().frame(width: source.width, height: source.height)
-                .opacity(max(0, 1 - progress * 4))
+                .opacity(Double(max(CGFloat(0), CGFloat(1) - progress * CGFloat(4))))
                 .position(x: interpolate(source.minX, sourceEnd.x) + source.width / 2 - origin.x,
                           y: interpolate(source.minY, sourceEnd.y) + source.height / 2 - origin.y)
             FirstMessageBubble(message: message)
                 .frame(width: destination.width, height: destination.height, alignment: .top)
-                .opacity(min(1, max(0, (progress - 0.12) / 0.62)))
+                .opacity(Double(min(CGFloat(1), max(CGFloat(0), (progress - CGFloat(0.12)) / CGFloat(0.62)))))
                 .position(x: interpolate(targetStart.x, destination.minX) + destination.width / 2 - origin.x,
                           y: interpolate(targetStart.y, destination.minY) + destination.height / 2 - origin.y)
         }
