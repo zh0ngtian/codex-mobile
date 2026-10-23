@@ -301,6 +301,7 @@ final class AgentConversationFixture {
             value.draft = "报错后保留的输入"
             value.canSend = true
         }
+        if AgentFirstMessageFixture.enabled { AgentFirstMessageFixture.configure(&value) }
         snapshot = value
         store.sendCommand = { [weak self] command in self?.dispatch(command) }
         publish()
@@ -354,6 +355,9 @@ final class AgentConversationFixture {
 
     private func publish() { store.receive(snapshot); session.receive(snapshot) }
     private func dispatch(_ command: NativeCommand) {
+        if AgentFirstMessageFixture.dispatch(command, snapshot: snapshot, publish: { [weak self] value in
+            self?.snapshot = value; self?.publish()
+        }) { return }
         if ProcessInfo.processInfo.arguments.contains("--agent-success-toast-fixture"), command.name == "navigation.refresh" {
             session.toast = "已复制"
             return

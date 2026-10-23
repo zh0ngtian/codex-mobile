@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct AttachmentThumbnail: View {
+    @Environment(\.firstMessageCapture) private var capture
     let item: AttachmentItem
     @State private var image: UIImage?
 
@@ -29,6 +30,10 @@ struct AttachmentThumbnail: View {
 
     private func loadThumbnail() async {
         guard item.kind == .image, item.state == .ready else { return }
-        if let output = AttachmentPreviewMapper.output(for: item) { image = try? await PreviewLoader.load(output).image }
+        if let output = AttachmentPreviewMapper.output(for: item) {
+            image = try? await PreviewLoader.load(output).image
+            guard !Task.isCancelled else { return }
+            if let image { capture?.thumbnails[item.id] = image }
+        }
     }
 }

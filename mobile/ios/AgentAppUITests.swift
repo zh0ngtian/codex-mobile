@@ -5,6 +5,112 @@ import Vision
 /// 独立界面夹具及本地网关验收；连接凭证不进入源码或测试附件。
 @MainActor
 final class AgentAppUITests: XCTestCase {
+    func testFirstMessageMachineAndProjectSelection() throws {
+        let app = launchFirstMessageFixture(["--first-message-slow", "--first-message-no-reply"])
+        app.buttons["new.computer"].tap()
+        app.buttons["Mac mini"].firstMatch.tap()
+        XCTAssertTrue(app.buttons["new.project"].waitForExistence(timeout: 3)); app.buttons["new.project"].tap()
+        app.buttons["无项目"].firstMatch.tap()
+        app.buttons["composer.submit"].tap()
+        XCTAssertTrue(app.staticTexts["待发送"].waitForExistence(timeout: 1))
+        XCTAssertTrue(app.navigationBars.staticTexts["无项目 · Mac mini"].exists)
+        let pending = app.descendants(matching: .any).matching(identifier: "first-message.bubble").firstMatch.frame
+        let confirmed = app.descendants(matching: .any).matching(identifier: "message.user-bubble").firstMatch
+        XCTAssertTrue(confirmed.waitForExistence(timeout: 5))
+        XCTAssertEqual(pending.minY, confirmed.frame.minY, accuracy: 1)
+        XCTAssertEqual(pending.maxY, confirmed.frame.maxY, accuracy: 1)
+        captureConversation("新会话-机器项目继承且气泡原位交接", app: app)
+    }
+
+    func testFirstMessageLargeAttachmentGroupKeepsPosition() throws {
+        let app = launchFirstMessageFixture(["--first-message-attachments", "--first-message-many-files", "--first-message-slow", "--first-message-no-reply"])
+        app.buttons["composer.submit"].tap()
+        XCTAssertTrue(app.staticTexts["待发送"].waitForExistence(timeout: 1))
+        let pending = app.descendants(matching: .any).matching(identifier: "first-message.bubble").firstMatch.frame
+        let confirmed = app.descendants(matching: .any).matching(identifier: "message.user-bubble").firstMatch
+        XCTAssertTrue(confirmed.waitForExistence(timeout: 5))
+        XCTAssertEqual(pending.minY, confirmed.frame.minY, accuracy: 2)
+        XCTAssertEqual(pending.maxY, confirmed.frame.maxY, accuracy: 2)
+        XCTAssertTrue(app.staticTexts["方案附件7.pdf"].exists)
+        captureConversation("新会话-长附件组交接位置", app: app)
+    }
+
+    func testFirstMessageTextTransition() throws {
+        let app = launchFirstMessageFixture()
+        let input = app.textFields["message-input"]
+        XCTAssertTrue(input.waitForExistence(timeout: 5)); input.tap()
+        let inputBefore = input.frame
+        app.buttons["composer.submit"].tap()
+        XCTAssertTrue(app.staticTexts["待发送"].waitForExistence(timeout: 1), "网络回执前必须立即进入待发送画面")
+        XCTAssertFalse(app.buttons["composer.submit"].isEnabled)
+        XCTAssertTrue(app.staticTexts["first-message.text"].exists || app.descendants(matching: .any).matching(identifier: "first-message.bubble").firstMatch.exists)
+        XCTAssertFalse(app.buttons["new.computer"].exists)
+        captureConversation("新会话-首条待发送", app: app)
+        XCTAssertTrue(app.textViews["assistant.selectable"].waitForExistence(timeout: 6))
+        XCTAssertFalse(app.staticTexts["待发送"].exists)
+        XCTAssertGreaterThan(input.frame.minY, inputBefore.minY, "输入栏应随键盘退场连续归位")
+        XCTAssertEqual(app.descendants(matching: .any).matching(identifier: "message.user-bubble").count, 1)
+        captureConversation("新会话-首条原位确认", app: app)
+    }
+
+    func testFirstMessageAttachmentsTransition() throws {
+        let app = launchFirstMessageFixture(["--first-message-attachments"])
+        XCTAssertTrue(app.buttons["composer.submit"].waitForExistence(timeout: 5))
+        app.textFields["message-input"].tap()
+        app.buttons["composer.submit"].tap()
+        XCTAssertTrue(app.staticTexts["待发送"].waitForExistence(timeout: 1))
+        XCTAssertTrue(app.staticTexts["交互设计说明.pdf"].exists)
+        captureConversation("新会话-文字图片和文件待发送", app: app)
+        XCTAssertTrue(app.textViews["assistant.selectable"].waitForExistence(timeout: 6))
+        XCTAssertTrue(app.staticTexts["交互设计说明.pdf"].exists)
+        XCTAssertEqual(app.descendants(matching: .any).matching(identifier: "message.user-bubble").count, 1)
+        captureConversation("新会话-附件原位确认", app: app)
+    }
+
+    func testFirstMessageAttachmentsOnly() throws {
+        let app = launchFirstMessageFixture(["--first-message-attachments-only"])
+        let submit = app.buttons["composer.submit"]
+        XCTAssertTrue(submit.waitForExistence(timeout: 5)); XCTAssertTrue(submit.isEnabled); submit.tap()
+        XCTAssertTrue(app.staticTexts["待发送"].waitForExistence(timeout: 1))
+        XCTAssertTrue(app.staticTexts["交互设计说明.pdf"].exists)
+        captureConversation("新会话-仅附件待发送", app: app)
+        XCTAssertTrue(app.textViews["assistant.selectable"].waitForExistence(timeout: 6))
+        XCTAssertEqual(app.descendants(matching: .any).matching(identifier: "message.user-bubble").count, 1)
+    }
+
+    func testFirstMessageFailurePreservesDraft() throws {
+        let app = launchFirstMessageFixture(["--first-message-attachments", "--first-message-failure"])
+        app.buttons["composer.submit"].tap()
+        let edit = app.buttons["first-message.edit"]
+        XCTAssertTrue(edit.waitForExistence(timeout: 6))
+        if app.alerts.firstMatch.exists { app.alerts.firstMatch.buttons.firstMatch.tap() }
+        captureConversation("新会话-发送失败保留消息", app: app)
+        edit.tap()
+        XCTAssertTrue(app.buttons["new.computer"].waitForExistence(timeout: 3))
+        XCTAssertEqual(app.textFields["message-input"].value as? String, "帮我检查新会话的发送过渡，保持机器和项目选择。")
+        XCTAssertTrue(app.staticTexts["交互设计说明.pdf"].exists)
+        XCTAssertTrue(app.buttons["composer.submit"].isEnabled)
+        captureConversation("新会话-失败返回编辑保留附件", app: app)
+    }
+
+    func testFirstMessageUncertainThenConfirmed() throws {
+        let app = launchFirstMessageFixture(["--first-message-uncertain"])
+        app.buttons["composer.submit"].tap()
+        XCTAssertTrue(app.staticTexts["发送结果待确认"].waitForExistence(timeout: 4))
+        XCTAssertFalse(app.buttons["composer.submit"].isEnabled)
+        captureConversation("新会话-发送结果待确认", app: app)
+        XCTAssertTrue(app.textViews["assistant.selectable"].waitForExistence(timeout: 6))
+        XCTAssertFalse(app.staticTexts["发送结果待确认"].exists)
+        XCTAssertEqual(app.descendants(matching: .any).matching(identifier: "message.user-bubble").count, 1)
+    }
+
+    private func launchFirstMessageFixture(_ extra: [String] = []) -> XCUIApplication {
+        let app = XCUIApplication()
+        app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-first-message-fixture", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"] + extra
+        app.launch()
+        return app
+    }
+
     func testAsyncQuestionsThroughLiveWebKitAndGateway() async throws {
         guard let control = ProcessInfo.processInfo.environment["CODEX_TEST_QUESTION_CONTROL"]
             ?? ProcessInfo.processInfo.environment["TEST_RUNNER_CODEX_TEST_QUESTION_CONTROL"] else { throw XCTSkip("需要独立异步提问协议夹具") }

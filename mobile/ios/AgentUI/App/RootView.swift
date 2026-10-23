@@ -162,14 +162,8 @@ struct RootView: View {
                     .padding(.bottom, 24)
                 }
             }
-        } else if let id = session.selectedConversationID {
-            ConversationScreen(conversationID: id)
-                .id(id)
-                // 会话身份切换直接替换内容；抽屉位移继续由外层动画控制。
-                .transition(.identity)
         } else {
-            NewConversationScreen()
-                .transition(.identity)
+            ConversationSurface()
         }
     }
 

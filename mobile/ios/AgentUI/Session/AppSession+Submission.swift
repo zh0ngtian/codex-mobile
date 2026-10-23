@@ -5,11 +5,20 @@ extension AppSession {
         guard canSubmit else { return .ignored }
         let target = selectedConversationID ?? composer.id
         let queued = nativeSnapshot.busy
+        prepareFirstMessage()
+        let firstID = firstMessageSubmission?.id
         submissionPending = true
         Task { [weak self] in
             guard let self else { return }
-            _ = await self.request("message.send")
+            let ok = await self.request("message.send", presentErrors: firstID == nil) { command in
+                if self.firstMessageSubmission?.id == firstID { self.firstMessageSubmission?.commandID = command.id }
+            }
             self.submissionPending = false
+            if !ok, self.firstMessageSubmission?.id == firstID, self.firstMessageSubmission?.commandID == nil {
+                self.firstMessageSubmission?.state = .failed
+                self.firstMessageSubmission?.error = "消息未发送，输入已保留。"
+            }
+            self.reconcileFirstMessage()
             // 只有业务快照确认后才清空输入与附件；失败或切换上下文不会提交本地副本。
         }
         return queued ? .queued(target) : .started(target)

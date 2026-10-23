@@ -58,6 +58,7 @@ final class AppSession {
     var navigationError: String?
     var nativeSnapshot = NativeSnapshot()
     var submissionPending = false
+    var firstMessageSubmission: FirstMessageSubmission?
     @ObservationIgnored var presentedAttachmentPanelID: String?
     @ObservationIgnored var nativeStore: NativeUIStore?
     @ObservationIgnored var projecting = false
@@ -98,13 +99,13 @@ final class AppSession {
     var currentCapabilities: DeviceCapabilities { currentDevice?.capabilities ?? DeviceCapabilities() }
     var visibleConversations: [Conversation] { conversations.filter { !$0.isArchived && (searchText.isEmpty || navigationIDs.contains($0.id)) && (selectedDeviceID == nil || $0.deviceID == selectedDeviceID) && device($0.deviceID)?.enabled == true } }
     var isBusy: Bool { nativeSnapshot.busy }
-    var composerCanEdit: Bool { nativeStore?.composerCanEdit == true }
+    var composerCanEdit: Bool { firstMessageSubmission == nil && nativeStore?.composerCanEdit == true }
     var canReopenPendingRequests: Bool {
         nativeSnapshot.ready && nativeSnapshot.approvalCount > 0 && nativeStore?.awaitingNewConversation != true && nativeSnapshot.conversationActions?.contains { $0.command?.name == "approval.reopen" && $0.disabled != true } == true
     }
     var hasDeferredQuestion: Bool { canReopenPendingRequests && questionMemory.values.contains { $0.conversationID == selectedConversationID } }
-    var canSubmit: Bool { !submissionPending && historyEdit == nil && nativeStore?.composerCanSend == true && composer.hasContent && composer.attachmentsReady }
-    var canSaveDraft: Bool { !submissionPending && nativeStore?.composerCanEdit == true && selectedConversationID == nil && composer.hasContent && composer.attachmentsReady && !isBusy }
+    var canSubmit: Bool { firstMessageSubmission == nil && !submissionPending && historyEdit == nil && nativeStore?.composerCanSend == true && composer.hasContent && composer.attachmentsReady }
+    var canSaveDraft: Bool { firstMessageSubmission == nil && !submissionPending && nativeStore?.composerCanEdit == true && selectedConversationID == nil && composer.hasContent && composer.attachmentsReady && !isBusy }
     var pendingOtherDevices: [BackendDevice] { devices.filter { $0.enabled && $0.id != selectedDeviceID && pendingCount(for: $0.id) > 0 } }
     var mentionOptions: [NativeOption] { nativeSnapshot.mentions ?? [] }
     var hasMoreConversations: Bool { projectGroups.values.contains { $0.actions?.contains { $0.command?.name == "project.more" } == true } }
@@ -131,7 +132,7 @@ final class AppSession {
     func flatten(_ items: [NativePanelItem]) -> [NativePanelItem] { items.flatMap { [$0] + flatten($0.children ?? []) } }
 
     /// 通过 Store 发命令并等待同一个 request id 的真实 ACK；不会由本地计时器生成成功。
-    func request(_ name: String, _ params: [String: NativeJSONValue] = [:], timeoutSeconds: Int = 20, presentErrors: Bool = true) async -> Bool {
+    func request(_ name: String, _ params: [String: NativeJSONValue] = [:], timeoutSeconds: Int = 20, presentErrors: Bool = true, onIssued: ((NativeCommand) -> Void)? = nil) async -> Bool {
         lastErrorMessage = nil
         guard let store = nativeStore, let original = store.sendCommand, !store.isReference else { return false }
         return await withCheckedContinuation { continuation in
@@ -142,9 +143,10 @@ final class AppSession {
                 emitted = true
                 if !presentErrors { self.silentCommands.insert(command.id) }
                 self.pendingCommands[command.id] = (self.string(command.params["contextId"]), continuation)
+                onIssued?(command)
                 self.commandTimeouts[command.id] = Task { [weak self] in
                     do { try await Task.sleep(for: .seconds(timeoutSeconds)) } catch { return }
-                    self?.resolve(command.id, ok: false, error: "操作结果尚未确认，输入已保留，请重试。")
+                    self?.resolve(command.id, ok: false, error: "操作结果尚未确认，输入已保留，请重试。", confirmed: false)
                 }
                 original(command)
             }
@@ -159,7 +161,8 @@ final class AppSession {
             if !emitted { continuation.resume(returning: false) }
         }
     }
-    func resolve(_ id: String, ok: Bool, error: String?) {
+    func resolve(_ id: String, ok: Bool, error: String?, confirmed: Bool = true) {
+        receiveFirstMessageResult(id, ok: ok, error: error, confirmed: confirmed)
         guard let pending = pendingCommands.removeValue(forKey: id) else { return }
         commandTimeouts.removeValue(forKey: id)?.cancel()
         let silent = silentCommands.remove(id) != nil
@@ -205,6 +208,7 @@ final class AppSession {
 
     @discardableResult func createConversation(project: String? = nil) -> UUID { beginNewConversation(project: project); return composer.id }
     func beginNewConversation(project: String? = nil, deviceID: UUID? = nil) {
+        firstMessageSubmission = nil
         var params: [String: NativeJSONValue] = [:]
         if let deviceID, let raw = rawDeviceIDs[deviceID] { params["backendId"] = .string(raw) }
         if let project {
@@ -216,7 +220,7 @@ final class AppSession {
         }
         nativeStore?.startNewConversation(params: params)
     }
-    func open(_ id: UUID) { guard let raw = rawThreadIDs[id] else { return }; fire("thread.open", ["backendId": .string(raw.backend), "threadId": .string(raw.thread)]) }
+    func open(_ id: UUID) { guard let raw = rawThreadIDs[id] else { return }; firstMessageSubmission = nil; fire("thread.open", ["backendId": .string(raw.backend), "threadId": .string(raw.thread)]) }
     func selectListDevice(_ id: UUID?) { fire("backend.select", ["id": .string(id.flatMap { rawDeviceIDs[$0] } ?? "all")]) }
     func changeEditorDevice(_ id: UUID) { guard let raw = rawDeviceIDs[id] else { return }; fire("newchat.backend", ["value": .string(raw)]) }
     func configurationDidChange() {

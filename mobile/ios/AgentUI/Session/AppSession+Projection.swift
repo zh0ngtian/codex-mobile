@@ -133,6 +133,7 @@ extension AppSession {
         projectRequests(approvalPanel)
         projectDrafts(snapshot.panel)
         projectAttachmentPreview(snapshot.panel)
+        reconcileFirstMessage()
         if let edit = historyEdit, let raw = rawMessageIDs[edit.messageID], let panel = snapshot.messages.first(where: { $0.id == raw })?.historyEdit, let field = panel.items.first(where: { $0.id == "history-text" }), let text = field.value, edit.text.isEmpty { historyEdit?.text = text }
     }
 

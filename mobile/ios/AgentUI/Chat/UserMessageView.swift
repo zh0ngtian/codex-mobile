@@ -6,6 +6,7 @@ struct UserMessageView: View {
     let message: ChatMessage
     let conversationID: UUID
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.firstMessageImages) private var firstImages
     @State private var showTimestamp = false
     @State private var selectionRequest: UUID?
     private static let leadingSpace: CGFloat = 30
@@ -30,7 +31,10 @@ struct UserMessageView: View {
                                 onSelectionEnd: { selectionRequest = nil })
                                 .selectionQuoteSource(message.quoteSource)
                         }
-                        if !message.attachments.isEmpty { MessageAttachmentCards(attachments: message.attachments) }
+                        if !message.attachments.isEmpty {
+                            MessageAttachmentCards(attachments: message.attachments,
+                                previewImages: session.selectedConversation?.messages.first(where: \.isUser)?.id == message.id ? firstImages : [])
+                        }
                     }
                     .padding(.horizontal, Self.horizontalPadding).padding(.vertical, 10)
                     .background {

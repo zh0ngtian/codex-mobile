@@ -46,6 +46,8 @@
 
 近期可追溯记录：
 
+- [2026-10-23 新会话首条发送连续过渡](plans/2026-10-23-new-conversation-motion.md)：立即待发送、机器／项目与附件交接、失败保留及待确认；原生与状态层验证记录，未发布。
+
 - [2026-10-23 GPT-6-Luna标题总结仅网关部署](superpowers/plans/2026-10-23-title-luna-gateway-deploy.md)：固定模型、low与Fast的成功批次、安装模块双入口协议探测及客户端渠道不变回验；[公共凭证](superpowers/plans/evidence/2026-10-23-title-luna-gateway-deploy.json)。
 
 - [2026-10-23 Bark自动命名等待仅网关部署](superpowers/plans/2026-10-23-bark-auto-title-gateway-deploy.md)：成功批次 `f0074198-f11b-4a27-a79f-8327d3dadf56` 及12项实际部署模块隔离时序回验；其0.3.31渠道结论为当次回验时点；[公共凭证](superpowers/plans/evidence/2026-10-23-bark-auto-title-gateway-deploy.json)。

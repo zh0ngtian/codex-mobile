@@ -10,6 +10,9 @@ struct ConversationHeader: ViewModifier {
     private var conversation: Conversation? { conversationID.flatMap(session.conversation) }
     private var title: String { conversation?.title ?? preferences.text("新会话", "New conversation") }
     private var subtitle: String {
+        if let first = session.firstMessageSubmission {
+            return "\(first.projectName ?? preferences.text("无项目", "No project")) · \(first.deviceName)"
+        }
         guard let conversation else { return "Codex" }
         return "\(conversation.project.map { session.projectTitle(for: $0) } ?? preferences.text("无项目", "No project")) · \(session.device(conversation.deviceID)?.name ?? "")"
     }

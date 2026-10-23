@@ -4,6 +4,7 @@ struct OutputImageCard: View {
     @Environment(AppSession.self) private var session
     @Environment(AppPreferences.self) private var preferences
     let item: OutputItem
+    var previewImage: UIImage? = nil
     @State private var image: UIImage?
     @State private var failed = false
 
@@ -14,7 +15,7 @@ struct OutputImageCard: View {
                    let html = NativeImageData.webImageHTML(source, title: item.name) {
                     NativeHTMLWebView(html: html, scrollEnabled: false, interactive: false, onOpenLink: { _ in })
                         .frame(height: 180).allowsHitTesting(false)
-                } else if let image {
+                } else if let image = image ?? previewImage {
                     Image(uiImage: image).renderingMode(.original).resizable().scaledToFit().frame(maxHeight: 180)
                 } else if failed {
                     Image(systemName: "photo.badge.exclamationmark").font(.title).frame(height: 90)

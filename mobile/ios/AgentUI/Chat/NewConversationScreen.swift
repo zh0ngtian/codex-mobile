@@ -14,8 +14,6 @@ struct NewConversationScreen: View {
             .padding(.horizontal, 20).padding(.top, 10)
         }
         .background(AgentTheme.page)
-        .modifier(ConversationHeader(conversationID: nil))
-        .modifier(ConversationComposerInset(conversationID: nil))
 
     }
 }

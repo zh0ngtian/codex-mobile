@@ -229,8 +229,6 @@ struct ConversationScreen: View {
                     SidechatSharedDirectoryBanner()
                 }
             }
-            .modifier(ConversationHeader(conversationID: conversationID))
-            .modifier(ConversationComposerInset(conversationID: conversationID))
 
         } else { ContentUnavailableView(preferences.text("会话不可用", "Conversation unavailable"), systemImage: "bubble.left") }
     }

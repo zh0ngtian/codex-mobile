@@ -6,6 +6,7 @@ struct ComposerBar: View {
     @Environment(AppSession.self) private var session
     @Environment(AppPreferences.self) private var preferences
     let conversationID: UUID?
+    @Environment(\.firstMessageCapture) private var flightCapture
     @State private var selectedMention = 0
     @State private var mentionsDismissed = false
     @State private var submitFeedback = 0
@@ -32,28 +33,31 @@ struct ComposerBar: View {
         @Bindable var session = session
         AgentGlassGroup {
             VStack(spacing: 8) {
-                if let quotes = session.nativeSnapshot.quotes, !quotes.isEmpty { ComposerQuoteCards(quotes: quotes) }
-                if !candidates.isEmpty {
+                if session.firstMessageSubmission == nil, let quotes = session.nativeSnapshot.quotes, !quotes.isEmpty { ComposerQuoteCards(quotes: quotes) }
+                if session.firstMessageSubmission == nil, !candidates.isEmpty {
                     MentionCandidates(candidates: candidates, selected: selectedMention, choose: chooseMention)
                 }
                 VStack(spacing: 10) {
-                    if !session.composer.attachments.isEmpty { ComposerAttachmentStrip() }
-                    if !attachmentFlow.items.isEmpty || attachmentFlow.error != nil || attachmentFlow.isLocating {
-                        ComposerPendingAttachments(flow: attachmentFlow, retry: retryAttachments, clear: cancelAttachments)
+                    VStack(spacing: 10) {
+                        if session.firstMessageSubmission == nil, !session.composer.attachments.isEmpty { ComposerAttachmentStrip() }
+                        if !attachmentFlow.items.isEmpty || attachmentFlow.error != nil || attachmentFlow.isLocating {
+                            ComposerPendingAttachments(flow: attachmentFlow, retry: retryAttachments, clear: cancelAttachments)
+                        }
+                        HStack(spacing: 0) {
+                            TextField(preferences.text("向 Codex 提问", "Ask Codex"), text: displayedText, axis: .vertical)
+                                .font(AgentTheme.body)
+                                .lineLimit(1...6)
+                                .focused($focused)
+                                .submitLabel(.send)
+                                .onSubmit(submit)
+                                .onKeyPress(keys: [.upArrow, .downArrow, .return, .tab, .escape], action: handleKey)
+                                .frame(minHeight: 24)
+                                .padding(.horizontal, 4)
+                                .disabled(!session.composerCanEdit || session.historyEdit != nil || session.selectedConversation?.readOnly == true || !session.composer.attachmentsReady)
+                                .accessibilityIdentifier("message-input")
+                        }
                     }
-                    HStack(spacing: 0) {
-                        TextField(preferences.text("向 Codex 提问", "Ask Codex"), text: $session.composer.text, axis: .vertical)
-                            .font(AgentTheme.body)
-                            .lineLimit(1...6)
-                            .focused($focused)
-                            .submitLabel(.send)
-                            .onSubmit(submit)
-                            .onKeyPress(keys: [.upArrow, .downArrow, .return, .tab, .escape], action: handleKey)
-                            .frame(minHeight: 24)
-                            .padding(.horizontal, 4)
-                            .disabled(!session.composerCanEdit || session.historyEdit != nil || session.selectedConversation?.readOnly == true || !session.composer.attachmentsReady)
-                            .accessibilityIdentifier("message-input")
-                    }
+                    .background { FirstMessageCaptureMarker(capture: flightCapture) }
                     HStack(spacing: 6) {
                         attachmentMenu
                         ComposerPermissionMenu()
@@ -63,6 +67,7 @@ struct ComposerBar: View {
                         Spacer(minLength: 0)
                         ComposerSubmitButton(action: submit).disabled(attachmentBlocksSubmission)
                     }
+                    .disabled(session.firstMessageSubmission != nil)
                 }
                 .padding(.horizontal, 12)
                 .padding(.top, 17)
@@ -108,6 +113,10 @@ struct ComposerBar: View {
         .onChange(of: photosPresented) { updateModalState() }
         .onChange(of: filesPresented) { updateModalState() }
         .task(id: attachmentWork?.id) { await performAttachmentWork() }
+    }
+    private var displayedText: Binding<String> {
+        Binding(get: { session.firstMessageSubmission == nil ? session.composer.text : "" },
+                set: { if session.firstMessageSubmission == nil { session.composer.text = $0 } })
     }
     private var attachmentPickerHost: some View {
         let selection = pickerSelection
@@ -218,6 +227,9 @@ struct ComposerBar: View {
         guard !hasPendingAttachment else { return }
         if !candidates.isEmpty { chooseMention(candidates[min(selectedMention, candidates.count - 1)]); return }
         guard session.canSubmit else { return }
+        if session.selectedConversationID == nil {
+            flightCapture?.prepare(draft: session.composer, quoted: session.nativeSnapshot.quotes?.isEmpty == false)
+        }
         submitFeedback += 1
         _ = session.submitCurrent()
         focused = false
