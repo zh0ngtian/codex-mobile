@@ -735,6 +735,10 @@ struct AgentSessionSmoke {
         state.approvalCount = 1; state.approvalPanel = panel; state.conversationActions = [NativePanelItem(id: "reopen", kind: "action", command: NativeCommand(name: "approval.reopen"))]
         publish()
         let question = session.questions.first!; let field = question.questions.first!
+        var nextPanel = panel; nextPanel.id = "approval:string:async-question-next"
+        state.approvalPanel = nextPanel; publish()
+        precondition(session.activeQuestionID == session.questions.first?.id && session.activeQuestionID != question.id, "下一条结构化问题直接替换投影时必须切换窗口身份，不能停留在已处理问题")
+        state.approvalPanel = panel; publish()
         session.setAnswer(requestID: question.id, questionID: field.id, answer: QuestionAnswer(custom: true, text: "只留内存的私密答案"))
         session.postponeQuestion(); publish()
         precondition(session.activeQuestionID == nil, "稍后回答后旧panel快照不得自动重新弹出")

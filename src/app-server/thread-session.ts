@@ -46,6 +46,10 @@ export function applyTurnCommentary(turns: AnyRecord[], detail: TurnCommentary):
       const existing = byId.get(item.id);
       const merged = existing && item.type === "userMessage" ? mergeConfirmedUserMessage(existing, item)
         : existing?.phase === "final_answer" ? { ...item, ...existing } : { ...existing, ...item };
+      // 摘要的空字段不能覆盖完整详情中的结构化问题；正文仍保留较新的实时版本。
+      if (item.type === 'agentMessage' && item.delivery === 'async' && Array.isArray(item.questions) && item.questions.length) {
+        merged.delivery = item.delivery; merged.questions = item.questions;
+      }
       if (existing?.type === "agentMessage" && item.type === "agentMessage" &&
         typeof existing.text === "string" && typeof item.text === "string" &&
         existing.text.length > item.text.length && existing.text.startsWith(item.text)) {
@@ -92,7 +96,7 @@ function orderTurnItems(items: AnyRecord[], messageOrder: string[] | undefined, 
 }
 
 export type TurnChangeStats = { additions: number; deletions: number };
-export type TurnBackfill = Partial<TurnChangeStats> & { images: AnyRecord[]; commentaryItems?: AnyRecord[]; messageOrder?: string[]; unavailable?: boolean; source?: string };
+export type TurnBackfill = Partial<TurnChangeStats> & { images: AnyRecord[]; commentaryItems?: AnyRecord[]; questionItems?: AnyRecord[]; messageOrder?: string[]; unavailable?: boolean; source?: string };
 
 export async function loadTurnChangeStatsPage(
   client: Requester,
@@ -134,7 +138,8 @@ export async function loadTurnChangeStatsPage(
       const messageOrder = (turn.messageOrder ?? (turn.items ?? [])
         .filter((item: AnyRecord) => ["userMessage", "agentMessage", "imageView", "imageGeneration", "videoGeneration"].includes(item.type))
         .map((item: AnyRecord) => item.id)).filter((id: unknown) => typeof id === "string");
-      const messages = { ...(commentaryItems.length ? { commentaryItems } : {}), ...(messageOrder.length ? { messageOrder } : {}) };
+      const questionItems = (turn.questionItems ?? turn.items ?? []).filter((item: AnyRecord) => item.type === 'agentMessage' && item.delivery === 'async' && Array.isArray(item.questions) && item.questions.length);
+      const messages = { ...(commentaryItems.length ? { commentaryItems } : {}), ...(questionItems.length ? { questionItems } : {}), ...(messageOrder.length ? { messageOrder } : {}) };
       return [String(turn.id), hasTurnChangeStats(turn)
         ? { ...summarizeTurnChanges(turn), images, ...messages, ...(turn.changeStatsSource ? { source: turn.changeStatsSource } : {}) }
         : { unavailable: true, images, ...messages }];
@@ -153,8 +158,9 @@ export function applyTurnChangeStats(
     if (!detail) return requested.has(String(turn.id))
       ? { ...turn, changeStatsUnavailable: true }
       : turn;
-    const recovered = detail.commentaryItems?.length
-      ? applyTurnCommentary([turn], { turnId: String(turn.id), items: detail.commentaryItems })[0]
+    const messages = [...(detail.commentaryItems ?? []), ...(detail.questionItems ?? [])];
+    const recovered = messages.length
+      ? applyTurnCommentary([turn], { turnId: String(turn.id), items: messages })[0]
       : turn;
     const items: AnyRecord[] = [...(recovered.items ?? [])];
     const finalIndex = items.findIndex((item: AnyRecord) =>

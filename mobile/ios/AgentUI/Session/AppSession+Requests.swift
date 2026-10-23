@@ -46,6 +46,7 @@ extension AppSession {
             questionMemory[id] = request; questionBackends[id] = backend
             let explicitlyReopened = reopenRequestIntent
             if explicitlyReopened { postponedQuestionIDs.remove(id); reopenRequestIntent = false }
+            if activeQuestionID != id { activeQuestionID = nil }
             if activeQuestionID == nil, selectedConversationID == thread || explicitlyReopened, !postponedQuestionIDs.contains(id) { activeQuestionID = id }
             activeApprovalID = nil
             if let index = index(thread) { conversations[index].phase = .waitingAnswer }

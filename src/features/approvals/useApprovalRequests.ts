@@ -3,6 +3,7 @@ import type { RpcMessage } from "../../app-server/client";
 import { HttpOperationPendingError } from "../../backends/http-transport";
 import { approvalKey, supportedApprovalMethods } from "./approval-model";
 import { t } from "../../i18n";
+import { isAsyncQuestion, pendingAsyncQuestions } from "./async-questions";
 
 type Entry = { request: RpcMessage; answers: Record<string, string>; error: string; submission?: symbol; releasePending?: () => void };
 type Responder = { respond: (id: number | string, result: unknown) => void | Promise<void> };
@@ -12,6 +13,7 @@ export type ApprovalSubmissionResult = { ok: true } | { ok: false; error: string
 /** 请求状态与草稿一起存放，任何异步结果只能完成它所属的那次提交。 */
 export function useApprovalRequests() {
   const entriesRef = useRef<Entry[]>([]);
+  const completedAsync = useRef(new Set<string>());
   const [dismissed, setDismissed] = useState<string | null>(null);
   const [entries, setEntries] = useState<Entry[]>([]);
   const update = useCallback((next: Entry[]) => {
@@ -28,16 +30,35 @@ export function useApprovalRequests() {
     for (const request of requests) {
       if (request.id != null && supportedApprovalMethods.has(request.method ?? "")) unique.set(approvalKey(request), request);
     }
-    update([...unique].map(([key, request]) => ({ ...(previous.get(key) ?? { answers: {}, error: "" }), request })));
+    const serverEntries = [...unique].map(([key, request]) => ({ ...(previous.get(key) ?? { answers: {}, error: "" }), request }));
+    const asyncEntries = entriesRef.current.filter(entry => isAsyncQuestion(entry.request));
+    update([...asyncEntries.filter(entry => entry.submission), ...serverEntries, ...asyncEntries.filter(entry => !entry.submission)]);
+  }, [update]);
+  const syncAsyncQuestions = useCallback((thread: Record<string, any> | null) => {
+    if (!thread?.id) return;
+    const incoming = pendingAsyncQuestions(thread).filter(request => !completedAsync.current.has(approvalKey(request)));
+    const current = entriesRef.current;
+    const pending = new Map(incoming.map(request => [approvalKey(request), request]));
+    const next: Entry[] = [];
+    for (const entry of current) {
+      const request = pending.get(approvalKey(entry.request));
+      if (request) { next.push({ ...entry, request }); pending.delete(approvalKey(request)); }
+      else if (!isAsyncQuestion(entry.request) || (entry.request.params as any)?.threadId !== thread.id || entry.submission) next.push(entry);
+    }
+    next.push(...[...pending.values()].map(request => ({ request, answers: {}, error: "" })));
+    if (JSON.stringify(next.map(entry => entry.request)) !== JSON.stringify(current.map(entry => entry.request))) update(next);
   }, [update]);
   const receive = useCallback((request: RpcMessage) => {
     if (request.id == null || !supportedApprovalMethods.has(request.method ?? "")) return false;
     if (!entriesRef.current.some((entry) => approvalKey(entry.request) === approvalKey(request))) {
-      update([...entriesRef.current, { request, answers: {}, error: "" }]);
+      const current = entriesRef.current;
+      const index = current.findIndex(entry => isAsyncQuestion(entry.request) && !entry.submission);
+      const next = [...current]; next.splice(index < 0 ? next.length : index, 0, { request, answers: {}, error: "" });
+      update(next);
     }
     return true;
   }, [update]);
-  const reset = useCallback(() => { update([]); setDismissed(null); }, [update]);
+  const reset = useCallback(() => { update([]); setDismissed(null); completedAsync.current.clear(); }, [update]);
   const onNotification = useCallback((message: RpcMessage) => {
     const params = (message.params ?? {}) as Record<string, any>;
     if (message.method === "mobile/requests") { sync(params.requests ?? []); return true; }
@@ -64,6 +85,7 @@ export function useApprovalRequests() {
       const current = entriesRef.current;
       if (!current.some((entry) => entry.submission === token)) return;
       completed = response.error ? { ok: false, error: response.error.message } : { ok: true };
+      if (!response.error && isAsyncQuestion(first.request)) completedAsync.current.add(approvalKey(first.request));
       update(response.error ? current.map((entry) => entry.submission === token ? { ...entry, submission: undefined, releasePending: undefined, error: response.error!.message } : entry)
         : current.filter((entry) => entry.submission !== token));
     };
@@ -97,5 +119,5 @@ export function useApprovalRequests() {
   return { requests: entries.map((entry) => entry.request), approval: current && approvalKey(current.request) !== dismissed ? current.request : null,
     userAnswers: current?.answers ?? {}, submitting: !!current?.submission, error: current?.error ?? "",
     current: () => { const entry = entriesRef.current[0]; return entry ? { request: entry.request, answers: entry.answers, submitting: !!entry.submission } : null; },
-    receive, reset, onNotification, answer, submit, dismiss, reopen };
+    receive, reset, onNotification, answer, submit, dismiss, reopen, syncAsyncQuestions };
 }

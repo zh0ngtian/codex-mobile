@@ -66,7 +66,11 @@ function commentaryDetails(items: RecordValue[]) {
     .map((item) => ({ id: item.id, type: item.type, phase: item.phase, text: item.text, ...messageTimestamp(item) }));
   // final 和用户消息只传顺序锚点，正文/附件继续使用首屏摘要或实时数据。
   const messageOrder = orderedMessageIds(items);
-  return { ...(commentaryItems.length ? { commentaryItems } : {}), ...(messageOrder.length ? { messageOrder } : {}) };
+  const questionItems = items.filter(item => item.type === 'agentMessage' && item.delivery === 'async' &&
+    typeof item.id === 'string' && Array.isArray(item.questions) && item.questions.length)
+    .map(item => ({ id: item.id, type: item.type, text: item.text, phase: item.phase, delivery: item.delivery,
+      questions: item.questions.map((question: RecordValue) => ({ title: question.title, options: question.options })), ...messageTimestamp(item) }));
+  return { ...(commentaryItems.length ? { commentaryItems } : {}), ...(questionItems.length ? { questionItems } : {}), ...(messageOrder.length ? { messageOrder } : {}) };
 }
 
 // Whitelist only the details needed for history backfill; never retain tool bodies or diffs.

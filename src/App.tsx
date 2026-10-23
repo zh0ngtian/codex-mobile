@@ -126,6 +126,7 @@ import {
 } from "./features/threads/ThreadListPage";
 import { ApprovalSheet } from "./features/approvals/ApprovalSheet";
 import { useApprovalRequests } from "./features/approvals/useApprovalRequests";
+import { isAsyncQuestion, sendAsyncQuestionAnswer } from "./features/approvals/async-questions";
 import { approvalKey, approvalResponse, questionResponse, type ApprovalDecision } from "./features/approvals/approval-model";
 import {
   ComposerSettings,
@@ -442,6 +443,7 @@ function BackendWorkspace({
   const [error, setError] = useState("");
   const approvalRequests = useApprovalRequests();
   const { requests, approval, userAnswers } = approvalRequests;
+  useEffect(() => { approvalRequests.syncAsyncQuestions(active); }, [active, approvalRequests.syncAsyncQuestions]);
   const [syncState, setSyncState] = useState<{ updatedAt: number | null; stale: boolean } | null>(null);
   const [models, setModels] = useState<AnyRecord[]>([]);
   const [permissionProfiles, setPermissionProfiles] = useState<AnyRecord[]>([]);
@@ -4164,7 +4166,26 @@ function BackendWorkspace({
   const replyToRequest = async (result: unknown) => {
     const client = clientRef.current;
     if (!approval || !client) return { ok: false, error: t("尚未连接 app-server") };
-    return approvalRequests.submit(result, client, (requestId, confirmed) => {
+    const responder = isAsyncQuestion(approval) ? { respond: async (_id: number | string, answer: unknown) => {
+      const threadId = String((approval.params as AnyRecord).threadId);
+      const side = sidechats.get(threadId);
+      if (activeRef.current?.id !== threadId || activeThreadAccessMode !== 'interactive') throw new Error(t('请先打开问题所属会话后回答'));
+      const target = side?.thread ?? activeRef.current;
+      const reply = await sendAsyncQuestionAnswer(approval, answer, target, side ? gatewaySidechatClient(client) : client, transportUuid());
+      if (reply?.turn) {
+        if (side) sidechats.observe({ method: 'turn/started', params: { threadId, turn: reply.turn } });
+        else if (clientRef.current === client && activeRef.current?.id === threadId) {
+          setActive(current => {
+            if (current?.id !== threadId) return current;
+            const next = applyTurnStarted(current, { threadId, turn: reply.turn });
+            setBusy(Boolean(activeTurnId(next)));
+            return next;
+          });
+        }
+      }
+      if (!side && clientRef.current === client && activeRef.current?.id === threadId) void reconcileActiveThread(client).catch(() => undefined);
+    } } : client;
+    return approvalRequests.submit(result, responder, (requestId, confirmed) => {
       rememberPendingOperation(requestId, {
         threadId: String((approval.params as AnyRecord)?.threadId ?? ""),
         draftContext: draftContextGenerationRef.current,

@@ -21,6 +21,7 @@ struct QuestionSubmitBar: View {
                 .frame(maxWidth: .infinity, minHeight: 48)
             }
             .buttonStyle(.borderedProminent)
+            .accessibilityIdentifier("question.submit")
             .disabled(!request.isValid || request.submitting)
         }
         .padding(.horizontal, 20)

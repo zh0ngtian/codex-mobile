@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { compactTurnDetails, compactTurnCommentary } from '../../server/turn-details.js';
 
+it('完整详情回填保留异步问题的结构，后续用户消息锚点阻止旧问题重新弹出', () => {
+  const question = { id: 'async-call', type: 'agentMessage', text: '选择方案？', phase: 'final_answer', delivery: 'async', questions: [{ title: '选择方案？', options: ['A', 'B'] }], toolBody: '不应透出' };
+  const compact = compactTurnDetails({ data: [{ id: 't', items: [question] }] }).data[0] as any;
+  expect(compact.questionItems).toEqual([{ id: question.id, type: 'agentMessage', text: question.text, phase: question.phase, delivery: 'async', questions: question.questions }]);
+  const answered = compactTurnDetails({ data: [{ id: 't', items: [question, { id: 'user', type: 'userMessage' }] }] }).data[0] as any;
+  expect(answered.messageOrder).toEqual(['async-call', 'user']);
+});
+
 describe('历史统计可用性', () => {
   it('命令执行缺少 diff 时不能把未知改动写成 0', () => {
     expect(compactTurnDetails({ data: [{ id: 'shell', items: [{ type: 'commandExecution', exitCode: 0 }] }] }).data[0])

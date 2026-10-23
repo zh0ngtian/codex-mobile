@@ -36,6 +36,7 @@ struct QuestionFormSheet: View {
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button(preferences.text("稍后回答", "Later"), action: postpone)
+                        .accessibilityIdentifier("question.later")
                         .frame(minWidth: 44, minHeight: 44)
                         .disabled(session.question(requestID)?.submitting == true)
                 }

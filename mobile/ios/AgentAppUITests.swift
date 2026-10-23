@@ -5,6 +5,56 @@ import Vision
 /// 独立界面夹具及本地网关验收；连接凭证不进入源码或测试附件。
 @MainActor
 final class AgentAppUITests: XCTestCase {
+    func testAsyncQuestionsThroughLiveWebKitAndGateway() async throws {
+        guard let control = ProcessInfo.processInfo.environment["CODEX_TEST_QUESTION_CONTROL"]
+            ?? ProcessInfo.processInfo.environment["TEST_RUNNER_CODEX_TEST_QUESTION_CONTROL"] else { throw XCTSkip("需要独立异步提问协议夹具") }
+        func state(_ path: String = "") async throws -> [String: Any] {
+            let (data, _) = try await URLSession.shared.data(from: URL(string: control + path)!)
+            return try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        }
+        _ = try await state("/reset")
+        let app = try launchConnectedApp()
+        let row = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "模型提问选择窗口")).firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 12)); row.tap()
+        XCTAssertTrue(app.buttons["conversation.actions"].waitForExistence(timeout: 10))
+        let composer = app.textFields["message-input"]
+        XCTAssertTrue(composer.waitForExistence(timeout: 5)); composer.tap(); composer.typeText("保留的未发送草稿")
+        _ = try await state("/question?running=1&fail=1")
+        let sheet = app.navigationBars["回答问题"]
+        XCTAssertTrue(sheet.waitForExistence(timeout: 12))
+        XCTAssertFalse(app.buttons["question.submit"].isEnabled)
+        let option = app.buttons.matching(identifier: "与“取消／保存”放在同一排").firstMatch
+        XCTAssertTrue(option.waitForExistence(timeout: 5)); option.tap()
+        XCTAssertTrue(option.isSelected)
+        app.buttons["question.later"].tap()
+        XCTAssertTrue(app.buttons["继续回答"].waitForExistence(timeout: 5)); app.buttons["继续回答"].tap()
+        XCTAssertTrue(option.waitForExistence(timeout: 5)); XCTAssertTrue(option.isSelected)
+        captureConversation("模型异步提问-原生选择窗口", app: app)
+        app.buttons["question.submit"].tap()
+        XCTAssertTrue(app.staticTexts["预览发送失败，答案已保留"].waitForExistence(timeout: 12))
+        XCTAssertTrue(option.isSelected); XCTAssertTrue(app.buttons["question.submit"].isEnabled)
+        captureConversation("模型异步提问-失败保留答案", app: app)
+        app.buttons["question.submit"].tap()
+        await fulfillment(of: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: sheet)], timeout: 12)
+        let first = try await state()
+        let replies = try XCTUnwrap(first["replies"] as? [[String: Any]])
+        XCTAssertEqual(replies.count, 2)
+        XCTAssertEqual(replies.last?["method"] as? String, "turn/steer")
+        XCTAssertEqual(composer.value as? String, "保留的未发送草稿")
+        _ = try await state("/question?running=0&free=1")
+        XCTAssertTrue(sheet.waitForExistence(timeout: 12))
+        let answer = app.textFields["问题 1"]
+        XCTAssertTrue(answer.waitForExistence(timeout: 5)); answer.tap(); answer.typeText("保留数据和现有设置")
+        app.buttons["question.submit"].tap()
+        await fulfillment(of: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: sheet)], timeout: 12)
+        let last = try await state()
+        let all = try XCTUnwrap(last["replies"] as? [[String: Any]])
+        XCTAssertEqual(all.last?["method"] as? String, "turn/start")
+        XCTAssertEqual(all.count, 3)
+        XCTAssertEqual(composer.value as? String, "保留的未发送草稿")
+        app.terminate()
+    }
+
     func testOrdinaryErrorUsesPersistentSystemAlertAndAcknowledgesSnapshot() {
         let app = launchInteractionFixture("--agent-error-alert-fixture")
         let alert = app.alerts["错误"]
