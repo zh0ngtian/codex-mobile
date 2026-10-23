@@ -5,8 +5,12 @@ const view = (name: string) => readFileSync(`mobile/ios/AgentUI/Chat/${name}.swi
 
 it('用户气泡正文与高度测量使用相同可见文本，复制继续使用原文', () => {
   const source = view('UserMessageView');
+  const selectable = readFileSync('mobile/ios/NativeUI/NativeSelectableText.swift', 'utf8');
   expect(source).toContain('UserMessageText.visible(message.text)');
-  expect(source.match(/NSAttributedString\(string: displayText/g)).toHaveLength(1);
+  expect(source).toContain('NativeSelectableText(text: NativeSelectableMarkdown.inline(displayText,');
+  expect(selectable).toContain('view.attributedText = text');
+  expect(selectable).toContain('uiView.attributedText.boundingRect(');
+  expect(selectable).toContain('uiView.layoutManager.usedRect(for: uiView.textContainer)');
   expect(source).toContain('identifier: "user.selectable"');
   expect(source).not.toContain('Text(message.text)');
   expect(source).toContain('Clipboard.copy(message.rawText ?? message.text)');

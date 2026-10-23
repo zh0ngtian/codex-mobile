@@ -135,6 +135,7 @@ const english: Record<string, string> = {
   "重命名未完成": "Renaming did not complete",
   "队列已更新": "The queue has changed",
   "当前无法发送排队消息": "Unable to send this queued message now",
+  "当前无法发送引导消息": "Unable to send this steering message now",
   "当前无法编辑排队消息": "Unable to edit this queued message now",
   "无法保存排队消息": "Unable to save the queued message",
   "会话设置": "Conversation settings",
