@@ -9,7 +9,7 @@ import WebSocket, { WebSocketServer } from 'ws';
 import { createGateway } from '../../../server/gateway.js';
 import { DESKTOP_PINNED_SECTION_ID as PIN } from '../../../server/desktop-thread-pins.js';
 
-type Scenario = 'name-first' | 'task-first' | 'save-ack-late' | 'summary-failed' | 'candidate-unsaved';
+type Scenario = 'name-first' | 'task-first' | 'task-before-summary' | 'save-ack-late' | 'save-failed' | 'summary-failed' | 'candidate-unsaved';
 const pause = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 function deferred() { let resolve!: () => void; const promise = new Promise<void>(done => { resolve = done; }); return { promise, resolve }; }
 async function until(check: () => boolean) { for (let n = 0; n < 200 && !check(); n++) await pause(10); assert(check(), '等待本机接收端超时'); }
@@ -49,6 +49,7 @@ async function probe(scenario: Scenario) {
       else { sourceSocket = socket; mark('task-started'); }
     } else if (request.method === 'thread/name/set') {
       mark('save-requested'); saveRequested.resolve();
+      if (scenario === 'save-failed') { send(socket, { id: request.id, error: { code: -1, message: '受控保存失败' } }); return; }
       const accept = () => { name = params.name; mark('name-saved'); send(socket, { id: request.id, result: {} }); };
       if (scenario === 'save-ack-late') { saveReply = accept; return; }
       accept(); return;
@@ -75,26 +76,29 @@ async function probe(scenario: Scenario) {
     const settings = await fetch(endpoint('notifications/settings'), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ clientId: randomUUID(), backendId: 'probe-backend', mode: 'bark', barkUrl: `http://127.0.0.1:${(bark.address() as any).port}/probe-device` }) });
     assert.equal(settings.status, 200);
     await rpc('initialize', { clientInfo: { name: 'probe-client', version: '1' } });
-    await rpc('thread/start'); await rpc('thread/read', { threadId: source, includeTurns: false });
+    // 手动候选在既有会话内操作，不登记新会话的自动命名。
+    if (scenario !== 'candidate-unsaved') await rpc('thread/start');
+    await rpc('thread/read', { threadId: source, includeTurns: false });
     await rpc('turn/start', { threadId: source, input: [{ type: 'text', text: preview }] });
-    const naming = fetch(endpoint('threads/title-summary'), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ threadId: source }) }).then(async response => {
+    if (scenario === 'task-before-summary') finishTask();
+    const naming = fetch(endpoint('threads/title-summary'), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ threadId: source, ...(scenario !== 'candidate-unsaved' ? { automatic: true } : {}) }) }).then(async response => {
       const result = await response.json() as any;
       if (!response.ok) { mark('summary-request-failed'); return; }
       assert.equal(result.title, generated); mark('candidate-received');
       if (scenario !== 'candidate-unsaved') { await rpc('thread/name/set', { threadId: source, name: result.title }); mark('name-save-acknowledged'); }
-    });
+    }).catch(error => { if (scenario !== 'save-failed') throw error; mark('name-save-failed'); });
     await summaryReady.promise;
     if (scenario === 'name-first') { finishSummary(); await naming; finishTask(); await until(() => pushes.length === 1); }
     else if (scenario === 'candidate-unsaved') { finishSummary(); await naming; finishTask(); await until(() => pushes.length === 1); }
     else if (scenario === 'save-ack-late') { finishSummary(); await saveRequested.promise; finishTask(); await pause(100); saveReply!(); await naming; await until(() => pushes.length === 1); }
-    else { finishTask(); await pause(100); finishSummary(); await naming; await until(() => pushes.length === 1); }
+    else { if (scenario !== 'task-before-summary') finishTask(); await pause(100); finishSummary(); await naming; await until(() => pushes.length === 1); }
     // 重复完成事件与后续名称更新不能再生成第二条完成通知。
     finishTask(); await pause(60);
     assert.equal(pushes.length, 1);
-    if (scenario === 'name-first') assert.equal(pushes[0].body, generated);
-    if (['summary-failed', 'candidate-unsaved'].includes(scenario)) assert.equal(pushes[0].body, preview);
-    // 其余两种只记录实际顺序，不把当前存在的通知竞态固化为正确产品行为。
-    assert.equal(name, ['summary-failed', 'candidate-unsaved'].includes(scenario) ? null : generated);
+    const unsuccessful = ['summary-failed', 'save-failed', 'candidate-unsaved'].includes(scenario);
+    assert.equal(pushes[0].body, unsuccessful ? preview : generated);
+    assert.equal(name, unsuccessful ? null : generated);
+    if (!unsuccessful) assert(events.findIndex(item => item.event === 'name-saved') < events.findIndex(item => item.event.startsWith('bark:')));
     assert.equal(pushes[0].title, 'Codex 运行结束');
     return { scenario, events, receivedConversationName: pushes[0].body, finalSavedName: name, pushes: pushes.length,
       usesGeneratedName: pushes[0].body === generated, actualHttpGatewayAndBark: true };
@@ -107,7 +111,7 @@ async function probe(scenario: Scenario) {
 }
 
 const results = [];
-for (const scenario of ['name-first', 'task-first', 'save-ack-late', 'summary-failed', 'candidate-unsaved'] as Scenario[]) {
+for (const scenario of ['name-first', 'task-first', 'task-before-summary', 'save-ack-late', 'save-failed', 'summary-failed', 'candidate-unsaved'] as Scenario[]) {
   const result = await probe(scenario); results.push(result); console.log(JSON.stringify(result));
 }
 const directory = process.argv[2]; if (!directory) throw new Error('需要提供仓库外测试证据目录'); await mkdir(directory, { recursive: true, mode: 0o700 });

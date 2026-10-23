@@ -68,6 +68,14 @@ async function setup(native = true, projectState = { projects: [] as string[], p
  return posts.at(-1)?.contextId as string;
 }
 
+it('真实App的新会话自动总结标记通知等待，普通手动候选不混入', async () => {
+ const contextId = await setup(); boundary.immediateSend = true;
+ await act(async () => { command('title-wait-draft', 'draft.set', { contextId, value: '验证新名称完成通知', revision: 1 }); command('title-wait-send', 'message.send', { contextId }); });
+ await waitFor(() => expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url).includes('/api/threads/title-summary'))).toBe(true));
+ const request = vi.mocked(fetch).mock.calls.find(([url]) => String(url).includes('/api/threads/title-summary'))!;
+ expect(JSON.parse(String(request[1]?.body))).toEqual({ threadId: 'sent-thread', automatic: true });
+});
+
 function assertSwiftNavigationSnapshots(snapshots: any[]) {
  if (process.platform !== 'darwin') return;
  const directory = mkdtempSync(join(tmpdir(), 'native-startup-navigation-'));

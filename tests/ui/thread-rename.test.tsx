@@ -6,7 +6,14 @@ import { summarizeThreadTitle, TitleSummaryUnavailableError } from '../../src/ba
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 const backend = { id: 'a', baseUrl: 'https://gateway.invalid', token: 'secret', name: '网关', hostId: 'a', enabled: true, order: 0 };
 it.each([404, 405, 501])('旧网关 %s 明确标识接口缺失', async status => {
-  await expect(summarizeThreadTitle(backend, 't', vi.fn(async () => new Response('', { status })))).rejects.toBeInstanceOf(TitleSummaryUnavailableError);
+  await expect(summarizeThreadTitle(backend, 't', {}, vi.fn(async () => new Response('', { status })))).rejects.toBeInstanceOf(TitleSummaryUnavailableError);
+});
+it('自动总结显式标记通知等待，手动候选请求不标记', async () => {
+  const fetcher = vi.fn<typeof fetch>(async () => new Response('{"title":"新标题"}'));
+  await summarizeThreadTitle(backend, 'auto-thread', { automatic: true }, fetcher);
+  await summarizeThreadTitle(backend, 'manual-thread', {}, fetcher);
+  expect(JSON.parse(fetcher.mock.calls[0][1]!.body as string)).toEqual({ threadId: 'auto-thread', automatic: true });
+  expect(JSON.parse(fetcher.mock.calls[1][1]!.body as string)).toEqual({ threadId: 'manual-thread' });
 });
 it('模型总结期间保持弹窗与加载状态，返回仅填入输入框，编辑后保存', async () => {
   let done!: (response: Response) => void;

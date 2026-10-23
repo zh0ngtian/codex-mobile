@@ -210,15 +210,19 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
       response.setHeader("content-type", "application/json; charset=utf-8");
       response.setHeader("cache-control", "no-store");
       if (request.method !== "POST") { response.statusCode = 405; response.end(JSON.stringify({ error: { message: "仅支持 POST" } })); return; }
+      let automatic: ReturnType<BarkNotifications["beginAutomaticTitle"]>;
       try {
         const chunks: Buffer[] = []; let bytes = 0;
         for await (const chunk of request) { bytes += chunk.length; if (bytes > 4096) throw new Error("标题总结参数过长"); chunks.push(chunk); }
         let body: any;
         try { body = JSON.parse(Buffer.concat(chunks).toString("utf8")); } catch { response.statusCode = 400; response.end(JSON.stringify({ error: { message: "标题总结参数无效" } })); return; }
         if (typeof body?.threadId !== "string" || !body.threadId.trim() || body.threadId.length > 256) { response.statusCode = 400; response.end(JSON.stringify({ error: { message: "会话 ID 无效" } })); return; }
+        if (body.automatic !== undefined && typeof body.automatic !== "boolean") { response.statusCode = 400; response.end(JSON.stringify({ error: { message: "自动命名参数无效" } })); return; }
+        if (body.automatic === true) automatic = notifications.beginAutomaticTitle(body.threadId);
         const title = await titleSummaries.summarize(body.threadId);
+        automatic?.candidate(title);
         response.end(JSON.stringify({ title }));
-      } catch (error) { response.statusCode = 503; response.end(JSON.stringify({ error: { message: error instanceof Error ? error.message : "标题总结失败" } })); }
+      } catch (error) { automatic?.fail(); response.statusCode = 503; response.end(JSON.stringify({ error: { message: error instanceof Error ? error.message : "标题总结失败" } })); }
       return;
     }
     if (url.pathname === "/api/follow-ups") {

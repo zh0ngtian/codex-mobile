@@ -599,7 +599,7 @@ function BackendWorkspace({
     const state = automaticTitleStatesRef.current.get(threadId);
     if (!state || state.status !== "pending") return;
     state.status = "saving";
-    void summarizeThreadTitle(backend, threadId).then(async title => {
+    void summarizeThreadTitle(backend, threadId, { automatic: true }).then(async title => {
       if (state.status !== "saving") return;
       state.savePromise = client.request("thread/name/set", { threadId, name: title }).then(() => {
         if (state.status !== "saving") return;

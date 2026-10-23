@@ -8,6 +8,7 @@ import { readLocalThreadMetadata } from "./local-thread-metadata.js";
 import { isVisibleThread } from "./thread-visibility.js";
 import { QuestionNotificationTracker, type PendingQuestion } from "./question-notifications.js";
 import { parseBarkPushUrl } from "./notification-settings.js";
+import { AutomaticThreadNames } from "./automatic-thread-names.js";
 
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const MAX_SUBSCRIPTIONS = 128;
@@ -20,6 +21,7 @@ type State = { subscriptions: Subscription[]; delivered: string[] };
 /** 全网关共用订阅和去重记录，HTTP 与流式连接只提交实时事件。 */
 export class BarkNotifications {
   private titles = new Map<string, { name?: string | null; preview?: string | null }>();
+  private automaticNames = new AutomaticThreadNames();
   private questions = new QuestionNotificationTracker();
   private completions = new FinalAnswerCompletionTracker({ requireMobileOrigin: true, isThreadFollowed: id => this.followedThreadIds.has(id) });
   private desktopPinnedThreadIds = new Set<string>();
@@ -48,6 +50,10 @@ export class BarkNotifications {
     this.pinnedRevision++;
   }
   async initialized() { await this.ready; }
+  beginAutomaticTitle(threadId: string) {
+    if (this.closed || !threadId || threadId.length > 1024 || this.titles.get(threadId)?.name) return;
+    return this.automaticNames.begin(threadId);
+  }
   subscribeFollowing(listener: () => void) { this.followingListeners.add(listener); return () => this.followingListeners.delete(listener); }
   notifyFollowedCompletion(threadId: string, turnId: string) {
     if (this.closed || !this.followedThreadIds.has(threadId)) return;
@@ -123,11 +129,16 @@ export class BarkNotifications {
     }
     if (!changed) return;
     this.titles.delete(thread.id); this.titles.set(thread.id, title);
+    if (title.name) this.automaticNames.saved(thread.id);
     while (this.titles.size > 2048) this.titles.delete(this.titles.keys().next().value!);
   }
   /** RPC 历史只登记标题；成功提交指令另外登记对应回合的移动来源。 */
   observeRpc(request: { method?: string; params?: Record<string, any> }, response: { error?: unknown; result?: unknown }) {
-    if (this.closed || response.error != null) return;
+    if (this.closed) return;
+    if (response.error != null) {
+      if (request.method === "thread/name/set" && typeof request.params?.threadId === "string") this.automaticNames.failedSave(request.params.threadId, request.params.name);
+      return;
+    }
     if (["thread/section/move", "thread/archive"].includes(request.method ?? "") && typeof request.params?.threadId === "string") {
       const ids = this.followedThreadIds;
       if (request.method === "thread/section/move" && request.params?.sectionId === DESKTOP_PINNED_SECTION_ID) ids.add(request.params.threadId);
@@ -136,11 +147,14 @@ export class BarkNotifications {
     }
     const result = response.result as Record<string, any> | undefined;
     this.rememberThread(result?.thread);
+    // 在创建回执交给客户端前登记，覆盖任务比总结请求更早完成的情况。
+    if (request.method === "thread/start" && typeof result?.thread?.id === "string" && isVisibleThread(result.thread)) this.beginAutomaticTitle(result.thread.id);
     if (request.method === "thread/list" && Array.isArray(result?.data)) {
       for (const thread of result.data) this.rememberThread(thread);
     }
     if (request.method === "thread/name/set") {
       this.rememberThread({ id: request.params?.threadId, name: request.params?.name });
+      if (typeof request.params?.threadId === "string") this.automaticNames.saved(request.params.threadId);
     }
     const completed = this.completions.observeRpc(request, response);
     if (completed) this.deliver(completed);
@@ -172,7 +186,7 @@ export class BarkNotifications {
       while (this.completedTurns.size > 512) this.completedTurns.delete(this.completedTurns.keys().next().value!);
     }
     // 不等待网络；磁盘登记成功后才发送，避免跨连接和重启重复通知。
-    void this.enqueue(async () => {
+    const deliver = async () => {
       if (this.closed || !this.subscribed) return;
       const metadata = await readLocalThreadMetadata(this.options.codexHome, completed.threadId);
       if (this.closed) return;
@@ -202,7 +216,10 @@ export class BarkNotifications {
         const job = this.send(barkUrl, completed, { title: questionId == null ? "Codex 运行结束" : "Codex 需要你回答", group: this.options.displayName, url: `codexmobile://thread?backendId=${encodeURIComponent(subscription.backendId)}&threadId=${encodeURIComponent(completed.threadId)}`, id });
         this.jobs.add(job); void job.finally(() => this.jobs.delete(job));
       }
-    }).catch(() => {});
+    };
+    // 等待放在持久化队列之外，其他会话、提问及注销订阅不受慢命名阻塞。
+    const named = questionId == null ? this.automaticNames.wait(completed.threadId) : Promise.resolve();
+    void named.then(() => { if (!this.closed) return this.enqueue(deliver); }).catch(() => {});
   }
   private async send(barkUrl: string, completed: CompletedFinalAnswer | PendingQuestion, payload: Record<string, string>) {
     const question = "questionId" in completed;
@@ -230,5 +247,5 @@ export class BarkNotifications {
       }
     }
   }
-  async close() { this.closed = true; for (const controller of this.controllers) controller.abort(); await this.queue; await Promise.all(this.jobs); }
+  async close() { this.closed = true; this.automaticNames.close(); for (const controller of this.controllers) controller.abort(); await this.queue; await Promise.all(this.jobs); }
 }

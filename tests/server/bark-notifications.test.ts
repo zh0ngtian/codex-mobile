@@ -23,9 +23,10 @@ async function fixture(failPush: boolean | number = false) {
   const desktopPins = new Set<string>();
   const upstreamHttp = createServer(); const upstream = new WebSocketServer({ server: upstreamHttp }); const allConnections: WebSocket[] = []; const connections: WebSocket[] = []; const requests: any[] = [];
   let reply = (socket: WebSocket, message: any) => { if (message.id != null && message.method) socket.send(JSON.stringify({ id: message.id, result: message.method === "turn/start" ? { turn: { id: "turn", status: "inProgress" } } : {} })); };
-  upstream.on("connection", (socket) => { allConnections.push(socket); connections.push(socket); socket.on("message", (raw) => { const message = JSON.parse(raw.toString()); requests.push(message);
-    if (message.method === "initialize" && message.params?.clientInfo?.name === "codex-mobile-follow-ups") { const index = connections.indexOf(socket); if (index >= 0) connections.splice(index, 1); }
-    if (message.method === "threadSection/list") socket.send(JSON.stringify({ id: message.id, result: { data: [{ id: PIN, name: "Pinned" }], nextCursor: null } }));
+  upstream.on("connection", (socket) => { allConnections.push(socket); let identified = false; socket.on("message", (raw) => { const message = JSON.parse(raw.toString()); requests.push(message);
+    if (!identified) { identified = true; if (!(message.method === "initialize" && message.params?.clientInfo?.name === "codex-mobile-follow-ups")) connections.push(socket); }
+    if (message.method === "initialize" && message.params?.clientInfo?.name === "bark-test-stream") socket.send(JSON.stringify({ id: message.id, result: {} }));
+    else if (message.method === "threadSection/list") socket.send(JSON.stringify({ id: message.id, result: { data: [{ id: PIN, name: "Pinned" }], nextCursor: null } }));
     else if (message.method === "thread/list" && message.params?.sectionId === PIN) socket.send(JSON.stringify({ id: message.id, result: { data: [...desktopPins].map(id => ({ id, section: { id: PIN } })), nextCursor: null } }));
     else if (message.method === "thread/section/move") { if (message.params.sectionId === PIN) desktopPins.add(message.params.threadId); else desktopPins.delete(message.params.threadId); socket.send(JSON.stringify({ id: message.id, result: {} })); }
     else reply(socket, message); }); });
@@ -39,7 +40,16 @@ async function fixture(failPush: boolean | number = false) {
   const settings = (body: any = { clientId, backendId, mode: "bark", barkUrl }) => fetch(url("notifications/settings"), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
   const rpc = (message: any) => fetch(url("rpc"), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ requestId: randomUUID(), message }) });
   let activeStream: WebSocket | undefined;
-  const stream = async () => { const previousConnections = allConnections.length; const client = new WebSocket(`ws://127.0.0.1:${gateway.port}/ws?token=secret`); cleanup.push(async () => { client.terminate(); }); await new Promise<void>((resolve) => client.once("open", resolve)); await eventually(() => allConnections.length > previousConnections); activeStream = client; return client; };
+  const stream = async () => {
+    const client = new WebSocket(`ws://127.0.0.1:${gateway.port}/ws?token=secret`); cleanup.push(async () => { client.terminate(); });
+    await new Promise<void>(resolve => client.once("open", resolve));
+    const id = randomUUID();
+    const initialized = new Promise<void>(resolve => { const listener = (raw: WebSocket.RawData) => {
+      if (JSON.parse(raw.toString()).id === id) { client.off("message", listener); resolve(); }
+    }; client.on("message", listener); });
+    client.send(JSON.stringify({ id, method: "initialize", params: { clientInfo: { name: "bark-test-stream", version: "1" } } }));
+    await initialized; activeStream = client; return client;
+  };
   const start = async (threadId = final.params.threadId) => {
     const previous = reply;
     reply = (socket, message) => socket.send(JSON.stringify({ id: message.id, result: { turn: { id: "turn", status: "inProgress" } } }));
@@ -525,6 +535,52 @@ it("Bark 首次投递失败后，重试采用期间已保存的总结名称", as
     expect(f.pushes[0].id).toBe(f.pushes[1].id);
     expect(f.pushes[0].url).toBe(f.pushes[1].url);
   } finally { await notifications.close(); }
+});
+
+it("新会话完成早于总结请求时等待保存，其他会话和提问不被阻塞", async () => {
+  const f = await fixture(); await f.settings();
+  const notifications = new BarkNotifications({ codexHome: f.root, displayName: "测试" });
+  try {
+    await notifications.initialized();
+    notifications.observeRpc({ method: "thread/start" }, { result: { thread: { id: final.params.threadId, name: null, preview: "原始输入" } } });
+    notifications.observeRpc({ method: "turn/start", params: { threadId: final.params.threadId } }, { result: { turn: { id: "turn" } } });
+    notifications.observe(final); notifications.observe(completed);
+    await wait(40); expect(f.pushes).toHaveLength(0);
+    notifications.observeRpc({ method: "thread/read" }, { result: { thread: { id: "other", name: "其他会话" } } });
+    notifications.observeRpc({ method: "turn/start", params: { threadId: "other" } }, { result: { turn: { id: "turn" } } });
+    notifications.observe({ ...completed, params: { threadId: "other", turn: { id: "turn", status: "completed", items: [final.params.item] } } });
+    await eventually(() => f.pushes.length === 1); expect(f.pushes[0].body).toBe("其他会话");
+    notifications.observe({ id: "question", method: "item/tool/requestUserInput", params: { threadId: final.params.threadId, turnId: "turn", itemId: "q", questions: [{ id: "q", question: "选择" }] } });
+    await eventually(() => f.pushes.length === 2); expect(f.pushes[1].title).toBe("Codex 需要你回答");
+    notifications.observeRpc({ method: "thread/name/set", params: { threadId: final.params.threadId, name: "自动总结保存后的名称" } }, { result: {} });
+    await eventually(() => f.pushes.length === 3); expect(f.pushes[2].body).toBe("自动总结保存后的名称");
+    expect(f.pushes[2].title).toBe("Codex 运行结束");
+    notifications.observe(completed); await wait(40); expect(f.pushes).toHaveLength(3);
+  } finally { await notifications.close(); }
+});
+
+it("自动总结失败后释放新会话通知，使用现有名称", async () => {
+  const f = await fixture(); await f.settings(); await f.rpc({ id: 1, method: "initialize", params: {} });
+  f.respond((socket, message) => socket.send(JSON.stringify({ id: message.id, result: message.method === 'thread/start'
+    ? { thread: { id: final.params.threadId, name: null, preview: '失败后保留的名称' } } : { data: [], nextCursor: null } })));
+  await f.rpc({ id: 2, method: 'thread/start', params: {} }); await f.start();
+  const sourceConnection = f.connections.length - 1;
+  f.send(final, sourceConnection); f.send(completed, sourceConnection);
+  await wait(40); expect(f.pushes).toHaveLength(0);
+  const response = await fetch(f.url('threads/title-summary'), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ threadId: final.params.threadId, automatic: true }) });
+  expect(response.status).toBe(503);
+  await eventually(() => f.pushes.length === 1); expect(f.pushes[0].body).toBe('失败后保留的名称');
+});
+
+it("等待自动命名时仍可立即注销 Bark，名称保存后不向旧订阅投递", async () => {
+  const f = await fixture(); await f.settings(); await f.rpc({ id: 1, method: "initialize", params: {} });
+  f.respond((socket, message) => socket.send(JSON.stringify({ id: message.id, result: message.method === 'thread/start'
+    ? { thread: { id: final.params.threadId, name: null, preview: '未命名任务' } } : {} })));
+  await f.rpc({ id: 2, method: 'thread/start', params: {} }); await f.start();
+  f.send(final); f.send(completed); await wait(40); expect(f.pushes).toHaveLength(0);
+  expect((await f.settings({ clientId: f.clientId, backendId: f.backendId, mode: 'system' })).status).toBe(200);
+  await f.rpc({ id: 3, method: 'thread/name/set', params: { threadId: final.params.threadId, name: '保存后的名称' } });
+  await wait(60); expect(f.pushes).toHaveLength(0);
 });
 
 it("迟到的置顶列表不能覆盖手机刚成功的服务端写入", async () => {
