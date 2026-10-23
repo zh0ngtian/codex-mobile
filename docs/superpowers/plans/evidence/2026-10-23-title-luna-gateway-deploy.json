@@ -279,8 +279,8 @@
     "productionWriteApiUsedForProbe": false
   },
   "reviewAndIntegration": {
-    "specification": "pending",
-    "qualityAndWholeChange": "pending",
-    "documentationMainPush": "pending"
+    "specification": "passed",
+    "qualityAndWholeChange": "passed",
+    "documentationMainPush": "passed"
   }
 }

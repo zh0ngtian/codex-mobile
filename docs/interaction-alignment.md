@@ -1256,10 +1256,10 @@ iPhone17Pro、iOS27、正常字号、竖屏的六项针对性回归通过，包�
 - 验收要点：完整分页全部用户消息、独立一次问答及候选确认保持；两种总结入口均使用固定模型/强度/速度，鉴权、非法参数、失败、超时和连接清理继续有效。当前上游目录只读核对确认该模型支持low及priority Fast。
 - 状态：新增协议回归先以3项失败复现缺少模型/强度/Fast参数，修复后3文件73项相关回归及服务端构建通过；已核对自动与手动入口、完整用户消息及Bark命名等待回归。修改基线为 main `5d81b8cafc402a900d16fed14a521a34afdcbd24`，合入前再次核对远端未推进，复用上述验证并在共享main锁内提交推送。源码阶段仅交付实现，之后已按下方独立网关批次部署。本轮不构建或发布客户端；仅使用隔离协议替身和只读模型目录，未创建真实模型会话或发送手机通知。
 
-## 2026-10-23 标题总结固定模型网关部署（已部署，文档审查与整合待完成）
+## 2026-10-23 标题总结固定模型网关部署（已部署，文档审查与整合完成）
 
 - 用户明确授权仅部署网关，任务 `title-luna-gateway-20261023` 与批次 `51b36234-ea37-4ba9-a7ac-c9b4375086dd` 均complete、error为null。起始 main `f12a901790b5cd986bf357f91d4f0981824e099b`；准备来源 `2ba7bf53bfef408a7bab3efee99ee3d8451a33b0`，冻结并部署 `0dea2a1736a72bdf12a9eededf4f87a90bd66b09`。协调器在共享main锁内整合并推进正式main；来源包含、prepare/main/gateway/verify四阶段及持久receipt一致性已独立核对。
 - 部署准备的217项适配器、59项协调器恢复、21文件144项构建契约、类型检查和服务端构建通过，保存真实日志与摘要。继承TDD的3项先失败及3文件73项成功回归，已核对日志散列和服务端源码／相关测试不变；冻结来源也未更改运行代码。开发CI `39962475348` 和清单CI `39962475347` 同冻结SHA成功，客户端build／Release均skipped，未分配App版本。
 - 现役PID87770（原52640），实际命令、监听、认证健康、marker及server/bin/manifest/frontend摘要与成功receipt匹配，前端与启动文件相对部署前不变。实际安装的 `npm-dist/server/gateway.js` 经隔离HTTP／WebSocket协议探测，两次请求分别覆盖手动与 `automatic: true`；创建临时会话和发起回合均为 `gpt-6-luna`、`priority`，临时配置 `model_reasoning_effort: low`、回合 `effort: low`。只发送用户历史，没有写原会话名称、原设置或全局配置。探测真实退出0，临时服务和状态已清理。
 - 固定APK／Ad Hoc已签名IPA仍为0.3.32，版本、大小和SHA-256相对部署前一致。本轮未运行客户端Web／APK／IPA构建、签名或渠道更新；未调用真实模型、生产写API或真实Bark，没有创建需归档的真实测试会话。真机覆盖安装、数据保留和Bark实际送达继续待现场验收。
-- [部署计划](superpowers/plans/2026-10-23-title-luna-gateway-deploy.md)及[公共凭证](superpowers/plans/evidence/2026-10-23-title-luna-gateway-deploy.json)保存成功批次、receipt摘要、CI和安装模块参数探测结果。文档独立规格审查、质量／整轮审查及最终main收尾仍pending；旧0.3.32联合发布与Bark部署记录继续保留原验收口径。
+- [部署计划](superpowers/plans/2026-10-23-title-luna-gateway-deploy.md)及[公共凭证](superpowers/plans/evidence/2026-10-23-title-luna-gateway-deploy.json)保存成功批次、receipt摘要、CI和安装模块参数探测结果。文档独立规格审查和质量／整轮审查均通过，最终文档已在共享main锁内核对最新远端后完成整合推送；旧0.3.32联合发布与Bark部署记录继续保留原验收口径。
