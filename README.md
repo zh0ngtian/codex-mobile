@@ -77,7 +77,7 @@ http://<电脑局域网IP>:18766/?token=<随机口令>
 
 2026-10-23随后仅部署网关：Bark实际发送前读取最新已保存名称，新建未命名会话先等待自动命名保存再通知。成功批次 `f0074198-f11b-4a27-a79f-8327d3dadf56`、冻结提交 `fa1e8d6` 的进程、认证健康、文件摘要与实际部署模块隔离时序回验通过，见[网关部署计划](docs/superpowers/plans/2026-10-23-bark-auto-title-gateway-deploy.md)与[公共凭证](docs/superpowers/plans/evidence/2026-10-23-bark-auto-title-gateway-deploy.json)；[此前配套网关凭证](docs/superpowers/plans/evidence/2026-10-23-thread-title-release.json)保留为历史。0.3.31成功保存名称即可解除等待；未发送 `automatic` 标记时，总结或保存失败由登记后125秒超时释放。本次独立回验时，客户端新标记及提问窗口尚未发包，固定APK／IPA为0.3.31及原散列；此记录只描述本次回验时点。桌面置顶完成通知继续由网关独立跟踪；实际Bark送达、真机原生文件入口、修复版覆盖安装、数据保留及功能验收仍待现场确认。[修复与验收状态](docs/interaction-alignment.md#2026-10-23-修复点击模型总结导致-ios-闪退)。
 
-后续模型提问与紧凑窗口的客户端、配套网关已进入[联合发布流程](docs/superpowers/plans/2026-10-23-model-question-release.md)，目前等待成功凭证。最新客户端版本和网关部署状态以各自后续成功receipt及渠道回验为准，本次记录不将准备或运行中批次当作已发布。
+后续模型提问与紧凑窗口的客户端、配套网关已进入[联合发布流程](docs/superpowers/plans/2026-10-23-model-question-release.md)，交付状态见该联合发布记录及各自成功receipt。最新客户端版本和网关部署状态以各自后续成功receipt及渠道回验为准，本次记录不将准备或运行中批次当作已发布。
 
 此前0.3.27已发布：iOS视频画面和文件信息行像图片一样打开独立预览页；移除聊天视频下方的独立播放按钮及留白；修复侧栏顶部整排裁切，列表可从透明悬浮按钮间隙下方滚过；已展开项目刷新时保留原列表，不再重复收起展开。[发布与验收记录](docs/superpowers/plans/evidence/2026-10-21-video-preview-release.json)。
 

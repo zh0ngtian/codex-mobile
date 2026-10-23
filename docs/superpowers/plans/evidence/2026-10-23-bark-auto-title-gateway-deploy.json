@@ -173,10 +173,10 @@
       "probeSha256": "71f0a4b8601b9e11a66970b725446a5ea7d815087672717f513d92d243fe6fd3",
       "evidenceScope": "部署前同来源运行代码的隔离真实HTTP兼容验收；本次未重复125秒实测"
     },
-    "documentationSpecReview": "pending",
-    "documentationQualityReview": "pending",
-    "overallCloseoutReview": "pending",
-    "mainPush": "pending"
+    "documentationSpecReview": "passed",
+    "documentationQualityReview": "passed",
+    "overallCloseoutReview": "passed",
+    "mainPush": "passed"
   },
   "unchangedClientChannels": {
     "checkedAt": "2026-10-23T12:06:29.674260+00:00",
@@ -241,5 +241,6 @@
     "otherBatchManifestAndNotesPreserved": true,
     "subsequentReleasePlan": "../2026-10-23-model-question-release.md",
     "subsequentReleaseStatusAtIntegration": "等待客户端与配套网关各自成功凭证；不声明新版本已发布"
-  }
+  },
+  "finalCloseoutMainBaseline": "6966c9a647c0dd19d3fcb0bf66061e4dea672d4f"
 }
