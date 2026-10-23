@@ -212,12 +212,13 @@
       "signatureVerifiedThisTask": false,
       "signingEvidence": "2026-10-23-title-summary-crash-release.json"
     },
-    "publishedThisTask": false
+    "publishedThisTask": false,
+    "observationScope": "仅记录2026-10-23本次独立回验时点；后续并行客户端发布状态不由此证据推断"
   },
   "behaviorAndBoundary": {
     "deployed": "Bark每次实际投递读取最新已保存名称；新建未命名会话先等自动命名保存，候选未保存不作为正式名称；保持原通知资格及去重。",
-    "publishedClient": "0.3.31不发送automatic；成功保存名称可解除等待，总结或保存失败由登记后125秒超时释放。",
-    "newClientPending": "automatic: true标记与提问窗口尚未发包；网关已支持带标记失败及时释放，不代表现役客户端已具备此标记。",
+    "publishedClient": "2026-10-23本次独立回验时的0.3.31不发送automatic；成功保存名称可解除等待，总结或保存失败由登记后125秒超时释放。",
+    "newClientPending": "automatic: true标记与提问窗口在本次独立回验时尚未发包；后续已授权联合发布等待独立成功凭证，本次证据不推断其最终版本或完成状态。",
     "clientBuild": false,
     "clientSigning": false,
     "clientPublishing": false,
@@ -233,5 +234,12 @@
     "deviceOverwriteInstall": "pending",
     "deviceDataPreservation": "pending",
     "deviceFeatureAcceptance": "pending"
+  },
+  "parallelMainIntegration": {
+    "integratedMain": "2bde0ef6d291a077a6aeb0f749ed1c3fd6d4ccac",
+    "runtimeCodeChanged": false,
+    "otherBatchManifestAndNotesPreserved": true,
+    "subsequentReleasePlan": "../2026-10-23-model-question-release.md",
+    "subsequentReleaseStatusAtIntegration": "等待客户端与配套网关各自成功凭证；不声明新版本已发布"
   }
 }
