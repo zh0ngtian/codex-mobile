@@ -1,0 +1,286 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-23",
+  "scope": "gateway-only",
+  "mainBaseline": "f12a901790b5cd986bf357f91d4f0981824e099b",
+  "configuration": {
+    "model": "gpt-6-luna",
+    "effort": "low",
+    "serviceTier": "priority",
+    "entries": [
+      "manual",
+      "automatic"
+    ],
+    "fallbackModelAdded": false,
+    "globalAndOriginalThreadSettingsChanged": false
+  },
+  "gateway": {
+    "taskId": "title-luna-gateway-20261023",
+    "taskState": "complete",
+    "project": "codex-mobile-gateway-production",
+    "scope": "codex-mobile-main-production",
+    "batchId": "51b36234-ea37-4ba9-a7ac-c9b4375086dd",
+    "batchState": "complete",
+    "error": null,
+    "sourceCommit": "2ba7bf53bfef408a7bab3efee99ee3d8451a33b0",
+    "frozenCommit": "0dea2a1736a72bdf12a9eededf4f87a90bd66b09",
+    "sourceIsFrozenAncestor": true,
+    "frozenTasks": [
+      {
+        "id": "title-luna-gateway-20261023",
+        "sha": "2ba7bf53bfef408a7bab3efee99ee3d8451a33b0"
+      }
+    ],
+    "verifyTasksIncluded": [
+      "2ba7bf53bfef408a7bab3efee99ee3d8451a33b0"
+    ],
+    "phases": [
+      "prepare",
+      "main",
+      "gateway",
+      "verify"
+    ],
+    "appVersionAssigned": false,
+    "receiptSha256": "67a9e8b9247c23dd07cc7f85478483fc91f908134e124e75483667d1395d8d7a",
+    "persistentReceiptMatchesCoordinator": true,
+    "developmentCI": {
+      "runId": 39962475348,
+      "attempt": 1,
+      "headSha": "0dea2a1736a72bdf12a9eededf4f87a90bd66b09",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/zh0ngtian/codex-mobile/actions/runs/39962475348"
+    },
+    "manifestCI": {
+      "runId": 39962475347,
+      "attempt": 1,
+      "headSha": "0dea2a1736a72bdf12a9eededf4f87a90bd66b09",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/zh0ngtian/codex-mobile/actions/runs/39962475347",
+      "jobs": {
+        "Validate frozen batch": "success",
+        "Build ${{ matrix.platform }}": "skipped",
+        "Publish dual-platform release": "skipped"
+      }
+    },
+    "clientBuildAndReleaseSkipped": true
+  },
+  "independentRuntime": {
+    "checkedAt": "2026-10-23T13:37:42.197690+00:00",
+    "pid": 87770,
+    "oldPid": 52640,
+    "digests": {
+      "serverDigest": "b5abd988a9223b9174576e2668233fc23ff96f9602e1e037e3f5cadb221a1298",
+      "frontendDigest": "82c243e7f812096f2be3270347cfab2c74ab4df0df44ec06f2db25f1a2ae821b",
+      "binDigest": "a44e7f0434b7926b382b679abb712f36eb3b93ce6708cc77332437781f8015a3",
+      "manifestDigest": "0f504be37cd822e82f975449a8f7478ca99f609930f64baa75f956cf16c45917"
+    },
+    "startup": {
+      "start.py": "f5387d988ad019cdb49fe8f3c2573f62a9c8a9420d3fb8440e0e4829f9837945",
+      "gateway-env.json": "e63f543cf107d4fccde4efe71fe2e1af3d9ffafb505692a5db0c0e28fac9318d"
+    },
+    "processCommandMatches": true,
+    "listenerAndAuthenticatedHealthPassed": true,
+    "markerMatchesReceipt": true,
+    "digestsMatchReceipt": true,
+    "frontendAndStartupPreserved": true,
+    "sourceIsFrozenAncestor": true,
+    "frozenRuntimeUnchangedFromTestedSource": true,
+    "receiptSha256": "67a9e8b9247c23dd07cc7f85478483fc91f908134e124e75483667d1395d8d7a",
+    "persistentReceiptMatchesCoordinator": true,
+    "clientChannelsUnchanged": true
+  },
+  "validation": {
+    "deploymentPreparation": [
+      {
+        "name": "adapter-regression",
+        "status": "passed",
+        "exitCode": 0,
+        "testCount": 217,
+        "startedAt": "2026-10-23T13:32:53.298831+00:00",
+        "finishedAt": "2026-10-23T13:33:06.545185+00:00",
+        "command": [
+          "python3",
+          "-B",
+          "-m",
+          "unittest",
+          "discover",
+          "-s",
+          "tests/ci",
+          "-p",
+          "test_*.py"
+        ],
+        "logSha256": "011bf84745dcc5bc6d98ad86e2346485a327e44c46015bc2ad72365582ef4f6a"
+      },
+      {
+        "name": "coordinator-recovery",
+        "status": "passed",
+        "exitCode": 0,
+        "testCount": 59,
+        "startedAt": "2026-10-23T13:32:53.291763+00:00",
+        "finishedAt": "2026-10-23T13:33:37.933070+00:00",
+        "command": [
+          "python3",
+          "-B",
+          "-m",
+          "unittest",
+          "discover",
+          "-s",
+          "tests",
+          "-p",
+          "test_*.py"
+        ],
+        "logSha256": "0d6013142e771eb3fd2def768135abe6f7e2472325f852cc45e63183c35db81f"
+      },
+      {
+        "name": "build-contract",
+        "status": "passed",
+        "exitCode": 0,
+        "testCount": 144,
+        "startedAt": "2026-10-23T13:32:53.292224+00:00",
+        "finishedAt": "2026-10-23T13:33:25.970938+00:00",
+        "command": [
+          "npm",
+          "test",
+          "--",
+          "tests/ci",
+          "--maxWorkers=2",
+          "--testTimeout=60000"
+        ],
+        "logSha256": "1c2242a62b64ceb8cbb47f1eabe06f848e8d8071cb6d92fa0e3706290fee752d"
+      },
+      {
+        "name": "typecheck",
+        "status": "passed",
+        "exitCode": 0,
+        "testCount": null,
+        "startedAt": "2026-10-23T13:32:53.292139+00:00",
+        "finishedAt": "2026-10-23T13:32:58.532957+00:00",
+        "command": [
+          "npm",
+          "run",
+          "typecheck"
+        ],
+        "logSha256": "ddcbb7a08bfec0ac49a7a6d573783271de42998d75a0e124eef2e8a0e0d5c546"
+      },
+      {
+        "name": "server-build",
+        "status": "passed",
+        "exitCode": 0,
+        "testCount": null,
+        "startedAt": "2026-10-23T13:32:53.290824+00:00",
+        "finishedAt": "2026-10-23T13:32:54.522008+00:00",
+        "command": [
+          "npm",
+          "run",
+          "build:server"
+        ],
+        "logSha256": "77c6963f957653533813410b82b315f4e8704177dad7cd17800c939cbd28f75f"
+      }
+    ],
+    "inheritedTdd": {
+      "sourceCommit": "f12a901790b5cd986bf357f91d4f0981824e099b",
+      "regressionCount": 73,
+      "regressionExitCode": 0,
+      "regressionLogSha256": "38a8500c077c235a941ffaabc8387f89f9b0b5becc8c50146fb99490ffe34907",
+      "serverBuildLogSha256": "77c6963f957653533813410b82b315f4e8704177dad7cd17800c939cbd28f75f",
+      "redExitCode": 1,
+      "redLogSha256": "79b8cba25cd05c582c2d4a62392d251c35c1fa8241a26cc06f72b9c0cd3ceecd",
+      "runtimeAndTestsUnchanged": true
+    },
+    "installedModuleProbe": {
+      "command": [
+        "node",
+        "installed-title-probe.mjs"
+      ],
+      "startedAt": "2026-10-23T13:37:41.994936+00:00",
+      "finishedAt": "2026-10-23T13:37:42.189947+00:00",
+      "exitCode": 0,
+      "scriptSha256": "9459c9dc0edc9f9b29ba145b13ac42eebb9021a3f929ff5ec67d9f007ff9e46b",
+      "logSha256": "f75df04466a3ecafee66338c05c68998fed7b2364b3d1063da975b7c720a2539",
+      "moduleSha256": "cbc7d8c48c7518a4dc98a2a50730edf298c22dc67ecd6e418b2b2f50ee946727",
+      "status": "passed",
+      "scenarios": [
+        {
+          "automatic": false,
+          "status": "passed",
+          "httpStatus": 200,
+          "title": "手动标题探测",
+          "model": "gpt-6-luna",
+          "threadEffort": "low",
+          "turnEffort": "low",
+          "serviceTier": "priority",
+          "ephemeral": true,
+          "userMessagesOnly": true,
+          "originalThreadUnchanged": true,
+          "globalConfigUnchanged": true,
+          "rpcMethods": [
+            "initialize",
+            "initialized",
+            "thread/turns/list",
+            "thread/start",
+            "turn/start",
+            "thread/unsubscribe"
+          ]
+        },
+        {
+          "automatic": true,
+          "status": "passed",
+          "httpStatus": 200,
+          "title": "自动标题探测",
+          "model": "gpt-6-luna",
+          "threadEffort": "low",
+          "turnEffort": "low",
+          "serviceTier": "priority",
+          "ephemeral": true,
+          "userMessagesOnly": true,
+          "originalThreadUnchanged": true,
+          "globalConfigUnchanged": true,
+          "rpcMethods": [
+            "initialize",
+            "initialized",
+            "thread/turns/list",
+            "thread/start",
+            "turn/start",
+            "thread/unsubscribe"
+          ]
+        }
+      ],
+      "resultsSha256": "ddd2e05c04cd0fcb46d281e8d086b04b1a5c221150943bfd6d5a04c5430aca9e",
+      "installedModuleImported": true,
+      "loopbackOnly": true,
+      "temporaryStateRemoved": true
+    }
+  },
+  "clientChannels": {
+    "checkedAfterDeployment": true,
+    "unchangedFromBefore": true,
+    "apk": {
+      "version": "0.3.32",
+      "size": 4752703,
+      "sha256": "34f3ed5c9b935268438cd280ff4eb361714c0fb7d6345cda78f95495830b05a7"
+    },
+    "ipa": {
+      "version": "0.3.32",
+      "size": 4904232,
+      "sha256": "9462c28a0e7e843233769dd2dfa1765cd08f0baf1818add0cf7104971b96158a",
+      "signed": true
+    },
+    "newClientArtifactsBuiltOrPublished": false
+  },
+  "boundaries": {
+    "realModelCalled": false,
+    "realRemoteSessionCreated": false,
+    "userPhoneNotified": false,
+    "barkCalls": 0,
+    "realDeviceUpgradeAndDataRetentionVerified": false,
+    "realSessionArchiveRequired": false,
+    "productionWriteApiUsedForProbe": false
+  },
+  "reviewAndIntegration": {
+    "specification": "pending",
+    "qualityAndWholeChange": "pending",
+    "documentationMainPush": "pending"
+  }
+}

@@ -25,6 +25,8 @@
 
 现役双端客户端为0.3.32（3032），已交付结构化模型提问与 iOS 紧凑回答窗口，支持选项／自填、稍后恢复、失败保留以及运行中引导。配套网关已部署历史问题回填和完成通知名称修复。双端固定渠道、HTTPS OTA、GitHub及unsigned软件源独立回验通过，见[本次发布计划](superpowers/plans/2026-10-23-model-question-release.md)与[公共凭证](superpowers/plans/evidence/2026-10-23-model-question-release.json)。真机覆盖安装、数据保留及真实Bark送达仍待现场验收。
 
+标题总结固定 `gpt-6-luna`、`low` 和Fast已另行完成仅网关部署，成功批次 `51b36234-ea37-4ba9-a7ac-c9b4375086dd`、冻结提交 `0dea2a1`。实际安装模块的手动／automatic两种HTTP入口协议探测通过，原会话和全局设置无写入；固定客户端0.3.32的版本、大小、散列未变。探测使用回环协议替身，不调用真实模型或Bark。见[部署计划](superpowers/plans/2026-10-23-title-luna-gateway-deploy.md)与[公共凭证](superpowers/plans/evidence/2026-10-23-title-luna-gateway-deploy.json)。
+
 版本以在线清单为准，不能从 package.json 的开发版本、文档示例或历史记录推断：
 
 - [Android 清单](http://192.168.123.79:8765/channels/codex-mobile/latest.json)及 [固定 APK](http://192.168.123.79:8765/channels/codex-mobile/latest.apk)。
@@ -43,6 +45,8 @@
 `plans/` 与 `superpowers/plans/` 保留设计决策、实施过程和当次验证证据，不是另一套现役操作说明。未勾选的旧计划项不自动成为当前待办；应先检查后续提交、交付记录与运行态。两处目录维持原路径，避免破坏既有引用。
 
 近期可追溯记录：
+
+- [2026-10-23 GPT-6-Luna标题总结仅网关部署](superpowers/plans/2026-10-23-title-luna-gateway-deploy.md)：固定模型、low与Fast的成功批次、安装模块双入口协议探测及客户端渠道不变回验；[公共凭证](superpowers/plans/evidence/2026-10-23-title-luna-gateway-deploy.json)。
 
 - [2026-10-23 Bark自动命名等待仅网关部署](superpowers/plans/2026-10-23-bark-auto-title-gateway-deploy.md)：成功批次 `f0074198-f11b-4a27-a79f-8327d3dadf56` 及12项实际部署模块隔离时序回验；其0.3.31渠道结论为当次回验时点；[公共凭证](superpowers/plans/evidence/2026-10-23-bark-auto-title-gateway-deploy.json)。
 
