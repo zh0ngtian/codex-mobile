@@ -98,7 +98,7 @@ struct AttachmentSheet: View {
         guard imports.checkCommitBudget(existingByteCount: existingAttachmentBytes, isEnglish: preferences.isEnglish) else { return }
         if !imports.items.isEmpty {
             guard await add(imports.items) else {
-                importError = session.toast ?? preferences.text("附件未能添加，请重试。", "Attachments could not be added. Try again.")
+                importError = session.lastErrorMessage ?? preferences.text("附件未能添加，请重试。", "Attachments could not be added. Try again.")
                 return
             }
         }

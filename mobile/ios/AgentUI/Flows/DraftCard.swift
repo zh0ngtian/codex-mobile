@@ -78,7 +78,7 @@ struct DraftCard: View {
                     ? preferences.text("无法恢复：原设备已移除。草稿仍保留在此处。", "Cannot restore: the original device was removed. The draft is still saved.")
                     : preferences.text("暂时无法恢复草稿，请重试。", "The draft could not be restored. Try again.")
                 restoreError = error
-                session.toast = error
+                session.reportError(error)
             }
         }
     }

@@ -127,8 +127,8 @@ extension AppSession {
         sidebarVisible = nativeStore?.sidebarOpen ?? snapshot.sidebarOpen ?? sidebarVisible
         searchText = nativeStore?.search ?? snapshot.search ?? searchText
         if !sidebarVisible { searchVisible = false; searchText = "" }
-        if let error = snapshot.error, !error.isEmpty { toast = error }
-        if let error = nativeStore?.commandError, !error.isEmpty { toast = error }
+        receiveError(snapshot.error, source: "workspace", contextID: snapshot.contextId)
+        receiveError(nativeStore?.commandError, source: "command", contextID: snapshot.contextId)
         let approvalPanel = snapshot.approvalPanel ?? (snapshot.panel?.id.hasPrefix("approval:") == true ? snapshot.panel : nil)
         projectRequests(approvalPanel)
         projectDrafts(snapshot.panel)

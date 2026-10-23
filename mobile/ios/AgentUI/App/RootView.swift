@@ -11,9 +11,11 @@ struct RootView: View {
     @State private var renameText = ""
     @State private var answeredConfirmationID: String?
     @State private var confirmationClosingID: String?
+    @State private var errorAlertActive = false
 
     var body: some View {
         archivePresentation
+            .modifier(SessionErrorAlert(presentationActive: $errorAlertActive, enabled: canPresentRootError))
             .overlay(alignment: .top) { toastContent }
             .task(id: session.toast) { await clearToastLater() }
             .task {
@@ -22,6 +24,8 @@ struct RootView: View {
             }
             .onChange(of: canOfferFirstDevice) { offerFirstDeviceIfNeeded() }
             .onChange(of: presentationRequests) { synchronizePresentation() }
+            .onChange(of: session.errorNotices) { synchronizePresentation() }
+            .onChange(of: errorAlertActive) { synchronizePresentation() }
             .onChange(of: session.inputModalPresented) { synchronizePresentation() }
             .onChange(of: session.renameTargetID) { renameTargetChanged() }
             .onChange(of: session.archiveTargetID) { synchronizePresentation() }
@@ -69,6 +73,7 @@ struct RootView: View {
         drawerContent
             .sheet(item: modalBinding, onDismiss: modalDidDismiss) { destination in
                 modalContent(destination)
+                    .modifier(SessionErrorAlert(presentationActive: $errorAlertActive, enabled: !session.inputModalPresented))
                     .presentationDetents([.large])
                     .interactiveDismissDisabled(destination.requiresExplicitDismissal || (session.nativePanel?.dismissible == false && destination.id.hasPrefix("native-panel-")))
             }
@@ -173,7 +178,7 @@ struct RootView: View {
         session.selectedDeviceID == nil ? nil : session.pendingOtherDevices.first
     }
     private var canUseSidebarGesture: Bool {
-        !session.devices.isEmpty && !session.inputModalPresented &&
+        !session.devices.isEmpty && !session.inputModalPresented && !errorAlertActive &&
         session.historyEdit == nil && modal == nil && !waitingForDismissal &&
         session.renameTargetID == nil && session.archiveTargetID == nil && confirmationPanel == nil && confirmationClosingID == nil
     }
@@ -266,6 +271,7 @@ struct RootView: View {
     }
 
     private func synchronizePresentation() {
+        guard !errorAlertActive else { return }
         if let modal {
             if !sourceIsActive(modal) {
                 waitingForDismissal = true
@@ -274,7 +280,7 @@ struct RootView: View {
             return
         }
         guard !waitingForDismissal, !session.inputModalPresented, confirmationPanel == nil, confirmationClosingID == nil,
-              session.renameTargetID == nil, session.archiveTargetID == nil,
+              session.renameTargetID == nil, session.archiveTargetID == nil, session.errorNotices.isEmpty,
               let requestedModal = presentationRequests.first else { return }
         session.inputFocused = false
         lastPresentedModal = requestedModal
@@ -316,16 +322,20 @@ struct RootView: View {
     private var confirmationPresented: Binding<Bool> {
         Binding(get: {
             guard let panel = confirmationPanel else { return false }
-            return confirmationClosingID == nil && answeredConfirmationID != panel.id && modal == nil && !waitingForDismissal && session.renameTargetID == nil
+            return !errorAlertActive && confirmationClosingID == nil && answeredConfirmationID != panel.id && modal == nil && !waitingForDismissal && session.renameTargetID == nil
         }, set: { _ in
             // 系统alert仅由显式按钮结算；不把自动关闭回写成第二个取消请求。
         })
     }
     private var renamePresented: Binding<Bool> {
-        Binding(get: { session.renameTargetID != nil }, set: { if !$0 { session.renameTargetID = nil } })
+        Binding(get: { session.renameTargetID != nil && !errorAlertActive }, set: { if !$0 && !errorAlertActive { session.renameTargetID = nil } })
     }
     private var archivePresented: Binding<Bool> {
-        Binding(get: { session.archiveTargetID != nil }, set: { if !$0 { session.archiveTargetID = nil } })
+        Binding(get: { session.archiveTargetID != nil && !errorAlertActive }, set: { if !$0 && !errorAlertActive { session.archiveTargetID = nil } })
+    }
+    private var canPresentRootError: Bool {
+        modal == nil && !waitingForDismissal && !session.inputModalPresented &&
+        confirmationPanel == nil && confirmationClosingID == nil && session.renameTargetID == nil && session.archiveTargetID == nil
     }
     private func canSaveRename(_ id: UUID) -> Bool {
         guard let conversation = session.conversation(id), conversation.canModify else { return false }

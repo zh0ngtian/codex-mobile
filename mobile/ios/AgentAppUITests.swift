@@ -5,6 +5,60 @@ import Vision
 /// 独立界面夹具及本地网关验收；连接凭证不进入源码或测试附件。
 @MainActor
 final class AgentAppUITests: XCTestCase {
+    func testOrdinaryErrorUsesPersistentSystemAlertAndAcknowledgesSnapshot() {
+        let app = launchInteractionFixture("--agent-error-alert-fixture")
+        let alert = app.alerts["错误"]
+        XCTAssertTrue(alert.waitForExistence(timeout: 5))
+        XCTAssertTrue(alert.staticTexts["消息发送失败，请检查连接后重试。"].exists)
+        XCTAssertFalse(alert.waitForNonExistence(timeout: 3.1), "报错必须等待确认，不能沿用2.6秒自动消失")
+        captureConversation("普通报错-系统弹窗", app: app)
+        alert.buttons["知道了"].tap()
+        XCTAssertTrue(alert.waitForNonExistence(timeout: 5))
+        XCTAssertEqual(app.textFields["message-input"].value as? String, "报错后保留的输入")
+        app.buttons["会话列表"].tap()
+        app.buttons["sidebar.refreshTop"].tap()
+        XCTAssertFalse(alert.waitForExistence(timeout: 2), "旧快照刷新不能再次弹出已确认错误")
+        app.terminate()
+    }
+
+    func testOrdinaryErrorsWaitForPreviousAlertToDismiss() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-error-alert-fixture", "--agent-error-alert-queue-fixture", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
+        app.launch()
+        let alert = app.alerts["错误"]
+        let first = alert.staticTexts["消息发送失败，请检查连接后重试。"]
+        XCTAssertTrue(first.waitForExistence(timeout: 5))
+        alert.buttons["知道了"].tap()
+        let second = alert.staticTexts["第二个操作失败，请稍后重试。"]
+        XCTAssertTrue(second.waitForExistence(timeout: 5), "关闭动画结束后须继续呈现新错误")
+        XCTAssertFalse(first.exists)
+        alert.buttons["知道了"].tap()
+        XCTAssertTrue(alert.waitForNonExistence(timeout: 5))
+        app.terminate()
+    }
+
+    func testOrdinaryErrorCanAppearAboveSettingsWithoutClosingSheet() {
+        let app = launchInteractionFixture("--agent-error-alert-modal-fixture")
+        let alert = app.alerts["错误"]
+        XCTAssertTrue(alert.waitForExistence(timeout: 5))
+        XCTAssertTrue(alert.staticTexts["此界面夹具不执行真实业务"].exists)
+        captureConversation("普通报错-设置面板内", app: app)
+        alert.buttons["知道了"].tap()
+        XCTAssertTrue(alert.waitForNonExistence(timeout: 5))
+        XCTAssertTrue(app.navigationBars["设置"].exists, "确认错误后仍保留原设置面板")
+        app.terminate()
+    }
+
+    func testSuccessfulCopyKeepsTemporaryToast() {
+        let app = launchInteractionFixture("--agent-success-toast-fixture")
+        app.buttons["会话列表"].tap()
+        app.buttons["sidebar.refreshTop"].tap()
+        XCTAssertTrue(app.staticTexts["已复制"].waitForExistence(timeout: 2))
+        XCTAssertEqual(app.alerts.count, 0)
+        XCTAssertTrue(app.staticTexts["已复制"].waitForNonExistence(timeout: 5))
+        app.terminate()
+    }
+
     func testFirstDeviceButtonKeepsHorizontalLabelAndContrast() {
         // 在独立模拟器的离线无设备夹具执行，不连接网关或创建远端会话。
         for appearance in ["Light", "Dark"] {

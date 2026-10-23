@@ -11,7 +11,7 @@ extension AppSession {
         if let id, let raw = rawDeviceIDs[id] { ok = await request("device.edit", ["id": .string(raw)]) }
         else if id == nil { ok = await request("device.add") }
         else { return nil }
-        guard ok else { deviceFormError = toast ?? "设备表单尚未就绪"; return nil }
+        guard ok else { deviceFormError = lastErrorMessage ?? "设备表单尚未就绪"; return nil }
         let clock = ContinuousClock()
         let deadline = clock.now.advanced(by: .seconds(10))
         while clock.now < deadline, !Task.isCancelled {
@@ -36,10 +36,10 @@ extension AppSession {
         for (fieldID, value) in [("name", title), ("gatewayUrl", address)] {
             guard let field = nativeSnapshot.panel?.items.first(where: { $0.id == fieldID }), let command = field.command else { deviceFormError = "设备表单已变化，输入已保留。"; return false }
             var params = command.params; params["value"] = .string(value)
-            guard operation == deviceOperation, await request(command.name, params), operation == deviceOperation else { deviceFormError = toast; return false }
+            guard operation == deviceOperation, await request(command.name, params), operation == deviceOperation else { deviceFormError = lastErrorMessage; return false }
         }
         let ok = await request("device.save")
-        if !ok { deviceFormError = toast ?? "连接或保存失败，输入已保留。" }
+        if !ok { deviceFormError = lastErrorMessage ?? "连接或保存失败，输入已保留。" }
         return ok
     }
     func cancelDeviceTest() async -> Bool {

@@ -296,9 +296,16 @@ final class AgentConversationFixture {
             value.backends = []; value.groups = []; value.messages = []
             value.backendId = nil; value.listBackendId = nil; value.threadId = nil
         }
+        if ProcessInfo.processInfo.arguments.contains("--agent-error-alert-fixture") {
+            value.error = "消息发送失败，请检查连接后重试。"
+            value.draft = "报错后保留的输入"
+            value.canSend = true
+        }
         snapshot = value
         store.sendCommand = { [weak self] command in self?.dispatch(command) }
         publish()
+        if ProcessInfo.processInfo.arguments.contains("--agent-error-alert-queue-fixture") { session.reportError("第二个操作失败，请稍后重试。") }
+        if ProcessInfo.processInfo.arguments.contains("--agent-error-alert-modal-fixture") { session.settingsPresented = true }
         if ProcessInfo.processInfo.arguments.contains("--agent-delayed-report-fixture") {
             Task { [weak self] in
                 try? await Task.sleep(for: .seconds(8))
@@ -347,6 +354,20 @@ final class AgentConversationFixture {
 
     private func publish() { store.receive(snapshot); session.receive(snapshot) }
     private func dispatch(_ command: NativeCommand) {
+        if ProcessInfo.processInfo.arguments.contains("--agent-success-toast-fixture"), command.name == "navigation.refresh" {
+            session.toast = "已复制"
+            return
+        }
+        if ProcessInfo.processInfo.arguments.contains("--agent-error-alert-modal-fixture"), command.name == "settings.open" {
+            snapshot.commandResults = [NativeCommandResult(id: command.id, name: command.name, ok: false, contextId: snapshot.contextId, error: "此界面夹具不执行真实业务")]
+            publish()
+            return
+        }
+        if ProcessInfo.processInfo.arguments.contains("--agent-error-alert-fixture"), command.name == "navigation.refresh" {
+            snapshot.commandResults = [NativeCommandResult(id: command.id, name: command.name, ok: true, contextId: snapshot.contextId)]
+            publish()
+            return
+        }
         if ProcessInfo.processInfo.arguments.contains(AgentSelectionQuotesFixture.argument), selectionQuotes.handle(command, snapshot: &snapshot) { publish(); return }
 
         if ProcessInfo.processInfo.arguments.contains("--agent-video-preview-fixture") {

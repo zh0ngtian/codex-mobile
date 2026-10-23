@@ -31,7 +31,7 @@ struct ConversationMenuActions: View {
                 if ConversationIDClipboard.copy(session.rawConversationID(conversationID), write: Clipboard.copy) {
                     session.toast = preferences.text("已复制会话 ID", "Conversation ID copied")
                 } else {
-                    session.toast = preferences.text("真实会话 ID 尚未就绪，请刷新后重试。", "The conversation ID is not ready. Refresh and try again.")
+                    session.reportError(preferences.text("真实会话 ID 尚未就绪，请刷新后重试。", "The conversation ID is not ready. Refresh and try again."))
                 }
             } label: {
                 Label(preferences.text("复制会话 ID", "Copy conversation ID"), systemImage: "number")

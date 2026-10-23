@@ -80,14 +80,14 @@ extension AppSession {
     }
     func submitApproval(_ id: UUID, decision: ApprovalDecision) async {
         let matching = approval(id)?.choices.filter { $0.decision == decision } ?? []
-        guard matching.count == 1, let choice = matching.first else { toast = "存在多个审批目标，请选择具体操作。"; return }
+        guard matching.count == 1, let choice = matching.first else { reportError("存在多个审批目标，请选择具体操作。"); return }
         await submitApproval(id, choiceID: choice.id)
     }
     func submitApproval(_ id: UUID, choiceID: UUID) async {
         guard let index = approvals.firstIndex(where: { $0.id == id }), !approvals[index].submitting, approvals[index].choices.contains(where: { $0.id == choiceID && !$0.disabled }), let command = requestCommands[id]?[choiceID] else { return }
         approvals[index].submitting = true; approvals[index].error = nil
         let ok = await request(command.name, command.params)
-        if let index = approvals.firstIndex(where: { $0.id == id }) { approvals[index].submitting = false; if !ok { approvals[index].error = toast } }
+        if let index = approvals.firstIndex(where: { $0.id == id }) { approvals[index].submitting = false; if !ok { approvals[index].error = lastErrorMessage } }
     }
     func setAnswer(requestID: UUID, questionID: UUID, answer: QuestionAnswer) {
         guard let index = questions.firstIndex(where: { $0.id == requestID }), !questions[index].submitting else { return }
@@ -122,7 +122,7 @@ extension AppSession {
             if custom { value = answer.text }
             else { guard let optionIndex = question.options.firstIndex(where: { $0.id == answer.optionID }) else { return }; value = "option:\(optionIndex)" }
             var params = command.params; params["value"] = .string(value)
-            guard await request(command.name, params) else { finishAnswerRequest(id, error: toast); return }
+            guard await request(command.name, params) else { finishAnswerRequest(id, error: lastErrorMessage); return }
         }
         guard let command = flatten(panel.items).first(where: { $0.command?.name == "approval.submit" })?.command else { finishAnswerRequest(id, error: "请求已变化，答案已保留"); return }
         let ok = await request(command.name, command.params)
@@ -132,7 +132,7 @@ extension AppSession {
             // 即使业务 Promise 已完成，旧权威面板仍在时也保留答案，等请求投影消失后清理。
             let current = nativeSnapshot.approvalPanel ?? (nativeSnapshot.panel?.id.hasPrefix("approval:") == true ? nativeSnapshot.panel : nil)
             reconcileConfirmedQuestions(current)
-        } else { finishAnswerRequest(id, error: toast) }
+        } else { finishAnswerRequest(id, error: lastErrorMessage) }
     }
     private func finishAnswerRequest(_ id: UUID, error: String?) {
         answerSubmissionsInFlight.remove(id)

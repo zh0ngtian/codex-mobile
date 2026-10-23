@@ -32,6 +32,8 @@ final class AppSession {
     var settingsPresented = false
     var draftsPresented = false { didSet { if draftsPresented && !projecting { nativeStore?.command("drafts.open") } } }
     var toast: String?
+    var lastErrorMessage: String?
+    var errorNotices: [AppErrorNotice] = []
     var persistenceError: String?
     var draftReadError = false
     var deviceFormError: String?
@@ -59,6 +61,7 @@ final class AppSession {
     @ObservationIgnored var presentedAttachmentPanelID: String?
     @ObservationIgnored var nativeStore: NativeUIStore?
     @ObservationIgnored var projecting = false
+    @ObservationIgnored var projectedErrors: [String: String] = [:]
     @ObservationIgnored var identifiers: [String: UUID] = [:]
     @ObservationIgnored var rawDeviceIDs: [UUID: String] = [:]
     @ObservationIgnored var rawThreadIDs: [UUID: (backend: String, thread: String)] = [:]
@@ -128,6 +131,7 @@ final class AppSession {
 
     /// 通过 Store 发命令并等待同一个 request id 的真实 ACK；不会由本地计时器生成成功。
     func request(_ name: String, _ params: [String: NativeJSONValue] = [:]) async -> Bool {
+        lastErrorMessage = nil
         guard let store = nativeStore, let original = store.sendCommand, !store.isReference else { return false }
         return await withCheckedContinuation { continuation in
             var emitted = false
@@ -156,7 +160,7 @@ final class AppSession {
     func resolve(_ id: String, ok: Bool, error: String?) {
         guard let pending = pendingCommands.removeValue(forKey: id) else { return }
         commandTimeouts.removeValue(forKey: id)?.cancel()
-        if !ok { toast = error ?? "操作失败，输入已保留。" }
+        if !ok { reportError(error ?? "操作失败，输入已保留。") }
         pending.continuation.resume(returning: ok)
     }
     func fire(_ name: String, _ params: [String: NativeJSONValue] = [:]) { nativeStore?.command(name, params) }
@@ -181,7 +185,7 @@ final class AppSession {
     }
     func importAttachmentsAndWait(_ items: [AttachmentItem]) async -> Bool {
         let payload = attachmentPayload(items)
-        guard nativeStore?.composerCanEdit == true, !payload.isEmpty, payload.count == items.count else { toast = "附件内容不完整，请重新选择。"; return false }
+        guard nativeStore?.composerCanEdit == true, !payload.isEmpty, payload.count == items.count else { reportError("附件内容不完整，请重新选择。"); return false }
         return await request("attachment.import", ["items": .array(payload)])
     }
     func removeAttachment(_ id: UUID) { if let raw = rawAttachmentIDs[id] { fire("attachment.remove", ["id": .string(raw)]) } }

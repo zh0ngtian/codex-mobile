@@ -68,7 +68,7 @@ final class ComposerAttachmentFlow {
         guard matchesScope(selection, in: session), !Task.isCancelled else { return false }
         isLocating = false
         if inserted { self.selection = nil; error = nil }
-        else { error = session.toast ?? (isEnglish ? "Could not get your location. Try again." : "无法获取当前位置，请重试。") }
+        else { error = session.lastErrorMessage ?? (isEnglish ? "Could not get your location. Try again." : "无法获取当前位置，请重试。") }
         return inserted
     }
 
@@ -107,7 +107,7 @@ final class ComposerAttachmentFlow {
         guard matchesScope(selection, in: session), !Task.isCancelled else { return false }
         isCommitting = false
         if imported { imports.reset(); self.selection = nil }
-        else { error = session.toast ?? (isEnglish ? "Attachments could not be added. Try again." : "附件未能添加，请重试。") }
+        else { error = session.lastErrorMessage ?? (isEnglish ? "Attachments could not be added. Try again." : "附件未能添加，请重试。") }
         return imported
     }
 }

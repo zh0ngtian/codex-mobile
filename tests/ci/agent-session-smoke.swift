@@ -38,6 +38,11 @@ extension AgentSessionSmoke {
 @main
 struct AgentSessionSmoke {
     @MainActor static func main() async {
+        verifyErrorNotices()
+        let unavailable = AppSession()
+        unavailable.reportError("旧操作失败")
+        let unavailableResult = await unavailable.request("thread.refresh")
+        precondition(!unavailableResult && unavailable.lastErrorMessage == nil && unavailable.errorNotices.count == 1, "新操作不能误用旧错误，未确认弹窗仍须保留")
         verifyStartupNavigationLoading()
         verifySteeringReplyHistory()
         verifyProjectPriorityWindowAndLoadingGuard()
@@ -97,7 +102,7 @@ struct AgentSessionSmoke {
         state.commandResults = [NativeCommandResult(id: send.id, name: send.name, ok: false, contextId: state.contextId, error: "网关拒绝测试")]
         publish(state)
         for _ in 0..<5 { await Task.yield() }
-        precondition(!session.submissionPending && session.composer.text == "尚未确认的输入" && session.toast == "网关拒绝测试", "发送失败必须保留输入并呈现真实错误")
+        precondition(!session.submissionPending && session.composer.text == "尚未确认的输入" && session.lastErrorMessage == "网关拒绝测试", "发送失败必须保留输入并呈现真实错误")
         state.queued = [NativeNavigationItem(id: "queue:raw", title: "队列正文", inputText: "队列原文", queueState: "uncertain")]
         publish(state)
         precondition(session.selectedConversation?.queue.first?.state == .uncertain, "队列状态必须来自真实字段")
@@ -657,7 +662,7 @@ struct AgentSessionSmoke {
         precondition(commands.filter { $0.name == "device.change" }.allSatisfy { $0.params["draftId"] == .string("form:opaque") }, "保存表单必须携带真实draft身份")
         let file = AttachmentItem(name: "尚未导入.txt", data: Data("真实数据".utf8), mimeType: "text/plain")
         let imported = await session.importAttachmentsAndWait([file])
-        precondition(!imported && session.composer.attachments.isEmpty && file.data != nil && session.toast == "网关拒绝附件", "附件导入失败要保留调用者文件并等待真实确认")
+        precondition(!imported && session.composer.attachments.isEmpty && file.data != nil && session.lastErrorMessage == "网关拒绝附件", "附件导入失败要保留调用者文件并等待真实确认")
     }
 
     @MainActor static func verifyDelayedDeviceForm() async {
@@ -922,5 +927,41 @@ struct AgentSessionSmoke {
             session.searchText = "ordinary"
             precondition(session.projectConversations("group").count == 14, "搜索显示全部非关注缓存，不受普通窗口限制")
         }
+    }
+}
+
+
+extension AgentSessionSmoke {
+    @MainActor static func verifyErrorNotices() {
+        let session = AppSession()
+        var snapshot = NativeSnapshot()
+        snapshot.contextId = "error-context"
+        snapshot.error = "消息发送失败"
+        session.receive(snapshot)
+        let first = session.errorNotices.first!
+        session.receive(snapshot)
+        precondition(session.errorNotices.count == 1, "同一错误快照不重复入队")
+        session.reportError("第二个操作失败")
+        precondition(session.errorNotices.map(\.message) == ["消息发送失败", "第二个操作失败"], "新错误不能覆盖未确认的错误")
+        session.dismissError(first.id)
+        session.receive(snapshot)
+        precondition(session.errorNotices.map(\.message) == ["第二个操作失败"], "确认后旧快照不能重新弹出")
+        session.dismissError(first.id)
+        precondition(session.errorNotices.count == 1, "迟到的关闭不能清除新错误")
+        session.dismissError(session.errorNotices[0].id)
+        session.reportError("消息发送失败")
+        precondition(session.errorNotices.count == 1 && session.errorNotices[0].id != first.id, "新的同文案操作失败仍须提示")
+        session.dismissError(session.errorNotices[0].id)
+        snapshot.error = nil
+        session.receive(snapshot)
+        snapshot.error = "消息发送失败"
+        session.receive(snapshot)
+        precondition(session.errorNotices.count == 1, "错误清除后再次发生须提示")
+        session.dismissError(session.errorNotices[0].id)
+        snapshot.contextId = "other-context"
+        session.receive(snapshot)
+        precondition(session.errorNotices.count == 1, "另一会话的相同错误须独立提示")
+        session.toast = "已复制"
+        precondition(session.lastErrorMessage == "消息发送失败" && session.errorNotices.count == 1, "成功提示不能覆盖或新增报错")
     }
 }

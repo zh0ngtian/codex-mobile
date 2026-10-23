@@ -140,7 +140,7 @@ struct QueuedMessageCard: View {
             let saved = await session.editQueuedMessageAndWait(conversationID: conversationID, id: message.id, text: editedText)
             savingEdit = false
             if saved { editing = false }
-            else { session.toast = preferences.text("无法保存这条队列消息，请重试。", "This queued message could not be saved. Try again.") }
+            else { session.reportError(preferences.text("无法保存这条队列消息，请重试。", "This queued message could not be saved. Try again.")) }
         }
     }
 
@@ -149,14 +149,14 @@ struct QueuedMessageCard: View {
         if message.state == .uncertain {
             confirmingUncertainCancellation = true
         } else if !session.cancelQueuedMessage(conversationID: conversationID, id: message.id) {
-            session.toast = preferences.text("暂时无法取消这条消息。", "This message could not be removed right now.")
+            session.reportError(preferences.text("暂时无法取消这条消息。", "This message could not be removed right now."))
         }
     }
 
     private func confirmCancel() {
         guard canCancel else { return }
         if !session.cancelQueuedMessage(conversationID: conversationID, id: message.id, confirmed: true) {
-            session.toast = preferences.text("暂时无法移除这条记录。", "This record could not be removed right now.")
+            session.reportError(preferences.text("暂时无法移除这条记录。", "This record could not be removed right now."))
         }
     }
 

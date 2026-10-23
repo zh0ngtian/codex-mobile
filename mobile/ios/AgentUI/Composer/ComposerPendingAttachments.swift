@@ -16,7 +16,7 @@ struct ComposerPendingAttachments: View {
                             ForEach(flow.items) { item in
                                 ComposerAttachmentCard(item: item, preview: {
                                     if let output = AttachmentPreviewMapper.output(for: item) { session.previewItem = output }
-                                    else if let error = item.error { session.toast = error }
+                                    else if let error = item.error { session.reportError(error) }
                                 }, remove: { flow.remove(item.id) })
                                 .disabled(flow.isCommitting)
                             }
