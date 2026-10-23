@@ -36,7 +36,7 @@ final class AgentAppUITests: XCTestCase {
     }
 
     func testFirstMessageTextTransition() throws {
-        let app = launchFirstMessageFixture()
+        let app = launchFirstMessageFixture(["--first-message-slow"])
         let input = app.textFields["message-input"]
         XCTAssertTrue(input.waitForExistence(timeout: 5)); input.tap()
         let inputBefore = input.frame
@@ -44,7 +44,9 @@ final class AgentAppUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["待发送"].waitForExistence(timeout: 1), "网络回执前必须立即进入待发送画面")
         XCTAssertFalse(app.buttons["composer.submit"].isEnabled)
         XCTAssertTrue(app.staticTexts["first-message.text"].exists || app.descendants(matching: .any).matching(identifier: "first-message.bubble").firstMatch.exists)
-        XCTAssertFalse(app.buttons["new.computer"].exists)
+        // 淡出容器可保留隐藏节点，验收发送期间机器选择不可交互。
+        let computer = app.buttons["new.computer"]
+        XCTAssertFalse(computer.exists && computer.isHittable)
         captureConversation("新会话-首条待发送", app: app)
         XCTAssertTrue(app.textViews["assistant.selectable"].waitForExistence(timeout: 6))
         XCTAssertFalse(app.staticTexts["待发送"].exists)
@@ -54,7 +56,7 @@ final class AgentAppUITests: XCTestCase {
     }
 
     func testFirstMessageAttachmentsTransition() throws {
-        let app = launchFirstMessageFixture(["--first-message-attachments"])
+        let app = launchFirstMessageFixture(["--first-message-attachments", "--first-message-slow"])
         XCTAssertTrue(app.buttons["composer.submit"].waitForExistence(timeout: 5))
         app.textFields["message-input"].tap()
         app.buttons["composer.submit"].tap()
@@ -68,7 +70,8 @@ final class AgentAppUITests: XCTestCase {
     }
 
     func testFirstMessageAttachmentsOnly() throws {
-        let app = launchFirstMessageFixture(["--first-message-attachments-only"])
+        // 慢回执是“确认前检查待发送”的前置条件，避免XCTest首次快照晚于短回执。
+        let app = launchFirstMessageFixture(["--first-message-attachments-only", "--first-message-slow"])
         let submit = app.buttons["composer.submit"]
         XCTAssertTrue(submit.waitForExistence(timeout: 5)); XCTAssertTrue(submit.isEnabled); submit.tap()
         XCTAssertTrue(app.staticTexts["待发送"].waitForExistence(timeout: 1))
