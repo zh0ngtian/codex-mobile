@@ -1,0 +1,237 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-23",
+  "scope": "gateway-only",
+  "closeoutBaseline": "fa1e8d6a2d6e07242dff68e0ef22e04a6782821e",
+  "gateway": {
+    "taskId": "bark-auto-title-gateway-20261023",
+    "taskState": "complete",
+    "project": "codex-mobile-gateway-production",
+    "scope": "codex-mobile-main-production",
+    "batchId": "f0074198-f11b-4a27-a79f-8327d3dadf56",
+    "batchState": "complete",
+    "error": null,
+    "sourceCommit": "c28408a720a96e123fbc8e416f3555b44c517a68",
+    "frozenCommit": "fa1e8d6a2d6e07242dff68e0ef22e04a6782821e",
+    "sourceIsFrozenAncestor": true,
+    "frozenTasks": [
+      {
+        "id": "bark-auto-title-gateway-20261023",
+        "sha": "c28408a720a96e123fbc8e416f3555b44c517a68"
+      }
+    ],
+    "verifyTasksIncluded": [
+      "c28408a720a96e123fbc8e416f3555b44c517a68"
+    ],
+    "phases": [
+      "prepare",
+      "main",
+      "gateway",
+      "verify"
+    ],
+    "receiptSha256": "b104e33b3bb8a9734f8eb5e0aeb8379bde99fc5cfc460f03f925fc8c6dd89cd4",
+    "persistentReceiptMatchesCoordinator": true,
+    "developmentCI": {
+      "runId": 39949847967,
+      "attempt": 1,
+      "headSha": "fa1e8d6a2d6e07242dff68e0ef22e04a6782821e",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/zh0ngtian/codex-mobile/actions/runs/39949847967"
+    },
+    "manifestCI": {
+      "runId": 39949847901,
+      "headSha": "fa1e8d6a2d6e07242dff68e0ef22e04a6782821e",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/zh0ngtian/codex-mobile/actions/runs/39949847901",
+      "jobs": {
+        "Validate frozen batch": "success",
+        "Build ${{ matrix.platform }}": "skipped",
+        "Publish dual-platform release": "skipped"
+      }
+    }
+  },
+  "independentRuntime": {
+    "checkedAt": "2026-10-23T12:06:29.724961+00:00",
+    "pid": 11885,
+    "oldPid": 73987,
+    "label": "com.minis.codex-mobile-gateway",
+    "digests": {
+      "serverDigest": "052a3df0bba906710ade498c6705561ed30c5dac386e1c04704a10a0da29be5a",
+      "frontendDigest": "82c243e7f812096f2be3270347cfab2c74ab4df0df44ec06f2db25f1a2ae821b",
+      "binDigest": "a44e7f0434b7926b382b679abb712f36eb3b93ce6708cc77332437781f8015a3",
+      "manifestDigest": "0f504be37cd822e82f975449a8f7478ca99f609930f64baa75f956cf16c45917"
+    },
+    "startup": {
+      "start.py": "f5387d988ad019cdb49fe8f3c2573f62a9c8a9420d3fb8440e0e4829f9837945",
+      "gateway-env.json": "e63f543cf107d4fccde4efe71fe2e1af3d9ffafb505692a5db0c0e28fac9318d"
+    },
+    "processCommandMatches": true,
+    "listenerAndAuthenticatedHealthPassed": true,
+    "markerMatchesReceipt": true,
+    "digestsMatchReceipt": true,
+    "frontendAndStartupPreserved": true,
+    "receiptVerified": true,
+    "afterFunctionalAndChannelRetests": true,
+    "previousGatewayCommit": "264eab100def5b46d7d86303ce45894a877ae003",
+    "previousGatewayBatchId": "79d9da96-dded-484d-9360-a499aa921caa",
+    "previousDeploymentRetainedAsHistory": true
+  },
+  "validation": {
+    "deploymentPreparation": [
+      {
+        "name": "adapter-regression",
+        "status": "passed",
+        "exitCode": 0,
+        "counts": {
+          "tests": 217,
+          "reportedDurationSeconds": 13.477
+        },
+        "evidenceSha256": "a5071ae204b521d737b19cd1c928906906cc655329321a9ade2f40c094d73b99"
+      },
+      {
+        "name": "coordinator-recovery",
+        "status": "passed",
+        "exitCode": 0,
+        "counts": {
+          "tests": 59,
+          "reportedDurationSeconds": 47.378
+        },
+        "evidenceSha256": "cd3b6e391426658dd5666109025e854b74bd3e974d3865d8eee57cf788afc810"
+      },
+      {
+        "name": "build-contract",
+        "status": "passed",
+        "exitCode": 0,
+        "counts": {
+          "files": 21,
+          "tests": 144
+        },
+        "evidenceSha256": "d90fbeebf3aef5f607406a472c1b8cb135a8a3f3a9a45b8f3bcb4d6225812960"
+      },
+      {
+        "name": "typecheck",
+        "status": "passed",
+        "exitCode": 0,
+        "counts": {
+          "typecheckCommands": 1,
+          "serverBuildCommands": 1
+        },
+        "evidenceSha256": "2cf92031527fdcd01628aa0dfa996d2be6e0c02b24c4bc9a075cc1bd93ab71f2"
+      }
+    ],
+    "preparationSpecReview": "passed",
+    "preparationQualityReview": "passed",
+    "deploymentSpecReview": "passed",
+    "deploymentQualityReview": "passed",
+    "deployedModuleProbes": {
+      "newFormat": {
+        "startedAt": "2026-10-23T12:06:26.413529+00:00",
+        "completedAt": "2026-10-23T12:06:28.321699+00:00",
+        "exitCode": 0,
+        "scenarios": 7,
+        "scriptSha256": "d83ddc69dbdaf2e26e3e9da7a9cbf35556fd839d2ba4e640359cd835b3582d2d",
+        "logSha256": "cac61500b584ebefc0938cd36d7d9be344dc8873cfe8d9ed0fb55449944285ab",
+        "resultsSha256": "fbafc4932eaf0ddac6bd37c8322963995b1209588807c931e22e96e227e1c6cf",
+        "actualModuleSha256": "cbc7d8c48c7518a4dc98a2a50730edf298c22dc67ecd6e418b2b2f50ee946727",
+        "serverDigest": "052a3df0bba906710ade498c6705561ed30c5dac386e1c04704a10a0da29be5a",
+        "frozenCommit": "fa1e8d6a2d6e07242dff68e0ef22e04a6782821e",
+        "requestFormat": "automatic: true",
+        "packageRelativeModule": "npm-dist/server/gateway.js",
+        "usesDeployedModule": true,
+        "allScenariosNotifyOnce": true
+      },
+      "publishedClientFormat": {
+        "startedAt": "2026-10-23T12:06:28.323312+00:00",
+        "completedAt": "2026-10-23T12:06:29.673458+00:00",
+        "exitCode": 0,
+        "scenarios": 5,
+        "scriptSha256": "4d43473a0b58b33b4aeb130d25877c7d524b5e6d14f66d259fa95220ad5c1ca0",
+        "logSha256": "3549a2d9a8511f6ead07dd5268b756b4087dfed550211a38fb5c9e0fa4471c57",
+        "resultsSha256": "e8c93cfa553ccc81ff604bf597f617ff9d143b846c18a2d4037641607af92d0e",
+        "actualModuleSha256": "cbc7d8c48c7518a4dc98a2a50730edf298c22dc67ecd6e418b2b2f50ee946727",
+        "serverDigest": "052a3df0bba906710ade498c6705561ed30c5dac386e1c04704a10a0da29be5a",
+        "frozenCommit": "fa1e8d6a2d6e07242dff68e0ef22e04a6782821e",
+        "requestFormat": "0.3.31，不含automatic字段",
+        "packageRelativeModule": "npm-dist/server/gateway.js",
+        "usesDeployedModule": true,
+        "allScenariosNotifyOnce": true
+      }
+    },
+    "legacyFailureCompatibilityBeforeDeployment": {
+      "checkedAt": "2026-10-23T11:47:51.099758+00:00",
+      "clientFormat": "published-0.3.31-without-automatic",
+      "scenarios": 6,
+      "successScenarios": 4,
+      "manualCandidateUnchanged": true,
+      "legacyFailureTimeoutNotificationMs": 124981.3,
+      "duplicates": false,
+      "exitCode": 0,
+      "evidenceSha256": "25a1d7b29df7788c6e7a99934f37ba307e39ba3ebd005360aa80beea39d2bc3e",
+      "logSha256": "8a8316a1c2e96c17ad1195795fce9825db669582a1dd2b303287f367240adf22",
+      "probeSha256": "71f0a4b8601b9e11a66970b725446a5ea7d815087672717f513d92d243fe6fd3",
+      "evidenceScope": "部署前同来源运行代码的隔离真实HTTP兼容验收；本次未重复125秒实测"
+    },
+    "documentationSpecReview": "pending",
+    "documentationQualityReview": "pending",
+    "overallCloseoutReview": "pending",
+    "mainPush": "pending"
+  },
+  "unchangedClientChannels": {
+    "checkedAt": "2026-10-23T12:06:29.674260+00:00",
+    "apk": {
+      "version": "0.3.31",
+      "size": 4751179,
+      "sha256": "cbfe32b881f116a294d441519a456766b79624bae292dc91e7ec5b8c7260c86a",
+      "manifestSha256": "37c56ca272f06654f3debed1b7ec28845d0e591e604d547d592e52b2583b68d6",
+      "manifestUrl": "http://192.168.123.79:8765/channels/codex-mobile/latest.json",
+      "downloadUrl": "http://192.168.123.79:8765/channels/codex-mobile/latest.apk",
+      "headStatus": 200,
+      "headSize": 4751179,
+      "getStatus": 200,
+      "getSize": 4751179,
+      "getSha256": "cbfe32b881f116a294d441519a456766b79624bae292dc91e7ec5b8c7260c86a",
+      "matchesBefore": true
+    },
+    "ipa": {
+      "version": "0.3.31",
+      "size": 4894447,
+      "sha256": "38b4ce8c1d93a6cbf1640a0ce1005e227e5932adc409bbcca3be341b645c7d22",
+      "manifestSha256": "e2d08ca0195f3843c99aad5cac006f81eb6d0b4c9e8032d888ab73c87d72130a",
+      "manifestUrl": "http://192.168.123.79:8765/channels/codex-mobile/latest-ios.json",
+      "downloadUrl": "http://192.168.123.79:8765/channels/codex-mobile/latest.ipa",
+      "headStatus": 200,
+      "headSize": 4894447,
+      "getStatus": 200,
+      "getSize": 4894447,
+      "getSha256": "38b4ce8c1d93a6cbf1640a0ce1005e227e5932adc409bbcca3be341b645c7d22",
+      "matchesBefore": true,
+      "signed": true,
+      "signingType": "Ad Hoc",
+      "signatureVerifiedThisTask": false,
+      "signingEvidence": "2026-10-23-title-summary-crash-release.json"
+    },
+    "publishedThisTask": false
+  },
+  "behaviorAndBoundary": {
+    "deployed": "Bark每次实际投递读取最新已保存名称；新建未命名会话先等自动命名保存，候选未保存不作为正式名称；保持原通知资格及去重。",
+    "publishedClient": "0.3.31不发送automatic；成功保存名称可解除等待，总结或保存失败由登记后125秒超时释放。",
+    "newClientPending": "automatic: true标记与提问窗口尚未发包；网关已支持带标记失败及时释放，不代表现役客户端已具备此标记。",
+    "clientBuild": false,
+    "clientSigning": false,
+    "clientPublishing": false,
+    "fixedChannelUpdate": false,
+    "otherProductionDeployment": false,
+    "functionalRetestProductionGatewayWrite": false,
+    "realModelUsed": false,
+    "userDeviceNotified": false,
+    "realRemoteSessionCreated": false,
+    "testServicesAndTemporaryStateCleaned": true,
+    "realTestSessionArchival": "未创建真实测试会话，无需归档",
+    "deviceBarkDelivery": "pending",
+    "deviceOverwriteInstall": "pending",
+    "deviceDataPreservation": "pending",
+    "deviceFeatureAcceptance": "pending"
+  }
+}

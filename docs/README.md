@@ -23,7 +23,7 @@
 
 ## 当前发布入口
 
-现役双端客户端为0.3.31（3031），修复 iOS 点击“模型总结”后闪退，候选名称返回后可继续编辑并保存；继承0.3.30的独立标题总结、自动命名、重命名候选确认及界面改进。双端固定渠道、HTTPS OTA、GitHub及unsigned软件源独立回验通过，来源准备与正式发布的规格、质量审查均通过，见[本次发布计划](superpowers/plans/2026-10-23-title-summary-crash-release.md)与[公共凭证](superpowers/plans/evidence/2026-10-23-title-summary-crash-release.json)。本轮仅发布客户端，网关沿用此前0.3.30的配套部署；桌面置顶的Bark完成通知由网关独立跟踪，配置后App退出仍可接收。此前线上标题接口、部署进程及摘要已核对；真实Bark送达、真机原生文件入口、修复版覆盖安装、数据保留和功能验收仍待现场确认。
+现役双端客户端为0.3.31（3031），修复 iOS 点击“模型总结”后闪退，候选名称返回后可继续编辑并保存；继承0.3.30的独立标题总结、自动命名、重命名候选确认及界面改进。双端固定渠道、HTTPS OTA、GitHub及unsigned软件源独立回验通过，来源准备与正式发布的规格、质量审查均通过，见[本次发布计划](superpowers/plans/2026-10-23-title-summary-crash-release.md)与[公共凭证](superpowers/plans/evidence/2026-10-23-title-summary-crash-release.json)。随后仅网关部署任务 `bark-auto-title-gateway-20261023` 已完成，成功批次 `f0074198-f11b-4a27-a79f-8327d3dadf56`／冻结提交 `fa1e8d6` 已独立回验进程、认证健康、文件摘要和实际部署模块的7项新格式、5项现役格式时序；见[部署计划](superpowers/plans/2026-10-23-bark-auto-title-gateway-deploy.md)与[公共凭证](superpowers/plans/evidence/2026-10-23-bark-auto-title-gateway-deploy.json)。Bark投递使用最新已保存名称，新会话完成通知先等名称保存；现役0.3.31成功保存可解除等待，缺少 `automatic` 标记时的总结或保存失败由登记后125秒超时释放。客户端新标记与提问窗口尚未发包，固定APK／IPA完整下载仍与此前0.3.31原大小、散列一致。桌面置顶完成通知继续由网关独立跟踪；真实Bark送达、真机原生文件入口、修复版覆盖安装、数据保留和功能验收仍待现场确认。
 
 版本以在线清单为准，不能从 package.json 的开发版本、文档示例或历史记录推断：
 
