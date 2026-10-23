@@ -3,21 +3,24 @@ import SwiftUI
 struct ChatListRow: View {
     @Environment(AppSession.self) private var session
     @Environment(AppPreferences.self) private var preferences
+    @ScaledMetric(relativeTo: .body) private var pinSize = 15.0
+    @ScaledMetric(relativeTo: .body) private var iconColumnWidth = 20.0
     let conversation: Conversation
     var indented = false
 
     var body: some View {
         Button { session.open(conversation.id) } label: {
             HStack(alignment: .top, spacing: 8) {
+                if conversation.isPinned {
+                    Image(systemName: "pin.fill")
+                        .font(.system(size: pinSize))
+                        .foregroundStyle(.secondary)
+                        .frame(width: iconColumnWidth, alignment: .leading)
+                        .padding(.top, 2)
+                        .accessibilityHidden(true)
+                }
                 VStack(alignment: .leading, spacing: 5) {
                     HStack(alignment: .top, spacing: 4) {
-                        if conversation.isPinned {
-                            Image(systemName: "pin.fill")
-                                .font(.caption)
-                                .padding(.top, 3)
-                                .foregroundStyle(.secondary)
-                                .accessibilityHidden(true)
-                        }
                         Text(conversation.title)
                             .font(AgentTheme.body)
                             .multilineTextAlignment(.leading)
