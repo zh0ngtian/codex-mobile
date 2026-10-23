@@ -71,9 +71,8 @@ struct RootView: View {
     private var sheetPresentation: some View {
         drawerContent
             .sheet(item: modalBinding, onDismiss: modalDidDismiss) { destination in
-                modalContent(destination)
+                sizedModalContent(destination)
                     .modifier(SessionErrorAlert(presentationActive: $errorAlertActive, enabled: !session.inputModalPresented))
-                    .presentationDetents([.large])
                     .interactiveDismissDisabled(destination.requiresExplicitDismissal || (session.nativePanel?.dismissible == false && destination.id.hasPrefix("native-panel-")))
             }
     }
@@ -207,6 +206,14 @@ struct RootView: View {
         }
         .buttonStyle(.plain)
         .accessibilityIdentifier("requests.otherDevice")
+    }
+
+    @ViewBuilder private func sizedModalContent(_ destination: AppModal) -> some View {
+        if case .question = destination {
+            modalContent(destination)
+        } else {
+            modalContent(destination).presentationDetents([.large])
+        }
     }
 
     @ViewBuilder private func modalContent(_ destination: AppModal) -> some View {

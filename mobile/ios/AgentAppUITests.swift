@@ -20,7 +20,7 @@ final class AgentAppUITests: XCTestCase {
         let composer = app.textFields["message-input"]
         XCTAssertTrue(composer.waitForExistence(timeout: 5)); composer.tap(); composer.typeText("保留的未发送草稿")
         _ = try await state("/question?running=1&fail=1")
-        let sheet = app.navigationBars["回答问题"]
+        let sheet = app.buttons["question.submit"]
         XCTAssertTrue(sheet.waitForExistence(timeout: 12))
         XCTAssertFalse(app.buttons["question.submit"].isEnabled)
         let option = app.buttons.matching(identifier: "与“取消／保存”放在同一排").firstMatch
@@ -29,6 +29,11 @@ final class AgentAppUITests: XCTestCase {
         app.buttons["question.later"].tap()
         XCTAssertTrue(app.buttons["继续回答"].waitForExistence(timeout: 5)); app.buttons["继续回答"].tap()
         XCTAssertTrue(option.waitForExistence(timeout: 5)); XCTAssertTrue(option.isSelected)
+        let header = app.descendants(matching: .any).matching(identifier: "question.header").firstMatch
+        XCTAssertTrue(header.waitForExistence(timeout: 5))
+        XCTAssertLessThan(sheet.frame.maxY - header.frame.minY, app.frame.height * 0.55, "选择窗口应按排队卡片样式紧凑呈现")
+        XCTAssertTrue(sheet.isHittable)
+        XCTAssertFalse(app.staticTexts["请回答所有问题后提交。你也可以稍后继续。"].exists)
         captureConversation("模型异步提问-原生选择窗口", app: app)
         app.buttons["question.submit"].tap()
         XCTAssertTrue(app.staticTexts["预览发送失败，答案已保留"].waitForExistence(timeout: 12))
@@ -52,6 +57,26 @@ final class AgentAppUITests: XCTestCase {
         XCTAssertEqual(all.last?["method"] as? String, "turn/start")
         XCTAssertEqual(all.count, 3)
         XCTAssertEqual(composer.value as? String, "保留的未发送草稿")
+        _ = try await state("/question?running=0&many=1")
+        XCTAssertTrue(sheet.waitForExistence(timeout: 12))
+        let scroll = app.scrollViews["question.content"]
+        XCTAssertTrue(scroll.waitForExistence(timeout: 5))
+        let lastAnswer = app.textFields["问题 8"]
+        for _ in 0..<8 {
+            if lastAnswer.exists && lastAnswer.isHittable && lastAnswer.frame.midY < scroll.frame.maxY - 10 && lastAnswer.frame.midY > scroll.frame.minY { break }
+            scroll.swipeUp()
+        }
+        XCTAssertTrue(lastAnswer.isHittable, "长问题列表必须能滚动到最后一题")
+        XCTAssertLessThan(lastAnswer.frame.midY, scroll.frame.maxY)
+        lastAnswer.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        lastAnswer.typeText("最后一题的补充说明")
+        XCTAssertEqual(lastAnswer.value as? String, "最后一题的补充说明")
+        XCTAssertTrue(sheet.isHittable, "键盘弹出后提交操作行仍需可达")
+        XCTAssertFalse(sheet.isEnabled, "未回答其他问题时继续阻止提交")
+        captureConversation("紧凑提问-多题滚动与键盘", app: app)
+        app.buttons["question.later"].tap()
+        XCTAssertTrue(app.buttons["继续回答"].waitForExistence(timeout: 5))
         app.terminate()
     }
 

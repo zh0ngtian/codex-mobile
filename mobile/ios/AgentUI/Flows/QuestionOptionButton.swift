@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct QuestionOptionButton: View {
+    @Environment(AppPreferences.self) private var preferences
     let title: String
     var detail = ""
     let selected: Bool
@@ -8,12 +9,12 @@ struct QuestionOptionButton: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(alignment: .top, spacing: 12) {
+            HStack(alignment: .top, spacing: 8) {
                 Image(systemName: selected ? "largecircle.fill.circle" : "circle")
-                    .font(.title3)
-                    .foregroundStyle(selected ? Color.accentColor : Color.secondary)
+                    .font(.body)
+                    .foregroundStyle(selected ? preferences.accent.color : Color.secondary)
                     .accessibilityHidden(true)
-                    .padding(.top, 2)
+                    .padding(.top, 1)
                 VStack(alignment: .leading, spacing: 4) {
                     Text(title)
                         .font(.body)
@@ -26,14 +27,15 @@ struct QuestionOptionButton: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(14)
-            .frame(minHeight: 52)
-            .background(selected ? Color.accentColor.opacity(0.07) : AgentTheme.card, in: RoundedRectangle(cornerRadius: 14))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .frame(minHeight: 44)
+            .background(selected ? preferences.accent.color.opacity(0.07) : AgentTheme.page, in: RoundedRectangle(cornerRadius: 12))
             .overlay {
-                RoundedRectangle(cornerRadius: 14)
-                    .strokeBorder(selected ? Color.accentColor.opacity(0.6) : AgentTheme.line)
+                RoundedRectangle(cornerRadius: 12)
+                    .strokeBorder(selected ? preferences.accent.color.opacity(0.6) : AgentTheme.line)
             }
-            .contentShape(RoundedRectangle(cornerRadius: 14))
+            .contentShape(RoundedRectangle(cornerRadius: 12))
         }
         .buttonStyle(.plain)
         .accessibilityElement(children: .combine)

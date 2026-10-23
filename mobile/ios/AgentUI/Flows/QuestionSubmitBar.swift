@@ -6,27 +6,28 @@ struct QuestionSubmitBar: View {
     let request: QuestionRequest
 
     var body: some View {
-        VStack(spacing: 10) {
-            if !request.isValid {
-                Text(preferences.text("所有问题均需有效回答", "A valid answer is required for every question"))
-                    .font(.body)
-                    .foregroundStyle(.secondary)
-            }
+        HStack(spacing: 12) {
+            Button(preferences.text("稍后回答", "Later")) { session.postponeQuestion() }
+                .accessibilityIdentifier("question.later")
+                .frame(minHeight: 44)
+                .disabled(request.submitting)
+            Spacer(minLength: 0)
             Button(action: submit) {
                 HStack(spacing: 8) {
                     if request.submitting { ProgressView().tint(.white) }
                     Text(request.submitting ? preferences.text("正在提交…", "Submitting…") : preferences.text("提交回答", "Submit answers"))
                         .font(.body)
                 }
-                .frame(maxWidth: .infinity, minHeight: 48)
             }
             .buttonStyle(.borderedProminent)
+            .controlSize(.regular)
+            .frame(minHeight: 44)
             .accessibilityIdentifier("question.submit")
             .disabled(!request.isValid || request.submitting)
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 12)
-        .background(.bar)
+        .buttonStyle(.borderless)
+        .padding(.horizontal, 14)
+        .padding(.bottom, 8)
     }
 
     private func submit() { Task { await session.submitAnswers(request.id) } }

@@ -6,21 +6,22 @@ struct QuestionAnswerField: View {
     let requestID: UUID
     let question: AgentQuestion
     let submitting: Bool
+    var showTitle = true
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            VStack(alignment: .leading, spacing: 5) {
-                Text(question.title)
-                    .font(.body)
-                if !question.detail.isEmpty {
-                    Text(question.detail)
-                        .font(.body)
+        VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 4) {
+                if showTitle {
+                    Text(question.title)
                         .foregroundStyle(.secondary)
                 }
-                Text(preferences.text("必填", "Required"))
-                    .font(.body)
-                    .foregroundStyle(.secondary)
+                if !question.detail.isEmpty {
+                    Text(question.detail)
+                } else if !showTitle {
+                    Text(question.title)
+                }
             }
+            .font(.body)
             ForEach(question.options) { option in
                 QuestionOptionButton(title: option.title, detail: option.detail, selected: answer.optionID == option.id && !answer.custom) {
                     choose(option.id)
@@ -35,16 +36,16 @@ struct QuestionAnswerField: View {
                         .textContentType(nil)
                         .autocorrectionDisabled()
                         .textInputAutocapitalization(.never)
-                        .padding(14)
-                        .frame(minHeight: 50)
-                        .background(AgentTheme.card, in: RoundedRectangle(cornerRadius: 14))
+                        .padding(12)
+                        .frame(minHeight: 44)
+                        .background(AgentTheme.page, in: RoundedRectangle(cornerRadius: 12))
                         .accessibilityLabel(question.title)
                 } else {
                     TextField(preferences.text("输入你的回答…", "Enter your answer…"), text: textBinding, axis: .vertical)
-                        .lineLimit(3...8)
-                        .padding(14)
-                        .frame(minHeight: 80, alignment: .topLeading)
-                        .background(AgentTheme.card, in: RoundedRectangle(cornerRadius: 14))
+                        .lineLimit(2...5)
+                        .padding(12)
+                        .frame(minHeight: 56, alignment: .topLeading)
+                        .background(AgentTheme.page, in: RoundedRectangle(cornerRadius: 12))
                         .accessibilityLabel(question.title)
                 }
             }

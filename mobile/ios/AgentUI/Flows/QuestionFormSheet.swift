@@ -3,52 +3,55 @@ import SwiftUI
 struct QuestionFormSheet: View {
     @Environment(AppSession.self) private var session
     @Environment(AppPreferences.self) private var preferences
+    @State private var contentHeight: CGFloat = 260
+    @State private var actionsHeight: CGFloat = 68
     let requestID: UUID
 
     var body: some View {
-        NavigationStack {
+        VStack(spacing: 0) {
             ScrollView {
                 if let request = session.question(requestID) {
-                    VStack(alignment: .leading, spacing: 24) {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Label(preferences.text("Codex 需要你的回答", "Codex needs your answer"), systemImage: "text.bubble.fill")
-                                .font(.body)
-                            Text(preferences.text("请回答所有问题后提交。你也可以稍后继续。", "Answer every question to submit. You can also continue later."))
-                                .font(.body)
-                                .foregroundStyle(.secondary)
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack(spacing: 8) {
+                            Label(preferences.text("需要回答", "Answer needed"), systemImage: "text.bubble")
+                            Spacer(minLength: 0)
+                            if request.questions.count > 1 {
+                                Text(request.questions.count, format: .number)
+                                    .foregroundStyle(.secondary)
+                            }
                         }
+                        .font(.body)
+                        .accessibilityIdentifier("question.header")
                         ForEach(request.questions) { question in
-                            QuestionAnswerField(requestID: requestID, question: question, submitting: request.submitting)
+                            QuestionAnswerField(requestID: requestID, question: question, submitting: request.submitting, showTitle: request.questions.count > 1)
                         }
-                        if let error = request.error {
-                            FlowErrorBanner(message: error)
-                        }
+                        if let error = request.error { FlowErrorBanner(message: error) }
                     }
-                    .padding(20)
+                    .padding(14)
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { contentHeight = $0 }
                 } else {
-                    ContentUnavailableView(preferences.text("问题已处理", "Questions resolved"), systemImage: "checkmark.bubble")
+                    Text(preferences.text("问题已处理", "Questions resolved"))
+                        .padding(14)
                 }
             }
+            .accessibilityIdentifier("question.content")
+            .scrollBounceBehavior(.basedOnSize)
             .scrollDismissesKeyboard(.interactively)
-            .background(AgentTheme.page)
-            .navigationTitle(preferences.text("回答问题", "Answer questions"))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button(preferences.text("稍后回答", "Later"), action: postpone)
-                        .accessibilityIdentifier("question.later")
-                        .frame(minWidth: 44, minHeight: 44)
-                        .disabled(session.question(requestID)?.submitting == true)
-                }
-            }
-            .safeAreaInset(edge: .bottom) {
-                if let request = session.question(requestID) {
-                    QuestionSubmitBar(request: request)
-                }
+            .clipped()
+            .contentShape(Rectangle())
+            if let request = session.question(requestID) {
+                QuestionSubmitBar(request: request)
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { actionsHeight = $0 }
+                    .background(AgentTheme.card)
+                    .zIndex(1)
             }
         }
+        .background(AgentTheme.card, in: RoundedRectangle(cornerRadius: 18))
+        .overlay { RoundedRectangle(cornerRadius: 18).strokeBorder(AgentTheme.line) }
+        .padding(16)
+        .background(AgentTheme.page)
+        .presentationDetents([.height(min(max(contentHeight + actionsHeight + 32, 220), 520))])
+        .presentationDragIndicator(.visible)
         .interactiveDismissDisabled()
     }
-
-    private func postpone() { session.postponeQuestion() }
 }
