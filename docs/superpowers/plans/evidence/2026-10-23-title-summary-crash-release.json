@@ -1,0 +1,166 @@
+{
+  "date": "2026-10-23",
+  "version": "0.3.31",
+  "buildNumber": "3031",
+  "sourceSha": "8a8572882146f9e3ebab0ced2006d9edb733ca8f",
+  "client": {
+    "batchId": "42a3b787-8202-426a-8530-62fb9d74194c",
+    "frozenSha": "e761b795afb2ab5b37566680aaa5107abbdd83a5",
+    "tasks": [
+      {
+        "id": "title-summary-crash-mobile-20261023",
+        "sha": "8a8572882146f9e3ebab0ced2006d9edb733ca8f"
+      }
+    ],
+    "status": "complete",
+    "error": null,
+    "receiptSha256": "223d42c042cf8ec1e85e2ad1162fdeefe18bdaf8ed5e9ca68eac8ae7e0926ae1",
+    "phases": [
+      "prepare",
+      "main",
+      "build",
+      "iosbuild",
+      "sign",
+      "ota",
+      "apk",
+      "ipa",
+      "source",
+      "verify"
+    ],
+    "sourceIncludedInFrozenTasks": "passed",
+    "sourceIncludedInVerifiedTasks": "passed",
+    "developmentCI": {
+      "runId": 39906323471,
+      "attempt": 1,
+      "conclusion": "success"
+    },
+    "releaseCI": {
+      "runId": 39906323606,
+      "attempt": 1,
+      "conclusion": "success"
+    },
+    "releaseUrl": "https://github.com/zh0ngtian/codex-mobile/releases/tag/v0.3.31"
+  },
+  "packages": {
+    "apk": {
+      "url": "http://192.168.123.79:8765/channels/codex-mobile/latest.apk",
+      "version": "0.3.31",
+      "size": 4751179,
+      "sha256": "cbfe32b881f116a294d441519a456766b79624bae292dc91e7ec5b8c7260c86a"
+    },
+    "ipa": {
+      "url": "http://192.168.123.79:8765/channels/codex-mobile/latest.ipa",
+      "version": "0.3.31",
+      "size": 4894447,
+      "sha256": "38b4ce8c1d93a6cbf1640a0ce1005e227e5932adc409bbcca3be341b645c7d22",
+      "signed": true,
+      "signingType": "Ad Hoc"
+    }
+  },
+  "ota": {
+    "installPage": "https://192.168.123.79:8766/channels/codex-mobile/current/install.html",
+    "manifestUrl": "https://192.168.123.79:8766/channels/codex-mobile/releases/0.3.31/manifest.plist",
+    "httpsDownloadVerified": true,
+    "manifestJsonUrl": "https://192.168.123.79:8766/channels/codex-mobile/current/latest-ios.json",
+    "versionedIpaUrl": "https://192.168.123.79:8766/channels/codex-mobile/releases/0.3.31/latest.ipa",
+    "tlsVerified": true
+  },
+  "signing": {
+    "bundleId": "vip.loock.codexmobile",
+    "teamId": "SC456JW7RP",
+    "applicationIdentifier": "SC456JW7RP.app.jade6694.grapefruit3766",
+    "entitlementsSha256": "1e84a4c1ba74b9e374c364f26fefa112ceeea09de1a0ba0600403a763eb7952f",
+    "independentSignatureVerification": "passed",
+    "completeEntitlementsContinuity": "passed",
+    "keychainContinuity": "passed"
+  },
+  "source": {
+    "appID": "bdf9cfa5-6c34-49ca-82fb-31a85ad9e6da",
+    "version": "0.3.31",
+    "developerName": "zh0ngtian",
+    "downloadURL": "https://github.com/zh0ngtian/codex-mobile/releases/download/v0.3.31/CodexMobile-v0.3.31-unsigned.ipa",
+    "size": 4891142,
+    "sha256": "a3c360ed996a6aecbe4391c1ee189a0c14317d76b6c489689dec28c8803c4886",
+    "notes": "- 修复 iOS 点击“模型总结”后闪退的问题，候选名称返回后可继续编辑并保存。\n",
+    "buildVersion": "3031",
+    "signed": false,
+    "existingDeveloperPreserved": true,
+    "currentGitHubUsernameMatched": true,
+    "chineseNotesMatched": "passed",
+    "syncJobId": "323c19fc-c8b2-42b7-8049-6297c9308bbe",
+    "syncJobStatus": "succeeded",
+    "entryStatus": "succeeded",
+    "syncVerifiedAt": "2026-10-23T05:52:48.906248+00:00"
+  },
+  "validation": {
+    "releasePreparation": [
+      {
+        "name": "adapter-regression",
+        "status": "passed",
+        "exitCode": 0,
+        "tests": 217
+      },
+      {
+        "name": "coordinator-recovery",
+        "status": "passed",
+        "exitCode": 0,
+        "tests": 59
+      },
+      {
+        "name": "build-contract",
+        "status": "passed",
+        "exitCode": 0,
+        "files": 21,
+        "tests": 144
+      },
+      {
+        "name": "typecheck",
+        "status": "passed",
+        "exitCode": 0
+      }
+    ],
+    "releasePreparationSpecReview": "passed",
+    "releasePreparationQualityReview": "passed",
+    "publicationSpecReview": "passed",
+    "publicationQualityReview": "passed",
+    "businessRegression": {
+      "status": "passed",
+      "files": 8,
+      "tests": 78
+    },
+    "nativeUI": {
+      "status": "passed",
+      "tests": 4,
+      "popupFlows": 3,
+      "liveAppGatewayWebKitFlows": 1,
+      "device": "iPhone 17 Pro",
+      "os": "iOS 27.0",
+      "environment": "Simulator",
+      "fontSize": "正常字号",
+      "orientation": "竖屏"
+    },
+    "featureAcceptance": "78项相关自动回归、3项弹窗流程及1项真实App／JS／网关／WebKit回执全链路通过。原生协议夹具不启动真实模型或访问用户会话；修复版真机覆盖安装待验收",
+    "fixedLanJsonHeadFullGet": "passed",
+    "httpsOtaPageJsonManifestFullGet": "passed",
+    "githubApkAndUnsignedIpa": "passed",
+    "unsignedSourceVersionBuildUrlSizeSha256": "passed",
+    "independentReceiptAudit": {
+      "status": "passed",
+      "exitCode": 0
+    },
+    "independentPublishedChannels": {
+      "status": "passed",
+      "exitCode": 0
+    }
+  },
+  "gateway": "本次仅发布客户端，未重新部署网关；保持此前0.3.30配套网关部署",
+  "pendingAcceptance": {
+    "deviceOverwriteInstall": "pending",
+    "deviceDataPreservation": "pending",
+    "fixedVersionOnDeviceFeatureAcceptance": "pending",
+    "nativeFilePickerOnDevice": "pending",
+    "realBarkDelivery": "pending",
+    "userOnSiteAcceptance": "pending"
+  },
+  "verifiedAt": 1792734357.4408069
+}
