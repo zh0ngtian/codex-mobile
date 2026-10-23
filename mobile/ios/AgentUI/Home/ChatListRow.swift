@@ -13,7 +13,8 @@ struct ChatListRow: View {
                     HStack(alignment: .top, spacing: 4) {
                         if conversation.isPinned {
                             Image(systemName: "pin.fill")
-                                .font(AgentTheme.body)
+                                .font(.caption)
+                                .padding(.top, 3)
                                 .foregroundStyle(.secondary)
                                 .accessibilityHidden(true)
                         }
