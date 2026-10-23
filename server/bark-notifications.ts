@@ -171,8 +171,6 @@ export class BarkNotifications {
       this.completedTurns.set(JSON.stringify([completed.threadId, completed.turnId]), completed);
       while (this.completedTurns.size > 512) this.completedTurns.delete(this.completedTurns.keys().next().value!);
     }
-    const title = this.titles.get(completed.threadId);
-    const body = title?.name || title?.preview || "新会话";
     // 不等待网络；磁盘登记成功后才发送，避免跨连接和重启重复通知。
     void this.enqueue(async () => {
       if (this.closed || !this.subscribed) return;
@@ -201,7 +199,7 @@ export class BarkNotifications {
         while (this.delivered.size > MAX_DEDUPLICATION) this.delivered.delete(this.delivered.values().next().value!);
         try { await this.save(); } catch (error) { this.delivered.delete(id); throw error; }
         if (previouslyDelivered) continue;
-        const job = this.send(barkUrl, completed, { title: questionId == null ? "Codex 运行结束" : "Codex 需要你回答", body, group: this.options.displayName, url: `codexmobile://thread?backendId=${encodeURIComponent(subscription.backendId)}&threadId=${encodeURIComponent(completed.threadId)}`, id });
+        const job = this.send(barkUrl, completed, { title: questionId == null ? "Codex 运行结束" : "Codex 需要你回答", group: this.options.displayName, url: `codexmobile://thread?backendId=${encodeURIComponent(subscription.backendId)}&threadId=${encodeURIComponent(completed.threadId)}`, id });
         this.jobs.add(job); void job.finally(() => this.jobs.delete(job));
       }
     }).catch(() => {});
@@ -217,7 +215,10 @@ export class BarkNotifications {
       const controller = new AbortController(); this.controllers.add(controller);
       const timeout = setTimeout(() => controller.abort(), 5000); timeout.unref();
       try {
-        const response = await (this.options.fetch ?? fetch)(subscription.barkUrl, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...payload, url: `codexmobile://thread?backendId=${encodeURIComponent(subscription.backendId)}&threadId=${encodeURIComponent(completed.threadId)}` }), signal: controller.signal, redirect: "error" });
+        // 总结或手动改名可能在排队、落盘或重试期间保存；每次实际投递时读取最新名称。
+        const title = this.titles.get(completed.threadId);
+        const body = title?.name || title?.preview || "新会话";
+        const response = await (this.options.fetch ?? fetch)(subscription.barkUrl, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...payload, body, url: `codexmobile://thread?backendId=${encodeURIComponent(subscription.backendId)}&threadId=${encodeURIComponent(completed.threadId)}` }), signal: controller.signal, redirect: "error" });
         void response.body?.cancel().catch(() => {});
         if (response.ok) return;
       } catch { /* Bark 故障不影响会话 RPC。 */ }

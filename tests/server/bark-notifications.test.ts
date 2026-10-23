@@ -75,7 +75,7 @@ describe("Bark 通知", () => {
       questions: [{ id: "q", header: "方案", question: "私密问题正文", options: null }],
     } };
     f.send(question); await eventually(() => f.pushes.length === 1);
-    expect(f.pushes[0]).toMatchObject({ title: "Codex 需要你回答", body: "新对话" });
+    expect(f.pushes[0]).toMatchObject({ title: "Codex 需要你回答", body: "新会话" });
     expect(f.pushes[0].url).toContain(encodeURIComponent(final.params.threadId));
     expect(JSON.stringify(f.pushes)).not.toContain("私密问题正文");
     f.send({ ...question, id: "another-connection" }); await wait(100);
@@ -257,7 +257,7 @@ describe("Bark 通知", () => {
     const f = await fixture(); await f.settings(); await f.rpc({ id: 1, method: "initialize", params: {} }); await f.start();
     f.send({ ...final, params: { ...final.params, item: { ...final.params.item, phase: "commentary" } } }); f.send({ ...final, params: { ...final.params, item: { ...final.params.item, type: "reasoning" } } }); await wait(80); expect(f.pushes).toHaveLength(0);
     f.send(final); f.send(completed); await eventually(() => f.pushes.length === 1);
-    expect(f.pushes[0]).toMatchObject({ title: "Codex 运行结束", body: "新对话", group: "办公室 Mac", url: `codexmobile://thread?backendId=${encodeURIComponent(f.backendId)}&threadId=${encodeURIComponent(final.params.threadId)}`, id: expect.any(String) }); expect(JSON.stringify(f.pushes)).not.toContain("private output");
+    expect(f.pushes[0]).toMatchObject({ title: "Codex 运行结束", body: "新会话", group: "办公室 Mac", url: `codexmobile://thread?backendId=${encodeURIComponent(f.backendId)}&threadId=${encodeURIComponent(final.params.threadId)}`, id: expect.any(String) }); expect(JSON.stringify(f.pushes)).not.toContain("private output");
     const client = await f.stream(); await f.start(); f.send(final); f.send(completed); await wait(80); expect(f.pushes).toHaveLength(1); client.close();
     expect((await stat(join(f.root, "codex-mobile-notifications"))).mode & 0o777).toBe(0o700);
     expect((await stat(join(f.root, "codex-mobile-notifications", "state.json"))).mode & 0o777).toBe(0o600);
@@ -493,6 +493,37 @@ it("后台桌面置顶入口沿用隐藏来源，稀疏摘要不能恢复推送�
     notifications.observeRpc({ method: "thread/read" }, { result: { thread: { id: final.params.threadId, name: "稀疏摘要" } } });
     notifications.notifyFollowedCompletion(final.params.threadId, "hidden");
     await wait(100); expect(f.pushes).toHaveLength(0);
+  } finally { await notifications.close(); }
+});
+
+it("完成通知排队期间已保存的新名称用于实际 Bark 投递", async () => {
+  const f = await fixture(); await f.settings();
+  const notifications = new BarkNotifications({ codexHome: f.root, displayName: "测试" });
+  try {
+    await notifications.initialized();
+    notifications.observeRpc({ method: "thread/read" }, { result: { thread: { id: final.params.threadId, name: "原会话名称" } } });
+    notifications.observeRpc({ method: "turn/start", params: { threadId: final.params.threadId } }, { result: { turn: { id: "turn" } } });
+    notifications.observe(final); notifications.observe(completed);
+    notifications.observeRpc({ method: "thread/name/set", params: { threadId: final.params.threadId, name: "模型总结后的新名称" } }, { result: {} });
+    await eventually(() => f.pushes.length === 1);
+    expect(f.pushes[0].body).toBe("模型总结后的新名称");
+  } finally { await notifications.close(); }
+});
+
+it("Bark 首次投递失败后，重试采用期间已保存的总结名称", async () => {
+  const f = await fixture(1); await f.settings();
+  const notifications = new BarkNotifications({ codexHome: f.root, displayName: "测试" });
+  try {
+    await notifications.initialized();
+    notifications.observeRpc({ method: "thread/read" }, { result: { thread: { id: final.params.threadId, name: "重试前的旧名称" } } });
+    notifications.observeRpc({ method: "turn/start", params: { threadId: final.params.threadId } }, { result: { turn: { id: "turn" } } });
+    notifications.observe(final); notifications.observe(completed);
+    await eventually(() => f.pushes.length === 1);
+    notifications.observeRpc({ method: "thread/name/set", params: { threadId: final.params.threadId, name: "重试时的总结名称" } }, { result: {} });
+    await eventually(() => f.pushes.length === 2);
+    expect(f.pushes.map(push => push.body)).toEqual(["重试前的旧名称", "重试时的总结名称"]);
+    expect(f.pushes[0].id).toBe(f.pushes[1].id);
+    expect(f.pushes[0].url).toBe(f.pushes[1].url);
   } finally { await notifications.close(); }
 });
 
