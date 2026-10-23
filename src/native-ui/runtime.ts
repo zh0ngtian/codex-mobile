@@ -13,7 +13,7 @@ export function isNativeUIEnabled() {
   return target.__CODEX_NATIVE_UI__ === true && target.__CODEX_NATIVE_UI_RECOVERED__ !== true && typeof target.webkit?.messageHandlers?.nativeUI?.postMessage === 'function';
 }
 export const isNativeBridgeEnabled = isNativeUIEnabled;
-const globalNames = new Set(['settings.native-ui', 'backend.select', 'navigation.search', 'navigation.sidebar', 'navigation.refresh', 'thread.new', 'thread.open', 'thread.manage', 'project.toggle', 'project.more', 'project.retry', 'navigation.filter', 'confirmation.answer', 'settings.open', 'drafts.open', 'device.add', 'device.edit', 'device.change', 'device.save', 'device.cancel', 'device.scan', 'device.toggle', 'device.remove', 'device.move', 'settings.language', 'settings.font', 'settings.transport', 'settings.push.mode', 'settings.push.url', 'settings.push.save', 'settings.update.check', 'drafts.restore', 'drafts.remove', 'drafts.retry', 'update.install', 'update.retry', 'update.close']);
+const globalNames = new Set(['settings.native-ui', 'backend.select', 'navigation.search', 'navigation.sidebar', 'navigation.refresh', 'thread.new', 'thread.open', 'thread.manage', 'thread.summarize', 'project.toggle', 'project.more', 'project.retry', 'navigation.filter', 'confirmation.answer', 'settings.open', 'drafts.open', 'device.add', 'device.edit', 'device.change', 'device.save', 'device.cancel', 'device.scan', 'device.toggle', 'device.remove', 'device.move', 'settings.language', 'settings.font', 'settings.transport', 'settings.push.mode', 'settings.push.url', 'settings.push.save', 'settings.update.check', 'drafts.restore', 'drafts.remove', 'drafts.retry', 'update.install', 'update.retry', 'update.close']);
 const workspaceNames = new Set(['message.quote', 'sidechat.quote', 'quote.remove', 'sidechat.create', 'sidechat.open', 'sidechat.return', 'sidechat.close', 'draft.set', 'draft.save', 'message.send', 'turn.stop', 'model.select', 'effort.select', 'attachment.import', 'attachment.pick', 'attachment.preview', 'attachment.remove', 'location.insert', 'mention.search', 'mention.insert', 'thread.retry', 'thread.older', 'message.edit', 'message.copy', 'queue.cancel', 'queue.send', 'queue.edit', 'speed.select', 'permission.select', 'newchat.backend', 'newchat.project', 'workspace.thread', 'workspace.rename.change', 'workspace.rename.submit', 'approval.answer', 'approval.decide', 'approval.submit', 'approval.dismiss', 'approval.reopen', 'history.change', 'history.cancel', 'history.submit', 'queue.change', 'file.open', 'file.mode', 'diagram.render']);
 // Task2b 只能经此处显式扩展可调用命令，不能把任意名字转发成 RPC。
 const panelNames = new Set(['panel.open', 'panel.close']);
@@ -21,6 +21,7 @@ const stringKeys: Record<string, string[]> = {
   'confirmation.answer': ['key'],
   'draft.set': ['value', 'contextId'], 'model.select': ['value'], 'effort.select': ['value'], 'attachment.pick': ['kind'],
   'attachment.preview': ['id'], 'attachment.remove': ['id'], 'backend.select': ['id'], 'navigation.search': ['value'], 'thread.open': ['backendId', 'threadId'],
+  'thread.summarize': ['backendId', 'threadId'],
   'thread.manage': ['backendId', 'threadId', 'action'], 'project.toggle': ['backendId', 'cwd'], 'project.more': ['backendId', 'cwd'],
   'quote.remove': ['id'], 'sidechat.open': ['id'], 'sidechat.close': ['id'],
   'project.retry': ['backendId', 'cwd'], 'navigation.filter': ['value'], 'mention.search': ['value'], 'mention.insert': ['id'],
@@ -122,7 +123,7 @@ export class NativeRuntime {
       if (value.ok) this.commandSucceeded?.(value);
       this.inFlight.delete(id); this.results = [...this.results, value].slice(-64);
       const currentContext = this.workspaces.get(this.navigation.selectedBackendId)?.value.contextId;
-      if (!value.contextId || value.contextId === currentContext) this.commandError = value.ok ? undefined : value.error;
+      if (value.name !== "thread.summarize" && (!value.contextId || value.contextId === currentContext)) this.commandError = value.ok ? undefined : value.error;
       for (const key of this.requests.keys()) {
         if (this.requests.size <= 256) break;
         if (!this.inFlight.has(key)) this.requests.delete(key);
@@ -172,7 +173,10 @@ export class NativeRuntime {
           let pending: unknown;
           flushSync(() => { pending = handler(params); });
           await pending;
-        } else await handler(params);
+        } else {
+          const value = await handler(params);
+          if (name === "thread.summarize" && typeof value === "string") return { ...base, ok: true, value };
+        }
       }
       return { ...base, ok: true };
     } catch (error) { return { ...base, error: error instanceof Error ? error.message : String(error) }; }

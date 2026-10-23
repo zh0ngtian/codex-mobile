@@ -85,6 +85,7 @@ final class AppSession {
     @ObservationIgnored var postponedQuestionIDs: Set<UUID> = []
     @ObservationIgnored var reopenRequestIntent = false
     @ObservationIgnored var questionPanels: [UUID: NativePanel] = [:]
+    @ObservationIgnored var silentCommands = Set<String>()
     @ObservationIgnored var pendingCommands: [String: (context: String?, continuation: CheckedContinuation<Bool, Never>)] = [:]
     @ObservationIgnored var commandTimeouts: [String: Task<Void, Never>] = [:]
 
@@ -130,7 +131,7 @@ final class AppSession {
     func flatten(_ items: [NativePanelItem]) -> [NativePanelItem] { items.flatMap { [$0] + flatten($0.children ?? []) } }
 
     /// 通过 Store 发命令并等待同一个 request id 的真实 ACK；不会由本地计时器生成成功。
-    func request(_ name: String, _ params: [String: NativeJSONValue] = [:]) async -> Bool {
+    func request(_ name: String, _ params: [String: NativeJSONValue] = [:], timeoutSeconds: Int = 20, presentErrors: Bool = true) async -> Bool {
         lastErrorMessage = nil
         guard let store = nativeStore, let original = store.sendCommand, !store.isReference else { return false }
         return await withCheckedContinuation { continuation in
@@ -139,9 +140,10 @@ final class AppSession {
                 guard let self else { continuation.resume(returning: false); return }
                 guard !emitted else { original(command); return }
                 emitted = true
+                if !presentErrors { self.silentCommands.insert(command.id) }
                 self.pendingCommands[command.id] = (self.string(command.params["contextId"]), continuation)
                 self.commandTimeouts[command.id] = Task { [weak self] in
-                    do { try await Task.sleep(for: .seconds(20)) } catch { return }
+                    do { try await Task.sleep(for: .seconds(timeoutSeconds)) } catch { return }
                     self?.resolve(command.id, ok: false, error: "操作结果尚未确认，输入已保留，请重试。")
                 }
                 original(command)
@@ -160,7 +162,8 @@ final class AppSession {
     func resolve(_ id: String, ok: Bool, error: String?) {
         guard let pending = pendingCommands.removeValue(forKey: id) else { return }
         commandTimeouts.removeValue(forKey: id)?.cancel()
-        if !ok { reportError(error ?? "操作失败，输入已保留。") }
+        let silent = silentCommands.remove(id) != nil
+        if !ok && !silent { reportError(error ?? "操作失败，输入已保留。") }
         pending.continuation.resume(returning: ok)
     }
     func fire(_ name: String, _ params: [String: NativeJSONValue] = [:]) { nativeStore?.command(name, params) }
@@ -293,6 +296,13 @@ final class AppSession {
     func retryProject(_ project: String) { perform(projectGroups[project]?.actions?.first { $0.command?.name == "project.retry" }?.command) }
     func refreshConversation(_ id: UUID) async { manage(id, action: "refresh") }
     func refreshAll() async { _ = await request("navigation.refresh") }
+    func summarizeTitle(_ id: UUID) async -> (title: String?, error: String?) {
+        guard let raw = rawThreadIDs[id] else { return (nil, "会话不可用，请刷新后重试") }
+        let key = UUID().uuidString
+        let ok = await request("thread.summarize", ["backendId": .string(raw.backend), "threadId": .string(raw.thread), "fieldKey": .string(key)], timeoutSeconds: 130, presentErrors: false)
+        let result = nativeSnapshot.commandResults?.last { $0.name == "thread.summarize" && $0.fieldKey == key }
+        return ok ? (result?.value, nil) : (nil, result?.error ?? "会话标题总结失败，请重试")
+    }
     func rename(_ id: UUID, title: String) { guard !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }; manage(id, action: "rename", value: title) }
     @discardableResult func clone(_ id: UUID) -> UUID? { manage(id, action: "duplicate"); return nil }
     @discardableResult func archive(_ id: UUID, discardQueue: Bool = false) -> Bool { guard rawThreadIDs[id] != nil else { return false }; manage(id, action: "archive"); return true }

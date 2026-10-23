@@ -230,3 +230,25 @@ it('选文命令按公开桥校验嵌套范围与上下文，只读只允许选�
  expect((await runtime.dispatch(command('quote-readonly-side','sidechat.quote',selection))).ok).toBe(true);
  expect(quoted).toHaveBeenCalledTimes(1);expect(side).toHaveBeenCalledTimes(1);runtime.dispose();
 });
+
+
+it('独立总结命令返回候选值，等网关完成才确认且不更改当前会话标题', async () => {
+ const runtime = new NativeRuntime(() => {}); let complete!: (title: string) => void;
+ runtime.setNavigation({ selectedBackendId: 'b', backends: [], groups: [] }, { 'thread.summarize': () => new Promise<string>(resolve => { complete = resolve; }) });
+ runtime.setWorkspace('b', workspace(), {});
+ const pending = runtime.dispatch(command('summary', 'thread.summarize', { backendId: 'other', threadId: 'target', fieldKey: 'rename-1' }));
+ expect(runtime.snapshot().commandResults).toEqual([]);
+ complete('候选名称');
+ expect(await pending).toMatchObject({ id: 'summary', ok: true, value: '候选名称', fieldKey: 'rename-1' });
+ expect(runtime.snapshot().title).toBe(workspace().title);
+ runtime.dispose();
+});
+
+
+it('总结失败只经原命令回执交给重命名弹窗，不再生成全局错误弹窗', async () => {
+ const runtime = new NativeRuntime(() => {});
+ runtime.setNavigation({ selectedBackendId: 'b', backends: [], groups: [] }, { 'thread.summarize': () => { throw new Error('请升级网关服务器'); } });
+ const result = await runtime.dispatch(command('summary-failed', 'thread.summarize', { backendId: 'b', threadId: 't' }));
+ expect(result).toMatchObject({ ok: false, error: '请升级网关服务器' });
+ expect(runtime.snapshot().error).toBeUndefined(); runtime.dispose();
+});

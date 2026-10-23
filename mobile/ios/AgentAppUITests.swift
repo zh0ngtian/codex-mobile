@@ -2064,6 +2064,81 @@ final class AgentAppUITests: XCTestCase {
         captureConversation("系统导航栏与消息", app: app)
     }
 
+    func testModelSummaryFillsRenameWithoutSavingAndAllowsEditing() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-title-summary-fixture", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
+        app.launch()
+        XCTAssertTrue(app.buttons["conversation.actions"].waitForExistence(timeout: 10))
+        app.buttons["conversation.actions"].tap(); app.buttons["重命名"].tap()
+        let alert = app.alerts["重命名会话"]
+        let summary = alert.buttons["rename.model-summary"]
+        XCTAssertTrue(summary.waitForExistence(timeout: 5))
+        XCTAssertGreaterThanOrEqual(summary.frame.minY, alert.textFields.firstMatch.frame.maxY - 1)
+        XCTAssertLessThan(summary.frame.maxY, alert.buttons["保存"].frame.minY)
+        summary.tap()
+        XCTAssertTrue(alert.exists)
+        XCTAssertFalse(summary.isEnabled)
+        XCTAssertFalse(alert.buttons["保存"].isEnabled)
+        captureConversation("模型总结-加载中", app: app)
+        let field = alert.textFields.firstMatch
+        expectation(for: NSPredicate(format: "value == %@", "模型生成的会话标题"), evaluatedWith: field)
+        waitForExpectations(timeout: 8)
+        XCTAssertTrue(app.navigationBars["对话界面回归"].exists)
+        XCTAssertTrue(alert.buttons["保存"].isEnabled)
+        captureConversation("模型总结-候选名称", app: app)
+        field.tap(); field.typeText(" 调整")
+        let edited = field.value as? String ?? ""
+        XCTAssertTrue(edited.contains("调整"))
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3))
+        let save = app.buttons["保存"]
+        let saveFrame = save.frame
+        let origin = app.coordinate(withNormalizedOffset: .zero)
+        origin.withOffset(CGVector(dx: saveFrame.midX, dy: saveFrame.midY)).tap()
+        captureConversation("模型总结-保存后", app: app)
+        XCTAssertTrue(app.navigationBars[edited].waitForExistence(timeout: 5))
+    }
+
+    func testLongPressRenameModelSummaryCanCancelAndReopen() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-sidebar-polish-fixture", "--agent-title-summary-fixture", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
+        app.launch()
+        let sidebar = app.buttons["line.3.horizontal"]
+        XCTAssertTrue(sidebar.waitForExistence(timeout: 10)); sidebar.tap()
+        let row = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "sidebar.conversation.")).firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 5)); row.press(forDuration: 0.7)
+        app.buttons["重命名"].tap()
+        let alert = app.alerts["重命名会话"]
+        let original = alert.textFields.firstMatch.value as? String
+        let summary = alert.buttons["rename.model-summary"]
+        XCTAssertTrue(summary.waitForExistence(timeout: 5)); summary.tap()
+        expectation(for: NSPredicate(format: "value == %@", "模型生成的会话标题"), evaluatedWith: alert.textFields.firstMatch)
+        waitForExpectations(timeout: 8)
+        captureConversation("模型总结-长按菜单候选", app: app)
+        alert.buttons["取消"].tap()
+        row.press(forDuration: 0.7); app.buttons["重命名"].tap()
+        XCTAssertEqual(alert.textFields.firstMatch.value as? String, original)
+        alert.buttons["取消"].tap()
+    }
+
+    func testModelSummaryOldGatewayPreservesRenameInputAndShowsUpgrade() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-title-summary-fixture", "--agent-title-summary-old-gateway", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
+        app.launch()
+        XCTAssertTrue(app.buttons["conversation.actions"].waitForExistence(timeout: 10))
+        app.buttons["conversation.actions"].tap(); app.buttons["重命名"].tap()
+        let alert = app.alerts["重命名会话"]
+        let field = alert.textFields.firstMatch
+        field.tap(); field.typeText(" 手工输入")
+        let summary = alert.buttons["rename.model-summary"]
+        XCTAssertTrue(summary.waitForExistence(timeout: 5)); summary.tap()
+        XCTAssertTrue(alert.staticTexts["请升级网关服务器以使用会话名称总结功能"].waitForExistence(timeout: 8))
+        XCTAssertEqual(field.value as? String, "对话界面回归 手工输入")
+        XCTAssertTrue(alert.buttons["保存"].isEnabled)
+        captureConversation("模型总结-旧网关提示", app: app)
+        alert.buttons["保存"].tap()
+        XCTAssertTrue(app.navigationBars["对话界面回归 手工输入"].waitForExistence(timeout: 5))
+    }
+
     func testRenameAlertUsesNeutralControlsAndCancelPreservesName() {
         let app = launchConversationFixture()
         app.buttons["conversation.actions"].tap()

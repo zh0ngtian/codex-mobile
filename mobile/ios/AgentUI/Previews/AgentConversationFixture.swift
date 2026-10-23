@@ -427,6 +427,26 @@ final class AgentConversationFixture {
            let index = snapshot.groups.firstIndex(where: { $0.id == id }) {
             snapshot.groups[index].collapsed = !(snapshot.groups[index].collapsed ?? false)
             publish()
+        } else if command.name == "thread.summarize", ProcessInfo.processInfo.arguments.contains("--agent-title-summary-fixture") {
+            let key: String? = { if case .string(let value) = command.params["fieldKey"] { return value }; return nil }()
+            Task { [weak self] in
+                try? await Task.sleep(for: .seconds(2))
+                guard let self else { return }
+                let unavailable = ProcessInfo.processInfo.arguments.contains("--agent-title-summary-old-gateway")
+                self.snapshot.commandResults = [NativeCommandResult(id: command.id, name: command.name, value: unavailable ? nil : "模型生成的会话标题", ok: !unavailable,
+                    error: unavailable ? "请升级网关服务器以使用会话名称总结功能" : nil, fieldKey: key)]
+                self.publish()
+            }
+        } else if command.name == "thread.manage", command.params["action"] == .string("rename"),
+                  ProcessInfo.processInfo.arguments.contains("--agent-title-summary-fixture"), case .string(let title) = command.params["value"] {
+            snapshot.title = title
+            for group in snapshot.groups.indices {
+                for item in snapshot.groups[group].items.indices where snapshot.groups[group].items[item].selected == true {
+                    snapshot.groups[group].items[item].title = title
+                }
+            }
+            snapshot.commandResults = [NativeCommandResult(id: command.id, name: command.name, ok: true)]
+            publish()
         } else if command.name == "message.edit", ProcessInfo.processInfo.arguments.contains("--agent-edit-history-fixture") {
             snapshot.messages[0].historyEdit = NativePanel(id: "history-edit:question", title: "编辑消息", items: [
                 NativePanelItem(id: "history-text", kind: "multilineField", value: snapshot.messages[0].text, command: NativeCommand(name: "history.change")),

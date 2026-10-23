@@ -660,3 +660,13 @@ button, a, summary, [role="button"] { -webkit-tap-highlight-color: transparent; 
 @media (max-width: 340px) { .list-header { gap: 6px; } .list-header h1 { font-size: 1.1rem; } .list-header-actions { gap: 4px; } }
 
 .sidechat-shared-directory { margin: 0; padding: 10px 16px; color: var(--muted, #666); background: var(--surface, #f4f4f4); font-size: .875rem; }
+
+.thread-rename-sheet form { display: flex; flex-wrap: wrap; gap: 12px; }
+.thread-rename-sheet label { display: grid; gap: 8px; width: 100%; }
+.thread-rename-sheet input { width: 100%; min-width: 0; border: 1px solid var(--separator, #ccc); border-radius: 8px; padding: 10px; color: inherit; background: transparent; }
+.thread-rename-sheet form > button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; padding: 8px 14px; border: 0; border-radius: 8px; color: inherit; background: var(--surface-secondary, #eee); }
+.thread-rename-sheet form > button[type="submit"] { margin-left: auto; }
+.thread-rename-sheet [role="alert"] { width: 100%; margin: 0; }
+.thread-rename-sheet .action-spinner { width: 16px; height: 16px; }
+
+.thread-rename-sheet .thread-rename-summary { width: 100%; }

@@ -1,3 +1,5 @@
+import { useThreadRename } from "./ui/thread-rename";
+import { summarizeThreadTitle } from "./backends/title-summary";
 import { normalizeHEICFiles } from './ui/heic';
 import { replaceUserMessageBody } from '../server/user-message-format';
 import { quoteInput, splitQuoteInput, validateMessageQuote, type MessageQuote, type SelectionQuote } from './features/conversation/message-quotes';
@@ -44,7 +46,6 @@ import {
   type HistoricalMessageEditTarget,
 } from "./app-server/history-edit";
 import {
-  appendConversationTitleRequest,
   extractGeneratedTitle,
 } from "./app-server/conversation-title";
 import {
@@ -258,7 +259,6 @@ import { readNotificationPreference, writeNotificationPreference, useNotificatio
 type AnyRecord = Record<string, any>;
 
 interface AutomaticTitleState {
-  turnId: string | null;
   status: "pending" | "saving" | "complete" | "closed";
   savePromise?: Promise<void>;
 }
@@ -367,6 +367,7 @@ function BackendWorkspace({
   const sidechatRestoredRef = useRef(false);
   const sidechatParentsRef = useRef(new Map<string, AnyRecord>());
   const restoredWorkspace = useNativeSwitch()?.restored.get(backend.id);
+  const threadRename = useThreadRename();
   const confirmWorkspaceAction = useNativeConfirmation(isNativeUIEnabled() ? nativeRuntime : null, `workspace:${backend.id}`);
   const [connection, setConnection] = useState<ConnectionState>("connecting");
   const [threads, setThreads] = useState<AnyRecord[]>([]);
@@ -395,7 +396,7 @@ function BackendWorkspace({
   >("idle");
   const [searchError, setSearchError] = useState("");
   const [searchRefreshVersion, setSearchRefreshVersion] = useState(0);
-  const [active, setActive] = useState<AnyRecord | null>(() => restoredWorkspace?.thread ? { ...restoredWorkspace.thread, turns: [] } : isNativeUIEnabled() ? { id: "", turns: [], preview: t("新对话"), cwd: null } : null);
+  const [active, setActive] = useState<AnyRecord | null>(() => restoredWorkspace?.thread ? { ...restoredWorkspace.thread, turns: [] } : isNativeUIEnabled() ? { id: "", turns: [], preview: t("新会话"), cwd: null } : null);
   const [quotes, setQuotesState] = useState<MessageQuote[]>([]);
   const quotesRef = useRef<MessageQuote[]>([]);
   const [quoteFocusToken, setQuoteFocusToken] = useState('');
@@ -592,47 +593,27 @@ function BackendWorkspace({
     });
   }
 
-  function persistAutomaticTitle(
-    client: AppServerClient,
-    threadId: string,
-    turnId: string,
-    title: string,
-  ) {
+  function requestAutomaticTitle(client: AppServerClient, threadId: string) {
     const state = automaticTitleStatesRef.current.get(threadId);
-    if (
-      !state ||
-      state.status !== "pending" ||
-      state.turnId !== turnId
-    ) return;
+    if (!state || state.status !== "pending") return;
     state.status = "saving";
-    const savePromise = client
-      .request("thread/name/set", { threadId, name: title })
-      .then(() => {
+    void summarizeThreadTitle(backend, threadId).then(async title => {
+      if (state.status !== "saving") return;
+      state.savePromise = client.request("thread/name/set", { threadId, name: title }).then(() => {
         if (state.status !== "saving") return;
         state.status = "complete";
         updateThreadNameLocally(threadId, title);
-      })
-      .catch(() => {
-        if (state.status === "saving") state.status = "closed";
       });
-    state.savePromise = savePromise;
+      await state.savePromise;
+    }).catch(() => { if (state.status === "saving") state.status = "closed"; });
   }
 
-  function processAutomaticTitleText(
-    client: AppServerClient,
-    threadId: string,
-    turnId: string,
-    text: string,
-  ) {
-    const result = extractGeneratedTitle(text);
-    if (result.title) {
-      persistAutomaticTitle(client, threadId, turnId, result.title);
-    }
-    return result.text;
+  function stripLegacyTitleText(text: string) {
+    return extractGeneratedTitle(text).text;
   }
 
   function sanitizeAgentItem(
-    client: AppServerClient,
+    _client: AppServerClient,
     threadId: string,
     turnId: string,
     item: AnyRecord,
@@ -649,7 +630,7 @@ function BackendWorkspace({
     automaticTitleStreamsRef.current.set(key, item.text);
     const sanitized = {
       ...item,
-      text: processAutomaticTitleText(client, threadId, turnId, item.text),
+      text: stripLegacyTitleText(item.text),
     };
     if (complete) automaticTitleStreamsRef.current.delete(key);
     return sanitized;
@@ -1453,7 +1434,7 @@ function BackendWorkspace({
                   threadId,
                   threads: threadsRef.current,
                   activeThread: activeRef.current,
-                  fallback: t("新对话"),
+                  fallback: t("新会话"),
                 }),
                 backendId: backend.id,
                 threadId,
@@ -1504,7 +1485,7 @@ function BackendWorkspace({
               automaticTitleStatesRef.current.get(threadId);
             if (
               threadName &&
-              automaticTitle?.status === "pending"
+              (automaticTitle?.status === "pending" || (automaticTitle?.status === "saving" && !automaticTitle.savePromise))
             ) {
               automaticTitle.status = "closed";
             }
@@ -1544,15 +1525,6 @@ function BackendWorkspace({
             setActive((current) => current && current.id === params.threadId &&
               current.turns?.at(-1)?.id !== params.turn.id ? { ...current, mobilePlan: [] } : current);
             if (params.threadId) {
-              const automaticTitle = automaticTitleStatesRef.current.get(
-                String(params.threadId),
-              );
-              if (
-                automaticTitle?.status === "pending" &&
-                !automaticTitle.turnId
-              ) {
-                automaticTitle.turnId = String(params.turn.id ?? "") || null;
-              }
               setThreads((current) => {
                 const index = current.findIndex(
                   (thread) => thread.id === params.threadId,
@@ -1622,12 +1594,7 @@ function BackendWorkspace({
             const rawText =
               `${automaticTitleStreamsRef.current.get(streamKey) ?? existingText ?? ""}${params.delta}`;
             automaticTitleStreamsRef.current.set(streamKey, rawText);
-            const visibleText = processAutomaticTitleText(
-              client,
-              threadId,
-              turnId,
-              rawText,
-            );
+            const visibleText = stripLegacyTitleText(rawText);
             setActive((current) => {
               if (!current || current.id !== params.threadId) return current;
               const copy = structuredClone(current);
@@ -1754,14 +1721,6 @@ function BackendWorkspace({
             if (String(activeRef.current?.id ?? "") === threadId) {
               void reconcileActiveThread(client, () => true, turnId).catch(() => undefined);
             }
-            const automaticTitle =
-              automaticTitleStatesRef.current.get(threadId);
-            if (
-              automaticTitle?.status === "pending" &&
-              automaticTitle.turnId === turnId
-            ) {
-              automaticTitle.status = "closed";
-            }
             for (const key of automaticTitleStreamsRef.current.keys()) {
               if (key.startsWith(`${threadId}\u0000${turnId}\u0000`)) {
                 automaticTitleStreamsRef.current.delete(key);
@@ -1857,7 +1816,7 @@ function BackendWorkspace({
             notifyRunCompleted({
               title: t("Codex 需要你回答"),
               body: completionThreadTitle({ threadId: question.threadId, threads: threadsRef.current,
-                activeThread: activeRef.current, fallback: t("新对话") }),
+                activeThread: activeRef.current, fallback: t("新会话") }),
               backendId: backend.id, threadId: question.threadId,
             });
           }
@@ -2871,7 +2830,6 @@ function BackendWorkspace({
           ? { ...started.thread, isProjectless: true }
           : started.thread;
         automaticTitleStatesRef.current.set(String(thread.id), {
-          turnId: null,
           status: "pending",
         });
         if (startingProjectless) {
@@ -2905,13 +2863,6 @@ function BackendWorkspace({
           setActive(thread);
         }
       }
-      const automaticTitle = automaticTitleStatesRef.current.get(
-        String(thread.id),
-      );
-      const modelText =
-        automaticTitle?.status === "pending" && !automaticTitle.turnId
-          ? appendConversationTitleRequest(text)
-          : text;
       const localItem = {
         id: `local-${pendingTurnId}`,
         clientId: clientUserMessageId,
@@ -2943,7 +2894,7 @@ function BackendWorkspace({
         threadId: thread.id,
         clientUserMessageId,
         input: buildTurnInput(
-          modelText,
+          text,
           uploadedImages,
           uploadedFiles,
           pendingSkills,
@@ -2967,12 +2918,7 @@ function BackendWorkspace({
           : {}),
       });
       const startedTurn = startedTurnRequest.result;
-      if (
-        automaticTitle?.status === "pending" &&
-        !automaticTitle.turnId
-      ) {
-        automaticTitle.turnId = String(startedTurn.turn.id ?? "") || null;
-      }
+      requestAutomaticTitle(startedTurnRequest.client, String(thread.id));
       sent = true;
       onSent?.();
       if (draftContext === draftContextGenerationRef.current) {
@@ -3005,7 +2951,7 @@ function BackendWorkspace({
             const created = (response.result as AnyRecord)?.thread;
             if (created?.id) {
               const restored = startingProjectless ? { ...created, isProjectless: true } : created;
-              automaticTitleStatesRef.current.set(String(created.id), { turnId: null, status: "pending" });
+              automaticTitleStatesRef.current.set(String(created.id), { status: "pending" });
               setThreads((current) => [restored, ...current.filter((entry) => entry.id !== created.id)]);
               if (startingProjectless) setProjectlessThreadIds((current) => {
                 const next = mergeProjectlessThreadIds(current, [String(created.id)]);
@@ -3028,6 +2974,7 @@ function BackendWorkspace({
               }
             }
           } else {
+            requestAutomaticTitle(confirmationClient, threadId);
             onSent?.();
             pendingFiles.forEach((file) => URL.revokeObjectURL(file.previewUrl));
             const turn = (response.result as AnyRecord)?.turn;
@@ -3967,7 +3914,7 @@ function BackendWorkspace({
       pendingAction ||
       activeThreadAccessMode !== "interactive"
     ) return false;
-    const name = (explicitName ?? window.prompt(t("输入新的会话名称"), titleOf(thread)))?.trim();
+    const name = (explicitName ?? await threadRename.request(backend, String(thread.id), titleOf(thread)))?.trim();
     if (!name || name === titleOf(thread)) return false;
     setPendingAction("rename");
     setError("");
@@ -4319,7 +4266,7 @@ function BackendWorkspace({
     const nextActive = {
       id: "",
       turns: [],
-      preview: t("新对话"),
+      preview: t("新会话"),
       cwd: selectedCwd,
     };
     activeRef.current = nextActive;
@@ -4623,7 +4570,7 @@ function BackendWorkspace({
     },
     cancelQueued: cancelQueuedFollowUp, sendQueued: actOnQueuedFollowUp, editQueued: editQueuedFollowUp,
     extended: {
-      state: { quotes, quoteFocusToken, sidechatActive: !!activeSidechat, sidechatParentId, sidechatActions, approvalThreadTitle: approval ? completionThreadTitle({ threadId: String((approval.params as AnyRecord)?.threadId ?? ""), threads, activeThread: active, fallback: t("新对话") }) : undefined, historyEdit, pendingSteerMessage: pendingSteerMessage?.threadId === String(active?.id) ? pendingSteerMessage : null, steering: steering || !!activeSidechat?.steering || !!activeSidechat?.editing, queueSaving, steerable: Boolean(activeTurnId(active)), requests, approval, userAnswers, approvalSubmitting: approvalRequests.submitting, approvalError: approvalRequests.error, permissionModes, selectedPermissionModeId,
+      state: { quotes, quoteFocusToken, sidechatActive: !!activeSidechat, sidechatParentId, sidechatActions, approvalThreadTitle: approval ? completionThreadTitle({ threadId: String((approval.params as AnyRecord)?.threadId ?? ""), threads, activeThread: active, fallback: t("新会话") }) : undefined, historyEdit, pendingSteerMessage: pendingSteerMessage?.threadId === String(active?.id) ? pendingSteerMessage : null, steering: steering || !!activeSidechat?.steering || !!activeSidechat?.editing, queueSaving, steerable: Boolean(activeTurnId(active)), requests, approval, userAnswers, approvalSubmitting: approvalRequests.submitting, approvalError: approvalRequests.error, permissionModes, selectedPermissionModeId,
         selectedServiceTier: displayedServiceTier, speedOptions, pendingAction, tokenUsage: tokenUsageByThread[active?.id] ?? null, rateLimits,
         projectOptions, backends, draftSaveStatus, activeThreadAccessMode, activeThreadResumeError },
       callbacks: { currentHistoryEdit: () => historyEditRef.current, currentApproval: approvalRequests.current, readRemoteFile: (path: string) => { const client = clientRef.current; if (!client) throw new Error(t('尚未连接 app-server')); return client.request<{ dataBase64: string }>('fs/readFile', { path }); }, chooseSpeed, choosePermissionMode, replyToRequest, changeHistoricalMessageEditText, cancelHistoricalMessageEdit,
@@ -4636,6 +4583,7 @@ function BackendWorkspace({
 
   return (
     <main className="app-shell">
+      {threadRename.dialog}
       {active ? (
         <ConversationPage
           quotes={quotes}
@@ -4782,7 +4730,7 @@ function BackendWorkspace({
         <button className="pending-question-banner" onClick={approvalRequests.reopen}>
           <strong>{t("Codex 需要你的回答")}</strong>
           <span>{completionThreadTitle({ threadId: String((requests[0].params as AnyRecord)?.threadId ?? ""),
-            threads, activeThread: active, fallback: t("新对话") })}</span>
+            threads, activeThread: active, fallback: t("新会话") })}</span>
           <span>{t("继续回答")}</span>
         </button>
       )}
@@ -4791,7 +4739,7 @@ function BackendWorkspace({
         approval={approval}
         onDismiss={approvalRequests.dismiss}
         threadTitle={approval ? completionThreadTitle({ threadId: String((approval.params as AnyRecord)?.threadId ?? ""),
-          threads, activeThread: active, fallback: t("新对话") }) : undefined}
+          threads, activeThread: active, fallback: t("新会话") }) : undefined}
         submitting={approvalRequests.submitting}
         error={approvalRequests.error}
         userAnswers={userAnswers}
@@ -5414,14 +5362,15 @@ function ConfiguredApp({
     summaries,
   ]);
 
+  const listedThreadRename = useThreadRename();
+
   const manageThread = useCallback(
-    (item: AggregatedThreadItem, action: ThreadManagementAction, nativeName?: string) => {
+    async (item: AggregatedThreadItem, action: ThreadManagementAction, nativeName?: string) => {
       let name: string | undefined;
       if (action === "rename") {
-        name = nativeName ?? window.prompt(
-          t("输入新的会话名称"),
-          titleOf(item.thread),
-        )?.trim();
+        const targetBackend = mountedBackends.find(entry => entry.id === item.backendId);
+        if (!targetBackend) return false;
+        name = nativeName ?? (await listedThreadRename.request(targetBackend, item.threadId, titleOf(item.thread)))?.trim();
         if (!name || name === titleOf(item.thread)) {
           return Promise.resolve(false);
         }
@@ -5441,7 +5390,7 @@ function ConfiguredApp({
         });
       });
     },
-    [],
+    [mountedBackends, listedThreadRename.request],
   );
 
   const startNewChat = useCallback((target?: NativeNewChatTarget) => {
@@ -5551,6 +5500,11 @@ function ConfiguredApp({
       if (!item) throw new Error(t("会话列表已更新，请刷新"));
       openThread(item);
     },
+    "thread.summarize": async p => {
+      const target = mountedBackends.find(entry => entry.id === p.backendId);
+      if (!target) throw new Error(t("设备已移除"));
+      return summarizeThreadTitle(target, String(p.threadId));
+    },
     "thread.manage": async p => {
       const item = scopedThreads.find(item => item.backendId === p.backendId && item.threadId === p.threadId);
       if (!item) throw new Error(t("会话列表已更新，请刷新"));
@@ -5571,6 +5525,7 @@ function ConfiguredApp({
 
   return (
     <>
+      {listedThreadRename.dialog}
       {mountedBackends.map((backend) => (
         <div
           className="backend-workspace"

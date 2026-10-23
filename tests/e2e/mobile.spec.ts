@@ -136,7 +136,15 @@ test("发送前旧连接失效时恢复会话并只发送一次", async ({ page 
   await expect(page.getByText("与 app-server 的连接不可用")).toHaveCount(0);
 });
 
-test("新会话从首条流式回复生成一次标题并隐藏协议内容", async ({ page }) => {
+for (const oldGateway of [false, true]) {
+test(oldGateway ? "新会话遇旧网关静默保留新会话名称" : "新会话独立请求网关总结标题且不向原消息附加指令", async ({ page }) => {
+  let summaryCalls = 0;
+  let dialogs = 0;
+  page.on('dialog', async dialog => { dialogs++; await dialog.dismiss(); });
+  await page.route('**/api/threads/title-summary*', async route => {
+    summaryCalls++;
+    await route.fulfill(oldGateway ? { status: 404, body: 'Not Found' } : { json: { title: '修复登录回跳问题' } });
+  });
   await page.addInitScript(() => {
     localStorage.setItem("codex-mobile:language", "zh-CN");
     (window as any).__titleRpc = [];
@@ -190,6 +198,7 @@ test("新会话从首条流式回复生成一次标题并隐藏协议内容", as
               approval_policy: "on-request",
             },
           },
+          "threadSection/list": { data: [{ id: "01984de2-8f74-7c91-a3b2-5c5e937cf318", name: "Pinned" }], nextCursor: null },
           "thread/list": { data: [] },
           "thread/start": {
             thread: {
@@ -218,7 +227,7 @@ test("新会话从首条流式回复生成一次标题并隐藏协议内容", as
             new MessageEvent("message", {
               data: JSON.stringify({
                 id: request.id,
-                result: responses[request.method] ?? {},
+                result: responses[request.method] ?? { data: [], items: [], marketplaces: [], nextCursor: null },
               }),
             }),
           );
@@ -290,20 +299,22 @@ test("新会话从首条流式回复生成一次标题并隐藏协议内容", as
 
   await page.goto("/");
   await page.getByRole("button", { name: "聊天", exact: true }).click();
-  await expect(page.locator(".thread-heading strong")).toHaveText("新对话");
+  await expect(page.locator(".thread-heading strong")).toHaveText("新会话");
   await page.getByRole("textbox", { name: "向 Codex 提问" }).fill(
     "请修复登录回跳问题",
   );
+  await expect(page.locator(".thread-heading")).toContainText("已连接");
   await page.getByRole("button", { name: "发送" }).click();
 
+  await expect.poll(() => summaryCalls).toBe(1);
   await expect(page.locator(".thread-heading strong")).toHaveText(
-    "修复登录回跳问题",
+    oldGateway ? "新会话" : "修复登录回跳问题",
   );
   await expect(page.getByText("我先检查登录回跳相关代码。", { exact: true }))
     .toBeVisible();
   await expect(page.getByText("继续处理。", { exact: true })).toBeVisible();
   await expect(page.locator(".thread-heading strong")).toHaveText(
-    "修复登录回跳问题",
+    oldGateway ? "新会话" : "修复登录回跳问题",
   );
   await expect(page.getByText(/conversation-title/)).toHaveCount(0);
   await expect
@@ -314,14 +325,16 @@ test("新会话从首条流式回复生成一次标题并隐藏协议内容", as
         ),
       ),
     )
-    .toEqual([
+    .toEqual(oldGateway ? [] : [
       expect.objectContaining({
         params: {
           threadId: "generated-title-thread",
-          name: "修复登录回跳问题",
+          name: oldGateway ? "新会话" : "修复登录回跳问题",
         },
       }),
     ]);
+
+  expect(dialogs).toBe(0);
 
   const turnStart = await page.evaluate(() =>
     (window as any).__titleRpc.find(
@@ -330,10 +343,11 @@ test("新会话从首条流式回复生成一次标题并隐藏协议内容", as
   );
   expect(turnStart.params.input).toEqual([{
     type: "text",
-    text: `请修复登录回跳问题\n\n${CONVERSATION_TITLE_REQUEST}`,
+    text: "请修复登录回跳问题",
     text_elements: [],
   }]);
 });
+}
 
 for (const editSteered of [false, true]) {
 test(editSteered ? "同轮引导消息支持编辑并保留此前输入重发" : "历史消息编辑会回退后保留附件重发", async ({ page }) => {

@@ -172,7 +172,7 @@ export class BarkNotifications {
       while (this.completedTurns.size > 512) this.completedTurns.delete(this.completedTurns.keys().next().value!);
     }
     const title = this.titles.get(completed.threadId);
-    const body = title?.name || title?.preview || "新对话";
+    const body = title?.name || title?.preview || "新会话";
     // 不等待网络；磁盘登记成功后才发送，避免跨连接和重启重复通知。
     void this.enqueue(async () => {
       if (this.closed || !this.subscribed) return;

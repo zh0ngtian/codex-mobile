@@ -34,7 +34,7 @@ export interface NativeBackend { id: string; title: string; subtitle?: string; c
 export interface NativeSettingsPreferences { language?: string; transportMode?: string; fontSize?: string; notificationMode?: string; barkConfigured?: boolean }
 export interface NativeTokenUsage { lastRequestTokens?: number; modelContextWindow?: number; inputTokens?: number; cachedInputTokens?: number; outputTokens?: number; totalTokens?: number; reasoningOutputTokens?: number }
 export interface NativeQueueConfiguration { model?: string; effort?: string; serviceTier?: string; permission?: string }
-export interface NativeResult { id: string; name: string; ok: boolean; contextId?: string; error?: string; fieldKey?: string; fieldRevision?: number }
+export interface NativeResult { id: string; name: string; ok: boolean; value?: string; contextId?: string; error?: string; fieldKey?: string; fieldRevision?: number }
 export interface NativeSnapshot {
   quotes?: MessageQuote[]; quoteFocusToken?: string;
   sidechatActive?: boolean; sidechatParentId?: string; sidechatActions?: NativePanelItem[];

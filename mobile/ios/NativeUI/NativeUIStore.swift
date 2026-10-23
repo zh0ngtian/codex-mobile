@@ -55,7 +55,7 @@ final class NativeUIStore {
     // 与共享运行时的全局命令域一致，导航回执不属于某个工作区。
     private static let globalCommands: Set<String> = [
         "backend.select", "navigation.search", "navigation.sidebar", "navigation.refresh", "navigation.filter",
-        "thread.new", "thread.open", "thread.manage", "project.toggle", "project.more", "project.retry",
+        "thread.new", "thread.open", "thread.manage", "thread.summarize", "project.toggle", "project.more", "project.retry",
         "settings.open", "drafts.open", "device.add", "device.edit", "device.change", "device.save", "device.cancel", "device.scan",
         "device.toggle", "device.remove", "device.move", "settings.language", "settings.font", "settings.transport",
         "settings.push.mode", "settings.push.url", "settings.push.save", "settings.update.check", "drafts.restore", "drafts.remove", "drafts.retry",
@@ -212,7 +212,7 @@ final class NativeUIStore {
                 if key == "sidebar-search", let pending = pendingSearchRevision, revision >= pending { pendingSearchRevision = nil }
                 if key == "sidebar-state", let pending = pendingSidebarRevision, revision >= pending { pendingSidebarRevision = nil }
             }
-            if !receivedResultIDs.contains(result.id) {
+            if !receivedResultIDs.contains(result.id), result.name != "thread.summarize" {
                 commandError = result.ok ? nil : result.error ?? label("操作未完成，请重试", "The operation failed. Please retry.")
             }
             receivedResultIDs.insert(result.id)

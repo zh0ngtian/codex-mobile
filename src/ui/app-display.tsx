@@ -3,7 +3,7 @@ export type ThreadListState = "loading" | "ready" | "error";
 export type DisplayRecord = Record<string, any>;
 
 export function titleOf(thread: DisplayRecord) {
-  return thread.name || thread.preview || t("新对话");
+  return thread.name || thread.preview || t("新会话");
 }
 
 export function AppIcon({

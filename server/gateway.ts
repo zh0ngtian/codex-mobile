@@ -1,3 +1,4 @@
+import { TitleSummaries } from "./title-summaries.js";
 import { readDesktopPinnedThreads } from "./desktop-thread-pins.js";
 import { createServer, type Server } from "node:http";
 import { createReadStream } from "node:fs";
@@ -149,6 +150,7 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
   const unsubscribeFollowing = notifications.subscribeFollowing(() => { void followedNotifications.poll(); });
   void notifications.initialized().then(() => followedNotifications.start()).catch(() => {});
   const imagePreviews = new ImagePreviews();
+  const titleSummaries = new TitleSummaries(options.upstreamUrl);
   const server: Server = createServer(async (request, response) => {
     const url = new URL(request.url ?? "/", "http://gateway.local");
     const origin = request.headers.origin;
@@ -166,6 +168,7 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
       "/api/events",
       "/api/operations",
       "/api/follow-ups",
+      "/api/threads/title-summary",
     ].includes(url.pathname) || fileDownload;
     const apiRequest =
       url.pathname === "/api" || url.pathname.startsWith("/api/");
@@ -201,6 +204,21 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
     if (controlRequest && request.method === "OPTIONS") {
       response.statusCode = 204;
       response.end();
+      return;
+    }
+    if (url.pathname === "/api/threads/title-summary") {
+      response.setHeader("content-type", "application/json; charset=utf-8");
+      response.setHeader("cache-control", "no-store");
+      if (request.method !== "POST") { response.statusCode = 405; response.end(JSON.stringify({ error: { message: "仅支持 POST" } })); return; }
+      try {
+        const chunks: Buffer[] = []; let bytes = 0;
+        for await (const chunk of request) { bytes += chunk.length; if (bytes > 4096) throw new Error("标题总结参数过长"); chunks.push(chunk); }
+        let body: any;
+        try { body = JSON.parse(Buffer.concat(chunks).toString("utf8")); } catch { response.statusCode = 400; response.end(JSON.stringify({ error: { message: "标题总结参数无效" } })); return; }
+        if (typeof body?.threadId !== "string" || !body.threadId.trim() || body.threadId.length > 256) { response.statusCode = 400; response.end(JSON.stringify({ error: { message: "会话 ID 无效" } })); return; }
+        const title = await titleSummaries.summarize(body.threadId);
+        response.end(JSON.stringify({ title }));
+      } catch (error) { response.statusCode = 503; response.end(JSON.stringify({ error: { message: error instanceof Error ? error.message : "标题总结失败" } })); }
       return;
     }
     if (url.pathname === "/api/follow-ups") {
@@ -731,6 +749,7 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
   return {
     port: address.port,
     async close() {
+      titleSummaries.close();
       unsubscribeFollowing();
       await followedNotifications.close();
       await followUps.close();

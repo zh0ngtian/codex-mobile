@@ -6,7 +6,7 @@ describe("应用展示辅助函数", () => {
   it("会话标题按名称、预览和默认文案依次回退", () => {
     expect(titleOf({ name: "命名会话", preview: "预览" })).toBe("命名会话");
     expect(titleOf({ preview: "预览会话" })).toBe("预览会话");
-    expect(titleOf({})).toBe("新对话");
+    expect(titleOf({})).toBe("新会话");
   });
 
   it.each(["back", "search", "compose", "send", "stop", "more"] as const)(

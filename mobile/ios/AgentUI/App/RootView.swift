@@ -8,7 +8,6 @@ struct RootView: View {
     @State private var waitingForDismissal = false
     @State private var addDeviceRequested = false
     @State private var offeredFirstDevice = false
-    @State private var renameText = ""
     @State private var answeredConfirmationID: String?
     @State private var confirmationClosingID: String?
     @State private var errorAlertActive = false
@@ -97,13 +96,18 @@ struct RootView: View {
 
     private var renamePresentation: some View {
         confirmationPresentation
-            .alert(preferences.text("重命名会话", "Rename conversation"), isPresented: renamePresented, presenting: session.renameTargetID) { id in
-                TextField(preferences.text("会话名称", "Conversation name"), text: $renameText)
-                Button(preferences.text("取消", "Cancel"), role: .cancel) { session.renameTargetID = nil }
-                Button(preferences.text("保存", "Save")) { saveRename(id) }
-                    .disabled(!canSaveRename(id))
+            .background {
+                ThreadRenameAlert(targetID: session.renameTargetID,
+                    initialName: session.renameTargetID.flatMap(session.conversation)?.title ?? "",
+                    title: preferences.text("重命名会话", "Rename conversation"),
+                    fieldLabel: preferences.text("会话名称", "Conversation name"),
+                    summaryLabel: preferences.text("模型总结", "Model summary"),
+                    cancelLabel: preferences.text("取消", "Cancel"), saveLabel: preferences.text("保存", "Save"),
+                    summarize: { await session.summarizeTitle($0) }, save: { id, title in
+                        session.rename(id, title: title); session.renameTargetID = nil
+                    }, cancel: { session.renameTargetID = nil })
+                    .frame(width: 0, height: 0)
             }
-            .tint(AgentTheme.ink)
     }
 
     private var archivePresentation: some View {
@@ -327,9 +331,6 @@ struct RootView: View {
             // 系统alert仅由显式按钮结算；不把自动关闭回写成第二个取消请求。
         })
     }
-    private var renamePresented: Binding<Bool> {
-        Binding(get: { session.renameTargetID != nil && !errorAlertActive }, set: { if !$0 && !errorAlertActive { session.renameTargetID = nil } })
-    }
     private var archivePresented: Binding<Bool> {
         Binding(get: { session.archiveTargetID != nil && !errorAlertActive }, set: { if !$0 && !errorAlertActive { session.archiveTargetID = nil } })
     }
@@ -337,24 +338,11 @@ struct RootView: View {
         modal == nil && !waitingForDismissal && !session.inputModalPresented &&
         confirmationPanel == nil && confirmationClosingID == nil && session.renameTargetID == nil && session.archiveTargetID == nil
     }
-    private func canSaveRename(_ id: UUID) -> Bool {
-        guard let conversation = session.conversation(id), conversation.canModify else { return false }
-        let title = renameText.trimmingCharacters(in: .whitespacesAndNewlines)
-        return !title.isEmpty && title != conversation.title && session.menuBusyID == nil
-    }
-    private func renameTargetChanged() {
-        if let id = session.renameTargetID { renameText = session.conversation(id)?.title ?? "" }
-        synchronizePresentation()
-    }
+    private func renameTargetChanged() { synchronizePresentation() }
     private func offerFirstDeviceIfNeeded() {
         guard !offeredFirstDevice, canOfferFirstDevice else { return }
         offeredFirstDevice = true
         addDeviceRequested = true
-    }
-    private func saveRename(_ id: UUID) {
-        guard canSaveRename(id) else { return }
-        session.rename(id, title: renameText)
-        session.renameTargetID = nil
     }
     private func confirmArchive(_ id: UUID) {
         session.archive(id, discardQueue: true)

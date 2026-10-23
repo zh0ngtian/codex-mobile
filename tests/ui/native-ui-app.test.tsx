@@ -267,3 +267,22 @@ it('切换新对话机器恢复各自上次项目，并保留当前正文和附�
  await waitFor(() => expect(posts.at(-1)?.cwd).toBe('/a/remembered'));
  expect(posts.at(-1).draft).toBe('切换保留正文'); expect(posts.at(-1).attachments).toHaveLength(1);
 });
+
+
+it('模型总结按弹窗绑定的设备请求并回传候选，不保存标题或切换当前会话', async () => {
+ enableNativeMemoryTest();
+ const fetcher = vi.fn(async (url: string) => new Response(JSON.stringify(url.includes('/api/threads/title-summary') ? { title: '乙设备候选' } : {}), { headers: { 'content-type': 'application/json' } }));
+ vi.stubGlobal('fetch', fetcher);
+ render(<AppBootstrap initialRegistry={{ version: 1, selectedBackendId: 'a', backends: [
+  { id: 'a', hostId: 'ha', name: '甲设备', enabled: true, order: 0, baseUrl: 'https://a.invalid', token: 'SECRET-A' },
+  { id: 'b', hostId: 'hb', name: '乙设备', enabled: true, order: 1, baseUrl: 'https://b.invalid', token: 'SECRET-B' },
+ ] }} />);
+ await waitFor(() => expect(posts.at(-1)?.ready).toBe(true));
+ const backend = posts.at(-1).backendId;
+ await act(async () => { command('summary-b', 'thread.summarize', { backendId: 'b', threadId: 'b-thread', fieldKey: 'rename-b' }); });
+ await waitFor(() => expect(posts.at(-1)?.commandResults?.find((result: any) => result.id === 'summary-b')).toMatchObject({ ok: true, value: '乙设备候选', fieldKey: 'rename-b' }));
+ expect(fetcher.mock.calls.some(([url]) => url === 'https://b.invalid/api/threads/title-summary?token=SECRET-B')).toBe(true);
+ expect(server.requests).not.toContain('thread/name/set');
+ expect(posts.at(-1).backendId).toBe(backend);
+ expect(JSON.stringify(posts)).not.toContain('SECRET-');
+});
