@@ -281,6 +281,7 @@ it('模型总结按弹窗绑定的设备请求并回传候选，不保存标题�
  const backend = posts.at(-1).backendId;
  await act(async () => { command('summary-b', 'thread.summarize', { backendId: 'b', threadId: 'b-thread', fieldKey: 'rename-b' }); });
  await waitFor(() => expect(posts.at(-1)?.commandResults?.find((result: any) => result.id === 'summary-b')).toMatchObject({ ok: true, value: '乙设备候选', fieldKey: 'rename-b' }));
+ expect(posts.at(-1)?.commandResults?.find((result: any) => result.id === 'summary-b')).not.toHaveProperty('fieldRevision');
  expect(fetcher.mock.calls.some(([url]) => url === 'https://b.invalid/api/threads/title-summary?token=SECRET-B')).toBe(true);
  expect(server.requests).not.toContain('thread/name/set');
  expect(posts.at(-1).backendId).toBe(backend);

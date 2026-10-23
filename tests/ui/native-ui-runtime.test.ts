@@ -239,9 +239,20 @@ it('独立总结命令返回候选值，等网关完成才确认且不更改当�
  const pending = runtime.dispatch(command('summary', 'thread.summarize', { backendId: 'other', threadId: 'target', fieldKey: 'rename-1' }));
  expect(runtime.snapshot().commandResults).toEqual([]);
  complete('候选名称');
- expect(await pending).toMatchObject({ id: 'summary', ok: true, value: '候选名称', fieldKey: 'rename-1' });
+ const result = await pending;
+ expect(result).toMatchObject({ id: 'summary', ok: true, value: '候选名称', fieldKey: 'rename-1' });
+ expect(result).not.toHaveProperty('fieldRevision');
  expect(runtime.snapshot().title).toBe(workspace().title);
  runtime.dispose();
+});
+
+it.each([NaN, Infinity, -Infinity, 'invalid', null, 0, -1, 1.5])('非法字段版本 %s 的失败回执不会污染原生快照', async fieldRevision => {
+ const runtime = new NativeRuntime(() => {}); const summarize = vi.fn();
+ runtime.setNavigation({ selectedBackendId: 'b', backends: [], groups: [] }, { 'thread.summarize': summarize });
+ const result = await runtime.dispatch(command('invalid-revision', 'thread.summarize', { backendId: 'b', threadId: 't', fieldKey: 'rename-1', fieldRevision }));
+ expect(result).toMatchObject({ ok: false, fieldKey: 'rename-1', error: '字段版本无效' });
+ expect(result).not.toHaveProperty('fieldRevision');
+ expect(summarize).not.toHaveBeenCalled(); runtime.dispose();
 });
 
 

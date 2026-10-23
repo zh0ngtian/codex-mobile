@@ -137,7 +137,9 @@ export class NativeRuntime {
     const name = typeof input?.name === 'string' ? input.name : '';
     const params = input?.params as NativeParams;
     const base: NativeResult = { id, name, ok: false, ...(typeof params?.contextId === 'string' ? { contextId: params.contextId } : {}),
-      ...(typeof params?.fieldKey === 'string' ? { fieldKey: params.fieldKey, fieldRevision: Number(params.fieldRevision) } : {}) };
+      ...(typeof params?.fieldKey === 'string' ? { fieldKey: params.fieldKey } : {}) };
+    // fieldKey 可仅用于请求关联；缺省或非法版本不能转换成 NaN 并穿过 WebKit 对象桥。
+    if (base.fieldKey !== undefined && Number.isSafeInteger(params.fieldRevision) && Number(params.fieldRevision) > 0) base.fieldRevision = params.fieldRevision as number;
     try {
       if (this.disposed) throw new Error(t('原生业务桥已关闭'));
       if (!id || id.length > 200 || !params || Array.isArray(params) || typeof params !== 'object') throw new Error(t('命令格式无效'));

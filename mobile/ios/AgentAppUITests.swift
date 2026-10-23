@@ -2064,6 +2064,41 @@ final class AgentAppUITests: XCTestCase {
         captureConversation("系统导航栏与消息", app: app)
     }
 
+    func testModelSummaryThroughLiveWebKitAndGateway() async throws {
+        guard let control = ProcessInfo.processInfo.environment["CODEX_TEST_TITLE_CONTROL"]
+            ?? ProcessInfo.processInfo.environment["TEST_RUNNER_CODEX_TEST_TITLE_CONTROL"],
+              let controlURL = URL(string: control) else { throw XCTSkip("需要独立模型总结协议夹具") }
+        func state() async throws -> [String: Any] {
+            let (data, _) = try await URLSession.shared.data(from: controlURL)
+            return try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        }
+        let app = try launchConnectedApp()
+        let row = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "真实桥接总结验收")).firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 12)); row.tap()
+        XCTAssertTrue(app.buttons["conversation.actions"].waitForExistence(timeout: 10))
+        app.buttons["conversation.actions"].tap(); app.buttons["重命名"].tap()
+        let dialog = app.otherElements["rename.dialog"]
+        let summary = dialog.buttons["rename.model-summary"]
+        XCTAssertTrue(summary.waitForExistence(timeout: 5)); summary.tap()
+        XCTAssertFalse(summary.isEnabled)
+        let field = dialog.textFields.firstMatch
+        await fulfillment(of: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", "真实网关候选名称"), object: field)], timeout: 15)
+        XCTAssertEqual(app.state, .runningForeground)
+        XCTAssertTrue(summary.isEnabled)
+        let beforeSave = try await state()
+        XCTAssertEqual(beforeSave["summaries"] as? Int, 1)
+        XCTAssertEqual(beforeSave["namesWritten"] as? Int, 0)
+        field.tap(); field.typeText(" 编辑")
+        let edited = field.value as? String ?? ""
+        let frame = dialog.buttons["保存"].frame
+        app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: frame.midX, dy: frame.midY)).tap()
+        XCTAssertTrue(app.navigationBars[edited].waitForExistence(timeout: 5))
+        let afterSave = try await state()
+        XCTAssertEqual(afterSave["namesWritten"] as? Int, 1)
+        XCTAssertEqual(afterSave["name"] as? String, edited)
+        captureConversation("模型总结-真实WebKit与网关", app: app)
+    }
+
     func testModelSummaryFillsRenameWithoutSavingAndAllowsEditing() {
         let app = XCUIApplication()
         app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-title-summary-fixture", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
