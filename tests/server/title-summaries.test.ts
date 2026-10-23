@@ -39,7 +39,7 @@ async function upstream(options: { empty?: boolean; invalid?: boolean; disconnec
   return { url: `ws://127.0.0.1:${(server.address() as any).port}`, requests, server };
 }
 
-it('完整分页所有用户消息，默认模型执行独立临时一问一答且不修改源会话', async () => {
+it('完整分页所有用户消息，固定GPT-6-Luna低强度Fast执行独立问答且不修改源会话', async () => {
   const mock = await upstream();
   const summaries = new TitleSummaries(mock.url);
   expect(await summaries.summarize('source')).toBe('修复手机登录');
@@ -47,16 +47,17 @@ it('完整分页所有用户消息，默认模型执行独立临时一问一答�
   expect(pages.map(r => r.params.cursor)).toEqual([null, 'page2']);
   expect(pages.every(r => r.params.sortDirection === 'asc' && r.params.itemsView === 'full')).toBe(true);
   const start = mock.requests.find(r => r.method === 'thread/start');
-  expect(start.params).toMatchObject({ ephemeral: true, approvalPolicy: 'never', sandbox: 'read-only' });
-  expect(start.params).not.toHaveProperty('model');
+  expect(start.params).toMatchObject({ ephemeral: true, approvalPolicy: 'never', sandbox: 'read-only',
+    model: 'gpt-6-luna', serviceTier: 'priority', config: { project_doc_max_bytes: 0, model_reasoning_effort: 'low' } });
   const turns = mock.requests.filter(r => r.method === 'turn/start');
   expect(turns).toHaveLength(1);
   expect(turns[0].params.threadId).toBe('summary');
-  expect(turns[0].params).not.toHaveProperty('model');
+  expect(turns[0].params).toMatchObject({ model: 'gpt-6-luna', effort: 'low', serviceTier: 'priority' });
   const text = turns[0].params.input[0].text;
   expect(text).toContain('修复登录'); expect(text).toContain('截图.png'); expect(text).toContain('还要支持手机');
   expect(text).not.toContain('conversation_title_request'); expect(text).not.toContain('助手回复');
   expect(mock.requests.some(r => r.method === 'thread/name/set')).toBe(false);
+  expect(mock.requests.some(r => r.method === 'config/value/write' || r.method === 'config/batchWrite')).toBe(false);
 });
 it.each([{ empty: true }, { invalid: true }, { disconnect: true }])('失败时不编造标题并关闭独立连接 %j', async options => {
   const mock = await upstream(options);
@@ -68,7 +69,7 @@ it('总结超时释放连接，后续请求可重新发起', async () => {
   await expect(summaries.summarize('source')).rejects.toThrow('超时');
   await expect(summaries.summarize('source')).rejects.toThrow('超时');
 });
-it('网关总结路由使用既有鉴权、CORS并拒绝无效参数', async () => {
+it.each([false, true])('网关总结路由使用既有鉴权并固定模型、low和Fast，automatic=%s', async automatic => {
   const mock = await upstream();
   const home = await mkdtemp(join(tmpdir(), 'title-summary-test-'));
   cleanups.push(() => rm(home, { recursive: true, force: true }));
@@ -79,6 +80,8 @@ it('网关总结路由使用既有鉴权、CORS并拒绝无效参数', async () 
   const preflight = await fetch(url + '?token=secret', { method: 'OPTIONS', headers: { origin: 'https://mobile.invalid' } });
   expect(preflight.status).toBe(204); expect(preflight.headers.get('access-control-allow-origin')).toBe('https://mobile.invalid');
   expect((await fetch(url + '?token=secret', { method: 'POST', body: '{}' })).status).toBe(400);
-  const response = await fetch(url + '?token=secret', { method: 'POST', body: JSON.stringify({ threadId: 'source' }) });
+  const response = await fetch(url + '?token=secret', { method: 'POST', body: JSON.stringify({ threadId: 'source', ...(automatic ? { automatic: true } : {}) }) });
   expect(await response.json()).toEqual({ title: '修复手机登录' });
+  expect(mock.requests.find(r => r.method === 'thread/start').params).toMatchObject({ model: 'gpt-6-luna', serviceTier: 'priority', config: { model_reasoning_effort: 'low' } });
+  expect(mock.requests.find(r => r.method === 'turn/start').params).toMatchObject({ model: 'gpt-6-luna', effort: 'low', serviceTier: 'priority' });
 });
