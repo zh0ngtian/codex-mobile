@@ -46,6 +46,8 @@
 
 近期可追溯记录：
 
+- [2026-10-24 后续消息发送连续过渡](plans/2026-10-24-followup-message-motion.md)：同一会话的后续文字与附件发送复用连续交接，保留历史、页头及队列语义；模拟器已验证，源码已合入main，尚未发布。
+
 - [2026-10-23 新会话首条发送连续过渡](plans/2026-10-23-new-conversation-motion.md)：已随0.3.34双端发布；保留原生与状态层验证及视觉验收记录，渠道回验见[发布计划](superpowers/plans/2026-10-23-new-conversation-motion-release.md)和[公共凭证](superpowers/plans/evidence/2026-10-24-new-conversation-motion-release.json)。
 
 - [2026-10-23 GPT-6-Luna标题总结仅网关部署](superpowers/plans/2026-10-23-title-luna-gateway-deploy.md)：固定模型、low与Fast的成功批次、安装模块双入口协议探测及客户端渠道不变回验；[公共凭证](superpowers/plans/evidence/2026-10-23-title-luna-gateway-deploy.json)。

@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct AttachmentThumbnail: View {
-    @Environment(\.firstMessageCapture) private var capture
+    @Environment(\.messageFlightCapture) private var capture
     let item: AttachmentItem
     @State private var image: UIImage?
 

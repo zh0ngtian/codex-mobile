@@ -1,8 +1,8 @@
 import SwiftUI
 import UIKit
 
-/// 只截取输入内容到内存，随首条转场释放；不截图键盘、工具栏，不写入磁盘。
-@MainActor final class FirstMessageFlightCapture {
+/// 只截取输入内容到内存，随发送转场释放；不截图键盘、工具栏，不写入磁盘。
+@MainActor final class MessageFlightCapture {
     weak var sourceView: UIView?
     var image: UIImage?
     var sourceFrame = CGRect.zero
@@ -11,6 +11,8 @@ import UIKit
 
     func prepare(draft: ComposerDraft, quoted: Bool) {
         image = nil
+        let currentIDs = Set(draft.attachments.map(\.id))
+        thumbnails = thumbnails.filter { currentIDs.contains($0.key) }
         submittedImages = draft.attachments.map { thumbnails[$0.id] }
         guard let sourceView, let window = sourceView.window else { return }
         var rect = sourceView.convert(sourceView.bounds, to: window)
@@ -30,25 +32,32 @@ import UIKit
     }
 }
 
-private struct FirstMessageCaptureKey: EnvironmentKey {
-    static let defaultValue: FirstMessageFlightCapture? = nil
+private struct MessageFlightCaptureKey: EnvironmentKey {
+    static let defaultValue: MessageFlightCapture? = nil
 }
-private struct FirstMessageImagesKey: EnvironmentKey {
+private struct MessageFlightImagesKey: EnvironmentKey {
     static let defaultValue: [UIImage?] = []
 }
+private struct MessageFlightPreviewIDKey: EnvironmentKey {
+    static let defaultValue: UUID? = nil
+}
 extension EnvironmentValues {
-    var firstMessageCapture: FirstMessageFlightCapture? {
-        get { self[FirstMessageCaptureKey.self] }
-        set { self[FirstMessageCaptureKey.self] = newValue }
+    var messageFlightPreviewID: UUID? {
+        get { self[MessageFlightPreviewIDKey.self] }
+        set { self[MessageFlightPreviewIDKey.self] = newValue }
     }
-    var firstMessageImages: [UIImage?] {
-        get { self[FirstMessageImagesKey.self] }
-        set { self[FirstMessageImagesKey.self] = newValue }
+    var messageFlightCapture: MessageFlightCapture? {
+        get { self[MessageFlightCaptureKey.self] }
+        set { self[MessageFlightCaptureKey.self] = newValue }
+    }
+    var messageFlightImages: [UIImage?] {
+        get { self[MessageFlightImagesKey.self] }
+        set { self[MessageFlightImagesKey.self] = newValue }
     }
 }
 
-struct FirstMessageCaptureMarker: UIViewRepresentable {
-    let capture: FirstMessageFlightCapture?
+struct MessageFlightCaptureMarker: UIViewRepresentable {
+    let capture: MessageFlightCapture?
     func makeUIView(context: Context) -> UIView {
         let view = UIView()
         view.isUserInteractionEnabled = false
@@ -58,7 +67,7 @@ struct FirstMessageCaptureMarker: UIViewRepresentable {
     func updateUIView(_ view: UIView, context: Context) { capture?.sourceView = view }
 }
 
-struct FirstMessageDestinationKey: PreferenceKey {
+struct MessageFlightDestinationKey: PreferenceKey {
     static var defaultValue: [UUID: CGRect] = [:]
     static func reduce(value: inout [UUID: CGRect], nextValue: () -> [UUID: CGRect]) {
         value.merge(nextValue(), uniquingKeysWith: { _, next in next })

@@ -38,8 +38,11 @@ extension AgentSessionSmoke {
 @main
 struct AgentSessionSmoke {
     @MainActor static func main() async {
-        await verifyFirstMessageSubmission()
+        await verifyMessageSubmission()
         await verifyFirstMessageHttpResolution()
+        await verifyFollowupMessageSubmission()
+        await verifyFollowupMessageResolutions()
+        await verifyFollowupQueueRace()
         verifyErrorNotices()
         let unavailable = AppSession()
         unavailable.reportError("旧操作失败")

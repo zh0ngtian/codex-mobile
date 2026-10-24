@@ -53,12 +53,19 @@ struct ConversationScreen: View {
                                     .frame(maxWidth: .infinity)
                             }
                             ForEach(conversation.messages) { message in
-                                MessageView(message: message, conversationID: conversationID).id(message.id)
+                                if let pending = followupSubmission, pending.echoMessageID == message.id {
+                                    FollowupMessageRow(submission: pending).id(message.id)
+                                } else {
+                                    MessageView(message: message, conversationID: conversationID).id(message.id)
+                                }
+                            }
+                            if let pending = followupSubmission, pending.echoMessageID == nil {
+                                FollowupMessageRow(submission: pending).id(pending.id)
                             }
                             if !conversation.liveCommentary.isEmpty {
                                 CommentaryHistoryView(entries: conversation.liveCommentary, expanded: $liveExpanded, completed: false)
                             }
-                            if conversation.phase == .running { ThinkingIndicator() }
+                            if conversation.phase == .running, followupSubmission == nil { ThinkingIndicator() }
                             QueuedMessagesView(conversationID: conversationID)
                             Color.clear.frame(height: 1).padding(.bottom, 14).id("bottom")
                         }
@@ -194,6 +201,14 @@ struct ConversationScreen: View {
                         scrollAccess.scrollToBottom()
                     }
                 }
+                .onChange(of: followupSubmission?.id) { _, id in
+                    guard id != nil else { return }
+                    returnToken = nil
+                    followsLatest = true
+                    scrollAccess.interruptScrolling()
+                    historyPull.programmaticScrollBegan()
+                    scrollAccess.scrollToBottom()
+                }
                 .onChange(of: conversationID) {
                     resetHistory()
                 }
@@ -231,6 +246,10 @@ struct ConversationScreen: View {
             }
 
         } else { ContentUnavailableView(preferences.text("会话不可用", "Conversation unavailable"), systemImage: "bubble.left") }
+    }
+    private var followupSubmission: MessageSubmission? {
+        guard session.messageSubmission?.conversationID == conversationID else { return nil }
+        return session.messageSubmission
     }
     private func scrollToLatest(_ proxy: ScrollViewProxy) {
         #if DEBUG

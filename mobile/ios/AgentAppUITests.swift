@@ -5,6 +5,108 @@ import Vision
 /// 独立界面夹具及本地网关验收；连接凭证不进入源码或测试附件。
 @MainActor
 final class AgentAppUITests: XCTestCase {
+    func testRecordFollowupMessageMotionDemo() throws {
+        guard ProcessInfo.processInfo.environment["CODEX_RECORD_MOTION_DEMO"] == "1" ||
+                ProcessInfo.processInfo.environment["TEST_RUNNER_CODEX_RECORD_MOTION_DEMO"] == "1" else {
+            throw XCTSkip("仅显式录制后续消息动效演示时运行")
+        }
+        for (index, flags) in [[], ["--first-message-attachments"], ["--first-message-attachments-only"]].enumerated() {
+            let app = launchFirstMessageFixture(["--followup-message-fixture"] + flags)
+            let input = app.textFields["message-input"]
+            XCTAssertTrue(input.waitForExistence(timeout: 5))
+            if index == 0 { Thread.sleep(forTimeInterval: 12) } // 留给主机录屏器连接专用测试模拟器。
+            print("FOLLOWUP_MOTION_BEGIN \(index) \(Date().timeIntervalSince1970)")
+            if index != 2 { input.tap(); Thread.sleep(forTimeInterval: 0.6) }
+            app.buttons["composer.submit"].tap()
+            waitForUserBubbleCount(2, app: app)
+            Thread.sleep(forTimeInterval: 1)
+            print("FOLLOWUP_MOTION_END \(index) \(Date().timeIntervalSince1970)")
+            captureConversation("后续发送演示-\(index)", app: app)
+            app.terminate()
+        }
+    }
+
+    func testFollowupMessageTextTransition() throws {
+        let app = launchFirstMessageFixture(["--followup-message-fixture", "--first-message-slow"])
+        let input = app.textFields["message-input"]
+        XCTAssertTrue(input.waitForExistence(timeout: 5)); input.tap(); let before = input.frame
+        app.buttons["composer.submit"].tap()
+        XCTAssertTrue(app.staticTexts["待发送"].waitForExistence(timeout: 1))
+        XCTAssertTrue(app.textViews["user.selectable"].firstMatch.exists)
+        XCTAssertFalse(app.buttons["new.computer"].exists)
+        XCTAssertTrue(app.navigationBars.staticTexts["codex-mobile · MacBook Pro"].exists)
+        XCTAssertFalse(app.buttons["composer.submit"].isEnabled)
+        captureConversation("后续消息-保留历史并立即待发送", app: app)
+        waitForUserBubbleCount(2, app: app)
+        XCTAssertGreaterThan(input.frame.minY, before.minY)
+        XCTAssertFalse(app.staticTexts["待发送"].exists)
+        captureConversation("后续消息-文字确认且无重复", app: app)
+    }
+
+    func testFollowupMessageAttachmentsKeepPosition() throws {
+        let app = launchFirstMessageFixture(["--followup-message-fixture", "--first-message-attachments", "--first-message-slow", "--first-message-no-reply"])
+        app.textFields["message-input"].tap(); app.buttons["composer.submit"].tap()
+        XCTAssertTrue(app.staticTexts["待发送"].waitForExistence(timeout: 1))
+        let pending = app.descendants(matching: .any).matching(identifier: "message-submission.bubble").firstMatch.frame
+        XCTAssertTrue(app.staticTexts["交互设计说明.pdf"].exists)
+        captureConversation("后续消息-文字图片文件待发送", app: app)
+        waitForUserBubbleCount(2, app: app)
+        let final = app.descendants(matching: .any).matching(identifier: "message.user-bubble").element(boundBy: 1).frame
+        XCTAssertEqual(pending.minY, final.minY, accuracy: 2)
+        XCTAssertEqual(pending.maxY, final.maxY, accuracy: 2)
+        captureConversation("后续消息-附件原位交接", app: app)
+    }
+
+    func testFollowupMessageAttachmentsOnly() throws {
+        let app = launchFirstMessageFixture(["--followup-message-fixture", "--first-message-attachments-only", "--first-message-slow", "--first-message-no-reply"])
+        app.buttons["composer.submit"].tap()
+        XCTAssertTrue(app.staticTexts["待发送"].waitForExistence(timeout: 1))
+        XCTAssertTrue(app.staticTexts["交互设计说明.pdf"].exists)
+        waitForUserBubbleCount(2, app: app)
+        XCTAssertTrue(app.staticTexts["交互设计说明.pdf"].exists)
+        captureConversation("后续消息-仅附件交接", app: app)
+    }
+
+    func testFollowupMessageFastAcknowledgement() throws {
+        let app = launchFirstMessageFixture(["--followup-message-fixture", "--message-fast-ack"])
+        app.textFields["message-input"].tap(); app.buttons["composer.submit"].tap()
+        waitForUserBubbleCount(2, app: app)
+        XCTAssertFalse(app.staticTexts["待发送"].exists)
+        XCTAssertTrue(app.textViews["user.selectable"].firstMatch.exists)
+        captureConversation("后续消息-快速确认不重复", app: app)
+    }
+
+    func testFollowupMessageFailurePreservesDraft() throws {
+        let app = launchFirstMessageFixture(["--followup-message-fixture", "--first-message-attachments", "--first-message-failure"])
+        app.buttons["composer.submit"].tap()
+        let edit = app.buttons["message-submission.edit"]
+        XCTAssertTrue(edit.waitForExistence(timeout: 6))
+        if app.alerts.firstMatch.exists { app.alerts.firstMatch.buttons.firstMatch.tap() }
+        edit.tap()
+        XCTAssertEqual(app.textFields["message-input"].value as? String, "把后续消息的动效也补上，保留已有会话内容。")
+        XCTAssertTrue(app.staticTexts["交互设计说明.pdf"].exists)
+        XCTAssertTrue(app.buttons["composer.submit"].isEnabled)
+        XCTAssertEqual(app.descendants(matching: .any).matching(identifier: "message.user-bubble").count, 1)
+        captureConversation("后续消息-失败返回编辑", app: app)
+    }
+
+    func testFollowupMessageUncertainThenConfirmed() throws {
+        let app = launchFirstMessageFixture(["--followup-message-fixture", "--first-message-uncertain"])
+        app.buttons["composer.submit"].tap()
+        XCTAssertTrue(app.staticTexts["发送结果待确认"].waitForExistence(timeout: 4))
+        XCTAssertFalse(app.buttons["composer.submit"].isEnabled)
+        captureConversation("后续消息-待确认防重复", app: app)
+        waitForUserBubbleCount(2, app: app)
+        XCTAssertFalse(app.staticTexts["发送结果待确认"].exists)
+    }
+
+    private func waitForUserBubbleCount(_ count: Int, app: XCUIApplication) {
+        let bubbles = app.descendants(matching: .any).matching(identifier: "message.user-bubble")
+        expectation(for: NSPredicate(format: "count == %d", count), evaluatedWith: bubbles)
+        waitForExpectations(timeout: 7)
+        XCTAssertEqual(bubbles.count, count)
+    }
+
     func testFirstMessageMachineAndProjectSelection() throws {
         let app = launchFirstMessageFixture(["--first-message-slow", "--first-message-no-reply"])
         app.buttons["new.computer"].tap()

@@ -6,7 +6,7 @@ struct ComposerBar: View {
     @Environment(AppSession.self) private var session
     @Environment(AppPreferences.self) private var preferences
     let conversationID: UUID?
-    @Environment(\.firstMessageCapture) private var flightCapture
+    @Environment(\.messageFlightCapture) private var flightCapture
     @State private var selectedMention = 0
     @State private var mentionsDismissed = false
     @State private var submitFeedback = 0
@@ -33,13 +33,13 @@ struct ComposerBar: View {
         @Bindable var session = session
         AgentGlassGroup {
             VStack(spacing: 8) {
-                if session.firstMessageSubmission == nil, let quotes = session.nativeSnapshot.quotes, !quotes.isEmpty { ComposerQuoteCards(quotes: quotes) }
-                if session.firstMessageSubmission == nil, !candidates.isEmpty {
+                if session.messageSubmission == nil, let quotes = session.nativeSnapshot.quotes, !quotes.isEmpty { ComposerQuoteCards(quotes: quotes) }
+                if session.messageSubmission == nil, !candidates.isEmpty {
                     MentionCandidates(candidates: candidates, selected: selectedMention, choose: chooseMention)
                 }
                 VStack(spacing: 10) {
                     VStack(spacing: 10) {
-                        if session.firstMessageSubmission == nil, !session.composer.attachments.isEmpty { ComposerAttachmentStrip() }
+                        if session.messageSubmission == nil, !session.composer.attachments.isEmpty { ComposerAttachmentStrip() }
                         if !attachmentFlow.items.isEmpty || attachmentFlow.error != nil || attachmentFlow.isLocating {
                             ComposerPendingAttachments(flow: attachmentFlow, retry: retryAttachments, clear: cancelAttachments)
                         }
@@ -57,7 +57,7 @@ struct ComposerBar: View {
                                 .accessibilityIdentifier("message-input")
                         }
                     }
-                    .background { FirstMessageCaptureMarker(capture: flightCapture) }
+                    .background { MessageFlightCaptureMarker(capture: flightCapture) }
                     HStack(spacing: 6) {
                         attachmentMenu
                         ComposerPermissionMenu()
@@ -67,7 +67,7 @@ struct ComposerBar: View {
                         Spacer(minLength: 0)
                         ComposerSubmitButton(action: submit).disabled(attachmentBlocksSubmission)
                     }
-                    .disabled(session.firstMessageSubmission != nil)
+                    .disabled(session.messageSubmission != nil)
                 }
                 .padding(.horizontal, 12)
                 .padding(.top, 17)
@@ -115,8 +115,8 @@ struct ComposerBar: View {
         .task(id: attachmentWork?.id) { await performAttachmentWork() }
     }
     private var displayedText: Binding<String> {
-        Binding(get: { session.firstMessageSubmission == nil ? session.composer.text : "" },
-                set: { if session.firstMessageSubmission == nil { session.composer.text = $0 } })
+        Binding(get: { session.messageSubmission == nil ? session.composer.text : "" },
+                set: { if session.messageSubmission == nil { session.composer.text = $0 } })
     }
     private var attachmentPickerHost: some View {
         let selection = pickerSelection
@@ -227,7 +227,7 @@ struct ComposerBar: View {
         guard !hasPendingAttachment else { return }
         if !candidates.isEmpty { chooseMention(candidates[min(selectedMention, candidates.count - 1)]); return }
         guard session.canSubmit else { return }
-        if session.selectedConversationID == nil {
+        if session.presentsMessageSubmission {
             flightCapture?.prepare(draft: session.composer, quoted: session.nativeSnapshot.quotes?.isEmpty == false)
         }
         submitFeedback += 1
