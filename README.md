@@ -73,13 +73,13 @@ http://<电脑局域网IP>:18766/?token=<随机口令>
 
 客户端不设置设备数量上限，可同时维持所有已启用设备的连接；保存和恢复完整设备列表及排序。
 
-现役双端客户端为0.3.34（3034）：除结构化模型提问、iOS 紧凑回答窗口及模型总结闪退修复外，iOS 新会话首条消息点击发送后立即进入“待发送”画面，并连续过渡到正式气泡；机器／项目选择、键盘和输入栏平滑交接，支持文字、附件、失败返回编辑及待确认防重复。双端固定渠道、HTTPS OTA、GitHub与unsigned软件源已独立回验197项，见[本次发布计划](docs/superpowers/plans/2026-10-23-new-conversation-motion-release.md)与[公共凭证](docs/superpowers/plans/evidence/2026-10-24-new-conversation-motion-release.json)。
+现役双端客户端为0.3.35（3035）：继承结构化模型提问、iOS紧凑回答窗口、模型总结闪退修复及首条发送动效，iOS已有会话的后续消息也从输入区连续交接到用户气泡，保留历史和页头；支持文字、图片与文件、多附件、仅附件、快速确认、失败返回编辑及待确认防重复。连续发送时，远端加载慢或失败的旧图片保留已显示预览。双端固定渠道、HTTPS OTA、GitHub与unsigned软件源已独立回验237项，见[本次发布计划](docs/superpowers/plans/2026-10-24-followup-message-motion-release.md)与[公共凭证](docs/superpowers/plans/evidence/2026-10-24-followup-message-motion-release.json)。
 
-配套网关此前已随0.3.32联合发布部署，包含历史问题回填及完成通知名称修复；本轮0.3.34仅发布客户端，并继承自动命名请求标记。此前核验的网关进程、文件摘要和认证健康检查通过，既有前端、依赖、启动脚本与配置保留。真实Bark送达、真机原生文件入口、覆盖安装、数据保留及功能验收仍待现场确认。[当前交互与验收状态](docs/interaction-alignment.md)。
+配套网关此前已随0.3.32联合发布部署，包含历史问题回填及完成通知名称修复；此前0.3.34和本轮0.3.35均仅发布客户端，并继承自动命名请求标记。此前核验的网关进程、文件摘要和认证健康检查通过，既有前端、依赖、启动脚本与配置保留。真实Bark送达、真机原生文件入口、覆盖安装、数据保留及功能验收仍待现场确认。[当前交互与验收状态](docs/interaction-alignment.md)。
 
-标题总结固定模型已于2026-10-23仅部署网关：自动命名和手动“模型总结”均使用 `gpt-6-luna`、`low` 及Fast（`serviceTier: priority`）。成功批次 `51b36234-ea37-4ba9-a7ac-c9b4375086dd`，冻结提交 `0dea2a1`；实际进程PID87770、认证健康、文件摘要和安装模块双入口协议探测通过。该次部署时固定客户端仍为0.3.32，版本、大小及散列相对部署前未变；后续客户端已更新至0.3.34。部署时未构建或发布客户端，未调用真实模型或发送手机通知。见[部署计划](docs/superpowers/plans/2026-10-23-title-luna-gateway-deploy.md)与[公共凭证](docs/superpowers/plans/evidence/2026-10-23-title-luna-gateway-deploy.json)。
+标题总结固定模型已于2026-10-23仅部署网关：自动命名和手动“模型总结”均使用 `gpt-6-luna`、`low` 及Fast（`serviceTier: priority`）。成功批次 `51b36234-ea37-4ba9-a7ac-c9b4375086dd`，冻结提交 `0dea2a1`；实际进程PID87770、认证健康、文件摘要和安装模块双入口协议探测通过。该次部署时固定客户端仍为0.3.32，版本、大小及散列相对部署前未变；当前客户端已更新至0.3.35，见上方本轮发布凭证。部署时未构建或发布客户端，未调用真实模型或发送手机通知。见[部署计划](docs/superpowers/plans/2026-10-23-title-luna-gateway-deploy.md)与[公共凭证](docs/superpowers/plans/evidence/2026-10-23-title-luna-gateway-deploy.json)。
 
-此前仅网关任务 `bark-auto-title-gateway-20261023` 的成功批次 `f0074198-f11b-4a27-a79f-8327d3dadf56`、冻结提交 `fa1e8d6` 及12项时序回验保留为[历史部署凭证](docs/superpowers/plans/evidence/2026-10-23-bark-auto-title-gateway-deploy.json)，详见[部署计划](docs/superpowers/plans/2026-10-23-bark-auto-title-gateway-deploy.md)；其0.3.31渠道结论仅描述当次回验时点，客户端现役状态以0.3.34双端发布凭证为准，标题模型配置以本次独立网关部署凭证为准。
+此前仅网关任务 `bark-auto-title-gateway-20261023` 的成功批次 `f0074198-f11b-4a27-a79f-8327d3dadf56`、冻结提交 `fa1e8d6` 及12项时序回验保留为[历史部署凭证](docs/superpowers/plans/evidence/2026-10-23-bark-auto-title-gateway-deploy.json)，详见[部署计划](docs/superpowers/plans/2026-10-23-bark-auto-title-gateway-deploy.md)；其0.3.31渠道结论仅描述当次回验时点，客户端现役状态以本轮0.3.35双端发布凭证为准，标题模型配置以上述独立网关部署凭证为准。
 
 此前0.3.27已发布：iOS视频画面和文件信息行像图片一样打开独立预览页；移除聊天视频下方的独立播放按钮及留白；修复侧栏顶部整排裁切，列表可从透明悬浮按钮间隙下方滚过；已展开项目刷新时保留原列表，不再重复收起展开。[发布与验收记录](docs/superpowers/plans/evidence/2026-10-21-video-preview-release.json)。
 

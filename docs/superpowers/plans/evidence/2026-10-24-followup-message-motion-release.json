@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "status": "complete",
+  "version": "0.3.35",
+  "buildNumber": "3035",
+  "sourceCommit": "4e38e599d03ed2ebe44dc6a2ae3f272ce2702619",
+  "mobile": {
+    "taskId": "followup-message-motion-release-20261024",
+    "batchId": "414677c8-d853-463c-9bda-a01d365680d0",
+    "frozenCommit": "bd2cf6911c2362d3e5c41f434966dc5cf31b2e5d",
+    "receiptSha256": "ed9c2f454f0dac9304a35ea6c2d601edf9c127336d8d0b7362817018d6ff2659",
+    "ciRunId": 40058621764,
+    "ciAttempt": 1,
+    "developmentCiRunId": 40058621841,
+    "developmentCiAttempt": 1,
+    "releaseUrl": "https://github.com/zh0ngtian/codex-mobile/releases/tag/v0.3.35"
+  },
+  "apk": {
+    "version": "0.3.35",
+    "buildNumber": "3035",
+    "size": 4752623,
+    "sha256": "48b36a8cfd341a99fa251fe40c0cc0f86c2509ce04274ba415134e8b96dcf9e7",
+    "downloadUrl": "http://192.168.123.79:8765/channels/codex-mobile/latest.apk"
+  },
+  "ipa": {
+    "version": "0.3.35",
+    "buildNumber": "3035",
+    "size": 5021625,
+    "sha256": "0ca9316a252af77b2a3069f5af87ddaa99ad33e97e12e212a193b72ac604aa1d",
+    "downloadUrl": "http://192.168.123.79:8765/channels/codex-mobile/latest.ipa",
+    "signed": true,
+    "signing": "Ad Hoc",
+    "entitlementsSha256": "1e84a4c1ba74b9e374c364f26fefa112ceeea09de1a0ba0600403a763eb7952f"
+  },
+  "ota": {
+    "installPageUrl": "https://192.168.123.79:8766/channels/codex-mobile/current/install.html",
+    "jsonUrl": "https://192.168.123.79:8766/channels/codex-mobile/current/latest-ios.json",
+    "manifestUrl": "https://192.168.123.79:8766/channels/codex-mobile/releases/0.3.35/manifest.plist",
+    "downloadUrl": "https://192.168.123.79:8766/channels/codex-mobile/releases/0.3.35/latest.ipa",
+    "size": 5021625,
+    "sha256": "0ca9316a252af77b2a3069f5af87ddaa99ad33e97e12e212a193b72ac604aa1d",
+    "signed": true
+  },
+  "softwareSource": {
+    "version": "0.3.35",
+    "buildVersion": "3035",
+    "developerName": "zh0ngtian",
+    "downloadURL": "https://github.com/zh0ngtian/codex-mobile/releases/download/v0.3.35/CodexMobile-v0.3.35-unsigned.ipa",
+    "size": 5010913,
+    "sha256": "b750bcdcc2728867895f2949318190219a8fe03129ab299e0d2bcebf2d7a1d74",
+    "signed": false
+  },
+  "notes": "- iOS 已有会话的后续消息支持从输入区连续过渡到用户气泡，保留历史消息和会话页头。\n- 文字、图片与文件、多附件及仅附件发送复用相同动效，确认后原位显示。\n- 快速确认不会截断动效或产生重复气泡，连续发送时附件预览按消息正确对应。\n- 后续消息发送失败保留正文与附件并支持返回编辑；结果待确认时防重复，实际入队时由原队列承接。",
+  "verification": {
+    "channelChecks": 237,
+    "projectCaVerified": true,
+    "realDeviceInstall": "not_verified",
+    "dataPreservation": "not_verified",
+    "realBarkDelivery": "not_verified",
+    "gateway": "not_deployed_or_verified",
+    "channelAuditSha256": "92e41a9400c87569ea49ed47190dd4ca09684b59857c6dd05ac6c6f75d991759"
+  }
+}
