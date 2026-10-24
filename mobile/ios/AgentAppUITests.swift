@@ -67,6 +67,35 @@ final class AgentAppUITests: XCTestCase {
         captureConversation("后续消息-仅附件交接", app: app)
     }
 
+    func testFollowupMessageRetainsEarlierImageWhenRemoteFails() throws {
+        let app = launchFirstMessageFixture(["--first-message-attachments", "--first-message-unavailable-image"])
+        defer { app.terminate() }
+        app.buttons["composer.submit"].tap()
+        waitForUserBubbleCount(1, app: app)
+        XCTAssertTrue(app.textViews["assistant.selectable"].waitForExistence(timeout: 5))
+        let image = app.buttons["项目预览.png"]
+        XCTAssertTrue(image.waitForExistence(timeout: 3))
+        let originalHeight = image.frame.height
+        XCTAssertGreaterThan(originalHeight, 120, "首条图片应显示真实输入预览")
+        let originalColor = Self.sampleRGB(app.screenshot().image,
+            point: CGPoint(x: image.frame.minX + 24, y: image.frame.minY + 24), screen: app.frame)
+        XCTAssertGreaterThan(originalColor[2], originalColor[0] + 40, "输入预览应为夹具中的靛蓝色图片")
+        captureConversation("连续发送-远端失败前已有图片预览", app: app)
+
+        let input = app.textFields["message-input"]
+        input.tap(); input.typeText("继续检查已有图片，下一条只发送文字。")
+        app.buttons["composer.submit"].tap()
+        waitForUserBubbleCount(2, app: app)
+        XCTAssertTrue(image.exists, "下一次发送必须保留旧图片卡片")
+        XCTAssertEqual(image.frame.height, originalHeight, accuracy: 1, "撤销临时预览后旧图不能退回90pt加载或错误占位")
+        let retainedColor = Self.sampleRGB(app.screenshot().image,
+            point: CGPoint(x: image.frame.minX + 24, y: image.frame.minY + 24), screen: app.frame)
+        for channel in 0..<3 {
+            XCTAssertEqual(retainedColor[channel], originalColor[channel], accuracy: 10, "旧卡必须继续显示原图片")
+        }
+        captureConversation("连续发送-下一条文字后仍保留旧图片", app: app)
+    }
+
     func testFollowupMessageFastAcknowledgement() throws {
         let app = launchFirstMessageFixture(["--followup-message-fixture", "--message-fast-ack"])
         app.textFields["message-input"].tap(); app.buttons["composer.submit"].tap()

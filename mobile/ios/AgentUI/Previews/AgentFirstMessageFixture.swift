@@ -78,7 +78,13 @@ import UIKit
                 if !following { value.title = "发送过渡演示" }
                 value.pending = false
                 value.messages = history + [NativeMessage(id: identity + "-user", role: "user", text: text,
-                    blocks: attachments.map { NativePanelItem(id: $0.id, kind: $0.type?.hasPrefix("image/") == true ? "image" : "file", title: $0.name, value: $0.imageURL ?? "data:application/pdf;base64,JVBERg==") }, turnId: "first-message-turn")]
+                    blocks: attachments.map {
+                        let isImage = $0.type?.hasPrefix("image/") == true
+                        let source = isImage && args.contains("--first-message-unavailable-image")
+                            ? "https://example.invalid/first-message-preview.png"
+                            : $0.imageURL ?? "data:application/pdf;base64,JVBERg=="
+                        return NativePanelItem(id: $0.id, kind: isImage ? "image" : "file", title: $0.name, value: source)
+                    }, turnId: "first-message-turn")]
                 acknowledge()
                 if ProcessInfo.processInfo.arguments.contains("--first-message-no-reply") { return }
                 try? await Task.sleep(for: .milliseconds(700))
