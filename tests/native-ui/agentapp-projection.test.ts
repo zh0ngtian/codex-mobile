@@ -14,6 +14,41 @@ import { compactTurnCommentary } from '../../server/turn-details';
 import { applyTurnCommentary } from '../../src/app-server/thread-session';
 
 const panel = { panelId: null, query: '', setPanel() {}, setQuery() {} };
+
+it('多次中途提问跨延续回合与普通commentary一起收纳，引用仍指向原物理回合', () => {
+  const prompt = (id: string) => ({ id, type: 'agentMessage', delivery: 'async', phase: 'final_answer', text: `问题${id}？\n- A\n- B`, questions: [{ title: `问题${id}？`, options: ['A', 'B'] }] });
+  const messages = projectConversation({ id: 'thread', turns: [
+    { id: 'first', status: 'completed', items: [{ id: 'u', type: 'userMessage', text: '检查' }, prompt('q1')] },
+    { id: 'continuation', status: 'completed', items: [{ id: 'c', type: 'agentMessage', phase: 'commentary', text: '继续检查' }, prompt('q2'), { id: 'f', type: 'agentMessage', phase: 'final_answer', text: '全部完成。' }] },
+  ] }, path => path, undefined, undefined, 'backend');
+  for (const [id, turnId] of [['q1', 'first'], ['q2', 'continuation']]) {
+    const value = messages.find(message => message.itemId === id)!;
+    expect(value.commentaryCanAttachToReply).toBe(true);
+    expect(value.commentary?.[0].quoteSource).toMatchObject({ itemId: id, turnId });
+    expect(value.status).toBeUndefined();
+  }
+  expect(messages.filter(message => message.role === 'assistant' && !message.commentaryCanAttachToReply).map(message => message.text)).toEqual(['全部完成。']);
+});
+
+it.each(['final_answer', undefined])('异步提问随过程折叠且保留原始消息身份、选项、时间和引用，phase=%s', phase => {
+  const timestamp = 1792900988;
+  const text = '显示哪种标题？\n\n- 模型总结出的标题\n- 第一条消息原文';
+  const active = { id: 'thread', turns: [{ id: 'turn', status: 'completed', durationMs: 22000, items: [
+    { id: 'u', type: 'userMessage', text: '修复标题' },
+    { id: 'c', type: 'agentMessage', phase: 'commentary', text: '检查标题同步' },
+    { id: 'q', type: 'agentMessage', phase, delivery: 'async', questions: [{ title: '显示哪种标题？', options: ['模型总结出的标题', '第一条消息原文'] }], text, timestamp },
+    { id: 'f', type: 'agentMessage', phase: 'final_answer', text: '已修复标题刷新。' },
+  ] }] };
+  const before = JSON.stringify(active);
+  const messages = projectConversation(active, path => path, undefined, undefined, 'backend');
+  const question = messages.find(message => message.itemId === 'q')!;
+  expect(question).toMatchObject({ id: 'turn:q', role: 'assistant', text, rawText: text, itemId: 'q', turnId: 'turn', timestamp,
+    commentaryCanAttachToReply: true, commentaryIsRunning: false,
+    commentary: [{ id: 'turn:q', text, timestamp, isPreviousReply: true, quoteSource: { backendId: 'backend', threadId: 'thread', turnId: 'turn', itemId: 'q' } }] });
+  expect(question.status).toBeUndefined();
+  expect(messages.find(message => message.itemId === 'f')).toMatchObject({ text: '已修复标题刷新。', status: '22秒' });
+  expect(JSON.stringify(active)).toBe(before);
+});
 function controller(overrides: Partial<NativeWorkspaceController> = {}): NativeWorkspaceController {
   return { backend: { id: 'b', name: '设备', token: 'PRIVATE_TOKEN', baseUrl: 'https://gateway.invalid', enabled: true, order: 0 },
     active: { id: 't', name: '真实对话', turns: [] }, contextId: 'b:t:1', connection: 'online', draft: '', draftImages: [], draftFiles: [], busy: false, readOnly: false,

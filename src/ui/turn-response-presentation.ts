@@ -13,13 +13,19 @@ export function turnResponsePresentation(responses: ConversationRecord[], { runn
   const ordered = orderedTurnMedia(responses);
   const steering = ordered.filter(item => item.type === 'userMessage');
   const lastSteeringIndex = steering.length ? ordered.lastIndexOf(steering.at(-1)!) : -1;
+  const isQuestion = (item: ConversationRecord) => item.type === 'agentMessage' && item.delivery === 'async' &&
+    Array.isArray(item.questions) && item.questions.length > 0;
   // 引导之前的旧 final 不能让尚在执行的新响应冒充完成。
-  const final = splitCompletedTurnResponses(ordered.slice(lastSteeringIndex + 1), { allowLegacyFinal: !running }).final;
+  // 异步提问同样可能带 final_answer；只用后续真实回答判定完成，不猜测正文中的问句。
+  const final = splitCompletedTurnResponses(ordered.slice(lastSteeringIndex + 1).filter(item => !isQuestion(item)), { allowLegacyFinal: !running }).final;
+  const finalIndex = final == null ? -1 : ordered.indexOf(final);
   const entries: TurnResponseEntry[] = commentaryMediaEntries(ordered).map(entry => {
     const assistant = entry.item.type === 'agentMessage';
     const commentary = assistant && entry.item.phase === 'commentary';
-    const supersededAnswer = assistant && !commentary && steering.length > 0 &&
-      (ordered.indexOf(entry.item) < lastSteeringIndex || (final != null && entry.item !== final));
+    const itemIndex = ordered.indexOf(entry.item);
+    const supersededAnswer = assistant && !commentary && (
+      (isQuestion(entry.item) && (itemIndex < lastSteeringIndex || (finalIndex >= 0 && itemIndex < finalIndex))) ||
+      (!isQuestion(entry.item) && steering.length > 0 && (itemIndex < lastSteeringIndex || (final != null && entry.item !== final))));
     const history = supersededAnswer || (commentary && ((!running && collapseWithoutFinal) || final != null || ordered.indexOf(entry.item) < lastSteeringIndex));
     return { ...entry, history, supersededAnswer };
   });

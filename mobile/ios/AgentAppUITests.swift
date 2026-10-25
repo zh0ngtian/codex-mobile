@@ -414,6 +414,37 @@ final class AgentAppUITests: XCTestCase {
         XCTAssertGreaterThan(Self.iconInkPixels(app.screenshot().image, element: button.frame, screen: app.frame, light: appearance == "Light"), 15, "图文应与中性填充色保持明暗反差")
     }
 
+    func testIntermediateQuestionCollapsesWithCommentaryBeforeFinalAnswer() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-intermediate-question-fixture", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
+        app.launch()
+        let history = app.buttons["commentary-history-toggle"]
+        let question = app.textViews.matching(NSPredicate(format: "value BEGINSWITH %@", "重新从列表进入后，显示的是哪种标题？")).firstMatch
+        let final = selectableText("已修复：模型标题会同步到当前页面，无需退出重进。", in: app)
+        XCTAssertTrue(final.waitForExistence(timeout: 8))
+        XCTAssertEqual(app.buttons.matching(identifier: "commentary-history-toggle").count, 1)
+        XCTAssertTrue(history.label.contains("用时22分19秒"), history.label)
+        XCTAssertLessThan(history.frame.maxY, final.frame.minY)
+        XCTAssertFalse(question.exists)
+        captureConversation("中途提问-随过程折叠", app: app)
+        history.tap()
+        XCTAssertTrue(question.waitForExistence(timeout: 5))
+        let text = question.value as? String ?? ""
+        XCTAssertTrue(text.contains("模型总结出的标题"), text)
+        XCTAssertTrue(text.contains("第一条消息原文"), text)
+        XCTAssertTrue(text.contains("没留意"), text)
+        XCTAssertTrue(selectableText("正在读取项目上下文。", in: app).exists)
+        XCTAssertEqual(app.descendants(matching: .any).matching(identifier: "commentary.separator").count, 3)
+        captureConversation("中途提问-展开保留问题和选项", app: app)
+        history.tap()
+        XCTAssertFalse(question.exists)
+        XCTAssertTrue(final.exists)
+        app.terminate()
+        app.launch()
+        XCTAssertTrue(final.waitForExistence(timeout: 8))
+        XCTAssertFalse(question.exists, "重新进入保持完成过程默认折叠")
+    }
+
     func testSteeredRepliesStayInsideProcessBeforeFinalAnswer() {
         let app = XCUIApplication()
         app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-steered-replies-fixture", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]

@@ -1,6 +1,45 @@
 import { expect, it } from 'vitest';
 import { turnResponsePresentation } from '../../src/ui/turn-response-presentation';
 
+const question = (phase: string | undefined = 'final_answer') => ({ id: 'question', type: 'agentMessage', phase,
+  delivery: 'async', questions: [{ title: '重新进入后显示哪种标题？', options: ['模型总结出的标题', '第一条消息原文', '没留意'] }],
+  text: '重新进入后显示哪种标题？\n\n- 模型总结出的标题\n- 第一条消息原文\n- 没留意' });
+
+it.each(['final_answer', undefined])('中途结构化提问按过程收纳，保留正文、身份和媒体，phase=%s', phase => {
+  const prompt = { ...question(), phase };
+  const media = { id: 'shot', type: 'imageView', path: '/question.png' };
+  const final = { id: 'final', type: 'agentMessage', phase: 'final_answer', text: '已修复标题刷新。' };
+  const items = [prompt, media, { id: 'c', type: 'agentMessage', phase: 'commentary', text: '继续检查' }, final];
+  const before = JSON.stringify(items);
+  const result = turnResponsePresentation(items, { running: false });
+  expect(result.final).toBe(final);
+  expect(result.entries[0]).toMatchObject({ history: true, supersededAnswer: true, media: [] });
+  expect(result.entries[1].item).toBe(media);
+  expect(result.entries[0].item).toBe(prompt);
+  expect(result.historyCount).toBe(2);
+  expect(JSON.stringify(items)).toBe(before);
+});
+
+it.each([true, false])('只有待回答提问时保持正文可见，running=%s', running => {
+  const prompt = question();
+  const result = turnResponsePresentation([prompt], { running });
+  expect(result.entries[0]).toMatchObject({ item: prompt, history: false, supersededAnswer: false });
+});
+
+it.each([true, false])('较新的待回答提问不能代替真实final或收起自己，steering=%s', steering => {
+  const final = { id: 'final', type: 'agentMessage', phase: 'final_answer', text: '已完成检查。' };
+  const prompt = question();
+  const result = turnResponsePresentation([...(steering ? [{ id: 'steer', type: 'userMessage', text: '继续检查' }] : []), final, prompt], { running: false });
+  expect(result.final).toBe(final);
+  expect(result.entries.at(-1)).toMatchObject({ item: prompt, history: false, supersededAnswer: false });
+});
+
+it('普通问句没有结构化提问标记时不按文字猜测折叠', () => {
+  const items = [{ id: 'first', type: 'agentMessage', phase: 'final_answer', text: '要继续吗？' },
+    { id: 'final', type: 'agentMessage', phase: 'final_answer', text: '完成。' }];
+  expect(turnResponsePresentation(items, { running: false }).entries.every(entry => !entry.history)).toBe(true);
+});
+
 it('展示整理保留原 item 引用，截图归属在移动引导前确定', () => {
   const first = { id: 'c1', type: 'agentMessage', phase: 'commentary', text: '检查' };
   const attached = { id: 'attached', type: 'imageView', path: '/attached.png' };

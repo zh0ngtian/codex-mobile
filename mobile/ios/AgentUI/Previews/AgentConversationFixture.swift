@@ -61,6 +61,15 @@ final class AgentConversationFixture {
             NativeMessage(id: "answer", role: "assistant", text: "已完成检查。查看 [网页链接](https://example.com) 与 [文件链接](/tmp/example.swift#L12)。", timestamp: date.addingTimeInterval(120).timeIntervalSince1970, turnId: "fixture-turn", phase: "final_answer"),
         ]
         value.messages[2].status = ProcessInfo.processInfo.arguments.contains("--agent-no-duration-fixture") ? nil : "1小时2分钟3秒"
+        if ProcessInfo.processInfo.arguments.contains("--agent-intermediate-question-fixture") {
+            let text = "重新从列表进入后，显示的是哪种标题？\n\n- 模型总结出的标题\n- 第一条消息原文\n- 没留意"
+            value.messages.insert(NativeMessage(id: "intermediate-question", role: "assistant", text: text, rawText: text,
+                timestamp: date.addingTimeInterval(60).timeIntervalSince1970, turnId: "fixture-turn", itemId: "intermediate-question", phase: "final_answer",
+                commentary: [NativeCommentaryEntry(id: "intermediate-question", text: text, timestamp: date.addingTimeInterval(60).timeIntervalSince1970, isPreviousReply: true)],
+                commentaryCanAttachToReply: true), at: 2)
+            value.messages[3].text = "已修复：模型标题会同步到当前页面，无需退出重进。"
+            value.messages[3].status = "22分19秒"
+        }
         if ProcessInfo.processInfo.arguments.contains("--agent-history-without-reply-fixture") {
             value.messages.removeLast()
             value.messages.append(NativeMessage(id: "hidden-tool", role: "activity", text: "隐藏活动不可外显", activityKind: "tool"))
