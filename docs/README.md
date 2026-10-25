@@ -23,7 +23,7 @@
 
 ## 当前发布入口
 
-最近已验收客户端为0.3.39（3039）：worktree会话归入所属项目并统一分页、刷新与搜索，打开时保留实际执行目录；修复iOS Mermaid图表显示与源码切换，原生弹窗统一使用中性色。客户端成功批次 `38e51b86-291f-4761-b32e-8fe88448e82e` 已完成GitHub APK／unsigned IPA及既有iOS软件源回验。Android局域网下载服务和OTA服务均已停止并disabled；不再本机iOS签名、不更新固定LAN包或OTA，历史文件保留。Android从GitHub手动下载，本次未实现GitHub自动更新。配套网关成功批次 `8574742b-24e0-4a42-8150-77d543498280` 已部署，真实目标进入所属项目统一最新五条且执行目录保留；其运行源码与本次客户端配套一致，后续仅发布脚本／测试／文档变化未重复部署。见[发布计划](superpowers/plans/2026-10-25-worktree-unsigned-release.md)与[公共凭证](superpowers/plans/evidence/2026-10-25-worktree-github-release.json)。0.3.37旧含LAN范围按用户要求停止并保留失败记录；0.3.38附件曾发布但最终回验失败，原任务已由本次关联修复恢复，原失败批次不改写。真机安装、数据保留和视觉仍待现场验收；桌面上传计量仍待用户重启激活和回验。
+最近已验收客户端为0.3.40（3040）：修复无项目会话发送待确认时误报未发送、创建回执迟到后原输入不可见，以及发送后页头变成默认目录的问题。客户端成功批次 `77fbb290-6654-452d-bfba-41208136f42c` 已完成 GitHub APK／unsigned IPA 与既有 iOS 软件源回验，独立核对 53 项通过。见[发布计划](superpowers/plans/2026-10-25-projectless-send-release.md)与[公共凭证](superpowers/plans/evidence/2026-10-25-projectless-send-release.json)。IPA 未签名，安装前由用户自行签名；LAN 包、签名 IPA、OTA 和固定 IPA 均未发布，旧文件及已停用服务保持原状。Android 继续从 GitHub 手动下载，现有 LAN 更新检查不可用，未实现 GitHub 自动更新。此前 worktree 映射网关已部署，本次未部署网关。真机安装、数据保留和现场视觉仍待验收；冷启动搜索未命中现象仍待定位，桌面上传计量仍待用户重启激活和回验。0.3.37／0.3.38 失败批次及 0.3.39 关联修复记录继续保留。
 
 此前0.3.35已发布后续消息从输入区连续交接到用户气泡和旧图片预览保留，继承0.3.34的首条发送动效，历史、页头、附件及队列语义保持；其[发布计划](superpowers/plans/2026-10-24-followup-message-motion-release.md)与[公共凭证](superpowers/plans/evidence/2026-10-24-followup-message-motion-release.json)保留当次验收口径。
 

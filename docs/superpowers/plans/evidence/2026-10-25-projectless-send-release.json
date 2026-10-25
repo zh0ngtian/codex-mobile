@@ -1,0 +1,116 @@
+{
+  "schemaVersion": 1,
+  "checkedAt": "2026-10-25T16:27:37.680902+00:00",
+  "distribution": "github-only",
+  "version": "0.3.40",
+  "buildNumber": "3040",
+  "sourceCommit": "1080f7408be6366ad5d4d649eaffa6cfaad6080a",
+  "sourceFixes": [
+    "9c649cb945c7d36b92f563b7d9b6eef9f289b825",
+    "491aff1a5b5a31dd6cb77993302c8eb75cb29b31"
+  ],
+  "releaseUrl": "https://github.com/zh0ngtian/codex-mobile/releases/tag/v0.3.40",
+  "mobile": {
+    "batch": "77fbb290-6654-452d-bfba-41208136f42c",
+    "frozenCommit": "c5717dbcc8fe98c93efbcc92de5cc6a02693db88",
+    "receiptSha256": "91c3d4e51ff7c2fd19af7d985595dd1065a15094e870ca784083484e01c4927d",
+    "stages": [
+      "main",
+      "build",
+      "source",
+      "verify"
+    ],
+    "formalCI": {
+      "runId": 40210296586,
+      "attempt": 1,
+      "url": "https://github.com/zh0ngtian/codex-mobile/actions/runs/40210296586",
+      "conclusion": "success"
+    },
+    "developmentCI": {
+      "runId": 40210296519,
+      "conclusion": "success"
+    }
+  },
+  "artifacts": {
+    "android": {
+      "downloadUrl": "https://github.com/zh0ngtian/codex-mobile/releases/download/v0.3.40/CodexMobile-v0.3.40.apk",
+      "size": 4754271,
+      "sha256": "a42ac3a33ab0d79dfed4dcc9a874b90d729271fed90a8fc7325a0120c859e9d3"
+    },
+    "ios": {
+      "downloadUrl": "https://github.com/zh0ngtian/codex-mobile/releases/download/v0.3.40/CodexMobile-v0.3.40-unsigned.ipa",
+      "size": 5029456,
+      "sha256": "3b2fb4748c8e775ad355e1cb81f2fed633f1c60e71567920b5c4aef2d645d2ad"
+    }
+  },
+  "softwareSource": "https://signos-source-aggregator.305301890.workers.dev/sources/yao.json",
+  "developerName": "zh0ngtian",
+  "iosSigned": false,
+  "lanApkPublished": false,
+  "signedIpaPublished": false,
+  "otaPublished": false,
+  "fixedIpaPublished": false,
+  "lanServiceStoppedAndDisabled": true,
+  "otaServiceStoppedAndDisabled": true,
+  "historicalLanFilesUnchanged": true,
+  "gatewayDeployed": false,
+  "independentChecks": [
+    "任务与批次成功",
+    "状态与持久成功凭证一致",
+    "固定批次及授权目标",
+    "固定任务SHA被包含",
+    "四个发布阶段及准备结果齐全",
+    "GitHub-only范围",
+    "lanApkPublished为false",
+    "signedIpaPublished为false",
+    "fixedIpaPublished为false",
+    "otaPublished为false",
+    "任务来源验收",
+    "main冻结来源",
+    "build冻结来源",
+    "source冻结来源",
+    "verify冻结来源",
+    "公共冻结清单摘要",
+    "源码祖先包含:1080f74",
+    "源码祖先包含:491aff1",
+    "源码祖先包含:9c649cb",
+    "正式GitHubRelease",
+    "GitHub中文更新日志",
+    "标签绑定冻结SHA",
+    "android来源和版本",
+    "android构建号",
+    "androidGitHub附件元数据",
+    "android独立完整下载大小",
+    "android独立完整下载SHA256",
+    "ios来源和版本",
+    "ios构建号",
+    "iosGitHub附件元数据",
+    "ios独立完整下载大小",
+    "ios独立完整下载SHA256",
+    "IPA未签名标记",
+    "IPA唯一主应用",
+    "IPA实际版本",
+    "IPA应用标识",
+    "IPA无签名或描述文件",
+    "GitHub发布凭证",
+    "既有软件源条目唯一",
+    "既有订阅身份保留",
+    "软件源版本",
+    "软件源:downloadURL",
+    "软件源:size",
+    "软件源:sha256",
+    "软件源中文更新日志",
+    "开发者署名保留且包含当前发布者",
+    "formalCI来源与成功",
+    "developmentCI来源与成功",
+    "历史包及清单未改写",
+    "local.globaltranslation.apk-server保持disabled",
+    "local.codex-mobile.ios-ota保持disabled",
+    "8765无监听",
+    "8766无监听"
+  ],
+  "limitations": [
+    "未进行真机安装和数据保留验收",
+    "冷启动搜索未命中现象未在本次修复范围处理；从无项目分组重开已通过"
+  ]
+}
