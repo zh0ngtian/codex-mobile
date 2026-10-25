@@ -8,7 +8,7 @@
 
 只有用户明确要求发布客户端或部署网关时，才登记对应发布任务并使用下文的 heartbeat、ready、冻结、构建发布及 receipt 流程。普通任务不登记发布任务、不提交 ready、不分配发布版本、不更新 `.release-batch.json`，不触发正式 APK/IPA 打包、渠道更新或生产网关部署；必要的开发验证构建仍按改动范围执行。客户端与网关均有源码变更本身不构成联合发布授权。
 
-2026-10-25用户先确认停止本机iOS签名、HTTPS OTA及固定LAN IPA更新，随后进一步要求Android关闭局域网分发，只保留GitHub Release。现行客户端为 `codex-mobile-github-only`／`mobile-github-only`，只交付GitHub APK／unsigned IPA及既有iOS软件源。策略 [distribution-policy.json](../release/distribution-policy.json) 同时规定 `iosDistribution=unsigned-only` 与 `androidDistribution=github-only`；新源码拒绝旧mobile／mobile-ota／mobile-unsigned kind及旧客户端项目，不能通过旧模板进入LAN或签名／OTA阶段。8765服务保持停止和disabled，旧包、清单、材料、失败批次及凭证保留不删。无策略或旧ios-only策略的历史工作区继续原合同。新GitHub-only源码尚未发布，真实批次待验收。
+2026-10-25用户先确认停止本机iOS签名、HTTPS OTA及固定LAN IPA更新，随后进一步要求Android关闭局域网分发，只保留GitHub Release。现行客户端为 `codex-mobile-github-only`／`mobile-github-only`，只交付GitHub APK／unsigned IPA及既有iOS软件源。策略 [distribution-policy.json](../release/distribution-policy.json) 同时规定 `iosDistribution=unsigned-only` 与 `androidDistribution=github-only`；新源码拒绝旧mobile／mobile-ota／mobile-unsigned kind及旧客户端项目，不能通过旧模板进入LAN或签名／OTA阶段。8765服务保持停止和disabled，旧包、清单、材料、失败批次及凭证保留不删。无策略或旧ios-only策略的历史工作区继续原合同。0.3.38的GitHub附件与软件源已发布，但最终verify失败，关联修复新批次仍待验收，见下方本次状态。
 
 ## 本机部署与作用域
 
@@ -49,6 +49,8 @@
 GitHub 403 只有明确包含 `API rate limit exceeded` 或 `secondary rate limit` 时按限流进入等待；403 也可能来自限流，参见 [GitHub 官方 REST 限流说明](https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api)。适配器将最早再次读取时间 `githubReadNotBefore` 持久化到 progress，至少等待 60 秒；响应已有可解析 `Retry-After`（秒或 HTTP 日期）或 `x-ratelimit-reset` 时取更晚时间。等待窗口内直接返回只读暂时故障，不实际重发 GET，进程重启也保留窗口。
 
 `prepare` 查询失败仍非零并停止冻结，不使用此协议。HTTP 401、普通 403 权限错误（即使同时含 EOF）、证书无效、curl 23 本地写入失败、配置错误、真实 CI 失败、来源/大小/散列不匹配均为永久错误。POST、渠道发布、签名和 main push 不因错误文本含“网络”就成为可重执行操作；响应丢失继续按各阶段原有证据对账，无法确认时保留失败现场。
+
+curl退出码35表示TLS握手错误，不能整体视为网络中断；参见[curl官方错误码说明](https://curl.se/libcurl/c/libcurl-errors.html)。在原永久错误优先判断之后，仅当退出码为35且诊断明确包含 `SSL_ERROR_SYSCALL in connection to …` 时，归入只读暂时故障。普通35、缺少该连接诊断、证书／权限／配置／本地写入错误仍为永久错误；写命令和POST不重试、不变成retryable。此修复不增加 `-k` 或绕过TLS校验，原来源、大小和SHA-256检查保持。
 
 正式 CI 首次等待时将 epoch 秒 `waitStartedAt` 与 `waitDeadlineAt`（起点加一小时）写入 progress 的 `operations.build`，进程或服务重启不重新计时。预算过期后仍先查询同一 run/attempt：已完成且成功可继续验收，确认仍运行才报告等待超时；真实完成失败依旧失败。适配器协议的本地实现及隔离回归不等同于现役服务已更新，实际安装与批次状态仍以对应验收凭证为准。
 
@@ -126,9 +128,11 @@ status 返回原任务 `complete`，或 `recovered` 且 `recovered_by` 指向成
 
 ## 2026-10-25 范围切换与本次验收状态
 
+GitHub-only的0.3.38批次 `c2997b88-4cc4-4298-b292-6cd3b4a3d70b` 在最终verify完整下载时遇到 `curl (35) LibreSSL SSL_connect: SSL_ERROR_SYSCALL`，旧分类将其当作永久错误，批次已failed；此前正式CI `40183741380`、开发CI `40183741419`、GitHub Release与既有iOS软件源已成功，不能因此宣称完整交付成功。原冻结提交 `50f5a31ed9338682a668fa92b4db5a4974b2b3d1`、失败凭证与附件保留，不resume、不篡改。已登记同项目关联修复任务 `sidebar-worktree-github-only-read-repair-20261025`，本地窄修复已验证，后续计划以新0.3.39批次重新冻结、构建和验收，不借用0.3.38附件；修复批次尚未成功。GitHub-only四阶段及禁止LAN／签名／OTA的合同保持不变。
+
 旧含LAN客户端批次 `d9ecccee-0825-4e20-94a3-6c3f16ff559d` 按原合同保留为failed，本机build等待已停止；原GitHub run `40182332387` 继续运行，不取消、不借用为新批次。旧0.3.37预留保留，新GitHub-only批次必须重新按来源与四阶段合同验收，不能把旧批次或某端构建完成宣称为新范围成功。
 
-配套worktree映射网关成功批次 `8574742b-24e0-4a42-8150-77d543498280` 已部署，真实目标会话进入所属项目最新五条的回验通过。此后本次只改发布策略、适配器、测试和文档，不重复部署网关；交付前以成功凭证、网关运行代码未变及来源祖先关系证明复用边界。新客户端源码尚未发布，真实批次待验收。
+配套worktree映射网关成功批次 `8574742b-24e0-4a42-8150-77d543498280` 已部署，真实目标会话进入所属项目最新五条的回验通过。此后本次只改发布策略、适配器、测试和文档，不重复部署网关；交付前以成功凭证、网关运行代码未变及来源祖先关系证明复用边界。0.3.38客户端附件与软件源已发布但完整批次失败；关联修复新批次待验收。
 
 局域网服务关闭后，Android现有LAN更新检查不可用，新版本从GitHub手动下载；本次没有实现GitHub自动更新。最终回验核对8765不监听且服务disabled，以本地文件散列确认旧LAN包／清单未被本轮改写，不为验收重启服务。
 

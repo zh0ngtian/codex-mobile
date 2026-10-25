@@ -23,7 +23,7 @@
 
 ## 当前发布入口
 
-最近已验收客户端为0.3.36（3036），本版修复iOS选择杆包含段后留白、自动命名过早与已保存名称未同步当前页的问题；“用量与额度”新增“最近请求上传”和“本轮累计上传”字段；已有后续最终回答的中途结构化提问收进“执行过程”，待回答问题继续可见。该历史批次的固定APK、Ad Hoc已签名IPA、HTTPS OTA、GitHub unsigned IPA及软件源完成237项独立回验，见[发布计划](superpowers/plans/2026-10-25-selection-handle-height-release.md)与[公共凭证](superpowers/plans/evidence/2026-10-25-selection-handle-height-release.json)。2026-10-25用户先停止iOS签名与OTA，随后要求Android也停止局域网分发；现行只交付GitHub APK／unsigned IPA及既有iOS软件源，8765服务停止并disabled，旧文件保留不删。旧0.3.37含LAN批次已失败保留，GitHub-only新源码尚未发布；worktree映射网关成功批次 `8574742b-24e0-4a42-8150-77d543498280` 已部署并通过真实最新五条回验，本轮不重复部署。上传计量后端此前已独立部署并安装桌面入口，仍待用户手动重启激活和实测回验；真机安装、数据保留、真机视觉及真实Bark送达仍待现场验收。
+最近已验收客户端为0.3.36（3036），本版修复iOS选择杆包含段后留白、自动命名过早与已保存名称未同步当前页的问题；“用量与额度”新增“最近请求上传”和“本轮累计上传”字段；已有后续最终回答的中途结构化提问收进“执行过程”，待回答问题继续可见。该历史批次的固定APK、Ad Hoc已签名IPA、HTTPS OTA、GitHub unsigned IPA及软件源完成237项独立回验，见[发布计划](superpowers/plans/2026-10-25-selection-handle-height-release.md)与[公共凭证](superpowers/plans/evidence/2026-10-25-selection-handle-height-release.json)。2026-10-25用户先停止iOS签名与OTA，随后要求Android也停止局域网分发；现行只交付GitHub APK／unsigned IPA及既有iOS软件源，8765服务停止并disabled，旧文件保留不删。旧0.3.37含LAN批次已失败保留；后续0.3.38的GitHub附件与软件源已发布，但最终完整下载验收失败，关联修复新批次尚未成功，见发布协调说明；worktree映射网关成功批次 `8574742b-24e0-4a42-8150-77d543498280` 已部署并通过真实最新五条回验，本轮不重复部署。上传计量后端此前已独立部署并安装桌面入口，仍待用户手动重启激活和实测回验；真机安装、数据保留、真机视觉及真实Bark送达仍待现场验收。
 
 此前0.3.35已发布后续消息从输入区连续交接到用户气泡和旧图片预览保留，继承0.3.34的首条发送动效，历史、页头、附件及队列语义保持；其[发布计划](superpowers/plans/2026-10-24-followup-message-motion-release.md)与[公共凭证](superpowers/plans/evidence/2026-10-24-followup-message-motion-release.json)保留当次验收口径。
 

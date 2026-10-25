@@ -10,6 +10,15 @@
 
 ## 用户运行中更新范围：Android也停止局域网分发
 
+### 0.3.38最终只读回验失败及关联修复
+
+GitHub-only批次`c2997b88-4cc4-4298-b292-6cd3b4a3d70b`已成功发布0.3.38和同步软件源，但最终verify完整下载GitHub附件遇到`curl (35) LibreSSL SSL_connect: SSL_ERROR_SYSCALL`，适配器未将这一具体连接中断归入只读暂时故障，批次已failed。保留该失败现场与0.3.38包，不resume或修改冻结提交。关联修复任务`sidebar-worktree-github-only-read-repair-20261025`继承原任务和来源，沿用同一GitHub-only目标与四阶段，使用更高版本完成正式凭证。
+
+- [ ] 在`tests/ci/test_release_read_recovery.py`先用实际错误文本写RED：curl35且明确SSL_ERROR_SYSCALL连接中断可返回TransientReadError；普通curl35、证书/配置/权限问题仍永久失败，写命令不因该错误可重试。
+- [ ] 在`transient_read_error`的原有永久错误优先判断之后，最小增加curl35的窄条件；不添加`-k`、不绕过TLS校验，不扩大到所有SSL/TLS错误。依据curl官方错误码文档，35需结合诊断区分原因，不能整体放行。
+- [ ] 完成TDD GREEN、全部Python、相关构建契约及typecheck门禁，规格/质量复核，推送修复SHA并ready已登记关联任务。失败批次和原版本均不可变，新批次仍只GitHub双端与iOS软件源。
+- [ ] 成功后独立完成全包及渠道回验，公开凭证同时记录用户撤销LAN的旧批次与本次TLS诊断修复谱系，不把早前已发布附件当作完整成功凭证。
+
 用户随后要求“关闭Android在局域网的发布服务，只保留GitHub Release”。此要求覆盖前述固定APK交付步骤；iOS unsigned IPA与既有软件源继续。局域网服务已停止并disable，旧客户端批次`d9ecccee-0825-4e20-94a3-6c3f16ff559d`的本机build等待进程已终止，由协调器保留原冻结合同及失败记录；其GitHub构建不取消，不执行旧LAN阶段。网关成功批次`8574742b-24e0-4a42-8150-77d543498280`及真实项目映射回验保留有效。
 
 - [ ] 新增`mobile-github-only`与新项目`codex-mobile-github-only`（target同名，environment `github-only`），复用现役协调器与main锁；阶段精确`main/build/source/verify`。在分发策略增加`androidDistribution=github-only`，新策略拒绝旧含LAN范围，历史无策略／旧策略夹具保持原合同。
