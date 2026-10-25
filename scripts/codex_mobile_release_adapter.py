@@ -50,8 +50,28 @@ class Adapter:
         self.root.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.repo = self.options['github_repository']
         self.ota_only = self.options['kind'] == 'mobile-ota'
-        self.mobile = self.options['kind'] in ('mobile', 'mobile-ota')
+        self.unsigned_only = self.options['kind'] == 'mobile-unsigned'
+        self.mobile = self.options['kind'] in ('mobile', 'mobile-ota', 'mobile-unsigned')
         self.ota_phases = ['main', 'iosbuild', 'sign', 'ota', 'ipa', 'verify']
+        self.unsigned_phases = ['main', 'build', 'apk', 'source', 'verify']
+        policy_path = self.work / 'release/distribution-policy.json'
+        client_project = context['project'] in ('codex-mobile-github-release', 'codex-mobile-lan-production', 'codex-mobile-ios-ota-production')
+        if (self.mobile or client_project) and policy_path.exists():
+            policy = read_json(policy_path)
+            if (not isinstance(policy, dict) or type(policy.get('schemaVersion')) is not int
+                    or policy != {'schemaVersion':1, 'iosDistribution':'unsigned-only'}):
+                raise ValueError('客户端分发策略无效或不支持')
+            if (self.options['kind'] in ('mobile', 'mobile-ota')
+                    or context['project'] in ('codex-mobile-lan-production', 'codex-mobile-ios-ota-production')):
+                raise ValueError('unsigned-only 分发策略禁止旧客户端签名/OTA 配置；请使用新发布项目')
+        if self.unsigned_only or context['project'] == 'codex-mobile-github-release':
+            if not (self.unsigned_only and context['project'] == 'codex-mobile-github-release'
+                    and self.config['target'] == 'codex-mobile-github-release'
+                    and self.config['environment'] == 'github-release'
+                    and self.config.get('branch') == 'main'
+                    and context['scope'] == 'codex-mobile-main-production'
+                    and self.config.get('phases') == self.unsigned_phases):
+                raise ValueError('unsigned-only 项目、身份、环境、作用域或发布阶段不匹配')
         if self.ota_only or context['project'] == 'codex-mobile-ios-ota-production':
             if not (self.ota_only and context['project'] == 'codex-mobile-ios-ota-production'
                     and self.config['target'] == 'vip.loock.codexmobile'
@@ -318,11 +338,12 @@ class Adapter:
         fingerprint = hashlib.sha256(json.dumps({'tree':tree, 'tasks':self.context['tasks'],
                               'target':self.config['target'], 'environment':self.config['environment']}, sort_keys=True).encode()).hexdigest()
         if self.mobile:
-            cfg = self.ios_config()
             versions = [read_json(self.work / 'mobile-version-floor.json')['version']]
             for name in ('latest.json', 'latest-ios.json'): versions.append(self.url_json(LAN + '/' + name)['version'])
-            previous=self.url_json(cfg['baseUrl'] + '/current/latest-ios.json', ca=cfg['caFile'])
-            versions.append(previous['version'])
+            if not self.unsigned_only:
+                cfg = self.ios_config()
+                previous=self.url_json(cfg['baseUrl'] + '/current/latest-ios.json', ca=cfg['caFile'])
+                versions.append(previous['version'])
             releases = self.gh_json(f'repos/{self.repo}/releases?per_page=100')
             page=1
             while releases:
@@ -336,7 +357,7 @@ class Adapter:
                 prior = read_json(reservation)
                 if prior: versions.append(prior['version'])
             prepared = reserve_version(self.root / 'version.json', versions, fingerprint)
-            self.signing_preflight(cfg,prepared,previous)
+            if not self.unsigned_only: self.signing_preflight(cfg,prepared,previous)
         else: prepared = {'inputFingerprint':fingerprint}
         passed = read_json(self.root / 'merged-checks.json')
         if not passed or passed.get('inputFingerprint') != fingerprint:
@@ -357,7 +378,7 @@ class Adapter:
         self.git('add','.release-batch.json')
         if self.git('status','--porcelain'):
             self.git('commit','-m','ci(发布): 冻结协调批次 '+self.context['id'],
-                     '-m','新增功能：\n- 无\n\n主要修改：\n- 固定本批任务、验证结果、发布目标和统一版本\n- 后续 CI 与签名发布仅使用本冻结提交的产物')
+                     '-m','新增功能：\n- 无\n\n主要修改：\n- 固定本批任务、验证结果、发布目标和统一版本\n- 后续构建发布仅使用本冻结提交的产物')
 
     def main_check(self):
         remote = self.git('ls-remote', 'origin', 'refs/heads/' + self.config['branch']).split()[0]
@@ -681,7 +702,8 @@ class Adapter:
         build=self.build_check()
         if not build['done']:return {'done':False,'result':{}}
         unsigned=build['result']['artifacts']['ios'];feed=self.url_json(self.options['source_url'])
-        apps=[a for a in feed['apps'] if a.get('bundleIdentifier')==self.config['target']]
+        bundle_id='vip.loock.codexmobile' if self.unsigned_only else self.config['target']
+        apps=[a for a in feed['apps'] if a.get('bundleIdentifier')==bundle_id]
         matching=[a for a in apps if a.get('downloadURL','').endswith('-unsigned.ipa')]
         if len(matching)!=1:raise ValueError('软件源 unsigned IPA 订阅不唯一')
         app=matching[0]
@@ -794,6 +816,8 @@ class Adapter:
         return {'done':True,'result':{'runId':run['id'],'attempt':run.get('run_attempt',1),'sourceCommit':self.frozen_sha}}
 
     def require_authorized_phase(self, phase):
+        if self.unsigned_only and phase not in self.unsigned_phases:
+            raise ValueError('unsigned-only 目标禁止执行阶段: ' + phase)
         if self.ota_only and phase not in self.ota_phases:
             raise ValueError('OTA-only 目标禁止执行阶段: ' + phase)
 
@@ -816,7 +840,7 @@ class Adapter:
         if phase=='verify':
             development=self.development_check()
             if not development['done']:return {'done':False,'result':{'missing':'development'}}
-            phases=self.ota_phases[:-1] if self.ota_only else ['main','build','iosbuild','sign','ota','apk','ipa','source'] if self.mobile else ['main','gateway']
+            phases=self.unsigned_phases[:-1] if self.unsigned_only else self.ota_phases[:-1] if self.ota_only else ['main','build','iosbuild','sign','ota','apk','ipa','source'] if self.mobile else ['main','gateway']
             evidence={'development':development['result']}
             for step in phases:
                 checked=self.check_phase(step)
@@ -826,9 +850,15 @@ class Adapter:
             if self.mobile and not self.ota_only:
                 for item in evidence['build']['artifacts'].values():
                     self.download_verified(item['downloadUrl'],item,self.root/('verified-github-'+Path(item['path']).name))
-                if evidence['apk']['version']!=evidence['ipa']['version']:raise ValueError('双端渠道版本不一致')
-                atomic_json(self.root/'ota-release.json',{**evidence['ota'],'lan':evidence['ipa'],'source':evidence['source'],
-                            'verifiedAt':time.time(),'appSource':{'signedPackage':'disabled','unsignedVerified':True}})
+                if self.unsigned_only:
+                    atomic_json(self.root/'unsigned-release.json', {'sourceCommit':self.frozen_sha, 'batchId':self.context['id'],
+                        'version':self.version, 'buildNumber':self.build_number, 'distribution':'unsigned-only', 'channels':evidence,
+                        'githubReleasePublished':True, 'apkPublished':True, 'softwareSourceUpdated':True,
+                        'signedIpaPublished':False, 'otaPublished':False, 'fixedIpaPublished':False, 'verifiedAt':time.time()})
+                else:
+                    if evidence['apk']['version']!=evidence['ipa']['version']:raise ValueError('双端渠道版本不一致')
+                    atomic_json(self.root/'ota-release.json',{**evidence['ota'],'lan':evidence['ipa'],'source':evidence['source'],
+                                'verifiedAt':time.time(),'appSource':{'signedPackage':'disabled','unsignedVerified':True}})
             history = self.prior_ota_history() if self.ota_only else []
             if self.ota_only:
                 atomic_json(self.root/'ota-release.json', {**evidence['ota'], 'lan':evidence['ipa'],
@@ -836,6 +866,7 @@ class Adapter:
                     'githubReleasePublished':False, 'apkPublished':False, 'softwareSourceUpdated':False,
                     'priorStandaloneDeliveries':history, 'verifiedAt':time.time()})
             return {'done':True,'result':{'sourceCommit':self.frozen_sha,'batchId':self.context['id'],'channels':evidence,
+                             **({'distribution':'unsigned-only','signedIpaPublished':False,'otaPublished':False,'fixedIpaPublished':False} if self.unsigned_only else {}),
                              **({'distribution':'ota-only','priorStandaloneDeliveries':history} if self.ota_only else {}),
                              'tasksIncluded':[t['sha'] for t in self.context['tasks']], 'verifiedAt':time.time(),
                              'deviceInstall':'未进行真机覆盖安装与数据保留验收'}}
@@ -896,6 +927,7 @@ class Adapter:
         return self.command(['node', self.work/'scripts/read-release-notes.mjs', '--root', self.work])
 
     def run_phase(self, phase):
+        self.require_authorized_phase(phase)
         checked=self.check_phase(phase)
         if checked.get('done'):return checked
         self.progress(phase,status='executing')

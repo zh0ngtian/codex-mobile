@@ -1,0 +1,24 @@
+{
+  "id": "codex-mobile-github-release",
+  "repository": "SET_LONG_LIVED_CODEX_MOBILE_REPOSITORY_PATH",
+  "remote": "https://github.com/zh0ngtian/codex-mobile.git",
+  "branch": "main",
+  "target": "codex-mobile-github-release",
+  "environment": "github-release",
+  "lock_scope": "codex-mobile-main-production",
+  "adapter": [
+    "SET_EXISTING_ABSOLUTE_PYTHON_PATH",
+    "{workspace}/scripts/codex_mobile_release_adapter.py"
+  ],
+  "phases": ["main", "build", "apk", "source", "verify"],
+  "preflight": ["SET_EXISTING_ABSOLUTE_GH_PATH", "auth", "status"],
+  "command_timeout": 7200,
+  "required_checks": ["adapter-regression", "coordinator-recovery", "build-contract", "typecheck"],
+  "options": {
+    "kind": "mobile-unsigned",
+    "github_repository": "zh0ngtian/codex-mobile",
+    "lan_publisher": "SET_EXISTING_LAN_PUBLISHER_PATH",
+    "source_url": "https://signos-source-aggregator.305301890.workers.dev/sources/yao.json",
+    "source_credentials": "SET_EXISTING_SOURCE_CREDENTIALS_PATH"
+  }
+}

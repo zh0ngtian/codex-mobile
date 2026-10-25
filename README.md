@@ -73,7 +73,7 @@ http://<电脑局域网IP>:18766/?token=<随机口令>
 
 客户端不设置设备数量上限，可同时维持所有已启用设备的连接；保存和恢复完整设备列表及排序。
 
-现役双端客户端为0.3.36（3036）：修复iOS列表文字选择杆过长，排除段后留白并保留间距、复制和引用；自动命名等待用户消息就绪，并将已保存名称同步到当前页面；“用量与额度”新增“最近请求上传”和“本轮累计上传”，显示网关提供的请求载荷字节数；已有后续最终回答的中途结构化提问收进“执行过程”，展开后保留问题和选项，待回答问题继续可见。正式批次已成功，双端固定渠道、HTTPS OTA、GitHub与unsigned软件源已独立回验237项；最终回执规格与质量审查均通过，见[本次发布计划](docs/superpowers/plans/2026-10-25-selection-handle-height-release.md)与[公共凭证](docs/superpowers/plans/evidence/2026-10-25-selection-handle-height-release.json)。
+最近已验收客户端为0.3.36（3036）：修复iOS列表文字选择杆过长，排除段后留白并保留间距、复制和引用；自动命名等待用户消息就绪，并将已保存名称同步到当前页面；“用量与额度”新增“最近请求上传”和“本轮累计上传”，显示网关提供的请求载荷字节数；已有后续最终回答的中途结构化提问收进“执行过程”，展开后保留问题和选项，待回答问题继续可见。该历史批次的双端固定渠道、HTTPS OTA、GitHub与unsigned软件源独立回验237项通过，见[发布计划](docs/superpowers/plans/2026-10-25-selection-handle-height-release.md)与[公共凭证](docs/superpowers/plans/evidence/2026-10-25-selection-handle-height-release.json)。自2026-10-25起，用户确认停止本机iOS签名与HTTPS OTA，新批次仅交付GitHub APK／unsigned IPA、固定APK及既有unsigned软件源；本次切换与worktree会话归属功能的真实客户端／网关批次尚待验收，不把旧OTA版本当作新交付。
 
 此前0.3.35已发布iOS已有会话的后续消息动效与旧图片预览保留，继承0.3.34的首条发送动效；支持文字、图片与文件、多附件、仅附件、快速确认、失败返回编辑及待确认防重复，历史与页头保持。其[发布计划](docs/superpowers/plans/2026-10-24-followup-message-motion-release.md)与[公共凭证](docs/superpowers/plans/evidence/2026-10-24-followup-message-motion-release.json)保留当次验收口径。
 
@@ -363,7 +363,7 @@ npm run test:e2e
 
 ## 移动端构建
 
-仅在用户明确要求发布时，由本机已有 `releasectl` 协调正式发布；普通任务合入 main 或推送分支都不发包，也不更新冻结批次清单。`main` 的冻结批次清单变化才触发 GitHub 双端构建；已授权且未指定范围的客户端发布使用双端批次，共用 prepare 预留版本，全部构建与校验成功后创建同一个 GitHub Release。用户指定 OTA-only 时，使用独立 `codex-mobile-ios-ota-production` 目标，仍整合到 main、分配更高版本并生成共同验收凭证，但只发布已签名 IPA 到 HTTPS OTA 和固定 LAN，不创建 GitHub Release、APK 或软件源版本。配置、任务命令和恢复验收见 [发布协调说明](docs/release-coordination.md)；npm 包继续按需手动发布。
+仅在用户明确要求发布时，由本机已有 `releasectl` 的 `codex-mobile-github-release` 项目协调正式发布；普通任务合入 main 或推送分支都不发包，也不更新冻结批次清单。`main` 的冻结批次清单变化才触发 GitHub 双端构建；已授权的客户端批次共用 prepare 预留版本，全部构建与校验成功后创建同一个 GitHub APK／unsigned IPA Release，再更新固定APK及既有unsigned软件源。现行 `mobile-unsigned` 阶段严格为 `main → build → apk → source → verify`，不进行本机iOS构建、签名、HTTPS OTA或固定IPA更新；旧mobile／OTA项目和模板仅供历史冻结合同回溯。配置、任务命令和恢复验收见 [发布协调说明](docs/release-coordination.md)；npm 包继续按需手动发布。
 
 Android App 固定检查局域网更新清单
 `http://192.168.123.79:8765/channels/codex-mobile/latest.json`，发现新版本后从固定地址
@@ -371,11 +371,9 @@ Android App 固定检查局域网更新清单
 调起系统安装器。手机必须与更新服务器处于同一局域网；首次使用需要在 Android 系统中
 允许 Codex Mobile 安装未知应用，App 不支持静默安装。
 
-iOS 支持在本机局域网执行 Ad Hoc 自动签名与 HTTPS OTA。证书和密码保存在本机私有目录，
-协调器复用本机构建和签名脚本，更新固定安装页与 LAN IPA；已签名包仅用于 HTTPS OTA 和固定 LAN 渠道，不再发布到软件源。[Cloudflare 软件源](https://signos-source-aggregator.305301890.workers.dev/sources/yao.json) 只自动同步本仓库 GitHub Release 的 unsigned IPA，安装前需自行签名，维护规则见 [SignOs 软件源文档](https://github.com/zh0ngtian/SignOs/blob/main/distribution/source-aggregator/README.md)。iOS 的旧界面和原生界面都只展示当前版本，不做自动或手动更新检查，也不显示升级提示；启动和回前台不请求更新源。安装新版本请在 Safari 打开[固定 OTA 安装页](https://192.168.123.79:8766/channels/codex-mobile/current/install.html)。
-历史 GitHub Release 的 unsigned IPA 不能直接 OTA 安装；正式发布使用本机签名产物。
-证书的 UDID、Bundle ID、Team ID 和 App ID prefix 必须兼容，升级数据保留需要旧安装身份一致。
-本机配置、局域网 CA 首次信任、HTTPS 服务及安装验收步骤见 [iOS OTA 发布文档](docs/ios-ota-release.md)。
+iOS 新版本通过 GitHub Release 的 unsigned IPA 和[既有软件源](https://signos-source-aggregator.305301890.workers.dev/sources/yao.json)分发，安装前由用户自行签名；软件源维护规则见 [SignOs 软件源文档](https://github.com/zh0ngtian/SignOs/blob/main/distribution/source-aggregator/README.md)。现行发布不读取本机签名材料或HTTPS OTA，不覆盖历史固定IPA。iOS 的旧界面和原生界面都只展示当前版本，不做自动或手动更新检查，也不显示升级提示；启动和回前台不请求更新源。
+
+历史已签名包、OTA服务、固定IPA、证书及私有配置保留原位，不删除、不迁移；[历史 iOS OTA 文档](docs/ios-ota-release.md)仅用于回溯和旧包诊断，不再作为新版本操作步骤。
 
 仓库使用固定提交的 PakePlus Android/iOS 项目作为原生容器，并把当前 `dist/` 静态
 资源内置到 App。构建产物只包含上述固定更新服务器地址，不包含网关 Token 或其他私人配置。
@@ -386,7 +384,7 @@ Android 安装包保持竖屏。iOS App 在 iPhone、iPad 及应用内浏览器�
 本项目发布要求：
 
 - GitHub 双端构建和本地构建复用 `mobile/*/build-recipe.yml`，版本高于全部 GitHub Release 标签及仓库下限；本机渠道超前时，先更新 `mobile-version-floor.json` 或手动指定更高版本。npm 包按需手动测试、构建和发布。
-- 已获用户发布授权的客户端任务独立开发并登记已验证提交，协调入口整合、复验、冻结并推送批次，再发布高于 Android、iOS 两个固定渠道现有版本的统一版本 APK 和已签名 IPA；APK 使用 `apk-server.py publish-channel codex-mobile`，IPA 复用适配器签名和发布阶段，并回验两端固定清单、HEAD、完整 GET 大小与 SHA-256。明确指定的 OTA-only 批次只构建和回验 IPA，复用相同发布锁和签名身份检查。
+- 已获用户发布授权的客户端任务独立开发并登记已验证提交，协调入口整合、复验、冻结并推送批次，再发布统一版本GitHub APK／unsigned IPA、固定APK及软件源。版本高于全部GitHub Release、固定APK／历史IPA、仓库下限及失败预留；prepare无需签名配置或HTTPS。回验包括GitHub两端完整下载、固定APK清单／HEAD／完整GET及软件源版本、日志、署名与散列；成功凭证标明 `distribution=unsigned-only` 并保存 `unsigned-release.json`。交付提供本次Release、固定APK、unsigned IPA及软件源链接和两端大小／SHA-256，注明IPA未签名，不提供旧OTA作为本次安装入口。
 - 改动不涉及客户端运行代码、客户端引用的共用模块、原生桥接或影响客户端产物的构建配置时，不得触发客户端 Web、APK 或 IPA 的构建与发布；仅修改文档、规则、测试、服务端或不影响客户端产物的脚本时，均遵循此规则。服务端变更仍须验证和构建服务端，只有用户明确要求部署时才部署网关。具体约束见 [AGENTS.md](AGENTS.md)。
 
 本地构建配置与环境约定见 [构建说明](mobile/README.md)：
@@ -434,7 +432,7 @@ codex-mobile/
 
 - 非回环监听必须配置 Token；当前 Token 方案适用于可信局域网。
 - 跨不可信网络使用时，应增加 HTTPS、可信反向代理和正式身份认证。
-- 固定局域网更新地址会出现在仓库和 App 中；用户配置的网关地址、访问口令、Codex 登录态、API 密钥、本机会话、用户项目内容及签名私钥不提交到公开仓库。已签名 IPA 必须内嵌 provisioning profile，其中包含授权设备信息，详见 [iOS OTA 发布文档](docs/ios-ota-release.md)。
+- 固定局域网更新地址会出现在仓库和 App 中；用户配置的网关地址、访问口令、Codex 登录态、API 密钥、本机会话、用户项目内容及签名私钥不提交到公开仓库。历史已签名IPA含授权设备profile，继续保留原有私有材料与访问边界，详见 [历史 iOS OTA 文档](docs/ios-ota-release.md)。
 - App 中保存的设备地址和 Token 位于客户端本地存储，不会提交到本仓库。
 
 ## 会话图片加载
@@ -463,7 +461,7 @@ AgentApp 原生对话不显示独立“文件变更”按钮或增删行数统�
 - app-server 的持久化 `ThreadItem` 可能是有损表示，前端也会合并逻辑回合。
 - 不同 app-server 进程之间没有全局实时状态。Codex Desktop 与本项目使用独立进程
   时，网页无法仅靠 V2 列表接口准确显示桌面进程正在执行的任务。
-- 固定局域网 IPA 与 OTA 使用本机 Ad Hoc 签名产物，签名材料仅保存在仓库外。OTA 真机安装仍需 profile 授权设备及兼容的已安装身份。
+- 现行iOS交付为GitHub unsigned IPA及既有软件源，安装前需自行签名。历史固定IPA与OTA停止更新，旧包及仓库外签名材料保留；历史渠道可用不代表本次新版本已发布。
 
 ## 许可证
 
