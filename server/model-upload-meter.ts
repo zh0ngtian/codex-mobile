@@ -9,6 +9,11 @@ export interface ModelUploadUsage {
   requestCount: number;
 }
 
+export interface ModelUploadSource {
+  read(threadId: string): ModelUploadUsage | null;
+  subscribe(listener: (threadId: string, usage: ModelUploadUsage) => void): () => void;
+}
+
 export interface ModelRequestIdentity { threadId: string; turnId: string }
 
 function identifier(value: unknown): value is string {
@@ -29,21 +34,31 @@ export function modelRequestIdentity(metadata: unknown): ModelRequestIdentity | 
 type Turn = { lastRequest: number; usage: ModelUploadUsage };
 type Thread = { latest: Turn; turns: Map<string, Turn> };
 
-export class ModelUploadMeter {
+export class ModelUploadMeter implements ModelUploadSource {
   private epoch = randomUUID();
   private sequence = 0;
   private revision = 0;
   private threads = new Map<string, Thread>();
   private listeners = new Set<(threadId: string, usage: ModelUploadUsage) => void>();
+  private evictionListeners = new Set<(threadId: string) => void>();
 
   read(threadId: string): ModelUploadUsage | null {
     const usage = this.threads.get(threadId)?.latest.usage;
     return usage ? { ...usage } : null;
   }
 
+  snapshot(): Map<string, ModelUploadUsage> {
+    return new Map(Array.from(this.threads, ([threadId, thread]) => [threadId, { ...thread.latest.usage }]));
+  }
+
   subscribe(listener: (threadId: string, usage: ModelUploadUsage) => void) {
     this.listeners.add(listener);
     return () => { this.listeners.delete(listener); };
+  }
+
+  subscribeEvictions(listener: (threadId: string) => void) {
+    this.evictionListeners.add(listener);
+    return () => { this.evictionListeners.delete(listener); };
   }
 
   begin(identity: ModelRequestIdentity) {
@@ -63,7 +78,11 @@ export class ModelUploadMeter {
       thread.latest = turn;
       // 有界内存；旧回合仅用于防止迟到请求覆盖当前回合。
       while (thread.turns.size > 32) thread.turns.delete(thread.turns.keys().next().value!);
-      while (this.threads.size > 2048) this.threads.delete(this.threads.keys().next().value!);
+      while (this.threads.size > 2048) {
+        const removed = this.threads.keys().next().value!;
+        this.threads.delete(removed);
+        for (const listener of this.evictionListeners) listener(removed);
+      }
     }
     turn.lastRequest = request;
     turn.usage.lastRequestBytes = 0;

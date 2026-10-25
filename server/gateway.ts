@@ -18,7 +18,7 @@ import { BarkNotifications } from "./bark-notifications.js";
 import { FollowedThreadNotifications } from "./followed-thread-notifications.js";
 import { ImagePreviews } from "./image-preview.js";
 import { downloadFile } from "./file-download.js";
-import type { ModelUploadMeter } from './model-upload-meter.js';
+import type { ModelUploadSource } from './model-upload-meter.js';
 
 const MAX_APP_SERVER_MESSAGE_BYTES = 16 * 1024 * 1024;
 
@@ -51,7 +51,7 @@ export interface GatewayOptions {
   uploadDir?: string;
   codexHome?: string;
   barkFetch?: typeof fetch;
-  uploadMeter?: ModelUploadMeter;
+  uploadMeter?: ModelUploadSource;
   onAuthModeChanged?: (mode: string | null) => void;
 }
 

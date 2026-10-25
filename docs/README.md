@@ -77,3 +77,6 @@
 - [2026-10-21 视频独立预览与侧栏修复双端发布](superpowers/plans/2026-10-21-video-preview-release.md)：0.3.27成功批次、双端固定渠道、签名连续性及九项独立回验；[公开凭证](superpowers/plans/evidence/2026-10-21-video-preview-release.json)。
 - [2026-10-21 顶部更多与直接侧栏布局双端发布](superpowers/plans/2026-10-21-sidebar-inline-release.md)：0.3.26成功批次、双端固定渠道与签名连续性独立回验；[公开凭证](superpowers/plans/evidence/2026-10-21-sidebar-inline-release.json)。
 - [2026-10-21 回复同步与侧栏操作双端发布](superpowers/plans/2026-10-21-completion-refresh-release.md)：0.3.25成功批次、双端渠道独立回验及真机待验收边界；[公开凭证](superpowers/plans/evidence/2026-10-21-completion-refresh-release.json)。
+
+- [桌面桥接模型请求计量接入方案](superpowers/plans/2026-10-25-desktop-model-upload-design.md)：已确认并完成本地实现，协调部署与用户重启激活待验收。
+- [上传计量网关部署计划](superpowers/plans/2026-10-25-model-upload-gateway-deploy.md)：本轮仅部署网关与桌面接入，不发布客户端。
