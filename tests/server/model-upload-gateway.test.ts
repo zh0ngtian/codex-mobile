@@ -8,9 +8,31 @@ import { tmpdir } from 'node:os';
 import WebSocket, { WebSocketServer } from 'ws';
 import { ModelUploadMeter } from '../../server/model-upload-meter.js';
 import { createGateway } from '../../server/gateway.js';
+import { publishDesktopModelUsage } from '../../server/model-upload-ipc.js';
+import { desktopMeterSocketPath, externalDesktopModelUsage } from '../../server/desktop-model-upload.js';
 
 const cleanup: Array<() => Promise<void>> = [];
 afterEach(async () => { for (const close of cleanup.splice(0).reverse()) await close(); });
+
+it('external 网关从同来源桌面 socket 读取实测值，远端 external 不读取本机统计', async () => {
+  const root = await mkdtemp('/tmp/upload-ext-'); cleanup.push(() => rm(root, { recursive: true, force: true }));
+  const upstreamUrl = 'ws://127.0.0.1:14550/rpc';
+  const meter = new ModelUploadMeter();
+  const publisher = await publishDesktopModelUsage({ socketPath: desktopMeterSocketPath(root), upstreamUrl, meter });
+  cleanup.push(() => publisher.close());
+  expect(externalDesktopModelUsage('ws://other-host:14550/rpc', root)).toBeUndefined();
+  const source = externalDesktopModelUsage(upstreamUrl, root)!; cleanup.push(() => source.close());
+  const gateway = await createGateway({ host: '127.0.0.1', port: 0, mode: 'external', upstreamUrl, staticDir: null, codexHome: root, uploadMeter: source });
+  cleanup.push(() => gateway.close());
+  const url = `http://127.0.0.1:${gateway.port}/api/rpc?sessionId=${randomUUID()}`;
+  const read = async () => (await (await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ requestId: randomUUID(), message: { id: 1, method: 'mobile/uploadUsage/read', params: { threadId: 'desktop-thread' } } }) })).json() as any).result.usage;
+  expect(await read()).toBeNull();
+  meter.begin({ threadId: 'desktop-thread', turnId: 'desktop-turn' })(321);
+  await expect.poll(async () => (await read())?.turnBytes).toBe(321);
+  await publisher.close();
+  await expect.poll(async () => read()).toBeNull();
+});
 
 it('HTTP 与 WebSocket 均可读取、实时接收及恢复统计，不读取或 resume 历史', async () => {
   const root = await mkdtemp(join(tmpdir(), 'upload-gateway-')); cleanup.push(() => rm(root, { recursive: true, force: true }));

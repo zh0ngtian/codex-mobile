@@ -25,8 +25,9 @@ export function modelUploadRoutes(config: RoutingConfig,
 }
 
 /** 通过 Codex 自己解析用户配置及 profile；不复制 TOML 解析和优先级规则。 */
-export async function readModelUploadRoutes(environment: Record<string, string | undefined>) {
-  const child = spawn('codex', ['app-server', '--listen', 'stdio://'], {
+export async function readModelUploadRoutes(environment: Record<string, string | undefined>,
+  options: { executable?: string; args?: string[] } = {}) {
+  const child = spawn(options.executable ?? 'codex', [...(options.args ?? []), 'app-server', '--listen', 'stdio://'], {
     env: environment, stdio: ['pipe', 'pipe', 'ignore'],
   });
   const lines = createInterface({ input: child.stdout });

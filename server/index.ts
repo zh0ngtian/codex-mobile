@@ -10,6 +10,7 @@ import {
 } from "./app-server-manager.js";
 import { readCodexProjectState } from "./codex-projects.js";
 import { writeRuntimeAccess } from "./runtime-access.js";
+import { externalDesktopModelUsage } from './desktop-model-upload.js';
 
 const runtime = resolveRuntimeConfig();
 const gatewayRuntime = resolveGatewayRuntimeConfig(
@@ -24,6 +25,7 @@ assertGatewaySecurity(
 );
 const managed =
   runtime.mode === "managed" ? await startManagedAppServer(runtime.upstreamPort) : null;
+const desktopMeter = runtime.mode === 'external' ? externalDesktopModelUsage(runtime.upstreamUrl) : undefined;
 let gateway: Gateway;
 try {
   gateway = await createGateway({
@@ -70,10 +72,11 @@ try {
         return false;
       }
     },
-    uploadMeter: managed?.uploadMeter,
+    uploadMeter: managed?.uploadMeter ?? desktopMeter,
     onAuthModeChanged: managed?.onAuthModeChanged,
   });
 } catch (error) {
+  await desktopMeter?.close();
   await managed?.close();
   throw error;
 }
@@ -92,6 +95,7 @@ async function stop() {
   if (stopping) return;
   stopping = true;
   await gateway.close();
+  await desktopMeter?.close();
   await managed?.close();
   process.exit(0);
 }

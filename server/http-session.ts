@@ -13,7 +13,7 @@ import { InlineImages } from "./inline-images.js";
 import { MessageTimestamps } from "./message-timestamps.js";
 import type { BarkNotifications } from "./bark-notifications.js";
 import { SidebarSummaryIndex, validSidebarParams } from "./sidebar-summary-index.js";
-import type { ModelUploadMeter, ModelUploadUsage } from './model-upload-meter.js';
+import type { ModelUploadSource, ModelUploadUsage } from './model-upload-meter.js';
 
 export interface RpcMessage {
   id?: string | number;
@@ -762,7 +762,7 @@ export class HttpSessions {
   private timestamps: MessageTimestamps;
   private hostedRequests = new Map<string, { message: RpcMessage; originalId: string | number; epoch: string; sessionId: string }>();
   private hostedListeners = new Set<(message: RpcMessage) => void>();
-  constructor(private options: { upstreamUrl: string; codexHome?: string; changeHistory?: TurnChangeHistory; notifications?: BarkNotifications; uploadMeter?: ModelUploadMeter; onAuthModeChanged?: (mode: string | null) => void }) {
+  constructor(private options: { upstreamUrl: string; codexHome?: string; changeHistory?: TurnChangeHistory; notifications?: BarkNotifications; uploadMeter?: ModelUploadSource; onAuthModeChanged?: (mode: string | null) => void }) {
     this.root = join(options.codexHome ?? process.env.CODEX_HOME ?? join(homedir(), ".codex"), "codex-mobile-http");
     this.timestamps = new MessageTimestamps(options.codexHome ?? process.env.CODEX_HOME ?? join(homedir(), ".codex"));
     this.images = new InlineImages(join(options.codexHome ?? process.env.CODEX_HOME ?? join(homedir(), ".codex"), "codex-mobile-inline-images"));

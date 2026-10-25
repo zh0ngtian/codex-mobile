@@ -14,6 +14,7 @@ import urllib.parse
 import urllib.request
 
 from .state import atomic_json, read_json, sha256
+from .desktop_meter import DesktopMeterInstall
 
 MARKER = '.codex-mobile-deployment.json'
 BUILD_COMMAND = ['npm', 'run', 'build:server']
@@ -101,6 +102,8 @@ class Gateway:
         self.build_log = self.root / 'gateway-build.log'
         self.sha = adapter.context['frozen']['sha']
         self.batch = adapter.context['id']
+        desktop_options = options.get('gateway_desktop_meter')
+        self.desktop_meter = DesktopMeterInstall(desktop_options, self.package) if desktop_options else None
 
     def _record(self):
         return read_json(self.record_path) if self.record_path.exists() else {}
@@ -185,6 +188,8 @@ class Gateway:
         record = self._record()
         if record.get('identity') != self._identity() or not self._matches(self.package, record):
             return {'done': False, 'result': {'reason': 'gateway_files'}}
+        if self.desktop_meter and not self.desktop_meter.check(record.get('desktopMeter', {})):
+            return {'done': False, 'result': {'reason': 'desktop_meter_files'}}
         intent = record.get('restart', {})
         pid = self._pid()
         if (not intent.get('intent') or pid is None or pid == intent.get('oldPid') or
@@ -193,6 +198,8 @@ class Gateway:
         receipt = {**self._identity(), **record['digests'], 'deploymentId': f'{self.batch}:{self.sha}',
                    'pid': pid, 'oldPid': intent.get('oldPid'), 'service': self.service,
                    'package': str(self.package), 'archiveSha256': record['archiveSha256']}
+        if self.desktop_meter:
+            receipt['desktopMeter'] = self.desktop_meter.receipt(record['desktopMeter'])
         return {'done': True, 'result': receipt}
 
     def _build(self):
@@ -237,6 +244,11 @@ class Gateway:
         if self.adapter.command(['git', 'status', '--porcelain', '--untracked-files=no'], cwd=self.work).strip():
             raise RuntimeError('网关冻结 worktree 存在未提交修改')
         startup = self._startup()
+        if self.desktop_meter:
+            environment = read_json(self.target / 'gateway-env.json')
+            if (environment.get('CODEX_APP_SERVER_MODE') != 'external' or
+                    environment.get('CODEX_APP_SERVER_URL') != self.desktop_meter.options['upstreamUrl']):
+                raise RuntimeError('桌面计量接入必须保持已确认的 external 网关来源')
         tree_digest(self.package / 'dist')
         original = read_json(self.package / 'package.json')
         frozen = read_json(self.work / 'package.json')
@@ -272,6 +284,8 @@ class Gateway:
         pending.replace(self.archive)
         record = {'identity': self._identity(), 'prepared': True, 'digests': digests,
                   'startup': startup, 'archiveSha256': sha256(self.archive)}
+        if self.desktop_meter:
+            record['desktopMeter'] = self.desktop_meter.prepare(self.work / 'npm-dist/server/desktop-model-upload.js')
         self._save(record)
         self.adapter.progress('gateway_prepared', sha=self.sha, **digests)
         return record
@@ -336,6 +350,8 @@ class Gateway:
         record = self._prepare()
         if not self._matches(self.package, record):
             self._install(record)
+        if self.desktop_meter:
+            self.desktop_meter.install(record['desktopMeter'])
         if not record.get('restart', {}).get('intent'):
             record['restart'] = {'intent': True, 'oldPid': self._pid(strict=True), 'startedAt': time.time()}
             self._save(record)

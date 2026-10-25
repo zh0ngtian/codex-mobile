@@ -127,6 +127,8 @@ class Adapter:
         if args != ['npm', 'run', 'build:server']:
             raise AssertionError(f'unexpected build: {args}')
         put(self.work / 'npm-dist/server/index.js', 'new server')
+        if self.options.get('gateway_desktop_meter'):
+            put(self.work / 'npm-dist/server/desktop-model-upload.js', 'export const runDesktopModelUpload = () => 0;')
         stdout.write(b'> codex-mobile build:server\n> tsc -p tsconfig.npm.json\n')
         return types.SimpleNamespace(returncode=self.build_exit_code)
 
@@ -173,6 +175,28 @@ class GatewayTests(unittest.TestCase):
             builder = patch.object(self.module.subprocess, 'run', self.adapter.build)
             builder.start()
             self.addCleanup(builder.stop)
+
+    def test_opted_in_desktop_install_is_receipted_without_restarting_desktop(self):
+        path = self.adapter.root / 'desktop-codex'
+        original = '#!/node\n// existing desktop adapter\n'
+        path.write_text(original); path.chmod(0o700)
+        self.adapter.root.chmod(0o700)
+        self.adapter.options['gateway_desktop_meter'] = {
+            'adapterPath': str(path), 'originalSha256': hashlib.sha256(original.encode()).hexdigest(),
+            'nodeExecutable': '/path/to/node', 'codexExecutable': '/path/to/codex',
+            'socketPath': str(self.adapter.root / 'private/meter.sock'), 'upstreamUrl': 'ws://127.0.0.1:14550/rpc'}
+        put(self.adapter.live / 'gateway-env.json', json.dumps({'CODEX_APP_SERVER_MODE': 'external',
+            'CODEX_APP_SERVER_URL': 'ws://127.0.0.1:14550/rpc', 'PORT': '19876'}))
+        self.adapter.http_payload = {'mode': 'external', 'upstreamUrl': 'ws://127.0.0.1:14550/rpc'}
+        gateway = self.module.Gateway(self.adapter)
+        result = gateway.run()
+        self.assertEqual(result['desktopMeter']['activation'], 'requires-user-desktop-restart')
+        self.assertTrue(gateway.check()['done'])
+        self.assertEqual(path.with_name(path.name + '.pre-model-upload').read_text(), original)
+        self.assertIn('runDesktopModelUpload', path.read_text())
+        self.assertFalse(any('osascript' in item or 'com.openai.codex' in item for call in self.adapter.calls for item in call))
+        path.write_text('drift')
+        self.assertFalse(gateway.check()['done'])
 
     def test_server_only_deploy_preserves_frontend_dependencies_and_startup(self):
         self.assertFalse(self.gateway.check()['done'])

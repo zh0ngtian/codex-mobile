@@ -146,3 +146,9 @@ status 返回原任务 `complete`，或 `recovered` 且 `recovered_by` 指向成
 本地 153 项 Python 发布/恢复回归、78 项构建契约、typecheck 和上游 19 项并发/窗口/冻结/租约/不可变关联修复检查通过。额外隔离验收实际终止负责人进程，验证租约未到期拒绝接管、到期后接管，发布只发生一次且凭证冻结 SHA 不变；真实 HTTP 替身验证响应丢失不重复发包、单渠道失败保留另一端成功。验证日志与 owner-interruption.json 在状态目录 `validations/codex-mobile-20261013/`。规范与质量独立审查通过。
 
 当前仍是用户登录启动，未安装登录前系统 LaunchDaemon。构建验签/渠道可用不等于真机覆盖安装或数据保留；当前未进行该真机验收。额外全量 UI 探查发现 5 个旧图片/视频/边栏用例失败；相关客户端源码、UI 测试及依赖锁相对接入前未改动，不把这些用例宣称通过。
+
+## 桌面共享服务计量的可选安装
+
+网关任务的私有项目配置可显式提供 `options.gateway_desktop_meter`：`adapterPath`、`originalSha256`、`nodeExecutable`、`codexExecutable`、`socketPath`、`upstreamUrl`。仅用于用户已确认的桌面计量接入；必须与既有网关external模式和完整上游URL一致，不允许隐式切换模式。协调器构建服务端后核对并备份原桌面适配器，在原位置原子安装启动层；恢复按原件、启动层及模块散列验收，未知漂移拒绝覆盖。原始备份位于同一私有目录并保留原名字加 `.pre-model-upload`，不上传私有配置或材料。
+
+此安装不重启桌面App，也不更改全局Codex配置、现有网关环境或桌面控制桥接。成功网关receipt的 `desktopMeter.activation=requires-user-desktop-restart` 只证明安装和网关部署成功；必须另等用户手动重启，再核对同一桌面共享服务和实测计量，才能把计量标为生产生效。本轮首次接入仍待该部署及激活验收。

@@ -28,20 +28,26 @@ export function resolveGatewayRuntimeConfig(
   };
 }
 
-export function appServerCommand(port: number, overrides: ReadonlyArray<readonly [string, string]> = []) {
+export function modelUploadConfigArgs(overrides: ReadonlyArray<readonly [string, string]>) {
   // Codex 的 -c 路径按点直接分割；提供商 ID 使用一个 TOML 内联表覆盖，避免引号成为 ID 的一部分。
   const providers = overrides.flatMap(([key, value]) => {
     const match = /^model_providers\.(".*")\.base_url$/.exec(key);
     return match ? [`${match[1]}={base_url=${JSON.stringify(value)}}`] : [];
   });
   return [
+    ...overrides.filter(([key]) => !key.startsWith('model_providers.')).flatMap(([key, value]) => ['-c', `${key}=${JSON.stringify(value)}`]),
+    ...(providers.length ? ['-c', `model_providers={${providers.join(',')}}`] : []),
+  ];
+}
+
+export function appServerCommand(port: number, overrides: ReadonlyArray<readonly [string, string]> = []) {
+  return [
     "app-server",
     "--enable",
     "realtime_conversation",
     "--listen",
     `ws://127.0.0.1:${port}`,
-    ...overrides.filter(([key]) => !key.startsWith('model_providers.')).flatMap(([key, value]) => ['-c', `${key}=${JSON.stringify(value)}`]),
-    ...(providers.length ? ['-c', `model_providers={${providers.join(',')}}`] : []),
+    ...modelUploadConfigArgs(overrides),
   ];
 }
 
