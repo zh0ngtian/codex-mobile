@@ -22,6 +22,7 @@ import UIKit
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        view.tintColor = .label
         view.backgroundColor = UIColor.black.withAlphaComponent(0.22)
         view.accessibilityViewIsModal = true
 

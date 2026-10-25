@@ -33,7 +33,7 @@ struct NativeUIHost<Legacy: View>: View {
                             .environment(bridge.agentSession)
                             .environment(bridge.agentPreferences)
                             .environment(\.locale, Locale(identifier: bridge.agentPreferences.isEnglish ? "en" : "zh-Hans"))
-                            .tint(bridge.agentPreferences.accent.color)
+                            .tint(AgentTheme.ink)
                             #if DEBUG
                             .modifier(AgentTypographyFixture())
                             #endif

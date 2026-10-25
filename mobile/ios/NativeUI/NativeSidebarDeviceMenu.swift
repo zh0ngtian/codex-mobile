@@ -82,7 +82,7 @@ struct NativeSidebarDeviceMenu: View {
                 if selected {
                     Image(systemName: "checkmark")
                         .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(NativePalette.accent).accessibilityHidden(true)
+                        .foregroundStyle(.primary).accessibilityHidden(true)
                 }
             }
             .modifier(NativeScaledFont(size: 13, scale: store.snapshot.fontScale, weight: .medium))

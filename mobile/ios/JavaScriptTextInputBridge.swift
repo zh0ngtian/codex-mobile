@@ -54,6 +54,7 @@ final class CodexMobileJavaScriptTextInputBridge: NSObject, WKScriptMessageHandl
         let id = UUID()
         requestID = id
         let dialog = UIAlertController(title: prompt, message: nil, preferredStyle: .alert)
+        dialog.view.tintColor = .label
         dialog.view.accessibilityIdentifier = "codex.javascript.text-input"
         dialog.addTextField { input in
             input.text = defaultText

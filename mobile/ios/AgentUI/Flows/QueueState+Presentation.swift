@@ -23,7 +23,7 @@ extension QueueState {
 
     var color: Color {
         switch self {
-        case .queued, .sending, .guiding: .accentColor
+        case .queued, .sending, .guiding: .primary
         case .failed: .red
         case .uncertain: .orange
         }

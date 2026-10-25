@@ -215,6 +215,7 @@ final class CodexMobileAttachmentPickerBridge: NSObject, WKScriptMessageHandler,
         reply(id: id, files: files, error: error)
         if let error, let presenter = presenter() {
             let alert = UIAlertController(title: "无法读取附件", message: error, preferredStyle: .alert)
+            alert.view.tintColor = .label
             alert.addAction(UIAlertAction(title: "确定", style: .default))
             presenter.present(alert, animated: true)
         }

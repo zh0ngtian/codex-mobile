@@ -24,7 +24,7 @@ struct NativeRootView: View {
             Button(store.label("保存", "Save")) { store.confirmTextPrompt(prompt) }
                 .disabled(store.promptValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }
-        .tint(NativePalette.accent)
+        .tint(.primary)
         .environment(\.locale, Locale(identifier: store.snapshot.locale))
     }
     private var settingsBinding: Binding<Bool> {

@@ -1,7 +1,6 @@
 import SwiftUI
 
 struct QuestionOptionButton: View {
-    @Environment(AppPreferences.self) private var preferences
     let title: String
     var detail = ""
     let selected: Bool
@@ -12,7 +11,7 @@ struct QuestionOptionButton: View {
             HStack(alignment: .top, spacing: 8) {
                 Image(systemName: selected ? "largecircle.fill.circle" : "circle")
                     .font(.body)
-                    .foregroundStyle(selected ? preferences.accent.color : Color.secondary)
+                    .foregroundStyle(selected ? AgentTheme.ink : Color.secondary)
                     .accessibilityHidden(true)
                     .padding(.top, 1)
                 VStack(alignment: .leading, spacing: 4) {
@@ -30,10 +29,10 @@ struct QuestionOptionButton: View {
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
             .frame(minHeight: 44)
-            .background(selected ? preferences.accent.color.opacity(0.07) : AgentTheme.page, in: RoundedRectangle(cornerRadius: 12))
+            .background(selected ? AgentTheme.ink.opacity(0.07) : AgentTheme.page, in: RoundedRectangle(cornerRadius: 12))
             .overlay {
                 RoundedRectangle(cornerRadius: 12)
-                    .strokeBorder(selected ? preferences.accent.color.opacity(0.6) : AgentTheme.line)
+                    .strokeBorder(selected ? AgentTheme.ink.opacity(0.6) : AgentTheme.line)
             }
             .contentShape(RoundedRectangle(cornerRadius: 12))
         }

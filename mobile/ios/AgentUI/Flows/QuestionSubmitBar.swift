@@ -14,11 +14,12 @@ struct QuestionSubmitBar: View {
             Spacer(minLength: 0)
             Button(action: submit) {
                 HStack(spacing: 8) {
-                    if request.submitting { ProgressView().tint(.white) }
+                    if request.submitting { ProgressView().tint(AgentTheme.page) }
                     Text(request.submitting ? preferences.text("正在提交…", "Submitting…") : preferences.text("提交回答", "Submit answers"))
                         .font(.body)
                 }
             }
+            .foregroundStyle(AgentTheme.page)
             .buttonStyle(.borderedProminent)
             .controlSize(.regular)
             .frame(minHeight: 44)

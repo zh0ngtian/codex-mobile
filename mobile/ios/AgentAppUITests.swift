@@ -296,11 +296,13 @@ final class AgentAppUITests: XCTestCase {
         let row = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "模型提问选择窗口")).firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: 12)); row.tap()
         XCTAssertTrue(app.buttons["conversation.actions"].waitForExistence(timeout: 10))
+        let initialMessage = app.textViews.matching(NSPredicate(format: "value == %@", "请调整模型总结按钮的位置。")).firstMatch
+        XCTAssertTrue(initialMessage.waitForExistence(timeout: 12), "等待会话历史就绪后再注入异步提问")
         let composer = app.textFields["message-input"]
         XCTAssertTrue(composer.waitForExistence(timeout: 5)); composer.tap(); composer.typeText("保留的未发送草稿")
         _ = try await state("/question?running=1&fail=1")
         let sheet = app.buttons["question.submit"]
-        XCTAssertTrue(sheet.waitForExistence(timeout: 12))
+        XCTAssertTrue(sheet.waitForExistence(timeout: 30), "首次提问须等待真实网关同步及原生窗口呈现")
         XCTAssertFalse(app.buttons["question.submit"].isEnabled)
         let option = app.buttons.matching(identifier: "与“取消／保存”放在同一排").firstMatch
         XCTAssertTrue(option.waitForExistence(timeout: 5)); option.tap()
@@ -2451,7 +2453,9 @@ final class AgentAppUITests: XCTestCase {
         captureConversation("系统导航栏-干净状态", app: app)
         app.buttons["会话列表"].tap()
         app.buttons["sidebar.more"].tap()
-        app.buttons["sidebar.settings"].tap()
+        let settings = app.buttons["设置"]
+        XCTAssertTrue(settings.waitForExistence(timeout: 5))
+        settings.tap()
         XCTAssertTrue(app.navigationBars["设置"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.descendants(matching: .any)["settings.form"].exists, "设置应使用系统表单")
         captureConversation("系统设置表单", app: app)

@@ -86,6 +86,7 @@ final class CodexMobileActionMenuBridge: NSObject, WKScriptMessageHandler, UIAda
         guard var presenter = webView.window?.rootViewController else { finish(actionID: nil); return }
         while let presented = presenter.presentedViewController { presenter = presented }
         let menu = UIAlertController(title: nil, message: nil, preferredStyle: .actionSheet)
+        menu.view.tintColor = .label
         for entry in entries {
             guard entry["id"] is String, let title = entry["title"] as? String else { continue }
             let action = UIAlertAction(title: title, style: entry["destructive"] as? Bool == true ? .destructive : .default) { [weak self] _ in

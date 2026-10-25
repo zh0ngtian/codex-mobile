@@ -230,7 +230,7 @@ struct RootView: View {
         case .nativePanel(let id):
             if let panel = session.nativePanel, panel.id == id, let store = session.nativeStore {
                 NativePanelView(panel: panel, store: store)
-                    .tint(panel.id.hasPrefix("file:") ? AgentTheme.ink : preferences.accent.color)
+                    .tint(AgentTheme.ink)
             }
         }
     }
