@@ -48,7 +48,7 @@ function desktopArguments(args: string[]) {
       index++;
     } else if (/^--(?:config|profile|enable|disable)=/.test(value) || /^-[cp].+/.test(value)) flags.push(value);
     else if (value === '--stdio' || value.startsWith('--listen=')) transport = true;
-    else if (['--help', '-h', '--version', '-V'].includes(value)) help = true;
+    else if (['--help', '-h', '--version', '-V', '--print-startup-config'].includes(value)) help = true;
     else if (value === '--') { subcommand = args[index + 1]; break; }
     else if (!value.startsWith('-')) { if (!command) command = value; else subcommand ??= value; }
   }

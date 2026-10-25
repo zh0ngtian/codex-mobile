@@ -13,7 +13,7 @@ it('只接入桌面持有工具管道的 canonical app-server，不接管其他 
   const env = { CODEX_APP_TOOLS_PIPE_PATH: '/private/tool-pipe' };
   expect(desktopAppServer(['-c', 'features.a=true', 'app-server', '--analytics-default-enabled'], env)).toBe(true);
   expect(desktopAppServer(['app-server'], {})).toBe(false);
-  for (const args of [['exec', 'hello'], ['exec', 'app-server'], ['help', 'app-server'], ['app-server', '--listen', 'stdio://'], ['app-server', 'daemon', 'version'], ['app-server', 'generate-ts'], ['app-server', '--help']]) {
+  for (const args of [['exec', 'hello'], ['exec', 'app-server'], ['help', 'app-server'], ['app-server', '--listen', 'stdio://'], ['app-server', 'daemon', 'version'], ['app-server', 'generate-ts'], ['app-server', '--help'], ['app-server', '--print-startup-config']]) {
     expect(desktopAppServer(args, env)).toBe(false);
   }
   expect(desktopAppServer(['app-server', '--profile', 'help'], env)).toBe(true);
