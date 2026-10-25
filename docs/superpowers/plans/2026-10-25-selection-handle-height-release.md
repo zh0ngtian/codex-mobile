@@ -10,6 +10,8 @@
 
 **Tech Stack:** releasectl、Python unittest、Vitest、TypeScript、GitHub Actions、Xcode、既有 Ad Hoc 签名、HTTPS OTA、固定 LAN 渠道与 GitHub unsigned IPA 软件源。
 
+**收尾基线与边界：** 正式批次成功后，纯文档收尾以工作区 HEAD 与远端 main `ec4e1582394bbd6cefa3af957cf09a86d30bcf48` 为开始修改基线；只更新 README、文档索引、交互约定、本计划及公共白名单凭证。主工作区既有10项暂存仍保留，最终回执独立规格／质量审查、共享锁下文档推送和清理由主代理完成。
+
 ---
 
 ## 文件与职责
@@ -17,8 +19,10 @@
 | 文件或证据 | 职责与修改范围 |
 | --- | --- |
 | `release/notes.md` | 本批各渠道共用的中文用户变化日志；覆盖上一正式0.3.35之后的实际客户端变化 |
-| `docs/interaction-alignment.md` | 追加本次发布已授权、准备中及待验边界；保留源码和模拟器已验证记录，不提前改为已发布 |
+| `README.md`、`docs/README.md` | 正式成功后更新现役版本及四项客户端变化，保留0.3.35历史语义 |
+| `docs/interaction-alignment.md` | 准备阶段记录授权与待验边界；成功后就地更新本轮四项现行状态，保留源码验收时点与无关未发布功能的状态 |
 | 本计划 | 发布准备、审查、四门禁、协调器正式发布、独立回验与纯文档收尾的执行清单 |
+| `docs/superpowers/plans/evidence/2026-10-25-selection-handle-height-release.json` | 原字节保存经白名单筛选的公共渠道凭证 |
 | `.mobile-build/selection-height-20261025/`（长期主工作区） | 上一轮源码 TDD RED／GREEN、xcresult、截图、源码散列与 `source-delivery.json`，只读复用 |
 | `~/Library/Application Support/ReleaseCoordinator/validations/selection-handle-height-20261025/` | 本轮私有断言、门禁、预检、审查及渠道回验材料，不加入 Git |
 
@@ -118,12 +122,12 @@
 
 四门禁对应私有目录的 `adapter-regression`、`coordinator-recovery`、`build-contract`、`typecheck` 同名 JSON／log；`checks-complete.json` 汇总通过结果。首轮 adapter 回归与 `npm ci` 并发，在依赖未就绪时因缺少 jsdom 导致两项失败，原始 `adapter-regression-before-dependencies.*` 保留；依赖安装完成后，同一未改产品代码完整重跑217项通过，不放宽断言。`development-evidence-recheck.json` 已核对三份修复源码散列、最终六项 GREEN 与截图一致。上述结果在独立审查前完成，仍不能据此标为已发布。
 
-- [ ] 对本次准备变更及所复用功能来源完成独立规格审查，再完成独立质量审查；实质问题修复并按影响范围复验后再进入 ready。
-- [ ] 按中文 Conventional Commits 提交准备文件；主代理统一推送固定来源 SHA，`validation.json` 绑定该 SHA、四个真实 `passed` 门禁及证据。推送前核对最新远端 main；有新提交时，对整合结果运行相关回归，无新提交时复用已有验证。
+- [x] 对本次准备变更及所复用功能来源完成独立规格审查，再完成独立质量审查；均passed，无未解决实质问题。私有记录为 `spec-review.json`、`quality-review.json`。
+- [x] 按中文 Conventional Commits 提交准备文件；主代理统一推送固定来源 `a21092efa35521cca4690d51f88755297afb5106`，`validation.json` 绑定该 SHA、四个真实 `passed` 门禁及证据；来源推送前的远端 main 核对已完成。
 
 ## 任务四：固定来源 ready 与协调器正式发布
 
-- [ ] 主代理完成最终来源核对后，在发布分支执行 ready；准备实现者不调用此命令。
+- [x] 主代理完成最终来源核对后，在发布分支执行 ready，绑定来源 `a21092efa35521cca4690d51f88755297afb5106`；准备实现者未调用此命令。
 
   ```bash
   release_source_sha=$(git rev-parse HEAD)
@@ -132,27 +136,53 @@
   "$HOME/.local/bin/releasectl" status --task selection-handle-height-release-20261025
   ```
 
-- [ ] 由协调器在 `codex-mobile-main-production` 共享锁下整合 main、分配高于现役全部渠道的统一双端版本、冻结来源并推送；由同一批次完成正式 CI、设备构建、Ad Hoc 签名、HTTPS OTA、固定 LAN APK／已签名 IPA、GitHub 双端 Release 与 unsigned 软件源阶段。
-- [ ] 保留并核对同一成功批次 receipt：任务与实时状态为 complete，或 recovered 且指向成功子批次；最终 SHA 包含发布来源及选择杆功能提交，全部必要阶段成功，版本、构建号、正式和开发 CI 来源一致。排队、冻结、单个渠道成功均不算交付。
+- [x] 由协调器在 `codex-mobile-main-production` 共享锁下整合 main、分配0.3.36（3036）、冻结并推送 `ec4e1582394bbd6cefa3af957cf09a86d30bcf48`；同一正常批次完成正式 CI、设备构建、Ad Hoc 签名、HTTPS OTA、固定 LAN APK／已签名 IPA、GitHub 双端 Release 与 unsigned 软件源全部必要阶段。
+- [x] 保留并初步核对同一成功批次 receipt：任务与正常批次 `7a86258c-6c83-4162-b9d2-0cd7bc5d8b43` 均complete，无恢复子批次；冻结 SHA 包含发布来源及选择杆功能提交，全部必要阶段成功，版本、构建号、正式和开发 CI 来源一致。最终独立回执规格／质量审查仍按任务五末项待完成。
 
 恢复规则：暂时只读失败继续原冻结批次；永久失败保留现场，仅登记显式关联最新失败叶的修复任务，不 resume、重写或重新分配失败批次。正式渠道和 main 的写入始终通过协调入口，不使用单独上传或手工版本替代。
 
 ## 任务五：独立完整下载回验
 
-- [ ] 核对固定 Android JSON `http://192.168.123.79:8765/channels/codex-mobile/latest.json`，再对[固定 APK](http://192.168.123.79:8765/channels/codex-mobile/latest.apk)执行 HEAD 和完整 GET；核对本次实际版本、文件大小、SHA-256 及来源与同一成功 receipt 一致。
-- [ ] 核对固定 iOS JSON `http://192.168.123.79:8765/channels/codex-mobile/latest-ios.json`，再对[固定已签名 IPA](http://192.168.123.79:8765/channels/codex-mobile/latest.ipa)执行 HEAD 和完整 GET；核对与 APK 的统一版本、大小、SHA-256。下载后的 IPA 独立验签，并与真实兼容基准核对 Bundle ID、Team、application-identifier、完整权限和钥匙串组连续性。
-- [ ] 使用项目 CA 核对[固定 HTTPS OTA 安装页](https://192.168.123.79:8766/channels/codex-mobile/current/install.html)、同前缀的 `latest-ios.json`、manifest、版本化已签名 IPA 的 HEAD 与完整 GET，确认与 LAN 已签名包一致；保留 `ota-release.json`。不把验签或模拟器验证当作真机覆盖安装和数据保留已验证。
-- [ ] 独立完整下载 GitHub 本次 APK 与 `CodexMobile-*-unsigned.ipa`，核对 Release tag、冻结来源、版本／构建号、大小和 SHA-256。unsigned IPA 不覆盖 HTTPS OTA 或固定 LAN 的已签名 IPA。
-- [ ] 核对[普通软件源](https://signos-source-aggregator.305301890.workers.dev/sources/yao.json)及其现役 legacy 视图的本次 unsigned 版本、构建号、GitHub URL、大小和散列；核对真实同步结果、动态 GitHub 账号署名追加／保留，以及原开发者和展示信息仍完整。已签名 IPA 不上传或订阅到软件源。
-- [ ] 逐条核对 GitHub Release、LAN、OTA 与软件源实际展示的中文更新日志，必须等于本批冻结的四条用户变化；没有版本号、SHA、构建分发模板，也没有网关已部署或上传计量后端已上线的错误承诺。
-- [ ] 对成功 receipt、实际下载、渠道审计和公开白名单凭证先做独立规格审查，再做独立质量审查；记录未解决项，全部实质问题关闭后才标为已发布。
+- [x] 核对固定 Android JSON `http://192.168.123.79:8765/channels/codex-mobile/latest.json`，再对[固定 APK](http://192.168.123.79:8765/channels/codex-mobile/latest.apk)执行 HEAD 和完整 GET；核对本次实际版本、文件大小、SHA-256 及来源与同一成功 receipt 一致。
+- [x] 核对固定 iOS JSON `http://192.168.123.79:8765/channels/codex-mobile/latest-ios.json`，再对[固定已签名 IPA](http://192.168.123.79:8765/channels/codex-mobile/latest.ipa)执行 HEAD 和完整 GET；核对与 APK 的统一版本、大小、SHA-256。下载后的 IPA 独立验签，并与真实兼容基准核对 Bundle ID、Team、application-identifier、完整权限和钥匙串组连续性。
+- [x] 使用项目 CA 核对[固定 HTTPS OTA 安装页](https://192.168.123.79:8766/channels/codex-mobile/current/install.html)、同前缀的 `latest-ios.json`、manifest、版本化已签名 IPA 的 HEAD 与完整 GET，确认与 LAN 已签名包一致；保留 `ota-release.json`。不把验签或模拟器验证当作真机覆盖安装和数据保留已验证。
+- [x] 独立完整下载 GitHub 本次 APK 与 `CodexMobile-*-unsigned.ipa`，核对 Release tag、冻结来源、版本／构建号、大小和 SHA-256。unsigned IPA 不覆盖 HTTPS OTA 或固定 LAN 的已签名 IPA。
+- [x] 核对[普通软件源](https://signos-source-aggregator.305301890.workers.dev/sources/yao.json)及其现役 legacy 视图的本次 unsigned 版本、构建号、GitHub URL、大小和散列；核对真实同步结果、动态 GitHub 账号署名追加／保留，以及原开发者和展示信息仍完整。已签名 IPA 不上传或订阅到软件源。
+- [x] 逐条核对 GitHub Release、LAN、OTA 与软件源实际展示的中文更新日志，必须等于本批冻结的四条用户变化；没有版本号、SHA、构建分发模板，也没有网关已部署或上传计量后端已上线的错误承诺。
+- [x] 对成功 receipt、实际下载、渠道审计和公开白名单凭证先做独立规格审查，再做独立质量审查；记录未解决项，全部实质问题关闭后才完成最终交付。
+
 
 ## 任务六：纯文档收尾与固定链接交付
 
-- [ ] 以实际成功 receipt 和独立回验更新本计划、交互约定、现役 README／文档索引及公共白名单凭证；只公开版本、来源、必要渠道与验证摘要，不提交私有原始 receipt、签名材料、UDID、认证信息或私有日志。
-- [ ] 在共享 main 写入互斥下核对最新远端 main；纯文档收尾只检查文字、JSON、链接及 `git diff --check`，按中文提交规范提交推送，不重复构建、签名、更新渠道或部署网关。停止本任务 heartbeat；已验证离线夹具无需归档真实会话，新建真实测试会话则在验证完成后及时归档。
-- [ ] 交付回复正文展示可点击的[固定 OTA 安装页](https://192.168.123.79:8766/channels/codex-mobile/current/install.html)、[固定 APK](http://192.168.123.79:8765/channels/codex-mobile/latest.apk)及[固定已签名 IPA](http://192.168.123.79:8765/channels/codex-mobile/latest.ipa)，附本次实际统一版本、两个包各自的字节大小和完整 SHA-256，并明确 IPA 为 Ad Hoc 已签名。保留真机覆盖安装、数据保留和真机视觉待现场验收边界。
+- [x] 以实际成功 receipt 和237项独立回验更新本计划、交互约定、现役 README／文档索引及公共白名单凭证；公共 JSON 与私有白名单输出原字节一致，只公开版本、来源、必要渠道与验证摘要，不提交私有原始 receipt、签名材料、UDID、认证信息或私有日志。最终独立规格与质量审查均通过，无未解决问题；纯文档收尾按共享main互斥提交推送。
+- [x] 在共享 main 写入互斥下核对最新远端 main；纯文档收尾只检查文字、JSON、链接及 `git diff --check`，按中文提交规范提交推送，不重复构建、签名、更新渠道或部署网关。停止本任务 heartbeat；已验证离线夹具无需归档真实会话，新建真实测试会话则在验证完成后及时归档。
+- [x] 交付回复正文展示可点击的[固定 OTA 安装页](https://192.168.123.79:8766/channels/codex-mobile/current/install.html)、[固定 APK](http://192.168.123.79:8765/channels/codex-mobile/latest.apk)及[固定已签名 IPA](http://192.168.123.79:8765/channels/codex-mobile/latest.ipa)，附本次实际统一版本、两个包各自的字节大小和完整 SHA-256，并明确 IPA 为 Ad Hoc 已签名。保留真机覆盖安装、数据保留和真机视觉待现场验收边界。
 
 ## 当前状态
 
-发布准备进行中。选择杆功能源码及六项模拟器回归已验证，中文日志 RED／GREEN、四门禁、客户端5文件135项回归、只读预检及审计工具19项自测已通过；独立审查、固定来源推送／ready、正式批次及全部渠道验收仍待完成。现役客户端仍按已有成功凭证记为0.3.35，本计划不分配或预测下一版本，不宣称本轮已发布或部署网关。
+正式双端发布成功，237项独立渠道回验passed；最终回执规格与质量审查均通过，质量19项检查通过，无未解决问题。现役文档、公共凭证及本计划已同步；纯文档收尾按共享main互斥提交推送，不再次构建或更新渠道。任务heartbeat已停止，发布工作区在交付收尾时归档。选择杆六项模拟器GREEN、中文日志RED／GREEN、四门禁、客户端5文件135项回归、只读预检与审计工具19项自测均保留原证据；本轮纯文档收尾只检查文字、JSON、链接及差异，不重跑客户端构建或发布。
+
+| 项目 | 实际结果 |
+| --- | --- |
+| 任务／目标 | `selection-handle-height-release-20261025`／`codex-mobile-lan-production` |
+| 版本／构建号 | 0.3.36／3036 |
+| 发布来源 | `a21092efa35521cca4690d51f88755297afb5106` |
+| 冻结提交 | `ec4e1582394bbd6cefa3af957cf09a86d30bcf48` |
+| 正常批次 | `7a86258c-6c83-4162-b9d2-0cd7bc5d8b43`，任务与批次均complete |
+| 成功receipt SHA-256 | `6bc9c762af481283bf9ab186e8e863561d2afd6ea0b8692a9e0cf73654a4d902` |
+| 正式CI | [40162723132](https://github.com/zh0ngtian/codex-mobile/actions/runs/40162723132)，attempt 1、success |
+| 开发CI | [40162722953](https://github.com/zh0ngtian/codex-mobile/actions/runs/40162722953)，attempt 1、success，同一冻结提交 |
+| GitHub Release | [v0.3.36](https://github.com/zh0ngtian/codex-mobile/releases/tag/v0.3.36) |
+| 独立渠道回验 | 237项passed，项目CA验证通过；完整审计SHA-256为 `52e27fab82827ee8ef20cc53a46b012906ce57df538497e4b2319a615c149817` |
+| 公共白名单凭证 | [本次公共JSON](evidence/2026-10-25-selection-handle-height-release.json)，原字节SHA-256为 `1c0a2ae58718574b3e6ddb345d694cc43771fb5f94c450152e0c0698568dad83` |
+
+固定安装入口为[HTTPS OTA安装页](https://192.168.123.79:8766/channels/codex-mobile/current/install.html)。本次实际包元数据如下，固定链接后续会随新版本覆盖：
+
+| 安装包 | 版本（构建号） | 字节大小 | SHA-256 |
+| --- | --- | --- | --- |
+| [固定APK](http://192.168.123.79:8765/channels/codex-mobile/latest.apk) | 0.3.36（3036） | 4753707 | `40716e38326ecc4badd2d941780f2d60227eeb9a1af24998f0538038b42971e5` |
+| [固定IPA](http://192.168.123.79:8765/channels/codex-mobile/latest.ipa)，Ad Hoc已签名 | 0.3.36（3036） | 5030316 | `7f308a89751831079afb4b7a3517138a15fc95fe2a92472dd9873dfb3fff5e5e` |
+
+OTA版本化包与上述LAN已签名IPA大小及散列一致。软件源0.3.36（3036）保持动态读取的 `zh0ngtian` 署名，订阅GitHub unsigned IPA，大小5023893字节、SHA-256为 `36aa61a342c56e8b991bdeac086eef368594c50b6e1d96dbabbc509fd0ed8aae`；未签名包未覆盖LAN或OTA已签名包。
+
+本轮客户端发布四项用户变化为选择杆高度、自动命名就绪与当前页名称同步、上传计量显示字段、中途结构化提问收进执行过程。本轮没有部署生产网关，上传计量后端仍未部署；网关不提供统计时两个字段继续显示“暂无数据”。真机覆盖安装、数据保留、真机视觉及真实Bark送达均未验证，模拟器和构建验签不扩展为这些结论。公共凭证只保留白名单摘要，原始receipt、完整审计、签名配置、UDID和日志继续保存在仓库外私有目录。

@@ -23,9 +23,11 @@
 
 ## 当前发布入口
 
-现役双端客户端为0.3.35（3035），iOS后续消息也支持从输入区连续交接到用户气泡，保留历史、页头、附件与原队列语义；连续发送时远端加载慢或失败的旧图保留已显示预览。继承0.3.34首次发布的首条发送动效，失败可返回编辑，待确认时防止重复发送。固定APK、Ad Hoc已签名IPA、HTTPS OTA、GitHub unsigned IPA及软件源已完成237项独立回验。见[本次发布计划](superpowers/plans/2026-10-24-followup-message-motion-release.md)与[公共凭证](superpowers/plans/evidence/2026-10-24-followup-message-motion-release.json)。本轮未部署网关；真机覆盖安装、数据保留、真机动效及真实Bark送达仍待现场验收。
+现役双端客户端为0.3.36（3036），本版修复iOS选择杆包含段后留白、自动命名过早与已保存名称未同步当前页的问题；“用量与额度”新增“最近请求上传”和“本轮累计上传”字段；已有后续最终回答的中途结构化提问收进“执行过程”，待回答问题继续可见。固定APK、Ad Hoc已签名IPA、HTTPS OTA、GitHub unsigned IPA及软件源已完成237项独立回验，正式批次成功，最终回执规格与质量审查均通过。见[本次发布计划](superpowers/plans/2026-10-25-selection-handle-height-release.md)与[公共凭证](superpowers/plans/evidence/2026-10-25-selection-handle-height-release.json)。本轮未部署网关，上传计量后端仍未部署，网关未提供统计时两个字段显示“暂无数据”；真机覆盖安装、数据保留、真机视觉及真实Bark送达仍待现场验收。
 
-标题总结固定 `gpt-6-luna`、`low` 和Fast已另行完成仅网关部署，成功批次 `51b36234-ea37-4ba9-a7ac-c9b4375086dd`、冻结提交 `0dea2a1`。实际安装模块的手动／automatic两种HTTP入口协议探测通过，原会话和全局设置无写入；该次部署时固定客户端0.3.32的版本、大小、散列未变；当前客户端0.3.35的状态以上方本轮发布凭证为准。探测使用回环协议替身，不调用真实模型或Bark。见[部署计划](superpowers/plans/2026-10-23-title-luna-gateway-deploy.md)与[公共凭证](superpowers/plans/evidence/2026-10-23-title-luna-gateway-deploy.json)。
+此前0.3.35已发布后续消息从输入区连续交接到用户气泡和旧图片预览保留，继承0.3.34的首条发送动效，历史、页头、附件及队列语义保持；其[发布计划](superpowers/plans/2026-10-24-followup-message-motion-release.md)与[公共凭证](superpowers/plans/evidence/2026-10-24-followup-message-motion-release.json)保留当次验收口径。
+
+标题总结固定 `gpt-6-luna`、`low` 和Fast已另行完成仅网关部署，成功批次 `51b36234-ea37-4ba9-a7ac-c9b4375086dd`、冻结提交 `0dea2a1`。实际安装模块的手动／automatic两种HTTP入口协议探测通过，原会话和全局设置无写入；该次部署时固定客户端0.3.32的版本、大小、散列未变；当前客户端0.3.36的状态以上方本轮发布凭证为准。探测使用回环协议替身，不调用真实模型或Bark。见[部署计划](superpowers/plans/2026-10-23-title-luna-gateway-deploy.md)与[公共凭证](superpowers/plans/evidence/2026-10-23-title-luna-gateway-deploy.json)。
 
 版本以在线清单为准，不能从 package.json 的开发版本、文档示例或历史记录推断：
 
@@ -45,6 +47,8 @@
 `plans/` 与 `superpowers/plans/` 保留设计决策、实施过程和当次验证证据，不是另一套现役操作说明。未勾选的旧计划项不自动成为当前待办；应先检查后续提交、交付记录与运行态。两处目录维持原路径，避免破坏既有引用。
 
 近期可追溯记录：
+
+- [2026-10-25 选择杆高度修复默认双端发布](superpowers/plans/2026-10-25-selection-handle-height-release.md)：0.3.36成功批次、选择杆／自动命名／上传显示字段／中途提问四项客户端变化、237项独立渠道回验与最终审查；[公共凭证](superpowers/plans/evidence/2026-10-25-selection-handle-height-release.json)。
 
 - [2026-10-24 后续消息发送连续过渡](plans/2026-10-24-followup-message-motion.md)：后续文字与附件连续交接、保留历史与页头及旧图片预览，12项不同功能UI和用户录像视觉验收通过，已随0.3.35双端发布；渠道回验见[发布计划](superpowers/plans/2026-10-24-followup-message-motion-release.md)与[公共凭证](superpowers/plans/evidence/2026-10-24-followup-message-motion-release.json)。
 

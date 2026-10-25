@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "status": "complete",
+  "version": "0.3.36",
+  "buildNumber": "3036",
+  "sourceCommit": "a21092efa35521cca4690d51f88755297afb5106",
+  "mobile": {
+    "taskId": "selection-handle-height-release-20261025",
+    "batchId": "7a86258c-6c83-4162-b9d2-0cd7bc5d8b43",
+    "frozenCommit": "ec4e1582394bbd6cefa3af957cf09a86d30bcf48",
+    "receiptSha256": "6bc9c762af481283bf9ab186e8e863561d2afd6ea0b8692a9e0cf73654a4d902",
+    "ciRunId": 40162723132,
+    "ciAttempt": 1,
+    "developmentCiRunId": 40162722953,
+    "developmentCiAttempt": 1,
+    "releaseUrl": "https://github.com/zh0ngtian/codex-mobile/releases/tag/v0.3.36"
+  },
+  "apk": {
+    "version": "0.3.36",
+    "buildNumber": "3036",
+    "size": 4753707,
+    "sha256": "40716e38326ecc4badd2d941780f2d60227eeb9a1af24998f0538038b42971e5",
+    "downloadUrl": "http://192.168.123.79:8765/channels/codex-mobile/latest.apk"
+  },
+  "ipa": {
+    "version": "0.3.36",
+    "buildNumber": "3036",
+    "size": 5030316,
+    "sha256": "7f308a89751831079afb4b7a3517138a15fc95fe2a92472dd9873dfb3fff5e5e",
+    "downloadUrl": "http://192.168.123.79:8765/channels/codex-mobile/latest.ipa",
+    "signed": true,
+    "signing": "Ad Hoc",
+    "entitlementsSha256": "1e84a4c1ba74b9e374c364f26fefa112ceeea09de1a0ba0600403a763eb7952f"
+  },
+  "ota": {
+    "installPageUrl": "https://192.168.123.79:8766/channels/codex-mobile/current/install.html",
+    "jsonUrl": "https://192.168.123.79:8766/channels/codex-mobile/current/latest-ios.json",
+    "manifestUrl": "https://192.168.123.79:8766/channels/codex-mobile/releases/0.3.36/manifest.plist",
+    "downloadUrl": "https://192.168.123.79:8766/channels/codex-mobile/releases/0.3.36/latest.ipa",
+    "size": 5030316,
+    "sha256": "7f308a89751831079afb4b7a3517138a15fc95fe2a92472dd9873dfb3fff5e5e",
+    "signed": true
+  },
+  "softwareSource": {
+    "version": "0.3.36",
+    "buildVersion": "3036",
+    "developerName": "zh0ngtian",
+    "downloadURL": "https://github.com/zh0ngtian/codex-mobile/releases/download/v0.3.36/CodexMobile-v0.3.36-unsigned.ipa",
+    "size": 5023893,
+    "sha256": "36aa61a342c56e8b991bdeac086eef368594c50b6e1d96dbabbc509fd0ed8aae",
+    "signed": false
+  },
+  "notes": "- 修复 iOS 列表文字选择杆过长，排除段后留白并保留原有间距、复制和引用操作。\n- 修复自动命名触发过早及已保存标题未同步当前页面的问题，无需退出会话即可更新名称。\n- “用量与额度”新增“最近请求上传”和“本轮累计上传”，支持显示网关提供的模型请求载荷字节数。\n- 已有后续最终回答的中途结构化提问收进“执行过程”，展开后保留问题与选项，待回答问题继续可见。",
+  "verification": {
+    "channelChecks": 237,
+    "projectCaVerified": true,
+    "realDeviceInstall": "not_verified",
+    "dataPreservation": "not_verified",
+    "realBarkDelivery": "not_verified",
+    "gateway": "not_deployed_or_verified",
+    "channelAuditSha256": "52e27fab82827ee8ef20cc53a46b012906ce57df538497e4b2319a615c149817"
+  }
+}
