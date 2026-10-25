@@ -27,6 +27,38 @@ function fixture(change?: (batch: any) => void, notes: string | null = "- 新增
 }
 
 describe("冻结批次来源门禁", () => {
+  it("GitHub-only批次输出双端版本并绑定冻结来源", () => {
+    const f = fixture(b => {
+      b.project = "codex-mobile-github-only";
+      b.target = "codex-mobile-github-only";
+      b.environment = "github-only";
+    });
+    try {
+      const result = f.run();
+      expect(result.status, result.stderr).toBe(0);
+      expect(JSON.parse(result.stdout)).toMatchObject({ release_required: "true", release_tag: "v0.2.148",
+        app_version: "0.2.148", app_version_code: "2148", source_commit: f.frozen });
+    } finally { f.cleanup(); }
+  });
+  it.each(["project", "target", "environment", "scope"])("GitHub-only拒绝借用旧%s", field => {
+    const f = fixture(b => {
+      const old = b[field];
+      b.project = "codex-mobile-github-only";
+      b.target = "codex-mobile-github-only";
+      b.environment = "github-only";
+      b[field] = field === "scope" ? "other" : old;
+    });
+    try { expect(f.run().status).not.toBe(0); } finally { f.cleanup(); }
+  });
+  it.each(["version", "buildNumber"])("GitHub-only仍要求有效%s", field => {
+    const f = fixture(b => {
+      b.project = "codex-mobile-github-only";
+      b.target = "codex-mobile-github-only";
+      b.environment = "github-only";
+      delete b.prepared[field];
+    });
+    try { expect(f.run().status).not.toBe(0); } finally { f.cleanup(); }
+  });
   it("独立 OTA 批次绑定版本和来源，但不触发 GitHub 双端构建或 Release", () => {
     const f = fixture(b => { b.project = "codex-mobile-ios-ota-production"; b.environment = "ota-production"; });
     try {

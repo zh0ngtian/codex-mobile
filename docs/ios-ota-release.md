@@ -2,7 +2,7 @@
 
 ## 发布协调边界
 
-自2026-10-25起，用户确认停止本机iOS签名、HTTPS OTA及固定LAN IPA更新。现行客户端只通过 `codex-mobile-github-release` 的 `mobile-unsigned` 范围交付GitHub APK／unsigned IPA、固定APK及既有软件源，不读取本机签名配置和证书，不进行下文操作。新流程、真实批次状态及交付要求见[发布协调说明](release-coordination.md)与[仓库 AGENTS.md](../AGENTS.md)；本次切换的真实批次仍待验收。
+自2026-10-25起，用户确认停止本机iOS签名、HTTPS OTA及固定LAN IPA更新，随后进一步停止Android局域网分发。现行客户端只通过 `codex-mobile-github-only` 的 `mobile-github-only` 范围交付GitHub APK／unsigned IPA及既有iOS软件源，不访问LAN或签名配置，不进行下文操作；8765服务保持停止和disabled，旧文件保留不删。新流程、真实批次状态及交付要求见[发布协调说明](release-coordination.md)与[仓库 AGENTS.md](../AGENTS.md)；本次切换的真实批次仍待验收。
 
 本页以下内容整体保留为历史冻结批次、旧包身份和安装诊断资料，不是现役发布操作手册。历史已签名包、HTTPS服务与launchd配置、固定IPA、证书、描述文件、私有配置、旧成功和失败凭证均保留原位，不删除或迁移，也不以unsigned IPA覆盖旧签名包。文中的“当前”“日常”“正式发布”等措辞描述切换前的历史合同；新源码的分发策略会拒绝旧mobile／mobile-ota配置。
 

@@ -211,9 +211,8 @@ class UnsignedReleaseTests(unittest.TestCase):
                     a.check_phase('verify')
                 self.assertFalse((a.root / 'unsigned-release.json').exists())
 
-    def test_repository_policy_and_new_template_agree(self):
+    def test_historical_unsigned_template_keeps_previous_contract(self):
         root = Path(__file__).resolve().parents[2]
-        self.assertEqual(json.loads((root / 'release/distribution-policy.json').read_text()), POLICY)
         template = json.loads((root / 'release/coordinator.unsigned.example.json').read_text())
         self.assertEqual(template['id'], 'codex-mobile-github-release')
         self.assertEqual(template['options']['kind'], 'mobile-unsigned')
