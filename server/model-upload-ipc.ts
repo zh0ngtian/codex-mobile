@@ -8,6 +8,7 @@ import { type ModelUploadMeter, type ModelUploadSource, type ModelUploadUsage } 
 const MAX_FRAME_BYTES = 4096;
 const MAX_PENDING_BYTES = 1024 * 1024;
 const MAX_THREADS = 2048;
+const MAX_CONNECTIONS = 32;
 const usageKeys = ['epoch', 'revision', 'turnId', 'lastRequestBytes', 'turnBytes', 'requestCount'];
 
 type Address = { socketPath: string; upstreamUrl: string };
@@ -112,7 +113,7 @@ export async function publishDesktopModelUsage({ socketPath, upstreamUrl, meter 
     return !identifier(threadId) || !usage || send(socket, { type: 'usage', threadId, usage });
   }
   const server = createServer(socket => {
-    if (closed) { socket.destroy(); return; }
+    if (closed || sockets.size >= MAX_CONNECTIONS) { socket.destroy(); return; }
     sockets.add(socket);
     socket.on('error', () => socket.destroy());
     socket.on('close', () => sockets.delete(socket));

@@ -224,6 +224,18 @@ describe('桌面模型计量本机 IPC', () => {
     await waitFor(() => source.read('thread-a')?.turnBytes === 20000);
   });
 
+  it('最多接受32个同时连接，释放连接后可重新订阅', async () => {
+    const { publishDesktopModelUsage } = await ipc(); const { socketPath } = await location();
+    const publisher = await publishDesktopModelUsage({ socketPath, upstreamUrl, meter: new ModelUploadMeter() }); cleanup.push(() => publisher.close());
+    const clients: Socket[] = [];
+    for (let index = 0; index < 32; index++) { const client = await rawConnect(socketPath); client.resume(); clients.push(client); }
+    const excess = await rawConnect(socketPath); let rejected = false; excess.on('close', () => { rejected = true; }); excess.resume();
+    await waitFor(() => rejected);
+    const firstClosed = once(clients[0], 'close'); clients[0].destroy(); await firstClosed;
+    const replacement = await rawConnect(socketPath); let received = ''; replacement.on('data', chunk => { received += chunk.toString(); });
+    await waitFor(() => received.includes('hello'));
+  });
+
   it('关闭清理连接和自己的socket，不删除后来替换的文件且停止重连', async () => {
     const { publishDesktopModelUsage, connectDesktopModelUsage } = await ipc(); const { socketPath } = await location();
     const publisher = await publishDesktopModelUsage({ socketPath, upstreamUrl, meter: new ModelUploadMeter() });
