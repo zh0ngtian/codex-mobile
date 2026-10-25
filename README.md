@@ -73,7 +73,7 @@ http://<电脑局域网IP>:18766/?token=<随机口令>
 
 客户端不设置设备数量上限，可同时维持所有已启用设备的连接；保存和恢复完整设备列表及排序。
 
-最近已验收客户端为0.3.36（3036）：修复iOS列表文字选择杆过长，排除段后留白并保留间距、复制和引用；自动命名等待用户消息就绪，并将已保存名称同步到当前页面；“用量与额度”新增“最近请求上传”和“本轮累计上传”，显示网关提供的请求载荷字节数；已有后续最终回答的中途结构化提问收进“执行过程”，展开后保留问题和选项，待回答问题继续可见。该历史批次的双端固定渠道、HTTPS OTA、GitHub与unsigned软件源独立回验237项通过，见[发布计划](docs/superpowers/plans/2026-10-25-selection-handle-height-release.md)与[公共凭证](docs/superpowers/plans/evidence/2026-10-25-selection-handle-height-release.json)。2026-10-25用户先停止本机iOS签名与HTTPS OTA，随后要求Android也停止局域网分发；现行新范围仅交付GitHub APK／unsigned IPA及既有iOS软件源。8765服务保持停止和disabled，旧包与材料保留不删。旧0.3.37含LAN批次已失败保留，GitHub-only新源码尚未发布；worktree映射网关已由成功批次 `8574742b-24e0-4a42-8150-77d543498280` 部署，并通过真实目标最新五条回验，本轮不重复部署。
+最近已验收客户端为0.3.36（3036）：修复iOS列表文字选择杆过长，排除段后留白并保留间距、复制和引用；自动命名等待用户消息就绪，并将已保存名称同步到当前页面；“用量与额度”新增“最近请求上传”和“本轮累计上传”，显示网关提供的请求载荷字节数；已有后续最终回答的中途结构化提问收进“执行过程”，展开后保留问题和选项，待回答问题继续可见。该历史批次的双端固定渠道、HTTPS OTA、GitHub与unsigned软件源独立回验237项通过，见[发布计划](docs/superpowers/plans/2026-10-25-selection-handle-height-release.md)与[公共凭证](docs/superpowers/plans/evidence/2026-10-25-selection-handle-height-release.json)。2026-10-25用户先停止本机iOS签名与HTTPS OTA，随后要求Android也停止局域网分发；现行新范围仅交付GitHub APK／unsigned IPA及既有iOS软件源。8765服务保持停止和disabled，旧包与材料保留不删。旧0.3.37含LAN批次已失败保留；后续0.3.38的GitHub附件与软件源已发布，但最终完整下载验收失败，关联修复新批次尚未成功，见发布协调说明；worktree映射网关已由成功批次 `8574742b-24e0-4a42-8150-77d543498280` 部署，并通过真实目标最新五条回验，本轮不重复部署。
 
 此前0.3.35已发布iOS已有会话的后续消息动效与旧图片预览保留，继承0.3.34的首条发送动效；支持文字、图片与文件、多附件、仅附件、快速确认、失败返回编辑及待确认防重复，历史与页头保持。其[发布计划](docs/superpowers/plans/2026-10-24-followup-message-motion-release.md)与[公共凭证](docs/superpowers/plans/evidence/2026-10-24-followup-message-motion-release.json)保留当次验收口径。
 

@@ -79,6 +79,53 @@ class ReleaseReadRecoveryTests(unittest.TestCase):
                 with self.assertRaises(RuntimeError) as caught: self.a.command(['curl', '-fsSL', 'https://read.test'], read_only=True)
                 self.assertNotIsInstance(caught.exception, self.m.TransientReadError)
 
+    def test_curl35_syscall_connection_failure_is_retryable_for_readonly_download(self):
+        diagnostic = 'curl: (35) LibreSSL SSL_connect: SSL_ERROR_SYSCALL in connection to release-assets.githubusercontent.com:443'
+        output = self.a.root / 'verified-github.ipa'
+        with patch.object(self.a, 'request', return_value='content-length: 3'), patch.object(self.m.subprocess, 'run', return_value=self.reply(35, diagnostic)) as run:
+            with self.assertRaises(self.m.TransientReadError):
+                self.a.download_verified('https://release-assets.githubusercontent.com/asset', {'size':3,'sha256':'c'*64}, output)
+        self.assertEqual(run.call_count, 1)
+        self.assertFalse(output.exists())
+
+    def test_curl35_syscall_read_requests_keep_bounded_retry_semantics(self):
+        diagnostic = 'curl: (35) LibreSSL SSL_connect: SSL_ERROR_SYSCALL in connection to release-assets.githubusercontent.com:443'
+        for method in ['GET','HEAD']:
+            with self.subTest(method=method), patch.object(self.m.subprocess, 'run', return_value=self.reply(35, diagnostic, '\n000')) as run, patch.object(self.m.time, 'sleep'):
+                with self.assertRaises(self.m.TransientReadError): self.a.request('https://read.test', method)
+                self.assertEqual(run.call_count, 4)
+
+    def test_curl35_without_explicit_syscall_connection_diagnostic_is_permanent(self):
+        for diagnostic in ['curl: (35) SSL connect error', 'curl: (35) SSL_ERROR_SYSCALL',
+                           'curl: (35) error:0A000410:SSL routines::sslv3 alert handshake failure',
+                           'curl: (35) Failed setting cipher list: connection EOF']:
+            with self.subTest(diagnostic=diagnostic), patch.object(self.m.subprocess, 'run', return_value=self.reply(35, diagnostic)), patch('sys.stderr', new_callable=io.StringIO):
+                with self.assertRaises(RuntimeError) as caught: self.a.command(['curl','-fsSL','https://read.test'], read_only=True)
+                self.assertNotIsInstance(caught.exception, self.m.TransientReadError)
+
+    def test_curl35_syscall_diagnostic_cannot_override_permanent_errors(self):
+        connection = 'LibreSSL SSL_connect: SSL_ERROR_SYSCALL in connection to release-assets.githubusercontent.com:443'
+        for code, failure in [(35,'HTTP 401 unauthorized'), (35,'HTTP 403 forbidden'),
+                              (35,'SSL certificate problem'), (35,'certificate verify failed'),
+                              (35,'invalid configuration'), (35,'permission denied'),
+                              (35,'failed writing received data'), (60,'certificate problem'), (23,'failed to write')]:
+            with self.subTest(code=code, failure=failure), patch.object(self.m.subprocess, 'run', return_value=self.reply(code, connection + '\n' + failure)) as run, patch('sys.stderr', new_callable=io.StringIO):
+                with self.assertRaises(RuntimeError) as caught: self.a.command(['curl','-fsSL','https://read.test'], read_only=True)
+                self.assertNotIsInstance(caught.exception, self.m.TransientReadError)
+                self.assertEqual(run.call_count, 1)
+
+    def test_curl35_syscall_write_operations_are_never_retried_or_reclassified(self):
+        diagnostic = 'curl: (35) LibreSSL SSL_connect: SSL_ERROR_SYSCALL in connection to release-assets.githubusercontent.com:443'
+        with patch.object(self.m.subprocess, 'run', return_value=self.reply(35, diagnostic)) as run, patch('sys.stderr', new_callable=io.StringIO):
+            with self.assertRaises(RuntimeError) as caught: self.a.command(['curl','--request','POST','https://write.test'])
+            self.assertNotIsInstance(caught.exception, self.m.TransientReadError)
+            self.assertEqual(run.call_count, 1)
+        with patch.object(self.m.subprocess, 'run', return_value=self.reply(35, diagnostic, '\n000')) as run, patch.object(self.m.time, 'sleep') as sleep:
+            with self.assertRaises(RuntimeError) as caught: self.a.request('https://write.test', 'POST', data={})
+            self.assertNotIsInstance(caught.exception, self.m.TransientReadError)
+            self.assertEqual(run.call_count, 1)
+            sleep.assert_not_called()
+
     def test_main_remote_queries_are_explicitly_readonly(self):
         calls = []
         def command(args, **kwargs):

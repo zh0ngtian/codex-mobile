@@ -139,9 +139,11 @@ class Adapter:
     def transient_read_error(message, curl_code=None):
         # 本地写入、证书与鉴权优先于任何模糊的 EOF/connection 字样。
         network_codes = (5, 6, 7, 16, 18, 28, 52, 55, 56, 92, 95)
-        if curl_code is not None and curl_code not in (*network_codes, 22): return False
+        if curl_code is not None and curl_code not in (*network_codes, 22, 35): return False
         if re.search(r'HTTP(?:/\d(?:\.\d)?)?\s*[: ]\s*(401|403|404)\b|authentication failed|permission denied|x509:|certificate (?:problem|verify failed|signed by unknown authority|has expired)|SSL certificate|unable to get local issuer|no space left|failed writing|failed to (?:write|save)|invalid configuration', message, re.I):
             return False
+        if curl_code == 35:
+            return bool(re.search(r'\bSSL_ERROR_SYSCALL\b\s+in connection to\s+\S+', message, re.I))
         if curl_code in network_codes: return True
         statuses = re.findall(r'(?:HTTP(?:/\d(?:\.\d)?)?\s*[: ]\s*|returned error:\s*)(\d{3})\b', message, re.I)
         if statuses: return any(value in ('408', '429') or value.startswith('5') for value in statuses)
