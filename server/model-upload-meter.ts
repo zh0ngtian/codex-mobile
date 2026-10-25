@@ -9,6 +9,11 @@ export interface ModelUploadUsage {
   requestCount: number;
 }
 
+export interface ModelUploadSource {
+  read(threadId: string): ModelUploadUsage | null;
+  subscribe(listener: (threadId: string, usage: ModelUploadUsage) => void): () => void;
+}
+
 export interface ModelRequestIdentity { threadId: string; turnId: string }
 
 function identifier(value: unknown): value is string {
@@ -29,7 +34,7 @@ export function modelRequestIdentity(metadata: unknown): ModelRequestIdentity | 
 type Turn = { lastRequest: number; usage: ModelUploadUsage };
 type Thread = { latest: Turn; turns: Map<string, Turn> };
 
-export class ModelUploadMeter {
+export class ModelUploadMeter implements ModelUploadSource {
   private epoch = randomUUID();
   private sequence = 0;
   private revision = 0;
@@ -39,6 +44,10 @@ export class ModelUploadMeter {
   read(threadId: string): ModelUploadUsage | null {
     const usage = this.threads.get(threadId)?.latest.usage;
     return usage ? { ...usage } : null;
+  }
+
+  snapshot(): Map<string, ModelUploadUsage> {
+    return new Map(Array.from(this.threads, ([threadId, thread]) => [threadId, { ...thread.latest.usage }]));
   }
 
   subscribe(listener: (threadId: string, usage: ModelUploadUsage) => void) {
