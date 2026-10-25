@@ -9,7 +9,7 @@ import { AppBootstrap } from '../../src/App';
 import { HttpOperationPendingError } from '../../src/backends/http-transport';
 import * as threadListLoader from '../../src/app-server/thread-list-loader';
 import { saveBackendRegistry } from '../../src/backends/registry';
-const boundary = vi.hoisted(() => ({ metadata: null as any, pins: [] as string[], pinFailure: false, pinBarrier: null as Promise<void> | null, sidebarIndex: false, requests: [] as Array<{ method: string; params: any; options?: { priority?: string } }>, threadRecords: [] as Array<Record<string, any>>, threadReadBarrier: null as Promise<void> | null, projectBarrier: null as Promise<void> | null, priorityBarrier: null as Promise<void> | null, listBarrier: null as Promise<void> | null, searchBarrier: null as Promise<void> | null, listFailure: false, options: null as any, client: null as any, release: null as null | (() => void), failSend: false, immediateSend: false, nextThreadId: 'sent-thread', delayRevert: false, pendingMethod: '', releaseRevert: null as null | (() => void), rejectStart: null as null | (() => void) }));
+const boundary = vi.hoisted(() => ({ metadata: null as any, pins: [] as string[], pinFailure: false, pinBarrier: null as Promise<void> | null, sidebarIndex: false, requests: [] as Array<{ method: string; params: any; options?: { priority?: string } }>, threadRecords: [] as Array<Record<string, any>>, threadReadBarrier: null as Promise<void> | null, projectBarrier: null as Promise<void> | null, priorityBarrier: null as Promise<void> | null, listBarrier: null as Promise<void> | null, searchBarrier: null as Promise<void> | null, listFailure: false, options: null as any, client: null as any, release: null as null | (() => void), failSend: false, immediateSend: false, nextThreadId: 'sent-thread', nextThreadCwd: null as string | null, delayRevert: false, pendingMethod: '', releaseRevert: null as null | (() => void), rejectStart: null as null | (() => void) }));
 vi.mock('../../src/backends/connection-manager', () => ({ BackendConnectionManager: class {
  constructor(private options: any) { boundary.options = options; }
  client() { return boundary.client; } socket() { return null; } close() {} reconnect() {}
@@ -31,7 +31,7 @@ vi.mock('../../src/backends/connection-manager', () => ({ BackendConnectionManag
    if (method === 'thread/list' && params.cwd) { const records = boundary.threadRecords.filter(thread => thread.cwd === params.cwd); const offset = Number(params.cursor ?? 0); const end = offset + params.limit; return { data: records.slice(offset, end), nextCursor: end < records.length ? String(end) : null }; }
    if (method === 'thread/loaded/list') { await boundary.priorityBarrier; return { data: boundary.threadRecords.filter(thread => thread.status?.type === 'active').map(thread => thread.id), nextCursor: null }; }
    if (method === boundary.pendingMethod) throw new HttpOperationPendingError(`pending-${params.threadId}-${method}`, { id: 'pending-rpc', method, params });
-   if (method === 'thread/start') return { thread: { id: boundary.nextThreadId, cwd: null, turns: [] }, model: 'gpt' };
+   if (method === 'thread/start') return { thread: { id: boundary.nextThreadId, cwd: boundary.nextThreadCwd, turns: [] }, model: 'gpt' };
    if (method === 'thread/revert' && boundary.delayRevert) return new Promise(resolve => { boundary.releaseRevert = () => resolve({ thread: { id: params.threadId, turns: [] } }); });
    if (method === 'turn/start') { const turnId = params.threadId === 'thread-b' ? 'turn-b' : 'turn-live'; if (boundary.failSend) throw new Error('真实发送失败'); if (boundary.immediateSend) return { turn: { id: turnId, status: 'inProgress', items: [] } }; return new Promise((resolve, reject) => { boundary.release = () => resolve({ turn: { id: turnId, status: 'inProgress', items: [] } }); boundary.rejectStart = () => reject(new Error('旧会话发送失败')); }); }
    if (method === 'thread/turns/list') return { data: [], nextCursor: null };
@@ -51,7 +51,7 @@ function deferredRead() {
  pendingReads.push(resolve);
  return { promise, resolve, reject };
 }
-afterEach(async () => { cleanup(); await act(async () => { pendingReads.splice(0).forEach(resolve => resolve()); }); boundary.metadata = null; boundary.pins = []; boundary.pinFailure = false; boundary.pinBarrier = null; boundary.sidebarIndex = false; boundary.requests = []; boundary.threadRecords = []; boundary.threadReadBarrier = null; boundary.projectBarrier = null; boundary.priorityBarrier = null; boundary.listBarrier = null; boundary.searchBarrier = null; boundary.listFailure = false; boundary.client = null; boundary.options = null; boundary.release = null; boundary.failSend = false; boundary.immediateSend = false; boundary.nextThreadId = 'sent-thread'; boundary.delayRevert = false; boundary.pendingMethod = ''; boundary.releaseRevert = null; boundary.rejectStart = null; queueItems = []; posts.length = 0; localStorage.clear(); delete (window as any).__CODEX_NATIVE_UI__; delete (window as any).webkit; delete (window as any).codexMobilePublishNativeSnapshot; vi.unstubAllGlobals(); });
+afterEach(async () => { cleanup(); await act(async () => { pendingReads.splice(0).forEach(resolve => resolve()); }); boundary.metadata = null; boundary.pins = []; boundary.pinFailure = false; boundary.pinBarrier = null; boundary.sidebarIndex = false; boundary.requests = []; boundary.threadRecords = []; boundary.threadReadBarrier = null; boundary.projectBarrier = null; boundary.priorityBarrier = null; boundary.listBarrier = null; boundary.searchBarrier = null; boundary.listFailure = false; boundary.client = null; boundary.options = null; boundary.release = null; boundary.failSend = false; boundary.immediateSend = false; boundary.nextThreadId = 'sent-thread'; boundary.nextThreadCwd = null; boundary.delayRevert = false; boundary.pendingMethod = ''; boundary.releaseRevert = null; boundary.rejectStart = null; queueItems = []; posts.length = 0; localStorage.clear(); delete (window as any).__CODEX_NATIVE_UI__; delete (window as any).webkit; delete (window as any).codexMobilePublishNativeSnapshot; vi.unstubAllGlobals(); });
 async function setup(native = true, projectState = { projects: [] as string[], projectlessThreadIds: [] as string[] }, waitForSettings = true) {
  if (native) Object.assign(window, { __CODEX_NATIVE_UI__: true, webkit: { messageHandlers: { nativeUI: { postMessage() {} } } }, codexMobilePublishNativeSnapshot: (s: unknown) => posts.push(s) });
  vi.stubGlobal('fetch', vi.fn(async (url: string, options?: RequestInit) => {
@@ -590,6 +590,33 @@ it('发送失败保留原输入可恢复且原生命令返回关联错误', asyn
  expect(posts.at(-1).error).toBeTruthy();
 });
 
+it('无项目首条发送收到上游根目录后，完成及重新打开仍保持原生无项目目标', async () => {
+ const contextId = await setup(); boundary.immediateSend = true; boundary.nextThreadCwd = '/';
+ await act(async () => {
+  command('projectless-root-draft', 'draft.set', { contextId, value: '保留无项目目标', revision: 1 });
+  command('projectless-root-send', 'message.send', { contextId });
+ });
+ await waitFor(() => expect(posts.at(-1)?.threadId).toBe('sent-thread'));
+ expect(posts.at(-1)).toMatchObject({ projectName: '无项目', cwd: '' });
+ expect(boundary.requests.find(r => r.method === 'thread/start')?.params.cwd).toBeNull();
+ expect(JSON.parse(localStorage.getItem('codex-mobile:projectless-threads:a')!)).toContain('sent-thread');
+ await act(async () => boundary.options.onNotification('a', { method: 'turn/completed', params: { threadId: 'sent-thread', turn: { id: 'turn-live', status: 'completed', items: [] } } }, boundary.client));
+ expect(posts.at(-1)).toMatchObject({ projectName: '无项目', cwd: '' });
+ boundary.threadRecords = [{ id: 'sent-thread', cwd: '/', status: { type: 'idle' }, turns: [] }];
+ const request = boundary.client.request;
+ boundary.client.request = async (method: string, params: any, options: any) => {
+  if (method === 'thread/resume') {
+   boundary.requests.push({ method, params, options });
+   return { thread: boundary.threadRecords[0], model: 'gpt' };
+  }
+  return request(method, params, options);
+ };
+ await act(async () => command('projectless-root-leave', 'thread.new', { backendId: 'a', cwd: '' }));
+ await waitFor(() => expect(posts.at(-1)?.threadId).toBeUndefined());
+ await act(async () => command('projectless-root-reopen', 'thread.open', { backendId: 'a', threadId: 'sent-thread' }));
+ await waitFor(() => expect(posts.at(-1)).toMatchObject({ threadId: 'sent-thread', loading: 'ready', projectName: '无项目', cwd: '' }));
+});
+
 it.each([false, true])('无项目首条消息待确认时不误报未发送，原请求确认失败=%s', async failed => {
  const contextId = await setup(); boundary.pendingMethod = 'turn/start';
  await act(async () => {
@@ -637,7 +664,7 @@ it.each([false, true])('无项目创建请求迟到确认后恢复原输入，�
   response: { id: 'pending-rpc', result: { thread: { id: 'sent-thread', cwd: '/', turns: [] }, model: 'gpt' } },
  } }, boundary.client));
  await waitFor(() => expect(posts.at(-1)?.threadId).toBe('sent-thread'));
- expect(posts.at(-1)).toMatchObject({ pending: false, busy: false, draft: newerDraft ? '等待期间的新草稿' : '创建后继续发送', canSend: true, projectName: '无项目' });
+ expect(posts.at(-1)).toMatchObject({ pending: false, busy: false, draft: newerDraft ? '等待期间的新草稿' : '创建后继续发送', canSend: true, projectName: '无项目', cwd: '' });
  boundary.immediateSend = true;
  if (newerDraft) {
   expect(posts.at(-1).queued).toHaveLength(1);

@@ -12,6 +12,15 @@ function controller(overrides: Partial<NativeWorkspaceController> = {}): NativeW
  ...overrides };
 }
 describe('核心会话controller适配', () => {
+ it.each(['/', '/Users/test'])('无项目会话的上游执行目录为%s时，原生项目目标保持为空且不改写业务目录', cwd => {
+  const active = { id: 'projectless', cwd, isProjectless: true, turns: [] };
+  const snapshot = createWorkspaceAdapter(controller({ active }), { panelId: null, query: '', setPanel() {}, setQuery() {} }).snapshot;
+  expect(snapshot).toMatchObject({ threadId: 'projectless', projectName: '无项目', cwd: '' });
+  expect(active.cwd).toBe(cwd);
+  const project = createWorkspaceAdapter(controller({ active: { ...active, isProjectless: false } }), { panelId: null, query: '', setPanel() {}, setQuery() {} }).snapshot;
+  expect(project.cwd).toBe(cwd);
+  expect(project.projectName).not.toBe('无项目');
+ });
  it.each([undefined, { secondary: { windowDurationMins: 10080, usedPercent: 28, resetsAt: 1800000000 } }])('有无额度快照都经真实window桥打开照片和文件选择器：%j', async rateLimits => {
   const target = window as Window & { codexMobilePickAttachments?: (kind: string) => Promise<File[]> };
   const previous = target.codexMobilePickAttachments;

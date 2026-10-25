@@ -122,7 +122,9 @@ export function createWorkspaceAdapter(c: NativeWorkspaceController, panel: Pane
   const snapshot: NativeSnapshot = { ...emptyNativeSnapshot(), ready: true, locale: getActiveLocale(), fontScale: FONT_SCALES[readFontSize()],
     quotes: state.quotes ?? [], quoteFocusToken: state.quoteFocusToken,
     sidechatActive: state.sidechatActive === true, sidechatParentId: state.sidechatParentId, sidechatActions: state.sidechatActions,
-    title: String(c.active?.name || c.active?.preview || t('新会话')), backendId: c.backend.id, threadId: c.active?.id ? String(c.active.id) : undefined, cwd: typeof c.active?.cwd === 'string' ? c.active.cwd : undefined, contextId: c.contextId,
+    title: String(c.active?.name || c.active?.preview || t('新会话')), backendId: c.backend.id, threadId: c.active?.id ? String(c.active.id) : undefined,
+    // 原生 cwd 表示项目选择；实际执行目录继续保存在业务线程中。
+    cwd: c.active?.isProjectless === true ? '' : typeof c.active?.cwd === 'string' ? c.active.cwd : undefined, contextId: c.contextId,
     backendName: c.backend.name, projectName: !c.active?.id && !c.active?.cwd ? t('无项目') : projectNameOf(c.active ?? {}),
     draftRevision: c.draftRevision, caretOffset, mentions, richContent: panel.richContent, connection: c.connection, busy: c.busy, draft: c.draft, canSend: hasInput && !c.readOnly && !c.imageReading && !c.draftSaving,
     canInterrupt: c.busy && !!c.active?.id && !c.readOnly, readOnly: c.readOnly, messages,
