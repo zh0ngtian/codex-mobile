@@ -9,6 +9,23 @@ import tempfile
 from .state import sha256
 
 
+def desktop_meter_options(options, tasks):
+    """安装输入随任务验证冻结；不改变现役项目的目标、环境或共享锁配置。"""
+    selected = options.get('gateway_desktop_meter')
+    for task in tasks:
+        validation = task.get('validation', {})
+        if 'desktopModelMeter' not in validation:
+            continue
+        requested = validation['desktopModelMeter']
+        if (not isinstance(requested, dict) or validation.get('scope') != 'gateway-only' or
+                validation.get('sourceCommit') != task.get('sha')):
+            raise RuntimeError('桌面计量安装参数必须绑定网关任务的实际来源 SHA')
+        if selected is not None and selected != requested:
+            raise RuntimeError('桌面计量安装参数在任务或项目配置之间冲突')
+        selected = requested
+    return selected
+
+
 class DesktopMeterInstall:
     def __init__(self, options, package):
         self.options = dict(options)

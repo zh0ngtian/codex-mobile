@@ -81,10 +81,10 @@ export async function startDesktopModelUpload(options: DesktopModelUploadOptions
       child.once('exit', code => { void dispose().then(() => resolve(code ?? 1), reject); });
     });
     let closing: Promise<void> | undefined;
-    return { child, exited, close() {
+    return { child, exited, close(signal: NodeJS.Signals = 'SIGTERM') {
       return closing ??= (async () => {
         if (child.exitCode === null && child.signalCode === null) {
-          child.kill('SIGTERM');
+          child.kill(signal);
           const kill = setTimeout(() => child.kill('SIGKILL'), 3_000);
           try { await exited; } finally { clearTimeout(kill); }
         } else await exited;
@@ -98,8 +98,9 @@ export async function startDesktopModelUpload(options: DesktopModelUploadOptions
 
 export async function runDesktopModelUpload(options: DesktopModelUploadOptions) {
   const run = await startDesktopModelUpload(options, process.argv.slice(2));
-  const stop = () => { void run.close().catch(() => {}); };
-  process.once('SIGTERM', stop); process.once('SIGINT', stop);
+  const terminate = () => { void run.close('SIGTERM').catch(() => {}); };
+  const interrupt = () => { void run.close('SIGINT').catch(() => {}); };
+  process.once('SIGTERM', terminate); process.once('SIGINT', interrupt);
   try { return await run.exited; }
-  finally { process.off('SIGTERM', stop); process.off('SIGINT', stop); }
+  finally { process.off('SIGTERM', terminate); process.off('SIGINT', interrupt); }
 }

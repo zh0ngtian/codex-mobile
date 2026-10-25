@@ -152,3 +152,5 @@ status 返回原任务 `complete`，或 `recovered` 且 `recovered_by` 指向成
 网关任务的私有项目配置可显式提供 `options.gateway_desktop_meter`：`adapterPath`、`originalSha256`、`nodeExecutable`、`codexExecutable`、`socketPath`、`upstreamUrl`。仅用于用户已确认的桌面计量接入；必须与既有网关external模式和完整上游URL一致，不允许隐式切换模式。协调器构建服务端后核对并备份原桌面适配器，在原位置原子安装启动层；恢复按原件、启动层及模块散列验收，未知漂移拒绝覆盖。原始备份位于同一私有目录并保留原名字加 `.pre-model-upload`，不上传私有配置或材料。
 
 此安装不重启桌面App，也不更改全局Codex配置、现有网关环境或桌面控制桥接。成功网关receipt的 `desktopMeter.activation=requires-user-desktop-restart` 只证明安装和网关部署成功；必须另等用户手动重启，再核对同一桌面共享服务和实测计量，才能把计量标为生产生效。本轮首次接入仍待该部署及激活验收。
+
+单次网关任务也可在私有 `validation.json.desktopModelMeter` 显式声明同一组安装参数，而不修改现役项目配置。适配器要求验证记录的 `scope=gateway-only` 且 `sourceCommit` 等于该任务固定SHA；多任务请求及项目显式参数必须完全一致，否则拒绝。现役协调器把完整验证记录冻结到批次context，各阶段读取同一输入；公共Git清单只保留既有checks白名单，不发布私有路径。该输入只授权已确认的桌面启动层安装，正式目标、环境和main共享锁不变。

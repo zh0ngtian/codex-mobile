@@ -47,6 +47,16 @@ it('非 canonical 调用原样传参和环境，不启动配置读取或计量 s
   await expect(stat(f.options.socketPath)).rejects.toThrow();
 });
 
+it('非 canonical 的 SIGINT 保留原中断信号，不转换为 SIGTERM', async () => {
+  const f = await fixture();
+  await writeFile(f.adapter, `const fs=require('node:fs');for(const [signal,code] of [['SIGINT',42],['SIGTERM',43]])process.on(signal,()=>process.exit(code));fs.writeFileSync(process.env.PROBE_OUTPUT,'ready');setInterval(()=>{},1000);`);
+  const run = await startDesktopModelUpload(f.options, ['exec', 'hello'], { ...process.env, PROBE_OUTPUT: f.output });
+  cleanup.push(() => run.close());
+  await expect.poll(async () => { try { return await readFile(f.output, 'utf8'); } catch { return ''; } }).toBe('ready');
+  await run.close('SIGINT');
+  expect(await run.exited).toBe(42);
+});
+
 it('canonical 保留原参数和工具管道，只覆盖子进程模型出口，载荷原样计量并随桌面结束关闭', async () => {
   const f = await fixture(); const received: Buffer[] = [];
   const upstream = createServer(async (req, res) => { for await (const chunk of req) received.push(chunk); res.end('ok'); });

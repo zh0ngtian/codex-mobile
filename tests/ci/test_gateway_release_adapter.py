@@ -212,6 +212,46 @@ class GatewayTests(unittest.TestCase):
             gateway.run()
         self.assertEqual(path.read_text(), 'original')
 
+    def test_task_validation_binds_desktop_install_without_changing_project(self):
+        path = self.adapter.root / 'desktop-codex'; path.write_text('original'); path.chmod(0o700)
+        self.adapter.root.chmod(0o700)
+        options = {'adapterPath': str(path), 'originalSha256': hashlib.sha256(b'original').hexdigest(),
+                   'nodeExecutable': '/path/to/node', 'codexExecutable': '/path/to/codex',
+                   'socketPath': str(self.adapter.root / 'codex-home/mobile-model-upload/meter.sock'),
+                   'upstreamUrl': 'ws://127.0.0.1:14550/rpc'}
+        self.adapter.context['tasks'] = [{'id': 'explicit-desktop-install', 'sha': 'a' * 40, 'validation': {
+            'sourceCommit': 'a' * 40, 'scope': 'gateway-only', 'desktopModelMeter': options}}]
+        put(self.adapter.live / 'gateway-env.json', json.dumps({'CODEX_APP_SERVER_MODE': 'external',
+            'CODEX_APP_SERVER_URL': options['upstreamUrl'], 'CODEX_HOME': str(self.adapter.root / 'codex-home')}))
+        self.adapter.http_payload = {'mode': 'external', 'upstreamUrl': options['upstreamUrl']}
+        def build(args, cwd=None, stdout=None, stderr=None):
+            result = original_build(args, cwd=cwd, stdout=stdout, stderr=stderr)
+            put(self.adapter.work / 'npm-dist/server/desktop-model-upload.js', 'export const runDesktopModelUpload = () => 0;')
+            return result
+        original_build = self.adapter.build
+        with patch.object(self.module.subprocess, 'run', build):
+            result = self.module.Gateway(self.adapter).run()
+        self.assertIn('desktopMeter', result)
+        self.assertNotIn('gateway_desktop_meter', self.adapter.options)
+        self.assertEqual(path.with_name(path.name + '.pre-model-upload').read_text(), 'original')
+
+    def test_task_desktop_install_rejects_unbound_sha_scope_and_conflicts(self):
+        options = {'adapterPath': '/private/adapter', 'originalSha256': 'a' * 64,
+                   'nodeExecutable': '/node', 'codexExecutable': '/codex', 'socketPath': '/private/meter.sock', 'upstreamUrl': 'ws://127.0.0.1:14550/rpc'}
+        for validation in [
+            {'sourceCommit': 'b' * 40, 'scope': 'gateway-only', 'desktopModelMeter': options},
+            {'sourceCommit': 'a' * 40, 'scope': 'mobile', 'desktopModelMeter': options},
+        ]:
+            self.adapter.context['tasks'] = [{'id': 'bad', 'sha': 'a' * 40, 'validation': validation}]
+            with self.assertRaises(RuntimeError): self.module.Gateway(self.adapter)
+        good = {'sourceCommit': 'a' * 40, 'scope': 'gateway-only', 'desktopModelMeter': options}
+        self.adapter.context['tasks'] = [{'id': 'one', 'sha': 'a' * 40, 'validation': good},
+            {'id': 'two', 'sha': 'a' * 40, 'validation': {**good, 'desktopModelMeter': {**options, 'socketPath': '/other'}}}]
+        with self.assertRaises(RuntimeError): self.module.Gateway(self.adapter)
+        self.adapter.context['tasks'] = [{'id': 'one', 'sha': 'a' * 40, 'validation': good}]
+        self.adapter.options['gateway_desktop_meter'] = {**options, 'socketPath': '/different'}
+        with self.assertRaises(RuntimeError): self.module.Gateway(self.adapter)
+
     def test_server_only_deploy_preserves_frontend_dependencies_and_startup(self):
         self.assertFalse(self.gateway.check()['done'])
         self.gateway.run()

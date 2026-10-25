@@ -14,7 +14,7 @@ import urllib.parse
 import urllib.request
 
 from .state import atomic_json, read_json, sha256
-from .desktop_meter import DesktopMeterInstall
+from .desktop_meter import DesktopMeterInstall, desktop_meter_options
 
 MARKER = '.codex-mobile-deployment.json'
 BUILD_COMMAND = ['npm', 'run', 'build:server']
@@ -102,7 +102,7 @@ class Gateway:
         self.build_log = self.root / 'gateway-build.log'
         self.sha = adapter.context['frozen']['sha']
         self.batch = adapter.context['id']
-        desktop_options = options.get('gateway_desktop_meter')
+        desktop_options = desktop_meter_options(options, adapter.context.get('tasks', []))
         self.desktop_meter = DesktopMeterInstall(desktop_options, self.package) if desktop_options else None
 
     def _record(self):
