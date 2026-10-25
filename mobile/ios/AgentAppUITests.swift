@@ -2099,6 +2099,30 @@ final class AgentAppUITests: XCTestCase {
         }
     }
 
+    func testModelUploadUsageCard() {
+        let app = XCUIApplication()
+        let base = ["--native-ui-live", "--agent-conversation-fixture", "--agent-usage-polish-fixture", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
+        app.launchArguments = base + ["--agent-upload-usage-fixture"]
+        app.launch()
+        XCTAssertTrue(app.buttons["header.usage"].waitForExistence(timeout: 8))
+        app.buttons["header.usage"].tap()
+        XCTAssertTrue(app.staticTexts["最近请求上传"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["320 KB"].exists)
+        XCTAssertTrue(app.staticTexts["本轮累计上传"].exists)
+        XCTAssertTrue(app.staticTexts["1.8 MB"].exists)
+        XCTAssertTrue(app.staticTexts["输入 Token"].exists)
+        XCTAssertTrue(app.staticTexts["输出 Token"].exists)
+        captureConversation("模型上传用量", app: app)
+        app.launchArguments = base
+        app.launch()
+        XCTAssertTrue(app.buttons["header.usage"].waitForExistence(timeout: 8))
+        app.buttons["header.usage"].tap()
+        XCTAssertTrue(app.staticTexts["最近请求上传"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.staticTexts["320 KB"].exists)
+        XCTAssertFalse(app.staticTexts["0 B"].exists)
+        XCTAssertGreaterThanOrEqual(app.staticTexts.matching(identifier: "暂无数据").count, 2)
+    }
+
     func testUsageLabelsAndMissingCacheDetails() {
         let app = XCUIApplication()
         let base = ["--native-ui-live", "--agent-conversation-fixture", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]

@@ -107,8 +107,9 @@ extension AppSession {
             thread.olderTurns = older == nil ? 0 : 1; thread.loadedOlderTurns = 0
             thread.historyLoading = snapshot.olderTurnsState == "loading" || older?.disabled == true
             thread.historyError = snapshot.olderTurnsState == "error"
-            if let tokens = snapshot.tokenUsage {
-                thread.usage = UsageMetrics(lastRequestTokens: tokens.lastRequestTokens, contextCapacity: tokens.modelContextWindow, cumulativeInputTokens: tokens.inputTokens, cachedInputTokens: tokens.cachedInputTokens, cumulativeOutputTokens: tokens.outputTokens)
+            if snapshot.tokenUsage != nil || snapshot.uploadUsage != nil {
+                let tokens = snapshot.tokenUsage
+                thread.usage = UsageMetrics(lastRequestTokens: tokens?.lastRequestTokens, contextCapacity: tokens?.modelContextWindow, cumulativeInputTokens: tokens?.inputTokens, cachedInputTokens: tokens?.cachedInputTokens, cumulativeOutputTokens: tokens?.outputTokens, lastRequestBytes: snapshot.uploadUsage?.lastRequestBytes, turnUploadBytes: snapshot.uploadUsage?.turnBytes)
             } else { thread.usage = nil }
             if listed[id] == nil { ordered.append(id) }; listed[id] = thread
         } else { selectedConversationID = nil }

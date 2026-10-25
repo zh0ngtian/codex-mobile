@@ -134,9 +134,9 @@ describe("当前非原生对话用量卡片", () => {
     expect(within(card).getByText("输出 Token").nextElementSibling).toHaveTextContent("暂无数据");
   });
 
-  it("历史用量缺失时五行均显示暂无数据", () => {
+  it("历史用量与上传统计缺失时七行均显示暂无数据", () => {
     render(<ConversationPage {...pageProps({ tokenUsage: null, rateLimits: null })} />);
-    expect(within(openCard().card).getAllByText("暂无数据")).toHaveLength(5);
+    expect(within(openCard().card).getAllByText("暂无数据")).toHaveLength(7);
   });
 
   it.each([

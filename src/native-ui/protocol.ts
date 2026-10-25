@@ -58,6 +58,7 @@ export interface NativeSnapshot {
   inputTokenUsage?: string; outputTokenUsage?: string; inputCacheHitPercent?: number;
   fiveHourRateLimit?: { remainingPercent: number; resetsAt?: number; windowDurationMins?: number };
   sevenDayRateLimit?: { remainingPercent: number; resetsAt?: number; windowDurationMins?: number };
+  uploadUsage?: { lastRequestBytes?: number; turnBytes?: number };
   tokenUsage?: NativeTokenUsage; preferences?: NativeSettingsPreferences; approvalPanel?: NativeSnapshot['panel'];
 }
 export function emptyNativeSnapshot(): NativeSnapshot {

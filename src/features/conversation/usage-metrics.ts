@@ -1,5 +1,15 @@
 type UsageSnapshot = Record<string, any> | null | undefined;
 
+/** 十进制字节单位，与界面的 KB/MB 名称保持一致。 */
+export function formatByteCount(value: unknown): string | null {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0) return null;
+  const units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
+  let amount = value;
+  let unit = 0;
+  while (amount >= 999.95 && unit < units.length - 1) { amount /= 1000; unit++; }
+  return `${Math.round(amount * 10) / 10} ${units[unit]}`;
+}
+
 const validNumber = (value: unknown): value is number =>
   typeof value === "number" && Number.isFinite(value) && value >= 0;
 const clampPercent = (value: number) => Math.min(100, Math.max(0, value));

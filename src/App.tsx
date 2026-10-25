@@ -1,5 +1,6 @@
 import { useThreadRename } from "./ui/thread-rename";
 import { summarizeThreadTitle } from "./backends/title-summary";
+import { validUploadUsage, mergeUploadUsage } from './app-server/upload-usage';
 import { normalizeHEICFiles } from './ui/heic';
 import { replaceUserMessageBody } from '../server/user-message-format';
 import { quoteInput, splitQuoteInput, validateMessageQuote, type MessageQuote, type SelectionQuote } from './features/conversation/message-quotes';
@@ -479,6 +480,8 @@ function BackendWorkspace({
   const [tokenUsageByThread, setTokenUsageByThread] = useState<
     Record<string, AnyRecord>
   >({});
+  const uploadUsageEventRef = useRef<Record<string, number>>({});
+  const [uploadUsageByThread, setUploadUsageByThread] = useState<Record<string, AnyRecord | null>>({});
   const [rateLimits, setRateLimits] = useState<AnyRecord | null>(null);
   const [pendingAction, setPendingAction] = useState("");
   const [notice, setNotice] = useState("");
@@ -951,6 +954,21 @@ function BackendWorkspace({
 
   useEffect(() => {
     const client = clientRef.current;
+    const id = String(active?.id ?? '');
+    if (!id || connection !== 'online' || !client) return;
+    let cancelled = false;
+    const eventRevision = uploadUsageEventRef.current[id] ?? 0;
+    void client.request<{ usage: AnyRecord | null }>('mobile/uploadUsage/read', { threadId: id }).then(result => {
+      if (cancelled || client !== clientRef.current || eventRevision !== (uploadUsageEventRef.current[id] ?? 0)) return;
+      setUploadUsageByThread(current => ({ ...current, [id]: validUploadUsage(result.usage) ? mergeUploadUsage(current[id], result.usage) : null }));
+    }).catch(() => {
+      if (!cancelled && client === clientRef.current && eventRevision === (uploadUsageEventRef.current[id] ?? 0)) setUploadUsageByThread(current => ({ ...current, [id]: null }));
+    });
+    return () => { cancelled = true; };
+  }, [active?.id, connection]);
+
+  useEffect(() => {
+    const client = clientRef.current;
     if (
       connection !== "online" ||
       conversationLoadState !== "ready" ||
@@ -1394,6 +1412,11 @@ function BackendWorkspace({
             return;
           }
           const closedSide = message.method === 'thread/closed' ? sidechats.get(String(params.threadId ?? '')) : undefined;
+          if (message.method === 'mobile/uploadUsage/updated' && params.threadId && validUploadUsage(params.usage)) {
+            uploadUsageEventRef.current[params.threadId] = (uploadUsageEventRef.current[params.threadId] ?? 0) + 1;
+            setUploadUsageByThread(current => ({ ...current, [params.threadId]: mergeUploadUsage(current[params.threadId], params.usage) }));
+            return;
+          }
           if (sidechats.observe(message)) {
             if (closedSide && !closedSide.closing && !sidechats.get(closedSide.id)) {
               if (String(activeRef.current?.id ?? '') === closedSide.id) {
@@ -4535,6 +4558,9 @@ function BackendWorkspace({
       approvalPolicy: selectedApprovalPolicy, approvalsReviewer: selectedApprovalsReviewer,
       activePermissionProfile: selectedPermission ? { id: selectedPermission } : null });
   }, [activeSidechat, selectedModel, selectedEffort, effectiveSelectedServiceTier, selectedPermission, selectedApprovalPolicy, selectedApprovalsReviewer]);
+  const measuredUpload = uploadUsageByThread[String(active?.id ?? '')];
+  const latestUploadTurn = active?.turns?.at(-1)?.id;
+  const uploadUsage = measuredUpload && (!latestUploadTurn || measuredUpload.turnId === latestUploadTurn) ? measuredUpload : null;
   const nativeContextId = `${backend.id}:context:${draftContextGenerationRef.current}`;
   useNativeConversationAdapter(nativeRuntime, {
     backend, active, contextId: nativeContextId, connection, draft, draftImages, draftFiles,
@@ -4566,7 +4592,7 @@ function BackendWorkspace({
     cancelQueued: cancelQueuedFollowUp, sendQueued: actOnQueuedFollowUp, editQueued: editQueuedFollowUp,
     extended: {
       state: { quotes, quoteFocusToken, sidechatActive: !!activeSidechat, sidechatParentId, sidechatActions, approvalThreadTitle: approval ? completionThreadTitle({ threadId: String((approval.params as AnyRecord)?.threadId ?? ""), threads, activeThread: active, fallback: t("新会话") }) : undefined, historyEdit, pendingSteerMessage: pendingSteerMessage?.threadId === String(active?.id) ? pendingSteerMessage : null, steering: steering || !!activeSidechat?.steering || !!activeSidechat?.editing, queueSaving, steerable: Boolean(activeTurnId(active)), requests, approval, userAnswers, approvalSubmitting: approvalRequests.submitting, approvalError: approvalRequests.error, permissionModes, selectedPermissionModeId,
-        selectedServiceTier: displayedServiceTier, speedOptions, pendingAction, tokenUsage: tokenUsageByThread[active?.id] ?? null, rateLimits,
+        selectedServiceTier: displayedServiceTier, speedOptions, pendingAction, tokenUsage: tokenUsageByThread[active?.id] ?? null, uploadUsage, rateLimits,
         projectOptions, backends, draftSaveStatus, activeThreadAccessMode, activeThreadResumeError },
       callbacks: { currentHistoryEdit: () => historyEditRef.current, currentApproval: approvalRequests.current, readRemoteFile: (path: string) => { const client = clientRef.current; if (!client) throw new Error(t('尚未连接 app-server')); return client.request<{ dataBase64: string }>('fs/readFile', { path }); }, chooseSpeed, choosePermissionMode, replyToRequest, changeHistoricalMessageEditText, cancelHistoricalMessageEdit,
         addQuote, removeQuote: (id: string) => setQuotes(current => current.filter(quote => quote.id !== id)), createSidechat, openSidechat, returnFromSidechat, closeSidechat, submitHistoricalMessageEdit, chooseNewChatProject, togglePinned, duplicateActiveThread, renameThread, archiveThread,
@@ -4633,6 +4659,7 @@ function BackendWorkspace({
           accessMode={activeThreadAccessMode}
           resumeError={activeThreadResumeError}
           tokenUsage={tokenUsageByThread[active.id] ?? null}
+          uploadUsage={uploadUsage}
           rateLimits={rateLimits}
           pendingAction={pendingAction}
           selectedServiceTier={displayedServiceTier}

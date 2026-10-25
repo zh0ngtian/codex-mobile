@@ -245,6 +245,9 @@ final class AgentConversationFixture {
             value.sevenDayRateLimit = NativeRateLimit(remainingPercent: 60, resetsAt: Date().addingTimeInterval(111 * 3600 + 1800).timeIntervalSince1970, windowDurationMins: 10080)
             value.fiveHourRateLimit = NativeRateLimit(remainingPercent: 80)
         }
+        if ProcessInfo.processInfo.arguments.contains("--agent-upload-usage-fixture") {
+            value.uploadUsage = NativeUploadUsage(lastRequestBytes: 320000, turnBytes: 1800000)
+        }
         if ProcessInfo.processInfo.arguments.contains("--agent-selectable-answer-fixture") {
             value.messages = [value.messages[0], NativeMessage(id: "selectable-answer", role: "assistant", text: "第一段包含 **加粗文字**、`行内代码` 和 [网页链接](https://example.com)。\n\n第二段支持跨段自由选择文字，并保留系统的选择手柄。\n\n## Markdown 标题\n\n> 引用正文\n\n- 列表正文\n\n```swift\nlet greeting = \"Hello\"\nprint(greeting)\n```\n\n| 参数 | 含义 |\n| --- | --- |\n| 名称 | 可选择的表格正文 |", phase: "final_answer")]
         }

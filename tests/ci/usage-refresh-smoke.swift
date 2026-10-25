@@ -57,6 +57,23 @@ struct UsageRefreshSmoke {
         precondition(legacy.sevenDayRemaining == 0.52 && legacy.sevenDayResetsAt == nil, "旧账户缓存没有刷新时间时不补造时间")
         let roundtrip = try JSONDecoder().decode(AccountQuota.self, from: JSONEncoder().encode(initialQuota!))
         precondition(roundtrip.sevenDayResetsAt == 1792649814, "真实刷新时间必须支持Codable往返")
+        snapshot.backendId = "gateway-a"
+        snapshot.threadId = "thread-a"
+        snapshot.tokenUsage = nil
+        snapshot.uploadUsage = NativeUploadUsage(lastRequestBytes: 320000, turnBytes: 1800000)
+        session.receive(snapshot)
+        let uploaded = session.conversation(session.selectedConversationID!)!.usage!
+        precondition(uploaded.lastRequestBytes == 320000 && uploaded.turnUploadBytes == 1800000, "上传计量不依赖 Token 回填")
+        precondition(uploaded.cumulativeInputTokens == nil)
+        let uploadedRoundtrip = try JSONDecoder().decode(UsageMetrics.self, from: JSONEncoder().encode(uploaded))
+        precondition(uploadedRoundtrip.turnUploadBytes == 1800000)
+        for (value, expected) in [(0.0, "0 B"), (999, "999 B"), (1000, "1 KB"), (320000, "320 KB"), (1800000, "1.8 MB"), (999999, "1 MB")] {
+            precondition(UsageFormatting.bytes(value) == expected)
+        }
+        for value: Double? in [nil, -1, .nan, .infinity, 0.5, .greatestFiniteMagnitude] { precondition(UsageFormatting.bytes(value) == nil) }
+        snapshot.uploadUsage = nil
+        session.receive(snapshot)
+        precondition(session.conversation(session.selectedConversationID!)!.usage == nil, "缺失计量不能保留旧值")
         print("Usage refresh smoke passed")
     }
 }

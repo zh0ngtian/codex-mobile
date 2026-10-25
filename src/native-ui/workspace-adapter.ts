@@ -156,6 +156,7 @@ export function createWorkspaceAdapter(c: NativeWorkspaceController, panel: Pane
     inputCacheHitPercent: inputCacheHitPercent(state.tokenUsage) ?? undefined,
     sevenDayRateLimit: sevenDayRateLimit ?? undefined,
     fiveHourRateLimit: fiveHourRateLimit ?? undefined,
+    uploadUsage: state.uploadUsage ? { lastRequestBytes: state.uploadUsage.lastRequestBytes, turnBytes: state.uploadUsage.turnBytes } : undefined,
     tokenUsage: projectNativeTokenUsage(state.tokenUsage), approvalPanel,
     pending: c.pending || c.imageReading || c.draftSaving, loading: c.loadState, olderTurnsState: c.olderTurnsState, conversationActions,
     badge: c.syncStale ? t('正在同步') : undefined, error: c.error || c.loadError || undefined,

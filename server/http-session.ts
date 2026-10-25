@@ -13,6 +13,7 @@ import { InlineImages } from "./inline-images.js";
 import { MessageTimestamps } from "./message-timestamps.js";
 import type { BarkNotifications } from "./bark-notifications.js";
 import { SidebarSummaryIndex, validSidebarParams } from "./sidebar-summary-index.js";
+import type { ModelUploadMeter, ModelUploadUsage } from './model-upload-meter.js';
 
 export interface RpcMessage {
   id?: string | number;
@@ -149,7 +150,7 @@ class Session {
   storageBytes = 0;
   invalidatedSocket?: WebSocket;
 
-  constructor(readonly id: string, private upstreamUrl: string, private root: string, private changeHistory: TurnChangeHistory, private images: InlineImages, private timestamps: MessageTimestamps, private notifications?: BarkNotifications, private hostedObserver?: (message?: RpcMessage) => void, private hostedReply?: (requestId: string, message: RpcMessage) => Promise<RpcMessage | undefined>, private memoryOnly = false) {
+  constructor(readonly id: string, private upstreamUrl: string, private root: string, private changeHistory: TurnChangeHistory, private images: InlineImages, private timestamps: MessageTimestamps, private notifications?: BarkNotifications, private hostedObserver?: (message?: RpcMessage) => void, private hostedReply?: (requestId: string, message: RpcMessage) => Promise<RpcMessage | undefined>, private memoryOnly = false, private onAuthModeChanged?: (mode: string | null) => void) {
     this.loadPromise = memoryOnly ? Promise.resolve() : this.load();
   }
 
@@ -302,6 +303,7 @@ class Session {
   }
 
   private receive(message: RpcMessage, transient = false) {
+    if (message.method === 'account/updated') this.onAuthModeChanged?.(message.params?.authMode ?? null);
     if (!this.memoryOnly && !transient) this.changeHistory.observe(message);
     this.touch();
     if (message.id != null && !message.method) {
@@ -760,7 +762,7 @@ export class HttpSessions {
   private timestamps: MessageTimestamps;
   private hostedRequests = new Map<string, { message: RpcMessage; originalId: string | number; epoch: string; sessionId: string }>();
   private hostedListeners = new Set<(message: RpcMessage) => void>();
-  constructor(private options: { upstreamUrl: string; codexHome?: string; changeHistory?: TurnChangeHistory; notifications?: BarkNotifications }) {
+  constructor(private options: { upstreamUrl: string; codexHome?: string; changeHistory?: TurnChangeHistory; notifications?: BarkNotifications; uploadMeter?: ModelUploadMeter; onAuthModeChanged?: (mode: string | null) => void }) {
     this.root = join(options.codexHome ?? process.env.CODEX_HOME ?? join(homedir(), ".codex"), "codex-mobile-http");
     this.timestamps = new MessageTimestamps(options.codexHome ?? process.env.CODEX_HOME ?? join(homedir(), ".codex"));
     this.images = new InlineImages(join(options.codexHome ?? process.env.CODEX_HOME ?? join(homedir(), ".codex"), "codex-mobile-inline-images"));
@@ -787,7 +789,7 @@ export class HttpSessions {
     const session = new Session(id, this.options.upstreamUrl, this.root, this.changeHistory, this.images, this.timestamps, this.options.notifications,
       [HOSTED_SESSION_ID, SIDECHAT_SESSION_ID].includes(id) ? (message) => this.observeHosted(message, id) : undefined,
       ![HOSTED_SESSION_ID, SIDECHAT_SESSION_ID].includes(id) ? (requestId, message) => this.replyHosted(requestId, message) : undefined,
-      id === SIDECHAT_SESSION_ID);
+      id === SIDECHAT_SESSION_ID, this.options.onAuthModeChanged);
     // Loading errors are returned by APIs rather than emitted as unhandled rejections.
     session.loadPromise.catch(() => {});
     this.sessions.set(id, session);
@@ -837,7 +839,8 @@ export class HttpSessions {
         }
         if (!message.method && message.result === undefined && message.error === undefined) throw new HttpError(400, "Invalid RPC reply");
         if (body.epoch !== undefined && (typeof body.epoch !== "string" || !UUID.test(body.epoch))) throw new HttpError(400, "Invalid session epoch");
-        if (["mobile/sidebar/summaries", "mobile/sidebar/projectless"].includes(message.method ?? "")) result = await this.sidebarRpc(message);
+        if (message.method === 'mobile/uploadUsage/read') result = this.uploadUsageRpc(message);
+        else if (["mobile/sidebar/summaries", "mobile/sidebar/projectless"].includes(message.method ?? "")) result = await this.sidebarRpc(message);
         else if (message.method === 'mobile/sidechat/rpc') result = await this.sidechatRpc(message, body.requestId);
         else if (!message.method && typeof message.id === 'string' && this.hostedRequests.get(message.id)?.sessionId === SIDECHAT_SESSION_ID) result = await this.replyHosted(body.requestId, message);
         else if (this.sidechats.has(message.params?.threadId) && ['thread/settings/update', 'turn/interrupt'].includes(message.method ?? '')) result = await this.sidechatRpc({ ...message, params: { method: message.method, params: message.params } }, body.requestId);
@@ -930,6 +933,16 @@ export class HttpSessions {
     const result = message.method === "mobile/sidebar/summaries"
       ? await this.sidebar.summaries(params) : await this.sidebar.projectless(params);
     return { id: message.id, result };
+  }
+
+  uploadUsageRpc(message: RpcMessage): RpcMessage {
+    const id = message.params?.threadId;
+    if (message.id == null || typeof id !== 'string' || !id.trim() || id.length > 256) throw new HttpError(400, 'Invalid upload usage parameters');
+    return { id: message.id, result: { usage: this.options.uploadMeter?.read(id) ?? null } };
+  }
+
+  publishUploadUsage(threadId: string, usage: ModelUploadUsage) {
+    this.broadcastHosted({ method: 'mobile/uploadUsage/updated', params: { threadId, usage } });
   }
 
   private sidechatIds = new Set<string>();

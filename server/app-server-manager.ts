@@ -1,5 +1,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { createServer } from "node:net";
+import { createModelUploadProxy } from './model-upload-proxy.js';
+import { readModelUploadRoutes } from './model-upload-routing.js';
 
 export interface RuntimeConfig {
   mode: "managed" | "external";
@@ -26,13 +28,20 @@ export function resolveGatewayRuntimeConfig(
   };
 }
 
-export function appServerCommand(port: number) {
+export function appServerCommand(port: number, overrides: ReadonlyArray<readonly [string, string]> = []) {
+  // Codex 的 -c 路径按点直接分割；提供商 ID 使用一个 TOML 内联表覆盖，避免引号成为 ID 的一部分。
+  const providers = overrides.flatMap(([key, value]) => {
+    const match = /^model_providers\.(".*")\.base_url$/.exec(key);
+    return match ? [`${match[1]}={base_url=${JSON.stringify(value)}}`] : [];
+  });
   return [
     "app-server",
     "--enable",
     "realtime_conversation",
     "--listen",
     `ws://127.0.0.1:${port}`,
+    ...overrides.filter(([key]) => !key.startsWith('model_providers.')).flatMap(([key, value]) => ['-c', `${key}=${JSON.stringify(value)}`]),
+    ...(providers.length ? ['-c', `model_providers={${providers.join(',')}}`] : []),
   ];
 }
 
@@ -98,9 +107,13 @@ export async function startManagedAppServer(port: number) {
   if (!(await portAvailable(port))) {
     throw new Error(`app-server 端口 ${port} 已被占用`);
   }
-  const child = spawn("codex", appServerCommand(port), {
+  const environment = appServerEnvironment();
+  const proxy = await createModelUploadProxy(await readModelUploadRoutes(environment));
+  // 已将原 OPENAI_BASE_URL 纳入固定上游，子进程只使用本次命令行路由。
+  delete environment.OPENAI_BASE_URL;
+  const child = spawn("codex", appServerCommand(port, proxy.overrides), {
     stdio: ["ignore", "inherit", "inherit"],
-    env: appServerEnvironment(),
+    env: environment,
   });
   const spawnError = new Promise<never>((_, reject) =>
     child.once("error", (error) => reject(new Error(`无法启动 codex app-server：${error.message}`))),
@@ -109,6 +122,7 @@ export async function startManagedAppServer(port: number) {
     await Promise.race([waitUntilReady(port, child), spawnError]);
   } catch (error) {
     if (child.exitCode === null) child.kill("SIGTERM");
+    await proxy.close();
     throw error;
   }
   let closing = false;
@@ -119,9 +133,11 @@ export async function startManagedAppServer(port: number) {
   });
   return {
     child,
+    uploadMeter: proxy.meter,
+    onAuthModeChanged: proxy.setAuthMode,
     exited,
     async close() {
-      if (child.exitCode !== null) return;
+      if (child.exitCode !== null) { await proxy.close(); return; }
       closing = true;
       child.kill("SIGTERM");
       await new Promise<void>((resolve) => {
@@ -130,6 +146,7 @@ export async function startManagedAppServer(port: number) {
           if (child.exitCode === null) child.kill("SIGKILL");
         }, 3_000).unref();
       });
+      await proxy.close();
     },
   };
 }

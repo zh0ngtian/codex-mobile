@@ -1,6 +1,14 @@
 import Foundation
 
 enum UsageFormatting {
+    static func bytes(_ value: Double?) -> String? {
+        guard var value, value.isFinite, value >= 0, value <= 9_007_199_254_740_991, value.rounded(.towardZero) == value else { return nil }
+        let units = ["B", "KB", "MB", "GB", "TB", "PB"]
+        var unit = 0
+        while value >= 999.95 && unit < units.count - 1 { value /= 1000; unit += 1 }
+        return decimal(value) + " " + units[unit]
+    }
+
     static func tokens(_ value: Double?) -> String? {
         guard let value, value.isFinite, value >= 0 else { return nil }
         if value >= 1_000_000 || value / 1_000 >= 999.95 { return decimal(value / 1_000_000) + "M" }

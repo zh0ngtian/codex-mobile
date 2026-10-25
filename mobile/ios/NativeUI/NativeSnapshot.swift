@@ -64,6 +64,7 @@ struct NativeSnapshot: Codable {
     var fiveHourRateLimit: NativeRateLimit? = nil
     var sevenDayRateLimit: NativeRateLimit? = nil
     var tokenUsage: NativeTokenUsage? = nil
+    var uploadUsage: NativeUploadUsage? = nil
     var preferences: NativeSettingsPreferences? = nil
     var approvalPanel: NativePanel? = nil
 }
@@ -76,6 +77,11 @@ struct NativeTokenUsage: Codable {
     var outputTokens: Double? = nil
     var totalTokens: Double? = nil
     var reasoningOutputTokens: Double? = nil
+}
+
+struct NativeUploadUsage: Codable {
+    var lastRequestBytes: Double? = nil
+    var turnBytes: Double? = nil
 }
 
 struct NativeSettingsPreferences: Codable {

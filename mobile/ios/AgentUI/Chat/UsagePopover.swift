@@ -18,6 +18,10 @@ struct UsagePopover: View {
             }
             UsageRow(title: preferences.text("输入 Token", "Input tokens"), value: inputValue)
             UsageRow(title: preferences.text("输出 Token", "Output tokens"), value: UsageFormatting.tokens(metrics?.cumulativeOutputTokens) ?? noData)
+            UsageRow(title: preferences.text("最近请求上传", "Latest request upload"), value: UsageFormatting.bytes(metrics?.lastRequestBytes) ?? noData)
+                .accessibilityHint(preferences.text("模型请求载荷大小，不含 HTTP 头、WebSocket 帧和 TLS/TCP 开销", "Model request payload, excluding HTTP headers, WebSocket frames and TLS/TCP overhead"))
+            UsageRow(title: preferences.text("本轮累计上传", "Turn upload total"), value: UsageFormatting.bytes(metrics?.turnUploadBytes) ?? noData)
+                .accessibilityHint(preferences.text("本轮全部模型请求载荷，包含工具续跑和重试", "All model request payloads in this turn, including tool continuations and retries"))
         }
         .padding(20).frame(width: 310)
         .accessibilityIdentifier("usage.card")

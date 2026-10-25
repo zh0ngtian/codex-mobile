@@ -20,6 +20,8 @@ struct NativeUsageDetailsView: View {
                 .accessibilityHint(store.label("后端提供的 7 天窗口刷新时间", "Refresh time of the backend's 7-day window"))
             NativeUsageDetailRow(title: store.label("输入 Token", "Input Tokens"), value: inputTokenValue)
             NativeUsageDetailRow(title: store.label("输出 Token", "Output Tokens"), value: store.snapshot.outputTokenUsage ?? store.label("暂无数据", "Unavailable"))
+            NativeUsageDetailRow(title: store.label("最近请求上传", "Latest Request Upload"), value: UsageFormatting.bytes(store.snapshot.uploadUsage?.lastRequestBytes) ?? store.label("暂无数据", "Unavailable"))
+            NativeUsageDetailRow(title: store.label("本轮累计上传", "Turn Upload Total"), value: UsageFormatting.bytes(store.snapshot.uploadUsage?.turnBytes) ?? store.label("暂无数据", "Unavailable"))
         }
         .font(.caption).padding(16).frame(idealWidth: 300)
         .accessibilityIdentifier("native-usage-details")

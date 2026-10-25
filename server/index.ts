@@ -70,6 +70,8 @@ try {
         return false;
       }
     },
+    uploadMeter: managed?.uploadMeter,
+    onAuthModeChanged: managed?.onAuthModeChanged,
   });
 } catch (error) {
   await managed?.close();

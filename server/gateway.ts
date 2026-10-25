@@ -18,6 +18,7 @@ import { BarkNotifications } from "./bark-notifications.js";
 import { FollowedThreadNotifications } from "./followed-thread-notifications.js";
 import { ImagePreviews } from "./image-preview.js";
 import { downloadFile } from "./file-download.js";
+import type { ModelUploadMeter } from './model-upload-meter.js';
 
 const MAX_APP_SERVER_MESSAGE_BYTES = 16 * 1024 * 1024;
 
@@ -50,6 +51,8 @@ export interface GatewayOptions {
   uploadDir?: string;
   codexHome?: string;
   barkFetch?: typeof fetch;
+  uploadMeter?: ModelUploadMeter;
+  onAuthModeChanged?: (mode: string | null) => void;
 }
 
 export interface Gateway {
@@ -128,6 +131,7 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
   const changeHistory = new TurnChangeHistory(options.codexHome ?? process.env.CODEX_HOME ?? join(homedir(), ".codex"));
   const notifications = new BarkNotifications({ codexHome: options.codexHome ?? process.env.CODEX_HOME ?? join(homedir(), ".codex"), displayName: options.displayName ?? options.hostname ?? options.hostId ?? "Codex", fetch: options.barkFetch });
   const httpSessions = new HttpSessions({ ...options, changeHistory, notifications });
+  const unsubscribeUpload = options.uploadMeter?.subscribe((threadId, usage) => httpSessions.publishUploadUsage(threadId, usage));
   const followUps = await FollowUps.open(options.codexHome ?? process.env.CODEX_HOME ?? join(homedir(), ".codex"), httpSessions);
   const followedNotifications = new FollowedThreadNotifications({
     sessions: httpSessions, followedThreadIds: () => notifications.followedThreadIds,
@@ -624,6 +628,11 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
       if (!isBinary) {
         try {
           const message = JSON.parse(rawMessageText(data));
+          if (message.method === 'mobile/uploadUsage/read') {
+            try { client.send(JSON.stringify(httpSessions.uploadUsageRpc(message))); }
+            catch { client.send(JSON.stringify({ id: message.id, error: { code: -32602, message: 'Invalid upload usage parameters' } })); }
+            return;
+          }
           if (["mobile/sidebar/summaries", "mobile/sidebar/projectless"].includes(message.method)) {
             void httpSessions.sidebarRpc(message).then(reply => { if (client.readyState === WebSocket.OPEN) client.send(JSON.stringify(reply)); })
               .catch(error => { if (client.readyState === WebSocket.OPEN) client.send(JSON.stringify({ id: message.id, error: { code: -32000, message: error.message } })); });
@@ -662,6 +671,7 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
       if (!isBinary) {
         try {
           message = JSON.parse(rawMessageText(data));
+          if (message?.method === 'account/updated') options.onAuthModeChanged?.(message.params?.authMode ?? null);
           changeHistory.observe(message!);
           observeNotification(message!);
         } catch { /* Preserve non-JSON upstream messages. */ }
@@ -673,7 +683,7 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
         if (request?.method === "initialize" && message.error == null && !unsubscribeHosted) {
           unsubscribeHosted = httpSessions.subscribeHosted((event) => {
             // App-server supplies subscribed events; gateway adds connection-local approvals and mobile origin authorization.
-            if ((event.id != null || event.method === "serverRequest/resolved" || event.method === "mobile/turn/accepted" || httpSessions.sidechats.has(event.params?.threadId) || event.method === "thread/closed") && client.readyState === WebSocket.OPEN) client.send(JSON.stringify(event));
+            if ((event.id != null || event.method === "serverRequest/resolved" || event.method === "mobile/turn/accepted" || event.method === 'mobile/uploadUsage/updated' || httpSessions.sidechats.has(event.params?.threadId) || event.method === "thread/closed") && client.readyState === WebSocket.OPEN) client.send(JSON.stringify(event));
           });
         }
         notifications.observeRpc(request, message);
@@ -755,6 +765,7 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
     async close() {
       titleSummaries.close();
       unsubscribeFollowing();
+      unsubscribeUpload?.();
       await followedNotifications.close();
       await followUps.close();
       await httpSessions.close();

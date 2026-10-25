@@ -6,6 +6,8 @@ struct UsageMetrics: Codable, Equatable, Sendable {
     var cumulativeInputTokens: Double? = nil
     var cachedInputTokens: Double? = nil
     var cumulativeOutputTokens: Double? = nil
+    var lastRequestBytes: Double? = nil
+    var turnUploadBytes: Double? = nil
 
     var contextRemaining: Double? {
         guard let used = lastRequestTokens, let capacity = contextCapacity,
@@ -15,6 +17,7 @@ struct UsageMetrics: Codable, Equatable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case lastRequestTokens, contextCapacity, cumulativeInputTokens, cachedInputTokens, cumulativeOutputTokens
+        case lastRequestBytes, turnUploadBytes
     }
 }
 
@@ -26,5 +29,7 @@ extension UsageMetrics {
         cumulativeInputTokens = try values.decodeIfPresent(Double.self, forKey: .cumulativeInputTokens)
         cachedInputTokens = try values.decodeIfPresent(Double.self, forKey: .cachedInputTokens)
         cumulativeOutputTokens = try values.decodeIfPresent(Double.self, forKey: .cumulativeOutputTokens)
+        lastRequestBytes = try values.decodeIfPresent(Double.self, forKey: .lastRequestBytes)
+        turnUploadBytes = try values.decodeIfPresent(Double.self, forKey: .turnUploadBytes)
     }
 }

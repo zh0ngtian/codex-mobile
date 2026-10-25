@@ -2,14 +2,15 @@ import { useLayoutEffect, useRef, useState, type CSSProperties, type RefObject }
 import { createPortal } from "react-dom";
 import { t } from "../../i18n";
 import { usePopoverFocus } from "../../ui/use-popover-focus";
-import { contextRemainingPercent, formatTokenCount, inputCacheHitPercent, rateLimitRemainingPercent } from "./usage-metrics";
+import { contextRemainingPercent, formatByteCount, formatTokenCount, inputCacheHitPercent, rateLimitRemainingPercent } from "./usage-metrics";
 
 export { formatTokenCount } from "./usage-metrics";
 
-export function ConversationUsagePopover({ open, anchorRef, tokenUsage, rateLimits, onClose }: {
+export function ConversationUsagePopover({ open, anchorRef, tokenUsage, uploadUsage, rateLimits, onClose }: {
   open: boolean;
   anchorRef: RefObject<HTMLButtonElement | null>;
   tokenUsage: Record<string, any> | null;
+  uploadUsage?: Record<string, any> | null;
   rateLimits: Record<string, any> | null;
   onClose: () => void;
 }) {
@@ -66,6 +67,8 @@ export function ConversationUsagePopover({ open, anchorRef, tokenUsage, rateLimi
       <div><dt>{t("时间剩余")}</dt><dd>{percent(rateLimitRemainingPercent(rateLimits, 300))}</dd></div>
       <div><dt>{t("输入 Token")}</dt><dd>{inputValue}</dd></div>
       <div><dt>{t("输出 Token")}</dt><dd>{formatTokenCount(tokenUsage?.total?.outputTokens) ?? t("暂无数据")}</dd></div>
+      <div title={t("模型请求载荷大小，不含 HTTP 头、WebSocket 帧和 TLS/TCP 开销")}><dt>{t("最近请求上传")}</dt><dd>{formatByteCount(uploadUsage?.lastRequestBytes) ?? t("暂无数据")}</dd></div>
+      <div title={t("本轮全部模型请求载荷，包含工具续跑和重试")}><dt>{t("本轮累计上传")}</dt><dd>{formatByteCount(uploadUsage?.turnBytes) ?? t("暂无数据")}</dd></div>
     </dl>
   </section>, document.body);
 }

@@ -177,6 +177,7 @@ export function ConversationPage({
   accessMode,
   resumeError,
   tokenUsage,
+  uploadUsage,
   rateLimits,
   pendingAction,
   selectedServiceTier,
@@ -249,6 +250,7 @@ export function ConversationPage({
   accessMode: "interactive" | "readOnly";
   resumeError: string;
   tokenUsage: Record<string, any> | null;
+  uploadUsage?: Record<string, any> | null;
   rateLimits: Record<string, any> | null;
   pendingAction: string;
   selectedServiceTier: string | null;
@@ -1345,6 +1347,7 @@ export function ConversationPage({
         open={conversationVisible && statusOpen}
         anchorRef={usageButtonRef}
         tokenUsage={tokenUsage}
+        uploadUsage={uploadUsage}
         rateLimits={rateLimits}
         onClose={() => setStatusOpen(false)}
       />
