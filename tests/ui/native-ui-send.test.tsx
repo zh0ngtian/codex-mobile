@@ -30,8 +30,8 @@ vi.mock('../../src/backends/connection-manager', () => ({ BackendConnectionManag
    if (method === 'thread/read') { const thread = boundary.threadRecords.find(thread => thread.id === params.threadId); await boundary.threadReadBarrier; if (thread || boundary.pins.includes(params.threadId) || params.threadId === boundary.nextThreadId) return { thread: { ...thread, id: params.threadId, section: boundary.pins.includes(params.threadId) ? { id: PIN } : null } }; }
    if (method === 'thread/list' && params.cwd) { const records = boundary.threadRecords.filter(thread => thread.cwd === params.cwd); const offset = Number(params.cursor ?? 0); const end = offset + params.limit; return { data: records.slice(offset, end), nextCursor: end < records.length ? String(end) : null }; }
    if (method === 'thread/loaded/list') { await boundary.priorityBarrier; return { data: boundary.threadRecords.filter(thread => thread.status?.type === 'active').map(thread => thread.id), nextCursor: null }; }
-   if (method === 'thread/start') return { thread: { id: boundary.nextThreadId, cwd: null, turns: [] }, model: 'gpt' };
    if (method === boundary.pendingMethod) throw new HttpOperationPendingError(`pending-${params.threadId}-${method}`, { id: 'pending-rpc', method, params });
+   if (method === 'thread/start') return { thread: { id: boundary.nextThreadId, cwd: null, turns: [] }, model: 'gpt' };
    if (method === 'thread/revert' && boundary.delayRevert) return new Promise(resolve => { boundary.releaseRevert = () => resolve({ thread: { id: params.threadId, turns: [] } }); });
    if (method === 'turn/start') { const turnId = params.threadId === 'thread-b' ? 'turn-b' : 'turn-live'; if (boundary.failSend) throw new Error('真实发送失败'); if (boundary.immediateSend) return { turn: { id: turnId, status: 'inProgress', items: [] } }; return new Promise((resolve, reject) => { boundary.release = () => resolve({ turn: { id: turnId, status: 'inProgress', items: [] } }); boundary.rejectStart = () => reject(new Error('旧会话发送失败')); }); }
    if (method === 'thread/turns/list') return { data: [], nextCursor: null };
@@ -585,8 +585,70 @@ it('发送失败保留原输入可恢复且原生命令返回关联错误', asyn
  await waitFor(() => expect(posts.at(-1)?.draft).toBe('失败保留'));
  await act(async () => { command('send-fail', 'message.send', { contextId }); });
  await waitFor(() => expect(posts.at(-1)?.commandResults?.some((r: any) => r.id === 'send-fail' && r.ok === false)).toBe(true));
+ expect(posts.at(-1).commandResults.find((r: any) => r.id === 'send-fail').error).toBe('真实发送失败');
  expect(posts.at(-1).draft === '失败保留' || posts.at(-1).queued.some((q: any) => q.title.includes('失败保留'))).toBe(true);
  expect(posts.at(-1).error).toBeTruthy();
+});
+
+it.each([false, true])('无项目首条消息待确认时不误报未发送，原请求确认失败=%s', async failed => {
+ const contextId = await setup(); boundary.pendingMethod = 'turn/start';
+ await act(async () => {
+  command('projectless-pending-draft', 'draft.set', { contextId, value: '无项目测试', revision: 1 });
+  command('projectless-pending-send', 'message.send', { contextId });
+ });
+ await waitFor(() => expect(posts.at(-1)?.commandResults?.some((r: any) => r.id === 'projectless-pending-send')).toBe(true));
+ expect(boundary.requests.find(r => r.method === 'thread/start')?.params.cwd).toBeNull();
+ expect(posts.at(-1).commandResults.find((r: any) => r.id === 'projectless-pending-send').ok).toBe(true);
+ expect(posts.at(-1)).toMatchObject({ pending: true, busy: true });
+ expect(posts.at(-1).error ?? '').not.toContain('消息未发送');
+ expect(boundary.requests.filter(r => r.method === 'turn/start')).toHaveLength(1);
+ const request = boundary.requests.find(r => r.method === 'turn/start')!;
+ boundary.pendingMethod = '';
+ const response = failed
+  ? { id: 'pending-rpc', error: { code: -1, message: '网关确认：权限配置不可用' } }
+  : { id: 'pending-rpc', result: { turn: { id: 'confirmed-turn', status: 'inProgress', items: [] } } };
+ await act(async () => boundary.options.onNotification('a', { method: 'mobile/operation/confirmed', params: {
+  requestId: 'pending-sent-thread-turn/start', request, response,
+ } }, boundary.client));
+ await waitFor(() => expect(posts.at(-1)?.pending).toBe(false));
+ expect(boundary.requests.filter(r => r.method === 'turn/start')).toHaveLength(1);
+ if (failed) {
+  expect(posts.at(-1)).toMatchObject({ busy: false, error: '网关确认：权限配置不可用', draft: '无项目测试' });
+ } else {
+  expect(posts.at(-1).messages.filter((m: any) => m.role === 'user' && m.text === '无项目测试')).toHaveLength(1);
+  expect(posts.at(-1).error ?? '').toBe('');
+ }
+});
+
+it.each([false, true])('无项目创建请求迟到确认后恢复原输入，可在同一会话继续发送，保留新草稿=%s', async newerDraft => {
+ const contextId = await setup(); boundary.pendingMethod = 'thread/start';
+ await act(async () => {
+  command('projectless-create-draft', 'draft.set', { contextId, value: '创建后继续发送', revision: 1 });
+  command('projectless-create-send', 'message.send', { contextId });
+ });
+ await waitFor(() => expect(posts.at(-1)?.pending).toBe(true));
+ const request = boundary.requests.find(r => r.method === 'thread/start')!;
+ expect(request.params.cwd).toBeNull();
+ expect(boundary.requests.some(r => r.method === 'turn/start')).toBe(false);
+ if (newerDraft) await act(async () => command('projectless-create-new-draft', 'draft.set', { contextId, value: '等待期间的新草稿', revision: 2 }));
+ boundary.pendingMethod = '';
+ await act(async () => boundary.options.onNotification('a', { method: 'mobile/operation/confirmed', params: {
+  requestId: 'pending-undefined-thread/start', request,
+  response: { id: 'pending-rpc', result: { thread: { id: 'sent-thread', cwd: '/', turns: [] }, model: 'gpt' } },
+ } }, boundary.client));
+ await waitFor(() => expect(posts.at(-1)?.threadId).toBe('sent-thread'));
+ expect(posts.at(-1)).toMatchObject({ pending: false, busy: false, draft: newerDraft ? '等待期间的新草稿' : '创建后继续发送', canSend: true, projectName: '无项目' });
+ boundary.immediateSend = true;
+ if (newerDraft) {
+  expect(posts.at(-1).queued).toHaveLength(1);
+  expect(posts.at(-1).queued[0].inputText).toBe('创建后继续发送');
+  await act(async () => command('projectless-create-retry-original', 'queue.send', { contextId, id: posts.at(-1).queued[0].id }));
+ } else await act(async () => command('projectless-create-retry', 'message.send', { contextId }));
+ await waitFor(() => expect(boundary.requests.some(r => r.method === 'turn/start')).toBe(true));
+ expect(boundary.requests.filter(r => r.method === 'thread/start')).toHaveLength(1);
+ expect(boundary.requests.find(r => r.method === 'turn/start')?.params.threadId).toBe('sent-thread');
+ expect(boundary.requests.find(r => r.method === 'turn/start')?.params.input[0].text).toContain('创建后继续发送');
+ if (newerDraft) expect(posts.at(-1).draft).toBe('等待期间的新草稿');
 });
 
 it('同一React flush中的不同请求UUID只消费一次草稿，不重复创建会话或turn', async () => {

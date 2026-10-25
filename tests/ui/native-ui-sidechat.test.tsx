@@ -390,7 +390,7 @@ it.each([false,true])('主聊天带引用直发跨上下文失败保留源失败
  await act(async()=>{command('background-quote','message.quote',{contextId,source,renderedText:'不能丢失的引用',start:0,end:7,text:'不能丢失的引用'});command('background-question','draft.set',{contextId,value:'源问题',revision:2});});
  if(confirmed)boundary.pendingMethod='turn/start';else boundary.immediateSend=false;
  act(()=>command('background-send','message.send',{contextId}));
- if(confirmed)await waitFor(()=>expect(posts.at(-1)?.commandResults.some((r:any)=>r.id==='background-send'&&!r.ok)).toBe(true));
+ if(confirmed)await waitFor(()=>expect(posts.at(-1)?.commandResults.some((r:any)=>r.id==='background-send'&&r.ok)).toBe(true));
  else await waitFor(()=>expect(boundary.rejectStart).toBeTypeOf('function'));
  await act(async()=>command('background-open-b','thread.open',{backendId:'a',threadId:'thread-b'}));
  await waitFor(()=>expect(posts.at(-1)?.threadId).toBe('thread-b'));

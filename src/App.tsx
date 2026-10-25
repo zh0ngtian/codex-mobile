@@ -2793,6 +2793,7 @@ function BackendWorkspace({
     draftContext,
     onFailure,
     onSent,
+    throwOnFailure = false,
   }: {
     text: string;
     pendingImages: DraftImage[];
@@ -2802,6 +2803,7 @@ function BackendWorkspace({
     draftContext: number;
     onFailure: (sourceThreadId?: string) => void;
     onSent?: () => void;
+    throwOnFailure?: boolean;
   }) {
     let client = clientRef.current;
     if (!client) {
@@ -2809,6 +2811,7 @@ function BackendWorkspace({
         onFailure();
         setError(t("设备尚未连接，请稍后重试"));
       }
+      if (throwOnFailure) throw new Error(t("设备尚未连接，请稍后重试"));
       return false;
     }
     setBusy(true);
@@ -3001,7 +3004,7 @@ function BackendWorkspace({
                 setBusy(false);
                 setStartingThreadContext(null);
                 // thread/start 已完成，但正文未提交；保留供用户发送。
-                onFailure();
+                onFailure(String(created.id));
               }
             }
           } else {
@@ -3015,7 +3018,9 @@ function BackendWorkspace({
           }
         };
         rememberPendingOperation(reason.requestId, { threadId, draftContext, pendingTurnId, confirmed }, client);
-        return false;
+        // 已进入原请求对账，不能把未知结果回报成“消息未发送”。
+        // 原生 ACK 仅表示操作已接收；草稿清理仍由 onSent 的真实确认驱动。
+        return true;
       }
       if (thread?.id) {
         setThreads((current) =>
@@ -3038,6 +3043,7 @@ function BackendWorkspace({
         setError(reason instanceof Error ? reason.message : String(reason));
       }
       onFailure(String(thread?.id ?? ''));
+      if (throwOnFailure) throw reason;
     } finally {
       if (draftContext === draftContextGenerationRef.current) {
         setImageReading(false);
@@ -3054,7 +3060,7 @@ function BackendWorkspace({
     await sendMessage();
   }
 
-  async function sendMessage() {
+  async function sendMessage(throwOnFailure = false) {
     if (draftSavingRef.current || (active?.id && activeThreadAccessMode !== "interactive")) return false;
     const text = currentDraftRef.current.text.trim();
     const pendingQuotes = [...quotesRef.current];
@@ -3106,6 +3112,7 @@ function BackendWorkspace({
         return true;
       } catch (reason) {
         if (draftContext === draftContextGenerationRef.current) setError(String((reason as Error).message ?? reason));
+        if (throwOnFailure) throw reason;
         return false;
       } finally { sendingDraftContextsRef.current.delete(draftContext); }
     }
@@ -3175,6 +3182,7 @@ function BackendWorkspace({
         }
       } catch (reason) {
         if (draftContext === draftContextGenerationRef.current) setError(reason instanceof Error ? reason.message : String(reason));
+        if (throwOnFailure) throw reason;
         return false;
       } finally {
         queueSubmittingThreadIdsRef.current.delete(threadId);
@@ -3200,6 +3208,7 @@ function BackendWorkspace({
       pendingSkills,
       pendingPlugins,
       draftContext,
+      throwOnFailure,
       onSent: savedDraft ? () => {
         void newChatDraftStore.remove(savedDraft.id, savedDraft.revision).then(() => {
           if (savedDraftRef.current?.revision === savedDraft.revision) savedDraftRef.current = undefined;
@@ -4580,7 +4589,7 @@ function BackendWorkspace({
     olderTurnsState, error, syncStale: syncState?.stale, draftSaveStatus,
     getDraft: () => currentDraftRef.current.text,
     setDraft: value => { draftInputRevisionRef.current += 1; currentDraftRef.current = { ...currentDraftRef.current, text: value }; setDraft(value); },
-    send: sendMessage, stop: interrupt, chooseModel, chooseEffort,
+    send: () => sendMessage(true), stop: interrupt, chooseModel, chooseEffort,
     removeAttachment: id => {
       setDraftImages(current => current.filter(item => item.id !== id));
       setDraftFiles(current => { const removed = current.find(item => item.id === id); if (removed) URL.revokeObjectURL(removed.previewUrl); return current.filter(item => item.id !== id); });
