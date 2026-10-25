@@ -2379,6 +2379,61 @@ final class AgentAppUITests: XCTestCase {
         captureConversation("系统导航栏与消息", app: app)
     }
 
+    func testAutomaticTitleUpdatesWithoutLeavingConversation() async throws {
+        guard let control = ProcessInfo.processInfo.environment["CODEX_TEST_TITLE_CONTROL"]
+            ?? ProcessInfo.processInfo.environment["TEST_RUNNER_CODEX_TEST_TITLE_CONTROL"],
+              let controlURL = URL(string: control) else { throw XCTSkip("需要独立自动命名协议夹具") }
+        func state(_ path: String = "") async throws -> [String: Any] {
+            let (data, _) = try await URLSession.shared.data(from: path.isEmpty ? controlURL : controlURL.appendingPathComponent(path))
+            return try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        }
+        let app = try launchConnectedApp()
+        app.buttons["sidebar.askCodex"].tap()
+        let input = app.textFields["message-input"]
+        XCTAssertTrue(input.waitForExistence(timeout: 8)); input.tap(); input.typeText("验证自动标题即时更新")
+        app.buttons["composer.submit"].tap()
+        XCTAssertTrue(app.navigationBars["新会话"].waitForExistence(timeout: 8))
+        // 首次发送会触发通知授权；保持 App 在前台后再推进网关事件。
+        let permission = XCUIApplication(bundleIdentifier: "com.apple.springboard").alerts.firstMatch
+        if permission.waitForExistence(timeout: 2) { permission.buttons.firstMatch.tap() }
+        let accepted = try await state()
+        XCTAssertEqual(accepted["summaries"] as? Int, 0, "受理回执还没有用户消息时不能过早总结")
+        _ = try await state("confirm-user")
+        for _ in 0..<50 {
+            if try await state()["summaries"] as? Int == 1 { break }
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        let before = try await state()
+        XCTAssertEqual(before["summaries"] as? Int, 1)
+        XCTAssertEqual(before["namesWritten"] as? Int, 0)
+        _ = try await state("release-summary")
+        XCTAssertTrue(app.navigationBars["停留页面实时更新标题"].waitForExistence(timeout: 12), "保持前台当前页面也必须更新标题")
+        let after = try await state()
+        XCTAssertEqual(after["namesWritten"] as? Int, 1)
+        captureConversation("自动标题-保持当前页面", app: app)
+    }
+
+    func testSavedTitleRecoversWithoutNameNotificationOrReentering() async throws {
+        guard let control = ProcessInfo.processInfo.environment["CODEX_TEST_TITLE_CONTROL"]
+            ?? ProcessInfo.processInfo.environment["TEST_RUNNER_CODEX_TEST_TITLE_CONTROL"],
+              let controlURL = URL(string: control) else { throw XCTSkip("需要独立自动命名协议夹具") }
+        let app = try launchConnectedApp()
+        app.buttons["sidebar.askCodex"].tap()
+        let input = app.textFields["message-input"]
+        XCTAssertTrue(input.waitForExistence(timeout: 8)); input.tap(); input.typeText("验证服务端已保存标题的同步")
+        app.buttons["composer.submit"].tap()
+        XCTAssertTrue(app.navigationBars["新会话"].waitForExistence(timeout: 8))
+        let permission = XCUIApplication(bundleIdentifier: "com.apple.springboard").alerts.firstMatch
+        if permission.waitForExistence(timeout: 2) { permission.buttons.firstMatch.tap() }
+        // 模拟总结名称已保存，但 thread/name/updated 通知遗漏。
+        let (data, _) = try await URLSession.shared.data(from: controlURL.appendingPathComponent("save-title-without-event"))
+        let state = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertEqual(state["namesWritten"] as? Int, 1)
+        XCTAssertEqual(state["summaries"] as? Int, 0)
+        XCTAssertTrue(app.navigationBars["服务端已保存的模型标题"].waitForExistence(timeout: 12), "不重新进入页面也能补齐已保存的名称")
+        captureConversation("自动标题-已保存名称通知漏收", app: app)
+    }
+
     func testModelSummaryThroughLiveWebKitAndGateway() async throws {
         guard let control = ProcessInfo.processInfo.environment["CODEX_TEST_TITLE_CONTROL"]
             ?? ProcessInfo.processInfo.environment["TEST_RUNNER_CODEX_TEST_TITLE_CONTROL"],

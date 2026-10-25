@@ -556,6 +556,8 @@ function BackendWorkspace({
     new Map<string, AutomaticTitleState>(),
   );
   const automaticTitleStreamsRef = useRef(new Map<string, string>());
+  // 显式名称事件（含清空）优先于可能迟到的列表摘要。
+  const confirmedThreadNamesRef = useRef(new Set<string>());
   const searchSequenceRef = useRef(0);
   const searchQueryRef = useRef(searchQuery);
   const skillLoadSequenceRef = useRef(0);
@@ -573,31 +575,38 @@ function BackendWorkspace({
     itemId: string,
   ) => `${threadId}\u0000${turnId}\u0000${itemId}`;
 
-  function updateThreadNameLocally(threadId: string, name: string) {
+  function updateThreadNameLocally(threadId: string, name: string | null) {
+    confirmedThreadNamesRef.current.add(threadId);
     setThreads((current) => {
-      const next = current.map((thread) =>
-        String(thread.id) === threadId ? { ...thread, name } : thread,
-      );
+      const next = applyThreadNameUpdateToList(current, threadId, name);
       threadsRef.current = next;
       return next;
     });
-    setSearchResults((current) =>
-      current.map((thread) =>
-        String(thread.id) === threadId ? { ...thread, name } : thread,
-      ),
-    );
+    setSearchResults((current) => applyThreadNameUpdateToList(current, threadId, name));
     setActive((current) => {
-      const next = String(current?.id ?? "") === threadId
-        ? { ...current, name }
-        : current;
+      const next = applyThreadNameUpdate(current, threadId, name);
       activeRef.current = next;
       return next;
     });
   }
 
-  function requestAutomaticTitle(client: AppServerClient, threadId: string) {
+  function recoverActiveThreadName(thread: AnyRecord) {
+    const threadId = String(thread.id ?? "");
+    if (confirmedThreadNamesRef.current.has(threadId) ||
+      activeRef.current?.id !== threadId || activeRef.current?.name?.trim() ||
+      typeof thread.name !== "string" || !thread.name.trim()) return;
+    // 名称已保存但通知漏收时，利用已有元数据回填当前页，不重复总结或写入。
+    const automaticTitle = automaticTitleStatesRef.current.get(threadId);
+    if (automaticTitle?.status === "pending" ||
+      (automaticTitle?.status === "saving" && !automaticTitle.savePromise)) automaticTitle.status = "closed";
+    updateThreadNameLocally(threadId, thread.name);
+  }
+
+  function requestAutomaticTitle(client: AppServerClient, threadId: string, confirmedItems: AnyRecord[]) {
     const state = automaticTitleStatesRef.current.get(threadId);
     if (!state || state.status !== "pending") return;
+    // turn/start 的受理回执可能先于用户消息落盘；只用服务端确认的消息触发总结。
+    if (!confirmedItems.some(item => item.type === "userMessage")) return;
     state.status = "saving";
     void summarizeThreadTitle(backend, threadId, { automatic: true }).then(async title => {
       if (state.status !== "saving") return;
@@ -1132,7 +1141,15 @@ function BackendWorkspace({
       return;
     }
 
+    // 回合对账同时补齐遗漏的名称事件；正文仍使用分页回合接口。
+    if (!activeRef.current?.name?.trim() && !confirmedThreadNamesRef.current.has(threadId)) {
+      void client.request<{ thread: AnyRecord }>("thread/read", { threadId, includeTurns: false })
+        .then(result => {
+          if (client === clientRef.current && isLatest() && result.thread?.id === threadId) recoverActiveThreadName(result.thread);
+        }).catch(() => undefined);
+    }
     const hasPendingOperation = [...pendingOperationsRef.current.values()].some((operation) => operation.threadId === threadId);
+    requestAutomaticTitle(client, threadId, latestTurns.flatMap((turn: AnyRecord) => turn.items ?? []));
     const discardPendingThrough = hasPendingOperation ? -1 : pendingThrough;
     setActive((current) => {
       if (current?.id !== threadId || !isLatest()) return current;
@@ -1491,27 +1508,7 @@ function BackendWorkspace({
             ) {
               automaticTitle.status = "closed";
             }
-            setThreads((current) => {
-              const next = applyThreadNameUpdateToList(
-                current,
-                threadId,
-                threadName,
-              );
-              threadsRef.current = next;
-              return next;
-            });
-            setActive((current) => {
-              const next = applyThreadNameUpdate(
-                current,
-                threadId,
-                threadName,
-              );
-              activeRef.current = next;
-              return next;
-            });
-            setSearchResults((current) =>
-              applyThreadNameUpdateToList(current, threadId, threadName),
-            );
+            updateThreadNameLocally(threadId, threadName);
             if (searchQueryRef.current.trim()) {
               setSearchRefreshVersion((current) => current + 1);
             }
@@ -1627,6 +1624,7 @@ function BackendWorkspace({
             );
           }
           if (message.method === "item/completed" && params.item) {
+            requestAutomaticTitle(client, String(params.threadId ?? ""), [params.item]);
             const nextParams = {
               ...params,
               item: sanitizeAgentItem(
@@ -1681,6 +1679,7 @@ function BackendWorkspace({
           if (message.method === "turn/completed") {
             const threadId = String(params.threadId ?? "");
             const turnId = String(params.turn?.id ?? params.turnId ?? "");
+            requestAutomaticTitle(client, threadId, params.turn?.items ?? []);
             const completedParams = params.turn
               ? {
                   ...params,
@@ -1841,6 +1840,7 @@ function BackendWorkspace({
         }
         client.onThreadMetadata((thread) => {
           if (!disposed && manager.client(backend.id) === source) {
+            recoverActiveThreadName(thread);
             finalAnswerCompletionRef.current.rememberThread(thread);
             mobileCompletionRef.current.rememberThread(thread);
             questionNotificationRef.current.rememberThread(thread);
@@ -2920,7 +2920,7 @@ function BackendWorkspace({
           : {}),
       });
       const startedTurn = startedTurnRequest.result;
-      requestAutomaticTitle(startedTurnRequest.client, String(thread.id));
+      requestAutomaticTitle(startedTurnRequest.client, String(thread.id), startedTurn.turn?.items ?? []);
       sent = true;
       onSent?.();
       if (draftContext === draftContextGenerationRef.current) {
@@ -2976,7 +2976,7 @@ function BackendWorkspace({
               }
             }
           } else {
-            requestAutomaticTitle(confirmationClient, threadId);
+            requestAutomaticTitle(confirmationClient, threadId, (response.result as AnyRecord)?.turn?.items ?? []);
             onSent?.();
             pendingFiles.forEach((file) => URL.revokeObjectURL(file.previewUrl));
             const turn = (response.result as AnyRecord)?.turn;
@@ -3826,21 +3826,7 @@ function BackendWorkspace({
         if (!name) return false;
         await cancelAutomaticTitle(threadId);
         await client.request("thread/name/set", { threadId, name });
-        setThreads((current) =>
-          current.map((entry) =>
-            String(entry.id) === threadId ? { ...entry, name } : entry,
-          ),
-        );
-        setSearchResults((current) =>
-          current.map((entry) =>
-            String(entry.id) === threadId ? { ...entry, name } : entry,
-          ),
-        );
-        setActive((current) =>
-          String(current?.id ?? "") === threadId
-            ? { ...current, name }
-            : current,
-        );
+        updateThreadNameLocally(threadId, name);
         showNotice(t("已重命名"));
         return true;
       }
@@ -3926,19 +3912,7 @@ function BackendWorkspace({
         threadId: thread.id,
         name,
       });
-      setThreads((current) =>
-        current.map((entry) =>
-          entry.id === thread.id ? { ...entry, name } : entry,
-        ),
-      );
-      setSearchResults((current) =>
-        current.map((entry) =>
-          entry.id === thread.id ? { ...entry, name } : entry,
-        ),
-      );
-      setActive((current) =>
-        current?.id === thread.id ? { ...current, name } : current,
-      );
+      updateThreadNameLocally(String(thread.id), name);
       showNotice(t("已重命名"));
       return true;
     } catch (reason) {

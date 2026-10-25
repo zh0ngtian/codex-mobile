@@ -9,13 +9,13 @@ import { AppBootstrap } from '../../src/App';
 import { HttpOperationPendingError } from '../../src/backends/http-transport';
 import * as threadListLoader from '../../src/app-server/thread-list-loader';
 import { saveBackendRegistry } from '../../src/backends/registry';
-const boundary = vi.hoisted(() => ({ pins: [] as string[], pinFailure: false, pinBarrier: null as Promise<void> | null, sidebarIndex: false, requests: [] as Array<{ method: string; params: any; options?: { priority?: string } }>, threadRecords: [] as Array<Record<string, any>>, threadReadBarrier: null as Promise<void> | null, projectBarrier: null as Promise<void> | null, priorityBarrier: null as Promise<void> | null, listBarrier: null as Promise<void> | null, searchBarrier: null as Promise<void> | null, listFailure: false, options: null as any, client: null as any, release: null as null | (() => void), failSend: false, immediateSend: false, nextThreadId: 'sent-thread', delayRevert: false, pendingMethod: '', releaseRevert: null as null | (() => void), rejectStart: null as null | (() => void) }));
+const boundary = vi.hoisted(() => ({ metadata: null as any, pins: [] as string[], pinFailure: false, pinBarrier: null as Promise<void> | null, sidebarIndex: false, requests: [] as Array<{ method: string; params: any; options?: { priority?: string } }>, threadRecords: [] as Array<Record<string, any>>, threadReadBarrier: null as Promise<void> | null, projectBarrier: null as Promise<void> | null, priorityBarrier: null as Promise<void> | null, listBarrier: null as Promise<void> | null, searchBarrier: null as Promise<void> | null, listFailure: false, options: null as any, client: null as any, release: null as null | (() => void), failSend: false, immediateSend: false, nextThreadId: 'sent-thread', delayRevert: false, pendingMethod: '', releaseRevert: null as null | (() => void), rejectStart: null as null | (() => void) }));
 vi.mock('../../src/backends/connection-manager', () => ({ BackendConnectionManager: class {
  constructor(private options: any) { boundary.options = options; }
  client() { return boundary.client; } socket() { return null; } close() {} reconnect() {}
  sync(backends: any[]) {
   if (!backends.length) return;
-  const client = { sidebarIndex: boundary.sidebarIndex, onNotification() { return () => {}; }, onThreadMetadata() { return () => {}; }, request: async (method: string, params: any, options?: { priority?: string }) => {
+  const client = { sidebarIndex: boundary.sidebarIndex, onNotification() { return () => {}; }, onThreadMetadata(listener: any) { boundary.metadata = listener; return () => {}; }, request: async (method: string, params: any, options?: { priority?: string }) => {
    boundary.requests.push({ method, params, options });
    if (method === 'model/list') return { data: [{ model: 'gpt', displayName: 'GPT', isDefault: true, supportedReasoningEfforts: [{ reasoningEffort: 'high', description: '' }] }] };
    if (method === 'permissionProfile/list') return { data: [{ id: ':workspace', allowed: true }] };
@@ -51,7 +51,7 @@ function deferredRead() {
  pendingReads.push(resolve);
  return { promise, resolve, reject };
 }
-afterEach(async () => { cleanup(); await act(async () => { pendingReads.splice(0).forEach(resolve => resolve()); }); boundary.pins = []; boundary.pinFailure = false; boundary.pinBarrier = null; boundary.sidebarIndex = false; boundary.requests = []; boundary.threadRecords = []; boundary.threadReadBarrier = null; boundary.projectBarrier = null; boundary.priorityBarrier = null; boundary.listBarrier = null; boundary.searchBarrier = null; boundary.listFailure = false; boundary.client = null; boundary.options = null; boundary.release = null; boundary.failSend = false; boundary.immediateSend = false; boundary.nextThreadId = 'sent-thread'; boundary.delayRevert = false; boundary.pendingMethod = ''; boundary.releaseRevert = null; boundary.rejectStart = null; queueItems = []; posts.length = 0; localStorage.clear(); delete (window as any).__CODEX_NATIVE_UI__; delete (window as any).webkit; delete (window as any).codexMobilePublishNativeSnapshot; vi.unstubAllGlobals(); });
+afterEach(async () => { cleanup(); await act(async () => { pendingReads.splice(0).forEach(resolve => resolve()); }); boundary.metadata = null; boundary.pins = []; boundary.pinFailure = false; boundary.pinBarrier = null; boundary.sidebarIndex = false; boundary.requests = []; boundary.threadRecords = []; boundary.threadReadBarrier = null; boundary.projectBarrier = null; boundary.priorityBarrier = null; boundary.listBarrier = null; boundary.searchBarrier = null; boundary.listFailure = false; boundary.client = null; boundary.options = null; boundary.release = null; boundary.failSend = false; boundary.immediateSend = false; boundary.nextThreadId = 'sent-thread'; boundary.delayRevert = false; boundary.pendingMethod = ''; boundary.releaseRevert = null; boundary.rejectStart = null; queueItems = []; posts.length = 0; localStorage.clear(); delete (window as any).__CODEX_NATIVE_UI__; delete (window as any).webkit; delete (window as any).codexMobilePublishNativeSnapshot; vi.unstubAllGlobals(); });
 async function setup(native = true, projectState = { projects: [] as string[], projectlessThreadIds: [] as string[] }, waitForSettings = true) {
  if (native) Object.assign(window, { __CODEX_NATIVE_UI__: true, webkit: { messageHandlers: { nativeUI: { postMessage() {} } } }, codexMobilePublishNativeSnapshot: (s: unknown) => posts.push(s) });
  vi.stubGlobal('fetch', vi.fn(async (url: string, options?: RequestInit) => {
@@ -71,9 +71,132 @@ async function setup(native = true, projectState = { projects: [] as string[], p
 it('真实App的新会话自动总结标记通知等待，普通手动候选不混入', async () => {
  const contextId = await setup(); boundary.immediateSend = true;
  await act(async () => { command('title-wait-draft', 'draft.set', { contextId, value: '验证新名称完成通知', revision: 1 }); command('title-wait-send', 'message.send', { contextId }); });
+ await act(async () => boundary.options.onNotification('a', { method: 'item/completed', params: { threadId: 'sent-thread', turnId: 'turn-live', item: { id: 'confirmed-user', type: 'userMessage', content: [{ type: 'text', text: '验证新名称完成通知' }] } } }, boundary.client));
  await waitFor(() => expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url).includes('/api/threads/title-summary'))).toBe(true));
  const request = vi.mocked(fetch).mock.calls.find(([url]) => String(url).includes('/api/threads/title-summary'))!;
  expect(JSON.parse(String(request[1]?.body))).toEqual({ threadId: 'sent-thread', automatic: true });
+});
+
+it('停留在新会话时，延迟返回的自动标题在保存后立即发布到原生页面', async () => {
+ const contextId = await setup(); boundary.immediateSend = true;
+ const summary = deferredRead();
+ const fetcher = vi.mocked(fetch).getMockImplementation()!;
+ vi.mocked(fetch).mockImplementation(async (url, options) => {
+  if (String(url).includes('/api/threads/title-summary')) {
+   await summary.promise;
+   return new Response(JSON.stringify({ title: '自动生成的实时标题' }));
+  }
+  return fetcher(url, options);
+ });
+ await act(async () => { command('live-title-draft', 'draft.set', { contextId, value: '验证页面实时更新标题', revision: 1 }); command('live-title-send', 'message.send', { contextId }); });
+ await waitFor(() => expect(posts.at(-1)?.threadId).toBe('sent-thread'));
+ expect(posts.at(-1)?.title).toBe('新会话');
+ expect(vi.mocked(fetch).mock.calls.filter(([url]) => String(url).includes('/api/threads/title-summary'))).toHaveLength(0);
+ await act(async () => boundary.options.onNotification('a', { method: 'item/completed', params: { threadId: 'sent-thread', turnId: 'turn-live', item: { id: 'confirmed-user', type: 'userMessage', content: [{ type: 'text', text: '验证页面实时更新标题' }] } } }, boundary.client));
+ await act(async () => summary.resolve());
+ await waitFor(() => expect(boundary.requests).toContainEqual(expect.objectContaining({ method: 'thread/name/set', params: { threadId: 'sent-thread', name: '自动生成的实时标题' } })));
+ await waitFor(() => expect(posts.at(-1)?.title).toBe('自动生成的实时标题'));
+ expect(posts.at(-1)?.threadId).toBe('sent-thread');
+ expect(boundary.requests.filter(request => request.method === 'thread/start')).toHaveLength(1);
+ await act(async () => boundary.options.onNotification('a', { method: 'item/completed', params: { threadId: 'sent-thread', turnId: 'turn-live', item: { id: 'confirmed-user', type: 'userMessage', content: [{ type: 'text', text: '验证页面实时更新标题' }] } } }, boundary.client));
+ expect(vi.mocked(fetch).mock.calls.filter(([url]) => String(url).includes('/api/threads/title-summary'))).toHaveLength(1);
+});
+
+it('名称通知漏收时，列表元数据里的已保存标题立即回填当前未命名页面', async () => {
+ const contextId = await setup(); boundary.immediateSend = true;
+ await act(async () => { command('saved-title-draft', 'draft.set', { contextId, value: '服务端已总结标题', revision: 1 }); command('saved-title-send', 'message.send', { contextId }); });
+ await waitFor(() => expect(posts.at(-1)?.threadId).toBe('sent-thread'));
+ expect(posts.at(-1)?.title).toBe('新会话');
+ await act(async () => boundary.metadata({ id: 'other-thread', name: '其他会话标题' }));
+ expect(posts.at(-1)?.title).toBe('新会话');
+ await act(async () => boundary.metadata({ id: 'sent-thread', name: '模型已保存的标题' }));
+ await waitFor(() => expect(posts.at(-1)?.title).toBe('模型已保存的标题'));
+ expect(boundary.requests.filter(request => request.method === 'thread/name/set')).toHaveLength(0);
+ await act(async () => boundary.options.onNotification('a', { method: 'item/completed', params: { threadId: 'sent-thread', turnId: 'turn-live', item: { id: 'confirmed-after-title', type: 'userMessage', content: [] } } }, boundary.client));
+ expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url).includes('/api/threads/title-summary'))).toBe(false);
+});
+
+it('回合结束对账会读取已保存名称，保持当前页面即可恢复漏收的标题', async () => {
+ const contextId = await setup(); boundary.immediateSend = true;
+ await act(async () => { command('reconcile-title-draft', 'draft.set', { contextId, value: '结束时恢复标题', revision: 1 }); command('reconcile-title-send', 'message.send', { contextId }); });
+ await waitFor(() => expect(posts.at(-1)?.threadId).toBe('sent-thread'));
+ boundary.threadRecords = [{ id: 'sent-thread', name: '结束前已经保存的总结标题' }];
+ await act(async () => boundary.options.onNotification('a', { method: 'thread/status/changed', params: { threadId: 'sent-thread', status: { type: 'idle' } } }, boundary.client));
+ await waitFor(() => expect(posts.at(-1)?.title).toBe('结束前已经保存的总结标题'));
+ expect(boundary.requests).toContainEqual(expect.objectContaining({ method: 'thread/read', params: { threadId: 'sent-thread', includeTurns: false } }));
+});
+
+it('手动名称和明确清空名称的通知不被旧列表标题覆盖', async () => {
+ const contextId = await setup(); boundary.immediateSend = true;
+ await act(async () => { command('explicit-title-draft', 'draft.set', { contextId, value: '保留用户名称', revision: 1 }); command('explicit-title-send', 'message.send', { contextId }); });
+ await waitFor(() => expect(posts.at(-1)?.threadId).toBe('sent-thread'));
+ await act(async () => boundary.options.onNotification('a', { method: 'thread/name/updated', params: { threadId: 'sent-thread', threadName: '用户新名称' } }, boundary.client));
+ await act(async () => boundary.metadata({ id: 'sent-thread', name: '迟到旧标题' }));
+ await waitFor(() => expect(posts.at(-1)?.title).toBe('用户新名称'));
+ await act(async () => boundary.options.onNotification('a', { method: 'thread/name/updated', params: { threadId: 'sent-thread', threadName: null } }, boundary.client));
+ await act(async () => boundary.metadata({ id: 'sent-thread', name: '迟到旧标题' }));
+ await waitFor(() => expect(posts.at(-1)?.title).toBe('新会话'));
+});
+
+it('用户消息确认先于回合受理响应时也总结一次，迟到受理不回滚标题', async () => {
+ const contextId = await setup();
+ const fetcher = vi.mocked(fetch).getMockImplementation()!;
+ vi.mocked(fetch).mockImplementation(async (url, options) => String(url).includes('/api/threads/title-summary')
+  ? new Response(JSON.stringify({ title: '先确认消息的标题' })) : fetcher(url, options));
+ await act(async () => { command('early-title-draft', 'draft.set', { contextId, value: '先收到消息事件', revision: 1 }); command('early-title-send', 'message.send', { contextId }); });
+ await waitFor(() => expect(boundary.release).not.toBeNull());
+ await act(async () => boundary.options.onNotification('a', { method: 'item/completed', params: { threadId: 'sent-thread', turnId: 'turn-live', item: { id: 'early-user', type: 'userMessage', content: [{ type: 'text', text: '先收到消息事件' }] } } }, boundary.client));
+ await waitFor(() => expect(posts.at(-1)?.title).toBe('先确认消息的标题'));
+ await act(async () => boundary.release!());
+ await waitFor(() => expect(posts.at(-1)?.pending).toBe(false));
+ expect(posts.at(-1)?.title).toBe('先确认消息的标题');
+ expect(vi.mocked(fetch).mock.calls.filter(([url]) => String(url).includes('/api/threads/title-summary'))).toHaveLength(1);
+});
+
+it.each(['completed-turn', 'reconciled-history'])('用户单条确认事件漏收后，从 %s 的真实用户消息触发总结', async source => {
+ const contextId = await setup(); boundary.immediateSend = true;
+ const fetcher = vi.mocked(fetch).getMockImplementation()!;
+ vi.mocked(fetch).mockImplementation(async (url, options) => String(url).includes('/api/threads/title-summary')
+  ? new Response(JSON.stringify({ title: '恢复确认后的标题' })) : fetcher(url, options));
+ await act(async () => { command('recovered-title-draft', 'draft.set', { contextId, value: '恢复用户消息确认', revision: 1 }); command('recovered-title-send', 'message.send', { contextId }); });
+ await waitFor(() => expect(posts.at(-1)?.threadId).toBe('sent-thread'));
+ expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url).includes('/api/threads/title-summary'))).toBe(false);
+ const turn = { id: 'turn-live', status: 'completed', items: [{ id: 'recovered-user', type: 'userMessage', content: [{ type: 'text', text: '恢复用户消息确认' }] }] };
+ if (source === 'reconciled-history') {
+  const request = boundary.client.request;
+  boundary.client.request = async (method: string, ...params: any[]) => method === 'thread/turns/list' ? { data: [turn], nextCursor: null } : request(method, ...params);
+ }
+ await act(async () => boundary.options.onNotification('a', source === 'completed-turn'
+  ? { method: 'turn/completed', params: { threadId: 'sent-thread', turn } }
+  : { method: 'thread/status/changed', params: { threadId: 'sent-thread', status: { type: 'idle' } } }, boundary.client));
+ await waitFor(() => expect(posts.at(-1)?.title).toBe('恢复确认后的标题'));
+ expect(vi.mocked(fetch).mock.calls.filter(([url]) => String(url).includes('/api/threads/title-summary'))).toHaveLength(1);
+});
+
+it.each(['new-editor', 'manual-rename'])('自动总结在途时执行 %s，迟到结果不覆盖新页面或手动名称', async destination => {
+ const contextId = await setup(); boundary.immediateSend = true;
+ const summary = deferredRead();
+ const fetcher = vi.mocked(fetch).getMockImplementation()!;
+ vi.mocked(fetch).mockImplementation(async (url, options) => {
+  if (!String(url).includes('/api/threads/title-summary')) return fetcher(url, options);
+  await summary.promise; return new Response(JSON.stringify({ title: '原会话的自动标题' }));
+ });
+ await act(async () => { command('late-title-draft', 'draft.set', { contextId, value: '切换后完成总结', revision: 1 }); command('late-title-send', 'message.send', { contextId }); });
+ await waitFor(() => expect(posts.at(-1)?.threadId).toBe('sent-thread'));
+ await act(async () => boundary.options.onNotification('a', { method: 'item/completed', params: { threadId: 'sent-thread', turnId: 'turn-live', item: { id: 'late-user', type: 'userMessage', content: [{ type: 'text', text: '切换后完成总结' }] } } }, boundary.client));
+ await act(async () => destination === 'new-editor'
+  ? command('late-title-new', 'thread.new', { backendId: 'a' })
+  : command('late-title-manual', 'thread.manage', { backendId: 'a', threadId: 'sent-thread', action: 'rename', value: '用户手动名称' }));
+ await waitFor(() => expect(destination === 'new-editor' ? posts.at(-1)?.threadId : posts.at(-1)?.title).toBe(destination === 'new-editor' ? undefined : '用户手动名称'));
+ await act(async () => summary.resolve());
+ if (destination === 'new-editor') {
+  await waitFor(() => expect(boundary.requests).toContainEqual(expect.objectContaining({ method: 'thread/name/set', params: { threadId: 'sent-thread', name: '原会话的自动标题' } })));
+  expect(posts.at(-1)?.title).toBe('新会话');
+  expect(posts.at(-1)?.threadId).toBeUndefined();
+ } else {
+  expect(posts.at(-1)?.title).toBe('用户手动名称');
+  expect(boundary.requests.filter(request => request.method === 'thread/name/set').map(request => request.params.name)).toEqual(['用户手动名称']);
+ }
 });
 
 function assertSwiftNavigationSnapshots(snapshots: any[]) {

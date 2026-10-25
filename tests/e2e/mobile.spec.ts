@@ -235,6 +235,14 @@ test(oldGateway ? "新会话遇旧网关静默保留新会话名称" : "新会�
 
         if (request.method === "turn/start") {
           setTimeout(() => {
+            this.dispatchEvent(new MessageEvent("message", { data: JSON.stringify({
+              method: "item/completed", params: {
+                threadId: "generated-title-thread", turnId: "generated-title-turn",
+                item: { id: "confirmed-user", type: "userMessage", content: request.params.input },
+              },
+            }) }));
+          }, 10);
+          setTimeout(() => {
             this.dispatchEvent(
               new MessageEvent("message", {
                 data: JSON.stringify({
