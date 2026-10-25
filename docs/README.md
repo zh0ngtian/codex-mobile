@@ -7,7 +7,7 @@
 - [自动安装指南](../install.md)：macOS npm 网关安装和开机启动。
 - [仓库协作约定](../AGENTS.md)与 [Git 提交规范](commit-conventions.md)：默认验证后合入 main、提交推送；main 在修改期间有新提交才需整合回归，默认不发布。
 - [发布协调说明](release-coordination.md)：仅在明确要求发布或部署时使用的 releasectl 配置、适配器入口、必要验证、共同凭证及实际验收状态。
-- [iOS OTA 发布](ios-ota-release.md)：本机签名、身份连续性、固定渠道、软件源发布文档入口及安装诊断。
+- [历史 iOS OTA 资料](ios-ota-release.md)：停止新批次操作；仅保留旧包签名身份、原固定渠道和安装诊断。现行unsigned分发使用上方发布协调说明。
 - [原生 iOS 界面桥接](native-ui-business-bridge.md)：双向切换、检查点与共享业务边界。
 - [iOS 模拟器验证](ios-simulator-verification.md)：可复用操作步骤与按日期保留的验收结果。
 - [2026-10-18 关注会话加载耗时](performance/2026-10-18-conversation-loading/README.md)：分阶段计时、重复打开/重启后首次打开的分布及脱敏原始样本；模拟器Debug数据。
@@ -23,7 +23,7 @@
 
 ## 当前发布入口
 
-现役双端客户端为0.3.36（3036），本版修复iOS选择杆包含段后留白、自动命名过早与已保存名称未同步当前页的问题；“用量与额度”新增“最近请求上传”和“本轮累计上传”字段；已有后续最终回答的中途结构化提问收进“执行过程”，待回答问题继续可见。固定APK、Ad Hoc已签名IPA、HTTPS OTA、GitHub unsigned IPA及软件源已完成237项独立回验，正式批次成功，最终回执规格与质量审查均通过。见[本次发布计划](superpowers/plans/2026-10-25-selection-handle-height-release.md)与[公共凭证](superpowers/plans/evidence/2026-10-25-selection-handle-height-release.json)。该客户端批次未部署网关；上传计量后端后续已完成独立部署、桌面入口已安装，仍待用户手动重启激活和实测回验；网关未提供统计时两个字段显示“暂无数据”；真机覆盖安装、数据保留、真机视觉及真实Bark送达仍待现场验收。
+最近已验收客户端为0.3.36（3036），本版修复iOS选择杆包含段后留白、自动命名过早与已保存名称未同步当前页的问题；“用量与额度”新增“最近请求上传”和“本轮累计上传”字段；已有后续最终回答的中途结构化提问收进“执行过程”，待回答问题继续可见。该历史批次的固定APK、Ad Hoc已签名IPA、HTTPS OTA、GitHub unsigned IPA及软件源完成237项独立回验，见[发布计划](superpowers/plans/2026-10-25-selection-handle-height-release.md)与[公共凭证](superpowers/plans/evidence/2026-10-25-selection-handle-height-release.json)。自2026-10-25起用户确认停止本机iOS签名、HTTPS OTA和固定IPA更新，改用GitHub APK／unsigned IPA、固定APK和既有unsigned软件源；新范围及worktree会话归属的客户端／网关真实批次待验收，不能把旧包说成本次产物。上传计量后端此前已独立部署并安装桌面入口，仍待用户手动重启激活和实测回验；真机安装、数据保留、真机视觉及真实Bark送达仍待现场验收。
 
 此前0.3.35已发布后续消息从输入区连续交接到用户气泡和旧图片预览保留，继承0.3.34的首条发送动效，历史、页头、附件及队列语义保持；其[发布计划](superpowers/plans/2026-10-24-followup-message-motion-release.md)与[公共凭证](superpowers/plans/evidence/2026-10-24-followup-message-motion-release.json)保留当次验收口径。
 
@@ -32,11 +32,11 @@
 版本以在线清单为准，不能从 package.json 的开发版本、文档示例或历史记录推断：
 
 - [Android 清单](http://192.168.123.79:8765/channels/codex-mobile/latest.json)及 [固定 APK](http://192.168.123.79:8765/channels/codex-mobile/latest.apk)。
-- [iOS 清单](http://192.168.123.79:8765/channels/codex-mobile/latest-ios.json)及 [固定 IPA](http://192.168.123.79:8765/channels/codex-mobile/latest.ipa)。
-- [HTTPS OTA 安装页](https://192.168.123.79:8766/channels/codex-mobile/current/install.html)及 [OTA 清单](https://192.168.123.79:8766/channels/codex-mobile/current/latest-ios.json)。
-- [Cloudflare 软件源](https://signos-source-aggregator.305301890.workers.dev/sources/yao.json)：SignOs 可添加此源；只自动同步本仓库 GitHub Release 的 unsigned IPA，安装前需自行签名；Ad Hoc 已签名包仅用于 OTA/LAN。
+- [GitHub Release](https://github.com/zh0ngtian/codex-mobile/releases)：现行APK和unsigned IPA；iOS包未签名，安装前需自行签名。
+- [Cloudflare 软件源](https://signos-source-aggregator.305301890.workers.dev/sources/yao.json)：SignOs可添加此源；只自动同步既有GitHub unsigned IPA订阅，保留原署名，不新增已签名订阅。
+- [历史iOS清单](http://192.168.123.79:8765/channels/codex-mobile/latest-ios.json)、[历史固定IPA](http://192.168.123.79:8765/channels/codex-mobile/latest.ipa)、[历史HTTPS OTA安装页](https://192.168.123.79:8766/channels/codex-mobile/current/install.html)及[历史OTA清单](https://192.168.123.79:8766/channels/codex-mobile/current/latest-ios.json)保留，不再更新，也不作为本次交付入口。
 
-固定链接随新版本更新。历史记录里的版本、大小、散列只描述当次发布；应读取当前清单，再用 HEAD 和完整 GET 校验当前下载。渠道可用和构建验签不等于真机覆盖安装、数据保留已验证。
+固定APK及GitHub／unsigned软件源随成功新批次更新；历史IPA／OTA保留旧版本。历史记录里的版本、大小、散列只描述当次发布；现行回验必须独立完整下载GitHub两端包，核对固定APK清单、HEAD、完整GET及软件源，并保存unsigned-only成功凭证。渠道可用和构建验证不等于真机覆盖安装、数据保留已验证。
 
 ## 历史资料
 
