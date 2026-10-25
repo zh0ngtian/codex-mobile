@@ -1,8 +1,138 @@
 import XCTest
 import UIKit
+import SwiftUI
 
 @MainActor final class MarkdownLayoutUITests: XCTestCase {
     private let digest = "bd309dfa76a14e11957cd035f976372b22fd7e1e4dea46569008a55cff820a07"
+
+    private func selectableView(_ text: NSAttributedString, width: CGFloat = 350) throws -> (UIWindow, UITextView) {
+        let host = UIHostingController(rootView: NativeSelectableText(text: text).frame(width: width))
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: width, height: 600))
+        window.rootViewController = host
+        window.isHidden = false
+        host.view.layoutIfNeeded()
+        func find(_ view: UIView) -> UITextView? {
+            if let text = view as? UITextView { return text }
+            return view.subviews.lazy.compactMap { find($0) }.first
+        }
+        let view = try XCTUnwrap(find(host.view))
+        view.layoutManager.ensureLayout(for: view.textContainer)
+        return (window, view)
+    }
+
+    func testSelectionCaretExcludesParagraphSpacing() throws {
+        let sources = [
+            "- 放在“取消 / 保存”下面，单独占一行\n- 与“取消 / 保存”放在同一排",
+            "- 这条列表包含**粗体**、😀和`inlineCode`，内容足够长以验证自动折行后的最后一行仍然只使用文字高度。\n- 下一条列表",
+            "## 标题\n\n正文",
+            "正文\n\n## 后续标题",
+            "> 引用正文\n\n后续段落"
+        ]
+        for source in sources {
+            let text = NativeSelectableMarkdown.blocks(NativeMarkdownBlock.parse(source))
+            let (window, view) = try selectableView(text)
+            defer { window.isHidden = true }
+            let compact = NSMutableAttributedString(attributedString: view.attributedText)
+            compact.enumerateAttribute(.paragraphStyle, in: NSRange(location: 0, length: compact.length)) { value, range, _ in
+                let style = (value as! NSParagraphStyle).mutableCopy() as! NSMutableParagraphStyle
+                style.paragraphSpacing = 0
+                compact.addAttribute(.paragraphStyle, value: style, range: range)
+            }
+            let reference = systemTextView(compact, matching: view)
+            let first = (text.string as NSString).paragraphRange(for: NSRange(location: 0, length: 0))
+            for offset in first.location..<NSMaxRange(first) {
+                let position = try XCTUnwrap(view.position(from: view.beginningOfDocument, offset: offset))
+                let referencePosition = try XCTUnwrap(reference.position(from: reference.beginningOfDocument, offset: offset))
+                let actual = view.caretRect(for: position)
+                let expected = reference.caretRect(for: referencePosition)
+                XCTAssertEqual(actual.height, expected.height, accuracy: 0.5, "选择杆高度不能包含段后留白：\(source)，偏移\(offset)")
+                XCTAssertEqual(actual.minX, expected.minX, accuracy: 0.5)
+                XCTAssertEqual(actual.minY, expected.minY, accuracy: 0.5)
+            }
+            let next = view.layoutManager.glyphIndexForCharacter(at: NSMaxRange(first))
+            let compactNext = reference.layoutManager.glyphIndexForCharacter(at: NSMaxRange(first))
+            let nextY = view.layoutManager.lineFragmentRect(forGlyphAt: next, effectiveRange: nil).minY
+            let compactY = reference.layoutManager.lineFragmentRect(forGlyphAt: compactNext, effectiveRange: nil).minY
+            let style = try XCTUnwrap(text.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle)
+            XCTAssertEqual(nextY - compactY, style.paragraphSpacing, accuracy: 0.5, "原有段间距须保持不变")
+            let selection = NSRange(location: 0, length: first.length - 1)
+            view.selectedRange = selection
+            reference.selectedRange = selection
+            let actualRects = view.selectionRects(for: try XCTUnwrap(view.selectedTextRange))
+            let expectedRects = reference.selectionRects(for: try XCTUnwrap(reference.selectedTextRange))
+            XCTAssertEqual(actualRects.count, expectedRects.count)
+            for (actual, expected) in zip(actualRects, expectedRects) {
+                XCTAssertEqual(actual.containsStart, expected.containsStart)
+                XCTAssertEqual(actual.containsEnd, expected.containsEnd)
+                XCTAssertEqual(actual.writingDirection, expected.writingDirection)
+                XCTAssertEqual(actual.isVertical, expected.isVertical)
+                XCTAssertEqual(actual.transform, expected.transform)
+                if actual.containsStart || actual.containsEnd {
+                    XCTAssertEqual(actual.rect.height, expected.rect.height, accuracy: 0.5, "实际显示的系统选择手柄也不能包含段后留白")
+                    XCTAssertEqual(actual.rect.minX, expected.rect.minX, accuracy: 0.5)
+                    XCTAssertEqual(actual.rect.minY, expected.rect.minY, accuracy: 0.5)
+                } else {
+                    XCTAssertEqual(actual.rect, expected.rect, "选区高亮须保持系统结果")
+                }
+            }
+            view.selectedRange = NSRange(location: 0, length: text.length)
+            let selected = try XCTUnwrap(view.selectedTextRange)
+            XCTAssertEqual(view.text(in: selected), text.string, "跨段选文须完整保留列表标记、换行和原文")
+        }
+    }
+
+    private func systemTextView(_ text: NSAttributedString, matching view: UITextView) -> UITextView {
+        let storage = NSTextStorage(attributedString: text)
+        let manager = NativeDottedTextLayoutManager()
+        let container = NSTextContainer(size: view.textContainer.size)
+        container.lineFragmentPadding = 0
+        container.widthTracksTextView = false
+        storage.addLayoutManager(manager)
+        manager.addTextContainer(container)
+        let reference = UITextView(frame: view.frame, textContainer: container)
+        reference.textContainerInset = .zero
+        reference.isScrollEnabled = false
+        manager.ensureLayout(for: container)
+        return reference
+    }
+
+    func testSelectionCaretPreservesPlainTextAndTrailingEmptyLine() throws {
+        for source in ["", "正文与😀、**粗体**及`inlineCode`。", "第一行\n第二行\n"] {
+            let (window, view) = try selectableView(NativeSelectableMarkdown.inline(source), width: 140)
+            defer { window.isHidden = true }
+            let reference = systemTextView(view.attributedText, matching: view)
+            for offset in 0...view.attributedText.length {
+                let position = try XCTUnwrap(view.position(from: view.beginningOfDocument, offset: offset))
+                let referencePosition = try XCTUnwrap(reference.position(from: reference.beginningOfDocument, offset: offset))
+                XCTAssertEqual(view.caretRect(for: position), reference.caretRect(for: referencePosition), "普通正文、折行与文末空行沿用系统选择杆")
+            }
+            view.selectAll(nil)
+            reference.selectAll(nil)
+            let actualRects = view.selectionRects(for: try XCTUnwrap(view.selectedTextRange))
+            let expectedRects = reference.selectionRects(for: try XCTUnwrap(reference.selectedTextRange))
+            XCTAssertEqual(actualRects.map(\.rect), expectedRects.map(\.rect), "没有段后留白时沿用完整系统选区几何")
+        }
+    }
+
+    func testListSelectionHandlesKeepSystemMenuAndQuoteAction() {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-selection-quotes-fixture", "--agent-selection-height-fixture", "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryL", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
+        app.launch()
+        let body = app.textViews["assistant.selectable"].firstMatch
+        XCTAssertTrue(body.waitForExistence(timeout: 10))
+        body.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 80, dy: 12)).press(forDuration: 1.2)
+        XCTAssertTrue(app.menuItems["加入聊天"].waitForExistence(timeout: 5), app.debugDescription)
+        XCTAssertTrue(app.menuItems["在 Sidechat 中提问"].exists)
+        XCTAssertTrue(app.menuItems.matching(NSPredicate(format: "label IN %@", ["复制", "Copy"])).firstMatch.exists)
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "列表选择杆-保留段间距与系统菜单"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+        app.menuItems["加入聊天"].tap()
+        XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "composer.quote").firstMatch.waitForExistence(timeout: 5))
+        XCTAssertEqual(app.descendants(matching: .any).matching(identifier: "message-input").firstMatch.value as? String, "已有问题")
+    }
 
     private func setCodeWrapping(_ enabled: Bool, in app: XCUIApplication) {
         app.buttons["会话列表"].tap()

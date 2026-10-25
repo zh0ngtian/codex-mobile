@@ -18,6 +18,9 @@ import Foundation
             NativeMessage(id: "selection-user", role: "user", text: "这是用户消息中的可选文字。", quoteSource: user),
             NativeMessage(id: "selection-answer", role: "assistant", text: "这段文字用于选文引用验收。\n\n第二段包含重复内容，重复内容。 😀！？\n\n查看 [网页链接](https://example.com) 与 **重点**。\n\n```swift\nlet answer = 42\n```\n\n| 项目 | 数值 |\n| --- | --- |\n| 引用 | 2 |", quoteSource: source, commentary: [NativeCommentaryEntry(id: "selection-commentary", text: "执行过程里的可选文字。", quoteSource: commentary)])
         ]
+        if ProcessInfo.processInfo.arguments.contains("--agent-selection-height-fixture") {
+            snapshot.messages[1].text = "- 放在“取消 / 保存”下面，单独占一行\n- 与“取消 / 保存”放在同一排"
+        }
     }
     func handle(_ command: NativeCommand, snapshot: inout NativeSnapshot) -> Bool {
         var ok = true

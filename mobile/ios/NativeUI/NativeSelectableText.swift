@@ -28,7 +28,7 @@ struct NativeSelectableText: UIViewRepresentable {
         container.widthTracksTextView = false
         storage.addLayoutManager(layout)
         layout.addTextContainer(container)
-        let view = UITextView(frame: .zero, textContainer: container)
+        let view = NativeSelectionTextView(frame: .zero, textContainer: container)
         view.backgroundColor = .clear
         view.isEditable = false
         view.isSelectable = true
@@ -167,6 +167,54 @@ struct NativeSelectableText: UIViewRepresentable {
             return UIAction { [weak self] _ in self?.openLink(url) }
         }
     }
+}
+
+/// TextKit 将段后留白计入行框，系统选择杆因此会延伸到下一段前的空白。
+final class NativeSelectionTextView: UITextView {
+    override func caretRect(for position: UITextPosition) -> CGRect {
+        excludingParagraphSpacing(super.caretRect(for: position))
+    }
+
+    override func selectionRects(for range: UITextRange) -> [UITextSelectionRect] {
+        super.selectionRects(for: range).map { selection in
+            // 高亮区域保持系统结果，只收紧负责绘制两端手柄的矩形。
+            guard (selection.containsStart || selection.containsEnd), !selection.isVertical else { return selection }
+            let rect = excludingParagraphSpacing(selection.rect)
+            return rect == selection.rect ? selection : NativeSelectionEndpointRect(selection, rect: rect)
+        }
+    }
+
+    private func excludingParagraphSpacing(_ systemRect: CGRect) -> CGRect {
+        var rect = systemRect
+        guard layoutManager.numberOfGlyphs > 0, rect.height > 0 else { return rect }
+        // 沿用系统给出的行与水平位置；从杆的顶端取样，避免落进段后留白。
+        let point = CGPoint(x: rect.midX - textContainerInset.left,
+                            y: rect.minY - textContainerInset.top + 1)
+        let glyph = layoutManager.glyphIndex(for: point, in: textContainer)
+        guard glyph < layoutManager.numberOfGlyphs else { return rect }
+        let line = layoutManager.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
+        let used = layoutManager.lineFragmentUsedRect(forGlyphAt: glyph, effectiveRange: nil)
+        // 文末空行没有对应字形，不能借用上一段的留白来缩短它的选择杆。
+        guard point.y >= line.minY, point.y < line.maxY else { return rect }
+        rect.size.height = max(1, rect.height - max(0, line.height - used.height))
+        return rect
+    }
+}
+
+private final class NativeSelectionEndpointRect: UITextSelectionRect {
+    private let original: UITextSelectionRect
+    private let adjustedRect: CGRect
+    init(_ original: UITextSelectionRect, rect: CGRect) {
+        self.original = original
+        adjustedRect = rect
+        super.init()
+    }
+    override var rect: CGRect { adjustedRect }
+    override var writingDirection: NSWritingDirection { original.writingDirection }
+    override var containsStart: Bool { original.containsStart }
+    override var containsEnd: Bool { original.containsEnd }
+    override var isVertical: Bool { original.isVertical }
+    override var transform: CGAffineTransform { original.transform }
 }
 
 /// TextKit 的 patternDot 不保证圆形端点，因此直接绘制独立圆点。
