@@ -4,17 +4,20 @@ struct CodeCard: View {
     @Environment(AppPreferences.self) private var preferences
     let code: String
     var language = "Code"
+    var showsHeader = true
     @State private var copied = false
     @AppStorage("codeWrapsLines") private var wrapsLines = true
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
-            HStack {
-                Text(language).font(AgentTheme.small)
-                Spacer()
-                Button(copied ? preferences.text("已复制", "Copied") : preferences.text("复制代码", "Copy code"),
-                       systemImage: copied ? "checkmark" : "square.on.square", action: copy)
-                    .labelStyle(.iconOnly).font(.body).frame(width: 44, height: 44)
-                    .accessibilityIdentifier("code.copy")
+            if showsHeader {
+                HStack {
+                    Text(language).font(AgentTheme.small)
+                    Spacer()
+                    Button(copied ? preferences.text("已复制", "Copied") : preferences.text("复制代码", "Copy code"),
+                           systemImage: copied ? "checkmark" : "square.on.square", action: copy)
+                        .labelStyle(.iconOnly).font(.body).frame(width: 44, height: 44)
+                        .accessibilityIdentifier("code.copy")
+                }
             }
             Group {
                 if wrapsLines {

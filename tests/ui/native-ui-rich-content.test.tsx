@@ -68,6 +68,16 @@ it('Windows Markdown的Mermaid源码与Swift统一CRLF为LF后缓存和查找', 
  renderHook(() => useNativeConversationAdapter(runtime, c({ active: { id: 't', turns: [{ id: 'x', items: [{ id: 'a', type: 'agentMessage', text: '```mermaid\r\ngraph TD\r\n A-->B\r\n```\r\n' }] }] } })));
  await waitFor(() => expect(runtime.snapshot().richContent?.find(i => i.kind === 'html')?.text).toBe('graph TD\n A-->B')); runtime.dispose();
 });
+it('流式未闭合Mermaid围栏也提供当前源码的图表，完成后替换成新源码结果', async () => {
+ const runtime = new NativeRuntime(() => {}); runtime.setNavigation({ selectedBackendId: 'b', backends: [], groups: [] });
+ let text = '```mermaid\nflowchart TD\n A[开始] --> B[处理中]';
+ const controller = () => c({ active: { id: 't', turns: [{ id: 'turn', items: [{ id: 'a', type: 'agentMessage', text }] }] } });
+ const { rerender } = renderHook(() => useNativeConversationAdapter(runtime, controller()));
+ await waitFor(() => expect(runtime.snapshot().richContent?.find(i => i.kind === 'html')?.text).toBe('flowchart TD\n A[开始] --> B[处理中]'));
+ text = '```mermaid\nflowchart TD\n A[开始] --> B[完成]\n```'; rerender();
+ await waitFor(() => expect(runtime.snapshot().richContent?.find(i => i.kind === 'html')?.text).toBe('flowchart TD\n A[开始] --> B[完成]'));
+ expect(runtime.snapshot().richContent?.some(i => i.text?.includes('处理中'))).toBe(false); runtime.dispose();
+});
 it('用户Markdown正文也提供本地图片与Mermaid资源并剥离业务标题指令', async () => {
  const { appendConversationTitleRequest } = await import('../../src/app-server/conversation-title');
  const runtime = new NativeRuntime(() => {}); runtime.setNavigation({ selectedBackendId: 'b', backends: [], groups: [] });

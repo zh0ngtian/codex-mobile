@@ -314,6 +314,9 @@ final class AgentConversationFixture {
             value.canSend = true
         }
         if AgentFirstMessageFixture.enabled { AgentFirstMessageFixture.configure(&value) }
+        if ProcessInfo.processInfo.arguments.contains("--agent-mermaid-fixture") {
+            value.messages = [NativeMessage(id: "mermaid-answer", role: "assistant", text: "```mermaid\nflowchart TD\n A[开始] --> B[完成]\n```", turnId: "fixture-turn", phase: "final_answer")]
+        }
         snapshot = value
         store.sendCommand = { [weak self] command in self?.dispatch(command) }
         publish()
@@ -367,6 +370,17 @@ final class AgentConversationFixture {
 
     private func publish() { store.receive(snapshot); session.receive(snapshot) }
     private func dispatch(_ command: NativeCommand) {
+        if ProcessInfo.processInfo.arguments.contains("--agent-mermaid-fixture"), command.name == "diagram.render",
+           case .string(let source) = command.params["source"], !ProcessInfo.processInfo.arguments.contains("--agent-mermaid-failure") {
+            Task { [weak self] in
+                try? await Task.sleep(for: .seconds(1))
+                guard let self else { return }
+                self.snapshot.richContent = [NativePanelItem(id: "mermaid:" + source, kind: "html", text: source,
+                    value: "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 280 160'><rect x='20' y='10' width='240' height='55' rx='8' fill='#eee' stroke='#333'/><text x='140' y='43' text-anchor='middle'>开始</text><path d='M140 65 V95' stroke='#333'/><rect x='20' y='95' width='240' height='55' rx='8' fill='#eee' stroke='#333'/><text x='140' y='128' text-anchor='middle'>完成</text></svg>")]
+                self.publish()
+            }
+            return
+        }
         if AgentFirstMessageFixture.dispatch(command, snapshot: snapshot, publish: { [weak self] value in
             self?.snapshot = value; self?.publish()
         }) { return }

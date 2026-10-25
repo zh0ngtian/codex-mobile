@@ -63,12 +63,12 @@ struct AssistantBody: View {
     @ViewBuilder private func blockView(_ block: NativeMarkdownBlock) -> some View {
         switch block.kind {
         case .code:
-            CodeCard(code: block.text, language: block.language.isEmpty ? "Code" : block.language).selectionQuoteSource(quoteSource, region: "code")
             if block.language.lowercased() == "mermaid" {
-                Button(preferences.text("预览图表", "Preview diagram"), systemImage: "point.3.connected.trianglepath.dotted") {
-                    session.nativeStore?.command("diagram.render", ["source": .string(block.text)])
-                }
-                .font(AgentTheme.small).frame(minHeight: 44)
+                MermaidCard(source: block.text, store: session.nativeStore)
+                    .selectionQuoteSource(quoteSource, region: "code")
+            } else {
+                CodeCard(code: block.text, language: block.language.isEmpty ? "Code" : block.language)
+                    .selectionQuoteSource(quoteSource, region: "code")
             }
         case .heading:
             Text(inline(block)).font(.body.bold())

@@ -110,6 +110,7 @@ export function markdownResources(texts: Array<{ text: string; path?: string }>,
    if (fence) { if (line.trim().length >= fence.count && [...line.trim()].every(ch => ch === fence!.char)) { if (fence.lang === 'mermaid') diagrams.add(fence.lines.join('\n')); fence = undefined; } else fence.lines.push(line); continue; }
    plain.push(line);
   }
+  if (fence?.lang === 'mermaid') diagrams.add(fence.lines.join('\n'));
   for (const m of plain.join('\n').matchAll(/!\[[^\]]*\]\(\s*(<[^>]+>|[^\s)]+)(?:\s+["'][^)]*["'])?\s*\)/g)) {
    const source = m[1].replace(/^<|>$/g, '');
    const image = entry.path ? remoteMarkdownImage(entry.path, source) : { source, local: !/^(data:|https?:)/i.test(source) };

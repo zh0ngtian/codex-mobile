@@ -5,6 +5,45 @@ import Vision
 /// 独立界面夹具及本地网关验收；连接凭证不进入源码或测试附件。
 @MainActor
 final class AgentAppUITests: XCTestCase {
+    func testMermaidRendersArrivingSVGAndPreservesSourceActions() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-mermaid-fixture", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
+        app.launch()
+        defer { app.terminate() }
+        let source = "flowchart TD\n A[开始] --> B[完成]"
+        XCTAssertTrue(app.textViews["code.selectable"].waitForExistence(timeout: 8))
+        XCTAssertEqual(app.textViews["code.selectable"].value as? String, source)
+        app.buttons["预览图表"].tap()
+        XCTAssertTrue(app.webViews.firstMatch.waitForExistence(timeout: 8), "异步SVG到达后必须显示图表")
+        XCTAssertTrue(app.webViews.staticTexts["完成"].waitForExistence(timeout: 5))
+        captureConversation("Mermaid-原生显示异步图表", app: app)
+        app.buttons["mermaid.toggle-source"].tap()
+        XCTAssertEqual(app.textViews["code.selectable"].value as? String, source)
+        app.buttons["mermaid.copy"].tap()
+        XCTAssertEqual(app.buttons["mermaid.copy"].label, "已复制")
+        captureConversation("Mermaid-切换并复制源码", app: app)
+        app.buttons["mermaid.toggle-source"].tap()
+        XCTAssertTrue(app.webViews.firstMatch.waitForExistence(timeout: 5))
+        app.buttons["全屏查看"].tap()
+        XCTAssertTrue(app.navigationBars["Mermaid"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.webViews.staticTexts["完成"].waitForExistence(timeout: 5))
+        app.buttons["完成"].tap()
+        XCTAssertTrue(app.buttons["mermaid.toggle-source"].waitForExistence(timeout: 5))
+    }
+
+    func testMermaidWithoutSVGKeepsSourceVisibleAndCopyable() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-mermaid-fixture", "--agent-mermaid-failure", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
+        app.launch()
+        defer { app.terminate() }
+        XCTAssertTrue(app.buttons["mermaid.render"].waitForExistence(timeout: 8))
+        app.buttons["mermaid.render"].tap()
+        XCTAssertEqual(app.textViews["code.selectable"].value as? String, "flowchart TD\n A[开始] --> B[完成]")
+        XCTAssertFalse(app.webViews.firstMatch.exists)
+        app.buttons["mermaid.copy"].tap()
+        XCTAssertEqual(app.buttons["mermaid.copy"].label, "已复制")
+    }
+
     func testRecordFollowupMessageMotionDemo() throws {
         guard ProcessInfo.processInfo.environment["CODEX_RECORD_MOTION_DEMO"] == "1" ||
                 ProcessInfo.processInfo.environment["TEST_RUNNER_CODEX_RECORD_MOTION_DEMO"] == "1" else {
