@@ -1,12 +1,24 @@
 import { describe, expect, it } from 'vitest';
 import { projectConversation, projectNavigation, insertNativeMention } from '../../src/native-ui/projection';
 import { aggregateThreads } from '../../src/features/threads/thread-list-model';
+import { withProjectWorktree } from '../../src/features/threads/project-worktrees';
 import { PROJECTLESS_GROUP_ID } from '../../src/app-server/thread-list-loader';
 
 function navigation(overrides: Partial<Parameters<typeof projectNavigation>[0]> = {}) {
  return projectNavigation({ threads: [], listBackendId: 'all', selectedBackendId: 'a', projectDirectories: [], hasProjectlessThreads: false,
   collapsedProjectKeys: new Set(), projectThreadStates: {}, projectHasMore: {}, loadingProjectKeys: new Set(), ...overrides });
 }
+
+it('worktree归入主项目并与分页动作共用项目身份，搜索保留真实目录和所属目录', () => {
+ const record = withProjectWorktree({ id: 'task', name: '上传用量', cwd: '/worktree/checkout', status: { type: 'active' } }, { '/projects/codex-mobile': ['/worktree/checkout'] });
+ const threads = aggregateThreads([{ id: 'a', name: '甲' }], { a: [record] });
+ const groups = navigation({ threads, listBackendId: 'a', projectDirectories: ['/projects/codex-mobile'], filter: 'projects', projectHasMore: { '/projects/codex-mobile': true } });
+ const projects = groups.filter(group => group.category === 'project');
+ expect(projects).toHaveLength(1);
+ expect(projects[0]).toMatchObject({ title: 'codex-mobile', cwd: '/projects/codex-mobile', items: [{ cwd: '/worktree/checkout', projectCwd: '/projects/codex-mobile', running: true, command: { name: 'thread.open', params: { threadId: 'task' } } }] });
+ expect(projects[0].actions?.[0].command?.params.cwd).toBe('/projects/codex-mobile');
+ expect(navigation({ threads, query: '上传' })[0].items[0]).toMatchObject({ cwd: '/worktree/checkout', projectCwd: '/projects/codex-mobile' });
+});
 
 it('默认导航同时保留置顶、权威设备项目顺序和最近，置顶也留在原项目，不二次截断分页', () => {
  const backends = [{ id: 'b', name: '乙' }, { id: 'a', name: '甲' }];

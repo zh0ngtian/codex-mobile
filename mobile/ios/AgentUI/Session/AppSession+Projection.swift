@@ -63,7 +63,7 @@ extension AppSession {
                 let id = scopedID("thread", backend, raw); rawThreadIDs[id] = (backend, raw)
                 if let projectKey { projectMembers[projectKey, default: []].insert(id) }
                 navigationIDs.insert(id)
-                if group.category == "search", let cwd = item.cwd, !cwd.isEmpty {
+                if group.category == "search", let cwd = item.projectCwd ?? item.cwd, !cwd.isEmpty {
                     let name = URL(fileURLWithPath: cwd).lastPathComponent
                     let label = selectedDeviceID == nil ? "\(devices.first { rawDeviceIDs[$0.id] == backend }?.name ?? backend) · \(name)" : name
                     let key = "search-project|" + [group.id, backend, cwd].map { "\($0.utf8.count):\($0)" }.joined()

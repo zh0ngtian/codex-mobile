@@ -17,6 +17,7 @@ export interface GatewayHostInfo {
 export interface BackendProjectState {
   projects: string[];
   projectlessThreadIds: string[];
+  projectWorktrees?: Record<string, string[]>;
 }
 
 export async function fetchBackendProjectState(
@@ -40,8 +41,19 @@ export async function fetchBackendProjectState(
       const payload = (await response.json()) as {
         projects?: unknown;
         projectlessThreadIds?: unknown;
+        projectWorktrees?: unknown;
       };
+      const projectWorktrees: Record<string, string[]> = {};
+      if (payload.projectWorktrees && typeof payload.projectWorktrees === "object" && !Array.isArray(payload.projectWorktrees)) {
+        const projects = Array.isArray(payload.projects) ? payload.projects : [];
+        for (const [root, paths] of Object.entries(payload.projectWorktrees)) {
+          if (projects.includes(root) && Array.isArray(paths) && paths.every(path => typeof path === "string" && path.length > 0)) {
+            projectWorktrees[root] = [...new Set(paths)].filter(path => !projects.includes(path));
+          }
+        }
+      }
       return {
+        ...(Object.keys(projectWorktrees).length ? { projectWorktrees } : {}),
         projects: Array.isArray(payload.projects)
           ? payload.projects.filter(
               (project): project is string => typeof project === "string",

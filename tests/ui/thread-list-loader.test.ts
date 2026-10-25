@@ -19,6 +19,20 @@ function deferred<T>() {
 }
 
 describe("会话列表轮询加载器", () => {
+  it("主目录与worktree使用同一五条游标，展开刷新和手动更多保持完整目录范围", async () => {
+    const request = vi.fn(async (_method: string, params: any) => ({
+      data: Array.from({ length: 5 }, (_, i) => ({ id: `${params.cursor ?? 'first'}-${i}`, cwd: i % 2 ? "/worktree" : "/main" })),
+      nextCursor: params.cursor ? null : "next-page",
+    }));
+    const client = { projectWorktrees: { "/main": ["/worktree"] }, request };
+    const onProjectData = vi.fn();
+    await createLatestThreadListLoader({ onProjectData }).load(client, ["/main"], [], { expandedProjectCwds: ["/main"] });
+    expect(request).toHaveBeenCalledWith("thread/list", { limit: 5, cwd: ["/main", "/worktree"], sortKey: "recency_at" }, { priority: "background" });
+    expect(onProjectData).toHaveBeenCalledWith("/main", expect.arrayContaining([expect.objectContaining({ cwd: "/worktree" })]), true, "next-page");
+    const more = await loadProjectThreadRecords(client, "/main", "next-page");
+    expect(request.mock.calls.at(-1)).toEqual(["thread/list", { limit: 5, cwd: ["/main", "/worktree"], sortKey: "recency_at", cursor: "next-page" }]);
+    expect(more.threads).toHaveLength(5); expect(more.hasMore).toBe(false);
+  });
   it("全部折叠只更新摘要，不预取普通项目和无项目首批；显式展开再取五条", async () => {
     const request = vi.fn(async (method: string, params: any): Promise<any> => method === "mobile/sidebar/summaries"
       ? { data: [{ id: "running", cwd: "/a", status: { type: "active" } }] }

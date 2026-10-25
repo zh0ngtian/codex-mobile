@@ -1,3 +1,4 @@
+import { projectCwdOf } from "./project-worktrees";
 import {
   useEffect,
   useRef,
@@ -451,7 +452,7 @@ export function ThreadListPage({
                   projectThreadState === "loading" &&
                   group.threads.length === 0 &&
                   !visibleThreads.some((thread) => thread.pinned &&
-                    (thread.isProjectless ? PROJECTLESS_GROUP_ID : String(thread.cwd ?? "")) === group.cwd);
+                    (thread.isProjectless ? PROJECTLESS_GROUP_ID : projectCwdOf(thread)) === group.cwd);
                 const showInitialError =
                   projectThreadState === "error" &&
                   group.threads.length === 0;

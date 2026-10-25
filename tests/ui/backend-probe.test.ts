@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { probeBackend } from "../../src/backends/probe";
+import { fetchBackendProjectState, probeBackend } from "../../src/backends/probe";
 import type { BackendConfig } from "../../src/backends/types";
 
 const backend: BackendConfig = {
@@ -12,6 +12,15 @@ const backend: BackendConfig = {
 };
 
 describe("设备网关探测", () => {
+  it("项目目录解析只保留已登记项目的worktree关系，不改写独立登记目录", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+      projects: ["/main", "/separate"], projectlessThreadIds: [],
+      projectWorktrees: { "/main": ["/task", "/task", "/separate"], "/unknown": ["/foreign"], "/separate": [42] },
+    }))));
+    expect(await fetchBackendProjectState(backend)).toEqual({
+      projects: ["/main", "/separate"], projectlessThreadIds: [], projectWorktrees: { "/main": ["/task"] },
+    });
+  });
   afterEach(() => vi.unstubAllGlobals());
   it("流式探测完成 initialize 和只读 RPC 后关闭探测连接", async () => {
     const sent: any[] = [];

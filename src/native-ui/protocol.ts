@@ -9,7 +9,7 @@ export interface NativePanelItem {
   line?: number; options?: NativeOption[]; command?: NativeCommand; children?: NativePanelItem[]; disabled?: boolean;
 }
 export interface NativeNavigationItem { id: string; title: string; subtitle?: string; badge?: string; selected?: boolean; command?: NativeCommand; actions?: NativePanelItem[];
-  backendId?: string; threadId?: string; cwd?: string; isPinned?: boolean; isUnread?: boolean; running?: boolean; timestamp?: number;
+  backendId?: string; threadId?: string; cwd?: string; projectCwd?: string; isPinned?: boolean; isUnread?: boolean; running?: boolean; timestamp?: number;
   inputText?: string; queueState?: string; attachmentCount?: number; revision?: number; error?: string; attachments?: NativeAttachment[]; configuration?: NativeQueueConfiguration }
 export interface NativeGroup { id: string; title: string; items: NativeNavigationItem[]; command?: NativeCommand; actions?: NativePanelItem[]; collapsed?: boolean;
   category?: 'pinned' | 'project' | 'recent' | 'search'; subtitle?: string; loading?: string; newCommand?: NativeCommand;

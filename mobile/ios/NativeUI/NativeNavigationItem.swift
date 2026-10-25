@@ -11,6 +11,7 @@ struct NativeNavigationItem: Codable, Identifiable {
     var backendId: String? = nil
     var threadId: String? = nil
     var cwd: String? = nil
+    var projectCwd: String? = nil
     var isPinned: Bool? = nil
     var isUnread: Bool? = nil
     var running: Bool? = nil

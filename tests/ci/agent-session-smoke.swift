@@ -169,6 +169,14 @@ struct AgentSessionSmoke {
         session.retryNavigation()
         precondition(commands.last?.name == "navigation.refresh", "导航重试必须调用真实原始业务动作")
         precondition(!session.scopedProjects.isEmpty && session.scopedProjects.flatMap { session.projectConversations($0) }.contains { $0.title == "搜索到的真实会话" }, "仅search分组的有项目结果不能消失")
+        state.groups = [NativeGroup(id: "search", title: "搜索结果", items: [
+            NativeNavigationItem(id: "main", title: "主目录会话", command: openB, cwd: "/projects/codex-mobile"),
+            NativeNavigationItem(id: "wt", title: "worktree会话", command: NativeCommand(name: "thread.open", params: ["backendId": .string("device:beta"), "threadId": .string("worktree-task")]), cwd: "/worktrees/task/checkout", projectCwd: "/projects/codex-mobile")
+        ], category: "search")]
+        publish(state)
+        precondition(session.scopedProjects.count == 1 && session.projectDisplayName(session.scopedProjects[0]).hasSuffix("codex-mobile"), "搜索中的主目录和worktree必须归入同一个项目")
+        precondition(session.projectConversations(session.scopedProjects[0]).count == 2, "主目录和worktree搜索结果均须保留")
+        precondition(session.projectConversations(session.scopedProjects[0]).first { $0.title == "worktree会话" }?.project == "/worktrees/task/checkout", "展示归属不能改写真实执行目录")
         state.groups = [NativeGroup(id: "list-error", title: "真实列表失败", items: [NativeNavigationItem(id: "retry", title: "重试", command: NativeCommand(name: "navigation.refresh"))])]
         publish(state)
         precondition(!session.navigationLoading && session.navigationError == "真实列表失败", "普通列表真实失败也必须可见")

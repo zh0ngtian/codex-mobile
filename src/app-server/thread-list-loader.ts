@@ -5,6 +5,7 @@ import { AppServerRpcError, type AppServerRequestOptions } from "./client";
 type ThreadRecord = Record<string, any>;
 
 interface ThreadListClient {
+  readonly projectWorktrees?: Record<string, string[]>;
   readonly sidebarIndex?: boolean;
   request(method: string, params: unknown, options?: AppServerRequestOptions): Promise<any>;
 }
@@ -242,7 +243,7 @@ export async function loadProjectThreadRecords(
     const limit = PROJECT_THREAD_BATCH_SIZE - threads.length;
     const result: ThreadListResponse = await client.request("thread/list", {
       limit,
-      cwd,
+      cwd: client.projectWorktrees?.[cwd]?.length ? [cwd, ...client.projectWorktrees[cwd]] : cwd,
       sortKey: "recency_at",
       ...(nextCursor ? { cursor: nextCursor } : {}),
     });
@@ -395,6 +396,7 @@ export function createLatestThreadListLoader(
       const reads = new Map<string, Promise<any>>();
       const backgroundClient = (priority: "background" | "background-visible"): ThreadListClient => ({
         sidebarIndex: client.sidebarIndex,
+        projectWorktrees: client.projectWorktrees,
         request: (method, params) => {
           if (sequence !== latestSequence) return Promise.reject(new DOMException("Refresh superseded", "AbortError"));
           const id = method === "thread/read" && (params as any)?.includeTurns === false

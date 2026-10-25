@@ -74,6 +74,7 @@ export class AppServerConnectionUnavailableError extends Error {
 }
 
 export class AppServerClient {
+  projectWorktrees: Record<string, string[]> = {};
   /** Codex Mobile 网关协议；新接口失败按错误呈现，不退回逐条扫描。 */
   readonly sidebarIndex = true;
   private nextId = 1;

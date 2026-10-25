@@ -1,3 +1,4 @@
+import { projectCwdOf, withProjectWorktree } from "./features/threads/project-worktrees";
 import { useThreadRename } from "./ui/thread-rename";
 import { summarizeThreadTitle } from "./backends/title-summary";
 import { validUploadUsage, mergeUploadUsage } from './app-server/upload-usage';
@@ -770,16 +771,16 @@ function BackendWorkspace({
   const decorateThreads = (data: AnyRecord[]): AnyRecord[] => {
     const localUnread = readLocalUnread();
     return applyPinnedThreadState(data, readLocalPinned()).map((thread) => ({
-      ...thread,
+      ...withProjectWorktree(thread, clientRef.current?.projectWorktrees ?? {}),
       isUnread: localUnread.has(String(thread.id)),
     }));
   };
   const decorateThread = (thread: AnyRecord): AnyRecord =>
-    applyPinnedThreadState([thread], readLocalPinned())[0];
+    withProjectWorktree(applyPinnedThreadState([thread], readLocalPinned())[0], clientRef.current?.projectWorktrees ?? {});
   const projectGroupIdOf = (thread: AnyRecord) =>
     thread.isProjectless === true
       ? PROJECTLESS_GROUP_ID
-      : String(thread.cwd ?? "");
+      : projectCwdOf(thread);
   if (!threadListLoaderRef.current) {
     threadListLoaderRef.current = createLatestThreadListLoader({
       onData(data) {
@@ -1040,14 +1041,18 @@ function BackendWorkspace({
           if (client !== clientRef.current || client.signal?.aborted) return;
           projectCatalogReadSucceeded = true;
           directories = projectState.projects;
+          client.projectWorktrees = projectState.projectWorktrees ?? {};
+          setThreads(current => decorateThreads(current));
+          setSearchResults(current => decorateThreads(current));
           nextProjectlessThreadIds = mergeProjectlessThreadIds(
             projectState.projectlessThreadIds,
             readLocalProjectlessThreadIds(window.localStorage, backend.id),
           );
           setProjects(directories);
           setProjectlessThreadIds(nextProjectlessThreadIds);
-        } catch {
+        } catch (reason) {
           if (client !== clientRef.current || client.signal?.aborted) return;
+          throw reason;
         }
         const collapsed = readCollapsedProjectKeys(window.localStorage);
         await threadListLoaderRef.current!.load(
@@ -1072,6 +1077,7 @@ function BackendWorkspace({
         }
       } catch (reason) {
         if (client !== clientRef.current || client.signal?.aborted) return;
+        setError(reason instanceof Error ? reason.message : String(reason));
         setThreadListState((current) =>
           current === "loading" ? "error" : current,
         );
@@ -5300,7 +5306,7 @@ function ConfiguredApp({
           (cwd === PROJECTLESS_GROUP_ID
             ? thread.isProjectless === true
             : thread.isProjectless !== true &&
-              String(thread.cwd ?? "") === cwd),
+              projectCwdOf(thread) === cwd),
       ).length;
       setCommand({
         id: ++commandIdRef.current,

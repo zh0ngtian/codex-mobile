@@ -4,6 +4,7 @@ import { t } from "../../i18n";
 import { PROJECTLESS_GROUP_ID } from "../../app-server/thread-list-loader";
 import { isVisibleThread } from "./thread-visibility";
 import { pathBasename } from "../../lib/path-basename";
+import { projectCwdOf } from "./project-worktrees";
 
 export interface ThreadSource {
   id: string;
@@ -31,7 +32,7 @@ export function projectNameOf(thread: DisplayRecord) {
   if (thread.isProjectless === true || thread.cwd === PROJECTLESS_GROUP_ID) {
     return t("无项目");
   }
-  const cwd = typeof thread.cwd === "string" ? thread.cwd.trim() : "";
+  const cwd = projectCwdOf(thread).trim();
   return pathBasename(cwd) || t("未识别项目");
 }
 
@@ -136,7 +137,7 @@ export function groupThreadsByProject(
   for (const thread of threads) {
     const cwd = thread.isProjectless
       ? PROJECTLESS_GROUP_ID
-      : String(thread.cwd ?? "");
+      : projectCwdOf(thread);
     const group = groups.get(cwd) ?? [];
     group.push(thread);
     groups.set(cwd, group);

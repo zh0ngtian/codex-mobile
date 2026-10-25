@@ -188,6 +188,7 @@ export function projectNavigation(input: NavigationInput): NativeGroup[] {
     const params = { backendId: item.backendId, threadId: item.threadId };
     return { id: `${item.backendId}:${item.threadId}`, title: titleOf(item.thread), subtitle: input.listBackendId === 'all' ? `${item.backendName} · ${item.projectName}` : item.projectName,
       backendId: item.backendId, threadId: item.threadId, cwd: item.thread.isProjectless === true || item.thread.cwd === PROJECTLESS_GROUP_ID ? '' : String(item.thread.cwd ?? ''),
+      projectCwd: item.thread.projectCwd,
       isPinned: item.pinned, isUnread: item.unread, running: isThreadRunning(item.thread.status), timestamp: item.timestamp,
       badge: isThreadRunning(item.thread.status) ? t('运行中') : item.unread ? t('未读') : undefined,
       selected: input.selectedBackendId === item.backendId && input.activeThreadId === item.threadId,
