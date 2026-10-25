@@ -19,11 +19,11 @@
 - [x] 登记任务、30秒heartbeat、创建隔离worktree并记录main基线；保留主工作区原有暂存内容。
 - [x] 记录原网关PID、marker、server/bin/manifest/dist及启动配置散列和认证健康，确认依赖声明一致。
 - [x] `npm ci --no-audit --no-fund` 安装锁定依赖。
-- [ ] `python3 -B -m unittest discover -s tests/ci -p 'test_*.py'`：adapter-regression，预期退出0。
-- [ ] 在 `/Users/zhongtian/WorkSpace/release-coordinator` 执行 `python3 -B -m unittest discover -s tests -p 'test_*.py'`：coordinator-recovery，预期退出0。
-- [ ] `NODE_OPTIONS=--no-experimental-webstorage npm test -- tests/ci --maxWorkers=2 --testTimeout=60000`：build-contract，预期退出0。
-- [ ] `npm run typecheck` 和 `npm run build:server`：分别保存typecheck和server-build证据，预期退出0；不运行客户端构建。
-- [ ] `CODEX_MODEL_UPLOAD_SMOKE_BIN=/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex NODE_OPTIONS=--no-experimental-webstorage npm test -- tests/server/model-upload.test.ts tests/server/model-upload-gateway.test.ts tests/server/model-upload-codex.test.ts tests/server/app-server-manager.test.ts tests/server/http-session.test.ts tests/server/gateway.test.ts --maxWorkers=2 --testTimeout=60000`：验证模型原样转发、计量、HTTP/WS协议和真实CLI隔离假上游；测试会话归档后清理。
+- [x] `python3 -B -m unittest discover -s tests/ci -p 'test_*.py'`：adapter-regression，227项通过。
+- [x] 在 `/Users/zhongtian/WorkSpace/release-coordinator` 执行 `python3 -B -m unittest discover -s tests -p 'test_*.py'`：coordinator-recovery，59项通过。
+- [x] `NODE_OPTIONS=--no-experimental-webstorage npm test -- tests/ci --maxWorkers=2 --testTimeout=60000`：build-contract，21文件144项通过。
+- [x] `npm run typecheck` 和 `npm run build:server`：分别保存typecheck和server-build证据，退出0；不运行客户端构建。
+- [x] `CODEX_MODEL_UPLOAD_SMOKE_BIN=/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex NODE_OPTIONS=--no-experimental-webstorage npm test -- tests/server --maxWorkers=2 --testTimeout=60000`：验证模型原样转发、计量、HTTP/WS协议和真实CLI隔离假上游；测试会话归档后清理。
 
 ## 任务二：固定来源和协调部署
 
@@ -63,14 +63,14 @@
 
 文件：`scripts/release_coordination/desktop_meter.py`、`scripts/release_coordination/gateway.py`、`tests/ci/test_desktop_meter_install.py`及现行文档。先写失败测试验证私有适配器预期散列、原子备份／替换、重复安装恢复和漂移拒绝。私有任务验证记录显式声明已确认的适配器／CLI／node／canonical来源，并绑定实际任务SHA；协调器只安装到长期目录，保留原适配器、不重启桌面App。四门禁和功能回归通过后推送固定SHA、ready并等成功receipt；用户手动重启前状态明确为已安装待激活，之后回验同桌面服务与实测计量，归档测试会话。
 
-- [ ] IPC按先红后绿完成。
-- [ ] 桌面启动与网关外接集成按先红后绿完成。
-- [ ] 协调安装按先红后绿完成。
-- [ ] 独立规格审查通过后，代码质量审查通过。
-- [ ] 最新main整合结果、四门禁、功能回归及服务端构建通过。
+- [x] IPC按先红后绿完成。
+- [x] 桌面启动与网关外接集成按先红后绿完成。
+- [x] 协调安装按先红后绿完成。
+- [x] 独立规格审查通过后，代码质量审查通过。
+- [x] 最新main整合结果、四门禁、功能回归及服务端构建通过。
 - [ ] 协调部署和适配器安装成功，通知用户手动重启。
 - [ ] 用户重启后的共享服务与实测计量回验完成。
 
-本地实现进度：桌面HTTP／WebSocket真实CLI共享服务两轮测试通过；9项桌面启动及参数回归、external网关2项测试、6项原件备份／漂移／中断保护测试与28项网关部署恢复回归通过。UDS独立规格审查发现的快照／live淘汰与启动订阅窗口均已按先红后绿修复，29项UDS和独立重放通过；桌面规格审查通过。质量审查确认的SIGINT保持问题已补失败回归并修复，单独IPC断线时客户端保留最后实测快照的边界已明确记录。私有安装参数随任务验证冻结，不改变现役项目配置。
+本地实现进度：桌面HTTP／WebSocket真实CLI共享服务两轮测试通过；桌面启动、参数与信号保持、external网关读数、原件备份／漂移／中断保护及31项网关部署恢复回归通过。UDS独立规格审查发现的快照／live淘汰与启动订阅窗口均已按先红后绿修复，29项UDS和独立重放通过；桌面规格审查通过。质量审查确认的SIGINT保持问题已补失败回归并修复，复审确认信号保持及prepared六项参数漂移拒绝。单独IPC断线时客户端保留最后实测快照的边界已明确记录。私有安装参数随任务验证冻结，不改变现役项目配置。
 
-最终验证已运行：33文件399项完整服务端回归（含显式启用的真实CLI隔离测试）、225项适配器回归、59项协调器恢复回归、21文件144项构建契约、类型检查及服务端构建全部通过。随后SIGINT与任务安装参数绑定新增回归通过，正式ready前复验其相关门禁。桌面重启仍由用户手动操作。
+最终验证日志以仓库外 `*-final.json` 为准；SIGINT与任务安装参数绑定修复后的33文件400项服务端回归、适配器227项、类型检查及服务端构建通过，协调器59项与构建契约144项复用未受修改影响的成功结果。独立规格和质量审查均已通过。整合前再次fetch确认远端main仍为 `3db96e6ce950e333d987c6952192d3a6ee255902`，没有新增整合内容。桌面重启仍由用户手动操作。
