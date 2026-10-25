@@ -40,6 +40,7 @@ export class ModelUploadMeter implements ModelUploadSource {
   private revision = 0;
   private threads = new Map<string, Thread>();
   private listeners = new Set<(threadId: string, usage: ModelUploadUsage) => void>();
+  private evictionListeners = new Set<(threadId: string) => void>();
 
   read(threadId: string): ModelUploadUsage | null {
     const usage = this.threads.get(threadId)?.latest.usage;
@@ -53,6 +54,11 @@ export class ModelUploadMeter implements ModelUploadSource {
   subscribe(listener: (threadId: string, usage: ModelUploadUsage) => void) {
     this.listeners.add(listener);
     return () => { this.listeners.delete(listener); };
+  }
+
+  subscribeEvictions(listener: (threadId: string) => void) {
+    this.evictionListeners.add(listener);
+    return () => { this.evictionListeners.delete(listener); };
   }
 
   begin(identity: ModelRequestIdentity) {
@@ -72,7 +78,11 @@ export class ModelUploadMeter implements ModelUploadSource {
       thread.latest = turn;
       // 有界内存；旧回合仅用于防止迟到请求覆盖当前回合。
       while (thread.turns.size > 32) thread.turns.delete(thread.turns.keys().next().value!);
-      while (this.threads.size > 2048) this.threads.delete(this.threads.keys().next().value!);
+      while (this.threads.size > 2048) {
+        const removed = this.threads.keys().next().value!;
+        this.threads.delete(removed);
+        for (const listener of this.evictionListeners) listener(removed);
+      }
     }
     turn.lastRequest = request;
     turn.usage.lastRequestBytes = 0;

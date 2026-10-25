@@ -99,6 +99,7 @@ export async function publishDesktopModelUsage({ socketPath, upstreamUrl, meter 
   let closed = false;
   let identity: FileIdentity | undefined;
   let unsubscribe: (() => void) | undefined;
+  let unsubscribeEvictions: (() => void) | undefined;
   const hello = { type: 'hello', version: 1, sourceHash: sourceHash(upstreamUrl) };
   function send(socket: Socket, value: unknown) {
     if (socket.destroyed) return false;
@@ -120,9 +121,11 @@ export async function publishDesktopModelUsage({ socketPath, upstreamUrl, meter 
     // 单向发布协议不接收客户端数据。
     socket.on('data', () => socket.destroy());
     send(socket, hello);
-    const snapshot = meter.snapshot().entries();
+    const snapshot = meter.snapshot().keys();
     function sendSnapshot() {
-      for (const [threadId, usage] of snapshot) {
+      for (const threadId of snapshot) {
+        const usage = meter.read(threadId);
+        if (!usage) continue;
         if (!sendUsage(socket, threadId, usage)) {
           if (!socket.destroyed) socket.once('drain', sendSnapshot);
           return;
@@ -141,13 +144,16 @@ export async function publishDesktopModelUsage({ socketPath, upstreamUrl, meter 
     });
     await chmod(internalPath, 0o600);
     identity = await privateSocket(internalPath);
-    await link(internalPath, path);
-    await unlinkOwned(internalPath, identity);
     unsubscribe = meter.subscribe((threadId, usage) => {
       for (const socket of sockets) sendUsage(socket, threadId, usage);
     });
+    unsubscribeEvictions = meter.subscribeEvictions(threadId => {
+      for (const socket of sockets) send(socket, { type: 'remove', threadId });
+    });
+    await link(internalPath, path);
+    await unlinkOwned(internalPath, identity);
   } catch (error) {
-    closed = true;
+    closed = true; unsubscribe?.(); unsubscribeEvictions?.();
     for (const socket of sockets) socket.destroy();
     await new Promise<void>(resolveClose => server.close(() => resolveClose()));
     if (identity) await unlinkOwned(path, identity);
@@ -157,7 +163,7 @@ export async function publishDesktopModelUsage({ socketPath, upstreamUrl, meter 
   return {
     close(): Promise<void> {
       return closing ??= (async () => {
-        closed = true; unsubscribe?.();
+        closed = true; unsubscribe?.(); unsubscribeEvictions?.();
         for (const socket of sockets) socket.destroy();
         await new Promise<void>(resolveClose => server.close(() => resolveClose()));
         if (identity) await unlinkOwned(path, identity);
@@ -205,6 +211,10 @@ export function connectDesktopModelUsage({ socketPath, upstreamUrl, retryMs = 10
         if (!keys(value, ['type', 'version', 'sourceHash']) || value.type !== 'hello'
           || value.version !== 1 || value.sourceHash !== expectedHash) { fail(); return; }
         greeted = true; verified = true; return;
+      }
+      if (value.type === 'remove') {
+        if (!keys(value, ['type', 'threadId']) || !identifier(value.threadId)) { fail(); return; }
+        threads.delete(value.threadId); return;
       }
       if (!keys(value, ['type', 'threadId', 'usage']) || value.type !== 'usage' || !identifier(value.threadId)
         || !record(value.usage) || !keys(value.usage, usageKeys)) { fail(); return; }

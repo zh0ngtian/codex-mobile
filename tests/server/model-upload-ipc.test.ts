@@ -66,6 +66,47 @@ describe('桌面模型计量本机 IPC', () => {
     expect(meter.read('thread-2049')?.turnBytes).toBe(10);
   });
 
+  it('来源淘汰线程时同步通知，取消订阅后不再通知', () => {
+    const meter = new ModelUploadMeter();
+    expect(meter.subscribeEvictions).toBeTypeOf('function');
+    for (let index = 0; index < 2048; index++) meter.begin({ threadId: `thread-${index}`, turnId: 'turn' })(1);
+    const removed: string[] = []; const unsubscribe = meter.subscribeEvictions(threadId => removed.push(threadId));
+    meter.begin({ threadId: 'next', turnId: 'turn' })(1);
+    expect(removed).toEqual(['thread-0']); expect(meter.read('thread-0')).toBeNull();
+    unsubscribe(); meter.begin({ threadId: 'later', turnId: 'turn' })(1); expect(removed).toEqual(['thread-0']);
+  });
+
+  it('公开socket前已订阅实时更新，启动清理期间不丢字节', async () => {
+    const { execFile } = await import('node:child_process'); const { promisify } = await import('node:util');
+    const { socketPath } = await location();
+    // 独立进程只门控内部unlink时序；计量器、UDS与接收者均为真实实现。
+    const script = `
+      import fs from 'node:fs/promises';
+      import { syncBuiltinESMExports } from 'node:module';
+      import { setTimeout as delay } from 'node:timers/promises';
+      const original = fs.unlink;
+      let entered; const starting = new Promise(resolve => { entered = resolve; });
+      let release; const gate = new Promise(resolve => { release = resolve; });
+      fs.unlink = async path => {
+        if (String(path).split('/').pop().startsWith('.meter-')) { entered(); await gate; }
+        return original(path);
+      };
+      syncBuiltinESMExports();
+      const { ModelUploadMeter } = await import(${JSON.stringify(new URL('../../server/model-upload-meter.ts', import.meta.url).href)});
+      const { publishDesktopModelUsage, connectDesktopModelUsage } = await import(${JSON.stringify(new URL('../../server/model-upload-ipc.ts', import.meta.url).href)});
+      const meter = new ModelUploadMeter(); const add = meter.begin({ threadId: 'thread-a', turnId: 'turn-a' }); add(10);
+      const options = { socketPath: ${JSON.stringify(socketPath)}, upstreamUrl: ${JSON.stringify(upstreamUrl)} };
+      const publishing = publishDesktopModelUsage({ ...options, meter }); await starting;
+      const source = connectDesktopModelUsage({ ...options, retryMs: 10 });
+      for (let attempt = 0; attempt < 100 && source.read('thread-a')?.turnBytes !== 10; attempt++) await delay(10);
+      add(7); release(); const publisher = await publishing; await delay(50);
+      console.log(JSON.stringify({ source: meter.read('thread-a')?.turnBytes, received: source.read('thread-a')?.turnBytes }));
+      await source.close(); await publisher.close(); fs.unlink = original; syncBuiltinESMExports();
+    `;
+    const { stdout } = await promisify(execFile)(process.execPath, ['--import', 'tsx', '--input-type=module', '-e', script], { timeout: 4000 });
+    expect(JSON.parse(stdout.trim())).toEqual({ source: 17, received: 17 });
+  });
+
   it('同步快照与实时数据，线缆上只出现白名单字段与来源散列', async () => {
     const { publishDesktopModelUsage, connectDesktopModelUsage } = await ipc();
     const { directory, socketPath } = await location(); const meter = new ModelUploadMeter();
@@ -134,6 +175,15 @@ describe('桌面模型计量本机 IPC', () => {
     await waitFor(() => disconnected); expect(source.read('thread-a')).toBeNull();
   });
 
+  it('remove只删除指定线程，保留连接和其他线程统计', async () => {
+    const { connectDesktopModelUsage } = await ipc(); const { socketPath } = await location(); let writer!: Socket;
+    await peer(socketPath, socket => { writer = socket; socket.write(frame(hello) + frame(update()) + frame(update(usage(), 'thread-b'))); });
+    const source = connectDesktopModelUsage({ socketPath, upstreamUrl, retryMs: 10000 }); cleanup.push(() => source.close());
+    await waitFor(() => source.read('thread-b') !== null);
+    writer.write(frame({ type: 'remove', threadId: 'thread-a' }) + frame(update(usage(2), 'thread-b')));
+    await waitFor(() => source.read('thread-b')?.revision === 2); expect(source.read('thread-a')).toBeNull();
+  });
+
   it('同epoch旧revision不能覆盖新值，不同epoch可重新计量', async () => {
     const { connectDesktopModelUsage } = await ipc(); const { socketPath } = await location(); let writer!: Socket;
     await peer(socketPath, socket => { writer = socket; socket.write(frame(hello) + frame(update(usage(5)))); });
@@ -154,6 +204,9 @@ describe('桌面模型计量本机 IPC', () => {
     { name: '非安全整数', invalid: frame(update({ ...usage(), turnBytes: Number.MAX_SAFE_INTEGER + 1 })) },
     { name: '负数', invalid: frame(update({ ...usage(), lastRequestBytes: -1 })) },
     { name: '额外字段', invalid: frame({ ...update(), prompt: 'never-retain' }) },
+    { name: 'remove额外字段', invalid: frame({ type: 'remove', threadId: 'thread-a', prompt: 'never-retain' }) },
+    { name: 'remove超长标识', invalid: frame({ type: 'remove', threadId: 't'.repeat(257) }) },
+    { name: 'remove缺失标识', invalid: frame({ type: 'remove' }) },
   ])('拒绝$name并清除已接收数字', async ({ invalid }) => {
     const { connectDesktopModelUsage } = await ipc(); const { socketPath } = await location(); let writer!: Socket;
     await peer(socketPath, socket => { writer = socket; socket.write(frame(hello) + frame(update())); });
@@ -210,6 +263,32 @@ describe('桌面模型计量本机 IPC', () => {
     const source = connectDesktopModelUsage({ socketPath, upstreamUrl, retryMs: 1000 }); cleanup.push(() => source.close());
     await waitFor(() => source.read(threadId(2047))?.turnBytes === 1);
     expect(source.read(threadId(0))?.turnBytes).toBe(1);
+  });
+
+  it('大快照与新增线程交错后保留集合一致，后续淘汰仍跟随来源', async () => {
+    const { publishDesktopModelUsage, connectDesktopModelUsage } = await ipc(); const { socketPath } = await location();
+    const meter = new ModelUploadMeter(); const oldId = (index: number) => `old-${String(index).padStart(4, '0')}${'t'.repeat(240)}`;
+    const allIds = Array.from({ length: 2048 }, (_, index) => oldId(index));
+    for (const threadId of allIds) meter.begin({ threadId, turnId: 'v'.repeat(256) })(1);
+    const publisher = await publishDesktopModelUsage({ socketPath, upstreamUrl, meter }); cleanup.push(() => publisher.close());
+    const source = connectDesktopModelUsage({ socketPath, upstreamUrl, retryMs: 1000 }); cleanup.push(() => source.close());
+    let overlapped = false;
+    source.subscribe(() => {
+      if (overlapped) return; overlapped = true;
+      for (let index = 0; index < 1000; index++) {
+        const threadId = `new-${index}`; allIds.push(threadId); meter.begin({ threadId, turnId: 'turn' })(1);
+      }
+    });
+    await waitFor(() => source.read(oldId(2047)) !== null);
+    const differences = () => {
+      const expected = meter.snapshot();
+      return { missing: [...expected.keys()].filter(threadId => source.read(threadId) === null).length,
+        extra: allIds.filter(threadId => !expected.has(threadId) && source.read(threadId) !== null).length };
+    };
+    await expect.poll(differences, { timeout: 2500, interval: 10 }).toEqual({ missing: 0, extra: 0 });
+    const nextId = 'new-after-snapshot'; allIds.push(nextId); meter.begin({ threadId: nextId, turnId: 'turn' })(2);
+    await waitFor(() => source.read(nextId) !== null);
+    expect(differences()).toEqual({ missing: 0, extra: 0 });
   });
 
   it('慢读者写缓存超限时断开，正常接收端可继续读数', async () => {
