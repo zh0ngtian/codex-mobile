@@ -1,0 +1,177 @@
+{
+  "schemaVersion": 1,
+  "checkedAt": "2026-10-25T11:13:00.687281+00:00",
+  "distribution": "github-only",
+  "version": "0.3.39",
+  "buildNumber": "3039",
+  "sourceCommit": "1f57555044a7e1d389cc30455b4ee1441cd62593",
+  "releaseUrl": "https://github.com/zh0ngtian/codex-mobile/releases/tag/v0.3.39",
+  "mobile": {
+    "batch": "38e51b86-291f-4761-b32e-8fe88448e82e",
+    "frozenCommit": "ce9234e16aac975cc040117aa4bb257e135af3dd",
+    "receiptSha256": "4fe2301d77e8342825ddbf7eb17a3c5157157125f4cfd8493ce99f5405df0c3b",
+    "prepareVerified": true,
+    "stages": [
+      "main",
+      "build",
+      "source",
+      "verify"
+    ],
+    "formalCI": {
+      "runId": 40185351340,
+      "attempt": 1,
+      "url": "https://github.com/zh0ngtian/codex-mobile/actions/runs/40185351340",
+      "conclusion": "success"
+    },
+    "developmentCI": {
+      "runId": 40185351262,
+      "attempt": 1,
+      "url": "https://github.com/zh0ngtian/codex-mobile/actions/runs/40185351262",
+      "conclusion": "success"
+    }
+  },
+  "gateway": {
+    "batch": "8574742b-24e0-4a42-8150-77d543498280",
+    "frozenCommit": "dfb0d11b01b1c3e3d71521f2c3d2fc8f5a64e6e9",
+    "receiptSha256": "28f8d229560e52d24f0756208eb812308e094fbe3361976e8902341795d46ddd",
+    "prepareVerified": true,
+    "stages": [
+      "main",
+      "gateway",
+      "verify"
+    ],
+    "developmentCI": {
+      "runId": 40182175188,
+      "attempt": 1,
+      "url": "https://github.com/zh0ngtian/codex-mobile/actions/runs/40182175188",
+      "conclusion": "success"
+    },
+    "runningPidAtVerification": 810,
+    "runtimeSourceMatchesClient": true,
+    "frozenCommitIsClientAncestor": true,
+    "redeployedForReleaseOnlyChanges": false
+  },
+  "artifacts": {
+    "android": {
+      "downloadUrl": "https://github.com/zh0ngtian/codex-mobile/releases/download/v0.3.39/CodexMobile-v0.3.39.apk",
+      "sha256": "d3b40e0872019e9dcb22fee18eb73eb722a91afcbe20570d5004df3b8996b07c",
+      "size": 4754023
+    },
+    "ios": {
+      "downloadUrl": "https://github.com/zh0ngtian/codex-mobile/releases/download/v0.3.39/CodexMobile-v0.3.39-unsigned.ipa",
+      "sha256": "f0dfac9360790129e971c2107ba9f189f411cb1a67b5005bf5a532c8560dc428",
+      "size": 5029364
+    }
+  },
+  "iosSigned": false,
+  "softwareSource": "https://signos-source-aggregator.305301890.workers.dev/sources/yao.json",
+  "lanApkPublished": false,
+  "signedIpaPublished": false,
+  "fixedIpaPublished": false,
+  "otaPublished": false,
+  "lanServiceStoppedAndDisabled": true,
+  "otaServiceStoppedAndDisabled": true,
+  "historicalLanAndOtaFilesUnchanged": true,
+  "independentChecks": [
+    "sidebar-worktree-github-only-read-repair-20261025:任务成功",
+    "sidebar-worktree-github-only-read-repair-20261025:批次成功",
+    "sidebar-worktree-github-only-read-repair-20261025:共同凭证",
+    "sidebar-worktree-github-only-read-repair-20261025:来源一致",
+    "sidebar-worktree-github-only-read-repair-20261025:任务包含",
+    "sidebar-worktree-no-ota-gateway-20261025:任务成功",
+    "sidebar-worktree-no-ota-gateway-20261025:批次成功",
+    "sidebar-worktree-no-ota-gateway-20261025:共同凭证",
+    "sidebar-worktree-no-ota-gateway-20261025:来源一致",
+    "sidebar-worktree-no-ota-gateway-20261025:任务包含",
+    "客户端仅授权阶段",
+    "网关仅授权阶段",
+    "GitHub分发范围",
+    "signedIpaPublished:未发布",
+    "otaPublished:未发布",
+    "fixedIpaPublished:未发布",
+    "lanApkPublished:未发布",
+    "无签名OTA产物",
+    "GitHub正式Release",
+    "中文更新日志",
+    "标签冻结来源",
+    "android:附件摘要",
+    "github-android.apk:HEAD大小",
+    "github-android.apk:GET大小",
+    "github-android.apk:SHA256",
+    "ios:附件摘要",
+    "github-unsigned.ipa:HEAD大小",
+    "github-unsigned.ipa:GET大小",
+    "github-unsigned.ipa:SHA256",
+    "IPA版本",
+    "IPA无描述文件与签名资源",
+    "当前配置无LAN阶段",
+    "LAN下载服务停止",
+    "本机8765无监听",
+    "LAN下载服务禁用自动启动",
+    "OTA服务禁用自动启动",
+    "本机8766无OTA监听",
+    "旧LAN文件未变:codex-mobile.ipa",
+    "旧LAN文件未变:codex-mobile.apk",
+    "旧LAN文件未变:codex-mobile-ios.json",
+    "旧LAN文件未变:codex-mobile.json",
+    "OTA清单未变",
+    "OTA指向未变",
+    "历史OTA包大小未变",
+    "历史OTA包散列未变",
+    "软件源:version",
+    "软件源:buildVersion",
+    "软件源:downloadURL",
+    "软件源:size",
+    "软件源:sha256",
+    "软件源:署名保留",
+    "软件源:中文日志",
+    "软件源?legacy=1:version",
+    "软件源?legacy=1:buildVersion",
+    "软件源?legacy=1:downloadURL",
+    "软件源?legacy=1:size",
+    "软件源?legacy=1:sha256",
+    "软件源?legacy=1:署名保留",
+    "软件源?legacy=1:中文日志",
+    "40185351340:CI状态来源",
+    "40185351340:CI原attempt",
+    "40185351262:CI状态来源",
+    "40185351262:CI原attempt",
+    "40182175188:CI状态来源",
+    "40182175188:CI原attempt",
+    "网关文件进程监听认证健康",
+    "现役网关与本次客户端配套运行源码一致",
+    "已部署网关冻结提交为本次客户端祖先",
+    "真实网关worktree项目映射"
+  ],
+  "independentCheckCount": 69,
+  "localValidation": {
+    "adapterPythonTests": 261,
+    "buildContractTests": 151,
+    "coordinatorRecoveryTestsReused": 59,
+    "typecheck": "passed",
+    "specificationReview": "passed",
+    "qualityReview": "passed"
+  },
+  "failureHistory": [
+    {
+      "version": "0.3.37",
+      "batch": "d9ecccee-0825-4e20-94a3-6c3f16ff559d",
+      "batchState": "failed",
+      "reason": "用户撤销Android局域网分发；旧范围停止并保留，不作为新范围成功凭证"
+    },
+    {
+      "version": "0.3.38",
+      "batch": "c2997b88-4cc4-4298-b292-6cd3b4a3d70b",
+      "batchState": "failed",
+      "reason": "最终完整下载遇到curl35明确SSL_ERROR_SYSCALL连接中断，被旧分类当作永久失败",
+      "originalTaskState": "recovered",
+      "recoveredBy": "38e51b86-291f-4761-b32e-8fe88448e82e"
+    }
+  ],
+  "testChatsCreated": 0,
+  "limitations": [
+    "未进行新版本真机安装、数据保留和现场视觉验收",
+    "Android原有LAN更新检查已不可用，新版本从GitHub手动下载；未实现GitHub自动更新",
+    "桌面上传计量入口仍待用户重启激活和现场回验"
+  ]
+}

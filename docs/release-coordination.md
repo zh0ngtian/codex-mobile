@@ -8,7 +8,7 @@
 
 只有用户明确要求发布客户端或部署网关时，才登记对应发布任务并使用下文的 heartbeat、ready、冻结、构建发布及 receipt 流程。普通任务不登记发布任务、不提交 ready、不分配发布版本、不更新 `.release-batch.json`，不触发正式 APK/IPA 打包、渠道更新或生产网关部署；必要的开发验证构建仍按改动范围执行。客户端与网关均有源码变更本身不构成联合发布授权。
 
-2026-10-25用户先确认停止本机iOS签名、HTTPS OTA及固定LAN IPA更新，随后进一步要求Android关闭局域网分发，只保留GitHub Release。现行客户端为 `codex-mobile-github-only`／`mobile-github-only`，只交付GitHub APK／unsigned IPA及既有iOS软件源。策略 [distribution-policy.json](../release/distribution-policy.json) 同时规定 `iosDistribution=unsigned-only` 与 `androidDistribution=github-only`；新源码拒绝旧mobile／mobile-ota／mobile-unsigned kind及旧客户端项目，不能通过旧模板进入LAN或签名／OTA阶段。8765服务保持停止和disabled，旧包、清单、材料、失败批次及凭证保留不删。无策略或旧ios-only策略的历史工作区继续原合同。0.3.38的GitHub附件与软件源已发布，但最终verify失败，关联修复新批次仍待验收，见下方本次状态。
+2026-10-25用户先确认停止本机iOS签名、HTTPS OTA及固定LAN IPA更新，随后进一步要求Android关闭局域网分发，只保留GitHub Release。现行客户端为 `codex-mobile-github-only`／`mobile-github-only`，只交付GitHub APK／unsigned IPA及既有iOS软件源。策略 [distribution-policy.json](../release/distribution-policy.json) 同时规定 `iosDistribution=unsigned-only` 与 `androidDistribution=github-only`；新源码拒绝旧mobile／mobile-ota／mobile-unsigned kind及旧客户端项目，不能通过旧模板进入LAN或签名／OTA阶段。8765服务保持停止和disabled，旧包、清单、材料、失败批次及凭证保留不删。无策略或旧ios-only策略的历史工作区继续原合同。现役0.3.39已完成同项目关联修复及完整验收，0.3.38失败记录保留，见下方本次状态。
 
 ## 本机部署与作用域
 
@@ -30,7 +30,7 @@
 
 项目配置路径与用途：
 
-- `~/Library/Application Support/ReleaseCoordinator/projects/codex-mobile-github-only.json`：现行客户端目标，已按新模板登记项目和任务并heartbeat；新范围待真实批次验收，登记不代表已发布。
+- `~/Library/Application Support/ReleaseCoordinator/projects/codex-mobile-github-only.json`：现行客户端目标，已按新模板完成登记、heartbeat与ready；0.3.39成功批次已完成真实验收，见本文件最终交付记录及成功receipt。
 - `~/Library/Application Support/ReleaseCoordinator/projects/codex-mobile-gateway-production.json`。
 - `~/Library/Application Support/ReleaseCoordinator/projects/codex-mobile-lan-production.json`、`codex-mobile-ios-ota-production.json` 与 `codex-mobile-github-release.json`：仅保留历史合同，不改写旧失败批次或项目配置。
 
@@ -128,11 +128,11 @@ status 返回原任务 `complete`，或 `recovered` 且 `recovered_by` 指向成
 
 ## 2026-10-25 范围切换与本次验收状态
 
-GitHub-only的0.3.38批次 `c2997b88-4cc4-4298-b292-6cd3b4a3d70b` 在最终verify完整下载时遇到 `curl (35) LibreSSL SSL_connect: SSL_ERROR_SYSCALL`，旧分类将其当作永久错误，批次已failed；此前正式CI `40183741380`、开发CI `40183741419`、GitHub Release与既有iOS软件源已成功，不能因此宣称完整交付成功。原冻结提交 `50f5a31ed9338682a668fa92b4db5a4974b2b3d1`、失败凭证与附件保留，不resume、不篡改。已登记同项目关联修复任务 `sidebar-worktree-github-only-read-repair-20261025`，本地窄修复已验证，后续计划以新0.3.39批次重新冻结、构建和验收，不借用0.3.38附件；修复批次尚未成功。GitHub-only四阶段及禁止LAN／签名／OTA的合同保持不变。
+GitHub-only的0.3.38批次 `c2997b88-4cc4-4298-b292-6cd3b4a3d70b` 在最终verify完整下载时遇到 `curl (35) LibreSSL SSL_connect: SSL_ERROR_SYSCALL`，旧分类将其当作永久错误，批次已failed；此前正式CI `40183741380`、开发CI `40183741419`、GitHub Release与既有iOS软件源已成功，不能因此宣称完整交付成功。原冻结提交 `50f5a31ed9338682a668fa92b4db5a4974b2b3d1`、失败凭证与附件保留，不resume、不篡改。已登记同项目关联修复任务 `sidebar-worktree-github-only-read-repair-20261025`，本地窄修复已验证，后续已以0.3.39批次 `38e51b86-291f-4761-b32e-8fe88448e82e` 重新冻结、构建和验收，不借用0.3.38附件；原任务已recovered，原批次仍failed。GitHub-only四阶段及禁止LAN／签名／OTA的合同保持不变。
 
 旧含LAN客户端批次 `d9ecccee-0825-4e20-94a3-6c3f16ff559d` 按原合同保留为failed，本机build等待已停止；原GitHub run `40182332387` 继续运行，不取消、不借用为新批次。旧0.3.37预留保留，新GitHub-only批次必须重新按来源与四阶段合同验收，不能把旧批次或某端构建完成宣称为新范围成功。
 
-配套worktree映射网关成功批次 `8574742b-24e0-4a42-8150-77d543498280` 已部署，真实目标会话进入所属项目最新五条的回验通过。此后本次只改发布策略、适配器、测试和文档，不重复部署网关；交付前以成功凭证、网关运行代码未变及来源祖先关系证明复用边界。0.3.38客户端附件与软件源已发布但完整批次失败；关联修复新批次待验收。
+配套worktree映射网关成功批次 `8574742b-24e0-4a42-8150-77d543498280` 已部署，真实目标会话进入所属项目最新五条的回验通过。此后本次只改发布策略、适配器、测试和文档，不重复部署网关；交付前以成功凭证、网关运行代码未变及来源祖先关系证明复用边界。客户端最终已由0.3.39关联修复批次完成验收，原0.3.38失败现场保留。
 
 局域网服务关闭后，Android现有LAN更新检查不可用，新版本从GitHub手动下载；本次没有实现GitHub自动更新。最终回验核对8765不监听且服务disabled，以本地文件散列确认旧LAN包／清单未被本轮改写，不为验收重启服务。
 
@@ -167,3 +167,5 @@ GitHub-only的0.3.38批次 `c2997b88-4cc4-4298-b292-6cd3b4a3d70b` 在最终verif
 此安装不重启桌面App，也不更改全局Codex配置、现有网关环境或桌面控制桥接。成功网关receipt的 `desktopMeter.activation=requires-user-desktop-restart` 只证明安装和网关部署成功；必须另等用户手动重启，再核对同一桌面共享服务和实测计量，才能把计量标为生产生效。本轮首次接入的网关部署及入口安装已由成功批次 `ddc37232-fba9-4cd0-8dfa-88031bb4ae08` 完成，独立文件与健康回验通过，仍待用户手动重启后的激活验收，见[公共凭证](superpowers/plans/evidence/2026-10-25-model-upload-gateway-deploy.json)。
 
 单次网关任务也可在私有 `validation.json.desktopModelMeter` 显式声明同一组安装参数，而不修改现役项目配置。适配器要求验证记录的 `scope=gateway-only` 且 `sourceCommit` 等于该任务固定SHA；多任务请求及项目显式参数必须完全一致，否则拒绝。现役协调器把完整验证记录冻结到批次context，各阶段读取同一输入；公共Git清单只保留既有checks白名单，不发布私有路径。该输入只授权已确认的桌面启动层安装，正式目标、环境和main共享锁不变。
+
+最终交付：0.3.39／3039，客户端批次 `38e51b86-291f-4761-b32e-8fe88448e82e` complete，冻结 `ce9234e16aac975cc040117aa4bb257e135af3dd`；网关成功批次 `8574742b-24e0-4a42-8150-77d543498280` 复用。独立69项回验与实际附件元数据见[公共凭证](superpowers/plans/evidence/2026-10-25-worktree-github-release.json)。关闭8765／8766的事实由本机lsof及launchd disabled交叉核对，连接拒绝仅作辅助，不将超时或主机不可达当作无监听。仅文档收尾不触发正式构建、渠道更新或网关部署。
