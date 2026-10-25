@@ -23,7 +23,7 @@
 
 ## 当前发布入口
 
-现役双端客户端为0.3.36（3036），本版修复iOS选择杆包含段后留白、自动命名过早与已保存名称未同步当前页的问题；“用量与额度”新增“最近请求上传”和“本轮累计上传”字段；已有后续最终回答的中途结构化提问收进“执行过程”，待回答问题继续可见。固定APK、Ad Hoc已签名IPA、HTTPS OTA、GitHub unsigned IPA及软件源已完成237项独立回验，正式批次成功，最终回执规格与质量审查均通过。见[本次发布计划](superpowers/plans/2026-10-25-selection-handle-height-release.md)与[公共凭证](superpowers/plans/evidence/2026-10-25-selection-handle-height-release.json)。本轮未部署网关，上传计量后端仍未部署，网关未提供统计时两个字段显示“暂无数据”；真机覆盖安装、数据保留、真机视觉及真实Bark送达仍待现场验收。
+现役双端客户端为0.3.36（3036），本版修复iOS选择杆包含段后留白、自动命名过早与已保存名称未同步当前页的问题；“用量与额度”新增“最近请求上传”和“本轮累计上传”字段；已有后续最终回答的中途结构化提问收进“执行过程”，待回答问题继续可见。固定APK、Ad Hoc已签名IPA、HTTPS OTA、GitHub unsigned IPA及软件源已完成237项独立回验，正式批次成功，最终回执规格与质量审查均通过。见[本次发布计划](superpowers/plans/2026-10-25-selection-handle-height-release.md)与[公共凭证](superpowers/plans/evidence/2026-10-25-selection-handle-height-release.json)。该客户端批次未部署网关；上传计量后端后续已完成独立部署、桌面入口已安装，仍待用户手动重启激活和实测回验；网关未提供统计时两个字段显示“暂无数据”；真机覆盖安装、数据保留、真机视觉及真实Bark送达仍待现场验收。
 
 此前0.3.35已发布后续消息从输入区连续交接到用户气泡和旧图片预览保留，继承0.3.34的首条发送动效，历史、页头、附件及队列语义保持；其[发布计划](superpowers/plans/2026-10-24-followup-message-motion-release.md)与[公共凭证](superpowers/plans/evidence/2026-10-24-followup-message-motion-release.json)保留当次验收口径。
 
@@ -78,5 +78,5 @@
 - [2026-10-21 顶部更多与直接侧栏布局双端发布](superpowers/plans/2026-10-21-sidebar-inline-release.md)：0.3.26成功批次、双端固定渠道与签名连续性独立回验；[公开凭证](superpowers/plans/evidence/2026-10-21-sidebar-inline-release.json)。
 - [2026-10-21 回复同步与侧栏操作双端发布](superpowers/plans/2026-10-21-completion-refresh-release.md)：0.3.25成功批次、双端渠道独立回验及真机待验收边界；[公开凭证](superpowers/plans/evidence/2026-10-21-completion-refresh-release.json)。
 
-- [桌面桥接模型请求计量接入方案](superpowers/plans/2026-10-25-desktop-model-upload-design.md)：已确认并完成本地实现，协调部署与用户重启激活待验收。
-- [上传计量网关部署计划](superpowers/plans/2026-10-25-model-upload-gateway-deploy.md)：本轮仅部署网关与桌面接入，不发布客户端。
+- [桌面桥接模型请求计量接入方案](superpowers/plans/2026-10-25-desktop-model-upload-design.md)：已完成协调部署与入口安装，待用户手动重启激活及实测回验。
+- [上传计量网关部署计划](superpowers/plans/2026-10-25-model-upload-gateway-deploy.md)：成功批次 `ddc37232-fba9-4cd0-8dfa-88031bb4ae08` 已部署网关并安装桌面接入，待用户手动重启激活及实测回验；不发布客户端。[公共凭证](superpowers/plans/evidence/2026-10-25-model-upload-gateway-deploy.json)。

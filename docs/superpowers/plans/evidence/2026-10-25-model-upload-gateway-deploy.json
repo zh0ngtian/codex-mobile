@@ -1,0 +1,225 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-25",
+  "scope": "gateway-only",
+  "status": "installed-awaiting-user-desktop-restart",
+  "mainBaseline": "c58824ce074c4ae7acc7cea75e4b7277a6d810a6",
+  "integratedMainBaseline": "3db96e6ce950e333d987c6952192d3a6ee255902",
+  "gateway": {
+    "taskId": "model-upload-gateway-20261025",
+    "taskState": "complete",
+    "project": "codex-mobile-gateway-production",
+    "scope": "codex-mobile-main-production",
+    "batchId": "ddc37232-fba9-4cd0-8dfa-88031bb4ae08",
+    "batchState": "complete",
+    "sourceCommit": "41c3c27636800dc6006d13c5fd7ff193d2ad8d05",
+    "frozenCommit": "6b9cb2febb532338f3ad6deef09ffcaa34191d59",
+    "sourceIsFrozenAncestor": true,
+    "phases": [
+      "prepare",
+      "main",
+      "gateway",
+      "verify"
+    ],
+    "appVersionAssigned": false,
+    "receiptSha256": "c128315bebd1ac3fba1f00797d968f05f6feb3805b77071ecc34e23444c6f6ae",
+    "persistentReceiptMatchesCoordinator": true,
+    "ci": {
+      "development": {
+        "databaseId": 40172849559,
+        "headSha": "6b9cb2febb532338f3ad6deef09ffcaa34191d59",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/zh0ngtian/codex-mobile/actions/runs/40172849559",
+        "jobs": {
+          "checks": "success"
+        }
+      },
+      "manifest": {
+        "databaseId": 40172849528,
+        "headSha": "6b9cb2febb532338f3ad6deef09ffcaa34191d59",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/zh0ngtian/codex-mobile/actions/runs/40172849528",
+        "jobs": {
+          "Validate frozen batch": "success",
+          "Build ${{ matrix.platform }}": "skipped",
+          "Publish dual-platform release": "skipped"
+        }
+      }
+    },
+    "clientBuildAndReleaseSkipped": true
+  },
+  "independentRuntime": {
+    "checkedAt": "2026-10-25T07:28:29.993315+00:00",
+    "pid": 61621,
+    "oldPid": 87770,
+    "digests": {
+      "serverDigest": "214723132bba1747f723d73641e29e64fedcf0271eb1909d4732d18f8dd65ba2",
+      "frontendDigest": "82c243e7f812096f2be3270347cfab2c74ab4df0df44ec06f2db25f1a2ae821b",
+      "binDigest": "a44e7f0434b7926b382b679abb712f36eb3b93ce6708cc77332437781f8015a3",
+      "manifestDigest": "0f504be37cd822e82f975449a8f7478ca99f609930f64baa75f956cf16c45917"
+    },
+    "startup": {
+      "start.py": "f5387d988ad019cdb49fe8f3c2573f62a9c8a9420d3fb8440e0e4829f9837945",
+      "gateway-env.json": "e63f543cf107d4fccde4efe71fe2e1af3d9ffafb505692a5db0c0e28fac9318d"
+    },
+    "processCommandMatches": true,
+    "listenerAndAuthenticatedHealthPassed": true,
+    "markerAndDigestsMatchReceipt": true,
+    "frontendDependenciesAndStartupPreserved": true,
+    "externalModeAndDesktopBridgePreserved": true,
+    "frozenRuntimeUnchangedFromTestedSource": true
+  },
+  "desktopMeter": {
+    "installedFilesMatchPreparedPlan": true,
+    "launcherSha256": "1f8de0e9ea9b7a48b283670957b6ef5588b759295ddfdebd98308527f3067645",
+    "originalSha256": "4ee6560718d21a57638c81e91f8a75c3813b13d8b0c62c61b1ee4c45b773fc14",
+    "moduleSha256": "06dc3a862a2e6e52b56146fb0b19c336d08623cfce0e92140f37eea44c9ef87d",
+    "adapterMode": "0o700",
+    "backupMode": "0o700",
+    "desktopOriginalPid": 80040,
+    "desktopNotRestarted": true,
+    "socketExists": false,
+    "activation": "requires-user-desktop-restart"
+  },
+  "validation": {
+    "checks": [
+      {
+        "name": "adapter-regression",
+        "status": "passed",
+        "exitCode": 0,
+        "command": [
+          "python3",
+          "-B",
+          "-m",
+          "unittest",
+          "discover",
+          "-s",
+          "tests/ci",
+          "-p",
+          "test_*.py"
+        ],
+        "startedAt": "2026-10-25T07:25:13.365160+00:00",
+        "finishedAt": "2026-10-25T07:25:25.458969+00:00",
+        "logSha256": "36962b82ac76b0d230b7d9befc1ab040717e811a32208335f208c3e842927963"
+      },
+      {
+        "name": "coordinator-recovery",
+        "status": "passed",
+        "exitCode": 0,
+        "command": [
+          "python3",
+          "-B",
+          "-m",
+          "unittest",
+          "discover",
+          "-s",
+          "tests",
+          "-p",
+          "test_*.py"
+        ],
+        "startedAt": "2026-10-25T07:11:50.994632+00:00",
+        "finishedAt": "2026-10-25T07:12:39.380720+00:00",
+        "logSha256": "33efe17161979fdef01af4adcf57c88f7b6e57a99d00f2c1ea8606ddfdd57f6e"
+      },
+      {
+        "name": "build-contract",
+        "status": "passed",
+        "exitCode": 0,
+        "command": [
+          "npm",
+          "test",
+          "--",
+          "tests/ci",
+          "--maxWorkers=2",
+          "--testTimeout=60000"
+        ],
+        "startedAt": "2026-10-25T07:11:50.994632+00:00",
+        "finishedAt": "2026-10-25T07:12:25.581528+00:00",
+        "logSha256": "401ce66be2db72b36eebdb6ad93d566159fd6588c63271b2f72e263cecca8bbf"
+      },
+      {
+        "name": "typecheck",
+        "status": "passed",
+        "exitCode": 0,
+        "command": [
+          "npm",
+          "run",
+          "typecheck"
+        ],
+        "startedAt": "2026-10-25T07:25:13.368243+00:00",
+        "finishedAt": "2026-10-25T07:25:17.359429+00:00",
+        "logSha256": "ddcbb7a08bfec0ac49a7a6d573783271de42998d75a0e124eef2e8a0e0d5c546"
+      },
+      {
+        "name": "server-build",
+        "status": "passed",
+        "exitCode": 0,
+        "command": [
+          "npm",
+          "run",
+          "build:server"
+        ],
+        "startedAt": "2026-10-25T07:25:13.364136+00:00",
+        "finishedAt": "2026-10-25T07:25:14.523250+00:00",
+        "logSha256": "77c6963f957653533813410b82b315f4e8704177dad7cd17800c939cbd28f75f"
+      },
+      {
+        "name": "server-regression",
+        "status": "passed",
+        "exitCode": 0,
+        "command": [
+          "npm",
+          "test",
+          "--",
+          "tests/server",
+          "--maxWorkers=2",
+          "--testTimeout=60000"
+        ],
+        "startedAt": "2026-10-25T07:25:13.364195+00:00",
+        "finishedAt": "2026-10-25T07:25:56.949872+00:00",
+        "logSha256": "10e4c671688933784a090ac6d9400c8e000be885130c6cf185a4cd1f0bf1741b"
+      }
+    ],
+    "serverRegressionCount": 400,
+    "adapterRegressionCount": 227,
+    "coordinatorRecoveryCount": 59,
+    "buildContractCount": 144,
+    "ipcRegressionCount": 29,
+    "realCliSharedHttpAndWebSocketTwoTurns": "passed",
+    "isolatedTestSessionsArchived": true,
+    "reviews": {
+      "ipcSpecification": {
+        "status": "passed",
+        "sourceCommit": "e4c1d05"
+      },
+      "desktopSpecification": {
+        "status": "passed",
+        "sourceCommit": "73c6ccd"
+      },
+      "qualityReview": {
+        "status": "passed",
+        "sourceCommit": "0f9a2c40f1e41d6af5602d4643abd57e3af3a6f9",
+        "readyToMerge": true,
+        "unresolvedCritical": 0,
+        "unresolvedImportant": 0
+      }
+    }
+  },
+  "activation": {
+    "userManualRestartRequired": true,
+    "desktopRestartPerformedByAgent": false,
+    "productionMetricVerified": false,
+    "sameDesktopServiceAfterRestartVerified": false,
+    "clientMetricStateUntilActivation": "暂无数据",
+    "nextStep": "用户手动完全退出并重新打开桌面App，再回验同一共享服务及实际上传字节"
+  },
+  "boundaries": {
+    "newClientArtifactsBuiltOrPublished": false,
+    "productionModelRequestForAcceptanceSent": false,
+    "realProviderAcceptanceAcknowledgementMeasured": false,
+    "statistic": "已成功交给模型上游传输层的请求载荷字节，不含协议头、TLS/TCP或下行流量"
+  },
+  "primaryWorkspaceStagedChangesPreserved": true
+}
