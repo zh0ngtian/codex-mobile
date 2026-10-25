@@ -249,6 +249,10 @@ class Gateway:
             if (environment.get('CODEX_APP_SERVER_MODE') != 'external' or
                     environment.get('CODEX_APP_SERVER_URL') != self.desktop_meter.options['upstreamUrl']):
                 raise RuntimeError('桌面计量接入必须保持已确认的 external 网关来源')
+            home = Path(environment.get('CODEX_HOME') or Path(environment.get('HOME') or Path.home()) / '.codex')
+            expected_socket = home / 'mobile-model-upload/meter.sock'
+            if Path(self.desktop_meter.options['socketPath']).absolute() != expected_socket.absolute():
+                raise RuntimeError('桌面计量 socket 必须与网关现有状态目录的默认来源一致')
         tree_digest(self.package / 'dist')
         original = read_json(self.package / 'package.json')
         frozen = read_json(self.work / 'package.json')

@@ -5,8 +5,19 @@ import { once } from 'node:events';
 import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import WebSocket, { WebSocketServer } from 'ws';
-import { startDesktopModelUpload, desktopMeterSocketPath, externalDesktopModelUsage } from '../../server/desktop-model-upload.js';
+import { startDesktopModelUpload, desktopMeterSocketPath, externalDesktopModelUsage, desktopConfigFlags } from '../../server/desktop-model-upload.js';
+import { readModelUploadRoutes } from '../../server/model-upload-routing.js';
 import { createGateway } from '../../server/gateway.js';
+
+it.skipIf(!process.env.CODEX_MODEL_UPLOAD_SMOKE_BIN)('紧凑 -c 参数经真实CLI读取后保留原模型上游', async () => {
+  const root = await mkdtemp('/tmp/dc-');
+  try {
+    const routes = await readModelUploadRoutes({ ...process.env, CODEX_HOME: root }, {
+      executable: process.env.CODEX_MODEL_UPLOAD_SMOKE_BIN!, args: desktopConfigFlags(['-copenai_base_url="http://127.0.0.1:54321/compact"', 'app-server']),
+    });
+    expect(routes[0].baseUrl).toBe('http://127.0.0.1:54321/compact');
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
 
 it.skipIf(!process.env.CODEX_MODEL_UPLOAD_SMOKE_BIN).each(['http', 'websocket'])(
   '真实共享 Codex 的桌面和手机两轮 %s 模型请求均经桌面计量，external 网关读数等于上游实收载荷', async transport => {

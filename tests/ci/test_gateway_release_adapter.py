@@ -184,9 +184,9 @@ class GatewayTests(unittest.TestCase):
         self.adapter.options['gateway_desktop_meter'] = {
             'adapterPath': str(path), 'originalSha256': hashlib.sha256(original.encode()).hexdigest(),
             'nodeExecutable': '/path/to/node', 'codexExecutable': '/path/to/codex',
-            'socketPath': str(self.adapter.root / 'private/meter.sock'), 'upstreamUrl': 'ws://127.0.0.1:14550/rpc'}
+            'socketPath': str(self.adapter.root / 'codex-home/mobile-model-upload/meter.sock'), 'upstreamUrl': 'ws://127.0.0.1:14550/rpc'}
         put(self.adapter.live / 'gateway-env.json', json.dumps({'CODEX_APP_SERVER_MODE': 'external',
-            'CODEX_APP_SERVER_URL': 'ws://127.0.0.1:14550/rpc', 'PORT': '19876'}))
+            'CODEX_APP_SERVER_URL': 'ws://127.0.0.1:14550/rpc', 'PORT': '19876', 'CODEX_HOME': str(self.adapter.root / 'codex-home')}))
         self.adapter.http_payload = {'mode': 'external', 'upstreamUrl': 'ws://127.0.0.1:14550/rpc'}
         gateway = self.module.Gateway(self.adapter)
         result = gateway.run()
@@ -197,6 +197,20 @@ class GatewayTests(unittest.TestCase):
         self.assertFalse(any('osascript' in item or 'com.openai.codex' in item for call in self.adapter.calls for item in call))
         path.write_text('drift')
         self.assertFalse(gateway.check()['done'])
+
+    def test_desktop_socket_must_match_gateway_default_source_path(self):
+        path = self.adapter.root / 'desktop-codex'; path.write_text('original'); path.chmod(0o700)
+        self.adapter.root.chmod(0o700)
+        self.adapter.options['gateway_desktop_meter'] = {
+            'adapterPath': str(path), 'originalSha256': hashlib.sha256(b'original').hexdigest(),
+            'nodeExecutable': '/path/to/node', 'codexExecutable': '/path/to/codex',
+            'socketPath': str(self.adapter.root / 'wrong/meter.sock'), 'upstreamUrl': 'ws://127.0.0.1:14550/rpc'}
+        put(self.adapter.live / 'gateway-env.json', json.dumps({'CODEX_APP_SERVER_MODE': 'external',
+            'CODEX_APP_SERVER_URL': 'ws://127.0.0.1:14550/rpc', 'CODEX_HOME': str(self.adapter.root / 'codex-home')}))
+        gateway = self.module.Gateway(self.adapter)
+        with self.assertRaisesRegex(RuntimeError, 'socket'):
+            gateway.run()
+        self.assertEqual(path.read_text(), 'original')
 
     def test_server_only_deploy_preserves_frontend_dependencies_and_startup(self):
         self.assertFalse(self.gateway.check()['done'])

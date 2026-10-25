@@ -26,21 +26,37 @@ export function externalDesktopModelUsage(upstreamUrl: string, codexHome?: strin
 
 /** 与既有桌面适配器相同的 canonical 调用边界；其余调用完全透传。 */
 export function desktopAppServer(args: string[], environment: Record<string, string | undefined>) {
-  const index = args.indexOf('app-server');
-  return index >= 0 && !!environment.CODEX_APP_TOOLS_PIPE_PATH &&
-    !args.slice(index + 1).some(value => ['daemon', 'proxy', 'generate-ts', 'generate-json-schema', 'help', '--help', '-h', '--listen', '--stdio'].includes(value) || value.startsWith('--listen='));
+  const parsed = desktopArguments(args);
+  return parsed.command === 'app-server' && !parsed.subcommand && !parsed.transport && !parsed.help && !!environment.CODEX_APP_TOOLS_PIPE_PATH;
+}
+
+function desktopArguments(args: string[]) {
+  const flags: string[] = [];
+  let command: string | undefined;
+  let subcommand: string | undefined;
+  let transport = false; let help = false;
+  const configFlags = ['-c', '--config', '-p', '--profile', '--enable', '--disable'];
+  const valueFlags = [...configFlags, '--remote', '--remote-auth-token-env', '-i', '--image', '-m', '--model', '--local-provider',
+    '-C', '--cd', '--add-dir', '-a', '--ask-for-approval', '--startup-client-info', '--cloud-skills-snapshot', '--code-mode-host',
+    '--listen', '--ws-auth', '--ws-token-file', '--ws-token-sha256', '--ws-shared-secret-file', '--ws-issuer', '--ws-audience', '--ws-max-clock-skew-seconds'];
+  for (let index = 0; index < args.length; index++) {
+    const value = args[index];
+    if (valueFlags.includes(value)) {
+      if (args[index + 1] === undefined) throw new Error('桌面配置参数缺少值');
+      if (configFlags.includes(value)) flags.push(value, args[index + 1]);
+      if (value === '--listen') transport = true;
+      index++;
+    } else if (/^--(?:config|profile|enable|disable)=/.test(value) || /^-[cp].+/.test(value)) flags.push(value);
+    else if (value === '--stdio' || value.startsWith('--listen=')) transport = true;
+    else if (['--help', '-h', '--version', '-V'].includes(value)) help = true;
+    else if (value === '--') { subcommand = args[index + 1]; break; }
+    else if (!value.startsWith('-')) { if (!command) command = value; else subcommand ??= value; }
+  }
+  return { flags, command, subcommand, transport, help };
 }
 
 export function desktopConfigFlags(args: string[]) {
-  const flags: string[] = [];
-  for (let index = 0; index < args.length; index++) {
-    const value = args[index];
-    if (['-c', '--config', '-p', '--profile', '--enable', '--disable'].includes(value)) {
-      if (args[index + 1] === undefined) throw new Error('桌面配置参数缺少值');
-      flags.push(value, args[++index]);
-    } else if (/^--(?:config|profile|enable|disable)=/.test(value)) flags.push(value);
-  }
-  return flags;
+  return desktopArguments(args).flags;
 }
 
 /** 在原桌面适配器外测量模型出口，不接管 canonical 服务或其 stdio 协议。 */

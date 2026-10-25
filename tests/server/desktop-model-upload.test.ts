@@ -13,14 +13,17 @@ it('只接入桌面持有工具管道的 canonical app-server，不接管其他 
   const env = { CODEX_APP_TOOLS_PIPE_PATH: '/private/tool-pipe' };
   expect(desktopAppServer(['-c', 'features.a=true', 'app-server', '--analytics-default-enabled'], env)).toBe(true);
   expect(desktopAppServer(['app-server'], {})).toBe(false);
-  for (const args of [['exec', 'hello'], ['app-server', '--listen', 'stdio://'], ['app-server', 'daemon', 'version'], ['app-server', 'generate-ts'], ['app-server', '--help']]) {
+  for (const args of [['exec', 'hello'], ['exec', 'app-server'], ['help', 'app-server'], ['app-server', '--listen', 'stdio://'], ['app-server', 'daemon', 'version'], ['app-server', 'generate-ts'], ['app-server', '--help']]) {
     expect(desktopAppServer(args, env)).toBe(false);
   }
+  expect(desktopAppServer(['app-server', '--profile', 'help'], env)).toBe(true);
 });
 
 it('配置读取保留原 config/profile/feature 覆盖，过滤服务 transport 和 analytics 参数', () => {
   expect(desktopConfigFlags(['-c', 'a=1', '--profile=work', 'app-server', '--analytics-default-enabled', '--enable', 'x', '--disable=y', '--config', 'b="中"']))
     .toEqual(['-c', 'a=1', '--profile=work', '--enable', 'x', '--disable=y', '--config', 'b="中"']);
+  expect(desktopConfigFlags(['-copenai_base_url="http://127.0.0.1:54321/compact"', '-pwork', 'app-server']))
+    .toEqual(['-copenai_base_url="http://127.0.0.1:54321/compact"', '-pwork']);
 });
 
 async function fixture() {
