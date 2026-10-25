@@ -5,7 +5,7 @@
 - 2026-10-17 从用户指定的 `AgentApp/docs/interaction-alignment.md` 导入，并合并原型制作、真实业务接入及后续验收会话中已确认的要求。本仓库以后维护本文件，不依赖原型仓库自动同步。
 - 本文是用户可见交互和功能修改的持续记录入口。原型来源主要针对 iOS；共用业务语义适用于各端，iOS 的具体布局、图标和手势不能直接套到网页或 Android。
 - 优先级为：用户最新明确要求 → 本文的现行约定 → AgentApp 参考代码 → 对应参考截图。旧计划、旧截图和早期原型的模拟行为不能覆盖后续决定。
-- 2026-10-25 用户确认后续发布停止本机iOS签名、HTTPS OTA和固定IPA更新。现行客户端范围为GitHub APK／unsigned IPA、固定APK及既有unsigned软件源，IPA明确未签名；旧包、材料、服务和凭证保留。下文0.3.36及更早的OTA／签名描述只记录历史发布，不代表后续操作要求；新范围与配套网关的真实批次待验收。
+- 2026-10-25用户先停止iOS签名与OTA，随后要求Android也关闭局域网分发。现行客户端只交付GitHub APK／unsigned IPA及既有iOS软件源，IPA明确未签名；8765服务保持停止和disabled，旧文件、材料与凭证保留不删。Android现有LAN更新检查不可用，新版本从GitHub手动下载，本次未实现GitHub自动更新。下文旧LAN／OTA／签名记录保留历史合同；旧0.3.37含LAN批次已失败，新GitHub-only源码尚未发布。配套worktree映射网关已由成功批次 `8574742b-24e0-4a42-8150-77d543498280` 部署并通过真实最新五条回验，不重复部署。
 - 已批准的接入方式是完整使用 AgentApp 的原生界面与交互，接入本仓库已有真实业务。消息结构和业务交互仍以参考代码为依据；用户随后确认参考 DailyMusuem 改用系统导航与控件，控件外观以原生系统组件为准，不能只按截图仿造。
 - 本次整理的接入基线为 `codex/agentapp-native-integration` 的 `c5bee58`；整理期间另只读核对了主线程的刷新时间实现 `1258513`，本轮进一步完成第 10.2 节所列的代码与模拟器验证。分支提交或模拟器验收不代表已经合入 main、发布固定渠道或完成真机覆盖安装。
 - 2026-10-23 对话“置顶／取消置顶”文案及 iOS 置顶对话前15pt的 SF Symbol `pin.fill` 已完成源码与模拟器验证，并随0.3.30发布；同日早期图钉尺寸与容器内总结按钮截图仅作历史记录，现行布局以下文最新要求为准。
@@ -30,7 +30,7 @@
 5. UI 与交互在 iPhone 17 Pro 正常字号竖屏验收；涉及 iOS App 的问题要在 App 内验证，浏览器验证不能替代模拟器验证。测试创建的会话验证后及时归档。
 6. 文档修改只检查相关文字、链接和规则一致性，不触发客户端构建、模拟器操作、部署或发布。网关地址中的口令、设备凭证、用户会话正文和签名材料不写入本文。
 7. 默认交付遵循 [仓库协作约定](../AGENTS.md)：开始修改时记录 main 提交，验证成功后合入主分支并完成提交推送，默认不发布客户端或部署生产网关。合入前核对最新 main（含远端）；修改期间 main 有新提交时，对整合结果运行相关回归，通过后再提交推送；没有新提交时复用已有验证，不必重复回归。只有明确要求发布或部署时才启用协调器正式交付流程。
-8. 已授权的客户端发布使用 `codex-mobile-github-release`／`mobile-unsigned`，阶段严格为main/build/apk/source/verify；带有unsigned-only策略的新源码拒绝旧签名／OTA模板及额外阶段。prepare只读GitHub全部Release、固定APK／历史IPA、仓库下限和失败预留，不依赖签名配置或HTTPS OTA。验收必须核对同冻结SHA的开发CI、main/build/apk/source，独立完整下载GitHub两端包，保存 `distribution=unsigned-only` 与 `unsigned-release.json`；不生成OTA凭证、不更新固定IPA。交付提供Release、固定APK、unsigned IPA及软件源链接、版本、大小与散列，不要求旧OTA链接。网关发布保持独立目标与成功凭证。
+8. 已授权的客户端发布使用 `codex-mobile-github-only`／`mobile-github-only`，阶段精确为main/build/source/verify；新策略同时固定Android为github-only、iOS为unsigned-only，新源码拒绝旧含LAN项目／kind及apk/ipa/iosbuild/sign/ota/gateway等额外阶段。prepare只读GitHub全部Release、仓库下限和保留失败预留（包括旧0.3.37），不访问LAN、签名配置或HTTPS。验收核对同冻结SHA的开发CI和main/build/source、GitHub两端完整独立下载及iOS软件源，保存 `distribution=github-only` 与 `github-release.json`，明确 `lanApkPublished=false` 及签名／OTA／固定IPA均未发布。交付只提供本次Release、GitHub APK、unsigned IPA和软件源链接、版本、大小与散列，不要求旧固定APK／IPA或OTA链接。旧文件本地散列与服务禁用状态另行回验；网关保持独立成功凭证，运行代码未变及祖先来源已证实的既有成功部署可复用。
 
 ## 3. 保留内容与真实业务边界
 
@@ -390,7 +390,7 @@
 - 保留“使用原生界面”的已保存选择，启动按保存值决定界面；未开启者继续使用非原生界面和网页输入框。原生切换的检查点、失败回滚及完整重启边界遵循[桥接说明](native-ui-business-bridge.md)。
 - 完整原生界面的输入、模型、权限和附件使用当前原生组件，业务复用同一真实连接与状态，不能复活已移除的混合输入路径。
 - 网页与 Android 的字号档位、安装和升级保持各自约定；iOS 原生默认系统字号。iOS 固定竖屏，只显示当前已安装版本，不进行自动、前台或手动更新检查。
-- Android APK 更新、固定渠道、OTA、签名和版本分配不在本交互文档重复定义，以发布文档为准。历史“仅 OTA”“不发 GitHub Release”等会话内授权不能自动变成所有后续任务的发布规则。
+- Android新版本从GitHub Release手动下载APK。8765局域网服务关闭后，现有客户端LAN更新检查不可用；本次不新增GitHub自动更新交互，也不宣称已经切换。版本分配和历史渠道资料见发布文档；旧“仅OTA”等授权不覆盖本次明确的GitHub-only范围。
 - 原型的不接真实网关、本地模拟和 iPhone 17 验证范围不再直接套用到本仓库：界面使用 SwiftUI，保留既有隐藏业务 WebView 接入真实服务，验收设备改为 iPhone 17 Pro。
 
 ## 8. 功能范围分组与验证入口
@@ -1402,10 +1402,18 @@ iPhone 17 Pro／iOS27、正常字号、竖屏的五项主要流程与两项机�
 
 已验证：七组121项定向回归、四组78项相关回归、Swift原生会话桥接回归通过；类型检查、前端与服务端验证构建通过。真实网关只读查询确认目标对话进入统一最新五条，归入单一codex-mobile项目且执行目录保留；没有创建测试会话。页面级端到端回归通过，覆盖五条分页、继续加载、刷新、搜索、打开原会话，以及目录失败时提示错误并保留已有列表。未执行安装包构建、客户端发布或生产网关部署；iPhone 17 Pro正常字号竖屏的已安装客户端验收待配套版本交付。
 
-## 2026-10-25 客户端改用unsigned分发（本地验证，真实批次待验收）
+## 2026-10-25 客户端改用unsigned含LAN分发（历史范围，旧批次失败）
 
-用户明确授权worktree会话归属的网关部署及客户端发布，并确认后续停止本机iOS签名、HTTPS OTA与固定IPA更新，覆盖旧默认双端签名／OTA及OTA-only操作约定。现行客户端使用新项目 `codex-mobile-github-release`，不覆盖有历史失败合同的旧项目配置；网关继续独立目标，共用main写入锁，同一来源SHA的两份成功凭证均核对后才可交付。
+用户当时授权worktree会话归属的网关部署及客户端发布，并先确认停止本机iOS签名、HTTPS OTA与固定IPA更新。旧unsigned含LAN范围使用项目 `codex-mobile-github-release`，不覆盖更早失败合同；其本地验证记录保留如下。用户随后停止Android LAN分发，该范围转历史，新要求见下一条GitHub-only记录。
 
 已实现：仓库unsigned-only策略阻止新源码使用旧mobile／mobile-ota配置；新mobile-unsigned精确绑定项目、target、environment、main分支、锁和五阶段，三个公开阶段入口拒绝签名／OTA／固定IPA／网关等额外阶段。prepare保留GitHub全部Release、固定APK／历史IPA、版本下限与失败预留的递增约束，无签名或HTTPS依赖；verify独立完整下载GitHub APK和unsigned IPA并保存unsigned-only证据，明确三类旧iOS渠道均未发布。历史helper、无策略冻结工作区、旧包、材料及凭证保留。
 
 已验证：新增16项定向Python回归先失败后通过，全部243项Python发布／恢复回归通过，覆盖新范围无签名依赖、版本预留、入口拒绝、配置误配、旧合同兼容、软件源既有App身份、缺失步骤及完整下载散列失败；客户端分发策略的损坏不影响网关初始化。首轮完整下载测试替身漏传ca关键字已修正并保留失败记录。验收证据在独立工作区 `.mobile-build/no-ota-release/`；本条只证明本地实现，真实客户端与网关批次均待验收。发布日志更新为上次0.3.36后实际新增的worktree统一归属／分页／搜索、iOS Mermaid图表显示和原生弹窗中性色三项变化。
+
+## 2026-10-25 Android停止LAN分发，客户端改为GitHub-only（本地验证，尚未发布）
+
+用户在旧批次运行中明确要求关闭Android局域网发布服务，只保留GitHub Release，覆盖上一条unsigned含LAN交付要求。8765服务已停止并disabled，旧文件不删除；旧客户端批次 `d9ecccee-0825-4e20-94a3-6c3f16ff559d` 按原冻结合同保留failed，原GitHub run `40182332387` 继续运行，不取消或借用其产物。后续修改基线为远端main `c004761ab76e301dd980f0955878da7469a4a064`。
+
+已实现：新增精确绑定 `codex-mobile-github-only` 项目／target、`github-only` 环境、main分支与共享锁的mobile-github-only四阶段；新策略阻止旧含LAN配置和项目。prepare在LAN完全不可用时仍仅依赖GitHub全部Release、仓库floor和保留预留分配版本，旧0.3.37不会被复用。verify只核对development/main/build/source并独立完整下载GitHub两端包，写github-only凭证，明确LAN APK及签名／OTA／固定IPA未发布。iOS软件源继续匹配既有App身份，旧策略夹具保持原合同，网关不读取客户端分发策略。
+
+已验证：新增13项Python回归及7项冻结清单合同先失败后通过；全部256项Python发布／恢复回归、release-batch的50项合同测试通过，日志位于 `.mobile-build/no-ota-release/github-only-*`。新GitHub-only客户端源码尚未发布，真实批次验收仍待完成。配套网关成功批次 `8574742b-24e0-4a42-8150-77d543498280` 已部署并通过真实目标最新五条映射回验；本轮只改发布策略、测试和文档，不重复部署，后续核对运行代码未变、来源祖先关系与原成功凭证。Android现有LAN更新交互保持代码现状，服务停用后不可用，新版本从GitHub手动下载；不将本次切换描述为GitHub自动更新功能。三条实际客户端功能更新日志保持原样，不追加分发模板。

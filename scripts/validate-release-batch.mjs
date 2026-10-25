@@ -27,6 +27,7 @@ export function validateManifest(batch) {
     "codex-mobile-ios-ota-production": { target: "vip.loock.codexmobile", environment: "ota-production", release: false, versioned: true },
     "codex-mobile-gateway-production": { target: "codex-mobile-gateway", environment: "production", release: false, versioned: false },
     "codex-mobile-github-release": { target: "codex-mobile-github-release", environment: "github-release", release: true, versioned: true },
+    "codex-mobile-github-only": { target: "codex-mobile-github-only", environment: "github-only", release: true, versioned: true },
   };
   const target = Object.hasOwn(targets, batch.project ?? "") && targets[batch.project];
   if (!target || batch.target !== target.target || batch.environment !== target.environment || batch.scope !== "codex-mobile-main-production") fail("冻结批次目标、项目、环境或作用域不匹配");

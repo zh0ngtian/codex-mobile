@@ -23,20 +23,20 @@
 
 ## 当前发布入口
 
-最近已验收客户端为0.3.36（3036），本版修复iOS选择杆包含段后留白、自动命名过早与已保存名称未同步当前页的问题；“用量与额度”新增“最近请求上传”和“本轮累计上传”字段；已有后续最终回答的中途结构化提问收进“执行过程”，待回答问题继续可见。该历史批次的固定APK、Ad Hoc已签名IPA、HTTPS OTA、GitHub unsigned IPA及软件源完成237项独立回验，见[发布计划](superpowers/plans/2026-10-25-selection-handle-height-release.md)与[公共凭证](superpowers/plans/evidence/2026-10-25-selection-handle-height-release.json)。自2026-10-25起用户确认停止本机iOS签名、HTTPS OTA和固定IPA更新，改用GitHub APK／unsigned IPA、固定APK和既有unsigned软件源；新范围及worktree会话归属的客户端／网关真实批次待验收，不能把旧包说成本次产物。上传计量后端此前已独立部署并安装桌面入口，仍待用户手动重启激活和实测回验；真机安装、数据保留、真机视觉及真实Bark送达仍待现场验收。
+最近已验收客户端为0.3.36（3036），本版修复iOS选择杆包含段后留白、自动命名过早与已保存名称未同步当前页的问题；“用量与额度”新增“最近请求上传”和“本轮累计上传”字段；已有后续最终回答的中途结构化提问收进“执行过程”，待回答问题继续可见。该历史批次的固定APK、Ad Hoc已签名IPA、HTTPS OTA、GitHub unsigned IPA及软件源完成237项独立回验，见[发布计划](superpowers/plans/2026-10-25-selection-handle-height-release.md)与[公共凭证](superpowers/plans/evidence/2026-10-25-selection-handle-height-release.json)。2026-10-25用户先停止iOS签名与OTA，随后要求Android也停止局域网分发；现行只交付GitHub APK／unsigned IPA及既有iOS软件源，8765服务停止并disabled，旧文件保留不删。旧0.3.37含LAN批次已失败保留，GitHub-only新源码尚未发布；worktree映射网关成功批次 `8574742b-24e0-4a42-8150-77d543498280` 已部署并通过真实最新五条回验，本轮不重复部署。上传计量后端此前已独立部署并安装桌面入口，仍待用户手动重启激活和实测回验；真机安装、数据保留、真机视觉及真实Bark送达仍待现场验收。
 
 此前0.3.35已发布后续消息从输入区连续交接到用户气泡和旧图片预览保留，继承0.3.34的首条发送动效，历史、页头、附件及队列语义保持；其[发布计划](superpowers/plans/2026-10-24-followup-message-motion-release.md)与[公共凭证](superpowers/plans/evidence/2026-10-24-followup-message-motion-release.json)保留当次验收口径。
 
 标题总结固定 `gpt-6-luna`、`low` 和Fast已另行完成仅网关部署，成功批次 `51b36234-ea37-4ba9-a7ac-c9b4375086dd`、冻结提交 `0dea2a1`。实际安装模块的手动／automatic两种HTTP入口协议探测通过，原会话和全局设置无写入；该次部署时固定客户端0.3.32的版本、大小、散列未变；当前客户端0.3.36的状态以上方本轮发布凭证为准。探测使用回环协议替身，不调用真实模型或Bark。见[部署计划](superpowers/plans/2026-10-23-title-luna-gateway-deploy.md)与[公共凭证](superpowers/plans/evidence/2026-10-23-title-luna-gateway-deploy.json)。
 
-版本以在线清单为准，不能从 package.json 的开发版本、文档示例或历史记录推断：
+版本以本次GitHub Release、软件源及成功凭证为准，不能从package.json、已停用LAN清单或历史记录推断：
 
-- [Android 清单](http://192.168.123.79:8765/channels/codex-mobile/latest.json)及 [固定 APK](http://192.168.123.79:8765/channels/codex-mobile/latest.apk)。
+- Android从下方GitHub Release手动下载APK安装；8765已停用，既有客户端LAN更新检查不可用，本次未实现GitHub自动更新。历史APK／IPA／清单文件保留，不作为新版本入口。
 - [GitHub Release](https://github.com/zh0ngtian/codex-mobile/releases)：现行APK和unsigned IPA；iOS包未签名，安装前需自行签名。
 - [Cloudflare 软件源](https://signos-source-aggregator.305301890.workers.dev/sources/yao.json)：SignOs可添加此源；只自动同步既有GitHub unsigned IPA订阅，保留原署名，不新增已签名订阅。
 - [历史iOS清单](http://192.168.123.79:8765/channels/codex-mobile/latest-ios.json)、[历史固定IPA](http://192.168.123.79:8765/channels/codex-mobile/latest.ipa)、[历史HTTPS OTA安装页](https://192.168.123.79:8766/channels/codex-mobile/current/install.html)及[历史OTA清单](https://192.168.123.79:8766/channels/codex-mobile/current/latest-ios.json)保留，不再更新，也不作为本次交付入口。
 
-固定APK及GitHub／unsigned软件源随成功新批次更新；历史IPA／OTA保留旧版本。历史记录里的版本、大小、散列只描述当次发布；现行回验必须独立完整下载GitHub两端包，核对固定APK清单、HEAD、完整GET及软件源，并保存unsigned-only成功凭证。渠道可用和构建验证不等于真机覆盖安装、数据保留已验证。
+GitHub及既有iOS软件源随成功新批次更新；历史LAN与OTA均停止更新，服务保持停用，文件保留不删。现行回验独立完整下载GitHub两端包并核对软件源，保存github-only成功凭证，明确LAN APK、签名／OTA／固定IPA未发布。交付不要求旧固定APK、IPA或OTA链接；渠道和构建验证不等于真机覆盖安装、数据保留已验证。
 
 ## 历史资料
 

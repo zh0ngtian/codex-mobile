@@ -1,4 +1,5 @@
 {
   "schemaVersion": 1,
-  "iosDistribution": "unsigned-only"
+  "iosDistribution": "unsigned-only",
+  "androidDistribution": "github-only"
 }

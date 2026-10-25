@@ -73,7 +73,7 @@ http://<电脑局域网IP>:18766/?token=<随机口令>
 
 客户端不设置设备数量上限，可同时维持所有已启用设备的连接；保存和恢复完整设备列表及排序。
 
-最近已验收客户端为0.3.36（3036）：修复iOS列表文字选择杆过长，排除段后留白并保留间距、复制和引用；自动命名等待用户消息就绪，并将已保存名称同步到当前页面；“用量与额度”新增“最近请求上传”和“本轮累计上传”，显示网关提供的请求载荷字节数；已有后续最终回答的中途结构化提问收进“执行过程”，展开后保留问题和选项，待回答问题继续可见。该历史批次的双端固定渠道、HTTPS OTA、GitHub与unsigned软件源独立回验237项通过，见[发布计划](docs/superpowers/plans/2026-10-25-selection-handle-height-release.md)与[公共凭证](docs/superpowers/plans/evidence/2026-10-25-selection-handle-height-release.json)。自2026-10-25起，用户确认停止本机iOS签名与HTTPS OTA，新批次仅交付GitHub APK／unsigned IPA、固定APK及既有unsigned软件源；本次切换与worktree会话归属功能的真实客户端／网关批次尚待验收，不把旧OTA版本当作新交付。
+最近已验收客户端为0.3.36（3036）：修复iOS列表文字选择杆过长，排除段后留白并保留间距、复制和引用；自动命名等待用户消息就绪，并将已保存名称同步到当前页面；“用量与额度”新增“最近请求上传”和“本轮累计上传”，显示网关提供的请求载荷字节数；已有后续最终回答的中途结构化提问收进“执行过程”，展开后保留问题和选项，待回答问题继续可见。该历史批次的双端固定渠道、HTTPS OTA、GitHub与unsigned软件源独立回验237项通过，见[发布计划](docs/superpowers/plans/2026-10-25-selection-handle-height-release.md)与[公共凭证](docs/superpowers/plans/evidence/2026-10-25-selection-handle-height-release.json)。2026-10-25用户先停止本机iOS签名与HTTPS OTA，随后要求Android也停止局域网分发；现行新范围仅交付GitHub APK／unsigned IPA及既有iOS软件源。8765服务保持停止和disabled，旧包与材料保留不删。旧0.3.37含LAN批次已失败保留，GitHub-only新源码尚未发布；worktree映射网关已由成功批次 `8574742b-24e0-4a42-8150-77d543498280` 部署，并通过真实目标最新五条回验，本轮不重复部署。
 
 此前0.3.35已发布iOS已有会话的后续消息动效与旧图片预览保留，继承0.3.34的首条发送动效；支持文字、图片与文件、多附件、仅附件、快速确认、失败返回编辑及待确认防重复，历史与页头保持。其[发布计划](docs/superpowers/plans/2026-10-24-followup-message-motion-release.md)与[公共凭证](docs/superpowers/plans/evidence/2026-10-24-followup-message-motion-release.json)保留当次验收口径。
 
@@ -363,13 +363,9 @@ npm run test:e2e
 
 ## 移动端构建
 
-仅在用户明确要求发布时，由本机已有 `releasectl` 的 `codex-mobile-github-release` 项目协调正式发布；普通任务合入 main 或推送分支都不发包，也不更新冻结批次清单。`main` 的冻结批次清单变化才触发 GitHub 双端构建；已授权的客户端批次共用 prepare 预留版本，全部构建与校验成功后创建同一个 GitHub APK／unsigned IPA Release，再更新固定APK及既有unsigned软件源。现行 `mobile-unsigned` 阶段严格为 `main → build → apk → source → verify`，不进行本机iOS构建、签名、HTTPS OTA或固定IPA更新；旧mobile／OTA项目和模板仅供历史冻结合同回溯。配置、任务命令和恢复验收见 [发布协调说明](docs/release-coordination.md)；npm 包继续按需手动发布。
+仅在用户明确要求发布时，由本机已有 `releasectl` 的 `codex-mobile-github-only` 项目协调正式发布；普通任务合入main或推送分支都不发包，也不更新冻结批次清单。main冻结清单变化才触发GitHub双端构建；客户端批次共用prepare预留版本，全部构建与校验成功后创建同一个GitHub APK／unsigned IPA Release，unsigned IPA同步既有iOS软件源。现行 `mobile-github-only` 阶段严格为 `main → build → source → verify`，不写LAN APK／IPA，不进行本机iOS签名或HTTPS OTA；旧含LAN模板保留历史合同。配置、命令和恢复验收见[发布协调说明](docs/release-coordination.md)；npm包继续按需手动发布。
 
-Android App 固定检查局域网更新清单
-`http://192.168.123.79:8765/channels/codex-mobile/latest.json`，发现新版本后从固定地址
-`http://192.168.123.79:8765/channels/codex-mobile/latest.apk` 下载，经 SHA-256 校验成功后
-调起系统安装器。手机必须与更新服务器处于同一局域网；首次使用需要在 Android 系统中
-允许 Codex Mobile 安装未知应用，App 不支持静默安装。
+Android新版本从[GitHub Release](https://github.com/zh0ngtian/codex-mobile/releases)手动下载APK并安装。8765局域网发布服务已停止并disabled；客户端现有LAN更新检查在关闭后不可用，本次没有将自动更新切换到GitHub，也没有新增更新交互。旧APK、IPA、清单和服务配置保留在原目录，不再更新。
 
 iOS 新版本通过 GitHub Release 的 unsigned IPA 和[既有软件源](https://signos-source-aggregator.305301890.workers.dev/sources/yao.json)分发，安装前由用户自行签名；软件源维护规则见 [SignOs 软件源文档](https://github.com/zh0ngtian/SignOs/blob/main/distribution/source-aggregator/README.md)。现行发布不读取本机签名材料或HTTPS OTA，不覆盖历史固定IPA。iOS 的旧界面和原生界面都只展示当前版本，不做自动或手动更新检查，也不显示升级提示；启动和回前台不请求更新源。
 
@@ -383,8 +379,8 @@ Android 安装包保持竖屏。iOS App 在 iPhone、iPad 及应用内浏览器�
 
 本项目发布要求：
 
-- GitHub 双端构建和本地构建复用 `mobile/*/build-recipe.yml`，版本高于全部 GitHub Release 标签及仓库下限；本机渠道超前时，先更新 `mobile-version-floor.json` 或手动指定更高版本。npm 包按需手动测试、构建和发布。
-- 已获用户发布授权的客户端任务独立开发并登记已验证提交，协调入口整合、复验、冻结并推送批次，再发布统一版本GitHub APK／unsigned IPA、固定APK及软件源。版本高于全部GitHub Release、固定APK／历史IPA、仓库下限及失败预留；prepare无需签名配置或HTTPS。回验包括GitHub两端完整下载、固定APK清单／HEAD／完整GET及软件源版本、日志、署名与散列；成功凭证标明 `distribution=unsigned-only` 并保存 `unsigned-release.json`。交付提供本次Release、固定APK、unsigned IPA及软件源链接和两端大小／SHA-256，注明IPA未签名，不提供旧OTA作为本次安装入口。
+- GitHub双端构建复用 `mobile/*/build-recipe.yml`，prepare查询全部GitHub Release标签、仓库版本下限和保留失败预留（含旧0.3.37），不访问任何LAN清单、签名配置或HTTPS OTA。npm包按需手动测试、构建和发布。
+- 已获用户发布授权的客户端任务独立开发并登记已验证提交，协调入口整合、复验、冻结并推送批次，再发布同版本GitHub APK／unsigned IPA及既有iOS软件源。回验独立完整下载GitHub两端产物，核对软件源版本、日志、署名和散列，保存 `github-release.json` 与 `distribution=github-only` 成功凭证，明确 `lanApkPublished=false` 及签名／OTA／固定IPA均未发布。交付提供本次Release、GitHub APK、unsigned IPA及软件源链接和两端大小／SHA-256，注明IPA未签名，不要求旧固定APK或OTA链接。
 - 改动不涉及客户端运行代码、客户端引用的共用模块、原生桥接或影响客户端产物的构建配置时，不得触发客户端 Web、APK 或 IPA 的构建与发布；仅修改文档、规则、测试、服务端或不影响客户端产物的脚本时，均遵循此规则。服务端变更仍须验证和构建服务端，只有用户明确要求部署时才部署网关。具体约束见 [AGENTS.md](AGENTS.md)。
 
 本地构建配置与环境约定见 [构建说明](mobile/README.md)：
@@ -461,7 +457,7 @@ AgentApp 原生对话不显示独立“文件变更”按钮或增删行数统�
 - app-server 的持久化 `ThreadItem` 可能是有损表示，前端也会合并逻辑回合。
 - 不同 app-server 进程之间没有全局实时状态。Codex Desktop 与本项目使用独立进程
   时，网页无法仅靠 V2 列表接口准确显示桌面进程正在执行的任务。
-- 现行iOS交付为GitHub unsigned IPA及既有软件源，安装前需自行签名。历史固定IPA与OTA停止更新，旧包及仓库外签名材料保留；历史渠道可用不代表本次新版本已发布。
+- 现行客户端交付仅为GitHub APK／unsigned IPA及既有iOS软件源，IPA安装前需自行签名。8765发布服务保持停止和disabled，历史固定APK／IPA及OTA不更新不删文件；Android现有LAN更新检查不可用，需从GitHub手动下载新版本。
 
 ## 许可证
 

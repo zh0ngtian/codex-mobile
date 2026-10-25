@@ -8,6 +8,17 @@
 
 **Tech Stack:** Python unittest、现役releasectl 0.1.7、GitHub Actions、Node/Vitest、launchd。
 
+## 用户运行中更新范围：Android也停止局域网分发
+
+用户随后要求“关闭Android在局域网的发布服务，只保留GitHub Release”。此要求覆盖前述固定APK交付步骤；iOS unsigned IPA与既有软件源继续。局域网服务已停止并disable，旧客户端批次`d9ecccee-0825-4e20-94a3-6c3f16ff559d`的本机build等待进程已终止，由协调器保留原冻结合同及失败记录；其GitHub构建不取消，不执行旧LAN阶段。网关成功批次`8574742b-24e0-4a42-8150-77d543498280`及真实项目映射回验保留有效。
+
+- [ ] 新增`mobile-github-only`与新项目`codex-mobile-github-only`（target同名，environment `github-only`），复用现役协调器与main锁；阶段精确`main/build/source/verify`。在分发策略增加`androidDistribution=github-only`，新策略拒绝旧含LAN范围，历史无策略／旧策略夹具保持原合同。
+- [ ] TDD：先证明prepare在LAN服务关闭时仍可完成版本分配、三个入口拒绝apk/ipa/ota/sign/iosbuild/gateway，verify不访问LAN、只核对GitHub正式双端与iOS软件源。运行实际RED后最小实现；GitHub manifest门禁新增精确项目/target/env合同及对应失败测试。
+- [ ] 新prepare只读GitHub全部Release、仓库下限和保留版本预留，不依赖任何LAN/签名/HTTPS；新verify明确`distribution=github-only`、`lanApkPublished=false`及旧iOS渠道未发布，保存独立凭证；不改变客户端更新交互。
+- [ ] 更新AGENTS、README、文档索引、发布协调、交互约定的现行规则与验收点。Android新版本从GitHub手动下载，关闭LAN后不再承诺旧客户端的LAN更新检查可用；不自行新增GitHub自动更新功能。保留旧包/清单及旧冻结合同，不删除历史资料。
+- [ ] 完成四项真实门禁、规格/质量审查、推送固定来源后ready新项目。此次后续修改只影响发布策略、测试与文档，不重复部署已成功网关；通过server/bin源码不变与祖先关系证明配套运行代码已部署。
+- [ ] 新客户端批次成功后独立下载GitHub APK/unsigned IPA，核对iOS普通/legacy软件源、正式/开发CI及来源，确认8765不监听且launchd禁用，LAN清单/包文件未被本轮更新，最后同步公开凭证与main文档。
+
 基线：远端main `30db425fb265902b174fc80515e025a80c85b780`；主工作区本地main `7772b28f5e716d8e5e3759fb1e84a089158502ec`，已有暂存改动不动。本任务复用隔离工作区`/Users/zhongtian/.codex/worktrees/sidebar-worktree-mapping/codex-mobile`。
 
 ## Task 1：分发策略、适配器与回归
