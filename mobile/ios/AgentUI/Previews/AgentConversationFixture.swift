@@ -158,6 +158,67 @@ final class AgentConversationFixture {
             | 桥接清理 | 替换 `NativeSnapshot → AppSession` 和字符串命令调用；最终移除业务 WebView、JS runtime、界面切换与旧界面恢复入口 |
             """, phase: "final_answer")]
         }
+        if ProcessInfo.processInfo.arguments.contains("--agent-list-rhythm-fixture") {
+            value.messages = [NativeMessage(id: "list-rhythm", role: "assistant", text: """
+            这是一段普通正文，用于对照文字自然换行时的行距。文字稍长一些，让它在手机上自动换行，方便和下面的列表比较。
+
+            这是另一个普通段落，下面直接接无序列表：
+
+            - 第一项，内容较短。
+            - 第二项内容比较长，用于观察同一个条目自动换行后，续行的行距和缩进是否自然，以及它与下一条之间的间距。
+            - 第三项包含 **加粗文字** 和 `inline_code`。
+
+            这是列表结束后的普通正文，用来观察最后一个条目与后续段落之间的留白。
+
+            下面是独立链接接无序列表的情况：
+
+            [查看安装说明（示例链接）](https://example.com/install)
+
+            - 下载 Android 安装包。
+            - 下载 iOS 安装包。
+            - 检查文件后再安装。
+
+            这是条目之间在 Markdown 源码中留有空行的列表：
+
+            - 第一项：下载文件。
+
+            - 第二项：检查文件完整性。
+
+            - 第三项：完成安装。
+
+            下面是同一条目内部主动换行的情况：
+
+            - 安装包下载完成。\u{20}\u{20}
+              SHA-256：`bd309dfa76a14e11957cd035f976372b22fd7e1e4dea46569008a55cff820a07`
+            - 校验通过后继续下一步。
+
+            下面是嵌套列表：
+
+            - 准备安装文件。
+              - 确认设备类型。
+              - 选择对应安装包；这条内容稍长，用于观察嵌套条目换行后的缩进与行距。
+            - 开始安装。
+
+            下面是有序列表：
+
+            1. 打开下载页面。
+            2. 选择对应设备的安装包，等待下载完成，再按照页面提示操作。
+            3. 完成检查。
+
+            下面是任务列表：
+
+            - [x] 文件已下载。
+            - [ ] 文件待校验。
+            - [ ] 安装待完成。
+
+            ### 标题后直接接列表
+
+            - 标题下的第一项。
+            - 标题下的第二项。
+
+            这是全文最后一段普通正文。
+            """, phase: "final_answer")]
+        }
         if ProcessInfo.processInfo.arguments.contains("--agent-release-reply-fixture") {
             value.messages = [NativeMessage(id: "release-reply", role: "assistant", text: """
             已发布 **0.3.20（3020）**，包含表格渲染和消息长按菜单修复。

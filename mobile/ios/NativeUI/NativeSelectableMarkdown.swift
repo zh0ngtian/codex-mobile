@@ -66,11 +66,14 @@ extension NSAttributedString.Key {
             let font = UIFont.preferredFont(forTextStyle: .body)
             let paragraph = NSMutableParagraphStyle()
             paragraph.lineSpacing = 3
-            paragraph.paragraphSpacing = index == blocks.count - 1 ? 0 : block.kind == .heading ? 8 : blocks[index + 1].kind == .heading ? 24 : 16
-            // 正文接无序列表、以及连续无序条目，沿用普通正文行间距。
-            if index + 1 < blocks.count, blocks[index + 1].kind == .list, blocks[index + 1].marker == "•",
-               block.kind == .text || (block.kind == .list && block.marker == "•") {
-                paragraph.paragraphSpacing = 0
+            let nextKind = index + 1 < blocks.count ? blocks[index + 1].kind : nil
+            // 列表内部沿用正文行距，整个列表与前后段落保留不同层次的留白。
+            switch (block.kind, nextKind) {
+            case (_, nil), (.list, .list): paragraph.paragraphSpacing = 0
+            case (.heading, _): paragraph.paragraphSpacing = 8
+            case (_, .heading): paragraph.paragraphSpacing = 24
+            case (.list, _): paragraph.paragraphSpacing = 8
+            default: paragraph.paragraphSpacing = 16
             }
             let part = NSMutableAttributedString(string: "")
             if block.kind == .list {
