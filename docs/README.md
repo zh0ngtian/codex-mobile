@@ -23,7 +23,7 @@
 
 ## 当前发布入口
 
-最近已验收客户端为0.3.41（3041）：修复遗留未知创建请求阻塞后续新会话的问题。客户端成功批次 `543d902f-dbac-4c00-8f16-ae59f1d69111` 已完成 GitHub APK／unsigned IPA 与既有 iOS 软件源回验，独立核对 56 项通过。见[发布计划](superpowers/plans/2026-10-26-new-thread-creation-release.md)与[公共凭证](superpowers/plans/evidence/2026-10-26-new-thread-creation-release.json)。IPA 未签名，安装前由用户自行签名；LAN 包、签名 IPA、OTA 和固定 IPA 均未发布，旧文件及已停用服务保持原状。Android 继续从 GitHub 手动下载，现有 LAN 更新检查不可用，未实现 GitHub 自动更新。本次未部署网关。真机安装、数据保留和现场交互仍待验收；冷启动搜索未命中仍待定位，桌面上传计量仍待用户手动重启激活和实测回验。0.3.37／0.3.38 失败批次及 0.3.39、0.3.40 历史记录继续保留。
+最近已验收客户端为0.3.42（3042）：统一 iOS 有序、无序、任务与嵌套列表的内部行距，并调整列表与正文、独立链接及标题之间的留白。客户端成功批次 `cdf0af2b-8f2d-4bfd-940a-c71e06a6c803` 已完成 GitHub APK／unsigned IPA 与既有 iOS 软件源回验，独立82项核对通过。见[发布计划](superpowers/plans/2026-10-26-markdown-list-rhythm-release.md)与[公共凭证](superpowers/plans/evidence/2026-10-26-markdown-list-rhythm-release.json)。IPA 未签名，安装前由用户自行签名；LAN 包、签名 IPA、OTA 和固定 IPA 均未发布，旧文件及已停用服务保持原状。Android 继续从 GitHub 手动下载，现有 LAN 更新检查不可用，未实现 GitHub 自动更新。本次未部署网关。真机安装、数据保留及列表视觉仍待验收；冷启动搜索未命中仍待定位，桌面上传计量仍待用户手动重启激活和实测回验。0.3.37／0.3.38 失败批次及0.3.39至0.3.41历史记录继续保留。
 
 此前0.3.35已发布后续消息从输入区连续交接到用户气泡和旧图片预览保留，继承0.3.34的首条发送动效，历史、页头、附件及队列语义保持；其[发布计划](superpowers/plans/2026-10-24-followup-message-motion-release.md)与[公共凭证](superpowers/plans/evidence/2026-10-24-followup-message-motion-release.json)保留当次验收口径。
 
@@ -48,6 +48,7 @@ GitHub及既有iOS软件源随成功新批次更新；历史LAN与OTA均停止�
 
 近期可追溯记录：
 
+- [2026-10-26 列表排版统一发布](superpowers/plans/2026-10-26-markdown-list-rhythm-release.md)：0.3.42 GitHub-only成功批次、82项独立核对及真机待验收边界；[公共凭证](superpowers/plans/evidence/2026-10-26-markdown-list-rhythm-release.json)。
 - [2026-10-25 无项目会话修复客户端发布（0.3.40）](superpowers/plans/2026-10-25-projectless-send-release.md)：53项独立核对及真机待验收边界；[公共凭证](superpowers/plans/evidence/2026-10-25-projectless-send-release.json)。
 - [2026-10-26 新会话创建修复发布](superpowers/plans/2026-10-26-new-thread-creation-release.md)：0.3.41 GitHub-only成功批次与真机待验收边界；[公共凭证](superpowers/plans/evidence/2026-10-26-new-thread-creation-release.json)。
 - [2026-10-25 worktree归属、GitHub-only发布与配套网关部署](superpowers/plans/2026-10-25-worktree-unsigned-release.md)：0.3.39成功批次、LAN／OTA关闭与TLS只读恢复谱系；[公共凭证](superpowers/plans/evidence/2026-10-25-worktree-github-release.json)。
