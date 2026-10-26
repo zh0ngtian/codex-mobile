@@ -73,7 +73,7 @@ http://<电脑局域网IP>:18766/?token=<随机口令>
 
 客户端不设置设备数量上限，可同时维持所有已启用设备的连接；保存和恢复完整设备列表及排序。
 
-最近已验收客户端为0.3.40（3040）：修复无项目会话发送待确认时误报未发送、创建回执迟到后原输入不可见，以及发送后页头变成默认目录的问题。客户端成功批次 `77fbb290-6654-452d-bfba-41208136f42c` 已完成 GitHub APK／unsigned IPA 与既有 iOS 软件源回验，独立核对 53 项通过。见[发布计划](docs/superpowers/plans/2026-10-25-projectless-send-release.md)与[公共凭证](docs/superpowers/plans/evidence/2026-10-25-projectless-send-release.json)。IPA 未签名，安装前由用户自行签名；LAN 包、签名 IPA、OTA 和固定 IPA 均未发布，旧文件及已停用服务保持原状。Android 继续从 GitHub 手动下载，现有 LAN 更新检查不可用，未实现 GitHub 自动更新。此前 worktree 映射网关已部署，本次未部署网关。真机安装、数据保留和现场视觉仍待验收；冷启动搜索未命中现象仍待定位，桌面上传计量仍待用户重启激活和回验。0.3.37／0.3.38 失败批次及 0.3.39 关联修复记录继续保留。
+最近已验收客户端为0.3.41（3041）：修复遗留未知创建请求阻塞后续新会话的问题。客户端成功批次 `543d902f-dbac-4c00-8f16-ae59f1d69111` 已完成 GitHub APK／unsigned IPA 与既有 iOS 软件源回验，独立核对 56 项通过。见[发布计划](docs/superpowers/plans/2026-10-26-new-thread-creation-release.md)与[公共凭证](docs/superpowers/plans/evidence/2026-10-26-new-thread-creation-release.json)。IPA 未签名，安装前由用户自行签名；LAN 包、签名 IPA、OTA 和固定 IPA 均未发布，旧文件及已停用服务保持原状。Android 继续从 GitHub 手动下载，现有 LAN 更新检查不可用，未实现 GitHub 自动更新。本次未部署网关。真机安装、数据保留和现场交互仍待验收；冷启动搜索未命中仍待定位，桌面上传计量仍待用户手动重启激活和实测回验。0.3.37／0.3.38 失败批次及 0.3.39、0.3.40 历史记录继续保留。
 
 此前0.3.35已发布iOS已有会话的后续消息动效与旧图片预览保留，继承0.3.34的首条发送动效；支持文字、图片与文件、多附件、仅附件、快速确认、失败返回编辑及待确认防重复，历史与页头保持。其[发布计划](docs/superpowers/plans/2026-10-24-followup-message-motion-release.md)与[公共凭证](docs/superpowers/plans/evidence/2026-10-24-followup-message-motion-release.json)保留当次验收口径。
 

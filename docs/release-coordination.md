@@ -8,7 +8,7 @@
 
 只有用户明确要求发布客户端或部署网关时，才登记对应发布任务并使用下文的 heartbeat、ready、冻结、构建发布及 receipt 流程。普通任务不登记发布任务、不提交 ready、不分配发布版本、不更新 `.release-batch.json`，不触发正式 APK/IPA 打包、渠道更新或生产网关部署；必要的开发验证构建仍按改动范围执行。客户端与网关均有源码变更本身不构成联合发布授权。
 
-2026-10-25用户先确认停止本机iOS签名、HTTPS OTA及固定LAN IPA更新，随后进一步要求Android关闭局域网分发，只保留GitHub Release。现行客户端为 `codex-mobile-github-only`／`mobile-github-only`，只交付GitHub APK／unsigned IPA及既有iOS软件源。策略 [distribution-policy.json](../release/distribution-policy.json) 同时规定 `iosDistribution=unsigned-only` 与 `androidDistribution=github-only`；新源码拒绝旧mobile／mobile-ota／mobile-unsigned kind及旧客户端项目，不能通过旧模板进入LAN或签名／OTA阶段。8765服务保持停止和disabled，旧包、清单、材料、失败批次及凭证保留不删。无策略或旧ios-only策略的历史工作区继续原合同。现役0.3.40已完成无项目会话修复发布与完整回验；此前0.3.39关联修复及0.3.38失败记录保留，见下方交付记录。
+2026-10-25用户先确认停止本机iOS签名、HTTPS OTA及固定LAN IPA更新，随后进一步要求Android关闭局域网分发，只保留GitHub Release。现行客户端为 `codex-mobile-github-only`／`mobile-github-only`，只交付GitHub APK／unsigned IPA及既有iOS软件源。策略 [distribution-policy.json](../release/distribution-policy.json) 同时规定 `iosDistribution=unsigned-only` 与 `androidDistribution=github-only`；新源码拒绝旧mobile／mobile-ota／mobile-unsigned kind及旧客户端项目，不能通过旧模板进入LAN或签名／OTA阶段。8765服务保持停止和disabled，旧包、清单、材料、失败批次及凭证保留不删。无策略或旧ios-only策略的历史工作区继续原合同。现役0.3.41已完成新会话创建修复发布与完整回验；此前0.3.40、0.3.39交付及0.3.38失败记录保留，见下方交付记录。
 
 ## 本机部署与作用域
 
@@ -30,7 +30,7 @@
 
 项目配置路径与用途：
 
-- `~/Library/Application Support/ReleaseCoordinator/projects/codex-mobile-github-only.json`：现行客户端目标，已按新模板完成登记、heartbeat与ready；0.3.40成功批次已完成渠道回验，见本文件最新交付记录及成功receipt；真机安装和数据保留仍待验收。
+- `~/Library/Application Support/ReleaseCoordinator/projects/codex-mobile-github-only.json`：现行客户端目标，已按新模板完成登记、heartbeat与ready；0.3.41成功批次已完成渠道回验，见本文件最新交付记录及成功receipt；真机安装和数据保留仍待验收。
 - `~/Library/Application Support/ReleaseCoordinator/projects/codex-mobile-gateway-production.json`。
 - `~/Library/Application Support/ReleaseCoordinator/projects/codex-mobile-lan-production.json`、`codex-mobile-ios-ota-production.json` 与 `codex-mobile-github-release.json`：仅保留历史合同，不改写旧失败批次或项目配置。
 
@@ -177,3 +177,11 @@ GitHub-only的0.3.38批次 `c2997b88-4cc4-4298-b292-6cd3b4a3d70b` 在最终verif
 发布门禁 261 项适配器回归、59 项协调器恢复回归、21 文件 151 项构建契约及类型检查通过。成功 receipt、GitHub Release 标签与中文日志、两端独立完整下载大小／SHA-256、IPA 实际版本与无签名资源、既有软件源版本／日志／开发者署名等共 53 项核对通过。软件源继续使用既有 unsigned 订阅并保留开发者署名，未复制上游服务或私有凭据。
 
 本机 8765／8766 无监听且 launchd disabled，四个历史 LAN 包／清单散列与发布前一致。凭证明确 `distribution=github-only`、`lanApkPublished=false`，signed IPA、OTA、固定 IPA 均未发布；IPA 安装前由用户自行签名。证据为协调器 `receipts/77fbb290-6654-452d-bfba-41208136f42c.json`、对应 artifacts 目录的 `github-release.json`，脱敏摘要、链接、大小与散列见[公共凭证](superpowers/plans/evidence/2026-10-25-projectless-send-release.json)及[发布计划](superpowers/plans/2026-10-25-projectless-send-release.md)。真机安装与数据保留、冷启动搜索未命中仍待验收或定位；仅文档收尾不重复构建或部署。
+
+## 2026-10-26 新会话创建修复客户端发布
+
+用户明确授权客户端发布后，任务 `new-thread-creation-github-only-20261026` 由现役项目 `codex-mobile-github-only` 完成，批次 `543d902f-dbac-4c00-8f16-ae59f1d69111` complete。统一版本为 0.3.41／3041，来源 `d1ecf0796377950aac76b2faf2c6b665f4af8fb6`，冻结 `85d9ad4f6e64b9d3bf46ecc264ec82959751f059`，包含修复 `ae57f0f4c76ad09f4718de72b09822802a9c3ee3`；正式双端 CI `40260975022` 与开发 CI `40260975078` 均 attempt 1 成功。发布仅执行 main/build/source/verify，未部署网关。
+
+发布门禁 261 项适配器回归、59 项协调器恢复回归、21 文件 151 项构建契约及类型检查通过，规格 `new_thread_release_spec` 与质量 `new_thread_release_quality` 审查通过。独立 56 项核对通过，覆盖成功凭证、来源与冻结关系、GitHub Release中文日志及双端独立完整下载、IPA未签名与软件源版本／日志／署名，以及历史文件和停用服务状态。
+
+凭证为 `distribution=github-only`、`lanApkPublished=false`；未发布签名 IPA、OTA 或固定 IPA，未部署网关。IPA 安装前由用户自行签名。脱敏摘要、链接、大小和散列见[公共凭证](superpowers/plans/evidence/2026-10-26-new-thread-creation-release.json)及[发布计划](superpowers/plans/2026-10-26-new-thread-creation-release.md)。真机交互、安装与数据保留仍待验收；此前冷启动搜索未命中不在本次修复范围。仅文档收尾不重复构建或部署。
