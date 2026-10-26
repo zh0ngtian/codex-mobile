@@ -67,8 +67,9 @@ extension NSAttributedString.Key {
             let paragraph = NSMutableParagraphStyle()
             paragraph.lineSpacing = 3
             paragraph.paragraphSpacing = index == blocks.count - 1 ? 0 : block.kind == .heading ? 8 : blocks[index + 1].kind == .heading ? 24 : 16
-            if block.kind == .list, block.marker == "•", index + 1 < blocks.count,
-               blocks[index + 1].kind == .list, blocks[index + 1].marker == "•" {
+            // 正文接无序列表、以及连续无序条目，沿用普通正文行间距。
+            if index + 1 < blocks.count, blocks[index + 1].kind == .list, blocks[index + 1].marker == "•",
+               block.kind == .text || (block.kind == .list && block.marker == "•") {
                 paragraph.paragraphSpacing = 0
             }
             let part = NSMutableAttributedString(string: "")
