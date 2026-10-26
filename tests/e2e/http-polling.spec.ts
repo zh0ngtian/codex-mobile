@@ -1,4 +1,68 @@
 import { expect, test } from "@playwright/test";
+import { DESKTOP_PINNED_SECTION_ID } from '../../server/desktop-thread-pins';
+
+for (const cwd of [null, '/tmp/project']) {
+test(`遗留未知创建请求不阻塞相同设置的新会话：${cwd ?? '无项目'}`, async ({ page }) => {
+  const sessionId = '11111111-2222-4333-8444-555555555555';
+  const oldRequestId = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
+  const params = { cwd, model: 'gpt-test', serviceTier: null, permissions: ':danger-full-access', approvalPolicy: 'never', approvalsReviewer: 'user' };
+  const starts: any[] = [];
+  const turns: any[] = [];
+  await page.addInitScript(({ sessionId, oldRequestId, params }) => {
+    localStorage.setItem('codex-mobile:language', 'zh-CN');
+    localStorage.setItem(`codex-mobile:http-session:current-origin:${location.origin}`, sessionId);
+    const signature = JSON.stringify({ method: 'thread/start', params });
+    localStorage.setItem(`codex-mobile:http-writes:current-origin:${sessionId}`, JSON.stringify([[signature, {
+      requestId: oldRequestId, message: { id: 8, method: 'thread/start', params },
+    }]]));
+  }, { sessionId, oldRequestId, params });
+  await page.route('**/api/**', async route => {
+    const url = new URL(route.request().url());
+    if (url.pathname === '/api/projects') return route.fulfill({ json: { projects: ['/tmp/project'], projectlessThreadIds: [] } });
+    if (url.pathname === '/api/host') return route.fulfill({ json: { hostId: 'stale-creation-host', gatewayVersion: '0.3.40', appServerReady: true, httpPolling: true } });
+    if (url.pathname === '/api/events') return route.fulfill({ json: { epoch: 'same-session', cursor: 0, messages: [], requests: [], active: false, updatedAt: Date.now(), reset: false } });
+    if (url.pathname === '/api/operations') return route.fulfill({ json: { status: 'uncertain' } });
+    if (url.pathname !== '/api/rpc') return route.fulfill({ json: {} });
+    const operation = route.request().postDataJSON();
+    const message = operation.message;
+    if (message.method === 'thread/start') {
+      starts.push(operation);
+      expect(message.params).toEqual(params);
+      if (operation.requestId === oldRequestId) return route.fulfill({ status: 503, json: { error: 'old operation is uncertain' } });
+      return route.fulfill({ json: { id: message.id, result: { thread: { id: 'fresh-conversation', cwd: cwd ?? '/', turns: [] } } } });
+    }
+    if (message.method === 'turn/start') {
+      turns.push(operation);
+      return route.fulfill({ json: { id: message.id, result: { turn: { id: 'fresh-turn', status: 'inProgress', items: [] } } } });
+    }
+    const results: Record<string, any> = {
+      initialize: {},
+      'model/list': { data: [{ id: 'gpt-test', model: 'gpt-test', displayName: 'GPT Test', isDefault: true, defaultReasoningEffort: 'medium', supportedReasoningEfforts: [{ reasoningEffort: 'medium' }], serviceTiers: [] }] },
+      'permissionProfile/list': { data: [{ id: ':danger-full-access', allowed: true }] },
+      'config/read': { config: { model: 'gpt-test', sandbox_mode: 'danger-full-access' } },
+      'thread/list': { data: [], nextCursor: null },
+      'threadSection/list': { data: [{ id: DESKTOP_PINNED_SECTION_ID }], nextCursor: null },
+      'mobile/sidebar/summaries': { data: [], nextCursor: null },
+      'mobile/sidebar/projectless': { data: [], nextCursor: null },
+    };
+    return route.fulfill({ json: { id: message.id, result: results[message.method] ?? {} } });
+  });
+  await page.goto('/');
+  await page.getByRole('button', { name: '聊天', exact: true }).click();
+  await page.getByLabel('选择项目').selectOption(cwd ?? '');
+  await page.getByRole('textbox', { name: '向 Codex 提问' }).fill('新的首条消息');
+  await page.getByRole('button', { name: '发送', exact: true }).click();
+  await expect.poll(() => turns.length).toBe(1);
+  expect(starts).toHaveLength(1);
+  expect(starts[0].requestId).not.toBe(oldRequestId);
+  expect(turns[0].message.params.threadId).toBe('fresh-conversation');
+  expect(turns[0].message.params.input[0].text).toBe('新的首条消息');
+  await expect(page.getByText('发送状态确认中', { exact: true })).toHaveCount(0);
+  const records = await page.evaluate(sessionId => JSON.parse(localStorage.getItem(`codex-mobile:http-writes:current-origin:${sessionId}`)!), sessionId);
+  expect(records).toHaveLength(1);
+  expect(records[0][1].requestId).toBe(oldRequestId);
+});
+}
 
 for (const scenario of ["turn-success", "turn-error", "thread-start", "thread-error", "thread-settings", "approval", "history-success", "history-error", "history-revert", "history-rollback", "history-read-delay"] as const) {
 test(`ACK 丢失后自动确认原发送并保留输入：${scenario}`, async ({ page }) => {

@@ -2752,10 +2752,11 @@ function BackendWorkspace({
     client: AppServerClient,
     method: string,
     params: unknown,
+    options: { operationKey?: string } = {},
   ) {
     return requestWithUnsentReconnect({
       client,
-      request: (candidate) => candidate.request<T>(method, params),
+      request: (candidate) => candidate.request<T>(method, params, options),
       reconnect: () => {
         const manager = connectionManagerRef.current;
         if (!manager) {
@@ -2857,7 +2858,7 @@ function BackendWorkspace({
           ...(effectivePermission ? { permissions: effectivePermission } : {}),
           approvalPolicy: effectiveApprovalPolicy,
           approvalsReviewer: effectiveApprovalsReviewer,
-        });
+        }, { operationKey: clientUserMessageId });
         client = startedRequest.client;
         const started = startedRequest.result;
         thread = startingProjectless

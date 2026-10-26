@@ -40,7 +40,7 @@ export interface AppServerSocket {
   readyState: number;
   managesHttpTimeout?: boolean;
   addEventListener(type: string, listener: (event: any) => void): void;
-  send(data: string, timeoutMs?: number, priority?: HttpRequestPriority): void | Promise<void>;
+  send(data: string, timeoutMs?: number, priority?: HttpRequestPriority, operationKey?: string): void | Promise<void>;
   close(code?: number, reason?: string): void;
   openRealtime?: () => Promise<void>;
   closeRealtime?: () => void;
@@ -50,6 +50,8 @@ export interface AppServerSocket {
 export interface AppServerRequestOptions {
   timeoutMs?: number;
   priority?: HttpRequestPriority;
+  /** 同一逻辑操作的重试共用此标识；独立操作不能仅按相同参数合并。仅用于本机 HTTP 对账。 */
+  operationKey?: string;
 }
 
 export class AppServerRpcError extends Error {
@@ -145,7 +147,7 @@ export class AppServerClient {
       };
       this.pending.set(id, pending);
       try {
-        const sending = this.send({ id, method, params }, options.timeoutMs ?? this.requestTimeoutMs, options.priority);
+        const sending = this.send({ id, method, params }, options.timeoutMs ?? this.requestTimeoutMs, options.priority, options.operationKey);
         if (sending) void sending.catch((reason) => {
           if (!this.pending.delete(id)) return;
           clearTimeout(timeout);
@@ -189,13 +191,13 @@ export class AppServerClient {
     return () => this.threadMetadataListeners.delete(listener);
   }
 
-  private send(message: RpcMessage, timeoutMs?: number, priority?: HttpRequestPriority) {
+  private send(message: RpcMessage, timeoutMs?: number, priority?: HttpRequestPriority, operationKey?: string) {
     const payload = JSON.stringify(message);
     const bytes = new TextEncoder().encode(payload).byteLength;
     if (bytes > MAX_APP_SERVER_MESSAGE_BYTES) {
       throw new Error(messageTooLarge(bytes, MAX_APP_SERVER_MESSAGE_BYTES));
     }
-    return this.socket.send(payload, timeoutMs, priority);
+    return this.socket.send(payload, timeoutMs, priority, operationKey);
   }
 
   private publishTurnAcceptance(request: { method?: string; params?: any }, response: RpcMessage) {

@@ -168,13 +168,13 @@ export class HttpRpcTransport extends EventTarget {
     }
   }
 
-  async send(raw: string, timeoutMs = 10_000, priority: HttpRequestPriority = "foreground"): Promise<void> {
+  async send(raw: string, timeoutMs = 10_000, priority: HttpRequestPriority = "foreground", operationKey?: string): Promise<void> {
     if (this.readyState !== 1) throw new Error(t("设备尚未连接，请稍后重试"));
     return httpRequestScheduler.run(new URL(this.config.baseUrl).origin, priority, this.requestLifetime.signal,
-      () => this.sendNow(raw, timeoutMs));
+      () => this.sendNow(raw, timeoutMs, operationKey));
   }
 
-  private async sendNow(raw: string, timeoutMs: number): Promise<void> {
+  private async sendNow(raw: string, timeoutMs: number, operationKey?: string): Promise<void> {
     if (this.readyState !== 1) throw new Error(t("设备尚未连接，请稍后重试"));
     const message = JSON.parse(raw) as RpcMessage;
     if (message.method?.startsWith("thread/realtime/")) {
@@ -190,7 +190,7 @@ export class HttpRpcTransport extends EventTarget {
     }
     const sidechatRead = message.method === 'mobile/sidechat/rpc' && (message.params as any)?.method === 'read';
     const signature = !message.method || (!sidechatRead && !readMethods.has(message.method) && !isNavigationResume(message))
-      ? (message.method ? JSON.stringify({ method: message.method, params: message.params }) : responseSignature(message, this.epoch)) : null;
+      ? (message.method ? JSON.stringify({ method: message.method, params: message.params, ...(operationKey ? { operationKey } : {}) }) : responseSignature(message, this.epoch)) : null;
     if (signature && !this.writes.has(signature) && this.writes.size >= 32) throw new Error(t("请求结果待确认，请刷新会话后检查，勿重复发送"));
     const existing = signature ? this.writes.get(signature) : undefined;
     if (existing?.queryOnly) {

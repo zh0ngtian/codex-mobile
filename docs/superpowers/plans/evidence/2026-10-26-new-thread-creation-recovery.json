@@ -1,0 +1,69 @@
+{
+  "schemaVersion": 1,
+  "checkedAt": "2026-10-26T02:23:49.057018+00:00",
+  "baselineCommit": "20faa6e28510892b0f35456ed7fff00e0fe8a16c",
+  "status": "source-only",
+  "published": false,
+  "gatewayDeployed": false,
+  "sourceFiles": {
+    "src/App.tsx": "6ba966293d4ca61e3995475271f3744c354f06d8d10d3ccbee4698236699860c",
+    "src/app-server/client.ts": "1574e5fe01939b03adaaafe03585c41eafc12241b38670d23db3c297df7e1b14",
+    "src/backends/http-transport.ts": "aeb81db91da84222e73e9107f7b9c63131a766cd550b8a44a76fe8d30cc96041"
+  },
+  "automatedRegression": {
+    "files": 9,
+    "passed": 167,
+    "addedRedBeforeFix": 3,
+    "e2ePassed": 2,
+    "typecheck": "passed",
+    "frontendBuild": "passed",
+    "simulatorBuild": "passed"
+  },
+  "simulator": {
+    "device": "iPhone 17 Pro",
+    "os": "iOS 27.0",
+    "orientation": "portrait",
+    "fontSize": "normal",
+    "nativeUITestsPassed": 1,
+    "cases": [
+      {
+        "projectless": true,
+        "permission": "auto-review",
+        "reply": "NEWCHAT_RECOVERY_OK_A"
+      },
+      {
+        "projectless": false,
+        "permission": "full-access",
+        "reply": "NEWCHAT_RECOVERY_OK_B"
+      }
+    ],
+    "legacyUnknownState": "seeded in an isolated simulator; temporary loopback proxy holds the old operation uncertain",
+    "newCreationAndTurn": "forwarded to the existing live gateway",
+    "oldOperationQueries": 144,
+    "oldOperationPosts": 0,
+    "uniqueNewCreationRequests": 3,
+    "newCreationAndTurnReceipts": "all HTTP 200 without RPC errors",
+    "testThreadsCreated": [
+      "01a175fd-258f-7f00-a033-00186e9fb903",
+      "01a175ff-e0e4-7cf0-9a9e-655f6384819e",
+      "01a17600-5cfb-7c90-9e60-6b122c301dd5"
+    ],
+    "allTestThreadsArchived": true,
+    "archiveVerification": "present in thread/list archived=true and absent from the latest 100 unarchived threads"
+  },
+  "localLogSha256": {
+    "regression-red.log": "71d5f90e3bce1b483d870edcf1b4ee8d0cf6cc12979e2c7e9811d4de6fba01bc",
+    "regression-green.log": "ea180058c4b0d7e37156f78e0337ac979e3519073f142e1ed26bff6e80a7a2b8",
+    "client-regression.log": "2b6cd7c370f0e61483e4b16ce728671336659c409d92b5d45cf512542d66cec6",
+    "new-chat-regression.log": "f56bc565c370fc9fe4433c78927293d4de180fad8a12abe30252c66753116626",
+    "reconnect-regression.log": "c83c335ee5002536844bbe51e8e6ff2f4c5c954e8606dfde26d9a0fcffd6b3e4",
+    "e2e.log": "013552f41e309521bde8078c255b059e720513a9226ae292b2607ecc01e20262",
+    "typecheck.log": "ddcbb7a08bfec0ac49a7a6d573783271de42998d75a0e124eef2e8a0e0d5c546",
+    "build.log": "46bb820ce0cd2c369d922f9f3a1e10278355b1be655f2716343b674e3f356a44"
+  },
+  "limitations": [
+    "未读取或清理用户手机的待确认缓存",
+    "首两轮模拟器用例因权限断言停止，未计为整轮通过；最终显式选择两种权限的整轮用例通过",
+    "真机交互待验收；现役0.3.40安装包尚未包含本修复"
+  ]
+}

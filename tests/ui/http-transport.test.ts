@@ -22,6 +22,51 @@ const events = (overrides = {}) => new Response(JSON.stringify({
 }));
 
 describe("HTTP 文字传输", () => {
+  it.each([null, "/work/project"])("旧创建请求未知时，显式新会话有独立操作标识，cwd=%s", async cwd => {
+    const id = `fresh-thread-${cwd ?? 'projectless'}`;
+    const key = `codex-mobile:http-writes:${id}:12345678-1234-4234-8234-123456789abc`;
+    const params = { cwd, model: 'same-model', permissions: ':danger-full-access' };
+    const oldRequestId = '11111111-1111-4111-8111-111111111111';
+    const old = { requestId: oldRequestId, message: { id: 7, method: 'thread/start', params } };
+    localStorage.setItem(key, JSON.stringify([[JSON.stringify({ method: 'thread/start', params }), old]]));
+    const posts: any[] = [];
+    const transport = setup((async (url, init) => {
+      if (String(url).includes('/api/operations')) return new Response(JSON.stringify({ status: 'uncertain' }));
+      const operation = JSON.parse(String(init?.body)); posts.push(operation);
+      if (operation.requestId === oldRequestId) throw new TypeError('old creation remains uncertain');
+      return new Response(JSON.stringify({ result: { thread: { id: 'fresh-thread', cwd: cwd ?? '/' } } }));
+    }) as typeof fetch, id);
+    await new Promise<void>(resolve => transport.addEventListener('open', () => resolve()));
+    const client = new AppServerClient(transport);
+    await expect(client.request('thread/start', params, { operationKey: 'new-conversation' })).resolves.toMatchObject({ thread: { id: 'fresh-thread' } });
+    expect(posts).toHaveLength(1);
+    expect(posts[0].requestId).not.toBe(oldRequestId);
+    expect(posts[0].message.params).toEqual(params);
+    expect(posts[0]).not.toHaveProperty('operationKey');
+    expect(posts[0].message).not.toHaveProperty('operationKey');
+    expect(JSON.parse(localStorage.getItem(key)!)).toEqual([[JSON.stringify({ method: 'thread/start', params }), old]]);
+  });
+
+  it('创建操作同一标识重试沿用原UUID，另一个新会话即使设置相同也独立发送', async () => {
+    const posts: any[] = [];
+    const transport = setup((async (url, init) => {
+      if (String(url).includes('/api/operations')) return new Response(JSON.stringify({ status: 'uncertain' }));
+      const operation = JSON.parse(String(init?.body)); posts.push(operation);
+      if (posts.length <= 2) throw new TypeError('first creation has no result');
+      return new Response(JSON.stringify({ result: { thread: { id: 'second-thread' } } }));
+    }) as typeof fetch, 'thread-creation-scopes');
+    await new Promise<void>(resolve => transport.addEventListener('open', () => resolve()));
+    const client = new AppServerClient(transport);
+    const params = { cwd: null, model: 'same-model' };
+    await expect(client.request('thread/start', params, { operationKey: 'first-conversation' })).rejects.toThrow('请求结果待确认');
+    await expect(client.request('thread/start', params, { operationKey: 'first-conversation' })).rejects.toThrow('请求结果待确认');
+    await expect(client.request('thread/start', params, { operationKey: 'second-conversation' })).resolves.toMatchObject({ thread: { id: 'second-thread' } });
+    expect(posts).toHaveLength(3);
+    expect(posts[1].requestId).toBe(posts[0].requestId);
+    expect(posts[1].message).toEqual(posts[0].message);
+    expect(posts[2].requestId).not.toBe(posts[0].requestId);
+  });
+
   it.each(["mobile/sidebar/summaries", "mobile/sidebar/projectless"])("%s 失败不会进入未知写入恢复或占用写入配额", async method => {
     const transport = setup((async () => new Response("bad parameters", { status: 400 })) as typeof fetch, method);
     await new Promise(resolve => setTimeout(resolve, 1));
