@@ -1,6 +1,6 @@
 # 网页来源引用修复发布计划
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** 将已验证的网页引用编号修复发布为 GitHub APK 和未签名 IPA，同步既有 iOS 软件源并部署配套网关。
 
@@ -34,19 +34,26 @@
 - [x] 执行 `python3 "$HOME/Library/Application Support/ReleaseCoordinator/validations/web-citations-20261109/run-gates.py"`；记录真实命令、退出码、耗时、日志和散列。
 - [x] 必需门禁：Python `tests/ci/test_*.py` 发布回归、已安装 runtime 的协调器恢复回归、`npm test -- tests/ci --maxWorkers=2 --testTimeout=60000`、`npm run typecheck`；追加引用范围 13 文件回归与 `npm run build:server`。
 - [x] 已有 iPhone 17 Pro／iOS 27 正常字号竖屏两项 XCTest 的 xcresult 摘要核对 passed=2、failed=0，截图及源文件关联保留；本轮运行源码无变化，复用既有验收。
-- [ ] 提交计划和发布说明，推送任务分支；ready 前再次核对最新远端 main。如出现新运行代码，先整合并运行相关回归。
-- [ ] 将同一已推送 40 位 SHA 及含四项 passed checks 的私有验证文件提交两个目标的 ready；主分支由协调器整合。
+- [x] 提交计划和发布说明，推送任务分支；ready 前再次核对最新远端 main。如出现新运行代码，先整合并运行相关回归。
+- [x] 将同一已推送 40 位 SHA 及含四项 passed checks 的私有验证文件提交两个目标的 ready；主分支由协调器整合。
 
 ## 任务三：发布、部署与回验
 
 **文件：** 两个目标成功 receipt、各自 artifacts，客户端 `github-release.json`；成功后新增 `docs/superpowers/plans/evidence/2026-11-09-web-citations-release.json` 并同步 README、文档索引、交互约定和发布协调说明。
 
-- [ ] 以 `releasectl wait --task web-citations-github-only-20261109 --timeout 45` 和对应 gateway task 等待，不额外触发正式工作流。不可变失败按现有合同登记关联修复，不修改旧批次。
-- [ ] 客户端核对 main/build/source/verify、来源 SHA 包含关系、正式和开发 CI、同版本 APK／未签名 IPA 的独立完整下载大小与 SHA-256、实际 IPA 版本与无签名资源。
-- [ ] 读取 SignOs 软件源现行上游说明，核对既有 unsigned 订阅、当前 gh 用户、原署名保留、版本、URL、大小、散列和上述中文更新日志。
-- [ ] 网关核对 main/gateway/verify、server/bin 实际文件摘要、launchd PID／命令、监听和认证健康接口；以部署后的目标会话只读数据核对来源网址，不发送消息或归档用户原会话。
-- [ ] 核对 GitHub-only、LAN 未发布、signed IPA／OTA／固定 IPA 均未发布、历史文件未改及 8765／8766 停止状态；不读取签名材料。
-- [ ] 两个成功 receipt 核对后，更新交付文档、保存公共脱敏凭证。在共享 main 锁下合入文档并推送，文档收尾不再构建发布或部署。
-- [ ] 最终回复提供版本、GitHub Release、APK、未签名 IPA 和软件源链接，以及两端大小和 SHA-256；明确真机安装及数据保留尚未验收。
+- [x] 以 `releasectl wait --task web-citations-github-only-20261109 --timeout 45` 和对应 gateway task 等待，不额外触发正式工作流。不可变失败按现有合同登记关联修复，不修改旧批次。
+- [x] 客户端核对 main/build/source/verify、来源 SHA 包含关系、正式和开发 CI、同版本 APK／未签名 IPA 的独立完整下载大小与 SHA-256、实际 IPA 版本与无签名资源。
+- [x] 读取 SignOs 软件源现行上游说明，核对既有 unsigned 订阅、当前 gh 用户、原署名保留、版本、URL、大小、散列和上述中文更新日志。
+- [x] 网关核对 main/gateway/verify、server/bin 实际文件摘要、launchd PID／命令、监听和认证健康接口；以部署后的目标会话只读数据核对来源网址，不发送消息或归档用户原会话。
+- [x] 核对 GitHub-only、LAN 未发布、signed IPA／OTA／固定 IPA 均未发布、历史文件未改及 8765／8766 停止状态；不读取签名材料。
+- [x] 两个成功 receipt 核对后，更新交付文档、保存公共脱敏凭证。在共享 main 锁下合入文档并推送，文档收尾不再构建发布或部署。
+- [x] 最终回复提供版本、GitHub Release、APK、未签名 IPA 和软件源链接，以及两端大小和 SHA-256；明确真机安装及数据保留尚未验收。
 
 本轮门禁实测：发布回归261项、协调器恢复59项、构建契约21文件151项、引用范围13文件262项全通过，类型检查及服务端构建退出0。发布输入RED仅旧更新日志失败，GREEN五项全通过。规格与质量自审确认仅修改计划、状态和发布日志，无新运行代码、版本手填或历史渠道操作。
+
+
+## 实际交付结果
+
+来源 `d24a2de951211fcf273cebe52d960a1199cd0c08` 同时ready两个目标。客户端0.3.43／3043成功批次 `818dc84d-d5e3-4e12-8ed7-02e0b56829fe`，冻结 `78d5094178f44947ef2354cddc9b60d520dcd783`；正式CI `42623369798`、开发CI `42623369900`均成功。网关成功批次 `795da778-86a7-4051-a9ec-8d5673558149`，冻结 `40828a44096a7dec529b5b4cf4a1633bca988982`，开发CI `42625802116`成功。
+
+独立87项客户端渠道核对、19项网关核对全部通过。部署后通过认证HTTP读取原会话，恢复两项精确来源，原文及会话文件字节不变；部署前同一检查缺少映射的预期结果保留。APK 4,755,355字节、未签名IPA 5,030,497字节，实际版本、完整下载散列、软件源日志与署名均通过。历史四文件和停用服务未变，真机安装、数据保留及交互待验收。两份成功receipt与全部私有日志长期保留；[公共凭证](evidence/2026-11-09-web-citations-release.json)提供下载和完整SHA-256。

@@ -1,0 +1,280 @@
+{
+  "schemaVersion": 1,
+  "checkedAt": "2026-11-09T13:30:10.249206+00:00",
+  "distribution": "github-only",
+  "version": "0.3.43",
+  "buildNumber": "3043",
+  "sourceCommit": "d24a2de951211fcf273cebe52d960a1199cd0c08",
+  "sourceFixes": [
+    "bc853fbe5877029b8bb54fa35b6aa3449e258bdd"
+  ],
+  "releaseUrl": "https://github.com/zh0ngtian/codex-mobile/releases/tag/v0.3.43",
+  "mobile": {
+    "batch": "818dc84d-d5e3-4e12-8ed7-02e0b56829fe",
+    "frozenCommit": "78d5094178f44947ef2354cddc9b60d520dcd783",
+    "receiptSha256": "92675adb223d85344af5f3c6232dc9b8b387c5efbf49ee2a3b8ccb3614a75e7b",
+    "stages": [
+      "main",
+      "build",
+      "source",
+      "verify"
+    ],
+    "formalCI": {
+      "runId": 42623369798,
+      "attempt": 1,
+      "url": "https://github.com/zh0ngtian/codex-mobile/actions/runs/42623369798",
+      "conclusion": "success"
+    },
+    "developmentCI": {
+      "runId": 42623369900,
+      "attempt": 1,
+      "url": "https://github.com/zh0ngtian/codex-mobile/actions/runs/42623369900",
+      "conclusion": "success"
+    }
+  },
+  "artifacts": {
+    "android": {
+      "downloadUrl": "https://github.com/zh0ngtian/codex-mobile/releases/download/v0.3.43/CodexMobile-v0.3.43.apk",
+      "size": 4755355,
+      "sha256": "1938438d31cc56789b85cb4a7876ebbf41d3dc420c279985a997d185fef97c96"
+    },
+    "ios": {
+      "downloadUrl": "https://github.com/zh0ngtian/codex-mobile/releases/download/v0.3.43/CodexMobile-v0.3.43-unsigned.ipa",
+      "size": 5030497,
+      "sha256": "5330a79be346f39551e25105326bd2d31b796232146d3dd5a14827a7441684c1"
+    }
+  },
+  "softwareSource": "https://signos-source-aggregator.305301890.workers.dev/sources/yao.json",
+  "softwareSourceAppID": "bdf9cfa5-6c34-49ca-82fb-31a85ad9e6da",
+  "developerName": "zh0ngtian",
+  "iosSigned": false,
+  "lanApkPublished": false,
+  "signedIpaPublished": false,
+  "otaPublished": false,
+  "fixedIpaPublished": false,
+  "lanServiceStoppedAndDisabled": true,
+  "otaServiceStoppedAndDisabled": true,
+  "historicalLanFilesUnchanged": true,
+  "gatewayDeployed": true,
+  "independentChecks": [
+    "任务与批次成功",
+    "固定批次及授权目标",
+    "同批持久成功凭证存在",
+    "状态与持久成功凭证一致",
+    "固定任务SHA被包含",
+    "冻结来源版本与范围",
+    "四个发布阶段及准备结果齐全",
+    "main分支冻结来源",
+    "双端产物齐全",
+    "GitHub-only范围",
+    "lanApkPublished为false",
+    "signedIpaPublished为false",
+    "fixedIpaPublished为false",
+    "otaPublished为false",
+    "任务来源验收",
+    "main冻结来源",
+    "build冻结来源",
+    "source冻结来源",
+    "verify冻结来源",
+    "verify复核main一致",
+    "verify复核build一致",
+    "verify复核source一致",
+    "公共冻结清单摘要",
+    "公共冻结清单身份",
+    "源码祖先包含:d24a2de",
+    "源码祖先包含:bc853fb",
+    "冻结源码与原生证据匹配:web-citation-format.ts",
+    "冻结源码与原生证据匹配:web-citations.ts",
+    "冻结源码与原生证据匹配:message-rollout-files.ts",
+    "冻结源码与原生证据匹配:web-citations.ts",
+    "冻结源码与原生证据匹配:projection.ts",
+    "冻结源码与原生证据匹配:AgentConversationFixture.swift",
+    "冻结源码与原生证据匹配:UserMessageLinksUITests.swift",
+    "更新日志与冻结来源一致",
+    "正式GitHubRelease",
+    "GitHub中文更新日志",
+    "标签绑定冻结SHA",
+    "未发布签名IPA附件",
+    "android来源和版本",
+    "android构建号和正式CI",
+    "androidGitHub附件唯一",
+    "androidGitHub附件元数据",
+    "android协调器完整下载大小",
+    "android协调器完整下载SHA256",
+    "android无先前未验收半包",
+    "android独立完整下载大小",
+    "android独立完整下载SHA256",
+    "android完整ZIP校验",
+    "ios来源和版本",
+    "ios构建号和正式CI",
+    "iosGitHub附件唯一",
+    "iosGitHub附件元数据",
+    "ios协调器完整下载大小",
+    "ios协调器完整下载SHA256",
+    "ios无先前未验收半包",
+    "ios独立完整下载大小",
+    "ios独立完整下载SHA256",
+    "ios完整ZIP校验",
+    "IPA未签名标记",
+    "IPA唯一主应用",
+    "IPA实际版本",
+    "IPA应用标识",
+    "IPA无签名或描述文件",
+    "GitHub发布凭证",
+    "既有软件源条目唯一",
+    "既有订阅身份保留",
+    "软件源版本",
+    "软件源:downloadURL",
+    "软件源:size",
+    "软件源:sha256",
+    "软件源中文更新日志",
+    "开发者署名保留且包含当前发布者",
+    "既有unsigned订阅唯一",
+    "unsigned订阅配置正确",
+    "unsigned订阅同步成功",
+    "同批软件源同步任务成功",
+    "formalCI来源与成功",
+    "developmentCI来源与成功",
+    "正式与开发CI凭证一致",
+    "历史包及清单未改写",
+    "local.globaltranslation.apk-server保持disabled",
+    "local.globaltranslation.apk-server保持停止",
+    "local.codex-mobile.ios-ota保持disabled",
+    "local.codex-mobile.ios-ota保持停止",
+    "8765无监听",
+    "8766无监听",
+    "公共凭证脱敏"
+  ],
+  "limitations": [
+    "未进行真机安装、覆盖升级与数据保留验收",
+    "本轮复用已通过的两项iPhone 17 Pro正常字号竖屏验收，运行源码未变",
+    "GitHub-only发布：未发布LAN包、签名IPA、HTTPS OTA或固定IPA"
+  ],
+  "gateway": {
+    "schemaVersion": 1,
+    "checkedAt": "2026-11-09T13:29:46.770349+00:00",
+    "passed": true,
+    "checks": [
+      {
+        "name": "目标及任务成功",
+        "passed": true
+      },
+      {
+        "name": "持久凭证与运行状态一致",
+        "passed": true
+      },
+      {
+        "name": "同一来源与共享锁",
+        "passed": true
+      },
+      {
+        "name": "来源及修复包含于冻结提交",
+        "passed": true
+      },
+      {
+        "name": "网关独立阶段齐全",
+        "passed": true
+      },
+      {
+        "name": "网关冻结来源",
+        "passed": true
+      },
+      {
+        "name": "部署阶段再次核对一致",
+        "passed": true
+      },
+      {
+        "name": "生产安装标记绑定本批次",
+        "passed": true
+      },
+      {
+        "name": "实际文件摘要:serverDigest",
+        "passed": true
+      },
+      {
+        "name": "实际文件摘要:frontendDigest",
+        "passed": true
+      },
+      {
+        "name": "实际文件摘要:binDigest",
+        "passed": true
+      },
+      {
+        "name": "包声明摘要",
+        "passed": true
+      },
+      {
+        "name": "前端及包声明保留",
+        "passed": true
+      },
+      {
+        "name": "启动脚本及环境保留",
+        "passed": true
+      },
+      {
+        "name": "实际launchd进程与凭证一致",
+        "passed": true
+      },
+      {
+        "name": "实际启动命令",
+        "passed": true
+      },
+      {
+        "name": "监听进程与端口一致",
+        "passed": true
+      },
+      {
+        "name": "认证健康与生产来源映射",
+        "passed": true
+      },
+      {
+        "name": "同冻结提交开发CI成功",
+        "passed": true
+      }
+    ],
+    "batch": "795da778-86a7-4051-a9ec-8d5673558149",
+    "sourceCommit": "d24a2de951211fcf273cebe52d960a1199cd0c08",
+    "frozenCommit": "40828a44096a7dec529b5b4cf4a1633bca988982",
+    "receiptSha256": "68605659176631469d1ea77ca5c98e5ccd8464a05b14ca2528f4ecbc2549e57a",
+    "stages": [
+      "main",
+      "gateway",
+      "verify"
+    ],
+    "serverDigest": "956c3312baaf334de24160904e3354259b53e02a25582a952d1d8eca0298848d",
+    "frontendDigest": "82c243e7f812096f2be3270347cfab2c74ab4df0df44ec06f2db25f1a2ae821b",
+    "binDigest": "a44e7f0434b7926b382b679abb712f36eb3b93ce6708cc77332437781f8015a3",
+    "developmentCI": {
+      "runId": 42625802116,
+      "attempt": 1,
+      "url": "https://github.com/zh0ngtian/codex-mobile/actions/runs/42625802116",
+      "conclusion": "success"
+    },
+    "authenticatedHealth": true,
+    "liveCitations": {
+      "sources": 2,
+      "sourceUrlsMatch": true,
+      "sourceUnchanged": true
+    },
+    "realTestThreadsCreated": 0
+  },
+  "mobileIndependentChecks": 87,
+  "gatewayIndependentChecks": 19,
+  "verification": {
+    "adapterRegression": 261,
+    "coordinatorRecovery": 59,
+    "buildContract": 151,
+    "citationRegression": 262,
+    "nativeTests": 2,
+    "nativeDevice": "iPhone 17 Pro",
+    "nativeOS": "iOS 27",
+    "textSize": "normal",
+    "orientation": "portrait",
+    "authenticatedGatewayRead": true,
+    "beforeSourceCount": 0,
+    "afterSourceCount": 2,
+    "rawCitationTextPreserved": true,
+    "originalRolloutUnchanged": true,
+    "realTestThreadsCreated": 0
+  }
+}

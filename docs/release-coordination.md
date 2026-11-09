@@ -8,7 +8,7 @@
 
 只有用户明确要求发布客户端或部署网关时，才登记对应发布任务并使用下文的 heartbeat、ready、冻结、构建发布及 receipt 流程。普通任务不登记发布任务、不提交 ready、不分配发布版本、不更新 `.release-batch.json`，不触发正式 APK/IPA 打包、渠道更新或生产网关部署；必要的开发验证构建仍按改动范围执行。客户端与网关均有源码变更本身不构成联合发布授权。
 
-2026-10-25用户先确认停止本机iOS签名、HTTPS OTA及固定LAN IPA更新，随后进一步要求Android关闭局域网分发，只保留GitHub Release。现行客户端为 `codex-mobile-github-only`／`mobile-github-only`，只交付GitHub APK／unsigned IPA及既有iOS软件源。策略 [distribution-policy.json](../release/distribution-policy.json) 同时规定 `iosDistribution=unsigned-only` 与 `androidDistribution=github-only`；新源码拒绝旧mobile／mobile-ota／mobile-unsigned kind及旧客户端项目，不能通过旧模板进入LAN或签名／OTA阶段。8765服务保持停止和disabled，旧包、清单、材料、失败批次及凭证保留不删。无策略或旧ios-only策略的历史工作区继续原合同。现役0.3.42已完成列表排版统一发布与完整回验；此前0.3.41、0.3.40、0.3.39交付及0.3.38失败记录保留，见下方交付记录。
+2026-10-25用户先确认停止本机iOS签名、HTTPS OTA及固定LAN IPA更新，随后进一步要求Android关闭局域网分发，只保留GitHub Release。现行客户端为 `codex-mobile-github-only`／`mobile-github-only`，只交付GitHub APK／unsigned IPA及既有iOS软件源。策略 [distribution-policy.json](../release/distribution-policy.json) 同时规定 `iosDistribution=unsigned-only` 与 `androidDistribution=github-only`；新源码拒绝旧mobile／mobile-ota／mobile-unsigned kind及旧客户端项目，不能通过旧模板进入LAN或签名／OTA阶段。8765服务保持停止和disabled，旧包、清单、材料、失败批次及凭证保留不删。无策略或旧ios-only策略的历史工作区继续原合同。现役0.3.43已完成网页来源引用修复的双端发布与配套网关部署回验；此前0.3.42至0.3.39交付及0.3.38失败记录保留，见下方交付记录。
 
 ## 本机部署与作用域
 
@@ -30,7 +30,7 @@
 
 项目配置路径与用途：
 
-- `~/Library/Application Support/ReleaseCoordinator/projects/codex-mobile-github-only.json`：现行客户端目标，已按新模板完成登记、heartbeat与ready；0.3.42成功批次已完成渠道回验，见本文件最新交付记录及成功receipt；真机安装和数据保留仍待验收。
+- `~/Library/Application Support/ReleaseCoordinator/projects/codex-mobile-github-only.json`：现行客户端目标，已按新模板完成登记、heartbeat与ready；0.3.43成功批次已完成渠道回验，见本文件最新交付记录及成功receipt；真机安装和数据保留仍待验收。
 - `~/Library/Application Support/ReleaseCoordinator/projects/codex-mobile-gateway-production.json`。
 - `~/Library/Application Support/ReleaseCoordinator/projects/codex-mobile-lan-production.json`、`codex-mobile-ios-ota-production.json` 与 `codex-mobile-github-release.json`：仅保留历史合同，不改写旧失败批次或项目配置。
 
@@ -194,3 +194,17 @@ GitHub-only的0.3.38批次 `c2997b88-4cc4-4298-b292-6cd3b4a3d70b` 在最终verif
 本次iOS各类列表内部统一紧凑行距，列表前后按正文、独立链接及标题关系保留留白。四项ready门禁与准备阶段验证通过；原生9项回归和三段截图沿用已核对源码散列的开发证据。独立82项渠道验收通过：GitHub APK为4,754,263字节，SHA-256 `f77322a28ebd042fc3924132c2836e1d781f8688abd35f1f489df55e3a169dce`；unsigned IPA为5,029,378字节，SHA-256 `5b1fdd7de3ce42c474c53f8b1d67b00e50588c443af08786987830361be63ca7`。两端完整下载与GitHub附件、协调器验证文件一致，IPA实际0.3.42／3042、`vip.loock.codexmobile`，无签名资源或描述文件。
 
 既有软件源appID及GitHub unsigned订阅保留，同批同步job成功；版本、构建号、URL、大小、散列和两行中文更新日志与GitHub一致，开发者署名保留并包含当前登录用户。历史四文件散列未变，8765／8766无监听，两项launchd服务停止且disabled。成功凭证明确 `distribution=github-only`、`lanApkPublished=false`，signed IPA／OTA／固定IPA均未发布，本次未部署网关。真机安装、数据保留和列表视觉仍待验收，不能把构建及下载校验当作真机验收。[发布计划](superpowers/plans/2026-10-26-markdown-list-rhythm-release.md)与[公共凭证](superpowers/plans/evidence/2026-10-26-markdown-list-rhythm-release.json)保留实际证据。
+
+
+## 2026-11-09 网页来源引用修复发布与网关部署（0.3.43）
+
+用户明确选择现行 GitHub APK／未签名 IPA，并同步部署配套网关。客户端任务 `web-citations-github-only-20261109`、网关任务 `web-citations-gateway-20261109` ready 同一来源 `d24a2de951211fcf273cebe52d960a1199cd0c08`，均包含修复 `bc853fb`。两份成功 receipt 已分别核对，不能仅以源码推送、Release创建或网关先运行作为本次完成条件。
+
+| 目标 | 成功批次／冻结提交 | 验收 |
+| --- | --- | --- |
+| 客户端 | `818dc84d-d5e3-4e12-8ed7-02e0b56829fe`／`78d5094178f44947ef2354cddc9b60d520dcd783` | 0.3.43／3043；main/build/source/verify；正式CI `42623369798`及开发CI `42623369900`成功；独立87项渠道核对通过 |
+| 网关 | `795da778-86a7-4051-a9ec-8d5673558149`／`40828a44096a7dec529b5b4cf4a1633bca988982` | main/gateway/verify；开发CI `42625802116`成功；独立19项文件、进程、监听、认证及生产来源核对通过 |
+
+APK 为4,755,355字节，未签名IPA为5,030,497字节；两端独立完整下载的SHA-256与GitHub附件及协调器验证文件一致，IPA实际0.3.43／3043且无签名资源或描述文件。既有软件源订阅、开发者署名和两行中文日志已核对。网关保留已部署前端、包声明、启动脚本和环境；部署前后原会话只读检查的来源数量由0变为2，网址精确对应且原始文本、rollout字节不变。无真实测试会话需要归档。
+
+本轮四项ready门禁、262项引用范围回归、服务端构建通过，复用运行源码一致的两项iPhone 17 Pro模拟器验收。未执行真机安装、覆盖升级和数据保留验收。历史四文件散列不变，8765／8766无监听、两项历史渠道服务停止且disabled；凭证明确GitHub-only、LAN／签名／OTA／固定IPA均未发布。公共下载、完整散列及两份receipt摘要见[公共凭证](superpowers/plans/evidence/2026-11-09-web-citations-release.json)，步骤见[发布计划](superpowers/plans/2026-11-09-web-citations-release.md)。仅文档收尾不重复构建或部署。
