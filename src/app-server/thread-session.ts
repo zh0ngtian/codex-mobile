@@ -134,7 +134,7 @@ export async function loadTurnChangeStatsPage(
       }));
       const commentaryItems = (turn.commentaryItems ?? turn.items ?? []).filter((item: AnyRecord) =>
         item.type === "agentMessage" && item.phase === "commentary" && typeof item.id === "string" && typeof item.text === "string",
-      ).map((item: AnyRecord) => ({ id: item.id, type: item.type, phase: item.phase, text: item.text, ...(typeof item.timestamp === "number" ? { timestamp: item.timestamp } : {}) }));
+      ).map((item: AnyRecord) => ({ id: item.id, type: item.type, phase: item.phase, text: item.text, ...(item.webCitations ? { webCitations: item.webCitations } : {}), ...(typeof item.timestamp === "number" ? { timestamp: item.timestamp } : {}) }));
       const messageOrder = (turn.messageOrder ?? (turn.items ?? [])
         .filter((item: AnyRecord) => ["userMessage", "agentMessage", "imageView", "imageGeneration", "videoGeneration"].includes(item.type))
         .map((item: AnyRecord) => item.id)).filter((id: unknown) => typeof id === "string");

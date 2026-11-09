@@ -1,3 +1,4 @@
+import { webCitationDisplay } from './web-citations';
 import { decodeUserMessage, type MessageReference } from '../../../server/user-message-format';
 import { responseAnnotationDisplay } from './response-annotations';
 import { MessageReferences } from './MessageReferences';
@@ -400,7 +401,7 @@ function TimelineItem({
     );
   }
   const displayText = type === "agentMessage"
-    ? responseAnnotationDisplay(visibleAgentMessageText(item), responseReferences, t('引用'))
+    ? webCitationDisplay(responseAnnotationDisplay(visibleAgentMessageText(item), responseReferences, t('引用')), item.webCitations)
     : text;
   const generatedVideoPath = videoPathForItem(item);
   if (backend && generatedVideoPath) {

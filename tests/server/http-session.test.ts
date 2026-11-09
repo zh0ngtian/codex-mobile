@@ -51,6 +51,46 @@ async function fixture(autoPong = true) {
 }
 
 describe("HTTP 会话", () => {
+  it.each(['http', 'ws'])('网页来源经 %s 首屏摘要、分页、完整读取和完成事件传递，消息原文不变', async transport => {
+    const f = await fixture(); await f.init();
+    const threadId = '01a1bf54-1117-7350-b953-0b84498dda7d';
+    const dir = join(f.root, 'sessions', '2026', '11', '09'); await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, `rollout-test-${threadId}.jsonl`), [
+      { type: 'session_meta', payload: { id: threadId } },
+      { type: 'response_item', payload: { type: 'custom_tool_call_output', output: [{ type: 'input_text', text: '指南 (https://example.com/guide)\n【turn480194view0】 [wordlim: 200] 私有工具正文' }] } },
+    ].map(value => JSON.stringify(value)).join('\n') + '\n');
+    const item = { id: 'answer', type: 'agentMessage', phase: 'final_answer', text: '回答。citeturn480194view0' };
+    const turns = [{ id: 'turn', status: 'completed', items: [item] }];
+    f.respond((socket, message) => {
+      const result = message.method === 'thread/resume' ? { thread: { id: threadId }, initialTurnsPage: { data: turns } }
+        : message.method === 'thread/read' ? { thread: { id: threadId, turns } } : { data: turns };
+      socket.send(JSON.stringify({ id: message.id, result }));
+    });
+    let id = 100;
+    const socket = transport === 'ws' ? new WebSocket(`ws://127.0.0.1:${f.port()}/ws?token=secret`) : null;
+    if (socket) { cleanup.push(async () => { socket.terminate(); }); await new Promise<void>(resolve => socket.once('open', resolve)); }
+    for (const method of ['thread/resume', 'thread/read', 'thread/turns/list', 'thread/items/list']) {
+      const request = { id: id++, method, params: { threadId, itemsView: 'summary' } };
+      const reply = socket ? await new Promise<any>(resolve => { socket.once('message', raw => resolve(JSON.parse(raw.toString()))); socket.send(JSON.stringify(request)); })
+        : await (await f.rpc(request)).json();
+      const value = method === 'thread/resume' ? reply.result.initialTurnsPage.data[0].items[0]
+        : method === 'thread/read' ? reply.result.thread.turns[0].items[0] : reply.result.data[0].items[0];
+      expect(value).toEqual({ ...item, webCitations: [{ refId: 'turn480194view0', url: 'https://example.com/guide', title: '指南' }] });
+      expect(JSON.stringify(reply)).not.toContain('私有工具正文');
+    }
+    const event = { method: 'item/completed', params: { threadId, turnId: 'turn', item } };
+    if (socket) {
+      const reply = new Promise<any>(resolve => socket.once('message', raw => resolve(JSON.parse(raw.toString()))));
+      f.send(event);
+      expect((await reply).params.item.webCitations[0].url).toBe('https://example.com/guide');
+    } else {
+      f.send(event);
+      await vi.waitFor(async () => {
+        const reply = await f.events();
+        expect(JSON.stringify(reply)).toContain('https://example.com/guide');
+      });
+    }
+  });
   it.each(["http", "ws"])("边栏摘要和无项目分页经 %s 聚合，热索引不再逐条读取", async transport => {
     const f = await fixture(); await f.init();
     const threads = Array.from({ length: 9 }, (_, i) => ({ id: `t-${i}`, recencyAt: i, status: { type: i === 1 ? "active" : "idle" }, turns: ["private"] }));

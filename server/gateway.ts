@@ -10,6 +10,7 @@ import WebSocket, { WebSocketServer } from "ws";
 import type { CodexProjectState } from "./codex-projects.js";
 import { readImageGenerationError } from "./image-generation-error.js";
 import { TurnChangeHistory } from "./turn-change-history.js";
+import { MessageWebCitations } from "./web-citations.js";
 import { MessageTimestamps } from "./message-timestamps.js";
 import { compactTurnDetails, compactTurnCommentary, turnCommentaryRequest, validTurnCommentaryParams } from "./turn-details.js";
 import { FollowUps } from "./follow-ups.js";
@@ -127,6 +128,7 @@ function applyCors(
 }
 
 export async function createGateway(options: GatewayOptions): Promise<Gateway> {
+  const webCitations = new MessageWebCitations(options.codexHome ?? process.env.CODEX_HOME ?? join(homedir(), ".codex"));
   const timestamps = new MessageTimestamps(options.codexHome ?? process.env.CODEX_HOME ?? join(homedir(), ".codex"));
   const changeHistory = new TurnChangeHistory(options.codexHome ?? process.env.CODEX_HOME ?? join(homedir(), ".codex"));
   const notifications = new BarkNotifications({ codexHome: options.codexHome ?? process.env.CODEX_HOME ?? join(homedir(), ".codex"), displayName: options.displayName ?? options.hostname ?? options.hostId ?? "Codex", fetch: options.barkFetch });
@@ -699,11 +701,11 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
         }
         let output: WebSocket.RawData | string = data;
         if (message?.method === "item/completed") {
-          const projected = await timestamps.notification(message);
+          const projected = await webCitations.notification(await timestamps.notification(message));
           if (projected !== message) output = JSON.stringify(projected);
         }
         if (request?.method === "mobile/turns/commentary" && message?.error == null) {
-          output = JSON.stringify({ ...message, result: compactTurnCommentary(await timestamps.result(request.params!.threadId, message!.result), request.params!.turnId) });
+          output = JSON.stringify({ ...message, result: compactTurnCommentary(await webCitations.result(request.params!.threadId, await timestamps.result(request.params!.threadId, message!.result)), request.params!.turnId) });
         }
         if (request?.method === "thread/turns/list" && request.params?.itemsView === "full" &&
           message?.error == null && Array.isArray(message?.result?.data)) {
@@ -719,6 +721,12 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
                 changeStatsUnavailable: false }
               : { loadedChangeStats: undefined, changeStatsUnavailable: true }),
           })) } });
+        }
+        if (request && message?.error == null && message?.result &&
+          ["thread/resume", "thread/read", "thread/turns/list", "thread/items/list"].includes(request.method ?? "")) {
+          const response = typeof output === "string" ? JSON.parse(output) : message;
+          response.result = await webCitations.result(request.params?.threadId ?? response.result?.thread?.id, response.result);
+          output = JSON.stringify(response);
         }
         if (client.readyState === WebSocket.OPEN) client.send(output, { binary: isBinary });
       }).catch(() => {

@@ -1,3 +1,4 @@
+import { webCitationDisplay } from '../features/conversation/web-citations';
 import { decodeUserMessage, type MessageReference } from '../../server/user-message-format';
 import { responseAnnotationDisplay } from '../features/conversation/response-annotations';
 import { messageItemText as nativeItemText } from '../features/conversation/message-text';
@@ -91,7 +92,7 @@ export function projectConversation(active: RecordValue | null, imageURL: (path:
           const anchor = scrollAnchor(item, 'history');
           if (anchor) historyAnchors.push(anchor);
           const timestamp = formatMessageTimestamp(item.timestamp);
-          const text = nativeItemText(item);
+          const text = webCitationDisplay(nativeItemText(item), item.webCitations);
           const blocks = entry.media.flatMap(mediaBlocks);
           commentary.push({ id, text, blocks, quoteSource: sourceFor(item),
             ...(typeof item.timestamp === 'number' && Number.isFinite(item.timestamp) && item.timestamp > 0 ? { timestamp: item.timestamp } : {}) });
@@ -128,9 +129,9 @@ export function projectConversation(active: RecordValue | null, imageURL: (path:
           const blocks = entry.media.flatMap(mediaBlocks);
           if (timestamp) blocks.push({ id: `${id}:timestamp`, kind: 'text', text: timestamp });
           const finalStatus = !commentary && !entry.supersededAnswer && (!running || item === presentation.final) ? status : undefined;
-          messages.push({ id, quoteSource: sourceFor(item), role: 'assistant', rawText: nativeItemText(item), references: responseReferences, text: responseAnnotationDisplay(nativeItemText(item), responseReferences, t('引用')), scrollAnchorId: scrollAnchor(item, 'assistant'), status: finalStatus, turnId, itemId: String(item.id), phase: typeof item.phase === 'string' ? item.phase : undefined,
+          messages.push({ id, quoteSource: sourceFor(item), role: 'assistant', rawText: nativeItemText(item), references: responseReferences, text: webCitationDisplay(responseAnnotationDisplay(nativeItemText(item), responseReferences, t('引用')), item.webCitations), scrollAnchorId: scrollAnchor(item, 'assistant'), status: finalStatus, turnId, itemId: String(item.id), phase: typeof item.phase === 'string' ? item.phase : undefined,
             ...(!commentary ? { commentaryIsRunning: running } : {}),
-            ...(entry.supersededAnswer ? { commentaryCanAttachToReply: true, commentary: [{ id, quoteSource: sourceFor(item), text: nativeItemText(item), blocks: [...blocks], isPreviousReply: true,
+            ...(entry.supersededAnswer ? { commentaryCanAttachToReply: true, commentary: [{ id, quoteSource: sourceFor(item), text: webCitationDisplay(nativeItemText(item), item.webCitations), blocks: [...blocks], isPreviousReply: true,
               ...(typeof item.timestamp === 'number' && Number.isFinite(item.timestamp) && item.timestamp > 0 ? { timestamp: item.timestamp } : {}) }] } : {}),
             ...(commentary ? { commentaryIsLiveTail: liveCommentaryIDs.has(String(item.id)) } : {}),
             ...(commentary && typeof item.timestamp === 'number' && Number.isFinite(item.timestamp) && item.timestamp > 0 ? { timestamp: item.timestamp } : {}),

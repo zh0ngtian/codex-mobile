@@ -60,6 +60,37 @@ import UIKit
         XCTAssertEqual(timestampTaps, 1, "拖动选区时不能切换时间")
     }
 
+    func testWebCitationNumbersRenderAndOpenCorrectDestinations() {
+        continueAfterFailure = false
+        let markdown = #"正文。[\[1\]](<https://example.com/guide>) [\[2\]](<https://example.com/code>)"#
+        let rendered = NativeSelectableMarkdown.inline(markdown)
+        XCTAssertEqual(rendered.string, "正文。[1] [2]")
+        var urls: [String] = []
+        rendered.enumerateAttribute(.link, in: NSRange(location: 0, length: rendered.length)) { value, _, _ in
+            if let url = value as? URL { urls.append(url.absoluteString) }
+        }
+        XCTAssertEqual(urls, ["https://example.com/guide", "https://example.com/code"])
+        let app = XCUIApplication()
+        app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-web-citations-fixture", "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryL", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
+        app.launch()
+        let body = app.textViews["assistant.selectable"].firstMatch
+        XCTAssertTrue(body.waitForExistence(timeout: 10))
+        let text = body.value as? String ?? ""
+        XCTAssertTrue(text.contains("[1] [2]"), text)
+        XCTAssertTrue(text.hasSuffix("[1]"), text)
+        XCTAssertFalse(text.contains("cite"))
+        XCTAssertFalse(text.contains("**"), "中文标点后的强调仍须正常渲染")
+        XCTAssertLessThanOrEqual(body.frame.width, app.frame.width - 32)
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "网页来源编号-双来源与重复引用"; screenshot.lifetime = .keepAlways; add(screenshot)
+        // 系统选择模式允许通过原生链接元素打开对应网页。
+        let link = body.links.matching(NSPredicate(format: "label CONTAINS %@", "[2]")).firstMatch
+        XCTAssertTrue(link.exists, app.debugDescription)
+        link.tap()
+        let backgrounded = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in app.state != .runningForeground }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [backgrounded], timeout: 8), .completed)
+    }
+
     func testUserBubbleRendersLinkAndKeepsOriginalWhenEditing() {
         continueAfterFailure = false
         let app = XCUIApplication()

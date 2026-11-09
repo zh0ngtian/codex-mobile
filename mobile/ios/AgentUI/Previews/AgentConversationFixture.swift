@@ -219,6 +219,13 @@ final class AgentConversationFixture {
             这是全文最后一段普通正文。
             """, phase: "final_answer")]
         }
+        if ProcessInfo.processInfo.arguments.contains("--agent-web-citations-fixture") {
+            value.messages = [NativeMessage(id: "web-citations", role: "assistant", text: #"""
+            **当前安装的 InstallerX 26.09 没有内置 Xposed 锁定模块。**你看到的“已启用 Xposed 模块”是一个手动确认开关：表示已经通过 InxLocker 等第三方模块完成接管，让 InstallerX 停止检测系统默认关联、首页显示“已激活”。它本身不执行拦截或锁定。[\[1\]](<https://example.com/guide>) [\[2\]](<https://example.com/code>)
+
+            因此，关闭 InxLocker、只打开这个开关，无法维持接管。当前配置对应的用法是：**保留 InxLocker，再打开 InstallerX → 默认安装器 → 已启用 Xposed 模块**，这样首页提示就与实际接管状态一致了。[\[1\]](<https://example.com/guide>)
+            """#, phase: "final_answer")]
+        }
         if ProcessInfo.processInfo.arguments.contains("--agent-release-reply-fixture") {
             value.messages = [NativeMessage(id: "release-reply", role: "assistant", text: """
             已发布 **0.3.20（3020）**，包含表格渲染和消息长按菜单修复。

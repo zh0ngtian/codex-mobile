@@ -10,6 +10,7 @@ import { TurnChangeHistory } from "./turn-change-history.js";
 import { compactTurnDetails, compactTurnCommentary, turnCommentaryRequest, validTurnCommentaryParams } from "./turn-details.js";
 import { isNavigationResume } from "./rpc-replay.js";
 import { InlineImages } from "./inline-images.js";
+import { MessageWebCitations } from "./web-citations.js";
 import { MessageTimestamps } from "./message-timestamps.js";
 import type { BarkNotifications } from "./bark-notifications.js";
 import { SidebarSummaryIndex, validSidebarParams } from "./sidebar-summary-index.js";
@@ -150,7 +151,7 @@ class Session {
   storageBytes = 0;
   invalidatedSocket?: WebSocket;
 
-  constructor(readonly id: string, private upstreamUrl: string, private root: string, private changeHistory: TurnChangeHistory, private images: InlineImages, private timestamps: MessageTimestamps, private notifications?: BarkNotifications, private hostedObserver?: (message?: RpcMessage) => void, private hostedReply?: (requestId: string, message: RpcMessage) => Promise<RpcMessage | undefined>, private memoryOnly = false, private onAuthModeChanged?: (mode: string | null) => void) {
+  constructor(readonly id: string, private upstreamUrl: string, private root: string, private changeHistory: TurnChangeHistory, private images: InlineImages, private timestamps: MessageTimestamps, private webCitations: MessageWebCitations, private notifications?: BarkNotifications, private hostedObserver?: (message?: RpcMessage) => void, private hostedReply?: (requestId: string, message: RpcMessage) => Promise<RpcMessage | undefined>, private memoryOnly = false, private onAuthModeChanged?: (mode: string | null) => void) {
     this.loadPromise = memoryOnly ? Promise.resolve() : this.load();
   }
 
@@ -276,7 +277,7 @@ class Session {
           const message = JSON.parse(raw.toString());
           if (message.method && message.id == null && !message.method.startsWith("thread/realtime/")) {
             this.notificationQueue = this.notificationQueue.then(async () => {
-              const projected = this.memoryOnly ? message : await this.timestamps.notification(await this.images.notification(message));
+              const projected = this.memoryOnly ? message : await this.webCitations.notification(await this.timestamps.notification(await this.images.notification(message)));
               if (this.socket === socket) this.receive(projected);
             }).catch(() => { socket.terminate(); });
           } else this.receive(message);
@@ -656,7 +657,7 @@ class Session {
           else if (message.method === "mobile/turns/commentary") {
             const upstream: RpcMessage = { id: message.id, ...turnCommentaryRequest(message.params!) };
             result = await this.exchange(upstream, submittedSocket);
-            if (result.error == null) result = { ...result, result: compactTurnCommentary(await this.timestamps.result(message.params!.threadId, result.result as Record<string, any>), message.params!.turnId) };
+            if (result.error == null) result = { ...result, result: compactTurnCommentary(await this.webCitations.result(message.params!.threadId, await this.timestamps.result(message.params!.threadId, result.result as Record<string, any>)), message.params!.turnId) };
           }
           else if (message.method === "mobile/turns/details") {
             const params = message.params!;
@@ -667,7 +668,7 @@ class Session {
             result = await this.exchange(upstream, submittedSocket);
             if (this.socket === submittedSocket && this.epoch === submittedEpoch) this.observeRpcState(upstream, result);
             if (result.error == null) {
-              const full = await this.timestamps.result(params.threadId, result.result as Record<string, any>);
+              const full = await this.webCitations.result(params.threadId, await this.timestamps.result(params.threadId, result.result as Record<string, any>));
               const stats = Object.fromEntries(await Promise.all((full.data ?? []).map(async (turn: Record<string, any>) =>
                 [String(turn.id), await this.changeHistory.get(params.threadId, turn)],
               )));
@@ -680,7 +681,7 @@ class Session {
           result = { ...result, result: await this.timestamps.result(message.params.threadId, result.result as Record<string, any>) };
         }
         if (result.error == null && result.result && typeof result.result === "object" && ["thread/resume", "thread/read", "thread/turns/list", "thread/items/list", "mobile/turns/details"].includes(message.method ?? "")) {
-          result = { ...result, result: await this.images.result(result.result as Record<string, any>) };
+          result = { ...result, result: await this.images.result(await this.webCitations.result(message.params?.threadId ?? (result.result as any)?.thread?.id, result.result as Record<string, any>)) };
         }
         if (!this.memoryOnly && message.method === "turn/start" && result.error != null && typeof message.params?.threadId === "string") {
           await this.changeHistory.cancelStart(message.params.threadId);
@@ -760,10 +761,12 @@ export class HttpSessions {
   private changeHistory: TurnChangeHistory;
   private images: InlineImages;
   private timestamps: MessageTimestamps;
+  private webCitations: MessageWebCitations;
   private hostedRequests = new Map<string, { message: RpcMessage; originalId: string | number; epoch: string; sessionId: string }>();
   private hostedListeners = new Set<(message: RpcMessage) => void>();
   constructor(private options: { upstreamUrl: string; codexHome?: string; changeHistory?: TurnChangeHistory; notifications?: BarkNotifications; uploadMeter?: ModelUploadSource; onAuthModeChanged?: (mode: string | null) => void }) {
     this.root = join(options.codexHome ?? process.env.CODEX_HOME ?? join(homedir(), ".codex"), "codex-mobile-http");
+    this.webCitations = new MessageWebCitations(options.codexHome ?? process.env.CODEX_HOME ?? join(homedir(), ".codex"));
     this.timestamps = new MessageTimestamps(options.codexHome ?? process.env.CODEX_HOME ?? join(homedir(), ".codex"));
     this.images = new InlineImages(join(options.codexHome ?? process.env.CODEX_HOME ?? join(homedir(), ".codex"), "codex-mobile-inline-images"));
     this.changeHistory = options.changeHistory ?? new TurnChangeHistory(options.codexHome ?? process.env.CODEX_HOME ?? join(homedir(), ".codex"));
@@ -786,7 +789,7 @@ export class HttpSessions {
     const existing = this.sessions.get(id);
     if (existing) return existing;
     if (this.sessions.size >= MAX_SESSIONS) throw new HttpError(429, "Too many sessions");
-    const session = new Session(id, this.options.upstreamUrl, this.root, this.changeHistory, this.images, this.timestamps, this.options.notifications,
+    const session = new Session(id, this.options.upstreamUrl, this.root, this.changeHistory, this.images, this.timestamps, this.webCitations, this.options.notifications,
       [HOSTED_SESSION_ID, SIDECHAT_SESSION_ID].includes(id) ? (message) => this.observeHosted(message, id) : undefined,
       ![HOSTED_SESSION_ID, SIDECHAT_SESSION_ID].includes(id) ? (requestId, message) => this.replyHosted(requestId, message) : undefined,
       id === SIDECHAT_SESSION_ID, this.options.onAuthModeChanged);

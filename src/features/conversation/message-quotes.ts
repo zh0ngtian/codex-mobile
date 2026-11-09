@@ -1,3 +1,4 @@
+import { webCitationDisplay } from './web-citations';
 import { decodeUserMessage, encodeUserMessage, type MessageReference } from '../../../server/user-message-format';
 import type { Root } from 'mdast';
 import { remarkFileReferences } from '../../ui/remark-file-references';
@@ -87,7 +88,7 @@ export function validateMessageQuote(value: unknown, backendId: string, active: 
   const item = turn?.items?.find((item: RecordValue) => String(item.id) === source.itemId);
   const precedingUser = turn?.items?.slice(0, turn.items.indexOf(item)).findLast((candidate: RecordValue) => candidate.type === 'userMessage');
   const references = precedingUser ? decodeUserMessage(messageItemText(precedingUser)).references : [];
-  const displayed = references.length && item?.type === 'agentMessage' ? { ...item, text: responseAnnotationDisplay(messageItemText(item), references, t('引用')) } : item;
+  const displayed = item?.type === 'agentMessage' ? { ...item, text: webCitationDisplay(responseAnnotationDisplay(messageItemText(item), references, t('引用')), item.webCitations) } : item;
   if (source.backendId !== backendId || source.threadId !== String(active?.id ?? '') || !item || !['userMessage', 'agentMessage'].includes(item.type) ||
       !sourceRevisionMatches(source.revision, messageItemText(item)) ||
       !(matchesRenderedSnapshot(item, renderedText, source.region) || matchesRenderedSnapshot(displayed, renderedText, source.region))) throw new Error(t('消息已更新，请重新选择'));
