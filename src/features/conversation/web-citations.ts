@@ -5,11 +5,11 @@ import { nativeDisplayTextRanges } from '../../ui/remark-file-references';
 import { webCitationPattern, webCitationURL } from '../../../server/web-citation-format';
 
 const parser = unified().use(remarkParse).use(remarkGfm);
-/** 每条回答按首次出现的来源编号；重复引用沿用编号，原始消息仍用于复制与身份校验。 */
+/** 可恢复来源按首次出现编号，缺失来源不显示；原始消息仍用于复制与身份校验。 */
 export function webCitationDisplay(raw: string, sources: unknown): string {
-  if (!raw.includes('\uE200cite\uE202') || !Array.isArray(sources)) return raw;
+  if (!raw.includes('\uE200cite\uE202')) return raw;
   const known = new Map<string, string | null>();
-  for (const source of sources) {
+  for (const source of Array.isArray(sources) ? sources : []) {
     if (!source || typeof source.refId !== 'string') continue;
     const url = webCitationURL(source.url);
     if (!url) continue;
@@ -24,8 +24,7 @@ export function webCitationDisplay(raw: string, sources: unknown): string {
       let backslashes = 0;
       for (let cursor = start - 1; cursor >= 0 && raw[cursor] === '\\'; cursor--) backslashes++;
       if (backslashes % 2) continue;
-      const ids = [...new Set(match[1].split('\uE202'))];
-      if (ids.some(id => !known.get(id))) continue;
+      const ids = [...new Set(match[1].split('\uE202'))].filter(id => known.get(id));
       const text = ids.map(id => {
         const url = known.get(id)!;
         if (!numbers.has(url)) numbers.set(url, numbers.size + 1);
