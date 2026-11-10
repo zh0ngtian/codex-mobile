@@ -30,20 +30,24 @@
 
 - [x] 输入核对转绿：两项修复均为祖先、运行代码与开发验收一致、12个会话73处完整引用均无内部标记、原生验收1通过且0失败。
 - [x] 运行私有 `run-gates.py`：Python发布回归、协调器恢复、`npm test -- tests/ci --maxWorkers=2 --testTimeout=60000`、`npm run typecheck`、273项引用范围回归、`npm run build:server`，记录命令、日志、退出码与SHA-256。
-- [ ] 提交发布输入，推送固定分支SHA，核对远端并生成named passed checks的validation.json。
+- [x] 提交发布输入，推送固定分支SHA，核对远端并生成named passed checks的validation.json。
 
 ## 任务二：授权批次执行
 
-- [ ] 两目标heartbeat进入closing，ready同一已推送SHA与validation.json。
-- [ ] 使用 `releasectl wait --task <本计划任务ID> --timeout 45` 等待；由协调器整合main、分配版本、冻结、构建和部署，不独立打包或重启网关。
-- [ ] 失败批次保持不可变，真实失败先定位；仅按既有恢复合同登记关联修复，不篡改历史状态或擅自扩大范围。
-- [ ] 两目标均取得成功receipt并逐项核对项目、任务、来源、冻结SHA、共享锁、正式／开发CI及实际渠道。
+- [x] 两目标heartbeat进入closing，ready同一已推送SHA与validation.json。
+- [x] 使用 `releasectl wait --task <本计划任务ID> --timeout 45` 等待；由协调器整合main、分配版本、冻结、构建和部署，不独立打包或重启网关。
+- [x] 失败批次保持不可变，真实失败先定位；仅按既有恢复合同登记关联修复，不篡改历史状态或擅自扩大范围。
+- [x] 两目标均取得成功receipt并逐项核对项目、任务、来源、冻结SHA、共享锁、正式／开发CI及实际渠道。
 
 ## 任务三：独立交付回验
 
-- [ ] 完整下载本批GitHub APK／unsigned IPA，核对版本、大小、SHA-256与IPA未签名状态；核对软件源版本、同一中文日志、原开发者保留并包含当前gh用户名。
-- [ ] 核对生产网关部署标记、实际server/bin摘要、保留的dist／启动配置、launchd进程、监听与认证接口。
-- [ ] 生产只读核对同12个会话的来源映射增至54项；客户端同版显示函数隐藏缺失项，73处完整引用均无内部标记；rollout文件字节不变。
-- [ ] 核对历史LAN文件未变及8765／8766停用；不发布LAN、签名IPA、HTTPS OTA或固定IPA。
-- [ ] 最终公共凭证与文档只记录实际成功结果，明确真机安装与数据保留未验收；共享main锁下提交推送文档，保留主工作区已有暂存修改。
-- [ ] 交付GitHub Release、APK、unsigned IPA和软件源链接、版本、两端大小与SHA-256。
+- [x] 完整下载本批GitHub APK／unsigned IPA，核对版本、大小、SHA-256与IPA未签名状态；核对软件源版本、同一中文日志、原开发者保留并包含当前gh用户名。
+- [x] 核对生产网关部署标记、实际server/bin摘要、保留的dist／启动配置、launchd进程、监听与认证接口。
+- [x] 生产只读核对同12个会话的来源映射增至54项；客户端同版显示函数隐藏缺失项，73处完整引用均无内部标记；rollout文件字节不变。
+- [x] 核对历史LAN文件未变及8765／8766停用；不发布LAN、签名IPA、HTTPS OTA或固定IPA。
+- [x] 最终公共凭证与文档只记录实际成功结果，明确真机安装与数据保留未验收；共享main锁下提交推送文档，保留主工作区已有暂存修改。
+- [x] 交付GitHub Release、APK、unsigned IPA和软件源链接、版本、两端大小与SHA-256。
+
+## 实际交付
+
+0.3.44（3044）客户端批次 `57ff57e2-7436-49cc-af37-10289831dc3c` 与网关批次 `38e8700e-932b-4a06-be03-7f7a9f8a6c45` 均成功，来源 `d59613c5f9ba0ae62844ed4cbcb1fe67c0de5cf5`。90项渠道、19项网关独立核对及12会话54来源／73引用组检查通过；未出现失败批次。完整证据见[公共凭证](evidence/2026-11-10-web-citations-hidden-release.json)。真机安装与数据保留待验收。

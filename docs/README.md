@@ -21,9 +21,11 @@
 - [2026-10-20 边栏优化双端发布与网关部署](superpowers/plans/2026-10-20-sidebar-lazy-release.md)：已发布0.3.19（3019），两目标成功凭证及固定APK/已签名IPA、OTA与unsigned软件源回验；性能报告仍保留原采样口径。
 - [协议基准](../protocol/app-server-v2/README.md)：固定快照的版本、来源和使用边界。
 
+- [2026-11-10 网页引用补修联合发布](superpowers/plans/2026-11-10-web-citations-hidden-release.md)：0.3.44 GitHub双端及既有iOS软件源、配套网关成功；12会话54项来源与73处引用回验通过。
+
 ## 当前发布入口
 
-最近已验收客户端为0.3.43（3043）：修复网页来源引用的内部标记显示，将来源显示为可点击编号，重复网址沿用编号。客户端成功批次 `818dc84d-d5e3-4e12-8ed7-02e0b56829fe` 完成 GitHub APK／未签名 IPA 与既有 iOS 软件源回验，独立87项核对通过；配套网关成功批次 `795da778-86a7-4051-a9ec-8d5673558149` 已部署，独立19项核对及真实原会话只读来源检查通过。见[发布计划](superpowers/plans/2026-11-09-web-citations-release.md)与[公共凭证](superpowers/plans/evidence/2026-11-09-web-citations-release.json)。IPA 未签名，安装前由用户自行签名；LAN 包、签名 IPA、OTA 和固定 IPA 均未发布，旧文件及已停用服务保持原状。Android 继续从 GitHub 手动下载，现有 LAN 更新检查不可用，未实现 GitHub 自动更新。真机安装、数据保留和引用交互仍待验收；此前冷启动搜索未命中、桌面上传计量手动重启后的激活验收继续保留原待办边界。历史发布和失败批次记录保留。
+最近已验收客户端为0.3.44（3044）：补充恢复嵌套检索结果中的来源网址，无法恢复链接的引用隐藏，可用来源显示连续编号，重复网址沿用编号。客户端成功批次 `57ff57e2-7436-49cc-af37-10289831dc3c` 完成 GitHub APK／未签名 IPA 与既有 iOS 软件源回验，独立90项核对通过；配套网关成功批次 `38e8700e-932b-4a06-be03-7f7a9f8a6c45` 已部署，独立19项核对通过。生产只读回验12个会话，恢复54项来源；同版客户端显示函数验证73处完整引用组均无内部标记，23项无可靠网址的来源隐藏，rollout字节未变。见[发布计划](superpowers/plans/2026-11-10-web-citations-hidden-release.md)与[公共凭证](superpowers/plans/evidence/2026-11-10-web-citations-hidden-release.json)。IPA未签名，安装前由用户自行签名；LAN包、签名IPA、OTA和固定IPA均未发布，旧文件及已停用服务保持原状。Android继续从GitHub手动下载，现有LAN更新检查不可用，未实现GitHub自动更新。真机安装、数据保留和引用交互仍待验收；此前冷启动搜索未命中、桌面上传计量手动重启后的激活验收继续保留原待办边界。历史发布和失败批次记录保留。
 
 此前0.3.35已发布后续消息从输入区连续交接到用户气泡和旧图片预览保留，继承0.3.34的首条发送动效，历史、页头、附件及队列语义保持；其[发布计划](superpowers/plans/2026-10-24-followup-message-motion-release.md)与[公共凭证](superpowers/plans/evidence/2026-10-24-followup-message-motion-release.json)保留当次验收口径。
 

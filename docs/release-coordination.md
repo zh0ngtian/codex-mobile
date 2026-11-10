@@ -8,7 +8,7 @@
 
 只有用户明确要求发布客户端或部署网关时，才登记对应发布任务并使用下文的 heartbeat、ready、冻结、构建发布及 receipt 流程。普通任务不登记发布任务、不提交 ready、不分配发布版本、不更新 `.release-batch.json`，不触发正式 APK/IPA 打包、渠道更新或生产网关部署；必要的开发验证构建仍按改动范围执行。客户端与网关均有源码变更本身不构成联合发布授权。
 
-2026-10-25用户先确认停止本机iOS签名、HTTPS OTA及固定LAN IPA更新，随后进一步要求Android关闭局域网分发，只保留GitHub Release。现行客户端为 `codex-mobile-github-only`／`mobile-github-only`，只交付GitHub APK／unsigned IPA及既有iOS软件源。策略 [distribution-policy.json](../release/distribution-policy.json) 同时规定 `iosDistribution=unsigned-only` 与 `androidDistribution=github-only`；新源码拒绝旧mobile／mobile-ota／mobile-unsigned kind及旧客户端项目，不能通过旧模板进入LAN或签名／OTA阶段。8765服务保持停止和disabled，旧包、清单、材料、失败批次及凭证保留不删。无策略或旧ios-only策略的历史工作区继续原合同。现役0.3.43已完成网页来源引用修复的双端发布与配套网关部署回验；此前0.3.42至0.3.39交付及0.3.38失败记录保留，见下方交付记录。
+2026-10-25用户先确认停止本机iOS签名、HTTPS OTA及固定LAN IPA更新，随后进一步要求Android关闭局域网分发，只保留GitHub Release。现行客户端为 `codex-mobile-github-only`／`mobile-github-only`，只交付GitHub APK／unsigned IPA及既有iOS软件源。策略 [distribution-policy.json](../release/distribution-policy.json) 同时规定 `iosDistribution=unsigned-only` 与 `androidDistribution=github-only`；新源码拒绝旧mobile／mobile-ota／mobile-unsigned kind及旧客户端项目，不能通过旧模板进入LAN或签名／OTA阶段。8765服务保持停止和disabled，旧包、清单、材料、失败批次及凭证保留不删。无策略或旧ios-only策略的历史工作区继续原合同。现役0.3.44已完成网页引用补修的双端发布与配套网关部署回验；此前0.3.43至0.3.39交付及0.3.38失败记录保留，见下方交付记录。
 
 ## 本机部署与作用域
 
@@ -30,7 +30,7 @@
 
 项目配置路径与用途：
 
-- `~/Library/Application Support/ReleaseCoordinator/projects/codex-mobile-github-only.json`：现行客户端目标，已按新模板完成登记、heartbeat与ready；0.3.43成功批次已完成渠道回验，见本文件最新交付记录及成功receipt；真机安装和数据保留仍待验收。
+- `~/Library/Application Support/ReleaseCoordinator/projects/codex-mobile-github-only.json`：现行客户端目标，已按新模板完成登记、heartbeat与ready；0.3.44成功批次已完成渠道回验，见本文件最新交付记录及成功receipt；真机安装和数据保留仍待验收。
 - `~/Library/Application Support/ReleaseCoordinator/projects/codex-mobile-gateway-production.json`。
 - `~/Library/Application Support/ReleaseCoordinator/projects/codex-mobile-lan-production.json`、`codex-mobile-ios-ota-production.json` 与 `codex-mobile-github-release.json`：仅保留历史合同，不改写旧失败批次或项目配置。
 
@@ -208,3 +208,11 @@ GitHub-only的0.3.38批次 `c2997b88-4cc4-4298-b292-6cd3b4a3d70b` 在最终verif
 APK 为4,755,355字节，未签名IPA为5,030,497字节；两端独立完整下载的SHA-256与GitHub附件及协调器验证文件一致，IPA实际0.3.43／3043且无签名资源或描述文件。既有软件源订阅、开发者署名和两行中文日志已核对。网关保留已部署前端、包声明、启动脚本和环境；部署前后原会话只读检查的来源数量由0变为2，网址精确对应且原始文本、rollout字节不变。无真实测试会话需要归档。
 
 本轮四项ready门禁、262项引用范围回归、服务端构建通过，复用运行源码一致的两项iPhone 17 Pro模拟器验收。未执行真机安装、覆盖升级和数据保留验收。历史四文件散列不变，8765／8766无监听、两项历史渠道服务停止且disabled；凭证明确GitHub-only、LAN／签名／OTA／固定IPA均未发布。公共下载、完整散列及两份receipt摘要见[公共凭证](superpowers/plans/evidence/2026-11-09-web-citations-release.json)，步骤见[发布计划](superpowers/plans/2026-11-09-web-citations-release.md)。仅文档收尾不重复构建或部署。
+
+### 2026-11-10 网页引用补修联合交付（0.3.44）
+
+客户端任务 `web-citations-hidden-github-only-20261110`、批次 `57ff57e2-7436-49cc-af37-10289831dc3c` 与网关任务 `web-citations-hidden-gateway-20261110`、批次 `38e8700e-932b-4a06-be03-7f7a9f8a6c45` 均complete，ready同一来源 `d59613c5f9ba0ae62844ed4cbcb1fe67c0de5cf5`，包含嵌套解析 `0518f54` 和缺失引用隐藏 `3206b79`。客户端冻结 `9616907b14b54e674aa7073d396e5a244f9b97b0`，网关冻结 `ad13b18bb472a540db953d7e4ad05f68a9b09e34`；客户端仅main/build/source/verify，网关仅main/gateway/verify。正式CI `42746208366`、客户端开发CI `42746208107`、网关开发CI `42747759855` 均成功。
+
+发布门禁261项、协调器59项、构建合同151项、引用回归273项及类型检查／服务端构建通过，规格与质量复审批准。独立90项渠道核对及19项网关核对通过，覆盖双端完整下载、IPA实际版本与未签名、既有unsigned订阅、中文日志及开发者保留、生产摘要／进程／监听／认证健康。生产只读12个会话返回54项精确来源，同版显示函数确认73处完整引用均无内部标记，23项缺失网址隐藏；原始正文及rollout字节保留，无真实测试会话。
+
+历史LAN四文件散列不变，8765／8766无监听且服务停止及disabled；不发布LAN包、签名IPA、OTA或固定IPA。复用同运行源码的一项iPhone 17 Pro正常字号竖屏验收及截图，真机安装、覆盖升级、数据保留和交互仍待验收。[发布计划](superpowers/plans/2026-11-10-web-citations-hidden-release.md)与[公共凭证](superpowers/plans/evidence/2026-11-10-web-citations-hidden-release.json)记录实际来源、双receipt摘要及产物。
