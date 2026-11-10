@@ -45,6 +45,33 @@ it('追加与未完成行会失效缓存，兼容 JSON MCP content 和普通 fun
   expect(await f.reader.read(threadId, ids)).toHaveLength(1);
   expect(await f.reader.read(threadId, ids)).toHaveLength(1);
 });
+it.each(['content-json', 'fulfilled-result'] as const)('展开文本块中的嵌套检索结果 %s', async format => {
+  const f = await fixture();
+  const result = { content: [{ type: 'text', text: source(ids[0]) }] };
+  const wrapped = format === 'content-json' ? result : { i: 0, status: 'fulfilled', value: result };
+  await appendFile(f.path, output([{ type: 'text', text: JSON.stringify(wrapped) }]));
+  const before = await readFile(f.path);
+  const item = { type: 'agentMessage', text: `回答。cite${ids[0]}` };
+  const projected = await f.reader.result(threadId, { items: [item] });
+  expect(projected.items[0]).toEqual({ ...item, webCitations: [
+    { refId: ids[0], url: 'https://example.com/guide', title: '文档标题' },
+  ] });
+  expect(JSON.stringify(projected)).not.toContain('正文不应传给客户端');
+  expect(await readFile(f.path)).toEqual(before);
+});
+it('不从失败结果、无关字段或超深嵌套恢复来源', async () => {
+  const f = await fixture();
+  const content = { content: [{ type: 'text', text: source(ids[0]) }] };
+  let deep: unknown = content;
+  for (let i = 0; i < 10; i++) deep = { content: [{ type: 'text', text: JSON.stringify(deep) }] };
+  for (const value of [
+    { status: 'rejected', reason: content, value: content },
+    { value: content },
+    { arguments: content },
+    deep,
+  ]) await appendFile(f.path, output([{ type: 'text', text: JSON.stringify(value) }]));
+  expect(await f.reader.read(threadId, ids)).toEqual([]);
+});
 it('跨日期续写可使用原文件来源，冲突的同名来源不生成错误链接', async () => {
   const f = await fixture();
   await appendFile(f.path, output(source(ids[0])));

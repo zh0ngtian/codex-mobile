@@ -19,8 +19,10 @@ function* outputTexts(output: unknown, depth = 0): Generator<string> {
     for (const part of output) yield* outputTexts(part, depth + 1);
   } else if (output && typeof output === 'object') {
     const part = output as RecordValue;
-    if (typeof part.text === 'string') yield part.text;
+    if (typeof part.text === 'string') yield* outputTexts(part.text, depth + 1);
     else if (Array.isArray(part.content)) yield* outputTexts(part.content, depth + 1);
+    // 并行工具调用会把成功结果包在 JSON 文本的 settled value 中。
+    else if (part.status === 'fulfilled') yield* outputTexts(part.value, depth + 1);
   }
 }
 
