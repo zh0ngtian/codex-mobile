@@ -4,7 +4,7 @@ import type { BackendRegistry } from '../backends/types';
 import { nativeSwitchStore, restoreSwitchWorkspace, type SavedSwitchCheckpoint, type SwitchWorkspace } from './switch-store';
 import { emptyNativeSnapshot } from './protocol';
 import { publishNativeSnapshot } from './runtime';
-import { isIOSNativeHost, requestNativePreference } from './preference';
+import { isNativeUIHost, requestNativePreference } from './preference';
 interface SwitchState {
  enabled: boolean; loading: boolean; pending: boolean; error: string; notice: string;
  change(enabled: boolean): Promise<void>;
@@ -15,7 +15,7 @@ interface SwitchState {
 const SwitchContext = createContext<SwitchState | null>(null);
 export const useNativeSwitch = () => useContext(SwitchContext);
 export function NativeSwitchBoundary({ initialRegistry, children }: { initialRegistry: BackendRegistry; children: (registry: BackendRegistry) => ReactNode }) {
- const supported = isIOSNativeHost();
+ const supported = isNativeUIHost();
  const [loaded, setLoaded] = useState(!supported);
  const [failure, setFailure] = useState(''); const [attempt, retry] = useState(0);
  const [checkpoint, setCheckpoint] = useState<SavedSwitchCheckpoint | null>(null);

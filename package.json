@@ -48,6 +48,7 @@
     "test:e2e": "playwright test",
     "typecheck": "tsc -b --pretty false",
     "ios:prepare": "node scripts/prepare-ios.mjs",
+    "android:prepare": "node scripts/prepare-android.mjs",
     "ios:release": "python3 scripts/release-ios.py"
   },
   "dependencies": {

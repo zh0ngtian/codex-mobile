@@ -4,6 +4,7 @@ export interface NativePreference { enabled: boolean; active: boolean }
 type PreferenceResponse = Partial<NativePreference> & { id: string; error?: string };
 type HostWindow = Window & {
  __CODEX_IOS_HOST__?: boolean;
+ __CODEX_ANDROID_HOST__?: boolean;
  webkit?: { messageHandlers?: { nativeUI?: { postMessage(value: unknown): void } } };
  codexMobileNativePreference?: (input: NativePreferenceInput) => Promise<NativePreference>;
  codexMobileNativePreferenceComplete?: (response: PreferenceResponse) => void;
@@ -14,9 +15,14 @@ export function isIOSNativeHost() {
  const host = window as HostWindow;
  return host.__CODEX_IOS_HOST__ === true && typeof host.webkit?.messageHandlers?.nativeUI?.postMessage === 'function';
 }
+export function isNativeUIHost() {
+ if (typeof window === 'undefined') return false;
+ const host = window as HostWindow;
+ return (host.__CODEX_IOS_HOST__ === true || host.__CODEX_ANDROID_HOST__ === true) && typeof host.webkit?.messageHandlers?.nativeUI?.postMessage === 'function';
+}
 /** 宿主只接收可信主文档消息；此处不更改本进程冻结的 __CODEX_NATIVE_UI__。 */
 export function requestNativePreference(input: NativePreferenceInput = {}): Promise<NativePreference> {
- if (!isIOSNativeHost()) return Promise.reject(new Error('当前环境不支持原生界面设置'));
+ if (!isNativeUIHost()) return Promise.reject(new Error('当前环境不支持原生界面设置'));
  const host = window as HostWindow;
  host.codexMobileNativePreference = requestNativePreference;
  host.codexMobileNativePreferenceComplete = response => {
