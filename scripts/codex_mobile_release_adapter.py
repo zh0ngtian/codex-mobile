@@ -50,14 +50,16 @@ class Adapter:
         self.root.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.repo = self.options['github_repository']
         self.ota_only = self.options['kind'] == 'mobile-ota'
-        self.github_only = self.options['kind'] == 'mobile-github-only'
-        self.unsigned_only = self.options['kind'] in ('mobile-unsigned', 'mobile-github-only')
-        self.mobile = self.options['kind'] in ('mobile', 'mobile-ota', 'mobile-unsigned', 'mobile-github-only')
+        self.android_only = self.options['kind'] == 'mobile-github-android'
+        self.github_only = self.options['kind'] in ('mobile-github-only', 'mobile-github-android')
+        self.unsigned_only = self.options['kind'] in ('mobile-unsigned', 'mobile-github-only', 'mobile-github-android')
+        self.mobile = self.options['kind'] in ('mobile', 'mobile-ota', 'mobile-unsigned', 'mobile-github-only', 'mobile-github-android')
+        self.platforms = ('android',) if self.android_only else ('android', 'ios')
         self.ota_phases = ['main', 'iosbuild', 'sign', 'ota', 'ipa', 'verify']
         self.unsigned_phases = ['main', 'build', 'apk', 'source', 'verify']
-        self.github_phases = ['main', 'build', 'source', 'verify']
+        self.github_phases = ['main', 'build', 'verify'] if self.android_only else ['main', 'build', 'source', 'verify']
         policy_path = self.work / 'release/distribution-policy.json'
-        client_project = context['project'] in ('codex-mobile-github-only', 'codex-mobile-github-release', 'codex-mobile-lan-production', 'codex-mobile-ios-ota-production')
+        client_project = context['project'] in ('codex-mobile-github-android', 'codex-mobile-github-only', 'codex-mobile-github-release', 'codex-mobile-lan-production', 'codex-mobile-ios-ota-production')
         if (self.mobile or client_project) and policy_path.exists():
             policy = read_json(policy_path)
             if (not isinstance(policy, dict) or type(policy.get('schemaVersion')) is not int
@@ -65,13 +67,21 @@ class Adapter:
                                       {'schemaVersion':1, 'iosDistribution':'unsigned-only', 'androidDistribution':'github-only'})):
                 raise ValueError('客户端分发策略无效或不支持')
             if policy.get('androidDistribution') == 'github-only' and (
-                    not self.github_only or context['project'] != 'codex-mobile-github-only'):
+                    not self.github_only or context['project'] not in ('codex-mobile-github-only', 'codex-mobile-github-android')):
                 raise ValueError('github-only 分发策略禁止旧客户端配置和LAN阶段；请使用新发布项目')
             if (self.options['kind'] in ('mobile', 'mobile-ota')
                     or context['project'] in ('codex-mobile-lan-production', 'codex-mobile-ios-ota-production')):
                 raise ValueError('unsigned-only 分发策略禁止旧客户端签名/OTA 配置；请使用新发布项目')
-        if self.github_only or context['project'] == 'codex-mobile-github-only':
-            if not (self.github_only and context['project'] == 'codex-mobile-github-only'
+        if self.android_only or context['project'] == 'codex-mobile-github-android':
+            if not (self.android_only and context['project'] == 'codex-mobile-github-android'
+                    and self.config['target'] == 'codex-mobile-github-android'
+                    and self.config['environment'] == 'github-only'
+                    and self.config.get('branch') == 'main'
+                    and context['scope'] == 'codex-mobile-main-production'
+                    and self.config.get('phases') == ['main', 'build', 'verify']):
+                raise ValueError('Android github-only 项目、身份、环境、作用域或发布阶段不匹配')
+        if (self.github_only and not self.android_only) or context['project'] == 'codex-mobile-github-only':
+            if not (self.options['kind'] == 'mobile-github-only' and context['project'] == 'codex-mobile-github-only'
                     and self.config['target'] == 'codex-mobile-github-only'
                     and self.config['environment'] == 'github-only'
                     and self.config.get('branch') == 'main'
@@ -426,6 +436,7 @@ class Adapter:
         return matches[0] if matches else None
 
     def validate_build_receipt(self, receipt, platform):
+        if platform not in self.platforms: raise ValueError('产物平台未获冻结项目授权')
         if receipt.get('sourceCommit') != self.frozen_sha: raise ValueError('产物来源 sourceCommit 不在冻结 commit')
         if receipt.get('batchId') != self.context['id'] or receipt.get('version') != self.version:
             raise ValueError('产物批次/版本不匹配')
@@ -471,7 +482,9 @@ class Adapter:
 
     def build_artifacts(self, folder=None):
         folder=folder or self.root/'ci-artifacts';result={}
-        for platform in ('android','ios'):
+        if self.android_only and folder.exists() and (list(folder.glob('*.ipa')) or (folder/'ios-build.json').exists()):
+            raise ValueError('Android 批次包含未授权 iOS 平台产物')
+        for platform in self.platforms:
             item=self.platform_artifact(folder,platform)
             if not item:return None
             result[platform]=item
@@ -506,7 +519,7 @@ class Adapter:
         artifacts = self.build_artifacts()
         if not artifacts: return {'done':False,'result':{'runId':run['id']}}
         assets = {a['name']:a for a in release['assets']}
-        for platform in ('android','ios'):
+        for platform in self.platforms:
             item=artifacts[platform]; asset=assets.get(Path(item['path']).name)
             if not asset or asset['size']!=item['size']: raise ValueError('GitHub Release 附件缺失或大小不同')
             if asset.get('digest') and asset['digest'] != 'sha256:' + item['sha256']: raise ValueError('GitHub 附件 SHA-256 不匹配')
@@ -530,7 +543,7 @@ class Adapter:
             time.sleep(10)
         if not self.build_artifacts():
             partials=self.root/'ci-partials';partials.mkdir(exist_ok=True,mode=0o700)
-            for platform in ('android','ios'):
+            for platform in self.platforms:
                 current=partials/platform
                 if current.exists():
                     if self.platform_artifact(current,platform): continue
@@ -560,13 +573,14 @@ class Adapter:
                 if current.exists():os.replace(current,self.root/(f'incomplete-{platform}-'+uuid.uuid4().hex))
                 os.replace(candidate,current)
             flat=self.root/('verified-'+uuid.uuid4().hex);flat.mkdir(mode=0o700)
-            for folder in partials.iterdir():
+            for platform in self.platforms:
+                folder=partials/platform
                 for file in folder.iterdir():
                     if file.is_file():
                         dest=flat/file.name
                         if dest.exists():raise ValueError('CI artifact 文件名冲突')
                         shutil.copyfile(file,dest)
-            if not self.build_artifacts(flat):raise ValueError('双端产物未通过完整校验')
+            if not self.build_artifacts(flat):raise ValueError('冻结范围产物未通过完整校验')
             dest=self.root/'ci-artifacts'
             if dest.exists():os.replace(dest,self.root/('incomplete-ci-'+uuid.uuid4().hex))
             os.replace(flat,dest)
@@ -871,8 +885,8 @@ class Adapter:
                     self.download_verified(item['downloadUrl'],item,self.root/('verified-github-'+Path(item['path']).name))
                 if self.github_only:
                     atomic_json(self.root/'github-release.json', {'sourceCommit':self.frozen_sha, 'batchId':self.context['id'],
-                        'version':self.version, 'buildNumber':self.build_number, 'distribution':'github-only', 'channels':evidence,
-                        'githubReleasePublished':True, 'softwareSourceUpdated':True, 'lanApkPublished':False,
+                        'version':self.version, 'buildNumber':self.build_number, 'distribution':'github-only', 'platforms':list(self.platforms), 'channels':evidence,
+                        'githubReleasePublished':True, 'softwareSourceUpdated':not self.android_only, 'lanApkPublished':False,
                         'signedIpaPublished':False, 'otaPublished':False, 'fixedIpaPublished':False, 'verifiedAt':time.time()})
                 elif self.unsigned_only:
                     atomic_json(self.root/'unsigned-release.json', {'sourceCommit':self.frozen_sha, 'batchId':self.context['id'],
@@ -890,7 +904,7 @@ class Adapter:
                     'githubReleasePublished':False, 'apkPublished':False, 'softwareSourceUpdated':False,
                     'priorStandaloneDeliveries':history, 'verifiedAt':time.time()})
             return {'done':True,'result':{'sourceCommit':self.frozen_sha,'batchId':self.context['id'],'channels':evidence,
-                             **({'distribution':'github-only','lanApkPublished':False,'signedIpaPublished':False,'otaPublished':False,'fixedIpaPublished':False} if self.github_only else
+                             **({'distribution':'github-only','platforms':list(self.platforms),'softwareSourceUpdated':not self.android_only,'lanApkPublished':False,'signedIpaPublished':False,'otaPublished':False,'fixedIpaPublished':False} if self.github_only else
                                 {'distribution':'unsigned-only','signedIpaPublished':False,'otaPublished':False,'fixedIpaPublished':False} if self.unsigned_only else {}),
                              **({'distribution':'ota-only','priorStandaloneDeliveries':history} if self.ota_only else {}),
                              'tasksIncluded':[t['sha'] for t in self.context['tasks']], 'verifiedAt':time.time(),

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
-import { appendFile, readFile, stat, writeFile } from "node:fs/promises";
+import { appendFile, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { resolve, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -28,6 +28,7 @@ export function validateManifest(batch) {
     "codex-mobile-gateway-production": { target: "codex-mobile-gateway", environment: "production", release: false, versioned: false },
     "codex-mobile-github-release": { target: "codex-mobile-github-release", environment: "github-release", release: true, versioned: true },
     "codex-mobile-github-only": { target: "codex-mobile-github-only", environment: "github-only", release: true, versioned: true },
+    "codex-mobile-github-android": { target: "codex-mobile-github-android", environment: "github-only", release: true, versioned: true },
   };
   const target = Object.hasOwn(targets, batch.project ?? "") && targets[batch.project];
   if (!target || batch.target !== target.target || batch.environment !== target.environment || batch.scope !== "codex-mobile-main-production") fail("冻结批次目标、项目、环境或作用域不匹配");
@@ -47,9 +48,12 @@ export function validateManifest(batch) {
     if (!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(prepared.version) ||
       ((target.versioned || prepared.buildNumber !== undefined) && String(prepared.buildNumber) !== String(code))) fail("冻结版本与构建号不一致");
   }
+  const platforms = target.release ? batch.project === "codex-mobile-github-android" ? ["android"] : ["android", "ios"] : [];
+  const buildMatrix = { include: platforms.map(platform => ({ platform, runner: platform === "android" ? "ubuntu-latest" : "macos-15-intel" })) };
   // OTA 批次保留严格版本合同，但不创建 GitHub Release；网关不输出客户端版本。
   return { batch_id: batch.batchId, app_version: target.versioned ? prepared.version : "", app_version_code: target.versioned ? String(code) : "",
-    release_tag: target.release ? `v${prepared.version}` : "", release_required: String(target.release) };
+    release_tag: target.release ? `v${prepared.version}` : "", release_required: String(target.release),
+    platforms: JSON.stringify(platforms), build_matrix: JSON.stringify(buildMatrix) };
 }
 export async function validateReleaseBatch({ root = process.cwd(), batchId, frozenSha, version, githubSha = process.env.GITHUB_SHA, githubRef = process.env.GITHUB_REF } = {}) {
   root = resolve(root);
@@ -75,6 +79,8 @@ export async function validateReleaseBatch({ root = process.cwd(), batchId, froz
 }
 export function createBuildReceipt(context, artifact, { runId = process.env.GITHUB_RUN_ID, runAttempt = process.env.GITHUB_RUN_ATTEMPT } = {}) {
   if (!line(runId) || !line(runAttempt)) fail("正式构建回执必须绑定 GitHub run 与 attempt");
+  const platforms = JSON.parse(validateManifest(context.batch).platforms);
+  if (!platforms.includes(artifact.platform)) fail("构建平台未获冻结项目授权");
   return { ...artifact, batchId: context.batch.batchId, sourceCommit: context.sourceCommit, version: context.batch.prepared.version,
     buildNumber: String(context.batch.prepared.buildNumber), tasks: context.batch.tasks.map(({ id, sha }) => ({ id, sha })), runId, runAttempt };
 }
@@ -84,7 +90,15 @@ export async function validateBuildReceipts(context, directory, { root = process
   const tag = context.outputs.release_tag;
   const existingTag = git(root, ["rev-parse", "--verify", `refs/tags/${tag}^{commit}`], true);
   if (existingTag.status === 0 && existingTag.stdout.trim() !== context.sourceCommit) fail("真实 tag 目标与冻结 SHA 不一致");
-  for (const platform of ["android", "ios"]) {
+  const platforms = JSON.parse(validateManifest(context.batch).platforms);
+  const allowed = new Set(platforms.flatMap(platform => {
+    const filename = `CodexMobile-v${context.batch.prepared.version}${platform === "android" ? ".apk" : "-unsigned.ipa"}`;
+    return [filename, `${filename}.sha256`, `${platform}-build.json`];
+  }));
+  for (const filename of await readdir(directory)) {
+    if (/\.(?:apk|ipa)(?:\.sha256)?$|(?:^|-)build\.json$/.test(filename) && !allowed.has(filename)) fail(`未授权的构建平台或附件：${filename}`);
+  }
+  for (const platform of platforms) {
     const filename = `CodexMobile-v${context.batch.prepared.version}${platform === "android" ? ".apk" : "-unsigned.ipa"}`;
     const receipt = JSON.parse(await readFile(join(directory, `${platform}-build.json`), "utf8"));
     const expected = createBuildReceipt(context, { platform, filename }, { runId, runAttempt });

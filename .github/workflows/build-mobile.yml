@@ -45,6 +45,8 @@ jobs:
       batch_id: ${{ steps.version.outputs.batch_id }}
       source_commit: ${{ steps.version.outputs.source_commit }}
       app_version_code: ${{ steps.version.outputs.app_version_code }}
+      build_matrix: ${{ steps.version.outputs.build_matrix }}
+      platforms: ${{ steps.version.outputs.platforms }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -76,12 +78,7 @@ jobs:
     timeout-minutes: 40
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - platform: android
-            runner: ubuntu-latest
-          - platform: ios
-            runner: macos-15-intel
+      matrix: ${{ fromJSON(needs.version.outputs.build_matrix) }}
     env:
       APP_VERSION: ${{ needs.version.outputs.app_version }}
       BATCH_ID: ${{ needs.version.outputs.batch_id }}
@@ -130,7 +127,7 @@ jobs:
           retention-days: 14
 
   release:
-    name: Publish dual-platform release
+    name: Publish frozen-platform release
     needs: [version, build]
     if: needs.version.outputs.release_required == 'true'
     runs-on: ubuntu-latest
@@ -149,13 +146,14 @@ jobs:
           pattern: codex-mobile-*
           merge-multiple: true
           path: artifacts
-      - name: 校验并发布双端 Release
+      - name: 校验并发布冻结范围的 Release
         env:
           GH_TOKEN: ${{ github.token }}
           APP_VERSION: ${{ needs.version.outputs.app_version }}
           RELEASE_TAG: ${{ needs.version.outputs.release_tag }}
           BATCH_ID: ${{ needs.version.outputs.batch_id }}
           SOURCE_COMMIT: ${{ needs.version.outputs.source_commit }}
+          PLATFORMS: ${{ needs.version.outputs.platforms }}
         run: |
           set -euo pipefail
           # checkout 完整历史后，再核对当前远端 tag，包含 annotated tag 的真实 commit。
@@ -167,12 +165,23 @@ jobs:
           node scripts/validate-release-batch.mjs --batch-id "$BATCH_ID" --frozen-sha "$SOURCE_COMMIT" --version "$APP_VERSION" \
             --receipts artifacts --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT"
           cd artifacts
-          test -s "CodexMobile-v${APP_VERSION}.apk"
-          test -s "CodexMobile-v${APP_VERSION}-unsigned.ipa"
-          sha256sum --check ./*.sha256
+          mapfile -t platforms < <(node -e 'for (const platform of JSON.parse(process.env.PLATFORMS)) console.log(platform)')
+          release_files=()
+          checksums=()
+          for platform in "${platforms[@]}"; do
+            case "$platform" in
+              android) package="CodexMobile-v${APP_VERSION}.apk" ;;
+              ios) package="CodexMobile-v${APP_VERSION}-unsigned.ipa" ;;
+              *) exit 1 ;;
+            esac
+            test -s "$package"
+            release_files+=("$package" "$package.sha256" "$platform-build.json")
+            checksums+=("$package.sha256")
+          done
+          sha256sum --check "${checksums[@]}"
           node ../scripts/validate-release-batch.mjs --root .. --batch-id "$BATCH_ID" --frozen-sha "$SOURCE_COMMIT" \
             --version "$APP_VERSION" --notes release-notes.md
-          gh release create "$RELEASE_TAG" ./*.apk ./*.ipa ./*.sha256 ./*-build.json \
+          gh release create "$RELEASE_TAG" "${release_files[@]}" \
             --repo "$GITHUB_REPOSITORY" --target "$SOURCE_COMMIT" \
             --title "Codex Mobile ${APP_VERSION}" --notes-file release-notes.md
           cd ..
