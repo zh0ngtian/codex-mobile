@@ -30,7 +30,7 @@
 5. UI 与交互在 iPhone 17 Pro 正常字号竖屏验收；涉及 iOS App 的问题要在 App 内验证，浏览器验证不能替代模拟器验证。测试创建的会话验证后及时归档。
 6. 文档修改只检查相关文字、链接和规则一致性，不触发客户端构建、模拟器操作、部署或发布。网关地址中的口令、设备凭证、用户会话正文和签名材料不写入本文。
 7. 默认交付遵循 [仓库协作约定](../AGENTS.md)：开始修改时记录 main 提交，验证成功后合入主分支并完成提交推送，默认不发布客户端或部署生产网关。合入前核对最新 main（含远端）；修改期间 main 有新提交时，对整合结果运行相关回归，通过后再提交推送；没有新提交时复用已有验证，不必重复回归。只有明确要求发布或部署时才启用协调器正式交付流程。
-8. 已授权的客户端发布使用 `codex-mobile-github-only`／`mobile-github-only`，阶段精确为main/build/source/verify；新策略同时固定Android为github-only、iOS为unsigned-only，新源码拒绝旧含LAN项目／kind及apk/ipa/iosbuild/sign/ota/gateway等额外阶段。prepare只读GitHub全部Release、仓库下限和保留失败预留（包括旧0.3.37），不访问LAN、签名配置或HTTPS。验收核对同冻结SHA的开发CI和main/build/source、GitHub两端完整独立下载及iOS软件源，保存 `distribution=github-only` 与 `github-release.json`，明确 `lanApkPublished=false` 及签名／OTA／固定IPA均未发布。交付只提供本次Release、GitHub APK、unsigned IPA和软件源链接、版本、大小与散列，不要求旧固定APK／IPA或OTA链接。旧文件本地散列与服务禁用状态另行回验；网关保持独立成功凭证，运行代码未变及祖先来源已证实的既有成功部署可复用。
+8. 已授权发布按受影响平台选择项目：仅涉及 Android 的改动使用 `codex-mobile-github-android`／`mobile-github-android`，阶段 `main/build/verify`，只构建和验收 APK，不启动 iOS 作业或访问软件源；涉及 iOS 或影响 iOS 的共享运行代码时使用 `codex-mobile-github-only`／`mobile-github-only`，保持 `main/build/source/verify` 与双端验收。共享表单、业务投影、桥接与构建配置须核对实际消费者，不能只按是否改 Swift 文件判断。冻结项目决定 CI matrix、回执和独立下载范围；成功凭证记录实际 platforms 与 softwareSourceUpdated，交付只提供本批实际产物链接、版本、大小及 SHA-256。两入口沿用 GitHub-only／unsigned-only 策略、同一 main 锁和版本预留；LAN、签名及 OTA 继续停用，旧冻结合同保留。
 
 ## 3. 保留内容与真实业务边界
 
@@ -1594,3 +1594,9 @@ iPhone 17 Pro／iOS 27、正常字号、竖屏的6项现有排版及界面回归
 本轮 main 基线为 `13679104e2a468443ee226ab9906c0dda5259565`。按用户反馈调整 Android 页面密度、字号层级和长文字容纳：侧栏操作移至顶部、搜索按需展开；输入框收紧并拆分模型/强度入口；页头补齐用量与新建入口；设置项改为紧凑横排，无说明字段取消占位；正文统一字号与行距，并同步主窗口/弹层系统栏的深浅色对比度。保留 Material You 动态配色、原生控件、受控弹簧与既有共享业务命令。
 
 验收要点：正常字号竖屏下常用模型与强度可独立选择，长模型菜单完整换行，停止/发送始终可达；侧栏五条会话无需被常驻搜索框和底部操作挤压，关闭搜索清空条件，设备可从单台切回全部；设置长标签不裁切，地址继续普通明文；键盘与多队列不遮挡输入。当前源码已验证：Android 编译、21项原生仪器测试及145项共享业务回归通过，已核对深浅色、长模型菜单、侧栏及键盘截图；正式 App 的键盘窗口策略保持原有 adjustResize，测试声明同步其启动配置。真机安装后的视觉与实际手感待验收；结果统一记录于[Android 开发验收](android-native-verification.md)。本轮不修改 iOS 源码，不发布安装包、不部署网关。
+
+### 2026-11-11 按受影响平台构建与发布
+
+用户要求后续不涉及 iOS 的修改不打 iOS 包，覆盖原先所有客户端批次固定双端构建的约定。已确认：纯 Android 选择新的单端项目，涉及 iOS 或影响 iOS 的共享运行代码仍选双端；Android 单端不构建、下载或校验 IPA，也不读取或更新 iOS 软件源。验收要点为冻结项目、Actions matrix、附件回执与最终凭证平台一致，双端旧合同仍要求 APK 与 unsigned IPA。
+
+本次发布包含 Android 原生 Material You、完整动效、页面密度与长文字改进，同时共享设备表单地址明文修复被 iOS 消费，因此按双端发布，iOS 原生呈现源码未另作修改。任务 `codex-mobile-20261111-native-layout-release` 已登记；发布流程门禁和正式渠道待最终验收。iPhone 17 Pro／iOS 27.0 正常字号竖屏补验 1 项 XCTest 通过，普通文本字段完整显示输入地址、取消返回设备列表，已核对[截图](assets/ios-simulator/device-address-20261111.png)。仅离线夹具，无真实测试会话，专用模拟器已删除；真机覆盖安装、数据保留与视觉手感待用户验收。

@@ -1,0 +1,21 @@
+{
+  "id": "codex-mobile-github-android",
+  "repository": "SET_LONG_LIVED_CODEX_MOBILE_REPOSITORY_PATH",
+  "remote": "https://github.com/zh0ngtian/codex-mobile.git",
+  "branch": "main",
+  "target": "codex-mobile-github-android",
+  "environment": "github-only",
+  "lock_scope": "codex-mobile-main-production",
+  "adapter": [
+    "SET_EXISTING_ABSOLUTE_PYTHON_PATH",
+    "{workspace}/scripts/codex_mobile_release_adapter.py"
+  ],
+  "phases": ["main", "build", "verify"],
+  "preflight": ["SET_EXISTING_ABSOLUTE_GH_PATH", "auth", "status"],
+  "command_timeout": 7200,
+  "required_checks": ["adapter-regression", "coordinator-recovery", "build-contract", "typecheck"],
+  "options": {
+    "kind": "mobile-github-android",
+    "github_repository": "zh0ngtian/codex-mobile"
+  }
+}

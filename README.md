@@ -373,7 +373,7 @@ npm run test:e2e
 
 ## 移动端构建
 
-仅在用户明确要求发布时，由本机已有 `releasectl` 的 `codex-mobile-github-only` 项目协调正式发布；普通任务合入main或推送分支都不发包，也不更新冻结批次清单。main冻结清单变化才触发GitHub双端构建；客户端批次共用prepare预留版本，全部构建与校验成功后创建同一个GitHub APK／unsigned IPA Release，unsigned IPA同步既有iOS软件源。现行 `mobile-github-only` 阶段严格为 `main → build → source → verify`，不写LAN APK／IPA，不进行本机iOS签名或HTTPS OTA；旧含LAN模板保留历史合同。配置、命令和恢复验收见[发布协调说明](docs/release-coordination.md)；npm包继续按需手动发布。
+仅在用户明确要求发布时，由本机已有 `releasectl` 协调正式发布；普通源码任务不发包。仅涉及 Android 时使用 `codex-mobile-github-android`／`mobile-github-android`，阶段为 `main → build → verify`，只构建 GitHub APK；涉及 iOS 或影响 iOS 的共享运行代码时使用 `codex-mobile-github-only`／`mobile-github-only`，阶段为 `main → build → source → verify`，生成同版本 APK／unsigned IPA 并同步既有 iOS 软件源。冻结项目决定 CI 平台和验收范围，Android 单端不启动 iOS 作业，也不读取或更新 iOS 软件源；共享表单等改动须核对 iOS 消费者。各项目继续共用 main 锁与版本预留，不写 LAN 包、不签名或发布 OTA。配置和恢复验收见[发布协调说明](docs/release-coordination.md)。
 
 Android新版本从[GitHub Release](https://github.com/zh0ngtian/codex-mobile/releases)手动下载APK并安装。8765局域网发布服务已停止并disabled；客户端现有LAN更新检查在关闭后不可用，本次没有将自动更新切换到GitHub，也没有新增更新交互。旧APK、IPA、清单和服务配置保留在原目录，不再更新。
 
@@ -389,8 +389,8 @@ Android 安装包保持竖屏。iOS App 在 iPhone、iPad 及应用内浏览器�
 
 本项目发布要求：
 
-- GitHub双端构建复用 `mobile/*/build-recipe.yml`，prepare查询全部GitHub Release标签、仓库版本下限和保留失败预留（含旧0.3.37），不访问任何LAN清单、签名配置或HTTPS OTA。npm包按需手动测试、构建和发布。
-- 已获用户发布授权的客户端任务独立开发并登记已验证提交，协调入口整合、复验、冻结并推送批次，再发布同版本GitHub APK／unsigned IPA及既有iOS软件源。回验独立完整下载GitHub两端产物，核对软件源版本、日志、署名和散列，保存 `github-release.json` 与 `distribution=github-only` 成功凭证，明确 `lanApkPublished=false` 及签名／OTA／固定IPA均未发布。交付提供本次Release、GitHub APK、unsigned IPA及软件源链接和两端大小／SHA-256，注明IPA未签名，不要求旧固定APK或OTA链接。
+- GitHub按冻结平台构建复用 `mobile/*/build-recipe.yml`，prepare查询全部GitHub Release标签、仓库版本下限和保留失败预留（含旧0.3.37），不访问任何LAN清单、签名配置或HTTPS OTA。npm包按需手动测试、构建和发布。
+- 已获用户发布授权的客户端任务经协调器整合、复验、冻结后推送正式批次。验收独立完整下载本批实际平台的产物并核对大小和 SHA-256；包含 iOS 时另核对 unsigned IPA 及软件源版本、日志和署名。交付按本批范围提供 Release／APK，双端另附 IPA／软件源链接，保存 `github-release.json` 与实际 `platforms`；Android 单端不把旧 IPA 当成本次产物。
 - 改动不涉及客户端运行代码、客户端引用的共用模块、原生桥接或影响客户端产物的构建配置时，不得触发客户端 Web、APK 或 IPA 的构建与发布；仅修改文档、规则、测试、服务端或不影响客户端产物的脚本时，均遵循此规则。服务端变更仍须验证和构建服务端，只有用户明确要求部署时才部署网关。具体约束见 [AGENTS.md](AGENTS.md)。
 
 本地构建配置与环境约定见 [构建说明](mobile/README.md)：
