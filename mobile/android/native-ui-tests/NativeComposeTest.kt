@@ -3,7 +3,8 @@ package com.app.pakeplus.nativeui
 import android.graphics.Bitmap
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.*
-import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.activity.ComponentActivity
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import java.io.File
@@ -15,11 +16,15 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import org.junit.Rule
 import org.junit.Test
+import org.junit.Before
 import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class NativeComposeTest {
-    @get:Rule val ui = createComposeRule()
+    @get:Rule val ui = createAndroidComposeRule<ComponentActivity>()
+    @Before fun matchProductionWindowInsets() {
+        ui.runOnUiThread { prepareNativeTestWindow(ui.activity) }
+    }
     @Test fun typingAndSendingUseNativeComposerAndWaitForAcknowledgement() {
         val emitted = mutableListOf<JSONObject>()
         lateinit var state: NativeState
@@ -46,7 +51,10 @@ class NativeComposeTest {
         }
         ui.waitForIdle(); saveScreenshot("conversation-light.png")
         ui.onNodeWithContentDescription("打开侧栏").performClick()
+        ui.onNodeWithTag("native-search").assertDoesNotExist()
+        ui.onNodeWithContentDescription("搜索会话").performClick()
         ui.onNodeWithTag("native-search").assertIsDisplayed()
+        ui.onNodeWithContentDescription("关闭搜索").performClick()
         ui.onNodeWithTag("native-new-chat").assertIsDisplayed()
         saveScreenshot("drawer-light.png")
         ui.runOnIdle {
@@ -56,6 +64,12 @@ class NativeComposeTest {
                     "options" to JSONArray().put(params("id" to "system", "value" to "system", "title" to "跟随系统"))))))))
         }
         ui.onNodeWithTag("native-interface-switch").assertIsDisplayed()
+        assertSystemBarsMatch(dark = true)
+        // 弹层保持打开时切换，独立 Dialog 窗口也必须即时更新图标对比度。
+        ui.runOnIdle { state.appearance = "light" }
+        assertSystemBarsMatch(dark = false)
+        ui.runOnIdle { state.appearance = "dark" }
+        assertSystemBarsMatch(dark = true)
         saveScreenshot("settings-dark.png")
         ui.runOnIdle { state.dispose() }
     }
@@ -102,6 +116,21 @@ class NativeComposeTest {
         }
         ui.onNodeWithTag("native-field-name").assertTextContains("ab")
         ui.runOnIdle { state.dispose() }
+    }
+    private fun assertSystemBarsMatch(dark: Boolean) {
+        ui.waitForIdle()
+        ui.runOnUiThread {
+            val roots = if (android.os.Build.VERSION.SDK_INT >= 29)
+                android.view.inspector.WindowInspector.getGlobalWindowViews().filter { it.visibility == android.view.View.VISIBLE }
+            else listOf(ui.activity.window.decorView)
+            assertTrue(roots.isNotEmpty())
+            roots.forEach { root ->
+                val controller = androidx.core.view.ViewCompat.getWindowInsetsController(root)!!
+                assertEquals("状态栏应跟随 App 外观", !dark, controller.isAppearanceLightStatusBars)
+                if (android.os.Build.VERSION.SDK_INT >= 26)
+                    assertEquals("导航栏应跟随 App 外观", !dark, controller.isAppearanceLightNavigationBars)
+            }
+        }
     }
     private fun saveScreenshot(name: String) {
         ui.mainClock.advanceTimeBy(1500); ui.waitForIdle()

@@ -19,14 +19,15 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import org.json.JSONArray
 
 @Composable
 internal fun NativePanelItemView(state: NativeState, item: NativeItem, scope: String) {
     when (item.kind) {
-        "section" -> Column(Modifier.fillMaxWidth().animateContentSize(NativeMotion.spatial()).padding(vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            if (item.title.isNotEmpty()) Text(item.title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+        "section" -> Column(Modifier.fillMaxWidth().animateContentSize(NativeMotion.spatial()).padding(vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (item.title.isNotEmpty()) Text(item.title, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
             if (item.text.isNotEmpty()) SelectionContainer { Text(item.text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             item.children.forEach { child -> key(child.id) { NativePanelItemView(state, child, scope) } }
             HorizontalDivider()
@@ -36,13 +37,13 @@ internal fun NativePanelItemView(state: NativeState, item: NativeItem, scope: St
             val rotation by animateFloatAsState(if (expanded) 180f else 0f, NativeMotion.spatial(), label = "disclosure-chevron")
             Column(Modifier.fillMaxWidth().animateContentSize(NativeMotion.spatial())) {
                 Surface(onClick = { expanded = !expanded }, shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surfaceContainer) {
-                    Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text(item.title, Modifier.weight(1f), style = MaterialTheme.typography.labelLarge)
                         Icon(Icons.Default.ExpandMore, if (expanded) "收起" else "展开", Modifier.rotate(rotation))
                     }
                 }
                 AnimatedVisibility(expanded) {
-                    Column(Modifier.padding(top = 12.dp, start = 8.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Column(Modifier.padding(top = 8.dp, start = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         if (item.text.isNotEmpty()) Text(item.text, style = MaterialTheme.typography.bodySmall)
                         item.children.forEach { child -> key(child.id) { NativePanelItemView(state, child, scope) } }
                     }
@@ -61,11 +62,11 @@ internal fun NativePanelItemView(state: NativeState, item: NativeItem, scope: St
             var expanded by remember(scope, item.id) { mutableStateOf(false) }
             Box(Modifier.fillMaxWidth()) {
                 OutlinedButton(onClick = { expanded = true }, enabled = !item.disabled, modifier = Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.medium) {
-                    Column(Modifier.weight(1f).padding(vertical = 6.dp)) {
-                        Text(item.title, style = MaterialTheme.typography.labelMedium)
-                        Text(item.options.find { it.value == item.value }?.title ?: item.value, style = MaterialTheme.typography.bodyLarge)
-                    }
-                    Icon(Icons.Default.ExpandMore, null)
+                    Text(item.title, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                    Spacer(Modifier.width(12.dp))
+                    Text(item.options.find { it.value == item.value }?.title ?: item.value,
+                        Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.End)
+                    Icon(Icons.Default.ExpandMore, null, Modifier.padding(start = 8.dp).size(18.dp))
                 }
                 DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
                     item.options.forEach { option -> DropdownMenuItem(text = {
@@ -121,7 +122,9 @@ private fun NativePanelField(state: NativeState, item: NativeItem, scope: String
         singleLine = item.kind != "multilineField", minLines = if (item.kind == "multilineField") 3 else 1,
         maxLines = if (item.kind == "multilineField") 10 else 1,
         visualTransformation = if (item.kind == "secureField") PasswordVisualTransformation() else VisualTransformation.None,
-        supportingText = { if (item.text.isNotEmpty()) Text(item.text) }, modifier = Modifier.fillMaxWidth().testTag("native-field-${item.id}"))
+        textStyle = MaterialTheme.typography.bodyLarge,
+        supportingText = if (item.text.isEmpty()) null else ({ Text(item.text, style = MaterialTheme.typography.bodySmall) }),
+        modifier = Modifier.fillMaxWidth().testTag("native-field-${item.id}"))
 }
 
 @Composable

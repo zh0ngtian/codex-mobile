@@ -48,20 +48,21 @@ internal fun NativeConversation(state: NativeState, snapshot: NativeSnapshot, on
                     Text(if (snapshot.threadId.isEmpty()) "新对话" else snapshot.title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleMedium)
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         ConnectionDot(snapshot.connection == "online")
-                        Text(listOf(snapshot.backendName, snapshot.projectName).filter(String::isNotEmpty).joinToString(" · ").ifEmpty { "Codex Mobile" },
+                        Text(listOf(snapshot.projectName, snapshot.backendName).filter(String::isNotEmpty).joinToString(" · ").ifEmpty { "Codex Mobile" },
                             maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }, navigationIcon = {
                 IconButton(onClick = { if (snapshot.sidechatActive) state.dispatch(snapshot.command("sidechat.return")) else onMenu() }) {
-                    Icon(if (snapshot.sidechatActive) Icons.Default.ArrowBack else Icons.Default.Menu, if (snapshot.sidechatActive) "返回主聊天" else "打开侧栏")
+                    Icon(if (snapshot.sidechatActive) Icons.Default.ArrowBack else Icons.Default.Menu, if (snapshot.sidechatActive) "返回主聊天" else "打开侧栏", Modifier.size(22.dp))
                 }
             }, actions = {
-                if (snapshot.approvalCount > 0) IconButton(onClick = { state.dispatch(snapshot.command("approval.reopen")) }) {
-                    BadgedBox(badge = { Badge { Text(snapshot.approvalCount.toString()) } }) { Icon(Icons.Default.Assignment, "待处理审批") }
-                }
+                IconButton(onClick = { state.dispatch(snapshot.command("panel.open", params("id" to "workspace"))) }) { Icon(Icons.Default.PieChartOutline, "用量与会话设置", Modifier.size(20.dp)) }
+                IconButton(onClick = { state.dispatch(NativeCommand("thread.new")) }) { Icon(Icons.Default.Edit, "新建对话", Modifier.size(20.dp)) }
                 Box {
-                    IconButton(onClick = { more = true }) { Icon(Icons.Default.MoreVert, "对话菜单") }
+                    IconButton(onClick = { more = true }) {
+                        BadgedBox(badge = { if (snapshot.approvalCount > 0) Badge { Text(snapshot.approvalCount.toString()) } }) { Icon(Icons.Default.MoreHoriz, "对话菜单", Modifier.size(22.dp)) }
+                    }
                     DropdownMenu(expanded = more, onDismissRequest = { more = false }) {
                         (snapshot.actions.filter { it.command?.name != "thread.older" } + snapshot.sidechatActions).forEach { item ->
                             DropdownMenuItem(text = { Text(item.title.ifEmpty { item.text }) }, enabled = !item.disabled, onClick = {
@@ -71,7 +72,7 @@ internal fun NativeConversation(state: NativeState, snapshot: NativeSnapshot, on
                         DropdownMenuItem(text = { Text("设置") }, onClick = { more = false; state.dispatch(NativeCommand("settings.open", params("id" to "settings"))) })
                     }
                 }
-            }, colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background))
+            }, expandedHeight = 56.dp, colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background))
         }, bottomBar = {
             if (snapshot.backends.isNotEmpty()) NativeComposer(state, snapshot)
         }) { padding ->
@@ -96,8 +97,8 @@ internal fun NativeConversation(state: NativeState, snapshot: NativeSnapshot, on
                     NativeWelcome(state, "有什么想一起完成？", "从一个问题开始，或从侧栏继续已有工作。", addDevice = false)
                 } else {
                     LazyColumn(state = list, modifier = Modifier.fillMaxSize().testTag("native-messages"),
-                        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 20.dp),
-                        verticalArrangement = Arrangement.spacedBy(18.dp)) {
+                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 16.dp),
+                        verticalArrangement = Arrangement.spacedBy(14.dp)) {
                         snapshot.actions.firstOrNull { it.command?.name == "thread.older" }?.let { older ->
                             item(key = "load-older") { Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { TextButton(onClick = { state.dispatch(older.command) }, enabled = !older.disabled) { Text(older.title) } } }
                         }
@@ -128,12 +129,12 @@ internal fun NativeConversation(state: NativeState, snapshot: NativeSnapshot, on
 
 @Composable
 private fun NativeWelcome(state: NativeState, title: String, subtitle: String, addDevice: Boolean = true) {
-    Column(Modifier.fillMaxSize().padding(32.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
+    Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
         Surface(shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.primaryContainer) {
-            Icon(Icons.Default.AutoAwesome, null, Modifier.padding(24.dp).size(40.dp), tint = MaterialTheme.colorScheme.onPrimaryContainer)
+            Icon(Icons.Default.AutoAwesome, null, Modifier.padding(18.dp).size(32.dp), tint = MaterialTheme.colorScheme.onPrimaryContainer)
         }
-        Spacer(Modifier.height(24.dp)); Text(title, style = MaterialTheme.typography.headlineSmall)
-        Spacer(Modifier.height(12.dp)); Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.height(18.dp)); Text(title, style = MaterialTheme.typography.headlineSmall)
+        Spacer(Modifier.height(8.dp)); Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         if (addDevice) { Spacer(Modifier.height(24.dp)); Button(onClick = { state.dispatch(NativeCommand("settings.open", params("id" to "devices"))) }, modifier = Modifier.testTag("native-connect-device")) { Icon(Icons.Default.Add, null); Spacer(Modifier.width(8.dp)); Text("添加设备") } }
     }
 }

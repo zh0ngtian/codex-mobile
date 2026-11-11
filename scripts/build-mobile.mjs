@@ -54,7 +54,7 @@ async function main() {
   const context = await validateReleaseBatch({ root, version, batchId: values["batch-id"], frozenSha: values["frozen-sha"] });
   if (context.outputs.release_required !== "true") throw new Error("网关批次不得构建客户端");
   // 提前确认回执身份完整，避免构建完成后才发现缺少 run 信息。
-  createBuildReceipt(context, {});
+  createBuildReceipt(context, { platform });
   if (platform === "ios" && process.platform !== "darwin") throw new Error("iOS 构建需要 macOS 和 Xcode");
   if (platform === "android" && process.platform !== "linux") throw new Error("Android 云端 recipe 需要 Linux");
   const env = { ...recipe.env, ...process.env, APP_VERSION: version, APP_VERSION_CODE: String(code), RUNNER_TEMP: runnerTemp,

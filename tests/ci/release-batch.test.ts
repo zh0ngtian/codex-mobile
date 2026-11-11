@@ -26,7 +26,74 @@ function fixture(change?: (batch: any) => void, notes: string | null = "- 新增
   return { root, git, batch, task, frozen, run, cleanup: () => rmSync(root, { recursive: true, force: true }) };
 }
 
+function androidBatch(batch: any) {
+  batch.project = "codex-mobile-github-android";
+  batch.target = batch.project;
+  batch.environment = "github-only";
+}
+function writeArtifacts(f: ReturnType<typeof fixture>, platforms: string[]) {
+  const artifacts = join(f.root, "artifacts"); mkdirSync(artifacts, { recursive: true });
+  for (const platform of platforms) {
+    const filename = `CodexMobile-v0.2.148${platform === "android" ? ".apk" : "-unsigned.ipa"}`;
+    const data = Buffer.from(platform);
+    writeFileSync(join(artifacts, filename), data);
+    writeFileSync(join(artifacts, `${platform}-build.json`), JSON.stringify({ platform, filename, version: "0.2.148", buildNumber: "2148", batchId: f.batch.batchId, sourceCommit: f.frozen, tasks: [{ id: "task-1", sha: f.task }], runId: "100", runAttempt: "1", size: data.length, sha256: createHash("sha256").update(data).digest("hex") }));
+  }
+  return artifacts;
+}
+
 describe("冻结批次来源门禁", () => {
+  it("Android新项目只输出冻结授权的Android矩阵", () => {
+    const f = fixture(androidBatch);
+    try {
+      const result = f.run();
+      expect(result.status, result.stderr).toBe(0);
+      const outputs = JSON.parse(result.stdout);
+      expect(JSON.parse(outputs.platforms)).toEqual(["android"]);
+      expect(JSON.parse(outputs.build_matrix)).toEqual({ include: [{ platform: "android", runner: "ubuntu-latest" }] });
+    } finally { f.cleanup(); }
+  });
+  it.each(["codex-mobile-lan-production", "codex-mobile-github-release", "codex-mobile-github-only"])("历史%s仍输出双端矩阵且缺IPA验收失败", project => {
+    const f = fixture(b => {
+      if (project !== "codex-mobile-lan-production") {
+        b.project = project; b.target = project; b.environment = project.endsWith("only") ? "github-only" : "github-release";
+      }
+    });
+    try {
+      const outputs = JSON.parse(f.run().stdout);
+      expect(JSON.parse(outputs.platforms)).toEqual(["android", "ios"]);
+      expect(JSON.parse(outputs.build_matrix)).toEqual({ include: [{ platform: "android", runner: "ubuntu-latest" }, { platform: "ios", runner: "macos-15-intel" }] });
+      expect(f.run("--receipts", writeArtifacts(f, ["android"]), "--run-id", "100", "--run-attempt", "1").status).not.toBe(0);
+    } finally { f.cleanup(); }
+  });
+  it("Android批次只验收本run的APK并拒绝损坏文件", () => {
+    const f = fixture(androidBatch);
+    try {
+      const artifacts = writeArtifacts(f, ["android"]);
+      const args = ["--receipts", artifacts, "--run-id", "100", "--run-attempt", "1"];
+      const result = f.run(...args); expect(result.status, result.stderr).toBe(0);
+      expect(f.run(...args, "--run-attempt", "2").status).not.toBe(0);
+      writeFileSync(join(artifacts, "CodexMobile-v0.2.148.apk"), "tampered");
+      expect(f.run(...args).stderr).toContain("SHA-256");
+    } finally { f.cleanup(); }
+  });
+  it.each(["ios-build.json", "CodexMobile-v0.2.148-unsigned.ipa", "foreign.apk"])("Android批次拒绝未授权附件%s", extra => {
+    const f = fixture(androidBatch);
+    try {
+      const artifacts = writeArtifacts(f, ["android"]);
+      writeFileSync(join(artifacts, extra), "unexpected");
+      expect(f.run("--receipts", artifacts, "--run-id", "100", "--run-attempt", "1").stderr).toContain("未授权");
+    } finally { f.cleanup(); }
+  });
+  it("Android批次不能生成iOS构建回执", () => {
+    const f = fixture(androidBatch);
+    try {
+      const script = `import { validateReleaseBatch, createBuildReceipt } from ${JSON.stringify(validator)}; const c = await validateReleaseBatch({ root: ${JSON.stringify(f.root)} }); createBuildReceipt(c, { platform: "ios" }, { runId: "100", runAttempt: "1" });`;
+      const result = spawnSync(process.execPath, ["--input-type=module", "-e", script], { encoding: "utf8", env: { ...process.env, GITHUB_SHA: "", GITHUB_REF: "" } });
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain("平台");
+    } finally { f.cleanup(); }
+  });
   it("GitHub-only批次输出双端版本并绑定冻结来源", () => {
     const f = fixture(b => {
       b.project = "codex-mobile-github-only";

@@ -20,6 +20,7 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import io.noties.markwon.AbstractMarkwonPlugin
@@ -254,7 +255,10 @@ private fun NativeSelectableText(state: NativeState, text: String, quoteSource: 
     val context = LocalContext.current
     val color = MaterialTheme.colorScheme.onSurface.toArgb()
     val linkColor = MaterialTheme.colorScheme.primary.toArgb()
-    val scale = state.snapshot.raw.optDouble("fontScale", 1.0).toFloat()
+    val density = LocalDensity.current
+    val style = if (code) MaterialTheme.typography.bodySmall else MaterialTheme.typography.bodyLarge
+    val textPixels = with(density) { style.fontSize.toPx() }
+    val lineSpacing = with(density) { 3.dp.toPx() }
     val ownerContext = state.snapshot.context
     val fallback = rememberNativeMarkwon(state)
     val markwon = renderer ?: fallback
@@ -266,7 +270,6 @@ private fun NativeSelectableText(state: NativeState, text: String, quoteSource: 
         setTextIsSelectable(true)
         setPadding(0, 0, 0, 0)
         includeFontPadding = false
-        setLineSpacing(0f, 1.3f)
         if (code) typeface = Typeface.MONOSPACE
         // 保留 ArrowKeyMovementMethod 的原生选文；只为实际链接单击分发 Span。
         val label = this
@@ -283,7 +286,9 @@ private fun NativeSelectableText(state: NativeState, text: String, quoteSource: 
         setOnTouchListener { _, event -> taps.onTouchEvent(event); false }
     } }, modifier = Modifier.fillMaxWidth(), update = { view ->
         if (code) view.setHorizontallyScrolling(!state.codeWrap)
-        view.setTextColor(color); view.setLinkTextColor(linkColor); view.textSize = (if (code) 13f else 16f) * scale
+        view.setTextColor(color); view.setLinkTextColor(linkColor)
+        view.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, textPixels)
+        view.setLineSpacing(lineSpacing, 1f)
         if (plain) { if (view.text.toString() != text) view.text = text }
         else rendered?.let { if (view.tag !== it) { markwon.setParsedMarkdown(view, it); view.tag = it } }
         view.customSelectionActionModeCallback = object : ActionMode.Callback {

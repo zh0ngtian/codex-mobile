@@ -8,7 +8,7 @@
 
 只有用户明确要求发布客户端或部署网关时，才登记对应发布任务并使用下文的 heartbeat、ready、冻结、构建发布及 receipt 流程。普通任务不登记发布任务、不提交 ready、不分配发布版本、不更新 `.release-batch.json`，不触发正式 APK/IPA 打包、渠道更新或生产网关部署；必要的开发验证构建仍按改动范围执行。客户端与网关均有源码变更本身不构成联合发布授权。
 
-2026-10-25用户先确认停止本机iOS签名、HTTPS OTA及固定LAN IPA更新，随后进一步要求Android关闭局域网分发，只保留GitHub Release。现行客户端为 `codex-mobile-github-only`／`mobile-github-only`，只交付GitHub APK／unsigned IPA及既有iOS软件源。策略 [distribution-policy.json](../release/distribution-policy.json) 同时规定 `iosDistribution=unsigned-only` 与 `androidDistribution=github-only`；新源码拒绝旧mobile／mobile-ota／mobile-unsigned kind及旧客户端项目，不能通过旧模板进入LAN或签名／OTA阶段。8765服务保持停止和disabled，旧包、清单、材料、失败批次及凭证保留不删。无策略或旧ios-only策略的历史工作区继续原合同。现役0.3.44已完成网页引用补修的双端发布与配套网关部署回验；此前0.3.43至0.3.39交付及0.3.38失败记录保留，见下方交付记录。
+2026-10-25用户先确认停止本机iOS签名、HTTPS OTA及固定LAN IPA更新，随后进一步要求Android关闭局域网分发，只保留GitHub Release。现行客户端按受影响平台选择项目：仅涉及 Android 时使用 `codex-mobile-github-android`／`mobile-github-android`，只交付 GitHub APK；涉及 iOS 或影响 iOS 的共享运行代码时使用 `codex-mobile-github-only`／`mobile-github-only`，交付 GitHub APK／unsigned IPA 及既有 iOS 软件源。策略 [distribution-policy.json](../release/distribution-policy.json) 同时规定 `iosDistribution=unsigned-only` 与 `androidDistribution=github-only`；新源码拒绝旧mobile／mobile-ota／mobile-unsigned kind及旧客户端项目，不能通过旧模板进入LAN或签名／OTA阶段。8765服务保持停止和disabled，旧包、清单、材料、失败批次及凭证保留不删。无策略或旧ios-only策略的历史工作区继续原合同。现役0.3.44已完成网页引用补修的双端发布与配套网关部署回验；此前0.3.43至0.3.39交付及0.3.38失败记录保留，见下方交付记录。
 
 ## 本机部署与作用域
 
@@ -16,6 +16,7 @@
 
 | 项目配置 ID | 仓库/正式分支 | 目标与环境 | 必要交付 |
 | --- | --- | --- | --- |
+| `codex-mobile-github-android` | `zh0ngtian/codex-mobile` / `main` | `codex-mobile-github-android` / `github-only` | 仅 Android 改动；只构建和验收 GitHub APK，不进入 source 阶段 |
 | `codex-mobile-github-only` | `zh0ngtian/codex-mobile` / `main` | `codex-mobile-github-only` / `github-only` | GitHub APK／unsigned IPA Release及既有iOS软件源版本核对 |
 | `codex-mobile-github-release`（历史） | 相同仓库 / `main` | `codex-mobile-github-release` / `github-release` | 原unsigned含LAN合同；新策略禁止使用 |
 | `codex-mobile-gateway-production` | 相同仓库 / `main` | `codex-mobile-gateway` / `production` | 服务端构建、原本机安装位置及 launchd 网关部署验收；不构建客户端 |
@@ -28,13 +29,16 @@
 
 ## 项目配置与适配器
 
+2026-11-11 起，不涉及 iOS 的后续改动不打 iOS 包。发布前检查相对最近相关平台发布版本的差异，核对共享模块的实际消费者；未改 Swift 不等于未影响 iOS。纯 Android 选择单端入口，涉及 iOS 或影响 iOS 的共享运行代码则保持双端入口。不因仅修改文档或发布脚本而要求 iOS 运行回归。
+
 项目配置路径与用途：
 
+- `~/Library/Application Support/ReleaseCoordinator/projects/codex-mobile-github-android.json`：Android 单端，已登记；阶段严格为 `main/build/verify`，不含软件源凭据。首次正式单端批次尚待后续纯 Android 发布验收。
 - `~/Library/Application Support/ReleaseCoordinator/projects/codex-mobile-github-only.json`：现行客户端目标，已按新模板完成登记、heartbeat与ready；0.3.44成功批次已完成渠道回验，见本文件最新交付记录及成功receipt；真机安装和数据保留仍待验收。
 - `~/Library/Application Support/ReleaseCoordinator/projects/codex-mobile-gateway-production.json`。
 - `~/Library/Application Support/ReleaseCoordinator/projects/codex-mobile-lan-production.json`、`codex-mobile-ios-ota-production.json` 与 `codex-mobile-github-release.json`：仅保留历史合同，不改写旧失败批次或项目配置。
 
-可移植模板位于 [现行GitHub-only客户端配置](../release/coordinator.github-only.example.json)及[网关配置](../release/coordinator.gateway.example.json)。[旧unsigned含LAN配置](../release/coordinator.unsigned.example.json)、[旧双端配置](../release/coordinator.mobile.example.json)与[旧独立OTA配置](../release/coordinator.ios-ota.example.json)保持历史原样，不用于新源码。现行客户端模板不含 `lan_publisher` 或 `ios_config`，项目、target、environment、main分支、共享锁及四阶段顺序必须精确匹配；check／execute／run均拒绝apk/ipa/iosbuild/sign/ota/gateway及未知阶段。模板路径替换为长期工作区和已有私有配置；服务已存在时只注册项目，不能再运行安装器或另开serve。
+可移植模板位于 [Android 单端配置](../release/coordinator.android.example.json)、[双端GitHub-only客户端配置](../release/coordinator.github-only.example.json)及[网关配置](../release/coordinator.gateway.example.json)。[旧unsigned含LAN配置](../release/coordinator.unsigned.example.json)、[旧双端配置](../release/coordinator.mobile.example.json)与[旧独立OTA配置](../release/coordinator.ios-ota.example.json)保持历史原样，不用于新源码。现行客户端模板不含 `lan_publisher` 或 `ios_config`，项目、target、environment、main分支、共享锁及对应三阶段或四阶段顺序必须精确匹配；check／execute／run均拒绝apk/ipa/iosbuild/sign/ota/gateway及未知阶段。模板路径替换为长期工作区和已有私有配置；服务已存在时只注册项目，不能再运行安装器或另开serve。
 
 适配器命令为 `python3 {workspace}/scripts/codex_mobile_release_adapter.py`，接收上游 `run/check <阶段> --context <文件>` 协议。共享持久状态实现为 `scripts/release_coordination/state.py`；网关阶段为 `scripts/release_coordination/gateway.py`。本机使用现有 Python 3.11、Node.js、Git、gh、curl、Xcode 和原发布工具，不增加运行时依赖。
 
@@ -62,9 +66,11 @@ curl退出码35表示TLS握手错误，不能整体视为网络中断；参见[c
 
 此验收只使用临时状态及模拟产物，本轮没有新的App发布或网关部署；固定APK/IPA仍为0.3.11。[完整记录](plans/2026-10-19-release-query-recovery.md)含实际源码和证据位置。已失败的历史批次依旧不可resume；本机制用于已冻结且尚未失败的批次，不回写旧失败记录。
 
+Android 单端不触发软件源同步；现役上游订阅会跳过仅有 APK 的 Release，继续选择最新含匹配 unsigned IPA 的版本，详见 [SignOs 软件源规则](https://github.com/zh0ngtian/SignOs/blob/main/distribution/source-aggregator/README.md)。本轮已只读核对该规则，无需修改上游服务。
+
 客户端每批发布前更新受控的 `release/notes.md`，只列本版本实际用户变化。GitHub Release使用冻结工作区的共享日志读取器；显式manifest日志优先，canonical manifest缺少该字段时读取文件，缺失、空白或与HEAD不一致均失败。既有iOS软件源沿用同一中文日志，不追加批次、签名或分发模板。
 
-现行客户端options仅引用GitHub仓库、既有iOS软件源URL及其私有credentials，不引用LAN发布器、签名配置、证书、profile或HTTPS OTA；网关目录／label合同保持。凭据不复制，不进入Git、命令参数或公共凭证。软件源遵循[现役上游说明](https://github.com/zh0ngtian/SignOs/blob/main/distribution/source-aggregator/README.md)，只操作既有unsigned订阅，继续以App Bundle ID `vip.loock.codexmobile` 匹配，保留原署名与展示信息，不新增签名包订阅。
+双端客户端 options 引用 GitHub 仓库、既有 iOS 软件源 URL 及其私有 credentials；Android 单端 options 仅需 kind 与 GitHub 仓库，不引用LAN发布器、签名配置、证书、profile或HTTPS OTA；网关目录／label合同保持。凭据不复制，不进入Git、命令参数或公共凭证。软件源遵循[现役上游说明](https://github.com/zh0ngtian/SignOs/blob/main/distribution/source-aggregator/README.md)，只操作既有unsigned订阅，继续以App Bundle ID `vip.loock.codexmobile` 匹配，保留原署名与展示信息，不新增签名包订阅。
 
 ## 历史独立 OTA 目标与来源（停止新批次操作）
 
@@ -93,9 +99,9 @@ prepare在整合结果门禁通过后提交与上游字节一致的公共 `.rele
 | `apk`（历史） | 旧含LAN合同保留；现行GitHub-only拒绝该阶段，不访问或更新固定APK |
 | `source` | 本仓库 unsigned IPA 的版本/构建号、GitHub URL、大小、散列及当前 gh 用户署名；核对真实同步 job，保留原开发者与展示信息；公开记录缺失散列时，经版本/URL/大小核对后调用现役 `/attest` CAS 写入该产物散列并回验，响应丢失先对账 |
 | `gateway` | 仅 `npm run build:server`；更新原已安装包的 server/bin，保留已部署 dist、依赖、start.py 与环境；核对文件摘要、实际 launchd PID/命令、监听端口和认证状态接口；健康探测使用既有 `HOST`，通配地址转回环、IPv6 加方括号、本机请求绕过代理；响应丢失不重复重启 |
-| `verify` | 等待同冻结SHA必要开发CI；现行客户端核对main/build/source，独立完整下载GitHub APK／unsigned IPA，保存 `github-release.json` 与 `distribution=github-only` 成功证据，明确 `lanApkPublished=false` 及signed IPA／OTA／固定IPA均未发布；网关核对main/gateway |
+| `verify` | 等待同冻结SHA必要开发CI；双端核对 main/build/source 并独立完整下载 GitHub APK／unsigned IPA；Android 单端仅核对 main/build 并独立完整下载 APK，不访问软件源；保存 `github-release.json` 与 `distribution=github-only` 成功证据，明确 `lanApkPublished=false` 及signed IPA／OTA／固定IPA均未发布；网关核对main/gateway |
 
-正式CI只在main冻结清单变化时触发，使用稳定作用域、`cancel-in-progress: false`、`queue: max`；gateway清单跳过客户端build/release，历史OTA清单保留原跳过行为。现行客户端额外阶段 `apk/ipa/iosbuild/sign/ota/gateway` 及未知阶段全部拒绝。手动dispatch需匹配已有batch／版本／最终SHA，不得用它另发独立版本或重复触发同批；重复正式run会被适配器拒绝并保留诊断。开发／PR检查使用另一并发组，仅执行原有必要检查，不发包。recipe、容器SHA、工具版本、Android签名及iOS unsigned策略保留。
+正式CI只在main冻结清单变化时触发，使用稳定作用域、`cancel-in-progress: false`、`queue: max`；gateway清单跳过客户端build/release，历史OTA清单保留原跳过行为。现行客户端额外阶段 `apk/ipa/iosbuild/sign/ota/gateway` 及未知阶段全部拒绝。手动dispatch需匹配已有batch／版本／最终SHA，不得用它另发独立版本或重复触发同批；重复正式run会被适配器拒绝并保留诊断。开发／PR检查使用另一并发组，仅执行原有必要检查，不发包。构建 matrix 来自冻结项目的校验输出，Android 单端仅含 ubuntu Android 作业；发布回执拒绝越界的 IPA 或 iOS 回执，双端仍必须有两端。recipe、容器SHA、工具版本、Android签名及iOS unsigned策略保留。
 
 网关依赖声明若与已安装包不同，当前阶段阻止部署，需先完成该依赖变更所需验证和关联修复；不能假装旧依赖满足新代码。仅修改协调器接入不自动要求客户端发布或网关部署；2026-10-13 的真实双端发布与网关验收是当次用户授权，不能作为后续任务的默认授权。
 
@@ -105,6 +111,7 @@ prepare在整合结果门禁通过后提交与上游字节一致的公共 `.rele
 
 ```bash
 ~/.local/bin/releasectl health
+# 仅 Android 改动用 codex-mobile-github-android；涉及 iOS 或影响 iOS 的共享改动用下列双端项目
 ~/.local/bin/releasectl register --project codex-mobile-github-only --task MY_TASK
 ~/.local/bin/releasectl heartbeat --task MY_TASK
 ~/.local/bin/releasectl heartbeat --task MY_TASK --state closing
@@ -124,7 +131,7 @@ prepare在整合结果门禁通过后提交与上游字节一致的公共 `.rele
 
 status 返回原任务 `complete`，或 `recovered` 且 `recovered_by` 指向成功子批次时，读取该 batch 的同一 `data.receipt`，逐项核对最终 SHA、任务包含证据和所有必要渠道/部署成功。排队、冻结、恢复请求或某个渠道先成功都不代表交付。原 failed 批次和错误、子批次谱系、历史包均保留。
 
-持久凭证在 `ReleaseCoordinator/receipts/<batch>.json`；本项目产物在 `ReleaseCoordinator/artifacts/codex-mobile/<batch>/`，现行客户端包含版本预留、CI两端包、各阶段证据、独立GitHub下载及 `github-release.json`。不生成旧unsigned含LAN／OTA凭证，不写固定APK／IPA，不启动局域网服务。交付回复提供本次GitHub Release、GitHub APK、unsigned IPA及iOS软件源链接，两端大小／SHA-256和IPA未签名说明；不要求旧固定APK、IPA或OTA链接。14天Actions artifacts不替代长期记录。历史编译、签名包、unsigned-release／ota-release凭证及旧目录保留，不覆盖、不删除。
+持久凭证在 `ReleaseCoordinator/receipts/<batch>.json`；本项目产物在 `ReleaseCoordinator/artifacts/codex-mobile/<batch>/`，现行客户端包含版本预留、本批实际平台 CI 包、各阶段证据、独立 GitHub 下载及 `github-release.json`。Android 单端凭证记录 `platforms=["android"]`、`softwareSourceUpdated=false`，双端记录两端平台与软件源验收。不生成旧unsigned含LAN／OTA凭证，不写固定APK／IPA，不启动局域网服务。交付回复按本批范围提供 GitHub Release／APK 链接与大小／SHA-256；包含 iOS 时另提供 unsigned IPA、软件源链接及未签名说明；不要求旧固定APK、IPA或OTA链接。14天Actions artifacts不替代长期记录。历史编译、签名包、unsigned-release／ota-release凭证及旧目录保留，不覆盖、不删除。
 
 ## 2026-10-25 范围切换与本次验收状态
 
@@ -216,3 +223,7 @@ APK 为4,755,355字节，未签名IPA为5,030,497字节；两端独立完整下�
 发布门禁261项、协调器59项、构建合同151项、引用回归273项及类型检查／服务端构建通过，规格与质量复审批准。独立90项渠道核对及19项网关核对通过，覆盖双端完整下载、IPA实际版本与未签名、既有unsigned订阅、中文日志及开发者保留、生产摘要／进程／监听／认证健康。生产只读12个会话返回54项精确来源，同版显示函数确认73处完整引用均无内部标记，23项缺失网址隐藏；原始正文及rollout字节保留，无真实测试会话。
 
 历史LAN四文件散列不变，8765／8766无监听且服务停止及disabled；不发布LAN包、签名IPA、OTA或固定IPA。复用同运行源码的一项iPhone 17 Pro正常字号竖屏验收及截图，真机安装、覆盖升级、数据保留和交互仍待验收。[发布计划](superpowers/plans/2026-11-10-web-citations-hidden-release.md)与[公共凭证](superpowers/plans/evidence/2026-11-10-web-citations-hidden-release.json)记录实际来源、双receipt摘要及产物。
+
+## 2026-11-11 平台范围与本次发布状态
+
+用户授权发布 Android 原生版本，并要求后续不涉及 iOS 时不打 iOS 包。新增独立 Android 单端项目，旧双端及历史冻结合同不改。当前待发布差异中 `src/native-ui/device-panel.ts` 的地址明文修复也由 iOS 设备表单共用，因此本次选择双端任务 `codex-mobile-20261111-native-layout-release`；起初登记的 Android 任务已在 ready 前 withdrawn，无版本或批次。本次不部署网关，待本地门禁、成功 receipt 与独立渠道验收后再记录已发布状态。

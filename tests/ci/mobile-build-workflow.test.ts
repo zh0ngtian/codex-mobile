@@ -103,7 +103,9 @@ describe("GitHub 双端自动构建", () => {
     expect(workflow.concurrency["cancel-in-progress"]).toBe(false);
     expect(workflow.jobs.build.needs).toBe("version");
     expect(workflow.jobs.build.strategy["fail-fast"]).toBe(false);
-    expect(workflow.jobs.build.strategy.matrix.include.map((job: { platform: string }) => job.platform)).toEqual(["android", "ios"]);
+    expect(workflow.jobs.version.outputs.build_matrix).toBe("${{ steps.version.outputs.build_matrix }}");
+    expect(workflow.jobs.version.outputs.platforms).toBe("${{ steps.version.outputs.platforms }}");
+    expect(workflow.jobs.build.strategy.matrix).toBe("${{ fromJSON(needs.version.outputs.build_matrix) }}");
     expect(workflow.jobs.build.env.APP_VERSION).toBe("${{ needs.version.outputs.app_version }}");
     expect(workflow.jobs.release.needs).toEqual(["version", "build"]);
     expect(workflow.jobs.release.if).toContain("release_required == 'true'");
@@ -125,6 +127,11 @@ describe("GitHub 双端自动构建", () => {
     expect(source).toContain("npm ci");
     expect(source).not.toContain("--ignore-scripts");
     expect(source).toContain("gh release create");
+    expect(workflow.jobs.release.steps.find((step: { env?: { PLATFORMS?: string } }) => step.env?.PLATFORMS).env.PLATFORMS).toBe("${{ needs.version.outputs.platforms }}");
+    expect(source).toContain('"${release_files[@]}"');
+    expect(source).not.toContain('./*.ipa');
+    expect(source).not.toContain('test -s "CodexMobile-v${APP_VERSION}-unsigned.ipa"');
+    expect(readFileSync("scripts/build-mobile.mjs", "utf8")).toContain("createBuildReceipt(context, { platform })");
     expect(source).not.toMatch(/npm publish|IOS_P12|IOS_PROFILE|secrets: inherit/);
   });
   it("开发和 PR 检查独立运行且不能发包", () => {

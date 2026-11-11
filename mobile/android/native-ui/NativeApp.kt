@@ -15,6 +15,7 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.unit.dp
@@ -56,7 +57,7 @@ internal fun NativeApp(state: NativeState) {
         ModalNavigationDrawer(drawerState = drawer,
             gesturesEnabled = snapshot.panel == null && state.preview == null,
             drawerContent = {
-                ModalDrawerSheet(Modifier.fillMaxWidth(0.88f), drawerContainerColor = MaterialTheme.colorScheme.surfaceContainerLow) {
+                ModalDrawerSheet(Modifier.fillMaxWidth(0.8f), drawerContainerColor = MaterialTheme.colorScheme.surfaceContainerLow) {
                     NativeSidebar(state, onClose = { scope.launch { drawer.close() } })
                 }
             }) {
@@ -70,10 +71,11 @@ internal fun NativeApp(state: NativeState) {
             key(panel.id, snapshot.context) {
                 ModalBottomSheet(onDismissRequest = { state.closePanel(panel) }, sheetState = sheet,
                     modifier = Modifier.testTag("native-panel")) {
+                    NativeSystemBarAppearance()
                     Column(Modifier.fillMaxWidth().imePadding().verticalScroll(rememberScrollState())
-                        .padding(horizontal = 24.dp).padding(bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text(panel.title, style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
+                        .padding(horizontal = 16.dp).padding(bottom = 20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Text(panel.title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
                             if (panel.dismissible) IconButton(onClick = { state.closePanel(panel) }) { Icon(Icons.Default.Close, "关闭") }
                         }
                         if (panel.id == "settings:root") NativeAppearanceSettings(state)
@@ -93,20 +95,20 @@ internal fun NativeApp(state: NativeState) {
 
 @Composable
 private fun NativeAppearanceSettings(state: NativeState) {
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text("外观", style = MaterialTheme.typography.titleMedium)
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text("外观", style = MaterialTheme.typography.titleSmall)
         SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
             listOf("system" to "跟随系统", "light" to "浅色", "dark" to "深色").forEachIndexed { index, (value, title) ->
                 SegmentedButton(selected = state.appearance == value, onClick = { state.saveAppearance(value) },
-                    shape = SegmentedButtonDefaults.itemShape(index, 3)) { Text(title) }
+                    shape = SegmentedButtonDefaults.itemShape(index, 3)) { Text(title, maxLines = 1) }
             }
         }
         Text("采用 Material You 配色；Android 12 及以上随系统壁纸动态取色。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text("代码块自动换行", Modifier.weight(1f))
             Switch(checked = state.codeWrap, onCheckedChange = state.saveCodeWrap)
         }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text("使用原生界面", style = MaterialTheme.typography.titleSmall)
                 Text(state.preferenceNotice.ifEmpty { "更改后在下次完整启动 App 时生效" }, style = MaterialTheme.typography.bodySmall)
