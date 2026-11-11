@@ -17,17 +17,17 @@ export function projectNativeBackends(backends: BackendConfig[], summaries: Reco
 export function projectNativePreferences(input: { language: string; transportMode: string; fontSize: string; notification: { mode: string; barkUrl: string } }): NativeSettingsPreferences {
  return { language: input.language, transportMode: input.transportMode, fontSize: input.fontSize, notificationMode: input.notification.mode, barkConfigured: !!input.notification.barkUrl.trim() };
 }
-/** 此投影只挑选字段；完整设备凭证只在显式编辑表单中进入secureField。 */
+/** 此投影只挑选字段；完整网关地址仅在显式连接表单中以明文编辑。 */
 export function projectDevicePanel(c: any): NativeSnapshot['panel'] {
  if (!c.open) return undefined;
  // 设备确认只在设备子页呈现；离开时不执行或丢弃尚未确认的操作。
  const confirmation = !c.page || c.page === 'devices' ? c.confirmation : null;
- const field = (id: string, title: string, value: string, secure = false): NativePanelItem => ({ id, kind: secure ? 'secureField' : 'textField', title, value, disabled: c.testing, command: nativeCommand('device.change', { field: id, draftId: c.draft?.id }) });
+ const field = (id: string, title: string, value: string): NativePanelItem => ({ id, kind: 'textField', title, value, disabled: c.testing, command: nativeCommand('device.change', { field: id, draftId: c.draft?.id }) });
  const choice = (id: string, title: string, value: string, options: string[][], name: string): NativePanelItem => ({ id, kind: 'singleChoice', title, value, options: options.map(([v, label]) => ({ id: v, value: v, title: t(label) })), command: nativeCommand(name), disabled: c.testing });
  const items: NativePanelItem[] = [];
  if (confirmation) {
   items.push({ id: 'device-confirmation', kind: 'text', text: confirmation.message }, nativeAction('confirm', t('确认'), confirmation.name, { id: confirmation.id, confirmed: true }), nativeAction('back', t('取消'), 'device.cancel'));
- } else if (c.draft) items.push(field('name', t('设备名称'), c.draft.name), field('gatewayUrl', t('网关地址'), c.draft.gatewayUrl, true), nativeAction('scan', t('扫描网关二维码'), 'device.scan'), { ...nativeAction('save', t(c.testing ? '正在测试…' : '测试并保存'), 'device.save'), disabled: c.testing }, { ...nativeAction('cancel', t('取消'), 'device.cancel'), disabled: c.testing });
+ } else if (c.draft) items.push(field('name', t('设备名称'), c.draft.name), field('gatewayUrl', t('网关地址'), c.draft.gatewayUrl), nativeAction('scan', t('扫描网关二维码'), 'device.scan'), { ...nativeAction('save', t(c.testing ? '正在测试…' : '测试并保存'), 'device.save'), disabled: c.testing }, { ...nativeAction('cancel', t('取消'), 'device.cancel'), disabled: c.testing });
  else {
   for (const [index, backend] of c.registry.backends.entries()) {
    const summary = c.summaries[backend.id];
