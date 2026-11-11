@@ -23,7 +23,7 @@ npm run ios:prepare -- --version 0.2.123
 
 ## Android
 
-本地工程准备与 CI 使用同一 recipe；Compose 源码位于 `android/native-ui/`，Android instrumentation 回归位于 `android/native-ui-tests/`。
+本地工程准备与 CI 使用同一 recipe，Android 直接显示共享 Web 页面，已移除 Compose 原生呈现及其专用测试。
 
 ```bash
 npm ci
@@ -31,11 +31,11 @@ npm run android:prepare -- --plan
 npm run android:prepare
 ```
 
-准备过程固定容器 SHA 与 pnpm 版本，生成图标、嵌入共享前端、执行现有桥接硬化，再用 `scripts/prepare-android-native.py` 安装 Kotlin / Compose 层和可信首页启动桥。工程生成至 `.mobile-build/android/pakeplus`；成功后替换上次生成目录，失败保留上次完整工程。`--plan` 只打印计划，不安装依赖、不构建包。
+准备过程固定容器 SHA 与 pnpm 版本，生成图标、嵌入共享前端、执行现有桥接硬化，再用 `scripts/prepare-android-host.py` 固定 WebView 容器的构建工具与系统桥依赖。工程生成至 `.mobile-build/android/pakeplus`；成功后替换上次生成目录，失败保留上次完整工程。`--plan` 只打印计划，不安装依赖、不构建包。
 
-本机需要 Node.js 22.14.0、pnpm 10.34.6（脚本通过 npm exec 固定调用）、JDK 17、Python 3、ImageMagick 和 Android SDK。`compileSdk` 为 36，最低 API 24，保留原容器 targetSdk 34；设置 `JAVA_HOME`、`ANDROID_HOME` 后会写入生成目录的 `local.properties`。原生依赖固定为 Kotlin/Compose 插件 2.1.21、AGP 8.10.1、Gradle 8.11.1 与 Compose BOM 2025.06.01，不复用系统随机版本。
+本机需要 Node.js 22.14.0、pnpm 10.34.6（脚本通过 npm exec 固定调用）、JDK 17、Python 3、ImageMagick 和 Android SDK。`compileSdk` 为36，最低 API 24，保留原容器 targetSdk 34；设置 `JAVA_HOME`、`ANDROID_HOME` 后会写入生成目录的 `local.properties`。构建继续固定 Kotlin 2.1.21、AGP 8.10.1、Gradle 8.11.1，Activity KTX 1.10.1 直接提供主窗口与独立浏览器所需的 edge-to-edge API；不安装 Compose、Markwon、Coil 或原生扫码呈现依赖。
 
-必要的开发编译可在生成目录运行 `./gradlew :app:compileDebugKotlin`。执行 instrumentation 前，为生成目录单独设置测试 `applicationId`（例如 `vip.loock.codexmobile.nativeqa`），使用独立模拟器运行 `:app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.package=com.app.pakeplus.nativeui`，避免覆盖用户安装；该修改不写回正式 recipe。测试夹具只编入 androidTest，生产入口始终连接共享真实业务。测试完成卸载 QA 应用和测试包，关闭本次模拟器。结果和边界见[Android 验收记录](../docs/android-native-verification.md)。
+必要的开发编译可在生成目录运行 `./gradlew :app:compileDebugKotlin`。本地实机验证使用独立 QA 身份，避免覆盖正式应用，当前结果见[WebView 开发验收](../docs/android-web-verification.md)；Android 原生版的旧验收保留为[历史记录](../docs/android-native-verification.md)。
 
 正式构建仍由 recipe 后续 Gradle 与 APK 校验步骤执行；本地 prepare 不分配发布版本、不签发正式产物、不更新渠道。`APP_VERSION_CODE` 沿用 `major * 1000000 + minor * 1000 + patch`；`minor` 和 `patch` 必须小于 1000，结果须为正数且不超过 2100000000。
 

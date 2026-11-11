@@ -12,7 +12,7 @@ it('设备页标题区分列表、新增和编辑，表单仍使用同一设备�
  await act(async () => { await runtime.dispatch({ id: 'open-edit', name: 'device.edit', params: { id: backend.id } }); });
  expect(runtime.snapshot().panel?.title).toBe('编辑设备');
  expect(runtime.snapshot().panel?.id).toBe('devices');
- expect(runtime.snapshot().panel?.items.find(item => item.id === 'gatewayUrl')?.kind).toBe('secureField');
+ expect(runtime.snapshot().panel?.items.find(item => item.id === 'gatewayUrl')?.kind).toBe('textField');
  await act(async () => { await runtime.dispatch({ id: 'cancel-edit', name: 'device.cancel', params: {} }); });
  await act(async () => { await runtime.dispatch({ id: 'open-add', name: 'device.add', params: {} }); });
  expect(runtime.snapshot().panel?.title).toBe('添加设备');

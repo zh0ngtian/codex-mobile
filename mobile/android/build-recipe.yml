@@ -1122,11 +1122,11 @@ steps:
       fi
       node "$RUNNER_TEMP/scan-mobile-assets.cjs" app/src/main/assets
       test -s pakeplus.keystore
-  - name: Install Android Material native interface
+  - name: Configure Android WebView host build
     shell: bash
     run: |
       set -euo pipefail
-      python3 scripts/prepare-android-native.py pakeplus/
+      python3 scripts/prepare-android-host.py pakeplus/
   - name: Build debug APK
     working-directory: pakeplus
     shell: bash

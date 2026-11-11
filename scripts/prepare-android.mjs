@@ -10,7 +10,7 @@ import { versionCode } from './resolve-mobile-version.mjs';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const names = ['Install Codex Mobile app icon', 'Build embedded frontend', 'Configure PakePlus for embedded HTML',
   'Install PakePlus dependencies', 'Generate Android project', 'Harden and test embedded Android project',
-  'Install Android Material native interface'];
+  'Configure Android WebView host build'];
 const quote = value => "'" + value.replaceAll("'", "'\\''") + "'";
 function run(command, args, cwd, env) {
   const result = spawnSync(command, args, { cwd, env, stdio: 'inherit' });
@@ -63,7 +63,7 @@ async function main() {
     try { await rename(staging, output); }
     catch (error) { if (movedPrevious) await rename(previous, output); throw error; }
     if (movedPrevious) await rm(previous, { recursive: true, force: true });
-    console.log(`\n已生成 Android 原生工程：${plan.projectPath}；未构建或发布安装包`);
+    console.log(`\n已生成 Android WebView 容器工程：${plan.projectPath}；未构建或发布安装包`);
   } catch (error) { await rm(staging, { recursive: true, force: true }); throw error; }
 }
 main().catch(error => { console.error(error.message); process.exitCode = 1; });

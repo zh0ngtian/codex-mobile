@@ -1,20 +1,12 @@
 # 原生会话业务桥接线地图
 
-本文记录原生呈现层与共享业务的实际接线。iOS SwiftUI 与 Android Compose 均复用各自既有唯一业务 WebView 中的 React、客户端与数据状态；没有新增 HTTP、WebSocket 或 RPC 协议栈。默认网页模式不会订阅原生命令，也不会计算原生会话投影。
+本文记录 iOS 原生呈现层与共享业务的实际接线。iOS SwiftUI 复用既有唯一业务 WKWebView 中的 React、客户端与数据状态；没有新增 HTTP、WebSocket 或 RPC 协议栈。网页模式不会订阅原生命令，也不会计算原生会话投影。
 
-## Android Material 呈现层（2026-11-11，源码未发布）
+## Android 使用共享网页（2026-11-11）
 
-用户确认方案 A：`mobile/android/native-ui/` 提供 Kotlin / Jetpack Compose / Material 3 界面，唯一隐藏 Android WebView 执行原 NativeRuntime。`scripts/prepare-android-native.py` 在固定 PakePlus 容器中挂载 ComposeView；原有通知、定位、文件选择、外链浏览器与更新桥继续复用。Kotlin 只管理展示 DTO、原生输入、偏好和资源呈现，不新增 RPC 或后端状态拥有者。
+用户在实机查看后要求删除 Android 原生代码并保留现有 Web 页面，覆盖此前 Material You 与标准密度方案。当前源码已移除 Android Compose 页面、AndroidNativeHost、document-start 原生启动桥和专用仪器测试，构建 recipe 不再注入原生呈现。Android 的内置 WebView 直接显示共享页面，旧原生模式偏好不再参与启动，“使用原生界面”开关仅在 iOS 可用。
 
-`bootstrap.js` 在 document-start 运行，严格限定顶层 `file:///android_asset/index.html`，不接受查询、片段或子 frame。`WebViewCompat` 消息再核对实际 WebView、主 frame、精确 URL 及每次宿主随机 token；隔离 HTML/SVG 预览和外链浏览器不安装此桥。file origin 为 null，因此来源白名单不能替代这些联合校验。系统 WebView 缺少所需能力时明确显示错误，请用户更新，不静默更换运行架构。
-
-`__CODEX_ANDROID_HOST__` 只标识宿主；原生启用仍使用既有 v1 协议与 `__CODEX_NATIVE_UI__`。网页模式不创建 NativeRuntime，保留同一检查点切换能力。Android SharedPreferences 保存下次启动模式，当前 Activity 冻结模式；检查点先成功写完 IndexedDB，再提交宿主偏好，写入失败回滚。外观及代码换行属于本机呈现偏好。
-
-草稿带 contextId、递增 revision 和 UTF-16 光标，待确认输入不被旧快照覆盖。退出动画保留旧界面时，编辑及发送回调显式携带原上下文并在 Kotlin 与共享层各校验一次；切换撤销旧焦点。面板字段和搜索带 fieldKey/fieldRevision，版本在宿主状态中全局单调并吸收历史 ACK，关闭重开不复用旧版本；ACK 后同步权威投影；关闭侧栏清除真实搜索时，输入框同步清空。发送等待回执且防重复，失败保留输入；队列主动作直接使用共享 `queue.send`。
-
-Markdown 使用原生 TextView/Markwon 与 Compose 表格。文件引用在 CommonMark 文本节点转换为受支持的编码路径，代码/链接/HTML 保护范围不转换；系统选文保留真实来源，表格单元格、代码和正文分别标记 region。Coil 2 统一支持本地 data URI、远程图片与 SVG，并在 IO 调度器解码；附件 File 仍通过原生系统选择器返回业务 WebView，不在导入桥重复转整份 base64。快照不另设小于业务合法文件的 32 MiB 丢弃阈值。HTML/SVG 预览无业务桥、持久存储或本地文件权限；音视频由原生播放器处理，文件经系统文档选择器保存。
-
-前后台由宿主同步 `__CODEX_NATIVE_ACTIVE__`，继续触发共享恢复机制。动态配色、弹簧和淡入动效不改变请求、审批、发送 UUID、草稿或缓存语义。开发测试与仍待验收边界见[Android 验收记录](android-native-verification.md)。
+Android 继续保留原有 WebView 容器、键盘/安全区、通知、定位、附件、语音、系统菜单和独立网页浏览器。共享 `src/native-ui/` 仍由 iOS 使用，不能随 Android 呈现层一起删除；原生 DTO、命令、检查点与 iOS SwiftUI 语义保持原有实现。Android 旧实现及验收仅作[历史证据](android-native-verification.md)，当前渠道0.3.45仍是此前原生版，本轮删除尚未正式发布。
 
 ## AgentApp 呈现层
 

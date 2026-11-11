@@ -8,8 +8,9 @@
 - [仓库协作约定](../AGENTS.md)与 [Git 提交规范](commit-conventions.md)：默认验证后合入 main、提交推送；main 在修改期间有新提交才需整合回归，默认不发布。
 - [发布协调说明](release-coordination.md)：仅在明确要求发布或部署时使用的 releasectl 配置、适配器入口、必要验证、共同凭证及实际验收状态。
 - [历史 iOS OTA 资料](ios-ota-release.md)：停止新批次操作；仅保留旧包签名身份、原固定渠道和安装诊断。现行unsigned分发使用上方发布协调说明。
-- [iOS / Android 原生界面桥接](native-ui-business-bridge.md)：双向切换、检查点与共享业务边界。
-- [Android 原生开发验收](android-native-verification.md)：Material You 原生实现、独立 QA 安装身份、实际开发验证与真机待验收边界。
+- [iOS 原生界面桥接](native-ui-business-bridge.md)：iOS 双向切换、检查点与共享业务边界；Android 使用现有 Web 页面。
+- [Android WebView 开发验收](android-web-verification.md)：删除 Compose 呈现后的构建、回归与独立 QA 实机结果；当前源码未正式发布。
+- [Android 原生开发验收（历史）](android-native-verification.md)：已移除的 Material You 实现、独立 QA 安装及当时验证边界。
 - [iOS 模拟器验证](ios-simulator-verification.md)：可复用操作步骤与按日期保留的验收结果。
 - [2026-10-18 关注会话加载耗时](performance/2026-10-18-conversation-loading/README.md)：分阶段计时、重复打开/重启后首次打开的分布及脱敏原始样本；模拟器Debug数据。
 - [2026-10-19 冷启动边栏列表耗时](performance/2026-10-19-sidebar-cold-start/README.md)：30次进程冷启动的首批会话、全部分组、阶段耗时及请求形态；模拟器Debug数据，终点为原生快照派发。
