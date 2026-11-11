@@ -57,7 +57,9 @@ internal fun NativePanelItemView(state: NativeState, item: NativeItem, scope: St
             }
         }
         "action" -> FilledTonalButton(onClick = { state.dispatch(item.command) }, enabled = !item.disabled,
-            modifier = Modifier.fillMaxWidth().heightIn(min = NativeSpacing.touchTarget).testTag("native-action-${item.id}")) {
+            modifier = Modifier.fillMaxWidth().heightIn(min = NativeSpacing.touchTarget).testTag("native-action-${item.id}"),
+            // 长说明会撑高列表项，胶囊弧线会裁掉首尾行；内容型操作使用标准容器圆角。
+            shape = if (item.text.isNotEmpty()) MaterialTheme.shapes.large else ButtonDefaults.shape) {
             Column(Modifier.fillMaxWidth().padding(vertical = NativeSpacing.small), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(item.title, style = MaterialTheme.typography.labelLarge)
                 if (item.text.isNotEmpty()) Text(item.text, style = MaterialTheme.typography.bodyMedium)

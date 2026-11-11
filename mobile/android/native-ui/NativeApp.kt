@@ -63,9 +63,13 @@ internal fun NativeApp(state: NativeState) {
                     NativeSidebar(state, onClose = { scope.launch { drawer.close() } })
                 }
             }) {
-            AnimatedContent(targetState = snapshot, contentKey = { it.context }, label = "conversation-navigation",
+            // 转场只跟踪会话身份，避免尺寸缓存以每次业务快照为键保留整份旧页面。
+            AnimatedContent(targetState = snapshot.context, label = "conversation-navigation",
                 transitionSpec = { (fadeIn(NativeMotion.effects()) + slideInHorizontally(NativeMotion.spatial()) { it / 12 })
-                    .togetherWith(fadeOut(NativeMotion.effects()) + slideOutHorizontally(NativeMotion.spatial()) { -it / 16 }) }) { page ->
+                    .togetherWith(fadeOut(NativeMotion.effects()) + slideOutHorizontally(NativeMotion.spatial()) { -it / 16 }) }) { context ->
+                // 当前页持续更新，离开的页面仅保留退场所需的最后一份快照。
+                var page by remember(context) { mutableStateOf(snapshot) }
+                if (snapshot.context == context) page = snapshot
                 NativeConversation(state, page, onMenu = { scope.launch { drawer.open() } })
             }
         }
