@@ -7,6 +7,8 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -20,8 +22,10 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
-import coil.compose.AsyncImage
 
 @Composable
 internal fun NativeComposer(state: NativeState, snapshot: NativeSnapshot) {
@@ -43,12 +47,13 @@ internal fun NativeComposer(state: NativeState, snapshot: NativeSnapshot) {
         if (snapshot.queued.isNotEmpty()) {
             snapshot.queued.forEach { queue ->
                 Card(Modifier.fillMaxWidth().padding(bottom = 6.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
-                    Column(Modifier.padding(12.dp)) {
-                        Text(queue.subtitle.ifEmpty { "排队中" }, style = MaterialTheme.typography.labelSmall)
+                    Column(Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) {
+                        Text(queue.subtitle.ifEmpty { "排队中" }, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSecondaryContainer)
                         Text(queue.title, maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)
-                        Row {
-                            if (queue.command != null) TextButton(onClick = { state.dispatch(queue.command) }) { Text(if (snapshot.busy) "改为引导" else "重试") }
-                            queue.actions.forEach { action -> TextButton(onClick = { state.dispatch(action.command) }, enabled = !action.disabled) { Text(action.title) } }
+                        Row(Modifier.horizontalScroll(rememberScrollState())) {
+                            if (queue.command != null) TextButton(onClick = { state.dispatch(queue.command) }, modifier = Modifier.testTag("native-queue-primary-${queue.id}")) { Text(if (snapshot.busy) "改为引导" else "重试") }
+                            queue.actions.forEach { action -> TextButton(onClick = { state.dispatch(action.command) }, enabled = !action.disabled,
+                                modifier = Modifier.testTag("native-queue-action-${queue.id}-${action.id}")) { Text(action.title) } }
                         }
                     }
                 }
@@ -79,16 +84,23 @@ internal fun NativeComposer(state: NativeState, snapshot: NativeSnapshot) {
             }
         }
         }
-        Surface(shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.surfaceContainerHigh, tonalElevation = 1.dp) {
-            Column(Modifier.fillMaxWidth().padding(8.dp)) {
-                TextField(value = state.draft, onValueChange = { state.editDraft(it, snapshot.context) }, enabled = !snapshot.readOnly && snapshot.context.isNotEmpty() && snapshot.context == state.snapshot.context,
-                    placeholder = { Text(if (snapshot.readOnly) "当前会话只读" else if (snapshot.busy) "继续输入，消息将排队发送" else "发消息给 Codex…") },
-                    minLines = 1, maxLines = 7, modifier = Modifier.fillMaxWidth().focusRequester(requester).testTag("native-composer-input"),
-                    colors = TextFieldDefaults.colors(focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh, disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                        focusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent, unfocusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
-                        disabledIndicatorColor = androidx.compose.ui.graphics.Color.Transparent))
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Surface(shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh, tonalElevation = 1.dp,
+            modifier = Modifier.testTag("native-composer-surface")) {
+            Column(Modifier.fillMaxWidth().padding(horizontal = 6.dp).padding(top = 14.dp, bottom = 4.dp)) {
+                BasicTextField(value = state.draft, onValueChange = { state.editDraft(it, snapshot.context) },
+                    enabled = !snapshot.readOnly && snapshot.context.isNotEmpty() && snapshot.context == state.snapshot.context,
+                    textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
+                    cursorBrush = SolidColor(MaterialTheme.colorScheme.primary), minLines = 1, maxLines = 6,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp).heightIn(min = 24.dp)
+                        .focusRequester(requester).testTag("native-composer-input"),
+                    decorationBox = { input ->
+                        Box {
+                            if (state.draft.text.isEmpty()) Text(if (snapshot.readOnly) "当前会话只读" else if (snapshot.busy) "继续输入，消息将排队发送" else "发消息给 Codex…",
+                                style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            input()
+                        }
+                    })
+                Row(Modifier.fillMaxWidth().padding(top = 6.dp).testTag("native-composer-tools"), verticalAlignment = Alignment.CenterVertically) {
                     Box {
                         IconButton(onClick = { attachments = true }, enabled = !snapshot.readOnly) { Icon(Icons.Default.Add, "添加附件") }
                         DropdownMenu(expanded = attachments, onDismissRequest = { attachments = false }) {
@@ -99,16 +111,24 @@ internal fun NativeComposer(state: NativeState, snapshot: NativeSnapshot) {
                             }
                         }
                     }
-                    Box(Modifier.weight(1f)) {
-                        TextButton(onClick = { configuration = "model" }, enabled = !snapshot.readOnly && !snapshot.pending, modifier = Modifier.fillMaxWidth()) {
-                            Text(listOf(snapshot.model, snapshot.effort).filter(String::isNotEmpty).joinToString(" · "), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelLarge)
-                            Icon(Icons.Default.KeyboardArrowDown, null, Modifier.size(16.dp))
-                        }
-                        NativeConfigurationMenu(configuration == "model", { configuration = "" }, state, snapshot, "模型", snapshot.models, snapshot.modelValue, "model.select", snapshot.efforts)
-                    }
                     Box {
                         IconButton(onClick = { configuration = "permission" }, enabled = !snapshot.readOnly && !snapshot.pending) { Icon(Icons.Default.Security, "权限模式") }
                         NativeConfigurationMenu(configuration == "permission", { configuration = "" }, state, snapshot, "权限模式", snapshot.permissions, snapshot.permissionValue, "permission.select")
+                    }
+                    // 只滚动选择区，长名称不压缩字体，也不会把停止/发送挤出屏幕。
+                    BoxWithConstraints(Modifier.weight(1f)) {
+                    val choiceWidth = maxWidth.coerceAtMost(180.dp)
+                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).testTag("native-configuration-scroll"),
+                        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Box {
+                            NativeComposerChoice(snapshot.model, "模型", "native-model", choiceWidth, !snapshot.readOnly && !snapshot.pending && snapshot.models.isNotEmpty()) { configuration = "model" }
+                            NativeConfigurationMenu(configuration == "model", { configuration = "" }, state, snapshot, "模型", snapshot.models, snapshot.modelValue, "model.select")
+                        }
+                        Box {
+                            NativeComposerChoice(snapshot.effort.ifEmpty { "强度" }, "推理强度", "native-effort", choiceWidth, !snapshot.readOnly && !snapshot.pending && snapshot.efforts.isNotEmpty()) { configuration = "effort" }
+                            NativeConfigurationMenu(configuration == "effort", { configuration = "" }, state, snapshot, "推理强度", snapshot.efforts, snapshot.effortValue, "effort.select")
+                        }
+                    }
                     }
                     Box {
                         IconButton(onClick = { configuration = "speed" }, enabled = !snapshot.readOnly && !snapshot.pending) { Icon(Icons.Default.Bolt, "运行速度", tint = if (snapshot.speedValue in listOf("priority", "fast")) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) }
@@ -116,7 +136,7 @@ internal fun NativeComposer(state: NativeState, snapshot: NativeSnapshot) {
                     }
                     if (snapshot.canInterrupt) IconButton(onClick = { state.dispatch(snapshot.command("turn.stop")) }, modifier = Modifier.testTag("native-stop")) { Icon(Icons.Default.StopCircle, "停止执行", tint = MaterialTheme.colorScheme.error) }
                     FilledIconButton(onClick = { state.send(snapshot.context); focus.clearFocus() }, enabled = snapshot.canSend && !state.sending && !snapshot.readOnly && snapshot.context == state.snapshot.context,
-                        modifier = Modifier.size(44.dp).testTag("native-send")) {
+                        modifier = Modifier.size(48.dp).testTag("native-send")) {
                         AnimatedContent(targetState = state.sending, label = "send-state") { sending ->
                             if (sending) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) else Icon(Icons.Default.ArrowUpward, "发送")
                         }
@@ -131,8 +151,21 @@ internal fun NativeComposer(state: NativeState, snapshot: NativeSnapshot) {
 }
 
 @Composable
+private fun NativeComposerChoice(title: String, label: String, tag: String, maxWidth: androidx.compose.ui.unit.Dp, enabled: Boolean, onClick: () -> Unit) {
+    Box(Modifier.height(48.dp), contentAlignment = Alignment.Center) {
+        Surface(onClick = onClick, enabled = enabled, shape = RoundedCornerShape(50),
+            color = MaterialTheme.colorScheme.surfaceContainerHighest,
+            modifier = Modifier.height(34.dp).widthIn(max = maxWidth).testTag(tag).semantics { contentDescription = "$label：$title" }) {
+            Box(Modifier.padding(horizontal = 10.dp), contentAlignment = Alignment.Center) {
+                Text(title, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
+    }
+}
+
+@Composable
 private fun NativeConfigurationMenu(expanded: Boolean, dismiss: () -> Unit, state: NativeState, snapshot: NativeSnapshot,
-    title: String, options: List<NativeOption>, selected: String, command: String, efforts: List<NativeOption> = emptyList()) {
+    title: String, options: List<NativeOption>, selected: String, command: String) {
     // 弹出时捕获创建上下文，旧菜单不会把选择发送到新会话。
     val context = remember(expanded) { snapshot.context }
     DropdownMenu(expanded = expanded, onDismissRequest = dismiss) {
@@ -142,11 +175,5 @@ private fun NativeConfigurationMenu(expanded: Boolean, dismiss: () -> Unit, stat
         }, leadingIcon = { if (option.value == selected) Icon(Icons.Default.Check, null) }, onClick = {
             dismiss(); state.dispatch(NativeCommand(command, params("value" to option.value, "contextId" to context)))
         }) }
-        if (efforts.isNotEmpty()) {
-            HorizontalDivider(); Text("推理强度", Modifier.padding(16.dp), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
-            efforts.forEach { option -> DropdownMenuItem(text = { Text(option.title) }, leadingIcon = { if (option.value == snapshot.effortValue) Icon(Icons.Default.Check, null) }, onClick = {
-                dismiss(); state.dispatch(NativeCommand("effort.select", params("value" to option.value, "contextId" to context)))
-            }) }
-        }
     }
 }

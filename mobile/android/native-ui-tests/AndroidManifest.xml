@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!-- 与 MainActivity 一样在首次窗口 attach 前确定模式，避免测试默认自动选中 adjustPan。 -->
+        <activity android:name="androidx.activity.ComponentActivity"
+            android:windowSoftInputMode="adjustResize" />
+    </application>
+</manifest>

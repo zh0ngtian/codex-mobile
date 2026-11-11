@@ -23,6 +23,9 @@ def prepare(project: Path, root: Path) -> None:
     test_target.mkdir(parents=True, exist_ok=True)
     for source in (root / "mobile/android/native-ui-tests").glob("*.kt"):
         shutil.copyfile(source, test_target / source.name)
+    debug_manifest = project / "app/src/debug/AndroidManifest.xml"
+    debug_manifest.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(root / "mobile/android/native-ui-tests/AndroidManifest.xml", debug_manifest)
     assets = project / "app/src/main/assets"
     assets.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(template / "bootstrap.js", assets / "native-ui-bootstrap.js")

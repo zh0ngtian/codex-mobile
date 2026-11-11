@@ -18,6 +18,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -28,36 +29,51 @@ import androidx.compose.ui.unit.dp
 internal fun NativeSidebar(state: NativeState, onClose: () -> Unit) {
     val snapshot = state.snapshot
     val search = state.search
-    var devices by remember { mutableStateOf(false) }
+    var more by remember { mutableStateOf(false) }
+    var searchVisible by remember { mutableStateOf(search.isNotEmpty()) }
+    val focus = androidx.compose.ui.platform.LocalFocusManager.current
+    LaunchedEffect(snapshot.sidebarOpen) { if (!snapshot.sidebarOpen) { searchVisible = false; more = false } }
     Column(Modifier.fillMaxSize().testTag("native-sidebar")) {
-        Row(Modifier.fillMaxWidth().padding(start = 24.dp, end = 12.dp, top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("Codex", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-            IconButton(onClick = { state.dispatch(NativeCommand("navigation.refresh")) }) { Icon(Icons.Default.Refresh, "刷新会话") }
-            IconButton(onClick = onClose) { Icon(Icons.Default.Close, "关闭侧栏") }
-        }
-        OutlinedTextField(value = search, onValueChange = state::editSearch,
-            placeholder = { Text("搜索会话") }, leadingIcon = { Icon(Icons.Default.Search, null) },
-            trailingIcon = { if (search.isNotEmpty()) IconButton(onClick = { state.editSearch("") }) { Icon(Icons.Default.Close, "清除搜索") } },
-            singleLine = true, shape = MaterialTheme.shapes.extraLarge,
-            modifier = Modifier.fillMaxWidth().padding(16.dp).testTag("native-search"))
-        Box(Modifier.padding(horizontal = 16.dp)) {
-            FilledTonalButton(onClick = { devices = true }, modifier = Modifier.fillMaxWidth()) {
-                Icon(Icons.Default.Devices, null); Spacer(Modifier.width(8.dp))
-                Text(snapshot.backends.find { it.string("id") == snapshot.raw.string("listBackendId") }?.string("title") ?: "全部设备", modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Icon(Icons.Default.KeyboardArrowDown, null)
-            }
-            DropdownMenu(expanded = devices, onDismissRequest = { devices = false }) {
-                DropdownMenuItem(text = { Text("全部设备") }, onClick = { devices = false; state.dispatch(NativeCommand("backend.select", params("id" to "all"))) })
-                snapshot.backends.forEach { backend ->
-                    DropdownMenuItem(text = { Text(backend.string("title")) }, leadingIcon = { ConnectionDot(backend.optBoolean("connected")) }, onClick = {
-                        devices = false; state.dispatch(NativeCommand("backend.select", params("id" to backend.string("id"))))
-                    })
+        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = {
+                searchVisible = !searchVisible
+                if (!searchVisible) { state.editSearch(""); focus.clearFocus() }
+            }) { Icon(if (searchVisible) Icons.Default.Close else Icons.Default.Search, if (searchVisible) "关闭搜索" else "搜索会话", Modifier.size(22.dp)) }
+            IconButton(onClick = { state.dispatch(NativeCommand("navigation.refresh")) }) { Icon(Icons.Default.Refresh, "刷新会话", Modifier.size(22.dp)) }
+            Box {
+                IconButton(onClick = { more = true }) { Icon(Icons.Default.MoreHoriz, "侧栏菜单", Modifier.size(22.dp)) }
+                DropdownMenu(expanded = more, onDismissRequest = { more = false }) {
+                    if (snapshot.backends.isNotEmpty()) {
+                        Text("设备范围", Modifier.padding(horizontal = 16.dp, vertical = 8.dp), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                        DropdownMenuItem(text = { Text("全部设备") }, leadingIcon = {
+                            Icon(if (snapshot.raw.string("listBackendId") in listOf("", "all")) Icons.Default.Check else Icons.Default.Devices, null)
+                        }, onClick = { more = false; state.dispatch(NativeCommand("backend.select", params("id" to "all"))) })
+                        snapshot.backends.forEach { backend ->
+                            DropdownMenuItem(text = { Text(backend.string("title")) }, leadingIcon = {
+                                if (backend.string("id") == snapshot.raw.string("listBackendId")) Icon(Icons.Default.Check, null)
+                                else ConnectionDot(backend.optBoolean("connected"))
+                            }, onClick = { more = false; state.dispatch(NativeCommand("backend.select", params("id" to backend.string("id")))) })
+                        }
+                        HorizontalDivider()
+                    }
+                    DropdownMenuItem(text = { Text("草稿箱") }, leadingIcon = { Icon(Icons.Default.Drafts, null) }, onClick = { more = false; onClose(); state.dispatch(NativeCommand("drafts.open")) })
+                    DropdownMenuItem(text = { Text("管理设备") }, leadingIcon = { Icon(Icons.Default.Devices, null) }, onClick = { more = false; onClose(); state.dispatch(NativeCommand("settings.open", params("id" to "devices"))) })
+                    DropdownMenuItem(text = { Text("设置") }, leadingIcon = { Icon(Icons.Default.Settings, null) }, onClick = { more = false; onClose(); state.dispatch(NativeCommand("settings.open", params("id" to "settings"))) })
                 }
-                HorizontalDivider()
-                DropdownMenuItem(text = { Text("管理设备") }, leadingIcon = { Icon(Icons.Default.Settings, null) }, onClick = {
-                    devices = false; onClose(); state.dispatch(NativeCommand("settings.open", params("id" to "devices")))
-                })
             }
+            Spacer(Modifier.weight(1f))
+            FilledTonalButton(onClick = { state.dispatch(NativeCommand("thread.new")); onClose() }, contentPadding = PaddingValues(horizontal = 12.dp), modifier = Modifier.testTag("native-new-chat")) {
+                Icon(Icons.Default.Edit, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Chat")
+            }
+        }
+        AnimatedVisibility(searchVisible, enter = expandVertically(NativeMotion.spatial()) + fadeIn(NativeMotion.effects()), exit = shrinkVertically(NativeMotion.spatial()) + fadeOut(NativeMotion.effects())) {
+            val requester = remember { androidx.compose.ui.focus.FocusRequester() }
+            LaunchedEffect(Unit) { requester.requestFocus() }
+            OutlinedTextField(value = search, onValueChange = state::editSearch,
+                placeholder = { Text("搜索会话") }, leadingIcon = { Icon(Icons.Default.Search, null, Modifier.size(20.dp)) },
+                trailingIcon = { if (search.isNotEmpty()) IconButton(onClick = { state.editSearch("") }) { Icon(Icons.Default.Close, "清除搜索") } },
+                singleLine = true, textStyle = MaterialTheme.typography.bodyMedium, shape = MaterialTheme.shapes.extraLarge,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp).padding(bottom = 8.dp).focusRequester(requester).testTag("native-search"))
         }
         LazyColumn(Modifier.weight(1f).fillMaxWidth().padding(top = 8.dp), contentPadding = PaddingValues(bottom = 12.dp)) {
             if (snapshot.navigationLoading) item { LinearProgressIndicator(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp)) }
@@ -66,10 +82,10 @@ internal fun NativeSidebar(state: NativeState, onClose: () -> Unit) {
                     val rotation by animateFloatAsState(if (group.collapsed) -90f else 0f, NativeMotion.spatial(), label = "project-chevron")
                     Row(Modifier.fillMaxWidth().combinedClickable(enabled = group.command != null,
                         onClick = { state.dispatch(group.command) }, onLongClick = {})
-                        .padding(start = 24.dp, end = 12.dp, top = 12.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        .heightIn(min = 48.dp).padding(start = 20.dp, end = 12.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(if (group.category == "pinned") Icons.Default.PushPin else Icons.Default.Folder, null,
                             tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(10.dp))
+                        Spacer(Modifier.width(8.dp))
                         Column(Modifier.weight(1f)) {
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Text(group.title, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
@@ -100,13 +116,7 @@ internal fun NativeSidebar(state: NativeState, onClose: () -> Unit) {
                 }
             }
         }
-        Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = { onClose(); state.dispatch(NativeCommand("settings.open", params("id" to "settings"))) }) { Icon(Icons.Default.Settings, "设置") }
-            IconButton(onClick = { onClose(); state.dispatch(NativeCommand("drafts.open")) }) { Icon(Icons.Default.Drafts, "草稿箱") }
-            Spacer(Modifier.weight(1f))
-            ExtendedFloatingActionButton(onClick = { state.dispatch(NativeCommand("thread.new")); onClose() },
-                icon = { Icon(Icons.Default.Edit, null) }, text = { Text("新对话") }, modifier = Modifier.testTag("native-new-chat"))
-        }
+
     }
 }
 
@@ -118,19 +128,21 @@ private fun NativeThreadRow(state: NativeState, entry: NativeEntry, onClose: () 
     var title by remember(entry.title) { mutableStateOf(entry.title) }
     Box {
         Surface(onClick = { state.dispatch(entry.command); onClose() },
-            shape = MaterialTheme.shapes.extraLarge,
+            shape = MaterialTheme.shapes.small,
             color = if (entry.selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainerLow,
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp)) {
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 1.dp)) {
             Row(Modifier.combinedClickable(onClick = { state.dispatch(entry.command); onClose() }, onLongClick = { expanded = true })
-                .padding(start = 16.dp, end = 4.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                if (entry.running) { CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp); Spacer(Modifier.width(10.dp)) }
-                else if (entry.unread) { Badge(); Spacer(Modifier.width(10.dp)) }
-                Column(Modifier.weight(1f).padding(vertical = 8.dp)) {
-                    Text(entry.title, maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = if (entry.unread || entry.selected) FontWeight.SemiBold else FontWeight.Normal)
+                .heightIn(min = 48.dp).padding(start = 12.dp, end = 0.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f).padding(vertical = 6.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(entry.title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.weight(1f, fill = false), fontWeight = if (entry.unread || entry.selected) FontWeight.Medium else FontWeight.Normal)
+                        if (entry.running) CircularProgressIndicator(Modifier.size(12.dp), strokeWidth = 2.dp)
+                        else if (entry.unread) Badge(Modifier.size(6.dp), containerColor = MaterialTheme.colorScheme.primary)
+                    }
                     if (entry.subtitle.isNotEmpty()) Text(entry.subtitle, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                IconButton(onClick = { expanded = true }) { Icon(Icons.Default.MoreVert, "会话操作", Modifier.size(18.dp)) }
+                IconButton(onClick = { expanded = true }, modifier = Modifier.size(48.dp)) { Icon(Icons.Default.MoreVert, "会话操作", Modifier.size(18.dp)) }
             }
         }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {

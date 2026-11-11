@@ -19,7 +19,7 @@ import java.util.Date
 internal fun NativeMessageView(state: NativeState, snapshot: NativeSnapshot, message: NativeMessage, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val user = message.role == "user"
-    Column(modifier.fillMaxWidth().animateContentSize(NativeMotion.spatial()), verticalArrangement = Arrangement.spacedBy(10.dp),
+    Column(modifier.fillMaxWidth().animateContentSize(NativeMotion.spatial()), verticalArrangement = Arrangement.spacedBy(6.dp),
         horizontalAlignment = if (user) Alignment.End else Alignment.Start) {
         if (message.commentary.isNotEmpty()) {
             var expanded by remember(message.id) { mutableStateOf(message.commentaryRunning) }
@@ -57,7 +57,7 @@ internal fun NativeMessageView(state: NativeState, snapshot: NativeSnapshot, mes
             }
             if (message.text.isNotEmpty()) {
                 if (user) Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.secondaryContainer, modifier = Modifier.widthIn(max = 340.dp)) {
-                    Box(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) { NativeMarkdown(state, message.text, message.quoteSource, plain = true) }
+                    Box(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) { NativeMarkdown(state, message.text, message.quoteSource, plain = true) }
                 } else NativeMarkdown(state, message.text, message.quoteSource)
             }
             message.blocks.filter { it.id != message.raw.string("commentaryBlockId") || message.commentary.isEmpty() }

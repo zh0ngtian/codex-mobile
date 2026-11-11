@@ -1,6 +1,7 @@
 package com.app.pakeplus.nativeui
 
 import androidx.compose.ui.test.*
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.app.pakeplus.MainActivity
@@ -26,6 +27,9 @@ class NativeHostTest {
         ui.waitUntil(10000) { ui.onAllNodesWithTag("native-field-name").fetchSemanticsNodes().isNotEmpty() }
         ui.onNodeWithTag("native-field-name").performTextReplacement("临时验收，不保存")
         ui.onNodeWithTag("native-field-gatewayUrl").assertIsDisplayed()
+            .assert(SemanticsMatcher.keyNotDefined(SemanticsProperties.Password))
+            .performTextReplacement("wss://example.invalid/codex?token=visible-address")
+        ui.onNodeWithTag("native-field-gatewayUrl").assertTextContains("wss://example.invalid/codex?token=visible-address")
         ui.onNodeWithTag("native-action-cancel").performScrollTo().performClick()
         ui.waitUntil(10000) { ui.onAllNodesWithTag("native-action-add").fetchSemanticsNodes().isNotEmpty() }
         ui.onNodeWithContentDescription("关闭").performClick()
