@@ -1,6 +1,7 @@
 import { renderHook, cleanup } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { createWorkspaceAdapter, useNativeConversationAdapter, type NativeWorkspaceController } from '../../src/native-ui/workspace-adapter';
+import { withProjectWorktree } from '../../src/features/threads/project-worktrees';
 function controller(overrides: Partial<NativeWorkspaceController> = {}): NativeWorkspaceController {
  return { backend: { id: 'b', name: 'Mac', token: 'SECRET', baseUrl: 'https://gateway.invalid', enabled: true, order: 0 },
  active: { id: 't', name: '真实会话', turns: [] }, contextId: 'b:t:1', connection: 'online', draft: '输入', draftImages: [], draftFiles: [], busy: true, readOnly: false,
@@ -12,6 +13,13 @@ function controller(overrides: Partial<NativeWorkspaceController> = {}): NativeW
  ...overrides };
 }
 describe('核心会话controller适配', () => {
+ it('原生页头显示桌面项目，快照保留真实执行目录', () => {
+  const active = withProjectWorktree({ id: 'moved', cwd: '/projects/codex-mobile', turns: [] }, {}, {
+   byThreadId: { moved: '/projects/freecad-mcp' }, byProjectId: {}, extraRoots: {},
+  });
+  const snapshot = createWorkspaceAdapter(controller({ active }), { panelId: null, query: '', setPanel() {}, setQuery() {} }).snapshot;
+  expect(snapshot).toMatchObject({ projectName: 'freecad-mcp', cwd: '/projects/codex-mobile' });
+ });
  it.each(['/', '/Users/test'])('无项目会话的上游执行目录为%s时，原生项目目标保持为空且不改写业务目录', cwd => {
   const active = { id: 'projectless', cwd, isProjectless: true, turns: [] };
   const snapshot = createWorkspaceAdapter(controller({ active }), { panelId: null, query: '', setPanel() {}, setQuery() {} }).snapshot;

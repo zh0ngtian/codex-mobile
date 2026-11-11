@@ -21,6 +21,25 @@ describe("设备网关探测", () => {
       projects: ["/main", "/separate"], projectlessThreadIds: [], projectWorktrees: { "/main": ["/task"] },
     });
   });
+  it("解析桌面项目归属时保留共享根目录，忽略未登记项目和无效值", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+      projects: ["/cad", "/mobile"],
+      projectMembership: {
+        byThreadId: { moved: "/cad", foreign: "/unknown", invalid: 42 },
+        byProjectId: { "native-cad": "/cad", invalid: "/unknown" },
+        extraRoots: { "/cad": ["/mobile", "/mobile", "/cad", "/unknown"], "/unknown": ["/cad"] },
+      },
+    }))));
+    expect(await fetchBackendProjectState(backend)).toEqual({
+      projects: ["/cad", "/mobile"],
+      projectlessThreadIds: [],
+      projectMembership: {
+        byThreadId: { moved: "/cad" },
+        byProjectId: { "native-cad": "/cad" },
+        extraRoots: { "/cad": ["/mobile"] },
+      },
+    });
+  });
   afterEach(() => vi.unstubAllGlobals());
   it("流式探测完成 initialize 和只读 RPC 后关闭探测连接", async () => {
     const sent: any[] = [];

@@ -1,6 +1,7 @@
 import { startLoadRpc, endLoadRpc, type LoadRpcProfile } from '../diagnostics/conversation-load-profile';
 import { t } from "../i18n";
 import type { HttpRequestPriority } from "../backends/http-request-scheduler";
+import type { DesktopProjectMembership } from "../../server/codex-projects";
 
 const MAX_APP_SERVER_MESSAGE_BYTES = 16 * 1024 * 1024;
 
@@ -77,6 +78,7 @@ export class AppServerConnectionUnavailableError extends Error {
 
 export class AppServerClient {
   projectWorktrees: Record<string, string[]> = {};
+  projectMembership?: DesktopProjectMembership;
   /** Codex Mobile 网关协议；新接口失败按错误呈现，不退回逐条扫描。 */
   readonly sidebarIndex = true;
   private nextId = 1;

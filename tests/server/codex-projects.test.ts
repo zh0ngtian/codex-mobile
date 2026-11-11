@@ -5,6 +5,32 @@ import {
 } from "../../server/codex-projects.js";
 
 describe("Codex 项目目录", () => {
+  it("读取本机明确指定的项目和迁移后的项目身份，保留共享的次级根目录", () => {
+    const state = parseCodexProjectState(JSON.stringify({
+      "local-projects": {
+        cad: { id: "cad", rootPaths: ["/cad", "/mobile"] },
+        mobile: { id: "mobile", rootPaths: ["/mobile"] },
+      },
+      "thread-project-assignments": {
+        target: { projectKind: "local", projectId: "cad" },
+        remote: { projectKind: "local", projectId: "cad" },
+        projectless: { projectKind: "local", projectId: "cad" },
+        missing: { projectKind: "local", projectId: "missing" },
+      },
+      "thread-project-membership-host-ids": { target: "local", remote: "other-host" },
+      "projectless-thread-ids": ["projectless"],
+      "app-server-project-id-by-legacy-project-id-by-host": {
+        "local:/codex": { cad: "native-cad" },
+        "other-host:/codex": { cad: "remote-cad" },
+      },
+    }), "/codex");
+    expect(state.projectMembership).toEqual({
+      byThreadId: { target: "/cad" },
+      byProjectId: { cad: "/cad", mobile: "/mobile", "native-cad": "/cad" },
+      extraRoots: { "/cad": ["/mobile"] },
+    });
+  });
+
   it("按桌面端 project-order 读取本地项目，未排序项目在前并去重目录", () => {
     expect(parseCodexProjectDirectories(JSON.stringify({
       "local-projects": {
