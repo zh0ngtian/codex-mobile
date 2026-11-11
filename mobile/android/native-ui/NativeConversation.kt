@@ -45,11 +45,11 @@ internal fun NativeConversation(state: NativeState, snapshot: NativeSnapshot, on
         topBar = {
             TopAppBar(title = {
                 Column {
-                    Text(if (snapshot.threadId.isEmpty()) "新对话" else snapshot.title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleMedium)
+                    Text(if (snapshot.threadId.isEmpty()) "新对话" else snapshot.title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleLarge)
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         ConnectionDot(snapshot.connection == "online")
                         Text(listOf(snapshot.projectName, snapshot.backendName).filter(String::isNotEmpty).joinToString(" · ").ifEmpty { "Codex Mobile" },
-                            maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }, navigationIcon = {
@@ -72,7 +72,7 @@ internal fun NativeConversation(state: NativeState, snapshot: NativeSnapshot, on
                         DropdownMenuItem(text = { Text("设置") }, onClick = { more = false; state.dispatch(NativeCommand("settings.open", params("id" to "settings"))) })
                     }
                 }
-            }, expandedHeight = 56.dp, colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background))
+            }, windowInsets = WindowInsets(0, 0, 0, 0), colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface))
         }, bottomBar = {
             if (snapshot.backends.isNotEmpty()) NativeComposer(state, snapshot)
         }) { padding ->
@@ -83,8 +83,8 @@ internal fun NativeConversation(state: NativeState, snapshot: NativeSnapshot, on
             val error = state.localError.ifEmpty { snapshot.error }
             AnimatedVisibility(error.isNotEmpty(), enter = fadeIn(NativeMotion.effects()), exit = fadeOut(NativeMotion.effects())) {
                 Surface(color = MaterialTheme.colorScheme.errorContainer, modifier = Modifier.fillMaxWidth()) {
-                    Row(Modifier.padding(start = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text(error, modifier = Modifier.weight(1f).padding(vertical = 12.dp), style = MaterialTheme.typography.bodySmall)
+                    Row(Modifier.padding(start = NativeSpacing.medium, end = NativeSpacing.small), verticalAlignment = Alignment.CenterVertically) {
+                        Text(error, modifier = Modifier.weight(1f).padding(vertical = NativeSpacing.medium), style = MaterialTheme.typography.bodyMedium)
                         TextButton(onClick = { if (snapshot.ready) state.dispatch(NativeCommand("navigation.refresh")) else state.restartBusiness() }) { Text("重试") }
                     }
                 }
@@ -97,8 +97,8 @@ internal fun NativeConversation(state: NativeState, snapshot: NativeSnapshot, on
                     NativeWelcome(state, "有什么想一起完成？", "从一个问题开始，或从侧栏继续已有工作。", addDevice = false)
                 } else {
                     LazyColumn(state = list, modifier = Modifier.fillMaxSize().testTag("native-messages"),
-                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 16.dp),
-                        verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                        contentPadding = PaddingValues(start = NativeSpacing.medium, end = NativeSpacing.medium, top = NativeSpacing.medium, bottom = NativeSpacing.large),
+                        verticalArrangement = Arrangement.spacedBy(NativeSpacing.large)) {
                         snapshot.actions.firstOrNull { it.command?.name == "thread.older" }?.let { older ->
                             item(key = "load-older") { Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { TextButton(onClick = { state.dispatch(older.command) }, enabled = !older.disabled) { Text(older.title) } } }
                         }

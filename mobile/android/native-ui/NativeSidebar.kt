@@ -1,6 +1,7 @@
 package com.app.pakeplus.nativeui
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.expandVertically
@@ -8,6 +9,8 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -22,6 +25,10 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
 
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
@@ -34,7 +41,7 @@ internal fun NativeSidebar(state: NativeState, onClose: () -> Unit) {
     val focus = androidx.compose.ui.platform.LocalFocusManager.current
     LaunchedEffect(snapshot.sidebarOpen) { if (!snapshot.sidebarOpen) { searchVisible = false; more = false } }
     Column(Modifier.fillMaxSize().testTag("native-sidebar")) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = NativeSpacing.small), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = {
                 searchVisible = !searchVisible
                 if (!searchVisible) { state.editSearch(""); focus.clearFocus() }
@@ -62,8 +69,8 @@ internal fun NativeSidebar(state: NativeState, onClose: () -> Unit) {
                 }
             }
             Spacer(Modifier.weight(1f))
-            FilledTonalButton(onClick = { state.dispatch(NativeCommand("thread.new")); onClose() }, contentPadding = PaddingValues(horizontal = 12.dp), modifier = Modifier.testTag("native-new-chat")) {
-                Icon(Icons.Default.Edit, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Chat")
+            FilledTonalButton(onClick = { state.dispatch(NativeCommand("thread.new")); onClose() }, contentPadding = PaddingValues(horizontal = NativeSpacing.medium), modifier = Modifier.heightIn(min = NativeSpacing.touchTarget).testTag("native-new-chat")) {
+                Icon(Icons.Default.Edit, null, Modifier.size(18.dp)); Spacer(Modifier.width(NativeSpacing.small)); Text("新对话")
             }
         }
         AnimatedVisibility(searchVisible, enter = expandVertically(NativeMotion.spatial()) + fadeIn(NativeMotion.effects()), exit = shrinkVertically(NativeMotion.spatial()) + fadeOut(NativeMotion.effects())) {
@@ -72,27 +79,28 @@ internal fun NativeSidebar(state: NativeState, onClose: () -> Unit) {
             OutlinedTextField(value = search, onValueChange = state::editSearch,
                 placeholder = { Text("搜索会话") }, leadingIcon = { Icon(Icons.Default.Search, null, Modifier.size(20.dp)) },
                 trailingIcon = { if (search.isNotEmpty()) IconButton(onClick = { state.editSearch("") }) { Icon(Icons.Default.Close, "清除搜索") } },
-                singleLine = true, textStyle = MaterialTheme.typography.bodyMedium, shape = MaterialTheme.shapes.extraLarge,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp).padding(bottom = 8.dp).focusRequester(requester).testTag("native-search"))
+                singleLine = true, textStyle = MaterialTheme.typography.bodyLarge, shape = MaterialTheme.shapes.extraLarge,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = NativeSpacing.medium).padding(bottom = NativeSpacing.small).focusRequester(requester).testTag("native-search"))
         }
-        LazyColumn(Modifier.weight(1f).fillMaxWidth().padding(top = 8.dp), contentPadding = PaddingValues(bottom = 12.dp)) {
+        LazyColumn(Modifier.weight(1f).fillMaxWidth().padding(top = NativeSpacing.small), contentPadding = PaddingValues(bottom = NativeSpacing.medium)) {
             if (snapshot.navigationLoading) item { LinearProgressIndicator(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp)) }
             items(snapshot.groups, key = { it.id }) { group ->
                 Column(Modifier.animateItem().animateContentSize(NativeMotion.spatial())) {
                     val rotation by animateFloatAsState(if (group.collapsed) -90f else 0f, NativeMotion.spatial(), label = "project-chevron")
-                    Row(Modifier.fillMaxWidth().combinedClickable(enabled = group.command != null,
-                        onClick = { state.dispatch(group.command) }, onLongClick = {})
-                        .heightIn(min = 48.dp).padding(start = 20.dp, end = 12.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Row(Modifier.fillMaxWidth().clickable(enabled = group.command != null, role = Role.Button,
+                        onClick = { state.dispatch(group.command) })
+                        .semantics { if (group.command != null) stateDescription = if (group.collapsed) "已收起" else "已展开" }
+                        .heightIn(min = 56.dp).padding(start = NativeSpacing.medium, end = NativeSpacing.small, top = NativeSpacing.small, bottom = NativeSpacing.small), verticalAlignment = Alignment.CenterVertically) {
                         Icon(if (group.category == "pinned") Icons.Default.PushPin else Icons.Default.Folder, null,
-                            tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(8.dp))
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(24.dp))
+                        Spacer(Modifier.width(NativeSpacing.medium))
                         Column(Modifier.weight(1f)) {
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text(group.title, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                                Text(group.title, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
                                 if (group.collapsed && group.allItems.any { it.running }) CircularProgressIndicator(Modifier.size(12.dp), strokeWidth = 2.dp)
                                 else if (group.collapsed && group.allItems.any { it.unread }) Badge(containerColor = MaterialTheme.colorScheme.primary)
                             }
-                            if (group.subtitle.isNotEmpty()) Text(group.subtitle, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            if (group.subtitle.isNotEmpty()) Text(group.subtitle, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         if (group.newCommand != null) IconButton(onClick = { state.dispatch(group.newCommand); onClose() }) { Icon(Icons.Default.Add, "在项目中新建对话", Modifier.size(20.dp)) }
                         if (group.command != null) Icon(Icons.Default.ExpandMore, if (group.collapsed) "展开项目" else "收起项目", Modifier.rotate(rotation))
@@ -126,21 +134,24 @@ private fun NativeThreadRow(state: NativeState, entry: NativeEntry, onClose: () 
     var expanded by remember { mutableStateOf(false) }
     var rename by remember { mutableStateOf<NativeCommand?>(null) }
     var title by remember(entry.title) { mutableStateOf(entry.title) }
+    val container by animateColorAsState(if (entry.selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainerLow,
+        NativeMotion.effects(), label = "thread-selection")
     Box {
-        Surface(onClick = { state.dispatch(entry.command); onClose() },
-            shape = MaterialTheme.shapes.small,
-            color = if (entry.selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainerLow,
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 1.dp)) {
-            Row(Modifier.combinedClickable(onClick = { state.dispatch(entry.command); onClose() }, onLongClick = { expanded = true })
-                .heightIn(min = 48.dp).padding(start = 12.dp, end = 0.dp), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f).padding(vertical = 6.dp)) {
+        Surface(shape = CircleShape, color = container,
+            contentColor = if (entry.selected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)) {
+            Row(Modifier.combinedClickable(role = Role.Button, onClick = { state.dispatch(entry.command); onClose() }, onLongClickLabel = "会话操作", onLongClick = { expanded = true })
+                .semantics { selected = entry.selected }.testTag("native-thread-${entry.id}")
+                .heightIn(min = if (entry.subtitle.isEmpty()) 56.dp else 72.dp).padding(start = NativeSpacing.medium, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f).padding(vertical = NativeSpacing.small)) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text(entry.title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium,
+                        Text(entry.title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyLarge,
                             modifier = Modifier.weight(1f, fill = false), fontWeight = if (entry.unread || entry.selected) FontWeight.Medium else FontWeight.Normal)
                         if (entry.running) CircularProgressIndicator(Modifier.size(12.dp), strokeWidth = 2.dp)
                         else if (entry.unread) Badge(Modifier.size(6.dp), containerColor = MaterialTheme.colorScheme.primary)
                     }
-                    if (entry.subtitle.isNotEmpty()) Text(entry.subtitle, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (entry.subtitle.isNotEmpty()) Text(entry.subtitle, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium,
+                        color = if (entry.selected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 IconButton(onClick = { expanded = true }, modifier = Modifier.size(48.dp)) { Icon(Icons.Default.MoreVert, "会话操作", Modifier.size(18.dp)) }
             }

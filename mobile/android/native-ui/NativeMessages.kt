@@ -56,8 +56,9 @@ internal fun NativeMessageView(state: NativeState, snapshot: NativeSnapshot, mes
                 }
             }
             if (message.text.isNotEmpty()) {
-                if (user) Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.secondaryContainer, modifier = Modifier.widthIn(max = 340.dp)) {
-                    Box(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) { NativeMarkdown(state, message.text, message.quoteSource, plain = true) }
+                if (user) Surface(shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.secondaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer, modifier = Modifier.widthIn(max = 340.dp)) {
+                    Box(Modifier.padding(horizontal = NativeSpacing.medium, vertical = 12.dp)) { NativeMarkdown(state, message.text, message.quoteSource, plain = true) }
                 } else NativeMarkdown(state, message.text, message.quoteSource)
             }
             message.blocks.filter { it.id != message.raw.string("commentaryBlockId") || message.commentary.isEmpty() }
@@ -65,13 +66,13 @@ internal fun NativeMessageView(state: NativeState, snapshot: NativeSnapshot, mes
         }
         if (message.timestamp > 0 && message.role != "activity") Text(
             DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(if (message.timestamp < 100000000000.0) (message.timestamp * 1000).toLong() else message.timestamp.toLong())),
-            style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         if (message.actions.isNotEmpty() && message.historyEdit == null) Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             message.actions.forEach { item ->
                 IconButton(onClick = {
                     if (item.command?.name == "message.copy") copyNativeText(context, message.rawText) else state.dispatch(item.command)
-                }, enabled = !item.disabled, modifier = Modifier.size(36.dp)) {
-                    Icon(if (item.command?.name == "message.edit") Icons.Default.Edit else Icons.Default.ContentCopy, item.title, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                }, enabled = !item.disabled, modifier = Modifier.size(NativeSpacing.touchTarget)) {
+                    Icon(if (item.command?.name == "message.edit") Icons.Default.Edit else Icons.Default.ContentCopy, item.title, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }

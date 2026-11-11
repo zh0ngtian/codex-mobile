@@ -27,7 +27,7 @@ class NativeLayoutTest {
         ui.runOnUiThread { prepareNativeTestWindow(ui.activity) }
     }
 
-    @Test fun normalModelAndEffortFitInCompactComposerAndHaveIndependentActions() {
+    @Test fun standardComposerKeepsModelEffortAndPrimaryActionsSeparate() {
         val emitted = mutableListOf<JSONObject>()
         lateinit var state: NativeState
         ui.setContent {
@@ -35,7 +35,13 @@ class NativeLayoutTest {
             CodexMaterialTheme("light") { NativeApp(state) }
         }
         val bounds = ui.onNodeWithTag("native-composer-surface").getUnclippedBoundsInRoot()
-        assertTrue("空输入区应保持紧凑", bounds.bottom - bounds.top <= 104.dp)
+        assertTrue("标准密度应为输入、配置和操作分别保留空间", bounds.bottom - bounds.top in 176.dp..208.dp)
+        val modelBounds = ui.onNodeWithTag("native-model").getUnclippedBoundsInRoot()
+        val effortBounds = ui.onNodeWithTag("native-effort").getUnclippedBoundsInRoot()
+        val sendBounds = ui.onNodeWithTag("native-send").getUnclippedBoundsInRoot()
+        assertTrue("模型与强度都有独立48dp触区", modelBounds.bottom - modelBounds.top >= 48.dp && effortBounds.bottom - effortBounds.top >= 48.dp)
+        assertTrue("常用配置应同时可见且不重叠", modelBounds.right <= effortBounds.left && effortBounds.right <= bounds.right)
+        assertTrue("发送位于独立工具行，不能挤压模型选择", sendBounds.top >= modelBounds.bottom)
         val modelLayouts = mutableListOf<TextLayoutResult>()
         ui.onNodeWithText("GPT-6.1", useUnmergedTree = true).performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.GetTextLayoutResult) { it(modelLayouts) }
         val modelLayout = modelLayouts.single()
@@ -57,7 +63,7 @@ class NativeLayoutTest {
         ui.runOnIdle { assertEquals("workspace", emitted.last().getJSONObject("params").string("id")) }
         ui.onNodeWithContentDescription("新建对话").performClick()
         ui.runOnIdle { assertEquals("thread.new", emitted.last().string("name")) }
-        saveScreenshot("compact-conversation-light.png")
+        saveScreenshot("standard-conversation-light.png")
         ui.runOnIdle { state.dispose() }
     }
 
@@ -99,7 +105,9 @@ class NativeLayoutTest {
         }
         ui.onNodeWithTag("native-search").assertDoesNotExist()
         ui.onNodeWithText("5. 完整页面布局与交互优化").assertIsDisplayed()
-        saveScreenshot("compact-sidebar-light.png")
+        ui.onNodeWithTag("native-thread-row0").assertIsSelected()
+        ui.onNodeWithTag("native-thread-row1").assertIsNotSelected()
+        saveScreenshot("standard-sidebar-light.png")
         ui.onNodeWithContentDescription("搜索会话").performClick()
         ui.onNodeWithTag("native-search").performTextInput("搜索内容")
         ui.onNodeWithContentDescription("关闭搜索").performClick()
@@ -144,8 +152,17 @@ class NativeLayoutTest {
         ui.waitForIdle()
         android.os.SystemClock.sleep(400)
         ui.onNodeWithTag("native-composer-input").performTextInput("继续输入，不被错误遮挡")
+        // 用真实滑动露出长错误后的动作，避免仅语义点击在裁切区外也能触发而误报通过。
+        ui.onNodeWithTag("native-composer-supplements").performTouchInput { swipeUp() }
         listOf("native-queue-primary-failed" to "queue.send", "native-queue-action-failed-edit" to "queue.edit", "native-queue-action-failed-remove" to "queue.remove").forEach { (tag, name) ->
-            ui.onNodeWithTag(tag).performScrollTo().assertIsDisplayed().performClick()
+            ui.onNodeWithTag(tag).performScrollTo().assertIsDisplayed()
+            ui.mainClock.advanceTimeBy(1000); ui.waitForIdle()
+            val action = ui.onNodeWithTag(tag).getUnclippedBoundsInRoot()
+            val supplements = ui.onNodeWithTag("native-composer-supplements").getUnclippedBoundsInRoot()
+            val composer = ui.onNodeWithTag("native-composer-surface").getUnclippedBoundsInRoot()
+            assertTrue("队列操作必须完整处于滚动可见区: action=$action supplements=$supplements composer=$composer",
+                action.top >= supplements.top && action.bottom <= supplements.bottom && action.bottom <= composer.top)
+            ui.onNodeWithTag(tag).performTouchInput { click(center) }
             ui.runOnIdle { assertEquals(name, emitted.last().string("name")) }
         }
         saveScreenshot("queue-error-keyboard-light.png")

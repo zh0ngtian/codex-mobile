@@ -1,6 +1,27 @@
 # Android 原生开发验收
 
-0.3.45 已完成正式 GitHub APK 发布，包含下列 Android 原生界面与布局改进。相同运行源码的开发验收与正式包原生入口、版本、签名证书及完整下载散列已核对；发布批次和边界见[公共凭证](superpowers/plans/evidence/2026-11-11-native-layout-release.json)。以下“未发布”指开发验证当时状态，真机安装、数据保留与实际手感仍待验收。
+0.3.45 已完成正式 GitHub APK 发布，包含此前 Material You 原生界面与紧凑布局改进；本页首节的标准密度方案 B 为后续源码优化，尚未发布。0.3.45相同运行源码的开发验收与正式包原生入口、版本、签名证书及完整下载散列已核对，发布批次和边界见[公共凭证](superpowers/plans/evidence/2026-11-11-native-layout-release.json)。后续两节保留开发验证当时状态，真机安装、数据保留与实际手感仍待验收。
+
+## 2026-11-11：Material 3 标准密度方案 B（已验证，未发布）
+
+用户明确选择方案 B，参考 [hamen/material-3-skill](https://github.com/hamen/material-3-skill)，覆盖此前 Android 对齐 iOS 紧凑字号与留白的要求。开发基线为远端 main `31ec3510b50f321c47adee35323dd05a9f22c5a6`，使用独立工作树；实施范围与源码交付方式见[计划](plans/2026-11-11-android-material3-standard.md)。
+
+- 主题改为标准 `Typography()`、`Shapes()` 和8/16/24dp间距，正文16sp/24sp、页头22sp/28sp、弹层标题24sp/32sp；富文本与 Compose 共用语义字阶和配对文字颜色。Android 12及以上继续动态取色，旧系统静态深浅色补齐同一蓝色种子的完整颜色角色。
+- 侧栏最大360dp，保留56dp关闭区域；会话采用56dp单行/72dp双行最小高度，标准列表字号、胶囊选中底色和选中语义。修正页头重复安全区，统一消息、代码区和表单容器层级。
+- 输入区按文字、模型/强度、固定工具分行；配置、复制、附件移除和队列操作至少48dp触区，停止/发送不受长模型名挤压。长队列补充区保持限高滚动，键盘打开后仍可操作。
+- 设置开关和多选支持整行点击，子控件不重复分发命令；禁用状态整行生效。模型等菜单增加勾选、配对选中底色和可访问选中语义。
+
+| 验证层次 | 本轮结果 |
+| --- | --- |
+| 工程与编译 | 完整 `npm run android:prepare`（含 TypeScript 与 Web 构建）、Kotlin 与 AndroidTest 编译通过。仅构建独立 QA 调试包用于 instrumentation，没有执行正式打包、签名、渠道发布或 iOS 构建。 |
+| 共享业务回归 | 5文件128项全部通过：Android 接入合同、原生快照运行时/投影/工作区与设备工作流。未修改共享业务、网关或 iOS 呈现代码。 |
+| 原生 instrumentation | Android 16 Google APIs、正常字号、竖屏下23项全部通过。覆盖标准输入区尺寸与分行布局、长模型菜单、固定停止/发送、侧栏与搜索、键盘长队列、新增整行开关/禁用/单次命令及菜单选中交互，同时保留既有输入、回执、上下文隔离、选文、富文本、真实内置 WebView 设备表单和弹层外观切换回归。 |
+| 长队列物理可达性 | 真实打开输入法、滑动补充区，逐项断言重试/编辑/移除的完整边界位于可见滚动区内且不被输入区覆盖，再以真实触摸点击验证命令。最终专项与完整23项回归均通过；最初仅语义点击不足以证明可见，已加强用例。 |
+| 颜色与视觉 | 静态浅深色共40组配对文字颜色的最低对比度为6.45:1。已检查[浅色会话](assets/android-native/2026-11-11-material3-standard/conversation-light.png)、[侧栏](assets/android-native/2026-11-11-material3-standard/sidebar-light.png)、[深色设置](assets/android-native/2026-11-11-material3-standard/settings-dark.png)、[长模型菜单](assets/android-native/2026-11-11-material3-standard/model-menu-dark.png)、[运行工具区](assets/android-native/2026-11-11-material3-standard/model-tools-dark.png)与[键盘长队列](assets/android-native/2026-11-11-material3-standard/queue-keyboard-light.png)完整截图。未进行帧率或性能基准测量。 |
+
+日志保存在任务 worktree `.mobile-build/material3-standard/`，最终运行日志为 `native-final.log`、共享回归为 `shared-tests.log`。原生源码和测试模板与实际编译运行的生成工程逐文件一致。QA 使用独立身份 `vip.loock.codexmobile.material3qa`，只在生成目录关闭调试混淆，不进入正式 recipe。测试包与专用模拟器已清理；未操作连接的真机、未连接生产网关或创建真实测试会话，无需归档用户会话。
+
+本轮仅交付源码，未发布客户端或部署网关。真机安装、覆盖升级、数据保留、壁纸取色偏好和真实网关端到端交互仍待验收，不能由夹具或编译结果替代。
 
 ## 2026-11-11：页面布局与文字密度修正
 

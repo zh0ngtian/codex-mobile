@@ -18,6 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 
@@ -28,6 +29,7 @@ internal fun NativeApp(state: NativeState) {
     val drawer = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val focus = LocalFocusManager.current
+    val drawerWidth = (LocalConfiguration.current.screenWidthDp.dp - 56.dp).coerceAtMost(360.dp)
     LaunchedEffect(snapshot.context) { focus.clearFocus(force = true) }
     var retainedPanel by remember(snapshot.context) { mutableStateOf(snapshot.panel) }
     val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true,
@@ -53,11 +55,11 @@ internal fun NativeApp(state: NativeState) {
             else -> scope.launch { drawer.open() }
         }
     }
-    Surface(Modifier.fillMaxSize().testTag("android-native-root"), color = MaterialTheme.colorScheme.background) {
+    Surface(Modifier.fillMaxSize().testTag("android-native-root"), color = MaterialTheme.colorScheme.surface) {
         ModalNavigationDrawer(drawerState = drawer,
             gesturesEnabled = snapshot.panel == null && state.preview == null,
             drawerContent = {
-                ModalDrawerSheet(Modifier.fillMaxWidth(0.8f), drawerContainerColor = MaterialTheme.colorScheme.surfaceContainerLow) {
+                ModalDrawerSheet(Modifier.width(drawerWidth), drawerContainerColor = MaterialTheme.colorScheme.surfaceContainerLow) {
                     NativeSidebar(state, onClose = { scope.launch { drawer.close() } })
                 }
             }) {
@@ -73,15 +75,15 @@ internal fun NativeApp(state: NativeState) {
                     modifier = Modifier.testTag("native-panel")) {
                     NativeSystemBarAppearance()
                     Column(Modifier.fillMaxWidth().imePadding().verticalScroll(rememberScrollState())
-                        .padding(horizontal = 16.dp).padding(bottom = 20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        .padding(horizontal = NativeSpacing.large).padding(bottom = NativeSpacing.large), verticalArrangement = Arrangement.spacedBy(NativeSpacing.medium)) {
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                            Text(panel.title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+                            Text(panel.title, style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
                             if (panel.dismissible) IconButton(onClick = { state.closePanel(panel) }) { Icon(Icons.Default.Close, "关闭") }
                         }
                         if (panel.id == "settings:root") NativeAppearanceSettings(state)
                         panel.items.forEach { item -> key(item.id) { NativePanelItemView(state, item, panel.id) } }
                         if (panel.id == "settings:root") {
-                            FilledTonalButton(onClick = { state.dispatch(NativeCommand("settings.open", params("id" to "devices"))) }, modifier = Modifier.fillMaxWidth()) {
+                            FilledTonalButton(onClick = { state.dispatch(NativeCommand("settings.open", params("id" to "devices"))) }, modifier = Modifier.fillMaxWidth().heightIn(min = NativeSpacing.touchTarget)) {
                                 Icon(Icons.Default.Devices, null); Spacer(Modifier.width(8.dp)); Text("管理设备")
                             }
                         }
@@ -95,28 +97,23 @@ internal fun NativeApp(state: NativeState) {
 
 @Composable
 private fun NativeAppearanceSettings(state: NativeState) {
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text("外观", style = MaterialTheme.typography.titleSmall)
+    Column(verticalArrangement = Arrangement.spacedBy(NativeSpacing.medium)) {
+        Text("外观", style = MaterialTheme.typography.titleMedium)
         SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
             listOf("system" to "跟随系统", "light" to "浅色", "dark" to "深色").forEachIndexed { index, (value, title) ->
                 SegmentedButton(selected = state.appearance == value, onClick = { state.saveAppearance(value) },
                     shape = SegmentedButtonDefaults.itemShape(index, 3)) { Text(title, maxLines = 1) }
             }
         }
-        Text("采用 Material You 配色；Android 12 及以上随系统壁纸动态取色。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text("代码块自动换行", Modifier.weight(1f))
-            Switch(checked = state.codeWrap, onCheckedChange = state.saveCodeWrap)
-        }
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text("使用原生界面", style = MaterialTheme.typography.titleSmall)
-                Text(state.preferenceNotice.ifEmpty { "更改后在下次完整启动 App 时生效" }, style = MaterialTheme.typography.bodySmall)
+        Text("采用 Material You 配色；Android 12 及以上随系统壁纸动态取色。", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceContainerLow) {
+            Column {
+                NativeSwitchRow("代码块自动换行", state.codeWrap, state.saveCodeWrap, modifier = Modifier.testTag("native-code-wrap"))
+                HorizontalDivider(Modifier.padding(horizontal = NativeSpacing.medium))
+                NativeSwitchRow("使用原生界面", state.savedNative, {
+                    state.dispatch(NativeCommand("settings.native-ui", params("enabled" to it)))
+                }, subtitle = state.preferenceNotice.ifEmpty { "更改后在下次完整启动 App 时生效" }, modifier = Modifier.testTag("native-interface-switch"))
             }
-            Switch(checked = state.savedNative, onCheckedChange = {
-                state.dispatch(NativeCommand("settings.native-ui", params("enabled" to it)))
-            }, modifier = Modifier.testTag("native-interface-switch"))
         }
-        HorizontalDivider()
     }
 }

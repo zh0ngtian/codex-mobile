@@ -12,8 +12,10 @@ import android.view.ActionMode
 import android.view.Menu
 import android.view.MenuItem
 import android.widget.TextView
+import androidx.core.widget.TextViewCompat
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
@@ -41,6 +43,7 @@ import android.net.Uri
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
+import kotlin.math.roundToInt
 
 internal fun copyNativeText(context: Context, text: String) {
     (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager)
@@ -219,11 +222,11 @@ internal fun NativeMarkdown(state: NativeState, text: String, quoteSource: JSONO
                         if (resource != null) NativeMediaCard(state, resource)
                         else { LaunchedEffect(source) { state.dispatch(state.snapshot.command("diagram.render", params("source" to source))) }; NativeCode(source, "Mermaid") }
                     } else Surface(shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surfaceContainerHigh) {
-                        Column(Modifier.padding(12.dp)) {
-                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text(language.ifEmpty { "代码" }, style = MaterialTheme.typography.labelSmall)
+                        Column(Modifier.padding(NativeSpacing.medium)) {
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                                Text(language.ifEmpty { "代码" }, style = MaterialTheme.typography.labelLarge)
                                 val context = LocalContext.current
-                                IconButton(onClick = { copyNativeText(context, source) }, modifier = Modifier.size(24.dp)) { androidx.compose.material3.Text("复制", style = MaterialTheme.typography.labelSmall) }
+                                TextButton(onClick = { copyNativeText(context, source) }, modifier = Modifier.heightIn(min = NativeSpacing.touchTarget)) { Text("复制") }
                             }
                             NativeSelectableText(state, source, nativeQuoteRegion(quoteSource, "code"), plain = true, code = true)
                         }
@@ -253,12 +256,12 @@ internal fun NativeMarkdown(state: NativeState, text: String, quoteSource: JSONO
 @Composable
 private fun NativeSelectableText(state: NativeState, text: String, quoteSource: JSONObject?, plain: Boolean = false, code: Boolean = false, node: Node? = null, renderer: Markwon? = null) {
     val context = LocalContext.current
-    val color = MaterialTheme.colorScheme.onSurface.toArgb()
+    val color = LocalContentColor.current.toArgb()
     val linkColor = MaterialTheme.colorScheme.primary.toArgb()
     val density = LocalDensity.current
-    val style = if (code) MaterialTheme.typography.bodySmall else MaterialTheme.typography.bodyLarge
+    val style = if (code) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.bodyLarge
     val textPixels = with(density) { style.fontSize.toPx() }
-    val lineSpacing = with(density) { 3.dp.toPx() }
+    val linePixels = with(density) { style.lineHeight.toPx() }.roundToInt()
     val ownerContext = state.snapshot.context
     val fallback = rememberNativeMarkwon(state)
     val markwon = renderer ?: fallback
@@ -288,7 +291,7 @@ private fun NativeSelectableText(state: NativeState, text: String, quoteSource: 
         if (code) view.setHorizontallyScrolling(!state.codeWrap)
         view.setTextColor(color); view.setLinkTextColor(linkColor)
         view.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, textPixels)
-        view.setLineSpacing(lineSpacing, 1f)
+        TextViewCompat.setLineHeight(view, linePixels)
         if (plain) { if (view.text.toString() != text) view.text = text }
         else rendered?.let { if (view.tag !== it) { markwon.setParsedMarkdown(view, it); view.tag = it } }
         view.customSelectionActionModeCallback = object : ActionMode.Callback {
