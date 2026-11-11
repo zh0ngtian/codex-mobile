@@ -93,6 +93,37 @@ class AndroidReleaseTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, '平台|Android|android'):
                 a.build_artifacts()
 
+    def test_android_release_rejects_remote_assets_outside_frozen_platform_and_version(self):
+        for extra in ['CodexMobile-v0.2.164-unsigned.ipa', 'CodexMobile-v0.2.164-unsigned.ipa.sha256',
+                      'ios-build.json', 'CodexMobile-v0.2.163.apk', 'CodexMobile-v0.2.163.apk.sha256']:
+            with self.subTest(extra=extra), tempfile.TemporaryDirectory() as tmp:
+                a = self.adapter(Path(tmp)); a.progress('build', runId=123, attempt=1)
+                item = self.seed(a, a.root / 'ci-artifacts')
+                release = {'id':1, 'html_url':'https://github.test/release', 'assets':[
+                    {'name':Path(item['path']).name, 'size':item['size'], 'digest':'sha256:' + item['sha256'], 'browser_download_url':'https://github.test/android'},
+                    {'name':extra, 'size':3, 'browser_download_url':'https://github.test/unapproved'}]}
+                run = {'id':123, 'status':'completed', 'conclusion':'success', 'run_attempt':1}
+                with patch.object(a, 'ci_run', return_value=run), patch.object(a, 'gh_json', side_effect=[release, {'sha':a.frozen_sha}]), self.assertRaisesRegex(ValueError, '未授权.*附件'):
+                    a.build_check()
+
+    def test_remote_allowed_build_assets_preserve_android_and_old_dual_contracts(self):
+        for factory, platforms in [(self.adapter, ['android']), (github_tests.GithubOnlyReleaseTests().adapter, ['android','ios'])]:
+            with self.subTest(platforms=platforms), tempfile.TemporaryDirectory() as tmp:
+                a = factory(Path(tmp)); a.progress('build', runId=123, attempt=1)
+                assets = [{'name':'release-notes.txt', 'size':3, 'browser_download_url':'https://github.test/notes'}]
+                for platform in platforms:
+                    item = self.seed(a, a.root / 'ci-artifacts', platform)
+                    filename = Path(item['path']).name
+                    assets.extend([{'name':filename, 'size':item['size'], 'digest':'sha256:' + item['sha256'], 'browser_download_url':'https://github.test/' + platform},
+                                   {'name':filename + '.sha256', 'size':3, 'browser_download_url':'https://github.test/checksum'},
+                                   {'name':platform + '-build.json', 'size':3, 'browser_download_url':'https://github.test/receipt'}])
+                release = {'id':1, 'html_url':'https://github.test/release', 'assets':assets}
+                run = {'id':123, 'status':'completed', 'conclusion':'success', 'run_attempt':1}
+                with patch.object(a, 'ci_run', return_value=run), patch.object(a, 'gh_json', side_effect=[release, {'sha':a.frozen_sha}]):
+                    result = a.build_check()
+                self.assertTrue(result['done'])
+                self.assertEqual(set(result['result']['artifacts']), set(platforms))
+
     def verification(self, a, *, missing=None, corrupt=False):
         data = b'github-android-apk'
         artifact = {'path':str(a.root / 'app.apk'), 'downloadUrl':'https://github.test/android', 'size':len(data), 'sha256':hashlib.sha256(data).hexdigest()}

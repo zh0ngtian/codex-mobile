@@ -519,6 +519,13 @@ class Adapter:
         artifacts = self.build_artifacts()
         if not artifacts: return {'done':False,'result':{'runId':run['id']}}
         assets = {a['name']:a for a in release['assets']}
+        allowed_assets = set()
+        for platform in self.platforms:
+            filename = f'CodexMobile-v{self.version}' + ('.apk' if platform == 'android' else '-unsigned.ipa')
+            allowed_assets.update((filename, filename + '.sha256', platform + '-build.json'))
+        for filename in assets:
+            if re.search(r'\.(?:apk|ipa)(?:\.sha256)?$|(?:^|-)build\.json$', filename) and filename not in allowed_assets:
+                raise ValueError('GitHub Release 包含未授权的构建平台或附件: ' + filename)
         for platform in self.platforms:
             item=artifacts[platform]; asset=assets.get(Path(item['path']).name)
             if not asset or asset['size']!=item['size']: raise ValueError('GitHub Release 附件缺失或大小不同')
