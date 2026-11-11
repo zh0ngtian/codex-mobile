@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { execFile } from "node:child_process";
+import { dirname } from "node:path";
 import { promisify } from "node:util";
 
 const execute = promisify(execFile);
@@ -13,15 +14,30 @@ interface CodexGlobalState {
   "local-projects"?: unknown;
   "project-order"?: unknown;
   "projectless-thread-ids"?: unknown;
+  "thread-project-assignments"?: unknown;
+  "thread-project-membership-host-ids"?: unknown;
+  "app-server-project-id-by-legacy-project-id-by-host"?: unknown;
+}
+
+export interface DesktopProjectMembership {
+  byThreadId: Record<string, string>;
+  byProjectId: Record<string, string>;
+  extraRoots: Record<string, string[]>;
 }
 
 export interface CodexProjectState {
   projects: string[];
   projectlessThreadIds: string[];
   projectWorktrees?: Record<string, string[]>;
+  projectMembership?: DesktopProjectMembership;
 }
 
-export function parseCodexProjectState(globalState: string): CodexProjectState {
+function record(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown> : {};
+}
+
+export function parseCodexProjectState(globalState: string, codexHome?: string): CodexProjectState {
   const state = JSON.parse(globalState) as CodexGlobalState;
   const localProjects = state["local-projects"];
   const localProjectRecords =
@@ -53,14 +69,21 @@ export function parseCodexProjectState(globalState: string): CodexProjectState {
   ];
 
   const projects = new Set<string>();
+  const byProjectId = new Map<string, string>();
+  const extraRoots = new Map<string, string[]>();
   for (const project of orderedLocalProjects) {
     if (!project || typeof project !== "object" || !Array.isArray(project.rootPaths)) {
       continue;
     }
-    for (const rootPath of project.rootPaths) {
-      if (typeof rootPath === "string" && rootPath.trim()) {
-        projects.add(rootPath);
-      }
+    const roots = [...new Set(project.rootPaths.filter(
+      (rootPath): rootPath is string => typeof rootPath === "string" && Boolean(rootPath.trim()),
+    ))];
+    for (const rootPath of roots) projects.add(rootPath);
+    const [primary, ...additional] = roots;
+    if (!primary || typeof project.id !== "string" || !project.id.trim()) continue;
+    byProjectId.set(project.id, primary);
+    if (additional.length) {
+      extraRoots.set(primary, [...new Set([...(extraRoots.get(primary) ?? []), ...additional])]);
     }
   }
   const projectlessThreadIds = new Set(
@@ -71,9 +94,35 @@ export function parseCodexProjectState(globalState: string): CodexProjectState {
         )
       : [],
   );
+  const byThreadId = new Map<string, string>();
+  const hosts = record(state["thread-project-membership-host-ids"]);
+  const localHostKey = codexHome ? `local:${codexHome}` : undefined;
+  for (const [threadId, value] of Object.entries(record(state["thread-project-assignments"]))) {
+    const host = hosts[threadId];
+    if (!threadId.trim() || projectlessThreadIds.has(threadId) ||
+      (host !== undefined && host !== "local" && host !== localHostKey)) continue;
+    const assignment = record(value);
+    if (assignment.projectKind !== "local" || typeof assignment.projectId !== "string") continue;
+    const root = byProjectId.get(assignment.projectId);
+    if (root) byThreadId.set(threadId, root);
+  }
+  if (localHostKey) {
+    const aliases = record(record(state["app-server-project-id-by-legacy-project-id-by-host"])[localHostKey]);
+    for (const [legacyId, nativeId] of Object.entries(aliases)) {
+      const root = byProjectId.get(legacyId);
+      if (root && typeof nativeId === "string" && nativeId.trim() && !byProjectId.has(nativeId)) {
+        byProjectId.set(nativeId, root);
+      }
+    }
+  }
   return {
     projects: [...projects],
     projectlessThreadIds: [...projectlessThreadIds],
+    ...(byProjectId.size ? { projectMembership: {
+      byThreadId: Object.fromEntries(byThreadId),
+      byProjectId: Object.fromEntries(byProjectId),
+      extraRoots: Object.fromEntries(extraRoots),
+    } } : {}),
   };
 }
 
@@ -86,7 +135,7 @@ export async function readCodexProjectDirectories(globalStatePath: string) {
 }
 
 export async function readCodexProjectState(globalStatePath: string) {
-  const state = parseCodexProjectState(await readFile(globalStatePath, "utf8"));
+  const state = parseCodexProjectState(await readFile(globalStatePath, "utf8"), dirname(globalStatePath));
   const projectWorktrees: Record<string, string[]> = {};
   const registered = new Set(state.projects);
   for (const root of state.projects) {

@@ -768,15 +768,19 @@ function BackendWorkspace({
   if (!threadRefreshRef.current) threadRefreshRef.current = createLatestClientRefresh<AppServerClient>();
   const [threadListRefreshing, setThreadListRefreshing] = useState(false);
   const [projectLoadedCounts, setProjectLoadedCounts] = useState<Record<string, number>>({});
+  const decorateThreadProject = (thread: AnyRecord): AnyRecord => {
+    const client = clientRef.current;
+    return withProjectWorktree(thread, client?.projectWorktrees ?? {}, client?.projectMembership);
+  };
   const decorateThreads = (data: AnyRecord[]): AnyRecord[] => {
     const localUnread = readLocalUnread();
     return applyPinnedThreadState(data, readLocalPinned()).map((thread) => ({
-      ...withProjectWorktree(thread, clientRef.current?.projectWorktrees ?? {}),
+      ...decorateThreadProject(thread),
       isUnread: localUnread.has(String(thread.id)),
     }));
   };
   const decorateThread = (thread: AnyRecord): AnyRecord =>
-    withProjectWorktree(applyPinnedThreadState([thread], readLocalPinned())[0], clientRef.current?.projectWorktrees ?? {});
+    decorateThreadProject(applyPinnedThreadState([thread], readLocalPinned())[0]);
   const projectGroupIdOf = (thread: AnyRecord) =>
     thread.isProjectless === true
       ? PROJECTLESS_GROUP_ID
@@ -1042,8 +1046,14 @@ function BackendWorkspace({
           projectCatalogReadSucceeded = true;
           directories = projectState.projects;
           client.projectWorktrees = projectState.projectWorktrees ?? {};
+          client.projectMembership = projectState.projectMembership;
           setThreads(current => decorateThreads(current));
           setSearchResults(current => decorateThreads(current));
+          setActive(current => {
+            if (!current?.id) return current;
+            const next = withProjectWorktree(current, client.projectWorktrees, client.projectMembership);
+            return next.projectCwd === current.projectCwd ? current : next;
+          });
           nextProjectlessThreadIds = mergeProjectlessThreadIds(
             projectState.projectlessThreadIds,
             readLocalProjectlessThreadIds(window.localStorage, backend.id),

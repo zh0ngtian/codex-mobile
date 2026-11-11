@@ -1,11 +1,14 @@
 import { isThreadRunning } from "../ui/conversation";
 import { isVisibleThread } from "../features/threads/thread-visibility";
 import { AppServerRpcError, type AppServerRequestOptions } from "./client";
+import { assignedProjectCwd } from "../features/threads/project-worktrees";
+import type { DesktopProjectMembership } from "../../server/codex-projects";
 
 type ThreadRecord = Record<string, any>;
 
 interface ThreadListClient {
   readonly projectWorktrees?: Record<string, string[]>;
+  readonly projectMembership?: DesktopProjectMembership;
   readonly sidebarIndex?: boolean;
   request(method: string, params: unknown, options?: AppServerRequestOptions): Promise<any>;
 }
@@ -239,27 +242,37 @@ export async function loadProjectThreadRecords(
   let threads: ThreadRecord[] = [];
   const seenCursors = new Set<string>(cursor ? [cursor] : []);
   let nextCursor = cursor ?? null;
+  const membership = client.projectMembership;
+  const extraRoots = membership && Object.hasOwn(membership.extraRoots, cwd) ? membership.extraRoots[cwd] : [];
+  const worktrees = client.projectWorktrees ?? {};
+  const ownRoots = [cwd, ...(worktrees[cwd] ?? [])];
+  const queryRoots = [...new Set([
+    ...ownRoots,
+    ...extraRoots.flatMap(root => [root, ...(worktrees[root] ?? [])]),
+  ])];
   while (true) {
     const limit = PROJECT_THREAD_BATCH_SIZE - threads.length;
     const result: ThreadListResponse = await client.request("thread/list", {
       limit,
-      cwd: client.projectWorktrees?.[cwd]?.length ? [cwd, ...client.projectWorktrees[cwd]] : cwd,
+      cwd: queryRoots.length > 1 ? queryRoots : cwd,
       sortKey: "recency_at",
       ...(nextCursor ? { cursor: nextCursor } : {}),
     });
-    threads = dedupeThreadsById([
-      ...threads,
-      ...result.data.filter((thread) => isListableThread(thread) &&
-        (!excludedThreadIds.has(String(thread.id)) ||
-          (isThreadRunning(thread.status) && !fixedExcludedThreadIds.has(String(thread.id))))),
-    ]);
+    const eligible = result.data.filter((thread) => {
+      if (!isListableThread(thread)) return false;
+      const assigned = assignedProjectCwd(thread, membership);
+      if (assigned ? assigned !== cwd : extraRoots.length > 0 && !ownRoots.includes(thread.cwd)) return false;
+      const id = String(thread.id);
+      return !excludedThreadIds.has(id) || (isThreadRunning(thread.status) && !fixedExcludedThreadIds.has(id));
+    });
+    threads = dedupeThreadsById([...threads, ...eligible]);
     nextCursor = result.nextCursor ?? null;
     if (nextCursor && seenCursors.has(nextCursor)) {
       return { threads, hasMore: false, nextCursor: null };
     }
     // 子会话、主动关注及空闲未读不占本批名额；运行会话与空闲共同计数。
     if (!nextCursor ||
-      (!excludedThreadIds.size && result.data.every(isListableThread)) ||
+      (!excludedThreadIds.size && eligible.length === result.data.length) ||
       threads.length >= PROJECT_THREAD_BATCH_SIZE) {
       return {
         threads,
@@ -397,6 +410,7 @@ export function createLatestThreadListLoader(
       const backgroundClient = (priority: "background" | "background-visible"): ThreadListClient => ({
         sidebarIndex: client.sidebarIndex,
         projectWorktrees: client.projectWorktrees,
+        projectMembership: client.projectMembership,
         request: (method, params) => {
           if (sequence !== latestSequence) return Promise.reject(new DOMException("Refresh superseded", "AbortError"));
           const id = method === "thread/read" && (params as any)?.includeTurns === false

@@ -4,6 +4,7 @@ import type { BackendConfig } from "./types";
 import { t } from "../i18n";
 import { backendWebSocketUrl } from "./connection-manager";
 import { httpRequestScheduler, type HttpRequestPriority } from "./http-request-scheduler";
+import type { DesktopProjectMembership } from "../../server/codex-projects";
 
 export interface GatewayHostInfo {
   hostId: string;
@@ -18,6 +19,24 @@ export interface BackendProjectState {
   projects: string[];
   projectlessThreadIds: string[];
   projectWorktrees?: Record<string, string[]>;
+  projectMembership?: DesktopProjectMembership;
+}
+
+function projectMembershipFrom(value: unknown, projects: string[]): DesktopProjectMembership | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const membership = value as Partial<Record<keyof DesktopProjectMembership, unknown>>;
+  const known = new Set(projects);
+  const entries = (input: unknown) => input && typeof input === "object" && !Array.isArray(input)
+    ? Object.entries(input) : [];
+  const readAssignments = (input: unknown): Record<string, string> => Object.fromEntries(
+    entries(input).filter(([id, root]) => id.trim() && typeof root === "string" && known.has(root)),
+  );
+  const extraRoots: Record<string, string[]> = Object.fromEntries(entries(membership.extraRoots)
+    .filter(([root, paths]) => known.has(root) && Array.isArray(paths))
+    .map(([root, paths]) => [root, [...new Set((paths as unknown[]).filter(
+      (path): path is string => typeof path === "string" && path !== root && known.has(path),
+    ))]]));
+  return { byThreadId: readAssignments(membership.byThreadId), byProjectId: readAssignments(membership.byProjectId), extraRoots };
 }
 
 export async function fetchBackendProjectState(
@@ -42,23 +61,23 @@ export async function fetchBackendProjectState(
         projects?: unknown;
         projectlessThreadIds?: unknown;
         projectWorktrees?: unknown;
+        projectMembership?: unknown;
       };
+      const projects = Array.isArray(payload.projects)
+        ? payload.projects.filter((project): project is string => typeof project === "string") : [];
       const projectWorktrees: Record<string, string[]> = {};
       if (payload.projectWorktrees && typeof payload.projectWorktrees === "object" && !Array.isArray(payload.projectWorktrees)) {
-        const projects = Array.isArray(payload.projects) ? payload.projects : [];
         for (const [root, paths] of Object.entries(payload.projectWorktrees)) {
           if (projects.includes(root) && Array.isArray(paths) && paths.every(path => typeof path === "string" && path.length > 0)) {
             projectWorktrees[root] = [...new Set(paths)].filter(path => !projects.includes(path));
           }
         }
       }
+      const projectMembership = projectMembershipFrom(payload.projectMembership, projects);
       return {
         ...(Object.keys(projectWorktrees).length ? { projectWorktrees } : {}),
-        projects: Array.isArray(payload.projects)
-          ? payload.projects.filter(
-              (project): project is string => typeof project === "string",
-            )
-          : [],
+        ...(projectMembership ? { projectMembership } : {}),
+        projects,
         projectlessThreadIds: Array.isArray(payload.projectlessThreadIds)
           ? payload.projectlessThreadIds.filter(
               (threadId): threadId is string => typeof threadId === "string",
