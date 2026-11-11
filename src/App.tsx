@@ -549,7 +549,7 @@ function BackendWorkspace({
   const queueSubmissionsRef = useRef(new Map<string, HostedQueueSubmission>());
   const queueSubmittingThreadIdsRef = useRef(new Set<string>());
   const unconfirmedQueueDraftsRef = useRef(new Map<string, { text: string; images: DraftImage[]; files: DraftFile[]; quotes: MessageQuote[]; inputRevision: number }>());
-  const completionEventCatchUpRef = useRef(false);
+  const completionEventCatchUpRef = useRef({ active: false, resumed: false });
   const questionNotificationRef = useRef(new QuestionNotificationTracker());
   const finalAnswerCompletionRef = useRef(new FinalAnswerCompletionTracker());
   const mobileCompletionRef = useRef(new FinalAnswerCompletionTracker({
@@ -1378,7 +1378,7 @@ function BackendWorkspace({
           setError(connectionError);
         }
         if (status === "connecting") {
-          completionEventCatchUpRef.current = false;
+          completionEventCatchUpRef.current = { active: false, resumed: false };
           clientRef.current = null;
           readyClientRef.current = null;
         }
@@ -1410,7 +1410,7 @@ function BackendWorkspace({
           const client = source as AppServerClient;
           const params = (message.params ?? {}) as AnyRecord;
           if (message.method === "mobile/events/catchup") {
-            completionEventCatchUpRef.current = params.active === true;
+            completionEventCatchUpRef.current = { active: params.active === true, resumed: params.resumed === true };
             return;
           }
           if (message.method === "mobile/sync") {
@@ -1433,7 +1433,8 @@ function BackendWorkspace({
             }
             return;
           }
-          questionNotificationRef.current.observe(message, completionEventCatchUpRef.current);
+          const { active: catchingUp, resumed } = completionEventCatchUpRef.current;
+          questionNotificationRef.current.observe(message, catchingUp);
           if (approvalRequests.onNotification(message)) return;
           for (const tracker of [finalAnswerCompletionRef.current, mobileCompletionRef.current]) {
             for (const thread of threadsRef.current) tracker.rememberThread(thread);
@@ -1442,9 +1443,9 @@ function BackendWorkspace({
           // 来源确认可迟于实时完成；历史追赶期间只登记来源，不收集完成证据。
           const acceptedMobileTurn = message.method === "mobile/turn/accepted"
             ? mobileCompletionRef.current.observeRpc(params.request, params.response) : null;
-          const completedMobileTurn = completionEventCatchUpRef.current ? null
+          const completedMobileTurn = catchingUp ? null
             : acceptedMobileTurn ?? mobileCompletionRef.current.observe(message);
-          const completedFinalAnswer = completionEventCatchUpRef.current
+          const completedFinalAnswer = catchingUp && !resumed
             ? null : finalAnswerCompletionRef.current.observe(message);
           if (completedFinalAnswer) {
             const { threadId } = completedFinalAnswer;
@@ -1840,7 +1841,7 @@ function BackendWorkspace({
           const client = source as AppServerClient;
           for (const thread of threadsRef.current) questionNotificationRef.current.rememberThread(thread);
           questionNotificationRef.current.rememberThread(activeRef.current);
-          const question = questionNotificationRef.current.observe(request, completionEventCatchUpRef.current);
+          const question = questionNotificationRef.current.observe(request, completionEventCatchUpRef.current.active);
           if (question) {
             markThreadUnread(question.threadId);
             notifyRunCompleted({

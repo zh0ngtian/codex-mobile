@@ -11,6 +11,7 @@ interface PollResponse {
   active: boolean; updatedAt: number; reset: boolean; hasMore?: boolean;
 }
 const readMethods = new Set(["initialize", "initialized", "thread/list", "threadSection/list", "thread/read", "thread/loaded/list", "thread/turns/list", "thread/items/list", "mobile/sidebar/summaries", "mobile/sidebar/projectless", "mobile/turns/commentary", "permissionProfile/list", "plugin/list", "model/list", "config/read", "configRequirements/read", "account/read", "account/rateLimits/read", "skills/list", "mcpServerStatus/list", "collaborationMode/list", "app/list", "fs/readFile"]);
+interface EventCheckpoint { epoch: string; cursor: number }
 interface PendingWrite { requestId: string; message: RpcMessage; epoch?: string; queryOnly?: true }
 const responseSignature = (message: RpcMessage, epoch?: string) => JSON.stringify({ id: message.id, epoch });
 function persistentWrite(operation: PendingWrite): PendingWrite {
@@ -58,7 +59,9 @@ export class HttpRpcTransport extends EventTarget {
   private epoch = "";
   private initialized = false;
   private polling = false;
-  private catchingUp = true;
+  private catchingUp: "history" | "resume" | false = "history";
+  private checkpoint?: EventCheckpoint;
+  private readonly checkpointKey: string;
   private catchUpAnnounced = false;
   private active = false;
   private hasMore = false;
@@ -93,6 +96,12 @@ export class HttpRpcTransport extends EventTarget {
     super();
     this.fetcher = options.fetch ?? globalThis.fetch.bind(globalThis);
     this.sessionId = options.sessionId ?? sessionFor(config);
+    this.checkpointKey = `codex-mobile:http-events:${config.id}:${this.sessionId}`;
+    try {
+      const saved = JSON.parse(localStorage.getItem(this.checkpointKey) ?? "null");
+      if (typeof saved?.epoch === "string" && saved.epoch &&
+        Number.isSafeInteger(saved.cursor) && saved.cursor >= 0) this.checkpoint = saved;
+    } catch { /* 无可用游标时按首次同步处理。 */ }
     this.writesKey = `codex-mobile:http-writes:${config.id}:${this.sessionId}`;
     this.writes = pendingWrites.get(this.writesKey) ?? new Map();
     if (!pendingWrites.has(this.writesKey)) {
@@ -354,15 +363,31 @@ export class HttpRpcTransport extends EventTarget {
     clearTimeout(this.timer);
     this.polling = true;
     try {
-      const payload = await this.fetchJson("/api/events", {}, { after: String(this.cursor) }) as PollResponse;
+      const checkpoint = this.checkpoint;
+      const fetchEvents = async (after: number) =>
+        await this.fetchJson("/api/events", {}, { after: String(after) }) as PollResponse;
+      let payload = await fetchEvents(checkpoint?.cursor ?? this.cursor);
       if (this.readyState !== 1 || !isClientForeground()) return;
+      if (checkpoint && checkpoint.epoch !== payload.epoch) {
+        payload = await fetchEvents(0);
+        if (this.readyState !== 1 || !isClientForeground()) return;
+      } else if (checkpoint && !payload.reset) {
+        this.catchingUp = "resume";
+      }
+      this.checkpoint = undefined;
       if (this.epoch && this.epoch !== payload.epoch) { this.close(4001, "gateway session changed"); return; }
       this.epoch = payload.epoch;
+      if (payload.reset) {
+        this.catchingUp = "history";
+        this.catchUpAnnounced = false;
+      }
       this.active = payload.active || payload.requests.length > 0;
       this.hasMore = payload.hasMore === true;
       if (this.catchingUp && !this.catchUpAnnounced) {
         this.catchUpAnnounced = true;
-        this.emit({ method: "mobile/events/catchup", params: { active: true } });
+        this.emit({ method: "mobile/events/catchup", params: {
+          active: true, ...(this.catchingUp === "resume" ? { resumed: true } : {}),
+        } });
       }
       if (payload.reset) this.emit({ method: "mobile/reset", params: {} });
       for (const message of payload.messages) this.emit(message);
@@ -377,10 +402,18 @@ export class HttpRpcTransport extends EventTarget {
         this.emit(request);
       }
       this.emit({ method: "mobile/requests", params: { requests } });
+      const cursorAdvanced = this.cursor !== payload.cursor;
+      const finishedCatchUp = this.catchingUp && !this.hasMore;
       this.cursor = payload.cursor;
-      if (this.catchingUp && !this.hasMore) {
+      if (finishedCatchUp) {
         this.catchingUp = false;
+        this.catchUpAnnounced = false;
         this.emit({ method: "mobile/events/catchup", params: { active: false } });
+      }
+      // 快照分页使用临时游标，只有同步结束后的真实游标可供下次连接恢复。
+      if (!this.catchingUp && (cursorAdvanced || finishedCatchUp)) {
+        try { localStorage.setItem(this.checkpointKey, JSON.stringify({ epoch: this.epoch, cursor: this.cursor })); }
+        catch { /* 当前连接继续使用内存游标。 */ }
       }
       this.updatedAt = Date.now();
       this.failures = 0;

@@ -173,6 +173,45 @@ describe("HTTP 文字传输", () => {
     ]);
   });
 
+  it.each(["新网关会话", "游标断档"])("%s 的恢复数据仍按历史同步处理", async scenario => {
+    vi.useFakeTimers();
+    const id = `resume-fallback-${scenario}`;
+    const completion = { method: "turn/completed", params: { threadId: "thread", turn: { id: "old", status: "completed" } } };
+    const fetcher = (async (url) => {
+      if (!String(url).includes("/api/events")) return Response.json({ result: {} });
+      return events({ cursor: 5 });
+    }) as typeof fetch;
+    const first = setup(fetcher, id);
+    await vi.advanceTimersByTimeAsync(0);
+    await new AppServerClient(first).initialize();
+    await vi.advanceTimersByTimeAsync(0);
+    first.close();
+
+    const queries: number[] = [];
+    const messages: Array<{ method?: string; params?: unknown }> = [];
+    const second = setup((async (url) => {
+      const path = new URL(String(url));
+      if (path.pathname !== "/api/events") return Response.json({ result: {} });
+      const after = Number(path.searchParams.get("after"));
+      queries.push(after);
+      if (scenario === "新网关会话") return events({
+        epoch: "second", cursor: 2, messages: after === 0 ? [completion] : [], reset: after > 0,
+      });
+      return events({ cursor: 9, messages: [completion], reset: true });
+    }) as typeof fetch, id);
+    second.addEventListener("message", event => messages.push(JSON.parse((event as MessageEvent).data)));
+    await vi.advanceTimersByTimeAsync(0);
+    await new AppServerClient(second).initialize();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(queries).toEqual(scenario === "新网关会话" ? [5, 0] : [5]);
+    expect(messages.filter(({ method }) => method === "mobile/events/catchup" || method === "turn/completed")).toEqual([
+      { method: "mobile/events/catchup", params: { active: true } },
+      completion,
+      { method: "mobile/events/catchup", params: { active: false } },
+    ]);
+  });
+
   it("持续只读请求不能推迟待确认操作的已安排对账期限", async () => {
     vi.useFakeTimers();
     let completed = false;
