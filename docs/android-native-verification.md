@@ -1,5 +1,7 @@
 # Android 原生开发验收
 
+0.3.45 已完成正式 GitHub APK 发布，包含下列 Android 原生界面与布局改进。相同运行源码的开发验收与正式包原生入口、版本、签名证书及完整下载散列已核对；发布批次和边界见[公共凭证](superpowers/plans/evidence/2026-11-11-native-layout-release.json)。以下“未发布”指开发验证当时状态，真机安装、数据保留与实际手感仍待验收。
+
 ## 2026-11-11：页面布局与文字密度修正
 
 本轮基线为 main `13679104e2a468443ee226ab9906c0dda5259565`，独立工作树分支 `fix/android-layout-alignment-20261111`。用户要求整体布局参考现有 iOS 原生版，修正稀疏、字号过大与文字显示不全；只调整 Android 呈现，保留 Material You 动态配色、既有业务及动效，未改 iOS 源码。

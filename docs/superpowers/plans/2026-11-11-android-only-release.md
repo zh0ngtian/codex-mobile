@@ -26,19 +26,27 @@
 - [x] 修订 `AGENTS.md`、`README.md`、`docs/release-coordination.md`、`docs/interaction-alignment.md`：仅涉及 Android 时选 Android 项目；涉及 iOS 或影响 iOS 的共享运行代码时选择双端项目；按本批平台提供链接与散列，Android 不等待软件源。
 - [x] `release/notes.md` 只记录用户可感知的 Android 原生界面、动效、双端地址明文与紧凑布局改进。
 - [x] 复用 Android 21 项仪器测试和 145 项业务回归的既有证据；本次只改发布流程，执行发布相关回归，无需重复 UI 测试。
-- [ ] 阅读提交约定，`git diff --check`，确认最新远端 main，按中文 Conventional Commits 提交并推送任务分支。
-- [ ] 将真实通过的四项 required checks 写入仓库外 validation JSON，ready 固定 SHA，持续 heartbeat。
+- [x] 阅读提交约定，`git diff --check`，确认最新远端 main，按中文 Conventional Commits 提交并推送任务分支。
+- [x] 将真实通过的四项 required checks 写入仓库外 validation JSON，ready 固定 SHA，持续 heartbeat。
 
 ## 任务三：正式构建、独立验收与交付
 
-- [ ] 等待协调器整合、版本预留、冻结、main 推送及 GitHub 双端构建。
-- [ ] 验证 GitHub Actions 本批双端构建；成功批次凭证指向本冻结 SHA、APK 和 unsigned IPA；后续 Android 单端分支由契约回归验证无 iOS 作业。
-- [ ] 独立核对 Release 元数据、两端 HEAD 和完整 GET，比较文件大小与 SHA-256；检查 APK 的版本、包名和原生入口，并核对 IPA 版本与未签名状态及软件源。
-- [ ] 确认新 Android 单端入口的测试不访问软件源或下载 IPA；本批双端按原软件源合同验收，记录证据；本机旧 LAN 与 OTA 服务不启动。
-- [ ] 交付可点击的 GitHub Release、APK、unsigned IPA 和软件源链接、版本、大小、SHA-256，说明本批包含共享表单的 iOS 修复及后续单端规则。
+- [x] 等待协调器整合、版本预留、冻结、main 推送及 GitHub 双端构建。
+- [x] 验证 GitHub Actions 本批双端构建；成功批次凭证指向本冻结 SHA、APK 和 unsigned IPA；后续 Android 单端分支由契约回归验证无 iOS 作业。
+- [x] 独立核对 Release 元数据、两端 HEAD 和完整 GET，比较文件大小与 SHA-256；检查 APK 的版本、包名和原生入口，并核对 IPA 版本与未签名状态及软件源。
+- [x] 确认新 Android 单端入口的测试不访问软件源或下载 IPA；本批双端按原软件源合同验收，记录证据；本机旧 LAN 与 OTA 服务不启动。
+- [x] 交付可点击的 GitHub Release、APK、unsigned IPA 和软件源链接、版本、大小、SHA-256，说明本批包含共享表单的 iOS 修复及后续单端规则。
 
-状态：计划已记录；待实施、待正式批次验收。
+状态：已完成实现、评审、正式双端批次和独立渠道验收。0.3.45成功交付；后续Android单端入口已通过契约回归，首次真实单端批次待后续发布验收。
 
-本地验证：基线 162 项构建合同／261 项 Python；第一轮实现后 171／271 项及 typecheck 通过，补修远端附件后为 171／273 项，协调器恢复 59 项通过。需求评审发现的远端 Release 混入 IPA 缺口已完成红绿修复并通过复审；最终质量评审通过，无 Critical／Important 阻塞，未进入 ready。iPhone 17 Pro／iOS 27.0 正常字号竖屏地址明文输入、普通字段类型及取消返回通过 1 项 XCTest，截图 `docs/assets/ios-simulator/device-address-20261111.png`；仅离线夹具，无真实测试会话，任务模拟器已删除。
+本地验证：基线 162 项构建合同／261 项 Python；第一轮实现后 171／271 项及 typecheck 通过，补修远端附件后为 171／273 项，协调器恢复 59 项通过。需求评审发现的远端 Release 混入 IPA 缺口已完成红绿修复并通过复审；最终质量评审通过，无 Critical／Important 阻塞，随后已 ready 固定任务来源并取得成功批次。iPhone 17 Pro／iOS 27.0 正常字号竖屏地址明文输入、普通字段类型及取消返回通过 1 项 XCTest，截图 `docs/assets/ios-simulator/device-address-20261111.png`；仅离线夹具，无真实测试会话，任务模拟器已删除。
 
 评审保留一项非阻塞改进建议：适配器本地目录可进一步拒绝残留 IPA 校验文件或旧 APK；CI 发布前校验、远端回验均已使用严格白名单，真实 shell 夹具验证只上传冻结范围的三项／六项附件，未发现越界交付路径。本次不扩大本地目录清理范围。
+
+## 最终交付
+
+0.3.45／3045 已正式发布：[GitHub Release](https://github.com/zh0ngtian/codex-mobile/releases/tag/v0.3.45)。客户端成功批次 `89b75441-f1ec-4b96-b895-ef7d1e6a1063`，冻结 `ddf58d120a3b7fd53c221ade11b515f0de9f6ce2`，任务来源 `f62563f4d43c553e20821e9398dac97c275af262`；正式 CI `42959923223` 与开发 CI `42959923167` 均成功。273项适配器、59项协调器恢复、171项构建合同、类型检查以及独立104项渠道核对通过。两端 HEAD／完整 GET、大小与 SHA-256、IPA 实际版本及未签名状态、软件源日志与署名均符合冻结来源；APK 原生 Compose 代码、实际版本及相对0.3.44的签名证书一致性已核对。Android 21项原生仪器及145项业务回归沿用相同运行源码证据，iPhone 17 Pro补验地址明文1项通过。没有创建真实测试会话。
+
+后续不影响 iOS 的改动使用独立 Android 项目，只构建和验收 APK，不访问 iOS 软件源；本次包含 iOS 消费的共享地址表单改动，因此仍按双端交付。新单端入口的契约回归与真实 shell 夹具通过，首次正式单端批次尚待后续纯 Android 发布验收。本次未部署网关，没有发布 LAN 包、签名 IPA、HTTPS OTA 或固定 IPA；历史四文件散列及停用服务状态保持。真机安装、覆盖升级、数据保留和实际手感仍待验收。
+
+完整产物与校验见[公共凭证](evidence/2026-11-11-native-layout-release.json)。
