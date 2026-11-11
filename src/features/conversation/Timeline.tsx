@@ -370,18 +370,7 @@ function TimelineItem({
   if (type === "imageGeneration" && item.status === "failed") {
     return <ImageGenerationFailure backend={backend} threadId={threadId} itemId={String(item.id ?? "")} />;
   }
-  if (type === "contextCompaction") {
-    return (
-      <div
-        className="context-compaction"
-        role="separator"
-        aria-label={t("上下文已压缩")}
-      >
-        <span aria-hidden="true">⟳</span>
-        <strong>{t("上下文已压缩")}</strong>
-      </div>
-    );
-  }
+  if (type === "contextCompaction") return null;
   const rawText = itemText(item);
   const text = type === "agentMessage"
     ? automationAgentMessageText(rawText)

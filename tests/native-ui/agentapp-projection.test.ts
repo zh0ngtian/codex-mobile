@@ -321,16 +321,17 @@ describe('AgentApp 真实展示契约', () => {
     expect(messages.find(message => message.id === 'turn:old')).toBeUndefined();
   });
 
-  it.each(['reasoning', 'commandExecution', 'mcpToolCall', 'plan'])('隐藏的%s不拆分过程与最终回复用时入口', type => {
+  it.each(['reasoning', 'commandExecution', 'mcpToolCall', 'plan', 'contextCompaction'])('隐藏的%s不拆分过程与最终回复用时入口', type => {
     const messages = projectConversation({ turns: [{ id: 'turn', status: 'completed', items: [
       { id: 'c', type: 'agentMessage', phase: 'commentary', text: '较早过程' },
       { id: 'separator', type, text: '分隔', command: 'ls', savedPath: '/standalone.png' },
       { id: 'final', type: 'agentMessage', phase: 'final_answer', text: '完成' },
     ] }] }, path => path);
     expect(messages.find(message => message.id === 'turn:c:history')).toMatchObject({ commentaryCanAttachToReply: true });
+    if (type === 'contextCompaction') expect(messages.find(message => message.id === 'turn:separator')).toBeUndefined();
   });
 
-  it.each(['imageGeneration', 'contextCompaction'])('可见的%s仍阻断过程归并并保留原位置', type => {
+  it.each(['imageGeneration'])('可见的%s仍阻断过程归并并保留原位置', type => {
     const messages = projectConversation({ turns: [{ id: 'turn', status: 'completed', items: [
       { id: 'c', type: 'agentMessage', phase: 'commentary', text: '较早过程' },
       { id: 'separator', type, savedPath: '/standalone.png' },

@@ -86,6 +86,7 @@ export function projectConversation(active: RecordValue | null, imageURL: (path:
       };
       for (const entry of entries) {
         const item = entry.item;
+        if (item.type === 'contextCompaction') continue;
         const id = `${turnId}:${item.id}`;
         if (item.type === 'agentMessage' && item.phase === 'commentary' && entry.history) {
           if (!historyCount) { historyID = id; historyAnchor = scrollAnchor(item, 'history'); }
@@ -104,7 +105,7 @@ export function projectConversation(active: RecordValue | null, imageURL: (path:
         }
         const isFinal = item.type === 'agentMessage' && item.phase !== 'commentary';
         // 工具、推理与计划在原生消息区隐藏，不拆分过程和用时；可见内容仍保留原位置。
-        const visibleSeparator = ['userMessage', 'imageView', 'imageGeneration', 'videoGeneration', 'contextCompaction'].includes(item.type);
+        const visibleSeparator = ['userMessage', 'imageView', 'imageGeneration', 'videoGeneration'].includes(item.type);
         if (historyCount && visibleSeparator) historyInterrupted = true;
         // 独立媒体、final 和用户插话在原始位置结束当前历史区。
         if (item.type === 'userMessage' || item.type === 'agentMessage' || ['imageView', 'imageGeneration', 'videoGeneration'].includes(item.type)) flushHistory(isFinal);
@@ -145,8 +146,6 @@ export function projectConversation(active: RecordValue | null, imageURL: (path:
           messages.push({ id, role: 'activity', text: '', scrollAnchorId: scrollAnchor(item, 'activity'), blocks: [nativeAction(`${id}:video`, t(['inProgress', 'in_progress', 'running'].includes(String(item.status)) ? '正在生成视频' : '视频生成未提供可播放文件'), 'panel.open', { id: `tool:${turnId}:${item.id}` })] });
         } else if (mediaBlocks(item).length) {
           messages.push({ id, role: 'activity', text: '', scrollAnchorId: scrollAnchor(item, 'activity'), blocks: mediaBlocks(item) });
-        } else if (item.type === 'contextCompaction') {
-          messages.push({ id, role: 'activity', text: t('上下文已压缩'), scrollAnchorId: scrollAnchor(item, 'activity') });
         } else if (item.type === 'reasoning') {
           const reasoning = item.text ?? (Array.isArray(item.summary) ? item.summary.map((p: any) => typeof p === 'string' ? p : p.text ?? '').join('\n') : item.summary) ?? (Array.isArray(item.content) ? item.content.map((p: any) => p.text ?? '').join('\n') : item.content) ?? '';
           if (reasoning) messages.push({ id, role: 'activity', activityKind: 'reasoning', text: '', scrollAnchorId: scrollAnchor(item, 'activity'), blocks: [{ id: `${id}:reasoning`, kind: 'disclosure', title: t('思考过程'), children: [{ id: `${id}:text`, kind: 'markdown', text: String(reasoning) }] }] });

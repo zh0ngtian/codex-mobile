@@ -620,7 +620,6 @@ const english: Record<string, string> = {
   "已运行 {count} 个命令": "Ran {count} commands",
   "已调用 {count} 个工具": "Used {count} tools",
   "工具活动": "Tool activity",
-  "上下文已压缩": "Context compacted",
   "已接收 {count} 字符": "Received {count} characters",
   "，已运行 {elapsed}": ", running for {elapsed}",
   "{count} 字符": "{count} characters",

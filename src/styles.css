@@ -281,10 +281,6 @@ button, a, summary, [role="button"] { -webkit-tap-highlight-color: transparent; 
 .stream-elapsed { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .stream-character-spinner { width: 13px; height: 13px; flex: 0 0 auto; border-radius: 50%; background: conic-gradient(from 0deg, transparent 0deg 36deg, #cecece 92deg, #c1c1c1 170deg, #adadad 250deg, #929292 330deg 360deg); -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 0); mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 0); animation: stream-receiving .78s linear infinite; }
 @keyframes stream-receiving { to { transform: rotate(360deg); } }
-.context-compaction { width: 100%; margin: 13px 0 20px; display: grid; grid-template-columns: minmax(24px,1fr) auto auto minmax(24px,1fr); align-items: center; gap: 7px; color: #777; font-size: 0.75rem; line-height: 1; }
-.context-compaction::before, .context-compaction::after { content: ""; height: 1px; background: #e5e5e5; }
-.context-compaction span { color: #8a8a8a; font-size: 0.9375rem; line-height: 1; }
-.context-compaction strong { font-weight: min(900, calc(550 + var(--bold-text-weight-offset))); white-space: nowrap; }
 .reasoning { margin: 0 0 16px; color: #6a6a6a; font-size: 0.875rem; line-height: 1.55; }
 .approval-sheet pre { margin: 13px 0 0; overflow: auto; white-space: pre-wrap; font: 0.8125rem/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; }
 .tool-activity { margin: 2px 0 20px; color: #737373; }
