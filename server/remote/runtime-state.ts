@@ -106,7 +106,8 @@ export class RemoteRuntimeStateStore {
       raw.version !== 1 ||
       raw.generation !== this.generation ||
       typeof raw.paused !== 'boolean' ||
-      !REASONS.includes(String(raw.reason)) ||
+      typeof raw.reason !== 'string' ||
+      !REASONS.includes(raw.reason) ||
       !Array.isArray(raw.pending) ||
       raw.pending.length > MAX_REMOTE_PENDING
     )

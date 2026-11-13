@@ -792,3 +792,54 @@ it('本机重新关联到已接受目标时在候选创建和配对前拒绝', a
   expect(f.runtime.status().pendingResume).toEqual(before.pendingResume);
   expect((await f.registry.readActive())!.snapshot).toEqual(pointer);
 });
+it('离线pending目标恢复被拒绝时保留其他已恢复目标的流，重启也不扩大暂停', async () => {
+  const f = await fixture();
+  await f.runtime.authorize();
+  await until(() => f.runtime.status().state === 'online');
+  await f.runtime.acceptTarget(remote);
+  await f.runtime.recover();
+  await f.runtime.acceptTarget(remote);
+  await f.runtime.resume(local);
+  await until(() => f.runtime.status().state === 'online');
+  const before = f.runtime.status();
+  const pointer = (await f.registry.readActive())!.snapshot;
+  const stream = f.runtime.createRawStream(local);
+  f.setTargets([target(local), { ...target(remote), online: false }]);
+  await expect(f.runtime.resume(remote)).rejects.toMatchObject({ code: 'target-unavailable' });
+  expect(f.runtime.status().state).toBe('online');
+  expect(f.runtime.status().pendingResume).toEqual([remote]);
+  expect(f.runtime.status().managed).toEqual(before.managed);
+  expect((await f.registry.readActive())!.snapshot).toEqual(pointer);
+  expect(stream.closed).toBe(false);
+  await expect(
+    f.runtime.resume({ environmentId: 'unaccepted-env', installationId: 'unaccepted-install' }),
+  ).rejects.toMatchObject({ code: 'target-unaccepted' });
+  expect(f.runtime.status().state).toBe('online');
+  expect(stream.closed).toBe(false);
+  await f.runtime.close();
+  const restarted = new RemoteRuntime(f.options);
+  cleanup.push(() => restarted.close());
+  await restarted.start();
+  await until(() => restarted.status().state === 'online');
+  expect(restarted.status().pendingResume).toEqual([remote]);
+  expect(restarted.createRawStream(local).closed).toBe(false);
+  expect(() => restarted.createRawStream(remote)).toThrow('需要在 Mac 显式恢复');
+});
+it('管理session同步阻塞超过实际阶段期限，已返回但未交付的资源仍关闭', async () => {
+  const f = await fixture();
+  await f.runtime.authorize();
+  await until(() => f.runtime.status().state === 'online');
+  const controller = (f.runtime as any).bundle.controller;
+  let closed = 0;
+  controller.createManagementSession = async () => {
+    const deadline = performance.now() + 1600;
+    while (performance.now() < deadline) {}
+    return {
+      close() {
+        closed++;
+      },
+    };
+  };
+  await expect(f.runtime.createManagementSession(local)).rejects.toMatchObject({ code: 'timeout' });
+  expect(closed).toBe(1);
+});

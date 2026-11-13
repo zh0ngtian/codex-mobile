@@ -329,3 +329,28 @@ it('start已发出但ID迟到时仍取消该ID，不打开浏览器或确认auth
   expect(f.urls).toHaveLength(0);
   expect(f.confirmed()).toBe(0);
 });
+it('canonical工厂同步阻塞超过实际阶段期限，已返回会话仍回收且不initialize', async () => {
+  let initialized = 0;
+  let closed = 0;
+  const f = fixture({
+    operationTimeoutMs: 5,
+    canonicalFactory: async () => {
+      const deadline = performance.now() + 20;
+      while (performance.now() < deadline) {}
+      return {
+        async initialize() {
+          initialized++;
+          return { codexHome: identity.codexHome };
+        },
+        close() {
+          closed++;
+        },
+      };
+    },
+  });
+  await expect(f.login.login()).rejects.toMatchObject({ code: 'timeout' });
+  expect(initialized).toBe(0);
+  expect(closed).toBe(1);
+  expect(f.urls).toHaveLength(0);
+  expect(f.confirmed()).toBe(0);
+});

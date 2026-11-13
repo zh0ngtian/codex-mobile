@@ -258,6 +258,12 @@ export class RemoteCanonicalLogin {
   private async run(flow: Flow): Promise<Readonly<ManagedAuthIdentity>> {
     let success = false;
     let abandoned = false;
+    let unclaimedSession: RemoteControllerCanonical | undefined;
+    const discardSession = (): Promise<void> => {
+      const value = unclaimedSession;
+      unclaimedSession = undefined;
+      return dispose(value);
+    };
     let verifiedIdentity: Readonly<ManagedAuthIdentity> | undefined;
     let failure: RemoteLoginError | undefined;
     const pending = Promise.resolve().then(() => {
@@ -266,12 +272,14 @@ export class RemoteCanonicalLogin {
     });
     void pending.then(
       (value) => {
-        if (abandoned) dispose(value);
+        unclaimedSession = value;
+        if (abandoned || !flow.active || flow.abort.signal.aborted) void discardSession();
       },
       () => undefined,
     );
     try {
       flow.session = await this.wait(flow, () => pending, 'network');
+      unclaimedSession = undefined;
       const metadata = object(await this.wait(flow, () => flow.session!.initialize(), 'network'));
       if (typeof metadata.codexHome !== 'string' || !isAbsolute(metadata.codexHome))
         throw new RemoteLoginError('response-invalid');
@@ -372,6 +380,7 @@ export class RemoteCanonicalLogin {
         error instanceof RemoteLoginError && Object.hasOwn(MESSAGES, error.code)
           ? new RemoteLoginError(error.code)
           : new RemoteLoginError('network');
+      if (abandoned) await this.settle(discardSession);
     }
     try {
       await this.cleanup(flow, !success);

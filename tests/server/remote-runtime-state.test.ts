@@ -83,3 +83,18 @@ it('磁盘未知字段、重复tuple和身份错配不能自动清除暂停', as
     await expect(f.state.read()).rejects.toThrow('Remote 运行暂停记录不可用');
   }
 });
+it.each([{ reason: ['manual'] }, { reason: { value: 'manual' } }])(
+  '磁盘暂停原因必须是白名单字符串，拒绝非字符串%j',
+  async ({ reason }) => {
+    const f = await fixture();
+    await f.store.writeJson('runtime-state.json', {
+      version: 1,
+      generation: 'generation',
+      managed,
+      paused: true,
+      reason,
+      pending: [old],
+    });
+    await expect(f.state.read()).rejects.toThrow('Remote 运行暂停记录不可用');
+  },
+);

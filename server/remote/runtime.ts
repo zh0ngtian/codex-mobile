@@ -705,6 +705,7 @@ export class RemoteRuntime extends EventEmitter<{
       if (!accepted.targets.some((value) => sameRemoteTarget(value, target)))
         throw new RemoteRuntimeError('target-unaccepted');
       const before = active.state;
+      let mutationStarted = false;
       const restore = (): Promise<void> => {
         if (recovery) return recovery;
         const paused = {
@@ -730,13 +731,16 @@ export class RemoteRuntime extends EventEmitter<{
       op.abort.signal.addEventListener('abort', aborted);
       removeAbort = () => op.abort.signal.removeEventListener('abort', aborted);
       try {
-        if (['paused', 'auth-required', 'remote-disabled'].includes(bundle.controller.state))
+        if (['paused', 'auth-required', 'remote-disabled'].includes(bundle.controller.state)) {
+          mutationStarted = true;
           await this.wait(op, () => bundle.controller.resume());
+        }
         let targets: readonly RemoteTarget[];
         try {
           targets = await this.wait(op, () => bundle.controller.refreshTargets());
         } catch (error) {
           if (!['paused', 'auth-required', 'remote-disabled'].includes(bundle.controller.state)) throw error;
+          mutationStarted = true;
           await this.wait(op, () => bundle.controller.resume());
           targets = await this.wait(op, () => bundle.controller.refreshTargets());
         }
@@ -752,6 +756,7 @@ export class RemoteRuntime extends EventEmitter<{
         await this.expected(op, bundle, active.snapshot.managed);
         await this.wait(op, () => bundle.provider.verifyBinding());
         const current = active.state;
+        mutationStarted = true;
         await this.wait(op, () =>
           this.save(active, {
             ...current,
@@ -764,7 +769,13 @@ export class RemoteRuntime extends EventEmitter<{
         this.assert(op);
         return this.status();
       } catch (error) {
-        await restore();
+        const failure = classify(error);
+        const targetRejected = failure === 'target-unavailable' || failure === 'target-unaccepted';
+        const controllerPaused = ['paused', 'auth-required', 'remote-disabled', 'closed'].includes(
+          bundle.controller.state,
+        );
+        // 只读目标核验的拒绝不扩大暂停；已开始恢复、身份故障或中止仍保守收回整个 bundle。
+        if (!targetRejected || mutationStarted || controllerPaused || op.abort.signal.aborted) await restore();
         throw error;
       }
     });
@@ -842,34 +853,45 @@ export class RemoteRuntime extends EventEmitter<{
   }
   createManagementSession(value: RemoteTargetIdentity, signal?: AbortSignal): Promise<RemoteRpcSession> {
     const { target, bundle } = this.executable(value);
-    return this.run(signal, async (op) => {
-      let abandoned = false;
+    let abandoned = false;
+    let unclaimedSession: RemoteRpcSession | undefined;
+    const discardSession = (): Promise<void> => {
+      const session = unclaimedSession;
+      unclaimedSession = undefined;
+      return dispose(session);
+    };
+    const flight = this.run(signal, async (op) => {
       const pending = Promise.resolve().then(() => {
         this.assert(op);
         return bundle.controller.createManagementSession(target);
       });
       void pending.then(
         (session) => {
-          if (abandoned) void dispose(session);
+          unclaimedSession = session;
+          if (abandoned) void discardSession();
         },
         () => undefined,
       );
-      try {
-        const session = await this.wait(op, () => pending);
-        if (
-          this.bundle !== bundle ||
-          this.active?.state.paused ||
-          this.active?.state.pending.some((value) => sameRemoteTarget(value, target))
-        ) {
-          void dispose(session);
-          throw new RemoteRuntimeError('unavailable');
-        }
-        return session;
-      } catch (error) {
-        abandoned = true;
-        throw error;
-      }
+      const session = await this.wait(op, () => pending);
+      if (
+        this.bundle !== bundle ||
+        this.active?.state.paused ||
+        this.active?.state.pending.some((value) => sameRemoteTarget(value, target))
+      )
+        throw new RemoteRuntimeError('unavailable');
+      return session;
     });
+    return flight
+      .then((session) => {
+        unclaimedSession = undefined;
+        return session;
+      })
+      .catch(async (error) => {
+        abandoned = true;
+        // 资源可能已经兑现，但 wait 的实际期限/最后校验尚未允许交付给调用者。
+        await this.boundedCleanup(discardSession);
+        throw error;
+      });
   }
   close(): Promise<void> {
     if (this.closing) return this.closing;
