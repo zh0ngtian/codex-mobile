@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-11-13",
+  "baselineMain": "0bc1d65c0f7520c3bf9bec3a7509ddba02273e10",
+  "sourceCommit": "335ed58f1e3bea240299dcaccf6a74e4dbecd487",
+  "passed": true,
+  "scope": "Task2b.3b.2单实例运行管理、canonical普通登录和逐目标持久暂停",
+  "checks": {
+    "remoteTestFiles": 16,
+    "remoteTestsPassed": 492,
+    "existingHardwareOptInSkipped": 1,
+    "strictServerTypeScript": "passed",
+    "serverBuild": "passed",
+    "diffCheck": "passed",
+    "independentSpecReview": "passed; final delta and original reproductions: 5 files, 66 tests passed",
+    "independentQualityReview": "passed; original reproductions and related regression: 5 files, 113 tests passed; no remaining issues"
+  },
+  "observedRedToGreen": [
+    "真实controller恢复中取消、超时或关闭仍保留持久暂停，迟到load不能打开Relay",
+    "目录中完整tuple离线时拒绝恢复；目标B拒绝不关闭健康A旧流，重启仍仅B暂停",
+    "本机重新关联在配对或指针变更前拒绝已接受目标冲突",
+    "登录最终异步清理期间取消、超时或关闭仍取消已知loginId，挂起cancel RPC有界",
+    "实际期限拒绝交付已兑现的canonical/session时回收资源",
+    "磁盘暂停reason要求白名单字符串，拒绝数组"
+  ],
+  "verifiedBoundaries": [
+    "未配置构造、启动和状态不创建密钥、不触发OAuth、登记或Remote主连接",
+    "身份操作互斥、有界取消和绝对期限；旧主连接与存储收尾完成前不准备新身份",
+    "完整managed/local绑定、独立候选与原子指针；晚提交只查询实际指针，不晚启动或自动重试授权",
+    "完整目标tuple暂停独立持久化，配对、在线、实例重建不能清除，Mac显式resume只清指定tuple",
+    "canonical普通ChatGPT登录与Remote step-up授权分开；外部错误固定脱敏"
+  ],
+  "officialRemoteProbe": "2026-11-13-remote-runtime-product-probe.json",
+  "limitations": [
+    "隔离测试使用临时私有目录、替身及隔离HTTP/WS；实际探针另用此前已授权的网关自有身份，禁止新密钥、OAuth或登记。",
+    "实际只验证当前Mac的model/list、同流恢复、35秒零流保活和持久暂停后显式恢复。",
+    "实例重建不是OS进程重启；单次耗时不代表P95或8小时稳定性。",
+    "私有管理通道、Mac CLI、网关入口、目标业务、队列及客户端仍待接入；未修改现役服务或发布客户端。"
+  ]
+}

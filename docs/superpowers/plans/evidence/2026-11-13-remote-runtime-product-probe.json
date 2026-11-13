@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "sourceCommit": "335ed58f1e3bea240299dcaccf6a74e4dbecd487",
+  "startedAt": "2026-11-13T10:14:20.705Z",
+  "events": [
+    {
+      "at": "2026-11-13T10:14:26.286Z",
+      "stage": "existing_owned_identity_prepared_without_relay",
+      "targets": 1
+    },
+    {
+      "at": "2026-11-13T10:14:39.267Z",
+      "stage": "runtime_three_sessions_one_master",
+      "prepareAttempts": 1,
+      "startToAllRpcMs": 12980
+    },
+    {
+      "at": "2026-11-13T10:14:43.647Z",
+      "stage": "runtime_same_sessions_network_recovery",
+      "elapsedMs": 4380,
+      "prepareAttempts": 2
+    },
+    {
+      "at": "2026-11-13T10:15:18.649Z",
+      "stage": "runtime_zero_sessions_kept_master",
+      "idleMs": 35000,
+      "prepareAttempts": 2
+    },
+    {
+      "at": "2026-11-13T10:15:22.665Z",
+      "stage": "runtime_restart_retained_pause",
+      "automaticConnection": false,
+      "pendingOriginalTuple": true
+    },
+    {
+      "at": "2026-11-13T10:15:30.603Z",
+      "stage": "runtime_explicit_original_tuple_resume",
+      "elapsedMs": 7938,
+      "newEnrollment": false
+    }
+  ],
+  "scope": [
+    "隔离runtime与已有网关自有登记",
+    "只读model/list RPC、同stream重连、零stream心跳与持久暂停恢复"
+  ],
+  "limitations": [
+    "实例重建不是OS进程重启",
+    "单次恢复耗时不是P95或8小时验收",
+    "不包含手机入口、队列和文件产品验收"
+  ],
+  "passed": true,
+  "completedAt": "2026-11-13T10:15:30.635Z",
+  "forbiddenActions": 0
+}

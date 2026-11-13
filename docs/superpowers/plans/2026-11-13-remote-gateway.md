@@ -69,12 +69,18 @@
 2026-11-13开始2b.3b时记录最新远端main为 `a9d5f34442f810df88c2dc699cf1eb63dd626f48`，工作区干净。继续复用子代理实现、TDD与规格/质量两阶段审查。为分别验证崩溃、生命周期和进程归属，内部拆为以下依赖项，不改变已确认架构：
 
 - [x] 2b.3b.1 `server/remote/identity-registry.ts`及测试：独立私有候选记录、完整绑定校验、活动身份指针CAS和崩溃后只采用已提交身份，保留旧身份。
-- [ ] 2b.3b.2 `server/remote/runtime.ts`、`server/remote/login.ts`及测试，必要时扩充controller的显式重新关联/目标预绑定接口：同一网关串行管理canonical登录、首次授权/配对/恢复、停止旧主连接后准备新身份，原身份与目标复核及暂停保留。
+- [x] 2b.3b.2 `server/remote/runtime.ts`、`server/remote/runtime-state.ts`、`server/remote/runtime-lifecycle.ts`、`server/remote/login.ts`及测试，必要时扩充controller的显式重新关联/目标预绑定接口：同一网关串行管理canonical登录、首次授权/配对/恢复、停止旧主连接后准备新身份，原身份与目标复核及暂停保留。暂停名单单独持久化，以完整tuple保留旧installation，不因配对或重启清除；取消、绝对期限与资源清理边界独立为内部助手，不增加产品API。
 - [ ] 2b.3b.3 `server/remote/admin.ts`、`bin/remote.mjs`及测试，修改`server/index.ts`、`bin/codex-mobile.mjs`等入口：当前用户私有有界管理通道、单网关进程归属、CLI仅连接已运行实例，使用实际canonical地址；Local启动与既有URL不受授权状态影响。
 
 各项独立红绿、规格与质量审查；只有运行入口、CLI及隔离生命周期全部通过后才标记2b.3b完成。不启动现役服务、不执行真实授权撤销或登记、不构建客户端。
 
 2b.3b.1完成记录：最终源码 `ca370fe75cef837674baa6908ab1a284b91b970b`，55项身份存储测试和全部12个Remote文件430项通过，1项既有硬件opt-in跳过；严格服务端类型检查、服务端构建及独立规格/质量审查通过。候选handle、基线和路径隔离，完整key/enrollment/controller记录核验后在跨进程锁下CAS切换单一活动指针；普通授权保留完整managed/local，独立显式本机重新关联只允许保留managed/enrollment并确认新local。真实子进程竞争、提交前后终止、rename后fsync故障及首次指针读取竞态均有验证；旧身份和未完成候选保留。合法targets增长不改变稳定身份，缺失userId变为新增也被拒绝。见[隔离验收记录](evidence/2026-11-13-remote-identity-registry-validation.json)。本项只完成持久层，运行管理、真实证明、私有管理通道和CLI继续后续开发，不能据此标记2b.3b或Task2完成。
+
+2b.3b.2开始时记录已推送main为 `0bc1d65c0f7520c3bf9bec3a7509ddba02273e10`。运行管理、普通canonical登录和逐目标暂停存储按独立职责实现；先使用临时私有目录、测试工厂及隔离HTTP/WS验证生命周期，完成独立规格及质量复审后再接入CLI。本子项尚未执行新的真实OAuth、登记或身份撤销操作。
+
+2b.3b.2完成记录：最终源码 `335ed58f1e3bea240299dcaccf6a74e4dbecd487`，全部16个Remote文件492项通过，1项既有硬件opt-in跳过；严格服务端类型检查、服务端构建和独立规格/质量复审通过。运行层串行管理普通canonical登录、首次授权、独立候选恢复与显式重新关联；完整tuple暂停持久保留，旧主连接停止及存储收尾前不准备新身份。审查复现并修复恢复取消后迟到启动、离线目标误清暂停、本机重新关联冲突、登录最终清理取消、健康目标被其他目标拒绝关闭及已兑现未交付资源回收，磁盘reason严格要求白名单字符串。见[运行层隔离验收记录](evidence/2026-11-13-remote-runtime-validation.json)。
+
+同一最终源码的正式Remote隔离探针复用此前已授权的网关自有身份，禁止新密钥、OAuth和登记：5次并发start只准备1条主连接，3条管理流RPC通过；主动断线至原3流顺序model/list全部完成4380ms；关闭逻辑流后35秒主连接保留，prepare次数不增加。仅隔离登记变化触发暂停，恢复记录并重建runtime仍不自动连接；显式恢复原完整tuple至RPC完成7938ms，无新登记。首次启动至3流RPC全完成12980ms。见[脱敏运行层收据](evidence/2026-11-13-remote-runtime-product-probe.json)。实例重建不是OS进程重启，这些单次耗时和短时保活不代表P95或8小时验收；未创建聊天、执行模型推理、修改现役服务或构建客户端。私有管理通道、Mac CLI与入口继续2b.3b.3，不能标记整个Task2完成。
 
 2b.1完成记录：最终源码 `797fef5d21eeb026d40334b535e5f713c3dc2cc9`，38项新增专项测试、9文件211项相关回归通过，1项既有硬件opt-in跳过；严格服务端TypeScript检查、服务端构建和独立规格/质量复审通过。RPC使用已核验JSON快照，canonical待写字节与数量独立有界，未完成写入超时关闭并清理；loader按连接隔离refresh/singleflight，文件读取超时关闭关联会话，保留原绑定，旧结果不得污染新连接。最终隔离实测39次loader加载保持账号绑定，三条管理流复用一条官方物理连接，同流主动断线至三次顺序模型RPC全部完成5015ms，新provider恢复磁盘身份的RPC为1224ms，无重新授权或生产改动。首次实际验证曾在初始化前发生连接离线，旧session按设计终止；探针改为online后新建初始逻辑流，失败记录一并保留，未重放请求。见[脱敏受管认证/RPC收据](evidence/2026-11-13-remote-managed-auth-rpc-probe.json)。该阶段未覆盖controller/目录与产品路径，不代表P95、真实网关进程重启或8小时验收。
 
@@ -95,7 +101,7 @@
 
 ## Task 3：目标权限内的文件与 Git 适配
 
-文件：新增 `server/remote/files.ts`、`server/remote/commands.ts`、`tests/server/remote-files.test.ts`；修改 `server/file-download.ts`、`server/image-preview.ts`、`server/inline-images.ts`、`server/message-timestamps.ts`、`server/image-generation-error.ts`、`server/turn-change-history.ts`、`server/codex-projects.ts`、`server/desktop-thread-pins.ts`、`server/title-summaries.ts` 及模型上传计量的目标接入以注入目标访问能力。
+文件：新增 `server/remote/files.ts`、`server/remote/commands.ts`、`tests/server/remote-files.test.ts`；修改 `server/file-download.ts`、`server/image-preview.ts`、`server/inline-images.ts`、`server/message-rollout-files.ts`、`server/message-timestamps.ts`、`server/web-citations.ts`、`server/local-thread-metadata.ts`、`server/image-generation-error.ts`、`server/turn-change-history.ts`、`server/codex-projects.ts`、`server/desktop-thread-pins.ts`、`server/title-summaries.ts`、`server/sidechat-replay.ts` 及模型上传计量的目标接入以注入目标访问能力。Bark完成通知的rollout分类补查同样使用目标读取能力；网关自己的队列、通知订阅和附件缓存仍按已确认来源范围持久化，不能把目标路径交给本地fs。
 
 前置探针：官方 `initialize` 直接返回 `codexHome/platformFamily/platformOs`，当前目标目录与 `command/exec` 环境一致，无需猜路径。目标全局状态和 sessions 目录可读取；目标现有计量 socket 权限700/600且归当前用户，但默认 `command/exec` 在 socket connect 阶段返回 EPERM。[默认权限能力收据](evidence/2026-11-13-remote-target-capabilities-probe.json)保留原结果。
 
