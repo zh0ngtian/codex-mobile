@@ -1,4 +1,5 @@
 import { ResourceSettlement } from './resource-settlement.js';
+import { assertRemoteOperation, withRemoteOperation } from './operation-guard.js';
 import { createHash } from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import { performance } from 'node:perf_hooks';
@@ -124,21 +125,27 @@ export class RemoteController extends EventEmitter<ControllerEvents> {
     this.currentState = state; this.reason = reason; this.publish('state', state, reason);
   }
   private assert(epoch: number): void { this.options.store.assertOwnership(); if (this.state === 'closed' || this.epoch !== epoch || this.abort.signal.aborted) throw new RemoteControllerError('closed'); }
-  private async external<T>(epoch: number, operation: () => Promise<T>, network = true): Promise<T> {
+  private async external<T>(epoch: number, operation: (assertActive: () => void) => Promise<T>, network = true): Promise<T> {
     const deadline = performance.now() + this.timeout;
-    const active = () => { this.assert(epoch); if (performance.now() >= deadline) throw new RemoteNetworkError(); };
-    active(); let timer: NodeJS.Timeout | undefined; let aborted: (() => void) | undefined; const signal = this.abort.signal;
-    try {
-      const result = await Promise.race([Promise.resolve().then(() => { active(); return operation(); }), new Promise<never>((_resolve, reject) => {
-        aborted = () => reject(new RemoteControllerError('closed')); signal.addEventListener('abort', aborted, { once: true });
-        timer = setTimeout(() => reject(new RemoteNetworkError()), Math.max(1, Math.ceil(deadline - performance.now())));
-      })]); active(); return result;
-    } catch (error) {
-      if (error instanceof RemoteControllerError) throw new RemoteControllerError(error.code);
-      if (error instanceof RemoteAuthRequiredError) throw new RemoteAuthRequiredError();
-      if (error instanceof RemoteNetworkError || network) throw new RemoteNetworkError();
-      throw new RemoteControllerError('binding-invalid');
-    } finally { clearTimeout(timer); if (aborted) signal.removeEventListener('abort', aborted); }
+    const check = () => {
+      if (this.state === 'closed' || this.epoch !== epoch || this.abort.signal.aborted) throw new RemoteControllerError('closed');
+      if (performance.now() >= deadline) throw new RemoteNetworkError();
+    };
+    const active = () => { this.assert(epoch); check(); assertRemoteOperation(); };
+    return withRemoteOperation(check, async () => {
+      active(); let timer: NodeJS.Timeout | undefined; let aborted: (() => void) | undefined; const signal = this.abort.signal;
+      try {
+        const result = await Promise.race([Promise.resolve().then(() => { active(); return operation(active); }), new Promise<never>((_resolve, reject) => {
+          aborted = () => reject(new RemoteControllerError('closed')); signal.addEventListener('abort', aborted, { once: true });
+          timer = setTimeout(() => reject(new RemoteNetworkError()), Math.max(1, Math.ceil(deadline - performance.now())));
+        })]); active(); return result;
+      } catch (error) {
+        if (error instanceof RemoteControllerError) throw new RemoteControllerError(error.code);
+        if (error instanceof RemoteAuthRequiredError) throw new RemoteAuthRequiredError();
+        if (error instanceof RemoteNetworkError || network) throw new RemoteNetworkError();
+        throw new RemoteControllerError('binding-invalid');
+      } finally { clearTimeout(timer); if (aborted) signal.removeEventListener('abort', aborted); }
+    });
   }
   private async load(epoch: number): Promise<void> {
     if (this.loaded) return;
@@ -160,10 +167,12 @@ export class RemoteController extends EventEmitter<ControllerEvents> {
   private async connectCanonical(epoch: number): Promise<RemoteControllerCanonical> {
     if (this.canonical) return this.canonical;
     let abandoned = false; let value: RemoteControllerCanonical | undefined; let unclaimed: RemoteControllerCanonical | undefined;
-    const pending = this.resources.create(() => { this.assert(epoch); return this.factory(); });
-    void pending.then(result => { unclaimed = result; if (abandoned) { void this.resources.close(result); unclaimed = undefined; } }, () => undefined);
     try {
-      value = await this.external(epoch, () => pending); unclaimed = undefined; const metadata = object(await this.external(epoch, () => value!.initialize()));
+      value = await this.external(epoch, assertActive => {
+        const pending = this.resources.create(() => { assertActive(); return this.factory(); });
+        void pending.then(result => { unclaimed = result; if (abandoned) { void this.resources.close(result); unclaimed = undefined; } }, () => undefined);
+        return pending;
+      }); unclaimed = undefined; const metadata = object(await this.external(epoch, () => value!.initialize()));
       const expected = (this.record?.managed ?? this.expectedManaged)?.codexHome;
       if (!isAbsolute(text(metadata.codexHome)) || (expected !== undefined && metadata.codexHome !== expected)) throw new RemoteControllerError('identity-changed');
       this.assert(epoch); this.canonical = value; this.canonicalHome = text(metadata.codexHome);

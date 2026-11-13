@@ -1,4 +1,5 @@
 import { ResourceSettlement } from './resource-settlement.js';
+import { assertRemoteOperation, withRemoteOperation } from './operation-guard.js';
 import { constants, type Stats } from 'node:fs';
 import { lstat, open, realpath } from 'node:fs/promises';
 import { isAbsolute, join, normalize } from 'node:path';
@@ -106,25 +107,31 @@ export class ManagedAuthLoader {
     catch { throw authFailure(); }
   }
   /** 外部回调即使抛出本项目同类型错误也仅保留分类。 */
-  private async external<T>(operation: () => Promise<T>, network: boolean): Promise<T> {
+  private async external<T>(operation: (assertActive: () => void) => Promise<T>, network: boolean): Promise<T> {
     const deadline = performance.now() + this.operationTimeoutMs;
-    const active = () => {
-      this.options.assertOwnership?.();
+    const check = () => {
       if (this.abort.signal.aborted || performance.now() >= deadline) throw new RemoteNetworkError();
     };
-    active();
-    let timer: NodeJS.Timeout | undefined; let abort: (() => void) | undefined;
-    try {
-      const value = await Promise.race([Promise.resolve().then(() => { active(); return operation(); }), new Promise<never>((_resolve, reject) => {
-        abort = () => reject(new RemoteNetworkError());
-        this.abort.signal.addEventListener('abort', abort, { once: true });
-        timer = setTimeout(() => reject(new RemoteNetworkError('Remote 受管账号操作超时')), Math.max(1, Math.ceil(deadline - performance.now())));
-      })]);
-      active(); return value;
-    } catch (error) {
-      if (error instanceof RemoteNetworkError || (network && !(error instanceof RemoteAuthRequiredError))) throw new RemoteNetworkError();
-      throw authFailure();
-    } finally { clearTimeout(timer); if (abort) this.abort.signal.removeEventListener('abort', abort); }
+    const active = () => {
+      this.options.assertOwnership?.();
+      check();
+      assertRemoteOperation();
+    };
+    return withRemoteOperation(check, async () => {
+      active();
+      let timer: NodeJS.Timeout | undefined; let abort: (() => void) | undefined;
+      try {
+        const value = await Promise.race([Promise.resolve().then(() => { active(); return operation(active); }), new Promise<never>((_resolve, reject) => {
+          abort = () => reject(new RemoteNetworkError());
+          this.abort.signal.addEventListener('abort', abort, { once: true });
+          timer = setTimeout(() => reject(new RemoteNetworkError('Remote 受管账号操作超时')), Math.max(1, Math.ceil(deadline - performance.now())));
+        })]);
+        active(); return value;
+      } catch (error) {
+        if (error instanceof RemoteNetworkError || (network && !(error instanceof RemoteAuthRequiredError))) throw new RemoteNetworkError();
+        throw authFailure();
+      } finally { clearTimeout(timer); if (abort) this.abort.signal.removeEventListener('abort', abort); }
+    });
   }
   private connection(): Promise<CanonicalConnection> {
     if (this.abort.signal.aborted) return Promise.reject(new RemoteNetworkError());
@@ -132,14 +139,12 @@ export class ManagedAuthLoader {
     if (this.connecting) return this.connecting;
     this.connecting = this.resources.track((async () => {
       let session: ManagedAuthCanonical | undefined; let abandoned = false; let unclaimed: ManagedAuthCanonical | undefined;
-      const created = this.resources.create(() => {
-        this.options.assertOwnership?.();
-        if (this.abort.signal.aborted) throw new RemoteNetworkError();
-        return this.factory();
-      });
-      void created.then(value => { unclaimed = value; if (abandoned) { void this.resources.close(value); unclaimed = undefined; } }, () => undefined);
       try {
-        session = await this.external(() => created, true); unclaimed = undefined;
+        session = await this.external(assertActive => {
+          const created = this.resources.create(() => { assertActive(); return this.factory(); });
+          void created.then(value => { unclaimed = value; if (abandoned) { void this.resources.close(value); unclaimed = undefined; } }, () => undefined);
+          return created;
+        }, true); unclaimed = undefined;
         const metadata = await this.external(() => session!.initialize(), true);
         if (!object(metadata)) throw authFailure();
         const home = homePath(metadata.codexHome);

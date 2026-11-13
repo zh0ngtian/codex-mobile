@@ -1,4 +1,5 @@
 import { ResourceSettlement } from './resource-settlement.js';
+import { assertRemoteOperation, withRemoteOperation } from './operation-guard.js';
 import { execFile } from 'node:child_process';
 import { performance } from 'node:perf_hooks';
 import { isAbsolute, normalize } from 'node:path';
@@ -161,49 +162,56 @@ export class RemoteCanonicalLogin {
   private cancel(flow: Flow, code: RemoteLoginFailure): void {
     if (!flow.abort.signal.aborted) flow.abort.abort(new RemoteLoginError(code));
   }
-  private assert(flow: Flow, phaseDeadline = Infinity): void {
-    this.options.assertOwnership?.();
+  private check(flow: Flow, phaseDeadline = Infinity): void {
     if (performance.now() >= Math.min(flow.deadline, phaseDeadline)) this.cancel(flow, 'timeout');
     if (!flow.active || flow.abort.signal.aborted)
       throw flow.abort.signal.reason instanceof RemoteLoginError
         ? flow.abort.signal.reason
         : new RemoteLoginError('closed');
   }
+  private assert(flow: Flow, phaseDeadline = Infinity): void {
+    this.options.assertOwnership?.();
+    this.check(flow, phaseDeadline);
+    assertRemoteOperation();
+  }
   private async wait<T>(
     flow: Flow,
-    operation: () => Promise<T>,
+    operation: (assertActive: () => void) => Promise<T>,
     code: RemoteLoginFailure,
     timeout = this.operationTimeout,
   ): Promise<T> {
-    this.assert(flow);
     const phaseDeadline = performance.now() + timeout;
-    let timer: NodeJS.Timeout | undefined;
-    let abort: (() => void) | undefined;
-    try {
-      const result = await Promise.race([
-        Promise.resolve().then(() => {
-          this.assert(flow, phaseDeadline);
-          return operation();
-        }),
-        new Promise<never>((_resolve, reject) => {
-          abort = () => reject(flow.abort.signal.reason);
-          flow.abort.signal.addEventListener('abort', abort, { once: true });
-          timer = setTimeout(
-            () => this.cancel(flow, 'timeout'),
-            Math.min(timeout, Math.max(1, flow.deadline - performance.now())),
-          );
-          if (flow.abort.signal.aborted) abort();
-        }),
-      ]);
-      this.assert(flow, phaseDeadline);
-      return result;
-    } catch {
-      this.assert(flow, phaseDeadline);
-      throw new RemoteLoginError(code);
-    } finally {
-      clearTimeout(timer);
-      if (abort) flow.abort.signal.removeEventListener('abort', abort);
-    }
+    const active = () => this.assert(flow, phaseDeadline);
+    return withRemoteOperation(() => this.check(flow, phaseDeadline), async () => {
+      active();
+      let timer: NodeJS.Timeout | undefined;
+      let abort: (() => void) | undefined;
+      try {
+        const result = await Promise.race([
+          Promise.resolve().then(() => {
+            active();
+            return operation(active);
+          }),
+          new Promise<never>((_resolve, reject) => {
+            abort = () => reject(flow.abort.signal.reason);
+            flow.abort.signal.addEventListener('abort', abort, { once: true });
+            timer = setTimeout(
+              () => this.cancel(flow, 'timeout'),
+              Math.min(timeout, Math.max(1, flow.deadline - performance.now())),
+            );
+            if (flow.abort.signal.aborted) abort();
+          }),
+        ]);
+        this.assert(flow, phaseDeadline);
+        return result;
+      } catch {
+        this.assert(flow, phaseDeadline);
+        throw new RemoteLoginError(code);
+      } finally {
+        clearTimeout(timer);
+        if (abort) flow.abort.signal.removeEventListener('abort', abort);
+      }
+    });
   }
   private async settle(operation: () => Promise<unknown>): Promise<void> {
     let timer: NodeJS.Timeout | undefined;
@@ -262,19 +270,21 @@ export class RemoteCanonicalLogin {
     };
     let verifiedIdentity: Readonly<ManagedAuthIdentity> | undefined;
     let failure: RemoteLoginError | undefined;
-    const pending = this.resources.create(() => {
-      this.assert(flow);
-      return this.factory();
-    });
-    void pending.then(
-      (value) => {
-        unclaimedSession = value;
-        if (abandoned || !flow.active || flow.abort.signal.aborted) void discardSession();
-      },
-      () => undefined,
-    );
     try {
-      flow.session = await this.wait(flow, () => pending, 'network');
+      flow.session = await this.wait(flow, (assertActive) => {
+        const pending = this.resources.create(() => {
+          assertActive();
+          return this.factory();
+        });
+        void pending.then(
+          (value) => {
+            unclaimedSession = value;
+            if (abandoned || !flow.active || flow.abort.signal.aborted) void discardSession();
+          },
+          () => undefined,
+        );
+        return pending;
+      }, 'network');
       unclaimedSession = undefined;
       const metadata = object(await this.wait(flow, () => flow.session!.initialize(), 'network'));
       if (typeof metadata.codexHome !== 'string' || !isAbsolute(metadata.codexHome))
@@ -308,28 +318,30 @@ export class RemoteCanonicalLogin {
         flow.session.on(event, listener);
         flow.canonicalRemovers.push(() => flow.session!.off!(event, listener));
       }
-      const started = Promise.resolve().then(() => {
-        this.assert(flow);
-        return flow.session!.call('account/login/start', { type: 'chatgpt' });
-      });
-      // 响应先于/晚于取消都只对 canonical 返回的有界 ID 取消，不再打开浏览器。
-      void started.then(
-        (value) => {
-          if (flow.active && !flow.abort.signal.aborted) return;
-          try {
-            const raw = object(value);
-            if (raw.type !== 'chatgpt') return;
-            const loginId = text(raw.loginId);
-            void Promise.resolve()
-              .then(() => flow.session!.call('account/login/cancel', { loginId }))
-              .catch(() => undefined);
-          } catch {
-            /* 畸形迟到响应没有可取消的 ID。 */
-          }
-        },
-        () => undefined,
-      );
-      const raw = object(await this.wait(flow, () => started, 'network'));
+      const raw = object(await this.wait(flow, (assertActive) => {
+        const started = Promise.resolve().then(() => {
+          assertActive();
+          return flow.session!.call('account/login/start', { type: 'chatgpt' });
+        });
+        // 响应先于/晚于取消都只对 canonical 返回的有界 ID 取消，不再打开浏览器。
+        void started.then(
+          (value) => {
+            if (flow.active && !flow.abort.signal.aborted) return;
+            try {
+              const raw = object(value);
+              if (raw.type !== 'chatgpt') return;
+              const loginId = text(raw.loginId);
+              void Promise.resolve()
+                .then(() => flow.session!.call('account/login/cancel', { loginId }))
+                .catch(() => undefined);
+            } catch {
+              /* 畸形迟到响应没有可取消的 ID。 */
+            }
+          },
+          () => undefined,
+        );
+        return started;
+      }, 'network'));
       if (raw.type !== 'chatgpt') throw new RemoteLoginError('response-invalid');
       flow.loginId = text(raw.loginId);
       const url = authUrl(raw.authUrl);

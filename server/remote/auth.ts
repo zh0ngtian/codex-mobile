@@ -1,3 +1,5 @@
+import { performance } from 'node:perf_hooks';
+import { assertRemoteOperation, withRemoteOperation } from './operation-guard.js';
 import { PrivateStore } from './private-store.js';
 import { validateDeviceIdentity, verifyDeviceSignature, type DeviceIdentity, type DeviceKeySigner } from './device-key.js';
 import { RemoteAuthRequiredError, type RemoteAuthProvider, type RemoteConnectionAuth } from './relay.js';
@@ -23,12 +25,22 @@ function timeoutValue(value: number | undefined, fallback: number): number {
   if (!Number.isSafeInteger(result) || result < 1 || result > 180000) throw new Error('Remote 超时配置无效');
   return result;
 }
-async function bounded<T>(promise: Promise<T>, timeoutMs: number, onTimeout?: () => void): Promise<T> {
+async function bounded<T>(operation: () => Promise<T>, timeoutMs: number, onTimeout?: () => void): Promise<T> {
+  const deadline = performance.now() + timeoutMs;
+  let expired = false;
+  const timeout = () => { if (!expired) { expired = true; onTimeout?.(); } };
+  const check = () => {
+    if (performance.now() >= deadline) timeout();
+    if (expired) throw new RemoteNetworkError('Remote 操作超时');
+  };
   let timer: NodeJS.Timeout | undefined;
   try {
-    return await Promise.race([promise, new Promise<never>((_resolve, reject) => {
-      timer = setTimeout(() => { onTimeout?.(); reject(new RemoteNetworkError('Remote 操作超时')); }, timeoutMs);
-    })]);
+    return await withRemoteOperation(check, () => Promise.race([
+      Promise.resolve().then(() => { assertRemoteOperation(); return operation(); }),
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => { timeout(); reject(new RemoteNetworkError('Remote 操作超时')); }, Math.max(1, deadline - performance.now()));
+      }),
+    ]));
   } finally { clearTimeout(timer); }
 }
 /** 外部回调可能自行抛出同类型错误；仅采用分类，不采用其文本或 cause。 */
@@ -66,7 +78,7 @@ export class RemoteAuthProviderImpl implements RemoteAuthProvider {
     let active = true;
     const current = () => { if (!active) throw new RemoteNetworkError(); };
     try {
-      return await bounded(external(async () => {
+      return await bounded(() => external(async () => {
         const frozen = expected === undefined ? undefined : parseEnrollment(expected);
         const record = await this.getEnrollment(); current();
         if (!record || (frozen && JSON.stringify(record) !== JSON.stringify(frozen))) invalid();
@@ -76,14 +88,14 @@ export class RemoteAuthProviderImpl implements RemoteAuthProvider {
   }
   private async loadAuth(binding?: Binding): Promise<ManagedAuth> {
     let auth: ManagedAuth;
-    try { auth = validateManagedAuth(await bounded(external(() => this.options.loadManagedAuth(), '普通账号认证不可用'), this.requestTimeoutMs)); }
+    try { auth = validateManagedAuth(await bounded(() => external(() => this.options.loadManagedAuth(), '普通账号认证不可用'), this.requestTimeoutMs)); }
     catch (error) { if (error instanceof RemoteNetworkError || error instanceof RemoteAuthRequiredError) throw error; throw new RemoteAuthRequiredError('普通账号认证不可用'); }
     if (binding) assertAccount(auth, binding);
     return auth;
   }
   private async identity(record?: EnrollmentRecord): Promise<DeviceIdentity> {
     let identity: DeviceIdentity;
-    try { identity = validateDeviceIdentity(await bounded(external(() => this.options.deviceKey.getIdentity(), '自己的 Remote 硬件身份不可用'), this.signTimeoutMs)); }
+    try { identity = validateDeviceIdentity(await bounded(() => external(() => this.options.deviceKey.getIdentity(), '自己的 Remote 硬件身份不可用'), this.signTimeoutMs)); }
     catch (error) { if (error instanceof RemoteNetworkError) throw error; throw new RemoteAuthRequiredError('自己的 Remote 硬件身份不可用'); }
     if (record && (deviceIdentityHash(identity) !== record.identityHash || JSON.stringify(identity) !== JSON.stringify(record.identity))) invalid();
     return identity;
@@ -171,7 +183,7 @@ export class RemoteAuthProviderImpl implements RemoteAuthProvider {
     if (typeof payload.tokenExpiresAt === 'number' && payload.tokenExpiresAt <= this.now() / 1000) invalid();
     const bytes = Buffer.from(JSON.stringify({ domain: 'codex-device-key-sign-payload/v1', payload }));
     let signature: string;
-    try { signature = await bounded(external(() => this.options.deviceKey.sign(bytes), 'Remote 硬件签名失败'), this.signTimeoutMs); }
+    try { signature = await bounded(() => external(() => this.options.deviceKey.sign(bytes), 'Remote 硬件签名失败'), this.signTimeoutMs); }
     catch (error) { if (error instanceof RemoteNetworkError) throw error; throw new RemoteAuthRequiredError('Remote 硬件签名失败'); }
     if (!verifyDeviceSignature(identity, bytes, signature)) invalid();
     // 硬件签名可能等待：证明离开 provider 前重新读取全部持久化绑定与自己的密钥。
@@ -198,7 +210,7 @@ export class RemoteAuthProviderImpl implements RemoteAuthProvider {
     try {
       // fetch 返回后的响应流仍是外部输入；与 fetch 本身共用脱敏边界。
       // bounded 位于其外，保留 provider 自己产生的超时提示。
-      return await bounded(external(async () => {
+      return await bounded(() => external(async () => {
         const response = await this.fetcher(`${REMOTE_ORIGIN}${REMOTE_CLIENT_PATH}/${route}`, { method: 'POST', headers: { ...this.headers(auth), 'Content-Type': 'application/json' }, body: JSON.stringify(body), redirect: 'error', signal: controller.signal });
         if (!response.ok) {
           void response.body?.cancel().catch(() => undefined);

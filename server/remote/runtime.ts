@@ -24,6 +24,7 @@ import { RemoteCanonicalLogin, type RemoteCanonicalLoginOptions } from './login.
 import { PrivateStore } from './private-store.js';
 import { type RemoteStream } from './relay.js';
 import type { RemoteRpcSession } from './rpc-session.js';
+import { assertRemoteOperation } from './operation-guard.js';
 import {
   RemoteRuntimeStateStore,
   mergeRemotePending,
@@ -158,9 +159,10 @@ export class RemoteRuntime extends EventEmitter<{
       const store = options.store;
       const ownedFetch = (fetcher: typeof fetch): typeof fetch => async (input, init) => {
         store.assertOwnership();
+        assertRemoteOperation();
         const signals = [store.ownershipSignal!, ...(init?.signal ? [init.signal] : [])];
         const response = await fetcher(input, { ...init, signal: AbortSignal.any(signals) });
-        try { store.assertOwnership(); }
+        try { store.assertOwnership(); assertRemoteOperation(); }
         catch (error) { void response.body?.cancel().catch(() => undefined); throw error; }
         return response;
       };
@@ -225,7 +227,16 @@ export class RemoteRuntime extends EventEmitter<{
     this.lifecycle.assert(op);
   }
   private wait<T>(op: Operation, callback: () => Promise<T>, limit = this.timeout): Promise<T> {
-    return this.lifecycle.wait(op, async () => { this.options.store?.assertOwnership(); const value = await callback(); this.options.store?.assertOwnership(); return value; }, limit);
+    return this.lifecycle.wait(op, async assertActive => {
+      this.options.store?.assertOwnership();
+      assertActive();
+      assertRemoteOperation();
+      const value = await callback();
+      this.options.store?.assertOwnership();
+      assertActive();
+      assertRemoteOperation();
+      return value;
+    }, limit);
   }
   private boundedCleanup(callback: () => Promise<unknown>): Promise<void> {
     return this.lifecycle.cleanup(callback);

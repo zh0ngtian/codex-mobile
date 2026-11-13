@@ -1,3 +1,4 @@
+import { assertRemoteOperation } from './operation-guard.js';
 import { spawn } from 'node:child_process';
 import { createHash, createPublicKey, verify } from 'node:crypto';
 import { chmod, lstat, readFile, rename, unlink } from 'node:fs/promises';
@@ -47,6 +48,7 @@ export function verifyDeviceSignature(identity: DeviceIdentity, bytes: Uint8Arra
 export function runBoundedProcess(file: string, args: string[], input: string, timeoutMs: number): Promise<string> {
   if (Buffer.byteLength(input) > MAX_HELPER_BYTES || !Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 180000) return Promise.reject(keyError());
   return new Promise((resolve, reject) => {
+    assertRemoteOperation();
     const child = spawn(file, args, { stdio: ['pipe', 'pipe', 'pipe'], detached: process.platform !== 'win32' });
     let done = false; let bytes = 0; const output: Buffer[] = [];
     const finish = (error?: Error) => {
@@ -76,30 +78,35 @@ export class SecureEnclaveDeviceKey implements DeviceKeySigner {
   }
   private async call(operation: string, input: Record<string, unknown>): Promise<Record<string, unknown>> {
     try {
-      this.options.store.assertOwnership();
+      this.options.store.assertOwnership(); assertRemoteOperation();
       if (Buffer.byteLength(JSON.stringify(input)) > MAX_HELPER_BYTES) throw keyError();
       const output = await this.runner(operation, input);
-      this.options.store.assertOwnership();
+      this.options.store.assertOwnership(); assertRemoteOperation();
       if (!object(output) || 'error' in output) throw keyError();
       return output;
     } catch { throw keyError(); }
   }
   private async loadRecord(): Promise<KeyRecord> {
-    try { return record(await this.options.store.readJson('device-key.json')); } catch { throw keyError(); }
+    try { assertRemoteOperation(); const value = await this.options.store.readJson('device-key.json'); assertRemoteOperation(); return record(value); } catch { throw keyError(); }
   }
   async create(): Promise<DeviceIdentity> {
+    assertRemoteOperation();
     if (this.creating) return this.creating;
     this.creating = this.options.store.withInitialization('device-key', () => this.createOnce()).finally(() => { this.creating = undefined; });
     return this.creating;
   }
   private async createOnce(): Promise<DeviceIdentity> {
+    assertRemoteOperation();
     const existing = await this.options.store.readJson('device-key.json');
+    assertRemoteOperation();
     if (existing !== null) { record(existing); return this.getIdentity(); }
     const output = await this.call('create', {});
     const ownRecord = record(output.keyRecord);
     const identity = validateDeviceIdentity(output);
     if (identity.keyId !== ownRecord.keyId) throw keyError();
+    assertRemoteOperation();
     if (!await this.options.store.createJson('device-key.json', ownRecord)) throw keyError();
+    assertRemoteOperation();
     const persisted = await this.loadRecord();
     if (JSON.stringify(persisted) !== JSON.stringify(ownRecord)) throw keyError();
     const authoritative = await this.getIdentity();
@@ -129,7 +136,7 @@ export class SecureEnclaveDeviceKey implements DeviceKeySigner {
   }
   private async invoke(operation: string, input: Record<string, unknown>): Promise<unknown> {
     const helper = await this.compiledHelper();
-    this.options.store.assertOwnership();
+    this.options.store.assertOwnership(); assertRemoteOperation();
     const encoded = await runBoundedProcess(helper, [operation], JSON.stringify(input), this.options.processTimeoutMs ?? 10000);
     try { return JSON.parse(encoded) as unknown; } catch { throw keyError(); }
   }
@@ -138,23 +145,26 @@ export class SecureEnclaveDeviceKey implements DeviceKeySigner {
     return this.helperReady;
   }
   private async compile(): Promise<string> {
+    assertRemoteOperation();
     if (process.platform !== 'darwin') throw keyError();
     const source = fileURLToPath(new URL('./device-key.swift', import.meta.url));
     const hash = createHash('sha256').update(await readFile(source)).digest('hex');
+    assertRemoteOperation();
     const cache = this.options.store.fork(join(this.options.store.directory, 'helper-cache', hash));
     await cache.readJson('cache-marker.json');
+    assertRemoteOperation();
     const executable = join(cache.directory, 'device-key-helper');
     try {
       const stat = await lstat(executable);
-      cache.assertOwnership();
+      cache.assertOwnership(); assertRemoteOperation();
       if (!stat.isFile() || stat.isSymbolicLink() || stat.nlink !== 1 || (process.getuid && stat.uid !== process.getuid())) throw keyError();
-      await chmod(executable, 0o700); cache.assertOwnership(); return executable;
+      await chmod(executable, 0o700); cache.assertOwnership(); assertRemoteOperation(); return executable;
     } catch (error) { if ((error as NodeJS.ErrnoException)?.code !== 'ENOENT') throw keyError(); }
     const temporary = join(cache.directory, `.compile-${randomUUID()}`);
     try {
-      cache.assertOwnership();
+      cache.assertOwnership(); assertRemoteOperation();
       await runBoundedProcess('/usr/bin/xcrun', ['swiftc', source, '-o', temporary], '', this.options.compileTimeoutMs ?? 120000);
-      cache.assertOwnership(); await chmod(temporary, 0o700); cache.assertOwnership(); await rename(temporary, executable); cache.assertOwnership();
+      cache.assertOwnership(); assertRemoteOperation(); await chmod(temporary, 0o700); cache.assertOwnership(); assertRemoteOperation(); await rename(temporary, executable); cache.assertOwnership(); assertRemoteOperation();
       return executable;
     } finally { try { cache.assertOwnership(); await unlink(temporary); } catch { /* 失效root不按旧路径清理。 */ } }
   }

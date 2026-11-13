@@ -164,6 +164,8 @@ it('断线和任意外部错误只返回固定错误，无token/URL/cause', asyn
   expect(f.confirmed()).toBe(0);
 });
 it('close终止挂起工厂，迟到会话只关闭而不initialize，关闭后永久拒绝', async () => {
+  let entered!: () => void;
+  const started = new Promise<void>(resolve => entered = resolve);
   let finish!: (value: unknown) => void;
   let initialized = 0;
   let closed = 0;
@@ -171,10 +173,11 @@ it('close终止挂起工厂，迟到会话只关闭而不initialize，关闭后�
     canonicalFactory: () =>
       new Promise((resolve) => {
         finish = resolve;
+        entered();
       }),
   });
   const pending = f.login.login();
-  await Promise.resolve();
+  await started;
   await f.login.close();
   await expect(pending).rejects.toMatchObject({ code: 'closed' });
   finish({

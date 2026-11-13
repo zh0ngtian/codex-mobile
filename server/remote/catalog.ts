@@ -1,3 +1,5 @@
+import { performance } from 'node:perf_hooks';
+import { assertRemoteOperation, withRemoteOperation } from './operation-guard.js';
 import { TextDecoder } from 'node:util';
 import { RemoteNetworkError } from './auth.js';
 import { parseEnrollment, type EnrollmentRecord, type ManagedAuth } from './auth-protocol.js';
@@ -44,7 +46,7 @@ function target(value: unknown): RemoteTarget {
   return result;
 }
 interface Context { auth: ManagedAuth; binding: RemoteCatalogBinding }
-interface Operation { generation: number; abort: AbortController }
+interface Operation { generation: number; abort: AbortController; deadline: number }
 
 /** 当前网关自己的 client 可见目录；不调用账号全局主机 API。 */
 export class RemoteCatalog {
@@ -71,18 +73,19 @@ export class RemoteCatalog {
   get currentBinding(): RemoteCatalogBinding | undefined { return this.binding ? cloneBinding(this.binding) : undefined; }
   private assert(op: Operation): void {
     if (this.closed) throw new RemoteCatalogError('closed');
+    if (performance.now() >= op.deadline) { op.abort.abort(); throw new RemoteNetworkError(); }
     if (op.abort.signal.aborted || op.generation !== this.generation) throw new RemoteCatalogError('stale');
   }
   private async run<T>(operation: (op: Operation) => Promise<T>): Promise<T> {
     if (this.closed) throw new RemoteCatalogError('closed');
-    const op: Operation = { generation: ++this.generation, abort: new AbortController() }; this.operations.add(op);
+    const op: Operation = { generation: ++this.generation, abort: new AbortController(), deadline: performance.now() + this.timeout }; this.operations.add(op);
     let timer: NodeJS.Timeout | undefined; let aborted: (() => void) | undefined;
     try {
-      return await Promise.race([Promise.resolve().then(() => operation(op)), new Promise<never>((_resolve, reject) => {
+      return await withRemoteOperation(() => this.assert(op), () => Promise.race([Promise.resolve().then(() => { assertRemoteOperation(); return operation(op); }), new Promise<never>((_resolve, reject) => {
         aborted = () => reject(this.closed ? new RemoteCatalogError('closed') : new RemoteNetworkError());
         op.abort.signal.addEventListener('abort', aborted, { once: true });
-        timer = setTimeout(() => op.abort.abort(), this.timeout);
-      })]);
+        timer = setTimeout(() => op.abort.abort(), Math.max(1, op.deadline - performance.now()));
+      })]));
     } catch (error) {
       if (error instanceof RemoteAuthRequiredError) throw authFailure();
       if (error instanceof RemoteCatalogError) throw new RemoteCatalogError(error.code);

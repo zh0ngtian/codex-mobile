@@ -1,5 +1,6 @@
 import { performance } from 'node:perf_hooks';
 import { RemoteAuthRequiredError } from './relay.js';
+import { assertRemoteOperation, withRemoteOperation } from './operation-guard.js';
 
 export type RemoteRuntimeFailure =
   | 'configuration'
@@ -79,36 +80,41 @@ export class RemoteRuntimeLifecycle {
         ? op.abort.signal.reason
         : new RemoteRuntimeError('cancelled');
   }
-  async wait<T>(op: RemoteRuntimeOperation, callback: () => Promise<T>, limit = this.timeout): Promise<T> {
+  async wait<T>(op: RemoteRuntimeOperation, callback: (assertActive: () => void) => Promise<T>, limit = this.timeout): Promise<T> {
     this.assert(op);
     let timer: NodeJS.Timeout | undefined;
     let abort: (() => void) | undefined;
     const phaseDeadline = performance.now() + limit;
-    try {
-      const value = await Promise.race([
-        Promise.resolve().then(() => {
-          this.assert(op, phaseDeadline);
-          return this.track(Promise.resolve(callback()));
-        }),
-        new Promise<never>((_resolve, reject) => {
-          abort = () => reject(op.abort.signal.reason);
-          op.abort.signal.addEventListener('abort', abort, { once: true });
-          timer = setTimeout(
-            () => op.abort.abort(new RemoteRuntimeError('timeout')),
-            Math.min(limit, Math.max(1, op.deadline - performance.now())),
-          );
-          if (op.abort.signal.aborted) abort();
-        }),
-      ]);
-      this.assert(op, phaseDeadline);
-      return value;
-    } catch (error) {
-      this.assert(op, phaseDeadline);
-      throw new RemoteRuntimeError(classifyRemoteRuntimeFailure(error));
-    } finally {
-      clearTimeout(timer);
-      if (abort) op.abort.signal.removeEventListener('abort', abort);
-    }
+    // 同步私有证明后仍检查原父操作与本阶段期限，不能由组合层另开预算。
+    const assertActive = () => this.assert(op, phaseDeadline);
+    return withRemoteOperation(assertActive, async () => {
+      try {
+        const value = await Promise.race([
+          Promise.resolve().then(() => {
+            this.assert(op, phaseDeadline);
+            assertRemoteOperation();
+            return this.track(Promise.resolve(callback(assertActive)));
+          }),
+          new Promise<never>((_resolve, reject) => {
+            abort = () => reject(op.abort.signal.reason);
+            op.abort.signal.addEventListener('abort', abort, { once: true });
+            timer = setTimeout(
+              () => op.abort.abort(new RemoteRuntimeError('timeout')),
+              Math.min(limit, Math.max(1, op.deadline - performance.now())),
+            );
+            if (op.abort.signal.aborted) abort();
+          }),
+        ]);
+        this.assert(op, phaseDeadline);
+        return value;
+      } catch (error) {
+        this.assert(op, phaseDeadline);
+        throw new RemoteRuntimeError(classifyRemoteRuntimeFailure(error));
+      } finally {
+        clearTimeout(timer);
+        if (abort) op.abort.signal.removeEventListener('abort', abort);
+      }
+    });
   }
   async cleanup(callback: () => Promise<unknown>): Promise<void> {
     let timer: NodeJS.Timeout | undefined;
@@ -151,9 +157,11 @@ export class RemoteRuntimeLifecycle {
     );
     const flight = (async () => {
       try {
-        const value = await callback(op);
-        this.assert(op);
-        return value;
+        return await withRemoteOperation(() => this.assert(op), async () => {
+          const value = await callback(op);
+          this.assert(op);
+          return value;
+        });
       } catch (error) {
         throw new RemoteRuntimeError(classifyRemoteRuntimeFailure(error));
       } finally {

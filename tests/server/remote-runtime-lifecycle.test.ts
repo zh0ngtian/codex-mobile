@@ -1,6 +1,49 @@
 // @vitest-environment node
 import { expect, it } from 'vitest';
 import { RemoteRuntimeLifecycle } from '../../server/remote/runtime-lifecycle.js';
+import { assertRemoteOperation, withRemoteOperation } from '../../server/remote/operation-guard.js';
+
+it('成功边界先退役再正常finally abort，长期异步任务不保留旧期限检查闭包', async () => {
+  const lifecycle = new RemoteRuntimeLifecycle(20, 20, 5);
+  let later!: Promise<string>;
+  await lifecycle.run(undefined, async op => lifecycle.wait(op, async () => {
+    later = new Promise(resolve => setTimeout(() => {
+      try { assertRemoteOperation(); resolve('allowed'); } catch { resolve('blocked'); }
+    }, 40));
+    return true;
+  }));
+  expect(await later).toBe('allowed');
+  lifecycle.close();
+  await lifecycle.settled();
+});
+
+it.each(['parent', 'phase'] as const)('嵌套guard保留更短%s原预算，失败后迟到任务继续拒绝新资源', async kind => {
+  const short = performance.now() + 10;
+  const long = performance.now() + 1000;
+  const check = (deadline: number) => { if (performance.now() >= deadline) throw new Error('fixed timeout'); };
+  let later!: Promise<string>;
+  await expect(withRemoteOperation(() => check(kind === 'parent' ? short : long), async () =>
+    withRemoteOperation(() => check(kind === 'phase' ? short : long), async () => {
+      later = new Promise(resolve => setTimeout(() => {
+        try { assertRemoteOperation(); resolve('allowed'); } catch { resolve('blocked'); }
+      }, 40));
+      const until = performance.now() + 20;
+      while (performance.now() < until) {}
+      return true;
+    }))).rejects.toThrow('fixed timeout');
+  expect(await later).toBe('blocked');
+});
+
+it('未过期业务失败也固定关闭其迟到资源门禁，不保留外部错误文本', async () => {
+  let later!: Promise<string>;
+  await expect(withRemoteOperation(() => {}, async () => {
+    later = new Promise(resolve => setTimeout(() => {
+      try { assertRemoteOperation(); resolve('allowed'); } catch (error) { resolve(String(error)); }
+    }, 10));
+    throw new Error('synthetic-private-error');
+  })).rejects.toThrow('synthetic-private-error');
+  expect(await later).toBe('Error: Remote 操作已结束');
+});
 it('最后await期间取消仍失败，同步阻塞按单调绝对期限拒绝晚成功', async () => {
   const lifecycle = new RemoteRuntimeLifecycle(100, 100, 10);
   const abort = new AbortController();

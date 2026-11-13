@@ -1,3 +1,4 @@
+import { assertRemoteOperation, withRemoteOperation } from './operation-guard.js';
 import { execFile } from 'node:child_process';
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
@@ -97,24 +98,31 @@ export class RemoteStepUpOAuth {
     if (!flow.abort.signal.aborted) flow.abort.abort(new RemoteOAuthError(code));
     if (!flow.transportAbort.signal.aborted) flow.transportAbort.abort(new RemoteOAuthError(code));
   }
-  private assert(flow: Flow): void {
-    this.options.assertOwnership?.();
+  private check(flow: Flow, phaseDeadline = flow.phaseDeadline ?? Infinity): void {
     // timer 只负责唤醒挂起操作；同步外部代码阻塞事件循环时，仍按绝对期限拒绝晚结果。
-    if (flow.active && !flow.abort.signal.aborted && performance.now() >= Math.min(flow.deadline, flow.phaseDeadline ?? Infinity)) this.cancel(flow, 'timeout');
+    if (flow.active && !flow.abort.signal.aborted && performance.now() >= Math.min(flow.deadline, phaseDeadline)) this.cancel(flow, 'timeout');
     if (!flow.active || flow.abort.signal.aborted) throw flow.abort.signal.reason instanceof RemoteOAuthError ? flow.abort.signal.reason : new RemoteOAuthError('closed');
+  }
+  private assert(flow: Flow, phaseDeadline = flow.phaseDeadline ?? Infinity): void {
+    this.options.assertOwnership?.();
+    this.check(flow, phaseDeadline);
+    assertRemoteOperation();
   }
   /** 每个外部 await 都被全局取消/deadline截断，且外部异常只采用本地固定分类。 */
   private async wait<T>(flow: Flow, operation: () => Promise<T>, failure: RemoteOAuthFailure): Promise<T> {
-    this.assert(flow); let abort!: () => void;
-    try {
-      const pending = Promise.resolve().then(() => { this.assert(flow); return operation(); });
-      const result = await Promise.race([pending, new Promise<never>((_resolve, reject) => {
-        abort = () => reject(flow.abort.signal.reason); flow.abort.signal.addEventListener('abort', abort, { once: true });
-        if (flow.abort.signal.aborted) abort();
-      })]);
-      this.assert(flow); return result;
-    } catch { this.assert(flow); throw new RemoteOAuthError(failure); }
-    finally { if (abort) flow.abort.signal.removeEventListener('abort', abort); }
+    const phaseDeadline = flow.phaseDeadline ?? Infinity;
+    return withRemoteOperation(() => this.check(flow, phaseDeadline), async () => {
+      this.assert(flow, phaseDeadline); let abort!: () => void;
+      try {
+        const pending = Promise.resolve().then(() => { this.assert(flow); return operation(); });
+        const result = await Promise.race([pending, new Promise<never>((_resolve, reject) => {
+          abort = () => reject(flow.abort.signal.reason); flow.abort.signal.addEventListener('abort', abort, { once: true });
+          if (flow.abort.signal.aborted) abort();
+        })]);
+        this.assert(flow); return result;
+      } catch { this.assert(flow); throw new RemoteOAuthError(failure); }
+      finally { if (abort) flow.abort.signal.removeEventListener('abort', abort); }
+    });
   }
   private join(flow: Flow, signal?: AbortSignal): void {
     if (!signal) return;
@@ -191,12 +199,14 @@ export class RemoteStepUpOAuth {
     flow.phaseDeadline = performance.now() + this.exchangeTimeout;
     const timer = setTimeout(() => this.cancel(flow, 'timeout'), this.exchangeTimeout);
     try {
-      const pending = Promise.resolve().then(() => {
-        this.assert(flow);
-        return (this.options.fetch ?? globalThis.fetch)('https://auth.openai.com/oauth/token', { method: 'POST', redirect: 'error', signal: flow.transportAbort.signal, headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ grant_type: 'authorization_code', code, redirect_uri: redirect, client_id: CLIENT_ID, code_verifier: verifier }).toString() });
-      });
-      void pending.then(value => { try { this.assert(flow); } catch { discard(value); } }, () => undefined);
-      const response = await this.wait(flow, () => pending, 'network');
+      const response = await this.wait(flow, () => {
+        const pending = Promise.resolve().then(() => {
+          this.assert(flow);
+          return (this.options.fetch ?? globalThis.fetch)('https://auth.openai.com/oauth/token', { method: 'POST', redirect: 'error', signal: flow.transportAbort.signal, headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ grant_type: 'authorization_code', code, redirect_uri: redirect, client_id: CLIENT_ID, code_verifier: verifier }).toString() });
+        });
+        void pending.then(value => { try { this.assert(flow); } catch { discard(value); } }, () => undefined);
+        return pending;
+      }, 'network');
       let status: number;
       try { flow.body = response.body ?? undefined; status = response.status; if (!Number.isInteger(status) || status < 200 || status > 599) throw new Error(); }
       catch { throw new RemoteOAuthError('response-invalid'); }
