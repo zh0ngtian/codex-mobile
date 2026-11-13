@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-11-13",
+  "baselineMain": "a9d5f34442f810df88c2dc699cf1eb63dd626f48",
+  "sourceCommit": "ca370fe75cef837674baa6908ab1a284b91b970b",
+  "passed": true,
+  "scope": "Task2b.3b.1候选身份与活动指针持久层",
+  "checks": {
+    "identityRegistryTestsPassed": 55,
+    "remoteTestsPassedIncludingRegistry": 430,
+    "remoteTestFiles": 12,
+    "existingHardwareOptInSkipped": 1,
+    "strictServerTypeScript": "passed",
+    "serverBuild": "passed",
+    "diffCheck": "passed",
+    "independentSpecReview": "passed",
+    "independentQualityReview": "passed, no remaining issues"
+  },
+  "observedRedToGreen": [
+    "可加载stub下最初40项行为失败",
+    "显式本机重新关联入口新增8项失败",
+    "首次活动指针提交与缺失读取之间的并发窗口失败后修复"
+  ],
+  "verifiedBoundaries": [
+    "真实临时文件系统与OS子进程的同base竞争，最多一个CAS成功",
+    "提交前及提交后进程终止，依据已提交指针恢复，不扫描候选",
+    "rename后fsync故障仍保留新旧记录，不假称回滚",
+    "坏指针、未知版本、旧根登记、缺记录和候选突变均拒绝",
+    "普通授权保留完整managed和local；显式重新关联保留managed/enrollment，仅确认声明的新local",
+    "userId从缺失变为新增被拒绝，合法旧targets增长不影响稳定身份CAS"
+  ],
+  "limitations": [
+    "仅持久层，不代表runtime、CLI或私有管理通道已接入。",
+    "未执行真实OAuth、硬件、canonical/REST证明或队列恢复。",
+    "进程终止测试不是断电存储介质持久性或8小时/P95验收。",
+    "没有读取真实凭据、创建测试聊天、修改现役服务或构建发布客户端。"
+  ]
+}
