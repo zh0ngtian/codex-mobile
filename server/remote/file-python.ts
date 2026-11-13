@@ -86,13 +86,30 @@ def acquire_lock(handle):
             fcntl.flock(handle.fileno(),fcntl.LOCK_EX|fcntl.LOCK_NB)
     except OSError: raise Failure('version')
     check()
+class CleanupLocks:
+    def __init__(self,journal): self.journal=journal;self.writer=None
+    def __enter__(self): return self
+    def close_writer(self):
+        if self.writer is not None: self.writer.close();self.writer=None
+    def __exit__(self,*args): self.close_writer();self.journal.close()
 def inactive_lock(token):
-    owned(token);handle=lock_file(os.path.join(token['directory'],'lock'))
+    cleanup_record(token);handle=lock_file(cleanup_journal(token));locks=CleanupLocks(handle)
     try:
-        if identity(os.fstat(handle.fileno()))!=token['lockIdentity']: raise Failure('version')
-        acquire_lock(handle);owned(token);return handle
+        if identity(os.fstat(handle.fileno()))!=token['cleanupLockIdentity']: raise Failure('version')
+        acquire_lock(handle);intent=cleanup_record(token)
+        # 清理锁稳定保留到最后；写者锁即使已被清理，也由持久intent证明先前已结束。
+        paths=[os.path.join(token['directory'],'lock'),os.path.join(cleanup_path(token),'entry','lock'),os.path.join(cleanup_path(token),'files','writer-lock')]
+        for candidate in paths:
+            try: s=os.lstat(candidate)
+            except FileNotFoundError: continue
+            if identity(s)!=token['lockIdentity']: raise Failure('version')
+            locks.writer=lock_file(candidate)
+            if identity(os.fstat(locks.writer.fileno()))!=token['lockIdentity']: raise Failure('version')
+            acquire_lock(locks.writer);break
+        if locks.writer is None and intent is None: raise Failure('version')
+        owned(token);return locks
     except BaseException:
-        handle.close();raise
+        locks.__exit__();raise
 def filehash(path,expected_identity):
     total=0;h=hashlib.sha256()
     with open(path,'rb') as f:
@@ -106,22 +123,18 @@ def filehash(path,expected_identity):
             h.update(part)
         if facts(os.fstat(f.fileno()))!=before or current(path)!=before: raise Failure('version')
     return total,h.hexdigest(),before
-# 每次操作的目录和payload都用独占创建，凭证保留其真实inode；只移除已证明的自有名字。
-def owned(token,location=None):
-    directory=token['directory'] if location is None else location
-    if identity(os.lstat(directory))!=token['directoryIdentity'] or not stat.S_ISDIR(os.lstat(directory).st_mode): raise Failure('version')
-    locked=os.lstat(os.path.join(directory,'lock'))
-    if identity(locked)!=token['lockIdentity'] or not stat.S_ISREG(locked.st_mode): raise Failure('version')
-    record_path=os.path.join(directory,'receipt')
-    s=os.lstat(record_path)
-    if identity(s)!=token['receiptIdentity'] or not stat.S_ISREG(s.st_mode) or s.st_size>131072: raise Failure('version')
-    with open(record_path,'rb') as f:
-        if identity(os.fstat(f.fileno()))!=token['receiptIdentity']: raise Failure('version')
-        raw=f.read(131073).decode('utf-8','strict');lines=raw.split('\n')[:-1]
-    if len(raw.encode('utf-8'))>131072 or len(lines) not in (1,2,3) or json.loads(lines[0])!=token: raise Failure('version')
+def receipt_lines(path,expected):
+    check();s=os.lstat(path)
+    if identity(s)!=expected or not stat.S_ISREG(s.st_mode) or s.st_size>131072: raise Failure('version')
+    with open(path,'rb') as f:
+        if identity(os.fstat(f.fileno()))!=expected: raise Failure('version')
+        raw=f.read(131073)
+        if identity(os.lstat(path))!=expected or identity(os.fstat(f.fileno()))!=expected: raise Failure('version')
+    if len(raw)>131072: raise Failure('version')
+    return [json.loads(line) for line in raw.decode('utf-8','strict').split('\n')[:-1]]
+def commit_records(token,entries):
     committed=None;captured=None
-    for line in lines[1:]:
-        entry=json.loads(line)
+    for entry in entries:
         if entry.get('state')=='captured' and captured is None and committed is None:
             if set(entry)!={'state','directory','identity'} or type(entry['directory'])!=str or os.path.dirname(entry['directory'])!=os.path.dirname(token['directory']) or not os.path.basename(entry['directory']).startswith('.codex-mobile-commit-'+token['id']+'-') or set(entry['identity'])!={'dev','ino','mode'}: raise Failure('version')
             captured=entry
@@ -129,19 +142,103 @@ def owned(token,location=None):
             if set(entry)!={'state','facts','size','sha256'} or entry['size']!=token['size'] or entry['sha256']!=token['sha256'] or {k:entry['facts'][k] for k in ('dev','ino','mode')}!=token['payloadIdentity']: raise Failure('version')
             committed=entry
         else: raise Failure('version')
+    return committed,captured
+def cleanup_path(token): return os.path.join(os.path.dirname(token['directory']),'.codex-mobile-cleanup-'+token['id'])
+def cleanup_names(path):
+    # 自有控制目录最多七个名字；未知内容也不能触发整目录无界加载。
+    names=set()
+    with os.scandir(path) as entries:
+        for entry in entries:
+            check()
+            if len(names)>=8: raise Failure('version')
+            names.add(entry.name)
+    return names
+def cleanup_journal(token):
+    original=cleanup_path(token)+'.receipt';captured=original+'.captured'
+    if os.path.lexists(original):
+        if os.path.lexists(captured): raise Failure('version')
+        return original
+    return captured
+def capture_journal(source,target):
+    # 最后收据位于容器之外；系统原语原子拒绝覆盖并发出现的未知同名文件。
+    check()
+    if os.name=='nt':
+        try: os.rename(source,target)
+        except FileExistsError: raise Failure('version')
+    else:
+        import ctypes,errno
+        library=ctypes.CDLL(None,use_errno=True)
+        try:
+            if sys.platform=='darwin':
+                function=library.renamex_np;function.argtypes=[ctypes.c_char_p,ctypes.c_char_p,ctypes.c_uint];function.restype=ctypes.c_int
+                result=function(os.fsencode(source),os.fsencode(target),4)
+            elif sys.platform.startswith('linux'):
+                function=library.renameat2;function.argtypes=[ctypes.c_int,ctypes.c_char_p,ctypes.c_int,ctypes.c_char_p,ctypes.c_uint];function.restype=ctypes.c_int
+                result=function(-100,os.fsencode(source),-100,os.fsencode(target),1)
+            else: raise Failure('capability')
+        except AttributeError: raise Failure('capability')
+        if result!=0:
+            code=ctypes.get_errno()
+            if code in (errno.ENOSYS,errno.EOPNOTSUPP,errno.ENOTSUP,errno.EINVAL): raise Failure('capability')
+            if code==errno.EEXIST: raise Failure('version')
+            raise OSError(code,'capture')
+    check()
+def cleanup_record(token):
+    root=cleanup_path(token)
+    try: lines=receipt_lines(cleanup_journal(token),token['cleanupLockIdentity'])
+    except FileNotFoundError:
+        # 可认证收据最后才删除；还有任何容器都不能靠token删除或误报missing。
+        if os.path.lexists(root) or os.path.lexists(token['directory']): raise Failure('version')
+        raise
+    if len(lines) not in (1,2) or lines[0]!=token: raise Failure('version')
+    intent=None if len(lines)==1 else lines[1]
+    if intent is not None:
+        if set(intent)!={'state','mode','records'} or intent['state']!='cleaning' or intent['mode'] not in ('release','discard') or type(intent['records'])!=list: raise Failure('version')
+        commit_records(token,intent['records'])
+    if os.path.lexists(root):
+        if identity(os.lstat(root))!=token['cleanupIdentity'] or not stat.S_ISDIR(os.lstat(root).st_mode): raise Failure('version')
+        files=os.path.join(root,'files')
+        if os.path.lexists(files):
+            if identity(os.lstat(files))!=token['cleanupFilesIdentity']: raise Failure('version')
+        elif intent is None or cleanup_names(root): raise Failure('version')
+    elif intent is None: raise Failure('version')
+    return intent
+# 首次持久收据已绑定固定清理位置及其锁inode。移动原operation也不丢恢复入口。
+def owned(token,location=None):
+    intent=cleanup_record(token)
+    if intent is not None and location is None:
+        committed,captured=commit_records(token,intent['records'])
+        root=cleanup_path(token);directory=os.path.join(root,'entry')
+        if os.path.lexists(directory):
+            if identity(os.lstat(directory))!=token['directoryIdentity']: raise Failure('version')
+        else:
+            directory=token['directory']
+            if os.path.lexists(directory) and identity(os.lstat(directory))!=token['directoryIdentity']: raise Failure('version')
+        return directory,os.path.join(directory,'payload'),os.path.join(directory,'receipt'),committed,captured
+    directory=token['directory'] if location is None else location
+    # 固定入口仍有自有收据时，原暂存路径缺失是所有权异常，不是操作已清完。
+    if not os.path.lexists(directory) or not os.path.lexists(os.path.join(directory,'receipt')) or not os.path.lexists(os.path.join(directory,'lock')): raise Failure('version')
+    if identity(os.lstat(directory))!=token['directoryIdentity'] or not stat.S_ISDIR(os.lstat(directory).st_mode): raise Failure('version')
+    locked=os.lstat(os.path.join(directory,'lock'))
+    if identity(locked)!=token['lockIdentity'] or not stat.S_ISREG(locked.st_mode): raise Failure('version')
+    record_path=os.path.join(directory,'receipt');lines=receipt_lines(record_path,token['receiptIdentity'])
+    if len(lines) not in (1,2,3) or lines[0]!=token: raise Failure('version')
+    committed,captured=commit_records(token,lines[1:])
     return directory,os.path.join(directory,'payload'),record_path,committed,captured
 
 def resolve(token):
     if 'directoryIdentity' in token:
         owned(token);return token
-    directory=token['directory'];receipt=os.path.join(directory,'receipt')
-    s=os.lstat(receipt)
-    if not stat.S_ISREG(s.st_mode) or s.st_size>131072: raise Failure('version')
-    with open(receipt,'rb') as f:
-        if identity(os.fstat(f.fileno()))!=identity(s): raise Failure('version')
-        raw=f.readline(131073)
-    actual=json.loads(raw.decode('utf-8','strict'))
-    if any(actual.get(k)!=v for k,v in token.items()) or set(actual)!=set(token)|{'directoryIdentity','receiptIdentity','payloadIdentity','lockIdentity'}: raise Failure('version')
+    # begin响应丢失只留下locator时也只查两个固定位置，无扫描和同名猜测。
+    receipt=cleanup_journal(token)
+    try: s=os.lstat(receipt)
+    except FileNotFoundError:
+        if os.path.lexists(cleanup_path(token)) or os.path.lexists(token['directory']): raise Failure('version')
+        raise
+    lines=receipt_lines(receipt,identity(s))
+    if not lines: raise Failure('version')
+    actual=lines[0]
+    if any(actual.get(k)!=v for k,v in token.items()) or set(actual)!=set(token)|{'directoryIdentity','receiptIdentity','payloadIdentity','lockIdentity','cleanupIdentity','cleanupLockIdentity','cleanupFilesIdentity'}: raise Failure('version')
     owned(actual);return actual
 
 def inspect(token):
@@ -149,7 +246,9 @@ def inspect(token):
     except FileNotFoundError: return dict(state='missing')
     try:
         size,digest,value=filehash(token['path'],token['payloadIdentity'])
-        if size==token['size'] and digest==token['sha256']: return dict(state='committed',size=size,sha256=digest,facts=value,currentMatches=True)
+        if size==token['size'] and digest==token['sha256']:
+            if committed is not None: return dict(state='committed',size=committed['size'],sha256=committed['sha256'],facts=committed['facts'],currentMatches=value==committed['facts'])
+            return dict(state='committed',size=size,sha256=digest,facts=value,currentMatches=True)
     except (FileNotFoundError,Failure): pass
     if committed is not None: return dict(state='committed',size=committed['size'],sha256=committed['sha256'],facts=committed['facts'],currentMatches=False)
     try:
@@ -159,51 +258,65 @@ def inspect(token):
         size,digest,value=filehash(payload,token['payloadIdentity'])
         return dict(state='staged' if size==token['size'] and digest==token['sha256'] else 'receiving',size=size,sha256=digest)
     except (FileNotFoundError,Failure): return dict(state='unknown')
-def cleanup_directory(token,directory,expected_directory,entries,required,verify=None,lock=None):
-    if identity(os.lstat(directory))!=expected_directory: raise Failure('version')
-    names={name for name,_ in entries}
-    if not set(os.listdir(directory))<=names: raise Failure('version')
-    for name,expected in entries:
-        try:
-            if identity(os.lstat(os.path.join(directory,name)))!=expected: raise Failure('version')
-        except FileNotFoundError:
-            if name in required: raise Failure('version')
-    # 公开路径的检查不授权稍后的unlink。先原子捕获整个目录，再验证真实捕获物。
-    # 子项再移到私有捕获目录，避免原目录句柄仍能在校验后替换同名子项。
-    capture=private_directory('.codex-mobile-cleanup-'+token['id']+'-',os.path.dirname(directory))
-    capture_identity=identity(os.lstat(capture));held=os.path.join(capture,'entry');captured=False
-    try:
-        check()
-        if verify is not None: verify(directory)
-        os.rename(directory,held);captured=True
-        if identity(os.lstat(held))!=expected_directory: raise Failure('version')
-        if verify is not None: verify(held)
-        if not set(os.listdir(held))<=names: raise Failure('version')
-        for name,expected in entries:
-            source=os.path.join(held,name)
-            check()
-            try: before=os.lstat(source)
-            except FileNotFoundError:
-                if name not in required: continue
-                raise Failure('version')
-            if identity(before)!=expected: raise Failure('version')
-            target=os.path.join(capture,name);os.rename(source,target)
+def cleanup_directory(token,directory,expected_directory,slot,entries,locks):
+    root=cleanup_path(token);held=os.path.join(root,slot);cleanup_record(token)
+    if not os.path.lexists(held) and os.path.lexists(directory):
+        if identity(os.lstat(directory))!=expected_directory: raise Failure('version')
+        if not cleanup_names(directory)<={name for name,_,_ in entries}: raise Failure('version')
+        os.rename(directory,held)
+    if os.path.lexists(held):
+        if identity(os.lstat(held))!=expected_directory or not cleanup_names(held)<={name for name,_,_ in entries}: raise Failure('version')
+    for name,target_name,expected in entries:
+        check();cleanup_record(token);source=os.path.join(held,name);target=os.path.join(root,'files',target_name)
+        if os.path.lexists(source):
+            if identity(os.lstat(source))!=expected or os.path.lexists(target): raise Failure('version')
+            os.rename(source,target)
+        if os.path.lexists(target):
             if identity(os.lstat(target))!=expected: raise Failure('version')
             os.unlink(target)
-        # Windows删除共享句柄在close后完成目录项回收。锁已贯穿全部文件捕获/核验/删除。
-        if lock is not None: lock.close()
+            if name=='lock': locks.close_writer()
+    if os.path.lexists(held):
         if identity(os.lstat(held))!=expected_directory: raise Failure('version')
-        os.rmdir(held);captured=False
-    finally:
-        # 捕获到替换物时保留隔离目录并失败关闭，不向可能已替换的父目录恢复。
-        if not captured and identity(os.lstat(capture))==capture_identity: os.rmdir(capture)
-def cleanup(token,lock):
-    directory,payload,receipt,committed,commit_capture=owned(token)
-    # 用户目的文件永不触碰。未知替换物保留，排他锁贯穿两个自有目录清理。
+        os.rmdir(held)
+def cleanup(token,locks,mode):
+    directory,payload,receipt,committed,commit_capture=owned(token);intent=cleanup_record(token)
+    if intent is None:
+        observed=inspect(token)
+        if (mode=='release' and observed['state']!='committed') or (mode=='discard' and observed['state'] not in ('receiving','staged')): raise Failure('version')
+        records=receipt_lines(receipt,token['receiptIdentity'])[1:]
+        if mode=='release' and committed is None: records.append(dict(state='committed',facts=observed['facts'],size=observed['size'],sha256=observed['sha256']))
+        intent=dict(state='cleaning',mode=mode,records=records)
+        handle=locks.journal;handle.seek(0);raw=handle.read(131073)
+        # 只截去未完成的末行；原始token始终保留，完整intent在任何捕获前fsync。
+        end=raw.rfind(b'\n')+1;handle.seek(end);handle.truncate()
+        handle.write((json.dumps(intent,separators=(',',':'))+'\n').encode('ascii'));handle.flush();os.fsync(handle.fileno())
+        cleanup_record(token)
+    elif intent['mode']!=mode: raise Failure('version')
+    root=cleanup_path(token)
+    if os.path.lexists(root):
+        if not cleanup_names(root)<={'entry','commit','files'}: raise Failure('version')
+        if os.path.lexists(os.path.join(root,'files')) and not cleanup_names(os.path.join(root,'files'))<={'payload','receipt','writer-lock','commit-payload'}: raise Failure('version')
+    # 所有中断位置都固定且有原始inode证明；未知替换物留在原地，绝不恢复到用户路径。
     if commit_capture is not None:
-        try: cleanup_directory(token,commit_capture['directory'],commit_capture['identity'],[('payload',token['payloadIdentity'])],set())
-        except FileNotFoundError: pass
-    cleanup_directory(token,directory,token['directoryIdentity'],[('payload',token['payloadIdentity']),('receipt',token['receiptIdentity']),('lock',token['lockIdentity'])],{'receipt','lock'},lambda location: owned(token,location),lock)
+        cleanup_directory(token,commit_capture['directory'],commit_capture['identity'],'commit',[('payload','commit-payload',token['payloadIdentity'])],locks)
+    cleanup_directory(token,token['directory'],token['directoryIdentity'],'entry',[('payload','payload',token['payloadIdentity']),('receipt','receipt',token['receiptIdentity']),('lock','writer-lock',token['lockIdentity'])],locks)
+    cleanup_record(token)
+    if os.path.lexists(root):
+        names=cleanup_names(root);files=os.path.join(root,'files')
+        if names=={'files'}:
+            if identity(os.lstat(files))!=token['cleanupFilesIdentity'] or cleanup_names(files): raise Failure('version')
+            os.rmdir(files)
+        elif names: raise Failure('version')
+        cleanup_record(token)
+        if identity(os.lstat(root))!=token['cleanupIdentity']: raise Failure('version')
+        os.rmdir(root)
+    # 最后收据/清理锁在容器之外，全部自有目录移除后才原子捕获和删除。
+    original=root+'.receipt';journal=original+'.captured'
+    if os.path.lexists(original):
+        if os.path.lexists(journal): raise Failure('version')
+        capture_journal(original,journal)
+    cleanup_record(token)
+    os.unlink(journal);locks.journal.close()
 
 ready_at=time.monotonic()
 sys.stdout.write('CMFILE1_READY:'+nonce+'\n');sys.stdout.flush()
@@ -271,14 +384,19 @@ try:
         directory=request['directory']
         if os.path.normpath(os.path.dirname(directory))!=os.path.normpath(os.path.dirname(path)) or os.path.basename(directory)!='.codex-mobile-upload-'+request['id']: raise Failure('protocol')
         os.mkdir(directory,0o700)
+        cleanup_directory_path=cleanup_path(request);os.mkdir(cleanup_directory_path,0o700)
+        cleanup_files=os.path.join(cleanup_directory_path,'files');os.mkdir(cleanup_files,0o700)
+        cleanup_lock=lock_file(cleanup_directory_path+'.receipt',True)
         payload=os.path.join(directory,'payload');receipt=os.path.join(directory,'receipt')
         writer_lock=lock_file(os.path.join(directory,'lock'),True);writer_lock.write(b'1');writer_lock.flush();acquire_lock(writer_lock);os.fsync(writer_lock.fileno())
         with open(payload,'xb') as f:
             os.chmod(payload,0o600)
             with open(receipt,'xb') as record:
                 os.chmod(receipt,0o600)
-                token=dict(id=request['id'],namespace=request['namespace'],path=path,directory=directory,directoryIdentity=identity(os.lstat(directory)),receiptIdentity=identity(os.fstat(record.fileno())),payloadIdentity=identity(os.fstat(f.fileno())),lockIdentity=identity(os.fstat(writer_lock.fileno())),size=size,sha256=digest,expected=request['expected'])
-                record.write((json.dumps(token,separators=(',',':'),ensure_ascii=True)+'\n').encode('ascii'));record.flush();os.fsync(record.fileno())
+                token=dict(id=request['id'],namespace=request['namespace'],path=path,directory=directory,directoryIdentity=identity(os.lstat(directory)),receiptIdentity=identity(os.fstat(record.fileno())),payloadIdentity=identity(os.fstat(f.fileno())),lockIdentity=identity(os.fstat(writer_lock.fileno())),cleanupIdentity=identity(os.lstat(cleanup_directory_path)),cleanupLockIdentity=identity(os.fstat(cleanup_lock.fileno())),cleanupFilesIdentity=identity(os.lstat(cleanup_files)),size=size,sha256=digest,expected=request['expected'])
+                token_bytes=(json.dumps(token,separators=(',',':'),ensure_ascii=True)+'\n').encode('ascii')
+                record.write(token_bytes);record.flush();os.fsync(record.fileno())
+                cleanup_lock.write(token_bytes);cleanup_lock.flush();os.fsync(cleanup_lock.fileno());cleanup_lock.close()
             emit('upload',operation=token)
             total=0;h=hashlib.sha256();staged=None
             while True:
@@ -325,20 +443,17 @@ try:
     elif mode=='release':
         token=resolve(request['operation'])
         with inactive_lock(token) as lock:
-            if inspect(token)['state']!='committed': raise Failure('version')
-            cleanup(token,lock)
+            cleanup(token,lock,'release')
         finish('cleaned')
     elif mode=='discard':
         token=resolve(request['operation'])
         with inactive_lock(token) as lock:
-            if inspect(token)['state'] not in ('receiving','staged'): raise Failure('version')
-            cleanup(token,lock)
+            cleanup(token,lock,'discard')
         finish('cleaned')
     elif mode=='cleanup':
         token=resolve(request['operation'])
         with inactive_lock(token) as lock:
-            if inspect(token)['state'] not in ('receiving','staged'): raise Failure('version')
-            cleanup(token,lock)
+            cleanup(token,lock,'discard')
         finish('cleaned')
     else: raise Failure('protocol')
 except Failure as error:

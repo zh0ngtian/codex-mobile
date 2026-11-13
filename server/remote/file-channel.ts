@@ -93,8 +93,8 @@ export class RemoteFileChannel {
     try {
       this.assert(); const p = message.params;
       if (!['stdout', 'stderr'].includes(p.stream as string) || p.capReached !== false || ++this.notifications > NOTIFICATION_LIMIT) throw new RemoteFileError('protocol', true);
-      const bytes = strictBase64(p.deltaBase64, p.stream === 'stderr' ? 256 : RECORD_LIMIT);
       if (p.stream === 'stderr') {
+        const bytes = strictBase64(p.deltaBase64, 256);
         if (this.completion || this.control.length + bytes.length > 256) throw new RemoteFileError('protocol', true);
         this.control = Buffer.concat([this.control, bytes]);
         const prefix = Buffer.from('CMFILE1_DONE:' + this.nonce + ':'); const n = Math.min(prefix.length, this.control.length);
@@ -106,33 +106,44 @@ export class RemoteFileChannel {
         }
         return;
       }
-      if (this.bytes + this.pending.length + bytes.length > TOTAL_WIRE_LIMIT + (this.ready ? 0 : 64)) throw new RemoteFileError('capacity', true);
-      this.pending = Buffer.concat([this.pending, bytes]);
-      let end: number;
-      while ((end = this.pending.indexOf(10)) >= 0) {
-        if (end + 1 >= RECORD_LIMIT) throw new RemoteFileError('capacity', true);
-        const line = this.pending.subarray(0, end + 1); this.pending = this.pending.subarray(end + 1);
-        if (!this.ready) {
-          if (!line.equals(Buffer.from('CMFILE1_READY:' + this.nonce + '\n'))) throw new RemoteFileError('protocol', true);
-          this.ready = true; this.resolveReady(); continue;
-        }
-        this.bytes += line.length; this.hash.update(line);
-        const value: unknown = JSON.parse(fileText(line), (key, item: unknown) => { if (['__proto__', 'prototype', 'constructor'].includes(key)) throw new Error(); return item; });
-        if (!record(value) || value.v !== 1 || value.n !== this.nonce || value.end !== this.nonce || value.seq !== ++this.sequence || typeof value.kind !== 'string') throw new RemoteFileError('protocol', true);
-        if (value.kind === 'failure') {
-          const codes: RemoteFileFailure[] = ['protocol', 'integrity', 'version', 'capacity', 'invalid-input', 'not-found', 'permission', 'timeout'];
-          throw new RemoteFileError(codes.includes(value.code as RemoteFileFailure) ? value.code as RemoteFileFailure : 'protocol', true);
-        }
-        const waiter = this.waiter;
-        if (!waiter || waiter.records.length >= waiter.max) throw new RemoteFileError('protocol', true);
-        waiter.records.push(value);
-        if (waiter.done(value, waiter.records.length)) { this.waiter = undefined; waiter.resolve(waiter.records); }
+      // RPC已经限制整个入站信封；通知不是记录边界。只解码有限片段，
+      // 逐条验证记录和原窗口，不额外持有整个大通知的解码/拼接副本。
+      const encoded = p.deltaBase64;
+      if (typeof encoded !== 'string' || encoded.length % 4) throw new RemoteFileError('protocol', true);
+      const padding = encoded.endsWith('==') ? 2 : encoded.endsWith('=') ? 1 : 0;
+      if (encoded.indexOf('=') !== (padding ? encoded.length - padding : -1)) throw new RemoteFileError('protocol', true);
+      for (let offset = 0; offset < encoded.length; offset += 65536) {
+        this.stdout(strictBase64(encoded.slice(offset, offset + 65536), 49152)); this.assert();
       }
-      // 通知可以同时包含上一记录尾和下一记录头；限制针对记录而非传输分片拼接。
-      if (this.pending.length >= RECORD_LIMIT) throw new RemoteFileError('capacity', true);
       this.assert();
     } catch (error) { this.fail(error instanceof RemoteFileError ? error.code : 'protocol'); }
   };
+  private stdout(bytes: Buffer): void {
+    if (this.bytes + this.pending.length + bytes.length > TOTAL_WIRE_LIMIT + (this.ready ? 0 : 64)) throw new RemoteFileError('capacity', true);
+    this.pending = Buffer.concat([this.pending, bytes]);
+    let end: number;
+    while ((end = this.pending.indexOf(10)) >= 0) {
+      if (end + 1 >= RECORD_LIMIT) throw new RemoteFileError('capacity', true);
+      const line = this.pending.subarray(0, end + 1); this.pending = this.pending.subarray(end + 1);
+      if (!this.ready) {
+        if (!line.equals(Buffer.from('CMFILE1_READY:' + this.nonce + '\n'))) throw new RemoteFileError('protocol', true);
+        this.ready = true; this.resolveReady(); continue;
+      }
+      this.bytes += line.length; this.hash.update(line);
+      const value: unknown = JSON.parse(fileText(line), (key, item: unknown) => { if (['__proto__', 'prototype', 'constructor'].includes(key)) throw new Error(); return item; });
+      if (!record(value) || value.v !== 1 || value.n !== this.nonce || value.end !== this.nonce || value.seq !== ++this.sequence || typeof value.kind !== 'string') throw new RemoteFileError('protocol', true);
+      if (value.kind === 'failure') {
+        const codes: RemoteFileFailure[] = ['protocol', 'integrity', 'version', 'capacity', 'capability', 'invalid-input', 'not-found', 'permission', 'timeout'];
+        throw new RemoteFileError(codes.includes(value.code as RemoteFileFailure) ? value.code as RemoteFileFailure : 'protocol', true);
+      }
+      const waiter = this.waiter;
+      if (!waiter || waiter.records.length >= waiter.max) throw new RemoteFileError('protocol', true);
+      waiter.records.push(value);
+      if (waiter.done(value, waiter.records.length)) { this.waiter = undefined; waiter.resolve(waiter.records); }
+    }
+    // 通知可以同时包含上一记录尾和下一记录头；限制针对记录而非传输分片拼接。
+    if (this.pending.length >= RECORD_LIMIT) throw new RemoteFileError('capacity', true);
+  }
   async start(): Promise<void> {
     try {
       this.assert(); const params: Record<string, JsonValue> = { command: [this.binding.python, '-I', '-u', '-c', REMOTE_FILE_PYTHON, this.nonce, String(this.remaining())], cwd: this.binding.metadata.codexHome, processId: this.processId, streamStdin: true, streamStdoutStderr: true, outputBytesCap: TOTAL_WIRE_LIMIT, timeoutMs: this.remaining() };

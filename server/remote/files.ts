@@ -163,13 +163,13 @@ export class RemoteFiles {
     } catch (error) { throw fileFailure(error, channel?.sent ?? false); } finally { await this.release(channel); }
   }
   private operation(value: unknown, path?: string, id?: string, size?: number, sha256?: string, expected?: Facts | null): RemoteUploadOperation {
-    if (!record(value) || !['directory,expected,id,namespace,path,sha256,size', 'directory,directoryIdentity,expected,id,lockIdentity,namespace,path,payloadIdentity,receiptIdentity,sha256,size'].includes(Object.keys(value).sort().join(','))) throw new RemoteFileError('protocol', true);
-    keys(value, ['directory', 'directoryIdentity', 'expected', 'id', 'namespace', 'path', 'payloadIdentity', 'receiptIdentity', 'lockIdentity', 'sha256', 'size']);
+    if (!record(value) || !['directory,expected,id,namespace,path,sha256,size', 'cleanupFilesIdentity,cleanupIdentity,cleanupLockIdentity,directory,directoryIdentity,expected,id,lockIdentity,namespace,path,payloadIdentity,receiptIdentity,sha256,size'].includes(Object.keys(value).sort().join(','))) throw new RemoteFileError('protocol', true);
+    keys(value, ['directory', 'directoryIdentity', 'expected', 'id', 'namespace', 'path', 'payloadIdentity', 'receiptIdentity', 'lockIdentity', 'cleanupIdentity', 'cleanupLockIdentity', 'cleanupFilesIdentity', 'sha256', 'size']);
     if (value.namespace !== this.namespace || typeof value.id !== 'string' || !/^[a-f0-9-]{36}$/.test(value.id) || !Number.isSafeInteger(value.size) || (value.size as number) < 0 || (value.size as number) > FILE_MAX_BYTES || typeof value.sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(value.sha256)) throw new RemoteFileError('protocol', true);
     if (value.expected !== null) facts(value.expected);
     const actualPath = this.path(value.path); const directory = this.path(value.directory); const paths = this.metadata.platformFamily === 'windows' ? win32 : posix;
-    if ((path !== undefined && actualPath !== path) || (id !== undefined && value.id !== id) || (size !== undefined && value.size !== size) || (sha256 !== undefined && value.sha256 !== sha256) || (expected !== undefined && JSON.stringify(value.expected) !== JSON.stringify(expected)) || paths.dirname(directory) !== paths.dirname(actualPath) || paths.basename(directory) !== '.codex-mobile-upload-' + String(value.id)) throw new RemoteFileError('protocol', true);
-    for (const field of (Object.hasOwn(value, 'directoryIdentity') ? ['directoryIdentity', 'receiptIdentity', 'payloadIdentity', 'lockIdentity'] : [])) {
+    if ((path !== undefined && actualPath !== path) || (id !== undefined && value.id !== id) || (size !== undefined && value.size !== size) || (sha256 !== undefined && value.sha256 !== sha256) || (expected !== undefined && JSON.stringify(value.expected) !== JSON.stringify(expected)) || directoryKey(paths.dirname(directory), this.metadata.platformFamily === 'windows') !== directoryKey(paths.dirname(actualPath), this.metadata.platformFamily === 'windows') || paths.basename(directory) !== '.codex-mobile-upload-' + String(value.id)) throw new RemoteFileError('protocol', true);
+    for (const field of (Object.hasOwn(value, 'directoryIdentity') ? ['directoryIdentity', 'receiptIdentity', 'payloadIdentity', 'lockIdentity', 'cleanupIdentity', 'cleanupLockIdentity', 'cleanupFilesIdentity'] : [])) {
       const identity = value[field]; keys(identity, ['dev', 'ino', 'mode']); if (!record(identity) || Object.keys(identity).sort().join(',') !== 'dev,ino,mode' || Object.values(identity).some(n => typeof n !== 'string' || !/^[0-9]{1,64}$/.test(n))) throw new RemoteFileError('protocol', true);
     }
     const token = freeze(JSON.parse(JSON.stringify(value)) as Record<string, unknown>); return Object.freeze({ namespace: this.namespace, token, protocol: 1 as const });
@@ -261,16 +261,16 @@ export class RemoteFiles {
   async releaseUpload(value: unknown, options: RemoteFileOptions = {}): Promise<void> {
     return this.removeUpload(value, 'release', options);
   }
-  /** 先query并持久记录放弃决定后显式调用；只回收已结束、未提交且身份完整的自有暂存。 */
+  /** 先query并持久记录放弃决定后显式调用；已持久记录的同一次discard也可在清理中断后继续。 */
   async discardUpload(value: unknown, options: RemoteFileOptions = {}): Promise<void> {
     return this.removeUpload(value, 'discard', options);
   }
   private async removeUpload(value: unknown, mode: 'release' | 'discard', options: RemoteFileOptions): Promise<void> {
-    const started = performance.now(); let channel: RemoteFileChannel | undefined;
+    const started = performance.now(); let channel: RemoteFileChannel | undefined; let operation: RemoteUploadOperation | undefined;
     try {
-      const operation = this.validateOperation(value); const o = this.options(options, [], started); channel = await this.channel(o.deadline, o.signal);
+      operation = this.validateOperation(value); const o = this.options(options, [], started); channel = await this.channel(o.deadline, o.signal);
       const [result] = await channel.exchange([{ mode, path: operation.token.path, operation: operation.token }]); body(result!, 'cleaned', []); await channel.finish();
-    } catch (error) { throw fileFailure(error, channel?.sent ?? false); } finally { await this.release(channel); }
+    } catch (error) { const failure = fileFailure(error, channel?.sent ?? false); if (operation && channel?.sent) failure.operation = operation; throw failure; } finally { await this.release(channel); }
   }
   async readText(path: string, options: RemoteFileOptions & { maxBytes: number; version?: string }): Promise<{ text: string; version: string; snapshotBytes: number }> {
     const started = performance.now(); let sent = false;
