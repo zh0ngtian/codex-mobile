@@ -12,6 +12,8 @@
 
 2026-11-13 已快进整合最新远端 `18039476257000573c9014f2dc84ccfa328cb928`。原两项失败已由上游 `ec12e45` 修复；本轮新增错误翻译及项目恢复夹具修复为 `971c1d81a1968ee79c3a90097d5714925d0356ad`，已推送 main。当前完整基线 183 文件、2079 项通过，6 项既有跳过；typecheck 与开发 Web 构建通过。Remote 实现从此提交继续。
 
+2026-11-13继续Task2b前记录最新远端main为 `2e0ca6e9f5e78000ad0e6c5c065c6c96a3379722`，包含已完成的Task1/2a与阶段文档。固定统计读取权限例外已获用户批准且隔离验证通过，其他操作继续默认权限。
+
 ## 验证约定
 
 - Node 26 的原生 Web Storage 与现有 jsdom 环境冲突；测试命令设置 `NODE_OPTIONS=--no-experimental-webstorage`，不为环境问题修改产品逻辑。
@@ -44,6 +46,14 @@
 
 2a 已完成：`1c5351c7a2e2441421449586cfd0d9c6a784915e` 通过174项回归（含临时自有 Secure Enclave 密钥）、服务端构建和严格类型检查，独立规格及质量复审均通过。首次创建身份的跨进程竞争、最终硬件等待后的绑定复核与外部异常脱敏已修复；复核按硬件/密钥记录、普通账号、注册记录的固定有界顺序完成，不宣称独立异步来源的跨源原子快照。隔离实例已用此前授权的网关自有密钥通过正式 provider 的三流 RPC、同流断线恢复和新 provider 的磁盘身份恢复；没有重新授权或修改现役服务。最终源码单次断线至三次顺序模型 RPC 全完成为4535ms，不能作为 P95 或8小时验收；[脱敏收据](evidence/2026-11-13-remote-auth-provider-probe.json)保留历次源提交和验证边界。2b 控制器、目录与 CLI 尚未实现，下列混合清单按整个 Task2 验收，不将2a完成标为Task2整体完成。
 
+2b分项状态：
+
+- [x] 2b.1 有界管理RPC session与canonical受管认证loader。
+- [ ] 2b.2 账号绑定控制器、client可见目录、本机身份证明与配对。
+- [ ] 2b.3 OAuth、Mac CLI及运行配置衔接。
+
+2b.1完成记录：最终源码 `797fef5d21eeb026d40334b535e5f713c3dc2cc9`，38项新增专项测试、9文件211项相关回归通过，1项既有硬件opt-in跳过；严格服务端TypeScript检查、服务端构建和独立规格/质量复审通过。RPC使用已核验JSON快照，canonical待写字节与数量独立有界，未完成写入超时关闭并清理；loader按连接隔离refresh/singleflight，文件读取超时关闭关联会话，保留原绑定，旧结果不得污染新连接。最终隔离实测39次loader加载保持账号绑定，三条管理流复用一条官方物理连接，同流主动断线至三次顺序模型RPC全部完成5015ms，新provider恢复磁盘身份的RPC为1224ms，无重新授权或生产改动。首次实际验证曾在初始化前发生连接离线，旧session按设计终止；探针改为online后新建初始逻辑流，失败记录一并保留，未重放请求。见[脱敏受管认证/RPC收据](evidence/2026-11-13-remote-managed-auth-rpc-probe.json)。该验证不代表P95、真实网关进程重启或8小时验收；controller/目录与产品路径尚待后续子任务。
+
 - [ ] 测试严格绑定账号、工作区、client、密钥 hash、挑战目的/域名/路径/有效期；错误身份/过期/撤销均阻止签名和执行。
 - [ ] 测试私有目录 700/文件 600、原子持久化、账号变化暂停且不迁移队列；测试可刷新的会话过期与不可恢复认证错误。
 - [ ] 从失败测试实现自己的 Secure Enclave 密钥 helper，复用已验证的公开协议，不读取官方 App 密钥。
@@ -57,13 +67,13 @@
 
 文件：新增 `server/remote/files.ts`、`server/remote/commands.ts`、`tests/server/remote-files.test.ts`；修改 `server/file-download.ts`、`server/image-preview.ts`、`server/inline-images.ts`、`server/message-timestamps.ts`、`server/image-generation-error.ts`、`server/turn-change-history.ts`、`server/codex-projects.ts`、`server/desktop-thread-pins.ts`、`server/title-summaries.ts` 及模型上传计量的目标接入以注入目标访问能力。
 
-前置探针：官方 `initialize` 直接返回 `codexHome/platformFamily/platformOs`，当前目标目录与 `command/exec` 环境一致，无需猜路径。目标全局状态和 sessions 目录可读取；目标现有计量 socket 权限700/600且归当前用户，但默认 `command/exec` 在 socket connect 阶段返回 EPERM。[能力收据](evidence/2026-11-13-remote-target-capabilities-probe.json)记录此限制；尚未扩大目标权限、借用网关计量或批准功能降级。Task3 接入前须解决该能力约束，必要产品/权限变更须由用户确认。
+前置探针：官方 `initialize` 直接返回 `codexHome/platformFamily/platformOs`，当前目标目录与 `command/exec` 环境一致，无需猜路径。目标全局状态和 sessions 目录可读取；目标现有计量 socket 权限700/600且归当前用户，但默认 `command/exec` 在 socket connect 阶段返回 EPERM。[默认权限能力收据](evidence/2026-11-13-remote-target-capabilities-probe.json)保留原结果。
 
-待用户确认的建议：仅计量读取的固定命令使用官方 `sandboxPolicy: { type: "readOnly", networkAccess: true }`，先在隔离实例验证 socket 连接及来源绑定，成功后才接入该读取路径；其余文件、Git 与业务操作继续默认权限。该例外会开放此命令的网络/socket 连接能力，因此不能视为既有“默认权限”决定已授权。对应探针已在仓库外准备并加未授权执行保护，尚未运行；本条不变更设计现行要求，也不保证该权限组合一定可用。
+2026-11-13用户已批准的例外：仅固定计量读取命令使用官方 `sandboxPolicy: { type: "readOnly", networkAccess: true }`，其余文件、Git与业务操作继续默认权限。隔离实例已通过socket连接、目标codexHome归属、私有权限/owner/inode及精确canonical来源hash校验；未重新授权、未修改现役服务、未发送模型请求。见[脱敏例外验证收据](evidence/2026-11-13-remote-meter-readonly-network-probe.json)。此验证仅证明当前Mac的hello/来源读取能力，统计快照、持续更新与产品接入仍待Task3实现验收；不得将例外开放为客户端任意脚本或沙箱参数入口。
 
 - [ ] 先在临时目录真实验证 `fs/readFile`、`fs/writeFile`、`command/exec` 和 stdin/stdout 分块；100MiB 文件校验 SHA-256，视频范围读取核对长度与内容，失败恢复不提交半文件。
 - [ ] 测试目标路径只交给目标适配器，远程读写/Git 绝不能调用网关同路径本地 fs/exec。
-- [ ] 实现有界、带背压、临时文件+校验+原子提交的上传下载和范围读；目标执行使用默认配置权限，不扩大沙箱。
+- [ ] 实现有界、带背压、临时文件+校验+原子提交的上传下载和范围读；目标执行使用默认配置权限；只有用户已批准的固定统计读取命令可使用上述只读加网络例外。
 - [ ] 实现项目/rollout 元数据与 Git 统计的目标读取，保留现有时间戳、生成图错误与临时 index 语义。最新 main 的桌面项目归属、置顶、项目 worktree、独立标题总结、网页引用与模型上传计量也纳入目标隔离与功能验收；读取目标元数据，不借用网关本机的对应缓存或 IPC。
 - [ ] 测试附件上限、引用文件保留、断线中断、输出截断、路径特殊字符和临时文件清理。
 - [ ] 运行相关服务端回归、真实 Remote 文件验收及服务端构建；规格/质量复审并提交。

@@ -22,7 +22,7 @@
 - [2026-10-20 当前项目展开耗时补测](performance/2026-10-20-sidebar-project-expand/README.md)：20次首次展开数据就绪P50/P95为91/113毫秒；另3次原生录像从展开首帧到五条文字接近最终清晰度约0.51–0.53秒，口径分开，采样时未发布；相关实现后续已随0.3.19交付。
 - [2026-10-20 边栏优化双端发布与网关部署](superpowers/plans/2026-10-20-sidebar-lazy-release.md)：已发布0.3.19（3019），两目标成功凭证及固定APK/已签名IPA、OTA与unsigned软件源回验；性能报告仍保留原采样口径。
 - [协议基准](../protocol/app-server-v2/README.md)：固定快照的版本、来源和使用边界。
-- [常驻 Remote 网关设计](superpowers/specs/2026-11-13-remote-gateway.md)与[实施计划](superpowers/plans/2026-11-13-remote-gateway.md)：开发中；协议与自有授权模块已有源码及隔离 RPC 验证，产品路由、共享队列和客户端尚未接入，计量 socket 默认权限限制待解决。不是现役授权或部署操作入口。
+- [常驻 Remote 网关设计](superpowers/specs/2026-11-13-remote-gateway.md)与[实施计划](superpowers/plans/2026-11-13-remote-gateway.md)：开发中；协议、自有授权、有界 RPC 与受管认证已有源码及隔离验证，产品路由、共享队列和客户端尚未接入，固定计量读取的只读加网络例外已隔离验证，产品统计仍待接入。不是现役授权或部署操作入口。
 
 - [2026-11-11 原生版发布与后续 Android 单端构建](superpowers/plans/2026-11-11-android-only-release.md)：0.3.45 双端与软件源验收成功；不影响 iOS 的后续改动只构建 APK，单端首次真实批次待后续发布验收。
 - [2026-11-10 网页引用补修联合发布](superpowers/plans/2026-11-10-web-citations-hidden-release.md)：0.3.44 GitHub双端及既有iOS软件源、配套网关成功；12会话54项来源与73处引用回验通过。

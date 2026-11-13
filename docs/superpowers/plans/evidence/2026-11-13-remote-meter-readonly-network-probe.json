@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "sourceCommit": "2e0ca6e9f5e78000ad0e6c5c065c6c96a3379722",
+  "validatedAt": "2026-11-13T05:13:58.019Z",
+  "scope": "用户批准后，隔离实例通过官方 Remote 执行固定统计读取命令，验证只读文件系统及网络权限例外",
+  "authorization": {
+    "fixedMeterReadCommandOnly": true,
+    "sandboxPolicy": {
+      "type": "readOnly",
+      "networkAccess": true
+    },
+    "otherOperationsUseDefaultPermissions": true
+  },
+  "target": {
+    "platform": "darwin",
+    "pythonMajor": 3,
+    "codexHomeMatchesInitialize": true
+  },
+  "meter": {
+    "socketConnectSucceeded": true,
+    "helloType": "hello",
+    "protocolVersion": 1,
+    "exactCanonicalSourceHashMatched": true,
+    "privateDirectoryMode": "0700",
+    "privateSocketMode": "0600",
+    "ownerChecked": true,
+    "socketIdentityCheckedBeforeAndAfterConnect": true
+  },
+  "reenrolled": false,
+  "testChatsCreated": 0,
+  "modelRequestsSent": 0,
+  "productionServiceChanged": false,
+  "limits": [
+    "仅验证当前 Mac 的 socket hello、来源绑定及目标路径归属",
+    "尚未验证计量快照与持续更新，也未完成产品统计读取路径接入",
+    "不代表其他目标具有相同运行时、socket 或权限能力",
+    "不扩大为任意命令、文件或 Git 操作的沙箱例外"
+  ]
+}

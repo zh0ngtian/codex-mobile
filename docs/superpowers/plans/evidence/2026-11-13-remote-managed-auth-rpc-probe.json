@@ -1,0 +1,155 @@
+{
+  "schemaVersion": 1,
+  "sourceCommit": "797fef5d21eeb026d40334b535e5f713c3dc2cc9",
+  "validatedAt": "2026-11-13T05:59:24.978Z",
+  "scope": "隔离实例使用正式ManagedAuthLoader、RemoteRpcSession、RemoteAuthProviderImpl与RemoteRelay访问指定本机canonical及官方Remote",
+  "managedAuth": {
+    "explicitLocalCanonical": true,
+    "callsThroughLoader": 39,
+    "identityVerificationPassed": true,
+    "rawAuthReadByProbe": false,
+    "refreshTokenConsumedByGateway": false
+  },
+  "rpc": {
+    "initialStreams": 3,
+    "initialPhysicalConnections": 1,
+    "initializedByRemoteRpcSession": true,
+    "methods": [
+      "initialize",
+      "model/list"
+    ],
+    "initialModelListSamplesMs": [
+      643,
+      927,
+      782
+    ],
+    "streamsCreatedAfterInitialOnline": true
+  },
+  "recovery": {
+    "deliberatePhysicalDisconnect": true,
+    "sameThreeSessionsAndStreamsResumed": true,
+    "disconnectToAllThreeSequentialModelListsMs": 5015,
+    "freshProviderAndRelayRecoveredDiskIdentity": true,
+    "freshProviderModelListMs": 1224,
+    "controllerSessionRefreshStarts": 2,
+    "controllerSessionRefreshFinishes": 2,
+    "totalPhysicalConnections": 3,
+    "reenrolled": false
+  },
+  "productionServiceChanged": false,
+  "modelRequestsSent": 0,
+  "testChatsCreated": 0,
+  "limits": [
+    "仅验证当前Mac及现有同账号绑定；账号切换、异常与超时边界由自动回归覆盖",
+    "单次恢复样本不代表P95或8小时稳定性验收",
+    "新建provider/relay对象验证磁盘身份恢复，未执行真实网关进程重启",
+    "控制器、目标目录、OAuth/CLI、产品路由及共享队列尚未接入"
+  ],
+  "priorFailures": [
+    {
+      "sourceCommit": "797fef5d21eeb026d40334b535e5f713c3dc2cc9",
+      "at": "2026-11-13T05:57:11.087Z",
+      "stage": "首次连接、初始化前",
+      "observation": "首连离线使初始化前创建的逻辑session终止，随后探针初始化失败；底层网络原因未确认",
+      "resolution": "保留失败记录，将初始逻辑流创建延后至主连接online后；重新运行独立只读探针，未重放任何请求",
+      "productionServiceChanged": false,
+      "reenrolled": false
+    }
+  ],
+  "priorRuns": [
+    {
+      "schemaVersion": 1,
+      "sourceCommit": "d58c1e16907ecd0367b554d60a9efb886dd09397",
+      "validatedAt": "2026-11-13T05:30:47.728Z",
+      "scope": "隔离实例使用正式ManagedAuthLoader、RemoteRpcSession、RemoteAuthProviderImpl与RemoteRelay访问指定本机canonical及官方Remote",
+      "managedAuth": {
+        "explicitLocalCanonical": true,
+        "callsThroughLoader": 39,
+        "identityVerificationPassed": true,
+        "rawAuthReadByProbe": false,
+        "refreshTokenConsumedByGateway": false
+      },
+      "rpc": {
+        "initialStreams": 3,
+        "initialPhysicalConnections": 1,
+        "initializedByRemoteRpcSession": true,
+        "methods": [
+          "initialize",
+          "model/list"
+        ],
+        "initialModelListSamplesMs": [
+          652,
+          659,
+          896
+        ]
+      },
+      "recovery": {
+        "deliberatePhysicalDisconnect": true,
+        "sameThreeSessionsAndStreamsResumed": true,
+        "disconnectToAllThreeSequentialModelListsMs": 4739,
+        "freshProviderAndRelayRecoveredDiskIdentity": true,
+        "freshProviderModelListMs": 813,
+        "controllerSessionRefreshStarts": 2,
+        "controllerSessionRefreshFinishes": 2,
+        "totalPhysicalConnections": 3,
+        "reenrolled": false
+      },
+      "productionServiceChanged": false,
+      "modelRequestsSent": 0,
+      "testChatsCreated": 0,
+      "limits": [
+        "仅验证当前Mac及现有同账号绑定；账号切换、异常与超时边界由自动回归覆盖",
+        "单次恢复样本不代表P95或8小时稳定性验收",
+        "新建provider/relay对象验证磁盘身份恢复，未执行真实网关进程重启",
+        "控制器、目标目录、OAuth/CLI、产品路由及共享队列尚未接入"
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "sourceCommit": "affb7f90b932df77247cb0c61f06fd23f9d13804",
+      "validatedAt": "2026-11-13T05:43:04.853Z",
+      "scope": "隔离实例使用正式ManagedAuthLoader、RemoteRpcSession、RemoteAuthProviderImpl与RemoteRelay访问指定本机canonical及官方Remote",
+      "managedAuth": {
+        "explicitLocalCanonical": true,
+        "callsThroughLoader": 39,
+        "identityVerificationPassed": true,
+        "rawAuthReadByProbe": false,
+        "refreshTokenConsumedByGateway": false
+      },
+      "rpc": {
+        "initialStreams": 3,
+        "initialPhysicalConnections": 1,
+        "initializedByRemoteRpcSession": true,
+        "methods": [
+          "initialize",
+          "model/list"
+        ],
+        "initialModelListSamplesMs": [
+          635,
+          626,
+          805
+        ]
+      },
+      "recovery": {
+        "deliberatePhysicalDisconnect": true,
+        "sameThreeSessionsAndStreamsResumed": true,
+        "disconnectToAllThreeSequentialModelListsMs": 5470,
+        "freshProviderAndRelayRecoveredDiskIdentity": true,
+        "freshProviderModelListMs": 642,
+        "controllerSessionRefreshStarts": 2,
+        "controllerSessionRefreshFinishes": 2,
+        "totalPhysicalConnections": 3,
+        "reenrolled": false
+      },
+      "productionServiceChanged": false,
+      "modelRequestsSent": 0,
+      "testChatsCreated": 0,
+      "limits": [
+        "仅验证当前Mac及现有同账号绑定；账号切换、异常与超时边界由自动回归覆盖",
+        "单次恢复样本不代表P95或8小时稳定性验收",
+        "新建provider/relay对象验证磁盘身份恢复，未执行真实网关进程重启",
+        "控制器、目标目录、OAuth/CLI、产品路由及共享队列尚未接入"
+      ]
+    }
+  ]
+}
