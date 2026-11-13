@@ -1,3 +1,4 @@
+import { ResourceSettlement } from './resource-settlement.js';
 import { constants, type Stats } from 'node:fs';
 import { lstat, open, realpath } from 'node:fs/promises';
 import { isAbsolute, join, normalize } from 'node:path';
@@ -12,6 +13,7 @@ export interface ManagedAuthCanonical {
   initialize(): Promise<Readonly<Record<string, unknown>>>;
   call(method: string, params?: JsonValue): Promise<unknown>;
   close?(): unknown;
+  settled?(): Promise<void>;
 }
 interface CanonicalConnection { session: ManagedAuthCanonical; home: string; refreshed: boolean; generation: number }
 interface CanonicalRefresh { connection: CanonicalConnection; promise: Promise<void> }
@@ -77,9 +79,7 @@ function expiration(auth: ManagedAuth): number | undefined {
   } catch { return undefined; }
 }
 function sameIdentity(a: ManagedAuthIdentity, b: ManagedAuthIdentity): boolean { return a.codexHome === b.codexHome && a.accountId === b.accountId && a.accountUserId === b.accountUserId && a.userId === b.userId; }
-function dispose(canonical: ManagedAuthCanonical): void {
-  try { void Promise.resolve(canonical.close?.()).catch(() => undefined); } catch { /* 外部 close 不阻碍本地清理。 */ }
-}
+
 
 /** canonical 管理普通账号的刷新；本 loader 从不消费 refresh_token 或写 auth.json。 */
 export class ManagedAuthLoader {
@@ -87,6 +87,7 @@ export class ManagedAuthLoader {
   private readonly refreshMarginMs: number;
   private readonly factory: () => Promise<ManagedAuthCanonical>;
   private readonly abort = new AbortController();
+  private readonly resources = new ResourceSettlement();
   private canonical?: CanonicalConnection;
   private connecting?: Promise<CanonicalConnection>;
   private refreshing?: CanonicalRefresh;
@@ -121,21 +122,24 @@ export class ManagedAuthLoader {
     if (this.abort.signal.aborted) return Promise.reject(new RemoteNetworkError());
     if (this.canonical) return Promise.resolve(this.canonical);
     if (this.connecting) return this.connecting;
-    this.connecting = (async () => {
-      let session: ManagedAuthCanonical | undefined; let abandoned = false;
-      const created = Promise.resolve().then(this.factory);
-      void created.then(value => { if (abandoned) dispose(value); }, () => undefined);
+    this.connecting = this.resources.track((async () => {
+      let session: ManagedAuthCanonical | undefined; let abandoned = false; let unclaimed: ManagedAuthCanonical | undefined;
+      const created = this.resources.create(() => {
+        if (this.abort.signal.aborted) throw new RemoteNetworkError();
+        return this.factory();
+      });
+      void created.then(value => { unclaimed = value; if (abandoned) { void this.resources.close(value); unclaimed = undefined; } }, () => undefined);
       try {
-        session = await this.external(() => created, true);
+        session = await this.external(() => created, true); unclaimed = undefined;
         const metadata = await this.external(() => session!.initialize(), true);
         if (!object(metadata)) throw authFailure();
         const home = homePath(metadata.codexHome);
         if (this.binding && this.binding.codexHome !== home) throw authFailure();
         if (this.abort.signal.aborted) throw new RemoteNetworkError();
         this.canonical = { session, home, refreshed: false, generation: 0 }; return this.canonical;
-      } catch (error) { abandoned = true; if (session) dispose(session); throw error instanceof RemoteNetworkError ? new RemoteNetworkError() : authFailure(); }
+      } catch (error) { abandoned = true; void this.resources.close(session); void this.resources.close(unclaimed); unclaimed = undefined; throw error instanceof RemoteNetworkError ? new RemoteNetworkError() : authFailure(); }
       finally { this.connecting = undefined; }
-    })();
+    })());
     return this.connecting;
   }
   private assertCurrent(connection: CanonicalConnection): void {
@@ -144,7 +148,7 @@ export class ManagedAuthLoader {
   private invalidate(connection: CanonicalConnection): void {
     // 旧操作的晚超时不能清理已经替换的新会话；原绑定始终保留。
     if (this.canonical !== connection) return;
-    this.canonical = undefined; dispose(connection.session);
+    this.canonical = undefined; void this.resources.close(connection.session);
   }
   private async read(connection: CanonicalConnection): Promise<ManagedAuth> {
     this.assertCurrent(connection);
@@ -196,5 +200,6 @@ export class ManagedAuthLoader {
     const identity = this.currentIdentity!;
     if (expected && !sameIdentity(expected, identity)) throw authFailure(); this.assertCurrent(connection); return identity;
   }
-  close(): void { this.abort.abort(); if (this.canonical) dispose(this.canonical.session); this.canonical = undefined; }
+  close(): void { this.abort.abort(); if (this.canonical) void this.resources.close(this.canonical.session); this.canonical = undefined; }
+  async settled(): Promise<void> { this.close(); await this.resources.settled(); }
 }

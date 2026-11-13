@@ -1,5 +1,6 @@
 import { constants, type Stats } from 'node:fs';
-import { lstat, open, unlink } from 'node:fs/promises';
+import { lstat, open } from 'node:fs/promises';
+import { removeExactEntry } from './exact-cleanup.js';
 import { homedir } from 'node:os';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { metadata, RemoteAdminError, type AdminMetadata } from './admin-protocol.js';
@@ -96,13 +97,12 @@ export async function proveSocket(directory: string, proof: DirectoryProof): Pro
 }
 export async function unlinkExact(path: string, identity: Identity, type: 'file' | 'socket', proof: DirectoryProof): Promise<void> {
   try {
-    await recheckDirectory(proof);
-    const stat = await lstat(path);
-    if (!sameFile(stat, identity)) {
-      return;
-    }
-    privateOwned(stat, type);
-    await unlink(path);
+    await removeExactEntry({
+      path, identity, directory: proof.at(-1)!.path,
+      assertDirectory: () => recheckDirectory(proof),
+      assertSource: () => recheckDirectory(proof),
+      validate: stat => privateOwned(stat, type),
+    });
   }
   catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {

@@ -4,6 +4,7 @@ import { homedir, tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, parse, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { TextDecoder } from 'node:util';
+import { removeExactEntry } from './exact-cleanup.js';
 
 const MAX_RECORD_BYTES = 1024 * 1024;
 function failure(): Error { return new Error('Remote 私有存储不可用或记录损坏'); }
@@ -11,6 +12,7 @@ function missing(error: unknown): boolean { return (error as NodeJS.ErrnoExcepti
 type FileIdentity = Pick<Stats, 'dev' | 'ino'>;
 function sameFile(a: FileIdentity, b: FileIdentity): boolean { return a.dev === b.dev && a.ino === b.ino; }
 function owned(stat: { uid: number }): boolean { return !process.getuid || stat.uid === process.getuid(); }
+class LockDirectoryChanged extends Error { constructor() { super('Remote 私有存储不可用或记录损坏'); } }
 
 /** 仅负责自己的目录；不会修复或 chmod 既有父目录。 */
 export class PrivateStore {
@@ -173,7 +175,32 @@ export class PrivateStore {
     try { entries = await readdir(path); } catch (error) { if (missing(error)) return; throw failure(); }
     if (entries.length === 0) return; // rename 可原子替换崩溃留下的空目录。
     if (entries.length !== 1) throw failure();
-    const name = entries[0]!; const match = /^owner-([1-9][0-9]*)-([a-f0-9-]{36})\.json$/.exec(name);
+    const name = entries[0]!;
+    let owner: { pid: number; identity: FileIdentity };
+    try { owner = await this.readLockOwner(path, name); }
+    catch (error) { if (missing(error)) return; throw failure(); }
+    try { process.kill(owner.pid, 0); }
+    catch (error) {
+      if ((error as NodeJS.ErrnoException)?.code !== 'ESRCH') return;
+      try { await this.removeLockOwner(path, name, directoryIdentity, owner.identity); }
+      catch (cleanupError) {
+        if (!(cleanupError instanceof LockDirectoryChanged)) throw cleanupError;
+        // 其他合法回收者可能已发布后继非空目录。只接受不同完整owner，
+        // 不把同名替换、未知文件或捕获后的身份不匹配当作正常竞争。
+        const nextDirectory = await this.inspectLockDirectory(path); if (!nextDirectory) return;
+        if (sameFile(nextDirectory, directoryIdentity)) throw failure();
+        const nextEntries = await readdir(path);
+        if (nextEntries.length !== 1 || nextEntries[0] === name) throw failure();
+        const nextName = nextEntries[0]!; const next = await this.readLockOwner(path, nextName);
+        const nextFile = await lstat(join(path, nextName));
+        const directoryAfter = await this.inspectLockDirectory(path);
+        if (!directoryAfter || !sameFile(directoryAfter, nextDirectory) || !sameFile(nextFile, next.identity)) throw failure();
+      }
+      // EPERM、PID复用等无法证明owner已死的情况绝不解锁。
+    }
+  }
+  private async readLockOwner(path: string, name: string): Promise<{ pid: number; identity: FileIdentity }> {
+    const match = /^owner-([1-9][0-9]*)-([a-f0-9-]{36})\.json$/.exec(name);
     if (!match) throw failure();
     let record: unknown; let ownerIdentity: FileIdentity | undefined;
     try {
@@ -183,25 +210,37 @@ export class PrivateStore {
         if (!stat.isFile() || !owned(stat) || stat.nlink > 1 || stat.size > 1024 || (stat.mode & 0o777) !== 0o600) throw failure();
         ownerIdentity = stat; record = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(await owner.readFile()));
       } finally { await owner.close(); }
-    } catch (error) { if (missing(error)) return; throw failure(); }
+    } catch (error) { if (missing(error)) throw error; throw failure(); }
     if (!record || typeof record !== 'object' || Array.isArray(record)) throw failure();
     const value = record as Record<string, unknown>;
     if (value.version !== 1 || value.pid !== Number(match[1]) || !Number.isSafeInteger(value.pid) || value.nonce !== match[2]) throw failure();
-    try { process.kill(value.pid as number, 0); }
-    catch (error) {
-      if ((error as NodeJS.ErrnoException)?.code === 'ESRCH') await this.removeLockOwner(path, name, directoryIdentity, ownerIdentity);
-      // EPERM、PID 复用等无法证明 owner 已死的情况绝不解锁。
-    }
+    return { pid: value.pid as number, identity: ownerIdentity! };
   }
   private async removeLockOwner(path: string, ownerName: string, expectedDirectory: FileIdentity, expectedOwner?: FileIdentity): Promise<void> {
     const directory = await this.inspectLockDirectory(path); if (!directory) return;
-    if (!sameFile(directory, expectedDirectory)) throw failure();
+    if (!sameFile(directory, expectedDirectory)) throw new LockDirectoryChanged();
     try {
-      const owner = await lstat(join(path, ownerName));
-      if (!expectedOwner || !sameFile(owner, expectedOwner) || !owner.isFile() || !owned(owner) || owner.nlink !== 1 || (owner.mode & 0o777) !== 0o600) throw failure();
-      const recheck = await this.inspectLockDirectory(path); if (!recheck || !sameFile(recheck, expectedDirectory)) throw failure();
-      await unlink(join(path, ownerName));
-    } catch (error) { if (!missing(error)) throw failure(); }
+      const root = await this.inspectLockDirectory(this.directory); if (!root) throw failure();
+      const removed = expectedOwner ? await removeExactEntry({
+        path: join(path, ownerName), identity: expectedOwner, directory: this.directory,
+        assertDirectory: async () => {
+          const current = await this.inspectLockDirectory(this.directory);
+          if (!current || !sameFile(current, root)) throw failure();
+        },
+        assertSource: async () => {
+          const current = await this.inspectLockDirectory(path);
+          if (!current || !sameFile(current, expectedDirectory)) throw new LockDirectoryChanged();
+        },
+        validate: owner => {
+          if (!owner.isFile() || !owned(owner) || owner.nlink !== 1 || (owner.mode & 0o777) !== 0o600) throw failure();
+        },
+      }) : false;
+      if (!removed) {
+        // 缺失owner可继续清理空目录；同名替换owner必须保留并拒绝。
+        try { await lstat(join(path, ownerName)); throw failure(); }
+        catch (error) { if (!missing(error)) throw error; }
+      }
+    } catch (error) { if (error instanceof LockDirectoryChanged) throw error; if (!missing(error)) throw failure(); }
     const recheck = await this.inspectLockDirectory(path); if (!recheck) return;
     // 自己的owner已移除后，合法竞争者可原子替换空目录；保留其新归属。
     if (!sameFile(recheck, expectedDirectory)) return;

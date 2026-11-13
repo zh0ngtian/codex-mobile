@@ -327,3 +327,42 @@ const {appendFileSync}=require('node:fs'); const {createInterface}=require('node
     await rm(root, { recursive: true, force: true });
   }
 }, 10000);
+
+
+it.each(['late', 'blocked'] as const)('owner %s文件系统收尾期间取消：真实入口无晚Runtime和端点，归属仅在实际收尾或PID退出后回收', async stage => {
+  const { pathToFileURL } = await import('node:url');
+  const root = await mkdtemp(join(await realpath(tmpdir()), 'rowner-'));
+  const remote = join(root, 'r'); const home = join(root, 'c'); await mkdir(home);
+  const marker = join(root, 'owner-sync'); const runtimeMarker = join(root, 'runtime-start');
+  const loader = join(fixture, `owner-${stage}.mjs`);
+  await writeFile(loader, `import fs from 'node:fs/promises'; import {appendFileSync} from 'node:fs'; import {syncBuiltinESMExports} from 'node:module'; import {RemoteRuntime} from ${JSON.stringify(pathToFileURL(join(fixture, 'npm-dist/server/remote/runtime.js')).href)};
+const originalOpen=fs.open; let blocked=false; fs.open=async function(path,...args){const handle=await originalOpen.call(this,path,...args); if(String(path)===${JSON.stringify(remote)}&&!blocked){blocked=true; const sync=handle.sync.bind(handle); handle.sync=async()=>{appendFileSync(${JSON.stringify(marker)},'entered'); await ${stage === 'late' ? 'new Promise(resolve=>setTimeout(resolve,200))' : 'new Promise(()=>{})'}; return sync();};} return handle;};syncBuiltinESMExports();const start=RemoteRuntime.prototype.start;RemoteRuntime.prototype.start=function(){appendFileSync(${JSON.stringify(runtimeMarker)},'started');return start.call(this);};`);
+  const upstream = new WebSocketServer({ host: '127.0.0.1', port: 0 }); await new Promise<void>(resolve => upstream.once('listening', resolve));
+  let connections=0; upstream.on('connection',()=>connections++);
+  const env = { ...process.env, NODE_OPTIONS: '--no-experimental-webstorage', HOST: '127.0.0.1', PORT: '0', CODEX_MOBILE_TOKEN: 'isolated-token', CODEX_APP_SERVER_MODE: 'external', CODEX_APP_SERVER_URL: `ws://127.0.0.1:${(upstream.address() as any).port}`, CODEX_HOME: home, CODEX_MOBILE_REMOTE_DIR: remote, CODEX_MOBILE_UPLOAD_DIR: join(root, 'u'), CODEX_MOBILE_RUNTIME_FILE: join(root, 'runtime.json'), CODEX_MOBILE_SERVE_STATIC: 'false' };
+  const children:ChildProcess[]=[];
+  const start=(preload?:string)=>{ const child=spawn(process.execPath,[...(preload?['--import',preload]:[]),join(fixture,'npm-dist/server/index.js')],{env,stdio:['ignore','pipe','pipe']});children.push(child);let output='';child.stdout!.on('data',bytes=>output+=bytes);child.stderr!.on('data',bytes=>output+=bytes);return {child,output:()=>output};};
+  try {
+    const first=start(loader); await until(async()=>!!await readFile(marker,'utf8').catch(()=>''));
+    expect(await readdir(remote)).toContain('.init-gateway-owner.lock');
+    const stoppedAt=Date.now(); first.child.kill('SIGTERM');
+    if(stage==='blocked'){
+      const second=start(); await exit(second.child); expect(second.child.exitCode).toBe(1); expect(second.output()).not.toContain('Codex Mobile Web:');
+      expect(first.child.exitCode).toBeNull(); expect(await readdir(remote)).toContain('.init-gateway-owner.lock');
+    }
+    await exit(first.child);
+    expect(Date.now()-stoppedAt).toBeLessThan(6500);
+    expect(first.child.exitCode).toBe(stage==='blocked'?1:0);
+    expect(first.output()).not.toContain('Codex Mobile Web:');
+    expect(await readFile(runtimeMarker,'utf8').catch(()=> 'absent')).toBe('absent');
+    expect(connections).toBe(0);
+    expect(await readdir(remote)).not.toContain('admin.sock');
+    if(stage==='late') expect(await readdir(remote)).not.toContain('.init-gateway-owner.lock');
+    const next=start(); await until(async()=>next.output().includes('Codex Mobile Web:'));
+    next.child.kill('SIGTERM'); await exit(next.child); expect(next.child.exitCode).toBe(0);
+    expect(await readdir(remote)).not.toContain('.init-gateway-owner.lock');
+  } finally {
+    for(const child of children) if(child.exitCode===null&&child.signalCode===null){child.kill('SIGKILL');await exit(child);}
+    for(const socket of upstream.clients)socket.terminate(); await new Promise<void>(resolve=>upstream.close(()=>resolve())); await rm(root,{recursive:true,force:true});
+  }
+},10000);

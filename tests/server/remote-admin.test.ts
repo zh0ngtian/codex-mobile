@@ -122,10 +122,12 @@ it('拒绝 metadata 硬链接、符号链接以及祖先替换', async () => {
 });
 it('已活着PID的旧端点绝不被清理，归属不靠锁年龄抢占', async () => {
   const r = await root();
-  const owner = await acquireRemoteOwner(new PrivateStore(r), { timeoutMs: 30 });
-  await expect(acquireRemoteOwner(new PrivateStore(r), { timeoutMs: 20 })).rejects.toMatchObject({ code: 'busy' });
+  const owner = await acquireRemoteOwner(new PrivateStore(r), { timeoutMs: 500 });
+  const competing = acquireRemoteOwner(new PrivateStore(r), { timeoutMs: 20 });
+  await expect(competing).rejects.toMatchObject({ code: 'busy' });
+  await competing.settled().catch(() => undefined);
   await owner.close();
-  const next = await acquireRemoteOwner(new PrivateStore(r), { timeoutMs: 30 });
+  const next = await acquireRemoteOwner(new PrivateStore(r), { timeoutMs: 500 });
   await next.close();
 });
 async function rawRequest(r: string, bytes: string | Buffer, end = true): Promise<any[]> {
@@ -367,7 +369,8 @@ it.each(['client', 'publisher'] as const)('%s首个FS证明挂起也按实际期
   }) as typeof fs.lstat);
   syncBuiltinESMExports();
   try {
-    const operation = (mode === 'client' ? callRemoteAdmin({ directory: r, method: 'status', handshakeTimeoutMs: 20 }) : publishRemoteAdmin({ directory: r, runtime: runtime(), access: () => ({ host: 'localhost', port: 1, token: 'x' }), startupTimeoutMs: 20 } as any)).then(value => {
+    const publication = mode === 'publisher' ? publishRemoteAdmin({ directory: r, runtime: runtime(), access: () => ({ host: 'localhost', port: 1, token: 'x' }), startupTimeoutMs: 20 }) : undefined;
+    const operation = (publication ?? callRemoteAdmin({ directory: r, method: 'status', handshakeTimeoutMs: 20 })).then(value => {
       if (mode === 'publisher') {
         resources.push(value as any);
       }
@@ -377,7 +380,7 @@ it.each(['client', 'publisher'] as const)('%s首个FS证明挂起也按实际期
     release();
     await operation;
     expect(result).toBe('timeout');
-    await new Promise(resolve => setTimeout(resolve, 20));
+    await publication?.settled();
     expect(await readdir(r)).toEqual([]);
   }
   finally {
@@ -405,7 +408,7 @@ it('真实Unix最终证明后同步跨外层期限也不晚交付或残留端点
   try {
     await expect(publication).rejects.toMatchObject({ code: 'timeout' });
     expect(blocked).toBe(true);
-    await new Promise(resolve => setTimeout(resolve, 20));
+    await publication.settled();
     expect(await readdir(r)).toEqual([]);
   }
   finally {

@@ -869,3 +869,14 @@ it('只读queryStatus不把启动证明失败的fault清成可执行idle', async
  const runtime = new RemoteRuntime(f.options); cleanup.push(() => runtime.close()); await runtime.start(); expect(runtime.status().state).toBe('fault');
  expect((await runtime.queryStatus()).state).toBe('fault'); expect(f.oauth()).toBe(1);
 });
+it('独立复现：正常授权后的 actual Relay close 必须先于 runtime settled', async () => {
+ const f = await fixture();
+ await f.runtime.authorize();
+ await until(() => f.runtime.status().state === 'online');
+ const socket = (f.runtime as any).bundle.controller.relay.socket;
+ let actualClose = false;
+ socket.once('close', () => actualClose = true);
+ await f.runtime.settled();
+ expect(socket.readyState).toBe(3);
+ expect(actualClose).toBe(true);
+});

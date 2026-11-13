@@ -1,3 +1,4 @@
+import { ownedWebSocket } from './owned-websocket.js';
 import { randomUUID } from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import { TextDecoder } from 'node:util';
@@ -55,9 +56,13 @@ export class RemoteRpcSession extends EventEmitter<SessionEvents> {
   private initialization?: Readonly<Record<string, unknown>>;
   private terminal = false;
   private initialized = false;
+  private readonly actualClosed: Promise<void>;
+  private actualClosedNative = Promise.resolve();
 
   private constructor(private readonly transport: WebSocket | RemoteStream, options: RemoteRpcSessionOptions) {
     super();
+    this.actualClosed = transport instanceof RemoteStream ? Promise.resolve() :
+      transport.readyState === WebSocket.CLOSED ? Promise.resolve() : new Promise(resolve => transport.once('close', () => resolve()));
     this.options = {
       connectTimeoutMs: boundedOption(options.connectTimeoutMs, 10000, 180000),
       initializeTimeoutMs: boundedOption(options.initializeTimeoutMs, 20000, 180000),
@@ -97,31 +102,40 @@ export class RemoteRpcSession extends EventEmitter<SessionEvents> {
     }
   }
   /** 显式 canonical 地址；不猜端口、环境变量或其他本机实例。 */
-  static async connectCanonical(url: string, options: RemoteRpcSessionOptions = {}): Promise<RemoteRpcSession> {
+  static connectCanonical(url: string, options: RemoteRpcSessionOptions = {}): Promise<RemoteRpcSession> & { settled(): Promise<void> } {
     let socket: WebSocket | undefined; let session: RemoteRpcSession | undefined;
-    try {
-      const parsed = new URL(url);
-      if (!['ws:', 'wss:'].includes(parsed.protocol) || !['127.0.0.1', 'localhost', '[::1]'].includes(parsed.hostname) || parsed.username || parsed.password || parsed.hash) throw new RemoteRpcError('protocol', false);
-      const timeout = boundedOption(options.connectTimeoutMs, 10000, 180000);
-      const maxPayload = boundedOption(options.maxInboundBytes, 8 * 1024 * 1024, 64 * 1024 * 1024);
-      socket = new WebSocket(url, { maxPayload, perMessageDeflate: false });
-      session = new RemoteRpcSession(socket, options);
-      const current = session; const connection = socket;
-      await new Promise<void>((resolve, reject) => {
-        const done = (failure?: RemoteRpcFailure) => {
-          clearTimeout(timer); connection.off('open', opened); current.off('close', closed);
-          if (failure) reject(new RemoteRpcError(failure, false)); else resolve();
-        };
-        const opened = () => done(); const closed = () => done('network');
-        const timer = setTimeout(() => { done('timeout'); current.finish('timeout'); }, timeout);
-        connection.once('open', opened); current.once('close', closed);
-      });
-      return session;
-    } catch (error) {
-      session?.close();
-      if (socket && !session) { socket.on('error', () => {}); socket.terminate(); }
-      throw new RemoteRpcError(error instanceof RemoteRpcError ? error.code : 'network', false);
-    }
+    let actualClosed = Promise.resolve(); let delivered = false;
+    const operation = (async () => {
+      try {
+        const parsed = new URL(url);
+        if (!['ws:', 'wss:'].includes(parsed.protocol) || !['127.0.0.1', 'localhost', '[::1]'].includes(parsed.hostname) || parsed.username || parsed.password || parsed.hash) throw new RemoteRpcError('protocol', false);
+        const timeout = boundedOption(options.connectTimeoutMs, 10000, 180000);
+        const maxPayload = boundedOption(options.maxInboundBytes, 8 * 1024 * 1024, 64 * 1024 * 1024);
+        const owned = ownedWebSocket(url, { maxPayload, perMessageDeflate: false });
+        socket = owned.socket; actualClosed = owned.closed;
+        session = new RemoteRpcSession(socket, options);
+        session.actualClosedNative = actualClosed;
+        const current = session; const connection = socket;
+        await new Promise<void>((resolve, reject) => {
+          const done = (failure?: RemoteRpcFailure) => {
+            clearTimeout(timer); connection.off('open', opened); current.off('close', closed);
+            if (failure) reject(new RemoteRpcError(failure, false)); else resolve();
+          };
+          const opened = () => done(); const closed = () => done('network');
+          const timer = setTimeout(() => { done('timeout'); current.finish('timeout'); }, timeout);
+          connection.once('open', opened); current.once('close', closed);
+        });
+        delivered = true; return session;
+      } catch (error) {
+        session?.close();
+        if (socket && !session) { socket.on('error', () => {}); socket.terminate(); }
+        throw new RemoteRpcError(error instanceof RemoteRpcError ? error.code : 'network', false);
+      }
+    })();
+    return Object.assign(operation, { async settled() {
+      await operation.catch(() => undefined);
+      if (!delivered) await actualClosed;
+    } });
   }
   static fromRemoteStream(stream: RemoteStream, options: RemoteRpcSessionOptions = {}): RemoteRpcSession {
     if (stream.closed || managedStreams.has(stream)) throw new RemoteRpcError('closed', false);
@@ -251,5 +265,7 @@ export class RemoteRpcSession extends EventEmitter<SessionEvents> {
     finally { this.removeAllListeners(); }
   }
   close(): void { this.finish('closed'); }
+  /** RemoteStream不等待业务ACK；其物理连接由Relay持有。 */
+  async settled(): Promise<void> { this.close(); await Promise.all([this.actualClosed, this.actualClosedNative]); }
 }
 function ignoreSocketError(): void { /* terminate 期间 ws 仍可能异步报告连接错误。 */ }

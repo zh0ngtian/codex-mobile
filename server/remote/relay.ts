@@ -1,3 +1,4 @@
+import { ownedWebSocket } from './owned-websocket.js';
 import { randomUUID } from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import { TextDecoder } from 'node:util';
@@ -130,6 +131,7 @@ export class RemoteRelay extends EventEmitter<RelayEvents> {
   private awaitingNativePong = false;
   private safeCursor: string | null = null;
   private latestCursor: string | null = null;
+  private readonly socketClosures = new Set<Promise<void>>();
   private writes = new Set<PendingWrite>();
   private queuedBytes = 0;
 
@@ -187,7 +189,10 @@ export class RemoteRelay extends EventEmitter<RelayEvents> {
       // 恢复游标由传输层控制，Provider 的同名请求头不能跳过已验证位置。
       for (const key of Object.keys(headers)) if (key.toLowerCase() === 'x-codex-subscribe-cursor') delete headers[key];
       if (this.safeCursor !== null) headers['x-codex-subscribe-cursor'] = this.safeCursor;
-      const socket = new WebSocket(auth.url, { headers, maxPayload: REMOTE_CHUNK_FRAME_BYTES, perMessageDeflate: false, handshakeTimeout: this.handshakeTimeoutMs });
+      const { socket, closed } = ownedWebSocket(auth.url, { headers, maxPayload: REMOTE_CHUNK_FRAME_BYTES, perMessageDeflate: false, handshakeTimeout: this.handshakeTimeoutMs });
+      // 从创建时持有实际close屏障；旧连接被摘除后也仍属于本实例。
+      this.socketClosures.add(closed);
+      void closed.then(() => this.socketClosures.delete(closed));
       this.socket = socket;
       let challengeStarted = false;
       this.handshakeTimer = setTimeout(() => this.disconnect('network'), this.handshakeTimeoutMs); this.handshakeTimer.unref();
@@ -401,6 +406,11 @@ export class RemoteRelay extends EventEmitter<RelayEvents> {
     if (this.currentState !== 'offline' || this.retryTimer || this.authenticationPending) return;
     const delay = Math.min(this.reconnectMaxMs, this.reconnectMinMs * 2 ** Math.min(this.retryCount++, 20));
     this.retryTimer = setTimeout(() => { this.retryTimer = undefined; void this.connect(); }, delay); this.retryTimer.unref();
+  }
+  /** 可信归属屏障，只等本机自有WebSocket实际close，不等待对端消费。 */
+  async settled(): Promise<void> {
+    try { this.close(); } catch { /* 外部监听器错误不跳过实际连接收尾。 */ }
+    while (this.socketClosures.size) await Promise.all(this.socketClosures);
   }
   close(): void {
     if (this.state === 'closed') return;

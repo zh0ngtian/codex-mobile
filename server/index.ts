@@ -24,6 +24,7 @@ let remote: RemoteRuntime | undefined;
 let admin: Awaited<ReturnType<typeof publishRemoteAdmin>> | undefined;
 let adminStarting: ReturnType<typeof publishRemoteAdmin> | undefined;
 let owner: Awaited<ReturnType<typeof acquireRemoteOwner>> | undefined;
+let ownerStarting: ReturnType<typeof acquireRemoteOwner> | undefined;
 let stopping: Promise<void> | undefined;
 function active() {
   if (abort.signal.aborted) {
@@ -38,6 +39,7 @@ function cleanupResources() {
       await admin?.settled();
     }),
     Promise.resolve().then(() => adminStarting?.settled()),
+    Promise.resolve().then(() => ownerStarting?.settled()),
     Promise.resolve().then(() => remote?.settled()),
     Promise.resolve().then(() => gateway?.close()),
     Promise.resolve().then(() => desktopMeter?.close()),
@@ -85,7 +87,8 @@ const starting = (async () => {
   if (process.platform !== 'win32' && typeof process.getuid === 'function') {
     adminDirectory = remoteDirectory();
     const store = new PrivateStore(adminDirectory);
-    owner = await acquireRemoteOwner(store);
+    ownerStarting = acquireRemoteOwner(store, { signal: abort.signal });
+    owner = await ownerStarting;
     active();
     remote = new RemoteRuntime({ store, canonicalUrl: runtime.upstreamUrl });
   }

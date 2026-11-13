@@ -45,16 +45,7 @@ export interface RemoteRuntimeOperation {
   removers: (() => void)[];
   timer?: NodeJS.Timeout;
 }
-export function closeRemoteResource(resource: { close?(): unknown } | undefined): Promise<void> {
-  try {
-    return Promise.resolve(resource?.close?.()).then(
-      () => undefined,
-      () => undefined,
-    );
-  } catch {
-    return Promise.resolve();
-  }
-}
+export { closeRemoteResource } from './resource-settlement.js';
 export function classifyRemoteRuntimeFailure(error: unknown): RemoteRuntimeFailure {
   if (error instanceof RemoteRuntimeError && Object.hasOwn(MESSAGES, error.code)) return error.code;
   if (error instanceof RemoteAuthRequiredError) return 'identity-changed';

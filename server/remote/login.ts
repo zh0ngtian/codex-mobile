@@ -1,3 +1,4 @@
+import { ResourceSettlement } from './resource-settlement.js';
 import { execFile } from 'node:child_process';
 import { performance } from 'node:perf_hooks';
 import { isAbsolute, normalize } from 'node:path';
@@ -39,6 +40,7 @@ export interface RemoteLoginManagedAuth {
   load(): Promise<ManagedAuth>;
   verifyIdentity(): Promise<Readonly<ManagedAuthIdentity>>;
   close?(): unknown;
+  settled?(): Promise<void>;
 }
 export interface RemoteCanonicalLoginOptions {
   canonicalUrl?: string;
@@ -125,16 +127,7 @@ function openBrowser(url: string, signal: AbortSignal): Promise<void> {
     );
   });
 }
-function dispose(value: { close?(): unknown } | undefined): Promise<void> {
-  try {
-    return Promise.resolve(value?.close?.()).then(
-      () => undefined,
-      () => undefined,
-    );
-  } catch {
-    return Promise.resolve();
-  }
-}
+
 
 /** 显式普通 ChatGPT 登录：canonical 独占刷新和 auth.json 写入，和 Remote step-up 完全分开。 */
 export class RemoteCanonicalLogin {
@@ -143,6 +136,7 @@ export class RemoteCanonicalLogin {
   private readonly browserTimeout: number;
   private readonly factory: () => Promise<RemoteControllerCanonical>;
   private closed = false;
+  private readonly resources = new ResourceSettlement();
   private flow?: Flow;
   private flight?: Promise<Readonly<ManagedAuthIdentity>>;
   constructor(private readonly options: RemoteCanonicalLoginOptions) {
@@ -246,10 +240,10 @@ export class RemoteCanonicalLogin {
     flow.abort.signal.addEventListener('abort', aborted);
     flow.removers.push(() => flow.abort.signal.removeEventListener('abort', aborted));
     if (cancel || flow.abort.signal.aborted) void this.cancelKnownLogin(flow);
-    await this.settle(() => dispose(flow.loader));
+    await this.settle(() => this.resources.close(flow.loader));
     if (performance.now() >= flow.deadline) this.cancel(flow, 'timeout');
     await flow.cancelRequest;
-    await this.settle(() => dispose(flow.session));
+    await this.settle(() => this.resources.close(flow.session));
     if (performance.now() >= flow.deadline) this.cancel(flow, 'timeout');
     await flow.cancelRequest;
     flow.completed.clear();
@@ -262,11 +256,11 @@ export class RemoteCanonicalLogin {
     const discardSession = (): Promise<void> => {
       const value = unclaimedSession;
       unclaimedSession = undefined;
-      return dispose(value);
+      return this.resources.close(value);
     };
     let verifiedIdentity: Readonly<ManagedAuthIdentity> | undefined;
     let failure: RemoteLoginError | undefined;
-    const pending = Promise.resolve().then(() => {
+    const pending = this.resources.create(() => {
       this.assert(flow);
       return this.factory();
     });
@@ -429,9 +423,10 @@ export class RemoteCanonicalLogin {
         this.flight = undefined;
       }
     });
-    this.flight = flight;
+    this.flight = this.resources.track(flight);
     return flight;
   }
+  async settled(): Promise<void> { await this.close(); await this.resources.settled(); }
   async close(): Promise<void> {
     this.closed = true;
     if (this.flow) this.cancel(this.flow, 'closed');
