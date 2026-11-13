@@ -236,3 +236,56 @@ it('流工厂只读取一次目标快照，getter变化不能绕过完整tuple�
   const input = Object.defineProperty({ installationId: 'local-install' }, 'environmentId', { enumerable: true, get() { reads++; return reads === 1 ? 'local-env' : 'remote-env'; } }) as typeof local;
   const stream = f.controller.createRawStream(input); expect(stream.environmentId).toBe('local-env'); expect(reads).toBe(1); await stream.close();
 });
+
+it('真实WS unknown pong立即终止raw流，移除监听器且后续业务绝不发出或重放', async () => {
+  const f = await fixture(); await f.controller.start(); await until(() => f.controller.state === 'online'); const raw = f.controller.createRawStream(local);
+  const pong = new Promise<void>(resolve => raw.once('pong', () => resolve()));
+  f.connections[0]!.send(JSON.stringify({ type: 'pong', client_id: 'own-client', env_id: local.environmentId, stream_id: raw.streamId, seq_id: 0, status: 'unknown' })); await pong;
+  expect(raw.closed).toBe(true); expect(raw.eventNames()).toEqual([]); await expect(raw.send({ method: 'turn/start' })).rejects.toMatchObject({ mayHaveBeenSent: false });
+  await new Promise(resolve => setTimeout(resolve, 15)); expect(f.frames.filter(frame => frame.stream_id === raw.streamId && frame.type === 'client_message')).toEqual([]); expect(f.controller.state).toBe('online'); expect(f.connections).toHaveLength(1);
+});
+
+it('真实WS active pong与物理网络断线恢复保留raw流，不自动重发已发送业务', async () => {
+  const f = await fixture(); await f.controller.start(); await until(() => f.controller.state === 'online'); const raw = f.controller.createRawStream(local);
+  const pong = new Promise<void>(resolve => raw.once('pong', () => resolve())); f.connections[0]!.send(JSON.stringify({ type: 'pong', client_id: 'own-client', env_id: local.environmentId, stream_id: raw.streamId, seq_id: 1, status: 'active' })); await pong; expect(raw.closed).toBe(false);
+  await raw.send({ method: 'turn/start', params: { marker: 'before-disconnect' } }); await until(() => f.frames.some(frame => frame.stream_id === raw.streamId && frame.message?.method === 'turn/start'));
+  f.connections[0]!.terminate(); await until(() => f.controller.state === 'offline'); expect(raw.closed).toBe(false); await until(() => f.controller.state === 'online');
+  await raw.send({ method: 'thread/read' }); await until(() => f.frames.some(frame => frame.stream_id === raw.streamId && frame.message?.method === 'thread/read'));
+  expect(raw.closed).toBe(false); expect(f.frames.filter(frame => frame.stream_id === raw.streamId && frame.message?.method === 'turn/start')).toHaveLength(1); expect(f.connections).toHaveLength(2); await raw.close();
+});
+
+it.each(['local', 'manual'] as const)('%s配对刷新全目录后立即终止所有旧安装raw和管理流，close监听器异常不影响目录发布', async operation => {
+  const f = await fixture(); await f.controller.start(); await until(() => f.controller.state === 'online'); await f.controller.acceptTarget(remote);
+  const first = f.controller.createRawStream(remote); const second = f.controller.createRawStream(remote); const management = await f.controller.createManagementSession(remote); const old = f.controller.binding;
+  first.on('close', () => { throw new Error('close-observer-secret'); });
+  const third = { environmentId: 'third-env', installationId: 'third-install' }; const pairCode = operation === 'local' ? 'private-pair-code' : 'manual-secret'; const paired = operation === 'local' ? local : third;
+  const observed: boolean[][] = []; f.controller.on('targets', () => observed.push([first.closed, second.closed, management.closed]));
+  f.setFetch(async url => new Response(JSON.stringify(url.endsWith('/client/pair') ? { client_id: 'own-client', pairing_code: pairCode, server_id: 'server', environment_id: paired.environmentId, claimed_at: '2026-11-13T00:00:00Z' } : { items: [target(), target('remote-env', 'replacement'), target(third.environmentId, third.installationId)], cursor: null })));
+  if (operation === 'local') await f.controller.pairLocal(); else await f.controller.pairManual(pairCode, third);
+  expect([first.closed, second.closed, management.closed]).toEqual([true, true, true]); expect(observed).toEqual([[true, true, true]]); expect(f.controller.targets).toContainEqual(target('remote-env', 'replacement')); expect(f.controller.binding?.targets).toContainEqual(remote); expect(f.controller.binding?.local).toEqual(old!.local);
+  await expect(first.send({ method: 'turn/start' })).rejects.toMatchObject({ mayHaveBeenSent: false }); await expect(second.send({ method: 'turn/start' })).rejects.toMatchObject({ mayHaveBeenSent: false }); await expect(management.call('turn/start')).rejects.toMatchObject({ mayHaveBeenSent: false });
+  expect(f.connections).toHaveLength(1); expect(f.controller.state).toBe('online');
+});
+
+it('目录检查关闭首条旧安装流时同步监听器抛错，仍关闭其余raw和管理流并公布完整目录', async () => {
+  const f = await fixture(); await f.controller.start(); await until(() => f.controller.state === 'online'); await f.controller.acceptTarget(remote);
+  const first = f.controller.createRawStream(remote); const second = f.controller.createRawStream(remote); const management = await f.controller.createManagementSession(remote); first.on('close', () => { throw new Error('close-observer-secret'); });
+  let published = 0; f.controller.on('targets', () => { published++; }); f.setTargets([target(), target('remote-env', 'replacement')]); const result = await f.controller.refreshTargets().catch(error => error);
+  expect([first.closed, second.closed, management.closed]).toEqual([true, true, true]); expect(result).toEqual([target(), target('remote-env', 'replacement')]); expect(published).toBe(1); expect(f.controller.state).toBe('online');
+  await expect(second.send({ method: 'turn/start' })).rejects.toMatchObject({ mayHaveBeenSent: false }); await expect(management.call('turn/start')).rejects.toMatchObject({ mayHaveBeenSent: false });
+});
+
+it.each(['local', 'manual'] as const)('%s配对目录已证明目标替换时，在后续异步本机复核前就终止旧流', async operation => {
+  const f = await fixture(); await f.controller.start(); await until(() => f.controller.state === 'online'); await f.controller.acceptTarget(remote); const raw = f.controller.createRawStream(remote);
+  const third = { environmentId: 'third-env', installationId: 'third-install' }; let claimed = false; let held = false; let finish!: () => void; let entered!: () => void; const gate = new Promise<void>(resolve => { finish = resolve; }); const wait = new Promise<void>(resolve => { entered = resolve; }); const verify = f.config.managedAuth.verifyIdentity.bind(f.config.managedAuth);
+  f.config.managedAuth.verifyIdentity = async expected => { if (claimed && !held) { held = true; entered(); await gate; } return verify(expected); };
+  const code = operation === 'local' ? 'private-pair-code' : 'manual-secret'; const paired = operation === 'local' ? local : third;
+  f.setFetch(async url => { if (url.endsWith('/client/pair')) { claimed = true; return new Response(JSON.stringify({ client_id: 'own-client', pairing_code: code, server_id: 'server', environment_id: paired.environmentId, claimed_at: '2026-11-13T00:00:00Z' })); } return new Response(JSON.stringify({ items: [target(), target('remote-env', 'replacement'), target(third.environmentId, third.installationId)], cursor: null })); });
+  const pairing = operation === 'local' ? f.controller.pairLocal() : f.controller.pairManual(code, third); await wait; const observedClosed = raw.closed; finish(); await pairing; expect(observedClosed).toBe(true);
+});
+
+it('目录单纯缺项保留原tuple绑定与已有流历史，不误当作已证明重装', async () => {
+  const f = await fixture(); await f.controller.start(); await until(() => f.controller.state === 'online'); await f.controller.acceptTarget(remote); const raw = f.controller.createRawStream(remote); const management = await f.controller.createManagementSession(remote); const before = f.controller.binding;
+  f.setTargets([target()]); await f.controller.refreshTargets(); expect(raw.closed).toBe(false); expect(management.closed).toBe(false); expect(f.controller.binding).toEqual(before); expect(f.controller.targetStatus(remote).executable).toBe(false);
+  f.setTargets([target(), target('remote-env', 'remote-install')]); await f.controller.refreshTargets(); expect(f.controller.targetStatus(remote).executable).toBe(true); expect(raw.closed).toBe(false); expect((await management.call('model/list'))).toEqual({ ok: true }); await raw.close(); management.close();
+});

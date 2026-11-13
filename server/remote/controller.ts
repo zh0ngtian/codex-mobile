@@ -8,7 +8,7 @@ import type { ManagedAuthIdentity } from './managed-auth.js';
 import { PrivateStore } from './private-store.js';
 import { RemoteAuthRequiredError, RemoteRelay, type RemoteAuthProvider, type RemoteRelayOptions, type RemoteStream } from './relay.js';
 import { RemoteRpcSession, type RemoteRpcSessionOptions } from './rpc-session.js';
-import type { JsonValue, RpcMessage } from './envelope.js';
+import type { JsonValue, RpcMessage, ServerPong } from './envelope.js';
 
 export type RemoteControllerState = 'idle' | 'starting' | 'online' | 'offline' | 'auth-required' | 'paused' | 'remote-disabled' | 'pairing-required' | 'closed';
 export type RemotePauseReason = 'auth-required' | 'enrollment-required' | 'identity-changed' | 'local-identity-changed' | 'account-mode' | 'binding-invalid' | 'remote-disabled';
@@ -227,10 +227,10 @@ export class RemoteController extends EventEmitter<ControllerEvents> {
   private async check(epoch: number, resume = false): Promise<void> {
     await this.load(epoch); if (this.mustResume && !resume) { this.setState('paused', this.reason ?? 'auth-required'); return; }
     const proof = await this.proof(epoch); const targets = await this.external(epoch, () => this.catalog.refresh());
+    this.reconcileStreams(targets);
     const verified = await this.proof(epoch);
     if (!same(proof, verified)) throw new RemoteControllerError('local-identity-changed');
     this.assert(epoch);
-    this.reconcileStreams(targets);
     const local = targets.find(value => value.env_id === proof.local.environmentId && value.installation_id === proof.local.installationId);
     if (!this.record && !local) { this.setState('pairing-required'); return; }
     if (!this.record) await this.persist({ version: 1, ...proof, targets: [proof.local] }, epoch);
@@ -311,6 +311,7 @@ export class RemoteController extends EventEmitter<ControllerEvents> {
       const now = (this.options.now ?? Date.now)();
       if (raw.environmentId !== proof.local.environmentId || typeof raw.pairingCode !== 'string' || !raw.pairingCode || (raw.manualPairingCode !== null && typeof raw.manualPairingCode !== 'string') || !Number.isSafeInteger(raw.expiresAt) || !Number.isSafeInteger(now) || now < 0 || (raw.expiresAt as number) <= now / 1000) throw new RemoteControllerError('target-unavailable');
       await this.external(epoch, () => this.catalog.pair({ pairingCode: raw.pairingCode as string, expected: proof.local, expiresAt: raw.expiresAt as number }));
+      this.reconcileStreams(this.targets);
       const verified = await this.proof(epoch); if (!same(proof, verified)) throw new RemoteControllerError('identity-changed');
       if (!this.record) await this.persist({ version: 1, ...proof, targets: [proof.local] }, epoch);
       this.healthy = true; this.activate(epoch); this.setState(this.relay ? (this.relay.state === 'online' ? 'online' : 'offline') : 'idle'); this.publish('targets', this.targets);
@@ -322,6 +323,7 @@ export class RemoteController extends EventEmitter<ControllerEvents> {
       const target = tuple(value); if (!this.record || !this.healthy) throw new RemoteControllerError('unavailable');
       const accepted = this.assertAcceptedTuple(target); const proof = await this.proof(epoch);
       await this.external(epoch, () => this.catalog.pair({ pairingCode, expected: target }));
+      this.reconcileStreams(this.targets);
       if (!same(proof, await this.proof(epoch))) throw new RemoteControllerError('identity-changed');
       if (!accepted) { if (this.record.targets.length >= 4096) throw new RemoteControllerError('unavailable'); await this.persist({ ...this.record, targets: [...this.record.targets, target] }, epoch); }
       this.publish('targets', this.targets);
@@ -337,16 +339,28 @@ export class RemoteController extends EventEmitter<ControllerEvents> {
     if (!this.targets.some(item => item.env_id === target.environmentId && item.installation_id === target.installationId && item.online)) return { executable: false, reason: 'target-unavailable' };
     return { executable: true };
   }
+  private terminateStream(stream: RemoteStream): void {
+    this.streams.delete(stream);
+    let closing: Promise<void>;
+    try { closing = stream.close(); }
+    catch {
+      // close 在通知外部监听器之前已固定终态；再次调用只取得同一 Promise，
+      // 避免同步监听器异常丢失尚未完成的关闭写入，不会再次发送关闭帧。
+      try { closing = stream.close(); } catch { return; }
+    }
+    void closing.catch(() => undefined);
+  }
   private reconcileStreams(targets: readonly RemoteTarget[]): void {
     for (const [stream, identity] of this.streams) {
       const current = targets.find(value => value.env_id === identity.environmentId);
-      if (current && current.installation_id !== identity.installationId) void stream.close().catch(() => undefined);
+      if (current && current.installation_id !== identity.installationId) this.terminateStream(stream);
     }
   }
   createRawStream(value: RemoteTargetIdentity): RemoteStream {
     const identity = tuple(value); const status = this.targetStatus(identity); if (!status.executable) throw new RemoteControllerError(status.reason!);
     const stream = this.relay!.createStream({ environmentId: identity.environmentId }); this.streams.set(stream, identity);
-    stream.once('close', () => this.streams.delete(stream)); return stream;
+    const pong = (value: ServerPong) => { if (value.status === 'unknown') this.terminateStream(stream); };
+    stream.on('pong', pong); stream.once('close', () => { this.streams.delete(stream); stream.off('pong', pong); }); return stream;
   }
   async createManagementSession(value: RemoteTargetIdentity): Promise<RemoteRpcSession> {
     const epoch = this.epoch; const identity = tuple(value); const stream = this.createRawStream(identity); const session = RemoteRpcSession.fromRemoteStream(stream, this.options.rpcOptions);
