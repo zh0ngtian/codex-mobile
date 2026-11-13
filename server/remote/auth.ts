@@ -145,7 +145,12 @@ export class RemoteAuthProviderImpl implements RemoteAuthProvider {
     try { signature = await bounded(this.options.deviceKey.sign(bytes), this.signTimeoutMs); }
     catch (error) { if (error instanceof RemoteNetworkError) throw error; throw new RemoteAuthRequiredError('Remote 硬件签名失败'); }
     if (!verifyDeviceSignature(identity, bytes, signature)) invalid();
-    await this.loadAuth(binding);
+    // 硬件签名可能等待：证明离开 provider 前重新读取全部持久化绑定与自己的密钥。
+    if (record) await this.recheck(record);
+    else {
+      await this.loadAuth(binding);
+      if (deviceIdentityHash(await this.identity()) !== deviceIdentityHash(identity) || await this.getEnrollment()) invalid();
+    }
     if (typeof payload.challengeExpiresAt === 'number' && payload.challengeExpiresAt <= this.now() / 1000) invalid();
     if (typeof payload.tokenExpiresAt === 'number' && payload.tokenExpiresAt <= this.now() / 1000) invalid();
     return { keyId: identity.keyId, signatureDerBase64: signature, signedPayloadBase64: bytes.toString('base64'), algorithm: identity.algorithm };

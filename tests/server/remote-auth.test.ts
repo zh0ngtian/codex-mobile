@@ -68,6 +68,13 @@ describe('普通账号令牌归一化', () => {
     expect(parseManagedAuthRecord({ tokens: { access_token: access, account_id: ACCOUNT, refresh_token: 'never-consumed' } })).toMatchObject({ accessToken: access, accountId: ACCOUNT, accountUserId: USER });
     expect(() => parseManagedAuthRecord({ tokens: { access_token: access, account_id: 'other' } })).toThrow(RemoteAuthRequiredError);
   });
+  it('明确active ChatGPT模式只消费完整账号tokens，兼容历史API key字段', () => {
+    expect(parseManagedAuthRecord({ auth_mode: 'chatgpt', OPENAI_API_KEY: 'historical-unused-key', tokens: { access_token: normalToken(), account_id: ACCOUNT } })).toEqual(normalAuth());
+    expect(() => parseManagedAuthRecord({ auth_mode: 'chatgpt', OPENAI_API_KEY: 'historical-unused-key' })).toThrow(RemoteAuthRequiredError);
+  });
+  it.each(['apikey', undefined, null, 'unknown'])('active API key或不明确的混合模式 %s 不猜测fallback', auth_mode => {
+    expect(() => parseManagedAuthRecord({ ...(auth_mode === undefined ? {} : { auth_mode }), OPENAI_API_KEY: 'historical-unused-key', tokens: { access_token: normalToken(), account_id: ACCOUNT } })).toThrow(RemoteAuthRequiredError);
+  });
   it('拒绝API key、不完整JWT与猜测credential fallback', () => {
     for (const value of [{ OPENAI_API_KEY: 'sk-secret' }, { auth_mode: 'apikey', tokens: { access_token: normalToken(), account_id: ACCOUNT } }, { tokens: { access_token: 'bad', account_id: ACCOUNT } }, { access_token: normalToken(), account_id: ACCOUNT }]) expect(() => parseManagedAuthRecord(value)).toThrow(RemoteAuthRequiredError);
   });
@@ -208,6 +215,36 @@ describe('Remote refresh与WebSocket证明', () => {
     const wsSign = g.deviceKey.sign;
     g.deviceKey.sign = async bytes => { const proof = await wsSign(bytes); g.advance(3600001); return proof; };
     await expect(connection.signChallenge(challenge())).rejects.toBeInstanceOf(RemoteAuthRequiredError);
+  });
+  it.each([
+    { clientId: 'replacement-client' }, { accountId: 'replacement-workspace' }, { accountUserId: 'replacement-user' }, { managedAccountUserId: 'replacement-canonical-user' }, null,
+  ])('WS签名等待期间替换或删除注册绑定 %j 时不返回旧证明', async change => {
+    const f = await fixture(); await f.provider.enroll(stepUp()); const connection = await f.provider.prepareConnection();
+    const stored = await f.store.readJson('enrollment.json') as object;
+    let entered!: () => void; let resume!: () => void;
+    const signing = new Promise<void>(resolve => { entered = resolve; }); const gate = new Promise<void>(resolve => { resume = resolve; });
+    const originalSign = f.deviceKey.sign;
+    f.deviceKey.sign = async bytes => { const proof = await originalSign(bytes); entered(); await gate; return proof; };
+    const pending = connection.signChallenge(challenge());
+    await signing;
+    if (change) await f.store.writeJson('enrollment.json', { ...stored, ...change });
+    else await rm(join(f.store.directory, 'enrollment.json'));
+    resume();
+    await expect(pending).rejects.toBeInstanceOf(RemoteAuthRequiredError);
+    expect(await f.store.readJson('enrollment.json')).toEqual(change ? { ...stored, ...change } : null);
+  });
+  it('WS签名等待期间自己的hardware identity变化时不返回旧证明', async () => {
+    const f = await fixture(); await f.provider.enroll(stepUp()); const connection = await f.provider.prepareConnection();
+    const replacement = generateKeyPairSync('ec', { namedCurve: 'prime256v1' }).publicKey.export({ type: 'spki', format: 'der' }).toString('base64');
+    const originalSign = f.deviceKey.sign;
+    f.deviceKey.sign = async bytes => { const proof = await originalSign(bytes); f.deviceKey.getIdentity = async () => ({ ...f.identity, publicKeySpkiDerBase64: replacement }); return proof; };
+    await expect(connection.signChallenge(challenge())).rejects.toBeInstanceOf(RemoteAuthRequiredError);
+  });
+  it('初次enroll签名等待期间自己的hardware identity变化时不得提交finish', async () => {
+    const f = await fixture(); const originalSign = f.deviceKey.sign;
+    f.deviceKey.sign = async bytes => { const proof = await originalSign(bytes); f.deviceKey.getIdentity = async () => ({ ...f.identity, keyId: 'replacement-key' }); return proof; };
+    await expect(f.provider.enroll(stepUp())).rejects.toBeInstanceOf(RemoteAuthRequiredError);
+    expect(f.calls).toHaveLength(1); expect(await f.store.readJson('enrollment.json')).toBeNull();
   });
   it('硬件身份读取错误脱敏', async () => {
     const f = await fixture(); await f.provider.enroll(stepUp());

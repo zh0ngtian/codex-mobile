@@ -43,7 +43,9 @@ function authClaims(claims: Record<string, unknown>): { accountId: string; accou
 /** 只解析普通账号已有 access token，从不消费 refresh_token 或猜测 API key。 */
 export function parseManagedAuthRecord(value: unknown): ManagedAuth {
   const raw = object(value);
-  if (raw.auth_mode === 'apikey' || raw.OPENAI_API_KEY != null) invalid();
+  // 明确的 active ChatGPT 模式可保留历史 API key 字段，始终只消费账号 tokens。
+  if (raw.auth_mode !== undefined && raw.auth_mode !== 'chatgpt') invalid();
+  if (raw.OPENAI_API_KEY != null && raw.auth_mode !== 'chatgpt') invalid();
   const tokens = object(raw.tokens);
   const accessToken = text(tokens.access_token, 65536);
   const claims = authClaims(jwt(accessToken));
