@@ -213,6 +213,78 @@ it('最后资源关闭await期间调用者取消仍失败，不因完成通知�
     code: 'cancelled',
   });
   expect(closing).toBe(true);
+  expect(f.calls).toContainEqual({
+    method: 'account/login/cancel',
+    params: { loginId: 'login-id' },
+  });
+});
+it.each(['cancelled', 'closed', 'timeout'] as const)(
+  '最后loader清理期间%s仍在关闭canonical前尽力取消已知loginId',
+  async (reason) => {
+    const abort = new AbortController();
+    const f = fixture({
+      timeoutMs: reason === 'timeout' ? 60 : 200,
+      operationTimeoutMs: 100,
+      createManagedAuth: () => ({
+        async load() {
+          return { accessToken: 'private', ...identity };
+        },
+        async verifyIdentity() {
+          return identity;
+        },
+        async close() {
+          await Promise.resolve();
+          if (reason === 'cancelled') abort.abort();
+          if (reason === 'closed') void f.login.close();
+          if (reason === 'timeout') await new Promise((resolve) => setTimeout(resolve, 80));
+        },
+      }),
+    });
+    const call = f.session.call.bind(f.session);
+    f.session.call = async (method, params) => {
+      if (method === 'account/login/cancel') expect(f.closed()).toBe(0);
+      return call(method, params);
+    };
+    await expect(f.login.login(abort.signal)).rejects.toMatchObject({ code: reason });
+    expect(f.calls).toContainEqual({
+      method: 'account/login/cancel',
+      params: { loginId: 'login-id' },
+    });
+    expect(f.closed()).toBe(1);
+    expect(f.session.eventNames()).toHaveLength(0);
+  },
+);
+it('最后清理取消请求失败时仍返回固定取消错误并关闭canonical', async () => {
+  const abort = new AbortController();
+  const f = fixture({
+    createManagedAuth: () => ({
+      async load() {
+        return { accessToken: 'private', ...identity };
+      },
+      async verifyIdentity() {
+        return identity;
+      },
+      async close() {
+        await Promise.resolve();
+        abort.abort();
+      },
+    }),
+  });
+  const call = f.session.call.bind(f.session);
+  let cancelled = 0;
+  f.session.call = async (method, params) => {
+    if (method === 'account/login/cancel') {
+      cancelled++;
+      throw new Error('private-token cancel failure');
+    }
+    return call(method, params);
+  };
+  const error = await f.login.login(abort.signal).catch((value) => value);
+  expect(error).toMatchObject({ code: 'cancelled', message: '普通登录已取消' });
+  expect(error.cause).toBeUndefined();
+  expect(cancelled).toBe(1);
+  expect(f.closed()).toBe(1);
+  expect(f.session.eventNames()).toHaveLength(0);
 });
 it('同步浏览器阻塞超过实际绝对阶段deadline，即使timer未触发仍拒绝晚成功', async () => {
   const f = fixture({

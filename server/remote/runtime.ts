@@ -697,48 +697,84 @@ export class RemoteRuntime extends EventEmitter<{
   }
   resume(value: RemoteTargetIdentity, signal?: AbortSignal): Promise<RemoteRuntimeStatus> {
     const target = remoteTuple(value);
-    return this.run(signal, async (op) => {
+    let recovery: Promise<void> | undefined;
+    let removeAbort: (() => void) | undefined;
+    const pending = this.run(signal, async (op) => {
       const { active, bundle } = await this.manage(op);
       const accepted = await this.binding(op, active);
       if (!accepted.targets.some((value) => sameRemoteTarget(value, target)))
         throw new RemoteRuntimeError('target-unaccepted');
-      if (['paused', 'auth-required', 'remote-disabled'].includes(bundle.controller.state))
-        await this.wait(op, () => bundle.controller.resume());
-      let targets: readonly RemoteTarget[];
-      try {
-        targets = await this.wait(op, () => bundle.controller.refreshTargets());
-      } catch (error) {
-        if (!['paused', 'auth-required', 'remote-disabled'].includes(bundle.controller.state)) throw error;
-        await this.wait(op, () => bundle.controller.resume());
-        targets = await this.wait(op, () => bundle.controller.refreshTargets());
-      }
-      if (!bundle.controller.binding?.targets.some((value) => sameRemoteTarget(value, target)))
-        throw new RemoteRuntimeError('target-unaccepted');
-      if (
-        !targets.some(
-          (value) => value.env_id === target.environmentId && value.installation_id === target.installationId,
-        )
-      )
-        throw new RemoteRuntimeError('target-unavailable');
-      await this.expected(op, bundle, active.snapshot.managed);
-      await this.wait(op, () => bundle.provider.verifyBinding());
       const before = active.state;
+      const restore = (): Promise<void> => {
+        if (recovery) return recovery;
+        const paused = {
+          ...active.state,
+          paused: true,
+          pending: mergeRemotePending(before.pending, active.state.pending),
+        };
+        active.state = paused;
+        // close 的同步部分先中止 controller 的 epoch 和 Relay，迟到的 start/load 不能继续激活。
+        const stopping = this.stop(op).catch(() => undefined);
+        const saved = this.save(active, paused).catch(() => {
+          this.fault = 'storage';
+        });
+        recovery = this.boundedCleanup(() => Promise.all([stopping, this.draining, saved]));
+        this.publish();
+        return recovery;
+      };
+      const aborted = () => {
+        const reason = op.abort.signal.reason;
+        if (reason instanceof RemoteRuntimeError && ['cancelled', 'timeout', 'closed'].includes(reason.code))
+          void restore();
+      };
+      op.abort.signal.addEventListener('abort', aborted);
+      removeAbort = () => op.abort.signal.removeEventListener('abort', aborted);
       try {
+        if (['paused', 'auth-required', 'remote-disabled'].includes(bundle.controller.state))
+          await this.wait(op, () => bundle.controller.resume());
+        let targets: readonly RemoteTarget[];
+        try {
+          targets = await this.wait(op, () => bundle.controller.refreshTargets());
+        } catch (error) {
+          if (!['paused', 'auth-required', 'remote-disabled'].includes(bundle.controller.state)) throw error;
+          await this.wait(op, () => bundle.controller.resume());
+          targets = await this.wait(op, () => bundle.controller.refreshTargets());
+        }
+        if (!bundle.controller.binding?.targets.some((value) => sameRemoteTarget(value, target)))
+          throw new RemoteRuntimeError('target-unaccepted');
+        if (
+          !targets.some(
+            (value) =>
+              value.env_id === target.environmentId && value.installation_id === target.installationId && value.online,
+          )
+        )
+          throw new RemoteRuntimeError('target-unavailable');
+        await this.expected(op, bundle, active.snapshot.managed);
+        await this.wait(op, () => bundle.provider.verifyBinding());
+        const current = active.state;
         await this.wait(op, () =>
           this.save(active, {
-            ...before,
+            ...current,
             paused: false,
-            pending: before.pending.filter((value) => !sameRemoteTarget(value, target)),
+            pending: current.pending.filter((value) => !sameRemoteTarget(value, target)),
           }),
         );
+        this.fault = undefined;
+        await this.wait(op, () => bundle.controller.start());
+        this.assert(op);
+        return this.status();
       } catch (error) {
-        await this.boundedCleanup(() => this.save(active, before));
+        await restore();
         throw error;
       }
-      this.fault = undefined;
-      await this.wait(op, () => bundle.controller.start());
-      return this.status();
     });
+    return pending
+      .catch(async (error) => {
+        // 最后一次 lifecycle 校验触发取消时，仍等待已排入的保守暂停和资源清理。
+        await recovery;
+        throw error;
+      })
+      .finally(() => removeAbort?.());
   }
   reassociate(
     previousValue: RemoteTargetIdentity,
@@ -753,10 +789,6 @@ export class RemoteRuntime extends EventEmitter<{
       async (op) => {
         const active = await this.load(op);
         if (!active) throw new RemoteRuntimeError('not-configured');
-        if (sameRemoteTarget(previous, active.snapshot.local)) {
-          if (pairingCode !== undefined) throw new RemoteRuntimeError('configuration');
-          return this.replace(op, 'reassociate', previous, next);
-        }
         const binding = await this.binding(op, active);
         if (!binding.targets.some((value) => sameRemoteTarget(value, previous)))
           throw new RemoteRuntimeError('target-unaccepted');
@@ -768,6 +800,10 @@ export class RemoteRuntime extends EventEmitter<{
         )
           throw new RemoteRuntimeError('identity-changed');
         mergeRemotePending(active.state.pending, binding.targets, [next]);
+        if (sameRemoteTarget(previous, active.snapshot.local)) {
+          if (pairingCode !== undefined) throw new RemoteRuntimeError('configuration');
+          return this.replace(op, 'reassociate', previous, next);
+        }
         await this.wait(op, () =>
           this.save(active, {
             ...active.state,

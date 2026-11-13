@@ -700,3 +700,95 @@ it('resume等待期间新增的其他tuple暂停不能被旧快照清除', async
   await f.runtime.resume(local);
   expect(f.runtime.status().pendingResume).toEqual([remote]);
 });
+it.each(['cancelled', 'timeout', 'closed'] as const)(
+  'resume启动load挂起时%s仍关闭controller并恢复持久暂停，迟到load不能打开Relay',
+  async (reason) => {
+    const f = await fixture({
+      createLogin: () => ({
+        async login() {
+          return {
+            codexHome: '/synthetic/codex',
+            accountId: 'workspace',
+            accountUserId: 'account-user',
+            userId: 'user',
+          };
+        },
+        async close() {},
+      }),
+    });
+    await f.runtime.authorize();
+    await until(() => f.runtime.status().state === 'online');
+    await f.runtime.login();
+    await until(() => f.connections[0]!.readyState === 3);
+    await f.runtime.refreshTargets();
+    const { controller, loader } = (f.runtime as any).bundle;
+    const start = controller.start.bind(controller);
+    const load = loader.load.bind(loader);
+    let entered = false;
+    let settled = false;
+    let release!: () => void;
+    controller.start = () => {
+      loader.load = async () => {
+        entered = true;
+        try {
+          await new Promise<void>((resolve) => {
+            release = resolve;
+          });
+          return await load();
+        } finally {
+          settled = true;
+        }
+      };
+      return start();
+    };
+    const abort = new AbortController();
+    const pending = f.runtime.resume(local, abort.signal);
+    const checked = expect(pending).rejects.toMatchObject({ code: reason });
+    await until(() => entered);
+    if (reason === 'cancelled') abort.abort();
+    if (reason === 'closed') await f.runtime.close();
+    await checked;
+    expect(controller.state).toBe('closed');
+    expect(f.runtime.status().pendingResume).toContainEqual(local);
+    release();
+    await until(() => settled);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(f.connections).toHaveLength(1);
+    await f.runtime.close();
+    const restarted = new RemoteRuntime(f.options);
+    cleanup.push(() => restarted.close());
+    await restarted.start();
+    expect(restarted.status().state).toBe('paused');
+    expect(restarted.status().pendingResume).toContainEqual(local);
+    expect(f.connections).toHaveLength(1);
+  },
+);
+it('目录仍有完整tuple但目标离线时resume拒绝且保留原暂停', async () => {
+  const f = await fixture();
+  await f.runtime.authorize();
+  await until(() => f.runtime.status().state === 'online');
+  await f.runtime.acceptTarget(remote);
+  await f.runtime.recover();
+  const before = f.runtime.status();
+  const pointer = (await f.registry.readActive())!.snapshot;
+  f.setTargets([{ ...target(local), online: false }, target(remote)]);
+  await expect(f.runtime.resume(local)).rejects.toMatchObject({ code: 'target-unavailable' });
+  expect(f.runtime.status().pendingResume).toEqual(before.pendingResume);
+  expect((await f.registry.readActive())!.snapshot).toEqual(pointer);
+});
+it('本机重新关联到已接受目标时在候选创建和配对前拒绝', async () => {
+  const f = await fixture();
+  await f.runtime.authorize();
+  await until(() => f.runtime.status().state === 'online');
+  await f.runtime.acceptTarget(remote);
+  const before = f.runtime.status();
+  const pointer = (await f.registry.readActive())!.snapshot;
+  const pairs = f.pairs();
+  const begin = vi.spyOn(f.registry, 'beginCandidate');
+  f.setLocal(remote);
+  await expect(f.runtime.reassociate(local, remote)).rejects.toMatchObject({ code: 'identity-changed' });
+  expect(begin).not.toHaveBeenCalled();
+  expect(f.pairs()).toBe(pairs);
+  expect(f.runtime.status().pendingResume).toEqual(before.pendingResume);
+  expect((await f.registry.readActive())!.snapshot).toEqual(pointer);
+});

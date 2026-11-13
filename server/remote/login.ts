@@ -62,6 +62,7 @@ interface Flow {
   completed: Map<string, boolean>;
   wake?: () => void;
   canonicalRemovers: (() => void)[];
+  cancelRequest?: Promise<void>;
 }
 function duration(value: number | undefined, fallback: number, max: number): number {
   const result = value ?? fallback;
@@ -208,6 +209,30 @@ export class RemoteCanonicalLogin {
       if (abort) flow.abort.signal.removeEventListener('abort', abort);
     }
   }
+  private async settle(operation: () => Promise<unknown>): Promise<void> {
+    let timer: NodeJS.Timeout | undefined;
+    try {
+      await Promise.race([
+        Promise.resolve()
+          .then(operation)
+          .catch(() => undefined),
+        new Promise<void>((resolve) => {
+          timer = setTimeout(resolve, this.operationTimeout);
+        }),
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  private cancelKnownLogin(flow: Flow): Promise<void> {
+    if (!flow.session || !flow.loginId) return Promise.resolve();
+    if (!flow.cancelRequest) {
+      const session = flow.session;
+      const loginId = flow.loginId;
+      flow.cancelRequest = this.settle(() => session.call('account/login/cancel', { loginId }));
+    }
+    return flow.cancelRequest;
+  }
   private async cleanup(flow: Flow, cancel: boolean): Promise<void> {
     for (const remove of flow.canonicalRemovers.splice(0)) {
       try {
@@ -216,36 +241,17 @@ export class RemoteCanonicalLogin {
         /* 继续清理其余资源。 */
       }
     }
-    if (cancel && flow.session && flow.loginId) {
-      let timer: NodeJS.Timeout | undefined;
-      try {
-        await Promise.race([
-          Promise.resolve()
-            .then(() =>
-              flow.session!.call('account/login/cancel', {
-                loginId: flow.loginId!,
-              }),
-            )
-            .catch(() => undefined),
-          new Promise<void>((resolve) => {
-            timer = setTimeout(resolve, this.operationTimeout);
-          }),
-        ]);
-      } finally {
-        clearTimeout(timer);
-      }
-    }
-    let timer: NodeJS.Timeout | undefined;
-    try {
-      await Promise.race([
-        Promise.all([dispose(flow.loader), dispose(flow.session)]),
-        new Promise<void>((resolve) => {
-          timer = setTimeout(resolve, this.operationTimeout);
-        }),
-      ]);
-    } finally {
-      clearTimeout(timer);
-    }
+    // 保留取消通道直到最终返回；先收回 loader，避免它最后的 await 期间已关闭 canonical。
+    const aborted = () => void this.cancelKnownLogin(flow);
+    flow.abort.signal.addEventListener('abort', aborted);
+    flow.removers.push(() => flow.abort.signal.removeEventListener('abort', aborted));
+    if (cancel || flow.abort.signal.aborted) void this.cancelKnownLogin(flow);
+    await this.settle(() => dispose(flow.loader));
+    if (performance.now() >= flow.deadline) this.cancel(flow, 'timeout');
+    await flow.cancelRequest;
+    await this.settle(() => dispose(flow.session));
+    if (performance.now() >= flow.deadline) this.cancel(flow, 'timeout');
+    await flow.cancelRequest;
     flow.completed.clear();
     flow.wake = undefined;
   }
@@ -372,6 +378,11 @@ export class RemoteCanonicalLogin {
       this.assert(flow);
       if (failure) throw failure;
       return verifiedIdentity!;
+    } catch (error) {
+      // 实际期限检查也可能在最后一个 await 后触发；已知 ID 仍尽力取消，不撤回普通账号登录。
+      await this.cancelKnownLogin(flow);
+      this.assert(flow);
+      throw error;
     } finally {
       flow.active = false;
       clearTimeout(flow.timer);
