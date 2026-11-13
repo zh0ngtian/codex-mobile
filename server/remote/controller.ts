@@ -31,6 +31,8 @@ export interface RemoteControllerOptions {
   managedAuth: { load(): Promise<ManagedAuth>; verifyIdentity(expected?: ManagedAuthIdentity): Promise<Readonly<ManagedAuthIdentity>>; close?(): unknown };
   authProvider: RemoteAuthProvider & { getEnrollment(): Promise<EnrollmentRecord | null>; verifyBinding(expected?: EnrollmentRecord): Promise<EnrollmentRecord> };
   canonicalUrl?: string; canonicalFactory?: () => Promise<RemoteControllerCanonical>;
+  /** 可信 runtime 在候选首次 proof 和配对前固定身份；不向客户端开放。 */
+  expectedManaged?: ManagedAuthIdentity; expectedLocal?: RemoteTargetIdentity;
   fetch?: typeof fetch; now?: () => number; monitorIntervalMs?: number; operationTimeoutMs?: number;
   relayOptions?: Omit<RemoteRelayOptions, 'clientId' | 'authProvider'>;
   rpcOptions?: RemoteRpcSessionOptions;
@@ -95,9 +97,13 @@ export class RemoteController extends EventEmitter<ControllerEvents> {
   private readonly interval: number;
   private readonly timeout: number;
   private readonly factory: () => Promise<RemoteControllerCanonical>;
+  private readonly expectedManaged?: ManagedAuthIdentity;
+  private readonly expectedLocal?: RemoteTargetIdentity;
   constructor(private readonly options: RemoteControllerOptions) {
     super();
     if ((options.canonicalUrl === undefined) === (options.canonicalFactory === undefined) || options.canonicalUrl === '') throw new RemoteControllerError('unavailable');
+    this.expectedManaged = options.expectedManaged === undefined ? undefined : managed(options.expectedManaged);
+    this.expectedLocal = options.expectedLocal === undefined ? undefined : tuple(options.expectedLocal);
     this.interval = option(options.monitorIntervalMs, 5000); this.timeout = option(options.operationTimeoutMs, 20000);
     this.factory = options.canonicalFactory ?? (() => RemoteRpcSession.connectCanonical(options.canonicalUrl!, { ...options.rpcOptions, connectTimeoutMs: this.timeout, initializeTimeoutMs: this.timeout, responseTimeoutMs: this.timeout }));
     this.catalog = this.newCatalog();
@@ -148,7 +154,7 @@ export class RemoteController extends EventEmitter<ControllerEvents> {
     const pending = Promise.resolve().then(this.factory); void pending.then(result => { if (abandoned) dispose(result); }, () => undefined);
     try {
       value = await this.external(epoch, () => pending); const metadata = object(await this.external(epoch, () => value!.initialize()));
-      const expected = this.record?.managed.codexHome;
+      const expected = (this.record?.managed ?? this.expectedManaged)?.codexHome;
       if (!isAbsolute(text(metadata.codexHome)) || (expected !== undefined && metadata.codexHome !== expected)) throw new RemoteControllerError('identity-changed');
       this.assert(epoch); this.canonical = value; this.canonicalHome = text(metadata.codexHome);
       const notification = (message: RpcMessage) => { if (message.method === 'account/updated' || message.method === 'remoteControl/status/changed') { this.recheckRequested = true; void this.monitor(); } };
@@ -160,11 +166,11 @@ export class RemoteController extends EventEmitter<ControllerEvents> {
       return value;
     } catch (error) { abandoned = true; dispose(value); throw error; }
   }
-  private detachCanonical(): void { for (const remove of this.canonicalDisposers.splice(0)) remove(); const value = this.canonical; this.canonical = undefined; this.canonicalHome = undefined; dispose(value); }
+  private detachCanonical(): void { for (const remove of this.canonicalDisposers.splice(0)) { try { remove(); } catch { /* 坏监听器不阻碍其余资源清理。 */ } } const value = this.canonical; this.canonical = undefined; this.canonicalHome = undefined; dispose(value); }
   private async proof(epoch: number): Promise<Proof> {
     const auth = await this.external(epoch, () => this.options.managedAuth.load());
-    const identity = managed(await this.external(epoch, () => this.options.managedAuth.verifyIdentity(this.record?.managed)));
-    if (identity.accountId !== auth.accountId || identity.accountUserId !== auth.accountUserId || identity.userId !== auth.userId) throw new RemoteControllerError('identity-changed');
+    const identity = managed(await this.external(epoch, () => this.options.managedAuth.verifyIdentity(this.record?.managed ?? this.expectedManaged)));
+    if ((this.expectedManaged && !same(this.expectedManaged, identity)) || identity.accountId !== auth.accountId || identity.accountUserId !== auth.accountUserId || identity.userId !== auth.userId) throw new RemoteControllerError('identity-changed');
     let enrollment: EnrollmentRecord;
     const value = await this.external(epoch, () => this.options.authProvider.getEnrollment());
     if (value === null) throw new RemoteControllerError('enrollment-required');
@@ -179,7 +185,7 @@ export class RemoteController extends EventEmitter<ControllerEvents> {
     if (status.status === 'disabled') throw new RemoteControllerError('remote-disabled');
     if (status.status !== 'connected') throw new RemoteNetworkError();
     const local = { environmentId: text(status.environmentId), installationId: text(status.installationId) };
-    if (this.record && !sameTarget(this.record.local, local)) throw new RemoteControllerError('local-identity-changed');
+    if ((this.expectedLocal && !sameTarget(this.expectedLocal, local)) || (this.record && !sameTarget(this.record.local, local))) throw new RemoteControllerError('local-identity-changed');
     // canonical await 之后再次重读，阻止证明期间切换账号或登记。
     await this.external(epoch, () => this.options.managedAuth.verifyIdentity(identity));
     const final = await this.external(epoch, () => this.options.authProvider.verifyBinding(enrollment));
@@ -326,6 +332,45 @@ export class RemoteController extends EventEmitter<ControllerEvents> {
       this.reconcileStreams(this.targets);
       if (!same(proof, await this.proof(epoch))) throw new RemoteControllerError('identity-changed');
       if (!accepted) { if (this.record.targets.length >= 4096) throw new RemoteControllerError('unavailable'); await this.persist({ ...this.record, targets: [...this.record.targets, target] }, epoch); }
+      this.publish('targets', this.targets);
+    });
+  }
+  /** 仅显式重新关联未来访问；调用方须保留旧 tuple 的操作与暂停记录。 */
+  async reassociateTarget(
+    previousValue: RemoteTargetIdentity,
+    nextValue: RemoteTargetIdentity,
+    pairingCode?: string,
+  ): Promise<void> {
+    const previous = tuple(previousValue);
+    const next = tuple(nextValue);
+    return this.mutate(async (epoch) => {
+      await this.load(epoch);
+      if (!this.record || !this.record.targets.some((value) => sameTarget(value, previous)))
+        throw new RemoteControllerError('target-unaccepted');
+      if (
+        sameTarget(this.record.local, previous) ||
+        sameTarget(previous, next) ||
+        this.record.targets.some((value) => value.environmentId === next.environmentId && !sameTarget(value, previous))
+      )
+        throw new RemoteControllerError('target-changed');
+      // 在新 grant 的任何网络操作之前终止旧流，失败也不重新打开旧流。
+      for (const [stream, target] of this.streams) if (sameTarget(target, previous)) this.terminateStream(stream);
+      const proof = await this.proof(epoch);
+      if (pairingCode !== undefined)
+        await this.external(epoch, () => this.catalog.pair({ pairingCode, expected: next }));
+      else await this.external(epoch, () => this.catalog.refresh());
+      this.reconcileStreams(this.targets);
+      if (
+        !this.targets.some(
+          (value) => value.env_id === next.environmentId && value.installation_id === next.installationId,
+        )
+      )
+        throw new RemoteControllerError('target-unavailable');
+      if (!same(proof, await this.proof(epoch))) throw new RemoteControllerError('identity-changed');
+      await this.persist(
+        { ...this.record, targets: this.record.targets.map((value) => (sameTarget(value, previous) ? next : value)) },
+        epoch,
+      );
       this.publish('targets', this.targets);
     });
   }

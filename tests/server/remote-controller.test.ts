@@ -320,3 +320,85 @@ it('目录单纯缺项保留原tuple绑定与已有流历史，不误当作已�
   f.setTargets([target()]); await f.controller.refreshTargets(); expect(raw.closed).toBe(false); expect(management.closed).toBe(false); expect(f.controller.binding).toEqual(before); expect(f.controller.targetStatus(remote).executable).toBe(false);
   f.setTargets([target(), target('remote-env', 'remote-install')]); await f.controller.refreshTargets(); expect(f.controller.targetStatus(remote).executable).toBe(true); expect(raw.closed).toBe(false); expect((await management.call('model/list'))).toEqual({ ok: true }); await raw.close(); management.close();
 });
+
+it('可信预绑定在首次pair RPC前拒绝不同canonical本机tuple且复制调用方对象', async () => {
+  const expectedLocal = { ...local };
+  const f = await fixture({
+    expectedLocal,
+    expectedManaged: {
+      codexHome: '/synthetic/codex',
+      accountId: 'workspace',
+      accountUserId: 'account-user',
+      userId: 'user',
+    },
+  });
+  expectedLocal.installationId = 'replacement';
+  f.setStatus({ status: 'connected', environmentId: 'local-env', installationId: 'replacement' });
+  await expect(f.controller.pairLocal()).rejects.toMatchObject({ code: 'local-identity-changed' });
+  expect(f.pairStarts()).toBe(0);
+  expect(f.connections).toHaveLength(0);
+});
+it('可信预绑定在首次pair RPC前固定完整managed身份', async () => {
+  const f = await fixture({
+    expectedManaged: {
+      codexHome: '/synthetic/codex',
+      accountId: 'workspace',
+      accountUserId: 'account-user',
+      userId: 'other',
+    },
+    expectedLocal: local,
+  });
+  await expect(f.controller.pairLocal()).rejects.toMatchObject({ code: 'unavailable' });
+  expect(f.pairStarts()).toBe(0);
+});
+it('显式非本机重新关联关闭旧流只接受声明新tuple，普通pair仍拒绝偷换', async () => {
+  const f = await fixture();
+  await f.controller.start();
+  await until(() => f.controller.state === 'online');
+  await f.controller.acceptTarget(remote);
+  const stream = f.controller.createRawStream(remote);
+  const next = { ...remote, installationId: 'replacement' };
+  f.setTargets([target(), target('remote-env', 'replacement')]);
+  await (f.controller as any).reassociateTarget(remote, next);
+  expect(stream.closed).toBe(true);
+  expect(f.controller.binding?.targets).toContainEqual(next);
+  expect(f.controller.binding?.targets).not.toContainEqual(remote);
+  await expect(f.controller.pairManual('private', remote)).rejects.toMatchObject({ code: 'target-changed' });
+});
+it('非本机重新关联拒绝未接受previous、本机tuple和缺失新grant', async () => {
+  const f = await fixture();
+  await f.controller.refreshTargets();
+  await expect(
+    (f.controller as any).reassociateTarget(remote, { ...remote, installationId: 'replacement' }),
+  ).rejects.toMatchObject({ code: 'target-unaccepted' });
+  await expect(
+    (f.controller as any).reassociateTarget(local, { ...local, installationId: 'replacement' }),
+  ).rejects.toMatchObject({ code: 'target-changed' });
+  await f.controller.acceptTarget(remote);
+  await expect(
+    (f.controller as any).reassociateTarget(remote, { ...remote, installationId: 'replacement' }),
+  ).rejects.toMatchObject({ code: 'target-unavailable' });
+  expect(f.controller.binding?.targets).toContainEqual(remote);
+});
+it('显式重新关联允许双ID同时变化，冲突其他accepted环境在配对RPC前拒绝', async () => {
+  const f = await fixture();
+  await f.controller.refreshTargets();
+  await f.controller.acceptTarget(remote);
+  const next = { environmentId: 'new-env', installationId: 'new-install' };
+  f.setTargets([target(), target('new-env', 'new-install')]);
+  await f.controller.reassociateTarget(remote, next);
+  expect(f.controller.binding?.targets).toContainEqual(next);
+  let paired = 0;
+  f.setFetch(async (url) => {
+    if (url.endsWith('/client/pair')) paired++;
+    return new Response(JSON.stringify({ items: [target(), target('new-env', 'new-install')], cursor: null }));
+  });
+  await expect(
+    f.controller.reassociateTarget(
+      next,
+      { environmentId: local.environmentId, installationId: 'replacement' },
+      'private',
+    ),
+  ).rejects.toMatchObject({ code: 'target-changed' });
+  expect(paired).toBe(0);
+});
