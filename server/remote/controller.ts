@@ -1,6 +1,7 @@
 import { ResourceSettlement } from './resource-settlement.js';
 import { createHash } from 'node:crypto';
 import { EventEmitter } from 'node:events';
+import { performance } from 'node:perf_hooks';
 import { isAbsolute, normalize } from 'node:path';
 import { RemoteNetworkError } from './auth.js';
 import { parseEnrollment, type EnrollmentRecord, type ManagedAuth } from './auth-protocol.js';
@@ -124,12 +125,14 @@ export class RemoteController extends EventEmitter<ControllerEvents> {
   }
   private assert(epoch: number): void { this.options.store.assertOwnership(); if (this.state === 'closed' || this.epoch !== epoch || this.abort.signal.aborted) throw new RemoteControllerError('closed'); }
   private async external<T>(epoch: number, operation: () => Promise<T>, network = true): Promise<T> {
-    this.assert(epoch); let timer: NodeJS.Timeout | undefined; let aborted: (() => void) | undefined; const signal = this.abort.signal;
+    const deadline = performance.now() + this.timeout;
+    const active = () => { this.assert(epoch); if (performance.now() >= deadline) throw new RemoteNetworkError(); };
+    active(); let timer: NodeJS.Timeout | undefined; let aborted: (() => void) | undefined; const signal = this.abort.signal;
     try {
-      const result = await Promise.race([Promise.resolve().then(() => { this.assert(epoch); return operation(); }), new Promise<never>((_resolve, reject) => {
+      const result = await Promise.race([Promise.resolve().then(() => { active(); return operation(); }), new Promise<never>((_resolve, reject) => {
         aborted = () => reject(new RemoteControllerError('closed')); signal.addEventListener('abort', aborted, { once: true });
-        timer = setTimeout(() => reject(new RemoteNetworkError()), this.timeout);
-      })]); this.assert(epoch); return result;
+        timer = setTimeout(() => reject(new RemoteNetworkError()), Math.max(1, Math.ceil(deadline - performance.now())));
+      })]); active(); return result;
     } catch (error) {
       if (error instanceof RemoteControllerError) throw new RemoteControllerError(error.code);
       if (error instanceof RemoteAuthRequiredError) throw new RemoteAuthRequiredError();

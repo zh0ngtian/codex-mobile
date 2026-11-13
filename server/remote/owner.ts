@@ -39,6 +39,7 @@ export function acquireRemoteOwner(store: PrivateStore, options: {
   const pending = phase.wait(() => ready).then(() => {
     phase.assert();
     store.assertOwnership();
+    phase.assert();
     delivered = true;
     return { store, signal: store.ownershipSignal!, assert: () => store.assertOwnership(), close() { release(); return actual; } };
   }).catch(error => {

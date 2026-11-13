@@ -12,6 +12,7 @@ import { RemoteNetworkError, deviceIdentityHash, type EnrollmentRecord, type Man
 import type { ManagedAuthIdentity } from '../../server/remote/managed-auth.js';
 import { RemoteAuthRequiredError } from '../../server/remote/relay.js';
 import { RemoteRpcSession } from '../../server/remote/rpc-session.js';
+import { acquireRemoteOwner } from '../../server/remote/owner.js';
 
 const NOW = 1794530000000;
 const cleanup: (() => unknown | Promise<unknown>)[] = [];
@@ -46,6 +47,46 @@ async function fixture(options: Record<string, unknown> = {}) {
     setAuth(change: Partial<ManagedAuth>) { auth = { ...auth, ...change }; }, setEnrollment(change: Partial<EnrollmentRecord> | null) { enrollment = change === null ? null : { ...enrollment!, ...change }; }, setHome(value: string) { home = value; }, setMode(value: string) { accountType = value; }, setStatus(value: unknown) { status = value; }, setTargets(value: typeof targets) { targets = value; }, setNetwork(value: boolean) { network = value; }, setFetch(value: typeof fetcher) { fetcher = value; } };
 }
 const local = { environmentId: 'local-env', installationId: 'local-install' }; const remote = { environmentId: 'remote-env', installationId: 'remote-install' };
+
+it('refreshTargets最终实际proof越界不交付目录、不继续执行，沿用原Relay且关闭实际自有资源', async () => {
+  const fsSync = await import('node:fs');
+  const { syncBuiltinESMExports } = await import('node:module');
+  const f = await fixture({ operationTimeoutMs: 250 });
+  const owner = await acquireRemoteOwner(f.store);
+  let returned = false;
+  let delayed = false;
+  const original = fsSync.default.lstatSync;
+  const spy = vi.spyOn(fsSync.default, 'lstatSync').mockImplementation((...args: Parameters<typeof original>) => {
+    const stat = Reflect.apply(original, fsSync.default, args);
+    if (returned && !delayed && String(args[0]) === f.store.directory) {
+      delayed = true;
+      const until = performance.now() + 500;
+      while (performance.now() < until) {}
+    }
+    return stat;
+  });
+  syncBuiltinESMExports();
+  try {
+    await f.controller.start();
+    await until(() => f.controller.state === 'online');
+    f.setFetch(async () => {
+      returned = true;
+      return new Response(JSON.stringify({ items: [target(), target('remote-env', 'remote-install')], cursor: null }));
+    });
+    await expect(f.controller.refreshTargets()).rejects.toMatchObject({ code: 'unavailable' });
+    expect(delayed).toBe(true);
+    expect(f.controller.state).toBe('offline');
+    expect(() => f.controller.createRawStream(local)).toThrow();
+    expect(f.prepares()).toBe(1);
+    await f.controller.settled();
+    expect(f.connections).toHaveLength(1);
+  } finally {
+    spy.mockRestore();
+    syncBuiltinESMExports();
+    await f.controller.settled();
+    await owner.close();
+  }
+});
 
 it('多次start与多目标raw/管理流只持有一个relay，零stream仍保持master，管理流只初始化一次', async () => {
   const f = await fixture(); await Promise.all(Array.from({ length: 6 }, () => f.controller.start())); await until(() => f.controller.state === 'online');

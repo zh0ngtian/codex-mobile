@@ -1,5 +1,6 @@
 // @vitest-environment node
-import { afterEach, expect, it } from 'vitest';
+import { afterEach, expect, it, vi } from 'vitest';
+import { performance } from 'node:perf_hooks';
 import { mkdtemp, realpath, rm, readdir, chmod, lstat, readFile, writeFile, symlink, link, rename, unlink, mkdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -31,6 +32,57 @@ async function admin(r: string, rt = runtime(), options = {}) {
   resources.push(a);
   return a;
 }
+it('完整EOF解析越过原请求期限时不执行身份操作，也不重置为新操作期限', async () => {
+  const r = await root();
+  const authorize = vi.fn(async () => null);
+  await admin(r, runtime({ authorize }), { requestTimeoutMs: 50 });
+  const original = JSON.parse;
+  let delayed = false;
+  const spy = vi.spyOn(JSON, 'parse').mockImplementation((...args: Parameters<typeof original>) => {
+    const parsed = Reflect.apply(original, JSON, args);
+    if (!delayed && parsed?.method === 'authorize') {
+      delayed = true;
+      const until = performance.now() + 200;
+      while (performance.now() < until) {}
+    }
+    return parsed;
+  });
+  try {
+    await expect(callRemoteAdmin({ directory: r, method: 'authorize', timeoutMs: 1000 })).rejects.toMatchObject({ code: 'timeout' });
+    expect(delayed).toBe(true);
+    expect(authorize).not.toHaveBeenCalled();
+  } finally { spy.mockRestore(); }
+});
+
+it.each(['timeout', 'cancel'] as const)('客户端最终响应解析期间%s：拒绝晚结果，已发送身份操作不自动重放', async reason => {
+  const r = await root();
+  const authorize = vi.fn(async () => ({ marker: 'final-response-deadline' }));
+  await admin(r, runtime({ authorize }));
+  const abort = new AbortController();
+  const original = JSON.parse;
+  let finalFrames = 0;
+  let delayed = false;
+  const spy = vi.spyOn(JSON, 'parse').mockImplementation((...args: Parameters<typeof original>) => {
+    const parsed = Reflect.apply(original, JSON, args);
+    // data阶段只排除pending帧；EOF阶段再次严格验证最终帧。
+    if (parsed?.result?.marker === 'final-response-deadline' && ++finalFrames === 2) {
+      delayed = true;
+      if (reason === 'cancel') abort.abort();
+      else {
+        const until = performance.now() + 200;
+        while (performance.now() < until) {}
+      }
+    }
+    return parsed;
+  });
+  try {
+    await expect(callRemoteAdmin({ directory: r, method: 'authorize', timeoutMs: reason === 'timeout' ? 50 : 1000, signal: abort.signal }))
+      .rejects.toMatchObject({ code: reason === 'timeout' ? 'timeout' : 'cancelled' });
+    expect(delayed).toBe(true);
+    expect(authorize).toHaveBeenCalledTimes(1);
+  } finally { spy.mockRestore(); }
+});
+
 it('只通过当前私有运行端点读取状态和实际网关访问参数', async () => {
   const r = await root();
   await admin(r);

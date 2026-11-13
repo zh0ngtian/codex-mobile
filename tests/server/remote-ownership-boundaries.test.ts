@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { it, expect, vi } from 'vitest';
 import fs from 'node:fs/promises';
+import fsSync from 'node:fs';
 import { syncBuiltinESMExports } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -10,9 +11,88 @@ import { acquireRemoteOwner } from '../../server/remote/owner.js';
 import { publishRemoteAdmin } from '../../server/remote/admin.js';
 import { RemoteRuntime } from '../../server/remote/runtime.js';
 import { RemoteController } from '../../server/remote/controller.js';
+import { ManagedAuthLoader } from '../../server/remote/managed-auth.js';
 import { RemoteRelay } from '../../server/remote/relay.js';
 import { WebSocketServer } from 'ws';
 import { RemoteIdentityRegistry } from '../../server/remote/identity-registry.js';
+
+it.each(['managed-auth', 'controller'] as const)('%s最终同步真实root证明跨期限，不交付外部操作的晚结果', async kind => {
+  const parent = await fs.mkdtemp(join(await fs.realpath(tmpdir()), 'resource-final-proof-'));
+  const root = join(parent, 'r');
+  const owner = await acquireRemoteOwner(new PrivateStore(root));
+  const resource = kind === 'managed-auth'
+    ? new ManagedAuthLoader({ canonicalFactory: async () => ({} as any), operationTimeoutMs: 20, assertOwnership: () => owner.assert() })
+    : new RemoteController({ store: owner.store, canonicalUrl: 'ws://127.0.0.1:1', managedAuth: {} as any, authProvider: {} as any, operationTimeoutMs: 20 });
+  const original = fsSync.lstatSync;
+  let returned = false;
+  let delayed = false;
+  const spy = vi.spyOn(fsSync, 'lstatSync').mockImplementation((...args: Parameters<typeof original>) => {
+    const stat = Reflect.apply(original, fsSync, args);
+    if (returned && !delayed && String(args[0]) === root) {
+      delayed = true;
+      const until = performance.now() + 80;
+      while (performance.now() < until) {}
+    }
+    return stat;
+  });
+  syncBuiltinESMExports();
+  try {
+    const operation = async () => { returned = true; return 'late-result'; };
+    const pending = kind === 'managed-auth'
+      ? (resource as any).external(operation, true)
+      : (resource as any).external((resource as any).epoch, operation);
+    const result = await pending.then(() => 'delivered', () => 'rejected');
+    expect(delayed).toBe(true);
+    expect(result).toBe('rejected');
+  } finally {
+    spy.mockRestore();
+    syncBuiltinESMExports();
+    await resource.settled();
+    await owner.close();
+    await fs.rm(parent, { recursive: true, force: true });
+  }
+});
+
+it.each(['timeout', 'cancel'] as const)('owner最终同步真实root证明期间%s，不交付归属且实际settled释放锁', async reason => {
+  const root = await fs.mkdtemp(join(await fs.realpath(tmpdir()), 'owner-final-proof-'));
+  const store = new PrivateStore(root);
+  const abort = new AbortController();
+  const initialize = store.withGatewayOwnership.bind(store);
+  let ready = false;
+  let delayed = false;
+  let owner: Awaited<ReturnType<typeof acquireRemoteOwner>> | undefined;
+  const initializeSpy = vi.spyOn(store, 'withGatewayOwnership').mockImplementation((operation, options) =>
+    initialize(proof => { ready = true; return operation(proof); }, options));
+  const original = fsSync.lstatSync;
+  const statSpy = vi.spyOn(fsSync, 'lstatSync').mockImplementation((...args: Parameters<typeof original>) => {
+    const stat = Reflect.apply(original, fsSync, args);
+    if (ready && !delayed && String(args[0]) === root) {
+      delayed = true;
+      if (reason === 'cancel') abort.abort();
+      else {
+        const until = performance.now() + 250;
+        while (performance.now() < until) {}
+      }
+    }
+    return stat;
+  });
+  syncBuiltinESMExports();
+  const pending = acquireRemoteOwner(store, { timeoutMs: reason === 'timeout' ? 100 : 1000, signal: abort.signal });
+  try {
+    const result = await pending.then(value => { owner = value; return 'acquired'; }, () => 'rejected');
+    expect(delayed).toBe(true);
+    expect(result).toBe('rejected');
+    await pending.settled();
+    expect(await fs.readdir(root)).toEqual([]);
+  } finally {
+    statSpy.mockRestore();
+    initializeSpy.mockRestore();
+    syncBuiltinESMExports();
+    await owner?.close();
+    await pending.settled();
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
 
 it('归属清理末次锁检查await期间替换root，不删除新root中的空锁目录', async () => {
   const parent = await fs.mkdtemp(join(await fs.realpath(tmpdir()), 'owner-cleanup-proof-'));

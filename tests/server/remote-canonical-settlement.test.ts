@@ -1,6 +1,8 @@
 // @vitest-environment node
 import { expect, it, vi } from 'vitest';
 import { mkdtemp, realpath, rm } from 'node:fs/promises';
+import fsSync from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import WebSocket, { WebSocketServer } from 'ws';
@@ -12,6 +14,7 @@ import { RemoteController } from '../../server/remote/controller.js';
 import { PrivateStore } from '../../server/remote/private-store.js';
 import { RemoteRuntime } from '../../server/remote/runtime.js';
 import { closeRemoteResource } from '../../server/remote/runtime-lifecycle.js';
+import { acquireRemoteOwner } from '../../server/remote/owner.js';
 
 async function until(check: () => boolean) {
   const deadline = performance.now() + 2000;
@@ -57,6 +60,51 @@ function syntheticAuth() {
   const token = `${Buffer.from('{}').toString('base64url')}.${Buffer.from(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + 3600, 'https://api.openai.com/auth': { chatgpt_account_id: 'workspace', chatgpt_account_user_id: 'account-user', user_id: 'user' } })).toString('base64url')}.synthetic`;
   return { auth_mode: 'chatgpt', tokens: { access_token: token, account_id: 'workspace' } };
 }
+
+it('verifyIdentity最终实际proof越界不交付身份，settled仍等待自有canonical真实close', async () => {
+  const f = await fixture();
+  const root = join(f.root, 'remote');
+  const owner = await acquireRemoteOwner(new PrivateStore(root));
+  let returned = false;
+  let delayed = false;
+  let finished = false;
+  const loader = new ManagedAuthLoader({
+    canonicalFactory: async () => f.session,
+    assertOwnership: () => owner.assert(),
+    operationTimeoutMs: 100,
+    readAuthFile: async () => { returned = true; return syntheticAuth(); },
+  });
+  const original = fsSync.lstatSync;
+  const spy = vi.spyOn(fsSync, 'lstatSync').mockImplementation((...args: Parameters<typeof original>) => {
+    const stat = Reflect.apply(original, fsSync, args);
+    if (returned && !delayed && String(args[0]) === root) {
+      delayed = true;
+      const until = performance.now() + 250;
+      while (performance.now() < until) {}
+    }
+    return stat;
+  });
+  syncBuiltinESMExports();
+  try {
+    await expect(loader.verifyIdentity()).rejects.toBeDefined();
+    expect(delayed).toBe(true);
+    expect(loader.currentIdentity).toBeUndefined();
+    const barrier = loader.settled().then(() => finished = true);
+    await new Promise(resolve => setTimeout(resolve, 20));
+    expect(finished).toBe(false);
+    expect(f.socket.readyState).toBe(WebSocket.CLOSING);
+    f.release();
+    await barrier;
+    expect(f.actualClose()).toBe(true);
+  } finally {
+    spy.mockRestore();
+    syncBuiltinESMExports();
+    f.release();
+    await loader.settled();
+    await owner.close();
+    await f.cleanup();
+  }
+});
 
 it('RPC可信settled等待自有canonical WS实际close，原close仍同步返回', async () => {
   const f = await fixture();

@@ -252,7 +252,10 @@ describe('Remote refresh与WebSocket证明', () => {
   it.each([
     { clientId: 'replacement-client' }, { accountId: 'replacement-workspace' }, { accountUserId: 'replacement-user' }, { managedAccountUserId: 'replacement-canonical-user' }, null,
   ])('最终硬件核对等待期间替换或删除注册绑定 %j 时不返回旧证明', async change => {
-    const f = await fixture(); await f.provider.enroll(stepUp()); const connection = await f.provider.prepareConnection();
+    const f = await fixture();
+    // 本组验证硬件回调内真实落盘后的绑定变化，短期限由专门挂起用例覆盖。
+    const provider = new RemoteAuthProviderImpl({ ...f.options, requestTimeoutMs: 2000, signTimeoutMs: 2000 });
+    await provider.enroll(stepUp()); const connection = await provider.prepareConnection();
     const stored = await f.store.readJson('enrollment.json') as object;
     const originalSign = f.deviceKey.sign; const originalIdentity = f.deviceKey.getIdentity; let signed = false; let changed = false;
     f.deviceKey.sign = async bytes => { const result = await originalSign(bytes); signed = true; return result; };

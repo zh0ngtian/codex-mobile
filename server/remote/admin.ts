@@ -210,6 +210,9 @@ async function publishRemoteAdminInner(options: AdminOptions, startup: AdminDead
           throw new RemoteAdminError('protocol');
         }
         parsed = request(JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(pending.subarray(0, -1))), value);
+        if (closed || abort.signal.aborted || performance.now() >= limit) {
+          throw new RemoteAdminError('timeout');
+        }
         pending = Buffer.alloc(0);
       }
       catch (error) {

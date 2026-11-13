@@ -51,6 +51,8 @@ export async function callRemoteAdmin(options: AdminCallOptions): Promise<unknow
         if (done) {
           return;
         }
+        if (!error && options.signal?.aborted) error = new RemoteAdminError('cancelled');
+        if (!error && performance.now() >= deadline) error = new RemoteAdminError('timeout');
         done = true;
         clearTimeout(timer);
         options.signal?.removeEventListener('abort', cancel);
@@ -187,6 +189,8 @@ export async function callRemoteAdmin(options: AdminCallOptions): Promise<unknow
             throw new RemoteAdminError('protocol');
           }
           const response = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(pending.subarray(0, -1)));
+          if (options.signal?.aborted) throw new RemoteAdminError('cancelled');
+          if (performance.now() >= deadline) throw new RemoteAdminError('timeout');
           if (!object(response) || response.version !== 1 || typeof response.ok !== 'boolean') {
             throw new RemoteAdminError('protocol');
           }
