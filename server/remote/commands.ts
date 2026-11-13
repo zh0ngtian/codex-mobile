@@ -88,9 +88,13 @@ const PYTHON = String.raw`import base64,hashlib,json,os,subprocess,sys,threading
 nonce,length,expected=sys.argv[1],int(sys.argv[2]),sys.argv[3]
 deadline=time.monotonic()+int(sys.argv[4])/1000
 child=None
-def emit(value):
+def emit(value,done=False):
     value.update(version=1,nonce=nonce,end=nonce)
-    sys.stdout.write(json.dumps(value,separators=(',',':'),ensure_ascii=True)+'\n');sys.stdout.flush()
+    wire=json.dumps(value,separators=(',',':'),ensure_ascii=True)+'\n'
+    sys.stdout.write(wire);sys.stdout.flush()
+    if done:
+        raw=wire.encode('ascii')
+        sys.stderr.write('CMDC1_DONE:'+nonce+':'+str(len(raw))+':'+hashlib.sha256(raw).hexdigest()+'\n');sys.stderr.flush()
 def fail(code):
     emit(dict(kind='failure',code=code))
     if child is not None:
@@ -141,7 +145,9 @@ try:
     if readerror.is_set(): fail('capability')
     def captured(value):
         return dict(base64=base64.b64encode(value).decode('ascii'),size=len(value),sha256=hashlib.sha256(value).hexdigest())
-    emit(dict(kind='result',exitCode=child.returncode,stdout=captured(outputs[0]),stderr=captured(outputs[1])))
+    emit(dict(kind='result',exitCode=child.returncode,stdout=captured(outputs[0]),stderr=captured(outputs[1])),done=True)
+    # 完成输出后保留本次官方命令，调用方立即terminate自有命令组并确认实际终结后才交付。
+    time.sleep(max(0,deadline-time.monotonic())+1)
 except SystemExit: raise
 except BaseException: fail('protocol')
 `;
@@ -171,7 +177,7 @@ export class RemoteCommands {
     try {
       const probe = await adapter.run({ mode: 'probe' }, actual.codexHome, undefined, 20000, 16384, 16384, signal, true, deadline);
       if (probe.kind !== 'probe' || probe.major !== 3) throw new RemoteCommandError('python3-required', true);
-      const executable = string(probe.python, 16384, 'protocol');
+      const executable = probe.python as string;
       if (!absolute(executable, actual.platformFamily)) throw new RemoteCommandError('protocol', true);
       adapter.python = executable;
       if (performance.now() >= deadline) throw new RemoteCommandError('timeout', true);
@@ -245,6 +251,9 @@ export class RemoteCommands {
     const cancelled = () => op.fail('cancelled'); const disconnected = () => op.fail('disconnected'); const closed = () => op.fail('disconnected');
     let resolveReady!: () => void; let ready = false; let handshake = Buffer.alloc(0); let bytes = 0; let chunks = 0; const output: Buffer[] = [];
     const readiness = new Promise<void>(resolve => { resolveReady = resolve; });
+    let resolveDone!: () => void; const done = new Promise<void>(resolve => { resolveDone = resolve; });
+    let completion: { size: number; sha256: string } | undefined; let control = Buffer.alloc(0);
+    let termination: Promise<unknown> | undefined;
     const notification = (message: RpcMessage) => {
       if (message.method !== 'command/exec/outputDelta' || !object(message.params) || message.params.processId !== processId || op.error) return;
       try {
@@ -252,8 +261,19 @@ export class RemoteCommands {
         const params = message.params;
         if (!['stdout', 'stderr'].includes(params.stream as string) || typeof params.capReached !== 'boolean' || ++chunks > 8192) throw new RemoteCommandError('protocol', true);
         if (params.capReached) { op.fail('output-limit'); return; }
-        const value = base64(params.deltaBase64, wireCap);
-        if (params.stream === 'stderr' && value.length) throw new RemoteCommandError('protocol', true);
+        const value = base64(params.deltaBase64, params.stream === 'stderr' ? 256 : wireCap);
+        if (params.stream === 'stderr' && value.length) {
+          if (probe || completion || control.length + value.length > 256) throw new RemoteCommandError('protocol', true);
+          control = Buffer.concat([control, value]);
+          const prefix = Buffer.from(`CMDC1_DONE:${nonce}:`); const prefixLength = Math.min(prefix.length, control.length);
+          if (!control.subarray(0, prefixLength).equals(prefix.subarray(0, prefixLength))) throw new RemoteCommandError('protocol', true);
+          if (control.includes(10)) {
+            const match = /^CMDC1_DONE:([a-z0-9-]+):([1-9][0-9]{0,8}):([a-f0-9]{64})\n$/.exec(decodeRemoteCommandText(control));
+            if (!match || match[1] !== nonce || Number(match[2]) > wireCap) throw new RemoteCommandError('protocol', true);
+            completion = { size: Number(match[2]), sha256: match[3]! }; resolveDone();
+          }
+          return;
+        }
         if (params.stream !== 'stdout' || !value.length) return;
         if ((bytes += value.length) > wireCap) { op.fail('output-limit'); return; }
         if (!ready) {
@@ -294,11 +314,21 @@ export class RemoteCommands {
           const part = input.subarray(offset, offset + 16384);
           await Promise.race([this.session.call('command/exec/write', { processId, deltaBase64: part.toString('base64'), closeStdin: offset + part.length === input.length }, { timeoutMs: remaining(), signal: abort.signal }), failure]);
         }
+        if (!probe) {
+          // DONE只证明目标已完成输出；两路通知可重排，全部字节在原exec终结后才作最终证明。
+          await Promise.race([done, failure, result.then(() => { throw new RemoteCommandError('protocol', true); })]);
+          termination = this.session.call('command/exec/terminate', { processId }, { timeoutMs: remaining(), signal: abort.signal });
+          const ack = await Promise.race([termination, failure]); remaining();
+          if (!object(ack) || Object.keys(ack).length !== 0) throw new RemoteCommandError('protocol', true);
+        }
         const response = await Promise.race([result, failure]); remaining();
-        if (!object(response) || response.exitCode !== 0 || response.stdout !== '' || response.stderr !== '') throw new RemoteCommandError('protocol', true);
+        // 正常执行的外层包装器由自有terminate结束，业务退出码仅来自完整证明中的exitCode。
+        if (!object(response) || Object.keys(response).sort().join(',') !== 'exitCode,stderr,stdout' || !Number.isSafeInteger(response.exitCode) || (response.exitCode as number) < -2147483648 || (response.exitCode as number) > 2147483647 || (probe && response.exitCode !== 0) || response.stdout !== '' || response.stderr !== '') throw new RemoteCommandError('protocol', true);
         let record: unknown;
         try {
-          const text = decodeRemoteCommandText(Buffer.concat(output)); if (!text.endsWith('\n')) throw new Error();
+          const rawOutput = Buffer.concat(output);
+          if (!probe && (!completion || rawOutput.length !== completion.size || digest(rawOutput) !== completion.sha256)) throw new Error();
+          const text = decodeRemoteCommandText(rawOutput); if (!text.endsWith('\n')) throw new Error();
           record = JSON.parse(text, (key, value: unknown) => { if (['__proto__', 'constructor', 'prototype'].includes(key)) throw new Error(); return value; });
         } catch { throw new RemoteCommandError('protocol', true); }
         if (!object(record) || record.version !== 1 || record.nonce !== nonce || record.end !== nonce) throw new RemoteCommandError('protocol', true);
@@ -316,7 +346,7 @@ export class RemoteCommands {
           };
           record.stdout = captured(record.stdout, stdoutCap); record.stderr = captured(record.stderr, stderrCap);
         } else if (record.kind === 'probe') {
-          if (record.major !== 3 || typeof record.python !== 'string' || !record.python.length || record.python.length > 16384 || record.python.includes('\0') || !absolute(record.python, this.metadata.platformFamily)) throw new RemoteCommandError('protocol', true);
+          if (record.major !== 3 || typeof record.python !== 'string' || !record.python.length || record.python.length > 16384 || record.python.includes('\0') || Buffer.from(record.python).toString('utf8') !== record.python || !absolute(record.python, this.metadata.platformFamily)) throw new RemoteCommandError('protocol', true);
         }
         remaining();
         return record;
@@ -324,12 +354,13 @@ export class RemoteCommands {
     } catch (error) {
       let classified: RemoteCommandError;
       if (op.error) classified = new RemoteCommandError(op.error.code, op.sent);
-      else if (error instanceof RemoteCommandError) classified = error;
+      else if (error instanceof RemoteCommandError) classified = new RemoteCommandError(error.code, op.sent || error.mayHaveBeenSent);
       else if (error instanceof RemoteRpcError) classified = new RemoteCommandError(error.code === 'network' || error.code === 'closed' ? 'disconnected' : error.code === 'response' ? 'capability' : error.code === 'cancelled' ? 'cancelled' : error.code === 'timeout' ? 'timeout' : error.code === 'capacity' ? 'capacity' : 'protocol', op.sent || error.mayHaveBeenSent);
       else classified = new RemoteCommandError('protocol', op.sent);
       op.error = classified; abort.abort();
       // cleanup独立于已结束业务期限，只允许本适配器自己生成的processId。不关闭共享session。
-      if (op.sent && this.session.ready) await this.session.call('command/exec/terminate', { processId }, { timeoutMs: 1000 }).catch(() => undefined);
+      if (op.sent && this.session.ready && !termination) termination = this.session.call('command/exec/terminate', { processId }, { timeoutMs: 1000 });
+      await termination?.catch(() => undefined);
       throw classified;
     } finally {
       clearTimeout(timer); signal?.removeEventListener('abort', cancelled); this.session.off('notification', notification); this.session.off('disconnect', disconnected); this.session.off('close', closed);

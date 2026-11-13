@@ -16,12 +16,12 @@ const scope = (): RemoteCommandScope => ({ managed: { codexHome: '/managed/canon
 async function until(check: () => boolean, ms = 2000): Promise<void> {
   const start = performance.now(); while (!check()) { if (performance.now() - start > ms) throw new Error('等待测试条件超时'); await new Promise(resolve => setTimeout(resolve, 5)); }
 }
-type Fault = 'truncate' | 'cap' | 'bad-base64' | 'bad-utf8' | 'bad-json' | 'bad-digest' | 'extra' | 'raw-stderr' | 'wrapper-exit' | 'wrong-stream' | 'wrong-kind' | 'bad-size' | 'bad-payload-base64' | 'bad-ending' | undefined;
+type Fault = 'bad-probe-python' | 'truncate' | 'cap' | 'bad-base64' | 'bad-utf8' | 'bad-json' | 'bad-digest' | 'extra' | 'raw-stderr' | 'wrapper-exit' | 'wrong-stream' | 'wrong-kind' | 'bad-size' | 'bad-payload-base64' | 'bad-ending' | undefined;
 async function fixture(metadata?: Record<string, unknown>) {
   const directory = await mkdtemp(join(tmpdir(), 'remote-command-test-'));
   cleanups.push(() => rm(directory, { recursive: true, force: true }));
   const processes = new Map<string, ChildProcessWithoutNullStreams>();
-  const frames: RpcMessage[] = []; const ready = new Set<string>(); let fault: Fault; let missingPython = false; let pauseReady = false; let beforeWrite: (() => void) | undefined;
+  const frames: RpcMessage[] = []; const ready = new Set<string>(); let fault: Fault; let missingPython = false; let pauseReady = false; let beforeWrite: (() => void) | undefined; let terminateFault: 'invalid' | 'reject' | 'no-final' | undefined; let holdFinal = false; let controlFault: 'reorder' | 'bad-hash' | 'bad-size' | 'bad-nonce' | undefined; const finalResponses: (() => void)[] = [];
   let sequence = 0;
   const respond = (message: RpcMessage, result: unknown) => stream.emit('message', { id: message.id!, result: result as JsonValue }, { seqId: ++sequence });
   const notify = (processId: string, streamName: string, data: Buffer, capReached = false, encoded?: string) => stream.emit('message', { method: 'command/exec/outputDelta', params: { processId, stream: streamName, deltaBase64: encoded ?? data.toString('base64'), capReached } }, { seqId: ++sequence });
@@ -39,27 +39,11 @@ async function fixture(metadata?: Record<string, unknown>) {
         const env: NodeJS.ProcessEnv = { PATH: process.env.PATH, SYSTEMROOT: process.env.SYSTEMROOT, CMDC_INHERITED: 'must-remove', CMDC_KEEP: 'inherited', PYTHONPATH: directory };
         for (const [key, value] of Object.entries((params.env ?? {}) as Record<string, string | null>)) { if (value === null) delete env[key]; else env[key] = value; }
         const child = spawn(argv[0]!, argv.slice(1), { cwd: params.cwd as string, env, stdio: 'pipe', detached: process.platform !== 'win32' }); processes.set(processId, child);
-        let first = Buffer.alloc(0); const output: Buffer[] = []; const errors: Buffer[] = [];
-        child.stdin.on('error', () => {});
-        child.stdout.on('data', (chunk: Buffer) => {
-          if (ready.has(processId)) {
-            output.push(chunk);
-            if (!fault && chunk.at(-1) === 10) { notify(processId, 'stdout', Buffer.concat(output)); output.length = 0; }
-            return;
-          }
-          first = Buffer.concat([first, chunk]); const end = first.indexOf(10);
-          if (end >= 0) {
-            ready.add(processId); const initial = first.subarray(0, end + 1); const rest = first.subarray(end + 1); if (rest.length) output.push(rest); first = Buffer.alloc(0);
-            if (!pauseReady) { // 刻意拆开握手，覆盖跨帧字节边界。
-              notify(processId, 'stdout', initial.subarray(0, 3)); notify(processId, 'stdout', initial.subarray(3));
-            }
-          }
-        });
-        child.stderr.on('data', (chunk: Buffer) => errors.push(chunk));
-        child.on('error', () => respond(message, { exitCode: 127, stdout: '', stderr: 'synthetic-secret spawn-error' }));
-        child.on('close', code => {
-          processes.delete(processId);
-          let data = Buffer.concat(output); if (first.length) data = first;
+        let first = Buffer.alloc(0); const output: Buffer[] = [];
+        const flushOutput = (data: Buffer) => {
+          if (!data.length) return;
+          if (fault === 'wrapper-exit') { respond(message, { exitCode: 9, stdout: '', stderr: '' }); kill(child); return; }
+          if (fault === 'bad-probe-python') { const record = JSON.parse(data.toString('utf8')); record.python = '/synthetic/python-\ud800'; data = Buffer.from(JSON.stringify(record) + '\n'); }
           if (fault === 'truncate') data = data.subarray(0, Math.max(0, data.length - 20));
           if (fault === 'bad-utf8') data = Buffer.from([0xff]);
           if (fault === 'bad-json') data = Buffer.from('not-json\n');
@@ -70,8 +54,36 @@ async function fixture(metadata?: Record<string, unknown>) {
           if (fault === 'bad-ending') data = Buffer.from(data.toString().replace(/"end":"[^"]*"/, '"end":"wrong"'));
           if (fault === 'extra') data = Buffer.concat([data, Buffer.from('extra')]);
           if (data.length) notify(processId, fault === 'wrong-stream' ? 'other' : 'stdout', data, fault === 'cap', fault === 'bad-base64' ? '!!!' : undefined);
-          if (errors.length || fault === 'raw-stderr') notify(processId, 'stderr', fault === 'raw-stderr' ? Buffer.from('synthetic-secret') : Buffer.concat(errors));
-          respond(message, { exitCode: fault === 'wrapper-exit' ? 9 : (code ?? -1), stdout: '', stderr: '' });
+        };
+        child.stdin.on('error', () => {});
+        child.stdout.on('data', (chunk: Buffer) => {
+          if (ready.has(processId)) {
+            output.push(chunk);
+            if (chunk.at(-1) === 10 && controlFault !== 'reorder') { flushOutput(Buffer.concat(output)); output.length = 0; }
+            return;
+          }
+          first = Buffer.concat([first, chunk]); const end = first.indexOf(10);
+          if (end >= 0) {
+            ready.add(processId); const initial = first.subarray(0, end + 1); const rest = first.subarray(end + 1); if (rest.length) output.push(rest); first = Buffer.alloc(0);
+            if (!pauseReady) {
+              notify(processId, 'stdout', initial.subarray(0, 3)); notify(processId, 'stdout', initial.subarray(3));
+            }
+          }
+        });
+        child.stderr.on('data', (chunk: Buffer) => {
+          let value = chunk;
+          if (controlFault === 'bad-hash') value = Buffer.from(chunk.toString().replace(/[a-f0-9]{64}/, '0'.repeat(64)));
+          if (controlFault === 'bad-size') value = Buffer.from(chunk.toString().replace(/:([1-9][0-9]*):/, ':999999999:'));
+          if (controlFault === 'bad-nonce') value = Buffer.from(chunk.toString().replace(/DONE:[^:]+:/, 'DONE:other:'));
+          notify(processId, 'stderr', fault === 'raw-stderr' ? Buffer.from('synthetic-secret') : value);
+        });
+        child.on('error', () => respond(message, { exitCode: 127, stdout: '', stderr: 'synthetic-secret spawn-error' }));
+        child.on('close', code => {
+          processes.delete(processId);
+          flushOutput(first.length ? first : Buffer.concat(output));
+          if (terminateFault === 'no-final') return;
+          const final = () => respond(message, { exitCode: code ?? -1, stdout: '', stderr: '' });
+          if (holdFinal) finalResponses.push(final); else final();
         });
       }
     } else if (message.method === 'command/exec/write') {
@@ -84,14 +96,18 @@ async function fixture(metadata?: Record<string, unknown>) {
       }
       queueMicrotask(() => respond(message, {}));
     } else if (message.method === 'command/exec/terminate') {
-      const child = processes.get(params.processId as string); if (child) kill(child); queueMicrotask(() => respond(message, {}));
+      const child = processes.get(params.processId as string); if (child) kill(child);
+      queueMicrotask(() => {
+        if (terminateFault === 'reject') stream.emit('message', { id: message.id!, error: { code: 1, message: 'synthetic-secret terminate failure' } }, { seqId: ++sequence });
+        else respond(message, terminateFault === 'invalid' ? { unexpected: true } : {});
+      });
     }
     return { seqId: frames.length };
   }, () => {});
   const session = RemoteRpcSession.fromRemoteStream(stream, { responseTimeoutMs: 25 });
   cleanups.push(async () => { for (const child of processes.values()) kill(child); session.close(); await until(() => processes.size === 0); });
   await session.initialize();
-  return { directory, session, stream, frames, processes, setFault(value: Fault) { fault = value; }, missingPython() { missingPython = true; }, pauseReady() { pauseReady = true; }, beforeWrite(fn: () => void) { beforeWrite = fn; } };
+  return { directory, session, stream, frames, processes, setControlFault(value: typeof controlFault) { controlFault = value; }, setTerminateFault(value: typeof terminateFault) { terminateFault = value; }, holdFinal() { holdFinal = true; }, releaseFinal() { holdFinal = false; for (const fn of finalResponses.splice(0)) fn(); }, setFault(value: Fault) { fault = value; }, missingPython() { missingPython = true; }, pauseReady() { pauseReady = true; }, beforeWrite(fn: () => void) { beforeWrite = fn; } };
 }
 async function prepared() {
   const f = await fixture(); const adapter = await RemoteCommands.create(f.session, scope()); cleanups.push(() => adapter.close()); return { ...f, adapter };
@@ -313,4 +329,61 @@ it('两路最大允许捕获仍可验证完整字节，成功后撤销自有sign
   expect(result.stdout.equals(Buffer.alloc(size, 'a'))).toBe(true); expect(result.stderr.equals(Buffer.alloc(size, 'b'))).toBe(true);
   expect(getEventListeners(controller.signal, 'abort')).toHaveLength(0);
   for (const name of ['notification', 'disconnect', 'close']) expect(f.session.listenerCount(name)).toBe(0);
+});
+
+
+it('SPEC复现：已发送probe的孤立surrogate路径失败保留结果未知', async () => {
+  const f = await fixture(); f.setFault('bad-probe-python');
+  const error = await RemoteCommands.create(f.session, scope()).catch(error => error);
+  expect(error).toMatchObject({ code: 'protocol', mayHaveBeenSent: true, outcome: 'unknown' });
+});
+
+it('SPEC复现：正常退出且关闭stdio的后台孙进程在成功交付前回收', async () => {
+  const f = await prepared(); const marker = join(f.directory, 'successful-background-child');
+  const descendant = 'import time,pathlib; time.sleep(.4); pathlib.Path(' + JSON.stringify(marker) + ').write_text("escaped")';
+  const result = await f.adapter.execute({ argv: py('import subprocess,sys; subprocess.Popen([sys.executable,"-I","-c",sys.argv[1]],stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL); print("done")', descendant), cwd: f.directory });
+  expect(result.exitCode).toBe(0); expect(decodeRemoteCommandText(result.stdout)).toBe('done\n'); await f.adapter.close();
+  await new Promise(resolve => setTimeout(resolve, 500));
+  await expect(readFile(marker)).rejects.toMatchObject({ code: 'ENOENT' });
+});
+
+
+it.each(['invalid', 'reject', 'no-final'] as const)('成功输出后的%s收尾故障不得交付业务成功，保留结果未知', async fault => {
+  const f = await prepared(); f.setTerminateFault(fault);
+  const error = await f.adapter.execute({ argv: py('print("result")'), cwd: f.directory, timeoutMs: 250 }).catch(error => error);
+  expect(error).toMatchObject({ mayHaveBeenSent: true, outcome: 'unknown' });
+  if (fault === 'invalid') expect(error.code).toBe('protocol');
+  expect(f.frames.filter(frame => frame.method === 'command/exec/terminate')).toHaveLength(1);
+  expect(f.session.ready).toBe(true);
+});
+
+it('自有terminate已确认但原exec尚未实际终结时不能成功交付', async () => {
+  const f = await prepared(); f.holdFinal(); let delivered = false;
+  const pending = f.adapter.execute({ argv: py('print("result")'), cwd: f.directory }).then(value => { delivered = true; return value; }).catch(error => error);
+  await until(() => f.frames.some(frame => frame.method === 'command/exec/terminate') && f.processes.size === 0);
+  expect(delivered).toBe(false); f.releaseFinal();
+  expect((await pending).exitCode).toBe(0); expect(delivered).toBe(true);
+});
+
+it('正常收尾或关闭一个适配器不能终止另一适配器的命令', async () => {
+  const f = await prepared(); const other = await RemoteCommands.create(f.session, scope()); cleanups.push(() => other.close());
+  const first = f.adapter.execute({ argv: py('import time; time.sleep(10)'), cwd: f.directory }).catch(error => error);
+  const second = other.execute({ argv: py('import time; time.sleep(.15); print("unaffected")'), cwd: f.directory });
+  await until(() => f.processes.size === 2); await f.adapter.close();
+  expect(await first).toMatchObject({ code: 'closed', outcome: 'unknown' });
+  expect(decodeRemoteCommandText((await second).stdout)).toBe('unaffected\n'); expect(f.session.ready).toBe(true);
+});
+
+
+it('DONE先于stdout通知时等待原exec全部输出完成，再证明字节并成功收尾', async () => {
+  const f = await prepared(); f.setControlFault('reorder');
+  const result = await f.adapter.execute({ argv: py('print("reordered")'), cwd: f.directory });
+  expect(decodeRemoteCommandText(result.stdout)).toBe('reordered\n');
+  expect(f.processes.size).toBe(0); expect(f.session.ready).toBe(true);
+});
+
+it.each(['bad-hash', 'bad-size', 'bad-nonce'] as const)('DONE的%s不是成功证明，收尾后仍返回未知结果', async fault => {
+  const f = await prepared(); f.setControlFault(fault);
+  await expect(f.adapter.execute({ argv: py('print("result")'), cwd: f.directory })).rejects.toMatchObject({ code: 'protocol', mayHaveBeenSent: true, outcome: 'unknown' });
+  expect(f.session.ready).toBe(true); await until(() => f.processes.size === 0);
 });
