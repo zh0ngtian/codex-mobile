@@ -168,3 +168,67 @@ it.each(['metadata', 'account'] as const)('canonical返回%s的异常getter也�
     expect(error).toBeInstanceOf(ErrorType === RemoteNetworkError ? RemoteNetworkError : RemoteAuthRequiredError);
   }
 });
+
+
+it('文件读取超时立即关闭关联canonical；恢复时重连、保留绑定且不采用晚到文件结果', async () => {
+  const f = await fixture(); let blocked = false; let resume!: (value: unknown) => void; let record: unknown = auth();
+  const sessions: { closed: number; initialize: number; calls: number }[] = [];
+  const loader = new ManagedAuthLoader({ now: () => NOW, operationTimeoutMs: 20,
+    canonicalFactory: async () => {
+      const state = { closed: 0, initialize: 0, calls: 0 }; sessions.push(state);
+      return { async initialize() { state.initialize++; return { codexHome: f.home }; }, async call() { state.calls++; return { account: { type: 'chatgpt' } }; }, close() { state.closed++; } };
+    },
+    readAuthFile: async () => blocked ? new Promise(resolve => { resume = resolve; }) : record,
+  }); cleanup.push(() => loader.close());
+  await loader.load(); const identity = loader.currentIdentity; blocked = true;
+  await expect(loader.load()).rejects.toBeInstanceOf(RemoteNetworkError);
+  expect(sessions[0]!.closed).toBe(1); expect(loader.currentIdentity).toEqual(identity);
+  blocked = false; expect((await loader.load()).accountId).toBe('workspace');
+  expect(sessions).toHaveLength(2); expect(sessions[1]).toEqual({ closed: 0, initialize: 1, calls: 1 });
+  resume(auth(token({}, { chatgpt_account_id: 'late-other' }), 'late-other'));
+  await new Promise(resolve => setTimeout(resolve, 5)); expect(loader.currentIdentity).toEqual(identity); expect(sessions[1]!.closed).toBe(0);
+  record = auth(token({}, { chatgpt_account_id: 'new-workspace' }), 'new-workspace');
+  await expect(loader.load()).rejects.toBeInstanceOf(RemoteAuthRequiredError); expect(loader.currentIdentity).toEqual(identity);
+});
+
+it.each(['timeout', 'result'] as const)('旧canonical文件读取晚到%s只影响旧会话，不关闭恢复后的新会话或发布旧token', async outcome => {
+  const f = await fixture(); let mode: 'normal' | 'pending' | 'failure' = 'normal'; let entered!: () => void; let resume!: (value: unknown) => void;
+  const waiting = new Promise<void>(resolve => { entered = resolve; }); const sessions: { closed: number }[] = [];
+  const loader = new ManagedAuthLoader({ now: () => NOW, operationTimeoutMs: 50,
+    canonicalFactory: async () => { const state = { closed: 0 }; sessions.push(state); return { async initialize() { return { codexHome: f.home }; }, async call() { return { account: { type: 'chatgpt' } }; }, close() { state.closed++; } }; },
+    readAuthFile: async () => { if (mode === 'failure') throw new RemoteNetworkError('synthetic-secret'); if (mode === 'pending') return new Promise(resolve => { resume = resolve; entered(); }); return auth(); },
+  }); cleanup.push(() => loader.close());
+  await loader.load(); mode = 'pending'; const old = loader.load().catch(error => error); await waiting;
+  mode = 'failure'; await expect(loader.load()).rejects.toBeInstanceOf(RemoteNetworkError); expect(sessions[0]!.closed).toBe(1);
+  mode = 'normal'; await loader.load(); expect(sessions).toHaveLength(2);
+  if (outcome === 'result') resume(auth());
+  expect(await old).toBeInstanceOf(RemoteNetworkError); expect(sessions[1]!.closed).toBe(0); expect(sessions[0]!.closed).toBe(1);
+  if (outcome === 'timeout') resume(auth());
+  await new Promise(resolve => setTimeout(resolve, 5)); expect(sessions[1]!.closed).toBe(0);
+});
+
+it('恢复后的canonical独立刷新，旧会话晚到的refresh不能复用、覆盖或清理新刷新', async () => {
+  const f = await fixture(); let now = NOW; let fileFailure = false; let fresh = false;
+  let entered!: () => void; let resume!: (value: unknown) => void; const waiting = new Promise<void>(resolve => { entered = resolve; });
+  let enteredNew!: () => void; let resumeNew!: () => void; const waitingNew = new Promise<void>(resolve => { enteredNew = resolve; });
+  const sessions: { closed: number; calls: number }[] = [];
+  const loader = new ManagedAuthLoader({ now: () => now, operationTimeoutMs: 200,
+    canonicalFactory: async () => {
+      const state = { closed: 0, calls: 0 }; sessions.push(state); const index = sessions.length;
+      return { async initialize() { return { codexHome: f.home }; }, async call() {
+        state.calls++;
+        if (index === 1 && state.calls === 2) return new Promise(resolve => { resume = resolve; entered(); });
+        if (index > 1) { enteredNew(); await new Promise<void>(resolve => { resumeNew = resolve; }); fresh = true; }
+        return { account: { type: 'chatgpt' } };
+      }, close() { state.closed++; } };
+    },
+    readAuthFile: async () => { if (fileFailure) throw new RemoteNetworkError(); return auth(token({ exp: NOW / 1000 + (fresh ? 7200 : 3600) })); },
+  }); cleanup.push(() => loader.close());
+  await loader.load(); now += 3571000; const old = loader.load().catch(error => error); await waiting;
+  fileFailure = true; await expect(loader.verifyIdentity()).rejects.toBeInstanceOf(RemoteNetworkError); fileFailure = false;
+  const next = loader.load(); await waitingNew; expect(sessions).toHaveLength(2); expect(sessions[1]).toEqual({ closed: 0, calls: 1 });
+  resume({ account: { type: 'chatgpt' } }); expect(await old).toBeInstanceOf(RemoteNetworkError);
+  const concurrent = loader.load(); await new Promise(resolve => setTimeout(resolve, 5)); expect(sessions[1]!.calls).toBe(1);
+  resumeNew(); expect((await next).accountId).toBe('workspace'); expect((await concurrent).accountId).toBe('workspace');
+  await loader.load(); expect(sessions[1]).toEqual({ closed: 0, calls: 1 });
+});

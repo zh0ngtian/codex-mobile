@@ -13,6 +13,8 @@ export interface ManagedAuthCanonical {
   call(method: string, params?: JsonValue): Promise<unknown>;
   close?(): unknown;
 }
+interface CanonicalConnection { session: ManagedAuthCanonical; home: string; refreshed: boolean; generation: number }
+interface CanonicalRefresh { connection: CanonicalConnection; promise: Promise<void> }
 export interface ManagedAuthIdentity { codexHome: string; accountId: string; accountUserId: string; userId?: string }
 export interface ManagedAuthLoaderOptions {
   /** 必须且只能显式提供 canonicalUrl 或 canonicalFactory。 */
@@ -85,12 +87,10 @@ export class ManagedAuthLoader {
   private readonly refreshMarginMs: number;
   private readonly factory: () => Promise<ManagedAuthCanonical>;
   private readonly abort = new AbortController();
-  private canonical?: { session: ManagedAuthCanonical; home: string };
-  private connecting?: Promise<{ session: ManagedAuthCanonical; home: string }>;
-  private refreshing?: Promise<void>;
+  private canonical?: CanonicalConnection;
+  private connecting?: Promise<CanonicalConnection>;
+  private refreshing?: CanonicalRefresh;
   private binding?: Readonly<ManagedAuthIdentity>;
-  private refreshed = false;
-  private generation = 0;
   constructor(private readonly options: ManagedAuthLoaderOptions) {
     if ((options.canonicalUrl === undefined) === (options.canonicalFactory === undefined) || (options.canonicalUrl !== undefined && !options.canonicalUrl)) throw authFailure();
     this.operationTimeoutMs = option(options.operationTimeoutMs, 20000, 180000);
@@ -117,7 +117,7 @@ export class ManagedAuthLoader {
       throw authFailure();
     } finally { clearTimeout(timer); if (abort) this.abort.signal.removeEventListener('abort', abort); }
   }
-  private connection(): Promise<{ session: ManagedAuthCanonical; home: string }> {
+  private connection(): Promise<CanonicalConnection> {
     if (this.abort.signal.aborted) return Promise.reject(new RemoteNetworkError());
     if (this.canonical) return Promise.resolve(this.canonical);
     if (this.connecting) return this.connecting;
@@ -132,51 +132,69 @@ export class ManagedAuthLoader {
         const home = homePath(metadata.codexHome);
         if (this.binding && this.binding.codexHome !== home) throw authFailure();
         if (this.abort.signal.aborted) throw new RemoteNetworkError();
-        this.canonical = { session, home }; return this.canonical;
+        this.canonical = { session, home, refreshed: false, generation: 0 }; return this.canonical;
       } catch (error) { abandoned = true; if (session) dispose(session); throw error instanceof RemoteNetworkError ? new RemoteNetworkError() : authFailure(); }
       finally { this.connecting = undefined; }
     })();
     return this.connecting;
   }
-  private async read(home: string): Promise<ManagedAuth> {
-    const value = await this.external(() => (this.options.readAuthFile ?? readManagedAuthFile)(home), false);
+  private assertCurrent(connection: CanonicalConnection): void {
+    if (this.abort.signal.aborted || this.canonical !== connection) throw new RemoteNetworkError();
+  }
+  private invalidate(connection: CanonicalConnection): void {
+    // 旧操作的晚超时不能清理已经替换的新会话；原绑定始终保留。
+    if (this.canonical !== connection) return;
+    this.canonical = undefined; dispose(connection.session);
+  }
+  private async read(connection: CanonicalConnection): Promise<ManagedAuth> {
+    this.assertCurrent(connection);
+    let value: unknown;
+    try { value = await this.external(() => (this.options.readAuthFile ?? readManagedAuthFile)(connection.home), false); }
+    catch (error) { if (error instanceof RemoteNetworkError) this.invalidate(connection); throw error; }
+    this.assertCurrent(connection);
     let auth: ManagedAuth;
     try { auth = parseManagedAuthRecord(value); } catch { throw authFailure(); }
-    const identity: ManagedAuthIdentity = { codexHome: home, accountId: auth.accountId, accountUserId: auth.accountUserId, ...(auth.userId === undefined ? {} : { userId: auth.userId }) };
+    this.assertCurrent(connection);
+    const identity: ManagedAuthIdentity = { codexHome: connection.home, accountId: auth.accountId, accountUserId: auth.accountUserId, ...(auth.userId === undefined ? {} : { userId: auth.userId }) };
     if (this.binding && !sameIdentity(this.binding, identity)) throw authFailure();
     this.binding ??= Object.freeze(identity); return auth;
   }
-  private refresh(connection: { session: ManagedAuthCanonical; home: string }): Promise<void> {
-    if (this.refreshing) return this.refreshing;
-    this.refreshing = (async () => {
+  private refresh(connection: CanonicalConnection): Promise<void> {
+    this.assertCurrent(connection);
+    if (this.refreshing?.connection === connection) return this.refreshing.promise;
+    let refreshing!: CanonicalRefresh;
+    const promise = (async () => {
       try {
         const result = await this.external(() => connection.session.call('account/read', { refreshToken: true }), true);
+        this.assertCurrent(connection);
         if (!object(result) || !object(result.account) || result.account.type !== 'chatgpt') throw authFailure();
-        this.refreshed = true; this.generation++;
+        this.assertCurrent(connection);
+        connection.refreshed = true; connection.generation++;
       } catch (error) {
-        if (error instanceof RemoteNetworkError && this.canonical === connection) { this.canonical = undefined; dispose(connection.session); }
+        if (error instanceof RemoteNetworkError) this.invalidate(connection);
         throw error instanceof RemoteNetworkError ? new RemoteNetworkError() : authFailure();
-      } finally { this.refreshing = undefined; }
+      } finally { if (this.refreshing === refreshing) this.refreshing = undefined; }
     })();
-    return this.refreshing;
+    refreshing = { connection, promise }; this.refreshing = refreshing; return promise;
   }
   async load(): Promise<ManagedAuth> {
-    const connection = await this.connection(); const generation = this.generation;
-    let auth = await this.read(connection.home); const expiresAt = expiration(auth);
-    if (this.refreshing || generation !== this.generation || !this.refreshed || expiresAt === undefined || expiresAt <= this.now() + this.refreshMarginMs) {
-      if (this.refreshing) await this.refreshing;
-      else if (generation === this.generation) await this.refresh(connection);
-      auth = await this.read(connection.home);
+    const connection = await this.connection(); const generation = connection.generation;
+    let auth = await this.read(connection); const expiresAt = expiration(auth);
+    const refreshing = this.refreshing?.connection === connection ? this.refreshing.promise : undefined;
+    if (refreshing || generation !== connection.generation || !connection.refreshed || expiresAt === undefined || expiresAt <= this.now() + this.refreshMarginMs) {
+      if (refreshing) await refreshing;
+      else if (generation === connection.generation) await this.refresh(connection);
+      auth = await this.read(connection);
     }
     const currentExpiry = expiration(auth);
     if (currentExpiry === undefined || currentExpiry <= this.now()) throw authFailure();
-    return auth;
+    this.assertCurrent(connection); return auth;
   }
   /** 主动绑定监控：读取最新文件并核对既有身份，不调用 account/read 刷新。 */
   async verifyIdentity(expected?: ManagedAuthIdentity): Promise<Readonly<ManagedAuthIdentity>> {
-    const connection = await this.connection(); await this.read(connection.home);
+    const connection = await this.connection(); await this.read(connection);
     const identity = this.currentIdentity!;
-    if (expected && !sameIdentity(expected, identity)) throw authFailure(); return identity;
+    if (expected && !sameIdentity(expected, identity)) throw authFailure(); this.assertCurrent(connection); return identity;
   }
   close(): void { this.abort.abort(); if (this.canonical) dispose(this.canonical.session); this.canonical = undefined; }
 }

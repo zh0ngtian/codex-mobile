@@ -166,6 +166,8 @@ export class RemoteRpcSession extends EventEmitter<SessionEvents> {
       message = { ...(id === undefined ? {} : { id }), method, ...(params === undefined ? {} : { params }) };
       encoded = safeJson(message);
       if (Buffer.byteLength(encoded) > this.options.maxRequestBytes) throw new Error();
+      // 两种传输都使用同一次序列化的值，避免 getter/toJSON 重求值改变发送内容。
+      message = JSON.parse(encoded) as RpcMessage;
     } catch { return Promise.reject(new RemoteRpcError('capacity', false)); }
     return new Promise((resolve, reject) => {
       const entry: Pending = { id, submitted: false, resolve, reject, timer: setTimeout(() => this.settle(entry, new RemoteRpcError('timeout', entry.submitted)), timeout) };

@@ -2,7 +2,7 @@
 import { afterEach, expect, it } from 'vitest';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { RemoteSendError, RemoteStream } from '../../server/remote/relay.js';
-import type { RpcMessage } from '../../server/remote/envelope.js';
+import { encodeClientMessage, type JsonValue, type RpcMessage } from '../../server/remote/envelope.js';
 import { RemoteRpcSession } from '../../server/remote/rpc-session.js';
 
 const cleanup: (() => unknown | Promise<unknown>)[] = [];
@@ -179,4 +179,26 @@ it('Remote终止鉴权断线仍先通知调用方再清理session事件监听', 
   const disconnects: unknown[] = []; session.on('disconnect', event => disconnects.push(event));
   f.stream.emit('disconnect', { reason: 'auth-required', mayHaveBeenSent: true });
   expect(disconnects).toEqual([{ reason: 'auth-required', mayHaveBeenSent: true }]); expect(session.closed).toBe(true);
+});
+
+
+it.each(['getter', 'toJSON'] as const)('RemoteStream发送已验证的JSON快照，%s二次求值不能改变内容或绕过字节预算', async source => {
+  const messages: RpcMessage[] = [];
+  const f = remote(async (stream, message) => {
+    if (message) {
+      const frames = encodeClientMessage({ clientId: 'client', streamId: stream.streamId, environmentId: stream.environmentId, seqId: messages.length + 1 }, message);
+      messages.push(JSON.parse(frames[0]!).message);
+    }
+    return { seqId: messages.length };
+  });
+  const session = RemoteRpcSession.fromRemoteStream(f.stream, { maxRequestBytes: 256 }); cleanup.push(() => session.close());
+  const init = session.initialize(); await until(() => messages.length === 1);
+  f.stream.emit('message', { id: messages[0]!.id, result: {} }, { seqId: 1 }); await init;
+  let evaluations = 0;
+  const params = source === 'getter' ? { get text() { evaluations++; Object.defineProperty(this, 'text', { enumerable: true, configurable: true, value: 'x'.repeat(2048) }); return 'small'; } }
+    : { toJSON() { evaluations++; return { text: evaluations === 1 ? 'small' : 'x'.repeat(2048) }; } };
+  await session.notify('test', params as unknown as JsonValue);
+  const actual = messages.at(-1)!;
+  expect(Buffer.byteLength(JSON.stringify(actual))).toBeLessThanOrEqual(256);
+  expect(actual.params).toEqual({ text: 'small' }); expect(evaluations).toBe(1);
 });
