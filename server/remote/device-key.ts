@@ -87,7 +87,7 @@ export class SecureEnclaveDeviceKey implements DeviceKeySigner {
   }
   async create(): Promise<DeviceIdentity> {
     if (this.creating) return this.creating;
-    this.creating = this.createOnce().finally(() => { this.creating = undefined; });
+    this.creating = this.options.store.withInitialization('device-key', () => this.createOnce()).finally(() => { this.creating = undefined; });
     return this.creating;
   }
   private async createOnce(): Promise<DeviceIdentity> {
@@ -97,8 +97,12 @@ export class SecureEnclaveDeviceKey implements DeviceKeySigner {
     const ownRecord = record(output.keyRecord);
     const identity = validateDeviceIdentity(output);
     if (identity.keyId !== ownRecord.keyId) throw keyError();
-    await this.options.store.writeJson('device-key.json', ownRecord);
-    return identity;
+    if (!await this.options.store.createJson('device-key.json', ownRecord)) throw keyError();
+    const persisted = await this.loadRecord();
+    if (JSON.stringify(persisted) !== JSON.stringify(ownRecord)) throw keyError();
+    const authoritative = await this.getIdentity();
+    if (JSON.stringify(authoritative) !== JSON.stringify(identity)) throw keyError();
+    return authoritative;
   }
   async getIdentity(): Promise<DeviceIdentity> {
     const keyRecord = await this.loadRecord();

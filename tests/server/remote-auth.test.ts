@@ -102,6 +102,15 @@ describe('自己的Remote enrollment', () => {
       expect(call.init.headers).toMatchObject({ Authorization: `Bearer ${normalToken()}`, 'ChatGPT-Account-Id': ACCOUNT, Accept: 'application/json', originator: 'Codex Desktop', 'User-Agent': 'CodexMobile-Gateway' });
     }
   });
+  it('两个独立provider实例竞争初次注册时只调用一次REST start并拒绝第二个', async () => {
+    const f = await fixture(); const second = new RemoteAuthProviderImpl({ ...f.options, store: new PrivateStore(f.store.directory) });
+    const results = await Promise.allSettled([f.provider.enroll(stepUp()), second.enroll(stepUp())]);
+    const fulfilled = results.filter(result => result.status === 'fulfilled');
+    expect(fulfilled).toHaveLength(1);
+    expect(f.calls.filter(call => call.url.endsWith('/start'))).toHaveLength(1);
+    const success = fulfilled[0]! as PromiseFulfilledResult<Awaited<ReturnType<typeof f.provider.enroll>>>;
+    expect(await f.store.readJson('enrollment.json')).toEqual(success.value);
+  });
   it('精确接受canonical account user但不接受prefix或其他用户', async () => {
     const f = await fixture(); f.setBackendUser(USER);
     expect((await f.provider.enroll(stepUp())).accountUserId).toBe(USER);

@@ -76,26 +76,30 @@ export class RemoteAuthProviderImpl implements RemoteAuthProvider {
     if (this.enrolling) invalid();
     this.enrolling = true;
     try {
-      if (await this.getEnrollment()) invalid();
-      const auth = await this.loadAuth();
-      validateStepUp(stepUpToken, auth, this.now());
-      const identity = await this.identity();
-      const binding = { accountId: auth.accountId, managedAccountUserId: auth.accountUserId };
-      const start = validateRestStart(await this.post('enroll/start', {}, binding), { operation: 'enroll', identityHash: deviceIdentityHash(identity), auth }, this.now());
-      const ownBinding = { ...binding, accountUserId: start.accountUserId };
-      await this.loadAuth(ownBinding); validateStepUp(stepUpToken, auth, this.now());
-      const proof = await this.sign(start.challenge.payload, identity, ownBinding);
-      validateStepUp(stepUpToken, await this.loadAuth(ownBinding), this.now());
-      const result = await this.post('enroll/finish', { client_id: start.clientId, step_up_token: stepUpToken,
-        device_identity: { key_id: identity.keyId, public_key_spki_der_base64: identity.publicKeySpkiDerBase64, algorithm: identity.algorithm, protection_class: identity.protectionClass },
-        device_key_proof: this.restProof(start.challenge, proof) }, ownBinding);
-      const session = validateSession(result, start, this.now());
-      await this.loadAuth(ownBinding);
-      if (deviceIdentityHash(await this.identity()) !== deviceIdentityHash(identity) || await this.getEnrollment()) invalid();
-      const record: EnrollmentRecord = { version: 1, clientId: start.clientId, accountId: auth.accountId, accountUserId: start.accountUserId, managedAccountUserId: auth.accountUserId, identityHash: deviceIdentityHash(identity), identity };
-      await this.options.store.writeJson('enrollment.json', record);
-      this.session = { record: JSON.stringify(record), value: session };
-      return record;
+      return await this.options.store.withInitialization('enrollment', async () => {
+        if (await this.getEnrollment()) invalid();
+        const auth = await this.loadAuth();
+        validateStepUp(stepUpToken, auth, this.now());
+        const identity = await this.identity();
+        const binding = { accountId: auth.accountId, managedAccountUserId: auth.accountUserId };
+        const start = validateRestStart(await this.post('enroll/start', {}, binding), { operation: 'enroll', identityHash: deviceIdentityHash(identity), auth }, this.now());
+        const ownBinding = { ...binding, accountUserId: start.accountUserId };
+        await this.loadAuth(ownBinding); validateStepUp(stepUpToken, auth, this.now());
+        const proof = await this.sign(start.challenge.payload, identity, ownBinding);
+        validateStepUp(stepUpToken, await this.loadAuth(ownBinding), this.now());
+        const result = await this.post('enroll/finish', { client_id: start.clientId, step_up_token: stepUpToken,
+          device_identity: { key_id: identity.keyId, public_key_spki_der_base64: identity.publicKeySpkiDerBase64, algorithm: identity.algorithm, protection_class: identity.protectionClass },
+          device_key_proof: this.restProof(start.challenge, proof) }, ownBinding);
+        const session = validateSession(result, start, this.now());
+        await this.loadAuth(ownBinding);
+        if (deviceIdentityHash(await this.identity()) !== deviceIdentityHash(identity) || await this.getEnrollment()) invalid();
+        const record: EnrollmentRecord = { version: 1, clientId: start.clientId, accountId: auth.accountId, accountUserId: start.accountUserId, managedAccountUserId: auth.accountUserId, identityHash: deviceIdentityHash(identity), identity };
+        if (!await this.options.store.createJson('enrollment.json', record)) invalid();
+        const authoritative = await this.getEnrollment();
+        if (!authoritative || JSON.stringify(authoritative) !== JSON.stringify(record)) invalid();
+        this.session = { record: JSON.stringify(authoritative), value: session };
+        return authoritative;
+      });
     } finally { this.enrolling = false; }
   }
   async prepareConnection(): Promise<RemoteConnectionAuth> {
