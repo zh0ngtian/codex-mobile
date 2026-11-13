@@ -1,5 +1,6 @@
 import { ownedWebSocket } from './owned-websocket.js';
 import { randomUUID } from 'node:crypto';
+import { performance } from 'node:perf_hooks';
 import { EventEmitter } from 'node:events';
 import { TextDecoder } from 'node:util';
 import WebSocket, { type RawData } from 'ws';
@@ -11,7 +12,9 @@ export interface RemoteRpcSessionOptions {
   connectTimeoutMs?: number; initializeTimeoutMs?: number; responseTimeoutMs?: number;
   maxPending?: number; maxRequestBytes?: number; maxInboundBytes?: number;
 }
-export type RemoteRpcFailure = 'network' | 'timeout' | 'protocol' | 'capacity' | 'closed' | 'response';
+export type RemoteRpcFailure = 'network' | 'timeout' | 'protocol' | 'capacity' | 'closed' | 'response' | 'cancelled';
+/** 只供可信服务端内部调用，保留两参数call/notify及默认20秒。 */
+export interface RemoteRpcCallOptions { timeoutMs?: number; signal?: AbortSignal }
 /** 仅包含固定错误文本；上游 payload、URL 和凭据不进入 error/cause。 */
 export class RemoteRpcError extends RemoteNetworkError {
   constructor(readonly code: RemoteRpcFailure, readonly mayHaveBeenSent: boolean) {
@@ -23,7 +26,7 @@ interface SessionEvents {
   disconnect: [event: RemoteDisconnect]; close: [];
 }
 interface Pending {
-  id?: string; submitted: boolean; timer: NodeJS.Timeout;
+  id?: string; submitted: boolean; timer: NodeJS.Timeout; deadline: number; disposeAbort?: () => void;
   resolve: (value: unknown) => void; reject: (error: RemoteRpcError) => void;
 }
 function boundedOption(value: number | undefined, fallback: number, max: number): number {
@@ -163,15 +166,18 @@ export class RemoteRpcSession extends EventEmitter<SessionEvents> {
     })();
     return this.initializing;
   }
-  call(method: string, params?: JsonValue): Promise<unknown> {
+  call(method: string, params?: JsonValue, options: RemoteRpcCallOptions = {}): Promise<unknown> {
     if (!this.ready || method === 'initialize' || method === 'initialized') return Promise.reject(new RemoteRpcError('closed', false));
-    return this.submit(method, params, true, this.options.responseTimeoutMs);
+    return this.submit(method, params, true, options.timeoutMs ?? this.options.responseTimeoutMs, options.signal);
   }
-  async notify(method: string, params?: JsonValue): Promise<void> {
+  async notify(method: string, params?: JsonValue, options: RemoteRpcCallOptions = {}): Promise<void> {
     if (!this.ready || method === 'initialize' || method === 'initialized') throw new RemoteRpcError('closed', false);
-    await this.submit(method, params, false, this.options.responseTimeoutMs);
+    await this.submit(method, params, false, options.timeoutMs ?? this.options.responseTimeoutMs, options.signal);
   }
-  private submit(method: string, params: JsonValue | undefined, response: boolean, timeout: number): Promise<unknown> {
+  private submit(method: string, params: JsonValue | undefined, response: boolean, timeout: number, signal?: AbortSignal): Promise<unknown> {
+    if (!Number.isSafeInteger(timeout) || timeout < 1 || timeout > 180000) return Promise.reject(new RemoteRpcError('capacity', false));
+    const deadline = performance.now() + timeout;
+    if (signal?.aborted) return Promise.reject(new RemoteRpcError('cancelled', false));
     if (this.terminal) return Promise.reject(new RemoteRpcError('closed', false));
     if (this.pending.size >= this.options.maxPending) return Promise.reject(new RemoteRpcError('capacity', false));
     let message: RpcMessage; let encoded: string; let bytes: number; let id: string | undefined;
@@ -186,6 +192,8 @@ export class RemoteRpcSession extends EventEmitter<SessionEvents> {
       // 两种传输都使用同一次序列化的值，避免 getter/toJSON 重求值改变发送内容。
       message = JSON.parse(encoded) as RpcMessage;
     } catch { return Promise.reject(new RemoteRpcError('capacity', false)); }
+    if (signal?.aborted) return Promise.reject(new RemoteRpcError('cancelled', false));
+    if (performance.now() >= deadline) return Promise.reject(new RemoteRpcError('timeout', false));
     // 为每帧保守预留最长的客户端WS头；独立于已完成响应的RPC额度。
     const writeBytes = bytes + 14;
     if (!(this.transport instanceof RemoteStream)) {
@@ -193,13 +201,20 @@ export class RemoteRpcSession extends EventEmitter<SessionEvents> {
       if (this.writes.size >= this.options.maxPending || Math.max(this.writingBytes, this.transport.bufferedAmount) + writeBytes > byteLimit) return Promise.reject(new RemoteRpcError('capacity', false));
     }
     return new Promise((resolve, reject) => {
-      const entry: Pending = { id, submitted: false, resolve, reject, timer: setTimeout(() => {
+      const entry: Pending = { id, submitted: false, resolve, reject, deadline, timer: setTimeout(() => {
         if (this.writes.has(entry)) this.finish('timeout');
         else this.settle(entry, new RemoteRpcError('timeout', entry.submitted));
-      }, timeout) };
+      }, Math.max(1, deadline - performance.now())) };
       this.pending.add(entry); if (id !== undefined) this.responses.set(id, entry);
+      if (signal) {
+        const abort = () => this.settle(entry, new RemoteRpcError('cancelled', entry.submitted));
+        signal.addEventListener('abort', abort, { once: true });
+        entry.disposeAbort = () => signal.removeEventListener('abort', abort);
+        if (signal.aborted) { abort(); return; }
+      }
       const sent = (error?: unknown) => {
         if (!this.pending.has(entry)) return;
+        if (performance.now() >= entry.deadline) { this.settle(entry, new RemoteRpcError('timeout', entry.submitted)); return; }
         if (error) this.settle(entry, new RemoteRpcError('network', error instanceof RemoteSendError ? error.mayHaveBeenSent : entry.submitted));
         else if (!response) this.settle(entry, undefined, undefined);
       };
@@ -234,6 +249,7 @@ export class RemoteRpcSession extends EventEmitter<SessionEvents> {
       }
       if (typeof value.id !== 'string') return;
       const entry = this.responses.get(value.id); if (!entry) return;
+      if (performance.now() >= entry.deadline) { this.settle(entry, new RemoteRpcError('timeout', entry.submitted)); return; }
       const hasResult = Object.hasOwn(value, 'result'); const hasError = Object.hasOwn(value, 'error');
       if (hasResult === hasError) throw new Error();
       this.settle(entry, hasError ? new RemoteRpcError('response', true) : undefined, value.result);
@@ -241,6 +257,7 @@ export class RemoteRpcSession extends EventEmitter<SessionEvents> {
   }
   private settle(entry: Pending, error?: RemoteRpcError, value?: unknown): void {
     if (!this.pending.delete(entry)) return;
+    entry.disposeAbort?.(); entry.disposeAbort = undefined;
     if (!this.writes.has(entry)) clearTimeout(entry.timer);
     if (entry.id !== undefined) this.responses.delete(entry.id);
     if (error) entry.reject(error); else entry.resolve(value);

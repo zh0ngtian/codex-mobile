@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { getEventListeners } from 'node:events';
 import { afterEach, expect, it } from 'vitest';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { RemoteSendError, RemoteStream } from '../../server/remote/relay.js';
@@ -280,4 +281,79 @@ it('显式close拒绝所有未完成写入的调用和通知，晚回调与旧�
   expect(session.closed).toBe(true); expect(server.frames).toHaveLength(4);
   await until(() => socket.readyState === socket.CLOSED);
   for (const event of ['message', 'error', 'close']) expect(socket.listenerCount(event)).toBe(0);
+});
+
+it('可信每调用预算可长于默认响应超时且不改变后续默认值', async () => {
+  const { session, server } = await initialized({ responseTimeoutMs: 20 });
+  const pending = session.call('longer', {}, { timeoutMs: 150 }).catch(error => error);
+  await until(() => server.frames.length === 3);
+  await new Promise(resolve => setTimeout(resolve, 40));
+  send(server.sockets[0]!, { id: server.frames[2]!.id, result: true });
+  expect(await pending).toBe(true);
+  await expect(session.call('default')).rejects.toMatchObject({ code: 'timeout', mayHaveBeenSent: true });
+});
+
+it('每调用取消只撤销自己的等待，不关闭共享会话且不重放', async () => {
+  const { session, server } = await initialized({ responseTimeoutMs: 100 });
+  const controller = new AbortController();
+  const pending = session.call('write', {}, { signal: controller.signal }).catch(error => error);
+  await until(() => server.frames.length === 3); controller.abort();
+  expect(await pending).toMatchObject({ code: 'cancelled', mayHaveBeenSent: true });
+  expect(session.ready).toBe(true);
+  send(server.sockets[0]!, { id: server.frames[2]!.id, result: 'late' });
+  const stopped = new AbortController(); stopped.abort();
+  await expect(session.call('never', {}, { signal: stopped.signal })).rejects.toMatchObject({ code: 'cancelled', mayHaveBeenSent: false });
+  expect(server.frames.filter(frame => frame.method === 'write')).toHaveLength(1);
+  expect(server.frames.filter(frame => frame.method === 'never')).toHaveLength(0);
+});
+
+it('每调用实际绝对期限覆盖同步传输阻塞和晚响应，notify保留兼容', async () => {
+  const frames: RpcMessage[] = [];
+  const f = remote(async (stream, message) => {
+    if (message) frames.push(message);
+    if (message?.method === 'blocked') {
+      const end = performance.now() + 40; while (performance.now() < end) { /* 模拟同步阻塞。 */ }
+      stream.emit('message', { id: message.id, result: true }, { seqId: 2 });
+    }
+    return { seqId: frames.length };
+  });
+  const session = RemoteRpcSession.fromRemoteStream(f.stream); cleanup.push(() => session.close());
+  const init = session.initialize(); await until(() => frames.length === 1);
+  f.stream.emit('message', { id: frames[0]!.id, result: {} }, { seqId: 1 }); await init;
+  await expect(session.call('blocked', {}, { timeoutMs: 10 })).rejects.toMatchObject({ code: 'timeout', mayHaveBeenSent: true });
+  await session.notify('compatible'); expect(session.ready).toBe(true);
+});
+
+it('取消已提交canonical调用仍保留未完成写入的额度和期限，实际回调才释放', async () => {
+  const { session, server } = await initialized({ maxPending: 1, responseTimeoutMs: 300 });
+  const socket = (session as unknown as { transport: WebSocket }).transport;
+  const sendActual = socket.send.bind(socket); const completions: (() => void)[] = [];
+  socket.send = (value, optionsOrCallback?, callback?) => {
+    const complete = typeof optionsOrCallback === 'function' ? optionsOrCallback : callback;
+    sendActual(value, error => completions.push(() => { if (typeof complete === 'function') complete(error); }));
+  };
+  const controller = new AbortController();
+  const pending = session.call('cancel-write', {}, { signal: controller.signal }).catch(error => error);
+  await until(() => server.frames.length === 3 && completions.length === 1); controller.abort();
+  expect(await pending).toMatchObject({ code: 'cancelled', mayHaveBeenSent: true });
+  await expect(session.call('capacity-held')).rejects.toMatchObject({ code: 'capacity', mayHaveBeenSent: false });
+  completions[0]!(); socket.send = sendActual;
+  const next = session.call('next'); await until(() => server.frames.length === 4);
+  send(server.sockets[0]!, { id: server.frames[3]!.id, result: true }); expect(await next).toBe(true); expect(session.ready).toBe(true);
+});
+
+it('取消后的迟到响应/写回调不能撤销原写入超时，signal监听器及时清理', async () => {
+  const { session, server } = await initialized({ maxPending: 1, responseTimeoutMs: 60 });
+  const socket = (session as unknown as { transport: WebSocket }).transport;
+  const sendActual = socket.send.bind(socket); const completions: (() => void)[] = [];
+  socket.send = (value, optionsOrCallback?, callback?) => {
+    const complete = typeof optionsOrCallback === 'function' ? optionsOrCallback : callback;
+    sendActual(value, error => completions.push(() => { if (typeof complete === 'function') complete(error); }));
+  };
+  const controller = new AbortController();
+  const pending = session.call('cancel-stuck', {}, { signal: controller.signal }).catch(error => error);
+  await until(() => server.frames.length === 3 && completions.length === 1); controller.abort();
+  expect(await pending).toMatchObject({ code: 'cancelled', mayHaveBeenSent: true }); expect(getEventListeners(controller.signal, 'abort')).toHaveLength(0);
+  send(server.sockets[0]!, { id: server.frames[2]!.id, result: true }); await until(() => session.closed);
+  completions[0]!(); expect(session.closed).toBe(true);
 });
