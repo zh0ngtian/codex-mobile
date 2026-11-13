@@ -1,0 +1,157 @@
+{
+  "schemaVersion": 1,
+  "sourceCommit": "00dd49b6e1ac719adad027b301e4892996e78bc2",
+  "startedAt": "2026-11-13T07:29:07.188Z",
+  "events": [
+    {
+      "at": "2026-11-13T07:29:32.212Z",
+      "stage": "rest_catalog_and_local_proof_passed",
+      "visibleTargets": 1,
+      "exactDoubleIdentity": true,
+      "physicalConnections": 0
+    },
+    {
+      "at": "2026-11-13T07:29:32.212Z",
+      "stage": "controller_state",
+      "state": "starting"
+    },
+    {
+      "at": "2026-11-13T07:29:33.032Z",
+      "stage": "controller_state",
+      "state": "offline"
+    },
+    {
+      "at": "2026-11-13T07:29:43.622Z",
+      "stage": "controller_state",
+      "state": "online"
+    },
+    {
+      "at": "2026-11-13T07:29:46.421Z",
+      "stage": "controller_rpc_passed",
+      "stream": 0,
+      "elapsedMs": 1714
+    },
+    {
+      "at": "2026-11-13T07:29:50.253Z",
+      "stage": "controller_rpc_passed",
+      "stream": 1,
+      "elapsedMs": 2116
+    },
+    {
+      "at": "2026-11-13T07:29:54.176Z",
+      "stage": "controller_rpc_passed",
+      "stream": 2,
+      "elapsedMs": 1352
+    },
+    {
+      "at": "2026-11-13T07:29:54.176Z",
+      "stage": "three_streams_one_master_passed",
+      "physicalOnline": 1,
+      "prepareAttempts": 1
+    },
+    {
+      "at": "2026-11-13T07:29:54.177Z",
+      "stage": "controller_state",
+      "state": "offline"
+    },
+    {
+      "at": "2026-11-13T07:29:55.893Z",
+      "stage": "controller_state",
+      "state": "online"
+    },
+    {
+      "at": "2026-11-13T07:29:59.093Z",
+      "stage": "same_stream_controller_recovery_passed",
+      "elapsedMs": 4917,
+      "physicalOnline": 2
+    },
+    {
+      "at": "2026-11-13T07:29:59.094Z",
+      "stage": "zero_stream_heartbeat_check_started",
+      "idleMs": 35000
+    },
+    {
+      "at": "2026-11-13T07:30:34.097Z",
+      "stage": "zero_stream_master_retained",
+      "idleMs": 35000,
+      "physicalStable": true,
+      "physicalOnline": 2,
+      "prepareAttempts": 2
+    },
+    {
+      "at": "2026-11-13T07:30:36.659Z",
+      "stage": "controller_state",
+      "state": "auth-required",
+      "reason": "identity-changed"
+    },
+    {
+      "at": "2026-11-13T07:30:36.704Z",
+      "stage": "controller_state",
+      "state": "closed"
+    },
+    {
+      "at": "2026-11-13T07:30:36.731Z",
+      "stage": "controller_state",
+      "state": "starting"
+    },
+    {
+      "at": "2026-11-13T07:30:36.733Z",
+      "stage": "controller_state",
+      "state": "paused",
+      "reason": "identity-changed"
+    },
+    {
+      "at": "2026-11-13T07:30:36.733Z",
+      "stage": "persisted_pause_prevents_restart_bypass",
+      "sameOriginalBinding": true,
+      "automaticConnection": false
+    },
+    {
+      "at": "2026-11-13T07:30:51.980Z",
+      "stage": "controller_state",
+      "state": "offline"
+    },
+    {
+      "at": "2026-11-13T07:30:58.933Z",
+      "stage": "controller_state",
+      "state": "online"
+    },
+    {
+      "at": "2026-11-13T07:31:02.468Z",
+      "stage": "explicit_mac_resume_original_identity_passed",
+      "sameOriginalBinding": true,
+      "reenrolled": false
+    },
+    {
+      "at": "2026-11-13T07:31:02.472Z",
+      "stage": "controller_state",
+      "state": "closed"
+    }
+  ],
+  "passed": true,
+  "completedAt": "2026-11-13T07:31:02.472Z",
+  "scope": "当前Mac、既有网关自有身份、隔离PrivateStore；使用正式controller/catalog/provider/managed loader，未重新登记或改动现役网关",
+  "validation": {
+    "remoteTests": {
+      "passed": 278,
+      "skipped": 1,
+      "skipReason": "既有Secure Enclave opt-in测试"
+    },
+    "strictServerTypecheck": true,
+    "serverBuild": true,
+    "independentSpecReview": true,
+    "independentQualityReview": true
+  },
+  "limitations": [
+    "初始化和模型列表读取，不含模型推理、产品聊天、队列、文件或手机端模式接入",
+    "实例重建不是OS进程重启；仅当前Mac，未测试其他远程机器",
+    "单次4917ms恢复样本和35秒零流心跳检查不代表P95或8小时验收",
+    "首次冷启动和显式恢复包含身份及Remote会话准备，耗时较长；性能目标仍待后续专项验收"
+  ],
+  "singleSampleTimingsMs": {
+    "startToOnline": 11410,
+    "startToFirstModelListCompleted": 14209,
+    "forcedDisconnectToThreeSequentialModelListsCompleted": 4917,
+    "explicitResumeToModelListCompleted": 25735
+  }
+}

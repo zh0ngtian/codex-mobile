@@ -1,0 +1,84 @@
+{
+  "schemaVersion": 1,
+  "sourceCommit": "47eb43029464d8df19e2a936bbb15a766c7b96cb",
+  "startedAt": "2026-11-13T06:09:24.833Z",
+  "route": "/backend-api/codex/remote/control/clients/{clientId}/environments?limit=100",
+  "canonicalStatusShape": {
+    "status": "string",
+    "serverName": "string",
+    "installationId": "string",
+    "environmentId": "string"
+  },
+  "canonicalConnected": true,
+  "pairingStart": {
+    "shape": {
+      "pairingCode": "string",
+      "manualPairingCode": "null",
+      "environmentId": "string",
+      "expiresAt": "number"
+    },
+    "environmentMatched": true,
+    "expiryUnit": "seconds",
+    "claimed": true,
+    "codePrinted": false
+  },
+  "pairingClaimHttpStatus": 200,
+  "pairingClaim": {
+    "shape": {
+      "pairing_code": "string",
+      "client_id": "string",
+      "server_id": "string",
+      "environment_id": "string",
+      "claimed_at": "string"
+    },
+    "ownClientMatched": true,
+    "environmentMatched": true,
+    "codeMatched": true,
+    "serverIdType": "string",
+    "claimedAtParseable": true,
+    "codePrinted": false
+  },
+  "httpStatus": 200,
+  "catalogShape": {
+    "items": {
+      "type": "array",
+      "length": 1,
+      "items": [
+        {
+          "env_id": "string",
+          "kind": "string",
+          "display_name": "string",
+          "host_name": "string",
+          "name": "string",
+          "online": "boolean",
+          "busy": "boolean",
+          "os": "string",
+          "os_version": "string",
+          "arch": "string",
+          "app_server_version": "string",
+          "installation_id": "string",
+          "client_type": "string",
+          "originator": "string",
+          "terminal": "string",
+          "client_name": "string",
+          "client_version": "string",
+          "last_seen_at": "string"
+        }
+      ]
+    },
+    "cursor": "null"
+  },
+  "catalogKinds": [
+    "single"
+  ],
+  "canonicalEnvironmentMatched": true,
+  "canonicalInstallationMatched": true,
+  "passed": true,
+  "completedAt": "2026-11-13T06:09:34.953Z",
+  "scope": "隔离协议事实核验；已有网关自有client与同一Mac重新领取配对证明，没有创建或替换controller登记",
+  "limitations": [
+    "仅核验当前Mac的官方返回结构与精确身份匹配",
+    "尚未验证产品controller/catalog模块、其他机器或完整8小时持续连接",
+    "没有修改现役网关或重新进行OAuth授权"
+  ]
+}
