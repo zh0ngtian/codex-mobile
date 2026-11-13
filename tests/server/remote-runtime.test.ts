@@ -843,3 +843,29 @@ it('管理session同步阻塞超过实际阶段期限，已返回但未交付的
   await expect(f.runtime.createManagementSession(local)).rejects.toMatchObject({ code: 'timeout' });
   expect(closed).toBe(1);
 });
+it('实际registry原子pointer写锁迟到时有界close返回，settled仍保留归属到真实提交完成', async () => {
+ const f = await fixture({ cleanupTimeoutMs: 10 });
+ let release!: () => void; let entered = false;
+ const held = f.store.withInitialization('record-active-identity.json', async () => { entered = true; await new Promise<void>(resolve => release = resolve); });
+ await until(() => entered);
+ const abort = new AbortController(); const operation = f.runtime.authorize(abort.signal); const checked = expect(operation).rejects.toMatchObject({ code: 'commit-pending' });
+ await until(() => f.runtime.status().reason === 'commit-pending'); abort.abort(); await checked;
+ await f.runtime.close(); let settled = false; const barrier = f.runtime.settled().then(() => settled = true);
+ await new Promise(resolve => setTimeout(resolve, 20)); expect(settled).toBe(false); expect(f.connections).toHaveLength(0);
+ release(); await held; await barrier;
+ expect((await f.registry.readActive())?.snapshot.generation).toBeDefined(); expect(f.connections).toHaveLength(0);
+});
+it('真实controller.storage暂停写锁仍活跃时close有界而settled不提前完成', async () => {
+ const f = await fixture({ cleanupTimeoutMs: 10 }); await f.runtime.authorize(); await until(() => f.runtime.status().state === 'online');
+ const active = await f.registry.readActive(); const controller = (f.runtime as any).bundle.controller;
+ let release!: () => void; let entered = false;
+ const held = active!.store.withInitialization('record-controller-pause.json', async () => { entered = true; await new Promise<void>(resolve => release = resolve); }); await until(() => entered);
+ f.setKey(false); await controller.refreshTargets().catch(() => undefined); await until(() => controller.state === 'auth-required');
+ await f.runtime.close(); let settled = false; const barrier = f.runtime.settled().then(() => settled = true); await new Promise(resolve => setTimeout(resolve, 20)); expect(settled).toBe(false);
+ release(); await held; await barrier; expect(await active!.store.readJson('controller-pause.json')).toMatchObject({ paused: true });
+});
+it('只读queryStatus不把启动证明失败的fault清成可执行idle', async () => {
+ const f = await fixture(); await f.runtime.authorize(); await f.runtime.close(); f.setNetwork(true);
+ const runtime = new RemoteRuntime(f.options); cleanup.push(() => runtime.close()); await runtime.start(); expect(runtime.status().state).toBe('fault');
+ expect((await runtime.queryStatus()).state).toBe('fault'); expect(f.oauth()).toBe(1);
+});

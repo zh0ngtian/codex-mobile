@@ -40,3 +40,16 @@ it('所有管理操作互斥且close永久中止挂起操作，有界清理独�
   await lifecycle.cleanup(() => new Promise(() => {}));
   await expect(lifecycle.run(undefined, async () => true)).rejects.toMatchObject({ code: 'closed' });
 });
+it('有界close之后实际迟到存储与清理仍保留归属屏障', async () => {
+ const lifecycle = new RemoteRuntimeLifecycle(5, 5, 5);
+ let finishWrite!: () => void; let finishDrain!: () => void;
+ const write = new Promise<void>(resolve => finishWrite = resolve);
+ const drain = new Promise<void>(resolve => finishDrain = resolve);
+ const operation = lifecycle.run(undefined, op => lifecycle.wait(op, () => write));
+ await expect(operation).rejects.toMatchObject({ code: 'timeout' }); lifecycle.close();
+ await lifecycle.cleanup(() => drain);
+ let settled = false; const barrier = lifecycle.settled().then(() => settled = true);
+ await Promise.resolve(); expect(settled).toBe(false);
+ finishWrite(); await Promise.resolve(); expect(settled).toBe(false);
+ finishDrain(); await barrier; expect(settled).toBe(true);
+});

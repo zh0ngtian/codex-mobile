@@ -1,5 +1,5 @@
-import { constants } from 'node:fs';
-import { chmod, lstat, mkdir, open, readdir, rename, rm, rmdir, unlink } from 'node:fs/promises';
+import { constants, type Stats } from 'node:fs';
+import { chmod, lstat, mkdir, open, readdir, rename, rmdir, unlink } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, parse, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -8,6 +8,8 @@ import { TextDecoder } from 'node:util';
 const MAX_RECORD_BYTES = 1024 * 1024;
 function failure(): Error { return new Error('Remote 私有存储不可用或记录损坏'); }
 function missing(error: unknown): boolean { return (error as NodeJS.ErrnoException)?.code === 'ENOENT'; }
+type FileIdentity = Pick<Stats, 'dev' | 'ino'>;
+function sameFile(a: FileIdentity, b: FileIdentity): boolean { return a.dev === b.dev && a.ino === b.ino; }
 function owned(stat: { uid: number }): boolean { return !process.getuid || stat.uid === process.getuid(); }
 
 /** 仅负责自己的目录；不会修复或 chmod 既有父目录。 */
@@ -109,11 +111,11 @@ export class PrivateStore {
     const lockPath = join(this.directory, `.init-${name}.lock`);
     const nonce = randomUUID(); const ownerName = `owner-${process.pid}-${nonce}.json`;
     let prepared: string | undefined = join(this.directory, `.lock-prepare-${process.pid}-${nonce}`);
-    let acquired = false;
+    let acquired = false; let directoryIdentity: FileIdentity | undefined; let ownerIdentity: FileIdentity | undefined;
     try {
-      await mkdir(prepared, { mode: 0o700 }); await chmod(prepared, 0o700);
+      await mkdir(prepared, { mode: 0o700 }); await chmod(prepared, 0o700); directoryIdentity = await lstat(prepared);
       const owner = await open(join(prepared, ownerName), constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
-      try { await owner.chmod(0o600); await owner.writeFile(JSON.stringify({ version: 1, pid: process.pid, nonce })); await owner.sync(); }
+      try { await owner.chmod(0o600); ownerIdentity = await owner.stat(); await owner.writeFile(JSON.stringify({ version: 1, pid: process.pid, nonce })); await owner.sync(); }
       finally { await owner.close(); }
       await this.syncDirectory(prepared);
       const preparationPath = prepared;
@@ -134,8 +136,8 @@ export class PrivateStore {
       }
       return await operation();
     } finally {
-      if (prepared) await rm(prepared, { recursive: true, force: true });
-      if (acquired) await this.removeLockOwner(lockPath, ownerName);
+      if (prepared && directoryIdentity) await this.removeLockOwner(prepared, ownerName, directoryIdentity, ownerIdentity);
+      if (acquired) await this.removeLockOwner(lockPath, ownerName, directoryIdentity!, ownerIdentity);
     }
   }
   private async cleanupDeadPreparations(): Promise<void> {
@@ -145,37 +147,41 @@ export class PrivateStore {
       try { process.kill(Number(match[1]), 0); continue; }
       catch (error) { if ((error as NodeJS.ErrnoException)?.code !== 'ESRCH') continue; }
       const path = join(this.directory, entry);
-      if (!await this.inspectLockDirectory(path)) continue;
+      const directoryIdentity = await this.inspectLockDirectory(path); if (!directoryIdentity) continue;
       let entries: string[];
       try { entries = await readdir(path); } catch (error) { if (missing(error)) continue; throw failure(); }
       const ownerName = `owner-${match[1]}-${match[2]}.json`;
       // prepare 尚未发布；PID/nonce 都在唯一目录名中，可处理 owner 写入前崩溃。
       // 不递归删除未知内容，不按年龄回收活跃或无法证明已死的进程。
-      if (entries.length === 0 || (entries.length === 1 && entries[0] === ownerName)) await this.removeLockOwner(path, ownerName);
+      if (entries.length === 0 || (entries.length === 1 && entries[0] === ownerName)) {
+        let ownerIdentity: FileIdentity | undefined;
+        try { const stat = await lstat(join(path, ownerName)); if (!stat.isFile() || !owned(stat) || stat.nlink !== 1 || (stat.mode & 0o777) !== 0o600) throw failure(); ownerIdentity = stat; } catch (error) { if (!missing(error)) throw error; }
+        await this.removeLockOwner(path, ownerName, directoryIdentity, ownerIdentity);
+      }
     }
   }
-  private async inspectLockDirectory(path: string): Promise<boolean> {
+  private async inspectLockDirectory(path: string): Promise<Stats | undefined> {
     try {
       const stat = await lstat(path);
       if (!stat.isDirectory() || stat.isSymbolicLink() || !owned(stat) || (stat.mode & 0o777) !== 0o700) throw failure();
-      return true;
-    } catch (error) { if (missing(error)) return false; throw failure(); }
+      return stat;
+    } catch (error) { if (missing(error)) return undefined; throw failure(); }
   }
   private async recoverDeadOwner(path: string): Promise<void> {
-    if (!await this.inspectLockDirectory(path)) return;
+    const directoryIdentity = await this.inspectLockDirectory(path); if (!directoryIdentity) return;
     let entries: string[];
     try { entries = await readdir(path); } catch (error) { if (missing(error)) return; throw failure(); }
     if (entries.length === 0) return; // rename 可原子替换崩溃留下的空目录。
     if (entries.length !== 1) throw failure();
     const name = entries[0]!; const match = /^owner-([1-9][0-9]*)-([a-f0-9-]{36})\.json$/.exec(name);
     if (!match) throw failure();
-    let record: unknown;
+    let record: unknown; let ownerIdentity: FileIdentity | undefined;
     try {
-      const owner = await open(join(path, name), constants.O_RDONLY | constants.O_NOFOLLOW);
+      const owner = await open(join(path, name), constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
       try {
         const stat = await owner.stat();
         if (!stat.isFile() || !owned(stat) || stat.nlink > 1 || stat.size > 1024 || (stat.mode & 0o777) !== 0o600) throw failure();
-        record = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(await owner.readFile()));
+        ownerIdentity = stat; record = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(await owner.readFile()));
       } finally { await owner.close(); }
     } catch (error) { if (missing(error)) return; throw failure(); }
     if (!record || typeof record !== 'object' || Array.isArray(record)) throw failure();
@@ -183,14 +189,23 @@ export class PrivateStore {
     if (value.version !== 1 || value.pid !== Number(match[1]) || !Number.isSafeInteger(value.pid) || value.nonce !== match[2]) throw failure();
     try { process.kill(value.pid as number, 0); }
     catch (error) {
-      if ((error as NodeJS.ErrnoException)?.code === 'ESRCH') await this.removeLockOwner(path, name);
+      if ((error as NodeJS.ErrnoException)?.code === 'ESRCH') await this.removeLockOwner(path, name, directoryIdentity, ownerIdentity);
       // EPERM、PID 复用等无法证明 owner 已死的情况绝不解锁。
     }
   }
-  private async removeLockOwner(path: string, ownerName: string): Promise<void> {
-    if (!await this.inspectLockDirectory(path)) return;
-    try { await unlink(join(path, ownerName)); } catch (error) { if (!missing(error)) throw failure(); }
-    // 另一竞争者已发布新的非空目录时，rmdir 会失败而保留新 owner。
+  private async removeLockOwner(path: string, ownerName: string, expectedDirectory: FileIdentity, expectedOwner?: FileIdentity): Promise<void> {
+    const directory = await this.inspectLockDirectory(path); if (!directory) return;
+    if (!sameFile(directory, expectedDirectory)) throw failure();
+    try {
+      const owner = await lstat(join(path, ownerName));
+      if (!expectedOwner || !sameFile(owner, expectedOwner) || !owner.isFile() || !owned(owner) || owner.nlink !== 1 || (owner.mode & 0o777) !== 0o600) throw failure();
+      const recheck = await this.inspectLockDirectory(path); if (!recheck || !sameFile(recheck, expectedDirectory)) throw failure();
+      await unlink(join(path, ownerName));
+    } catch (error) { if (!missing(error)) throw failure(); }
+    const recheck = await this.inspectLockDirectory(path); if (!recheck) return;
+    // 自己的owner已移除后，合法竞争者可原子替换空目录；保留其新归属。
+    if (!sameFile(recheck, expectedDirectory)) return;
+    // 另一竞争者已发布新的非空目录时，rmdir会失败而保留新owner。
     try { await rmdir(path); }
     catch (error) { if (!['ENOENT', 'ENOTEMPTY', 'EEXIST'].includes((error as NodeJS.ErrnoException)?.code ?? '')) throw failure(); }
     await this.syncDirectory();

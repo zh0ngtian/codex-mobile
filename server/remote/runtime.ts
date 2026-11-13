@@ -349,9 +349,9 @@ export class RemoteRuntime extends EventEmitter<{
       });
       return { store, loader, key, provider, oauth, controller };
     } catch {
-      void dispose(controller);
-      void dispose(oauth);
-      void dispose(loader);
+      void this.lifecycle.track(dispose(controller));
+      void this.lifecycle.track(dispose(oauth));
+      void this.lifecycle.track(dispose(loader));
       throw new RemoteRuntimeError('unavailable');
     }
   }
@@ -362,9 +362,9 @@ export class RemoteRuntime extends EventEmitter<{
       /* 清理继续。 */
     }
     // close 的同步部分先终止 Relay，再并行清理不会阻塞其他资源。
-    const controller = dispose(bundle.controller);
-    const oauth = dispose(bundle.oauth);
-    const loader = dispose(bundle.loader);
+    const controller = this.lifecycle.track(dispose(bundle.controller));
+    const oauth = this.lifecycle.track(dispose(bundle.oauth));
+    const loader = this.lifecycle.track(dispose(bundle.loader));
     await this.boundedCleanup(() => Promise.all([controller, oauth, loader]));
   }
   private async stop(op: Operation): Promise<void> {
@@ -376,9 +376,9 @@ export class RemoteRuntime extends EventEmitter<{
     } catch {
       /* 继续关闭所有资源。 */
     }
-    this.draining = dispose(bundle.controller);
-    const oauth = dispose(bundle.oauth);
-    const loader = dispose(bundle.loader);
+    this.draining = this.lifecycle.track(dispose(bundle.controller));
+    const oauth = this.lifecycle.track(dispose(bundle.oauth));
+    const loader = this.lifecycle.track(dispose(bundle.loader));
     await this.wait(op, () => this.draining, this.cleanupTimeout);
     await this.wait(op, () => Promise.all([oauth, loader]), this.cleanupTimeout);
   }
@@ -460,8 +460,8 @@ export class RemoteRuntime extends EventEmitter<{
       undefined,
       async (op) => {
         await this.load(op);
-        if (!this.committing) this.fault = undefined;
-        else this.fault = 'commit-pending';
+        if (this.committing) this.fault = 'commit-pending';
+        else if (this.fault === 'commit-pending') this.fault = undefined;
         return this.status();
       },
       false,
@@ -893,13 +893,18 @@ export class RemoteRuntime extends EventEmitter<{
         throw error;
       });
   }
+  /** 只供可信网关停机：实际迟到提交、storage及controller清理完成后才释放进程归属。 */
+  async settled(): Promise<void> {
+    await this.close();
+    await this.lifecycle.settled();
+    await Promise.allSettled([this.storage, this.draining]);
+  }
   close(): Promise<void> {
     if (this.closing) return this.closing;
-    const pending = this.lifecycle.pending;
     this.lifecycle.close();
     const bundle = this.bundle;
     this.bundle = undefined;
-    const login = dispose(this.loginFlow);
+    const login = this.lifecycle.track(dispose(this.loginFlow));
     this.closing = this.boundedCleanup(async () => {
       await Promise.all([bundle ? this.destroy(bundle) : Promise.resolve(), login, this.storage, this.draining]);
     });

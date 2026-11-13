@@ -26,10 +26,12 @@ export function modelUploadRoutes(config: RoutingConfig,
 
 /** 通过 Codex 自己解析用户配置及 profile；不复制 TOML 解析和优先级规则。 */
 export async function readModelUploadRoutes(environment: Record<string, string | undefined>,
-  options: { executable?: string; args?: string[] } = {}) {
+  options: { executable?: string; args?: string[]; signal?: AbortSignal } = {}) {
+  if (options.signal?.aborted) throw new Error('模型路由读取已取消');
   const child = spawn(options.executable ?? 'codex', [...(options.args ?? []), 'app-server', '--listen', 'stdio://'], {
     env: environment, stdio: ['pipe', 'pipe', 'ignore'],
   });
+  const exited = new Promise<void>(resolve => { child.once('exit', () => resolve()); child.once('error', () => resolve()); });
   const lines = createInterface({ input: child.stdout });
   const waiters = new Map<number, { resolve(value: any): void; reject(reason: Error): void }>();
   let nextId = 0;
@@ -51,6 +53,9 @@ export async function readModelUploadRoutes(environment: Record<string, string |
     if (message.error) waiter.reject(new Error('Codex 拒绝读取模型路由配置'));
     else waiter.resolve(message.result);
   });
+  const cancel = () => { fail(); if (child.pid && child.exitCode === null && child.signalCode === null) child.kill('SIGTERM'); };
+  options.signal?.addEventListener('abort', cancel, { once: true });
+  if (options.signal?.aborted) cancel();
   const timeout = setTimeout(fail, 15_000);
   function request(method: string, params: unknown) {
     if (failure) return Promise.reject(failure);
@@ -66,16 +71,19 @@ export async function readModelUploadRoutes(environment: Record<string, string |
     const config = await request('config/read', { includeLayers: false });
     // account/read 在新版 CLI 中可能触发远程 workspace discovery；计量启动不额外查询账户。
     // 默认提供商由模型请求自己的 ChatGPT-Account-ID 和网关已有的认证模式事件选路。
+    if (options.signal?.aborted) throw new Error('模型路由读取已取消');
     return modelUploadRoutes(config.config, environment);
   } finally {
     clearTimeout(timeout);
+    options.signal?.removeEventListener('abort', cancel);
     lines.close();
     child.stdin.on('error', () => {});
-    if (child.pid && child.exitCode === null) {
-      const exited = new Promise(resolve => child.once('exit', resolve));
+    if (child.pid && child.exitCode === null && child.signalCode === null) {
       child.kill('SIGTERM');
-      const kill = setTimeout(() => child.kill('SIGKILL'), 2000);
+      const kill = setTimeout(() => { if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL'); }, 2000);
       try { await exited; } finally { clearTimeout(kill); }
     }
+    await exited;
+    if (options.signal?.aborted) throw new Error('模型路由读取已取消');
   }
 }

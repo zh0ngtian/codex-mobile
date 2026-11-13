@@ -67,6 +67,13 @@ export class RemoteRuntimeLifecycle {
   epoch = 0;
   operation?: RemoteRuntimeOperation;
   pending?: Promise<unknown>;
+  private readonly work = new Set<Promise<unknown>>();
+  /** 可信进程归属屏障使用实际Promise，不能用超时后的race代替。 */
+  track<T>(promise: Promise<T>): Promise<T> {
+    this.work.add(promise);
+    void promise.finally(() => this.work.delete(promise)).catch(() => undefined);
+    return promise;
+  }
   constructor(
     private readonly timeout: number,
     private readonly interactionTimeout: number,
@@ -90,7 +97,7 @@ export class RemoteRuntimeLifecycle {
       const value = await Promise.race([
         Promise.resolve().then(() => {
           this.assert(op, phaseDeadline);
-          return callback();
+          return this.track(Promise.resolve(callback()));
         }),
         new Promise<never>((_resolve, reject) => {
           abort = () => reject(op.abort.signal.reason);
@@ -117,7 +124,7 @@ export class RemoteRuntimeLifecycle {
     try {
       await Promise.race([
         Promise.resolve()
-          .then(callback)
+          .then(() => this.track(Promise.resolve(callback())))
           .catch(() => undefined),
         new Promise<void>((resolve) => {
           timer = setTimeout(resolve, this.cleanupTimeout);
@@ -178,6 +185,12 @@ export class RemoteRuntimeLifecycle {
       })
       .catch(() => undefined);
     return flight;
+  }
+  async settled(): Promise<void> {
+    if (!this.closed) throw new RemoteRuntimeError('configuration');
+    while (this.pending || this.work.size) {
+      await Promise.allSettled([...(this.pending ? [this.pending] : []), ...this.work]);
+    }
   }
   close(): void {
     if (this.closed) return;

@@ -1,5 +1,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { createServer } from "node:net";
+import { performance } from "node:perf_hooks";
+import { setTimeout as delay } from "node:timers/promises";
 import { createModelUploadProxy } from './model-upload-proxy.js';
 import { readModelUploadRoutes } from './model-upload-routing.js';
 
@@ -94,65 +96,84 @@ async function portAvailable(port: number) {
   });
 }
 
-async function waitUntilReady(port: number, child: ChildProcess) {
-  const deadline = Date.now() + 15_000;
-  while (Date.now() < deadline) {
-    if (child.exitCode !== null) throw new Error(`codex app-server 已退出：${child.exitCode}`);
-    try {
-      const response = await fetch(`http://127.0.0.1:${port}/readyz`);
-      if (response.ok) return;
-    } catch {
-      // 启动期间连接失败是预期行为。
-    }
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
-  throw new Error("等待 codex app-server 就绪超时");
+function assertStartupActive(signal?: AbortSignal) {
+  if (signal?.aborted) throw new Error('app-server 启动已取消');
 }
 
-export async function startManagedAppServer(port: number) {
-  if (!(await portAvailable(port))) {
-    throw new Error(`app-server 端口 ${port} 已被占用`);
+async function waitUntilReady(port: number, child: ChildProcess, signal?: AbortSignal) {
+  const deadline = performance.now() + 15_000;
+  while (performance.now() < deadline) {
+    assertStartupActive(signal);
+    if (child.exitCode !== null || child.signalCode !== null) throw new Error('codex app-server 已退出');
+    try {
+      const timeout = AbortSignal.timeout(Math.max(1, Math.min(2000, Math.ceil(deadline - performance.now()))));
+      const response = await fetch(`http://127.0.0.1:${port}/readyz`, { signal: signal ? AbortSignal.any([signal, timeout]) : timeout });
+      assertStartupActive(signal);
+      if (response.ok && performance.now() < deadline) return;
+    } catch {
+      assertStartupActive(signal);
+      // 启动期间连接失败是预期行为。
+    }
+    await delay(100, undefined, { signal });
   }
+  throw new Error('等待 codex app-server 就绪超时');
+}
+
+export async function startManagedAppServer(port: number, signal?: AbortSignal) {
+  assertStartupActive(signal);
+  if (!(await portAvailable(port))) throw new Error(`app-server 端口 ${port} 已被占用`);
+  assertStartupActive(signal);
   const environment = appServerEnvironment();
-  const proxy = await createModelUploadProxy(await readModelUploadRoutes(environment));
-  // 已将原 OPENAI_BASE_URL 纳入固定上游，子进程只使用本次命令行路由。
-  delete environment.OPENAI_BASE_URL;
-  const child = spawn("codex", appServerCommand(port, proxy.overrides), {
-    stdio: ["ignore", "inherit", "inherit"],
-    env: environment,
-  });
-  const spawnError = new Promise<never>((_, reject) =>
-    child.once("error", (error) => reject(new Error(`无法启动 codex app-server：${error.message}`))),
-  );
+  const routes = await readModelUploadRoutes(environment, { signal });
+  assertStartupActive(signal);
+  const proxy = await createModelUploadProxy(routes);
+  let child: ChildProcess;
   try {
-    await Promise.race([waitUntilReady(port, child), spawnError]);
+    assertStartupActive(signal);
+    // 已将原 OPENAI_BASE_URL 纳入固定上游，子进程只使用本次命令行路由。
+    delete environment.OPENAI_BASE_URL;
+    child = spawn('codex', appServerCommand(port, proxy.overrides), {
+      stdio: ['ignore', 'inherit', 'inherit'], env: environment,
+    });
   } catch (error) {
-    if (child.exitCode === null) child.kill("SIGTERM");
     await proxy.close();
     throw error;
   }
-  let closing = false;
-  const exited = new Promise<number | null>((resolve) => {
-    child.once("exit", (code) => {
-      if (!closing) resolve(code);
-    });
+  let closing: Promise<void> | undefined;
+  let stopped = false;
+  let reportExit!: (code: number | null) => void;
+  const exited = new Promise<number | null>(resolve => reportExit = resolve);
+  const actualExit = new Promise<void>(resolve => {
+    child.once('exit', code => { if (!stopped) reportExit(code); resolve(); });
+    child.once('error', () => resolve());
   });
-  return {
-    child,
-    uploadMeter: proxy.meter,
-    onAuthModeChanged: proxy.setAuthMode,
-    exited,
-    async close() {
-      if (child.exitCode !== null) { await proxy.close(); return; }
-      closing = true;
-      child.kill("SIGTERM");
-      await new Promise<void>((resolve) => {
-        child.once("exit", () => resolve());
-        setTimeout(() => {
-          if (child.exitCode === null) child.kill("SIGKILL");
-        }, 3_000).unref();
-      });
-      await proxy.close();
-    },
-  };
+  const spawnError = new Promise<never>((_, reject) => child.once('error', () => reject(new Error('无法启动 codex app-server'))));
+  const cancel = () => { void close().catch(() => undefined); };
+  function close(): Promise<void> {
+    if (closing) return closing;
+    stopped = true;
+    closing = (async () => {
+      try {
+        if (child.pid && child.exitCode === null && child.signalCode === null) {
+          child.kill('SIGTERM');
+          const kill = setTimeout(() => { if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL'); }, 3000);
+          try { await actualExit; } finally { clearTimeout(kill); }
+        }
+        await actualExit;
+        await proxy.close();
+      } finally { signal?.removeEventListener('abort', cancel); }
+    })();
+    return closing;
+  }
+  signal?.addEventListener('abort', cancel, { once: true });
+  if (signal?.aborted) cancel();
+  try {
+    assertStartupActive(signal);
+    await Promise.race([waitUntilReady(port, child, signal), spawnError]);
+    assertStartupActive(signal);
+    return { child, uploadMeter: proxy.meter, onAuthModeChanged: proxy.setAuthMode, exited, close };
+  } catch (error) {
+    await close();
+    throw error;
+  }
 }

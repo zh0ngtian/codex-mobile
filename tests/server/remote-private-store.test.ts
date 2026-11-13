@@ -73,3 +73,34 @@ describe('Remote 网关私有存储', () => {
     expect(await readdir(path)).toEqual(['record.json']);
   });
 });
+it('已死owner回收前锁目录被替换，即使PID和nonce相同也不能删除新inode', async () => {
+ const { path, store } = await fixture(); await store.readJson('init.json');
+ const { randomUUID } = await import('node:crypto'); const { spawnSync } = await import('node:child_process'); const fs = await import('node:fs'); const { vi } = await import('vitest');
+ const pid = spawnSync(process.execPath, ['-e', '']).pid; const nonce = randomUUID(); const lock = join(path, '.init-test.lock'); const name = `owner-${pid}-${nonce}.json`; const contents = JSON.stringify({ version: 1, pid, nonce });
+ await mkdir(lock, { mode: 0o700 }); await writeFile(join(lock, name), contents, { mode: 0o600 });
+ const originalKill = process.kill; let changed = false;
+ const spy = vi.spyOn(process, 'kill').mockImplementation(((p: number, signal: any) => {
+  if (p === pid && !changed) { changed = true; fs.renameSync(lock, `${lock}-old`); fs.mkdirSync(lock, { mode: 0o700 }); fs.writeFileSync(join(lock, name), contents, { mode: 0o600 }); }
+  return originalKill(p, signal);
+ }) as typeof process.kill);
+ try { await expect(store.withInitialization('test', async () => 'unsafe', { timeoutMs: 20, pollMs: 1 })).rejects.toBeDefined(); expect(await readFile(join(lock, name), 'utf8')).toBe(contents); }
+ finally { spy.mockRestore(); }
+});
+it('锁owner被替换为FIFO时有界拒绝，不遗留永久挂起open', async () => {
+ const { path, store } = await fixture(); await store.readJson('init.json'); const { randomUUID } = await import('node:crypto'); const { spawnSync, execFileSync } = await import('node:child_process'); const sync = await import('node:fs');
+ const pid = spawnSync(process.execPath, ['-e', '']).pid; const nonce = randomUUID(); const lock = join(path, '.init-fifo.lock'); const owner = join(lock, `owner-${pid}-${nonce}.json`); await mkdir(lock, { mode: 0o700 }); execFileSync('mkfifo', ['-m', '600', owner]);
+ const operation = store.withInitialization('fifo', async () => 'unsafe', { timeoutMs: 20, pollMs: 1 }).then(() => 'resolved', () => 'rejected');
+ const result = await Promise.race([operation, new Promise<string>(resolve => setTimeout(() => resolve('blocked'), 100))]);
+ if (result === 'blocked') { const writer = sync.openSync(owner, sync.constants.O_WRONLY | sync.constants.O_NONBLOCK); sync.closeSync(writer); await operation; }
+ expect(result).toBe('rejected'); expect((await lstat(owner)).isFIFO()).toBe(true);
+});
+
+it('初始化准备路径被替换后失败清理保留新目录及未知内容', async () => {
+ const { path, store } = await fixture(); await store.readJson('init.json'); const fs = await import('node:fs/promises'); const { syncBuiltinESMExports } = await import('node:module'); const { vi } = await import('vitest'); const original = fs.rename; let replacement!: string;
+ const spy = vi.spyOn(fs.default, 'rename').mockImplementation((async (from: any, to: any) => {
+  if (String(from).includes('.lock-prepare-') && to === join(path, '.init-test.lock')) { replacement = from; await original(from, `${from}-old`); await mkdir(from, { mode: 0o700 }); await writeFile(join(from, 'replacement'), 'must-remain'); throw new Error('synthetic-rename-failure'); }
+  return original(from, to);
+ }) as typeof fs.rename); syncBuiltinESMExports();
+ try { await expect(store.withInitialization('test', async () => 'unsafe')).rejects.toBeDefined(); expect(await readFile(join(replacement, 'replacement'), 'utf8').catch(() => 'missing')).toBe('must-remain'); }
+ finally { spy.mockRestore(); syncBuiltinESMExports(); }
+});
