@@ -128,7 +128,8 @@ try:
     def capture(index,pipe,cap):
         try:
             while True:
-                part=pipe.read(min(16384,cap+1))
+                # 只读当前可用字节；剩余额度加一即可证明越界，不等缓冲块填满。
+                part=pipe.read1(min(16384,cap-len(outputs[index])+1))
                 if not part: break
                 if len(outputs[index])+len(part)>cap: caphit.set();break
                 outputs[index].extend(part)
@@ -339,7 +340,8 @@ export class RemoteCommands {
         }
         if (record.kind !== (probe ? 'probe' : 'result')) throw new RemoteCommandError('protocol', true);
         if (record.kind === 'result') {
-          if (!Number.isSafeInteger(record.exitCode) || (record.exitCode as number) < -2147483648 || (record.exitCode as number) > 2147483647) throw new RemoteCommandError('protocol', true);
+          const windows = this.metadata.platformFamily === 'windows';
+          if (!Number.isSafeInteger(record.exitCode) || (record.exitCode as number) < (windows ? 0 : -2147483648) || (record.exitCode as number) > (windows ? 4294967295 : 2147483647)) throw new RemoteCommandError('protocol', true);
           const captured = (value: unknown, cap: number): Buffer => {
             if (!object(value) || Object.keys(value).sort().join(',') !== 'base64,sha256,size' || !Number.isSafeInteger(value.size) || (value.size as number) < 0 || (value.size as number) > cap || typeof value.sha256 !== 'string' || !/^[0-9a-f]{64}$/.test(value.sha256)) throw new RemoteCommandError('protocol', true);
             const bytes = base64(value.base64, cap); if (bytes.length !== value.size || digest(bytes) !== value.sha256) throw new RemoteCommandError('protocol', true); return bytes;

@@ -160,6 +160,30 @@ it('stdout/stderr分别在字节上限内完整返回，越界即失败并终止
   for (const terminate of f.frames.filter(value => value.method === 'command/exec/terminate')) expect(ids.has((terminate.params as Record<string, JsonValue>).processId)).toBe(true);
 });
 
+it.each([16383, 16384, 20000, 524288])('QUALITY复现：stdout上限%i仅越界一字节且管道保持开启时立即报输出越界', async cap => {
+  const f = await prepared();
+  await expect(f.adapter.execute({
+    argv: py('import sys,time; sys.stdout.buffer.write(b"x"*int(sys.argv[1])); sys.stdout.flush(); time.sleep(5)', String(cap + 1)),
+    cwd: f.directory, ...(cap === 524288 ? {} : { stdoutBytesCap: cap }), timeoutMs: 1200,
+  })).rejects.toMatchObject({ code: 'output-limit', mayHaveBeenSent: true, outcome: 'unknown' });
+  await until(() => f.processes.size === 0);
+  expect(f.frames.filter(frame => frame.method === 'command/exec/terminate')).toHaveLength(1);
+  for (const name of ['notification', 'disconnect', 'close']) expect(f.session.listenerCount(name)).toBe(0);
+  expect(f.session.ready).toBe(true);
+});
+
+it('QUALITY复现：stderr上限20000仅越界一字节且管道保持开启时立即报输出越界', async () => {
+  const f = await prepared();
+  await expect(f.adapter.execute({
+    argv: py('import sys,time; sys.stderr.buffer.write(b"x"*20001); sys.stderr.flush(); time.sleep(5)'),
+    cwd: f.directory, stderrBytesCap: 20000, timeoutMs: 1200,
+  })).rejects.toMatchObject({ code: 'output-limit', mayHaveBeenSent: true, outcome: 'unknown' });
+  await until(() => f.processes.size === 0);
+  expect(f.frames.filter(frame => frame.method === 'command/exec/terminate')).toHaveLength(1);
+  for (const name of ['notification', 'disconnect', 'close']) expect(f.session.listenerCount(name)).toBe(0);
+  expect(f.session.ready).toBe(true);
+});
+
 it('文本解码严格拒绝无效UTF8，二进制命令结果仍保留原字节', async () => {
   const f = await prepared(); const result = await f.adapter.execute({ argv: py('import sys; sys.stdout.buffer.write(bytes([255,0,128]))'), cwd: f.directory });
   expect(result.stdout).toEqual(Buffer.from([255,0,128])); expect(() => decodeRemoteCommandText(result.stdout)).toThrow();
