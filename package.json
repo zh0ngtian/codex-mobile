@@ -39,7 +39,7 @@
     "dev:gateway": "NODE_ENV=development CODEX_MOBILE_SERVE_STATIC=false tsx watch server/index.ts",
     "dev:web": "NODE_ENV=development vite --host 0.0.0.0 --port 5173 --strictPort",
     "build": "tsc -b && vite build",
-    "build:server": "tsc -p tsconfig.npm.json",
+    "build:server": "tsc -p tsconfig.npm.json && node scripts/copy-server-resources.mjs",
     "build:package": "npm run build && npm run build:server",
     "prepack": "npm run build:package",
     "start": "NODE_ENV=production tsx server/index.ts",

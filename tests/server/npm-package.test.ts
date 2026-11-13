@@ -68,6 +68,13 @@ describe("npm 全局安装包", () => {
     );
   });
 
+  it("服务端构建会复制Secure Enclave源码到npm运行目录", () => {
+    expect(packageJson.scripts["build:server"]).toContain("node scripts/copy-server-resources.mjs");
+    const copySource = readFileSync(resolve("scripts/copy-server-resources.mjs"), "utf8");
+    expect(copySource).toContain("device-key.swift");
+    expect(copySource).toContain("npm-dist/server/remote");
+  });
+
   it("CLI 提供帮助和版本信息", () => {
     const help = execFileSync(process.execPath, [cliPath, "--help"], {
       encoding: "utf8",
