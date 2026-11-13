@@ -107,7 +107,7 @@ export class SecureEnclaveDeviceKey implements DeviceKeySigner {
   async getIdentity(): Promise<DeviceIdentity> {
     const keyRecord = await this.loadRecord();
     const identity = validateDeviceIdentity(await this.call('public', { keyRecord }));
-    if (identity.keyId !== keyRecord.keyId) throw keyError();
+    if (identity.keyId !== keyRecord.keyId || JSON.stringify(await this.loadRecord()) !== JSON.stringify(keyRecord)) throw keyError();
     return identity;
   }
   async sign(bytes: Uint8Array): Promise<string> {

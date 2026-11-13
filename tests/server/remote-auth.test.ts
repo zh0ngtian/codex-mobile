@@ -4,7 +4,7 @@ import { mkdtemp, readFile, realpath, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { RemoteAuthProviderImpl, parseManagedAuthRecord, deviceIdentityHash, type ManagedAuth } from '../../server/remote/auth.js';
+import { RemoteAuthProviderImpl, RemoteNetworkError, parseManagedAuthRecord, deviceIdentityHash, type ManagedAuth } from '../../server/remote/auth.js';
 import { PrivateStore } from '../../server/remote/private-store.js';
 import type { DeviceIdentity, DeviceKeySigner } from '../../server/remote/device-key.js';
 import { RemoteAuthRequiredError } from '../../server/remote/relay.js';
@@ -249,17 +249,80 @@ describe('Remote refresh与WebSocket证明', () => {
     f.deviceKey.sign = async bytes => { const proof = await originalSign(bytes); f.deviceKey.getIdentity = async () => ({ ...f.identity, publicKeySpkiDerBase64: replacement }); return proof; };
     await expect(connection.signChallenge(challenge())).rejects.toBeInstanceOf(RemoteAuthRequiredError);
   });
+  it.each([
+    { clientId: 'replacement-client' }, { accountId: 'replacement-workspace' }, { accountUserId: 'replacement-user' }, { managedAccountUserId: 'replacement-canonical-user' }, null,
+  ])('最终硬件核对等待期间替换或删除注册绑定 %j 时不返回旧证明', async change => {
+    const f = await fixture(); await f.provider.enroll(stepUp()); const connection = await f.provider.prepareConnection();
+    const stored = await f.store.readJson('enrollment.json') as object;
+    const originalSign = f.deviceKey.sign; const originalIdentity = f.deviceKey.getIdentity; let signed = false; let changed = false;
+    f.deviceKey.sign = async bytes => { const result = await originalSign(bytes); signed = true; return result; };
+    f.deviceKey.getIdentity = async () => {
+      const identity = await originalIdentity();
+      if (signed && !changed) {
+        changed = true;
+        if (change) await f.store.writeJson('enrollment.json', { ...stored, ...change });
+        else await rm(join(f.store.directory, 'enrollment.json'));
+      }
+      return identity;
+    };
+    await expect(connection.signChallenge(challenge())).rejects.toBeInstanceOf(RemoteAuthRequiredError);
+    expect(changed).toBe(true);
+    expect(await f.store.readJson('enrollment.json')).toEqual(change ? { ...stored, ...change } : null);
+  });
+  it.each([{ accountId: 'replacement-workspace' }, { accountUserId: 'replacement-user' }])('最终硬件核对等待期间普通账号变化 %j 时不返回旧证明', async change => {
+    const f = await fixture(); await f.provider.enroll(stepUp()); const connection = await f.provider.prepareConnection();
+    const originalSign = f.deviceKey.sign; const originalIdentity = f.deviceKey.getIdentity; let signed = false;
+    f.deviceKey.sign = async bytes => { const result = await originalSign(bytes); signed = true; return result; };
+    f.deviceKey.getIdentity = async () => { const identity = await originalIdentity(); if (signed) f.setAuth({ ...normalAuth(), ...change }); return identity; };
+    await expect(connection.signChallenge(challenge())).rejects.toBeInstanceOf(RemoteAuthRequiredError);
+  });
+  it('最终硬件核对等待期间返回变更后的key时不返回旧证明', async () => {
+    const f = await fixture(); await f.provider.enroll(stepUp()); const connection = await f.provider.prepareConnection();
+    const originalSign = f.deviceKey.sign; let signed = false;
+    f.deviceKey.sign = async bytes => { const result = await originalSign(bytes); signed = true; return result; };
+    f.deviceKey.getIdentity = async () => signed ? { ...f.identity, keyId: 'replacement-key' } : f.identity;
+    await expect(connection.signChallenge(challenge())).rejects.toBeInstanceOf(RemoteAuthRequiredError);
+  });
   it('初次enroll签名等待期间自己的hardware identity变化时不得提交finish', async () => {
     const f = await fixture(); const originalSign = f.deviceKey.sign;
     f.deviceKey.sign = async bytes => { const proof = await originalSign(bytes); f.deviceKey.getIdentity = async () => ({ ...f.identity, keyId: 'replacement-key' }); return proof; };
     await expect(f.provider.enroll(stepUp())).rejects.toBeInstanceOf(RemoteAuthRequiredError);
     expect(f.calls).toHaveLength(1); expect(await f.store.readJson('enrollment.json')).toBeNull();
   });
+  it.each([{ accountId: 'replacement-workspace' }, { accountUserId: 'replacement-user' }])('初次enroll提交前最后硬件等待中普通账号变化 %j 时不得持久化', async change => {
+    const f = await fixture(); const originalIdentity = f.deviceKey.getIdentity;
+    f.deviceKey.getIdentity = async () => { const identity = await originalIdentity(); if (f.calls.length === 2) f.setAuth({ ...normalAuth(), ...change }); return identity; };
+    await expect(f.provider.enroll(stepUp())).rejects.toBeInstanceOf(RemoteAuthRequiredError);
+    expect(await f.store.readJson('enrollment.json')).toBeNull();
+  });
   it('硬件身份读取错误脱敏', async () => {
     const f = await fixture(); await f.provider.enroll(stepUp());
     const provider = new RemoteAuthProviderImpl({ ...f.options, deviceKey: { ...f.deviceKey, getIdentity: async () => { throw new Error('secret-key-location'); } } });
     const error = await provider.prepareConnection().catch(error => error);
     expect(error).toBeInstanceOf(RemoteAuthRequiredError); expect(error.message).not.toContain('secret');
+  });
+  it.each(['loader', 'identity', 'sign', 'fetch', 'body'] as const)('外部%s回调抛出已知类型异常也保持分类并脱敏', async source => {
+    for (const ErrorType of [RemoteAuthRequiredError, RemoteNetworkError]) {
+      const f = await fixture(); let enabled = false;
+      const fail = () => { throw new ErrorType('Bearer synthetic-review-token https://synthetic.invalid/private'); };
+      const options = { ...f.options,
+        loadManagedAuth: async () => source === 'loader' && enabled ? fail() : f.options.loadManagedAuth(),
+        deviceKey: {
+          getIdentity: async () => source === 'identity' && enabled ? fail() : f.deviceKey.getIdentity(),
+          sign: async (bytes: Uint8Array) => source === 'sign' && enabled ? fail() : f.deviceKey.sign(bytes),
+        },
+        fetch: (async (...args: Parameters<typeof fetch>) => {
+          if (source === 'fetch' && enabled) return fail();
+          if (source === 'body' && enabled) return new Response(new ReadableStream({ start(controller) { try { fail(); } catch (error) { controller.error(error); } } }));
+          return f.options.fetch(...args);
+        }) as typeof fetch,
+      };
+      const provider = new RemoteAuthProviderImpl(options); await provider.enroll(stepUp()); const connection = await provider.prepareConnection();
+      enabled = true;
+      const error = await (source === 'fetch' || source === 'body' ? new RemoteAuthProviderImpl(options).prepareConnection() : connection.signChallenge(challenge())).catch(error => error);
+      expect(error).toBeInstanceOf(ErrorType);
+      expect(error.message).not.toContain('synthetic-review-token'); expect(error.message).not.toContain('https://synthetic.invalid');
+    }
   });
   it('存储损坏或own key变化时不refresh、不重新enroll', async () => {
     const f = await fixture(); await f.provider.enroll(stepUp());

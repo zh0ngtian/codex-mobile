@@ -31,6 +31,14 @@ async function bounded<T>(promise: Promise<T>, timeoutMs: number, onTimeout?: ()
     })]);
   } finally { clearTimeout(timer); }
 }
+/** 外部回调可能自行抛出同类型错误；仅采用分类，不采用其文本或 cause。 */
+async function external<T>(operation: () => Promise<T>, authMessage: string, defaultNetwork = false): Promise<T> {
+  try { return await operation(); }
+  catch (error) {
+    if (error instanceof RemoteNetworkError || (defaultNetwork && !(error instanceof RemoteAuthRequiredError))) throw new RemoteNetworkError();
+    throw new RemoteAuthRequiredError(authMessage);
+  }
+}
 
 /** 官方 Remote 协议只使用网关自己的注册身份；普通账号刷新由调用方管理。 */
 export class RemoteAuthProviderImpl implements RemoteAuthProvider {
@@ -55,22 +63,25 @@ export class RemoteAuthProviderImpl implements RemoteAuthProvider {
   }
   private async loadAuth(binding?: Binding): Promise<ManagedAuth> {
     let auth: ManagedAuth;
-    try { auth = validateManagedAuth(await bounded(this.options.loadManagedAuth(), this.requestTimeoutMs)); }
+    try { auth = validateManagedAuth(await bounded(external(() => this.options.loadManagedAuth(), '普通账号认证不可用'), this.requestTimeoutMs)); }
     catch (error) { if (error instanceof RemoteNetworkError || error instanceof RemoteAuthRequiredError) throw error; throw new RemoteAuthRequiredError('普通账号认证不可用'); }
     if (binding) assertAccount(auth, binding);
     return auth;
   }
   private async identity(record?: EnrollmentRecord): Promise<DeviceIdentity> {
     let identity: DeviceIdentity;
-    try { identity = validateDeviceIdentity(await bounded(this.options.deviceKey.getIdentity(), this.signTimeoutMs)); }
+    try { identity = validateDeviceIdentity(await bounded(external(() => this.options.deviceKey.getIdentity(), '自己的 Remote 硬件身份不可用'), this.signTimeoutMs)); }
     catch (error) { if (error instanceof RemoteNetworkError) throw error; throw new RemoteAuthRequiredError('自己的 Remote 硬件身份不可用'); }
     if (record && (deviceIdentityHash(identity) !== record.identityHash || JSON.stringify(identity) !== JSON.stringify(record.identity))) invalid();
     return identity;
   }
   private async recheck(record: EnrollmentRecord): Promise<void> {
+    // 硬件 helper 是最慢的 await；其后再读取账号和注册记录，不能让
+    // helper 等待期间已完成的绑定变化落在最终复核之外。
+    await this.identity(record);
+    await this.loadAuth(record);
     const current = await this.getEnrollment();
     if (!current || JSON.stringify(current) !== JSON.stringify(record)) invalid();
-    await this.loadAuth(record); await this.identity(record);
   }
   async enroll(stepUpToken: string): Promise<EnrollmentRecord> {
     if (this.enrolling) invalid();
@@ -91,8 +102,9 @@ export class RemoteAuthProviderImpl implements RemoteAuthProvider {
           device_identity: { key_id: identity.keyId, public_key_spki_der_base64: identity.publicKeySpkiDerBase64, algorithm: identity.algorithm, protection_class: identity.protectionClass },
           device_key_proof: this.restProof(start.challenge, proof) }, ownBinding);
         const session = validateSession(result, start, this.now());
+        if (deviceIdentityHash(await this.identity()) !== deviceIdentityHash(identity)) invalid();
         await this.loadAuth(ownBinding);
-        if (deviceIdentityHash(await this.identity()) !== deviceIdentityHash(identity) || await this.getEnrollment()) invalid();
+        if (await this.getEnrollment()) invalid();
         const record: EnrollmentRecord = { version: 1, clientId: start.clientId, accountId: auth.accountId, accountUserId: start.accountUserId, managedAccountUserId: auth.accountUserId, identityHash: deviceIdentityHash(identity), identity };
         if (!await this.options.store.createJson('enrollment.json', record)) invalid();
         const authoritative = await this.getEnrollment();
@@ -146,14 +158,15 @@ export class RemoteAuthProviderImpl implements RemoteAuthProvider {
     if (typeof payload.tokenExpiresAt === 'number' && payload.tokenExpiresAt <= this.now() / 1000) invalid();
     const bytes = Buffer.from(JSON.stringify({ domain: 'codex-device-key-sign-payload/v1', payload }));
     let signature: string;
-    try { signature = await bounded(this.options.deviceKey.sign(bytes), this.signTimeoutMs); }
+    try { signature = await bounded(external(() => this.options.deviceKey.sign(bytes), 'Remote 硬件签名失败'), this.signTimeoutMs); }
     catch (error) { if (error instanceof RemoteNetworkError) throw error; throw new RemoteAuthRequiredError('Remote 硬件签名失败'); }
     if (!verifyDeviceSignature(identity, bytes, signature)) invalid();
     // 硬件签名可能等待：证明离开 provider 前重新读取全部持久化绑定与自己的密钥。
     if (record) await this.recheck(record);
     else {
+      if (deviceIdentityHash(await this.identity()) !== deviceIdentityHash(identity)) invalid();
       await this.loadAuth(binding);
-      if (deviceIdentityHash(await this.identity()) !== deviceIdentityHash(identity) || await this.getEnrollment()) invalid();
+      if (await this.getEnrollment()) invalid();
     }
     if (typeof payload.challengeExpiresAt === 'number' && payload.challengeExpiresAt <= this.now() / 1000) invalid();
     if (typeof payload.tokenExpiresAt === 'number' && payload.tokenExpiresAt <= this.now() / 1000) invalid();
@@ -170,7 +183,9 @@ export class RemoteAuthProviderImpl implements RemoteAuthProvider {
     const auth = await this.loadAuth(binding);
     const controller = new AbortController();
     try {
-      return await bounded((async () => {
+      // fetch 返回后的响应流仍是外部输入；与 fetch 本身共用脱敏边界。
+      // bounded 位于其外，保留 provider 自己产生的超时提示。
+      return await bounded(external(async () => {
         const response = await this.fetcher(`${REMOTE_ORIGIN}${REMOTE_CLIENT_PATH}/${route}`, { method: 'POST', headers: { ...this.headers(auth), 'Content-Type': 'application/json' }, body: JSON.stringify(body), redirect: 'error', signal: controller.signal });
         if (!response.ok) {
           void response.body?.cancel().catch(() => undefined);
@@ -189,7 +204,7 @@ export class RemoteAuthProviderImpl implements RemoteAuthProvider {
           }
           try { return JSON.parse(Buffer.concat(chunks).toString('utf8')) as unknown; } catch { return invalid(); }
         } finally { reader.releaseLock(); }
-      })(), this.requestTimeoutMs, () => controller.abort());
+      }, 'Remote 认证已失效或被拒绝', true), this.requestTimeoutMs, () => controller.abort());
     } catch (error) {
       if (error instanceof RemoteAuthRequiredError || error instanceof RemoteNetworkError) throw error;
       throw new RemoteNetworkError();

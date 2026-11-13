@@ -39,6 +39,18 @@ describe('自己的 Secure Enclave 密钥', () => {
     await expect(key.create()).rejects.toThrow();
     expect(calls).toEqual([]);
   });
+  it.each([false, true])('public helper等待期间密钥记录被替换或删除（删除=%s）时拒绝旧身份', async remove => {
+    const { key, store, runHelper } = await fixture(); await key.create();
+    const checking = new SecureEnclaveDeviceKey({ store, runHelper: async (operation, input) => {
+      const result = await runHelper(operation, input);
+      if (operation === 'public') {
+        if (remove) await rm(join(store.directory, 'device-key.json'));
+        else await store.writeJson('device-key.json', { keyId: 'replacement-key', sealedKeyBase64: 'bmV3LXNlYWxlZA==' });
+      }
+      return result;
+    } });
+    await expect(checking.getIdentity()).rejects.toThrow('Secure Enclave');
+  });
   it('独立ECDSA验签并拒绝错误签名和超限stdin', async () => {
     const { key, store, runHelper, identity } = await fixture();
     await key.create();
