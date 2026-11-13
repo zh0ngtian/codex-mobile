@@ -1,0 +1,79 @@
+{
+  "schemaVersion": 1,
+  "sourceCommit": "b78bd619456aa0c07d6049df4880ecb942bd6b22",
+  "startedAt": "2026-11-13T07:46:45.009Z",
+  "completedAt": "2026-11-13T07:47:04.993Z",
+  "passed": true,
+  "scope": [
+    "隔离私有目录中复制已有网关自有登记与密钥",
+    "一个隔离控制器、官方单物理连接、初始化及只读模型目录RPC",
+    "无重新授权、登记、模型推理、聊天或现役网关修改"
+  ],
+  "timingsMs": {
+    "initialHelperPrepare": 569,
+    "initialManagedAuthLoad": 4761,
+    "keyPublicChecks": [
+      17,
+      15,
+      13,
+      11,
+      10,
+      10,
+      20,
+      22,
+      14,
+      10,
+      9,
+      25,
+      17,
+      9,
+      9,
+      8,
+      8,
+      7,
+      10,
+      16
+    ],
+    "keySign": [
+      35,
+      21
+    ],
+    "remotePrepareConnection": 2862,
+    "remoteRefreshStartHeaders": 2009,
+    "remoteRefreshFinishHeaders": 690,
+    "controllerStartReturn": 1768,
+    "waitOnlineAfterStartReturn": 10952,
+    "managementSessionInitialize": 1274,
+    "modelList": 600
+  },
+  "interpretation": [
+    "本次单样本硬件读取与签名耗时远小于认证和连接等待，不支持通过移除身份复核优化延迟。",
+    "REST计时到fetch返回响应头，完整providerPrepare包含读取、核验与签名；嵌套区间不可重复相加。",
+    "首次受管认证读取和初始helper准备发生在controller.start之前，不能省略后宣称完整冷启动耗时。"
+  ],
+  "limitations": [
+    "一次冷启动分段测量，不是P95、持续8小时或显式恢复验收。",
+    "已用第二次隔离样本记录socket创建至升级及挑战签名；DNS/TLS/HTTP升级仍未分别拆分。",
+    "本次只读RPC不覆盖业务队列、手机入口、文件与统计持续更新。"
+  ],
+  "secondHandshakeSample": {
+    "passed": true,
+    "sourceCommit": "b78bd619456aa0c07d6049df4880ecb942bd6b22",
+    "startedAt": "2026-11-13T07:49:19.842Z",
+    "completedAt": "2026-11-13T07:49:33.837Z",
+    "timingsMs": {
+      "initialManagedAuthLoad": 3768,
+      "remotePrepareConnection": 3847,
+      "socketCreatedToUpgrade": 2288,
+      "challengeProof": 97,
+      "managementSessionInitialize": 994,
+      "modelList": 627,
+      "controllerStartingToModelList": 9621
+    },
+    "method": "仅在隔离自有socket上附加只读事件观察器；不修改连接、认证、帧内容或产品源码。",
+    "notes": [
+      "socket升级耗时包含DNS/TLS/HTTP升级等待，尚未进一步拆分。",
+      "本次从controller启动到模型列表9621ms，初次受管认证读取仍在其前；两个样本存在网络波动，不能用较快样本替代P95。"
+    ]
+  }
+}

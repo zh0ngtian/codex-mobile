@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-11-13",
+  "baselineMain": "b78bd619456aa0c07d6049df4880ecb942bd6b22",
+  "sourceCommit": "2262a93427e967ef3d2f1aaa9b3fd3c09ab3d868",
+  "passed": true,
+  "scope": "Task2b.3a一次性OAuth模块；隔离回调与替身交换，不是实际授权验收",
+  "sourceFiles": [
+    "server/remote/oauth.ts",
+    "tests/server/remote-oauth.test.ts"
+  ],
+  "checks": {
+    "oauthTestsPassed": 97,
+    "remoteTestsPassedIncludingOAuth": 375,
+    "remoteExistingHardwareOptInSkipped": 1,
+    "strictServerTypeScript": "passed",
+    "serverBuild": "passed",
+    "diffCheck": "passed",
+    "independentSpecReview": "passed",
+    "independentQualityReview": {
+      "readyToMerge": "yes",
+      "critical": 0,
+      "important": 0,
+      "minor": 0
+    }
+  },
+  "regressionsObservedFailingBeforeFix": [
+    "异步回调响应收尾期间完整受管身份发生变化",
+    "事件循环同步阻塞后越过总期限、浏览器或交换/响应读取阶段绝对期限",
+    "最终受管身份证明挂起、晚返回或期间取消/关闭",
+    "最后异步等待期间跨越JWT到期或iat/pwd_auth_time新鲜度边界"
+  ],
+  "isolation": {
+    "httpCallback": "真实HTTP、测试专用临时端口，映射逻辑固定端口",
+    "browserAndTokenExchange": "测试替身",
+    "realCredentialsRead": false,
+    "realOAuthOrEnrollment": false,
+    "actualFixedCallbackPortsUsed": false,
+    "productionServicesChanged": false,
+    "testChatsCreated": false,
+    "clientBuiltOrReleased": false
+  },
+  "limitations": [
+    "尚未接入Mac CLI或运行网关，不代表Task2b.3或Task2整体完成。",
+    "不代表实际官方OAuth、长期运行、OS进程重启、手机交接或延迟P95通过。",
+    "不包含目标业务路由、共享队列、完整统计读取或客户端模式入口。"
+  ]
+}
