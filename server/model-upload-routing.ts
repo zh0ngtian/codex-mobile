@@ -26,7 +26,8 @@ export function modelUploadRoutes(config: RoutingConfig,
 
 /** 通过 Codex 自己解析用户配置及 profile；不复制 TOML 解析和优先级规则。 */
 export async function readModelUploadRoutes(environment: Record<string, string | undefined>,
-  options: { executable?: string; args?: string[]; signal?: AbortSignal } = {}) {
+  options: { executable?: string; args?: string[]; signal?: AbortSignal; assertOwnership?: () => void } = {}) {
+  options.assertOwnership?.();
   if (options.signal?.aborted) throw new Error('模型路由读取已取消');
   const child = spawn(options.executable ?? 'codex', [...(options.args ?? []), 'app-server', '--listen', 'stdio://'], {
     env: environment, stdio: ['pipe', 'pipe', 'ignore'],
@@ -58,6 +59,7 @@ export async function readModelUploadRoutes(environment: Record<string, string |
   if (options.signal?.aborted) cancel();
   const timeout = setTimeout(fail, 15_000);
   function request(method: string, params: unknown) {
+    options.assertOwnership?.();
     if (failure) return Promise.reject(failure);
     const id = ++nextId;
     return new Promise<any>((resolve, reject) => {
@@ -67,8 +69,10 @@ export async function readModelUploadRoutes(environment: Record<string, string |
   }
   try {
     await request('initialize', { clientInfo: { name: 'codex-mobile-model-meter', version: '1' } });
+    options.assertOwnership?.();
     child.stdin.write(JSON.stringify({ method: 'initialized' }) + '\n');
     const config = await request('config/read', { includeLayers: false });
+    options.assertOwnership?.();
     // account/read 在新版 CLI 中可能触发远程 workspace discovery；计量启动不额外查询账户。
     // 默认提供商由模型请求自己的 ChatGPT-Account-ID 和网关已有的认证模式事件选路。
     if (options.signal?.aborted) throw new Error('模型路由读取已取消');
@@ -84,6 +88,7 @@ export async function readModelUploadRoutes(environment: Record<string, string |
       try { await exited; } finally { clearTimeout(kill); }
     }
     await exited;
+    options.assertOwnership?.();
     if (options.signal?.aborted) throw new Error('模型路由读取已取消');
   }
 }

@@ -12,6 +12,316 @@ import { RemoteRuntime } from '../../server/remote/runtime.js';
 import { RemoteController } from '../../server/remote/controller.js';
 import { RemoteRelay } from '../../server/remote/relay.js';
 import { WebSocketServer } from 'ws';
+import { RemoteIdentityRegistry } from '../../server/remote/identity-registry.js';
+
+it('归属清理末次锁检查await期间替换root，不删除新root中的空锁目录', async () => {
+  const parent = await fs.mkdtemp(join(await fs.realpath(tmpdir()), 'owner-cleanup-proof-'));
+  const root = join(parent, 'r');
+  const owner = await acquireRemoteOwner(new PrivateStore(root));
+  const lock = join(root, '.init-gateway-owner.lock');
+  const original = fs.lstat;
+  let changed = false;
+  const spy = vi.spyOn(fs, 'lstat').mockImplementation(async (...args: Parameters<typeof original>) => {
+    const stat = await Reflect.apply(original, fs, args);
+    if (String(args[0]) === lock && !changed && (await fs.readdir(lock)).length === 0) {
+      changed = true;
+      await fs.rename(root, `${root}-moved`);
+      await fs.mkdir(root, { mode: 0o700 });
+      await fs.mkdir(lock, { mode: 0o700 });
+    }
+    return stat;
+  });
+  syncBuiltinESMExports();
+  try {
+    await expect(owner.close()).rejects.toBeDefined();
+    expect(changed).toBe(true);
+    expect(await fs.readdir(root)).toEqual(['.init-gateway-owner.lock']);
+    expect(await fs.readdir(lock)).toEqual([]);
+    expect(owner.signal.aborted).toBe(true);
+  } finally {
+    spy.mockRestore();
+    syncBuiltinESMExports();
+    await owner.close().catch(() => undefined);
+    await fs.rm(parent, { recursive: true, force: true });
+  }
+});
+
+it('Runtime正常收尾解除自己的归属监听器，同一owner可再次创建Runtime', async () => {
+  const { getEventListeners } = await import('node:events');
+  const parent = await fs.mkdtemp(join(await fs.realpath(tmpdir()), 'owner-listener-proof-'));
+  const owner = await acquireRemoteOwner(new PrivateStore(join(parent, 'r')));
+  try {
+    for (let iteration = 0; iteration < 2; iteration++) {
+      const runtime = new RemoteRuntime({ store: owner.store, canonicalUrl: 'ws://127.0.0.1:1' });
+      await runtime.start();
+      expect(getEventListeners(owner.signal, 'abort')).toHaveLength(1);
+      await runtime.settled();
+      expect(getEventListeners(owner.signal, 'abort')).toHaveLength(0);
+    }
+  }
+  finally {
+    await owner.close();
+    await fs.rm(parent, { recursive: true, force: true });
+  }
+});
+
+it.each(['root', 'ancestor'] as const)('首次异步FS返回前替换%s也不能重建或chmod后来目录', async (kind) => {
+  const parent = await fs.mkdtemp(join(await fs.realpath(tmpdir()), 'owner-first-proof-'));
+  const ancestor = join(parent, 'a');
+  const root = join(ancestor, 'r');
+  await fs.mkdir(root, { recursive: true, mode: 0o700 });
+  const original = fs.lstat;
+  let changed = false;
+  const spy = vi.spyOn(fs, 'lstat').mockImplementation(async (...args: Parameters<typeof original>) => {
+    const stat = await Reflect.apply(original, fs, args);
+    if (String(args[0]) === (kind === 'root' ? root : ancestor) && !changed) {
+      changed = true;
+      await fs.rename(kind === 'root' ? root : ancestor, `${kind === 'root' ? root : ancestor}-moved`);
+      await fs.mkdir(root, { recursive: true, mode: 0o755 });
+    }
+    return stat;
+  });
+  syncBuiltinESMExports();
+  try {
+    const pending = acquireRemoteOwner(new PrivateStore(root));
+    await expect(pending).rejects.toBeDefined();
+    await pending.settled().catch(() => undefined);
+    expect(changed).toBe(true);
+    expect(await fs.readdir(root)).toEqual([]);
+    expect((await original(root)).mode & 0o777).toBe(0o755);
+  }
+  finally {
+    spy.mockRestore();
+    syncBuiltinESMExports();
+    await fs.rm(parent, { recursive: true, force: true });
+  }
+});
+
+it('原root移回原路径也不能恢复已失效归属；同PID/nonce的owner替换inode仍拒绝', async () => {
+  const parent = await fs.mkdtemp(join(await fs.realpath(tmpdir()), 'owner-permanent-proof-'));
+  const root = join(parent, 'r');
+  const owner = await acquireRemoteOwner(new PrivateStore(root));
+  const lock = join(root, '.init-gateway-owner.lock');
+  const name = (await fs.readdir(lock))[0]!;
+  const contents = await fs.readFile(join(lock, name), 'utf8');
+  try {
+    await fs.rename(join(lock, name), join(parent, 'old-owner'));
+    await fs.writeFile(join(lock, name), contents, { mode: 0o600 });
+    expect(() => owner.assert()).toThrow();
+    expect(owner.signal.aborted).toBe(true);
+    await fs.rm(join(lock, name));
+    await fs.rename(join(parent, 'old-owner'), join(lock, name));
+    await expect(owner.store.writeJson('must-not-write.json', {})).rejects.toBeDefined();
+    expect(() => owner.assert()).toThrow();
+    expect(await fs.readFile(join(lock, name), 'utf8')).toBe(contents);
+    expect(await fs.readdir(root)).toEqual(['.init-gateway-owner.lock']);
+  }
+  finally {
+    await owner.close().catch(() => undefined);
+    await fs.rm(parent, { recursive: true, force: true });
+  }
+});
+
+it.each(['root', 'ancestor'] as const)('Runtime读取指针await期间替换%s：不交付结果、不创建canonical，可信settled完成', async (kind) => {
+  const parent = await fs.mkdtemp(join(await fs.realpath(tmpdir()), 'owner-runtime-await-'));
+  const ancestor = join(parent, 'a');
+  const root = join(ancestor, 'r');
+  const owner = await acquireRemoteOwner(new PrivateStore(root));
+  let entered!: () => void;
+  const started = new Promise<void>(resolve => entered = resolve);
+  let release!: () => void;
+  const gate = new Promise<void>(resolve => release = resolve);
+  const factory = vi.fn();
+  const runtime = new RemoteRuntime({ store: owner.store, canonicalFactory: factory, registry: { readActive: async () => {
+        entered();
+        await gate;
+        return null;
+      } } as any });
+  try {
+    const pending = runtime.start().then(() => 'delivered', () => 'rejected');
+    await started;
+    const target = kind === 'root' ? root : ancestor;
+    await fs.rename(target, `${target}-moved`);
+    await fs.mkdir(root, { recursive: true, mode: 0o700 });
+    release();
+    expect(await pending).toBe('rejected');
+    await runtime.settled();
+    expect(runtime.status().state).toBe('closed');
+    expect(factory).not.toHaveBeenCalled();
+    expect(await fs.readdir(root)).toEqual([]);
+  }
+  finally {
+    release();
+    await runtime.settled();
+    await owner.close().catch(() => undefined);
+    await fs.rm(parent, { recursive: true, force: true });
+  }
+});
+
+it.each(['root', 'ancestor'] as const)('Registry克隆与generation子store保留同一%s归属，不能写入替换目录', async (kind) => {
+  const parent = await fs.mkdtemp(join(await fs.realpath(tmpdir()), 'owner-registry-proof-'));
+  const ancestor = join(parent, 'a');
+  const root = join(ancestor, 'r');
+  const owner = await acquireRemoteOwner(new PrivateStore(root));
+  const registry = new RemoteIdentityRegistry(owner.store);
+  const candidate = await registry.beginCandidate();
+  try {
+    const target = kind === 'root' ? root : ancestor;
+    await fs.rename(target, `${target}-moved`);
+    await fs.mkdir(root, { recursive: true, mode: 0o755 });
+    await expect(candidate.store.writeJson('must-not-write.json', {})).rejects.toBeDefined();
+    await expect(registry.beginCandidate()).rejects.toBeDefined();
+    expect(await fs.readdir(root)).toEqual([]);
+    expect((await fs.lstat(root)).mode & 0o777).toBe(0o755);
+  }
+  finally {
+    await owner.close().catch(() => undefined);
+    await fs.rm(parent, { recursive: true, force: true });
+  }
+});
+
+it('Registry generation mkdir await期间替换root，不在新目录继续提交candidate', async () => {
+  const parent = await fs.mkdtemp(join(await fs.realpath(tmpdir()), 'owner-generation-proof-'));
+  const root = join(parent, 'r');
+  const owner = await acquireRemoteOwner(new PrivateStore(root));
+  const registry = new RemoteIdentityRegistry(owner.store);
+  const original = fs.mkdir;
+  let changed = false;
+  const spy = vi.spyOn(fs, 'mkdir').mockImplementation(async (...args: Parameters<typeof original>) => {
+    const value = await Reflect.apply(original, fs, args);
+    if (String(args[0]).startsWith(join(root, 'identity-')) && !changed) {
+      changed = true;
+      await fs.rename(root, `${root}-moved`);
+      await Reflect.apply(original, fs, [root, { mode: 0o700 }]);
+    }
+    return value;
+  });
+  syncBuiltinESMExports();
+  try {
+    await expect(registry.beginCandidate()).rejects.toBeDefined();
+    expect(changed).toBe(true);
+    expect(await fs.readdir(root)).toEqual([]);
+  }
+  finally {
+    spy.mockRestore();
+    syncBuiltinESMExports();
+    await owner.close().catch(() => undefined);
+    await fs.rm(parent, { recursive: true, force: true });
+  }
+});
+
+it('Relay等待认证期间root被替换，晚认证结果不得再建立物理连接', async () => {
+  const parent = await fs.mkdtemp(join(await fs.realpath(tmpdir()), 'owner-relay-proof-'));
+  const root = join(parent, 'r');
+  const owner = await acquireRemoteOwner(new PrivateStore(root));
+  const wss = new WebSocketServer({ host: '127.0.0.1', port: 0 });
+  await new Promise<void>(resolve => wss.once('listening', resolve));
+  let connections = 0;
+  wss.on('connection', () => connections++);
+  let release!: (value: any) => void;
+  let entered!: () => void;
+  const started = new Promise<void>(resolve => entered = resolve);
+  const relay = new RemoteRelay({ clientId: 'synthetic-client', assertOwnership: () => owner.assert(), authProvider: { prepareConnection: () => {
+        entered();
+        return new Promise(resolve => release = resolve);
+      } } } as any);
+  try {
+    await started;
+    await fs.rename(root, `${root}-moved`);
+    await fs.mkdir(root, { mode: 0o700 });
+    release({ url: `ws://127.0.0.1:${(wss.address() as any).port}`, headers: {}, signChallenge: async () => ({}) });
+    await new Promise(resolve => setTimeout(resolve, 60));
+    expect(connections).toBe(0);
+    expect(relay.state).toBe('closed');
+    expect(owner.signal.aborted).toBe(true);
+  }
+  finally {
+    await relay.settled();
+    for (const peer of wss.clients)
+      peer.terminate();
+    await new Promise<void>(resolve => wss.close(() => resolve()));
+    await owner.close().catch(() => undefined);
+    await fs.rm(parent, { recursive: true, force: true });
+  }
+});
+
+it.each(['root', 'ancestor'] as const)('取得归属的root fsync返回前替换%s：不得交付错位归属或污染新目录', async (kind) => {
+  const parent = await fs.mkdtemp(join(await fs.realpath(tmpdir()), 'owner-proof-'));
+  const ancestor = join(parent, 'a');
+  const root = join(ancestor, 'r');
+  await fs.mkdir(root, { recursive: true, mode: 0o700 });
+  const target = kind === 'root' ? root : ancestor;
+  const original = fs.open;
+  let changed = false;
+  const spy = vi.spyOn(fs, 'open').mockImplementation(async (...args: Parameters<typeof original>) => {
+    const handle = await Reflect.apply(original, fs, args);
+    if (String(args[0]) === root && !changed) {
+      const sync = handle.sync.bind(handle);
+      handle.sync = async () => {
+        await sync();
+        if (!changed) {
+          changed = true;
+          await fs.rename(target, `${target}-moved`);
+          await fs.mkdir(root, { recursive: true, mode: 0o700 });
+        }
+      };
+    }
+    return handle;
+  });
+  syncBuiltinESMExports();
+  try {
+    const pending = acquireRemoteOwner(new PrivateStore(root));
+    const result = await pending.then(async (owner) => {
+      await owner.close().catch(() => undefined);
+      return 'acquired';
+    }, () => 'rejected');
+    await pending.settled().catch(() => undefined);
+    expect(changed).toBe(true);
+    expect(result).toBe('rejected');
+    expect(await fs.readdir(root)).toEqual([]);
+  }
+  finally {
+    spy.mockRestore();
+    syncBuiltinESMExports();
+    await fs.rm(parent, { recursive: true, force: true });
+  }
+});
+
+it.each(['store', 'runtime', 'admin'] as const)('已交付归属后替换root：%s不得采用新目录', async (kind) => {
+  const parent = await fs.mkdtemp(join(await fs.realpath(tmpdir()), 'owner-proof-live-'));
+  const root = join(parent, 'r');
+  const originalStore = new PrivateStore(root);
+  const owner = await acquireRemoteOwner(originalStore);
+  const store = (owner as any).store ?? originalStore;
+  let runtime: RemoteRuntime | undefined;
+  let publication: ReturnType<typeof publishRemoteAdmin> | undefined;
+  try {
+    await fs.rename(root, `${root}-moved`);
+    await fs.mkdir(root, { mode: 0o700 });
+    if (kind === 'store')
+      await expect(store.writeJson('must-not-write.json', {})).rejects.toBeDefined();
+    if (kind === 'runtime') {
+      runtime = new RemoteRuntime({ store, canonicalUrl: 'ws://127.0.0.1:1' });
+      const status = await runtime.start().catch(() => runtime!.status());
+      expect(['closed', 'fault']).toContain(status.state);
+    }
+    if (kind === 'admin') {
+      publication = publishRemoteAdmin({ directory: root, owner, runtime: { queryStatus: async () => ({ state: 'unconfigured' }) } as any, access: () => ({ host: 'localhost', port: 1, token: 'x' }) } as any);
+      const result = await publication.then(async (server) => {
+        await server.settled();
+        return 'published';
+      }, () => 'rejected');
+      expect(result).toBe('rejected');
+    }
+    expect(await fs.readdir(root)).toEqual([]);
+  }
+  finally {
+    await publication?.settled().catch(() => undefined);
+    await runtime?.settled();
+    await owner.close().catch(() => undefined);
+    await fs.rm(parent, { recursive: true, force: true });
+  }
+});
 
 it('独立复现：owner 首个 FS 挂起受 timeoutMs 约束', async () => {
   const root = await fs.mkdtemp(join(await fs.realpath(tmpdir()), 'spec-owner-'));

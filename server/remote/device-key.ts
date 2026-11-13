@@ -76,8 +76,10 @@ export class SecureEnclaveDeviceKey implements DeviceKeySigner {
   }
   private async call(operation: string, input: Record<string, unknown>): Promise<Record<string, unknown>> {
     try {
+      this.options.store.assertOwnership();
       if (Buffer.byteLength(JSON.stringify(input)) > MAX_HELPER_BYTES) throw keyError();
       const output = await this.runner(operation, input);
+      this.options.store.assertOwnership();
       if (!object(output) || 'error' in output) throw keyError();
       return output;
     } catch { throw keyError(); }
@@ -127,6 +129,7 @@ export class SecureEnclaveDeviceKey implements DeviceKeySigner {
   }
   private async invoke(operation: string, input: Record<string, unknown>): Promise<unknown> {
     const helper = await this.compiledHelper();
+    this.options.store.assertOwnership();
     const encoded = await runBoundedProcess(helper, [operation], JSON.stringify(input), this.options.processTimeoutMs ?? 10000);
     try { return JSON.parse(encoded) as unknown; } catch { throw keyError(); }
   }
@@ -138,19 +141,21 @@ export class SecureEnclaveDeviceKey implements DeviceKeySigner {
     if (process.platform !== 'darwin') throw keyError();
     const source = fileURLToPath(new URL('./device-key.swift', import.meta.url));
     const hash = createHash('sha256').update(await readFile(source)).digest('hex');
-    const cache = new PrivateStore(join(this.options.store.directory, 'helper-cache', hash));
+    const cache = this.options.store.fork(join(this.options.store.directory, 'helper-cache', hash));
     await cache.readJson('cache-marker.json');
     const executable = join(cache.directory, 'device-key-helper');
     try {
       const stat = await lstat(executable);
+      cache.assertOwnership();
       if (!stat.isFile() || stat.isSymbolicLink() || stat.nlink !== 1 || (process.getuid && stat.uid !== process.getuid())) throw keyError();
-      await chmod(executable, 0o700); return executable;
+      await chmod(executable, 0o700); cache.assertOwnership(); return executable;
     } catch (error) { if ((error as NodeJS.ErrnoException)?.code !== 'ENOENT') throw keyError(); }
     const temporary = join(cache.directory, `.compile-${randomUUID()}`);
     try {
+      cache.assertOwnership();
       await runBoundedProcess('/usr/bin/xcrun', ['swiftc', source, '-o', temporary], '', this.options.compileTimeoutMs ?? 120000);
-      await chmod(temporary, 0o700); await rename(temporary, executable);
+      cache.assertOwnership(); await chmod(temporary, 0o700); cache.assertOwnership(); await rename(temporary, executable); cache.assertOwnership();
       return executable;
-    } finally { await unlink(temporary).catch(() => undefined); }
+    } finally { try { cache.assertOwnership(); await unlink(temporary); } catch { /* 失效root不按旧路径清理。 */ } }
   }
 }

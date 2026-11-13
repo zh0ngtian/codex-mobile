@@ -2,6 +2,9 @@ import { PrivateStore } from './private-store.js';
 import { RemoteAdminError } from './admin-protocol.js';
 import { AdminDeadline } from './admin-deadline.js';
 export interface RemoteOwner {
+  readonly store: PrivateStore;
+  readonly signal: AbortSignal;
+  assert(): void;
   close(): Promise<void>;
 }
 export type RemoteOwnerAcquisition = Promise<RemoteOwner> & {
@@ -23,19 +26,21 @@ export function acquireRemoteOwner(store: PrivateStore, options: {
   // Registry等其他初始化事务仍使用原语义；仅网关归属在实际回调交付前校验期限。
   const actual = Promise.resolve().then(() => {
     phase.assert();
-    return store.withInitialization('gateway-owner', async () => {
+    return store.withGatewayOwnership(async proof => {
       phase.assert();
       acquired();
       await hold;
-    }, { timeoutMs: options.timeoutMs ?? 1000 });
+      proof.assert();
+    }, { timeoutMs: options.timeoutMs ?? 1000, assertActive: () => phase.assert() });
   });
   void actual.catch(() => {
     if (!phase.signal.aborted) failed(new RemoteAdminError('busy'));
   });
   const pending = phase.wait(() => ready).then(() => {
     phase.assert();
+    store.assertOwnership();
     delivered = true;
-    return { close() { release(); return actual; } };
+    return { store, signal: store.ownershipSignal!, assert: () => store.assertOwnership(), close() { release(); return actual; } };
   }).catch(error => {
     release();
     throw error instanceof RemoteAdminError && error.code === 'timeout' ? new RemoteAdminError('busy') : error;

@@ -21,6 +21,7 @@ export class RemoteOAuthError extends Error {
   constructor(readonly code: RemoteOAuthFailure) { super(MESSAGES[code]); this.name = 'RemoteOAuthError'; }
 }
 export interface RemoteOAuthOptions {
+  assertOwnership?: () => void;
   managedAuth: { load(): Promise<ManagedAuth>; readonly currentIdentity: Readonly<ManagedAuthIdentity> | undefined; verifyIdentity(expected?: ManagedAuthIdentity): Promise<Readonly<ManagedAuthIdentity>> };
   /** 仅用于 JWT 新鲜度；操作期限始终使用内部单调时钟。 */
   now?: () => number; timeoutMs?: number; browserTimeoutMs?: number; exchangeTimeoutMs?: number;
@@ -97,6 +98,7 @@ export class RemoteStepUpOAuth {
     if (!flow.transportAbort.signal.aborted) flow.transportAbort.abort(new RemoteOAuthError(code));
   }
   private assert(flow: Flow): void {
+    this.options.assertOwnership?.();
     // timer 只负责唤醒挂起操作；同步外部代码阻塞事件循环时，仍按绝对期限拒绝晚结果。
     if (flow.active && !flow.abort.signal.aborted && performance.now() >= Math.min(flow.deadline, flow.phaseDeadline ?? Infinity)) this.cancel(flow, 'timeout');
     if (!flow.active || flow.abort.signal.aborted) throw flow.abort.signal.reason instanceof RemoteOAuthError ? flow.abort.signal.reason : new RemoteOAuthError('closed');

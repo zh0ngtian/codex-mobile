@@ -100,15 +100,17 @@ function assertStartupActive(signal?: AbortSignal) {
   if (signal?.aborted) throw new Error('app-server 启动已取消');
 }
 
-async function waitUntilReady(port: number, child: ChildProcess, signal?: AbortSignal) {
+async function waitUntilReady(port: number, child: ChildProcess, signal?: AbortSignal, assertOwnership?: () => void) {
   const deadline = performance.now() + 15_000;
   while (performance.now() < deadline) {
     assertStartupActive(signal);
+    assertOwnership?.();
     if (child.exitCode !== null || child.signalCode !== null) throw new Error('codex app-server 已退出');
     try {
       const timeout = AbortSignal.timeout(Math.max(1, Math.min(2000, Math.ceil(deadline - performance.now()))));
       const response = await fetch(`http://127.0.0.1:${port}/readyz`, { signal: signal ? AbortSignal.any([signal, timeout]) : timeout });
       assertStartupActive(signal);
+      assertOwnership?.();
       if (response.ok && performance.now() < deadline) return;
     } catch {
       assertStartupActive(signal);
@@ -119,17 +121,18 @@ async function waitUntilReady(port: number, child: ChildProcess, signal?: AbortS
   throw new Error('等待 codex app-server 就绪超时');
 }
 
-export async function startManagedAppServer(port: number, signal?: AbortSignal) {
-  assertStartupActive(signal);
+export async function startManagedAppServer(port: number, signal?: AbortSignal, assertOwnership?: () => void) {
+  const active = () => { assertStartupActive(signal); assertOwnership?.(); };
+  active();
   if (!(await portAvailable(port))) throw new Error(`app-server 端口 ${port} 已被占用`);
-  assertStartupActive(signal);
+  active();
   const environment = appServerEnvironment();
-  const routes = await readModelUploadRoutes(environment, { signal });
-  assertStartupActive(signal);
+  const routes = await readModelUploadRoutes(environment, { signal, assertOwnership });
+  active();
   const proxy = await createModelUploadProxy(routes);
   let child: ChildProcess;
   try {
-    assertStartupActive(signal);
+    active();
     // 已将原 OPENAI_BASE_URL 纳入固定上游，子进程只使用本次命令行路由。
     delete environment.OPENAI_BASE_URL;
     child = spawn('codex', appServerCommand(port, proxy.overrides), {
@@ -168,9 +171,9 @@ export async function startManagedAppServer(port: number, signal?: AbortSignal) 
   signal?.addEventListener('abort', cancel, { once: true });
   if (signal?.aborted) cancel();
   try {
-    assertStartupActive(signal);
-    await Promise.race([waitUntilReady(port, child, signal), spawnError]);
-    assertStartupActive(signal);
+    active();
+    await Promise.race([waitUntilReady(port, child, signal, assertOwnership), spawnError]);
+    active();
     return { child, uploadMeter: proxy.meter, onAuthModeChanged: proxy.setAuthMode, exited, close };
   } catch (error) {
     await close();

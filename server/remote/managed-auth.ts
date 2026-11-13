@@ -19,6 +19,7 @@ interface CanonicalConnection { session: ManagedAuthCanonical; home: string; ref
 interface CanonicalRefresh { connection: CanonicalConnection; promise: Promise<void> }
 export interface ManagedAuthIdentity { codexHome: string; accountId: string; accountUserId: string; userId?: string }
 export interface ManagedAuthLoaderOptions {
+  assertOwnership?: () => void;
   /** 必须且只能显式提供 canonicalUrl 或 canonicalFactory。 */
   canonicalUrl?: string; canonicalFactory?: () => Promise<ManagedAuthCanonical>;
   now?: () => number; refreshMarginMs?: number; operationTimeoutMs?: number;
@@ -105,14 +106,16 @@ export class ManagedAuthLoader {
   }
   /** 外部回调即使抛出本项目同类型错误也仅保留分类。 */
   private async external<T>(operation: () => Promise<T>, network: boolean): Promise<T> {
+    this.options.assertOwnership?.();
     if (this.abort.signal.aborted) throw new RemoteNetworkError();
     let timer: NodeJS.Timeout | undefined; let abort: (() => void) | undefined;
     try {
-      return await Promise.race([Promise.resolve().then(operation), new Promise<never>((_resolve, reject) => {
+      const value = await Promise.race([Promise.resolve().then(() => { this.options.assertOwnership?.(); return operation(); }), new Promise<never>((_resolve, reject) => {
         abort = () => reject(new RemoteNetworkError());
         this.abort.signal.addEventListener('abort', abort, { once: true });
         timer = setTimeout(() => reject(new RemoteNetworkError('Remote 受管账号操作超时')), this.operationTimeoutMs);
       })]);
+      this.options.assertOwnership?.(); return value;
     } catch (error) {
       if (error instanceof RemoteNetworkError || (network && !(error instanceof RemoteAuthRequiredError))) throw new RemoteNetworkError();
       throw authFailure();
@@ -125,6 +128,7 @@ export class ManagedAuthLoader {
     this.connecting = this.resources.track((async () => {
       let session: ManagedAuthCanonical | undefined; let abandoned = false; let unclaimed: ManagedAuthCanonical | undefined;
       const created = this.resources.create(() => {
+        this.options.assertOwnership?.();
         if (this.abort.signal.aborted) throw new RemoteNetworkError();
         return this.factory();
       });

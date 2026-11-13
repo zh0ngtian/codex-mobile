@@ -122,11 +122,11 @@ export class RemoteController extends EventEmitter<ControllerEvents> {
     if (this.currentState === state && this.reason === reason) return;
     this.currentState = state; this.reason = reason; this.publish('state', state, reason);
   }
-  private assert(epoch: number): void { if (this.state === 'closed' || this.epoch !== epoch || this.abort.signal.aborted) throw new RemoteControllerError('closed'); }
+  private assert(epoch: number): void { this.options.store.assertOwnership(); if (this.state === 'closed' || this.epoch !== epoch || this.abort.signal.aborted) throw new RemoteControllerError('closed'); }
   private async external<T>(epoch: number, operation: () => Promise<T>, network = true): Promise<T> {
     this.assert(epoch); let timer: NodeJS.Timeout | undefined; let aborted: (() => void) | undefined; const signal = this.abort.signal;
     try {
-      const result = await Promise.race([Promise.resolve().then(operation), new Promise<never>((_resolve, reject) => {
+      const result = await Promise.race([Promise.resolve().then(() => { this.assert(epoch); return operation(); }), new Promise<never>((_resolve, reject) => {
         aborted = () => reject(new RemoteControllerError('closed')); signal.addEventListener('abort', aborted, { once: true });
         timer = setTimeout(() => reject(new RemoteNetworkError()), this.timeout);
       })]); this.assert(epoch); return result;
@@ -238,7 +238,7 @@ export class RemoteController extends EventEmitter<ControllerEvents> {
   }
   private activate(epoch: number): void {
     this.assert(epoch); if (!this.started || this.relay) return;
-    const relay = new RemoteRelay({ ...this.options.relayOptions, clientId: this.record!.enrollment.clientId, authProvider: this.options.authProvider, reconnectMaxMs: Math.min(this.options.relayOptions?.reconnectMaxMs ?? 2000, 2000) }); this.relay = relay;
+    const relay = new RemoteRelay({ ...this.options.relayOptions, assertOwnership: () => this.options.store.assertOwnership(), clientId: this.record!.enrollment.clientId, authProvider: this.options.authProvider, reconnectMaxMs: Math.min(this.options.relayOptions?.reconnectMaxMs ?? 2000, 2000) }); this.relay = relay;
     relay.on('state', state => { if (this.relay !== relay || this.state === 'closed') return; if (state === 'auth-required') this.suspend('auth-required'); else if (state === 'online') this.setState(this.healthy ? 'online' : 'offline'); else if (state !== 'closed') this.setState('offline'); });
   }
   private async check(epoch: number, resume = false): Promise<void> {

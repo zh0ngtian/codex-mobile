@@ -8,6 +8,8 @@ import { createServer } from 'node:net';
 import { join } from 'node:path';
 import { startManagedAppServer } from '../../server/app-server-manager.js';
 import { readModelUploadRoutes } from '../../server/model-upload-routing.js';
+import { PrivateStore } from '../../server/remote/private-store.js';
+import { acquireRemoteOwner } from '../../server/remote/owner.js';
 const roots: string[] = [];
 const children: ChildProcess[] = [];
 afterEach(async () => {
@@ -103,5 +105,52 @@ it('原有无signal调用仍可启动并关闭，异常exit立即可见', async 
   await managed.close();
   for (const child of children) {
     dead(child);
+  }
+});
+
+it.each(['config-spawn', 'config-exit', 'app-spawn', 'ready'] as const)('%s跨阶段替换归属root：不交付managed，后续阶段不创建且自有child已退出', async (stage) => {
+  const f = await fixture();
+  const root = join(f.root, 'remote');
+  const owner = await acquireRemoteOwner(new PrivateStore(root));
+  const sync = await import('node:fs');
+  let changed = false;
+  const replace = () => {
+    if (changed)
+      return;
+    changed = true;
+    sync.renameSync(root, `${root}-moved`);
+    sync.mkdirSync(root, { mode: 0o700 });
+  };
+  const original = childProcess.spawn;
+  vi.spyOn(childProcess, 'spawn').mockImplementation(((...args: Parameters<typeof original>) => {
+    const child = Reflect.apply(original, childProcess, args);
+    children.push(child);
+    const config = (args[1] as string[]).includes('stdio://');
+    if ((stage === 'config-spawn' && config) || (stage === 'app-spawn' && !config))
+      replace();
+    if (stage === 'config-exit' && config)
+      child.once('exit', replace);
+    return child;
+  }) as typeof original);
+  syncBuiltinESMExports();
+  if (stage === 'ready') {
+    const fetch = globalThis.fetch;
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (...args) => {
+      const response = await fetch(...args);
+      replace();
+      return response;
+    });
+  }
+  try {
+    await expect(startManagedAppServer(f.port, undefined, () => owner.assert())).rejects.toBeDefined();
+    expect(changed).toBe(true);
+    expect(children).toHaveLength(stage.startsWith('config') ? 1 : 2);
+    for (const child of children)
+      dead(child);
+    expect(sync.readdirSync(root)).toEqual([]);
+    expect(owner.signal.aborted).toBe(true);
+  }
+  finally {
+    await owner.close().catch(() => undefined);
   }
 });

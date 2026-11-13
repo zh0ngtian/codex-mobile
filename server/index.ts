@@ -25,8 +25,10 @@ let admin: Awaited<ReturnType<typeof publishRemoteAdmin>> | undefined;
 let adminStarting: ReturnType<typeof publishRemoteAdmin> | undefined;
 let owner: Awaited<ReturnType<typeof acquireRemoteOwner>> | undefined;
 let ownerStarting: ReturnType<typeof acquireRemoteOwner> | undefined;
+let ownershipMonitor: NodeJS.Timeout | undefined;
 let stopping: Promise<void> | undefined;
 function active() {
+  owner?.assert();
   if (abort.signal.aborted) {
     throw new Error('网关启动已取消');
   }
@@ -51,6 +53,7 @@ function stop(code = 0): Promise<void> {
     return stopping;
   }
   abort.abort();
+  clearInterval(ownershipMonitor);
   // 实际收尾迟到时保留归属直到PID退出，不能因有界close已返回而释放锁。
   const forcedExit = setTimeout(() => process.exit(code || 1), 5000);
   stopping = (async () => {
@@ -89,11 +92,13 @@ const starting = (async () => {
     const store = new PrivateStore(adminDirectory);
     ownerStarting = acquireRemoteOwner(store, { signal: abort.signal });
     owner = await ownerStarting;
+    owner.signal.addEventListener('abort', () => { void stop(1); }, { once: true });
+    ownershipMonitor = setInterval(() => { try { owner?.assert(); } catch { void stop(1); } }, 100);
     active();
-    remote = new RemoteRuntime({ store, canonicalUrl: runtime.upstreamUrl });
+    remote = new RemoteRuntime({ store: owner.store, canonicalUrl: runtime.upstreamUrl });
   }
   if (runtime.mode === 'managed') {
-    managed = await startManagedAppServer(runtime.upstreamPort, abort.signal);
+    managed = await startManagedAppServer(runtime.upstreamPort, abort.signal, active);
     managed.exited.then(() => {
       if (stopping) {
         return;
@@ -117,12 +122,14 @@ const starting = (async () => {
     readProjectState: () => readCodexProjectState(join(process.env.CODEX_HOME || join(process.env.HOME || '', '.codex'), '.codex-global-state.json')),
     appServerReady: async () => {
       try {
+        active();
         const ready = new URL(runtime.upstreamUrl);
         ready.protocol = ready.protocol === 'wss:' ? 'https:' : 'http:';
         ready.pathname = '/readyz';
         ready.search = '';
         ready.hash = '';
-        return (await fetch(ready, { signal: AbortSignal.timeout(2000) })).ok;
+        const response = await fetch(ready, { signal: AbortSignal.any([abort.signal, AbortSignal.timeout(2000)]) });
+        active(); return response.ok;
       }
       catch {
         return false;
@@ -142,7 +149,7 @@ const starting = (async () => {
       }
     }
     active();
-    adminStarting = publishRemoteAdmin({ directory: adminDirectory!, runtime: remote, signal: abort.signal, access: () => ({ host, port: gateway!.port, token: accessToken ?? '' }) });
+    adminStarting = publishRemoteAdmin({ directory: adminDirectory!, owner, runtime: remote, signal: abort.signal, access: () => ({ host, port: gateway!.port, token: accessToken ?? '' }) });
     admin = await adminStarting;
     active();
   }

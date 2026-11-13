@@ -328,6 +328,77 @@ const {appendFileSync}=require('node:fs'); const {createInterface}=require('node
   }
 }, 10000);
 
+it.each(['acquire-root', 'acquire-ancestor', 'config-exit', 'app-ready', 'runtime-await', 'admin-proof'] as const)('%s实际入口归属替换：过时实例不进入下一阶段，健康同root第二实例零spawn/Runtime', async (stage) => {
+  const { pathToFileURL } = await import('node:url');
+  const { createServer } = await import('node:net');
+  const root = await mkdtemp(join(await realpath(tmpdir()), 'rproof-'));
+  const ancestor = join(root, 'a');
+  const remote = join(ancestor, 'r');
+  const home = join(root, 'h');
+  const bin = join(root, 'b');
+  await mkdir(remote, { recursive: true, mode: 0o700 });
+  await mkdir(home);
+  await mkdir(bin);
+  const marker = join(root, 'children');
+  const runtimeMarker = join(root, 'starts');
+  const executable = join(bin, 'codex');
+  await writeFile(executable, `#!${process.execPath}
+const fs=require('node:fs');const config=process.argv.includes('stdio://');fs.appendFileSync(process.env.OWNER_MARKER,JSON.stringify({label:process.env.OWNER_LABEL,pid:process.pid,config})+'\\n');if(config){require('node:readline').createInterface({input:process.stdin}).on('line',line=>{const v=JSON.parse(line);if(v.id)process.stdout.write(JSON.stringify({id:v.id,result:v.method==='config/read'?{config:{}}:{}})+'\\n');});}else{const port=Number(new URL(process.argv[process.argv.indexOf('--listen')+1]).port);require('node:http').createServer((_req,res)=>res.end('ready')).listen(port,'127.0.0.1');}`);
+  const fs = await import('node:fs/promises');
+  await fs.chmod(executable, 0o700);
+  const loader = join(fixture, `proof-${stage}.mjs`);
+  await writeFile(loader, `import fs from 'node:fs/promises';import sync from 'node:fs';import cp from 'node:child_process';import {syncBuiltinESMExports} from 'node:module';import {RemoteRuntime} from ${JSON.stringify(pathToFileURL(join(fixture, 'npm-dist/server/remote/runtime.js')).href)};const stage=process.env.OWNER_STAGE;let changed=false,remoteStarted=false;function replace(){if(changed||stage==='none')return;changed=true;const target=stage==='acquire-ancestor'?${JSON.stringify(ancestor)}:${JSON.stringify(remote)};sync.renameSync(target,target+'-moved');sync.mkdirSync(${JSON.stringify(remote)},{recursive:true,mode:0o700});}const originalOpen=fs.open;fs.open=async function(path,...args){const handle=await originalOpen.call(this,path,...args);if(String(path)===${JSON.stringify(remote)}&&stage.startsWith('acquire-')&&!changed){const original=handle.sync.bind(handle);handle.sync=async()=>{await original();replace();};}return handle;};const originalSpawn=cp.spawn;cp.spawn=function(...args){const child=originalSpawn.apply(this,args);if(stage==='config-exit'&&args[1].includes('stdio://'))child.once('exit',replace);return child;};const originalFetch=globalThis.fetch;globalThis.fetch=async(...args)=>{const response=await originalFetch(...args);if(stage==='app-ready')replace();return response;};const originalStart=RemoteRuntime.prototype.start;RemoteRuntime.prototype.start=async function(){sync.appendFileSync(${JSON.stringify(runtimeMarker)},process.env.OWNER_LABEL+'\\n');const result=await originalStart.call(this);remoteStarted=true;if(stage==='runtime-await')replace();return result;};const originalStat=fs.lstat;fs.lstat=async function(path,...args){const stat=await originalStat.call(this,path,...args);if(stage==='admin-proof'&&remoteStarted&&String(path)===${JSON.stringify(remote)})replace();return stat;};syncBuiltinESMExports();`);
+  const children: ChildProcess[] = [];
+  const rows = async () => readFile(marker, 'utf8').then(text => text.trim().split('\n').filter(Boolean).map(line => JSON.parse(line)), () => []);
+  const starts = async () => readFile(runtimeMarker, 'utf8').then(text => text.trim().split('\n').filter(Boolean), () => []);
+  async function start(label: string, scope: string) {
+    const probe = createServer();
+    await new Promise<void>(resolve => probe.listen(0, '127.0.0.1', resolve));
+    const port = (probe.address() as any).port;
+    await new Promise<void>(resolve => probe.close(() => resolve()));
+    const child = spawn(process.execPath, ['--import', loader, join(fixture, 'npm-dist/server/index.js')], { env: { ...process.env, NODE_OPTIONS: '--no-experimental-webstorage', PATH: `${bin}:${process.env.PATH}`, HOST: '127.0.0.1', PORT: '0', CODEX_MOBILE_TOKEN: 'isolated-token', CODEX_APP_SERVER_MODE: 'managed', CODEX_APP_SERVER_PORT: String(port), CODEX_HOME: home, CODEX_MOBILE_REMOTE_DIR: remote, CODEX_MOBILE_UPLOAD_DIR: join(root, 'u'), CODEX_MOBILE_RUNTIME_FILE: join(root, `${label}-runtime.json`), CODEX_MOBILE_SERVE_STATIC: 'false', OWNER_MARKER: marker, OWNER_LABEL: label, OWNER_STAGE: scope }, stdio: ['ignore', 'pipe', 'pipe'] });
+    children.push(child);
+    let output = '';
+    child.stdout!.on('data', bytes => output += bytes);
+    child.stderr!.on('data', bytes => output += bytes);
+    return { child, output: () => output };
+  }
+  try {
+    const first = await start('first', stage);
+    await exit(first.child);
+    expect(first.child.exitCode).toBe(1);
+    expect(first.output()).not.toContain('Codex Mobile Web:');
+    expect(await readdir(remote)).toEqual([]);
+    expect((await starts()).filter(label => label === 'first')).toHaveLength(stage === 'runtime-await' || stage === 'admin-proof' ? 1 : 0);
+    expect((await rows()).filter(row => row.label === 'first')).toHaveLength(stage.startsWith('acquire-') ? 0 : stage === 'config-exit' ? 1 : 2);
+    const healthy = await start('healthy', 'none');
+    await until(async () => healthy.output().includes('Codex Mobile Web:'));
+    const second = await start('second', 'none');
+    await exit(second.child);
+    expect(second.child.exitCode).toBe(1);
+    expect((await starts()).filter(label => label === 'second')).toEqual([]);
+    expect((await rows()).filter(row => row.label === 'second')).toEqual([]);
+    healthy.child.kill('SIGTERM');
+    await exit(healthy.child);
+    expect(healthy.child.exitCode).toBe(0);
+  }
+  finally {
+    for (const child of children)
+      if (child.exitCode === null && child.signalCode === null) {
+        child.kill('SIGKILL');
+        await exit(child);
+      }
+    for (const row of await rows()) {
+      try {
+        process.kill(row.pid, 'SIGKILL');
+      }
+      catch {
+      }
+    }
+    await rm(root, { recursive: true, force: true });
+  }
+}, 15000);
+
 
 it.each(['late', 'blocked'] as const)('owner %s文件系统收尾期间取消：真实入口无晚Runtime和端点，归属仅在实际收尾或PID退出后回收', async stage => {
   const { pathToFileURL } = await import('node:url');

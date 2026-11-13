@@ -137,6 +137,7 @@ export class RemoteRuntime extends EventEmitter<{
   private closing?: Promise<void>;
   private loginFlow?: Pick<RemoteCanonicalLogin, 'login' | 'close'>;
   private readonly options: RemoteRuntimeOptions;
+  private readonly ownershipLost = () => { void this.close(); };
   constructor(options: RemoteRuntimeOptions) {
     super();
     this.options = {
@@ -153,6 +154,19 @@ export class RemoteRuntime extends EventEmitter<{
       oauthOptions: options.oauthOptions ? { ...options.oauthOptions } : undefined,
       loginOptions: options.loginOptions ? { ...options.loginOptions } : undefined,
     };
+    if (options.store?.ownershipSignal) {
+      const store = options.store;
+      const ownedFetch = (fetcher: typeof fetch): typeof fetch => async (input, init) => {
+        store.assertOwnership();
+        const signals = [store.ownershipSignal!, ...(init?.signal ? [init.signal] : [])];
+        const response = await fetcher(input, { ...init, signal: AbortSignal.any(signals) });
+        try { store.assertOwnership(); }
+        catch (error) { void response.body?.cancel().catch(() => undefined); throw error; }
+        return response;
+      };
+      this.options.fetch = ownedFetch(options.fetch ?? globalThis.fetch);
+      this.options.oauthOptions = { ...this.options.oauthOptions, fetch: ownedFetch(options.oauthOptions?.fetch ?? options.fetch ?? globalThis.fetch) };
+    }
     if (
       (options.canonicalUrl === undefined) === (options.canonicalFactory === undefined) ||
       options.canonicalUrl === ''
@@ -163,6 +177,7 @@ export class RemoteRuntime extends EventEmitter<{
     this.cleanupTimeout = duration(options.cleanupTimeoutMs, 20000, 60000);
     this.lifecycle = new RemoteRuntimeLifecycle(this.timeout, this.interactionTimeout, this.cleanupTimeout);
     this.registry = options.registry ?? new RemoteIdentityRegistry(options.store ?? new PrivateStore());
+    options.store?.ownershipSignal?.addEventListener('abort', this.ownershipLost, { once: true });
   }
   status(): RemoteRuntimeStatus {
     const active = this.active;
@@ -206,10 +221,11 @@ export class RemoteRuntime extends EventEmitter<{
     }
   }
   private assert(op: Operation): void {
+    this.options.store?.assertOwnership();
     this.lifecycle.assert(op);
   }
   private wait<T>(op: Operation, callback: () => Promise<T>, limit = this.timeout): Promise<T> {
-    return this.lifecycle.wait(op, callback, limit);
+    return this.lifecycle.wait(op, async () => { this.options.store?.assertOwnership(); const value = await callback(); this.options.store?.assertOwnership(); return value; }, limit);
   }
   private boundedCleanup(callback: () => Promise<unknown>): Promise<void> {
     return this.lifecycle.cleanup(callback);
@@ -314,11 +330,13 @@ export class RemoteRuntime extends EventEmitter<{
     let oauth: Bundle['oauth'] | undefined;
     let controller: RemoteController | undefined;
     try {
+      store.assertOwnership();
       loader = (this.options.createManagedAuth ?? ((options) => new ManagedAuthLoader(options)))({
         canonicalUrl: this.options.canonicalUrl,
         canonicalFactory: this.options.canonicalFactory,
         now: this.options.now,
         operationTimeoutMs: this.timeout,
+        assertOwnership: () => store.assertOwnership(),
       });
       const key = this.options.createDeviceKey?.(store) ?? new SecureEnclaveDeviceKey({ store });
       const provider = (this.options.createAuthProvider ?? ((options) => new RemoteAuthProviderImpl(options)))({
@@ -333,6 +351,7 @@ export class RemoteRuntime extends EventEmitter<{
       oauth = (this.options.createOAuth ?? ((options) => new RemoteStepUpOAuth(options)))({
         ...this.options.oauthOptions,
         managedAuth: loader,
+        assertOwnership: () => store.assertOwnership(),
       });
       controller = (this.options.createController ?? ((options) => new RemoteController(options)))({
         ...this.options.controllerOptions,
@@ -640,12 +659,14 @@ export class RemoteRuntime extends EventEmitter<{
           canonicalFactory: this.options.canonicalFactory,
           timeoutMs: this.interactionTimeout,
           operationTimeoutMs: this.timeout,
+          assertOwnership: () => this.options.store?.assertOwnership(),
           createManagedAuth: () =>
             (this.options.createManagedAuth ?? ((options) => new ManagedAuthLoader(options)))({
               canonicalUrl: this.options.canonicalUrl,
               canonicalFactory: this.options.canonicalFactory,
               now: this.options.now,
               operationTimeoutMs: this.timeout,
+              assertOwnership: () => this.options.store?.assertOwnership(),
             }),
         });
         this.loginFlow = flow;
@@ -900,6 +921,7 @@ export class RemoteRuntime extends EventEmitter<{
     await Promise.allSettled([this.storage, this.draining]);
   }
   close(): Promise<void> {
+    this.options.store?.ownershipSignal?.removeEventListener('abort', this.ownershipLost);
     if (this.closing) return this.closing;
     this.lifecycle.close();
     const bundle = this.bundle;

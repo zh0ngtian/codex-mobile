@@ -108,10 +108,10 @@ export class RemoteIdentityRegistry {
   private readonly candidates = new WeakMap<RemoteIdentityCandidate, CandidateRecord>();
   constructor(store = new PrivateStore()) {
     // 不采用调用方之后修改的 store.directory，也不使用 candidate 暴露的 store 作权威路径。
-    this.directory = store.directory; this.store = new PrivateStore(this.directory);
+    this.directory = store.directory; this.store = store.fork();
   }
   private async guarded<T>(operation: () => Promise<T>): Promise<T> {
-    try { return await operation(); }
+    try { this.store.assertOwnership(); const value = await operation(); this.store.assertOwnership(); return value; }
     catch (error) {
       if (error instanceof RemoteIdentityRegistryError && Object.hasOwn(MESSAGES, error.code)) throw new RemoteIdentityRegistryError(error.code);
       throw new RemoteIdentityRegistryError('storage-unavailable');
@@ -138,7 +138,7 @@ export class RemoteIdentityRegistry {
       fail('legacy-root');
     }
   }
-  private generationStore(name: string): PrivateStore { return new PrivateStore(join(this.directory, generation(name))); }
+  private generationStore(name: string): PrivateStore { this.store.assertOwnership(); return this.store.fork(join(this.directory, generation(name))); }
   private async existingStore(name: string): Promise<PrivateStore> {
     const store = this.generationStore(name); const stat = await lstat(store.directory);
     if (!stat.isDirectory() || stat.isSymbolicLink() || (process.getuid && stat.uid !== process.getuid())) fail();
@@ -190,7 +190,7 @@ export class RemoteIdentityRegistry {
       if (!registryId) { registryId = randomUUID(); if (!await this.store.createJson(REGISTRY, { version: 1, registryId })) fail(); }
       const name = `identity-${randomUUID()}`; const store = this.generationStore(name);
       // mkdir 无 recursive/复用分支；碰撞或残留目录绝不会被覆盖。
-      await mkdir(store.directory, { mode: 0o700 });
+      this.store.assertOwnership(); await mkdir(store.directory, { mode: 0o700 }); this.store.assertOwnership();
       const record: CandidateRecord = { version: 1, registryId, generation: name, nonce: randomUUID(), expectedActive: current?.snapshot ?? null, intent: requested };
       if (!await store.createJson('candidate.json', record)) fail('candidate-invalid');
       const candidate: RemoteIdentityCandidate = Object.freeze({ generation: name, store, expectedActive: record.expectedActive ? frozenSnapshot(record.expectedActive) : null });

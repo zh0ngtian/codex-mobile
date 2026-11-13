@@ -43,6 +43,7 @@ export interface RemoteLoginManagedAuth {
   settled?(): Promise<void>;
 }
 export interface RemoteCanonicalLoginOptions {
+  assertOwnership?: () => void;
   canonicalUrl?: string;
   canonicalFactory?: () => Promise<RemoteControllerCanonical>;
   timeoutMs?: number;
@@ -161,6 +162,7 @@ export class RemoteCanonicalLogin {
     if (!flow.abort.signal.aborted) flow.abort.abort(new RemoteLoginError(code));
   }
   private assert(flow: Flow, phaseDeadline = Infinity): void {
+    this.options.assertOwnership?.();
     if (performance.now() >= Math.min(flow.deadline, phaseDeadline)) this.cancel(flow, 'timeout');
     if (!flow.active || flow.abort.signal.aborted)
       throw flow.abort.signal.reason instanceof RemoteLoginError

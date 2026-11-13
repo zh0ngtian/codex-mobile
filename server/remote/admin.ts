@@ -6,6 +6,7 @@ import { createServer, type Socket } from 'node:net';
 import { join } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import type { RemoteRuntime } from './runtime.js';
+import type { RemoteOwner } from './owner.js';
 import { ADMIN_REQUEST_BYTES, ADMIN_RESPONSE_BYTES, adminFailure, operationLimit, RemoteAdminError, request, type AdminMetadata, type AdminMethod, type AdminParams } from './admin-protocol.js';
 import { pidState, privateOwned, proveDirectory, proveSocket, readAdminMetadata, recheckDirectory, sameFile, unlinkExact, type Identity } from './admin-path.js';
 export type AdminRuntime = Pick<RemoteRuntime, 'status' | 'queryStatus' | 'login' | 'authorize' | 'recover' | 'refreshTargets' | 'pairLocal' | 'pairManual' | 'acceptTarget' | 'resume' | 'reassociate'>;
@@ -17,6 +18,8 @@ export interface RemoteAccess {
 export interface AdminOptions {
   directory: string;
   runtime: AdminRuntime;
+  /** 可信运行入口持有的原始归属；IPC请求不能提供或替换。 */
+  owner?: Pick<RemoteOwner, 'assert' | 'signal'>;
   access: () => RemoteAccess;
   signal?: AbortSignal;
   startupTimeoutMs?: number;
@@ -91,7 +94,9 @@ export function publishRemoteAdmin(options: AdminOptions): RemoteAdminPublicatio
 /** 与手机 HTTP/WS完全隔离；固定动作，一连接一请求，读到EOF才执行完整帧。 */
 async function publishRemoteAdminInner(options: AdminOptions, startup: AdminDeadline): Promise<RemoteAdminServer> {
   const { directory } = options;
+  options.owner?.assert();
   const proof = await proveDirectory(directory);
+  options.owner?.assert();
   const metadataPath = join(directory, 'admin.json');
   const socketPath = join(directory, 'admin.sock');
   const value: AdminMetadata = { version: 1, pid: process.pid, instance: randomUUID(), nonce: randomUUID() };
@@ -102,6 +107,7 @@ async function publishRemoteAdminInner(options: AdminOptions, startup: AdminDead
   let rejectListen: ((error: Error) => void) | undefined;
   let startupFailure: RemoteAdminError | undefined;
   function assertOpen() {
+    options.owner?.assert();
     startup.assert();
     if (startupFailure) {
       throw startupFailure;
@@ -111,6 +117,7 @@ async function publishRemoteAdminInner(options: AdminOptions, startup: AdminDead
     }
   }
   const server = createServer({ allowHalfOpen: true }, socket => {
+    try { options.owner?.assert(); } catch { socket.destroy(); return; }
     if (closed || sockets.size >= (options.maxConnections ?? 32)) {
       const timer = setTimeout(() => socket.destroy(), options.writeTimeoutMs ?? 5000);
       socket.on('error', () => socket.destroy());
@@ -235,10 +242,12 @@ async function publishRemoteAdminInner(options: AdminOptions, startup: AdminDead
         socket.write(frame);
       }, 100);
       void Promise.resolve().then(async () => {
+        options.owner?.assert();
         if (closed || abort.signal.aborted || performance.now() >= limit) {
           throw new RemoteAdminError('timeout');
         }
         const result = await dispatch(options.runtime, parsed.method, parsed.params, abort.signal, options.access);
+        options.owner?.assert();
         if (closed || abort.signal.aborted || performance.now() >= limit) {
           throw new RemoteAdminError('timeout');
         }
@@ -252,6 +261,7 @@ async function publishRemoteAdminInner(options: AdminOptions, startup: AdminDead
   const internalPath = join(directory, `.a-${randomBytes(4).toString('hex')}`);
   let internalIdentity: Identity | undefined;
   async function close() {
+    options.owner?.signal.removeEventListener('abort', lostOwnership);
     closed = true;
     for (const socket of sockets) {
       socket.destroy();
@@ -267,6 +277,8 @@ async function publishRemoteAdminInner(options: AdminOptions, startup: AdminDead
       await unlinkExact(internalPath, internalIdentity, 'socket', proof).catch(() => undefined);
     }
   }
+  function lostOwnership() { void close().catch(() => undefined); }
+  options.owner?.signal.addEventListener('abort', lostOwnership, { once: true });
   const abortStartup = (error: RemoteAdminError) => {
     startupFailure ??= error;
     closed = true;
@@ -339,6 +351,7 @@ async function publishRemoteAdminInner(options: AdminOptions, startup: AdminDead
       rejectListen = undefined;
     });
     await chmod(internalPath, 0o600);
+    assertOpen();
     internalIdentity = await lstat(internalPath);
     privateOwned(internalIdentity as import('node:fs').Stats, 'socket');
     assertOpen();
@@ -346,6 +359,7 @@ async function publishRemoteAdminInner(options: AdminOptions, startup: AdminDead
     assertOpen();
     await link(internalPath, socketPath);
     socketIdentity = internalIdentity;
+    assertOpen();
     await unlink(internalPath);
     internalIdentity = undefined;
     assertOpen();
@@ -353,10 +367,13 @@ async function publishRemoteAdminInner(options: AdminOptions, startup: AdminDead
     assertOpen();
     const handle = await open(metadataPath, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
     try {
+      assertOpen();
       await handle.chmod(0o600);
+      assertOpen();
       metadataIdentity = await handle.stat();
       assertOpen();
       await handle.writeFile(JSON.stringify(value));
+      assertOpen();
       await handle.sync();
     }
     finally {

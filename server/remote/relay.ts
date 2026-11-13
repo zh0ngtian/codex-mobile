@@ -27,6 +27,7 @@ export interface RemoteDisconnect {
 }
 export interface RemoteSendReceipt { seqId: number }
 export interface RemoteRelayOptions {
+  assertOwnership?: () => void;
   clientId: string; authProvider: RemoteAuthProvider;
   reconnectMinMs?: number; reconnectMaxMs?: number; handshakeTimeoutMs?: number;
   /** 在线持续此窗口后才重置重连退避，默认 30 秒。 */
@@ -181,7 +182,9 @@ export class RemoteRelay extends EventEmitter<RelayEvents> {
     if (this.attempting || this.authenticationPending || this.socket || this.state === 'closed' || this.state === 'auth-required') return;
     this.attempting = true; this.authenticationPending = true; const epoch = ++this.epoch; this.setState('connecting');
     try {
+      this.assertOwnership();
       const auth = await this.options.authProvider.prepareConnection();
+      this.assertOwnership();
       if (!this.isCurrent(epoch)) return;
       const url = new URL(auth.url);
       if (!['ws:', 'wss:'].includes(url.protocol)) throw new RemoteAuthRequiredError('Remote 连接地址无效');
@@ -209,6 +212,7 @@ export class RemoteRelay extends EventEmitter<RelayEvents> {
       socket.on('message', (raw, binary) => {
         if (!this.isCurrent(epoch) || this.socket !== socket) return;
         try {
+          this.assertOwnership();
           if (binary) throw new RemoteProtocolError('Remote 不接受二进制帧');
           const value = this.readControl(raw);
           if (value.type === 'device_key_challenge') {
@@ -232,6 +236,10 @@ export class RemoteRelay extends EventEmitter<RelayEvents> {
       this.scheduleReconnect();
     }
   }
+  private assertOwnership(): void {
+    try { this.options.assertOwnership?.(); }
+    catch (error) { try { this.close(); } catch { /* 收尾继续。 */ } throw error; }
+  }
   private isCurrent(epoch: number): boolean { return this.epoch === epoch && this.state !== 'closed' && this.state !== 'auth-required'; }
   private readControl(raw: RawData): Record<string, unknown> {
     const bytes = Array.isArray(raw) ? Buffer.concat(raw) : raw instanceof ArrayBuffer ? Buffer.from(raw) : raw;
@@ -248,7 +256,9 @@ export class RemoteRelay extends EventEmitter<RelayEvents> {
   private async prove(auth: RemoteConnectionAuth, challenge: Record<string, unknown>, socket: WebSocket, epoch: number): Promise<void> {
     this.authenticationPending = true;
     try {
+      this.assertOwnership();
       const proof = await auth.signChallenge(challenge);
+      this.assertOwnership();
       if (!this.isCurrent(epoch) || this.socket !== socket) return;
       if (!proof || typeof proof !== 'object' || Array.isArray(proof)) throw new RemoteAuthRequiredError('Remote 签名证明无效');
       const encoded = JSON.stringify({ ...proof, type: 'device_key_proof' });
@@ -330,6 +340,7 @@ export class RemoteRelay extends EventEmitter<RelayEvents> {
     }
   }
   private preflight(frames: string[], handshake = false): { socket: WebSocket; bytes: number } {
+    this.assertOwnership();
     const socket = this.socket;
     if ((!handshake && this.state !== 'online') || !socket || socket.readyState !== WebSocket.OPEN) throw new RemoteSendError('Remote 尚未在线', false);
     const bytes = frames.reduce((sum, frame) => sum + Buffer.byteLength(frame), 0);
@@ -362,7 +373,7 @@ export class RemoteRelay extends EventEmitter<RelayEvents> {
       if (socket.bufferedAmount >= this.maxBufferedBytes) { this.disconnect('network'); return; }
       this.awaitingNativePong = true;
       this.pongTimer = setTimeout(() => this.disconnect('network'), this.nativePongTimeoutMs); this.pongTimer.unref();
-      try { socket.ping(undefined, true, error => { if (error && this.socket === socket) this.disconnect('network'); }); }
+      try { this.assertOwnership(); socket.ping(undefined, true, error => { if (error && this.socket === socket) this.disconnect('network'); }); }
       catch { this.disconnect('network'); }
     }, this.nativePingMs); this.nativeTimer.unref();
   }
