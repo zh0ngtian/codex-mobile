@@ -4,7 +4,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, writeFileSync } from 'node:fs';
 import { inspect } from 'node:util';
-import { mkdtemp, readFile, rm, writeFile, rename, readdir, truncate, mkdir, symlink, readlink, utimes } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile, rename, readdir, truncate, mkdir, symlink, readlink, utimes, lstat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { RemoteStream } from '../../server/remote/relay.js';
@@ -261,15 +261,17 @@ it('已持久提交版本在同inode同内容touch后保持历史事实且curren
 it('清理原子捕获operation后真实进程中断仍可由原收据查询和精确恢复', async () => {
   const f = await prepared(); const path = join(f.directory, 'cleanup-interrupted'); const data = Buffer.from('retained-result');
   const result = await f.files.upload(path, input(data), { size: data.length, sha256: sha(data), expectedVersion: null });
-  f.script(source => String.raw`import os
-_rename=os.rename
-def _interrupt(src,dst,*args,**kwargs):
-    result=_rename(src,dst,*args,**kwargs)
-    if os.path.basename(src).startswith('.codex-mobile-upload-') and os.path.basename(dst)=='entry' and os.path.basename(os.path.dirname(dst)).startswith('.codex-mobile-cleanup-'): os._exit(0)
+  const marker = join(f.directory, 'capture-visited');
+  f.script(source => source.replace('ready_at=time.monotonic()', String.raw`_capture=capture_noreplace
+def capture_noreplace(src,dst):
+    result=_capture(src,dst)
+    if os.path.basename(src).startswith('.codex-mobile-upload-') and os.path.basename(dst)=='entry' and os.path.basename(os.path.dirname(dst)).startswith('.codex-mobile-cleanup-'):
+        with open(` + JSON.stringify(marker) + String.raw`,'w') as marker: marker.write('operation captured')
+        os._exit(0)
     return result
-os.rename=_interrupt
-` + source);
+ready_at=time.monotonic()`));
   await expect(f.files.releaseUpload(result.operation)).rejects.toMatchObject({ code: 'protocol', mayHaveBeenSent: true }); f.script(undefined);
+  expect(await readFile(marker, 'utf8')).toBe('operation captured'); await rm(marker);
   const saved = JSON.parse(JSON.stringify(result.operation));
   expect(await f.files.queryUpload(saved)).toMatchObject({ state: 'committed', version: result.version, currentMatches: true });
   const child = spawn(process.execPath, ['--import', 'tsx', new URL('./fixtures/remote-files-recover-worker.ts', import.meta.url).pathname], { stdio: 'pipe', env: { ...process.env, NODE_OPTIONS: '--no-experimental-webstorage' } });
@@ -283,25 +285,31 @@ os.rename=_interrupt
 it.each(['receipt', 'lock', 'removed-receipt', 'removed-lock', 'captured-journal', 'removed-journal'])('清理%s子项后实际退出仍保留原locator的恢复事实和回收能力', async phase => {
   const f = await prepared(); const path = join(f.directory, 'cleanup-child'); const data = Buffer.from('kept');
   const result = await f.files.upload(path, input(data), { size: data.length, sha256: sha(data), expectedVersion: null });
+  const marker = join(f.directory, 'phase-visited');
   f.script(source => String.raw`import os
-_rename=os.rename;_unlink=os.unlink;_phase=` + JSON.stringify(phase) + String.raw`
-def _interrupt_rename(src,dst,*args,**kwargs):
-    result=_rename(src,dst,*args,**kwargs)
-    if os.path.basename(src)==_phase and os.path.basename(os.path.dirname(src))=='entry': os._exit(0)
-    return result
+_unlink=os.unlink;_phase=` + JSON.stringify(phase) + String.raw`
+def _interrupted():
+    with open(` + JSON.stringify(marker) + String.raw`,'w') as marker: marker.write(_phase)
+    os._exit(0)
 def _interrupt_unlink(path,*args,**kwargs):
     result=_unlink(path,*args,**kwargs)
     parent=os.path.basename(os.path.dirname(path));name=os.path.basename(path)
-    if (parent=='files' and ((_phase=='removed-receipt' and name=='receipt') or (_phase=='removed-lock' and name=='writer-lock'))) or (_phase=='removed-journal' and path.endswith('.receipt.captured')): os._exit(0)
+    if (parent=='files' and ((_phase=='removed-receipt' and name=='receipt') or (_phase=='removed-lock' and name=='writer-lock'))) or (_phase=='removed-journal' and path.endswith('.receipt.captured')): _interrupted()
     return result
-os.rename=_interrupt_rename;os.unlink=_interrupt_unlink
-` + source.replace('ready_at=time.monotonic()', String.raw`_capture_journal=capture_journal
+os.unlink=_interrupt_unlink
+` + source.replace('ready_at=time.monotonic()', String.raw`_capture=capture_noreplace
+def capture_noreplace(src,dst):
+    result=_capture(src,dst)
+    if os.path.basename(src)==_phase and os.path.basename(os.path.dirname(src))=='entry': _interrupted()
+    return result
+_capture_journal=capture_journal
 def capture_journal(source,target):
     result=_capture_journal(source,target)
-    if _phase=='captured-journal': os._exit(0)
+    if _phase=='captured-journal': _interrupted()
     return result
 ready_at=time.monotonic()`));
   await expect(f.files.releaseUpload(result.operation)).rejects.toMatchObject({ code: 'protocol' }); f.script(undefined);
+  expect(await readFile(marker, 'utf8')).toBe(phase); await rm(marker);
   const saved = JSON.parse(JSON.stringify(result.operation));
   if (phase === 'removed-journal') { expect(await f.files.queryUpload(saved)).toEqual({ state: 'missing' }); expect(await readdir(f.directory)).toEqual(['cleanup-child']); return; }
   expect(await f.files.queryUpload(saved)).toMatchObject({ state: 'committed', version: result.version, currentMatches: true });
@@ -323,15 +331,17 @@ it('开始响应未知的locator在discard捕获payload后中断仍可由新适�
   });
   const error = await f.files.upload(path, input(Buffer.from('x')), { size: 1, sha256: sha(Buffer.from('x')), expectedVersion: null }).catch(error => error); f.transform(undefined);
   const saved = JSON.parse(JSON.stringify(error.operation)); expect(saved.token).not.toHaveProperty('directoryIdentity');
-  f.script(source => String.raw`import os
-_rename=os.rename
-def _interrupt(src,dst,*args,**kwargs):
-    result=_rename(src,dst,*args,**kwargs)
-    if os.path.basename(src)=='payload' and os.path.basename(os.path.dirname(src))=='entry': os._exit(0)
+  const marker = join(f.directory, 'discard-captured');
+  f.script(source => source.replace('ready_at=time.monotonic()', String.raw`_capture=capture_noreplace
+def capture_noreplace(src,dst):
+    result=_capture(src,dst)
+    if os.path.basename(src)=='payload' and os.path.basename(os.path.dirname(src))=='entry':
+        with open(` + JSON.stringify(marker) + String.raw`,'w') as marker: marker.write('payload captured')
+        os._exit(0)
     return result
-os.rename=_interrupt
-` + source);
+ready_at=time.monotonic()`));
   await expect(f.files.discardUpload(saved)).rejects.toMatchObject({ code: 'protocol' }); f.script(undefined);
+  expect(await readFile(marker, 'utf8')).toBe('payload captured'); await rm(marker);
   const { RemoteFiles } = await import('../../server/remote/files.js'); const other = await RemoteFiles.create(f.session, scope); cleanup.push(() => other.close());
   expect((await other.queryUpload(saved)).state).not.toBe('missing');
   await other.discardUpload(saved); expect(await readdir(f.directory)).toEqual([]);
@@ -434,6 +444,163 @@ ready_at=time.monotonic()`));
   await expect(f.files.releaseUpload(result.operation)).rejects.toMatchObject({ code: 'version' });
   expect(await readFile(journal + '.captured', 'utf8')).toBe('user replacement'); expect(JSON.parse((await readFile(journal, 'utf8')).split('\n')[0]!)).toEqual(result.operation.token);
   await expect(f.files.queryUpload(result.operation)).rejects.toMatchObject({ code: 'version' }); expect(await readFile(path)).toEqual(data);
+});
+
+const captureDestinationCases = ['operation', 'commit', 'receipt', 'writer-lock', 'journal'].flatMap(slot => ['file', 'directory', 'symlink'].flatMap(type => ['preexisting', 'concurrent'].map(timing => ({ slot, type, timing }))));
+it.each(captureDestinationCases)('捕获目的地原子拒绝覆盖：$slot/$type/$timing', async ({ slot, type, timing }) => {
+  const f = await prepared(); const path = join(f.directory, 'destination'); const data = Buffer.from('user destination remains safe');
+  const result = await f.files.upload(path, input(data), { size: data.length, sha256: sha(data), expectedVersion: null });
+  const root = join(f.directory, '.codex-mobile-cleanup-' + String(result.operation.token.id));
+  const target = slot === 'journal' ? root + '.receipt.captured' : slot === 'operation' ? join(root, 'entry') : slot === 'commit' ? join(root, 'commit') : join(root, 'files', slot);
+  const marker = join(f.directory, 'race-created'); const referent = join(f.directory, 'unknown-referent'); await writeFile(referent, 'unknown referent');
+  const statIdentity = async (path: string) => { const s = await lstat(path, { bigint: true }); return { dev: String(s.dev), ino: String(s.ino), mode: String(s.mode) }; };
+  let unknownIdentity: Record<string, string>;
+  if (timing === 'preexisting') {
+    if (type === 'file') await writeFile(target, 'UNKNOWN-USER-CAPTURE-DESTINATION');
+    else if (type === 'directory') await mkdir(target);
+    else await symlink(referent, target);
+    unknownIdentity = await statIdentity(target);
+  } else {
+    // 同一断言同时观察旧普通rename与真实no-replace原语，注入位于检查之后、实际捕获之前。
+    f.script(source => source.replace('ready_at=time.monotonic()', String.raw`_race_target=` + JSON.stringify(target) + String.raw`
+_race_type=` + JSON.stringify(type) + String.raw`
+_raced=False
+def _before_capture(src,dst):
+    global _raced
+    if dst!=_race_target or _raced: return
+    _raced=True
+    if _race_type=='file':
+        with open(dst,'xb') as unknown: unknown.write(b'UNKNOWN-USER-CAPTURE-DESTINATION')
+    elif _race_type=='directory': os.mkdir(dst)
+    else: os.symlink(` + JSON.stringify(referent) + String.raw`,dst)
+    with open(` + JSON.stringify(marker) + String.raw`,'w') as marker: json.dump(identity(os.lstat(dst)),marker)
+def _capture_race(function):
+    def wrapped(src,dst,*args,**kwargs):
+        _before_capture(src,dst)
+        return function(src,dst,*args,**kwargs)
+    return wrapped
+os.rename=_capture_race(os.rename)
+for _name in ('capture_noreplace','capture_journal'):
+    if _name in globals(): globals()[_name]=_capture_race(globals()[_name])
+ready_at=time.monotonic()`));
+  }
+  const error = await f.files.releaseUpload(result.operation).then(() => null, error => error); f.script(undefined);
+  if (timing === 'concurrent') unknownIdentity = JSON.parse(await readFile(marker, 'utf8'));
+  // 先核对真实未知inode/内容；不能仅因错误分类碰巧正确而遗漏覆盖和删除。
+  expect(await statIdentity(target)).toEqual(unknownIdentity!);
+  if (type === 'file') expect(await readFile(target, 'utf8')).toBe('UNKNOWN-USER-CAPTURE-DESTINATION');
+  else if (type === 'directory') expect(await readdir(target)).toEqual([]);
+  else expect(await readlink(target)).toBe(referent);
+  expect(await readFile(referent, 'utf8')).toBe('unknown referent'); expect(await readFile(path)).toEqual(data);
+  expect(error).toMatchObject({ code: 'version', mayHaveBeenSent: true }); expect(error.operation).toEqual(result.operation);
+  // 测试方显式移走未知物后，原持久operation仍可对账和继续清理。
+  await rename(target, join(f.directory, 'unknown-preserved'));
+  const saved = JSON.parse(JSON.stringify(result.operation));
+  if (slot === 'receipt' && type === 'file' && timing === 'concurrent') {
+    const child = spawn(process.execPath, ['--import', 'tsx', new URL('./fixtures/remote-files-recover-worker.ts', import.meta.url).pathname], { stdio: 'pipe', env: { ...process.env, NODE_OPTIONS: '--no-experimental-webstorage' } });
+    let stdout = ''; let stderr = ''; child.stdout.on('data', data => { stdout += String(data); }); child.stderr.on('data', data => { stderr += String(data); }); child.stdin.end(JSON.stringify({ directory: f.directory, operation: saved }));
+    expect(await new Promise<number | null>(resolve => child.on('close', resolve))).toBe(0); expect(stderr).toBe(''); expect(JSON.parse(stdout)).toMatchObject({ state: 'committed', version: result.version, currentMatches: true });
+  }
+  expect(await f.files.queryUpload(saved)).toMatchObject({ state: 'committed', version: result.version, currentMatches: true });
+  await f.files.releaseUpload(saved); expect(await f.files.queryUpload(saved)).toEqual({ state: 'missing' });
+  expect(await statIdentity(join(f.directory, 'unknown-preserved'))).toEqual(unknownIdentity!); expect(await readFile(path)).toEqual(data);
+});
+
+it.each(['file', 'directory', 'symlink'].flatMap(type => ['preexisting', 'concurrent'].map(timing => ({ type, timing }))))('提交前payload捕获目的地拒绝覆盖：$type/$timing', async ({ type, timing }) => {
+  const f = await prepared(); const path = join(f.directory, 'original'); await writeFile(path, 'original user contents'); const stat = await f.files.stat(path);
+  const marker = join(f.directory, 'payload-capture-race'); const referent = join(f.directory, 'unknown-referent'); await writeFile(referent, 'unknown referent');
+  f.script(source => source.replace('ready_at=time.monotonic()', String.raw`_raced=False
+def _occupy(dst):
+    global _raced
+    if _raced: return
+    _raced=True
+    if ` + JSON.stringify(type) + String.raw`=='file':
+        with open(dst,'xb') as unknown: unknown.write(b'UNKNOWN-COMMIT-CAPTURE')
+    elif ` + JSON.stringify(type) + String.raw`=='directory': os.mkdir(dst)
+    else: os.symlink(` + JSON.stringify(referent) + String.raw`,dst)
+    with open(` + JSON.stringify(marker) + String.raw`,'w') as marker: json.dump(dict(path=dst,identity=identity(os.lstat(dst))),marker)
+_private=private_directory
+def private_directory(prefix,parent):
+    result=_private(prefix,parent)
+    if ` + JSON.stringify(timing) + String.raw`=='preexisting' and prefix.startswith('.codex-mobile-commit-'): _occupy(os.path.join(result,'payload'))
+    return result
+_capture=capture_noreplace
+def capture_noreplace(src,dst):
+    if ` + JSON.stringify(timing) + String.raw`=='concurrent' and os.path.basename(src)=='payload' and os.path.basename(os.path.dirname(src)).startswith('.codex-mobile-upload-') and os.path.basename(os.path.dirname(dst)).startswith('.codex-mobile-commit-'): _occupy(dst)
+    return _capture(src,dst)
+ready_at=time.monotonic()`));
+  const error = await f.files.upload(path, input(Buffer.from('new')), { size: 3, sha256: sha(Buffer.from('new')), expectedVersion: stat.version }).catch(error => error); f.script(undefined);
+  const visited = JSON.parse(await readFile(marker, 'utf8')); const s = await lstat(visited.path, { bigint: true });
+  expect({ dev: String(s.dev), ino: String(s.ino), mode: String(s.mode) }).toEqual(visited.identity);
+  if (type === 'file') expect(await readFile(visited.path, 'utf8')).toBe('UNKNOWN-COMMIT-CAPTURE');
+  else if (type === 'directory') expect(await readdir(visited.path)).toEqual([]);
+  else expect(await readlink(visited.path)).toBe(referent);
+  expect(error).toMatchObject({ code: 'version', mayHaveBeenSent: true }); expect(error.operation).toBeDefined(); expect(await readFile(path, 'utf8')).toBe('original user contents');
+  await rename(visited.path, join(f.directory, 'unknown-preserved'));
+  if (type === 'file' && timing === 'concurrent') {
+    const child = spawn(process.execPath, ['--import', 'tsx', new URL('./fixtures/remote-files-recover-worker.ts', import.meta.url).pathname], { stdio: 'pipe', env: { ...process.env, NODE_OPTIONS: '--no-experimental-webstorage' } });
+    let stdout = ''; let stderr = ''; child.stdout.on('data', data => { stdout += String(data); }); child.stderr.on('data', data => { stderr += String(data); }); child.stdin.end(JSON.stringify({ directory: f.directory, operation: JSON.parse(JSON.stringify(error.operation)) }));
+    expect(await new Promise<number | null>(resolve => child.on('close', resolve))).toBe(0); expect(stderr).toBe(''); expect(JSON.parse(stdout)).toMatchObject({ state: 'staged', size: 3, sha256: sha(Buffer.from('new')) });
+  }
+  expect(await f.files.queryUpload(error.operation)).toMatchObject({ state: 'staged', size: 3, sha256: sha(Buffer.from('new')) });
+  await f.files.discardUpload(error.operation); expect(await f.files.queryUpload(error.operation)).toEqual({ state: 'missing' }); expect(await readFile(path, 'utf8')).toBe('original user contents');
+});
+
+it.each(['ENOTEMPTY', 'EISDIR', 'ENOTDIR'])('目标捕获原语的%s占用错误固定为version且不删除任何原内容', async code => {
+  const f = await prepared(); const path = join(f.directory, 'fixed-errors'); const data = Buffer.from('original');
+  const result = await f.files.upload(path, input(data), { size: data.length, sha256: sha(data), expectedVersion: null });
+  f.script(source => String.raw`import ctypes,errno
+class _OccupiedFunction:
+    def __call__(self,*args): ctypes.set_errno(getattr(errno,` + JSON.stringify(code) + String.raw`));return -1
+class _OccupiedFilesystem:
+    renamex_np=_OccupiedFunction();renameat2=_OccupiedFunction()
+ctypes.CDLL=lambda *args,**kwargs: _OccupiedFilesystem()
+` + source);
+  await expect(f.files.releaseUpload(result.operation)).rejects.toMatchObject({ code: 'version', mayHaveBeenSent: true }); f.script(undefined);
+  expect(await f.files.queryUpload(result.operation)).toMatchObject({ state: 'committed', version: result.version, currentMatches: true }); await f.files.releaseUpload(result.operation); expect(await readFile(path)).toEqual(data);
+});
+
+it.each(['payload', 'commit-payload'].flatMap(slot => ['file', 'directory', 'symlink'].flatMap(type => ['preexisting', 'concurrent'].map(timing => ({ slot, type, timing })))))('discard子项捕获拒绝未知目的：$slot/$type/$timing', async ({ slot, type, timing }) => {
+  const f = await prepared(); const path = join(f.directory, 'never-committed'); const data = Buffer.from('staged');
+  f.script(source => source.replace('ready_at=time.monotonic()', slot === 'payload' ? String.raw`_receive=receive
+def receive():
+    value=_receive()
+    if value.get('op')=='commit': raise OSError('test before capture')
+    return value
+ready_at=time.monotonic()` : String.raw`def _no_commit(*args,**kwargs): raise OSError('test after capture')
+os.replace=_no_commit
+ready_at=time.monotonic()`));
+  const uploadError = await f.files.upload(path, input(data), { size: data.length, sha256: sha(data), expectedVersion: null }).catch(error => error); f.script(undefined);
+  expect(await f.files.queryUpload(uploadError.operation)).toMatchObject({ state: 'staged', size: data.length, sha256: sha(data) });
+  const root = join(f.directory, '.codex-mobile-cleanup-' + String(uploadError.operation.token.id)); const target = join(root, 'files', slot);
+  const marker = join(f.directory, 'discard-capture-race'); const referent = join(f.directory, 'unknown-referent'); await writeFile(referent, 'unknown referent');
+  const statIdentity = async (path: string) => { const s = await lstat(path, { bigint: true }); return { dev: String(s.dev), ino: String(s.ino), mode: String(s.mode) }; };
+  let unknownIdentity: Record<string, string>;
+  if (timing === 'preexisting') {
+    if (type === 'file') await writeFile(target, 'UNKNOWN-DISCARD-CAPTURE');
+    else if (type === 'directory') await mkdir(target);
+    else await symlink(referent, target);
+    unknownIdentity = await statIdentity(target);
+  } else f.script(source => source.replace('ready_at=time.monotonic()', String.raw`_capture=capture_noreplace
+def capture_noreplace(src,dst):
+    if dst==` + JSON.stringify(target) + String.raw`:
+        if ` + JSON.stringify(type) + String.raw`=='file':
+            with open(dst,'xb') as unknown: unknown.write(b'UNKNOWN-DISCARD-CAPTURE')
+        elif ` + JSON.stringify(type) + String.raw`=='directory': os.mkdir(dst)
+        else: os.symlink(` + JSON.stringify(referent) + String.raw`,dst)
+        with open(` + JSON.stringify(marker) + String.raw`,'w') as marker: json.dump(identity(os.lstat(dst)),marker)
+    return _capture(src,dst)
+ready_at=time.monotonic()`));
+  await expect(f.files.discardUpload(uploadError.operation)).rejects.toMatchObject({ code: 'version', mayHaveBeenSent: true }); f.script(undefined);
+  if (timing === 'concurrent') unknownIdentity = JSON.parse(await readFile(marker, 'utf8'));
+  expect(await statIdentity(target)).toEqual(unknownIdentity!);
+  if (type === 'file') expect(await readFile(target, 'utf8')).toBe('UNKNOWN-DISCARD-CAPTURE');
+  else if (type === 'directory') expect(await readdir(target)).toEqual([]);
+  else expect(await readlink(target)).toBe(referent);
+  await expect(readFile(path)).rejects.toMatchObject({ code: 'ENOENT' }); await rename(target, join(f.directory, 'unknown-preserved'));
+  expect(await f.files.queryUpload(uploadError.operation)).toMatchObject({ state: 'staged', size: data.length, sha256: sha(data) });
+  await f.files.discardUpload(uploadError.operation); expect(await f.files.queryUpload(uploadError.operation)).toEqual({ state: 'missing' });
+  expect(await statIdentity(join(f.directory, 'unknown-preserved'))).toEqual(unknownIdentity!); expect(await readFile(referent, 'utf8')).toBe('unknown referent');
 });
 
 it.each(['platform', 'filesystem'])('no-replace原语不支持%s时明确capability失败并保留目标真实收据供后续恢复', async unsupported => {
@@ -539,7 +706,7 @@ it('失败清理拒绝同名暂存替换物，错误不泄露生产者内容', a
 });
 
 it('精确清理在公开路径检查后发生替换时保留捕获的替换物', async () => {
-  const f = await prepared();
+  const f = await prepared(); const marker = join(f.directory, 'source-replaced');
   f.script(source => String.raw`import os
 _rename=os.rename;_unlink=os.unlink;_raced=False
 def _race(path):
@@ -548,15 +715,20 @@ def _race(path):
     if not _raced and os.path.basename(payload)=='payload' and '.codex-mobile-upload-' in payload and os.path.isfile(payload):
         _raced=True;_rename(payload,payload+'.original')
         with open(payload,'wb') as f: f.write(b'user replacement')
+        with open(` + JSON.stringify(marker) + String.raw`,'w') as marker: marker.write('cleanup source replaced')
 def _racing_rename(src,dst,*a,**kw):
     _race(src);return _rename(src,dst,*a,**kw)
 def _racing_unlink(path,*a,**kw):
     _race(path);return _unlink(path,*a,**kw)
 os.rename=_racing_rename;os.unlink=_racing_unlink
-` + source);
+` + source.replace('ready_at=time.monotonic()', String.raw`_capture=capture_noreplace
+def capture_noreplace(src,dst):
+    _race(src);return _capture(src,dst)
+ready_at=time.monotonic()`));
   async function* failed(): AsyncGenerator<Uint8Array> { throw new Error('source-failed'); }
   const outcome = await f.files.upload(join(f.directory, 'never-created'), failed(), { size: 1, sha256: sha(Buffer.from('x')), expectedVersion: null }).catch(error => error);
   expect(outcome).toMatchObject({ mayHaveBeenSent: true });
+  expect(await readFile(marker, 'utf8')).toBe('cleanup source replaced');
   const contents: string[] = [];
   async function visit(directory: string, depth: number): Promise<void> {
     if (depth > 4) throw new Error('测试目录深度越界');
@@ -583,6 +755,7 @@ it('暂存完成后被外部修改不得原子覆盖目的文件', async () => {
 
 it('提交前公开payload被同名替换时先验证捕获物，不覆盖用户目的文件', async () => {
   const f = await prepared(); const path = join(f.directory, 'commit-race'); await writeFile(path, 'original'); const stat = await f.files.stat(path);
+  const marker = join(f.directory, 'source-replaced');
   f.script(source => String.raw`import os
 _rename=os.rename;_replace=os.replace;_raced=False
 def _commit_race(src):
@@ -590,13 +763,18 @@ def _commit_race(src):
     if not _raced and os.path.basename(src)=='payload' and os.path.basename(os.path.dirname(src)).startswith('.codex-mobile-upload-'):
         _raced=True;_rename(src,src+'.original')
         with open(src,'wb') as f: f.write(b'BAD')
+        with open(` + JSON.stringify(marker) + String.raw`,'w') as marker: marker.write('commit source replaced')
 def _racing_rename(src,dst,*a,**kw):
     _commit_race(src);return _rename(src,dst,*a,**kw)
 def _racing_replace(src,dst,*a,**kw):
     _commit_race(src);return _replace(src,dst,*a,**kw)
 os.rename=_racing_rename;os.replace=_racing_replace
-` + source);
+` + source.replace('ready_at=time.monotonic()', String.raw`_capture=capture_noreplace
+def capture_noreplace(src,dst):
+    _commit_race(src);return _capture(src,dst)
+ready_at=time.monotonic()`));
   const error = await f.files.upload(path, input(Buffer.from('new')), { size: 3, sha256: sha(Buffer.from('new')), expectedVersion: stat.version }).catch(error => error);
+  expect(await readFile(marker, 'utf8')).toBe('commit source replaced');
   expect(error).toMatchObject({ mayHaveBeenSent: true }); expect(await readFile(path, 'utf8')).toBe('original');
 });
 

@@ -159,14 +159,17 @@ def cleanup_journal(token):
         if os.path.lexists(captured): raise Failure('version')
         return original
     return captured
-def capture_journal(source,target):
-    # 最后收据位于容器之外；系统原语原子拒绝覆盖并发出现的未知同名文件。
-    check()
+def capture_noreplace(source,target):
+    # 所有自有捕获均原子拒绝覆盖；先检查目的名字不能授权普通rename覆盖后来者。
+    check();import errno
     if os.name=='nt':
         try: os.rename(source,target)
-        except FileExistsError: raise Failure('version')
+        except OSError as error:
+            if error.errno in (errno.EEXIST,errno.ENOTEMPTY,errno.EISDIR,errno.ENOTDIR) or getattr(error,'winerror',None) in (80,183): raise Failure('version')
+            if error.errno in (errno.ENOSYS,errno.EOPNOTSUPP,errno.ENOTSUP,errno.EINVAL): raise Failure('capability')
+            raise
     else:
-        import ctypes,errno
+        import ctypes
         library=ctypes.CDLL(None,use_errno=True)
         try:
             if sys.platform=='darwin':
@@ -180,9 +183,10 @@ def capture_journal(source,target):
         if result!=0:
             code=ctypes.get_errno()
             if code in (errno.ENOSYS,errno.EOPNOTSUPP,errno.ENOTSUP,errno.EINVAL): raise Failure('capability')
-            if code==errno.EEXIST: raise Failure('version')
+            if code in (errno.EEXIST,errno.ENOTEMPTY,errno.EISDIR,errno.ENOTDIR): raise Failure('version')
             raise OSError(code,'capture')
     check()
+def capture_journal(source,target): capture_noreplace(source,target)
 def cleanup_record(token):
     root=cleanup_path(token)
     try: lines=receipt_lines(cleanup_journal(token),token['cleanupLockIdentity'])
@@ -253,8 +257,12 @@ def inspect(token):
     if committed is not None: return dict(state='committed',size=committed['size'],sha256=committed['sha256'],facts=committed['facts'],currentMatches=False)
     try:
         if captured is not None:
-            if identity(os.lstat(captured['directory']))!=captured['identity']: raise Failure('version')
-            payload=os.path.join(captured['directory'],'payload')
+            location=captured['directory']
+            if not os.path.lexists(location) and cleanup_record(token) is not None: location=os.path.join(cleanup_path(token),'commit')
+            if identity(os.lstat(location))!=captured['identity']: raise Failure('version')
+            captured_payload=os.path.join(location,'payload')
+            # 持久capture记录先于移动；拒绝目的占位后，自有payload仍可在原位置完整重证。
+            if os.path.lexists(captured_payload): payload=captured_payload
         size,digest,value=filehash(payload,token['payloadIdentity'])
         return dict(state='staged' if size==token['size'] and digest==token['sha256'] else 'receiving',size=size,sha256=digest)
     except (FileNotFoundError,Failure): return dict(state='unknown')
@@ -263,14 +271,14 @@ def cleanup_directory(token,directory,expected_directory,slot,entries,locks):
     if not os.path.lexists(held) and os.path.lexists(directory):
         if identity(os.lstat(directory))!=expected_directory: raise Failure('version')
         if not cleanup_names(directory)<={name for name,_,_ in entries}: raise Failure('version')
-        os.rename(directory,held)
+        capture_noreplace(directory,held)
     if os.path.lexists(held):
         if identity(os.lstat(held))!=expected_directory or not cleanup_names(held)<={name for name,_,_ in entries}: raise Failure('version')
     for name,target_name,expected in entries:
         check();cleanup_record(token);source=os.path.join(held,name);target=os.path.join(root,'files',target_name)
         if os.path.lexists(source):
             if identity(os.lstat(source))!=expected or os.path.lexists(target): raise Failure('version')
-            os.rename(source,target)
+            capture_noreplace(source,target)
         if os.path.lexists(target):
             if identity(os.lstat(target))!=expected: raise Failure('version')
             os.unlink(target)
@@ -425,7 +433,7 @@ try:
                         if identity(os.fstat(record.fileno()))!=token['receiptIdentity']: raise Failure('version')
                         record.write((json.dumps(capture_record,separators=(',',':'))+'\n').encode('ascii'));record.flush();os.fsync(record.fileno())
                     # Windows不允许移动仍打开的文件，捕获之前显式关闭自有句柄。
-                    f.close();check();private_payload=os.path.join(captured,'payload');os.rename(payload,private_payload)
+                    f.close();check();private_payload=os.path.join(captured,'payload');capture_noreplace(payload,private_payload)
                     n,d,v=filehash(private_payload,token['payloadIdentity'])
                     if n!=size or d!=digest or identity(os.lstat(captured))!=capture_record['identity']: raise Failure('integrity')
                     check();write_version(path,request['expected']);os.replace(private_payload,path);check()
