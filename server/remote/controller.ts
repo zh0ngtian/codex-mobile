@@ -363,9 +363,9 @@ export class RemoteController extends EventEmitter<ControllerEvents> {
     stream.on('pong', pong); stream.once('close', () => { this.streams.delete(stream); stream.off('pong', pong); }); return stream;
   }
   async createManagementSession(value: RemoteTargetIdentity): Promise<RemoteRpcSession> {
-    const epoch = this.epoch; const identity = tuple(value); const stream = this.createRawStream(identity); const session = RemoteRpcSession.fromRemoteStream(stream, this.options.rpcOptions);
-    try { await session.initialize(); this.assert(epoch); if (!this.targetStatus(identity).executable) throw new RemoteControllerError('target-unavailable'); return session; }
-    catch (error) { session.close(); if (error instanceof RemoteControllerError) throw error; throw new RemoteNetworkError(); }
+    const epoch = this.epoch; const identity = tuple(value); const stream = this.createRawStream(identity); let session: RemoteRpcSession | undefined;
+    try { session = RemoteRpcSession.fromRemoteStream(stream, this.options.rpcOptions); await session.initialize(); this.assert(epoch); if (!this.targetStatus(identity).executable) throw new RemoteControllerError('target-unavailable'); return session; }
+    catch (error) { dispose(session); this.terminateStream(stream); if (error instanceof RemoteControllerError) throw error; throw new RemoteNetworkError(); }
   }
   async close(): Promise<void> {
     if (this.state !== 'closed') { this.epoch++; this.abort.abort(); this.currentState = 'closed'; this.reason = undefined; clearTimeout(this.timer); this.timer = undefined; this.catalog.close(); dispose(this.relay); this.relay = undefined; this.detachCanonical(); dispose(this.options.managedAuth); this.publish('state', 'closed'); this.removeAllListeners(); }

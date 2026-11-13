@@ -4,13 +4,14 @@ import { generateKeyPairSync } from 'node:crypto';
 import { mkdtemp, readFile, realpath, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { afterEach, expect, it } from 'vitest';
+import { afterEach, expect, it, vi } from 'vitest';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { RemoteController, RemoteControllerError } from '../../server/remote/controller.js';
 import { PrivateStore } from '../../server/remote/private-store.js';
 import { RemoteNetworkError, deviceIdentityHash, type EnrollmentRecord, type ManagedAuth } from '../../server/remote/auth.js';
 import type { ManagedAuthIdentity } from '../../server/remote/managed-auth.js';
 import { RemoteAuthRequiredError } from '../../server/remote/relay.js';
+import { RemoteRpcSession } from '../../server/remote/rpc-session.js';
 
 const NOW = 1794530000000;
 const cleanup: (() => unknown | Promise<unknown>)[] = [];
@@ -55,6 +56,36 @@ it('多次start与多目标raw/管理流只持有一个relay，零stream仍保�
   a.close(); b.close(); await raw.close(); await new Promise(resolve => setTimeout(resolve, 25)); expect(f.controller.state).toBe('online'); expect(f.connections[0]!.readyState).toBe(1); expect(f.connections).toHaveLength(1);
   expect(f.methods.filter(call => call.method === 'account/read').every(call => JSON.stringify(call.params) === JSON.stringify({ refreshToken: false }))).toBe(true);
   expect(f.methods.every(call => ['account/read', 'remoteControl/status/read'].includes(call.method))).toBe(true);
+});
+
+it('管理会话构造配置非法也释放raw预算，下一条raw可发送且master保持在线', async () => {
+  const f = await fixture({ rpcOptions: { maxPending: 0 }, relayOptions: { maxStreams: 1, nativePingMs: 10000, streamPingMs: 10000 } });
+  await f.controller.start(); await until(() => f.controller.state === 'online');
+  await expect(f.controller.createManagementSession(local)).rejects.toBeInstanceOf(Error);
+  const raw = f.controller.createRawStream(local); await raw.send({ method: 'turn/start' }); await raw.close();
+  await until(() => f.frames.filter(frame => frame.type === 'client_closed').length === 2);
+  expect(f.frames.filter(frame => frame.message?.method === 'initialize')).toHaveLength(0);
+  expect(f.frames.filter(frame => frame.message?.method === 'turn/start')).toHaveLength(1);
+  expect(f.controller.state).toBe('online'); expect(f.connections).toHaveLength(1); expect(f.connections[0]!.readyState).toBe(1);
+});
+
+it('管理工厂清理session同步异常不跳过raw释放，也不覆盖目标错误分类', async () => {
+  const f = await fixture({ relayOptions: { maxStreams: 1, nativePingMs: 10000, streamPingMs: 10000 } });
+  await f.controller.start(); await until(() => f.controller.state === 'online');
+  const original = RemoteRpcSession.fromRemoteStream; let session!: RemoteRpcSession;
+  const factory = vi.spyOn(RemoteRpcSession, 'fromRemoteStream').mockImplementation((stream, options) => {
+    session = original(stream, options); const initialize = session.initialize.bind(session);
+    session.initialize = async params => { const result = await initialize(params); f.setTargets([target('local-env', 'local-install', { online: false })]); await f.controller.refreshTargets(); return result; };
+    session.on('close', () => { throw new Error('listener-secret'); });
+    vi.spyOn(session, 'close').mockImplementationOnce(() => { throw new Error('close-secret'); });
+    return session;
+  });
+  try { await expect(f.controller.createManagementSession(local)).rejects.toMatchObject({ code: 'target-unavailable' }); }
+  finally { factory.mockRestore(); }
+  expect(session.closed).toBe(true); expect(session.eventNames()).toHaveLength(0);
+  f.setTargets([target()]); await f.controller.refreshTargets(); const raw = f.controller.createRawStream(local); await raw.send({ method: 'turn/start' }); await raw.close();
+  await until(() => f.frames.filter(frame => frame.type === 'client_closed').length === 2);
+  expect(f.controller.state).toBe('online'); expect(f.connections).toHaveLength(1); expect(f.connections[0]!.readyState).toBe(1);
 });
 
 it('本机证明双ID严格匹配，同名不同installation不伪装为已配对；状态可区分', async () => {
