@@ -1,0 +1,199 @@
+{
+  "schemaVersion": 1,
+  "scope": "Task3a目标命令基础，源码隔离验证",
+  "sourceCommit": "8e3a1214c300bd20b215ac253a2032ce7ea04077",
+  "baseCommit": "4539494e4bcd8f57412a96c7834719fa23d54974",
+  "status": "source-and-official-command-probe-verified",
+  "implementationReport": {
+    "serverTests": {
+      "filesPassed": 57,
+      "filesSkipped": 2,
+      "testsPassed": 1145,
+      "testsSkipped": 7,
+      "unhandledRejections": 0
+    },
+    "commandTestsPassed": 71,
+    "rpcTestsPassed": 24,
+    "sourceStrict": true,
+    "sourceAndTestsStrict": true,
+    "serverBuild": true,
+    "redGreenObserved": true,
+    "specFixes": "原两项独立RED现GREEN；正常完整输出后确认精确terminate ACK与原exec终结；非法probe路径保留unknown",
+    "exitCodeTestsPassed": 19,
+    "qualityFixRed": {
+      "failed": 9,
+      "passed": 15,
+      "filteredSkipped": 66
+    },
+    "qualityFixes": "read1剩余额度+1及时读取；按平台限定业务退出码，外层signed32不变"
+  },
+  "qualityReview": {
+    "passed": true,
+    "sourceCommit": "8e3a1214c300bd20b215ac253a2032ce7ea04077",
+    "archive": "/tmp/codex-remote-commands-quality-fix-59mROg",
+    "report": "evidence/QUALITY-REPORT.md",
+    "qualityOriginalProbesPassed": 9,
+    "specOriginalProbesPassed": 13,
+    "additionalExitBoundaryProbesPassed": 6,
+    "specialistTestsPassed": 114,
+    "firstSerialServerSuite": {
+      "filesPassed": 57,
+      "filesSkipped": 2,
+      "testsPassed": 1145,
+      "testsSkipped": 7,
+      "unhandledRejections": 0
+    },
+    "strictSource": true,
+    "strictSourceAndTests": true,
+    "serverBuild": true,
+    "diffCheck": true,
+    "remainingCriticalImportantMinor": 0,
+    "firstRunFailures": 0
+  },
+  "officialProbe": {
+    "passed": true,
+    "receipt": "2026-11-13-remote-commands-product-probe.json",
+    "strongBackgroundStartAndNonNaturalCompletionProof": true,
+    "initialProbePassed": true,
+    "totalCommandExecRequestsIncludingInitialProbe": 6,
+    "totalModelListRequestsIncludingInitialProbe": 4,
+    "commandProbeMs": 5942,
+    "startToCommandRpcAndCliOnlineMs": 26149
+  },
+  "limits": {
+    "globalConcurrentCommands": 4,
+    "globalReservedBytes": 67108864,
+    "defaultCaptureBytesPerStream": 524288,
+    "maximumCaptureBytesPerStream": 2097152,
+    "defaultTimeoutMs": 20000,
+    "maximumTimeoutMs": 180000
+  },
+  "permissionOverrides": false,
+  "productionChanged": false,
+  "clientBuilt": false,
+  "limitations": [
+    "本项只验证目标命令基础，文件传输/目标业务路由/共享队列/客户端模式继续后续开发。",
+    "Windows退出码和路径为受控协议测试，未覆盖Windows实机。",
+    "正式Remote单次实际OS进程及25秒零逻辑流保活不是P95、8小时、跨凭据过期或睡眠唤醒验收。"
+  ],
+  "historicalSpecReview": {
+    "sourceCommit": "cba1d973610229867f956c5f0c39fcddfa5067d8",
+    "passed": false,
+    "confirmedIssues": [
+      "正常完成后遗留后台后代",
+      "不可信已发送probe路径响应错误标为not-sent"
+    ],
+    "archive": "/tmp/codex-remote-commands-spec-6pQUFG",
+    "specialistPassed": 79,
+    "strictSource": true,
+    "strictSourceAndTests": true,
+    "serverBuild": true,
+    "firstServerSuite": {
+      "passed": 1109,
+      "failed": 1,
+      "skipped": 7,
+      "failure": "remote-runtime:提交后解除全局暂停写入迟到时取消会恢复持久暂停，重启不能自动打开Relay"
+    },
+    "exactOriginalBudgetRerunPassed": true,
+    "secondSerialServerSuite": {
+      "passed": 1110,
+      "failed": 0,
+      "skipped": 7
+    },
+    "runtimeFailureCausality": "疑似负载相关时序抖动，未确定与本次修改因果；首轮失败保留"
+  },
+  "specReview": {
+    "passed": true,
+    "sourceCommit": "8e3a1214c300bd20b215ac253a2032ce7ea04077",
+    "archive": "/tmp/codex-remote-commands-spec-quality-fix-n3NUek",
+    "report": "review-evidence/SPEC-REPORT.md",
+    "qualityOriginalProbesPassed": 9,
+    "specOriginalProbesPassed": 13,
+    "additionalExitBoundaryProbesPassed": 6,
+    "specialistTestsPassed": 114,
+    "firstSerialServerSuite": {
+      "filesPassed": 57,
+      "filesSkipped": 2,
+      "testsPassed": 1145,
+      "testsSkipped": 7,
+      "unhandledRejections": 0
+    },
+    "strictSource": true,
+    "strictSourceAndTests": true,
+    "serverBuild": true,
+    "diffCheck": true,
+    "firstRunFailures": 0
+  },
+  "independentOriginalFindingsRerun": {
+    "oldSourceCommit": "cba1d973610229867f956c5f0c39fcddfa5067d8",
+    "oldSourceFailed": 2,
+    "newSourcePassed": 2,
+    "newArchive": "/tmp/codex-remote-commands-spec-fix-eyMaBq",
+    "oldArchive": "/tmp/codex-remote-commands-spec-fix-old-red-m9cSeM",
+    "fixtureAdaptation": "stderr data即时转发，与实际流式协议一致；原业务输入和断言不变"
+  },
+  "historicalQualityReview": {
+    "sourceCommit": "a1478df3082480169aa4f71f0fc9153f340f62a7",
+    "passed": false,
+    "archive": "/tmp/codex-remote-commands-quality-7pqWPU",
+    "confirmedIssues": [
+      "输出cap+1字节后保持管道打开时，Python缓冲read等待整块导致越界误报timeout",
+      "业务Python退出码错误地将Windows DWORD限制为signed32，合法Windows退出码被拒绝"
+    ],
+    "independentOverflowProbes": {
+      "passed": 1,
+      "failed": 4
+    },
+    "firstServerSuite": {
+      "filesPassed": 56,
+      "filesSkipped": 2,
+      "testsPassed": 1121,
+      "testsSkipped": 7
+    },
+    "strictSource": true,
+    "strictSourceAndTests": true,
+    "serverBuild": true,
+    "diffCheck": true,
+    "reviewComplete": true,
+    "independentWindowsExitCodeProbes": {
+      "passed": 1,
+      "failed": 3,
+      "actualWindowsEndToEnd": false,
+      "evidence": "CPython实现及Windows GetExitCodeProcess合同、Windows元数据协议替身"
+    },
+    "reusedSpecProbesPassed": 13,
+    "report": "evidence/QUALITY-REPORT.md",
+    "additionalCriticalOrMinor": false
+  },
+  "historicalSpecFixReview": {
+    "passed": true,
+    "sourceCommit": "a1478df3082480169aa4f71f0fc9153f340f62a7",
+    "archive": "/tmp/codex-remote-commands-spec-fix-eyMaBq",
+    "independentFinalizationProbesPassed": 11,
+    "specialistTestsPassed": 90,
+    "firstSerialServerSuite": {
+      "filesPassed": 56,
+      "filesSkipped": 2,
+      "testsPassed": 1121,
+      "testsSkipped": 7,
+      "unhandledRejections": 0
+    },
+    "strictSource": true,
+    "strictSourceAndTests": true,
+    "serverBuild": true,
+    "diffCheck": true
+  },
+  "probeHarnessValidation": {
+    "generatedJavaScriptSyntax": true,
+    "pythonSyntax": true,
+    "offlineBinaryArgvCwdEnv": true,
+    "offlineOwnedProcessCleanupRedGreen": true,
+    "ranRemoteDuringOfflineTests": false,
+    "historicalOfflineHarnessFailure": {
+      "cause": "离线business未继承TMPDIR而checker继承，重建临时路径不一致；非产品或官方Remote失败",
+      "fixed": "统一离线环境继承后真实RED/GREEN均通过",
+      "ownedLeftoverCleaned": true
+    },
+    "strongerChildAssertionsOfflineRedGreen": true
+  }
+}
