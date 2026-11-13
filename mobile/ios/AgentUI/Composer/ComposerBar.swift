@@ -48,7 +48,7 @@ struct ComposerBar: View {
                                 .font(AgentTheme.body)
                                 .lineLimit(1...6)
                                 .focused($focused)
-                                .submitLabel(.send)
+                                .submitLabel(.return)
                                 .onSubmit(submit)
                                 .onKeyPress(keys: [.upArrow, .downArrow, .return, .tab, .escape], action: handleKey)
                                 .frame(minHeight: 24)

@@ -17,7 +17,8 @@ it('iOS 准备安装完整 AgentApp 页面、主题资源，同时不引入第�
     expect(result.status, result.stderr).toBe(0);
     const app = join(temporary, 'pakeplus/PakePlus/AgentUI');
     expect(existsSync(join(app, 'App/RootView.swift'))).toBe(true);
-    expect(existsSync(join(app, 'Composer/ComposerBar.swift'))).toBe(true);
+    const composer = readFileSync(join(app, 'Composer/ComposerBar.swift'), 'utf8');
+    expect(composer).toContain('.submitLabel(.return)');
     expect(existsSync(join(app, 'Assets.xcassets/ProjectFolderOpen.imageset/Contents.json'))).toBe(true);
     expect(existsSync(join(app, 'App/AgentApp.swift'))).toBe(false);
     expect(existsSync(join(app, 'Info.plist'))).toBe(false);
