@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 1,
+  "validatedAt": "2026-11-13T03:47:15.541Z",
+  "sourceCommit": "54d68f5bc4dd18b2cf879261f1a712c638e9b224",
+  "scope": "独立实例使用正式 RemoteRelay 接入官方 Remote；未部署现役服务，未创建测试会话",
+  "identity": {
+    "ownController": true,
+    "ownSecureEnclaveKey": true,
+    "restoredKeySignatureVerified": true
+  },
+  "rpc": {
+    "targets": 1,
+    "streams": 3,
+    "methods": [
+      "initialize",
+      "model/list"
+    ],
+    "repeatAfterHeartbeat": true
+  },
+  "result": {
+    "streams": 3,
+    "physicalConnections": 1,
+    "activePongs": 3,
+    "unknownPongs": 0
+  },
+  "rpcSamplesMs": [
+    795,
+    1000,
+    732
+  ],
+  "cleanup": {
+    "method": "官方command/exec",
+    "completed": true
+  },
+  "limits": [
+    "真实目标仅覆盖当前Mac；两个目标隔离由本地WS回归覆盖",
+    "本轮35秒心跳窗口不等于8小时稳定性验收",
+    "100MiB附件、手机重入P95、睡眠唤醒、网关重启及产品集成待验收"
+  ],
+  "canonicalBindingProbe": {
+    "validatedAt": "2026-11-13T04:23:58.398Z",
+    "statusRead": {
+      "method": "remoteControl/status/read",
+      "identityFields": [
+        "environmentId",
+        "installationId"
+      ]
+    },
+    "managedAccountRefresh": {
+      "method": "account/read",
+      "refreshToken": true,
+      "elapsedMs": 3028,
+      "accountType": "chatgpt"
+    },
+    "catalog": {
+      "scope": "当前网关自身client可见目录",
+      "targets": 1,
+      "canonicalEnvironmentMatched": true,
+      "canonicalInstallationMatched": true,
+      "online": true
+    },
+    "readOnly": true,
+    "testChatsCreated": 0
+  }
+}

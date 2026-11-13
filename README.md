@@ -186,6 +186,8 @@ Android 使用固定 PakePlus WebView 容器直接呈现内置共享 Web 页面�
 
 ## 系统架构
 
+官方 Remote 常驻网关正在开发：协议复用与网关自有硬件授权模块已有源码和隔离 RPC 验证，目标控制器、共享离线队列及客户端模式选择尚未接入。当前使用方式仍按下述架构；本轮不部署网关或发布客户端。已确认边界及待验收项见[设计](docs/superpowers/specs/2026-11-13-remote-gateway.md)和[实施计划](docs/superpowers/plans/2026-11-13-remote-gateway.md)。
+
 ```mermaid
 flowchart LR
     C["手机浏览器 / Android / iOS"]

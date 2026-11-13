@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 1,
+  "sourceCommit": "1c5351c7a2e2441421449586cfd0d9c6a784915e",
+  "validatedAt": "2026-11-13T05:05:22.019Z",
+  "scope": "隔离实例使用正式 RemoteAuthProviderImpl、SecureEnclaveDeviceKey 和 RemoteRelay 访问官方 Remote",
+  "identity": {
+    "ownPreviouslyAuthorizedController": true,
+    "ownSecureEnclaveKeyRestored": true,
+    "publicIdentityMatched": true,
+    "independentSignatureVerified": true,
+    "reenrolled": false
+  },
+  "rpc": {
+    "targets": 1,
+    "initialStreams": 3,
+    "initialPhysicalConnections": 1,
+    "methods": [
+      "initialize",
+      "model/list"
+    ],
+    "initialModelListSamplesMs": [
+      636,
+      824,
+      636
+    ]
+  },
+  "recovery": {
+    "deliberatePhysicalDisconnect": true,
+    "sameThreeStreamsResumed": true,
+    "disconnectToAllThreeSequentialModelListsMs": 4535,
+    "freshProviderAndRelayRecoveredDiskIdentity": true,
+    "freshProviderModelListMs": 582,
+    "refreshStarts": 2,
+    "refreshFinishes": 2,
+    "totalPhysicalConnections": 3
+  },
+  "productionServiceChanged": false,
+  "testChatsCreated": 0,
+  "limits": [
+    "样本仅覆盖当前 Mac；单次重连耗时不代表 P95 通过",
+    "新建 provider/relay 对象验证磁盘身份恢复，未执行真实网关进程重启",
+    "未覆盖自然令牌到期、8 小时运行、睡眠唤醒、手机重入或产品队列集成",
+    "本收据仅证明所列源提交的隔离连接能力，不代表生产服务或完整产品接入验收"
+  ],
+  "priorRuns": [
+    {
+      "sourceCommit": "3df6ba41e330e7f9686517d3540de6ef848ae5dc",
+      "validatedAt": "2026-11-13T04:32:24.415Z",
+      "disconnectToAllThreeSequentialModelListsMs": 4303,
+      "passed": true
+    },
+    {
+      "sourceCommit": "245e03ce991d3e56ffe2307ed82c78d2156fa61a",
+      "validatedAt": "2026-11-13T04:52:50.838Z",
+      "disconnectToAllThreeSequentialModelListsMs": 4748,
+      "passed": true
+    }
+  ]
+}

@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "validatedAt": "2026-11-13T04:18:44.382Z",
+  "sourceCommit": "2116448cfd60225f4b6a5d68dae00e5862b1d1c3",
+  "scope": "正式RemoteRelay，经官方Remote读写隔离临时目录；未部署现役服务、未创建测试会话",
+  "upload": {
+    "bytes": 104857600,
+    "sha256": "da9a13f518ddb45c6409d068bc64d0ebbd59fdb4c34f6b5e4a629754d74ce61c",
+    "blockBytes": 1048576,
+    "maxConcurrent": 4,
+    "elapsedMsIncludingSetup": 166848,
+    "targetSizeVerified": true,
+    "targetSha256Verified": true,
+    "atomicCommit": true
+  },
+  "download": {
+    "complete": true,
+    "validatedAt": "2026-11-13T04:18:43.737Z",
+    "bytes": 104857600,
+    "sha256": "da9a13f518ddb45c6409d068bc64d0ebbd59fdb4c34f6b5e4a629754d74ce61c",
+    "blockBytes": 262144,
+    "maxConcurrent": 4,
+    "elapsedMsIncludingSetup": 192007,
+    "newPhysicalConnectionAfterFirstAttempt": true,
+    "newLogicalStream": true,
+    "sizeVerified": true,
+    "fullSha256Verified": true,
+    "range": {
+      "offset": 1048593,
+      "length": 262151,
+      "bytesVerified": true
+    }
+  },
+  "limits": [
+    "上传和下载在两次物理连接完成；不作为无断线传输或产品自动恢复已通过的证据",
+    "只验证官方RPC与文件传输能力，产品附件API、视频Range及8小时稳定性尚待验收"
+  ],
+  "cleanup": {
+    "completed": true,
+    "validatedAt": "2026-11-13T04:18:44.382Z",
+    "method": "官方fs/remove",
+    "scope": "仅本轮隔离临时测试目录"
+  },
+  "firstDownloadAttempt": {
+    "complete": false,
+    "failureAt": "2026-11-13T04:10:38.557Z",
+    "failure": "连接中断；具体原因未判定，此后新连接完整回读通过，不等于已修复断线原因"
+  }
+}

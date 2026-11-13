@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "sourceCommit": "3df6ba41e330e7f9686517d3540de6ef848ae5dc",
+  "validatedAt": "2026-11-13T04:41:26.897Z",
+  "scope": "通过正式 provider/relay 的官方 RPC 只读检查当前 Mac 的目标元数据与计量源访问能力",
+  "initialize": {
+    "fields": ["userAgent", "codexHome", "platformFamily", "platformOs"],
+    "codexHomeMatchesTargetEnvironment": true
+  },
+  "target": {
+    "platform": "darwin",
+    "pythonMajor": 3,
+    "globalStateExists": true,
+    "sessionsDirectoryExists": true
+  },
+  "modelUploadMeter": {
+    "socketExists": true,
+    "directoryMode": "0700",
+    "socketMode": "0600",
+    "ownedByCurrentUser": true,
+    "commandExecUsedDefaultSandbox": true,
+    "socketConnectSucceeded": false,
+    "errorType": "PermissionError",
+    "errno": 1,
+    "status": "待解决能力限制，未覆盖或扩大目标权限"
+  },
+  "testChatsCreated": 0,
+  "productionServiceChanged": false,
+  "limits": [
+    "仅验证当前 Mac；不能推断其他操作系统的运行时与权限",
+    "没有用网关本机缓存代替 Remote 目标计量，也未批准计量降级",
+    "首次脚本语法错误已修正后复验；本收据记录修正后结果"
+  ]
+}
