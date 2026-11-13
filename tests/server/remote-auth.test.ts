@@ -228,19 +228,33 @@ describe('Remote refresh与WebSocket证明', () => {
   it.each([
     { clientId: 'replacement-client' }, { accountId: 'replacement-workspace' }, { accountUserId: 'replacement-user' }, { managedAccountUserId: 'replacement-canonical-user' }, null,
   ])('WS签名等待期间替换或删除注册绑定 %j 时不返回旧证明', async change => {
-    const f = await fixture(); await f.provider.enroll(stepUp()); const connection = await f.provider.prepareConnection();
+    const f = await fixture();
+    // 本组验证签名 gate 内真实落盘后的绑定变化，短期限由专门挂起用例覆盖。
+    const provider = new RemoteAuthProviderImpl({ ...f.options, requestTimeoutMs: 2000, signTimeoutMs: 2000 });
+    await provider.enroll(stepUp()); const connection = await provider.prepareConnection();
     const stored = await f.store.readJson('enrollment.json') as object;
     let entered!: () => void; let resume!: () => void;
     const signing = new Promise<void>(resolve => { entered = resolve; }); const gate = new Promise<void>(resolve => { resume = resolve; });
-    const originalSign = f.deviceKey.sign;
-    f.deviceKey.sign = async bytes => { const proof = await originalSign(bytes); entered(); await gate; return proof; };
+    const originalSign = f.deviceKey.sign; let signingOperation: Promise<string> | undefined;
+    f.deviceKey.sign = bytes => {
+      signingOperation = (async () => { const proof = await originalSign(bytes); entered(); await gate; return proof; })();
+      return signingOperation;
+    };
     const pending = connection.signChallenge(challenge());
-    await signing;
-    if (change) await f.store.writeJson('enrollment.json', { ...stored, ...change });
-    else await rm(join(f.store.directory, 'enrollment.json'));
-    resume();
-    await expect(pending).rejects.toBeInstanceOf(RemoteAuthRequiredError);
-    expect(await f.store.readJson('enrollment.json')).toEqual(change ? { ...stored, ...change } : null);
+    const rejection = expect(pending).rejects.toBeInstanceOf(RemoteAuthRequiredError);
+    const checked = rejection.then(() => ({ passed: true as const }), error => ({ passed: false as const, error }));
+    try {
+      await Promise.race([signing, pending.then(() => { throw new Error('签名未进入等待便提前完成'); })]);
+      if (change) await f.store.writeJson('enrollment.json', { ...stored, ...change });
+      else await rm(join(f.store.directory, 'enrollment.json'));
+      resume();
+      const result = await checked;
+      if (!result.passed) throw result.error;
+      expect(await f.store.readJson('enrollment.json')).toEqual(change ? { ...stored, ...change } : null);
+    } finally {
+      resume();
+      await Promise.allSettled([pending, checked, signingOperation]);
+    }
   });
   it('WS签名等待期间自己的hardware identity变化时不返回旧证明', async () => {
     const f = await fixture(); await f.provider.enroll(stepUp()); const connection = await f.provider.prepareConnection();
