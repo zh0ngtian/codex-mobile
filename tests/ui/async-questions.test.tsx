@@ -4,6 +4,7 @@ import { pendingAsyncQuestions, asyncQuestionText, isAsyncQuestion, sendAsyncQue
 import { useApprovalRequests } from '../../src/features/approvals/useApprovalRequests';
 import { applyTurnChangeStats } from '../../src/app-server/thread-session';
 import { HttpOperationPendingError } from '../../src/backends/http-transport';
+import { I18nProvider, useI18n } from '../../src/i18n';
 
 it('详情回填恢复问题结构，按消息顺序核对已回答的问题', () => {
   const question = { id: 'async-call', type: 'agentMessage', text: '选择方案？', phase: 'final_answer', delivery: 'async', questions: [{ title: '选择方案？', options: ['A', 'B'] }] };
@@ -19,6 +20,21 @@ it('详情回填恢复问题结构，按消息顺序核对已回答的问题', (
 
 const item = { id: 'call-question', type: 'agentMessage', delivery: 'async', phase: 'final_answer', text: '实际问题\n- 方案 A\n- 方案 B', questions: [{ title: '实际问题', options: ['方案 A', '方案 B'] }, { title: '补充限制', options: null }] };
 const thread = (items: any[] = [item]) => ({ id: 't', turns: [{ id: 'turn', status: 'inProgress', items }] });
+
+it('英文界面拒绝已失效的问题时显示英文，且不发送回答', async () => {
+  const language = renderHook(useI18n, { wrapper: ({ children }) => <I18nProvider navigatorLanguage="zh-CN">{children}</I18nProvider> });
+  const previous = language.result.current.preference;
+  const [question] = pendingAsyncQuestions(thread());
+  const client = { request: vi.fn() };
+  try {
+    act(() => language.result.current.setPreference('en'));
+    await expect(sendAsyncQuestionAnswer(question, {}, thread([]), client, 'stale-answer')).rejects.toThrow('The question has changed. Reopen it before answering');
+    expect(client.request).not.toHaveBeenCalled();
+  } finally {
+    act(() => language.result.current.setPreference(previous));
+    language.unmount();
+  }
+});
 
 it('运行中立即引导，结束后开启新回合，答案与原问题关联且不经过审批回复或草稿', async () => {
   const active = thread(); const [question] = pendingAsyncQuestions(active);

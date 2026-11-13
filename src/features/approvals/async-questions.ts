@@ -46,7 +46,7 @@ export function asyncQuestionText(request: RpcMessage, result: unknown): string 
 export async function sendAsyncQuestionAnswer(request: RpcMessage, result: unknown, thread: RecordValue,
   client: { request(method: string, params: RecordValue): Promise<any> }, clientUserMessageId: string) {
   const threadId = (request.params as RecordValue).threadId;
-  if (thread.id !== threadId || !pendingAsyncQuestions(thread).some(candidate => candidate.id === request.id)) throw new Error('问题已变化，请重新打开后回答');
+  if (thread.id !== threadId || !pendingAsyncQuestions(thread).some(candidate => candidate.id === request.id)) throw new Error(t('问题已变化，请重新打开后回答'));
   const turnId = activeTurnId(thread);
   return client.request(turnId ? 'turn/steer' : 'turn/start', {
     threadId, clientUserMessageId, input: [{ type: 'text', text: asyncQuestionText(request, result), text_elements: [] }],

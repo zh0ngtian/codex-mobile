@@ -138,7 +138,8 @@ it.each([[true, true, false], [true, false, false], [false, true, false], [true,
  await waitFor(() => expect(posts.at(-1)?.contextId).not.toBe(previousContextId));
  const contextId = posts.at(-1).contextId;
  await act(async () => releaseFirstProjects!());
- if (initialThreadFailure) await waitFor(() => expect(posts.at(-1)?.error).toContain('首次会话读取失败'));
+ if (initialProjectFailure) await waitFor(() => expect(posts.at(-1)?.error).toContain('首次目录读取失败'));
+ else if (initialThreadFailure) await waitFor(() => expect(posts.at(-1)?.error).toContain('首次会话读取失败'));
  else await waitFor(() => expect(server.requests).toContain('thread/list'));
  await act(async () => command('typing-between-project-retries', 'draft.set', { contextId, value: '失败后继续输入的正文', revision: 1 }));
  firstLoad = false; server.failThreadList = false;

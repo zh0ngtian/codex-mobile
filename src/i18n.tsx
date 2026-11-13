@@ -140,6 +140,8 @@ const english: Record<string, string> = {
   "队列已更新": "The queue has changed",
   "当前无法发送排队消息": "Unable to send this queued message now",
   "当前无法发送引导消息": "Unable to send this steering message now",
+  "请先打开问题所属会话后回答": "Open the conversation containing this question before answering",
+  "问题已变化，请重新打开后回答": "The question has changed. Reopen it before answering",
   "当前无法编辑排队消息": "Unable to edit this queued message now",
   "无法保存排队消息": "Unable to save the queued message",
   "会话设置": "Conversation settings",
