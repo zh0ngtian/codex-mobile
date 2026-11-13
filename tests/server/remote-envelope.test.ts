@@ -150,6 +150,7 @@ describe('Remote 入站校验与分块组装', () => {
     expect(value.pendingCount).toBe(0); expect(value.bufferedBytes).toBe(0); expect(discarded).toHaveLength(1);
     value.accept(chunks({ params: 'close' })[0]); value.close();
     expect(value.pendingCount).toBe(0); expect(value.bufferedBytes).toBe(0);
+    expect(value.eventNames()).toHaveLength(0);
   });
 
   it('关闭逻辑流时只释放对应路由的 partial，不影响其他流', () => {

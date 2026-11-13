@@ -197,5 +197,5 @@ export class RemoteChunkAssembler extends EventEmitter {
     }
   }
   clear(): void { for (const key of this.assemblies.keys()) this.remove(key); }
-  close(): void { this.closed = true; this.clear(); }
+  close(): void { this.closed = true; this.clear(); this.removeAllListeners(); }
 }

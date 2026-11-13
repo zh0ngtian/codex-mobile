@@ -28,6 +28,8 @@ export interface RemoteSendReceipt { seqId: number }
 export interface RemoteRelayOptions {
   clientId: string; authProvider: RemoteAuthProvider;
   reconnectMinMs?: number; reconnectMaxMs?: number; handshakeTimeoutMs?: number;
+  /** 在线持续此窗口后才重置重连退避，默认 30 秒。 */
+  stableConnectionMs?: number;
   streamPingMs?: number; nativePingMs?: number; nativePongTimeoutMs?: number;
   maxMessageBytes?: number; maxBufferedBytes?: number; maxStreams?: number;
   assembly?: ChunkAssemblerOptions;
@@ -48,6 +50,7 @@ export class RemoteStream extends EventEmitter<StreamEvents> {
   private pendingServerMessage = false;
   private closing?: Promise<void>;
   private isClosed = false;
+  private closeNotified = false;
   constructor(
     readonly environmentId: string, readonly streamId: string,
     private readonly transmit: (stream: RemoteStream, message?: RpcMessage, control?: 'ping' | 'client_closed') => Promise<RemoteSendReceipt>,
@@ -68,8 +71,17 @@ export class RemoteStream extends EventEmitter<StreamEvents> {
     this.isClosed = true;
     this.closing = this.transmit(this, undefined, 'client_closed').then(() => undefined);
     this.release(this);
-    this.emit('close');
+    this.finishClose();
     return this.closing;
+  }
+  /** @internal 提前固定终止结果，最终断线通知中的重入 close 不再发送请求。 */
+  prepareForRelayClose(): void { this.closing ??= Promise.resolve(); }
+  /** @internal relay 最终断线通知完成后进入终态。 */
+  finishRelayClose(): void { this.isClosed = true; this.pendingServerMessage = false; this.finishClose(); }
+  private finishClose(): void {
+    if (this.closeNotified) return;
+    this.closeNotified = true;
+    try { this.emit('close'); } finally { this.removeAllListeners(); }
   }
   /** @internal 仅在发送预算和在线状态检查通过后分配序号。 */
   commitSequence(seq: number): void { this.sequence = seq; }
@@ -98,6 +110,7 @@ export class RemoteRelay extends EventEmitter<RelayEvents> {
   private readonly reconnectMinMs: number;
   private readonly reconnectMaxMs: number;
   private readonly handshakeTimeoutMs: number;
+  private readonly stableConnectionMs: number;
   private readonly streamPingMs: number;
   private readonly nativePingMs: number;
   private readonly nativePongTimeoutMs: number;
@@ -110,6 +123,7 @@ export class RemoteRelay extends EventEmitter<RelayEvents> {
   private retryCount = 0;
   private retryTimer?: NodeJS.Timeout;
   private handshakeTimer?: NodeJS.Timeout;
+  private stableTimer?: NodeJS.Timeout;
   private streamTimer?: NodeJS.Timeout;
   private nativeTimer?: NodeJS.Timeout;
   private pongTimer?: NodeJS.Timeout;
@@ -126,6 +140,7 @@ export class RemoteRelay extends EventEmitter<RelayEvents> {
     this.reconnectMinMs = positive(options.reconnectMinMs, 500);
     this.reconnectMaxMs = positive(options.reconnectMaxMs, 30000);
     this.handshakeTimeoutMs = positive(options.handshakeTimeoutMs, 20000);
+    this.stableConnectionMs = positive(options.stableConnectionMs, 30000);
     this.streamPingMs = positive(options.streamPingMs, 30000);
     this.nativePingMs = positive(options.nativePingMs, 15000);
     this.nativePongTimeoutMs = positive(options.nativePongTimeoutMs, 10000);
@@ -238,9 +253,15 @@ export class RemoteRelay extends EventEmitter<RelayEvents> {
       await this.write(prepared.socket, [encoded], prepared.bytes);
       if (!this.isCurrent(epoch) || this.socket !== socket) return;
       clearTimeout(this.handshakeTimer); this.handshakeTimer = undefined;
-      this.attempting = false; this.retryCount = 0;
+      this.attempting = false;
       this.setState('online');
-      if (this.state === 'online') this.startHeartbeats();
+      if (this.state === 'online' && this.isCurrent(epoch) && this.socket === socket) {
+        this.stableTimer = setTimeout(() => {
+          if (!this.isCurrent(epoch) || this.socket !== socket || this.state !== 'online') return;
+          this.retryCount = 0; this.stableTimer = undefined;
+        }, this.stableConnectionMs); this.stableTimer.unref();
+        this.startHeartbeats();
+      }
     } catch (error) {
       if (!this.isCurrent(epoch) || this.socket !== socket) return;
       if (error instanceof RemoteAuthRequiredError) this.disconnect('auth-required', error);
@@ -276,6 +297,7 @@ export class RemoteRelay extends EventEmitter<RelayEvents> {
           if (stream.hasPartialMessage) throw new RemoteProtocolError('Remote 未完成分块与完整帧冲突');
           if (frame.type === 'server_message') message = frame.message;
         }
+        if (message !== undefined && Buffer.byteLength(JSON.stringify(message)) > this.maxMessageBytes) throw new RemoteProtocolError('Remote 消息字节预算超限');
         if (message !== undefined || frame.type === 'pong') stream.commitServerSequence(frame.seq_id);
       }
     }
@@ -346,8 +368,8 @@ export class RemoteRelay extends EventEmitter<RelayEvents> {
   }
   private clearConnection(): void {
     ++this.epoch; this.attempting = false;
-    clearTimeout(this.handshakeTimer); clearInterval(this.streamTimer); clearInterval(this.nativeTimer); clearTimeout(this.pongTimer);
-    this.handshakeTimer = this.streamTimer = this.nativeTimer = this.pongTimer = undefined;
+    clearTimeout(this.handshakeTimer); clearTimeout(this.stableTimer); clearInterval(this.streamTimer); clearInterval(this.nativeTimer); clearTimeout(this.pongTimer);
+    this.handshakeTimer = this.stableTimer = this.streamTimer = this.nativeTimer = this.pongTimer = undefined;
     this.awaitingNativePong = false; this.assembler.clear(); this.latestCursor = this.safeCursor;
     for (const stream of this.streams.values()) stream.setPartialMessage(false);
     const socket = this.socket; this.socket = undefined;
@@ -355,9 +377,9 @@ export class RemoteRelay extends EventEmitter<RelayEvents> {
     this.writes.clear(); this.queuedBytes = 0;
     if (socket && socket.readyState !== WebSocket.CLOSED) socket.terminate();
   }
-  private notifyDisconnect(reason: RemoteDisconnect['reason']): void {
+  private notifyDisconnect(reason: RemoteDisconnect['reason'], streams: Iterable<RemoteStream> = this.streams.values()): void {
     let mayHaveBeenSent = false;
-    for (const stream of this.streams.values()) if (!stream.closed) {
+    for (const stream of streams) if (!stream.closed) {
       mayHaveBeenSent ||= stream.lastSentSeqId > 0;
       stream.emit('disconnect', { reason, mayHaveBeenSent: stream.lastSentSeqId > 0, ...(stream.lastSentSeqId ? { lastSentSeqId: stream.lastSentSeqId } : {}) });
     }
@@ -379,7 +401,15 @@ export class RemoteRelay extends EventEmitter<RelayEvents> {
   }
   close(): void {
     if (this.state === 'closed') return;
+    const streams = [...this.streams.values()];
+    for (const stream of streams) stream.prepareForRelayClose();
+    this.streams.clear();
     this.setState('closed'); clearTimeout(this.retryTimer); this.retryTimer = undefined;
-    this.clearConnection(); this.assembler.close(); this.notifyDisconnect('closed');
+    this.clearConnection(); this.assembler.close();
+    try { this.notifyDisconnect('closed', streams); }
+    finally {
+      for (const stream of streams) stream.finishRelayClose();
+      this.removeAllListeners();
+    }
   }
 }
