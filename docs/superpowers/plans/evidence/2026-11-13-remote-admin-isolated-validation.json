@@ -1,0 +1,239 @@
+{
+  "schemaVersion": 1,
+  "sourceCommit": "700c7c7d96c5fc7cadf58913d5f855d1c731ed5a",
+  "baseCommit": "b28a24af2cd3ce5fa2fd6a715753d43d34e3a5c1",
+  "scope": "Task2b.3b.3：私有管理IPC、Mac CLI、实际网关入口与进程归属",
+  "state": "source-and-official-os-probe-validated",
+  "automated": {
+    "implementation": {
+      "files": 31,
+      "passed": 717,
+      "skipped": 7,
+      "strictSourceConfig": "tsconfig.npm.json",
+      "strictSourceConfigPassed": true,
+      "strictServerAndTestsConfig": "tsconfig.server.json",
+      "strictServerAndTestsConfigPassed": true,
+      "durationSeconds": 32.13
+    },
+    "strictServerTypes": true,
+    "serverBuild": true,
+    "diffCheck": true,
+    "cleanArchiveEntryWithoutPriorNpmDist": true,
+    "skips": "6项既有真实Codex模型opt-in、1项自有硬件自测opt-in；不是本轮功能失败",
+    "previousIndependentSpecReview": {
+      "sourceCommit": "2ea6630aaa1a7e654712d3b606b85e94f8fd600c",
+      "files": 31,
+      "passed": 647,
+      "skipped": 7
+    },
+    "previousIndependentTargetedReproductionsPassed": 7,
+    "latestIndependentSpecReview": {
+      "sourceCommit": "3a658c449db1a835047e9af74d4c3b8bdbf7c98b",
+      "files": 31,
+      "passed": 682,
+      "skipped": 7,
+      "independentBoundaryTestsPassed": 12,
+      "firstFullRun": {
+        "passed": 681,
+        "skipped": 7,
+        "failed": 1,
+        "unhandledErrors": 1
+      }
+    },
+    "independentSpecReview": {
+      "sourceCommit": "700c7c7d96c5fc7cadf58913d5f855d1c731ed5a",
+      "files": 31,
+      "passed": 717,
+      "skipped": 7,
+      "unhandledErrors": 0,
+      "independentBoundaryTestsPassed": 12,
+      "precallbackProbes": 6,
+      "precallbackProbesAllDelayTriggered": true,
+      "precallbackResourceCreations": 0,
+      "baseline551RedProbesIndependentlyReproduced": 6,
+      "strictSourceConfigPassed": true,
+      "strictServerAndTestsConfigPassed": true,
+      "serverBuild": true,
+      "diffCheck": true
+    },
+    "strictServerTypesScope": "700c最终源码同时通过tsconfig.npm.json源码与tsconfig.server.json含测试两配置。",
+    "independentQualityReview": {
+      "sourceCommit": "700c7c7d96c5fc7cadf58913d5f855d1c731ed5a",
+      "files": 31,
+      "passed": 717,
+      "skipped": 7,
+      "unhandledErrors": 0,
+      "strictSourceConfigPassed": true,
+      "strictServerAndTestsConfigPassed": true,
+      "serverBuild": true,
+      "diffCheck": true,
+      "precallbackProbes": 6,
+      "allPrecallbackDelayTriggered": true,
+      "precallbackResourceCreations": 0,
+      "actualIndexRootReplacementAndHealthyContenderPassed": true,
+      "capacityRejections": 256,
+      "capacityRejectionsAllReturnedLimit": true,
+      "adminSettledMsApprox": 2,
+      "failedHandshakeTcpPeersAfterSettled": 0,
+      "readyToMerge": true
+    }
+  },
+  "reviews": {
+    "spec": "passed-on-700c7c7d",
+    "quality": "passed-on-700c7c7d"
+  },
+  "qualityFinding": "最终700c原QUALITY独立复审通过，Critical/Important/Minor均无；551四条Important全部关闭。root获取期/交付后替换及健康contender实际OS复验通过；六创建探针delay均触发且实际资源0，容量与握手实际收尾通过。同一冻结源码的官方Remote实际OS入口探针随后通过，另存脱敏收据。",
+  "verifiedBoundaries": [
+    "归属期限从首次FS之前计时，最终真实同步证明及解码后复验绝对期限与取消；迟到锁准备继续实际收尾。",
+    "CLI只读指定私有目录与当前运行实例，固定NDJSON动作、容量和期限，不离线写入或另建主连接。",
+    "原子捕获后核验endpoint和owner；替换物保留私有隔离，不删除或恢复至可能变化的父目录。",
+    "合法多回收者复核不同完整后继owner后继续等待，同名替换和未知内容仍拒绝。",
+    "Relay、canonical当前/旧/迟到/未交付/握手失败连接均贯穿可信settled至实际WS和本机TCP关闭。",
+    "close同步抛错或storage拒绝不跳过实际收尾；公共close与连接失败仍保持原有有界行为。",
+    "临时canonical服务和真实OS子进程覆盖Local可用、启动取消、唯一owner、SIGTERM、SIGKILL后恢复、5秒退出及非Unix兼容。"
+  ],
+  "testHistory": [
+    "原SPEC复现owner完整期限、实际Relay关闭和最后stat后误删替换物三类缺口；修复后独立复验通过。",
+    "补充canonical实际关闭、同tick取消及多回收者竞争均先实际失败再通过。",
+    "中间全量出现既有auth用例100ms安全超时，最终独立全量通过；未放宽该测试或产品期限。",
+    "QUALITY发现root整体替换后的归属证明断链，核心5项、认证等待后迟到Relay、Runtime监听残留及锁清理尾部均实际RED后GREEN；6种真实index与4种managed阶段替换覆盖。",
+    "登记晚变化分类用例单独80ms通过，全量真实fsync263ms先触发100ms安全超时；仅该非期限用例使用独立2000ms provider并追加实际replacement断言，共享夹具、产品及专门期限用例未改。",
+    "1d9全量第二轮673项通过、7项跳过，另47项定向边界通过；独立同步阻塞探针仍复现5处最后期限缺口，不能据普通全量通过标记验收完成。",
+    "3a658c4五处各先RED再GREEN，原SPEC三份5例通过；新增9项永久用例并完成31文件682项通过、7项跳过。auth253组5个登记变化变体仅使用独立2000ms provider，保留真实落盘及身份拒绝断言；未改共享100ms、产品或专门期限用例。",
+    "3a独立首轮681通过/7跳过/1失败及1unhandled，auth定向91及第二轮682/7通过。551465b仅WS签名绑定变化5变体修正夹具与拒绝挂接；同一真实FS后250ms gate先RED后GREEN，最终auth91及全31文件682/7通过且无unhandled，未改变产品期限或错误分类。",
+    "QUALITY复审对551补查tsconfig.server.json（含tests/server），发现ownership测试动态import getEventListeners的TS2339；之前tsconfig.npm.json只检查源代码，不能将其等同含测试检查通过。",
+    "b773最小测试导入修复并补齐两种strict；QUALITY以实际OS入口确认root修复，同时发现Runtime proof后的callback可在父期限后创建连接，已交原实现者红绿修复。",
+    "QUALITY统一审计新增proof，独立确认Runtime、ManagedAuth、Controller、Login短phase及ownedFetch五个实际callback前期限缺口，均为超时后仍创建资源而非仅晚返回；原实现者逐项复跑RED并统一保留原预算修复。",
+    "QUALITY最终固定551归为4条Important：含测试strict、Runtimewait、三处canonical预排factory、nested fetch/key父phase丢失；共6期限独立RED。原root替换缺口已关闭，无新Critical/Minor或权限/容量/敏感信息问题。",
+    "700c统一继承原父操作/短phase，六独立脚本全部delayed=true且实际资源为零；Controller新调用门闩副本先旧551 RED再新GREEN。88定向及全31文件717通过/7跳过，无未处理拒绝，both strict/build通过；最终审查待完成。",
+    "700c原SPEC独立全范围✅：717通过/7跳过/无未处理拒绝，both strict/build/diff通过；原12独立边界全绿，六创建探针delay均触发且资源0，固定551六RED独立复得。最终QUALITY进行中。",
+    "700c原QUALITY独立最终Yes：717通过/7跳过/无unhandled，两strict/build/diff通过；六创建期限探针资源0，实际index两种root替换及健康contender通过，256容量拒绝和失败握手实际TCP收尾通过，无剩余Critical/Important/Minor。",
+    "最终700c冻结源码官方实际index探针通过：3个OS进程各完成只读RPC与CLI核验、活owner竞争零Runtime/prepare、正常重启和SIGKILL后死owner恢复；零逻辑流25秒后新增RPC成功且prepare仍1。共4次model/list、无模型推理/测试聊天/新OAuth登记或现役修改；不是P95/8小时验收。"
+  ],
+  "limitations": [
+    "本项源码、独立规格/质量复审和官方Remote实际OS入口探针通过；不代表现役服务已部署。",
+    "隔离自动回归使用临时目录、Unix/HTTP/WS与合成账号；另存的官方探针复用此前授权的网关自有身份，无新OAuth、登记或官方App密钥。",
+    "未创建真实测试聊天、发送模型推理请求、构建客户端、发布、部署或操作launchd。",
+    "不代表手机Remote业务、共享队列、目标文件/统计、P95、跨凭据刷新、睡眠唤醒或8小时验收通过。"
+  ],
+  "specFinding": "700c最终固定全范围获得原SPEC独立✅：原12独立边界和六创建探针通过；固定551六RED再次独立复得。首轮失败、旧版缺口与修复记录均保留。",
+  "qualityTestTypeFinding": "b773静态命名导入修复getEventListeners TS2339，监听计数断言未改；最终700c经实现者、独立SPEC与QUALITY同时通过源码和含测试两份strict。",
+  "qualityRuntimeDeadlineFinding": "固定551实际public runtime.login及真实owner/RemoteCanonicalLogin/本地WSS：已分配loginFlow后的root同步proof阻塞250ms，父期限100ms；仍在约254ms创建canonical连接后才timeout，随后实际关闭。要求proof后、callback前复验同一父op及phase绝对期限/取消，不另开预算。",
+  "qualityPrecallbackFindings": [
+    {
+      "site": "runtime.wait",
+      "fact": "父期限100ms、proof阻塞250ms后仍调用真实canonical factory，约254ms，最终timeout。"
+    },
+    {
+      "site": "managed-auth.connection",
+      "fact": "resources.create在external初始门禁前已排factory，proof阻塞后约250ms仍调用connectCanonical。"
+    },
+    {
+      "site": "controller.connectCanonical",
+      "fact": "公开pairLocal同形预排factory，100ms预算后约259ms才调用factory。"
+    },
+    {
+      "site": "login.run",
+      "fact": "总flow2000ms、短phase100ms，factory中proof阻塞250ms后总flow仍有效，仍调用canonical；需保留原短phase。"
+    },
+    {
+      "site": "runtime.ownedFetch",
+      "fact": "OAuth exchange100ms、最后ownership proof阻塞250ms，原生fetch在期限后实际建立1条本机TCP；仅signal.aborted不足。"
+    },
+    {
+      "site": "device-key.call/compile/invoke",
+      "fact": "公开Runtime.authorize的原phase500ms、真实root proof阻塞1000ms，仍调用合成helper并创建1个实际无凭据Node子进程，最终timeout；未执行真实硬件或OAuth。"
+    }
+  ],
+  "qualityRepairScope": "小型可信内部guard继承原父操作与每个phase的固定单调期限/取消；成功最终核验后退役并清除检查闭包，失败继续禁止迟到创建。actual cleanup不受新资源guard拦截，不改变公共接口、权限、PrivateStore或Registry语义。700c已提交并通过独立SPEC→QUALITY复审。",
+  "qualityRepairVerification": {
+    "sourceCommit": "700c7c7d96c5fc7cadf58913d5f855d1c731ed5a",
+    "targetedPassed": 88,
+    "independentScripts": [
+      {
+        "script": "quality-runtime-preproof-deadline.mjs",
+        "result": {
+          "delayed": true,
+          "timeoutMs": 100,
+          "canonicalFactoryCalls": 0,
+          "failure": "timeout"
+        }
+      },
+      {
+        "script": "quality-managed-preproof-deadline.mjs",
+        "result": {
+          "delayed": true,
+          "timeoutMs": 100,
+          "canonicalFactoryCalls": 0,
+          "failure": "RemoteNetworkError"
+        }
+      },
+      {
+        "script": "quality-controller-preproof-deadline.mjs",
+        "result": {
+          "delayed": true,
+          "timeoutMs": 100,
+          "canonicalFactoryCalls": 0,
+          "failure": "unavailable"
+        }
+      },
+      {
+        "script": "quality-owned-fetch-preproof-deadline.mjs",
+        "result": {
+          "delayed": true,
+          "exchangeTimeoutMs": 100,
+          "actualFetchCalls": 0,
+          "nativeConnects": 0,
+          "connections": 0,
+          "requests": 0,
+          "failure": "timeout"
+        }
+      },
+      {
+        "script": "quality-login-preproof-phase-deadline.mjs",
+        "result": {
+          "delayed": true,
+          "timeoutMs": 100,
+          "canonicalFactoryCalls": 0,
+          "failure": "timeout"
+        }
+      },
+      {
+        "script": "quality-key-preproof-deadline.mjs",
+        "result": {
+          "delayed": true,
+          "phaseTimeoutMs": 500,
+          "helperCalls": 0,
+          "actualSyntheticChildSpawned": 0,
+          "failure": "timeout"
+        }
+      }
+    ],
+    "controllerGateAdaptation": {
+      "reason": "原堆栈门闩随代码层级变化未触发，独立副本改为实际connectCanonical调用门闩，原归档保留。",
+      "oldSource": "551465bb05710b36b49fc0ae8680df375d2cf5ac",
+      "oldResult": {
+        "delayed": true,
+        "timeoutMs": 100,
+        "canonicalFactoryCalls": 1,
+        "factoryElapsedMs": 255.58800000000002,
+        "failure": "unavailable"
+      },
+      "finalCanonicalFactoryCalls": 0
+    },
+    "successfulGuardRetirement": "真实Relay越过旧20ms阶段后仍完成后续challenge签名、零流保活、重连签名和新canonical；失败/取消/timeout迟到canonical由ResourceSettlement.settled实际回收。",
+    "syntheticOnly": true
+  },
+  "officialProductProbe": {
+    "receipt": "2026-11-13-remote-admin-product-probe.json",
+    "sourceCommit": "700c7c7d96c5fc7cadf58913d5f855d1c731ed5a",
+    "passed": true,
+    "actualOsProcesses": 3,
+    "readOnlyModelListRequests": 4,
+    "liveOwnerRejectedBeforeRemoteStart": true,
+    "cleanExitRestart": true,
+    "sigkillRecovery": true,
+    "zeroStreamDwellMs": 25000,
+    "lateRpcWithoutAdditionalAuthPrepare": true
+  }
+}

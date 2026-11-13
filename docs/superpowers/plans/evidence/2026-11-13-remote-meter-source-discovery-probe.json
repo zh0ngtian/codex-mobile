@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+  "sourceCommit": "335ed58f1e3bea240299dcaccf6a74e4dbecd487",
+  "at": "2026-11-13T10:25:58.072Z",
+  "scope": "Task3前置协议事实：由目标自身官方环境发现既有计量启动层配置",
+  "passed": true,
+  "defaultPermissions": true,
+  "newAuthorizationOrEnrollment": false,
+  "facts": {
+    "targetPythonMajor": 3,
+    "targetPlatform": "darwin",
+    "officialEnvironmentPointer": "CODEX_APP_RUNTIME_CLI_PATH",
+    "existingSmallTextLauncher": true,
+    "currentUserOwnedPrivateLauncherAndParent": true,
+    "parsedExistingConfigFields": [
+      "codexExecutable",
+      "nodeExecutable",
+      "originalAdapter",
+      "socketPath",
+      "upstreamUrl"
+    ],
+    "derivedUpstreamMatchesExplicitKnownCanonical": true,
+    "noGuessedPortOrGatewaySourceBorrowing": true
+  },
+  "combinedSocketProbe": {
+    "at": "2026-11-13T10:39:50.614Z",
+    "passed": true,
+    "fixedMeterReadOnlyNetworkException": true,
+    "launcherSourceProved": true,
+    "sourceMatchedHello": true,
+    "targetHomeBound": true,
+    "ancestorAndFdIdentityChecked": true,
+    "windowMs": 2002,
+    "frames": 199,
+    "usageFrames": 198,
+    "removeFrames": 0,
+    "bytes": 49958,
+    "forbiddenActions": 0,
+    "priorHarnessAttempts": {
+      "count": 2,
+      "result": "探针脚本的换行转义导致Python语法失败，修正后通过；未改权限或目标数据。"
+    }
+  },
+  "limitations": [
+    "只验证当前Mac既有计量启动层，未验证其他机器或未安装计量的机器。",
+    "首次探针只读已有配置；随后联合探针在同一次流程证明来源、连接socket并收到198条既有usage帧，未触发新的模型请求。",
+    "联合探针已检查祖先无符号链接、私有owner/权限、文件无硬链接、句柄及前后inode；产品实现仍须保留这些证明。",
+    "两秒接收窗口不代表快照完整性或持续业务更新通过；未完成产品统计读取与重连接入。",
+    "默认权限下进程来源枚举不可用，没有为此扩展权限；本探针不代表完整Task3或统计产品验收。",
+    "没有新OAuth、密钥创建、登记、模型推理、测试聊天或现役服务改动。"
+  ]
+}

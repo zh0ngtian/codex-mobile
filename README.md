@@ -186,7 +186,7 @@ Android 使用固定 PakePlus WebView 容器直接呈现内置共享 Web 页面�
 
 ## 系统架构
 
-官方 Remote 常驻网关正在开发：协议复用、网关自有硬件授权、受管认证及账号绑定控制器/目标目录模块已有源码和隔离 RPC 验证；一次性 OAuth、活动身份存储和运行管理/普通登录模块已通过隔离测试及独立审查，运行管理层已用既有自有身份验证三流 RPC、断线恢复、零流保活与持久暂停恢复，未实际重新授权。Mac CLI、目标业务路由、共享离线队列及客户端模式选择尚未接入，长期稳定性和延迟分位数仍待验收。当前使用方式仍按下述架构；本轮不部署网关或发布客户端。已确认边界及待验收项见[设计](docs/superpowers/specs/2026-11-13-remote-gateway.md)和[实施计划](docs/superpowers/plans/2026-11-13-remote-gateway.md)。
+官方 Remote 常驻网关正在开发：协议复用、自有硬件授权、受管认证、账号绑定目录、一次性 OAuth、活动身份存储和运行管理已完成源码及隔离审查，既有自有身份已通过正式Remote三流RPC、断线恢复、零流短时保活与持久暂停恢复。私有管理通道、Mac CLI及实际入口已通过独立规格/质量复审，正式Remote的三次实际进程RPC、正常重启、SIGKILL后恢复、活owner竞争及25秒零流后再次RPC均已验证；用法和边界见[Mac管理说明](docs/remote-gateway-management.md)。目标业务路由、共享离线队列、客户端模式、长期稳定性和延迟分位数继续后续任务。当前使用方式仍按下述架构；本轮不部署网关或发布客户端。已确认边界及阶段证据见[设计](docs/superpowers/specs/2026-11-13-remote-gateway.md)和[实施计划](docs/superpowers/plans/2026-11-13-remote-gateway.md)。
 
 ```mermaid
 flowchart LR

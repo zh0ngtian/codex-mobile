@@ -17,7 +17,7 @@
 ## 验证约定
 
 - Node 26 的原生 Web Storage 与现有 jsdom 环境冲突；测试命令设置 `NODE_OPTIONS=--no-experimental-webstorage`，不为环境问题修改产品逻辑。
-- 每项行为先写失败测试并实际观察预期失败，再写实现，最后运行对应测试与 `npm run build:server`；必要客户端任务运行 `npm run typecheck`、`npm run build`。
+- 每项行为先写失败测试并实际观察预期失败，再写实现，最后运行对应测试、源码与含测试的两种严格检查（`tsconfig.npm.json`、`tsconfig.server.json`）及 `npm run build:server`；必要客户端任务运行 `npm run typecheck`、`npm run build`。
 - 实现任务依次执行；每项完成先规格复审，再质量复审。提交使用中文 Conventional Commits，正文含“新增功能”和“主要修改”。
 - 官方探针凭据、密钥和原始数据仅存仓库外私有目录；只提交脱敏收据，测试会话完成后及时归档。
 
@@ -38,7 +38,7 @@
 
 ## Task 2：网关自身身份、授权管理和目标目录
 
-文件：新增 `server/remote/auth.ts`、`server/remote/controller.ts`、`server/remote/device-key.swift`、`server/remote/cli.ts` 及对应 `tests/server/remote-auth.test.ts`、`tests/server/remote-controller.test.ts`；修改 `bin/codex-mobile.mjs`、`package.json` 的源码打包清单。
+文件：新增 `server/remote/auth.ts`、`server/remote/controller.ts`、`server/remote/device-key.swift`、`server/remote/admin*.ts`、`server/remote/owner.ts`、`bin/remote.mjs`及对应测试；修改 `bin/codex-mobile.mjs`、`server/index.ts`。CLI复用既有bin与编译后服务端打包目录，不增加开发源码加载回退。进程归属衔接所需的受管启动取消与退出跟踪位于 `server/app-server-manager.ts` 和 `server/model-upload-routing.ts`；有界管理期限、精确清理和实际连接收尾分别放在小型内部助手中。
 
 本任务依次拆为2a（私有存储、网关密钥、认证协议与 provider）和2b（控制器、目标目录、OAuth 与 Mac CLI），各自完成红绿验证和两轮审查。2b 按依赖顺序细分为2b.1（有界 RPC session 与 canonical 受管认证 loader）、2b.2（账号绑定控制器、client 可见目录、本机身份证明与配对）、2b.3（OAuth、Mac CLI 及运行配置衔接）；各子项单独红绿验证和两轮审查，避免授权、目录与命令行混在同一模块。新增 `rpc-session.ts`、`managed-auth.ts`、`oauth.ts` 均为本任务内部职责拆分，不改变已确认的连接和授权架构。
 
@@ -54,9 +54,9 @@
 
 - [x] 2b.1 有界管理RPC session与canonical受管认证loader。
 - [x] 2b.2 账号绑定控制器、client可见目录、本机身份证明与配对。
-- [ ] 2b.3 OAuth、Mac CLI及运行配置衔接。
+- [x] 2b.3 OAuth、Mac CLI及运行配置衔接（源码与隔离入口已验证，综合性能继续Task6）。
   - [x] 2b.3a 一次性OAuth模块及隔离回调/交换验证。
-  - [ ] 2b.3b Mac CLI、唯一控制器运行配置及显式恢复/关联；第44/45项已确认。
+  - [x] 2b.3b Mac CLI、唯一控制器运行配置及显式恢复/关联；第44/45项源码已验证。
 
 2b.3继续按内部依赖顺序拆为两项：先完成有界、一次性的PKCE/state OAuth流程及其隔离回调/交换测试，再接入Mac CLI、唯一控制器的运行配置与显式恢复/重新关联。每项均先红绿验证，再规格和质量复审；OAuth子项只返回已核验的短期step-up结果，不自行登记、迁移既有身份或创建Remote主连接，CLI子项完成前不将2b.3或Task2整体标为完成。
 
@@ -70,7 +70,7 @@
 
 - [x] 2b.3b.1 `server/remote/identity-registry.ts`及测试：独立私有候选记录、完整绑定校验、活动身份指针CAS和崩溃后只采用已提交身份，保留旧身份。
 - [x] 2b.3b.2 `server/remote/runtime.ts`、`server/remote/runtime-state.ts`、`server/remote/runtime-lifecycle.ts`、`server/remote/login.ts`及测试，必要时扩充controller的显式重新关联/目标预绑定接口：同一网关串行管理canonical登录、首次授权/配对/恢复、停止旧主连接后准备新身份，原身份与目标复核及暂停保留。暂停名单单独持久化，以完整tuple保留旧installation，不因配对或重启清除；取消、绝对期限与资源清理边界独立为内部助手，不增加产品API。
-- [ ] 2b.3b.3 `server/remote/admin.ts`、`bin/remote.mjs`及测试，修改`server/index.ts`、`bin/codex-mobile.mjs`等入口：当前用户私有有界管理通道、单网关进程归属、CLI仅连接已运行实例，使用实际canonical地址；Local启动与既有URL不受授权状态影响。
+- [x] 2b.3b.3 `server/remote/admin.ts`、`bin/remote.mjs`及测试，修改`server/index.ts`、`bin/codex-mobile.mjs`等入口：当前用户私有有界管理通道、单网关进程归属、CLI仅连接已运行实例，使用实际canonical地址；Local启动与既有URL不受授权状态影响。
 
 各项独立红绿、规格与质量审查；只有运行入口、CLI及隔离生命周期全部通过后才标记2b.3b完成。不启动现役服务、不执行真实授权撤销或登记、不构建客户端。
 
@@ -81,6 +81,10 @@
 2b.3b.2完成记录：最终源码 `335ed58f1e3bea240299dcaccf6a74e4dbecd487`，全部16个Remote文件492项通过，1项既有硬件opt-in跳过；严格服务端类型检查、服务端构建和独立规格/质量复审通过。运行层串行管理普通canonical登录、首次授权、独立候选恢复与显式重新关联；完整tuple暂停持久保留，旧主连接停止及存储收尾前不准备新身份。审查复现并修复恢复取消后迟到启动、离线目标误清暂停、本机重新关联冲突、登录最终清理取消、健康目标被其他目标拒绝关闭及已兑现未交付资源回收，磁盘reason严格要求白名单字符串。见[运行层隔离验收记录](evidence/2026-11-13-remote-runtime-validation.json)。
 
 同一最终源码的正式Remote隔离探针复用此前已授权的网关自有身份，禁止新密钥、OAuth和登记：5次并发start只准备1条主连接，3条管理流RPC通过；主动断线至原3流顺序model/list全部完成4380ms；关闭逻辑流后35秒主连接保留，prepare次数不增加。仅隔离登记变化触发暂停，恢复记录并重建runtime仍不自动连接；显式恢复原完整tuple至RPC完成7938ms，无新登记。首次启动至3流RPC全完成12980ms。见[脱敏运行层收据](evidence/2026-11-13-remote-runtime-product-probe.json)。实例重建不是OS进程重启，这些单次耗时和短时保活不代表P95或8小时验收；未创建聊天、执行模型推理、修改现役服务或构建客户端。私有管理通道、Mac CLI与入口继续2b.3b.3，不能标记整个Task2完成。
+
+2026-11-13开始2b.3b.3时记录已推送并核对main为 `b28a24af2cd3ce5fa2fd6a715753d43d34e3a5c1`。本项按私有路径/进程归属、版本化有界IPC、CLI和实际入口三块内部职责实施，继续真实临时Unix及OS子进程红绿验证和两阶段独立审查；不读取真实凭据，不操作现役服务或发布渠道。
+
+2b.3b.3完成记录：最终源码为 `700c7c7d96c5fc7cadf58913d5f855d1c731ed5a`，31文件717项通过、7项跳过，源码及含测试的两种严格服务端类型检查与构建通过。原候选 `2ea6630` 已通过规格复审，但质量审查以实际index复现root整体替换后的归属断链；现固定最初祖先/root及实际锁/owner身份，贯穿存储克隆、候选、受管启动、Runtime/Relay和admin，失效永久取消并实际收尾，补充6种真实入口和4种managed阶段替换回归。`1d9f1cb`规格复审再发现5处同步阻塞后的最终期限缺口，已逐项红绿修复，原独立5例和新增9项永久回归通过。QUALITY已以实际OS确认原root替换修复；含测试配置的导入类型错误在`b773c0f`最小修复。统一审计另确认Runtime、ManagedAuth、Controller、Login、ownedFetch及key helper六处在proof耗时后仍可跨原期限创建资源；`700c7c7d`以内部guard保留原父操作及短阶段预算，六份原脚本均实际触发延迟并验证相关资源创建为零，Controller适配门闩副本先在旧551确认RED再验证GREEN。成功交付后的真实Relay挑战签名、零流保活和重连，以及失败/取消/超时的迟到canonical实际settled均通过。首次FS期限、精确捕获清理、多回收者竞争与当前/旧/迟到/失败连接实际关闭继续回归。最终固定源码已获原SPEC与QUALITY独立复审通过。见[隔离验收记录](evidence/2026-11-13-remote-admin-isolated-validation.json)与[Mac管理说明](../../remote-gateway-management.md)。同一冻结源码的[官方Remote实际OS入口探针](evidence/2026-11-13-remote-admin-product-probe.json)通过：3个实际OS进程各完成RPC与CLI核验；正常重启、SIGKILL后恢复及健康owner下第二进程零Runtime/prepare均通过；零逻辑流25秒后新增RPC成功，认证prepare仍1。三次启动至RPC/CLI就绪为11789、14244、10065ms。共4次只读model/list，无模型推理、新授权/登记、测试聊天或现役服务修改。2b.3源码与入口现已完成；下列整个Task2的综合性能、凭据周期及队列联动要求继续Task4/6，不将三次样本或25秒保活记为P95/8小时通过。
 
 2b.1完成记录：最终源码 `797fef5d21eeb026d40334b535e5f713c3dc2cc9`，38项新增专项测试、9文件211项相关回归通过，1项既有硬件opt-in跳过；严格服务端TypeScript检查、服务端构建和独立规格/质量复审通过。RPC使用已核验JSON快照，canonical待写字节与数量独立有界，未完成写入超时关闭并清理；loader按连接隔离refresh/singleflight，文件读取超时关闭关联会话，保留原绑定，旧结果不得污染新连接。最终隔离实测39次loader加载保持账号绑定，三条管理流复用一条官方物理连接，同流主动断线至三次顺序模型RPC全部完成5015ms，新provider恢复磁盘身份的RPC为1224ms，无重新授权或生产改动。首次实际验证曾在初始化前发生连接离线，旧session按设计终止；探针改为online后新建初始逻辑流，失败记录一并保留，未重放请求。见[脱敏受管认证/RPC收据](evidence/2026-11-13-remote-managed-auth-rpc-probe.json)。该阶段未覆盖controller/目录与产品路径，不代表P95、真实网关进程重启或8小时验收。
 
@@ -106,6 +110,15 @@
 前置探针：官方 `initialize` 直接返回 `codexHome/platformFamily/platformOs`，当前目标目录与 `command/exec` 环境一致，无需猜路径。目标全局状态和 sessions 目录可读取；目标现有计量 socket 权限700/600且归当前用户，但默认 `command/exec` 在 socket connect 阶段返回 EPERM。[默认权限能力收据](evidence/2026-11-13-remote-target-capabilities-probe.json)保留原结果。
 
 2026-11-13用户已批准的例外：仅固定计量读取命令使用官方 `sandboxPolicy: { type: "readOnly", networkAccess: true }`，其余文件、Git与业务操作继续默认权限。隔离实例已通过socket连接、目标codexHome归属、私有权限/owner/inode及精确canonical来源hash校验；未重新授权、未修改现役服务、未发送模型请求。见[脱敏例外验证收据](evidence/2026-11-13-remote-meter-readonly-network-probe.json)。此验证仅证明当前Mac的hello/来源读取能力，统计快照、持续更新与产品接入仍待Task3实现验收；不得将例外开放为客户端任意脚本或沙箱参数入口。
+
+后续前置只读事实：当前目标官方环境中的 `CODEX_APP_RUNTIME_CLI_PATH` 指向既有私有计量启动层，其JSON配置含实际 `upstreamUrl/socketPath`；只读解析得出的地址与此前明确canonical完全一致。随后联合探针在同一次固定统计读取中证明祖先、owner/权限、句柄及前后inode，再以推导来源校验socket hello；两秒收到198条既有usage帧、共49958字节。无需向其他目标借用网关Mac地址或猜端口；未触发新模型请求，不代表快照完整性、持续更新或产品统计接入通过，也不代表未安装计量的其他目标可用，见[目标来源发现收据](evidence/2026-11-13-remote-meter-source-discovery-probe.json)。
+
+Task3按内部依赖分项验证，不改变已确认的权限、功能或目标隔离要求；每项先红绿验证，再规格与质量复审，全部完成才勾选Task3整体：
+
+- [ ] 3a 目标命令与能力基础：绑定实际初始化元数据，强制检测Python3；默认权限、有界命令、完整输出证明、取消与结果未知分类，不增加物理连接或本地回退。
+- [ ] 3b 目标文件基础：分块、背压、版本与SHA-256校验、100MiB上限、Range、临时文件及原子提交；已发送写入不重放。
+- [ ] 3c 固定统计读取：通过目标自己的官方环境证明既有计量来源，严格核验私有路径与socket；固定只读加网络例外仅用于统计，覆盖快照、更新、断线与失效清理。
+- [ ] 3d 现有功能注入：项目、rollout、图片/附件/视频、Git、标题总结、Sidechat、Bark与统计全部使用目标能力，保留各自原有边界并完成真实Remote验收。
 
 - [ ] 先在临时目录真实验证 `fs/readFile`、`fs/writeFile`、`command/exec` 和 stdin/stdout 分块；100MiB 文件校验 SHA-256，视频范围读取核对长度与内容，失败恢复不提交半文件。
 - [ ] 测试目标路径只交给目标适配器，远程读写/Git 绝不能调用网关同路径本地 fs/exec。

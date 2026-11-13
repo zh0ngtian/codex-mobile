@@ -22,7 +22,7 @@
 - [2026-10-20 当前项目展开耗时补测](performance/2026-10-20-sidebar-project-expand/README.md)：20次首次展开数据就绪P50/P95为91/113毫秒；另3次原生录像从展开首帧到五条文字接近最终清晰度约0.51–0.53秒，口径分开，采样时未发布；相关实现后续已随0.3.19交付。
 - [2026-10-20 边栏优化双端发布与网关部署](superpowers/plans/2026-10-20-sidebar-lazy-release.md)：已发布0.3.19（3019），两目标成功凭证及固定APK/已签名IPA、OTA与unsigned软件源回验；性能报告仍保留原采样口径。
 - [协议基准](../protocol/app-server-v2/README.md)：固定快照的版本、来源和使用边界。
-- [常驻 Remote 网关设计](superpowers/specs/2026-11-13-remote-gateway.md)与[实施计划](superpowers/plans/2026-11-13-remote-gateway.md)：开发中；协议、自有授权、有界 RPC、受管认证及账号绑定控制器/目录已有源码与隔离验证，一次性 OAuth、活动身份存储和运行管理/普通登录已通过隔离测试及独立审查，运行层的三流 RPC、同流恢复、零流保活及持久暂停恢复已有正式 Remote 隔离收据。Mac CLI、产品路由、共享队列和客户端尚未接入；[CLI 与身份恢复补充方案](superpowers/specs/2026-11-13-remote-gateway-cli-proposal.md)第44/45项已确认，身份存储和运行管理子项已验证，私有管理通道/CLI及网关入口待接入验收。固定计量读取的只读加网络例外已隔离验证，真实 OAuth、产品统计及长期性能仍待验收。不是现役授权或部署操作入口。
+- [常驻 Remote 网关设计](superpowers/specs/2026-11-13-remote-gateway.md)与[实施计划](superpowers/plans/2026-11-13-remote-gateway.md)：开发中；协议、自有授权、有界RPC、受管认证、账号绑定目录、OAuth、活动身份和运行管理已有源码与隔离审查，运行层的三流RPC、同流恢复、零流短时保活及持久暂停恢复已有正式Remote收据。[Mac管理说明](remote-gateway-management.md)记录私有通道、固定CLI和实例归属；该入口已通过独立规格/质量复审及正式Remote的实际进程重启、SIGKILL恢复、活owner竞争与零流后RPC探针。[第44/45项补充方案](superpowers/specs/2026-11-13-remote-gateway-cli-proposal.md)保持当前用户专有管理和候选身份原子切换边界。固定计量权限例外和目标自身来源发现已隔离验证，产品统计、目标业务路由、共享队列、手机模式及长期性能继续后续任务。未部署现役服务或发布客户端。
 
 - [2026-11-11 原生版发布与后续 Android 单端构建](superpowers/plans/2026-11-11-android-only-release.md)：0.3.45 双端与软件源验收成功；不影响 iOS 的后续改动只构建 APK，单端首次真实批次待后续发布验收。
 - [2026-11-10 网页引用补修联合发布](superpowers/plans/2026-11-10-web-citations-hidden-release.md)：0.3.44 GitHub双端及既有iOS软件源、配套网关成功；12会话54项来源与73处引用回验通过。
