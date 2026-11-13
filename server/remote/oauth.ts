@@ -3,6 +3,7 @@ import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { Socket } from 'node:net';
 import { isAbsolute } from 'node:path';
+import { performance } from 'node:perf_hooks';
 import { TextDecoder } from 'node:util';
 import { validateManagedAuth, validateStepUp, type ManagedAuth } from './auth-protocol.js';
 import type { ManagedAuthIdentity } from './managed-auth.js';
@@ -21,6 +22,7 @@ export class RemoteOAuthError extends Error {
 }
 export interface RemoteOAuthOptions {
   managedAuth: { load(): Promise<ManagedAuth>; readonly currentIdentity: Readonly<ManagedAuthIdentity> | undefined; verifyIdentity(expected?: ManagedAuthIdentity): Promise<Readonly<ManagedAuthIdentity>> };
+  /** 仅用于 JWT 新鲜度；操作期限始终使用内部单调时钟。 */
   now?: () => number; timeoutMs?: number; browserTimeoutMs?: number; exchangeTimeoutMs?: number;
   /** 受信任进程边界；不可打印 URL，signal 必须交给子进程。 */
   openBrowser?: (url: string, signal: AbortSignal) => Promise<void>;
@@ -30,8 +32,8 @@ export interface RemoteOAuthOptions {
 }
 type Callback = { code: string } | { denied: true };
 interface Flow {
-  abort: AbortController; active: boolean; consumed: boolean; servers: Set<Server>; sockets: Set<Socket>;
-  failure?: RemoteOAuthFailure;
+  abort: AbortController; transportAbort: AbortController; active: boolean; consumed: boolean; servers: Set<Server>; sockets: Set<Socket>;
+  deadline: number; phaseDeadline?: number; transportClosed: boolean; releasing?: Promise<void>;
   removers: (() => void)[]; timer?: NodeJS.Timeout; response?: ServerResponse; body?: ReadableStream<Uint8Array>; reader?: ReadableStreamDefaultReader<Uint8Array>;
   callback: Promise<Callback>; accept(value: Callback): void;
 }
@@ -90,8 +92,13 @@ export class RemoteStepUpOAuth {
     this.browserTimeout = duration(options.browserTimeoutMs, 10000, 60000);
     this.exchangeTimeout = duration(options.exchangeTimeoutMs, 20000, 60000);
   }
-  private cancel(flow: Flow, code: RemoteOAuthFailure): void { flow.failure ??= code; if (!flow.abort.signal.aborted) flow.abort.abort(new RemoteOAuthError(code)); }
+  private cancel(flow: Flow, code: RemoteOAuthFailure): void {
+    if (!flow.abort.signal.aborted) flow.abort.abort(new RemoteOAuthError(code));
+    if (!flow.transportAbort.signal.aborted) flow.transportAbort.abort(new RemoteOAuthError(code));
+  }
   private assert(flow: Flow): void {
+    // timer 只负责唤醒挂起操作；同步外部代码阻塞事件循环时，仍按绝对期限拒绝晚结果。
+    if (flow.active && !flow.abort.signal.aborted && performance.now() >= Math.min(flow.deadline, flow.phaseDeadline ?? Infinity)) this.cancel(flow, 'timeout');
     if (!flow.active || flow.abort.signal.aborted) throw flow.abort.signal.reason instanceof RemoteOAuthError ? flow.abort.signal.reason : new RemoteOAuthError('closed');
   }
   /** 每个外部 await 都被全局取消/deadline截断，且外部异常只采用本地固定分类。 */
@@ -117,12 +124,22 @@ export class RemoteStepUpOAuth {
     const value = await this.wait(flow, () => this.options.managedAuth.verifyIdentity(expected), 'identity-changed');
     try {
       if (!same(expected, identity(value)) || !same(expected, identity(this.options.managedAuth.currentIdentity))) throw new RemoteOAuthError('identity-changed');
-    } catch { throw new RemoteOAuthError('identity-changed'); }
+    } catch { this.assert(flow); throw new RemoteOAuthError('identity-changed'); }
+    this.assert(flow);
+  }
+  private stepUp(flow: Flow, token: string, auth: ManagedAuth): void {
+    this.assert(flow);
+    try {
+      const now = (this.options.now ?? Date.now)(); if (!Number.isSafeInteger(now) || now < 0) throw new Error();
+      validateStepUp(token, auth, now);
+    } catch { this.assert(flow); throw new RemoteOAuthError('response-invalid'); }
+    this.assert(flow);
   }
   private callback(flow: Flow, port: Port, state: string, request: IncomingMessage, response: ServerResponse): void {
     response.on('error', () => undefined);
     try {
       this.assert(flow);
+      if (flow.transportClosed) throw new Error();
       const raw = request.url ?? ''; const headers = request.rawHeaders;
       if (request.method !== 'GET' || raw.length > 8192 || raw.includes('#') || raw.split('?')[0] !== '/auth/callback' || headers.length > 64 || headers.reduce((sum, part) => sum + Buffer.byteLength(part), 0) > 8192) throw new Error();
       if (headers.filter((_value, index) => index % 2 === 0 && headers[index]!.toLowerCase() === 'host').length !== 1 || request.headers.host !== `localhost:${port}` || request.headers['transfer-encoding'] !== undefined || (request.headers['content-length'] !== undefined && request.headers['content-length'] !== '0')) throw new Error();
@@ -151,31 +168,32 @@ export class RemoteStepUpOAuth {
       flow.servers.add(server); server.maxConnections = 4; server.maxHeadersCount = 32; server.maxRequestsPerSocket = 1;
       server.headersTimeout = 10000; server.requestTimeout = 10000; server.keepAliveTimeout = 1;
       server.on('error', () => undefined);
-      server.on('listening', () => { if (!flow.active || flow.abort.signal.aborted) closeServer(server); });
+      server.on('listening', () => { if (!flow.active || flow.transportClosed || flow.abort.signal.aborted) closeServer(server); });
       server.on('connection', socket => {
-        if (!flow.active || flow.abort.signal.aborted || flow.sockets.size >= 4) { socket.destroy(); return; }
+        if (!flow.active || flow.transportClosed || flow.abort.signal.aborted || flow.sockets.size >= 4) { socket.destroy(); return; }
         flow.sockets.add(socket); socket.on('error', () => undefined); socket.once('close', () => flow.sockets.delete(socket)); socket.setTimeout(Math.min(this.timeout, 10000), () => socket.destroy());
       });
       server.on('clientError', (_error, socket) => { socket.end('HTTP/1.1 400 Bad Request\r\nConnection: close\r\nCache-Control: no-store\r\nReferrer-Policy: no-referrer\r\nContent-Length: 0\r\n\r\n'); });
       let occupied = false;
       const pending = Promise.resolve().then(() => {
         this.assert(flow);
-        return (this.options.bindListener ?? bind)(server, { host: '127.0.0.1', port, signal: flow.abort.signal });
+        return (this.options.bindListener ?? bind)(server, { host: '127.0.0.1', port, signal: flow.transportAbort.signal });
       }).catch(error => { occupied = !!error && typeof error === 'object' && (error as NodeJS.ErrnoException).code === 'EADDRINUSE'; throw new RemoteOAuthError('network'); });
-      void pending.then(() => { if (!flow.active || flow.abort.signal.aborted) closeServer(server); }, () => undefined);
+      void pending.then(() => { if (!flow.active || flow.transportClosed || flow.abort.signal.aborted) closeServer(server); }, () => undefined);
       try { await this.wait(flow, () => pending, 'network'); return port; }
       catch (error) { closeServer(server); this.assert(flow); if (!occupied) throw error; }
     }
     throw new RemoteOAuthError('ports-unavailable');
   }
   private async exchange(flow: Flow, code: string, verifier: string, redirect: string, auth: ManagedAuth, expected: Readonly<ManagedAuthIdentity>): Promise<string> {
+    flow.phaseDeadline = performance.now() + this.exchangeTimeout;
     const timer = setTimeout(() => this.cancel(flow, 'timeout'), this.exchangeTimeout);
     try {
       const pending = Promise.resolve().then(() => {
         this.assert(flow);
-        return (this.options.fetch ?? globalThis.fetch)('https://auth.openai.com/oauth/token', { method: 'POST', redirect: 'error', signal: flow.abort.signal, headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ grant_type: 'authorization_code', code, redirect_uri: redirect, client_id: CLIENT_ID, code_verifier: verifier }).toString() });
+        return (this.options.fetch ?? globalThis.fetch)('https://auth.openai.com/oauth/token', { method: 'POST', redirect: 'error', signal: flow.transportAbort.signal, headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ grant_type: 'authorization_code', code, redirect_uri: redirect, client_id: CLIENT_ID, code_verifier: verifier }).toString() });
       });
-      void pending.then(value => { if (!flow.active || flow.abort.signal.aborted) discard(value); }, () => undefined);
+      void pending.then(value => { try { this.assert(flow); } catch { discard(value); } }, () => undefined);
       const response = await this.wait(flow, () => pending, 'network');
       let status: number;
       try { flow.body = response.body ?? undefined; status = response.status; if (!Number.isInteger(status) || status < 200 || status > 599) throw new Error(); }
@@ -199,35 +217,43 @@ export class RemoteStepUpOAuth {
         if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error();
         const token = (value as { access_token?: unknown }).access_token;
         if (typeof token !== 'string' || token.length > 65536) throw new Error();
-        const now = (this.options.now ?? Date.now)(); if (!Number.isSafeInteger(now) || now < 0) throw new Error();
-        validateStepUp(token, auth, now); this.assert(flow); return token;
-      } catch { throw new RemoteOAuthError('response-invalid'); }
-    } finally { clearTimeout(timer); }
+        this.stepUp(flow, token, auth); return token;
+      } catch { this.assert(flow); throw new RemoteOAuthError('response-invalid'); }
+    } finally { clearTimeout(timer); flow.phaseDeadline = undefined; }
   }
-  private async cleanup(flow: Flow, success: boolean): Promise<void> {
+  /** 先收回自有传输并 flush；总期限与调用方取消一直保留到后续最后身份复核结束。 */
+  private release(flow: Flow, success: boolean): Promise<void> {
+    if (flow.releasing) return flow.releasing;
+    flow.transportClosed = true;
+    flow.releasing = (async () => {
+      if (!flow.transportAbort.signal.aborted) flow.transportAbort.abort(new RemoteOAuthError('closed'));
+      try {
+        if (flow.reader) {
+          try { void flow.reader.cancel().catch(() => undefined); }
+          finally { flow.reader.releaseLock(); }
+        } else if (flow.body) discard({ body: flow.body });
+      } catch { /* reader 自身也可能失败或永不完成；清理不能等待它。 */ }
+      for (const server of flow.servers) closeServer(server);
+      const response = flow.response;
+      for (const socket of flow.sockets) if (socket !== response?.socket) socket.destroy();
+      try {
+        if (response && !response.destroyed && !response.writableEnded) {
+          let timer: NodeJS.Timeout | undefined;
+          try { await Promise.race([new Promise<void>(resolve => { response.once('finish', resolve); response.once('close', resolve); page(response, success ? 200 : 400, success); }), new Promise<void>(resolve => { timer = setTimeout(resolve, 50); })]); }
+          finally { clearTimeout(timer); }
+        }
+      } finally { for (const socket of flow.sockets) socket.destroy(); }
+    })();
+    return flow.releasing;
+  }
+  /** 最后身份复核之后仅执行同步、内部终结，不再 await 或触发受信任传输回调。 */
+  private finish(flow: Flow): void {
     flow.active = false; clearTimeout(flow.timer);
-    // 成功清理也中止传输，但不将其记为调用方取消；flush期间的新取消仍能覆盖最终返回。
     if (!flow.abort.signal.aborted) flow.abort.abort(new RemoteOAuthError('closed'));
-    try {
-      if (flow.reader) {
-        try { void flow.reader.cancel().catch(() => undefined); }
-        finally { flow.reader.releaseLock(); }
-      } else if (flow.body) discard({ body: flow.body });
-    } catch { /* reader 自身也可能失败或永不完成；清理不能等待它。 */ }
-    for (const server of flow.servers) closeServer(server);
-    // 只给本实例持有的 callback 响应一次短暂 flush；空闲连接立即销毁。
-    const response = flow.response;
-    for (const socket of flow.sockets) if (socket !== response?.socket) socket.destroy();
-    if (response && !response.destroyed && !response.writableEnded) {
-      let timer: NodeJS.Timeout | undefined;
-      try { await Promise.race([new Promise<void>(resolve => { response.once('finish', resolve); response.once('close', resolve); page(response, success ? 200 : 400, success); }), new Promise<void>(resolve => { timer = setTimeout(resolve, 50); })]); }
-      finally { clearTimeout(timer); }
-    }
-    for (const socket of flow.sockets) socket.destroy();
     for (const remove of flow.removers.splice(0)) remove();
+    if (this.flow === flow) { this.flow = undefined; this.flight = undefined; }
   }
   private async run(flow: Flow): Promise<string> {
-    let success = false; let result!: string;
     try {
       const raw = await this.wait(flow, () => this.options.managedAuth.load(), 'auth-required');
       let auth: ManagedAuth; let expected: Readonly<ManagedAuthIdentity>;
@@ -241,18 +267,22 @@ export class RemoteStepUpOAuth {
       const redirect = `http://localhost:${port}/auth/callback`;
       const url = new URL('https://auth.openai.com/oauth/authorize');
       url.search = new URLSearchParams({ response_type: 'code', client_id: CLIENT_ID, redirect_uri: redirect, scope: 'codex.remote_control.enroll', code_challenge: createHash('sha256').update(verifier).digest('base64url'), code_challenge_method: 'S256', state, originator: 'Codex Mobile Gateway', reauth: 'remote_control', max_age: '0', codex_cli_simplified_flow: 'true', allowed_workspace_id: expected.accountId, current_workspace_id: expected.accountId }).toString();
+      flow.phaseDeadline = performance.now() + this.browserTimeout;
       const timer = setTimeout(() => this.cancel(flow, 'timeout'), this.browserTimeout);
-      try { await this.wait(flow, () => (this.options.openBrowser ?? openBrowser)(url.toString(), flow.abort.signal), 'browser'); }
-      finally { clearTimeout(timer); }
+      try { await this.wait(flow, () => (this.options.openBrowser ?? openBrowser)(url.toString(), flow.transportAbort.signal), 'browser'); }
+      finally { clearTimeout(timer); flow.phaseDeadline = undefined; }
       await this.proof(flow, expected);
       const callback = await this.wait(flow, () => flow.callback, 'network'); await this.proof(flow, expected);
       if ('denied' in callback) throw new RemoteOAuthError('denied');
       const token = await this.exchange(flow, callback.code, verifier, redirect, auth, expected);
-      this.assert(flow); result = token; success = true;
-    } catch (error) { throw error instanceof RemoteOAuthError ? new RemoteOAuthError(error.code) : new RemoteOAuthError('network'); }
-    finally { await this.cleanup(flow, success); }
-    if (flow.failure) throw new RemoteOAuthError(flow.failure);
-    return result;
+      this.assert(flow);
+      await this.release(flow, true);
+      await this.proof(flow, expected);
+      this.stepUp(flow, token, auth); return token;
+    } catch (error) {
+      try { await this.release(flow, false); } catch { /* 传输清理的 finally 仍会销毁自有 socket。 */ }
+      throw error instanceof RemoteOAuthError ? new RemoteOAuthError(error.code) : new RemoteOAuthError('network');
+    } finally { this.finish(flow); }
   }
   /** 同实例 singleflight；任一加入调用者取消即取消共享流。失败后仅下一次显式调用重试。 */
   authorize(signal?: AbortSignal): Promise<string> {
@@ -260,9 +290,9 @@ export class RemoteStepUpOAuth {
     if (this.flight && this.flow) { this.join(this.flow, signal); return this.flight; }
     if (signal?.aborted) return Promise.reject(new RemoteOAuthError('cancelled'));
     let accept!: (value: Callback) => void;
-    const flow: Flow = { abort: new AbortController(), active: true, consumed: false, servers: new Set(), sockets: new Set(), removers: [], callback: new Promise(resolve => { accept = resolve; }), accept: value => accept(value) };
+    const flow: Flow = { abort: new AbortController(), transportAbort: new AbortController(), active: true, consumed: false, servers: new Set(), sockets: new Set(), removers: [], deadline: performance.now() + this.timeout, transportClosed: false, callback: new Promise(resolve => { accept = resolve; }), accept: value => accept(value) };
     this.flow = flow; this.join(flow, signal); flow.timer = setTimeout(() => this.cancel(flow, 'timeout'), this.timeout);
-    const flight = this.run(flow).finally(() => { if (this.flow === flow) { this.flow = undefined; this.flight = undefined; } });
+    const flight = this.run(flow);
     this.flight = flight; return flight;
   }
   /** 永久关闭；不关闭调用方持有的 managedAuth，也不触碰其他 listener/进程。 */

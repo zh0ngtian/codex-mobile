@@ -2,6 +2,7 @@
 import { createHash } from 'node:crypto';
 import { createServer, request, type Server } from 'node:http';
 import { createConnection, type AddressInfo } from 'node:net';
+import { performance } from 'node:perf_hooks';
 import { afterEach, expect, it } from 'vitest';
 import { RemoteStepUpOAuth, type RemoteOAuthOptions } from '../../server/remote/oauth.js';
 import type { ManagedAuthIdentity } from '../../server/remote/managed-auth.js';
@@ -57,6 +58,7 @@ function safeError(error: unknown, code: string) {
   expect(String(error)).not.toMatch(/synthetic|secret|private\.invalid|Bearer/);
   expect((error as Error).cause).toBeUndefined(); expect(Object.keys(error as object).sort()).toEqual(['code', 'name']);
 }
+function block(milliseconds: number): void { const until = performance.now() + milliseconds; while (performance.now() < until) { /* 故意阻塞事件循环，不能依赖 timer 抢先运行。 */ } }
 
 it('固定authorize参数和PKCE，通过真实隔离HTTP回调单次换取核验后的短期token', async () => {
   const f = fixture(); const callback = deferred<Awaited<ReturnType<typeof http>>>();
@@ -349,4 +351,77 @@ it('坏response的status无效时仍回收其已到body', async () => {
   f.setFetch(async () => ({ status: 0, body: new ReadableStream({ cancel() { cancelled = true; } }) }) as Response);
   const run = await start(f); const callback = f.callback(run.url);
   safeError((await run.outcome).error, 'response-invalid'); await callback; expect(cancelled).toBe(true);
+});
+
+it.each(['codexHome', 'accountId', 'accountUserId', 'userId'] as const)('最终flush后%s变化必须重新证明并丢弃token', async key => {
+  const f = fixture(); const run = await start(f);
+  f.servers[0]!.on('request', (_request, response) => { response.once('finish', () => f.setIdentity({ ...IDENTITY, [key]: 'changed' })); });
+  const callback = f.callback(run.url); safeError((await run.outcome).error, 'identity-changed'); await callback;
+  expect(f.servers.every(server => !server.listening)).toBe(true);
+});
+
+it.each(['total', 'exchange'] as const)('同步fetch阻塞超过%s绝对期限，即使timer未执行也不返回token', async kind => {
+  const f = fixture({ timeoutMs: kind === 'total' ? 40 : 1000, exchangeTimeoutMs: kind === 'exchange' ? 20 : 200 }); let cancelled = false;
+  f.setFetch(async () => { block(80); return new Response(new ReadableStream({ start(controller) { controller.enqueue(Buffer.from(JSON.stringify({ access_token: stepUp() }))); controller.close(); }, cancel() { cancelled = true; } })); });
+  const run = await start(f); const callback = f.callback(run.url);
+  safeError((await run.outcome).error, 'timeout'); await callback; expect(f.calls).toHaveLength(1);
+  expect(f.calls[0]!.init.signal?.aborted).toBe(true); expect(cancelled).toBe(true);
+});
+
+it.each(['total', 'browser'] as const)('同步browser阻塞超过%s绝对期限后不开始exchange', async kind => {
+  const f = fixture({ timeoutMs: kind === 'total' ? 40 : 1000, browserTimeoutMs: kind === 'browser' ? 20 : 200 });
+  let proofs = 0; let beforeBlock = 0; const verify = f.options.managedAuth.verifyIdentity;
+  f.options.managedAuth.verifyIdentity = async expected => { proofs++; return verify(expected); };
+  f.setOpen(async () => { beforeBlock = proofs; block(80); }); const run = await start(f);
+  safeError((await run.outcome).error, 'timeout'); expect(proofs).toBe(beforeBlock); expect(f.calls).toHaveLength(0); expect(f.servers.every(server => !server.listening)).toBe(true);
+});
+
+it('读取正文同步阻塞超过exchange期限，拒绝读取结果并释放reader', async () => {
+  const f = fixture({ exchangeTimeoutMs: 20 }); let body: ReadableStream<Uint8Array> | undefined;
+  f.setFetch(async () => {
+    body = new ReadableStream<Uint8Array>({ pull(controller) { block(80); controller.enqueue(Buffer.from(JSON.stringify({ access_token: stepUp() }))); controller.close(); } }, { highWaterMark: 0 });
+    return new Response(body);
+  });
+  const run = await start(f); const callback = f.callback(run.url); safeError((await run.outcome).error, 'timeout'); await callback; expect(body?.locked).toBe(false);
+});
+
+it('最终flush阻塞越过总期限，不开始新的身份网络操作或返回token', async () => {
+  const f = fixture({ timeoutMs: 40 }); let proofs = 0; let beforeBlock = 0;
+  const verify = f.options.managedAuth.verifyIdentity; f.options.managedAuth.verifyIdentity = async expected => { proofs++; return verify(expected); };
+  const run = await start(f);
+  f.servers[0]!.on('request', (_request, response) => { response.once('finish', () => { beforeBlock = proofs; block(80); }); });
+  const callback = f.callback(run.url); safeError((await run.outcome).error, 'timeout'); await callback; expect(proofs).toBe(beforeBlock);
+});
+
+it.each(['timeout', 'cancel', 'close'] as const)('最终身份复核挂起时%s仍有界，晚结果不复活flow', async mode => {
+  const abort = new AbortController(); const f = fixture({ timeoutMs: mode === 'timeout' ? 40 : 1000 }); const entered = deferred<void>(); const late = deferred<Readonly<ManagedAuthIdentity>>();
+  const run = await start(f, abort.signal);
+  f.servers[0]!.on('request', (_request, response) => { response.once('finish', () => {
+    f.options.managedAuth.verifyIdentity = async () => { entered.resolve(); return late.promise; };
+  }); });
+  const callback = f.callback(run.url);
+  await Promise.race([entered.promise, run.outcome.then(() => { throw new Error('最终身份复核必须发生'); })]);
+  if (mode === 'cancel') abort.abort(); if (mode === 'close') f.oauth.close();
+  safeError((await run.outcome).error, mode === 'cancel' ? 'cancelled' : mode === 'close' ? 'closed' : mode); await callback;
+  late.resolve(IDENTITY); await new Promise(resolve => setImmediate(resolve)); expect(f.servers.every(server => !server.listening)).toBe(true); expect(f.calls).toHaveLength(1);
+});
+
+it('最终身份复核本身同步阻塞超过总期限也不能返回token', async () => {
+  const f = fixture({ timeoutMs: 40 }); const run = await start(f);
+  f.servers[0]!.on('request', (_request, response) => { response.once('finish', () => { f.options.managedAuth.verifyIdentity = async () => { block(80); return IDENTITY; }; }); });
+  const callback = f.callback(run.url); safeError((await run.outcome).error, 'timeout'); await callback;
+});
+
+it.each([
+  ['flush', 300000, {}],
+  ['proof', 101000, { exp: NOW / 1000 + 3600, iat: NOW / 1000 - 200 }],
+  ['proof', 100001, { exp: NOW / 1000 + 3600, pwd_auth_time: NOW - 200000 }],
+] as const)('最后%s等待跨过step-up有效期/新鲜度后必须重新核验 %s', async (stage, delta, changes) => {
+  const f = fixture(); f.setFetch(async () => new Response(JSON.stringify({ access_token: stepUp(changes) })));
+  const run = await start(f);
+  f.servers[0]!.on('request', (_request, response) => { response.once('finish', () => {
+    const advance = () => { f.options.now = () => NOW + delta; };
+    if (stage === 'flush') advance(); else f.options.managedAuth.verifyIdentity = async () => { advance(); return IDENTITY; };
+  }); });
+  const callback = f.callback(run.url); safeError((await run.outcome).error, 'response-invalid'); await callback;
 });
