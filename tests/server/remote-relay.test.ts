@@ -301,6 +301,23 @@ it.each(['ordinary', 'chunk'])('%s 入站消息统一遵守 UTF8 JSON 消息预�
   send(upstream.connections[1], incoming(stream.streamId, 'mac', 2, { result: 'within-budget' }, 'recovered')); await until(() => received.length === 2);
 });
 
+it('真实 WS 接受 100–150 KiB 普通服务端帧，153600+1 字节拒绝且保留安全 cursor', async () => {
+  const upstream = await server(); const value = relay(upstream.url); const stream = value.createStream({ environmentId: 'mac' });
+  const received: RpcMessage[] = []; stream.on('message', message => received.push(message));
+  await until(() => value.state === 'online');
+  for (const [index, size] of [128000, 153600].entries()) {
+    const empty = incoming(stream.streamId, 'mac', index + 1, { result: '' }, `safe-${index}`);
+    const message = { result: 'a'.repeat(size - Buffer.byteLength(JSON.stringify(empty))) };
+    const frame = { ...empty, message }; expect(Buffer.byteLength(JSON.stringify(frame))).toBe(size);
+    send(upstream.connections[0], frame); await until(() => received.length === index + 1); expect(received[index]).toEqual(message);
+  }
+  const empty = incoming(stream.streamId, 'mac', 3, { result: '' }, 'unsafe');
+  const oversized = { ...empty, message: { result: 'a'.repeat(153601 - Buffer.byteLength(JSON.stringify(empty))) } };
+  expect(Buffer.byteLength(JSON.stringify(oversized))).toBe(153601); send(upstream.connections[0], oversized);
+  await until(() => upstream.connections.length === 2 && value.state === 'online');
+  expect(received).toHaveLength(2); expect(stream.lastServerSeqId).toBe(2); expect(upstream.headers[1]).toBe('safe-1');
+});
+
 it('relay close 最终通知后终止所有流并清理监听器，重入 close 不发送请求或重复事件', async () => {
   const upstream = await server(); const value = relay(upstream.url);
   const a = value.createStream({ environmentId: 'mac-a' }); const b = value.createStream({ environmentId: 'mac-b' });
@@ -328,6 +345,20 @@ it('主动 stream close 与 relay close 并发保留原发送失败语义且只�
   expect(a.closed).toBe(true); expect(b.closed).toBe(true); expect(aClosed).toBe(1); expect(bClosed).toBe(1);
   expect(a.eventNames()).toHaveLength(0); expect(b.eventNames()).toHaveLength(0); await b.close();
   await new Promise(resolve => setTimeout(resolve, 30)); expect(upstream.frames.filter(frame => frame.type === 'client_closed' && frame.stream_id === b.streamId)).toHaveLength(0);
+});
+
+it('关闭监听器抛错仍终止全部流并释放监听器，完成清理后传播首个异常', async () => {
+  const upstream = await server(); const value = relay(upstream.url);
+  const a = value.createStream({ environmentId: 'mac-a' }); const b = value.createStream({ environmentId: 'mac-b' });
+  const firstError = new Error('first close failed'); const secondError = new Error('second close failed'); const events: string[] = [];
+  a.on('close', () => { events.push('close-a'); throw firstError; });
+  b.on('close', () => { events.push('close-b'); throw secondError; });
+  value.on('disconnect', () => events.push('disconnect-relay'));
+  await until(() => value.state === 'online'); expect(() => value.close()).toThrow(firstError);
+  expect(events).toEqual(['disconnect-relay', 'close-a', 'close-b']); expect(a.closed).toBe(true); expect(b.closed).toBe(true); expect(value.state).toBe('closed');
+  expect(a.eventNames()).toHaveLength(0); expect(b.eventNames()).toHaveLength(0); expect(value.eventNames()).toHaveLength(0);
+  await a.close(); await b.close(); value.close(); await new Promise(resolve => setTimeout(resolve, 40));
+  expect(upstream.frames.filter(frame => frame.type === 'client_closed')).toHaveLength(0); expect(upstream.connections).toHaveLength(1);
 });
 
 it.each([401, 403])('HTTP upgrade %s 进入 auth-required 并停止连接重试', async status => {

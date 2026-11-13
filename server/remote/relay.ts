@@ -377,13 +377,16 @@ export class RemoteRelay extends EventEmitter<RelayEvents> {
     this.writes.clear(); this.queuedBytes = 0;
     if (socket && socket.readyState !== WebSocket.CLOSED) socket.terminate();
   }
-  private notifyDisconnect(reason: RemoteDisconnect['reason'], streams: Iterable<RemoteStream> = this.streams.values()): void {
+  private notifyDisconnect(reason: RemoteDisconnect['reason'], streams: Iterable<RemoteStream> = this.streams.values(), onError?: (error: unknown) => void): void {
+    const notify = (operation: () => void) => {
+      try { operation(); } catch (error) { if (!onError) throw error; onError(error); }
+    };
     let mayHaveBeenSent = false;
     for (const stream of streams) if (!stream.closed) {
       mayHaveBeenSent ||= stream.lastSentSeqId > 0;
-      stream.emit('disconnect', { reason, mayHaveBeenSent: stream.lastSentSeqId > 0, ...(stream.lastSentSeqId ? { lastSentSeqId: stream.lastSentSeqId } : {}) });
+      notify(() => stream.emit('disconnect', { reason, mayHaveBeenSent: stream.lastSentSeqId > 0, ...(stream.lastSentSeqId ? { lastSentSeqId: stream.lastSentSeqId } : {}) }));
     }
-    this.emit('disconnect', { reason, mayHaveBeenSent });
+    notify(() => this.emit('disconnect', { reason, mayHaveBeenSent }));
   }
   private disconnect(reason: Exclude<RemoteDisconnect['reason'], 'closed'>, error?: RemoteAuthRequiredError): void {
     if (this.state === 'closed' || this.state === 'auth-required') return;
@@ -401,15 +404,17 @@ export class RemoteRelay extends EventEmitter<RelayEvents> {
   }
   close(): void {
     if (this.state === 'closed') return;
+    const errors: unknown[] = [];
+    const rememberError = (error: unknown) => { errors.push(error); };
+    const finish = (operation: () => void) => { try { operation(); } catch (error) { rememberError(error); } };
     const streams = [...this.streams.values()];
     for (const stream of streams) stream.prepareForRelayClose();
     this.streams.clear();
-    this.setState('closed'); clearTimeout(this.retryTimer); this.retryTimer = undefined;
+    finish(() => this.setState('closed')); clearTimeout(this.retryTimer); this.retryTimer = undefined;
     this.clearConnection(); this.assembler.close();
-    try { this.notifyDisconnect('closed', streams); }
-    finally {
-      for (const stream of streams) stream.finishRelayClose();
-      this.removeAllListeners();
-    }
+    this.notifyDisconnect('closed', streams, rememberError);
+    for (const stream of streams) finish(() => stream.finishRelayClose());
+    this.removeAllListeners();
+    if (errors.length) throw errors[0];
   }
 }

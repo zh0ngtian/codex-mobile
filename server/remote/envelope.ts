@@ -99,7 +99,6 @@ export function decodeServerFrame(raw: string | Uint8Array): ServerFrame {
   try { value = JSON.parse(typeof raw === 'string' ? raw : utf8.decode(raw)); }
   catch { throw new RemoteProtocolError('Remote JSON 编码无效'); }
   validateFrame(value);
-  if (value.type === 'server_message' && Buffer.byteLength(raw) > REMOTE_MESSAGE_FRAME_BYTES) throw new RemoteProtocolError('Remote 普通消息帧超限');
   return value;
 }
 
@@ -116,7 +115,7 @@ export function encodeClientMessage(route: RemoteRoute, message: RpcMessage, opt
   const base = { type: 'client_message_chunk', ...routing, message_size_bytes: size };
   // 按最大合法段编号预留开销，保证每个完整信封都满足字节上限。
   const overhead = Buffer.byteLength(JSON.stringify({ ...base, segment_id: MAX_SEGMENTS - 1, segment_count: MAX_SEGMENTS, message_chunk_base64: '' }));
-  const bytesPerChunk = Math.floor((REMOTE_CHUNK_FRAME_BYTES - overhead) / 4) * 3;
+  const bytesPerChunk = Math.min(REMOTE_MESSAGE_FRAME_BYTES, Math.floor((REMOTE_CHUNK_FRAME_BYTES - overhead) / 4) * 3);
   const count = Math.ceil(size / bytesPerChunk);
   if (bytesPerChunk < 1 || count > MAX_SEGMENTS) throw new RemoteProtocolError('Remote 分块数量超限');
   return Array.from({ length: count }, (_, index) => JSON.stringify({

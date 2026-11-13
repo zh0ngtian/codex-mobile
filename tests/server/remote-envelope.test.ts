@@ -52,6 +52,19 @@ describe('Remote 消息编码', () => {
     expect(() => encodeClientMessage(route, { params: Number.NaN })).toThrow();
   });
 
+  it('每段出站原始字节不超过 102400，长路由仍满足完整分块帧预算', () => {
+    const message = { params: '中🙂'.repeat(60000) };
+    for (const routing of [route, { ...route, clientId: '\0'.repeat(1024), streamId: '\0'.repeat(1024), environmentId: '\0'.repeat(1024) }]) {
+      const encoded = encodeClientMessage(routing, message);
+      const decoded = encoded.map(raw => {
+        expect(Buffer.byteLength(raw)).toBeLessThanOrEqual(153600);
+        const bytes = Buffer.from(JSON.parse(raw).message_chunk_base64, 'base64');
+        expect(bytes.length).toBeLessThanOrEqual(102400); return bytes;
+      });
+      expect(JSON.parse(Buffer.concat(decoded).toString('utf8'))).toEqual(message);
+    }
+  });
+
   it('消息是安全 JSON 对象，保留任意扩展字段和 legacy error 对象', () => {
     const messages: RpcMessage[] = [
       { method: 'remoteControl/status/changed', params: {}, emittedAtMs: 1794530000000, extension: { future: ['kept', 7, null] } },
@@ -70,6 +83,18 @@ describe('Remote 消息编码', () => {
 });
 
 describe('Remote 入站校验与分块组装', () => {
+  it('普通服务端完整帧接受 100–150 KiB，超过 153600 字节才拒绝', () => {
+    const frame = { type: 'server_message', client_id: 'client', stream_id: 'phone', env_id: 'mac', seq_id: 1, message: { result: '' } };
+    const overhead = Buffer.byteLength(JSON.stringify(frame));
+    for (const size of [102401, 128000, 153600]) {
+      const raw = JSON.stringify({ ...frame, message: { result: 'a'.repeat(size - overhead) } });
+      expect(Buffer.byteLength(raw)).toBe(size);
+      expect(decodeServerFrame(raw)).toMatchObject({ type: 'server_message', message: { result: 'a'.repeat(size - overhead) } });
+    }
+    const tooLarge = JSON.stringify({ ...frame, message: { result: 'a'.repeat(153601 - overhead) } });
+    expect(Buffer.byteLength(tooLarge)).toBe(153601); expect(() => decodeServerFrame(tooLarge)).toThrow();
+  });
+
   it('接受 null/string cursor 和 pong status，拒绝错误路由字段及不安全 JSON', () => {
     const base = { type: 'pong', client_id: 'client', stream_id: 'phone', env_id: 'mac', seq_id: 1, status: 'unknown', skip_history: true };
     expect(decodeServerFrame(JSON.stringify({ ...base, cursor: null }))).toMatchObject({ status: 'unknown', cursor: null });
