@@ -189,6 +189,13 @@ export class RemoteCommands {
   execute(value: RemoteCommandOptions): Promise<RemoteCommandResult> {
     return this.executeInternal(value);
   }
+  /** 文件协议专用：只能取得本实例已探测的同一ready session，不能借此改绑目标或权限。 */
+  fileTransportBinding(session: RemoteRpcSession): Readonly<{ python: string; scope: RemoteCommandScope; metadata: Readonly<RemoteCommandMetadata> }> {
+    assertRemoteOperation();
+    if (this.closed || !session.ready) throw new RemoteCommandError('closed', false);
+    if (session !== this.session) throw new RemoteCommandError('binding', false);
+    return Object.freeze({ python: this.python, scope: this.scope, metadata: this.metadata });
+  }
   private async executeInternal(value: RemoteCommandOptions): Promise<RemoteCommandResult> {
     const started = performance.now();
     const raw = data(value, ['argv', 'cwd', 'env', 'timeoutMs', 'stdoutBytesCap', 'stderrBytesCap', 'signal'], 'invalid-input');
