@@ -202,3 +202,82 @@ it.each(['getter', 'toJSON'] as const)('RemoteStream发送已验证的JSON快照
   expect(Buffer.byteLength(JSON.stringify(actual))).toBeLessThanOrEqual(256);
   expect(actual.params).toEqual({ text: 'small' }); expect(evaluations).toBe(1);
 });
+
+it('真实canonical暂停读取时未完成写入的超时关闭连接，串行调用不能累积无界socket缓冲', async () => {
+  const budget = 1024 * 1024;
+  const { session, server } = await initialized({ maxPending: 1, maxRequestBytes: budget, responseTimeoutMs: 20 });
+  const socket = (session as unknown as { transport: WebSocket }).transport;
+  server.sockets[0]!.pause();
+  const failures: unknown[] = []; let peakBuffered = 0;
+  for (let index = 0; index < 24 && !session.closed; index++) {
+    failures.push(await session.call('synthetic/write', { payload: 'x'.repeat(900000) }).catch(error => error));
+    peakBuffered = Math.max(peakBuffered, socket.bufferedAmount);
+  }
+  expect(failures.length).toBeGreaterThan(0);
+  for (const failure of failures) expect(failure).toMatchObject({ code: 'timeout', mayHaveBeenSent: true });
+  expect(peakBuffered).toBeLessThanOrEqual(budget); expect(session.closed).toBe(true);
+  await expect(session.call('no-replay')).rejects.toMatchObject({ code: 'closed', mayHaveBeenSent: false });
+  await until(() => socket.readyState === socket.CLOSED);
+  expect(socket.bufferedAmount).toBe(0);
+  for (const event of ['message', 'error', 'close']) expect(socket.listenerCount(event)).toBe(0);
+});
+
+it('响应先到不会释放未完成写入的额度或期限，晚写回调不能恢复已关闭的canonical', async () => {
+  const { session, server } = await initialized({ maxPending: 1, responseTimeoutMs: 80 });
+  const socket = (session as unknown as { transport: WebSocket }).transport;
+  const actualSend = socket.send.bind(socket); const completions: (() => void)[] = [];
+  // 保留真实WS发送与响应，只延迟本地写回调，确定性覆盖响应早于回调的边界。
+  socket.send = (data, optionsOrCallback?, callback?) => {
+    const complete = typeof optionsOrCallback === 'function' ? optionsOrCallback : callback;
+    actualSend(data, error => completions.push(() => { if (typeof complete === 'function') complete(error); }));
+  };
+  const first = session.call('early-response'); await until(() => server.frames.length === 3 && completions.length === 1);
+  send(server.sockets[0]!, { id: server.frames[2]!.id, result: true }); expect(await first).toBe(true);
+  await expect(session.call('over-write-capacity')).rejects.toMatchObject({ code: 'capacity', mayHaveBeenSent: false });
+  expect(server.frames).toHaveLength(3);
+  await until(() => session.closed);
+  for (const complete of completions) complete();
+  expect(session.closed).toBe(true); expect(session.ready).toBe(false);
+  await expect(session.notify('late')).rejects.toMatchObject({ code: 'closed', mayHaveBeenSent: false });
+});
+
+it('canonical逐帧预算包括WS头，写回调完成后才释放字节额度供下次调用使用', async () => {
+  const { session, server } = await initialized({ maxPending: 2, maxRequestBytes: 256, responseTimeoutMs: 100 });
+  const socket = (session as unknown as { transport: WebSocket }).transport;
+  const actualSend = socket.send.bind(socket); const completions: (() => void)[] = [];
+  socket.send = (data, optionsOrCallback?, callback?) => {
+    const complete = typeof optionsOrCallback === 'function' ? optionsOrCallback : callback;
+    actualSend(data, error => completions.push(() => { if (typeof complete === 'function') complete(error); }));
+  };
+  const length = Buffer.byteLength(JSON.stringify({ id: server.frames[0]!.id, method: 'bounded', params: { payload: '' } }));
+  const params = { payload: 'x'.repeat(256 - length) };
+  const first = session.call('bounded', params); await until(() => server.frames.length === 3 && completions.length === 1);
+  expect(Buffer.byteLength(JSON.stringify(server.frames[2]))).toBe(256);
+  send(server.sockets[0]!, { id: server.frames[2]!.id, result: true }); expect(await first).toBe(true);
+  // 尚未完成的写入只有一个，小于maxPending；两帧及其WS头会超过512字节。
+  await expect(session.call('bounded', params)).rejects.toMatchObject({ code: 'capacity', mayHaveBeenSent: false });
+  expect(server.frames).toHaveLength(3);
+  completions[0]!(); socket.send = actualSend;
+  const next = session.call('bounded', params); await until(() => server.frames.length === 4);
+  send(server.sockets[0]!, { id: server.frames[3]!.id, result: 'next' }); expect(await next).toBe('next');
+  await new Promise(resolve => setTimeout(resolve, 110)); expect(session.ready).toBe(true);
+});
+
+it('显式close拒绝所有未完成写入的调用和通知，晚回调与旧期限不重复关闭', async () => {
+  const { session, server } = await initialized({ maxPending: 2, responseTimeoutMs: 80 });
+  const socket = (session as unknown as { transport: WebSocket }).transport;
+  const actualSend = socket.send.bind(socket); const completions: (() => void)[] = [];
+  socket.send = (data, optionsOrCallback?, callback?) => {
+    const complete = typeof optionsOrCallback === 'function' ? optionsOrCallback : callback;
+    actualSend(data, error => completions.push(() => { if (typeof complete === 'function') complete(error); }));
+  };
+  const call = session.call('write').catch(error => error); const notification = session.notify('notice').catch(error => error);
+  await until(() => server.frames.length === 4 && completions.length === 2);
+  let closed = 0; session.on('close', () => { closed++; }); session.close();
+  for (const failure of await Promise.all([call, notification])) expect(failure).toMatchObject({ code: 'closed', mayHaveBeenSent: true });
+  for (const complete of completions) complete();
+  await new Promise(resolve => setTimeout(resolve, 90)); expect(closed).toBe(1);
+  expect(session.closed).toBe(true); expect(server.frames).toHaveLength(4);
+  await until(() => socket.readyState === socket.CLOSED);
+  for (const event of ['message', 'error', 'close']) expect(socket.listenerCount(event)).toBe(0);
+});

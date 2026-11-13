@@ -47,6 +47,8 @@ export class RemoteRpcSession extends EventEmitter<SessionEvents> {
   private sequence = 0;
   private readonly pending = new Set<Pending>();
   private readonly responses = new Map<string, Pending>();
+  private readonly writes = new Map<Pending, number>();
+  private writingBytes = 0;
   private readonly disposers: (() => void)[] = [];
   private initializing?: Promise<Readonly<Record<string, unknown>>>;
   private initializeTimer?: NodeJS.Timeout;
@@ -158,19 +160,29 @@ export class RemoteRpcSession extends EventEmitter<SessionEvents> {
   private submit(method: string, params: JsonValue | undefined, response: boolean, timeout: number): Promise<unknown> {
     if (this.terminal) return Promise.reject(new RemoteRpcError('closed', false));
     if (this.pending.size >= this.options.maxPending) return Promise.reject(new RemoteRpcError('capacity', false));
-    let message: RpcMessage; let encoded: string; let id: string | undefined;
+    let message: RpcMessage; let encoded: string; let bytes: number; let id: string | undefined;
     try {
       if (typeof method !== 'string' || !method.length || method.length > 1024 || /[\u0000-\u001f\u007f]/.test(method)) throw new Error();
       if (!Number.isSafeInteger(++this.sequence)) throw new Error();
       id = response ? `${this.prefix}:${this.sequence}` : undefined;
       message = { ...(id === undefined ? {} : { id }), method, ...(params === undefined ? {} : { params }) };
       encoded = safeJson(message);
-      if (Buffer.byteLength(encoded) > this.options.maxRequestBytes) throw new Error();
+      bytes = Buffer.byteLength(encoded);
+      if (bytes > this.options.maxRequestBytes) throw new Error();
       // 两种传输都使用同一次序列化的值，避免 getter/toJSON 重求值改变发送内容。
       message = JSON.parse(encoded) as RpcMessage;
     } catch { return Promise.reject(new RemoteRpcError('capacity', false)); }
+    // 为每帧保守预留最长的客户端WS头；独立于已完成响应的RPC额度。
+    const writeBytes = bytes + 14;
+    if (!(this.transport instanceof RemoteStream)) {
+      const byteLimit = Math.min(this.options.maxPending * this.options.maxRequestBytes, 64 * 1024 * 1024);
+      if (this.writes.size >= this.options.maxPending || Math.max(this.writingBytes, this.transport.bufferedAmount) + writeBytes > byteLimit) return Promise.reject(new RemoteRpcError('capacity', false));
+    }
     return new Promise((resolve, reject) => {
-      const entry: Pending = { id, submitted: false, resolve, reject, timer: setTimeout(() => this.settle(entry, new RemoteRpcError('timeout', entry.submitted)), timeout) };
+      const entry: Pending = { id, submitted: false, resolve, reject, timer: setTimeout(() => {
+        if (this.writes.has(entry)) this.finish('timeout');
+        else this.settle(entry, new RemoteRpcError('timeout', entry.submitted));
+      }, timeout) };
       this.pending.add(entry); if (id !== undefined) this.responses.set(id, entry);
       const sent = (error?: unknown) => {
         if (!this.pending.has(entry)) return;
@@ -183,10 +195,19 @@ export class RemoteRpcSession extends EventEmitter<SessionEvents> {
           Promise.resolve(this.transport.send(message)).then(() => sent(), sent);
         } else {
           if (this.transport.readyState !== WebSocket.OPEN) { sent(new RemoteSendError('', false)); return; }
-          entry.submitted = true; this.transport.send(encoded, error => sent(error));
+          this.writes.set(entry, writeBytes); this.writingBytes += writeBytes;
+          entry.submitted = true; this.transport.send(encoded, error => {
+            this.completeWrite(entry);
+            if (error) this.finish('network'); else sent();
+          });
         }
-      } catch (error) { sent(error); }
+      } catch (error) { if (this.writes.has(entry)) this.finish('network'); else sent(error); }
     });
+  }
+  private completeWrite(entry: Pending): void {
+    const bytes = this.writes.get(entry); if (bytes === undefined) return;
+    this.writes.delete(entry); this.writingBytes -= bytes;
+    if (!this.pending.has(entry)) clearTimeout(entry.timer);
   }
   private receive(value: unknown): void {
     if (this.terminal) return;
@@ -206,7 +227,8 @@ export class RemoteRpcSession extends EventEmitter<SessionEvents> {
   }
   private settle(entry: Pending, error?: RemoteRpcError, value?: unknown): void {
     if (!this.pending.delete(entry)) return;
-    clearTimeout(entry.timer); if (entry.id !== undefined) this.responses.delete(entry.id);
+    if (!this.writes.has(entry)) clearTimeout(entry.timer);
+    if (entry.id !== undefined) this.responses.delete(entry.id);
     if (error) entry.reject(error); else entry.resolve(value);
   }
   private rejectPending(code: RemoteRpcFailure): void {
@@ -214,6 +236,8 @@ export class RemoteRpcSession extends EventEmitter<SessionEvents> {
   }
   private finish(code: RemoteRpcFailure): void {
     if (this.terminal) return; this.terminal = true; this.initialized = false;
+    for (const entry of this.writes.keys()) clearTimeout(entry.timer);
+    this.writes.clear(); this.writingBytes = 0;
     clearTimeout(this.initializeTimer); this.initializeTimer = undefined; this.rejectPending(code);
     for (const dispose of this.disposers.splice(0)) { try { dispose(); } catch { /* 尽可能清理其余监听器。 */ } }
     try {
