@@ -6,7 +6,7 @@ import { existsSync, writeFileSync } from 'node:fs';
 import { inspect } from 'node:util';
 import { mkdtemp, readFile, rm, writeFile, rename, readdir, truncate, mkdir, symlink, readlink, utimes, lstat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { RemoteStream } from '../../server/remote/relay.js';
 import { RemoteRpcSession } from '../../server/remote/rpc-session.js';
 import type { JsonValue, RpcMessage } from '../../server/remote/envelope.js';
@@ -85,6 +85,11 @@ async function prepared() {
 }
 async function bytes(source: AsyncIterable<Uint8Array>) { const parts: Buffer[] = []; for await (const part of source) parts.push(Buffer.from(part)); return Buffer.concat(parts); }
 async function* input(data: Uint8Array) { for (let n = 0; n < data.length; n += 512 * 1024) yield data.subarray(n, n + 512 * 1024); }
+async function queryInNewProcess(directory: string, operation: unknown) {
+  const child = spawn(process.execPath, ['--import', 'tsx', new URL('./fixtures/remote-files-recover-worker.ts', import.meta.url).pathname], { stdio: 'pipe', env: { ...process.env, NODE_OPTIONS: '--no-experimental-webstorage' } });
+  let stdout = ''; let stderr = ''; child.stdout.on('data', data => { stdout += String(data); }); child.stderr.on('data', data => { stderr += String(data); }); child.stdin.end(JSON.stringify({ directory, operation }));
+  expect(await new Promise<number | null>(resolve => child.on('close', resolve))).toBe(0); expect(stderr).toBe(''); return JSON.parse(stdout);
+}
 
 it('通过同一ready session在目标创建临时文件并原子提交，特殊字符路径只作为数据', async () => {
   const f = await prepared(); const path = join(f.directory, '名字 空格;$()`".bin'); const data = Buffer.from([0, 255, 128, 1, 2]);
@@ -601,6 +606,80 @@ ready_at=time.monotonic()`));
   expect(await f.files.queryUpload(uploadError.operation)).toMatchObject({ state: 'staged', size: data.length, sha256: sha(data) });
   await f.files.discardUpload(uploadError.operation); expect(await f.files.queryUpload(uploadError.operation)).toEqual({ state: 'missing' });
   expect(await statIdentity(join(f.directory, 'unknown-preserved'))).toEqual(unknownIdentity!); expect(await readFile(referent, 'utf8')).toBe('unknown referent');
+});
+
+it.each([{ phase: 'operation', foreign: '' }, { phase: 'payload', foreign: '' }, { phase: 'captured', foreign: '' }, { phase: 'deleted', foreign: '' }, { phase: 'payload', foreign: 'original' }, { phase: 'payload', foreign: 'held' }])('两次捕获拒绝或中断后独立OS重证存活payload：$phase/$foreign', async ({ phase, foreign }) => {
+  const f = await prepared(); const path = join(f.directory, 'destination'); const data = Buffer.from('original staged bytes'); await writeFile(path, 'ORIGINAL'); const previous = await f.files.stat(path);
+  const firstMarker = join(f.directory, 'first-marker'); const secondMarker = join(f.directory, 'second-marker');
+  f.script(source => source.replace('ready_at=time.monotonic()', String.raw`_capture=capture_noreplace
+def capture_noreplace(src,dst):
+    if os.path.basename(src)=='payload' and os.path.basename(os.path.dirname(src)).startswith('.codex-mobile-upload-') and os.path.basename(os.path.dirname(dst)).startswith('.codex-mobile-commit-'):
+        with open(dst,'xb') as unknown: unknown.write(b'FIRST-UNKNOWN')
+        with open(` + JSON.stringify(firstMarker) + String.raw`,'w') as marker: json.dump(dict(source=src,target=dst),marker)
+    return _capture(src,dst)
+ready_at=time.monotonic()`));
+  const firstError = await f.files.upload(path, input(data), { size: data.length, sha256: sha(data), expectedVersion: previous.version }).catch(error => error); f.script(undefined);
+  expect(firstError).toMatchObject({ code: 'version', mayHaveBeenSent: true }); const saved = JSON.parse(JSON.stringify(firstError.operation)); const first = JSON.parse(await readFile(firstMarker, 'utf8'));
+  expect(await readFile(first.target, 'utf8')).toBe('FIRST-UNKNOWN'); await rename(first.target, join(f.directory, 'preserved-first'));
+  expect(await f.files.queryUpload(saved)).toMatchObject({ state: 'staged', size: data.length, sha256: sha(data) });
+  f.script(source => source.replace('ready_at=time.monotonic()', String.raw`_capture=capture_noreplace;_unlink=os.unlink;_phase=` + JSON.stringify(phase) + String.raw`
+def _record(src,dst):
+    with open(` + JSON.stringify(secondMarker) + String.raw`,'w') as marker: json.dump(dict(source=src,target=dst),marker)
+def capture_noreplace(src,dst):
+    if _phase=='operation' and os.path.basename(src).startswith('.codex-mobile-upload-') and os.path.basename(dst)=='entry':
+        os.mkdir(dst);_record(src,dst)
+    if _phase=='payload' and os.path.basename(src)=='payload' and os.path.basename(os.path.dirname(src))=='entry':
+        with open(dst,'xb') as unknown: unknown.write(b'SECOND-UNKNOWN')
+        _record(src,dst)
+    result=_capture(src,dst)
+    if _phase=='captured' and os.path.basename(src)=='payload' and os.path.basename(os.path.dirname(src))=='entry': _record(src,dst);os._exit(0)
+    return result
+def _after_unlink(path,*args,**kwargs):
+    result=_unlink(path,*args,**kwargs)
+    if _phase=='deleted' and os.path.basename(path)=='payload' and os.path.basename(os.path.dirname(path))=='files': _record(path,path);os._exit(0)
+    return result
+os.unlink=_after_unlink
+ready_at=time.monotonic()`));
+  await expect(f.files.discardUpload(saved)).rejects.toMatchObject({ code: phase === 'operation' || phase === 'payload' ? 'version' : 'protocol', mayHaveBeenSent: true }); f.script(undefined);
+  const second = JSON.parse(await readFile(secondMarker, 'utf8'));
+  if (phase === 'operation' || phase === 'payload') {
+    if (phase === 'payload') expect(await readFile(second.target, 'utf8')).toBe('SECOND-UNKNOWN'); else expect(await readdir(second.target)).toEqual([]);
+    await rename(second.target, join(f.directory, 'preserved-second'));
+  }
+  const actualPath = phase === 'operation' ? join(second.source, 'payload') : phase === 'captured' || phase === 'deleted' ? second.target : second.source;
+  if (phase === 'deleted') await expect(lstat(actualPath)).rejects.toMatchObject({ code: 'ENOENT' });
+  else {
+    const actual = await readFile(actualPath); const identity = await lstat(actualPath, { bigint: true });
+    expect(actual.length).toBe(data.length); expect(sha(actual)).toBe(sha(data)); expect(String(identity.ino)).toBe(saved.token.payloadIdentity.ino); expect(String(identity.dev)).toBe(saved.token.payloadIdentity.dev);
+  }
+  const begin = JSON.parse(JSON.stringify(saved)); for (const key of ['directoryIdentity', 'receiptIdentity', 'payloadIdentity', 'lockIdentity', 'cleanupIdentity', 'cleanupLockIdentity', 'cleanupFilesIdentity']) delete begin.token[key];
+  if (foreign) {
+    const unknown = foreign === 'original' ? dirname(first.target) : join(f.directory, '.codex-mobile-cleanup-' + String(saved.token.id), 'commit'); await mkdir(unknown); await writeFile(join(unknown, 'user-file'), 'FOREIGN-CONTAINER');
+    for (const token of [saved, begin]) expect(await queryInNewProcess(f.directory, token)).toEqual({ state: 'unknown' });
+    expect(await readFile(join(unknown, 'user-file'), 'utf8')).toBe('FOREIGN-CONTAINER'); await rename(unknown, join(f.directory, 'preserved-foreign'));
+  }
+  const fullResult = await queryInNewProcess(f.directory, saved); const beginResult = await queryInNewProcess(f.directory, begin);
+  process.stdout.write(JSON.stringify({ test: 'double-capture-recovery', phase, foreign, fullResult, beginResult, actualBytes: phase === 'deleted' ? 0 : data.length }) + '\n');
+  for (const result of [fullResult, beginResult]) expect(result).toMatchObject(phase === 'deleted' ? { state: 'unknown' } : { state: 'staged', size: data.length, sha256: sha(data) });
+  await f.files.discardUpload(saved); expect(await f.files.queryUpload(begin)).toEqual({ state: 'missing' }); expect(await readFile(path, 'utf8')).toBe('ORIGINAL'); expect(await readFile(join(f.directory, 'preserved-first'), 'utf8')).toBe('FIRST-UNKNOWN');
+  if (phase === 'payload') expect(await readFile(join(f.directory, 'preserved-second'), 'utf8')).toBe('SECOND-UNKNOWN');
+});
+
+it('没有真实清理intent时不把丢失commit目录猜成可忽略的空容器进度', async () => {
+  const f = await prepared(); const path = join(f.directory, 'missing-before-intent'); const data = Buffer.from('still own staged bytes'); await writeFile(path, 'ORIGINAL'); const previous = await f.files.stat(path);
+  f.script(source => source.replace('ready_at=time.monotonic()', String.raw`_capture=capture_noreplace
+def capture_noreplace(src,dst):
+    if os.path.basename(src)=='payload' and os.path.basename(os.path.dirname(src)).startswith('.codex-mobile-upload-') and os.path.basename(os.path.dirname(dst)).startswith('.codex-mobile-commit-'): raise OSError('test before move')
+    return _capture(src,dst)
+ready_at=time.monotonic()`));
+  const error = await f.files.upload(path, input(data), { size: data.length, sha256: sha(data), expectedVersion: previous.version }).catch(error => error); f.script(undefined);
+  expect(error).toMatchObject({ mayHaveBeenSent: true }); const saved = JSON.parse(JSON.stringify(error.operation));
+  const records = (await readFile(join(saved.token.directory, 'receipt'), 'utf8')).trimEnd().split('\n').map(line => JSON.parse(line));
+  expect(records).toHaveLength(2); expect(records[1].state).toBe('captured'); await rm(records[1].directory, { recursive: true });
+  expect(await readFile(join(saved.token.directory, 'payload'))).toEqual(data);
+  const begin = JSON.parse(JSON.stringify(saved)); for (const key of ['directoryIdentity', 'receiptIdentity', 'payloadIdentity', 'lockIdentity', 'cleanupIdentity', 'cleanupLockIdentity', 'cleanupFilesIdentity']) delete begin.token[key];
+  for (const token of [saved, begin]) expect(await queryInNewProcess(f.directory, token)).toEqual({ state: 'unknown' });
+  await expect(f.files.discardUpload(saved)).rejects.toMatchObject({ code: 'version' }); expect(await readFile(path, 'utf8')).toBe('ORIGINAL');
 });
 
 it.each(['platform', 'filesystem'])('no-replace原语不支持%s时明确capability失败并保留目标真实收据供后续恢复', async unsupported => {

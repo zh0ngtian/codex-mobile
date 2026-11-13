@@ -245,6 +245,36 @@ def resolve(token):
     if any(actual.get(k)!=v for k,v in token.items()) or set(actual)!=set(token)|{'directoryIdentity','receiptIdentity','payloadIdentity','lockIdentity','cleanupIdentity','cleanupLockIdentity','cleanupFilesIdentity'}: raise Failure('version')
     owned(actual);return actual
 
+def staged_path(token,captured):
+    intent=cleanup_record(token);root=cleanup_path(token);candidates=[]
+    # 每次移动前已有真实intent；只查持久协议确定的有限位置，不扫描或猜暂存名。
+    directories=[(token['directory'],os.path.join(root,'entry'),token['directoryIdentity'],False)]
+    if captured is not None: directories.append((captured['directory'],os.path.join(root,'commit'),captured['identity'],True))
+    for original,held,expected,required in directories:
+        present=0
+        for location in (original,held):
+            check()
+            try: s=os.lstat(location)
+            except FileNotFoundError: continue
+            if (location==held and intent is None) or identity(s)!=expected or not stat.S_ISDIR(s.st_mode): raise Failure('version')
+            present+=1;candidates.append(os.path.join(location,'payload'))
+        # 空commit可能已由同次清理移除；没有目标intent时不能把目录丢失解释为清理进度。
+        if present>1 or (required and not present and intent is None): raise Failure('version')
+    for name in ('payload','commit-payload'):
+        candidate=os.path.join(root,'files',name)
+        if os.path.lexists(candidate):
+            if intent is None: raise Failure('version')
+            candidates.append(candidate)
+    present=[]
+    for candidate in candidates:
+        check()
+        try: s=os.lstat(candidate)
+        except FileNotFoundError: continue
+        # 仍在的未知替换物必须阻断重证，不能选另一个同名字节掩盖它。
+        if identity(s)!=token['payloadIdentity'] or not stat.S_ISREG(s.st_mode): raise Failure('version')
+        present.append(candidate)
+    if len(present)!=1: raise Failure('version')
+    return present[0]
 def inspect(token):
     try: directory,payload,receipt,committed,captured=owned(token)
     except FileNotFoundError: return dict(state='missing')
@@ -256,14 +286,7 @@ def inspect(token):
     except (FileNotFoundError,Failure): pass
     if committed is not None: return dict(state='committed',size=committed['size'],sha256=committed['sha256'],facts=committed['facts'],currentMatches=False)
     try:
-        if captured is not None:
-            location=captured['directory']
-            if not os.path.lexists(location) and cleanup_record(token) is not None: location=os.path.join(cleanup_path(token),'commit')
-            if identity(os.lstat(location))!=captured['identity']: raise Failure('version')
-            captured_payload=os.path.join(location,'payload')
-            # 持久capture记录先于移动；拒绝目的占位后，自有payload仍可在原位置完整重证。
-            if os.path.lexists(captured_payload): payload=captured_payload
-        size,digest,value=filehash(payload,token['payloadIdentity'])
+        size,digest,value=filehash(staged_path(token,captured),token['payloadIdentity'])
         return dict(state='staged' if size==token['size'] and digest==token['sha256'] else 'receiving',size=size,sha256=digest)
     except (FileNotFoundError,Failure): return dict(state='unknown')
 def cleanup_directory(token,directory,expected_directory,slot,entries,locks):
