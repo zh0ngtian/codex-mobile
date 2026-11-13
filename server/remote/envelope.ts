@@ -13,7 +13,8 @@ const unsafeKeys = new Set(['__proto__', 'constructor', 'prototype']);
 const utf8 = new TextDecoder('utf-8', { fatal: true });
 
 export type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
-export type RpcMessage = { id?: string | number | null; method?: string; params?: JsonValue; result?: JsonValue; error?: JsonValue };
+/** 传输层保留完整安全 JSON 对象；RPC 和 legacy 错误语义由上层解析。 */
+export type RpcMessage = { [key: string]: JsonValue };
 export interface RemoteRoute { clientId: string; streamId: string; environmentId: string; seqId: number }
 export interface RoutedFrame {
   client_id: string; stream_id: string; env_id: string; seq_id: number; cursor?: string | null; skip_history?: boolean;
@@ -59,17 +60,15 @@ function validateJson(value: unknown): void {
 }
 function validateMessage(value: unknown): asserts value is RpcMessage {
   validateJson(value);
-  if (!object(value) || Object.keys(value).some(key => !['id', 'method', 'params', 'result', 'error'].includes(key))) throw new RemoteProtocolError('Remote RPC 无效');
-  if ('id' in value && value.id !== null && typeof value.id !== 'string' && !(typeof value.id === 'number' && Number.isSafeInteger(value.id))) throw new RemoteProtocolError();
-  if ('method' in value && (typeof value.method !== 'string' || !value.method.length)) throw new RemoteProtocolError();
+  if (!object(value)) throw new RemoteProtocolError('Remote 消息必须为 JSON 对象');
 }
 function checkedBudget(value: number | undefined, fallback: number): number {
   const result = value ?? fallback;
   if (!integer(result, 1, MAX_PROTOCOL_MESSAGE_BYTES)) throw new RemoteProtocolError('Remote 预算无效');
   return result;
 }
-function validateRoute(frame: Record<string, unknown>): void {
-  if (!identifier(frame.client_id) || !identifier(frame.stream_id) || !identifier(frame.env_id) || !integer(frame.seq_id, 1, Number.MAX_SAFE_INTEGER)) throw new RemoteProtocolError('Remote 路由无效');
+function validateRoute(frame: Record<string, unknown>, minimumSeqId: 0 | 1 = 1): void {
+  if (!identifier(frame.client_id) || !identifier(frame.stream_id) || !identifier(frame.env_id) || !integer(frame.seq_id, minimumSeqId, Number.MAX_SAFE_INTEGER)) throw new RemoteProtocolError('Remote 路由无效');
   if ('cursor' in frame && frame.cursor !== null && (typeof frame.cursor !== 'string' || frame.cursor.length > 8192)) throw new RemoteProtocolError('Remote cursor 无效');
   if ('skip_history' in frame && typeof frame.skip_history !== 'boolean') throw new RemoteProtocolError();
 }
@@ -84,7 +83,7 @@ function chunkBytes(frame: ServerMessageChunk, maxMessageBytes: number): Buffer 
 function validateFrame(value: unknown): asserts value is ServerFrame {
   validateJson(value);
   if (!object(value)) throw new RemoteProtocolError();
-  validateRoute(value);
+  validateRoute(value, 0);
   switch (value.type) {
     case 'server_message': validateMessage(value.message); break;
     case 'server_message_chunk': chunkBytes(value as unknown as ServerMessageChunk, MAX_PROTOCOL_MESSAGE_BYTES); break;

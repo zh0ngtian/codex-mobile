@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   encodeClientMessage, decodeServerFrame, RemoteChunkAssembler,
-  type ServerMessageChunk,
+  type RpcMessage, type ServerMessageChunk,
 } from '../../server/remote/envelope.js';
 
 const route = { clientId: 'client', streamId: 'phone', environmentId: 'mac', seqId: 1 };
@@ -23,7 +23,7 @@ function chunks(message: unknown): ServerMessageChunk[] {
 
 describe('Remote 消息编码', () => {
   it('保留官方 client_message 信封与结构化 RPC', () => {
-    expect(encodeClientMessage(route, { id: 3, method: 'thread/read', params: { threadId: 't' } }).map(JSON.parse)).toEqual([{
+    expect(encodeClientMessage(route, { id: 3, method: 'thread/read', params: { threadId: 't' } }).map(raw => JSON.parse(raw))).toEqual([{
       type: 'client_message', client_id: 'client', stream_id: 'phone', env_id: 'mac', seq_id: 1,
       skip_history: false, message: { id: 3, method: 'thread/read', params: { threadId: 't' } },
     }]);
@@ -51,6 +51,22 @@ describe('Remote 消息编码', () => {
     expect(() => encodeClientMessage(route, JSON.parse('{"params":{"__proto__":{"polluted":true}}}'))).toThrow();
     expect(() => encodeClientMessage(route, { params: Number.NaN })).toThrow();
   });
+
+  it('消息是安全 JSON 对象，保留任意扩展字段和 legacy error 对象', () => {
+    const messages: RpcMessage[] = [
+      { method: 'remoteControl/status/changed', params: {}, emittedAtMs: 1794530000000, extension: { future: ['kept', 7, null] } },
+      { type: 'error', code: 'permission_denied', message: '需要授权' },
+      { id: { opaque: true }, method: null, extra: false },
+    ];
+    for (const message of messages) {
+      const frame = JSON.parse(encodeClientMessage(route, message)[0]);
+      expect(frame.message).toEqual(message);
+      expect(decodeServerFrame(JSON.stringify({ ...frame, type: 'server_message' }))).toMatchObject({ message });
+    }
+    let accessed = false;
+    const unsafe = Object.defineProperty({}, 'future', { enumerable: true, get() { accessed = true; return 'unsafe'; } });
+    expect(() => encodeClientMessage(route, unsafe)).toThrow(); expect(accessed).toBe(false);
+  });
 });
 
 describe('Remote 入站校验与分块组装', () => {
@@ -62,6 +78,12 @@ describe('Remote 入站校验与分块组装', () => {
       expect(() => decodeServerFrame(JSON.stringify({ ...base, ...patch }))).toThrow();
     }
     expect(() => decodeServerFrame('{"type":"server_message","client_id":"client","stream_id":"phone","env_id":"mac","seq_id":1,"message":{"params":{"__proto__":{}}}}')).toThrow();
+  });
+
+  it('入站序号允许零，出站业务序号仍必须从一开始', () => {
+    const frame = { type: 'pong', client_id: 'client', stream_id: 'phone', env_id: 'mac', seq_id: 0, status: 'unknown' };
+    expect(decodeServerFrame(JSON.stringify(frame))).toEqual(frame);
+    expect(() => encodeClientMessage({ ...route, seqId: 0 }, { method: 'write' })).toThrow();
   });
 
   it('乱序接收 UTF8 跨段消息，同段重复不会额外占用预算', () => {

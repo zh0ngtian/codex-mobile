@@ -255,6 +255,11 @@ export class RemoteRelay extends EventEmitter<RelayEvents> {
     const frame = decodeServerFrame(bytes);
     const stream = this.streams.get(frame.stream_id);
     if (frame.client_id !== this.clientId || !stream || stream.environmentId !== frame.env_id) return;
+    // unknown 表示主机已遗忘逻辑流，序号可能重置或跳跃。始终交给上层失效与对账，
+    // 不参与正常服务端序列、恢复游标或已有历史恢复责任的推进。
+    if (frame.type === 'pong' && frame.status === 'unknown') {
+      stream.emit('pong', frame); this.emit('pong', frame); return;
+    }
     let message: RpcMessage | undefined;
     let duplicate = false;
     if (frame.type !== 'ack') {

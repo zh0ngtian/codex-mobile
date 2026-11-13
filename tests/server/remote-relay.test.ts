@@ -76,6 +76,67 @@ it('未 online 或超出背压预算明确拒绝，既不缓存也不发送业�
   expect(upstream.frames[1]).toMatchObject({ seq_id: 1, message: { method: 'small' } });
 });
 
+it('真实 WS 普通及分块消息完整往返保留时间戳和任意安全扩展字段', async () => {
+  const upstream = await server(); const value = relay(upstream.url); const stream = value.createStream({ environmentId: 'mac' });
+  const received: RpcMessage[] = []; const errors: Error[] = [];
+  stream.on('message', message => received.push(message)); value.on('protocolError', error => errors.push(error));
+  await until(() => value.state === 'online');
+  const messages: RpcMessage[] = [
+    { method: 'remoteControl/status/changed', params: { enabled: true }, emittedAtMs: 1794530000000, extension: { flags: ['future', 1, null] } },
+    { jsonrpc: '2.0', id: 2, result: { text: '中🙂'.repeat(50000) }, emittedAtMs: 1794530000123, futureMetadata: { opaque: true } },
+    { type: 'error', code: 'permission_denied', message: '请重新授权', extra: { retryable: false } },
+  ];
+  for (const [index, message] of messages.entries()) {
+    const seqId = index + 1; await stream.send(message);
+    const matching = () => upstream.frames.filter(frame => frame.stream_id === stream.streamId && frame.seq_id === seqId);
+    await until(() => matching().length > 0 && matching().length === (matching()[0].segment_count ?? 1));
+    const frames = matching();
+    expect(frames[0].type).toBe(index === 1 ? 'client_message_chunk' : 'client_message');
+    for (const frame of [...frames].reverse()) send(upstream.connections[0], { ...frame, type: frame.type === 'client_message' ? 'server_message' : 'server_message_chunk' });
+    await until(() => received.length === seqId); expect(received[index]).toEqual(message);
+  }
+  expect(errors).toHaveLength(0); expect(upstream.connections).toHaveLength(1);
+});
+
+it.each([0, 1, 4])('unknown pong seq=%s 始终通知两层，不推进服务端序列或 cursor，也不中断其他流', async seqId => {
+  const upstream = await server(); const value = relay(upstream.url);
+  const stream = value.createStream({ environmentId: 'mac' }); const other = value.createStream({ environmentId: 'other-mac' });
+  const received: RpcMessage[] = []; const otherReceived: RpcMessage[] = []; const pongs: unknown[] = []; const relayPongs: unknown[] = []; const errors: Error[] = [];
+  stream.on('message', message => received.push(message)); other.on('message', message => otherReceived.push(message));
+  stream.on('pong', pong => pongs.push(pong)); value.on('pong', pong => relayPongs.push(pong)); value.on('protocolError', error => errors.push(error));
+  await until(() => value.state === 'online'); await stream.send({ method: 'initialize' });
+  send(upstream.connections[0], incoming(stream.streamId, 'mac', 1, { result: 'one' }, 'c1'));
+  send(upstream.connections[0], incoming(stream.streamId, 'mac', 2, { result: 'two' }, 'safe'));
+  await until(() => received.length === 2);
+  const unknown = { type: 'pong', client_id: 'client', stream_id: stream.streamId, env_id: 'mac', seq_id: seqId, status: 'unknown', cursor: 'unsafe-unknown' };
+  send(upstream.connections[0], unknown); await until(() => pongs.length === 1 && relayPongs.length === 1);
+  expect(pongs).toEqual([unknown]); expect(relayPongs).toEqual([unknown]); expect(stream.lastServerSeqId).toBe(2);
+  send(upstream.connections[0], incoming(other.streamId, 'other-mac', 1, { result: 'still-alive' }));
+  await until(() => otherReceived.length === 1); expect(value.state).toBe('online'); expect(upstream.connections).toHaveLength(1); expect(errors).toHaveLength(0);
+  upstream.connections[0].terminate(); await until(() => upstream.connections.length === 2 && value.state === 'online');
+  expect(upstream.headers[1]).toBe('safe'); expect(upstream.frames.filter(frame => frame.type === 'client_message')).toHaveLength(1);
+});
+
+it('unknown pong 不解除跨重连的缺失历史责任，上层显式 close 后才释放该流 barrier', async () => {
+  const upstream = await server(); const value = relay(upstream.url);
+  const a = value.createStream({ environmentId: 'mac-a' }); const b = value.createStream({ environmentId: 'mac-b' });
+  const receivedB: RpcMessage[] = []; const receivedA: RpcMessage[] = []; const pongs: unknown[] = [];
+  b.on('message', message => receivedB.push(message)); a.on('message', message => receivedA.push(message)); b.on('pong', pong => pongs.push(pong));
+  await until(() => value.state === 'online'); send(upstream.connections[0], incoming(b.streamId, 'mac-b', 1, { result: 'safe' }, 'safe')); await until(() => receivedB.length === 1);
+  send(upstream.connections[0], { type: 'server_message_chunk', client_id: 'client', stream_id: b.streamId, env_id: 'mac-b', seq_id: 2,
+    segment_id: 0, segment_count: 2, message_size_bytes: 20, message_chunk_base64: 'ew==', cursor: 'partial' });
+  await until(() => b.hasPartialMessage); upstream.connections[0].terminate();
+  await until(() => upstream.connections.length === 2 && value.state === 'online');
+  send(upstream.connections[1], { type: 'pong', client_id: 'client', stream_id: b.streamId, env_id: 'mac-b', seq_id: 2, status: 'unknown', cursor: 'unsafe-unknown' });
+  await until(() => pongs.length === 1); expect(b.lastServerSeqId).toBe(1); expect(b.hasUnrecoveredHistory).toBe(true);
+  send(upstream.connections[1], incoming(a.streamId, 'mac-a', 1, { result: 'a1' }, 'unsafe-a'));
+  await until(() => receivedA.length === 1); upstream.connections[1].terminate();
+  await until(() => upstream.connections.length === 3 && value.state === 'online'); expect(upstream.headers[2]).toBe('safe');
+  await b.close(); send(upstream.connections[2], incoming(a.streamId, 'mac-a', 2, { result: 'a2' }, 'now-safe'));
+  await until(() => receivedA.length === 2); upstream.connections[2].terminate();
+  await until(() => upstream.connections.length === 4 && value.state === 'online'); expect(upstream.headers[3]).toBe('now-safe');
+});
+
 it('断线沿用安全 cursor/seq 并自动重连，不重发 initialize 或写入', async () => {
   const upstream = await server(); const value = relay(upstream.url); const stream = value.createStream({ environmentId: 'mac' });
   const disconnected: unknown[] = []; const received: unknown[] = [];
@@ -152,7 +213,7 @@ it('跨流 partial chunk 阻止全局 cursor 越过，断线后完整重放组�
   send(upstream.connections[0], { ...chunked[0], cursor: 'partial' }); send(upstream.connections[0], incoming(a.streamId, 'mac-a', 2, { result: 'after-partial' }, 'unsafe'));
   await until(() => receivedA.length === 2); upstream.connections[0].terminate();
   await until(() => upstream.connections.length === 2 && value.state === 'online'); expect(upstream.headers[1]).toBe('safe');
-  chunked.toReversed().forEach((frame, index) => send(upstream.connections[1], { ...frame, cursor: `restored-${index}` }));
+  [...chunked].reverse().forEach((frame, index) => send(upstream.connections[1], { ...frame, cursor: `restored-${index}` }));
   send(upstream.connections[1], incoming(a.streamId, 'mac-a', 2, { result: 'duplicate' }, 'now-safe'));
   await until(() => receivedB.length === 1); upstream.connections[1].terminate();
   await until(() => upstream.connections.length === 3 && value.state === 'online');
