@@ -1,5 +1,6 @@
 // @vitest-environment node
 import { it, expect, vi } from 'vitest';
+import { getEventListeners } from 'node:events';
 import fs from 'node:fs/promises';
 import fsSync from 'node:fs';
 import { syncBuiltinESMExports } from 'node:module';
@@ -127,7 +128,6 @@ it('归属清理末次锁检查await期间替换root，不删除新root中的空
 });
 
 it('Runtime正常收尾解除自己的归属监听器，同一owner可再次创建Runtime', async () => {
-  const { getEventListeners } = await import('node:events');
   const parent = await fs.mkdtemp(join(await fs.realpath(tmpdir()), 'owner-listener-proof-'));
   const owner = await acquireRemoteOwner(new PrivateStore(join(parent, 'r')));
   try {
