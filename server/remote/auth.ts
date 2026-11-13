@@ -61,6 +61,19 @@ export class RemoteAuthProviderImpl implements RemoteAuthProvider {
       return value === null ? null : parseEnrollment(value);
     } catch { throw new RemoteAuthRequiredError('Remote 注册记录不可用，需要重新认证'); }
   }
+  /** 活动连接的只读完整绑定复核；不登记、不刷新 Remote token。 */
+  async verifyBinding(expected?: EnrollmentRecord): Promise<EnrollmentRecord> {
+    let active = true;
+    const current = () => { if (!active) throw new RemoteNetworkError(); };
+    try {
+      return await bounded(external(async () => {
+        const frozen = expected === undefined ? undefined : parseEnrollment(expected);
+        const record = await this.getEnrollment(); current();
+        if (!record || (frozen && JSON.stringify(record) !== JSON.stringify(frozen))) invalid();
+        await this.recheck(record, current); current(); return record;
+      }, 'Remote 活动绑定不可用，需要重新认证'), this.requestTimeoutMs, () => { active = false; });
+    } finally { active = false; }
+  }
   private async loadAuth(binding?: Binding): Promise<ManagedAuth> {
     let auth: ManagedAuth;
     try { auth = validateManagedAuth(await bounded(external(() => this.options.loadManagedAuth(), '普通账号认证不可用'), this.requestTimeoutMs)); }
@@ -75,13 +88,13 @@ export class RemoteAuthProviderImpl implements RemoteAuthProvider {
     if (record && (deviceIdentityHash(identity) !== record.identityHash || JSON.stringify(identity) !== JSON.stringify(record.identity))) invalid();
     return identity;
   }
-  private async recheck(record: EnrollmentRecord): Promise<void> {
+  private async recheck(record: EnrollmentRecord, current: () => void = () => undefined): Promise<void> {
     // 硬件 helper 是最慢的 await；其后再读取账号和注册记录，不能让
     // helper 等待期间已完成的绑定变化落在最终复核之外。
-    await this.identity(record);
-    await this.loadAuth(record);
-    const current = await this.getEnrollment();
-    if (!current || JSON.stringify(current) !== JSON.stringify(record)) invalid();
+    current(); await this.identity(record); current();
+    await this.loadAuth(record); current();
+    const latest = await this.getEnrollment(); current();
+    if (!latest || JSON.stringify(latest) !== JSON.stringify(record)) invalid();
   }
   async enroll(stepUpToken: string): Promise<EnrollmentRecord> {
     if (this.enrolling) invalid();

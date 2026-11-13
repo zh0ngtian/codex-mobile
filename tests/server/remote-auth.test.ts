@@ -334,3 +334,26 @@ describe('Remote refresh与WebSocket证明', () => {
     expect(f.calls).toHaveLength(before);
   });
 });
+
+describe('活动绑定主动核验', () => {
+  it('verifyBinding读取当前硬件和登记，不重新登记、刷新Remote或强制刷新普通账号', async () => {
+    const f = await fixture(); const record = await f.provider.enroll(stepUp()); const count = f.calls.length;
+    expect(await f.provider.verifyBinding(record)).toEqual(record); expect(f.calls).toHaveLength(count); expect(f.signed()).toBe(1);
+  });
+  it.each(['missing', 'replaced'] as const)('登记未改但实际key %s时主动拒绝，保留原登记', async failure => {
+    const f = await fixture(); const record = await f.provider.enroll(stepUp()); const count = f.calls.length;
+    f.deviceKey.getIdentity = async () => { if (failure === 'missing') throw new RemoteAuthRequiredError('private-key-secret'); return { ...f.identity, keyId: 'replacement' }; };
+    const error = await f.provider.verifyBinding(record).catch(error => error); expect(error).toBeInstanceOf(RemoteAuthRequiredError); expect(error.message).not.toContain('private-key-secret'); expect(error.cause).toBeUndefined(); expect(await f.provider.getEnrollment()).toEqual(record); expect(f.calls).toHaveLength(count);
+  });
+  it('硬件等待期间登记变化必须拒绝，不能核验旧登记后忽略晚变化', async () => {
+    const f = await fixture(); const record = await f.provider.enroll(stepUp());
+    f.deviceKey.getIdentity = async () => { await f.store.writeJson('enrollment.json', { ...record, clientId: 'replacement' }); return f.identity; };
+    await expect(f.provider.verifyBinding(record)).rejects.toBeInstanceOf(RemoteAuthRequiredError);
+  });
+  it('硬件挂起总有界，超时后晚结果不再加载账号或调用任何Remote端点', async () => {
+    const f = await fixture(); const record = await f.provider.enroll(stepUp()); let finish!: () => void; let loaded = 0;
+    const provider = new RemoteAuthProviderImpl({ ...f.options, requestTimeoutMs: 20, signTimeoutMs: 100, loadManagedAuth: async () => { loaded++; return normalAuth(); } });
+    f.deviceKey.getIdentity = async () => { await new Promise<void>(resolve => { finish = resolve; }); return f.identity; };
+    await expect(provider.verifyBinding(record)).rejects.toBeInstanceOf(RemoteNetworkError); finish(); await new Promise(resolve => setTimeout(resolve, 5)); expect(loaded).toBe(0);
+  });
+});
