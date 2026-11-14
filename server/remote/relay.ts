@@ -130,6 +130,7 @@ export class RemoteRelay extends EventEmitter<RelayEvents> {
   private nativeTimer?: NodeJS.Timeout;
   private pongTimer?: NodeJS.Timeout;
   private awaitingNativePong = false;
+  private nativePongRound = 0;
   private safeCursor: string | null = null;
   private latestCursor: string | null = null;
   private readonly socketClosures = new Set<Promise<void>>();
@@ -208,7 +209,10 @@ export class RemoteRelay extends EventEmitter<RelayEvents> {
         }
         response.resume(); response.destroy();
       });
-      socket.on('pong', () => { if (this.socket === socket) { this.awaitingNativePong = false; clearTimeout(this.pongTimer); this.pongTimer = undefined; } });
+      socket.on('pong', () => {
+        if (!this.isCurrent(epoch) || this.socket !== socket || this.state !== 'online') return;
+        this.awaitingNativePong = false; clearTimeout(this.pongTimer); this.pongTimer = undefined;
+      });
       socket.on('message', (raw, binary) => {
         if (!this.isCurrent(epoch) || this.socket !== socket) return;
         try {
@@ -223,7 +227,7 @@ export class RemoteRelay extends EventEmitter<RelayEvents> {
             if (value.clientId !== this.clientId) this.disconnect('auth-required', new RemoteAuthRequiredError('Remote clientId 不匹配'));
           } else {
             if (this.state !== 'online') throw new RemoteProtocolError('Remote 认证阶段收到未知帧');
-            this.receive(raw);
+            this.receive(raw, socket, epoch);
           }
         } catch (error) { this.failProtocol(error); }
       });
@@ -275,7 +279,7 @@ export class RemoteRelay extends EventEmitter<RelayEvents> {
           if (!this.isCurrent(epoch) || this.socket !== socket || this.state !== 'online') return;
           this.retryCount = 0; this.stableTimer = undefined;
         }, this.stableConnectionMs); this.stableTimer.unref();
-        this.startHeartbeats();
+        this.startHeartbeats(socket, epoch);
       }
     } catch (error) {
       if (!this.isCurrent(epoch) || this.socket !== socket) return;
@@ -286,11 +290,11 @@ export class RemoteRelay extends EventEmitter<RelayEvents> {
       this.scheduleReconnect();
     }
   }
-  private receive(raw: RawData): void {
+  private receive(raw: RawData, socket: WebSocket, epoch: number): void {
     const bytes = Array.isArray(raw) ? Buffer.concat(raw) : raw instanceof ArrayBuffer ? Buffer.from(raw) : raw;
     const frame = decodeServerFrame(bytes);
     const stream = this.streams.get(frame.stream_id);
-    if (frame.client_id !== this.clientId || !stream || stream.environmentId !== frame.env_id) return;
+    if (frame.client_id !== this.clientId || !stream || stream.closed || stream.environmentId !== frame.env_id) return;
     // unknown 表示主机已遗忘逻辑流，序号可能重置或跳跃。始终交给上层失效与对账，
     // 不参与正常服务端序列、恢复游标或已有历史恢复责任的推进。
     if (frame.type === 'pong' && frame.status === 'unknown') {
@@ -298,6 +302,7 @@ export class RemoteRelay extends EventEmitter<RelayEvents> {
     }
     let message: RpcMessage | undefined;
     let duplicate = false;
+    let progressed = false;
     if (frame.type !== 'ack') {
       stream.observeServerSequence(frame.seq_id);
       duplicate = frame.seq_id <= stream.lastServerSeqId;
@@ -306,11 +311,13 @@ export class RemoteRelay extends EventEmitter<RelayEvents> {
         // 因而恢复时较低的缺失序号仍可正常交付。
         if (frame.seq_id !== stream.lastServerSeqId + 1) throw new RemoteProtocolError('Remote 服务端序列存在缺口');
         if (frame.type === 'server_message_chunk') {
-          message = this.assembler.accept(frame).message;
+          const accepted = this.assembler.accept(frame);
+          message = accepted.message; progressed = accepted.progressed;
           stream.setPartialMessage(message === undefined);
         } else {
           if (stream.hasPartialMessage) throw new RemoteProtocolError('Remote 未完成分块与完整帧冲突');
           if (frame.type === 'server_message') message = frame.message;
+          progressed = true;
         }
         if (message !== undefined && Buffer.byteLength(JSON.stringify(message)) > this.maxMessageBytes) throw new RemoteProtocolError('Remote 消息字节预算超限');
         if (message !== undefined || frame.type === 'pong') stream.commitServerSequence(frame.seq_id);
@@ -320,6 +327,7 @@ export class RemoteRelay extends EventEmitter<RelayEvents> {
     // 分块内容可在断线时清理；观察到的缺口上界仍阻止其他流越过恢复责任。
     this.advanceSafeCursor();
     if (stream.closed) return;
+    if (progressed && this.awaitingNativePong) this.renewNativeLiveness(socket, epoch);
     if (message !== undefined) stream.emit('message', message, { seqId: frame.seq_id, cursor: frame.cursor });
     else if (frame.type === 'pong' && !duplicate) { stream.emit('pong', frame); this.emit('pong', frame); }
     else if (frame.type === 'ack') stream.emit('ack', frame);
@@ -363,17 +371,28 @@ export class RemoteRelay extends EventEmitter<RelayEvents> {
       } catch { finish(new Error('Remote socket 写入失败')); }
     });
   }
-  private startHeartbeats(): void {
+  private renewNativeLiveness(socket: WebSocket, epoch: number): void {
+    if (!this.isCurrent(epoch) || this.socket !== socket || this.state !== 'online' || !this.awaitingNativePong) return;
+    clearTimeout(this.pongTimer);
+    const timer = setTimeout(() => {
+      if (this.isCurrent(epoch) && this.socket === socket && this.pongTimer === timer && this.awaitingNativePong) this.disconnect('network');
+    }, this.nativePongTimeoutMs);
+    this.pongTimer = timer; timer.unref();
+  }
+  private startHeartbeats(socket: WebSocket, epoch: number): void {
     this.streamTimer = setInterval(() => {
+      if (!this.isCurrent(epoch) || this.socket !== socket || this.state !== 'online') return;
       for (const stream of this.streams.values()) if (!stream.closed) void this.sendStream(stream, undefined, 'ping').catch((error: RemoteSendError) => stream.emit('sendError', error));
     }, this.streamPingMs); this.streamTimer.unref();
     this.nativeTimer = setInterval(() => {
-      const socket = this.socket;
-      if (this.state !== 'online' || !socket || this.awaitingNativePong) return;
+      if (!this.isCurrent(epoch) || this.socket !== socket || this.state !== 'online') return;
       if (socket.bufferedAmount >= this.maxBufferedBytes) { this.disconnect('network'); return; }
-      this.awaitingNativePong = true;
-      this.pongTimer = setTimeout(() => this.disconnect('network'), this.nativePongTimeoutMs); this.pongTimer.unref();
-      try { this.assertOwnership(); socket.ping(undefined, true, error => { if (error && this.socket === socket) this.disconnect('network'); }); }
+      // 重复发出的 ping 不续期；只有原生 pong 或校验通过的新增入站进度证明连接存活。
+      if (!this.awaitingNativePong) { this.awaitingNativePong = true; ++this.nativePongRound; this.renewNativeLiveness(socket, epoch); }
+      const round = this.nativePongRound;
+      try { this.assertOwnership(); socket.ping(undefined, true, error => {
+        if (error && this.isCurrent(epoch) && this.socket === socket && this.awaitingNativePong && this.nativePongRound === round) this.disconnect('network');
+      }); }
       catch { this.disconnect('network'); }
     }, this.nativePingMs); this.nativeTimer.unref();
   }

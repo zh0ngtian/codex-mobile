@@ -147,7 +147,7 @@ export class RemoteChunkAssembler extends EventEmitter {
   }
   get bufferedBytes(): number { return this.totalBytes; }
   get pendingCount(): number { return this.assemblies.size; }
-  accept(frame: ServerMessageChunk): { key: string; message?: RpcMessage } {
+  accept(frame: ServerMessageChunk): { key: string; progressed: boolean; message?: RpcMessage } {
     const key = remoteAssemblyKey(frame);
     try {
       if (this.closed) throw new RemoteProtocolError('Remote 分块组装器已关闭');
@@ -159,7 +159,7 @@ export class RemoteChunkAssembler extends EventEmitter {
       const previous = pending?.segments.get(frame.segment_id);
       if (previous) {
         if (!previous.equals(bytes)) throw new RemoteProtocolError('Remote 分块内容冲突');
-        return { key };
+        return { key, progressed: false };
       }
       const metadataBytes = pending ? 0 : ASSEMBLY_METADATA_BYTES + key.length * 2;
       const reservation = metadataBytes + SEGMENT_METADATA_BYTES + bytes.length;
@@ -173,7 +173,7 @@ export class RemoteChunkAssembler extends EventEmitter {
       }
       pending.segments.set(frame.segment_id, bytes); pending.bytes += bytes.length; this.totalBytes += bytes.length;
       pending.reserved += reservation; this.reservedBytes += reservation;
-      if (pending.segments.size !== pending.count) return { key };
+      if (pending.segments.size !== pending.count) return { key, progressed: true };
       if (pending.bytes !== pending.size) throw new RemoteProtocolError('Remote 分块总字节数不符');
       const ordered = Array.from({ length: pending.count }, (_, index) => pending.segments.get(index)!);
       const full = Buffer.concat(ordered, pending.bytes);
@@ -181,7 +181,7 @@ export class RemoteChunkAssembler extends EventEmitter {
       let message: unknown;
       try { message = JSON.parse(utf8.decode(full)); } catch { throw new RemoteProtocolError('Remote 分块 JSON 编码无效'); }
       validateMessage(message);
-      return { key, message };
+      return { key, progressed: true, message };
     } catch (error) { this.remove(key); throw error; }
   }
   private remove(key: string): void {

@@ -3,7 +3,8 @@ import { afterEach, expect, it } from 'vitest';
 import { createServer } from 'node:http';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { RemoteRelay, RemoteAuthRequiredError, type RemoteRelayOptions } from '../../server/remote/relay.js';
-import { type RpcMessage } from '../../server/remote/envelope.js';
+import { type RpcMessage, type ServerMessageChunk } from '../../server/remote/envelope.js';
+import { RemoteRpcSession } from '../../server/remote/rpc-session.js';
 
 const cleanup: (() => unknown | Promise<unknown>)[] = [];
 afterEach(async () => { for (const fn of cleanup.reverse()) await fn(); cleanup.length = 0; });
@@ -34,6 +35,14 @@ function incoming(streamId: string, environmentId: string, seqId: number, messag
   return { type: 'server_message', client_id: 'client', stream_id: streamId, env_id: environmentId, seq_id: seqId, message, ...(cursor === undefined ? {} : { cursor }) };
 }
 function send(socket: WebSocket, frame: unknown) { socket.send(JSON.stringify(frame)); }
+function incomingChunks(streamId: string, message: RpcMessage, count: number): ServerMessageChunk[] {
+  const bytes = Buffer.from(JSON.stringify(message));
+  return Array.from({ length: count }, (_, index) => ({
+    type: 'server_message_chunk', client_id: 'client', stream_id: streamId, env_id: 'mac', seq_id: 1,
+    segment_id: index, segment_count: count, message_size_bytes: bytes.length,
+    message_chunk_base64: bytes.subarray(Math.floor(index * bytes.length / count), Math.floor((index + 1) * bytes.length / count)).toString('base64'),
+  }));
+}
 
 it('两目标三条逻辑 stream 共用一条常驻物理连接，按完整路由隔离并分别递增 seq', async () => {
   const upstream = await server(); const value = relay(upstream.url);
@@ -440,8 +449,164 @@ it('网络断开期间旧签名未结束，不会并发启动第二个认证任�
 
 it('零逻辑 stream 时正常原生 pong 持续保活', async () => {
   const upstream = await server(); const value = relay(upstream.url, { nativePingMs: 10, nativePongTimeoutMs: 30 });
+  const applicationPongs: unknown[] = []; value.on('pong', frame => applicationPongs.push(frame));
   await until(() => value.state === 'online'); await new Promise(resolve => setTimeout(resolve, 90));
-  expect(value.state).toBe('online'); expect(upstream.connections).toHaveLength(1);
+  expect(value.state).toBe('online'); expect(upstream.connections).toHaveLength(1); expect(applicationPongs).toEqual([]);
+});
+
+it('真实 WS 新分块持续到达时续期存活并持续发原生 ping，停止进度后仍按原超时断开', async () => {
+  const upstream = await server({ autoPong: false });
+  const value = relay(upstream.url, { nativePingMs: 40, nativePongTimeoutMs: 180, reconnectMinMs: 10000 });
+  const stream = value.createStream({ environmentId: 'mac' }); const message = { result: 'x'.repeat(800) };
+  const received: RpcMessage[] = []; const pings: number[] = []; const disconnected: { reason: string; at: number }[] = [];
+  const progress: number[] = []; const errors: Error[] = [];
+  stream.on('message', frame => received.push(frame)); value.on('protocolError', error => errors.push(error));
+  value.on('disconnect', event => disconnected.push({ reason: event.reason, at: Date.now() }));
+  await until(() => value.state === 'online'); const socket = upstream.connections[0];
+  socket.on('ping', () => pings.push(Date.now())); await until(() => pings.length > 0);
+  for (const frame of incomingChunks(stream.streamId, message, 8)) {
+    if (value.state !== 'online') break;
+    send(socket, frame); progress.push(Date.now());
+    await new Promise(resolve => setTimeout(resolve, 45));
+  }
+  const evidence = { pings: pings.length, sentNewSegments: progress.length, disconnects: disconnected, protocolErrors: errors.map(error => error.message) };
+  process.stdout.write(JSON.stringify({ test: 'native-liveness-new-chunks', ...evidence }) + '\n');
+  expect(disconnected, JSON.stringify(evidence)).toEqual([]);
+  await until(() => received.length === 1); expect(received).toEqual([message]); expect(pings.length).toBeGreaterThan(3);
+  expect(errors).toEqual([]); expect(upstream.connections).toHaveLength(1);
+  await until(() => disconnected.length === 1);
+  expect(disconnected[0].reason).toBe('network');
+  expect(disconnected[0].at - progress.at(-1)!).toBeGreaterThanOrEqual(160);
+  expect(disconnected[0].at - progress.at(-1)!).toBeLessThan(450);
+});
+
+it.each(['message', 'active-pong'] as const)('真实 WS 新序号 %s 续期存活，业务进度不冒充原生 pong', async mode => {
+  const upstream = await server({ autoPong: false });
+  const value = relay(upstream.url, { nativePingMs: 40, nativePongTimeoutMs: 180, reconnectMinMs: 10000 });
+  const stream = value.createStream({ environmentId: 'mac' }); let pings = 0; let messages = 0; let pongs = 0;
+  stream.on('message', () => messages++); value.on('pong', () => pongs++);
+  await until(() => value.state === 'online'); const socket = upstream.connections[0];
+  socket.on('ping', () => pings++); await until(() => pings > 0);
+  for (let seq = 1; seq <= 6; seq++) {
+    send(socket, mode === 'message' ? incoming(stream.streamId, 'mac', seq, { result: seq }) :
+      { type: 'pong', client_id: 'client', stream_id: stream.streamId, env_id: 'mac', seq_id: seq, status: 'active' });
+    await until(() => stream.lastServerSeqId === seq); await new Promise(resolve => setTimeout(resolve, 50));
+  }
+  expect(value.state).toBe('online'); expect(upstream.connections).toHaveLength(1); expect(pings).toBeGreaterThan(3);
+  expect(messages).toBe(mode === 'message' ? 6 : 0); expect(pongs).toBe(mode === 'active-pong' ? 6 : 0);
+  // 有效数据只续期当前等待，不伪装收到原生 pong。
+  expect((value as unknown as { awaitingNativePong: boolean }).awaitingNativePong).toBe(true);
+});
+
+it.each(['duplicate-chunk', 'wrong-client', 'wrong-stream', 'wrong-env', 'old-message', 'old-pong', 'closed-stream', 'ack', 'cursor'] as const)(
+  '真实 WS %s 不续期存活，即使持续收到帧也按原超时断开', async mode => {
+    const upstream = await server({ autoPong: false });
+    const value = relay(upstream.url, { nativePingMs: 40, nativePongTimeoutMs: 180, reconnectMinMs: 10000 });
+    const stream = value.createStream({ environmentId: 'mac' }); const disconnected: { reason: string; at: number }[] = []; const errors: Error[] = [];
+    value.on('disconnect', event => disconnected.push({ reason: event.reason, at: Date.now() })); value.on('protocolError', error => errors.push(error));
+    await until(() => value.state === 'online'); const socket = upstream.connections[0];
+    send(socket, incoming(stream.streamId, 'mac', 1, { result: 'first' })); await until(() => stream.lastServerSeqId === 1);
+    if (mode === 'closed-stream') await stream.close();
+    let firstPing = 0; socket.on('ping', () => { firstPing ||= Date.now(); }); await until(() => firstPing > 0);
+    const chunk = { ...incomingChunks(stream.streamId, { result: 'incomplete' }, 2)[0], seq_id: 2 };
+    let lastActualProgress = firstPing; let attempts = 0;
+    while (!disconnected.length && Date.now() - firstPing < 700) {
+      const seq = ++attempts + 1;
+      const frame = mode === 'duplicate-chunk' ? chunk : mode === 'old-pong' ?
+        { type: 'pong', client_id: 'client', stream_id: stream.streamId, env_id: 'mac', seq_id: 1, status: 'active', cursor: `c${seq}` } :
+        mode === 'ack' ? { type: 'ack', client_id: 'client', stream_id: stream.streamId, env_id: 'mac', seq_id: seq, cursor: `c${seq}` } :
+        { ...incoming(stream.streamId, 'mac', mode === 'old-message' || mode === 'cursor' ? 1 : seq, { result: seq }, `c${seq}`),
+          ...(mode === 'wrong-client' ? { client_id: 'other' } : {}), ...(mode === 'wrong-stream' ? { stream_id: 'other' } : {}),
+          ...(mode === 'wrong-env' ? { env_id: 'other' } : {}) };
+      send(socket, frame); if (mode === 'duplicate-chunk' && attempts === 1) lastActualProgress = Date.now();
+      await new Promise(resolve => setTimeout(resolve, 35));
+    }
+    expect(errors).toEqual([]); expect(disconnected).toHaveLength(1); expect(disconnected[0].reason).toBe('network'); expect(attempts).toBeGreaterThan(3);
+    expect(disconnected[0].at - lastActualProgress).toBeGreaterThanOrEqual(160);
+    expect(disconnected[0].at - lastActualProgress).toBeLessThan(450);
+  });
+
+it('原生 pong 后旧等待轮次的 ping 写回调不能断开新等待', async () => {
+  const upstream = await server({ autoPong: false }); const value = relay(upstream.url, { nativePingMs: 50, nativePongTimeoutMs: 200, reconnectMinMs: 10000 });
+  await until(() => value.state === 'online');
+  const socket = (value as unknown as { socket: WebSocket }).socket;
+  const pingActual = socket.ping.bind(socket); const completions: ((error?: Error) => void)[] = [];
+  socket.ping = (data, mask, callback) => { pingActual(data, mask, error => completions.push(failure => callback?.(failure ?? error))); };
+  await until(() => completions.length === 1);
+  upstream.connections[0].pong(); await until(() => !(value as unknown as { awaitingNativePong: boolean }).awaitingNativePong);
+  await until(() => completions.length === 2);
+  // 模拟上一轮已排队、在下一轮才到达的失败回调。
+  completions[0](new Error('stale ping callback'));
+  expect(value.state).toBe('online');
+});
+
+it('撤销的存活定时器和旧 socket 的事件不能影响当前连接及计时', async () => {
+  const upstream = await server({ autoPong: false }); const value = relay(upstream.url, { nativePingMs: 40, nativePongTimeoutMs: 200 });
+  const stream = value.createStream({ environmentId: 'mac' }); const state = value as unknown as {
+    socket: WebSocket; pongTimer?: NodeJS.Timeout & { _onTimeout: () => void }; nativeTimer?: NodeJS.Timeout & { _onTimeout: () => void };
+  };
+  await until(() => value.state === 'online'); const oldSocket = state.socket;
+  const oldPong = oldSocket.listeners('pong')[0]; const oldMessage = oldSocket.listeners('message')[0]; const oldTick = state.nativeTimer!._onTimeout;
+  await until(() => Boolean(state.pongTimer)); const cancelled = state.pongTimer!._onTimeout;
+  send(upstream.connections[0], incoming(stream.streamId, 'mac', 1, { result: 'progress' })); await until(() => stream.lastServerSeqId === 1);
+  cancelled(); expect(value.state).toBe('online');
+  const oldTimeout = state.pongTimer!._onTimeout; upstream.connections[0].terminate();
+  await until(() => upstream.connections.length === 2 && value.state === 'online');
+  await until(() => Boolean(state.pongTimer)); const currentTimer = state.pongTimer;
+  oldTick(); oldTimeout(); oldPong.call(oldSocket, Buffer.alloc(0));
+  oldMessage.call(oldSocket, Buffer.from(JSON.stringify(incoming(stream.streamId, 'mac', 2, { result: 'stale' }))), false);
+  expect(value.state).toBe('online'); expect(state.pongTimer).toBe(currentTimer); expect(stream.lastServerSeqId).toBe(1);
+  // 当前连接没有有效入站进度，旧 pong 不能取消其原本的 network 超时。
+  let network = 0; value.on('disconnect', event => { if (event.reason === 'network') network++; });
+  await until(() => network === 1);
+});
+
+it('持续有效传输不能刷新 RPC 绝对期限，取消仍只撤销自己的调用', async () => {
+  const upstream = await server({ autoPong: false }); const value = relay(upstream.url, { nativePingMs: 40, nativePongTimeoutMs: 180, reconnectMinMs: 10000 });
+  const stream = value.createStream({ environmentId: 'mac' });
+  const session = RemoteRpcSession.fromRemoteStream(stream, { responseTimeoutMs: 120 }); cleanup.push(() => session.close());
+  await until(() => value.state === 'online'); const socket = upstream.connections[0]; const initialized = session.initialize();
+  await until(() => upstream.frames.some(frame => frame.message?.method === 'initialize'));
+  const init = upstream.frames.find(frame => frame.message?.method === 'initialize')!.message;
+  send(socket, incoming(stream.streamId, 'mac', 1, { id: init.id, result: {} })); await initialized;
+  const controller = new AbortController(); const defaultDeadline = session.call('default-deadline').catch(error => error);
+  const longerDeadline = session.call('longer-deadline', {}, { timeoutMs: 220 }).catch(error => error);
+  const cancelled = session.call('cancel-only-me', {}, { signal: controller.signal }).catch(error => error);
+  await until(() => upstream.frames.some(frame => frame.message?.method === 'cancel-only-me')); controller.abort();
+  expect(await cancelled).toMatchObject({ code: 'cancelled', mayHaveBeenSent: true });
+  for (let seq = 2; seq <= 8; seq++) {
+    send(socket, incoming(stream.streamId, 'mac', seq, { method: 'progress', params: { seq } }));
+    await until(() => stream.lastServerSeqId === seq); await new Promise(resolve => setTimeout(resolve, 40));
+  }
+  expect(await defaultDeadline).toMatchObject({ code: 'timeout', mayHaveBeenSent: true });
+  expect(await longerDeadline).toMatchObject({ code: 'timeout', mayHaveBeenSent: true });
+  expect(value.state).toBe('online'); expect(session.ready).toBe(true);
+  for (const method of ['default-deadline', 'longer-deadline', 'cancel-only-me']) expect(upstream.frames.filter(frame => frame.message?.method === method)).toHaveLength(1);
+});
+
+it('其他流持续传输和原生保活不能遮蔽 unknown pong 对管理会话的立即失效', async () => {
+  const upstream = await server(); const value = relay(upstream.url, { nativePingMs: 30, nativePongTimeoutMs: 150 });
+  const stream = value.createStream({ environmentId: 'mac' }); const other = value.createStream({ environmentId: 'peer' });
+  const session = RemoteRpcSession.fromRemoteStream(stream); cleanup.push(() => session.close()); const pongs: unknown[] = []; value.on('pong', frame => pongs.push(frame));
+  await until(() => value.state === 'online'); const socket = upstream.connections[0]; const initialized = session.initialize();
+  await until(() => upstream.frames.some(frame => frame.message?.method === 'initialize'));
+  const init = upstream.frames.find(frame => frame.message?.method === 'initialize')!.message;
+  send(socket, incoming(stream.streamId, 'mac', 1, { id: init.id, result: {} })); await initialized;
+  const pending = session.call('write-once').catch(error => error); await until(() => upstream.frames.some(frame => frame.message?.method === 'write-once'));
+  for (let seq = 1; seq <= 3; seq++) { send(socket, incoming(other.streamId, 'peer', seq, { result: seq })); await new Promise(resolve => setTimeout(resolve, 35)); }
+  send(socket, { type: 'pong', client_id: 'client', stream_id: stream.streamId, env_id: 'mac', seq_id: 0, status: 'unknown' });
+  expect(await pending).toMatchObject({ code: 'protocol', mayHaveBeenSent: true });
+  expect(session.closed).toBe(true); expect(stream.closed).toBe(true); expect(value.state).toBe('online'); expect(pongs).toHaveLength(1);
+  await expect(session.call('never-send')).rejects.toMatchObject({ code: 'closed', mayHaveBeenSent: false });
+  expect(upstream.frames.filter(frame => frame.message?.method === 'write-once')).toHaveLength(1);
+  send(socket, incoming(other.streamId, 'peer', 4, { result: 'still-active' })); await until(() => other.lastServerSeqId === 4);
+});
+
+it('原生定期 ping 保留归属检查，归属撤销后关闭且不重连', async () => {
+  let owned = true; const upstream = await server();
+  const value = relay(upstream.url, { nativePingMs: 30, nativePongTimeoutMs: 150, assertOwnership() { if (!owned) throw new Error('ownership revoked'); } });
+  await until(() => value.state === 'online'); owned = false; await until(() => value.state === 'closed');
+  await new Promise(resolve => setTimeout(resolve, 60)); expect(upstream.connections).toHaveLength(1);
 });
 
 it('每流 ping 使用连续 seq，公开 active/unknown pong，不自动重发业务', async () => {
