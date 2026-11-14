@@ -216,3 +216,6 @@ Task3c首轮SPEC（冻结c03d8bf）为ISSUES，原82项相关回归通过、新�
 2026-11-15家目录角色修复的新冻结 `b38a0e61e5d58f00b0a93c1c0dbfe109f29a26c4` 已通过独立SPEC与全新QUALITY：SPEC新增7项、相关103项，QUALITY新增3项、相关7项全部通过。root逐项核对2944和2963份工件及冻结源码；完整server1495通过/7既有跳过、双strict及服务端构建复用已逐字节核对的同一源码结果。SPEC两次审计夹具错误保留，未算作产品RED；QUALITY首失败分类见封存报告和本地收据。
 
 同一冻结源码的[官方B只读验收](evidence/2026-11-15-remote-model-upload-product-probe.json)通过：目标hello/真实usage可读、返回副本及未知thread为null，连续观察20002ms；关闭来源立即清缓存，实际自有命令收尾后重新创建本次来源并重新证明。两次计量读取、实际终结2次，最多同时1个计量进程、1条物理Relay、认证prepare1次；通用命令默认权限，仅精确固定脚本使用readOnly/networkAccess例外，权限及禁止操作违规均0。全部本次逻辑流关闭后实际零流等待25002ms，再次RPC成功且无新prepare；实际OS入口SIGTERM退出0、私有admin及隔离根目录清理通过。root全量核对163份私有工件，首个A失败与单独诊断均原样保留。仅当前Mac短时证明，不代表P95、8小时、睡眠唤醒、自动断网恢复或手机完成；未新授权、推理、创建测试会话、部署或发布。Task3c完成，继续3d消费者注入与后续共享队列/手机接入。
+
+
+2026-11-15开始Task3d.1时记录最新已推送并核对main为 `a3a05e75e57ae9c290e4b17ff5f8a1556387c920`，Task3c来源层已完成新双审与官方B。3d按内部消费者职责串行实施：先附件下载、图片/视频预览与Sidechat历史图片，再rollout/Bark、项目/Git/标题、统计装配；每项TDD及SPEC→QUALITY，保留Local接口/行为、完整来源namespace及Remote默认权限。当前仅开始服务端消费者依赖注入，尚未完成路由、共享队列、手机模式或真实Remote媒体验收，不构建客户端或部署。
