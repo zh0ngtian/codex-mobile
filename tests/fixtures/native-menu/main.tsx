@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
 import { ConversationPage } from "../../../src/features/conversation/ConversationPage";
 import { TurnCard } from "../../../src/features/conversation/Timeline";
+import { AppIcon } from "../../../src/ui/app-display";
 import { ConversationActionMenu } from "../../../src/features/conversation/ConversationControls";
 import { ThreadListPage } from "../../../src/features/threads/ThreadListPage";
 import { aggregateThreads } from "../../../src/features/threads/thread-list-model";
@@ -39,7 +40,7 @@ function HistoryEditorFixture() {
       <div className="composer">
         <textarea className="composer-input" rows={1} aria-label="底部输入栏验收" placeholder="向 Codex 提问" disabled={editing} />
         <div className="composer-tools">
-          <button className="add-button" type="button" disabled>＋</button>
+          <button className="add-button" type="button" disabled><AppIcon name="plus" /></button>
           <button className="composer-control composer-model" type="button" aria-label="模型验收">GPT 测试</button>
           <button className="composer-control" type="button" disabled>完全访问权限</button>
           <button className="send-button" type="button" disabled>↑</button>
