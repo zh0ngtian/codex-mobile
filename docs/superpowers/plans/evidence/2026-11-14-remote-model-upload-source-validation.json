@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "task": "Task3c-fixed-target-model-upload-source",
-  "status": "target-home-role-repaired-local-validation-complete-awaiting-new-spec",
+  "status": "source-validated-independent-spec-quality-and-official-B-passed",
   "baselineMain": "e292e592133469c20bbcb4efb863f6ca4e2a5961",
   "implementationCommit": "93e99eb0edbc35633f0cfd1d261b19ed3031263f",
   "sourceOnly": true,
@@ -129,15 +129,16 @@
   },
   "gates": {
     "implementationCommitted": true,
-    "specPassed": false,
-    "qualityPassed": false,
-    "officialRemoteProbePassed": false
+    "specPassed": true,
+    "qualityPassed": true,
+    "officialRemoteProbePassed": true
   },
   "limitations": [
-    "仅本地临时Unix/Mac及受控Windows无能力分支，没有Windows实机证明",
-    "ModelUploadSource无失效回调；产品/UI传播继续Task3d/5",
-    "首次官方Remote验收实际失败于来源证明；93e99eb已本地修复，持续读取与零流仍须新冻结双审后官方B验收",
-    "没有P95、8小时、凭据刷新、睡眠唤醒、手机或完整快照结论",
+    "当前Mac的有限官方只读观察，不代表P95、8小时、凭据刷新、睡眠唤醒或手机接入已验证",
+    "关闭后新建本次source重新证明，不声称自动网络断线恢复已验证",
+    "无快照结束标记；usage/remove/来源替换/乱序/背压反证来自隔离临时源，官方未制造计量变化",
+    "内部缓存失效向产品及手机传播继续Task3d/5；不造零、不借用网关本地来源",
+    "错误owner仅受控lstat分支，无真实chown；Windows无实机证明",
     "没有新授权、登记、模型推理、测试聊天或生产改动"
   ],
   "initialCandidate": {
@@ -556,6 +557,52 @@
     "rootSnapshotAuditSha256": "8e0e953b5da8ea99cc3afee10b59a7170d2153725835f69058d1bbf14477a604",
     "rootArtifactsAuditSha256": "764716776f9b3a9b210a0befded47fbf16264265bf189d81422a6da8230a4aa4",
     "finalFullServer": "1495通过/7既有跳过；双strict及服务端构建通过",
-    "newReviewsAndOfficialBPending": true
+    "newReviewsAndOfficialBPending": false
+  },
+  "sourceFreeze": "b38a0e61e5d58f00b0a93c1c0dbfe109f29a26c4",
+  "homeRepairIndependentSpec": {
+    "sourceCommit": "b38a0e61e5d58f00b0a93c1c0dbfe109f29a26c4",
+    "passed": true,
+    "reportSha256": "d9165d86b0abfc17ddcf7880538216c0c910166606b963a49486156fb0fbfa0f",
+    "manifestSha256": "840c739bb5c7f781eeec989614bd1007354b11653aa6bbc90a73e05ac4f2c88e",
+    "artifacts": 2944,
+    "rootAuditedAllArtifacts": true,
+    "rootAuditSha256": "5ae21763cc6c5c27ab1841a1600ea85225f96233c7dd6a3953ace394f7936976",
+    "independentPassed": 7,
+    "relatedPassed": 103,
+    "firstFailureQualification": "独立新增7项首跑全通过；两次仅审计脚本夹具错误保留；实际计量进程SIGKILL/code null；错误owner仅受控lstat分支"
+  },
+  "homeRepairIndependentQuality": {
+    "sourceCommit": "b38a0e61e5d58f00b0a93c1c0dbfe109f29a26c4",
+    "passed": true,
+    "reportSha256": "7a56184688cd1e0b14854e0ec11b8c3d20cf33057c35c908ff690e8b5a1168c4",
+    "manifestSha256": "2c313da3a8ee5a06d71dc2220da1552dd69189e7ef08f1466ecfcfba4d4908af",
+    "artifacts": 2963,
+    "rootAuditedAllArtifacts": true,
+    "rootAuditSha256": "5af39120d2361932065e3c5ee0af49aca6f1a553907f8d0ea2f0e7e96f881486",
+    "independentPassed": 3,
+    "relatedPassed": 7,
+    "firstFailureQualification": "首轮2PASS/1夹具FAIL：误取默认Python能力probe期限；仅按meter processId关联修正，3PASS。共享生成缓存及既有/tmp自有目标写入范围偏差另行披露。",
+    "executionIsolationDeviation": {
+      "kind": "共享生成缓存及既有自有临时测试目录写入偏差；不涉及产品或封存原件",
+      "sharedVitestResultBytes": 21462,
+      "sharedVitestResultSha256": "03c85c857e18c3bd7522cb3ae4f1647e5eaba78a168e638e2e7f95e49f5f3041",
+      "sharedViteTempDirectoryTouched": true,
+      "budgetFixtureTemporaryTargetsOutsideEvidenceRoot": true,
+      "originalRandomPathsNotRecorded": true,
+      "noFalseRestoration": true,
+      "rootAssessment": "生成缓存未跟踪，原件审计未变；允许继续产品门禁，后续隔离缓存和临时路径"
+    }
+  },
+  "officialRemoteAttemptB": {
+    "receipt": "docs/superpowers/plans/evidence/2026-11-15-remote-model-upload-product-probe.json",
+    "sha256": "acec33b45d766f2b866f17d45c9367cadb6d6b9be70c37a461bfaf866c245f7e",
+    "sourceCommit": "b38a0e61e5d58f00b0a93c1c0dbfe109f29a26c4",
+    "passed": true,
+    "privateReceiptSha256": "8976e3cb4aa12112759e20947148655a37b9da33be4ba1cdffd4f5b75afab87c",
+    "manifestSha256": "257da0e054b0fd07ee8ac1fb8b52c43ede65cb52273d15d7632763f6d468645b",
+    "artifacts": 163,
+    "rootAuditedAllArtifacts": true,
+    "rootAuditSha256": "9813551a42010284966298a3046f13fa6e2da8c943e29511dda3cd4df325c2ae"
   }
 }

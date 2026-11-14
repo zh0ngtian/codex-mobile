@@ -1,0 +1,101 @@
+{
+  "schemaVersion": 1,
+  "task": "Task3c-fixed-target-model-upload-source",
+  "attempt": "B",
+  "passed": true,
+  "sourceCommit": "b38a0e61e5d58f00b0a93c1c0dbfe109f29a26c4",
+  "implementationCommit": "93e99eb0edbc35633f0cfd1d261b19ed3031263f",
+  "sourceOnly": true,
+  "deployed": false,
+  "clientBuiltOrPublished": false,
+  "fixedPython": {
+    "bytes": 8992,
+    "sha256": "9686ff5ffa8729590826c34aee7d10bc105a54c50a3e40b67bedceed53733953"
+  },
+  "startedAt": "2026-11-14T16:29:32.708Z",
+  "finishedAt": "2026-11-14T16:30:39.445Z",
+  "actualExitCode": 0,
+  "actualSignalCode": null,
+  "startToBusinessAndCliMs": 40294,
+  "continuousObservationMs": 20002,
+  "zeroFlowActualMs": 25002,
+  "checks": {
+    "isolatedRootRemoved": true,
+    "privateAdminCleanupPassed": true,
+    "zeroFlowNoStreamsProved": true,
+    "lateRpcPassed": true,
+    "noNewPrepareDuringDwell": true,
+    "actualBoundPortMatched": true
+  },
+  "sourceChecks": {
+    "sourceReadPassed": true,
+    "readReturnedCopy": true,
+    "unknownThreadNull": true,
+    "sourceCloseImmediatelyNull": true,
+    "rebuildReproved": true,
+    "adapterCloseKeptCallerSession": true,
+    "businessCompleted": true,
+    "closed": true
+  },
+  "counts": {
+    "runtimeStarts": 1,
+    "prepares": 1,
+    "relayInstances": 1,
+    "meterExecRequests": 2,
+    "meterActualEnds": 2,
+    "meterRejectedExecs": 0,
+    "meterActive": 0,
+    "meterPeakActive": 1,
+    "meterTerminations": 2,
+    "defaultCommands": 1,
+    "meterStdoutBytes": 71391,
+    "meterStderrBytes": 0,
+    "maxDeltaRawBytes": 384,
+    "meterVerifiedFrames": 2,
+    "meterUsageFrames": 187,
+    "meterRemoveFrames": 0,
+    "meterCompleteFrames": 0,
+    "readyFrames": 2,
+    "rpcRequests": 61,
+    "maxSerializedOutgoingBytes": 9608,
+    "forbidden": 0,
+    "permissionViolations": 0,
+    "observerErrors": 0,
+    "zeroFlowStartActive": 0,
+    "zeroFlowEndActive": 0,
+    "zeroFlowNewStreams": 0
+  },
+  "rpcCounts": {
+    "account/read": 25,
+    "remoteControl/status/read": 24,
+    "command/exec": 3,
+    "command/exec/write": 3,
+    "model/list": 4,
+    "command/exec/terminate": 2
+  },
+  "newAuthorizationOrEnrollment": false,
+  "productionChanged": false,
+  "modelInferenceRequestsSent": 0,
+  "testChatsCreated": 0,
+  "privateEvidence": {
+    "receiptSha256": "8976e3cb4aa12112759e20947148655a37b9da33be4ba1cdffd4f5b75afab87c",
+    "manifestSha256": "257da0e054b0fd07ee8ac1fb8b52c43ede65cb52273d15d7632763f6d468645b",
+    "artifacts": 163,
+    "rootAuditSha256": "9813551a42010284966298a3046f13fa6e2da8c943e29511dda3cd4df325c2ae",
+    "rootAuditedAllArtifacts": true
+  },
+  "priorFailureRetained": {
+    "attempt": "A",
+    "sourceCommit": "99f595b24a84bc79af7882253d4060461552ab49",
+    "passed": false,
+    "receiptSha256": "06bd86e81fe495f0cd1b5d545217e44a40a11a9e8b834bf9c0c270e15424cdbd",
+    "artifacts": 165,
+    "retryOfUnchangedSource": false
+  },
+  "limitations": [
+    "当前Mac的有限官方只读观察，不代表P95、8小时、凭据刷新、睡眠唤醒或手机接入已验证",
+    "关闭后新建本次source重新证明，不声称自动网络断线恢复已验证",
+    "无快照结束标记；usage/remove/来源替换/乱序/背压反证来自隔离临时源，官方未制造计量变化",
+    "内部缓存失效向产品及手机传播继续Task3d/5；不造零、不借用网关本地来源"
+  ]
+}
