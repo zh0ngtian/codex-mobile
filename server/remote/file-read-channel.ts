@@ -38,7 +38,11 @@ export class RemoteFileReadChannel {
     if (performance.now() >= this.deadline) throw new RemoteFileError('timeout', this.sent);
     if (this.signal?.aborted) throw new RemoteFileError('cancelled', this.sent);
   }
-  private remaining(): number { this.assert(); return Math.max(1, Math.floor(this.deadline - performance.now())); }
+  private remaining(): number {
+    this.assert(); const remaining = Math.floor(this.deadline - performance.now());
+    if (remaining < 1) throw new RemoteFileError('timeout', this.sent);
+    return Math.min(180000, remaining);
+  }
   private cancelled = () => this.fail('cancelled');
   private disconnected = () => this.fail('disconnected');
   private expired = (): void => {
@@ -57,11 +61,12 @@ export class RemoteFileReadChannel {
     return withRemoteOperation(() => this.assert(false), async () => {
       this.assert();
       if (this.current && !this.current.ended) throw new RemoteFileError('protocol', this.sent);
-      const nonce = randomUUID(); const budget = this.remaining(); const previousSent = this.sent;
+      const nonce = randomUUID(); const previousSent = this.sent;
       const current: Process = { id: 'codex-mobile-file:' + randomUUID(), sent: false, ended: false, execution: Promise.resolve(false) };
       this.current = current;
-      const params: Record<string, JsonValue> = { command: [this.binding.python, '-I', '-u', '-c', REMOTE_FILE_READ_PYTHON, nonce, String(budget), JSON.stringify(request)], cwd: this.binding.metadata.codexHome, processId: current.id, streamStdin: false, streamStdoutStderr: false, outputBytesCap: OUTPUT_CAP, timeoutMs: this.remaining() };
-      const options = { timeoutMs: this.remaining() };
+      const encodedRequest = JSON.stringify(request); const budget = this.remaining();
+      const params: Record<string, JsonValue> = { command: [this.binding.python, '-I', '-u', '-c', REMOTE_FILE_READ_PYTHON, nonce, String(budget), encodedRequest], cwd: this.binding.metadata.codexHome, processId: current.id, streamStdin: false, streamStdoutStderr: false, outputBytesCap: OUTPUT_CAP, timeoutMs: budget };
+      const options = { timeoutMs: budget };
       // 所有发送前guard均通过后才标记可能已发送；真正调用后的未知失败仍保守占额。
       current.sent = true; this.sent = true;
       const execution = this.session.call('command/exec', params, options);

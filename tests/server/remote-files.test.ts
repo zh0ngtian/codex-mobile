@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { afterEach, expect, it } from 'vitest';
+import { afterEach, expect, it, vi } from 'vitest';
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, writeFileSync } from 'node:fs';
@@ -7,8 +7,9 @@ import { inspect } from 'node:util';
 import { mkdtemp, readFile, rm, writeFile, rename, readdir, truncate, mkdir, symlink, readlink, utimes, lstat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { performance as nodePerformance } from 'node:perf_hooks';
 import { RemoteStream } from '../../server/remote/relay.js';
-import { RemoteRpcSession } from '../../server/remote/rpc-session.js';
+import { RemoteRpcError, RemoteRpcSession } from '../../server/remote/rpc-session.js';
 import type { JsonValue, RpcMessage } from '../../server/remote/envelope.js';
 import { withRemoteOperation } from '../../server/remote/operation-guard.js';
 
@@ -107,11 +108,187 @@ async function prepared() {
 }
 async function bytes(source: AsyncIterable<Uint8Array>) { const parts: Buffer[] = []; for await (const part of source) parts.push(Buffer.from(part)); return Buffer.concat(parts); }
 async function* input(data: Uint8Array) { for (let n = 0; n < data.length; n += 512 * 1024) yield data.subarray(n, n + 512 * 1024); }
+function readBudgetReply(params: Record<string, JsonValue>, data: Buffer) {
+  const command = params.command as string[]; const nonce = command[5]!; const request = JSON.parse(command[7]!) as { path: string; offset: number; position: number; window: number; length?: number };
+  const length = request.length ?? data.length - request.offset; const end = Math.min(length, request.position + 2 * 1024 * 1024);
+  const facts = { dev: '1', ino: '2', mode: '33188', size: String(data.length), mtime: '3', ctime: '4' };
+  const rows: Record<string, unknown>[] = [];
+  const row = (kind: string, fields: Record<string, unknown>) => rows.push({ v: 1, n: nonce, end: nonce, seq: rows.length + 1, kind, ...fields });
+  row('meta', { path: request.path, type: 'file', facts, length, offset: request.offset, window: request.window, position: request.position });
+  for (let position = request.position; position < end; position += 512 * 1024) {
+    const part = data.subarray(request.offset + position, request.offset + Math.min(end, position + 512 * 1024));
+    row('chunk', { offset: request.offset + position, size: part.length, sha256: sha(part), base64: part.toString('base64') });
+  }
+  row(end === length ? 'done' : 'batch-end', { window: request.window, position: request.position, total: end, facts, ...(end === length ? { sha256: sha(data.subarray(request.offset, request.offset + length)) } : {}) });
+  const stdout = rows.map(value => JSON.stringify(value)).join('\n') + '\n';
+  return { exitCode: 0, stdout, stderr: `CMFILE_READ1_DONE:${nonce}:${Buffer.byteLength(stdout)}:${sha(Buffer.from(stdout))}\n` };
+}
 async function queryInNewProcess(directory: string, operation: unknown) {
   const child = spawn(process.execPath, ['--import', 'tsx', new URL('./fixtures/remote-files-recover-worker.ts', import.meta.url).pathname], { stdio: 'pipe', env: { ...process.env, NODE_OPTIONS: '--no-experimental-webstorage' } });
   let stdout = ''; let stderr = ''; child.stdout.on('data', data => { stdout += String(data); }); child.stderr.on('data', data => { stderr += String(data); }); child.stdin.end(JSON.stringify({ directory, operation }));
   expect(await new Promise<number | null>(resolve => child.on('close', resolve))).toBe(0); expect(stderr).toBe(''); return JSON.parse(stdout);
 }
+
+it.each([180001, 600000])('显式读取总预算%s毫秒使用真实Python/RPC返回完整字节与SHA，每窗仍最多180秒', async timeoutMs => {
+  const f = await prepared(); const path = join(f.directory, 'long-read-budget'); const data = Buffer.alloc(2 * 1024 * 1024 + 19, 47); await writeFile(path, data);
+  const call = vi.spyOn(f.session, 'call');
+  try {
+    const result = await bytes(f.files.read(path, { timeoutMs })).catch(error => { process.stdout.write(JSON.stringify({ test: 'explicit-read-budget', timeoutMs, code: error.code, mayHaveBeenSent: error.mayHaveBeenSent }) + '\n'); throw error; });
+    expect(result).toEqual(data); expect(sha(result)).toBe(sha(data));
+    const windows = call.mock.calls.filter(([method, params]) => method === 'command/exec' && (params as Record<string, unknown>).streamStdoutStderr === false);
+    expect(windows).toHaveLength(2); expect(f.captures).toHaveLength(2); expect(f.processes.size).toBe(0);
+    for (const [, params, options] of windows) {
+      const command = params as Record<string, unknown>;
+      for (const budget of [Number((command.command as string[])[6]), command.timeoutMs, options?.timeoutMs]) expect(budget).toBeLessThanOrEqual(180000);
+      expect(command).toMatchObject({ streamStdin: false, streamStdoutStderr: false, outputBytesCap: 3 * 1024 * 1024 });
+    }
+    process.stdout.write(JSON.stringify({ test: 'explicit-read-budget', timeoutMs, bytes: result.length, sha256: sha(result), windows: windows.length }) + '\n');
+  } finally { call.mockRestore(); }
+});
+
+it('读取发送前只剩不足1毫秒时拒绝，不能把三种窗口预算向上取整越过剩余期限', async () => {
+  const f = await prepared(); let now = 0; const clock = vi.spyOn(nodePerformance, 'now').mockImplementation(() => now);
+  const originalCall = f.session.call.bind(f.session); const sent: number[] = [];
+  const call = vi.spyOn(f.session, 'call').mockImplementation((method, params, options) => {
+    if (method === 'command/exec' && (params as Record<string, unknown>).streamStdoutStderr === false) { sent.push(options!.timeoutMs!); return Promise.resolve(readBudgetReply(params as Record<string, JsonValue>, Buffer.from('x'))); }
+    return originalCall(method, params, options);
+  });
+  try {
+    const iterator = f.files.read(join(f.directory, 'fractional-remaining'), { timeoutMs: 600000 }); now = 599999.6;
+    await expect(iterator.next()).rejects.toMatchObject({ code: 'timeout', mayHaveBeenSent: false }); expect(sent).toEqual([]);
+  } finally { call.mockRestore(); clock.mockRestore(); }
+});
+
+it('读取未显式提供期限仍使用20秒，三种窗口预算一致且完成后立即归还额度', async () => {
+  const f = await prepared(); const data = Buffer.from('default-read-budget'); const clock = vi.spyOn(nodePerformance, 'now').mockReturnValue(0);
+  const originalCall = f.session.call.bind(f.session); const budgets: number[][] = [];
+  const call = vi.spyOn(f.session, 'call').mockImplementation((method, params, options) => {
+    if (method === 'command/exec' && (params as Record<string, unknown>).streamStdoutStderr === false) {
+      const command = params as Record<string, JsonValue>; budgets.push([Number((command.command as string[])[6]), Number(command.timeoutMs), options!.timeoutMs!]);
+      return Promise.resolve(readBudgetReply(command, data));
+    }
+    return originalCall(method, params, options);
+  });
+  try {
+    expect(await bytes(f.files.read(join(f.directory, 'default')))).toEqual(data); expect(budgets).toEqual([[20000, 20000, 20000]]);
+    expect((f.files as unknown as { channels: Set<unknown> }).channels.size).toBe(0);
+  } finally { call.mockRestore(); clock.mockRestore(); }
+});
+
+it('600秒读取从函数调用起计，准备和跨窗消费暂停均消耗原预算，三种窗口预算同步递减', async () => {
+  const f = await prepared(); const data = Buffer.alloc(4 * 1024 * 1024 + 13, 49); let now = 0;
+  const clock = vi.spyOn(nodePerformance, 'now').mockImplementation(() => now); const originalCall = f.session.call.bind(f.session);
+  const windows: { sentAt: number; budgets: number[] }[] = [];
+  const call = vi.spyOn(f.session, 'call').mockImplementation((method, params, options) => {
+    if (method === 'command/exec' && (params as Record<string, unknown>).streamStdoutStderr === false) {
+      const command = params as Record<string, JsonValue>; windows.push({ sentAt: now, budgets: [Number((command.command as string[])[6]), Number(command.timeoutMs), options!.timeoutMs!] });
+      return Promise.resolve(readBudgetReply(command, data));
+    }
+    return originalCall(method, params, options);
+  });
+  const iterator = f.files.read(join(f.directory, 'controlled-budget'), { timeoutMs: 600000 }); const received: Buffer[] = [];
+  try {
+    now = 200000; for (let n = 0; n < 4; n++) received.push((await iterator.next()).value!);
+    now = 500000; for (let n = 0; n < 4; n++) received.push((await iterator.next()).value!);
+    now = 590000; received.push((await iterator.next()).value!); now = 599999; expect((await iterator.next()).done).toBe(true);
+    expect(Buffer.concat(received)).toEqual(data); expect(windows).toEqual([{ sentAt: 200000, budgets: [180000, 180000, 180000] }, { sentAt: 500000, budgets: [100000, 100000, 100000] }, { sentAt: 590000, budgets: [10000, 10000, 10000] }]);
+    for (const window of windows) for (const budget of window.budgets) { expect(budget).toBeLessThanOrEqual(180000); expect(budget).toBeLessThanOrEqual(600000 - window.sentAt); }
+    expect((f.files as unknown as { channels: Set<unknown> }).channels.size).toBe(0);
+  } finally { await iterator.return(undefined); call.mockRestore(); clock.mockRestore(); }
+});
+
+it.each(['准备', '跨窗暂停', '末窗暂停'] as const)('600秒原绝对期限在%s后耗尽时拒绝，不能因已有进度重置或继续调度', async phase => {
+  const f = await prepared(); const data = Buffer.alloc(phase === '末窗暂停' ? 700001 : 2 * 1024 * 1024 + 1, 49); let now = 0;
+  const clock = vi.spyOn(nodePerformance, 'now').mockImplementation(() => now); const originalCall = f.session.call.bind(f.session); let windows = 0;
+  const call = vi.spyOn(f.session, 'call').mockImplementation((method, params, options) => {
+    if (method === 'command/exec' && (params as Record<string, unknown>).streamStdoutStderr === false) { windows++; return Promise.resolve(readBudgetReply(params as Record<string, JsonValue>, data)); }
+    return originalCall(method, params, options);
+  });
+  const iterator = f.files.read(join(f.directory, 'controlled-expiry'), { timeoutMs: 600000 });
+  try {
+    if (phase === '跨窗暂停') for (let n = 0; n < 4; n++) await iterator.next();
+    if (phase === '末窗暂停') await iterator.next();
+    now = 600000; await expect(iterator.next()).rejects.toMatchObject({ code: 'timeout', mayHaveBeenSent: phase !== '准备' });
+    expect(windows).toBe(phase === '准备' ? 0 : 1); expect((f.files as unknown as { channels: Set<unknown> }).channels.size).toBe(0);
+  } finally { await iterator.return(undefined); call.mockRestore(); clock.mockRestore(); }
+});
+
+it('最终独立Range SHA结果在原600秒后才到达时拒绝末窗，不因目标已经完成而交付', async () => {
+  const f = await prepared(); const data = Buffer.alloc(700001, 49); let now = 0;
+  const clock = vi.spyOn(nodePerformance, 'now').mockImplementation(() => now); const originalCall = f.session.call.bind(f.session); let complete!: () => void; let windows = 0;
+  const call = vi.spyOn(f.session, 'call').mockImplementation((method, params, options) => {
+    if (method === 'command/exec' && (params as Record<string, unknown>).streamStdoutStderr === false) { windows++; return new Promise(resolve => { complete = () => resolve(readBudgetReply(params as Record<string, JsonValue>, data)); }); }
+    return originalCall(method, params, options);
+  });
+  const iterator = f.files.read(join(f.directory, 'controlled-final-sha-deadline'), { timeoutMs: 600000 });
+  try {
+    now = 599000; const pending = iterator.next(); now = 600000; complete();
+    await expect(pending).rejects.toMatchObject({ code: 'timeout', mayHaveBeenSent: true }); expect(windows).toBe(1); expect((f.files as unknown as { channels: Set<unknown> }).channels.size).toBe(0);
+  } finally { await iterator.return(undefined); call.mockRestore(); clock.mockRestore(); }
+});
+
+it.each(['取消', '断线', '单窗RPC超时'] as const)('600秒读取%s后立即拒绝并丢弃迟到输出，空terminate确认不提前释放原期限内额度', async mode => {
+  const f = await prepared(); const path = join(f.directory, 'controlled-stop-budget'); const data = Buffer.alloc(2 * 1024 * 1024 + 1, 49); await writeFile(path, 'x');
+  let now = 0; const clock = vi.spyOn(nodePerformance, 'now').mockImplementation(() => now); vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+  const originalCall = f.session.call.bind(f.session); const windows: { id: string; params: Record<string, JsonValue> }[] = []; const terminated: string[] = []; const late: (() => void)[] = [];
+  const call = vi.spyOn(f.session, 'call').mockImplementation((method, params, options) => {
+    const command = params as Record<string, JsonValue>;
+    if (method === 'command/exec' && command.streamStdoutStderr === false) {
+      windows.push({ id: String(command.processId), params: command });
+      if (mode === '单窗RPC超时') return Promise.reject(new RemoteRpcError('timeout', true));
+      return new Promise(resolve => late.push(() => resolve(readBudgetReply(command, data))));
+    }
+    if (method === 'command/exec/terminate') { terminated.push(String(command.processId)); return Promise.resolve({}); }
+    return originalCall(method, params, options);
+  });
+  try {
+    const controllers = Array.from({ length: 4 }, () => new AbortController());
+    const pending = controllers.map(controller => bytes(f.files.read(path, { timeoutMs: 600000, signal: controller.signal })).catch(error => error));
+    expect(windows).toHaveLength(4);
+    if (mode === '取消') controllers.forEach(controller => controller.abort());
+    if (mode === '断线') f.stream.emit('disconnect', { reason: 'network', mayHaveBeenSent: true });
+    for (const result of await Promise.all(pending)) expect(result).toMatchObject({ code: mode === '取消' ? 'cancelled' : mode === '断线' ? 'disconnected' : 'timeout', mayHaveBeenSent: true });
+    now = 1000; await vi.advanceTimersByTimeAsync(1000); await expect(f.files.stat(path)).rejects.toMatchObject({ code: 'capacity', mayHaveBeenSent: false });
+    now = 599999; await vi.advanceTimersByTimeAsync(598999); await expect(f.files.stat(path)).rejects.toMatchObject({ code: 'capacity', mayHaveBeenSent: false });
+    expect(terminated).toHaveLength(4); expect(terminated.every(id => windows.some(window => window.id === id))).toBe(true); expect(windows).toHaveLength(4);
+    now = 600000; await vi.advanceTimersByTimeAsync(1); for (const resolve of late.splice(0)) resolve(); await Promise.resolve(); await Promise.resolve();
+    expect(windows).toHaveLength(4); expect((f.files as unknown as { channels: Set<unknown> }).channels.size).toBe(0);
+    call.mockRestore(); vi.useRealTimers(); expect((await f.files.stat(path)).size).toBe(1);
+  } finally {
+    now = 1200000; if (vi.isFakeTimers()) await vi.advanceTimersByTimeAsync(600000); for (const resolve of late.splice(0)) resolve();
+    call.mockRestore(); vi.useRealTimers(); clock.mockRestore();
+  }
+});
+
+it('600秒读取的未消费末窗仍保有四文件预留，原期限后全部释放', async () => {
+  const f = await prepared(); const path = join(f.directory, 'controlled-final-reservation'); await writeFile(path, 'x'); const data = Buffer.alloc(700001, 49); let now = 0;
+  const clock = vi.spyOn(nodePerformance, 'now').mockImplementation(() => now); const originalCall = f.session.call.bind(f.session); let windows = 0;
+  const call = vi.spyOn(f.session, 'call').mockImplementation((method, params, options) => {
+    if (method === 'command/exec' && (params as Record<string, unknown>).streamStdoutStderr === false) { windows++; return Promise.resolve(readBudgetReply(params as Record<string, JsonValue>, data)); }
+    return originalCall(method, params, options);
+  });
+  const iterators = Array.from({ length: 4 }, () => f.files.read(path, { timeoutMs: 600000 }));
+  try {
+    for (const iterator of iterators) expect((await iterator.next()).value).toHaveLength(512 * 1024);
+    await expect(f.files.stat(path)).rejects.toMatchObject({ code: 'capacity', mayHaveBeenSent: false });
+    now = 600000; for (const iterator of iterators) await expect(iterator.next()).rejects.toMatchObject({ code: 'timeout', mayHaveBeenSent: true });
+    expect(windows).toBe(4); expect((f.files as unknown as { channels: Set<unknown> }).channels.size).toBe(0); call.mockRestore(); expect((await f.files.stat(path)).size).toBe(1);
+  } finally { for (const iterator of iterators) await iterator.return(undefined); call.mockRestore(); clock.mockRestore(); }
+});
+
+it.each([0, -1, 1.5, Number.NaN, 600001])('读取期限%s不是1至600000的安全整数时受控拒绝且不发送命令', async timeoutMs => {
+  const f = await prepared(); const before = f.frames.length;
+  await expect(bytes(f.files.read(join(f.directory, 'invalid-budget'), { timeoutMs }))).rejects.toMatchObject({ mayHaveBeenSent: false }); expect(f.frames).toHaveLength(before);
+});
+
+it('其他文件操作、通用commands和RPC仍拒绝超过180秒的显式期限', async () => {
+  const f = await prepared(); const path = join(f.directory, 'other-operation-budget'); const data = Buffer.from('x');
+  const result = await f.files.upload(path, input(data), { size: 1, sha256: sha(data), expectedVersion: null });
+  const { RemoteCommands } = await import('../../server/remote/commands.js'); const commands = await RemoteCommands.create(f.session, scope); cleanup.push(() => commands.close());
+  const before = f.frames.length; const options = { timeoutMs: 180001 };
+  const operations = [() => f.files.stat(path, options), () => f.files.list(f.directory, options).next(), () => f.files.readText(path, { ...options, maxBytes: 10 }), () => f.files.readJsonLines(path, { ...options, maxBytes: 10 }), () => f.files.upload(path, input(data), { ...options, size: 1, sha256: sha(data), expectedVersion: null }), () => f.files.queryUpload(result.operation, options), () => f.files.discardUpload(result.operation, options), () => f.files.releaseUpload(result.operation, options), () => commands.execute({ argv: ['python3', '-c', 'print(1)'], cwd: f.directory, ...options }), () => f.session.call('blocked', {}, options)];
+  for (const operation of operations) await expect(operation()).rejects.toMatchObject({ code: 'capacity', mayHaveBeenSent: false }); expect(f.frames).toHaveLength(before);
+});
 
 it('通过同一ready session在目标创建临时文件并原子提交，特殊字符路径只作为数据', async () => {
   const f = await prepared(); const path = join(f.directory, '名字 空格;$()`".bin'); const data = Buffer.from([0, 255, 128, 1, 2]);
@@ -787,7 +964,7 @@ it('跨账号新session重包内外namespace也不能冒认原目标收据', asy
   expect(other.frames.filter(frame => frame.method === 'command/exec')).toHaveLength(2); expect(await readFile(result.operation.token.directory as string + '/receipt', 'utf8')).toContain(f.files.namespace);
 });
 
-it.each([{ sandboxPolicy: { type: 'dangerFullAccess' } }, { permissionProfile: 'override' }, { timeoutMs: 180001 }])('文件层不开放任意权限或延长期限%j', async patch => {
+it.each([{ sandboxPolicy: { type: 'dangerFullAccess' } }, { permissionProfile: 'override' }, { timeoutMs: 600001 }])('文件层不开放任意权限或超过读取上限的期限%j', async patch => {
   const f = await prepared(); const before = f.frames.length; const outcome = await bytes(f.files.read(join(f.directory, 'path'), patch)).catch(error => error);
   expect(outcome).toMatchObject({ mayHaveBeenSent: false }); expect(f.frames).toHaveLength(before);
 });

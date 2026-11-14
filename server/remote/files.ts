@@ -67,8 +67,8 @@ export class RemoteFiles {
     // 只按真实目标规则判断绝对路径，不resolve/normalize，不访问网关同名路径。
     if (!paths.isAbsolute(path) || (this.metadata.platformFamily === 'windows' && !/^(?:[A-Za-z]:[\\/]|[\\/]{2}[^\\/]+[\\/][^\\/]+(?:[\\/]|$))/.test(path))) throw new RemoteFileError('invalid-input', false); return path;
   }
-  private options(value: unknown, allowed: string[], started: number): { raw: Record<string, unknown>; deadline: number; signal?: AbortSignal } {
-    const raw = keys(value, ['timeoutMs', 'signal', ...allowed]); const timeout = integer(raw.timeoutMs, 20000, 180000);
+  private options(value: unknown, allowed: string[], started: number, maximumTimeout = 180000): { raw: Record<string, unknown>; deadline: number; signal?: AbortSignal } {
+    const raw = keys(value, ['timeoutMs', 'signal', ...allowed]); const timeout = integer(raw.timeoutMs, 20000, maximumTimeout);
     if (!timeout || (raw.signal !== undefined && !(raw.signal instanceof AbortSignal))) throw new RemoteFileError('invalid-input', false);
     if (this.closed || !this.session.ready) throw new RemoteFileError('closed', false);
     if ((raw.signal as AbortSignal | undefined)?.aborted) throw new RemoteFileError('cancelled', false);
@@ -109,7 +109,7 @@ export class RemoteFiles {
   private async *readInternal(path: string, options: RemoteReadOptions, started: number): AsyncGenerator<Buffer> {
     let channel: RemoteFileReadChannel | undefined;
     try {
-      path = this.path(path); const o = this.options(options, ['offset', 'length', 'version'], started);
+      path = this.path(path); const o = this.options(options, ['offset', 'length', 'version'], started, 600000);
       const offset = integer(o.raw.offset, 0); const length = o.raw.length === undefined ? undefined : integer(o.raw.length, 0, FILE_MAX_BYTES);
       if (length !== undefined && !Number.isSafeInteger(offset + length)) throw new RemoteFileError('capacity', false);
       let expected = o.raw.version === undefined ? undefined : this.expected(path, o.raw.version);
