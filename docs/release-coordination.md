@@ -8,9 +8,9 @@
 
 只有用户明确要求发布客户端或部署网关时，才登记对应发布任务并使用下文的 heartbeat、ready、冻结、构建发布及 receipt 流程。普通任务不登记发布任务、不提交 ready、不分配发布版本、不更新 `.release-batch.json`，不触发正式 APK/IPA 打包、渠道更新或生产网关部署；必要的开发验证构建仍按改动范围执行。客户端与网关均有源码变更本身不构成联合发布授权。
 
-2026-11-14用户再次确认现行GitHub-only渠道，并要求将仍引用LAN／签名OTA的旧工作区规则同步为现行合同。该确认适用于本次WebUI输入框与加号补修的双端客户端任务`web-composer-ios-alignment-github-only-20261114`；未来仍按受影响平台选择单端或双端。旧规则不再作为新批次入口，也不为同一已确认渠道重复询问；本次不部署网关。该任务已完成0.3.47／3047发布，实际凭证见本文件最新交付记录。
+2026-11-14用户再次确认现行GitHub-only渠道，并要求将仍引用LAN／签名OTA的旧工作区规则同步为现行合同。该确认适用于本次WebUI输入框与加号补修的双端客户端任务`web-composer-ios-alignment-github-only-20261114`；后续是否包含 iOS 包，按下文最新原生界面影响判据执行。旧规则不再作为新批次入口，也不为同一已确认渠道重复询问；本次不部署网关。该任务已完成0.3.47／3047发布，实际凭证见本文件最新交付记录。
 
-2026-10-25用户先确认停止本机iOS签名、HTTPS OTA及固定LAN IPA更新，随后进一步要求Android关闭局域网分发，只保留GitHub Release。现行客户端按受影响平台选择项目：仅涉及 Android 时使用 `codex-mobile-github-android`／`mobile-github-android`，只交付 GitHub APK；涉及 iOS 或影响 iOS 的共享运行代码时使用 `codex-mobile-github-only`／`mobile-github-only`，交付 GitHub APK／unsigned IPA 及既有 iOS 软件源。策略 [distribution-policy.json](../release/distribution-policy.json) 同时规定 `iosDistribution=unsigned-only` 与 `androidDistribution=github-only`；新源码拒绝旧mobile／mobile-ota／mobile-unsigned kind及旧客户端项目，不能通过旧模板进入LAN或签名／OTA阶段。8765服务保持停止和disabled，旧包、清单、材料、失败批次及凭证保留不删。无策略或旧ios-only策略的历史工作区继续原合同。现役0.3.47已完成WebUI输入框对齐及附件加号居中补修的双端发布与软件源回验；本次未部署网关，既有网关部署保持。0.3.46及更早发布和历史失败记录继续保留，见下方交付记录。
+2026-10-25用户先确认停止本机iOS签名、HTTPS OTA及固定LAN IPA更新，随后进一步要求Android关闭局域网分发，只保留GitHub Release。现行客户端按 iOS 原生界面及其操作是否受影响选择项目：不影响时使用 `codex-mobile-github-android`／`mobile-github-android`，只交付 GitHub APK；影响时使用 `codex-mobile-github-only`／`mobile-github-only`，交付 GitHub APK／unsigned IPA 及既有 iOS 软件源。策略 [distribution-policy.json](../release/distribution-policy.json) 同时规定 `iosDistribution=unsigned-only` 与 `androidDistribution=github-only`；新源码拒绝旧mobile／mobile-ota／mobile-unsigned kind及旧客户端项目，不能通过旧模板进入LAN或签名／OTA阶段。8765服务保持停止和disabled，旧包、清单、材料、失败批次及凭证保留不删。无策略或旧ios-only策略的历史工作区继续原合同。现役0.3.47已完成WebUI输入框对齐及附件加号居中补修的双端发布与软件源回验；本次未部署网关，既有网关部署保持。0.3.46及更早发布和历史失败记录继续保留，见下方交付记录。
 
 ## 本机部署与作用域
 
@@ -18,7 +18,7 @@
 
 | 项目配置 ID | 仓库/正式分支 | 目标与环境 | 必要交付 |
 | --- | --- | --- | --- |
-| `codex-mobile-github-android` | `zh0ngtian/codex-mobile` / `main` | `codex-mobile-github-android` / `github-only` | 仅 Android 改动；只构建和验收 GitHub APK，不进入 source 阶段 |
+| `codex-mobile-github-android` | `zh0ngtian/codex-mobile` / `main` | `codex-mobile-github-android` / `github-only` | 不影响 iOS 原生界面及其操作的客户端改动，包括仅 WebUI；只构建和验收 GitHub APK，不进入 source 阶段 |
 | `codex-mobile-github-only` | `zh0ngtian/codex-mobile` / `main` | `codex-mobile-github-only` / `github-only` | GitHub APK／unsigned IPA Release及既有iOS软件源版本核对 |
 | `codex-mobile-github-release`（历史） | 相同仓库 / `main` | `codex-mobile-github-release` / `github-release` | 原unsigned含LAN合同；新策略禁止使用 |
 | `codex-mobile-gateway-production` | 相同仓库 / `main` | `codex-mobile-gateway` / `production` | 服务端构建、原本机安装位置及 launchd 网关部署验收；不构建客户端 |
@@ -31,7 +31,21 @@
 
 ## 项目配置与适配器
 
-2026-11-11 起，不涉及 iOS 的后续改动不打 iOS 包。发布前检查相对最近相关平台发布版本的差异，核对共享模块的实际消费者；未改 Swift 不等于未影响 iOS。纯 Android 选择单端入口，涉及 iOS 或影响 iOS 的共享运行代码则保持双端入口。不因仅修改文档或发布脚本而要求 iOS 运行回归。
+<a id="ios-build-scope"></a>
+
+### iOS 打包范围（2026-11-14 最新约定）
+
+只有影响 iOS 原生界面的呈现或操作才打 IPA。发布前对比各平台最近实际发布版本，沿原生界面的数据、桥接与网关接口调用链判断影响；不能只按 Swift 文件、共享文件路径或前端资源是否进入 IPA 判断。
+
+| 改动与实际影响 | 是否打 iOS 包 | 已获授权的交付范围 |
+| --- | --- | --- |
+| 仅 WebUI 布局、样式、交互，或仅 iOS 网页模式变化；原生界面及其操作不变 | 否 | 使用 APK 单端项目，不启动 iOS 作业、不读取或更新 iOS 软件源 |
+| 原生 SwiftUI 界面变化，或共享业务、数据投影、桥接、宿主构建变更影响原生界面的呈现或操作 | 是 | 使用双端项目，交付 APK／unsigned IPA 并同步既有软件源 |
+| 网关接口修改、删除或参数／返回结构变化，导致原生界面某个操作异常 | 是 | 完成客户端兼容适配、验证受影响原生操作后重新打包；客户端发布与网关部署分别登记已授权目标 |
+| 网关内部实现变化或兼容接口调整，原生界面及其操作不受影响 | 否 | 仅做对应服务端验证；已授权部署才登记网关目标 |
+| 仅文档、规则、测试或不影响客户端产物的脚本变化 | 否 | 仅交源码，不触发客户端构建或发布 |
+
+验收先明确受影响的原生页面／操作、接口和客户端适配，不把重新生成旧客户端包视为接口问题已修复。影响原生操作时，按 iPhone 17 Pro、正常字号、竖屏验证对应原生链路；仅 WebUI 变化不因此扩展为原生验收。普通源码任务仍不发包；本规则不自动授权客户端发布或网关部署。旧批次范围与凭证保留，0.3.47 按当时双端合同发布的事实不回写。
 
 项目配置路径与用途：
 
@@ -113,7 +127,7 @@ prepare在整合结果门禁通过后提交与上游字节一致的公共 `.rele
 
 ```bash
 ~/.local/bin/releasectl health
-# 仅 Android 改动用 codex-mobile-github-android；涉及 iOS 或影响 iOS 的共享改动用下列双端项目
+# 不影响 iOS 原生界面及其操作（含仅 WebUI）用 codex-mobile-github-android；影响原生界面或操作用下列双端项目
 ~/.local/bin/releasectl register --project codex-mobile-github-only --task MY_TASK
 ~/.local/bin/releasectl heartbeat --task MY_TASK
 ~/.local/bin/releasectl heartbeat --task MY_TASK --state closing
@@ -228,11 +242,11 @@ APK 为4,755,355字节，未签名IPA为5,030,497字节；两端独立完整下�
 
 ## 2026-11-11 平台范围与本次发布状态
 
-用户授权发布 Android 原生版本，并要求后续不涉及 iOS 时不打 iOS 包。新增独立 Android 单端项目，旧双端及历史冻结合同不改。本次发布差异中 `src/native-ui/device-panel.ts` 的地址明文修复也由 iOS 设备表单共用，因此选择双端任务 `codex-mobile-20261111-native-layout-release`；起初登记的 Android 任务已在 ready 前 withdrawn，无版本或批次。本次未部署网关；本地门禁、成功 receipt 与独立渠道验收均已通过，最终结果如下。
+用户当时授权发布 Android 原生版本，并要求后续不涉及 iOS 时不打 iOS 包；当前范围已由上文2026-11-14原生影响判据收紧。新增独立 Android 单端项目，旧双端及历史冻结合同不改。本次发布差异中 `src/native-ui/device-panel.ts` 的地址明文修复也由 iOS 设备表单共用，因此选择双端任务 `codex-mobile-20261111-native-layout-release`；起初登记的 Android 任务已在 ready 前 withdrawn，无版本或批次。本次未部署网关；本地门禁、成功 receipt 与独立渠道验收均已通过，最终结果如下。
 
 0.3.45／3045 已正式发布：[GitHub Release](https://github.com/zh0ngtian/codex-mobile/releases/tag/v0.3.45)。客户端成功批次 `89b75441-f1ec-4b96-b895-ef7d1e6a1063`，冻结 `ddf58d120a3b7fd53c221ade11b515f0de9f6ce2`，任务来源 `f62563f4d43c553e20821e9398dac97c275af262`；正式 CI `42959923223` 与开发 CI `42959923167` 均成功。273项适配器、59项协调器恢复、171项构建合同、类型检查以及独立104项渠道核对通过。两端 HEAD／完整 GET、大小与 SHA-256、IPA 实际版本及未签名状态、软件源日志与署名均符合冻结来源；APK 原生 Compose 代码、实际版本及相对0.3.44的签名证书一致性已核对。Android 21项原生仪器及145项业务回归沿用相同运行源码证据，iPhone 17 Pro补验地址明文1项通过。没有创建真实测试会话。
 
-后续不影响 iOS 的改动使用独立 Android 项目，只构建和验收 APK，不访问 iOS 软件源；本次包含 iOS 消费的共享地址表单改动，因此仍按双端交付。新单端入口的契约回归与真实 shell 夹具通过，首次正式单端批次尚待后续纯 Android 发布验收。本次未部署网关，没有发布 LAN 包、签名 IPA、HTTPS OTA 或固定 IPA；历史四文件散列及停用服务状态保持。真机安装、覆盖升级、数据保留和实际手感仍待验收。
+当时约定后续不影响 iOS 的改动使用独立 Android 项目，只构建和验收 APK，不访问 iOS 软件源；本次包含 iOS 原生设备表单消费的共享地址明文改动，因此仍按双端交付。当前后续范围以上文2026-11-14原生影响判据为准。新单端入口的契约回归与真实 shell 夹具通过，首次正式单端批次尚待后续纯 Android 发布验收。本次未部署网关，没有发布 LAN 包、签名 IPA、HTTPS OTA 或固定 IPA；历史四文件散列及停用服务状态保持。真机安装、覆盖升级、数据保留和实际手感仍待验收。
 
 [公共发布凭证](superpowers/plans/evidence/2026-11-11-native-layout-release.json)记录本批来源、平台、文件大小与散列；长期成功 receipt 的 SHA-256 为 `9a76bba701896eb04f51fc0c3c2580cf2f8d0302e2a4b4bc6cedb397350ddb3b`。
 

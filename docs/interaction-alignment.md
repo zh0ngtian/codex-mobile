@@ -31,7 +31,7 @@
 5. UI 与交互在 iPhone 17 Pro 正常字号竖屏验收；涉及 iOS App 的问题要在 App 内验证，浏览器验证不能替代模拟器验证。测试创建的会话验证后及时归档。
 6. 文档修改只检查相关文字、链接和规则一致性，不触发客户端构建、模拟器操作、部署或发布。网关地址中的口令、设备凭证、用户会话正文和签名材料不写入本文。
 7. 默认交付遵循 [仓库协作约定](../AGENTS.md)：开始修改时记录 main 提交，验证成功后合入主分支并完成提交推送，默认不发布客户端或部署生产网关。合入前核对最新 main（含远端）；修改期间 main 有新提交时，对整合结果运行相关回归，通过后再提交推送；没有新提交时复用已有验证，不必重复回归。只有明确要求发布或部署时才启用协调器正式交付流程。
-8. 已授权发布按受影响平台选择项目：仅涉及 Android 的改动使用 `codex-mobile-github-android`／`mobile-github-android`，阶段 `main/build/verify`，只构建和验收 APK，不启动 iOS 作业或访问软件源；涉及 iOS 或影响 iOS 的共享运行代码时使用 `codex-mobile-github-only`／`mobile-github-only`，保持 `main/build/source/verify` 与双端验收。共享表单、业务投影、桥接与构建配置须核对实际消费者，不能只按是否改 Swift 文件判断。冻结项目决定 CI matrix、回执和独立下载范围；成功凭证记录实际 platforms 与 softwareSourceUpdated，交付只提供本批实际产物链接、版本、大小及 SHA-256。两入口沿用 GitHub-only／unsigned-only 策略、同一 main 锁和版本预留；LAN、签名及 OTA 继续停用，旧冻结合同保留。
+8. 已授权发布按 iOS 原生界面的呈现或操作是否受影响选择项目：不影响时（含仅 WebUI／iOS 网页模式改动）使用 `codex-mobile-github-android`／`mobile-github-android`，阶段 `main/build/verify`，只构建和验收 APK，不启动 iOS 作业或访问软件源；影响时使用 `codex-mobile-github-only`／`mobile-github-only`，保持 `main/build/source/verify` 与双端验收。网关接口修改、删除或结构变化导致原生操作异常也算影响，必须完成兼容适配与原生操作验证后重新打 iOS 包；不能只按是否改 Swift、共享文件或资源是否进入 IPA 判断。完整场景见[发布协调说明](release-coordination.md#ios-build-scope)。冻结项目决定 CI matrix、回执和独立下载范围；凭证与交付只列本批实际平台。GitHub-only／unsigned-only、同一 main 锁、版本预留及默认不发布规则保持；LAN、签名及 OTA 继续停用，旧冻结合同保留。
 
 ## 3. 保留内容与真实业务边界
 
@@ -1617,7 +1617,7 @@ iPhone 17 Pro／iOS 27、正常字号、竖屏的6项现有排版及界面回归
 
 ### 2026-11-11 按受影响平台构建与发布
 
-用户要求后续不涉及 iOS 的修改不打 iOS 包，覆盖原先所有客户端批次固定双端构建的约定。已确认：纯 Android 选择新的单端项目，涉及 iOS 或影响 iOS 的共享运行代码仍选双端；Android 单端不构建、下载或校验 IPA，也不读取或更新 iOS 软件源。验收要点为冻结项目、Actions matrix、附件回执与最终凭证平台一致，双端旧合同仍要求 APK 与 unsigned IPA。
+用户当时要求后续不涉及 iOS 的修改不打 iOS 包，覆盖原先所有客户端批次固定双端构建的约定。当时确认：纯 Android 选择新的单端项目，涉及 iOS 或影响 iOS 的共享运行代码仍选双端；当前范围已由2026-11-14原生界面影响判据收紧，不再将仅 iOS 网页模式变化作为打 IPA 的理由。Android 单端不构建、下载或校验 IPA，也不读取或更新 iOS 软件源。验收要点为冻结项目、Actions matrix、附件回执与最终凭证平台一致，双端旧合同仍要求 APK 与 unsigned IPA。
 
 本次发布包含 Android 原生 Material You、完整动效、页面密度与长文字改进，同时共享设备表单地址明文修复被 iOS 消费，因此按双端发布，iOS 原生呈现源码未另作修改。任务 `codex-mobile-20261111-native-layout-release` 已登记；发布流程门禁和正式渠道已验收通过，版本0.3.45，见下方最终交付。iPhone 17 Pro／iOS 27.0 正常字号竖屏补验 1 项 XCTest 通过，普通文本字段完整显示输入地址、取消返回设备列表，已核对[截图](assets/ios-simulator/device-address-20261111.png)。仅离线夹具，无真实测试会话，专用模拟器已删除；真机覆盖安装、数据保留与视觉手感待用户验收。
 
@@ -1625,7 +1625,7 @@ iPhone 17 Pro／iOS 27、正常字号、竖屏的6项现有排版及界面回归
 
 0.3.45／3045 已正式发布：[GitHub Release](https://github.com/zh0ngtian/codex-mobile/releases/tag/v0.3.45)。客户端成功批次 `89b75441-f1ec-4b96-b895-ef7d1e6a1063`，冻结 `ddf58d120a3b7fd53c221ade11b515f0de9f6ce2`，任务来源 `f62563f4d43c553e20821e9398dac97c275af262`；正式 CI `42959923223` 与开发 CI `42959923167` 均成功。273项适配器、59项协调器恢复、171项构建合同、类型检查以及独立104项渠道核对通过。两端 HEAD／完整 GET、大小与 SHA-256、IPA 实际版本及未签名状态、软件源日志与署名均符合冻结来源；APK 原生 Compose 代码、实际版本及相对0.3.44的签名证书一致性已核对。Android 21项原生仪器及145项业务回归沿用相同运行源码证据，iPhone 17 Pro补验地址明文1项通过。没有创建真实测试会话。
 
-后续不影响 iOS 的改动使用独立 Android 项目，只构建和验收 APK，不访问 iOS 软件源；本次包含 iOS 消费的共享地址表单改动，因此仍按双端交付。新单端入口的契约回归与真实 shell 夹具通过，首次正式单端批次尚待后续纯 Android 发布验收。本次未部署网关，没有发布 LAN 包、签名 IPA、HTTPS OTA 或固定 IPA；历史四文件散列及停用服务状态保持。真机安装、覆盖升级、数据保留和实际手感仍待验收。
+当时约定后续不影响 iOS 的改动使用独立 Android 项目，只构建和验收 APK，不访问 iOS 软件源；本次包含 iOS 原生设备表单消费的共享地址明文改动，因此仍按双端交付。当前后续范围以第2节及2026-11-14原生影响判据为准。新单端入口的契约回归与真实 shell 夹具通过，首次正式单端批次尚待后续纯 Android 发布验收。本次未部署网关，没有发布 LAN 包、签名 IPA、HTTPS OTA 或固定 IPA；历史四文件散列及停用服务状态保持。真机安装、覆盖升级、数据保留和实际手感仍待验收。
 
 产物、散列和成功凭证摘要见[公共凭证](superpowers/plans/evidence/2026-11-11-native-layout-release.json)。
 
@@ -1755,3 +1755,10 @@ iPhone 17 Pro／iOS 27、正常字号、竖屏的6项现有排版及界面回归
 17项WebKit和167项组件／业务回归通过；iPhone 17 Pro正常字号竖屏下，两轴中心偏差均小于0.5px，视觉圆34px、纵向触区44px。已核对`.mobile-build/web-composer-plus-centered.png`及重新生成的三行、长文、工具行和附件截图。仅使用隔离夹具，无真实测试会话，测试浏览器上下文已关闭。
 
 用户同时明确按现行GitHub APK／unsigned IPA双端渠道发布，并要求同步旧规则；任务`web-composer-ios-alignment-github-only-20261114`以`ee8d91d272d9f162a3b1e6f3d0b046934cf22596` ready，成功批次`433ed0e5-e037-4af3-adeb-a65bfd59bf0e`完成main/build/source/verify。冻结`248b05ebea81aa54f7642eec186f286618b8cb9e`，版本0.3.47／3047；正式CI `43551720813`与开发CI `43551720743`均首次成功。273项适配器、59项协调器恢复、164项构建契约及类型检查通过；46项独立核对覆盖双端完整下载、实际版本、APK内居中SVG与六行布局、IPA未签名，以及软件源版本、中文日志和开发者署名。历史LAN文件散列未变，8765／8766无监听且旧服务停止、disabled；本次未发布LAN、签名IPA或OTA，未部署网关。真机键盘、安装及数据保留仍待人工验收。实际链接、大小、散列及成功receipt摘要见[公共凭证](superpowers/plans/evidence/2026-11-14-web-composer-release.json)，过程见[发布计划](superpowers/plans/2026-11-14-web-composer-github-release.md)。
+
+
+## 2026-11-14 iOS 打包范围收紧为原生界面及其操作（规则已更新）
+
+用户在0.3.47发布后明确要求：后续只有影响 iOS 原生界面的呈现或操作才打 iOS 包，仅 WebUI 或 iOS 网页模式变化不再触发 IPA；同时补充，网关接口修改或删除导致原生界面某个操作异常，也必须适配、验证并重新打包，不能只看是否修改 Swift。规则基线为远端main `9a1c19e1860efc7aa5c7085722878e4240a9c276`；已就地修订 AGENTS、README、文档索引、本文件第2节及[发布协调说明](release-coordination.md#ios-build-scope)。
+
+验收要点：仅 WebUI 选择既有 APK 单端入口；原生界面、原生依赖的共享业务／桥接或网关接口破坏原生操作时，选择双端入口并验证受影响原生链路；不影响客户端操作的网关内部调整仍只按服务端范围处理。协调器按显式冻结项目决定平台，没有自动按共享文件路径升级双端的逻辑，本次无需修改适配器或 CI。文档链接、范围判断一致性及差异检查已核对；本轮仅更新规则和文档，不登记发布任务、不构建 APK／IPA、不部署网关，不改写0.3.47历史成功凭证。新判据的下次真实发布验收待后续已授权任务执行。

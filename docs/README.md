@@ -25,7 +25,7 @@
 - [常驻 Remote 网关设计](superpowers/specs/2026-11-13-remote-gateway.md)与[实施计划](superpowers/plans/2026-11-13-remote-gateway.md)：开发中；协议、自有授权、有界RPC、受管认证、账号绑定目录、OAuth、活动身份和运行管理已有源码与隔离审查，运行层的三流RPC、同流恢复、零流短时保活及持久暂停恢复已有正式Remote收据。[Mac管理说明](remote-gateway-management.md)记录私有通道、固定CLI和实例归属；该入口已通过独立规格/质量复审及正式Remote的实际进程重启、SIGKILL恢复、活owner竞争与零流后RPC探针。[第44/45项补充方案](superpowers/specs/2026-11-13-remote-gateway-cli-proposal.md)保持当前用户专有管理和候选身份原子切换边界。[目标命令基础](superpowers/plans/evidence/2026-11-13-remote-commands-isolated-validation.json)已通过独立双审，正式Remote已验证默认权限字节输出、自有进程收尾与零流后RPC；文件层继续开发。固定计量权限例外和目标自身来源发现已隔离验证，产品统计、目标业务路由、共享队列、手机模式及长期性能继续后续任务。未部署现役服务或发布客户端。
 
 - [2026-11-14 WebUI 输入框补修与双端发布](superpowers/plans/2026-11-14-web-composer-github-release.md)：0.3.47 APK／未签名 IPA 与既有软件源验收成功，加号居中和一至六行自适应已验证。
-- [2026-11-11 原生版发布与后续 Android 单端构建](superpowers/plans/2026-11-11-android-only-release.md)：0.3.45 双端与软件源验收成功；不影响 iOS 的后续改动只构建 APK，单端首次真实批次待后续发布验收。
+- [2026-11-11 原生版发布与后续 Android 单端构建](superpowers/plans/2026-11-11-android-only-release.md)：0.3.45 双端与软件源验收成功，已具备 APK 单端入口；后续 IPA 范围以[原生界面影响判据](release-coordination.md#ios-build-scope)为准，包含破坏原生操作的网关接口变更，仅 WebUI 不打 IPA。单端首次真实批次待后续发布验收。
 - [2026-11-10 网页引用补修联合发布](superpowers/plans/2026-11-10-web-citations-hidden-release.md)：0.3.44 GitHub双端及既有iOS软件源、配套网关成功；12会话54项来源与73处引用回验通过。
 
 ## 当前发布入口
