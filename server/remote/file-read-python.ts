@@ -3,7 +3,7 @@ export const REMOTE_FILE_READ_PYTHON = String.raw`import base64,hashlib,json,os,
 nonce=sys.argv[1]
 deadline=time.monotonic()+int(sys.argv[2])/1000
 CHUNK=524288
-WINDOW=2097152
+WINDOW=524288
 MAX=104857600
 wirehash=hashlib.sha256();wirebytes=0;sequence=0
 class Failure(Exception): pass
@@ -44,7 +44,7 @@ try:
         if position>length or (position==length and (length!=0 or window!=0)): raise Failure('protocol')
         emit('meta',path=path,type='file',facts=initial,length=length,offset=offset,window=window,position=position)
         f.seek(offset+position);total=position
-        for _ in range(4):
+        for _ in range(1):
             if total==length: break
             verify(f,path,initial);part=f.read(min(CHUNK,length-total));verify(f,path,initial)
             if not part: raise Failure('integrity')

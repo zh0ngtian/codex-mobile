@@ -98,7 +98,7 @@ export class RemoteFileReadChannel {
     if (!proof || proof[1] !== nonce || Number(proof[2]) !== Buffer.byteLength(value.stdout) || fileSha(Buffer.from(value.stdout)) !== proof[3]) throw new RemoteFileError('integrity', true);
     if (!value.stdout.endsWith('\n')) throw new RemoteFileError('protocol', true);
     const lines = value.stdout.slice(0, -1).split('\n');
-    if (!lines.length || lines.length > 6) throw new RemoteFileError('protocol', true);
+    if (!lines.length || lines.length > 3) throw new RemoteFileError('protocol', true);
     const records = lines.map((line, index) => {
       if (Buffer.byteLength(line) >= 710000) throw new RemoteFileError('capacity', true);
       const item: unknown = JSON.parse(fileText(Buffer.from(line)), (key, value: unknown) => { if (['__proto__', 'constructor', 'prototype'].includes(key)) throw new Error(); return value; });

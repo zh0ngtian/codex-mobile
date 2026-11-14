@@ -46,8 +46,8 @@ try {
       return value;
     });
     const iterator = files.read(request.path)[Symbol.asyncIterator]();
-    // 消费前三窗，并暂停在第四窗第一块；原deadline/failure promise仍有效。
-    for (let n = 0; n < 13; n++) { const part = await iterator.next(); if (part.done || part.value.length !== 524288) throw new Error('窗口数量不符'); }
+    // 消费前十五个单块窗口，并暂停在第十六个最终窗的yield；原deadline/failure promise仍有效。
+    for (let n = 0; n < 16; n++) { const part = await iterator.next(); if (part.done || part.value.length !== 524288) throw new Error('窗口数量不符'); }
     for (let n = 0; n < 5; n++) { await new Promise(resolve => setImmediate(resolve)); global.gc(); }
     if (request.snapshot) writeHeapSnapshot(request.snapshot);
     const livePreviousResults = results.slice(0, -1).filter(reference => reference.deref() !== undefined).length;
@@ -73,7 +73,7 @@ try {
       if (method === 'command/exec' && (params as Record<string, unknown>)?.streamStdoutStderr === false && value && typeof value === 'object') raw.push(new WeakRef(value));
       return value;
     });
-    // 已yield的首块由消费者有意持有；其余三个块必须在原期限/close后全部可回收。
+    // 每窗只产生一个块，由消费者有意持有；parsed记录与原RPC结果必须在原期限/close后可回收。
     const first = async (iterator: AsyncGenerator<Buffer>) => {
       const part = await iterator.next(); if (part.done || part.value.length !== 524288) throw new Error('首块不符'); consumed.push(part.value);
     };
@@ -89,8 +89,8 @@ try {
       const result = {
         mode: request.mode, heldIterators: held.length, parsedChunks: parsed.length, decodedBuffers: decoded.length,
         liveParsedChunks: parsed.filter(reference => reference.deref()).length,
-        liveUnyieldedBuffers: decoded.filter((reference, index) => index % 4 !== 0 && reference.deref()).length,
-        liveCallerBuffers: decoded.filter((reference, index) => index % 4 === 0 && reference.deref()).length,
+        liveUnyieldedBuffers: decoded.filter(reference => { const value = reference.deref(); return value && !consumed.includes(value); }).length,
+        liveCallerBuffers: decoded.filter(reference => { const value = reference.deref(); return value && consumed.includes(value); }).length,
         channels: owners.reduce((total, owner) => total + (owner as unknown as { channels: Set<unknown> }).channels.size, 0),
         activeTargetProcesses: children.size, rawResultsAlive: raw.filter(reference => reference.deref()).length,
         listenersBackToBase: JSON.stringify(listeners()) === JSON.stringify(baseline),
