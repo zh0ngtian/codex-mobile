@@ -1,16 +1,16 @@
 {
   "schemaVersion": 1,
   "task": "Task3c-fixed-target-model-upload-source",
-  "status": "command-execution-reservation-repaired-local-validation-complete-awaiting-new-spec",
+  "status": "target-home-role-repaired-local-validation-complete-awaiting-new-spec",
   "baselineMain": "e292e592133469c20bbcb4efb863f6ca4e2a5961",
-  "implementationCommit": "f89937df05da3143b01b246487803944b6a8b26f",
+  "implementationCommit": "93e99eb0edbc35633f0cfd1d261b19ed3031263f",
   "sourceOnly": true,
   "deployed": false,
   "clientBuiltOrPublished": false,
   "fixedPython": {
     "export": "REMOTE_MODEL_UPLOAD_PYTHON",
-    "bytes": 8891,
-    "sha256": "f61f83b8867101fc3715141dff9aad3d3a02fd97bad305903b4d92e667496ff6"
+    "bytes": 8992,
+    "sha256": "9686ff5ffa8729590826c34aee7d10bc105a54c50a3e40b67bedceed53733953"
   },
   "contract": {
     "source": "同一已initialize的目标RemoteRpcSession和RemoteCommands，仅目标自身既有私有launcher与IPC",
@@ -36,24 +36,25 @@
     },
     "invalidation": "remove删除缓存；失败、断线、超时、取消、关闭立即清缓存；不制造零usage",
     "cleanup": "仅自有processId；空ACK或exec拒绝不是实际终结；资源持有至实际exec结束或原期限；保留caller session与Relay",
-    "commandsExecutionReservation": "全局4命令/64MiB保守逻辑预留；业务取消与实际exec观察分离，已发送只在有效实际终结或原绝对期限释放，未发送立即释放；不承诺RSS"
+    "commandsExecutionReservation": "全局4命令/64MiB保守逻辑预留；业务取消与实际exec观察分离，已发送只在有效实际终结或原绝对期限释放，未发送立即释放；不承诺RSS",
+    "homeTrust": "目标codexHome为当前uid拥有的真实目录、无symlink和group/other写；0700/0755均可。祖先持续身份与敏感launcher/计量目录/socket私有权限不变"
   },
   "localVerification": {
     "newRelated": {
-      "files": 3,
-      "passed": 103,
+      "files": 4,
+      "passed": 121,
       "exitCode": 0,
       "includedInFullServer": true,
       "separatelyRepeated": false
     },
     "fullServer": {
-      "filesPassed": 62,
+      "filesPassed": 63,
       "filesSkipped": 2,
-      "passed": 1477,
+      "passed": 1495,
       "skipped": 7,
-      "total": 1484,
+      "total": 1502,
       "exitCode": 0,
-      "elapsedSeconds": 349.233
+      "elapsedSeconds": 352.835
     },
     "strictNpm": {
       "exitCode": 0
@@ -90,18 +91,18 @@
       "qualification": "新目录复制原5、第二轮11及许可1；实现者自测，非独立SPEC，不替代损失的旧5 trace"
     },
     "relatedTotal": {
-      "files": 10,
-      "passed": 508,
+      "files": 11,
+      "passed": 526,
       "exitCode": 0,
       "includedInFullServer": true
     }
   },
   "evidence": {
-    "reportSha256": "a85920210ee06908f371054f292e59a0a48b51ab5ff63b3b5f135221c6d72db9",
-    "manifestSha256": "0c7bf5b4477ad785d7c6e817575fd95cddeaf40ea9b0eac3c3de846241971c84",
-    "artifacts": 6637,
+    "reportSha256": "0abaa1c37fd10f5935184a8410a82fbd704e8fe9cb35386613de9b2093573b97",
+    "manifestSha256": "81af246b1a00b408f65def54faa6301adeed648c7048b7682c5dff0a5639cef3",
+    "artifacts": 912,
     "rootAuditedAllArtifacts": true,
-    "rootVerifiedFinalSourceSnapshots": 14
+    "rootVerifiedFinalSourceSnapshots": 15
   },
   "failureHistory": {
     "firstProductRed": "03：publisher已就绪，但stub未启动统计reader，read持续为null；不声称已交付计量通知",
@@ -135,7 +136,7 @@
   "limitations": [
     "仅本地临时Unix/Mac及受控Windows无能力分支，没有Windows实机证明",
     "ModelUploadSource无失效回调；产品/UI传播继续Task3d/5",
-    "本来源尚未执行官方Remote验收",
+    "首次官方Remote验收实际失败于来源证明；93e99eb已本地修复，持续读取与零流仍须新冻结双审后官方B验收",
     "没有P95、8小时、凭据刷新、睡眠唤醒、手机或完整快照结论",
     "没有新授权、登记、模型推理、测试聊天或生产改动"
   ],
@@ -208,7 +209,7 @@
   },
   "initialImplementationCommit": "e42be25c81e7b4bc3f83905d951a6c4e38021812",
   "repairValidation": {
-    "status": "首轮来源与清理修复已本地验证；第二轮Commands执行预留修复也已本地验证，新冻结独立复审仍待完成",
+    "status": "99f595旧冻结独立双审通过但官方来源证明失败；home信任角色93e99eb修复已本地验证，新冻结双审与官方B待完成",
     "actualRedCases": [
       "拒绝空URL分隔符",
       "Commands正常terminate在父guard失效/取消/跨期时被拦截",
@@ -251,7 +252,7 @@
     "actualLiveWrapperPeak": 5,
     "existingConcurrentLimit": 4,
     "sharedRpcStillReadyAndUsable": true,
-    "repairStatus": "f89937d本地验证完成，待新冻结独立SPEC；QUALITY和官方未开始",
+    "repairStatus": "f89937d本地修复及99f595第三轮SPEC/QUALITY已通过；官方来源证明失败另行修复",
     "reportSha256": "7a4e18f91c0df6f3ff6cf3e249fb105b75e5291843e3f92aaa42ca8e1bdeb293",
     "manifestSha256": "c53c43bb599f519432b58cd6b0c174923bff4880d5437fbcb312bbfa7a6671d9",
     "artifacts": 2951,
@@ -270,7 +271,7 @@
     "originalByteBackupsFound": false,
     "originalsRestored": false,
     "recordsRetained": "保留原manifest、expected/current散列差异、覆盖文件副本与触发运行命令/结果/日志",
-    "gateTreatment": "不把覆盖文件当原始证据；后续新冻结独立SPEC重新取证，未放行QUALITY或官方验收"
+    "gateTreatment": "旧覆盖文件不当原始证据；新99f595独立SPEC/QUALITY已重新取证通过，旧5 trace损失不恢复不覆盖；官方首次失败另行处理"
   },
   "firstRepairCandidate": {
     "implementationCommit": "80e4e37b399fc8cee983de607dfff7d0b5faf726",
@@ -382,5 +383,179 @@
     ],
     "actualExecutionObservation": "已发送exec原期限内可保留有界pending，cleanup等待单独清理；空ACK/拒绝/非法响应/业务abort/adapter.close不证明结束",
     "finalVerification": "最终1477通过/7跳过、双strict及服务端构建；14份本阶段变更快照与提交一致"
+  },
+  "thirdIndependentSpec": {
+    "sourceCommit": "99f595b24a84bc79af7882253d4060461552ab49",
+    "passed": true,
+    "reportSha256": "2e4d61e23bc9d40f70747030a80a548c2b81f2ff34d8e548f03dcfb5283d51fe",
+    "manifestSha256": "c9110b04aabf9d24c0ad0084a09bc38e4dd5393a847f8c0afc0cc8c001cd6360",
+    "artifacts": 2964,
+    "rootAuditedAllArtifacts": true,
+    "rootAuditSha256": "02a5918f62222b5499d9675e5de94f6ae4a370514cf9e78e4c19791a13c5447f",
+    "independentPassed": 23,
+    "relatedPassed": 181,
+    "firstFailureQualification": "最初3通过/3夹具超时：已结束prepare命令的20秒期限被测试夹具误保留；仅修夹具后新增6项通过，非产品RED"
+  },
+  "firstIndependentQuality": {
+    "sourceCommit": "99f595b24a84bc79af7882253d4060461552ab49",
+    "passed": true,
+    "reportSha256": "a3edf330b6e5c8ca532ab5dde7d07ac935950eee63689aec0da06d2bce2e3d94",
+    "manifestSha256": "5b844cbfacf1290f180f08919a469c4831ca85a4e972431f8cb28117e64278ea",
+    "artifacts": 2960,
+    "rootAuditedAllArtifacts": true,
+    "rootAuditSha256": "8d29481e1f606d89c2454a084f104a9548a634133f8e7a1de29bd1ffbcae9e6c",
+    "independentPassed": 5,
+    "relatedPassed": 157,
+    "firstFailureQualification": "最初2通过/3夹具失败：Unix socket路径107字节超限；仅缩短夹具路径后5项通过，非产品RED",
+    "naturalTerminationQualification": "Q5 partial IPC失效后的旧Python实际为SIGKILL/code null，不把它称为自然非零退出；新来源只接纳新证明"
+  },
+  "firstOfficialRemoteAttempt": {
+    "sourceCommit": "99f595b24a84bc79af7882253d4060461552ab49",
+    "passed": false,
+    "receiptSha256": "06bd86e81fe495f0cd1b5d545217e44a40a11a9e8b834bf9c0c270e15424cdbd",
+    "manifestSha256": "fd23ab597d184d4c4f588879d73e8f5482bb479a932776a642d99a4e752db6ce",
+    "artifacts": 165,
+    "actualExitCode": 1,
+    "actualSignalCode": null,
+    "isolatedRootRemoved": true,
+    "authPrepares": 1,
+    "meterExecRequests": 1,
+    "meterActualEnds": 1,
+    "meterActive": 0,
+    "sourceVerifiedFrames": 0,
+    "usageFrames": 0,
+    "rootAuditedAllArtifacts": true,
+    "rootAuditSha256": "44595c7e3d95387227496636cdbc1cfe9d84b1f60c205ae2ec8913714c9635e0",
+    "blindRetryPerformed": false,
+    "phase": "目标来源能力证明，未进入业务持续读取与零流验收",
+    "readyFrames": 1,
+    "newAuthorization": false,
+    "modelsInvoked": 0,
+    "testChatsCreated": 0,
+    "productionChanged": false
+  },
+  "officialReadOnlyDiagnostic": {
+    "receiptSha256": "2cf81d2b32012e3c8075d54198a77410350a79e2356caffb39ea00dda329a3be",
+    "manifestSha256": "f62e759c008fd570b3853344664e86c3882e1ded78d47ab69f097ba393c07a2f",
+    "artifacts": 5,
+    "rootAuditedAllArtifacts": true,
+    "actualOfficialDefaultPermissions": true,
+    "productRetry": false,
+    "passed": true,
+    "targetHomeMode": "0755",
+    "privateMeterParentMode": "0700",
+    "privateSocketMode": "0600",
+    "privateLauncherMode": "0700",
+    "rootAuditSha256": "d279fb2e08c01e4a367cdbe5c995f71e098a60c790550f07d9c4a7d16665e74b",
+    "targetHomeOwned": true,
+    "targetHomeGroupOrOtherWritable": false,
+    "targetHomeSymlink": false,
+    "metadataHomeMatchesTargetEnv": true,
+    "isolatedRootRemoved": true
+  },
+  "reservationRepairCandidate": {
+    "implementationCommit": "f89937df05da3143b01b246487803944b6a8b26f",
+    "sourceFreeze": "99f595b24a84bc79af7882253d4060461552ab49",
+    "fixedPython": {
+      "export": "REMOTE_MODEL_UPLOAD_PYTHON",
+      "bytes": 8891,
+      "sha256": "f61f83b8867101fc3715141dff9aad3d3a02fd97bad305903b4d92e667496ff6"
+    },
+    "localVerification": {
+      "newRelated": {
+        "files": 3,
+        "passed": 103,
+        "exitCode": 0,
+        "includedInFullServer": true,
+        "separatelyRepeated": false
+      },
+      "fullServer": {
+        "filesPassed": 62,
+        "filesSkipped": 2,
+        "passed": 1477,
+        "skipped": 7,
+        "total": 1484,
+        "exitCode": 0,
+        "elapsedSeconds": 349.233
+      },
+      "strictNpm": {
+        "exitCode": 0
+      },
+      "strictServer": {
+        "exitCode": 0
+      },
+      "serverBuild": {
+        "command": "npm run build:server",
+        "exitCode": 0
+      },
+      "realFixtureCoverage": [
+        "临时真实Python/Unix publisher经测试RPC执行",
+        "真实WebSocket Relay物理发送与精确清理",
+        "目标来源路径、FD、owner、mode、形态、hash与替换",
+        "usage/remove/epoch/revision、背压及有界缓存",
+        "序号、双摘要、不完整输出与实际exec终结",
+        "取消、期限、断线、迟到帧、重新证明与共享RPC",
+        "超过64KiB的合法合并通知及8MiB输出上限"
+      ],
+      "sharedCommandsAndFiles": {
+        "passed": 290,
+        "commands": 71,
+        "commandExit": 19,
+        "files": 193,
+        "exitCode": 0,
+        "includedInFullServer": true,
+        "commandExecutionBudget": 7
+      },
+      "copiedIndependentProbes": {
+        "passed": 17,
+        "exitCode": 0,
+        "elapsedSeconds": 8.193,
+        "qualification": "新目录复制原5、第二轮11及许可1；实现者自测，非独立SPEC，不替代损失的旧5 trace"
+      },
+      "relatedTotal": {
+        "files": 10,
+        "passed": 508,
+        "exitCode": 0,
+        "includedInFullServer": true
+      }
+    },
+    "evidence": {
+      "reportSha256": "a85920210ee06908f371054f292e59a0a48b51ab5ff63b3b5f135221c6d72db9",
+      "manifestSha256": "0c7bf5b4477ad785d7c6e817575fd95cddeaf40ea9b0eac3c3de846241971c84",
+      "artifacts": 6637,
+      "rootAuditedAllArtifacts": true,
+      "rootVerifiedFinalSourceSnapshots": 14
+    }
+  },
+  "homeRoleRepairValidation": {
+    "implementationCommit": "93e99eb0edbc35633f0cfd1d261b19ed3031263f",
+    "scope": "仅home信任角色helper/初始和持续两调用；敏感叶private与祖先连续身份不变；旧home拒绝测试改0775",
+    "firstProductRed": {
+      "passed": 1,
+      "failed": 1,
+      "exitCode": 1,
+      "elapsedSeconds": 0.658,
+      "actualWsPythonAndUnixPublisher": true,
+      "failure": "0700成功，0755在来源hello前被旧脚本capability拒绝"
+    },
+    "directedGreen": {
+      "passed": 18,
+      "exitCode": 0,
+      "elapsedSeconds": 1.974
+    },
+    "genuineNegativeCoverage": [
+      "0775/0777拒绝",
+      "真实symlink拒绝",
+      "四种敏感叶权限仍私有",
+      "运行中chmod或home inode替换失效、清缓存且后续usage不复活"
+    ],
+    "wrongOwnerQualification": "仅真实Python中的受控lstat uid分支；未真实chown或提权",
+    "harnessFailures": 0,
+    "snapshotFiles": 15,
+    "snapshotGroupsCompared": 6,
+    "rootSnapshotAuditSha256": "8e0e953b5da8ea99cc3afee10b59a7170d2153725835f69058d1bbf14477a604",
+    "rootArtifactsAuditSha256": "764716776f9b3a9b210a0befded47fbf16264265bf189d81422a6da8230a4aa4",
+    "finalFullServer": "1495通过/7既有跳过；双strict及服务端构建通过",
+    "newReviewsAndOfficialBPending": true
   }
 }
