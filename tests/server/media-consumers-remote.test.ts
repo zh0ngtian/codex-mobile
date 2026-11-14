@@ -312,7 +312,9 @@ it('图片转换结束后的目标替换同样拒绝且不缓存旧转换结果'
 });
 
 it('排队期间目标图片替换在active复核时拒绝，未为等待项提前读取目标字节', async () => {
-  const implementation = await api(); const f = await target(); const source = implementation.remoteMediaFiles(f.files, 'gateway'); const images = new ImagePreviews();
+  const implementation = await api(); const f = await target(); const remote = implementation.remoteMediaFiles(f.files, 'gateway'); const images = new ImagePreviews();
+  let completedStats = 0;
+  const source = { ...remote, async stat(...args: Parameters<typeof remote.stat>) { const value = await remote.stat(...args); completedStats++; return value; } };
   for (const name of ['active-a.svg', 'active-b.svg', 'queued.svg']) await writeFile(join(f.root, name), svg('red'));
   f.delayReads(10000); const url = await http((req, res, url) => images.handle(req, res, url, source));
   const controllers = [new AbortController(), new AbortController()];
@@ -320,7 +322,7 @@ it('排队期间目标图片替换在active复核时拒绝，未为等待项提�
   await until(() => f.reads.length === 1);
   const b = fetch(url('/media/active-b.svg', { thumbnail: '1' }), { signal: controllers[1].signal }).catch(() => null);
   await until(() => f.reads.length === 2);
-  const count = f.stats; const waiting = fetch(url('/media/queued.svg', { thumbnail: '1' })); await until(() => f.stats > count); await new Promise(resolve => setTimeout(resolve, 20));
+  const waiting = fetch(url('/media/queued.svg', { thumbnail: '1' })); await until(() => completedStats >= 3);
   await writeFile(join(f.root, 'replacement.svg'), svg('blue')); await rename(join(f.root, 'replacement.svg'), join(f.root, 'queued.svg'));
   controllers.forEach(controller => controller.abort()); await Promise.all([a, b]);
   const rejected = await waiting; expect(rejected.status).toBe(409); await body(rejected); expect(f.reads.length).toBe(2);
