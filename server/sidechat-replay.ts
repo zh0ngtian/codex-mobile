@@ -30,7 +30,7 @@ export async function sidechatReplayItems(turns: Value[], options: SidechatRepla
                 for await (const part of file.read()) { parts.push(part); length += part.length; }
                 url = `data:${mime};base64,${Buffer.concat(parts, length).toString('base64')}`;
               } finally { await file.close(); }
-            } else if (files.kind === 'remote') throw new Error('Unresolved target image reference');
+            } else if (files.kind === 'remote' || options.resolveReference) throw new Error('Unresolved target image reference');
           }
           content.push({ type: 'input_image', image_url: url });
         } else content.push({ type: 'input_text', text: JSON.stringify(part) });

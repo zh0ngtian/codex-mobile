@@ -128,6 +128,57 @@ it('InlineImages可信引用区分网关缓存与目标savedPath，历史重建�
   expect(original.data[0].items[0].content![0].url.startsWith('data:')).toBe(true);
 });
 
+it.each([
+  { mode: 'resolver-only', missing: 'gateway-cache' }, { mode: 'resolver-only', missing: 'target' },
+  { mode: 'explicit-local', missing: 'gateway-cache' }, { mode: 'explicit-local', missing: 'target' },
+] as const)('显式引用解析在$mode中丢失$missing时拒绝历史重建', async ({ mode, missing }) => {
+  const implementation = await api(); const f = await target(); const source = implementation.remoteMediaFiles(f.files, 'gateway');
+  const root = await mkdtemp(join(tmpdir(), 'codex-media-reference-')); cleanup.push(() => rm(root, { recursive: true, force: true }));
+  const refs = new Map<string, import('../../server/media-file-source.js').MediaFileReference>();
+  const images = new InlineImages(root, undefined, { files: source, reference(ref) { const id = `opaque-${refs.size}`; refs.set(id, ref); return id; } });
+  const cacheBytes = await sharp(svg('red')).png().toBuffer(); const targetBytes = await sharp(svg('blue')).png().toBuffer();
+  await writeFile(join(f.root, 'saved.png'), targetBytes);
+  const original = { data: [{ items: [
+    { type: 'userMessage', content: [{ type: 'image', url: pngData + cacheBytes.toString('base64'), origin: 'target' }] },
+    { type: 'imageGeneration', savedPath: '/media/saved.png', origin: 'gateway-cache' },
+  ] }] };
+  let turns: Parameters<typeof sidechatReplayItems>[0] = [];
+  const url = await http(async (_req, res, url) => {
+    try {
+      const result = url.searchParams.get('path') === 'inline' ? await images.result(original) : await sidechatReplayItems(turns, {
+        ...(mode === 'explicit-local' ? { files: implementation.localMediaFiles } : {}), resolveReference: value => refs.get(value) ?? null,
+      });
+      res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(result));
+    } catch (error) { res.writeHead(422, { 'content-type': 'application/json' }).end(JSON.stringify({ error: (error as Error).message })); }
+  });
+  const encodedResponse = await fetch(url('inline')); expect(encodedResponse.status).toBe(200);
+  const encoded = await encodedResponse.json() as { data: [{ items: [{ content: [{ url: string }] }, { savedPath: string }] }] };
+  const cacheRef = encoded.data[0].items[0].content[0].url; const targetRef = encoded.data[0].items[1].savedPath;
+  expect(refs.get(cacheRef)).toMatchObject({ origin: 'gateway-cache', source: implementation.localMediaFiles });
+  expect(refs.get(targetRef)).toMatchObject({ origin: 'target', source, path: '/media/saved.png' });
+  turns = [{ items: [{ type: 'userMessage', content: [{ type: 'image', url: cacheRef }, { type: 'localImage', path: targetRef }] }] }];
+  const valid = await fetch(url('replay')); expect(valid.status).toBe(200);
+  const replay = await valid.json() as Array<{ content: Array<{ image_url: string }> }>;
+  expect(replay[0].content.map(part => part.image_url)).toEqual([pngData + cacheBytes.toString('base64'), pngData + targetBytes.toString('base64')]);
+  expect(f.reads.length).toBeGreaterThan(0);
+  refs.delete(missing === 'gateway-cache' ? cacheRef : targetRef);
+  const rejected = await fetch(url('replay')); expect(rejected.status).toBe(422);
+  expect(await rejected.json()).toEqual({ error: 'Unresolved target image reference' });
+});
+
+it('显式解析保留Local绝对文件和data/http(s)URL，默认Local继续兼容相对图片值', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'codex-media-reference-local-')); cleanup.push(() => rm(root, { recursive: true, force: true }));
+  const file = join(root, 'history.jpg'); const bytes = Buffer.from('local-history'); await writeFile(file, bytes);
+  const urls = [pngData + bytes.toString('base64'), 'http://invalid.example/no-fetch.png', 'https://invalid.example/no-fetch.png'];
+  const turns = (values: string[]) => [{ items: [{ type: 'userMessage', content: values.map(url => ({ type: 'image', url })) }] }];
+  const resolved: string[] = [];
+  const result = await sidechatReplayItems(turns([file, ...urls]), { resolveReference(value) { resolved.push(value); return null; } });
+  expect(resolved).toEqual([file]);
+  expect(result[0].content.map((part: any) => part.image_url)).toEqual([jpegData + bytes.toString('base64'), ...urls]);
+  const defaults = await sidechatReplayItems(turns(['legacy-relative.png', ...urls]));
+  expect(defaults[0].content.map((part: any) => part.image_url)).toEqual(['legacy-relative.png', ...urls]);
+});
+
 it('Remote失败不读取网关同名文件，缺失与断连不能成为本地媒体成功', async () => {
   const implementation = await api(); const root = await mkdtemp(join(tmpdir(), 'codex-media-gateway-')); cleanup.push(() => rm(root, { recursive: true, force: true }));
   const path = join(root, 'collision.svg'); await writeFile(path, svg('blue')); const f = await target({ prefix: root + '/' });
@@ -218,11 +269,14 @@ it('HTTP慢消费者产生真实背压，取消只终止自身读取并保留共
 });
 
 it('同缩略图合并任务保留其他waiter，最后取消后不缓存且新请求可重试', async () => {
-  const implementation = await api(); const f = await target(); const source = implementation.remoteMediaFiles(f.files, 'gateway'); const images = new ImagePreviews();
+  const implementation = await api(); const f = await target(); const remote = implementation.remoteMediaFiles(f.files, 'gateway'); const images = new ImagePreviews();
+  let completedStats = 0;
+  const source = { ...remote, async stat(...args: Parameters<typeof remote.stat>) { const value = await remote.stat(...args); completedStats++; return value; } };
   await writeFile(join(f.root, 'coalesce.svg'), svg('red')); f.delayReads(500);
   const url = await http((req, res, url) => images.handle(req, res, url, source));
   const firstAbort = new AbortController(); const first = fetch(url('/media/coalesce.svg', { thumbnail: '1' }), { signal: firstAbort.signal }).catch(() => null);
-  await until(() => f.reads.length === 1); const second = fetch(url('/media/coalesce.svg', { thumbnail: '1' })); await until(() => f.stats >= 3);
+  // 第二个 stat 返回后才会加入共享任务；发起 stat 本身还不是第二个 waiter。
+  await until(() => f.reads.length === 1); const second = fetch(url('/media/coalesce.svg', { thumbnail: '1' })); await until(() => completedStats >= 2);
   firstAbort.abort(); await first; const accepted = await second; expect(accepted.status).toBe(200); await body(accepted); expect(f.reads.length).toBe(1);
   await writeFile(join(f.root, 'coalesce.svg'), svg('blue')); const lastAbort = new AbortController(); const last = fetch(url('/media/coalesce.svg', { thumbnail: '1' }), { signal: lastAbort.signal }).catch(() => null);
   await until(() => f.reads.length === 2); await until(() => f.active > 0); lastAbort.abort(); await last; await until(() => f.active === 0);
