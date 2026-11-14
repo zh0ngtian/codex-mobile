@@ -31,6 +31,8 @@ def identity(info): return (info.st_dev,info.st_ino,info.st_uid,info.st_mode)
 def file_identity(info): return identity(info)+(info.st_nlink,info.st_size,info.st_mtime_ns,info.st_ctime_ns)
 def private(info,kind):
     need(kind(info.st_mode) and info.st_uid==os.getuid() and not info.st_mode&0o077)
+def trusted_home(info):
+    need(stat.S_ISDIR(info.st_mode) and info.st_uid==os.getuid() and not info.st_mode&0o022)
 def ancestors(path):
     absolute(path);result=[];current=os.path.dirname(path)
     while True:
@@ -81,7 +83,7 @@ def verify():
     need(time.monotonic()<deadline)
     recheck(launcher_parents);recheck(socket_parents)
     need(read_launcher()==launcher_raw)
-    private(os.lstat(home),stat.S_ISDIR);private(os.lstat(os.path.dirname(launcher)),stat.S_ISDIR)
+    trusted_home(os.lstat(home));private(os.lstat(os.path.dirname(launcher)),stat.S_ISDIR)
     private(os.lstat(os.path.dirname(socket_path)),stat.S_ISDIR)
     current=os.lstat(socket_path);private(current,stat.S_ISSOCK)
     need(current.st_nlink==1 and file_identity(current)==socket_identity)
@@ -104,7 +106,7 @@ try:
     request=decode(sys.stdin.buffer.readline(32769))
     need(isinstance(request,dict) and set(request)==set(('home','budgetMs')) and type(request['budgetMs'])==int and 0<request['budgetMs']<=180000)
     deadline=min(deadline,time.monotonic()+request['budgetMs']/1000)
-    home=absolute(request['home']);private(os.lstat(home),stat.S_ISDIR)
+    home=absolute(request['home']);trusted_home(os.lstat(home))
     launcher=absolute(os.environ.get('CODEX_APP_RUNTIME_CLI_PATH',''));launcher_parents=ancestors(launcher)
     private(os.lstat(os.path.dirname(launcher)),stat.S_ISDIR)
     original=os.lstat(launcher);private(original,stat.S_ISREG);need(original.st_nlink==1 and original.st_size<=65536)

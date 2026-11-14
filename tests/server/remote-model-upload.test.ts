@@ -124,7 +124,7 @@ it.each(['launcher-symlink', 'launcher-hardlink', 'launcher-mode', 'launcher-sha
   if (fault === 'launcher-too-large') await writeFile(f.launcher, 'x'.repeat(65537));
   if (fault === 'ancestor-symlink') { const parent = join(f.directory, 'private'); await rename(parent, parent + '.real'); await symlink(parent + '.real', parent); }
   if (fault === 'ancestor-mode') await chmod(f.directory, 0o777);
-  if (fault === 'home-mode') await chmod(f.home, 0o755);
+  if (fault === 'home-mode') await chmod(f.home, 0o775);
   if (fault === 'socket-mode') await chmod(f.socketPath, 0o666);
   if (fault === 'socket-symlink') { await rename(f.socketPath, f.socketPath + '.real'); await symlink(f.socketPath + '.real', f.socketPath); }
   if (fault === 'wrong-home') { f.config.socketPath = join(f.directory, 'elsewhere.sock'); await f.writeLauncher(); }
