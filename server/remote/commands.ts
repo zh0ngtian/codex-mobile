@@ -36,6 +36,10 @@ const digest = (value: Uint8Array) => createHash('sha256').update(value).digest(
 function object(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value) && [Object.prototype, null].includes(Object.getPrototypeOf(value));
 }
+/** RPC拒绝/terminate ACK不能证明结束；仅官方exec终结字段可提前归还执行预算。 */
+function execEnded(value: unknown): boolean {
+  return object(value) && Object.keys(value).sort().join(',') === 'exitCode,stderr,stdout' && Number.isSafeInteger(value.exitCode) && (value.exitCode as number) >= -2147483648 && (value.exitCode as number) <= 2147483647 && typeof value.stdout === 'string' && typeof value.stderr === 'string';
+}
 function data(value: unknown, keys: string[], code: RemoteCommandFailure): Record<string, unknown> {
   if (!object(value) || Reflect.ownKeys(value).some(key => typeof key !== 'string' || !keys.includes(key) || !Object.hasOwn(Object.getOwnPropertyDescriptor(value, key)!, 'value'))) throw new RemoteCommandError(code, false);
   return value;
@@ -248,12 +252,17 @@ export class RemoteCommands {
     const reservation = wireCap * 5 + input.length * 4 + 65536;
     if (activeCommands >= MAX_CONCURRENT || reservedMemory + reservation > GLOBAL_MEMORY) throw new RemoteCommandError('capacity', false);
     activeCommands++; reservedMemory += reservation;
-    const nonce = randomUUID(); const processId = this.prefix + randomUUID(); const abort = new AbortController(); const terminationAbort = new AbortController();
+    const nonce = randomUUID(); const processId = this.prefix + randomUUID(); const abort = new AbortController(); const terminationAbort = new AbortController(); const executionAbort = new AbortController();
     let rejectFailure!: (error: RemoteCommandError) => void;
     const failure = new Promise<never>((_resolve, reject) => { rejectFailure = reject; }); void failure.catch(() => undefined);
     const op: Operation = { deadline, sent: false, processId, abort, fail: code => {
       if (op.error) return; op.error = new RemoteCommandError(code, op.sent); abort.abort(); rejectFailure(op.error);
     } };
+    let releaseRequested = false; let released = false; let executionEnded = false;
+    const tryRelease = () => {
+      if (released || !releaseRequested || (op.sent && !executionEnded && performance.now() < deadline)) return;
+      released = true; clearTimeout(timer); executionAbort.abort(); activeCommands--; reservedMemory -= reservation;
+    };
     this.operations.add(op);
     const remaining = () => { this.assert(op); assertRemoteOperation(); return Math.max(1, Math.floor(op.deadline - performance.now())); };
     const cancelled = () => op.fail('cancelled'); const disconnected = () => op.fail('disconnected'); const closed = () => op.fail('disconnected');
@@ -300,16 +309,24 @@ export class RemoteCommands {
         }
       } catch (error) { op.fail(error instanceof RemoteCommandError ? error.code : 'protocol'); }
     };
-    const timer = setTimeout(() => op.fail('timeout'), Math.max(1, deadline - performance.now()));
+    const expired = () => {
+      const left = deadline - performance.now();
+      if (left > 0) { timer = setTimeout(expired, Math.max(1, Math.ceil(left))); return; }
+      op.fail('timeout'); tryRelease();
+    };
+    let timer = setTimeout(expired, Math.max(1, Math.ceil(deadline - performance.now())));
     signal?.addEventListener('abort', cancelled, { once: true }); if (signal?.aborted) cancelled(); this.session.on('notification', notification); this.session.on('disconnect', disconnected); this.session.on('close', closed);
     try {
       return await withRemoteOperation(() => this.assert(op), async () => {
         const params: Record<string, JsonValue> = { command: [this.python, '-I', '-u', '-c', PYTHON, nonce, String(input.length), digest(input), String(remaining())], processId, streamStdin: true, streamStdoutStderr: true, outputBytesCap: wireCap, timeoutMs: remaining(), cwd, ...(env === undefined ? {} : { env }) };
         // 调用开始后保守视为可能发送；RPC明确未发送的拒绝会恢复准确边界。
-        const execution = this.session.call('command/exec', params, { timeoutMs: remaining(), signal: abort.signal }); op.sent = true;
-        const result = execution.catch((error: unknown) => {
+        // 业务取消只停止后续写入；实际exec观察保留至终结证明或原绝对期限。
+        const execution = this.session.call('command/exec', params, { timeoutMs: remaining(), deadline, signal: executionAbort.signal }); op.sent = true;
+        const result = execution.then(response => {
+          executionEnded = execEnded(response); tryRelease(); return response;
+        }, (error: unknown) => {
           if (error instanceof RemoteRpcError && !error.mayHaveBeenSent && !ready) op.sent = false;
-          throw error;
+          tryRelease(); throw error;
         }); void result.catch(() => undefined);
         const earlyExit = result.then(response => {
           if (!ready) {
@@ -376,8 +393,9 @@ export class RemoteCommands {
       } finally { if (cleanupTimer) clearTimeout(cleanupTimer); }
       throw classified;
     } finally {
-      clearTimeout(timer); signal?.removeEventListener('abort', cancelled); this.session.off('notification', notification); this.session.off('disconnect', disconnected); this.session.off('close', closed);
-      abort.abort(); terminationAbort.abort(); this.operations.delete(op); activeCommands--; reservedMemory -= reservation;
+      signal?.removeEventListener('abort', cancelled); this.session.off('notification', notification); this.session.off('disconnect', disconnected); this.session.off('close', closed);
+      abort.abort(); terminationAbort.abort(); this.operations.delete(op); output.length = 0; handshake = Buffer.alloc(0); control = Buffer.alloc(0);
+      releaseRequested = true; tryRelease();
     }
   }
   close(): Promise<void> {

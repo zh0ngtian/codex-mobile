@@ -21,9 +21,14 @@ async function fixture(metadata?: Record<string, unknown>) {
   const directory = await mkdtemp(join(tmpdir(), 'remote-command-test-'));
   cleanups.push(() => rm(directory, { recursive: true, force: true }));
   const processes = new Map<string, ChildProcessWithoutNullStreams>();
+  const uncertainExecutions = new Map<string, number>();
   const frames: RpcMessage[] = []; const ready = new Set<string>(); let fault: Fault; let missingPython = false; let pauseReady = false; let beforeWrite: (() => void) | undefined; let terminateFault: 'invalid' | 'reject' | 'no-final' | undefined; let holdFinal = false; let controlFault: 'reorder' | 'bad-hash' | 'bad-size' | 'bad-nonce' | undefined; const finalResponses: (() => void)[] = [];
   let sequence = 0;
-  const respond = (message: RpcMessage, result: unknown) => stream.emit('message', { id: message.id!, result: result as JsonValue }, { seqId: ++sequence });
+  const respond = (message: RpcMessage, result: unknown) => {
+    const pending = (session as unknown as { responses: Map<string, unknown> }).responses.has(String(message.id));
+    stream.emit('message', { id: message.id!, result: result as JsonValue }, { seqId: ++sequence });
+    if (message.method === 'command/exec' && pending) uncertainExecutions.delete((message.params as Record<string, JsonValue>).processId as string);
+  };
   const notify = (processId: string, streamName: string, data: Buffer, capReached = false, encoded?: string) => stream.emit('message', { method: 'command/exec/outputDelta', params: { processId, stream: streamName, deltaBase64: encoded ?? data.toString('base64'), capReached } }, { seqId: ++sequence });
   const kill = (child: ChildProcessWithoutNullStreams) => { try { if (process.platform === 'win32') child.kill('SIGTERM'); else if (child.pid) process.kill(-child.pid, 'SIGTERM'); } catch { /* 已退出。 */ } };
   const stream = new RemoteStream('environment', 'test-stream', async (_stream, message) => {
@@ -33,6 +38,7 @@ async function fixture(metadata?: Record<string, unknown>) {
     if (message.method === 'initialize') queueMicrotask(() => respond(message, metadata ?? { codexHome: directory, platformFamily: 'unix', platformOs: process.platform === 'darwin' ? 'macos' : 'linux', userAgent: 'test' }));
     else if (message.method === 'command/exec') {
       const processId = params.processId as string;
+      uncertainExecutions.set(processId, performance.now() + (params.timeoutMs as number));
       if (missingPython) queueMicrotask(() => respond(message, { exitCode: 127, stdout: '', stderr: 'synthetic-secret PATH /private/user' }));
       else {
         const argv = params.command as string[];
@@ -105,7 +111,14 @@ async function fixture(metadata?: Record<string, unknown>) {
     return { seqId: frames.length };
   }, () => {});
   const session = RemoteRpcSession.fromRemoteStream(stream, { responseTimeoutMs: 25 });
-  cleanups.push(async () => { for (const child of processes.values()) kill(child); session.close(); await until(() => processes.size === 0); });
+  // 先让实际child close回执被RPC接收；断线/故意丢回执的用例只能等原有限期限。
+  cleanups.push(async () => {
+    for (const child of processes.values()) kill(child); await until(() => processes.size === 0);
+    await until(() => (session as unknown as { pending: Set<unknown> }).pending.size === 0);
+    const remaining = Math.max(...uncertainExecutions.values()) - performance.now();
+    if (remaining > 0) await new Promise(resolve => setTimeout(resolve, Math.ceil(remaining) + 1));
+    session.close();
+  });
   await session.initialize();
   return { directory, session, stream, frames, processes, setControlFault(value: typeof controlFault) { controlFault = value; }, setTerminateFault(value: typeof terminateFault) { terminateFault = value; }, holdFinal() { holdFinal = true; }, releaseFinal() { holdFinal = false; for (const fn of finalResponses.splice(0)) fn(); }, setFault(value: Fault) { fault = value; }, missingPython() { missingPython = true; }, pauseReady() { pauseReady = true; }, beforeWrite(fn: () => void) { beforeWrite = fn; } };
 }
@@ -242,6 +255,7 @@ it('全局并发预算跨适配器共享，拒绝第五个操作且清理后恢�
   await until(() => f.processes.size === 4);
   await expect(other.execute({ argv: py('print(1)'), cwd: f.directory })).rejects.toMatchObject({ code: 'capacity', mayHaveBeenSent: false });
   controllers.forEach(controller => controller.abort()); expect((await Promise.all(pending)).every(error => error.code === 'cancelled')).toBe(true);
+  await until(() => f.processes.size === 0 && (f.session as unknown as { pending: Set<unknown> }).pending.size === 0);
   const result = await f.adapter.execute({ argv: py('print(1)'), cwd: f.directory }); expect(result.exitCode).toBe(0);
 });
 
