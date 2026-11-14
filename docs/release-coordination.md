@@ -8,6 +8,8 @@
 
 只有用户明确要求发布客户端或部署网关时，才登记对应发布任务并使用下文的 heartbeat、ready、冻结、构建发布及 receipt 流程。普通任务不登记发布任务、不提交 ready、不分配发布版本、不更新 `.release-batch.json`，不触发正式 APK/IPA 打包、渠道更新或生产网关部署；必要的开发验证构建仍按改动范围执行。客户端与网关均有源码变更本身不构成联合发布授权。
 
+2026-11-14用户再次确认现行GitHub-only渠道，并要求将仍引用LAN／签名OTA的旧工作区规则同步为现行合同。该确认适用于本次WebUI输入框与加号补修的双端客户端任务`web-composer-ios-alignment-github-only-20261114`；未来仍按受影响平台选择单端或双端。旧规则不再作为新批次入口，也不为同一已确认渠道重复询问；本次不部署网关。实际版本和交付状态以该任务成功receipt为准。
+
 2026-10-25用户先确认停止本机iOS签名、HTTPS OTA及固定LAN IPA更新，随后进一步要求Android关闭局域网分发，只保留GitHub Release。现行客户端按受影响平台选择项目：仅涉及 Android 时使用 `codex-mobile-github-android`／`mobile-github-android`，只交付 GitHub APK；涉及 iOS 或影响 iOS 的共享运行代码时使用 `codex-mobile-github-only`／`mobile-github-only`，交付 GitHub APK／unsigned IPA 及既有 iOS 软件源。策略 [distribution-policy.json](../release/distribution-policy.json) 同时规定 `iosDistribution=unsigned-only` 与 `androidDistribution=github-only`；新源码拒绝旧mobile／mobile-ota／mobile-unsigned kind及旧客户端项目，不能通过旧模板进入LAN或签名／OTA阶段。8765服务保持停止和disabled，旧包、清单、材料、失败批次及凭证保留不删。无策略或旧ios-only策略的历史工作区继续原合同。现役0.3.45已完成 Android 原生界面与共享地址明文修复的双端发布及软件源回验；本次未部署网关，配套网关沿用0.3.44的既有成功部署；此前0.3.43至0.3.39交付及0.3.38失败记录保留，见下方交付记录。
 
 ## 本机部署与作用域

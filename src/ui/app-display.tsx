@@ -10,6 +10,7 @@ export function AppIcon({
   name,
 }: {
   name:
+    | "plus"
     | "bolt"
     | "shield"
     | "archive"
@@ -38,6 +39,7 @@ export function AppIcon({
     | "stop";
 }) {
   const paths = {
+    plus: <path d="M5 12h14M12 5v14" />,
     bolt: <path d="m13 2-9 12h7l-1 8 10-12h-7z" />,
     shield: <path d="M12 3 4 6v6c0 4 8 9 8 9s8-5 8-9V6z" />,
     archive: <><path d="M4 7h16v13H4z" /><path d="M3 4h18v3H3zM9 11h6" /></>,

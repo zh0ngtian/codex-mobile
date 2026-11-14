@@ -486,7 +486,7 @@ button, a, summary, [role="button"] { -webkit-tap-highlight-color: transparent; 
 .composer-control::before, .add-button::before { content: ""; position: absolute; inset: 5px 0; z-index: -1; border-radius: 999px; background: rgba(0,0,0,.065); }
 .composer-control:disabled { opacity: .4; }
 .composer-control-round { flex: 0 0 34px; width: 34px; padding: 0; display: grid; place-items: center; }
-.composer-control svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linejoin: round; stroke-linecap: round; }
+.composer-control svg, .add-button svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linejoin: round; stroke-linecap: round; }
 .composer-fast[aria-pressed="true"] svg { fill: currentColor; }
 .composer-model { flex-shrink: 1; }
 .composer-effort { flex-shrink: 0; max-width: 30%; }
@@ -503,7 +503,7 @@ button, a, summary, [role="button"] { -webkit-tap-highlight-color: transparent; 
 .composer .composer-input { display: block; width: 100%; min-width: 0; min-height: 24px; max-height: 144px; min-height: 1lh; max-height: 6lh; border: 0; border-radius: 0; resize: none; outline: none; background: transparent; color: inherit; padding: 0 4px; font-size: 1.0625rem; line-height: 1.411765; overflow-y: auto; overflow-wrap: anywhere; overscroll-behavior-y: contain; }
 .composer textarea:disabled { color: #888; opacity: .65; }
 .add-button, .send-button { border: 0; width: 34px; height: 34px; border-radius: 50%; background: transparent; display: grid; place-items: center; font-size: 2rem; font-weight: min(900, calc(200 + var(--bold-text-weight-offset))); }
-.add-button { position: relative; isolation: isolate; height: 44px; color: #222; font-size: 1.625rem; }
+.add-button { position: relative; isolation: isolate; height: 44px; padding: 0; color: #222; }
 .composer-tools .attachment-picker { flex: 0 0 34px; height: 44px; }
 .send-button { position: relative; overflow: hidden; background: #111; color: #fff; }
 .send-button > svg, .send-button > i { position: relative; z-index: 1; }

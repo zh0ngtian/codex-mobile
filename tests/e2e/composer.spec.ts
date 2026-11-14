@@ -1,5 +1,24 @@
 import { expect, test } from "@playwright/test";
 
+test("附件加号在圆形按钮中水平和垂直居中", async ({ page }) => {
+  await page.goto("/tests/fixtures/native-menu/index.html");
+  await page.getByRole("button", { name: "打开 Skill 选择验收" }).tap();
+  const button = page.getByRole("button", { name: "添加附件" });
+  await expect(button.locator("svg")).toBeVisible();
+  const geometry = await button.evaluate(el => {
+    const rect = el.getBoundingClientRect();
+    const svg = el.querySelector("svg")!;
+    const bounds = svg.getBBox();
+    const center = new DOMPoint(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2).matrixTransform(svg.getScreenCTM()!);
+    return { width: rect.width, height: rect.height, x: center.x - rect.x - rect.width / 2, y: center.y - rect.y - rect.height / 2 };
+  });
+  expect(geometry.width).toBe(34);
+  expect(geometry.height).toBe(44);
+  expect(Math.abs(geometry.x)).toBeLessThan(0.5);
+  expect(Math.abs(geometry.y)).toBeLessThan(0.5);
+  await page.screenshot({ path: ".mobile-build/web-composer-plus-centered.png" });
+});
+
 test("正文自然增高到六行，长输入内部滚动、自动折行和删除缩回", async ({ page }) => {
   await page.goto("/tests/fixtures/native-menu/index.html");
   await page.getByRole("button", { name: "打开 Skill 选择验收" }).tap();

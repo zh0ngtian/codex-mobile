@@ -1215,7 +1215,7 @@ export function ConversationPage({
                 }
                 onClick={() => setAttachmentMenuOpen((current) => !current)}
               >
-                ＋
+                <AppIcon name="plus" />
               </button>
               {attachmentMenuOpen && (
                 <div
