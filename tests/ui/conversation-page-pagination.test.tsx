@@ -116,7 +116,7 @@ function renderConversation(
       onRemoveFile={() => undefined}
       onSelectImages={async () => undefined}
       onSelectLocation={async () => false}
-      onOpenAgentSettings={() => undefined}
+      availableControls={{ model: true, effort: true, fast: true, permission: true }} onOpenModelSettings={() => {}} onToggleFast={() => {}} onOpenAgentSettings={() => undefined}
       onOpenPermissionSettings={() => undefined}
       onDraftChange={composer.onDraftChange ?? (() => undefined)}
       historyEdit={composer.historyEdit ?? null}
@@ -364,7 +364,7 @@ describe("会话详情历史分页", () => {
         onRemoveFile={() => undefined}
         onSelectImages={async () => undefined}
         onSelectLocation={async () => false}
-        onOpenAgentSettings={() => undefined}
+        availableControls={{ model: true, effort: true, fast: true, permission: true }} onOpenModelSettings={() => {}} onToggleFast={() => {}} onOpenAgentSettings={() => undefined}
         onOpenPermissionSettings={() => undefined}
         onDraftChange={() => undefined}
         onInterrupt={() => undefined}

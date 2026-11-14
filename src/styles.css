@@ -412,11 +412,7 @@ button, a, summary, [role="button"] { -webkit-tap-highlight-color: transparent; 
 .file-diff-line.deletion { border-left: 3px solid #e86767; background: #fff0f0; }
 .file-diff-line.meta { color: #777; background: #f5f5f5; }
 .file-diff-empty { padding: 24px; color: #888; text-align: center; font-size: 0.8125rem; }
-.composer-wrap { position: fixed; left: 50%; bottom: var(--input-bar-bottom-offset); transform: translateX(-50%); z-index: 4; width: min(100%, 720px); margin: 0; padding: 8px 10px 0; background: linear-gradient(transparent, #fff 17%, #fff); }
-.composer-wrap-maximized { inset: auto auto var(--input-bar-bottom-offset) 50%; z-index: 30; height: min(52dvh, 520px); padding: 10px 4px max(10px, env(safe-area-inset-bottom), var(--browser-edge-bottom)); border: 1px solid rgba(0,0,0,.06); border-bottom: 0; border-radius: 24px 24px 0 0; background: #fff; box-shadow: 0 -16px 44px rgba(0,0,0,.12); display: flex; flex-direction: column; overflow: hidden; }
-.composer-wrap-maximized > .pending-steer-message { position: static; max-width: none; margin: 0 0 8px; }
-.composer-wrap-maximized .composer-follow-up-stack { position: static; flex: 0 0 auto; width: auto; max-height: 132px; margin: 0 0 8px; }
-.composer-wrap-maximized .draft-images, .composer-wrap-maximized .draft-files { flex: 0 0 auto; max-height: 132px; }
+.composer-wrap { position: fixed; left: 50%; bottom: var(--input-bar-bottom-offset); transform: translateX(-50%); z-index: 4; width: min(100%, 720px); margin: 0; padding: 8px 12px 0; background: linear-gradient(transparent, #fff 17%, #fff); }
 .readonly-thread-banner { min-height: 44px; margin: 0 8px 7px; border-radius: 18px; background: rgba(239,239,239,.97); color: #555; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 7px 6px 14px; box-shadow: 0 5px 18px rgba(0,0,0,.05); font-size: 0.75rem; line-height: 1.35; }
 .readonly-thread-banner span { min-width: 0; }
 .readonly-thread-banner button { flex: 0 0 auto; min-height: 32px; border: 0; border-radius: 16px; background: #111; color: #fff; padding: 0 12px; font-size: 0.75rem; font-weight: min(900, calc(650 + var(--bold-text-weight-offset))); }
@@ -484,8 +480,19 @@ button, a, summary, [role="button"] { -webkit-tap-highlight-color: transparent; 
 .skill-mention-menu code { display: block; width: 100%; box-sizing: border-box; border-radius: 9px; background: #e8e8e8; padding: 6px 8px; color: #333; overflow-wrap: anywhere; white-space: normal; word-break: break-word; font: 0.75rem/1.35 ui-monospace, SFMono-Regular, Menlo, monospace; }
 .skill-mention-kind { justify-self: start; border-radius: 999px; background: #f0f0f0; padding: 2px 7px; color: #777; font-size: 0.625rem; font-style: normal; line-height: 1.4; }
 .skill-mention-status { min-height: 52px; color: #777; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 0.8125rem; }
-.composer-wrap-maximized .skill-mention-menu { position: static; flex: 0 0 auto; width: auto; max-height: min(22dvh, 180px); margin: 0 0 8px; }
-.composer { min-height: 60px; border-radius: 31px; background: #f4f4f4; display: grid; grid-template-columns: 46px minmax(0,1fr) 34px 44px; align-items: center; padding: 5px 8px; }
+.composer { min-width: 0; border: 1px solid rgba(0,0,0,.04); border-radius: 28px; background: rgba(244,244,244,.96); display: flex; flex-direction: column; gap: 10px; padding: 17px 12px 12px; }
+.composer-tools { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.composer-control { position: relative; isolation: isolate; flex: 0 1 auto; min-width: 0; height: 44px; border: 0; border-radius: 999px; background: transparent; color: #222; padding: 0 8px; font-size: .8125rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.composer-control::before, .add-button::before { content: ""; position: absolute; inset: 5px 0; z-index: -1; border-radius: 999px; background: rgba(0,0,0,.065); }
+.composer-control:disabled { opacity: .4; }
+.composer-control-round { flex: 0 0 34px; width: 34px; padding: 0; display: grid; place-items: center; }
+.composer-control svg, .add-button svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linejoin: round; stroke-linecap: round; }
+.composer-fast[aria-pressed="true"] svg { fill: currentColor; }
+.composer-model { flex-shrink: 1; }
+.composer-effort { flex-shrink: 0; max-width: 30%; }
+.composer-tools > .send-button { flex: 0 0 34px; margin-left: auto; }
+.composer .draft-images, .composer .draft-files { margin: 0 4px; padding: 8px 8px 0 0; }
+.composer .draft-image-remove { top: -11px; right: -11px; }
 .attachment-picker { position: relative; display: grid; place-items: center; }
 .attachment-menu { position: absolute; z-index: 8; left: 0; bottom: calc(100% + 10px); width: 176px; overflow: hidden; border: 1px solid rgba(0,0,0,.06); border-radius: 18px; background: rgba(255,255,255,.98); box-shadow: 0 12px 36px rgba(0,0,0,.16); padding: 6px; backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); }
 .attachment-menu button { width: 100%; min-height: 48px; border: 0; border-radius: 13px; background: transparent; display: grid; grid-template-columns: 28px minmax(0,1fr); align-items: center; gap: 9px; padding: 7px 10px; color: #222; text-align: left; font-size: 1rem; }
@@ -493,15 +500,11 @@ button, a, summary, [role="button"] { -webkit-tap-highlight-color: transparent; 
 .attachment-menu button:disabled { opacity: .55; }
 .attachment-menu svg { width: 23px; height: 23px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .attachment-menu .action-spinner { width: 19px; height: 19px; justify-self: center; }
-.composer textarea { border: 0; resize: none; outline: none; background: transparent; padding: 11px 7px; max-height: 120px; font-size: 1rem; }
+.composer .composer-input { display: block; width: 100%; min-width: 0; min-height: 24px; max-height: 144px; min-height: 1lh; max-height: 6lh; border: 0; border-radius: 0; resize: none; outline: none; background: transparent; color: inherit; padding: 0 4px; font-size: 1.0625rem; line-height: 1.411765; overflow-y: auto; overflow-wrap: anywhere; overscroll-behavior-y: contain; }
 .composer textarea:disabled { color: #888; opacity: .65; }
-.composer-size-button { width: 34px; height: 34px; border: 0; border-radius: 50%; background: transparent; color: #666; display: grid; place-items: center; padding: 0; }
-.composer-size-button:active { background: #e5e5e5; color: #111; }
-.composer-size-button svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-.composer-wrap-maximized .composer { min-height: 0; flex: 1 1 auto; border-radius: 24px; align-items: end; }
-.composer-wrap-maximized .composer textarea { align-self: stretch; height: 100%; max-height: none; border-radius: 18px; background: #fafafa; padding-block: 16px; }
-.composer-wrap-maximized .add-button, .composer-wrap-maximized .composer-size-button, .composer-wrap-maximized .send-button { margin-bottom: 4px; }
-.add-button, .send-button { border: 0; width: 42px; height: 42px; border-radius: 50%; background: transparent; display: grid; place-items: center; font-size: 2rem; font-weight: min(900, calc(200 + var(--bold-text-weight-offset))); }
+.add-button, .send-button { border: 0; width: 34px; height: 34px; border-radius: 50%; background: transparent; display: grid; place-items: center; font-size: 2rem; font-weight: min(900, calc(200 + var(--bold-text-weight-offset))); }
+.add-button { position: relative; isolation: isolate; height: 44px; padding: 0; color: #222; }
+.composer-tools .attachment-picker { flex: 0 0 34px; height: 44px; }
 .send-button { position: relative; overflow: hidden; background: #111; color: #fff; }
 .send-button > svg, .send-button > i { position: relative; z-index: 1; }
 .send-button-running::before { content: ""; position: absolute; inset: 3px; border-radius: 50%; background: conic-gradient(from 0deg, transparent 0deg 72deg, rgba(255,255,255,.08) 130deg, rgba(255,255,255,.28) 245deg, rgba(255,255,255,.72) 345deg, rgba(255,255,255,.24) 360deg); -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 0); mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 0); animation: composer-running-spin 1s linear infinite; }

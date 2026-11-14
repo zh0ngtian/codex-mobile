@@ -19,7 +19,7 @@ function props(overrides: Partial<Props> & Record<string, unknown> = {}): Props 
     onDuplicate: vi.fn(async () => true), onRename: vi.fn(async () => true), onArchive: vi.fn(async () => true),
     onRetry: vi.fn(), onLoadOlderTurns: vi.fn(async () => true), onSubmit: vi.fn((e: FormEvent) => e.preventDefault()),
     onRemoveImage: vi.fn(), onRemoveFile: vi.fn(), onSelectImages: vi.fn(async () => undefined), onSelectLocation: vi.fn(async () => true),
-    onOpenAgentSettings: vi.fn(), onOpenPermissionSettings: vi.fn(), onDraftChange: vi.fn(), onInterrupt: vi.fn(),
+    availableControls: { model: true, effort: true, fast: true, permission: true }, onOpenModelSettings: vi.fn(), onToggleFast: vi.fn(), onOpenAgentSettings: vi.fn(), onOpenPermissionSettings: vi.fn(), onDraftChange: vi.fn(), onInterrupt: vi.fn(),
     onQueuedFollowUpAction: vi.fn(), ...overrides,
   } as Props;
 }
@@ -30,6 +30,24 @@ function setup(overrides: Partial<Props> & Record<string, unknown> = {}) {
 }
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 describe("网页会话真实操作", () => {
+  it("模型、强度与 Fast 使用独立入口，按只读状态和能力禁用", () => {
+    const { view, current, rerender } = setup();
+    fireEvent.click(view.getByRole("button", { name: "选择模型" }));
+    fireEvent.click(view.getByRole("button", { name: "思考强度" }));
+    fireEvent.click(view.getByRole("button", { name: "速度" }));
+    expect(current.onOpenModelSettings).toHaveBeenCalledOnce();
+    expect(current.onOpenAgentSettings).toHaveBeenCalledOnce();
+    expect(current.onToggleFast).toHaveBeenCalledOnce();
+    expect(view.getByRole("button", { name: "速度" })).toHaveAttribute("aria-pressed", "true");
+    rerender(<ConversationPage {...current} accessMode="readOnly" />);
+    for (const name of ["选择模型", "思考强度", "速度", "选择审批与权限模式"]) {
+      expect(view.getByRole("button", { name })).toBeDisabled();
+    }
+    rerender(<ConversationPage {...current} availableControls={{ model: false, effort: false, fast: false, permission: false }} />);
+    expect(view.getByRole("button", { name: "速度" })).toBeDisabled();
+    expect(view.getByRole("button", { name: "思考强度" })).toBeDisabled();
+  });
+
   it("原生重命名取消后下一次点击立即重新打开菜单", async () => {
     const show = vi.fn();
     (window as any).CodexMobileActionMenu = { show, dismiss: vi.fn() };

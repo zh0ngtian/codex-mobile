@@ -37,7 +37,7 @@ function ConversationUsageFixture() {
     onArchive={async () => true} onRetry={() => {}} onLoadOlderTurns={async () => true}
     onSubmit={event => event.preventDefault()} onRemoveImage={() => {}} onRemoveFile={() => {}}
     onSelectImages={async () => {}} onSelectLocation={async () => false}
-    onOpenAgentSettings={() => {}} onOpenPermissionSettings={() => {}} onDraftChange={setDraft}
+    availableControls={{ model: true, effort: true, fast: true, permission: true }} onOpenModelSettings={() => {}} onToggleFast={() => {}} onOpenAgentSettings={() => {}} onOpenPermissionSettings={() => {}} onDraftChange={setDraft}
     onInterrupt={() => {}} onQueuedFollowUpAction={() => {}}
   />;
 }

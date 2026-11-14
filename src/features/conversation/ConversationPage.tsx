@@ -41,7 +41,7 @@ import {
   type ConnectionState,
   type DisplayRecord,
 } from "../../ui/app-display";
-import { effortLabel } from "../../ui/settings";
+import { useComposerAutoSize } from "./useComposerAutoSize";
 import { groupConversationTurns } from "../../ui/conversation";
 import { ErrorBanner } from "../../ui/ErrorBanner";
 import { TurnCard } from "./Timeline";
@@ -204,6 +204,9 @@ export function ConversationPage({
   onSelectImages,
   onSelectLocation,
   onOpenAgentSettings,
+  onOpenModelSettings,
+  onToggleFast,
+  availableControls,
   onOpenPermissionSettings,
   onDraftChange,
   nativeContextId = '',
@@ -278,6 +281,9 @@ export function ConversationPage({
   onSelectImages: (files: FileList | null) => Promise<void>;
   onSelectLocation: () => Promise<boolean>;
   onOpenAgentSettings: () => void;
+  onOpenModelSettings: () => void;
+  onToggleFast: () => void;
+  availableControls: { model: boolean; effort: boolean; fast: boolean; permission: boolean };
   onOpenPermissionSettings: () => void;
   onDraftChange: (value: string) => void;
   historyEdit?: {
@@ -305,7 +311,6 @@ export function ConversationPage({
   const [statusOpen, setStatusOpen] = useState(false);
   const usageButtonRef = useRef<HTMLButtonElement>(null);
   const [actionsOpen, setActionsOpen] = useState(false);
-  const [composerMaximized, setComposerMaximized] = useState(false);
   const [attachmentMenuOpen, setAttachmentMenuOpen] = useState(false);
   const [locationPending, setLocationPending] = useState(false);
   const [queuedFollowUpEdit, setQueuedFollowUpEdit] = useState<{
@@ -323,6 +328,7 @@ export function ConversationPage({
   } | null>(null);
   const composerInputRef = useRef<HTMLTextAreaElement>(null);
   const composerRef = useRef<HTMLFormElement>(null);
+  useComposerAutoSize(composerInputRef, draft);
   const photoInputRef = useRef<HTMLInputElement>(null);
   const attachmentPickerRef = useRef<HTMLDivElement>(null);
   const turns = useMemo(
@@ -342,7 +348,7 @@ export function ConversationPage({
     realtime.state.status,
   );
   useEffect(() => {
-    setComposerMaximized(false);
+    composerInputRef.current?.blur();
     setStatusOpen(false);
     setActionsOpen(false);
     setAttachmentMenuOpen(false);
@@ -360,10 +366,6 @@ export function ConversationPage({
       setQueuedFollowUpEdit(null);
     }
   }, [queuedFollowUpEdit, queuedFollowUps]);
-  useEffect(() => {
-    if (!composerMaximized) return;
-    composerInputRef.current?.focus({ preventScroll: true });
-  }, [composerMaximized]);
 
   useEffect(() => {
     if (!attachmentMenuOpen) return;
@@ -771,9 +773,7 @@ export function ConversationPage({
       {businessError}
       <form
         ref={composerRef}
-        className={`composer-wrap${
-          composerMaximized ? " composer-wrap-maximized" : ""
-        }`}
+        className="composer-wrap"
         aria-busy={imageReading}
 
         onSubmit={(event) => {
@@ -784,15 +784,11 @@ export function ConversationPage({
             onSubmit(event);
           }
           setAttachmentMenuOpen(false);
-          setComposerMaximized(false);
         }}
         onKeyDown={(event) => {
           if (event.key === "Escape" && attachmentMenuOpen) {
             event.preventDefault();
             setAttachmentMenuOpen(false);
-          } else if (event.key === "Escape" && composerMaximized) {
-            event.preventDefault();
-            setComposerMaximized(false);
           }
         }}
       >
@@ -927,86 +923,6 @@ export function ConversationPage({
           </div>
         )}
         <QuoteCards quotes={quotes} remove={onRemoveQuote} />
-        {draftImages.length > 0 && (
-          <div className="draft-images" aria-label={t("待发送图片")}>
-            {draftImages.map((image) => (
-              <figure key={image.id}>
-                <button
-                  type="button"
-                  className="draft-image-preview"
-                  aria-label={t("预览 {name}", { name: image.name })}
-                  onClick={() => setPreviewImage(image)}
-                >
-                  <img src={image.url} alt={t("待发送 {name}", { name: image.name })} />
-                </button>
-                <button
-                  type="button"
-                  className="draft-image-remove"
-                  aria-label={t("移除 {name}", { name: image.name })}
-                  onClick={() => onRemoveImage(image.id)}
-                >
-                  <span aria-hidden="true">×</span>
-                </button>
-              </figure>
-            ))}
-          </div>
-        )}
-        {draftFiles.length > 0 && (
-          <div className="draft-files" aria-label={t("待发送文件")}>
-            {draftFiles.map((file) => (
-              <figure key={file.id}>
-                {file.type.startsWith("video/") ? (
-                  <video
-                    src={file.previewUrl}
-                    aria-label={t("待发送 {name}", { name: file.name })}
-                    controls
-                    preload="metadata"
-                    poster={videoPoster}
-                  />
-                ) : file.type.startsWith("audio/") ? (
-                  <div className="draft-file-audio">
-                    <span aria-hidden="true">♪</span>
-                    <audio src={file.previewUrl} controls preload="metadata" />
-                  </div>
-                ) : (
-                  <div className="draft-file-glyph" aria-hidden="true">
-                    <span>
-                      {file.name.split(".").at(-1)?.slice(0, 5).toUpperCase() || "FILE"}
-                    </span>
-                  </div>
-                )}
-                <figcaption title={file.name}>{file.name}</figcaption>
-                <button
-                  type="button"
-                  className="draft-image-remove"
-                  aria-label={t("移除 {name}", { name: file.name })}
-                  onClick={() => onRemoveFile(file.id)}
-                >
-                  <span aria-hidden="true">×</span>
-                </button>
-              </figure>
-            ))}
-          </div>
-        )}
-        <div className="chips">
-          <button
-            type="button"
-            aria-label={t("选择模型、智能与速度")}
-            disabled={!interactive}
-            onClick={onOpenAgentSettings}
-          >
-            {selectedServiceTier ? "⚡ " : ""}
-            {selectedModelLabel} {effortLabel(selectedEffort)}
-          </button>
-          <button
-            type="button"
-            aria-label={t("选择审批与权限模式")}
-            disabled={!interactive}
-            onClick={onOpenPermissionSettings}
-          >
-            {selectedPermissionLabel}
-          </button>
-        </div>
         {skillMention && (
           <section
             id="installed-mention-options"
@@ -1120,120 +1036,75 @@ export function ConversationPage({
           </section>
         )}
         <div className="composer">
-          <div className="attachment-picker" ref={attachmentPickerRef}>
-            <input
-              ref={photoInputRef}
-              className="visually-hidden"
-              type="file"
-              accept="image/png,image/jpeg,image/webp,image/gif,video/*"
-              multiple
-              aria-label={t("选择照片和视频")}
-              onChange={(event) => {
-                const input = event.currentTarget;
-                void onSelectImages(input.files).finally(() => {
-                  input.value = "";
-                });
-              }}
-            />
-            <input
-              ref={imageInputRef}
-              className="visually-hidden"
-              type="file"
-              accept="*/*"
-              multiple
-              aria-label={t("选择文件")}
-              onChange={(event) => {
-                const input = event.currentTarget;
-                void onSelectImages(input.files).finally(() => {
-                  input.value = "";
-                });
-              }}
-            />
-            <button
-              type="button"
-              className="add-button"
-              aria-label={t("添加附件")}
-              aria-controls="attachment-menu"
-              aria-expanded={attachmentMenuOpen}
-              disabled={
-                !interactive ||
-                realtimeActive ||
-                imageReading ||
-                locationPending ||
-                Boolean(historyEdit)
-              }
-              onClick={() => setAttachmentMenuOpen((current) => !current)}
-            >
-              ＋
-            </button>
-            {attachmentMenuOpen && (
-              <div
-                id="attachment-menu"
-                className="attachment-menu"
-                role="menu"
-                aria-label={t("附件菜单")}
-              >
-                <button
-                  type="button"
-                  role="menuitem"
-                  disabled={locationPending}
-                  onClick={() => {
-                    setAttachmentMenuOpen(false);
-                    photoInputRef.current?.click();
-                  }}
-                >
-                  <AppIcon name="image" />
-                  <span>{t("照片和视频")}</span>
-                </button>
-                <button
-                  type="button"
-                  role="menuitem"
-                  disabled={locationPending}
-                  onClick={() => {
-                    setAttachmentMenuOpen(false);
-                    imageInputRef.current?.click();
-                  }}
-                >
-                  <AppIcon name="file" />
-                  <span>{t("文件")}</span>
-                </button>
-                <button
-                  type="button"
-                  role="menuitem"
-                  disabled={locationPending}
-                  onClick={() => {
-                    const revision = composerIdentityRef.current.revision;
-                    const input = composerInputRef.current;
-                    setLocationPending(true);
-                    void onSelectLocation()
-                      .then((selected) => {
-                        if (selected && input?.isConnected && composerInputRef.current === input && composerIdentityRef.current.revision === revision) {
-                          setAttachmentMenuOpen(false);
-                          input.focus({ preventScroll: true });
-                        }
-                      })
-                      .finally(() => setLocationPending(false));
-                  }}
-                >
-                  {locationPending ? (
-                    <i className="action-spinner" aria-hidden="true" />
+          {draftImages.length > 0 && (
+            <div className="draft-images" aria-label={t("待发送图片")}>
+              {draftImages.map((image) => (
+                <figure key={image.id}>
+                  <button
+                    type="button"
+                    className="draft-image-preview"
+                    aria-label={t("预览 {name}", { name: image.name })}
+                    onClick={() => setPreviewImage(image)}
+                  >
+                    <img src={image.url} alt={t("待发送 {name}", { name: image.name })} />
+                  </button>
+                  <button
+                    type="button"
+                    className="draft-image-remove"
+                    aria-label={t("移除 {name}", { name: image.name })}
+                    onClick={() => onRemoveImage(image.id)}
+                  >
+                    <span aria-hidden="true">×</span>
+                  </button>
+                </figure>
+              ))}
+            </div>
+          )}
+          {draftFiles.length > 0 && (
+            <div className="draft-files" aria-label={t("待发送文件")}>
+              {draftFiles.map((file) => (
+                <figure key={file.id}>
+                  {file.type.startsWith("video/") ? (
+                    <video
+                      src={file.previewUrl}
+                      aria-label={t("待发送 {name}", { name: file.name })}
+                      controls
+                      preload="metadata"
+                      poster={videoPoster}
+                    />
+                  ) : file.type.startsWith("audio/") ? (
+                    <div className="draft-file-audio">
+                      <span aria-hidden="true">♪</span>
+                      <audio src={file.previewUrl} controls preload="metadata" />
+                    </div>
                   ) : (
-                    <AppIcon name="location" />
+                    <div className="draft-file-glyph" aria-hidden="true">
+                      <span>
+                        {file.name.split(".").at(-1)?.slice(0, 5).toUpperCase() || "FILE"}
+                      </span>
+                    </div>
                   )}
-                  <span>{locationPending ? t("正在定位…") : t("当前位置")}</span>
-                </button>
-              </div>
-            )}
-          </div>
-
+                  <figcaption title={file.name}>{file.name}</figcaption>
+                  <button
+                    type="button"
+                    className="draft-image-remove"
+                    aria-label={t("移除 {name}", { name: file.name })}
+                    onClick={() => onRemoveFile(file.id)}
+                  >
+                    <span aria-hidden="true">×</span>
+                  </button>
+                </figure>
+              ))}
+            </div>
+          )}
           <textarea
             ref={composerInputRef}
-
-
+            className="composer-input"
+            enterKeyHint="send"
             aria-label={t("向 Codex 提问")}
             value={draft}
             disabled={
-              !interactive || steering || realtimeActive || Boolean(historyEdit)
+              !interactive || steering || realtimeActive || imageReading || Boolean(historyEdit)
             }
             aria-controls={skillMention ? "installed-mention-options" : undefined}
             aria-expanded={Boolean(skillMention)}
@@ -1257,7 +1128,22 @@ export function ConversationPage({
             }
             onBlur={() => setSkillMention(null)}
             onKeyDown={(event) => {
-              if (!skillMention || event.nativeEvent.isComposing) return;
+              if (event.nativeEvent.isComposing || event.keyCode === 229) return;
+              if (event.key === "Escape" && skillMention) {
+                event.preventDefault();
+                event.stopPropagation();
+                setSkillMention(null);
+                return;
+              }
+              if (!skillMention || !matchingMentions.length) {
+                if (event.key === "Enter" && !event.shiftKey) {
+                  event.preventDefault();
+                  if (hasDraft && !imageReading && !draftSaving && !steering) {
+                    event.currentTarget.form?.requestSubmit();
+                  }
+                }
+                return;
+              }
               if (event.key === "ArrowDown" && matchingMentions.length) {
                 event.preventDefault();
                 setActiveSkillIndex(
@@ -1279,59 +1165,171 @@ export function ConversationPage({
                 option.kind === "skill"
                   ? chooseSkill(option.skill)
                   : choosePlugin(option.plugin);
-              } else if (event.key === "Escape") {
-                event.preventDefault();
-                event.stopPropagation();
-                setSkillMention(null);
               }
             }}
             placeholder={t("向 Codex 提问")}
             rows={1}
           />
-          <button
-            type="button"
-            className="composer-size-button"
-            disabled={Boolean(historyEdit)}
-            aria-label={
-              composerMaximized ? t("还原输入框") : t("最大化输入框")
-            }
-            aria-pressed={composerMaximized}
-            onClick={() => setComposerMaximized((current) => !current)}
-          >
-            <AppIcon name={composerMaximized ? "minimize" : "maximize"} />
-          </button>
-          <button
-            type={busy && !canQueue ? "button" : "submit"}
-            onClick={
-              busy && !canQueue ? onInterrupt : undefined
-            }
-            className={`send-button${
-              busy && !canQueue ? " send-button-running" : ""
-            }`}
-            aria-busy={(busy && !canQueue) || draftSaving}
-            aria-label={
-              steering
-                ? t("正在引导")
-                : canQueue
-                  ? t("排队")
-                  : busy
-                    ? t("停止")
-                    : t("发送")
-            }
-            disabled={draftSaving ||
-              !interactive ||
-              Boolean(historyEdit) ||
-              steering ||
-              (canQueue && imageReading) ||
-              (!busy && (imageReading || !hasDraft))
-            }
-          >
-            {steering ? (
-              <i className="action-spinner composer-steer-spinner" />
-            ) : (
-              <AppIcon name={busy && !canQueue ? "stop" : "send"} />
-            )}
-          </button>
+          <div className="composer-tools">
+            <div className="attachment-picker" ref={attachmentPickerRef}>
+              <input
+                ref={photoInputRef}
+                className="visually-hidden"
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/gif,video/*"
+                multiple
+                aria-label={t("选择照片和视频")}
+                onChange={(event) => {
+                  const input = event.currentTarget;
+                  void onSelectImages(input.files).finally(() => {
+                    input.value = "";
+                  });
+                }}
+              />
+              <input
+                ref={imageInputRef}
+                className="visually-hidden"
+                type="file"
+                accept="*/*"
+                multiple
+                aria-label={t("选择文件")}
+                onChange={(event) => {
+                  const input = event.currentTarget;
+                  void onSelectImages(input.files).finally(() => {
+                    input.value = "";
+                  });
+                }}
+              />
+              <button
+                type="button"
+                className="add-button"
+                aria-label={t("添加附件")}
+                aria-controls="attachment-menu"
+                aria-expanded={attachmentMenuOpen}
+                disabled={
+                  !interactive ||
+                  realtimeActive ||
+                  imageReading ||
+                  locationPending ||
+                  Boolean(historyEdit)
+                }
+                onClick={() => setAttachmentMenuOpen((current) => !current)}
+              >
+                <AppIcon name="plus" />
+              </button>
+              {attachmentMenuOpen && (
+                <div
+                  id="attachment-menu"
+                  className="attachment-menu"
+                  role="menu"
+                  aria-label={t("附件菜单")}
+                >
+                  <button
+                    type="button"
+                    role="menuitem"
+                    disabled={locationPending}
+                    onClick={() => {
+                      setAttachmentMenuOpen(false);
+                      photoInputRef.current?.click();
+                    }}
+                  >
+                    <AppIcon name="image" />
+                    <span>{t("照片和视频")}</span>
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    disabled={locationPending}
+                    onClick={() => {
+                      setAttachmentMenuOpen(false);
+                      imageInputRef.current?.click();
+                    }}
+                  >
+                    <AppIcon name="file" />
+                    <span>{t("文件")}</span>
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    disabled={locationPending}
+                    onClick={() => {
+                      const revision = composerIdentityRef.current.revision;
+                      const input = composerInputRef.current;
+                      setLocationPending(true);
+                      void onSelectLocation()
+                        .then((selected) => {
+                          if (selected && input?.isConnected && composerInputRef.current === input && composerIdentityRef.current.revision === revision) {
+                            setAttachmentMenuOpen(false);
+                            input.focus({ preventScroll: true });
+                          }
+                        })
+                        .finally(() => setLocationPending(false));
+                    }}
+                  >
+                    {locationPending ? (
+                      <i className="action-spinner" aria-hidden="true" />
+                    ) : (
+                      <AppIcon name="location" />
+                    )}
+                    <span>{locationPending ? t("正在定位…") : t("当前位置")}</span>
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <button type="button" className="composer-control composer-control-round"
+              aria-label={t("选择审批与权限模式")} title={selectedPermissionLabel}
+              disabled={!interactive || Boolean(historyEdit) || !availableControls.permission}
+              onClick={onOpenPermissionSettings}>
+              <AppIcon name="shield" />
+              <span className="visually-hidden">{selectedPermissionLabel}</span>
+            </button>
+            <button type="button" className="composer-control composer-model"
+              aria-label={t("选择模型")} title={selectedModelLabel}
+              disabled={!interactive || Boolean(historyEdit) || !availableControls.model}
+              onClick={onOpenModelSettings}>{selectedModelLabel}</button>
+            <button type="button" className="composer-control composer-effort"
+              aria-label={t("思考强度")} title={selectedEffort ?? t("思考强度")}
+              disabled={!interactive || Boolean(historyEdit) || !availableControls.effort}
+              onClick={onOpenAgentSettings}>{selectedEffort ?? t("思考强度")}</button>
+            <button type="button" className="composer-control composer-control-round composer-fast"
+              aria-label={t("速度")} aria-pressed={selectedServiceTier === "fast" || selectedServiceTier === "priority"}
+              title={selectedServiceTier === "fast" || selectedServiceTier === "priority" ? "Fast" : t("普通速度")}
+              disabled={!interactive || Boolean(historyEdit) || !availableControls.fast}
+              onClick={onToggleFast}><AppIcon name="bolt" /></button>
+            <button
+              type={busy && !canQueue ? "button" : "submit"}
+              onClick={
+                busy && !canQueue ? onInterrupt : undefined
+              }
+              className={`send-button${
+                busy && !canQueue ? " send-button-running" : ""
+              }`}
+              aria-busy={(busy && !canQueue) || draftSaving}
+              aria-label={
+                steering
+                  ? t("正在引导")
+                  : canQueue
+                    ? t("排队")
+                    : busy
+                      ? t("停止")
+                      : t("发送")
+              }
+              disabled={draftSaving ||
+                !interactive ||
+                Boolean(historyEdit) ||
+                steering ||
+                (canQueue && imageReading) ||
+                (!busy && (imageReading || !hasDraft))
+              }
+            >
+              {steering ? (
+                <i className="action-spinner composer-steer-spinner" />
+              ) : (
+                <AppIcon name={busy && !canQueue ? "stop" : "send"} />
+              )}
+            </button>
+          </div>
         </div>
       </form>
         {previewImage && (

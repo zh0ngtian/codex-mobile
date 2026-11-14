@@ -25,14 +25,19 @@ async function mockGateway(page: Page) {
     if (url.pathname === '/api/uploads/file') {
       const buffer = route.request().postDataBuffer();
       if (buffer) uploads.push(buffer);
-      return route.fulfill({ json: { path: '/uploaded/notes.txt', name: 'notes.txt', type: 'text/plain', size: buffer?.length ?? 16 } });
+      const name = decodeURIComponent(route.request().headers()['x-codex-file-name']);
+      return route.fulfill({ json: { path: `/uploaded/${name}`, name, type: route.request().headers()['content-type'], size: buffer?.length ?? 16 } });
     }
     if (url.pathname !== '/api/rpc') return route.fulfill({ json: {} });
     const { message } = route.request().postDataJSON();
     calls.push(message);
+    if (message.method === "thread/list" && message.params?.sectionId) return route.fulfill({ json: { id: message.id, result: { data: [], nextCursor: null } } });
     if (message.method === "model/list" && modelDelay) await new Promise(resolve => setTimeout(resolve, modelDelay));
     if (message.method === 'turn/start' && failSend) return route.fulfill({ json: { id: message.id, error: { code: -1, message: '发送失败测试' } } });
     const responses: Record<string, unknown> = {
+      "mobile/sidebar/summaries": { data: [], nextCursor: null },
+      "mobile/sidebar/projectless": { data: [], nextCursor: null },
+      "threadSection/list": { data: [{ id: "01984de2-8f74-7c91-a3b2-5c5e937cf318" }], nextCursor: null },
       'thread/list': { data: [], nextCursor: null },
       'model/list': { data: [{ id: 'test', model: 'test', displayName: 'Test', isDefault: true, defaultReasoningEffort: 'medium', supportedReasoningEfforts: [{ reasoningEffort: 'medium', description: '平衡' }, { reasoningEffort: 'high', description: '更深入' }], serviceTiers: [{ id: "fast", name: "Fast", description: "更快" }] }] },
       'permissionProfile/list': { data: [{ id: ':workspace', allowed: true }, { id: ':danger-full-access', allowed: true }] },
@@ -60,7 +65,8 @@ test('保存真实附件，重启恢复、更新原草稿，失败保留，确�
   await expect(page.getByRole('button', { name: '保存草稿' })).toBeDisabled();
   await editor.fill('本地附件草稿');
   await page.getByLabel('选择文件', { exact: true }).setInputFiles({ name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('local attachment') });
-  await page.getByLabel('选择图片', { exact: true }).setInputFiles({ name: 'photo.png', mimeType: 'image/png', buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jH1kAAAAASUVORK5CYII=', 'base64') });
+  await expect(page.locator('.draft-files')).toContainText('notes.txt');
+  await page.getByLabel('选择照片和视频', { exact: true }).setInputFiles({ name: 'photo.png', mimeType: 'image/png', buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jH1kAAAAASUVORK5CYII=', 'base64') });
   await page.getByRole('button', { name: '保存草稿' }).click();
   await expect(page.getByText('草稿已保存到本地', { exact: true })).toBeVisible();
   expect(gateway.uploads).toHaveLength(0);
@@ -74,6 +80,13 @@ test('保存真实附件，重启恢复、更新原草稿，失败保留，确�
   await expect(editor).toHaveValue('本地附件草稿');
   await expect(page.locator('.draft-images img')).toHaveAttribute('src', /^data:image\/png;base64,/);
   await expect(page.locator('.draft-files')).toContainText('notes.txt');
+  const alignment = await page.evaluate(() => {
+    const input = document.querySelector('.composer-input')!.getBoundingClientRect();
+    return [...document.querySelectorAll('.composer .draft-images figure, .composer .draft-files figure')].map(card => Math.abs(card.getBoundingClientRect().left - (input.left + 4)));
+  });
+  expect(alignment.every(offset => offset < 1)).toBe(true);
+  await expect(page.locator('.conversation-sidebar-layer')).toBeHidden();
+  await page.screenshot({ path: '.mobile-build/web-composer-attachments.png' });
   await editor.fill('修改后的草稿');
   await page.getByRole('button', { name: '保存草稿' }).click();
   await expect(page.getByText('草稿已保存到本地', { exact: true })).toBeVisible();
@@ -90,9 +103,12 @@ test('保存真实附件，重启恢复、更新原草稿，失败保留，确�
   gateway.succeed();
   await page.getByRole('button', { name: '发送', exact: true }).click();
   await expect.poll(() => gateway.calls.filter(call => call.method === 'turn/start').length).toBe(2);
-  expect(await page.evaluate(() => (window as any).__draftUploadBytes.map((bytes: number[]) => new TextDecoder().decode(new Uint8Array(bytes))))).toEqual(['local attachment', 'local attachment']);
+  const uploaded = await page.evaluate(() => (window as any).__draftUploadBytes as number[][]);
+  expect(uploaded).toHaveLength(4);
+  expect(uploaded.filter(bytes => new TextDecoder().decode(new Uint8Array(bytes)) === 'local attachment')).toHaveLength(2);
+  expect(uploaded.filter(bytes => bytes.slice(0, 4).join(',') === '137,80,78,71')).toHaveLength(2);
   const turn = gateway.calls.filter(call => call.method === 'turn/start').at(-1);
-  expect(turn.params.input).toEqual(expect.arrayContaining([expect.objectContaining({ type: 'image', url: expect.stringMatching(/^data:image\/png;base64,/) })]));
+  expect(turn.params.input).toEqual(expect.arrayContaining([expect.objectContaining({ type: 'localImage', path: '/uploaded/photo.png' })]));
   await openSidebar(page);
   await openDrafts(page);
   await expect(page.getByText('暂无草稿', { exact: true })).toBeVisible();
@@ -105,11 +121,9 @@ test('无项目草稿恢复全部发送配置，迟到的初始化不会覆盖�
   await page.getByRole('button', { name: '聊天', exact: true }).click();
   await page.getByLabel('选择项目').selectOption('');
   await page.getByRole('textbox', { name: '向 Codex 提问' }).fill('无项目完整配置');
-  await page.getByRole('button', { name: '选择模型、智能与速度' }).click();
-  await page.locator('.effort-options').getByRole('button', { name: /高/ }).click();
-  await page.getByRole('button', { name: '选择模型、智能与速度' }).click();
-  await page.locator('.composer-popover').getByRole('button', { name: /速度/ }).click();
-  await page.getByLabel('速度列表').getByRole('button', { name: /更快/ }).click();
+  await page.getByRole('button', { name: '思考强度', exact: true }).click();
+  await page.locator('.effort-options').getByRole('button', { name: /high/ }).click();
+  await page.getByRole('button', { name: '速度', exact: true }).click();
   await page.getByRole('button', { name: '选择审批与权限模式' }).click();
   await page.locator('.permission-options').getByRole('button', { name: /自动审核/ }).click();
   await page.getByRole('button', { name: '保存草稿' }).click();
@@ -130,7 +144,7 @@ test('无项目草稿恢复全部发送配置，迟到的初始化不会覆盖�
   await sheet.getByRole('button', { name: '恢复草稿：无项目完整配置', exact: true }).click();
   await expect(page.getByLabel('选择项目')).toHaveValue('');
   await expect(page.getByRole('button', { name: '选择审批与权限模式' })).toHaveText('自动审核');
-  await expect(page.getByRole('button', { name: '选择模型、智能与速度' })).toContainText('高');
+  await expect(page.getByRole('button', { name: '思考强度', exact: true })).toContainText('high');
   await expect.poll(() => gateway.calls.filter(call => call.method === 'model/list').length).toBe(2);
   await page.waitForTimeout(1800);
   await expect(page.getByRole('button', { name: '选择审批与权限模式' })).toHaveText('自动审核');

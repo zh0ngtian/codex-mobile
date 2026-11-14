@@ -26,11 +26,15 @@ test("排队、编辑和引导消息变化时任务状态不被遮挡，历史�
     if (url.pathname === "/api/events") return route.fulfill({ json: { epoch: "layout", cursor: 0, messages: [], requests: [], active: true, updatedAt: Date.now(), reset: false } });
     if (url.pathname !== "/api/rpc") return route.fulfill({ json: {} });
     const { message } = route.request().postDataJSON();
+    if (message.method === "thread/list" && message.params?.sectionId) return route.fulfill({ json: { id: message.id, result: { data: [], nextCursor: null } } });
     const responses: Record<string, unknown> = {
       initialize: {},
       "model/list": { data: [{ id: "gpt-test", model: "gpt-test", displayName: "GPT Test", isDefault: true, supportedReasoningEfforts: [], serviceTiers: [] }] },
       "permissionProfile/list": { data: [{ id: ":workspace", allowed: true }] },
       "config/read": { config: { sandbox_mode: "workspace-write" } },
+      "mobile/sidebar/summaries": { data: [thread], nextCursor: null },
+      "mobile/sidebar/projectless": { data: [], nextCursor: null },
+      "threadSection/list": { data: [{ id: "01984de2-8f74-7c91-a3b2-5c5e937cf318" }], nextCursor: null },
       "thread/list": { data: [thread], nextCursor: null },
       "thread/resume": { thread, initialTurnsPage: { data: thread.turns, nextCursor: null } },
       "thread/read": { thread },
@@ -81,10 +85,10 @@ test("排队、编辑和引导消息变化时任务状态不被遮挡，历史�
     await expectClear();
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);
   }
-  await page.getByRole("button", { name: "最大化输入框" }).click();
+  await page.getByRole("textbox", { name: "向 Codex 提问" }).fill("多行输入\n".repeat(10));
   await scroller.evaluate(el => { el.scrollTop = el.scrollHeight; });
   await expectClear();
-  await page.getByRole("button", { name: "还原输入框" }).click();
+  await page.getByRole("textbox", { name: "向 Codex 提问" }).fill("");
   await expectClear();
   // 手动阅读历史时，输入区缩小和增大都不应抢走滚动位置。
   await scroller.evaluate(el => el.scrollTo(0, 300));
