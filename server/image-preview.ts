@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
-import { open, stat, type FileHandle } from "node:fs/promises";
-import type { BigIntStats } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { extname, isAbsolute } from "node:path";
+import { Readable } from "node:stream";
+import { localMediaFiles, MediaFileVersionError, type MediaFile, type MediaFileDetails, type MediaFileSource } from "./media-file-source.js";
+import { RemoteFileError } from "./remote/files.js";
 import { pipeline } from "node:stream/promises";
 import sharp from "sharp";
 
@@ -22,11 +22,6 @@ class ImagePreviewError extends Error {
 }
 
 type Thumbnail = { bytes: Buffer; etag: string };
-
-function revision(path: string, details: BigIntStats) {
-  return JSON.stringify([path, String(details.dev), String(details.ino), String(details.size),
-    String(details.mtimeNs), String(details.ctimeNs)]);
-}
 
 function etagFor(value: string | Buffer) {
   return `"${createHash("sha256").update(value).digest("hex")}"`;
@@ -70,30 +65,31 @@ export class ImagePreviews {
     } else this.active -= 1;
   }
 
-  private async convert(path: string, key: string, signal: AbortSignal): Promise<Thumbnail> {
+  private async convert(source: MediaFileSource, path: string, version: string, key: string, signal: AbortSignal): Promise<Thumbnail> {
     await this.acquire(signal);
-    let file: FileHandle | undefined;
+    let file: MediaFile | undefined;
     try {
       signal.throwIfAborted();
       // Only active jobs open source files; queued and coalesced requests hold no file descriptors.
-      file = await open(path, "r");
-      if (revision(path, await file.stat({ bigint: true })) !== key) {
+      file = await source.open(path, version, signal);
+      if (file.details.version !== version) {
         throw new ImagePreviewError(409, "Image changed while queued; retry preview");
       }
       const parts: Buffer[] = [];
       let size = 0;
-      for await (const chunk of file.createReadStream({ start: 0, end: MAX_SOURCE_BYTES, autoClose: false })) {
+      for await (const chunk of file.read()) {
         signal.throwIfAborted();
         const bytes = chunk as Buffer;
         size += bytes.length;
         if (size > MAX_SOURCE_BYTES) throw new ImagePreviewError(413, "Image exceeds 64 MiB");
         parts.push(bytes);
       }
-      const source = Buffer.concat(parts, size);
+      const sourceBytes = Buffer.concat(parts, size);
       await file.close();
       file = undefined;
       signal.throwIfAborted();
-      const bytes = await sharp(source, { limitInputPixels: MAX_SOURCE_PIXELS, failOn: "error" })
+      if ((await source.stat(path, signal)).version !== version) throw new ImagePreviewError(409, "Image changed during read; retry preview");
+      const bytes = await sharp(sourceBytes, { limitInputPixels: MAX_SOURCE_PIXELS, failOn: "error" })
         .autoOrient()
         .resize({ width: 640, height: 640, fit: "inside", withoutEnlargement: true })
         .flatten({ background: "#ffffff" })
@@ -101,7 +97,7 @@ export class ImagePreviews {
         .toBuffer();
       // An active sharp operation can finish after cancellation, but its result must not enter the cache.
       signal.throwIfAborted();
-      if (revision(path, await stat(path, { bigint: true })) !== key) {
+      if ((await source.stat(path, signal)).version !== version) {
         throw new ImagePreviewError(409, "Image changed during conversion; retry preview");
       }
       signal.throwIfAborted();
@@ -119,6 +115,8 @@ export class ImagePreviews {
     } catch (error) {
       if (signal.aborted) throw signal.reason;
       if (error instanceof ImagePreviewError) throw error;
+      if (error instanceof MediaFileVersionError || (error instanceof RemoteFileError && error.code === "version")) throw new ImagePreviewError(409, "Image changed; retry preview");
+      if (error instanceof RemoteFileError) throw new ImagePreviewError(error.code === "not-found" ? 404 : 500, "Unable to read target image");
       if (error instanceof Error && /pixel limit/i.test(error.message)) {
         throw new ImagePreviewError(413, "Image exceeds 40 million pixels");
       }
@@ -132,7 +130,7 @@ export class ImagePreviews {
     }
   }
 
-  private async thumbnail(path: string, key: string, signal: AbortSignal) {
+  private async thumbnail(source: MediaFileSource, path: string, version: string, key: string, signal: AbortSignal) {
     signal.throwIfAborted();
     const cached = this.cache.get(key);
     if (cached) {
@@ -144,7 +142,7 @@ export class ImagePreviews {
     if (!job || job.controller.signal.aborted) {
       const controller = new AbortController();
       const created = { controller, waiters: 0, settled: false, promise: undefined as unknown as Promise<Thumbnail> };
-      created.promise = Promise.resolve().then(() => this.convert(path, key, controller.signal)).finally(() => {
+      created.promise = Promise.resolve().then(() => this.convert(source, path, version, key, controller.signal)).finally(() => {
         created.settled = true;
         if (this.inFlight.get(key) === created) this.inFlight.delete(key);
       });
@@ -166,8 +164,8 @@ export class ImagePreviews {
     }
   }
 
-  async handle(request: IncomingMessage, response: ServerResponse, url: URL) {
-    let file: FileHandle | undefined;
+  async handle(request: IncomingMessage, response: ServerResponse, url: URL, source: MediaFileSource = localMediaFiles) {
+    let file: MediaFile | undefined;
     const controller = new AbortController();
     const abort = () => controller.abort();
     const responseClosed = () => { if (!response.writableFinished) abort(); };
@@ -180,18 +178,21 @@ export class ImagePreviews {
         throw new ImagePreviewError(405, "Method not allowed");
       }
       const path = url.searchParams.get("path") ?? "";
-      const contentType = contentTypes[extname(path).toLowerCase()];
-      if (!isAbsolute(path) || path.includes("\0") || !contentType) {
+      const contentType = contentTypes[source.paths.extname(path).toLowerCase()];
+      if (!source.paths.isAbsolute(path) || path.includes("\0") || !contentType) {
         throw new ImagePreviewError(415, "Unsupported image path");
       }
-      let details: BigIntStats;
-      try { details = await stat(path, { bigint: true }); }
-      catch { throw new ImagePreviewError(404, "Image not found"); }
-      if (!details.isFile()) throw new ImagePreviewError(404, "Image not found");
-      if (details.size === 0n) throw new ImagePreviewError(415, "Empty image");
-      if (details.size > BigInt(MAX_SOURCE_BYTES)) throw new ImagePreviewError(413, "Image exceeds 64 MiB");
-      const key = revision(path, details);
-      const thumbnail = url.searchParams.get("thumbnail") === "1" ? await this.thumbnail(path, key, controller.signal) : null;
+      let details: MediaFileDetails;
+      try { details = await source.stat(path, controller.signal); }
+      catch (error) {
+        if (error instanceof RemoteFileError && error.code !== "not-found") throw error;
+        throw new ImagePreviewError(404, "Image not found");
+      }
+      if (details.type !== "file") throw new ImagePreviewError(404, "Image not found");
+      if (details.size === 0) throw new ImagePreviewError(415, "Empty image");
+      if (details.size > MAX_SOURCE_BYTES) throw new ImagePreviewError(413, "Image exceeds 64 MiB");
+      const key = JSON.stringify([source.namespace, details.version]);
+      const thumbnail = url.searchParams.get("thumbnail") === "1" ? await this.thumbnail(source, path, details.version, key, controller.signal) : null;
       controller.signal.throwIfAborted();
       const etag = thumbnail?.etag ?? etagFor(key);
       // Always revalidate against current file identity, including overwrites preserving mtime and size.
@@ -208,11 +209,11 @@ export class ImagePreviews {
       if (request.method === "HEAD") { response.end(); return; }
       if (thumbnail) { response.end(thumbnail.bytes); return; }
       // pipeline observes read/client errors; no unhandled stream error can terminate the gateway.
-      file = await open(path, "r");
-      if (revision(path, await file.stat({ bigint: true })) !== key) {
+      file = await source.open(path, details.version, controller.signal);
+      if (file.details.version !== details.version) {
         throw new ImagePreviewError(409, "Image changed before download; retry preview");
       }
-      await pipeline(file.createReadStream({ start: 0, end: Number(details.size) - 1, autoClose: false }), response);
+      await pipeline(Readable.from(file.read(), { objectMode: false }), response, { signal: controller.signal });
     } catch (error) {
       if (response.headersSent || response.destroyed) {
         response.destroy();
@@ -221,7 +222,7 @@ export class ImagePreviews {
         response.removeHeader("etag");
         response.setHeader("cache-control", "private, no-store");
         response.setHeader("content-type", "text/plain; charset=utf-8");
-        response.statusCode = error instanceof ImagePreviewError ? error.status : 500;
+        response.statusCode = error instanceof ImagePreviewError ? error.status : error instanceof MediaFileVersionError || (error instanceof RemoteFileError && error.code === "version") ? 409 : 500;
         if (response.statusCode === 503) response.setHeader("retry-after", "1");
         response.end(error instanceof ImagePreviewError ? error.message : "Unable to read image");
       }

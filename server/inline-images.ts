@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readdir, rename, stat, unlink, writeFile } from "node:fs/promises";
-import { isAbsolute, join } from "node:path";
+import { join } from "node:path";
+import { localMediaFiles, type MediaFileReference, type MediaFileSource } from './media-file-source.js';
 
 type RecordValue = Record<string, any>;
 const extensions: Record<string, string> = {
@@ -8,13 +9,27 @@ const extensions: Record<string, string> = {
   "image/webp": "webp", "image/avif": "avif",
 };
 const cacheFile = /^image-[a-f0-9]{64}\.(png|jpg|gif|webp|avif)$/;
+export interface InlineImageOptions {
+  files: MediaFileSource;
+  reference: (reference: MediaFileReference) => string | Promise<string>;
+}
 
 /** 原图仅保存在设备侧；历史响应携带引用，缩略图与原图复用现有鉴权接口。 */
 export class InlineImages {
   private pending = new Map<string, Promise<string>>();
   private writes = Promise.resolve();
 
-  constructor(private root: string, private maxBytes = 256 * 1024 * 1024) {}
+  constructor(private root: string, private maxBytes = 256 * 1024 * 1024, private options?: InlineImageOptions) {
+    if (options && (!options.files || typeof options.reference !== 'function')) throw new TypeError('Trusted file source and reference encoder are required');
+  }
+
+  private async reference(path: string, origin: MediaFileReference['origin']) {
+    if (!this.options) return path;
+    try {
+      const value = await this.options.reference({ path, origin, source: origin === 'gateway-cache' ? localMediaFiles : this.options.files });
+      return typeof value === 'string' && value.length ? value : null;
+    } catch { return null; } // 引用编码失败同样保留完整原协议，不能移除尚未替代的内联内容。
+  }
 
   private async retain(bytes: Buffer, extension: string) {
     const path = join(this.root, `image-${createHash("sha256").update(bytes).digest("hex")}.${extension}`);
@@ -60,12 +75,21 @@ export class InlineImages {
     if (item.type === "userMessage" && Array.isArray(item.content)) {
       return { ...item, content: await Promise.all(item.content.map(async (part: RecordValue) => {
         const path = part.type === "image" ? await this.image(part.url) : null;
-        return path ? { ...part, url: path, name: part.name || "图片" } : part;
+        const reference = path ? await this.reference(path, 'gateway-cache') : null;
+        return reference ? { ...part, url: reference, name: part.name || "图片" } : part;
       })) };
     }
-    if (item.type === "imageGeneration" && typeof item.result === "string" && /^data:/i.test(item.result)) {
-      const path = typeof item.savedPath === "string" && isAbsolute(item.savedPath) ? item.savedPath : await this.image(item.result);
-      if (path) { const { result: _result, ...rest } = item; return { ...rest, savedPath: path }; }
+    if (item.type === "imageGeneration") {
+      const inline = typeof item.result === "string" && /^data:/i.test(item.result);
+      const saved = typeof item.savedPath === "string" && (this.options?.files ?? localMediaFiles).paths.isAbsolute(item.savedPath);
+      if (inline || (this.options && saved)) {
+        const path = saved ? item.savedPath : await this.image(item.result);
+        const reference = path ? await this.reference(path, saved ? 'target' : 'gateway-cache') : null;
+        if (reference) {
+          if (inline) { const { result: _result, ...rest } = item; return { ...rest, savedPath: reference }; }
+          return { ...item, savedPath: reference };
+        }
+      }
     }
     return item;
   }
