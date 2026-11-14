@@ -1,6 +1,6 @@
 # Remote 文件读取方式补充方案（第47项已确认A）
 
-状态：**2026-11-14，用户已选择A，固定短命令缓冲窗口方案已获授权，进入TDD实现；最终产品源码、独立双审及官方实测仍待完成，未合入main、未发布。** 修改前产品源码为 `d202927e554236413b4f5d5955bb16240acdb68d`，本轮文档修改前核对的远端main为 `40b0171f7e0c625e3e0656a2ed3e9b4e8d3bdcb0`。第46项A已完成独立规格确认和剩余质量复审，不再因该边界阻塞；本次阻塞来自官方Remote的文件回读。详见[脱敏调查收据](../plans/evidence/2026-11-14-remote-files-read-investigation.json)。
+状态：**2026-11-14，用户已选择A；固定源码 `41dd5a751aab5fa26d124419a396e6510fcbf780` 已完成TDD、严格检查、服务端构建及独立规格/质量复审。官方产品文件验收两轮仍失败，未合入文件候选到main、未发布。** 修改前产品源码为 `d202927e554236413b4f5d5955bb16240acdb68d`；开始修改前核对远端main为 `40b0171f7e0c625e3e0656a2ed3e9b4e8d3bdcb0`，最终候选已整合后来核对的 `0c8c86badf0016300d656b04d40f629ffe62f1c7`。第46项A边界不再阻塞；当前两轮结果和独立复审摘要见[产品探针收据](../plans/evidence/2026-11-14-remote-files-buffered-product-attempts.json)。第一轮80MiB后超时原因未知，第二轮64MiB后由固定10秒原生pongTimer主动断开，断开前仍有文件分块入站。新的[第48项传输存活提案](2026-11-14-remote-heartbeat-progress-proposal.md)待用户确认，不自动修改心跳规则。[原调查收据](../plans/evidence/2026-11-14-remote-files-read-investigation.json)保留历史事实。
 
 ## 官方实测与能力边界
 
