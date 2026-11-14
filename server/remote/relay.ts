@@ -1,6 +1,7 @@
 import { ownedWebSocket } from './owned-websocket.js';
 import { randomUUID } from 'node:crypto';
 import { EventEmitter } from 'node:events';
+import { performance } from 'node:perf_hooks';
 import { TextDecoder } from 'node:util';
 import WebSocket, { type RawData } from 'ws';
 import {
@@ -20,7 +21,7 @@ export class RemoteAuthRequiredError extends Error {
   constructor(message = 'Remote 需要重新认证') { super(message); this.name = 'RemoteAuthRequiredError'; }
 }
 export class RemoteSendError extends Error {
-  constructor(message: string, readonly mayHaveBeenSent: boolean, readonly seqId?: number) { super(message); this.name = 'RemoteSendError'; }
+  constructor(message: string, readonly mayHaveBeenSent: boolean, readonly seqId?: number, readonly code: 'network' | 'timeout' = 'network') { super(message); this.name = 'RemoteSendError'; }
 }
 export interface RemoteDisconnect {
   reason: 'network' | 'protocol' | 'auth-required' | 'closed'; mayHaveBeenSent: boolean; lastSentSeqId?: number;
@@ -55,7 +56,7 @@ export class RemoteStream extends EventEmitter<StreamEvents> {
   private closeNotified = false;
   constructor(
     readonly environmentId: string, readonly streamId: string,
-    private readonly transmit: (stream: RemoteStream, message?: RpcMessage, control?: 'ping' | 'client_closed') => Promise<RemoteSendReceipt>,
+    private readonly transmit: (stream: RemoteStream, message?: RpcMessage, control?: 'ping' | 'client_closed', deadline?: number) => Promise<RemoteSendReceipt>,
     private readonly release: (stream: RemoteStream) => void,
   ) { super(); }
   get closed(): boolean { return this.isClosed; }
@@ -67,7 +68,10 @@ export class RemoteStream extends EventEmitter<StreamEvents> {
   /** @internal 恢复责任跨重连保留，直到追齐曾观察到的序列上界。 */
   get hasUnrecoveredHistory(): boolean { return this.serverSequence < this.observedServerSequence; }
   /** 本地 socket 写入完成后返回，不代表 Remote 确认；离线不排队，断线不重发。 */
-  send(message: RpcMessage): Promise<RemoteSendReceipt> { return this.transmit(this, message); }
+  send(message: RpcMessage, deadline?: number): Promise<RemoteSendReceipt> {
+    if (deadline !== undefined && performance.now() >= deadline) return Promise.reject(new RemoteSendError('Remote 发送超时', false, undefined, 'timeout'));
+    return this.transmit(this, message, undefined, deadline);
+  }
   close(): Promise<void> {
     if (this.closing) return this.closing;
     this.isClosed = true;
@@ -161,7 +165,7 @@ export class RemoteRelay extends EventEmitter<RelayEvents> {
     const streamId = randomUUID();
     if (!validId(options.environmentId)) throw new Error('Remote stream 路由无效');
     if (this.streams.size >= this.maxStreams) throw new Error('Remote 活跃 stream 超过预算');
-    const stream = new RemoteStream(options.environmentId, streamId, (value, message, control) => this.sendStream(value, message, control), value => this.releaseStream(value));
+    const stream = new RemoteStream(options.environmentId, streamId, (value, message, control, deadline) => this.sendStream(value, message, control, deadline), value => this.releaseStream(value));
     this.streams.set(streamId, stream); return stream;
   }
   private releaseStream(stream: RemoteStream): void {
@@ -332,7 +336,7 @@ export class RemoteRelay extends EventEmitter<RelayEvents> {
     else if (frame.type === 'pong' && !duplicate) { stream.emit('pong', frame); this.emit('pong', frame); }
     else if (frame.type === 'ack') stream.emit('ack', frame);
   }
-  private sendStream(stream: RemoteStream, message?: RpcMessage, control?: 'ping' | 'client_closed'): Promise<RemoteSendReceipt> {
+  private sendStream(stream: RemoteStream, message?: RpcMessage, control?: 'ping' | 'client_closed', deadline?: number): Promise<RemoteSendReceipt> {
     const seqId = stream.lastSentSeqId + 1;
     try {
       if (stream.closed && control !== 'client_closed') throw new RemoteSendError('Remote stream 已关闭', false);
@@ -341,8 +345,8 @@ export class RemoteRelay extends EventEmitter<RelayEvents> {
       const frames = control ? [JSON.stringify({ type: control, client_id: this.clientId, stream_id: stream.streamId, env_id: stream.environmentId, seq_id: seqId,
         ...(control === 'ping' ? { skip_history: true, state: 'foreground' } : {}) })] : encodeClientMessage(route, message!, { maxMessageBytes: this.maxMessageBytes });
       const prepared = this.preflight(frames);
-      stream.commitSequence(seqId);
-      return this.write(prepared.socket, frames, prepared.bytes, seqId).then(() => ({ seqId }));
+      if (deadline !== undefined && performance.now() >= deadline) throw new RemoteSendError('Remote 发送超时', false, undefined, 'timeout');
+      return this.write(prepared.socket, frames, prepared.bytes, seqId, stream, deadline).then(() => ({ seqId }));
     } catch (error) {
       return Promise.reject(error instanceof RemoteSendError ? error : new RemoteSendError(error instanceof RemoteProtocolError ? error.message : 'Remote 发送数据无效', false));
     }
@@ -355,20 +359,27 @@ export class RemoteRelay extends EventEmitter<RelayEvents> {
     if (bytes + Math.max(this.queuedBytes, socket.bufferedAmount) > this.maxBufferedBytes) throw new RemoteSendError('Remote 发送背压预算超限', false);
     return { socket, bytes };
   }
-  private write(socket: WebSocket, frames: string[], bytes: number, seqId?: number): Promise<void> {
+  private write(socket: WebSocket, frames: string[], bytes: number, seqId?: number, stream?: RemoteStream, deadline?: number): Promise<void> {
     return new Promise<void>((resolve, reject) => {
       const operation: PendingWrite = { socket, bytes, reject, seqId };
-      this.writes.add(operation); this.queuedBytes += bytes; let remaining = frames.length;
-      const finish = (error?: Error) => {
+      this.writes.add(operation); this.queuedBytes += bytes; let remaining = frames.length; let submitted = false;
+      const finish = (error?: RemoteSendError) => {
         if (!this.writes.delete(operation)) return;
         this.queuedBytes -= bytes;
-        if (error) reject(new RemoteSendError('Remote 写入中断，消息可能已发送', true, seqId)); else resolve();
+        if (error) reject(error); else resolve();
       };
       try {
-        for (const frame of frames) socket.send(frame, { binary: false }, error => {
-          if (error) finish(error); else if (--remaining === 0) finish();
-        });
-      } catch { finish(new Error('Remote socket 写入失败')); }
+        for (const frame of frames) {
+          if (!this.writes.has(operation)) return;
+          if (deadline !== undefined && performance.now() >= deadline) { finish(new RemoteSendError('Remote 发送超时', submitted, submitted ? seqId : undefined, 'timeout')); return; }
+          // 零发送拒绝不消耗序号；第一帧开始写入后才固定可能已发送的事实。
+          if (!submitted && stream && seqId !== undefined) stream.commitSequence(seqId);
+          submitted = true;
+          socket.send(frame, { binary: false }, error => {
+            if (error) finish(new RemoteSendError('Remote 写入中断，消息可能已发送', true, seqId)); else if (--remaining === 0) finish();
+          });
+        }
+      } catch { finish(new RemoteSendError('Remote 写入中断，消息可能已发送', submitted, submitted ? seqId : undefined)); }
     });
   }
   private renewNativeLiveness(socket: WebSocket, epoch: number): void {

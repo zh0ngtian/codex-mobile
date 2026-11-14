@@ -66,7 +66,7 @@ export class RemoteFileReadChannel {
       this.current = current;
       const encodedRequest = JSON.stringify(request); const budget = this.remaining();
       const params: Record<string, JsonValue> = { command: [this.binding.python, '-I', '-u', '-c', REMOTE_FILE_READ_PYTHON, nonce, String(budget), encodedRequest], cwd: this.binding.metadata.codexHome, processId: current.id, streamStdin: false, streamStdoutStderr: false, outputBytesCap: OUTPUT_CAP, timeoutMs: budget };
-      const options = { timeoutMs: budget };
+      const options = { timeoutMs: budget, deadline: this.deadline };
       // 所有发送前guard均通过后才标记可能已发送；真正调用后的未知失败仍保守占额。
       current.sent = true; this.sent = true;
       const execution = this.session.call('command/exec', params, options);

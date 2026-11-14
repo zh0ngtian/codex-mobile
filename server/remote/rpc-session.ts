@@ -14,7 +14,11 @@ export interface RemoteRpcSessionOptions {
 }
 export type RemoteRpcFailure = 'network' | 'timeout' | 'protocol' | 'capacity' | 'closed' | 'response' | 'cancelled';
 /** 只供可信服务端内部调用，保留两参数call/notify及默认20秒。 */
-export interface RemoteRpcCallOptions { timeoutMs?: number; signal?: AbortSignal }
+export interface RemoteRpcCallOptions {
+  timeoutMs?: number; signal?: AbortSignal;
+  /** @internal 可信读取的原绝对期限，只能缩短本次RPC的既有窗口。 */
+  deadline?: number;
+}
 /** 仅包含固定错误文本；上游 payload、URL 和凭据不进入 error/cause。 */
 export class RemoteRpcError extends RemoteNetworkError {
   constructor(readonly code: RemoteRpcFailure, readonly mayHaveBeenSent: boolean) {
@@ -168,15 +172,17 @@ export class RemoteRpcSession extends EventEmitter<SessionEvents> {
   }
   call(method: string, params?: JsonValue, options: RemoteRpcCallOptions = {}): Promise<unknown> {
     if (!this.ready || method === 'initialize' || method === 'initialized') return Promise.reject(new RemoteRpcError('closed', false));
-    return this.submit(method, params, true, options.timeoutMs ?? this.options.responseTimeoutMs, options.signal);
+    return this.submit(method, params, true, options.timeoutMs ?? this.options.responseTimeoutMs, options.signal, options.deadline);
   }
   async notify(method: string, params?: JsonValue, options: RemoteRpcCallOptions = {}): Promise<void> {
     if (!this.ready || method === 'initialize' || method === 'initialized') throw new RemoteRpcError('closed', false);
-    await this.submit(method, params, false, options.timeoutMs ?? this.options.responseTimeoutMs, options.signal);
+    await this.submit(method, params, false, options.timeoutMs ?? this.options.responseTimeoutMs, options.signal, options.deadline);
   }
-  private submit(method: string, params: JsonValue | undefined, response: boolean, timeout: number, signal?: AbortSignal): Promise<unknown> {
+  private submit(method: string, params: JsonValue | undefined, response: boolean, timeout: number, signal?: AbortSignal, operationDeadline?: number): Promise<unknown> {
     if (!Number.isSafeInteger(timeout) || timeout < 1 || timeout > 180000) return Promise.reject(new RemoteRpcError('capacity', false));
-    const deadline = performance.now() + timeout;
+    if (operationDeadline !== undefined && !Number.isFinite(operationDeadline)) return Promise.reject(new RemoteRpcError('capacity', false));
+    const now = performance.now(); const deadline = Math.min(now + timeout, operationDeadline ?? Infinity);
+    if (now >= deadline) return Promise.reject(new RemoteRpcError('timeout', false));
     if (signal?.aborted) return Promise.reject(new RemoteRpcError('cancelled', false));
     if (this.terminal) return Promise.reject(new RemoteRpcError('closed', false));
     if (this.pending.size >= this.options.maxPending) return Promise.reject(new RemoteRpcError('capacity', false));
@@ -214,17 +220,22 @@ export class RemoteRpcSession extends EventEmitter<SessionEvents> {
       }
       const sent = (error?: unknown) => {
         if (!this.pending.has(entry)) return;
+        if (error instanceof RemoteSendError) {
+          this.settle(entry, new RemoteRpcError(error.code === 'timeout' || performance.now() >= entry.deadline ? 'timeout' : 'network', error.mayHaveBeenSent)); return;
+        }
         if (performance.now() >= entry.deadline) { this.settle(entry, new RemoteRpcError('timeout', entry.submitted)); return; }
-        if (error) this.settle(entry, new RemoteRpcError('network', error instanceof RemoteSendError ? error.mayHaveBeenSent : entry.submitted));
+        if (error) this.settle(entry, new RemoteRpcError('network', entry.submitted));
         else if (!response) this.settle(entry, undefined, undefined);
       };
       try {
+        if (performance.now() >= deadline) { this.settle(entry, new RemoteRpcError('timeout', false)); return; }
         if (this.transport instanceof RemoteStream) {
           entry.submitted = true;
-          Promise.resolve(this.transport.send(message)).then(() => sent(), sent);
+          Promise.resolve(this.transport.send(message, operationDeadline === undefined ? undefined : deadline)).then(() => sent(), sent);
         } else {
           if (this.transport.readyState !== WebSocket.OPEN) { sent(new RemoteSendError('', false)); return; }
           this.writes.set(entry, writeBytes); this.writingBytes += writeBytes;
+          if (performance.now() >= deadline) { this.completeWrite(entry); this.settle(entry, new RemoteRpcError('timeout', false)); return; }
           entry.submitted = true; this.transport.send(encoded, error => {
             this.completeWrite(entry);
             if (error) this.finish('network'); else sent();

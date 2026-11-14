@@ -159,6 +159,20 @@ it('读取发送前只剩不足1毫秒时拒绝，不能把三种窗口预算向
   } finally { call.mockRestore(); clock.mockRestore(); }
 });
 
+it('真实RPC入口跨过读取原绝对期限时零发送且立即释放额度，共享session仍可用', async () => {
+  const f = await prepared(); const path = join(f.directory, 'real-rpc-send-deadline'); await writeFile(path, 'x'); let now = 17; let jumped = false;
+  const before = f.frames.length; const clock = vi.spyOn(nodePerformance, 'now').mockImplementation(() => {
+    if (now > 600000 && !jumped && new Error().stack?.includes('RemoteRpcSession.submit')) { now = 600017; jumped = true; } return now;
+  });
+  try {
+    const iterator = f.files.read(path, { timeoutMs: 600000 }); now = 600007; const error = await iterator.next().catch(error => error);
+    const execs = f.frames.slice(before).filter(frame => frame.method === 'command/exec').length;
+    process.stdout.write(JSON.stringify({ test: 'read-deadline-at-real-rpc-entry', jumped, execs, code: error.code, mayHaveBeenSent: error.mayHaveBeenSent }) + '\n');
+    expect(error).toMatchObject({ code: 'timeout', mayHaveBeenSent: false }); expect(jumped).toBe(true); expect(execs).toBe(0);
+    expect((f.files as unknown as { channels: Set<unknown> }).channels.size).toBe(0); expect((await f.files.stat(path)).size).toBe(1); expect(f.session.ready).toBe(true);
+  } finally { clock.mockRestore(); }
+});
+
 it('读取未显式提供期限仍使用20秒，三种窗口预算一致且完成后立即归还额度', async () => {
   const f = await prepared(); const data = Buffer.from('default-read-budget'); const clock = vi.spyOn(nodePerformance, 'now').mockReturnValue(0);
   const originalCall = f.session.call.bind(f.session); const budgets: number[][] = [];

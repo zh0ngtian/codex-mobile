@@ -1,10 +1,12 @@
 // @vitest-environment node
-import { afterEach, expect, it } from 'vitest';
+import { afterEach, expect, it, vi } from 'vitest';
 import { createServer } from 'node:http';
+import { performance as nodePerformance } from 'node:perf_hooks';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { RemoteRelay, RemoteAuthRequiredError, type RemoteRelayOptions } from '../../server/remote/relay.js';
 import { type RpcMessage, type ServerMessageChunk } from '../../server/remote/envelope.js';
 import { RemoteRpcSession } from '../../server/remote/rpc-session.js';
+import { RemoteFiles } from '../../server/remote/files.js';
 
 const cleanup: (() => unknown | Promise<unknown>)[] = [];
 afterEach(async () => { for (const fn of cleanup.reverse()) await fn(); cleanup.length = 0; });
@@ -43,6 +45,64 @@ function incomingChunks(streamId: string, message: RpcMessage, count: number): S
     message_chunk_base64: bytes.subarray(Math.floor(index * bytes.length / count), Math.floor((index + 1) * bytes.length / count)).toString('base64'),
   }));
 }
+
+it.each(['Relay编码', 'ownership', '物理发送前'])('读取原绝对期限在%s耗尽时真实WS零发送且无序号缺口，共享session继续可用', async phase => {
+  let now = 17; let armed = false; let jumped = false;
+  const upstream = await server(); const value = relay(upstream.url, { assertOwnership() { if (armed && phase === 'ownership') { now = 600017; jumped = true; } } });
+  const stream = value.createStream({ environmentId: 'mac' }); const session = RemoteRpcSession.fromRemoteStream(stream);
+  cleanup.push(() => session.close()); await until(() => value.state === 'online'); let serverSeq = 0;
+  upstream.connections[0]!.on('message', raw => {
+    const frame = JSON.parse(raw.toString()); const message = frame.message as RpcMessage | undefined;
+    if (message?.id) send(upstream.connections[0]!, incoming(stream.streamId, 'mac', ++serverSeq, { id: message.id, result: message.method === 'initialize' ? {} : true }));
+  });
+  await session.initialize(); await until(() => upstream.frames.some(frame => frame.message?.method === 'initialized'));
+  const scope = { managed: { codexHome: '/managed', accountId: 'account', accountUserId: 'member' }, target: { environmentId: 'mac', installationId: 'installation' } };
+  const files = Reflect.construct(RemoteFiles, [session, { python: 'python3', scope, metadata: { codexHome: '/target-home', platformFamily: 'unix', platformOs: 'macos', userAgent: 'controlled' } }]) as RemoteFiles;
+  const state = value as unknown as { socket: WebSocket; writes: Set<unknown>; queuedBytes: number };
+  const beforeSeq = stream.lastSentSeqId; const beforeFrames = upstream.frames.length;
+  const clock = vi.spyOn(nodePerformance, 'now').mockImplementation(() => now);
+  const physical = vi.spyOn(state.socket, 'send'); const stringifyActual = JSON.stringify;
+  const encoding = vi.spyOn(JSON, 'stringify').mockImplementation((...args: Parameters<typeof JSON.stringify>) => {
+    const result = stringifyActual(...args); const frame = args[0] as { type?: string; message?: RpcMessage } | undefined;
+    if (armed && phase === 'Relay编码' && frame?.type === 'client_message' && frame.message?.method === 'command/exec') { now = 600017; jumped = true; } return result;
+  });
+  const addActual = state.writes.add.bind(state.writes); const queued = vi.spyOn(state.writes, 'add').mockImplementation(operation => {
+    const result = addActual(operation); if (armed && phase === '物理发送前') { now = 600017; jumped = true; } return result;
+  });
+  try {
+    const iterator = files.read('/target-home/deadline', { timeoutMs: 600000 }); now = 600007; armed = true;
+    const failure = await iterator.next().catch(error => error); armed = false;
+    process.stdout.write(JSON.stringify({ test: 'read-deadline-at-real-ws', phase, jumped, physicalSends: physical.mock.calls.length, code: failure.code, mayHaveBeenSent: failure.mayHaveBeenSent }) + '\n');
+    expect(jumped).toBe(true); expect(failure).toMatchObject({ code: 'timeout', mayHaveBeenSent: false }); expect(physical).not.toHaveBeenCalled();
+    expect(stream.lastSentSeqId).toBe(beforeSeq); expect([state.writes.size, state.queuedBytes]).toEqual([0, 0]);
+    expect((files as unknown as { channels: Set<unknown> }).channels.size).toBe(0);
+    const rpc = session as unknown as { pending: Set<unknown>; responses: Map<unknown, unknown>; writes: Map<unknown, unknown>; writingBytes: number };
+    expect([rpc.pending.size, rpc.responses.size, rpc.writes.size, rpc.writingBytes]).toEqual([0, 0, 0, 0]);
+    expect(upstream.frames.slice(beforeFrames).filter(frame => frame.message?.method === 'command/exec')).toHaveLength(0);
+    encoding.mockRestore(); queued.mockRestore(); now = 600018;
+    expect(await session.call('after-deadline')).toBe(true); expect(stream.lastSentSeqId).toBe(beforeSeq + 1); expect(session.ready).toBe(true);
+    await files.close();
+  } finally { armed = false; encoding.mockRestore(); queued.mockRestore(); physical.mockRestore(); clock.mockRestore(); await files.close(); }
+});
+
+it('可信绝对期限在真实WS分块首帧写入后耗尽时停止后续帧并保留已发送事实', async () => {
+  const upstream = await server(); const value = relay(upstream.url); const stream = value.createStream({ environmentId: 'mac' });
+  await until(() => value.state === 'online'); let now = 600007;
+  const state = value as unknown as { socket: WebSocket; writes: Set<unknown>; queuedBytes: number }; const actualSend = state.socket.send.bind(state.socket);
+  const clock = vi.spyOn(nodePerformance, 'now').mockImplementation(() => now);
+  const physical = vi.spyOn(state.socket, 'send').mockImplementation((...args: Parameters<WebSocket['send']>) => {
+    const result = actualSend(...args); now = 600017; return result;
+  });
+  try {
+    const failure = await Reflect.apply(stream.send, stream, [{ method: 'large', params: 'x'.repeat(300000) }, 600017]).catch(error => error);
+    process.stdout.write(JSON.stringify({ test: 'partial-send-deadline-at-real-ws', physicalSends: physical.mock.calls.length, code: failure.code, mayHaveBeenSent: failure.mayHaveBeenSent }) + '\n');
+    expect(failure).toMatchObject({ code: 'timeout', mayHaveBeenSent: true, seqId: 1 }); expect(physical).toHaveBeenCalledTimes(1);
+    expect(stream.lastSentSeqId).toBe(1); expect([state.writes.size, state.queuedBytes]).toEqual([0, 0]);
+    physical.mockRestore(); await stream.close(); await until(() => upstream.frames.some(frame => frame.type === 'client_closed'));
+    expect(upstream.frames.filter(frame => frame.type === 'client_message_chunk')).toHaveLength(1);
+    expect(upstream.frames.find(frame => frame.type === 'client_closed')?.seq_id).toBe(2); expect(value.state).toBe('online');
+  } finally { physical.mockRestore(); clock.mockRestore(); }
+});
 
 it('两目标三条逻辑 stream 共用一条常驻物理连接，按完整路由隔离并分别递增 seq', async () => {
   const upstream = await server(); const value = relay(upstream.url);

@@ -1,10 +1,11 @@
 // @vitest-environment node
 import { getEventListeners } from 'node:events';
-import { afterEach, expect, it } from 'vitest';
+import { performance as nodePerformance } from 'node:perf_hooks';
+import { afterEach, expect, it, vi } from 'vitest';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { RemoteSendError, RemoteStream } from '../../server/remote/relay.js';
 import { encodeClientMessage, type JsonValue, type RpcMessage } from '../../server/remote/envelope.js';
-import { RemoteRpcSession } from '../../server/remote/rpc-session.js';
+import { RemoteRpcError, RemoteRpcSession } from '../../server/remote/rpc-session.js';
 
 const cleanup: (() => unknown | Promise<unknown>)[] = [];
 afterEach(async () => { for (const fn of cleanup.reverse()) await fn(); cleanup.length = 0; });
@@ -38,6 +39,36 @@ function remote(transmit?: ConstructorParameters<typeof RemoteStream>[2]) {
   cleanup.push(async () => { try { await stream.close(); } catch { /* fake transport 可同步失败。 */ } });
   return { stream, frames, released: () => released };
 }
+
+it.each(['canonical', 'RemoteStream'].flatMap(transport => ['入口', '序列化', '登记pending后'].map(phase => ({ transport, phase }))))('可信绝对期限在$transport的$phase耗尽时零发送，清理等待并保留共享session', async ({ transport, phase }) => {
+  let session: RemoteRpcSession; let messages: RpcMessage[];
+  if (transport === 'canonical') {
+    const f = await initialized({ maxPending: 1 }); session = f.session; messages = f.server.frames;
+    f.server.sockets[0]!.on('message', raw => { const message = JSON.parse(raw.toString()) as RpcMessage; if (message.id) send(f.server.sockets[0]!, { id: message.id, result: true }); });
+  } else {
+    const f = remote(async (stream, message) => { if (message) { f.frames.push(message); if (message.id) queueMicrotask(() => stream.emit('message', { id: message.id, result: message.method === 'initialize' ? {} : true }, { seqId: f.frames.length })); } return { seqId: f.frames.length }; });
+    session = RemoteRpcSession.fromRemoteStream(f.stream, { maxPending: 1 }); cleanup.push(() => session.close()); messages = f.frames; await session.initialize();
+  }
+  let now = 600007; let jumped = false; const before = messages.length; const clock = vi.spyOn(nodePerformance, 'now').mockImplementation(() => {
+    if (phase === '入口' && !jumped && new Error().stack?.includes('RemoteRpcSession.submit')) { now = 600017; jumped = true; } return now;
+  });
+  const rpcTimers: ReturnType<typeof setTimeout>[] = []; const cleared = vi.spyOn(globalThis, 'clearTimeout');
+  const setTimeoutActual = setTimeout; const timer = vi.spyOn(globalThis, 'setTimeout').mockImplementation((...args: Parameters<typeof setTimeout>) => {
+    const result = setTimeoutActual(...args); if (new Error().stack?.includes('rpc-session.ts')) {
+      rpcTimers.push(result); if (phase === '登记pending后' && !jumped) { now = 600017; jumped = true; }
+    } return result;
+  });
+  try {
+    const params = phase === '序列化' ? { toJSON() { now = 600017; jumped = true; return {}; } } as unknown as JsonValue : {};
+    const options = { timeoutMs: 100, deadline: 600017 }; const failure = await session.call('deadline-barrier', params, options).catch(error => error);
+    expect(failure).toBeInstanceOf(RemoteRpcError); expect(failure).toMatchObject({ code: 'timeout', mayHaveBeenSent: false }); expect(jumped).toBe(true);
+    expect(messages.slice(before).filter(message => message.method === 'deadline-barrier')).toHaveLength(0);
+    const state = session as unknown as { pending: Set<unknown>; responses: Map<unknown, unknown>; writes: Map<unknown, unknown>; writingBytes: number };
+    expect([state.pending.size, state.responses.size, state.writes.size, state.writingBytes]).toEqual([0, 0, 0, 0]);
+    expect(rpcTimers).toHaveLength(phase === '登记pending后' ? 1 : 0); for (const rpcTimer of rpcTimers) expect(cleared).toHaveBeenCalledWith(rpcTimer);
+    timer.mockRestore(); cleared.mockRestore(); clock.mockRestore(); const next = session.call('after-barrier'); expect(await next).toBe(true); expect(session.ready).toBe(true);
+  } finally { timer.mockRestore(); cleared.mockRestore(); clock.mockRestore(); }
+});
 
 it('真实 canonical WS 仅初始化一次，initialized 写入后就绪并暴露真实 metadata', async () => {
   const { session, server } = await canonical();
