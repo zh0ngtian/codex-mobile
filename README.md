@@ -73,7 +73,7 @@ http://<电脑局域网IP>:18766/?token=<随机口令>
 
 客户端不设置设备数量上限，可同时维持所有已启用设备的连接；保存和恢复完整设备列表及排序。
 
-最近已验收客户端为0.3.45（3045）：Android 新增 Material You 原生界面和完整交互动效，参照 iOS 收紧布局、字号与长文字显示；共享设备表单地址改为明文。成功批次 `89b75441-f1ec-4b96-b895-ef7d1e6a1063`，冻结 `ddf58d120a3b7fd53c221ade11b515f0de9f6ce2`；GitHub APK／未签名 IPA 和既有 iOS 软件源已回验，独立104项渠道核对通过，APK 实际版本、原生 Compose 入口及签名证书延续性通过。273项发布回归、59项协调器恢复、171项构建合同、21项 Android 原生与145项业务回归及1项 iPhone 17 Pro地址补验通过。本次未部署网关，沿用既有成功部署；LAN、签名 IPA 与 OTA 继续停用。真机安装、数据保留与实际手感待验收，详见[发布凭证](docs/superpowers/plans/evidence/2026-11-11-native-layout-release.json)。
+最近已验收客户端为0.3.47（3047）：WebUI 输入框对齐 iOS 的正文与工具行布局，长输入自动增高至六行，模型、思考强度、权限和 Fast 独立操作，附件加号使用居中 SVG。成功批次 `433ed0e5-e037-4af3-adeb-a65bfd59bf0e`，冻结 `248b05ebea81aa54f7642eec186f286618b8cb9e`；GitHub APK／未签名 IPA 和既有 iOS 软件源已回验，46项独立渠道核对通过。167项组件／业务回归、17项 iPhone 17 Pro WebKit 验收及四项发布门禁通过。本次未部署网关；LAN、签名 IPA 与 OTA 继续停用。真机键盘、安装、数据保留与实际手感待验收，详见[发布凭证](docs/superpowers/plans/evidence/2026-11-14-web-composer-release.json)。
 
 此前0.3.35已发布iOS已有会话的后续消息动效与旧图片预览保留，继承0.3.34的首条发送动效；支持文字、图片与文件、多附件、仅附件、快速确认、失败返回编辑及待确认防重复，历史与页头保持。其[发布计划](docs/superpowers/plans/2026-10-24-followup-message-motion-release.md)与[公共凭证](docs/superpowers/plans/evidence/2026-10-24-followup-message-motion-release.json)保留当次验收口径。
 
@@ -153,7 +153,7 @@ iOS AgentApp 完整原生界面的最新交互、验收要点和覆盖关系统�
 
 ### 界面模式
 
-当前源码保留共享网页界面与 iOS SwiftUI 原生界面。Android 直接使用内置 Web 页面和网页输入框，Compose 原生呈现已按用户要求移除；iOS 继续支持原生与网页模式。此变更尚未正式发布，现役0.3.45 APK 仍包含此前 Android 原生版，渠道状态见最新发布凭证。
+当前源码保留共享网页界面与 iOS SwiftUI 原生界面。Android 直接使用内置 Web 页面和网页输入框，Compose 原生呈现已按用户要求移除；iOS 继续支持原生与网页模式。现役0.3.47 APK 已包含该变更，网页输入框同时完成 iOS 布局对齐，渠道状态见最新发布凭证。
 
 新版 Web 界面与网页搭配原生输入框的模式已移除，对应开关不再显示。iOS 升级保留“使用原生界面”的现有选择；旧新版 Web 与独立原生输入框偏好不再生效。iOS 首次安装默认使用原生界面和黑色强调色，已有明确保存的界面和颜色选择继续保留。
 
@@ -373,7 +373,7 @@ npm run test:e2e
 
 ## 移动端构建
 
-仅在用户明确要求发布时，由本机已有 `releasectl` 协调正式发布；普通源码任务不发包。仅涉及 Android 时使用 `codex-mobile-github-android`／`mobile-github-android`，阶段为 `main → build → verify`，只构建 GitHub APK；涉及 iOS 或影响 iOS 的共享运行代码时使用 `codex-mobile-github-only`／`mobile-github-only`，阶段为 `main → build → source → verify`，生成同版本 APK／unsigned IPA 并同步既有 iOS 软件源。冻结项目决定 CI 平台和验收范围，Android 单端不启动 iOS 作业，也不读取或更新 iOS 软件源；共享表单等改动须核对 iOS 消费者。各项目继续共用 main 锁与版本预留，不写 LAN 包、不签名或发布 OTA。配置和恢复验收见[发布协调说明](docs/release-coordination.md)。
+仅在用户明确要求发布时，由本机已有 `releasectl` 协调正式发布；普通源码任务不发包。2026-11-14 起，只有影响 iOS 原生界面的呈现或操作才打 IPA：原生代码、共享业务／桥接，以及修改或删除网关接口导致原生操作异常均在范围内；仅 WebUI 或 iOS 网页模式变化不打 IPA。不影响原生界面的客户端发布使用 `codex-mobile-github-android`／`mobile-github-android`，只构建 APK，阶段为 `main → build → verify`；影响原生界面时使用 `codex-mobile-github-only`／`mobile-github-only`，生成同版本 APK／unsigned IPA 并同步既有软件源，阶段为 `main → build → source → verify`。冻结项目决定 CI 平台和验收范围，APK 单端不启动 iOS 作业，也不读取或更新 iOS 软件源。各项目继续共用 main 锁与版本预留，不写 LAN 包、不签名或发布 OTA。完整判据及接口兼容性验收见[发布协调说明](docs/release-coordination.md#ios-build-scope)。
 
 Android新版本从[GitHub Release](https://github.com/zh0ngtian/codex-mobile/releases)手动下载APK并安装。8765局域网发布服务已停止并disabled；客户端现有LAN更新检查在关闭后不可用，本次没有将自动更新切换到GitHub，也没有新增更新交互。旧APK、IPA、清单和服务配置保留在原目录，不再更新。
 
@@ -391,7 +391,7 @@ Android 安装包保持竖屏。iOS App 在 iPhone、iPad 及应用内浏览器�
 
 - GitHub按冻结平台构建复用 `mobile/*/build-recipe.yml`，prepare查询全部GitHub Release标签、仓库版本下限和保留失败预留（含旧0.3.37），不访问任何LAN清单、签名配置或HTTPS OTA。npm包按需手动测试、构建和发布。
 - 已获用户发布授权的客户端任务经协调器整合、复验、冻结后推送正式批次。验收独立完整下载本批实际平台的产物并核对大小和 SHA-256；包含 iOS 时另核对 unsigned IPA 及软件源版本、日志和署名。交付按本批范围提供 Release／APK，双端另附 IPA／软件源链接，保存 `github-release.json` 与实际 `platforms`；Android 单端不把旧 IPA 当成本次产物。
-- 改动不涉及客户端运行代码、客户端引用的共用模块、原生桥接或影响客户端产物的构建配置时，不得触发客户端 Web、APK 或 IPA 的构建与发布；仅修改文档、规则、测试、服务端或不影响客户端产物的脚本时，均遵循此规则。服务端变更仍须验证和构建服务端，只有用户明确要求部署时才部署网关。具体约束见 [AGENTS.md](AGENTS.md)。
+- 仅修改文档、规则、测试、不影响客户端产物的脚本或不影响客户端操作的服务端内部实现时，不触发客户端 Web、APK 或 IPA 的构建与发布。网关接口修改或删除影响 iOS 原生操作时，须完成兼容适配及原生操作验证，并纳入 iOS 打包范围；不能仅以改动位于服务端为由排除。客户端发布与网关部署仍分别遵守授权，具体约束见 [AGENTS.md](AGENTS.md)。
 
 本地构建配置与环境约定见 [构建说明](mobile/README.md)：
 

@@ -25,12 +25,13 @@
 - [常驻 Remote 网关设计](superpowers/specs/2026-11-13-remote-gateway.md)与[实施计划](superpowers/plans/2026-11-13-remote-gateway.md)：开发中；协议、自有授权、有界RPC、受管认证、账号绑定目录、OAuth、活动身份和运行管理已有源码与隔离审查，运行层的三流RPC、同流恢复、零流短时保活及持久暂停恢复已有正式Remote收据。[Mac管理说明](remote-gateway-management.md)记录私有通道、固定CLI和实例归属；该入口已通过独立规格/质量复审及正式Remote的实际进程重启、SIGKILL恢复、活owner竞争与零流后RPC探针。[第44/45项补充方案](superpowers/specs/2026-11-13-remote-gateway-cli-proposal.md)保持当前用户专有管理和候选身份原子切换边界。[目标命令基础](superpowers/plans/evidence/2026-11-13-remote-commands-isolated-validation.json)已通过独立双审，正式Remote已验证默认权限字节输出、自有进程收尾与零流后RPC；文件层继续开发。固定计量权限例外和目标自身来源发现已隔离验证，产品统计、目标业务路由、共享队列、手机模式及长期性能继续后续任务。未部署现役服务或发布客户端。
 - [Remote文件读取方式第47项](superpowers/specs/2026-11-14-remote-file-buffered-read-proposal.md)：用户已选择A，进入固定短命令缓冲窗口的TDD实现，最终双审与官方文件验收待完成；第46项边界后的本地双审通过，官方100MiB上传成功、现有回读仍阻塞。仓库外短命令缓冲窗口已在原期限内完成100MiB/SHA/Range和精确取消可行性验证，[调查收据](superpowers/plans/evidence/2026-11-14-remote-files-read-investigation.json)保留原失败及范围限制，不代表产品Files或手机功能验收通过。
 
-- [2026-11-11 原生版发布与后续 Android 单端构建](superpowers/plans/2026-11-11-android-only-release.md)：0.3.45 双端与软件源验收成功；不影响 iOS 的后续改动只构建 APK，单端首次真实批次待后续发布验收。
+- [2026-11-14 WebUI 输入框补修与双端发布](superpowers/plans/2026-11-14-web-composer-github-release.md)：0.3.47 APK／未签名 IPA 与既有软件源验收成功，加号居中和一至六行自适应已验证。
+- [2026-11-11 原生版发布与后续 Android 单端构建](superpowers/plans/2026-11-11-android-only-release.md)：0.3.45 双端与软件源验收成功，已具备 APK 单端入口；后续 IPA 范围以[原生界面影响判据](release-coordination.md#ios-build-scope)为准，包含破坏原生操作的网关接口变更，仅 WebUI 不打 IPA。单端首次真实批次待后续发布验收。
 - [2026-11-10 网页引用补修联合发布](superpowers/plans/2026-11-10-web-citations-hidden-release.md)：0.3.44 GitHub双端及既有iOS软件源、配套网关成功；12会话54项来源与73处引用回验通过。
 
 ## 当前发布入口
 
-最近已验收客户端为0.3.45（3045）：Android 新增 Material You 原生界面和完整交互动效，参照 iOS 收紧布局、字号与长文字显示；共享设备表单地址改为明文。成功批次 `89b75441-f1ec-4b96-b895-ef7d1e6a1063`，冻结 `ddf58d120a3b7fd53c221ade11b515f0de9f6ce2`；GitHub APK／未签名 IPA 和既有 iOS 软件源已回验，独立104项渠道核对通过，APK 实际版本、原生 Compose 入口及签名证书延续性通过。273项发布回归、59项协调器恢复、171项构建合同、21项 Android 原生与145项业务回归及1项 iPhone 17 Pro地址补验通过。本次未部署网关，沿用既有成功部署；LAN、签名 IPA 与 OTA 继续停用。真机安装、数据保留与实际手感待验收，详见[发布凭证](superpowers/plans/evidence/2026-11-11-native-layout-release.json)。
+最近已验收客户端为0.3.47（3047）：WebUI 输入框对齐 iOS 的正文与工具行布局，长输入自动增高至六行，模型、思考强度、权限和 Fast 独立操作，附件加号使用居中 SVG。成功批次 `433ed0e5-e037-4af3-adeb-a65bfd59bf0e`，冻结 `248b05ebea81aa54f7642eec186f286618b8cb9e`；GitHub APK／未签名 IPA 和既有 iOS 软件源已回验，46项独立渠道核对通过。167项组件／业务回归、17项 iPhone 17 Pro WebKit 验收及四项发布门禁通过。本次未部署网关；LAN、签名 IPA 与 OTA 继续停用。真机键盘、安装、数据保留与实际手感待验收，详见[发布凭证](superpowers/plans/evidence/2026-11-14-web-composer-release.json)。
 
 此前0.3.35已发布后续消息从输入区连续交接到用户气泡和旧图片预览保留，继承0.3.34的首条发送动效，历史、页头、附件及队列语义保持；其[发布计划](superpowers/plans/2026-10-24-followup-message-motion-release.md)与[公共凭证](superpowers/plans/evidence/2026-10-24-followup-message-motion-release.json)保留当次验收口径。
 
