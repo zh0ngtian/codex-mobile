@@ -1234,3 +1234,34 @@ it('已消费buffered窗口的RPC结果可回收，最终窗口暂停不经failu
   const result = JSON.parse(stdout); process.stdout.write(JSON.stringify({ test: 'real-rpc-response-retention', ...result }) + '\n');
   expect(result).toEqual({ windows: 4, previousResults: 3, livePreviousResults: 0, activeTargetProcesses: 0, finalPaused: true });
 });
+
+it('父guard在buffered exec调用前失败不终止未启动进程或占用共享额度', async () => {
+  const f = await prepared(); const path = join(f.directory, 'parent-before-exec'); await writeFile(path, 'x');
+  const { RemoteFileError } = await import('../../server/remote/files.js');
+  const channels = (f.files as unknown as { channels: Set<{ current?: unknown }> }).channels;
+  const started = performance.now(); const before = f.frames.length; const failures: unknown[] = [];
+  try {
+    for (let n = 0; n < 4; n++) {
+      const previous = new Set(channels);
+      failures.push(await withRemoteOperation(() => {
+        // 精确注入进程记录建立后的最后发送前边界，不依赖assert调用次数。
+        if ([...channels].some(channel => !previous.has(channel) && channel.current)) throw new RemoteFileError('timeout', false);
+      }, () => bytes(f.files.read(path, { timeoutMs: 1000 }))).catch(error => error));
+    }
+    const sent = f.frames.slice(before); const stat = await f.files.stat(path).catch(error => error);
+    const evidence = { failures: failures.map(error => (error as { code: string }).code), fileExecs: sent.filter(frame => frame.method === 'command/exec').length, terminates: sent.filter(frame => frame.method === 'command/exec/terminate').length, activeChildren: f.processes.size, channels: channels.size, nextStat: stat.code ?? stat.size };
+    process.stdout.write(JSON.stringify({ test: 'parent-before-exec', ...evidence }) + '\n');
+    expect(evidence).toEqual({ failures: ['timeout', 'timeout', 'timeout', 'timeout'], fileExecs: 0, terminates: 0, activeChildren: 0, channels: 0, nextStat: 1 });
+  } finally { await new Promise(resolve => setTimeout(resolve, Math.max(0, started + 1050 - performance.now()))); }
+});
+
+it.each(['deadline', 'close'] as const)('保留8个%s后暂停iterator时未交付parsed块和Buffer可回收，消费者首块仍有效', async mode => {
+  const directory = await mkdtemp(join(tmpdir(), 'remote-paused-retention-')); cleanup.push(() => rm(directory, { recursive: true, force: true }));
+  const path = join(directory, 'two-MiB'); await writeFile(path, Buffer.alloc(2 * 1024 * 1024, 7));
+  const child = spawn(process.execPath, ['--expose-gc', '--import', 'tsx', new URL('./fixtures/remote-files-recover-worker.ts', import.meta.url).pathname], { stdio: 'pipe', env: { ...process.env, NODE_OPTIONS: '--no-experimental-webstorage' } });
+  let stdout = ''; let stderr = ''; child.stdout.on('data', data => { stdout += String(data); }); child.stderr.on('data', data => { stderr += String(data); });
+  child.stdin.end(JSON.stringify({ directory, path, action: 'read-paused-retention', mode, ...(process.env.REMOTE_FILE_PAUSED_SNAPSHOT ? { snapshot: process.env.REMOTE_FILE_PAUSED_SNAPSHOT + '-' + mode + '.heapsnapshot' } : {}) }));
+  const exit = await new Promise<number | null>(resolve => child.on('close', resolve)); expect({ exit, stderr }).toEqual({ exit: 0, stderr: '' });
+  const result = JSON.parse(stdout); process.stdout.write(JSON.stringify({ test: 'paused-payload-retention', ...result }) + '\n');
+  expect(result).toEqual({ mode, heldIterators: 8, parsedChunks: 32, decodedBuffers: 32, liveParsedChunks: 0, liveUnyieldedBuffers: 0, liveCallerBuffers: 8, channels: 0, activeTargetProcesses: 0, rawResultsAlive: 0, listenersBackToBase: true, allPermitsReusable: true });
+}, 15000);

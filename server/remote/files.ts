@@ -123,14 +123,15 @@ export class RemoteFiles {
         if (initial.type !== 'file' || meta.offset !== offset || meta.window !== window || meta.position !== total || !Number.isSafeInteger(meta.length) || (meta.length as number) < 0 || (meta.length as number) > FILE_MAX_BYTES || offset + (meta.length as number) > initial.size || (rangeLength !== undefined && meta.length !== rangeLength)) throw new RemoteFileError('protocol', true);
         if ((initialVersion !== undefined && initial.version !== initialVersion) || (expected && initial.version !== this.version(path, expected))) throw new RemoteFileError('version', true);
         initialVersion = initial.version; expected = facts(meta.facts); rangeLength = meta.length as number;
-        const position = total; const windowBytes = Math.min(FILE_CHUNK_BYTES * FILE_WINDOW, rangeLength - position);
+        const position = total; const validatedLength = rangeLength; const windowBytes = Math.min(FILE_CHUNK_BYTES * FILE_WINDOW, validatedLength - position);
         if (batch.length !== Math.ceil(windowBytes / FILE_CHUNK_BYTES)) throw new RemoteFileError('protocol', true);
-        for (const part of batch) {
+        // 大记录/临时Buffer只在同步回调栈中存活，不进入有yield的generator寄存器。
+        batch.forEach(part => {
           body(part, 'chunk', ['offset', 'size', 'sha256', 'base64']);
-          const bytes = strictBase64(part.base64, FILE_CHUNK_BYTES); const size = Math.min(FILE_CHUNK_BYTES, rangeLength - total);
+          const bytes = strictBase64(part.base64, FILE_CHUNK_BYTES); const size = Math.min(FILE_CHUNK_BYTES, validatedLength - total);
           if (!bytes.length || bytes.length !== size || part.offset !== offset + total || part.size !== bytes.length || fileSha(bytes) !== part.sha256) throw new RemoteFileError('integrity', true);
-          total += bytes.length; hash.update(bytes); decoded.push(bytes); channel.assert();
-        }
+          total += bytes.length; hash.update(bytes); decoded.push(bytes); channel!.assert();
+        });
         const done = total === rangeLength;
         body(tail, done ? 'done' : 'batch-end', ['window', 'position', 'total', 'facts', ...(done ? ['sha256'] : [])]);
         if (tail.window !== window || tail.position !== position || tail.total !== total || this.version(path, tail.facts) !== initialVersion) throw new RemoteFileError('integrity', true);

@@ -58,10 +58,13 @@ export class RemoteFileReadChannel {
       this.assert();
       if (this.current && !this.current.ended) throw new RemoteFileError('protocol', this.sent);
       const nonce = randomUUID(); const budget = this.remaining(); const previousSent = this.sent;
-      const current: Process = { id: 'codex-mobile-file:' + randomUUID(), sent: true, ended: false, execution: Promise.resolve(false) };
+      const current: Process = { id: 'codex-mobile-file:' + randomUUID(), sent: false, ended: false, execution: Promise.resolve(false) };
       this.current = current;
       const params: Record<string, JsonValue> = { command: [this.binding.python, '-I', '-u', '-c', REMOTE_FILE_READ_PYTHON, nonce, String(budget), JSON.stringify(request)], cwd: this.binding.metadata.codexHome, processId: current.id, streamStdin: false, streamStdoutStderr: false, outputBytesCap: OUTPUT_CAP, timeoutMs: this.remaining() };
-      const execution = this.session.call('command/exec', params, { timeoutMs: this.remaining() }); this.sent = true;
+      const options = { timeoutMs: this.remaining() };
+      // 所有发送前guard均通过后才标记可能已发送；真正调用后的未知失败仍保守占额。
+      current.sent = true; this.sent = true;
+      const execution = this.session.call('command/exec', params, options);
       // 不取消原exec的RPC等待：terminate ACK不能证明目标已结束。取消立即拒绝调用者，
       // 仍观察原exec的实际终结，或到原绝对期限才回收活动进程的额度。
       let output: unknown;

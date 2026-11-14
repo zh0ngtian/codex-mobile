@@ -8,7 +8,7 @@ import type { JsonValue, RpcMessage } from '../../../server/remote/envelope.js';
 // 独立OS进程只接收测试暂存路径和序列化收据；每个目标协议命令仍实际运行Python3。
 let input = '';
 for await (const part of process.stdin) { input += String(part); if (input.length > 65536) throw new Error('测试输入超限'); }
-const request = JSON.parse(input) as { directory: string; operation?: unknown; path?: string; action?: 'read-retention'; snapshot?: string };
+const request = JSON.parse(input) as { directory: string; operation?: unknown; path?: string; action?: 'read-retention' | 'read-paused-retention'; mode?: 'deadline' | 'close'; snapshot?: string };
 let seq = 0;
 const children = new Map<string, ChildProcessWithoutNullStreams>();
 const respond = (message: RpcMessage, result: unknown) => stream.emit('message', { id: message.id!, result: result as JsonValue }, { seqId: ++seq });
@@ -53,5 +53,55 @@ try {
     const livePreviousResults = results.slice(0, -1).filter(reference => reference.deref() !== undefined).length;
     process.stdout.write(JSON.stringify({ windows: results.length, previousResults: results.length - 1, livePreviousResults, activeTargetProcesses: children.size, finalPaused: true }));
     await iterator.return(undefined);
+  } else if (request.action === 'read-paused-retention') {
+    if (!global.gc || !request.path || !request.mode) throw new Error('测试需要显式GC、目标路径和回收模式');
+    const parsed: WeakRef<object>[] = []; const decoded: WeakRef<Buffer>[] = []; const raw: WeakRef<object>[] = [];
+    const parse = JSON.parse; const from = Buffer.from; const call = session.call.bind(session);
+    const listeners = () => ['notification', 'disconnect', 'close'].map(name => session.listenerCount(name));
+    const baseline = listeners(); const held: AsyncGenerator<Buffer>[] = []; const consumed: Buffer[] = []; const owners: RemoteFiles[] = [];
+    JSON.parse = (text, reviver) => {
+      const value: unknown = parse(text, reviver);
+      if (value && typeof value === 'object' && 'kind' in value && value.kind === 'chunk') parsed.push(new WeakRef(value));
+      return value;
+    };
+    Buffer.from = function (...args: unknown[]) {
+      const value: Buffer = Reflect.apply(from, Buffer, args);
+      if (typeof args[0] === 'string' && args[1] === 'base64' && value.length === 524288) decoded.push(new WeakRef(value));
+      return value;
+    } as typeof Buffer.from;
+    session.call = (method, params, options) => call(method, params, options).then(value => {
+      if (method === 'command/exec' && (params as Record<string, unknown>)?.streamStdoutStderr === false && value && typeof value === 'object') raw.push(new WeakRef(value));
+      return value;
+    });
+    // 已yield的首块由消费者有意持有；其余三个块必须在原期限/close后全部可回收。
+    const first = async (iterator: AsyncGenerator<Buffer>) => {
+      const part = await iterator.next(); if (part.done || part.value.length !== 524288) throw new Error('首块不符'); consumed.push(part.value);
+    };
+    try {
+      for (let n = 0; n < 8; n++) {
+        const owner = request.mode === 'close' ? await RemoteFiles.create(session, { managed: { codexHome: '/managed', accountId: 'account', accountUserId: 'member' }, target: { environmentId: 'environment', installationId: 'installation' } }) : files;
+        owners.push(owner); const iterator = owner.read(request.path, { timeoutMs: request.mode === 'deadline' ? 500 : 3000 });
+        await first(iterator); held.push(iterator);
+        if (request.mode === 'close') await owner.close(); else await new Promise(resolve => setTimeout(resolve, 530));
+      }
+      for (let n = 0; n < 8; n++) { await new Promise(resolve => setImmediate(resolve)); global.gc(); }
+      if (request.snapshot) writeHeapSnapshot(request.snapshot);
+      const result = {
+        mode: request.mode, heldIterators: held.length, parsedChunks: parsed.length, decodedBuffers: decoded.length,
+        liveParsedChunks: parsed.filter(reference => reference.deref()).length,
+        liveUnyieldedBuffers: decoded.filter((reference, index) => index % 4 !== 0 && reference.deref()).length,
+        liveCallerBuffers: decoded.filter((reference, index) => index % 4 === 0 && reference.deref()).length,
+        channels: owners.reduce((total, owner) => total + (owner as unknown as { channels: Set<unknown> }).channels.size, 0),
+        activeTargetProcesses: children.size, rawResultsAlive: raw.filter(reference => reference.deref()).length,
+        listenersBackToBase: JSON.stringify(listeners()) === JSON.stringify(baseline),
+        allPermitsReusable: (await Promise.all(Array.from({ length: 4 }, () => files!.stat(request.path!)))).every(stat => stat.size === 2097152),
+      };
+      process.stdout.write(JSON.stringify(result));
+      if (consumed.length !== 8 || consumed.some(part => part.length !== 524288)) throw new Error('消费者首块丢失');
+    } finally {
+      JSON.parse = parse; Buffer.from = from; session.call = call;
+      for (const iterator of held) await iterator.return(undefined);
+      for (const owner of owners) if (owner !== files) await owner.close();
+    }
   } else process.stdout.write(JSON.stringify(await files.queryUpload(request.operation)));
 } finally { await files?.close(); for (const child of children.values()) kill(child); session.close(); }
