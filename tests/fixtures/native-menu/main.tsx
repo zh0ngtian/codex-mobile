@@ -36,11 +36,14 @@ function HistoryEditorFixture() {
       </div></div>
     </div>
     <form className="composer-wrap">
-      <div className="chips"><button type="button" aria-label="模型验收">GPT 测试</button><button type="button">完全访问权限</button></div>
       <div className="composer">
-        <button type="button" disabled>＋</button>
-        <textarea aria-label="底部输入栏验收" placeholder="向 Codex 提问" disabled={editing} />
-        <button type="button" disabled>□</button><button type="button" disabled>↑</button>
+        <textarea className="composer-input" rows={1} aria-label="底部输入栏验收" placeholder="向 Codex 提问" disabled={editing} />
+        <div className="composer-tools">
+          <button className="add-button" type="button" disabled>＋</button>
+          <button className="composer-control composer-model" type="button" aria-label="模型验收">GPT 测试</button>
+          <button className="composer-control" type="button" disabled>完全访问权限</button>
+          <button className="send-button" type="button" disabled>↑</button>
+        </div>
       </div>
     </form>
   </main>;
@@ -65,7 +68,7 @@ function SkillPickerFixture() {
     onArchive={async () => true} onRetry={() => {}} onLoadOlderTurns={async () => true}
     onSubmit={event => event.preventDefault()} onRemoveImage={() => {}} onRemoveFile={() => {}}
     onSelectImages={async () => {}} onSelectLocation={async () => false}
-    onOpenAgentSettings={() => {}} onOpenPermissionSettings={() => {}} onDraftChange={setDraft}
+    availableControls={{ model: true, effort: true, fast: true, permission: true }} onOpenModelSettings={() => {}} onToggleFast={() => {}} onOpenAgentSettings={() => {}} onOpenPermissionSettings={() => {}} onDraftChange={setDraft}
     onInterrupt={() => {}} onQueuedFollowUpAction={() => {}}
   />;
 }

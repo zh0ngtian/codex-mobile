@@ -10,6 +10,8 @@ export function AppIcon({
   name,
 }: {
   name:
+    | "bolt"
+    | "shield"
     | "archive"
     | "back"
     | "close"
@@ -36,6 +38,8 @@ export function AppIcon({
     | "stop";
 }) {
   const paths = {
+    bolt: <path d="m13 2-9 12h7l-1 8 10-12h-7z" />,
+    shield: <path d="M12 3 4 6v6c0 4 8 9 8 9s8-5 8-9V6z" />,
     archive: <><path d="M4 7h16v13H4z" /><path d="M3 4h18v3H3zM9 11h6" /></>,
     back: <path d="M15 18l-6-6 6-6M9 12h11" />,
     close: <path d="m7 7 10 10M17 7 7 17" />,

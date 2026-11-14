@@ -521,6 +521,9 @@ const english: Record<string, string> = {
   "移除 {name}": "Remove {name}",
   "正在读取图片…": "Reading images…",
   "正在处理附件…": "Processing attachment…",
+  "选择模型": "Choose model",
+  "思考强度": "Reasoning effort",
+  "普通速度": "Normal speed",
   "选择模型、智能与速度": "Choose model, reasoning, and speed",
   "更新线程模型设置失败：{message}":
     "Failed to update conversation model settings: {message}",

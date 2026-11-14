@@ -487,6 +487,7 @@ function BackendWorkspace({
   const [pendingAction, setPendingAction] = useState("");
   const [notice, setNotice] = useState("");
   const [picker, setPicker] = useState<ComposerPicker>(null);
+  useEffect(() => { setPicker(null); }, [backend.id, active?.id, historyEdit, activeThreadAccessMode, conversationVisible]);
   const [skillCatalog, setSkillCatalog] = useState<{
     cwd: string | null;
     skills: InstalledSkill[];
@@ -4045,10 +4046,6 @@ function BackendWorkspace({
   const displayedServiceTier = selectedModelEntry
     ? effectiveSelectedServiceTier
     : null;
-  const selectedSpeedLabel =
-    speedOptions.find((option) => option.id === displayedServiceTier)
-      ?.label ??
-    t("正常");
   const permissionModes = permissionModesFromProfiles(
     permissionProfiles as Array<{ id: string; allowed?: boolean }>,
   );
@@ -4736,6 +4733,14 @@ function BackendWorkspace({
           onSelectImages={selectImages}
           onSelectLocation={selectCurrentLocation}
           onOpenAgentSettings={() => setPicker("agent")}
+          onOpenModelSettings={() => setPicker("model")}
+          availableControls={{ model: models.length > 0, effort: effortOptions.length > 0,
+            fast: speedOptions.some(option => option.id === "fast" || option.id === "priority"),
+            permission: permissionModes.length > 0 }}
+          onToggleFast={() => {
+            const fast = speedOptions.find(option => option.id === "fast" || option.id === "priority");
+            if (fast) chooseSpeed(displayedServiceTier === "fast" || displayedServiceTier === "priority" ? null : fast.id);
+          }}
           onOpenPermissionSettings={() => setPicker("permission")}
           onDraftChange={value => { draftInputRevisionRef.current += 1; currentDraftRef.current = { ...currentDraftRef.current, text: value }; setDraft(value); }}
           historyEdit={historyEdit}
@@ -4798,19 +4803,14 @@ function BackendWorkspace({
       <ComposerSettings
         picker={picker}
         effortOptions={effortOptions}
-        speedOptions={speedOptions}
         permissionModes={permissionModes}
         models={models}
         selectedEffort={selectedEffort}
         selectedModel={selectedModel}
-        selectedModelLabel={selectedModelLabel}
-        selectedServiceTier={displayedServiceTier}
-        selectedSpeedLabel={selectedSpeedLabel}
         selectedPermissionModeId={selectedPermissionModeId}
         onPickerChange={setPicker}
         onChooseEffort={chooseEffort}
         onChooseModel={chooseModel}
-        onChooseSpeed={chooseSpeed}
         onChoosePermissionMode={choosePermissionMode}
       />
     </main>
