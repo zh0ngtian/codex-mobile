@@ -111,7 +111,7 @@
     "specPassed": true,
     "qualityPassed": true,
     "actualRemoteProbePassed": true,
-    "mainPushed": false,
+    "mainPushed": true,
     "deployed": false,
     "clientPublished": false
   },
@@ -176,5 +176,17 @@
     ],
     "longTermOrP95Proven": false
   },
-  "gatesRecordedBeforeSourceIntegration": true
+  "gatesRecordedBeforeSourceIntegration": false,
+  "sourceIntegration": {
+    "passed": true,
+    "mainCommit": "e292e592133469c20bbcb4efb863f6ca4e2a5961",
+    "previousMain": "0c8c86badf0016300d656b04d40f629ffe62f1c7",
+    "commonMainLease": true,
+    "remoteMainExactShaVerified": true,
+    "originalMainRefUnchanged": true,
+    "originalIndexUnchanged": true,
+    "runtimeUnchangedSinceReviewedFreeze": true,
+    "clientPublished": false,
+    "gatewayDeployed": false
+  }
 }

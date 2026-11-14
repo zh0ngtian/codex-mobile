@@ -190,3 +190,8 @@ Task3按内部依赖分项验证，不改变已确认的权限、功能或目标
 第50项实现 `b876ffb115470761826265b0e22d997dac9347de`、冻结 `f455772d2eee34cfa357402abd16720a179ff353` 已完成相关297项、完整server1367项/7项既有跳过、双strict及服务端构建；[本地与新双审收据](evidence/2026-11-14-remote-file-window-size-validation.json)保留首RED/GREEN、200窗与原期限、夹具失败及root核验。新独立SPEC→QUALITY均PASS，root核对622/195份工件。
 
 第50项冻结源码的[一次官方Files验收](evidence/2026-11-14-remote-files-single-window-product-probe.json)已通过：原100MiB查询/完整读取279045毫秒；新100MiB上传76003毫秒/完整读取175937毫秒；各200窗、字节/独立总SHA和四组Range、旧版本拒绝、producer失败保持原文件、未知提交跨实际OS新进程只查询原操作、收据释放及精确清理均通过。默认权限/有限输出cap违规零，读取417+1窗、峰值单活动读取进程；25秒零流后再次RPC无新prepare，两个SIGTERM均退出0且管理资源清理。无新授权/登记、模型推理或测试聊天，未构建客户端或部署发布。Task3b通过；该约12分钟样本不代表P95、8小时或睡眠唤醒验收，3c及后续依赖现可继续。
+
+2026-11-14文件层及验收文档已在共同main锁下推送 `e292e592133469c20bbcb4efb863f6ca4e2a5961`，远端精确核对通过，原工作区main引用与暂存区未动。开始3c前再次fetch，main与本工作区HEAD均为该提交，作为新修改基线。现由新实现者顺序TDD固定统计来源，随后另行SPEC→QUALITY及冻结源码官方只读验证；3c尚未完成。继续仅固定脚本的readOnly/networkAccess例外，来源取同session实际目标环境，普通命令/文件/Git无权限扩展。IPC没有快照结束标记，只有实际收到的usage可用，remove/断线清缓存、不伪零；现有ModelUploadSource没有失效通知，该产品传播链继续3d/5核验。本轮仅源码，不部署或构建发布客户端。
+
+
+Task3c本地实现完成：`e42be25c81e7b4bc3f83905d951a6c4e38021812` 新增固定来源证明、有界通道与ModelUploadSource，首次窗口从准备入口计时；只统计固定脚本使用例外，通用操作默认权限。真实Python/临时Unix及WS新增82项通过，完整server1449项通过/7项既有跳过，双strict与服务端构建通过；原RED、夹具观察错误及测试类型检查失败分开记录，root核对报告与617工件无差异，见[本地收据](evidence/2026-11-14-remote-model-upload-source-validation.json)。物理业务分片消费live guard，Commands/Files的自有精确清理使用独立有限预算；空ACK/拒绝不当作进程实际终结。3c仍未勾选，下一门禁是新独立SPEC→QUALITY和同一冻结源码官方只读验证；产品消费者、队列与手机后续未完成。
