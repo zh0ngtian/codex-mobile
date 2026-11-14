@@ -3,7 +3,7 @@ import { performance } from 'node:perf_hooks';
 import { posix, win32 } from 'node:path';
 import { RemoteCommands, RemoteCommandError, type RemoteCommandScope, type RemoteCommandMetadata } from './commands.js';
 import type { RemoteRpcSession } from './rpc-session.js';
-import { assertRemoteOperation } from './operation-guard.js';
+import { assertRemoteOperation, runRemoteCleanup } from './operation-guard.js';
 import { FILE_CHUNK_BYTES, FILE_MAX_BYTES, FILE_WINDOW, RemoteFileChannel, RemoteFileError, fileFailure, fileSha, fileText, record, strictBase64 } from './file-channel.js';
 import { RemoteFileReadChannel } from './file-read-channel.js';
 export { RemoteFileError } from './file-channel.js';
@@ -239,7 +239,7 @@ export class RemoteFiles {
       if (operation) {
         classified.operation = operation;
         // 未发送commit且原命令已经实际结束才可清理；断线或未知commit保留查询事实，不盲删或重放。
-        if (!commitSent && channel?.settled) await this.cleanupOperation(operation).catch(() => undefined);
+        if (!commitSent && channel?.settled) await runRemoteCleanup(() => this.cleanupOperation(operation!)).catch(() => undefined);
       }
       throw classified;
     } finally {

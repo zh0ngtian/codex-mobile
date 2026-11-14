@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
 import { TextDecoder } from 'node:util';
 import { RemoteRpcError, type RemoteRpcSession } from './rpc-session.js';
-import { assertRemoteOperation, withRemoteOperation } from './operation-guard.js';
+import { assertRemoteOperation, runRemoteCleanup, withRemoteOperation } from './operation-guard.js';
 import type { ManagedAuthIdentity } from './managed-auth.js';
 import type { RemoteTargetIdentity } from './catalog.js';
 import type { JsonValue, RpcMessage } from './envelope.js';
@@ -368,7 +368,7 @@ export class RemoteCommands {
       else classified = new RemoteCommandError('protocol', op.sent);
       op.error = classified; abort.abort();
       // cleanup独立于已结束业务期限，只允许本适配器自己生成的processId。不关闭共享session。
-      if (op.sent && this.session.ready && !termination) termination = this.session.call('command/exec/terminate', { processId }, { timeoutMs: 1000 });
+      if (op.sent && this.session.ready && !termination) termination = runRemoteCleanup(() => this.session.call('command/exec/terminate', { processId }, { timeoutMs: 1000 }));
       await termination?.catch(() => undefined);
       throw classified;
     } finally {

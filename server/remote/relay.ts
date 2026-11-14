@@ -2,6 +2,7 @@ import { ownedWebSocket } from './owned-websocket.js';
 import { randomUUID } from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import { performance } from 'node:perf_hooks';
+import { assertRemoteOperation } from './operation-guard.js';
 import { TextDecoder } from 'node:util';
 import WebSocket, { type RawData } from 'ws';
 import {
@@ -346,7 +347,7 @@ export class RemoteRelay extends EventEmitter<RelayEvents> {
         ...(control === 'ping' ? { skip_history: true, state: 'foreground' } : {}) })] : encodeClientMessage(route, message!, { maxMessageBytes: this.maxMessageBytes });
       const prepared = this.preflight(frames);
       if (deadline !== undefined && performance.now() >= deadline) throw new RemoteSendError('Remote 发送超时', false, undefined, 'timeout');
-      return this.write(prepared.socket, frames, prepared.bytes, seqId, stream, deadline).then(() => ({ seqId }));
+      return this.write(prepared.socket, frames, prepared.bytes, seqId, stream, deadline, control === undefined).then(() => ({ seqId }));
     } catch (error) {
       return Promise.reject(error instanceof RemoteSendError ? error : new RemoteSendError(error instanceof RemoteProtocolError ? error.message : 'Remote 发送数据无效', false));
     }
@@ -359,7 +360,7 @@ export class RemoteRelay extends EventEmitter<RelayEvents> {
     if (bytes + Math.max(this.queuedBytes, socket.bufferedAmount) > this.maxBufferedBytes) throw new RemoteSendError('Remote 发送背压预算超限', false);
     return { socket, bytes };
   }
-  private write(socket: WebSocket, frames: string[], bytes: number, seqId?: number, stream?: RemoteStream, deadline?: number): Promise<void> {
+  private write(socket: WebSocket, frames: string[], bytes: number, seqId?: number, stream?: RemoteStream, deadline?: number, business = false): Promise<void> {
     return new Promise<void>((resolve, reject) => {
       const operation: PendingWrite = { socket, bytes, reject, seqId };
       this.writes.add(operation); this.queuedBytes += bytes; let remaining = frames.length; let submitted = false;
@@ -371,6 +372,8 @@ export class RemoteRelay extends EventEmitter<RelayEvents> {
       try {
         for (const frame of frames) {
           if (!this.writes.has(operation)) return;
+          // 业务取消/来源失效可同步发生于上一物理send；控制帧和连接清理不继承业务guard。
+          if (business) assertRemoteOperation();
           if (deadline !== undefined && performance.now() >= deadline) { finish(new RemoteSendError('Remote 发送超时', submitted, submitted ? seqId : undefined, 'timeout')); return; }
           // 零发送拒绝不消耗序号；第一帧开始写入后才固定可能已发送的事实。
           if (!submitted && stream && seqId !== undefined) stream.commitSequence(seqId);

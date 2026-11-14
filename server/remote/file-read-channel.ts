@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
 import { RemoteRpcError, type RemoteRpcSession } from './rpc-session.js';
-import { assertRemoteOperation, withRemoteOperation } from './operation-guard.js';
+import { assertRemoteOperation, runRemoteCleanup, withRemoteOperation } from './operation-guard.js';
 import { reserveFileBudget } from './file-budget.js';
 import { RemoteFileError, fileExecEnded, fileFailure, fileSha, fileText, record, type RemoteFileFailure } from './file-channel.js';
 import { REMOTE_FILE_READ_PYTHON } from './file-read-python.js';
@@ -121,7 +121,7 @@ export class RemoteFileReadChannel {
       let timer: NodeJS.Timeout | undefined;
       try {
         if (!this.session.ready) return false;
-        const termination = this.session.call('command/exec/terminate', { processId: current.id }, { timeoutMs: 1000 });
+        const termination = runRemoteCleanup(() => this.session.call('command/exec/terminate', { processId: current.id }, { timeoutMs: 1000 }));
         const finished = Promise.all([termination, current.execution]).then(([, ended]) => ended);
         return await Promise.race([finished, new Promise<boolean>(resolve => { timer = setTimeout(() => resolve(false), 1000); })]);
       } catch { return false; }

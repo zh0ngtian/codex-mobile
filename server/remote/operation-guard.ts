@@ -3,6 +3,9 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 interface Guard { assert?: () => void; failed: boolean }
 const guards = new AsyncLocalStorage<Guard[]>();
 
+/** 仅可信内部精确资源清理使用；清理自己持有的资源，不继承已结束业务的期限或live检查。 */
+export function runRemoteCleanup<T>(operation: () => T): T { return guards.run([], operation); }
+
 /** 仅可信新资源边界调用；检查闭包不做FS，不影响close/kill/settled。 */
 export function assertRemoteOperation(): void {
   for (const guard of guards.getStore() ?? []) {

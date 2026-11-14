@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
 import { TextDecoder } from 'node:util';
 import { RemoteRpcError, type RemoteRpcSession } from './rpc-session.js';
-import { assertRemoteOperation, withRemoteOperation } from './operation-guard.js';
+import { assertRemoteOperation, runRemoteCleanup, withRemoteOperation } from './operation-guard.js';
 import type { JsonValue, RpcMessage } from './envelope.js';
 import { REMOTE_FILE_PYTHON } from './file-python.js';
 import { reserveFileBudget } from './file-budget.js';
@@ -202,7 +202,7 @@ export class RemoteFileChannel {
       try {
         if (!this.sent || !this.session.ready) return !this.sent;
         const budget = success ? this.remaining() : 1000;
-        const termination = this.session.call('command/exec/terminate', { processId: this.processId }, { timeoutMs: budget });
+        const termination = runRemoteCleanup(() => this.session.call('command/exec/terminate', { processId: this.processId }, { timeoutMs: budget }));
         const final = Promise.all([termination, this.execution]).then(([ack, result]) => {
           if (!record(ack) || Object.keys(ack).length || !record(result) || Object.keys(result).sort().join(',') !== 'exitCode,stderr,stdout' || !Number.isSafeInteger(result.exitCode) || (result.exitCode as number) < -2147483648 || (result.exitCode as number) > 2147483647 || result.stdout !== '' || result.stderr !== '') return false;
           return true;
