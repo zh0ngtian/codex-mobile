@@ -132,7 +132,7 @@ Task3按内部依赖分项验证，不改变已确认的权限、功能或目标
 
 第46项A后的当前状态：`d202927e554236413b4f5d5955bb16240acdb68d` 的规格补充及新质量审查PASS，7组独立生命周期验证、完整服务端1282项/7项跳过、两种严格检查及服务端构建通过；主代理完整读取报告并核对2939份证据无差异。原三位点RED及原NEEDS_CONTEXT报告保留。官方100MiB上传74508毫秒通过；首次回读2MiB后disconnected，原因未定；新OS进程只查询原提交再读，180秒期限到期只交付26MiB，12次原生ping/pong均完成，无已观测协议错误或意外断线。因此文件官方gate仍未放行，3b不勾选。
 
-仓库外单进程、2MiB窗口、3MiB有限输出cap的短command缓冲读取在109317毫秒完成原100MiB的逐字节/总SHA及四组Range；截断拒绝、精确terminate与原session存活另验通过。此为可行性，非产品修复或验收。官方fs只有path整文件读，历史分段成功也来自短command；不得以未存在的fs Range或关闭cap实现替代。当前[第47项读取方式补充](../specs/2026-11-14-remote-file-buffered-read-proposal.md)待用户确认；确认前不修改读取路径、不延长预算或增加回退。文档基线仍为核对后的main `40b0171f7e0c625e3e0656a2ed3e9b4e8d3bdcb0`。见[脱敏调查收据](evidence/2026-11-14-remote-files-read-investigation.json)。
+仓库外单进程、2MiB窗口、3MiB有限输出cap的短command缓冲读取在109317毫秒完成原100MiB的逐字节/总SHA及四组Range；截断拒绝、精确terminate与原session存活另验通过。此为可行性，非产品修复或验收。官方fs只有path整文件读，历史分段成功也来自短command；不得以未存在的fs Range或关闭cap实现替代。用户已在[第47项读取方式补充](../specs/2026-11-14-remote-file-buffered-read-proposal.md)选择A：固定短命令、2MiB窗口，每文件单活动读取进程，保留原期限、权限、完整性、版本与全局预留，取消后精确收尾，不增加回退。现进入先RED后实现、独立规格与质量复审及最终源码官方实测阶段；3b继续未验收。开始修改前重新核对的main基线为 `40b0171f7e0c625e3e0656a2ed3e9b4e8d3bdcb0`。见[脱敏调查收据](evidence/2026-11-14-remote-files-read-investigation.json)。
 
 - [ ] 在临时目录真实验证目标所需的官方fs/command能力及有界传输；100MiB文件校验SHA-256，范围读取核对长度与内容，失败恢复不提交半文件。现官方fs无Range参数，分段读取不得假设未知参数生效。
 - [ ] 测试目标路径只交给目标适配器，远程读写/Git 绝不能调用网关同路径本地 fs/exec。

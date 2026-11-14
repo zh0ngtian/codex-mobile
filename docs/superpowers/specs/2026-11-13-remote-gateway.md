@@ -1,8 +1,8 @@
 # 常驻 Remote 网关：已确认设计
 
-日期：2026-11-13。源码基线：`7772b28f5e716d8e5e3759fb1e84a089158502ec`。本设计、[Mac管理与身份恢复补充方案](2026-11-13-remote-gateway-cli-proposal.md)及[文件清理保护范围](2026-11-14-remote-file-cleanup-boundary-proposal.md)记录 Q1–Q46 的最终决定，后续修改不得恢复已被覆盖的单网关方案。
+日期：2026-11-13。源码基线：`7772b28f5e716d8e5e3759fb1e84a089158502ec`。本设计、[Mac管理与身份恢复补充方案](2026-11-13-remote-gateway-cli-proposal.md)、[文件清理保护范围](2026-11-14-remote-file-cleanup-boundary-proposal.md)及[文件读取方式补充](2026-11-14-remote-file-buffered-read-proposal.md)记录 Q1–Q47 的最终决定，后续修改不得恢复已被覆盖的单网关方案。
 
-2026-11-14文件层本地双审已通过，官方100MiB上传成功，但当前长进程回读未通过。仓库外短命令缓冲窗口已在原180秒期限内完成100MiB与Range可行性验证；[第47项读取方式补充](2026-11-14-remote-file-buffered-read-proposal.md)仍待用户确认，不属于已确认设计，不据此修改产品路径或放行文件验收。
+2026-11-14文件层本地双审已通过，官方100MiB上传成功，但当前长进程回读未通过。仓库外短命令缓冲窗口已在原180秒期限内完成100MiB与Range可行性验证；用户已在[第47项读取方式补充](2026-11-14-remote-file-buffered-read-proposal.md)选择A，授权固定短命令、2MiB有界缓冲窗口，保留原绝对期限、默认权限、版本、SHA及资源上限。当前进入TDD实现，最终源码双审与官方文件验收仍待完成。
 
 ## 配置和交互
 
