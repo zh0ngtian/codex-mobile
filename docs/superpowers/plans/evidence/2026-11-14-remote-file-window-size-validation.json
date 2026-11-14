@@ -1,0 +1,119 @@
+{
+  "date": "2026-11-14",
+  "decision": "Q50-A-fixed-512KiB-single-chunk-read-window",
+  "approved": true,
+  "status": "本地已验证；新冻结候选独立SPEC、QUALITY及官方Files均待完成，Task3b未通过",
+  "baselineHead": "ff92678a8bb506f717ec1c7b6bc94d0f386a4f45",
+  "originMainBaseline": "0c8c86badf0016300d656b04d40f629ffe62f1c7",
+  "implementationCommit": "b876ffb115470761826265b0e22d997dac9347de",
+  "contract": {
+    "readWindowBytes": 524288,
+    "readChunksPerWindow": 1,
+    "uploadChunkBytes": 524288,
+    "uploadWindow": 4,
+    "readDefaultMs": 20000,
+    "readMaxMs": 600000,
+    "windowMaxMs": 180000,
+    "assemblyAbsoluteMs": 30000,
+    "assemblyProgressResets": false,
+    "stdoutCapBytes": 3145728,
+    "maxFileBytes": 104857600,
+    "activeProcessesPerRead": 1,
+    "adaptiveWindow": false,
+    "automaticRetryOrResume": false
+  },
+  "firstRed": {
+    "expected": true,
+    "passed": 0,
+    "failed": 1,
+    "notSelected": 190,
+    "pythonStdoutBytes": 2797938,
+    "rpcBytes": 2798390,
+    "fragments": 28,
+    "received": 12,
+    "fixedFragmentIntervalMs": 2500,
+    "discardAtMs": 30000,
+    "logSha256": "8b887a4bba3b1f7f3003a8527d326867bbc34058f973c5d8db73a7db655504ca"
+  },
+  "firstGreen": {
+    "passed": 1,
+    "notSelected": 190,
+    "windows": 4,
+    "fragmentsEach": 7,
+    "assemblyMsEach": 15000,
+    "bytes": 2097152,
+    "contentAndShaCorrect": true,
+    "sameControlledCadence": true,
+    "realNetworkThrottling": false,
+    "officialThroughputClaim": false
+  },
+  "localHundredMiB": {
+    "bytes": 104857600,
+    "readWindows": 200,
+    "uploadChunks": 200,
+    "uploadWriteRpc": 203,
+    "exec": 201,
+    "peakFileProcesses": 1,
+    "maxOutboundRpcBytes": 932447,
+    "sha256": "09aa9b8215638cdd43d2483d13a2513b52a0c30423c51119de6b23c96428dee0",
+    "deadlineAllWindowsMs": 600000,
+    "preparationConsumesMs": 200000,
+    "advanceAfterEachWindowMs": 1500,
+    "firstWindowBudgetsMs": 180000,
+    "lastWindowSentAtMs": 498500,
+    "lastWindowBudgetsMs": 101500,
+    "officialPerformanceProven": false
+  },
+  "firstRegression": {
+    "passed": 188,
+    "failed": 3,
+    "preserved": true,
+    "classification": "两个旧夹具等待同窗第二块；一个断言误要求首窗未知length，均修正测试，未为此修改产品API"
+  },
+  "finalValidation": {
+    "relatedFiles": 4,
+    "relatedPassed": 297,
+    "fullServerPassed": 1367,
+    "fullServerSkipped": 7,
+    "fullServerTotal": 1374,
+    "passedFiles": 58,
+    "skippedFiles": 2,
+    "strictSource": true,
+    "strictWithTests": true,
+    "serverBuild": true,
+    "clientBuild": false
+  },
+  "rootEvidenceAudit": {
+    "manifestArtifactCount": 131,
+    "manifestMismatches": 0,
+    "manifestSha256": "18e8fa79a6a7c11df82d1ebd9df96d3a9cb82484323f41f4feaaf5e576dbffab",
+    "reportSha256": "f2064f33c1fae3cbcc9b18eb938f288338206914cd8915b92e97b9b0fe92baa1",
+    "realPythonOutputProofAndChunkShaCount": 17,
+    "redProductSourceMatchesBaseline": 7,
+    "greenSourceAndTestMatchesImplementation": 5,
+    "unchangedBoundaries": [
+      "file-channel.ts",
+      "file-budget.ts",
+      "envelope.ts",
+      "rpc-session.ts",
+      "relay.ts"
+    ]
+  },
+  "pending": [
+    "新的冻结源码SPEC",
+    "SPEC通过后新的QUALITY",
+    "同一原提交收据查询及100MiB完整读回/Range",
+    "新100MiB上传回读/producer失败/未知提交跨实际OS进程对账/精确清理"
+  ],
+  "gates": {
+    "implementationCommitted": true,
+    "specPassed": false,
+    "qualityPassed": false,
+    "actualRemoteProbePassed": false,
+    "mainPushed": false,
+    "deployed": false,
+    "clientPublished": false
+  },
+  "historicalQ49Receipt": "2026-11-14-remote-file-assembly-window-validation.json",
+  "historicalReceiptsRewritten": false
+}

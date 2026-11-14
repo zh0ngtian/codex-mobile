@@ -185,4 +185,6 @@ Task3按内部依赖分项验证，不改变已确认的权限、功能或目标
 
 第49项冻结 `253aa0b0fdce441959fc0fb20108573457f1c26b` 已通过独立SPEC36项、QUALITY6项，root核验67/123工件；官方首轮原收据查询成功，但在68MiB、296509毫秒后由既有30秒绝对分块组装期限断开。失败响应28片仅收到13片，断开前211毫秒仍有新分片；未达到read600秒或窗口180秒，未触发pongTimer。见[官方失败收据](evidence/2026-11-14-remote-file-assembly-window-validation.json)。现有30秒绝对期限专项1项通过/17项未选中，本地Python512KiB响应约为2MiB的四分之一，不代表官方性能通过。
 
-[第50项固定窗口方案](../specs/2026-11-14-remote-file-window-size-proposal.md)A建议512KiB单块，B保持现状继续调查；待用户确认，不能自行变更已批准的2MiB窗口或30秒组装边界。原目标夹具/提交收据保留，原上传未重发，新上传与跨OS进程对账未开始。Task3b不勾选，不启动3c、main推送、部署或客户端发布。
+用户已明确选择[第50项固定窗口方案](../specs/2026-11-14-remote-file-window-size-proposal.md)A：固定512KiB单块，上传512KiB块/4窗口保持；30秒绝对组装及read默认20秒/显式最高600秒不变。修改起点ff92678，重新fetch核对main仍0c8c86b。真实Python/RPC RED→GREEN及本地回归已完成，必须新冻结源码独立SPEC→QUALITY及一次官方完整Files验收，不沿用第49项旧gate。原目标夹具/提交收据保留，原上传未重发，新上传与跨OS进程对账未开始。Task3b不勾选，不启动3c、main推送、部署或客户端发布。
+
+第50项本地实现 `b876ffb115470761826265b0e22d997dac9347de` 已完成，相关297项与完整server1367项通过、7项既有跳过，双strict和服务端构建通过；[本地验证收据](evidence/2026-11-14-remote-file-window-size-validation.json)保留真实首RED/GREEN、200窗与原期限证明、首轮夹具失败及root核验。当前进入新冻结候选的SPEC→QUALITY门禁，官方Files仍待验收；Task3b不勾选。

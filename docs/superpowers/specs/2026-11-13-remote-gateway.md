@@ -1,8 +1,10 @@
 # 常驻 Remote 网关：已确认设计
 
-日期：2026-11-13。源码基线：`7772b28f5e716d8e5e3759fb1e84a089158502ec`。本设计、[Mac管理与身份恢复补充方案](2026-11-13-remote-gateway-cli-proposal.md)、[文件清理保护范围](2026-11-14-remote-file-cleanup-boundary-proposal.md)、[文件读取方式补充](2026-11-14-remote-file-buffered-read-proposal.md)及[传输存活补充](2026-11-14-remote-heartbeat-progress-proposal.md)记录 Q1–Q48 的最终决定，后续修改不得恢复已被覆盖的单网关方案。
+日期：2026-11-13。源码基线：`7772b28f5e716d8e5e3759fb1e84a089158502ec`。本设计、[Mac管理与身份恢复补充方案](2026-11-13-remote-gateway-cli-proposal.md)、[文件清理保护范围](2026-11-14-remote-file-cleanup-boundary-proposal.md)、[文件读取方式补充](2026-11-14-remote-file-buffered-read-proposal.md)、[传输存活补充](2026-11-14-remote-heartbeat-progress-proposal.md)、[读取预算](2026-11-14-remote-file-read-budget-proposal.md)及[固定读取窗口](2026-11-14-remote-file-window-size-proposal.md)记录 Q1–Q50 的最终决定，后续修改不得恢复已被覆盖的单网关方案。
 
 2026-11-14用户批准的[第47项固定短命令读取](2026-11-14-remote-file-buffered-read-proposal.md)已实现，最终源码 `41dd5a751aab5fa26d124419a396e6510fcbf780` 的服务端验证和独立双审通过；官方产品读回两轮仍失败，Task3b未通过。第一轮80MiB后原180秒超时，原因未知；第二轮64MiB后被10秒原生pongTimer断开，最后文件分块距断开195毫秒。原生pong迟到原因仍未知，用户已在[第48项传输存活方案](2026-11-14-remote-heartbeat-progress-proposal.md)选择A，将当前连接严格校验后的新增有效进度纳入存活判断；修复 `e16e5482a711d8ab48b326389c282657806e9b32` 的70项专项、完整服务端1334项/7项跳过、双strict及构建通过；冻结新源码d235的独立双审通过；官方首轮仍在180秒交付74MiB后超时，12次原生ping/pong均完成，零意外断开。[新验证与耗时调查](../plans/evidence/2026-11-14-remote-heartbeat-progress-validation.json)未找到有反例支持的局部缺陷，用户已在[第49项读取预算](2026-11-14-remote-file-read-budget-proposal.md)选择A：仅read可显式申请最高600秒，默认20秒、其他操作及单窗口RPC/watchdog最高180秒；实现9bed的19项新增、完整服务端1353项/7项跳过、双strict与构建通过；[新验证收据](../plans/evidence/2026-11-14-remote-file-read-budget-validation.json)记录冻结d1c82e4首轮SPEC发现实际发送期限缺口，修复新冻结253aa0b已通过独立SPEC与QUALITY；官方首轮在68MiB后触发既有30秒组装期限，尚未放行。[两轮收据](../plans/evidence/2026-11-14-remote-files-buffered-product-attempts.json)保留失败与范围；客户端模式、共享队列及长期验收仍待后续开发。
+
+用户已在第50项明确选择A：读取固定512KiB单块buffered短命令窗口，上传512KiB块/4窗口保持。read默认20秒、显式最高600秒，所有窗口、消费暂停和最后独立Range总SHA共用原期限；每窗Python watchdog/command/RPC最高180秒且受原总剩余限制，实际物理发送同受原期限约束。30秒首片起绝对组装、新片不续期；默认权限、完整身份、版本/SHA、资源、精确收尾及未知写不重放均保留。100MiB增加为200窗，不能保证600秒成功。当前实现b876ffb已完成本地验证，新双审及官方验收待完成，不沿用第49项gate。
 
 ## 配置和交互
 
