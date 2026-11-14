@@ -2,7 +2,7 @@
   "date": "2026-11-14",
   "decision": "Q50-A-fixed-512KiB-single-chunk-read-window",
   "approved": true,
-  "status": "本地已验证；新冻结候选独立SPEC、QUALITY及官方Files均待完成，Task3b未通过",
+  "status": "本地验证、新冻结源码独立SPEC→QUALITY及一次官方Files验收均通过；Task3b通过，后续任务待完成",
   "baselineHead": "ff92678a8bb506f717ec1c7b6bc94d0f386a4f45",
   "originMainBaseline": "0c8c86badf0016300d656b04d40f629ffe62f1c7",
   "implementationCommit": "b876ffb115470761826265b0e22d997dac9347de",
@@ -100,20 +100,81 @@
     ]
   },
   "pending": [
-    "新的冻结源码SPEC",
-    "SPEC通过后新的QUALITY",
-    "同一原提交收据查询及100MiB完整读回/Range",
-    "新100MiB上传回读/producer失败/未知提交跨实际OS进程对账/精确清理"
+    "Task3c固定统计读取",
+    "Task3d现有功能目标注入",
+    "共享队列与会话观察",
+    "手机多网关模式及outbox",
+    "完整长期与性能验收"
   ],
   "gates": {
     "implementationCommitted": true,
-    "specPassed": false,
-    "qualityPassed": false,
-    "actualRemoteProbePassed": false,
+    "specPassed": true,
+    "qualityPassed": true,
+    "actualRemoteProbePassed": true,
     "mainPushed": false,
     "deployed": false,
     "clientPublished": false
   },
   "historicalQ49Receipt": "2026-11-14-remote-file-assembly-window-validation.json",
-  "historicalReceiptsRewritten": false
+  "historicalReceiptsRewritten": false,
+  "reviewedAndOfficialSourceCommit": "f455772d2eee34cfa357402abd16720a179ff353",
+  "independentReviews": {
+    "order": [
+      "SPEC",
+      "QUALITY"
+    ],
+    "sameSourceCommit": true,
+    "spec": {
+      "passed": true,
+      "relatedPassed": 297,
+      "strictSource": true,
+      "strictWithTests": true,
+      "additionalRealPythonCases": 8,
+      "rootVerifiedArtifacts": 622,
+      "reportSha256": "de6802540fdbe508d5005462f65afb79c169fcbfcab92197c5460c1ec4254300",
+      "manifestSha256": "3d433c2cbdfd2f1919baa116ec9528e4d17c537e97922f4dc27654fa923dbffd"
+    },
+    "quality": {
+      "passed": true,
+      "additionalCases": 8,
+      "realPythonExecs": 16,
+      "productFrames": 66,
+      "issues": {
+        "critical": 0,
+        "important": 0,
+        "minor": 0
+      },
+      "rootVerifiedArtifacts": 195,
+      "reportSha256": "3e17260a0add268f713e81eed845c4310369569ec598ebcaa45dbb0374d10ba4",
+      "manifestSha256": "3a867089fd38088cf889c746753b433acd11ac1a3d61ece338761585a3a027b4"
+    },
+    "interruptedReviewArtifactsPreserved": 27,
+    "probeScaffoldingFailuresPreserved": true,
+    "rawDuplicateJsonKeySyntaxRejectionNotInOriginalContract": true,
+    "inheritedBaselineBehaviorReproduced": true
+  },
+  "officialProductProbe": {
+    "passed": true,
+    "attempts": 1,
+    "receipt": "2026-11-14-remote-files-single-window-product-probe.json",
+    "privateReceiptSha256": "64bfece024266ab1fa8adfe8c034a095ab021eb58969e2c202a4d451d3cc1cbe",
+    "publicReceiptSha256": "af5c9ff253f9a1f0c6d419af292016791d1f4c5cd24169c38bcf6f5b0673dbcc",
+    "rootVerifiedArtifacts": 7,
+    "originalUploadNotReplayed": true,
+    "original100MiBReadMs": 279045,
+    "new100MiBUploadMs": 76003,
+    "new100MiBReadMs": 175937,
+    "eachReadWindows": 200,
+    "actualOsProcessRestartProved": true,
+    "unknownCommitOnlyQueriedNotReplayed": true,
+    "preciseCleanup": true,
+    "zeroStreamDwellMs": 25000,
+    "noNewAuthPrepareDuringZeroStreamDwell": true,
+    "bothSigtermExitCodes": [
+      0,
+      0
+    ],
+    "longTermOrP95Proven": false
+  },
+  "gatesRecordedBeforeSourceIntegration": true
 }

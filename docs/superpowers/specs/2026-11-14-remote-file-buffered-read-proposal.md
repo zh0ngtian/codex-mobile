@@ -1,6 +1,10 @@
 # Remote 文件读取方式补充方案（第47项已确认A）
 
-状态：**2026-11-14，用户已选择A；固定源码 `41dd5a751aab5fa26d124419a396e6510fcbf780` 已完成TDD、严格检查、服务端构建及独立规格/质量复审。官方产品文件验收两轮仍失败，未合入文件候选到main、未发布。** 修改前产品源码为 `d202927e554236413b4f5d5955bb16240acdb68d`；开始修改前核对远端main为 `40b0171f7e0c625e3e0656a2ed3e9b4e8d3bdcb0`，最终候选已整合后来核对的 `0c8c86badf0016300d656b04d40f629ffe62f1c7`。第46项A边界不再阻塞；当前两轮结果和独立复审摘要见[产品探针收据](../plans/evidence/2026-11-14-remote-files-buffered-product-attempts.json)。第一轮80MiB后超时原因未知，第二轮64MiB后由固定10秒原生pongTimer主动断开，断开前仍有文件分块入站。用户已选择[第48项传输存活方案](2026-11-14-remote-heartbeat-progress-proposal.md)A，修复e16已通过70项专项、完整服务端1334项/7项跳过、双strict及构建；冻结新源码d235的独立双审已通过，官方首轮仍在180秒交付74MiB后超时，连接保持在线；[新验证与耗时收据](../plans/evidence/2026-11-14-remote-heartbeat-progress-validation.json)保留失败及三个只读Range诊断。[第49项读取预算](2026-11-14-remote-file-read-budget-proposal.md)已由用户选择A，覆盖本文件原read最高180秒要求：仅read可显式申请最高600秒，默认20秒及其他操作/单窗口RPC最高180秒；实现9bed的19项新增、完整服务端1353项/7项跳过、双strict与构建通过；[第49项新验证收据](../plans/evidence/2026-11-14-remote-file-read-budget-validation.json)中冻结d1c82e4首轮SPEC因过期后实际发送而FAIL，修复新冻结253aa0b已通过独立SPEC与QUALITY，官方首轮在68MiB后触发既有30秒组装期限，文件gate未通过，旧失败保留。[原调查收据](../plans/evidence/2026-11-14-remote-files-read-investigation.json)保留历史事实。
+状态：**2026-11-14，本方案已获确认并实现；经第48/49/50项补充，冻结源码 `f455772d2eee34cfa357402abd16720a179ff353` 已通过本地验证、新独立SPEC→QUALITY及一次官方完整Files验收，Task3b通过。** 当前读取为固定512KiB单块，read默认20秒/显式最高600秒、单窗最高180秒及30秒绝对组装保持；上传512KiB块/4窗口保持。详见[第50项现行合同与验收](2026-11-14-remote-file-window-size-proposal.md)及[官方Files收据](../plans/evidence/2026-11-14-remote-files-single-window-product-probe.json)。后续统计、业务注入、队列、手机模式及长期验收尚未完成，未部署或发布。
+
+以下保留本方案各阶段的调查、失败和门禁结论，均为当时状态；原始收据不重写。
+
+历史起点与阶段记录：**2026-11-14，用户已选择A；固定源码 `41dd5a751aab5fa26d124419a396e6510fcbf780` 已完成TDD、严格检查、服务端构建及独立规格/质量复审。官方产品文件验收两轮仍失败，未合入文件候选到main、未发布。** 修改前产品源码为 `d202927e554236413b4f5d5955bb16240acdb68d`；开始修改前核对远端main为 `40b0171f7e0c625e3e0656a2ed3e9b4e8d3bdcb0`，最终候选已整合后来核对的 `0c8c86badf0016300d656b04d40f629ffe62f1c7`。第46项A边界不再阻塞；当前两轮结果和独立复审摘要见[产品探针收据](../plans/evidence/2026-11-14-remote-files-buffered-product-attempts.json)。第一轮80MiB后超时原因未知，第二轮64MiB后由固定10秒原生pongTimer主动断开，断开前仍有文件分块入站。用户已选择[第48项传输存活方案](2026-11-14-remote-heartbeat-progress-proposal.md)A，修复e16已通过70项专项、完整服务端1334项/7项跳过、双strict及构建；冻结新源码d235的独立双审已通过，官方首轮仍在180秒交付74MiB后超时，连接保持在线；[新验证与耗时收据](../plans/evidence/2026-11-14-remote-heartbeat-progress-validation.json)保留失败及三个只读Range诊断。[第49项读取预算](2026-11-14-remote-file-read-budget-proposal.md)已由用户选择A，覆盖本文件原read最高180秒要求：仅read可显式申请最高600秒，默认20秒及其他操作/单窗口RPC最高180秒；实现9bed的19项新增、完整服务端1353项/7项跳过、双strict与构建通过；[第49项新验证收据](../plans/evidence/2026-11-14-remote-file-read-budget-validation.json)中冻结d1c82e4首轮SPEC因过期后实际发送而FAIL，修复新冻结253aa0b已通过独立SPEC与QUALITY，官方首轮在68MiB后触发既有30秒组装期限，文件gate未通过，旧失败保留。[原调查收据](../plans/evidence/2026-11-14-remote-files-read-investigation.json)保留历史事实。
 
 ## 官方实测与能力边界
 
@@ -15,8 +19,8 @@
 **把 `RemoteFiles.read` 固定改为短命令的有界缓冲窗口。** 一个窗口一个固定Python进程，自然退出后取完整buffered结果；不再让该读取依赖长进程连续outputDelta。上传、提交收据、查询和清理继续现有已审查协议；不自动在两种读取方式间回退。
 
 - 同一个ready session、完整账号/目标绑定、默认权限与原始目标路径语义继续生效；路径只作为JSON数据交给目标，不使用网关同路径文件，不增加物理连接或远端常驻agent。
-- 读取窗口按2026-11-14用户选择[第50项A](2026-11-14-remote-file-window-size-proposal.md)覆盖为固定512KiB单块（已实现并完成本地验证，待新双审及官方验收），上传保持512KiB块/4窗口。最多4个文件操作、每文件16MiB及全局64MiB逻辑预留；每个文件最多一个活动读取进程。官方exec对stdout/stderr分别设置3MiB捕获上限；文件协议额外限制stdout不超过3MiB，stderr只接受固定短证明，完整RPC仍受现有8MiB入站及1MiB出站限制。内存采样不能替代对实际持有缓冲和预留释放的验证，也不把64MiB解释为整个OS进程RSS上限。
-- 原第47项为默认20秒、最高180秒。2026-11-14用户选择第49项A后，仅read显式最高期限改为600秒（已实现并本地验证，首轮SPEC发现发送期限缺口，修复新冻结253aa0b已通过独立双审，官方首轮在68MiB后触发既有30秒组装期限），默认仍20秒，单窗口watchdog/RPC及其他文件操作最高180秒。单操作绝对期限覆盖准备、全部窗口、消费暂停、最终校验和结束；不按窗口或进度重置，不自动延长已申请预算。当前100MiB单次样本不构成任意网络条件下必然成功的吞吐承诺。
+- 读取窗口按2026-11-14用户选择[第50项A](2026-11-14-remote-file-window-size-proposal.md)覆盖为固定512KiB单块（已通过本地验证、新双审及官方Files验收），上传保持512KiB块/4窗口。最多4个文件操作、每文件16MiB及全局64MiB逻辑预留；每个文件最多一个活动读取进程。官方exec对stdout/stderr分别设置3MiB捕获上限；文件协议额外限制stdout不超过3MiB，stderr只接受固定短证明，完整RPC仍受现有8MiB入站及1MiB出站限制。内存采样不能替代对实际持有缓冲和预留释放的验证，也不把64MiB解释为整个OS进程RSS上限。
+- 原第47项为默认20秒、最高180秒。2026-11-14用户选择第49项A后，仅read显式最高期限改为600秒（现已实现并通过本地、新独立双审及官方Files验收），默认仍20秒，单窗口watchdog/RPC及其他文件操作最高180秒。单操作绝对期限覆盖准备、全部窗口、消费暂停、最终校验和结束；不按窗口或进度重置，不自动延长已申请预算。当前100MiB单次样本不构成任意网络条件下必然成功的吞吐承诺。
 - 每窗口打开原路径，读取前后同时检查FD与当前路径的dev/ino/mode/size/mtime/ctime，全部窗口绑定同一原版本。严格检查nonce、字段集合、窗口范围、顺序、规范base64、长度与逐块SHA；不把退出码0当完整输出证明。
 - 最后窗口还返回目标在同一版本下独立重读整个请求Range的总SHA，与网关累计值比较，完成输出及版本证明后才交付最后窗口。目标额外读盘和校验同样计入原期限，不在网关保存整个文件。
 - 取消、超时、断线后停止调度并拒绝迟到结果，只尝试终止自己生成的processId。活动进程和未消费最终窗口的预留必须按实际结束、消费或原期限回收；适配器关闭不能关闭共享session。已发送写入不重发，未知提交仍只能用原收据对账。
