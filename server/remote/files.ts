@@ -5,6 +5,7 @@ import { RemoteCommands, RemoteCommandError, type RemoteCommandScope, type Remot
 import type { RemoteRpcSession } from './rpc-session.js';
 import { assertRemoteOperation } from './operation-guard.js';
 import { FILE_CHUNK_BYTES, FILE_MAX_BYTES, FILE_WINDOW, RemoteFileChannel, RemoteFileError, fileFailure, fileSha, fileText, record, strictBase64 } from './file-channel.js';
+import { RemoteFileReadChannel } from './file-read-channel.js';
 export { RemoteFileError } from './file-channel.js';
 export const REMOTE_FILE_LIMITS = Object.freeze({ maxBytes: FILE_MAX_BYTES, chunkBytes: FILE_CHUNK_BYTES, window: FILE_WINDOW, maxConcurrent: 4, reservedBytesPerFile: 16 * 1024 * 1024, globalReservedBytes: 64 * 1024 * 1024, maxTextBytes: 2 * 1024 * 1024 });
 export interface RemoteFileOptions { timeoutMs?: number; signal?: AbortSignal }
@@ -45,7 +46,7 @@ export class RemoteFiles {
   readonly namespace: string;
   private closed = false;
   private closing?: Promise<void>;
-  private readonly channels = new Set<RemoteFileChannel>();
+  private readonly channels = new Set<RemoteFileChannel | RemoteFileReadChannel>();
   private readonly flights = new Set<Promise<unknown>>();
   private constructor(private readonly session: RemoteRpcSession, private readonly binding: ReturnType<RemoteCommands['fileTransportBinding']>) {
     this.scope = binding.scope; this.metadata = binding.metadata; this.namespace = fileSha(Buffer.from(JSON.stringify(binding.scope)));
@@ -106,35 +107,41 @@ export class RemoteFiles {
     const started = performance.now(); return this.readInternal(path, options, started);
   }
   private async *readInternal(path: string, options: RemoteReadOptions, started: number): AsyncGenerator<Buffer> {
-    let channel: RemoteFileChannel | undefined;
+    let channel: RemoteFileReadChannel | undefined;
     try {
       path = this.path(path); const o = this.options(options, ['offset', 'length', 'version'], started);
       const offset = integer(o.raw.offset, 0); const length = o.raw.length === undefined ? undefined : integer(o.raw.length, 0, FILE_MAX_BYTES);
       if (length !== undefined && !Number.isSafeInteger(offset + length)) throw new RemoteFileError('capacity', false);
-      const expected = o.raw.version === undefined ? undefined : this.expected(path, o.raw.version);
-      channel = await this.channel(o.deadline, o.signal);
-      const [meta] = await channel.exchange([{ mode: 'read', path, offset, ...(length === undefined ? {} : { length }), ...(expected ? { expected } : {}) }]);
-      body(meta!, 'meta', ['path', 'type', 'facts', 'length', 'offset']); const initial = this.statRecord(path, meta!);
-      if (initial.type !== 'file' || meta!.offset !== offset || !Number.isSafeInteger(meta!.length) || (meta!.length as number) < 0 || (meta!.length as number) > FILE_MAX_BYTES || offset + (meta!.length as number) > initial.size || (length !== undefined && meta!.length !== length) || (expected && initial.version !== o.raw.version)) throw new RemoteFileError('protocol', true);
-      let total = 0; const hash = createHash('sha256');
+      let expected = o.raw.version === undefined ? undefined : this.expected(path, o.raw.version);
+      channel = new RemoteFileReadChannel(this.session, this.binding, o.deadline, o.signal, () => this.channels.delete(channel!)); this.channels.add(channel);
+      let total = 0; let window = 0; let rangeLength = length; let initialVersion: string | undefined; const hash = createHash('sha256');
       while (true) {
-        const batch = await channel.exchange([{ op: 'next', count: FILE_WINDOW }], FILE_WINDOW + 1, r => r.kind === 'done' || r.kind === 'batch-end');
-        const tail = batch.pop()!; const decoded: Buffer[] = []; channel.holdWindow(batch, decoded);
+        const batch = await channel.read({ path, offset, window, position: total, ...(rangeLength === undefined ? {} : { length: rangeLength }), ...(expected ? { expected } : {}) });
+        if (batch.length < 2) throw new RemoteFileError('protocol', true);
+        const meta = batch.shift()!; const tail = batch.pop()!; const decoded: Buffer[] = []; channel.holdWindow(batch, decoded);
+        body(meta, 'meta', ['path', 'type', 'facts', 'length', 'offset', 'window', 'position']); const initial = this.statRecord(path, meta);
+        if (initial.type !== 'file' || meta.offset !== offset || meta.window !== window || meta.position !== total || !Number.isSafeInteger(meta.length) || (meta.length as number) < 0 || (meta.length as number) > FILE_MAX_BYTES || offset + (meta.length as number) > initial.size || (rangeLength !== undefined && meta.length !== rangeLength)) throw new RemoteFileError('protocol', true);
+        if ((initialVersion !== undefined && initial.version !== initialVersion) || (expected && initial.version !== this.version(path, expected))) throw new RemoteFileError('version', true);
+        initialVersion = initial.version; expected = facts(meta.facts); rangeLength = meta.length as number;
+        const position = total; const windowBytes = Math.min(FILE_CHUNK_BYTES * FILE_WINDOW, rangeLength - position);
+        if (batch.length !== Math.ceil(windowBytes / FILE_CHUNK_BYTES)) throw new RemoteFileError('protocol', true);
         for (const part of batch) {
           body(part, 'chunk', ['offset', 'size', 'sha256', 'base64']);
-          const bytes = strictBase64(part.base64, FILE_CHUNK_BYTES);
-          if (!bytes.length || part.offset !== offset + total || part.size !== bytes.length || fileSha(bytes) !== part.sha256 || total + bytes.length > (meta!.length as number)) throw new RemoteFileError('integrity', true);
+          const bytes = strictBase64(part.base64, FILE_CHUNK_BYTES); const size = Math.min(FILE_CHUNK_BYTES, rangeLength - total);
+          if (!bytes.length || bytes.length !== size || part.offset !== offset + total || part.size !== bytes.length || fileSha(bytes) !== part.sha256) throw new RemoteFileError('integrity', true);
           total += bytes.length; hash.update(bytes); decoded.push(bytes); channel.assert();
         }
-        if (tail.kind === 'done') {
-          body(tail, 'done', ['total', 'sha256', 'facts']);
-          if (tail.total !== total || total !== meta!.length || tail.sha256 !== hash.digest('hex') || this.version(path, tail.facts) !== initial.version) throw new RemoteFileError('integrity', true);
-          await channel.finish(); for (const part of decoded) { channel.assert(); yield part; } channel.assert(); return;
-        }
-        body(tail, 'batch-end', []); if (batch.length !== FILE_WINDOW || total >= (meta!.length as number)) throw new RemoteFileError('protocol', true);
+        const done = total === rangeLength;
+        body(tail, done ? 'done' : 'batch-end', ['window', 'position', 'total', 'facts', ...(done ? ['sha256'] : [])]);
+        if (tail.window !== window || tail.position !== position || tail.total !== total || this.version(path, tail.facts) !== initialVersion) throw new RemoteFileError('integrity', true);
+        // 最后窗口只在自然退出、完整输出证明和目标独立Range总SHA均通过后交付。
+        if (done && tail.sha256 !== hash.digest('hex')) throw new RemoteFileError('integrity', true);
         for (const part of decoded) { channel.assert(); yield part; } channel.assert(); channel.clearWindow();
+        if (done) return;
+        window++;
       }
-    } catch (error) { throw fileFailure(error, channel?.sent ?? false); } finally { await this.release(channel); }
+    } catch (error) { channel?.fail(fileFailure(error, channel.sent).code); throw fileFailure(channel?.error ?? error, channel?.sent ?? false); }
+    finally { channel?.release(); }
   }
   list(path: string, options: RemoteFileOptions & { pageSize?: number } = {}): AsyncGenerator<RemoteDirectoryEntry[]> {
     const started = performance.now(); return this.listInternal(path, options, started);

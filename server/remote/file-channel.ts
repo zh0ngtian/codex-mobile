@@ -5,6 +5,7 @@ import { RemoteRpcError, type RemoteRpcSession } from './rpc-session.js';
 import { assertRemoteOperation, withRemoteOperation } from './operation-guard.js';
 import type { JsonValue, RpcMessage } from './envelope.js';
 import { REMOTE_FILE_PYTHON } from './file-python.js';
+import { reserveFileBudget } from './file-budget.js';
 
 export const FILE_CHUNK_BYTES = 512 * 1024;
 export const FILE_WINDOW = 4;
@@ -13,10 +14,6 @@ const RECORD_LIMIT = 710000;
 const TOTAL_WIRE_LIMIT = 150 * 1024 * 1024;
 // 最大文件base64约140MB，4KiB通知约3.5万条；保留有界控制记录余量。
 const NOTIFICATION_LIMIT = 65536;
-// 四个JSON/base64记录、UTF16解析对象、解码窗口、RPC双层编码及暂存的保守适配器峰值。
-const RESERVATION = 16 * 1024 * 1024;
-const GLOBAL_MEMORY = 64 * 1024 * 1024;
-let active = 0; let memory = 0;
 export type RemoteFileFailure = 'binding' | 'metadata' | 'python3-required' | 'capability' | 'invalid-input' | 'capacity' | 'protocol' | 'integrity' | 'version' | 'encoding' | 'not-found' | 'permission' | 'timeout' | 'cancelled' | 'disconnected' | 'closed';
 export class RemoteFileError extends Error {
   readonly outcome: 'not-sent' | 'unknown';
@@ -29,6 +26,10 @@ export class RemoteFileError extends Error {
   }
 }
 export function record(value: unknown): value is Record<string, unknown> { return value !== null && typeof value === 'object' && !Array.isArray(value) && [Object.prototype, null].includes(Object.getPrototypeOf(value)); }
+/** RPC拒绝或不合法响应都不证明目标结束；只接受官方exec终结字段。 */
+export function fileExecEnded(value: unknown): boolean {
+  return record(value) && Object.keys(value).sort().join(',') === 'exitCode,stderr,stdout' && Number.isSafeInteger(value.exitCode) && (value.exitCode as number) >= -2147483648 && (value.exitCode as number) <= 2147483647 && typeof value.stdout === 'string' && typeof value.stderr === 'string';
+}
 export function strictBase64(value: unknown, max: number): Buffer {
   if (typeof value !== 'string' || value.length > Math.ceil(max / 3) * 4 || value.length % 4 || /[^A-Za-z0-9+/=]/.test(value)) throw new RemoteFileError('protocol', true);
   const padding = value.endsWith('==') ? 2 : value.endsWith('=') ? 1 : 0;
@@ -50,7 +51,8 @@ export class RemoteFileChannel {
   sent = false; error?: RemoteFileError; settled = false;
   private disposed = false; private stopping?: Promise<boolean>; private execution?: Promise<unknown>;
   private trailingBytes = 0;
-  private released = false;
+  private released = false; private releaseRequested = false; private executionEnded = false;
+  private readonly permit: () => void;
   private window?: () => void;
   private readonly abort = new AbortController();
   private ready = false; private pending = Buffer.alloc(0); private sequence = 0; private notifications = 0;
@@ -60,14 +62,13 @@ export class RemoteFileChannel {
   private readonly failure: Promise<never>; private rejectFailure!: (error: RemoteFileError) => void;
   private readonly readiness: Promise<void>; private resolveReady!: () => void;
   private readonly done: Promise<void>; private resolveDone!: () => void;
-  private readonly timer: NodeJS.Timeout;
+  private timer: NodeJS.Timeout;
   constructor(private readonly session: RemoteRpcSession, private readonly binding: { python: string; metadata: { codexHome: string } }, readonly deadline: number, private readonly signal?: AbortSignal, private readonly cleanup = false, private readonly onRelease?: () => void) {
     this.assert(); if (!cleanup) assertRemoteOperation();
-    if (active >= 4 || memory + RESERVATION > GLOBAL_MEMORY) throw new RemoteFileError('capacity', false);
-    active++; memory += RESERVATION;
+    const permit = reserveFileBudget(); if (!permit) throw new RemoteFileError('capacity', false); this.permit = permit;
     this.failure = new Promise((_resolve, reject) => { this.rejectFailure = reject; }); void this.failure.catch(() => undefined);
     this.readiness = new Promise(resolve => { this.resolveReady = resolve; }); this.done = new Promise(resolve => { this.resolveDone = resolve; });
-    this.timer = setTimeout(() => this.fail('timeout'), Math.max(1, deadline - performance.now()));
+    this.timer = setTimeout(this.expired, Math.max(1, Math.ceil(deadline - performance.now())));
     signal?.addEventListener('abort', this.cancelled, { once: true });
     session.on('notification', this.notification); session.on('disconnect', this.disconnected); session.on('close', this.disconnected);
   }
@@ -81,6 +82,11 @@ export class RemoteFileChannel {
   private remaining(): number { this.assert(); if (!this.cleanup) assertRemoteOperation(); return Math.max(1, Math.floor(this.deadline - performance.now())); }
   private cancelled = () => this.fail('cancelled');
   private disconnected = () => this.fail('disconnected');
+  private expired = (): void => {
+    const remaining = this.deadline - performance.now();
+    if (remaining > 0) { this.timer = setTimeout(this.expired, Math.max(1, Math.ceil(remaining))); return; }
+    this.fail('timeout'); this.tryRelease();
+  };
   fail(code: RemoteFileFailure): void {
     if (this.error || this.released) return;
     this.error = new RemoteFileError(code, this.sent); this.rejectFailure(this.error); this.abort.abort(); this.window?.();
@@ -148,8 +154,8 @@ export class RemoteFileChannel {
     try {
       this.assert(); const params: Record<string, JsonValue> = { command: [this.binding.python, '-I', '-u', '-c', REMOTE_FILE_PYTHON, this.nonce, String(this.remaining())], cwd: this.binding.metadata.codexHome, processId: this.processId, streamStdin: true, streamStdoutStderr: true, outputBytesCap: TOTAL_WIRE_LIMIT, timeoutMs: this.remaining() };
       this.execution = this.session.call('command/exec', params, { timeoutMs: this.remaining() }); this.sent = true;
-      void this.execution.then(() => { if (!this.stopping) this.fail('protocol'); }, error => {
-        if (!this.ready && error instanceof RemoteRpcError && !error.mayHaveBeenSent) this.sent = false;
+      void this.execution.then(value => { this.executionEnded = fileExecEnded(value); this.tryRelease(); if (!this.stopping) this.fail('protocol'); }, error => {
+        if (!this.ready && error instanceof RemoteRpcError && !error.mayHaveBeenSent) { this.sent = false; this.tryRelease(); }
         if (!this.stopping) this.fail(fileFailure(error, this.sent).code);
       });
       await this.race(Promise.race([this.readiness, this.execution.then(() => { throw new RemoteFileError('protocol', true); })])); this.assert();
@@ -213,8 +219,9 @@ export class RemoteFileChannel {
     this.abort.abort(); this.waiter = undefined; this.trailingBytes = this.pending.length; this.pending = Buffer.alloc(0);
   }
   /** 命令实际结束不等于调用者已消费最终窗口；预算直到消费/取消/期限/close才释放。 */
-  release(): void {
-    if (this.released) return; this.released = true; clearTimeout(this.timer); this.signal?.removeEventListener('abort', this.cancelled);
-    this.clearWindow(); active--; memory -= RESERVATION; this.onRelease?.();
+  release(): void { this.releaseRequested = true; this.clearWindow(); this.tryRelease(); }
+  private tryRelease(): void {
+    if (this.released || !this.releaseRequested || (this.sent && !this.executionEnded && performance.now() < this.deadline)) return; this.released = true; clearTimeout(this.timer); this.signal?.removeEventListener('abort', this.cancelled);
+    this.clearWindow(); this.permit(); this.onRelease?.();
   }
 }

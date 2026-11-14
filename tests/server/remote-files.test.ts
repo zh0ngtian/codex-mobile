@@ -13,18 +13,22 @@ import type { JsonValue, RpcMessage } from '../../server/remote/envelope.js';
 import { withRemoteOperation } from '../../server/remote/operation-guard.js';
 
 const cleanup: (() => unknown | Promise<unknown>)[] = [];
-afterEach(async () => { for (const fn of cleanup.reverse()) await fn(); cleanup.length = 0; });
+afterEach(async () => { for (const fn of cleanup.reverse()) await fn(); cleanup.length = 0; }, 180000);
 const sha = (data: Uint8Array) => createHash('sha256').update(data).digest('hex');
 const scope = { managed: { codexHome: '/managed', accountId: 'account', accountUserId: 'member' }, target: { environmentId: 'environment', installationId: 'installation' } };
 async function until(test: () => boolean) { const start = performance.now(); while (!test()) { if (performance.now() - start > 3000) throw new Error('测试条件超时'); await new Promise(resolve => setTimeout(resolve, 5)); } }
 async function fixture(metadata?: Record<string, unknown>, missingPython = false) {
   const directory = await mkdtemp(join(tmpdir(), 'remote-files-'));
+  const fileDeadlines = new Map<string, number>(); let unknownDeadline = 0;
   const frames: RpcMessage[] = []; const processes = new Map<string, ChildProcessWithoutNullStreams>();
   let seq = 0; let outputTransform: ((bytes: Buffer) => Buffer) | undefined; let beforeWrite: (() => void) | undefined;
   let dropCommit = false; let finalHold = false; let summary = false; let maxFrameBytes = 0; let exitZero = false;
   let controlTransform: ((bytes: Buffer) => Buffer) | undefined; const finals: (() => void)[] = [];
   let scriptTransform: ((source: string) => string) | undefined;
-  let packetBytes = 0;
+  let packetBytes = 0; let ignoreTermination = false; let captureCap: number | undefined;
+  let resultTransform: typeof bufferedTransform;
+  let bufferedTransform: ((value: { exitCode: number; stdout: string; stderr: string }) => { exitCode: number; stdout: string; stderr: string }) | undefined;
+  const captures: { stdoutBytes: number; stderrBytes: number; cap: number; request: Record<string, unknown> }[] = [];
   let fileNotifications = 0;
   const kill = (child: ChildProcessWithoutNullStreams) => { try { if (child.pid) process.kill(-child.pid, 'SIGTERM'); } catch { /* 已退出。 */ } };
   const respond = (message: RpcMessage, result: unknown) => stream.emit('message', { id: message.id!, result: result as JsonValue }, { seqId: ++seq });
@@ -44,38 +48,56 @@ async function fixture(metadata?: Record<string, unknown>, missingPython = false
     else if (message.method === 'command/exec') {
       if (missingPython) { queueMicrotask(() => respond(message, { exitCode: 127, stdout: '', stderr: '' })); return { seqId: frames.length }; }
       const id = p.processId as string; const argv = [...p.command as string[]];
+      if (id.includes('file:')) fileDeadlines.set(id, performance.now() + Number(p.timeoutMs));
       if (id.includes('file:') && scriptTransform) argv[4] = scriptTransform(argv[4]!);
       const child = spawn(argv[0]!.startsWith('C:\\Fixture\\') ? 'python3' : argv[0]!, argv.slice(1), { cwd: metadata?.platformFamily === 'windows' ? directory : p.cwd as string, env: { PATH: process.env.PATH }, detached: true }); processes.set(id, child); child.stdin.on('error', () => {});
-      let lineBuffer = Buffer.alloc(0);
+      let lineBuffer = Buffer.alloc(0); const buffered = p.streamStdoutStderr === false;
+      const captured = { stdout: [] as Buffer[], stderr: [] as Buffer[] }; const capturedBytes = { stdout: 0, stderr: 0 };
+      const output = (name: 'stdout' | 'stderr', data: Buffer) => {
+        if (!buffered) { notify(id, name, data); return; }
+        const part = data.subarray(0, Math.max(0, Math.min(Number(p.outputBytesCap), captureCap ?? Infinity) - capturedBytes[name]));
+        captured[name].push(part); capturedBytes[name] += part.length;
+      };
+      if (p.streamStdin === false) child.stdin.end();
       child.stdout.on('data', (data: Buffer) => {
         if (metadata?.platformFamily === 'windows' && !id.includes('file:')) {
           lineBuffer = Buffer.concat([lineBuffer, data]); let end: number;
           while ((end = lineBuffer.indexOf(10)) >= 0) {
             const line = lineBuffer.subarray(0, end + 1); lineBuffer = lineBuffer.subarray(end + 1);
-            if (line.toString().startsWith('CMDC1_READY:')) notify(id, 'stdout', line);
-            else { const value = JSON.parse(line.toString()); value.python = 'C:\\Fixture\\python3.exe'; notify(id, 'stdout', Buffer.from(JSON.stringify(value) + '\n')); }
+            if (line.toString().startsWith('CMDC1_READY:')) output('stdout', line);
+            else { const value = JSON.parse(line.toString()); value.python = 'C:\\Fixture\\python3.exe'; output('stdout', Buffer.from(JSON.stringify(value) + '\n')); }
           } return;
         }
-        if (id.includes('file:') && exitZero) { notify(id, 'stdout', data); kill(child); return; }
-        if (!id.includes('file:') || !outputTransform) { notify(id, 'stdout', data); return; }
+        if (id.includes('file:') && exitZero) { output('stdout', data); kill(child); return; }
+        if (!id.includes('file:') || !outputTransform) { output('stdout', data); return; }
         lineBuffer = Buffer.concat([lineBuffer, data]); let end: number;
-        while ((end = lineBuffer.indexOf(10)) >= 0) { const line = lineBuffer.subarray(0, end + 1); lineBuffer = lineBuffer.subarray(end + 1); const result = outputTransform(line); if (result.length) notify(id, 'stdout', result); }
+        while ((end = lineBuffer.indexOf(10)) >= 0) { const line = lineBuffer.subarray(0, end + 1); lineBuffer = lineBuffer.subarray(end + 1); const result = outputTransform(line); if (result.length) output('stdout', result); }
       });
-      child.stderr.on('data', (data: Buffer) => { const value = id.includes('file:') && controlTransform ? controlTransform(data) : data; if (value.length) notify(id, 'stderr', value); });
+      child.stderr.on('data', (data: Buffer) => { const value = id.includes('file:') && controlTransform ? controlTransform(data) : data; if (value.length) output('stderr', value); });
       child.on('error', () => respond(message, { exitCode: 127, stdout: '', stderr: '' }));
-      child.on('close', code => { processes.delete(id); const final = () => respond(message, { exitCode: id.includes('file:') && exitZero ? 0 : code ?? -1, stdout: '', stderr: '' }); if (finalHold) finals.push(final); else final(); });
+      child.on('close', code => { processes.delete(id); const final = () => {
+        fileDeadlines.delete(id);
+        const value = { exitCode: id.includes('file:') && exitZero ? 0 : code ?? -1, stdout: Buffer.concat(captured.stdout).toString('utf8'), stderr: Buffer.concat(captured.stderr).toString('utf8') };
+        if (buffered) captures.push({ stdoutBytes: capturedBytes.stdout, stderrBytes: capturedBytes.stderr, cap: Number(p.outputBytesCap), request: argv[7] ? JSON.parse(argv[7]) : {} });
+        const result = buffered && bufferedTransform ? bufferedTransform(value) : value;
+        respond(message, id.includes('file:') && resultTransform ? resultTransform(result) : result);
+      }; if (finalHold) finals.push(final); else final(); });
     } else if (message.method === 'command/exec/write') {
       beforeWrite?.(); const child = processes.get(p.processId as string); const bytes = Buffer.from(p.deltaBase64 as string, 'base64');
       if (child) { child.stdin.write(bytes); if (p.closeStdin) child.stdin.end(); }
       if (dropCommit && bytes.includes(Buffer.from('"op":"commit"'))) { dropCommit = false; setTimeout(() => stream.emit('disconnect', { reason: 'network', mayHaveBeenSent: true }), 40); }
       else queueMicrotask(() => respond(message, {}));
-    } else if (message.method === 'command/exec/terminate') { const child = processes.get(p.processId as string); if (child) kill(child); queueMicrotask(() => respond(message, {})); }
+    } else if (message.method === 'command/exec/terminate') { const child = processes.get(p.processId as string); if (child && !ignoreTermination) kill(child); queueMicrotask(() => respond(message, {})); }
     return { seqId: frames.length };
   }, () => {});
   const session = RemoteRpcSession.fromRemoteStream(stream);
-  cleanup.push(async () => { for (const child of processes.values()) kill(child); session.close(); await until(() => processes.size === 0); await rm(directory, { recursive: true, force: true }); });
+  stream.on('disconnect', () => { unknownDeadline = Math.max(unknownDeadline, ...fileDeadlines.values()); });
+  cleanup.push(async () => { for (const child of processes.values()) kill(child); session.close(); await until(() => processes.size === 0); await rm(directory, { recursive: true, force: true });
+    // 断线后的RPC拒绝不能证明目标结束；模拟目标虽已由fixture杀掉，产品仍须到原期限回收。
+    if (unknownDeadline > performance.now()) await new Promise(resolve => setTimeout(resolve, unknownDeadline - performance.now() + 10));
+  });
   await session.initialize();
-  return { directory, session, stream, frames, processes, notifications() { return fileNotifications; }, packets(size: number) { packetBytes = size; }, script(fn: typeof scriptTransform) { scriptTransform = fn; }, exitFilesWithoutProof() { exitZero = true; }, control(fn: typeof controlTransform) { controlTransform = fn; }, summarizeFrames() { summary = true; }, maxFrameBytes() { return maxFrameBytes; }, transform(fn: typeof outputTransform) { outputTransform = fn; }, beforeWrite(fn: typeof beforeWrite) { beforeWrite = fn; }, dropCommit() { dropCommit = true; }, holdFinal() { finalHold = true; }, releaseFinal() { finalHold = false; for (const fn of finals.splice(0)) fn(); } };
+  return { directory, session, stream, frames, processes, captures, captureCap(bytes: number) { captureCap = bytes; }, result(fn: typeof resultTransform) { resultTransform = fn; }, buffered(fn: typeof bufferedTransform) { bufferedTransform = fn; }, ignoreTermination(value = true) { ignoreTermination = value; }, notifications() { return fileNotifications; }, packets(size: number) { packetBytes = size; }, script(fn: typeof scriptTransform) { scriptTransform = fn; }, exitFilesWithoutProof() { exitZero = true; }, control(fn: typeof controlTransform) { controlTransform = fn; }, summarizeFrames() { summary = true; }, maxFrameBytes() { return maxFrameBytes; }, transform(fn: typeof outputTransform) { outputTransform = fn; }, beforeWrite(fn: typeof beforeWrite) { beforeWrite = fn; }, dropCommit() { dropCommit = true; }, holdFinal() { finalHold = true; }, releaseFinal() { finalHold = false; for (const fn of finals.splice(0)) fn(); } };
 }
 async function prepared() {
   const implementation = await import('../../server/remote/files.js').catch(() => null);
@@ -979,7 +1001,7 @@ it.each(['hash', 'size', 'nonce', 'raw'] as const)('DONE的%s损坏不得作为�
 it('完整输出后仍等待原exec实际终结，终结同步迟到也不交付', async () => {
   const f = await prepared(); const path = join(f.directory, 'final-barrier'); await writeFile(path, 'final'); f.holdFinal();
   let delivered = false; const pending = bytes(f.files.read(path, { timeoutMs: 500 })).then(value => { delivered = true; return value; });
-  await until(() => f.processes.size === 0 && f.frames.some(frame => frame.method === 'command/exec/terminate' && (frame.params as Record<string, string>).processId?.startsWith('codex-mobile-file:')));
+  await until(() => f.processes.size === 0);
   expect(delivered).toBe(false); f.releaseFinal(); expect((await pending).toString()).toBe('final');
 });
 
@@ -999,9 +1021,9 @@ it('目录最后一页暂停期间取消后不能以正常结束返回', async (
   const result = await iterator.next().then(() => 'unexpected-success', error => error); expect(result).toMatchObject({ code: 'cancelled' });
 });
 
-it('目标从READY时刻收紧到网关剩余期限，不用异机时钟或每块重置期限', async () => {
+it('旧stream操作从READY时刻收紧到网关剩余期限，不用异机时钟或每块重置期限', async () => {
   const f = await prepared(); const path = join(f.directory, 'ready-budget'); await writeFile(path, 'x'); const before = f.frames.length;
-  await bytes(f.files.read(path, { timeoutMs: 1000 }));
+  await f.files.stat(path, { timeoutMs: 1000 });
   const payloads = f.frames.slice(before).filter(frame => frame.method === 'command/exec/write').map(frame => JSON.parse(Buffer.from((frame.params as Record<string, string>).deltaBase64!, 'base64').toString()));
   expect(typeof payloads[0].readyBudgetMs).toBe('number'); expect(payloads[0].readyBudgetMs).toBeGreaterThan(0); expect(payloads[0].readyBudgetMs).toBeLessThanOrEqual(1000);
   expect(payloads.slice(1).every(payload => payload.readyBudgetMs === undefined)).toBe(true);
@@ -1013,13 +1035,202 @@ it('100MiB逐块上传下载验证总SHA，命令数/RPC数和双层帧尺寸有
   let produced = 0; async function* source() { for (let i = 0; i < 200; i++) for (let n = 0; n < block.length; n += 65536) { produced++; yield block.subarray(n, n + 65536); } }
   const before = f.frames.length; const started = performance.now(); f.summarizeFrames(); f.packets(4096);
   const result = await f.files.upload(path, source(), { size: 100 * 1024 * 1024, sha256: digest, expectedVersion: null, timeoutMs: 180000 });
-  expect(produced).toBe(1600); const hash = createHash('sha256'); let size = 0; let largest = 0;
+  expect(produced).toBe(1600); const uploadNotifications = f.notifications(); const hash = createHash('sha256'); let size = 0; let largest = 0;
   for await (const part of f.files.read(path, { version: result.version, timeoutMs: 180000 })) { largest = Math.max(largest, part.length); size += part.length; hash.update(part); }
   expect(size).toBe(100 * 1024 * 1024); expect(hash.digest('hex')).toBe(digest); expect(largest).toBe(512 * 1024);
-  const frames = f.frames.slice(before); expect(frames.filter(frame => frame.method === 'command/exec')).toHaveLength(2);
-  expect(frames.filter(frame => frame.method === 'command/exec/write')).toHaveLength(254);
+  const frames = f.frames.slice(before); expect(frames.filter(frame => frame.method === 'command/exec')).toHaveLength(51);
+  expect(frames.filter(frame => frame.method === 'command/exec/write')).toHaveLength(203);
   const maxFrame = f.maxFrameBytes(); expect(maxFrame).toBeLessThan(1024 * 1024);
-  expect(f.notifications()).toBeGreaterThan(34134); expect(f.notifications()).toBeLessThan(65536);
-  process.stdout.write(JSON.stringify({ test: 'real-python-100MiB', elapsedMs: Math.round(performance.now() - started), commandCount: 2, writeRpcCount: 254, sourceChunkBytes: 65536, sourceChunks: produced, maxFrameBytes: maxFrame, outputNotifications: f.notifications(), packetBytes: 4096, sha256: digest }) + '\n');
+  expect(f.notifications()).toBe(uploadNotifications); expect(f.notifications()).toBeGreaterThan(0); expect(f.notifications()).toBeLessThan(65536);
+  expect(f.captures).toHaveLength(50); expect(f.captures.every(value => value.stdoutBytes <= 3 * 1024 * 1024 && value.stderrBytes <= 256 && value.cap === 3 * 1024 * 1024)).toBe(true);
+  process.stdout.write(JSON.stringify({ test: 'real-python-100MiB', elapsedMs: Math.round(performance.now() - started), commandCount: 51, writeRpcCount: 203, bufferedReadWindows: f.captures.length, sourceChunkBytes: 65536, sourceChunks: produced, maxFrameBytes: maxFrame, outputNotifications: f.notifications(), packetBytes: 4096, sha256: digest }) + '\n');
   await f.files.releaseUpload(result.operation);
 }, 30000);
+
+
+it('读取固定为每2MiB窗口一个自然退出buffered短进程，cap逐stream为3MiB且没有stdin写入', async () => {
+  const f = await prepared(); const path = join(f.directory, 'buffered-窗口'); const data = Buffer.alloc(4 * 1024 * 1024 + 17, 63); await writeFile(path, data);
+  const before = f.frames.length; const notifications = f.notifications();
+  expect(await bytes(f.files.read(path))).toEqual(data);
+  const frames = f.frames.slice(before); const executions = frames.filter(frame => frame.method === 'command/exec');
+  expect(executions).toHaveLength(3);
+  for (const frame of executions) expect(frame.params).toMatchObject({ streamStdin: false, streamStdoutStderr: false, outputBytesCap: 3 * 1024 * 1024 });
+  expect(frames.filter(frame => frame.method === 'command/exec/write' || frame.method === 'command/exec/terminate')).toHaveLength(0);
+  expect(f.notifications()).toBe(notifications); expect(f.processes.size).toBe(0);
+});
+
+
+function reproveBuffered(value: { exitCode: number; stdout: string; stderr: string }, mutate: (records: Record<string, unknown>[]) => void) {
+  const records = value.stdout.trimEnd().split('\n').map(line => JSON.parse(line) as Record<string, unknown>);
+  mutate(records); const stdout = records.map(item => JSON.stringify(item) + '\n').join('');
+  return { ...value, stdout, stderr: value.stderr.replace(/:[1-9][0-9]*:[a-f0-9]{64}\n$/, ':' + Buffer.byteLength(stdout) + ':' + sha(Buffer.from(stdout)) + '\n') };
+}
+
+it.each(['window', 'position', 'offset', 'order', 'sequence', 'nonce', 'fields', 'chunk-short', 'base64-canonical', 'final-independent-hash'] as const)('buffered读取拒绝重签完整输出后的%s错误，最终窗不交付', async fault => {
+  const f = await prepared(); const path = join(f.directory, 'strict-buffered'); await writeFile(path, Buffer.alloc(700003, 42));
+  f.buffered(value => reproveBuffered(value, records => {
+    const meta = records.find(row => row.kind === 'meta')!; const chunks = records.filter(row => row.kind === 'chunk'); const tail = records.at(-1)!;
+    if (fault === 'window') meta.window = 1;
+    if (fault === 'position') meta.position = 1;
+    if (fault === 'offset') chunks[0]!.offset = 1;
+    if (fault === 'order') [records[1], records[2]] = [records[2]!, records[1]!];
+    if (fault === 'sequence') chunks[0]!.seq = 10;
+    if (fault === 'nonce') tail.n = 'other';
+    if (fault === 'fields') tail.unrequested = true;
+    if (fault === 'chunk-short') { const part = Buffer.alloc(7, 42); Object.assign(chunks[0]!, { base64: part.toString('base64'), size: part.length, sha256: sha(part) }); }
+    if (fault === 'base64-canonical') chunks[1]!.base64 = String(chunks[1]!.base64) + '=';
+    if (fault === 'final-independent-hash') tail.sha256 = '0'.repeat(64);
+  }));
+  const iterator = f.files.read(path)[Symbol.asyncIterator]();
+  await expect(iterator.next()).rejects.toMatchObject({ mayHaveBeenSent: true });
+  expect(f.captures).toHaveLength(1);
+});
+
+it('buffered每窗重新打开原path且在读取前后验证FD和路径，跨窗同内容touch也失败', async () => {
+  const f = await prepared(); const path = join(f.directory, 'window-version'); await writeFile(path, Buffer.alloc(2 * 1024 * 1024 + 1, 9));
+  const iterator = f.files.read(path)[Symbol.asyncIterator](); for (let n = 0; n < 4; n++) expect((await iterator.next()).value).toHaveLength(512 * 1024);
+  await utimes(path, new Date(), new Date(Date.now() + 5000));
+  await expect(iterator.next()).rejects.toMatchObject({ code: 'version' }); expect(f.captures).toHaveLength(2);
+});
+
+it.each(['fd', 'path'] as const)('buffered最终目标独立重读前的%s版本竞争不能交付末窗', async race => {
+  const f = await prepared(); const path = join(f.directory, 'hash-version'); await writeFile(path, Buffer.alloc(700001, 9));
+  f.script(source => source.replace("f.seek(offset);whole=hashlib.sha256()", (race === 'fd' ? "os.utime(path,None)" : "os.rename(path,path+'.old');open(path,'wb').write(b'replaced')") + "\n            f.seek(offset);whole=hashlib.sha256()"));
+  await expect(bytes(f.files.read(path))).rejects.toMatchObject({ code: 'version' });
+});
+
+it.each(['cancel', 'disconnect', 'late-response'] as const)('buffered读取%s后仅终止自有进程，不调度下一窗或接受迟到结果', async mode => {
+  const f = await prepared(); const path = join(f.directory, 'cancel-buffered'); await writeFile(path, Buffer.alloc(3 * 1024 * 1024, 9));
+  const controller = new AbortController(); f.holdFinal(); const before = f.frames.length;
+  const pending = bytes(f.files.read(path, { signal: controller.signal, timeoutMs: 500 })).catch(error => error);
+  await until(() => f.processes.size === 0 && f.frames.slice(before).some(frame => frame.method === 'command/exec'));
+  if (mode === 'cancel') controller.abort();
+  if (mode === 'disconnect') f.stream.emit('disconnect', { reason: 'network', mayHaveBeenSent: true });
+  if (mode === 'late-response') await new Promise(resolve => setTimeout(resolve, 550));
+  f.releaseFinal(); expect(await pending).toMatchObject({ code: mode === 'cancel' ? 'cancelled' : mode === 'disconnect' ? 'disconnected' : 'timeout' });
+  const sent = f.frames.slice(before); expect(sent.filter(frame => frame.method === 'command/exec')).toHaveLength(1);
+  const ids = new Set(sent.filter(frame => frame.method === 'command/exec').map(frame => (frame.params as Record<string, unknown>).processId));
+  expect(sent.filter(frame => frame.method === 'command/exec/terminate').every(frame => ids.has((frame.params as Record<string, unknown>).processId))).toBe(true);
+});
+
+it('buffered目标忽略terminate时取消保留全局额度直到原exec实际结束', async () => {
+  const f = await prepared(); const path = join(f.directory, 'ignore-stop'); await writeFile(path, 'x');
+  f.script(source => 'import time\ntime.sleep(.4)\n' + source); f.ignoreTermination();
+  const controllers = Array.from({ length: 4 }, () => new AbortController());
+  const pending = controllers.map(controller => bytes(f.files.read(path, { signal: controller.signal, timeoutMs: 2000 })).catch(error => error));
+  await until(() => f.processes.size === 4); controllers.forEach(controller => controller.abort());
+  await expect(f.files.stat(path)).rejects.toMatchObject({ code: 'capacity', mayHaveBeenSent: false });
+  for (const item of pending) expect(await item).toMatchObject({ code: 'cancelled' });
+  await until(() => f.processes.size === 0); f.script(undefined); f.ignoreTermination(false); expect((await f.files.stat(path)).size).toBe(1);
+});
+
+it('buffered与旧upload/list/stat在多个适配器和session共用四文件额度', async () => {
+  const f = await prepared(); const other = await prepared(); const { RemoteFiles } = await import('../../server/remote/files.js'); const another = await RemoteFiles.create(f.session, scope); cleanup.push(() => another.close());
+  const path = join(f.directory, 'shared-budget'); await writeFile(path, Buffer.alloc(3 * 1024 * 1024, 5));
+  const one = f.files.read(path)[Symbol.asyncIterator](); const two = another.read(path)[Symbol.asyncIterator](); const three = other.files.list(other.directory, { pageSize: 1 })[Symbol.asyncIterator]();
+  await writeFile(join(other.directory, 'item-a'), ''); await writeFile(join(other.directory, 'item-b'), '');
+  await one.next(); await two.next(); await three.next();
+  let entered = false; const controller = new AbortController(); async function* blocked(): AsyncGenerator<Uint8Array> { entered = true; await new Promise(() => {}); }
+  const upload = other.files.upload(join(other.directory, 'new'), blocked(), { size: 1, sha256: '0'.repeat(64), expectedVersion: null, signal: controller.signal }).catch(error => error);
+  await until(() => entered); await expect(another.stat(path)).rejects.toMatchObject({ code: 'capacity', mayHaveBeenSent: false });
+  controller.abort(); await upload; await one.return(undefined); await two.return(undefined); await three.return(undefined);
+  expect((await another.stat(path)).size).toBe(3 * 1024 * 1024);
+});
+
+it('buffered窗口沿用原绝对期限且暂停消费不重置目标预算', async () => {
+  const f = await prepared(); const path = join(f.directory, 'single-deadline'); await writeFile(path, Buffer.alloc(2 * 1024 * 1024 + 3, 4));
+  const iterator = f.files.read(path, { timeoutMs: 1000 })[Symbol.asyncIterator](); for (let i = 0; i < 4; i++) await iterator.next();
+  await new Promise(resolve => setTimeout(resolve, 100)); await iterator.next();
+  const commands = f.frames.filter(frame => frame.method === 'command/exec' && (frame.params as Record<string, unknown>).streamStdin === false);
+  expect(commands).toHaveLength(2); const budgets = commands.map(frame => Number(((frame.params as Record<string, unknown>).command as string[])[6]));
+  expect(budgets[1]).toBeLessThan(budgets[0]! - 50); await iterator.return(undefined);
+});
+
+it('buffered读取适配器close后原共享session仍能执行RPC', async () => {
+  const f = await prepared(); const path = join(f.directory, 'shared-session'); await writeFile(path, 'x');
+  await bytes(f.files.read(path)); await f.files.close(); expect(f.session.ready).toBe(true);
+  expect(await f.session.call('command/exec', { command: ['python3', '-c', 'print("alive")'], processId: 'owned-by-caller', streamStdin: false, streamStdoutStderr: false, outputBytesCap: 100, cwd: f.directory, timeoutMs: 1000 })).toMatchObject({ exitCode: 0, stdout: 'alive\n' });
+});
+
+
+it.each(['read', 'upload'] as const)('取消%s目标超过1s忽略terminate时仍占新旧共享预算，原期限才允许回收', async mode => {
+  const f = await prepared(); const path = join(f.directory, 'long-ignored-stop'); await writeFile(path, Buffer.alloc(3 * 1024 * 1024, 3));
+  const held = Array.from({ length: 3 }, () => f.files.read(path)[Symbol.asyncIterator]()); for (const iterator of held) await iterator.next();
+  const controller = new AbortController(); f.ignoreTermination();
+  let entered = false; const deadline = performance.now() + 2600;
+  async function* blocked(): AsyncGenerator<Uint8Array> { entered = true; await new Promise(() => {}); }
+  if (mode === 'read') f.script(source => source.replace('threading.Thread(target=watchdog,daemon=True).start()', 'time.sleep(3.5)'));
+  const operation = mode === 'read' ? bytes(f.files.read(path, { signal: controller.signal, timeoutMs: 2600 })) : f.files.upload(join(f.directory, 'active-upload'), blocked(), { size: 1, sha256: '0'.repeat(64), expectedVersion: null, signal: controller.signal, timeoutMs: 2600 });
+  const pending = operation.catch(error => error); await until(() => mode === 'read' ? f.processes.size === 1 : entered);
+  const cancelled = performance.now(); controller.abort();
+  if (mode === 'read') { expect(await pending).toMatchObject({ code: 'cancelled' }); expect(performance.now() - cancelled).toBeLessThan(500); }
+  await new Promise(resolve => setTimeout(resolve, 1150));
+  expect(f.processes.size).toBe(1); await expect(f.files.stat(path)).rejects.toMatchObject({ code: 'capacity', mayHaveBeenSent: false });
+  if (mode === 'upload') expect(await pending).toMatchObject({ code: 'cancelled' });
+  await new Promise(resolve => setTimeout(resolve, Math.max(0, deadline - performance.now() + 40))); f.script(undefined); f.ignoreTermination(false);
+  expect((await f.files.stat(path)).size).toBe(3 * 1024 * 1024);
+  for (const iterator of held) await iterator.return(undefined);
+});
+
+it('buffered断线拒绝原exec的RPC时不能冒充实际退出而提前释放活动进程额度', async () => {
+  const f = await prepared(); const path = join(f.directory, 'disconnected-active'); await writeFile(path, 'x');
+  f.ignoreTermination(); f.script(source => source.replace('threading.Thread(target=watchdog,daemon=True).start()', 'time.sleep(2.5)'));
+  const before = f.frames.length; const started = performance.now();
+  const pending = Array.from({ length: 4 }, () => bytes(f.files.read(path, { timeoutMs: 1600 })).catch(error => error));
+  await until(() => f.processes.size === 4); f.stream.emit('disconnect', { reason: 'network', mayHaveBeenSent: true });
+  for (const value of pending) expect(await value).toMatchObject({ code: 'disconnected' });
+  await new Promise(resolve => setTimeout(resolve, 1100));
+  expect(f.processes.size).toBe(4); await expect(f.files.stat(path)).rejects.toMatchObject({ code: 'capacity', mayHaveBeenSent: false });
+  expect(f.frames.slice(before).filter(frame => frame.method === 'command/exec')).toHaveLength(4);
+  await new Promise(resolve => setTimeout(resolve, Math.max(0, started + 1640 - performance.now()))); f.script(undefined); f.ignoreTermination(false); expect((await f.files.stat(path)).size).toBe(1);
+});
+
+it('buffered最终窗口保留到原期限，close与期限都清除未消费窗口并拒绝迟到消费', async () => {
+  for (const mode of ['deadline', 'close'] as const) {
+    const f = await prepared(); const path = join(f.directory, 'retained-budget'); await writeFile(path, Buffer.alloc(700000, 5));
+    const reads = Array.from({ length: 4 }, () => f.files.read(path, { timeoutMs: 700 })[Symbol.asyncIterator]()); for (const iterator of reads) await iterator.next();
+    if (mode === 'close') await f.files.close(); else await new Promise(resolve => setTimeout(resolve, 750));
+    for (const iterator of reads) await expect(iterator.next()).rejects.toMatchObject({ code: mode === 'close' ? 'closed' : 'timeout' });
+    const { RemoteFiles } = await import('../../server/remote/files.js'); const other = await RemoteFiles.create(f.session, scope); cleanup.push(() => other.close()); expect((await other.stat(path)).size).toBe(700000);
+  }
+});
+
+
+it.each(['read', 'stat'] as const)('%s返回不合法exec终结字段不能当实际结束事实释放原期限内的额度', async mode => {
+  const f = await prepared(); const path = join(f.directory, 'malformed-termination'); await writeFile(path, 'x'); const started = performance.now();
+  f.result(value => ({ ...value, exitCode: .5 }));
+  const failed = Array.from({ length: 4 }, () => (mode === 'read' ? bytes(f.files.read(path, { timeoutMs: 800 })) : f.files.stat(path, { timeoutMs: 800 })).catch(error => error));
+  for (const pending of failed) expect(await pending).toMatchObject({ code: 'protocol', mayHaveBeenSent: true });
+  await expect(f.files.stat(path)).rejects.toMatchObject({ code: 'capacity', mayHaveBeenSent: false });
+  await new Promise(resolve => setTimeout(resolve, Math.max(0, started + 840 - performance.now()))); f.result(undefined);
+  expect((await f.files.stat(path)).size).toBe(1);
+});
+
+it('buffered真实Python完整输出被128字节capture截断，即使exit0也拒绝交付', async () => {
+  const f = await prepared(); const path = join(f.directory, 'upstream-truncated'); await writeFile(path, Buffer.alloc(4096, 7)); f.captureCap(128);
+  await expect(bytes(f.files.read(path))).rejects.toMatchObject({ code: 'integrity', mayHaveBeenSent: true });
+  expect(f.captures).toHaveLength(1); expect(f.captures[0]).toMatchObject({ stdoutBytes: 128, cap: 3 * 1024 * 1024 });
+});
+
+it('受控Windows buffered读取保留原路径JSON并自然退出，不声称Windows实机', async () => {
+  const f = await fixture({ codexHome: 'C:\\Users\\名字\\.codex', platformFamily: 'windows', platformOs: 'windows', userAgent: 'controlled-not-windows-machine' });
+  const { RemoteFiles } = await import('../../server/remote/files.js'); const files = await RemoteFiles.create(f.session, scope); cleanup.push(() => files.close());
+  const path = 'C:\\Users\\名字\\a\\..\\data.bin'; const local = join(f.directory, 'controlled-windows'); await writeFile(local, Buffer.alloc(700003, 4));
+  f.script(source => 'import builtins,os,ntpath\n_open=builtins.open;_stat=os.stat\n_original=' + JSON.stringify(path) + '\n_local=' + JSON.stringify(local) + '\nbuiltins.open=lambda p,*a,**kw:_open(_local if p==_original else p,*a,**kw)\nos.stat=lambda p,*a,**kw:_stat(_local if p==_original else p,*a,**kw)\nos.path.isabs=ntpath.isabs\n' + source);
+  expect(await bytes(files.read(path))).toEqual(Buffer.alloc(700003, 4));
+  const command = f.frames.filter(frame => frame.method === 'command/exec').at(-1)!.params as Record<string, unknown>;
+  expect(command).toMatchObject({ streamStdin: false, streamStdoutStderr: false, cwd: 'C:\\Users\\名字\\.codex', outputBytesCap: 3 * 1024 * 1024 });
+  expect(JSON.parse((command.command as string[])[7]!).path).toBe(path); expect(f.captures).toHaveLength(1); expect(f.processes.size).toBe(0);
+});
+
+
+it('已消费buffered窗口的RPC结果可回收，最终窗口暂停不经failure Promise持有整个文件', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'remote-read-retention-')); cleanup.push(() => rm(directory, { recursive: true, force: true }));
+  const path = join(directory, 'eight-MiB'); await writeFile(path, Buffer.alloc(8 * 1024 * 1024, 7));
+  const child = spawn(process.execPath, ['--expose-gc', '--import', 'tsx', new URL('./fixtures/remote-files-recover-worker.ts', import.meta.url).pathname], { stdio: 'pipe', env: { ...process.env, NODE_OPTIONS: '--no-experimental-webstorage' } });
+  let stdout = ''; let stderr = ''; child.stdout.on('data', data => { stdout += String(data); }); child.stderr.on('data', data => { stderr += String(data); });
+  child.stdin.end(JSON.stringify({ directory, path, action: 'read-retention', ...(process.env.REMOTE_FILE_RETENTION_SNAPSHOT ? { snapshot: process.env.REMOTE_FILE_RETENTION_SNAPSHOT } : {}) }));
+  const exit = await new Promise<number | null>(resolve => child.on('close', resolve)); expect({ exit, stderr }).toEqual({ exit: 0, stderr: '' });
+  const result = JSON.parse(stdout); process.stdout.write(JSON.stringify({ test: 'real-rpc-response-retention', ...result }) + '\n');
+  expect(result).toEqual({ windows: 4, previousResults: 3, livePreviousResults: 0, activeTargetProcesses: 0, finalPaused: true });
+});
