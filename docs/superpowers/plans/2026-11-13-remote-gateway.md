@@ -195,3 +195,5 @@ Task3按内部依赖分项验证，不改变已确认的权限、功能或目标
 
 
 Task3c本地实现完成：`e42be25c81e7b4bc3f83905d951a6c4e38021812` 新增固定来源证明、有界通道与ModelUploadSource，首次窗口从准备入口计时；只统计固定脚本使用例外，通用操作默认权限。真实Python/临时Unix及WS新增82项通过，完整server1449项通过/7项既有跳过，双strict与服务端构建通过；原RED、夹具观察错误及测试类型检查失败分开记录，root核对报告与617工件无差异，见[本地收据](evidence/2026-11-14-remote-model-upload-source-validation.json)。物理业务分片消费live guard，Commands/Files的自有精确清理使用独立有限预算；空ACK/拒绝不当作进程实际终结。3c仍未勾选，下一门禁是新独立SPEC→QUALITY和同一冻结源码官方只读验证；产品消费者、队列与手机后续未完成。
+
+Task3c首轮SPEC（冻结c03d8bf）为ISSUES，原82项相关回归通过、新探针2通过/3失败及2918份工件保留。原实现者修复来源URL空分隔符与正常收尾精确清理，并以真实WS/Python反证覆盖健康延迟、成功预算检查失败、父状态恢复及取消等待延迟ACK；正常收尾保留原remaining，失败后独立有限清理、保留原错误且单次terminate。修复提交 `80e4e37b399fc8cee983de607dfff7d0b5faf726` 的最终完整server1470项通过/7项既有跳过，新增相关103项、Commands/Files283项和原独立5探针通过，双strict及服务端构建通过；root核对4343工件及12份最终运行快照无差异。新冻结独立双审/官方验收仍待完成，3c继续不勾选。
