@@ -72,7 +72,7 @@ def parse_launcher(raw):
     module_path=absolute(urllib.parse.unquote(imported.path,errors='strict'))
     need(module_path.endswith('/npm-dist/server/desktop-model-upload.js'))
     url=urllib.parse.urlsplit(config['upstreamUrl'])
-    need(url.scheme in ('ws','wss') and url.hostname in ('127.0.0.1','localhost','::1') and not url.username and not url.password and not url.fragment)
+    need(url.scheme in ('ws','wss') and url.hostname in ('127.0.0.1','localhost','::1') and url.username is None and url.password is None and '#' not in config['upstreamUrl'])
     need(not any(ord(c)<=32 or ord(c)==127 for c in config['upstreamUrl']))
     url.port
     need(config['socketPath']==os.path.join(home,'mobile-model-upload','meter.sock'))

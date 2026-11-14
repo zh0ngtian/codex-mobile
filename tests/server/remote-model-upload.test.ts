@@ -374,3 +374,23 @@ it('原期限从工厂入口开始，准备绑定同步耗尽时统计exec零发
   await expect(f.source({ windowMs: 100 })).rejects.toMatchObject({ code: 'timeout' });
   expect(f.frames.filter(x => x.method === 'command/exec')).toHaveLength(1);
 });
+
+it.each([
+  'ws://@127.0.0.1:49321/rpc?token=synthetic',
+  'ws://:@127.0.0.1:49321/rpc',
+  'ws://user@127.0.0.1:49321/rpc',
+  'ws://user:@127.0.0.1:49321/rpc',
+  'ws://:password@127.0.0.1:49321/rpc',
+  'ws://user:password@127.0.0.1:49321/rpc',
+  'ws://127.0.0.1:49321/rpc#',
+  'ws://127.0.0.1:49321/rpc#fragment',
+  'ws://127.0.0.1:49321/rpc?encoded=%23#',
+])('来源URL禁止显式空或非空userinfo及任何fragment分隔符 %s', async url => {
+  const f = await fixture(); f.config.upstreamUrl = url; await f.writeLauncher();
+  await expect(f.source({ windowMs: 700 })).rejects.toMatchObject({ code: 'capability' });
+});
+
+it('合法query保持原样参与来源SHA，编码的井号和query内at符号不当作userinfo或fragment', async () => {
+  const f = await fixture(); f.config.upstreamUrl = 'ws://127.0.0.1:49321/rpc?token=a%40b&hash=%23&raw=@&case=%2f'; await f.writeLauncher();
+  const source = await f.source(); await until(() => source.read('existing') !== null); expect(source.read('existing')).toEqual(usage());
+});

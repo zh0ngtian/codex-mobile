@@ -248,7 +248,7 @@ export class RemoteCommands {
     const reservation = wireCap * 5 + input.length * 4 + 65536;
     if (activeCommands >= MAX_CONCURRENT || reservedMemory + reservation > GLOBAL_MEMORY) throw new RemoteCommandError('capacity', false);
     activeCommands++; reservedMemory += reservation;
-    const nonce = randomUUID(); const processId = this.prefix + randomUUID(); const abort = new AbortController();
+    const nonce = randomUUID(); const processId = this.prefix + randomUUID(); const abort = new AbortController(); const terminationAbort = new AbortController();
     let rejectFailure!: (error: RemoteCommandError) => void;
     const failure = new Promise<never>((_resolve, reject) => { rejectFailure = reject; }); void failure.catch(() => undefined);
     const op: Operation = { deadline, sent: false, processId, abort, fail: code => {
@@ -325,7 +325,8 @@ export class RemoteCommands {
         if (!probe) {
           // DONE只证明目标已完成输出；两路通知可重排，全部字节在原exec终结后才作最终证明。
           await Promise.race([done, failure, result.then(() => { throw new RemoteCommandError('protocol', true); })]);
-          termination = this.session.call('command/exec/terminate', { processId }, { timeoutMs: remaining(), signal: abort.signal });
+          const budget = remaining();
+          termination = runRemoteCleanup(() => this.session.call('command/exec/terminate', { processId }, { timeoutMs: budget, signal: terminationAbort.signal }));
           const ack = await Promise.race([termination, failure]); remaining();
           if (!object(ack) || Object.keys(ack).length !== 0) throw new RemoteCommandError('protocol', true);
         }
@@ -368,12 +369,15 @@ export class RemoteCommands {
       else classified = new RemoteCommandError('protocol', op.sent);
       op.error = classified; abort.abort();
       // cleanup独立于已结束业务期限，只允许本适配器自己生成的processId。不关闭共享session。
-      if (op.sent && this.session.ready && !termination) termination = runRemoteCleanup(() => this.session.call('command/exec/terminate', { processId }, { timeoutMs: 1000 }));
-      await termination?.catch(() => undefined);
+      if (op.sent && this.session.ready && !termination) termination = runRemoteCleanup(() => this.session.call('command/exec/terminate', { processId }, { timeoutMs: 1000, signal: terminationAbort.signal }));
+      let cleanupTimer: NodeJS.Timeout | undefined;
+      try {
+        if (termination) await Promise.race([termination.catch(() => undefined), new Promise<void>(resolve => { cleanupTimer = setTimeout(() => { terminationAbort.abort(); resolve(); }, 1000); })]);
+      } finally { if (cleanupTimer) clearTimeout(cleanupTimer); }
       throw classified;
     } finally {
       clearTimeout(timer); signal?.removeEventListener('abort', cancelled); this.session.off('notification', notification); this.session.off('disconnect', disconnected); this.session.off('close', closed);
-      abort.abort(); this.operations.delete(op); activeCommands--; reservedMemory -= reservation;
+      abort.abort(); terminationAbort.abort(); this.operations.delete(op); activeCommands--; reservedMemory -= reservation;
     }
   }
   close(): Promise<void> {

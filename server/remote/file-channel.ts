@@ -190,8 +190,8 @@ export class RemoteFileChannel {
   }
   async finish(): Promise<void> {
     await this.race(Promise.race([this.done, this.execution!.then(() => { throw new RemoteFileError('protocol', true); })]));
-    if (!(await this.stop(true))) throw new RemoteFileError('protocol', true);
-    this.assert();
+    const settled = await this.stop(true); this.assert();
+    if (!settled) throw new RemoteFileError('protocol', true);
     if (this.trailingBytes || !this.completion || this.bytes !== this.completion.size || this.hash.digest('hex') !== this.completion.sha256) throw new RemoteFileError('integrity', true);
     this.assert();
   }
@@ -199,18 +199,25 @@ export class RemoteFileChannel {
     if (this.stopping) return this.stopping;
     this.stopping = (async () => {
       let timer: NodeJS.Timeout | undefined;
+      const terminationAbort = new AbortController(); let waiting = true;
       try {
         if (!this.sent || !this.session.ready) return !this.sent;
-        const budget = success ? this.remaining() : 1000;
-        const termination = runRemoteCleanup(() => this.session.call('command/exec/terminate', { processId: this.processId }, { timeoutMs: budget }));
+        let budget = 1000;
+        // 正常收尾保留原等待预算；失败则锁存原分类，仅精确清理使用独立预算。
+        if (success) { try { budget = this.remaining(); } catch (error) { this.error ??= fileFailure(error, this.sent); } }
+        const termination = runRemoteCleanup(() => this.session.call('command/exec/terminate', { processId: this.processId }, { timeoutMs: budget, signal: terminationAbort.signal }));
         const final = Promise.all([termination, this.execution]).then(([ack, result]) => {
           if (!record(ack) || Object.keys(ack).length || !record(result) || Object.keys(result).sort().join(',') !== 'exitCode,stderr,stdout' || !Number.isSafeInteger(result.exitCode) || (result.exitCode as number) < -2147483648 || (result.exitCode as number) > 2147483647 || result.stdout !== '' || result.stderr !== '') return false;
           return true;
         });
-        const bounded = new Promise<boolean>(resolve => { timer = setTimeout(() => resolve(false), budget); });
+        const bounded = new Promise<boolean>(resolve => {
+          const expired = () => resolve(false); timer = setTimeout(expired, budget);
+          // 已发出的terminate不重发；业务失败后缩短等待，只取消本次清理RPC。
+          if (success) void this.failure.catch(() => { if (waiting) { if (timer) clearTimeout(timer); timer = setTimeout(expired, 1000); } });
+        });
         const value = await Promise.race([final, bounded]); this.settled = value; return value;
       } catch { return false; }
-      finally { if (timer) clearTimeout(timer); this.dispose(); }
+      finally { waiting = false; if (timer) clearTimeout(timer); terminationAbort.abort(); this.dispose(); }
     })(); return this.stopping;
   }
   private dispose(): void {
