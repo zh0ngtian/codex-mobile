@@ -1,0 +1,133 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-11-14T07:37:26.424225+00:00",
+  "decision": "Q49 A 用户已批准",
+  "implementationCommit": "9bed636dd9cfee63869194abc8d63e1c40ac829c",
+  "baselineHead": "5c0fdcbfa33ff4f2953d0c626153156e0825de27",
+  "baselineOriginMain": "0c8c86badf0016300d656b04d40f629ffe62f1c7",
+  "status": "本地实现验证完成；新源码独立SPEC、QUALITY与官方文件验收尚未开始",
+  "contract": {
+    "explicitReadMaximumTimeoutMs": 600000,
+    "defaultReadTimeoutMs": 20000,
+    "otherOperationsMaximumTimeoutMs": 180000,
+    "windowWatchdogCommandAndRpcMaximumTimeoutMs": 180000,
+    "originalAbsoluteDeadlineNotReset": true,
+    "windowBytes": 2097152,
+    "chunkBytes": 524288,
+    "chunksPerWindow": 4,
+    "outputBytesCap": 3145728,
+    "maximumActiveReadProcessesPerFile": 1,
+    "defaultPermissionsUnchanged": true,
+    "unknownWritesNotReplayed": true
+  },
+  "tdd": {
+    "originalReadLimitRed": {
+      "failed": 2,
+      "exitCode": 1,
+      "requestedTimeoutMs": [
+        180001,
+        600000
+      ],
+      "errorCode": "capacity",
+      "mayHaveBeenSent": false
+    },
+    "firstGreen": {
+      "passed": 2,
+      "exitCode": 0,
+      "bytesPerCase": 2097171,
+      "windowsPerCase": 2,
+      "sha256": "49fb9d923e147cf5d457d83d2a9b4b9b61136b149fa8f552a0ea7501a0850ca1",
+      "actualTemporaryPythonAndRpc": true
+    },
+    "subMillisecondRed": {
+      "failed": 1,
+      "exitCode": 1,
+      "actual": "不足1ms被向上取到1ms并交付字节"
+    },
+    "subMillisecondGreen": {
+      "passed": 1,
+      "exitCode": 0,
+      "actual": "发送前受控timeout，无命令发送"
+    },
+    "newCases": 19,
+    "controlledClockCoverage": [
+      "默认20秒",
+      "三种单窗预算180000→100000→10000",
+      "调用起计及准备/跨窗/末窗消费暂停",
+      "最终独立Range SHA结果越原600秒拒绝末窗",
+      "取消/断线/单窗RPC超时丢弃迟到结果并保持额度至原期限",
+      "未消费末窗继续占四文件额度",
+      "无效read期限受控拒绝",
+      "其他文件操作/Commands/Rpc最高180秒保留"
+    ]
+  },
+  "localValidation": {
+    "relatedRegression": {
+      "passedFiles": 6,
+      "passed": 372,
+      "filesCasesLoaded": 188,
+      "exitCode": 0,
+      "durationMs": 122990,
+      "lastAddedShaCaseSeparatelyPassed": 1
+    },
+    "fullServer": {
+      "runs": 1,
+      "failedRuns": 0,
+      "passedFiles": 58,
+      "skippedFiles": 2,
+      "passed": 1353,
+      "skipped": 7,
+      "filesCases": 189,
+      "durationMs": 158230,
+      "exitCode": 0,
+      "maximumWorkers": 2
+    },
+    "strictSource": true,
+    "strictSourceAndTests": true,
+    "serverBuild": true,
+    "lastProductChangeBeforeStrictAndBuild": true,
+    "lastTestOnlyChangeFollowedByStrictAndFullServer": true
+  },
+  "freshReviews": {
+    "SPEC": {
+      "passed": false,
+      "status": "pending"
+    },
+    "QUALITY": {
+      "passed": false,
+      "status": "pending"
+    }
+  },
+  "officialRemote": {
+    "executed": false,
+    "passed": false,
+    "plannedOriginalUploadNotReplayed": true,
+    "plannedOriginalReadTimeoutMs": 600000,
+    "plannedNewUploadTimeoutMs": 180000,
+    "plannedCases": [
+      "原100MiB原收据查询与完整读回/Range/精确清理",
+      "独立新100MiB上传与完整读回/Range",
+      "producer失败不提交半文件",
+      "未知提交跨实际OS进程仅查原收据/精确清理",
+      "零逻辑流25秒后再次RPC"
+    ]
+  },
+  "filesGatePassed": false,
+  "pushedMain": false,
+  "deployed": false,
+  "clientBuilt": false,
+  "clientReleased": false,
+  "limitations": [
+    "本地Python/Rpc不是官方Remote吞吐验收。",
+    "600秒边界采用受控时钟，不实际等待十分钟。",
+    "没有Windows实机、手机路由、8小时及睡眠唤醒验收。",
+    "旧180秒失败和历史收据保留原样。"
+  ],
+  "implementationEvidence": {
+    "reportSha256": "28994bab4dc87409cd772821e2006753cd3450093f6988ec570c6e97ce302b5d",
+    "manifestSha256": "d28d5914df3e15e176351109031a5b6f26c85ff578ba43b35cef74dcd2356cf7",
+    "rootReadFullReport": true,
+    "rootVerifiedArtifacts": 36,
+    "hashMismatch": 0
+  }
+}
