@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
-  "recordedAt": "2026-11-14T08:15:06.793026+00:00",
+  "recordedAt": "2026-11-14T09:03:35.099731+00:00",
   "decision": "Q49 A 用户已批准",
   "implementationCommit": "9bed636dd9cfee63869194abc8d63e1c40ac829c",
   "baselineHead": "5c0fdcbfa33ff4f2953d0c626153156e0825de27",
   "baselineOriginMain": "0c8c86badf0016300d656b04d40f629ffe62f1c7",
-  "status": "发送期限缺口已修复并本地验证；首轮SPEC FAIL保留，待新冻结源码独立SPEC→QUALITY及官方验收",
+  "status": "新冻结源码独立SPEC与QUALITY均通过；官方原100MiB在68MiB后触发既有30秒组装期限，Files gate未通过",
   "contract": {
     "explicitReadMaximumTimeoutMs": 600000,
     "defaultReadTimeoutMs": 20000,
@@ -90,16 +90,32 @@
   },
   "freshReviews": {
     "SPEC": {
-      "passed": false,
-      "status": "fixed-source-independent-review-pending"
+      "sourceCommit": "253aa0b0fdce441959fc0fb20108573457f1c26b",
+      "passed": true,
+      "status": "PASS",
+      "reportSha256": "b64ab355b4f768398abe831a4a816741964d54f6a18562ae87a696191537cf5c",
+      "manifestSha256": "d1ef388a1f6aafcd97d465c0effdf8b93286e6e368e1ecd2e03c747f2973c67b",
+      "rootReadReportAndRawLogs": true,
+      "rootVerifiedArtifacts": 67,
+      "rootArtifactMismatchCount": 0,
+      "independentCases": 36,
+      "firstRunPassed": 36
     },
     "QUALITY": {
-      "passed": false,
-      "status": "pending"
+      "sourceCommit": "253aa0b0fdce441959fc0fb20108573457f1c26b",
+      "passed": true,
+      "status": "PASS",
+      "reportSha256": "fb34edb1a80e764cf38f946bb380e50ed625462af02dde573df0e5e48dfacb58",
+      "manifestSha256": "d9660ee78da05227a72d05ab200d48de7036d5fc24e088a320f1d7c922f225e9",
+      "rootReadReportAndRawLogs": true,
+      "rootVerifiedArtifacts": 123,
+      "rootArtifactMismatchCount": 0,
+      "independentCases": 6,
+      "firstRunPassed": 6
     }
   },
   "officialRemote": {
-    "executed": false,
+    "executed": true,
     "passed": false,
     "plannedOriginalUploadNotReplayed": true,
     "plannedOriginalReadTimeoutMs": 600000,
@@ -110,7 +126,16 @@
       "producer失败不提交半文件",
       "未知提交跨实际OS进程仅查原收据/精确清理",
       "零逻辑流25秒后再次RPC"
-    ]
+    ],
+    "attempts": 1,
+    "sourceCommit": "253aa0b0fdce441959fc0fb20108573457f1c26b",
+    "receivedBytes": 71303168,
+    "readElapsedMs": 296509,
+    "failure": "unchanged-30-second-absolute-assembly-timeout",
+    "newUploadStarted": false,
+    "unknownCommitOrOsRestartStarted": false,
+    "originalReceiptAndFixturePreserved": true,
+    "evidence": "2026-11-14-remote-file-assembly-window-validation.json"
   },
   "filesGatePassed": false,
   "pushedMain": false,
@@ -152,7 +177,13 @@
     "rootVerifiedArtifacts": 63,
     "hashMismatch": 0,
     "firstFailurePreserved": true,
-    "fixAndFreshReviewRequired": true
+    "fixAndFreshReviewRequired": true,
+    "laterResolution": {
+      "fixCommit": "8e2cef904783d82a4367490ebe2c0ad366474fb3",
+      "reviewedSourceCommit": "253aa0b0fdce441959fc0fb20108573457f1c26b",
+      "freshSpecPassed": true,
+      "historicalFailUnchanged": true
+    }
   },
   "sendDeadlineFix": {
     "commit": "8e2cef904783d82a4367490ebe2c0ad366474fb3",
@@ -216,5 +247,11 @@
       "original36ArtifactsPreserved": true,
       "rootComparedSixFinalSnapshotsWithGitCommit": true
     }
+  },
+  "reviewedSourceCommit": "253aa0b0fdce441959fc0fb20108573457f1c26b",
+  "nextDecision": {
+    "number": 50,
+    "approved": false,
+    "proposal": "../../specs/2026-11-14-remote-file-window-size-proposal.md"
   }
 }

@@ -179,6 +179,10 @@ Task3按内部依赖分项验证，不改变已确认的权限、功能或目标
 - [ ] 遵守 `codex-mobile-main-production` 互斥，fetch 最新 main；变化时对整合结果相关回归，无变化复用已完成验证。保护主工作区已有暂存改动。
 - [ ] `git diff --check`、准确提交并推送 main；核对远端包含本次 SHA。只交付源码，不触发发布协调批次、APK/IPA 或生产部署。
 
-第49项A实现提交 `9bed636dd9cfee63869194abc8d63e1c40ac829c` 已完成19项新增（Files共189项）、6文件372项回归、末次SHA原期限专项、完整服务端首轮1353项/7项既有跳过、双strict及服务端构建。[新验证收据](evidence/2026-11-14-remote-file-read-budget-validation.json)记录真实旧capacity RED与不足1ms RED→GREEN；冻结d1c82e4首轮SPEC为FAIL：独立27项通过、1项真实RPC发送边界RED，原期限已到仍发出一条读取命令。原实现者已补齐read→RPC→Relay物理发送前期限检查并完成本地验证；修复新SHA重新SPEC，通过后才QUALITY及官方原100MiB/Range、新上传、未知提交跨OS进程恢复。3b和后续依赖未放行，不以本地通过替代官方验收。
+第49项A实现提交 `9bed636dd9cfee63869194abc8d63e1c40ac829c` 已完成19项新增（Files共189项）、6文件372项回归、末次SHA原期限专项、完整服务端首轮1353项/7项既有跳过、双strict及服务端构建。[新验证收据](evidence/2026-11-14-remote-file-read-budget-validation.json)记录真实旧capacity RED与不足1ms RED→GREEN；冻结d1c82e4首轮SPEC为FAIL：独立27项通过、1项真实RPC发送边界RED，原期限已到仍发出一条读取命令。原实现者已补齐read→RPC→Relay物理发送前期限检查并完成本地验证；修复新冻结253aa0b的独立SPEC→QUALITY已通过；官方原100MiB首轮仍失败，后续Range、新上传、未知提交跨OS进程恢复未开始。3b和后续依赖未放行，不以本地通过替代官方验收。
 
-第49项发送屏障修复 `8e2cef904783d82a4367490ebe2c0ad366474fb3` 已完成7项RPC/Files、4项Relay真实RED→11项GREEN，原独立探针实现者复跑28项通过；六文件384项相关回归、完整server唯一修复轮1364项/7项既有跳过、双strict及服务端构建通过。真实物理零发送不消耗序号、部分发送停止剩余帧，资源/计时器回收与后续共享session RPC均有断言。新冻结SHA须重新独立SPEC→QUALITY，不能将实现者探针复跑计为审查通过；官方和Task3b仍未放行，未推送main。
+第49项发送屏障修复 `8e2cef904783d82a4367490ebe2c0ad366474fb3` 已完成7项RPC/Files、4项Relay真实RED→11项GREEN，原独立探针实现者复跑28项通过；六文件384项相关回归、完整server唯一修复轮1364项/7项既有跳过、双strict及服务端构建通过。真实物理零发送不消耗序号、部分发送停止剩余帧，资源/计时器回收与后续共享session RPC均有断言。新冻结253aa0b已另获独立SPEC→QUALITY通过，不能将实现者探针复跑计为审查通过；官方和Task3b仍未放行，未推送main。
+
+第49项冻结 `253aa0b0fdce441959fc0fb20108573457f1c26b` 已通过独立SPEC36项、QUALITY6项，root核验67/123工件；官方首轮原收据查询成功，但在68MiB、296509毫秒后由既有30秒绝对分块组装期限断开。失败响应28片仅收到13片，断开前211毫秒仍有新分片；未达到read600秒或窗口180秒，未触发pongTimer。见[官方失败收据](evidence/2026-11-14-remote-file-assembly-window-validation.json)。现有30秒绝对期限专项1项通过/17项未选中，本地Python512KiB响应约为2MiB的四分之一，不代表官方性能通过。
+
+[第50项固定窗口方案](../specs/2026-11-14-remote-file-window-size-proposal.md)A建议512KiB单块，B保持现状继续调查；待用户确认，不能自行变更已批准的2MiB窗口或30秒组装边界。原目标夹具/提交收据保留，原上传未重发，新上传与跨OS进程对账未开始。Task3b不勾选，不启动3c、main推送、部署或客户端发布。

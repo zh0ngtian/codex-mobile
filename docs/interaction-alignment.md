@@ -1807,6 +1807,14 @@ iPhone 17 Pro／iOS 27、正常字号、竖屏的6项现有排版及界面回归
 
 用户明确选择A。仅RemoteFiles.read允许显式申请最高600秒总预算，默认20秒，stat/list/readText/tailJsonl、上传/查询/清理、通用命令及RPC本身最高180秒。每窗Python watchdog、command与RPC等待均取整读剩余时间和180秒的较小值；整读绝对期限覆盖准备、所有窗口、消费暂停及最终独立Range SHA，不因进度、换窗或重连重置，单窗失败不重试。固定窗口、单活动进程、容量、权限、版本/完整性及未知写入不重放保护保留。
 
-修改起点为 `5c0fdcbfa33ff4f2953d0c626153156e0825de27`；开始前fetch核对main仍为 `0c8c86badf0016300d656b04d40f629ffe62f1c7`。先在真实Python/RPC中取得旧600秒拒绝的RED，再最小实现，验证原默认、单窗口上限、总期限及取消/资源回收，完成新源码独立SPEC→QUALITY后再原100MiB/Range、新上传及跨实际OS进程的原收据对账与精确清理。实现 `9bed636dd9cfee63869194abc8d63e1c40ac829c` 完成19项新增、Files共189项；相关372项回归通过，最后SHA用例单独验证，完整服务端首轮1353项/7项跳过、双strict及构建通过，见[新收据](superpowers/plans/evidence/2026-11-14-remote-file-read-budget-validation.json)。冻结d1c82e4首轮SPEC独立27项通过、1项产品RED：原期限已耗尽仍可实际发命令。已在8e2cef9修复可信read到RPC、Relay物理发送前的期限屏障与资源/发送事实并完成本地验证；修复新SHA须重新SPEC，通过后才QUALITY和官方验收，Task3b及后续未放行。首失败、原180秒失败与第48项收据保留，不重写历史pending为已授权。
+修改起点为 `5c0fdcbfa33ff4f2953d0c626153156e0825de27`；开始前fetch核对main仍为 `0c8c86badf0016300d656b04d40f629ffe62f1c7`。先在真实Python/RPC中取得旧600秒拒绝的RED，再最小实现，验证原默认、单窗口上限、总期限及取消/资源回收，完成新源码独立SPEC→QUALITY后再原100MiB/Range、新上传及跨实际OS进程的原收据对账与精确清理。实现 `9bed636dd9cfee63869194abc8d63e1c40ac829c` 完成19项新增、Files共189项；相关372项回归通过，最后SHA用例单独验证，完整服务端首轮1353项/7项跳过、双strict及构建通过，见[新收据](superpowers/plans/evidence/2026-11-14-remote-file-read-budget-validation.json)。冻结d1c82e4首轮SPEC独立27项通过、1项产品RED：原期限已耗尽仍可实际发命令。已在8e2cef9修复可信read到RPC、Relay物理发送前的期限屏障与资源/发送事实并完成本地验证；修复新冻结253aa0b已通过独立SPEC与QUALITY，官方首轮仍在68MiB后触发既有30秒组装期限，Task3b及后续未放行。首失败、原180秒失败与第48项收据保留，不重写历史pending为已授权。
 
-第49项发送期限修复为 `8e2cef904783d82a4367490ebe2c0ad366474fb3`：可信read的原绝对期限贯穿RPC与Relay逐帧物理发送前检查，零发送超时不消耗序号，部分发送停止后续帧并保留已发送事实，原cleanup和共享session不受父期限阻断。11项永久回归先RED后GREEN，相关384项、完整服务端唯一修复轮1364项/7项既有跳过、双strict与服务端构建通过；实现者复跑独立28项通过，不替代新冻结源码SPEC→QUALITY。当前待独立复审及官方验收，文件gate/后续依赖和发布状态不变，首轮SPEC FAIL及旧失败保留。
+第49项发送期限修复为 `8e2cef904783d82a4367490ebe2c0ad366474fb3`：可信read的原绝对期限贯穿RPC与Relay逐帧物理发送前检查，零发送超时不消耗序号，部分发送停止后续帧并保留已发送事实，原cleanup和共享session不受父期限阻断。11项永久回归先RED后GREEN，相关384项、完整服务端唯一修复轮1364项/7项既有跳过、双strict与服务端构建通过；实现者复跑独立28项通过，不替代新冻结源码SPEC→QUALITY。后续冻结253aa0b的独立SPEC与QUALITY已通过，官方首轮失败详情见下一条；文件gate/后续依赖和发布状态不变，首轮SPEC FAIL及旧失败保留。
+
+### 2026-11-14 第49项双审通过，官方首轮触发30秒组装边界
+
+冻结源码 `253aa0b0fdce441959fc0fb20108573457f1c26b` 的独立SPEC36项及QUALITY6项首跑通过，主代理完整读取报告和原始日志并核验67/123份工件。官方首轮先查询原100MiB提交收据成功；读回34个窗口共68MiB后，第35个响应28片只收到13片。整读296509毫秒，首片到断开30010毫秒、末片到断开211毫秒；固定30秒绝对组装计时触发protocol断开，600秒整读及180秒窗口未到，直接原因不是pongTimer。现有首片起30秒不续期的隔离专项仍通过，不能把该合同表现称为Q49发送屏障回退。[收据](superpowers/plans/evidence/2026-11-14-remote-file-assembly-window-validation.json)记录首失败、事实边界和未完成项。
+
+新上传与跨实际OS进程未知提交对账未开始，原上传不重发，原夹具与精确收据继续保留。没有新授权/登记、模型推理、测试聊天、生产服务或客户端变化。官方吞吐逐渐变慢的根因未定，文件gate和Task3b仍未通过，未推送文件候选到main。
+
+[第50项](superpowers/specs/2026-11-14-remote-file-window-size-proposal.md)仅提出A：每窗从2MiB四块改为512KiB单块，保留30秒组装、read最高600秒/default20秒、单窗及其他最高180秒、全部权限/资源/版本/SHA与未知写不重放；B保持原合同继续调查。更小响应可能减少单次分片组装时间，但更多窗口会增加RPC开销，不能保证600秒通过。此变更须用户确认，当前未实施，现行第4.12节的2MiB要求不改。

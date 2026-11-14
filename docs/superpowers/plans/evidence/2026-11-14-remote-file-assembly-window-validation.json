@@ -1,0 +1,141 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-11-14T09:03:35.099731+00:00",
+  "sourceCommit": "253aa0b0fdce441959fc0fb20108573457f1c26b",
+  "status": "official-first-attempt-FAIL-at-unchanged-30s-assembly",
+  "passed": false,
+  "contract": {
+    "explicitWholeReadMaximumTimeoutMs": 600000,
+    "defaultReadTimeoutMs": 20000,
+    "otherOperationsAndWindowMaximumTimeoutMs": 180000,
+    "assemblyAbsoluteTimeoutMs": 30000,
+    "windowBytes": 2097152,
+    "chunkBytes": 524288,
+    "chunksPerWindow": 4,
+    "permissionsUnchanged": true
+  },
+  "freshReviews": {
+    "SPEC": {
+      "sourceCommit": "253aa0b0fdce441959fc0fb20108573457f1c26b",
+      "passed": true,
+      "reportSha256": "b64ab355b4f768398abe831a4a816741964d54f6a18562ae87a696191537cf5c",
+      "manifestSha256": "d1ef388a1f6aafcd97d465c0effdf8b93286e6e368e1ecd2e03c747f2973c67b",
+      "rootVerifiedArtifacts": 67,
+      "independentCases": 36,
+      "firstRunPassed": 36
+    },
+    "QUALITY": {
+      "sourceCommit": "253aa0b0fdce441959fc0fb20108573457f1c26b",
+      "passed": true,
+      "reportSha256": "fb34edb1a80e764cf38f946bb380e50ed625462af02dde573df0e5e48dfacb58",
+      "manifestSha256": "d9660ee78da05227a72d05ab200d48de7036d5fc24e088a320f1d7c922f225e9",
+      "rootVerifiedArtifacts": 123,
+      "independentCases": 6,
+      "firstRunPassed": 6
+    }
+  },
+  "official": {
+    "attempts": 1,
+    "startedAt": "2026-11-14T08:49:46.190Z",
+    "finishedAt": "2026-11-14T08:55:04.747Z",
+    "originalReceiptQueryPassed": true,
+    "originalUploadNotReplayed": true,
+    "expectedBytes": 104857600,
+    "receivedBytes": 71303168,
+    "receivedMiB": 68,
+    "completedWindows": 34,
+    "readCalls": 35,
+    "readElapsedMs": 296509,
+    "failedWindowElapsedMs": 34614,
+    "windowWatchdogCommandAndRpcTimeoutMs": 180000,
+    "responseMessageBytes": 2798445,
+    "responseExpectedFragments": 28,
+    "responseReceivedFragments": 13,
+    "firstFragmentAtMs": 288416,
+    "lastFragmentAtMs": 318215,
+    "assemblyDiscardAtMs": 318425,
+    "disconnectAtMs": 318426,
+    "firstFragmentToDisconnectMs": 30010,
+    "lastFragmentToDisconnectMs": 211,
+    "disconnectReason": "protocol",
+    "directTrigger": "RemoteChunkAssembler discard -> RemoteRelay.failProtocol: Remote 分块接收超时",
+    "wholeReadDeadlineReached": false,
+    "rpcWindowDeadlineReached": false,
+    "nativePongTimerTriggered": false,
+    "nativePings": 20,
+    "nativePongs": 18,
+    "authPrepares": 1,
+    "maximumConcurrentReadRpcs": 1,
+    "maximumStdoutBytes": 2797985,
+    "readConfigurationViolations": 0,
+    "unexpectedOutputDelta": 0,
+    "observationErrors": 0,
+    "newUploadStarted": false,
+    "unknownCommitOrOsRestartStarted": false,
+    "originalReceiptReleased": false,
+    "originalTemporaryDirectoryRemoved": false
+  },
+  "localDiagnosis": {
+    "sourceChanged": false,
+    "existingAbsoluteAssemblyTest": {
+      "passed": 1,
+      "skipped": 17,
+      "exitCode": 0,
+      "newFragmentDoesNotResetAbsoluteDeadline": true
+    },
+    "actualTemporaryPythonPayloadComparison": [
+      {
+        "rangeBytes": 2097152,
+        "chunkCount": 4,
+        "stdoutBytes": 2797840,
+        "stderrBytes": 118,
+        "sha256": "91d3beb88a9b2f778a6c44a1c53b63d3c79931845a9aef84b3fb414610bd1938",
+        "localPythonExitCode": 0,
+        "networkOrOfficialPerformanceNotMeasured": true
+      },
+      {
+        "rangeBytes": 524288,
+        "chunkCount": 1,
+        "stdoutBytes": 700029,
+        "stderrBytes": 117,
+        "sha256": "33bc8aab40703678c3ebe94d2dd8f2afff285dd901f9234e841e4679f8204fd5",
+        "localPythonExitCode": 0,
+        "networkOrOfficialPerformanceNotMeasured": true
+      }
+    ],
+    "temporaryLocalFixtureRemoved": true,
+    "officialPerformanceNotProvedByLocalComparison": true
+  },
+  "privateEvidence": {
+    "reportSha256": "3648bc7c2c97c0a8bfba3f9d2eefe1ada40c4085f93cf6d4a89f8f8b310af0b0",
+    "manifestSha256": "d573ad331430ca1bf23a23427f959592028f2e9c0afd8aa12da81c8368b5df49",
+    "rootReadReportAndRawOfficialFailure": true,
+    "rootVerifiedArtifacts": 20,
+    "hashMismatch": 0
+  },
+  "nextDecision": {
+    "number": 50,
+    "approved": false,
+    "implementationStarted": false,
+    "recommendedWindowBytes": 524288,
+    "recommendedChunksPerWindow": 1,
+    "preserveChunkBytes": 524288,
+    "preserveAssemblyAbsoluteTimeoutMs": 30000,
+    "preserveWholeReadMaximumTimeoutMs": 600000
+  },
+  "filesGatePassed": false,
+  "task3bPassed": false,
+  "pushedMain": false,
+  "productionChanged": false,
+  "newAuthorizationOrEnrollment": false,
+  "modelInferenceRequestsSent": 0,
+  "testChatsCreated": 0,
+  "clientBuilt": false,
+  "clientReleased": false,
+  "limitations": [
+    "本轮直接触发点已确认，官方分段逐渐变慢的根因仍未确定。",
+    "更小响应的官方分段数和耗时尚未测量；增加窗口数可能增加RPC开销。",
+    "没有将本次失败改写为600秒超时、心跳失败或新Q49本地缺陷。",
+    "尚未通过完整100MiB、Range、新上传、跨OS进程恢复、手机、Windows、8小时及睡眠唤醒验收。"
+  ]
+}
