@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
   "task": "Task3c-fixed-target-model-upload-source",
-  "status": "repaired-local-validation-complete-new-independent-reviews-and-official-probe-pending",
+  "status": "command-execution-reservation-repaired-local-validation-complete-awaiting-new-spec",
   "baselineMain": "e292e592133469c20bbcb4efb863f6ca4e2a5961",
-  "implementationCommit": "80e4e37b399fc8cee983de607dfff7d0b5faf726",
+  "implementationCommit": "f89937df05da3143b01b246487803944b6a8b26f",
   "sourceOnly": true,
   "deployed": false,
   "clientBuiltOrPublished": false,
@@ -35,7 +35,8 @@
       "cleanupMs": 1000
     },
     "invalidation": "remove删除缓存；失败、断线、超时、取消、关闭立即清缓存；不制造零usage",
-    "cleanup": "仅自有processId；空ACK或exec拒绝不是实际终结；资源持有至实际exec结束或原期限；保留caller session与Relay"
+    "cleanup": "仅自有processId；空ACK或exec拒绝不是实际终结；资源持有至实际exec结束或原期限；保留caller session与Relay",
+    "commandsExecutionReservation": "全局4命令/64MiB保守逻辑预留；业务取消与实际exec观察分离，已发送只在有效实际终结或原绝对期限释放，未发送立即释放；不承诺RSS"
   },
   "localVerification": {
     "newRelated": {
@@ -46,13 +47,13 @@
       "separatelyRepeated": false
     },
     "fullServer": {
-      "filesPassed": 61,
+      "filesPassed": 62,
       "filesSkipped": 2,
-      "passed": 1470,
+      "passed": 1477,
       "skipped": 7,
-      "total": 1477,
+      "total": 1484,
       "exitCode": 0,
-      "elapsedSeconds": 339.361
+      "elapsedSeconds": 349.233
     },
     "strictNpm": {
       "exitCode": 0
@@ -74,26 +75,33 @@
       "超过64KiB的合法合并通知及8MiB输出上限"
     ],
     "sharedCommandsAndFiles": {
-      "passed": 283,
+      "passed": 290,
       "commands": 71,
       "commandExit": 19,
       "files": 193,
       "exitCode": 0,
-      "includedInFullServer": true
+      "includedInFullServer": true,
+      "commandExecutionBudget": 7
     },
-    "originalIndependentProbes": {
-      "passed": 5,
+    "copiedIndependentProbes": {
+      "passed": 17,
       "exitCode": 0,
-      "elapsedSeconds": 0.968,
-      "qualification": "最终源快照执行原SPEC探针复制件，不替代新独立复审"
+      "elapsedSeconds": 8.193,
+      "qualification": "新目录复制原5、第二轮11及许可1；实现者自测，非独立SPEC，不替代损失的旧5 trace"
+    },
+    "relatedTotal": {
+      "files": 10,
+      "passed": 508,
+      "exitCode": 0,
+      "includedInFullServer": true
     }
   },
   "evidence": {
-    "reportSha256": "ea7545c033a5a7f6c338bd327302a15d8c00d4e678bba645ebb8950de49930b6",
-    "manifestSha256": "d695dc9079026cf5a15601bc59257c517670b84605e0d737013b78cdb51a72f7",
-    "artifacts": 4343,
+    "reportSha256": "a85920210ee06908f371054f292e59a0a48b51ab5ff63b3b5f135221c6d72db9",
+    "manifestSha256": "0c7bf5b4477ad785d7c6e817575fd95cddeaf40ea9b0eac3c3de846241971c84",
+    "artifacts": 6637,
     "rootAuditedAllArtifacts": true,
-    "rootVerifiedFinalSourceSnapshots": 12
+    "rootVerifiedFinalSourceSnapshots": 14
   },
   "failureHistory": {
     "firstProductRed": "03：publisher已就绪，但stub未启动统计reader，read持续为null；不声称已交付计量通知",
@@ -200,7 +208,7 @@
   },
   "initialImplementationCommit": "e42be25c81e7b4bc3f83905d951a6c4e38021812",
   "repairValidation": {
-    "status": "本地修复验证完成，待同冻结独立SPEC/QUALITY及官方只读验收",
+    "status": "首轮来源与清理修复已本地验证；第二轮Commands执行预留修复也已本地验证，新冻结独立复审仍待完成",
     "actualRedCases": [
       "拒绝空URL分隔符",
       "Commands正常terminate在父guard失效/取消/跨期时被拦截",
@@ -226,5 +234,153 @@
       "17完整1468通过/7跳过属于ACK等待修复前候选"
     ],
     "scope": "正常收尾保留原remaining；失败后独立1000ms收束，只取消本次cleanup RPC等待，不重发terminate；Files许可仍依实际exec结束/原期限释放"
+  },
+  "secondIndependentSpec": {
+    "sourceCommit": "df5152556720321c8799f560716031463c3803aa",
+    "passed": false,
+    "originalIndependentPassed": 5,
+    "relatedPermanentPassed": 103,
+    "additionalBoundaryPassed": 11,
+    "newCommandReservationProbeFailed": 1,
+    "newProbeExitCode": 1,
+    "newProbeElapsedSeconds": 0.8727359578479081,
+    "rootReadActualFirstProbeLogAndTrace": true,
+    "issues": [
+      "Commands业务abort使实际exec观察被拒绝替代，finally无条件释放全局命令数/内存预留；4个实际仍活wrapper之后第五命令仍物理发送"
+    ],
+    "actualLiveWrapperPeak": 5,
+    "existingConcurrentLimit": 4,
+    "sharedRpcStillReadyAndUsable": true,
+    "repairStatus": "f89937d本地验证完成，待新冻结独立SPEC；QUALITY和官方未开始",
+    "reportSha256": "7a4e18f91c0df6f3ff6cf3e249fb105b75e5291843e3f92aaa42ca8e1bdeb293",
+    "manifestSha256": "c53c43bb599f519432b58cd6b0c174923bff4880d5437fbcb312bbfa7a6671d9",
+    "artifacts": 2951,
+    "rootVerifiedChangedSourceTests": 12,
+    "rootAuditedAllArtifactsHistorically": true,
+    "currentAllArtifactsIntact": false,
+    "currentUnchangedArtifacts": 2946,
+    "currentOverwrittenArtifacts": 5
+  },
+  "evidenceIntegrityIncident": {
+    "affectedEvidence": "第二轮SPEC原5探针的trace-1..5.json",
+    "cause": "实现者复制探针时绝对输出路径替换未命中仍运行，意外覆盖5份旧trace",
+    "originalManifestAndReportUnchanged": true,
+    "firstFailingCommandPermitEvidenceUnchanged": true,
+    "historicalRootAudit": "覆盖前2951工件曾全部匹配；覆盖后2946仍匹配、5不符",
+    "originalByteBackupsFound": false,
+    "originalsRestored": false,
+    "recordsRetained": "保留原manifest、expected/current散列差异、覆盖文件副本与触发运行命令/结果/日志",
+    "gateTreatment": "不把覆盖文件当原始证据；后续新冻结独立SPEC重新取证，未放行QUALITY或官方验收"
+  },
+  "firstRepairCandidate": {
+    "implementationCommit": "80e4e37b399fc8cee983de607dfff7d0b5faf726",
+    "localVerification": {
+      "newRelated": {
+        "files": 3,
+        "passed": 103,
+        "exitCode": 0,
+        "includedInFullServer": true,
+        "separatelyRepeated": false
+      },
+      "fullServer": {
+        "filesPassed": 61,
+        "filesSkipped": 2,
+        "passed": 1470,
+        "skipped": 7,
+        "total": 1477,
+        "exitCode": 0,
+        "elapsedSeconds": 339.361
+      },
+      "strictNpm": {
+        "exitCode": 0
+      },
+      "strictServer": {
+        "exitCode": 0
+      },
+      "serverBuild": {
+        "command": "npm run build:server",
+        "exitCode": 0
+      },
+      "realFixtureCoverage": [
+        "临时真实Python/Unix publisher经测试RPC执行",
+        "真实WebSocket Relay物理发送与精确清理",
+        "目标来源路径、FD、owner、mode、形态、hash与替换",
+        "usage/remove/epoch/revision、背压及有界缓存",
+        "序号、双摘要、不完整输出与实际exec终结",
+        "取消、期限、断线、迟到帧、重新证明与共享RPC",
+        "超过64KiB的合法合并通知及8MiB输出上限"
+      ],
+      "sharedCommandsAndFiles": {
+        "passed": 283,
+        "commands": 71,
+        "commandExit": 19,
+        "files": 193,
+        "exitCode": 0,
+        "includedInFullServer": true
+      },
+      "originalIndependentProbes": {
+        "passed": 5,
+        "exitCode": 0,
+        "elapsedSeconds": 0.968,
+        "qualification": "最终源快照执行原SPEC探针复制件，不替代新独立复审"
+      }
+    },
+    "evidence": {
+      "reportSha256": "ea7545c033a5a7f6c338bd327302a15d8c00d4e678bba645ebb8950de49930b6",
+      "manifestSha256": "d695dc9079026cf5a15601bc59257c517670b84605e0d737013b78cdb51a72f7",
+      "artifacts": 4343,
+      "rootAuditedAllArtifacts": true,
+      "rootVerifiedFinalSourceSnapshots": 12
+    },
+    "repairValidation": {
+      "status": "首轮修复本地验证完成；第二轮SPEC发现Commands执行预留提前释放，继续修复",
+      "actualRedCases": [
+        "拒绝空URL分隔符",
+        "Commands正常terminate在父guard失效/取消/跨期时被拦截",
+        "Files成功预算检查前失效遗漏清理",
+        "中间1秒正常预算导致健康1200ms操作失败",
+        "中间吞掉预算错误导致父状态恢复后误报成功",
+        "Commands新增及Files既有的取消后延迟ACK等待约2400ms"
+      ],
+      "protectiveExistingPass": "09虽名含red，但Commands原预算求值前失败已有catch精确清理，exit0，不能称为RED",
+      "finalCleanupProbe": {
+        "passed": 15,
+        "cancelAfterAckDelayMs": [
+          1002.7205,
+          1002.994833
+        ],
+        "oneTerminatePerOperation": true,
+        "targetProcessesAfterCleanup": 0,
+        "pendingRpcAfterCleanup": 0,
+        "sharedRpcStillUsable": true
+      },
+      "earlierCandidates": [
+        "11完整1467通过/7跳过属于后续修复前候选",
+        "17完整1468通过/7跳过属于ACK等待修复前候选"
+      ],
+      "scope": "正常收尾保留原remaining；失败后独立1000ms收束，只取消本次cleanup RPC等待，不重发terminate；Files许可仍依实际exec结束/原期限释放"
+    }
+  },
+  "reservationRepairValidation": {
+    "implementationCommit": "f89937df05da3143b01b246487803944b6a8b26f",
+    "sourceFiles": 3,
+    "permanentBudgetTestsPassed": 7,
+    "red": {
+      "copiedOriginalExitCode": 1,
+      "copiedOriginalElapsedSeconds": 0.941,
+      "permanentGenuineFailed": 6,
+      "permanentGenuinePassed": 1,
+      "permanentGenuineElapsedSeconds": 3.425
+    },
+    "failureClassification": [
+      "02永久测试首次6失败包含默认20秒尝试和teardown期限夹具超时，不当作纯产品RED",
+      "03缩短测试尝试后6条真实合同断言失败，保留原源和日志",
+      "07旧夹具过早关RPC引发全局预留跨用例；命令中的不存在meter过滤项不算有效覆盖",
+      "08容量等待失败与100ms内未进decode hook分开保留；未放宽产品期限或该测试",
+      "09等待实际exec结束前假设容量恢复的旧断言失败，10等待真实收尾后71项通过",
+      "05复制探针覆盖旧5 trace的事件完整保留；06新目录17项只是实现者自测"
+    ],
+    "actualExecutionObservation": "已发送exec原期限内可保留有界pending，cleanup等待单独清理；空ACK/拒绝/非法响应/业务abort/adapter.close不证明结束",
+    "finalVerification": "最终1477通过/7跳过、双strict及服务端构建；14份本阶段变更快照与提交一致"
   }
 }
