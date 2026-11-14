@@ -1,8 +1,8 @@
 # 常驻 Remote 网关：已确认设计
 
-日期：2026-11-13。源码基线：`7772b28f5e716d8e5e3759fb1e84a089158502ec`。本设计、[Mac管理与身份恢复补充方案](2026-11-13-remote-gateway-cli-proposal.md)、[文件清理保护范围](2026-11-14-remote-file-cleanup-boundary-proposal.md)及[文件读取方式补充](2026-11-14-remote-file-buffered-read-proposal.md)记录 Q1–Q47 的最终决定，后续修改不得恢复已被覆盖的单网关方案。
+日期：2026-11-13。源码基线：`7772b28f5e716d8e5e3759fb1e84a089158502ec`。本设计、[Mac管理与身份恢复补充方案](2026-11-13-remote-gateway-cli-proposal.md)、[文件清理保护范围](2026-11-14-remote-file-cleanup-boundary-proposal.md)、[文件读取方式补充](2026-11-14-remote-file-buffered-read-proposal.md)及[传输存活补充](2026-11-14-remote-heartbeat-progress-proposal.md)记录 Q1–Q48 的最终决定，后续修改不得恢复已被覆盖的单网关方案。
 
-2026-11-14用户批准的[第47项固定短命令读取](2026-11-14-remote-file-buffered-read-proposal.md)已实现，最终源码 `41dd5a751aab5fa26d124419a396e6510fcbf780` 的服务端验证和独立双审通过；官方产品读回两轮仍失败，Task3b未通过。第一轮80MiB后原180秒超时，原因未知；第二轮64MiB后被10秒原生pongTimer断开，最后文件分块距断开195毫秒。原生pong迟到原因仍未知，[第48项传输存活提案](2026-11-14-remote-heartbeat-progress-proposal.md)待用户确认，不属于Q1–Q47已确认决定。[两轮收据](../plans/evidence/2026-11-14-remote-files-buffered-product-attempts.json)保留失败与范围；客户端模式、共享队列及长期验收仍待后续开发。
+2026-11-14用户批准的[第47项固定短命令读取](2026-11-14-remote-file-buffered-read-proposal.md)已实现，最终源码 `41dd5a751aab5fa26d124419a396e6510fcbf780` 的服务端验证和独立双审通过；官方产品读回两轮仍失败，Task3b未通过。第一轮80MiB后原180秒超时，原因未知；第二轮64MiB后被10秒原生pongTimer断开，最后文件分块距断开195毫秒。原生pong迟到原因仍未知，用户已在[第48项传输存活方案](2026-11-14-remote-heartbeat-progress-proposal.md)选择A，将当前连接严格校验后的新增有效进度纳入存活判断；修复 `e16e5482a711d8ab48b326389c282657806e9b32` 的70项专项、完整服务端1334项/7项跳过、双strict及构建通过；新源码双审与官方验收待完成。[两轮收据](../plans/evidence/2026-11-14-remote-files-buffered-product-attempts.json)保留失败与范围；客户端模式、共享队列及长期验收仍待后续开发。
 
 ## 配置和交互
 
