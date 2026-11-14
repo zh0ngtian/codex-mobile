@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
-  "recordedAt": "2026-11-14T07:37:26.424225+00:00",
+  "recordedAt": "2026-11-14T08:15:06.793026+00:00",
   "decision": "Q49 A 用户已批准",
   "implementationCommit": "9bed636dd9cfee63869194abc8d63e1c40ac829c",
   "baselineHead": "5c0fdcbfa33ff4f2953d0c626153156e0825de27",
   "baselineOriginMain": "0c8c86badf0016300d656b04d40f629ffe62f1c7",
-  "status": "本地实现验证完成；新源码独立SPEC、QUALITY与官方文件验收尚未开始",
+  "status": "发送期限缺口已修复并本地验证；首轮SPEC FAIL保留，待新冻结源码独立SPEC→QUALITY及官方验收",
   "contract": {
     "explicitReadMaximumTimeoutMs": 600000,
     "defaultReadTimeoutMs": 20000,
@@ -91,7 +91,7 @@
   "freshReviews": {
     "SPEC": {
       "passed": false,
-      "status": "pending"
+      "status": "fixed-source-independent-review-pending"
     },
     "QUALITY": {
       "passed": false,
@@ -129,5 +129,92 @@
     "rootReadFullReport": true,
     "rootVerifiedArtifacts": 36,
     "hashMismatch": 0
+  },
+  "latestImplementationCommit": "8e2cef904783d82a4367490ebe2c0ad366474fb3",
+  "firstSpecReview": {
+    "passed": false,
+    "status": "FAIL-fix-pending",
+    "sourceCommit": "d1c82e44d229af851b86f16368168c0295a0bfe5",
+    "independentPassedCases": 27,
+    "productRedCases": 1,
+    "finding": "原read绝对期限已到，真实RPC从相对timeout重建期限后仍发送一条command/exec",
+    "reproduction": {
+      "originalReadDeadline": 600017,
+      "windowBudgetCalculatedAt": 600007,
+      "windowBudgetMs": 10,
+      "clockAtRpcSubmit": 600017,
+      "expectedExecsSent": 0,
+      "actualExecsSent": 1
+    },
+    "reportSha256": "f83cff52f1eede063510f2da90895a5ddf9f1219066ba4595a40707bff849d7b",
+    "manifestSha256": "b71c72706be500ade998c798b22eab198b4ad87cf1a10f8c77986fb77fabd8f6",
+    "rootReadFullReport": true,
+    "rootVerifiedArtifacts": 63,
+    "hashMismatch": 0,
+    "firstFailurePreserved": true,
+    "fixAndFreshReviewRequired": true
+  },
+  "sendDeadlineFix": {
+    "commit": "8e2cef904783d82a4367490ebe2c0ad366474fb3",
+    "internalReadDeadlineOnly": true,
+    "originalAndWindowDeadlineBothEnforced": true,
+    "physicalSocketSendBarrier": true,
+    "networkProtocolUnchanged": true,
+    "permissionsUnchanged": true,
+    "cleanupAndCallerSessionPreserved": true,
+    "tdd": {
+      "rpcAndFilesFirstRedCases": 7,
+      "relayFirstRedCases": 4,
+      "firstRedExitCodes": [
+        1,
+        1
+      ],
+      "permanentGreenCases": 11,
+      "permanentGreenExitCode": 0,
+      "originalIndependentProbeReplayedByImplementer": {
+        "passed": 28,
+        "exitCode": 0,
+        "notIndependentRereview": true
+      },
+      "zeroSendExpiredCases": 3,
+      "zeroSendMayHaveBeenSent": false,
+      "partialDeadlineSentFramesBeforeFix": 3,
+      "partialDeadlineSentFramesAfterFix": 1,
+      "partialMayHaveBeenSent": true,
+      "sequenceAndPendingWriteBytesTimersAndFilePermitsChecked": true,
+      "subsequentSharedSessionRpcSucceeded": true
+    },
+    "localValidation": {
+      "relatedRegression": {
+        "passedFiles": 6,
+        "passed": 384,
+        "exitCode": 0,
+        "durationMs": 122750
+      },
+      "fullServer": {
+        "runs": 1,
+        "failedRuns": 0,
+        "passedFiles": 58,
+        "skippedFiles": 2,
+        "passed": 1364,
+        "skipped": 7,
+        "durationMs": 218740,
+        "exitCode": 0,
+        "maximumWorkers": 2
+      },
+      "strictSource": true,
+      "strictSourceAndTests": true,
+      "serverBuild": true,
+      "lastProductChangeBeforeStrictAndBuild": true
+    },
+    "evidence": {
+      "reportSha256": "578760e2d8a04425578913d3c5c0f5fff4b2b7dc336a46df0b4ca42b7ec6bcb7",
+      "manifestSha256": "f36b4c1caced6a109ff310ce18f264d6140392bd9d0e0d3db88ae21e644bd551",
+      "rootReadFullReport": true,
+      "rootVerifiedArtifacts": 52,
+      "hashMismatch": 0,
+      "original36ArtifactsPreserved": true,
+      "rootComparedSixFinalSnapshotsWithGitCommit": true
+    }
   }
 }
