@@ -6,7 +6,7 @@ import { randomUUID } from 'node:crypto';
 
 const [directory, mode, id = randomUUID(), conversationId = 'thread'] = process.argv.slice(2);
 if (!directory) throw new Error('需要独立临时队列目录');
-const queue = new OperationQueue({ directory, gatewayId: 'gateway', authorize: async () => {} });
+const queue = new OperationQueue({ directory, gatewayId: 'gateway', authorize: async () => () => {} });
 const input = { id, conversationId, context: { mode: 'local' as const, gatewayId: 'gateway', businessKey: 'mac', authorizationKey: 'local-auth', localHostId: 'host' }, body: { text: 'first' }, settings: { model: 'test' }, attachmentRefs: ['ref'] };
 const hold = async () => { setInterval(() => {}, 1000); await new Promise<void>(() => {}); };
 if (mode === 'before-rename' || mode === 'after-rename') {

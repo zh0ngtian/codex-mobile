@@ -2,7 +2,7 @@ import { constants, type Stats } from 'node:fs';
 import { lstat, open, rename, unlink } from 'node:fs/promises';
 import { createHash, randomUUID } from 'node:crypto';
 import { dirname, join } from 'node:path';
-import { TextDecoder } from 'node:util';
+import { TextDecoder, types } from 'node:util';
 import { PrivateStore } from './remote/private-store.js';
 
 /** 仅可信网关内部构造；businessKey只用于归组，授权始终由回调独立核验。 */
@@ -19,6 +19,9 @@ export interface OperationInput {
   body: unknown; settings: unknown; attachmentRefs: string[]; memoryOnly?: false; control?: OperationControl;
 }
 export type OperationState = 'queued' | 'claimed' | 'uncertain' | 'failed' | 'succeeded' | 'cancelled';
+/** 可信授权器捕获完整上下文及真实权限版本；同步只读断言失效即抛错，禁止异步。
+ * 4b.2须由Target/Runtime提供真实归属/版本检查，不能以固定通过代替生产guard。 */
+export type OperationAuthorizationFence = () => void;
 type Action = 'submit' | 'read' | 'edit' | 'cancel' | 'claim' | 'transition';
 export interface OperationReceipt {
   id: string; revision: number; receiveOrder: number; state: OperationState;
@@ -67,9 +70,9 @@ function receipt(record: OperationRecord): OperationReceipt { return { id: recor
 export class OperationQueue {
   readonly #store: PrivateStore;
   readonly #gatewayId: string;
-  readonly #authorize: (context: Readonly<OperationContext>, action: Action) => Promise<void>;
+  readonly #authorize: (context: Readonly<OperationContext>, action: Action) => Promise<OperationAuthorizationFence>;
   #poisoned = false;
-  constructor(options: { directory: string; gatewayId: string; authorize: (context: Readonly<OperationContext>, action: Action) => Promise<void> }) {
+  constructor(options: { directory: string; gatewayId: string; authorize: (context: Readonly<OperationContext>, action: Action) => Promise<OperationAuthorizationFence> }) {
     if (!text(options.gatewayId) || typeof options.authorize !== 'function') fail('invalid-input', 400);
     this.#store = new PrivateStore(options.directory); this.#gatewayId = options.gatewayId; this.#authorize = options.authorize;
   }
@@ -143,8 +146,11 @@ export class OperationQueue {
       else await this.syncDirectories();
       return result.value;
     }).catch(error => { if (this.#poisoned && !(error instanceof OperationQueueError)) fail(); throw error; });
-    // 包括释放事务锁的最终FS等待；迟到返回再次核对原完整身份，不能发出旧正文/派发权。
-    for (const check of checked) await this.#authorize(clone(check.context), check.action);
+    // 包括事务锁释放及所有异步授权等待；后一项await不能使前一项权限过期后仍交付。
+    const fences: OperationAuthorizationFence[] = [];
+    for (const check of checked) fences.push(await this.#authorize(clone(check.context), check.action));
+    // 此段到返回之间不可再await；栅栏必须只读，不能在校验时改变其他身份的权限。
+    for (const fence of fences) this.assertAuthorized(fence);
     return value;
   }
   private capacity(ledger: Ledger): void {
@@ -158,7 +164,15 @@ export class OperationQueue {
   }
   private async authorized(record: OperationRecord, action: Action): Promise<void> {
     // 只交冻结上下文副本，不向授权器提供正文；外部对象不能充当授权凭据。
-    await this.#authorize(clone(record.context), action);
+    this.assertAuthorized(await this.#authorize(clone(record.context), action));
+  }
+  private assertAuthorized(fence: unknown): void {
+    if (typeof fence !== 'function' || types.isAsyncFunction(fence)) fail('invalid-authorization-fence');
+    const result: unknown = fence();
+    if (result !== undefined) {
+      if (result instanceof Promise) void result.catch(() => undefined);
+      fail('invalid-authorization-fence');
+    }
   }
   private find(ledger: Ledger, id: string): OperationRecord { const record = ledger.records.find(value => value.id === id); if (!record) fail('not-found', 404); return record; }
   async submit(input: OperationInput): Promise<OperationReceipt> {
@@ -233,10 +247,13 @@ export class OperationQueue {
         }
       }
       const controlBlocks = new Set(records.filter(record => record.control && !terminal(record)).map(record => record.conversationId));
-      const heads = new Set<string>(); const eligible: OperationRecord[] = [];
+      const heads = new Set<string>(); const controlHeads = new Set<string>(); const eligible: OperationRecord[] = [];
       for (const record of records) {
         if (terminal(record)) continue;
-        if (record.control) { if (record.state === 'queued') eligible.push(record); continue; }
+        if (record.control) {
+          if (controlHeads.has(record.conversationId)) continue;
+          controlHeads.add(record.conversationId); if (record.state === 'queued') eligible.push(record); continue;
+        }
         if (controlBlocks.has(record.conversationId) || heads.has(record.conversationId)) continue;
         heads.add(record.conversationId); if (record.state === 'queued') eligible.push(record);
       }

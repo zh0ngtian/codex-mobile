@@ -8,9 +8,10 @@ import { OperationQueue } from '../../server/operation-queue.js';
 
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map(path => rm(path, { recursive: true, force: true }))); });
+// 固定虚构Local权限的夹具可同步通过；可变权限测试均捕获真实可变状态。
 async function fixture() {
   const root = await mkdtemp(join(await realpath(tmpdir()), 'operation-queue-')); roots.push(root);
-  return { root, queue: new OperationQueue({ directory: join(root, 'queue'), gatewayId: 'gateway', authorize: async () => {} }) };
+  return { root, queue: new OperationQueue({ directory: join(root, 'queue'), gatewayId: 'gateway', authorize: async () => () => {} }) };
 }
 // 容量边界直接构造合法既有ledger；并发接收与真实fsync另有OS/多实例验证。
 async function seedCount(root: string, count: number) {
@@ -26,7 +27,7 @@ it('接收后重开读取相同共享收据与冻结正文', async () => {
   expect(receipt).toMatchObject({ id: original.id, state: 'queued', revision: 1, receiveOrder: 1 });
   original.body.text = 'mutated'; original.settings.model = 'other'; original.attachmentRefs.push('new');
   const { OperationQueue } = await import('../../server/operation-queue.js');
-  const phone = new OperationQueue({ directory: join(root, 'queue'), gatewayId: 'gateway', authorize: async () => {} });
+  const phone = new OperationQueue({ directory: join(root, 'queue'), gatewayId: 'gateway', authorize: async () => () => {} });
   expect(await phone.read(original.id)).toMatchObject({ body: { text: 'first' }, settings: { model: 'test' }, attachmentRefs: ['ref'] });
   expect(JSON.parse(await readFile(join(root, 'queue', 'operations.json'), 'utf8')).records).toHaveLength(1);
 });
@@ -123,8 +124,9 @@ it('同业务键Local/Remote共享对象但完整账号/代际授权独立，旧
   const remote = { mode: 'remote' as const, gatewayId: 'gateway', businessKey: 'mac', authorizationKey: 'remote-auth', managed: { accountId, accountUserId: 'owner', userId: 'user', codexHome: '/private/codex-home' }, target: { environmentId: 'env', installationId: 'install' }, generation };
   const authorize = async (frozen: any) => {
     sawBody ||= Object.hasOwn(frozen, 'body');
-    if (frozen.mode === 'remote' && (frozen.managed.accountId !== accountId || frozen.generation !== generation)) throw new Error('identity-changed');
-    frozen.businessKey = 'poison'; if (frozen.mode === 'remote') frozen.managed.codexHome = '/poison';
+    const expected = structuredClone(frozen);
+    const assert = () => { if (expected.mode === 'remote' && (expected.managed.accountId !== accountId || expected.generation !== generation)) throw new Error('identity-changed'); }; assert();
+    frozen.businessKey = 'poison'; if (frozen.mode === 'remote') frozen.managed.codexHome = '/poison'; return assert;
   };
   const first = new OperationQueue({ directory: join(root, 'queue'), gatewayId: 'gateway', authorize });
   const phone = new OperationQueue({ directory: join(root, 'queue'), gatewayId: 'gateway', authorize });
@@ -141,7 +143,7 @@ it('同业务键Local/Remote共享对象但完整账号/代际授权独立，旧
   generation = 'g1'; expect(await first.read(submitted.id)).toMatchObject({ revision: 1, body: { text: 'first' } }); expect(sawBody).toBe(false);
 });
 it('同根多实例并发接收从盘内事务取得稳定顺序，不能旧快照覆盖已ACK项', async () => {
-  const { root, queue } = await fixture(); const other = new OperationQueue({ directory: join(root, 'queue'), gatewayId: 'gateway', authorize: async () => {} });
+  const { root, queue } = await fixture(); const other = new OperationQueue({ directory: join(root, 'queue'), gatewayId: 'gateway', authorize: async () => () => {} });
   const submissions = Array.from({ length: 18 }, (_, n) => input(randomUUID(), `thread-${n}`));
   const receipts = await Promise.all(submissions.map((value, i) => (i % 2 ? queue : other).submit(value)));
   expect(receipts.map(value => value.receiveOrder).sort((a, b) => a - b)).toEqual(Array.from({ length: 18 }, (_, i) => i + 1));
@@ -175,7 +177,7 @@ it('文件与目录fsync完成前不ACK，rename后fsync失败保留未知提交
     expect(hitDirectory).toBe(true); const published = await readFile(join(root, 'queue', 'operations.json'), 'utf8'); expect(published).toContain(unknown.id);
     await expect(queue.submit(input())).rejects.toMatchObject({ code: 'reopen-required' });
     expect(await readFile(join(root, 'queue', 'operations.json'), 'utf8')).toBe(published);
-    const reopen = new OperationQueue({ directory: join(root, 'queue'), gatewayId: 'gateway', authorize: async () => {} });
+    const reopen = new OperationQueue({ directory: join(root, 'queue'), gatewayId: 'gateway', authorize: async () => () => {} });
     expect(await reopen.submit(unknown)).toMatchObject({ receiveOrder: 3 }); expect(await reopen.read(initial.id)).toMatchObject({ receiveOrder: 1 });
   } finally { release(); spy.mockRestore(); syncBuiltinESMExports(); }
 });
@@ -236,7 +238,7 @@ it('真实OS并发接收、SIGKILL提交前后与已确认项恢复不丢失，�
   const claimed = worker('claim'); const originalClaim = JSON.parse(await claimed.line); expect(originalClaim.id).toBe(seed.id); claimed.child.kill('SIGKILL'); await claimed.closed;
   const marked = worker('mark-hold'); const uncertain = JSON.parse(await marked.line); expect(uncertain).toMatchObject({ id: seed.id, state: 'uncertain' }); expect(uncertain.claimToken).not.toBe(originalClaim.claimToken);
   marked.child.kill('SIGKILL'); await marked.closed;
-  const reopen = new OperationQueue({ directory, gatewayId: 'gateway', authorize: async () => {} });
+  const reopen = new OperationQueue({ directory, gatewayId: 'gateway', authorize: async () => () => {} });
   expect(await reopen.read(seed.id)).toMatchObject({ state: 'uncertain' });
   const remaining = await Promise.all(Array.from({ length: 5 }, async () => { const run = worker('mark'); const value = JSON.parse(await run.line); expect(await run.closed).toBe(0); return value; }));
   expect(remaining.filter(Boolean).map(value => value.id)).not.toContain(seed.id); expect(remaining.filter(Boolean).map(value => value.id)).not.toContain(unknown.id);
@@ -244,7 +246,7 @@ it('真实OS并发接收、SIGKILL提交前后与已确认项恢复不丢失，�
 }, 30000);
 it('旧账号队首只阻塞自己的会话，其他已授权会话继续且旧正文保留', async () => {
   const { root } = await fixture(); let allowed = true;
-  const authorize = async (scope: any) => { if (scope.mode === 'remote' && !allowed) throw new Error('old-account'); };
+  const authorize = async (scope: any) => { const remote = scope.mode === 'remote'; const assert = () => { if (remote && !allowed) throw new Error('old-account'); }; assert(); return assert; };
   const queue = new OperationQueue({ directory: join(root, 'queue'), gatewayId: 'gateway', authorize });
   const stale = { ...input(), context: { mode: 'remote' as const, gatewayId: 'gateway', businessKey: 'mac', authorizationKey: 'remote-auth', managed: { accountId: 'old', accountUserId: 'owner', codexHome: '/private/old' }, target: { environmentId: 'env', installationId: 'installation' }, generation: 'old-gen' } };
   const laterSame = input(); const other = input(randomUUID(), 'other'); await queue.submit(stale); await queue.submit(laterSame); await queue.submit(other); allowed = false;
@@ -256,7 +258,7 @@ it('旧账号队首只阻塞自己的会话，其他已授权会话继续且旧�
 });
 it('多个手机可列出同一目标会话的共享可见队列，逐条授权后才返回正文', async () => {
   const { root, queue } = await fixture(); const first = input(); const second = input(); await queue.submit(first); await queue.submit(second); await queue.submit(input(randomUUID(), 'other'));
-  const phone = new OperationQueue({ directory: join(root, 'queue'), gatewayId: 'gateway', authorize: async () => {} });
+  const phone = new OperationQueue({ directory: join(root, 'queue'), gatewayId: 'gateway', authorize: async () => () => {} });
   const shared = await phone.list('mac', 'thread');
   expect(shared?.map((value: any) => value.id)).toEqual([first.id, second.id]);
   await queue.edit(first.id, 1, { body: 'shared edit' });
@@ -297,13 +299,13 @@ it('重开查询未知提交的重复收据也先同步所有父目录项，不�
     handle.sync = async () => { if (String(args[0]) === root) { hit = true; throw new Error('parent-fsync'); } await sync(); }; return handle;
   }); syncBuiltinESMExports();
   try {
-    const reopened = new OperationQueue({ directory: join(root, 'queue'), gatewayId: 'gateway', authorize: async () => {} });
+    const reopened = new OperationQueue({ directory: join(root, 'queue'), gatewayId: 'gateway', authorize: async () => () => {} });
     await expect(reopened.submit(original)).rejects.toMatchObject({ code: 'storage' }); expect(hit).toBe(true);
   } finally { spy.mockRestore(); syncBuiltinESMExports(); }
 });
 it('fsync等待期间账号失效，迟到读取不能返回旧正文', async () => {
   const { root } = await fixture(); let active = true;
-  const queue = new OperationQueue({ directory: join(root, 'queue'), gatewayId: 'gateway', authorize: async () => { if (!active) throw new Error('identity-expired'); } });
+  const queue = new OperationQueue({ directory: join(root, 'queue'), gatewayId: 'gateway', authorize: async () => { const assert = () => { if (!active) throw new Error('identity-expired'); }; assert(); return assert; } });
   const original = input(); await queue.submit(original);
   const fs = (await import('node:fs/promises')).default; const { syncBuiltinESMExports } = await import('node:module'); const { vi } = await import('vitest'); const open = fs.open;
   let reached!: () => void; let release!: () => void; const entered = new Promise<void>(resolve => reached = resolve); const gate = new Promise<void>(resolve => release = resolve);
@@ -316,7 +318,7 @@ it('fsync等待期间账号失效，迟到读取不能返回旧正文', async ()
 });
 it('claim已耐久但后置授权失败时可在原授权恢复后CAS释放，uncertain不能释放', async () => {
   const { root } = await fixture(); let active = true;
-  const queue = new OperationQueue({ directory: join(root, 'queue'), gatewayId: 'gateway', authorize: async () => { if (!active) throw new Error('identity-expired'); } });
+  const queue = new OperationQueue({ directory: join(root, 'queue'), gatewayId: 'gateway', authorize: async () => { const assert = () => { if (!active) throw new Error('identity-expired'); }; assert(); return assert; } });
   const original = input(); await queue.submit(original);
   const fs = (await import('node:fs/promises')).default; const { syncBuiltinESMExports } = await import('node:module'); const { vi } = await import('vitest'); const open = fs.open;
   let revoke = true; const spy = vi.spyOn(fs, 'open').mockImplementation(async (...args: Parameters<typeof open>) => {
@@ -330,4 +332,98 @@ it('claim已耐久但后置授权失败时可在原授权恢复后CAS释放，un
   expect(released?.state).toBe('queued'); const next = await queue.claimNext('mac'); expect(next?.claimToken).not.toBe(stranded.claimToken);
   const uncertain = await queue.markPotentialSend(next!.id, next!.revision, next!.claimToken!);
   await expect(queue.releaseClaim(next!.id, uncertain.revision, next!.claimToken!)).rejects.toMatchObject({ code: 'invalid-transition' });
+});
+
+it.each(['claimed', 'uncertain', 'failed'] as const)('控制队首%s阻止后控制，其他会话仍继续', async state => {
+  const { queue } = await fixture();
+  const first = { ...input(), control: { kind: 'stop' as const, turnId: 'turn-original', expiresAt: Date.now() + 60000 } };
+  const second = { ...input(), control: { kind: 'approval' as const, turnId: 'turn-original', requestId: 'request-original', expiresAt: Date.now() + 60000 } };
+  await queue.submit(first); await queue.submit(second);
+  const claim = (await queue.claimNext('mac'))!; expect(claim.id).toBe(first.id);
+  if (state !== 'claimed') {
+    const marked = await queue.markPotentialSend(first.id, claim.revision, claim.claimToken!);
+    if (state === 'failed') await queue.settle(first.id, marked.revision, claim.claimToken!, 'failed');
+  }
+  expect(await queue.claimNext('mac')).toBeNull();
+  const other = { ...input(randomUUID(), 'other'), control: { kind: 'stop' as const, turnId: 'other-turn', expiresAt: Date.now() + 60000 } };
+  await queue.submit(other); expect((await queue.claimNext('mac'))?.id).toBe(other.id);
+  expect(await queue.read(second.id)).toMatchObject({ state: 'queued', revision: 1 });
+});
+it.each(['succeeded', 'expired'] as const)('控制队首%s后按接收顺序释放后控制', async state => {
+  const { queue } = await fixture();
+  const first = { ...input(), control: { kind: 'stop' as const, turnId: 'turn', expiresAt: Date.now() + (state === 'expired' ? -1 : 60000) } };
+  const second = { ...input(), control: { kind: 'approval' as const, turnId: 'turn', requestId: 'request', expiresAt: Date.now() + 60000 } };
+  await queue.submit(first); await queue.submit(second);
+  if (state === 'succeeded') {
+    const claim = (await queue.claimNext('mac'))!; expect(claim.id).toBe(first.id);
+    const marked = await queue.markPotentialSend(first.id, claim.revision, claim.claimToken!);
+    await queue.settle(first.id, marked.revision, claim.claimToken!, 'succeeded');
+  }
+  expect((await queue.claimNext('mac'))?.id).toBe(second.id);
+  expect(await queue.read(first.id)).toMatchObject(state === 'expired' ? { state: 'failed', failure: 'control-expired' } : { state: 'succeeded' });
+});
+it.each(['claimed', 'uncertain', 'failed'] as const)('控制可越过普通%s队首处理原turn', async state => {
+  const { queue } = await fixture(); const ordinary = input(); await queue.submit(ordinary);
+  const claim = (await queue.claimNext('mac'))!;
+  if (state !== 'claimed') {
+    const marked = await queue.markPotentialSend(ordinary.id, claim.revision, claim.claimToken!);
+    if (state === 'failed') await queue.settle(ordinary.id, marked.revision, claim.claimToken!, 'failed');
+  }
+  const control = { ...input(), control: { kind: 'stop' as const, turnId: 'original-turn', expiresAt: Date.now() + 60000 } };
+  await queue.submit(control); expect((await queue.claimNext('mac'))?.id).toBe(control.id);
+});
+it('混合列表最后Local授权自身await期间撤销Remote身份，不能返回旧正文', async () => {
+  const { root } = await fixture(); let remoteActive = true; let reviewing = false; let localReads = 0;
+  let entered!: () => void; let release!: () => void;
+  const reached = new Promise<void>(resolve => entered = resolve); const gate = new Promise<void>(resolve => release = resolve);
+  const queue = new OperationQueue({ directory: join(root, 'queue'), gatewayId: 'gateway', authorize: async (scope, action) => {
+    const remote = scope.mode === 'remote';
+    if (remote && !remoteActive) throw new Error('remote-identity-revoked');
+    if (reviewing && action === 'read' && !remote && ++localReads === 2) { entered(); await gate; }
+    return () => { if (remote && !remoteActive) throw new Error('remote-identity-revoked'); };
+  } });
+  const first = { ...input(), body: { text: 'old-account-private-body' }, context: { mode: 'remote' as const, gatewayId: 'gateway', businessKey: 'mac', authorizationKey: 'remote-auth', managed: { accountId: 'account-a', accountUserId: 'owner', userId: 'user-a', codexHome: '/private/account-a' }, target: { environmentId: 'env', installationId: 'installation' }, generation: 'generation-a' } };
+  await queue.submit(first); await queue.submit(input()); reviewing = true;
+  const pending = queue.list('mac', 'thread'); const rejected = expect(pending).rejects.toThrow('remote-identity-revoked');
+  await reached; remoteActive = false; release(); await rejected;
+  await expect(queue.read(first.id)).rejects.toThrow('remote-identity-revoked');
+});
+it.each(['submit', 'read', 'list', 'edit', 'cancel', 'claim', 'release', 'mark', 'confirm', 'settle'] as const)('%s在最后异步授权中撤销时拒绝正文、claim或ACK', async method => {
+  const { root } = await fixture(); let armed = false; let active = true; let checks = 0;
+  const queue = new OperationQueue({ directory: join(root, 'queue'), gatewayId: 'gateway', authorize: async () => {
+    if (!active) throw new Error('final-fence-revoked');
+    if (armed && ++checks === (method === 'confirm' ? 4 : 2)) { await Promise.resolve(); active = false; }
+    return () => { if (!active) throw new Error('final-fence-revoked'); };
+  } });
+  const item = input(); let revision = 1; let token = '';
+  if (method !== 'submit') await queue.submit(item);
+  if (['release', 'mark', 'confirm', 'settle'].includes(method)) { const claim = (await queue.claimNext('mac'))!; revision = claim.revision; token = claim.claimToken!; }
+  if (['confirm', 'settle'].includes(method)) revision = (await queue.markPotentialSend(item.id, revision, token)).revision;
+  armed = true;
+  const run = () => {
+    switch (method) {
+      case 'submit': return queue.submit(item);
+      case 'read': return queue.read(item.id);
+      case 'list': return queue.list('mac', 'thread');
+      case 'edit': return queue.edit(item.id, revision, { body: 'changed' });
+      case 'cancel': return queue.cancel(item.id, revision);
+      case 'claim': return queue.claimNext('mac');
+      case 'release': return queue.releaseClaim(item.id, revision, token);
+      case 'mark': return queue.markPotentialSend(item.id, revision, token);
+      case 'confirm': return queue.confirmNeverSent(item.id, revision, token, async () => true);
+      case 'settle': return queue.settle(item.id, revision, token, 'succeeded');
+    }
+  };
+  await expect(run()).rejects.toThrow('final-fence-revoked'); expect(checks).toBe(method === 'confirm' ? 4 : 2);
+});
+it.each(['missing', 'null', 'value', 'async-function', 'promise-return'] as const)('缺失、无效或异步授权栅栏%s显式拒绝', async kind => {
+  const { root } = await fixture();
+  const authorize = async () => {
+    if (kind === 'null') return null;
+    if (kind === 'value') return true;
+    if (kind === 'async-function') return async () => {};
+    if (kind === 'promise-return') return () => Promise.resolve();
+  };
+  const queue = new OperationQueue({ directory: join(root, 'queue'), gatewayId: 'gateway', authorize: authorize as never });
+  await expect(queue.submit(input())).rejects.toMatchObject({ code: 'invalid-authorization-fence' });
 });
