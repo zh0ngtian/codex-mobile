@@ -1041,14 +1041,21 @@ it('目标解析句柄序列化只包含冻结descriptor，不能泄露owner或�
   expect(Object.keys(handle)).toEqual(['descriptor']);
   expect(JSON.stringify(handle)).not.toMatch(/synthetic|codexHome|store|private|enrollment|runtime|reference/);
 });
-it('目标解析真实relay管理session返回前账号变化时，实际迟到close完成才拒绝交付', async () => {
+it.each(['identity', 'target-missing'] as const)('真实管理session迟到close保留屏障，全局撤权关闭Relay而目标失效保留健康owner（%s）', async kind => {
   const { RemoteStream } = await import('../../server/remote/relay.js');
   const f = await fixture(); await f.runtime.authorize(); await until(() => f.runtime.status().state === 'online'); const resolver = await resolverFor(f.runtime);
   const handle = await resolver.resolve(reference(f)); let initialized = false; const frames: any[] = [];
+  const existing = await handle.createRawStream(); const bundle = (f.runtime as any).bundle;
+  const verify = bundle.loader.verifyIdentity.bind(bundle.loader); let refreshed = false;
+  vi.spyOn(bundle.loader, 'verifyIdentity').mockImplementation(async (...args: any[]) => {
+    if (kind === 'target-missing' && initialized && !refreshed) { refreshed = true; await bundle.controller.refreshTargets(); }
+    return verify(...args);
+  });
   f.connections[0]!.on('message', bytes => {
     const frame = JSON.parse(bytes.toString()); frames.push(frame);
     if (frame.type === 'client_message' && frame.message.method === 'initialize') {
-      initialized = true; f.setManaged({ userId: 'other-user' });
+      initialized = true;
+      if (kind === 'identity') f.setManaged({ userId: 'other-user' }); else f.setTargets([target(remote)]);
       f.connections[0]!.send(JSON.stringify({ type: 'server_message', client_id: f.runtime.status().clientId, env_id: frame.env_id, stream_id: frame.stream_id, seq_id: 1, message: { id: frame.message.id, result: { codexHome: '/remote/mac' } } }));
     }
   });
@@ -1063,8 +1070,17 @@ it('目标解析真实relay管理session返回前账号变化时，实际迟到c
     await until(() => closing); await new Promise(resolve => setTimeout(resolve, 20));
     expect(settled).toBe(false); expect(frames.some(frame => frame.type === 'client_closed')).toBe(false);
   } finally { release(); }
-  expect(await checked).toMatchObject({ code: 'identity-changed' });
-  await until(() => frames.some(frame => frame.type === 'client_closed'));
+  expect(await checked).toMatchObject({ code: kind === 'identity' ? 'identity-changed' : 'target-missing' });
+  if (kind === 'identity') {
+    await until(() => f.connections[0]!.readyState === 3);
+    await expect(existing.send({ id: 77, method: 'must-not-send' })).rejects.toThrow();
+    expect(frames.some(frame => frame.type === 'client_message' && frame.message.id === 77)).toBe(false);
+    expect(frames.some(frame => frame.type === 'client_closed')).toBe(false);
+  } else {
+    await until(() => frames.some(frame => frame.type === 'client_closed'));
+    expect(f.connections[0]!.readyState).toBe(1); expect(f.runtime.status().state).toBe('online');
+    await existing.close();
+  }
   expect(initialized).toBe(true); expect(f.connections).toHaveLength(1);
 });
 it.each([{ accountId: 'other-workspace' }, { accountUserId: 'other-account-user' }, { userId: undefined }])('目标解析旧handle完整受管维度变化立即拒绝 %#', async change => {
