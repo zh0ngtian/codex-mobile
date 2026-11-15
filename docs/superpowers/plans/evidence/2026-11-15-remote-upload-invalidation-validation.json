@@ -1,0 +1,574 @@
+{
+  "schemaVersion": 1,
+  "task": "Task3d.4-upload-invalidation-consumers",
+  "sourceCommit": "7f468f97646162b2c1cf34a7b699c08da95d1f0b",
+  "baselineMain": "9a75c1707883cec1b5b7f7a7086b15b5ad46cd4e",
+  "sourceOnly": true,
+  "deployed": false,
+  "clientPublished": false,
+  "developmentNativeBuild": true,
+  "gates": {
+    "implementationCommitted": true,
+    "specPassed": true,
+    "qualityPassed": true,
+    "actualRemoteProbePassed": true,
+    "nativeUploadUsagePassed": true,
+    "firstDeviceSaveFixPending": false,
+    "firstDeviceSaveSpecPassed": true,
+    "firstDeviceSaveQualityPassed": true,
+    "finalNativeAcceptancePassed": true
+  },
+  "implementation": {
+    "sourceCommit": "7f468f97646162b2c1cf34a7b699c08da95d1f0b",
+    "passed": true,
+    "rootAuditedAllArtifacts": true,
+    "reportSha256": "2b584e1ae878cc701bb22c6828addc4aedc345c7cc1efd7504b7d91c3fbe710e",
+    "manifestSha256": "ffba11e3cf48cc844fe44296d5f363da7e813d7470046c08f52370ab8fc4a33a",
+    "rootAuditSha256": "80137720be1d1cecb762dbbd24bdf8efe9c7d0b0b4724c3a7eb06ff351e5d2f2",
+    "counts": {
+      "file": 69809,
+      "directory": 3870,
+      "symlink": 10872
+    },
+    "sourceFiles": 2876
+  },
+  "finalSpec": {
+    "sourceCommit": "7f468f97646162b2c1cf34a7b699c08da95d1f0b",
+    "passed": true,
+    "rootAuditedAllArtifacts": true,
+    "reportSha256": "84051f6ca300b3d7b85622229d5d1c93a0e435c19573949637eadb5069cb26ff",
+    "manifestSha256": "6d728c364043ed6e1cfec54c181b349e74803e00ac84f7c97b23526866ab534c",
+    "rootAuditSha256": "ac447db8df42b07bc22f10c6280afc9758c9f1b0795f0a8f71ade2e2af896339",
+    "ordinaryArtifacts": 8651,
+    "dependencyLinks": 906,
+    "firstOracleFailureRetained": true,
+    "originalRelatedPassed": 130,
+    "independentRemotePassed": 2,
+    "independentUIAndSwiftPassed": 3
+  },
+  "finalQuality": {
+    "sourceCommit": "7f468f97646162b2c1cf34a7b699c08da95d1f0b",
+    "passed": true,
+    "rootAuditedAllArtifacts": true,
+    "reportSha256": "e9a29a3fda5f1587d47521a5dacd87432e02598ccfa8b22469871215691b8cc6",
+    "manifestSha256": "d0ada0152c72c7a3d4a0afbe493ec307ce7207ac32d9c8a596c0eb5faaac0ab9",
+    "rootAuditSha256": "013828a593b2b903cf65666719ac0d5f4800cd0d546da9e9097a4a3bd8c1df58",
+    "testsPassed": 41,
+    "actualSeconds": 2.7122539998963475,
+    "ordinaryArtifacts": 2900,
+    "dependencyLinks": 453
+  },
+  "localValidation": [
+    {
+      "run": "sealed-build-server",
+      "argv": [
+        "npm",
+        "run",
+        "build:server"
+      ],
+      "exit": 0,
+      "elapsedSeconds": 1.3161988258361816,
+      "testSummary": [],
+      "sourceMapsEqualFinal": {
+        "before.json": true,
+        "copy.json": true,
+        "copy-after.json": true,
+        "after.json": true
+      }
+    },
+    {
+      "run": "sealed-build-web",
+      "argv": [
+        "npm",
+        "run",
+        "build"
+      ],
+      "exit": 0,
+      "elapsedSeconds": 14.841281175613403,
+      "testSummary": [],
+      "sourceMapsEqualFinal": {
+        "before.json": true,
+        "copy.json": true,
+        "copy-after.json": true,
+        "after.json": true
+      }
+    },
+    {
+      "run": "sealed-client-typecheck",
+      "argv": [
+        "node_modules/.bin/tsc",
+        "-p",
+        "tsconfig.app.json",
+        "--noEmit",
+        "--pretty",
+        "false"
+      ],
+      "exit": 0,
+      "elapsedSeconds": 2.8141980171203613,
+      "testSummary": [],
+      "sourceMapsEqualFinal": {
+        "before.json": true,
+        "copy.json": true,
+        "copy-after.json": true,
+        "after.json": true
+      }
+    },
+    {
+      "run": "sealed-server",
+      "argv": [
+        "node_modules/.bin/vitest",
+        "run",
+        "tests/server",
+        "--maxWorkers=2"
+      ],
+      "exit": 0,
+      "elapsedSeconds": 228.37700200080872,
+      "testSummary": [
+        "Test Files  68 passed | 2 skipped (70)",
+        "Tests  1686 passed | 7 skipped (1693)"
+      ],
+      "sourceMapsEqualFinal": {
+        "before.json": true,
+        "copy.json": true,
+        "copy-after.json": true,
+        "after.json": true
+      }
+    },
+    {
+      "run": "sealed-strict-server-tests",
+      "argv": [
+        "node_modules/.bin/tsc",
+        "-p",
+        "tsconfig.server.json",
+        "--noEmit",
+        "--pretty",
+        "false"
+      ],
+      "exit": 0,
+      "elapsedSeconds": 2.0394201278686523,
+      "testSummary": [],
+      "sourceMapsEqualFinal": {
+        "before.json": true,
+        "copy.json": true,
+        "copy-after.json": true,
+        "after.json": true
+      }
+    },
+    {
+      "run": "sealed-strict-source",
+      "argv": [
+        "node_modules/.bin/tsc",
+        "-p",
+        "tsconfig.npm.json",
+        "--noEmit",
+        "--pretty",
+        "false"
+      ],
+      "exit": 0,
+      "elapsedSeconds": 0.8750889301300049,
+      "testSummary": [],
+      "sourceMapsEqualFinal": {
+        "before.json": true,
+        "copy.json": true,
+        "copy-after.json": true,
+        "after.json": true
+      }
+    },
+    {
+      "run": "sealed-ui-native",
+      "argv": [
+        "node_modules/.bin/vitest",
+        "run",
+        "tests/ui/model-upload-workspace.test.tsx",
+        "tests/ui/model-upload-usage.test.tsx",
+        "tests/ui/ui-usage-integration.test.tsx",
+        "tests/ui/conversation-usage-popover.test.tsx",
+        "tests/ui/native-ui-workspace.test.ts",
+        "tests/ui/native-ui-projection.test.ts",
+        "tests/ui/backend-connection-manager.test.ts",
+        "tests/ui/http-transport.test.ts",
+        "tests/ui/native-ui-send.test.tsx",
+        "tests/ui/native-ui-completion-refresh.test.tsx",
+        "tests/ui/native-ui-multi-backend-loading.test.tsx",
+        "tests/ci/usage-refresh.test.ts",
+        "--maxWorkers=2"
+      ],
+      "exit": 0,
+      "elapsedSeconds": 22.596397161483765,
+      "testSummary": [
+        "Test Files  12 passed (12)",
+        "Tests  286 passed (286)"
+      ],
+      "sourceMapsEqualFinal": {
+        "before.json": true,
+        "copy.json": true,
+        "copy-after.json": true,
+        "after.json": true
+      }
+    }
+  ],
+  "contract": {
+    "nullableSource": "Local/Remote remove、失效、关闭及淘汰传播null；来源先整体清缓存，再通知；重入、监听抛错和迟到关闭不能复活旧值",
+    "transport": "既有HTTP JSON轮询事件与WebSocket，不新增SSE或公开目标路由",
+    "ui": "当前连接身份、加载generation和事件revision在落地前后校验；暂无数据与真实0区分，Token与额度独立",
+    "native": "现有可选字段投影缺失即清空，iPhone17Pro正常字号竖屏",
+    "permission": "仅固定统计脚本readOnly+networkAccess:true，默认环境证明等其他命令维持默认权限",
+    "fixedScriptSha256": "9686ff5ffa8729590826c34aee7d10bc105a54c50a3e40b67bedceed53733953",
+    "publicTargetRoutesOrQueueOrMobileModeAdded": false
+  },
+  "official": {
+    "sourceCommit": "7f468f97646162b2c1cf34a7b699c08da95d1f0b",
+    "passed": true,
+    "startedAt": "2026-11-15T11:04:39.687Z",
+    "finishedAt": "2026-11-15T11:05:39.120Z",
+    "actualExitCode": 0,
+    "actualSignalCode": null,
+    "startToBusinessAndCliMs": 31912,
+    "zeroFlowActualMs": 25001,
+    "lateRpcPassed": true,
+    "noNewPrepareDuringDwell": true,
+    "privateAdminCleanupPassed": true,
+    "isolatedRootRemoved": true,
+    "newAuthorizationOrEnrollment": false,
+    "productionChanged": false,
+    "modelInferenceRequestsSent": 0,
+    "testChatsCreated": 0,
+    "offlineGraphMatchedAtRuntimeBuild": true,
+    "offlineGraphFilesMatched": 146,
+    "checks": {
+      "runtimeStarts": 1,
+      "prepares": 1,
+      "forbidden": 0,
+      "permissionViolations": 0,
+      "businessCompleted": true,
+      "closed": true,
+      "rpcRequests": 53,
+      "commandExecRequests": 2,
+      "meterExecRequests": 1,
+      "meterActualEnds": 1,
+      "meterRejectedExecs": 0,
+      "meterActive": 0,
+      "meterPeakActive": 1,
+      "meterTerminations": 1,
+      "defaultCommands": 1,
+      "defaultActualEnds": 1,
+      "defaultActive": 0,
+      "defaultRejectedExecs": 0,
+      "relayInstances": 1,
+      "observerErrors": 0,
+      "meterStdoutBytes": 24894,
+      "meterStderrBytes": 0,
+      "maxDeltaRawBytes": 383,
+      "meterVerifiedFrames": 1,
+      "meterUsageFrames": 65,
+      "meterRemoveFrames": 0,
+      "meterCompleteFrames": 0,
+      "readyFrames": 1,
+      "maxSerializedOutgoingBytes": 9607,
+      "sourceReadPassed": true,
+      "readReturnedCopy": true,
+      "unknownThreadNull": true,
+      "continuousObservationMs": 20000,
+      "sourceCloseImmediatelyNull": true,
+      "rebuildReproved": false,
+      "adapterCloseKeptCallerSession": true,
+      "lateRpcCompleted": true,
+      "lateRpcFailed": false,
+      "zeroFlowDwellMs": 25000,
+      "zeroFlowActualMs": 25001,
+      "zeroFlowStartActive": 0,
+      "zeroFlowEndActive": 0,
+      "zeroFlowNewStreams": 0,
+      "gatewayHttpReadPassed": true,
+      "gatewayWsReadPassed": true,
+      "gatewayWsNullEventPassed": true,
+      "gatewayHttpNullEventPassed": true,
+      "gatewayHttpNullReadPassed": true,
+      "gatewayWsNullReadPassed": true,
+      "gatewayBusinessConnectionKept": true,
+      "localFixtureNoModelCalls": true,
+      "ownGatewayCleanupPassed": true
+    },
+    "evidence": {
+      "sourceCommit": "7f468f97646162b2c1cf34a7b699c08da95d1f0b",
+      "passed": true,
+      "reportSha256": "cd21e3939fa4dca002256801b3e0dd17b667258d4876fe97fa6b80f6645dd39a",
+      "manifestSha256": "3299a0b115cd72541c58e6098287729327b6ab2df5692f854f2f553de7b494dd",
+      "rootAuditedAllArtifacts": true,
+      "artifacts": 271,
+      "sourceFiles": 87
+    }
+  },
+  "native": {
+    "sourceCommit": "7f468f97646162b2c1cf34a7b699c08da95d1f0b",
+    "manualChainPassed": true,
+    "automaticRun06": {
+      "passed": 1,
+      "failed": 0,
+      "actualTestMs": 37808,
+      "toolDurationMs": 44556
+    },
+    "visualScreenshotsReviewed": 3,
+    "modelCalls": 0,
+    "fixtureStopped": true,
+    "transportIdlePollMs": 15000,
+    "oracleWaitMs": 20000,
+    "rootAuditSha256": "288297fe2efb2a58537e73341f21911b7f7e8672ec010bbe3ec12e8d9fb6f55d",
+    "priorFailuresRetained": [
+      {
+        "run": 1,
+        "classification": "fixture missing loaded-thread RPC; did not reach usage assertions"
+      },
+      {
+        "run": 2,
+        "classification": "first save ACK loss and AX timeout; product bug independently reproduced"
+      },
+      {
+        "run": 3,
+        "classification": "oracle assumed active conversation persisted across launch"
+      },
+      {
+        "run": 4,
+        "classification": "oracle assumed project group collapsed"
+      },
+      {
+        "run": 5,
+        "classification": "recovery wait10s shorter than existing idle15s polling; drop and Token assertions passed"
+      }
+    ]
+  },
+  "limitations": [
+    "官方仅当前Mac既有统计20秒连续读取及25秒零逻辑流后RPC，无新增模型或聊天；实际remove帧0，remove行为由隔离回归验证",
+    "原生为独立自有网关/假上游的真实RPC、IPC、业务投影链，未将它记为手机直接走官方Remote路由",
+    "公开目标路由、共享队列、手机本地/Remote模式及8小时、凭据刷新、睡眠唤醒、P95均待后续",
+    "旧已发布客户端不支持null失效通知，未部署网关或发布新客户端"
+  ],
+  "runtimeSourceCommit": "9f0d136403325f3927b7db75479de1eb6ebb39b4",
+  "mainPush": "源码验收后按共同 main 锁推送，实际结果单独核对远端 SHA；本收据不预写推送结果",
+  "firstDeviceSave": {
+    "authorizedChoice": "A",
+    "initialFixCommit": "46a6f541524ba2fcc3cd8963c2dedde1d65e252a",
+    "finalFixCommit": "9f0d136403325f3927b7db75479de1eb6ebb39b4",
+    "behavior": "现有 AppBootstrap 持有唯一 NativeRuntime，真实保存 ACK 与 UUID 去重跨引导切换保留；业务投影及时注销，真正卸载与人工恢复释放；StrictMode 激活复用既有调度发布首份投影",
+    "implementation": {
+      "sourceCommit": "9f0d136403325f3927b7db75479de1eb6ebb39b4",
+      "passed": true,
+      "rootAuditSha256": "83b456b5ab7bf9f2f1732f94b7ff11699b8d833b67ea0b48e6dbfefd74aa393b",
+      "rootAuditedAllArtifacts": true,
+      "artifactCounts": {
+        "file": 31859,
+        "directory": 1668,
+        "symlink": 3171
+      },
+      "entries": null,
+      "dependencyLinks": null,
+      "hashes": {
+        "REPORT.md": "51fad5cd99b8f722951bc9e7a98633c9f2711af2c6b2543c54d8408934f2ade6",
+        "manifest.json": "b6f7f0c1dcc2bebd434dcfc268197edbfdafe8c83410498f5417a3329eb8adf9",
+        "binding.json": "6c9ec738132d0bdcfb07a9aa766eb9676850f4baf527d22aaea8106dcf61d9f3"
+      },
+      "runs": [
+        {
+          "name": "final-native-regression",
+          "freeze": "final",
+          "exit": 0,
+          "trackedCount": 2877,
+          "sourceBeforeAfterFrozenEqual": true,
+          "workspaceBeforeAfterEqual": true,
+          "symlinkCount": 453,
+          "elapsedSeconds": 7.710885084001347,
+          "resultSha256": "6be9f455568b4f9663481dbdd6cd6ae6fcc7a5122c89eb89007383c03f034c6c",
+          "outputSha256": "ea3cafe29be9adffd127e8e16c62a83903e8d3c9604ffacc75391e531675bde2"
+        },
+        {
+          "name": "final-native-smoke",
+          "freeze": "final",
+          "exit": 0,
+          "trackedCount": 2877,
+          "sourceBeforeAfterFrozenEqual": true,
+          "workspaceBeforeAfterEqual": true,
+          "symlinkCount": 453,
+          "elapsedSeconds": 9.909333665855229,
+          "resultSha256": "e1c16106c1e605cddb86fe9b2b464848b354ceaaf546dc830279b2d0c9f04188",
+          "outputSha256": "8cc51b2939e93c59576e14946676cbc628f378d6203b3f79a4e7f641deb8c19e"
+        },
+        {
+          "name": "final-typecheck",
+          "freeze": "final",
+          "exit": 0,
+          "trackedCount": 2877,
+          "sourceBeforeAfterFrozenEqual": true,
+          "workspaceBeforeAfterEqual": true,
+          "symlinkCount": 453,
+          "elapsedSeconds": 9.519336791941896,
+          "resultSha256": "85bcbaecd7ad0e083e3c2ca2af24394edc224b7677dacceb80966730d8930101",
+          "outputSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "name": "final-web-build",
+          "freeze": "final",
+          "exit": 0,
+          "trackedCount": 2877,
+          "sourceBeforeAfterFrozenEqual": true,
+          "workspaceBeforeAfterEqual": true,
+          "symlinkCount": 453,
+          "elapsedSeconds": 11.897121125133708,
+          "resultSha256": "73465986036a190f98a19494dfa88853d9c54b621b6d8305cf50a74a72d28c82",
+          "outputSha256": "fbdf1ef884988828110d5718808a19d3a49d7b36408f6dbe8dc308abcb204793"
+        },
+        {
+          "name": "first-green",
+          "freeze": "candidate",
+          "exit": 0,
+          "trackedCount": 2877,
+          "sourceBeforeAfterFrozenEqual": true,
+          "workspaceBeforeAfterEqual": true,
+          "symlinkCount": 453,
+          "elapsedSeconds": 0.8176669999957085,
+          "resultSha256": "36ead9c904281dfa6a26ff991db43cb46f6374b18a61ea4f270a2baa1f627c9b",
+          "outputSha256": "46b534ecb894b891aeb01f9efbb73e8d121486ad20afe93f2ad8b9ba41befcdc"
+        },
+        {
+          "name": "original-repro-red",
+          "freeze": "baseline",
+          "exit": 1,
+          "trackedCount": 2877,
+          "sourceBeforeAfterFrozenEqual": true,
+          "workspaceBeforeAfterEqual": true,
+          "symlinkCount": 453,
+          "elapsedSeconds": 1.0722155829425901,
+          "resultSha256": "e188c6facad0be061f907932d572b8377e2ca65a03294a4cba8f7c61fa0fa5f8",
+          "outputSha256": "4c97e2cf9fb6312be1b182cc1ddbd78cb3c2b5bef213a33fba40d9db2863b8da"
+        },
+        {
+          "name": "permanent-regression-red",
+          "freeze": "regression-red",
+          "exit": 1,
+          "trackedCount": 2877,
+          "sourceBeforeAfterFrozenEqual": true,
+          "workspaceBeforeAfterEqual": true,
+          "symlinkCount": 453,
+          "elapsedSeconds": 1.0213182079605758,
+          "resultSha256": "f6393c979f5dfddfe696f8bdef90cf809e95633c35416c4433d844027ed8a240",
+          "outputSha256": "1e5fac60ec0268c190642ae97a4df0c6bdb41596fae2d5ead601144f7ac765eb"
+        }
+      ]
+    },
+    "finalSpec": {
+      "sourceCommit": "9f0d136403325f3927b7db75479de1eb6ebb39b4",
+      "passed": true,
+      "rootAuditSha256": "01e5772f6f291b15f68778ec864a79dc2fab4b0fbaf4701cb5c144ad5652214a",
+      "rootAuditedAllArtifacts": true,
+      "artifactCounts": null,
+      "entries": 10531,
+      "dependencyLinks": 1356,
+      "hashes": {
+        "REPORT.md": "fd2f91f0e1059e8f8dc28759b60893e9785071cfc65f91459adf0ce76ee873ae",
+        "manifest.json": "b8c9fa5249c917359abc628d4b667077aa3378ee529670840f275477afa9f2af",
+        "binding.json": "99f77ed9eeeb61d46fa7c9daf521061357386a3cd108f67fe632243d30c963cd"
+      },
+      "runs": [
+        {
+          "name": "final-behavior",
+          "commit": "9f0d136403325f3927b7db75479de1eb6ebb39b4",
+          "exit": 0,
+          "elapsedSeconds": 10.283773124916479
+        },
+        {
+          "name": "first-save-baseline-red",
+          "commit": "7f468f97646162b2c1cf34a7b699c08da95d1f0b",
+          "exit": 1,
+          "elapsedSeconds": 2.8047895410563797
+        },
+        {
+          "name": "strict-stage-red",
+          "commit": "46a6f541524ba2fcc3cd8963c2dedde1d65e252a",
+          "exit": 1,
+          "elapsedSeconds": 0.712258042069152
+        }
+      ]
+    },
+    "finalQuality": {
+      "sourceCommit": "9f0d136403325f3927b7db75479de1eb6ebb39b4",
+      "passed": true,
+      "rootAuditSha256": "ce547591aec90dff0c120ef88e8d4f4b46fe58ebcc3dccdac1787c8aa5465218",
+      "rootAuditedAllArtifacts": true,
+      "artifactCounts": null,
+      "entries": 7033,
+      "dependencyLinks": 904,
+      "hashes": {
+        "REPORT.md": "df399e4f596d24a22fcca73befe222b15b9e1f5124963cbbb80bdae2c60c21da",
+        "manifest.json": "8e101d2d7e7c2559a36ff52ddb39ebbbc39d1b2696798e704ff652aba4f64378",
+        "binding.json": "d18774b393a4b3d70166e9a04c8609234983d3deca4653c2912cbdacf2ba34cc"
+      },
+      "runs": [
+        {
+          "name": "corrected-lifecycle",
+          "commit": "9f0d136403325f3927b7db75479de1eb6ebb39b4",
+          "exit": 0,
+          "elapsedSeconds": 1.9583458330016583
+        },
+        {
+          "name": "final-risk",
+          "commit": "9f0d136403325f3927b7db75479de1eb6ebb39b4",
+          "exit": 1,
+          "elapsedSeconds": 6.528331666951999
+        }
+      ]
+    },
+    "finalRelatedTestsPassed": 100,
+    "actualBridgeSmokePassed": 19,
+    "finalSpecTestsPassed": 140,
+    "finalQualityRepositoryTestsPassed": 12,
+    "finalQualityIndependentTestsPassed": 1,
+    "typecheckExit": 0,
+    "developmentWebBuildExit": 0,
+    "priorFailuresRetained": [
+      "首次保存已切换业务但真实 ACK 缺失",
+      "初版 A 的父 owner StrictMode 首发缺口，旧同组件对照通过",
+      "QUALITY 独立用例误设可移除最后设备；按真实规则增加第二设备后验收，原失败保留"
+    ],
+    "startedUTCFieldCaveat": "StrictMode 实现者 result.startedUTC 在进程后记录，不作为真实开始时刻；elapsedSeconds 使用 monotonic"
+  },
+  "finalNative": {
+    "sourceCommit": "9f0d136403325f3927b7db75479de1eb6ebb39b4",
+    "webFiles": 65,
+    "serverBuildReusedFiles": 81,
+    "actualDependencyLinks": 453,
+    "hostFiles": 460,
+    "nativeFilesEqualCurrent": 357,
+    "device": "iPhone17Pro normal font portrait",
+    "firstSave": {
+      "passed": 1,
+      "failed": 0,
+      "actualTestMs": 17025,
+      "toolElapsedMs": 41361,
+      "screenshotReviewed": true
+    },
+    "finalUsage": {
+      "passed": 1,
+      "failed": 0,
+      "actualTestMs": 51894,
+      "toolElapsedMs": 57759,
+      "screenshotsReviewed": 3,
+      "initialLast": 320000,
+      "initialTotal": 1800000,
+      "invalidatedNull": true,
+      "recoveredLast": 640000,
+      "recoveredTotal": 3600000,
+      "tokensPreserved": true
+    },
+    "fixtureStopped": true,
+    "modelCalls": 0,
+    "published": false,
+    "existingWarningsPreserved": true,
+    "evidenceEntries": 103,
+    "manifestSha256": "e4c2e8b80119f7f85aaeea08feff86c164b206d27da5314a15f6f051a645d2f8",
+    "rootAuditedAllScopedArtifacts": true,
+    "rootAuditSha256": "93a4d467f5dc419a2c05eb448f9780d1437922db7d5500eba4b5004363967e55",
+    "scope": "验收工件、xcresult及截图全量校验，宿主文件映射、Web65、复用server81和实际依赖453另行核验；DerivedData不计为已审计工件",
+    "transportIdlePollMs": 15000,
+    "oracleWaitMs": 20000
+  },
+  "reuse": "首次保存修复仅客户端所有权和调度变化；server、Swift、公开协议逐字节未变，官方 Remote gate 仍绑定7f468，不重跑或改绑9f0d。最终原生宿主使用9f0d开发Web，原生产品代码保持。"
+}
