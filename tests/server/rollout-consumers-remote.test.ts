@@ -228,6 +228,63 @@ it('目标JSON解析资源失败明确报能力错误，不把有效深嵌套记
   await expect(new MessageTimestamps('/wrong', s).read(id, ['answer'])).rejects.toMatchObject({ code: 'capability' });
 });
 
+const largeInteger = '9'.repeat(5000);
+const largeIntegerMeta = () => meta(id, { source: { subagent: 'review' } }).trimEnd().replace(/}$/, `,"unused":${largeInteger}}`) + '\n';
+
+it('有效消息无关字段的大整数转换资源失败不得伪装missing', async () => {
+  const f = await target(); const s = await source(f);
+  await file(f, meta() + message().replace('"private body"', largeInteger));
+  expect((await new MessageTimestamps(f.root).read(id, ['answer'])).answer).toBe(seconds);
+  await expect(new MessageTimestamps('/wrong', s).read(id, ['answer'])).rejects.toMatchObject({ code: 'capability' });
+});
+
+it('64KiB内完整metadata的大整数资源失败不得抹去隐藏source', async () => {
+  const f = await target(); const s = await source(f); const content = largeIntegerMeta();
+  expect(Buffer.byteLength(content)).toBeLessThan(65536); await file(f, content);
+  expect((await readLocalThreadMetadata(f.root, id))?.source).toEqual({ subagent: 'review' });
+  await expect(readLocalThreadMetadata('/wrong', id, s)).rejects.toMatchObject({ code: 'capability' });
+});
+
+it('Bark不把metadata整数资源失败当普通missing放行隐藏会话通知', async () => {
+  const f = await target(); const s = await source(f); await file(f, largeIntegerMeta());
+  const b = await bark(f, s); b.value.notifyFollowedCompletion(id, 'integer-resource');
+  await until(() => b.failures.length > 0 || b.pushes.length > 0);
+  expect(b.failures[0]).toMatchObject({ code: 'capability' }); expect(b.pushes).toEqual([]);
+});
+
+it('引用嵌套JSON的整数资源失败必须传播，不回退普通工具文本', async () => {
+  const f = await target(); const s = await source(f);
+  const nested = `{"status":"fulfilled","unused":${largeInteger},"value":{"text":${JSON.stringify(cite())}}}`;
+  await file(f, meta() + output([{ text: nested }]));
+  expect(await new MessageWebCitations(f.root).read(id, ['turn1view0'])).toHaveLength(1);
+  await expect(new MessageWebCitations('/wrong', s).read(id, ['turn1view0'])).rejects.toMatchObject({ code: 'capability' });
+});
+
+it('图像Some双JSON的整数资源失败必须传播，不猜测为未知错误', async () => {
+  const f = await target(); const s = await source(f);
+  const failed = JSON.stringify({ type: 'event_msg', payload: { type: 'item_completed', item: { kind: 'image_gen.generation', id: 'image', status: 'failed' } } }) + '\n';
+  const inner = `{"error":{"code":"moderation_blocked","moderation_details":{"moderation_stage":"output","categories":[]}},"unused":${largeInteger}}`;
+  await file(f, meta() + failed + output([{ text: `Some(${JSON.stringify(inner)})` }]));
+  expect((await readImageGenerationError(f.root, id, 'image'))?.code).toBe('moderation_blocked');
+  await expect(readImageGenerationError('/wrong', id, 'image', s)).rejects.toMatchObject({ code: 'capability' });
+});
+
+it('大整数后仍畸形或未完成的JSON保持忽略，嵌套畸形JSON仍按工具文本提取', async () => {
+  const f = await target(); const s = await source(f);
+  const complete = message().replace('"private body"', largeInteger).trimEnd();
+  const invalid = [complete.slice(0, -1), complete + 'garbage', ...['NaN', 'Infinity', '-Infinity'].map(value => complete.replace(/}$/, `,"invalid":${value}}`))];
+  const p = await file(f, meta() + invalid.join('\n') + '\n' + message('valid').trimEnd());
+  expect(await new MessageTimestamps('/wrong', s).read(id, ['answer', 'valid'])).toEqual(await new MessageTimestamps(f.root).read(id, ['answer', 'valid']));
+  await writeFile(p, meta() + output([{ text: `{"unused":${largeInteger},broken}\n` + cite() }]));
+  expect(await new MessageWebCitations('/wrong', s).read(id, ['turn1view0'])).toEqual(await new MessageWebCitations(f.root).read(id, ['turn1view0']));
+  expect(await new MessageWebCitations('/wrong', s).read(id, ['turn1view0'])).toHaveLength(1);
+  await writeFile(p, largeIntegerMeta().trimEnd().slice(0, -1) + '\n');
+  expect(await readLocalThreadMetadata('/wrong', id, s)).toBeUndefined();
+  await writeFile(p, largeIntegerMeta().trimEnd());
+  expect(await readLocalThreadMetadata(f.root, id)).toBeUndefined();
+  expect(await readLocalThreadMetadata('/wrong', id, s)).toBeUndefined();
+});
+
 it.each([false, true])('引用标题UTF16边界、Unicode行首与畸形/嵌套NaN和Infinity保持Local差分 escaped=%s', async escaped => {
   const f = await target(); const s = await source(f);
   const titles = ['😀'.repeat(500), '😀'.repeat(501), 'x'.repeat(1000), 'x'.repeat(1001), '短标题'];

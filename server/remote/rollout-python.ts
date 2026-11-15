@@ -4,7 +4,18 @@ q=json.loads(sys.argv[1]);WINDOW=65536
 def emit(value): sys.stdout.write(json.dumps(value,separators=(',',':'),ensure_ascii=True)+'\n')
 def fail(code):
     emit(dict(error=code));raise SystemExit(0)
-def parse(value): return json.loads(value,parse_constant=lambda _: (_ for _ in ()).throw(ValueError()))
+class InvalidConstant(ValueError): pass
+def parse(value):
+    exhausted=False
+    def integer(token):
+        nonlocal exhausted
+        try: return int(token)
+        except ValueError:
+            # 仅让标准decoder完成语法验证；资源失败的占位值永不进入投影。
+            exhausted=True;return None
+    result=json.loads(value,parse_int=integer,parse_constant=lambda _: (_ for _ in ()).throw(InvalidConstant()))
+    if exhausted: raise ValueError('integer conversion resource failure')
+    return result
 def obj(value): return value if isinstance(value,dict) else {}
 def identity(s): return [str(s.st_dev),str(s.st_ino)]
 def units(s): return len(s.encode('utf-16-le','surrogatepass'))//2
@@ -14,7 +25,7 @@ def texts(value,depth=0):
     if isinstance(value,str):
         if re.match(r'^\s*[\[{]',value):
             try: nested=parse(value)
-            except ValueError: pass
+            except (json.JSONDecodeError,InvalidConstant): pass
             else:
                 yield from texts(nested,depth+1);return
         yield value
@@ -34,7 +45,7 @@ def moderation(output):
         match=re.search(r'Some\(("(?:\\.|[^"\\])*")\)',text,re.S)
         if not match: continue
         try: error=obj(obj(parse(parse(match[1]))).get('error'))
-        except (ValueError,TypeError): continue
+        except (json.JSONDecodeError,InvalidConstant,TypeError): continue
         if error.get('code')!='moderation_blocked': continue
         details=obj(error.get('moderation_details'));categories=details.get('categories');stage=details.get('moderation_stage');message=error.get('message')
         request=re.search(r'request ID ([A-Za-z0-9_-]+)',message) if isinstance(message,str) else None
@@ -75,11 +86,14 @@ def scan():
             raw=f.readline(length-position)
             if not raw: fail('changed')
             digest.update(raw);position+=len(raw)
+            # metadata先确认64KiB内完整首LF；缺LF不是待解析的完整首行。
+            if mode=='metadata' and not raw.endswith(b'\n'):
+                length=position;break
             text=raw.decode('utf-8','replace')
             lines=[text] if mode=='metadata' else re.split(r'\r\n|[\n\r\u2028\u2029]' if q['unicodeLines'] else r'\r\n|[\n\r]',text)
             for line in lines:
                 try: entry=obj(parse(line))
-                except ValueError:
+                except (json.JSONDecodeError,InvalidConstant):
                     if first and mode=='metadata': length=position
                     if valid and mode=='image' and state['found'] and 'custom_tool_call_output' in line: state['done']=True
                     first=False;continue
