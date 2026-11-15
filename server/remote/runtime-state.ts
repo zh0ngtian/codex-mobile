@@ -18,6 +18,8 @@ export interface RemoteRuntimeStateRecord {
   paused: boolean;
   reason: RemoteRuntimePauseReason;
   pending: RemoteTargetIdentity[];
+  /** 本generation真实显式resume成功的tuple；缺省旧记录不构成跨代队列恢复证明。 */
+  resumed?: RemoteTargetIdentity[];
 }
 export const MAX_REMOTE_PENDING = 4096;
 const REASONS: readonly string[] = [
@@ -62,7 +64,7 @@ export function remoteManaged(value: unknown): ManagedAuthIdentity {
     codexHome: home,
     accountId: text(raw.accountId),
     accountUserId: text(raw.accountUserId),
-    ...(raw.userId === undefined ? {} : { userId: text(raw.userId) }),
+    ...(Object.hasOwn(raw, 'userId') ? { userId: text(raw.userId) } : {}),
   };
 }
 export function sameRemoteTarget(a: RemoteTargetIdentity, b: RemoteTargetIdentity): boolean {
@@ -73,6 +75,7 @@ export function sameRemoteManaged(a: ManagedAuthIdentity, b: ManagedAuthIdentity
     a.codexHome === b.codexHome &&
     a.accountId === b.accountId &&
     a.accountUserId === b.accountUserId &&
+    Object.hasOwn(a, 'userId') === Object.hasOwn(b, 'userId') &&
     a.userId === b.userId
   );
 }
@@ -101,7 +104,7 @@ export class RemoteRuntimeStateStore {
     text(generation);
   }
   private parse(value: unknown): RemoteRuntimeStateRecord {
-    const raw = object(value, ['version', 'generation', 'managed', 'paused', 'reason', 'pending']);
+    const raw = object(value, ['version', 'generation', 'managed', 'paused', 'reason', 'pending', 'resumed']);
     if (
       raw.version !== 1 ||
       raw.generation !== this.generation ||
@@ -116,6 +119,13 @@ export class RemoteRuntimeStateStore {
     if (!sameRemoteManaged(managed, this.managed)) fail();
     const pending = raw.pending.map(remoteTuple);
     if (mergeRemotePending(pending).length !== pending.length) fail();
+    let resumed: RemoteTargetIdentity[] | undefined;
+    if (Object.hasOwn(raw, 'resumed')) {
+      if (!Array.isArray(raw.resumed) || raw.resumed.length > MAX_REMOTE_PENDING) fail();
+      resumed = raw.resumed.map(remoteTuple);
+      if (mergeRemotePending(resumed).length !== resumed.length ||
+        resumed.some(value => pending.some(target => sameRemoteTarget(value, target)))) fail();
+    }
     return {
       version: 1,
       generation: this.generation,
@@ -123,6 +133,7 @@ export class RemoteRuntimeStateStore {
       paused: raw.paused,
       reason: raw.reason as RemoteRuntimePauseReason,
       pending,
+      ...(resumed === undefined ? {} : { resumed }),
     };
   }
   async read(): Promise<RemoteRuntimeStateRecord | null> {

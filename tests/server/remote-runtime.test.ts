@@ -1,10 +1,16 @@
 // @vitest-environment node
 import { EventEmitter } from 'node:events';
-import { generateKeyPairSync, sign } from 'node:crypto';
-import { mkdtemp, readdir, realpath, rm } from 'node:fs/promises';
+import { generateKeyPairSync, sign, randomUUID } from 'node:crypto';
+import { OperationQueue } from '../../server/operation-queue.js';
+import { mkdtemp, readdir, realpath, rm, readFile, rename } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it, vi } from 'vitest';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import { acquireRemoteOwner } from '../../server/remote/owner.js';
+import { withRemoteOperation } from '../../server/remote/operation-guard.js';
+import { performance } from 'node:perf_hooks';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { RemoteRuntime, type RemoteRuntimeOptions } from '../../server/remote/runtime.js';
 import { RemoteAuthProviderImpl } from '../../server/remote/auth.js';
@@ -44,8 +50,8 @@ const target = (value: typeof local) => ({
 async function fixture(change: Partial<RemoteRuntimeOptions> = {}) {
   const root = await realpath(await mkdtemp(join(tmpdir(), 'remote-runtime-')));
   cleanup.push(() => rm(root, { recursive: true, force: true }));
-  const store = new PrivateStore(join(root, 'private'));
-  const registry = new RemoteIdentityRegistry(store);
+  const store = change.store ?? new PrivateStore(join(root, 'private'));
+  const registry = change.registry ?? new RemoteIdentityRegistry(store);
   let managed = {
     codexHome: '/synthetic/codex',
     accountId: 'workspace',
@@ -1076,4 +1082,347 @@ it('目标解析paused与pending不同，Local继续可用且不自动恢复Remo
   await expect(handle.createRawStream()).rejects.toMatchObject({ code: 'paused' });
   await expect(resolver.resolve(ref)).rejects.toMatchObject({ code: 'paused' });
   expect((await resolver.resolve()).descriptor.mode).toBe('local'); expect(f.oauth()).toBe(1);
+});
+
+it('队列可信授权入口由真实Runtime提供完整冻结上下文与同步只读fence', async () => {
+  const f = await fixture(); await f.runtime.authorize(); await until(() => f.runtime.status().state === 'online');
+  const resolver = await resolverFor(f.runtime);
+  // 先断言真实生产入口，缺少能力是产品RED，不能让TypeError或夹具错误冒充行为失败。
+  expect(resolver).toHaveProperty('operationContext', expect.any(Function));
+  expect(resolver).toHaveProperty('authorizeOperation', expect.any(Function));
+  const context = await (resolver as any).operationContext(reference(f));
+  expect(context).toMatchObject({ mode: 'remote', managed: f.runtime.status().managed, target: local, generation: f.runtime.status().generation });
+  const queue = new OperationQueue({ directory: join(f.root, 'queue'), gatewayId: gatewayIdentity.gatewayId,
+    authorize: (context, action) => (resolver as any).authorizeOperation(context, action) });
+  const id = randomUUID();
+  await queue.submit({ id, context, conversationId: 'conversation', body: 'hello', settings: {}, attachmentRefs: [] });
+  const fence = await (resolver as any).authorizeOperation(context, 'read');
+  expect(fence()).toBeUndefined();
+  expect((await queue.read(id)).body).toBe('hello');
+  await f.runtime.close();
+  expect(fence).toThrow();
+  await expect(queue.read(id)).rejects.toThrow();
+});
+
+it('跨generation旧句柄永拒，但原冻结队列仅真实逐目标resume后可恢复且原context字节不改', async () => {
+  const f = await fixture(); await f.runtime.authorize(); await until(() => f.runtime.status().state === 'online'); await f.runtime.acceptTarget(remote);
+  const resolver = await resolverFor(f.runtime); const handle = await resolver.resolve(reference(f));
+  const ownContext = await resolver.operationContext(reference(f)); const otherContext = await resolver.operationContext(reference(f, remote));
+  const bytes = JSON.stringify([ownContext, otherContext]);
+  const queue = new OperationQueue({ directory: join(f.root, 'queue'), gatewayId: gatewayIdentity.gatewayId,
+    authorize: (context, action) => resolver.authorizeOperation(context, action) });
+  const ownId = randomUUID(); const otherId = randomUUID();
+  for (const [id, context] of [[ownId, ownContext], [otherId, otherContext]] as const)
+    await queue.submit({ id, context, conversationId: 'conversation', body: 'hello', settings: {}, attachmentRefs: [] });
+  await f.runtime.recover(); await until(() => f.runtime.status().state === 'online');
+  await expect(queue.read(ownId)).rejects.toThrow(); await expect(queue.read(otherId)).rejects.toThrow();
+  await f.runtime.acceptTarget(remote); await expect(queue.read(otherId)).rejects.toThrow();
+  await f.runtime.resume(local);
+  await expect(handle.assertCurrent()).rejects.toMatchObject({ code: 'identity-changed' });
+  await expect(queue.read(ownId)).resolves.toMatchObject({ context: ownContext, state: 'queued' });
+  await expect(queue.read(otherId)).rejects.toThrow();
+  await f.runtime.resume(remote);
+  await expect(queue.read(otherId)).resolves.toMatchObject({ context: otherContext, state: 'queued' });
+  expect(JSON.stringify([ownContext, otherContext])).toBe(bytes);
+});
+
+async function queuedFixture() {
+  const f = await fixture(); await f.runtime.authorize(); await until(() => f.runtime.status().state === 'online');
+  const resolver = await resolverFor(f.runtime); const context = await resolver.operationContext(reference(f));
+  const queue = new OperationQueue({ directory: join(f.root, 'queue'), gatewayId: gatewayIdentity.gatewayId,
+    authorize: (context, action) => resolver.authorizeOperation(context, action) });
+  const submit = async (conversationId = 'conversation', value = context) => {
+    const id = randomUUID(); await queue.submit({ id, context: value, conversationId, body: 'hello', settings: {}, attachmentRefs: [] }); return id;
+  };
+  return { ...f, resolver, context, queue, submit };
+}
+it('队列Local完整固定身份不要求Remote密钥授权，伪造冻结维度均拒绝', async () => {
+  const resolver = await resolverFor(); const context = await resolver.operationContext();
+  expect(context.mode).toBe('local'); (await resolver.authorizeOperation(context, 'claim'))();
+  for (const field of ['gatewayId', 'localHostId', 'businessKey', 'authorizationKey'])
+    await expect(resolver.authorizeOperation({ ...context, [field]: 'other' }, 'read')).rejects.toThrow();
+  const f = await queuedFixture();
+  if (f.context.mode !== 'remote') throw new Error('fixture requires remote');
+  for (const change of [
+    { gatewayId: 'other' }, { businessKey: 'other' }, { authorizationKey: 'other' }, { generation: 'other' },
+    { managed: { ...f.context.managed, codexHome: '/synthetic/other' } },
+    { managed: { ...f.context.managed, accountId: 'other' } },
+    { managed: { ...f.context.managed, accountUserId: 'other' } },
+    { managed: { ...f.context.managed, userId: undefined } },
+    { managed: { codexHome: f.context.managed.codexHome, accountId: f.context.managed.accountId, accountUserId: f.context.managed.accountUserId } },
+    { target: { ...local, installationId: 'reinstalled' } },
+  ]) await expect(f.resolver.authorizeOperation({ ...f.context, ...change }, 'read')).rejects.toThrow();
+});
+it('队列同代离线接收读取和确定结果落盘，claim与执行独立要求online', async () => {
+  const f = await queuedFixture(); const first = await f.submit();
+  const claim = await f.queue.claimNext(f.context.businessKey);
+  const marked = await f.queue.markPotentialSend(first, claim!.revision, claim!.claimToken!);
+  f.setTargets([{ ...target(local), online: false }, target(remote)]); await f.runtime.refreshTargets();
+  const second = await f.submit('other');
+  expect((await f.queue.read(second)).state).toBe('queued');
+  await expect(f.queue.claimNext(f.context.businessKey)).rejects.toThrow();
+  await expect(f.resolver.authorizeOperationExecution(f.context)).rejects.toThrow();
+  await expect(f.queue.settle(first, marked.revision, claim!.claimToken!, 'succeeded')).resolves.toMatchObject({ state: 'succeeded' });
+  f.setTargets([target(local), target(remote)]); await f.runtime.refreshTargets();
+  const next = await f.queue.claimNext(f.context.businessKey);
+  f.setTargets([{ ...target(local), online: false }, target(remote)]); await f.runtime.refreshTargets();
+  await expect(f.queue.releaseClaim(second, next!.revision, next!.claimToken!)).resolves.toMatchObject({ state: 'queued' });
+  f.setTargets([target(local), target(remote)]); await f.runtime.refreshTargets();
+  const last = await f.queue.claimNext(f.context.businessKey);
+  const uncertain = await f.queue.markPotentialSend(second, last!.revision, last!.claimToken!);
+  f.setTargets([{ ...target(local), online: false }, target(remote)]); await f.runtime.refreshTargets();
+  await expect(f.queue.confirmNeverSent(second, uncertain.revision, last!.claimToken!, async () => true)).resolves.toMatchObject({ state: 'queued' });
+});
+it('同代多Remote及Local混合批量重复只读不自废，最后自身await关闭owner则全部拒绝', async () => {
+  const f = await queuedFixture(); await f.submit(); await f.submit();
+  const localContext = await f.resolver.operationContext(); await f.submit('conversation', localContext);
+  for (let count = 0; count < 3; count++) expect(await f.queue.list(f.context.businessKey, 'conversation')).toHaveLength(3);
+  let count = 0;
+  const queue = new OperationQueue({ directory: join(f.root, 'queue'), gatewayId: gatewayIdentity.gatewayId,
+    authorize: async (context, action) => {
+      const fence = await f.resolver.authorizeOperation(context, action);
+      if (++count === 6) await f.runtime.close();
+      return fence;
+    } });
+  await expect(queue.list(f.context.businessKey, 'conversation')).rejects.toThrow();
+  expect(count).toBe(6);
+});
+it.each(['accepted', 'installation', 'missing', 'pending', 'preparing', 'paused', 'identity', 'closed'] as const)(
+  '真实同步fence在最后await之后%s变化立即失效', async kind => {
+    const f = await queuedFixture(); const guard = await f.resolver.authorizeOperationExecution(f.context);
+    guard.assertCurrent(); guard.assertLive();
+    if (kind === 'accepted') await f.runtime.acceptTarget(remote);
+    if (kind === 'installation') { f.setTargets([target({ ...local, installationId: 'reinstalled' })]); await f.runtime.refreshTargets(); }
+    if (kind === 'missing') { f.setTargets([target(remote)]); await f.runtime.refreshTargets(); }
+    if (kind === 'pending') (f.runtime as any).active.state.pending.push(local);
+    if (kind === 'preparing') (f.runtime as any).preparing = true;
+    if (kind === 'paused') (f.runtime as any).active.state.paused = true;
+    if (kind === 'identity') {
+      f.setManaged({ userId: 'other' }); await expect(f.runtime.readTargetBinding()).rejects.toThrow();
+    }
+    if (kind === 'closed') await f.runtime.close();
+    expect(guard.assertCurrent).toThrow(); expect(guard.assertLive).toThrow();
+  },
+);
+it('queue最终fence真实核验owner inode，不等待定时器或下一次await', async () => {
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'queue-real-owner-'))); cleanup.push(() => rm(root, { recursive: true, force: true }));
+  const owner = await acquireRemoteOwner(new PrivateStore(join(root, 'private'))); cleanup.push(() => owner.close().catch(() => undefined));
+  const f = await fixture({ store: owner.store }); await f.runtime.authorize(); await until(() => f.runtime.status().state === 'online');
+  const resolver = await resolverFor(f.runtime); const context = await resolver.operationContext(reference(f));
+  const fence = await resolver.authorizeOperation(context, 'read');
+  const fs = await import('node:fs');
+  fs.renameSync(owner.store.directory, owner.store.directory + '-old'); fs.mkdirSync(owner.store.directory, { mode: 0o700 });
+  expect(owner.signal.aborted).toBe(false); expect(fence).toThrow(); expect(owner.signal.aborted).toBe(true);
+});
+
+it.each(['loss-between-frames', 'proof-delay'] as const)('可信执行实际Relay组合%s保留真实归属且proof之后重查原父期限', async kind => {
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'queue-relay-owner-'))); cleanup.push(() => rm(root, { recursive: true, force: true }));
+  const owner = await acquireRemoteOwner(new PrivateStore(join(root, 'private'))); cleanup.push(() => owner.close().catch(() => undefined));
+  const f = await fixture({ store: owner.store }); await f.runtime.authorize(); await until(() => f.runtime.status().state === 'online');
+  const resolver = await resolverFor(f.runtime); const context = await resolver.operationContext(reference(f));
+  const guard = await resolver.authorizeOperationExecution(context); const stream = f.runtime.createRawStream(local);
+  guard.assertCurrent();
+  const socket = (f.runtime as any).bundle.controller.relay.socket;
+  const send = socket.send.bind(socket); let physical = 0; let delayed = false;
+  const fs = await import('node:fs');
+  vi.spyOn(socket, 'send').mockImplementation((...args: any[]) => {
+    physical++; const result = send(...args);
+    if (kind === 'loss-between-frames' && physical === 1) {
+      fs.renameSync(owner.store.directory, owner.store.directory + '-old'); fs.mkdirSync(owner.store.directory, { mode: 0o700 });
+    }
+    return result;
+  });
+  const assertOwnership = PrivateStore.prototype.assertOwnership;
+  if (kind === 'proof-delay') vi.spyOn(PrivateStore.prototype, 'assertOwnership').mockImplementation(function (this: PrivateStore) {
+    assertOwnership.call(this);
+    if (!delayed && this.directory.startsWith(owner.store.directory)) {
+      delayed = true; const until = performance.now() + 50; while (performance.now() < until) { /* 真实同步proof阻塞 */ }
+    }
+  });
+  const deadline = performance.now() + 25;
+  const result = await withRemoteOperation(() => { if (performance.now() >= deadline) throw new Error('original deadline'); },
+    () => withRemoteOperation(guard.assertLive, () => stream.send({ id: 1, method: 'test', params: { text: 'x'.repeat(700000) } })))
+    .then(() => 'sent', () => 'rejected');
+  expect(result).toBe('rejected'); expect(physical).toBe(kind === 'proof-delay' ? 0 : 1);
+  if (kind === 'proof-delay') expect(delayed).toBe(true);
+});
+
+it('真实queue最终FS归属proof跨原父deadline后不交付正文，即使外层稍后才检查期限', async () => {
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'queue-parent-proof-'))); cleanup.push(() => rm(root, { recursive: true, force: true }));
+  const owner = await acquireRemoteOwner(new PrivateStore(join(root, 'private'))); cleanup.push(() => owner.close().catch(() => undefined));
+  const f = await fixture({ store: owner.store }); await f.runtime.authorize(); await until(() => f.runtime.status().state === 'online');
+  const resolver = await resolverFor(f.runtime); const context = await resolver.operationContext(reference(f));
+  let arming = false; let calls = 0; let delayed = false; let delivered = false;
+  const queue = new OperationQueue({ directory: join(f.root, 'queue'), gatewayId: gatewayIdentity.gatewayId,
+    authorize: async (context, action) => {
+      const fence = await resolver.authorizeOperation(context, action);
+      if (arming && ++calls === 2) delayed = true;
+      return fence;
+    } });
+  const id = randomUUID(); await queue.submit({ id, context, conversationId: 'conversation', body: 'hello', settings: {}, attachmentRefs: [] });
+  const proof = PrivateStore.prototype.assertOwnership;
+  let deadline = Infinity;
+  vi.spyOn(PrivateStore.prototype, 'assertOwnership').mockImplementation(function (this: PrivateStore) {
+    proof.call(this);
+    if (delayed && this.directory.startsWith(owner.store.directory)) {
+      delayed = false; const stop = performance.now() + 40; while (performance.now() < stop) { /* 真同步proof */ }
+    }
+  });
+  arming = true; deadline = performance.now() + 100;
+  // final authorize完成后设置期限，避免把普通FS前置耗时混为最后proof的跨期。
+  const original = resolver.authorizeOperation.bind(resolver);
+  vi.spyOn(resolver, 'authorizeOperation').mockImplementation(async (...args) => {
+    const fence = await original(...args); if (calls === 1) deadline = performance.now() + 20; return fence;
+  });
+  await expect(withRemoteOperation(() => { if (performance.now() >= deadline) throw new Error('original deadline'); }, async () => {
+    await queue.read(id); delivered = true;
+  })).rejects.toThrow();
+  expect(calls).toBe(2); expect(delivered).toBe(false);
+});
+
+async function recoveryInNewProcess(f: Awaited<ReturnType<typeof queuedFixture>>, field: 'allowed' | 'paused' = 'allowed') {
+  const result = await promisify(execFile)(process.execPath, ['--import', 'tsx',
+    new URL('./fixtures/remote-queue-recovery-worker.ts', import.meta.url).pathname, f.store.directory, JSON.stringify(f.context)],
+  { timeout: 10000, env: process.env });
+  const proof = JSON.parse(result.stdout); expect(proof.pid).not.toBe(process.pid); return proof[field];
+}
+it('真实OS新进程验证多代逐target持久证明，原record字节保留且uncertain和failed从不自动重排', async () => {
+  const f = await queuedFixture(); const unknown = await f.submit('unknown'); const failed = await f.submit('failed'); const queued = await f.submit('queued');
+  const a = await f.queue.claimNext(f.context.businessKey); const mark = await f.queue.markPotentialSend(unknown, a!.revision, a!.claimToken!);
+  expect(mark.state).toBe('uncertain'); const b = await f.queue.claimNext(f.context.businessKey);
+  const bm = await f.queue.markPotentialSend(failed, b!.revision, b!.claimToken!); await f.queue.settle(failed, bm.revision, b!.claimToken!, 'failed');
+  const original = await readFile(join(f.root, 'queue/operations.json'));
+  for (let generation = 0; generation < 3; generation++) {
+    await f.runtime.recover(); await until(() => f.runtime.status().state === 'online');
+    expect(await recoveryInNewProcess(f)).toBe(false);
+  }
+  await f.runtime.resume(local); expect(await recoveryInNewProcess(f)).toBe(true);
+  await f.runtime.close();
+  const restarted = new RemoteRuntime(f.options); cleanup.push(() => restarted.close()); await restarted.start(); await until(() => restarted.status().state === 'online');
+  const resolver = await resolverFor(restarted);
+  (await resolver.authorizeOperation(f.context, 'read'))();
+  const reopened = new OperationQueue({ directory: join(f.root, 'queue'), gatewayId: gatewayIdentity.gatewayId,
+    authorize: (context, action) => resolver.authorizeOperation(context, action) });
+  expect((await reopened.read(unknown)).state).toBe('uncertain'); expect((await reopened.read(failed)).state).toBe('failed');
+  expect((await readFile(join(f.root, 'queue/operations.json'))).equals(original)).toBe(true);
+  expect((await reopened.claimNext(f.context.businessKey))?.id).toBe(queued);
+}, 20000);
+it('恢复拒绝缺链损坏与未提交候选，不以pending空或pair/accept代替逐tuple成功事实', async () => {
+  const f = await queuedFixture(); const id = await f.submit(); const old = await f.registry.readActive();
+  await f.runtime.recover(); await until(() => f.runtime.status().state === 'online'); await f.runtime.resume(local);
+  const current = await f.registry.readActive(); const state = await current!.store.readJson('runtime-state.json') as any;
+  await current!.store.writeJson('runtime-state.json', { ...state, resumed: [] });
+  await expect(f.queue.read(id)).rejects.toThrow(); expect(await recoveryInNewProcess(f)).toBe(false);
+  await current!.store.writeJson('runtime-state.json', state);
+  const candidate = await f.registry.beginCandidate();
+  if (f.context.mode !== 'remote') throw new Error('requires remote');
+  await expect(f.runtime.proveOperationRecovery(candidate.generation, f.context.managed, local)).rejects.toThrow();
+  for (const name of ['candidate.json', 'identity.json', 'enrollment.json', 'device-key.json', 'controller-binding.json']) {
+    const path = join(old!.store.directory, name); const kept = path + '.kept'; await rename(path, kept);
+    await expect(f.queue.read(id)).rejects.toThrow(); expect(await recoveryInNewProcess(f)).toBe(false);
+    await rename(kept, path);
+  }
+  const oldCandidate = await old!.store.readJson('candidate.json') as any;
+  await old!.store.writeJson('candidate.json', { ...oldCandidate, expectedActive: current!.snapshot });
+  await expect(f.queue.read(id)).rejects.toThrow(); await old!.store.writeJson('candidate.json', oldCandidate);
+  const original = await readFile(join(f.root, 'queue/operations.json'));
+  await expect(f.queue.read(id)).resolves.toMatchObject({ state: 'queued', context: f.context });
+  expect((await readFile(join(f.root, 'queue/operations.json'))).equals(original)).toBe(true);
+}, 20000);
+it.each(['cancelled', 'write-failed'] as const)('显式resume最终证明%s不会产生可重启的跨代授权', async kind => {
+  const f = await queuedFixture(); const id = await f.submit(); await f.runtime.recover(); await until(() => f.runtime.status().state === 'online');
+  const active = (f.runtime as any).active; const write = active.stateStore.write.bind(active.stateStore);
+  const abort = new AbortController(); let entered = false; let release!: () => void;
+  vi.spyOn(active.stateStore, 'write').mockImplementation(async (state: any) => {
+    if (!entered && state.resumed?.some((value: any) => value.environmentId === local.environmentId)) {
+      entered = true;
+      if (kind === 'write-failed') throw new Error('synthetic durable failure');
+      await new Promise<void>(resolve => release = resolve);
+    }
+    return write(state);
+  });
+  const pending = f.runtime.resume(local, abort.signal); const result = expect(pending).rejects.toThrow();
+  await until(() => entered); if (kind === 'cancelled') { abort.abort(); release(); }
+  await result; await f.runtime.settled(); expect(await recoveryInNewProcess(f)).toBe(false);
+  const persisted = await active.stateStore.read(); expect(persisted.paused).toBe(true); expect(persisted.resumed).toEqual([]);
+  const restarted = new RemoteRuntime(f.options); cleanup.push(() => restarted.close()); await restarted.start();
+  expect(restarted.status().state).toBe('paused');
+  const resolver = await resolverFor(restarted); await expect(resolver.authorizeOperation(f.context, 'read')).rejects.toThrow();
+  expect(id).toBeTruthy();
+});
+
+it('已经resume的远端目标显式重新关联新installation仅影响未来，旧队列永不接管', async () => {
+  const f = await queuedFixture(); await f.runtime.acceptTarget(remote); await f.runtime.resume(remote);
+  const context = await f.resolver.operationContext(reference(f, remote)); const id = await f.submit('remote', context);
+  const next = { ...remote, installationId: 'new-installation' };
+  f.setTargets([target(local), target(next)]);
+  await expect(f.runtime.reassociate(remote, next)).resolves.toMatchObject({ pendingResume: [remote] });
+  await expect(f.queue.read(id)).rejects.toThrow();
+  const future = await f.resolver.operationContext(reference(f, next));
+  expect(future.authorizationKey).not.toBe(context.authorizationKey);
+  const newId = await f.submit('future', future); await expect(f.queue.read(newId)).resolves.toMatchObject({ state: 'queued' });
+});
+
+it('真实可信执行guard可包住同owner管理session初始化，不把自身只读与资源operation误判撤权', async () => {
+  const f = await queuedFixture();
+  f.connections[0]!.on('message', bytes => {
+    const frame = JSON.parse(bytes.toString());
+    if (frame.type === 'client_message' && frame.message.method === 'initialize')
+      f.connections[0]!.send(JSON.stringify({ type: 'server_message', client_id: f.runtime.status().clientId,
+        env_id: frame.env_id, stream_id: frame.stream_id, seq_id: 1, message: { id: frame.message.id, result: { codexHome: '/remote/mac' } } }));
+  });
+  const guard = await f.resolver.authorizeOperationExecution(f.context);
+  const session = await withRemoteOperation(guard.assertLive, () => f.runtime.createManagementSession(local));
+  guard.assertCurrent(); await session.settled(); expect(f.connections).toHaveLength(1);
+});
+
+it('真实recover未决提交仍拒绝binding查询，不把资源只读分类扩大为queryStatus例外', async () => {
+  const f = await queuedFixture(); const activate = f.registry.activate.bind(f.registry);
+  let release!: () => void; let entered = false;
+  vi.spyOn(f.registry, 'activate').mockImplementation(async (...args) => {
+    entered = true; await new Promise<void>(resolve => release = resolve); return activate(...args);
+  });
+  const abort = new AbortController(); const flight = f.runtime.recover(abort.signal);
+  const checked = expect(flight).rejects.toMatchObject({ code: 'commit-pending' });
+  await until(() => entered); abort.abort(); await checked;
+  await expect(f.runtime.readTargetBinding()).rejects.toMatchObject({ code: 'commit-pending' });
+  release(); await f.runtime.settled();
+});
+it('真实挂起mutation与readonly各自busy拒绝不覆盖当前operation的授权分类', async () => {
+  const f = await queuedFixture(); const guard = await f.resolver.authorizeOperationExecution(f.context);
+  const begin = f.registry.beginCandidate.bind(f.registry); let release!: () => void; let entered = false;
+  vi.spyOn(f.registry, 'beginCandidate').mockImplementation(async (...args) => {
+    entered = true; await new Promise<void>(resolve => release = resolve); return begin(...args);
+  });
+  const recover = f.runtime.recover(); await until(() => entered);
+  const busyRead = f.runtime.readTargetBinding(); const readCheck = expect(busyRead).rejects.toMatchObject({ code: 'busy' });
+  expect(() => guard.assertLive()).toThrow(); await readCheck;
+  release(); await recover; await until(() => f.runtime.status().state === 'online'); await f.runtime.resume(local);
+  const fresh = await f.resolver.authorizeOperationExecution(f.context);
+  const bundle = (f.runtime as any).bundle; const verify = bundle.provider.verifyBinding.bind(bundle.provider);
+  entered = false;
+  vi.spyOn(bundle.provider, 'verifyBinding').mockImplementation(async () => {
+    entered = true; await new Promise<void>(resolve => release = resolve); return verify();
+  });
+  const readonly = f.runtime.readTargetBinding(); await until(() => entered);
+  const busyWrite = f.runtime.recover(); const writeCheck = expect(busyWrite).rejects.toMatchObject({ code: 'busy' });
+  expect(() => fresh.assertLive()).not.toThrow(); await writeCheck; release(); await readonly;
+  expect(() => fresh.assertCurrent()).not.toThrow();
+});
+
+it.each(['start', 'restart'] as const)('readonly已发现身份变化后还原凭据再%s仍持久暂停，不能绕过Mac显式resume', async kind => {
+  const f = await queuedFixture(); const id = await f.submit();
+  f.setManaged({ accountId: 'other' }); await expect(f.runtime.readTargetBinding()).rejects.toMatchObject({ code: 'identity-changed' });
+  f.setManaged({ accountId: 'workspace' });
+  let runtime = f.runtime;
+  if (kind === 'restart') {
+    await runtime.close(); runtime = new RemoteRuntime(f.options); cleanup.push(() => runtime.close());
+  }
+  await runtime.start();
+  const resolver = await resolverFor(runtime);
+  await expect(resolver.authorizeOperation(f.context, 'read')).rejects.toThrow();
+  await expect(resolver.authorizeOperation(f.context, 'claim')).rejects.toThrow();
+  expect((await (await f.registry.readActive())!.store.readJson('runtime-state.json'))).toMatchObject({ paused: true, resumed: [] });
+  expect(await recoveryInNewProcess(f, 'paused')).toBe(true);
+  expect(id).toBeTruthy();
 });

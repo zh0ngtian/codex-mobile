@@ -157,6 +157,7 @@ Task4 按内部依赖顺序实施：4a 可信目标身份基础 → 4b 持久队
 
 - [x] 4a：固定随机网关/本机身份、Mac 归属校验及可信目标 resolver/旧句柄 guard 已完成源码验证与独立双审；Local非枚举字段和关闭监听重入的两项P2均先RED后修复，见[收据](evidence/2026-11-16-remote-target-identity-validation.json)。未接公开Remote路由，整个Task4继续未完成。
 - [x] 4b.1：内部 durable ledger 最终 ae62ff00 通过原 SPEC→原 QUALITY 及 root 全工件核验；相关 7 文件 211 项、双 strict/build:server 通过。原授权/控制及容量缺口均修复，见[收据](evidence/2026-11-16-remote-operation-queue-validation.json)，尚未接公开路径。
+- [ ] 4b.2a：内部真实 Runtime/Target 队列授权及持久显式恢复证明已实现与本地验证，待 root 工件核验、全新 SPEC→QUALITY；旧句柄跨代永拒，公开装配未接。
 - [ ] 4b.2：HTTP/WS/hosted/Bark/关注与目标传输装配，Sidechat 内存路由、附件 bytes/活引用、占位、读合并/导航取消、显式 resume 和旧 FollowUps 推断替换，待实现/验收。
 - [ ] 4c：真实业务时钟与会话观察/释放，待实现/验收。
 
@@ -169,6 +170,8 @@ Task4 按内部依赖顺序实施：4a 可信目标身份基础 → 4b 持久队
 4b.1 质量修复记录（2026-11-16）：83f1d6a 的 SPEC 已通过，随后独立 QUALITY 用正常 API 证实临界容量 ACK 后 claim、potentialSend 和 failed revision 9→10 被 429 阻断。原两探针及新增永久回归在旧源码实际 RED；本轮对所有现存非终态记录按生命周期最坏元数据预留计费，包含最长状态、完整 token、安全整数 PID/revision 位数，收费至少实际 bytes，终态保持实际最小收据；仍在普通64MiB/控制2MiB 内，预留不落新字段。6 项真实 API 边界已通过，覆盖接收前拒绝、最大合法输入的完整推进、全部现存三状态预留、revision跨位及释放/compact对照。原探针修复后在 edit 前置拒绝而 exit1，明确保留且不报无改脚本全绿。首次大 Buffer 深比较 OOM 属测试工具问题，改 Buffer.equals 后默认 heap 通过，原失败保留。待最终新 HEAD 限定验证及原 SPEC→原 QUALITY 复审，不能转绑 83 的通过；无迁移框架、Runtime/公开入口或发布改动。
 
 4b.1最终源码验收（2026-11-16）：冻结 `ae62ff00f609897d38d6d4b938e4cd5dfc53dabc`。相关7文件211项（队列69项）、双strict及build:server通过；新SHA原SPEC与原QUALITY独立限定复审通过，root实际核验全部封存工件。两审各独立69项，SPEC原四反例通过；QUALITY另有正常API最大合法控制容量下的多项完整推进。原容量模块在edit前置拒绝，wrapper成功且明确originalModuleCompleted=false；原失败和早期证据限制保留。公开合同仍未勾选，接下来串行实施4b.2a真实Runtime/Target授权及持久显式恢复证明，再装配公开传输与其余4b.2能力。仅源码交付，无官方访问、客户端构建或生产部署。
+
+4b.2a 本地实现记录（2026-11-16，修改基线 `fce2c5df32bc8d03b7c3d91d36084303886d089f`）：TargetResolver 构造完整冻结 OperationContext 并提供 queue authorizer 与独立 online 执行 guard；Runtime 异步核验真实 managed/provider 后返回最终同步只读 fence，复验 active/bundle/owner/完整 tuple/accepted/pending/暂停等状态。授权只读分类绑定真正接受的 Operation，不使用每次查询增长的 epoch；管理 mutation 从起点拒绝旧 guard，readonly/同 owner 管理资源不自废，原 queryStatus 未决提交例外不扩大。只读核验发现完整身份变化后同步锁存内存暂停并沿现有 save/stop 耐久暂停及自有收尾；还原原凭据再 start 或实例重建不能自动读/claim，实际 OS 子进程另验证持久 paused。最终交付同步 FS proof 后复核原父 deadline/live；Relay 每物理片真实 owner proof 后同样复验，实际延迟零发送有回归。当前代逐 tuple 显式 resume 成功且耐久后记录 resumed，registry 校验完整已提交祖先链/revision/完整身份与本机 tuple，沿原期限与 visited 有界，不设任意代数 cap。旧 Target 句柄永久拒绝旧 generation，原队列 context/正文保留，uncertain/failed 不自动重排。多代/实际 OS 新进程、取消/存储失败/缺链/未提交/重装、同代离线 settle/release/neverSent、混合批量及最终 fence 行为均有验证。早期 directory→store 夹具误用导致默认根新增 5 条 synthetic 记录，由 root 持锁可逆隔离保全，缺逐 UUID trace；早期 green01/02 不算隔离通过。已修正显式目录与测试私有 HOME，并增加构造器缺 directory 真实 RED→拒绝。全部原失败、源码 overlay 与最终固定 SHA 独立证据保留；待 root 实审与全新双审，不能勾选公开合同。未改 index/host 能力/HTTP/WS/客户端，未访问官方凭据或现役服务，无发布部署。
 
 - [ ] 测试本地保持旧 API，内部 Remote 请求携带模式和目标；无效目标、账号改变、未授权均显式拒绝，网关 Mac 的 Remote 路径同样走 relay。
 - [ ] `/api/host` 报告版本化能力/授权/配对/临时离线状态，目录仅列有权限目标；CORS 与所有文件/事件/WS 路由一致。

@@ -497,3 +497,10 @@ it('普通64MiB最大合法编辑后可claim、标记未知、记录失败并确
   const failed = await queue.settle(item.id, uncertain.revision, claim.claimToken!, 'failed'); expect(metadataBytes(await diskRecords(root))).toBeLessThanOrEqual(budget);
   await queue.settle(item.id, failed.revision, claim.claimToken!, 'succeeded'); expect(await queue.read(item.id)).not.toHaveProperty('body');
 }, 60000);
+
+it('运行时缺少显式directory必须在采用默认PrivateStore路径前拒绝', () => {
+  for (const input of [{}, { directory: undefined }, { store: { directory: '/synthetic/unused' } }]) {
+    expect(() => new OperationQueue({ ...input, gatewayId: 'gateway', authorize: async () => () => {} } as any))
+      .toThrow('持久操作队列：invalid-input');
+  }
+});

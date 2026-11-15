@@ -6,6 +6,8 @@ import type { RemoteCatalogBinding, RemoteTargetIdentity } from './catalog.js';
 import type { RemoteControllerBinding } from './controller.js';
 import type { ManagedAuthIdentity } from './managed-auth.js';
 import { PrivateStore } from './private-store.js';
+import { RemoteRuntimeStateStore, remoteManaged, sameRemoteManaged } from './runtime-state.js';
+import { assertRemoteOperation } from './operation-guard.js';
 
 export interface RemoteActiveIdentity {
   version: 1; revision: number; generation: string;
@@ -48,7 +50,7 @@ function tuple(value: unknown): RemoteTargetIdentity { const raw = object(value,
 function managed(value: unknown): ManagedAuthIdentity {
   const raw = object(value, ['codexHome', 'accountId', 'accountUserId', 'userId']); const home = text(raw.codexHome);
   if (!isAbsolute(home) || normalize(home) !== home) fail();
-  return { codexHome: home, accountId: text(raw.accountId), accountUserId: text(raw.accountUserId), ...(raw.userId === undefined ? {} : { userId: text(raw.userId) }) };
+  return { codexHome: home, accountId: text(raw.accountId), accountUserId: text(raw.accountUserId), ...(Object.hasOwn(raw, 'userId') ? { userId: text(raw.userId) } : {}) };
 }
 function enrollment(value: unknown): RemoteCatalogBinding['enrollment'] {
   const raw = object(value, ['clientId', 'accountId', 'accountUserId', 'managedAccountUserId', 'identityHash']);
@@ -161,14 +163,54 @@ export class RemoteIdentityRegistry {
     const raw = object(value, ['version', 'registryId', 'revision', 'generation', 'managed', 'enrollment', 'local']);
     if (!registryId || uuid(raw.registryId) !== registryId) fail();
     const { registryId: _registryId, ...fields } = raw; const current = snapshot(fields);
+    await this.committedGeneration(current, registryId);
+    return { registryId, snapshot: current };
+  }
+  private async committedGeneration(current: RemoteActiveIdentity, registryId: string): Promise<{
+    candidate: CandidateRecord; binding: RemoteControllerBinding;
+  }> {
     const store = await this.existingStore(current.generation);
     const candidate = candidateRecord(await this.read(store, 'candidate.json'));
     if (candidate.registryId !== registryId || candidate.generation !== current.generation || (candidate.expectedActive?.revision ?? 0) + 1 !== current.revision) fail();
     const complete = object(await this.read(store, 'identity.json'), ['version', 'registryId', 'generation', 'managed', 'enrollment', 'local']);
     if (complete.version !== 1 || complete.registryId !== registryId || complete.generation !== current.generation || !same(bindingFields(complete), stable(current))) fail();
     validateTransition(candidate, current);
-    if (!same(stable(await this.prepared(store)), stable(current))) fail();
-    return { registryId, snapshot: current };
+    const binding = await this.prepared(store);
+    if (!same(stable(binding), stable(current))) fail();
+    return { candidate, binding };
+  }
+  /** 仅当前已提交完整父链与本代显式resume事实可恢复旧队列；不会给旧Target handle续权。 */
+  async proveOperationRecovery(currentGeneration: string, originalGeneration: string, expectedManaged: ManagedAuthIdentity, target: RemoteTargetIdentity): Promise<void> {
+    const expected = remoteManaged(expectedManaged); const original = generation(originalGeneration); const requested = tuple(target);
+    return this.guarded(async () => {
+      const pointer = await this.readPointer();
+      if (!pointer || pointer.snapshot.generation !== currentGeneration || original === currentGeneration ||
+        !sameRemoteManaged(pointer.snapshot.managed, expected)) fail('identity-changed');
+      const state = await new RemoteRuntimeStateStore(this.generationStore(currentGeneration), currentGeneration, expected).read();
+      if (!state || state.paused || state.pending.some(value => sameTarget(value, requested)) ||
+        !state.resumed?.some(value => sameTarget(value, requested))) fail('identity-changed');
+      let current = pointer.snapshot;
+      const visited = new Set<string>();
+      // revision每代严格递减，visited防循环；沿原绝对operation期限，未添加任意最近N代上限。
+      for (;;) {
+        this.store.assertOwnership(); assertRemoteOperation();
+        if (visited.has(current.generation) || !sameRemoteManaged(current.managed, expected) ||
+          !sameTarget(current.local, pointer.snapshot.local)) fail('identity-changed');
+        visited.add(current.generation);
+        const { candidate, binding } = await this.committedGeneration(current, pointer.registryId);
+        this.store.assertOwnership(); assertRemoteOperation();
+        if (current.generation === original) {
+          if (!binding.targets.some(value => sameTarget(value, requested))) fail('identity-changed');
+          // 完整链验证中的await不得越过活动指针切换后交付旧证明。
+          const after = await this.readPointer();
+          if (!after || !same(after, pointer)) fail('active-changed');
+          return;
+        }
+        const parent = candidate.expectedActive;
+        if (!parent || parent.revision !== current.revision - 1) fail('identity-changed');
+        current = parent;
+      }
+    });
   }
   async readActive(): Promise<{ snapshot: RemoteActiveIdentity; store: PrivateStore } | null> {
     return this.guarded(async () => {

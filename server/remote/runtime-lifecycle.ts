@@ -41,6 +41,7 @@ export class RemoteRuntimeError extends Error {
 }
 export interface RemoteRuntimeOperation {
   epoch: number;
+  authorizationReadOnly: boolean;
   abort: AbortController;
   deadline: number;
   removers: (() => void)[];
@@ -135,12 +136,14 @@ export class RemoteRuntimeLifecycle {
     signal: AbortSignal | undefined,
     callback: (op: RemoteRuntimeOperation) => Promise<T>,
     interactive = false,
+    authorizationReadOnly = false,
   ): Promise<T> {
     if (this.closed) return Promise.reject(new RemoteRuntimeError('closed'));
     if (this.operation) return Promise.reject(new RemoteRuntimeError('busy'));
     if (signal?.aborted) return Promise.reject(new RemoteRuntimeError('cancelled'));
     const op: RemoteRuntimeOperation = {
       epoch: ++this.epoch,
+      authorizationReadOnly,
       abort: new AbortController(),
       deadline: performance.now() + (interactive ? this.interactionTimeout : this.timeout),
       removers: [],

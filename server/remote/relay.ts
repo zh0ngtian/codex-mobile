@@ -372,6 +372,8 @@ export class RemoteRelay extends EventEmitter<RelayEvents> {
       try {
         for (const frame of frames) {
           if (!this.writes.has(operation)) return;
+          // 每个物理分片先真实归属proof；同步FS可能阻塞，之后必须重查原父deadline/live。
+          this.assertOwnership();
           // 业务取消/来源失效可同步发生于上一物理send；控制帧和连接清理不继承业务guard。
           if (business) assertRemoteOperation();
           if (deadline !== undefined && performance.now() >= deadline) { finish(new RemoteSendError('Remote 发送超时', submitted, submitted ? seqId : undefined, 'timeout')); return; }

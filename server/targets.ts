@@ -1,4 +1,6 @@
 import { createHash } from 'node:crypto';
+import type { OperationContext, OperationAuthorizationFence } from './operation-queue.js';
+import { sameRemoteManaged } from './remote/runtime-state.js';
 import type { GatewayIdentity } from './gateway-identity.js';
 import { RemoteRuntime, RemoteRuntimeError, type RemoteRuntimeTargetBinding } from './remote/runtime.js';
 import { remoteTuple, sameRemoteTarget } from './remote/runtime-state.js';
@@ -134,6 +136,59 @@ export class TargetResolver {
     const businessKey = hash(['gateway-local-v1', identity.gatewayId, identity.localHostId]);
     this.local = Object.freeze({ mode: 'local', gatewayId: identity.gatewayId, localHostId: identity.localHostId,
       businessKey, authorizationKey: businessKey, transportNamespace: hash(['transport-v1', 'local', businessKey]) });
+  }
+  /** 可信进程构造完整冻结context；公开account不能代替managed证明。 */
+  async operationContext(value?: unknown, signal?: AbortSignal): Promise<OperationContext> {
+    const handle = await this.resolve(value, signal);
+    const descriptor = handle.descriptor;
+    if (descriptor.mode === 'local') return Object.freeze({ mode: 'local', gatewayId: descriptor.gatewayId,
+      localHostId: descriptor.localHostId, businessKey: descriptor.businessKey, authorizationKey: descriptor.authorizationKey });
+    const scope = await (handle as ResolvedRemoteTarget).remoteScope(signal);
+    return Object.freeze({ mode: 'remote', gatewayId: descriptor.gatewayId, businessKey: descriptor.businessKey,
+      authorizationKey: descriptor.authorizationKey, managed: scope.managed, target: scope.target, generation: descriptor.generation });
+  }
+  /** queue动作含离线结果落盘；只有claim和单独执行入口要求真实在线。 */
+  async authorizeOperation(context: OperationContext, action: 'submit' | 'read' | 'edit' | 'cancel' | 'claim' | 'transition', signal?: AbortSignal): Promise<OperationAuthorizationFence> {
+    return (await this.operationAuthorization(context, action === 'claim', signal)).assertCurrent;
+  }
+  /** 后续可信scheduler在最后await后交付正文用assertCurrent；传输组合只能使用无FS assertLive。 */
+  authorizeOperationExecution(context: OperationContext, signal?: AbortSignal) {
+    return this.operationAuthorization(context, true, signal);
+  }
+  private async operationAuthorization(context: OperationContext, execute: boolean, signal?: AbortSignal): Promise<{
+    assertCurrent: OperationAuthorizationFence; assertLive: OperationAuthorizationFence;
+  }> {
+    if (context.mode === 'local') {
+      object(context, ['mode', 'gatewayId', 'localHostId', 'businessKey', 'authorizationKey']);
+      if (context.gatewayId !== this.identity.gatewayId || context.localHostId !== this.local.localHostId ||
+        context.businessKey !== this.local.businessKey || context.authorizationKey !== this.local.authorizationKey)
+        throw new TargetResolutionError('identity-changed');
+      const assertCurrent = () => { /* 真实Local固定身份，不依赖Remote所有者。 */ };
+      return { assertCurrent, assertLive: assertCurrent };
+    }
+    object(context, ['mode', 'gatewayId', 'businessKey', 'authorizationKey', 'managed', 'target', 'generation']);
+    if (context.mode !== 'remote') throw new TargetResolutionError('invalid-reference');
+    object(context.managed, ['codexHome', 'accountId', 'accountUserId', 'userId']);
+    if (context.gatewayId !== this.identity.gatewayId) throw new TargetResolutionError('gateway-mismatch');
+    const runtime = this.#runtime;
+    if (!runtime) throw new TargetResolutionError('not-configured');
+    try {
+      if (runtime.status().state === 'paused') throw new TargetResolutionError('paused');
+      const binding = await runtime.readTargetBinding(signal);
+      if (!sameRemoteManaged(context.managed, binding.managed) ||
+        Object.hasOwn(context.managed, 'userId') !== Object.hasOwn(binding.managed, 'userId'))
+        throw new TargetResolutionError('identity-changed');
+      if (context.generation !== binding.generation) await runtime.proveOperationRecovery(context.generation, context.managed, context.target, signal);
+      const reference = parse({ mode: 'remote', gatewayId: context.gatewayId, account: {
+        accountId: context.managed.accountId, accountUserId: context.managed.accountUserId,
+        ...(Object.hasOwn(context.managed, 'userId') ? { userId: context.managed.userId } : {}) }, target: context.target })!;
+      check(reference, binding, execute);
+      const businessKey = sameRemoteTarget(binding.local, context.target) ? this.local.businessKey :
+        hash(['gateway-remote-v1', this.identity.gatewayId, binding.managed, context.target]);
+      if (context.businessKey !== businessKey || context.authorizationKey !== authorization(this.identity.gatewayId, { ...binding, generation: context.generation }, context.target))
+        throw new TargetResolutionError('identity-changed');
+      return { assertCurrent: () => binding.assertCurrent(reference.target, execute), assertLive: () => binding.assertLive(reference.target, execute) };
+    } catch (error) { return failure(error); }
   }
   async resolve(value: RemoteTargetReference, signal?: AbortSignal): Promise<ResolvedRemoteTarget>;
   async resolve(value?: unknown, signal?: AbortSignal): Promise<ResolvedLocalTarget | ResolvedRemoteTarget>;

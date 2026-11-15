@@ -20,7 +20,7 @@ export interface OperationInput {
 }
 export type OperationState = 'queued' | 'claimed' | 'uncertain' | 'failed' | 'succeeded' | 'cancelled';
 /** 可信授权器捕获完整上下文及真实权限版本；同步只读断言失效即抛错，禁止异步。
- * 4b.2须由Target/Runtime提供真实归属/版本检查，不能以固定通过代替生产guard。 */
+ * TargetResolver/RemoteRuntime提供内部真实归属/权限检查，公开scheduler装配仍待4b.2。 */
 export type OperationAuthorizationFence = () => void;
 type Action = 'submit' | 'read' | 'edit' | 'cancel' | 'claim' | 'transition';
 export interface OperationReceipt {
@@ -83,7 +83,7 @@ export class OperationQueue {
   readonly #authorize: (context: Readonly<OperationContext>, action: Action) => Promise<OperationAuthorizationFence>;
   #poisoned = false;
   constructor(options: { directory: string; gatewayId: string; authorize: (context: Readonly<OperationContext>, action: Action) => Promise<OperationAuthorizationFence> }) {
-    if (!text(options.gatewayId) || typeof options.authorize !== 'function') fail('invalid-input', 400);
+    if (typeof options.directory !== 'string' || !text(options.directory) || !text(options.gatewayId) || typeof options.authorize !== 'function') fail('invalid-input', 400);
     this.#store = new PrivateStore(options.directory); this.#gatewayId = options.gatewayId; this.#authorize = options.authorize;
   }
   private async checkDirectory(): Promise<void> {

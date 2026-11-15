@@ -98,6 +98,10 @@ export interface RemoteRuntimeTargetBinding {
   readonly targets: readonly Readonly<RemoteTarget>[];
   readonly pendingResume: readonly Readonly<RemoteTargetIdentity>[];
   readonly state: RemoteRuntimeStatus['state'];
+  /** 最后await后的队列交付边界；同步只读，包含真实私有归属证明，不能用作operation-guard闭包。 */
+  readonly assertCurrent: (target: RemoteTargetIdentity, execute?: boolean) => void;
+  /** 无FS的物理发送guard；真实资源/分片边界仍须先完成其既有归属证明。 */
+  readonly assertLive: (target: RemoteTargetIdentity, execute?: boolean) => void;
 }
 interface Active {
   snapshot: RemoteActiveIdentity;
@@ -113,6 +117,7 @@ interface Bundle {
   oauth: Pick<RemoteStepUpOAuth, 'authorize' | 'close'>;
   controller: RemoteController;
   remove?: () => void;
+  authorizationRevision: number;
 }
 function duration(value: number | undefined, fallback: number, max: number): number {
   const result = value ?? fallback;
@@ -256,8 +261,10 @@ export class RemoteRuntime extends EventEmitter<{
     callback: (op: Operation) => Promise<T>,
     interactive = false,
     query = false,
+    authorizationReadOnly = false,
   ): Promise<T> {
     if (this.closed) return Promise.reject(new RemoteRuntimeError('closed'));
+    if (this.operation) return Promise.reject(new RemoteRuntimeError('busy'));
     if (this.committing && !query) return Promise.reject(new RemoteRuntimeError('commit-pending'));
     return this.lifecycle
       .run(
@@ -268,6 +275,7 @@ export class RemoteRuntime extends EventEmitter<{
           return callback(op);
         },
         interactive,
+        authorizationReadOnly || query,
       )
       .finally(() => this.publish());
   }
@@ -338,6 +346,7 @@ export class RemoteRuntime extends EventEmitter<{
         paused: true,
         reason,
         pending: mergeRemotePending(active.state.pending, binding.targets),
+        resumed: [],
       }),
     );
     this.publish();
@@ -387,7 +396,7 @@ export class RemoteRuntime extends EventEmitter<{
         expectedManaged,
         expectedLocal,
       });
-      return { store, loader, key, provider, oauth, controller };
+      return { store, loader, key, provider, oauth, controller, authorizationRevision: 0 };
     } catch {
       void this.lifecycle.track(dispose(controller));
       void this.lifecycle.track(dispose(oauth));
@@ -424,8 +433,12 @@ export class RemoteRuntime extends EventEmitter<{
   }
   private install(bundle: Bundle): void {
     this.bundle = bundle;
+    let authorizationState = '';
     const changed = () => {
       if (this.bundle !== bundle || this.closed) return;
+      const current = JSON.stringify([bundle.controller.state, bundle.controller.binding,
+        bundle.controller.targets.map(value => [value.env_id, value.installation_id, value.online])]);
+      if (current !== authorizationState) { authorizationState = current; bundle.authorizationRevision++; }
       if (['auth-required', 'paused', 'remote-disabled'].includes(bundle.controller.state) && this.active) {
         const active = this.active;
         const binding = bundle.controller.binding;
@@ -434,6 +447,7 @@ export class RemoteRuntime extends EventEmitter<{
           paused: true,
           reason: 'auth-required' as const,
           pending: mergeRemotePending(active.state.pending, binding?.targets ?? []),
+          resumed: [],
         };
         active.state = state;
         void this.save(active, state).catch(() => {
@@ -445,9 +459,11 @@ export class RemoteRuntime extends EventEmitter<{
     };
     bundle.controller.on('state', changed);
     bundle.controller.on('targets', changed);
+    bundle.controller.on('binding', changed);
     bundle.remove = () => {
       bundle.controller.off('state', changed);
       bundle.controller.off('targets', changed);
+      bundle.controller.off('binding', changed);
     };
   }
   private async ready(op: Operation, active: Active): Promise<Bundle> {
@@ -514,6 +530,7 @@ export class RemoteRuntime extends EventEmitter<{
       const active = this.active;
       const bundle = this.bundle;
       if (!active) throw new RemoteRuntimeError('not-configured');
+      if (this.fault === 'identity-changed') throw new RemoteRuntimeError('identity-changed');
       if (!bundle || this.preparing || active.state.paused || this.fault)
         throw new RemoteRuntimeError('unavailable');
       try {
@@ -522,7 +539,18 @@ export class RemoteRuntime extends EventEmitter<{
         const { version: _version, identity: _identity, ...binding } = enrollment;
         if (!equal(binding, active.snapshot.enrollment)) throw new RemoteRuntimeError('identity-changed');
       } catch (error) {
-        throw new RemoteRuntimeError(classify(error));
+        const code = classify(error);
+        // loader保留原binding用于拒绝换号；实际核验已发现撤权时旧内存fence也必须同步失效。
+        if (code === 'identity-changed') {
+          this.fault = code;
+          const paused: RemoteRuntimeStateRecord = { ...active.state, paused: true, reason: 'identity-changed',
+            pending: mergeRemotePending(active.state.pending, bundle.controller.binding?.targets ?? []), resumed: [] };
+          // 已观察撤权立即锁住旧fence；安全暂停与精确资源收尾不被失效父guard阻断。
+          active.state = paused;
+          const saved = this.save(active, paused).catch(() => { this.fault = 'storage'; });
+          await this.boundedCleanup(() => Promise.all([saved, this.stop(op).catch(() => undefined)]));
+        }
+        throw new RemoteRuntimeError(code);
       }
       this.assert(op);
       const binding = bundle.controller.binding;
@@ -530,7 +558,36 @@ export class RemoteRuntime extends EventEmitter<{
         throw new RemoteRuntimeError('unavailable');
       if (!binding || !sameRemoteManaged(binding.managed, active.snapshot.managed) ||
         !sameRemoteTarget(binding.local, active.snapshot.local)) throw new RemoteRuntimeError('identity-changed');
+      const state = active.state;
+      const revision = bundle.authorizationRevision;
+      const assertLive = (value: RemoteTargetIdentity, execute = false): void => {
+        if (this.closed) throw new RemoteRuntimeError('closed');
+        if (this.active !== active || this.bundle !== bundle || (this.operation && !this.operation.authorizationReadOnly) || this.preparing || this.fault ||
+          active.state !== state || active.state.paused || bundle.authorizationRevision !== revision ||
+          this.options.store?.ownershipSignal?.aborted) throw new RemoteRuntimeError('unavailable');
+        const actual = bundle.controller.binding;
+        const identity = bundle.loader.currentIdentity;
+        if (!actual || !identity || !sameRemoteManaged(identity, active.snapshot.managed) ||
+          !sameRemoteManaged(actual.managed, active.snapshot.managed) ||
+          !sameRemoteTarget(actual.local, active.snapshot.local) || !equal(actual.enrollment, active.snapshot.enrollment))
+          throw new RemoteRuntimeError('identity-changed');
+        if (!actual.targets.some(target => sameRemoteTarget(target, value))) throw new RemoteRuntimeError('target-unaccepted');
+        if (active.state.pending.some(target => sameRemoteTarget(target, value))) throw new RemoteRuntimeError('pending-resume');
+        const target = bundle.controller.targets.find(target => target.env_id === value.environmentId);
+        if (!target || target.installation_id !== value.installationId ||
+          ['paused', 'closed', 'auth-required', 'remote-disabled'].includes(bundle.controller.state))
+          throw new RemoteRuntimeError('target-unavailable');
+        if (execute && (bundle.controller.state !== 'online' || !target.online)) throw new RemoteRuntimeError('target-unavailable');
+      };
+      const assertCurrent = (target: RemoteTargetIdentity, execute = false): void => {
+        this.options.store?.assertOwnership();
+        active.store.assertOwnership();
+        // 此fence不作operation-guard闭包；FS后检查既有无FS父guard，不能跨原期限交付正文。
+        assertRemoteOperation();
+        assertLive(target, execute);
+      };
       return Object.freeze({
+        assertCurrent, assertLive,
         generation: active.snapshot.generation,
         managed: Object.freeze(remoteManaged(binding.managed)),
         local: Object.freeze(remoteTuple(binding.local)),
@@ -539,7 +596,18 @@ export class RemoteRuntime extends EventEmitter<{
         pendingResume: Object.freeze(active.state.pending.map(value => Object.freeze(remoteTuple(value)))),
         state: this.status().state,
       });
-    });
+    }, false, false, true);
+  }
+  /** 内部队列跨代证明仍受本次原绝对期限约束，查询不创建替代owner或连接。 */
+  proveOperationRecovery(originalGeneration: string, managed: ManagedAuthIdentity, target: RemoteTargetIdentity, signal?: AbortSignal): Promise<void> {
+    return this.run(signal, async op => {
+      const active = this.active;
+      if (!active || !this.bundle || this.preparing || active.state.paused || this.fault) throw new RemoteRuntimeError('unavailable');
+      if (!sameRemoteManaged(active.snapshot.managed, managed)) throw new RemoteRuntimeError('identity-changed');
+      await this.wait(op, () => this.registry.proveOperationRecovery(active.snapshot.generation, originalGeneration, managed, target));
+      this.assert(op);
+      if (this.active !== active || active.state.paused) throw new RemoteRuntimeError('identity-changed');
+    }, false, false, true);
   }
   private async expected(op: Operation, bundle: Bundle, managed: ManagedAuthIdentity): Promise<void> {
     const actual = await this.wait(op, () => bundle.loader.verifyIdentity(managed));
@@ -659,6 +727,7 @@ export class RemoteRuntime extends EventEmitter<{
         paused: true,
         reason: kind === 'reassociate' ? 'reassociation' : 'reauthorization',
         pending: mergeRemotePending(pending),
+        resumed: [],
       };
       const active = await this.commit(op, candidate, bundle, state);
       committed = active;
@@ -787,6 +856,7 @@ export class RemoteRuntime extends EventEmitter<{
           ...active.state,
           paused: true,
           pending: mergeRemotePending(before.pending, active.state.pending),
+          resumed: [],
         };
         active.state = paused;
         // close 的同步部分先中止 controller 的 epoch 和 Relay，迟到的 start/load 不能继续激活。
@@ -837,10 +907,18 @@ export class RemoteRuntime extends EventEmitter<{
             ...current,
             paused: false,
             pending: current.pending.filter((value) => !sameRemoteTarget(value, target)),
+            resumed: (current.resumed ?? []).filter(value => !sameRemoteTarget(value, target)),
           }),
         );
         this.fault = undefined;
         await this.wait(op, () => bundle.controller.start());
+        await this.expected(op, bundle, active.snapshot.managed);
+        await this.wait(op, () => bundle.provider.verifyBinding());
+        this.assert(op);
+        // 最后实际start与完整身份证明之后，独立耐久记录本次显式tuple恢复。
+        await this.wait(op, () => this.save(active, {
+          ...active.state, resumed: mergeRemotePending(active.state.resumed ?? [], [target]),
+        }));
         this.assert(op);
         return this.status();
       } catch (error) {
@@ -895,6 +973,7 @@ export class RemoteRuntime extends EventEmitter<{
             ...active.state,
             reason: 'reassociation',
             pending: mergeRemotePending(active.state.pending, [previous]),
+            resumed: (active.state.resumed ?? []).filter(value => !sameRemoteTarget(value, previous)),
           }),
         );
         if (!this.bundle) this.install(this.makeBundle(active.store, active.snapshot.managed, active.snapshot.local));
@@ -955,7 +1034,7 @@ export class RemoteRuntime extends EventEmitter<{
       )
         throw new RemoteRuntimeError('unavailable');
       return session;
-    });
+    }, false, false, true);
     return flight
       .then((session) => {
         unclaimedSession = undefined;
