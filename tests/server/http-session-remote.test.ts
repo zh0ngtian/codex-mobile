@@ -44,6 +44,69 @@ async function sessionFixture() {
   return { ...f, sessions, remote, frames, call, events, send, attach, respond(fn: typeof respond) { respond = fn; },
     init: (id: string) => call(id, { id: 1, method: 'initialize', params: { clientInfo: { name: 'controlled-session', version: '1' } } }) };
 }
+it.each((['summaries', 'projectless', 'projectless-cursor', 'loaded-page'] as const).flatMap(path => (['deadline', 'signal'] as const).map(kind => ({ path, kind }))))('QUALITY sidebar $path内部等待保留原$kind', async ({ path, kind }) => {
+  const f = await sessionFixture(); await f.sessions.hostedReady(); const session = [...(f.sessions as any).sessions.values()][0] as any;
+  const healthyId = randomUUID(); await f.init(healthyId); let hold = false; let route: any;
+  f.respond(frame => {
+    const m = frame.message; if (m?.id == null || !m.method) return;
+    if (m.method === 'thread/loaded/list') {
+      if (hold && m.params?.cursor === 'page-two') { route = frame; return; }
+      f.send(frame, { id: m.id, result: { data: [], nextCursor: 'page-two' } }); return;
+    }
+    if (m.method === 'thread/read') {
+      if (hold) { route = frame; return; }
+      f.send(frame, { id: m.id, result: { thread: { id: m.params.threadId, recencyAt: Number(m.params.threadId), status: { type: 'idle' } } } }); return;
+    }
+    f.send(frame, { id: m.id, result: {} });
+  });
+  const params: any = { threadIds: path === 'projectless-cursor' ? ['0', '1', '2', '3', '4', '5'] : ['slow'], includeRunning: path === 'loaded-page' };
+  const method = path.startsWith('projectless') ? 'mobile/sidebar/projectless' : 'mobile/sidebar/summaries';
+  if (path === 'projectless-cursor') {
+    params.cursor = ((await f.sessions.sidebarRpc({ id: 'prime', method, params })).result as any).nextCursor;
+    (f.sessions as any).sidebar.observe({ method: 'thread/name/updated', params: { threadId: '0' } });
+  }
+  hold = true; const abort = new AbortController(); const deadline = performance.now() + (kind === 'deadline' ? 200 : 2000);
+  const exchange = session.exchange.bind(session); const childCalls: any[] = [];
+  vi.spyOn(session, 'exchange').mockImplementation(((m: any, socket: any, call: any) => { if (['thread/read', 'thread/loaded/list'].includes(m.method)) childCalls.push(call); return exchange(m, socket, call); }) as any);
+  const send = session.socket.send.bind(session.socket); const physical: number[] = [];
+  vi.spyOn(session.socket, 'send').mockImplementation(((m: any, value: number) => { if (['thread/read', 'thread/loaded/list'].includes(m.method)) physical.push(value); return send(m, value); }) as any);
+  let settled = false; const pending = f.sessions.sidebarRpc({ id: path, method, params }, { deadline, signal: abort.signal }).then(value => ({ value }), error => ({ error })).finally(() => { settled = true; });
+  await until(() => route != null); if (kind === 'signal') abort.abort(); await new Promise(resolve => setTimeout(resolve, kind === 'deadline' ? 260 : 60));
+  const beforeResponse = settled; const waiting = session.waiting.size;
+  f.send(route, { id: route.message.id, result: route.message.method === 'thread/read' ? { thread: { id: route.message.params.threadId, name: 'LATE_SIDEBAR_SECRET' } } : { data: ['LATE_SIDEBAR_SECRET'], nextCursor: null } });
+  expect(await pending).toHaveProperty('error'); expect(beforeResponse).toBe(true); expect(waiting).toBe(0);
+  expect(childCalls.every(call => call.deadline === deadline && call.signal === abort.signal)).toBe(true); expect(physical.every(value => value === deadline)).toBe(true);
+  expect((await f.call(healthyId, { id: 'other-stream', method: 'model/list' })).status).toBe(200); expect(f.connections).toHaveLength(1);
+  expect(JSON.stringify([...(f.sessions as any).sidebar.entries.values()])).not.toContain('LATE_SIDEBAR_SECRET');
+});
+it.each(['deadline', 'signal'] as const)('QUALITY sidebar同id并发%s只结束本caller，另一预算不借用或串号', async kind => {
+  const f = await sessionFixture(); await f.sessions.hostedReady(); const routes: any[] = [];
+  f.respond(frame => { if (frame.message?.method === 'thread/read') routes.push(frame); else if (frame.message?.id != null && frame.message.method) f.send(frame, { id: frame.message.id, result: {} }); });
+  const abort = new AbortController(); const oneDeadline = performance.now() + (kind === 'deadline' ? 180 : 2000); const secondDeadline = performance.now() + 2000;
+  const message = { id: 'one', method: 'mobile/sidebar/summaries', params: { threadIds: ['same'], includeRunning: false } };
+  let oneDone = false; const one = f.sessions.sidebarRpc(message, { deadline: oneDeadline, signal: abort.signal }).then(value => ({ value }), error => ({ error })).finally(() => { oneDone = true; });
+  await until(() => routes.length === 1); let twoDone = false;
+  const two = f.sessions.sidebarRpc({ ...message, id: 'two' }, { deadline: secondDeadline }).then(value => ({ value }), error => ({ error })).finally(() => { twoDone = true; });
+  await new Promise(resolve => setTimeout(resolve, 40)); if (kind === 'signal') abort.abort(); await new Promise(resolve => setTimeout(resolve, kind === 'deadline' ? 220 : 60));
+  const ownSettled = oneDone; const otherStillWaiting = !twoDone; const count = routes.length;
+  for (const route of routes) f.send(route, { id: route.message.id, result: { thread: { id: 'same', name: route === routes[0] ? 'FIRST_LATE' : 'SECOND_OK', status: { type: 'idle' } } } });
+  expect(await one).toHaveProperty('error'); const second = await two;
+  expect(ownSettled).toBe(true); expect(otherStillWaiting).toBe(true); expect(count).toBe(2);
+  expect(second).toMatchObject({ value: { id: 'two', result: { data: [expect.objectContaining({ name: 'SECOND_OK' })] } } });
+  expect(((await f.sessions.sidebarRpc({ ...message, id: 'cached' })).result as any).data[0].name).toBe('SECOND_OK'); expect(f.connections[0]!.readyState).toBe(1);
+});
+it.each(['deadline', 'signal'] as const)('QUALITY sidebar排队%s及时移除且零迟到发送，健康active调用继续', async kind => {
+  const f = await sessionFixture(); await f.sessions.hostedReady(); const routes: any[] = [];
+  f.respond(frame => { if (frame.message?.method === 'thread/read') routes.push(frame); else if (frame.message?.id != null && frame.message.method) f.send(frame, { id: frame.message.id, result: {} }); });
+  const active = f.sessions.sidebarRpc({ id: 'active', method: 'mobile/sidebar/summaries', params: { threadIds: ['a', 'b'], includeRunning: false } }, { deadline: performance.now() + 2000 });
+  await until(() => routes.length === 2); const abort = new AbortController(); let settled = false;
+  const queued = f.sessions.sidebarRpc({ id: 'queued', method: 'mobile/sidebar/summaries', params: { threadIds: ['never'], includeRunning: false } }, { deadline: performance.now() + (kind === 'deadline' ? 150 : 2000), signal: abort.signal }).then(value => ({ value }), error => ({ error })).finally(() => { settled = true; });
+  await new Promise(resolve => setTimeout(resolve, 40)); if (kind === 'signal') abort.abort(); await new Promise(resolve => setTimeout(resolve, kind === 'deadline' ? 190 : 60));
+  const beforeRelease = settled; const remainingQueue = (f.sessions as any).sidebar.queue.length;
+  for (const route of routes) f.send(route, { id: route.message.id, result: { thread: { id: route.message.params.threadId, status: { type: 'idle' } } } });
+  expect(((await active).result as any).data).toHaveLength(2); expect(await queued).toHaveProperty('error');
+  expect(beforeRelease).toBe(true); expect(remainingQueue).toBe(0); expect(f.frames.some(frame => frame.message?.params?.threadId === 'never')).toBe(false);
+});
 it('真实Runtime原始stream仅初始化一次并保留字符串数字RPC、通知及审批回复', async () => {
   const f = await sessionFixture(); const id = randomUUID();
   expect((await f.init(id)).status).toBe(200);

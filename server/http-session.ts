@@ -898,10 +898,13 @@ class Session {
 
 export class HttpSessions {
   private sidebar = new SidebarSummaryIndex(async (method, params) => {
-    const response = await this.hostedRpc({ id: randomUUID(), method, params });
+    return this.sidebarRequest(method, params);
+  });
+  private async sidebarRequest(method: string, params: Record<string, any>, call?: SessionCallOptions) {
+    const response = await this.hostedRpc({ id: randomUUID(), method, params }, randomUUID(), call);
     if (response.error != null) throw response.error;
     return response.result;
-  });
+  }
   private sessions = new Map<string, Session>();
   readonly sidechats = new SidechatHistory();
   private timer: NodeJS.Timeout;
@@ -1143,8 +1146,11 @@ export class HttpSessions {
       if (message.id == null || !validSidebarParams(message.method!, message.params)) throw new HttpError(400, "Invalid sidebar parameters");
       this.sidebar.setEpoch(await this.hostedReady(call));
       const params = message.params as any;
+      const context = this.options.remote ? { deadline: call.deadline, signal: call.signal,
+        request: (method: string, params: Record<string, any>) => this.sidebarRequest(method, params, call),
+        assertCurrent: () => { assertCall(call); assertRemoteOperation(); } } : undefined;
       const result = message.method === "mobile/sidebar/summaries"
-        ? await this.sidebar.summaries(params) : await this.sidebar.projectless(params);
+        ? await this.sidebar.summaries(params, context) : await this.sidebar.projectless(params, context);
       return { id: message.id, result };
     });
   }
