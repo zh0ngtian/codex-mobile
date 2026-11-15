@@ -87,6 +87,16 @@ it('64KiB完整首行分类保留隐藏source，missing/无效为普通缺失，
   await writeFile(join(f.root, '.deny'), ''); await expect(new MessageTimestamps('/gateway', s).read(id, ['answer'])).rejects.toMatchObject({ code: 'permission' });
 });
 
+it.each(['1e999', '-1e999'])('目标metadata的%s投影解码失败归为脱敏协议错误，Local数值语义不变', async number => {
+  const f = await target(); const s = await source(f); const { RolloutSourceError } = await api();
+  await file(f, meta(id, { source: { subagent: 'review', privateField: 'projection-private-marker', weight: 'overflow' } }).replace('"overflow"', number));
+  const local = await readLocalThreadMetadata(f.root, id);
+  expect(local?.source).toEqual({ subagent: 'review', privateField: 'projection-private-marker', weight: number.startsWith('-') ? -Infinity : Infinity });
+  const error: unknown = await readLocalThreadMetadata('/gateway', id, s).then(() => undefined, reason => reason);
+  expect(error).toBeInstanceOf(RolloutSourceError);
+  expect(error).toMatchObject({ code: 'protocol', message: 'Remote rollout读取未完成：protocol' });
+});
+
 it('图像诊断验证会话与item归属，只接受后继双JSON结构化审核错误', async () => {
   const f = await target(); const s = await source(f);
   const failed = (item: string) => JSON.stringify({ type: 'event_msg', payload: { type: 'item_completed', item: { kind: 'image_gen.generation', id: item, status: 'failed' } } }) + '\n';
@@ -128,6 +138,17 @@ async function bark(f: Awaited<ReturnType<typeof target>>, s: Awaited<ReturnType
   return { value, gateway, pushes, failures, f };
 }
 async function until(test: () => boolean) { const deadline = Date.now() + 5000; while (!test()) { if (Date.now() >= deadline) throw new Error('有限等待条件未满足'); await new Promise(resolve => setTimeout(resolve, 5)); } }
+
+it('Bark对嵌套metadata投影解码失败只回调一次脱敏协议错误且不发送', async () => {
+  const f = await target(); const s = await source(f); const { RolloutSourceError } = await api();
+  await file(f, meta(id, { source: { subagent: 'review', privateField: { weight: 'overflow', text: 'projection-private-marker' } } }).replace('"overflow"', '-1e999'));
+  const b = await bark(f, s); b.value.notifyFollowedCompletion(id, 'overflow');
+  await until(() => f.requests.some(request => request.projection === 'metadata'));
+  await until(() => f.active === 0); await b.value.close();
+  expect(b.pushes).toEqual([]); expect(b.failures).toHaveLength(1);
+  expect(b.failures[0]).toBeInstanceOf(RolloutSourceError);
+  expect(b.failures[0]).toMatchObject({ code: 'protocol', message: 'Remote rollout读取未完成：protocol' });
+});
 
 it('Bark分类只读目标隐藏source，订阅与去重仍在网关，missing维持普通通知策略', async () => {
   const f = await target(); const s = await source(f); const p = await file(f, meta(id, { source: { subagent: 'review' } }) + message());

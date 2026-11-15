@@ -165,7 +165,7 @@ export class RemoteRolloutSource {
           } catch (error) {
             if (error instanceof RolloutSourceError && error.code === 'changed') continue;
             if (error instanceof RolloutSourceError && error.code === 'missing') { yield { reset: true }; return; }
-            throw error;
+            throw error instanceof RolloutSourceError ? error : new RolloutSourceError('protocol');
           }
         }
       },
