@@ -121,6 +121,10 @@ Task3按内部依赖分项验证，不改变已确认的权限、功能或目标
 - [x] 3b 目标文件基础：分块、背压、版本与SHA-256校验、100MiB上限、Range、临时文件及原子提交；已发送写入不重放。冻结f455772通过新独立双审与一次官方整套Files验收，详见下方最新记录。
 - [x] 3c 固定统计读取：通过目标自己的官方环境证明既有计量来源，严格核验私有路径与socket；固定只读加网络例外仅用于统计，核验hello与实际usage/remove、断线及失效清理；无快照结束标记，不以静默推导完整或零。
 - [ ] 3d 现有功能注入：项目、rollout、图片/附件/视频、Git、标题总结、Sidechat、Bark与统计全部使用目标能力，保留各自原有边界并完成真实Remote验收。
+  - [x] 3d.1 下载、图片/视频、InlineImages与Sidechat历史图片：最终58362ad0本地、独立双审及官方B通过，正式目标路由尚未装配。
+  - [ ] 3d.2 rollout时间/引用/线程分类/图像生成失败与Bark元数据。
+  - [ ] 3d.3 项目、Git、置顶与标题总结。
+  - [ ] 3d.4 统计失效通知与消费者装配。
 
 3a完成记录：最终源码 `8e3a1214c300bd20b215ac253a2032ce7ea04077`，114项命令/RPC专项和完整服务端1145项通过、7项既有opt-in跳过；源码与含测试的两种严格检查及服务端构建通过，独立规格与质量复审均通过。初版`cba1d973`的正常后台后代残留及已发送probe错误归类由独立复现驱动修复；后续`a1478df`质量审查再发现较大输出上限的单字节越界检查迟到、Windows业务DWORD退出码误拒绝，均保留RED并以`8e3a121`最小修复。正常结果须确认精确terminate空ACK与原exec实际结束，再校验完整字节/长度/SHA；输出读取按当前可用字节及剩余额度加一，Windows业务范围独立于外层signed32。全部默认权限、Python3必需、完整账号/目标绑定，无本地/SSH回退；全局最多4命令与64MiB缓冲预留，不代表整个进程RSS上限。见[隔离验收记录](evidence/2026-11-13-remote-commands-isolated-validation.json)。
 
@@ -219,3 +223,10 @@ Task3c首轮SPEC（冻结c03d8bf）为ISSUES，原82项相关回归通过、新�
 
 
 2026-11-15开始Task3d.1时记录最新已推送并核对main为 `a3a05e75e57ae9c290e4b17ff5f8a1556387c920`，Task3c来源层已完成新双审与官方B。3d按内部消费者职责串行实施：先附件下载、图片/视频预览与Sidechat历史图片，再rollout/Bark、项目/Git/标题、统计装配；每项TDD及SPEC→QUALITY，保留Local接口/行为、完整来源namespace及Remote默认权限。当前仅开始服务端消费者依赖注入，尚未完成路由、共享队列、手机模式或真实Remote媒体验收，不构建客户端或部署。
+
+
+Task3d.1完成记录：Task3d.1媒体消费者已在冻结 `58362ad0bb1b494e3a13256b18d576e76605b99f` 完成源码验收：可信文件来源绑定完整目标身份与网关，下载/图片/视频、InlineImages和Sidechat注入保留Local默认。附件下载仍GET/HEAD完整、普通Range忽略；视频保持原GET与单Range；目标和网关缓存由受信引用区分，显式resolver丢映射拒绝，原data/http(s)与Local兼容保留。媒体超过100MiB按同版本有界分段，不新增总文件限制；版本变化不能完整混拼，取消只清理自有读取。ImagePreviews原64MiB/40M像素、128条8MiB、2active/16waiting维持。正式网关路由仍Local，目标路由、rollout/Bark、Git/标题、统计消费者、共享队列和手机模式继续待实现/验收。
+
+本次测试同步修复后的完整媒体测试文件与相关7文件75项通过；产品及其他测试字节未变，复用cd60e421完整server1518通过/7既有跳过、源码strict及build:server，本轮测试strict实际重跑通过，实际执行范围见收据；新独立SPEC→QUALITY均PASS，root全量核验2934/2954份审查工件及最终源码。独立实际HTTP/RPC/Python证明跨来源缓存/取消隔离、末窗后替换不能完整成功、resolver-only两来源字节重建与丢映射422；offset7且长度100MiB+17的视频Range经201窗完整SHA一致。首轮SPEC真实缺陷、四种修复RED、coalesce与QUALITY queued等待缺口、测试类型错误和长TMPDIR Unix socket EINVAL的首失败均保留并分类；短路径复验后才使用最终完整回归。
+
+冻结源码的官方B通过：实际OS入口经同一常驻Relay/默认权限读取自有UTF8附件、视频完整及3组有效/2组无效Range、PNG与JPEG缩略图、HEAD/ETag304、InlineImages可信引用和resolver-only Sidechat真实字节，丢映射明确拒绝。实际command/exec 38次、实际终结38次、活动归零，权限及禁止操作违规均0；关闭适配器后原session RPC可用。全部逻辑流关闭后实际零流25003ms，再次RPC成功且prepare仍1次、物理Relay1条；SIGTERM退出0、自有目标文件/HTTP/admin/隔离根清理通过。首轮A因探针sharp旧入口解析失败在Runtime初始化前退出1，175工件保持封存；修正仅限探针，离线完整加载通过后另开B，产品源码未改。root全量核验175份官方工件及85份归档源码，执行前绑定工件均未改变。仅当前Mac小媒体短时样本；没有Windows实机、P95、8小时、睡眠唤醒、手机、部署或发布结论；未新授权、推理或创建测试会话。 见[脱敏验收收据](evidence/2026-11-15-remote-media-consumers-validation.json)。下一项顺序实施3d.2，Task3整体继续未完成。
