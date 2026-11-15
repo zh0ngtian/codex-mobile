@@ -114,10 +114,12 @@ prepare在整合结果门禁通过后提交与上游字节一致的公共 `.rele
 | `build` | 按冻结 SHA 查询唯一正式 CI，记录 run/attempt；只下载本 run 缺失的平台，校验批次、任务、版本、真实来源、大小与散列；核对 Release tag 和附件 |
 | `apk`（历史） | 旧含LAN合同保留；现行GitHub-only拒绝该阶段，不访问或更新固定APK |
 | `source` | 本仓库 unsigned IPA 的版本/构建号、GitHub URL、大小、散列及当前 gh 用户署名；核对真实同步 job，保留原开发者与展示信息；公开记录缺失散列时，经版本/URL/大小核对后调用现役 `/attest` CAS 写入该产物散列并回验，响应丢失先对账 |
-| `gateway` | 仅 `npm run build:server`；更新原已安装包的 server/bin，保留已部署 dist、依赖、start.py 与环境；核对文件摘要、实际 launchd PID/命令、监听端口和认证状态接口；健康探测使用既有 `HOST`，通配地址转回环、IPv6 加方括号、本机请求绕过代理；响应丢失不重复重启 |
+| `gateway` | 默认仅 `npm run build:server`，更新原已安装包的 server/bin并保留已部署 dist；已获授权的任务可用下述 `webUi=true` 显式构建并更新 dist。两种范围均保留依赖、start.py 与环境；核对文件摘要、实际 launchd PID/命令、监听端口和认证状态接口；健康探测使用既有 `HOST`，通配地址转回环、IPv6 加方括号、本机请求绕过代理；响应丢失不重复重启 |
 | `verify` | 等待同冻结SHA必要开发CI；双端核对 main/build/source 并独立完整下载 GitHub APK／unsigned IPA；Android 单端仅核对 main/build 并独立完整下载 APK，不访问软件源；保存 `github-release.json` 与 `distribution=github-only` 成功证据，明确 `lanApkPublished=false` 及signed IPA／OTA／固定IPA均未发布；网关核对main/gateway |
 
 正式CI只在main冻结清单变化时触发，使用稳定作用域、`cancel-in-progress: false`、`queue: max`；gateway清单跳过客户端build/release，历史OTA清单保留原跳过行为。现行客户端额外阶段 `apk/ipa/iosbuild/sign/ota/gateway` 及未知阶段全部拒绝。手动dispatch需匹配已有batch／版本／最终SHA，不得用它另发独立版本或重复触发同批；重复正式run会被适配器拒绝并保留诊断。开发／PR检查使用另一并发组，仅执行原有必要检查，不发包。构建 matrix 来自冻结项目的校验输出，Android 单端仅含 ubuntu Android 作业；发布回执拒绝越界的 IPA 或 iOS 回执，双端仍必须有两端。recipe、容器SHA、工具版本、Android签名及iOS unsigned策略保留。
+
+网关 WebUI 更新须由用户明确授权，并在该任务的私有验证记录声明 `"scope": "gateway-only"`、`"sourceCommit": "该任务完整SHA"`、`"webUi": true`。该开关只接受布尔值，scope／SHA 必须绑定任务；多个任务显式选择冲突时拒绝。未声明或显式 false 均沿用保留旧 dist 的合同，旧身份及检查点保持兼容。启用时从冻结工作区执行 `npm run build`，清理旧 dist，记录前端构建输入指纹、日志散列和 dist 摘要；成功凭证先原子落盘，再制作包含新 dist 的安装快照。源、输出或日志漂移拒绝复用；响应丢失按成功检查点恢复，不重复构建。部署身份及成功回执包含 `webUi=true`，并以实际前端摘要和现有网关健康检查验收；这不授权 APK／IPA 构建、桌面适配器安装或其他部署目标。
 
 网关依赖声明若与已安装包不同，当前阶段阻止部署，需先完成该依赖变更所需验证和关联修复；不能假装旧依赖满足新代码。仅修改协调器接入不自动要求客户端发布或网关部署；2026-10-13 的真实双端发布与网关验收是当次用户授权，不能作为后续任务的默认授权。
 
