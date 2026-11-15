@@ -1,0 +1,121 @@
+{
+  "schemaVersion": 1,
+  "task": "Task4b1-internal-operation-queue",
+  "sourceCommit": "ae62ff00f609897d38d6d4b938e4cd5dfc53dabc",
+  "tree": "f2a34e5f3a76f1694c48697989990a7e56739f2f",
+  "baselineMain": "f266d7b6b858191efa54d648c90460c8ae87e01d",
+  "completedAtUtc": "2026-11-15T17:48:44.260116+00:00",
+  "sourceOnly": true,
+  "deployed": false,
+  "clientPublished": false,
+  "clientBuild": false,
+  "gates": {
+    "implementationPassed": true,
+    "specPassed": true,
+    "qualityPassed": true,
+    "rootAuditedAllArtifacts": true
+  },
+  "scope": "内部耐久操作账本：UUID原签名/CAS、完整身份最终同步授权、会话控制顺序、保守发送标记与生命周期容量预留；尚未接入公开路由或生产Runtime授权器",
+  "implementationStages": [
+    {
+      "sourceCommit": "95dedae571f6d36142e20ee36d71cd3a3336f8c8",
+      "tree": "6a81193a0a231aa43489f9f6f383867108629dec",
+      "manifestSha256": "2eed2df6109c40557c1e6e1ebb485c37bc0bca28aa1b18dc67adf49fc0ec5ced",
+      "bindingSha256": "12effa8603ebc7dcdee03a36130f5505204711f47b4e2a3ef593e89cd177b0b5",
+      "reportSha256": "81f2380fce4772922dfdaca421f3dd9e0d32500e78b4744cade1802f9d4fcc43",
+      "rootAuditSha256": "f3f15e7799e8ebde708cf0079b0f8083da3a75d70afc3f82921e54d712854f40",
+      "rootAuditedAllArtifacts": true
+    },
+    {
+      "sourceCommit": "83f1d6a53b0f065e54f8a9c13f1190276f370e9d",
+      "tree": "928079466ee4a1fa91ea3d603ec2908390c8f293",
+      "manifestSha256": "edad2e44659d64c996897b04dc72da15313d9c138dcdf1e38a3a010b68353610",
+      "bindingSha256": "4287a0ed149220e59e1b70ee5d89756cb7d29c3de409a967fe60da39ee7ce378",
+      "reportSha256": "b981f3f26e87828a91f711ddce367d3c9bf7e251e8686871854ae9a3450f0612",
+      "rootAuditSha256": "2592beaf2e7d4824d4e74c15f7c9972ab56ebee89de44e88a1ca4a887b47510d",
+      "rootAuditedAllArtifacts": true
+    },
+    {
+      "sourceCommit": "ae62ff00f609897d38d6d4b938e4cd5dfc53dabc",
+      "tree": "f2a34e5f3a76f1694c48697989990a7e56739f2f",
+      "manifestSha256": "16b378d8af634271a501245af019ac7f4c7c5fc0433b49452f522abe77efc110",
+      "bindingSha256": "80657587ee4e4c1f7362b4b0d6865ea665cc9980c4f8f72613859b5a048497cd",
+      "reportSha256": "97c8cb39fb88b543a50d3d9ef16ba942c21a3e276e41439405c69e7fe5660bb8",
+      "rootAuditSha256": "d3c466b2bc7b70516a7e5f50a67f5cb366e2806ae61f78652604a63e183ec760",
+      "rootAuditedAllArtifacts": true
+    }
+  ],
+  "finalSpec": {
+    "manifestSha256": "6f3b2bc61bd7f0c0a639b616e9890b3315a57ab669e94cd977f3e35a962235e7",
+    "bindingSha256": "f337b7b657ba9f2eacc1d08ae8e127126f55738d017fe013df9ce8fa84f74ceb",
+    "reportSha256": "19db98a9dc4e6d8cc62f8049ac8069390a872952c38051457a8d62d04a46c122",
+    "rootAuditSha256": "df0cc15f470be24e9c277e93404bffe0b67f693c30a056bd0312b1465e3798ba",
+    "sourceCommit": "ae62ff00f609897d38d6d4b938e4cd5dfc53dabc",
+    "passed": true,
+    "rootAuditedAllArtifacts": true
+  },
+  "finalQuality": {
+    "manifestSha256": "4b6e9df01603fb3de184d6a538be3fe7e8a96550c0b96384e338287316530bba",
+    "bindingSha256": "a4f1d18cef8c8a7eca309278fb29779f9737b33251a4a306bd32e7335f7b9719",
+    "reportSha256": "3bbbd2c669011f7b7c46e57844ce675baa9b54c94e97de7619d32dd18680b2dc",
+    "rootAuditSha256": "d9929f2849bcbb6b4556758145255014f996b63c9b4c4c7142d1363fc516fae6",
+    "sourceCommit": "ae62ff00f609897d38d6d4b938e4cd5dfc53dabc",
+    "passed": true,
+    "rootAuditedAllArtifacts": true
+  },
+  "validation": {
+    "finalSourceCommit": "ae62ff00f609897d38d6d4b938e4cd5dfc53dabc",
+    "relatedFiles": 7,
+    "relatedPassed": 211,
+    "queueSpecialistPassed": 69,
+    "sourceStrictExit": 0,
+    "testStrictExit": 0,
+    "buildServerExit": 0,
+    "specIndependentSpecialistPassed": 69,
+    "specOriginalCounterexamplesPassed": 4,
+    "qualityIndependentSpecialistPassed": 69,
+    "qualityIndependentLegalCapacityLifecyclePassed": true,
+    "originalCapacityModulesCompleted": false,
+    "originalCapacityInputRejectedBeforeEditAck": true
+  },
+  "failuresRetained": [
+    {
+      "sourceCommit": "95dedae571f6d36142e20ee36d71cd3a3336f8c8",
+      "kind": "SPEC P1/P2",
+      "finding": "混合列表后置异步授权可交付已撤权正文；后控制可绕过claimed/uncertain/failed控制队首",
+      "fixedAt": "83f1d6a53b0f065e54f8a9c13f1190276f370e9d",
+      "originalTimingPassedAtFinal": true
+    },
+    {
+      "sourceCommit": "83f1d6a53b0f065e54f8a9c13f1190276f370e9d",
+      "kind": "QUALITY P2",
+      "finding": "容量未为已接收项后续claim、potentialSend及revision跨位预留",
+      "fixedAt": "ae62ff00f609897d38d6d4b938e4cd5dfc53dabc",
+      "originalBoundaryRejectedBeforeAck": true
+    },
+    {
+      "kind": "测试夹具OOM",
+      "finding": "首次大Buffer深比较使默认heap耗尽；改Buffer.equals后通过，未放宽heap或生产限制",
+      "notProductRed": true
+    },
+    {
+      "kind": "历史证据限制",
+      "finding": "首实现早期RED01–05只有日志及文件hash，不能字节重放；后续RED overlay和最终归档完整保留",
+      "notRewritten": true
+    },
+    {
+      "kind": "原容量模块修复后提前拒绝",
+      "finding": "原完整模块在edit前置拒绝而exit1；独立wrapper验证正确拒绝且旧输入保持，originalModuleCompleted=false；69项包含完整合法生命周期验证",
+      "notReportedAsUnmodifiedModuleGreen": true
+    }
+  ],
+  "pending": [
+    "Task4b2真实Target/Runtime授权与显式跨generation恢复",
+    "Task4b2公开HTTP/WS/hosted/Bark/关注装配、附件bytes、占位、读合并和Sidechat内存路由",
+    "Task4c会话观察",
+    "Task5手机模式与outbox",
+    "Task6官方功能及8小时/凭据周期/睡眠唤醒/P95"
+  ],
+  "officialRemoteProbeRunThisStep": false,
+  "testChatsCreated": 0
+}
