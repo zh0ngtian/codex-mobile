@@ -29,6 +29,8 @@
 - [2026-11-11 原生版发布与后续 Android 单端构建](superpowers/plans/2026-11-11-android-only-release.md)：0.3.45 双端与软件源验收成功，已具备 APK 单端入口；后续 IPA 范围以[原生界面影响判据](release-coordination.md#ios-build-scope)为准，包含破坏原生操作的网关接口变更，仅 WebUI 不打 IPA。单端首次真实批次待后续发布验收。
 - [2026-11-10 网页引用补修联合发布](superpowers/plans/2026-11-10-web-citations-hidden-release.md)：0.3.44 GitHub双端及既有iOS软件源、配套网关成功；12会话54项来源与73处引用回验通过。
 
+- [Remote项目、Git与标题消费者收据](superpowers/plans/evidence/2026-11-15-remote-projects-git-titles-validation.json)：冻结180cf6c8完成本地1677项/7跳过、独立双审和官方A/B；项目及Git用户index保持、独立标题、仅自有pin往返与归档、25秒零流后RPC已验证。统计失效装配、公开目标路由、队列与手机模式继续待完成；未部署或发布。
+
 ## 当前发布入口
 
 最近已验收客户端为0.3.47（3047）：WebUI 输入框对齐 iOS 的正文与工具行布局，长输入自动增高至六行，模型、思考强度、权限和 Fast 独立操作，附件加号使用居中 SVG。成功批次 `433ed0e5-e037-4af3-adeb-a65bfd59bf0e`，冻结 `248b05ebea81aa54f7642eec186f286618b8cb9e`；GitHub APK／未签名 IPA 和既有 iOS 软件源已回验，46项独立渠道核对通过。167项组件／业务回归、17项 iPhone 17 Pro WebKit 验收及四项发布门禁通过。本次未部署网关；LAN、签名 IPA 与 OTA 继续停用。真机键盘、安装、数据保留与实际手感待验收，详见[发布凭证](superpowers/plans/evidence/2026-11-14-web-composer-release.json)。
