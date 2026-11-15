@@ -6,6 +6,8 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { HttpSessions, type HttpSessionRemoteOptions } from '../../server/http-session.js';
 import { TargetResolver } from '../../server/targets.js';
 import { localMediaFiles } from '../../server/media-file-source.js';
+import { performance } from 'node:perf_hooks';
+import { WebSocket, WebSocketServer } from 'ws';
 import { fixture, until } from './remote-session-fixture.js';
 
 const cleanup: (() => unknown)[] = [];
@@ -408,4 +410,104 @@ it('缓存RPC本次storedOperation await期间关闭逻辑流后不交付旧缓�
   const original = session.storedOperation.bind(session); let entered!: () => void; const started = new Promise<void>(resolve => { entered = resolve; }); let release!: () => void; const gate = new Promise<void>(resolve => { release = resolve; });
   vi.spyOn(session, 'storedOperation').mockImplementationOnce(async (...args: any[]) => { entered(); await gate; return original(...args); });
   const pending = f.call(id, message, requestId); await started; await session.close(); release(); expect((await pending).status).toBe(503);
+});
+
+it('SPEC直接hostedOperation在真实撤权后拒绝已完成缓存', async () => {
+  const f = await sessionFixture(); const requestId = randomUUID();
+  await f.sessions.hostedRpc({ id: 'receipt', method: 'model/list' }, requestId);
+  f.setManaged({ accountId: 'revoked-receipt' });
+  await expect(f.runtime.readTargetBinding()).rejects.toMatchObject({ code: 'identity-changed' });
+  await expect(f.sessions.hostedOperation(requestId)).rejects.toBeDefined();
+});
+it.each(['closed', 'deadline', 'cancelled'] as const)('SPEC直接hostedOperation本次读取await后仍检查%s', async failure => {
+  const f = await sessionFixture(); const requestId = randomUUID();
+  await f.sessions.hostedRpc({ id: 'receipt', method: 'turn/start', params: { threadId: 't' } }, requestId);
+  const session = [...(f.sessions as any).sessions.values()][0] as any;
+  const original = session.storedOperation.bind(session);
+  let entered!: () => void; const started = new Promise<void>(resolve => { entered = resolve; });
+  let release!: () => void; const gate = new Promise<void>(resolve => { release = resolve; });
+  vi.spyOn(session, 'storedOperation').mockImplementationOnce(async (...args: unknown[]) => { entered(); await gate; return original(...args); });
+  // 丢掉进程内副本，实际走同一WAL读取路径。
+  session.operations.delete(requestId);
+  const abort = new AbortController();
+  const result = f.sessions.hostedOperation(requestId, { deadline: performance.now() + 350, signal: abort.signal }).then(value => ({ value }), error => ({ error }));
+  await started;
+  try {
+    if (failure === 'closed') await session.close();
+    else if (failure === 'cancelled') abort.abort();
+    else await new Promise(resolve => setTimeout(resolve, 450));
+  } finally { release(); }
+  expect(await result).toHaveProperty('error');
+  expect(f.frames.filter(frame => frame.message?.method === 'turn/start')).toHaveLength(1);
+});
+it('SPEC历史完成hosted收据在新逻辑epoch仍可授权读取且不重放业务', async () => {
+  const f = await sessionFixture(); const requestId = randomUUID();
+  await f.sessions.hostedRpc({ id: 'receipt', method: 'model/list' }, requestId);
+  const session = [...(f.sessions as any).sessions.values()][0] as any; const epoch = session.epoch;
+  await session.socket.close(); await f.sessions.hostedReady();
+  expect(session.epoch).not.toBe(epoch);
+  expect(await f.sessions.hostedOperation(requestId)).toMatchObject({ status: 'completed', message: { id: 'receipt' } });
+  expect(f.frames.filter(frame => frame.message?.method === 'model/list')).toHaveLength(1);
+});
+it('SPEC真实RPC响应撤权后不进入hosted、Bark或history的任何observer输入', async () => {
+  const f = await sessionFixture(); const hosted: any[] = []; const bark: any[] = []; const history: any[] = [];
+  f.sessions.subscribeHosted(message => hosted.push(message));
+  (f.sessions as any).options.notifications = { observeRpc: (...args: any[]) => bark.push(args) };
+  f.remote.projections.changeHistory.observe = message => history.push(message);
+  await f.sessions.hostedReady(); hosted.length = 0; bark.length = 0; history.length = 0;
+  f.respond(frame => { if (frame.message?.method === 'turn/start') { f.setManaged({ accountId: 'revoked-before-response' }); f.send(frame, { id: frame.message.id, result: { turn: { id: 'SPEC_RESPONSE_SECRET' } } }); } });
+  const requestId = randomUUID();
+  await expect(f.sessions.hostedRpc({ id: 'start', method: 'turn/start', params: { threadId: 't' } }, requestId)).rejects.toBeDefined();
+  for (const observer of [hosted, bark, history]) expect(JSON.stringify(observer)).not.toContain('SPEC_RESPONSE_SECRET');
+  const session = [...(f.sessions as any).sessions.values()][0] as any;
+  expect(session.operations.get(requestId)?.status).toBe('uncertain');
+});
+it('SPEC最终WAL await完成前不输出RPC observer，await后真实撤权也零输入', async () => {
+  const f = await sessionFixture(); const hosted: any[] = []; const bark: any[] = []; const history: any[] = [];
+  f.sessions.subscribeHosted(message => hosted.push(message));
+  (f.sessions as any).options.notifications = { observeRpc: (...args: any[]) => bark.push(args) };
+  f.remote.projections.changeHistory.observe = message => history.push(message);
+  await f.sessions.hostedReady(); hosted.length = 0; bark.length = 0; history.length = 0;
+  const session = [...(f.sessions as any).sessions.values()][0] as any; const requestId = randomUUID();
+  const original = session.save.bind(session);
+  let entered!: () => void; const started = new Promise<void>(resolve => { entered = resolve; });
+  let release!: () => void; const gate = new Promise<void>(resolve => { release = resolve; });
+  vi.spyOn(session, 'save').mockImplementation(async (operation: any) => { await original(operation); if (operation.requestId === requestId && operation.status === 'completed') { entered(); await gate; } });
+  f.respond(frame => { if (frame.message?.method === 'turn/start') f.send(frame, { id: frame.message.id, result: { turn: { id: 'SPEC_WAL_SECRET' } } }); });
+  const result = f.sessions.hostedRpc({ id: 'start', method: 'turn/start', params: { threadId: 't' } }, requestId).then(value => ({ value }), error => ({ error }));
+  await started;
+  try { for (const observer of [hosted, bark, history]) expect(JSON.stringify(observer)).not.toContain('SPEC_WAL_SECRET'); }
+  finally { f.setManaged({ accountId: 'revoked-during-final-wal' }); release(); await result; }
+  expect(await result).toHaveProperty('error');
+  for (const observer of [hosted, bark, history]) expect(JSON.stringify(observer)).not.toContain('SPEC_WAL_SECRET');
+  expect(session.operations.get(requestId)?.status).toBe('uncertain');
+});
+async function voiceClient(f: Awaited<ReturnType<typeof sessionFixture>>, id: string) {
+  const wss = new WebSocketServer({ host: '127.0.0.1', port: 0 }); await new Promise<void>(resolve => wss.once('listening', resolve));
+  cleanup.push(() => new Promise<void>(resolve => { for (const socket of wss.clients) socket.terminate(); wss.close(() => resolve()); }));
+  wss.on('connection', socket => f.sessions.realtime(id, socket));
+  const client = new WebSocket(`ws://127.0.0.1:${(wss.address() as any).port}`); client.on('error', () => {}); cleanup.push(() => client.terminate());
+  await new Promise<void>(resolve => client.once('open', resolve)); const received: any[] = [];
+  client.on('message', raw => received.push(JSON.parse(raw.toString())));
+  return { client, received };
+}
+it('SPEC真实voice客户端正常响应兼容，响应前真实撤权则关闭或报错且不交付正文', async () => {
+  const f = await sessionFixture(); const id = randomUUID(); await f.init(id); const { client, received } = await voiceClient(f, id);
+  client.send(JSON.stringify({ id: 'healthy', method: 'thread/realtime/start', params: { threadId: 't' } }));
+  await until(() => received.length === 1); expect(received[0]).toEqual({ id: 'healthy', result: { method: 'thread/realtime/start' } });
+  f.respond(frame => { if (frame.message?.method === 'thread/realtime/start') { f.setManaged({ accountId: 'revoked-voice' }); f.send(frame, { id: frame.message.id, result: { private: 'SPEC_VOICE_SECRET' } }); } });
+  client.send(JSON.stringify({ id: 'revoked', method: 'thread/realtime/start', params: { threadId: 't' } }));
+  await until(() => received.length > 1 || client.readyState !== WebSocket.OPEN);
+  expect(JSON.stringify(received)).not.toContain('SPEC_VOICE_SECRET');
+  await expect(f.runtime.readTargetBinding()).rejects.toMatchObject({ code: 'identity-changed' });
+});
+it('SPEC真实voice响应仍受本次原60秒预算约束，受控推进61秒不会交付正文', async () => {
+  const f = await sessionFixture(); const id = randomUUID(); await f.init(id); const { client, received } = await voiceClient(f, id);
+  let clock: ReturnType<typeof vi.spyOn> | undefined;
+  f.respond(frame => { if (frame.message?.method === 'thread/realtime/start') { clock = vi.spyOn(performance, 'now').mockReturnValue(performance.now() + 61_000); f.send(frame, { id: frame.message.id, result: { private: 'SPEC_EXPIRED_VOICE' } }); } });
+  try {
+    client.send(JSON.stringify({ id: 'expired', method: 'thread/realtime/start', params: { threadId: 't' } }));
+    await until(() => received.length > 0 || client.readyState !== WebSocket.OPEN);
+    expect(JSON.stringify(received)).not.toContain('SPEC_EXPIRED_VOICE');
+  } finally { clock?.mockRestore(); }
 });

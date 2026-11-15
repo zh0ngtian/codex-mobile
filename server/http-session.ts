@@ -410,7 +410,8 @@ class Session {
 
   private receive(message: RpcMessage, transient = false) {
     if (message.method === 'account/updated') this.onAuthModeChanged?.(message.params?.authMode ?? null);
-    if (!this.memoryOnly && !transient) this.changeHistory.observe(message);
+    // Remote RPC响应先仅结算waiter；派生历史必须由RPC最终授权后观察。
+    if (!this.memoryOnly && !transient && (!this.remote || message.method != null)) this.changeHistory.observe(message);
     this.touch();
     if (message.id != null && !message.method) {
       const waiter = this.waiting.get(message.id);
@@ -746,6 +747,7 @@ class Session {
         if (this.socket !== submittedSocket || this.epoch !== submittedEpoch || !this.isOpen(submittedSocket) ||
           (!message.method && this.pending.get(message.id!) !== submittedApproval)) throw new HttpError(503, "App-server changed before operation could be submitted");
         let result: RpcMessage;
+        let upstreamObservation: { request: RpcMessage; response: RpcMessage } | undefined;
         if (message.method === "initialize") {
           submitted = true;
           result = await this.initialize(message, call);
@@ -778,7 +780,10 @@ class Session {
               limit: Math.min(params.limit ?? 5, 5), sortDirection: "desc", itemsView: "full",
             } };
             result = await this.exchange(upstream, submittedSocket, call);
-            if (this.socket === submittedSocket && this.epoch === submittedEpoch) this.observeRpcState(upstream, result);
+            if (this.socket === submittedSocket && this.epoch === submittedEpoch) {
+              if (this.remote) upstreamObservation = { request: upstream, response: result };
+              else this.observeRpcState(upstream, result);
+            }
             if (result.error == null) {
               const full = await this.webCitations.result(params.threadId, await this.timestamps.result(params.threadId, result.result as Record<string, any>));
               const stats = Object.fromEntries(await Promise.all((full.data ?? []).map(async (turn: Record<string, any>) =>
@@ -798,7 +803,7 @@ class Session {
         if (!this.memoryOnly && message.method === "turn/start" && result.error != null && typeof message.params?.threadId === "string") {
           await this.changeHistory.cancelStart(message.params.threadId);
         }
-        if (this.socket === submittedSocket && this.epoch === submittedEpoch) this.observeRpcState(message, result);
+        if (!this.remote && this.socket === submittedSocket && this.epoch === submittedEpoch) this.observeRpcState(message, result);
         if (this.memoryOnly && (result.result as any)?.thread?.id) operation.threadId = (result.result as any).thread.id;
         if (this.remote) {
           await this.authorization(call);
@@ -807,8 +812,11 @@ class Session {
         operation.status = "completed"; operation.message = result;
         await this.save(operation);
         if (fence) {
-          fence.assertCurrent(); assertCall(call);
+          await this.authorization(call);
+          fence.assertCurrent(); assertCall(call); assertRemoteOperation();
           if (this.closed || this.socket !== submittedSocket || this.epoch !== submittedEpoch || !this.isOpen(submittedSocket)) throw uncertain();
+          if (upstreamObservation) this.observeRpcState(upstreamObservation.request, upstreamObservation.response);
+          this.observeRpcState(message, result);
         }
         return result;
       } catch (error) {
@@ -822,11 +830,21 @@ class Session {
     return operation.promise;
   }
 
-  async operation(requestId: string) {
-    await this.loadPromise;
-    const operation = this.operations.get(requestId) ?? await this.storedOperation(requestId);
-    if (!operation) throw new HttpError(404, "Operation not found");
-    return { status: operation.status, ...(operation.message ? { message: operation.message } : {}) };
+  async operation(requestId: string, call: SessionCallOptions = sessionCall()) {
+    const epoch = this.epoch;
+    const fence = this.remote ? await this.authorization(call) : undefined;
+    const read = async () => {
+      await this.loadPromise;
+      const operation = this.operations.get(requestId) ?? await this.storedOperation(requestId);
+      if (fence) {
+        await this.authorization(call);
+        fence.assertCurrent(); assertCall(call); assertRemoteOperation();
+        if (this.closed || this.epoch !== epoch) throw uncertain();
+      }
+      if (!operation) throw new HttpError(404, "Operation not found");
+      return { status: operation.status, ...(operation.message ? { message: operation.message } : {}) };
+    };
+    return fence ? withRemoteOperation(() => { assertCall(call); fence.assertLive(); }, read) : read();
   }
 
   voice(socket: WebSocket) {
@@ -842,8 +860,19 @@ class Session {
       }
       try {
         if (!this.ready) throw new HttpError(503, "Session unavailable");
-        const result = await this.exchange(message);
-        if (message.id != null && socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(result));
+        const upstream = this.socket; const epoch = this.epoch; const call = sessionCall();
+        const fence = this.remote ? await this.authorization(call) : undefined;
+        const deliver = async () => {
+          const result = await this.exchange(message, upstream, call);
+          if (fence) {
+            await this.authorization(call);
+            fence.assertCurrent(); assertCall(call); assertRemoteOperation();
+            if (this.closed || this.socket !== upstream || this.epoch !== epoch || !this.isOpen(upstream)) throw uncertain();
+          }
+          if (message.id != null && socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(result));
+        };
+        if (fence) await withRemoteOperation(() => { assertCall(call); fence.assertLive(); }, deliver);
+        else await deliver();
       } catch {
         if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ id: message.id, error: { code: -32000, message: "Realtime unavailable" } }));
       }
@@ -971,8 +1000,8 @@ export class HttpSessions {
           const id = url.searchParams.get("requestId") ?? "";
           if (!UUID.test(id)) throw new HttpError(400, "requestId must be a UUID");
           const ephemeral = this.sessions.get(SIDECHAT_SESSION_ID);
-          try { result = await session.operation(id); }
-          catch (error) { if (!(error instanceof HttpError) || error.status !== 404 || !ephemeral) throw error; result = await ephemeral.operation(id); }
+          try { result = await session.operation(id, call); }
+          catch (error) { if (!(error instanceof HttpError) || error.status !== 404 || !ephemeral) throw error; result = await ephemeral.operation(id, call); }
         } else if (url.pathname === "/api/rpc" && request.method === "POST") {
           let bytes = 0; const parts: Buffer[] = [];
           for await (const chunk of request) {
@@ -1176,7 +1205,7 @@ export class HttpSessions {
     } catch (error) { if (error instanceof HttpError) throw error; return { id: envelope.id, error: { code: -32001, message: error instanceof Error ? error.message : 'Sidechat 不可用' } }; }
   }
 
-  hostedOperation(requestId: string) { return this.session(HOSTED_SESSION_ID).operation(requestId); }
+  hostedOperation(requestId: string, call: SessionCallOptions = sessionCall()) { return this.session(HOSTED_SESSION_ID).operation(requestId, call); }
 
   realtime(sessionId: string | null, client?: WebSocket) {
     if (sessionId === HOSTED_SESSION_ID) throw new HttpError(403, "Internal session is reserved");
