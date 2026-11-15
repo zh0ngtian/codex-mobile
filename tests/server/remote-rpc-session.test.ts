@@ -40,6 +40,23 @@ function remote(transmit?: ConstructorParameters<typeof RemoteStream>[2]) {
   return { stream, frames, released: () => released };
 }
 
+it.each(['canonical', 'RemoteStream'])('可信服务端在%s上发送真正JSON-RPC错误响应并保留caller', async transport => {
+  let session: RemoteRpcSession; let frames: RpcMessage[];
+  if (transport === 'canonical') { const f = await initialized(); session = f.session; frames = f.server.frames; }
+  else {
+    const f = remote(async (stream, message) => { if (message) { f.frames.push(message); if (message.method === 'initialize') queueMicrotask(() => stream.emit('message', { id: message.id!, result: {} }, { seqId: 1 })); } return { seqId: f.frames.length }; });
+    session = RemoteRpcSession.fromRemoteStream(f.stream); cleanup.push(() => session.close()); frames = f.frames; await session.initialize();
+  }
+  expect(session.replyError, '缺少正确RPC response能力').toBeTypeOf('function');
+  const before = frames.length; await session.replyError('server-request', { code: -32601, message: 'Unsupported' });
+  await until(() => frames.length > before);
+  expect(frames.at(-1)).toEqual({ id: 'server-request', error: { code: -32601, message: 'Unsupported' } }); expect(session.ready).toBe(true);
+  for (const id of [null, {}, 1.5, Infinity]) await expect(session.replyError(id as string, { code: -32601, message: 'Unsupported' })).rejects.toMatchObject({ code: 'capacity', mayHaveBeenSent: false });
+  await expect(session.replyError(7, Object.create({ code: -1, message: 'inherited' }))).rejects.toMatchObject({ code: 'capacity' });
+  await expect(session.replyError(7, { code: -1, message: 'x'.repeat(2 * 1024 * 1024) })).rejects.toMatchObject({ code: 'capacity' });
+  session.close(); await expect(session.replyError(7, { code: -1, message: 'closed' })).rejects.toMatchObject({ code: 'closed', mayHaveBeenSent: false });
+});
+
 it.each(['canonical', 'RemoteStream'].flatMap(transport => ['入口', '序列化', '登记pending后'].map(phase => ({ transport, phase }))))('可信绝对期限在$transport的$phase耗尽时零发送，清理等待并保留共享session', async ({ transport, phase }) => {
   let session: RemoteRpcSession; let messages: RpcMessage[];
   if (transport === 'canonical') {

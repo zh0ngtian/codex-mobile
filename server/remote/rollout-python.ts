@@ -78,7 +78,7 @@ def scan():
     with open(q['path'],'rb') as f:
         initial=os.fstat(f.fileno())
         if not stat.S_ISREG(initial.st_mode): fail('capability')
-        length=previous['size'] if previous else min(initial.st_size,65536) if mode=='metadata' else initial.st_size
+        length=previous['size'] if previous else min(initial.st_size,65536) if mode in ['metadata','cwd'] else initial.st_size
         if previous and (previous['identity']!=identity(initial) or initial.st_size<length): fail('changed')
         digest=hashlib.sha256();outHash=hashlib.sha256();window=bytearray();total=0;position=0;first=True;valid=False;state=dict(found=False,done=False)
         def take(value):
@@ -92,10 +92,10 @@ def scan():
             if not raw: fail('changed')
             digest.update(raw);position+=len(raw)
             # metadata先确认64KiB内完整首LF；缺LF不是待解析的完整首行。
-            if mode=='metadata' and not raw.endswith(b'\n'):
+            if mode in ['metadata','cwd'] and not raw.endswith(b'\n'):
                 length=position;break
             text=raw.decode('utf-8','replace')
-            lines=[text] if mode=='metadata' else re.split(r'\r\n|[\n\r\u2028\u2029]' if q['unicodeLines'] else r'\r\n|[\n\r]',text)
+            lines=[text] if mode in ['metadata','cwd'] else re.split(r'\r\n|[\n\r\u2028\u2029]' if q['unicodeLines'] else r'\r\n|[\n\r]',text)
             for line in lines:
                 if not first:
                     # 首行排除或首image输出已确定后，仅保留原始字节摘要/二次验证。
@@ -106,15 +106,19 @@ def scan():
                         elif 'custom_tool_call_output' not in line: continue
                 try: entry=obj(parse(line))
                 except (json.JSONDecodeError,InvalidConstant):
-                    if first and mode=='metadata': length=position
+                    if first and mode in ['metadata','cwd']: length=position
                     if valid and mode=='image' and state['found'] and 'custom_tool_call_output' in line:
                         state['done']=True;take(dict(matched=True,error=None))
                     first=False;continue
                 if first:
                     first=False;payload=obj(entry.get('payload'));valid=entry.get('type')=='session_meta' and payload.get('id')==q['threadId']
-                    if mode=='metadata':
+                    if mode in ['metadata','cwd']:
                         length=position
                         if valid and raw.endswith(b'\n'):
+                            if mode=='cwd':
+                                cwd=payload.get('cwd')
+                                if isinstance(cwd,str): take(dict(id=q['threadId'],cwd=cwd))
+                                continue
                             value=dict(id=q['threadId'])
                             for old,new in [('source','source'),('thread_source','threadSource'),('parent_thread_id','parentThreadId'),('ephemeral','ephemeral')]:
                                 if old in payload: value[new]=payload[old]

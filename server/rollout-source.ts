@@ -7,7 +7,7 @@ import { RemoteCommands, RemoteCommandError, decodeRemoteCommandText } from './r
 import { RemoteRpcSession } from './remote/rpc-session.js';
 import { ROLLOUT_LOCATOR_PYTHON, ROLLOUT_PYTHON } from './remote/rollout-python.js';
 
-export type RolloutProjection = 'timestamps' | 'citations' | 'metadata' | 'image';
+export type RolloutProjection = 'timestamps' | 'citations' | 'metadata' | 'cwd' | 'image';
 export interface RolloutRead {
   files(threadId: string): AsyncGenerator<string>;
   project(path: string, threadId: string, projection: RolloutProjection, wanted: string[]): AsyncGenerator<{ reset: true } | { value: Record<string, any> }>;
@@ -49,6 +49,12 @@ export class RemoteRolloutSource {
     catch (error) { throw new RolloutSourceError(error instanceof RemoteCommandError ? error.code : 'binding'); }
     this.paths = this.binding.metadata.platformFamily === 'windows' ? win32 : posix;
     this.namespace = createHash('sha256').update(JSON.stringify(['remote-rollout-v1', gatewayId, this.binding.scope, this.binding.metadata])).digest('hex');
+  }
+  /** 业务消费者只能复用同一个已证明的Commands/session与网关namespace。 */
+  assertBinding(session: RemoteRpcSession, commands: RemoteCommands, gatewayId: string): void {
+    const binding = commands.fileTransportBinding(session);
+    const expected = createHash('sha256').update(JSON.stringify(['remote-rollout-v1', gatewayId, binding.scope, binding.metadata])).digest('hex');
+    if (session !== this.session || commands !== this.commands || expected !== this.namespace) throw new RolloutSourceError('binding');
   }
   begin(signal?: AbortSignal): RolloutRead {
     // 整次目录+文件读取共享原绝对期限，翻页/文件变化不会续期。

@@ -23,7 +23,7 @@ import { RemoteStepUpOAuth, type RemoteOAuthOptions } from './oauth.js';
 import { RemoteCanonicalLogin, type RemoteCanonicalLoginOptions } from './login.js';
 import { PrivateStore } from './private-store.js';
 import { type RemoteStream } from './relay.js';
-import type { RemoteRpcSession } from './rpc-session.js';
+import type { RemoteRpcSession, RemoteRpcSessionOptions } from './rpc-session.js';
 import { assertRemoteOperation } from './operation-guard.js';
 import {
   RemoteRuntimeStateStore,
@@ -883,7 +883,7 @@ export class RemoteRuntime extends EventEmitter<{
       throw new RemoteRuntimeError('unavailable');
     }
   }
-  createManagementSession(value: RemoteTargetIdentity, signal?: AbortSignal): Promise<RemoteRpcSession> {
+  createManagementSession(value: RemoteTargetIdentity, signal?: AbortSignal, rpcOptions?: RemoteRpcSessionOptions): Promise<RemoteRpcSession> {
     const { target, bundle } = this.executable(value);
     let abandoned = false;
     let unclaimedSession: RemoteRpcSession | undefined;
@@ -895,7 +895,7 @@ export class RemoteRuntime extends EventEmitter<{
     const flight = this.run(signal, async (op) => {
       const pending = Promise.resolve().then(() => {
         this.assert(op);
-        return bundle.controller.createManagementSession(target);
+        return bundle.controller.createManagementSession(target, rpcOptions);
       });
       void pending.then(
         (session) => {

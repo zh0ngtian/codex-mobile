@@ -3,30 +3,48 @@ import { promisify } from "node:util";
 import { mkdtemp, mkdir, writeFile, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { TurnChangeHistory, countCompleteDiff } from "../../server/turn-change-history.js";
 
+import { remoteRollouts } from '../../server/rollout-source.js';
+import { rolloutRemote } from './fixtures/rollout-remote.js';
 const run = promisify(execFile);
 const threadId = "01a10355-60cd-70f2-8063-17d3a5626be4";
 const roots: string[] = [];
-afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))); });
+let currentMode = 'Local';
+const contexts = new Map<string, { target: Awaited<ReturnType<typeof rolloutRemote>>; rollouts: ReturnType<typeof remoteRollouts> }>();
+const services = new WeakMap<TurnChangeHistory, string>();
+function history(home: string) {
+  const c = contexts.get(home); const service = new TurnChangeHistory(home, c ? { session: c.target.session, commands: c.target.commands, rollouts: c.rollouts, gatewayId: 'matrix' } : undefined);
+  services.set(service, home); return service;
+}
+function targetHome(home: string) { return contexts.get(home)?.target.root ?? home; }
+function cacheDirectory(home: string) { const c = contexts.get(home); return join(home, 'codex-mobile-turn-changes', ...(c ? ['remote', c.rollouts.namespace] : [])); }
+async function targetCwd(home: string, cwd: string, id = threadId) {
+  const d = join(targetHome(home), 'archived_sessions'); await mkdir(d, { recursive: true });
+  await writeFile(join(d, `rollout-fixture-${id}.jsonl`), JSON.stringify({ type: 'session_meta', payload: { id, cwd } }) + '\n');
+}
+afterEach(async () => { for (const c of contexts.values()) { await c.rollouts.close(); await c.target.close(); } contexts.clear(); await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))); });
 async function fixture(initial = true) {
   const root = await mkdtemp(join(tmpdir(), "turn-changes-")); roots.push(root);
   const cwd = join(root, "repo"); const home = join(root, "home");
   await mkdir(cwd); await mkdir(home);
   await git(cwd, "init"); await git(cwd, "config", "user.name", "Test"); await git(cwd, "config", "user.email", "test@example.com");
   if (initial) { await writeFile(join(cwd, "a.txt"), "keep\nold\n"); await git(cwd, "add", "."); await git(cwd, "commit", "-m", "initial"); }
-  return { cwd, home, service: new TurnChangeHistory(home) };
+  if (currentMode === 'Remote') { const target = await rolloutRemote({ nativeHome: true }); const rollouts = remoteRollouts(target.session, target.commands, 'matrix'); contexts.set(home, { target, rollouts }); await targetCwd(home, cwd); }
+  return { cwd, home, service: history(home) };
 }
 async function git(cwd: string, ...args: string[]) { return (await run("git", args, { cwd })).stdout; }
 function event(service: TurnChangeHistory, method: string, params: Record<string, unknown>) { service.observe({ method, params }); }
 async function begin(service: TurnChangeHistory, cwd: string, id = "turn-1") {
+  const home = services.get(service)!; if (contexts.has(home)) await targetCwd(home, cwd);
   await service.beforeStart(threadId, cwd); event(service, "turn/started", { threadId, turn: { id } }); await service.flush();
 }
 async function end(service: TurnChangeHistory, id = "turn-1") { event(service, "turn/completed", { threadId, turn: { id } }); await service.flush(); }
 const change = (additions: number, deletions: number) => expect.objectContaining({ additions, deletions });
 
-describe("回合 Git 改动统计", () => {
+describe.each(["Local", "Remote"])("回合 Git 改动统计 %s", mode => {
+  beforeEach(() => { currentMode = mode; });
   it("命令写文件并提交后仍统计 +2/-1，并保持用户 index", async () => {
     const { cwd, service } = await fixture();
     await begin(service, cwd);
@@ -44,7 +62,7 @@ describe("回合 Git 改动统计", () => {
     await writeFile(join(cwd, "new.txt"), "one\ntwo\n");
     await writeFile(join(cwd, "binary.dat"), Buffer.from([0, 255, 1]));
     await end(service);
-    await expect(new TurnChangeHistory(home).get(threadId, { id: "turn-1" })).resolves.toEqual(change(2, 0));
+    await expect(history(home).get(threadId, { id: "turn-1" })).resolves.toEqual(change(2, 0));
     expect((await git(cwd, "status", "--porcelain")).trim()).toContain("?? new.txt");
   });
   it("无修改的可信快照返回真实零，未初始化 HEAD 的 Git 仓库也可统计", async () => {
@@ -83,7 +101,7 @@ describe("回合 Git 改动统计", () => {
     const { home, service } = await fixture();
     const diff = "diff --git a/a.txt b/a.txt\n--- a/a.txt\n+++ b/a.txt\n@@ -1,2 +1,3 @@\n keep\n-old\n+new\n+extra\n";
     event(service, "turn/diff/updated", { threadId, turnId: "live", diff }); await service.flush();
-    await expect(new TurnChangeHistory(home).get(threadId, { id: "live" })).resolves.toEqual(change(2, 1));
+    await expect(history(home).get(threadId, { id: "live" })).resolves.toEqual(change(2, 1));
     await expect(service.get(threadId, { id: "raw", diff })).resolves.toEqual(change(2, 1));
     await expect(service.get(threadId, { id: "cut", diff: diff.slice(0, -7) })).resolves.toBeNull();
     await expect(service.get(threadId, { id: "none", items: [{ type: "commandExecution", exitCode: 0, aggregatedOutput: "Done" }] })).resolves.toBeNull();
@@ -98,7 +116,7 @@ describe("回合 Git 改动统计", () => {
     const turn = { id: "historic", startedAt, completedAt: startedAt + 20,
       items: [{ type: "commandExecution", exitCode: 0, aggregatedOutput: output }] };
     await expect(service.get(threadId, turn)).resolves.toEqual(change(2, 1));
-    await expect(new TurnChangeHistory(home).get(threadId, { id: "historic" })).resolves.toEqual(change(2, 1));
+    await expect(history(home).get(threadId, { id: "historic" })).resolves.toEqual(change(2, 1));
     await expect(service.get(threadId, { ...turn, id: "late", startedAt: startedAt + 30, completedAt: startedAt + 60 })).resolves.toBeNull();
     await expect(service.get(threadId, { ...turn, id: "failed", items: [{ ...turn.items[0], exitCode: 1 }] })).resolves.toBeNull();
     const hash = (await git(cwd, "rev-parse", "HEAD")).trim();
@@ -116,7 +134,7 @@ describe("回合 Git 改动统计", () => {
   it("根提交也可从 archived_sessions 的 session_meta cwd 恢复", async () => {
     const { cwd, home, service } = await fixture(false); const startedAt = Math.floor(Date.now() / 1000) - 5;
     await writeFile(join(cwd, "a.txt"), "one\ntwo\n"); await git(cwd, "add", "."); const output = await git(cwd, "commit", "-m", "root");
-    const directory = join(home, "archived_sessions"); await mkdir(directory);
+    const directory = join(targetHome(home), "archived_sessions"); await mkdir(directory, { recursive: true });
     await writeFile(join(directory, `rollout-2026-10-04T00-00-00-${threadId}.jsonl`), JSON.stringify({ type: "session_meta", payload: { id: threadId, cwd } }) + "\n");
     await expect(service.get(threadId, { id: "root", startedAt, completedAt: startedAt + 20,
       items: [{ type: "commandExecution", exitCode: 0, aggregatedOutput: output }] })).resolves.toEqual(change(2, 0));
@@ -137,6 +155,7 @@ describe("回合 Git 改动统计", () => {
   });
   it("并发的请求和通知按线程串行，不覆盖其他线程或首次结果", async () => {
     const { cwd, service } = await fixture(); const second = "01a10355-60cd-70f2-8063-17d3a5626be5";
+    if (currentMode === 'Remote') await targetCwd(services.get(service)!, cwd, second);
     await Promise.all([service.beforeStart(threadId, cwd), service.beforeStart(threadId, cwd), service.beforeStart(second, cwd)]);
     for (const id of [threadId, second]) event(service, "turn/started", { threadId: id, turn: { id: "same" } });
     await service.flush(); await writeFile(join(cwd, "a.txt"), "keep\nnew\nextra\n");
@@ -153,7 +172,7 @@ describe("回合 Git 改动统计", () => {
   it("sessions 日期目录的元数据可作为 beforeStart 的 cwd", async () => {
     const { cwd, home, service } = await fixture();
     const date = new Date(Number.parseInt(threadId.replaceAll("-", "").slice(0, 12), 16));
-    const directory = join(home, "sessions", String(date.getFullYear()), String(date.getMonth() + 1).padStart(2, "0"), String(date.getDate()).padStart(2, "0"));
+    const directory = join(targetHome(home), "sessions", String(date.getFullYear()), String(date.getMonth() + 1).padStart(2, "0"), String(date.getDate()).padStart(2, "0"));
     await mkdir(directory, { recursive: true }); await writeFile(join(directory, `rollout-date-${threadId}.jsonl`), JSON.stringify({ type: "session_meta", payload: { id: threadId, cwd } }) + "\n");
     await service.beforeStart(threadId); event(service, "turn/started", { threadId, turn: { id: "turn-1" } }); await service.flush();
     await writeFile(join(cwd, "a.txt"), "keep\nnew\nextra\n"); await end(service);
@@ -194,16 +213,16 @@ describe("回合 Git 改动统计", () => {
       items: [first, last].map((aggregatedOutput) => ({ type: "commandExecution", exitCode: 0, aggregatedOutput })) })).resolves.toBeNull();
   });
   it("损坏和负数缓存不能当作有效统计", async () => {
-    const { home } = await fixture(); const directory = join(home, "codex-mobile-turn-changes"); await mkdir(directory);
+    const { home } = await fixture(); const directory = cacheDirectory(home); await mkdir(directory, { recursive: true });
     const path = join(directory, `${threadId}.json`); await writeFile(path, "broken");
-    await expect(new TurnChangeHistory(home).get(threadId, { id: "turn-1" })).resolves.toBeNull();
+    await expect(history(home).get(threadId, { id: "turn-1" })).resolves.toBeNull();
     await writeFile(path, JSON.stringify({ turns: { "turn-1": { counts: { additions: -1, deletions: 0 } } } }));
-    await expect(new TurnChangeHistory(home).get(threadId, { id: "turn-1" })).resolves.toBeNull();
+    await expect(history(home).get(threadId, { id: "turn-1" })).resolves.toBeNull();
   });
   it("特殊 turn ID 不使用对象原型而且可重启读取", async () => {
     const { cwd, home, service } = await fixture(); await begin(service, cwd, "__proto__");
     await writeFile(join(cwd, "a.txt"), "keep\nnew\nextra\n"); await end(service, "__proto__");
-    await expect(new TurnChangeHistory(home).get(threadId, { id: "__proto__" })).resolves.toEqual(change(2, 1));
+    await expect(history(home).get(threadId, { id: "__proto__" })).resolves.toEqual(change(2, 1));
   });
 
   it("统一完整 diff 校验支持 fileChange 的 hunk-only 格式", () => {
@@ -238,7 +257,7 @@ describe("回合 Git 改动统计", () => {
       event(service, method, { threadId, turnId: "turn-1", delta: "text", item: { id: "item-1" } });
     }
     await service.flush();
-    await expect(stat(join(home, "codex-mobile-turn-changes"))).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(stat(cacheDirectory(home))).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   it("用户强制 stage 的 ignored 新文件仍统计，其他 ignored 文件不加入快照", async () => {

@@ -8,9 +8,9 @@ import { RemoteCommands, type RemoteCommandScope } from '../../../server/remote/
 import type { JsonValue, RpcMessage } from '../../../server/remote/envelope.js';
 
 /** 真正固定Python/Commands/RPC；只将受控目标根映射到随机临时目录。 */
-export async function rolloutRemote(options: { target?: string; timezone?: string; windows?: boolean; home?: string } = {}) {
+export async function rolloutRemote(options: { target?: string; timezone?: string; windows?: boolean; home?: string; nativeHome?: boolean } = {}) {
   const root = await mkdtemp(join(tmpdir(), 'rollout-target-'));
-  const home = options.home ?? (options.windows ? 'C:\\rollout' : '/rollout');
+  const home = options.nativeHome ? root : options.home ?? (options.windows ? 'C:\\rollout' : '/rollout');
   const scope: RemoteCommandScope = { managed: { codexHome: '/managed', accountId: 'account', accountUserId: 'member' },
     target: { environmentId: options.target ?? 'environment', installationId: 'installation' } };
   const processes = new Map<string, ChildProcessWithoutNullStreams>();
@@ -32,7 +32,7 @@ export async function rolloutRemote(options: { target?: string; timezone?: strin
       const prefix = `import subprocess\n_fixture_popen=subprocess.Popen\ndef _fixture_spawn(argv,*a,**k):\n    argv=list(argv)\n    if len(argv)>3 and argv[2]=='-c':\n        argv[3]=${JSON.stringify(mapping)}+${JSON.stringify('\nimport time\ntime.sleep(')}+str(${delay / 1000})+')\\n'+argv[3]\n        argv[0]='python3'\n    k['cwd']=${JSON.stringify(root)}\n    return _fixture_popen(argv,*a,**k)\nsubprocess.Popen=_fixture_spawn\n`;
       argv[4] = prefix + argv[4];
       const child = spawn(argv[0]!.startsWith('C:\\') ? 'python3' : argv[0]!, argv.slice(1), { cwd: root, detached: true,
-        env: { PATH: process.env.PATH, ...(options.timezone ? { TZ: options.timezone } : {}) } });
+        env: { PATH: process.env.PATH, TMPDIR: process.env.TMPDIR, ...(options.timezone ? { TZ: options.timezone } : {}) } });
       processes.set(id, child); child.stdin.on('error', () => {}); let probe = '';
       child.stdout.on('data', (bytes: Buffer) => {
         if (!options.windows) { output(id, 'stdout', bytes); return; }
@@ -54,6 +54,8 @@ export async function rolloutRemote(options: { target?: string; timezone?: strin
       }
       const child = processes.get(p.processId as string); child?.stdin.write(bytes); if (p.closeStdin) child?.stdin.end();
       queueMicrotask(() => reply(message, {}));
+    } else if (message.method === 'fixture/alive') {
+      queueMicrotask(() => reply(message, 42));
     } else if (message.method === 'command/exec/terminate') {
       const child = processes.get(p.processId as string); if (child) kill(child); queueMicrotask(() => reply(message, {}));
     }

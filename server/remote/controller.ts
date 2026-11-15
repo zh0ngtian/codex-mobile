@@ -430,9 +430,9 @@ export class RemoteController extends EventEmitter<ControllerEvents> {
     const pong = (value: ServerPong) => { if (value.status === 'unknown') this.terminateStream(stream); };
     stream.on('pong', pong); stream.once('close', () => { this.streams.delete(stream); stream.off('pong', pong); }); return stream;
   }
-  async createManagementSession(value: RemoteTargetIdentity): Promise<RemoteRpcSession> {
+  async createManagementSession(value: RemoteTargetIdentity, rpcOptions?: RemoteRpcSessionOptions): Promise<RemoteRpcSession> {
     const epoch = this.epoch; const identity = tuple(value); const stream = this.createRawStream(identity); let session: RemoteRpcSession | undefined;
-    try { session = RemoteRpcSession.fromRemoteStream(stream, this.options.rpcOptions); await session.initialize(); this.assert(epoch); if (!this.targetStatus(identity).executable) throw new RemoteControllerError('target-unavailable'); return session; }
+    try { session = RemoteRpcSession.fromRemoteStream(stream, { ...this.options.rpcOptions, ...rpcOptions }); await session.initialize(); this.assert(epoch); if (!this.targetStatus(identity).executable) throw new RemoteControllerError('target-unavailable'); return session; }
     catch (error) { dispose(session); this.terminateStream(stream); if (error instanceof RemoteControllerError) throw error; throw new RemoteNetworkError(); }
   }
   /** 包含已暂停/替换的旧Relay，close仍保持原有storage等待语义。 */

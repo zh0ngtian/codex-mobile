@@ -178,7 +178,16 @@ export class RemoteRpcSession extends EventEmitter<SessionEvents> {
     if (!this.ready || method === 'initialize' || method === 'initialized') throw new RemoteRpcError('closed', false);
     await this.submit(method, params, false, options.timeoutMs ?? this.options.responseTimeoutMs, options.signal, options.deadline);
   }
-  private submit(method: string, params: JsonValue | undefined, response: boolean, timeout: number, signal?: AbortSignal, operationDeadline?: number): Promise<unknown> {
+  /** 可信服务端拒绝上游工具/审批请求；不是客户端任意帧入口。 */
+  async replyError(id: string | number, error: { code: number; message: string }, options: RemoteRpcCallOptions = {}): Promise<void> {
+    if (!this.ready) throw new RemoteRpcError('closed', false);
+    if (!(typeof id === 'string' && id.length <= 1024 || typeof id === 'number' && Number.isSafeInteger(id)) ||
+      !record(error) || ![Object.prototype, null].includes(Object.getPrototypeOf(error)) || Reflect.ownKeys(error).length !== 2 ||
+      !['code', 'message'].every(key => Object.hasOwn(Object.getOwnPropertyDescriptor(error, key) ?? {}, 'value')) ||
+      !Number.isSafeInteger(error.code) || typeof error.message !== 'string' || !error.message.length) throw new RemoteRpcError('capacity', false);
+    await this.submit('', undefined, false, options.timeoutMs ?? this.options.responseTimeoutMs, options.signal, options.deadline, { id, error });
+  }
+  private submit(method: string, params: JsonValue | undefined, response: boolean, timeout: number, signal?: AbortSignal, operationDeadline?: number, reply?: RpcMessage): Promise<unknown> {
     if (!Number.isSafeInteger(timeout) || timeout < 1 || timeout > 180000) return Promise.reject(new RemoteRpcError('capacity', false));
     if (operationDeadline !== undefined && !Number.isFinite(operationDeadline)) return Promise.reject(new RemoteRpcError('capacity', false));
     const now = performance.now(); const deadline = Math.min(now + timeout, operationDeadline ?? Infinity);
@@ -188,10 +197,10 @@ export class RemoteRpcSession extends EventEmitter<SessionEvents> {
     if (this.pending.size >= this.options.maxPending) return Promise.reject(new RemoteRpcError('capacity', false));
     let message: RpcMessage; let encoded: string; let bytes: number; let id: string | undefined;
     try {
-      if (typeof method !== 'string' || !method.length || method.length > 1024 || /[\u0000-\u001f\u007f]/.test(method)) throw new Error();
+      if (!reply && (typeof method !== 'string' || !method.length || method.length > 1024 || /[\u0000-\u001f\u007f]/.test(method))) throw new Error();
       if (!Number.isSafeInteger(++this.sequence)) throw new Error();
       id = response ? `${this.prefix}:${this.sequence}` : undefined;
-      message = { ...(id === undefined ? {} : { id }), method, ...(params === undefined ? {} : { params }) };
+      message = reply ?? { ...(id === undefined ? {} : { id }), method, ...(params === undefined ? {} : { params }) };
       encoded = safeJson(message);
       bytes = Buffer.byteLength(encoded);
       if (bytes > this.options.maxRequestBytes) throw new Error();

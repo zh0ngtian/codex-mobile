@@ -580,6 +580,14 @@ it('真实controller持久pause跨runtime重启后，一次显式resume完整复
   await runtime.resume(local);
   expect(runtime.status().pendingResume).toEqual([remote]);
 });
+it('Runtime把本次summary预算传给同Controller且不改变后续默认工厂', async () => {
+  const f = await fixture(); await f.runtime.authorize(); await until(() => f.runtime.status().state === 'online');
+  const controller = (f.runtime as any).bundle.controller; const calls: unknown[][] = [];
+  controller.createManagementSession = async (...args: unknown[]) => { calls.push(args); return { close() {} }; };
+  const budget = { maxRequestBytes: 16 * 1024 * 1024, maxInboundBytes: 16 * 1024 * 1024 };
+  await f.runtime.createManagementSession(local, undefined, budget); await f.runtime.createManagementSession(local);
+  expect(calls).toEqual([[local, budget], [local, undefined]]); expect(f.connections).toHaveLength(1);
+});
 it('authorize返回实际运行状态，管理session挂起被取消后迟到资源关闭', async () => {
   const f = await fixture();
   const authorized = await f.runtime.authorize();
