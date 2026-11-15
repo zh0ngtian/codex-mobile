@@ -146,7 +146,7 @@ export class RemoteRolloutSource {
             for (const batch of batches) {
               let offset = 0; let signature: string | undefined; let pending = ''; const digest = createHash('sha256');
               for (;;) {
-                const value = await call({ mode: 'scan', path, threadId, projection, wanted: batch, offset, ...(token ? { token } : {}) });
+                const value = await call({ mode: 'scan', path, threadId, projection, wanted: batch, ...(projection === 'image' ? { itemId: wanted[0] } : {}), offset, ...(token ? { token } : {}) });
                 if (!object(value.token) || !Array.isArray(value.token.identity) || value.token.identity.length !== 2 || value.token.identity.some((v: unknown) => typeof v !== 'string' || !/^\d+$/.test(v)) || !Number.isSafeInteger(value.token.size) || value.token.size < 0 || typeof value.token.sha256 !== 'string' || !HASH.test(value.token.sha256) || value.offset !== offset || !Number.isSafeInteger(value.total) || value.total < offset || typeof value.sha256 !== 'string' || !HASH.test(value.sha256) || typeof value.base64 !== 'string') throw new RolloutSourceError('protocol');
                 const current = JSON.stringify([value.token, value.total, value.sha256]);
                 if (signature !== undefined && signature !== current) throw new RolloutSourceError('changed'); signature = current; token = value.token;

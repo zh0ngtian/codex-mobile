@@ -285,6 +285,65 @@ it('大整数后仍畸形或未完成的JSON保持忽略，嵌套畸形JSON仍�
   expect(await readLocalThreadMetadata('/wrong', id, s)).toBeUndefined();
 });
 
+const resourceRecords = [
+  ['integer', `{"unused":${largeInteger}}\n`],
+  ['recursion', '{"unused":' + '['.repeat(2000) + '0' + ']'.repeat(2000) + '}\n'],
+] as const;
+const excludedCandidates = [
+  ['wrong-session', meta('other-session')], ['malformed-first', '{bad}\n'],
+] as const;
+it.each(excludedCandidates.flatMap(([firstName, first]) => resourceRecords.flatMap(([resource, tail]) =>
+  ['timestamps', 'citations'].map(consumer => ({ firstName, first, resource, tail, consumer })),
+)))('业务解析范围：已排除候选 $firstName/$resource 不阻断 $consumer 的真实候选', async ({ first, tail, consumer }) => {
+  const f = await target(); const s = await source(f); const directory = join(f.root, 'sessions/2026/10/10');
+  await mkdir(directory, { recursive: true });
+  await writeFile(join(directory, `rollout-0-${id}.jsonl`), first + tail);
+  await writeFile(join(directory, `rollout-1-${id}.jsonl`), meta() + message() + output(cite()));
+  if (consumer === 'timestamps') {
+    const local = await new MessageTimestamps(f.root).read(id, ['answer']); expect(local.answer).toBe(seconds);
+    expect(await new MessageTimestamps('/wrong', s).read(id, ['answer'])).toEqual(local);
+  } else {
+    const local = await new MessageWebCitations(f.root).read(id, ['turn1view0']); expect(local).toHaveLength(1);
+    expect(await new MessageWebCitations('/wrong', s).read(id, ['turn1view0'])).toEqual(local);
+  }
+});
+
+const imageFailed = () => JSON.stringify({ type: 'event_msg', payload: { type: 'item_completed', item: { kind: 'image_gen.generation', id: 'picture-item', status: 'failed' } } }) + '\n';
+const imageModeration = () => output([{ text: `Some(${JSON.stringify(JSON.stringify({ error: { code: 'moderation_blocked', moderation_details: { moderation_stage: 'output', categories: ['safe'] } } }))})` }]);
+const imageExpected = { code: 'moderation_blocked', stage: 'output', categories: ['safe'], requestId: null };
+const imageTerminals = [
+  ['moderation', imageModeration(), imageExpected],
+  ['unknown', output('unknown error'), null],
+  ['malformed', '{"type":"response_item","payload":{"type":"custom_tool_call_output",broken}\n', null],
+] as const;
+it.each(imageTerminals.flatMap(([terminal, value, expected]) => resourceRecords.map(([resource, tail]) => ({ terminal, value, expected, resource, tail }))))(
+  '业务解析范围：image 首结果 $terminal 后的 $resource 和后续输出不再改变结果', async ({ value, expected, tail }) => {
+    const f = await target(); const s = await source(f); await file(f, meta() + imageFailed() + value + tail + imageModeration());
+    const local = await readImageGenerationError(f.root, id, 'picture-item'); expect(local).toEqual(expected);
+    expect(await readImageGenerationError('/wrong', id, 'picture-item', s)).toEqual(local);
+  },
+);
+
+it.each(['before-no-item', 'before-no-kind', 'after-no-output'].flatMap(phase => resourceRecords.map(([resource, tail]) => ({ phase, resource, tail }))))(
+  '业务解析范围：image $phase 的无关 $resource 保持 Local 原始行过滤', async ({ phase, tail }) => {
+    const f = await target(); const s = await source(f);
+    const ignored = phase === 'before-no-item' ? tail.replace('"unused"', '"image_gen.generation"') : phase === 'before-no-kind' ? tail.replace('"unused"', '"picture-item"') : tail;
+    await file(f, meta() + (phase.startsWith('before') ? ignored : '') + imageFailed() + (phase.startsWith('after') ? ignored : '') + imageModeration());
+    const local = await readImageGenerationError(f.root, id, 'picture-item'); expect(local).toEqual(imageExpected);
+    expect(await readImageGenerationError('/wrong', id, 'picture-item', s)).toEqual(local);
+  },
+);
+
+it.each(['failed-event', 'matching-output'].flatMap(phase => resourceRecords.map(([resource, tail]) => ({ phase, resource, tail }))))(
+  '业务解析范围：image 仍需解析的 $phase/$resource 明确能力失败', async ({ phase, tail }) => {
+    const f = await target(); const s = await source(f); const required = phase === 'failed-event' ? imageFailed() : imageModeration();
+    const withResource = required.trimEnd().replace(/}$/, ',' + tail.trim().slice(1));
+    await file(f, meta() + (phase === 'matching-output' ? imageFailed() : '') + withResource + '\n' + (phase === 'failed-event' ? imageModeration() : ''));
+    expect(await readImageGenerationError(f.root, id, 'picture-item')).toEqual(imageExpected);
+    await expect(readImageGenerationError('/wrong', id, 'picture-item', s)).rejects.toMatchObject({ code: 'capability' });
+  },
+);
+
 it.each([false, true])('引用标题UTF16边界、Unicode行首与畸形/嵌套NaN和Infinity保持Local差分 escaped=%s', async escaped => {
   const f = await target(); const s = await source(f);
   const titles = ['😀'.repeat(500), '😀'.repeat(501), 'x'.repeat(1000), 'x'.repeat(1001), '短标题'];

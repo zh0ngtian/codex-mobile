@@ -92,6 +92,13 @@ def scan():
             text=raw.decode('utf-8','replace')
             lines=[text] if mode=='metadata' else re.split(r'\r\n|[\n\r\u2028\u2029]' if q['unicodeLines'] else r'\r\n|[\n\r]',text)
             for line in lines:
+                if not first:
+                    # 首行排除或首image输出已确定后，仅保留原始字节摘要/二次验证。
+                    if not valid or (mode=='image' and state['done']): continue
+                    if mode=='image':
+                        if not state['found']:
+                            if q['itemId'] not in line or 'image_gen.generation' not in line: continue
+                        elif 'custom_tool_call_output' not in line: continue
                 try: entry=obj(parse(line))
                 except (json.JSONDecodeError,InvalidConstant):
                     if first and mode=='metadata': length=position
