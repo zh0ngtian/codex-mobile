@@ -93,13 +93,13 @@ it('从同一目标官方环境证明来源后提供实际已有usage，未知�
 
 it('持续usage按同epoch revision去重、接纳新epoch，remove删除且不伪造零通知', async () => {
   const f = await fixture(); const source = await f.source(); await until(() => source.read('existing') !== null);
-  const received: ModelUploadUsage[] = []; const unsubscribe = source.subscribe((_id, value) => received.push(value));
+  const received: Array<ModelUploadUsage | null> = []; const unsubscribe = source.subscribe((_id, value) => received.push(value));
   const send = (value: unknown) => { for (const socket of f.sockets) socket.write(frame(value)); };
   send(update(3)); await until(() => source.read('existing')?.revision === 3);
   send(update(2)); send(update(3)); send(update(1, 'epoch-b')); await until(() => source.read('existing')?.epoch === 'epoch-b');
   expect(received).toEqual([usage(3), usage(1, 'epoch-b')]);
   send({ type: 'remove', threadId: 'existing' }); await until(() => source.read('existing') === null);
-  expect(received).toHaveLength(2); unsubscribe(); send(update(2, 'epoch-b')); await until(() => source.read('existing')?.revision === 2); expect(received).toHaveLength(2);
+  expect(received).toEqual([usage(3), usage(1, 'epoch-b'), null]); unsubscribe(); send(update(2, 'epoch-b')); await until(() => source.read('existing')?.revision === 2); expect(received).toHaveLength(3);
 });
 
 it('断线同步清值并拒收迟到通知，重建重新证明来源并保留共享RPC', async () => {
@@ -138,12 +138,13 @@ it.each(['launcher-symlink', 'launcher-hardlink', 'launcher-mode', 'launcher-sha
 
 it.each(['launcher-replace', 'launcher-content', 'socket-replace', 'ancestor-replace', 'private-mode'] as const)('读取期间%s即失效，不再提供旧值', async fault => {
   const f = await fixture(); const source = await f.source({ windowMs: 2000 }); await until(() => source.read('existing') !== null);
+  const removed: string[] = []; source.subscribe((id, value) => { if (value === null) removed.push(id); });
   if (fault === 'launcher-replace') { await writeFile(f.launcher + '.new', f.launcherText(), { mode: 0o700 }); await rename(f.launcher + '.new', f.launcher); }
   if (fault === 'launcher-content') await writeFile(f.launcher, f.launcherText().replace('49321', '49323'));
   if (fault === 'socket-replace') { await rename(f.socketPath, f.socketPath + '.old'); await writeFile(f.socketPath, '', { mode: 0o600 }); }
   if (fault === 'ancestor-replace') { await rename(join(f.directory, 'private'), join(f.directory, 'old-private')); await mkdir(join(f.directory, 'private'), { mode: 0o700 }); await f.writeLauncher(); }
   if (fault === 'private-mode') await chmod(f.meterDir, 0o755);
-  await until(() => source.read('existing') === null); await source.close();
+  await until(() => source.read('existing') === null); expect(removed).toEqual(['existing']); await source.close();
 });
 
 it.each(['hello-hash', 'hello-extra', 'hello-utf8', 'hello-json', 'hello-duplicate', 'hello-overflow', 'hello-truncated'] as const)('hello校验拒绝%s而非exit0成功', async fault => {
@@ -161,6 +162,7 @@ it.each(['hello-hash', 'hello-extra', 'hello-utf8', 'hello-json', 'hello-duplica
 
 it.each(['utf8', 'json', 'extra-field', 'negative', 'unsafe-integer', 'fraction', 'unknown-type', 'overflow', 'truncated'] as const)('既有usage后%s帧使来源失效', async fault => {
   const f = await fixture(); const source = await f.source({ windowMs: 2000 }); await until(() => source.read('existing') !== null);
+  const removed: string[] = []; source.subscribe((id, value) => { if (value === null) removed.push(id); });
   let data = frame(update(2));
   if (fault === 'utf8') data = Buffer.from([255, 10]);
   if (fault === 'json') data = Buffer.from('{bad}\n');
@@ -171,7 +173,7 @@ it.each(['utf8', 'json', 'extra-field', 'negative', 'unsafe-integer', 'fraction'
   if (fault === 'unknown-type') data = frame({ type: 'snapshot-end' });
   if (fault === 'overflow') data = Buffer.from('x'.repeat(4096) + '\n');
   if (fault === 'truncated') { for (const socket of f.sockets) socket.end('{'); } else for (const socket of f.sockets) socket.write(data);
-  await until(() => source.read('existing') === null); await source.close();
+  await until(() => source.read('existing') === null); expect(removed).toEqual(['existing']); await source.close();
 });
 
 it('权限例外严格只在固定计量脚本，普通命令仍默认且不接受权限入口', async () => {
@@ -189,7 +191,7 @@ it('预取消不发送统计命令，运行中取消同步清值并精确终止�
   const f = await fixture(); const cancelled = new AbortController(); cancelled.abort();
   await expect(f.source({ signal: cancelled.signal })).rejects.toMatchObject({ code: 'cancelled' });
   expect(f.frames.filter(x => x.method === 'command/exec')).toHaveLength(1);
-  const controller = new AbortController(); const source = await f.source({ signal: controller.signal }); await until(() => source.read('existing') !== null); controller.abort();
+  const controller = new AbortController(); const source = await f.source({ signal: controller.signal, windowMs: 1000 }); await until(() => source.read('existing') !== null); controller.abort();
   expect(source.read('existing')).toBeNull(); await source.close(); await until(() => f.processes.size === 0);
   const own = new Set(f.frames.filter(x => x.method === 'command/exec').map(x => (x.params as Record<string, JsonValue>).processId));
   for (const x of f.frames.filter(x => x.method === 'command/exec/terminate')) expect(own.has((x.params as Record<string, JsonValue>).processId)).toBe(true);
@@ -393,4 +395,48 @@ it.each([
 it('合法query保持原样参与来源SHA，编码的井号和query内at符号不当作userinfo或fragment', async () => {
   const f = await fixture(); f.config.upstreamUrl = 'ws://127.0.0.1:49321/rpc?token=a%40b&hash=%23&raw=@&case=%2f'; await f.writeLauncher();
   const source = await f.source(); await until(() => source.read('existing') !== null); expect(source.read('existing')).toEqual(usage());
+});
+
+
+it('真实Remote字节通道将remove、失效与cancel传播为null，旧channel不能清空新来源或复活', async () => {
+  const f = await fixture(); const controller = new AbortController(); const source = await f.source({ signal: controller.signal, windowMs: 1000 });
+  await until(() => source.read('existing') !== null);
+  const observed: Array<[string, ModelUploadUsage | null]> = [];
+  source.subscribe(() => { throw new Error('subscriber'); });
+  source.subscribe((id, value) => observed.push([id, value]));
+  const send = (value: unknown) => { for (const socket of f.sockets) socket.write(frame(value)); };
+  send(update(1, 'epoch-a', 'other')); await until(() => source.read('other') !== null);
+  send({ type: 'remove', threadId: 'existing' }); await until(() => source.read('existing') === null);
+  expect(observed).toContainEqual(['existing', null]); expect(source.read('other')?.turnBytes).toBe(10);
+  send(update(2)); await until(() => source.read('existing')?.turnBytes === 20);
+  const old = f.frames.filter(x => x.method === 'command/exec').at(-1)!.params as Record<string, JsonValue>;
+  f.stream.emit('disconnect', { reason: 'network', mayHaveBeenSent: true });
+  expect(source.read('existing')).toBeNull(); expect(source.read('other')).toBeNull();
+  expect(observed.filter(([id, value]) => id === 'existing' && value === null)).toHaveLength(2);
+  f.output(old.processId as string, 'stdout', frame(update(99))); expect(source.read('existing')).toBeNull();
+  await until(() => source.read('existing')?.turnBytes === 10, 4000);
+  f.output(old.processId as string, 'stdout', frame(update(99))); expect(source.read('existing')?.turnBytes).toBe(10);
+  controller.abort(); expect(source.read('existing')).toBeNull();
+  expect(observed.filter(([id, value]) => id === 'existing' && value === null)).toHaveLength(3);
+  await source.close(); expect(f.processes.size).toBe(0);
+  expect(await f.session.call('caller/42')).toEqual({ alive: true });
+});
+
+it('Remote的2048项上限淘汰通知为null，失效广播的重入与退订有界', async () => {
+  const f = await fixture(); const source = await f.source(); await until(() => source.read('existing') !== null);
+  const removed: string[] = []; source.subscribe((id, value) => { if (value === null) removed.push(id); });
+  for (const socket of f.sockets) for (let index = 0; index < 2048; index++) socket.write(frame(update(1, 'epoch-a', `bulk-${index}`)));
+  await until(() => source.read('bulk-2047') !== null);
+  expect(removed).toEqual(['existing']); expect(source.read('existing')).toBeNull();
+  let lateCalls = 0; let off = () => {};
+  off = source.subscribe(() => { off(); source.subscribe(() => { lateCalls++; }); });
+  await source.close(); expect(lateCalls).toBe(0); expect(removed).toHaveLength(2049);
+  expect(await f.session.call('caller/42')).toEqual({ alive: true });
+});
+
+it('Remote close在失效监听中重入不重复清理来源所有权', async () => {
+  const f = await fixture(); const source = await f.source(); await until(() => source.read('existing') !== null);
+  let nested: Promise<void> | undefined; source.subscribe((_id, value) => { if (value === null) nested = source.close(); });
+  const closing = source.close(); expect(nested).toBe(closing); await closing;
+  expect(f.processes.size).toBe(0); expect(await f.session.call('caller/42')).toEqual({ alive: true });
 });

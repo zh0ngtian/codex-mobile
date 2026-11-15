@@ -21,7 +21,7 @@ export class RemoteModelUploadSource implements ModelUploadSource {
   // 保留创建者作用域；后续重新证明不继承上一有限读取命令已经失效的live guard。
   private readonly context = new AsyncResource('remote-model-upload-source');
   private readonly threads = new Map<string, ModelUploadUsage>();
-  private readonly listeners = new Set<(threadId: string, usage: ModelUploadUsage) => void>();
+  private readonly listeners = new Set<(threadId: string, usage: ModelUploadUsage | null) => void>();
   private channel?: RemoteModelUploadChannel;
   private verified = false;
   private closed = false;
@@ -42,7 +42,18 @@ export class RemoteModelUploadSource implements ModelUploadSource {
     try { await source.connect(started + windowMs); source.initialized = true; return source; }
     catch (error) { void source.close(); throw error; }
   }
-  private invalidate = (): void => { this.verified = false; this.threads.clear(); };
+  private notify(threadId: string, usage: ModelUploadUsage | null, subscribers = [...this.listeners]): void {
+    for (const listener of subscribers) {
+      if (usage ? !this.verified || this.closed || this.threads.get(threadId) !== usage : this.threads.has(threadId)) break;
+      if (this.listeners.has(listener)) try { listener(threadId, usage ? { ...usage } : null); } catch { /* 订阅者不影响共享来源。 */ }
+    }
+  }
+  private remove(threadId: string): void { if (this.threads.delete(threadId)) this.notify(threadId, null); }
+  private invalidate = (): void => {
+    this.verified = false;
+    const affected = [...this.threads.keys()]; const subscribers = [...this.listeners]; this.threads.clear();
+    for (const threadId of affected) this.notify(threadId, null, subscribers);
+  };
   private cancelled = (): void => { void this.close(); };
   private accept = (value: Record<string, unknown>): void => {
     if (this.closed) throw new RemoteModelUploadError('closed');
@@ -54,14 +65,14 @@ export class RemoteModelUploadSource implements ModelUploadSource {
     const frame = value.frame;
     if (frame.type === 'remove') {
       if (!meterKeys(frame, ['type', 'threadId']) || !identifier(frame.threadId)) throw new RemoteModelUploadError('protocol');
-      this.threads.delete(frame.threadId); return;
+      this.remove(frame.threadId); return;
     }
     if (!meterKeys(frame, ['type', 'threadId', 'usage']) || frame.type !== 'usage' || !identifier(frame.threadId)) throw new RemoteModelUploadError('protocol');
     const usage = usageCopy(frame.usage); const previous = this.threads.get(frame.threadId);
     if (previous?.epoch === usage.epoch && previous.revision >= usage.revision) return;
     this.threads.set(frame.threadId, usage);
-    while (this.threads.size > 2048) this.threads.delete(this.threads.keys().next().value!);
-    for (const listener of this.listeners) { if (!this.verified || this.closed) break; try { listener(frame.threadId, { ...usage }); } catch { /* 订阅者不影响共享来源。 */ } }
+    while (this.threads.size > 2048) this.remove(this.threads.keys().next().value!);
+    this.notify(frame.threadId, usage);
   };
   private async connect(deadline = performance.now() + this.windowMs): Promise<void> {
     if (this.closed) throw new RemoteModelUploadError('closed');
@@ -69,9 +80,14 @@ export class RemoteModelUploadSource implements ModelUploadSource {
     try { binding = this.commands.fileTransportBinding(this.session); }
     catch (error) { throw new RemoteModelUploadError(error instanceof RemoteCommandError && error.code === 'binding' ? 'binding' : 'capability'); }
     if (binding.metadata.platformFamily !== 'unix') throw new RemoteModelUploadError('capability');
-    const channel = new RemoteModelUploadChannel(this.session, binding, deadline, this.accept, () => {
+    const channel = new RemoteModelUploadChannel(this.session, binding, deadline, value => {
+      if (this.channel === channel && !this.closed) this.accept(value);
+    }, () => {
+      if (this.channel !== channel || this.closed) return;
       this.invalidate();
-      if (this.initialized && !this.closed) void channel.settled().then(() => this.context.runInAsyncScope(() => this.schedule()));
+      if (this.initialized) void channel.settled().then(() => {
+        if (this.channel === channel) this.context.runInAsyncScope(() => this.schedule());
+      });
     }, this.signal);
     this.channel = channel;
     await channel.start();
@@ -84,11 +100,13 @@ export class RemoteModelUploadSource implements ModelUploadSource {
     if (!this.verified || !this.channel?.valid()) return null;
     const value = this.threads.get(threadId); return value ? { ...value } : null;
   }
-  subscribe(listener: (threadId: string, usage: ModelUploadUsage) => void): () => void { if (!this.closed) this.listeners.add(listener); return () => { this.listeners.delete(listener); }; }
+  subscribe(listener: (threadId: string, usage: ModelUploadUsage | null) => void): () => void { if (!this.closed) this.listeners.add(listener); return () => { this.listeners.delete(listener); }; }
   close(): Promise<void> {
     if (this.closing) return this.closing;
+    this.closing = Promise.resolve().then(async () => { await this.channel?.close(); })
+      .finally(() => { sources--; this.context.emitDestroy(); });
     this.closed = true; this.invalidate(); this.listeners.clear(); this.signal?.removeEventListener('abort', this.cancelled);
     if (this.retry) clearTimeout(this.retry); this.retry = undefined;
-    this.closing = (this.channel?.close() ?? Promise.resolve()).finally(() => { sources--; this.context.emitDestroy(); }); return this.closing;
+    return this.closing;
   }
 }

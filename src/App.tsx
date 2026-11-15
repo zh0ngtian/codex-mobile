@@ -482,6 +482,8 @@ function BackendWorkspace({
     Record<string, AnyRecord>
   >({});
   const uploadUsageEventRef = useRef<Record<string, number>>({});
+  const uploadUsageGenerationRef = useRef(0);
+  const [uploadUsageConnectionVersion, setUploadUsageConnectionVersion] = useState(0);
   const [uploadUsageByThread, setUploadUsageByThread] = useState<Record<string, AnyRecord | null>>({});
   const [rateLimits, setRateLimits] = useState<AnyRecord | null>(null);
   const [pendingAction, setPendingAction] = useState("");
@@ -964,14 +966,16 @@ function BackendWorkspace({
     if (!id || connection !== 'online' || !client) return;
     let cancelled = false;
     const eventRevision = uploadUsageEventRef.current[id] ?? 0;
+    const generation = uploadUsageGenerationRef.current;
+    const currentRead = () => !cancelled && client === clientRef.current && generation === uploadUsageGenerationRef.current && eventRevision === (uploadUsageEventRef.current[id] ?? 0);
     void client.request<{ usage: AnyRecord | null }>('mobile/uploadUsage/read', { threadId: id }).then(result => {
-      if (cancelled || client !== clientRef.current || eventRevision !== (uploadUsageEventRef.current[id] ?? 0)) return;
-      setUploadUsageByThread(current => ({ ...current, [id]: validUploadUsage(result.usage) ? mergeUploadUsage(current[id], result.usage) : null }));
+      if (!currentRead()) return;
+      setUploadUsageByThread(current => currentRead() ? ({ ...current, [id]: validUploadUsage(result.usage) ? mergeUploadUsage(current[id], result.usage) : null }) : current);
     }).catch(() => {
-      if (!cancelled && client === clientRef.current && eventRevision === (uploadUsageEventRef.current[id] ?? 0)) setUploadUsageByThread(current => ({ ...current, [id]: null }));
+      if (currentRead()) setUploadUsageByThread(current => currentRead() ? ({ ...current, [id]: null }) : current);
     });
     return () => { cancelled = true; };
-  }, [active?.id, connection]);
+  }, [active?.id, connection, uploadUsageConnectionVersion]);
 
   useEffect(() => {
     const client = clientRef.current;
@@ -1371,6 +1375,12 @@ function BackendWorkspace({
 
   useEffect(() => {
     let disposed = false;
+    const invalidateUploadUsage = () => {
+      uploadUsageGenerationRef.current++;
+      uploadUsageEventRef.current = {};
+      setUploadUsageByThread({});
+    };
+    invalidateUploadUsage();
     setSyncState(null);
     let manager: BackendConnectionManager;
     manager = new BackendConnectionManager({
@@ -1379,6 +1389,7 @@ function BackendWorkspace({
         setConnection(status);
         if (status === "online") setError("");
         if (status === "connecting" || status === "offline") {
+          invalidateUploadUsage();
           projectlessLoadRef.current = null;
           setLoadingProjectCwd((current) => current === PROJECTLESS_GROUP_ID ? "" : current);
         }
@@ -1429,9 +1440,10 @@ function BackendWorkspace({
             return;
           }
           const closedSide = message.method === 'thread/closed' ? sidechats.get(String(params.threadId ?? '')) : undefined;
-          if (message.method === 'mobile/uploadUsage/updated' && params.threadId && validUploadUsage(params.usage)) {
+          if (message.method === 'mobile/uploadUsage/updated' && typeof params.threadId === 'string' && params.threadId.length > 0 && params.threadId.length <= 256 && (params.usage === null || validUploadUsage(params.usage))) {
+            if (disposed || client !== clientRef.current) return;
             uploadUsageEventRef.current[params.threadId] = (uploadUsageEventRef.current[params.threadId] ?? 0) + 1;
-            setUploadUsageByThread(current => ({ ...current, [params.threadId]: mergeUploadUsage(current[params.threadId], params.usage) }));
+            setUploadUsageByThread(current => ({ ...current, [params.threadId]: params.usage === null ? null : mergeUploadUsage(current[params.threadId], params.usage) }));
             return;
           }
           if (sidechats.observe(message)) {
@@ -1873,7 +1885,12 @@ function BackendWorkspace({
       },
       onReady: (_backendId, source) => {
         const client = source as AppServerClient;
-        if (clientRef.current !== client) threadListLoaderRef.current!.invalidate();
+        if (disposed) return;
+        if (clientRef.current !== client) {
+          threadListLoaderRef.current!.invalidate();
+          invalidateUploadUsage();
+          setUploadUsageConnectionVersion(version => version + 1);
+        }
         if (projectlessLoadRef.current?.client !== client) {
           projectlessLoadRef.current = null;
           setLoadingProjectCwd((current) => current === PROJECTLESS_GROUP_ID ? "" : current);
@@ -2142,6 +2159,7 @@ function BackendWorkspace({
     });
     return () => {
       disposed = true;
+      uploadUsageGenerationRef.current++;
       unbindConnectionRecovery();
       manager.close();
       if (connectionManagerRef.current === manager) {

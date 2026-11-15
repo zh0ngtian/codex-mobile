@@ -944,7 +944,7 @@ export class HttpSessions {
     return { id: message.id, result: { usage: this.options.uploadMeter?.read(id) ?? null } };
   }
 
-  publishUploadUsage(threadId: string, usage: ModelUploadUsage) {
+  publishUploadUsage(threadId: string, usage: ModelUploadUsage | null) {
     this.broadcastHosted({ method: 'mobile/uploadUsage/updated', params: { threadId, usage } });
   }
 
