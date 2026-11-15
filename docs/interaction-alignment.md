@@ -320,7 +320,7 @@
 
 ### 4.12 多网关本地与 Remote 模式（已确认，分阶段开发）
 
-- 固定身份 A（2026-11-15 已确认，4a 内部基础已实现、QUALITY 重入关闭缺口修复后待双审复核）：网关持久目录首次生成固定随机 gatewayId/localHostId，同目录重启、改名及 Remote 重授权不变；不同目录/网关不合并。当前 Mac 网关使用有界固定 ioreg 读取的硬件 UUID 域分隔 SHA-256 指纹校验归属，原始值不保存；跨机复制、损坏、权限或 symlink 不合规明确拒绝并保留旧记录，机器来源不可用不降级。默认 `~/.codex-mobile/gateway-identity`，独立网关可可信注入不同目录；其他宿主的默认 reader 明确 unsupported，本步未接 Local 启动入口、不改变旧 hostId 或 URL/token。Local 首次使用即固定业务归组，只有当前可信完整 binding.local 证明的 Remote 网关 Mac 共用该组，Local/Remote 传输 namespace 分开。共享组不能作为读取或发送授权：每个 Remote 句柄和后续操作/收据仍冻结完整 managed 账号（包括 userId 有无）、网关、目标双 ID 和授权 generation，防止新账号看到旧 Remote 正文或接管旧操作。验收覆盖真实文件权限/父项 fsync、并发进程及中断、换机拒绝、client 可见但未接受、账号和安装变化、离线仅解析、暂停/pending、旧句柄与迟到资源实际收尾；公开路由、队列、观察器和手机支持继续待实现/验收，未发布。
+- 固定身份 A（2026-11-15 已确认，4a 内部基础已完成源码验证与独立双审，未接公开路由）：网关持久目录首次生成固定随机 gatewayId/localHostId，同目录重启、改名及 Remote 重授权不变；不同目录/网关不合并。当前 Mac 网关使用有界固定 ioreg 读取的硬件 UUID 域分隔 SHA-256 指纹校验归属，原始值不保存；跨机复制、损坏、权限或 symlink 不合规明确拒绝并保留旧记录，机器来源不可用不降级。默认 `~/.codex-mobile/gateway-identity`，独立网关可可信注入不同目录；其他宿主的默认 reader 明确 unsupported，本步未接 Local 启动入口、不改变旧 hostId 或 URL/token。Local 首次使用即固定业务归组，只有当前可信完整 binding.local 证明的 Remote 网关 Mac 共用该组，Local/Remote 传输 namespace 分开。共享组不能作为读取或发送授权：每个 Remote 句柄和后续操作/收据仍冻结完整 managed 账号（包括 userId 有无）、网关、目标双 ID 和授权 generation，防止新账号看到旧 Remote 正文或接管旧操作。验收覆盖真实文件权限/父项 fsync、并发进程及中断、换机拒绝、client 可见但未接受、账号和安装变化、离线仅解析、暂停/pending、旧句柄与迟到资源实际收尾；公开路由、队列、观察器和手机支持继续待实现/验收，未发布。
 - 4a 内部引用严格检查全部 own 字段：缺省或 Local 模式只允许 `mode`，非枚举的 gatewayId/account/target 即使值为 undefined 也须明确拒绝，不能静默变成本地。未提供引用、空对象、仅有 mode 的 local/undefined 保留兼容；验收逐一覆盖三字段、正常值/undefined、缺省/local 的 12 个组合，并保留 getter、symbol、非标准 prototype、完整 Remote 和不降级边界。
 - 4a 内部 RPC 实际关闭屏障须在可能同步触发外部 close 监听器之前固定；监听器重入 settled 也须等待同一实际 client_closed 发送 Promise。session/stream 发起关闭、stream/session 自身监听与监听抛错均须在 gate 前不兑现、gate 后完成，关闭帧及释放各一次且无监听残留；不等待业务 ACK，不关闭共享 Relay。
 
@@ -1940,3 +1940,10 @@ Task3d.4统计失效装配已完成源码验收：冻结 `7f468f97646162b2c1cf34
 ### 2026-11-15 Task4a 关闭监听重入屏障修复
 
 候选 `0bdea1706d05c49cac11e549ef84e806e7260289` 的 QUALITY 发现：RemoteStream 同步 close 监听器重入 session.settled 时，原实际关闭 Promise 尚未登记，导致提前兑现。原最小脚本和 8 组永久组合先确认真实 RED（session 发起、stream 监听的普通及抛错两项失败），随后在 finish 触发外部监听前先固定可等待屏障，用现有 close 的实际 Promise 完成；保持同步终态、抛错后重取同一 close Promise 和一次发送/释放。原最小脚本及 8 组新回归、2 组既有实际关闭回归转 GREEN。本轮限定 RPC/目标相关验证、双 strict 与服务端构建，之后待原 SPEC→QUALITY 复审；旧失败及探针 .ts 的 ESM 工具错误保持封存，不改预算或旧夹具。整个 Task4、公开路由和手机支持仍待完成，没有生产、官方 Remote、客户端构建或发布。
+
+
+### 2026-11-16 Task4a 目标身份与关闭屏障源码验收完成
+
+最终冻结 `5a7d1a85ff9540067c07c753d5d775f89db64c0f` 已通过原 SPEC 与原 QUALITY 限定复审。首候选完整 server1733通过/7既有跳过的执行仍绑定31ca；Local非枚举字段缺口在0bdea修复，关闭监听重入settled提前兑现的P2在最终提交修复。原同字节反例均转绿，新增8组合先观察2真实失败再全部通过；最终RPC42项、目标43项、双strict及服务端构建通过。关闭屏障在任何外部监听器前固定，实际发送完成后兑现，保持同步终态、监听抛错后同一Promise、单次client_closed及共享Relay存活。首失败及工具错误原样保留；root核对所有封存工件与真实执行源码。
+
+此步仅完成内部基础；公开Remote路由、持久队列、观察器、手机和长期性能继续Task4b/4c/5/6，未运行新官方探针、构建客户端或部署生产。见[脱敏收据](superpowers/plans/evidence/2026-11-16-remote-target-identity-validation.json)。

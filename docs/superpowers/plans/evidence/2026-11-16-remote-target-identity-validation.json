@@ -1,0 +1,129 @@
+{
+  "schemaVersion": 1,
+  "task": "Task4a-internal-target-identity",
+  "sourceCommit": "5a7d1a85ff9540067c07c753d5d775f89db64c0f",
+  "tree": "f8086bdc7e1725fe7d7d419f241dc42fa64fe225",
+  "baselineMain": "d8ae4c97a877af5f68a96a1aeff7e7d196e24823",
+  "completedAtUtc": "2026-11-15T16:15:27.931174+00:00",
+  "sourceOnly": true,
+  "deployed": false,
+  "clientPublished": false,
+  "clientBuild": false,
+  "gates": {
+    "implementationPassed": true,
+    "specPassed": true,
+    "qualityPassed": true,
+    "rootAuditedAllArtifacts": true
+  },
+  "scope": "固定随机网关/本机身份、Mac归属、可信目标解析及实际logical-close收尾屏障；尚未接入公开Remote产品路由",
+  "implementationStages": [
+    {
+      "stage": "initialImplementation",
+      "sourceCommit": "31ca22b05709df0dd449690da319af051a1d9b17",
+      "tree": "b6cbdd908fb8e0d25e357184b39f1c5df4fbb7b8",
+      "archiveSha256": "124c78c75a09de73b660cfb8663cef60729d3fa3048b98e95fe8daf3490bf360",
+      "trackedCount": 2882,
+      "reportSha256": "ef9ebbc5c028f58a534528ec421031f0d21cd4fe72a15e670b3272b9d5ebc657",
+      "bindingSha256": "fa38d2751a63e79dfc0c349945e6f01f0af329b197d1a33f6a78e9c48cfb6667",
+      "manifestSha256": "0e8b5d48257f310a0ff597061a3651f31ff1de3e73026c78a7c4f1a5db8133bb",
+      "rootAuditSha256": "fa2bc2a7eeba80a19ea6ffded3929efb8b57277ff87d66ad8a335d3a085739de",
+      "rootAuditedAllArtifacts": true
+    },
+    {
+      "stage": "strictOwnKeysFix",
+      "sourceCommit": "0bdea1706d05c49cac11e549ef84e806e7260289",
+      "tree": "a187f8d1f27564deb42c2b05d2b2b13bbf1ed1f6",
+      "archiveSha256": "191bfac377eb51329f50850d02c87d37c0b0aec6d3c2089e8b566fe0f25b76d4",
+      "trackedCount": 2882,
+      "reportSha256": "525340ca11864ae014fda506c86d603ef3ac33c1d405c83acd8e5cbefdaec752",
+      "bindingSha256": "45de521715c6fac2ee04dee5853573dcd87517c2a556991efec5439eb1ef6869",
+      "manifestSha256": "24a01b6b4106aab5a3b99d8893ffeff5bfe203b1e098d1b29c781f2e67f55790",
+      "rootAuditSha256": "196767e53cd96a0f1522ca0ef7005063d99a84b6e4b0b27f8c1ec8b5ae6b40cf",
+      "rootAuditedAllArtifacts": true
+    },
+    {
+      "stage": "reentrantCloseFix",
+      "sourceCommit": "5a7d1a85ff9540067c07c753d5d775f89db64c0f",
+      "tree": "f8086bdc7e1725fe7d7d419f241dc42fa64fe225",
+      "archiveSha256": "89b1e676977cd2de3f29e2f605dd7e47e169ce7f88a8ce5dc29c895ee75fd79c",
+      "trackedCount": 2882,
+      "reportSha256": "a3bf9cff82aa2a870cea0af707d0dac593ebabf1f72dcf3dcb30d18c692a7b61",
+      "bindingSha256": "04080be27d1e5fb86995a99822039d24d165ec108f89492533a9f1686bce22fa",
+      "manifestSha256": "7d9589ff2320c2969b2700186d204fc4ceb90b9d60781660dd27be844ebff78c",
+      "rootAuditSha256": "14a0f8348c25d652a767263ae530cd8dfbaf29f4798ca0ffc0cb18cef36be4d8",
+      "rootAuditedAllArtifacts": true
+    }
+  ],
+  "finalSpec": {
+    "sourceCommit": "5a7d1a85ff9540067c07c753d5d775f89db64c0f",
+    "passed": true,
+    "rootAuditedAllArtifacts": true,
+    "reportSha256": "71b3e0d0e2081fd8dc8f9b5f327d1352c134d5cda58479b89a991e54d9d8ca91",
+    "bindingSha256": "79fe8d1bee8b0bac481636a62c2f89e3828f9dfb412910ba6b72e90be120ab50",
+    "manifestSha256": "931a3cccdf3adfa58e2cc3d434aeb6264d6d66b751eef7baa2ce69d6adbc2b15",
+    "rootAuditSha256": "0e3fe771b0ccc93ab8fbcbe32296f8e5e721ef9ab439c5d42587a3c21fd2ea62"
+  },
+  "finalQuality": {
+    "sourceCommit": "5a7d1a85ff9540067c07c753d5d775f89db64c0f",
+    "passed": true,
+    "rootAuditedAllArtifacts": true,
+    "reportSha256": "bbdf4461dad3adaad29f150c34fbd2730c65de25a186acdb8c4cb1daab6fd6c8",
+    "bindingSha256": "b14d0caaf685d0f97ff9593f3c3ef10bf6dbdb405621ce99b1dbd64a8bbc8f32",
+    "manifestSha256": "0faecb52b8f933f88f55bbaf70deafd9ef019108dc1edc18d46510e8986e013a",
+    "rootAuditSha256": "d0ab674308e897533aaf711ad6520c362779e4a59e70154b1fceb3c28e4d9d27"
+  },
+  "validation": {
+    "originalFullServer": {
+      "sourceCommit": "31ca22b05709df0dd449690da319af051a1d9b17",
+      "passed": 1733,
+      "existingOptInSkipped": 7,
+      "notReboundToFinalCommit": true
+    },
+    "finalScoped": {
+      "sourceCommit": "5a7d1a85ff9540067c07c753d5d775f89db64c0f",
+      "rpcSessionPassed": 42,
+      "targetRelatedPassed": 43,
+      "targetFilterUnselected": 33,
+      "originalCloseProbePassed": true,
+      "sourceStrictExit": 0,
+      "testStrictExit": 0,
+      "buildServerExit": 0
+    },
+    "reuse": "身份/target/Runtime/Relay字节未变；原完整执行仍绑定原提交，最终仅对本次关闭时序和目标guard限定回归。"
+  },
+  "approvedIdentity": "A：持久随机gatewayId/localHostId，保留数据目录时重启/改名/重授权不变；换机/重装不自动接管旧数据",
+  "failuresRetained": [
+    {
+      "sourceCommit": "31ca22b05709df0dd449690da319af051a1d9b17",
+      "kind": "SPEC P2",
+      "finding": "Local分支遗漏非枚举known字段",
+      "fixedAt": "0bdea1706d05c49cac11e549ef84e806e7260289",
+      "originalMinimalTurnedGreen": true
+    },
+    {
+      "sourceCommit": "0bdea1706d05c49cac11e549ef84e806e7260289",
+      "kind": "QUALITY P2",
+      "finding": "close listener重入settled提前越过实际发送屏障",
+      "fixedAt": "5a7d1a85ff9540067c07c753d5d775f89db64c0f",
+      "originalMinimalTurnedGreen": true
+    },
+    {
+      "kind": "原完整并发夹具失败",
+      "finding": "catalog 40ms加载预算与runtime bounded close代替实际settled；baseline/current同字节受控probe证明原有夹具边界，孤立及完整singleworker通过",
+      "originalResultsRetained": true
+    },
+    {
+      "kind": "工具及测试编写错误",
+      "finding": "缺括号transform和.ts位于ESM包外的CJS转换；未算作有效行为RED",
+      "originalResultsRetained": true
+    }
+  ],
+  "pending": [
+    "Task4b持久队列与公开HTTP/WS/hosted/Bark/关注装配",
+    "Task4c会话观察",
+    "Task5手机多网关模式及outbox",
+    "Task6完整官方功能/8小时/凭据周期/睡眠唤醒/P95"
+  ],
+  "officialRemoteProbeRunThisStep": false,
+  "testChatsCreated": 0
+}
