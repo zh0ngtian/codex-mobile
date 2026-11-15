@@ -11,7 +11,7 @@ import { markLoadProfile } from './diagnostics/conversation-load-profile';
 import { NativeSwitchBoundary, useNativeSwitch, useSwitchRegistry, useSwitchWorkspace } from './native-ui/switch-context';
 import { emptyNativeSnapshot } from './native-ui/protocol';
 import { useNativeConfirmation } from './native-ui/confirmation';
-import { useNativeRuntime, useNativeWorkspace } from "./native-ui/adapters";
+import { useNativeNavigation, useNativeRuntimeOwner, useNativeWorkspace } from "./native-ui/adapters";
 import { useNativeConversationAdapter } from "./native-ui/workspace-adapter";
 import { isNativeUIEnabled, type NativeRuntime } from "./native-ui/runtime";
 import { projectNavigation, projectNavigationLoading } from "./native-ui/projection";
@@ -4862,6 +4862,7 @@ function RestoredAppBootstrap({
   initialRegistry: BackendRegistry;
 }) {
   const [registry, setRegistry] = useState(initialRegistry);
+  const nativeRuntime = useNativeRuntimeOwner();
   useSwitchRegistry(registry, !registry.backends.length);
   const [notificationPreference, setNotificationPreference] = useState(() => readNotificationPreference(window.localStorage));
   const saveNotificationPreference = (next: NotificationPreference) => {
@@ -4883,6 +4884,7 @@ function RestoredAppBootstrap({
   if (registry.backends.length) {
     return (
       <ConfiguredApp
+        nativeRuntime={nativeRuntime}
         initialRegistry={registry}
         appUpdate={appUpdate}
         transportMode={transportMode}
@@ -4895,17 +4897,18 @@ function RestoredAppBootstrap({
     );
   }
 
-  return <UnconfiguredApp registry={registry} setRegistry={setRegistry} managerOpen={managerOpen} setManagerOpen={setManagerOpen} appUpdate={appUpdate} transportMode={transportMode} changeTransportMode={changeTransportMode} notificationPreference={notificationPreference} saveNotificationPreference={saveNotificationPreference} failedNotificationDevices={failedNotificationDevices} nativeSettingsPage={nativeSettingsPage} setNativeSettingsPage={setNativeSettingsPage} />;
+  return <UnconfiguredApp nativeRuntime={nativeRuntime} registry={registry} setRegistry={setRegistry} managerOpen={managerOpen} setManagerOpen={setManagerOpen} appUpdate={appUpdate} transportMode={transportMode} changeTransportMode={changeTransportMode} notificationPreference={notificationPreference} saveNotificationPreference={saveNotificationPreference} failedNotificationDevices={failedNotificationDevices} nativeSettingsPage={nativeSettingsPage} setNativeSettingsPage={setNativeSettingsPage} />;
 }
-/** 与ConfiguredApp互斥挂载，空registry也只有一个业务runtime。 */
-function UnconfiguredApp({ registry, setRegistry, managerOpen, setManagerOpen, appUpdate, transportMode, changeTransportMode, notificationPreference, saveNotificationPreference, failedNotificationDevices, nativeSettingsPage, setNativeSettingsPage }: {
+/** 与ConfiguredApp互斥挂载，共用AppBootstrap拥有的唯一原生runtime。 */
+function UnconfiguredApp({ nativeRuntime, registry, setRegistry, managerOpen, setManagerOpen, appUpdate, transportMode, changeTransportMode, notificationPreference, saveNotificationPreference, failedNotificationDevices, nativeSettingsPage, setNativeSettingsPage }: {
+ nativeRuntime: NativeRuntime | null;
  registry: BackendRegistry; setRegistry: (value: BackendRegistry) => void; managerOpen: boolean; setManagerOpen: (value: boolean) => void;
  appUpdate: ReturnType<typeof useAppUpdate>; transportMode: TransportMode; changeTransportMode: (value: TransportMode) => void;
  notificationPreference: NotificationPreference; saveNotificationPreference: (value: NotificationPreference) => void; failedNotificationDevices: string[];
  nativeSettingsPage: string; setNativeSettingsPage: (value: string) => void;
 }) {
   const { preference: languagePreference } = useI18n();
-  const nativeRuntime = useNativeRuntime({ selectedBackendId: 'bootstrap', backends: [], groups: [],
+  useNativeNavigation(nativeRuntime, { selectedBackendId: 'bootstrap', backends: [], groups: [],
     preferences: projectNativePreferences({ language: languagePreference, transportMode, fontSize: readFontSize(), notification: notificationPreference }),
   }, { 'settings.open': p => { setNativeSettingsPage(String(p.id || 'devices')); setManagerOpen(true); } });
   useNativeWorkspace(nativeRuntime, 'bootstrap', { ...emptyNativeSnapshot(), ready: true, title: t('添加设备'), conversationActions: [{ id: 'add-device', kind: 'action', title: t('添加设备'), command: { name: 'settings.open', params: {} } }] }, {});
@@ -4965,6 +4968,7 @@ function UnconfiguredApp({ registry, setRegistry, managerOpen, setManagerOpen, a
 }
 
 function ConfiguredApp({
+  nativeRuntime,
   initialRegistry,
   appUpdate,
   transportMode,
@@ -4974,6 +4978,7 @@ function ConfiguredApp({
   failedNotificationDevices,
   onRegistryChange,
 }: {
+  nativeRuntime: NativeRuntime | null;
   initialRegistry: BackendRegistry;
   appUpdate: AppUpdateController;
   transportMode: TransportMode;
@@ -5533,7 +5538,7 @@ function ConfiguredApp({
     else if (name === "project.more") toggleProject(String(params.backendId), String(params.cwd));
     else retryProject(String(params.backendId), String(params.cwd));
   };
-  const nativeRuntime = useNativeRuntime({
+  useNativeNavigation(nativeRuntime, {
     selectedBackendId: selectedBackend?.id ?? "", listBackendId, sidebarOpen, search: query, groups: nativeGroups,
     navigationLoading: projectNavigationLoading({
       loading: threadListState === "loading",
