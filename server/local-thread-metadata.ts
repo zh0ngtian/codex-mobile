@@ -1,12 +1,25 @@
 import { open, readdir } from "node:fs/promises";
 import { join } from "node:path";
+import type { RemoteRolloutSource } from './rollout-source.js';
 
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const MAX_METADATA_BYTES = 64 * 1024;
 
 /** 完成推送的本机分类补查：只读取 rollout 首行，不加载会话正文。 */
-export async function readLocalThreadMetadata(codexHome: string, threadId: string) {
+export async function readLocalThreadMetadata(codexHome: string, threadId: string, source?: RemoteRolloutSource, signal?: AbortSignal) {
   if (!UUID.test(threadId)) return;
+  if (source) {
+    const read = source.begin(signal);
+    for await (const path of read.files(threadId)) {
+      let metadata: { id: string; source: any; threadSource: any; parentThreadId: any; ephemeral: any } | undefined;
+      for await (const part of read.project(path, threadId, 'metadata', [])) {
+        if ('reset' in part) metadata = undefined;
+        else { const value = part.value; metadata = { id: value.id, source: value.source, threadSource: value.threadSource, parentThreadId: value.parentThreadId, ephemeral: value.ephemeral }; }
+      }
+      if (metadata) return metadata;
+    }
+    return;
+  }
   const directories = new Set<string>();
   if (threadId[14] === "7") {
     const stamp = Number.parseInt(threadId.replaceAll("-", "").slice(0, 12), 16);

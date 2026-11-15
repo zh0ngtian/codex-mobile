@@ -1,5 +1,6 @@
 import { opendir, readdir } from "node:fs/promises";
 import { join } from "node:path";
+import type { RemoteRolloutSource } from './rollout-source.js';
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 
 // 固定三层数字日期目录逐项枚举，不递归其他路径，也不缓存目录缺失结果。
@@ -21,7 +22,8 @@ async function* dateDirectories(sessions: string): AsyncGenerator<string> {
 }
 
 /** 文件名只负责定位；每个读取器仍核对首行 session_meta.id。 */
-export async function* messageRolloutFiles(codexHome: string, threadId: string): AsyncGenerator<string> {
+export async function* messageRolloutFiles(codexHome: string, threadId: string, source?: RemoteRolloutSource, signal?: AbortSignal): AsyncGenerator<string> {
+  if (source) { yield* source.begin(signal).files(threadId); return; }
   if (!UUID.test(threadId)) return;
   const directories = new Set<string>();
   if (threadId[14] === "7") {

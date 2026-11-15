@@ -9,6 +9,7 @@ import { isVisibleThread } from "./thread-visibility.js";
 import { QuestionNotificationTracker, type PendingQuestion } from "./question-notifications.js";
 import { parseBarkPushUrl } from "./notification-settings.js";
 import { AutomaticThreadNames } from "./automatic-thread-names.js";
+import { RolloutSourceError, type RemoteRolloutSource } from './rollout-source.js';
 
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const MAX_SUBSCRIPTIONS = 128;
@@ -36,7 +37,7 @@ export class BarkNotifications {
   private controllers = new Set<AbortController>();
   private closed = false;
   private root: string;
-  constructor(private options: { codexHome: string; displayName: string; fetch?: typeof fetch }) {
+  constructor(private options: { codexHome: string; displayName: string; fetch?: typeof fetch; rolloutSource?: RemoteRolloutSource; onMetadataError?: (error: RolloutSourceError) => void }) {
     this.root = join(options.codexHome, "codex-mobile-notifications");
     this.ready = this.load();
     this.ready.catch(() => {});
@@ -188,7 +189,10 @@ export class BarkNotifications {
     // 不等待网络；磁盘登记成功后才发送，避免跨连接和重启重复通知。
     const deliver = async () => {
       if (this.closed || !this.subscribed) return;
-      const metadata = await readLocalThreadMetadata(this.options.codexHome, completed.threadId);
+      const controller = new AbortController(); this.controllers.add(controller);
+      let metadata;
+      try { metadata = await readLocalThreadMetadata(this.options.codexHome, completed.threadId, this.options.rolloutSource, controller.signal); }
+      finally { this.controllers.delete(controller); }
       if (this.closed) return;
       if (metadata && !isVisibleThread(metadata)) {
         this.completions.rememberThread(metadata);
@@ -219,7 +223,12 @@ export class BarkNotifications {
     };
     // 等待放在持久化队列之外，其他会话、提问及注销订阅不受慢命名阻塞。
     const named = questionId == null ? this.automaticNames.wait(completed.threadId) : Promise.resolve();
-    void named.then(() => { if (!this.closed) return this.enqueue(deliver); }).catch(() => {});
+    void named.then(() => { if (!this.closed) return this.enqueue(deliver); }).catch(error => {
+      if (!this.closed && error instanceof RolloutSourceError) {
+        if (this.options.onMetadataError) { try { this.options.onMetadataError(error); } catch { /* 诊断回调不改变投递策略。 */ } }
+        else console.warn(error.message);
+      }
+    });
   }
   private async send(barkUrl: string, completed: CompletedFinalAnswer | PendingQuestion, payload: Record<string, string>) {
     const question = "questionId" in completed;

@@ -2,6 +2,7 @@ import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
 import { messageRolloutFiles } from "./message-rollout-files.js";
 import { createInterface } from "node:readline";
+import type { RemoteRolloutSource } from './rollout-source.js';
 
 type RecordValue = Record<string, any>;
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
@@ -13,13 +14,27 @@ type Cached = { signature: string; checked: Set<string>; times: Record<string, n
 /** 只读原始 rollout；内存只缓存所请求消息的 ID 与真实时间，不保存正文。 */
 export class MessageTimestamps {
   private cache = new Map<string, Cached>();
-  constructor(private codexHome: string) {}
+  constructor(private codexHome: string, private source?: RemoteRolloutSource) {}
 
-  async read(threadId: string, messageIds: string[]): Promise<Record<string, number>> {
+  async read(threadId: string, messageIds: string[], signal?: AbortSignal): Promise<Record<string, number>> {
     if (!UUID.test(threadId)) return {};
     const wanted = new Set(messageIds.filter(id => typeof id === "string" && MESSAGE_ID.test(id)));
     if (!wanted.size) return {};
     const found: Record<string, number> = Object.create(null);
+    if (this.source) {
+      const read = this.source.begin(signal);
+      for await (const path of read.files(threadId)) {
+        let times: Record<string, number> = Object.create(null);
+        for await (const part of read.project(path, threadId, 'timestamps', [...wanted])) {
+          if ('reset' in part) { times = Object.create(null); continue; }
+          const value = part.value; const stamp = Date.parse(value.timestamp) / 1000;
+          if (wanted.has(value.id) && times[value.id] === undefined && Number.isFinite(stamp) && stamp > 0) times[value.id] = stamp;
+        }
+        for (const [id, time] of Object.entries(times)) if (!Object.hasOwn(found, id)) found[id] = time;
+        if (Object.keys(found).length === wanted.size) break;
+      }
+      return found;
+    }
     for await (const path of messageRolloutFiles(this.codexHome, threadId)) {
       const missing = [...wanted].filter(id => found[id] === undefined);
       Object.assign(found, await this.readFile(path, threadId, missing));

@@ -2,6 +2,7 @@ import { createReadStream } from "node:fs";
 import { readdir } from "node:fs/promises";
 import { createInterface } from "node:readline";
 import { join } from "node:path";
+import type { RemoteRolloutSource } from './rollout-source.js';
 
 export interface ImageGenerationError {
   code: string;
@@ -40,7 +41,22 @@ export async function readImageGenerationError(
   codexHome: string,
   threadId: string,
   itemId: string,
+  source?: RemoteRolloutSource,
+  signal?: AbortSignal,
 ): Promise<ImageGenerationError | null> {
+  if (source) {
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(threadId) || !/^[A-Za-z0-9_-]{1,100}$/.test(itemId)) return null;
+    const read = source.begin(signal);
+    for await (const path of read.files(threadId)) {
+      let result: ImageGenerationError | null = null;
+      for await (const part of read.project(path, threadId, 'image', [itemId])) {
+        if ('reset' in part) result = null;
+        else result = part.value as ImageGenerationError;
+      }
+      if (result) return result;
+    }
+    return null;
+  }
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(threadId) ||
       !/^[A-Za-z0-9_-]{1,100}$/.test(itemId)) return null;
   const created = new Date(Number.parseInt(threadId.replaceAll("-", "").slice(0, 12), 16));
