@@ -74,6 +74,8 @@ export class NativeRuntime {
     if (this.listening) return;
     this.disposed = false;
     this.listening = true; window.addEventListener('codex-mobile-native-command', this.listener);
+    // 父级 owner 的 StrictMode 重放可晚于子级投影注册；激活后发布已提交状态。
+    this.schedule();
   }
   setNavigation(value: NativeNavigation, handlers: NativeHandlers = {}) {
     this.navigation = value; this.globalHandlers = handlers; this.schedule();

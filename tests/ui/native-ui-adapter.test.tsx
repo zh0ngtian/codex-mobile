@@ -1,8 +1,9 @@
 import { StrictMode, useLayoutEffect, useState } from 'react';
 import { act, cleanup, render } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
-import { useNativeRuntime, useNativeWorkspace } from '../../src/native-ui/adapters';
+import { useNativeNavigation, useNativeRuntime, useNativeRuntimeOwner, useNativeWorkspace } from '../../src/native-ui/adapters';
 import { emptyNativeSnapshot } from '../../src/native-ui/protocol';
+import { NativeRuntime } from '../../src/native-ui/runtime';
 const posts: any[] = [];
 function Harness() {
   const [draft, setDraft] = useState(''); const [sidebar, setSidebar] = useState(false);
@@ -10,7 +11,7 @@ function Harness() {
   useNativeWorkspace(runtime, 'b', { ...emptyNativeSnapshot(), contextId: 'b:t', backendId: 'b', ready: true, draft }, { 'draft.set': p => setDraft(String(p.value)) });
   return <output>{draft}</output>;
 }
-afterEach(() => { cleanup(); delete (window as any).__CODEX_NATIVE_UI__; delete (window as any).webkit; delete (window as any).codexMobilePublishNativeSnapshot; vi.useRealTimers(); posts.length = 0; });
+afterEach(() => { cleanup(); delete (window as any).__CODEX_NATIVE_UI__; delete (window as any).webkit; delete (window as any).codexMobilePublishNativeSnapshot; vi.restoreAllMocks(); vi.useRealTimers(); posts.length = 0; });
 it('真实React适配器订阅纯事件并回写业务状态，清理后迟到事件不再执行', async () => {
   vi.useFakeTimers(); Object.assign(window, { __CODEX_NATIVE_UI__: true, webkit: { messageHandlers: { nativeUI: { postMessage() {} } } }, codexMobilePublishNativeSnapshot: (s: unknown) => posts.push(s) });
   const view = render(<Harness />);
@@ -35,6 +36,46 @@ it('React StrictMode清理重挂后仍发布且只订阅一次', async () => {
  expect(posts).toHaveLength(1);
  await act(async () => { window.dispatchEvent(new CustomEvent('codex-mobile-native-command', { detail: { id: 'strict-d', name: 'draft.set', params: { contextId: 'b:t', value: '严格模式', revision: 1 } } })); });
  expect(view.container.textContent).toBe('严格模式');
+});
+
+it('父级owner与子级投影在StrictMode重放后无需额外render即可首发，卸载后不再响应或发布', async () => {
+  vi.useFakeTimers();
+  Object.assign(window, { __CODEX_NATIVE_UI__: true, webkit: { messageHandlers: { nativeUI: { postMessage() {} } } }, codexMobilePublishNativeSnapshot: (snapshot: unknown) => posts.push(snapshot) });
+  const runtimes: NativeRuntime[] = [];
+  const writes = vi.fn();
+  const dispatch = vi.spyOn(NativeRuntime.prototype, 'dispatch');
+  let renders = 0;
+  function Child({ runtime }: { runtime: NativeRuntime | null }) {
+    renders++;
+    useNativeNavigation(runtime, { selectedBackendId: 'b', backends: [], groups: [] }, {});
+    useNativeWorkspace(runtime, 'b', { ...emptyNativeSnapshot(), ready: true, backendId: 'b', contextId: 'b:t', title: '已提交的工作区' }, { 'draft.set': writes });
+    return null;
+  }
+  function Parent() {
+    const runtime = useNativeRuntimeOwner();
+    useLayoutEffect(() => { if (runtime) runtimes.push(runtime); });
+    return <Child runtime={runtime} />;
+  }
+  const view = render(<StrictMode><Parent /></StrictMode>);
+  const initialRenders = renders;
+  await act(async () => { await vi.advanceTimersByTimeAsync(40); });
+  expect(renders).toBe(initialRenders);
+  expect(posts).toHaveLength(1);
+  expect(posts[0]).toMatchObject({ ready: true, backendId: 'b', contextId: 'b:t', title: '已提交的工作区' });
+  expect(new Set(runtimes).size).toBe(1);
+  expect(runtimes.at(-1)?.listenerCount).toBe(1);
+  const send = (id: string, revision: number) => window.dispatchEvent(new CustomEvent('codex-mobile-native-command', { detail: { id, name: 'draft.set', params: { contextId: 'b:t', value: id, revision } } }));
+  await act(async () => { send('active', 1); });
+  expect(dispatch).toHaveBeenCalledTimes(1);
+  expect(writes).toHaveBeenCalledTimes(1);
+  expect(renders).toBe(initialRenders);
+  // 命令完成后的发布仍在等待；真正卸载必须取消它并移除唯一监听。
+  view.unmount();
+  await act(async () => { send('late', 2); await vi.runAllTimersAsync(); });
+  expect(runtimes.at(-1)?.listenerCount).toBe(0);
+  expect(dispatch).toHaveBeenCalledTimes(1);
+  expect(writes).toHaveBeenCalledTimes(1);
+  expect(posts).toHaveLength(1);
 });
 
 it('提交新会话的布局effect中迟到旧命令不能执行新会话回调', async () => {
