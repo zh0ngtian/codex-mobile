@@ -5,7 +5,7 @@ import { createInterface } from 'node:readline';
 import { Readable } from 'node:stream';
 import { RemoteCommands, RemoteCommandError, decodeRemoteCommandText } from './remote/commands.js';
 import { RemoteRpcSession } from './remote/rpc-session.js';
-import { ROLLOUT_PYTHON } from './remote/rollout-python.js';
+import { ROLLOUT_LOCATOR_PYTHON, ROLLOUT_PYTHON } from './remote/rollout-python.js';
 
 export type RolloutProjection = 'timestamps' | 'citations' | 'metadata' | 'image';
 export interface RolloutRead {
@@ -65,7 +65,7 @@ export class RemoteRolloutSource {
       try {
         this.commands.fileTransportBinding(this.session);
         const wireRequest = { ...request, unicodeLines: await runtimeUnicodeLines() };
-        const flight = this.commands.execute({ argv: [this.binding.python, '-I', '-c', ROLLOUT_PYTHON, JSON.stringify(wireRequest)], cwd: this.binding.metadata.codexHome,
+        const flight = this.commands.execute({ argv: [this.binding.python, '-I', '-c', request.mode === 'locate' ? ROLLOUT_LOCATOR_PYTHON : ROLLOUT_PYTHON, JSON.stringify(wireRequest)], cwd: this.binding.metadata.codexHome,
           timeoutMs: remaining(), stdoutBytesCap: 131072, stderrBytesCap: 16384, signal: combined });
         this.flights.add(flight); let result;
         try { result = await flight; } finally { this.flights.delete(flight); }
@@ -84,53 +84,45 @@ export class RemoteRolloutSource {
         throw error instanceof RolloutSourceError ? error : new RolloutSourceError(error instanceof RemoteCommandError ? error.code : 'protocol');
       }
     };
-    const list = async (path: string): Promise<Array<{ name: string; directory: boolean }>> => {
-      let entries: Array<{ name: string; directory: boolean }> = []; let version: string | undefined;
-      for (;;) {
-        try {
-          const value = await call({ mode: 'list', path, offset: entries.length, ...(version ? { version } : {}) });
-          if (!Array.isArray(value.entries) || value.entries.length > 32 || !Number.isSafeInteger(value.total) || value.total < entries.length || value.total > 10000 || typeof value.version !== 'string' || !HASH.test(value.version)) throw new RolloutSourceError('protocol');
-          if (version && value.version !== version) throw new RolloutSourceError('protocol'); version = value.version;
-          for (const entry of value.entries) {
-            if (!object(entry) || typeof entry.name !== 'string' || !entry.name.length || this.paths.basename(entry.name) !== entry.name || typeof entry.directory !== 'boolean') throw new RolloutSourceError('protocol');
-            entries.push({ name: entry.name, directory: entry.directory });
-          }
-          if (entries.length === value.total) return entries;
-          if (!value.entries.length || entries.length > value.total) throw new RolloutSourceError('protocol');
-        } catch (error) {
-          if (error instanceof RolloutSourceError && error.code === 'missing') return [];
-          if (error instanceof RolloutSourceError && error.code === 'changed') { entries = []; version = undefined; continue; }
-          throw error;
-        }
-      }
-    };
     const paths = this.paths; const home = this.binding.metadata.codexHome;
     return {
       async *files(threadId) {
         if (!UUID.test(threadId)) return;
-        const directories = new Set<string>();
-        if (threadId[14] === '7') {
-          const value = await call({ mode: 'dates', stamp: Number.parseInt(threadId.replaceAll('-', '').slice(0, 12), 16) });
-          if (!Array.isArray(value.dates) || value.dates.length !== 6) throw new RolloutSourceError('protocol');
-          for (const date of value.dates) {
-            if (!Array.isArray(date) || date.length !== 3 || !/^\d{4}$/.test(date[0]) || !/^(0[1-9]|1[0-2])$/.test(date[1]) || !/^(0[1-9]|[12]\d|3[01])$/.test(date[2])) throw new RolloutSourceError('protocol');
-            directories.add(paths.join(home, 'sessions', ...date));
-          }
-        }
-        directories.add(paths.join(home, 'archived_sessions'));
         const filename = new RegExp(`-${threadId}(?:_[a-f0-9-]{36})*\\.jsonl$`, 'i');
-        const scan = async function* (directory: string) { for (const entry of await list(directory)) if (entry.name.startsWith('rollout-') && filename.test(entry.name)) yield paths.join(directory, entry.name); };
-        for (const directory of directories) yield* scan(directory);
-        for (const year of await list(paths.join(home, 'sessions'))) {
-          if (!year.directory || !/^\d{4}$/.test(year.name)) continue;
-          const y = paths.join(home, 'sessions', year.name);
-          for (const month of await list(y)) {
-            if (!month.directory || !/^(0[1-9]|1[0-2])$/.test(month.name)) continue;
-            const m = paths.join(y, month.name);
-            for (const day of await list(m)) {
-              if (!day.directory || !/^(0[1-9]|[12]\d|3[01])$/.test(day.name)) continue;
-              const d = paths.join(m, day.name); if (!directories.has(d)) yield* scan(d);
+        for (;;) {
+          const candidates: Array<string | RolloutSourceError> = []; const digest = createHash('sha256');
+          let offset = 0; let version: string | undefined; let signature: string | undefined; let pending = '';
+          try {
+            for (;;) {
+              const value = await call({ mode: 'locate', path: home, windows: paths === win32, threadId, offset, ...(version ? { version } : {}) });
+              if (typeof value.version !== 'string' || !HASH.test(value.version) || value.offset !== offset || !Number.isSafeInteger(value.total) || value.total < offset || typeof value.sha256 !== 'string' || !HASH.test(value.sha256) || typeof value.base64 !== 'string') throw new RolloutSourceError('protocol');
+              const current = JSON.stringify([value.version, value.total, value.sha256]);
+              if (signature !== undefined && signature !== current) throw new RolloutSourceError('changed'); signature = current; version = value.version;
+              const bytes = Buffer.from(value.base64, 'base64');
+              if (bytes.length > 65536 || bytes.toString('base64') !== value.base64 || bytes.length !== Math.min(65536, value.total - offset)) throw new RolloutSourceError('protocol');
+              digest.update(bytes); pending += decodeRemoteCommandText(bytes); offset += bytes.length;
+              let end: number;
+              while ((end = pending.indexOf('\n')) >= 0) {
+                const path: unknown = JSON.parse(pending.slice(0, end)); pending = pending.slice(end + 1);
+                if (candidates.at(-1) instanceof RolloutSourceError) throw new RolloutSourceError('protocol');
+                if (object(path) && Object.keys(path).length === 1 && ['permission', 'capacity', 'capability'].includes(path.error)) { candidates.push(new RolloutSourceError(path.error)); continue; }
+                if (typeof path !== 'string') throw new RolloutSourceError('protocol');
+                const parts = paths.relative(home, path).split(paths.sep); const name = parts.at(-1)!;
+                if (paths.join(home, ...parts) !== path || !(parts.length === 2 && parts[0] === 'archived_sessions' || parts.length === 5 && parts[0] === 'sessions' && /^[0-9]{4}$/.test(parts[1]) && /^(0[1-9]|1[0-2])$/.test(parts[2]) && /^(0[1-9]|[12][0-9]|3[01])$/.test(parts[3])) || !name.startsWith('rollout-') || !filename.test(name)) throw new RolloutSourceError('protocol');
+                candidates.push(path);
+              }
+              if (offset === value.total) {
+                if (pending.length || digest.digest('hex') !== value.sha256) throw new RolloutSourceError('protocol');
+                break;
+              }
             }
+            // 完成所有窗口的目录版本/输出摘要证明后才交付，首结果读取也不跳过证明。
+            for (const candidate of candidates) { if (candidate instanceof RolloutSourceError) throw candidate; yield candidate; }
+            return;
+          } catch (error) {
+            if (error instanceof RolloutSourceError && error.code === 'changed') continue;
+            if (error instanceof RolloutSourceError && error.code === 'missing') return;
+            throw error instanceof RolloutSourceError ? error : new RolloutSourceError('protocol');
           }
         }
       },

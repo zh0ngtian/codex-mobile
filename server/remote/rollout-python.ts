@@ -1,9 +1,14 @@
-/** 固定只读目标投影；逐条JSON解析内存由已批准A方案承担，正文不进入网关。 */
-export const ROLLOUT_PYTHON = String.raw`import base64,datetime,hashlib,json,os,re,stat,sys
+/** 固定只读目标能力；分别传送定位/投影源码，保留Windows既有argv预算。 */
+const WIRE = String.raw`import base64,hashlib,json,os,sys
 q=json.loads(sys.argv[1]);WINDOW=65536
-def emit(value): sys.stdout.write(json.dumps(value,separators=(',',':'),ensure_ascii=True)+'\n')
+def encoded(value): return (json.dumps(value,separators=(',',':'),ensure_ascii=True)+'\n').encode('ascii')
+def emit(value): sys.stdout.buffer.write(encoded(value))
 def fail(code):
     emit(dict(error=code));raise SystemExit(0)
+`;
+
+/** 逐条JSON解析内存由已批准A方案承担，正文不进入网关。 */
+export const ROLLOUT_PYTHON = WIRE + String.raw`import re,stat
 class InvalidConstant(ValueError): pass
 def parse(value):
     exhausted=False
@@ -78,7 +83,7 @@ def scan():
         digest=hashlib.sha256();outHash=hashlib.sha256();window=bytearray();total=0;position=0;first=True;valid=False;state=dict(found=False,done=False)
         def take(value):
             nonlocal total
-            raw=(json.dumps(value,separators=(',',':'),ensure_ascii=True)+'\n').encode('ascii');outHash.update(raw)
+            raw=encoded(value);outHash.update(raw)
             left=max(0,offset-total);right=min(len(raw),offset+WINDOW-total)
             if right>left: window.extend(raw[left:right])
             total+=len(raw)
@@ -129,19 +134,75 @@ def scan():
         if identity(current)!=identity(initial) or identity(opened)!=identity(initial) or current.st_size<length or opened.st_size<length or check.hexdigest()!=prefix: fail('changed')
         emit(dict(token=dict(identity=identity(initial),size=length,sha256=prefix),offset=offset,total=total,sha256=outHash.hexdigest(),base64=base64.b64encode(window).decode('ascii')))
 try:
-    if q['mode']=='dates':
-        stamp=q['stamp']/1000
-        emit(dict(dates=[[datetime.datetime.fromtimestamp(stamp+delta,zone).strftime('%Y'),datetime.datetime.fromtimestamp(stamp+delta,zone).strftime('%m'),datetime.datetime.fromtimestamp(stamp+delta,zone).strftime('%d')] for delta in [0,-86400,86400] for zone in [datetime.timezone.utc,None]]))
-    elif q['mode']=='list':
-        entries=[]
-        with os.scandir(q['path']) as directory:
-            for item in directory:
-                if len(entries)>=10000: fail('capacity')
-                entries.append(dict(name=item.name,directory=item.is_dir(follow_symlinks=False)))
-        entries.sort(key=lambda item:item['name']);version=hashlib.sha256(json.dumps(entries,separators=(',',':'),ensure_ascii=True).encode('ascii')).hexdigest()
-        if q.get('version') is not None and q['version']!=version: fail('changed')
-        emit(dict(entries=entries[q['offset']:q['offset']+32],total=len(entries),version=version))
-    elif q['mode']=='scan': scan()
+    if q['mode']=='scan': scan()
+    else: fail('protocol')
+except (FileNotFoundError,NotADirectoryError): fail('missing')
+except PermissionError: fail('permission')
+except (OSError,ValueError,TypeError,KeyError,OverflowError,RecursionError): fail('capability')
+`;
+
+export const ROLLOUT_LOCATOR_PYTHON = WIRE + String.raw`import datetime,ntpath,posixpath,re
+def locate():
+    p=ntpath if q['windows'] else posixpath;home=p.normpath(q['path']);thread=q['threadId'];offset=q['offset']
+    filename=re.compile(r'-'+re.escape(thread)+r'(?:_[a-f0-9-]{36})*\.jsonl$',re.I)
+    class FullDirectory(Exception): pass
+    def walkFiles(proof):
+        def ls(path):
+            def key(s): return [str(s.st_dev),str(s.st_ino),s.st_mtime_ns,s.st_ctime_ns]
+            try:
+                initial=os.stat(path)
+                entries=[]
+                with os.scandir(path) as directory:
+                    for item in directory:
+                        if len(entries)>=10000: raise FullDirectory()
+                        entries.append([item.name,item.is_dir(follow_symlinks=False)])
+                if key(initial)!=key(os.stat(path)): fail('changed')
+                entries.sort();record=[path,key(initial),entries]
+            except (FileNotFoundError,NotADirectoryError): entries=[];record=[path,None]
+            proof.update(encoded(record))
+            return entries
+        def candidates(path):
+            for name,_ in ls(path):
+                if name.startswith('rollout-') and filename.search(name): yield p.join(path,name)
+        first=[]
+        if thread[14]=='7':
+            stamp=int(thread.replace('-','')[:12],16)/1000
+            for delta in [0,-86400,86400]:
+                for zone in [datetime.timezone.utc,None]:
+                    date=datetime.datetime.fromtimestamp(stamp+delta,zone)
+                    path=p.join(home,'sessions',date.strftime('%Y'),date.strftime('%m'),date.strftime('%d'))
+                    if path not in first: first.append(path)
+        first.append(p.join(home,'archived_sessions'))
+        for path in first: yield from candidates(path)
+        sessions=p.join(home,'sessions')
+        for year,directory in ls(sessions):
+            if not directory or not re.fullmatch(r'[0-9]{4}',year): continue
+            y=p.join(sessions,year)
+            for month,directory in ls(y):
+                if not directory or not re.fullmatch(r'0[1-9]|1[0-2]',month): continue
+                m=p.join(y,month)
+                for day,directory in ls(m):
+                    if directory and re.fullmatch(r'0[1-9]|[12][0-9]|3[01]',day):
+                        path=p.join(m,day)
+                        if path not in first: yield from candidates(path)
+    def walk(proof):
+        try: yield from walkFiles(proof)
+        except (FullDirectory,OSError,ValueError,TypeError,KeyError,OverflowError,RecursionError) as error:
+            code='capacity' if isinstance(error,FullDirectory) else 'permission' if isinstance(error,PermissionError) else 'capability'
+            value=dict(error=code);proof.update(encoded(value));yield value
+    proof=hashlib.sha256();output=hashlib.sha256();window=bytearray();total=0
+    for path in walk(proof):
+        raw=encoded(path);output.update(raw)
+        left=max(0,offset-total);right=min(len(raw),offset+WINDOW-total)
+        if right>left: window.extend(raw[left:right])
+        total+=len(raw)
+    check=hashlib.sha256()
+    for _ in walk(check): pass
+    version=proof.hexdigest()
+    if check.hexdigest()!=version or (q.get('version') is not None and q['version']!=version): fail('changed')
+    emit(dict(version=version,offset=offset,total=total,sha256=output.hexdigest(),base64=base64.b64encode(window).decode('ascii')))
+try:
+    if q['mode']=='locate': locate()
     else: fail('protocol')
 except (FileNotFoundError,NotADirectoryError): fail('missing')
 except PermissionError: fail('permission')

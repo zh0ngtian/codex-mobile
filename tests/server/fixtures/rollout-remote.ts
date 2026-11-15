@@ -8,15 +8,15 @@ import { RemoteCommands, type RemoteCommandScope } from '../../../server/remote/
 import type { JsonValue, RpcMessage } from '../../../server/remote/envelope.js';
 
 /** 真正固定Python/Commands/RPC；只将受控目标根映射到随机临时目录。 */
-export async function rolloutRemote(options: { target?: string; timezone?: string; windows?: boolean } = {}) {
+export async function rolloutRemote(options: { target?: string; timezone?: string; windows?: boolean; home?: string } = {}) {
   const root = await mkdtemp(join(tmpdir(), 'rollout-target-'));
-  const home = options.windows ? 'C:\\rollout' : '/rollout';
+  const home = options.home ?? (options.windows ? 'C:\\rollout' : '/rollout');
   const scope: RemoteCommandScope = { managed: { codexHome: '/managed', accountId: 'account', accountUserId: 'member' },
     target: { environmentId: options.target ?? 'environment', installationId: 'installation' } };
   const processes = new Map<string, ChildProcessWithoutNullStreams>();
   const requests: Record<string, unknown>[] = []; const frames: RpcMessage[] = [];
   let sequence = 0; let delay = 0; let hook: ((request: Record<string, unknown>) => Promise<void> | void) | undefined;
-  const mapping = `import builtins,os,subprocess\n_fixture_root=${JSON.stringify(root)}\n_fixture_open=builtins.open\n_fixture_stat=os.stat\n_fixture_scandir=os.scandir\ndef _fixture_path(p):\n    if isinstance(p,str):\n        q=p.replace('\\\\','/')\n        for prefix in ['/rollout','C:/rollout']:\n            if q==prefix or q.startswith(prefix+'/'): return _fixture_root+q[len(prefix):]\n    return p\ndef _fixture_denied():\n    if os.path.exists(_fixture_root+'/.deny'): raise PermissionError('fixture denial')\ndef _fixture_read(p,*a,**k):\n    _fixture_denied();return _fixture_open(_fixture_path(p),*a,**k)\ndef _fixture_list(p,*a,**k):\n    _fixture_denied();return _fixture_scandir(_fixture_path(p),*a,**k)\nbuiltins.open=_fixture_read\nos.stat=lambda p,*a,**k: _fixture_stat(_fixture_path(p),*a,**k)\nos.scandir=_fixture_list\n`;
+  const mapping = `import builtins,os,subprocess\n_fixture_root=${JSON.stringify(root)}\n_fixture_open=builtins.open\n_fixture_stat=os.stat\n_fixture_scandir=os.scandir\ndef _fixture_path(p):\n    if isinstance(p,str):\n        q=p.replace('\\\\','/') if ${options.windows ? 'True' : 'False'} else p\n        for prefix in [${JSON.stringify(options.windows ? home.replaceAll('\\', '/') : home)}]:\n            if q==prefix or q.startswith(prefix+'/'): return _fixture_root+q[len(prefix):]\n    return p\ndef _fixture_denied(p):\n    if os.path.exists(_fixture_root+'/.deny'):\n        denied=_fixture_open(_fixture_root+'/.deny').read()\n        if not denied or _fixture_path(p)==denied: raise PermissionError('fixture denial')\ndef _fixture_read(p,*a,**k):\n    _fixture_denied(p);return _fixture_open(_fixture_path(p),*a,**k)\ndef _fixture_list(p,*a,**k):\n    _fixture_denied(p);return _fixture_scandir(_fixture_path(p),*a,**k)\nbuiltins.open=_fixture_read\nos.stat=lambda p,*a,**k: _fixture_stat(_fixture_path(p),*a,**k)\nos.scandir=_fixture_list\n`;
   const kill = (child: ChildProcessWithoutNullStreams) => { try { if (child.pid) process.kill(-child.pid, 'SIGTERM'); } catch { /* 已终结。 */ } };
   const reply = (message: RpcMessage, result: unknown) => stream.emit('message', { id: message.id!, result: result as JsonValue }, { seqId: ++sequence });
   const output = (id: string, name: string, bytes: Buffer) => stream.emit('message', { method: 'command/exec/outputDelta', params: {

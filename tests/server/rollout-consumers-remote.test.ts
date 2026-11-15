@@ -1,8 +1,8 @@
 // @vitest-environment node
 import { randomUUID } from 'node:crypto';
-import { appendFile, mkdir, mkdtemp, open, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { appendFile, mkdir, mkdtemp, open, readFile, rename, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, posix, win32 } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
 import { MessageTimestamps } from '../../server/message-timestamps.js';
 import { MessageWebCitations } from '../../server/web-citations.js';
@@ -54,6 +54,75 @@ it('定位目标local/UTC日期、v4、归档与跨日期续写，不递归非�
   expect(await new MessageTimestamps('/wrong', s).read(v4, ['v4'])).toEqual({ v4: seconds });
   const reader = new MessageTimestamps('/wrong', s); expect(await reader.read(id, ['later'])).toEqual({});
   await file(f, meta() + message('later'), '2026/10/21'); expect(await reader.read(id, ['later'])).toEqual({ later: seconds });
+});
+
+it.each(['v4', 'v7'])('定位RPC不随无关目录项和日期目录增长，%s引用仍完整检查跨文件冲突', async version => {
+  const thread = version === 'v4' ? randomUUID() : id; const f = await target(); const s = await source(f);
+  const first = await file(f, meta(thread) + output(cite()), 'archive', thread);
+  const reader = new MessageWebCitations('/gateway', s);
+  expect(await reader.read(thread, ['turn1view0'])).toEqual([{ refId: 'turn1view0', title: '标题', url: 'https://example.com/guide' }]);
+  const before = f.requests.filter(request => request.mode !== 'scan').length;
+  const archive = join(f.root, 'archived_sessions');
+  for (let i = 0; i < 512; i++) await writeFile(join(archive, `rollout-unrelated-${randomUUID()}.jsonl`), '{private unrelated body}');
+  for (let month = 1; month <= 2; month++) for (let day = 1; day <= 20; day++) {
+    await mkdir(join(f.root, `sessions/2023/${String(month).padStart(2, '0')}/${String(day).padStart(2, '0')}`), { recursive: true });
+  }
+  await file(f, meta(thread) + output(cite('https://example.com/second', 'turn2view0')), '2023/02/20', thread, '_' + randomUUID());
+  const start = f.requests.length;
+  expect(await reader.read(thread, ['turn1view0', 'turn2view0'])).toEqual([
+    { refId: 'turn1view0', title: '标题', url: 'https://example.com/guide' },
+    { refId: 'turn2view0', title: '标题', url: 'https://example.com/second' },
+  ]);
+  const after = f.requests.slice(start).filter(request => request.mode !== 'scan').length;
+  await appendFile(first, output(cite('https://example.com/conflict', 'turn2view0')));
+  expect(await reader.read(thread, ['turn2view0'])).toEqual([]);
+  expect(after, '必要候选仍在一个窗口，无关目录不能增加定位RPC').toBe(before);
+}, 60000);
+
+it.each(['permission', 'capacity'])('惰性目录错误%s仅在继续消费时抛出，归档首结果仍可终止', async code => {
+  const thread = randomUUID(); const f = await target(); const s = await source(f);
+  const failed = JSON.stringify({ type: 'event_msg', payload: { type: 'item_completed', item: { kind: 'image_gen.generation', id: 'image', status: 'failed' } } }) + '\n';
+  await file(f, meta(thread) + message() + output(cite()) + failed + output('unknown'), 'archive', thread);
+  const late = join(f.root, 'sessions/2023/01/01'); await mkdir(late, { recursive: true });
+  if (code === 'capacity') for (let i = 0; i < 10001; i++) await writeFile(join(late, `unrelated-${i}`), '');
+  else await writeFile(join(f.root, '.deny'), late);
+  expect(await readLocalThreadMetadata('/gateway', thread, s)).toEqual({ id: thread });
+  expect(await new MessageTimestamps('/gateway', s).read(thread, ['answer'])).toEqual({ answer: seconds });
+  expect(await readImageGenerationError('/gateway', thread, 'image', s)).toBeNull();
+  await expect(new MessageWebCitations('/gateway', s).read(thread, ['turn1view0'])).rejects.toMatchObject({ code });
+}, 30000);
+
+it.each(['archive', 'sessions', 'v7-direct', 'fallback-child'])('受信定位保留旧symlink语义%s，fallback子日期不跟随', async mode => {
+  const thread = mode === 'fallback-child' ? randomUUID() : id; const f = await target(); const s = await source(f);
+  await file(f, meta(thread) + message(), mode === 'archive' ? 'archive' : mode === 'fallback-child' ? '2023/01/01' : '2026/10/10', thread);
+  const path = join(f.root, mode === 'archive' ? 'archived_sessions' : mode === 'sessions' ? 'sessions' : mode === 'fallback-child' ? 'sessions/2023/01/01' : 'sessions/2026/10/10');
+  await rename(path, join(f.root, 'detached')); await symlink(join(f.root, 'detached'), path, 'dir');
+  expect(await new MessageTimestamps('/gateway', s).read(thread, ['answer'])).toEqual(mode === 'fallback-child' ? {} : { answer: seconds });
+});
+
+it.each([false, true])('候选定位按64KiB窗口证明特殊路径和全部候选，受控Windows=%s', async windows => {
+  const home = windows ? "C:\\rollout 空格'" : "/rollout 空格'\""; const f = await target({ windows, home }); const s = await source(f); const paths = windows ? win32 : posix;
+  const directory = join(f.root, 'archived_sessions'); await mkdir(directory);
+  const expected = [];
+  for (let i = 0; i < 600; i++) {
+    const name = `rollout-中文 空格'${windows ? '' : '"\\\n'}-${String(i).padStart(3, '0')}-${id}.jsonl`;
+    await writeFile(join(directory, name), '{unrelated body is not parsed by locator}'); expected.push(paths.join(home, 'archived_sessions', name));
+  }
+  const found = []; for await (const path of messageRolloutFiles('/gateway', id, s)) found.push(path);
+  expect(found).toEqual(expected);
+  const ascii = expected.map(path => JSON.stringify(path).replace(/[\u007f-\uffff]/g, char => '\\u' + char.charCodeAt(0).toString(16).padStart(4, '0')) + '\n').join('');
+  const count = Math.ceil(Buffer.byteLength(ascii) / 65536); expect(count).toBeGreaterThan(1);
+  expect(f.requests.filter(request => request.mode === 'locate').map(request => request.offset)).toEqual(Array.from({ length: count }, (_, i) => i * 65536));
+}, 30000);
+
+it('受控Windows保留32个wanted摘要与跨页token的scan argv余量', async () => {
+  const f = await target({ windows: true }); const s = await source(f);
+  const ids = Array.from({ length: 32 }, (_, i) => `answer-${i}-` + 'x'.repeat(160));
+  await file(f, meta() + ids.flatMap(value => Array.from({ length: 16 }, () => message(value))).join(''));
+  expect(await new MessageTimestamps('/gateway', s).read(id, ids)).toEqual(Object.fromEntries(ids.map(value => [value, seconds])));
+  const scans = f.requests.filter(request => request.mode === 'scan');
+  expect(scans.every(request => Array.isArray(request.wanted) && request.wanted.length === 32)).toBe(true);
+  expect(scans.some(request => Number(request.offset) > 0 && !!request.token)).toBe(true);
 });
 
 it('活动追加、半行补完和EOF完整记录可重扫；truncate/replace/原地改写不会复用旧结果', async () => {
@@ -213,25 +282,58 @@ it.each(['truncate', 'replace', 'rewrite'] as const)('跨窗口%s后清空旧文
 });
 
 it('目录分页改变时整目录重建，超过既有10000条容量不得伪装局部成功', async () => {
-  const f = await target(); const s = await source(f); const paths = [];
-  for (let i = 0; i < 35; i++) paths.push(await file(f, meta(), '2026/10/10', id, '_' + randomUUID()));
-  let changed = false;
-  f.beforeRequest(async r => { if (r.mode === 'list' && Number(r.offset) > 0 && !changed) { changed = true; await file(f, meta(), '2026/10/10', id, '_' + randomUUID()); } });
-  const found = []; for await (const path of messageRolloutFiles('/wrong', id, s)) found.push(path);
-  expect(found).toHaveLength(36); expect(new Set(found).size).toBe(36); expect(changed).toBe(true);
+  const f = await target(); const s = await source(f); const paths: string[] = []; const found: string[] = [];
+  for (let i = 0; i < 600; i++) paths.push(await file(f, meta(), '2026/10/10', id, '_' + randomUUID()));
+  let changed = false; let replacement = '';
+  f.beforeRequest(async r => {
+    if (r.mode === 'locate' && Number(r.offset) > 0 && !changed) {
+      expect(found).toEqual([]); changed = true; await rm(paths[0]);
+      replacement = await file(f, meta(), '2026/10/10', id, '_' + randomUUID());
+    }
+  });
+  for await (const path of messageRolloutFiles('/wrong', id, s)) found.push(path);
+  expect(found).toHaveLength(600); expect(new Set(found).size).toBe(600); expect(changed).toBe(true);
+  expect(found).not.toContain(paths[0].replace(f.root, f.home)); expect(found).toContain(replacement.replace(f.root, f.home));
+  expect(f.requests.filter(r => r.mode === 'locate' && r.offset === 0).length).toBeGreaterThan(1);
   f.beforeRequest(); const directory = join(f.root, 'archived_sessions'); await mkdir(directory);
-  for (let i = 0; i < 10001; i++) await writeFile(join(directory, `other-${i}`), '');
-  const reading = async () => { for await (const _ of messageRolloutFiles('/wrong', id, s)) { /* 全部定位完成前不宣称成功。 */ } };
-  await expect(reading()).rejects.toMatchObject({ code: 'capacity' });
+  for (let i = 0; i < 10000; i++) await writeFile(join(directory, `other-${i}`), '');
+  const reading = async () => { const result = []; for await (const path of messageRolloutFiles('/wrong', id, s)) result.push(path); return result; };
+  expect(await reading()).toHaveLength(600);
+  await writeFile(join(directory, 'other-10000'), ''); await expect(reading()).rejects.toMatchObject({ code: 'capacity' });
 }, 30000);
 
 it('多页共享绝对期限，已有局部时间结果不能掩盖后续权限失败', async () => {
-  const f = await target(); const s = await source(f, 'gateway', { timeoutMs: 350 }); await file(f, meta() + message());
-  f.delay(150); await expect(new MessageTimestamps('/wrong', s).read(id, ['answer'])).rejects.toMatchObject({ code: 'timeout' });
+  const f = await target(); const s = await source(f, 'gateway', { timeoutMs: 1000 }); await file(f, meta() + message().repeat(8000));
+  f.delay(200); await expect(new MessageTimestamps('/wrong', s).read(id, ['answer'])).rejects.toMatchObject({ code: 'timeout' });
+  expect(f.requests.some(request => request.mode === 'scan' && Number(request.offset) > 0)).toBe(true);
   f.delay(0); const next = await source(f); const p = await file(f, meta() + message('old').repeat(1500));
   f.beforeRequest(async r => { if (r.mode === 'scan' && Number(r.offset) > 0) await writeFile(join(f.root, '.deny'), ''); });
   await expect(new MessageTimestamps('/wrong', next).read(id, ['old'])).rejects.toMatchObject({ code: 'permission' });
   expect((await readFile(p)).length).toBeGreaterThan(65536);
+});
+
+it('候选定位变化重试共享原期限，失败前不交付候选且caller仍存活', async () => {
+  const f = await target(); const s = await source(f, 'gateway', { timeoutMs: 700 }); const found: string[] = [];
+  for (let i = 0; i < 600; i++) await file(f, meta(), 'archive', id, '_' + randomUUID());
+  let changes = 0; f.delay(60);
+  f.beforeRequest(async request => { if (request.mode === 'locate' && Number(request.offset) > 0) { changes++; await file(f, meta(), 'archive', id, '_' + randomUUID()); } });
+  const reading = async () => { for await (const path of messageRolloutFiles('/gateway', id, s)) found.push(path); };
+  await expect(reading()).rejects.toMatchObject({ code: 'timeout' }); expect(changes).toBeGreaterThan(0); expect(found).toEqual([]);
+  f.beforeRequest(); f.delay(0); await until(() => f.active === 0); expect(f.session.ready).toBe(true);
+  expect((await f.commands.execute({ argv: ['python3', '-I', '-c', 'print(42)'], cwd: f.home })).stdout.toString().trim()).toBe('42');
+}, 30000);
+
+it.each(['digest', 'encoding'])('候选定位完整证明拒绝%s损坏，首metadata也不得提前交付', async fault => {
+  const f = await target(); const s = await source(f); await file(f, meta()); const execute = f.commands.execute.bind(f.commands); let corrupted = false;
+  f.commands.execute = async options => {
+    const result = await execute(options); const value = JSON.parse(result.stdout.toString());
+    if (!value.version) return result;
+    corrupted = true;
+    if (fault === 'digest') value.sha256 = '0'.repeat(64);
+    else { value.total = 1; value.base64 = '/w=='; }
+    return { ...result, stdout: Buffer.from(JSON.stringify(value) + '\n') };
+  };
+  await expect(readLocalThreadMetadata('/gateway', id, s)).rejects.toMatchObject({ code: 'protocol', message: 'Remote rollout读取未完成：protocol' }); expect(corrupted).toBe(true);
 });
 
 it('来源拒绝跨session绑定，取消/关闭/能力错误不落回网关同路径', async () => {
