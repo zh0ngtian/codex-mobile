@@ -262,3 +262,8 @@ APK 为4,755,355字节，未签名IPA为5,030,497字节；两端独立完整下�
 46项独立渠道核对通过。GitHub APK 为4,799,584字节，未签名IPA为5,031,172字节；两端HEAD、完整GET和构建元数据均与GitHub附件及成功receipt一致。APK实际0.3.47／3047，内含居中SVG与六行布局；IPA实际0.3.47／3047、`vip.loock.codexmobile`，无签名资源或描述文件。既有unsigned订阅的版本、构建号、URL、大小、SHA-256和中文日志匹配，原开发者署名保留并包含当前GitHub登录用户。
 
 历史LAN四文件散列未变，8765／8766无监听，两项旧渠道服务停止且disabled。凭证明确GitHub-only，未发布LAN APK、签名IPA、OTA或固定IPA。主工作区旧规则已按用户授权同步，原有暂存内容未变。真机键盘、覆盖安装和数据保留仍待人工验收；文档收尾不重复构建或发布。完整链接、大小、散列和脱敏核对结果见[公共凭证](superpowers/plans/evidence/2026-11-14-web-composer-release.json)，过程见[发布计划](superpowers/plans/2026-11-14-web-composer-github-release.md)。长期成功receipt SHA-256 为 `62d904049ca4c51f1bd2565582d9b188acc14e2d30ee1d790a22e2ec62b2a9d0`。
+
+
+## 2026-11-15 WebUI 正文图片修复部署
+
+用户明确要求更新并允许增加任务级 WebUI 开关后，`web-markdown-images-update-20261115` 通过现役网关目标完成，成功批次 `2df6c58f-70f6-4186-9bc7-4398702bd9cd`，来源 `b66ad5369511ce3e085b06afa1ef533326489ef7`、冻结 `ac6132c2668e4de2490905f9ad785de0095e4a38`。回执 `webUi=true`，实际 dist 与冻结构建摘要一致；原启动文件与环境散列保持，新PID与认证健康状态核对通过。原对话九张正文图、总览原图预览与下载路径完成真实网页验收。默认网关部署仍保留旧前端；本次未构建／发布 APK或IPA、未更新软件源。公共记录见[验收凭证](superpowers/plans/evidence/2026-11-15-webui-image-deploy.json)。
