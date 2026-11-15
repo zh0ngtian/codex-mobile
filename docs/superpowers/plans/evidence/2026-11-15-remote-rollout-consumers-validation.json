@@ -1,0 +1,369 @@
+{
+  "schemaVersion": 1,
+  "task": "Task3d.2-trusted-target-rollout-consumers",
+  "sourceCommit": "04169410009d24cbdcd7e5601f1ef78235c079da",
+  "baselineMain": "54ab9543c01e9224aae411864d7a88725649f536",
+  "sourceOnly": true,
+  "deployed": false,
+  "clientBuiltOrPublished": false,
+  "gates": {
+    "implementationCommitted": true,
+    "specPassed": true,
+    "qualityPassed": true,
+    "actualRemoteProbePassed": true
+  },
+  "decision51": {
+    "answer": "A",
+    "targetParsing": "目标标准Python逐记录解析，目标内存可随单条记录增大",
+    "gateway": "仅必要时间、引用、分类投影；传输、窗口、缓存与整体期限有界",
+    "recordSizeProductCapAdded": false,
+    "customStreamingJsonParserAdded": false,
+    "resourceErrors": "实际需要解析的记录发生资源失败明确capability；已排除候选和image首结果终止后停止业务解析，保留原始前缀校验"
+  },
+  "implementation": {
+    "sourceCommit": "04169410009d24cbdcd7e5601f1ef78235c079da",
+    "passed": true,
+    "reportSha256": "6699096fc5753672758ea5f1a0fc39fc4fa3754fe71979384f4a067a5430e6bd",
+    "manifestSha256": "24649fab6c2a173a68426b7c8eb44856f7d25b8101bfb531093109d2c4739f60",
+    "rootAuditedAllArtifacts": true,
+    "artifacts": 10561,
+    "sourceFiles": 600,
+    "dependencyLinks": 7684
+  },
+  "localValidation": {
+    "server": {
+      "exitCode": 0,
+      "passed": 1605,
+      "skipped": 7,
+      "suitesPassed": 65,
+      "suitesSkipped": 2,
+      "elapsedSeconds": 393.126
+    },
+    "related": {
+      "passed": 195,
+      "files": 8,
+      "elapsedSeconds": 60.909
+    },
+    "strictSourceExitCode": 0,
+    "strictServerTestsExitCode": 0,
+    "buildServerExitCode": 0,
+    "sourceBytesBoundBeforeAfterArchiveCommitAndCurrent": true,
+    "windows": "controlled protocol fixtures only; no Windows hardware"
+  },
+  "initialImplementation": {
+    "sourceCommit": "b56b1290e9c9949f2393ddb660a1dae7fec1c9a5",
+    "passed": true,
+    "reportSha256": "5368c351e4fb75cbe4ebb0c8f73694bf29bcc2c89993ad4dccde107090881a1b",
+    "manifestSha256": "f5b0ef9a13e90f138ebbf549dd16939ffa2f7998324322ac8fdfa0b67aa4f054",
+    "rootAuditedAllArtifacts": true,
+    "artifacts": 17173,
+    "sourceFiles": 600,
+    "dependencyLinks": 12656
+  },
+  "firstIndependentSpec": {
+    "sourceCommit": "b56b1290e9c9949f2393ddb660a1dae7fec1c9a5",
+    "passed": false,
+    "reportSha256": "6ed4e58d79e72e92c4fee4500266f4c7e43eace2f49829bdf0acecc6033b3430",
+    "manifestSha256": "e49b38f0b8009dcb168bf306fbc959b652e230f9c28394e1a7a8faa192ab75bd",
+    "rootAuditedAllArtifacts": true,
+    "artifacts": 663,
+    "sourceFiles": 600,
+    "dependencyLinks": 452
+  },
+  "preQualityFixImplementation": {
+    "sourceCommit": "aaeedffbdc73eb23a96223f4e91dd2e3e8c65232",
+    "passed": true,
+    "reportSha256": "d48f558608954fde869dd7b18b3d51792354b80904a8189b948e696a7b681875",
+    "manifestSha256": "375150f5e750e835cf714440fbaa618f8cb65cdfff23e0f069eb9530fd40fa7b",
+    "rootAuditedAllArtifacts": true,
+    "artifacts": 8834,
+    "sourceFiles": 600,
+    "dependencyLinks": 6328
+  },
+  "preQualityFixSpec": {
+    "sourceCommit": "aaeedffbdc73eb23a96223f4e91dd2e3e8c65232",
+    "passed": true,
+    "reportSha256": "9260c4b3b97d2922533bfc3a032cc0be4d3491ce4ceda454c54aed7bddb4f049",
+    "manifestSha256": "738847aaf45b622e8af54020fe87d4a3ae44e0165fa6b242442fb75e9f1e56b8",
+    "rootAuditedAllArtifacts": true,
+    "artifacts": 645,
+    "sourceFiles": 600,
+    "dependencyLinks": 452
+  },
+  "firstIndependentQuality": {
+    "sourceCommit": "aaeedffbdc73eb23a96223f4e91dd2e3e8c65232",
+    "passed": false,
+    "reportSha256": "f7e2ca33fbe214d7cf91edc6f8c547b0e1953d48e5ae07c0ff2331cde973881e",
+    "manifestSha256": "46aad815533bd26986d8c025895457680fca9951ce1b6f621a6e84926d27e159",
+    "rootAuditedAllArtifacts": true,
+    "artifacts": 647,
+    "sourceFiles": 600,
+    "dependencyLinks": 452
+  },
+  "preCrossFileImageFixImplementation": {
+    "sourceCommit": "50b048676373b294fe9e7b7c216677d75f638c84",
+    "passed": true,
+    "reportSha256": "eb5ca12e7c560cbd5fba17a989de5f1c4abffa668ac71e4a0b735059d971b2b7",
+    "manifestSha256": "292c0a42c833d1786bd97cf7b5d74555d33b0cb239321c1c329c85c3cd50f54f",
+    "rootAuditedAllArtifacts": true,
+    "artifacts": 5099,
+    "sourceFiles": 600,
+    "dependencyLinks": 3616
+  },
+  "postQualityFixSpecFailure": {
+    "sourceCommit": "50b048676373b294fe9e7b7c216677d75f638c84",
+    "passed": false,
+    "reportSha256": "d761b07f18a39664bf5fd50dab8f5caa1828c9138c5bcd2dcbc642a499a82780",
+    "manifestSha256": "b3a5eaf8efab87cb26e8bf2c9b004d851c4dde3db017e8595a1f10ab05259b7e",
+    "rootAuditedAllArtifacts": true,
+    "artifacts": 660,
+    "sourceFiles": 600,
+    "dependencyLinks": 452
+  },
+  "preLocatorFixImplementation": {
+    "sourceCommit": "4fb5d9fcb291bc5588b41e0abad1d4bd4aab081c",
+    "passed": true,
+    "reportSha256": "91b8c614c6792222726503fd616b2c4c86180a705fe9dcaa0d2c99344c52fa5c",
+    "manifestSha256": "61a2f2b8bb4cc856afafac3525afaa5d634abe51be4b825aed3ba57423560162",
+    "rootAuditedAllArtifacts": true,
+    "artifacts": 4472,
+    "sourceFiles": 600,
+    "dependencyLinks": 3164
+  },
+  "preLocatorFixSpec": {
+    "sourceCommit": "4fb5d9fcb291bc5588b41e0abad1d4bd4aab081c",
+    "passed": true,
+    "reportSha256": "6004acf15ced7b67d0b378e8c04c75aa42341f015f5551b911e458d10ebd0b53",
+    "manifestSha256": "814b56dec408a41b4e4e7c142d33ec2e65e0e8246897636fd8cd4db32472e170",
+    "rootAuditedAllArtifacts": true,
+    "artifacts": 649,
+    "sourceFiles": 600,
+    "dependencyLinks": 452
+  },
+  "preLocatorFixQuality": {
+    "sourceCommit": "4fb5d9fcb291bc5588b41e0abad1d4bd4aab081c",
+    "passed": true,
+    "reportSha256": "744fcf5d3b5839f14adfd1a3e001c9fea9511babaff51473fc0514c469ff93b1",
+    "manifestSha256": "810e90b95306f3a006ec23a668398ed327072d94cd61402bbcf46a7618826cf5",
+    "rootAuditedAllArtifacts": true,
+    "artifacts": 649,
+    "sourceFiles": 600,
+    "dependencyLinks": 452
+  },
+  "officialFailureA": {
+    "sourceCommit": "4fb5d9fcb291bc5588b41e0abad1d4bd4aab081c",
+    "passed": false,
+    "reportSha256": "7d40bf8eb19e5a42e5dfe64d98637fc59d6d6fb492f1dc17532e4ca8797f408d",
+    "manifestSha256": "a3d511deeef0bcdee89460f4c03adcd6a5deb68da78adf8dffb9d5eaf04f1eac",
+    "rootAuditedAllArtifacts": true,
+    "artifacts": 181,
+    "sourceFiles": 87,
+    "dependencyLinks": 320
+  },
+  "preProjectionProtocolFixImplementation": {
+    "sourceCommit": "3431698fc450e4ab5f4ddc8bc0a6830e5ef674e0",
+    "passed": true,
+    "reportSha256": "f59c172c5c349f0242da80f002c44f6f26240d2c8a3f69a79801909409e47852",
+    "manifestSha256": "172b663c8afdcbabe53173fc8d51afae002ceec9fbbf22634ff47c28f90e8de6",
+    "rootAuditedAllArtifacts": true,
+    "artifacts": 4470,
+    "sourceFiles": 600,
+    "dependencyLinks": 3164
+  },
+  "preProjectionProtocolFixSpec": {
+    "sourceCommit": "3431698fc450e4ab5f4ddc8bc0a6830e5ef674e0",
+    "passed": true,
+    "reportSha256": "b2e5874b03364f6d0b10e6a10523af666ca4249b31464276eaeee4c2064e04a8",
+    "manifestSha256": "6862f6e1d43cd9dc9fece441609d0ed21b40ee57a825d48fa1d5371ca924e778",
+    "rootAuditedAllArtifacts": true,
+    "artifacts": 657,
+    "sourceFiles": 600,
+    "dependencyLinks": 452
+  },
+  "projectionProtocolQualityFailure": {
+    "sourceCommit": "3431698fc450e4ab5f4ddc8bc0a6830e5ef674e0",
+    "passed": false,
+    "reportSha256": "b2ce63861aeffac379bb730a566143615cb27203ce4e6f6d0f608965801e7c7b",
+    "manifestSha256": "5e27208359851e973e64051e080c03bceb8ff5d3665fe0cf27688f47b01b1a58",
+    "rootAuditedAllArtifacts": true,
+    "artifacts": 683,
+    "sourceFiles": 600,
+    "dependencyLinks": 452
+  },
+  "finalSpec": {
+    "sourceCommit": "04169410009d24cbdcd7e5601f1ef78235c079da",
+    "passed": true,
+    "reportSha256": "afd3c738f7e11c668d516dccdd517b76108fcf45d78938b29432855ed07d1100",
+    "manifestSha256": "f8d0472ab4e7fcb5bd392a619f0030880b3f78a72b71bfd200be46b725b99891",
+    "rootAuditedAllArtifacts": true,
+    "artifacts": 676,
+    "sourceFiles": 600,
+    "dependencyLinks": 452
+  },
+  "finalQuality": {
+    "sourceCommit": "04169410009d24cbdcd7e5601f1ef78235c079da",
+    "passed": true,
+    "reportSha256": "709d0fb25464f2e3349b3454e0ffa7aae1a80a5396d22e7a694eae2c178db3ac",
+    "manifestSha256": "dc5648179931966466b21d1686bd34040070b6496eb13eaa09a6c20431dd49a8",
+    "rootAuditedAllArtifacts": true,
+    "artifacts": 660,
+    "sourceFiles": 600,
+    "dependencyLinks": 452
+  },
+  "firstFailuresRetained": [
+    {
+      "classification": "official candidate traversal timeout",
+      "detail": "官方A元数据和时间戳通过，引用全候选定位逐目录分页耗尽原180秒期限；自有日志和OS隔离根已清理，退出1。77次command/exec调用尝试、76次真实终结、1次RPC拒绝；未捕获最后拒绝对应的实际进程身份，不宣称零活动或泄漏。图像/追加替换/零流验收未执行；181普通工件与87来源文件原样封存。固定目标内筛选候选与有界返回修复后再独立验收，不延长期限或跳过冲突检查"
+    },
+    {
+      "classification": "QUALITY product projection error boundary",
+      "detail": "合法指数溢出元数据经目标标准解析与序列化产生不能解码的投影，曾抛裸SyntaxError并漏报Bark诊断；真实RED保留，统一脱敏protocol边界修复，不改变数值策略"
+    },
+    {
+      "classification": "SPEC product cross-candidate terminal result",
+      "detail": "首matching图像输出确定unknown/畸形null后仍读下一候选，独立12case中6真实差分；传播整次读取终止状态修复，原FAIL与初次Local oracle错误保留"
+    },
+    {
+      "classification": "incomplete verification execution",
+      "detail": "修复后的首轮全server进程未留下最终退出记录，exec session已不存在、原因未知；原输出与事后来源核对保留，不计通过。root在该50b0486修复字节新run重新取得正常exit0的1573PASS/7SKIP；后续最终字节完整server结果另见localValidation"
+    },
+    {
+      "classification": "SPEC product",
+      "detail": "有效5000位整数转换资源失败曾被当作malformed/missing，导致隐藏Bark错误推送；真实RED修复且保留原证据"
+    },
+    {
+      "classification": "QUALITY product",
+      "detail": "已排除候选和image终止后仍解析无关正文；独立8个业务差分，修复保留Local首行与首结果、原始过滤边界"
+    },
+    {
+      "classification": "verification environment",
+      "detail": "最初full缺3个bin入口，1514PASS/22SKIP/3加载失败，补齐同commit后原3套29PASS；最终修复源码另有正常退出完整server，不把拼接记录称为一次全绿"
+    },
+    {
+      "classification": "verification tooling",
+      "detail": "系统Python解包版本差异、null-prototype比较oracle、Bark测试订阅非法UUID及封存期间seal.py写入时序审计失败均保留分类，最终冻结工件重新精确核验"
+    },
+    {
+      "classification": "locator RPC amplification real RED",
+      "detail": "512个无关文件和40个数字日期目录使旧定位RPC v4从2增至61、v7从6增至65；先通过业务值及跨文件冲突断言，再真实失败。固定目标筛选后同样本定位窗口RPC前后均1"
+    },
+    {
+      "classification": "locator compatibility real RED",
+      "detail": "中间实现的后继目录错误遮蔽首结果、过度symlink拒绝及Windows argv容量失败均保留；旧4fb两产品blob真实对照2+4项通过，有序错误和既有symlink语义恢复，固定locate/scan分开传输保留参数预算"
+    },
+    {
+      "classification": "verification test type failure",
+      "detail": "新增测试paths缺string[]标注导致首tests strict exit2（TS7034/7005）；原日志保留，仅补类型后按新最终600来源字节完成全部验证"
+    },
+    {
+      "classification": "independent SPEC setup",
+      "detail": "旧4fb对照.ts副本位于ESM package外造成CJS类身份绑定失败，尚未进入iterator；原exit1和清理证据保留，仅新增.mts诊断副本修正模块格式后12对照通过；首失败当时active计数未记录，事后自有fixture/process已清理"
+    },
+    {
+      "classification": "independent QUALITY oracle",
+      "detail": "Windows首样本实际投影59072字节未跨65536窗口，首轮13通过/1断言失败exit1完整保留；仅增大新样本到118144字节后14项通过，真实续页token一次，最大Windows参数预算22107小于24000；不作为产品失败或抹去首轮"
+    },
+    {
+      "classification": "independent QUALITY seal setup",
+      "detail": "内嵌封存生成器因三引号解析冲突exit1，未创建seal/manifest、未执行产品或fixture；实际错误输出和结构重建片段保留，完整原stdin仅在工具调用记录中，不宣称根内有完整原文；随后独立seal成功"
+    }
+  ],
+  "official": {
+    "attempt": "B",
+    "passed": true,
+    "startedAt": "2026-11-15T07:51:08.220Z",
+    "finishedAt": "2026-11-15T07:53:03.992Z",
+    "actualExitCode": 0,
+    "actualSignalCode": null,
+    "startToBusinessAndCliMs": 88098,
+    "zeroFlowActualMs": 25002,
+    "isolatedRootRemoved": true,
+    "privateAdminCleanupPassed": true,
+    "lateRpcPassed": true,
+    "noNewPrepareDuringDwell": true,
+    "actualBoundPortMatched": true,
+    "newAuthorizationOrEnrollment": false,
+    "productionChanged": false,
+    "modelInferenceRequestsSent": 0,
+    "testChatsCreated": 0,
+    "offlineGraphMatchedAtRuntimeBuild": true,
+    "offlineGraphFilesMatched": 44,
+    "checks": {
+      "businessCompleted": true,
+      "metadataPassed": true,
+      "timestampsPassed": true,
+      "citationsPassed": true,
+      "imageErrorPassed": true,
+      "partialTailPassed": true,
+      "appendPassed": true,
+      "replacePassed": true,
+      "wrongSessionPassed": true,
+      "missingPassed": true,
+      "fixtureCleanupPassed": true,
+      "adapterCloseKeptCallerSession": true,
+      "lateRpcCompleted": true,
+      "closed": true
+    },
+    "counts": {
+      "runtimeStarts": 1,
+      "prepares": 1,
+      "relayInstances": 1,
+      "commandExecRequests": 25,
+      "actualExecEnds": 25,
+      "rejectedExecs": 0,
+      "activeExecs": 0,
+      "peakActiveExecs": 1,
+      "maxSerializedOutgoingBytes": 13021,
+      "forbidden": 0,
+      "permissionViolations": 0,
+      "zeroFlowStartActive": 0,
+      "zeroFlowEndActive": 0,
+      "zeroFlowNewStreams": 0
+    },
+    "rpcCounts": {
+      "account/read": 42,
+      "remoteControl/status/read": 41,
+      "command/exec": 25,
+      "command/exec/write": 25,
+      "command/exec/terminate": 24,
+      "model/list": 3
+    },
+    "defaultPermissionsOnly": true,
+    "evidence": {
+      "sourceCommit": "04169410009d24cbdcd7e5601f1ef78235c079da",
+      "passed": true,
+      "reportSha256": "15c2582f8f9983df24f6981458f6ed786c5a65d6b5d165e3f81254c69bd88f8f",
+      "manifestSha256": "f3d7b1badbc150caf9a0fab9690abf4228cba1efd95c726213025ea96c2d0047",
+      "rootAuditedAllArtifacts": true,
+      "artifacts": 179,
+      "sourceFiles": 87,
+      "dependencyLinks": 320
+    }
+  },
+  "limitations": [
+    "仅当前Mac和自有随机UUID小日志；不读取既有用户会话正文，不向第三方Bark发送",
+    "正式HTTP/WS目标路由、共享持久队列与手机Remote模式仍待后续任务",
+    "本项不代表Windows实机、P95、8小时、凭据刷新或真实Mac睡眠唤醒",
+    "无新授权/登记、模型推理、测试聊天、客户端构建或生产部署"
+  ],
+  "locatorFix": {
+    "targetSideCandidateFiltering": true,
+    "asciiWindowBytes": 65536,
+    "stdoutCap": 131072,
+    "stderrCap": 16384,
+    "existingDirectoryEntriesCap": 10000,
+    "absoluteDeadlineUnchanged": true,
+    "fullCitationConflictScanPreserved": true,
+    "orderedTerminalDirectoryErrors": true,
+    "oldDirectSymlinkAndFallbackNoFollowSemanticsPreserved": true,
+    "controlledWindows32WantedAndTokenPassed": true,
+    "allFinalRunsNaturalExit": true,
+    "cachedPathDeliveryAfterPause": {
+      "old": "旧同目录缓存页可继续交付，跨目录需新读取时拒绝",
+      "current": "全部proof后的跨目录候选也可纯本地交付",
+      "upstreamRequestsAfterAbortCloseOrDeadline": 0,
+      "subsequentProjectionRejectsBeforeScan": true,
+      "independentOldAndNewCases": 12
+    }
+  }
+}
