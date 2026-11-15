@@ -288,6 +288,9 @@ export class RemoteRpcSession extends EventEmitter<SessionEvents> {
   }
   private finish(code: RemoteRpcFailure): void {
     if (this.terminal) return; this.terminal = true; this.initialized = false;
+    let remoteClosed: (() => void) | undefined;
+    // close监听器可能同步重入settled，必须在调用传输前固定同一实际关闭屏障。
+    if (this.transport instanceof RemoteStream) this.actualClosedRemote = new Promise(resolve => { remoteClosed = resolve; });
     for (const entry of this.writes.keys()) clearTimeout(entry.timer);
     this.writes.clear(); this.writingBytes = 0;
     clearTimeout(this.initializeTimer); this.initializeTimer = undefined; this.rejectPending(code);
@@ -297,13 +300,13 @@ export class RemoteRpcSession extends EventEmitter<SessionEvents> {
         let closing: Promise<void>;
         try { closing = this.transport.close(); }
         catch { closing = this.transport.close(); } // 外部close监听抛错后仍取得已固定的同一发送Promise。
-        this.actualClosedRemote = closing.catch(() => undefined);
+        void closing.then(remoteClosed, remoteClosed);
       }
       else if (this.transport.readyState !== WebSocket.CLOSED) {
         const socket = this.transport;
         socket.on('error', ignoreSocketError); socket.once('close', () => socket.off('error', ignoreSocketError)); socket.terminate();
       }
-    } catch { /* close 失败也不保留 session 资源。 */ }
+    } catch { remoteClosed?.(); /* close 失败也不保留 session 资源。 */ }
     try { this.emit('close'); } catch { /* 调用方监听器不阻碍清理。 */ }
     finally { this.removeAllListeners(); }
   }

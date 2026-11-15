@@ -419,3 +419,22 @@ it.each([false, true])('RemoteStream实际close发送未完成时settled不提�
   finally { release(); await pending; }
   expect(f.stream.closed).toBe(true); expect(f.released()).toBe(1);
 });
+it.each(['session', 'stream'].flatMap(origin => ['stream', 'session'].flatMap(observer => [false, true].map(throws => ({ origin, observer, throws })))))('关闭监听重入settled等待实际发送（origin=$origin，observer=$observer，throws=$throws）', async ({ origin, observer, throws }) => {
+  let release!: () => void; const gate = new Promise<void>(resolve => release = resolve); let sends = 0;
+  const f = remote(async (_stream, _message, control) => { if (control === 'client_closed') { sends++; await gate; } return { seqId: 1 }; });
+  const session = RemoteRpcSession.fromRemoteStream(f.stream); let reentrant: Promise<void> | undefined; let settled = false; let closes = 0;
+  session.on('close', () => closes++);
+  const closed = () => { reentrant = session.settled().then(() => { settled = true; }); if (throws) throw new Error('isolated reentrant observer'); };
+  if (observer === 'stream') f.stream.on('close', closed); else session.on('close', closed);
+  let outerClose: Promise<void> | undefined; let caught: unknown;
+  try {
+    try { if (origin === 'session') session.close(); else outerClose = f.stream.close(); } catch (error) { caught = error; }
+    if (origin === 'stream' && observer === 'stream' && throws) expect(caught).toMatchObject({ message: 'isolated reentrant observer' });
+    else expect(caught).toBeUndefined();
+    expect(session.closed).toBe(true); expect(f.stream.closed).toBe(true); expect(reentrant).toBeDefined();
+    await new Promise(resolve => setTimeout(resolve, 20));
+    expect(sends).toBe(1); expect(f.released()).toBe(1); expect(settled).toBe(false);
+  } finally { release(); await Promise.all([reentrant, outerClose, f.stream.close(), session.settled()]); }
+  expect(settled).toBe(true); expect(closes).toBe(1); expect(sends).toBe(1); expect(f.released()).toBe(1);
+  expect(f.stream.eventNames()).toEqual([]); expect(session.eventNames()).toEqual([]);
+});
