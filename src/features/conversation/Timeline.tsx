@@ -29,6 +29,7 @@ import { Chevron } from "../../ui/icons";
 import {
   RemoteFileLink,
   RemoteImage,
+  remoteMarkdownImage,
   RemoteVideo,
   videoPathForItem,
 } from "./sheets/RemoteFileSheets";
@@ -272,11 +273,7 @@ function UserBubble({
             className="user-markdown"
             renderImage={(source, alt) => (
               <RemoteImage
-                image={{
-                  source,
-                  name: source.split("/").at(-1) || alt,
-                  local: !/^(data:|https?:)/i.test(source),
-                }}
+                image={remoteMarkdownImage("", source)}
                 client={client}
                 backend={backend}
                 alt={alt}
@@ -412,11 +409,7 @@ function TimelineItem({
         text={displayText}
         renderImage={(source, alt) => (
           <RemoteImage
-            image={{
-              source,
-              name: source.split("/").at(-1) || alt,
-              local: !/^(data:|https?:)/i.test(source),
-            }}
+            image={remoteMarkdownImage("", source)}
             client={client}
             backend={backend}
             alt={alt}

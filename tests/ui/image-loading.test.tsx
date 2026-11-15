@@ -23,6 +23,27 @@ function blobResponse(text: string, status = 200) {
 }
 
 describe("会话图片按需加载", () => {
+  it.each(["userMessage", "agentMessage"])("%s 的 Markdown 中文路径解码后读取缩略图、原图和下载", async (type) => {
+    const path = "/Users/test/旅行 配图/图文阅读#1%完成.jpg";
+    const fetcher = vi.fn().mockResolvedValue(blobResponse("image"));
+    vi.stubGlobal("fetch", fetcher);
+    const request = vi.fn();
+    render(<TurnCard client={{ request } as never} backend={backend} turn={{ id: "encoded-markdown", status: "completed", items: [
+      { id: "message", type, ...(type === "userMessage"
+        ? { content: [{ type: "text", text: `![图文阅读](${encodeURI(path).replace("#", "%23")})` }] }
+        : { text: `![图文阅读](${encodeURI(path).replace("#", "%23")})`, phase: "final_answer" }),
+      },
+    ] }} />);
+    fireEvent.click(await screen.findByRole("button", { name: "查看图片 图文阅读#1%完成.jpg" }));
+    await screen.findByRole("dialog", { name: "图片预览" });
+    await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(2));
+    expect(fetcher.mock.calls.map(([url]) => new URL(url).searchParams.get("path"))).toEqual([path, path]);
+    expect(new URL(fetcher.mock.calls[0][0]).searchParams.get("thumbnail")).toBe("1");
+    expect(new URL(fetcher.mock.calls[1][0]).searchParams.has("thumbnail")).toBe(false);
+    expect(new URL(screen.getByRole("link", { name: "下载图片" }).getAttribute("href")!).searchParams.get("path")).toBe(path);
+    expect(request).not.toHaveBeenCalled();
+  });
+
   it("会话尚在重连时仍可通过 HTTP 打开图片文件", async () => {
     const fetcher = vi.fn().mockResolvedValue(blobResponse("image"));
     vi.stubGlobal("fetch", fetcher);
