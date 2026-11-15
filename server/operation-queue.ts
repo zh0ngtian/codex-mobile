@@ -65,6 +65,16 @@ function controlValid(value: unknown): value is OperationControl {
   return object(value) && shape(value, value.kind === 'stop' ? ['kind', 'turnId', 'expiresAt'] : ['kind', 'turnId', 'requestId', 'expiresAt']) && ['stop', 'approval'].includes(String(value.kind)) && text(value.turnId) && Number.isSafeInteger(value.expiresAt) && Number(value.expiresAt) > 0 && (value.kind !== 'approval' || text(value.requestId));
 }
 function receipt(record: OperationRecord): OperationReceipt { return { id: record.id, revision: record.revision, receiveOrder: record.receiveOrder, state: record.state }; }
+// 在原预算内为全部未终态项预留完整生命周期；不落额外字段、不放大上限。
+function capacityBytes(record: OperationRecord): number {
+  const actual = Buffer.byteLength(JSON.stringify(record)); if (terminal(record)) return actual;
+  // 本模块生成36字符UUID和安全整数PID/revision；兼容保留更长的既有合法token。
+  const claimToken = record.claimToken && Buffer.byteLength(JSON.stringify(record.claimToken)) > 38 ? record.claimToken : '00000000-0000-0000-0000-000000000000';
+  const future: OperationRecord = { ...record, revision: Number.MAX_SAFE_INTEGER, state: 'uncertain', claimToken, claimPid: Number.MAX_SAFE_INTEGER };
+  let reserved = Buffer.byteLength(JSON.stringify(future));
+  if (record.control) { compact(future); future.state = 'failed'; future.failure = 'control-expired'; reserved = Math.max(reserved, Buffer.byteLength(JSON.stringify(future))); }
+  return Math.max(actual, reserved);
+}
 
 /** 内部ledger，尚未接入HTTP/WS或公开scheduler；不接收Sidechat正文。 */
 export class OperationQueue {
@@ -159,7 +169,7 @@ export class OperationQueue {
     for (const control of [false, true]) {
       const records = ledger.records.filter(record => !!record.control === control);
       if (records.filter(record => !terminal(record)).length > 128 ||
-        records.reduce((size, record) => size + Buffer.byteLength(JSON.stringify(record)), 0) > (control ? 2 : 64) * 1024 * 1024) fail('capacity', 429);
+        records.reduce((size, record) => size + capacityBytes(record), 0) > (control ? 2 : 64) * 1024 * 1024) fail('capacity', 429);
     }
   }
   private async authorized(record: OperationRecord, action: Action): Promise<void> {

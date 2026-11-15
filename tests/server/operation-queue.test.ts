@@ -427,3 +427,73 @@ it.each(['missing', 'null', 'value', 'async-function', 'promise-return'] as cons
   const queue = new OperationQueue({ directory: join(root, 'queue'), gatewayId: 'gateway', authorize: authorize as never });
   await expect(queue.submit(input())).rejects.toMatchObject({ code: 'invalid-authorization-fence' });
 });
+
+async function diskRecords(root: string): Promise<any[]> { return JSON.parse(await readFile(join(root, 'queue', 'operations.json'), 'utf8')).records; }
+const metadataBytes = (records: unknown[]) => records.reduce<number>((sum, record) => sum + Buffer.byteLength(JSON.stringify(record)), 0);
+// 只读真实ledger测长度，通过正常CAS二分找到当前最大可接收正文，不写盘伪造临界状态。
+async function fillMetadata(queue: OperationQueue, root: string, id: string, budget: number) {
+  const records = await diskRecords(root); let revision = records.find(record => record.id === id).revision;
+  let high = budget - metadataBytes(records) + 1; let window = 1024; let low = Math.max(0, high - window);
+  const attempt = async (length: number) => {
+    try { revision = (await queue.edit(id, revision, { body: 'x'.repeat(length) })).revision; return true; }
+    catch (error) { expect(error).toMatchObject({ code: 'capacity', status: 429 }); return false; }
+  };
+  while (!await attempt(low)) { high = low; window *= 2; low = Math.max(0, high - window); if (!low) { expect(await attempt(0)).toBe(true); break; } }
+  while (high - low > 1) { const middle = Math.floor((high + low) / 2); if (await attempt(middle)) low = middle; else high = middle; }
+  const before = await readFile(join(root, 'queue', 'operations.json'));
+  await expect(queue.edit(id, revision, { body: 'x'.repeat(low + 1) })).rejects.toMatchObject({ code: 'capacity' });
+  expect((await readFile(join(root, 'queue', 'operations.json'))).equals(before)).toBe(true);
+  return { revision, bodyLength: low };
+}
+const capacityKinds = [{ name: '控制2MiB', control: true, budget: 2 * 1024 * 1024 }, { name: '普通64MiB', control: false, budget: 64 * 1024 * 1024 }];
+for (const kind of capacityKinds) {
+  it.each(['submit', 'edit'] as const)(`${kind.name}实际字节恰满但无生命周期预留时%s在ACK前拒绝`, async method => {
+    const { root, queue } = await fixture();
+    const item = { ...input(), body: '', ...(kind.control ? { control: { kind: 'stop' as const, turnId: 'turn', expiresAt: Date.now() + 3600000 } } : {}) };
+    await queue.submit(item); const bytes = metadataBytes(await diskRecords(root)); const before = await readFile(join(root, 'queue', 'operations.json'));
+    const length = kind.budget - bytes * (method === 'submit' ? 2 : 1);
+    const pending = method === 'submit' ? queue.submit({ ...item, id: randomUUID(), body: 'x'.repeat(length) }) : queue.edit(item.id, 1, { body: 'x'.repeat(length) });
+    await expect(pending).rejects.toMatchObject({ code: 'capacity', status: 429 });
+    expect((await readFile(join(root, 'queue', 'operations.json'))).equals(before)).toBe(true);
+    expect(await queue.read(item.id)).toMatchObject({ state: 'queued', revision: 1, body: '' });
+  }, 30000);
+}
+it('控制满额同时预留现存failed/claimed/queued项，状态推进跨revision位数并保留释放与compact边界', async () => {
+  const { root, queue } = await fixture(); const budget = 2 * 1024 * 1024;
+  const make = (conversationId: string) => ({ ...input(randomUUID(), conversationId), body: '', control: { kind: 'stop' as const, turnId: 'turn', expiresAt: Date.now() + 3600000 } });
+  const first = make('failed'); await queue.submit(first); const firstClaim = (await queue.claimNext('mac'))!;
+  let failed = await queue.markPotentialSend(first.id, firstClaim.revision, firstClaim.claimToken!);
+  while (failed.revision < 9) failed = await queue.settle(first.id, failed.revision, firstClaim.claimToken!, 'failed');
+  const second = make('claimed'); await queue.submit(second); const secondClaim = (await queue.claimNext('mac'))!; expect(secondClaim.id).toBe(second.id);
+  const filler = make('queued'); await queue.submit(filler); const filled = await fillMetadata(queue, root, filler.id, budget);
+  const fullBytes = metadataBytes(await diskRecords(root)); expect(fullBytes).toBeLessThanOrEqual(budget);
+  failed = await queue.settle(first.id, 9, firstClaim.claimToken!, 'failed'); expect(failed.revision).toBe(10);
+  expect(metadataBytes(await diskRecords(root))).toBe(fullBytes + 1);
+  const marked = await queue.markPotentialSend(second.id, secondClaim.revision, secondClaim.claimToken!);
+  expect(metadataBytes(await diskRecords(root))).toBe(fullBytes + 3);
+  await expect(queue.confirmNeverSent(second.id, marked.revision, secondClaim.claimToken!, async () => false)).rejects.toMatchObject({ code: 'not-proven-never-sent' });
+  await queue.confirmNeverSent(second.id, marked.revision, secondClaim.claimToken!, async () => true);
+  let reclaimed = (await queue.claimNext('mac'))!; expect(reclaimed.id).toBe(second.id); expect(reclaimed.claimToken).not.toBe(secondClaim.claimToken);
+  await queue.releaseClaim(second.id, reclaimed.revision, reclaimed.claimToken!);
+  // 释放未发送claim只删当前元数据，仍须为其未来再领取保留容量。
+  await expect(queue.edit(filler.id, filled.revision, { body: 'x'.repeat(filled.bodyLength + 1) })).rejects.toMatchObject({ code: 'capacity' });
+  reclaimed = (await queue.claimNext('mac'))!;
+  const sent = await queue.markPotentialSend(second.id, reclaimed.revision, reclaimed.claimToken!);
+  await queue.settle(second.id, sent.revision, reclaimed.claimToken!, 'succeeded');
+  const enlarged = await queue.edit(filler.id, filled.revision, { body: 'x'.repeat(filled.bodyLength + 1) }); expect(enlarged.state).toBe('queued');
+  await queue.settle(first.id, failed.revision, firstClaim.claimToken!, 'succeeded');
+  const next = (await queue.claimNext('mac'))!; expect(next.id).toBe(filler.id);
+  const uncertain = await queue.markPotentialSend(filler.id, next.revision, next.claimToken!);
+  const lastFailed = await queue.settle(filler.id, uncertain.revision, next.claimToken!, 'failed');
+  expect(metadataBytes(await diskRecords(root))).toBeLessThanOrEqual(budget);
+  await queue.settle(filler.id, lastFailed.revision, next.claimToken!, 'succeeded');
+  for (const record of await diskRecords(root)) { expect(record.state).toBe('succeeded'); expect(record).not.toHaveProperty('body'); expect(record).not.toHaveProperty('claimToken'); }
+}, 30000);
+it('普通64MiB最大合法编辑后可claim、标记未知、记录失败并确定成功，实际元数据不越界', async () => {
+  const { root, queue } = await fixture(); const budget = 64 * 1024 * 1024; const item = { ...input(), body: '' }; await queue.submit(item);
+  const filled = await fillMetadata(queue, root, item.id, budget); expect(filled.bodyLength).toBeGreaterThan(63 * 1024 * 1024);
+  const claim = (await queue.claimNext('mac'))!; expect(claim.id).toBe(item.id); expect(metadataBytes(await diskRecords(root))).toBeLessThanOrEqual(budget);
+  const uncertain = await queue.markPotentialSend(item.id, claim.revision, claim.claimToken!); expect(uncertain.state).toBe('uncertain');
+  const failed = await queue.settle(item.id, uncertain.revision, claim.claimToken!, 'failed'); expect(metadataBytes(await diskRecords(root))).toBeLessThanOrEqual(budget);
+  await queue.settle(item.id, failed.revision, claim.claimToken!, 'succeeded'); expect(await queue.read(item.id)).not.toHaveProperty('body');
+}, 60000);
