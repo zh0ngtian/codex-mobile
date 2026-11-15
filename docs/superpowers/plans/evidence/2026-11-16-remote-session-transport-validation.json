@@ -1,0 +1,133 @@
+{
+  "schemaVersion": 1,
+  "task": "Task4b2b-internal-session-remote-transport",
+  "sourceCommit": "aeb75e65dc35b84851994b870023d54ca3326b0f",
+  "tree": "1a60081b144ee5000c2d3817b5451890438f69b6",
+  "baselineMain": "eeccc1eb212ab4670211fbb2ab4aaf7224875ea4",
+  "completedAtUtc": "2026-11-15T20:43:53.913994+00:00",
+  "sourceOnly": true,
+  "deployed": false,
+  "clientPublished": false,
+  "clientBuild": false,
+  "gates": {
+    "implementationPassed": true,
+    "specPassed": true,
+    "qualityPassed": true,
+    "rootAuditedAllArtifacts": true
+  },
+  "scope": "内部可信Remote Session传输、显式来源、授权和原调用预算、真实逻辑流创建关闭与侧边栏读取；公开目标图和唯一ledger调度未装配",
+  "implementation": {
+    "root": "/private/tmp/rsc5ecab9a5",
+    "manifestPath": "MANIFEST.json",
+    "manifestSha256": "c2ac5325ef4aa4bee2cc808ff377c18757d8663d87561a192d32ddb07ed14762",
+    "bindingSha256": "6058a4c14bf833e56ac44b67dcafe17ab6520d5caa64bcc0909d3b7568fae4f9",
+    "reportSha256": "ed7a23e8f0ae44c31469be91179cf47ae0eb4b43a65f38e6f31a3e8e862caae3"
+  },
+  "rootAudits": {
+    "tree": {
+      "path": "/tmp/codex-task4b2b-sidebar-implementation-tree-audit.json",
+      "sha256": "aa4f23c5b97d28cbb58be574f250b1756d36e8c812e0bc6f8926159d9a58da19"
+    },
+    "binding": {
+      "path": "/tmp/codex-task4b2b-sidebar-implementation-binding-audit.json",
+      "sha256": "c6ec9b363b406a181d438de9e67e13c670f1924bf80a5316f7a0debdcf78665a"
+    }
+  },
+  "finalSpec": {
+    "root": "/private/tmp/ssxgjm6act",
+    "manifestPath": "MANIFEST.json",
+    "manifestSha256": "2fe6c65a805fc8b752284afd3cc6bce440d5f26431b477dcb2878e93c822cbd2",
+    "bindingSha256": "375f7614957005c588461cffdbbbb0a9a1b1e966a77af0a9189eafc39c4f2d28",
+    "reportSha256": "c75017105cdc441c5565d14c90c4c9f035d3fc2e570652409526b18d6e84d919",
+    "verdict": "PASS",
+    "independentPassed": 22,
+    "originalProbePassed": 3,
+    "originalProbeFixtureTimeout": 1,
+    "auditSha256": "7a05b7aca2bd40619c2d37fa761b0f096872f77407e7f9ef26ead56ab83e4b0c",
+    "treeAuditSha256": "e481d04323828db340f84d71f540b7f0ee916091739480af18276c1673f984f3"
+  },
+  "finalQuality": {
+    "root": "/private/tmp/qvju_uv8zx",
+    "manifestPath": "MANIFEST.json",
+    "manifestSha256": "9db76d08a1eac5f50c561d8c45c0db400774f451a6d62a9bd38c1e07e17e06a9",
+    "bindingSha256": "e8568fc7c34ee7bb41fc385ed5f509613d3a5b0a66fdb58144700dabc9ab0351",
+    "reportSha256": "bac77c122f99ad8e690f88a4c0582ee119de11f55758615cd87ddb9c128bfda0",
+    "verdict": "PASS",
+    "independentPassed": 8,
+    "auditSha256": "f77cccbac8f86ece0058da3a9c602f8de25fbc07e23e450865932cf123bf00b0",
+    "treeAuditSha256": "23c2104ce3d61cd2a6a67b7293a74557a07161f5e8b9a4ab9ca2077a9cbfb8f3"
+  },
+  "validation": {
+    "finalSourceCommit": "aeb75e65dc35b84851994b870023d54ca3326b0f",
+    "relatedFiles": {
+      "tests/server/http-session-remote.test.ts": 60,
+      "tests/server/http-session.test.ts": 63,
+      "tests/server/sidechat.test.ts": 5,
+      "tests/server/sidechat-replay.test.ts": 2,
+      "tests/server/follow-ups.test.ts": 23,
+      "tests/server/bark-notifications.test.ts": 63,
+      "tests/server/followed-thread-notifications.test.ts": 10,
+      "tests/server/remote-runtime.test.ts": 104,
+      "tests/server/remote-runtime-lifecycle.test.ts": 7,
+      "tests/server/operation-queue.test.ts": 70,
+      "tests/server/remote-rpc-session.test.ts": 42,
+      "tests/server/remote-relay.test.ts": 56,
+      "tests/server/sidebar-summary-index.test.ts": 8
+    },
+    "relatedPassed": 513,
+    "originalQualityProbePassed": 3,
+    "qualityProbeV2Passed": 6,
+    "qualityV2IncludesOriginalThree": true,
+    "sourceStrictExit": 0,
+    "testStrictExit": 0,
+    "buildServerExit": 0,
+    "allTrackedMapped": 2893,
+    "dependencyLinks": 417,
+    "privateCacheDirectories": 3,
+    "implementationRuns": 16
+  },
+  "failuresRetained": [
+    {
+      "kind": "初次SPEC三项P1",
+      "finding": "hostedOperation、RPC observer实际输入及voice客户端实际交付前缺授权，原失败和修复保留。",
+      "commit": "bea321c8b36abd1e60b8e9120d63e355047e46cd"
+    },
+    {
+      "kind": "并发创建及取消资源窗口",
+      "finding": "e38989c相关483/484；下一proof与注册后同步/微任务取消真实RED，已同lane同步创建并等待真实close；parentguard原控制通过。"
+    },
+    {
+      "kind": "初次QUALITY侧边栏P2",
+      "finding": "原150ms预算及signal未传到index子RPC，真实两RED；最小上下文修复后原字节probe3与v2六项均通过。",
+      "commit": "fc7c37e639038113df1267b0d034b614bcc637b4",
+      "evidence": {
+        "root": "/private/tmp/qrpu5ypfow",
+        "manifestPath": "MANIFEST.json",
+        "manifestSha256": "0e514201b3dca355e9d8921a5b1b6bdbec59a43678f09e22542a757c84a79c8e",
+        "bindingSha256": "2ae95e7fd40b5dac97764a0b2e9e6fa146031df8235fd8eb46eaa257bb2e5de4",
+        "reportSha256": "5f7f0fdec2fdba6faaeb14e7fe622ce1a3e1fea882a2e31073645be74f9890f0"
+      }
+    },
+    {
+      "kind": "历史夹具与隔离限制",
+      "finding": "早期Vite外链不能证明工作区旧cache未变；旧voice received-only在正确关闭后timeout，有界等价另过；非耐久404假green及类型/错误码夹具失败均保留，不算最终门禁。"
+    },
+    {
+      "kind": "本轮预提交类型错误",
+      "finding": "1处递归推断和3处unknown类型失败保留，最小注解后双strict通过。"
+    }
+  ],
+  "artifactLimitations": [
+    "OS子进程采样为实际PID/PPID/start/command，不保证极短进程均捕获，不声称每个child有独立环境和执行hash。",
+    "原始POSIX mode按实际映射保留：tar archive664/775，实际fixed-source/source/workspace644/755；Git执行位一致。实施REPORT中fixed-source664/775泛述不精确，实际映射及根核验为准。"
+  ],
+  "officialRemoteProbeRunThisStep": false,
+  "testChatsCreated": 0,
+  "pending": [
+    "Task4b2公开HTTP/WS/hosted/Bark/关注目标图",
+    "Task4b2唯一ledger派发恢复、旧FollowUps迁移策略、附件bytes与活引用、占位、读合并和导航取消",
+    "Task4c会话观察和持久真实业务时钟",
+    "Task5手机多网关模式与outbox",
+    "Task6官方完整功能/8小时/凭据周期/重启/睡眠唤醒/P95"
+  ]
+}

@@ -158,7 +158,7 @@ Task4 按内部依赖顺序实施：4a 可信目标身份基础 → 4b 持久队
 - [x] 4a：固定随机网关/本机身份、Mac 归属校验及可信目标 resolver/旧句柄 guard 已完成源码验证与独立双审；Local非枚举字段和关闭监听重入的两项P2均先RED后修复，见[收据](evidence/2026-11-16-remote-target-identity-validation.json)。未接公开Remote路由，整个Task4继续未完成。
 - [x] 4b.1：内部 durable ledger 最终 ae62ff00 通过原 SPEC→原 QUALITY 及 root 全工件核验；相关 7 文件 211 项、双 strict/build:server 通过。原授权/控制及容量缺口均修复，见[收据](evidence/2026-11-16-remote-operation-queue-validation.json)，尚未接公开路径。
 - [x] 4b.2a：内部真实 Runtime/Target 队列授权及持久显式恢复证明通过源码验证、独立 SPEC→QUALITY 和 root 全工件核验；旧句柄跨代永拒，公开装配未接，见[收据](evidence/2026-11-16-remote-runtime-queue-authorization-validation.json)。
-- [x] 4b.2b 内部实现：现有 Session/HttpSessions 的可信 rawstream 注入、真实 Runtime/Relay 回归和最小投影/replay 来源注入已本地完成；初次 SPEC 三项交付边界缺口按冻结合同修复，root 审计、原 SPEC 复审与全新 QUALITY 待完成。现有 WAL 保留，公开 mode/host/index 与完整消费者目标图未接，不能视为 Remote 模式可用。
+- [x] 4b.2b 内部实现：可信 Session/HttpSessions rawstream、显式投影/replay 来源及交付/创建/关闭/侧边栏原调用预算，通过513项、双strict/build、独立规格与质量复审及root全工件核验，见[收据](evidence/2026-11-16-remote-session-transport-validation.json)。现有 WAL 保留，公开 mode/host/index、完整消费者目标图和唯一ledger调度未接，不能视为 Remote模式可用。
 - [ ] 4b.2：HTTP/WS/hosted/Bark/关注与目标传输装配，Sidechat 内存路由、附件 bytes/活引用、占位、读合并/导航取消、显式 resume 和旧 FollowUps 推断替换，待实现/验收。
 - [ ] 4c：真实业务时钟与会话观察/释放，待实现/验收。
 
@@ -301,3 +301,6 @@ Task3d.4完成记录：Task3d.4统计失效装配已完成源码验收：冻结 
 4b.2b 同核验队列创建修复（2026-11-16，保留 `e38989c` 原候选另建提交）：原484项的483通过/1并发失败保留；下一真实 proof 受控挂起证明已核验前项创建会被下一 operation 拒绝。Target 专用同步创建入口复用 Runtime 原 read tail，在真实 run/finally 后、下一 proof 前检查完整 reference 与 binding.assertCurrent，再同步注册 stream；不放宽 executable/run/query/mutation。注册后同步/微任务取消真实 RED 后补实际 close 等待，父 guard 收尾、排队取消/撤权/关闭/原期限零创建和 query busy 作为控制。业务 ACK、投影、close 不持 read lane。最终固定源码门禁与封存以报告为准，root→原 SPEC→全新 QUALITY 待完成；公开 Remote、消费者图、ledger/scheduler、手机及 Task4c/5/6 保持待。
 
 4b.2b QUALITY 预算修复（2026-11-16，以 `fc7c37e639038113df1267b0d034b614bcc637b4` 为基线另建提交）：原 QUALITY 探针原字节 RED 后，为现有 sidebar index 增加可选可信请求上下文，让 Remote summaries/read、includeRunning/loaded 分页、projectless 游标与排队承接同次 deadline/signal；Remote 各 caller pending 独立、完成缓存共享，Local 原合并与双读取上限保持。取消/超时仅结束自身，不补发未发送读取，迟到不更新缓存，其他共享 Relay 流继续。12项永久回归及原探针3项/v2六项已分别 GREEN（v2含原3项）；原失败与预提交类型检查失败保留。最终固定提交相关13文件、双 strict/build:server 以新封存为准，root→原 SPEC→原 QUALITY 仍待完成；仅源码，公开装配、ledger/scheduler、手机及 Task4c/5/6 保持待。
+
+
+4b.2b最终源码验收（2026-11-16）：冻结 `aeb75e65dc35b84851994b870023d54ca3326b0f`，13文件513项、原QUALITY探针3项及扩展版6项（含原3项）、双strict/build:server通过；原SPEC与原QUALITY复审通过，root实审固定字节和完整封存工件。原3项P1、并发创建和取消资源、侧边栏P2已修复；历史失败、voice旧观测timeout、cache外链及夹具限制保留。仅内部Session依赖完成，公开目标消费者图、唯一ledger调度及旧FollowUps迁移、4c/5/6仍待。无官方访问、客户端构建、发布或部署。
