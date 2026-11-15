@@ -276,3 +276,5 @@ Task3d.4完成记录：Task3d.4统计失效装配已完成源码验收：冻结 
 验收同时发现既有首次设备保存跨引导切换丢失真实ACK，用户批准A。`46a6f541524ba2fcc3cd8963c2dedde1d65e252a` 将唯一NativeRuntime移至现有AppBootstrap；`9f0d136403325f3927b7db75479de1eb6ebb39b4` 补齐父owner在StrictMode重放后的首份投影。最终100项原生相关回归、19项实际桥接、独立SPEC140项和QUALITY仓库12项/独立1项通过，类型检查和开发Web构建通过；原始RED及误设可删最后设备的独立测试失败均保留说明。最终9f0d的iPhone17Pro正常字号竖屏实际首次保存1项、统计失效/恢复1项通过，4张截图已核对：320KB/1.8MB→暂无数据→640KB/3.6MB，Token保持。原生/服务端协议字节未变，官方gate继续绑定7f468；不改绑旧证据。
 
 公开目标路由、共享持久队列、手机模式和长期/P95/睡眠唤醒验收继续Task4/5/6；当前仅源码验收，未发布客户端、未打APK/IPA、未部署生产网关。见[脱敏验收收据](evidence/2026-11-15-remote-upload-invalidation-validation.json)。
+
+2026-11-16 4a 源码整合：合入最新 main `6dcb5558`，仅验收文档追加处需同时保留两方记录。整合冻结 `605d4d78c672c65c080a3cc3aaf2c5c5dea62c3d` 在独立目录通过RPC42项、目标43项、图片UI44项、发布适配器42项、双strict及服务端构建；server与tests/server相比双审冻结字节不变，未构建客户端或部署。

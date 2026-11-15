@@ -125,5 +125,24 @@
     "Task6完整官方功能/8小时/凭据周期/睡眠唤醒/P95"
   ],
   "officialRemoteProbeRunThisStep": false,
-  "testChatsCreated": 0
+  "testChatsCreated": 0,
+  "mainIntegration": {
+    "head": "605d4d78c672c65c080a3cc3aaf2c5c5dea62c3d",
+    "tree": "6a14d75f1914099d1869560591d027f195d4006e",
+    "allChecksPassed": true,
+    "actualArtifacts": 4038,
+    "resultSha256": "8f8a3caac93a114474ff16334c8fb967943ead62e44d196f15dc18ee35fd3c15",
+    "manifestSha256": "cad80c007dbea51ec43e064aa79e0b6769beb36473c26865c3fa10fdb90acdb4",
+    "runtimeAndServerTestsUnchanged": true,
+    "rootAuditedAllArtifacts": true,
+    "upstreamMain": "6dcb55585dae4af9affceb3f171a4c3a475024dc",
+    "rpcSessionPassed": 42,
+    "targetRelatedPassed": 43,
+    "targetFilterUnselected": 33,
+    "imageUiPassed": 44,
+    "releaseAdapterPassed": 42,
+    "sourceStrictExit": 0,
+    "testStrictExit": 0,
+    "serverBuildExit": 0
+  }
 }
