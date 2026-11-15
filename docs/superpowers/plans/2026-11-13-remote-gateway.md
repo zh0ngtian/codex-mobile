@@ -155,7 +155,7 @@ Task3按内部依赖分项验证，不改变已确认的权限、功能或目标
 
 Task4 按内部依赖顺序实施：4a 可信目标身份基础 → 4b 持久队列与传输路由装配 → 4c 会话观察器；随后 Task5 手机接入。该拆分不改变已确认架构，也不代表整个 Task4 已完成。
 
-- [ ] 4a：固定随机网关/本机身份、Mac 归属校验、只读 Runtime 接受集合及可信目标 resolver/旧句柄 guard；实现已就绪，待最终固定源码验证和独立 SPEC→QUALITY，未接公开 Remote 路由、未发布。
+- [ ] 4a：固定随机网关/本机身份、Mac 归属校验、只读 Runtime 接受集合及可信目标 resolver/旧句柄 guard；首候选本地完整验证通过，首轮 SPEC 因 Local 非枚举字段漏检 FAIL。本轮统一全部 own keys 校验并以 12 个永久反例先 RED，限定验证后待 SPEC 复审及全新 QUALITY，未接公开 Remote 路由、未发布。
 - [ ] 4b：目标级 durable ledger 和 HTTP/WS/hosted/Bark/关注传输装配，待实现/验收。
 - [ ] 4c：真实业务时钟与会话观察/释放，待实现/验收。
 

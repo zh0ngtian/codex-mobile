@@ -926,6 +926,7 @@ it('目标解析Local首次使用即固定归组，无需Remote授权，未指�
   const localHandle = await resolver.resolve();
   expect(localHandle.descriptor.mode).toBe('local');
   expect((await resolver.resolve({})).descriptor).toEqual(localHandle.descriptor);
+  expect((await resolver.resolve({ mode: undefined })).descriptor).toEqual(localHandle.descriptor);
   expect((await resolver.resolve({ mode: 'local' })).descriptor).toEqual(localHandle.descriptor);
   await localHandle.assertCurrent();
   expect(f.connections).toHaveLength(0); expect(f.keys()).toBe(0); expect(f.canonicals).toHaveLength(0);
@@ -944,8 +945,22 @@ it('目标解析显式Remote不可在未配置owner时回退Local', async () => 
   const resolver = await resolverFor();
   await expect(resolver.resolve({ mode: 'remote', gatewayId: gatewayIdentity.gatewayId, account: { accountId: 'a', accountUserId: 'u' }, target: local })).rejects.toMatchObject({ code: 'not-configured' });
 });
+it.each(([
+  ['gatewayId', gatewayIdentity.gatewayId],
+  ['account', { accountId: 'workspace', accountUserId: 'account-user' }],
+  ['target', local],
+] as const).flatMap(([field, value]) => [false, true].flatMap(explicitLocal => [false, true].map(undefinedValue => ({
+  field, value: undefinedValue ? undefined : value, explicitLocal, undefinedValue,
+})))))('目标解析Local拒绝非枚举Remote字段 $field（local=$explicitLocal，undefined=$undefinedValue）', async ({ field, value, explicitLocal }) => {
+  const resolver = await resolverFor();
+  const input = explicitLocal ? { mode: 'local' } : {};
+  Object.defineProperty(input, field, { enumerable: false, value });
+  await expect(resolver.resolve(input)).rejects.toMatchObject({ code: 'invalid-reference' });
+});
 it.each([
   null, [], 'remote', { mode: 'invalid' }, { target: local }, { mode: 'remote' },
+  Object.defineProperty({}, 'mode', { get() { throw new Error('不能执行引用getter'); } }),
+  { [Symbol('target')]: local }, Object.create({ mode: 'remote' }),
   { mode: 'local', target: local }, { mode: 'remote', gatewayId: gatewayIdentity.gatewayId, account: {}, target: local },
   { mode: 'remote', gatewayId: gatewayIdentity.gatewayId, account: { accountId: 'a', accountUserId: 'u', userId: undefined }, target: local },
   { mode: 'remote', gatewayId: gatewayIdentity.gatewayId, account: { accountId: 'a', accountUserId: 'u' }, target: { environmentId: 'e' } },

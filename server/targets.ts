@@ -46,7 +46,7 @@ function parse(value: unknown): RemoteTargetReference | undefined {
   if (value === undefined) return;
   const raw = object(value, ['mode', 'gatewayId', 'account', 'target']);
   if (raw.mode === undefined || raw.mode === 'local') {
-    if (Object.keys(raw).some(key => key !== 'mode')) throw new TargetResolutionError('invalid-reference');
+    if (Reflect.ownKeys(raw).some(key => key !== 'mode')) throw new TargetResolutionError('invalid-reference');
     return;
   }
   if (raw.mode !== 'remote') throw new TargetResolutionError('invalid-reference');
