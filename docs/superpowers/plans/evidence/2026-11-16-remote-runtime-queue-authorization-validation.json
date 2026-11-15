@@ -1,0 +1,100 @@
+{
+  "schemaVersion": 1,
+  "task": "Task4b2a-internal-runtime-queue-authorization",
+  "sourceCommit": "e4e9923b5aca3736e569a76a08dcc5a54f226cab",
+  "tree": "9ce5ccd3bed1ebd44c1f544dbe3b9bb9b9699a13",
+  "baselineMain": "fce2c5df32bc8d03b7c3d91d36084303886d089f",
+  "completedAtUtc": "2026-11-15T18:50:35.981508+00:00",
+  "sourceOnly": true,
+  "deployed": false,
+  "clientPublished": false,
+  "clientBuild": false,
+  "gates": {
+    "implementationPassed": true,
+    "specPassed": true,
+    "qualityPassed": true,
+    "rootAuditedAllArtifacts": true
+  },
+  "scope": "内部可信Runtime/Target与队列授权、最终同步归属和原期限栅栏、持久逐目标显式恢复与完整已提交祖先证明；公开路由/目标消费者图/调度器/手机仍未接入",
+  "implementation": {
+    "root": "/private/tmp/task4b2a-implementation-cr9p7suq",
+    "manifestSha256": "ecdfc7f3613020b9671edaa55315380472601bf12c96f1889d92fb771c0cc5f0",
+    "bindingSha256": "6e4598b26ff52b1d41a56758fe6773878a70a1fd6a40e519d103a0ec603d73f8",
+    "reportSha256": "62e1bb5f39c4bc9d4ab298e8e4b48599266ae1460ca9c8c35d783891d504781f",
+    "manifestPath": "MANIFEST.json"
+  },
+  "rootAudits": {
+    "/tmp/codex-task4b2a-implementation-tree-audit.json": "e93032a33c821405f119eac5dc583cb1e60e0b8cc5c801d2b86b76fa41c862eb",
+    "/tmp/codex-task4b2a-implementation-binding-audit.json": "ec564649c71ecc8e1319c5761b0ced15575630d3a72191156316b068bac095b3",
+    "/tmp/codex-task4b2a-spec-tree-audit.json": "006b60c0a7c1399466f4520d746a15431c920af2a7e10baf5d7ec6a0dd38c5a9",
+    "/tmp/codex-task4b2a-spec-binding-audit.json": "5f795e52ef888156f250da353b34daf1abe673a4208c327cc619430aa30b62d8",
+    "/tmp/codex-task4b2a-quality-tree-audit.json": "7d9139f6ccb3cd718ecea7cb72cc2676915807a2a2029f2bb1909e271ba4e5dc",
+    "/tmp/codex-task4b2a-quality-binding-audit.json": "725c0287c0e84bd38409b595effaf154dc11696fb994c5dd8ac0588c62c2c6cf"
+  },
+  "finalSpec": {
+    "root": "/private/var/folders/46/0m_tq7w108b58gm4kk_zm1rc0000gn/T/task4b2a-spec-ehs4jxn3",
+    "manifestSha256": "d3db5d09a2441467bc18203aa361aec4b10913d2cf0602aad1971450c6977ccb",
+    "bindingSha256": "90e610221d0e3df5a707db8ff41a72a09d96af33288ae55ffb719305cb37fb2a",
+    "reportSha256": "1ff4006999883997e6cd45fa60fefb3bc5dd2f2e0347808360f38aae871cbf52",
+    "manifestPath": "MANIFEST.json",
+    "rootAuditSha256": "5f795e52ef888156f250da353b34daf1abe673a4208c327cc619430aa30b62d8",
+    "independentPassed": 8,
+    "originalRelatedPassed": 449,
+    "originalRelatedFailed": 2,
+    "shortTmpAffectedFilePassed": 59,
+    "originalRelatedNotAllGreen": true
+  },
+  "finalQuality": {
+    "root": "/private/tmp/q4b2.iyHUOT",
+    "manifestSha256": "68a6c3feec4c75f64bddfc6b9a3f16a6418629af5bfe53d6045f317bfb4e7a7b",
+    "bindingSha256": "34a5e02aed904cd11ca47c5a3f7473350b5480fc1a641eecd02d8490f2e78505",
+    "reportSha256": "e45363ceb97a4a575b2b5e23ce39c7d06bb2733002d73ad64c3e2e2d87c9e24e",
+    "manifestPath": "MANIFEST.jsonl",
+    "rootAuditSha256": "725c0287c0e84bd38409b595effaf154dc11696fb994c5dd8ac0588c62c2c6cf",
+    "verdict": "PASS-internal-Task4b2a-only"
+  },
+  "validation": {
+    "finalSourceCommit": "e4e9923b5aca3736e569a76a08dcc5a54f226cab",
+    "relatedFiles": 9,
+    "relatedPassed": 451,
+    "sourceStrictExit": 0,
+    "testStrictExit": 0,
+    "buildServerExit": 0,
+    "allTrackedMapped": 2890,
+    "dependencyLinks": 452
+  },
+  "failuresRetained": [
+    {
+      "kind": "夹具存储隔离事故",
+      "finding": "早期误传store使5条合成记录写入默认账本，已由root持锁按原字节/inode可逆隔离；无逐UUID trace",
+      "manifestSha256": "8293584967b26f0705bf7d98b0c3a8f9edf921bf15ce6b22f47e1f131896cb0a",
+      "earlyGreen01And02Excluded": true,
+      "explicitDirectoryGuardAdded": true
+    },
+    {
+      "kind": "旧候选验证限制",
+      "finding": "旧c7相关验证遗漏新worker，仅2889 tracked且407/408；保留撤权bundle的green13草稿未采纳，均不算最终门禁",
+      "finalFixedShaRelatedPassed": 451
+    },
+    {
+      "kind": "SPEC夹具失败",
+      "finding": "初始canonical home夹具未真实重连，2项失败；修正真实loader重连后最终独立8/8，原字节/日志保留",
+      "notProductRed": true
+    },
+    {
+      "kind": "SPEC临时socket路径环境失败",
+      "finding": "原9文件449/451，两个既有socket初始化失败；真实生产入口115-byte路径EINVAL、短57-byte成功；仅短TMP重跑受影响文件59/59",
+      "originalExactRandomBasenameRecorded": false,
+      "originalRelatedNotAllGreen": true
+    }
+  ],
+  "officialRemoteProbeRunThisStep": false,
+  "testChatsCreated": 0,
+  "pending": [
+    "Task4b2内部Session传输注入和公开HTTP/WS/hosted/Bark/关注目标图",
+    "Task4b2统一ledger调度、Sidechat内存路由、附件bytes/活引用、占位、读合并/导航取消及旧FollowUps推断替换",
+    "Task4c会话观察与真实业务时钟",
+    "Task5手机多网关模式与outbox",
+    "Task6官方全功能/8小时/凭据周期/重启/睡眠唤醒/P95"
+  ]
+}

@@ -157,7 +157,7 @@ Task4 按内部依赖顺序实施：4a 可信目标身份基础 → 4b 持久队
 
 - [x] 4a：固定随机网关/本机身份、Mac 归属校验及可信目标 resolver/旧句柄 guard 已完成源码验证与独立双审；Local非枚举字段和关闭监听重入的两项P2均先RED后修复，见[收据](evidence/2026-11-16-remote-target-identity-validation.json)。未接公开Remote路由，整个Task4继续未完成。
 - [x] 4b.1：内部 durable ledger 最终 ae62ff00 通过原 SPEC→原 QUALITY 及 root 全工件核验；相关 7 文件 211 项、双 strict/build:server 通过。原授权/控制及容量缺口均修复，见[收据](evidence/2026-11-16-remote-operation-queue-validation.json)，尚未接公开路径。
-- [ ] 4b.2a：内部真实 Runtime/Target 队列授权及持久显式恢复证明已实现与本地验证，待 root 工件核验、全新 SPEC→QUALITY；旧句柄跨代永拒，公开装配未接。
+- [x] 4b.2a：内部真实 Runtime/Target 队列授权及持久显式恢复证明通过源码验证、独立 SPEC→QUALITY 和 root 全工件核验；旧句柄跨代永拒，公开装配未接，见[收据](evidence/2026-11-16-remote-runtime-queue-authorization-validation.json)。
 - [ ] 4b.2：HTTP/WS/hosted/Bark/关注与目标传输装配，Sidechat 内存路由、附件 bytes/活引用、占位、读合并/导航取消、显式 resume 和旧 FollowUps 推断替换，待实现/验收。
 - [ ] 4c：真实业务时钟与会话观察/释放，待实现/验收。
 
@@ -288,3 +288,6 @@ Task3d.4完成记录：Task3d.4统计失效装配已完成源码验收：冻结 
 公开目标路由、共享持久队列、手机模式和长期/P95/睡眠唤醒验收继续Task4/5/6；当前仅源码验收，未发布客户端、未打APK/IPA、未部署生产网关。见[脱敏验收收据](evidence/2026-11-15-remote-upload-invalidation-validation.json)。
 
 2026-11-16 4a 源码整合：合入最新 main `6dcb5558`，仅验收文档追加处需同时保留两方记录。整合冻结 `605d4d78c672c65c080a3cc3aaf2c5c5dea62c3d` 在独立目录通过RPC42项、目标43项、图片UI44项、发布适配器42项、双strict及服务端构建；server与tests/server相比双审冻结字节不变，未构建客户端或部署。
+
+
+4b.2a最终源码验收（2026-11-16）：冻结 `e4e9923b5aca3736e569a76a08dcc5a54f226cab`，相关9文件451项、双strict及build:server通过；独立SPEC→全新QUALITY通过，root实审完整封存工件。SPEC独立8项通过；原相关回归449/451的两项长socket环境失败与短TMP受影响文件59项通过分开记载。旧失败、夹具隔离事故与证据限制均保留，未将green13或少worker旧验证算作门禁。下一步串行完成4b.2内部Session传输注入，再接公开目标图与统一调度；4b.2/4c/5/6继续待实现或验收。仅源码交付，无官方访问、客户端构建、发布或部署。
