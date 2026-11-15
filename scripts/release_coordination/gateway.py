@@ -1,4 +1,4 @@
-"""协调器的服务端部署阶段：保留已部署前端与现有 LaunchAgent。"""
+"""协调器的网关部署阶段：默认保留前端，可按冻结任务显式更新 WebUI。"""
 import hashlib
 import json
 import os
@@ -18,6 +18,7 @@ from .desktop_meter import DesktopMeterInstall, desktop_meter_options
 
 MARKER = '.codex-mobile-deployment.json'
 BUILD_COMMAND = ['npm', 'run', 'build:server']
+WEB_BUILD_COMMAND = ['npm', 'run', 'build']
 BUILD_WRAPPER = '''import sys
 sys.path.insert(0, sys.argv[1])
 from release_coordination.gateway import build_server
@@ -41,11 +42,26 @@ def tree_digest(root):
     return digest.hexdigest()
 
 
-def source_fingerprint(work):
+def source_fingerprint(work, web_ui=False):
     work = Path(work)
     inputs = {'server': tree_digest(work / 'server'), 'bin': tree_digest(work / 'bin')}
     for name in ('package.json', 'package-lock.json', 'tsconfig.npm.json'):
         inputs[name] = sha256(work / name)
+    if web_ui:
+        # npm run build 包含 tsc -b；测试与 Playwright 配置也是其类型检查输入。
+        frontend = {'src': tree_digest(work / 'src')}
+        for name in ('public', 'tests/ui', 'tests/server', 'protocol/app-server-v2/generated-local'):
+            path = work / name
+            frontend[name] = tree_digest(path) if path.exists() else None
+        names = {'index.html', 'vite.config.ts', 'playwright.config.ts',
+                 '.env', '.env.local', '.env.production', '.env.production.local'}
+        names.update(path.name for path in work.glob('tsconfig*.json'))
+        for name in sorted(names):
+            path = work / name
+            if path.is_symlink():
+                raise RuntimeError('WebUI 构建输入不能包含符号链接')
+            frontend[name] = sha256(path) if path.exists() else None
+        inputs['webUi'] = frontend
     return hashlib.sha256(json.dumps(inputs, sort_keys=True).encode()).hexdigest()
 
 
@@ -55,17 +71,27 @@ def build_server(work, checkpoint_path, identity_json, fingerprint):
     checkpoint_path = Path(checkpoint_path)
     checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
     log = checkpoint_path.with_suffix('.log')
-    if source_fingerprint(work) != fingerprint:
+    identity = json.loads(identity_json)
+    web_ui = identity.get('webUi') is True
+    if source_fingerprint(work, web_ui) != fingerprint:
         raise RuntimeError('网关构建源指纹在启动前发生变化')
-    record = {'identity': json.loads(identity_json), 'work': str(work),
+    record = {'identity': identity, 'work': str(work),
               'sourceFingerprint': fingerprint, 'status': 'running',
               'command': BUILD_COMMAND, 'log': str(log.resolve()), 'startedAt': time.time()}
+    if web_ui:
+        record['webUiCommand'] = WEB_BUILD_COMMAND
     atomic_json(checkpoint_path, record)
     output = work / 'npm-dist/server'
     if output.exists():
         shutil.rmtree(output)
+    if web_ui and (work / 'dist').exists():
+        shutil.rmtree(work / 'dist')
     with log.open('wb') as compiler_log:
-        result = subprocess.run(BUILD_COMMAND, cwd=work, stdout=compiler_log, stderr=subprocess.STDOUT)
+        commands = [WEB_BUILD_COMMAND, BUILD_COMMAND] if web_ui else [BUILD_COMMAND]
+        for command in commands:
+            result = subprocess.run(command, cwd=work, stdout=compiler_log, stderr=subprocess.STDOUT)
+            if result.returncode != 0:
+                break
         compiler_log.flush()
         os.fsync(compiler_log.fileno())
     record.update(exitCode=result.returncode, logSha256=sha256(log), completedAt=time.time())
@@ -73,12 +99,14 @@ def build_server(work, checkpoint_path, identity_json, fingerprint):
         record['status'] = 'failed'
         atomic_json(checkpoint_path, record)
         sys.stderr.write(log.read_text(errors='replace'))
-        raise RuntimeError('网关服务端构建失败')
-    if source_fingerprint(work) != fingerprint:
+        raise RuntimeError('网关 WebUI 或服务端构建失败' if web_ui else '网关服务端构建失败')
+    if source_fingerprint(work, web_ui) != fingerprint:
         record['status'] = 'failed'
         atomic_json(checkpoint_path, record)
         raise RuntimeError('网关构建源指纹在编译期间发生变化')
     record.update(status='success', serverDigest=tree_digest(output))
+    if web_ui:
+        record['frontendDigest'] = tree_digest(work / 'dist')
     # 在任何快照/打包及 stdout/stderr 回传前完成原子落盘。
     atomic_json(checkpoint_path, record)
     sys.stderr.write(log.read_text(errors='replace'))
@@ -102,6 +130,19 @@ class Gateway:
         self.build_log = self.root / 'gateway-build.log'
         self.sha = adapter.context['frozen']['sha']
         self.batch = adapter.context['id']
+        selected_web_ui = None
+        for task in adapter.context.get('tasks', []):
+            validation = task.get('validation', {})
+            if 'webUi' not in validation:
+                continue
+            requested = validation['webUi']
+            if (type(requested) is not bool or validation.get('scope') != 'gateway-only' or
+                    not task.get('sha') or validation.get('sourceCommit') != task.get('sha')):
+                raise RuntimeError('WebUI 更新选项必须为布尔值并绑定网关任务的实际来源 SHA')
+            if selected_web_ui is not None and selected_web_ui != requested:
+                raise RuntimeError('WebUI 更新选项在冻结任务之间冲突')
+            selected_web_ui = requested
+        self.web_ui = selected_web_ui is True
         desktop_options = desktop_meter_options(options, adapter.context.get('tasks', []))
         self.desktop_meter = DesktopMeterInstall(desktop_options, self.package) if desktop_options else None
 
@@ -112,7 +153,10 @@ class Gateway:
         atomic_json(self.record_path, record)
 
     def _identity(self):
-        return {'batchId': self.batch, 'sha': self.sha, 'target': str(self.target), 'label': self.label}
+        identity = {'batchId': self.batch, 'sha': self.sha, 'target': str(self.target), 'label': self.label}
+        if self.web_ui:
+            identity['webUi'] = True
+        return identity
 
     def _digests(self, package):
         return {'serverDigest': tree_digest(package / 'npm-dist/server'),
@@ -203,7 +247,7 @@ class Gateway:
         return {'done': True, 'result': receipt}
 
     def _build(self):
-        fingerprint = source_fingerprint(self.work)
+        fingerprint = source_fingerprint(self.work, self.web_ui)
         if self.build_path.exists():
             checkpoint = read_json(self.build_path)
             if checkpoint.get('status') == 'success':
@@ -215,6 +259,9 @@ class Gateway:
                              checkpoint.get('serverDigest') == tree_digest(self.work / 'npm-dist/server') and
                              checkpoint.get('log') == str(self.build_log.resolve()) and
                              checkpoint.get('logSha256') == sha256(self.build_log))
+                    if self.web_ui:
+                        valid = (valid and checkpoint.get('webUiCommand') == WEB_BUILD_COMMAND and
+                                 checkpoint.get('frontendDigest') == tree_digest(self.work / 'dist'))
                 except (OSError, ValueError, RuntimeError):
                     valid = False
                 if not valid:
@@ -271,7 +318,7 @@ class Gateway:
             shutil.rmtree(self.stage.parent)
         self.stage.parent.mkdir(parents=True)
         shutil.copytree(self.backup, self.stage, symlinks=True)
-        for relative in ('npm-dist/server', 'bin'):
+        for relative in (('npm-dist/server', 'bin', 'dist') if self.web_ui else ('npm-dist/server', 'bin')):
             target = self.stage / relative
             if target.exists():
                 shutil.rmtree(target)
@@ -279,8 +326,13 @@ class Gateway:
         shutil.copy2(self.work / 'package.json', self.stage / 'package.json')
         digests = self._digests(self.stage)
         if (digests['serverDigest'] != checkpoint['serverDigest'] or
-                source_fingerprint(self.work) != checkpoint['sourceFingerprint']):
+                source_fingerprint(self.work, self.web_ui) != checkpoint['sourceFingerprint']):
             raise RuntimeError('网关打包源指纹或服务端输出摘要与成功构建不符')
+        if self.web_ui:
+            # 再验证日志和冻结输出，避免快照期间的漂移进入 stage。
+            self._build()
+            if digests['frontendDigest'] != checkpoint['frontendDigest']:
+                raise RuntimeError('网关 WebUI stage 输出摘要与成功构建不符')
         atomic_json(self.stage / MARKER, {**self._identity(), **digests})
         pending = self.archive.with_suffix('.tgz.tmp')
         with tarfile.open(pending, 'w:gz') as archive:

@@ -114,10 +114,12 @@ prepare在整合结果门禁通过后提交与上游字节一致的公共 `.rele
 | `build` | 按冻结 SHA 查询唯一正式 CI，记录 run/attempt；只下载本 run 缺失的平台，校验批次、任务、版本、真实来源、大小与散列；核对 Release tag 和附件 |
 | `apk`（历史） | 旧含LAN合同保留；现行GitHub-only拒绝该阶段，不访问或更新固定APK |
 | `source` | 本仓库 unsigned IPA 的版本/构建号、GitHub URL、大小、散列及当前 gh 用户署名；核对真实同步 job，保留原开发者与展示信息；公开记录缺失散列时，经版本/URL/大小核对后调用现役 `/attest` CAS 写入该产物散列并回验，响应丢失先对账 |
-| `gateway` | 仅 `npm run build:server`；更新原已安装包的 server/bin，保留已部署 dist、依赖、start.py 与环境；核对文件摘要、实际 launchd PID/命令、监听端口和认证状态接口；健康探测使用既有 `HOST`，通配地址转回环、IPv6 加方括号、本机请求绕过代理；响应丢失不重复重启 |
+| `gateway` | 默认仅 `npm run build:server`，更新原已安装包的 server/bin并保留已部署 dist；已获授权的任务可用下述 `webUi=true` 显式构建并更新 dist。两种范围均保留依赖、start.py 与环境；核对文件摘要、实际 launchd PID/命令、监听端口和认证状态接口；健康探测使用既有 `HOST`，通配地址转回环、IPv6 加方括号、本机请求绕过代理；响应丢失不重复重启 |
 | `verify` | 等待同冻结SHA必要开发CI；双端核对 main/build/source 并独立完整下载 GitHub APK／unsigned IPA；Android 单端仅核对 main/build 并独立完整下载 APK，不访问软件源；保存 `github-release.json` 与 `distribution=github-only` 成功证据，明确 `lanApkPublished=false` 及signed IPA／OTA／固定IPA均未发布；网关核对main/gateway |
 
 正式CI只在main冻结清单变化时触发，使用稳定作用域、`cancel-in-progress: false`、`queue: max`；gateway清单跳过客户端build/release，历史OTA清单保留原跳过行为。现行客户端额外阶段 `apk/ipa/iosbuild/sign/ota/gateway` 及未知阶段全部拒绝。手动dispatch需匹配已有batch／版本／最终SHA，不得用它另发独立版本或重复触发同批；重复正式run会被适配器拒绝并保留诊断。开发／PR检查使用另一并发组，仅执行原有必要检查，不发包。构建 matrix 来自冻结项目的校验输出，Android 单端仅含 ubuntu Android 作业；发布回执拒绝越界的 IPA 或 iOS 回执，双端仍必须有两端。recipe、容器SHA、工具版本、Android签名及iOS unsigned策略保留。
+
+网关 WebUI 更新须由用户明确授权，并在该任务的私有验证记录声明 `"scope": "gateway-only"`、`"sourceCommit": "该任务完整SHA"`、`"webUi": true`。该开关只接受布尔值，scope／SHA 必须绑定任务；多个任务显式选择冲突时拒绝。未声明或显式 false 均沿用保留旧 dist 的合同，旧身份及检查点保持兼容。启用时从冻结工作区执行 `npm run build`，清理旧 dist，记录前端构建输入指纹、日志散列和 dist 摘要；成功凭证先原子落盘，再制作包含新 dist 的安装快照。源、输出或日志漂移拒绝复用；响应丢失按成功检查点恢复，不重复构建。部署身份及成功回执包含 `webUi=true`，并以实际前端摘要和现有网关健康检查验收；这不授权 APK／IPA 构建、桌面适配器安装或其他部署目标。
 
 网关依赖声明若与已安装包不同，当前阶段阻止部署，需先完成该依赖变更所需验证和关联修复；不能假装旧依赖满足新代码。仅修改协调器接入不自动要求客户端发布或网关部署；2026-10-13 的真实双端发布与网关验收是当次用户授权，不能作为后续任务的默认授权。
 
@@ -260,3 +262,8 @@ APK 为4,755,355字节，未签名IPA为5,030,497字节；两端独立完整下�
 46项独立渠道核对通过。GitHub APK 为4,799,584字节，未签名IPA为5,031,172字节；两端HEAD、完整GET和构建元数据均与GitHub附件及成功receipt一致。APK实际0.3.47／3047，内含居中SVG与六行布局；IPA实际0.3.47／3047、`vip.loock.codexmobile`，无签名资源或描述文件。既有unsigned订阅的版本、构建号、URL、大小、SHA-256和中文日志匹配，原开发者署名保留并包含当前GitHub登录用户。
 
 历史LAN四文件散列未变，8765／8766无监听，两项旧渠道服务停止且disabled。凭证明确GitHub-only，未发布LAN APK、签名IPA、OTA或固定IPA。主工作区旧规则已按用户授权同步，原有暂存内容未变。真机键盘、覆盖安装和数据保留仍待人工验收；文档收尾不重复构建或发布。完整链接、大小、散列和脱敏核对结果见[公共凭证](superpowers/plans/evidence/2026-11-14-web-composer-release.json)，过程见[发布计划](superpowers/plans/2026-11-14-web-composer-github-release.md)。长期成功receipt SHA-256 为 `62d904049ca4c51f1bd2565582d9b188acc14e2d30ee1d790a22e2ec62b2a9d0`。
+
+
+## 2026-11-15 WebUI 正文图片修复部署
+
+用户明确要求更新并允许增加任务级 WebUI 开关后，`web-markdown-images-update-20261115` 通过现役网关目标完成，成功批次 `2df6c58f-70f6-4186-9bc7-4398702bd9cd`，来源 `b66ad5369511ce3e085b06afa1ef533326489ef7`、冻结 `ac6132c2668e4de2490905f9ad785de0095e4a38`。回执 `webUi=true`，实际 dist 与冻结构建摘要一致；原启动文件与环境散列保持，新PID与认证健康状态核对通过。原对话九张正文图、总览原图预览与下载路径完成真实网页验收。默认网关部署仍保留旧前端；本次未构建／发布 APK或IPA、未更新软件源。公共记录见[验收凭证](superpowers/plans/evidence/2026-11-15-webui-image-deploy.json)。
