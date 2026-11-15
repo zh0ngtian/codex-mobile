@@ -112,8 +112,16 @@ export class ResolvedRemoteTarget {
     return Object.freeze({ managed: binding.managed, target: this.#reference.target });
   }
   async createRawStream(signal?: AbortSignal) {
-    await this.binding(true, signal);
-    try { return this.#runtime.createRawStream(this.#reference.target); } catch (error) { return failure(error); }
+    try {
+      const status = this.#runtime.status();
+      if (status.state === 'closed') throw new TargetResolutionError('closed');
+      if (status.state === 'paused') throw new TargetResolutionError('paused');
+      return await this.#runtime.createRawStreamWithBinding(this.#reference.target, binding => {
+        if (authorization(this.descriptor.gatewayId, binding, this.#reference.target) !== this.descriptor.authorizationKey)
+          throw new TargetResolutionError('identity-changed');
+        check(this.#reference, binding, true);
+      }, signal);
+    } catch (error) { return failure(error); }
   }
   async createManagementSession(signal?: AbortSignal, options?: RemoteRpcSessionOptions) {
     await this.binding(true, signal);

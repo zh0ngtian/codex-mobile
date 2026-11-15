@@ -528,6 +528,26 @@ export class RemoteRuntime extends EventEmitter<{
   /** 只核对现有 owner 的身份，不创建 bundle、主连接、授权或配对。 */
   private targetBindingReads: Promise<void> = Promise.resolve();
   readTargetBinding(signal?: AbortSignal): Promise<RemoteRuntimeTargetBinding> {
+    return this.readTargetBindingResult(signal, binding => binding);
+  }
+  /** 可信Target专用：真实proof收尾后、下一proof前同步验证并注册逻辑流。 */
+  async createRawStreamWithBinding(value: RemoteTargetIdentity, assertBinding: (binding: RemoteRuntimeTargetBinding) => void, signal?: AbortSignal): Promise<RemoteStream> {
+    let stream: RemoteStream | undefined;
+    try {
+      const result = await this.readTargetBindingResult(signal, binding => {
+        assertBinding(binding);
+        binding.assertCurrent(value, true);
+        return (stream = this.createRawStream(value));
+      });
+      if (signal?.aborted) throw new RemoteRuntimeError('cancelled');
+      assertRemoteOperation();
+      return result;
+    } catch (error) {
+      await stream?.close();
+      throw error;
+    }
+  }
+  private readTargetBindingResult<T>(signal: AbortSignal | undefined, deliver: (binding: RemoteRuntimeTargetBinding) => T): Promise<T> {
     // 只串行真实只读proof；不同Resolver/Session共享本Runtime，不持有业务ACK或投影。
     const deadline = performance.now() + this.timeout;
     const abort = new AbortController();
@@ -540,7 +560,11 @@ export class RemoteRuntime extends EventEmitter<{
       if (performance.now() >= deadline && !abort.signal.aborted) abort.abort(new RemoteRuntimeError('timeout'));
       if (abort.signal.aborted) throw abort.signal.reason;
     };
-    const pending = this.targetBindingReads.then(() => withRemoteOperation(assert, () => this.readTargetBindingNow(abort.signal)));
+    const pending = this.targetBindingReads.then(() => withRemoteOperation(assert, async () => {
+      const binding = await this.readTargetBindingNow(abort.signal);
+      assert(); assertRemoteOperation();
+      return deliver(binding);
+    }));
     this.targetBindingReads = pending.then(() => {}, () => {});
     return new Promise((resolve, reject) => {
       const cleanup = () => { clearTimeout(timer); signal?.removeEventListener('abort', cancel); abort.signal.removeEventListener('abort', stopped); };

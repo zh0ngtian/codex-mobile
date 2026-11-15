@@ -369,6 +369,67 @@ it('同Runtime多Resolver与多HttpSessions并发核验、创建和业务各自�
   await until(() => JSON.stringify(observed).includes('multi-two')); expect((await f.events(one)).messages).toEqual(expect.arrayContaining([expect.objectContaining({ method: 'thread/started' })]));
   expect(f.connections).toHaveLength(1); expect((f.sessions as any).sessions.get(one).open).toBe(true);
 });
+it('下一真实proof挂起时前项逻辑stream已在同一read lane同步创建', async () => {
+  const f = await sessionFixture(); const provider = (f.runtime as any).bundle.provider; const original = provider.verifyBinding.bind(provider);
+  let release!: () => void; const gate = new Promise<void>(resolve => { release = resolve; }); let entered!: () => void; const started = new Promise<void>(resolve => { entered = resolve; });
+  let queued!: Promise<unknown>; let count = 0;
+  vi.spyOn(provider, 'verifyBinding').mockImplementation(async () => {
+    count++; if (count === 1) queued = f.runtime.readTargetBinding();
+    if (count === 2) { entered(); await gate; }
+    return original();
+  });
+  const created = f.remote.target.createRawStream().then(stream => ({ stream }), error => ({ error }));
+  await started;
+  try {
+    expect((f.runtime as any).operation.authorizationReadOnly).toBe(true);
+    const result = await created;
+    expect('error' in result ? { code: result.error.code, readonly: (f.runtime as any).operation.authorizationReadOnly } : { created: true }).toEqual({ created: true });
+    if ('stream' in result) await result.stream.close();
+  } finally { release(); await queued; }
+  expect(count).toBe(2); expect(f.connections).toHaveLength(1);
+});
+it.each(['sync', 'microtask', 'parentguard'] as const)('read lane注册stream后%s取消仍等待实际close且共享Relay健康', async timing => {
+  const f = await sessionFixture(); const abort = new AbortController(); const create = f.runtime.createRawStream.bind(f.runtime); let stream: any;
+  const socket = (f.runtime as any).bundle.controller.relay.socket; const send = socket.send.bind(socket); let release: (() => void) | undefined;
+  const sendSpy = vi.spyOn(socket, 'send').mockImplementation(((bytes: string, options: any, callback: (error?: Error) => void) => {
+    send(bytes, options, (error?: Error) => { if (JSON.parse(bytes).type === 'client_closed') release = () => callback(error); else callback(error); });
+  }) as any);
+  let expired = false; const { withRemoteOperation } = await import('../../server/remote/operation-guard.js');
+  vi.spyOn(f.runtime, 'createRawStream').mockImplementation(value => { stream = create(value); if (timing === 'parentguard') expired = true; else if (timing === 'sync') abort.abort(); else queueMicrotask(() => abort.abort()); return stream; });
+  let settled = false; const pending = withRemoteOperation(() => { if (expired) throw new Error('original-parent-expired'); }, () => f.remote.target.createRawStream(abort.signal)).catch(error => error).finally(() => { settled = true; });
+  try {
+    await until(() => stream != null); await new Promise(resolve => setTimeout(resolve, 20));
+    expect(stream.closed).toBe(true); expect(release).toBeTypeOf('function'); expect(settled).toBe(false);
+  } finally { release?.(); sendSpy.mockRestore(); }
+  expect((await pending).code).toBe('unavailable'); expect(f.connections[0]!.readyState).toBe(1);
+});
+it.each(['cancelled', 'revoke', 'close', 'deadline'] as const)('排队逻辑创建遇%s零注册且不延长原guard', async action => {
+  const f = await sessionFixture(); const provider = (f.runtime as any).bundle.provider; const verify = provider.verifyBinding.bind(provider);
+  let release!: () => void; const gate = new Promise<void>(resolve => { release = resolve; }); let entered!: () => void; const started = new Promise<void>(resolve => { entered = resolve; });
+  vi.spyOn(provider, 'verifyBinding').mockImplementation(async () => { entered(); await gate; return verify(); });
+  const first = f.runtime.readTargetBinding().catch(error => error); await started;
+  const create = vi.spyOn(f.runtime, 'createRawStream'); const abort = new AbortController(); let expired = false;
+  const { withRemoteOperation } = await import('../../server/remote/operation-guard.js');
+  const pending = withRemoteOperation(() => { if (expired) throw new Error('original-parent-expired'); }, () => f.remote.target.createRawStream(abort.signal)).catch(error => error);
+  if (action === 'cancelled') { abort.abort(); expect((await pending).code).toBe('unavailable'); }
+  if (action === 'revoke') f.setManaged({ accountId: 'revoked-before-create' });
+  if (action === 'deadline') expired = true;
+  const closing = action === 'close' ? f.runtime.close() : undefined; release();
+  expect(await pending).toBeInstanceOf(Error); await first; await closing; expect(create).not.toHaveBeenCalled();
+});
+it('真实query运行期间逻辑创建与mutation仍busy，原同步executable仍拒绝', async () => {
+  const f = await sessionFixture(); const runtime = f.runtime as any; const load = runtime.load.bind(runtime);
+  let release!: () => void; const gate = new Promise<void>(resolve => { release = resolve; }); let entered!: () => void; const started = new Promise<void>(resolve => { entered = resolve; });
+  vi.spyOn(runtime, 'load').mockImplementation(async (...args: unknown[]) => { entered(); await gate; return load(...args); });
+  const query = f.runtime.queryStatus(); await started;
+  try {
+    expect(runtime.operation.authorizationReadOnly).toBe(true);
+    expect(() => f.runtime.createRawStream(f.remote.target.descriptor.target)).toThrow();
+    await expect(f.runtime.readTargetBinding()).rejects.toMatchObject({ code: 'busy' });
+    await expect(f.remote.target.createRawStream()).rejects.toMatchObject({ code: 'busy' });
+    await expect(f.runtime.recover()).rejects.toMatchObject({ code: 'busy' });
+  } finally { release(); await query; }
+});
 it('Runtime排队取消及时返回且零核验，原父期限不延长，后项继续真实核验', async () => {
   const f = await sessionFixture(); const provider = (f.runtime as any).bundle.provider; const original = provider.verifyBinding.bind(provider);
   let entered!: () => void; const started = new Promise<void>(resolve => { entered = resolve; }); let release!: () => void; const gate = new Promise<void>(resolve => { release = resolve; }); let calls = 0;
