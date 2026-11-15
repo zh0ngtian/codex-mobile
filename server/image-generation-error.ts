@@ -48,12 +48,12 @@ export async function readImageGenerationError(
     if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(threadId) || !/^[A-Za-z0-9_-]{1,100}$/.test(itemId)) return null;
     const read = source.begin(signal);
     for await (const path of read.files(threadId)) {
-      let result: ImageGenerationError | null = null;
+      let result: ImageGenerationError | null = null; let matched = false;
       for await (const part of read.project(path, threadId, 'image', [itemId])) {
-        if ('reset' in part) result = null;
-        else result = part.value as ImageGenerationError;
+        if ('reset' in part) { result = null; matched = false; }
+        else { result = part.value.error as ImageGenerationError | null; matched = part.value.matched === true; }
       }
-      if (result) return result;
+      if (matched) return result;
     }
     return null;
   }

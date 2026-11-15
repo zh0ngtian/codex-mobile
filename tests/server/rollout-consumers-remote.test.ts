@@ -344,6 +344,56 @@ it.each(['failed-event', 'matching-output'].flatMap(phase => resourceRecords.map
   },
 );
 
+const laterImageCandidates = [
+  ['moderation', meta() + imageFailed() + imageModeration()],
+  ...resourceRecords.map(([resource, tail]) => [resource, meta() + imageFailed().trimEnd().replace(/}$/, ',' + tail.trim().slice(1)) + '\n' + imageModeration()] as const),
+] as const;
+it.each(imageTerminals.flatMap(([terminal, value, expected]) => laterImageCandidates.map(([later, content]) => ({ terminal, value, expected, later, content }))))(
+  '跨文件首结果：$terminal 确定后不读取后一 $later 候选', async ({ value, expected, content }) => {
+    const f = await target(); const s = await source(f); const directory = join(f.root, 'sessions/2026/10/10'); await mkdir(directory, { recursive: true });
+    await writeFile(join(directory, `rollout-0-${id}.jsonl`), meta() + imageFailed() + value);
+    await writeFile(join(directory, `rollout-1-${id}.jsonl`), content);
+    const local = await readImageGenerationError(f.root, id, 'picture-item'); expect(local).toEqual(expected);
+    expect(await readImageGenerationError('/wrong', id, 'picture-item', s)).toEqual(local);
+  },
+);
+
+it.each([['no-item', meta()], ['no-output', meta() + imageFailed()], ...resourceRecords.map(([resource, tail]) => ['wrong-session-' + resource, meta('other-session') + tail + imageFailed() + imageModeration()])])(
+  '跨文件首结果：尚未匹配的 %s 仍允许读取后一真实候选', async (kind, first) => {
+    const f = await target(); const s = await source(f); const directory = join(f.root, 'sessions/2026/10/10'); await mkdir(directory, { recursive: true });
+    await writeFile(join(directory, `rollout-0-${id}.jsonl`), first!);
+    await writeFile(join(directory, `rollout-1-${id}.jsonl`), meta() + imageFailed() + imageModeration());
+    // Local旧image只读首locator且不验证session；Remote既有定位允许尚未匹配时继续。
+    expect(await readImageGenerationError(f.root, id, 'picture-item')).toEqual(kind!.startsWith('wrong-session') ? imageExpected : null);
+    expect(await readImageGenerationError('/wrong', id, 'picture-item', s)).toEqual(imageExpected);
+  },
+);
+
+it('跨文件首结果：终止null仍耗尽当前投影并拒绝输出摘要损坏', async () => {
+  const f = await target(); const s = await source(f); await file(f, meta() + imageFailed() + output('unknown'));
+  const execute = f.commands.execute.bind(f.commands); let corrupted = false;
+  f.commands.execute = async options => {
+    const result = await execute(options); const value = JSON.parse(result.stdout.toString());
+    if (!value.token) return result;
+    corrupted = true; value.sha256 = '0'.repeat(64);
+    return { ...result, stdout: Buffer.from(JSON.stringify(value) + '\n') };
+  };
+  await expect(readImageGenerationError('/wrong', id, 'picture-item', s)).rejects.toMatchObject({ code: 'protocol' }); expect(corrupted).toBe(true);
+});
+
+it('跨文件首结果：活动文件分页变化reset后不携带旧诊断或匹配状态', async () => {
+  const f = await target(); const s = await source(f); const directory = join(f.root, 'sessions/2026/10/10'); await mkdir(directory, { recursive: true });
+  const first = join(directory, `rollout-0-${id}.jsonl`); const stage = '变'.repeat(20000);
+  const error = { error: { code: 'moderation_blocked', moderation_details: { moderation_stage: stage, categories: [] } } };
+  await writeFile(first, meta() + imageFailed() + output([{ text: `Some(${JSON.stringify(JSON.stringify(error))})` }]));
+  await writeFile(join(directory, `rollout-1-${id}.jsonl`), meta() + imageFailed() + imageModeration()); let changed = false;
+  f.beforeRequest(async request => {
+    if (!changed && request.mode === 'scan' && String(request.path).endsWith(`rollout-0-${id}.jsonl`) && Number(request.offset) > 0) { changed = true; await writeFile(first, meta()); }
+  });
+  expect(await readImageGenerationError('/wrong', id, 'picture-item', s)).toEqual(imageExpected); expect(changed).toBe(true);
+  expect(f.requests.filter(request => request.mode === 'scan' && String(request.path).endsWith(`rollout-0-${id}.jsonl`) && request.offset === 0).length).toBeGreaterThan(1);
+});
+
 it.each([false, true])('引用标题UTF16边界、Unicode行首与畸形/嵌套NaN和Infinity保持Local差分 escaped=%s', async escaped => {
   const f = await target(); const s = await source(f);
   const titles = ['😀'.repeat(500), '😀'.repeat(501), 'x'.repeat(1000), 'x'.repeat(1001), '短标题'];

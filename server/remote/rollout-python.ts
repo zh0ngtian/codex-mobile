@@ -66,8 +66,8 @@ def project(entry,mode,wanted,state):
         if not state['found']:
             state['found']=entry.get('type')=='event_msg' and payload.get('type')=='item_completed' and item.get('kind')=='image_gen.generation' and wanted_id(item.get('id'),wanted) and item.get('status')=='failed'
         elif entry.get('type')=='response_item' and payload.get('type')=='custom_tool_call_output':
-            state['done']=True;value=moderation(payload.get('output'))
-            if value is not None: yield value
+            state['done']=True
+            yield dict(matched=True,error=moderation(payload.get('output')))
 def scan():
     mode=q['projection'];previous=q.get('token');wanted=set(q['wanted']);offset=q['offset']
     with open(q['path'],'rb') as f:
@@ -102,7 +102,8 @@ def scan():
                 try: entry=obj(parse(line))
                 except (json.JSONDecodeError,InvalidConstant):
                     if first and mode=='metadata': length=position
-                    if valid and mode=='image' and state['found'] and 'custom_tool_call_output' in line: state['done']=True
+                    if valid and mode=='image' and state['found'] and 'custom_tool_call_output' in line:
+                        state['done']=True;take(dict(matched=True,error=None))
                     first=False;continue
                 if first:
                     first=False;payload=obj(entry.get('payload'));valid=entry.get('type')=='session_meta' and payload.get('id')==q['threadId']
