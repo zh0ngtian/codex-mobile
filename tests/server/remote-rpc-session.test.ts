@@ -405,3 +405,17 @@ it('取消后的迟到响应/写回调不能撤销原写入超时，signal监听
   send(server.sockets[0]!, { id: server.frames[2]!.id, result: true }); await until(() => session.closed);
   completions[0]!(); expect(session.closed).toBe(true);
 });
+it.each([false, true])('RemoteStream实际close发送未完成时settled不提前兑现（关闭监听抛错=%s）', async throws => {
+  let release!: () => void; let closing = false; const gate = new Promise<void>(resolve => release = resolve);
+  const f = remote(async (stream, message, control) => {
+    if (control === 'client_closed') { closing = true; await gate; }
+    if (message?.method === 'initialize') queueMicrotask(() => stream.emit('message', { id: message.id!, result: {} }, { seqId: 1 }));
+    return { seqId: 1 };
+  });
+  const session = RemoteRpcSession.fromRemoteStream(f.stream); await session.initialize();
+  if (throws) f.stream.on('close', () => { throw new Error('isolated observer'); });
+  let settled = false; const pending = session.settled().then(() => settled = true);
+  try { await until(() => closing); await new Promise(resolve => setTimeout(resolve, 20)); expect(settled).toBe(false); }
+  finally { release(); await pending; }
+  expect(f.stream.closed).toBe(true); expect(f.released()).toBe(1);
+});

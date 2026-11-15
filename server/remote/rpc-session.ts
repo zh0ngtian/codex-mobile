@@ -65,6 +65,7 @@ export class RemoteRpcSession extends EventEmitter<SessionEvents> {
   private initialized = false;
   private readonly actualClosed: Promise<void>;
   private actualClosedNative = Promise.resolve();
+  private actualClosedRemote = Promise.resolve();
 
   private constructor(private readonly transport: WebSocket | RemoteStream, options: RemoteRpcSessionOptions) {
     super();
@@ -292,7 +293,12 @@ export class RemoteRpcSession extends EventEmitter<SessionEvents> {
     clearTimeout(this.initializeTimer); this.initializeTimer = undefined; this.rejectPending(code);
     for (const dispose of this.disposers.splice(0)) { try { dispose(); } catch { /* 尽可能清理其余监听器。 */ } }
     try {
-      if (this.transport instanceof RemoteStream) void this.transport.close().catch(() => undefined);
+      if (this.transport instanceof RemoteStream) {
+        let closing: Promise<void>;
+        try { closing = this.transport.close(); }
+        catch { closing = this.transport.close(); } // 外部close监听抛错后仍取得已固定的同一发送Promise。
+        this.actualClosedRemote = closing.catch(() => undefined);
+      }
       else if (this.transport.readyState !== WebSocket.CLOSED) {
         const socket = this.transport;
         socket.on('error', ignoreSocketError); socket.once('close', () => socket.off('error', ignoreSocketError)); socket.terminate();
@@ -303,6 +309,6 @@ export class RemoteRpcSession extends EventEmitter<SessionEvents> {
   }
   close(): void { this.finish('closed'); }
   /** RemoteStream不等待业务ACK；其物理连接由Relay持有。 */
-  async settled(): Promise<void> { this.close(); await Promise.all([this.actualClosed, this.actualClosedNative]); }
+  async settled(): Promise<void> { this.close(); await Promise.all([this.actualClosed, this.actualClosedNative, this.actualClosedRemote]); }
 }
 function ignoreSocketError(): void { /* terminate 期间 ws 仍可能异步报告连接错误。 */ }

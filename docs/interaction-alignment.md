@@ -320,6 +320,9 @@
 
 ### 4.12 多网关本地与 Remote 模式（已确认，分阶段开发）
 
+- 固定身份 A（2026-11-15 已确认，4a 内部基础实现、待最终验证及独立双审）：网关持久目录首次生成固定随机 gatewayId/localHostId，同目录重启、改名及 Remote 重授权不变；不同目录/网关不合并。当前 Mac 网关使用有界固定 ioreg 读取的硬件 UUID 域分隔 SHA-256 指纹校验归属，原始值不保存；跨机复制、损坏、权限或 symlink 不合规明确拒绝并保留旧记录，机器来源不可用不降级。默认 `~/.codex-mobile/gateway-identity`，独立网关可可信注入不同目录；其他宿主的默认 reader 明确 unsupported，本步未接 Local 启动入口、不改变旧 hostId 或 URL/token。Local 首次使用即固定业务归组，只有当前可信完整 binding.local 证明的 Remote 网关 Mac 共用该组，Local/Remote 传输 namespace 分开。共享组不能作为读取或发送授权：每个 Remote 句柄和后续操作/收据仍冻结完整 managed 账号（包括 userId 有无）、网关、目标双 ID 和授权 generation，防止新账号看到旧 Remote 正文或接管旧操作。验收覆盖真实文件权限/父项 fsync、并发进程及中断、换机拒绝、client 可见但未接受、账号和安装变化、离线仅解析、暂停/pending、旧句柄与迟到资源实际收尾；公开路由、队列、观察器和手机支持继续待实现/验收，未发布。
+
+
 - 保留多个网关配置，每个只填写一条现有格式的 URL；token 在该网关两种模式共用，旧配置默认本地。模式选择与 URL 表单放在一起，只有“测试并保存”才检查能力、授权与本机配对并原子保存；失败保持原配置、连接、输入和错误信息。已配置 Remote 临时离线允许保存并排队；不支持 Remote、缺授权或缺本机配对须明确报错，不能静默降级。
 - 本地沿用 canonical bridge，仅控制网关 Mac；Remote 通过网关自身、合法注册并逐台配对的官方 controller 控制目标，网关 Mac 也走官方 Remote。机器按网关分组，不合并不同网关的同一物理目标，不自动跨网关接管；切换仅作用于视图和新操作。各网关的草稿、队列、关注、缓存独立；同一网关访问同一真实目标时共享身份和内容，传输上下文仍隔离。
 - 网关持有账号/工作区级主连接，多目标和手机逻辑流复用，不按会话建立物理连接。账号/工作区变化、授权撤销或目标身份失效须暂停原 Remote 操作并在 Mac 显式恢复；普通网络故障自动重连，已发送且结果未知的写入禁止自动重发。
@@ -1924,3 +1927,10 @@ Task3d.4统计失效装配已完成源码验收：冻结 `7f468f97646162b2c1cf34
 验收同时发现既有首次设备保存跨引导切换丢失真实ACK，用户批准A。`46a6f541524ba2fcc3cd8963c2dedde1d65e252a` 将唯一NativeRuntime移至现有AppBootstrap；`9f0d136403325f3927b7db75479de1eb6ebb39b4` 补齐父owner在StrictMode重放后的首份投影。最终100项原生相关回归、19项实际桥接、独立SPEC140项和QUALITY仓库12项/独立1项通过，类型检查和开发Web构建通过；原始RED及误设可删最后设备的独立测试失败均保留说明。最终9f0d的iPhone17Pro正常字号竖屏实际首次保存1项、统计失效/恢复1项通过，4张截图已核对：320KB/1.8MB→暂无数据→640KB/3.6MB，Token保持。原生/服务端协议字节未变，官方gate继续绑定7f468；不改绑旧证据。
 
 公开目标路由、共享持久队列、手机模式和长期/P95/睡眠唤醒验收继续Task4/5/6；当前仅源码验收，未发布客户端、未打APK/IPA、未部署生产网关。见[脱敏验收收据](superpowers/plans/evidence/2026-11-15-remote-upload-invalidation-validation.json)。
+
+
+### 2026-11-15 Task4a 可信目标身份内部基础
+
+用户确认固定随机身份 A 后，从已推送 `d8ae4c97a877af5f68a96a1aeff7e7d196e24823` 开发；fetch 核对远端未变。新增独立持久网关身份及 Mac 机器归属校验，复用 PrivateStore 的耐久 create/初始化互斥；首次交付前同步新目录父项，损坏或换机不覆盖旧身份。Runtime 增加进程内只读可信 binding，区分已接受 tuple 与 client 可见目录，实际复核当前受管账号与登记且不创建新 owner。目标 resolver 保持 Local 默认，Remote 必须完整引用并保留账号/网关/tuple/generation guard；本网关 Mac 仅共享业务归组，实际 Remote stream/session 继续走同一现有 Relay。内部句柄不枚举 owner 或私有 scope，公开 descriptor 不含 codexHome、token、登记或密钥。迟到管理会话后置核验失败会等待逻辑流实际 close 收尾，包括关闭监听抛错后的同一 Promise；不关闭共享物理连接。
+
+已保留能力缺失及行为反证 RED，重点为 busy 分类、句柄私有引用、父目录项耐久、迟到 close 和关闭监听抛错的实际收尾；并发进程与发布前后 SIGKILL 使用自有临时目录。当前实现待固定源码最终验证及独立 SPEC→QUALITY；未接公开 HTTP/WS 或 /api/host Remote 能力，整个 Task4、手机模式和长期验收继续待完成。仅服务端源码，无 Web/APK/IPA 构建、官方 Remote 探针或生产部署。

@@ -11,6 +11,8 @@ import { RemoteAuthProviderImpl } from '../../server/remote/auth.js';
 import { RemoteIdentityRegistry } from '../../server/remote/identity-registry.js';
 import { ManagedAuthLoader } from '../../server/remote/managed-auth.js';
 import { PrivateStore } from '../../server/remote/private-store.js';
+import { TargetResolver } from '../../server/targets.js';
+import type { GatewayIdentity } from '../../server/gateway-identity.js';
 import type { DeviceIdentity } from '../../server/remote/device-key.js';
 const NOW = 1794530000000;
 const NS = 'https://api.openai.com/auth';
@@ -887,4 +889,176 @@ it('独立复现：正常授权后的 actual Relay close 必须先于 runtime se
  await f.runtime.settled();
  expect(socket.readyState).toBe(3);
  expect(actualClose).toBe(true);
+});
+
+it('可信目标读取区分client可见与逐台已接受集合，并返回冻结无凭据快照', async () => {
+  const f = await fixture(); await f.runtime.authorize(); await until(() => f.runtime.status().state === 'online');
+  const reader = f.runtime.readTargetBinding;
+  const snapshot = await reader!.call(f.runtime);
+  expect(snapshot.acceptedTargets).toEqual([local]);
+  expect(snapshot.targets.map((value: { env_id: string }) => value.env_id)).toEqual([local.environmentId, remote.environmentId]);
+  expect(Object.isFrozen(snapshot)).toBe(true); expect(Object.isFrozen(snapshot.managed)).toBe(true);
+  expect(Object.isFrozen(snapshot.acceptedTargets[0])).toBe(true); expect(Object.isFrozen(snapshot.targets[0])).toBe(true);
+  expect(JSON.stringify(snapshot)).not.toMatch(/private|accessToken|sealedKey|enrollment|identityHash/);
+  await f.runtime.acceptTarget(remote);
+  expect((await reader!.call(f.runtime)).acceptedTargets).toEqual([local, remote]);
+  expect(snapshot.acceptedTargets).toEqual([local]);
+});
+it('可信目标读取直接复核当前受管身份，账号变化不能等待monitor后继续授权', async () => {
+  const f = await fixture(); await f.runtime.authorize(); await until(() => f.runtime.status().state === 'online');
+  const reader = f.runtime.readTargetBinding;
+  f.setManaged({ userId: 'other-user' });
+  await expect(reader!.call(f.runtime)).rejects.toMatchObject({ code: 'identity-changed' });
+  expect(f.keys()).toBe(1); expect(f.oauth()).toBe(1); expect(f.connections).toHaveLength(1);
+});
+
+const gatewayIdentity = Object.freeze({ version: 1 as const, gatewayId: 'e4b9d953-b470-483d-9eba-ad55b199081f', localHostId: 'a1b2e385-6bc1-449a-a81b-dc6e0fdd0a66' });
+async function resolverFor(runtime?: RemoteRuntime, identity: Readonly<GatewayIdentity> = gatewayIdentity) {
+  return new TargetResolver({ identity, remoteRuntime: runtime });
+}
+
+function reference(f: Awaited<ReturnType<typeof fixture>>, tuple = local) {
+  const { accountId, accountUserId, userId } = f.runtime.status().managed!;
+  return { mode: 'remote' as const, gatewayId: gatewayIdentity.gatewayId, account: { accountId, accountUserId, ...(userId === undefined ? {} : { userId }) }, target: { ...tuple } };
+}
+it('目标解析Local首次使用即固定归组，无需Remote授权，未指定模式兼容旧请求', async () => {
+  const f = await fixture(); const resolver = await resolverFor(f.runtime);
+  const localHandle = await resolver.resolve();
+  expect(localHandle.descriptor.mode).toBe('local');
+  expect((await resolver.resolve({})).descriptor).toEqual(localHandle.descriptor);
+  expect((await resolver.resolve({ mode: 'local' })).descriptor).toEqual(localHandle.descriptor);
+  await localHandle.assertCurrent();
+  expect(f.connections).toHaveLength(0); expect(f.keys()).toBe(0); expect(f.canonicals).toHaveLength(0);
+  await f.runtime.authorize(); await until(() => f.runtime.status().state === 'online');
+  expect((await resolver.resolve()).descriptor.businessKey).toBe(localHandle.descriptor.businessKey);
+  const own = await resolver.resolve(reference(f));
+  expect(own.descriptor.businessKey).toBe(localHandle.descriptor.businessKey);
+  expect(own.descriptor.transportNamespace).not.toBe(localHandle.descriptor.transportNamespace);
+  expect(own.descriptor.authorizationKey).not.toBe(localHandle.descriptor.authorizationKey);
+  expect(own.descriptor.mode).toBe('remote'); expect(Object.isFrozen(own.descriptor.account)).toBe(true);
+  expect(JSON.stringify(own.descriptor)).not.toMatch(/codexHome|synthetic|enrollment|private|token|keyId/);
+  const stream = await own.createRawStream(); expect(stream.closed).toBe(false); expect(f.connections).toHaveLength(1);
+  await stream.close();
+});
+it('目标解析显式Remote不可在未配置owner时回退Local', async () => {
+  const resolver = await resolverFor();
+  await expect(resolver.resolve({ mode: 'remote', gatewayId: gatewayIdentity.gatewayId, account: { accountId: 'a', accountUserId: 'u' }, target: local })).rejects.toMatchObject({ code: 'not-configured' });
+});
+it.each([
+  null, [], 'remote', { mode: 'invalid' }, { target: local }, { mode: 'remote' },
+  { mode: 'local', target: local }, { mode: 'remote', gatewayId: gatewayIdentity.gatewayId, account: {}, target: local },
+  { mode: 'remote', gatewayId: gatewayIdentity.gatewayId, account: { accountId: 'a', accountUserId: 'u', userId: undefined }, target: local },
+  { mode: 'remote', gatewayId: gatewayIdentity.gatewayId, account: { accountId: 'a', accountUserId: 'u' }, target: { environmentId: 'e' } },
+  { mode: 'remote', gatewayId: gatewayIdentity.gatewayId, account: { accountId: 'a', accountUserId: 'u', codexHome: '/forged' }, target: local },
+  { mode: 'remote', gatewayId: gatewayIdentity.gatewayId, account: { accountId: 'a', accountUserId: 'u' }, target: { ...local, name: 'Mac' } },
+])('目标解析拒绝恶意或不完整引用 %#', async input => {
+  const resolver = await resolverFor();
+  await expect(resolver.resolve(input)).rejects.toMatchObject({ code: 'invalid-reference' });
+});
+it('目标解析仅目录可见但尚未accept时拒绝，同名错误installation和错误账号也拒绝', async () => {
+  const f = await fixture(); await f.runtime.authorize(); await until(() => f.runtime.status().state === 'online');
+  const resolver = await resolverFor(f.runtime);
+  await expect(resolver.resolve(reference(f, remote))).rejects.toMatchObject({ code: 'target-unaccepted' });
+  await expect(resolver.resolve(reference(f, { ...local, installationId: 'other' }))).rejects.toMatchObject({ code: 'target-changed' });
+  for (const account of [{ ...reference(f).account, accountId: 'other' }, { ...reference(f).account, accountUserId: 'other' }, { accountId: 'workspace', accountUserId: 'account-user' }])
+    await expect(resolver.resolve({ ...reference(f), account })).rejects.toMatchObject({ code: 'identity-changed' });
+  await f.runtime.acceptTarget(remote);
+  const other = await resolver.resolve(reference(f, remote));
+  expect(other.descriptor.businessKey).not.toBe((await resolver.resolve()).descriptor.businessKey);
+});
+it('目标解析名称变化保留身份，重装不接管旧操作，离线只解析不创建流', async () => {
+  const f = await fixture(); await f.runtime.authorize(); await until(() => f.runtime.status().state === 'online'); await f.runtime.acceptTarget(remote);
+  const resolver = await resolverFor(f.runtime); const before = await resolver.resolve(reference(f, remote));
+  f.setTargets([target(local), { ...target(remote), online: false }]); await f.runtime.refreshTargets();
+  const offline = await resolver.resolve(reference(f, remote)); expect(offline.descriptor.businessKey).toBe(before.descriptor.businessKey); expect(offline.descriptor.online).toBe(false);
+  await expect(offline.createRawStream()).rejects.toMatchObject({ code: 'target-offline' });
+  await expect(before.createManagementSession()).rejects.toMatchObject({ code: 'target-offline' });
+  expect(f.connections).toHaveLength(1);
+  f.setTargets([target(local), { ...target({ ...remote, installationId: 'reinstalled' }) }]); await f.runtime.refreshTargets();
+  await expect(before.createRawStream()).rejects.toMatchObject({ code: 'target-changed' });
+});
+it('目标解析目录缺失单独拒绝，跨网关归组和传输隔离', async () => {
+  const f = await fixture(); await f.runtime.authorize(); await until(() => f.runtime.status().state === 'online'); await f.runtime.acceptTarget(remote);
+  const resolver = await resolverFor(f.runtime); const otherIdentity = { ...gatewayIdentity, gatewayId: '295bdf0c-6830-480d-8bdf-0f235273eaf8' };
+  const otherResolver = await resolverFor(f.runtime, otherIdentity);
+  const own = await resolver.resolve(reference(f)); const other = await otherResolver.resolve({ ...reference(f), gatewayId: otherIdentity.gatewayId });
+  expect(other.descriptor.businessKey).not.toBe(own.descriptor.businessKey);
+  expect(other.descriptor.transportNamespace).not.toBe(own.descriptor.transportNamespace);
+  await expect(otherResolver.resolve(reference(f))).rejects.toMatchObject({ code: 'gateway-mismatch' });
+  f.setTargets([target(local)]); await f.runtime.refreshTargets();
+  await expect(resolver.resolve(reference(f, remote))).rejects.toMatchObject({ code: 'target-missing' });
+});
+it('目标解析旧handle在账号userId变化或重新授权后不得新建流，pending明确拒绝', async () => {
+  const f = await fixture(); await f.runtime.authorize(); await until(() => f.runtime.status().state === 'online');
+  const resolver = await resolverFor(f.runtime); const own = await resolver.resolve(reference(f));
+  f.setManaged({ userId: 'changed' });
+  await expect(own.createRawStream()).rejects.toMatchObject({ code: 'identity-changed' });
+  f.setManaged({ userId: 'user' }); await f.runtime.recover(); await until(() => f.runtime.status().state === 'online');
+  await expect(own.createRawStream()).rejects.toMatchObject({ code: 'identity-changed' });
+  await expect(resolver.resolve(reference(f))).rejects.toMatchObject({ code: 'pending-resume' });
+});
+it('目标解析暂停owner不创建替代runtime或Local会话', async () => {
+  const f = await fixture(); await f.runtime.authorize(); await until(() => f.runtime.status().state === 'online');
+  const resolver = await resolverFor(f.runtime); const own = await resolver.resolve(reference(f));
+  await f.runtime.close();
+  await expect(own.createRawStream()).rejects.toMatchObject({ code: 'closed' });
+  expect((await resolver.resolve()).descriptor.mode).toBe('local');
+  expect(f.keys()).toBe(1); expect(f.oauth()).toBe(1);
+});
+it('目标解析管理竞争保留busy，不建立第二会话owner或忙等', async () => {
+  const f = await fixture(); await f.runtime.authorize(); await until(() => f.runtime.status().state === 'online'); const resolver = await resolverFor(f.runtime);
+  const loader = (f.runtime as any).bundle.loader;
+  const original = loader.verifyIdentity.bind(loader); let release!: () => void; let entered = false;
+  vi.spyOn(loader, 'verifyIdentity').mockImplementation(async (...args: any[]) => { const value = await original(...args); entered = true; await new Promise<void>(resolve => release = resolve); return value; });
+  const first = f.runtime.readTargetBinding(); await until(() => entered);
+  try { await expect(resolver.resolve(reference(f))).rejects.toMatchObject({ code: 'busy' }); }
+  finally { release(); await first; } expect(f.connections).toHaveLength(1);
+});
+it('目标解析句柄序列化只包含冻结descriptor，不能泄露owner或内部scope', async () => {
+  const f = await fixture(); await f.runtime.authorize(); await until(() => f.runtime.status().state === 'online'); const resolver = await resolverFor(f.runtime);
+  const handle = await resolver.resolve(reference(f));
+  expect(Object.keys(handle)).toEqual(['descriptor']);
+  expect(JSON.stringify(handle)).not.toMatch(/synthetic|codexHome|store|private|enrollment|runtime|reference/);
+});
+it('目标解析真实relay管理session返回前账号变化时，实际迟到close完成才拒绝交付', async () => {
+  const { RemoteStream } = await import('../../server/remote/relay.js');
+  const f = await fixture(); await f.runtime.authorize(); await until(() => f.runtime.status().state === 'online'); const resolver = await resolverFor(f.runtime);
+  const handle = await resolver.resolve(reference(f)); let initialized = false; const frames: any[] = [];
+  f.connections[0]!.on('message', bytes => {
+    const frame = JSON.parse(bytes.toString()); frames.push(frame);
+    if (frame.type === 'client_message' && frame.message.method === 'initialize') {
+      initialized = true; f.setManaged({ userId: 'other-user' });
+      f.connections[0]!.send(JSON.stringify({ type: 'server_message', client_id: f.runtime.status().clientId, env_id: frame.env_id, stream_id: frame.stream_id, seq_id: 1, message: { id: frame.message.id, result: { codexHome: '/remote/mac' } } }));
+    }
+  });
+  let release!: () => void; let closing = false; let settled = false; const gate = new Promise<void>(resolve => release = resolve);
+  const original = RemoteStream.prototype.close; const closings = new WeakMap<object, Promise<void>>();
+  vi.spyOn(RemoteStream.prototype, 'close').mockImplementation(function (this: InstanceType<typeof RemoteStream>) {
+    if (!closings.has(this)) { closing = true; closings.set(this, gate.then(() => original.call(this))); }
+    return closings.get(this)!;
+  });
+  const checked = handle.createManagementSession().then(() => { settled = true; return undefined; }, (error: unknown) => { settled = true; return error; });
+  try {
+    await until(() => closing); await new Promise(resolve => setTimeout(resolve, 20));
+    expect(settled).toBe(false); expect(frames.some(frame => frame.type === 'client_closed')).toBe(false);
+  } finally { release(); }
+  expect(await checked).toMatchObject({ code: 'identity-changed' });
+  await until(() => frames.some(frame => frame.type === 'client_closed'));
+  expect(initialized).toBe(true); expect(f.connections).toHaveLength(1);
+});
+it.each([{ accountId: 'other-workspace' }, { accountUserId: 'other-account-user' }, { userId: undefined }])('目标解析旧handle完整受管维度变化立即拒绝 %#', async change => {
+  const f = await fixture(); await f.runtime.authorize(); await until(() => f.runtime.status().state === 'online'); const resolver = await resolverFor(f.runtime);
+  const handle = await resolver.resolve(reference(f)); f.setManaged(change);
+  await expect(handle.assertCurrent()).rejects.toMatchObject({ code: 'identity-changed' });
+  await expect(handle.createRawStream()).rejects.toMatchObject({ code: 'identity-changed' });
+  expect(f.connections).toHaveLength(1);
+});
+it('目标解析paused与pending不同，Local继续可用且不自动恢复Remote', async () => {
+  const f = await fixture({ createLogin: () => ({ async login() { throw new Error('isolated login cancelled'); }, async close() {} }) });
+  await f.runtime.authorize(); await until(() => f.runtime.status().state === 'online'); const resolver = await resolverFor(f.runtime);
+  const ref = reference(f); const handle = await resolver.resolve(ref);
+  await expect(f.runtime.login()).rejects.toThrow(); expect(f.runtime.status().state).toBe('paused');
+  await expect(handle.createRawStream()).rejects.toMatchObject({ code: 'paused' });
+  await expect(resolver.resolve(ref)).rejects.toMatchObject({ code: 'paused' });
+  expect((await resolver.resolve()).descriptor.mode).toBe('local'); expect(f.oauth()).toBe(1);
 });

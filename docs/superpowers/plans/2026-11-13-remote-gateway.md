@@ -153,6 +153,14 @@ Task3按内部依赖分项验证，不改变已确认的权限、功能或目标
 
 文件：新增 `server/targets.ts`、`server/operation-queue.ts`、`server/thread-observer.ts` 及相应测试；修改 `server/gateway.ts`、`server/http-session.ts`、`server/follow-ups.ts`、`server/followed-thread-notifications.ts`、`server/index.ts`。
 
+Task4 按内部依赖顺序实施：4a 可信目标身份基础 → 4b 持久队列与传输路由装配 → 4c 会话观察器；随后 Task5 手机接入。该拆分不改变已确认架构，也不代表整个 Task4 已完成。
+
+- [ ] 4a：固定随机网关/本机身份、Mac 归属校验、只读 Runtime 接受集合及可信目标 resolver/旧句柄 guard；实现已就绪，待最终固定源码验证和独立 SPEC→QUALITY，未接公开 Remote 路由、未发布。
+- [ ] 4b：目标级 durable ledger 和 HTTP/WS/hosted/Bark/关注传输装配，待实现/验收。
+- [ ] 4c：真实业务时钟与会话观察/释放，待实现/验收。
+
+4a 修改基线为已推送 `d8ae4c97a877af5f68a96a1aeff7e7d196e24823`；开始前 fetch 核对远端未变。2026-11-15 用户确认固定身份 A，详见设计说明。内部默认持久目录 `~/.codex-mobile/gateway-identity`，独立实例可可信注入不同目录；新目录及父目录项同步后才交付身份。读取只复验现有运行 owner 的 loader/provider 和 controller 已接受 binding，不以 client 可见目录代替授权，不新建物理 Relay、密钥、授权或配对。仅有效已接受的暂时离线目标可解析，执行仍拒绝；无效引用、账号变化、重装、缺目录、暂停及 pendingResume 保留原因。共享业务 key 仅归组，完整账号/网关/tuple/generation 的 authorizationKey 及实时 guard 是后续列表可见性与发送必须边界。必要依赖修复使 RPC settled 跟踪逻辑流实际 close Promise，包括关闭监听抛错后重取同一 Promise；不等待业务 ACK、不关闭共享主连接。本步无客户端操作改动，不构建 Web/APK/IPA，不部署。
+
 - [ ] 测试本地保持旧 API，内部 Remote 请求携带模式和目标；无效目标、账号改变、未授权均显式拒绝，网关 Mac 的 Remote 路径同样走 relay。
 - [ ] `/api/host` 报告版本化能力/授权/配对/临时离线状态，目录仅列有权限目标；CORS 与所有文件/事件/WS 路由一致。
 - [ ] 测试 fsync 后才 ACK、固定 UUID 幂等/冲突、共享队列 CAS、每会话顺序、停止/审批优先、绑定原 turn/request、失败/待确认阻塞；已发送写入绝不自动重发。

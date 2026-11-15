@@ -89,6 +89,16 @@ export interface RemoteRuntimeStatus {
   pendingResume: RemoteTargetIdentity[];
   targets: RemoteTarget[];
 }
+/** 仅可信进程内消费者使用；acceptedTargets 不等同于 client 可见目录。 */
+export interface RemoteRuntimeTargetBinding {
+  readonly generation: string;
+  readonly managed: Readonly<ManagedAuthIdentity>;
+  readonly local: Readonly<RemoteTargetIdentity>;
+  readonly acceptedTargets: readonly Readonly<RemoteTargetIdentity>[];
+  readonly targets: readonly Readonly<RemoteTarget>[];
+  readonly pendingResume: readonly Readonly<RemoteTargetIdentity>[];
+  readonly state: RemoteRuntimeStatus['state'];
+}
 interface Active {
   snapshot: RemoteActiveIdentity;
   store: PrivateStore;
@@ -497,6 +507,39 @@ export class RemoteRuntime extends EventEmitter<{
       false,
       true,
     );
+  }
+  /** 只核对现有 owner 的身份，不创建 bundle、主连接、授权或配对。 */
+  readTargetBinding(signal?: AbortSignal): Promise<RemoteRuntimeTargetBinding> {
+    return this.run(signal, async (op) => {
+      const active = this.active;
+      const bundle = this.bundle;
+      if (!active) throw new RemoteRuntimeError('not-configured');
+      if (!bundle || this.preparing || active.state.paused || this.fault)
+        throw new RemoteRuntimeError('unavailable');
+      try {
+        await this.expected(op, bundle, active.snapshot.managed);
+        const enrollment = await this.wait(op, () => bundle.provider.verifyBinding());
+        const { version: _version, identity: _identity, ...binding } = enrollment;
+        if (!equal(binding, active.snapshot.enrollment)) throw new RemoteRuntimeError('identity-changed');
+      } catch (error) {
+        throw new RemoteRuntimeError(classify(error));
+      }
+      this.assert(op);
+      const binding = bundle.controller.binding;
+      if (this.active !== active || this.bundle !== bundle || active.state.paused || this.preparing || this.fault)
+        throw new RemoteRuntimeError('unavailable');
+      if (!binding || !sameRemoteManaged(binding.managed, active.snapshot.managed) ||
+        !sameRemoteTarget(binding.local, active.snapshot.local)) throw new RemoteRuntimeError('identity-changed');
+      return Object.freeze({
+        generation: active.snapshot.generation,
+        managed: Object.freeze(remoteManaged(binding.managed)),
+        local: Object.freeze(remoteTuple(binding.local)),
+        acceptedTargets: Object.freeze(binding.targets.map(value => Object.freeze(remoteTuple(value)))),
+        targets: Object.freeze(bundle.controller.targets.map(value => Object.freeze({ ...value }))),
+        pendingResume: Object.freeze(active.state.pending.map(value => Object.freeze(remoteTuple(value)))),
+        state: this.status().state,
+      });
+    });
   }
   private async expected(op: Operation, bundle: Bundle, managed: ManagedAuthIdentity): Promise<void> {
     const actual = await this.wait(op, () => bundle.loader.verifyIdentity(managed));
