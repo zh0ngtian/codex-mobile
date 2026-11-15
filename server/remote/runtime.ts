@@ -24,7 +24,8 @@ import { RemoteCanonicalLogin, type RemoteCanonicalLoginOptions } from './login.
 import { PrivateStore } from './private-store.js';
 import { type RemoteStream } from './relay.js';
 import type { RemoteRpcSession, RemoteRpcSessionOptions } from './rpc-session.js';
-import { assertRemoteOperation } from './operation-guard.js';
+import { assertRemoteOperation, withRemoteOperation } from './operation-guard.js';
+import { performance } from 'node:perf_hooks';
 import {
   RemoteRuntimeStateStore,
   mergeRemotePending,
@@ -525,7 +526,31 @@ export class RemoteRuntime extends EventEmitter<{
     );
   }
   /** 只核对现有 owner 的身份，不创建 bundle、主连接、授权或配对。 */
+  private targetBindingReads: Promise<void> = Promise.resolve();
   readTargetBinding(signal?: AbortSignal): Promise<RemoteRuntimeTargetBinding> {
+    // 只串行真实只读proof；不同Resolver/Session共享本Runtime，不持有业务ACK或投影。
+    const deadline = performance.now() + this.timeout;
+    const abort = new AbortController();
+    const cancel = () => abort.abort(new RemoteRuntimeError('cancelled'));
+    signal?.addEventListener('abort', cancel, { once: true });
+    if (signal?.aborted) cancel();
+    const timer = setTimeout(() => abort.abort(new RemoteRuntimeError('timeout')), this.timeout);
+    const assert = () => {
+      if (this.closed) throw new RemoteRuntimeError('closed');
+      if (performance.now() >= deadline && !abort.signal.aborted) abort.abort(new RemoteRuntimeError('timeout'));
+      if (abort.signal.aborted) throw abort.signal.reason;
+    };
+    const pending = this.targetBindingReads.then(() => withRemoteOperation(assert, () => this.readTargetBindingNow(abort.signal)));
+    this.targetBindingReads = pending.then(() => {}, () => {});
+    return new Promise((resolve, reject) => {
+      const cleanup = () => { clearTimeout(timer); signal?.removeEventListener('abort', cancel); abort.signal.removeEventListener('abort', stopped); };
+      const stopped = () => { cleanup(); reject(abort.signal.reason); };
+      abort.signal.addEventListener('abort', stopped, { once: true });
+      pending.then(value => { cleanup(); resolve(value); }, error => { cleanup(); reject(abort.signal.aborted ? abort.signal.reason : error); });
+      if (abort.signal.aborted) stopped();
+    });
+  }
+  private readTargetBindingNow(signal?: AbortSignal): Promise<RemoteRuntimeTargetBinding> {
     return this.run(signal, async (op) => {
       const active = this.active;
       const bundle = this.bundle;

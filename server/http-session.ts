@@ -1,5 +1,11 @@
 import { SidechatHistory } from './sidechat-history.js';
-import { sidechatReplayItems } from './sidechat-replay.js';
+import { sidechatReplayItems, type SidechatReplayOptions } from './sidechat-replay.js';
+import { performance } from 'node:perf_hooks';
+import { ResolvedRemoteTarget, TargetResolver } from './targets.js';
+import type { OperationContext } from './operation-queue.js';
+import { RemoteStream, RemoteSendError } from './remote/relay.js';
+import { assertRemoteOperation, runRemoteCleanup, withRemoteOperation } from './remote/operation-guard.js';
+import type { RpcMessage as RemoteRpcMessage } from './remote/envelope.js';
 import { randomUUID, createHash } from "node:crypto";
 import { mkdir, open, readFile, readdir, rename, unlink, stat } from "node:fs/promises";
 import { join, dirname } from "node:path";
@@ -22,6 +28,37 @@ export interface RpcMessage {
   params?: Record<string, any>;
   result?: unknown;
   error?: unknown;
+}
+
+/** 仅可信进程内部装配，不对应公开mode或host能力。 */
+export interface HttpSessionRemoteOptions {
+  target: ResolvedRemoteTarget;
+  resolver: TargetResolver;
+  context: OperationContext;
+  storageNamespace: string;
+  projections: {
+    changeHistory: Pick<TurnChangeHistory, 'observe' | 'beforeStart' | 'cancelStart' | 'get' | 'flush'>;
+    images: Pick<InlineImages, 'result' | 'notification'>;
+    timestamps: Pick<MessageTimestamps, 'result' | 'notification'>;
+    webCitations: Pick<MessageWebCitations, 'result' | 'notification'>;
+  };
+  sidechatReplay: Required<Pick<SidechatReplayOptions, 'files' | 'resolveReference'>>;
+}
+export interface SessionCallOptions { deadline: number; signal?: AbortSignal }
+type SessionSocket = WebSocket | RemoteStream;
+type SessionCall = SessionCallOptions & { onSubmitted?: () => void };
+const sessionCall = (): SessionCallOptions => ({ deadline: performance.now() + 60_000 });
+function assertCall(call: SessionCallOptions) {
+  if (call.signal?.aborted || !Number.isFinite(call.deadline) || performance.now() >= call.deadline) throw new RemoteSendError('Remote 操作已取消或超时', false, undefined, 'timeout');
+}
+
+async function authorizeSession(remote: HttpSessionRemoteOptions, call: SessionCallOptions) {
+  assertRemoteOperation(); assertCall(call);
+  await remote.target.assertCurrent(call.signal);
+  const fence = await remote.resolver.authorizeOperationExecution(remote.context, call.signal);
+  assertCall(call); await remote.target.assertCurrent(call.signal);
+  fence.assertCurrent(); assertCall(call);
+  return fence;
 }
 
 const SIDECHAT_SESSION_ID = "c0dec000-0000-4000-8000-000000000002";
@@ -119,7 +156,7 @@ class Session {
   epoch = randomUUID();
   updatedAt = Date.now();
   ready = false;
-  socket?: WebSocket;
+  socket?: SessionSocket;
   connecting?: Promise<void>;
   initialized?: RpcMessage;
   initializing?: Promise<RpcMessage>;
@@ -149,9 +186,9 @@ class Session {
   notificationQueue: Promise<void> = Promise.resolve();
   storedOperations = 0;
   storageBytes = 0;
-  invalidatedSocket?: WebSocket;
+  invalidatedSocket?: SessionSocket;
 
-  constructor(readonly id: string, private upstreamUrl: string, private root: string, private changeHistory: TurnChangeHistory, private images: InlineImages, private timestamps: MessageTimestamps, private webCitations: MessageWebCitations, private notifications?: BarkNotifications, private hostedObserver?: (message?: RpcMessage) => void, private hostedReply?: (requestId: string, message: RpcMessage) => Promise<RpcMessage | undefined>, private memoryOnly = false, private onAuthModeChanged?: (mode: string | null) => void) {
+  constructor(readonly id: string, private upstreamUrl: string, private root: string, private changeHistory: HttpSessionRemoteOptions['projections']['changeHistory'], private images: HttpSessionRemoteOptions['projections']['images'], private timestamps: HttpSessionRemoteOptions['projections']['timestamps'], private webCitations: HttpSessionRemoteOptions['projections']['webCitations'], private notifications?: BarkNotifications, private hostedObserver?: (message?: RpcMessage) => void, private hostedReply?: (requestId: string, message: RpcMessage, call: SessionCallOptions) => Promise<RpcMessage | undefined>, private memoryOnly = false, private onAuthModeChanged?: (mode: string | null) => void, private remote?: HttpSessionRemoteOptions) {
     this.loadPromise = memoryOnly ? Promise.resolve() : this.load();
   }
 
@@ -248,46 +285,114 @@ class Session {
     return result;
   }
 
-  private invalidate(socket: WebSocket) {
+  private invalidate(socket: SessionSocket) {
     if (this.invalidatedSocket === socket) return;
     this.invalidatedSocket = socket;
     this.hostedObserver?.();
     this.ready = false; this.initialized = undefined; this.initializing = undefined;
     this.sentInitialized = false; this.sendingInitialized = undefined;
-    this.epoch = randomUUID(); this.pending.clear(); this.running.clear(); this.history = []; this.historyBytes = 0;
+    this.epoch = randomUUID(); if (this.memoryOnly) this.operations.clear(); this.pending.clear(); this.running.clear(); this.history = []; this.historyBytes = 0;
     this.snapshots.clear(); this.snapshotBytes = 0; this.snapshotPages.clear(); this.frozenSnapshots.clear(); this.frozenBytes = 0; this.items.clear();
     for (const waiter of this.waiting.values()) waiter.reject(uncertain());
     this.waiting.clear();
     for (const voice of this.voices) voice.close(1011, "app-server disconnected");
   }
 
-  async connect() {
-    if (this.closed) throw new HttpError(503, "Session closed");
-    if (this.socket?.readyState === WebSocket.OPEN) return;
-    if (this.connecting && this.socket?.readyState === WebSocket.CONNECTING) return this.connecting;
-    if (this.socket) { this.invalidate(this.socket); this.socket.terminate(); }
-    const connecting = new Promise<void>((resolve, reject) => {
+  get open() { return this.isOpen(this.socket); }
+  private isOpen(socket: SessionSocket | undefined): socket is SessionSocket {
+    return !!socket && (socket instanceof RemoteStream ? !socket.closed : socket.readyState === WebSocket.OPEN);
+  }
+  private closingStreams = new Set<Promise<void>>();
+  private streamClosures = new WeakMap<RemoteStream, Promise<void>>();
+  private closeSocket(socket: SessionSocket): Promise<void> {
+    if (socket instanceof RemoteStream) {
+      const existing = this.streamClosures.get(socket);
+      if (existing) return existing;
+      let resolve!: () => void; let reject!: (error: unknown) => void;
+      // 在调用close及其同步监听前先固定同一实际屏障，重入也必须等待物理提交。
+      const closing = new Promise<void>((done, failed) => { resolve = done; reject = failed; });
+      this.streamClosures.set(socket, closing); this.closingStreams.add(closing);
+      try {
+        const actual = runRemoteCleanup(() => { try { return socket.close(); } catch { return socket.close(); } });
+        void actual.then(resolve, reject);
+      } catch (error) { reject(error); }
+      void closing.finally(() => this.closingStreams.delete(closing)).catch(() => {});
+      return closing;
+    }
+    if (socket.readyState === WebSocket.CLOSED) return Promise.resolve();
+    return new Promise(resolve => { socket.once('close', () => resolve()); socket.terminate(); });
+  }
+  private authorization(call: SessionCallOptions) { return authorizeSession(this.remote!, call); }
+
+  private async send(message: RpcMessage, socket: SessionSocket, call: SessionCall) {
+    if (!(socket instanceof RemoteStream)) {
+      await new Promise<void>((resolve, reject) => socket.send(JSON.stringify(message), error => error ? reject(error) : resolve())); return;
+    }
+    let committed = false;
+    try {
+      const fence = await this.authorization(call);
+      await withRemoteOperation(() => { assertCall(call); fence.assertLive(); }, async () => {
+        if (this.closed || this.socket !== socket || !this.isOpen(socket)) throw new RemoteSendError('Remote session 已失效', false);
+        fence.assertCurrent(); assertCall(call);
+        const previousSequence = socket.lastSentSeqId;
+        const sending = socket.send(message as RemoteRpcMessage, call.deadline);
+        // Relay第一帧实际调用send前同步commit；回调/响应可以任意交错，WAL须立即可见。
+        if (socket.lastSentSeqId > previousSequence) { committed = true; call.onSubmitted?.(); }
+        await sending; committed = true; call.onSubmitted?.();
+      });
+    } catch (error) {
+      if (error instanceof RemoteSendError) { if (error.mayHaveBeenSent) call.onSubmitted?.(); throw error; }
+      if (committed) call.onSubmitted?.();
+      throw new RemoteSendError('Remote 发送被拒绝', committed);
+    }
+  }
+  private onMessage(message: RpcMessage, socket: SessionSocket) {
+    if (this.socket !== socket || !this.isOpen(socket)) return;
+    if (message.method && (this.remote || (message.id == null && !message.method.startsWith('thread/realtime/')))) {
+      const epoch = this.epoch; const call: SessionCall = sessionCall();
+      this.notificationQueue = this.notificationQueue.then(async () => {
+        const fence = this.remote ? await this.authorization(call) : undefined;
+        const project = async () => {
+          const projected = this.memoryOnly || message.id != null || message.method?.startsWith('thread/realtime/') ? message : await this.webCitations.notification(await this.timestamps.notification(await this.images.notification(message)));
+          if (fence) { fence.assertCurrent(); assertCall(call); assertRemoteOperation(); }
+          if (this.socket === socket && this.epoch === epoch && this.isOpen(socket)) this.receive(projected);
+        };
+        if (fence) await withRemoteOperation(() => { assertCall(call); fence.assertLive(); }, project);
+        else await project();
+      }).catch(() => { void this.closeSocket(socket).catch(() => {}); });
+    } else this.receive(message);
+  }
+  async connect(call: SessionCall = sessionCall()) {
+    if (this.closed) throw new HttpError(503, 'Session closed');
+    if (this.isOpen(this.socket)) return;
+    if (this.connecting) return this.connecting;
+    if (this.socket) { this.invalidate(this.socket); await this.closeSocket(this.socket).catch(() => {}); }
+    const connecting = this.remote ? (async () => {
+      const fence = await this.authorization(call);
+      let stream: RemoteStream | undefined;
+      try {
+        await withRemoteOperation(() => { assertCall(call); fence.assertLive(); }, async () => {
+          stream = await this.remote!.target.createRawStream(call.signal);
+          await this.remote!.target.assertCurrent(call.signal);
+          fence.assertCurrent(); assertCall(call);
+          if (this.closed) throw new HttpError(503, 'Session closed');
+          this.socket = stream;
+          stream.on('message', message => this.onMessage(message, stream!));
+          stream.on('disconnect', () => { if (this.socket === stream) this.invalidate(stream!); void this.closeSocket(stream!).catch(() => {}); });
+          stream.on('close', () => { if (this.socket === stream) this.invalidate(stream!); });
+        });
+      } catch (error) { if (stream) await this.closeSocket(stream).catch(() => {}); throw error; }
+    })() : new Promise<void>((resolve, reject) => {
       const socket = new WebSocket(this.upstreamUrl, { maxPayload: MAX_REQUEST_BYTES, handshakeTimeout: 10_000 });
       this.socket = socket;
-      socket.once("open", () => { this.pong = true; resolve(); });
-      socket.on("pong", () => { this.pong = true; });
-      socket.on("message", (raw) => {
+      socket.once('open', () => { this.pong = true; resolve(); });
+      socket.on('pong', () => { this.pong = true; });
+      socket.on('message', raw => {
         if (this.socket !== socket) return;
-        try {
-          const message = JSON.parse(raw.toString());
-          if (message.method && message.id == null && !message.method.startsWith("thread/realtime/")) {
-            this.notificationQueue = this.notificationQueue.then(async () => {
-              const projected = this.memoryOnly ? message : await this.webCitations.notification(await this.timestamps.notification(await this.images.notification(message)));
-              if (this.socket === socket) this.receive(projected);
-            }).catch(() => { socket.terminate(); });
-          } else this.receive(message);
-        } catch { socket.terminate(); }
+        try { this.onMessage(JSON.parse(raw.toString()), socket); } catch { socket.terminate(); }
       });
-      socket.on("error", () => reject(new HttpError(503, "App-server unavailable")));
-      socket.on("close", () => {
-        if (this.socket === socket) this.invalidate(socket);
-        reject(new HttpError(503, "App-server disconnected"));
-      });
+      socket.on('error', () => reject(new HttpError(503, 'App-server unavailable')));
+      socket.on('close', () => { if (this.socket === socket) this.invalidate(socket); reject(new HttpError(503, 'App-server disconnected')); });
     });
     this.connecting = connecting;
     try { await connecting; } finally { if (this.connecting === connecting) this.connecting = undefined; }
@@ -320,7 +425,7 @@ class Session {
       const bytes = Buffer.byteLength(JSON.stringify(message));
       const retainedBytes = [...this.pending].reduce((sum, [id, request]) => id === message.id ? sum : sum + Buffer.byteLength(JSON.stringify(request)), 0);
       if (this.pending.size >= 128 || bytes + retainedBytes > MAX_APPROVAL_BYTES) {
-        this.socket?.send(JSON.stringify({ id: message.id, error: { code: -32001, message: "Approval request exceeds gateway capacity; request was not delivered to the user" } }));
+        if (this.socket) void this.send({ id: message.id, error: { code: -32001, message: 'Approval request exceeds gateway capacity; request was not delivered to the user' } }, this.socket, sessionCall()).catch(() => {});
         return;
       }
       this.pending.set(message.id, message);
@@ -501,13 +606,13 @@ class Session {
     for (const [id, snapshot] of this.frozenSnapshots) if (Date.now() >= snapshot.expiresAt) this.releaseSnapshot(id);
   }
 
-  private async initialize(message: RpcMessage) {
-    await this.connect();
+  private async initialize(message: RpcMessage, call: SessionCall = sessionCall()) {
+    await this.connect(call);
     const socket = this.socket;
     if (!this.initialized) {
       if (!this.initializing) {
-        const initializing = this.exchange(message, socket).then((reply) => {
-          if (this.socket !== socket || socket?.readyState !== WebSocket.OPEN) throw new HttpError(503, "Initialization connection changed");
+        const initializing = this.exchange(message, socket, call).then((reply) => {
+          if (this.socket !== socket || !this.isOpen(socket)) throw new HttpError(503, "Initialization connection changed");
           if (reply.error == null) {
             this.initialized = reply; this.initializationMessage = message; this.ready = true;
           }
@@ -520,10 +625,10 @@ class Session {
     return this.initialized;
   }
 
-  private async notifyInitialized(message: RpcMessage, socket = this.socket) {
+  private async notifyInitialized(message: RpcMessage, socket = this.socket, call: SessionCall = sessionCall()) {
     if (this.sendingInitialized) return this.sendingInitialized;
     if (this.sentInitialized) return {};
-    const sending = this.exchange(message, socket);
+    const sending = this.exchange(message, socket, call);
     this.sendingInitialized = sending;
     try {
       const result = await sending;
@@ -532,18 +637,18 @@ class Session {
     } finally { if (this.sendingInitialized === sending) this.sendingInitialized = undefined; }
   }
 
-  private async exchange(message: RpcMessage, socket = this.socket): Promise<RpcMessage> {
-    if (!socket || this.socket !== socket || socket.readyState !== WebSocket.OPEN) throw new HttpError(503, "App-server unavailable");
-    if (message.id == null) {
-      await new Promise<void>((resolve, reject) => socket.send(JSON.stringify(message), (error) => error ? reject(error) : resolve()));
-      return {};
-    }
+  private async exchange(message: RpcMessage, socket = this.socket, call: SessionCall = sessionCall()): Promise<RpcMessage> {
+    if (!socket || this.socket !== socket || !this.isOpen(socket)) throw new HttpError(503, 'App-server unavailable');
+    if (message.id == null) { await this.send(message, socket, call); return {}; }
     const id = randomUUID();
     return new Promise<RpcMessage>((resolve, reject) => {
-      const timeout = setTimeout(() => { this.waiting.delete(id); reject(uncertain()); }, 60_000);
-      this.waiting.set(id, { resolve: (response) => { clearTimeout(timeout); resolve({ ...response, id: message.id }); }, reject: (error) => { clearTimeout(timeout); reject(error); } });
-      socket.send(JSON.stringify({ ...message, id }), (error) => {
-        if (error) { const waiter = this.waiting.get(id); this.waiting.delete(id); waiter?.reject(uncertain()); }
+      const timeout = setTimeout(() => { this.waiting.delete(id); reject(uncertain()); }, Math.max(0, call.deadline - performance.now()));
+      const abort = () => { this.waiting.delete(id); clearTimeout(timeout); reject(uncertain()); };
+      call.signal?.addEventListener('abort', abort, { once: true });
+      const done = () => { clearTimeout(timeout); call.signal?.removeEventListener('abort', abort); };
+      this.waiting.set(id, { resolve: response => { done(); resolve({ ...response, id: message.id }); }, reject: error => { done(); reject(error); } });
+      void this.send({ ...message, id }, socket, call).catch(error => {
+        const waiter = this.waiting.get(id); this.waiting.delete(id); waiter?.reject(error);
       });
     });
   }
@@ -584,21 +689,28 @@ class Session {
     else if (status === "active" && ![...this.running].some((key) => key.startsWith(`${threadId}:`))) this.running.add(`${threadId}:status`);
   }
 
-  async rpc(requestId: string, message: RpcMessage, epoch?: string) {
+  async rpc(requestId: string, message: RpcMessage, epoch?: string, call: SessionCall = sessionCall()) {
+    const callEpoch = this.epoch;
+    let physicallySubmitted = false;
+    const parentSubmitted = call.onSubmitted;
+    call = { ...call, onSubmitted: () => { physicallySubmitted = true; parentSubmitted?.(); } };
+    const fence = this.remote ? await this.authorization(call) : undefined;
+    const check = () => { if (fence) { fence.assertCurrent(); assertCall(call); if (this.closed || this.epoch !== callEpoch) throw uncertain(); } };
     this.touch(); await this.loadPromise;
+    check();
     const signature = createHash("sha256").update(canonical({ message, ...(!message.method && epoch ? { epoch } : {}) })).digest("hex");
     const durable = !this.memoryOnly && (!message.method || (message.method !== "initialize" && message.id != null && !READ_ONLY_METHODS.has(message.method) && !isNavigationResume(message)));
     const stored = this.memoryOnly ? undefined : await this.storedOperation(requestId);
     let previous = this.operations.get(requestId) ?? stored;
     if (previous && previous.signature !== signature) throw new HttpError(409, "Request ID already used with different content");
     if (previous && ["initialize", "initialized"].includes(message.method ?? "") &&
-      (!this.ready || this.socket?.readyState !== WebSocket.OPEN || previous.connectionEpoch !== this.epoch)) {
+      (!this.ready || !this.open || previous.connectionEpoch !== this.epoch)) {
       if (this.operations.get(requestId) === previous) this.operations.delete(requestId);
       previous = undefined;
     }
     if (previous) {
-      if (previous.promise) return previous.promise;
-      if (previous.status === "completed") return previous.message!;
+      if (previous.promise) { const result = await previous.promise; check(); return result; }
+      if (previous.status === "completed") { check(); return previous.message!; }
       throw uncertain();
     }
     this.trimOperations();
@@ -618,45 +730,45 @@ class Session {
       try {
         if (!message.method && epoch !== this.epoch) throw new HttpError(409, "Approval epoch is missing or stale");
         if (!message.method && (message.id == null || !this.pending.has(message.id))) throw new HttpError(409, "Approval request is not pending");
-        if (message.method === "initialize") await this.connect();
+        if (message.method === "initialize") await this.connect(call);
         else if (!this.ready && (READ_ONLY_METHODS.has(message.method ?? "") || isNavigationResume(message)) && this.initializationMessage) {
-          const initialized = await this.initialize(this.initializationMessage);
+          const initialized = await this.initialize(this.initializationMessage, call);
           if (initialized.error != null) throw new HttpError(503, "Unable to reinitialize session");
-          if (this.initializedNotification && !this.sentInitialized) await this.notifyInitialized({ method: "initialized", params: {} });
+          if (this.initializedNotification && !this.sentInitialized) await this.notifyInitialized({ method: "initialized", params: {} }, this.socket, call);
         }
-        else if (!this.ready || this.socket?.readyState !== WebSocket.OPEN) throw new HttpError(503, "Initialize session before sending RPC");
+        else if (!this.ready || !this.open) throw new HttpError(503, "Initialize session before sending RPC");
         const submittedSocket = this.socket;
         const submittedEpoch = this.epoch;
         operation.connectionEpoch = submittedEpoch;
         const submittedApproval = !message.method ? this.pending.get(message.id!) : undefined;
         // Durable write-ahead record must precede any upstream send.
         await this.save(operation); recorded = true;
-        if (this.socket !== submittedSocket || this.epoch !== submittedEpoch || submittedSocket?.readyState !== WebSocket.OPEN ||
+        if (this.socket !== submittedSocket || this.epoch !== submittedEpoch || !this.isOpen(submittedSocket) ||
           (!message.method && this.pending.get(message.id!) !== submittedApproval)) throw new HttpError(503, "App-server changed before operation could be submitted");
         let result: RpcMessage;
         if (message.method === "initialize") {
           submitted = true;
-          result = await this.initialize(message);
+          result = await this.initialize(message, call);
           result = { ...result, ...(message.id != null ? { id: message.id } : {}) };
         } else if (!message.method) {
           submitted = true;
-          const hosted = await this.hostedReply?.(requestId, message);
-          if (!hosted) await new Promise<void>((resolve, reject) => submittedSocket.send(JSON.stringify(message), (error) => error ? reject(error) : resolve()));
+          const hosted = await this.hostedReply?.(requestId, message, call);
+          if (!hosted) await this.send(message, submittedSocket, call);
           if (this.socket === submittedSocket && this.epoch === submittedEpoch && this.pending.get(message.id!) === submittedApproval) this.pending.delete(message.id!);
           result = { id: message.id, result: null };
         } else {
           if (!this.memoryOnly && message.method === "turn/start" && typeof message.params?.threadId === "string") {
             await this.changeHistory.beforeStart(message.params.threadId, message.params.cwd).catch(() => {});
-            if (this.socket !== submittedSocket || this.epoch !== submittedEpoch || submittedSocket?.readyState !== WebSocket.OPEN) {
+            if (this.socket !== submittedSocket || this.epoch !== submittedEpoch || !this.isOpen(submittedSocket)) {
               await this.changeHistory.cancelStart(message.params.threadId);
               throw new HttpError(503, "App-server changed before operation could be submitted");
             }
           }
           submitted = true;
-          if (message.method === "initialized") result = await this.notifyInitialized(message, submittedSocket);
+          if (message.method === "initialized") result = await this.notifyInitialized(message, submittedSocket, call);
           else if (message.method === "mobile/turns/commentary") {
             const upstream: RpcMessage = { id: message.id, ...turnCommentaryRequest(message.params!) };
-            result = await this.exchange(upstream, submittedSocket);
+            result = await this.exchange(upstream, submittedSocket, call);
             if (result.error == null) result = { ...result, result: compactTurnCommentary(await this.webCitations.result(message.params!.threadId, await this.timestamps.result(message.params!.threadId, result.result as Record<string, any>)), message.params!.turnId) };
           }
           else if (message.method === "mobile/turns/details") {
@@ -665,7 +777,7 @@ class Session {
               threadId: params.threadId, ...(params.cursor !== undefined ? { cursor: params.cursor } : {}),
               limit: Math.min(params.limit ?? 5, 5), sortDirection: "desc", itemsView: "full",
             } };
-            result = await this.exchange(upstream, submittedSocket);
+            result = await this.exchange(upstream, submittedSocket, call);
             if (this.socket === submittedSocket && this.epoch === submittedEpoch) this.observeRpcState(upstream, result);
             if (result.error == null) {
               const full = await this.webCitations.result(params.threadId, await this.timestamps.result(params.threadId, result.result as Record<string, any>));
@@ -675,12 +787,12 @@ class Session {
               result = { ...result, result: compactTurnDetails(full, stats) };
             }
           }
-          else result = await this.exchange(message, submittedSocket);
+          else result = await this.exchange(message, submittedSocket, call);
         }
-        if (result.error == null && message.method === "thread/turns/list" && message.params?.itemsView === "full") {
+        if (!this.memoryOnly && result.error == null && message.method === "thread/turns/list" && message.params?.itemsView === "full") {
           result = { ...result, result: await this.timestamps.result(message.params.threadId, result.result as Record<string, any>) };
         }
-        if (result.error == null && result.result && typeof result.result === "object" && ["thread/resume", "thread/read", "thread/turns/list", "thread/items/list", "mobile/turns/details"].includes(message.method ?? "")) {
+        if (!this.memoryOnly && result.error == null && result.result && typeof result.result === "object" && ["thread/resume", "thread/read", "thread/turns/list", "thread/items/list", "mobile/turns/details"].includes(message.method ?? "")) {
           result = { ...result, result: await this.images.result(await this.webCitations.result(message.params?.threadId ?? (result.result as any)?.thread?.id, result.result as Record<string, any>)) };
         }
         if (!this.memoryOnly && message.method === "turn/start" && result.error != null && typeof message.params?.threadId === "string") {
@@ -688,17 +800,25 @@ class Session {
         }
         if (this.socket === submittedSocket && this.epoch === submittedEpoch) this.observeRpcState(message, result);
         if (this.memoryOnly && (result.result as any)?.thread?.id) operation.threadId = (result.result as any).thread.id;
+        if (this.remote) {
+          await this.authorization(call);
+          if (this.socket !== submittedSocket || this.epoch !== submittedEpoch || !this.isOpen(submittedSocket)) throw uncertain();
+        }
         operation.status = "completed"; operation.message = result;
         await this.save(operation);
+        if (fence) {
+          fence.assertCurrent(); assertCall(call);
+          if (this.closed || this.socket !== submittedSocket || this.epoch !== submittedEpoch || !this.isOpen(submittedSocket)) throw uncertain();
+        }
         return result;
       } catch (error) {
-        if (recorded && submitted) { operation.status = "uncertain"; delete operation.message; await this.save(operation); throw uncertain(); }
+        if (recorded && submitted && (physicallySubmitted || !(error instanceof RemoteSendError && !error.mayHaveBeenSent))) { operation.status = "uncertain"; delete operation.message; await this.save(operation); throw uncertain(); }
         if (recorded) await this.discard(operation);
         if (this.operations.get(requestId) === operation) this.operations.delete(requestId);
         throw error;
       } finally { delete operation.promise; this.trimOperations(); }
     };
-    operation.promise = execution();
+    operation.promise = fence ? withRemoteOperation(() => { assertCall(call); fence.assertLive(); }, execution) : execution();
     return operation.promise;
   }
 
@@ -732,7 +852,7 @@ class Session {
 
   heartbeat() {
     this.pruneSnapshots();
-    if (this.socket?.readyState !== WebSocket.OPEN) return;
+    if (!this.open || !(this.socket instanceof WebSocket)) return;
     if (!this.pong) { this.socket.terminate(); return; }
     this.pong = false; this.socket.ping();
   }
@@ -740,10 +860,9 @@ class Session {
   async close() {
     this.closed = true;
     for (const voice of this.voices) voice.terminate();
-    if (this.socket && this.socket.readyState !== WebSocket.CLOSED) {
-      const socket = this.socket;
-      await new Promise<void>((resolve) => { socket.once("close", () => resolve()); socket.terminate(); });
-    }
+    await this.connecting?.catch(() => {});
+    if (this.socket) await this.closeSocket(this.socket).catch(() => {});
+    await Promise.allSettled([...this.closingStreams]);
     await this.storeQueue;
   }
 }
@@ -758,18 +877,40 @@ export class HttpSessions {
   readonly sidechats = new SidechatHistory();
   private timer: NodeJS.Timeout;
   private root: string;
-  private changeHistory: TurnChangeHistory;
-  private images: InlineImages;
-  private timestamps: MessageTimestamps;
-  private webCitations: MessageWebCitations;
+  private changeHistory: HttpSessionRemoteOptions['projections']['changeHistory'];
+  private images: HttpSessionRemoteOptions['projections']['images'];
+  private timestamps: HttpSessionRemoteOptions['projections']['timestamps'];
+  private webCitations: HttpSessionRemoteOptions['projections']['webCitations'];
   private hostedRequests = new Map<string, { message: RpcMessage; originalId: string | number; epoch: string; sessionId: string }>();
   private hostedListeners = new Set<(message: RpcMessage) => void>();
-  constructor(private options: { upstreamUrl: string; codexHome?: string; changeHistory?: TurnChangeHistory; notifications?: BarkNotifications; uploadMeter?: ModelUploadSource; onAuthModeChanged?: (mode: string | null) => void }) {
-    this.root = join(options.codexHome ?? process.env.CODEX_HOME ?? join(homedir(), ".codex"), "codex-mobile-http");
-    this.webCitations = new MessageWebCitations(options.codexHome ?? process.env.CODEX_HOME ?? join(homedir(), ".codex"));
-    this.timestamps = new MessageTimestamps(options.codexHome ?? process.env.CODEX_HOME ?? join(homedir(), ".codex"));
-    this.images = new InlineImages(join(options.codexHome ?? process.env.CODEX_HOME ?? join(homedir(), ".codex"), "codex-mobile-inline-images"));
-    this.changeHistory = options.changeHistory ?? new TurnChangeHistory(options.codexHome ?? process.env.CODEX_HOME ?? join(homedir(), ".codex"));
+  constructor(private options: { upstreamUrl: string; codexHome?: string; remote?: HttpSessionRemoteOptions; changeHistory?: TurnChangeHistory; notifications?: BarkNotifications; uploadMeter?: ModelUploadSource; onAuthModeChanged?: (mode: string | null) => void }) {
+    const remote = options.remote;
+    if (remote) {
+      if (!(remote.target instanceof ResolvedRemoteTarget) || !(remote.resolver instanceof TargetResolver) || remote.context?.mode !== 'remote' ||
+        !options.codexHome || remote.storageNamespace !== remote.target.descriptor.transportNamespace || !/^[a-f0-9]{64}$/.test(remote.storageNamespace) ||
+        !remote.sidechatReplay?.files || remote.sidechatReplay.files.kind !== 'remote' || typeof remote.sidechatReplay.resolveReference !== 'function' ||
+        !remote.projections?.changeHistory || !remote.projections.images || !remote.projections.timestamps || !remote.projections.webCitations)
+        throw new TypeError('Remote session 需要可信目标、显式来源及独立存储namespace');
+      const descriptor = remote.target.descriptor; const context = remote.context;
+      if (context.gatewayId !== descriptor.gatewayId || context.businessKey !== descriptor.businessKey || context.authorizationKey !== descriptor.authorizationKey ||
+        context.generation !== descriptor.generation || context.target.environmentId !== descriptor.target.environmentId || context.target.installationId !== descriptor.target.installationId)
+        throw new TypeError('Remote session 原context必须与目标身份一致');
+      const consumers: [unknown, string[]][] = [
+        [remote.projections.changeHistory, ['observe', 'beforeStart', 'cancelStart', 'get', 'flush']],
+        [remote.projections.images, ['result', 'notification']], [remote.projections.timestamps, ['result', 'notification']], [remote.projections.webCitations, ['result', 'notification']],
+      ];
+      if (consumers.some(([source, methods]) => methods.some(name => typeof (source as Record<string, unknown>)[name] !== 'function')))
+        throw new TypeError('Remote session 需要完整的显式consumer');
+      this.root = join(options.codexHome, 'codex-mobile-http', 'remote', remote.storageNamespace);
+      this.changeHistory = remote.projections.changeHistory; this.images = remote.projections.images;
+      this.timestamps = remote.projections.timestamps; this.webCitations = remote.projections.webCitations;
+    } else {
+      const home = options.codexHome ?? process.env.CODEX_HOME ?? join(homedir(), '.codex');
+      this.root = join(home, 'codex-mobile-http');
+      this.webCitations = new MessageWebCitations(home); this.timestamps = new MessageTimestamps(home);
+      this.images = new InlineImages(join(home, 'codex-mobile-inline-images'));
+      this.changeHistory = options.changeHistory ?? new TurnChangeHistory(home);
+    }
     this.timer = setInterval(() => {
       for (const id of this.sidechats.expired()) {
         void this.sidechatRpc({ method: 'mobile/sidechat/rpc', params: { method: 'thread/unsubscribe', params: { threadId: id } } }, randomUUID()).catch(() => {});
@@ -784,15 +925,29 @@ export class HttpSessions {
     this.timer.unref();
   }
 
+  private closed = false;
+  private async withCall<T>(call: SessionCallOptions, operation: () => Promise<T>): Promise<T> {
+    if (this.closed) throw new HttpError(503, 'Sessions closed');
+    if (!this.options.remote) return operation();
+    const fence = await authorizeSession(this.options.remote, call);
+    return withRemoteOperation(() => { assertCall(call); fence.assertLive(); }, async () => {
+      const result = await operation();
+      fence.assertCurrent(); assertCall(call);
+      if (this.closed) throw new HttpError(503, 'Sessions closed');
+      return result;
+    });
+  }
+
   private session(id: string | null) {
+    if (this.closed) throw new HttpError(503, 'Sessions closed');
     if (!id || !UUID.test(id)) throw new HttpError(400, "sessionId must be a UUID");
     const existing = this.sessions.get(id);
     if (existing) return existing;
     if (this.sessions.size >= MAX_SESSIONS) throw new HttpError(429, "Too many sessions");
     const session = new Session(id, this.options.upstreamUrl, this.root, this.changeHistory, this.images, this.timestamps, this.webCitations, this.options.notifications,
       [HOSTED_SESSION_ID, SIDECHAT_SESSION_ID].includes(id) ? (message) => this.observeHosted(message, id) : undefined,
-      ![HOSTED_SESSION_ID, SIDECHAT_SESSION_ID].includes(id) ? (requestId, message) => this.replyHosted(requestId, message) : undefined,
-      id === SIDECHAT_SESSION_ID, this.options.onAuthModeChanged);
+      ![HOSTED_SESSION_ID, SIDECHAT_SESSION_ID].includes(id) ? (requestId, message, call) => this.replyHosted(requestId, message, call) : undefined,
+      id === SIDECHAT_SESSION_ID, this.options.onAuthModeChanged, this.options.remote);
     // Loading errors are returned by APIs rather than emitted as unhandled rejections.
     session.loadPromise.catch(() => {});
     this.sessions.set(id, session);
@@ -801,54 +956,58 @@ export class HttpSessions {
   }
 
   async handle(request: IncomingMessage, response: ServerResponse, url: URL) {
+    const call = sessionCall();
     try {
-      if ([HOSTED_SESSION_ID, SIDECHAT_SESSION_ID].includes(url.searchParams.get("sessionId") ?? "")) throw new HttpError(403, "Internal session is reserved");
-      const session = this.session(url.searchParams.get("sessionId"));
-      let result: unknown;
-      if (url.pathname === "/api/events" && request.method === "GET") {
-        const after = Number(url.searchParams.get("after") ?? "0");
-        if (!Number.isSafeInteger(after) || after < 0) throw new HttpError(400, "Invalid event cursor");
-        for (const [id, entry] of this.hostedRequests) if (!session.pending.has(id)) session.mirror(entry.message);
-        result = session.events(after);
-      } else if (url.pathname === "/api/operations" && request.method === "GET") {
-        const id = url.searchParams.get("requestId") ?? "";
-        if (!UUID.test(id)) throw new HttpError(400, "requestId must be a UUID");
-        const ephemeral = this.sessions.get(SIDECHAT_SESSION_ID);
-        try { result = await session.operation(id); }
-        catch (error) { if (!(error instanceof HttpError) || error.status !== 404 || !ephemeral) throw error; result = await ephemeral.operation(id); }
-      } else if (url.pathname === "/api/rpc" && request.method === "POST") {
-        let bytes = 0; const parts: Buffer[] = [];
-        for await (const chunk of request) {
-          const part = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-          bytes += part.length;
-          if (bytes > MAX_REQUEST_BYTES) throw new HttpError(413, "Request exceeds 16 MiB");
-          parts.push(part);
-        }
-        let body: any;
-        try { body = JSON.parse(Buffer.concat(parts).toString("utf8")); } catch { throw new HttpError(400, "Invalid JSON"); }
-        if (!UUID.test(body?.requestId ?? "") || !body?.message || typeof body.message !== "object" || Array.isArray(body.message)) throw new HttpError(400, "Invalid RPC envelope");
-        const message = body.message as RpcMessage;
-        if (message.method === "initialize" && message.id == null) throw new HttpError(400, "Initialize must include an RPC id");
-        if (message.id != null && !["number", "string"].includes(typeof message.id)) throw new HttpError(400, "Invalid RPC id");
-        if (message.method != null && (typeof message.method !== "string" || !message.method.length || message.method.length > 256)) throw new HttpError(400, "Invalid RPC method");
-        if (message.method === "mobile/turns/commentary" &&
-          (message.id == null || !validTurnCommentaryParams(message.params))) throw new HttpError(400, "Invalid turn commentary parameters");
-        if (message.method === "mobile/turns/details") {
-          const params = message.params;
-          if (message.id == null || !params || Array.isArray(params) || typeof params.threadId !== "string" || !params.threadId.trim() ||
-            (params.cursor !== undefined && typeof params.cursor !== "string") ||
-            (params.limit !== undefined && (!Number.isSafeInteger(params.limit) || params.limit <= 0)) ||
-            (params.sortDirection !== undefined && params.sortDirection !== "desc")) throw new HttpError(400, "Invalid turn details parameters");
-        }
-        if (!message.method && message.result === undefined && message.error === undefined) throw new HttpError(400, "Invalid RPC reply");
-        if (body.epoch !== undefined && (typeof body.epoch !== "string" || !UUID.test(body.epoch))) throw new HttpError(400, "Invalid session epoch");
-        if (message.method === 'mobile/uploadUsage/read') result = this.uploadUsageRpc(message);
-        else if (["mobile/sidebar/summaries", "mobile/sidebar/projectless"].includes(message.method ?? "")) result = await this.sidebarRpc(message);
-        else if (message.method === 'mobile/sidechat/rpc') result = await this.sidechatRpc(message, body.requestId);
-        else if (!message.method && typeof message.id === 'string' && this.hostedRequests.get(message.id)?.sessionId === SIDECHAT_SESSION_ID) result = await this.replyHosted(body.requestId, message);
-        else if (this.sidechats.has(message.params?.threadId) && ['thread/settings/update', 'turn/interrupt'].includes(message.method ?? '')) result = await this.sidechatRpc({ ...message, params: { method: message.method, params: message.params } }, body.requestId);
-        else result = await session.rpc(body.requestId, message, body.epoch);
-      } else throw new HttpError(405, "Method not allowed");
+      const result = await this.withCall(call, async () => {
+        if ([HOSTED_SESSION_ID, SIDECHAT_SESSION_ID].includes(url.searchParams.get("sessionId") ?? "")) throw new HttpError(403, "Internal session is reserved");
+        const session = this.session(url.searchParams.get("sessionId"));
+        let result: unknown;
+        if (url.pathname === "/api/events" && request.method === "GET") {
+          const after = Number(url.searchParams.get("after") ?? "0");
+          if (!Number.isSafeInteger(after) || after < 0) throw new HttpError(400, "Invalid event cursor");
+          for (const [id, entry] of this.hostedRequests) if (!session.pending.has(id)) session.mirror(entry.message);
+          result = session.events(after);
+        } else if (url.pathname === "/api/operations" && request.method === "GET") {
+          const id = url.searchParams.get("requestId") ?? "";
+          if (!UUID.test(id)) throw new HttpError(400, "requestId must be a UUID");
+          const ephemeral = this.sessions.get(SIDECHAT_SESSION_ID);
+          try { result = await session.operation(id); }
+          catch (error) { if (!(error instanceof HttpError) || error.status !== 404 || !ephemeral) throw error; result = await ephemeral.operation(id); }
+        } else if (url.pathname === "/api/rpc" && request.method === "POST") {
+          let bytes = 0; const parts: Buffer[] = [];
+          for await (const chunk of request) {
+            const part = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+            bytes += part.length;
+            if (bytes > MAX_REQUEST_BYTES) throw new HttpError(413, "Request exceeds 16 MiB");
+            parts.push(part);
+          }
+          let body: any;
+          try { body = JSON.parse(Buffer.concat(parts).toString("utf8")); } catch { throw new HttpError(400, "Invalid JSON"); }
+          if (!UUID.test(body?.requestId ?? "") || !body?.message || typeof body.message !== "object" || Array.isArray(body.message)) throw new HttpError(400, "Invalid RPC envelope");
+          const message = body.message as RpcMessage;
+          if (message.method === "initialize" && message.id == null) throw new HttpError(400, "Initialize must include an RPC id");
+          if (message.id != null && !["number", "string"].includes(typeof message.id)) throw new HttpError(400, "Invalid RPC id");
+          if (message.method != null && (typeof message.method !== "string" || !message.method.length || message.method.length > 256)) throw new HttpError(400, "Invalid RPC method");
+          if (message.method === "mobile/turns/commentary" &&
+            (message.id == null || !validTurnCommentaryParams(message.params))) throw new HttpError(400, "Invalid turn commentary parameters");
+          if (message.method === "mobile/turns/details") {
+            const params = message.params;
+            if (message.id == null || !params || Array.isArray(params) || typeof params.threadId !== "string" || !params.threadId.trim() ||
+              (params.cursor !== undefined && typeof params.cursor !== "string") ||
+              (params.limit !== undefined && (!Number.isSafeInteger(params.limit) || params.limit <= 0)) ||
+              (params.sortDirection !== undefined && params.sortDirection !== "desc")) throw new HttpError(400, "Invalid turn details parameters");
+          }
+          if (!message.method && message.result === undefined && message.error === undefined) throw new HttpError(400, "Invalid RPC reply");
+          if (body.epoch !== undefined && (typeof body.epoch !== "string" || !UUID.test(body.epoch))) throw new HttpError(400, "Invalid session epoch");
+          if (message.method === 'mobile/uploadUsage/read') result = this.uploadUsageRpc(message);
+          else if (["mobile/sidebar/summaries", "mobile/sidebar/projectless"].includes(message.method ?? "")) result = await this.sidebarRpc(message, call);
+          else if (message.method === 'mobile/sidechat/rpc') result = await this.sidechatRpc(message, body.requestId, call);
+          else if (!message.method && typeof message.id === 'string' && this.hostedRequests.get(message.id)?.sessionId === SIDECHAT_SESSION_ID) result = await this.replyHosted(body.requestId, message, call);
+          else if (this.sidechats.has(message.params?.threadId) && ['thread/settings/update', 'turn/interrupt'].includes(message.method ?? '')) result = await this.sidechatRpc({ ...message, params: { method: message.method, params: message.params } }, body.requestId, call);
+          else result = await session.rpc(body.requestId, message, body.epoch, call);
+        } else throw new HttpError(405, "Method not allowed");
+        return result;
+      });
       response.setHeader("content-type", "application/json; charset=utf-8");
       response.setHeader("cache-control", "no-store");
       response.end(JSON.stringify(result));
@@ -877,7 +1036,7 @@ export class HttpSessions {
     }
     if (message.id != null && message.method) {
       const session = this.sessions.get(sessionId)!;
-      const id = `hosted:${session.epoch}:${String(message.id)}`;
+      const id = `hosted:${session.epoch}:${JSON.stringify(message.id)}`;
       const mirrored = { ...message, id };
       this.hostedRequests.set(id, { message: mirrored, originalId: message.id, epoch: session.epoch, sessionId });
       this.broadcastHosted(mirrored);
@@ -893,49 +1052,72 @@ export class HttpSessions {
   }
   private broadcastHosted(message: RpcMessage) {
     for (const [id, session] of this.sessions) if (![HOSTED_SESSION_ID, SIDECHAT_SESSION_ID].includes(id) &&
-      (message.method !== "mobile/turn/accepted" || (session.ready && session.socket?.readyState === WebSocket.OPEN))) session.mirror(message, this.sidechats.has(message.params?.threadId));
+      (message.method !== "mobile/turn/accepted" || (session.ready && session.open))) session.mirror(message, this.sidechats.has(message.params?.threadId));
     for (const listener of this.hostedListeners) listener(message);
   }
-  async replyHosted(requestId: string, message: RpcMessage): Promise<RpcMessage | undefined> {
-    if (typeof message.id !== "string" || !message.id.startsWith("hosted:")) return undefined;
-    const entry = this.hostedRequests.get(message.id);
-    const session = this.sessions.get(entry?.sessionId ?? HOSTED_SESSION_ID);
-    if (!entry || !session || session.epoch !== entry.epoch || !session.pending.has(entry.originalId)) throw new HttpError(409, "后台审批已失效，请刷新会话");
-    const response = await session.rpc(requestId, { ...message, id: entry.originalId }, entry.epoch);
-    this.hostedRequests.delete(message.id);
-    this.broadcastHosted({ method: "serverRequest/resolved", params: { requestId: message.id, threadId: entry.message.params?.threadId } });
-    return { ...response, id: message.id };
+  async replyHosted(requestId: string, message: RpcMessage, call: SessionCallOptions = sessionCall()): Promise<RpcMessage | undefined> {
+    return this.withCall(call, async () => {
+      if (typeof message.id !== "string" || !message.id.startsWith("hosted:")) return undefined;
+      const entry = this.hostedRequests.get(message.id);
+      const session = this.sessions.get(entry?.sessionId ?? HOSTED_SESSION_ID);
+      if (!entry || !session || session.epoch !== entry.epoch || !session.pending.has(entry.originalId)) throw new HttpError(409, "后台审批已失效，请刷新会话");
+      const response = await session.rpc(requestId, { ...message, id: entry.originalId }, entry.epoch, call);
+      this.hostedRequests.delete(message.id);
+      this.broadcastHosted({ method: "serverRequest/resolved", params: { requestId: message.id, threadId: entry.message.params?.threadId } });
+      return { ...response, id: message.id };
+    });
   }
   subscribeHosted(listener: (message: RpcMessage) => void) {
-    this.hostedListeners.add(listener);
-    for (const entry of this.hostedRequests.values()) listener(entry.message);
-    return () => { this.hostedListeners.delete(listener); };
+    let active = true;
+    if (this.options.remote && this.hostedRequests.size) {
+      const call = sessionCall();
+      void authorizeSession(this.options.remote, call).then(fence => {
+        fence.assertCurrent(); assertCall(call); assertRemoteOperation();
+        if (!active || this.closed) return;
+        this.hostedListeners.add(listener);
+        for (const entry of this.hostedRequests.values()) {
+          const session = this.sessions.get(entry.sessionId);
+          fence.assertCurrent(); assertCall(call); assertRemoteOperation();
+          if (active && session?.epoch === entry.epoch && session.ready && session.open) listener(entry.message);
+        }
+      }).catch(() => {});
+    } else {
+      this.hostedListeners.add(listener);
+      for (const entry of this.hostedRequests.values()) listener(entry.message);
+    }
+    return () => { active = false; this.hostedListeners.delete(listener); };
   }
 
   /** Dedicated durable identity survives gateway restarts and is never exposed to clients. */
-  async hostedReady() {
-    const session = this.session(HOSTED_SESSION_ID);
-    if (!session.ready || session.socket?.readyState !== WebSocket.OPEN) {
-      const initialized = await session.rpc(randomUUID(), { id: "hosted-initialize", method: "initialize", params: {
-        clientInfo: { name: "codex-mobile-follow-ups", version: "1" }, capabilities: { experimentalApi: true },
-      } });
-      if (initialized.error != null) throw new HttpError(503, "Unable to initialize follow-up session");
-    }
-    if (!session.sentInitialized) await session.rpc(randomUUID(), { method: "initialized", params: {} });
-    return session.epoch;
+  async hostedReady(call: SessionCallOptions = sessionCall()) {
+    return this.withCall(call, async () => {
+      const session = this.session(HOSTED_SESSION_ID);
+      if (!session.ready || !session.open) {
+        const initialized = await session.rpc(randomUUID(), { id: "hosted-initialize", method: "initialize", params: {
+          clientInfo: { name: "codex-mobile-follow-ups", version: "1" }, capabilities: { experimentalApi: true },
+        } }, undefined, call);
+        if (initialized.error != null) throw new HttpError(503, "Unable to initialize follow-up session");
+      }
+      if (!session.sentInitialized) await session.rpc(randomUUID(), { method: "initialized", params: {} }, undefined, call);
+      return session.epoch;
+    });
   }
-  async hostedRpc(message: RpcMessage, requestId: string = randomUUID()) {
-    await this.hostedReady();
-    return this.session(HOSTED_SESSION_ID).rpc(requestId, message);
+  async hostedRpc(message: RpcMessage, requestId: string = randomUUID(), call: SessionCallOptions = sessionCall()) {
+    return this.withCall(call, async () => {
+      await this.hostedReady(call);
+      return this.session(HOSTED_SESSION_ID).rpc(requestId, message, undefined, call);
+    });
   }
 
-  async sidebarRpc(message: RpcMessage): Promise<RpcMessage> {
-    if (message.id == null || !validSidebarParams(message.method!, message.params)) throw new HttpError(400, "Invalid sidebar parameters");
-    this.sidebar.setEpoch(await this.hostedReady());
-    const params = message.params as any;
-    const result = message.method === "mobile/sidebar/summaries"
-      ? await this.sidebar.summaries(params) : await this.sidebar.projectless(params);
-    return { id: message.id, result };
+  async sidebarRpc(message: RpcMessage, call: SessionCallOptions = sessionCall()): Promise<RpcMessage> {
+    return this.withCall(call, async () => {
+      if (message.id == null || !validSidebarParams(message.method!, message.params)) throw new HttpError(400, "Invalid sidebar parameters");
+      this.sidebar.setEpoch(await this.hostedReady(call));
+      const params = message.params as any;
+      const result = message.method === "mobile/sidebar/summaries"
+        ? await this.sidebar.summaries(params) : await this.sidebar.projectless(params);
+      return { id: message.id, result };
+    });
   }
 
   uploadUsageRpc(message: RpcMessage): RpcMessage {
@@ -949,7 +1131,11 @@ export class HttpSessions {
   }
 
   private sidechatIds = new Set<string>();
-  async sidechatRpc(envelope: RpcMessage, requestId: string = randomUUID()): Promise<RpcMessage> {
+  async sidechatRpc(envelope: RpcMessage, requestId: string = randomUUID(), call: SessionCallOptions = sessionCall()): Promise<RpcMessage> {
+    try { return await this.withCall(call, () => this.sidechatExecution(envelope, requestId, call)); }
+    catch (error) { if (error instanceof HttpError) throw error; return { id: envelope.id, error: { code: -32001, message: error instanceof Error ? error.message : 'Sidechat 不可用' } }; }
+  }
+  private async sidechatExecution(envelope: RpcMessage, requestId: string, call: SessionCallOptions): Promise<RpcMessage> {
     const method = envelope.params?.method; const params = envelope.params?.params;
     if (typeof method !== 'string' || !params || Array.isArray(params) || typeof params !== 'object') throw new HttpError(400, 'Sidechat 参数无效');
     if (!['read', 'thread/fork', 'replay', 'turn/start', 'turn/steer', 'turn/interrupt', 'thread/unsubscribe', 'thread/settings/update'].includes(method)) throw new HttpError(400, '不支持的 Sidechat 操作');
@@ -965,14 +1151,14 @@ export class HttpSessions {
         }
         if (params.ephemeral !== true || params.excludeTurns !== true || typeof upstreamParams.lastTurnId !== 'string' || !upstreamParams.lastTurnId || typeof params.threadId !== 'string') throw new HttpError(400, 'Sidechat 必须从明确的结束回合临时分叉');
       } else if (!this.sidechats.has(params.threadId)) throw new Error('Sidechat 已失效，请返回主聊天重新创建');
-      if (method === 'replay') upstreamParams = { threadId: params.threadId, items: await sidechatReplayItems(this.sidechats.replay(params.threadId, params.sourceThreadId, params.beforeTurnId)) };
+      if (method === 'replay') upstreamParams = { threadId: params.threadId, items: await sidechatReplayItems(this.sidechats.replay(params.threadId, params.sourceThreadId, params.beforeTurnId), this.options.remote ? { ...this.options.remote.sidechatReplay, signal: call.signal } : undefined) };
       const session = this.session(SIDECHAT_SESSION_ID);
-      if (!session.ready || session.socket?.readyState !== WebSocket.OPEN) {
-        const initialized = await session.rpc(randomUUID(), { id: 'sidechat-initialize', method: 'initialize', params: { clientInfo: { name: 'codex-mobile-sidechat', version: '1' }, capabilities: { experimentalApi: true } } });
+      if (!session.ready || !session.open) {
+        const initialized = await session.rpc(randomUUID(), { id: 'sidechat-initialize', method: 'initialize', params: { clientInfo: { name: 'codex-mobile-sidechat', version: '1' }, capabilities: { experimentalApi: true } } }, undefined, call);
         if (initialized.error) return { ...initialized, id: envelope.id };
       }
-      if (!session.sentInitialized) await session.rpc(randomUUID(), { method: 'initialized', params: {} });
-      const response = await session.rpc(requestId, { id: `sidechat:${requestId}`, method: method === 'replay' ? 'thread/inject_items' : method, params: upstreamParams });
+      if (!session.sentInitialized) await session.rpc(randomUUID(), { method: 'initialized', params: {} }, undefined, call);
+      const response = await session.rpc(requestId, { id: `sidechat:${requestId}`, method: method === 'replay' ? 'thread/inject_items' : method, params: upstreamParams }, undefined, call);
       if (!response.error) {
         if (method === 'thread/fork') {
           if (replacement) this.sidechats.registerReplacement(params.threadId, params.beforeTurnId, response.result as Record<string, any>);
@@ -995,11 +1181,12 @@ export class HttpSessions {
   realtime(sessionId: string | null, client?: WebSocket) {
     if (sessionId === HOSTED_SESSION_ID) throw new HttpError(403, "Internal session is reserved");
     const session = this.session(sessionId);
-    if (!session.ready || session.socket?.readyState !== WebSocket.OPEN) throw new HttpError(503, "Initialize session before realtime");
+    if (!session.ready || !session.open) throw new HttpError(503, "Initialize session before realtime");
     if (client) session.voice(client);
   }
 
   async close() {
+    this.closed = true;
     clearInterval(this.timer);
     await Promise.all([...this.sessions.values()].map((session) => session.close()));
     await this.changeHistory.flush();

@@ -158,6 +158,7 @@ Task4 按内部依赖顺序实施：4a 可信目标身份基础 → 4b 持久队
 - [x] 4a：固定随机网关/本机身份、Mac 归属校验及可信目标 resolver/旧句柄 guard 已完成源码验证与独立双审；Local非枚举字段和关闭监听重入的两项P2均先RED后修复，见[收据](evidence/2026-11-16-remote-target-identity-validation.json)。未接公开Remote路由，整个Task4继续未完成。
 - [x] 4b.1：内部 durable ledger 最终 ae62ff00 通过原 SPEC→原 QUALITY 及 root 全工件核验；相关 7 文件 211 项、双 strict/build:server 通过。原授权/控制及容量缺口均修复，见[收据](evidence/2026-11-16-remote-operation-queue-validation.json)，尚未接公开路径。
 - [x] 4b.2a：内部真实 Runtime/Target 队列授权及持久显式恢复证明通过源码验证、独立 SPEC→QUALITY 和 root 全工件核验；旧句柄跨代永拒，公开装配未接，见[收据](evidence/2026-11-16-remote-runtime-queue-authorization-validation.json)。
+- [x] 4b.2b 内部实现：现有 Session/HttpSessions 的可信 rawstream 注入、真实 Runtime/Relay 回归和最小投影/replay 来源注入已本地完成；root 工件审计与独立 SPEC→QUALITY 待完成。现有 WAL 保留，公开 mode/host/index 与完整消费者目标图未接，不能视为 Remote 模式可用。
 - [ ] 4b.2：HTTP/WS/hosted/Bark/关注与目标传输装配，Sidechat 内存路由、附件 bytes/活引用、占位、读合并/导航取消、显式 resume 和旧 FollowUps 推断替换，待实现/验收。
 - [ ] 4c：真实业务时钟与会话观察/释放，待实现/验收。
 
@@ -291,3 +292,6 @@ Task3d.4完成记录：Task3d.4统计失效装配已完成源码验收：冻结 
 
 
 4b.2a最终源码验收（2026-11-16）：冻结 `e4e9923b5aca3736e569a76a08dcc5a54f226cab`，相关9文件451项、双strict及build:server通过；独立SPEC→全新QUALITY通过，root实审完整封存工件。SPEC独立8项通过；原相关回归449/451的两项长socket环境失败与短TMP受影响文件59项通过分开记载。旧失败、夹具隔离事故与证据限制均保留，未将green13或少worker旧验证算作门禁。下一步串行完成4b.2内部Session传输注入，再接公开目标图与统一调度；4b.2/4c/5/6继续待实现或验收。仅源码交付，无官方访问、客户端构建、发布或部署。
+
+
+4b.2b 本地实现记录（2026-11-16，修改基线 `eeccc1eb212ab4670211fbb2ab4aaf7224875ea4`）：Session 复用真实 ResolvedRemoteTarget.createRawStream，Remote 网关 Mac 也走同一 owner Relay，按逻辑流独立初始化和收尾；每次实际发送、缓存/投影与 WAL await 后交付保留原绝对期限、真实授权及 epoch fence。缓存 RPC 等待期间关闭或 epoch 变化拒绝本次交付，历史已完成收据语义保留。hosted ID 区分数字/字符串；嵌套 hosted 与 Sidechat/replay 不续期。物理首帧同步 seq commit 承接 mayHaveBeenSent，真实 callback hold/响应先到/投影超时和嵌套外层超时均不误删已发送写；真正 neverSent 仍可删除 WAL，重连不重放。close 在监听重入前固定实际 Promise，等待迟到 stream 及真实 client_closed callback，不误关共享健康 Relay；全局撤权沿既有 owner 收尾。Remote 必须显式提供原四 consumer 与 SidechatReplayOptions，namespace 等于 target.transportNamespace，Local 诱饵证明 RPC/通知图片、rollout 与 Sidechat 附图来源隔离。Sidechat 内容及操作缓存断线清空，所有入口保持 memoryOnly。同物理 Runtime 的多 Resolver/HttpSessions 并发核验真实 RED 后，必要依赖仅为 Runtime.readTargetBinding 私有串行 tail；每次真实 run/lifecycle 核验，预算从入队计时，原 ALS/父期限不延长，取消及时拒绝、轮到零 run，真实 flight/finally 后才释放后项，其他 mutation/query busy 保持，业务 ACK/投影/close 不持锁。最终本地必要回归、双 strict 与 build:server 的固定源码结果以封存报告为准，待 root 实审及独立双审；原失败/夹具错误全留存，不冒称公开合同或官方长期验收通过。未改公开 mode/host/index/客户端，未接 ledger/统一 scheduler，不访问官方凭据、不构建客户端、不发布部署。

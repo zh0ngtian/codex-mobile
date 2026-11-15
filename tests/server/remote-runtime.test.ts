@@ -1026,14 +1026,16 @@ it('目标解析暂停owner不创建替代runtime或Local会话', async () => {
   expect((await resolver.resolve()).descriptor.mode).toBe('local');
   expect(f.keys()).toBe(1); expect(f.oauth()).toBe(1);
 });
-it('目标解析管理竞争保留busy，不建立第二会话owner或忙等', async () => {
+it('目标解析只读竞争依次真实核验，不建立第二会话owner或忙等', async () => {
   const f = await fixture(); await f.runtime.authorize(); await until(() => f.runtime.status().state === 'online'); const resolver = await resolverFor(f.runtime);
   const loader = (f.runtime as any).bundle.loader;
-  const original = loader.verifyIdentity.bind(loader); let release!: () => void; let entered = false;
-  vi.spyOn(loader, 'verifyIdentity').mockImplementation(async (...args: any[]) => { const value = await original(...args); entered = true; await new Promise<void>(resolve => release = resolve); return value; });
+  const original = loader.verifyIdentity.bind(loader); let release!: () => void; let entered = false; let calls = 0;
+  vi.spyOn(loader, 'verifyIdentity').mockImplementation(async (...args: any[]) => { const value = await original(...args); calls++; if (calls === 1) { entered = true; await new Promise<void>(resolve => release = resolve); } return value; });
   const first = f.runtime.readTargetBinding(); await until(() => entered);
-  try { await expect(resolver.resolve(reference(f))).rejects.toMatchObject({ code: 'busy' }); }
-  finally { release(); await first; } expect(f.connections).toHaveLength(1);
+  let settled = false; const second = resolver.resolve(reference(f)).then(value => { settled = true; return value; });
+  try { await new Promise(resolve => setTimeout(resolve, 20)); expect(settled).toBe(false); expect(calls).toBe(1); }
+  finally { release(); await first; }
+  expect((await second).descriptor.mode).toBe('remote'); expect(calls).toBe(2); expect(f.connections).toHaveLength(1);
 });
 it('目标解析句柄序列化只包含冻结descriptor，不能泄露owner或内部scope', async () => {
   const f = await fixture(); await f.runtime.authorize(); await until(() => f.runtime.status().state === 'online'); const resolver = await resolverFor(f.runtime);
