@@ -143,20 +143,50 @@ export interface RemoteProjectSource { session: RemoteRpcSession; commands: Remo
 const PROJECT_STATE_PYTHON = String.raw`import base64,hashlib,json,os,sys
 q=json.loads(sys.argv[1])
 def invalid(value):raise ValueError()
-# 只用decoder定位原始JSON片段，数值不转成Python数值再编码；保留JS的大整数/溢出指数语义。
+# 原子由标准decoder解码；容器仅用显式栈定位并完整验证，避免Python递归深度成为产品限制。
+# 必要字段保留原始JSON片段，不把数值转成Python数值再编码。
 decoder=json.JSONDecoder(parse_int=lambda value:None,parse_float=lambda value:None,parse_constant=invalid)
 with open(os.path.join(q['home'],'.codex-global-state.json'),'r',encoding='utf-8',errors='replace') as f: text=f.read()
 def space(i):
     while i<len(text) and text[i] in ' \t\r\n':i+=1
     return i
-start=space(0);_,end=decoder.raw_decode(text,start)
+def end_value(start):
+ i=start;states=['value']
+ while states:
+  state=states.pop();i=space(i);c=text[i:i+1]
+  if state=='value':
+   if c=='{':states.append('object-first');i+=1
+   elif c=='[':states.append('array-first');i+=1
+   else:_,i=decoder.raw_decode(text,i)
+  elif state=='key':
+   if c!='"':raise ValueError()
+   _,i=decoder.raw_decode(text,i)
+  elif state=='colon':
+   if c!=':':raise ValueError()
+   i+=1
+  elif state=='object-first':
+   if c=='}':i+=1
+   else:states.extend(['object-end','value','colon','key'])
+  elif state=='array-first':
+   if c==']':i+=1
+   else:states.extend(['array-end','value'])
+  elif state=='object-end':
+   if c=='}':i+=1
+   elif c==',':i+=1;states.extend(['object-end','value','colon','key'])
+   else:raise ValueError()
+  elif state=='array-end':
+   if c==']':i+=1
+   elif c==',':i+=1;states.extend(['array-end','value'])
+   else:raise ValueError()
+ return i
+start=space(0);end=end_value(start)
 if space(end)!=len(text):raise ValueError()
 if text[start:start+4]=='null':raise ValueError()
 keys=['local-projects','project-order','projectless-thread-ids','thread-project-assignments','thread-project-membership-host-ids','app-server-project-id-by-legacy-project-id-by-host'];selected={}
 if text[start]=='{':
     i=space(start+1)
     while text[i]!='}':
-        key,i=decoder.raw_decode(text,i);i=space(i)+1;i=space(i);begin=i;_,i=decoder.raw_decode(text,i)
+        key,i=decoder.raw_decode(text,i);i=space(i)+1;i=space(i);begin=i;i=end_value(i)
         if key in keys:selected[key]=text[begin:i]
         i=space(i)
         if text[i]=='}':break

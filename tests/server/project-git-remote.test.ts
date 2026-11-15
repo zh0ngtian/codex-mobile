@@ -38,6 +38,20 @@ it('项目实际坏UTF8字节按原Local readFile替换语义解析，投影不�
   await writeFile(join(f.root, '.codex-global-state.json'), bytes);
   expect(await readCodexProjectState('/gateway', { session: f.session, commands: f.commands })).toEqual(parseCodexProjectState(bytes.toString('utf8'), f.home));
 });
+it.each(['unused', 'required', 'root', 'mixed'])('合法深层JSON不引入Python递归深度限制：%s', async location => {
+  const f = await target(); const deep = location === 'mixed' ? '{"k":['.repeat(12000) + '0' + ']}'.repeat(12000) : '['.repeat(1100) + '0' + ']'.repeat(1100);
+  const raw = ['unused', 'mixed'].includes(location) ? `{"unused":${deep},"projectless-thread-ids":["preserved"]}` : location === 'required' ? `{"local-projects":{"p":{"unused":${deep}}},"projectless-thread-ids":["preserved"]}` : deep;
+  await writeFile(join(f.root, '.codex-global-state.json'), raw);
+  expect(await readCodexProjectState('/gateway', { session: f.session, commands: f.commands })).toEqual(parseCodexProjectState(raw, f.home));
+});
+it('深层未用字段仍完整校验JSON语法，不能跳过无效内容', async () => {
+  const f = await target();
+  for (const value of ['01', 'tru', 'NaN', '[0,]', '{"a":1,}', '{"a" 1}', '"bad\u0001"']) {
+    const raw = `{"unused":${'['.repeat(1100)}${value}${']'.repeat(1100)},"projectless-thread-ids":["preserved"]}`;
+    expect(() => parseCodexProjectState(raw, f.home)).toThrow(); await writeFile(join(f.root, '.codex-global-state.json'), raw);
+    await expect(readCodexProjectState('/gateway', { session: f.session, commands: f.commands })).rejects.toThrow();
+  }
+});
 async function until(check: () => boolean | Promise<boolean>, timeout = 3000) {
   const start = Date.now(); while (!await check()) { if (Date.now() - start > timeout) throw new Error('等待fixture超时'); await new Promise(resolve => setTimeout(resolve, 5)); }
 }
