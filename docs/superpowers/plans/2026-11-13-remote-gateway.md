@@ -156,12 +156,15 @@ Task3按内部依赖分项验证，不改变已确认的权限、功能或目标
 Task4 按内部依赖顺序实施：4a 可信目标身份基础 → 4b 持久队列与传输路由装配 → 4c 会话观察器；随后 Task5 手机接入。该拆分不改变已确认架构，也不代表整个 Task4 已完成。
 
 - [x] 4a：固定随机网关/本机身份、Mac 归属校验及可信目标 resolver/旧句柄 guard 已完成源码验证与独立双审；Local非枚举字段和关闭监听重入的两项P2均先RED后修复，见[收据](evidence/2026-11-16-remote-target-identity-validation.json)。未接公开Remote路由，整个Task4继续未完成。
-- [ ] 4b：目标级 durable ledger 和 HTTP/WS/hosted/Bark/关注传输装配，待实现/验收。
+- [ ] 4b.1：目标级 durable ledger 内部基础已实现/本地专项 39 项通过，待全新独立 SPEC→QUALITY，尚未接公开路径。
+- [ ] 4b.2：HTTP/WS/hosted/Bark/关注与目标传输装配，Sidechat 内存路由、附件 bytes/活引用、占位、读合并/导航取消、显式 resume 和旧 FollowUps 推断替换，待实现/验收。
 - [ ] 4c：真实业务时钟与会话观察/释放，待实现/验收。
 
 4a 修改基线为已推送 `d8ae4c97a877af5f68a96a1aeff7e7d196e24823`；开始前 fetch 核对远端未变。2026-11-15 用户确认固定身份 A，详见设计说明。内部默认持久目录 `~/.codex-mobile/gateway-identity`，独立实例可可信注入不同目录；新目录及父目录项同步后才交付身份。读取只复验现有运行 owner 的 loader/provider 和 controller 已接受 binding，不以 client 可见目录代替授权，不新建物理 Relay、密钥、授权或配对。仅有效已接受的暂时离线目标可解析，执行仍拒绝；无效引用、账号变化、重装、缺目录、暂停及 pendingResume 保留原因。共享业务 key 仅归组，完整账号/网关/tuple/generation 的 authorizationKey 及实时 guard 是后续列表可见性与发送必须边界。必要依赖修复使 RPC settled 跟踪逻辑流实际 close Promise，包括关闭监听抛错后重取同一 Promise；不等待业务 ACK、不关闭共享主连接。本步无客户端操作改动，不构建 Web/APK/IPA，不部署。
 
 4a最终源码验收（2026-11-16）：冻结 `5a7d1a85ff9540067c07c753d5d775f89db64c0f`，RPC42项/目标43项、双strict与build:server通过；SPEC→QUALITY均通过，root核对全部封存工件。完整server1733/7跳过保留原31ca执行绑定，未改动的身份/target/Runtime/Relay复用原验证；原并发夹具失败、非枚举P2、关闭重入P2和工具错误均保留，不重写历史或冒称全新完整执行。4b内部先做持久ledger基础，再接公开传输装配，每步独立红绿和双审；不新增产品决定。
+
+4b.1本地实现记录（2026-11-16，修改基线 `f266d7b6b858191efa54d648c90460c8ae87e01d`）：新 operation-queue 专属大文件使用既有 PrivateStore 跨进程锁，每事务重读，不以旧内存覆盖已 ACK 项。文件/rename/目录链耐久后才返回，发布后同步故障保留未知提交并封住实例；幂等原签名与 CAS revision 分开，普通 128/64MiB、控制 128/2MiB、终态 UUID 65536 cap 均显式拒绝超限。共享列表与状态边界冻结完整 managed（含 userId 有无/codexHome）、gateway/tuple/generation/settings/attachment refs；可信授权只读副本并在最终 FS 收尾后复核。控制优先且其 claimed/uncertain/failed 阻塞同会话下一轮，普通失败/未知队首不阻断其他已授权会话；claim 唯一 token/CAS，先耐久 uncertain 再交传输，只有可信 neverSent 可回队，releaseClaim 只能处理未跨发送标记项。Sidechat memoryOnly 进入正文序列化/耐久 API 前拒绝；不提供跨 generation 恢复证明、不改 RemoteRuntime。39 项专项覆盖多实例、真实 OS 并发/SIGKILL、同步 gate/故障、坏存储保留与授权隔离；首轮夹具超时/类型错误和历史 TDD 日志保留。待最终固定源码限定回归、双 strict/build:server 及全新独立双审；尚未开始 4b.2，不勾选下面公开合同为已完成。
 
 - [ ] 测试本地保持旧 API，内部 Remote 请求携带模式和目标；无效目标、账号改变、未授权均显式拒绝，网关 Mac 的 Remote 路径同样走 relay。
 - [ ] `/api/host` 报告版本化能力/授权/配对/临时离线状态，目录仅列有权限目标；CORS 与所有文件/事件/WS 路由一致。
