@@ -464,3 +464,155 @@ it('独立SPEC probe：控制在mark之后dispatch等待跨过expiresAt不可迟
   expect(markSeen).toBe(true);
   expect(f.localMessages.filter(m => m.method === 'turn/interrupt')).toEqual([]);
 });
+
+
+it('QUALITY probe：真实claim耐久后预算到期，close同进程重建仍应恢复未发送项', async () => {
+  const f = await setup(); f.options.attemptTimeoutMs = 100; const one = f.create();
+  const input = f.input(f.localContext); await one.submit(input);
+  const proto = OperationQueue.prototype as any;
+  const original = proto.syncDirectories; let held = false;
+  const hold = vi.spyOn(proto, 'syncDirectories').mockImplementation(async function (this: any, ...args: any[]) {
+    await original.apply(this, args);
+    const disk = JSON.parse(await readFile(join(f.options.directory, 'operations.json'), 'utf8'));
+    if (!held && disk.records.find((record: any) => record.id === input.id)?.state === 'claimed') {
+      held = true;
+      await new Promise(resolve => setTimeout(resolve, 180));
+    }
+  });
+  await one.runOnce(); hold.mockRestore();
+  const before = await f.queue().read(input.id); await one.close();
+  f.options.attemptTimeoutMs = 1000; const two = f.create(); await two.runOnce();
+  const after = await f.queue().read(input.id);
+  console.log('QUALITY_CLAIM_FINAL_FENCE', JSON.stringify({ held, before, after, pid: process.pid, sent: f.localMessages.filter(message => message.method === 'turn/start'), lastError: String(one.lastError) }));
+  expect(held).toBe(true); expect(after.state).toBe('succeeded');
+});
+
+
+it('QUALITY corrected close probe：claim耐久后close须清理，关闭前零发送且重建后只发送一次', async () => {
+  const f = await setup(); f.options.attemptTimeoutMs = 2000; const one = f.create();
+  const input = f.input(f.localContext); await one.submit(input);
+  const proto = OperationQueue.prototype as any; const original = proto.syncDirectories;
+  const mark = vi.spyOn(OperationQueue.prototype, 'markPotentialSend'); const dispatch = vi.spyOn(HttpSessions.prototype, 'dispatchRpc');
+  let entered = false; let release!: () => void; const gate = new Promise<void>(resolve => { release = resolve; }); cleanup.push(() => release());
+  const hold = vi.spyOn(proto, 'syncDirectories').mockImplementation(async function (this: any, ...args: any[]) {
+    await original.apply(this, args);
+    const disk = JSON.parse(await readFile(join(f.options.directory, 'operations.json'), 'utf8'));
+    if (!entered && disk.records.find((record: any) => record.id === input.id)?.state === 'claimed') { entered = true; await gate; }
+  });
+  const running = one.runOnce().catch(error => String(error)); await until(() => entered);
+  const durable = JSON.parse(await readFile(join(f.options.directory, 'operations.json'), 'utf8')).records[0];
+  const closing = one.close(); release(); await Promise.all([running, closing]); hold.mockRestore();
+  const before = await f.queue().read(input.id);
+  const walPath = join(f.root, 'codex-mobile-http', input.sessionId, `${input.requestId}.json`);
+  let preWal = 'exists'; try { await readFile(walPath); } catch (error: any) { preWal = error.code; }
+  const pre = { entered, durable, record: before, pid: process.pid, samePid: durable.claimPid === process.pid,
+    markCalls: mark.mock.calls.length, dispatchCalls: dispatch.mock.calls.length,
+    sent: structuredClone(f.localMessages.filter(message => message.method === 'turn/start')), wal: preWal, lastError: String(one.lastError) };
+  await writeFile(join(process.env.HOME!, 'probe-before-restart.json'), JSON.stringify(pre, null, 2));
+  console.log('QUALITY_CORRECTED_CLOSE_PRE_RESTART', JSON.stringify(pre));
+  // 此时新scheduler尚未构造，所有零发送断言仅针对关闭的原实例。
+  expect(pre.entered).toBe(true); expect(pre.durable.state).toBe('claimed'); expect(pre.samePid).toBe(true);
+  expect(pre.markCalls).toBe(0); expect(pre.dispatchCalls).toBe(0); expect(pre.sent).toEqual([]); expect(pre.wal).toBe('ENOENT');
+  const two = f.create(); await two.runOnce(); const after = await f.queue().read(input.id);
+  let postWal: unknown = 'missing'; try { postWal = JSON.parse(await readFile(walPath, 'utf8')); } catch (error: any) { postWal = error.code; }
+  const post = { record: after, pid: process.pid, markCalls: mark.mock.calls.length, dispatchCalls: dispatch.mock.calls.length,
+    sent: structuredClone(f.localMessages.filter(message => message.method === 'turn/start')), wal: postWal };
+  await writeFile(join(process.env.HOME!, 'probe-after-restart.json'), JSON.stringify(post, null, 2));
+  console.log('QUALITY_CORRECTED_CLOSE_POST_RESTART', JSON.stringify(post));
+  expect(after.state).toBe('succeeded');
+  expect(post.markCalls).toBe(1); expect(post.dispatchCalls).toBe(1); expect(post.sent).toHaveLength(1);
+  expect(post.wal).toMatchObject({ requestId: input.requestId, status: 'completed' });
+});
+
+it.each([false, true])('原Remote claim最终真实授权失效，cleanup暂拒绝后显式resume由%s重建实例恢复精确未发送项', async rebuild => {
+  const f = await setup(); f.options.attemptTimeoutMs = 3000; const one = f.create(); const input = f.input(); await one.submit(input);
+  const proto = OperationQueue.prototype as any; const actual = proto.syncDirectories; let revoked = false;
+  const hold = vi.spyOn(proto, 'syncDirectories').mockImplementation(async function (this: any, ...args: any[]) {
+    await actual.apply(this, args); const disk = JSON.parse(await readFile(join(f.options.directory, 'operations.json'), 'utf8'));
+    if (!revoked && disk.records.find((record: any) => record.id === input.id)?.state === 'claimed') {
+      revoked = true; await f.runtime.recover(); await until(() => f.runtime.status().state === 'online'); f.attach();
+    }
+  });
+  await one.runOnce(); hold.mockRestore();
+  const disk = JSON.parse(await readFile(join(f.options.directory, 'operations.json'), 'utf8')); expect(revoked).toBe(true); expect(disk.records[0]).toMatchObject({ state: 'claimed', claimPid: process.pid });
+  await expect(f.queue().read(input.id)).rejects.toBeDefined(); expect(f.remoteMessages.filter(message => message.method === 'turn/start')).toEqual([]);
+  const operation = rebuild ? (await one.close(), f.create()) : one;
+  await operation.runOnce(); expect(JSON.parse(await readFile(join(f.options.directory, 'operations.json'), 'utf8')).records[0].state).toBe('claimed');
+  await f.runtime.resume(local); await operation.runOnce();
+  expect((await f.queue().read(input.id)).state).toBe('succeeded'); expect(f.remoteMessages.filter(message => message.method === 'turn/start')).toHaveLength(1); expect(f.localMessages).toEqual([]);
+});
+it('另一活owner在claimed执行等待时不被新scheduler清理或偷领，原owner最终只发送一次', async () => {
+  const f = await setup(); const one = f.create(); const input = f.input(f.localContext); await one.submit(input);
+  const actual = OperationQueue.prototype.markPotentialSend; let entered = false; let release!: () => void; const gate = new Promise<void>(resolve => { release = resolve; }); cleanup.push(() => release());
+  vi.spyOn(OperationQueue.prototype, 'markPotentialSend').mockImplementation(async function (this: OperationQueue, ...args) { if (args[0] === input.id && !entered) { entered = true; await gate; } return actual.apply(this, args); });
+  const running = one.runOnce(); await until(() => entered); const claimed = await f.queue().read(input.id); expect(claimed.state).toBe('claimed');
+  const two = f.create(); await two.runOnce(); expect(await f.queue().read(input.id)).toEqual(claimed); expect(f.localMessages.filter(message => message.method === 'turn/start')).toEqual([]);
+  release(); await running; await two.runOnce(); expect((await f.queue().read(input.id)).state).toBe('succeeded'); expect(f.localMessages.filter(message => message.method === 'turn/start')).toHaveLength(1);
+});
+it('mark已耐久uncertain而最终真实授权拒绝时旧claim清理只丢弃失配责任，恢复后绝不重排或发送', async () => {
+  const f = await setup(); f.options.attemptTimeoutMs = 3000; const one = f.create(); const input = f.input(); const later = f.input(); await one.submit(input); await one.submit(later);
+  const proto = OperationQueue.prototype as any; const actual = proto.syncDirectories; let revoked = false; const dispatch = vi.spyOn(HttpSessions.prototype, 'dispatchRpc');
+  const hold = vi.spyOn(proto, 'syncDirectories').mockImplementation(async function (this: any, ...args: any[]) {
+    await actual.apply(this, args); const disk = JSON.parse(await readFile(join(f.options.directory, 'operations.json'), 'utf8'));
+    if (!revoked && disk.records.find((record: any) => record.id === input.id)?.state === 'uncertain') { revoked = true; await f.runtime.recover(); await until(() => f.runtime.status().state === 'online'); f.attach(); }
+  });
+  await one.runOnce(); hold.mockRestore(); await one.close(); const two = f.create(); await f.runtime.resume(local); await two.runOnce(); await two.runOnce();
+  expect(revoked).toBe(true); expect((await f.queue().read(input.id)).state).toBe('uncertain'); expect((await f.queue().read(later.id)).state).toBe('queued'); expect(dispatch).not.toHaveBeenCalled();
+  expect(f.remoteMessages.filter(message => message.method === 'turn/start')).toEqual([]); expect(f.localMessages).toEqual([]);
+});
+it('精确claim清理遇暂时IO故障保留责任，close后新实例重试原CAS而非丢弃或重收其他项', async () => {
+  const f = await setup(); f.options.attemptTimeoutMs = 100; const one = f.create(); const input = f.input(f.localContext); await one.submit(input);
+  const proto = OperationQueue.prototype as any; const actual = proto.syncDirectories; let delayed = false;
+  const hold = vi.spyOn(proto, 'syncDirectories').mockImplementation(async function (this: any, ...args: any[]) {
+    await actual.apply(this, args); const disk = JSON.parse(await readFile(join(f.options.directory, 'operations.json'), 'utf8'));
+    if (!delayed && disk.records[0]?.state === 'claimed') { delayed = true; await new Promise(resolve => setTimeout(resolve, 180)); }
+  });
+  const release = vi.spyOn(OperationQueue.prototype, 'releaseClaim').mockRejectedValue(new Error('injected cleanup IO failure'));
+  await one.runOnce(); expect(release).toHaveBeenCalled(); expect((await f.queue().read(input.id)).state).toBe('claimed'); await one.close(); hold.mockRestore(); release.mockRestore();
+  f.options.attemptTimeoutMs = 1000; const two = f.create(); const three = f.create(); await Promise.all([two.runOnce(), three.runOnce()]);
+  expect((await f.queue().read(input.id)).state).toBe('succeeded'); expect(f.localMessages.filter(message => message.method === 'turn/start')).toHaveLength(1);
+});
+it('领取最终失败后的真实cleanup等待属于close收尾，关闭不能迟到mark或dispatch', async () => {
+  const f = await setup(); f.options.attemptTimeoutMs = 100; const one = f.create(); const input = f.input(f.localContext); await one.submit(input);
+  const proto = OperationQueue.prototype as any; const sync = proto.syncDirectories; let delayed = false;
+  const hold = vi.spyOn(proto, 'syncDirectories').mockImplementation(async function (this: any, ...args: any[]) {
+    await sync.apply(this, args); const disk = JSON.parse(await readFile(join(f.options.directory, 'operations.json'), 'utf8'));
+    if (!delayed && disk.records[0]?.state === 'claimed') { delayed = true; await new Promise(resolve => setTimeout(resolve, 180)); }
+  });
+  const actual = OperationQueue.prototype.releaseClaim; let entered = false; let release!: () => void; const gate = new Promise<void>(resolve => { release = resolve; }); cleanup.push(() => release());
+  vi.spyOn(OperationQueue.prototype, 'releaseClaim').mockImplementation(async function (this: OperationQueue, ...args) { entered = true; await gate; return actual.apply(this, args); });
+  const mark = vi.spyOn(OperationQueue.prototype, 'markPotentialSend'); const dispatch = vi.spyOn(HttpSessions.prototype, 'dispatchRpc');
+  const running = one.runOnce().catch(error => String(error)); await until(() => entered); let ended = false; const closing = one.close().then(() => { ended = true; });
+  await new Promise(resolve => setTimeout(resolve, 20)); expect(ended).toBe(false); release(); await Promise.all([running, closing, one.settled()]); hold.mockRestore();
+  expect(mark).not.toHaveBeenCalled(); expect(dispatch).not.toHaveBeenCalled(); expect(f.localMessages).toEqual([]);
+  f.options.attemptTimeoutMs = 1000; const two = f.create(); await two.runOnce(); expect((await f.queue().read(input.id)).state).toBe('succeeded'); expect(f.localMessages.filter(message => message.method === 'turn/start')).toHaveLength(1);
+});
+
+it('cleanup已完成而inventory仍交付旧claimed快照时，同次runOnce重读并真实执行且空闲不忙扫', async () => {
+  const f = await setup(); f.options.attemptTimeoutMs = 100; const one = f.create(); const input = f.input(f.localContext); await one.submit(input);
+  const proto = OperationQueue.prototype as any; const sync = proto.syncDirectories; let delayed = false;
+  const hold = vi.spyOn(proto, 'syncDirectories').mockImplementation(async function (this: any, ...args: any[]) {
+    await sync.apply(this, args); const disk = JSON.parse(await readFile(join(f.options.directory, 'operations.json'), 'utf8'));
+    if (!delayed && disk.records[0]?.state === 'claimed') { delayed = true; await new Promise(resolve => setTimeout(resolve, 180)); }
+  });
+  const failed = vi.spyOn(OperationQueue.prototype, 'releaseClaim').mockRejectedValue(new Error('injected cleanup unavailable'));
+  await one.runOnce(); await one.close(); failed.mockRestore(); hold.mockRestore(); expect((await f.queue().read(input.id)).state).toBe('claimed');
+  f.options.attemptTimeoutMs = 2000; const two = f.create();
+  let snapshotReady!: () => void; const snapshot = new Promise<void>(resolve => { snapshotReady = resolve; });
+  let cleaned!: () => void; const done = new Promise<void>(resolve => { cleaned = resolve; }); cleanup.push(() => { snapshotReady(); cleaned(); });
+  const actualRelease = OperationQueue.prototype.releaseClaim; let cleanupEntered = false;
+  vi.spyOn(OperationQueue.prototype, 'releaseClaim').mockImplementation(async function (this: OperationQueue, ...args) {
+    cleanupEntered = true; await snapshot; const value = await actualRelease.apply(this, args); cleaned(); return value;
+  });
+  const actualInventory = OperationQueue.prototype.inventory; let calls = 0; let stale = false;
+  vi.spyOn(OperationQueue.prototype, 'inventory').mockImplementation(async function (this: OperationQueue, ...args) {
+    const value = await actualInventory.apply(this, args); calls++;
+    if (cleanupEntered && !stale) {
+      stale = value.some(group => group.operations.some(receipt => receipt.id === input.id && receipt.state === 'claimed'));
+      snapshotReady(); await done; await new Promise<void>(resolve => setImmediate(resolve)); // 真实cleanup Promise先完成，再交付旧快照。
+    }
+    return value;
+  });
+  await two.runOnce(); expect(stale).toBe(true); expect((await f.queue().read(input.id)).state).toBe('succeeded'); expect(f.localMessages.filter(message => message.method === 'turn/start')).toHaveLength(1);
+  const before = calls; await two.runOnce(); expect(calls - before).toBe(1);
+});

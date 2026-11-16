@@ -353,7 +353,7 @@ Task3d.4完成记录：Task3d.4统计失效装配已完成源码验收：冻结 
 4b.2f最终源码验收：仅内部无正文inventory完成，原context/全部原id和接收顺序保留；两审各独立16项及SPEC两组补充断言通过，历史RED/GREEN封存。整个4b.2继续未完成，下一步接实际调度和旧FollowUps唯一owner迁移，再完成目标消费者及公开入口；不构建客户端、不发布或部署。
 
 
-### 4b.2g：内部唯一 RPC 调度与真实 Session 闭环（SPEC 控制期限补修，待原 SPEC 复审及全新 QUALITY）
+### 4b.2g：内部唯一 RPC 调度与真实 Session 闭环（QUALITY claim 清理补修，待原 SPEC→原 QUALITY 复审）
 
 - 修改基线：已推送 main `ba1b2aaf41c6822e4eb89ce45d614c463e305000`；复用已有独立 worktree，不接公开 mode/host/index，不迁移旧 FollowUps，不启动双 owner。
 - 新增单一具体 OperationScheduler：完整原 RPC/context/settings/附件快照沿原 ledger 耐久后 ACK；原业务键/会话跨 mode FIFO、控制专用槽/原 turn/request 绑定、可信读单一分类与指定 queued 导航取消。旧未知正文默认写屏障，excluded 只限制本轮尝试，不能绕过普通写/控制 head。
@@ -363,3 +363,6 @@ Task3d.4完成记录：Task3d.4统计失效装配已完成源码验收：冻结 
 - 真 PrivateStore/Runtime/loopback Relay/Local WS/Session WAL 主闭环 TDD 覆盖离线恢复、跨 mode 顺序/其他会话继续、控制优先/过期/编辑、可信读、unknown 对账与 WAL 复用/替换防串、真实 neverSent/锁外恢复、原 generation 显式 resume、无手机重建、普通 Local/Remote Session 与审批、取消/微任务撤权/实际继承失效父 ALS、双实例 CAS、close 前台及发送等待、坏盘和既有 API/容量。首次失败及精确 overlay/hash/argv/cwd/env/exit/full logs 保留私有短根；最后固定 SHA git archive 无 overlay 亲跑必要相关服务端回归、双 strict/build:server，以本轮小报告为准。
 
 原候选 bed56566 的490项/双strict/buildserver通过后，SPEC真实控制迟发反例仍FAIL；已在新隔离根原字节亲跑RED并补8项Local/Remote stop/approval真实WAL/物理send等待跨期回归、4项wall-clock前跳且单调预算有效的物理边界、4项确定原WAL结算跨期边界，前轮证据原样保留。本步状态为本地补修与限定验证，待 root 实读→原 SPEC 复审→全新 QUALITY；不勾整个4b.2。下一闭环继续旧 Local FollowUps 正常升级：公共 id 与 operationId 区分，原 HOSTED_SESSION_ID+operationId 对账，fingerprint/revision/顺序/restoreState/状态/附件/settings保留，手动retry/steer公共id稳定而新upstreamUUID；缺新字段不能全量暂停，Local404兼容不扩 Remote。公开消费者/host/index 与唯一 owner 激活、4c/Task5/6仍未完成；本步不访问官方/真实凭据、不构建客户端、不 push/main、不发布部署。
+
+
+4b.2g QUALITY Q1 补修（2026-11-16，修改基线 `41782107317ce8f694866d71d43a3dfe2771fa17`）：控制期限 F1 原 SPEC 复审通过后，新 QUALITY 在真实 PrivateStore fsync 后最终预算/close 拒绝复现 claim 结果丢失，同 PID 重建永久 claimed。新完整私有 archive 亲跑预算与修正 close 两份原字节 probe 均 FAIL；6项补充矩阵4 FAIL/2原有保护 PASS，永久新增共9项。原领取准备回调只同步捕获无正文 context/id/revision/token，原最终 fence 不减；领取/execute 已放弃后才保留按 canonical directory/gateway/完整身份及精确 token/revision 隔离的进程内清理事实。原 transition 授权与 claimed CAS 释放，授权暂拒或 IO 失败不丢责任，同实例和关闭后新实例在真实 recover/显式 resume 后可重试；共享 in-flight Promise、每轮一次有限 jobs、close 等实际清理。同完整 context 的 cleanup 复用原 authorizing 集合，避免与自身 claim 预检争用真实 Runtime；不改变 busy/授权政策。其他活 owner 不接管，mark 已耐久 uncertain 或 rev/token/state 失配只丢弃旧事实，绝不回 queued/重复发送；没有新耐久 owner/WAL。定向与固定新 SHA 无 overlay 的必要回归、双 strict/buildserver、准确环境/命令/sourcehash及所有首次失败另封存 `e4b2g-qfix` 小报告。待 root 实读→原 SPEC 再复审→原 QUALITY 复审，未通过不合入或 push；不启公开/旧 FollowUps，不勾整个4b.2/4c/5/6，不构建客户端或发布部署。

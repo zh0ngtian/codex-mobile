@@ -37,6 +37,8 @@ export interface OperationRecord extends OperationReceipt {
   body?: unknown; settings?: unknown; attachmentRefs?: string[]; control?: OperationControl;
   claimToken?: string; claimPid?: number; failure?: 'control-expired'; rpcReceipt?: OperationRpcReceipt;
 }
+/** 仅领取方捕获可能已耐久的未发送claim定位，不含业务正文，也不授予执行许可。 */
+export interface OperationClaim { id: string; revision: number; context: OperationContext; claimToken: string }
 interface Ledger { version: 1; gatewayId: string; nextOrder: number; records: OperationRecord[] }
 export class OperationQueueError extends Error {
   constructor(readonly code: string, readonly status = 503) { super(`持久操作队列：${code}`); this.name = 'OperationQueueError'; }
@@ -295,7 +297,7 @@ export class OperationQueue {
     });
   }
   /** 本方法只提供ledger取项边界；调用者仍须在实际传输前markPotentialSend。 */
-  async claimNext(businessKey: string, options: { isRead?: (record: Readonly<OperationRecord>) => boolean; excluded?: ReadonlySet<string>; controlOnly?: boolean } = {}): Promise<OperationRecord | null> {
+  async claimNext(businessKey: string, options: { isRead?: (record: Readonly<OperationRecord>) => boolean; excluded?: ReadonlySet<string>; controlOnly?: boolean; onPreparedClaim?: (claim: OperationClaim) => void } = {}): Promise<OperationRecord | null> {
     return this.transaction(async (ledger, authorize) => {
       let changed = false; let denied: unknown;
       const allowed = async (record: OperationRecord, action: Action) => {
@@ -336,6 +338,7 @@ export class OperationQueue {
       for (const candidate of prioritized) { if (await allowed(candidate, 'claim')) { selected = candidate; break; } }
       if (!selected) { if (denied) throw denied; return { value: null, changed }; }
       selected.state = 'claimed'; selected.revision++; selected.claimToken = randomUUID(); selected.claimPid = process.pid;
+      options.onPreparedClaim?.({ id: selected.id, revision: selected.revision, context: clone(selected.context), claimToken: selected.claimToken });
       return { value: clone(selected), changed: true };
     });
   }

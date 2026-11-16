@@ -1,7 +1,8 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { createHash, randomUUID } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
-import { OperationQueue, OperationQueueError, type OperationAuthorizationFence, type OperationContext, type OperationControl, type OperationReceipt, type OperationRecord } from './operation-queue.js';
+import { resolve } from 'node:path';
+import { OperationQueue, OperationQueueError, type OperationAuthorizationFence, type OperationClaim, type OperationContext, type OperationControl, type OperationReceipt, type OperationRecord } from './operation-queue.js';
 import { HttpSessions, isReadOnlyRpc, readOriginalOperation, type HttpSessionRemoteOptions, type RpcMessage, type SessionCallOptions, type SessionDispatchAttempt, type SessionDispatchResult } from './http-session.js';
 import { isNavigationResume, rpcSignatureInput, rpcControlRequestKey } from './rpc-replay.js';
 import { TargetResolver } from './targets.js';
@@ -33,6 +34,8 @@ function body(record: Readonly<OperationRecord>): RpcBody | undefined {
   return value;
 }
 function isRead(record: Readonly<OperationRecord>): boolean { const rpc = body(record); return !!rpc && !record.control && isReadOnlyRpc(rpc.message); }
+// 仅已放弃执行的精确未发送claim清理事实；无正文、无新耐久owner，同进程重建可接续原授权CAS。
+const abandonedClaims = new Map<string, { directory: string; gatewayId: string; claim: OperationClaim; pending?: Promise<void> }>();
 
 /** 仅内部唯一RPC owner；公开路由和旧FollowUps尚未启用本调度器。 */
 export class OperationScheduler {
@@ -55,7 +58,7 @@ export class OperationScheduler {
     if (!(options.resolver instanceof TargetResolver) || !options.gatewayCodexHome || !options.upstreamUrl ||
       !Number.isFinite(options.attemptTimeoutMs ?? 60_000) || (options.attemptTimeoutMs ?? 60_000) <= 0 ||
       !Number.isFinite(options.scanIntervalMs ?? 1000) || (options.scanIntervalMs ?? 1000) <= 0) throw new TypeError('需要可信resolver、显式网关目录和有界预算');
-    this.#options = { ...options };
+    this.#options = { ...options, directory: resolve(options.directory) };
     this.#queue = new OperationQueue({ directory: options.directory, gatewayId: options.gatewayId, authorize: async (context, action) => {
       const value = this.#authorization.getStore()?.get(key([context, action]));
       if (typeof value !== 'function') throw value ?? new Error('操作未按原context/action预授权');
@@ -169,12 +172,21 @@ export class OperationScheduler {
   }
   private async scan(): Promise<void> {
     const attempted = new Set<string>(); const seen = new Set<string>();
+    // 每轮只重试开始时已有的清理事实；新失败已在catch中尝试一次，不忙重试。
+    const recoveries = [...abandonedClaims.entries()].filter(([, value]) => value.directory === this.#options.directory && value.gatewayId === this.#options.gatewayId);
     const active = new Map<Promise<void>, boolean>(); const dispatching = new Set<string>(); const authorizing = new Set<string>(); let fatal: unknown;
     try {
       for (let round = 0; round < 1024; round++) {
         this.assertOpen(); if (fatal) throw fatal; const groups = await this.#queue.inventory(); this.assertOpen();
         const inventoryRevision = key(groups);
         const jobs: { binding: string; control: boolean; work: () => Promise<void> }[] = [];
+        for (const [binding, recovery] of recoveries) {
+          const jobKey = key(['cleanup', binding]);
+          if (!seen.has(jobKey) && !authorizing.has(key(recovery.claim.context)) && abandonedClaims.get(binding) === recovery) jobs.push({ binding: jobKey, control: false, work: async () => {
+            const contextKey = key(recovery.claim.context); authorizing.add(contextKey);
+            try { await this.cleanupClaim(recovery.claim); } finally { authorizing.delete(contextKey); }
+          } });
+        }
         for (const group of groups) {
           for (const receipt of group.operations) {
             const binding = key(['reconcile', receipt]);
@@ -187,8 +199,10 @@ export class OperationScheduler {
             jobs.push({ binding, control, work: async () => {
               authorizing.add(key(group.context));
               let record: OperationRecord | null;
+              let prepared: OperationClaim | undefined;
               try { record = await this.budget(call => this.ledger([group.context], ['claim', 'transition'], call,
-                () => this.#queue.claimNext(group.context.businessKey, { isRead, excluded: attempted, controlOnly: control }))); }
+                () => this.#queue.claimNext(group.context.businessKey, { isRead, excluded: attempted, controlOnly: control, onPreparedClaim: claim => { prepared = claim; } }))); }
+              catch (error) { if (prepared) await this.cleanupClaim(prepared); throw error; }
               finally { authorizing.delete(key(group.context)); }
               if (!record) return;
               attempted.add(record.id); dispatching.add(record.id);
@@ -281,11 +295,23 @@ export class OperationScheduler {
         if (result.outcome !== 'response') this.#diagnostics.set(record.id, result.error);
       });
     } catch (error) {
-      if (!potential) await this.releaseClaim(record).catch(cleanup => { this.#diagnostics.set(record.id, cleanup); });
+      if (!potential) await this.cleanupClaim({ id: record.id, revision: record.revision, context: record.context, claimToken: record.claimToken! });
       throw error;
     }
   }
-  private async releaseClaim(record: OperationRecord): Promise<void> {
+  private cleanupClaim(claim: OperationClaim): Promise<void> {
+    const binding = key([this.#options.directory, this.#options.gatewayId, claim.context, claim.id, claim.revision, claim.claimToken]);
+    let recovery = abandonedClaims.get(binding);
+    if (!recovery) { recovery = { directory: this.#options.directory, gatewayId: this.#options.gatewayId, claim: structuredClone(claim) }; abandonedClaims.set(binding, recovery); }
+    if (recovery.pending) return recovery.pending;
+    const pending = this.releaseClaim(recovery.claim).then(() => { abandonedClaims.delete(binding); }, error => {
+      // 原claim已经改变（含uncertain/终态）只丢弃旧清理事实，绝不重排未知项。
+      if (error instanceof OperationQueueError && ['revision-conflict', 'claim-conflict', 'invalid-transition'].includes(error.code)) abandonedClaims.delete(binding);
+      else { this.#diagnostics.set(claim.id, error); this.lastError = error; }
+    }).finally(() => { if (recovery.pending === pending) recovery.pending = undefined; });
+    recovery.pending = pending; return pending;
+  }
+  private async releaseClaim(record: OperationClaim): Promise<void> {
     const controller = new AbortController(); const deadline = performance.now() + (this.#options.attemptTimeoutMs ?? 60_000);
     const timer = setTimeout(() => controller.abort(), Math.max(0, deadline - performance.now())); timer.unref();
     const check = () => { if (controller.signal.aborted || performance.now() >= deadline) throw new Error('未发送claim清理预算已结束'); };
