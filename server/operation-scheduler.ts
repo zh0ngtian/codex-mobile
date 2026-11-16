@@ -259,7 +259,13 @@ export class OperationScheduler {
         const marked = await this.ledger([record.context], ['transition'], call, () => this.#queue.markPotentialSend(record.id, record.revision, record.claimToken!));
         potential = marked.state === 'uncertain'; if (!potential) return;
         const attempt: SessionDispatchAttempt = { sessionId: rpc.sessionId, requestId: rpc.requestId, attemptId: record.claimToken! };
-        const result = await sessions.dispatchRpc(attempt, rpc.message, call, rpc.epoch); this.assertOpen();
+        const expiresAt = record.control?.expiresAt;
+        const dispatchCall = expiresAt === undefined ? call : { ...call, deadline: Math.min(call.deadline, performance.now() + Math.max(0, expiresAt - Date.now())) };
+        const dispatch = () => sessions.dispatchRpc(attempt, rpc.message, dispatchCall, rpc.epoch);
+        // 原控制期限沿Session/WAL等待传至Local与Relay物理send；结算仍使用本次独立预算。
+        const result = expiresAt === undefined ? await dispatch() : await withRemoteOperation(() => {
+          if (Date.now() >= expiresAt) throw new Error('原控制已过期，禁止迟发');
+        }, dispatch); this.assertOpen();
         if (result.outcome === 'neverSent') {
           let recheck = () => false;
           const valid = await sessions.provesNeverSent(result, attempt, check => { recheck = check; });

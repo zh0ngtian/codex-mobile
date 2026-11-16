@@ -384,3 +384,83 @@ it('真实prove回调后的微任务改attempt在最后transition授权后仍拒
   });
   await scheduler.runOnce(); expect(changed).toBe(true); expect((await f.queue().read(input.id)).state).toBe('uncertain'); expect(f.localMessages.filter(m => m.method === 'turn/start')).toEqual([]);
 });
+
+it.each((['local', 'remote'] as const).flatMap(mode => (['stop', 'approval'] as const).flatMap(kind =>
+  (['wal', 'send', 'clock', 'settle'] as const).map(wait => ({ mode, kind, wait })))))(
+  '$mode $kind控制在mark后$wait真实等待跨过expiresAt：未发送拒绝迟发，已有确定原WAL仍结算', async ({ mode, kind, wait }) => {
+    const f = await setup(); f.options.attemptTimeoutMs = 6000; const scheduler = f.create();
+    const context = mode === 'local' ? f.localContext : f.remoteContext; const sessionId = randomUUID();
+    await scheduler.protocol({ context, sessionId, requestId: randomUUID(), message: { id: 'expiry-init', method: 'initialize', params: { clientInfo: { name: 'expiry-phone', version: '1' } } } });
+    await scheduler.protocol({ context, sessionId, requestId: randomUUID(), message: { method: 'initialized', params: {} } });
+    let epoch: string | undefined;
+    if (kind === 'approval') {
+      const pending = { id: 42, method: 'item/commandExecution/requestApproval', params: { threadId: 'thread', turnId: 'original-turn' } };
+      if (mode === 'local') for (const socket of f.localSockets()) socket.send(JSON.stringify(pending)); else f.sendRemote(pending);
+      await vi.waitFor(async () => { const events = await scheduler.events(context, sessionId, 0); expect(events.requests).toContainEqual(pending); epoch = events.epoch; });
+    }
+    const expiresAt = Date.now() + 900;
+    const input = { ...f.input(context), sessionId, ...(epoch ? { epoch } : {}),
+      message: kind === 'stop' ? { id: 'expiry-stop', method: 'turn/interrupt', params: { threadId: 'thread', turnId: 'original-turn' } } : { id: 42, result: { decision: 'accept' } },
+      control: kind === 'stop' ? { kind: 'stop' as const, turnId: 'original-turn', expiresAt } : { kind: 'approval' as const, turnId: 'original-turn', requestId: `request:${epoch}:42`, expiresAt } };
+    await scheduler.submit(input);
+    let entered = false; let release!: () => void; const gate = new Promise<void>(resolve => { release = resolve; }); cleanup.push(() => release());
+    const actualDispatch = HttpSessions.prototype.dispatchRpc; let dispatchDeadline = Infinity;
+    if (wait !== 'settle') vi.spyOn(HttpSessions.prototype, 'dispatchRpc').mockImplementation(function (this: HttpSessions, ...args) {
+      if (args[0].requestId === input.requestId) {
+        dispatchDeadline = args[2]!.deadline;
+        const session = (this as any).session(sessionId); const method = wait === 'wal' ? 'save' : 'send'; const actual = session[method];
+        vi.spyOn(session, method).mockImplementation(async (...values: any[]) => {
+          if (method === 'save') {
+            const result = await actual.apply(session, values);
+            if (values[0].requestId === input.requestId && values[0].status === 'pending') { entered = true; await gate; }
+            return result;
+          }
+          entered = true; await gate; return actual.apply(session, values);
+        });
+      }
+      return actualDispatch.apply(this, args);
+    });
+    else {
+      const actual = OperationQueue.prototype.settle;
+      vi.spyOn(OperationQueue.prototype, 'settle').mockImplementation(async function (this: OperationQueue, ...args) {
+        if (args[0] === input.id && !entered) { entered = true; await gate; }
+        return actual.apply(this, args);
+      });
+    }
+    const running = scheduler.runOnce(); await until(() => entered);
+    expect((await f.queue().read(input.id)).state).toBe('uncertain');
+    const namespace = createHash('sha256').update(JSON.stringify(['transport-v1', 'remote', context.authorizationKey])).digest('hex');
+    const wal = join(f.root, 'codex-mobile-http', ...(mode === 'remote' ? ['remote', namespace] : []), sessionId, `${input.requestId}.json`);
+    expect(JSON.parse(await readFile(wal, 'utf8')).status).toBe(wait === 'settle' ? 'completed' : 'pending');
+    const clock = wait === 'clock' ? vi.spyOn(Date, 'now').mockReturnValue(expiresAt + 1) : undefined;
+    if (clock) expect(performance.now()).toBeLessThan(dispatchDeadline);
+    else await new Promise(resolve => setTimeout(resolve, Math.max(0, expiresAt - Date.now() + 40)));
+    release(); try { await running; } finally { clock?.mockRestore(); }
+    const messages = mode === 'local' ? f.localMessages : f.remoteMessages;
+    const sent = () => messages.filter(message => kind === 'stop' ? message.method === 'turn/interrupt' : message.id === 42 && !message.method);
+    expect(sent()).toHaveLength(wait === 'settle' ? 1 : 0);
+    expect((await f.queue().read(input.id)).state).toBe(wait === 'settle' ? 'succeeded' : 'uncertain');
+    await scheduler.runOnce(); expect(sent()).toHaveLength(wait === 'settle' ? 1 : 0);
+    expect((await f.queue().read(input.id)).state).toBe(wait === 'settle' ? 'succeeded' : 'uncertain');
+    expect(f.runtime.status().state).toBe('online');
+  });
+
+it('独立SPEC probe：控制在mark之后dispatch等待跨过expiresAt不可迟发', async () => {
+  const f = await setup(); f.options.attemptTimeoutMs = 2000; const scheduler = f.create();
+  const stop = { ...f.input(f.localContext, 'thread', 'turn/interrupt'), control: { kind: 'stop' as const, turnId: 'original-turn', expiresAt: Date.now() + 900 } };
+  stop.message.params = { threadId: 'thread', turnId: 'original-turn' } as any;
+  await scheduler.submit(stop);
+  const dispatch = HttpSessions.prototype.dispatchRpc;
+  let markSeen = false;
+  vi.spyOn(HttpSessions.prototype, 'dispatchRpc').mockImplementation(async function (this: HttpSessions, ...args) {
+    if (args[1].method === 'turn/interrupt') {
+      markSeen = (await f.queue().read(stop.id)).state === 'uncertain';
+      await new Promise(resolve => setTimeout(resolve, Math.max(0, stop.control.expiresAt - Date.now() + 40)));
+    }
+    return dispatch.apply(this, args);
+  });
+  await scheduler.runOnce();
+  console.log('SPEC_EXPIRY_OBSERVATION', JSON.stringify({ markSeen, expired: Date.now() >= stop.control.expiresAt, sent: f.localMessages.filter(m => m.method === 'turn/interrupt'), state: (await f.queue().read(stop.id)).state }));
+  expect(markSeen).toBe(true);
+  expect(f.localMessages.filter(m => m.method === 'turn/interrupt')).toEqual([]);
+});
