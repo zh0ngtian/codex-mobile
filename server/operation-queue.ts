@@ -3,6 +3,7 @@ import { lstat, open, rename, unlink } from 'node:fs/promises';
 import { createHash, randomUUID } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import { TextDecoder, types } from 'node:util';
+import { rpcSignatureInput, rpcControlRequestKey } from './rpc-replay.js';
 import { PrivateStore } from './remote/private-store.js';
 
 /** 仅可信网关内部构造；businessKey只用于归组，授权始终由回调独立核验。 */
@@ -14,9 +15,10 @@ export type OperationContext = {
   target: { environmentId: string; installationId: string }; generation: string;
 };
 export type OperationControl = { kind: 'stop'; turnId: string; expiresAt: number } | { kind: 'approval'; turnId: string; requestId: string; expiresAt: number };
+export interface OperationRpcReceipt { sessionId: string; requestId: string; signature: string }
 export interface OperationInput {
   id: string; context: OperationContext; conversationId: string;
-  body: unknown; settings: unknown; attachmentRefs: string[]; memoryOnly?: false; control?: OperationControl;
+  body: unknown; settings: unknown; attachmentRefs: string[]; memoryOnly?: false; control?: OperationControl; rpcReceipt?: OperationRpcReceipt;
 }
 export type OperationState = 'queued' | 'claimed' | 'uncertain' | 'failed' | 'succeeded' | 'cancelled';
 /** 可信授权器捕获完整上下文及真实权限版本；同步只读断言失效即抛错，禁止异步。
@@ -33,7 +35,7 @@ export interface OperationRecoveryGroup {
 export interface OperationRecord extends OperationReceipt {
   signature: string; context: OperationContext; conversationId: string;
   body?: unknown; settings?: unknown; attachmentRefs?: string[]; control?: OperationControl;
-  claimToken?: string; claimPid?: number; failure?: 'control-expired';
+  claimToken?: string; claimPid?: number; failure?: 'control-expired'; rpcReceipt?: OperationRpcReceipt;
 }
 interface Ledger { version: 1; gatewayId: string; nextOrder: number; records: OperationRecord[] }
 export class OperationQueueError extends Error {
@@ -67,6 +69,30 @@ function compact(record: OperationRecord): void { delete record.body; delete rec
 function terminal(record: OperationRecord): boolean { return ['succeeded', 'cancelled'].includes(record.state) || record.failure === 'control-expired'; }
 function controlValid(value: unknown): value is OperationControl {
   return object(value) && shape(value, value.kind === 'stop' ? ['kind', 'turnId', 'expiresAt'] : ['kind', 'turnId', 'requestId', 'expiresAt']) && ['stop', 'approval'].includes(String(value.kind)) && text(value.turnId) && Number.isSafeInteger(value.expiresAt) && Number(value.expiresAt) > 0 && (value.kind !== 'approval' || text(value.requestId));
+}
+function rpcReceiptValid(value: unknown): value is OperationRpcReceipt {
+  const uuid = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+  return shape(value, ['sessionId', 'requestId', 'signature']) && typeof value.sessionId === 'string' && uuid.test(value.sessionId) && value.sessionId !== 'c0dec000-0000-4000-8000-000000000002' && typeof value.requestId === 'string' && uuid.test(value.requestId) && typeof value.signature === 'string' && /^[a-f0-9]{64}$/.test(value.signature);
+}
+function rpcBodyValid(value: unknown): value is Record<string, unknown> & { message: { method?: string }; epoch?: string } {
+  if (!shape(value, ['kind', 'sessionId', 'requestId', 'message', 'epoch', 'initialization']) || value.kind !== 'rpc-v1' || !object(value.message) || (typeof value.message.method === 'string' && (value.message.method.startsWith('mobile/sidechat/') || ['initialize', 'initialized', 'rpc.ping', 'rpc.pong'].includes(value.message.method))) || (value.message.method !== undefined && typeof value.message.method !== 'string') || (value.epoch !== undefined && !text(value.epoch))) return false;
+  if (value.initialization !== undefined) {
+    const init = value.initialization;
+    if (!shape(init, ['message', 'notification']) || !object(init.message) || init.message.method !== 'initialize' || !['string', 'number'].includes(typeof init.message.id) ||
+      (init.notification !== undefined && (!object(init.notification) || init.notification.method !== 'initialized' || init.notification.id !== undefined))) return false;
+  }
+  return true;
+}
+function rpcHash(value: { message: { method?: string }; epoch?: string }): string { return createHash('sha256').update(rpcSignatureInput(value.message, value.epoch)).digest('hex'); }
+function rpcControlMatches(value: unknown, control: OperationControl | undefined, conversationId: string): boolean {
+  if (!control) return true;
+  if (!rpcBodyValid(value)) return false;
+  const message = value.message as Record<string, unknown>; const params = object(message.params) ? message.params : {};
+  return control.kind === 'stop' ? message.method === 'turn/interrupt' && params.turnId === control.turnId && params.threadId === conversationId :
+    message.method == null && rpcControlRequestKey(message.id, value.epoch) === control.requestId && !!value.epoch && (params.turnId === undefined || params.turnId === control.turnId);
+}
+function rpcBodyMatches(value: unknown, rpc: OperationRpcReceipt): boolean {
+  return rpcBodyValid(value) && value.sessionId === rpc.sessionId && value.requestId === rpc.requestId && rpcHash(value) === rpc.signature;
 }
 function receipt(record: OperationRecord): OperationReceipt { return { id: record.id, revision: record.revision, receiveOrder: record.receiveOrder, state: record.state }; }
 // 在原预算内为全部未终态项预留完整生命周期；不落额外字段、不放大上限。
@@ -109,12 +135,13 @@ export class OperationQueue {
         if (!shape(value, ['version', 'gatewayId', 'nextOrder', 'records']) || value.version !== 1 || value.gatewayId !== this.#gatewayId || !Number.isSafeInteger(value.nextOrder) || Number(value.nextOrder) < 1 || !Array.isArray(value.records)) fail();
         const ids = new Set<string>(); const orders = new Set<number>();
         for (const record of value.records) {
-          if (!shape(record, ['id', 'revision', 'receiveOrder', 'state', 'signature', 'context', 'conversationId', 'body', 'settings', 'attachmentRefs', 'control', 'claimToken', 'claimPid', 'failure']) || !text(record.id) || ids.has(record.id) || !contextValid(record.context) || record.context.gatewayId !== this.#gatewayId ||
+          if (!shape(record, ['id', 'revision', 'receiveOrder', 'state', 'signature', 'context', 'conversationId', 'body', 'settings', 'attachmentRefs', 'control', 'claimToken', 'claimPid', 'failure', 'rpcReceipt']) || !text(record.id) || ids.has(record.id) || !contextValid(record.context) || record.context.gatewayId !== this.#gatewayId ||
             !text(record.conversationId) || !Number.isSafeInteger(record.revision) || Number(record.revision) < 1 || !Number.isSafeInteger(record.receiveOrder) ||
             Number(record.receiveOrder) < 1 || Number(record.receiveOrder) >= Number(value.nextOrder) || orders.has(Number(record.receiveOrder)) ||
             !['queued', 'claimed', 'uncertain', 'failed', 'succeeded', 'cancelled'].includes(String(record.state)) || typeof record.signature !== 'string' || !/^[a-f0-9]{64}$/.test(record.signature)) fail();
           if (!terminal(record as unknown as OperationRecord) && (!Object.hasOwn(record, 'body') || !Object.hasOwn(record, 'settings') || !Array.isArray(record.attachmentRefs) || !record.attachmentRefs.every(text))) fail();
           if (terminal(record as unknown as OperationRecord) && ['body', 'settings', 'attachmentRefs'].some(key => Object.hasOwn(record, key))) fail();
+          if (record.rpcReceipt !== undefined && (!rpcReceiptValid(record.rpcReceipt) || (!terminal(record as unknown as OperationRecord) && (!rpcBodyMatches(record.body, record.rpcReceipt) || !rpcControlMatches(record.body, record.control as OperationControl | undefined, record.conversationId))))) fail();
           if (record.control !== undefined && !controlValid(record.control)) fail();
           if (record.failure !== undefined && (record.failure !== 'control-expired' || record.state !== 'failed' || !record.control)) fail();
           const attempted = ['claimed', 'uncertain', 'failed'].includes(String(record.state)) && !terminal(record as unknown as OperationRecord);
@@ -192,23 +219,30 @@ export class OperationQueue {
   async submit(input: OperationInput): Promise<OperationReceipt> {
     if (!input || !contextValid(input.context)) fail('invalid-input', 400);
     if (input.memoryOnly !== undefined && input.memoryOnly !== false) fail('memory-only', 400);
-    if (!shape(input, ['id', 'context', 'conversationId', 'body', 'settings', 'attachmentRefs', 'memoryOnly', 'control'])) fail('invalid-input', 400);
+    if (!shape(input, ['id', 'context', 'conversationId', 'body', 'settings', 'attachmentRefs', 'memoryOnly', 'control', 'rpcReceipt'])) fail('invalid-input', 400);
     let snapshot: OperationInput;
     try { snapshot = clone(input); } catch { fail('invalid-input', 400); }
     if (!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(snapshot.id) || !contextValid(snapshot.context) || snapshot.context.gatewayId !== this.#gatewayId ||
-      !text(snapshot.conversationId) || !Object.hasOwn(snapshot, 'body') || !Object.hasOwn(snapshot, 'settings') || !Array.isArray(snapshot.attachmentRefs) || !snapshot.attachmentRefs.every(text) || (snapshot.control !== undefined && !controlValid(snapshot.control))) fail('invalid-input', 400);
-    const signature = createHash('sha256').update(canonical(snapshot)).digest('hex');
+      !text(snapshot.conversationId) || !Object.hasOwn(snapshot, 'body') || !Object.hasOwn(snapshot, 'settings') || !Array.isArray(snapshot.attachmentRefs) || !snapshot.attachmentRefs.every(text) || (snapshot.control !== undefined && !controlValid(snapshot.control)) || (snapshot.rpcReceipt !== undefined && (!rpcReceiptValid(snapshot.rpcReceipt) || !rpcBodyMatches(snapshot.body, snapshot.rpcReceipt) || !rpcControlMatches(snapshot.body, snapshot.control, snapshot.conversationId)))) fail('invalid-input', 400);
+    // initialize/initialized为网关取得的传输恢复快照，不能使原业务UUID随重连缓存变化。
+    const signed = clone(snapshot);
+    if (signed.rpcReceipt && object(signed.body)) delete signed.body.initialization;
+    const signature = createHash('sha256').update(canonical(signed)).digest('hex');
     return this.transaction(async (ledger, authorize) => {
       const old = ledger.records.find(value => value.id === snapshot.id);
       if (old) { await authorize(old, 'submit'); if (old.signature !== signature) fail('uuid-conflict', 409); return { value: receipt(old) }; }
       const record: OperationRecord = { id: snapshot.id, signature, context: snapshot.context, conversationId: snapshot.conversationId, body: snapshot.body,
-        settings: snapshot.settings, attachmentRefs: snapshot.attachmentRefs, revision: 1, receiveOrder: ledger.nextOrder, state: 'queued', ...(snapshot.control ? { control: snapshot.control } : {}) };
+        settings: snapshot.settings, attachmentRefs: snapshot.attachmentRefs, revision: 1, receiveOrder: ledger.nextOrder, state: 'queued', ...(snapshot.control ? { control: snapshot.control } : {}), ...(snapshot.rpcReceipt ? { rpcReceipt: snapshot.rpcReceipt } : {}) };
       await authorize(record, 'submit'); ledger.nextOrder++; ledger.records.push(record);
       return { value: receipt(record), changed: true };
     });
   }
   async read(id: string): Promise<Readonly<OperationRecord>> {
     return this.transaction(async (ledger, authorize) => { const record = this.find(ledger, id); await authorize(record, 'read'); return { value: clone(record) }; });
+  }
+  /** 可信进程按UUID定位原context；与inventory一样不交付正文或传输收据。 */
+  async locate(id: string): Promise<OperationContext> {
+    return this.transaction(async ledger => ({ value: clone(this.find(ledger, id).context) }));
   }
   /** 内部重启发现，不执行或授权整批业务；不向公开路由交付原身份或正文。 */
   async inventory(): Promise<OperationRecoveryGroup[]> {
@@ -242,6 +276,11 @@ export class OperationQueue {
       const record = this.find(ledger, id); await authorize(record, 'edit');
       if (record.revision !== revision) fail('revision-conflict', 409); if (record.state !== 'queued') fail('not-editable', 409);
       if (!Object.hasOwn(snapshot, 'body') || (snapshot.attachmentRefs && !snapshot.attachmentRefs.every(text))) fail('invalid-input', 400);
+      if (record.rpcReceipt) {
+        const value = snapshot.body; const original = record.body as Record<string, unknown>;
+        if (!rpcBodyValid(value) || value.sessionId !== record.rpcReceipt.sessionId || value.requestId !== record.rpcReceipt.requestId || value.epoch !== original.epoch || !rpcControlMatches(value, record.control, record.conversationId) || canonical(value.initialization ?? null) !== canonical(original.initialization ?? null)) fail('rpc-binding-conflict', 409);
+        record.rpcReceipt.signature = rpcHash(value);
+      }
       record.body = snapshot.body; if (Object.hasOwn(snapshot, 'settings')) record.settings = snapshot.settings;
       if (snapshot.attachmentRefs) record.attachmentRefs = snapshot.attachmentRefs; record.revision++;
       return { value: receipt(record), changed: true };
@@ -256,7 +295,7 @@ export class OperationQueue {
     });
   }
   /** 本方法只提供ledger取项边界；调用者仍须在实际传输前markPotentialSend。 */
-  async claimNext(businessKey: string): Promise<OperationRecord | null> {
+  async claimNext(businessKey: string, options: { isRead?: (record: Readonly<OperationRecord>) => boolean; excluded?: ReadonlySet<string>; controlOnly?: boolean } = {}): Promise<OperationRecord | null> {
     return this.transaction(async (ledger, authorize) => {
       let changed = false; let denied: unknown;
       const allowed = async (record: OperationRecord, action: Action) => {
@@ -281,14 +320,18 @@ export class OperationQueue {
       const heads = new Set<string>(); const controlHeads = new Set<string>(); const eligible: OperationRecord[] = [];
       for (const record of records) {
         if (terminal(record)) continue;
+        if (!record.control && options.isRead?.(clone(record)) === true) {
+          if (record.state === 'queued' && !options.excluded?.has(record.id)) eligible.push(record);
+          continue;
+        }
         if (record.control) {
           if (controlHeads.has(record.conversationId)) continue;
-          controlHeads.add(record.conversationId); if (record.state === 'queued') eligible.push(record); continue;
+          controlHeads.add(record.conversationId); if (record.state === 'queued' && !options.excluded?.has(record.id)) eligible.push(record); continue;
         }
         if (controlBlocks.has(record.conversationId) || heads.has(record.conversationId)) continue;
-        heads.add(record.conversationId); if (record.state === 'queued') eligible.push(record);
+        heads.add(record.conversationId); if (record.state === 'queued' && !options.excluded?.has(record.id)) eligible.push(record);
       }
-      const prioritized = [...eligible.filter(record => record.control), ...eligible.filter(record => !record.control)];
+      const prioritized = [...eligible.filter(record => record.control), ...eligible.filter(record => !record.control)].filter(record => options.controlOnly === undefined || !!record.control === options.controlOnly);
       let selected: OperationRecord | undefined;
       for (const candidate of prioritized) { if (await allowed(candidate, 'claim')) { selected = candidate; break; } }
       if (!selected) { if (denied) throw denied; return { value: null, changed }; }
@@ -320,12 +363,18 @@ export class OperationQueue {
     });
   }
   /** 仅可信传输对账入口，不接受客户端“未发送”声明；false/异常保留待确认。 */
-  async confirmNeverSent(id: string, revision: number, token: string, prove: (record: Readonly<OperationRecord>) => Promise<boolean>): Promise<OperationReceipt> {
+  async confirmNeverSent(id: string, revision: number, token: string, prove: (record: Readonly<OperationRecord>) => boolean | Promise<boolean>): Promise<OperationReceipt> {
     return this.transaction(async (ledger, authorize) => {
       const record = this.find(ledger, id); await authorize(record, 'transition'); this.claimed(record, revision, token);
       if (record.state !== 'uncertain') fail('invalid-transition', 409);
-      if (typeof prove !== 'function' || await prove(clone(record)) !== true) fail('not-proven-never-sent', 409);
-      await authorize(record, 'transition'); record.state = 'queued'; record.revision++; delete record.claimToken; delete record.claimPid;
+      if (typeof prove !== 'function') fail('not-proven-never-sent', 409);
+      const proof = prove(clone(record));
+      if ((typeof proof === 'boolean' ? proof : await proof) !== true) fail('not-proven-never-sent', 409);
+      await authorize(record, 'transition');
+      // 新scheduler传同步真实proof-fence：最后一次授权await不能使原attempt证明过期。
+      // 既有异步prove入口保持兼容，不在锁内重复启动外部恢复。
+      if (typeof proof === 'boolean' && prove(clone(record)) !== true) fail('not-proven-never-sent', 409);
+      record.state = 'queued'; record.revision++; delete record.claimToken; delete record.claimPid;
       return { value: receipt(record), changed: true };
     });
   }

@@ -15,7 +15,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import WebSocket from "ws";
 import { TurnChangeHistory } from "./turn-change-history.js";
 import { compactTurnDetails, compactTurnCommentary, turnCommentaryRequest, validTurnCommentaryParams } from "./turn-details.js";
-import { isNavigationResume } from "./rpc-replay.js";
+import { isNavigationResume, canonicalRpc as canonical, rpcSignatureInput } from "./rpc-replay.js";
 import { InlineImages } from "./inline-images.js";
 import { MessageWebCitations } from "./web-citations.js";
 import { MessageTimestamps } from "./message-timestamps.js";
@@ -107,6 +107,11 @@ const READ_ONLY_METHODS = new Set([
   "fs/readFile", "mobile/turns/details", "mobile/turns/commentary",
 ]);
 
+/** 与Session WAL共用分类；调用方的readOnly标记不参与判断。 */
+export function isReadOnlyRpc(message: RpcMessage): boolean {
+  return typeof message.method === 'string' && (READ_ONLY_METHODS.has(message.method) || isNavigationResume(message));
+}
+
 class HttpError extends Error {
   constructor(public status: number, message: string, public code = -32000) { super(message); }
 }
@@ -140,10 +145,14 @@ async function readStoredOperation(root: string, sessionId: string, requestId: s
  * 404仅表示原namespace缺失记录，绝不是neverSent证明。 */
 export async function readOriginalOperation(options: {
   gatewayCodexHome: string; resolver: TargetResolver; context: OperationContext;
-  sessionId: string; requestId: string; call: SessionCallOptions;
+  sessionId: string; requestId: string; call: SessionCallOptions; expected?: { message: RpcMessage; epoch?: string }; expectedSignature?: string;
 }) {
   // 第一个await前固定完整原绑定和原预算；保留userId存在性，不能随调用者异步换绑。
   const { gatewayCodexHome, resolver, sessionId, requestId } = options;
+  const expectedSignature = options.expectedSignature;
+  const expected = options.expected ? structuredClone(options.expected) : undefined;
+  if (expectedSignature !== undefined && !/^[a-f0-9]{64}$/.test(expectedSignature)) throw new TypeError('需要合法原WAL签名');
+  const expectedHash = expected ? createHash('sha256').update(rpcSignatureInput(expected.message, expected.epoch)).digest('hex') : undefined;
   const context = structuredClone(options.context);
   if (context.mode === 'remote') { Object.freeze(context.managed); Object.freeze(context.target); }
   Object.freeze(context);
@@ -165,6 +174,7 @@ export async function readOriginalOperation(options: {
   // 包括guard包装Promise在内的最后await之后，再同步核验两道真实fence与原父预算。
   originalFence(); finalFence(); assertCall(call); assertRemoteOperation();
   if (!entry) throw new HttpError(404, 'Operation not found');
+  if ((expectedHash && entry.signature !== expectedHash) || (expectedSignature && entry.signature !== expectedSignature)) throw new HttpError(409, 'Original operation signature conflict');
   return { status: entry.status, ...(entry.message ? { message: entry.message } : {}) };
 }
 
@@ -172,12 +182,6 @@ type Event = { cursor: number; message: RpcMessage; bytes: number };
 type Snapshot = { id: string; entries: Event[]; bytes: number; cursor: number; expiresAt: number };
 type SnapshotPage = { snapshot: Snapshot; start: number };
 type Waiting = { resolve: (message: RpcMessage) => void; reject: (error: Error) => void };
-
-function canonical(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
-  if (value && typeof value === "object") return `{${Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => `${JSON.stringify(k)}:${canonical(v)}`).join(",")}`;
-  return JSON.stringify(value) ?? "null";
-}
 
 // Bound arbitrary tool results as well as streaming fields before retaining them.
 function bounded(value: any, depth = 0, budget = { remaining: 96 * 1024 }): any {
@@ -800,8 +804,8 @@ class Session {
     };
     this.touch(); await this.loadPromise;
     check();
-    const signature = createHash("sha256").update(canonical({ message, ...(!message.method && epoch ? { epoch } : {}) })).digest("hex");
-    const durable = !this.memoryOnly && (!message.method || (message.method !== "initialize" && message.id != null && !READ_ONLY_METHODS.has(message.method) && !isNavigationResume(message)));
+    const signature = createHash("sha256").update(rpcSignatureInput(message, epoch)).digest("hex");
+    const durable = !this.memoryOnly && (!message.method || (message.method !== "initialize" && message.id != null && !isReadOnlyRpc(message)));
     const stored = this.memoryOnly ? undefined : await this.storedOperation(requestId);
     let previous = this.operations.get(requestId) ?? stored;
     if (previous && previous.signature !== signature) throw new HttpError(409, "Request ID already used with different content");
@@ -1336,7 +1340,7 @@ export class HttpSessions {
   }
 
   /** 可用于ledger.confirmNeverSent回调；必须保留本实例的原结果及原attempt对象，同对象再次执行使旧证明失效。 */
-  async provesNeverSent(result: SessionDispatchResult, attempt: SessionDispatchAttempt): Promise<boolean> {
+  async provesNeverSent(result: SessionDispatchResult, attempt: SessionDispatchAttempt, capture?: (recheck: () => boolean) => void): Promise<boolean> {
     const proof = this.dispatchProofs.get(result);
     const originalAttempt = { ...attempt };
     if (!proof || proof.attempt !== attempt || proof.binding !== canonical(originalAttempt)) return false;
@@ -1348,10 +1352,33 @@ export class HttpSessions {
     };
     try {
       const valid = await this.withDispatchProofCall(proof.call, authorize => { authorization = authorize; return check(); });
-      return valid && check();
+      if (!valid || !check()) return false;
+      // 仅可信ledger CAS接线捕获；不能缓存boolean代替原对象及真实fence的最终复核。
+      capture?.(check);
+      return check();
     } catch { return false; }
   }
 
+  /** 内部普通Session的协议恢复；只重建原初始化，不产生业务ledger或替换审批epoch。 */
+  async initializeQueuedSession(sessionId: string, initialization: { message: RpcMessage; notification?: RpcMessage }, call: SessionCallOptions): Promise<void> {
+    const snapshot = structuredClone(initialization); let authorization: (() => void) | undefined;
+    if (snapshot.message.method !== 'initialize' || snapshot.message.id == null || (snapshot.notification && snapshot.notification.method !== 'initialized') || sessionId === SIDECHAT_SESSION_ID) throw new TypeError('需要原Session已完成的初始化快照');
+    await this.withCall(call, async (call, authorize) => {
+      authorization = authorize; const session = this.session(sessionId, authorize);
+      if (!session.ready || !session.open) {
+        const result = await session.rpc(randomUUID(), snapshot.message, undefined, { ...call, guardLocalSend: true });
+        if (result.error != null) throw result.error;
+        if (snapshot.notification) await session.rpc(randomUUID(), snapshot.notification, undefined, { ...call, guardLocalSend: true });
+      }
+    });
+    authorization?.(); assertCall(call); assertRemoteOperation();
+  }
+  /** 与内部调度的协议/审批共用同一真实Session；公开路由保持原实现。 */
+  async readEvents(sessionId: string, after: number, call: SessionCallOptions) {
+    let authorization: (() => void) | undefined;
+    const result = await this.withCall(call, async (_call, authorize) => { authorization = authorize; return this.session(sessionId, authorize).events(after); });
+    authorization?.(); assertCall(call); assertRemoteOperation(); return result;
+  }
   async sidebarRpc(message: RpcMessage, call: SessionCallOptions = sessionCall()): Promise<RpcMessage> {
     return this.withCall(call, async call => {
       if (message.id == null || !validSidebarParams(message.method!, message.params)) throw new HttpError(400, "Invalid sidebar parameters");

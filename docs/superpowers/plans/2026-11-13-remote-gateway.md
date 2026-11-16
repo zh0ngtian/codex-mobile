@@ -351,3 +351,15 @@ Task3d.4完成记录：Task3d.4统计失效装配已完成源码验收：冻结 
 本步仅源码，不改 claim/可信读分类/FollowUps/公开入口或 Runtime；不访问官方或真实凭据，不构建客户端、不 push/main、不发布部署。唯一 scheduler、旧 FollowUps 迁移、公开完整消费者/host/index 及整个4b.2继续待实现；4c/Task5/6不勾选。最终固定源码验证与原失败记录见本轮私有实施报告。
 
 4b.2f最终源码验收：仅内部无正文inventory完成，原context/全部原id和接收顺序保留；两审各独立16项及SPEC两组补充断言通过，历史RED/GREEN封存。整个4b.2继续未完成，下一步接实际调度和旧FollowUps唯一owner迁移，再完成目标消费者及公开入口；不构建客户端、不发布或部署。
+
+
+### 4b.2g：内部唯一 RPC 调度与真实 Session 闭环（本地实现，待独立双审）
+
+- 修改基线：已推送 main `ba1b2aaf41c6822e4eb89ce45d614c463e305000`；复用已有独立 worktree，不接公开 mode/host/index，不迁移旧 FollowUps，不启动双 owner。
+- 新增单一具体 OperationScheduler：完整原 RPC/context/settings/附件快照沿原 ledger 耐久后 ACK；原业务键/会话跨 mode FIFO、控制专用槽/原 turn/request 绑定、可信读单一分类与指定 queued 导航取消。旧未知正文默认写屏障，excluded 只限制本轮尝试，不能绕过普通写/控制 head。
+- 原 inventory→逐组锁外真实授权→原 id 正文/原 WAL→CAS/耐久潜在发送→实际 HttpSessions.dispatchRpc。Remote 只从同一真实 Resolver/Runtime 取当前 handle、保留完整原身份及原 WAL namespace；缺 consumer 明确失败，绝无 Local 回落。同代离线能只读对账，unknown/pending/failed 不重放；实际 RPC error 保留原错误及 failed 屏障，重复相同失败不反复 settle。
+- 零发送证明保留原结果/attempt/invocation/Session/namespace/预算/真实授权，异步证明恢复在锁外，CAS 内同步复核。后续执行用新有界真实预算，原提交取消不删除已 ACK 写。前台 ACK/取消/结果最后 await 后核原授权/父预算；close 先固定 Promise，取消并等所有自有入口/scan/逻辑流实际结束，不关共享 Relay，不迟到发送或 ACK。
+- 同一 HttpSessions 内 protocol/events 提供真实普通 Session initialize/initialized 与原 pending/epoch 审批（数字 id 按 typed-id/epoch 控制键匹配，实际消息保留原类型），协议不入业务 ledger；已实际成功原协议快照仅作为同正文传输恢复元数据，容量照实计费、终态清理。rpcReceipt 可选但存在即严格校验 Session/requestId/WAL hash，原提交签名计入；终态按最小原定位/hash取已授权原 WAL，旧无字段记录兼容不猜。恢复快照变化不影响业务 UUID 幂等，重交不覆盖原快照；真正原业务变化409。queued 合法编辑冻结 Session/requestId/epoch/初始化/控制绑定，实际发送 hash 同事务更新，原 UUID 提交指纹不变。
+- 真 PrivateStore/Runtime/loopback Relay/Local WS/Session WAL 主闭环 TDD 覆盖离线恢复、跨 mode 顺序/其他会话继续、控制优先/过期/编辑、可信读、unknown 对账与 WAL 复用/替换防串、真实 neverSent/锁外恢复、原 generation 显式 resume、无手机重建、普通 Local/Remote Session 与审批、取消/微任务撤权/实际继承失效父 ALS、双实例 CAS、close 前台及发送等待、坏盘和既有 API/容量。首次失败及精确 overlay/hash/argv/cwd/env/exit/full logs 保留私有短根；最后固定 SHA git archive 无 overlay 亲跑必要相关服务端回归、双 strict/build:server，以本轮小报告为准。
+
+本步状态为本地实现与限定验证，待 root 实读→全新 SPEC→全新 QUALITY；不勾整个4b.2。下一闭环继续旧 Local FollowUps 正常升级：公共 id 与 operationId 区分，原 HOSTED_SESSION_ID+operationId 对账，fingerprint/revision/顺序/restoreState/状态/附件/settings保留，手动retry/steer公共id稳定而新upstreamUUID；缺新字段不能全量暂停，Local404兼容不扩 Remote。公开消费者/host/index 与唯一 owner 激活、4c/Task5/6仍未完成；本步不访问官方/真实凭据、不构建客户端、不 push/main、不发布部署。

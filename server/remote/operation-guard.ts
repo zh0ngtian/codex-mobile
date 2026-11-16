@@ -42,3 +42,8 @@ export function withRemoteOperation<T>(assert: () => void, operation: () => Prom
     }
   });
 }
+
+/** ledger耐久ACK后的新执行有独立真实预算，不继承已结束的提交调用。 */
+export function withIndependentRemoteOperation<T>(assert: () => void, operation: () => Promise<T>): Promise<T> {
+  return guards.run([], () => withRemoteOperation(assert, operation));
+}
