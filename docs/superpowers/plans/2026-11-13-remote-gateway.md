@@ -372,7 +372,7 @@ Task3d.4完成记录：Task3d.4统计失效装配已完成源码验收：冻结 
 
 4b.2g最终源码验收：固定6120f3bb，11文件517项（专项70项）、双strict/build:server与原SPEC→原QUALITY复审通过，见[验收记录](evidence/2026-11-16-remote-rpc-scheduler-validation.json)。F1/Q1与全部首次失败保留；原正确探针永久回归，精确未发送清理和同轮不重领已验证。内部RPC调度闭环完成，下一步仍为旧FollowUps及完整消费者/公开装配，整个4b.2/4c/5/6未完成；仅源码，不构建客户端、不发布部署。
 
-### 4b.2h：内部 FollowUps 唯一 owner 接管（实现及定向验证完成，待最终验收和双审）
+### 4b.2h：内部 FollowUps 唯一 owner 接管（QUALITY Q1/Q2补修待固定验证及原双审复验）
 
 修改基线为 `64d7519ad0c51a548ed8de50b7fbc389f3723684`。复用现有 OperationQueue/PrivateStore 和 OperationScheduler；可选可信注入的 FollowUps.open 在任何旧订阅、timer 或首次 tick 前核 canonical 源 home 与显式 gatewayCodexHome，一事务导入完整 v1 记录及 marker，原文件保全。ledger 为状态/revision/顺序/context 唯一真相，元数据仅保必要追问字段。原公共 id 与 upstream operationId 分离，指纹保留编辑前原值，终态按实际旧收据保全；retry/steer 公共 id 稳定而新 upstream UUID。marker 已存在不会因保全源文件后来变化重导，来源/context冲突、非法 v1、普通 RPC UUID 碰撞、容量和同步故障明确拒绝，不启动旧 owner。
 
@@ -383,3 +383,9 @@ Task3d.4完成记录：Task3d.4统计失效装配已完成源码验收：冻结 
 完成实施后 STOP，由 root 实读再串行 fresh SPEC→fresh QUALITY；未勾整个4b.2/4c/5/6，未接公开 gateway/host/index 或完整消费者，未访问官方/真实用户队列凭据，未构建客户端或发布部署。仅在本分支提交，由 root 后续按仓库规则整合。
 
 4b.2h SPEC F1补修（基线3cfa91b0）：首轮fresh SPEC真实旧HTTP enqueue/cancel形成带附件计数且已compact正文的cancelled，正常升级被重算空数量而503；原591项/双strict/build记录保留，不视作双审通过。正确原探针1340字节逐字永久保留，新私有根原候选实际RED后仅改单处导入校验：终态缺省计数保持缺省，实际合法非负safeint保留，完整原payload才比较真实数量，非终态仍严格。核真实旧成功finish最小sent不带计数，另补真实cancelled/sent/queued同批不被阻、公共id/UUID/指纹/revision/顺序、幂等/冲突和重开、非法计数及完整payload不一致拒绝。新固定SHA无overlay必要回归/双strict/build与原始命令/环境/hash另封存，待root实读→原SPEC复验→fresh QUALITY；不接公开装配、不勾整个4b.2/4c/5/6，不push/merge/发布部署。
+
+4b.2h QUALITY Q1/Q2补修（基线`8edf86a0181ae0e4b9f7289882988866c445128d`）：F1的594项/双strict/build及原SPEC复验已通过，fresh QUALITY仍发现准备receipt耐久新rev后最终预算拒绝丢精确claim，以及真实旧failed-steer→retry清method却保restoreState导致导入后load503。产品仅两文件：准备update捕获新可能版本，放弃后按新→旧原fullcontext/id/rev/token独立授权claimed CAS清理，IO/撤权保留原事实跨同PID重建；旧restoreState独立原枚举，目的followUpValid在导入marker前复用，非法整批不污染原ledger/源文件。既有unknown/活owner/终态、potential-send/neverSent与最后await保护不减。
+
+原两项3518字节合块和增强Q1 2439字节块/完整原探针保全私有工件与SHA记录。一次原Q1意外sendsBefore=1后，固定8次观察未复现；随后一次受控真实inventory owner.sync抢全局门闩而receipt在原deadline内正常发送，证明原故障注入不唯一归属，不把历史首份已被同名outcome覆盖的失败追认为已证原因。经root技术确认，永久两Q1只加测试专用ALS事务条件，700/850及行为/计数断言保持；共享Q2 1556字节块仍逐字保留。新边界同样精确区分准备/清理事务；正确门闩对原8edf再RED→当前GREEN，未耐久、IO/授权恢复、同PID重建、其他owner/uncertain/终态与目的拒绝/旧实际后续状态均覆盖。首次setup语法错误、夹具收尾/取消时点/原fence与API进入误判、poison同轮storage/reopen-required两个既有503表示及全部原失败如实封存；不改产品预算或原断言掩盖。
+
+新固定SHA无overlay相关回归/双strict/buildserver及完整argv/cwd/env/exit/stdoutstderr/sourcehash由`e4b2h-qfix`私有报告封存。实施后STOP→root工件审计→原SPEC→原QUALITY依次复验；不勾h或整个4b.2/4c/5/6，不启公开装配，不push/merge/main或客户端构建/发布部署。

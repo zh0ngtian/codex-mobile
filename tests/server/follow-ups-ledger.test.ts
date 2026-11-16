@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawn } from 'node:child_process';
 import { performance } from 'node:perf_hooks';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { afterEach, expect, it, vi } from 'vitest';
 import { WebSocketServer } from 'ws';
 import { FollowUps } from '../../server/follow-ups.js';
@@ -15,7 +16,17 @@ import { TargetResolver } from '../../server/targets.js';
 import { withRemoteOperation } from '../../server/remote/operation-guard.js';
 
 const cleanup: (() => unknown)[] = [];
-afterEach(async () => { for (const close of cleanup.splice(0).reverse()) await close(); });
+let qualityEvidence = 0;
+afterEach(async ({ task }) => {
+  if (task.name.startsWith('QUALITY Q')) {
+    const sequence = ++qualityEvidence;
+    for (const name of ['Q1-outcome.json', 'Q1-durable-preparation.json', 'Q2-outcome.json', 'Q2-real-old-source.json']) {
+      const bytes = await readFile(join(process.env.HOME!, name)).catch(() => undefined);
+      if (bytes) await writeFile(join(process.env.HOME!, `QUALITY-${sequence}-${name}`), bytes);
+    }
+  }
+  for (const close of cleanup.splice(0).reverse()) await close();
+});
 const canonical = (v: any): string => Array.isArray(v) ? '[' + v.map(canonical).join(',') + ']' : v && typeof v === 'object' ? '{' + Object.entries(v).sort(([a], [b]) => a.localeCompare(b)).map(([k, x]) => `${JSON.stringify(k)}:${canonical(x)}`).join(',') + '}' : JSON.stringify(v);
 function legacy(state = 'queued', overrides: any = {}) {
   const content = { threadId: 'thread', inputText: '原正文', text: '原预览', attachmentCount: 0, extraInput: [], settings: { model: '原模型' } };
@@ -462,4 +473,194 @@ it('F1兼容：终态计数仍拒绝负数、非整数、非number和不完整�
   for (const record of records) {
     const f = await fixture([record]); await expect(f.open()).rejects.toThrow('旧追问附件数量无效'); expect(await readFile(f.path, 'utf8')).toBe(f.source);
   }
+});
+
+// 原Q1及增强Q1仅纠正事务门闩；原Q2保持逐字，原完整探针/块另封存。
+import { OperationQueue } from '../../server/operation-queue.js';
+// 原全局sync门闩可被并发inventory抢占；仅标识本次追问准备事务，原预算与断言不变。
+function receiptPreparationScope() {
+  const scope = new AsyncLocalStorage<{ id: string; revision: number }>();
+  const original = OperationQueue.prototype.changeFollowUp;
+  const change = vi.spyOn(OperationQueue.prototype, 'changeFollowUp').mockImplementation(function (this: OperationQueue, ...args) {
+    return scope.run({ id: args[0], revision: args[1] }, () => original.apply(this, args));
+  });
+  cleanup.push(() => change.mockRestore()); return scope;
+}
+it('QUALITY Q1: receipt准备已耐久但交付超时后应保留精确未发送claim恢复能力', async () => {
+  const item = legacy(); const f = await fixture([item], 700); await f.open(); f.active.clear();
+  const preparation = receiptPreparationScope();
+  const handle = await open(f.path, 'r'); const proto = Object.getPrototypeOf(handle); await handle.close();
+  const original = proto.sync; let delayed = false;
+  const sync = vi.spyOn(proto, 'sync').mockImplementation(async function (this: any, ...args: any[]) {
+    const result = await original.apply(this, args);
+    const disk = await f.disk().catch(() => undefined); const r = disk?.records[0];
+    if (preparation.getStore()?.id === item.id && !delayed && r?.state === 'claimed' && r.rpcReceipt) {
+      delayed = true; await writeFile(join(process.env.HOME!, 'Q1-durable-preparation.json'), JSON.stringify(disk));
+      await new Promise(resolve => setTimeout(resolve, 850));
+    }
+    return result;
+  });
+  try { await f.scheduler.runOnce(); } finally { sync.mockRestore(); }
+  const first = await f.disk(); const sendsBefore = f.received.filter(m => ['turn/start', 'turn/steer'].includes(m.method));
+  let wal: unknown; try { wal = JSON.parse(await readFile(join(f.root, 'codex-mobile-http', HOSTED_SESSION_ID, `${item.operationId}.json`), 'utf8')); } catch (error: any) { wal = { code: error.code }; }
+  await f.scheduler.close();
+  const rebuilt = new OperationScheduler(f.options); cleanup.push(() => rebuilt.close()); await f.open(rebuilt); await rebuilt.runOnce();
+  const outcome = { delayed, pid: process.pid, first: first.records[0], rebuilt: (await f.disk()).records[0], wal, sendsBefore, sendsAfter: f.received.filter(m => ['turn/start', 'turn/steer'].includes(m.method)), lastError: String(f.scheduler.lastError), rebuiltLastError: String(rebuilt.lastError) };
+  await writeFile(join(process.env.HOME!, 'Q1-outcome.json'), JSON.stringify(outcome));
+  expect(delayed).toBe(true); expect(sendsBefore).toEqual([]);
+  expect(outcome.sendsAfter).toHaveLength(1);
+}, 10_000);
+
+it('QUALITY Q2: 真实旧failed steer retry生成的queued应可正常接管并读取', async () => {
+  const f = await fixture(); const old = await FollowUps.open(f.root, f.sessions); cleanup.push(() => old.close()); const api = await f.serve(old);
+  const item = legacy(); expect((await api.post({ ...item, action: 'enqueue' })).status).toBe(200);
+  let queued = (await api.list())[0]; f.reject(true);
+  const failedSteer = await api.post({ action: 'steer', id: item.id, revision: queued.revision }); expect(failedSteer.status).toBe(502);
+  const failed = (await api.list())[0]; expect(failed.state).toBe('failed');
+  expect((await api.post({ action: 'retry', id: item.id, revision: failed.revision })).status).toBe(200);
+  await old.close(); const source = await readFile(f.path, 'utf8'); await writeFile(join(process.env.HOME!, 'Q2-real-old-source.json'), source);
+  const sourceRecord = JSON.parse(source).records[0]; expect(sourceRecord.state).toBe('queued'); expect(sourceRecord.restoreState).toBe('queued'); expect(sourceRecord.method).toBeUndefined();
+  const target = await f.serve(await f.open()); const response = await fetch(target.url); const result = await response.json();
+  await writeFile(join(process.env.HOME!, 'Q2-outcome.json'), JSON.stringify({ sourceRecord, status: response.status, result, sourceUnchanged: (await readFile(f.path, 'utf8')) === source, disk: await f.disk(), received: f.received }));
+  expect(response.status).toBe(200); expect((result as any).items[0]).toMatchObject({ id: item.id, state: 'queued' });
+}, 10_000);
+
+// 增强 Q1：精确证明 receipt 准备后尚未跨潜在发送边界。
+it('QUALITY Q1: receipt准备已耐久但交付超时后应保留精确未发送claim恢复能力', async () => {
+  const item = legacy(); const f = await fixture([item], 700); await f.open(); f.active.clear();
+  const preparation = receiptPreparationScope();
+  const handle = await open(f.path, 'r'); const proto = Object.getPrototypeOf(handle); await handle.close();
+  const original = proto.sync; let delayed = false;
+  const mark = vi.spyOn(OperationQueue.prototype, 'markPotentialSend'); const dispatch = vi.spyOn(HttpSessions.prototype, 'dispatchRpc');
+  const sync = vi.spyOn(proto, 'sync').mockImplementation(async function (this: any, ...args: any[]) {
+    const result = await original.apply(this, args);
+    const disk = await f.disk().catch(() => undefined); const r = disk?.records[0];
+    if (preparation.getStore()?.id === item.id && !delayed && r?.state === 'claimed' && r.rpcReceipt) {
+      delayed = true; await writeFile(join(process.env.HOME!, 'Q1-durable-preparation.json'), JSON.stringify(disk));
+      await new Promise(resolve => setTimeout(resolve, 850));
+    }
+    return result;
+  });
+  try { await f.scheduler.runOnce(); } finally { sync.mockRestore(); }
+  const first = await f.disk(); const sendsBefore = f.received.filter(m => ['turn/start', 'turn/steer'].includes(m.method));
+  const beforeCalls = { markPotentialSend: mark.mock.calls.length, dispatchRpc: dispatch.mock.calls.length };
+  let wal: unknown; try { wal = JSON.parse(await readFile(join(f.root, 'codex-mobile-http', HOSTED_SESSION_ID, `${item.operationId}.json`), 'utf8')); } catch (error: any) { wal = { code: error.code }; }
+  await f.scheduler.close();
+  const rebuilt = new OperationScheduler(f.options); cleanup.push(() => rebuilt.close()); await f.open(rebuilt); await rebuilt.runOnce();
+  const outcome = { delayed, pid: process.pid, first: first.records[0], rebuilt: (await f.disk()).records[0], wal, beforeCalls, afterCalls: { markPotentialSend: mark.mock.calls.length, dispatchRpc: dispatch.mock.calls.length }, sendsBefore, sendsAfter: f.received.filter(m => ['turn/start', 'turn/steer'].includes(m.method)), lastError: String(f.scheduler.lastError), rebuiltLastError: String(rebuilt.lastError) };
+  mark.mockRestore(); dispatch.mockRestore();
+  await writeFile(join(process.env.HOME!, 'Q1-outcome.json'), JSON.stringify(outcome));
+  expect(delayed).toBe(true); expect(sendsBefore).toEqual([]); expect(beforeCalls).toEqual({ markPotentialSend: 0, dispatchRpc: 0 });
+  expect(outcome.sendsAfter).toHaveLength(1);
+}, 10_000);
+
+it.each(['before-sync', 'cleanup-sync', 'authorization'])('Q1边界：receipt准备%s受阻后原CAS事实可跨同PID重建恢复', async kind => {
+  const item = legacy(); const f = await fixture([item], 700); await f.open(); f.active.clear();
+  const handle = await open(f.path, 'r'); const proto = Object.getPrototypeOf(handle); await handle.close();
+  const originalSync = proto.sync; const originalChange = OperationQueue.prototype.changeFollowUp; const originalRelease = OperationQueue.prototype.releaseClaim;
+  const originalAuthorize = f.resolver.authorizeOperation.bind(f.resolver);
+  const transaction = new AsyncLocalStorage<'preparation' | 'release'>();
+  let preparing = false, preparingGate = false, cleanupGate = false, denied = false;
+  const change = vi.spyOn(OperationQueue.prototype, 'changeFollowUp').mockImplementation(function (this: OperationQueue, ...args) {
+    const update = args[3]; args[3] = current => { update(current); if (current.rpcReceipt && current.state === 'claimed') preparing = true; };
+    return transaction.run('preparation', () => originalChange.apply(this, args));
+  });
+  const release = vi.spyOn(OperationQueue.prototype, 'releaseClaim').mockImplementation(function (this: OperationQueue, ...args) { return transaction.run('release', () => originalRelease.apply(this, args)); });
+  const authorize = vi.spyOn(f.resolver, 'authorizeOperation').mockImplementation(async (...args) => {
+    if (denied) throw new Error('真实原context暂时撤权'); const fence = await originalAuthorize(...args);
+    return () => { if (denied) throw new Error('真实原context暂时撤权'); fence(); };
+  });
+  const sync = vi.spyOn(proto, 'sync').mockImplementation(async function (this: any, ...args: any[]) {
+    if (transaction.getStore() === 'preparation' && preparing && !preparingGate && kind === 'before-sync') { preparingGate = true; throw new Error('receipt临时文件sync失败，尚未发布'); }
+    if (transaction.getStore() === 'release' && kind === 'cleanup-sync' && !cleanupGate) { cleanupGate = true; throw new Error('未发送清理文件sync失败'); }
+    const result = await originalSync.apply(this, args);
+    const record = (await f.disk()).records[0];
+    if (transaction.getStore() === 'preparation' && preparing && !preparingGate && record.state === 'claimed' && record.rpcReceipt) {
+      preparingGate = true;
+      if (kind === 'authorization') denied = true;
+      else await new Promise(resolve => setTimeout(resolve, 850));
+    }
+    return result;
+  });
+  const mark = vi.spyOn(OperationQueue.prototype, 'markPotentialSend'); const dispatch = vi.spyOn(HttpSessions.prototype, 'dispatchRpc');
+  cleanup.push(() => { sync.mockRestore(); change.mockRestore(); release.mockRestore(); authorize.mockRestore(); mark.mockRestore(); dispatch.mockRestore(); });
+  let firstError: unknown;
+  try { await f.scheduler.runOnce(); } catch (error) { firstError = error; } finally { sync.mockRestore(); change.mockRestore(); release.mockRestore(); }
+  if (kind === 'before-sync') {
+    expect(firstError).toMatchObject({ status: 503 });
+    // 同轮在途读可能先报告已poison的reopen-required；两者均是明确存储拒绝。
+    expect(['storage', 'reopen-required']).toContain((firstError as any).code);
+  }
+  const first = (await f.disk()).records[0]; expect(preparingGate).toBe(true); expect(first.state).toBe('claimed');
+  expect(first.revision).toBe(kind === 'before-sync' ? 8 : 9); expect(!!first.rpcReceipt).toBe(kind !== 'before-sync');
+  expect(mark).not.toHaveBeenCalled(); expect(dispatch).not.toHaveBeenCalled(); expect(f.received.filter(m => m.method === 'turn/start')).toEqual([]);
+  if (kind === 'cleanup-sync') expect(cleanupGate).toBe(true);
+  denied = false; authorize.mockRestore(); await f.scheduler.close();
+  const rebuilt = new OperationScheduler(f.options); cleanup.push(() => rebuilt.close()); await f.open(rebuilt); await rebuilt.runOnce();
+  expect(f.received.filter(m => m.method === 'turn/start')).toHaveLength(1); expect((await f.disk()).records[0].state).toBe('succeeded');
+  mark.mockRestore(); dispatch.mockRestore(); expect(await readFile(f.path, 'utf8')).toBe(f.source);
+}, 10_000);
+
+it.each(['other-owner', 'uncertain', 'terminal'])('Q1边界：准备后已成为%s的记录不被旧清理候选修改', async kind => {
+  const f = await fixture([legacy()]); await f.open(); f.active.clear();
+  const queue = new OperationQueue({ directory: f.directory, gatewayId: f.options.gatewayId, authorize: (context, action) => f.resolver.authorizeOperation(context as any, action) });
+  const original = OperationQueue.prototype.changeFollowUp; let protectedRecord: any;
+  const change = vi.spyOn(OperationQueue.prototype, 'changeFollowUp').mockImplementation(async function (this: OperationQueue, ...args) {
+    const prepared = await original.apply(this, args); const record = (await f.disk()).records[0];
+    if (!protectedRecord && record.state === 'claimed' && record.rpcReceipt) {
+      if (kind === 'other-owner') {
+        await queue.releaseClaim(record.id, record.revision, record.claimToken); await queue.claimNext(record.context.businessKey);
+      } else {
+        const marked = await queue.markPotentialSend(record.id, record.revision, record.claimToken);
+        if (kind === 'terminal') await queue.settle(record.id, marked.revision, record.claimToken, 'succeeded');
+      }
+      protectedRecord = (await f.disk()).records[0]; throw new Error('准备结果最后交付拒绝');
+    }
+    return prepared;
+  });
+  try { await f.scheduler.runOnce(); } finally { change.mockRestore(); }
+  expect(protectedRecord).toBeDefined(); expect((await f.disk()).records[0]).toEqual(protectedRecord);
+  expect(f.received.filter(m => ['turn/start', 'turn/steer'].includes(m.method))).toEqual([]);
+  await f.scheduler.close(); const rebuilt = new OperationScheduler(f.options); cleanup.push(() => rebuilt.close()); await f.open(rebuilt); await rebuilt.runOnce();
+  expect((await f.disk()).records[0]).toEqual(protectedRecord); expect(f.received.filter(m => m.method === 'turn/start')).toEqual([]);
+});
+
+it.each([false, true])('Q2边界：目的表示不合法整批storage拒绝，已有ledger=%s也不写marker或部分项', async existing => {
+  const f = await fixture([legacy(), legacy('queued', { method: 'turn/steer', restoreState: 'queued' })]);
+  let before: string | undefined;
+  if (existing) {
+    const context = await f.resolver.operationContext();
+    await f.scheduler.submit({ id: randomUUID(), context, conversationId: 'ordinary', sessionId: HOSTED_SESSION_ID, requestId: randomUUID(), message: { id: 1, method: 'thread/read', params: { threadId: 'ordinary' } }, settings: {}, attachmentRefs: [] });
+    before = await readFile(join(f.directory, 'operations.json'), 'utf8');
+  }
+  let failure: unknown; try { await f.open(); } catch (error) { failure = error; }
+  expect(String(failure)).toContain('storage'); expect(await readFile(f.path, 'utf8')).toBe(f.source);
+  if (existing) expect(await readFile(join(f.directory, 'operations.json'), 'utf8')).toBe(before);
+  else expect(await readFile(join(f.directory, 'operations.json')).then(() => 'present', (error: any) => error.code)).toBe('ENOENT');
+  expect(f.subscribed).not.toHaveBeenCalled(); expect(f.received).toEqual([]);
+});
+
+it('Q2边界：真实旧retry遗留字段可继续普通失败、取消及重开，源字段保持原值', async () => {
+  const f = await fixture(); const old = await FollowUps.open(f.root, f.sessions); cleanup.push(() => old.close()); const oldApi = await f.serve(old);
+  const ids: string[] = [];
+  for (let index = 0; index < 2; index++) {
+    const item = legacy(); ids.push(item.id); expect((await oldApi.post({ ...item, action: 'enqueue' })).status).toBe(200);
+    const queued = (await oldApi.list()).find((record: any) => record.id === item.id); f.reject(true);
+    expect((await oldApi.post({ action: 'steer', id: item.id, revision: queued.revision })).status).toBe(502);
+    const failed = (await oldApi.list()).find((record: any) => record.id === item.id);
+    expect((await oldApi.post({ action: 'retry', id: item.id, revision: failed.revision })).status).toBe(200);
+    if (index === 1) {
+      const retried = (await oldApi.list()).find((record: any) => record.id === item.id);
+      expect((await oldApi.post({ action: 'cancel', id: item.id, revision: retried.revision })).status).toBe(200);
+    }
+  }
+  await old.close(); const source = await readFile(f.path, 'utf8'); const originals = JSON.parse(source).records;
+  const api = await f.serve(await f.open()); const imported = (await f.disk()).records;
+  for (let index = 0; index < 2; index++) expect(imported[index]).toMatchObject({ id: originals[index].id, revision: originals[index].revision, receiveOrder: index + 1, followUp: { operationId: originals[index].operationId, fingerprint: originals[index].fingerprint, restoreState: 'queued' } });
+  f.active.clear(); await f.scheduler.runOnce(); const failed = (await api.list())[0]; expect(failed).toMatchObject({ id: ids[0], state: 'failed', error: '真实错误' });
+  const settled = (await f.disk()).records; expect(settled[0].followUp).toMatchObject({ restoreState: 'queued', method: 'turn/start' });
+  expect(settled[1]).toMatchObject({ state: 'cancelled', followUp: { restoreState: 'queued' } });
+  await f.scheduler.close(); const rebuilt = new OperationScheduler(f.options); cleanup.push(() => rebuilt.close()); const again = await f.serve(await f.open(rebuilt));
+  expect((await again.list())[0]).toMatchObject({ id: ids[0], state: 'failed', error: '真实错误' });
+  expect((await f.disk()).records).toEqual(settled); expect(await readFile(f.path, 'utf8')).toBe(source);
 });

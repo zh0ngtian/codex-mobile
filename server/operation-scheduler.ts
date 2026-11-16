@@ -437,6 +437,7 @@ export class OperationScheduler {
   }
   private async execute(record: OperationRecord): Promise<void> {
     let potential = false;
+    let preparedClaim: OperationClaim | undefined;
     try {
       await this.budget(async call => {
         const sessions = await this.sessions(record.context, call); this.assertOpen();
@@ -451,7 +452,11 @@ export class OperationScheduler {
           const follow = { ...record.followUp, method: steer ? 'turn/steer' as const : 'turn/start' as const };
           const message = followUpMessage({ ...record, followUp: follow })!;
           const rpcReceipt = { sessionId: 'c0dec000-0000-4000-8000-000000000001', requestId: follow.operationId, signature: createHash('sha256').update(rpcSignatureInput(message)).digest('hex') };
-          const prepared = await this.ledger([record.context], ['transition'], call, () => this.#queue.changeFollowUp(record.id, record.revision, 'transition', current => { current.followUp = follow; current.rpcReceipt = rpcReceipt; }));
+          const prepared = await this.ledger([record.context], ['transition'], call, () => this.#queue.changeFollowUp(record.id, record.revision, 'transition', current => {
+            current.followUp = follow; current.rpcReceipt = rpcReceipt;
+            // 仅记录可能提交的新版本；最终交付失败时，仍须原授权与精确CAS证明可释放。
+            preparedClaim = { id: current.id, revision: current.revision + 1, context: structuredClone(current.context), claimToken: current.claimToken! };
+          }));
           record = { ...record, ...prepared, followUp: follow, rpcReceipt };
         }
         const rpc = body(record); if (!rpc) throw new Error('旧或未知正文保留写屏障，不能派发');
@@ -484,7 +489,11 @@ export class OperationScheduler {
         if (result.outcome !== 'response') this.#diagnostics.set(record.id, result.error);
       });
     } catch (error) {
-      if (!potential) await this.cleanupClaim({ id: record.id, revision: record.revision, context: record.context, claimToken: record.claimToken! });
+      if (!potential) {
+        if (preparedClaim) await this.cleanupClaim(preparedClaim);
+        // 准备可能尚未耐久；旧版本同样只尝试原token/revision，绝不跨uncertain边界。
+        if (!preparedClaim || preparedClaim.revision !== record.revision) await this.cleanupClaim({ id: record.id, revision: record.revision, context: record.context, claimToken: record.claimToken! });
+      }
       throw error;
     }
   }

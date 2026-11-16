@@ -116,7 +116,7 @@ function followUpValid(record: OperationRecord): boolean {
   const value = record.followUp;
   if (!value || !shape(value, ['fingerprint', 'operationId', 'text', 'attachmentCount', 'restoreState', 'method', 'error', 'expectedTurnId', 'legacyRecovery', 'walError', 'retainedLegacy']) ||
     typeof value.fingerprint !== 'string' || !/^[a-f0-9]{64}$/.test(value.fingerprint) || typeof value.operationId !== 'string' || !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(value.operationId) || record.control || record.context.mode !== 'local' ||
-    (value.method !== undefined && !['turn/start', 'turn/steer'].includes(value.method)) || (value.restoreState !== undefined && (!['queued', 'failed'].includes(value.restoreState) || value.method !== 'turn/steer')) ||
+    (value.method !== undefined && !['turn/start', 'turn/steer'].includes(value.method)) || (value.restoreState !== undefined && !['queued', 'failed'].includes(value.restoreState)) ||
     (value.error !== undefined && typeof value.error !== 'string') || (value.expectedTurnId !== undefined && (typeof value.expectedTurnId !== 'string' || !value.expectedTurnId.trim() || value.method !== 'turn/steer')) ||
     (value.legacyRecovery !== undefined && (value.legacyRecovery !== true || record.state !== 'uncertain' || record.rpcReceipt !== undefined)) ||
     (value.walError !== undefined && (value.walError !== true || record.state !== 'failed' || record.rpcReceipt !== undefined || value.legacyRecovery !== undefined))) return false;
@@ -282,6 +282,8 @@ export class OperationQueue {
           signature: createHash('sha256').update(canonical([source, id, fingerprint])).digest('hex'), followUp: { fingerprint, operationId, ...fields, ...(state === 'sending' ? { legacyRecovery: true } : {}) } };
         if (!terminal(record)) { record.body = { kind: 'follow-up-v1', ...(inputText !== undefined ? { inputText } : {}), ...(extraInput !== undefined ? { extraInput } : {}) }; record.settings = settings; record.attachmentRefs = []; }
         else if (inputText !== undefined || extraInput !== undefined || settings !== undefined) record.followUp!.retainedLegacy = { ...(inputText !== undefined ? { inputText } : {}), ...(extraInput !== undefined ? { extraInput } : {}), ...(settings !== undefined ? { settings } : {}) };
+        // 与重开读取复用同一目的表示校验；整批拒绝时不写记录或marker。
+        if (!followUpValid(record)) fail();
         await authorize(record, 'submit'); ledger.records.push(record);
       }
       ledger.followUpsImport = { source, context: clone(context), sha256: imported.sha256, count: imported.records.length };
