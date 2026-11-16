@@ -48,9 +48,9 @@ Mac CLI仅通过当前用户专用的本机私有控制通道管理已运行网�
 
 已经发送而丢失响应的写入进入“待确认”，只能对账，不自动重发；已 claimed/待确认的普通写始终阻止同会话其他普通写，failed 队首也阻止后续普通写，但不阻止上述用户明确接受的引导。其他会话继续，真实只读 RPC 保持既有旁路。普通追问等待实际 idle，turn/start ACK 不代表回合完成；同完整上下文、会话和实际连接 epoch 只成功 resume 一次，读取状态使用 thread/read includeTurns:false，保留各调用自己的有限预算。入队冻结目标、账号、模式、设置与附件；切换模式不移动旧操作。读取允许合并，过时导航读取可以取消，写入逐条保留。
 
-旧 Local canonical 网关的 v1 FollowUps 数据正常升级：原 public id 与 upstream operationId 分开，原指纹、revision、数组接收顺序、输入/附件/settings、恢复中间态及终态幂等收据保留。原 HOSTED_SESSION_ID + operationId 的 WAL 是旧 sending 对账来源；只有此旧 Local 兼容路径的真实 404 可以恢复 queued/原 steer restoreState，IO/坏盘不能伪缺失，Remote 和新 ledger 项不得借用此例外。整批导入及 marker 同一 ledger 事务耐久，原文件保全；同次 open 先选唯一 owner，再启动对应执行，不能让旧 250ms worker 与 scheduler 双发。内部可选接管已实施并完成定向测试，最终固定源码验证与 root 直接代码、需求检查继续按计划验收；公开 mode/host/index 和完整消费者尚未启用，不代表手机 Remote 可用。
+旧 Local canonical 网关的 v1 FollowUps 数据正常升级：原 public id 与 upstream operationId 分开，原指纹、revision、数组接收顺序、输入/附件/settings、恢复中间态及终态幂等收据保留。原 HOSTED_SESSION_ID + operationId 的 WAL 是旧 sending 对账来源；只有此旧 Local 兼容路径的真实 404 可以恢复 queued/原 steer restoreState，IO/坏盘不能伪缺失，Remote 和新 ledger 项不得借用此例外。整批导入及 marker 同一 ledger 事务耐久，原文件保全；同次 open 先选唯一 owner，再启动对应执行，不能让旧 250ms worker 与 scheduler 双发。内部可选接管已在固定a3e07a33通过620项相关回归、双strict/build及主执行者直接检查；公开 mode/host/index 和完整消费者尚未启用，不代表手机 Remote 可用。
 
-旧cancel实际会保留attachmentCount并compact正文/extraInput/settings，终态计数存在时只要求合法非负安全整数并按原值保留，缺省保持缺省；只有完整原payload存在才核真实数量，不能将compact后的缺失输入补空后拒绝整批。真实旧成功sent收据不保留计数，不补猜。首候选3cfa91b0已通过591项/双strict/build，但fresh SPEC以实际旧HTTP发现此F1；原探针逐字保留并先RED后补修，F1补修8edf86a0已完成594项/双strict/build及原SPEC复验；fresh QUALITY发现receipt准备恢复与旧retry字段两项缺陷；补修fb93bf22已通过606项/双strict/build，历史SPEC复验发现Q3；Q3补修c5fa9e3f已完成610项/双strict/build和历史SPEC复验，历史QUALITY再发现Q4编辑完整表示问题。本轮Q4候选待新固定验证与root直接代码、需求检查，不再通过独立agent复审；历史首次失败不改写。
+旧cancel实际会保留attachmentCount并compact正文/extraInput/settings，终态计数存在时只要求合法非负安全整数并按原值保留，缺省保持缺省；只有完整原payload存在才核真实数量，不能将compact后的缺失输入补空后拒绝整批。真实旧成功sent收据不保留计数，不补猜。首候选3cfa91b0已通过591项/双strict/build，但fresh SPEC以实际旧HTTP发现此F1；原探针逐字保留并先RED后补修，F1补修8edf86a0已完成594项/双strict/build及原SPEC复验；fresh QUALITY发现receipt准备恢复与旧retry字段两项缺陷；补修fb93bf22已通过606项/双strict/build，历史SPEC复验发现Q3；Q3补修c5fa9e3f已完成610项/双strict/build和历史SPEC复验，历史QUALITY再发现Q4编辑完整表示问题。固定a3e07a33已通过620项/双strict/build及root直接代码、需求检查，不再通过独立agent复审；历史首次失败不改写。
 
 旧failed-steer→retry会保留restoreState并清method，后续旧普通发送、失败与取消也可能保留该字段；枚举仍仅queued/failed，其他method/expectedTurnId/receipt/恢复标记的严格约束不变。导入前验证转换后目的表示与load一致，拒绝时不写marker或部分记录。receipt准备最终预算/授权拒绝须保留准备前后精确claim候选，原完整context/id/revision/token下独立授权CAS释放尚为claimed者，IO/撤权可在同PID重建后接续；不动其他owner/uncertain/终态，不以缺WAL证明零发送。原Q1全局sync门闩已由真实并发inventory受控反例证明不确定，永久测试改为仅测试ALS精确事务门闩，原700/850与断言保持，原探针/失败封存；历史首份outcome覆盖局限如实记录。
 
@@ -58,7 +58,7 @@ Mac CLI仅通过当前用户专用的本机私有控制通道管理已运行网�
 
 Q3首固定归档发现既有pending夹具仅观察WAL而未等WS已收，以及新测试两处JSON类型错误；原609/1与strict失败保留。夹具只在原有限等待内同时核pending/实际1帧，原调用预算及不重发断言不减；类型补正后新候选重验，不把首轮失败算通过。
 
-queued编辑沿现有128总输入规则验证保留附件与新引用的合并结果，合法正文/文件包装变化重算实际attachmentCount，超限400且整ledger/source字节及原CAS身份不变；接收指纹与上游UUID不改。已真实未发送而释放回queued的已准备收据，编辑同CAS只更新RPC内容hash，原session/request不变；update/revision/compact后复验原followUp及receipt表示，不将非法编辑提交为不可读ledger。原Q4四项2541字节块逐字保留，补充实际准备释放、原pending WAL成功discard后confirmNeverSent、重开和一次真实发送；WAL缺失从不作为未发送证明。定向10项通过；新固定候选仍待root直接检查，公开装配和完整消费者未启用。
+queued编辑沿现有128总输入规则验证保留附件与新引用的合并结果，合法正文/文件包装变化重算实际attachmentCount，超限400且整ledger/source字节及原CAS身份不变；接收指纹与上游UUID不改。已真实未发送而释放回queued的已准备收据，编辑同CAS只更新RPC内容hash，原session/request不变；update/revision/compact后复验原followUp及receipt表示，不将非法编辑提交为不可读ledger。原Q4四项2541字节块逐字保留，补充实际准备释放、原pending WAL成功discard后confirmNeverSent、重开和一次真实发送；WAL缺失从不作为未发送证明。定向10项及固定a3e07a33的620项/双strict/build和root直接检查通过，公开装配和完整消费者未启用。
 
 保持 128 条可见队列/64MiB 元数据上限，显式拒绝超额并保留输入，不淘汰旧项；控制操作有独立有界预留。附件单独持久化，不能清理仍被队列引用的文件。离线上游创建会话先显示共享“待创建”占位；确认后绑定真实 threadId，不确定的创建不重试。删除手机上的网关配置不取消共享队列；手机 outbox 暂停保留，草稿保留。
 
@@ -73,3 +73,5 @@ queued编辑沿现有128总输入规则验证保留附件与新引用的合并�
 2026-11-13补充确认：仅固定的模型上传统计读取命令使用 `sandboxPolicy: { type: "readOnly", networkAccess: true }`，其他操作保持默认权限。该例外不能由客户端用于任意命令或通用文件/Git操作。隔离能力验证已通过当前Mac的socket连接、目标路径及来源校验；来源ready只证明hello，既有IPC无快照结束标记，未收到的线程返回null，实际remove与来源失效清缓存、不造零。目标codexHome按受信祖先要求检查owner、无symlink及不可group/other写，敏感launcher、计量目录和socket继续要求私有权限。Task3c首个产品候选已通过独立双审，但官方来源证明因误要求home0700失败，93e99eb已本地修复且1495通过/7跳过、双strict及服务端构建通过；新冻结b38a0e61已通过独立SPEC→QUALITY与官方B短时真实读取、重新证明、25秒零流后RPC及OS清理验收；首次A失败保留。Task3c来源基础完成，产品消费者与手机接入仍待3d/5，不代表P95或长期验收。
 
 验收目标：连续 8 小时并跨凭据过期，多次手机离开/重进，Mac 睡眠/唤醒，网关进程重启；健康网关重入 P95 ≤2 秒，有效认证、网络和清醒目标下上游恢复至首次轻量 RPC P95 ≤10 秒。此前五分钟成功只证明初步连通，不等于这些目标已验收。本次仅源码交付，不发布客户端、不部署现役网关。
+
+2026-11-16内部接管最终验证：固定源码`a3e07a338890672ce3bb1ec9322b8e6ec951129f`已通过12文件620项相关回归（FollowUps ledger 103项、原调度70项、旧追问23项）、双strict及build:server；主执行者直接检查代码、需求、原失败与修复验证结果并通过。Q4编辑在原CAS内验证最终合并输入、重算实际附件数并同步既有准备收据的内容签名，非法修改在落盘前拒绝；合法编辑保留公共id、上游UUID、接收指纹和上下文。F1/Q1/Q2/Q3历史修复和原失败证据保留。按用户2026-11-16新规则，本候选未安排独立agent复审，不将旧候选的审查结果转绑本提交。仅内部可选接管已验证，公开gateway/mode/host/index、完整消费者及4b.2/4c/Task5/6仍待；未访问官方或真实凭据，未构建客户端、发布或部署。见[收据](../plans/evidence/2026-11-16-remote-follow-ups-ledger-validation.json)。

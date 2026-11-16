@@ -162,7 +162,7 @@ Task4 按内部依赖顺序实施：4a 可信目标身份基础 → 4b 持久队
 - [x] 4b.2c 内部可信 Session 执行结果：固定 `44fb339f`，40项可信边界、10文件369项、双strict/build及原 SPEC→原 QUALITY 限定复审通过，见[收据](evidence/2026-11-16-remote-session-dispatch-validation.json)；复用原 Session／requestId／hosted WAL，原结果对象与原 attempt／invocation 绑定真实零发送证明，不接 ledger 或增加派发 owner。公开 4b.2 仍待。
 - [x] 4b.2d 内部原收据读取：固定 `b63ad1d8` 的493项相关回归、双strict/build及全新SPEC→QUALITY通过；两审各亲跑49项及独立12／7项边界探针，root核全部小工件，见[收据](evidence/2026-11-16-remote-original-operation-validation.json)。按原context／Session／requestId只读原namespace，最终await后核验原预算，不创建Session／RPC／写WAL。公开装配和整个4b.2仍待。
 - [x] 4b.2e 原操作context／WAL与当前有效Session传输装配：固定 `d7d700d8`，5文件217项必要回归（含49项专项）、双strict/build及原SPEC→原QUALITY复验通过，root核固定源码及全部小工件，见[收据](evidence/2026-11-16-remote-recovered-session-validation.json)。原context/UUID/namespace保持，当前同Runtime真实句柄及完整恢复proof受检，后台加载旧批实际结束后仅由新授权重扫；completed不重发，pending/uncertain仍未知。仅内部依赖完成，公开4b.2仍待。
-- [ ] 4b.2h 内部 FollowUps 唯一 owner 接管：首候选3cfa91b0已通过591项/双strict/build，但历史SPEC发现旧附件cancelled收据F1；后续历史失败与补修记录保留。当前Q4补修待新固定SHA必要回归/双strict/build:server和root直接代码、需求检查，不再安排独立agent复审。旧 Local v1 正常升级与用户 A 的 B 立即引导例外见下方记录。公开默认 gateway/host/index 和完整消费者尚未装配，不勾整个4b.2/4c/5/6。
+- [x] 4b.2h 内部 FollowUps 唯一 owner 接管：固定a3e07a33的620项（h103）、双strict/build及主执行者直接检查通过，见[验收记录](evidence/2026-11-16-remote-follow-ups-ledger-validation.json)。原失败证据保留；公开默认gateway/host/index与完整消费者仍待，不勾整个4b.2/4c/5/6。
 - [ ] 4b.2：HTTP/WS/hosted/Bark/关注与目标传输装配，Sidechat 内存路由、附件 bytes/活引用、占位、读合并/导航取消、显式 resume 和旧 FollowUps 推断替换，待实现/验收。
 - [ ] 4c：真实业务时钟与会话观察/释放，待实现/验收。
 
@@ -372,7 +372,7 @@ Task3d.4完成记录：Task3d.4统计失效装配已完成源码验收：冻结 
 
 4b.2g最终源码验收：固定6120f3bb，11文件517项（专项70项）、双strict/build:server与原SPEC→原QUALITY复审通过，见[验收记录](evidence/2026-11-16-remote-rpc-scheduler-validation.json)。F1/Q1与全部首次失败保留；原正确探针永久回归，精确未发送清理和同轮不重领已验证。内部RPC调度闭环完成，下一步仍为旧FollowUps及完整消费者/公开装配，整个4b.2/4c/5/6未完成；仅源码，不构建客户端、不发布部署。
 
-### 4b.2h：内部 FollowUps 唯一 owner 接管（QUALITY Q4完整编辑补修待固定验证及root直接检查）
+### 4b.2h：内部 FollowUps 唯一 owner 接管（固定源码验证与主执行者直接检查通过）
 
 修改基线为 `64d7519ad0c51a548ed8de50b7fbc389f3723684`。复用现有 OperationQueue/PrivateStore 和 OperationScheduler；可选可信注入的 FollowUps.open 在任何旧订阅、timer 或首次 tick 前核 canonical 源 home 与显式 gatewayCodexHome，一事务导入完整 v1 记录及 marker，原文件保全。ledger 为状态/revision/顺序/context 唯一真相，元数据仅保必要追问字段。原公共 id 与 upstream operationId 分离，指纹保留编辑前原值，终态按实际旧收据保全；retry/steer 公共 id 稳定而新 upstream UUID。marker 已存在不会因保全源文件后来变化重导，来源/context冲突、非法 v1、普通 RPC UUID 碰撞、容量和同步故障明确拒绝，不启动旧 owner。
 
@@ -401,3 +401,5 @@ Task3d.4完成记录：Task3d.4统计失效装配已完成源码验收：冻结 
 真实准备700/850事务ALS门闩证明mark/dispatch均0、queued原receipt仍在，原产品合法编辑RED；真实pending WAL在物理发送前断WS后先成功discard，实际confirmNeverSent才恢复queued，旧WAL/缓存不作为新内容的成功或失败；两链编辑、重开/随后一次真实发送GREEN。合法128/实际count、129原字节原子拒绝、CAS/幂等/冲突及可信写边界共新增10项定向通过，保留F1/Q1ALS/Q2/Q3/newenqueue精确块及原pending等待修正。
 
 规则提交b9c5d91a按用户最新决定取消独立agent复审；本轮新固定候选无overlay必要相关回归/双strict/buildserver与完整私有证据另封存e4b2h-q4fix，完成STOP交root直接代码/需求检查与必要验证。历史双审结果不改写，不称新候选独立复审通过；不勾h/整个4b.2/4c/5/6，不启公开装配，不push/merge/main、客户端构建、发布部署。
+
+4b.2h最终源码验证：固定源码`a3e07a338890672ce3bb1ec9322b8e6ec951129f`已通过12文件620项相关回归（FollowUps ledger 103项、原调度70项、旧追问23项）、双strict及build:server；主执行者直接检查代码、需求、原失败与修复验证结果并通过。Q4编辑在原CAS内验证最终合并输入、重算实际附件数并同步既有准备收据的内容签名，非法修改在落盘前拒绝；合法编辑保留公共id、上游UUID、接收指纹和上下文。F1/Q1/Q2/Q3历史修复和原失败证据保留。按用户2026-11-16新规则，本候选未安排独立agent复审，不将旧候选的审查结果转绑本提交。仅内部可选接管已验证，公开gateway/mode/host/index、完整消费者及4b.2/4c/Task5/6仍待；未访问官方或真实凭据，未构建客户端、发布或部署。见[验收记录](evidence/2026-11-16-remote-follow-ups-ledger-validation.json)。

@@ -1,0 +1,181 @@
+{
+  "schemaVersion": 1,
+  "task": "Task4b2h-internal-follow-ups-ledger-owner",
+  "sourceCommit": "a3e07a338890672ce3bb1ec9322b8e6ec951129f",
+  "baselineMain": "64d7519ad0c51a548ed8de50b7fbc389f3723684",
+  "sourceOnly": true,
+  "deployed": false,
+  "clientBuild": false,
+  "clientPublished": false,
+  "scope": "固定源码`a3e07a338890672ce3bb1ec9322b8e6ec951129f`已通过12文件620项相关回归（FollowUps ledger 103项、原调度70项、旧追问23项）、双strict及build:server；主执行者直接检查代码、需求、原失败与修复验证结果并通过。Q4编辑在原CAS内验证最终合并输入、重算实际附件数并同步既有准备收据的内容签名，非法修改在落盘前拒绝；合法编辑保留公共id、上游UUID、接收指纹和上下文。F1/Q1/Q2/Q3历史修复和原失败证据保留。按用户2026-11-16新规则，本候选未安排独立agent复审，不将旧候选的审查结果转绑本提交。仅内部可选接管已验证，公开gateway/mode/host/index、完整消费者及4b.2/4c/Task5/6仍待；未访问官方或真实凭据，未构建客户端、发布或部署。",
+  "reviewPolicy": {
+    "effectiveDate": "2026-11-16",
+    "source": "用户：修改规则：不再通过独立agent复审",
+    "independentReviewRequired": false,
+    "gate": "主执行者直接检查代码、核对需求与必要验证",
+    "commit": "b9c5d91a",
+    "mainBaseline": "64d7519ad0c51a548ed8de50b7fbc389f3723684",
+    "historicalReviewResultsPreserved": true,
+    "futureAssemblyContract": {
+      "path": "/tmp/codex-remote-task4b2-public-assembly-contract.md",
+      "previousSha256": "30ceea4c691b2642df976a0a482ab69cc1a6b79c4304d28a2c98d1b1d6c3b77f",
+      "sha256": "33e8c68b259625aeefdc08985d2aaa6e6c2664afd4bf6cd4a1a75d9fce3f0964",
+      "historicalPolicyPreservedInJournal": true
+    }
+  },
+  "gates": {
+    "implementationPassed": true,
+    "rootDirectReviewPassed": true,
+    "necessaryValidationPassed": true
+  },
+  "validation": {
+    "tests": 620,
+    "files": 12,
+    "followUps": 103,
+    "scheduler": 70,
+    "oldFollowUps": 23,
+    "strictServer": true,
+    "strictNpm": true,
+    "buildServer": true,
+    "rootReadFullFinalLogs": true,
+    "allTrackedUnchangedReported": 2908,
+    "noOverlay": true
+  },
+  "implementation": {
+    "root": "/private/tmp/e4b2h-q4fix",
+    "reportPath": "report.json",
+    "reportSha256": "662a8ae866c8928b599766b82c91afe3ac3a76e61daaddeefc92d15fca1b667b",
+    "manifestPath": "manifest.json",
+    "manifestSha256": "c1981ea86ab53c816cc023c1e88b2607da8eac1d2fcb7996aeb4eb7c581cff6b"
+  },
+  "rootDirectReview": {
+    "candidate": "a3e07a338890672ce3bb1ec9322b8e6ec951129f",
+    "verdict": "PASS",
+    "independentAgentReview": false,
+    "evidence": {
+      "path": "/tmp/codex-task4b2h-q4-direct-root-audit.json",
+      "bytes": 3180,
+      "sha256": "2c15a1e4c5031acad03a2d46371e13e5b234960aef75d568224f72d09efe31c2",
+      "allChecksPassed": true,
+      "artifacts": 3298
+    },
+    "historicalReviewResultsPreserved": true
+  },
+  "rootAudit": {
+    "path": "/tmp/codex-task4b2h-q4-direct-root-audit.json",
+    "bytes": 3180,
+    "sha256": "2c15a1e4c5031acad03a2d46371e13e5b234960aef75d568224f72d09efe31c2",
+    "allChecksPassed": true,
+    "artifacts": 3298
+  },
+  "historicalEvidence": {
+    "initialImplementation": {
+      "root": "/private/tmp/e4b2h",
+      "reportPath": "report.json",
+      "reportSha256": "9363e3e2295e2cadc47eda5fba2d64ca5e9ad56d406df3d1941e97530cd2a096",
+      "manifestPath": "manifest.json",
+      "manifestSha256": "c484b968789b6f36638836a55e36ebfac9aaa58278d921797082cb65b13842a3"
+    },
+    "preQ4Fix": {
+      "pendingCandidate": "c5fa9e3fc7086f869e6e7dd9f347a40b9d54fed7",
+      "fixedFinal": "/private/tmp/e4b2h-q3fix/fixed-final2",
+      "fixedRegression": {
+        "tests": 610,
+        "files": 12,
+        "followUps": 93,
+        "strictServer": true,
+        "strictNpm": true,
+        "buildServer": true,
+        "rootReadFullFinalLogs": true,
+        "allTrackedUnchangedReported": 2908,
+        "noOverlay": true
+      },
+      "rootAudit": {
+        "path": "/tmp/codex-task4b2h-q3fix-root-audit.json",
+        "sha256": "34558d39097a2e7fd8f594b2791423e660aaa5f6ddd6c737326c13ea60b208d8",
+        "allChecksPassed": true,
+        "artifacts": 3366,
+        "stages": 8,
+        "commands": 69,
+        "sourceHashes": 23264,
+        "workers": 8
+      },
+      "implementationReport": {
+        "root": "/private/tmp/e4b2h-q3fix",
+        "reportPath": "report.json",
+        "reportSha256": "7ae0042b52edfa338cbcf76b9de44983a0c89af476a40a18e8368dc3d2d4d5e9",
+        "manifestPath": "manifest.json",
+        "manifestSha256": "a1f229ba6e43adc847390a77c295567e1d92d235fd897afaf20716bcd2bf110a"
+      },
+      "finalSpec": {
+        "root": "/private/tmp/s4ht",
+        "reportPath": "report.json",
+        "reportSha256": "813fa14e753dc58f0c07cc3ca0b071ff16882db8d1ca7c6a90172b908410aa6b",
+        "manifestPath": "manifest.json",
+        "manifestSha256": "2ad97fe2865aaa003fa78c77a460f0deb0b65cdef9f560a3be8e663bd1b5c6f2",
+        "candidate": "c5fa9e3fc7086f869e6e7dd9f347a40b9d54fed7",
+        "verdict": "PASS",
+        "rootAuditedAllArtifacts": true,
+        "rootReadFullReportRunnerLog": true,
+        "rootAudit": {
+          "path": "/tmp/codex-task4b2h-q3fix-spec-root-audit.json",
+          "sha256": "6cf31ba2ff9eb90c4af2244e3b8cbc92d12e20c9c5fe8d6eeb2504825b56b55f"
+        },
+        "ownTests": 20,
+        "explicitlySkipped": 73
+      }
+    },
+    "Q4FailedReview": {
+      "candidate": "c5fa9e3fc7086f869e6e7dd9f347a40b9d54fed7",
+      "status": "CLOSED",
+      "problem": "编辑只校验新mentions，合并existing输入>128或inputText附件包装改变后attachmentCount不更新，先写坏ledger后edit/GET503且重开拒绝",
+      "probe": {
+        "path": "/private/tmp/q4hv/probe.ts",
+        "bytes": 8800,
+        "sha256": "b4e318912a78bb00b9ac1ed43cc4740584f74c439d17687b7f10373b7e4205e5"
+      },
+      "actualPassed": 2,
+      "actualFailed": 2,
+      "rootReadFullProbeLogsOutcomes": true,
+      "rootInspectedBeforeAfterFields": true,
+      "rpcCount": 0,
+      "sourceUnchanged": true,
+      "reviewSealPending": false,
+      "scope": "沿既有combined128和真实附件数量目的表示不变量，无新增产品决定",
+      "proposalOnlyRequested": true,
+      "observedAtUtc": "2026-11-16T13:09:04.879877+00:00",
+      "review": {
+        "root": "/private/tmp/q4hw",
+        "candidate": "c5fa9e3fc7086f869e6e7dd9f347a40b9d54fed7",
+        "verdict": "FAIL",
+        "reportPath": "report.json",
+        "reportSha256": "73f23322317c6e1f4449a526aa9ea60dbf8d2fbc7ecfe9c96e5b6291ee6b8885",
+        "manifestPath": "manifest.json",
+        "manifestSha256": "29d5f8b57bab80919b7f84b3fa70d90d5041186760f11e013fc9b79fd602b40c",
+        "rootAuditedAllArtifacts": true,
+        "rootReadFullReportRunnerLog": true,
+        "rootAudit": {
+          "path": "/tmp/codex-task4b2h-quality-q4-root-audit.json",
+          "bytes": 3853,
+          "sha256": "4bc1edfe752b6e0babb4ddcad0360b2e47008a4113c5cf1974bd201a0490c009"
+        },
+        "focusedOwnPassed": 23,
+        "explicitlySkipped": 70,
+        "independentQ4Passed": 2,
+        "independentQ4Failed": 2,
+        "initialSealFailurePreserved": true,
+        "concurrentImplementationWipExcluded": true
+      },
+      "closedByCandidate": "a3e07a338890672ce3bb1ec9322b8e6ec951129f",
+      "closedBy": "root直接代码、需求检查和必要验证"
+    },
+    "firstFailuresRetained": true
+  },
+  "limitations": [
+    "仅内部可选FollowUps接管；整个4b.2、4c、Task5及Task6未完成。",
+    "本步没有官方Remote与8小时持续连接验收。",
+    "未发布客户端或部署生产网关。"
+  ],
+  "officialRemoteProbeRunThisStep": false,
+  "testChatsCreated": 0
+}
