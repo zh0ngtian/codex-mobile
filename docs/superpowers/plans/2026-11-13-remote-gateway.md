@@ -393,3 +393,5 @@ Task3d.4完成记录：Task3d.4统计失效装配已完成源码验收：冻结 
 4b.2h SPEC Q3补修（基线`fb93bf22fe3aee526b29d565f19ff167e1411c9f`）：前轮606项/双strict/build及89专项通过保留；原SPEC用真实旧HTTP threadId控制字符复现已写marker后GET503，正确原1964字节测试块逐字永久保留，新私有根原产品RED→导入目的text检查GREEN。原首probe缺count的400与首seal实目录.vite误判属夹具/证据工具错误，原工件不改写。随后真实新facade enqueue也证实503前已写坏ledger，GET继续503且0RPC；root核对后批准同规则enqueue入口text检查，原RED块永久加入。产品仅queue两处，不改load/fence/既有256 HTTP限制，不转义thread或新增政策。
 
 补充已有ledger与合法前项/控制字符或4097坏后项整批无写入（ledger/source原字节、marker/部分项保全），手构旧源4096合法边界GET和重开可读；不声称原HTTP接受4096。Q1纠正ALS与原Q2/F1字节块保持，新固定SHA无overlay相关回归、双strict/build:server及完整命令/env/sourcehash另封存`e4b2h-q3fix`报告。STOP→root审计→原SPEC→原QUALITY复验，不勾h/整个4b.2/4c/5/6，不启公开装配、不push/merge/main、客户端构建或发布部署。
+
+首Q3候选`090dc822`固定归档实际609PASS/1FAIL，服务端strict另有新测试两处response.json unknown类型错误（npm strict/build通过），原日志封存不算通过。旧pending WAL夹具只等磁盘pending便断言WS已收到；实际save先于send，受控原WS门闩证实pending/0帧后释放才收到1帧，未归因负载或fsync。永久仅在原100×10ms等待内同时等pending且真实turn/start已收到1次，原1000ms deadline及随后精确1次/不重发断言不变；两处json仅补类型。首诊断因drop分支不调用afterMessage而5s超时属夹具错误，纠正直接观察received后通过，原工件保留；不增加产品改动。新固定候选重新归档验证，待root审计及原双审复验。

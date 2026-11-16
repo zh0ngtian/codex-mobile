@@ -181,7 +181,7 @@ it.each(['completed', 'error', 'pending', 'uncertain'])('真实旧HttpSessions�
   const send = f.sessions.hostedRpc({ id: item.operationId, method: 'turn/start', params: { threadId: item.threadId, input: [{ type: 'text', text: item.inputText }], clientUserMessageId: item.id } }, item.operationId, { deadline: performance.now() + 1000 }).catch(() => undefined);
   const walPath = join(f.root, 'codex-mobile-http', HOSTED_SESSION_ID, `${item.operationId}.json`);
   if (status === 'pending') {
-    for (let i = 0; i < 100; i++) { try { if (JSON.parse(await readFile(walPath, 'utf8')).status === 'pending') break; } catch {} await new Promise(r => setTimeout(r, 10)); }
+    for (let i = 0; i < 100; i++) { try { if (JSON.parse(await readFile(walPath, 'utf8')).status === 'pending' && f.received.filter(m => m.method === 'turn/start').length === 1) break; } catch {} await new Promise(r => setTimeout(r, 10)); }
     expect(JSON.parse(await readFile(walPath, 'utf8')).status).toBe('pending');
   } else await send;
   if (status === 'uncertain') expect(JSON.parse(await readFile(walPath, 'utf8')).status).toBe('uncertain');
@@ -705,9 +705,9 @@ it('Q3边界：已有ledger与合法前项不因坏thread后项写入marker或�
 it('Q3边界：手构旧源4096字符thread满足既有ledger规则并在GET和重开保持可读', async () => {
   const item = legacy('queued', { threadId: 't'.repeat(4096) }); const f = await fixture([item]);
   const facade = await f.open(); const api = await f.serve(facade); const response = await fetch(api.url);
-  expect(response.status).toBe(200); expect((await response.json()).items[0]).toMatchObject({ id: item.id, threadId: item.threadId, revision: item.revision, state: 'queued' });
+  expect(response.status).toBe(200); expect(((await response.json()) as any).items[0]).toMatchObject({ id: item.id, threadId: item.threadId, revision: item.revision, state: 'queued' });
   await facade.close(); const reopened = await f.serve(await f.open()); const next = await fetch(reopened.url);
-  expect(next.status).toBe(200); expect((await next.json()).items[0]).toMatchObject({ id: item.id, threadId: item.threadId });
+  expect(next.status).toBe(200); expect(((await next.json()) as any).items[0]).toMatchObject({ id: item.id, threadId: item.threadId });
   expect((await f.disk()).records[0]).toMatchObject({ id: item.id, conversationId: item.threadId, revision: item.revision, receiveOrder: 1 });
   expect(await readFile(f.path, 'utf8')).toBe(f.source); expect(f.received).toEqual([]); expect(f.subscribed).not.toHaveBeenCalled();
 });

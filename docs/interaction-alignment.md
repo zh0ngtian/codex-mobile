@@ -2162,6 +2162,8 @@ Q1/Q2补修固定`fb93bf22`的606项、双strict/build已通过，但原SPEC复�
 
 同轮真实新facade POST控制字符threadId也证实先写坏ledger再503，后GET503且零RPC；该原始RED块永久保留。产品仅queue两入口复用既有text：导入目的conversationId在整批提交前校验，新enqueue在事务前invalid-input 400；不放宽load/fence，不新增长度政策或转义/改投。已有ledger、合法前项/坏后项的源与ledger原字节/marker保全；4096边界为手构旧源兼容测试，原HTTP现有256限制保持。Q1精确事务ALS与Q2/F1原块不动。新固定归档相关回归、双strict/build及私有报告封存后STOP，待root审计→原SPEC→原QUALITY；未启公开装配、客户端构建、push/main或发布部署。
 
+首Q3候选`090dc822`固定归档实际609PASS/1FAIL，服务端strict另有新测试两处response.json unknown类型错误（npm strict/build通过），原日志封存不算通过。旧pending WAL夹具只等磁盘pending便断言WS已收到；实际save先于send，受控原WS门闩证实pending/0帧后释放才收到1帧，未归因负载或fsync。永久仅在原100×10ms等待内同时等pending且真实turn/start已收到1次，原1000ms deadline及随后精确1次/不重发断言不变；两处json仅补类型。首诊断因drop分支不调用afterMessage而5s超时属夹具错误，纠正直接观察received后通过，原工件保留；不增加产品改动。新固定候选重新归档验证，待root审计及原双审复验。
+
 ### 2026-11-16 Task4b.2h QUALITY Q1/Q2 准备恢复与旧重试字段补修
 
 F1补修固定`8edf86a0`的594项、双strict/build及原SPEC复验已通过，但fresh QUALITY用真实磁盘/HTTP确认两项问题：receipt准备已将claimed从revision8耐久推进9，最后预算拒绝使旧record未赋值，原rev8清理冲突后丢恢复事实；真实旧enqueue→steer上游error→retry产生queued+restoreState=queued且method缺省，导入成功写marker后反被自身load拒绝。原候选验证不能代替双审通过，原封存及QUALITY失败证据保全。
