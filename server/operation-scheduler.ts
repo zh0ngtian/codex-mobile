@@ -5,12 +5,13 @@ import { resolve, join } from 'node:path';
 import { readFile, realpath } from 'node:fs/promises';
 import { TextDecoder } from 'node:util';
 import { OperationQueue, OperationQueueError, followUpMessage, FOLLOW_UP_TURN_EXPIRED_ERROR, type OperationAuthorizationFence, type OperationClaim, type OperationContext, type OperationControl, type OperationReceipt, type OperationRecord } from './operation-queue.js';
-import { HttpSessions, isReadOnlyRpc, readOriginalOperation, type HttpSessionRemoteOptions, type RpcMessage, type SessionCallOptions, type SessionDispatchAttempt, type SessionDispatchResult } from './http-session.js';
+import { HttpSessions, HOSTED_SESSION_ID, isReadOnlyRpc, readOriginalOperation, type HttpSessionRemoteOptions, type RpcMessage, type SessionCallOptions, type SessionDispatchAttempt, type SessionDispatchResult } from './http-session.js';
 import { isNavigationResume, rpcSignatureInput, rpcControlRequestKey } from './rpc-replay.js';
-import { TargetResolver } from './targets.js';
+import { TargetResolver, type ResolvedRemoteTarget } from './targets.js';
 import { assertRemoteOperation, captureRemoteOperation, withIndependentRemoteOperation, withRemoteOperation } from './remote/operation-guard.js';
 import { QueueError, canonical, validateText, validateInputs, validateSettings, type RecordItem } from './follow-ups.js';
 import { messageAttachmentCount } from './user-message-format.js';
+import type { GatewayAttachments } from './gateway-attachments.js';
 
 type Action = Parameters<TargetResolver['authorizeOperation']>[1];
 interface RpcInitialization { message: RpcMessage; notification?: RpcMessage }
@@ -21,9 +22,17 @@ export interface QueuedRpcInput {
 }
 interface Options {
   directory: string; gatewayId: string; gatewayCodexHome: string; resolver: TargetResolver; upstreamUrl: string;
-  remoteConsumers: (context: Readonly<OperationContext>) => Pick<HttpSessionRemoteOptions, 'projections' | 'sidechatReplay'>;
+  remoteConsumers: (context: Readonly<OperationContext>, target: ResolvedRemoteTarget, call: SessionCallOptions) =>
+    RemoteSessionConsumers | Promise<RemoteSessionConsumers>;
+  localSessions?: HttpSessions;
+  onResponse?: (context: Readonly<OperationContext>, message: RpcMessage, response: RpcMessage, sessionId: string) => Promise<void>;
+  onEvents?: (context: Readonly<OperationContext>, sessionId: string, events: { messages: RpcMessage[]; requests: RpcMessage[] }) => void;
+  onSessions?: (context: Readonly<OperationContext>, sessions: HttpSessions) => void;
+  attachments?: GatewayAttachments;
   attemptTimeoutMs?: number; scanIntervalMs?: number;
 }
+type RemoteSessionConsumers = Pick<HttpSessionRemoteOptions, 'projections' | 'sidechatReplay' | 'isAvailable'> &
+  Pick<ConstructorParameters<typeof HttpSessions>[0], 'notifications' | 'uploadMeter' | 'titleSummary'>;
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const SIDECHAT = 'c0dec000-0000-4000-8000-000000000002';
 function key(value: unknown): string {
@@ -39,10 +48,11 @@ function body(record: Readonly<OperationRecord>): RpcBody | undefined {
   return value;
 }
 function isRead(record: Readonly<OperationRecord>): boolean { const rpc = body(record); return !!rpc && !record.control && isReadOnlyRpc(rpc.message); }
+function isBackground(record: Readonly<OperationRecord>): boolean { return isRead(record) && (record.settings as any)?.source === 'gateway-observer-v1'; }
 // 仅已放弃执行的精确未发送claim清理事实；无正文、无新耐久owner，同进程重建可接续原授权CAS。
 const abandonedClaims = new Map<string, { directory: string; gatewayId: string; claim: OperationClaim; pending?: Promise<void> }>();
 
-/** 内部唯一RPC owner；FollowUps可可信注入接管，公开路由尚未装配。 */
+/** 公开 RPC、托管业务和追问共用的唯一耐久调度 owner。 */
 export class OperationScheduler {
   readonly #options: Options;
   readonly #queue: OperationQueue;
@@ -50,11 +60,14 @@ export class OperationScheduler {
   readonly #controllers = new Set<AbortController>();
   readonly #calls = new Set<Promise<unknown>>();
   readonly #sessions = new Map<string, HttpSessions>();
+  readonly #sessionOpenings = new Map<string, Promise<HttpSessions>>();
   readonly #initializations = new Map<string, RpcInitialization>();
   readonly #results = new Map<string, SessionDispatchResult>();
   readonly #diagnostics = new Map<string, unknown>();
   readonly #resumed = new Map<string, string>();
   readonly #resuming = new Map<string, { epoch: string; promise: Promise<void> }>();
+  readonly #hostedReads = new Map<string, Promise<RpcMessage>>();
+  readonly #hostedQueued = new Map<string, string>();
   #closed = false;
   #running?: Promise<void>;
   #closing?: Promise<void>;
@@ -88,6 +101,87 @@ export class OperationScheduler {
   protocol(input: { context: OperationContext; sessionId: string; requestId: string; message: RpcMessage }, original?: SessionCallOptions) { return this.own(() => this.protocolRpc(input, original)); }
   events(context: OperationContext, sessionId: string, after: number, original?: SessionCallOptions) { return this.own(() => this.sessionEvents(context, sessionId, after, original)); }
   result(id: string, original?: SessionCallOptions): Promise<SessionDispatchResult> { return this.own(() => this.readResult(id, original)); }
+  operation(id: string, routeContext: OperationContext, sessionId: string, original?: SessionCallOptions, expected?: { message: RpcMessage; epoch?: string }) {
+    routeContext = structuredClone(routeContext);
+    expected = expected ? structuredClone(expected) : undefined;
+    return this.own(async () => {
+      let delivery = () => {};
+      const value = await this.budget(async call => {
+        const context = await this.#queue.locate(id);
+        const route = (value: OperationContext) => value.mode === 'local' ? value :
+          { mode: value.mode, gatewayId: value.gatewayId, businessKey: value.businessKey, managed: value.managed, target: value.target };
+        if (key(route(context)) !== key(route(routeContext))) throw new OperationQueueError('rpc-binding-conflict', 409);
+        const record = await this.ledger([context], ['read'], call, () => this.#queue.read(id));
+        if (record.rpcReceipt?.sessionId !== sessionId || record.rpcReceipt.requestId !== id) throw new OperationQueueError('rpc-binding-conflict', 409);
+        if (expected && (record.rpcReceipt.submissionSignature ?? record.rpcReceipt.signature) !== createHash('sha256').update(rpcSignatureInput(expected.message, expected.epoch)).digest('hex')) throw new OperationQueueError('rpc-binding-conflict', 409);
+        let response: RpcMessage | undefined;
+        if (['succeeded', 'failed'].includes(record.state) && !record.failure) {
+          const result = await this.readResult(id, call); if (result.outcome === 'response') response = result.message;
+        }
+        if (record.failure === 'control-expired') response = { error: { code: -32001, message: '原控制已过期，未发送' } };
+        if (record.state === 'cancelled') response = { error: { code: -32800, message: '未发送的操作已取消' } };
+        const fence = await this.#options.resolver.authorizeOperation(context, 'read', call.signal);
+        delivery = () => { fence(); this.assertOpen(); if (call.signal?.aborted || performance.now() >= call.deadline) throw new Error('操作查询预算已结束'); };
+        const value = { status: response ? 'completed' : ['queued', 'claimed'].includes(record.state) ? 'pending' : 'uncertain',
+          operation: { id: record.id, revision: record.revision, state: record.state, receiveOrder: record.receiveOrder },
+          ...(response ? { message: response } : {}) };
+        delivery(); return value;
+      }, original);
+      delivery(); assertRemoteOperation(); return value;
+    });
+  }
+  /** 后台业务读取复用相同在途项；只由服务器赋予后台等级。 */
+  hostedRpc(context: OperationContext, message: RpcMessage, original?: SessionCallOptions): Promise<RpcMessage> {
+    if (!isReadOnlyRpc(message)) throw new TypeError('后台入口只允许可信只读方法');
+    const binding = key([context, { ...message, id: undefined }]);
+    const current = this.#hostedReads.get(binding); if (current) return current;
+    const work = this.own(() => this.budget(async call => {
+      let id = this.#hostedQueued.get(binding);
+      if (!id) {
+        const groups = await this.#queue.inventory();
+        for (const group of groups.filter(group => key(group.context) === key(context))) {
+          for (const receipt of group.operations.filter(receipt => receipt.state === 'queued')) {
+            const record = await this.ledger([context], ['read'], call, () => this.#queue.read(receipt.id)); const rpc = body(record);
+            if ((record.settings as any)?.source === 'gateway-observer-v1' && rpc && key({ ...rpc.message, id: undefined }) === key({ ...message, id: undefined })) { id = record.id; break; }
+          }
+          if (id) break;
+        }
+      }
+      if (!id) {
+        id = randomUUID();
+        await this.submit({ id, context, conversationId: typeof message.params?.threadId === 'string' ? message.params.threadId : '__gateway__',
+          sessionId: HOSTED_SESSION_ID, requestId: id, message: { ...message, id }, settings: { source: 'gateway-observer-v1' }, attachmentRefs: [] }, call);
+      }
+      this.#hostedQueued.set(binding, id);
+      void this.runOnce().catch(() => {});
+      let lastState: string | undefined;
+      try {
+      for (;;) {
+        const state = await this.operation(id, context, HOSTED_SESSION_ID, call);
+        lastState = state.status;
+        if (state.status === 'completed') { this.#hostedQueued.delete(binding); return state.message!; }
+        if (call.signal?.aborted || performance.now() >= call.deadline) throw new Error('后台读取待恢复');
+        await new Promise<void>(resolve => setTimeout(resolve, 50));
+      }
+      } finally {
+        // 仅在原等待预算结束后允许下一次独立只读查询；未知写入从不重放。
+        if (lastState === 'uncertain') this.#hostedQueued.delete(binding);
+      }
+    }, original));
+    this.#hostedReads.set(binding, work);
+    void work.finally(() => { if (this.#hostedReads.get(binding) === work) this.#hostedReads.delete(binding); }).catch(() => {});
+    return work;
+  }
+  hasPending(context: OperationContext, threadId: string, original?: SessionCallOptions): Promise<boolean> {
+    return this.own(() => this.budget(async call => {
+      const groups = await this.#queue.inventory();
+      const contexts = groups.filter(group => group.context.businessKey === context.businessKey && group.conversationId === threadId).map(group => group.context);
+      // 只交付责任布尔值，不读取其他授权组的正文。
+      const fence = await this.#options.resolver.authorizeOperation(context, 'read', call.signal); fence();
+      return contexts.length > 0;
+    }, original));
+  }
+  sessionsForTarget(context: OperationContext, call: SessionCallOptions): Promise<HttpSessions> { return this.own(() => this.sessions(context, call)); }
   cancelNavigation(id: string, revision: number, context: OperationContext): Promise<OperationReceipt> { return this.own(() => this.cancelQueuedNavigation(id, revision, context)); }
   openFollowUps(codexHome: string, captureDelivery?: (fence: () => void) => void): Promise<OperationContext> {
     return this.own(async () => {
@@ -120,16 +214,53 @@ export class OperationScheduler {
   private async followUpCall<T>(context: OperationContext, actions: Action[], operation: (call: SessionCallOptions) => Promise<T>, captureDelivery?: (fence: () => void) => void): Promise<T> {
     context = structuredClone(context); const parents = captureRemoteOperation(); let final = () => {};
     const value = await this.budget(async call => {
-      const result = await this.ledger([context], actions, call, () => operation(call));
-      const fence = await this.#options.resolver.authorizeOperation(context, actions.at(-1)!, call.signal);
-      final = () => { fence(); parents(); this.assertOpen(); if (call.signal?.aborted || performance.now() >= call.deadline) throw new Error('追问原预算已结束'); };
+      const contexts = [context, ...await this.#queue.contexts(context.businessKey)];
+      const result = await this.ledger(contexts, actions, call, () => operation(call));
+      const fences = await Promise.all(contexts.map(value => this.#options.resolver.authorizeOperation(value, 'read', call.signal)));
+      final = () => { for (const fence of fences) fence(); parents(); this.assertOpen(); if (call.signal?.aborted || performance.now() >= call.deadline) throw new Error('追问原预算已结束'); };
       final(); return result;
     });
     final(); captureDelivery?.(final); final(); assertRemoteOperation(); return value;
   }
+  publicQueue(context: OperationContext, threadId?: string, captureDelivery?: (fence: () => void) => void) {
+    return this.own(() => this.followUpCall(context, ['read'], async () => {
+      const records = await this.#queue.publicRecords(context.businessKey, threadId);
+      return { items: records.filter(record => !record.followUp && ((record.settings as any)?.source === 'public-rpc-v1' || record.createdThreadId)).map(record => {
+        const rpc = body(record);
+        return { id: record.id, revision: record.revision, receiveOrder: record.receiveOrder, state: record.state,
+          threadId: record.createdThreadId ?? record.conversationId, method: rpc?.message.method ?? record.rpcReceipt?.method,
+          ...(rpc ? { params: rpc.message.params } : {}), ...(record.createdThreadId ? { pendingId: record.conversationId } : {}) };
+      }) };
+    }, captureDelivery));
+  }
+  mutatePublicQueue(context: OperationContext, input: { action: string; id: string; revision: number; inputText?: string }, captureDelivery?: (fence: () => void) => void) {
+    input = structuredClone(input);
+    return this.own(() => this.followUpCall(context, ['read', 'edit', 'cancel'], async () => {
+      if (!UUID.test(input.id) || !Number.isSafeInteger(input.revision)) throw new QueueError(400, '操作 ID 或版本无效');
+      const record = await this.#queue.read(input.id); const rpc = body(record);
+      if (record.context.businessKey !== context.businessKey || !rpc || record.followUp || (record.settings as any)?.source !== 'public-rpc-v1') throw new QueueError(409, '操作归属或状态已变化');
+      if (input.action === 'cancel') await this.#queue.cancel(input.id, input.revision);
+      else if (input.action === 'edit' && rpc.message.method === 'turn/start') {
+        validateText(input.inputText, input.inputText);
+        const retained = Array.isArray(rpc.message.params?.input) ? rpc.message.params.input.filter((part: any) => part.type !== 'text') : [];
+        if (!input.inputText?.trim() && !retained.length) throw new QueueError(400, '消息不能为空');
+        const updated = { ...rpc, message: { ...rpc.message, params: { ...rpc.message.params, input: [...(input.inputText ? [{ type: 'text', text: input.inputText, text_elements: [] }] : []), ...retained] } } };
+        await this.#queue.edit(input.id, input.revision, { body: updated });
+      } else throw new QueueError(400, '不支持的队列操作');
+      return { saved: true };
+    }, captureDelivery));
+  }
   listFollowUps(context: OperationContext, captureDelivery?: (fence: () => void) => void): Promise<{ items: unknown[] }> {
     context = structuredClone(context);
     return this.own(() => this.followUpCall(context, ['read'], async call => this.followUpList(await this.#queue.listFollowUps(context), call), captureDelivery));
+  }
+  followUpSubmission(context: OperationContext, id: string, captureDelivery?: (fence: () => void) => void) {
+    return this.own(() => this.followUpCall(context, ['read'], async () => {
+      if (!UUID.test(id)) throw new QueueError(400, '追问 ID 必须为 UUID');
+      const record = await this.#queue.read(id);
+      if (!record.followUp || record.context.businessKey !== context.businessKey) throw new QueueError(409, '追问归属不一致');
+      return { accepted: true, operation: { id: record.id, state: record.state, revision: record.revision } };
+    }, captureDelivery));
   }
   private async followUpList(records: OperationRecord[], call: SessionCallOptions): Promise<{ items: unknown[] }> {
     const items: unknown[] = [];
@@ -161,7 +292,7 @@ export class OperationScheduler {
         if (!body.inputText.trim() && !body.extraInput.length) throw new QueueError(400, '追问不能为空');
         await this.#queue.enqueueFollowUp(context, { ...content, id: body.id, fingerprint: createHash('sha256').update(canonical(content)).digest('hex'), operationId: randomUUID(), revision: 1, state: 'queued' });
       } else {
-        const record = await this.#queue.read(body.id); if (!record.followUp || key(record.context) !== key(context)) throw new QueueError(409, '追问身份冲突');
+        const record = await this.#queue.read(body.id); if (!record.followUp || record.context.businessKey !== context.businessKey) throw new QueueError(409, '追问身份冲突');
         if (!Number.isSafeInteger(body.revision)) throw new QueueError(400, '追问 revision 无效');
         if (!['edit', 'cancel', 'retry', 'steer'].includes(body.action)) throw new QueueError(400, '不支持的追问操作');
         if (record.state === 'queued' && record.followUp.expectedTurnId) throw new QueueError(409, '引导已绑定原回合，正在发送');
@@ -238,11 +369,11 @@ export class OperationScheduler {
     const turn = (turns.result as any).data.find((entry: any) => ['inProgress', 'in_progress', 'running'].includes(entry.status));
     return { active: true, turnId: turn?.id };
   }
-  private async budget<T>(operation: (call: SessionCallOptions) => Promise<T>, original?: SessionCallOptions): Promise<T> {
+  private async budget<T>(operation: (call: SessionCallOptions) => Promise<T>, original?: SessionCallOptions, executionBudgetMs = this.#options.attemptTimeoutMs ?? 60_000): Promise<T> {
     original = original ? { deadline: original.deadline, signal: original.signal } : undefined;
     if (original && !Number.isFinite(original.deadline)) throw new TypeError('需要有限的原调用deadline');
     const controller = new AbortController(); this.#controllers.add(controller);
-    const deadline = Math.min(original?.deadline ?? Infinity, performance.now() + (this.#options.attemptTimeoutMs ?? 60_000));
+    const deadline = Math.min(original?.deadline ?? Infinity, performance.now() + executionBudgetMs);
     const abort = () => controller.abort(original?.signal?.reason);
     original?.signal?.addEventListener('abort', abort, { once: true }); if (original?.signal?.aborted) abort();
     const timer = setTimeout(() => controller.abort(new Error('RPC调度预算到期')), Math.max(0, deadline - performance.now())); timer.unref();
@@ -275,12 +406,14 @@ export class OperationScheduler {
       snapshot.message.method != null || rpcControlRequestKey(snapshot.message.id, snapshot.epoch) !== snapshot.control.requestId || !snapshot.epoch ||
       (snapshot.message.params?.turnId !== undefined && snapshot.message.params.turnId !== snapshot.control.turnId))) throw new TypeError('控制必须绑定原RPC、turn/request及epoch');
     const initialization = this.#initializations.get(key([snapshot.context, snapshot.sessionId]));
+    if ((snapshot.settings as any)?.source === 'public-rpc-v1' && snapshot.sessionId !== HOSTED_SESSION_ID && !initialization) throw new QueueError(409, '原 Session 尚未完成 initialize，操作未受理');
     const envelope: RpcBody = { kind: 'rpc-v1', sessionId: snapshot.sessionId, requestId: snapshot.requestId, message: snapshot.message, ...(snapshot.epoch ? { epoch: snapshot.epoch } : {}), ...(initialization ? { initialization: structuredClone(initialization) } : {}) };
     const parents = captureRemoteOperation(); let delivery = () => {};
     const receipt = await this.budget(async call => {
       const value = await this.ledger([snapshot.context], ['submit'], call, () => this.#queue.submit({ id: snapshot.id, context: snapshot.context,
         conversationId: snapshot.conversationId, body: envelope, settings: snapshot.settings, attachmentRefs: snapshot.attachmentRefs,
-        ...(snapshot.control ? { control: snapshot.control } : {}), rpcReceipt: { sessionId: snapshot.sessionId, requestId: snapshot.requestId, signature: createHash('sha256').update(rpcSignatureInput(snapshot.message, snapshot.epoch)).digest('hex') } }));
+        ...(snapshot.control ? { control: snapshot.control } : {}), rpcReceipt: { sessionId: snapshot.sessionId, requestId: snapshot.requestId, ...(snapshot.message.method ? { method: snapshot.message.method } : {}),
+          signature: createHash('sha256').update(rpcSignatureInput(snapshot.message, snapshot.epoch)).digest('hex'), submissionSignature: createHash('sha256').update(rpcSignatureInput(snapshot.message, snapshot.epoch)).digest('hex') } }));
       const fence = await this.#options.resolver.authorizeOperation(snapshot.context, 'submit', call.signal);
       delivery = () => { fence(); parents(); this.assertOpen(); if (call.signal?.aborted || performance.now() >= call.deadline) throw new Error('提交原预算已结束'); };
       delivery(); return value;
@@ -292,6 +425,22 @@ export class OperationScheduler {
     const snapshot = structuredClone(input); const parents = captureRemoteOperation(); let delivery = () => {};
     if (snapshot.sessionId === SIDECHAT || !UUID.test(snapshot.sessionId) || !['initialize', 'initialized'].includes(snapshot.message.method ?? '')) throw new TypeError('仅允许原Session初始化协议');
     const result = await this.budget(async call => {
+      if (snapshot.context.mode === 'remote') {
+        const fence = await this.#options.resolver.authorizeOperation(snapshot.context, 'submit', call.signal);
+        const target = await this.#options.resolver.resolve({ mode: 'remote', gatewayId: snapshot.context.gatewayId,
+          account: { accountId: snapshot.context.managed.accountId, accountUserId: snapshot.context.managed.accountUserId,
+            ...(Object.hasOwn(snapshot.context.managed, 'userId') ? { userId: snapshot.context.managed.userId } : {}) }, target: snapshot.context.target }, call.signal);
+        fence();
+        if (!target.descriptor.online) {
+          const binding = key([snapshot.context, snapshot.sessionId]);
+          if (snapshot.message.method === 'initialize') this.#initializations.set(binding, { message: snapshot.message });
+          else { const previous = this.#initializations.get(binding); if (!previous) throw new Error('原Session未完成initialize'); previous.notification = snapshot.message; }
+          // 此 ACK 仅确认手机已接入网关；明确标注上游离线，不建立或伪造上游 Session。
+          const message = { ...(snapshot.message.id != null ? { id: snapshot.message.id } : {}), result: { gateway: { upstreamReady: false, acceptingOffline: true } } };
+          delivery = () => { fence(); parents(); this.assertOpen(); if (call.signal?.aborted || performance.now() >= call.deadline) throw new Error('协议预算结束'); };
+          delivery(); return { outcome: 'response' as const, message };
+        }
+      }
       const sessions = await this.sessions(snapshot.context, call);
       const result = await sessions.dispatchRpc({ sessionId: snapshot.sessionId, requestId: snapshot.requestId, attemptId: randomUUID() }, snapshot.message, call);
       if (result.outcome === 'response' && result.message.error == null) {
@@ -310,6 +459,7 @@ export class OperationScheduler {
     if (sessionId === SIDECHAT || !UUID.test(sessionId) || !Number.isSafeInteger(after) || after < 0) throw new TypeError('需要原Session与合法事件游标');
     const result = await this.budget(async call => {
       const sessions = await this.sessions(context, call); const result = await sessions.readEvents(sessionId, after, call);
+      this.#options.onEvents?.(context, sessionId, result);
       const fence = await this.#options.resolver.authorizeOperation(context, 'read', call.signal);
       delivery = () => { fence(); parents(); this.assertOpen(); if (call.signal?.aborted || performance.now() >= call.deadline) throw new Error('事件原预算已结束'); };
       delivery(); return result;
@@ -330,12 +480,12 @@ export class OperationScheduler {
     const attempted = new Set<string>(); const seen = new Set<string>();
     // 每轮只重试开始时已有的清理事实；新失败已在catch中尝试一次，不忙重试。
     const recoveries = [...abandonedClaims.entries()].filter(([, value]) => value.directory === this.#options.directory && value.gatewayId === this.#options.gatewayId);
-    const active = new Map<Promise<void>, boolean>(); const dispatching = new Set<string>(); const authorizing = new Set<string>(); let fatal: unknown;
+    const active = new Map<Promise<void>, 'control' | 'foreground' | 'background'>(); const dispatching = new Set<string>(); const authorizing = new Set<string>(); let fatal: unknown;
     try {
       for (let round = 0; round < 1024; round++) {
         this.assertOpen(); if (fatal) throw fatal; const groups = await this.#queue.inventory(); this.assertOpen();
         const inventoryRevision = key(groups);
-        const jobs: { binding: string; control: boolean; work: () => Promise<void> }[] = [];
+        const jobs: { binding: string; control: boolean; background?: boolean; work: () => Promise<void> }[] = [];
         for (const [binding, recovery] of recoveries) {
           const jobKey = key(['cleanup', binding]);
           if (!seen.has(jobKey) && !authorizing.has(key(recovery.claim.context)) && abandonedClaims.get(binding) === recovery) jobs.push({ binding: jobKey, control: false, work: async () => {
@@ -349,15 +499,16 @@ export class OperationScheduler {
             if (['uncertain', 'failed'].includes(receipt.state) && !dispatching.has(receipt.id) && !seen.has(binding)) jobs.push({ binding, control: false, work: () => this.reconcile(group.context, receipt) });
           }
           if (!group.operations.some(receipt => receipt.state === 'queued' || receipt.state === 'claimed')) continue;
-          for (const control of [true, false]) {
-            const binding = key(['claim', group, inventoryRevision, control]);
+          for (const kind of ['control', 'foreground', 'background'] as const) {
+            const control = kind === 'control'; const background = kind === 'background';
+            const binding = key(['claim', group, inventoryRevision, kind]);
             if (seen.has(binding) || authorizing.has(key(group.context))) continue;
-            jobs.push({ binding, control, work: async () => {
+            jobs.push({ binding, control, background, work: async () => {
               authorizing.add(key(group.context));
               let record: OperationRecord | null;
               let prepared: OperationClaim | undefined;
               try { record = await this.budget(call => this.ledger([group.context], ['claim', 'transition'], call,
-                () => this.#queue.claimNext(group.context.businessKey, { isRead, excluded: attempted, controlOnly: control, onPreparedClaim: claim => { prepared = claim; } }))); }
+                () => this.#queue.claimNext(group.context.businessKey, { isRead, excluded: attempted, controlOnly: control, eligible: record => control || isBackground(record) === background, onPreparedClaim: claim => { prepared = claim; } }))); }
               catch (error) { if (prepared) { attempted.add(prepared.id); await this.cleanupClaim(prepared); } throw error; }
               finally { authorizing.delete(key(group.context)); }
               if (!record) return;
@@ -367,15 +518,16 @@ export class OperationScheduler {
           }
         }
         // 普通写/对账最多三项，第四个槽仅留原turn控制，不能被等待响应的写占满。
-        const job = jobs.sort((a, b) => Number(b.control) - Number(a.control)).find(job =>
-          job.control ? ![...active.values()].some(Boolean) : [...active.values()].filter(control => !control).length < 3);
+        const job = jobs.sort((a, b) => Number(b.control) - Number(a.control) || Number(!!a.background) - Number(!!b.background)).find(job =>
+          job.control ? ![...active.values()].includes('control') : [...active.values()].filter(kind => kind !== 'control').length < 3 &&
+            (!job.background || [...active.values()].filter(kind => kind === 'background').length < 2));
         if (job) {
           seen.add(job.binding);
           const work = job.work().catch(error => {
             if (error instanceof OperationQueueError && !['revision-conflict', 'claim-conflict', 'not-proven-never-sent'].includes(error.code)) fatal ??= error;
             this.lastError = error;
           }).finally(() => { active.delete(work); });
-          active.set(work, job.control);
+          active.set(work, job.control ? 'control' : job.background ? 'background' : 'foreground');
           continue;
         }
         if (!active.size) return;
@@ -410,10 +562,17 @@ export class OperationScheduler {
         return;
       }
       const rpc = body(record); if (!rpc) return;
-      const result = await readOriginalOperation({ gatewayCodexHome: this.#options.gatewayCodexHome, resolver: this.#options.resolver, context,
+      const completedRead = isRead(record) ? this.#results.get(record.id) : undefined;
+      let result = completedRead?.outcome === 'response' ? { status: 'completed' as const, message: completedRead.message } : await readOriginalOperation({ gatewayCodexHome: this.#options.gatewayCodexHome, resolver: this.#options.resolver, context,
         sessionId: rpc.sessionId, requestId: rpc.requestId, expected: { message: rpc.message, epoch: rpc.epoch }, expectedSignature: record.rpcReceipt?.signature, call });
+      if (result.status !== 'completed' && rpc.message.method === 'mobile/attachments/upload' && this.#options.attachments) {
+        const sessions = await this.sessions(context, call);
+        const message = await sessions.reconcileAttachment(rpc.requestId, rpc.message, call);
+        if (message) result = { ...result, status: 'completed', message };
+      }
       if (result.status !== 'completed' || !result.message || (record.state === 'failed' && result.message.error != null)) return;
-      await this.ledger([context], ['transition'], call, () => this.#queue.settle(record.id, record.revision, record.claimToken!, result.message!.error != null ? 'failed' : 'succeeded'));
+      if (result.message.error == null && (record.settings as any)?.source === 'public-rpc-v1') await this.#options.onResponse?.(record.context, rpc.message, result.message, rpc.sessionId);
+      await this.ledger([context], ['transition'], call, () => this.#queue.settle(record.id, record.revision, record.claimToken!, result.message!.error != null ? 'failed' : 'succeeded', rpc.message.method === 'thread/start' && result.message!.error == null ? (result.message!.result as any)?.thread?.id : undefined));
     });
   }
   private async sessions(context: OperationContext, call: SessionCallOptions): Promise<HttpSessions> {
@@ -424,17 +583,35 @@ export class OperationScheduler {
     const fence = await resolver.authorizeOperationExecution(context, call.signal); fence.assertCurrent(); this.assertOpen();
     const binding = key([context, target.descriptor.authorizationKey]);
     let sessions = this.#sessions.get(binding);
+    if (sessions && !sessions.consumersAvailable) {
+      await sessions.close(); if (this.#sessions.get(binding) === sessions) this.#sessions.delete(binding); sessions = undefined;
+      fence.assertCurrent(); this.assertOpen();
+    }
     if (!sessions) {
-      let remote: HttpSessionRemoteOptions | undefined;
-      if (context.mode === 'remote') {
-        const consumers = this.#options.remoteConsumers(context);
-        if (!consumers) throw new TypeError('Remote需要显式consumer，不能回落Local');
-        remote = { ...consumers, target: target as HttpSessionRemoteOptions['target'], resolver, context,
-          storageNamespace: createHash('sha256').update(JSON.stringify(['transport-v1', 'remote', context.authorizationKey])).digest('hex') };
+      let opening = this.#sessionOpenings.get(binding);
+      if (!opening) {
+        opening = (async () => {
+          let remote: HttpSessionRemoteOptions | undefined;
+          let consumers: RemoteSessionConsumers | undefined;
+          if (context.mode === 'remote') {
+            consumers = await this.#options.remoteConsumers(structuredClone(context), target as ResolvedRemoteTarget, call);
+            fence.assertCurrent(); this.assertOpen();
+            if (!consumers) throw new TypeError('Remote需要显式consumer，不能回落Local');
+            remote = { ...consumers, target: target as ResolvedRemoteTarget, resolver, context,
+              storageNamespace: createHash('sha256').update(JSON.stringify(['transport-v1', 'remote', context.authorizationKey])).digest('hex') };
+          }
+          fence.assertCurrent(); this.assertOpen();
+          const value = !remote && this.#options.localSessions ? this.#options.localSessions :
+            new HttpSessions({ codexHome: this.#options.gatewayCodexHome, upstreamUrl: this.#options.upstreamUrl,
+              ...(remote ? { remote, notifications: consumers?.notifications, uploadMeter: consumers?.uploadMeter, attachments: this.#options.attachments, titleSummary: consumers?.titleSummary } : {}) });
+          try { this.#options.onSessions?.(structuredClone(context), value); }
+          catch (error) { await value.close(); throw error; }
+          this.#sessions.set(binding, value); return value;
+        })();
+        this.#sessionOpenings.set(binding, opening);
+        void opening.finally(() => { if (this.#sessionOpenings.get(binding) === opening) this.#sessionOpenings.delete(binding); }).catch(() => {});
       }
-      sessions = new HttpSessions({ codexHome: this.#options.gatewayCodexHome, upstreamUrl: this.#options.upstreamUrl,
-        ...(remote ? { remote } : {}) });
-      this.#sessions.set(binding, sessions);
+      sessions = await opening;
     }
     fence.assertCurrent(); this.assertOpen(); return sessions;
   }
@@ -444,6 +621,14 @@ export class OperationScheduler {
     try {
       await this.budget(async call => {
         const sessions = await this.sessions(record.context, call); this.assertOpen();
+        if (!record.followUp && !record.control && (record.settings as any)?.source === 'public-rpc-v1' && body(record)?.message.method === 'turn/start') {
+          // 手机直发与托管追问遵守同一个真实 idle 门槛，离线受理不跳过正在运行的回合。
+          const status = await this.inspectFollowUp(record, call);
+          if (status.active) {
+            await this.ledger([record.context], ['transition'], call, () => this.#queue.releaseClaim(record.id, record.revision, record.claimToken!));
+            return;
+          }
+        }
         if (record.followUp) {
           const steer = record.followUp.method === 'turn/steer'; const status = await this.inspectFollowUp(record, call, steer);
           if (steer && (!status.active || status.turnId !== record.followUp.expectedTurnId)) {
@@ -483,14 +668,16 @@ export class OperationScheduler {
           if (valid) await this.ledger([record.context], ['transition'], call, () => this.#queue.confirmNeverSent(record.id, marked.revision, record.claimToken!, original =>
             original.claimToken === attempt.attemptId && body(original)?.sessionId === attempt.sessionId && body(original)?.requestId === attempt.requestId && recheck()));
         } else if (result.outcome === 'response') {
-          await this.ledger([record.context], ['transition'], call, () => this.#queue.settle(record.id, marked.revision, record.claimToken!, result.message.error != null ? 'failed' : 'succeeded'));
+          // 原只读结果先进入本实例缓存，再发布 compact 终态，避免查询落在两者之间。
           if (isRead(record)) {
             this.#results.set(record.id, result);
             if (this.#results.size > 128) this.#results.delete(this.#results.keys().next().value!);
           }
+          if (result.message.error == null && (record.settings as any)?.source === 'public-rpc-v1') await this.#options.onResponse?.(record.context, rpc.message, result.message, rpc.sessionId);
+          await this.ledger([record.context], ['transition'], call, () => this.#queue.settle(record.id, marked.revision, record.claimToken!, result.message.error != null ? 'failed' : 'succeeded', rpc.message.method === 'thread/start' && result.message.error == null ? (result.message.result as any)?.thread?.id : undefined));
         }
         if (result.outcome !== 'response') this.#diagnostics.set(record.id, result.error);
-      });
+      }, undefined, body(record)?.message.method === 'mobile/titleSummary' ? 130_000 : this.#options.attemptTimeoutMs ?? 60_000);
     } catch (error) {
       if (!potential) {
         if (preparedClaim) await this.cleanupClaim(preparedClaim);
@@ -565,6 +752,7 @@ export class OperationScheduler {
     void (async () => {
       await Promise.allSettled([...this.#sessions.values()].map(value => value.close()));
       await Promise.allSettled([...this.#calls, ...(this.#running ? [this.#running] : [])]);
+      await Promise.allSettled([...this.#sessionOpenings.values()]);
       await Promise.all([...this.#sessions.values()].map(value => value.close()));
     })().then(resolve, reject);
     return closing;

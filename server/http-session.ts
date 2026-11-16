@@ -4,6 +4,7 @@ import { performance } from 'node:perf_hooks';
 import { ResolvedRemoteTarget, TargetResolver } from './targets.js';
 import { sameRemoteManaged } from './remote/runtime-state.js';
 import type { OperationContext } from './operation-queue.js';
+import type { GatewayAttachments } from './gateway-attachments.js';
 import { RemoteStream, RemoteSendError } from './remote/relay.js';
 import { assertRemoteOperation, captureRemoteOperation, runRemoteCleanup, withRemoteOperation } from './remote/operation-guard.js';
 import type { RpcMessage as RemoteRpcMessage } from './remote/envelope.js';
@@ -15,7 +16,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import WebSocket from "ws";
 import { TurnChangeHistory } from "./turn-change-history.js";
 import { compactTurnDetails, compactTurnCommentary, turnCommentaryRequest, validTurnCommentaryParams } from "./turn-details.js";
-import { isNavigationResume, canonicalRpc as canonical, rpcSignatureInput } from "./rpc-replay.js";
+import { isNavigationResume, canonicalRpc as canonical, rpcSignatureInput, rpcControlRequestKey } from "./rpc-replay.js";
 import { InlineImages } from "./inline-images.js";
 import { MessageWebCitations } from "./web-citations.js";
 import { MessageTimestamps } from "./message-timestamps.js";
@@ -44,6 +45,7 @@ export interface HttpSessionRemoteOptions {
     webCitations: Pick<MessageWebCitations, 'result' | 'notification'>;
   };
   sidechatReplay: Required<Pick<SidechatReplayOptions, 'files' | 'resolveReference'>>;
+  isAvailable?: () => boolean;
 }
 export interface SessionCallOptions { deadline: number; signal?: AbortSignal }
 /** 仅可信scheduler传入；attemptId沿用本次ledger claim token，不能由HTTP参数构造。 */
@@ -79,6 +81,39 @@ async function authorizeSession(remote: HttpSessionRemoteOptions, call: SessionC
   return fence;
 }
 
+export interface PublicRpcEnvelope { requestId: string; message: RpcMessage; epoch?: string }
+export async function readRpcEnvelope(request: IncomingMessage): Promise<PublicRpcEnvelope> {
+  let bytes = 0; const parts: Buffer[] = [];
+  for await (const chunk of request) {
+    const part = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    bytes += part.length;
+    if (bytes > MAX_REQUEST_BYTES) throw new HttpError(413, "Request exceeds 16 MiB");
+    parts.push(part);
+  }
+  let body: any;
+  try { body = JSON.parse(Buffer.concat(parts).toString("utf8")); } catch { throw new HttpError(400, "Invalid JSON"); }
+  return validateRpcEnvelope(body);
+}
+export function validateRpcEnvelope(body: any): PublicRpcEnvelope {
+  if (!UUID.test(body?.requestId ?? "") || !body?.message || typeof body.message !== "object" || Array.isArray(body.message)) throw new HttpError(400, "Invalid RPC envelope");
+  const message = body.message as RpcMessage;
+  if (message.method === "initialize" && message.id == null) throw new HttpError(400, "Initialize must include an RPC id");
+  if (message.id != null && !["number", "string"].includes(typeof message.id)) throw new HttpError(400, "Invalid RPC id");
+  if (message.method != null && (typeof message.method !== "string" || !message.method.length || message.method.length > 256)) throw new HttpError(400, "Invalid RPC method");
+  if (message.method === "mobile/turns/commentary" &&
+    (message.id == null || !validTurnCommentaryParams(message.params))) throw new HttpError(400, "Invalid turn commentary parameters");
+  if (message.method === "mobile/turns/details") {
+    const params = message.params;
+    if (message.id == null || !params || Array.isArray(params) || typeof params.threadId !== "string" || !params.threadId.trim() ||
+      (params.cursor !== undefined && typeof params.cursor !== "string") ||
+      (params.limit !== undefined && (!Number.isSafeInteger(params.limit) || params.limit <= 0)) ||
+      (params.sortDirection !== undefined && params.sortDirection !== "desc")) throw new HttpError(400, "Invalid turn details parameters");
+  }
+  if (!message.method && message.result === undefined && message.error === undefined) throw new HttpError(400, "Invalid RPC reply");
+  if (body.epoch !== undefined && (typeof body.epoch !== "string" || !UUID.test(body.epoch))) throw new HttpError(400, "Invalid session epoch");
+  return body;
+}
+
 const SIDECHAT_SESSION_ID = "c0dec000-0000-4000-8000-000000000002";
 /** 可信内部hosted派发沿用旧FollowUps的Session/WAL身份；公开HTTP仍保留拒绝。 */
 export const HOSTED_SESSION_ID = "c0dec000-0000-4000-8000-000000000001";
@@ -105,6 +140,8 @@ const READ_ONLY_METHODS = new Set([
   "model/list", "account/read", "account/rateLimits/read", "config/read",
   "configRequirements/read", "skills/list", "mcpServerStatus/list",
   "fs/readFile", "mobile/turns/details", "mobile/turns/commentary",
+  "mobile/sidebar/summaries", "mobile/sidebar/projectless", "mobile/uploadUsage/read",
+  "mobile/thread/observe",
 ]);
 
 /** 与Session WAL共用分类；调用方的readOnly标记不参与判断。 */
@@ -257,7 +294,7 @@ class Session {
   storageBytes = 0;
   invalidatedSocket?: SessionSocket;
 
-  constructor(readonly id: string, private upstreamUrl: string, private root: string, private changeHistory: HttpSessionRemoteOptions['projections']['changeHistory'], private images: HttpSessionRemoteOptions['projections']['images'], private timestamps: HttpSessionRemoteOptions['projections']['timestamps'], private webCitations: HttpSessionRemoteOptions['projections']['webCitations'], private notifications?: BarkNotifications, private hostedObserver?: (message?: RpcMessage) => void, private hostedReply?: (requestId: string, message: RpcMessage, call: SessionCallOptions) => Promise<RpcMessage | undefined>, private memoryOnly = false, private onAuthModeChanged?: (mode: string | null) => void, private remote?: HttpSessionRemoteOptions, private loadCheck?: () => void) {
+  constructor(readonly id: string, private upstreamUrl: string, private root: string, private changeHistory: HttpSessionRemoteOptions['projections']['changeHistory'], private images: HttpSessionRemoteOptions['projections']['images'], private timestamps: HttpSessionRemoteOptions['projections']['timestamps'], private webCitations: HttpSessionRemoteOptions['projections']['webCitations'], private notifications?: BarkNotifications, private hostedObserver?: (message?: RpcMessage) => void, private hostedReply?: (requestId: string, message: RpcMessage, call: SessionCallOptions) => Promise<RpcMessage | undefined>, private memoryOnly = false, private onAuthModeChanged?: (mode: string | null) => void, private remote?: HttpSessionRemoteOptions, private loadCheck?: () => void, private gatewayRpc?: (message: RpcMessage, call: SessionCallOptions) => Promise<RpcMessage>) {
     this.loadPromise = memoryOnly ? Promise.resolve() : this.load();
   }
 
@@ -898,6 +935,7 @@ class Session {
               result = { ...result, result: compactTurnDetails(full, stats) };
             }
           }
+          else if (this.gatewayRpc && ['mobile/sidebar/summaries', 'mobile/sidebar/projectless', 'mobile/uploadUsage/read', 'mobile/attachments/upload', 'mobile/titleSummary', 'mobile/thread/observe'].includes(message.method)) result = await this.gatewayRpc(message, call);
           else result = await this.exchange(message, submittedSocket, call);
         }
         if (!this.memoryOnly && result.error == null && message.method === "thread/turns/list" && message.params?.itemsView === "full") {
@@ -954,6 +992,19 @@ class Session {
       return { status: operation.status, ...(operation.message ? { message: operation.message } : {}) };
     };
     return fence ? withRemoteOperation(() => { assertCall(call); fence.assertLive(); }, read) : read();
+  }
+  async confirmAttachment(requestId: string, request: RpcMessage, uploaded: unknown, call: SessionCallOptions): Promise<RpcMessage | undefined> {
+    const fence = this.remote ? await this.authorization(call) : undefined;
+    if (request.method !== 'mobile/attachments/upload' || request.params?.attachmentId !== requestId) throw new HttpError(409, '原附件请求不一致');
+    await this.loadPromise;
+    const original = this.operations.get(requestId) ?? await this.storedOperation(requestId);
+    fence?.assertCurrent(); assertCall(call); assertRemoteOperation();
+    if (!original || original.signature !== createHash('sha256').update(rpcSignatureInput(request)).digest('hex') || original.promise) return;
+    if (original.status === 'completed') return original.message;
+    const message = { id: request.id, result: uploaded };
+    const confirmed: Operation = { ...original, status: 'completed', message };
+    await this.save(confirmed); fence?.assertCurrent(); assertCall(call); assertRemoteOperation();
+    this.operations.set(requestId, confirmed); return message;
   }
 
   voice(socket: WebSocket) {
@@ -1024,7 +1075,8 @@ export class HttpSessions {
   private webCitations: HttpSessionRemoteOptions['projections']['webCitations'];
   private hostedRequests = new Map<string, { message: RpcMessage; originalId: string | number; epoch: string; sessionId: string }>();
   private hostedListeners = new Set<(message: RpcMessage) => void>();
-  constructor(private options: { upstreamUrl: string; codexHome?: string; remote?: HttpSessionRemoteOptions; changeHistory?: TurnChangeHistory; notifications?: BarkNotifications; uploadMeter?: ModelUploadSource; onAuthModeChanged?: (mode: string | null) => void }) {
+  private observationEpochs = new Map<string, string>();
+  constructor(private options: { upstreamUrl: string; codexHome?: string; remote?: HttpSessionRemoteOptions; changeHistory?: TurnChangeHistory; notifications?: BarkNotifications; uploadMeter?: ModelUploadSource; attachments?: GatewayAttachments; titleSummary?: (threadId: string, automatic: boolean, call: SessionCallOptions) => Promise<string>; onAuthModeChanged?: (mode: string | null) => void }) {
     // 只快照绑定容器；consumer保留原可信实例，原context与传输handle不可在await期间换绑。
     const remote = options.remote ? { ...options.remote, context: structuredClone(options.remote.context) } : undefined;
     if (remote?.context.mode === 'remote') { Object.freeze(remote.context.managed); Object.freeze(remote.context.target); }
@@ -1077,9 +1129,10 @@ export class HttpSessions {
   }
 
   private closed = false;
+  get consumersAvailable(): boolean { return !this.closed && (this.options.remote?.isAvailable?.() ?? true); }
   private async withCall<T>(call: SessionCallOptions, operation: (originalCall: SessionCallOptions, authorize?: () => void) => Promise<T>): Promise<T> {
     call = { ...call, deadline: call.deadline, signal: call.signal };
-    if (this.closed) throw new HttpError(503, 'Sessions closed');
+    if (!this.consumersAvailable) throw new HttpError(503, 'Sessions closed or consumers unavailable');
     if (!this.options.remote) return operation(call);
     const parents = captureRemoteOperation();
     const fence = await authorizeSession(this.options.remote, call);
@@ -1107,7 +1160,20 @@ export class HttpSessions {
     const session = new Session(id, this.options.upstreamUrl, this.root, this.changeHistory, this.images, this.timestamps, this.webCitations, this.options.notifications,
       [HOSTED_SESSION_ID, SIDECHAT_SESSION_ID].includes(id) ? (message) => this.observeHosted(message, id) : undefined,
       ![HOSTED_SESSION_ID, SIDECHAT_SESSION_ID].includes(id) ? (requestId, message, call) => this.replyHosted(requestId, message, call) : undefined,
-      id === SIDECHAT_SESSION_ID, this.options.onAuthModeChanged, this.options.remote, authorize);
+      id === SIDECHAT_SESSION_ID, this.options.onAuthModeChanged, this.options.remote, authorize,
+      async (message, call) => {
+        if (message.method === 'mobile/thread/observe') return this.observeThread(message, call);
+        if (message.method === 'mobile/titleSummary') {
+          if (!this.options.titleSummary || typeof message.params?.threadId !== 'string' || !message.params.threadId.trim() || message.params.threadId.length > 256 || typeof message.params.automatic !== 'boolean') throw new HttpError(400, '标题总结参数无效');
+          return { id: message.id, result: { title: await this.options.titleSummary(message.params.threadId, message.params.automatic, call) } };
+        }
+        if (message.method === 'mobile/attachments/upload') {
+          const attachmentId = message.params?.attachmentId;
+          if (!this.options.attachments || this.options.remote?.context.mode !== 'remote' || typeof attachmentId !== 'string' || attachmentId !== message.id) throw new HttpError(400, '原附件请求不一致');
+          return { id: message.id, result: await this.options.attachments.upload(attachmentId, this.options.remote.context, call.signal) };
+        }
+        return message.method === 'mobile/uploadUsage/read' ? this.uploadUsageRpc(message) : this.sidebarRpc(message, call);
+      });
     // Loading errors are returned by APIs rather than emitted as unhandled rejections.
     session.loadPromise.catch(() => {});
     this.sessions.set(id, session);
@@ -1136,37 +1202,8 @@ export class HttpSessions {
           try { result = await session.operation(id, call); }
           catch (error) { if (!(error instanceof HttpError) || error.status !== 404 || !ephemeral) throw error; result = await ephemeral.operation(id, call); }
         } else if (url.pathname === "/api/rpc" && request.method === "POST") {
-          let bytes = 0; const parts: Buffer[] = [];
-          for await (const chunk of request) {
-            const part = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-            bytes += part.length;
-            if (bytes > MAX_REQUEST_BYTES) throw new HttpError(413, "Request exceeds 16 MiB");
-            parts.push(part);
-          }
-          let body: any;
-          try { body = JSON.parse(Buffer.concat(parts).toString("utf8")); } catch { throw new HttpError(400, "Invalid JSON"); }
-          if (!UUID.test(body?.requestId ?? "") || !body?.message || typeof body.message !== "object" || Array.isArray(body.message)) throw new HttpError(400, "Invalid RPC envelope");
-          const message = body.message as RpcMessage;
-          if (message.method === "initialize" && message.id == null) throw new HttpError(400, "Initialize must include an RPC id");
-          if (message.id != null && !["number", "string"].includes(typeof message.id)) throw new HttpError(400, "Invalid RPC id");
-          if (message.method != null && (typeof message.method !== "string" || !message.method.length || message.method.length > 256)) throw new HttpError(400, "Invalid RPC method");
-          if (message.method === "mobile/turns/commentary" &&
-            (message.id == null || !validTurnCommentaryParams(message.params))) throw new HttpError(400, "Invalid turn commentary parameters");
-          if (message.method === "mobile/turns/details") {
-            const params = message.params;
-            if (message.id == null || !params || Array.isArray(params) || typeof params.threadId !== "string" || !params.threadId.trim() ||
-              (params.cursor !== undefined && typeof params.cursor !== "string") ||
-              (params.limit !== undefined && (!Number.isSafeInteger(params.limit) || params.limit <= 0)) ||
-              (params.sortDirection !== undefined && params.sortDirection !== "desc")) throw new HttpError(400, "Invalid turn details parameters");
-          }
-          if (!message.method && message.result === undefined && message.error === undefined) throw new HttpError(400, "Invalid RPC reply");
-          if (body.epoch !== undefined && (typeof body.epoch !== "string" || !UUID.test(body.epoch))) throw new HttpError(400, "Invalid session epoch");
-          if (message.method === 'mobile/uploadUsage/read') result = this.uploadUsageRpc(message);
-          else if (["mobile/sidebar/summaries", "mobile/sidebar/projectless"].includes(message.method ?? "")) result = await this.sidebarRpc(message, call);
-          else if (message.method === 'mobile/sidechat/rpc') result = await this.sidechatRpc(message, body.requestId, call);
-          else if (!message.method && typeof message.id === 'string' && this.hostedRequests.get(message.id)?.sessionId === SIDECHAT_SESSION_ID) result = await this.replyHosted(body.requestId, message, call);
-          else if (this.sidechats.has(message.params?.threadId) && ['thread/settings/update', 'turn/interrupt'].includes(message.method ?? '')) result = await this.sidechatRpc({ ...message, params: { method: message.method, params: message.params } }, body.requestId, call);
-          else result = await session.rpc(body.requestId, message, body.epoch, call);
+          const body = await readRpcEnvelope(request);
+          result = await this.rpcForSession(session, body, call);
         } else throw new HttpError(405, "Method not allowed");
         return result;
       });
@@ -1180,6 +1217,46 @@ export class HttpSessions {
       response.setHeader("content-type", "application/json; charset=utf-8");
       response.end(JSON.stringify({ error: { code: error instanceof HttpError ? error.code : -32000, message: error instanceof HttpError ? error.message : "Session storage or upstream unavailable" } }));
     }
+  }
+
+  isEphemeralRpc(message: RpcMessage): boolean {
+    return message.method === 'mobile/sidechat/rpc' ||
+      (!message.method && typeof message.id === 'string' && this.hostedRequests.get(message.id)?.sessionId === SIDECHAT_SESSION_ID) ||
+      (this.sidechats.has(message.params?.threadId) && ['thread/settings/update', 'turn/interrupt'].includes(message.method ?? ''));
+  }
+  /** 只能从原 Session 的实际通知/待审批请求赋予控制优先级，不能信任手机自报的 readOnly/control。 */
+  controlFor(sessionId: string, message: RpcMessage, epoch: string | undefined, expiresAt: number): import('./operation-queue.js').OperationControl | undefined {
+    const session = this.sessions.get(sessionId);
+    if (message.method === 'turn/interrupt') {
+      const { threadId, turnId } = message.params ?? {};
+      if (typeof threadId !== 'string' || typeof turnId !== 'string' || !session?.running.has(`${threadId}:${turnId}`)) throw new HttpError(409, '原运行回合已失效');
+      return { kind: 'stop', turnId, expiresAt };
+    }
+    if (!message.method) {
+      const pending = message.id == null ? undefined : session?.pending.get(message.id);
+      const turnId = pending?.params?.turnId ?? pending?.params?.turn?.id;
+      const requestId = rpcControlRequestKey(message.id, epoch);
+      if (!session || !epoch || epoch !== session.epoch || !pending || typeof turnId !== 'string' || !requestId) throw new HttpError(409, '原审批请求已失效');
+      return { kind: 'approval', turnId, requestId, expiresAt };
+    }
+  }
+  conversationFor(sessionId: string, message: RpcMessage): string | undefined {
+    const value = message.params?.threadId ?? (message.id == null ? undefined : this.sessions.get(sessionId)?.pending.get(message.id)?.params?.threadId);
+    return typeof value === 'string' && value.trim() ? value : undefined;
+  }
+  publicRpc(sessionId: string, body: PublicRpcEnvelope, call: SessionCallOptions = sessionCall()): Promise<RpcMessage> {
+    return this.withCall(call, (call, authorize) => this.rpcForSession(this.session(sessionId, authorize), body, call));
+  }
+  private async rpcForSession(session: Session, body: PublicRpcEnvelope, call: SessionCallOptions): Promise<RpcMessage> {
+    const message = body.message;
+    let result: RpcMessage | undefined;
+    if (message.method === 'mobile/uploadUsage/read') result = this.uploadUsageRpc(message);
+    else if (["mobile/sidebar/summaries", "mobile/sidebar/projectless"].includes(message.method ?? "")) result = await this.sidebarRpc(message, call);
+    else if (message.method === 'mobile/sidechat/rpc') result = await this.sidechatRpc(message, body.requestId, call);
+    else if (!message.method && typeof message.id === 'string' && this.hostedRequests.get(message.id)?.sessionId === SIDECHAT_SESSION_ID) result = await this.replyHosted(body.requestId, message, call);
+    else if (this.sidechats.has(message.params?.threadId) && ['thread/settings/update', 'turn/interrupt'].includes(message.method ?? '')) result = await this.sidechatRpc({ ...message, params: { method: message.method, params: message.params } }, body.requestId, call);
+    else result = await session.rpc(body.requestId, message, body.epoch, call);
+    return result!;
   }
 
   private observeHosted(message?: RpcMessage, sessionId = HOSTED_SESSION_ID) {
@@ -1230,6 +1307,23 @@ export class HttpSessions {
       this.broadcastHosted({ method: "serverRequest/resolved", params: { requestId: message.id, threadId: entry.message.params?.threadId } });
       return { ...response, id: message.id };
     });
+  }
+  private async observeThread(message: RpcMessage, call: SessionCallOptions): Promise<RpcMessage> {
+    const threadId = message.params?.threadId;
+    if (typeof threadId !== 'string' || !threadId || threadId.length > 1024) throw new HttpError(400, '观察会话 ID 无效');
+    const epoch = await this.hostedReady(call);
+    if (this.observationEpochs.get(threadId) !== epoch) {
+      const resumed = await this.hostedRpc({ id: randomUUID(), method: 'thread/resume', params: { threadId, excludeTurns: true, initialTurnsPage: { limit: 1, itemsView: 'summary' } } }, randomUUID(), call);
+      if (resumed.error) return { id: message.id, error: resumed.error };
+      if (await this.hostedReady(call) !== epoch) throw new HttpError(503, '观察连接已经变化');
+      this.observationEpochs.set(threadId, epoch);
+    }
+    const response = await this.hostedRpc({ id: randomUUID(), method: 'thread/read', params: { threadId, includeTurns: false } }, randomUUID(), call);
+    if (response.error) return { id: message.id, error: response.error };
+    const turns = await this.hostedRpc({ id: randomUUID(), method: 'thread/turns/list', params: { threadId, limit: 1, sortDirection: 'desc', itemsView: 'full' } }, randomUUID(), call);
+    if (turns.error) return { id: message.id, error: turns.error };
+    if (await this.hostedReady(call) !== epoch) throw new HttpError(503, '观察连接已经变化');
+    return { id: message.id, result: { thread: (response.result as any)?.thread, data: (turns.result as any)?.data } };
   }
   subscribeHosted(listener: (message: RpcMessage) => void) {
     let active = true;
@@ -1317,6 +1411,7 @@ export class HttpSessions {
       if (!UUID.test(originalAttempt.requestId) || !UUID.test(originalAttempt.attemptId) || originalAttempt.sessionId === SIDECHAT_SESSION_ID) throw new HttpError(400, 'Invalid dispatch attempt');
       // 冻结原调用输入，异步期间调用方改对象不能将证明换绑到另一次请求。
       const originalMessage = structuredClone(message);
+      if (originalMessage.method === 'thread/unsubscribe' && typeof originalMessage.params?.threadId === 'string') this.observationEpochs.delete(originalMessage.params.threadId);
       const response = await this.withCall(originalCall, async (_call, authorize) => {
         executionAuthorization = authorize;
         assertCall(originalCall); assertRemoteOperation();
@@ -1378,6 +1473,15 @@ export class HttpSessions {
     let authorization: (() => void) | undefined;
     const result = await this.withCall(call, async (_call, authorize) => { authorization = authorize; return this.session(sessionId, authorize).events(after); });
     authorization?.(); assertCall(call); assertRemoteOperation(); return result;
+  }
+  reconcileAttachment(requestId: string, message: RpcMessage, call: SessionCallOptions): Promise<RpcMessage | undefined> {
+    return this.withCall(call, async (call, authorize) => {
+      if (!this.options.attachments || this.options.remote?.context.mode !== 'remote' || message.method !== 'mobile/attachments/upload' ||
+        message.params?.attachmentId !== requestId || message.id !== requestId) return;
+      const uploaded = await this.options.attachments.reconcile(requestId, this.options.remote.context, call.signal);
+      if (!uploaded) return;
+      return this.session(HOSTED_SESSION_ID, authorize).confirmAttachment(requestId, message, uploaded, call);
+    });
   }
   async sidebarRpc(message: RpcMessage, call: SessionCallOptions = sessionCall()): Promise<RpcMessage> {
     return this.withCall(call, async call => {

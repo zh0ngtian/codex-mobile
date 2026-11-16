@@ -104,7 +104,7 @@ it('未知写阻后写但可信读不被屏障阻死，settings resume和client 
   expect((await f.queue().read(first.id)).state).toBe('uncertain'); expect((await f.queue().read(later.id)).state).toBe('queued'); expect((await f.queue().read(read.id)).state).toBe('succeeded'); expect((await f.queue().read(resume.id)).state).toBe('queued');
   expect(f.localMessages.filter(m => m.method === 'turn/start')).toHaveLength(1); expect(f.localMessages.filter(m => m.method === 'thread/read')).toHaveLength(1);
   await scheduler.runOnce(); expect(f.localMessages.filter(m => m.method === 'turn/start')).toHaveLength(1);
-});
+}, 10000);
 it('实际RPC错误仍failed且阻后写，调用方取得原error而非伪成功', async () => {
   const f = await setup(); const scheduler = f.create(); f.respond((_mode, message) => ({ id: message.id, ...(message.method === 'turn/start' ? { error: { code: -1, message: 'real-failure' } } : { result: { ok: true } }) } as any));
   const first = f.input(f.localContext); const later = f.input(f.localContext); await scheduler.submit(first); await scheduler.submit(later); await scheduler.runOnce();

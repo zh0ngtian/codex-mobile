@@ -338,7 +338,7 @@ describe("悬浮状态布局", () => {
     );
     expect(composerRule).toContain("bottom: var(--input-bar-bottom-offset)");
     expect(composerRule).toContain("margin: 0");
-    expect(composerRule).toContain("padding: 8px 10px 0");
+    expect(composerRule).toContain("padding: 8px 12px 0");
   });
 
   it("侧边栏面板与遮罩使用同一套展开动效", () => {

@@ -16,7 +16,7 @@ const MAX_SUBSCRIPTIONS = 128;
 const MAX_DEDUPLICATION = 4096;
 const MAX_STATE_BYTES = 1024 * 1024;
 const MAX_PENDING_PUSHES = 128;
-type Subscription = { clientId: string; backendId: string; barkUrl: string };
+type Subscription = { clientId: string; backendId: string; barkUrl: string; scope?: string };
 type State = { subscriptions: Subscription[]; delivered: string[] };
 
 /** 全网关共用订阅和去重记录，HTTP 与流式连接只提交实时事件。 */
@@ -37,12 +37,22 @@ export class BarkNotifications {
   private controllers = new Set<AbortController>();
   private closed = false;
   private root: string;
-  constructor(private options: { codexHome: string; displayName: string; fetch?: typeof fetch; rolloutSource?: RemoteRolloutSource; onMetadataError?: (error: RolloutSourceError) => void }) {
+  private children = new Set<BarkNotifications>();
+  constructor(private options: { codexHome: string; displayName: string; fetch?: typeof fetch; rolloutSource?: RemoteRolloutSource; onMetadataError?: (error: RolloutSourceError) => void },
+    private owner?: { parent: BarkNotifications; scope: string; authorize: () => Promise<() => void> }) {
     this.root = join(options.codexHome, "codex-mobile-notifications");
-    this.ready = this.load();
+    if (owner) {
+      this.subscriptions = owner.parent.subscriptions; this.delivered = owner.parent.delivered;
+      this.ready = owner.parent.ready; owner.parent.children.add(this);
+    } else this.ready = this.load();
     this.ready.catch(() => {});
   }
-  get subscribed() { return this.subscriptions.size > 0; }
+  forTarget(scope: string, options: { displayName: string; rolloutSource: RemoteRolloutSource; authorize: () => Promise<() => void> }) {
+    if (this.owner || this.closed || !/^[a-f0-9]{64}$/.test(scope)) throw new TypeError('需要唯一通知持久所有者及目标作用域');
+    return new BarkNotifications({ ...this.options, displayName: options.displayName, rolloutSource: options.rolloutSource }, { parent: this, scope, authorize: options.authorize });
+  }
+  private subscriptionsForTarget(): Subscription[] { return [...this.subscriptions.values()].filter(value => value.scope === this.owner?.scope); }
+  get subscribed() { return this.subscriptionsForTarget().length > 0; }
   get followedThreadIds(): Set<string> { return new Set(this.desktopPinnedThreadIds); }
   get followingRevision() { return this.pinnedRevision; }
   setFollowedThreadIds(ids: Iterable<string>, expectedRevision = this.pinnedRevision) {
@@ -63,7 +73,7 @@ export class BarkNotifications {
     } } });
     if (completed) this.deliver(completed);
   }
-  private key(subscription: Pick<Subscription, "clientId" | "backendId">) { return JSON.stringify([subscription.clientId, subscription.backendId]); }
+  private key(subscription: Pick<Subscription, "clientId" | "backendId" | "scope">) { return JSON.stringify([subscription.clientId, subscription.backendId, ...(subscription.scope ? [subscription.scope] : [])]); }
   private async load() {
     const path = join(this.root, "state.json");
     try {
@@ -72,18 +82,21 @@ export class BarkNotifications {
       if (!Array.isArray(state.subscriptions) || state.subscriptions.length > MAX_SUBSCRIPTIONS || !Array.isArray(state.delivered) || state.delivered.length > MAX_DEDUPLICATION) throw new Error("通知设置无效");
       for (const subscription of state.subscriptions) {
         if (!UUID.test(subscription.clientId) || typeof subscription.backendId !== "string" || !subscription.backendId.trim() || subscription.backendId.length > 256) throw new Error("通知订阅无效");
-        this.subscriptions.set(this.key(subscription), { clientId: subscription.clientId, backendId: subscription.backendId, barkUrl: parseBarkPushUrl(subscription.barkUrl) });
+        if (subscription.scope !== undefined && !/^[a-f0-9]{64}$/.test(subscription.scope)) throw new Error('通知目标无效');
+        this.subscriptions.set(this.key(subscription), { clientId: subscription.clientId, backendId: subscription.backendId, barkUrl: parseBarkPushUrl(subscription.barkUrl), ...(subscription.scope ? { scope: subscription.scope } : {}) });
       }
       for (const id of state.delivered) { if (!/^[a-f0-9]{64}$/.test(id)) throw new Error("通知去重记录无效"); this.delivered.add(id); }
       await chmod(this.root, 0o700); await chmod(path, 0o600);
     } catch (error: any) { if (error.code !== "ENOENT") throw error; }
   }
-  private enqueue(work: () => Promise<void>) {
+  private enqueue(work: () => Promise<void>): Promise<void> {
+    if (this.owner) return this.owner.parent.enqueue(work);
     const result = this.queue.then(() => this.ready).then(work);
     this.queue = result.catch(() => {});
     return result;
   }
-  private async save() {
+  private async save(): Promise<void> {
+    if (this.owner) return this.owner.parent.save();
     const state: State = { subscriptions: [...this.subscriptions.values()], delivered: [...this.delivered] };
     const raw = JSON.stringify(state);
     if (Buffer.byteLength(raw) > MAX_STATE_BYTES) throw new Error("通知设置容量已满");
@@ -104,8 +117,9 @@ export class BarkNotifications {
       for await (const chunk of request) { const part = Buffer.from(chunk); size += part.length; if (size > MAX_STATE_BYTES) throw new Error("通知设置请求过大"); parts.push(part); }
       let body: any; try { body = JSON.parse(Buffer.concat(parts).toString("utf8")); } catch { throw new Error("通知设置必须为有效 JSON"); }
       if (!body || !UUID.test(body.clientId ?? "") || typeof body.backendId !== "string" || !body.backendId.trim() || body.backendId.length > 256 || /[\u0000-\u001f\u007f]/.test(body.backendId) || !["system", "bark"].includes(body.mode)) throw new Error("通知设置需要安装 ID、后端 ID 和有效通知方式");
-      const subscription: Subscription = { clientId: body.clientId.toLowerCase(), backendId: body.backendId, barkUrl: body.mode === "bark" ? parseBarkPushUrl(body.barkUrl) : "" };
+      const subscription: Subscription = { clientId: body.clientId.toLowerCase(), backendId: body.backendId, barkUrl: body.mode === "bark" ? parseBarkPushUrl(body.barkUrl) : "", ...(this.owner ? { scope: this.owner.scope } : {}) };
       await this.enqueue(async () => {
+        const fence = await this.owner?.authorize(); fence?.();
         const key = this.key(subscription); const previous = this.subscriptions.get(key);
         if ((body.mode === "bark" && previous?.barkUrl === subscription.barkUrl) || (body.mode === "system" && !previous)) return;
         if (body.mode === "bark" && !previous && this.subscriptions.size >= MAX_SUBSCRIPTIONS) throw new Error("通知订阅数量已满");
@@ -200,17 +214,18 @@ export class BarkNotifications {
       }
       // 同一手机可能遗留多个安装/后端订阅；注销仍独立，投递按接收地址合并。
       const destinations = new Map<string, Subscription[]>();
-      for (const subscription of this.subscriptions.values()) {
+      const fence = await this.owner?.authorize(); fence?.();
+      for (const subscription of this.subscriptionsForTarget()) {
         if (questionId == null && !(this.desktopPinnedThreadIds.has(completed.threadId) || this.completions.isMobileTurn(completed.threadId, completed.turnId))) continue;
         const subscriptions = destinations.get(subscription.barkUrl) ?? [];
         subscriptions.push(subscription); destinations.set(subscription.barkUrl, subscriptions);
       }
       for (const [barkUrl, subscriptions] of destinations) {
         const subscription = subscriptions[subscriptions.length - 1];
-        const id = createHash("sha256").update(JSON.stringify(questionId == null ? ["bark-destination", barkUrl, completed.threadId, completed.turnId] : ["bark-question", barkUrl, completed.threadId, completed.turnId, questionId])).digest("hex");
+        const id = createHash("sha256").update(JSON.stringify(questionId == null ? ["bark-destination", barkUrl, completed.threadId, completed.turnId, ...(this.owner ? [this.owner.scope] : [])] : ["bark-question", barkUrl, completed.threadId, completed.turnId, questionId, ...(this.owner ? [this.owner.scope] : [])])).digest("hex");
         if (this.delivered.has(id)) continue;
         // 升级时沿用旧安装的已发送证据，并落盘地址记录，避免注销旧订阅后补发。
-        const previouslyDelivered = questionId == null && subscriptions.some((entry) => this.delivered.has(createHash("sha256")
+        const previouslyDelivered = !this.owner && questionId == null && subscriptions.some((entry) => this.delivered.has(createHash("sha256")
           .update(JSON.stringify([entry.clientId, entry.backendId, completed.threadId, completed.turnId])).digest("hex")));
         if (!previouslyDelivered && this.jobs.size >= MAX_PENDING_PUSHES) continue;
         this.delivered.add(id);
@@ -235,7 +250,7 @@ export class BarkNotifications {
     // 已确认的移动来源随本次投递保留；关注资格与地址则在每次重试时重新确认。
     const mobileOrigin = !question && this.completions.isMobileTurn(completed.threadId, completed.turnId);
     for (let attempt = 0; attempt < 3 && !this.closed; attempt++) {
-      const subscription = [...this.subscriptions.values()].filter(entry => entry.barkUrl === barkUrl &&
+      const subscription = this.subscriptionsForTarget().filter(entry => entry.barkUrl === barkUrl &&
         (question || mobileOrigin || this.completions.isMobileTurn(completed.threadId, completed.turnId) || this.desktopPinnedThreadIds.has(completed.threadId))).at(-1);
       if (!subscription) return;
       const controller = new AbortController(); this.controllers.add(controller);
@@ -244,6 +259,7 @@ export class BarkNotifications {
         // 总结或手动改名可能在排队、落盘或重试期间保存；每次实际投递时读取最新名称。
         const title = this.titles.get(completed.threadId);
         const body = title?.name || title?.preview || "新会话";
+        const fence = await this.owner?.authorize(); fence?.(); if (this.closed) return;
         const response = await (this.options.fetch ?? fetch)(subscription.barkUrl, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...payload, body, url: `codexmobile://thread?backendId=${encodeURIComponent(subscription.backendId)}&threadId=${encodeURIComponent(completed.threadId)}` }), signal: controller.signal, redirect: "error" });
         void response.body?.cancel().catch(() => {});
         if (response.ok) return;
@@ -256,5 +272,5 @@ export class BarkNotifications {
       }
     }
   }
-  async close() { this.closed = true; this.automaticNames.close(); for (const controller of this.controllers) controller.abort(); await this.queue; await Promise.all(this.jobs); }
+  async close() { this.closed = true; this.automaticNames.close(); for (const controller of this.controllers) controller.abort(); await Promise.all([...this.children].map(child => child.close())); await this.queue; await Promise.all(this.jobs); this.owner?.parent.children.delete(this); }
 }

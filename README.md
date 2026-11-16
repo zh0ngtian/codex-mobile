@@ -186,7 +186,7 @@ Android 使用固定 PakePlus WebView 容器直接呈现内置共享 Web 页面�
 
 ## 系统架构
 
-官方 Remote 常驻网关正在开发：协议复用、自有硬件授权、受管认证、账号绑定目录、一次性 OAuth、活动身份存储和运行管理已完成源码及隔离审查，既有自有身份已通过正式Remote三流RPC、断线恢复、零流短时保活与持久暂停恢复。私有管理通道、Mac CLI及实际入口已通过独立规格/质量复审，正式Remote的三次实际进程RPC、正常重启、SIGKILL后恢复、活owner竞争及25秒零流后再次RPC均已验证；用法和边界见[Mac管理说明](docs/remote-gateway-management.md)。目标命令基础已通过独立双审及[正式Remote探针](docs/superpowers/plans/evidence/2026-11-13-remote-commands-product-probe.json)，验证默认权限、完整输出、自有进程收尾和关闭后原RPC可用。目标文件与固定计量读取、媒体与rollout消费者，以及[项目/Git/独立标题与置顶消费者](docs/superpowers/plans/evidence/2026-11-15-remote-projects-git-titles-validation.json)已完成源码、独立双审和官方自有小样本验收；[统计失效装配及首次设备保存A修复](docs/superpowers/plans/evidence/2026-11-15-remote-upload-invalidation-validation.json)已完成独立双审、官方统计小样本和最终iPhone17Pro原生验收；[固定网关身份与可信目标内部基础](docs/superpowers/plans/evidence/2026-11-16-remote-target-identity-validation.json)已完成源码验证与独立双审；公开目标业务路由、共享离线队列、客户端模式、长期稳定性和延迟分位数继续后续任务。当前使用方式仍按下述架构；本轮不部署网关或发布客户端。已确认边界及阶段证据见[设计](docs/superpowers/specs/2026-11-13-remote-gateway.md)和[实施计划](docs/superpowers/plans/2026-11-13-remote-gateway.md)。
+官方 Remote 常驻网关已完成本轮源码接线，正在最终验收：同一台 Mac 持有官方主连接，手机保留多网关，每个网关在原 URL 表单中选择本地或远程；远程模式下网关 Mac 也走官方 Relay。公开路由、目标文件/项目/通知消费者、唯一共享持久队列、手机 outbox 和后台会话观察器已实现；旧配置默认本地，只有“测试并保存”验证后才切换。现役安装与已发布客户端尚未包含本轮改动；官方全量功能、8小时、跨刷新与恢复延迟分位数仍待验收，不以短时探针代替。使用和验证边界见[Mac管理说明](docs/remote-gateway-management.md)、[现行交互约定](docs/interaction-alignment.md#412-多网关本地与-remote-模式源码实现最终验收中未发布)、[设计](docs/superpowers/specs/2026-11-13-remote-gateway.md)和[实施计划](docs/superpowers/plans/2026-11-13-remote-gateway.md)。本轮仅交付源码，未部署网关或发布客户端。
 
 ```mermaid
 flowchart LR

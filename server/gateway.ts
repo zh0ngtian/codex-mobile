@@ -2,7 +2,8 @@ import { TitleSummaries } from "./title-summaries.js";
 import { readDesktopPinnedThreads } from "./desktop-thread-pins.js";
 import { createServer, type Server } from "node:http";
 import { mkdir, open, readFile, rm } from "node:fs/promises";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
+import { performance } from 'node:perf_hooks';
 import { extname, join, normalize } from "node:path";
 import { homedir } from "node:os";
 import WebSocket, { WebSocketServer } from "ws";
@@ -13,14 +14,21 @@ import { MessageWebCitations } from "./web-citations.js";
 import { MessageTimestamps } from "./message-timestamps.js";
 import { compactTurnDetails, compactTurnCommentary, turnCommentaryRequest, validTurnCommentaryParams } from "./turn-details.js";
 import { FollowUps } from "./follow-ups.js";
-import { HttpSessions } from "./http-session.js";
+import { HttpSessions, HOSTED_SESSION_ID, validateRpcEnvelope } from "./http-session.js";
 import { BarkNotifications } from "./bark-notifications.js";
 import { FollowedThreadNotifications } from "./followed-thread-notifications.js";
 import { ImagePreviews } from "./image-preview.js";
 import { downloadFile } from "./file-download.js";
 import { previewVideo } from "./video-preview.js";
 import type { ModelUploadSource } from './model-upload-meter.js';
-import { parseTargetReference } from './targets.js';
+import { parseTargetReference, TargetResolver, type ResolvedRemoteTarget } from './targets.js';
+import { GatewayRemoteServices } from './gateway-remote-services.js';
+import { OperationScheduler } from './operation-scheduler.js';
+import { ThreadObserver } from './thread-observer.js';
+import { GatewayRpc } from './gateway-rpc.js';
+import { GatewayAttachments } from './gateway-attachments.js';
+import type { OperationContext } from './operation-queue.js';
+import { withIndependentRemoteOperation } from './remote/operation-guard.js';
 
 const MAX_APP_SERVER_MESSAGE_BYTES = 16 * 1024 * 1024;
 
@@ -55,6 +63,7 @@ export interface GatewayOptions {
   barkFetch?: typeof fetch;
   uploadMeter?: ModelUploadSource;
   onAuthModeChanged?: (mode: string | null) => void;
+  targetResolver?: TargetResolver;
 }
 
 export interface Gateway {
@@ -86,7 +95,7 @@ function authorized(url: URL, expected?: string, cookie?: string) {
 }
 
 // HTTP 与升级请求在任何本地消费者执行前使用同一校验；公开 Remote 完整装配前禁止回落 Local。
-function routingError(url: URL) {
+function routingError(url: URL, remoteSupported = false) {
   const modes = url.searchParams.getAll('mode');
   const targets = url.searchParams.getAll('target');
   if (!modes.length && !targets.length) return;
@@ -101,6 +110,7 @@ function routingError(url: URL) {
   } else if (url.pathname !== '/api/host') return invalid;
   // host 是全网关能力探测，不选择或读取某个目标。
   if (url.pathname === '/api/host') return;
+  if (remoteSupported) return;
   return { status: 503, error: {
     code: 'remote-not-supported', message: '此网关尚未开放远程模式，请使用支持远程模式的网关',
   } };
@@ -115,27 +125,146 @@ function applyCors(
   response.setHeader("access-control-allow-methods", "GET, POST, OPTIONS");
   response.setHeader(
     "access-control-allow-headers",
-    "content-type, x-codex-file-name",
+    "content-type, x-codex-file-name, x-codex-upload-id, x-codex-memory-only, x-codex-operation-id",
   );
   response.setHeader("vary", "Origin");
 }
 
 export async function createGateway(options: GatewayOptions): Promise<Gateway> {
+  const home = options.codexHome ?? process.env.CODEX_HOME ?? join(homedir(), '.codex');
+  const resolver = options.targetResolver;
   const webCitations = new MessageWebCitations(options.codexHome ?? process.env.CODEX_HOME ?? join(homedir(), ".codex"));
   const timestamps = new MessageTimestamps(options.codexHome ?? process.env.CODEX_HOME ?? join(homedir(), ".codex"));
   const changeHistory = new TurnChangeHistory(options.codexHome ?? process.env.CODEX_HOME ?? join(homedir(), ".codex"));
   const notifications = new BarkNotifications({ codexHome: options.codexHome ?? process.env.CODEX_HOME ?? join(homedir(), ".codex"), displayName: options.displayName ?? options.hostname ?? options.hostId ?? "Codex", fetch: options.barkFetch });
-  const httpSessions = new HttpSessions({ ...options, changeHistory, notifications });
+  const titleSummaries = new TitleSummaries(options.upstreamUrl);
+  const summarize = async (titles: TitleSummaries, notifier: BarkNotifications, threadId: string, automatic: boolean, call: import('./http-session.js').SessionCallOptions) => {
+    const naming = automatic ? notifier.beginAutomaticTitle(threadId) : undefined;
+    try { const title = await titles.summarize(threadId, call.signal); naming?.candidate(title); return title; }
+    catch (error) { naming?.fail(); throw error; }
+  };
+  const httpSessions = new HttpSessions({ ...options, changeHistory, notifications,
+    titleSummary: (threadId, automatic, call) => summarize(titleSummaries, notifications, threadId, automatic, call) });
   const unsubscribeUpload = options.uploadMeter?.subscribe((threadId, usage) => httpSessions.publishUploadUsage(threadId, usage));
-  const followUps = await FollowUps.open(options.codexHome ?? process.env.CODEX_HOME ?? join(homedir(), ".codex"), httpSessions);
+  type Bundle = { services: GatewayRemoteServices; notifications: BarkNotifications; meter: ModelUploadSource;
+    observers: Set<FollowedThreadNotifications>; unsubscribes: Set<() => void>; close(): Promise<void> };
+  const bundles = new Map<string, Promise<Bundle>>(); const contextBundles = new Map<string, Bundle>();
+  let closing = false;
+  const getBundle = async (target: ResolvedRemoteTarget, context: OperationContext, signal?: AbortSignal): Promise<Bundle> => {
+    const key = target.descriptor.authorizationKey; let pending = bundles.get(key);
+    if (!pending) {
+      pending = (async () => {
+        const services = await GatewayRemoteServices.create(target, home, signal);
+        if (closing) { await services.close(); throw new Error('网关已关闭'); }
+        const scope = createHash('sha256').update(JSON.stringify(['gateway-notifications-v1', context.gatewayId,
+          context.mode === 'remote' ? context.managed : null, context.mode === 'remote' ? context.target : null])).digest('hex');
+        const child = notifications.forTarget(scope, { displayName: options.displayName ?? 'Codex', rolloutSource: services.rollouts,
+          authorize: () => resolver!.authorizeOperation(context, 'read') });
+        let meter: import('./remote/model-upload-source.js').RemoteModelUploadSource | undefined;
+        let starting: Promise<void> | undefined; let retryAt = 0; let stopped = false;
+        const listeners = new Set<Parameters<ModelUploadSource['subscribe']>[0]>(); let unsubscribe: (() => void) | undefined;
+        const start = () => {
+          if (meter || starting || stopped || Date.now() < retryAt) return;
+          starting = withIndependentRemoteOperation(() => { if (closing || stopped) throw new Error('网关已关闭'); }, async () => {
+            meter = await services.uploadMeter();
+            if (closing || stopped) { await meter.close(); return; }
+            unsubscribe = meter.subscribe((threadId, usage) => { for (const listener of listeners) listener(threadId, usage); });
+          }).catch(() => { meter = undefined; retryAt = Date.now() + 30000; }).finally(() => { starting = undefined; });
+        };
+        const source: ModelUploadSource = { read(threadId) { start(); return meter?.read(threadId) ?? null; }, subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); } };
+        const observers = new Set<FollowedThreadNotifications>(); const unsubscribes = new Set<() => void>();
+        return { services, notifications: child, meter: source, observers, unsubscribes, async close() {
+          stopped = true; unsubscribe?.(); listeners.clear();
+          for (const observer of observers) { targetObservers.delete(observer); await observer.close(); }
+          for (const unsubscribe of unsubscribes) { targetUnsubscribes.delete(unsubscribe); unsubscribe(); }
+          await child.close(); await services.close(); await starting;
+        } };
+      })();
+      bundles.set(key, pending); void pending.catch(() => { if (bundles.get(key) === pending) bundles.delete(key); });
+    }
+    const bundle = await pending;
+    if (!bundle.services.ready) {
+      if (bundles.get(key) === pending) bundles.delete(key); await bundle.close();
+      if (closing) throw new Error('网关已关闭'); return getBundle(target, context, signal);
+    }
+    await target.assertCurrent(signal);
+    contextBundles.set(context.authorizationKey, bundle); return bundle;
+  };
+  const targetObservers = new Set<FollowedThreadNotifications>(); const targetUnsubscribes = new Set<() => void>();
+  const attachments = resolver ? new GatewayAttachments({ directory: join(home, 'codex-mobile-attachments'), resolver,
+    services: async (context, signal) => {
+      if (context.mode !== 'remote') throw new Error('附件目标不是 Remote');
+      const fence = await resolver.authorizeOperationExecution(context, signal);
+      const target = await resolver.resolve({ mode: 'remote', gatewayId: context.gatewayId, account: {
+        accountId: context.managed.accountId, accountUserId: context.managed.accountUserId,
+        ...(Object.hasOwn(context.managed, 'userId') ? { userId: context.managed.userId } : {}),
+      }, target: context.target }, signal);
+      const bundle = await getBundle(target, context, signal); fence.assertCurrent(); return bundle.services;
+    },
+  }) : undefined;
+  let conversationObserver: ThreadObserver | undefined;
+  const scheduler = resolver ? new OperationScheduler({ directory: join(home, 'codex-mobile-operations'), gatewayId: (await resolver.operationContext()).gatewayId,
+    gatewayCodexHome: home, upstreamUrl: options.upstreamUrl, resolver, localSessions: httpSessions, attachments,
+    remoteConsumers: async (context, target, call) => {
+      const bundle = await getBundle(target, context, call.signal);
+      return { projections: bundle.services.projections, sidechatReplay: bundle.services.sidechatReplay, notifications: bundle.notifications,
+        uploadMeter: bundle.meter, isAvailable: () => bundle.services.ready,
+        titleSummary: (threadId, automatic, call) => summarize(bundle.services.titles, bundle.notifications, threadId, automatic, call) };
+    },
+    async onResponse(context, message, response, sessionId) {
+      if (message.method !== 'thread/resume' && message.method !== 'thread/start') return;
+      const threadId = (response.result as any)?.thread?.id ?? message.params?.threadId;
+      if (typeof threadId === 'string') await conversationObserver?.opened(context as OperationContext, threadId, sessionId);
+    },
+    onEvents(context, sessionId, events) {
+      conversationObserver?.touch(context as OperationContext, sessionId);
+      for (const message of [...events.messages, ...events.requests]) conversationObserver?.event(context as OperationContext, message);
+    },
+    onSessions(context, sessions) {
+      const unsubscribeEvents = sessions.subscribeHosted(message => conversationObserver?.event(context as OperationContext, message));
+      targetUnsubscribes.add(unsubscribeEvents);
+      if (context.mode !== 'remote') return;
+      const bundle = contextBundles.get(context.authorizationKey)!;
+      bundle.unsubscribes.add(unsubscribeEvents);
+      const unsubscribeMeter = bundle.meter.subscribe((threadId, usage) => sessions.publishUploadUsage(threadId, usage));
+      targetUnsubscribes.add(unsubscribeMeter); bundle.unsubscribes.add(unsubscribeMeter);
+      const child = bundle.notifications;
+      const background = { hostedRpc: (message: import('./http-session.js').RpcMessage) => scheduler!.hostedRpc(context, message) };
+      const observer = new FollowedThreadNotifications({ sessions: background, followedThreadIds: () => child.followedThreadIds,
+        refreshFollowedThreadIds: async () => {
+          if (!child.subscribed) { child.setFollowedThreadIds([]); return; }
+          const revision = child.followingRevision;
+          const threads = await readDesktopPinnedThreads(async (method, params) => {
+            const response = await background.hostedRpc({ id: randomUUID(), method, params });
+            if (response.error != null) throw new Error('无法读取目标桌面置顶'); return response.result;
+          });
+          child.setFollowedThreadIds(threads.map(thread => String(thread.id)), revision);
+          for (const thread of threads) child.observeRpc({ method: 'thread/read' }, { result: { thread } });
+        }, notifyCompletion: (threadId, turnId) => child.notifyFollowedCompletion(threadId, turnId),
+        rememberThread: thread => child.observeRpc({ method: 'thread/read' }, { result: { thread } }),
+      });
+      targetObservers.add(observer); bundle.observers.add(observer);
+      const unsubscribeFollowing = child.subscribeFollowing(() => { void observer.poll(); });
+      targetUnsubscribes.add(unsubscribeFollowing); bundle.unsubscribes.add(unsubscribeFollowing); observer.start();
+    },
+  }) : undefined;
+  conversationObserver = resolver && scheduler ? new ThreadObserver({ directory: join(home, 'codex-mobile-observers'), resolver, scheduler,
+    followed: (context, threadId) => context.mode === 'local' ? notifications.followedThreadIds.has(threadId) : contextBundles.get(context.authorizationKey)?.notifications.followedThreadIds.has(threadId) === true,
+  }) : undefined;
+  conversationObserver?.start();
+  const queuedRpc = resolver && scheduler ? new GatewayRpc(resolver, scheduler) : undefined;
+  const followUps = await FollowUps.open(home, httpSessions, scheduler ? { scheduler } : undefined);
+  scheduler?.start();
+  const localContext = resolver ? await resolver.operationContext() : undefined;
+  const localBackground = { hostedRpc: (message: import('./http-session.js').RpcMessage) => scheduler && localContext ? scheduler.hostedRpc(localContext, message) : httpSessions.hostedRpc(message) };
   const followedNotifications = new FollowedThreadNotifications({
-    sessions: httpSessions, followedThreadIds: () => notifications.followedThreadIds,
+    sessions: localBackground, followedThreadIds: () => notifications.followedThreadIds,
     refreshFollowedThreadIds: async () => {
       if (!notifications.subscribed) { notifications.setFollowedThreadIds([]); return; }
       const revision = notifications.followingRevision;
       try {
         const threads = await readDesktopPinnedThreads(async (method, params) => {
-          const response = await httpSessions.hostedRpc({ id: randomUUID(), method, params });
+          const response = await localBackground.hostedRpc({ id: randomUUID(), method, params });
           if (response.error != null) throw Object.assign(new Error((response.error as any)?.message ?? "无法读取桌面置顶状态"), { code: (response.error as any)?.code });
           return response.result;
         });
@@ -149,8 +278,9 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
   const unsubscribeFollowing = notifications.subscribeFollowing(() => { void followedNotifications.poll(); });
   void notifications.initialized().then(() => followedNotifications.start()).catch(() => {});
   const imagePreviews = new ImagePreviews();
-  const titleSummaries = new TitleSummaries(options.upstreamUrl);
   const server: Server = createServer(async (request, response) => {
+    let delivery = () => {};
+    try {
     const url = new URL(request.url ?? "/", "http://gateway.local");
     const origin = request.headers.origin;
     const fileDownload = url.pathname.startsWith("/api/files/download/");
@@ -160,6 +290,7 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
       "/api/host",
       "/api/projects",
       "/api/uploads/file",
+      "/api/uploads/operations",
       "/api/files/preview",
       "/api/images/preview",
       "/api/image-generation-error",
@@ -167,6 +298,7 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
       "/api/events",
       "/api/operations",
       "/api/follow-ups",
+      "/api/queue",
       "/api/threads/title-summary",
     ].includes(url.pathname) || fileDownload;
     const apiRequest =
@@ -205,13 +337,122 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
       response.end();
       return;
     }
-    const routeError = apiRequest ? routingError(url) : undefined;
+    const routeError = apiRequest ? routingError(url, !!resolver) : undefined;
     if (routeError) {
       response.statusCode = routeError.status;
       response.setHeader('content-type', 'application/json; charset=utf-8');
       response.setHeader('cache-control', 'no-store');
       response.end(JSON.stringify({ error: routeError.error }));
       return;
+    }
+    const reference = url.searchParams.get('mode') === 'remote' && url.searchParams.has('target') ? parseTargetReference(JSON.parse(url.searchParams.get('target')!)) : undefined;
+    const context = apiRequest && resolver && url.pathname !== '/api/host' ? await resolver.operationContext(reference) : undefined;
+    if (context?.mode === 'remote') {
+      delivery = await resolver!.authorizeOperation(context, 'read');
+      const write = response.write.bind(response); const end = response.end.bind(response); const writeHead = response.writeHead.bind(response);
+      response.write = ((...args: any[]) => { delivery(); return Reflect.apply(write, response, args); }) as typeof response.write;
+      response.end = ((...args: any[]) => { delivery(); return Reflect.apply(end, response, args); }) as typeof response.end;
+      response.writeHead = ((...args: any[]) => { delivery(); return Reflect.apply(writeHead, response, args); }) as typeof response.writeHead;
+    }
+    if (queuedRpc && ['/api/rpc', '/api/events', '/api/operations'].includes(url.pathname)) {
+      await queuedRpc.handle(request, response, url, reference); return;
+    }
+    if (queuedRpc && context && url.pathname === '/api/threads/title-summary' && (context.mode === 'remote' || request.headers['x-codex-operation-id'] || request.method === 'GET')) {
+      const id = String(request.headers['x-codex-operation-id'] ?? url.searchParams.get('requestId') ?? '');
+      let input: any;
+      if (request.method === 'POST') {
+        const chunks: Buffer[] = []; let size = 0;
+        for await (const chunk of request) { size += chunk.length; if (size > 4096) throw Object.assign(new Error(), { status: 413 }); chunks.push(Buffer.from(chunk)); }
+        try { input = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch { throw Object.assign(new Error(), { status: 400 }); }
+      } else if (request.method === 'GET') input = { threadId: url.searchParams.get('threadId'), automatic: url.searchParams.get('automatic') === 'true' };
+      else throw Object.assign(new Error(), { status: 405 });
+      if (typeof input?.threadId !== 'string' || !input.threadId.trim() || input.threadId.length > 256 || input.automatic !== undefined && typeof input.automatic !== 'boolean') throw Object.assign(new Error(), { status: 400 });
+      const result = await queuedRpc.hosted(context, id, { id, method: 'mobile/titleSummary', params: { threadId: input.threadId, automatic: input.automatic === true } }, { deadline: performance.now() + 60000 }, request.method === 'GET');
+      delivery = await resolver!.authorizeOperation(context, 'read');
+      response.setHeader('content-type', 'application/json; charset=utf-8'); response.setHeader('cache-control', 'no-store');
+      response.statusCode = result.status;
+      response.end(JSON.stringify(result.status === 200 ? (result.body as any).error ? { error: (result.body as any).error } : (result.body as any).result : result.body)); return;
+    }
+    if (scheduler && context && url.pathname === '/api/queue') {
+      let value: unknown;
+      if (request.method === 'GET') value = await scheduler.publicQueue(context, url.searchParams.get('threadId') ?? undefined, fence => { delivery = fence; });
+      else if (request.method === 'POST') {
+        const chunks: Buffer[] = []; let size = 0;
+        for await (const chunk of request) { size += chunk.length; if (size > MAX_APP_SERVER_MESSAGE_BYTES) throw Object.assign(new Error(), { status: 413 }); chunks.push(Buffer.from(chunk)); }
+        let body: any; try { body = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch { throw Object.assign(new Error(), { status: 400 }); }
+        if (!body || typeof body !== 'object') throw Object.assign(new Error(), { status: 400 });
+        value = await scheduler.mutatePublicQueue(context, body, fence => { delivery = fence; });
+      } else throw Object.assign(new Error(), { status: 405 });
+      response.setHeader('content-type', 'application/json; charset=utf-8'); response.setHeader('cache-control', 'no-store');
+      delivery(); response.end(JSON.stringify(value)); return;
+    }
+    if (scheduler && context?.mode === 'remote' && url.pathname === '/api/follow-ups') {
+      let value: unknown;
+      if (request.method === 'GET') value = url.searchParams.has('requestId')
+        ? await scheduler.followUpSubmission(context, url.searchParams.get('requestId')!, fence => { delivery = fence; })
+        : await scheduler.listFollowUps(context, fence => { delivery = fence; });
+      else if (request.method === 'POST') {
+        const chunks: Buffer[] = []; let size = 0;
+        for await (const chunk of request) { size += chunk.length; if (size > MAX_APP_SERVER_MESSAGE_BYTES) throw Object.assign(new Error(), { status: 413 }); chunks.push(Buffer.from(chunk)); }
+        let body: unknown; try { body = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch { throw Object.assign(new Error(), { status: 400 }); }
+        value = await scheduler.mutateFollowUp(context, body, fence => { delivery = fence; });
+      } else throw Object.assign(new Error(), { status: 405 });
+      response.setHeader('content-type', 'application/json; charset=utf-8'); response.setHeader('cache-control', 'no-store');
+      delivery(); response.end(JSON.stringify(value)); return;
+    }
+    if (scheduler && attachments && context?.mode === 'remote' && ['/api/uploads/file', '/api/uploads/operations'].includes(url.pathname)) {
+      const rawId = url.pathname === '/api/uploads/file' ? request.headers['x-codex-upload-id'] ?? randomUUID() : url.searchParams.get('requestId');
+      if (typeof rawId !== 'string' || !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(rawId)) throw Object.assign(new Error(), { status: 400 });
+      const call = { deadline: performance.now() + 60000 };
+      if (url.pathname === '/api/uploads/file') {
+        if (request.method !== 'POST') throw Object.assign(new Error(), { status: 405 });
+        let name = String(request.headers['x-codex-file-name'] ?? 'attachment'); try { name = decodeURIComponent(name); } catch { /* 保留既有文件名。 */ }
+        name = name.replace(/[\u0000-\u001f\u007f]/g, '').slice(0, 240) || 'attachment';
+        const type = String(request.headers['content-type'] ?? '').split(';', 1)[0]!;
+        if (request.headers['x-codex-memory-only'] === 'true') {
+          const controller = new AbortController(); const abort = () => controller.abort();
+          request.once('aborted', abort); const timer = setTimeout(abort, 180000); timer.unref();
+          try {
+            const chunks: Buffer[] = []; let size = 0;
+            for await (const chunk of request) { size += chunk.length; if (size > 100 * 1024 * 1024) throw Object.assign(new Error(), { status: 413 }); delivery(); chunks.push(Buffer.from(chunk)); }
+            if (!size) throw Object.assign(new Error(), { status: 400 });
+            const target = await resolver!.resolve(reference!, controller.signal); const bundle = await getBundle(target as ResolvedRemoteTarget, context, controller.signal);
+            const path = await bundle.services.uploadPath(rawId, extname(name).slice(0, 19).replace(/[^.a-zA-Z0-9_-]/g, ''), controller.signal);
+            const sha256 = createHash('sha256'); for (const chunk of chunks) sha256.update(chunk);
+            const uploaded = await bundle.services.files.upload(path, (async function* () { yield* chunks; })(), { size, sha256: sha256.digest('hex'), expectedVersion: null, signal: controller.signal, timeoutMs: 180000 });
+            delivery(); response.statusCode = 201; response.setHeader('content-type', 'application/json; charset=utf-8');
+            response.end(JSON.stringify({ path: uploaded.path, name, type, size: uploaded.size })); return;
+          } finally { request.removeListener('aborted', abort); clearTimeout(timer); }
+        }
+        const retained = await attachments.retain(rawId, context, request, { name, type });
+        await scheduler.submit({ id: rawId, context, conversationId: '__uploads__', sessionId: HOSTED_SESSION_ID, requestId: rawId,
+          message: { id: rawId, method: 'mobile/attachments/upload', params: { attachmentId: rawId } },
+          settings: { name: retained.name, type: retained.type, size: retained.size }, attachmentRefs: [rawId] }, call);
+        void scheduler.runOnce().catch(() => {});
+      } else if (request.method !== 'GET') throw Object.assign(new Error(), { status: 405 });
+      let state = await scheduler.operation(rawId, context, HOSTED_SESSION_ID, call);
+      const until = performance.now() + (url.pathname === '/api/uploads/file' ? 1500 : 0);
+      while (state.status !== 'completed' && performance.now() < until) {
+        await new Promise(resolve => setTimeout(resolve, 25)); state = await scheduler.operation(rawId, context, HOSTED_SESSION_ID, call);
+      }
+      response.setHeader('content-type', 'application/json; charset=utf-8'); response.setHeader('cache-control', 'no-store');
+      if (state.message?.error != null) throw Object.assign(new Error(), { status: 503 });
+      response.statusCode = state.status === 'completed' ? 201 : 202;
+      delivery(); response.end(JSON.stringify(state.status === 'completed' ? state.message!.result : { accepted: true, requestId: rawId, ...state })); return;
+    }
+    if (context?.mode === 'remote' && url.pathname === '/api/status') {
+      response.setHeader('content-type', 'application/json; charset=utf-8');
+      delivery(); response.end(JSON.stringify({ mode: 'remote' })); return;
+    }
+    const target = context?.mode === 'remote' ? await resolver!.resolve(reference!) : undefined;
+    const bundle = target && context ? await getBundle(target, context) : undefined;
+    const selectedNotifications = bundle?.notifications ?? notifications;
+    const selectedTitles = bundle?.services.titles ?? titleSummaries;
+    let mediaSource = bundle?.services.media;
+    if (bundle && (fileDownload || ['/api/images/preview', '/api/files/preview'].includes(url.pathname))) {
+      const reference = bundle.services.resolveReference(url.searchParams.get('path') ?? '');
+      if (!reference) throw Object.assign(new Error(), { status: 400 });
+      mediaSource = reference.source; url.searchParams.set('path', reference.path);
     }
     if (url.pathname === "/api/threads/title-summary") {
       response.setHeader("content-type", "application/json; charset=utf-8");
@@ -225,8 +466,8 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
         try { body = JSON.parse(Buffer.concat(chunks).toString("utf8")); } catch { response.statusCode = 400; response.end(JSON.stringify({ error: { message: "标题总结参数无效" } })); return; }
         if (typeof body?.threadId !== "string" || !body.threadId.trim() || body.threadId.length > 256) { response.statusCode = 400; response.end(JSON.stringify({ error: { message: "会话 ID 无效" } })); return; }
         if (body.automatic !== undefined && typeof body.automatic !== "boolean") { response.statusCode = 400; response.end(JSON.stringify({ error: { message: "自动命名参数无效" } })); return; }
-        if (body.automatic === true) automatic = notifications.beginAutomaticTitle(body.threadId);
-        const title = await titleSummaries.summarize(body.threadId);
+        if (body.automatic === true) automatic = selectedNotifications.beginAutomaticTitle(body.threadId);
+        const title = await selectedTitles.summarize(body.threadId);
         automatic?.candidate(title);
         response.end(JSON.stringify({ title }));
       } catch (error) { automatic?.fail(); response.statusCode = 503; response.end(JSON.stringify({ error: { message: error instanceof Error ? error.message : "标题总结失败" } })); }
@@ -237,15 +478,15 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
       return;
     }
     if (url.pathname === "/api/notifications/settings") {
-      await notifications.handle(request, response);
+      await selectedNotifications.handle(request, response);
       return;
     }
     if (fileDownload) {
-      await downloadFile(request, response, url);
+      await downloadFile(request, response, url, mediaSource);
       return;
     }
     if (url.pathname === "/api/images/preview") {
-      await imagePreviews.handle(request, response, url);
+      await imagePreviews.handle(request, response, url, mediaSource);
       return;
     }
     if (["/api/rpc", "/api/events", "/api/operations"].includes(url.pathname)) {
@@ -256,12 +497,17 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
       const threadId = url.searchParams.get("threadId") ?? "";
       const itemId = url.searchParams.get("itemId") ?? "";
       const codexHome = options.codexHome ?? process.env.CODEX_HOME ?? join(homedir(), ".codex");
-      const error = await readImageGenerationError(codexHome, threadId, itemId);
+      const error = await readImageGenerationError(codexHome, threadId, itemId, bundle?.services.rollouts);
       response.setHeader("content-type", "application/json; charset=utf-8");
       response.end(JSON.stringify({ error }));
       return;
     }
     if (url.pathname === "/api/host") {
+      let remote: unknown = { version: 1, supported: false };
+      if (resolver) {
+        try { const directory = await resolver.directory(); const value = { version: 1, supported: true, ...directory.data }; directory.assertCurrent(); remote = value; delivery = directory.assertCurrent; }
+        catch { remote = { version: 1, supported: true, configured: false, authorized: false, paired: false, temporarilyOffline: false, state: 'authorization-required', targets: [] }; }
+      }
       let appServerReady = false;
       try {
         appServerReady = options.appServerReady
@@ -271,6 +517,7 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
         appServerReady = false;
       }
       response.setHeader("content-type", "application/json; charset=utf-8");
+      delivery();
       response.end(
         JSON.stringify({
           hostId: options.hostId ?? "local",
@@ -281,7 +528,7 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
           appServerReady,
           httpPolling: true,
           followUpQueue: true,
-          remote: { version: 1, supported: false },
+          remote,
           barkPush: true,
           imagePreview: true,
         }),
@@ -295,7 +542,7 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
     }
     if (url.pathname === "/api/projects") {
       try {
-        const projectState = options.readProjectState
+        const projectState = bundle ? await bundle.services.projectState() : options.readProjectState
           ? await options.readProjectState()
           : {
               projects: options.readProjectDirectories
@@ -384,7 +631,7 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
       return;
     }
     if (url.pathname === "/api/files/preview" && request.method === "GET") {
-      await previewVideo(request, response, url);
+      await previewVideo(request, response, url, mediaSource);
       return;
     }
     if (apiRequest) {
@@ -414,10 +661,62 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
         response.end("Not found");
       }
     }
+    } catch (error) {
+      if (response.headersSent || response.destroyed) response.destroy();
+      else {
+        response.statusCode = [400, 403, 404, 405, 409, 413, 429, 507].includes((error as any)?.status) ? (error as any).status : 503;
+        response.setHeader('content-type', 'application/json; charset=utf-8');
+        try { response.end(JSON.stringify({ error: { code: (error as any)?.code ?? 'target-unavailable', message: '目标或授权暂时不可用' } })); } catch { response.destroy(); }
+      }
+    }
   });
 
   const sockets = new Set<WebSocket>();
   const wss = new WebSocketServer({ noServer: true });
+  const queuedSocket = (client: WebSocket, context: OperationContext) => {
+    const sessionId = randomUUID(); const controller = new AbortController(); let after = 0; let epoch: string | undefined;
+    let initialized = false; let polling = false; let requests = new Set<string>();
+    sockets.add(client);
+    const send = (message: unknown) => { if (client.readyState === WebSocket.OPEN) client.send(JSON.stringify(message)); };
+    const call = () => ({ deadline: performance.now() + 60000, signal: controller.signal });
+    const poll = async () => {
+      if (!initialized || polling || client.readyState !== WebSocket.OPEN) return;
+      polling = true;
+      try {
+        const events = await scheduler!.events(context, sessionId, after, call());
+        if (controller.signal.aborted) return;
+        if (epoch && epoch !== events.epoch) { client.close(1012, 'session changed'); return; }
+        epoch = events.epoch; after = events.cursor;
+        const fence = await resolver!.authorizeOperation(context, 'read', controller.signal);
+        for (const message of events.messages) { fence(); send(message); }
+        const next = new Set<string>();
+        for (const message of events.requests) {
+          const key = JSON.stringify(message.id); next.add(key); if (!requests.has(key)) { fence(); send(message); }
+        }
+        requests = next;
+      } catch { /* 暂时离线保留原游标与原逻辑 Session。 */ }
+      finally { polling = false; }
+    };
+    const timer = setInterval(() => { void poll(); }, 250); timer.unref();
+    client.on('error', () => {});
+    client.on('close', () => { clearInterval(timer); controller.abort(); sockets.delete(client); });
+    client.on('message', data => {
+      void (async () => {
+        if (rawMessageBytes(data) > MAX_APP_SERVER_MESSAGE_BYTES) { client.close(1009, 'message too large'); return; }
+        const message = JSON.parse(rawMessageText(data));
+        const requestId = randomUUID(); const envelope = validateRpcEnvelope({ requestId, message, ...(!message.method && epoch ? { epoch } : {}) });
+        let result = await queuedRpc!.dispatch(context, sessionId, envelope, call());
+        while (result.status === 202 && !controller.signal.aborted) {
+          await new Promise(resolve => setTimeout(resolve, 250));
+          const state = await scheduler!.operation(requestId, context, sessionId, call());
+          if (state.message) result = { status: 200, body: state.message };
+        }
+        if (message.method === 'initialized') { initialized = true; void poll(); }
+        const fence = await resolver!.authorizeOperation(context, 'read', controller.signal); fence();
+        if (message.id != null) send({ ...result.body, id: message.id });
+      })().catch(() => { if (!controller.signal.aborted) client.close(1011, 'RPC unavailable'); });
+    });
+  };
   server.on("upgrade", (request, socket, head) => {
     const url = new URL(request.url ?? "/", "http://gateway.local");
     if (url.pathname !== "/ws" && url.pathname !== "/api/realtime") {
@@ -430,10 +729,26 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
       socket.destroy();
       return;
     }
-    const routeError = routingError(url);
+    const routeError = routingError(url, !!resolver);
     if (routeError) {
       const body = JSON.stringify({ error: routeError.error });
       socket.end(`HTTP/1.1 ${routeError.status} ${routeError.status === 400 ? 'Bad Request' : 'Service Unavailable'}\r\nConnection: close\r\nContent-Type: application/json; charset=utf-8\r\nCache-Control: no-store\r\nContent-Length: ${Buffer.byteLength(body)}\r\n\r\n${body}`);
+      return;
+    }
+    if (resolver && scheduler) {
+      void (async () => {
+        const reference = url.searchParams.get('mode') === 'remote' ? parseTargetReference(JSON.parse(url.searchParams.get('target')!)) : undefined;
+        const context = await resolver.operationContext(reference);
+        const fence = await resolver.authorizeOperation(context, 'read');
+        if (closing || socket.destroyed) throw new Error('连接已结束');
+        if (url.pathname === '/api/realtime') {
+          const sessions = await scheduler.sessionsForTarget(context, { deadline: performance.now() + 60000 });
+          sessions.realtime(url.searchParams.get('sessionId')); fence();
+          wss.handleUpgrade(request, socket, head, client => {
+            sockets.add(client); client.on('close', () => sockets.delete(client)); sessions.realtime(url.searchParams.get('sessionId'), client);
+          });
+        } else { fence(); wss.handleUpgrade(request, socket, head, client => queuedSocket(client, context)); }
+      })().catch(() => { if (!socket.destroyed) socket.end('HTTP/1.1 503 Target Unavailable\r\nConnection: close\r\n\r\n'); });
       return;
     }
     if (url.pathname === "/api/realtime") {
@@ -743,12 +1058,18 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
   return {
     port: address.port,
     async close() {
+      closing = true;
       titleSummaries.close();
       unsubscribeFollowing();
       unsubscribeUpload?.();
       await followedNotifications.close();
+      for (const unsubscribe of targetUnsubscribes) unsubscribe();
+      await Promise.all([...targetObservers].map(observer => observer.close()));
       await followUps.close();
+      await conversationObserver?.close();
+      await scheduler?.close();
       await httpSessions.close();
+      await Promise.all([...bundles.values()].map(async value => (await value.catch(() => undefined))?.close()));
       await notifications.close();
       for (const socket of sockets) socket.terminate();
       await new Promise<void>((resolve) => wss.close(() => resolve()));

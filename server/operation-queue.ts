@@ -17,7 +17,7 @@ export type OperationContext = {
   target: { environmentId: string; installationId: string }; generation: string;
 };
 export type OperationControl = { kind: 'stop'; turnId: string; expiresAt: number } | { kind: 'approval'; turnId: string; requestId: string; expiresAt: number };
-export interface OperationRpcReceipt { sessionId: string; requestId: string; signature: string }
+export interface OperationRpcReceipt { sessionId: string; requestId: string; signature: string; submissionSignature?: string; method?: string }
 export interface OperationInput {
   id: string; context: OperationContext; conversationId: string;
   body: unknown; settings: unknown; attachmentRefs: string[]; memoryOnly?: false; control?: OperationControl; rpcReceipt?: OperationRpcReceipt;
@@ -37,6 +37,7 @@ export interface OperationRecoveryGroup {
 export interface OperationRecord extends OperationReceipt {
   signature: string; context: OperationContext; conversationId: string;
   body?: unknown; settings?: unknown; attachmentRefs?: string[]; control?: OperationControl;
+  createdThreadId?: string;
   claimToken?: string; claimPid?: number; failure?: 'control-expired'; rpcReceipt?: OperationRpcReceipt;
   followUp?: { fingerprint: string; operationId: string; text?: string; attachmentCount?: number; restoreState?: 'queued' | 'failed'; method?: 'turn/start' | 'turn/steer'; error?: string; expectedTurnId?: string; legacyRecovery?: true; walError?: true; retainedLegacy?: Pick<RecordItem, 'inputText' | 'extraInput' | 'settings'> };
 }
@@ -89,7 +90,7 @@ function controlValid(value: unknown): value is OperationControl {
 }
 function rpcReceiptValid(value: unknown): value is OperationRpcReceipt {
   const uuid = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
-  return shape(value, ['sessionId', 'requestId', 'signature']) && typeof value.sessionId === 'string' && uuid.test(value.sessionId) && value.sessionId !== 'c0dec000-0000-4000-8000-000000000002' && typeof value.requestId === 'string' && uuid.test(value.requestId) && typeof value.signature === 'string' && /^[a-f0-9]{64}$/.test(value.signature);
+  return shape(value, ['sessionId', 'requestId', 'signature', 'submissionSignature', 'method']) && typeof value.sessionId === 'string' && uuid.test(value.sessionId) && value.sessionId !== 'c0dec000-0000-4000-8000-000000000002' && typeof value.requestId === 'string' && uuid.test(value.requestId) && typeof value.signature === 'string' && /^[a-f0-9]{64}$/.test(value.signature) && (value.submissionSignature === undefined || typeof value.submissionSignature === 'string' && /^[a-f0-9]{64}$/.test(value.submissionSignature)) && (value.method === undefined || text(value.method));
 }
 function rpcBodyValid(value: unknown): value is Record<string, unknown> & { message: { method?: string }; epoch?: string } {
   if (!shape(value, ['kind', 'sessionId', 'requestId', 'message', 'epoch', 'initialization']) || value.kind !== 'rpc-v1' || !object(value.message) || (typeof value.message.method === 'string' && (value.message.method.startsWith('mobile/sidechat/') || ['initialize', 'initialized', 'rpc.ping', 'rpc.pong'].includes(value.message.method))) || (value.message.method !== undefined && typeof value.message.method !== 'string') || (value.epoch !== undefined && !text(value.epoch))) return false;
@@ -109,16 +110,17 @@ function rpcControlMatches(value: unknown, control: OperationControl | undefined
     message.method == null && rpcControlRequestKey(message.id, value.epoch) === control.requestId && !!value.epoch && (params.turnId === undefined || params.turnId === control.turnId);
 }
 function rpcBodyMatches(value: unknown, rpc: OperationRpcReceipt): boolean {
-  return rpcBodyValid(value) && value.sessionId === rpc.sessionId && value.requestId === rpc.requestId && rpcHash(value) === rpc.signature;
+  return rpcBodyValid(value) && value.sessionId === rpc.sessionId && value.requestId === rpc.requestId &&
+    (rpc.method === undefined || rpc.method === value.message.method) && rpcHash(value) === rpc.signature;
 }
 function receipt(record: OperationRecord): OperationReceipt { return { id: record.id, revision: record.revision, receiveOrder: record.receiveOrder, state: record.state }; }
 function followUpValid(record: OperationRecord): boolean {
   const value = record.followUp;
   if (!value || !shape(value, ['fingerprint', 'operationId', 'text', 'attachmentCount', 'restoreState', 'method', 'error', 'expectedTurnId', 'legacyRecovery', 'walError', 'retainedLegacy']) ||
-    typeof value.fingerprint !== 'string' || !/^[a-f0-9]{64}$/.test(value.fingerprint) || typeof value.operationId !== 'string' || !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(value.operationId) || record.control || record.context.mode !== 'local' ||
+    typeof value.fingerprint !== 'string' || !/^[a-f0-9]{64}$/.test(value.fingerprint) || typeof value.operationId !== 'string' || !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(value.operationId) || record.control ||
     (value.method !== undefined && !['turn/start', 'turn/steer'].includes(value.method)) || (value.restoreState !== undefined && !['queued', 'failed'].includes(value.restoreState)) ||
     (value.error !== undefined && typeof value.error !== 'string') || (value.expectedTurnId !== undefined && (typeof value.expectedTurnId !== 'string' || !value.expectedTurnId.trim() || value.method !== 'turn/steer')) ||
-    (value.legacyRecovery !== undefined && (value.legacyRecovery !== true || record.state !== 'uncertain' || record.rpcReceipt !== undefined)) ||
+    (value.legacyRecovery !== undefined && (record.context.mode !== 'local' || value.legacyRecovery !== true || record.state !== 'uncertain' || record.rpcReceipt !== undefined)) ||
     (value.walError !== undefined && (value.walError !== true || record.state !== 'failed' || record.rpcReceipt !== undefined || value.legacyRecovery !== undefined))) return false;
   if (record.rpcReceipt && (!rpcReceiptValid(record.rpcReceipt) || record.rpcReceipt.sessionId !== 'c0dec000-0000-4000-8000-000000000001' || record.rpcReceipt.requestId !== value.operationId)) return false;
   if (value.method === 'turn/steer' && (record.state === 'queued' || record.rpcReceipt) && !terminal(record) && !value.expectedTurnId) return false;
@@ -152,6 +154,11 @@ function capacityBytes(record: OperationRecord): number {
     future.rpcReceipt = { sessionId: 'c0dec000-0000-4000-8000-000000000001', requestId: record.followUp.operationId, signature: 'a'.repeat(64) };
   }
   let reserved = Buffer.byteLength(JSON.stringify(future));
+  if (record.rpcReceipt?.method === 'thread/start') {
+    const binding = { ...future, createdThreadId: '\ud800'.repeat(4096) };
+    compact(binding); binding.state = 'succeeded';
+    reserved = Math.max(reserved, Buffer.byteLength(JSON.stringify(binding)));
+  }
   if (record.control) { compact(future); future.state = 'failed'; future.failure = 'control-expired'; reserved = Math.max(reserved, Buffer.byteLength(JSON.stringify(future))); }
   return Math.max(actual, reserved);
 }
@@ -186,12 +193,13 @@ export class OperationQueue {
         if (value.followUpsImport !== undefined && (!shape(value.followUpsImport, ['source', 'context', 'sha256', 'count']) || !text(value.followUpsImport.source) || !contextValid(value.followUpsImport.context) || value.followUpsImport.context.mode !== 'local' || typeof value.followUpsImport.sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(value.followUpsImport.sha256) || !Number.isSafeInteger(value.followUpsImport.count) || Number(value.followUpsImport.count) < 0)) fail();
         const ids = new Set<string>(); const orders = new Set<number>();
         for (const record of value.records) {
-          if (!shape(record, ['id', 'revision', 'receiveOrder', 'state', 'signature', 'context', 'conversationId', 'body', 'settings', 'attachmentRefs', 'control', 'claimToken', 'claimPid', 'failure', 'rpcReceipt', 'followUp']) || !text(record.id) || ids.has(record.id) || !contextValid(record.context) || record.context.gatewayId !== this.#gatewayId ||
+          if (!shape(record, ['id', 'revision', 'receiveOrder', 'state', 'signature', 'context', 'conversationId', 'body', 'settings', 'attachmentRefs', 'control', 'claimToken', 'claimPid', 'failure', 'rpcReceipt', 'followUp', 'createdThreadId']) || !text(record.id) || ids.has(record.id) || !contextValid(record.context) || record.context.gatewayId !== this.#gatewayId ||
             !text(record.conversationId) || !Number.isSafeInteger(record.revision) || Number(record.revision) < 1 || !Number.isSafeInteger(record.receiveOrder) ||
             Number(record.receiveOrder) < 1 || Number(record.receiveOrder) >= Number(value.nextOrder) || orders.has(Number(record.receiveOrder)) ||
             !['queued', 'claimed', 'uncertain', 'failed', 'succeeded', 'cancelled'].includes(String(record.state)) || typeof record.signature !== 'string' || !/^[a-f0-9]{64}$/.test(record.signature)) fail();
           if (!terminal(record as unknown as OperationRecord) && (!Object.hasOwn(record, 'body') || !Object.hasOwn(record, 'settings') || !Array.isArray(record.attachmentRefs) || !record.attachmentRefs.every(text))) fail();
           if (terminal(record as unknown as OperationRecord) && ['body', 'settings', 'attachmentRefs'].some(key => Object.hasOwn(record, key))) fail();
+          if (record.createdThreadId !== undefined && (!text(record.createdThreadId) || (record.rpcReceipt as OperationRpcReceipt | undefined)?.method !== 'thread/start' || record.state !== 'succeeded')) fail();
           if (record.rpcReceipt !== undefined && (!rpcReceiptValid(record.rpcReceipt) || (!terminal(record as unknown as OperationRecord) && (record.followUp ? record.rpcReceipt.sessionId !== 'c0dec000-0000-4000-8000-000000000001' || record.rpcReceipt.requestId !== (record.followUp as OperationRecord['followUp'])?.operationId || record.rpcReceipt.signature !== rpcHash({ message: followUpMessage(record as unknown as OperationRecord)! }) : !rpcBodyMatches(record.body, record.rpcReceipt) || !rpcControlMatches(record.body, record.control as OperationControl | undefined, record.conversationId))))) fail();
           if (record.control !== undefined && !controlValid(record.control)) fail();
           if (record.failure !== undefined && (record.failure !== 'control-expired' || record.state !== 'failed' || !record.control)) fail();
@@ -291,9 +299,20 @@ export class OperationQueue {
       return { value: undefined, changed: true };
     });
   }
+  /** 仅可信调度器可取授权定位；不交付正文。 */
+  async contexts(businessKey: string): Promise<OperationContext[]> {
+    return this.transaction(async ledger => ({ value: clone([...new Map(ledger.records.filter(record => record.context.businessKey === businessKey).map(record => [canonical(record.context), record.context])).values()]) }));
+  }
+  async publicRecords(businessKey: string, conversationId?: string): Promise<OperationRecord[]> {
+    return this.transaction(async (ledger, authorize) => {
+      const records = ledger.records.filter(record => record.context.businessKey === businessKey && (!conversationId || record.conversationId === conversationId) &&
+        (!terminal(record) || record.createdThreadId !== undefined)).sort((a, b) => a.receiveOrder - b.receiveOrder);
+      for (const record of records) await authorize(record, 'read'); return { value: clone(records) };
+    });
+  }
   async listFollowUps(context: OperationContext): Promise<OperationRecord[]> {
     return this.transaction(async (ledger, authorize) => {
-      const records = ledger.records.filter(record => record.followUp && canonical(record.context) === canonical(context)).sort((a, b) => a.receiveOrder - b.receiveOrder);
+      const records = ledger.records.filter(record => record.followUp && record.context.businessKey === context.businessKey).sort((a, b) => a.receiveOrder - b.receiveOrder);
       for (const record of records) await authorize(record, 'read'); return { value: clone(records) };
     });
   }
@@ -383,7 +402,9 @@ export class OperationQueue {
       if (record.rpcReceipt) {
         const value = snapshot.body; const original = record.body as Record<string, unknown>;
         if (!rpcBodyValid(value) || value.sessionId !== record.rpcReceipt.sessionId || value.requestId !== record.rpcReceipt.requestId || value.epoch !== original.epoch || !rpcControlMatches(value, record.control, record.conversationId) || canonical(value.initialization ?? null) !== canonical(original.initialization ?? null)) fail('rpc-binding-conflict', 409);
+        record.rpcReceipt.submissionSignature ??= record.rpcReceipt.signature;
         record.rpcReceipt.signature = rpcHash(value);
+        if (record.rpcReceipt.method !== undefined) record.rpcReceipt.method = value.message.method;
       }
       record.body = snapshot.body; if (Object.hasOwn(snapshot, 'settings')) record.settings = snapshot.settings;
       if (snapshot.attachmentRefs) record.attachmentRefs = snapshot.attachmentRefs; record.revision++;
@@ -399,7 +420,7 @@ export class OperationQueue {
     });
   }
   /** 本方法只提供ledger取项边界；调用者仍须在实际传输前markPotentialSend。 */
-  async claimNext(businessKey: string, options: { isRead?: (record: Readonly<OperationRecord>) => boolean; excluded?: ReadonlySet<string>; controlOnly?: boolean; onPreparedClaim?: (claim: OperationClaim) => void } = {}): Promise<OperationRecord | null> {
+  async claimNext(businessKey: string, options: { isRead?: (record: Readonly<OperationRecord>) => boolean; excluded?: ReadonlySet<string>; controlOnly?: boolean; eligible?: (record: Readonly<OperationRecord>) => boolean; onPreparedClaim?: (claim: OperationClaim) => void } = {}): Promise<OperationRecord | null> {
     return this.transaction(async (ledger, authorize) => {
       let changed = false; let denied: unknown;
       const allowed = async (record: OperationRecord, action: Action) => {
@@ -445,7 +466,7 @@ export class OperationQueue {
       const steer = (record: OperationRecord) => !!record.followUp?.expectedTurnId && record.followUp.method === 'turn/steer';
       const prioritized = [...eligible.filter(record => record.control), ...eligible.filter(record => !record.control && steer(record)), ...eligible.filter(record => !record.control && !steer(record))].filter(record => options.controlOnly === undefined || !!record.control === options.controlOnly);
       let selected: OperationRecord | undefined;
-      for (const candidate of prioritized) { if (await allowed(candidate, 'claim')) { selected = candidate; break; } }
+      for (const candidate of prioritized) { if (options.eligible?.(clone(candidate)) === false) continue; if (await allowed(candidate, 'claim')) { selected = candidate; break; } }
       if (!selected) { if (denied) throw denied; return { value: null, changed }; }
       selected.state = 'claimed'; selected.revision++; selected.claimToken = randomUUID(); selected.claimPid = process.pid;
       options.onPreparedClaim?.({ id: selected.id, revision: selected.revision, context: clone(selected.context), claimToken: selected.claimToken });
@@ -492,11 +513,13 @@ export class OperationQueue {
     });
   }
   /** 只接可信上游的确定响应/对账结果；failed仍阻塞，后续确定成功才释放。 */
-  async settle(id: string, revision: number, token: string, result: 'succeeded' | 'failed'): Promise<OperationReceipt> {
+  async settle(id: string, revision: number, token: string, result: 'succeeded' | 'failed', createdThreadId?: string): Promise<OperationReceipt> {
     return this.transaction(async (ledger, authorize) => {
       const record = this.find(ledger, id); await authorize(record, 'transition'); this.claimed(record, revision, token);
       if (!['uncertain', 'failed'].includes(record.state) || !['succeeded', 'failed'].includes(result)) fail('invalid-transition', 409);
+      if (createdThreadId !== undefined && (result !== 'succeeded' || record.rpcReceipt?.method !== 'thread/start' || !text(createdThreadId) || record.createdThreadId !== undefined && record.createdThreadId !== createdThreadId)) fail('rpc-binding-conflict', 409);
       record.state = result; record.revision++;
+      if (createdThreadId !== undefined) record.createdThreadId = createdThreadId;
       if (result === 'succeeded') compact(record);
       return { value: receipt(record), changed: true };
     });

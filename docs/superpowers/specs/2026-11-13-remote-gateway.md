@@ -2,6 +2,8 @@
 
 日期：2026-11-13。源码基线：`7772b28f5e716d8e5e3759fb1e84a089158502ec`。本设计、[Mac管理与身份恢复补充方案](2026-11-13-remote-gateway-cli-proposal.md)、[文件清理保护范围](2026-11-14-remote-file-cleanup-boundary-proposal.md)、[文件读取方式补充](2026-11-14-remote-file-buffered-read-proposal.md)、[传输存活补充](2026-11-14-remote-heartbeat-progress-proposal.md)、[读取预算](2026-11-14-remote-file-read-budget-proposal.md)、[固定读取窗口](2026-11-14-remote-file-window-size-proposal.md)及[交互与功能约定](../../interaction-alignment.md)记录 Q1–Q51 的最终决定，后续修改不得恢复已被覆盖的单网关方案。
 
+2026-11-17 当前状态：Task4公开路由/队列/目标消费者/会话观察与Task5多网关模式/outbox已接线，最终固定源码验证中。Task6官方完整功能、8小时、跨凭据刷新、睡眠和P95仍待验收；未发布客户端或部署网关。下列日期段落保留对应历史阶段结论，不再表示当前功能待开发。
+
 当前文件层已通过Task3b：实现b876ffb、冻结 `f455772d2eee34cfa357402abd16720a179ff353` 的相关297项、完整服务端1367项/7项既有跳过、双strict和服务端构建通过，新独立SPEC→QUALITY均PASS。一次官方验证完成原100MiB查询/279045毫秒读回及新100MiB上传76003毫秒/读回175937毫秒，各200窗和四组Range、旧版本拒绝、producer失败保持目的文件、未知提交跨实际OS进程原操作对账及精确清理全部通过；25秒零流后RPC且无新prepare、两个SIGTERM退出0。见[最新官方收据](../plans/evidence/2026-11-14-remote-files-single-window-product-probe.json)；第47–49项失败与旧收据继续保留，不作为当前未通过状态。客户端模式、共享队列和长期验收仍待后续开发，未部署或发布。
 
 用户已在第50项明确选择A：读取固定512KiB单块buffered短命令窗口，上传512KiB块/4窗口保持。read默认20秒、显式最高600秒，所有窗口、消费暂停和最后独立Range总SHA共用原期限；每窗Python watchdog/command/RPC最高180秒且受原总剩余限制，实际物理发送同受原期限约束。30秒首片起绝对组装、新片不续期；默认权限、完整身份、版本/SHA、资源、精确收尾及未知写不重放均保留。100MiB为200窗，已通过本轮样本，不保证任意网络下600秒成功。

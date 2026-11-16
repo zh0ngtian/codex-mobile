@@ -50,7 +50,7 @@ function validate(name: string, params: NativeParams) {
   if (name === 'draft.set' && params.caretOffset !== undefined && (!Number.isSafeInteger(params.caretOffset) || Number(params.caretOffset) < 0 || Number(params.caretOffset) > String(params.value).length)) throw new Error(t('草稿版本无效'));
   if (name === 'navigation.sidebar' && typeof params.open !== 'boolean') throw new Error(t('侧栏状态无效'));
   if (name === 'attachment.pick' && !['photos', 'files'].includes(String(params.kind))) throw new Error(t('附件类型无效'));
-  if (name === 'thread.manage' && !['pin', 'refresh', 'duplicate', 'rename', 'archive'].includes(String(params.action))) throw new Error(t('会话操作无效'));
+  if (name === 'thread.manage' && !['pin', 'refresh', 'duplicate', 'rename', 'archive', 'cancel-creation'].includes(String(params.action))) throw new Error(t('会话操作无效'));
   if (params.fieldRevision !== undefined && (!Number.isSafeInteger(params.fieldRevision) || Number(params.fieldRevision) < 1 || typeof params.fieldKey !== 'string')) throw new Error(t('字段版本无效'));
 }
 interface Workspace { value: NativeSnapshot; handlers: NativeHandlers; revision: number; echo?: string; echoCaret?: number }

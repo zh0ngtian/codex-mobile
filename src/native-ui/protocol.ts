@@ -29,7 +29,7 @@ export interface NativeMessage { rawText?: string; references?: MessageReference
   /** 由normalized原始顺序确定当前运行turn的连续commentary尾段，不能按Native工具汇总位置猜测。 */
   commentaryIsLiveTail?: boolean }
 export interface NativeAttachment { id: string; name: string; detail?: string; imageURL?: string; type?: string; command?: NativeCommand; size?: number }
-export interface NativeBackend { id: string; title: string; subtitle?: string; connected?: boolean; gatewayAddress?: string; enabled?: boolean;
+export interface NativeBackend { id: string; gatewayId?: string; title: string; subtitle?: string; connected?: boolean; gatewayAddress?: string; enabled?: boolean;
   connectionState?: string; projects?: string[]; approvalCount?: number; queuedCount?: number }
 export interface NativeSettingsPreferences { language?: string; transportMode?: string; fontSize?: string; notificationMode?: string; barkConfigured?: boolean }
 export interface NativeTokenUsage { lastRequestTokens?: number; modelContextWindow?: number; inputTokens?: number; cachedInputTokens?: number; outputTokens?: number; totalTokens?: number; reasoningOutputTokens?: number }

@@ -1,6 +1,20 @@
 import type { TransportMode } from "./transport-preference";
 
+export interface RemoteTargetReference {
+  mode: 'remote'; gatewayId: string;
+  account: { accountId: string; accountUserId: string; userId?: string };
+  target: { environmentId: string; installationId: string };
+}
+export interface GatewayTarget {
+  reference: RemoteTargetReference; name: string; online: boolean; busy: boolean; isGatewayHost: boolean;
+}
 export interface BackendConfig {
+  gatewayMode?: 'local' | 'remote';
+  gatewayQueue?: boolean;
+  /** 物理网关配置保存目录，实际连接仅携带选定机器的完整引用。 */
+  remoteTargets?: GatewayTarget[];
+  remoteTarget?: RemoteTargetReference;
+  gatewayId?: string;
   id: string;
   hostId?: string;
   name: string;

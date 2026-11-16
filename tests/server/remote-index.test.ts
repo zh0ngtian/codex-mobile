@@ -78,6 +78,10 @@ it('真实入口只启一个Runtime，未授权Local仍通，CLI证明实际端�
     expect(exported).toContain(`:${port}/?token=isolated-token`);
     const client = new WebSocket(`ws://127.0.0.1:${port}/ws?token=isolated-token`);
     await new Promise<void>(r => client.once('open', r));
+    const initialized = new Promise<any>(r => client.once('message', b => r(JSON.parse(b.toString()))));
+    client.send(JSON.stringify({ id: 'index-init', method: 'initialize', params: { clientInfo: { name: 'index-test-client', version: '1' } } }));
+    expect((await initialized).result).toEqual({ local: true });
+    client.send(JSON.stringify({ method: 'initialized' }));
     const response = new Promise<any>(r => client.once('message', b => r(JSON.parse(b.toString()))));
     client.send(JSON.stringify({ id: 1, method: 'thread/list', params: {} }));
     expect(await response).toEqual({ id: 1, result: { local: true } });
@@ -150,7 +154,7 @@ it('已配置Remote的真实canonical初始化超时仍保留Local和私有管�
   upstream.on('connection', socket => socket.on('message', raw => {
     const value = JSON.parse(raw.toString());
     methods.push(value.method);
-    if (value.method !== 'initialize') {
+    if (value.method !== 'initialize' || value.params?.clientInfo?.name === 'index-test-client') {
       socket.send(JSON.stringify({ id: value.id, result: { local: true } }));
     }
   }));
@@ -170,6 +174,10 @@ it('已配置Remote的真实canonical初始化超时仍保留Local和私有管�
     const port = Number(/http:\/\/127.0.0.1:(\d+)/.exec(out)![1]);
     const client = new WebSocket(`ws://127.0.0.1:${port}/ws?token=isolated-token`);
     await new Promise<void>(r => client.once('open', r));
+    const initialized = new Promise<any>(r => client.once('message', b => r(JSON.parse(b.toString()))));
+    client.send(JSON.stringify({ id: 'index-init', method: 'initialize', params: { clientInfo: { name: 'index-test-client', version: '1' } } }));
+    expect((await initialized).result).toEqual({ local: true });
+    client.send(JSON.stringify({ method: 'initialized' }));
     const response = new Promise<any>(r => client.once('message', b => r(JSON.parse(b.toString()))));
     client.send(JSON.stringify({ id: 2, method: 'thread/list', params: {} }));
     expect(await response).toEqual({ id: 2, result: { local: true } });

@@ -1,5 +1,8 @@
 # 常驻 Remote 网关 Implementation Plan
 
+2026-11-17 本轮状态：Task4公开装配/观察器与Task5手机接线已实现，正在最终固定源码验证。基线main为`1f274d286d2da128404c6ff390a1f37282479af1`。Task6官方全功能和8小时/P95仍待，不将源码完成等同官方验收通过。自2026-11-16起由主执行者直接核对，不再安排独立agent复审；此前分阶段审查及失败记录原样保留。
+
+
 > **现行执行规则（2026-11-16 用户修订）：** 按任务逐项实施并保留 TDD 与必要验证，由主执行者直接检查代码和需求；不再安排独立 agent 规格或质量复审，不以独立复审放行为交付门槛。下文历史审查结果和失败记录保持原结论；未完成任务均遵循本规则。进度使用复选框（`- [ ]`）记录。
 
 **Goal:** 在现有多网关客户端中接入网关持有的官方 Remote 连接，保留本地模式，并实现共享持久队列与离线恢复。
@@ -164,8 +167,8 @@ Task4 按内部依赖顺序实施：4a 可信目标身份基础 → 4b 持久队
 - [x] 4b.2e 原操作context／WAL与当前有效Session传输装配：固定 `d7d700d8`，5文件217项必要回归（含49项专项）、双strict/build及原SPEC→原QUALITY复验通过，root核固定源码及全部小工件，见[收据](evidence/2026-11-16-remote-recovered-session-validation.json)。原context/UUID/namespace保持，当前同Runtime真实句柄及完整恢复proof受检，后台加载旧批实际结束后仅由新授权重扫；completed不重发，pending/uncertain仍未知。仅内部依赖完成，公开4b.2仍待。
 - [x] 4b.2h 内部 FollowUps 唯一 owner 接管：固定a3e07a33的620项（h103）、双strict/build及主执行者直接检查通过，见[验收记录](evidence/2026-11-16-remote-follow-ups-ledger-validation.json)。原失败证据保留；公开默认gateway/host/index与完整消费者仍待，不勾整个4b.2/4c/5/6。
 - [x] 4b.2i 公开入口统一模式校验与能力探测：固定237f1906已通过6文件281项回归、双strict／build:server及主执行者直接检查，见[验收记录](evidence/2026-11-16-remote-public-routing-validation.json)。Remote误走Local已拦截，旧URL／本地传输保持；真实目标消费者与公开队列未激活。
-- [ ] 4b.2：HTTP/WS/hosted/Bark/关注与目标传输装配，Sidechat 内存路由、附件 bytes/活引用、占位、读合并/导航取消、显式 resume 和旧 FollowUps 推断替换，待实现/验收。
-- [ ] 4c：真实业务时钟与会话观察/释放，待实现/验收。
+- [ ] 4b.2：已实现 HTTP/WS/hosted/Bark/关注公开装配、内存 Sidechat、附件 bytes、原 UUID 对账和共享创建占位，待最终固定源码验证。
+- [ ] 4c：已实现真实业务时钟、后台快照和原 UUID 逻辑释放，待最终固定源码验证。
 
 4a 修改基线为已推送 `d8ae4c97a877af5f68a96a1aeff7e7d196e24823`；开始前 fetch 核对远端未变。2026-11-15 用户确认固定身份 A，详见设计说明。内部默认持久目录 `~/.codex-mobile/gateway-identity`，独立实例可可信注入不同目录；新目录及父目录项同步后才交付身份。读取只复验现有运行 owner 的 loader/provider 和 controller 已接受 binding，不以 client 可见目录代替授权，不新建物理 Relay、密钥、授权或配对。仅有效已接受的暂时离线目标可解析，执行仍拒绝；无效引用、账号变化、重装、缺目录、暂停及 pendingResume 保留原因。共享业务 key 仅归组，完整账号/网关/tuple/generation 的 authorizationKey 及实时 guard 是后续列表可见性与发送必须边界。必要依赖修复使 RPC settled 跟踪逻辑流实际 close Promise，包括关闭监听抛错后重取同一 Promise；不等待业务 ACK、不关闭共享主连接。本步无客户端操作改动，不构建 Web/APK/IPA，不部署。
 
@@ -203,7 +206,8 @@ Task4 按内部依赖顺序实施：4a 可信目标身份基础 → 4b 持久队
 ## Task 6：集成验收、文档和源码交付
 
 - [ ] 更新 `docs/interaction-alignment.md` 现行条款、验收和变更记录；更新 README/文档索引与 Mac 授权运维文档，各阶段状态准确区分待实现/待验收/已验证。
-- [ ] 运行完整相关回归和服务端/客户端开发构建；全量功能以官方 Remote 真实目标核验，无能力降级。
+- [ ] 运行完整相关回归和服务端/客户端开发构建。
+- [ ] 全量功能以官方 Remote 真实目标核验，无能力降级。
 - [ ] 隔离网关完成 8 小时、跨凭据刷新、手机重入、网络断开、网关重启；Mac 睡眠唤醒在可控时段实施，不干扰现役工作。保存脱敏延迟分位数和收据，及时归档测试会话。
 - [ ] 主执行者直接核对完整需求与代码质量，修复问题并完成必要验证；不安排独立 agent 复审，未达到验收目标不得标成通过。
 - [ ] 遵守 `codex-mobile-main-production` 互斥，fetch 最新 main；变化时对整合结果相关回归，无变化复用已完成验证。保护主工作区已有暂存改动。

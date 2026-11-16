@@ -41,6 +41,7 @@ export type ThreadManagementAction =
   | "refresh"
   | "duplicate"
   | "rename"
+  | "cancel-creation"
   | "archive";
 
 const LONG_PRESS_DELAY_MS = 500;
@@ -607,7 +608,7 @@ export function ThreadListPage({
           setManagedThread(null);
         }}
         onRename={() => void runThreadAction("rename")}
-        onArchive={() => void runThreadAction("archive")}
+        onArchive={() => void runThreadAction(managedThread?.thread.gatewayPendingCreation ? 'cancel-creation' : "archive")}
       />
       <footer className="list-actions">
         <label className="search-box" aria-busy={searching}><AppIcon name="search" /><input value={query} onChange={(event) => onQueryChange(event.target.value)} placeholder={t("搜索聊天")} /></label>

@@ -92,6 +92,7 @@ export interface RemoteRuntimeStatus {
 }
 /** 仅可信进程内消费者使用；acceptedTargets 不等同于 client 可见目录。 */
 export interface RemoteRuntimeTargetBinding {
+  readonly assertScope: () => void;
   readonly generation: string;
   readonly managed: Readonly<ManagedAuthIdentity>;
   readonly local: Readonly<RemoteTargetIdentity>;
@@ -609,7 +610,7 @@ export class RemoteRuntime extends EventEmitter<{
         !sameRemoteTarget(binding.local, active.snapshot.local)) throw new RemoteRuntimeError('identity-changed');
       const state = active.state;
       const revision = bundle.authorizationRevision;
-      const assertLive = (value: RemoteTargetIdentity, execute = false): void => {
+      const assertScopeLive = () => {
         if (this.closed) throw new RemoteRuntimeError('closed');
         if (this.active !== active || this.bundle !== bundle || (this.operation && !this.operation.authorizationReadOnly) || this.preparing || this.fault ||
           active.state !== state || active.state.paused || bundle.authorizationRevision !== revision ||
@@ -620,6 +621,12 @@ export class RemoteRuntime extends EventEmitter<{
           !sameRemoteManaged(actual.managed, active.snapshot.managed) ||
           !sameRemoteTarget(actual.local, active.snapshot.local) || !equal(actual.enrollment, active.snapshot.enrollment))
           throw new RemoteRuntimeError('identity-changed');
+        if (['paused', 'closed', 'auth-required', 'remote-disabled'].includes(bundle.controller.state))
+          throw new RemoteRuntimeError('target-unavailable');
+        return actual;
+      };
+      const assertLive = (value: RemoteTargetIdentity, execute = false): void => {
+        const actual = assertScopeLive();
         if (!actual.targets.some(target => sameRemoteTarget(target, value))) throw new RemoteRuntimeError('target-unaccepted');
         if (active.state.pending.some(target => sameRemoteTarget(target, value))) throw new RemoteRuntimeError('pending-resume');
         const target = bundle.controller.targets.find(target => target.env_id === value.environmentId);
@@ -635,8 +642,12 @@ export class RemoteRuntime extends EventEmitter<{
         assertRemoteOperation();
         assertLive(target, execute);
       };
+      const assertScope = () => {
+        this.options.store?.assertOwnership(); active.store.assertOwnership();
+        assertRemoteOperation(); assertScopeLive();
+      };
       return Object.freeze({
-        assertCurrent, assertLive,
+        assertCurrent, assertLive, assertScope,
         generation: active.snapshot.generation,
         managed: Object.freeze(remoteManaged(binding.managed)),
         local: Object.freeze(remoteTuple(binding.local)),

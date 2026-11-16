@@ -37,18 +37,22 @@ describe("侧边栏刷新", () => {
     const source = readFileSync(resolve("src/App.tsx"), "utf8");
 
     const file = ts.createSourceFile("App.tsx", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
-    const intervalDelays: string[] = [];
+    const intervals: { delay: string; effect: string }[] = [];
     const visit = (node: ts.Node) => {
       if (ts.isCallExpression(node) && /(?:^|\.)setInterval$/.test(node.expression.getText(file))) {
-        intervalDelays.push(node.arguments[1]?.getText(file).replace(/[_\s]/g, "") ?? "");
+        let parent: ts.Node | undefined = node.parent;
+        while (parent && !(ts.isCallExpression(parent) && parent.expression.getText(file) === 'useEffect')) parent = parent.parent;
+        intervals.push({ delay: node.arguments[1]?.getText(file).replace(/[_\s]/g, "") ?? "", effect: parent?.getText(file) ?? '' });
       }
       ts.forEachChild(node, visit);
     };
     visit(file);
-    // 托管排队的 2 秒同步允许存在；这里只限制原先的每分钟列表/时间刷新。
-    expect(intervalDelays).not.toContain("60000");
-    expect(intervalDelays).not.toContain("60*1000");
-    expect(intervalDelays).not.toContain("1000*60");
+    // Remote 机器目录每分钟检查是独立能力，不恢复原有会话列表/时间轮询。
+    for (const interval of intervals.filter(item => ['60000', '60*1000', '1000*60'].includes(item.delay))) {
+      expect(interval.effect).toContain('fetchBackendHostInfo');
+      expect(interval.effect).toContain("item.gatewayMode === 'remote'");
+      expect(interval.effect).not.toMatch(/refreshAllBackends|setThreads|setNow/);
+    }
   });
 });
 

@@ -1,3 +1,4 @@
+import { gatewayUrl } from './gateway-route';
 import {
   AppServerClient,
   type RpcMessage,
@@ -67,15 +68,15 @@ function configSignature(config: BackendConfig) {
     baseUrl: config.baseUrl,
     token: config.token,
     enabled: config.enabled,
+    gatewayMode: config.gatewayMode, remoteTarget: config.remoteTarget,
     transportMode: config.transportMode ?? "http",
   });
 }
 
 export function backendWebSocketUrl(config: BackendConfig) {
-  const url = new URL(config.baseUrl);
+  const url = gatewayUrl(config, "/ws");
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
   url.pathname = "/ws";
-  url.search = "";
   url.hash = "";
   if (config.token) url.searchParams.set("token", config.token);
   return url.toString();
@@ -102,7 +103,8 @@ export class BackendConnectionManager {
       ...options,
       createSocket:
         options.createSocket ??
-        ((url, backend) => backend.transportMode === "stream"
+        // Remote 的手机写入必须先经过耐久 outbox；上游 Relay 仍由网关常驻持有。
+        ((url, backend) => backend.gatewayMode !== 'remote' && backend.transportMode === "stream"
           ? new WebSocket(url)
           : new HttpRpcTransport(backend)),
       createClient:

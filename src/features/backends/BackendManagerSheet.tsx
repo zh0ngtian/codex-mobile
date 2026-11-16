@@ -39,6 +39,7 @@ interface BackendDraft {
   id: string;
   name: string;
   gatewayUrl: string;
+  gatewayMode: 'local' | 'remote';
   enabled: boolean;
   order: number;
 }
@@ -48,6 +49,7 @@ function newBackendDraft(order: number): BackendDraft {
     id: `backend-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     name: "",
     gatewayUrl: "",
+    gatewayMode: "local",
     enabled: true,
     order,
   };
@@ -187,6 +189,7 @@ export function BackendManagerSheet({
         id: currentDraft.id,
         name: currentDraft.name.trim(),
         baseUrl: gateway.baseUrl,
+        gatewayMode: currentDraft.gatewayMode,
         token: gateway.token,
         enabled: currentDraft.enabled,
         order: currentDraft.order,
@@ -198,6 +201,8 @@ export function BackendManagerSheet({
       const next = upsertBackend(registry, {
         ...candidate,
         hostId,
+        ...(host.remote?.supported ? { gatewayQueue: true } : {}),
+        ...(candidate.gatewayMode === 'remote' ? { remoteTargets: host.remote?.targets ?? [] } : {}),
         name: candidate.name || host.displayName,
       });
       onChange(next);
@@ -253,12 +258,12 @@ export function BackendManagerSheet({
 
   const getBackend = (id: unknown) => { const b = registry.backends.find(b => b.id === id); if (!b) throw new Error(t('设备已移除')); return b; };
   const guard = () => { if (testingRef.current) throw new Error(t('正在测试…')); };
-  const editBackend = (backend: BackendConfig) => { guard(); setCurrentDraft({ id: backend.id, name: backend.name, gatewayUrl: formatBackendGatewayUrl(backend.baseUrl, backend.token), enabled: backend.enabled, order: backend.order }); setError(''); };
+  const editBackend = (backend: BackendConfig) => { guard(); setCurrentDraft({ id: backend.id, name: backend.name, gatewayUrl: formatBackendGatewayUrl(backend.baseUrl, backend.token), gatewayMode: backend.gatewayMode ?? 'local', enabled: backend.enabled, order: backend.order }); setError(''); };
   useNativeGlobalPanel(nativeRuntime, 'devices', projectDevicePanel({ open, page: nativePage, registry, summaries, draft, testing, error, confirmation, transportMode, preference, font, push, hasPush: !!notificationPreference && !!onNotificationPreferenceSave, failedNotificationDevices, appUpdate }), {
     'panel.close': () => { guard(); onClose(); },
     'device.add': () => { guard(); setCurrentDraft(newBackendDraft(registry.backends.length)); setError(''); },
     'device.edit': p => editBackend(getBackend(p.id)),
-    'device.change': p => { guard(); if (!draftRef.current || (p.draftId !== undefined && p.draftId !== draftRef.current.id) || !['name', 'gatewayUrl'].includes(String(p.field))) throw new Error(t('设备表单已关闭')); setCurrentDraft({ ...draftRef.current!, [String(p.field)]: String(p.value) }); },
+    'device.change': p => { guard(); if (!draftRef.current || (p.draftId !== undefined && p.draftId !== draftRef.current.id) || !['name', 'gatewayUrl', 'gatewayMode'].includes(String(p.field)) || (p.field === 'gatewayMode' && !['local', 'remote'].includes(String(p.value)))) throw new Error(t('设备表单已关闭')); setCurrentDraft({ ...draftRef.current!, [String(p.field)]: String(p.value) }); },
     'device.save': async () => { const result = await submit(); if (!result.saved) throw new Error(result.error); },
     'device.cancel': p => {
       testSequence.current += 1; cancelProbe.current?.(); cancelProbe.current = null;
@@ -400,6 +405,10 @@ export function BackendManagerSheet({
           </button>
         </div>
       </div>
+      <label><span>{t('连接模式')}</span><select aria-label={t('连接模式')} value={draft.gatewayMode} disabled={testing}
+        onChange={event => setCurrentDraft({ ...draft, gatewayMode: event.target.value as 'local' | 'remote' })}>
+        <option value="local">{t('本地模式')}</option><option value="remote">{t('远程模式')}</option>
+      </select></label>
       {error && <p className="backend-form-error" role="alert">{error}</p>}
       <div className="backend-form-actions">
         <button

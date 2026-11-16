@@ -1,3 +1,4 @@
+import { gatewayBackends, transportNamespace, refreshGatewayTargets } from './backends/gateway-route';
 import { projectCwdOf, withProjectWorktree } from "./features/threads/project-worktrees";
 import { useThreadRename } from "./ui/thread-rename";
 import { summarizeThreadTitle } from "./backends/title-summary";
@@ -270,6 +271,7 @@ interface QueuedFollowUp extends QueuedFollowUpPreview {
   quotes?: MessageQuote[];
   referencePrefix?: string;
   hosted?: boolean;
+  gatewayRpc?: boolean;
   revision?: number;
   threadId: string;
   draftContext: number;
@@ -1512,6 +1514,10 @@ function BackendWorkspace({
               });
             }
           }
+          if (message.method === 'mobile/operation/submitted') {
+            if (pendingOperationsRef.current.has(String(params.requestId))) setNotice(t('操作已提交原网关，等待执行或原请求结果确认'));
+            return;
+          }
           if (message.method === "mobile/operation/confirmed") {
             threadNotificationSequenceRef.current += 1;
             const requestId = String(params.requestId);
@@ -2293,7 +2299,26 @@ function BackendWorkspace({
     if (queueMutatingRef.current) return;
     const sequence = ++queueRequestSequenceRef.current;
     const result = await followUpRequest(backend);
-    if (sequence === queueRequestSequenceRef.current) applyHostedQueue(result.items);
+    if (sequence === queueRequestSequenceRef.current) {
+      applyHostedQueue(result.items);
+      if (result.creations) setThreads(current => {
+        const live = new Set(result.creations!.filter(row => row.state !== 'succeeded').map(row => row.threadId));
+        let next = current.filter(thread => !thread.gatewayPendingCreation || live.has(String(thread.id)));
+        for (const row of result.creations!) {
+          if (row.state === 'succeeded') {
+            const previous = current.find(thread => String(thread.id) === row.pendingId && thread.gatewayPendingCreation);
+            if (previous && !next.some(thread => String(thread.id) === row.threadId)) next = [{ id: row.threadId, cwd: row.cwd ?? previous.cwd, status: { type: 'idle' } }, ...next];
+          } else {
+            next = next.filter(thread => String(thread.id) !== row.threadId);
+            next = [{ id: row.threadId, cwd: row.cwd,
+            gatewayPendingCreation: true, gatewayOperationId: row.id, gatewayOperationRevision: row.revision,
+            gatewayOperationState: row.state,
+            name: t(row.state === 'uncertain' ? '创建结果待确认' : row.state === 'failed' ? '会话创建失败' : '待创建'), status: { type: 'idle' } }, ...next];
+          }
+        }
+        return next;
+      });
+    }
   }
 
   async function mutateHostedQueue(action: FollowUpAction) {
@@ -2302,7 +2327,8 @@ function BackendWorkspace({
     setQueueSaving(true);
     ++queueRequestSequenceRef.current;
     try {
-      const result = await followUpRequest(backend, action);
+      const entry = queuedFollowUpsRef.current.find(item => item.id === action.id);
+      const result = await followUpRequest(backend, { ...action, ...(entry?.gatewayRpc ? { gatewayRpc: true } : {}) });
       applyHostedQueue(result.items);
       return result;
     } finally {
@@ -2313,7 +2339,7 @@ function BackendWorkspace({
   }
 
   useEffect(() => {
-    if (connection !== "online") return;
+    if (connection !== "online" && backend.gatewayMode !== "remote") return;
     let stopped = false;
     let inFlight = false;
     const refresh = async () => {
@@ -2704,6 +2730,7 @@ function BackendWorkspace({
   }, [newChatProjectCatalogReady, projectOptions]);
 
   function openThread(thread: AnyRecord) {
+    if (thread.gatewayPendingCreation) { setNotice(t('会话创建已由网关接收，恢复连接后将绑定真实会话；结果待确认时不会重复创建')); return; }
     markLoadProfile(String(thread.id), 'workspace-open');
     const nextId = String(thread.id);
     cacheFamilyDraft();
@@ -2856,7 +2883,7 @@ function BackendWorkspace({
       setImageReading(Boolean(pendingFiles.length || pendingImages.length));
       const uploadedImages = await uploadDraftImages(backend, pendingImages);
       const uploadedFiles = await Promise.all(
-        pendingFiles.map((file) => uploadFile(backend, file.file)),
+        pendingFiles.map((file) => uploadFile(backend, file.file, undefined, { sourceId: file.id })),
       );
       const shouldSendSettings = !thread?.id || activeSettingsSynchronized;
       const effectivePermission =
@@ -2996,6 +3023,7 @@ function BackendWorkspace({
       }
     } catch (reason) {
       if (reason instanceof HttpOperationPendingError) {
+        if (reason.submissionState === 'not-submitted') setNotice(reason.message);
         const threadId = String(thread?.id ?? "");
         const confirmed = (response: RpcMessage, confirmationClient: AppServerClient) => {
           const currentContext = draftContext === draftContextGenerationRef.current;
@@ -3121,8 +3149,8 @@ function BackendWorkspace({
       const originalDraft = currentDraftRef.current;
       const client = clientRef.current;
       try {
-        const uploadedImages = await uploadDraftImages(backend, pendingImages);
-        const uploaded = await Promise.all(pendingFiles.map(file => uploadFile(backend, file.file)));
+        const uploadedImages = await uploadDraftImages(backend, pendingImages, undefined, { memoryOnly: true });
+        const uploaded = await Promise.all(pendingFiles.map(file => uploadFile(backend, file.file, undefined, { sourceId: file.id, memoryOnly: true })));
         if (draftContext !== draftContextGenerationRef.current || clientRef.current !== client) throw new Error(t('会话已切换，请重试'));
         await sidechats.submit(gatewaySidechatClient(client), threadId, buildTurnInput(inputText, uploadedImages, uploaded, pendingSkills, pendingPlugins), {
           ...(selectedModel ? { model: selectedModel } : {}), ...(selectedEffort ? { effort: selectedEffort } : {}),
@@ -3176,7 +3204,7 @@ function BackendWorkspace({
         });
         const action = await submission.prepare(signature, async () => {
           const uploadedImages = await uploadDraftImages(backend, pendingImages);
-          const uploadedFiles = await Promise.all(pendingFiles.map((file) => uploadFile(backend, file.file)));
+          const uploadedFiles = await Promise.all(pendingFiles.map((file) => uploadFile(backend, file.file, undefined, { sourceId: file.id })));
           const input = buildTurnInput(inputText, uploadedImages, uploadedFiles, pendingSkills, pendingPlugins);
           const fullText = input.filter(part => part.type === 'text').map(part => part.text).join('\n');
           return { threadId, inputText: fullText,
@@ -3625,6 +3653,7 @@ function BackendWorkspace({
       });
       return;
     }
+    if (followUp.gatewayRpc) { setError(t('此消息由网关持有，恢复连接后自动发送；结果待确认时请勿重复提交')); return; }
     if (followUp.state === "sending" || followUp.state === "uncertain") return;
     setSteering(true);
     setError("");
@@ -3837,6 +3866,12 @@ function BackendWorkspace({
     setPendingAction(action);
     setError("");
     try {
+      if (thread.gatewayPendingCreation) {
+        if (action !== 'cancel-creation') throw new Error(t('待创建会话只能取消尚未发送的创建请求'));
+        await mutateHostedQueue({ action: 'cancel', id: thread.gatewayOperationId, revision: thread.gatewayOperationRevision, gatewayRpc: true });
+        setThreads(current => current.filter(entry => entry.id !== threadId)); showNotice(t('已取消待创建会话')); return true;
+      }
+      if (action === 'cancel-creation') throw new Error(t('会话已经创建，请刷新列表'));
       if (!client) {
         setError(t("设备尚未连接，请稍后重试"));
         return false;
@@ -4990,6 +5025,7 @@ function ConfiguredApp({
 }) {
   const { preference: languagePreference } = useI18n();
   const [registry, setRegistry] = useState(initialRegistry);
+  const runtimeBackends = useMemo(() => gatewayBackends(registry.backends), [registry.backends]);
   useSwitchRegistry(registry);
   useEffect(() => { onRegistryChange(registry); }, [registry, onRegistryChange]);
   const [summaries, setSummaries] = useState<
@@ -5047,7 +5083,7 @@ function ConfiguredApp({
   useEffect(() => {
     let cancelled = false;
     for (const backend of registry.backends) {
-      if (!backend.enabled || backend.hostId) continue;
+      if (!backend.enabled || backend.hostId && backend.gatewayQueue !== undefined) continue;
       void fetchBackendHostInfo(backend)
         .then((host) => {
           if (cancelled || !host.hostId.trim()) return;
@@ -5057,16 +5093,12 @@ function ConfiguredApp({
             );
             if (
               !target ||
-              target.hostId ||
               target.baseUrl !== backend.baseUrl
             ) {
               return current;
             }
-            const next = assignBackendHostId(
-              current,
-              backend.id,
-              host.hostId,
-            );
+            const identified = assignBackendHostId(current, backend.id, host.hostId);
+            const next = { ...identified, backends: identified.backends.map(item => item.id === backend.id ? { ...item, gatewayQueue: host.remote?.supported === true } : item) };
             if (next === current) return current;
             saveBackendRegistry(window.localStorage, next);
             return next;
@@ -5104,16 +5136,37 @@ function ConfiguredApp({
     };
   }, [closeSidebar, sidebarOpen]);
 
+  useEffect(() => {
+    let cancelled = false;
+    const refresh = async () => {
+      for (const backend of registry.backends.filter(item => item.enabled && item.gatewayMode === 'remote')) {
+        try {
+          const host = await fetchBackendHostInfo(backend); if (cancelled) return;
+          setRegistry(current => {
+            const original = current.backends.find(item => item.id === backend.id);
+            if (!original || original.gatewayMode !== 'remote' || original.baseUrl !== backend.baseUrl || original.token !== backend.token) return current;
+            const targets = refreshGatewayTargets(original.remoteTargets ?? [], host.remote?.targets ?? []);
+            if (JSON.stringify(targets) === JSON.stringify(original.remoteTargets)) return current;
+            const next = { ...current, backends: current.backends.map(item => item.id === original.id ? { ...item, remoteTargets: targets } : item) };
+            saveBackendRegistry(window.localStorage, next); return next;
+          });
+        } catch { /* 授权或目录不可读时保留原目标，不改为另一台机器。 */ }
+      }
+    };
+    void refresh(); const timer = setInterval(() => { void refresh(); }, 60000);
+    return () => { cancelled = true; clearInterval(timer); };
+  }, [registry.backends]);
+
   const enabledBackends = useMemo(
-    () => registry.backends.filter((backend) => backend.enabled),
-    [registry.backends],
+    () => runtimeBackends.filter((backend) => backend.enabled),
+    [runtimeBackends],
   );
   const mountedBackends = useMemo(
     () =>
       enabledBackends.length
         ? enabledBackends
-        : registry.backends.slice(0, 1),
-    [enabledBackends, registry.backends],
+        : runtimeBackends.slice(0, 1),
+    [enabledBackends, runtimeBackends],
   );
   const selectedBackend =
     mountedBackends.find(
@@ -5130,16 +5183,17 @@ function ConfiguredApp({
   }, [listBackendId, mountedBackends, selectListBackend]);
 
   const persistRegistry = useCallback((next: BackendRegistry) => {
+    openSidebar();
     saveBackendRegistry(window.localStorage, next);
     setCollapsedProjectKeys(readCollapsedProjectKeys(window.localStorage));
     setRegistry(
       loadBackendRegistry(window.localStorage, window.location.origin),
     );
-  }, []);
+  }, [openSidebar]);
 
   const selectBackend = useCallback((backendId: string) => {
     setRegistry((current) => {
-      const target = current.backends.find(
+      const target = gatewayBackends(current.backends).find(
         (backend) => backend.id === backendId && backend.enabled,
       );
       if (!target || current.selectedBackendId === backendId) return current;
@@ -5546,7 +5600,7 @@ function ConfiguredApp({
       backendIds: listBackendId === "all" ? mountedBackends.map(backend => backend.id) : [listBackendId],
       backendSnapshots: snapshots,
     }),
-    backends: [{ id: "all", title: t("全部设备"), connected: true }, ...projectNativeBackends(registry.backends, summaries, snapshots)],
+    backends: [{ id: "all", title: t("全部设备"), connected: true }, ...projectNativeBackends(runtimeBackends, summaries, snapshots)],
     preferences: projectNativePreferences({ language: languagePreference, transportMode, fontSize: readFontSize(), notification: notificationPreference }),
   }, {
     "settings.open": p => { setNativeSettingsPage(String(p.id || "devices")); setManagerOpen(true); },
@@ -5601,7 +5655,7 @@ function ConfiguredApp({
         <div
           className="backend-workspace"
           hidden={backend.id !== selectedBackend.id}
-          key={`${backend.id}:${backend.baseUrl}:${backend.token}`}
+          key={`${transportNamespace(backend)}:${backend.baseUrl}:${backend.token}`}
         >
           <BackendWorkspace
             nativeRuntime={nativeRuntime}
@@ -5610,7 +5664,7 @@ function ConfiguredApp({
             conversationVisible={
               backend.id === selectedBackend.id && !sidebarOpen
             }
-            backends={registry.backends}
+            backends={runtimeBackends}
             summaries={summaries}
             onSummaryChange={updateSummary}
             onSnapshotChange={updateSnapshot}
@@ -5634,7 +5688,7 @@ function ConfiguredApp({
           <ThreadListPage
             sidebarOpen={sidebarOpen}
             onCloseSidebar={closeSidebar}
-            backends={registry.backends}
+            backends={runtimeBackends}
             summaries={summaries}
             selectedBackendId={listBackendId}
             loadingBackendIds={loadingBackendIds}
@@ -5675,11 +5729,11 @@ function ConfiguredApp({
         />
       </div>
       {draftsOpen && <DraftsSheet nativeRuntime={isNativeUIEnabled() ? nativeRuntime : null} onClose={() => setDraftsOpen(false)} onOpenDraft={saved => {
-        const target = registry.backends.find(backend => backend.id === saved.backendId);
+        const target = runtimeBackends.find(backend => backend.id === saved.backendId);
         if (!target) throw new Error(t("草稿的设备已移除，无法恢复"));
         const restored = restoreNewChatDraft(saved);
         const nextRegistry = { ...registry, selectedBackendId: target.id,
-          backends: registry.backends.map(backend => backend.id === target.id ? { ...backend, enabled: true } : backend) };
+          backends: registry.backends.map(backend => (backend.id === (target.gatewayId ?? target.id)) ? { ...backend, enabled: true } : backend) };
         persistRegistry(nextRegistry);
         window.localStorage.setItem("codex-mobile:new-chat-backend", target.id);
         setCommand({ id: ++commandIdRef.current, backendId: target.id, type: "new", cwd: saved.cwd,
@@ -5688,7 +5742,7 @@ function ConfiguredApp({
         closeSidebar();
       }} />}
       <BackendAttentionBanner
-        backends={registry.backends}
+        backends={runtimeBackends}
         summaries={summaries}
         selectedBackendId={selectedBackend.id}
         onSelect={(backendId) => {

@@ -190,7 +190,12 @@ export class RemoteFiles {
     } catch { throw new RemoteFileError('binding', false); }
   }
   upload(path: string, source: AsyncIterable<Uint8Array>, options: RemoteUploadOptions): Promise<RemoteUploadResult> { return this.track(this.uploadInternal(path, source, options, performance.now())); }
-  private async uploadInternal(path: string, source: AsyncIterable<Uint8Array>, options: RemoteUploadOptions, started: number): Promise<RemoteUploadResult> {
+  /** 网关先耐久原上传 token，再允许 begin/数据/commit；回调不改变普通目标权限。 */
+  uploadTracked(path: string, source: AsyncIterable<Uint8Array>, options: RemoteUploadOptions, retain: (operation: RemoteUploadOperation) => Promise<void>): Promise<RemoteUploadResult> {
+    if (typeof retain !== 'function') throw new RemoteFileError('invalid-input', false);
+    return this.track(this.uploadInternal(path, source, options, performance.now(), retain));
+  }
+  private async uploadInternal(path: string, source: AsyncIterable<Uint8Array>, options: RemoteUploadOptions, started: number, retain?: (operation: RemoteUploadOperation) => Promise<void>): Promise<RemoteUploadResult> {
     let channel: RemoteFileChannel | undefined; let operation: RemoteUploadOperation | undefined; let commitSent = false; let iterator: AsyncIterator<Uint8Array> | undefined;
     try {
       path = this.path(path); const o = this.options(options, ['size', 'sha256', 'expectedVersion'], started); const size = integer(o.raw.size, -1, FILE_MAX_BYTES);
@@ -200,8 +205,10 @@ export class RemoteFiles {
       const separator = parent.endsWith(paths.sep) || (this.metadata.platformFamily === 'windows' && parent.endsWith('/')) ? '' : paths.sep;
       const directory = this.path(parent + separator + '.codex-mobile-upload-' + id);
       operation = this.operation({ path, directory, size, sha256, expected, id, namespace: this.namespace });
+      await retain?.(operation); assertRemoteOperation(); o.signal?.throwIfAborted();
       channel = await this.channel(o.deadline, o.signal); const [begin] = await channel.exchange([{ mode: 'upload', path, directory, size, sha256, expected, id, namespace: this.namespace }]); body(begin!, 'upload', ['operation']);
-      operation = this.operation(begin!.operation, path, id, size, sha256, expected); iterator = source[Symbol.asyncIterator](); let total = 0; let acknowledged = 0; let ended = false; const hash = createHash('sha256');
+      operation = this.operation(begin!.operation, path, id, size, sha256, expected); await retain?.(operation); channel.assert();
+      iterator = source[Symbol.asyncIterator](); let total = 0; let acknowledged = 0; let ended = false; const hash = createHash('sha256');
       let pending: Buffer = Buffer.alloc(0); let pendingOffset = 0;
       while (!ended) {
         const payloads: Record<string, unknown>[] = []; const checks: { total: number; sha256: string }[] = [];

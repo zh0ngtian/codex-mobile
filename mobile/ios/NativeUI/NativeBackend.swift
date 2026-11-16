@@ -3,6 +3,7 @@ import Foundation
 struct NativeBackend: Codable, Identifiable {
     var id: String
     var title: String
+    var gatewayId: String? = nil
     var subtitle: String? = nil
     var connected: Bool? = nil
     var gatewayAddress: String? = nil

@@ -5,6 +5,31 @@ import Vision
 /// 独立界面夹具及本地网关验收；连接凭证不进入源码或测试附件。
 @MainActor
 final class AgentAppUITests: XCTestCase {
+    func testGatewayModePickerKeepsAddressAndDoesNotStartTesting() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-no-devices-fixture", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
+        XCUIDevice.shared.orientation = .portrait
+        app.launch()
+        defer { app.terminate() }
+        let addButton = app.buttons.matching(identifier: "devices.addFirst").firstMatch
+        XCTAssertTrue(addButton.waitForExistence(timeout: 8)); addButton.tap()
+        let mode = app.buttons["device.gatewayMode"]
+        XCTAssertTrue(mode.waitForExistence(timeout: 5))
+        let name = app.textFields["device.name"]
+        name.tap(); name.typeText("测试网关")
+        let address = app.textFields["device.address"]
+        address.tap(); address.typeText("http://127.0.0.1:1?token=test-only")
+        XCTAssertTrue(mode.label.contains("本地模式") || (mode.value as? String)?.contains("本地模式") == true)
+        mode.tap()
+        app.buttons["远程模式"].tap()
+        XCTAssertTrue(mode.label.contains("远程模式") || (mode.value as? String)?.contains("远程模式") == true)
+        XCTAssertEqual(address.value as? String, "http://127.0.0.1:1?token=test-only")
+        XCTAssertEqual(name.value as? String, "测试网关")
+        XCTAssertTrue(app.buttons["device.testAndSave"].exists)
+        XCTAssertFalse(app.staticTexts["正在连接测试…"].exists)
+        let screenshot = XCTAttachment(screenshot: app.screenshot()); screenshot.name = "远程网关模式-iPhone17Pro竖屏"; screenshot.lifetime = .keepAlways; add(screenshot)
+    }
+
     func testMermaidRendersArrivingSVGAndPreservesSourceActions() {
         let app = XCUIApplication()
         app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-mermaid-fixture", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]

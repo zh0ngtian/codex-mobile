@@ -10,6 +10,8 @@ import { PrivateStore } from './remote/private-store.js';
 import { acquireRemoteOwner } from './remote/owner.js';
 import { publishRemoteAdmin } from './remote/admin.js';
 import { remoteDirectory } from './remote/admin-path.js';
+import { loadGatewayIdentity } from './gateway-identity.js';
+import { TargetResolver } from './targets.js';
 const runtime = resolveRuntimeConfig();
 const gatewayRuntime = resolveGatewayRuntimeConfig(process.env, readHostname());
 const host = process.env.HOST ?? '127.0.0.1';
@@ -112,6 +114,10 @@ const starting = (async () => {
     desktopMeter = externalDesktopModelUsage(runtime.upstreamUrl);
   }
   active();
+  const targetResolver = process.platform === 'darwin' ? new TargetResolver({
+    identity: await loadGatewayIdentity(process.env.CODEX_MOBILE_GATEWAY_IDENTITY_DIR), remoteRuntime: remote,
+  }) : undefined;
+  active();
   gateway = await createGateway({
     host, port, mode: runtime.mode, upstreamUrl: runtime.upstreamUrl,
     staticDir: gatewayRuntime.serveStatic ? process.env.CODEX_MOBILE_STATIC_DIR || resolve(process.cwd(), 'dist') : null,
@@ -137,6 +143,7 @@ const starting = (async () => {
     },
     uploadMeter: managed?.uploadMeter ?? desktopMeter,
     onAuthModeChanged: managed?.onAuthModeChanged,
+    targetResolver,
   });
   active();
   if (remote) {

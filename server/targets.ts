@@ -16,6 +16,11 @@ export interface TargetAccount { readonly accountId: string; readonly accountUse
 export interface RemoteTargetReference {
   readonly mode: 'remote'; readonly gatewayId: string; readonly account: TargetAccount; readonly target: Readonly<RemoteTargetIdentity>;
 }
+export interface GatewayTargetDirectory {
+  readonly gatewayId: string; readonly localHostId: string; readonly state: string;
+  readonly configured: boolean; readonly authorized: boolean; readonly paired: boolean; readonly temporarilyOffline: boolean;
+  readonly targets: readonly Readonly<{ reference: RemoteTargetReference; name: string; online: boolean; busy: boolean; isGatewayHost: boolean }>[];
+}
 interface BaseDescriptor {
   readonly mode: 'local' | 'remote'; readonly gatewayId: string;
   /** 仅用于业务归组，绝不能作为Remote数据可见性或发送授权。 */
@@ -146,6 +151,39 @@ export class TargetResolver {
     const businessKey = hash(['gateway-local-v1', identity.gatewayId, identity.localHostId]);
     this.local = Object.freeze({ mode: 'local', gatewayId: identity.gatewayId, localHostId: identity.localHostId,
       businessKey, authorizationKey: businessKey, transportNamespace: hash(['transport-v1', 'local', businessKey]) });
+  }
+  async directory(signal?: AbortSignal): Promise<{ data: GatewayTargetDirectory; assertCurrent(): void }> {
+    const runtime = this.#runtime;
+    const state = runtime?.status().state ?? 'unconfigured';
+    if (state === 'unconfigured') return {
+      data: Object.freeze({ gatewayId: this.identity.gatewayId, localHostId: this.identity.localHostId, state,
+        configured: false, authorized: false, paired: false, temporarilyOffline: false, targets: Object.freeze([]) }),
+      assertCurrent() { signal?.throwIfAborted(); if (runtime && runtime.status().state !== state) throw new TargetResolutionError('unavailable'); },
+    };
+    if (!runtime) throw new TargetResolutionError('not-configured');
+    try {
+      const binding = await runtime.readTargetBinding(signal);
+      const targets: GatewayTargetDirectory['targets'][number][] = [];
+      for (const visible of binding.targets) {
+        const target = { environmentId: visible.env_id, installationId: visible.installation_id };
+        if (!binding.acceptedTargets.some(item => sameRemoteTarget(item, target)) ||
+          binding.pendingResume.some(item => sameRemoteTarget(item, target))) continue;
+        binding.assertCurrent(target);
+        targets.push(Object.freeze({ reference: parseTargetReference({ mode: 'remote', gatewayId: this.identity.gatewayId, account: {
+          accountId: binding.managed.accountId, accountUserId: binding.managed.accountUserId,
+          ...(Object.hasOwn(binding.managed, 'userId') ? { userId: binding.managed.userId } : {}),
+        }, target })!, name: visible.display_name || visible.host_name || visible.name || target.environmentId,
+        online: binding.state === 'online' && visible.online, busy: visible.busy, isGatewayHost: sameRemoteTarget(binding.local, target) }));
+      }
+      const assertCurrent = () => {
+        signal?.throwIfAborted(); binding.assertScope();
+        for (const item of targets) binding.assertCurrent(item.reference.target);
+      };
+      assertCurrent();
+      return { data: Object.freeze({ gatewayId: this.identity.gatewayId, localHostId: this.identity.localHostId, state: binding.state,
+        configured: true, authorized: true, paired: targets.some(item => item.isGatewayHost),
+        temporarilyOffline: binding.state === 'offline' || binding.state === 'starting', targets: Object.freeze(targets) }), assertCurrent };
+    } catch (error) { return failure(error); }
   }
   /** 可信进程构造完整冻结context；公开account不能代替managed证明。 */
   async operationContext(value?: unknown, signal?: AbortSignal): Promise<OperationContext> {

@@ -193,7 +193,7 @@ export function projectNavigation(input: NavigationInput): NativeGroup[] {
       badge: isThreadRunning(item.thread.status) ? t('运行中') : item.unread ? t('未读') : undefined,
       selected: input.selectedBackendId === item.backendId && input.activeThreadId === item.threadId,
       command: nativeCommand('thread.open', params),
-      actions: [
+      actions: item.thread.gatewayPendingCreation ? item.thread.gatewayOperationState === 'queued' ? [nativeAction(`${item.backendId}:${item.threadId}:cancel-creation`, t('取消创建'), 'thread.manage', { ...params, action: 'cancel-creation' })] : [] : [
         ['pin', item.pinned ? t('取消置顶') : t('置顶')], ['refresh', t('刷新')], ['duplicate', t('复制会话')], ['rename', t('重命名')], ['archive', t('归档')],
       ].map(([action, title]) => nativeAction(`${item.backendId}:${item.threadId}:${action}`, title, 'thread.manage', { ...params, action })),
     };

@@ -1,3 +1,4 @@
+import { gatewayUrl, transportNamespace } from '../../backends/gateway-route';
 import type { AppServerClient } from "../../app-server/client";
 import type { BackendConfig } from "../../backends/types";
 import { remoteImagePreviewUrl } from "../../backends/file-upload";
@@ -38,7 +39,7 @@ export function loadCachedImage(
   backend?: BackendConfig | null,
   thumbnail = true,
 ): Promise<LoadedImage> {
-  const gatewayKey = JSON.stringify([backend?.baseUrl, backend?.token]);
+  const gatewayKey = JSON.stringify([backend?.baseUrl, backend?.token, backend?.gatewayMode ?? 'local', backend?.remoteTarget]);
   let cache = client ? caches.get(client) : backend ? gatewayCaches.get(gatewayKey) : undefined;
   if (!cache) {
     cache = { entries: new Map(), pending: new Map(), gateways: new Map(), bytes: 0 };
@@ -48,7 +49,7 @@ export function loadCachedImage(
       while (gatewayCaches.size > 8) gatewayCaches.delete(gatewayCaches.keys().next().value!);
     }
   }
-  const key = JSON.stringify([backend?.baseUrl, backend?.token, source, thumbnail]);
+  const key = JSON.stringify([gatewayKey, source, thumbnail]);
   const saved = cache.entries.get(key);
   if (saved) {
     cache.entries.delete(key);
@@ -72,7 +73,7 @@ export function loadCachedImage(
     return support && support.expiresAt > Date.now() ? support.promise : null;
   };
   const probeSupport = () => existingSupport() ?? rememberSupport((async () => {
-    const url = new URL("/api/host", `${backend!.baseUrl}/`);
+    const url = gatewayUrl(backend!, "/api/host");
     if (backend!.token) url.searchParams.set("token", backend!.token);
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 5_000);

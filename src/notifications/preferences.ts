@@ -1,3 +1,4 @@
+import { gatewayUrl, gatewayBackends, transportNamespace } from '../backends/gateway-route';
 import { isClientForeground } from "../native-ui/foreground";
 import { useEffect, useState } from "react";
 import { parseBarkPushUrl, type NotificationPreference } from "../../server/notification-settings";
@@ -26,8 +27,8 @@ export function writeNotificationPreference(storage: PreferenceStorage, preferen
   return normalized;
 }
 
-type Target = Pick<BackendConfig, "id" | "name" | "baseUrl" | "token">;
-const targetKey = (target: Target) => `${target.id}\u0000${target.baseUrl}`;
+type Target = Pick<BackendConfig, "id" | "name" | "baseUrl" | "token" | "gatewayMode" | "remoteTarget">;
+const targetKey = (target: Target) => `${transportNamespace(target)}\u0000${target.baseUrl}`;
 let syncQueue: Promise<unknown> = Promise.resolve();
 
 /** 串行同步，确保慢网络中最后一次保存覆盖先前方式。 */
@@ -35,6 +36,7 @@ export function syncNotificationSettings(
   backends: BackendConfig[], preference: NotificationPreference,
   storage: PreferenceStorage, fetcher: typeof fetch = globalThis.fetch,
 ): Promise<string[]> {
+  backends = gatewayBackends(backends);
   const run = async () => {
     let clientId = storage.getItem(CLIENT_KEY);
     if (!clientId || !/^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i.test(clientId)) {
@@ -51,7 +53,7 @@ export function syncNotificationSettings(
     const enabled = new Set(backends.filter((backend) => backend.enabled).map(targetKey));
     for (const backend of backends) {
       if (targets.has(targetKey(backend)) || (backend.enabled && preference.mode === "bark")) {
-        targets.set(targetKey(backend), { id: backend.id, name: backend.name, baseUrl: backend.baseUrl, token: backend.token });
+        targets.set(targetKey(backend), { id: backend.id, name: backend.name, baseUrl: backend.baseUrl, token: backend.token, gatewayMode: backend.gatewayMode, remoteTarget: backend.remoteTarget });
       }
     }
     // 保存所有尝试过的网关，响应丢失或设备移除后仍能注销远端订阅。
@@ -61,7 +63,7 @@ export function syncNotificationSettings(
     await Promise.all([...targets.values()].map(async (target) => {
       const mode = enabled.has(targetKey(target)) ? preference.mode : "system";
       try {
-        const url = new URL("/api/notifications/settings", `${target.baseUrl}/`);
+        const url = gatewayUrl(target, "/api/notifications/settings");
         if (target.token) url.searchParams.set("token", target.token);
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), 10_000);

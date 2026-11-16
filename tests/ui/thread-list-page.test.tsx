@@ -1,7 +1,7 @@
 import { act, fireEvent, render, within } from "@testing-library/react";
 import { cloneElement } from "react";
 import { describe, expect, it, vi } from "vitest";
-import { ThreadListPage } from "../../src/features/threads/ThreadListPage";
+import { ThreadListPage, type ThreadManagementAction } from "../../src/features/threads/ThreadListPage";
 import { aggregateThreads } from "../../src/features/threads/thread-list-model";
 import type {
   BackendConfig,
@@ -81,7 +81,7 @@ function renderList(
     onOpenThread?: (thread: (typeof threads)[number]) => void;
     onManageThread?: (
       thread: (typeof threads)[number],
-      action: "pin" | "refresh" | "duplicate" | "rename" | "archive",
+      action: ThreadManagementAction,
     ) => Promise<boolean>;
   } = {},
 ) {
