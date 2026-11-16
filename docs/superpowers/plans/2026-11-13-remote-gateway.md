@@ -372,7 +372,7 @@ Task3d.4完成记录：Task3d.4统计失效装配已完成源码验收：冻结 
 
 4b.2g最终源码验收：固定6120f3bb，11文件517项（专项70项）、双strict/build:server与原SPEC→原QUALITY复审通过，见[验收记录](evidence/2026-11-16-remote-rpc-scheduler-validation.json)。F1/Q1与全部首次失败保留；原正确探针永久回归，精确未发送清理和同轮不重领已验证。内部RPC调度闭环完成，下一步仍为旧FollowUps及完整消费者/公开装配，整个4b.2/4c/5/6未完成；仅源码，不构建客户端、不发布部署。
 
-### 4b.2h：内部 FollowUps 唯一 owner 接管（QUALITY Q1/Q2补修待固定验证及原双审复验）
+### 4b.2h：内部 FollowUps 唯一 owner 接管（SPEC Q3目的会话校验补修待固定验证及原双审复验）
 
 修改基线为 `64d7519ad0c51a548ed8de50b7fbc389f3723684`。复用现有 OperationQueue/PrivateStore 和 OperationScheduler；可选可信注入的 FollowUps.open 在任何旧订阅、timer 或首次 tick 前核 canonical 源 home 与显式 gatewayCodexHome，一事务导入完整 v1 记录及 marker，原文件保全。ledger 为状态/revision/顺序/context 唯一真相，元数据仅保必要追问字段。原公共 id 与 upstream operationId 分离，指纹保留编辑前原值，终态按实际旧收据保全；retry/steer 公共 id 稳定而新 upstream UUID。marker 已存在不会因保全源文件后来变化重导，来源/context冲突、非法 v1、普通 RPC UUID 碰撞、容量和同步故障明确拒绝，不启动旧 owner。
 
@@ -389,3 +389,7 @@ Task3d.4完成记录：Task3d.4统计失效装配已完成源码验收：冻结 
 原两项3518字节合块和增强Q1 2439字节块/完整原探针保全私有工件与SHA记录。一次原Q1意外sendsBefore=1后，固定8次观察未复现；随后一次受控真实inventory owner.sync抢全局门闩而receipt在原deadline内正常发送，证明原故障注入不唯一归属，不把历史首份已被同名outcome覆盖的失败追认为已证原因。经root技术确认，永久两Q1只加测试专用ALS事务条件，700/850及行为/计数断言保持；共享Q2 1556字节块仍逐字保留。新边界同样精确区分准备/清理事务；正确门闩对原8edf再RED→当前GREEN，未耐久、IO/授权恢复、同PID重建、其他owner/uncertain/终态与目的拒绝/旧实际后续状态均覆盖。首次setup语法错误、夹具收尾/取消时点/原fence与API进入误判、poison同轮storage/reopen-required两个既有503表示及全部原失败如实封存；不改产品预算或原断言掩盖。
 
 新固定SHA无overlay相关回归/双strict/buildserver及完整argv/cwd/env/exit/stdoutstderr/sourcehash由`e4b2h-qfix`私有报告封存。实施后STOP→root工件审计→原SPEC→原QUALITY依次复验；不勾h或整个4b.2/4c/5/6，不启公开装配，不push/merge/main或客户端构建/发布部署。
+
+4b.2h SPEC Q3补修（基线`fb93bf22fe3aee526b29d565f19ff167e1411c9f`）：前轮606项/双strict/build及89专项通过保留；原SPEC用真实旧HTTP threadId控制字符复现已写marker后GET503，正确原1964字节测试块逐字永久保留，新私有根原产品RED→导入目的text检查GREEN。原首probe缺count的400与首seal实目录.vite误判属夹具/证据工具错误，原工件不改写。随后真实新facade enqueue也证实503前已写坏ledger，GET继续503且0RPC；root核对后批准同规则enqueue入口text检查，原RED块永久加入。产品仅queue两处，不改load/fence/既有256 HTTP限制，不转义thread或新增政策。
+
+补充已有ledger与合法前项/控制字符或4097坏后项整批无写入（ledger/source原字节、marker/部分项保全），手构旧源4096合法边界GET和重开可读；不声称原HTTP接受4096。Q1纠正ALS与原Q2/F1字节块保持，新固定SHA无overlay相关回归、双strict/build:server及完整命令/env/sourcehash另封存`e4b2h-q3fix`报告。STOP→root审计→原SPEC→原QUALITY复验，不勾h/整个4b.2/4c/5/6，不启公开装配、不push/merge/main、客户端构建或发布部署。

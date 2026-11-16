@@ -283,7 +283,7 @@ export class OperationQueue {
         if (!terminal(record)) { record.body = { kind: 'follow-up-v1', ...(inputText !== undefined ? { inputText } : {}), ...(extraInput !== undefined ? { extraInput } : {}) }; record.settings = settings; record.attachmentRefs = []; }
         else if (inputText !== undefined || extraInput !== undefined || settings !== undefined) record.followUp!.retainedLegacy = { ...(inputText !== undefined ? { inputText } : {}), ...(extraInput !== undefined ? { extraInput } : {}), ...(settings !== undefined ? { settings } : {}) };
         // 与重开读取复用同一目的表示校验；整批拒绝时不写记录或marker。
-        if (!followUpValid(record)) fail();
+        if (!text(record.conversationId) || !followUpValid(record)) fail();
         await authorize(record, 'submit'); ledger.records.push(record);
       }
       ledger.followUpsImport = { source, context: clone(context), sha256: imported.sha256, count: imported.records.length };
@@ -297,6 +297,7 @@ export class OperationQueue {
     });
   }
   async enqueueFollowUp(context: OperationContext, item: RecordItem): Promise<OperationReceipt> {
+    if (!text(item.threadId)) fail('invalid-input', 400);
     return this.transaction(async (ledger, authorize) => {
       const existing = ledger.records.find(record => record.id === item.id);
       if (existing) {

@@ -664,3 +664,60 @@ it('Q2边界：真实旧retry遗留字段可继续普通失败、取消及重开
   expect((await again.list())[0]).toMatchObject({ id: ids[0], state: 'failed', error: '真实错误' });
   expect((await f.disk()).records).toEqual(settled); expect(await readFile(f.path, 'utf8')).toBe(source);
 });
+
+it('SPEC Q3: 真实旧HTTP接受控制字符threadId后接管必须在发布marker之前拒绝', async () => {
+  const f = await fixture();
+  const old = await FollowUps.open(f.root, f.sessions); cleanup.push(() => old.close());
+  const api = await f.serve(old);
+  const body = { action: 'enqueue', id: randomUUID(), threadId: 'thread\nlegacy', inputText: '旧真实HTTP正文', text: '旧真实HTTP正文', extraInput: [], settings: {}, attachmentCount: 0 };
+  const response = await api.post(body); const oldBody = await response.json();
+  expect(response.status).toBe(200); await old.close();
+  const source = await readFile(f.path, 'utf8');
+  await writeFile(join(process.env.HOME!, 'Q3-real-old-source.json'), source);
+  const persisted = JSON.parse(source); expect(persisted.records[0]).toMatchObject({ id: body.id, threadId: body.threadId, state: 'queued' });
+  let openError: any, listStatus: number | undefined, listBody: any;
+  try {
+    const facade = await f.open(); const modern = await f.serve(facade);
+    const result = await fetch(modern.url); listStatus = result.status; listBody = await result.json();
+  } catch (error: any) { openError = { name: error.name, message: error.message, code: error.code, status: error.status }; }
+  const ledger = await readFile(join(f.directory, 'operations.json'), 'utf8').catch(() => undefined);
+  if (ledger !== undefined) await writeFile(join(process.env.HOME!, 'Q3-published-ledger.json'), ledger);
+  const sourceAfter = await readFile(f.path, 'utf8');
+  await writeFile(join(process.env.HOME!, 'Q3-outcome.json'), JSON.stringify({ oldStatus: response.status, oldBody, sourceUnchanged: source===sourceAfter, openError, listStatus, listBody, received: f.received, ledgerExists: ledger!==undefined }, null, 2));
+  expect(sourceAfter).toBe(source);
+  expect({ openError, ledgerExists: ledger!==undefined, listStatus, listBody }).toMatchObject({ openError: expect.any(Object), ledgerExists: false });
+}, 10_000);
+
+it('Q3边界：已有ledger与合法前项不因坏thread后项写入marker或部分记录', async () => {
+  for (const threadId of ['thread\nlegacy', 'thread\u007flegacy', 't'.repeat(4097)]) {
+    const first = legacy(); const second = legacy('queued', { threadId }); const f = await fixture([first, second]);
+    const context = await f.resolver.operationContext();
+    await f.scheduler.submit({ id: randomUUID(), context, conversationId: 'ordinary', sessionId: HOSTED_SESSION_ID, requestId: randomUUID(), message: { id: 1, method: 'thread/read', params: { threadId: 'ordinary' } }, settings: {}, attachmentRefs: [] });
+    const path = join(f.directory, 'operations.json'); const before = await readFile(path, 'utf8');
+    expect(JSON.parse(before)).not.toHaveProperty('followUpsImport');
+    await expect(f.open()).rejects.toThrow('storage');
+    expect(await readFile(path, 'utf8')).toBe(before); expect(await readFile(f.path, 'utf8')).toBe(f.source);
+    const after = await f.disk(); expect(after).not.toHaveProperty('followUpsImport'); expect(after.records).toHaveLength(1);
+    expect(after.records.some((item: any) => item.id === first.id || item.id === second.id)).toBe(false);
+    expect(f.subscribed).not.toHaveBeenCalled(); expect(f.received).toEqual([]);
+  }
+});
+it('Q3边界：手构旧源4096字符thread满足既有ledger规则并在GET和重开保持可读', async () => {
+  const item = legacy('queued', { threadId: 't'.repeat(4096) }); const f = await fixture([item]);
+  const facade = await f.open(); const api = await f.serve(facade); const response = await fetch(api.url);
+  expect(response.status).toBe(200); expect((await response.json()).items[0]).toMatchObject({ id: item.id, threadId: item.threadId, revision: item.revision, state: 'queued' });
+  await facade.close(); const reopened = await f.serve(await f.open()); const next = await fetch(reopened.url);
+  expect(next.status).toBe(200); expect((await next.json()).items[0]).toMatchObject({ id: item.id, threadId: item.threadId });
+  expect((await f.disk()).records[0]).toMatchObject({ id: item.id, conversationId: item.threadId, revision: item.revision, receiveOrder: 1 });
+  expect(await readFile(f.path, 'utf8')).toBe(f.source); expect(f.received).toEqual([]); expect(f.subscribed).not.toHaveBeenCalled();
+});
+
+it('Q3调查：真实新facade拒绝控制字符threadId且ledger保持可读', async () => {
+  const f = await fixture(); const api = await f.serve(await f.open());
+  const path = join(f.directory, 'operations.json'); const before = await readFile(path, 'utf8');
+  const body = { action: 'enqueue', id: randomUUID(), threadId: 'thread\nnew', inputText: '新真实HTTP正文', text: '新真实HTTP正文', extraInput: [], settings: {}, attachmentCount: 0 };
+  const response = await api.post(body); const responseBody = await response.json();
+  const after = await readFile(path, 'utf8'); const list = await fetch(api.url); const listBody = await list.json();
+  await writeFile(join(process.env.HOME!, 'Q3-new-enqueue-outcome.json'), JSON.stringify({ status: response.status, responseBody, before, after, listStatus: list.status, listBody, received: f.received }, null, 2));
+  expect(response.status).toBe(400); expect(after).toBe(before); expect(list.status).toBe(200); expect(f.received).toHaveLength(0);
+});
