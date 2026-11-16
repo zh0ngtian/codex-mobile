@@ -361,6 +361,7 @@ describe("透明网关", () => {
       barkPush: true,
       imagePreview: true,
       followUpQueue: true,
+      remote: { version: 1, supported: false },
     });
   });
 

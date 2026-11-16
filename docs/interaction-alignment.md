@@ -322,6 +322,7 @@
 
 ### 4.12 多网关本地与 Remote 模式（已确认，分阶段开发）
 
+- 4b.2i 公开入口路由边界（已实现，待固定源码验证）：API 与 `/ws`、`/api/realtime` 升级在鉴权后、任何本地消费者前统一校验内部 `mode`／`target` 参数。缺省及显式 `local` 保留原本机行为；重复、未知、不完整或冲突的参数返回400，不能默认为 Local。内部 Remote 目标复用既有完整引用解析；完整消费者与唯一队列公开装配完成前，目标业务返回503 `remote-not-supported`，不得访问本地文件、项目、通知或借用 Local Session。`/api/host` 是全网关探测，可不选目标，并如实提供 `remote: { version: 1, supported: false }`；不表示手机已支持远程切换。原 URL 输入格式、token／cookie 与 CORS 预检保持。验收覆盖 HTTP 读写／媒体、现存 Local Session、双 WebSocket 入口、鉴权顺序及 Local 兼容；Remote 授权状态、目标目录与真实执行仍待后续接线，未发布。
 - 固定身份 A（2026-11-15 已确认，4a 内部基础已完成源码验证与独立双审，未接公开路由）：网关持久目录首次生成固定随机 gatewayId/localHostId，同目录重启、改名及 Remote 重授权不变；不同目录/网关不合并。当前 Mac 网关使用有界固定 ioreg 读取的硬件 UUID 域分隔 SHA-256 指纹校验归属，原始值不保存；跨机复制、损坏、权限或 symlink 不合规明确拒绝并保留旧记录，机器来源不可用不降级。默认 `~/.codex-mobile/gateway-identity`，独立网关可可信注入不同目录；其他宿主的默认 reader 明确 unsupported，本步未接 Local 启动入口、不改变旧 hostId 或 URL/token。Local 首次使用即固定业务归组，只有当前可信完整 binding.local 证明的 Remote 网关 Mac 共用该组，Local/Remote 传输 namespace 分开。共享组不能作为读取或发送授权：每个 Remote 句柄和后续操作/收据仍冻结完整 managed 账号（包括 userId 有无）、网关、目标双 ID 和授权 generation，防止新账号看到旧 Remote 正文或接管旧操作。验收覆盖真实文件权限/父项 fsync、并发进程及中断、换机拒绝、client 可见但未接受、账号和安装变化、离线仅解析、暂停/pending、旧句柄与迟到资源实际收尾；公开路由、队列、观察器和手机支持继续待实现/验收，未发布。
 - 4a 内部引用严格检查全部 own 字段：缺省或 Local 模式只允许 `mode`，非枚举的 gatewayId/account/target 即使值为 undefined 也须明确拒绝，不能静默变成本地。未提供引用、空对象、仅有 mode 的 local/undefined 保留兼容；验收逐一覆盖三字段、正常值/undefined、缺省/local 的 12 个组合，并保留 getter、symbol、非标准 prototype、完整 Remote 和不降级边界。
 - 4a 健康 owner 下的内部 RPC 实际关闭屏障须在可能同步触发外部 close 监听器之前固定；监听器重入 settled 也须等待同一实际 client_closed 发送 Promise。session/stream 发起关闭、stream/session 自身监听与监听抛错均须在 gate 前不兑现、gate 后完成，关闭帧及释放各一次且无监听残留；不等待业务 ACK，不关闭共享 Relay。
@@ -2195,3 +2196,8 @@ Q3候选`c5fa9e3f`已完成610项/双strict/build及历史SPEC复验；历史QUA
 ### 2026-11-16 Task4b.2h 最终源码验证
 
 固定源码`a3e07a338890672ce3bb1ec9322b8e6ec951129f`已通过12文件620项相关回归（FollowUps ledger 103项、原调度70项、旧追问23项）、双strict及build:server；主执行者直接检查代码、需求、原失败与修复验证结果并通过。Q4编辑在原CAS内验证最终合并输入、重算实际附件数并同步既有准备收据的内容签名，非法修改在落盘前拒绝；合法编辑保留公共id、上游UUID、接收指纹和上下文。F1/Q1/Q2/Q3历史修复和原失败证据保留。按用户2026-11-16新规则，本候选未安排独立agent复审，不将旧候选的审查结果转绑本提交。仅内部可选接管已验证，公开gateway/mode/host/index、完整消费者及4b.2/4c/Task5/6仍待；未访问官方或真实凭据，未构建客户端、发布或部署。见[验收记录](superpowers/plans/evidence/2026-11-16-remote-follow-ups-ledger-validation.json)。
+
+
+### 2026-11-16 Task4b.2i 公开入口统一路由校验
+
+修复 HTTP／WebSocket 旧入口忽略内部 Remote 模式而调用 Local 消费者的问题。缺省和显式 Local 兼容；无效参数400、完整 Remote 业务503，鉴权先行，host 版本1能力明确不支持。目标引用校验复用现有实现，未新增运行时或持久 owner。必要隔离反例与本地兼容已补充，待本轮固定源码验证及主执行者直接检查；完整目标消费者、公开调度／附件／Sidechat、观察器和手机接入仍待后续，不宣称 Remote 已可用。未构建客户端、发布或部署。

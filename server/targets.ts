@@ -44,7 +44,7 @@ function account(value: unknown): Readonly<TargetAccount> {
   return Object.freeze({ accountId: text(raw.accountId), accountUserId: text(raw.accountUserId),
     ...(Object.hasOwn(raw, 'userId') ? { userId: text(raw.userId) } : {}) });
 }
-function parse(value: unknown): RemoteTargetReference | undefined {
+export function parseTargetReference(value: unknown): RemoteTargetReference | undefined {
   if (value === undefined) return;
   const raw = object(value, ['mode', 'gatewayId', 'account', 'target']);
   if (raw.mode === undefined || raw.mode === 'local') {
@@ -203,7 +203,7 @@ export class TargetResolver {
   async resolve(value: RemoteTargetReference, signal?: AbortSignal): Promise<ResolvedRemoteTarget>;
   async resolve(value?: unknown, signal?: AbortSignal): Promise<ResolvedLocalTarget | ResolvedRemoteTarget>;
   async resolve(value?: unknown, signal?: AbortSignal): Promise<ResolvedLocalTarget | ResolvedRemoteTarget> {
-    const reference = parse(value);
+    const reference = parseTargetReference(value);
     if (!reference) return new ResolvedLocalTarget(this.local);
     if (reference.gatewayId !== this.identity.gatewayId) throw new TargetResolutionError('gateway-mismatch');
     const runtime = this.#runtime;

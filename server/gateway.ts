@@ -20,6 +20,7 @@ import { ImagePreviews } from "./image-preview.js";
 import { downloadFile } from "./file-download.js";
 import { previewVideo } from "./video-preview.js";
 import type { ModelUploadSource } from './model-upload-meter.js';
+import { parseTargetReference } from './targets.js';
 
 const MAX_APP_SERVER_MESSAGE_BYTES = 16 * 1024 * 1024;
 
@@ -82,6 +83,27 @@ function authorized(url: URL, expected?: string, cookie?: string) {
     url.searchParams.get("token") === expected ||
     cookie?.split(";").some((part) => part.trim() === `codex_mobile_token=${encodeURIComponent(expected)}`)
   );
+}
+
+// HTTP 与升级请求在任何本地消费者执行前使用同一校验；公开 Remote 完整装配前禁止回落 Local。
+function routingError(url: URL) {
+  const modes = url.searchParams.getAll('mode');
+  const targets = url.searchParams.getAll('target');
+  if (!modes.length && !targets.length) return;
+  const invalid = { status: 400, error: { code: 'invalid-reference', message: '连接模式或目标参数无效' } };
+  if (modes.length !== 1 || targets.length > 1) return invalid;
+  if (modes[0] === 'local') return targets.length ? invalid : undefined;
+  if (modes[0] !== 'remote') return invalid;
+  if (targets.length) {
+    try {
+      if (!parseTargetReference(JSON.parse(targets[0]!))) return invalid;
+    } catch { return invalid; }
+  } else if (url.pathname !== '/api/host') return invalid;
+  // host 是全网关能力探测，不选择或读取某个目标。
+  if (url.pathname === '/api/host') return;
+  return { status: 503, error: {
+    code: 'remote-not-supported', message: '此网关尚未开放远程模式，请使用支持远程模式的网关',
+  } };
 }
 
 function applyCors(
@@ -149,7 +171,7 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
     ].includes(url.pathname) || fileDownload;
     const apiRequest =
       url.pathname === "/api" || url.pathname.startsWith("/api/");
-    if (controlRequest) {
+    if (apiRequest) {
       applyCors(response, origin);
     }
     if (fileDownload) {
@@ -181,6 +203,14 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
     if (controlRequest && request.method === "OPTIONS") {
       response.statusCode = 204;
       response.end();
+      return;
+    }
+    const routeError = apiRequest ? routingError(url) : undefined;
+    if (routeError) {
+      response.statusCode = routeError.status;
+      response.setHeader('content-type', 'application/json; charset=utf-8');
+      response.setHeader('cache-control', 'no-store');
+      response.end(JSON.stringify({ error: routeError.error }));
       return;
     }
     if (url.pathname === "/api/threads/title-summary") {
@@ -251,6 +281,7 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
           appServerReady,
           httpPolling: true,
           followUpQueue: true,
+          remote: { version: 1, supported: false },
           barkPush: true,
           imagePreview: true,
         }),
@@ -397,6 +428,12 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
     if (!authorized(url, options.accessToken, request.headers.cookie)) {
       socket.write("HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n");
       socket.destroy();
+      return;
+    }
+    const routeError = routingError(url);
+    if (routeError) {
+      const body = JSON.stringify({ error: routeError.error });
+      socket.end(`HTTP/1.1 ${routeError.status} ${routeError.status === 400 ? 'Bad Request' : 'Service Unavailable'}\r\nConnection: close\r\nContent-Type: application/json; charset=utf-8\r\nCache-Control: no-store\r\nContent-Length: ${Buffer.byteLength(body)}\r\n\r\n${body}`);
       return;
     }
     if (url.pathname === "/api/realtime") {
