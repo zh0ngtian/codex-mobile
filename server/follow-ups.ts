@@ -4,6 +4,8 @@ import { mkdir, open, readFile, rename, unlink, chmod } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { HttpSessions, type RpcMessage } from "./http-session.js";
+import type { OperationScheduler } from './operation-scheduler.js';
+import { OperationQueueError, type OperationContext } from './operation-queue.js';
 
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const MAX_REQUEST_BYTES = 16 * 1024 * 1024;
@@ -12,13 +14,13 @@ const MAX_ITEMS = 128;
 const MAX_RECORDS = 65_536;
 type Input = Record<string, unknown>;
 type State = "queued" | "sending" | "failed" | "uncertain" | "sent" | "cancelled";
-type RecordItem = {
+export type RecordItem = {
   id: string; fingerprint: string; threadId: string; state: State; revision: number;
   inputText?: string; text?: string; attachmentCount?: number; extraInput?: Input[]; settings?: Input;
   operationId: string; restoreState?: "queued" | "failed"; method?: "turn/start" | "turn/steer"; error?: string;
 };
-class QueueError extends Error { constructor(public status: number, message: string) { super(message); } }
-function canonical(value: unknown): string {
+export class QueueError extends Error { constructor(public status: number, message: string) { super(message); } }
+export function canonical(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
   if (value && typeof value === "object") return "{" + Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([key, entry]) => `${JSON.stringify(key)}:${canonical(entry)}`).join(",") + "}";
   return JSON.stringify(value) ?? "null";
@@ -30,10 +32,10 @@ const rpcFailure = (error: unknown, fallback: string) => {
   return new QueueError(/not found|does not exist|unknown thread|archived|不存在|已归档/i.test(message) ? 404 : 503, message);
 };
 const errorText = (error: unknown) => error instanceof Error ? error.message : "追问发送失败";
-function validateText(inputText: unknown, text: unknown) {
+export function validateText(inputText: unknown, text: unknown) {
   if (typeof inputText !== "string" || typeof text !== "string" || inputText.length > 32_768 || text.length > 32_768) throw new QueueError(400, "追问正文或预览无效");
 }
-function validateInputs(input: unknown, mentions = false): asserts input is Input[] {
+export function validateInputs(input: unknown, mentions = false): asserts input is Input[] {
   if (!Array.isArray(input) || input.length > 128) throw new QueueError(400, "追问附件或引用无效");
   for (const item of input) {
     if (!object(item)) throw new QueueError(400, "追问输入无效");
@@ -46,7 +48,7 @@ function validateInputs(input: unknown, mentions = false): asserts input is Inpu
     else throw new QueueError(400, "不支持的追问输入类型");
   }
 }
-function validateSettings(settings: unknown): asserts settings is Input {
+export function validateSettings(settings: unknown): asserts settings is Input {
   if (!object(settings)) throw new QueueError(400, "追问设置无效");
   const keys = new Set(["model", "effort", "serviceTier", "permissions", "approvalPolicy", "approvalsReviewer"]);
   for (const [key, value] of Object.entries(settings)) {
@@ -66,10 +68,18 @@ export class FollowUps {
   private unsubscribe?: () => void;
   private manualSends = new Set<string>();
   private actions = new Set<Promise<unknown>>();
+  private ledgerOwner?: { scheduler: OperationScheduler; context: OperationContext };
   private constructor(private directory: string, private sessions: HttpSessions) {}
 
-  static async open(codexHome: string, sessions: HttpSessions) {
+  static async open(codexHome: string, sessions: HttpSessions, options?: { scheduler: OperationScheduler }) {
     const queue = new FollowUps(join(codexHome, "codex-mobile-follow-ups"), sessions);
+    if (options) {
+      let delivery = () => {};
+      const context = await options.scheduler.openFollowUps(codexHome, fence => { delivery = fence; });
+      delivery();
+      queue.ledgerOwner = { scheduler: options.scheduler, context };
+      return queue; // 导入耐久后唯一owner；不创建旧订阅、timer或首tick。
+    }
     try {
       const data = JSON.parse(await readFile(join(queue.directory, "queue.json"), "utf8"));
       if (data.version !== 1 || !Array.isArray(data.records)) throw new Error("Invalid follow-up storage");
@@ -260,18 +270,21 @@ export class FollowUps {
     response.setHeader("content-type", "application/json; charset=utf-8"); response.setHeader("cache-control", "no-store");
     try {
       let result: unknown;
-      if (request.method === "GET") { await this.serial; result = this.list(); }
+      let delivery = () => {};
+      if (request.method === "GET") { await this.serial; result = this.ledgerOwner ? await this.ledgerOwner.scheduler.listFollowUps(this.ledgerOwner.context, fence => { delivery = fence; }) : this.list(); }
       else if (request.method === "POST") {
         const chunks: Buffer[] = []; let bytes = 0;
         for await (const chunk of request) { const part = Buffer.from(chunk); bytes += part.length; if (bytes <= MAX_REQUEST_BYTES) chunks.push(part); }
         if (bytes > MAX_REQUEST_BYTES) throw new QueueError(413, "追问请求超过 16 MiB");
         let body: unknown; try { body = JSON.parse(Buffer.concat(chunks).toString("utf8")); } catch { throw new QueueError(400, "JSON 无效"); }
-        const action = this.mutate(body); this.actions.add(action);
+        if (this.closed) throw new QueueError(503, '追问队列已关闭');
+        const action = this.ledgerOwner ? this.ledgerOwner.scheduler.mutateFollowUp(this.ledgerOwner.context, body, fence => { delivery = fence; }) : this.mutate(body); this.actions.add(action);
         try { result = await action; } finally { this.actions.delete(action); }
       } else throw new QueueError(405, "不支持的请求方法");
-      response.end(JSON.stringify(result));
+      const json = JSON.stringify(result); delivery(); if (this.closed) throw new QueueError(503, '追问队列已关闭');
+      response.end(json);
     } catch (error) {
-      response.statusCode = error instanceof QueueError ? error.status : 503;
+      response.statusCode = error instanceof QueueError || error instanceof OperationQueueError ? error.status : 503;
       response.end(JSON.stringify({ error: { message: errorText(error) } }));
     }
   }

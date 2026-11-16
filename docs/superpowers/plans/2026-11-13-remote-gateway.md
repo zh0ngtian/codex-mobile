@@ -162,6 +162,7 @@ Task4 按内部依赖顺序实施：4a 可信目标身份基础 → 4b 持久队
 - [x] 4b.2c 内部可信 Session 执行结果：固定 `44fb339f`，40项可信边界、10文件369项、双strict/build及原 SPEC→原 QUALITY 限定复审通过，见[收据](evidence/2026-11-16-remote-session-dispatch-validation.json)；复用原 Session／requestId／hosted WAL，原结果对象与原 attempt／invocation 绑定真实零发送证明，不接 ledger 或增加派发 owner。公开 4b.2 仍待。
 - [x] 4b.2d 内部原收据读取：固定 `b63ad1d8` 的493项相关回归、双strict/build及全新SPEC→QUALITY通过；两审各亲跑49项及独立12／7项边界探针，root核全部小工件，见[收据](evidence/2026-11-16-remote-original-operation-validation.json)。按原context／Session／requestId只读原namespace，最终await后核验原预算，不创建Session／RPC／写WAL。公开装配和整个4b.2仍待。
 - [x] 4b.2e 原操作context／WAL与当前有效Session传输装配：固定 `d7d700d8`，5文件217项必要回归（含49项专项）、双strict/build及原SPEC→原QUALITY复验通过，root核固定源码及全部小工件，见[收据](evidence/2026-11-16-remote-recovered-session-validation.json)。原context/UUID/namespace保持，当前同Runtime真实句柄及完整恢复proof受检，后台加载旧批实际结束后仅由新授权重扫；completed不重发，pending/uncertain仍未知。仅内部依赖完成，公开4b.2仍待。
+- [ ] 4b.2h 内部 FollowUps 唯一 owner 接管：实现及定向 TDD 已完成，待最终固定 SHA 必要回归/双strict/build:server、root 实读与 fresh SPEC→QUALITY；旧 Local v1 正常升级与用户 A 的 B 立即引导例外见下方记录。公开默认 gateway/host/index 和完整消费者尚未装配，不勾整个4b.2/4c/5/6。
 - [ ] 4b.2：HTTP/WS/hosted/Bark/关注与目标传输装配，Sidechat 内存路由、附件 bytes/活引用、占位、读合并/导航取消、显式 resume 和旧 FollowUps 推断替换，待实现/验收。
 - [ ] 4c：真实业务时钟与会话观察/释放，待实现/验收。
 
@@ -370,3 +371,13 @@ Task3d.4完成记录：Task3d.4统计失效装配已完成源码验收：冻结 
 本轮自审补齐领取最终失败后的 attempted：永久断言按不同 token/revision 统计真实领取；同实例固定1000ms预算，仅首次 claim 真实 fsync 后延迟1100ms。去除 attempted 的旧产品在同次 scan 得到2个不同绑定而 FAIL，修正后只领取1次、零 mark/dispatch/物理发送，撤去注入后的同实例下一 runOnce 成功且仅发送1次。新增永久项累计10项。原整数同步计数可能重复观察同一 claim，旧 `908c1934` 固定归档516 PASS/1 FAIL不能视作通过；该计数夹具及恢复仍用100ms造成 uncertain 的首次失败均保留。临时完成计数因去除后门闩仍通过而删除，不把未杀死 mutation 记为产品 RED；首次门闩自锁及修正记录保留。旧候选 `38181497b3e45242b785ee2cadb26bdf0eb07194` 的516项/双strict/buildserver仅属原归档，最终6120f3bb已完成独立固定归档517项/双strict/build:server及原SPEC→原QUALITY复审，root核验通过。
 
 4b.2g最终源码验收：固定6120f3bb，11文件517项（专项70项）、双strict/build:server与原SPEC→原QUALITY复审通过，见[验收记录](evidence/2026-11-16-remote-rpc-scheduler-validation.json)。F1/Q1与全部首次失败保留；原正确探针永久回归，精确未发送清理和同轮不重领已验证。内部RPC调度闭环完成，下一步仍为旧FollowUps及完整消费者/公开装配，整个4b.2/4c/5/6未完成；仅源码，不构建客户端、不发布部署。
+
+### 4b.2h：内部 FollowUps 唯一 owner 接管（实现及定向验证完成，待最终验收和双审）
+
+修改基线为 `64d7519ad0c51a548ed8de50b7fbc389f3723684`。复用现有 OperationQueue/PrivateStore 和 OperationScheduler；可选可信注入的 FollowUps.open 在任何旧订阅、timer 或首次 tick 前核 canonical 源 home 与显式 gatewayCodexHome，一事务导入完整 v1 记录及 marker，原文件保全。ledger 为状态/revision/顺序/context 唯一真相，元数据仅保必要追问字段。原公共 id 与 upstream operationId 分离，指纹保留编辑前原值，终态按实际旧收据保全；retry/steer 公共 id 稳定而新 upstream UUID。marker 已存在不会因保全源文件后来变化重导，来源/context冲突、非法 v1、普通 RPC UUID 碰撞、容量和同步故障明确拒绝，不启动旧 owner。
+
+旧 sending 只按原 HOSTED_SESSION_ID + operationId 对账；真实 completed/error 结算，pending/uncertain 不重发，只有旧 Local 真404恢复queued/原steer restoreState。新 ledger/Remote 不放宽 neverSent。用户 A 的显式 B-steer 先查实际 turn 再 CAS 耐久绑定，越过普通 queued/failed A，A 继续排队；发送前原 turn 失效明确失败。已绑定引导对外 sending，claimed/uncertain 普通写继续阻同会话其他写，读旁路、其他会话、停止/审批优先及专用槽保持。普通追问等实际 idle，同完整 context/thread/真实 epoch 的并发 resume 共用在途过程但各调用预算独立，迟到/关闭响应不缓存成功，thread/read 不读全 turns。
+
+真实 PrivateStore、HTTP/action→HttpSessions/Session/WAL/LocalWS 的 TDD 包括原最小终态、附件/settings/编辑指纹、中间态、实际原WAL矩阵、并发进程接管及两次重启、同步故障/容量拒绝、唯一发送、Session accepted 输入语义、普通 RPC 混合顺序/控制优先，以及实际 response.end 前撤权/关闭。近64MiB按确定必要的 receipt/method/claim/revision 字节计费；steer 按真实原turn及确定失效提示实际字节接收，新完整错误沿既有原WAL授权读取，旧error保留，不新增上限/截断或第二WAL。最初全部产品/夹具/报告失败和被否定的预留版本保留，最终以固定 SHA 无 overlay git archive 的必要回归、双strict/build:server及本轮私有报告为准。原未注入路径23项保留；旧 uncertain cancel 为历史行为，新注入路径 queued-only/unknown cancel 409 明确覆盖。
+
+完成实施后 STOP，由 root 实读再串行 fresh SPEC→fresh QUALITY；未勾整个4b.2/4c/5/6，未接公开 gateway/host/index 或完整消费者，未访问官方/真实用户队列凭据，未构建客户端或发布部署。仅在本分支提交，由 root 后续按仓库规则整合。

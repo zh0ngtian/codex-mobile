@@ -1,12 +1,16 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { createHash, randomUUID } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
-import { resolve } from 'node:path';
-import { OperationQueue, OperationQueueError, type OperationAuthorizationFence, type OperationClaim, type OperationContext, type OperationControl, type OperationReceipt, type OperationRecord } from './operation-queue.js';
+import { resolve, join } from 'node:path';
+import { readFile, realpath } from 'node:fs/promises';
+import { TextDecoder } from 'node:util';
+import { OperationQueue, OperationQueueError, followUpMessage, FOLLOW_UP_TURN_EXPIRED_ERROR, type OperationAuthorizationFence, type OperationClaim, type OperationContext, type OperationControl, type OperationReceipt, type OperationRecord } from './operation-queue.js';
 import { HttpSessions, isReadOnlyRpc, readOriginalOperation, type HttpSessionRemoteOptions, type RpcMessage, type SessionCallOptions, type SessionDispatchAttempt, type SessionDispatchResult } from './http-session.js';
 import { isNavigationResume, rpcSignatureInput, rpcControlRequestKey } from './rpc-replay.js';
 import { TargetResolver } from './targets.js';
 import { assertRemoteOperation, captureRemoteOperation, withIndependentRemoteOperation, withRemoteOperation } from './remote/operation-guard.js';
+import { QueueError, canonical, validateText, validateInputs, validateSettings, type RecordItem } from './follow-ups.js';
+import { messageAttachmentCount } from './user-message-format.js';
 
 type Action = Parameters<TargetResolver['authorizeOperation']>[1];
 interface RpcInitialization { message: RpcMessage; notification?: RpcMessage }
@@ -29,6 +33,7 @@ function key(value: unknown): string {
 }
 function body(record: Readonly<OperationRecord>): RpcBody | undefined {
   if (!record.rpcReceipt) return; // 旧合法未知body保留写屏障，不猜成可信RPC。
+  if (record.followUp) { const message = followUpMessage(record); return message ? { kind: 'rpc-v1', sessionId: record.rpcReceipt.sessionId, requestId: record.rpcReceipt.requestId, message } : undefined; }
   const value = record.body as RpcBody | undefined;
   if (!value || value.kind !== 'rpc-v1' || !UUID.test(value.sessionId) || value.sessionId === SIDECHAT || !UUID.test(value.requestId) || !value.message || typeof value.message !== 'object' || Array.isArray(value.message)) return;
   return value;
@@ -37,7 +42,7 @@ function isRead(record: Readonly<OperationRecord>): boolean { const rpc = body(r
 // 仅已放弃执行的精确未发送claim清理事实；无正文、无新耐久owner，同进程重建可接续原授权CAS。
 const abandonedClaims = new Map<string, { directory: string; gatewayId: string; claim: OperationClaim; pending?: Promise<void> }>();
 
-/** 仅内部唯一RPC owner；公开路由和旧FollowUps尚未启用本调度器。 */
+/** 内部唯一RPC owner；FollowUps可可信注入接管，公开路由尚未装配。 */
 export class OperationScheduler {
   readonly #options: Options;
   readonly #queue: OperationQueue;
@@ -48,6 +53,8 @@ export class OperationScheduler {
   readonly #initializations = new Map<string, RpcInitialization>();
   readonly #results = new Map<string, SessionDispatchResult>();
   readonly #diagnostics = new Map<string, unknown>();
+  readonly #resumed = new Map<string, string>();
+  readonly #resuming = new Map<string, { epoch: string; promise: Promise<void> }>();
   #closed = false;
   #running?: Promise<void>;
   #closing?: Promise<void>;
@@ -82,6 +89,151 @@ export class OperationScheduler {
   events(context: OperationContext, sessionId: string, after: number, original?: SessionCallOptions) { return this.own(() => this.sessionEvents(context, sessionId, after, original)); }
   result(id: string, original?: SessionCallOptions): Promise<SessionDispatchResult> { return this.own(() => this.readResult(id, original)); }
   cancelNavigation(id: string, revision: number, context: OperationContext): Promise<OperationReceipt> { return this.own(() => this.cancelQueuedNavigation(id, revision, context)); }
+  openFollowUps(codexHome: string, captureDelivery?: (fence: () => void) => void): Promise<OperationContext> {
+    return this.own(async () => {
+      const parents = captureRemoteOperation(); let final = () => {};
+      const result = await this.budget(async call => {
+      const home = await realpath(codexHome); if (home !== await realpath(this.#options.gatewayCodexHome)) throw new QueueError(409, '追问来源与原网关目录不一致');
+      const context = await this.#options.resolver.operationContext(undefined, call.signal);
+      const source = join(home, 'codex-mobile-follow-ups', 'queue.json');
+      await this.ledger([context], ['submit'], call, () => this.#queue.importFollowUps(source, context, async () => {
+        let bytes: Buffer; try { bytes = await readFile(source); } catch (error: any) { if (error.code !== 'ENOENT') throw error; bytes = Buffer.from('{"version":1,"records":[]}'); }
+        if (bytes.length > 64 * 1024 * 1024) throw new QueueError(507, '追问持久化存储已满');
+        const data = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)); if (!data || Object.keys(data).some(name => !['version', 'records'].includes(name)) || data.version !== 1 || !Array.isArray(data.records) || data.records.length > 65_536) throw new QueueError(503, '旧追问存储无效');
+        for (const item of data.records) {
+          if (!item || Object.keys(item).some(name => !['id', 'fingerprint', 'threadId', 'state', 'revision', 'inputText', 'text', 'attachmentCount', 'extraInput', 'settings', 'operationId', 'restoreState', 'method', 'error'].includes(name)) || typeof item.id !== 'string' || !UUID.test(item.id) || typeof item.operationId !== 'string' || !UUID.test(item.operationId) || typeof item.threadId !== 'string' || !item.threadId.trim() || !['queued', 'sending', 'failed', 'uncertain', 'sent', 'cancelled'].includes(item.state) || !Number.isSafeInteger(item.revision) || item.revision < 1 || typeof item.fingerprint !== 'string' || !/^[a-f0-9]{64}$/.test(item.fingerprint) || (item.method !== undefined && !['turn/start', 'turn/steer'].includes(item.method)) || (item.restoreState !== undefined && !['queued', 'failed'].includes(item.restoreState)) || (item.error !== undefined && typeof item.error !== 'string')) throw new QueueError(503, '旧追问记录无效');
+          if (!['sent', 'cancelled'].includes(item.state) || item.inputText !== undefined || item.text !== undefined) validateText(item.inputText, item.text);
+          if (!['sent', 'cancelled'].includes(item.state) || item.extraInput !== undefined) validateInputs(item.extraInput);
+          if (!['sent', 'cancelled'].includes(item.state) || item.settings !== undefined) validateSettings(item.settings);
+          if ((!['sent', 'cancelled'].includes(item.state) || item.attachmentCount !== undefined) && (!Number.isSafeInteger(item.attachmentCount) || item.attachmentCount < 0 || item.attachmentCount !== messageAttachmentCount(item.inputText ?? '', item.extraInput ?? []))) throw new QueueError(503, '旧追问附件数量无效');
+        }
+        return { records: data.records as RecordItem[], sha256: createHash('sha256').update(bytes).digest('hex') };
+      }));
+      const fence = await this.#options.resolver.authorizeOperation(context, 'submit', call.signal);
+      final = () => { fence(); parents(); this.assertOpen(); if (call.signal?.aborted || performance.now() >= call.deadline) throw new Error('接管原预算已结束'); };
+      final(); return context;
+      });
+      final(); captureDelivery?.(final); final(); assertRemoteOperation(); return result;
+    });
+  }
+  private async followUpCall<T>(context: OperationContext, actions: Action[], operation: (call: SessionCallOptions) => Promise<T>, captureDelivery?: (fence: () => void) => void): Promise<T> {
+    context = structuredClone(context); const parents = captureRemoteOperation(); let final = () => {};
+    const value = await this.budget(async call => {
+      const result = await this.ledger([context], actions, call, () => operation(call));
+      const fence = await this.#options.resolver.authorizeOperation(context, actions.at(-1)!, call.signal);
+      final = () => { fence(); parents(); this.assertOpen(); if (call.signal?.aborted || performance.now() >= call.deadline) throw new Error('追问原预算已结束'); };
+      final(); return result;
+    });
+    final(); captureDelivery?.(final); final(); assertRemoteOperation(); return value;
+  }
+  listFollowUps(context: OperationContext, captureDelivery?: (fence: () => void) => void): Promise<{ items: unknown[] }> {
+    context = structuredClone(context);
+    return this.own(() => this.followUpCall(context, ['read'], async call => this.followUpList(await this.#queue.listFollowUps(context), call), captureDelivery));
+  }
+  private async followUpList(records: OperationRecord[], call: SessionCallOptions): Promise<{ items: unknown[] }> {
+    const items: unknown[] = [];
+    for (const record of records.filter(record => !['succeeded', 'cancelled'].includes(record.state))) {
+      const follow = record.followUp!; const payload = record.body as { inputText?: string };
+      let error = follow.error ?? (record.state === 'uncertain' && !follow.legacyRecovery ? '发送结果待确认，请检查会话，勿重复发送' : undefined);
+      if (record.state === 'failed' && (record.rpcReceipt || follow.walError) && error === undefined) {
+        const message = followUpMessage(record);
+        const stored = await readOriginalOperation({ gatewayCodexHome: this.#options.gatewayCodexHome, resolver: this.#options.resolver, context: record.context,
+          sessionId: record.rpcReceipt?.sessionId ?? 'c0dec000-0000-4000-8000-000000000001', requestId: follow.operationId,
+          ...(record.rpcReceipt ? { expectedSignature: record.rpcReceipt.signature, ...(message ? { expected: { message } } : {}) } : {}), call });
+        if (stored.status !== 'completed' || stored.message?.error == null) throw new QueueError(503, '原追问错误结果不可读取');
+        error = String((stored.message.error as any)?.message ?? '追问发送失败');
+      }
+      items.push({ id: record.id, threadId: record.conversationId, inputText: payload?.inputText, text: follow.text, attachmentCount: follow.attachmentCount,
+        state: follow.legacyRecovery || record.state === 'claimed' || (record.state === 'queued' && follow.expectedTurnId) ? 'sending' : record.state, revision: record.revision, ...(error !== undefined ? { error } : {}) });
+    }
+    return { items };
+  }
+  mutateFollowUp(context: OperationContext, body: any, captureDelivery?: (fence: () => void) => void): Promise<{ items: unknown[]; turnId?: string }> {
+    context = structuredClone(context); body = structuredClone(body);
+    return this.own(() => this.followUpCall(context, ['read', 'submit', 'edit', 'cancel', 'transition'], async call => {
+      if (!body || typeof body !== 'object' || typeof body.id !== 'string' || !UUID.test(body.id)) throw new QueueError(400, '追问 ID 必须为 UUID');
+      if (body.action === 'enqueue') {
+        validateText(body.inputText, body.text); validateInputs(body.extraInput); validateSettings(body.settings);
+        if (typeof body.threadId !== 'string' || !body.threadId.trim() || body.threadId.length > 256) throw new QueueError(400, '会话 ID 无效');
+        const content = { threadId: body.threadId, inputText: body.inputText, text: body.text, attachmentCount: messageAttachmentCount(body.inputText, body.extraInput), extraInput: body.extraInput, settings: body.settings };
+        if (body.attachmentCount !== content.attachmentCount) throw new QueueError(400, '附件数量与输入不一致');
+        if (!body.inputText.trim() && !body.extraInput.length) throw new QueueError(400, '追问不能为空');
+        await this.#queue.enqueueFollowUp(context, { ...content, id: body.id, fingerprint: createHash('sha256').update(canonical(content)).digest('hex'), operationId: randomUUID(), revision: 1, state: 'queued' });
+      } else {
+        const record = await this.#queue.read(body.id); if (!record.followUp || key(record.context) !== key(context)) throw new QueueError(409, '追问身份冲突');
+        if (!Number.isSafeInteger(body.revision)) throw new QueueError(400, '追问 revision 无效');
+        if (!['edit', 'cancel', 'retry', 'steer'].includes(body.action)) throw new QueueError(400, '不支持的追问操作');
+        if (record.state === 'queued' && record.followUp.expectedTurnId) throw new QueueError(409, '引导已绑定原回合，正在发送');
+        if (body.action === 'edit') { validateText(body.inputText, body.text); validateInputs(body.mentions, true); }
+        if (record.revision !== body.revision || !(['retry', 'steer'].includes(body.action) ? ['queued', 'failed'].includes(record.state) : record.state === 'queued')) throw new QueueError(409, '追问状态或版本已变更');
+        const status = body.action === 'steer' ? await this.inspectFollowUp(record, call, true) : undefined;
+        if (status && !status.turnId) throw new QueueError(409, '当前会话没有可插入的运行回合');
+        await this.#queue.changeFollowUp(body.id, body.revision, ['edit', 'cancel'].includes(body.action) ? body.action : 'transition', current => {
+          if (body.action === 'retry' || body.action === 'steer') {
+            if (body.action === 'retry' && current.state !== 'failed') throw new QueueError(409, '只能重试失败追问');
+            current.state = 'queued'; current.followUp!.operationId = randomUUID(); delete current.rpcReceipt; delete current.claimToken; delete current.claimPid;
+            delete current.followUp!.error; delete current.followUp!.legacyRecovery; delete current.followUp!.walError;
+            current.followUp!.method = body.action === 'steer' ? 'turn/steer' : undefined; current.followUp!.expectedTurnId = status?.turnId;
+            current.followUp!.restoreState = body.action === 'steer' ? record.state as 'queued' | 'failed' : undefined; return;
+          }
+          if (body.action === 'cancel') { current.state = 'cancelled'; delete current.followUp!.text; delete current.followUp!.attachmentCount; return; }
+          const payload = current.body as { inputText: string; extraInput: Record<string, unknown>[] };
+          const extraInput = [...(payload.extraInput ?? []).filter(entry => !['skill', 'mention'].includes(String(entry.type))), ...body.mentions];
+          if (!body.inputText.trim() && !extraInput.length) throw new QueueError(400, '追问不能为空');
+          current.body = { kind: 'follow-up-v1', inputText: body.inputText, extraInput }; current.followUp!.text = body.text;
+        });
+        this.#wakeup?.();
+        if (body.action === 'steer') {
+          await this.runOnce(); const current = await this.#queue.read(body.id);
+          if (current.state === 'failed' && !current.rpcReceipt) throw new QueueError(409, current.followUp!.error ?? '原运行回合已失效');
+          const result = await this.readResult(body.id, call);
+          if (result.outcome !== 'response') throw new QueueError(503, '引导结果待确认');
+          if (result.message.error != null) throw new QueueError(503, String((result.message.error as any)?.message ?? '追问发送失败'));
+          return { ...await this.followUpList(await this.#queue.listFollowUps(context), call), turnId: (result.message.result as any)?.turnId ?? (result.message.result as any)?.turn?.id ?? status!.turnId };
+        }
+      }
+      return this.followUpList(await this.#queue.listFollowUps(context), call);
+    }, captureDelivery));
+  }
+  private async inspectFollowUp(record: OperationRecord, call: SessionCallOptions, needTurn = false): Promise<{ active: boolean; turnId?: string }> {
+    const sessions = await this.sessions(record.context, call); const epoch = await sessions.hostedReady(call); this.assertOpen();
+    const binding = key([record.context, record.conversationId]);
+    if (this.#resumed.get(binding) !== epoch) {
+      let resuming = this.#resuming.get(binding);
+      if (resuming?.epoch !== epoch) {
+        const promise = this.own(async () => {
+          const resumed = await sessions.hostedRpc({ id: randomUUID(), method: 'thread/resume', params: { threadId: record.conversationId, excludeTurns: true, initialTurnsPage: { limit: 1, itemsView: 'summary' } } }, randomUUID(), call);
+          if (resumed.error != null) throw new QueueError(503, String((resumed.error as any)?.message ?? '无法恢复会话'));
+          const currentEpoch = await sessions.hostedReady(call);
+          this.assertOpen(); assertRemoteOperation();
+          if (call.signal?.aborted || performance.now() >= call.deadline || currentEpoch !== epoch) throw new QueueError(503, '原会话恢复预算或连接已失效');
+          this.#resumed.set(binding, epoch);
+        });
+        resuming = { epoch, promise }; this.#resuming.set(binding, resuming);
+        const pending = resuming; const done = () => { if (this.#resuming.get(binding) === pending) this.#resuming.delete(binding); };
+        void promise.then(done, done);
+      }
+      const pending = resuming;
+      // 共用原恢复过程，等待者仍按自己的原预算退出；实际恢复由own跟踪到settled。
+      await new Promise<void>((resolve, reject) => {
+        const abort = () => reject(new QueueError(503, '原会话恢复等待已取消或超时'));
+        call.signal?.addEventListener('abort', abort, { once: true });
+        if (call.signal?.aborted || performance.now() >= call.deadline) abort();
+        void pending.promise.then(resolve, reject).finally(() => call.signal?.removeEventListener('abort', abort));
+      });
+    }
+    const read = await sessions.hostedRpc({ id: randomUUID(), method: 'thread/read', params: { threadId: record.conversationId, includeTurns: false } }, randomUUID(), call);
+    if (read.error != null) throw new QueueError(503, String((read.error as any)?.message ?? '无法读取会话'));
+    const thread = (read.result as any)?.thread; if (!thread || thread.id !== record.conversationId) throw new QueueError(503, '无法确认会话运行状态');
+    const status = thread.status?.type ?? thread.status;
+    if (['idle', 'notLoaded', 'systemError'].includes(status)) return { active: false };
+    if (status !== 'active') throw new QueueError(503, '无法确认会话运行状态');
+    if (!needTurn) return { active: true };
+    const turns = await sessions.hostedRpc({ id: randomUUID(), method: 'thread/turns/list', params: { threadId: record.conversationId, limit: 1, sortDirection: 'desc', itemsView: 'summary' } }, randomUUID(), call);
+    if (turns.error != null || !Array.isArray((turns.result as any)?.data)) throw new QueueError(503, '无法确认运行回合');
+    const turn = (turns.result as any).data.find((entry: any) => ['inProgress', 'in_progress', 'running'].includes(entry.status));
+    return { active: true, turnId: turn?.id };
+  }
   private async budget<T>(operation: (call: SessionCallOptions) => Promise<T>, original?: SessionCallOptions): Promise<T> {
     original = original ? { deadline: original.deadline, signal: original.signal } : undefined;
     if (original && !Number.isFinite(original.deadline)) throw new TypeError('需要有限的原调用deadline');
@@ -231,6 +383,28 @@ export class OperationScheduler {
   private async reconcile(context: OperationContext, receipt: OperationReceipt): Promise<void> {
     await this.budget(async call => {
       const record = await this.ledger([context], ['read'], call, () => this.#queue.read(receipt.id));
+      if (record.followUp && !record.rpcReceipt) {
+        let original;
+        try { original = await readOriginalOperation({ gatewayCodexHome: this.#options.gatewayCodexHome, resolver: this.#options.resolver, context,
+          sessionId: 'c0dec000-0000-4000-8000-000000000001', requestId: record.followUp.operationId, call }); }
+        catch (error: any) {
+          if (error.status !== 404 || !record.followUp.legacyRecovery || context.mode !== 'local') return;
+          await this.ledger([context], ['transition'], call, () => this.#queue.changeFollowUp(record.id, record.revision, 'transition', current => {
+            current.state = current.followUp!.method === 'turn/steer' ? current.followUp!.restoreState ?? 'failed' : 'queued';
+            delete current.followUp!.legacyRecovery; delete current.followUp!.restoreState; delete current.followUp!.method; delete current.followUp!.error;
+          })); return;
+        }
+        if (original.status === 'completed' && original.message) {
+          if (record.state === 'failed' && original.message.error != null) return;
+          await this.ledger([context], ['transition'], call, () => this.#queue.changeFollowUp(record.id, record.revision, 'transition', current => {
+            current.state = original.message!.error != null ? 'failed' : 'succeeded'; delete current.followUp!.legacyRecovery;
+            if (original.message!.error != null) { delete current.followUp!.error; current.followUp!.walError = true; }
+          }));
+        } else if (record.followUp.legacyRecovery) await this.ledger([context], ['transition'], call, () => this.#queue.changeFollowUp(record.id, record.revision, 'transition', current => {
+          delete current.followUp!.legacyRecovery;
+        }));
+        return;
+      }
       const rpc = body(record); if (!rpc) return;
       const result = await readOriginalOperation({ gatewayCodexHome: this.#options.gatewayCodexHome, resolver: this.#options.resolver, context,
         sessionId: rpc.sessionId, requestId: rpc.requestId, expected: { message: rpc.message, epoch: rpc.epoch }, expectedSignature: record.rpcReceipt?.signature, call });
@@ -264,8 +438,22 @@ export class OperationScheduler {
     let potential = false;
     try {
       await this.budget(async call => {
-        const rpc = body(record); if (!rpc) throw new Error('旧或未知正文保留写屏障，不能派发');
         const sessions = await this.sessions(record.context, call); this.assertOpen();
+        if (record.followUp) {
+          const steer = record.followUp.method === 'turn/steer'; const status = await this.inspectFollowUp(record, call, steer);
+          if (steer && (!status.active || status.turnId !== record.followUp.expectedTurnId)) {
+            await this.ledger([record.context], ['transition'], call, () => this.#queue.changeFollowUp(record.id, record.revision, 'transition', current => {
+              current.state = 'failed'; current.followUp!.error = FOLLOW_UP_TURN_EXPIRED_ERROR;
+            })); return;
+          }
+          if (!steer && status.active) { await this.ledger([record.context], ['transition'], call, () => this.#queue.releaseClaim(record.id, record.revision, record.claimToken!)); return; }
+          const follow = { ...record.followUp, method: steer ? 'turn/steer' as const : 'turn/start' as const };
+          const message = followUpMessage({ ...record, followUp: follow })!;
+          const rpcReceipt = { sessionId: 'c0dec000-0000-4000-8000-000000000001', requestId: follow.operationId, signature: createHash('sha256').update(rpcSignatureInput(message)).digest('hex') };
+          const prepared = await this.ledger([record.context], ['transition'], call, () => this.#queue.changeFollowUp(record.id, record.revision, 'transition', current => { current.followUp = follow; current.rpcReceipt = rpcReceipt; }));
+          record = { ...record, ...prepared, followUp: follow, rpcReceipt };
+        }
+        const rpc = body(record); if (!rpc) throw new Error('旧或未知正文保留写屏障，不能派发');
         if (rpc.sessionId !== 'c0dec000-0000-4000-8000-000000000001') {
           if (!rpc.initialization) throw new Error('普通Session缺少原初始化快照，保留原项');
           await sessions.initializeQueuedSession(rpc.sessionId, rpc.initialization, call); this.assertOpen();

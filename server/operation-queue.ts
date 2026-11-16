@@ -5,6 +5,8 @@ import { dirname, join } from 'node:path';
 import { TextDecoder, types } from 'node:util';
 import { rpcSignatureInput, rpcControlRequestKey } from './rpc-replay.js';
 import { PrivateStore } from './remote/private-store.js';
+import { validateText, validateInputs, validateSettings, type RecordItem } from './follow-ups.js';
+import { messageAttachmentCount } from './user-message-format.js';
 
 /** 仅可信网关内部构造；businessKey只用于归组，授权始终由回调独立核验。 */
 export type OperationContext = {
@@ -36,13 +38,15 @@ export interface OperationRecord extends OperationReceipt {
   signature: string; context: OperationContext; conversationId: string;
   body?: unknown; settings?: unknown; attachmentRefs?: string[]; control?: OperationControl;
   claimToken?: string; claimPid?: number; failure?: 'control-expired'; rpcReceipt?: OperationRpcReceipt;
+  followUp?: { fingerprint: string; operationId: string; text?: string; attachmentCount?: number; restoreState?: 'queued' | 'failed'; method?: 'turn/start' | 'turn/steer'; error?: string; expectedTurnId?: string; legacyRecovery?: true; walError?: true; retainedLegacy?: Pick<RecordItem, 'inputText' | 'extraInput' | 'settings'> };
 }
 /** 仅领取方捕获可能已耐久的未发送claim定位，不含业务正文，也不授予执行许可。 */
 export interface OperationClaim { id: string; revision: number; context: OperationContext; claimToken: string }
-interface Ledger { version: 1; gatewayId: string; nextOrder: number; records: OperationRecord[] }
+interface Ledger { version: 1; gatewayId: string; nextOrder: number; records: OperationRecord[]; followUpsImport?: { source: string; context: OperationContext; sha256: string; count: number } }
 export class OperationQueueError extends Error {
   constructor(readonly code: string, readonly status = 503) { super(`持久操作队列：${code}`); this.name = 'OperationQueueError'; }
 }
+export const FOLLOW_UP_TURN_EXPIRED_ERROR = '原运行回合已失效，未发送引导';
 function fail(code = 'storage', status = 503): never { throw new OperationQueueError(code, status); }
 function missing(error: unknown): boolean { return (error as NodeJS.ErrnoException)?.code === 'ENOENT'; }
 function owned(stat: Stats): boolean { return !process.getuid || stat.uid === process.getuid(); }
@@ -67,7 +71,18 @@ function canonical(value: unknown): string {
   if (object(value)) return `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${canonical(value[key])}`).join(',')}}`;
   return JSON.stringify(value);
 }
-function compact(record: OperationRecord): void { delete record.body; delete record.settings; delete record.attachmentRefs; delete record.claimToken; delete record.claimPid; }
+function compact(record: OperationRecord): void {
+  delete record.body; delete record.settings; delete record.attachmentRefs; delete record.claimToken; delete record.claimPid;
+  if (record.followUp) { delete record.followUp.text; delete record.followUp.attachmentCount; delete record.followUp.restoreState; delete record.followUp.expectedTurnId; delete record.followUp.legacyRecovery; delete record.followUp.walError; }
+}
+/** 追问正文和settings仅由原record生成RPC，不维护第二份可变输入。 */
+export function followUpMessage(record: Readonly<OperationRecord>) {
+  const follow = record.followUp; const payload = record.body as { kind?: string; inputText?: string; extraInput?: Record<string, unknown>[] } | undefined;
+  if (!follow || payload?.kind !== 'follow-up-v1') return;
+  return { id: follow.operationId, method: follow.method ?? 'turn/start', params: { threadId: record.conversationId,
+    input: [...(payload.inputText ? [{ type: 'text', text: payload.inputText, text_elements: [] }] : []), ...(payload.extraInput ?? [])],
+    ...(follow.method === 'turn/steer' ? { expectedTurnId: follow.expectedTurnId } : record.settings as Record<string, unknown>), clientUserMessageId: record.id } };
+}
 function terminal(record: OperationRecord): boolean { return ['succeeded', 'cancelled'].includes(record.state) || record.failure === 'control-expired'; }
 function controlValid(value: unknown): value is OperationControl {
   return object(value) && shape(value, value.kind === 'stop' ? ['kind', 'turnId', 'expiresAt'] : ['kind', 'turnId', 'requestId', 'expiresAt']) && ['stop', 'approval'].includes(String(value.kind)) && text(value.turnId) && Number.isSafeInteger(value.expiresAt) && Number(value.expiresAt) > 0 && (value.kind !== 'approval' || text(value.requestId));
@@ -97,12 +112,44 @@ function rpcBodyMatches(value: unknown, rpc: OperationRpcReceipt): boolean {
   return rpcBodyValid(value) && value.sessionId === rpc.sessionId && value.requestId === rpc.requestId && rpcHash(value) === rpc.signature;
 }
 function receipt(record: OperationRecord): OperationReceipt { return { id: record.id, revision: record.revision, receiveOrder: record.receiveOrder, state: record.state }; }
+function followUpValid(record: OperationRecord): boolean {
+  const value = record.followUp;
+  if (!value || !shape(value, ['fingerprint', 'operationId', 'text', 'attachmentCount', 'restoreState', 'method', 'error', 'expectedTurnId', 'legacyRecovery', 'walError', 'retainedLegacy']) ||
+    typeof value.fingerprint !== 'string' || !/^[a-f0-9]{64}$/.test(value.fingerprint) || typeof value.operationId !== 'string' || !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(value.operationId) || record.control || record.context.mode !== 'local' ||
+    (value.method !== undefined && !['turn/start', 'turn/steer'].includes(value.method)) || (value.restoreState !== undefined && (!['queued', 'failed'].includes(value.restoreState) || value.method !== 'turn/steer')) ||
+    (value.error !== undefined && typeof value.error !== 'string') || (value.expectedTurnId !== undefined && (typeof value.expectedTurnId !== 'string' || !value.expectedTurnId.trim() || value.method !== 'turn/steer')) ||
+    (value.legacyRecovery !== undefined && (value.legacyRecovery !== true || record.state !== 'uncertain' || record.rpcReceipt !== undefined)) ||
+    (value.walError !== undefined && (value.walError !== true || record.state !== 'failed' || record.rpcReceipt !== undefined || value.legacyRecovery !== undefined))) return false;
+  if (record.rpcReceipt && (record.rpcReceipt.sessionId !== 'c0dec000-0000-4000-8000-000000000001' || record.rpcReceipt.requestId !== value.operationId)) return false;
+  if (value.method === 'turn/steer' && (record.state === 'queued' || record.rpcReceipt) && !terminal(record) && !value.expectedTurnId) return false;
+  if (terminal(record)) {
+    if (value.text !== undefined && (typeof value.text !== 'string' || value.text.length > 32768)) return false;
+    if (value.attachmentCount !== undefined && (!Number.isSafeInteger(value.attachmentCount) || value.attachmentCount < 0)) return false;
+    if (value.retainedLegacy !== undefined) {
+      if (!shape(value.retainedLegacy, ['inputText', 'extraInput', 'settings'])) return false;
+      if (value.retainedLegacy.inputText !== undefined) validateText(value.retainedLegacy.inputText, value.text ?? '');
+      if (value.retainedLegacy.extraInput !== undefined) validateInputs(value.retainedLegacy.extraInput);
+      if (value.retainedLegacy.settings !== undefined) validateSettings(value.retainedLegacy.settings);
+    }
+  } else {
+    if (value.retainedLegacy !== undefined || !shape(record.body, ['kind', 'inputText', 'extraInput']) || record.body.kind !== 'follow-up-v1' || !Array.isArray(record.attachmentRefs) || record.attachmentRefs.length) return false;
+    validateText(record.body.inputText, value.text); validateInputs(record.body.extraInput); validateSettings(record.settings);
+    if (!Number.isSafeInteger(value.attachmentCount) || value.attachmentCount !== messageAttachmentCount(record.body.inputText as string, record.body.extraInput)) return false;
+  }
+  return true;
+}
 // 在原预算内为全部未终态项预留完整生命周期；不落额外字段、不放大上限。
 function capacityBytes(record: OperationRecord): number {
   const actual = Buffer.byteLength(JSON.stringify(record)); if (terminal(record)) return actual;
   // 本模块生成36字符UUID和安全整数PID/revision；兼容保留更长的既有合法token。
   const claimToken = record.claimToken && Buffer.byteLength(JSON.stringify(record.claimToken)) > 38 ? record.claimToken : '00000000-0000-0000-0000-000000000000';
   const future: OperationRecord = { ...record, revision: Number.MAX_SAFE_INTEGER, state: 'uncertain', claimToken, claimPid: Number.MAX_SAFE_INTEGER };
+  if (record.followUp) {
+    future.followUp = { ...record.followUp, method: record.followUp.method ?? 'turn/start' };
+    // 只有已绑定引导才有这一确定的本地失败结算；turn本身已在该动作CAS中按原值计费。
+    if (record.followUp.method === 'turn/steer' && record.followUp.expectedTurnId && record.followUp.error === undefined) future.followUp.error = FOLLOW_UP_TURN_EXPIRED_ERROR;
+    future.rpcReceipt = { sessionId: 'c0dec000-0000-4000-8000-000000000001', requestId: record.followUp.operationId, signature: 'a'.repeat(64) };
+  }
   let reserved = Buffer.byteLength(JSON.stringify(future));
   if (record.control) { compact(future); future.state = 'failed'; future.failure = 'control-expired'; reserved = Math.max(reserved, Buffer.byteLength(JSON.stringify(future))); }
   return Math.max(actual, reserved);
@@ -134,20 +181,23 @@ export class OperationQueue {
         this.checkFile(await handle.stat());
         const bytes = await handle.readFile(); if (bytes.length > 68 * 1024 * 1024) fail();
         const value: unknown = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
-        if (!shape(value, ['version', 'gatewayId', 'nextOrder', 'records']) || value.version !== 1 || value.gatewayId !== this.#gatewayId || !Number.isSafeInteger(value.nextOrder) || Number(value.nextOrder) < 1 || !Array.isArray(value.records)) fail();
+        if (!shape(value, ['version', 'gatewayId', 'nextOrder', 'records', 'followUpsImport']) || value.version !== 1 || value.gatewayId !== this.#gatewayId || !Number.isSafeInteger(value.nextOrder) || Number(value.nextOrder) < 1 || !Array.isArray(value.records)) fail();
+        if (value.followUpsImport !== undefined && (!shape(value.followUpsImport, ['source', 'context', 'sha256', 'count']) || !text(value.followUpsImport.source) || !contextValid(value.followUpsImport.context) || value.followUpsImport.context.mode !== 'local' || typeof value.followUpsImport.sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(value.followUpsImport.sha256) || !Number.isSafeInteger(value.followUpsImport.count) || Number(value.followUpsImport.count) < 0)) fail();
         const ids = new Set<string>(); const orders = new Set<number>();
         for (const record of value.records) {
-          if (!shape(record, ['id', 'revision', 'receiveOrder', 'state', 'signature', 'context', 'conversationId', 'body', 'settings', 'attachmentRefs', 'control', 'claimToken', 'claimPid', 'failure', 'rpcReceipt']) || !text(record.id) || ids.has(record.id) || !contextValid(record.context) || record.context.gatewayId !== this.#gatewayId ||
+          if (!shape(record, ['id', 'revision', 'receiveOrder', 'state', 'signature', 'context', 'conversationId', 'body', 'settings', 'attachmentRefs', 'control', 'claimToken', 'claimPid', 'failure', 'rpcReceipt', 'followUp']) || !text(record.id) || ids.has(record.id) || !contextValid(record.context) || record.context.gatewayId !== this.#gatewayId ||
             !text(record.conversationId) || !Number.isSafeInteger(record.revision) || Number(record.revision) < 1 || !Number.isSafeInteger(record.receiveOrder) ||
             Number(record.receiveOrder) < 1 || Number(record.receiveOrder) >= Number(value.nextOrder) || orders.has(Number(record.receiveOrder)) ||
             !['queued', 'claimed', 'uncertain', 'failed', 'succeeded', 'cancelled'].includes(String(record.state)) || typeof record.signature !== 'string' || !/^[a-f0-9]{64}$/.test(record.signature)) fail();
           if (!terminal(record as unknown as OperationRecord) && (!Object.hasOwn(record, 'body') || !Object.hasOwn(record, 'settings') || !Array.isArray(record.attachmentRefs) || !record.attachmentRefs.every(text))) fail();
           if (terminal(record as unknown as OperationRecord) && ['body', 'settings', 'attachmentRefs'].some(key => Object.hasOwn(record, key))) fail();
-          if (record.rpcReceipt !== undefined && (!rpcReceiptValid(record.rpcReceipt) || (!terminal(record as unknown as OperationRecord) && (!rpcBodyMatches(record.body, record.rpcReceipt) || !rpcControlMatches(record.body, record.control as OperationControl | undefined, record.conversationId))))) fail();
+          if (record.rpcReceipt !== undefined && (!rpcReceiptValid(record.rpcReceipt) || (!terminal(record as unknown as OperationRecord) && (record.followUp ? record.rpcReceipt.sessionId !== 'c0dec000-0000-4000-8000-000000000001' || record.rpcReceipt.requestId !== (record.followUp as OperationRecord['followUp'])?.operationId || record.rpcReceipt.signature !== rpcHash({ message: followUpMessage(record as unknown as OperationRecord)! }) : !rpcBodyMatches(record.body, record.rpcReceipt) || !rpcControlMatches(record.body, record.control as OperationControl | undefined, record.conversationId))))) fail();
           if (record.control !== undefined && !controlValid(record.control)) fail();
           if (record.failure !== undefined && (record.failure !== 'control-expired' || record.state !== 'failed' || !record.control)) fail();
+          if (record.followUp !== undefined && !followUpValid(record as unknown as OperationRecord)) fail();
           const attempted = ['claimed', 'uncertain', 'failed'].includes(String(record.state)) && !terminal(record as unknown as OperationRecord);
-          if (attempted ? (!text(record.claimToken) || !Number.isSafeInteger(record.claimPid) || Number(record.claimPid) < 1) : (Object.hasOwn(record, 'claimToken') || Object.hasOwn(record, 'claimPid'))) fail();
+          const importedAttempt = record.followUp && ['uncertain', 'failed'].includes(String(record.state)) && record.claimToken === undefined && record.claimPid === undefined;
+          if (!importedAttempt && (attempted ? (!text(record.claimToken) || !Number.isSafeInteger(record.claimPid) || Number(record.claimPid) < 1) : (Object.hasOwn(record, 'claimToken') || Object.hasOwn(record, 'claimPid')))) fail();
           ids.add(record.id); orders.add(Number(record.receiveOrder));
         }
         return value as unknown as Ledger;
@@ -218,6 +268,53 @@ export class OperationQueue {
     }
   }
   private find(ledger: Ledger, id: string): OperationRecord { const record = ledger.records.find(value => value.id === id); if (!record) fail('not-found', 404); return record; }
+  /** 旧Local追问唯一接管点：marker与整批记录共用原ledger事务及fsync。 */
+  async importFollowUps(source: string, context: OperationContext, load: () => Promise<{ records: RecordItem[]; sha256: string }>): Promise<void> {
+    if (context.mode !== 'local' || !contextValid(context) || context.gatewayId !== this.#gatewayId || !text(source)) fail('invalid-input', 400);
+    await this.transaction(async (ledger, authorize) => {
+      const marker = ledger.followUpsImport;
+      if (marker) { if (marker.source !== source || canonical(marker.context) !== canonical(context)) fail('legacy-source-conflict', 409); return { value: undefined }; }
+      const imported = await load();
+      for (const item of imported.records) {
+        if (ledger.records.some(record => record.id === item.id)) fail('uuid-conflict', 409);
+        const { id, fingerprint, threadId, state, revision, operationId, inputText, extraInput, settings, ...fields } = item;
+        const record: OperationRecord = { id, context: clone(context), conversationId: threadId, revision, receiveOrder: ledger.nextOrder++, state: ({ sending: 'uncertain', uncertain: 'uncertain', sent: 'succeeded', cancelled: 'cancelled', queued: 'queued', failed: 'failed' } as const)[state],
+          signature: createHash('sha256').update(canonical([source, id, fingerprint])).digest('hex'), followUp: { fingerprint, operationId, ...fields, ...(state === 'sending' ? { legacyRecovery: true } : {}) } };
+        if (!terminal(record)) { record.body = { kind: 'follow-up-v1', ...(inputText !== undefined ? { inputText } : {}), ...(extraInput !== undefined ? { extraInput } : {}) }; record.settings = settings; record.attachmentRefs = []; }
+        else if (inputText !== undefined || extraInput !== undefined || settings !== undefined) record.followUp!.retainedLegacy = { ...(inputText !== undefined ? { inputText } : {}), ...(extraInput !== undefined ? { extraInput } : {}), ...(settings !== undefined ? { settings } : {}) };
+        await authorize(record, 'submit'); ledger.records.push(record);
+      }
+      ledger.followUpsImport = { source, context: clone(context), sha256: imported.sha256, count: imported.records.length };
+      return { value: undefined, changed: true };
+    });
+  }
+  async listFollowUps(context: OperationContext): Promise<OperationRecord[]> {
+    return this.transaction(async (ledger, authorize) => {
+      const records = ledger.records.filter(record => record.followUp && canonical(record.context) === canonical(context)).sort((a, b) => a.receiveOrder - b.receiveOrder);
+      for (const record of records) await authorize(record, 'read'); return { value: clone(records) };
+    });
+  }
+  async enqueueFollowUp(context: OperationContext, item: RecordItem): Promise<OperationReceipt> {
+    return this.transaction(async (ledger, authorize) => {
+      const existing = ledger.records.find(record => record.id === item.id);
+      if (existing) {
+        await authorize(existing, 'submit'); if (!existing.followUp || canonical(existing.context) !== canonical(context) || existing.followUp.fingerprint !== item.fingerprint) fail('uuid-conflict', 409);
+        return { value: receipt(existing) };
+      }
+      const record: OperationRecord = { id: item.id, context: clone(context), conversationId: item.threadId, revision: 1, receiveOrder: ledger.nextOrder++, state: 'queued',
+        signature: createHash('sha256').update(canonical([context, item.id, item.fingerprint])).digest('hex'), body: { kind: 'follow-up-v1', inputText: item.inputText, extraInput: item.extraInput }, settings: item.settings, attachmentRefs: [],
+        followUp: { fingerprint: item.fingerprint, operationId: item.operationId, text: item.text, attachmentCount: item.attachmentCount } };
+      await authorize(record, 'submit'); ledger.records.push(record); return { value: receipt(record), changed: true };
+    });
+  }
+  async changeFollowUp(id: string, revision: number, action: Action, update: (record: OperationRecord) => void): Promise<OperationReceipt> {
+    return this.transaction(async (ledger, authorize) => {
+      const record = this.find(ledger, id); await authorize(record, action);
+      if (!record.followUp) fail('uuid-conflict', 409); if (record.revision !== revision) fail('revision-conflict', 409);
+      update(record); record.revision++; if (terminal(record)) compact(record);
+      return { value: receipt(record), changed: true };
+    });
+  }
   async submit(input: OperationInput): Promise<OperationReceipt> {
     if (!input || !contextValid(input.context)) fail('invalid-input', 400);
     if (input.memoryOnly !== undefined && input.memoryOnly !== false) fail('memory-only', 400);
@@ -319,7 +416,9 @@ export class OperationQueue {
         }
       }
       const controlBlocks = new Set(records.filter(record => record.control && !terminal(record)).map(record => record.conversationId));
-      const heads = new Set<string>(); const controlHeads = new Set<string>(); const eligible: OperationRecord[] = [];
+      // 引导越过排队项后，既有claim/未知结果仍是该会话全部普通写的屏障。
+      const activeWrites = new Set(records.filter(record => !record.control && ['claimed', 'uncertain'].includes(record.state) && options.isRead?.(clone(record)) !== true).map(record => record.conversationId));
+      const heads = new Set<string>(); const controlHeads = new Set<string>(); const steerHeads = new Set<string>(); const eligible: OperationRecord[] = [];
       for (const record of records) {
         if (terminal(record)) continue;
         if (!record.control && options.isRead?.(clone(record)) === true) {
@@ -330,10 +429,16 @@ export class OperationQueue {
           if (controlHeads.has(record.conversationId)) continue;
           controlHeads.add(record.conversationId); if (record.state === 'queued' && !options.excluded?.has(record.id)) eligible.push(record); continue;
         }
+        if (activeWrites.has(record.conversationId)) continue;
+        if (record.state !== 'failed' && record.followUp?.method === 'turn/steer' && record.followUp.expectedTurnId && !controlBlocks.has(record.conversationId)) {
+          if (steerHeads.has(record.conversationId)) continue;
+          steerHeads.add(record.conversationId); if (record.state === 'queued' && !options.excluded?.has(record.id)) eligible.push(record); continue;
+        }
         if (controlBlocks.has(record.conversationId) || heads.has(record.conversationId)) continue;
         heads.add(record.conversationId); if (record.state === 'queued' && !options.excluded?.has(record.id)) eligible.push(record);
       }
-      const prioritized = [...eligible.filter(record => record.control), ...eligible.filter(record => !record.control)].filter(record => options.controlOnly === undefined || !!record.control === options.controlOnly);
+      const steer = (record: OperationRecord) => !!record.followUp?.expectedTurnId && record.followUp.method === 'turn/steer';
+      const prioritized = [...eligible.filter(record => record.control), ...eligible.filter(record => !record.control && steer(record)), ...eligible.filter(record => !record.control && !steer(record))].filter(record => options.controlOnly === undefined || !!record.control === options.controlOnly);
       let selected: OperationRecord | undefined;
       for (const candidate of prioritized) { if (await allowed(candidate, 'claim')) { selected = candidate; break; } }
       if (!selected) { if (denied) throw denied; return { value: null, changed }; }
@@ -386,7 +491,8 @@ export class OperationQueue {
     return this.transaction(async (ledger, authorize) => {
       const record = this.find(ledger, id); await authorize(record, 'transition'); this.claimed(record, revision, token);
       if (!['uncertain', 'failed'].includes(record.state) || !['succeeded', 'failed'].includes(result)) fail('invalid-transition', 409);
-      record.state = result; record.revision++; if (result === 'succeeded') compact(record);
+      record.state = result; record.revision++;
+      if (result === 'succeeded') compact(record);
       return { value: receipt(record), changed: true };
     });
   }
