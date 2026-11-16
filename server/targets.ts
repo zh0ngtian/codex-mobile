@@ -189,7 +189,7 @@ export class TargetResolver {
         Object.hasOwn(context.managed, 'userId') !== Object.hasOwn(binding.managed, 'userId'))
         throw new TargetResolutionError('identity-changed');
       if (context.generation !== binding.generation) await runtime.proveOperationRecovery(context.generation, context.managed, context.target, signal);
-      const reference = parse({ mode: 'remote', gatewayId: context.gatewayId, account: {
+      const reference = parseTargetReference({ mode: 'remote', gatewayId: context.gatewayId, account: {
         accountId: context.managed.accountId, accountUserId: context.managed.accountUserId,
         ...(Object.hasOwn(context.managed, 'userId') ? { userId: context.managed.userId } : {}) }, target: context.target })!;
       check(reference, binding, execute);
