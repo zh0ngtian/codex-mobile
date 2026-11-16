@@ -1,0 +1,333 @@
+{
+  "schemaVersion": 1,
+  "task": "Task4b2e-recovered-session-assembly",
+  "sourceCommit": "d7d700d8049dd6a2373eba66736a908cc31a0de9",
+  "tree": "ff961706c8df5c6e0866e5fb5a3ebe50284bc465",
+  "baselineMain": "b2bc47432e26c558f8380274d6a2b4042a0e7991",
+  "completedAtUtc": "2026-11-16T04:11:45.730868+00:00",
+  "sourceOnly": true,
+  "deployed": false,
+  "clientPublished": false,
+  "clientBuild": false,
+  "gates": {
+    "implementationPassed": true,
+    "specPassed": true,
+    "qualityPassed": true,
+    "rootAuditedAllArtifacts": true
+  },
+  "scope": "内部原context与原WAL装配当前可信目标传输，保留原UUID、完整恢复证明与原预算；不接公开路由或新增派发owner。",
+  "implementation": {
+    "root": "/private/tmp/e4b2eq/fixed-final",
+    "reportPath": "report.md",
+    "manifestPath": "manifest.json",
+    "reportSha256": "b3761b077f0786fffd050a931c9d3c63fe2685c84e04a2d58bd045aa7c75badf",
+    "manifestSha256": "7c51c3d98399862acd40f494826c750cc1754d26ed80083be108dd6802a6c4f6",
+    "artifactCount": 38,
+    "historicalSourceHashesVerified": 44
+  },
+  "finalSpec": {
+    "root": "/private/tmp/s4e-spec-c",
+    "verdict": "PASS",
+    "reportPath": "report.json",
+    "manifestPath": "manifest.json",
+    "reportSha256": "9bf3f71aaf91865cbfcee8332084c77d2250688e5c5aef107238e0745f64b827",
+    "manifestSha256": "1de7ddeb6ca92b85e34c81dff488fdcc98d5ed78ce860e0c36713d9693303ac7",
+    "artifactCount": 11,
+    "fixedSourcesVerified": 11,
+    "probeCopiesVerified": 4,
+    "focusedPassed": 49,
+    "independentPassed": 4,
+    "totalPassed": 53,
+    "rootAuditedAllArtifacts": true
+  },
+  "finalQuality": {
+    "root": "/private/tmp/q4e27",
+    "verdict": "PASS",
+    "reportPath": "report.json",
+    "manifestPath": "manifest.json",
+    "reportSha256": "1b57ee4f68bcf74a13183b3a18967361e54fdbfdd0fc47b2e85076b2b95d965f",
+    "manifestSha256": "8aa1dc73a4eba09f98183010d3b708ff7efbe0b86097314758b5042afe2cdd1f",
+    "artifactCount": 17,
+    "fixedSourcesVerified": 11,
+    "probeCopiesVerified": 2,
+    "focusedPassed": 49,
+    "independentPassed": 4,
+    "totalPassed": 53,
+    "rootAuditedAllArtifacts": true
+  },
+  "rootAudit": {
+    "path": "/tmp/codex-task4b2e-final-root-audit.json",
+    "sha256": "4d79c7d886a6f93753c1a62ccb936b616b3f19d3f02cd4818ad0d380bdbd7c96",
+    "allChecksPassed": true
+  },
+  "validation": {
+    "focusedPassed": 49,
+    "relatedPassed": 217,
+    "relatedFiles": 5,
+    "commands": [
+      {
+        "name": "related",
+        "fixedSha": "d7d700d8049dd6a2373eba66736a908cc31a0de9",
+        "cwd": "/private/tmp/e4b2eq/fixed-final/s",
+        "argv": [
+          "node",
+          "node_modules/vitest/vitest.mjs",
+          "run",
+          "tests/server/http-recovered-session.test.ts",
+          "tests/server/http-session-remote.test.ts",
+          "tests/server/http-session-dispatch.test.ts",
+          "tests/server/http-session.test.ts",
+          "tests/server/sidechat.test.ts",
+          "--maxWorkers=1"
+        ],
+        "env": {
+          "HOME": "/private/tmp/e4b2eq/fixed-final/home",
+          "CODEX_HOME": "/private/tmp/e4b2eq/fixed-final/codex_home",
+          "TMPDIR": "/private/tmp/e4b2eq/fixed-final/tmpdir",
+          "TMP": "/private/tmp/e4b2eq/fixed-final/tmp",
+          "TEMP": "/private/tmp/e4b2eq/fixed-final/temp",
+          "npm_config_cache": "/private/tmp/e4b2eq/fixed-final/npm_config_cache",
+          "NPM_CONFIG_CACHE": "/private/tmp/e4b2eq/fixed-final/npm_config_cache",
+          "XDG_CACHE_HOME": "/private/tmp/e4b2eq/fixed-final/xdg_cache_home",
+          "XDG_CONFIG_HOME": "/private/tmp/e4b2eq/fixed-final/xdg_config_home",
+          "XDG_DATA_HOME": "/private/tmp/e4b2eq/fixed-final/xdg_data_home",
+          "XDG_STATE_HOME": "/private/tmp/e4b2eq/fixed-final/xdg_state_home",
+          "XDG_RUNTIME_DIR": "/private/tmp/e4b2eq/fixed-final/xdg_runtime_dir",
+          "NODE_COMPILE_CACHE": "/private/tmp/e4b2eq/fixed-final/node_compile_cache",
+          "npm_config_userconfig": "/private/tmp/e4b2eq/fixed-final/npm_config_userconfig",
+          "npm_config_globalconfig": "/private/tmp/e4b2eq/fixed-final/npm_config_globalconfig",
+          "NODE_OPTIONS": "--no-experimental-webstorage"
+        },
+        "exit": 0,
+        "seconds": 101.707
+      },
+      {
+        "name": "server-strict",
+        "fixedSha": "d7d700d8049dd6a2373eba66736a908cc31a0de9",
+        "cwd": "/private/tmp/e4b2eq/fixed-final/s",
+        "argv": [
+          "node",
+          "node_modules/typescript/bin/tsc",
+          "-p",
+          "tsconfig.server.json",
+          "--noEmit",
+          "--pretty",
+          "false"
+        ],
+        "env": {
+          "HOME": "/private/tmp/e4b2eq/fixed-final/home",
+          "CODEX_HOME": "/private/tmp/e4b2eq/fixed-final/codex_home",
+          "TMPDIR": "/private/tmp/e4b2eq/fixed-final/tmpdir",
+          "TMP": "/private/tmp/e4b2eq/fixed-final/tmp",
+          "TEMP": "/private/tmp/e4b2eq/fixed-final/temp",
+          "npm_config_cache": "/private/tmp/e4b2eq/fixed-final/npm_config_cache",
+          "NPM_CONFIG_CACHE": "/private/tmp/e4b2eq/fixed-final/npm_config_cache",
+          "XDG_CACHE_HOME": "/private/tmp/e4b2eq/fixed-final/xdg_cache_home",
+          "XDG_CONFIG_HOME": "/private/tmp/e4b2eq/fixed-final/xdg_config_home",
+          "XDG_DATA_HOME": "/private/tmp/e4b2eq/fixed-final/xdg_data_home",
+          "XDG_STATE_HOME": "/private/tmp/e4b2eq/fixed-final/xdg_state_home",
+          "XDG_RUNTIME_DIR": "/private/tmp/e4b2eq/fixed-final/xdg_runtime_dir",
+          "NODE_COMPILE_CACHE": "/private/tmp/e4b2eq/fixed-final/node_compile_cache",
+          "npm_config_userconfig": "/private/tmp/e4b2eq/fixed-final/npm_config_userconfig",
+          "npm_config_globalconfig": "/private/tmp/e4b2eq/fixed-final/npm_config_globalconfig",
+          "NODE_OPTIONS": "--no-experimental-webstorage"
+        },
+        "exit": 0,
+        "seconds": 1.995
+      },
+      {
+        "name": "npm-strict",
+        "fixedSha": "d7d700d8049dd6a2373eba66736a908cc31a0de9",
+        "cwd": "/private/tmp/e4b2eq/fixed-final/s",
+        "argv": [
+          "node",
+          "node_modules/typescript/bin/tsc",
+          "-p",
+          "tsconfig.npm.json",
+          "--noEmit",
+          "--strict",
+          "--pretty",
+          "false"
+        ],
+        "env": {
+          "HOME": "/private/tmp/e4b2eq/fixed-final/home",
+          "CODEX_HOME": "/private/tmp/e4b2eq/fixed-final/codex_home",
+          "TMPDIR": "/private/tmp/e4b2eq/fixed-final/tmpdir",
+          "TMP": "/private/tmp/e4b2eq/fixed-final/tmp",
+          "TEMP": "/private/tmp/e4b2eq/fixed-final/temp",
+          "npm_config_cache": "/private/tmp/e4b2eq/fixed-final/npm_config_cache",
+          "NPM_CONFIG_CACHE": "/private/tmp/e4b2eq/fixed-final/npm_config_cache",
+          "XDG_CACHE_HOME": "/private/tmp/e4b2eq/fixed-final/xdg_cache_home",
+          "XDG_CONFIG_HOME": "/private/tmp/e4b2eq/fixed-final/xdg_config_home",
+          "XDG_DATA_HOME": "/private/tmp/e4b2eq/fixed-final/xdg_data_home",
+          "XDG_STATE_HOME": "/private/tmp/e4b2eq/fixed-final/xdg_state_home",
+          "XDG_RUNTIME_DIR": "/private/tmp/e4b2eq/fixed-final/xdg_runtime_dir",
+          "NODE_COMPILE_CACHE": "/private/tmp/e4b2eq/fixed-final/node_compile_cache",
+          "npm_config_userconfig": "/private/tmp/e4b2eq/fixed-final/npm_config_userconfig",
+          "npm_config_globalconfig": "/private/tmp/e4b2eq/fixed-final/npm_config_globalconfig",
+          "NODE_OPTIONS": "--no-experimental-webstorage"
+        },
+        "exit": 0,
+        "seconds": 0.87
+      },
+      {
+        "name": "build-server",
+        "fixedSha": "d7d700d8049dd6a2373eba66736a908cc31a0de9",
+        "cwd": "/private/tmp/e4b2eq/fixed-final/s",
+        "argv": [
+          "npm",
+          "run",
+          "build:server"
+        ],
+        "env": {
+          "HOME": "/private/tmp/e4b2eq/fixed-final/home",
+          "CODEX_HOME": "/private/tmp/e4b2eq/fixed-final/codex_home",
+          "TMPDIR": "/private/tmp/e4b2eq/fixed-final/tmpdir",
+          "TMP": "/private/tmp/e4b2eq/fixed-final/tmp",
+          "TEMP": "/private/tmp/e4b2eq/fixed-final/temp",
+          "npm_config_cache": "/private/tmp/e4b2eq/fixed-final/npm_config_cache",
+          "NPM_CONFIG_CACHE": "/private/tmp/e4b2eq/fixed-final/npm_config_cache",
+          "XDG_CACHE_HOME": "/private/tmp/e4b2eq/fixed-final/xdg_cache_home",
+          "XDG_CONFIG_HOME": "/private/tmp/e4b2eq/fixed-final/xdg_config_home",
+          "XDG_DATA_HOME": "/private/tmp/e4b2eq/fixed-final/xdg_data_home",
+          "XDG_STATE_HOME": "/private/tmp/e4b2eq/fixed-final/xdg_state_home",
+          "XDG_RUNTIME_DIR": "/private/tmp/e4b2eq/fixed-final/xdg_runtime_dir",
+          "NODE_COMPILE_CACHE": "/private/tmp/e4b2eq/fixed-final/node_compile_cache",
+          "npm_config_userconfig": "/private/tmp/e4b2eq/fixed-final/npm_config_userconfig",
+          "npm_config_globalconfig": "/private/tmp/e4b2eq/fixed-final/npm_config_globalconfig",
+          "NODE_OPTIONS": "--no-experimental-webstorage"
+        },
+        "exit": 0,
+        "seconds": 1.326
+      }
+    ]
+  },
+  "preSpecFixReference": {
+    "commit": "178c92c27add34d8ac16fd8d1c8dee5b97dc0bc1",
+    "root": "/private/tmp/e4b2e/fixed-final",
+    "reportPath": "report.md",
+    "manifestPath": "manifest.json",
+    "reportSha256": "87f72e7fec34c0b62d6875bc80a812a0550249afd3aabadac7773bfb3d411d25",
+    "manifestSha256": "0551bf8d985e09b56281c0b05cb0cecc8da0a8f531159b7571df390d6b31267e",
+    "rootAudited": true,
+    "artifactCount": 98,
+    "sourceFilesVerified": 6,
+    "specPassed": false,
+    "qualityPassed": false,
+    "focusedPassed": 39,
+    "relatedPassed": 362,
+    "relatedFiles": 8,
+    "strictAndBuildPassed": true,
+    "historicalSourceHashesVerified": 148,
+    "initialSpec": {
+      "root": "/private/tmp/s4e-spec-a",
+      "verdict": "FAIL",
+      "reportPath": "report.json",
+      "manifestPath": "manifest.json",
+      "reportSha256": "a69b0ebb1ba519849fa796a9ed81195180586a7e088dbd9914f53f2667d71042",
+      "manifestSha256": "b972a290049733968c817757ace76bebad9d2fbde8e3e9fde7e47e2d4e81b5ab",
+      "rootAuditedAllArtifacts": true,
+      "artifactCount": 12,
+      "focusedPassed": 39,
+      "independentProbesFailed": 2
+    }
+  },
+  "preQualityFixReference": {
+    "commit": "5155aa495140a855e1a13c55346c1697631d0282",
+    "root": "/private/tmp/e4b2ep1/fixed-final",
+    "reportPath": "report.md",
+    "manifestPath": "manifest.json",
+    "reportSha256": "cf99fb162a0b96593efa707cfb3fce2c3f9eaaa0e10828e3a5930bf213b24d24",
+    "manifestSha256": "60be77c5cc3f0b1dc649f75c704bfcaba979f227fbd4b61674af7546378563cc",
+    "rootAudited": true,
+    "artifactCount": 26,
+    "sourceFilesVerified": 5,
+    "historicalSourceHashesVerified": 21,
+    "specPassed": true,
+    "qualityPassed": false,
+    "focusedPassed": 42,
+    "relatedPassed": 154,
+    "relatedFiles": 5,
+    "strictAndBuildPassed": true,
+    "implementationOriginalProbePassed": 1,
+    "finalSpec": {
+      "root": "/private/tmp/s4e-spec-b",
+      "verdict": "PASS",
+      "reportPath": "report.json",
+      "manifestPath": "manifest.json",
+      "reportSha256": "05dbad41cc4a363f4fcadd63afb0c2f3e26e8b875f1bae9733b88c4b8376294a",
+      "manifestSha256": "78d3ae68ff67cd304c497a05b38e82a47911b9ee1fa852c9a66a40c3fafb01a9",
+      "artifactCount": 10,
+      "fixedSourcesVerified": 11,
+      "probeCopiesVerified": 3,
+      "focusedPassed": 42,
+      "independentPassed": 3,
+      "totalPassed": 45,
+      "rootAuditedAllArtifacts": true
+    },
+    "initialQuality": {
+      "root": "/private/tmp/q4e26",
+      "verdict": "FAIL",
+      "reportPath": "report.json",
+      "manifestPath": "manifest.json",
+      "reportSha256": "3c55d3cbd840556842dd4ffe08f6387bbe97b7e09aea2eb4eb94d436d2ff3457",
+      "manifestSha256": "d3878dbbce3a25da64b2ba8d2441e5221441ec5f3c52128a835e0c7f4451c69a",
+      "artifactCount": 19,
+      "sourceFilesVerified": 11,
+      "rootAuditedAllArtifacts": true,
+      "ownFocusedPassed": 42,
+      "ownIndependentPassed": 1,
+      "ownIndependentFailed": 3
+    }
+  },
+  "qualityFindings": {
+    "issues": [
+      {
+        "id": "Q1",
+        "severity": "P2",
+        "reason": "原父取消导致loadPromise永久reject，同Session新预算无法恢复"
+      },
+      {
+        "id": "Q2",
+        "severity": "P2",
+        "reason": "真实健康单owner同代第二Runtime可拼接原resolver并实际发送，违反内部同Runtime装配合同"
+      }
+    ],
+    "status": "fixed-both-original-reviews-pass",
+    "publicExploitClaim": false
+  },
+  "initialSpecFailure": {
+    "priority": "P1",
+    "head": "178c92c27add34d8ac16fd8d1c8dee5b97dc0bc1",
+    "issue": "HTTP成功返回后后台WAL load丢失原父ALS预算",
+    "actualResult": {
+      "loaded": "completed",
+      "preserved": "ENOENT",
+      "parentDeadline": 2024.866083,
+      "now": 2033.094833,
+      "clientFrames": 0
+    },
+    "rootReadProbeAndLogs": true,
+    "status": "fixed-original-spec-rereview-pass"
+  },
+  "failuresRetained": [
+    "5155质量审查42项通过仍有两项P2：原父取消后同Session新预算永久失败，以及健康单owner同代另一真实Runtime可拼接原resolver。原3项FAIL与父failed传播正例原样保留；仅内部装配缺口，不声称客户端可新建第二Runtime。",
+    "178c固定源码的362项仅为修复前参考；独立SPEC两个原父预算退休反例真实FAIL，新候选单独保留原探针RED及实际期限/取消永久RED，再以新SHA验证，不沿用旧PASS。",
+    "原namespace拒绝、跨Runtime拼接、迟到load清理、hostedOperation取得Session前授权与输入快照的实际RED及修复记录均保留。",
+    "withCall和dispatch response、neverSent结果/证明及实际HTTP正文最后await微任务缺口均真实RED后最小修复。",
+    "95ec旧freeze为357/358，Local reinitialize deadline期望unknown实得neverSent根因未实证；后续64项计时未重现，仅观察到不足1ms提前settle，不能作为该首失败根因。最终夹具在真实initialize响应门闩后同步令原时钟明确过期，保留原unknown/false证明/零后续send断言。",
+    "早期call快照漏内部submitted回调的真实回归、夹具/路径别名/未响应等首次失败分别原样保留，不混绑最终SHA。"
+  ],
+  "limitations": [
+    "整个4b.2和公开Remote模式仍待，不能把本步内部依赖验证当作手机可用。",
+    "只做必要服务端验证；各审查亲跑范围与引用范围见原报告。"
+  ],
+  "officialRemoteProbeRunThisStep": false,
+  "testChatsCreated": 0,
+  "pending": [
+    "公开目标消费者图、唯一ledger调度与旧FollowUps兼容接线",
+    "Task4c会话观察与真实业务时钟",
+    "Task5手机模式和outbox",
+    "Task6官方功能、8小时和恢复延迟验收"
+  ]
+}

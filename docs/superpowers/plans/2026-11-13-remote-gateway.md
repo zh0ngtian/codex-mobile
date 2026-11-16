@@ -161,7 +161,7 @@ Task4 按内部依赖顺序实施：4a 可信目标身份基础 → 4b 持久队
 - [x] 4b.2b 内部实现：可信 Session/HttpSessions rawstream、显式投影/replay 来源及交付/创建/关闭/侧边栏原调用预算，通过513项、双strict/build、独立规格与质量复审及root全工件核验，见[收据](evidence/2026-11-16-remote-session-transport-validation.json)。现有 WAL 保留，公开 mode/host/index、完整消费者目标图和唯一ledger调度未接，不能视为 Remote模式可用。
 - [x] 4b.2c 内部可信 Session 执行结果：固定 `44fb339f`，40项可信边界、10文件369项、双strict/build及原 SPEC→原 QUALITY 限定复审通过，见[收据](evidence/2026-11-16-remote-session-dispatch-validation.json)；复用原 Session／requestId／hosted WAL，原结果对象与原 attempt／invocation 绑定真实零发送证明，不接 ledger 或增加派发 owner。公开 4b.2 仍待。
 - [x] 4b.2d 内部原收据读取：固定 `b63ad1d8` 的493项相关回归、双strict/build及全新SPEC→QUALITY通过；两审各亲跑49项及独立12／7项边界探针，root核全部小工件，见[收据](evidence/2026-11-16-remote-original-operation-validation.json)。按原context／Session／requestId只读原namespace，最终await后核验原预算，不创建Session／RPC／写WAL。公开装配和整个4b.2仍待。
-- [ ] 4b.2e 原操作context／WAL与当前有效Session传输装配：显式恢复后保留原编号和namespace，使用当前真实目标句柄与既有完整恢复证明；completed不重发、pending／uncertain仍未知，旧句柄永拒。2026-11-16实现及SPEC P1修正已通过原SPEC复验；QUALITY两项P2修正完成定向验证，待本轮固定源码核验及root→原SPEC→原QUALITY复验，尚不勾验收完成。
+- [x] 4b.2e 原操作context／WAL与当前有效Session传输装配：固定 `d7d700d8`，5文件217项必要回归（含49项专项）、双strict/build及原SPEC→原QUALITY复验通过，root核固定源码及全部小工件，见[收据](evidence/2026-11-16-remote-recovered-session-validation.json)。原context/UUID/namespace保持，当前同Runtime真实句柄及完整恢复proof受检，后台加载旧批实际结束后仅由新授权重扫；completed不重发，pending/uncertain仍未知。仅内部依赖完成，公开4b.2仍待。
 - [ ] 4b.2：HTTP/WS/hosted/Bark/关注与目标传输装配，Sidechat 内存路由、附件 bytes/活引用、占位、读合并/导航取消、显式 resume 和旧 FollowUps 推断替换，待实现/验收。
 - [ ] 4c：真实业务时钟与会话观察/释放，待实现/验收。
 
@@ -335,3 +335,6 @@ Task3d.4完成记录：Task3d.4统计失效装配已完成源码验收：冻结 
 
 
 4b.2e QUALITY P2 修正记录（2026-11-16，基线候选 `5155aa495140a855e1a13c55346c1697631d0282`）：原SPEC复验通过后，独立QUALITY在真实Runtime／健康单owner／loopback HTTP中复现失败load永久阻塞后续新调用，以及同gen／key的独立Runtime句柄可拼接两项P2。自己的新私有归档复制原探针真实3 FAIL／1 PASS，最终永久夹具在原产品为5 RED／2原有IO及坏记录PASS，7项定向GREEN。加载仅授权中断可由真实新调用在旧批全部实际settled后重扫原WAL，保留原Session／operations／socket和失败Promise；并发不重复扫描，完成后发布计数，真实IO／解析失败不忽略。Target最小比较真实Runtime引用，保留descriptor、旧handle失效与完整原context proof，不增加owner／身份政策。原busy互斥不放宽，两个initialize并发的先前夹具失败与诊断保留；并发新initialize和真实HTTP helper共享同一扫描，随后真实thread/read成功且completed／pending／uncertain不重发。固定源码必要相关服务端回归、双strict／build及逐命令日志另存本轮小报告；5155的154项、178c的362项仅引用旧freeze。本步待root实审→原SPEC→原QUALITY复验，4b.2e与整个4b.2仍不勾验收。无公开装配、客户端构建、push、发布或部署。
+
+
+4b.2e最终源码验收（2026-11-16）：固定 `d7d700d8049dd6a2373eba66736a908cc31a0de9`，217项必要服务端回归、双strict/build及原SPEC→原QUALITY串行复验通过，root亲核全部专项断言、源码和实际验证证据。原父预算P1与加载恢复/同代Runtime两项P2先RED后修复，旧验证只属原freeze；详见[收据](evidence/2026-11-16-remote-recovered-session-validation.json)。整个4b.2、4c、Task5/6仍待；下一步继续公开目标消费者和唯一持久队列接线，旧Local FollowUps正常升级保留原归属，不因缺新字段全量暂停。无客户端构建、发布或生产部署。
