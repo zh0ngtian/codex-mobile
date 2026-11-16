@@ -26,6 +26,10 @@ type Action = 'submit' | 'read' | 'edit' | 'cancel' | 'claim' | 'transition';
 export interface OperationReceipt {
   id: string; revision: number; receiveOrder: number; state: OperationState;
 }
+/** 仅可信进程恢复定位；完整原context不能用businessKey合并，正文另走逐条授权read。 */
+export interface OperationRecoveryGroup {
+  context: OperationContext; conversationId: string; operations: OperationReceipt[];
+}
 export interface OperationRecord extends OperationReceipt {
   signature: string; context: OperationContext; conversationId: string;
   body?: unknown; settings?: unknown; attachmentRefs?: string[]; control?: OperationControl;
@@ -205,6 +209,23 @@ export class OperationQueue {
   }
   async read(id: string): Promise<Readonly<OperationRecord>> {
     return this.transaction(async (ledger, authorize) => { const record = this.find(ledger, id); await authorize(record, 'read'); return { value: clone(record) }; });
+  }
+  /** 内部重启发现，不执行或授权整批业务；不向公开路由交付原身份或正文。 */
+  async inventory(): Promise<OperationRecoveryGroup[]> {
+    return this.transaction(async ledger => {
+      const groups = new Map<string, OperationRecoveryGroup>();
+      for (const record of [...ledger.records].sort((a, b) => a.receiveOrder - b.receiveOrder)) {
+        if (terminal(record)) continue;
+        const key = canonical([record.context, record.conversationId]);
+        let group = groups.get(key);
+        if (!group) {
+          group = { context: clone(record.context), conversationId: record.conversationId, operations: [] };
+          groups.set(key, group);
+        }
+        group.operations.push(receipt(record));
+      }
+      return { value: [...groups.values()] };
+    });
   }
   /** 共享可见队列；整批逐条核验，未授权记录不会返回部分正文。 */
   async list(businessKey: string, conversationId: string): Promise<OperationRecord[]> {

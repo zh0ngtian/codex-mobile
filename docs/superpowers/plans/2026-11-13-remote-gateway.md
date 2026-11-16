@@ -338,3 +338,14 @@ Task3d.4完成记录：Task3d.4统计失效装配已完成源码验收：冻结 
 
 
 4b.2e最终源码验收（2026-11-16）：固定 `d7d700d8049dd6a2373eba66736a908cc31a0de9`，217项必要服务端回归、双strict/build及原SPEC→原QUALITY串行复验通过，root亲核全部专项断言、源码和实际验证证据。原父预算P1与加载恢复/同代Runtime两项P2先RED后修复，旧验证只属原freeze；详见[收据](evidence/2026-11-16-remote-recovered-session-validation.json)。整个4b.2、4c、Task5/6仍待；下一步继续公开目标消费者和唯一持久队列接线，旧Local FollowUps正常升级保留原归属，不因缺新字段全量暂停。无客户端构建、发布或生产部署。
+
+
+### 4b.2f：内部 ledger 重启发现（已实现，定向验证通过，独立验收待完成）
+
+修改基线：已推送 main `34ff5fb9b4440002bad0ac9361847083f4f3e8ee`。沿现有 OperationQueue 增加 `inventory()`，仅返回 `{ context, conversationId, operations: [{ id, revision, receiveOrder, state }] }`。完整 context/会话精确分组，不以 businessKey 合并 mode、managed.userId 存在性/codexHome、generation/key 或目标；按 receiveOrder 保留原 id，排除现有 terminal，完整 load/原 gateway 校验不放宽。内部无正文目录不要求全部业务先获授权；后续 scheduler 按原 id 独立调用现有 read，再走原上下文执行或原 WAL 对账。无新框架、持久表或派发 owner。
+
+- [x] 新增真实磁盘/OS 子进程恢复与精确分组/原收据/状态过滤的永久回归；首次16项缺入口 RED 后最小实现16项 GREEN。
+- [x] 验证返回不含正文/settings/附件/claim，返回对象不能回改 ledger；坏数据/权限/软硬链/文件读取边界注入 synthetic EIO 明确失败，真实 Runtime 撤权组仍可发现无正文目录但 read/list 拒绝，Local 独立读取保留。
+- [ ] 固定 SHA 归档必要 queue/真实 Target 回归、双 strict/build:server；root 实读与全新 SPEC→QUALITY 验收后记录源码交付。
+
+本步仅源码，不改 claim/可信读分类/FollowUps/公开入口或 Runtime；不访问官方或真实凭据，不构建客户端、不 push/main、不发布部署。唯一 scheduler、旧 FollowUps 迁移、公开完整消费者/host/index 及整个4b.2继续待实现；4c/Task5/6不勾选。最终固定源码验证与原失败记录见本轮私有实施报告。
