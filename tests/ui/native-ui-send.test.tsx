@@ -52,7 +52,7 @@ function deferredRead() {
  return { promise, resolve, reject };
 }
 afterEach(async () => { cleanup(); await act(async () => { pendingReads.splice(0).forEach(resolve => resolve()); }); boundary.metadata = null; boundary.pins = []; boundary.pinFailure = false; boundary.pinBarrier = null; boundary.sidebarIndex = false; boundary.requests = []; boundary.threadRecords = []; boundary.threadReadBarrier = null; boundary.projectBarrier = null; boundary.priorityBarrier = null; boundary.listBarrier = null; boundary.searchBarrier = null; boundary.listFailure = false; boundary.client = null; boundary.options = null; boundary.release = null; boundary.failSend = false; boundary.immediateSend = false; boundary.nextThreadId = 'sent-thread'; boundary.nextThreadCwd = null; boundary.delayRevert = false; boundary.pendingMethod = ''; boundary.releaseRevert = null; boundary.rejectStart = null; queueItems = []; posts.length = 0; localStorage.clear(); delete (window as any).__CODEX_NATIVE_UI__; delete (window as any).webkit; delete (window as any).codexMobilePublishNativeSnapshot; vi.unstubAllGlobals(); });
-async function setup(native = true, projectState = { projects: [] as string[], projectlessThreadIds: [] as string[] }, waitForSettings = true) {
+async function setup(native = true, projectState = { projects: [] as string[], projectlessThreadIds: [] as string[] }, waitForSettings = true, remote = false) {
  if (native) Object.assign(window, { __CODEX_NATIVE_UI__: true, webkit: { messageHandlers: { nativeUI: { postMessage() {} } } }, codexMobilePublishNativeSnapshot: (s: unknown) => posts.push(s) });
  vi.stubGlobal('fetch', vi.fn(async (url: string, options?: RequestInit) => {
   if (String(url).includes('/api/follow-ups')) {
@@ -62,7 +62,8 @@ async function setup(native = true, projectState = { projects: [] as string[], p
   if (String(url).includes('/api/projects')) await boundary.projectBarrier;
   return new Response(JSON.stringify(projectState));
  }));
- render(<AppBootstrap initialRegistry={{ version: 1, selectedBackendId: 'a', backends: [{ id: 'a', hostId: 'host', name: 'Mac', enabled: true, order: 0, baseUrl: 'https://gateway.invalid', token: 'SECRET' }] }} />);
+ const target = { reference: { mode: 'remote' as const, gatewayId: 'host', account: { accountId: 'account', accountUserId: 'user' }, target: { environmentId: 'env', installationId: 'install' } }, name: 'Mac', online: true, busy: false, isGatewayHost: true };
+ render(<AppBootstrap initialRegistry={{ version: 1, selectedBackendId: 'a', backends: [{ id: 'a', hostId: 'host', name: 'Mac', enabled: true, order: 0, baseUrl: 'https://gateway.invalid', token: 'SECRET', ...(remote ? { gatewayMode: 'remote' as const, remoteTargets: [target] } : {}) }] }} />);
  if (native) await waitFor(() => expect(waitForSettings ? posts.at(-1)?.models?.[0]?.value === 'gpt' : posts.at(-1)?.ready).toBe(true));
  else await waitFor(() => expect(boundary.requests.some(request => request.method === 'model/list')).toBe(true));
  return posts.at(-1)?.contextId as string;
@@ -984,6 +985,78 @@ it('新对话连续输入与保存草稿使用同一实时草稿且不会发送�
  const contextId = await setup();
  await act(async () => { command('save-input', 'draft.set', { contextId, value: '立即保存的最新草稿', revision: 1 }); command('save-current', 'draft.save', { contextId }); });
  expect(save).toHaveBeenCalledTimes(1); expect(save.mock.calls[0][0].text).toBe('立即保存的最新草稿'); expect(boundary.requests.some(r => r.method === 'turn/start')).toBe(false); save.mockRestore();
+});
+
+it('Remote 首条消息先持久化完整草稿，保存期间零创建，只有实际发送确认才删除', async () => {
+ const { newChatDraftStore } = await import('../../src/features/drafts/new-chat-drafts');
+ const barrier = deferredRead();
+ const save = vi.spyOn(newChatDraftStore, 'save').mockImplementation(async input => {
+  await barrier.promise;
+  return { ...input, id: 'remote-first-draft', revision: 'r1', updatedAt: Date.now(), files: [] };
+ });
+ const remove = vi.spyOn(newChatDraftStore, 'remove').mockResolvedValue();
+ try {
+  const contextId = await setup(true, undefined, true, true);
+  await act(async () => { command('remote-first-input', 'draft.set', { contextId, value: '重启不能丢失的首条正文', revision: 1 }); command('remote-first-send', 'message.send', { contextId }); });
+  await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+  expect(save.mock.calls[0][0]).toMatchObject({ backendId: 'a', text: '重启不能丢失的首条正文', settings: { model: 'gpt' } });
+  expect(boundary.requests.some(request => request.method === 'thread/start')).toBe(false);
+  await act(async () => barrier.resolve());
+  await waitFor(() => expect(boundary.requests.some(request => request.method === 'turn/start')).toBe(true));
+  expect(remove).not.toHaveBeenCalled();
+  await act(async () => boundary.release!());
+  await waitFor(() => expect(remove).toHaveBeenCalledWith('remote-first-draft', 'r1'));
+ } finally { save.mockRestore(); remove.mockRestore(); }
+});
+
+it('Remote 创建回执待确认时保留首条持久草稿且不自动发送正文', async () => {
+ const { newChatDraftStore } = await import('../../src/features/drafts/new-chat-drafts');
+ const save = vi.spyOn(newChatDraftStore, 'save').mockImplementation(async input => ({ ...input, id: 'remote-pending-draft', revision: 'r1', updatedAt: Date.now(), files: [] }));
+ const remove = vi.spyOn(newChatDraftStore, 'remove').mockResolvedValue();
+ try {
+  const contextId = await setup(true, undefined, true, true);
+  boundary.pendingMethod = 'thread/start';
+  await act(async () => { command('remote-pending-input', 'draft.set', { contextId, value: '待确认创建的首条', revision: 1 }); command('remote-pending-send', 'message.send', { contextId }); });
+  await waitFor(() => expect(boundary.requests.some(request => request.method === 'thread/start')).toBe(true));
+  expect(remove).not.toHaveBeenCalled();
+  boundary.pendingMethod = '';
+  await act(async () => boundary.options.onNotification('a', { method: 'mobile/operation/confirmed', params: { requestId: 'pending-undefined-thread/start', request: { method: 'thread/start' }, response: { id: 'pending-rpc', result: { thread: { id: 'sent-thread', cwd: null, turns: [] } } } } }, boundary.client));
+  await waitFor(() => expect(posts.at(-1)?.threadId).toBe('sent-thread'));
+  expect(posts.at(-1)?.draft).toBe('待确认创建的首条');
+  expect(remove).not.toHaveBeenCalled();
+  expect(boundary.requests.some(request => request.method === 'turn/start')).toBe(false);
+ } finally { save.mockRestore(); remove.mockRestore(); }
+});
+
+it('Remote 首条草稿持久化失败保留输入，零上传或创建', async () => {
+ const { newChatDraftStore } = await import('../../src/features/drafts/new-chat-drafts');
+ const save = vi.spyOn(newChatDraftStore, 'save').mockRejectedValue(new Error('storage denied'));
+ try {
+  const contextId = await setup(true, undefined, true, true);
+  await act(async () => { command('remote-failed-input', 'draft.set', { contextId, value: '保留原文', revision: 1 }); command('remote-failed-send', 'message.send', { contextId }); });
+  await waitFor(() => expect(posts.at(-1)?.error).toContain('storage denied'));
+  expect(posts.at(-1)?.draft).toBe('保留原文');
+  expect(boundary.requests.some(request => request.method === 'thread/start')).toBe(false);
+  expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url).includes('/api/uploads'))).toBe(false);
+ } finally { save.mockRestore(); }
+});
+
+it('Remote 保存首条期间新输入不会被迟到的保存回执清空或发送', async () => {
+ const { newChatDraftStore } = await import('../../src/features/drafts/new-chat-drafts');
+ const barrier = deferredRead();
+ const save = vi.spyOn(newChatDraftStore, 'save').mockImplementation(async input => {
+  await barrier.promise;
+  return { ...input, id: 'remote-first-draft', revision: 'r1', updatedAt: Date.now(), files: [] };
+ });
+ try {
+  const contextId = await setup(true, undefined, true, true);
+  await act(async () => { command('remote-old-input', 'draft.set', { contextId, value: '原文', revision: 1 }); command('remote-old-send', 'message.send', { contextId }); });
+  await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+  await act(async () => command('remote-new-input', 'draft.set', { contextId, value: '保存期间的新输入', revision: 2 }));
+  await act(async () => barrier.resolve());
+  await waitFor(() => expect(posts.at(-1)?.draft).toBe('保存期间的新输入'));
+  expect(boundary.requests.some(request => request.method === 'thread/start')).toBe(false);
+ } finally { save.mockRestore(); }
 });
 
 it('列表关注运行中会话等待真实管理结果，重复请求只切换一次且不影响运行回合', async () => {

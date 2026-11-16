@@ -3250,15 +3250,50 @@ function BackendWorkspace({
     }
     // 在首个await和React提交前占用当前草稿与发送上下文；不同请求UUID也不能重复消费。
     sendingDraftContextsRef.current.add(draftContext);
+    let savedDraft = savedDraftRef.current;
+    if (!threadId && backend.gatewayMode === 'remote') {
+      // 创建会话之前还没有 turn/start outbox；先保留首条正文、配置及附件原字节。
+      // 这只是可恢复草稿，不能据此自动重放结果未知的创建或发送。
+      const originalDraft = currentDraftRef.current;
+      const mode = newChatPermissionMode;
+      try {
+        const saved = await newChatDraftStore.save({
+          backendId: backend.id, backendName: backend.name, cwd: activeRef.current?.cwd ?? null,
+          text: inputText, images: pendingImages, files: pendingFiles,
+          settings: { model: selectedModel, effort: selectedEffort, serviceTier: effectiveSelectedServiceTier,
+            permissions: mode?.permissions ?? selectedPermission,
+            approvalPolicy: mode?.approvalPolicy ?? selectedApprovalPolicy,
+            approvalsReviewer: mode?.approvalsReviewer ?? selectedApprovalsReviewer },
+        }, savedDraft?.id);
+        savedDraft = { id: saved.id, revision: saved.revision };
+        if (draftContext !== draftContextGenerationRef.current) {
+          sendingDraftContextsRef.current.delete(draftContext);
+          return false;
+        }
+        savedDraftRef.current = savedDraft;
+        const currentDraft = currentDraftRef.current;
+        if (currentDraft.text !== originalDraft.text || currentDraft.images !== pendingImages || currentDraft.files !== pendingFiles ||
+            draftInputRevisionRef.current !== inputRevision || quotesRef.current.length !== pendingQuotes.length ||
+            quotesRef.current.some((quote, index) => quote !== pendingQuotes[index])) {
+          sendingDraftContextsRef.current.delete(draftContext);
+          return false;
+        }
+      } catch (reason) {
+        sendingDraftContextsRef.current.delete(draftContext);
+        if (draftContext === draftContextGenerationRef.current) setError(`${t('无法保存草稿')}：${reason instanceof Error ? reason.message : String(reason)}`);
+        if (throwOnFailure) throw reason;
+        return false;
+      }
+    }
     currentDraftRef.current = { text: "", images: [], files: [] };
     setQuotes([]);
-    const savedDraft = savedDraftRef.current;
     requestRunCompletionNotificationPermission();
     invalidateImageReads();
     setDraft("");
     setDraftImages([]);
     setDraftFiles([]);
     setError("");
+    const submittedSavedDraft = savedDraft;
     return startTurnMessage({
       text: inputText,
       pendingImages,
@@ -3267,9 +3302,9 @@ function BackendWorkspace({
       pendingPlugins,
       draftContext,
       throwOnFailure,
-      onSent: savedDraft ? () => {
-        void newChatDraftStore.remove(savedDraft.id, savedDraft.revision).then(() => {
-          if (savedDraftRef.current?.revision === savedDraft.revision) savedDraftRef.current = undefined;
+      onSent: submittedSavedDraft ? () => {
+        void newChatDraftStore.remove(submittedSavedDraft.id, submittedSavedDraft.revision).then(() => {
+          if (savedDraftRef.current?.revision === submittedSavedDraft.revision) savedDraftRef.current = undefined;
         }).catch(() => {
           if (draftContext === draftContextGenerationRef.current) setError(t("消息已发送，但无法移除本地草稿"));
         });
