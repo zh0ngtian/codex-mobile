@@ -70,7 +70,7 @@ async function authorizeSession(remote: HttpSessionRemoteOptions, call: SessionC
     ...(Object.hasOwn(remote.context.managed, 'userId') ? { userId: remote.context.managed.userId } : {}),
   }, target: remote.context.target }, call.signal);
   const descriptor = remote.target.descriptor;
-  if (current.descriptor.generation !== descriptor.generation || current.descriptor.authorizationKey !== descriptor.authorizationKey ||
+  if (!current.sharesRuntime(remote.target) || current.descriptor.generation !== descriptor.generation || current.descriptor.authorizationKey !== descriptor.authorizationKey ||
     current.descriptor.transportNamespace !== descriptor.transportNamespace)
     throw new TypeError('Remote session 当前传输不属于resolver当前授权代');
   const fence = await remote.resolver.authorizeOperationExecution(remote.context, call.signal);
@@ -244,6 +244,7 @@ class Session {
   waiting = new Map<string | number, Waiting>();
   voices = new Set<WebSocket>();
   loadPromise: Promise<void>;
+  private loadInterrupted = false;
   pong = true;
   closed = false;
   storeQueue: Promise<void> = Promise.resolve();
@@ -260,32 +261,57 @@ class Session {
   touch() { this.updatedAt = Date.now(); }
 
   private async load() {
-    const check = () => { if (this.remote) { this.loadCheck!(); assertRemoteOperation(); } };
-    check();
-    const directory = join(this.root, this.id);
-    let files: string[];
-    try { files = await readdir(directory); } catch (error: any) { if (error.code === "ENOENT") return; throw error; }
-    check();
-    const records = files.filter((name) => name.endsWith(".json") && UUID.test(name.slice(0, -5)));
-    for (let offset = 0; offset < records.length; offset += 32) {
-      await Promise.all(records.slice(offset, offset + 32).map(async (name) => {
-        check();
-        const path = join(directory, name);
-        const raw = await readFile(path, "utf8");
-        check();
-        // 旧版曾将 fs/readFile 当成写入操作，保存了大量 base64 图片响应。
-        // 仅删除可确认已完成的图片读取结果，保留所有真正的写入记录。
-        if (raw.includes('"dataBase64"')) {
-          const record = JSON.parse(raw) as { status?: string; message?: { result?: { dataBase64?: unknown } } };
-          if (record.status === "completed" && record.message?.result && Object.keys(record.message.result).length === 1 && typeof record.message.result.dataBase64 === "string") {
-            await unlink(path);
-            return;
+    const interrupted = new Set<unknown>();
+    const check = () => {
+      try { if (this.remote) { this.loadCheck!(); assertRemoteOperation(); } }
+      catch (error) { interrupted.add(error); throw error; }
+    };
+    let storedOperations = 0, storageBytes = 0;
+    try {
+      check();
+      const directory = join(this.root, this.id);
+      let files: string[];
+      try { files = await readdir(directory); } catch (error: any) { if (error.code === "ENOENT") files = []; else throw error; }
+      check();
+      const records = files.filter((name) => name.endsWith(".json") && UUID.test(name.slice(0, -5)));
+      for (let offset = 0; offset < records.length; offset += 32) {
+        const results = await Promise.allSettled(records.slice(offset, offset + 32).map(async (name) => {
+          check();
+          const path = join(directory, name);
+          const raw = await readFile(path, "utf8");
+          check();
+          // 旧版曾将 fs/readFile 当成写入操作，保存了大量 base64 图片响应。
+          // 仅删除可确认已完成的图片读取结果，保留所有真正的写入记录。
+          if (raw.includes('"dataBase64"')) {
+            const record = JSON.parse(raw) as { status?: string; message?: { result?: { dataBase64?: unknown } } };
+            if (record.status === "completed" && record.message?.result && Object.keys(record.message.result).length === 1 && typeof record.message.result.dataBase64 === "string") {
+              await unlink(path);
+              return;
+            }
           }
-        }
-        this.storedOperations++;
-        this.storageBytes += Buffer.byteLength(raw);
-      }));
+          storedOperations++;
+          storageBytes += Buffer.byteLength(raw);
+        }));
+        const failures = results.filter((result): result is PromiseRejectedResult => result.status === 'rejected');
+        // 必须等旧批全部实际结束；真实IO/坏记录不能被同时发生的取消掩盖。
+        const failure = failures.find(result => !interrupted.has(result.reason)) ?? failures[0];
+        if (failure) throw failure.reason;
+      }
+      check();
+      this.storedOperations = storedOperations; this.storageBytes = storageBytes;
+    } catch (error) {
+      this.loadInterrupted = interrupted.has(error);
+      throw error;
     }
+  }
+
+  resumeLoad(authorize: () => void) {
+    if (!this.loadInterrupted || this.closed) return;
+    authorize();
+    this.loadInterrupted = false;
+    this.loadCheck = authorize;
+    this.loadPromise = this.load();
+    this.loadPromise.catch(() => {});
   }
 
   private async storedOperation(requestId: string) {
@@ -1070,7 +1096,7 @@ export class HttpSessions {
     if (this.closed) throw new HttpError(503, 'Sessions closed');
     if (!id || !UUID.test(id)) throw new HttpError(400, "sessionId must be a UUID");
     const existing = this.sessions.get(id);
-    if (existing) return existing;
+    if (existing) { if (authorize) existing.resumeLoad(authorize); return existing; }
     if (this.options.remote && !authorize) throw new TypeError('Remote session 创建需要原调用真实授权');
     authorize?.();
     if (this.sessions.size >= MAX_SESSIONS) throw new HttpError(429, "Too many sessions");

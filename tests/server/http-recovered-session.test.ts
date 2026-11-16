@@ -9,21 +9,25 @@ import { HttpSessions, HOSTED_SESSION_ID, type HttpSessionRemoteOptions } from '
 import { TargetResolver } from '../../server/targets.js';
 import { localMediaFiles } from '../../server/media-file-source.js';
 import { withRemoteOperation } from '../../server/remote/operation-guard.js';
+import { RemoteRuntime } from '../../server/remote/runtime.js';
+import { PrivateStore } from '../../server/remote/private-store.js';
+import { RemoteIdentityRegistry } from '../../server/remote/identity-registry.js';
+import { acquireRemoteOwner } from '../../server/remote/owner.js';
 import { fixture, until } from './remote-session-fixture.js';
 
-const io = vi.hoisted(() => ({ afterReadDirectory: undefined as undefined | ((path: unknown) => Promise<void>) }));
+const io = vi.hoisted(() => ({ afterReadDirectory: undefined as undefined | ((path: unknown) => Promise<void>), afterReadFile: undefined as undefined | ((path: unknown) => Promise<void>) }));
 vi.mock('node:fs/promises', async original => {
   const actual = await original<typeof import('node:fs/promises')>();
-  return { ...actual, readdir: async (...args: any[]) => { const result = await (actual.readdir as any)(...args); await io.afterReadDirectory?.(args[0]); return result; } };
+  return { ...actual, readFile: async (...args: any[]) => { const result = await (actual.readFile as any)(...args); await io.afterReadFile?.(args[0]); return result; }, readdir: async (...args: any[]) => { const result = await (actual.readdir as any)(...args); await io.afterReadDirectory?.(args[0]); return result; } };
 });
 
 const cleanup: (() => unknown)[] = [];
-afterEach(async () => { for (const close of cleanup.splice(0).reverse()) await close(); io.afterReadDirectory = undefined; });
+afterEach(async () => { for (const close of cleanup.splice(0).reverse()) await close(); io.afterReadDirectory = undefined; io.afterReadFile = undefined; });
 const tuple = { environmentId: 'local-env', installationId: 'local-install' };
 const grant = (value = tuple) => ({ env_id: value.environmentId, installation_id: value.installationId, kind: 'single', online: true, busy: false });
 const namespace = (key: string) => createHash('sha256').update(JSON.stringify(['transport-v1', 'remote', key])).digest('hex');
-async function setup(recover: boolean | number = true) {
-  const f = await fixture({ createLogin: () => ({ async login() { throw new Error('controlled-login-cancel'); }, async close() {} }) });
+async function setup(recover: boolean | number = true, runtimeOptions: Parameters<typeof fixture>[0] = {}) {
+  const f = await fixture({ ...runtimeOptions, createLogin: () => ({ async login() { throw new Error('controlled-login-cancel'); }, async close() {} }) });
   await f.runtime.authorize(); await until(() => f.runtime.status().state === 'online');
   const identity = { version: 1 as const, gatewayId: 'recovered-gateway', localHostId: 'recovered-local' };
   const resolver = new TargetResolver({ identity, remoteRuntime: f.runtime });
@@ -234,4 +238,65 @@ it('跨代Session首次load完成且父guard成功退休后，新调用不继承
   abort.abort();
   expect(await sessions.dispatchRpc({ sessionId, requestId: randomUUID(), attemptId: randomUUID() }, { id: 'fresh', method: 'thread/read', params: { threadId: 't' } }, { deadline: performance.now() + 2000 })).toHaveProperty('outcome', 'response');
   expect(f.frames.filter(frame => frame.message?.method === 'thread/read')).toHaveLength(1);
+});
+
+it('健康单owner同代同key的另一个真实Runtime句柄仍拒绝且零Session业务', async () => {
+  const seed=await fixture();const owner=await acquireRemoteOwner(new PrivateStore(join(seed.root,'owned')));cleanup.push(()=>owner.close());
+  const f=await setup(true,{store:owner.store,registry:new RemoteIdentityRegistry(owner.store)});owner.assert();
+  const other=new RemoteRuntime(f.options);cleanup.push(()=>other.close());await other.start();await until(()=>other.status().state==='online');owner.assert();
+  const otherResolver=new TargetResolver({identity:f.identity,remoteRuntime:other});const otherTarget=await otherResolver.resolve(f.reference);
+  expect(otherTarget.descriptor.generation).toBe(f.current.descriptor.generation);expect(otherTarget.descriptor.authorizationKey).toBe(f.current.descriptor.authorizationKey);
+  const frames:any[]=[];const seq=new Map<string,number>();const connection=f.connections.at(-1)!;
+  connection.on('message',raw=>{const frame=JSON.parse(raw.toString());frames.push(frame);if(frame.message?.method&&frame.message.id!=null){const n=(seq.get(frame.stream_id)??0)+1;seq.set(frame.stream_id,n);connection.send(JSON.stringify({type:'server_message',client_id:other.status().clientId,env_id:frame.env_id,stream_id:frame.stream_id,seq_id:n,message:{id:frame.message.id,result:{qualityOtherRuntime:true}}}));}});
+  const sessions=f.sessions({target:otherTarget});const requestId=randomUUID();const result=await sessions.dispatchRpc({sessionId:HOSTED_SESSION_ID,requestId,attemptId:randomUUID()},{id:requestId,method:'turn/start',params:{threadId:'quality-other-runtime'}});owner.assert();
+  expect((sessions as any).sessions.size).toBe(0); expect(f.frames.filter(frame=>frame.message?.method==='turn/start')).toHaveLength(0);
+  expect(result).toHaveProperty('outcome','unknown');expect(frames.filter(frame=>frame.message?.method==='turn/start')).toHaveLength(0);
+});
+it.each(['completed', 'pending', 'uncertain'] as const)('父取消的load实际结束后同Session并发新调用只重扫一次，原%s不重放', async status => {
+  const f = await setup(); const sessionId = randomUUID(); const requestId = randomUUID(); const message = { id: requestId, method: 'turn/start', params: { threadId: 'original' } }; const prior = f.sessions();
+  expect(await prior.dispatchRpc({ sessionId, requestId: randomUUID(), attemptId: randomUUID() }, { id: 'init', method: 'initialize' })).toHaveProperty('outcome', 'response');
+  expect(await prior.dispatchRpc({ sessionId, requestId, attemptId: randomUUID() }, message)).toHaveProperty('outcome', 'response'); await prior.close();
+  const wal = f.path(sessionId, requestId); const entry = JSON.parse(await readFile(wal, 'utf8')); entry.status = status; if (status !== 'completed') delete entry.message; await writeFile(wal, JSON.stringify(entry)); const original = await readFile(wal, 'utf8');
+  const sessions = f.sessions(); const image = f.path(sessionId, randomUUID()); await writeFile(image, JSON.stringify({ status: 'completed', message: { result: { dataBase64: 'keep' } } }));
+  let enter!: () => void; const entered = new Promise<void>(resolve => { enter = resolve; }); let release!: () => void; const gate = new Promise<void>(resolve => { release = resolve; }); cleanup.push(() => release()); let scans = 0;
+  io.afterReadDirectory = async path => { if (path === dirname(image)) { scans++; if (scans === 1) { enter(); await gate; } } };
+  const abort = new AbortController(); let done!: () => void; const finished = new Promise<void>(resolve => { done = resolve; });
+  let firstRequest = true;
+  const server = createServer((request, response) => { const handle = () => sessions.handle(request, response, new URL(request.url!, 'http://localhost')); if (firstRequest) { firstRequest = false; void withRemoteOperation(() => { if (abort.signal.aborted) throw new Error('old-parent-cancelled'); }, handle).then(done); } else void handle(); });
+  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve)); cleanup.push(() => new Promise<void>(resolve => server.close(() => resolve())));
+  const http = fetch(`http://127.0.0.1:${(server.address() as any).port}/api/rpc?sessionId=${sessionId}`, { method: 'POST', body: JSON.stringify({ requestId: randomUUID(), message: { id: 'usage', method: 'mobile/uploadUsage/read', params: { threadId: 't' } } }) });
+  await entered; expect((await http).status).toBe(200); await finished; const session = (sessions as any).sessions.get(sessionId); const failed = session.loadPromise; abort.abort(); release(); await expect(failed).rejects.toThrow('old-parent-cancelled'); expect(await readFile(image, 'utf8')).toContain('keep');
+  let resume!: () => void; const rescan = new Promise<void>(resolve => { resume = resolve; }); cleanup.push(() => resume()); io.afterReadDirectory = async path => { if (path === dirname(image)) { scans++; await rescan; } };
+  const lookups = vi.spyOn(sessions as any, 'session'); const authorizations = vi.spyOn(session as any, 'authorization');
+  const fresh = sessions.dispatchRpc({ sessionId, requestId: randomUUID(), attemptId: randomUUID() }, { id: 'new-init', method: 'initialize' }, { deadline: performance.now() + 5000 });
+  await until(() => lookups.mock.calls.length >= 1); expect(session.loadPromise).not.toBe(failed);
+  // 保留真实授权锁的busy政策；初始化等待扫描时，另一个真实HTTP调用取得同一Session。
+  await until(() => authorizations.mock.results.length >= 1); await authorizations.mock.results[0].value;
+  expect((await fetch(`http://127.0.0.1:${(server.address() as any).port}/api/rpc?sessionId=${sessionId}`, { method: 'POST', body: JSON.stringify({ requestId: randomUUID(), message: { id: 'fresh-usage', method: 'mobile/uploadUsage/read', params: { threadId: 't' } } }) })).status).toBe(200);
+  expect(lookups.mock.calls.length).toBe(2); resume(); expect(await fresh).toHaveProperty('outcome', 'response');
+  expect(scans).toBe(2); expect((sessions as any).sessions.get(sessionId)).toBe(session); await expect(failed).rejects.toThrow('old-parent-cancelled');
+  expect(await sessions.dispatchRpc({ sessionId, requestId: randomUUID(), attemptId: randomUUID() }, { id: 'fresh-read', method: 'thread/read', params: { threadId: 't' } }, { deadline: performance.now() + 5000 })).toHaveProperty('outcome', 'response');
+  expect(await sessions.dispatchRpc({ sessionId, requestId, attemptId: randomUUID() }, message)).toHaveProperty('outcome', status === 'completed' ? 'response' : 'unknown');
+  expect(f.frames.filter(frame => frame.message?.method === 'turn/start')).toHaveLength(1); expect(await readFile(wal, 'utf8')).toBe(original); expect(session.storedOperations).toBe(1); expect(session.storageBytes).toBe(Buffer.byteLength(original));
+});
+it('中断load等待旧批所有read实际结束，旧任务不取得新预算，随后原Session可正常读取', async () => {
+  const f = await setup(); const sessions = f.sessions(); const sessionId = randomUUID(); const images = [f.path(sessionId, randomUUID()), f.path(sessionId, randomUUID())]; await mkdir(dirname(images[0]), { recursive: true });
+  for (const image of images) await writeFile(image, JSON.stringify({ status: 'completed', message: { result: { dataBase64: 'old-batch' } } }));
+  const release: (() => void)[] = []; const blocked = new Set<string>(); let entered = 0; io.afterReadFile = async path => { const file = String(path); if (images.includes(file) && !blocked.has(file)) { blocked.add(file); entered++; await new Promise<void>(resolve => { release.push(resolve); }); } }; cleanup.push(() => release.forEach(fn => fn()));
+  const abort = new AbortController(); let first!: Promise<unknown>; await withRemoteOperation(() => { if (abort.signal.aborted) throw new Error('old-load-cancelled'); }, async () => {
+    first = sessions.dispatchRpc({ sessionId, requestId: randomUUID(), attemptId: randomUUID() }, { id: 'old', method: 'initialize' }); await until(() => entered === 2);
+  });
+  const session = (sessions as any).sessions.get(sessionId); let settled = false; const oldLoad = session.loadPromise.finally(() => { settled = true; }).catch(() => {}); abort.abort(); release[0](); await new Promise(resolve => setImmediate(resolve)); expect(settled).toBe(false);
+  const lookups = vi.spyOn(sessions as any, 'session'); const concurrent = sessions.dispatchRpc({ sessionId, requestId: randomUUID(), attemptId: randomUUID() }, { id: 'during', method: 'initialize' }); await until(() => lookups.mock.calls.length >= 1); release[1]();
+  expect(await first).toHaveProperty('outcome', 'unknown'); expect(await concurrent).toHaveProperty('outcome', 'unknown'); await oldLoad; for (const image of images) expect(await readFile(image, 'utf8')).toContain('old-batch');
+  io.afterReadFile = undefined;
+  expect(await sessions.dispatchRpc({ sessionId, requestId: randomUUID(), attemptId: randomUUID() }, { id: 'new', method: 'initialize' })).toHaveProperty('outcome', 'response');
+  expect(await sessions.dispatchRpc({ sessionId, requestId: randomUUID(), attemptId: randomUUID() }, { id: 'read', method: 'thread/read', params: { threadId: 't' } })).toHaveProperty('outcome', 'response');
+});
+it.each(['io', 'json'] as const)('真实load %s失败不作为可忽略空目录或取消恢复，原记录保留且零发送', async kind => {
+  const f = await setup(); const sessions = f.sessions(); const sessionId = randomUUID(); const file = f.path(sessionId, randomUUID()); await mkdir(dirname(file), { recursive: true }); const body = kind === 'json' ? '{"dataBase64":' : '{}'; await writeFile(file, body);
+  if (kind === 'io') io.afterReadFile = async path => { if (path === file) throw Object.assign(new Error('actual-read-EIO'), { code: 'EIO' }); };
+  const attempt = () => ({ sessionId, requestId: randomUUID(), attemptId: randomUUID() });
+  expect(await sessions.dispatchRpc(attempt(), { id: 'first', method: 'initialize' })).toHaveProperty('outcome', 'unknown'); io.afterReadFile = undefined;
+  expect(await sessions.dispatchRpc(attempt(), { id: 'fresh', method: 'initialize' })).toHaveProperty('outcome', 'unknown'); expect(await readFile(file, 'utf8')).toBe(body); expect(f.frames).toHaveLength(0);
 });

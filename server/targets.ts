@@ -93,6 +93,8 @@ export class ResolvedRemoteTarget {
   constructor(readonly descriptor: Readonly<RemoteTargetDescriptor>, runtime: RemoteRuntime, reference: RemoteTargetReference) {
     this.#runtime = runtime; this.#reference = reference; Object.freeze(this);
   }
+  /** 仅比较可信句柄的实际Runtime归属；持久描述相同不代表同一运行实例。 */
+  sharesRuntime(other: ResolvedRemoteTarget): boolean { return this.#runtime === other.#runtime; }
   private async binding(execute: boolean, signal?: AbortSignal): Promise<RemoteRuntimeTargetBinding> {
     try {
       const status = this.#runtime.status();
