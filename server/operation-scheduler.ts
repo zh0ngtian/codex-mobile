@@ -180,8 +180,11 @@ export class OperationScheduler {
           if (body.action === 'cancel') { current.state = 'cancelled'; delete current.followUp!.text; delete current.followUp!.attachmentCount; return; }
           const payload = current.body as { inputText: string; extraInput: Record<string, unknown>[] };
           const extraInput = [...(payload.extraInput ?? []).filter(entry => !['skill', 'mention'].includes(String(entry.type))), ...body.mentions];
+          validateInputs(extraInput);
           if (!body.inputText.trim() && !extraInput.length) throw new QueueError(400, '追问不能为空');
           current.body = { kind: 'follow-up-v1', inputText: body.inputText, extraInput }; current.followUp!.text = body.text;
+          current.followUp!.attachmentCount = messageAttachmentCount(body.inputText, extraInput);
+          if (current.rpcReceipt) current.rpcReceipt.signature = createHash('sha256').update(rpcSignatureInput(followUpMessage(current)!)).digest('hex');
         });
         this.#wakeup?.();
         if (body.action === 'steer') {

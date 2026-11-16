@@ -721,3 +721,124 @@ it('Q3调查：真实新facade拒绝控制字符threadId且ledger保持可读', 
   await writeFile(join(process.env.HOME!, 'Q3-new-enqueue-outcome.json'), JSON.stringify({ status: response.status, responseBody, before, after, listStatus: list.status, listBody, received: f.received }, null, 2));
   expect(response.status).toBe(400); expect(after).toBe(before); expect(list.status).toBe(200); expect(f.received).toHaveLength(0);
 });
+
+import { encodeUserMessage } from '../../server/user-message-format.js';
+it.each(['combined128', 'combined129', 'count-unchanged', 'count-changed'])('QUALITY Q4: 真实HTTP edit完整输入不变量%s不得污染ledger', async kind => {
+  const f = await fixture(); const facade = await f.open(); const api = await f.serve(facade);
+  const images = kind.startsWith('combined') ? Array.from({ length: kind === 'combined128' ? 127 : 128 }, () => ({ type: 'image', url: 'data:image/png;base64,eA==' })) : [];
+  const original = legacy('queued', { extraInput: images, attachmentCount: images.length });
+  expect((await api.post({ ...original, action: 'enqueue' })).status).toBe(200);
+  const queued = (await api.list())[0]; const path = join(f.directory, 'operations.json'); const before = await readFile(path, 'utf8');
+  const inputText = kind === 'count-changed' ? encodeUserMessage('编辑后的正文', [{ name: '文档', path: '/tmp/synthetic.txt' }]) : '编辑后的正文';
+  const edit = { action: 'edit', id: original.id, revision: queued.revision, inputText, text: '编辑后的预览', mentions: kind.startsWith('combined') ? [{ type: 'skill', name: '新增技能', path: '/synthetic/skill' }] : [] };
+  const response = await api.post(edit); const editBody = await response.json();
+  const after = await readFile(path, 'utf8'); const get = await fetch(api.url); const listBody = await get.json();
+  await facade.close(); await f.scheduler.close();
+  const rebuilt = new OperationScheduler(f.options); cleanup.push(() => rebuilt.close());
+  let reopenError: unknown, reopenStatus: number | undefined, reopenBody: unknown;
+  try { const next = await f.serve(await f.open(rebuilt)); const result = await fetch(next.url); reopenStatus = result.status; reopenBody = await result.json(); } catch (error: any) { reopenError = { name: error.name, message: error.message, status: error.status, code: error.code }; }
+  const outcome = { kind, enqueueExtraInput: images.length, edit, editStatus: response.status, editBody, ledgerChanged: before !== after, listStatus: get.status, listBody, reopenStatus, reopenBody, reopenError, received: f.received, sourceUnchanged: (await readFile(f.path, 'utf8')) === f.source };
+  await writeFile(join(process.env.HOME!, `Q4-${kind}-before.json`), before); await writeFile(join(process.env.HOME!, `Q4-${kind}-after.json`), after); await writeFile(join(process.env.HOME!, `Q4-${kind}-outcome.json`), JSON.stringify(outcome, null, 2));
+  expect(f.received).toEqual([]); expect(get.status).toBe(200); expect(reopenError).toBeUndefined(); expect(reopenStatus).toBe(200);
+}, 10_000);
+
+it('Q4收据边界：真实准备后零发送释放的queued可编辑、重开并按新正文只发送一次', async () => {
+  const item = legacy(); const f = await fixture([item], 700); const api = await f.serve(await f.open()); f.active.clear();
+  const preparation = receiptPreparationScope(); const handle = await open(f.path, 'r'); const proto = Object.getPrototypeOf(handle); await handle.close();
+  const original = proto.sync; let delayed = false;
+  const mark = vi.spyOn(OperationQueue.prototype, 'markPotentialSend'); const dispatch = vi.spyOn(HttpSessions.prototype, 'dispatchRpc');
+  const sync = vi.spyOn(proto, 'sync').mockImplementation(async function (this: any, ...args: any[]) {
+    const result = await original.apply(this, args); const record = (await f.disk()).records[0];
+    if (preparation.getStore()?.id === item.id && !delayed && record.state === 'claimed' && record.rpcReceipt) {
+      delayed = true; await new Promise(resolve => setTimeout(resolve, 850));
+    }
+    return result;
+  });
+  try { await f.scheduler.runOnce(); } finally { sync.mockRestore(); }
+  const before = (await f.disk()).records[0]; expect(delayed).toBe(true); expect(before.state).toBe('queued'); expect(before.rpcReceipt).toBeDefined();
+  expect(mark).not.toHaveBeenCalled(); expect(dispatch).not.toHaveBeenCalled(); mark.mockRestore(); dispatch.mockRestore();
+  const inputText = encodeUserMessage('准备后合法编辑', [{ name: '新文档', path: '/tmp/synthetic-edit.txt' }]);
+  const response = await api.post({ action: 'edit', id: item.id, revision: before.revision, inputText, text: '新预览', mentions: [] });
+  const responseBody = await response.json(); const after = (await f.disk()).records[0];
+  await writeFile(join(process.env.HOME!, 'Q4-prepared-edit-outcome.json'), JSON.stringify({ status: response.status, responseBody, before, after, received: f.received }, null, 2));
+  expect(response.status).toBe(200); expect(after.followUp.attachmentCount).toBe(1); expect(after.rpcReceipt).toMatchObject({ sessionId: before.rpcReceipt.sessionId, requestId: before.rpcReceipt.requestId });
+  expect(after.rpcReceipt.signature).not.toBe(before.rpcReceipt.signature); expect(after.signature).toBe(before.signature); expect(after.followUp.fingerprint).toBe(before.followUp.fingerprint);
+  await f.scheduler.close(); const rebuilt = new OperationScheduler({ ...f.options, attemptTimeoutMs: 2000 }); cleanup.push(() => rebuilt.close());
+  const next = await f.serve(await f.open(rebuilt)); expect((await next.list())[0]).toMatchObject({ id: item.id, attachmentCount: 1 });
+  await rebuilt.runOnce(); expect(await next.list()).toEqual([]); const starts = f.received.filter(m => m.method === 'turn/start'); expect(starts).toHaveLength(1);
+  expect(starts[0].params.input[0].text).toContain('准备后合法编辑'); expect(starts[0].params.clientUserMessageId).toBe(item.id);
+  expect((await f.disk()).records[0].followUp.operationId).toBe(before.followUp.operationId);
+}, 10_000);
+
+it('Q4原WAL边界：真实pending在物理发送前失败须先清除WAL才可confirmNeverSent及编辑', async () => {
+  const item = legacy(); const f = await fixture([item]); const api = await f.serve(await f.open()); f.active.clear();
+  const scope = new AsyncLocalStorage<HttpSessions>(); const originalDispatch = HttpSessions.prototype.dispatchRpc;
+  const dispatch = vi.spyOn(HttpSessions.prototype, 'dispatchRpc').mockImplementation(function (this: HttpSessions, ...args) { return scope.run(this, () => originalDispatch.apply(this, args)); });
+  const confirm = vi.spyOn(OperationQueue.prototype, 'confirmNeverSent'); const handle = await open(f.path, 'r'); const proto = Object.getPrototypeOf(handle); await handle.close();
+  const originalSync = proto.sync; let pending: any, interrupted = false;
+  const walPath = join(f.root, 'codex-mobile-http', HOSTED_SESSION_ID, `${item.operationId}.json`);
+  const sync = vi.spyOn(proto, 'sync').mockImplementation(async function (this: any, ...args: any[]) {
+    const result = await originalSync.apply(this, args);
+    if (scope.getStore() && !interrupted) {
+      const wal = await readFile(walPath, 'utf8').then(JSON.parse).catch(() => undefined);
+      if (wal?.status === 'pending') {
+        interrupted = true; pending = wal;
+        const client = (scope.getStore() as any).sessions.get(HOSTED_SESSION_ID).socket;
+        const closed = new Promise<void>(resolve => client.once('close', resolve));
+        for (const socket of f.sockets) socket.terminate();
+        await closed;
+      }
+    }
+    return result;
+  });
+  try { await f.scheduler.runOnce(); } finally { sync.mockRestore(); dispatch.mockRestore(); }
+  const first = (await f.disk()).records[0]; const walAfter = await readFile(walPath, 'utf8').then(JSON.parse).catch((error: any) => ({ code: error.code }));
+  await writeFile(join(process.env.HOME!, 'Q4-real-neverSent-outcome.json'), JSON.stringify({ interrupted, pending, first, walAfter, confirmations: confirm.mock.calls.length, received: f.received }, null, 2));
+  expect(interrupted).toBe(true); expect(pending.status).toBe('pending'); expect(confirm).toHaveBeenCalledTimes(1); confirm.mockRestore();
+  expect(first.state).toBe('queued'); expect(walAfter).toEqual({ code: 'ENOENT' }); expect(f.received.filter(m => m.method === 'turn/start')).toEqual([]);
+  const response = await api.post({ action: 'edit', id: item.id, revision: first.revision, inputText: '未发送证明后的编辑', text: '新预览', mentions: [] });
+  expect(response.status).toBe(200); expect((await api.list())[0].id).toBe(item.id); await f.scheduler.runOnce();
+  expect(f.received.filter(m => m.method === 'turn/start')).toHaveLength(1); expect(await api.list()).toEqual([]);
+}, 10_000);
+
+it.each(['combined128', 'count-changed'])('Q4合法编辑：%s更新实际计数并保留接收身份、CAS、幂等与真实发送', async kind => {
+  const f = await fixture(); const api = await f.serve(await f.open());
+  const images = kind === 'combined128' ? Array.from({ length: 127 }, () => ({ type: 'image', url: 'data:image/png;base64,YQ==' })) : [];
+  const item = legacy('queued', { extraInput: images, attachmentCount: images.length }); expect((await api.post({ ...item, action: 'enqueue' })).status).toBe(200);
+  const before = (await f.disk()).records[0]; const mentions = kind === 'combined128' ? [{ type: 'skill', name: '新技能', path: '/synthetic/skill' }] : [];
+  const inputText = kind === 'count-changed' ? encodeUserMessage('新正文', [{ name: '文档', path: '/tmp/synthetic.txt' }]) : '新正文';
+  const edit = { action: 'edit', id: item.id, revision: before.revision, inputText, text: '新预览', mentions };
+  const response = await api.post(edit); expect(response.status).toBe(200); const after = (await f.disk()).records[0];
+  expect(after.followUp.attachmentCount).toBe(kind === 'combined128' ? 127 : 1); expect(after.body.extraInput).toHaveLength(kind === 'combined128' ? 128 : 0);
+  expect(after).toMatchObject({ id: before.id, receiveOrder: before.receiveOrder, signature: before.signature, context: before.context, revision: before.revision + 1, followUp: { operationId: before.followUp.operationId, fingerprint: before.followUp.fingerprint } });
+  const bytes = await readFile(join(f.directory, 'operations.json'), 'utf8'); expect((await api.post(edit)).status).toBe(409);
+  expect((await api.post({ ...item, action: 'enqueue' })).status).toBe(200); expect((await api.post({ ...item, action: 'enqueue', inputText: '不同原请求' })).status).toBe(409);
+  expect(await readFile(join(f.directory, 'operations.json'), 'utf8')).toBe(bytes); expect(await readFile(f.path, 'utf8')).toBe(f.source);
+  await f.scheduler.close(); const rebuilt = new OperationScheduler(f.options); cleanup.push(() => rebuilt.close()); const next = await f.serve(await f.open(rebuilt));
+  expect((await next.list())[0]).toMatchObject({ id: item.id, attachmentCount: after.followUp.attachmentCount }); f.active.clear(); await rebuilt.runOnce();
+  expect(await next.list()).toEqual([]); const starts = f.received.filter(m => m.method === 'turn/start'); expect(starts).toHaveLength(1);
+  expect(starts[0].params.clientUserMessageId).toBe(item.id); expect(starts[0].params.input[0].text).toContain('新正文');
+  expect(starts[0].params.input.filter((entry: any) => entry.type === 'image')).toHaveLength(images.length);
+});
+
+it('Q4超限编辑：合并129在提交前400拒绝，整ledger、其他项及原source字节不变', async () => {
+  const other = legacy('queued', { threadId: 'other-thread' }); const f = await fixture([other]); const api = await f.serve(await f.open());
+  const images = Array.from({ length: 128 }, () => ({ type: 'image', url: 'data:image/png;base64,YQ==' })); const item = legacy('queued', { extraInput: images, attachmentCount: 128 });
+  expect((await api.post({ ...item, action: 'enqueue' })).status).toBe(200); const before = (await f.disk()).records.find((r: any) => r.id === item.id);
+  const path = join(f.directory, 'operations.json'); const bytes = await readFile(path, 'utf8');
+  const response = await api.post({ action: 'edit', id: item.id, revision: before.revision, inputText: '编辑', text: '预览', mentions: [{ type: 'skill', name: '新技能', path: '/synthetic/skill' }] });
+  expect(response.status).toBe(400); expect(await readFile(path, 'utf8')).toBe(bytes); expect(await readFile(f.path, 'utf8')).toBe(f.source); expect((await fetch(api.url)).status).toBe(200);
+  await f.scheduler.close(); const rebuilt = new OperationScheduler(f.options); cleanup.push(() => rebuilt.close()); const next = await f.serve(await f.open(rebuilt));
+  expect((await next.list()).map((r: any) => r.id)).toEqual([other.id, item.id]); expect(await readFile(path, 'utf8')).toBe(bytes); expect(f.received).toEqual([]);
+});
+
+it('Q4可信写边界：update后非法表示在同事务拒绝而不持久化', async () => {
+  const item = legacy(); const f = await fixture([item]); const api = await f.serve(await f.open()); const path = join(f.directory, 'operations.json'); const bytes = await readFile(path, 'utf8');
+  const original = OperationQueue.prototype.changeFollowUp;
+  const change = vi.spyOn(OperationQueue.prototype, 'changeFollowUp').mockImplementation(function (this: OperationQueue, id, revision, action, update) {
+    return original.call(this, id, revision, action, current => { update(current); current.followUp!.attachmentCount = -1; });
+  });
+  try { expect((await api.post({ action: 'edit', id: item.id, revision: item.revision, inputText: '合法正文', text: '合法预览', mentions: [] })).status).toBe(400); }
+  finally { change.mockRestore(); }
+  expect(await readFile(path, 'utf8')).toBe(bytes); expect((await fetch(api.url)).status).toBe(200); expect(await readFile(f.path, 'utf8')).toBe(f.source);
+});

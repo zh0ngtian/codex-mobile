@@ -120,7 +120,7 @@ function followUpValid(record: OperationRecord): boolean {
     (value.error !== undefined && typeof value.error !== 'string') || (value.expectedTurnId !== undefined && (typeof value.expectedTurnId !== 'string' || !value.expectedTurnId.trim() || value.method !== 'turn/steer')) ||
     (value.legacyRecovery !== undefined && (value.legacyRecovery !== true || record.state !== 'uncertain' || record.rpcReceipt !== undefined)) ||
     (value.walError !== undefined && (value.walError !== true || record.state !== 'failed' || record.rpcReceipt !== undefined || value.legacyRecovery !== undefined))) return false;
-  if (record.rpcReceipt && (record.rpcReceipt.sessionId !== 'c0dec000-0000-4000-8000-000000000001' || record.rpcReceipt.requestId !== value.operationId)) return false;
+  if (record.rpcReceipt && (!rpcReceiptValid(record.rpcReceipt) || record.rpcReceipt.sessionId !== 'c0dec000-0000-4000-8000-000000000001' || record.rpcReceipt.requestId !== value.operationId)) return false;
   if (value.method === 'turn/steer' && (record.state === 'queued' || record.rpcReceipt) && !terminal(record) && !value.expectedTurnId) return false;
   if (terminal(record)) {
     if (value.text !== undefined && (typeof value.text !== 'string' || value.text.length > 32768)) return false;
@@ -135,6 +135,7 @@ function followUpValid(record: OperationRecord): boolean {
     if (value.retainedLegacy !== undefined || !shape(record.body, ['kind', 'inputText', 'extraInput']) || record.body.kind !== 'follow-up-v1' || !Array.isArray(record.attachmentRefs) || record.attachmentRefs.length) return false;
     validateText(record.body.inputText, value.text); validateInputs(record.body.extraInput); validateSettings(record.settings);
     if (!Number.isSafeInteger(value.attachmentCount) || value.attachmentCount !== messageAttachmentCount(record.body.inputText as string, record.body.extraInput)) return false;
+    if (record.rpcReceipt && record.rpcReceipt.signature !== rpcHash({ message: followUpMessage(record)! })) return false;
   }
   return true;
 }
@@ -315,6 +316,7 @@ export class OperationQueue {
       const record = this.find(ledger, id); await authorize(record, action);
       if (!record.followUp) fail('uuid-conflict', 409); if (record.revision !== revision) fail('revision-conflict', 409);
       update(record); record.revision++; if (terminal(record)) compact(record);
+      if (!followUpValid(record)) fail('invalid-input', 400);
       return { value: receipt(record), changed: true };
     });
   }
