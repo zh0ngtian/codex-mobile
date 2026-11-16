@@ -202,7 +202,7 @@ export class OperationScheduler {
               let prepared: OperationClaim | undefined;
               try { record = await this.budget(call => this.ledger([group.context], ['claim', 'transition'], call,
                 () => this.#queue.claimNext(group.context.businessKey, { isRead, excluded: attempted, controlOnly: control, onPreparedClaim: claim => { prepared = claim; } }))); }
-              catch (error) { if (prepared) await this.cleanupClaim(prepared); throw error; }
+              catch (error) { if (prepared) { attempted.add(prepared.id); await this.cleanupClaim(prepared); } throw error; }
               finally { authorizing.delete(key(group.context)); }
               if (!record) return;
               attempted.add(record.id); dispatching.add(record.id);

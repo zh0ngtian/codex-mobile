@@ -616,3 +616,19 @@ it('cleanup已完成而inventory仍交付旧claimed快照时，同次runOnce重�
   await two.runOnce(); expect(stale).toBe(true); expect((await f.queue().read(input.id)).state).toBe('succeeded'); expect(f.localMessages.filter(message => message.method === 'turn/start')).toHaveLength(1);
   const before = calls; await two.runOnce(); expect(calls - before).toBe(1);
 });
+
+it('持续claim最终预算失效在单次scan仅耐久领取一次，恢复后下一次只真实发送一次', async () => {
+  const f = await setup(); f.options.attemptTimeoutMs = 100; const one = f.create(); const input = f.input(f.localContext); await one.submit(input);
+  const proto = OperationQueue.prototype as any; const actual = proto.syncDirectories; let claims = 0; let forcedClose = false;
+  const mark = vi.spyOn(OperationQueue.prototype, 'markPotentialSend'); const dispatch = vi.spyOn(HttpSessions.prototype, 'dispatchRpc');
+  const hold = vi.spyOn(proto, 'syncDirectories').mockImplementation(async function (this: any, ...args: any[]) {
+    await actual.apply(this, args); const disk = JSON.parse(await readFile(join(f.options.directory, 'operations.json'), 'utf8'));
+    if (disk.records[0]?.state === 'claimed') {
+      claims++; await new Promise(resolve => setTimeout(resolve, 180));
+      if (claims === 2) { forcedClose = true; void one.close(); } // 反例的第二次真实领取后有界停机，不靠测试超时结束。
+    }
+  });
+  await one.runOnce().catch(error => String(error)); hold.mockRestore();
+  expect(claims).toBe(1); expect(forcedClose).toBe(false); expect(mark).not.toHaveBeenCalled(); expect(dispatch).not.toHaveBeenCalled(); expect(f.localMessages).toEqual([]); expect((await f.queue().read(input.id)).state).toBe('queued');
+  await one.runOnce(); expect((await f.queue().read(input.id)).state).toBe('succeeded'); expect(f.localMessages.filter(message => message.method === 'turn/start')).toHaveLength(1);
+});
