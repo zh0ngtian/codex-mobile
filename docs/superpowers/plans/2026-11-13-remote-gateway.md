@@ -163,7 +163,7 @@ Task4 按内部依赖顺序实施：4a 可信目标身份基础 → 4b 持久队
 - [x] 4b.2d 内部原收据读取：固定 `b63ad1d8` 的493项相关回归、双strict/build及全新SPEC→QUALITY通过；两审各亲跑49项及独立12／7项边界探针，root核全部小工件，见[收据](evidence/2026-11-16-remote-original-operation-validation.json)。按原context／Session／requestId只读原namespace，最终await后核验原预算，不创建Session／RPC／写WAL。公开装配和整个4b.2仍待。
 - [x] 4b.2e 原操作context／WAL与当前有效Session传输装配：固定 `d7d700d8`，5文件217项必要回归（含49项专项）、双strict/build及原SPEC→原QUALITY复验通过，root核固定源码及全部小工件，见[收据](evidence/2026-11-16-remote-recovered-session-validation.json)。原context/UUID/namespace保持，当前同Runtime真实句柄及完整恢复proof受检，后台加载旧批实际结束后仅由新授权重扫；completed不重发，pending/uncertain仍未知。仅内部依赖完成，公开4b.2仍待。
 - [x] 4b.2h 内部 FollowUps 唯一 owner 接管：固定a3e07a33的620项（h103）、双strict/build及主执行者直接检查通过，见[验收记录](evidence/2026-11-16-remote-follow-ups-ledger-validation.json)。原失败证据保留；公开默认gateway/host/index与完整消费者仍待，不勾整个4b.2/4c/5/6。
-- [ ] 4b.2i 公开入口统一模式校验与能力探测：先拦截 Remote 误走 Local，保持旧 URL／本地传输；待本轮固定源码回归、双 strict／build:server 和主执行者检查。真实目标消费者与公开队列未激活。
+- [x] 4b.2i 公开入口统一模式校验与能力探测：固定237f1906已通过6文件281项回归、双strict／build:server及主执行者直接检查，见[验收记录](evidence/2026-11-16-remote-public-routing-validation.json)。Remote误走Local已拦截，旧URL／本地传输保持；真实目标消费者与公开队列未激活。
 - [ ] 4b.2：HTTP/WS/hosted/Bark/关注与目标传输装配，Sidechat 内存路由、附件 bytes/活引用、占位、读合并/导航取消、显式 resume 和旧 FollowUps 推断替换，待实现/验收。
 - [ ] 4c：真实业务时钟与会话观察/释放，待实现/验收。
 
@@ -406,10 +406,12 @@ Task3d.4完成记录：Task3d.4统计失效装配已完成源码验收：冻结 
 4b.2h最终源码验证：固定源码`a3e07a338890672ce3bb1ec9322b8e6ec951129f`已通过12文件620项相关回归（FollowUps ledger 103项、原调度70项、旧追问23项）、双strict及build:server；主执行者直接检查代码、需求、原失败与修复验证结果并通过。Q4编辑在原CAS内验证最终合并输入、重算实际附件数并同步既有准备收据的内容签名，非法修改在落盘前拒绝；合法编辑保留公共id、上游UUID、接收指纹和上下文。F1/Q1/Q2/Q3历史修复和原失败证据保留。按用户2026-11-16新规则，本候选未安排独立agent复审，不将旧候选的审查结果转绑本提交。仅内部可选接管已验证，公开gateway/mode/host/index、完整消费者及4b.2/4c/Task5/6仍待；未访问官方或真实凭据，未构建客户端、发布或部署。见[验收记录](evidence/2026-11-16-remote-follow-ups-ledger-validation.json)。
 
 
-### 4b.2i：公开入口统一路由校验（已实现，待固定源码验证）
+### 4b.2i：公开入口统一路由校验（固定源码验证与主执行者直接检查通过）
 
 修改基线为远端 main `45a75487a1303131212a573fb8bcb3be58ff5533`，开始前 fetch 已核对。先补 HTTP API、媒体／通知／上传和两个 WebSocket 升级入口的共用校验，避免内部 Remote 参数被旧 Local 处理器忽略；复用现有完整 target 引用解析，不增加 Runtime、owner、ledger 或通用框架。鉴权先于路由错误；已鉴权 CORS 预检不执行目标操作。host 探测允许不选择目标，版本1能力明确 supported=false，完整 Remote 消费者和唯一 scheduler 接线前不开放业务执行。
 
-隔离真实 HTTP／WS 反例已证实旧入口误用 Local。首轮41项有两项 Local 断言误写项目返回结构，原日志保留；修正并补充原 Session 复用和兼容测试后重新在未修改产品源码的基线 archive 上亲跑 RED。必要回归及双 strict／服务端构建待本轮固定源码验证。用户新规则下仅主执行者直接检查，未安排独立 agent；当前只交付服务端源码，无真实凭据、官方探针或测试聊天，无客户端构建、发布或生产部署。整个4b.2、4c、Task5／6继续未完成。
+隔离真实 HTTP／WS 反例已证实旧入口误用 Local。首轮41项有两项 Local 断言误写项目返回结构，原日志保留；修正并补充原 Session 复用和兼容测试后重新在未修改产品源码的基线 archive 上亲跑 RED。最终修复源码的必要回归、双 strict／服务端构建结果见本节末。用户新规则下仅主执行者直接检查，未安排独立 agent；当前只交付服务端源码，无真实凭据、官方探针或测试聊天，无客户端构建、发布或生产部署。整个4b.2、4c、Task5／6继续未完成。
 
 首次固定候选 `55127e25` 发现导出解析函数时遗漏 operationAuthorization 内旧函数名调用，导致25项 Remote 授权回归及双 strict／构建失败；本轮直接检查定位并补齐，原完整失败保留于私有证据目录。必须以修复后的固定源码重新验证，不引用前一候选的局部通过作为交付结果。
+
+最终固定 `237f190621ab7fd02dfa5a7c4842d2f22fe298da` 的6文件281项必要回归、双 strict／build:server全部通过，主执行者直接核对代码、已确认需求与完整最终日志；2910份归档源码测试前后未变。最终46项路由测试在原产品基线上40 FAIL／6 PASS，修复后全部通过；首次候选的真实遗漏及所有早期日志保留。仅此入口边界完成，整个4b.2、4c、Task5／6仍未完成，未访问官方凭据、未构建客户端或发布部署。

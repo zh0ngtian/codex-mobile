@@ -1,0 +1,79 @@
+{
+  "schemaVersion": 1,
+  "task": "Task4b2i-public-routing-boundary",
+  "sourceCommit": "237f190621ab7fd02dfa5a7c4842d2f22fe298da",
+  "baselineMain": "45a75487a1303131212a573fb8bcb3be58ff5533",
+  "sourceOnly": true,
+  "deployed": false,
+  "clientBuild": false,
+  "clientPublished": false,
+  "gates": {
+    "implementationPassed": true,
+    "rootDirectReviewPassed": true,
+    "necessaryValidationPassed": true
+  },
+  "validation": {
+    "tests": 281,
+    "files": 6,
+    "routingTests": 46,
+    "runtimeTests": 104,
+    "strictServer": true,
+    "strictNpm": true,
+    "buildServer": true
+  },
+  "noOverlay": true,
+  "trackedSourcesUnchanged": 2910,
+  "rootDirectReview": {
+    "candidate": "237f190621ab7fd02dfa5a7c4842d2f22fe298da",
+    "verdict": "PASS",
+    "independentAgentReview": false,
+    "rootReadFullFinalLogs": true,
+    "evidence": {
+      "bytes": 1046,
+      "sha256": "fc75fac7dd94951c7dda56c1640db729660d2a4b0988f3a05916ec7414f04da8"
+    }
+  },
+  "implementation": {
+    "root": "/private/tmp/e4b2i-routing",
+    "reportPath": "report.json",
+    "report": {
+      "bytes": 26055,
+      "sha256": "fc5ba378c3e128d8ae8e4e69fd8f5e57f7a70b1d1c45dbfe4a74ef0e80ba61b6"
+    }
+  },
+  "retainedFailures": [
+    {
+      "stage": "red-routing",
+      "failed": 38,
+      "passed": 3,
+      "note": "含两项Local项目结构断言误写，后续修正；原日志保留"
+    },
+    {
+      "stage": "red-corrected",
+      "failed": 39,
+      "passed": 6
+    },
+    {
+      "stage": "red-final-tests",
+      "failed": 40,
+      "passed": 6,
+      "baselineProductsUnchanged": true
+    },
+    {
+      "stage": "fixed-final",
+      "commit": "55127e25",
+      "failed": 25,
+      "passed": 256,
+      "strictAndBuildFailed": true,
+      "cause": "operationAuthorization遗漏旧parse调用；237f1906补齐后全部通过"
+    }
+  ],
+  "remaining": [
+    "唯一Runtime/真实目标目录与完整消费者公开装配",
+    "公开持久队列/附件字节/Sidechat内存路径",
+    "4c观察器",
+    "Task5手机模式与outbox",
+    "Task6官方完整/8小时验证"
+  ],
+  "scope": "仅公开入口模式/引用校验及host未支持能力声明；完整Remote业务尚未开放"
+}
