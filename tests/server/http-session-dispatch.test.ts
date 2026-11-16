@@ -8,9 +8,24 @@ import { performance } from 'node:perf_hooks';
 import { afterEach, expect, it, vi } from 'vitest';
 import { WebSocket, WebSocketServer } from 'ws';
 import { HttpSessions } from '../../server/http-session.js';
+import { OperationQueue } from '../../server/operation-queue.js';
+
+const storageFault = vi.hoisted(() => ({ directory: '' }));
+vi.mock('node:fs/promises', async original => {
+  const actual = await original<typeof import('node:fs/promises')>();
+  return { ...actual, open: async (...args: Parameters<typeof actual.open>) => {
+    const handle = await actual.open(...args);
+    if (String(args[0]) !== storageFault.directory || args[1] !== 'r') return handle;
+    storageFault.directory = '';
+    return new Proxy(handle, { get(target, name) {
+      if (name === 'sync') return async () => { throw Object.assign(new Error('directory-fsync-EIO'), { code: 'EIO' }); };
+      const value = Reflect.get(target, name, target); return typeof value === 'function' ? value.bind(target) : value;
+    } });
+  } };
+});
 
 const cleanup: (() => unknown)[] = [];
-afterEach(async () => { for (const close of cleanup.splice(0).reverse()) await close(); vi.restoreAllMocks(); });
+afterEach(async () => { for (const close of cleanup.splice(0).reverse()) await close(); storageFault.directory = ''; vi.restoreAllMocks(); });
 async function localFixture() {
   const root = await mkdtemp(join(tmpdir(), 'sd-local-')); cleanup.push(() => rm(root, { recursive: true, force: true }));
   const http = createServer(); const wss = new WebSocketServer({ server: http }); const sockets: WebSocket[] = []; const messages: any[] = [];
@@ -20,8 +35,10 @@ async function localFixture() {
   cleanup.push(async () => { for (const socket of sockets) socket.terminate(); await new Promise<void>(resolve => wss.close(() => resolve())); await new Promise<void>(resolve => http.close(() => resolve())); });
   const options = { upstreamUrl: `ws://127.0.0.1:${(http.address() as any).port}`, codexHome: root };
   let sessions = new HttpSessions(options); cleanup.push(() => sessions.close()); const sessionId = randomUUID();
+  http.on('request', (request, response) => { void sessions.handle(request, response, new URL(request.url!, 'http://localhost')); });
+  const call = (message: any, requestId = randomUUID()) => fetch(`http://127.0.0.1:${(http.address() as any).port}/api/rpc?sessionId=${sessionId}`, { method: 'POST', body: JSON.stringify({ requestId, message }) });
   const init = async () => { const session = (sessions as any).session(sessionId); await session.rpc(randomUUID(), { id: 'init', method: 'initialize', params: {} }); return session; };
-  return { root, sessionId, messages, init, get sessions() { return sessions; }, respond(fn: typeof respond) { respond = fn; },
+  return { root, sessionId, messages, init, call, get sessions() { return sessions; }, respond(fn: typeof respond) { respond = fn; },
     async restart() { await sessions.close(); sessions = new HttpSessions(options); } };
 }
 const attemptFor = (sessionId: string, requestId = randomUUID()) => ({ sessionId, requestId, attemptId: randomUUID() });
@@ -30,7 +47,7 @@ it('可信派发Local新执行发送前失败能证明本次neverSent，伪造�
   const f = await localFixture(); const session = await f.init(); const attempt = attemptFor(f.sessionId);
   session.storedOperations = 65_536;
   const result = await f.sessions.dispatchRpc(attempt, write);
-  expect(result).toMatchObject({ outcome: 'neverSent', error: { status: 507 } });
+  expect(result).toMatchObject({ outcome: 'neverSent', error: { status: 507, code: -32000, message: 'Persistent operation storage is full' } });
   expect(await f.sessions.provesNeverSent(result, attempt)).toBe(true);
   for (const different of [{ ...attempt, requestId: randomUUID() }, { ...attempt, sessionId: randomUUID() }, { ...attempt, attemptId: randomUUID() }]) expect(await f.sessions.provesNeverSent(result, different)).toBe(false);
   expect(await f.sessions.provesNeverSent({ ...result }, attempt)).toBe(false);
@@ -40,6 +57,31 @@ it('可信派发Local新执行发送前失败能证明本次neverSent，伪造�
   expect(await f.sessions.provesNeverSent(next, attempt)).toBe(true);
   expect(await f.sessions.provesNeverSent({ outcome: 'neverSent', error: { mayHaveBeenSent: false } } as any, attempt)).toBe(false);
   await expect(session.operation(attempt.requestId)).rejects.toMatchObject({ status: 404 });
+  expect(f.messages.filter(m => m.method === 'turn/start')).toHaveLength(0);
+});
+it('可信派发Local首次WAL rename后目录fsync EIO保留pending且不能证明回队，公开错误保持', async () => {
+  const f = await localFixture(); const session = await f.init();
+  const queue = new OperationQueue({ directory: join(f.root, 'queue'), gatewayId: 'gateway', authorize: async () => () => {} });
+  const requestId = randomUUID();
+  await queue.submit({ id: requestId, context: { mode: 'local', gatewayId: 'gateway', businessKey: 'mac', authorizationKey: 'auth', localHostId: 'host' }, conversationId: 't', body: 'one', settings: {}, attachmentRefs: [] });
+  const claim = (await queue.claimNext('mac'))!; const potential = await queue.markPotentialSend(requestId, claim.revision, claim.claimToken!);
+  const attempt = { sessionId: f.sessionId, requestId, attemptId: claim.claimToken! };
+  const directory = join(f.root, 'codex-mobile-http', f.sessionId); storageFault.directory = directory;
+  const result = await f.sessions.dispatchRpc(attempt, write);
+  expect(JSON.parse(await readFile(join(directory, `${requestId}.json`), 'utf8')).status).toBe('pending');
+  expect(result).toMatchObject({ outcome: 'unknown', error: { code: 'EIO', message: 'directory-fsync-EIO' } });
+  expect(await f.sessions.provesNeverSent(result, attempt)).toBe(false);
+  await expect(queue.confirmNeverSent(requestId, potential.revision, claim.claimToken!, () => f.sessions.provesNeverSent(result, attempt))).rejects.toBeDefined();
+  expect((await queue.read(requestId)).state).toBe('uncertain');
+  const retry = { ...attempt, attemptId: randomUUID() };
+  expect((await f.sessions.dispatchRpc(retry, write)).outcome).toBe('unknown');
+  const publicId = randomUUID(); storageFault.directory = directory;
+  const failed = await f.call(write, publicId);
+  expect(failed.status).toBe(503); expect(await failed.json()).toEqual({ error: { code: -32000, message: 'Session storage or upstream unavailable' } });
+  expect(JSON.parse(await readFile(join(directory, `${publicId}.json`), 'utf8')).status).toBe('pending');
+  session.storedOperations = 65_536;
+  const full = await f.call(write);
+  expect(full.status).toBe(507); expect(await full.json()).toEqual({ error: { code: -32000, message: 'Persistent operation storage is full' } });
   expect(f.messages.filter(m => m.method === 'turn/start')).toHaveLength(0);
 });
 it('可信派发Local已提交失败保守unknown，uncertain和重启pending都不生成本次证明', async () => {

@@ -244,7 +244,7 @@ class Session {
     while (imageReads.length > MAX_IMAGE_READ_OPERATIONS) this.operations.delete(imageReads.shift()!.requestId);
   }
 
-  private save(operation: Operation) {
+  private save(operation: Operation, onPublishing?: () => void) {
     if (!operation.durable) return Promise.resolve();
     const serializable = { requestId: operation.requestId, signature: operation.signature, status: operation.status, ...(operation.message ? { message: operation.message } : {}) };
     const write = async () => {
@@ -264,6 +264,8 @@ class Session {
       try {
         const file = await open(temporary, "wx", 0o600);
         try { await file.writeFile(data); await file.sync(); } finally { await file.close(); }
+        // rename或之后的目录fsync失败仍可能留下WAL，不能以save未完成推断未落盘。
+        onPublishing?.();
         await rename(temporary, target);
       } finally { await unlink(temporary).catch(() => {}); }
       if (!previousSize) this.storedOperations++;
@@ -736,6 +738,7 @@ class Session {
     this.operations.set(requestId, operation);
     const execution = async () => {
       let recorded = false;
+      let mayBeRecorded = false;
       let submitted = false;
       try {
         if (!message.method && epoch !== this.epoch) throw new HttpError(409, "Approval epoch is missing or stale");
@@ -752,7 +755,7 @@ class Session {
         operation.connectionEpoch = submittedEpoch;
         const submittedApproval = !message.method ? this.pending.get(message.id!) : undefined;
         // Durable write-ahead record must precede any upstream send.
-        await this.save(operation); recorded = true;
+        await this.save(operation, () => { mayBeRecorded = true; }); recorded = true;
         if (this.socket !== submittedSocket || this.epoch !== submittedEpoch || !this.isOpen(submittedSocket) ||
           (!message.method && this.pending.get(message.id!) !== submittedApproval)) throw new HttpError(503, "App-server changed before operation could be submitted");
         let result: RpcMessage;
@@ -833,7 +836,8 @@ class Session {
         if (recorded) await this.discard(operation);
         if (this.operations.get(requestId) === operation) this.operations.delete(requestId);
         // 只属于本次新建operation；previous/promise分支及清理失败均到不了这里。
-        if (call.dispatch && !physicallySubmitted && (!submitted || (this.remote && rejectedBeforeSend))) call.dispatch.neverSent = true;
+        // 首次保存可能已发布但未完成时保留pending WAL，不能签发零发送证明。
+        if (call.dispatch && (!mayBeRecorded || recorded) && !physicallySubmitted && (!submitted || (this.remote && rejectedBeforeSend))) call.dispatch.neverSent = true;
         throw error;
       } finally { delete operation.promise; this.trimOperations(); }
     };
