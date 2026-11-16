@@ -161,7 +161,7 @@ Task4 按内部依赖顺序实施：4a 可信目标身份基础 → 4b 持久队
 - [x] 4b.2b 内部实现：可信 Session/HttpSessions rawstream、显式投影/replay 来源及交付/创建/关闭/侧边栏原调用预算，通过513项、双strict/build、独立规格与质量复审及root全工件核验，见[收据](evidence/2026-11-16-remote-session-transport-validation.json)。现有 WAL 保留，公开 mode/host/index、完整消费者目标图和唯一ledger调度未接，不能视为 Remote模式可用。
 - [x] 4b.2c 内部可信 Session 执行结果：固定 `44fb339f`，40项可信边界、10文件369项、双strict/build及原 SPEC→原 QUALITY 限定复审通过，见[收据](evidence/2026-11-16-remote-session-dispatch-validation.json)；复用原 Session／requestId／hosted WAL，原结果对象与原 attempt／invocation 绑定真实零发送证明，不接 ledger 或增加派发 owner。公开 4b.2 仍待。
 - [x] 4b.2d 内部原收据读取：固定 `b63ad1d8` 的493项相关回归、双strict/build及全新SPEC→QUALITY通过；两审各亲跑49项及独立12／7项边界探针，root核全部小工件，见[收据](evidence/2026-11-16-remote-original-operation-validation.json)。按原context／Session／requestId只读原namespace，最终await后核验原预算，不创建Session／RPC／写WAL。公开装配和整个4b.2仍待。
-- [ ] 4b.2e 原操作context／WAL与当前有效Session传输装配：显式恢复后保留原编号和namespace，使用当前真实目标句柄与既有完整恢复证明；completed不重发、pending／uncertain仍未知，旧句柄永拒，待实现／验收。
+- [ ] 4b.2e 原操作context／WAL与当前有效Session传输装配：显式恢复后保留原编号和namespace，使用当前真实目标句柄与既有完整恢复证明；completed不重发、pending／uncertain仍未知，旧句柄永拒。2026-11-16已实现并完成定向验证；待固定源码归档核验及root→全新SPEC→全新QUALITY，尚不勾验收完成。
 - [ ] 4b.2：HTTP/WS/hosted/Bark/关注与目标传输装配，Sidechat 内存路由、附件 bytes/活引用、占位、读合并/导航取消、显式 resume 和旧 FollowUps 推断替换，待实现/验收。
 - [ ] 4c：真实业务时钟与会话观察/释放，待实现/验收。
 
@@ -324,3 +324,8 @@ Task3d.4完成记录：Task3d.4统计失效装配已完成源码验收：冻结 
 
 
 4b.2d最终源码验收（2026-11-16）：冻结 `b63ad1d8b87ebe69a1b9ee655a8a87d0532e730c`，独立固定archive相关11文件493项、双strict/build通过；全新SPEC→QUALITY各亲跑49项和独立12／7项探针。root核验全部45／11／9项小工件及固定源码，原失败、微任务修复与引用范围如实保留，见[收据](evidence/2026-11-16-remote-original-operation-validation.json)。下一步4b.2e补齐原context与当前有效Session传输装配；旧context、requestId、原WAL不改写，已发送未知写入不自动重放。4b.2、4c、5、6仍待；仅源码，无官方访问、客户端构建、发布或部署。
+
+
+4b.2e 本地实现记录（2026-11-16，main 基线 `b2bc47432e26c558f8380274d6a2b4042a0e7991`）：最小复用 HttpSessions／Session，冻结完整原 context 及 target／resolver／namespace 容器；同代严格约束保留，跨代 WAL 仍为原 authorizationKey 的 transport-v1 namespace。每次调用真实核对当前 handle 的完整 managed，以及 resolver 当前真实 descriptor 的 generation／authorizationKey，再执行原 context 的既有完整恢复与在线证明。旧 handle、双 Runtime 拼接、未 resume／坏链／身份或目标变化均拒绝，不改 Runtime／Target 的恢复政策。completed只复用原确定收据；pending／uncertain不重发；真实neverSent仍绑定原attempt／invocation／namespace。
+
+真实 RED→最小 GREEN 同时修复最终包装 Promise 微任务撤权、hostedOperation Session 创建前授权、caller 改写原 call 与后台 load 退休后的迟到旧图片删除。新 Session 的 load 独立保留首次原 call 与同步真实 fence，传输 ALS 继续只放无 FS live 检查；保留内部 submitted 回调与 hosted 固定 Session／原 operationId、Sidechat memoryOnly。定向验证通过；最终固定 archive 相关服务端回归、双strict/build:server、逐命令cwd/env/exit与首次失败日志见本轮私有实施报告，待root实审→全新SPEC→全新QUALITY，不勾4b.2e或整个4b.2。未接公开mode／host／index、消费者图、ledger scheduler或旧FollowUps迁移，未访问官方、构建客户端、发布或部署。

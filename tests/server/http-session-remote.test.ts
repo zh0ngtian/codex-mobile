@@ -225,20 +225,21 @@ it('断线失效epoch，真实重连换新stream且不重放业务写；只读�
   const init = f.frames.filter(frame => frame.message?.method === 'initialize'); expect(init).toHaveLength(2); expect(init[0].stream_id).not.toBe(init[1].stream_id);
 });
 it('初始化调用期限退役后新调用使用自己的预算，Remote Session心跳不伪造pong', async () => {
-  const f = await sessionFixture(); const id = randomUUID(); const session = (f.sessions as any).session(id);
+  const f = await sessionFixture(); const id = randomUUID();
   const { performance } = await import('node:perf_hooks');
-  await session.rpc(randomUUID(), { id: 'init', method: 'initialize' }, undefined, { deadline: performance.now() + 500 });
+  expect(await f.sessions.dispatchRpc({ sessionId: id, requestId: randomUUID(), attemptId: randomUUID() }, { id: 'init', method: 'initialize' }, { deadline: performance.now() + 500 })).toHaveProperty('outcome', 'response');
+  const session = (f.sessions as any).sessions.get(id);
   await new Promise(resolve => setTimeout(resolve, 550)); session.heartbeat(); session.heartbeat();
   expect((await f.call(id, { id: 'new-budget', method: 'model/list' })).status).toBe(200);
   expect(session.open).toBe(true); expect(f.connections).toHaveLength(1);
 });
 it('取消及HttpSessions关闭等待迟到rawstream实际收尾且共享Relay保持健康', async () => {
-  const f = await sessionFixture(); const id = randomUUID(); const session = (f.sessions as any).session(id);
+  const f = await sessionFixture(); const id = randomUUID();
   const { ResolvedRemoteTarget } = await import('../../server/targets.js'); const { performance } = await import('node:perf_hooks');
   const original = ResolvedRemoteTarget.prototype.createRawStream;
   let stream: any; let release!: () => void; const gate = new Promise<void>(resolve => { release = resolve; });
   vi.spyOn(ResolvedRemoteTarget.prototype, 'createRawStream').mockImplementationOnce(async function (this: any, signal) { stream = await original.call(this, signal); await gate; return stream; });
-  const abort = new AbortController(); const outcome = session.rpc(randomUUID(), { id: 'init', method: 'initialize' }, undefined, { deadline: performance.now() + 2000, signal: abort.signal }).catch((error: unknown) => error);
+  const abort = new AbortController(); const outcome = f.sessions.dispatchRpc({ sessionId: id, requestId: randomUUID(), attemptId: randomUUID() }, { id: 'init', method: 'initialize' }, { deadline: performance.now() + 2000, signal: abort.signal });
   await until(() => !!stream); abort.abort(); let settled = false; const closing = f.sessions.close().then(() => { settled = true; });
   try { await new Promise(resolve => setTimeout(resolve, 20)); expect(settled).toBe(false); }
   finally { release(); await outcome; await closing; }

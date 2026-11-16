@@ -2,6 +2,7 @@ import { SidechatHistory } from './sidechat-history.js';
 import { sidechatReplayItems, type SidechatReplayOptions } from './sidechat-replay.js';
 import { performance } from 'node:perf_hooks';
 import { ResolvedRemoteTarget, TargetResolver } from './targets.js';
+import { sameRemoteManaged } from './remote/runtime-state.js';
 import type { OperationContext } from './operation-queue.js';
 import { RemoteStream, RemoteSendError } from './remote/relay.js';
 import { assertRemoteOperation, runRemoteCleanup, withRemoteOperation } from './remote/operation-guard.js';
@@ -59,7 +60,19 @@ function assertCall(call: SessionCallOptions) {
 
 async function authorizeSession(remote: HttpSessionRemoteOptions, call: SessionCallOptions) {
   assertRemoteOperation(); assertCall(call);
-  await remote.target.assertCurrent(call.signal);
+  const scope = await remote.target.remoteScope(call.signal);
+  if (remote.context.mode !== 'remote' || !sameRemoteManaged(scope.managed, remote.context.managed) ||
+    Object.hasOwn(scope.managed, 'userId') !== Object.hasOwn(remote.context.managed, 'userId'))
+    throw new TypeError('Remote session 当前传输与原managed身份不一致');
+  // 当前handle与原context恢复授权必须来自resolver的同一真实当前代，不能拼接另一个Runtime。
+  const current = await remote.resolver.resolve({ mode: 'remote', gatewayId: remote.context.gatewayId, account: {
+    accountId: remote.context.managed.accountId, accountUserId: remote.context.managed.accountUserId,
+    ...(Object.hasOwn(remote.context.managed, 'userId') ? { userId: remote.context.managed.userId } : {}),
+  }, target: remote.context.target }, call.signal);
+  const descriptor = remote.target.descriptor;
+  if (current.descriptor.generation !== descriptor.generation || current.descriptor.authorizationKey !== descriptor.authorizationKey ||
+    current.descriptor.transportNamespace !== descriptor.transportNamespace)
+    throw new TypeError('Remote session 当前传输不属于resolver当前授权代');
   const fence = await remote.resolver.authorizeOperationExecution(remote.context, call.signal);
   assertCall(call); await remote.target.assertCurrent(call.signal);
   fence.assertCurrent(); assertCall(call);
@@ -239,7 +252,7 @@ class Session {
   storageBytes = 0;
   invalidatedSocket?: SessionSocket;
 
-  constructor(readonly id: string, private upstreamUrl: string, private root: string, private changeHistory: HttpSessionRemoteOptions['projections']['changeHistory'], private images: HttpSessionRemoteOptions['projections']['images'], private timestamps: HttpSessionRemoteOptions['projections']['timestamps'], private webCitations: HttpSessionRemoteOptions['projections']['webCitations'], private notifications?: BarkNotifications, private hostedObserver?: (message?: RpcMessage) => void, private hostedReply?: (requestId: string, message: RpcMessage, call: SessionCallOptions) => Promise<RpcMessage | undefined>, private memoryOnly = false, private onAuthModeChanged?: (mode: string | null) => void, private remote?: HttpSessionRemoteOptions) {
+  constructor(readonly id: string, private upstreamUrl: string, private root: string, private changeHistory: HttpSessionRemoteOptions['projections']['changeHistory'], private images: HttpSessionRemoteOptions['projections']['images'], private timestamps: HttpSessionRemoteOptions['projections']['timestamps'], private webCitations: HttpSessionRemoteOptions['projections']['webCitations'], private notifications?: BarkNotifications, private hostedObserver?: (message?: RpcMessage) => void, private hostedReply?: (requestId: string, message: RpcMessage, call: SessionCallOptions) => Promise<RpcMessage | undefined>, private memoryOnly = false, private onAuthModeChanged?: (mode: string | null) => void, private remote?: HttpSessionRemoteOptions, private loadCheck?: () => void) {
     this.loadPromise = memoryOnly ? Promise.resolve() : this.load();
   }
 
@@ -247,14 +260,19 @@ class Session {
   touch() { this.updatedAt = Date.now(); }
 
   private async load() {
+    const check = () => { if (this.remote) { this.loadCheck!(); assertRemoteOperation(); } };
+    check();
     const directory = join(this.root, this.id);
     let files: string[];
     try { files = await readdir(directory); } catch (error: any) { if (error.code === "ENOENT") return; throw error; }
+    check();
     const records = files.filter((name) => name.endsWith(".json") && UUID.test(name.slice(0, -5)));
     for (let offset = 0; offset < records.length; offset += 32) {
       await Promise.all(records.slice(offset, offset + 32).map(async (name) => {
+        check();
         const path = join(directory, name);
         const raw = await readFile(path, "utf8");
+        check();
         // 旧版曾将 fs/readFile 当成写入操作，保存了大量 base64 图片响应。
         // 仅删除可确认已完成的图片读取结果，保留所有真正的写入记录。
         if (raw.includes('"dataBase64"')) {
@@ -977,16 +995,26 @@ export class HttpSessions {
   private hostedRequests = new Map<string, { message: RpcMessage; originalId: string | number; epoch: string; sessionId: string }>();
   private hostedListeners = new Set<(message: RpcMessage) => void>();
   constructor(private options: { upstreamUrl: string; codexHome?: string; remote?: HttpSessionRemoteOptions; changeHistory?: TurnChangeHistory; notifications?: BarkNotifications; uploadMeter?: ModelUploadSource; onAuthModeChanged?: (mode: string | null) => void }) {
-    const remote = options.remote;
+    // 只快照绑定容器；consumer保留原可信实例，原context与传输handle不可在await期间换绑。
+    const remote = options.remote ? { ...options.remote, context: structuredClone(options.remote.context) } : undefined;
+    if (remote?.context.mode === 'remote') { Object.freeze(remote.context.managed); Object.freeze(remote.context.target); }
+    if (remote) { Object.freeze(remote.context); Object.freeze(remote); }
+    this.options = { ...options, remote };
     if (remote) {
       if (!(remote.target instanceof ResolvedRemoteTarget) || !(remote.resolver instanceof TargetResolver) || remote.context?.mode !== 'remote' ||
-        !options.codexHome || remote.storageNamespace !== remote.target.descriptor.transportNamespace || !/^[a-f0-9]{64}$/.test(remote.storageNamespace) ||
+        !options.codexHome || !/^[a-f0-9]{64}$/.test(remote.storageNamespace) ||
         !remote.sidechatReplay?.files || remote.sidechatReplay.files.kind !== 'remote' || typeof remote.sidechatReplay.resolveReference !== 'function' ||
         !remote.projections?.changeHistory || !remote.projections.images || !remote.projections.timestamps || !remote.projections.webCitations)
         throw new TypeError('Remote session 需要可信目标、显式来源及独立存储namespace');
       const descriptor = remote.target.descriptor; const context = remote.context;
-      if (context.gatewayId !== descriptor.gatewayId || context.businessKey !== descriptor.businessKey || context.authorizationKey !== descriptor.authorizationKey ||
-        context.generation !== descriptor.generation || context.target.environmentId !== descriptor.target.environmentId || context.target.installationId !== descriptor.target.installationId)
+      const sameGeneration = context.generation === descriptor.generation;
+      const originalNamespace = createHash('sha256').update(JSON.stringify(['transport-v1', 'remote', context.authorizationKey])).digest('hex');
+      if (context.gatewayId !== descriptor.gatewayId || context.businessKey !== descriptor.businessKey ||
+        !/^[a-f0-9]{64}$/.test(context.authorizationKey) || remote.storageNamespace !== originalNamespace ||
+        (sameGeneration ? context.authorizationKey !== descriptor.authorizationKey || remote.storageNamespace !== descriptor.transportNamespace : context.authorizationKey === descriptor.authorizationKey) ||
+        context.managed.accountId !== descriptor.account.accountId || context.managed.accountUserId !== descriptor.account.accountUserId ||
+        Object.hasOwn(context.managed, 'userId') !== Object.hasOwn(descriptor.account, 'userId') || context.managed.userId !== descriptor.account.userId ||
+        context.target.environmentId !== descriptor.target.environmentId || context.target.installationId !== descriptor.target.installationId)
         throw new TypeError('Remote session 原context必须与目标身份一致');
       const consumers: [unknown, string[]][] = [
         [remote.projections.changeHistory, ['observe', 'beforeStart', 'cancelStart', 'get', 'flush']],
@@ -1019,28 +1047,36 @@ export class HttpSessions {
   }
 
   private closed = false;
-  private async withCall<T>(call: SessionCallOptions, operation: () => Promise<T>): Promise<T> {
+  private async withCall<T>(call: SessionCallOptions, operation: (originalCall: SessionCallOptions, authorize?: () => void) => Promise<T>): Promise<T> {
+    call = { ...call, deadline: call.deadline, signal: call.signal };
     if (this.closed) throw new HttpError(503, 'Sessions closed');
-    if (!this.options.remote) return operation();
+    if (!this.options.remote) return operation(call);
     const fence = await authorizeSession(this.options.remote, call);
-    return withRemoteOperation(() => { assertCall(call); fence.assertLive(); }, async () => {
-      const result = await operation();
+    const authorize = () => { fence.assertCurrent(); assertCall(call); assertRemoteOperation(); if (this.closed) throw new HttpError(503, 'Sessions closed'); };
+    const result = await withRemoteOperation(() => { assertCall(call); fence.assertLive(); }, async () => {
+      const result = await operation(call, authorize);
       fence.assertCurrent(); assertCall(call);
       if (this.closed) throw new HttpError(503, 'Sessions closed');
       return result;
     });
+    // 包装Promise本身也有await窗口；在最后一次await后才交付正文。
+    fence.assertCurrent(); assertCall(call); assertRemoteOperation();
+    if (this.closed) throw new HttpError(503, 'Sessions closed');
+    return result;
   }
 
-  private session(id: string | null) {
+  private session(id: string | null, authorize?: () => void) {
     if (this.closed) throw new HttpError(503, 'Sessions closed');
     if (!id || !UUID.test(id)) throw new HttpError(400, "sessionId must be a UUID");
     const existing = this.sessions.get(id);
     if (existing) return existing;
+    if (this.options.remote && !authorize) throw new TypeError('Remote session 创建需要原调用真实授权');
+    authorize?.();
     if (this.sessions.size >= MAX_SESSIONS) throw new HttpError(429, "Too many sessions");
     const session = new Session(id, this.options.upstreamUrl, this.root, this.changeHistory, this.images, this.timestamps, this.webCitations, this.options.notifications,
       [HOSTED_SESSION_ID, SIDECHAT_SESSION_ID].includes(id) ? (message) => this.observeHosted(message, id) : undefined,
       ![HOSTED_SESSION_ID, SIDECHAT_SESSION_ID].includes(id) ? (requestId, message, call) => this.replyHosted(requestId, message, call) : undefined,
-      id === SIDECHAT_SESSION_ID, this.options.onAuthModeChanged, this.options.remote);
+      id === SIDECHAT_SESSION_ID, this.options.onAuthModeChanged, this.options.remote, authorize);
     // Loading errors are returned by APIs rather than emitted as unhandled rejections.
     session.loadPromise.catch(() => {});
     this.sessions.set(id, session);
@@ -1051,9 +1087,9 @@ export class HttpSessions {
   async handle(request: IncomingMessage, response: ServerResponse, url: URL) {
     const call = sessionCall();
     try {
-      const result = await this.withCall(call, async () => {
+      const result = await this.withCall(call, async (call, authorize) => {
         if ([HOSTED_SESSION_ID, SIDECHAT_SESSION_ID].includes(url.searchParams.get("sessionId") ?? "")) throw new HttpError(403, "Internal session is reserved");
-        const session = this.session(url.searchParams.get("sessionId"));
+        const session = this.session(url.searchParams.get("sessionId"), authorize);
         let result: unknown;
         if (url.pathname === "/api/events" && request.method === "GET") {
           const after = Number(url.searchParams.get("after") ?? "0");
@@ -1149,7 +1185,7 @@ export class HttpSessions {
     for (const listener of this.hostedListeners) listener(message);
   }
   async replyHosted(requestId: string, message: RpcMessage, call: SessionCallOptions = sessionCall()): Promise<RpcMessage | undefined> {
-    return this.withCall(call, async () => {
+    return this.withCall(call, async call => {
       if (typeof message.id !== "string" || !message.id.startsWith("hosted:")) return undefined;
       const entry = this.hostedRequests.get(message.id);
       const session = this.sessions.get(entry?.sessionId ?? HOSTED_SESSION_ID);
@@ -1183,8 +1219,8 @@ export class HttpSessions {
 
   /** Dedicated durable identity survives gateway restarts and is never exposed to clients. */
   async hostedReady(call: SessionCallOptions = sessionCall()) {
-    return this.withCall(call, async () => {
-      const session = this.session(HOSTED_SESSION_ID);
+    return this.withCall(call, async (call, authorize) => {
+      const session = this.session(HOSTED_SESSION_ID, authorize);
       if (!session.ready || !session.open) {
         const initialized = await session.rpc(randomUUID(), { id: "hosted-initialize", method: "initialize", params: {
           clientInfo: { name: "codex-mobile-follow-ups", version: "1" }, capabilities: { experimentalApi: true },
@@ -1196,9 +1232,9 @@ export class HttpSessions {
     });
   }
   async hostedRpc(message: RpcMessage, requestId: string = randomUUID(), call: SessionCallOptions = sessionCall()) {
-    return this.withCall(call, async () => {
+    return this.withCall(call, async (call, authorize) => {
       await this.hostedReady(call);
-      return this.session(HOSTED_SESSION_ID).rpc(requestId, message, undefined, call);
+      return this.session(HOSTED_SESSION_ID, authorize).rpc(requestId, message, undefined, call);
     });
   }
 
@@ -1243,10 +1279,10 @@ export class HttpSessions {
       if (!UUID.test(originalAttempt.requestId) || !UUID.test(originalAttempt.attemptId) || originalAttempt.sessionId === SIDECHAT_SESSION_ID) throw new HttpError(400, 'Invalid dispatch attempt');
       // 冻结原调用输入，异步期间调用方改对象不能将证明换绑到另一次请求。
       const originalMessage = structuredClone(message);
-      const response = await this.withCall(originalCall, async () => {
+      const response = await this.withCall(originalCall, async (_call, authorize) => {
         assertCall(originalCall); assertRemoteOperation();
         if (this.dispatchNamespace() !== namespace) throw uncertain();
-        session = this.session(originalAttempt.sessionId); originalEpoch = session.epoch;
+        session = this.session(originalAttempt.sessionId, authorize); originalEpoch = session.epoch;
         check(); if (originalAttempt.sessionId === HOSTED_SESSION_ID) await this.hostedReady(originalCall);
         check(); const response = await session!.rpc(originalAttempt.requestId, originalMessage, epoch, { ...originalCall, dispatch }); check(); return response;
       });
@@ -1280,7 +1316,7 @@ export class HttpSessions {
   }
 
   async sidebarRpc(message: RpcMessage, call: SessionCallOptions = sessionCall()): Promise<RpcMessage> {
-    return this.withCall(call, async () => {
+    return this.withCall(call, async call => {
       if (message.id == null || !validSidebarParams(message.method!, message.params)) throw new HttpError(400, "Invalid sidebar parameters");
       this.sidebar.setEpoch(await this.hostedReady(call));
       const params = message.params as any;
@@ -1305,10 +1341,10 @@ export class HttpSessions {
 
   private sidechatIds = new Set<string>();
   async sidechatRpc(envelope: RpcMessage, requestId: string = randomUUID(), call: SessionCallOptions = sessionCall()): Promise<RpcMessage> {
-    try { return await this.withCall(call, () => this.sidechatExecution(envelope, requestId, call)); }
+    try { return await this.withCall(call, (call, authorize) => this.sidechatExecution(envelope, requestId, call, authorize)); }
     catch (error) { if (error instanceof HttpError) throw error; return { id: envelope.id, error: { code: -32001, message: error instanceof Error ? error.message : 'Sidechat 不可用' } }; }
   }
-  private async sidechatExecution(envelope: RpcMessage, requestId: string, call: SessionCallOptions): Promise<RpcMessage> {
+  private async sidechatExecution(envelope: RpcMessage, requestId: string, call: SessionCallOptions, authorize?: () => void): Promise<RpcMessage> {
     const method = envelope.params?.method; const params = envelope.params?.params;
     if (typeof method !== 'string' || !params || Array.isArray(params) || typeof params !== 'object') throw new HttpError(400, 'Sidechat 参数无效');
     if (!['read', 'thread/fork', 'replay', 'turn/start', 'turn/steer', 'turn/interrupt', 'thread/unsubscribe', 'thread/settings/update'].includes(method)) throw new HttpError(400, '不支持的 Sidechat 操作');
@@ -1325,7 +1361,7 @@ export class HttpSessions {
         if (params.ephemeral !== true || params.excludeTurns !== true || typeof upstreamParams.lastTurnId !== 'string' || !upstreamParams.lastTurnId || typeof params.threadId !== 'string') throw new HttpError(400, 'Sidechat 必须从明确的结束回合临时分叉');
       } else if (!this.sidechats.has(params.threadId)) throw new Error('Sidechat 已失效，请返回主聊天重新创建');
       if (method === 'replay') upstreamParams = { threadId: params.threadId, items: await sidechatReplayItems(this.sidechats.replay(params.threadId, params.sourceThreadId, params.beforeTurnId), this.options.remote ? { ...this.options.remote.sidechatReplay, signal: call.signal } : undefined) };
-      const session = this.session(SIDECHAT_SESSION_ID);
+      const session = this.session(SIDECHAT_SESSION_ID, authorize);
       if (!session.ready || !session.open) {
         const initialized = await session.rpc(randomUUID(), { id: 'sidechat-initialize', method: 'initialize', params: { clientInfo: { name: 'codex-mobile-sidechat', version: '1' }, capabilities: { experimentalApi: true } } }, undefined, call);
         if (initialized.error) return { ...initialized, id: envelope.id };
@@ -1349,7 +1385,7 @@ export class HttpSessions {
     } catch (error) { if (error instanceof HttpError) throw error; return { id: envelope.id, error: { code: -32001, message: error instanceof Error ? error.message : 'Sidechat 不可用' } }; }
   }
 
-  hostedOperation(requestId: string, call: SessionCallOptions = sessionCall()) { return this.session(HOSTED_SESSION_ID).operation(requestId, call); }
+  hostedOperation(requestId: string, call: SessionCallOptions = sessionCall()) { return this.withCall(call, (call, authorize) => this.session(HOSTED_SESSION_ID, authorize).operation(requestId, call)); }
 
   realtime(sessionId: string | null, client?: WebSocket) {
     if (sessionId === HOSTED_SESSION_ID) throw new HttpError(403, "Internal session is reserved");
