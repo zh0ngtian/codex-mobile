@@ -99,3 +99,8 @@ it('可信派发Local异步收尾只使用原attempt快照，调用方修改不�
   const result = await f.sessions.dispatchRpc(attempt, write); expect(result.outcome).toBe('neverSent'); expect(await f.sessions.provesNeverSent(result, attempt)).toBe(false);
   Object.assign(attempt, original); expect(await f.sessions.provesNeverSent(result, attempt)).toBe(true);
 });
+it.each(['deadline', 'signal'] as const)('可信派发Local新Session原%s已失效时零创建', async kind => {
+  const f = await localFixture(); const attempt = attemptFor(f.sessionId); const abort = new AbortController(); if (kind === 'signal') abort.abort();
+  const result = await f.sessions.dispatchRpc(attempt, write, { deadline: performance.now() + (kind === 'deadline' ? -1 : 2000), signal: abort.signal });
+  expect(result.outcome).toBe('unknown'); expect((f.sessions as any).sessions.size).toBe(0); expect(f.messages).toHaveLength(0);
+});

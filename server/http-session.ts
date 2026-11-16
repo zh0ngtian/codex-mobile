@@ -1193,8 +1193,10 @@ export class HttpSessions {
       if (!UUID.test(originalAttempt.requestId) || !UUID.test(originalAttempt.attemptId) || originalAttempt.sessionId === SIDECHAT_SESSION_ID) throw new HttpError(400, 'Invalid dispatch attempt');
       // 冻结原调用输入，异步期间调用方改对象不能将证明换绑到另一次请求。
       const originalMessage = structuredClone(message);
-      session = this.session(originalAttempt.sessionId); originalEpoch = session.epoch;
       const response = await this.withCall(originalCall, async () => {
+        assertCall(originalCall); assertRemoteOperation();
+        if (this.dispatchNamespace() !== namespace) throw uncertain();
+        session = this.session(originalAttempt.sessionId); originalEpoch = session.epoch;
         check(); if (originalAttempt.sessionId === HOSTED_SESSION_ID) await this.hostedReady(originalCall);
         check(); const response = await session!.rpc(originalAttempt.requestId, originalMessage, epoch, { ...originalCall, dispatch }); check(); return response;
       });

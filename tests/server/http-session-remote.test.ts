@@ -686,3 +686,9 @@ it('可信派发Remote证明最后授权await期间原attempt变更不得借给�
   vi.spyOn(f.remote.resolver, 'authorizeOperation').mockImplementation(async (...args) => { const fence = await authorize(...args); attempt.requestId = randomUUID(); return fence; });
   expect(await f.sessions.provesNeverSent(result, attempt)).toBe(false);
 });
+it.each(['deadline', 'revoked'] as const)('可信派发Remote新Session原%s已失效时零创建或WAL读取', async kind => {
+  const f = await sessionFixture(); const attempt = { sessionId: randomUUID(), requestId: randomUUID(), attemptId: randomUUID() };
+  if (kind === 'revoked') { f.setManaged({ accountId: 'revoked-before-session' }); await f.runtime.readTargetBinding().catch(() => {}); }
+  const result = await f.sessions.dispatchRpc(attempt, { id: 'invalid', method: 'turn/start', params: { threadId: 't' } }, { deadline: performance.now() + (kind === 'deadline' ? -1 : 2000) });
+  expect(result.outcome).toBe('unknown'); expect((f.sessions as any).sessions.size).toBe(0); expect(f.frames.filter(frame => frame.type === 'client_message')).toHaveLength(0);
+});
