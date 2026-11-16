@@ -1086,8 +1086,10 @@ export class HttpSessions {
 
   async handle(request: IncomingMessage, response: ServerResponse, url: URL) {
     const call = sessionCall();
+    let authorization: (() => void) | undefined;
     try {
       const result = await this.withCall(call, async (call, authorize) => {
+        authorization = authorize;
         if ([HOSTED_SESSION_ID, SIDECHAT_SESSION_ID].includes(url.searchParams.get("sessionId") ?? "")) throw new HttpError(403, "Internal session is reserved");
         const session = this.session(url.searchParams.get("sessionId"), authorize);
         let result: unknown;
@@ -1137,9 +1139,11 @@ export class HttpSessions {
         } else throw new HttpError(405, "Method not allowed");
         return result;
       });
+      const body = JSON.stringify(result);
+      authorization?.();
       response.setHeader("content-type", "application/json; charset=utf-8");
       response.setHeader("cache-control", "no-store");
-      response.end(JSON.stringify(result));
+      response.end(body);
     } catch (error) {
       response.statusCode = error instanceof HttpError ? error.status : 503;
       response.setHeader("content-type", "application/json; charset=utf-8");
@@ -1247,8 +1251,9 @@ export class HttpSessions {
   }
 
   /** 零发送证明只核验原身份，允许同代暂时离线；业务发送仍使用原在线执行授权。 */
-  private async withDispatchProofCall<T>(call: SessionCallOptions, operation: () => T): Promise<T> {
+  private async withDispatchProofCall<T>(call: SessionCallOptions, operation: (authorize: () => void) => T): Promise<T> {
     let fence: (() => void) | undefined;
+    const authorize = () => { fence?.(); assertCall(call); assertRemoteOperation(); if (this.closed) throw uncertain(); };
     const result = await withRemoteOperation(() => assertCall(call), async () => {
       const remote = this.options.remote;
       if (remote) {
@@ -1258,7 +1263,7 @@ export class HttpSessions {
       }
       fence?.(); assertCall(call); assertRemoteOperation();
       if (this.closed) throw uncertain();
-      return operation();
+      return operation(authorize);
     });
     fence?.(); assertCall(call); assertRemoteOperation();
     if (this.closed) throw uncertain();
@@ -1271,7 +1276,9 @@ export class HttpSessions {
     this.dispatchAttempts.set(attempt, invocation);
     const originalCall: SessionCall = { deadline: call.deadline, signal: call.signal, guardLocalSend: true };
     const dispatch = { neverSent: false }; let session: Session | undefined; let originalEpoch: string | undefined;
+    let executionAuthorization: (() => void) | undefined; let proofAuthorization: (() => void) | undefined;
     const check = (response = true) => {
+      if (response) executionAuthorization?.(); else proofAuthorization?.();
       assertCall(originalCall); assertRemoteOperation();
       if (this.closed || !session || session.closed || this.sessions.get(originalAttempt.sessionId) !== session || this.dispatchNamespace() !== namespace || (response && session.epoch !== originalEpoch)) throw uncertain();
     };
@@ -1280,6 +1287,7 @@ export class HttpSessions {
       // 冻结原调用输入，异步期间调用方改对象不能将证明换绑到另一次请求。
       const originalMessage = structuredClone(message);
       const response = await this.withCall(originalCall, async (_call, authorize) => {
+        executionAuthorization = authorize;
         assertCall(originalCall); assertRemoteOperation();
         if (this.dispatchNamespace() !== namespace) throw uncertain();
         session = this.session(originalAttempt.sessionId, authorize); originalEpoch = session.epoch;
@@ -1290,7 +1298,7 @@ export class HttpSessions {
     } catch (error) {
       if (dispatch.neverSent) {
         try {
-          await this.withDispatchProofCall(originalCall, () => { check(false); }); check(false);
+          await this.withDispatchProofCall(originalCall, authorize => { proofAuthorization = authorize; check(false); }); check(false);
           const result: SessionDispatchResult = Object.freeze({ outcome: 'neverSent', error });
           this.dispatchProofs.set(result, { attempt, binding, invocation, session: session!, namespace, call: originalCall });
           return result;
@@ -1305,12 +1313,14 @@ export class HttpSessions {
     const proof = this.dispatchProofs.get(result);
     const originalAttempt = { ...attempt };
     if (!proof || proof.attempt !== attempt || proof.binding !== canonical(originalAttempt)) return false;
+    let authorization: (() => void) | undefined;
     const check = () => {
+      authorization?.();
       assertCall(proof.call); assertRemoteOperation();
       return canonical(attempt) === proof.binding && this.dispatchAttempts.get(attempt) === proof.invocation && this.sessions.get(originalAttempt.sessionId) === proof.session && !proof.session.closed && this.dispatchNamespace() === proof.namespace;
     };
     try {
-      const valid = await this.withDispatchProofCall(proof.call, check);
+      const valid = await this.withDispatchProofCall(proof.call, authorize => { authorization = authorize; return check(); });
       return valid && check();
     } catch { return false; }
   }

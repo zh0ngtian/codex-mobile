@@ -188,6 +188,8 @@ it.each(['signal', 'deadline', 'parent'] as const)('可信派发Local序列化�
 it.each(['reinitialize', 'hosted'].flatMap(helper => ['signal', 'deadline', 'parent'].map(kind => ({ helper, kind }))))('可信派发Local $helper helper await后原$kind预算不扩展', async ({ helper, kind }) => {
   const f = await localFixture(); const abort = new AbortController(); let live = true;
   if (helper === 'reinitialize') { const session = await f.init(); session.ready = false; session.initialized = undefined; }
+  const now = performance.now.bind(performance); let expired = false;
+  if (kind === 'deadline') vi.spyOn(performance, 'now').mockImplementation(() => now() + (expired ? 5000 : 0));
   let release!: () => void; let enter!: () => void;
   const gate = new Promise<void>(resolve => { release = resolve; }); const entered = new Promise<void>(resolve => { enter = resolve; }); cleanup.push(() => release());
   f.respond((socket, message) => {
@@ -199,7 +201,7 @@ it.each(['reinitialize', 'hosted'].flatMap(helper => ['signal', 'deadline', 'par
   const invoke = () => f.sessions.dispatchRpc(attempt, helper === 'hosted' ? write : { id: 'read', method: 'thread/read', params: { threadId: 't' } }, call);
   const pending = kind === 'parent' ? withRemoteOperation(() => { if (!live) throw new Error('parent-expired'); }, invoke).catch(error => ({ outcome: 'unknown' as const, error })) : invoke();
   await entered;
-  if (kind === 'signal') abort.abort(); else if (kind === 'deadline') await new Promise(resolve => setTimeout(resolve, Math.max(0, call.deadline - performance.now()) + 20)); else live = false;
+  if (kind === 'signal') abort.abort(); else if (kind === 'deadline') { expired = true; expect(performance.now()).toBeGreaterThan(call.deadline); } else live = false;
   release(); const result = await pending; await new Promise(resolve => setTimeout(resolve, 20));
   expect(result.outcome).toBe('unknown'); expect(await f.sessions.provesNeverSent(result, attempt)).toBe(false);
   expect(f.messages.filter(message => ['initialized', 'thread/read', 'turn/start'].includes(message.method))).toHaveLength(0);

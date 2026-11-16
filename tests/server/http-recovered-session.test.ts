@@ -178,3 +178,31 @@ it('跨代真实stream零发送证明仍绑定原attempt/namespace，原未发�
   expect(await sessions.dispatchRpc(attempt, message)).toHaveProperty('outcome', 'response'); expect(await sessions.provesNeverSent(zero, attempt)).toBe(false);
   expect(f.frames.filter(frame => frame.message?.method === 'turn/start')).toHaveLength(1); expect(JSON.parse(await readFile(f.path(HOSTED_SESSION_ID, attempt.requestId), 'utf8'))).toHaveProperty('status', 'completed');
 });
+it('dispatch自身最后await仍同步核验原真实执行fence，不只核验Session和预算', async () => {
+  const f = await setup(); const sessions = f.sessions(); const requestId = randomUUID(); const message = { id: requestId, method: 'turn/start', params: { threadId: 'cached' } };
+  expect(await sessions.dispatchRpc({ sessionId: HOSTED_SESSION_ID, requestId, attemptId: randomUUID() }, message)).toHaveProperty('outcome', 'response');
+  const actual = f.resolver.authorizeOperationExecution.bind(f.resolver); let calls = 0; let checks = 0; let queued = false;
+  vi.spyOn(f.resolver, 'authorizeOperationExecution').mockImplementation(async (...args) => { const fence = await actual(...args); if (++calls !== 1) return fence; return { ...fence, assertCurrent: () => { fence.assertCurrent(); if (++checks === 3) { queued = true; queueMicrotask(() => { (f.runtime as any).active.state.paused = true; }); } } }; });
+  const result = await sessions.dispatchRpc({ sessionId: HOSTED_SESSION_ID, requestId, attemptId: randomUUID() }, message);
+  expect(queued).toBe(true); expect(result).toHaveProperty('outcome', 'unknown'); expect(result).not.toHaveProperty('message');
+});
+it.each(['result', 'proof'] as const)('跨代neverSent %s自身最后await保留真实原身份fence', async kind => {
+  const f = await setup(); const sessions = f.sessions(); await sessions.hostedReady(); const attempt = { sessionId: HOSTED_SESSION_ID, requestId: randomUUID(), attemptId: randomUUID() }; const relay = (f.runtime as any).bundle.controller.relay; const budget = relay.maxBufferedBytes;
+  let result: any; if (kind === 'proof') { try { relay.maxBufferedBytes = 0; result = await sessions.dispatchRpc(attempt, { id: 'proof', method: 'turn/start' }); } finally { relay.maxBufferedBytes = budget; } expect(result.outcome).toBe('neverSent'); }
+  const actual = f.resolver.authorizeOperation.bind(f.resolver); let checks = 0; let queued = false;
+  vi.spyOn(f.resolver, 'authorizeOperation').mockImplementation(async (...args) => { const fence = await actual(...args); return () => { fence(); if (++checks === 2) { queued = true; queueMicrotask(() => { (f.runtime as any).active.state.paused = true; }); } }; });
+  if (kind === 'result') { try { relay.maxBufferedBytes = 0; result = await sessions.dispatchRpc(attempt, { id: 'proof', method: 'turn/start' }); } finally { relay.maxBufferedBytes = budget; } expect(result).toHaveProperty('outcome', 'unknown'); }
+  else expect(await sessions.provesNeverSent(result, attempt)).toBe(false);
+  expect(queued).toBe(true);
+});
+it('跨代真实HTTP在handle自身最后await后核验同次fence，迟到缓存正文不进入response.end', async () => {
+  const f = await setup(); const sessions = f.sessions(); const sessionId = randomUUID(); const requestId = randomUUID(); const message = { id: 'HTTP_ORIGINAL_BODY', method: 'turn/start', params: { threadId: 't' } };
+  expect(await sessions.dispatchRpc({ sessionId, requestId: randomUUID(), attemptId: randomUUID() }, { id: 'init', method: 'initialize' })).toHaveProperty('outcome', 'response');
+  expect(await sessions.dispatchRpc({ sessionId, requestId, attemptId: randomUUID() }, message)).toHaveProperty('outcome', 'response');
+  const actual = f.resolver.authorizeOperationExecution.bind(f.resolver); let calls = 0; let checks = 0; let queued = false;
+  vi.spyOn(f.resolver, 'authorizeOperationExecution').mockImplementation(async (...args) => { const fence = await actual(...args); if (++calls !== 1) return fence; return { ...fence, assertCurrent: () => { fence.assertCurrent(); if (++checks === 3) { queued = true; queueMicrotask(() => { (f.runtime as any).active.state.paused = true; }); } } }; });
+  const server = createServer((request, response) => { void sessions.handle(request, response, new URL(request.url!, 'http://localhost')); });
+  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve)); cleanup.push(() => new Promise<void>(resolve => server.close(() => resolve())));
+  const response = await fetch(`http://127.0.0.1:${(server.address() as any).port}/api/rpc?sessionId=${sessionId}`, { method: 'POST', body: JSON.stringify({ requestId, message }) });
+  const body = await response.text(); expect(queued).toBe(true); expect(response.status).toBe(503); expect(body).not.toContain('HTTP_ORIGINAL_BODY');
+});
