@@ -16,6 +16,8 @@ import { TargetResolver } from '../../server/targets.js';
 import { withRemoteOperation } from '../../server/remote/operation-guard.js';
 
 const cleanup: (() => unknown)[] = [];
+// 普通功能回归包含真实 fsync 和多轮 RPC，不作为两秒性能断言；期限测试显式传入原短预算。
+vi.setConfig({ testTimeout: 15_000 });
 let qualityEvidence = 0;
 afterEach(async ({ task }) => {
   if (task.name.startsWith('QUALITY Q')) {
@@ -32,7 +34,7 @@ function legacy(state = 'queued', overrides: any = {}) {
   const content = { threadId: 'thread', inputText: '原正文', text: '原预览', attachmentCount: 0, extraInput: [], settings: { model: '原模型' } };
   return { ...content, id: randomUUID(), operationId: randomUUID(), fingerprint: createHash('sha256').update(canonical(content)).digest('hex'), state, revision: 7, ...overrides };
 }
-async function fixture(records: any[] = [], attemptTimeoutMs = 2000) {
+async function fixture(records: any[] = [], attemptTimeoutMs = 10_000) {
   const root = await mkdtemp(join(tmpdir(), 'h-ledger-')); cleanup.push(() => rm(root, { recursive: true, force: true }));
   const directory = join(root, 'ledger'); const legacyDirectory = join(root, 'codex-mobile-follow-ups'); await mkdir(legacyDirectory, { mode: 0o700 });
   const path = join(legacyDirectory, 'queue.json'); const source = JSON.stringify({ version: 1, records }); await writeFile(path, source, { mode: 0o600 });
@@ -105,11 +107,12 @@ it('HTTP新增先耐久再确认；重复原请求幂等，失败retry稳定公�
   expect(await api.list()).toEqual([]); expect(f.received.filter(m => m.method === 'turn/start').every(m => m.params.clientUserMessageId === body.id)).toBe(true);
 });
 it.each(['queued', 'failed'])('B立即引导越过%s的A，返回真实turnId且A继续等待', async state => {
-  const a = legacy(state), b = legacy(); const f = await fixture([a, b]); const api = await f.serve(await f.open());
+  // 此处验证顺序和真实回执；持久化/fsync 的机器负载不应成为两秒性能断言。
+  const a = legacy(state), b = legacy(); const f = await fixture([a, b], 10_000); const api = await f.serve(await f.open());
   const response = await api.post({ action: 'steer', id: b.id, revision: b.revision }); expect({ status: response.status, response: await response.clone().json(), lastError: String(f.scheduler.lastError) }).toMatchObject({ status: 200 }); expect(await response.json()).toMatchObject({ turnId: 'original-turn' });
   expect(f.received.filter(m => m.method === 'turn/steer')).toMatchObject([{ params: { expectedTurnId: 'original-turn', clientUserMessageId: b.id } }]);
   expect(f.received.filter(m => m.method === 'turn/start')).toEqual([]); expect((await api.list())[0]).toMatchObject({ id: a.id, state });
-});
+}, 15_000);
 it('引导耐久固定原turn，发送前已失效则明确失败且绝不改投新turn/start', async () => {
   const b = legacy(); const f = await fixture([b]); const api = await f.serve(await f.open()); let observed = false;
   f.after(m => { if (m.method === 'thread/turns/list' && !observed) { observed = true; f.active.set('thread', 'replacement-turn'); } });
@@ -298,7 +301,7 @@ it('实际Session广播mobile/turn/accepted且HTTPsteer保留原输入与公共i
   expect(f.received.find(m => m.method === 'turn/steer')).toMatchObject({ params: { input: [{ type: 'text', text: b.inputText, text_elements: [] }], clientUserMessageId: b.id } });
 });
 it('已绑定steer仍让原stop与审批先发送，不占其专用优先槽', async () => {
-  const b = legacy(); const f = await fixture([b]); const api = await f.serve(await f.open()); const context = await f.resolver.operationContext();
+  const b = legacy(); const f = await fixture([b], 10_000); const api = await f.serve(await f.open()); const context = await f.resolver.operationContext();
   const run = f.scheduler.runOnce.bind(f.scheduler); let release!: () => void, entered = false; const gate = new Promise<void>(r => { release = r; });
   const wrapper = vi.spyOn(f.scheduler, 'runOnce').mockImplementation(async () => { entered = true; await gate; return run(); });
   const steer = api.post({ action: 'steer', id: b.id, revision: b.revision });
@@ -310,9 +313,9 @@ it('已绑定steer仍让原stop与审批先发送，不占其专用优先槽', a
   await f.scheduler.submit({ id: randomUUID(), context, conversationId: 'thread', sessionId: HOSTED_SESSION_ID, requestId: randomUUID(), epoch, message: { id: 42, result: { decision: 'accept' } }, settings: {}, attachmentRefs: [], control: { kind: 'approval', turnId: 'original-turn', requestId: `request:${epoch}:42`, expiresAt: Date.now() + 10_000 } });
   release(); wrapper.mockRestore(); expect((await steer).status).toBe(200);
   expect(f.received.filter(m => m.method === 'turn/interrupt' || (m.id === 42 && !m.method) || m.method === 'turn/steer').map(m => m.method ?? 'approval')).toEqual(['turn/interrupt', 'approval', 'turn/steer']);
-});
+}, 15_000);
 it('HTTP16MiB及输入附件settings校验沿用，unknown不能cancel或自动重发', async () => {
-  const f = await fixture(); const api = await f.serve(await f.open()); const body = { ...legacy(), action: 'enqueue' };
+  const f = await fixture([], 2000); const api = await f.serve(await f.open()); const body = { ...legacy(), action: 'enqueue' };
   for (const bad of [{ settings: { unknown: 'x' } }, { attachmentCount: 1 }, { extraInput: [{ type: 'unknown' }] }, { inputText: 'x'.repeat(32769) }]) expect((await api.post({ ...body, ...bad })).status).toBe(400);
   expect((await fetch(api.url, { method: 'POST', body: ' '.repeat(16 * 1024 * 1024 + 1) })).status).toBe(413);
   expect((await api.post(body)).status).toBe(200); f.active.clear(); f.drop(true); await f.scheduler.runOnce(); const item = (await api.list())[0]; expect(item.state).toBe('uncertain');

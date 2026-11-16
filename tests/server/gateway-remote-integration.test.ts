@@ -37,7 +37,17 @@ it('公开网关目录、HTTP、WS 与附件均沿唯一 Runtime，网关本机�
     expect(await request({ id: 4, method: 'thread/read', params: { threadId: 'thread' } })).toMatchObject({ id: 4, result: { ok: true } });
     const uploadId = randomUUID(); const response = await fetch(url('/api/uploads/file'), { method: 'POST',
       headers: { 'x-codex-upload-id': uploadId, 'x-codex-file-name': 'sample.txt', 'content-type': 'text/plain' }, body: 'gateway upload bytes' });
-    expect(response.status).toBe(201); const upload = await response.json() as any; expect(upload.path).toContain(f.targetHome);
+    expect([201, 202]).toContain(response.status);
+    let upload = await response.json() as any;
+    const untilUpload = Date.now() + 15000;
+    while (upload.accepted === true && Date.now() < untilUpload) {
+      // 耐久 ACK 可先于物理上传完成；仅查询原 UUID，绝不重新 POST。
+      const query = url('/api/uploads/operations'); query.searchParams.set('requestId', uploadId);
+      const completed = await fetch(query); expect([201, 202]).toContain(completed.status);
+      upload = await completed.json();
+      if (upload.accepted === true) await new Promise(resolve => setTimeout(resolve, 50));
+    }
+    expect(upload.path).toContain(f.targetHome);
     const download = url('/api/files/download/sample.txt'); download.searchParams.set('path', upload.path);
     expect(await (await fetch(download)).text()).toBe('gateway upload bytes');
     expect(f.connections).toHaveLength(1);
