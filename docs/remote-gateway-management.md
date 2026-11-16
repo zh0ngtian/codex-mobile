@@ -1,6 +1,6 @@
-# Remote 网关 Mac 管理（源码已接线，长期验收待完成）
+# Remote 网关 Mac 管理（源码及本地验证完成，官方长期验收待完成）
 
-本页说明源码中的 Mac 管理入口；现役网关和手机尚未部署这些改动。目标业务路由、共享队列、会话观察及手机模式选择已接线，正在最终源码验收；官方完整功能与长期稳定性尚待验收，不能据此认为现役手机已能使用 Remote。阶段状态和收据见[实施计划](superpowers/plans/2026-11-13-remote-gateway.md)。
+本页说明源码中的 Mac 管理入口；现役网关和手机尚未部署这些改动。目标业务路由、共享队列、会话观察及手机模式选择已实现且本地回归、开发构建及iPhone17Pro表单验收通过；官方完整功能与长期稳定性尚待验收，不能据此认为现役手机已能使用 Remote。阶段状态和收据见[实施计划](superpowers/plans/2026-11-13-remote-gateway.md)。
 
 从源码验证时先执行 `npm run build:server`，再以 `node bin/codex-mobile.mjs remote …` 调用本工作区编译产物。下列 `codex-mobile remote …` 写法指同一套已编译入口，不代表现役安装版本已包含这些命令。
 
@@ -75,4 +75,4 @@ codex-mobile remote reassociate --previous-environment-id OLD_ENV_ID --previous-
 
 候选源码 `700c7c7d96c5fc7cadf58913d5f855d1c731ed5a` 的31文件相关回归已有717项通过、7项按配置跳过，源码及含测试的两种严格服务端类型检查、服务端构建通过。先前质量审查复现的root整体替换归属断链已补充同一证明、失效取消和实际收尾回归；规格复审另确认的5处最终期限缺口已逐项红绿修复。QUALITY后续确认的六处过期资源创建边界也已统一保留原父操作及短阶段预算，原独立脚本均触发延迟后验证连接、原生请求或helper创建为零；成功交付后的Relay挑战、零流保活与重连继续通过。最终固定源码的独立规格与质量复审均已通过，见[隔离验收记录](superpowers/plans/evidence/2026-11-13-remote-admin-isolated-validation.json)。同一冻结源码的[官方Remote实际OS入口探针](superpowers/plans/evidence/2026-11-13-remote-admin-product-probe.json)已通过：三次进程各完成只读RPC及CLI状态/真实端口核验，正常退出后重启和SIGKILL后恢复成功，健康owner下第二个进程在Runtime启动前被拒绝。关闭逻辑流25秒后新增RPC成功，认证准备次数保持1。三次启动至RPC和CLI就绪分别为11789、14244、10065ms；这些是完整保留的单次冷启动样本，不能作为P95或8小时验收。
 
-真实 OAuth、授权撤销与重新登记未在现役服务上执行；当前没有发布客户端、部署生产网关或操作 launchd。正式 Remote 已有只读 RPC、同流恢复、零流短时保活与持久暂停的隔离收据；手机模式和公开队列已完成本轮源码接线；最终本地验收见实施计划。官方全功能、P95、跨刷新和连续8小时验收仍待后续任务。
+真实 OAuth、授权撤销与重新登记未在现役服务上执行；当前没有发布客户端、部署生产网关或操作 launchd。正式 Remote 已有只读 RPC、同流恢复、零流短时保活与持久暂停的隔离收据；手机模式和公开队列已完成本轮源码接线；本地验证详见[本轮收据](superpowers/plans/evidence/2026-11-17-remote-gateway-completion-validation.json)，完整首失败和修复后补跑口径均保留。官方全功能、P95、跨刷新和连续8小时验收仍待后续任务。

@@ -186,7 +186,7 @@ Android 使用固定 PakePlus WebView 容器直接呈现内置共享 Web 页面�
 
 ## 系统架构
 
-官方 Remote 常驻网关已完成本轮源码接线，正在最终验收：同一台 Mac 持有官方主连接，手机保留多网关，每个网关在原 URL 表单中选择本地或远程；远程模式下网关 Mac 也走官方 Relay。公开路由、目标文件/项目/通知消费者、唯一共享持久队列、手机 outbox 和后台会话观察器已实现；旧配置默认本地，只有“测试并保存”验证后才切换。现役安装与已发布客户端尚未包含本轮改动；官方全量功能、8小时、跨刷新与恢复延迟分位数仍待验收，不以短时探针代替。使用和验证边界见[Mac管理说明](docs/remote-gateway-management.md)、[现行交互约定](docs/interaction-alignment.md#412-多网关本地与-remote-模式源码实现最终验收中未发布)、[设计](docs/superpowers/specs/2026-11-13-remote-gateway.md)和[实施计划](docs/superpowers/plans/2026-11-13-remote-gateway.md)。本轮仅交付源码，未部署网关或发布客户端。
+官方 Remote 常驻网关已完成本轮源码开发与本地验证：同一台 Mac 持有官方主连接，手机保留多网关，每个网关在原 URL 表单中选择本地或远程；远程模式下网关 Mac 也走官方 Relay。公开路由、目标文件/项目/通知消费者、唯一共享持久队列、手机 outbox 和后台会话观察器已实现；旧配置默认本地，只有“测试并保存”验证后才切换。现役安装与已发布客户端尚未包含本轮改动；官方全量功能、8小时、跨刷新与恢复延迟分位数仍待验收，不以短时探针代替。使用和验证边界见[Mac管理说明](docs/remote-gateway-management.md)、[现行交互约定](docs/interaction-alignment.md#412-多网关本地与-remote-模式源码开发与本地验证完成未发布)、[设计](docs/superpowers/specs/2026-11-13-remote-gateway.md)和[实施计划](docs/superpowers/plans/2026-11-13-remote-gateway.md)。本轮仅交付源码，未部署网关或发布客户端。
 
 ```mermaid
 flowchart LR
