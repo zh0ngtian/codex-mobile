@@ -1,0 +1,75 @@
+{
+  "schemaVersion": 1,
+  "task": "Task4b2f-internal-restart-inventory",
+  "sourceCommit": "a7c667839c6f7782c52bc67e86a789b8a67dbd72",
+  "baselineMain": "34ff5fb9b4440002bad0ac9361847083f4f3e8ee",
+  "sourceOnly": true,
+  "deployed": false,
+  "clientBuild": false,
+  "clientPublished": false,
+  "scope": "现有OperationQueue内部无正文重启发现；完整原上下文与会话精确分组、全部原收据及接收序、原终态过滤，保持正文授权和错误语义。",
+  "gates": {
+    "implementationPassed": true,
+    "specPassed": true,
+    "qualityPassed": true,
+    "rootAuditedAllArtifacts": true
+  },
+  "implementation": {
+    "root": "/private/tmp/e4b2f/fixed-final",
+    "reportSha256": "2a5da8c829cbc57450c0d45c1173c40df07dca33f3ae857eeb5cc0a97a3fb76f",
+    "manifestSha256": "025b4e6f7043a74038c1f2d13d1e0834d32d21a6fb28b5f08d4b0efb0f6fb3f9",
+    "artifactCount": 34,
+    "focusedPassed": 16,
+    "relatedPassed": 190,
+    "strictAndBuildPassed": true
+  },
+  "finalSpec": {
+    "root": "/private/tmp/isf-32459",
+    "verdict": "PASS",
+    "reportPath": "report.json",
+    "manifestPath": "manifest.json",
+    "reportSha256": "6a655caf18e496675685fcccd52df07fd93f9184c1abe1c52ee870154080f961",
+    "manifestSha256": "e51d7dc1ef14d6a7f1135ccd38b48068f27387a2e1a7aff18be2345cb4e5ced9",
+    "artifactCount": 13,
+    "fixedSourcesVerified": 7,
+    "focusedPassed": 16,
+    "independentAssertionGroups": 2,
+    "rootAuditedAllArtifacts": true
+  },
+  "finalQuality": {
+    "root": "/private/tmp/iqf-kgi599f6",
+    "verdict": "PASS",
+    "reportPath": "report.json",
+    "manifestPath": "manifest.json",
+    "reportSha256": "eaa99ae90191bf2345ce2573fd9e9ebfd00b54901faa2175d2c9986a1757152d",
+    "manifestSha256": "ea8c7f16ea3cecb22f76318b2ec978b2b706e72f13ac8b1fb338edb4a6c7d81f",
+    "artifactCount": 12,
+    "fixedSourcesVerified": 10,
+    "focusedPassed": 16,
+    "independentPassed": 0,
+    "rootAuditedAllArtifacts": true
+  },
+  "validation": {
+    "relatedFiles": 3,
+    "relatedPassed": 190,
+    "inventoryPassed": 16,
+    "strictAndBuildPassed": true,
+    "commandEvidence": "/private/tmp/e4b2f/fixed-final/commands.json",
+    "commandEvidenceSha256": "a3efea292b3aac836bf023e02f7210a83579f1c9d0f267f999f7eee307b405de",
+    "historicalRedFailed": 16,
+    "historicalGreenPassed": 16,
+    "failuresRetained": true
+  },
+  "rootAudit": {
+    "path": "/tmp/codex-task4b2f-final-root-audit.json",
+    "sha256": "5c577ee090f22144566d71cb90ec9804f53eefefe79ac483620f797011c8aba5",
+    "allChecksPassed": true
+  },
+  "limitations": [
+    "内部metadata发现不等于正文读取或执行授权；旧公开list仍整批授权。",
+    "EIO为实际文件句柄readFile边界synthetic注入，不声称硬件磁盘故障；OS子进程耐久接收与真实Runtime撤权另有实际验证。",
+    "公开mode/host/index、统一scheduler、旧FollowUps迁移及完整消费者未接；整个4b.2、4c、Task5/6继续待。"
+  ],
+  "officialRemoteProbeRunThisStep": false,
+  "testChatsCreated": 0
+}
