@@ -1,0 +1,108 @@
+{
+  "schemaVersion": 1,
+  "task": "Task4b2d-original-operation-receipt",
+  "sourceCommit": "b63ad1d8b87ebe69a1b9ee655a8a87d0532e730c",
+  "tree": "8f3daec946de4352ab0f53a04e4a70848c7e865c",
+  "baselineMain": "3d1ac25650edfcb5579937b7ac6c42eb17a22c1d",
+  "completedAtUtc": "2026-11-16T02:59:54.390297+00:00",
+  "sourceOnly": true,
+  "deployed": false,
+  "clientPublished": false,
+  "clientBuild": false,
+  "gates": {
+    "implementationPassed": true,
+    "specPassed": true,
+    "qualityPassed": true,
+    "rootAuditedAllArtifacts": true
+  },
+  "scope": "仅可信内部按原context和namespace读取单条WAL；独立于当前传输，保留原UUID与原预算，不创建Session/RPC/派发owner。",
+  "implementation": {
+    "root": "/private/tmp/or4d-_5pf0ojt",
+    "reportSha256": "b46f3db34e314f1db93de570bf1fb38035ccd9a4b03f7255f5d1bf0f61b3b726",
+    "manifestSha256": "698c7c5c4741345c9c71dc65678b019aaf566b7783a3f9c8481a5a157eff9144",
+    "artifactCount": 45
+  },
+  "finalSpec": {
+    "root": "/private/tmp/s4d-0pc4g6p9",
+    "reportPath": "report.json",
+    "manifestPath": "manifest.json",
+    "reportSha256": "04d7ddeda0989d0512c1a4e58f791bf188d0dee8c0e5f7f27bf3cdd6cc2f85a5",
+    "manifestSha256": "f36eb6d4e0d1a4b278cb9554e708ecd0f8aed282ccda8d9d928f433ff31dccec",
+    "verdict": "PASS",
+    "rootAuditedAllArtifacts": true,
+    "artifactCount": 11,
+    "focusedPassed": 49,
+    "independentProbesPassed": 12,
+    "sourceFilesVerified": 9
+  },
+  "finalQuality": {
+    "root": "/private/tmp/q4d-w5dqgtx7",
+    "reportPath": "report.json",
+    "manifestPath": "manifest.json",
+    "reportSha256": "93cc67af14d09c804f5368da74f1e487501dcff2ea1c6548004a52aeacd659d0",
+    "manifestSha256": "6330c315fc0464fd3f251f6554d4d78c7e5a56c610281dc2d44bde97f13a619b",
+    "verdict": "PASS",
+    "rootAuditedAllArtifacts": true,
+    "artifactCount": 9,
+    "focusedPassed": 49,
+    "independentProbesPassed": 7
+  },
+  "rootAudit": {
+    "path": "/tmp/codex-task4b2d-final-root-audit.json",
+    "sha256": "d4b5f081b6e2e6a906d5d04659d2f55597f1b409f09bfaf24c7868378033d697",
+    "allChecksPassed": true
+  },
+  "validation": {
+    "focusedPassed": 49,
+    "relatedFiles": 11,
+    "relatedPassed": 493,
+    "serverStrictExit": 0,
+    "npmStrictExit": 0,
+    "serverBuildExit": 0,
+    "fixedArchive": true,
+    "finalSourceArchiveSha256": "1ae846357e25378350b5f32ee656b100996a79c662a4d960c754e542a9964766",
+    "privateEnvironmentAndCache": true,
+    "packageSymlinksOnly": true
+  },
+  "failuresRetained": [
+    {
+      "label": "red-initial",
+      "exit": 1,
+      "result": "35失败；缺少内部API是主RED，4项等待gate因API缺失而超时；paused另因误调用private pause夹具失败，不能算行为RED。"
+    },
+    {
+      "label": "red-paused-fixture",
+      "exit": 1,
+      "result": "paused改用受控login失败进入真实暂停后，1失败/34跳过，仅缺少内部API，行为RED成立；未运行真实登录。"
+    },
+    {
+      "label": "green-initial",
+      "exit": 1,
+      "result": "32通过/3失败；固定夹具canonical已有2个、Remote close帧异步观察、managed codexHome是loader固定配置而非可由setManaged改变。修正为记录基线计数、等待client_closed以及传入不匹配原home绑定；未改变生产授权政策。"
+    },
+    {
+      "label": "red-final-microtask",
+      "exit": 1,
+      "result": "1失败/48跳过；真实fence后包装Promise微任务暂停，旧候选仍交付completed正文。最后await后再同步核验原/新fence修复。"
+    },
+    {
+      "label": "green-strict-server",
+      "exit": 2,
+      "result": "新测试randomUUID默认值推断成模板字符串类型，非法ID断言赋值不满足类型；显式string参数修正，无生产改动。"
+    }
+  ],
+  "limitations": [
+    "只验收内部原收据读取，整个4b.2和公开Remote模式仍待。",
+    "实施者固定archive493项与双strict/build已核验；两审各自定向执行见对应报告，不冒称均重复全部回归。",
+    "SPEC初次12项探针未接受Remote目标而在setup失败，补齐实际accept后12项通过；保留原日志。"
+  ],
+  "officialRemoteProbeRunThisStep": false,
+  "testChatsCreated": 0,
+  "pending": [
+    "原context与当前有效Session传输装配",
+    "公开目标消费者图、唯一ledger调度与旧FollowUps兼容接线",
+    "Task4c会话观察与真实业务时钟",
+    "Task5手机模式和outbox",
+    "Task6官方功能、8小时和恢复延迟验收"
+  ]
+}
