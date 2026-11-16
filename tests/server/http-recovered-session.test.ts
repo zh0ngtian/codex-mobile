@@ -206,3 +206,32 @@ it('跨代真实HTTP在handle自身最后await后核验同次fence，迟到缓�
   const response = await fetch(`http://127.0.0.1:${(server.address() as any).port}/api/rpc?sessionId=${sessionId}`, { method: 'POST', body: JSON.stringify({ requestId, message }) });
   const body = await response.text(); expect(queued).toBe(true); expect(response.status).toBe(503); expect(body).not.toContain('HTTP_ORIGINAL_BODY');
 });
+it.each(['deadline', 'signal'] as const)('跨代HTTP父guard成功退休后后台load仍保留原%s，不能删除原图片', async kind => {
+  const f = await setup(); const sessions = f.sessions(); const sessionId = randomUUID(); const image = f.path(sessionId, randomUUID());
+  await mkdir(dirname(image), { recursive: true }); await writeFile(image, JSON.stringify({ status: 'completed', message: { result: { dataBase64: 'parent-protected' } } }));
+  let entered!: () => void; const started = new Promise<void>(resolve => { entered = resolve; });
+  let release!: () => void; const gate = new Promise<void>(resolve => { release = resolve; }); cleanup.push(() => release());
+  const abort = new AbortController(); let parentDeadline = Infinity; let parentDone!: () => void; const finished = new Promise<void>(resolve => { parentDone = resolve; });
+  io.afterReadDirectory = async path => { if (path === dirname(image)) { entered(); await gate; } };
+  const server = createServer((request, response) => {
+    parentDeadline = performance.now() + 1000;
+    void withRemoteOperation(() => { if (abort.signal.aborted || performance.now() >= parentDeadline) throw new Error('original-parent-expired'); }, () => sessions.handle(request, response, new URL(request.url!, 'http://localhost'))).then(parentDone);
+  });
+  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve)); cleanup.push(() => new Promise<void>(resolve => server.close(() => resolve())));
+  const pending = fetch(`http://127.0.0.1:${(server.address() as any).port}/api/rpc?sessionId=${sessionId}`, { method: 'POST', body: JSON.stringify({ requestId: randomUUID(), message: { id: 'usage', method: 'mobile/uploadUsage/read', params: { threadId: 't' } } }) });
+  await started; expect((await pending).status).toBe(200); await finished;
+  if (kind === 'signal') abort.abort();
+  else { while (performance.now() < parentDeadline) await new Promise(resolve => setTimeout(resolve, Math.max(1, parentDeadline - performance.now()))); expect(performance.now()).toBeGreaterThanOrEqual(parentDeadline); }
+  release(); const session = (sessions as any).sessions.get(sessionId);
+  await expect(session.loadPromise).rejects.toThrow('original-parent-expired');
+  expect(await readFile(image, 'utf8')).toContain('parent-protected'); expect(f.frames).toHaveLength(0);
+});
+it('跨代Session首次load完成且父guard成功退休后，新调用不继承旧父取消预算', async () => {
+  const f = await setup(); const sessions = f.sessions(); const sessionId = randomUUID(); const abort = new AbortController();
+  await withRemoteOperation(() => { if (abort.signal.aborted) throw new Error('retired-parent'); }, async () => {
+    expect(await sessions.dispatchRpc({ sessionId, requestId: randomUUID(), attemptId: randomUUID() }, { id: 'init', method: 'initialize' })).toHaveProperty('outcome', 'response');
+  });
+  abort.abort();
+  expect(await sessions.dispatchRpc({ sessionId, requestId: randomUUID(), attemptId: randomUUID() }, { id: 'fresh', method: 'thread/read', params: { threadId: 't' } }, { deadline: performance.now() + 2000 })).toHaveProperty('outcome', 'response');
+  expect(f.frames.filter(frame => frame.message?.method === 'thread/read')).toHaveLength(1);
+});

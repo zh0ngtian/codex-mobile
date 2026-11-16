@@ -14,6 +14,17 @@ export function assertRemoteOperation(): void {
   }
 }
 
+/** 仅同次派生后台任务显式保留原父检查；普通成功退役规则保持不变。 */
+export function captureRemoteOperation(): () => void {
+  const parents = (guards.getStore() ?? []).map(guard => ({ guard, assert: guard.assert }));
+  return () => {
+    for (const { guard, assert } of parents) {
+      assert?.();
+      if (guard.failed) throw new Error('Remote 操作已结束');
+    }
+  };
+}
+
 /** 保留原父期限；最终成功才退役并清除闭包，失败继续约束迟到任务。 */
 export function withRemoteOperation<T>(assert: () => void, operation: () => Promise<T>): Promise<T> {
   const guard: Guard = { assert, failed: false };

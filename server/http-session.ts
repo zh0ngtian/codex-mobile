@@ -5,7 +5,7 @@ import { ResolvedRemoteTarget, TargetResolver } from './targets.js';
 import { sameRemoteManaged } from './remote/runtime-state.js';
 import type { OperationContext } from './operation-queue.js';
 import { RemoteStream, RemoteSendError } from './remote/relay.js';
-import { assertRemoteOperation, runRemoteCleanup, withRemoteOperation } from './remote/operation-guard.js';
+import { assertRemoteOperation, captureRemoteOperation, runRemoteCleanup, withRemoteOperation } from './remote/operation-guard.js';
 import type { RpcMessage as RemoteRpcMessage } from './remote/envelope.js';
 import { randomUUID, createHash } from "node:crypto";
 import { mkdir, open, readFile, readdir, rename, unlink, stat } from "node:fs/promises";
@@ -1051,8 +1051,9 @@ export class HttpSessions {
     call = { ...call, deadline: call.deadline, signal: call.signal };
     if (this.closed) throw new HttpError(503, 'Sessions closed');
     if (!this.options.remote) return operation(call);
+    const parents = captureRemoteOperation();
     const fence = await authorizeSession(this.options.remote, call);
-    const authorize = () => { fence.assertCurrent(); assertCall(call); assertRemoteOperation(); if (this.closed) throw new HttpError(503, 'Sessions closed'); };
+    const authorize = () => { parents(); fence.assertCurrent(); assertCall(call); assertRemoteOperation(); if (this.closed) throw new HttpError(503, 'Sessions closed'); };
     const result = await withRemoteOperation(() => { assertCall(call); fence.assertLive(); }, async () => {
       const result = await operation(call, authorize);
       fence.assertCurrent(); assertCall(call);
