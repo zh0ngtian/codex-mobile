@@ -412,3 +412,54 @@ it('legacy原WAL失败后取得确定成功能结算并重开，不残留恢复�
   const path = join(f.root, 'codex-mobile-http', HOSTED_SESSION_ID, `${b.operationId}.json`); const wal = JSON.parse(await readFile(path, 'utf8')); wal.message = { id: b.operationId, result: { turnId: 'confirmed' } }; await writeFile(path, JSON.stringify(wal));
   await f.scheduler.runOnce(); expect(await api.list()).toEqual([]); expect((await f.disk()).records[0].followUp).not.toHaveProperty('walError');
 });
+it('SPEC F1: 实际旧HTTP带附件cancelled收据正常升级应接管', async () => {
+  const f = await fixture();
+  const oldOwner = await FollowUps.open(f.root, f.sessions); cleanup.push(() => oldOwner.close());
+  const api = await f.serve(oldOwner);
+  const original = legacy('queued', { extraInput: [{ type: 'image', url: 'data:image/png;base64,AA==' }], attachmentCount: 1 });
+  expect((await api.post({ ...original, action: 'enqueue' })).status).toBe(200);
+  const queued = (await api.list())[0];
+  expect((await api.post({ action: 'cancel', id: queued.id, revision: queued.revision })).status).toBe(200);
+  await oldOwner.close();
+  const source = await readFile(f.path, 'utf8');
+  await writeFile(join(process.env.HOME!, 'F1-real-old-cancelled-source.json'), source);
+  const item = JSON.parse(source).records[0];
+  expect(item).toMatchObject({ state: 'cancelled', attachmentCount: 1 });
+  expect(item).not.toHaveProperty('inputText'); expect(item).not.toHaveProperty('extraInput'); expect(item).not.toHaveProperty('settings');
+  let outcome = 'accepted';
+  try { await f.open(); } catch (error) { outcome = (error as Error).message; }
+  await writeFile(join(process.env.HOME!, 'F1-outcome.json'), JSON.stringify({ outcome, sourceUnchanged: (await readFile(f.path, 'utf8')) === source }));
+  expect(outcome).toBe('accepted');
+});
+it('F1兼容：真实旧cancelled/sent/queued同批保全计数收据并支持幂等、冲突及重开', async () => {
+  const f = await fixture(); const oldOwner = await FollowUps.open(f.root, f.sessions); cleanup.push(() => oldOwner.close()); const oldApi = await f.serve(oldOwner);
+  const cancelled = legacy('queued', { extraInput: [{ type: 'image', url: '[image omitted]' }], attachmentCount: 1 });
+  const sent = legacy('queued', { threadId: 'sent-thread', extraInput: [{ type: 'image', url: '[image omitted]' }], attachmentCount: 1 });
+  const queued = legacy('queued');
+  expect((await oldApi.post({ ...cancelled, action: 'enqueue' })).status).toBe(200);
+  const item = (await oldApi.list())[0]; expect((await oldApi.post({ action: 'cancel', id: item.id, revision: item.revision })).status).toBe(200);
+  expect((await oldApi.post({ ...sent, action: 'enqueue' })).status).toBe(200); expect((await oldApi.post({ ...queued, action: 'enqueue' })).status).toBe(200);
+  await vi.waitFor(async () => expect(JSON.parse(await readFile(f.path, 'utf8')).records.find((record: any) => record.id === sent.id).state).toBe('sent'), { timeout: 5000 });
+  await oldOwner.close(); const source = await readFile(f.path, 'utf8'); const original = JSON.parse(source).records;
+  expect(original[0]).toMatchObject({ id: cancelled.id, state: 'cancelled', attachmentCount: 1 });
+  expect(Object.keys(original[1]).sort()).toEqual(['id', 'fingerprint', 'threadId', 'state', 'revision', 'operationId', 'method'].sort());
+  const baseline = f.received.filter(message => message.method === 'turn/start').length; expect(baseline).toBe(1);
+  const api = await f.serve(await f.open()); const records = (await f.disk()).records;
+  for (let i = 0; i < original.length; i++) expect(records[i]).toMatchObject({ id: original[i].id, revision: original[i].revision, receiveOrder: i + 1, followUp: { fingerprint: original[i].fingerprint, operationId: original[i].operationId } });
+  expect(records[0].followUp.attachmentCount).toBe(1); expect(records[1].followUp).not.toHaveProperty('attachmentCount');
+  for (const body of [cancelled, sent, queued]) {
+    expect((await api.post({ ...body, action: 'enqueue' })).status).toBe(200);
+    expect((await api.post({ ...body, action: 'enqueue', inputText: '不同原内容' })).status).toBe(409);
+  }
+  expect((await api.list()).map((record: any) => record.id)).toEqual([queued.id]); await f.scheduler.close();
+  const reopened = new OperationScheduler(f.options); cleanup.push(() => reopened.close()); const again = await f.serve(await f.open(reopened)); await reopened.runOnce();
+  expect((await again.list()).map((record: any) => record.id)).toEqual([queued.id]); expect((await f.disk()).records).toHaveLength(3);
+  expect(f.received.filter(message => message.method === 'turn/start')).toHaveLength(baseline); expect(await readFile(f.path, 'utf8')).toBe(source);
+});
+it('F1兼容：终态计数仍拒绝负数、非整数、非number和不完整安全整数，完整payload须一致', async () => {
+  const records = [-1, 0.5, '1', Number.MAX_SAFE_INTEGER + 1].map(attachmentCount => legacy('cancelled', { inputText: undefined, text: undefined, extraInput: undefined, settings: undefined, attachmentCount }));
+  records.push(legacy('cancelled', { extraInput: [{ type: 'image', url: '[image omitted]' }], attachmentCount: 2 }));
+  for (const record of records) {
+    const f = await fixture([record]); await expect(f.open()).rejects.toThrow('旧追问附件数量无效'); expect(await readFile(f.path, 'utf8')).toBe(f.source);
+  }
+});

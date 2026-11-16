@@ -162,7 +162,7 @@ Task4 按内部依赖顺序实施：4a 可信目标身份基础 → 4b 持久队
 - [x] 4b.2c 内部可信 Session 执行结果：固定 `44fb339f`，40项可信边界、10文件369项、双strict/build及原 SPEC→原 QUALITY 限定复审通过，见[收据](evidence/2026-11-16-remote-session-dispatch-validation.json)；复用原 Session／requestId／hosted WAL，原结果对象与原 attempt／invocation 绑定真实零发送证明，不接 ledger 或增加派发 owner。公开 4b.2 仍待。
 - [x] 4b.2d 内部原收据读取：固定 `b63ad1d8` 的493项相关回归、双strict/build及全新SPEC→QUALITY通过；两审各亲跑49项及独立12／7项边界探针，root核全部小工件，见[收据](evidence/2026-11-16-remote-original-operation-validation.json)。按原context／Session／requestId只读原namespace，最终await后核验原预算，不创建Session／RPC／写WAL。公开装配和整个4b.2仍待。
 - [x] 4b.2e 原操作context／WAL与当前有效Session传输装配：固定 `d7d700d8`，5文件217项必要回归（含49项专项）、双strict/build及原SPEC→原QUALITY复验通过，root核固定源码及全部小工件，见[收据](evidence/2026-11-16-remote-recovered-session-validation.json)。原context/UUID/namespace保持，当前同Runtime真实句柄及完整恢复proof受检，后台加载旧批实际结束后仅由新授权重扫；completed不重发，pending/uncertain仍未知。仅内部依赖完成，公开4b.2仍待。
-- [ ] 4b.2h 内部 FollowUps 唯一 owner 接管：实现及定向 TDD 已完成，待最终固定 SHA 必要回归/双strict/build:server、root 实读与 fresh SPEC→QUALITY；旧 Local v1 正常升级与用户 A 的 B 立即引导例外见下方记录。公开默认 gateway/host/index 和完整消费者尚未装配，不勾整个4b.2/4c/5/6。
+- [ ] 4b.2h 内部 FollowUps 唯一 owner 接管：首候选3cfa91b0已通过591项/双strict/build，但fresh SPEC发现旧附件cancelled收据F1；原探针RED→补修GREEN后，待新固定SHA必要回归/双strict/build:server、root实读及原SPEC复验→fresh QUALITY。旧 Local v1 正常升级与用户 A 的 B 立即引导例外见下方记录。公开默认 gateway/host/index 和完整消费者尚未装配，不勾整个4b.2/4c/5/6。
 - [ ] 4b.2：HTTP/WS/hosted/Bark/关注与目标传输装配，Sidechat 内存路由、附件 bytes/活引用、占位、读合并/导航取消、显式 resume 和旧 FollowUps 推断替换，待实现/验收。
 - [ ] 4c：真实业务时钟与会话观察/释放，待实现/验收。
 
@@ -381,3 +381,5 @@ Task3d.4完成记录：Task3d.4统计失效装配已完成源码验收：冻结 
 真实 PrivateStore、HTTP/action→HttpSessions/Session/WAL/LocalWS 的 TDD 包括原最小终态、附件/settings/编辑指纹、中间态、实际原WAL矩阵、并发进程接管及两次重启、同步故障/容量拒绝、唯一发送、Session accepted 输入语义、普通 RPC 混合顺序/控制优先，以及实际 response.end 前撤权/关闭。近64MiB按确定必要的 receipt/method/claim/revision 字节计费；steer 按真实原turn及确定失效提示实际字节接收，新完整错误沿既有原WAL授权读取，旧error保留，不新增上限/截断或第二WAL。最初全部产品/夹具/报告失败和被否定的预留版本保留，最终以固定 SHA 无 overlay git archive 的必要回归、双strict/build:server及本轮私有报告为准。原未注入路径23项保留；旧 uncertain cancel 为历史行为，新注入路径 queued-only/unknown cancel 409 明确覆盖。
 
 完成实施后 STOP，由 root 实读再串行 fresh SPEC→fresh QUALITY；未勾整个4b.2/4c/5/6，未接公开 gateway/host/index 或完整消费者，未访问官方/真实用户队列凭据，未构建客户端或发布部署。仅在本分支提交，由 root 后续按仓库规则整合。
+
+4b.2h SPEC F1补修（基线3cfa91b0）：首轮fresh SPEC真实旧HTTP enqueue/cancel形成带附件计数且已compact正文的cancelled，正常升级被重算空数量而503；原591项/双strict/build记录保留，不视作双审通过。正确原探针1340字节逐字永久保留，新私有根原候选实际RED后仅改单处导入校验：终态缺省计数保持缺省，实际合法非负safeint保留，完整原payload才比较真实数量，非终态仍严格。核真实旧成功finish最小sent不带计数，另补真实cancelled/sent/queued同批不被阻、公共id/UUID/指纹/revision/顺序、幂等/冲突和重开、非法计数及完整payload不一致拒绝。新固定SHA无overlay必要回归/双strict/build与原始命令/环境/hash另封存，待root实读→原SPEC复验→fresh QUALITY；不接公开装配、不勾整个4b.2/4c/5/6，不push/merge/发布部署。

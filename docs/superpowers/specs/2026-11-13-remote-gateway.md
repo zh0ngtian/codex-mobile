@@ -50,6 +50,8 @@ Mac CLI仅通过当前用户专用的本机私有控制通道管理已运行网�
 
 旧 Local canonical 网关的 v1 FollowUps 数据正常升级：原 public id 与 upstream operationId 分开，原指纹、revision、数组接收顺序、输入/附件/settings、恢复中间态及终态幂等收据保留。原 HOSTED_SESSION_ID + operationId 的 WAL 是旧 sending 对账来源；只有此旧 Local 兼容路径的真实 404 可以恢复 queued/原 steer restoreState，IO/坏盘不能伪缺失，Remote 和新 ledger 项不得借用此例外。整批导入及 marker 同一 ledger 事务耐久，原文件保全；同次 open 先选唯一 owner，再启动对应执行，不能让旧 250ms worker 与 scheduler 双发。内部可选接管已实施并完成定向测试，最终固定源码验证与 root 实读、fresh SPEC→QUALITY 继续按计划验收；公开 mode/host/index 和完整消费者尚未启用，不代表手机 Remote 可用。
 
+旧cancel实际会保留attachmentCount并compact正文/extraInput/settings，终态计数存在时只要求合法非负安全整数并按原值保留，缺省保持缺省；只有完整原payload存在才核真实数量，不能将compact后的缺失输入补空后拒绝整批。真实旧成功sent收据不保留计数，不补猜。首候选3cfa91b0已通过591项/双strict/build，但fresh SPEC以实际旧HTTP发现此F1；原探针逐字保留并先RED后补修，待新固定验证、root实读及原SPEC复验→fresh QUALITY，不声称双审完成。
+
 保持 128 条可见队列/64MiB 元数据上限，显式拒绝超额并保留输入，不淘汰旧项；控制操作有独立有界预留。附件单独持久化，不能清理仍被队列引用的文件。离线上游创建会话先显示共享“待创建”占位；确认后绑定真实 threadId，不确定的创建不重试。删除手机上的网关配置不取消共享队列；手机 outbox 暂停保留，草稿保留。
 
 ## 功能和验收

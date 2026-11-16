@@ -105,7 +105,8 @@ export class OperationScheduler {
           if (!['sent', 'cancelled'].includes(item.state) || item.inputText !== undefined || item.text !== undefined) validateText(item.inputText, item.text);
           if (!['sent', 'cancelled'].includes(item.state) || item.extraInput !== undefined) validateInputs(item.extraInput);
           if (!['sent', 'cancelled'].includes(item.state) || item.settings !== undefined) validateSettings(item.settings);
-          if ((!['sent', 'cancelled'].includes(item.state) || item.attachmentCount !== undefined) && (!Number.isSafeInteger(item.attachmentCount) || item.attachmentCount < 0 || item.attachmentCount !== messageAttachmentCount(item.inputText ?? '', item.extraInput ?? []))) throw new QueueError(503, '旧追问附件数量无效');
+          if ((!['sent', 'cancelled'].includes(item.state) || item.attachmentCount !== undefined) && (!Number.isSafeInteger(item.attachmentCount) || item.attachmentCount < 0 ||
+            ((item.inputText !== undefined && item.extraInput !== undefined) && item.attachmentCount !== messageAttachmentCount(item.inputText, item.extraInput)))) throw new QueueError(503, '旧追问附件数量无效');
         }
         return { records: data.records as RecordItem[], sha256: createHash('sha256').update(bytes).digest('hex') };
       }));
