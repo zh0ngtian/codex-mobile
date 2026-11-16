@@ -635,3 +635,54 @@ it('SPEC真实voice响应仍受本次原60秒预算约束，受控推进61秒不
     expect(JSON.stringify(received)).not.toContain('SPEC_EXPIRED_VOICE');
   } finally { clock?.mockRestore(); }
 });
+
+it('可信派发Remote物理零发送证明绑定原namespace/UUID/attempt且不能跨HttpSessions', async () => {
+  const f = await sessionFixture(); const sessionId = randomUUID(); await f.init(sessionId); const session = (f.sessions as any).sessions.get(sessionId);
+  const attempt = { sessionId, requestId: randomUUID(), attemptId: randomUUID() }; const relay = (f.runtime as any).bundle.controller.relay; const budget = relay.maxBufferedBytes; const seq = session.socket.lastSentSeqId;
+  relay.maxBufferedBytes = 0;
+  let result: any;
+  try { result = await f.sessions.dispatchRpc(attempt, { id: 'zero', method: 'turn/start', params: { threadId: 't' } }); } finally { relay.maxBufferedBytes = budget; }
+  expect(result.outcome).toBe('neverSent'); expect(session.socket.lastSentSeqId).toBe(seq); expect(await f.sessions.provesNeverSent(result, attempt)).toBe(true);
+  const other = new HttpSessions({ upstreamUrl: 'ws://127.0.0.1:1', codexHome: f.root, remote: f.remote }); cleanup.push(() => other.close());
+  expect(await other.provesNeverSent(result, attempt)).toBe(false);
+  expect(f.frames.some(frame => frame.message?.method === 'turn/start')).toBe(false); expect((await f.call(sessionId, { id: 'healthy', method: 'model/list' })).status).toBe(200);
+});
+it.each(['held', 'response-first', 'callback-failure', 'callback-only'] as const)('可信派发Remote%s物理已发送不能证明neverSent', async kind => {
+  const f = await sessionFixture(); const sessionId = randomUUID(); await f.init(sessionId); const socket = (f.runtime as any).bundle.controller.relay.socket; const native = socket.send.bind(socket); let release: (() => void) | undefined;
+  if (kind === 'held' || kind === 'callback-only') f.respond(() => {});
+  vi.spyOn(socket, 'send').mockImplementation(((bytes: string, options: any, callback: (error?: Error) => void) => {
+    native(bytes, options, (error?: Error) => { if (JSON.parse(bytes).message?.method === 'thread/resume') { release = () => callback(kind === 'callback-failure' ? new Error('failed') : error); if (kind === 'callback-failure' || kind === 'callback-only') release(); } else callback(error); });
+  }) as any);
+  if (kind === 'response-first') f.remote.projections.images.result = async value => { await new Promise(resolve => setTimeout(resolve, 200)); return value; };
+  const attempt = { sessionId, requestId: randomUUID(), attemptId: randomUUID() };
+  const result = await f.sessions.dispatchRpc(attempt, { id: 'submitted', method: 'thread/resume', params: { threadId: 't', model: 'write' } }, { deadline: performance.now() + 120 }); release?.();
+  expect(result.outcome).toBe('unknown'); expect(await f.sessions.provesNeverSent(result, attempt)).toBe(false); expect((await (f.sessions as any).sessions.get(sessionId).operation(attempt.requestId)).status).toBe('uncertain');
+});
+it('可信派发Remote最终授权拒绝cached正文且已产生零发送证明撤权后不可使用', async () => {
+  const f = await sessionFixture(); const sessionId = randomUUID(); await f.init(sessionId); const attempt = { sessionId, requestId: randomUUID(), attemptId: randomUUID() }; const message = { id: 'cached', method: 'turn/start', params: { threadId: 't' } };
+  expect((await f.sessions.dispatchRpc(attempt, message)).outcome).toBe('response');
+  const relay = (f.runtime as any).bundle.controller.relay; const budget = relay.maxBufferedBytes; relay.maxBufferedBytes = 0;
+  const zeroAttempt = { ...attempt, requestId: randomUUID(), attemptId: randomUUID() }; let zero: any;
+  try { zero = await f.sessions.dispatchRpc(zeroAttempt, message); } finally { relay.maxBufferedBytes = budget; }
+  expect(zero.outcome).toBe('neverSent'); f.setManaged({ accountId: 'revoked' }); await f.runtime.readTargetBinding().catch(() => {});
+  const result = await f.sessions.dispatchRpc({ ...attempt, attemptId: randomUUID() }, message); expect(result.outcome).toBe('unknown'); expect(result).not.toHaveProperty('message'); expect(await f.sessions.provesNeverSent(zero, zeroAttempt)).toBe(false);
+});
+it.each(['before-result', 'after-result'] as const)('可信派发Remote已证明零发送%s真实断线后仍可同代离线验明neverSent', async timing => {
+  const f = await sessionFixture(); const sessionId = randomUUID(); await f.init(sessionId); const session = (f.sessions as any).sessions.get(sessionId);
+  const attempt = { sessionId, requestId: randomUUID(), attemptId: randomUUID() }; const relay = (f.runtime as any).bundle.controller.relay; const budget = relay.maxBufferedBytes; const seq = session.socket.lastSentSeqId;
+  const disconnect = async () => { f.connections[0]!.terminate(); await until(() => f.runtime.status().state === 'offline'); };
+  if (timing === 'before-result') { const discard = session.discard.bind(session); vi.spyOn(session, 'discard').mockImplementation(async (operation: any) => { await discard(operation); await disconnect(); }); }
+  relay.maxBufferedBytes = 0; let result: any;
+  try { result = await f.sessions.dispatchRpc(attempt, { id: 'zero-offline', method: 'turn/start', params: { threadId: 't' } }, { deadline: performance.now() + 4000 }); } finally { relay.maxBufferedBytes = budget; }
+  expect(result.outcome).toBe('neverSent'); if (timing === 'after-result') await disconnect();
+  expect(await f.sessions.provesNeverSent(result, attempt)).toBe(true); expect(session.socket.lastSentSeqId).toBe(seq);
+  expect(f.frames.some(frame => frame.message?.method === 'turn/start')).toBe(false);
+});
+it('可信派发Remote证明最后授权await期间原attempt变更不得借给另一UUID', async () => {
+  const f = await sessionFixture(); const sessionId = randomUUID(); await f.init(sessionId); const attempt = { sessionId, requestId: randomUUID(), attemptId: randomUUID() };
+  const relay = (f.runtime as any).bundle.controller.relay; const budget = relay.maxBufferedBytes; relay.maxBufferedBytes = 0; let result: any;
+  try { result = await f.sessions.dispatchRpc(attempt, { id: 'identity', method: 'turn/start', params: { threadId: 't' } }); } finally { relay.maxBufferedBytes = budget; }
+  expect(result.outcome).toBe('neverSent'); const authorize = f.remote.resolver.authorizeOperation.bind(f.remote.resolver);
+  vi.spyOn(f.remote.resolver, 'authorizeOperation').mockImplementation(async (...args) => { const fence = await authorize(...args); attempt.requestId = randomUUID(); return fence; });
+  expect(await f.sessions.provesNeverSent(result, attempt)).toBe(false);
+});

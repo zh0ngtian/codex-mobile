@@ -45,8 +45,13 @@ export interface HttpSessionRemoteOptions {
   sidechatReplay: Required<Pick<SidechatReplayOptions, 'files' | 'resolveReference'>>;
 }
 export interface SessionCallOptions { deadline: number; signal?: AbortSignal }
+/** 仅可信scheduler传入；attemptId沿用本次ledger claim token，不能由HTTP参数构造。 */
+export interface SessionDispatchAttempt { sessionId: string; requestId: string; attemptId: string }
+export type SessionDispatchResult = Readonly<
+  { outcome: 'response'; message: RpcMessage } | { outcome: 'neverSent' | 'unknown'; error: unknown }
+>;
 type SessionSocket = WebSocket | RemoteStream;
-type SessionCall = SessionCallOptions & { onSubmitted?: () => void };
+type SessionCall = SessionCallOptions & { onSubmitted?: () => void; onSendRejected?: () => void; dispatch?: { neverSent: boolean } };
 const sessionCall = (): SessionCallOptions => ({ deadline: performance.now() + 60_000 });
 function assertCall(call: SessionCallOptions) {
   if (call.signal?.aborted || !Number.isFinite(call.deadline) || performance.now() >= call.deadline) throw new RemoteSendError('Remote 操作已取消或超时', false, undefined, 'timeout');
@@ -62,7 +67,8 @@ async function authorizeSession(remote: HttpSessionRemoteOptions, call: SessionC
 }
 
 const SIDECHAT_SESSION_ID = "c0dec000-0000-4000-8000-000000000002";
-const HOSTED_SESSION_ID = "c0dec000-0000-4000-8000-000000000001";
+/** 可信内部hosted派发沿用旧FollowUps的Session/WAL身份；公开HTTP仍保留拒绝。 */
+export const HOSTED_SESSION_ID = "c0dec000-0000-4000-8000-000000000001";
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const MAX_REQUEST_BYTES = 16 * 1024 * 1024;
 const MAX_OPERATIONS = 2048;
@@ -329,6 +335,7 @@ class Session {
       await new Promise<void>((resolve, reject) => socket.send(JSON.stringify(message), error => error ? reject(error) : resolve())); return;
     }
     let committed = false;
+    const originalSequence = socket.lastSentSeqId;
     try {
       const fence = await this.authorization(call);
       await withRemoteOperation(() => { assertCall(call); fence.assertLive(); }, async () => {
@@ -341,6 +348,8 @@ class Session {
         await sending; committed = true; call.onSubmitted?.();
       });
     } catch (error) {
+      // 仅此真实stream发送边界能记录零发送；业务投影抛出的同名错误不能生成证明。
+      if (!committed && socket.lastSentSeqId === originalSequence) call.onSendRejected?.();
       if (error instanceof RemoteSendError) { if (error.mayHaveBeenSent) call.onSubmitted?.(); throw error; }
       if (committed) call.onSubmitted?.();
       throw new RemoteSendError('Remote 发送被拒绝', committed);
@@ -692,9 +701,9 @@ class Session {
 
   async rpc(requestId: string, message: RpcMessage, epoch?: string, call: SessionCall = sessionCall()) {
     const callEpoch = this.epoch;
-    let physicallySubmitted = false;
+    let physicallySubmitted = false; let rejectedBeforeSend = false;
     const parentSubmitted = call.onSubmitted;
-    call = { ...call, onSubmitted: () => { physicallySubmitted = true; parentSubmitted?.(); } };
+    call = { ...call, onSubmitted: () => { physicallySubmitted = true; parentSubmitted?.(); }, onSendRejected: () => { rejectedBeforeSend = true; } };
     const fence = this.remote ? await this.authorization(call) : undefined;
     const check = () => { if (fence) { fence.assertCurrent(); assertCall(call); if (this.closed || this.epoch !== callEpoch) throw uncertain(); } };
     this.touch(); await this.loadPromise;
@@ -823,6 +832,8 @@ class Session {
         if (recorded && submitted && (physicallySubmitted || !(error instanceof RemoteSendError && !error.mayHaveBeenSent))) { operation.status = "uncertain"; delete operation.message; await this.save(operation); throw uncertain(); }
         if (recorded) await this.discard(operation);
         if (this.operations.get(requestId) === operation) this.operations.delete(requestId);
+        // 只属于本次新建operation；previous/promise分支及清理失败均到不了这里。
+        if (call.dispatch && !physicallySubmitted && (!submitted || (this.remote && rejectedBeforeSend))) call.dispatch.neverSent = true;
         throw error;
       } finally { delete operation.promise; this.trimOperations(); }
     };
@@ -1139,6 +1150,81 @@ export class HttpSessions {
       await this.hostedReady(call);
       return this.session(HOSTED_SESSION_ID).rpc(requestId, message, undefined, call);
     });
+  }
+
+  private dispatchAttempts = new WeakMap<SessionDispatchAttempt, object>();
+  private dispatchProofs = new WeakMap<SessionDispatchResult, { attempt: SessionDispatchAttempt; binding: string; invocation: object; session: Session; namespace: string; call: SessionCallOptions }>();
+
+  private dispatchNamespace() {
+    return canonical({ root: this.root, context: this.options.remote?.context, storageNamespace: this.options.remote?.storageNamespace,
+      targetNamespace: this.options.remote?.target.descriptor.transportNamespace });
+  }
+
+  /** 零发送证明只核验原身份，允许同代暂时离线；业务发送仍使用原在线执行授权。 */
+  private async withDispatchProofCall<T>(call: SessionCallOptions, operation: () => T): Promise<T> {
+    let fence: (() => void) | undefined;
+    const result = await withRemoteOperation(() => assertCall(call), async () => {
+      const remote = this.options.remote;
+      if (remote) {
+        await remote.target.assertCurrent(call.signal);
+        fence = await remote.resolver.authorizeOperation(remote.context, 'transition', call.signal);
+        await remote.target.assertCurrent(call.signal);
+      }
+      fence?.(); assertCall(call); assertRemoteOperation();
+      if (this.closed) throw uncertain();
+      return operation();
+    });
+    fence?.(); assertCall(call); assertRemoteOperation();
+    if (this.closed) throw uncertain();
+    return result;
+  }
+
+  /** 内部执行结果；不接HTTP路由、不增加派发owner或重试。公开错误不携带证明。 */
+  async dispatchRpc(attempt: SessionDispatchAttempt, message: RpcMessage, call: SessionCallOptions = sessionCall(), epoch?: string): Promise<SessionDispatchResult> {
+    const originalAttempt = { ...attempt }; const binding = canonical(originalAttempt); const invocation = {}; const namespace = this.dispatchNamespace();
+    this.dispatchAttempts.set(attempt, invocation);
+    const originalCall = { deadline: call.deadline, signal: call.signal };
+    const dispatch = { neverSent: false }; let session: Session | undefined; let originalEpoch: string | undefined;
+    const check = (response = true) => {
+      assertCall(originalCall); assertRemoteOperation();
+      if (this.closed || !session || session.closed || this.sessions.get(originalAttempt.sessionId) !== session || this.dispatchNamespace() !== namespace || (response && session.epoch !== originalEpoch)) throw uncertain();
+    };
+    try {
+      if (!UUID.test(originalAttempt.requestId) || !UUID.test(originalAttempt.attemptId) || originalAttempt.sessionId === SIDECHAT_SESSION_ID) throw new HttpError(400, 'Invalid dispatch attempt');
+      // 冻结原调用输入，异步期间调用方改对象不能将证明换绑到另一次请求。
+      const originalMessage = structuredClone(message);
+      session = this.session(originalAttempt.sessionId); originalEpoch = session.epoch;
+      const response = await this.withCall(originalCall, async () => {
+        check(); if (originalAttempt.sessionId === HOSTED_SESSION_ID) await this.hostedReady(originalCall);
+        check(); const response = await session!.rpc(originalAttempt.requestId, originalMessage, epoch, { ...originalCall, dispatch }); check(); return response;
+      });
+      check(); return Object.freeze({ outcome: 'response', message: response });
+    } catch (error) {
+      if (dispatch.neverSent) {
+        try {
+          await this.withDispatchProofCall(originalCall, () => { check(false); }); check(false);
+          const result: SessionDispatchResult = Object.freeze({ outcome: 'neverSent', error });
+          this.dispatchProofs.set(result, { attempt, binding, invocation, session: session!, namespace, call: originalCall });
+          return result;
+        } catch { /* 原预算/身份/会话失效只能返回未知，不能交付旧正文或证明。 */ }
+      }
+      return Object.freeze({ outcome: 'unknown', error });
+    }
+  }
+
+  /** 可用于ledger.confirmNeverSent回调；必须保留本实例的原结果及原attempt对象，同对象再次执行使旧证明失效。 */
+  async provesNeverSent(result: SessionDispatchResult, attempt: SessionDispatchAttempt): Promise<boolean> {
+    const proof = this.dispatchProofs.get(result);
+    const originalAttempt = { ...attempt };
+    if (!proof || proof.attempt !== attempt || proof.binding !== canonical(originalAttempt)) return false;
+    const check = () => {
+      assertCall(proof.call); assertRemoteOperation();
+      return canonical(attempt) === proof.binding && this.dispatchAttempts.get(attempt) === proof.invocation && this.sessions.get(originalAttempt.sessionId) === proof.session && !proof.session.closed && this.dispatchNamespace() === proof.namespace;
+    };
+    try {
+      const valid = await this.withDispatchProofCall(proof.call, check);
+      return valid && check();
+    } catch { return false; }
   }
 
   async sidebarRpc(message: RpcMessage, call: SessionCallOptions = sessionCall()): Promise<RpcMessage> {
