@@ -51,7 +51,7 @@ export type SessionDispatchResult = Readonly<
   { outcome: 'response'; message: RpcMessage } | { outcome: 'neverSent' | 'unknown'; error: unknown }
 >;
 type SessionSocket = WebSocket | RemoteStream;
-type SessionCall = SessionCallOptions & { onSubmitted?: () => void; onSendRejected?: () => void; dispatch?: { neverSent: boolean } };
+type SessionCall = SessionCallOptions & { guardLocalSend?: true; onSubmitted?: () => void; onSendRejected?: () => void; dispatch?: { neverSent: boolean } };
 const sessionCall = (): SessionCallOptions => ({ deadline: performance.now() + 60_000 });
 function assertCall(call: SessionCallOptions) {
   if (call.signal?.aborted || !Number.isFinite(call.deadline) || performance.now() >= call.deadline) throw new RemoteSendError('Remote 操作已取消或超时', false, undefined, 'timeout');
@@ -334,7 +334,10 @@ class Session {
 
   private async send(message: RpcMessage, socket: SessionSocket, call: SessionCall) {
     if (!(socket instanceof RemoteStream)) {
-      await new Promise<void>((resolve, reject) => socket.send(JSON.stringify(message), error => error ? reject(error) : resolve())); return;
+      const bytes = JSON.stringify(message);
+      // 仅可信派发沿原call传递；序列化完成后仍须在物理send前同步核验。
+      if (call.guardLocalSend) { assertCall(call); assertRemoteOperation(); }
+      await new Promise<void>((resolve, reject) => socket.send(bytes, error => error ? reject(error) : resolve())); return;
     }
     let committed = false;
     const originalSequence = socket.lastSentSeqId;
@@ -707,7 +710,10 @@ class Session {
     const parentSubmitted = call.onSubmitted;
     call = { ...call, onSubmitted: () => { physicallySubmitted = true; parentSubmitted?.(); }, onSendRejected: () => { rejectedBeforeSend = true; } };
     const fence = this.remote ? await this.authorization(call) : undefined;
-    const check = () => { if (fence) { fence.assertCurrent(); assertCall(call); if (this.closed || this.epoch !== callEpoch) throw uncertain(); } };
+    const check = () => {
+      if (call.guardLocalSend && !this.remote) { assertCall(call); assertRemoteOperation(); }
+      if (fence) { fence.assertCurrent(); assertCall(call); if (this.closed || this.epoch !== callEpoch) throw uncertain(); }
+    };
     this.touch(); await this.loadPromise;
     check();
     const signature = createHash("sha256").update(canonical({ message, ...(!message.method && epoch ? { epoch } : {}) })).digest("hex");
@@ -761,11 +767,11 @@ class Session {
         let result: RpcMessage;
         let upstreamObservation: { request: RpcMessage; response: RpcMessage } | undefined;
         if (message.method === "initialize") {
-          submitted = true;
+          check(); submitted = true;
           result = await this.initialize(message, call);
           result = { ...result, ...(message.id != null ? { id: message.id } : {}) };
         } else if (!message.method) {
-          submitted = true;
+          check(); submitted = true;
           const hosted = await this.hostedReply?.(requestId, message, call);
           if (!hosted) await this.send(message, submittedSocket, call);
           if (this.socket === submittedSocket && this.epoch === submittedEpoch && this.pending.get(message.id!) === submittedApproval) this.pending.delete(message.id!);
@@ -778,7 +784,7 @@ class Session {
               throw new HttpError(503, "App-server changed before operation could be submitted");
             }
           }
-          submitted = true;
+          check(); submitted = true;
           if (message.method === "initialized") result = await this.notifyInitialized(message, submittedSocket, call);
           else if (message.method === "mobile/turns/commentary") {
             const upstream: RpcMessage = { id: message.id, ...turnCommentaryRequest(message.params!) };
@@ -832,7 +838,7 @@ class Session {
         }
         return result;
       } catch (error) {
-        if (recorded && submitted && (physicallySubmitted || !(error instanceof RemoteSendError && !error.mayHaveBeenSent))) { operation.status = "uncertain"; delete operation.message; await this.save(operation); throw uncertain(); }
+        if (recorded && submitted && ((!this.remote && call.guardLocalSend) || physicallySubmitted || !(error instanceof RemoteSendError && !error.mayHaveBeenSent))) { operation.status = "uncertain"; delete operation.message; await this.save(operation); throw uncertain(); }
         if (recorded) await this.discard(operation);
         if (this.operations.get(requestId) === operation) this.operations.delete(requestId);
         // 只属于本次新建operation；previous/promise分支及清理失败均到不了这里。
@@ -1187,7 +1193,7 @@ export class HttpSessions {
   async dispatchRpc(attempt: SessionDispatchAttempt, message: RpcMessage, call: SessionCallOptions = sessionCall(), epoch?: string): Promise<SessionDispatchResult> {
     const originalAttempt = { ...attempt }; const binding = canonical(originalAttempt); const invocation = {}; const namespace = this.dispatchNamespace();
     this.dispatchAttempts.set(attempt, invocation);
-    const originalCall = { deadline: call.deadline, signal: call.signal };
+    const originalCall: SessionCall = { deadline: call.deadline, signal: call.signal, guardLocalSend: true };
     const dispatch = { neverSent: false }; let session: Session | undefined; let originalEpoch: string | undefined;
     const check = (response = true) => {
       assertCall(originalCall); assertRemoteOperation();

@@ -7,8 +7,9 @@ import { join } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { afterEach, expect, it, vi } from 'vitest';
 import { WebSocket, WebSocketServer } from 'ws';
-import { HttpSessions } from '../../server/http-session.js';
+import { HttpSessions, HOSTED_SESSION_ID } from '../../server/http-session.js';
 import { OperationQueue } from '../../server/operation-queue.js';
+import { withRemoteOperation } from '../../server/remote/operation-guard.js';
 
 const storageFault = vi.hoisted(() => ({ directory: '' }));
 vi.mock('node:fs/promises', async original => {
@@ -145,4 +146,61 @@ it.each(['deadline', 'signal'] as const)('可信派发Local新Session原%s已失
   const f = await localFixture(); const attempt = attemptFor(f.sessionId); const abort = new AbortController(); if (kind === 'signal') abort.abort();
   const result = await f.sessions.dispatchRpc(attempt, write, { deadline: performance.now() + (kind === 'deadline' ? -1 : 2000), signal: abort.signal });
   expect(result.outcome).toBe('unknown'); expect((f.sessions as any).sessions.size).toBe(0); expect(f.messages).toHaveLength(0);
+});
+
+it.each(['save', 'beforeStart'].flatMap(phase => ['signal', 'deadline', 'parent'].map(kind => ({ phase, kind }))))('可信派发Local $phase await后原$kind失效不进入submitted或物理发送', async ({ phase, kind }) => {
+  const f = await localFixture(); const session = await f.init(); const abort = new AbortController(); let live = true;
+  let release!: () => void; let enter!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; }); const entered = new Promise<void>(resolve => { enter = resolve; }); cleanup.push(() => release());
+  if (phase === 'save') {
+    const save = session.save.bind(session);
+    vi.spyOn(session, 'save').mockImplementation(async (...args: any[]) => { await save(...args); if (args[0].status === 'pending') { enter(); await gate; } });
+  } else vi.spyOn(session.changeHistory, 'beforeStart').mockImplementation(async () => { enter(); await gate; });
+  const call = { deadline: performance.now() + (kind === 'deadline' ? 250 : 2000), signal: abort.signal }; const attempt = attemptFor(f.sessionId);
+  const invoke = () => f.sessions.dispatchRpc(attempt, write, call);
+  const pending = kind === 'parent' ? withRemoteOperation(() => { if (!live) throw new Error('parent-expired'); }, invoke).catch(error => ({ outcome: 'unknown' as const, error })) : invoke();
+  await entered;
+  if (kind === 'signal') abort.abort(); else if (kind === 'deadline') await new Promise(resolve => setTimeout(resolve, Math.max(0, call.deadline - performance.now()) + 20)); else live = false;
+  release(); const result = await pending; await new Promise(resolve => setTimeout(resolve, 20));
+  expect(result.outcome).toBe('unknown'); expect(await f.sessions.provesNeverSent(result, attempt)).toBe(false);
+  expect(f.messages.filter(message => message.method === 'turn/start')).toHaveLength(0);
+  await expect(session.operation(attempt.requestId)).rejects.toMatchObject({ status: 404 });
+});
+
+it.each(['signal', 'deadline', 'parent'] as const)('可信派发Local序列化后原%s失效最后同步边界零发送且已submitted保守unknown', async kind => {
+  const f = await localFixture(); const session = await f.init(); const abort = new AbortController(); let live = true; let serialized = false;
+  const now = performance.now.bind(performance); let expired = false;
+  if (kind === 'deadline') vi.spyOn(performance, 'now').mockImplementation(() => now() + (expired ? 5000 : 0));
+  const stringify = JSON.stringify;
+  vi.spyOn(JSON, 'stringify').mockImplementation(((value: any, ...args: any[]) => {
+    const result = (stringify as any)(value, ...args);
+    if (value?.method === 'turn/start') { serialized = true; if (kind === 'signal') abort.abort(); else if (kind === 'deadline') expired = true; else live = false; }
+    return result;
+  }) as typeof JSON.stringify);
+  const attempt = attemptFor(f.sessionId); const invoke = () => f.sessions.dispatchRpc(attempt, write, { deadline: now() + 2000, signal: abort.signal });
+  const result = await (kind === 'parent' ? withRemoteOperation(() => { if (!live) throw new Error('parent-expired'); }, invoke).catch(error => ({ outcome: 'unknown' as const, error })) : invoke());
+  await new Promise(resolve => setTimeout(resolve, 20));
+  expect(serialized).toBe(true); expect(result.outcome).toBe('unknown'); expect(await f.sessions.provesNeverSent(result, attempt)).toBe(false);
+  expect(f.messages.filter(message => message.method === 'turn/start')).toHaveLength(0);
+  expect((await session.operation(attempt.requestId)).status).toBe('uncertain');
+});
+
+it.each(['reinitialize', 'hosted'].flatMap(helper => ['signal', 'deadline', 'parent'].map(kind => ({ helper, kind }))))('可信派发Local $helper helper await后原$kind预算不扩展', async ({ helper, kind }) => {
+  const f = await localFixture(); const abort = new AbortController(); let live = true;
+  if (helper === 'reinitialize') { const session = await f.init(); session.ready = false; session.initialized = undefined; }
+  let release!: () => void; let enter!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; }); const entered = new Promise<void>(resolve => { enter = resolve; }); cleanup.push(() => release());
+  f.respond((socket, message) => {
+    if (message.method === 'initialize') { enter(); void gate.then(() => socket.send(JSON.stringify({ id: message.id, result: { ok: true } }))); }
+    else if (message.id != null) socket.send(JSON.stringify({ id: message.id, result: { ok: true } }));
+  });
+  const call = { deadline: performance.now() + (kind === 'deadline' ? 300 : 2000), signal: abort.signal };
+  const attempt = attemptFor(helper === 'hosted' ? HOSTED_SESSION_ID : f.sessionId);
+  const invoke = () => f.sessions.dispatchRpc(attempt, helper === 'hosted' ? write : { id: 'read', method: 'thread/read', params: { threadId: 't' } }, call);
+  const pending = kind === 'parent' ? withRemoteOperation(() => { if (!live) throw new Error('parent-expired'); }, invoke).catch(error => ({ outcome: 'unknown' as const, error })) : invoke();
+  await entered;
+  if (kind === 'signal') abort.abort(); else if (kind === 'deadline') await new Promise(resolve => setTimeout(resolve, Math.max(0, call.deadline - performance.now()) + 20)); else live = false;
+  release(); const result = await pending; await new Promise(resolve => setTimeout(resolve, 20));
+  expect(result.outcome).toBe('unknown'); expect(await f.sessions.provesNeverSent(result, attempt)).toBe(false);
+  expect(f.messages.filter(message => ['initialized', 'thread/read', 'turn/start'].includes(message.method))).toHaveLength(0);
 });
