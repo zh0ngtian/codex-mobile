@@ -1,0 +1,383 @@
+{
+  "schemaVersion": 1,
+  "task": "Task4b2g-internal-rpc-scheduler",
+  "sourceCommit": "6120f3bbd7b744500a5de3ed2ec3950cbe3b85d1",
+  "baselineMain": "ba1b2aaf41c6822e4eb89ce45d614c463e305000",
+  "sourceOnly": true,
+  "deployed": false,
+  "clientBuild": false,
+  "clientPublished": false,
+  "scope": "单一内部OperationScheduler沿原ledger/HttpSessions/Session/WAL，完整原身份/输入、跨模式FIFO、独立控制、可信读、原结果对账、普通协议恢复、未发送claim清理及关闭屏障。",
+  "gates": {
+    "implementationPassed": true,
+    "specPassed": true,
+    "qualityPassed": true,
+    "rootAuditedAllArtifacts": true
+  },
+  "implementation": {
+    "candidate": "6120f3bbd7b744500a5de3ed2ec3950cbe3b85d1",
+    "root": "/private/tmp/e4b2g-qfix",
+    "reportPath": "report.json",
+    "reportSha256": "d8ad264b74b83f14e2125068265ccc7c02003f0606f59b8ec193cc53513e5a38",
+    "manifestPath": "manifest.json",
+    "manifestSha256": "c54275a4b368af6a6826e350a526bb5f64a0be6944a8075cfb51e4a982eb4c5b",
+    "artifactCount": 262,
+    "finalStage": "fixed-final3",
+    "archiveSha256": "b2ed81c03d6a3119e5634c76d453a2ef00f8f7066facaff5980d2c5714d1b702",
+    "rootAuditedAllArtifacts": true,
+    "rootReadFullReportRunnerFinalLog": true,
+    "rootAudit": {
+      "path": "/tmp/codex-task4b2g-q1-root-audit.json",
+      "sha256": "78f9938ee297d93cc780f2e7d9b3ef12b72456f2dd154395e385b596beb473e1"
+    },
+    "relatedPassed": 517,
+    "schedulerPassed": 70
+  },
+  "validation": {
+    "relatedFiles": 11,
+    "relatedPassed": 517,
+    "schedulerPassed": 70,
+    "strictAndBuildPassed": true,
+    "commands": [
+      {
+        "path": "/private/tmp/e4b2g-qfix/fixed-final3/regression.command.json",
+        "sha256": "0e1f0c65a12109b58fdac8d87ae6ec9655376e5f4f1159147fde43c93261b921",
+        "argv": [
+          "node",
+          "node_modules/vitest/vitest.mjs",
+          "run",
+          "tests/server/operation-scheduler.test.ts",
+          "tests/server/operation-queue.test.ts",
+          "tests/server/operation-queue-inventory.test.ts",
+          "tests/server/http-session.test.ts",
+          "tests/server/http-session-dispatch.test.ts",
+          "tests/server/http-original-operation.test.ts",
+          "tests/server/http-recovered-session.test.ts",
+          "tests/server/http-session-remote.test.ts",
+          "tests/server/remote-rpc-session.test.ts",
+          "tests/server/follow-ups.test.ts",
+          "tests/ui/http-transport.test.ts",
+          "--maxWorkers",
+          "2"
+        ],
+        "exit": 0
+      },
+      {
+        "path": "/private/tmp/e4b2g-qfix/fixed-final3/strict-server.command.json",
+        "sha256": "1665a9a644a65185d05c61b4e7b96fa36996e4c4abeee1a66ae72d9b3e145769",
+        "argv": [
+          "node",
+          "node_modules/typescript/bin/tsc",
+          "-p",
+          "tsconfig.server.json",
+          "--noEmit",
+          "--pretty",
+          "false"
+        ],
+        "exit": 0
+      },
+      {
+        "path": "/private/tmp/e4b2g-qfix/fixed-final3/strict-npm.command.json",
+        "sha256": "6bf72c9cdc8a1bcb4fc3825d1b87614f80bac2a854e001abc675e214c827808a",
+        "argv": [
+          "node",
+          "node_modules/typescript/bin/tsc",
+          "-p",
+          "tsconfig.npm.json",
+          "--noEmit",
+          "--strict",
+          "--pretty",
+          "false"
+        ],
+        "exit": 0
+      },
+      {
+        "path": "/private/tmp/e4b2g-qfix/fixed-final3/build-server.command.json",
+        "sha256": "c622751fb714caa25a68924ac66f78a0e9d6f97c12dd10531d93a3e4b0cd3f2c",
+        "argv": [
+          "npm",
+          "run",
+          "build:server"
+        ],
+        "exit": 0
+      }
+    ],
+    "newPermanentControlRegressionTests": 17,
+    "newPermanentClaimRegressionTests": 10
+  },
+  "initialSpec": {
+    "root": "/private/tmp/s4g",
+    "verdict": "FAIL",
+    "candidate": "bed56566520f1be9fab287fc3bdf7418f667a39a",
+    "artifactCount": 18,
+    "reportSha256": "d8ce2b7f038368a4629f5e989482adc038b82b93d88dc5f662cffe10d6bbcb94",
+    "manifestSha256": "6e101e3e8214921004bb82707b30a7266634e79cbe7a44d0199803248615a7f8",
+    "rootAuditedAllArtifacts": true,
+    "ownPassed": 43,
+    "ownIndependentFailed": 1,
+    "rootReadProbeAndCodeConfirmed": true
+  },
+  "controlFixSpec": {
+    "root": "/private/tmp/s4gf",
+    "candidate": "41782107317ce8f694866d71d43a3dfe2771fa17",
+    "verdict": "PASS",
+    "artifactCount": 17,
+    "reportPath": "review-report.json",
+    "manifestPath": "manifest.json",
+    "reportSha256": "4e6524f3783474c7ee66c19dece4e1d627cd19764175e63aed143e236359ad22",
+    "manifestSha256": "577a8c682978b6e6cb57201e1ce612c49abcc0d65d2b41d954dab4d390989efd",
+    "rootAuditedAllArtifacts": true,
+    "rootReadFullReportRunnerLog": true,
+    "ownPassed": 60,
+    "trackedSourceFilesVerified": 2905,
+    "commandCount": 4,
+    "f1Closed": true,
+    "auditedAt": "2026-11-16T05:27:19.992394+00:00"
+  },
+  "initialQuality": {
+    "root": "/private/tmp/q4gq",
+    "candidate": "41782107317ce8f694866d71d43a3dfe2771fa17",
+    "verdict": "FAIL",
+    "artifactCount": 71,
+    "trackedSourceFilesVerified": 8715,
+    "commandCount": 11,
+    "reportPath": "report.json",
+    "manifestPath": "manifest.json",
+    "reportSha256": "6aaf6518e1673cbe079a991c94d6b4e9c02f00d066018922a689ceeb985630b8",
+    "manifestSha256": "f421e3c5ab865dc46373c0e651eef8b1836002f70bf4ca7d20032213aae06e76",
+    "rootAuditedAllArtifacts": true,
+    "rootReadFullReportRunnerLog": true,
+    "ownPassed": 60,
+    "ownIndependentFailed": 2,
+    "rootConfirmedQ1": true,
+    "probeCorrectionRequired": "q4gc zero mark/dispatch/WAL must be sampled before second scheduler legitimately runs; old evidence retained and separate corrected addendum pending",
+    "auditScriptCorrection": "首次脚本误设额外git diff/status metadata必须含candidate字段；实际argv明确，按实际schema核验，非产品失败",
+    "auditedAt": "2026-11-16T05:33:45.969483+00:00",
+    "closeProbeAddendum": {
+      "root": "/private/tmp/q4gd",
+      "verdict": "FAIL",
+      "issue": "Q1/P1 root confirmed",
+      "artifactCount": 26,
+      "trackedSourceFilesVerified": 2905,
+      "reportSha256": "f588f0d802ce55725b67bef9aea1a2b5e1f2080516278a2ee341bb228837fa18",
+      "manifestSha256": "0818d78f3234cd63c48961ef8795d0fb46c1098d18a7e41beabef67a51ba33ca",
+      "probeSha256": "1f8bf542c4ef667741b6df21aea448ed42cd2496558f50c7d68e4bc7e3f38b82",
+      "rootAuditedAllArtifacts": true,
+      "rootReadFullReportRunnerProbeLog": true,
+      "correctedObservationTimingValid": true,
+      "candidate": "41782107317ce8f694866d71d43a3dfe2771fa17",
+      "auditedAt": "2026-11-16T05:34:56.084132+00:00"
+    }
+  },
+  "finalSpec": {
+    "candidate": "6120f3bbd7b744500a5de3ed2ec3950cbe3b85d1",
+    "verdict": "PASS",
+    "artifactCount": 2950,
+    "rootAuditedAllArtifacts": true,
+    "trackedSourceFilesVerified": 2905,
+    "commandCount": 8,
+    "dependencyLinksVerified": 452,
+    "rootReadFullReportRunnerLog": true,
+    "reportSha256": "730f31cd59a01fb5288c120670964f5ab7faa9847d0c8eb8f06ab82618d88065",
+    "manifestSha256": "4af29fa003f5580f092dc603c3d3588c85d1dc8c5a8b421957ae5ef5bb568bbd",
+    "sourceArchiveSha256": "b2ed81c03d6a3119e5634c76d453a2ef00f8f7066facaff5980d2c5714d1b702",
+    "ownPassed": 70,
+    "f1Closed": true,
+    "q1Closed": true,
+    "rootRead": "完整report.json/report.md/runner、实际命令环境、完整scheduler.log；实际逐工件hash、前后2905源码对归档、模块布局和引用工件核验。",
+    "auditedAt": "2026-11-16T06:07:34.867187+00:00",
+    "root": "/private/tmp/s4gq",
+    "reportPath": "report.json",
+    "manifestPath": "manifest.json",
+    "rootAudit": {
+      "path": "/tmp/codex-task4b2g-q1-spec-root-audit.json",
+      "sha256": "c844ed701e2f8f9bfd1378a3b427c84e078aef8e406e10795c3111ee0cfebd4c"
+    }
+  },
+  "finalQuality": {
+    "candidate": "6120f3bbd7b744500a5de3ed2ec3950cbe3b85d1",
+    "verdict": "PASS",
+    "readyToMerge": "Yes",
+    "artifactCount": 2962,
+    "rootAuditedAllArtifacts": true,
+    "trackedSourceFilesVerified": 2905,
+    "commandCount": 9,
+    "ownCommands": [
+      {
+        "path": "/private/tmp/q4gr/archive.command.json",
+        "sha256": "035173a78a6dfd4372d074e41b752bebb78dd637ea9baf97436afb5a5e318c17",
+        "argv": [
+          "git",
+          "archive",
+          "6120f3bbd7b744500a5de3ed2ec3950cbe3b85d1"
+        ],
+        "cwd": "/Users/zhongtian/.codex/worktrees/remote-gateway/codex-mobile",
+        "exit": 0
+      },
+      {
+        "path": "/private/tmp/q4gr/audit-run.command.json",
+        "sha256": "75c9ff955cc51976edbd7c432e250d9422b9f505e5e07891a87f9d138e5e722d",
+        "argv": [
+          "python3",
+          "/private/tmp/q4gr/audit.py"
+        ],
+        "cwd": "/private/tmp/q4gr",
+        "exit": 0
+      },
+      {
+        "path": "/private/tmp/q4gr/changed-files.command.json",
+        "sha256": "1fdb83e1076f7be297be11b9d1adc187b6f87065936edeeb0803b813dfb2c810",
+        "argv": [
+          "git",
+          "diff",
+          "--name-only",
+          "ba1b2aaf41c6822e4eb89ce45d614c463e305000",
+          "6120f3bbd7b744500a5de3ed2ec3950cbe3b85d1",
+          "--"
+        ],
+        "cwd": "/Users/zhongtian/.codex/worktrees/remote-gateway/codex-mobile",
+        "exit": 0
+      },
+      {
+        "path": "/private/tmp/q4gr/full-range.command.json",
+        "sha256": "0a7bf81be42e6e47524c68b35c4ec843b634a1522848eec4ec833333f17f8366",
+        "argv": [
+          "git",
+          "diff",
+          "--no-ext-diff",
+          "ba1b2aaf41c6822e4eb89ce45d614c463e305000",
+          "6120f3bbd7b744500a5de3ed2ec3950cbe3b85d1",
+          "--"
+        ],
+        "cwd": "/Users/zhongtian/.codex/worktrees/remote-gateway/codex-mobile",
+        "exit": 0
+      },
+      {
+        "path": "/private/tmp/q4gr/repo-status.command.json",
+        "sha256": "4314d419194c340053f4b6e2e3075af8c540a61140c292bfe32a237e1925ecf2",
+        "argv": [
+          "git",
+          "status",
+          "--porcelain=v1"
+        ],
+        "cwd": "/Users/zhongtian/.codex/worktrees/remote-gateway/codex-mobile",
+        "exit": 0
+      },
+      {
+        "path": "/private/tmp/q4gr/report-writer-final.command.json",
+        "sha256": "047ab3f6942ac2d343f0ed51c0f49cce5a4616ad4cf7cd5987ee22d4ad4e45d7",
+        "argv": [
+          "python3",
+          "/private/tmp/q4gr/report-writer.py"
+        ],
+        "cwd": "/private/tmp/q4gr",
+        "exit": 0
+      },
+      {
+        "path": "/private/tmp/q4gr/report-writer-initial.command.json",
+        "sha256": "73ef2f31b1912716754ff57a4bb0b99779237e6e5d2f9e2319b0c2119c0b7ceb",
+        "argv": [
+          "python3",
+          "/private/tmp/q4gr/report-writer.initial.py"
+        ],
+        "cwd": "/private/tmp/q4gr",
+        "exit": 1
+      },
+      {
+        "path": "/private/tmp/q4gr/scheduler.command.json",
+        "sha256": "48332fb82e51d7f931203588a49920f29417e6d96c9f490a55858493a5153d20",
+        "argv": [
+          "node",
+          "node_modules/vitest/vitest.mjs",
+          "run",
+          "tests/server/operation-scheduler.test.ts",
+          "--maxWorkers",
+          "2"
+        ],
+        "cwd": "/private/tmp/q4gr/s",
+        "exit": 0
+      },
+      {
+        "path": "/private/tmp/q4gr/tracked-files.command.json",
+        "sha256": "65b044ea6be0762947f1396684adf431216422f8a704459f5dab1d87575d1d35",
+        "argv": [
+          "git",
+          "ls-tree",
+          "-r",
+          "--name-only",
+          "6120f3bbd7b744500a5de3ed2ec3950cbe3b85d1"
+        ],
+        "cwd": "/Users/zhongtian/.codex/worktrees/remote-gateway/codex-mobile",
+        "exit": 0
+      }
+    ],
+    "dependencyLinksVerified": 452,
+    "rootReadFullReportRunnerLog": true,
+    "reportSha256": "b2b330b862ea0898c2e397123f95240cfc3099a48b88603d95d75a7c2288e37e",
+    "manifestSha256": "efe8340ff347117360b8431122aa945d65d96567ecde8896f176e59e6042aaa6",
+    "sourceArchiveSha256": "b2ed81c03d6a3119e5634c76d453a2ef00f8f7066facaff5980d2c5714d1b702",
+    "ownPassed": 70,
+    "f1Closed": true,
+    "q1Closed": true,
+    "rootRead": "完整JSON两切片/MD、runner/audit.py、实际命令环境及完整scheduler stdout/stderr；逐工件散列、前后与最终2905源码对归档、模块布局、三原探针及引用工件核验。",
+    "historicalReportGeneratorFailurePreserved": true,
+    "intermediateManifestInReportWriterLog": "报告生成命令stdout记录封存前2961工件的中间manifest；最终交付manifest含该命令metadata共2962，root按交付固定efe8340f逐工件核验，未以中间摘要代替。",
+    "auditedAt": "2026-11-16T06:15:27.231121+00:00",
+    "root": "/private/tmp/q4gr",
+    "reportPath": "report.json",
+    "manifestPath": "manifest.json",
+    "rootAudit": {
+      "path": "/tmp/codex-task4b2g-q1-quality-root-audit.json",
+      "sha256": "1c135e14d6e237f1241a6cb3a0cd6f0e329f06124d2732b9fd253c38c6ab31ab"
+    }
+  },
+  "fixedIssues": [
+    {
+      "id": "F1",
+      "severity": "P1",
+      "rejectedCandidate": "bed56566520f1be9fab287fc3bdf7418f667a39a",
+      "problem": "控制mark后真实dispatch等待跨过expiresAt仍迟发",
+      "fix": "原期限收紧dispatch deadline并同步核物理发送wall-clock；确定原WAL响应按独立原预算结算",
+      "originalProbePermanentExactBytes": true,
+      "originalFailureRetained": true,
+      "expiryIsNeverSentProof": false
+    },
+    {
+      "id": "Q1",
+      "severity": "P1",
+      "rejectedCandidate": "41782107317ce8f694866d71d43a3dfe2771fa17",
+      "problem": "claim已耐久而最终交付拒绝，丢失未发送清理责任，同PID重建永久claimed",
+      "fix": "准备阶段仅捕获精确无正文定位；放弃后进程内保留原授权CAS清理责任，同context避免自争；本scan attempted禁止忙重领",
+      "originalCorrectedProbesPermanentExactBytes": true,
+      "originalFailureRetained": true,
+      "otherLiveOwnerOrUncertainRequeued": false
+    }
+  ],
+  "historicalEvidence": {
+    "originalImplementation": "/private/tmp/e4b2g",
+    "controlFix": "/private/tmp/e4b2g-fix",
+    "claimFix": "/private/tmp/e4b2g-qfix",
+    "originalSpec": "/private/tmp/s4g",
+    "originalQuality": "/private/tmp/q4gq",
+    "correctedCloseProbe": "/private/tmp/q4gd",
+    "failuresRetained": true,
+    "final2Failed": true,
+    "integerObservationNotProofOfDistinctClaims": true,
+    "finalDistinctClaimTokenRevisionRedGreenVerified": true,
+    "unprovenCompletionCounterRemoved": true
+  },
+  "rootAudit": {
+    "path": "/tmp/codex-task4b2g-final-root-audit.json",
+    "sha256": "d6c47481d45171d74b1bc0c345086e9377da7c6a3ae51d7a8e3238bf57883888",
+    "allChecksPassed": true
+  },
+  "limitations": [
+    "内部RPC调度完成；公开mode/host/index、完整消费者及旧FollowUps唯一owner迁移仍待，整个4b2/4c/Task5/6未完成。",
+    "Remote projection仍为stub wiring；验证真实Runtime/Session/loopback Relay，并非手机完整功能或官方长连。",
+    "Session容量65536字段、64MiB初始化为内部fixture，不声称自然填满或手机巨型初始化。",
+    "只读结果最多128项内存；只读Session无持久WAL，不承诺任意终态UUID重启均返回正文。",
+    "本步没有官方Remote或真实账号探针，未运行8小时/P95验收。"
+  ],
+  "officialRemoteProbeRunThisStep": false,
+  "testChatsCreated": 0
+}
