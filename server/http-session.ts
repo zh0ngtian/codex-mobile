@@ -110,6 +110,51 @@ type Operation = {
   imageRead?: boolean;
   threadId?: string; method?: string;
 };
+
+async function readStoredOperation(root: string, sessionId: string, requestId: string): Promise<Operation | undefined> {
+  let entry: Operation;
+  try { entry = JSON.parse(await readFile(join(root, sessionId, `${requestId}.json`), "utf8")); }
+  catch (error: any) { if (error.code === "ENOENT") return undefined; throw error; }
+  if (!entry || typeof entry !== 'object' || Array.isArray(entry) || entry.requestId !== requestId ||
+    !/^[a-f0-9]{64}$/.test(entry.signature) || !["pending", "completed", "uncertain"].includes(entry.status))
+    throw new HttpError(503, "Invalid operation storage");
+  if (entry.status === "pending") entry.status = "uncertain";
+  entry.durable = true;
+  return entry;
+}
+
+/** 仅可信内部读取原WAL；不依赖当前传输handle，不创建Session或发送上游RPC。
+ * 404仅表示原namespace缺失记录，绝不是neverSent证明。 */
+export async function readOriginalOperation(options: {
+  gatewayCodexHome: string; resolver: TargetResolver; context: OperationContext;
+  sessionId: string; requestId: string; call: SessionCallOptions;
+}) {
+  // 第一个await前固定完整原绑定和原预算；保留userId存在性，不能随调用者异步换绑。
+  const { gatewayCodexHome, resolver, sessionId, requestId } = options;
+  const context = structuredClone(options.context);
+  if (context.mode === 'remote') { Object.freeze(context.managed); Object.freeze(context.target); }
+  Object.freeze(context);
+  const call = { deadline: options.call.deadline, signal: options.call.signal };
+  if (!(resolver instanceof TargetResolver) || typeof gatewayCodexHome !== 'string' || !gatewayCodexHome ||
+    !UUID.test(sessionId) || !UUID.test(requestId) || sessionId === SIDECHAT_SESSION_ID)
+    throw new TypeError('原收据读取需要显式网关目录、可信resolver与原Session/requestId');
+  const { entry, originalFence, finalFence } = await withRemoteOperation(() => assertCall(call), async () => {
+    const originalFence = await resolver.authorizeOperation(context, 'read', call.signal);
+    originalFence(); assertRemoteOperation();
+    const root = context.mode === 'local' ? join(gatewayCodexHome, 'codex-mobile-http') :
+      join(gatewayCodexHome, 'codex-mobile-http', 'remote', createHash('sha256').update(JSON.stringify(['transport-v1', 'remote', context.authorizationKey])).digest('hex'));
+    const entry = await readStoredOperation(root, sessionId, requestId);
+    originalFence(); assertRemoteOperation();
+    const finalFence = await resolver.authorizeOperation(context, 'read', call.signal);
+    originalFence(); finalFence(); assertCall(call); assertRemoteOperation();
+    return { entry, originalFence, finalFence };
+  });
+  // 包括guard包装Promise在内的最后await之后，再同步核验两道真实fence与原父预算。
+  originalFence(); finalFence(); assertCall(call); assertRemoteOperation();
+  if (!entry) throw new HttpError(404, 'Operation not found');
+  return { status: entry.status, ...(entry.message ? { message: entry.message } : {}) };
+}
+
 type Event = { cursor: number; message: RpcMessage; bytes: number };
 type Snapshot = { id: string; entries: Event[]; bytes: number; cursor: number; expiresAt: number };
 type SnapshotPage = { snapshot: Snapshot; start: number };
@@ -228,12 +273,7 @@ class Session {
   private async storedOperation(requestId: string) {
     const cached = this.operations.get(requestId);
     if (cached) return cached;
-    let entry: Operation;
-    try { entry = JSON.parse(await readFile(join(this.root, this.id, `${requestId}.json`), "utf8")); }
-    catch (error: any) { if (error.code === "ENOENT") return undefined; throw error; }
-    if (entry.requestId !== requestId || !/^[a-f0-9]{64}$/.test(entry.signature) || !["pending", "completed", "uncertain"].includes(entry.status)) throw new HttpError(503, "Invalid operation storage");
-    if (entry.status === "pending") entry.status = "uncertain";
-    entry.durable = true;
+    const entry = await readStoredOperation(this.root, this.id, requestId);
     return this.operations.get(requestId) ?? entry;
   }
 
