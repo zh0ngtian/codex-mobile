@@ -1,0 +1,99 @@
+{
+  "schemaVersion": 1,
+  "task": "Task4b2c-trusted-session-dispatch-result",
+  "sourceCommit": "44fb339f1ddf5d02ef460e2fd243189fc7fa1857",
+  "tree": "6c1c1f6359d16e9af0159beeab93d2d29809800d",
+  "baselineMain": "40b1a04093d21f05715a688e81d99a154cebc294",
+  "completedAtUtc": "2026-11-16T02:37:44.457554+00:00",
+  "sourceOnly": true,
+  "deployed": false,
+  "clientPublished": false,
+  "clientBuild": false,
+  "gates": {
+    "implementationPassed": true,
+    "specPassed": true,
+    "qualityPassed": true,
+    "rootAuditedAllArtifacts": true
+  },
+  "scope": "仅内部可信Session执行结果与真实零发送证明；沿原Session/requestId/WAL、完整上下文和原调用预算，不新增派发owner。",
+  "implementation": {
+    "root": "/private/tmp/sdl-48o6rq52",
+    "reportSha256": "6029bd936f669580d66fe3ce68d4a7da920d75df8c93322b88b6601d277e9c1b",
+    "manifestSha256": "d86fa539d256ff5146eacf81636bd1e4b8714652dadded52b2c84e962c84ce0b"
+  },
+  "finalSpec": {
+    "root": "/private/tmp/specb-0faeqzim",
+    "reportSha256": "22647eeb95ffcb2e65b2cc8e51d6f03ec58c2129972d3da95f7cb200559d47d3",
+    "manifestSha256": "f488b0da92f23e05fb6aa17e02dad8982fb2ea4cce908dad1922ab0384e38e71",
+    "verdict": "PASS",
+    "originalProbesPassed": 6,
+    "boundariesPassed": 40,
+    "rootAuditedAllArtifacts": true,
+    "artifactCount": 13
+  },
+  "finalQuality": {
+    "root": "/private/tmp/qrr-cgh6dqjb",
+    "reportPath": "evidence/report.json",
+    "manifestPath": "evidence/manifest.json",
+    "reportSha256": "bc90fe50f11a4f51e5bf0da09616d4b83d0d1d36a765ea28a3a663d004e814e4",
+    "manifestSha256": "729c13aeee3875082567f14121f2f097f61199964a93374e1ecdddbfaa5d6064",
+    "verdict": "PASS",
+    "originalProbesPassed": 6,
+    "boundariesPassed": 40,
+    "rootAuditedAllArtifacts": true,
+    "artifactCount": 18
+  },
+  "rootAudit": {
+    "path": "/tmp/codex-task4b2c-final-root-audit.json",
+    "sha256": "d73b2aa2c9ab98a5ef95713877c13cf56f88b6f7f443b0f452069f980093c724",
+    "allChecksPassed": true
+  },
+  "rootOriginalProbes": {
+    "path": "/private/tmp/qlg-uumrapxr/audit.json",
+    "sha256": "fc95fcd96811a83e9aac2b28ff686ee748aa02438618a166f1efe084b24ce176",
+    "passed": 6
+  },
+  "validation": {
+    "relatedFiles": 10,
+    "relatedPassed": 369,
+    "trustedBoundariesPassed": 40,
+    "originalProbesPassed": 6,
+    "sourceStrictExit": 0,
+    "npmStrictExit": 0,
+    "buildServerExit": 0,
+    "fixedArchive": true,
+    "privateEnvironmentAndCache": true
+  },
+  "failuresRetained": [
+    {
+      "kind": "创建前授权",
+      "candidate": "7c98418ecb67c5431d3f17af7710b0e359672e8c",
+      "finding": "过期或撤权请求提前创建Session，可触发历史WAL扫描清理；四项真实RED后修复。"
+    },
+    {
+      "kind": "首次WAL部分发布",
+      "candidate": "a7460aa84928c0f72541868a7a5fb0137ff4082f",
+      "finding": "rename后目录fsync EIO仍可能签发neverSent；原SPEC1失败/2通过，root复现后以mayBeRecorded封住，原探针复审通过。",
+      "root": "/private/tmp/spec-_g4dx_ss"
+    },
+    {
+      "kind": "可信Local迟到发送",
+      "candidate": "65ce99af622be73cc6595e911f5744ad716bb898",
+      "finding": "beforeStart等待后signal/deadline/父ALS失效仍各1帧turn/start；原QUALITY及root真实WS复现，新增15项11FAIL/4PASS→15PASS，最终三类窗口0业务帧。",
+      "root": "/private/tmp/qr-y1rsc71e"
+    }
+  ],
+  "limitations": [
+    "较早65候选的实施回归/strict/build实际cwd为工作树，私有数据与缓存不等于源码archive；root另固定archive354+strict/build通过。44最终实施验证全部来自独立固定gitarchive。",
+    "两轮限定复审各亲跑6+40，369与strict/build引用实施者固定archive，不冒称审查者重复完整验证。"
+  ],
+  "officialRemoteProbeRunThisStep": false,
+  "testChatsCreated": 0,
+  "pending": [
+    "原上下文WAL读取与当前传输分离",
+    "公开目标消费者图与唯一ledger调度、旧FollowUps迁移",
+    "Task4c会话观察与真实业务时钟",
+    "Task5手机模式与outbox",
+    "Task6官方完整功能、8小时及恢复延迟验收"
+  ]
+}

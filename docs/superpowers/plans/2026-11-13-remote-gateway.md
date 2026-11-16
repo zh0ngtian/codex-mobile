@@ -159,7 +159,7 @@ Task4 按内部依赖顺序实施：4a 可信目标身份基础 → 4b 持久队
 - [x] 4b.1：内部 durable ledger 最终 ae62ff00 通过原 SPEC→原 QUALITY 及 root 全工件核验；相关 7 文件 211 项、双 strict/build:server 通过。原授权/控制及容量缺口均修复，见[收据](evidence/2026-11-16-remote-operation-queue-validation.json)，尚未接公开路径。
 - [x] 4b.2a：内部真实 Runtime/Target 队列授权及持久显式恢复证明通过源码验证、独立 SPEC→QUALITY 和 root 全工件核验；旧句柄跨代永拒，公开装配未接，见[收据](evidence/2026-11-16-remote-runtime-queue-authorization-validation.json)。
 - [x] 4b.2b 内部实现：可信 Session/HttpSessions rawstream、显式投影/replay 来源及交付/创建/关闭/侧边栏原调用预算，通过513项、双strict/build、独立规格与质量复审及root全工件核验，见[收据](evidence/2026-11-16-remote-session-transport-validation.json)。现有 WAL 保留，公开 mode/host/index、完整消费者目标图和唯一ledger调度未接，不能视为 Remote模式可用。
-- [ ] 4b.2c 内部可信 Session 执行结果：已实现，40项内部边界及固定提交限定验证见本轮报告，待原 SPEC／QUALITY 复审；复用原 Session／requestId／hosted WAL，原结果对象与原 attempt／invocation 绑定真实零发送证明，不接 ledger 或增加派发 owner。公开 4b.2 仍待。
+- [x] 4b.2c 内部可信 Session 执行结果：固定 `44fb339f`，40项可信边界、10文件369项、双strict/build及原 SPEC→原 QUALITY 限定复审通过，见[收据](evidence/2026-11-16-remote-session-dispatch-validation.json)；复用原 Session／requestId／hosted WAL，原结果对象与原 attempt／invocation 绑定真实零发送证明，不接 ledger 或增加派发 owner。公开 4b.2 仍待。
 - [ ] 4b.2：HTTP/WS/hosted/Bark/关注与目标传输装配，Sidechat 内存路由、附件 bytes/活引用、占位、读合并/导航取消、显式 resume 和旧 FollowUps 推断替换，待实现/验收。
 - [ ] 4c：真实业务时钟与会话观察/释放，待实现/验收。
 
@@ -315,3 +315,5 @@ Task3d.4完成记录：Task3d.4统计失效装配已完成源码验收：冻结 
 4b.2c 首次 WAL 发布后同步失败修复（2026-11-16，保留候选 `a7460aa84928c0f72541868a7a5fb0137ff4082f`）：独立 SPEC 原样探针在新私有根重放为1失败／2通过，真实 rename 后目录 fsync EIO 留 pending WAL 却能签证明并回 queued。最小在 rename 前标记可能发布，首次 save 未完成则 unknown／不出证明；保留原 pending 和公开错误，健康容量507及 Remote 真实零发送仍可验明。永久故障回归加1项（本步共25项），原样双探针3项、相关10文件354项、双 strict／build:server通过；日志、源文件和工件 hash 见本次小型修复报告，旧封存不变。原 SPEC 复审及独立 QUALITY 尚待，4b.2公开合同仍不勾选。
 
 4b.2c 可信 Local 原预算发送前修复（2026-11-16，保留候选 `65ce99af622be73cc6595e911f5744ad716bb898`）：原 QUALITY beforeStart 后 signal／deadline／父 guard 失效的真实 WS 三项 probe 原样 RED→GREEN。仅可信 dispatch 的内部标记随原 call 进入 helper／hosted，submitted 前和序列化后最后同步物理发送边界核验原期限／signal／父 ALS；进入 submitted 后仍保守 uncertain／unknown。新增15项永久回归实际11失败／4通过→15通过，内部可信边界共40项通过；最终固定 archive、自有逐项依赖链接及完整私有环境的369项相关回归、双 strict／build、原双审 probe 结果见本次报告，待原 SPEC／QUALITY 限定复审。未改公开 Local API、Remote 授权或旧 FollowUps，不接 scheduler／公开模式，4b.2仍不勾选。
+
+4b.2c最终源码验收（2026-11-16）：冻结 `44fb339f1ddf5d02ef460e2fd243189fc7fa1857`，固定archive相关369项、原6项probe、双strict/build:server通过；原SPEC与原QUALITY各独立原字节6项及40项可信边界通过，root实审最小源码与全部小工件并独立复跑6项。三个真实缺陷与原失败保留，已修复创建前授权、首次WAL发布后EIO误签证明和可信Local失效后迟到发送。见[验收记录](evidence/2026-11-16-remote-session-dispatch-validation.json)。下一步原上下文WAL读取与当前传输分离，再接公开装配和统一调度；4b.2/4c/5/6仍待。仅源码，无官方访问、客户端构建、发布或部署。
