@@ -246,8 +246,15 @@
     "正式安装、真机运行与生产部署"
   ],
   "delivery": {
-    "pendingSourceOnlyMainPush": true,
-    "requiredLock": "codex-mobile-main-production",
-    "mainPushReceipt": "仓库外 /private/tmp/eg-complete/main-push.json；提交后核对远端并写入本机journal，不预写推送成功"
+    "sourceMainPushed": true,
+    "sourceIntegrationCommit": "7e82aca7a5443b347a5ee36b8ef7ace4983660fe",
+    "previousMain": "1f274d286d2da128404c6ff390a1f37282479af1",
+    "sourceFreeze": "b52c82fe531259a8bca5aca712cc92225c745f69",
+    "verifiedAt": "2026-11-16T20:09:08.964118+00:00",
+    "lock": "codex-mobile-main-production",
+    "originalMainAndIndexPreserved": true,
+    "productionDeployment": false,
+    "clientRelease": false,
+    "note": "源码提交和验收记录已核对在main；后续仅文档收尾提交按同一互斥门禁推送，最终文档HEAD保存在本机journal和main-push.json，避免自引用SHA。"
   }
 }
