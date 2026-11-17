@@ -19,6 +19,27 @@ describe("项目折叠缓存", () => {
     );
   });
 
+  it("首次使用没有缓存时所有设备和后续出现的项目默认折叠，手动展开跨重启保留", () => {
+    let keys = readCollapsedProjectKeys(localStorage);
+    for (const device of ["first", "second"]) {
+      for (const cwd of ["/a", "/future", "codex-mobile://projectless"]) {
+        expect(isProjectCollapsed(keys, device, cwd)).toBe(true);
+      }
+    }
+    keys = toggleProjectCollapsedKeys(keys, "first", "/a");
+    writeCollapsedProjectKeys(localStorage, keys);
+    keys = readCollapsedProjectKeys(localStorage);
+    expect(isProjectCollapsed(keys, "first", "/a")).toBe(false);
+    expect(isProjectCollapsed(keys, "second", "/a")).toBe(true);
+    expect(isProjectCollapsed(keys, "first", "/future")).toBe(true);
+    expect(isProjectCollapsed(toggleProjectCollapsedKeys(keys, "first", "/a"), "first", "/a")).toBe(true);
+  });
+
+  it("已有空缓存明确表示全部展开，不因重启重置", () => {
+    writeCollapsedProjectKeys(localStorage, new Set());
+    expect(isProjectCollapsed(readCollapsedProjectKeys(localStorage), "existing", "/a")).toBe(false);
+  });
+
   it("新设备所有分组默认折叠，显式展开和重启记忆只影响该分组", () => {
     let keys = collapseNewBackendProjects(new Set(["old:/closed"]), ["new"]);
     expect(isProjectCollapsed(keys, "old", "/open")).toBe(false);

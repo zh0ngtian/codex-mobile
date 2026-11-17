@@ -53,6 +53,9 @@ describe("多后端配置存储", () => {
     expect(isProjectCollapsed(readCollapsedProjectKeys(storage), "current-origin", "/a")).toBe(false);
     const legacy = new MemoryStorage(); legacy.setItem(BACKEND_REGISTRY_STORAGE_KEY, JSON.stringify(registry));
     saveBackendRegistry(legacy, registry);
+    expect(isProjectCollapsed(readCollapsedProjectKeys(legacy), "current-origin", "/a")).toBe(true);
+    writeCollapsedProjectKeys(legacy, new Set());
+    saveBackendRegistry(legacy, registry);
     expect(isProjectCollapsed(readCollapsedProjectKeys(legacy), "current-origin", "/a")).toBe(false);
   });
 
