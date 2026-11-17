@@ -30,18 +30,20 @@
 - [x] 在 `/Users/zhongtian/WorkSpace/release-coordinator` 运行 `python3 -B -m unittest discover -s tests`：协调器恢复回归通过。
 - [x] `NODE_OPTIONS=--no-experimental-webstorage npm test -- tests/ci --maxWorkers=2 --testTimeout=60000`：构建契约通过。
 - [x] `npm run typecheck`：类型检查通过；检查命令、日志 SHA-256、退出码均写入验证 JSON。
-- [ ] `git diff --check`、`git diff --cached --check`，提交中文 Conventional Commit；更新仅计划／状态文档不触发额外客户端构建。
-- [ ] 推送来源分支固定 SHA；`releasectl ready --task remote-latency-deploy-20261118 --sha <实际完整SHA> --validation <实际私有验证文件>`。来源 SHA 必须取本次提交实际输出，不能硬编码预测值。
+- [x] `git diff --check`、`git diff --cached --check`，提交中文 Conventional Commit；更新仅计划／状态文档不触发额外客户端构建。
+- [x] 推送来源分支固定 SHA；`releasectl ready --task remote-latency-deploy-20261118 --sha <实际完整SHA> --validation <实际私有验证文件>`。来源 SHA 必须取本次提交实际输出，不能硬编码预测值。
 
 ### 任务 3：协调部署和实际验收
 
 文件：协调器共同 receipt、`.mobile-build/remote-latency-deploy-20261118/` 实测，以及公开脱敏部署证据。
 
-- [ ] 等待协调器 main／gateway／verify 成功；核对持久 receipt、冻结 SHA、包含来源、实际 server／dist／bin／manifest 摘要和 launchd PID。
-- [ ] 比较原配置、token、有效身份及配对摘要；检查原工作区 HEAD／index 未变，Remote online，无新增 pendingResume。
-- [ ] 浏览器重载现役网页，确认声明的新能力已生效；对两台已授权 Remote 测侧栏手动刷新结束及原有会话正文可见。记录成功或失败、完整耗时与缓存状态，不把按钮停止或旧正文可见当成上游成功刷新。
-- [ ] 无推理、新建测试会话；如为排错确有测试会话，验证后及时归档。
-- [ ] 将 receipt 与真实计时的脱敏结果写入 `docs/superpowers/plans/evidence/2026-11-18-remote-latency-deploy.json`；更新 `docs/interaction-alignment.md` 和 `docs/remote-gateway-management.md` 实际状态。
-- [ ] 持共享 main 写入租约、核对最新远端后提交推送文档。只有成功 receipt 和实际核对完成后报告部署成功；性能改善单独据实报告，不报告未经验证的 P95。
+- [x] 等待协调器 main／gateway／verify 成功；核对持久 receipt、冻结 SHA、包含来源、实际 server／dist／bin／manifest 摘要和 launchd PID。
+- [x] 比较原配置、token、有效身份及配对摘要；检查原工作区 HEAD／index 未变，Remote online，无新增 pendingResume。
+- [x] 浏览器重载现役网页，确认声明的新能力已生效；对两台已授权 Remote 测侧栏手动刷新结束及原有会话正文可见。记录成功或失败、完整耗时与缓存状态，不把按钮停止或旧正文可见当成上游成功刷新。
+- [x] 无推理、新建测试会话；如为排错确有测试会话，验证后及时归档。
+- [x] 将 receipt 与真实计时的脱敏结果写入 `docs/superpowers/plans/evidence/2026-11-18-remote-latency-deploy.json`；更新 `docs/interaction-alignment.md` 和 `docs/remote-gateway-management.md` 实际状态。
+- [x] 持共享 main 写入租约、核对最新远端后提交推送文档。只有成功 receipt 和实际核对完成后报告部署成功；性能改善单独据实报告，不报告未经验证的 P95。
 
 部署前 9 份私有配置／身份文件及原工作区 HEAD／index 摘要已保存；Remote online、两台已接受目标在线、pendingResume 为空。四项部署门禁实际通过，日志、退出码及摘要保存在忽略的部署验证目录。
+
+执行结果：成功批次 `8f5625d2-e647-4cee-b9b7-2f46cdf67ed4`，冻结 `c55a9beb869e6a7bffac654fbc734ed7a10df4f1`，main／gateway／verify 成功；实际摘要与 9 份私有文件核对通过，Remote online，双机配对保持。已重载新网页并确认两份初始化响应声明新能力。双机对话可见正文与输入区单次为 1478.7ms／18778.8ms；刷新按钮结束 14270.1ms，但一台暂断、后台仍更新，未获得全部成功完成时间，性能验收未通过。切换设备后的隐藏旧页采样作废，只记录可见页面结果。无测试会话，无推理；临时探针已清理。脱敏结果见 [部署实测凭证](evidence/2026-11-18-remote-latency-deploy.json)。本轮运行代码未新增修改，不重跑既有 TDD；最终状态文档由共享 main 租约保护后提交推送，不重复部署文档。
