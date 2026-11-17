@@ -5,7 +5,7 @@
   "batchId": "8165e654-74a1-4fef-b148-1daffe984c78",
   "taskId": "remote-enrollment-null-hash-20261117",
   "deploymentComplete": true,
-  "officialRpcVerified": false,
+  "officialRpcVerified": true,
   "diagnosis": {
     "officialEnrollStartRequests": 2,
     "httpStatuses": [
@@ -84,9 +84,54 @@
     "testChatsCreated": 0
   },
   "remaining": [
-    "生产补修后首次Remote授权及本机配对",
-    "官方只读RPC与短时持续连接",
+    "网页测试保存6秒超时补修部署及回验",
     "完整功能、8小时、跨凭据刷新、睡眠唤醒及P95"
   ],
-  "recordedAt": "2026-11-17T02:53:32.022630+00:00"
+  "recordedAt": "2026-11-17T02:53:32.022630+00:00",
+  "activationVerification": {
+    "scope": "production gateway public WS to official Remote for gateway Mac",
+    "startedFromAuthorizedAndPaired": true,
+    "samples": [
+      {
+        "connectAndInitializeMs": 6066,
+        "modelListMs": 8236,
+        "modelCount": 9,
+        "readOnly": true
+      },
+      {
+        "connectAndInitializeMs": 2079,
+        "modelListMs": 5365,
+        "modelCount": 9,
+        "readOnly": true
+      }
+    ],
+    "idleBetweenClientConnectionsSeconds": 30,
+    "observedStates": [
+      "online",
+      "online",
+      "online",
+      "online",
+      "online",
+      "online",
+      "online",
+      "online",
+      "online",
+      "online",
+      "online",
+      "online",
+      "online",
+      "online",
+      "online"
+    ],
+    "allObservedOnline": true,
+    "testChatsCreated": 0,
+    "modelInferenceRequestsSent": 0,
+    "finishedAt": "2026-11-17T02:59:22.434Z",
+    "limitations": [
+      "short observation; not 8h, natural credential refresh, sleep or P95 proof",
+      "public client close does not prove all internal logical sessions released"
+    ],
+    "enrolled": true,
+    "gatewayHostPaired": true
+  }
 }

@@ -119,7 +119,7 @@ async function initializeHttpSession(
             { once: true },
           );
         });
-        const client = new AppServerClient(socket);
+        const client = new AppServerClient(socket, config.gatewayMode === 'remote' ? { requestTimeoutMs: timeoutMs } : {});
         await client.initialize();
         await client.request("thread/loaded/list", { limit: 1 });
       })(),
@@ -230,7 +230,8 @@ export async function probeBackend(
   config: BackendConfig,
   dependencies: ProbeDependencies = {},
 ): Promise<GatewayHostInfo> {
-  const timeoutMs = dependencies.timeoutMs ?? 6_000;
+  // Remote 需经官方中继建立逻辑流并验证目标；控制面仍沿用独立的6秒预算。
+  const timeoutMs = dependencies.timeoutMs ?? (config.gatewayMode === 'remote' ? 60_000 : 6_000);
   const info = await fetchBackendHostInfo(config, dependencies);
   if (config.gatewayMode === 'remote') {
     if (info.remote?.temporarilyOffline) return info;

@@ -186,7 +186,7 @@ Android 使用固定 PakePlus WebView 容器直接呈现内置共享 Web 页面�
 
 ## 系统架构
 
-官方 Remote 常驻网关及配套 WebUI 已于2026-11-17部署到现有 Mac，已发布的手机安装包尚未包含本轮改动。手机保留多网关，每个网关在原 URL 表单中选择本地或远程；远程模式下网关 Mac 也走官方 Relay。公开路由、目标文件/项目/通知消费者、唯一共享持久队列、手机 outbox 和后台会话观察器已实现；旧配置默认本地，只有“测试并保存”验证后才切换。本次实际网页、本地连接和 Remote v1 能力已回验；常驻实例当前为 `unconfigured`，须通过 Mac 私有 CLI 完成首次授权和本机配对后才能测试远程模式。官方全量功能、8小时、跨刷新与恢复延迟分位数仍待验收。使用和验证边界见[Mac管理说明](docs/remote-gateway-management.md)、[现行交互约定](docs/interaction-alignment.md#412-多网关本地与-remote-模式网关和网页已部署remote授权与官方长期验收待完成)、[设计](docs/superpowers/specs/2026-11-13-remote-gateway.md)、[实施计划](docs/superpowers/plans/2026-11-13-remote-gateway.md)和[本次部署收据](docs/superpowers/plans/evidence/2026-11-17-remote-gateway-deploy.json)。
+官方 Remote 常驻网关及配套 WebUI 已于2026-11-17部署到现有 Mac，已发布的手机安装包尚未包含本轮改动。手机保留多网关，每个网关在原 URL 表单中选择本地或远程；远程模式下网关 Mac 也走官方 Relay。公开路由、目标文件/项目/通知消费者、唯一共享持久队列、手机 outbox 和后台会话观察器已实现；旧配置默认本地，只有“测试并保存”验证后才切换。本次实际网页、本地连接和 Remote v1 能力已回验；常驻实例已完成首次授权和本机配对，公开 Remote WebSocket 的 initialize 和 model/list 两次成功，客户端断开30秒期间15次状态均 online；实际网页测试保存发现沿用本地6秒预算而超时，60秒 Remote 探测补修已通过26项相关回归，待部署回验。官方全量功能、8小时、跨刷新与恢复延迟分位数仍待验收。使用和验证边界见[Mac管理说明](docs/remote-gateway-management.md)、[现行交互约定](docs/interaction-alignment.md#412-多网关本地与-remote-模式网关和网页已部署remote只读rpc已验证网页保存补修及官方长期验收待完成)、[设计](docs/superpowers/specs/2026-11-13-remote-gateway.md)、[实施计划](docs/superpowers/plans/2026-11-13-remote-gateway.md)和[本次部署收据](docs/superpowers/plans/evidence/2026-11-17-remote-gateway-deploy.json)。
 
 ```mermaid
 flowchart LR
