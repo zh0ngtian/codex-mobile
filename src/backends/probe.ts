@@ -53,7 +53,7 @@ export async function fetchBackendProjectState(
   let timeout: ReturnType<typeof setTimeout> | undefined;
   try {
     return await httpRequestScheduler.run(new URL(config.baseUrl).origin, priority, controller.signal, async () => {
-      timeout = setTimeout(() => controller.abort(new Error(t("{method} 请求超时", { method: "/api/projects" }))), 10_000);
+      timeout = setTimeout(() => controller.abort(new Error(t("{method} 请求超时", { method: "/api/projects" }))), config.gatewayMode === 'remote' ? 60_000 : 10_000);
       const response = await fetch(
         gatewayUrl(config, "/api/projects").toString(),
         { method: "GET", mode: "cors", signal: controller.signal },

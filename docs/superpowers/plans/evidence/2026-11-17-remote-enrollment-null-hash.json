@@ -132,6 +132,92 @@
       "public client close does not prove all internal logical sessions released"
     ],
     "enrolled": true,
-    "gatewayHostPaired": true
+    "gatewayHostPaired": true,
+    "http": {
+      "scope": "production public Remote HTTP RPC",
+      "samples": [
+        {
+          "initializeMs": 1440,
+          "initializedMs": 617,
+          "thread/loaded/listMs": 2762
+        },
+        {
+          "initializeMs": 4969,
+          "initializedMs": 801,
+          "thread/loaded/listMs": 7212
+        }
+      ],
+      "idleWithoutProbeRequestsSeconds": 120,
+      "observedStates": [
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online"
+      ],
+      "allObservedOnline": true,
+      "testChatsCreated": 0,
+      "modelInferenceRequestsSent": 0,
+      "finishedAt": "2026-11-17T03:05:28.573Z",
+      "limitations": [
+        "HTTP session may retain upstream logical stream; not zero-stream proof",
+        "120s observation is not 8h, refresh, sleep or P95 proof"
+      ]
+    }
   }
 }

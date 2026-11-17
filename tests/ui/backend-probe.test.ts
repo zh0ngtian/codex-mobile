@@ -12,6 +12,21 @@ const backend: BackendConfig = {
 };
 
 describe("设备网关探测", () => {
+  it.each(['local', 'remote'] as const)('项目读取按模式保留预算：%s', async gatewayMode => {
+    vi.useFakeTimers();
+    vi.stubGlobal('fetch', vi.fn((_url, init?: RequestInit) => new Promise<Response>((resolve, reject) => {
+      init?.signal?.addEventListener('abort', () => reject(new Error('directory-aborted')), { once: true });
+      setTimeout(() => resolve(new Response(JSON.stringify({ projects: ['/project'] }))), 50_000);
+    })));
+    const remoteTarget = { mode: 'remote' as const, gatewayId: 'gateway', account: { accountId: 'account', accountUserId: 'user' }, target: { environmentId: 'env', installationId: 'install' } };
+    const result = fetchBackendProjectState({ ...backend, gatewayMode, ...(gatewayMode === 'remote' ? { remoteTarget } : {}) })
+      .then(value => ({ value }), error => ({ error }));
+    try {
+      await vi.advanceTimersByTimeAsync(50_001);
+      if (gatewayMode === 'remote') expect(await result).toEqual({ value: { projects: ['/project'], projectlessThreadIds: [] } });
+      else expect(await result).toMatchObject({ error: { message: 'directory-aborted' } });
+    } finally { vi.useRealTimers(); }
+  });
   it("项目目录解析只保留已登记项目的worktree关系，不改写独立登记目录", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
       projects: ["/main", "/separate"], projectlessThreadIds: [],

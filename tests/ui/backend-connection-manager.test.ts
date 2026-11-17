@@ -85,6 +85,24 @@ async function flush() {
 }
 
 describe("多后端连接池", () => {
+  it.each(['local', 'remote'] as const)('正式连接迟到握手使用对应预算：%s', async gatewayMode => {
+    vi.useFakeTimers();
+    const statuses: string[] = [];
+    class DelayedSocket extends FakeSocket {
+      send(raw: string) {
+        const message = JSON.parse(raw);
+        if (message.id != null) setTimeout(() => this.emit('message', { data: JSON.stringify({ id: message.id, result: {} }) }), 12_000);
+      }
+    }
+    const socket = new DelayedSocket();
+    const manager = new BackendConnectionManager({ createSocket: () => socket, onConnection: (_id, state) => statuses.push(state) });
+    try {
+      manager.sync([{ ...backend('mini', 'http://gateway.test'), gatewayMode }]); socket.open();
+      await vi.advanceTimersByTimeAsync(12_001);
+      if (gatewayMode === 'remote') { expect(statuses).toContain('online'); expect(socket.closed).toBe(false); }
+      else { expect(statuses).toContain('offline'); expect(socket.closed).toBe(true); }
+    } finally { manager.close(); vi.useRealTimers(); }
+  });
   afterEach(() => vi.unstubAllGlobals());
   it("默认 HTTP，选择流式使用带口令的 WebSocket，切回后关闭旧连接", () => {
     const urls: string[] = [];
