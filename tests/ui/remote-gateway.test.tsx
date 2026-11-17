@@ -234,3 +234,18 @@ it('历史未提交普通RPC保留原记录，在线恢复只读不自动POST', 
   await expect(transport.send(JSON.stringify(message))).rejects.toThrow('旧版待提交操作已暂停');
   expect(posts).not.toContain('turn/start'); expect(await gatewayOutbox.get(id)).toMatchObject({ state: 'retained', message });
 });
+
+it('Remote普通直连和消息队列读取不依赖旧outbox存储', async () => {
+  vi.stubGlobal('indexedDB', undefined);
+  const config = { ...remote, id: 'without-outbox' }; const posts: any[] = [];
+  const fetcher = (async (_input, options) => {
+    if (options?.method === 'POST') { posts.push(JSON.parse(String(options.body))); return new Response(JSON.stringify({ result: { turn: { id: 'sent' } } })); }
+    return new Response(JSON.stringify({ items: [] }));
+  }) as typeof fetch;
+  const transport = new HttpRpcTransport(config, { sessionId: 'cd881129-8e36-4d94-8181-2573dcd989b1', fetch: fetcher }); transports.push(transport);
+  await new Promise(resolve => transport.addEventListener('open', resolve, { once: true }));
+  const message = { id: 7, method: 'turn/start', params: { threadId: 'thread', input: [{ type: 'text', text: 'send once' }] } };
+  await expect(transport.send(JSON.stringify(message))).resolves.toBeUndefined();
+  expect(posts).toHaveLength(1);
+  expect(await followUpRequest(config, undefined, fetcher)).toMatchObject({ items: [] });
+});

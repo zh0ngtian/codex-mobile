@@ -13,7 +13,7 @@ interface PollResponse {
   active: boolean; updatedAt: number; reset: boolean; hasMore?: boolean;
 }
 const readMethods = new Set(["initialize", "initialized", "thread/list", "threadSection/list", "thread/read", "thread/loaded/list", "thread/turns/list", "thread/items/list", "mobile/sidebar/summaries", "mobile/sidebar/projectless", "mobile/turns/commentary", "permissionProfile/list", "plugin/list", "model/list", "config/read", "configRequirements/read", "account/read", "account/rateLimits/read", "skills/list", "mcpServerStatus/list", "collaborationMode/list", "app/list", "fs/readFile"]);
-interface PendingWrite { requestId: string; message: RpcMessage; epoch?: string; queryOnly?: true; retained?: true }
+interface PendingWrite { requestId: string; message: RpcMessage; epoch?: string; queryOnly?: true; retained?: true; legacyOutbox?: true }
 const responseSignature = (message: RpcMessage, epoch?: string) => JSON.stringify({ id: message.id, epoch });
 function persistentWrite(operation: PendingWrite): PendingWrite {
   // 服务器回复可能包含密码等保密答案。磁盘只保留查询原 UUID 所需的路由信息。
@@ -123,12 +123,12 @@ export class HttpRpcTransport extends EventTarget {
       }
     }
     if (removedRead) this.saveWrites();
-    this.restored = config.gatewayMode === 'remote' ? gatewayOutbox.list().then(entries => {
+    this.restored = config.gatewayMode === 'remote' && globalThis.indexedDB ? gatewayOutbox.list().then(entries => {
       for (const entry of entries) {
         if (entry.kind !== 'rpc' || entry.sessionId !== this.sessionId || !entry.signature || transportNamespace(entry.route) !== transportNamespace(config)) continue;
         const saved = entry.message as RpcMessage;
         if (!saved || saved.method === 'mobile/sidechat/rpc') continue;
-        this.writes.set(entry.signature, { requestId: entry.id, message: saved, epoch: entry.epoch,
+        this.writes.set(entry.signature, { requestId: entry.id, message: saved, epoch: entry.epoch, legacyOutbox: true,
           ...(entry.state === 'retained' && saved.method ? { retained: true } : { queryOnly: true }) });
       }
     }) : Promise.resolve();
@@ -305,7 +305,7 @@ export class HttpRpcTransport extends EventTarget {
           if ([401, 409, 404, 400].includes((reason as { status?: number }).status ?? 0)) {
             // 旧未知项可能早已执行；新一轮拒绝不能撤销早先的受理事实。
             if (mayHaveBeenAccepted && signature) throw new HttpOperationPendingError(requestId, operation.message, reason);
-            if (signature && this.readyState === 1 && this.writes.get(signature) === operation) { this.writes.delete(signature); this.saveWrites(); if (this.config.gatewayMode === 'remote') await gatewayOutbox.remove(requestId); }
+            if (signature && this.readyState === 1 && this.writes.get(signature) === operation) { this.writes.delete(signature); this.saveWrites(); if (operation.legacyOutbox) await gatewayOutbox.remove(requestId); }
             throw reason;
           }
           mayHaveBeenAccepted = true;
@@ -326,7 +326,7 @@ export class HttpRpcTransport extends EventTarget {
         if (signature) throw new HttpOperationPendingError(requestId, operation.message, failure);
         throw failure ?? new Error(t("设备尚未连接，请稍后重试"));
       }
-      if (signature) { this.writes.delete(signature); this.saveWrites(); if (this.config.gatewayMode === 'remote' && message.method !== 'mobile/sidechat/rpc') await gatewayOutbox.remove(requestId); }
+      if (signature) { this.writes.delete(signature); this.saveWrites(); if (operation.legacyOutbox) await gatewayOutbox.remove(requestId); }
       if (message.id != null && message.method) this.emit({ ...response, id: message.id });
       else if (response.error) throw new Error(response.error.message);
       if (message.method === "initialized") {
@@ -386,7 +386,7 @@ export class HttpRpcTransport extends EventTarget {
           if (result.status !== "completed" || !result.message || this.inflightWrites.has(operation.requestId) || this.writes.get(signature) !== operation) continue;
           this.writes.delete(signature);
           this.saveWrites();
-          if (this.config.gatewayMode === 'remote') await gatewayOutbox.remove(operation.requestId);
+          if (operation.legacyOutbox) await gatewayOutbox.remove(operation.requestId);
           if (!operation.message.method && !result.message.error && operation.epoch === this.epoch) {
             this.answeredRequests.add(String(operation.message.id));
             this.latestRequests = this.latestRequests.filter((request) => String(request.id) !== String(operation.message.id));

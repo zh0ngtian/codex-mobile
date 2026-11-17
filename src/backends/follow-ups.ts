@@ -34,7 +34,7 @@ export async function followUpRequest(
   action?: FollowUpAction,
   fetcher: typeof fetch = fetch,
 ): Promise<FollowUpResult> {
-  if (backend.gatewayMode === 'remote' && !action) {
+  if (backend.gatewayMode === 'remote' && !action && globalThis.indexedDB) {
     // 恢复仍在原目标上的手机待提交项；已尝试发送的项只查原收据。
     for (const entry of await gatewayOutbox.list()) if (entry.kind === 'follow-up' && transportNamespace(entry.route) === transportNamespace(backend)) {
       await handoffFollowUp(entry, fetcher).catch(() => {});
