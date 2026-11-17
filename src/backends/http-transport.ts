@@ -3,7 +3,7 @@ import { gatewayUrl, transportNamespace, type GatewayRoute } from './gateway-rou
 import { isClientForeground } from "../native-ui/foreground";
 import type { RpcMessage } from "../app-server/client";
 import { t } from "../i18n";
-import { isNavigationResume, snapshotRead } from "../../server/rpc-replay";
+import { isNavigationResume } from "../../server/rpc-replay";
 import { httpRequestScheduler, type HttpRequestPriority } from "./http-request-scheduler";
 
 export interface HttpSyncState { updatedAt: number | null; stale: boolean }
@@ -60,7 +60,6 @@ export class HttpRpcTransport extends EventTarget {
   private epoch = "";
   private initialized = false;
   private directRequests = false;
-  private snapshotFallback = false;
   private polling = false;
   private catchingUp = true;
   private catchUpAnnounced = false;
@@ -83,7 +82,6 @@ export class HttpRpcTransport extends EventTarget {
   private operationTimer: ReturnType<typeof setTimeout> | undefined;
   private operationDueAt = 0;
   private detailsUnsupported = false;
-  private readonly snapshotRefreshes = new Map<string, Promise<void>>();
   private reconciling = false;
   private reconcileOffset = 0;
   private readonly restored: Promise<void>;
@@ -93,14 +91,6 @@ export class HttpRpcTransport extends EventTarget {
   pendingErrorForRequest(id: number | string) {
     const operation = this.inflightRpcWrites.get(id);
     return operation ? new HttpOperationPendingError(operation.requestId, operation.message) : undefined;
-  }
-
-  async waitForListSnapshotRefresh() {
-    // 固定本轮已在途的列表任务，后续定时同步和对话详情不能延长手动刷新。
-    const pending = [...this.snapshotRefreshes]
-      .filter(([binding]) => typeof JSON.parse(binding).params?.threadId !== 'string')
-      .map(([, promise]) => promise);
-    await Promise.all(pending);
   }
 
   constructor(private readonly config: Config, options: { fetch?: typeof fetch; sessionId?: string } = {}) {
@@ -194,72 +184,21 @@ export class HttpRpcTransport extends EventTarget {
     }
   }
 
-  private async readSnapshot(message: RpcMessage, original: RpcMessage, timeoutMs: number, refreshSnapshot: boolean, foreground: boolean): Promise<boolean> {
-    if (this.config.gatewayMode !== 'remote' || !snapshotRead(message)) return false;
-    const inline = this.snapshotFallback && foreground;
-    const body = JSON.stringify({ requestId: transportUuid(), message });
-    let cached: any;
-    try { cached = await this.fetchJson('/api/read-snapshot', { method: 'POST', headers: { 'content-type': 'application/json' }, body }, inline ? { fallback: '1' } : {}, inline ? timeoutMs : Math.min(timeoutMs, 5000)); }
-    catch (error) { if (inline || [401, 403, 409].includes((error as any)?.status)) throw error; return false; }
-    if (inline && cached?.message?.error) {
-      if (message.method === 'mobile/turns/details' && cached.message.error.code === -32601) { this.detailsUnsupported = true; return false; }
-      this.emit({ ...cached.message, id: original.id }); return true;
-    }
-    if (!cached?.message || cached.message.error || cached.message.result == null || !Number.isFinite(cached.updatedAt)) {
-      if (inline) throw new Error(t('快照更新未完成'));
-      return false;
-    }
-    if (refreshSnapshot) this.emit({ method: 'mobile/readSnapshot/status', params: { request: original, updatedAt: cached.updatedAt, refreshing: cached.refreshing === true } });
-    this.emit({ ...cached.message, id: original.id });
-    if (refreshSnapshot && cached.refreshing === true) {
-      const binding = JSON.stringify({ method: message.method, params: message.params });
-      if (!this.snapshotRefreshes.has(binding)) {
-        const work = httpRequestScheduler.run(new URL(this.config.baseUrl).origin, 'background', this.requestLifetime.signal, async () => {
-          try {
-            const fresh = await this.fetchJson('/api/read-snapshot', { method: 'POST', headers: { 'content-type': 'application/json' }, body }, { refresh: '1' }, 60000);
-            if (fresh?.message?.result == null || fresh.message.error || !Number.isFinite(fresh.updatedAt)) throw new Error('快照更新未完成');
-            if (JSON.stringify(fresh.message.result) !== JSON.stringify(cached.message.result)) this.emit({ method: 'mobile/readSnapshot/updated', params: { request: original, response: fresh.message, updatedAt: fresh.updatedAt } });
-            this.emit({ method: 'mobile/readSnapshot/status', params: { request: original, updatedAt: fresh.updatedAt, refreshing: false } });
-          } catch {
-            this.emit({ method: 'mobile/readSnapshot/status', params: { request: original, updatedAt: cached.updatedAt, refreshing: false, failed: true } });
-          }
-        });
-        this.snapshotRefreshes.set(binding, work);
-        void work.finally(() => this.snapshotRefreshes.delete(binding)).catch(() => {});
-      }
-    }
-    return true;
-  }
-
-  async send(raw: string, timeoutMs = 10_000, priority: HttpRequestPriority = "foreground", operationKey?: string, refreshSnapshot = true): Promise<void> {
+  async send(raw: string, timeoutMs = 10_000, priority: HttpRequestPriority = "foreground", operationKey?: string): Promise<void> {
     if (this.readyState !== 1) throw new Error(t("设备尚未连接，请稍后重试"));
     const deadline = Date.now() + timeoutMs;
-    let remainingTimeoutMs = timeoutMs;
-    if (this.config.gatewayMode === 'remote') {
-      const original = JSON.parse(raw) as RpcMessage;
-      const params = original.params as Record<string, unknown> | undefined;
-      const message = !this.detailsUnsupported && original.method === "thread/turns/list" && params?.itemsView === "full"
-        ? { ...original, method: "mobile/turns/details", params: { ...params, itemsView: undefined, limit: Math.min(5, Math.max(1, Number(params.limit) || 5)), sortDirection: "desc" } }
-        : original;
-      if (original.id != null && snapshotRead(message)) {
-        await this.restored;
-        if (this.readyState !== 1) throw new Error(t("设备尚未连接，请稍后重试"));
-        // 前台导航可由网关在同次请求补齐缺失快照；后台读取保留原调度配额。
-        if (await this.readSnapshot(message, original, Math.max(1, deadline - Date.now()), refreshSnapshot, priority === 'foreground')) return;
-        remainingTimeoutMs = Math.max(1, deadline - Date.now());
-      }
-    }
     return httpRequestScheduler.run(new URL(this.config.baseUrl).origin, priority, this.requestLifetime.signal,
       () => {
-        const remaining = Math.min(remainingTimeoutMs, deadline - Date.now());
+        const remaining = deadline - Date.now();
         if (remaining <= 0) throw new Error(t('{method} 请求超时', { method: JSON.parse(raw).method ?? 'HTTP' }));
-        return this.sendNow(raw, remaining, operationKey);
+        return this.sendNow(raw, deadline, operationKey);
       });
   }
 
-  private async sendNow(raw: string, timeoutMs: number, operationKey?: string): Promise<void> {
+  private async sendNow(raw: string, deadline: number, operationKey?: string): Promise<void> {
     if (this.readyState !== 1) throw new Error(t("设备尚未连接，请稍后重试"));
     if (this.config.gatewayMode === 'remote') await this.restored;
+    if (this.readyState !== 1) throw new Error(t("设备尚未连接，请稍后重试"));
     const message = JSON.parse(raw) as RpcMessage;
     if (message.method?.startsWith("thread/realtime/")) {
       if (this.realtime?.readyState !== 1) throw new Error(t("实时会话连接不可用"));
@@ -297,7 +236,6 @@ export class HttpRpcTransport extends EventTarget {
     let response: RpcMessage | undefined;
     let failure: unknown;
     let mayHaveBeenAccepted = Boolean(existing);
-    const deadline = Date.now() + timeoutMs;
     const remainingReadBudget = () => {
       const remaining = deadline - Date.now();
       if (!signature && remaining <= 0) throw new Error(t("{method} 请求超时", { method: message.method ?? "HTTP" }));
@@ -351,9 +289,8 @@ export class HttpRpcTransport extends EventTarget {
       }
       if (signature) { this.writes.delete(signature); this.saveWrites(); if (operation.legacyOutbox) await gatewayOutbox.remove(requestId); }
       if (message.method === 'initialize' && !response.error) {
-        const gateway = (response.result as { gateway?: { directRequests?: boolean; readSnapshotFallback?: boolean } } | undefined)?.gateway;
+        const gateway = (response.result as { gateway?: { directRequests?: boolean } } | undefined)?.gateway;
         this.directRequests = gateway?.directRequests === true;
-        this.snapshotFallback = gateway?.readSnapshotFallback === true;
       }
       if (message.id != null && message.method) this.emit({ ...response, id: message.id });
       else if (response.error) throw new Error(response.error.message);

@@ -158,7 +158,6 @@ export function ConversationPage({
   client,
   error,
   syncState = null,
-  readSnapshotStatus,
   quotes = [], quoteFocusToken, onRemoveQuote, onSelectionQuote,
   draft,
   draftImages,
@@ -236,7 +235,6 @@ export function ConversationPage({
   client: AppServerClient | null;
   error: string;
   syncState?: HttpSyncState | null;
-  readSnapshotStatus?: string;
   quotes?: MessageQuote[]; quoteFocusToken?: string; onRemoveQuote?: (id: string) => void; onSelectionQuote?: (quote: SelectionQuote, side: boolean) => void;
   draft: string;
   draftImages: DraftImage[];
@@ -542,7 +540,6 @@ export function ConversationPage({
               {connection === "online" ? t("已连接") : t("连接中")}
             </>
           </span>
-          {readSnapshotStatus && <small className="read-snapshot-status" role="status">{readSnapshotStatus}</small>}
         </div>
         {(!!active.id) && (
           <div

@@ -91,6 +91,30 @@ function enableNativeMemoryTest() {
  Object.assign(window, { __CODEX_NATIVE_UI__: true, webkit: { messageHandlers: { nativeUI: { postMessage() {} } } }, codexMobilePublishNativeSnapshot: (snapshot: unknown) => posts.push(snapshot) });
 }
 
+it.each(['local', 'remote'] as const)('%s原生刷新命令等待共享RPC结果，保留旧行并交付新列表', async gatewayMode => {
+ enableNativeMemoryTest();
+ server.threads.set('a', [{ id: 'before-refresh', name: '刷新前会话', cwd: '/project' }]);
+ vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ projects: ['/project'], projectlessThreadIds: [] }))));
+ const backend = { ...memoryRegistry.backends[0], gatewayMode, ...(gatewayMode === 'remote' ? { remoteTarget: {
+  mode: 'remote' as const, gatewayId: 'g', account: { accountId: 'a', accountUserId: 'u' }, target: { environmentId: 'e', installationId: 'i' },
+ } } : {}) };
+ render(<AppBootstrap initialRegistry={{ ...memoryRegistry, backends: [backend] }} />);
+ const items = () => (posts.at(-1)?.groups ?? []).flatMap((group: any) => group.items);
+ await waitFor(() => expect(items().some((item: any) => item.title === '刷新前会话')).toBe(true));
+ let release!: () => void;
+ server.threadListGate = new Promise<void>(resolve => { release = resolve; });
+ server.threads.set('a', [{ id: 'after-refresh', name: '刷新后会话', cwd: '/project' }]);
+ const previousReads = server.projectRequests.length;
+ await act(async () => command(`refresh-${gatewayMode}`, 'navigation.refresh'));
+ await waitFor(() => expect(server.projectRequests.length).toBeGreaterThan(previousReads));
+ expect(items().some((item: any) => item.title === '刷新前会话')).toBe(true);
+ await waitFor(() => expect(posts.at(-1)?.groups.some((group: any) => group.cwd === '/project' && group.loading === 'loading')).toBe(true));
+ await act(async () => release());
+ await waitFor(() => expect(items().some((item: any) => item.title === '刷新后会话')).toBe(true));
+ expect(items().some((item: any) => item.title === '刷新前会话')).toBe(false);
+ await waitFor(() => expect(posts.at(-1)?.groups.find((group: any) => group.cwd === '/project')?.loading).toBe('ready'));
+});
+
 it.each([false, true])('首次打开边栏所有项目折叠，展开后重开和重启保留（原生=%s）', async native => {
  server.enabled = true;
  localStorage.setItem('codex-mobile:list-backend', 'a');

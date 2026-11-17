@@ -204,7 +204,6 @@ import {
 import {
   fetchBackendHostInfo,
   fetchBackendProjectState,
-  type BackendProjectState,
 } from "./backends/probe";
 import type {
   BackendConfig,
@@ -293,8 +292,6 @@ interface HistoricalMessageEditState {
 }
 
 interface BackendThreadSnapshot {
-  readSnapshotStatus?: string;
-  readSnapshotRefreshing?: boolean;
   backendId: string;
   conversationProject?: string;
   threads: AnyRecord[];
@@ -452,11 +449,6 @@ function BackendWorkspace({
   const approvalRequests = useApprovalRequests();
   const { requests, approval, userAnswers } = approvalRequests;
   useEffect(() => { approvalRequests.syncAsyncQuestions(active); }, [active, approvalRequests.syncAsyncQuestions]);
-  const [readSnapshotStatus, setReadSnapshotStatus] = useState("");
-  const [readSnapshotRefreshing, setReadSnapshotRefreshing] = useState(false);
-  const readSnapshotPendingRef = useRef(new Map<string, number>());
-  const readSnapshotFailedRef = useRef(false);
-  const [threadReadSnapshotStatus, setThreadReadSnapshotStatus] = useState<{ threadId: string; status: string } | null>(null);
   const [syncState, setSyncState] = useState<{ updatedAt: number | null; stale: boolean } | null>(null);
   const [models, setModels] = useState<AnyRecord[]>([]);
   const [permissionProfiles, setPermissionProfiles] = useState<AnyRecord[]>([]);
@@ -711,14 +703,14 @@ function BackendWorkspace({
       pinMutationRef.current = false;
     }
   };
-  async function syncDesktopPinned(client: AppServerClient, refreshSnapshot = true): Promise<void> {
+  async function syncDesktopPinned(client: AppServerClient): Promise<void> {
     if (client !== clientRef.current || client.signal?.aborted || pinMutationRef.current) return;
     if (pinRefreshRef.current?.client === client) return pinRefreshRef.current.promise;
     const revision = pinnedRevisionRef.current;
     const promise = (async () => {
       let data: AnyRecord[];
       try {
-        data = await readDesktopPinnedThreads((method, params) => client.request(method, params, { priority: "background", ...(refreshSnapshot ? {} : { refreshSnapshot: false }) }));
+        data = await readDesktopPinnedThreads((method, params) => client.request(method, params, { priority: "background" }));
       } catch (reason) {
         if (client !== clientRef.current || client.signal?.aborted || revision !== pinnedRevisionRef.current) return;
         throw reason;
@@ -781,7 +773,6 @@ function BackendWorkspace({
   const threadRefreshRef = useRef<ReturnType<typeof createLatestClientRefresh<AppServerClient>> | null>(null);
   if (!threadRefreshRef.current) threadRefreshRef.current = createLatestClientRefresh<AppServerClient>();
   const [threadListRefreshing, setThreadListRefreshing] = useState(false);
-  const projectCatalogRef = useRef<{ client: AppServerClient; state: BackendProjectState } | null>(null);
   const [projectLoadedCounts, setProjectLoadedCounts] = useState<Record<string, number>>({});
   const decorateThreadProject = (thread: AnyRecord): AnyRecord => {
     const client = clientRef.current;
@@ -1042,15 +1033,14 @@ function BackendWorkspace({
 
   async function loadThreads(
     client = clientRef.current,
-    options: { silent?: boolean; refreshSnapshot?: boolean } = {},
+    options: { silent?: boolean } = {},
   ) {
     if (!client || client !== clientRef.current) return;
     return threadRefreshRef.current!.run(client, async () => {
       if (client !== clientRef.current || client.signal?.aborted) return;
-      if (options.refreshSnapshot === false && projectCatalogRef.current?.client !== client) return;
       setThreadListRefreshing(true);
       try {
-        const pinnedRead = syncDesktopPinned(client, options.refreshSnapshot !== false);
+        const pinnedRead = syncDesktopPinned(client);
         void pinnedRead.catch(() => {});
         if (client !== clientRef.current || client.signal?.aborted) return;
         let projectCatalogReadSucceeded = false;
@@ -1060,15 +1050,11 @@ function BackendWorkspace({
           readLocalProjectlessThreadIds(window.localStorage, backend.id),
         );
         try {
-          // 快照通知只重投影已有目录，不能用回填再次触发上游整轮刷新。
           const [projectState] = await Promise.all([
-            options.refreshSnapshot === false
-              ? Promise.resolve(projectCatalogRef.current!.state)
-              : fetchBackendProjectState(backend, "background", client.signal),
+            fetchBackendProjectState(backend, "background", client.signal),
             pinnedRead,
           ]);
           if (client !== clientRef.current || client.signal?.aborted) return;
-          projectCatalogRef.current = { client, state: projectState };
           projectCatalogReadSucceeded = true;
           directories = projectState.projects;
           client.projectWorktrees = projectState.projectWorktrees ?? {};
@@ -1305,8 +1291,6 @@ function BackendWorkspace({
 
   useEffect(() => {
     onSnapshotChange({
-      readSnapshotStatus,
-      readSnapshotRefreshing,
       backendId: backend.id,
       conversationProject: active?.id ? (active.isProjectless === true ? '' : active.cwd ?? '') : undefined,
       threads,
@@ -1333,8 +1317,6 @@ function BackendWorkspace({
     active?.isProjectless,
     error,
     onSnapshotChange,
-    readSnapshotStatus,
-    readSnapshotRefreshing,
     openingThreadId,
     resolvedSearchQuery,
     searchError,
@@ -1381,8 +1363,6 @@ function BackendWorkspace({
     }
     const client = clientRef.current;
     void loadThreads(client)
-      .then(() => client.waitForListSnapshotRefresh?.())
-      .then(() => threadRefreshRef.current!.pending(client))
       .catch(() => undefined)
       .finally(() => {
         if (sequence === refreshSequenceRef.current) setRefreshing(false);
@@ -1410,11 +1390,6 @@ function BackendWorkspace({
     };
     invalidateUploadUsage();
     setSyncState(null);
-    setReadSnapshotStatus("");
-    setReadSnapshotRefreshing(false);
-    readSnapshotPendingRef.current.clear();
-    readSnapshotFailedRef.current = false;
-    setThreadReadSnapshotStatus(null);
     let manager: BackendConnectionManager;
     manager = new BackendConnectionManager({
       onConnection: (_backendId, status, connectionError) => {
@@ -1422,10 +1397,6 @@ function BackendWorkspace({
         setConnection(status);
         if (status === "online") setError("");
         if (status === "connecting" || status === "offline") {
-          readSnapshotPendingRef.current.clear();
-          readSnapshotFailedRef.current = false;
-          setReadSnapshotRefreshing(false);
-          setReadSnapshotStatus("");
           invalidateUploadUsage();
           projectlessLoadRef.current = null;
           setLoadingProjectCwd((current) => current === PROJECTLESS_GROUP_ID ? "" : current);
@@ -1468,47 +1439,6 @@ function BackendWorkspace({
       onNotification: (_backendId, message, source) => {
           const client = source as AppServerClient;
           const params = (message.params ?? {}) as AnyRecord;
-          if (message.method === 'mobile/readSnapshot/status') {
-            if (disposed || client !== clientRef.current || !Number.isFinite(params.updatedAt)) return;
-            const threadId = params.request?.params?.threadId;
-            if (typeof threadId === 'string') {
-              const status = t('快照更新于 {time} · {state}', { time: new Date(params.updatedAt).toLocaleTimeString(), state: params.failed ? t('更新失败，保留已有内容') : params.refreshing ? t('正在后台更新') : t('已同步') });
-              if (threadId === activeThreadTargetRef.current) setThreadReadSnapshotStatus({ threadId, status });
-            } else {
-              const pending = readSnapshotPendingRef.current;
-              const key = JSON.stringify([params.request?.method, params.request?.params]);
-              if (params.refreshing === true) {
-                if (!pending.size) readSnapshotFailedRef.current = false;
-                pending.set(key, params.updatedAt);
-              } else pending.delete(key);
-              if (params.failed) readSnapshotFailedRef.current = true;
-              setReadSnapshotRefreshing(pending.size > 0);
-              setReadSnapshotStatus(t('快照更新于 {time} · {state}', {
-                time: new Date(Math.min(params.updatedAt, ...pending.values())).toLocaleTimeString(),
-                state: pending.size ? t('正在后台更新') : readSnapshotFailedRef.current ? t('更新失败，保留已有内容') : t('已同步'),
-              }));
-            }
-            return;
-          }
-          if (message.method === 'mobile/readSnapshot/updated') {
-            if (disposed || client !== clientRef.current) return;
-            const request = params.request; const result = params.response?.result;
-            if (!request || !result) return;
-            const threadId = request.params?.threadId;
-            if (threadId && threadId === activeThreadTargetRef.current && result.thread?.id === threadId && activeRef.current?.id === threadId) {
-              const page = result.initialTurnsPage;
-              applyActiveThreadSnapshot({ ...result.thread, ...(page?.data ? { turns: [...page.data].reverse() } : {}) });
-              if (request.method === 'thread/resume') void reconcileActiveThread(client).catch(() => {});
-            } else if (threadId && threadId === activeThreadTargetRef.current && activeRef.current?.id === threadId) {
-              void reconcileActiveThread(client).catch(() => {});
-            }
-            // 在途读取可能已经交付旧页，等它收尾后再投影，避免合并刷新吞掉晚快照。
-            if (!threadId) void Promise.resolve(threadRefreshRef.current!.pending(client))
-              .catch(() => {})
-              .then(() => loadThreads(client, { silent: true, refreshSnapshot: false }))
-              .catch(() => {});
-            return;
-          }
           if (message.method === "mobile/events/catchup") {
             completionEventCatchUpRef.current = params.active === true;
             return;
@@ -4823,7 +4753,6 @@ function BackendWorkspace({
           client={clientRef.current}
           error={error}
           syncState={syncState}
-          readSnapshotStatus={threadReadSnapshotStatus?.threadId === active?.id ? threadReadSnapshotStatus?.status : undefined}
           draft={draft}
           draftImages={draftImages}
           draftFiles={draftFiles}
@@ -5337,8 +5266,6 @@ function ConfiguredApp({
       const previous = current[snapshot.backendId];
       if (
         previous &&
-        previous.readSnapshotStatus === snapshot.readSnapshotStatus &&
-        previous.readSnapshotRefreshing === snapshot.readSnapshotRefreshing &&
         previous.conversationProject === snapshot.conversationProject &&
         previous.threads === snapshot.threads &&
         previous.projects === snapshot.projects &&
@@ -5490,7 +5417,7 @@ function ConfiguredApp({
   const loadingBackendIds = new Set(
     Object.values(snapshots)
       .filter((snapshot) =>
-        snapshot.readSnapshotRefreshing || snapshot.threadListRefreshing || Object.values(snapshot.projectThreadStates ?? {}).some(
+        snapshot.threadListRefreshing || Object.values(snapshot.projectThreadStates ?? {}).some(
           (state) => state === "loading",
         ),
       )
@@ -5800,7 +5727,6 @@ function ConfiguredApp({
       >
         <aside className="conversation-sidebar" aria-label={t("会话列表")}>
           <ThreadListPage
-            readSnapshotStatus={snapshots[listBackendId]?.readSnapshotStatus ?? Object.values(snapshots).map(snapshot => snapshot.readSnapshotStatus).find(Boolean)}
             sidebarOpen={sidebarOpen}
             onCloseSidebar={closeSidebar}
             backends={runtimeBackends}

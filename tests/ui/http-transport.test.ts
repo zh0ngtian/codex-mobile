@@ -8,10 +8,13 @@ afterEach(() => {
   transports.splice(0).forEach((transport) => transport.close());
   vi.useRealTimers();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
-function setup(fetcher: typeof fetch, id = "test") {
-  const transport = new HttpRpcTransport({ baseUrl: "http://device.test", token: "test", id }, {
+function setup(fetcher: typeof fetch, id = "test", gatewayMode: "local" | "remote" = "local") {
+  const transport = new HttpRpcTransport({ baseUrl: "http://device.test", token: "test", id, gatewayMode,
+    ...(gatewayMode === "remote" ? { remoteTarget: { mode: "remote" as const, gatewayId: "g", account: { accountId: "a", accountUserId: "u" }, target: { environmentId: "e", installationId: "i" } } } : {}),
+  }, {
     fetch: fetcher, sessionId: "12345678-1234-4234-8234-123456789abc",
   });
   transports.push(transport);
@@ -22,32 +25,77 @@ const events = (overrides = {}) => new Response(JSON.stringify({
   updatedAt: Date.now(), reset: false, ...overrides,
 }));
 
-it.each([200, 503, 'rpc-error', 'invalid'] as const)('已声明直连快照能力时同次导航只发一个请求，结果=%s', async outcome => {
+it.each(['local', 'remote'] as const)('%s列表和对话直接读取RPC最新结果，无快照探测、后台刷新或二次投影', async gatewayMode => {
   vi.useFakeTimers(); vi.spyOn(gatewayOutbox, 'list').mockResolvedValue([]);
-  const paths: string[] = []; const messages: any[] = [];
-  const transport = new HttpRpcTransport({ id: `inline-snapshot-${outcome}`, baseUrl: `http://inline-${outcome}.test`, token: '', gatewayMode: 'remote',
-    remoteTarget: { mode: 'remote', gatewayId: 'g', account: { accountId: 'a', accountUserId: 'u' }, target: { environmentId: 'e', installationId: 'i' } },
-  }, { fetch: (async (input, init) => {
-    const url = new URL(String(input)); paths.push(url.pathname + url.search);
-    const message = JSON.parse(String(init?.body)).message;
+  const calls: { url: URL; message: any }[] = [], messages: any[] = [];
+  let revision = 0;
+  const transport = setup((async (input, init) => {
+    const url = new URL(String(input)), message = JSON.parse(String(init?.body)).message;
+    calls.push({ url, message });
+    // 即使旧网关声明快照能力，新前端仍使用与Local相同的RPC入口。
     if (message.method === 'initialize') return new Response(JSON.stringify({ result: { gateway: { directRequests: true, readSnapshotFallback: true } } }));
-    expect(url.pathname).toBe('/api/read-snapshot'); expect(url.searchParams.get('fallback')).toBe('1');
-    await new Promise(resolve => setTimeout(resolve, 5500));
-    return new Response(JSON.stringify(outcome === 'invalid' ? {} : {
-      message: outcome === 'rpc-error' ? { error: { code: -32000, message: '读取失败' } } : { result: { thread: { id: 'cold' } } },
-      updatedAt: Date.now(), refreshing: false,
-    }), { status: outcome === 503 ? 503 : 200 });
-  }) as typeof fetch }); transports.push(transport);
-  await vi.advanceTimersByTimeAsync(0); transport.addEventListener('message', event => messages.push(JSON.parse((event as MessageEvent).data)));
-  await transport.send(JSON.stringify({ id: 1, method: 'initialize', params: {} })); paths.length = 0;
-  const read = transport.send(JSON.stringify({ id: 2, method: 'thread/read', params: { threadId: 'cold' } }), 10000);
-  const result = read.then(() => 'ok', error => String(error));
+    return new Response(JSON.stringify({ result: { revision: ++revision } }));
+  }) as typeof fetch, `rpc-parity-${gatewayMode}`, gatewayMode);
   await vi.advanceTimersByTimeAsync(0);
-  await vi.advanceTimersByTimeAsync(5500);
-  expect(await result).toBe(outcome === 503 ? 'Error: 设备网关返回 503' : outcome === 'invalid' ? 'Error: 快照更新未完成' : 'ok');
-  expect(paths).toHaveLength(1);
-  if (outcome === 200) expect(messages).toContainEqual({ id: 2, result: { thread: { id: 'cold' } } });
-  if (outcome === 'rpc-error') expect(messages).toContainEqual({ id: 2, error: { code: -32000, message: '读取失败' } });
+  transport.addEventListener('message', event => messages.push(JSON.parse((event as MessageEvent).data)));
+  const client = new AppServerClient(transport);
+  await client.request('initialize', {}); calls.length = 0; messages.length = 0;
+  const reads = [
+    ['threadSection/list', {}],
+    ['thread/list', { cwd: '/project', limit: 5 }],
+    ['mobile/sidebar/summaries', { threadIds: [], includeRunning: true }],
+    ['mobile/sidebar/projectless', { threadIds: ['t'] }],
+    ['thread/read', { threadId: 't', includeTurns: false }],
+    ['thread/turns/list', { threadId: 't', itemsView: 'full', limit: 5 }],
+  ] as const;
+  for (let round = 0; round < 2; round++) for (const [method, params] of reads) {
+    const expectedRevision = revision + 1;
+    await expect(client.request(method, params, { priority: round ? 'background' : 'foreground' })).resolves.toEqual({ revision: expectedRevision });
+  }
+  await vi.advanceTimersByTimeAsync(60000);
+  expect(calls).toHaveLength(12);
+  expect(calls.every(call => call.url.pathname === '/api/rpc')).toBe(true);
+  expect(calls.map(call => call.message.method)).toEqual(Array.from({ length: 2 }, () => [
+    'threadSection/list', 'thread/list', 'mobile/sidebar/summaries', 'mobile/sidebar/projectless', 'thread/read', 'mobile/turns/details',
+  ]).flat());
+  expect(messages).toHaveLength(12);
+  expect(messages.every(message => message.id != null && !message.method)).toBe(true);
+  for (const { url } of calls) {
+    expect(url.searchParams.get('mode')).toBe(gatewayMode === 'remote' ? 'remote' : null);
+    expect(url.searchParams.has('target')).toBe(gatewayMode === 'remote');
+  }
+});
+
+it.each(['local', 'remote'] as const)('%s导航读取失败直接返回，不查询旧操作或自动重发', async gatewayMode => {
+  vi.spyOn(gatewayOutbox, 'list').mockResolvedValue([]);
+  const paths: string[] = [];
+  const transport = setup((async (input, init) => {
+    const url = new URL(String(input)); paths.push(url.pathname);
+    const message = JSON.parse(String(init?.body)).message;
+    return message.method === 'initialize'
+      ? new Response(JSON.stringify({ result: { gateway: { directRequests: true, readSnapshotFallback: true } } }))
+      : new Response('{}', { status: 503 });
+  }) as typeof fetch, `rpc-parity-error-${gatewayMode}`, gatewayMode);
+  await new Promise<void>(resolve => transport.addEventListener('open', () => resolve()));
+  await transport.send(JSON.stringify({ id: 1, method: 'initialize', params: {} })); paths.length = 0;
+  await expect(transport.send(JSON.stringify({ id: 2, method: 'thread/list', params: { cwd: '/project', limit: 5 } }), 100)).rejects.toThrow('503');
+  expect(paths).toEqual(['/api/rpc']);
+});
+
+it.each(['timeout', 'closed'] as const)('Remote恢复旧记录期间%s时，导航不能重置预算或在关闭后发送', async outcome => {
+  vi.useFakeTimers();
+  vi.stubGlobal('indexedDB', {});
+  let release!: () => void;
+  vi.spyOn(gatewayOutbox, 'list').mockImplementationOnce(() => new Promise(resolve => { release = () => resolve([]); }));
+  const fetcher = vi.fn(async () => new Response(JSON.stringify({ result: {} })));
+  const transport = setup(fetcher as typeof fetch, `restore-read-${outcome}`, 'remote');
+  await vi.advanceTimersByTimeAsync(0);
+  const reading = transport.send(JSON.stringify({ id: 1, method: 'thread/list', params: { limit: 5 } }), 100).catch(error => error);
+  await vi.advanceTimersByTimeAsync(101);
+  if (outcome === 'closed') transport.close();
+  release();
+  expect(await reading).toBeInstanceOf(Error);
+  expect(fetcher).not.toHaveBeenCalled();
 });
 
 it('直连普通读取503立即失败，不查询旧operation或自动重发', async () => {
@@ -717,113 +765,4 @@ it('Sidechat在HTTP请求仍待确认时也不把正文或指令写入localStora
  const disk = Object.keys(localStorage).map(key => localStorage.getItem(key)).join('');
  expect(disk).not.toContain('SIDECHAT_LOCAL_PRIVATE_BODY');
  release!(); await pending;
-});
-
-it('Remote导航先交付网关共享快照，后台更新另发通知且不重复公共RPC', async () => {
-  vi.spyOn(gatewayOutbox, 'list').mockResolvedValue([]);
-  let finish!: (response: Response) => void; const calls: string[] = [];
-  const transport = new HttpRpcTransport({ id: 'snapshot-test', baseUrl: 'http://snapshot.test', token: 'test', gatewayMode: 'remote', remoteTarget: { mode: 'remote', gatewayId: 'g', account: { accountId: 'a', accountUserId: 'u' }, target: { environmentId: 'e', installationId: 'i' } } }, { sessionId: '12345678-1234-4234-8234-123456789abc', fetch: (async (input) => {
-    const url = new URL(String(input)); calls.push(url.pathname);
-    if (url.searchParams.has('refresh')) return new Promise<Response>(resolve => { finish = resolve; });
-    return new Response(JSON.stringify({ message: { result: { thread: { id: 't', name: 'saved' } } }, updatedAt: 100, refreshing: true }));
-  }) as typeof fetch }); transports.push(transport);
-  await new Promise<void>(resolve => transport.addEventListener('open', () => resolve()));
-  const messages: any[] = []; transport.addEventListener('message', event => messages.push(JSON.parse((event as MessageEvent).data)));
-  await transport.send(JSON.stringify({ id: 3, method: 'thread/read', params: { threadId: 't' } }));
-  expect(messages.find(value => value.id === 3)).toMatchObject({ result: { thread: { name: 'saved' } } });
-  expect(calls).not.toContain('/api/rpc');
-  expect(messages.find(value => value.method === 'mobile/readSnapshot/status')).toMatchObject({ params: { request: { method: 'thread/read', params: { threadId: 't' } } } });
-  finish(new Response(JSON.stringify({ message: { result: { thread: { id: 't', name: 'fresh' } } }, updatedAt: 200, refreshing: false })));
-  await vi.waitFor(() => expect(messages.find(value => value.method === 'mobile/readSnapshot/updated')).toMatchObject({ params: { response: { result: { thread: { name: 'fresh' } } }, updatedAt: 200 } }));
-});
-
-it('旧Remote网关无快照入口时仍通过原RPC完成导航', async () => {
-  vi.spyOn(gatewayOutbox, 'list').mockResolvedValue([]); const paths: string[] = [];
-  const transport = new HttpRpcTransport({ id: 'old-snapshot-gateway', baseUrl: 'http://old-snapshot.test', token: '', gatewayMode: 'remote', remoteTarget: { mode: 'remote', gatewayId: 'g', account: { accountId: 'a', accountUserId: 'u' }, target: { environmentId: 'e', installationId: 'i' } } }, { fetch: (async (input) => {
-    const path = new URL(String(input)).pathname; paths.push(path);
-    return path === '/api/read-snapshot' ? new Response('{}', { status: 404 }) : new Response(JSON.stringify({ result: { thread: { id: 't' } } }));
-  }) as typeof fetch }); transports.push(transport);
-  await new Promise<void>(resolve => transport.addEventListener('open', () => resolve()));
-  const messages: any[] = []; transport.addEventListener('message', event => messages.push(JSON.parse((event as MessageEvent).data)));
-  await transport.send(JSON.stringify({ id: 4, method: 'thread/read', params: { threadId: 't' } }));
-  expect(paths).toEqual(['/api/read-snapshot', '/api/rpc']); expect(messages).toContainEqual({ id: 4, result: { thread: { id: 't' } } });
-});
-it('后台通知重新投影列表只读取快照，不再次发起上游更新或覆盖同步状态', async () => {
-  vi.spyOn(gatewayOutbox, 'list').mockResolvedValue([]);
-  const paths: string[] = [];
-  const transport = new HttpRpcTransport({ id: 'snapshot-projection', baseUrl: 'http://snapshot-projection.test', token: '', gatewayMode: 'remote', remoteTarget: { mode: 'remote', gatewayId: 'g', account: { accountId: 'a', accountUserId: 'u' }, target: { environmentId: 'e', installationId: 'i' } } }, { fetch: (async input => {
-    const url = new URL(String(input)); paths.push(url.pathname + url.searchParams.get('refresh'));
-    return new Response(JSON.stringify({ message: { result: { data: [{ id: 'fresh-row' }], nextCursor: null } }, updatedAt: 100, refreshing: true }));
-  }) as typeof fetch }); transports.push(transport);
-  await new Promise<void>(resolve => transport.addEventListener('open', () => resolve()));
-  const client = new AppServerClient(transport), notifications: string[] = [];
-  client.onNotification(message => notifications.push(message.method!));
-  await expect(client.request('thread/list', { limit: 5 }, { refreshSnapshot: false })).resolves.toMatchObject({ data: [{ id: 'fresh-row' }] });
-  await new Promise(resolve => setTimeout(resolve, 0));
-  expect(paths).toEqual(['/api/read-snapshotnull']);
-  expect(notifications).toEqual([]);
-});
-it('后台快照失败保留已交付内容并通知失败，不发伪造更新', async () => {
-  vi.spyOn(gatewayOutbox, 'list').mockResolvedValue([]);
-  const transport = new HttpRpcTransport({ id: 'failed-snapshot-gateway', baseUrl: 'http://failed-snapshot.test', token: '', gatewayMode: 'remote', remoteTarget: { mode: 'remote', gatewayId: 'g', account: { accountId: 'a', accountUserId: 'u' }, target: { environmentId: 'e', installationId: 'i' } } }, { fetch: (async (input) => new URL(String(input)).searchParams.has('refresh') ? new Response('{}', { status: 503 }) : new Response(JSON.stringify({ message: { result: { thread: { id: 't' } } }, updatedAt: 100, refreshing: true }))) as typeof fetch }); transports.push(transport);
-  await new Promise<void>(resolve => transport.addEventListener('open', () => resolve()));
-  const messages: any[] = []; transport.addEventListener('message', event => messages.push(JSON.parse((event as MessageEvent).data)));
-  await transport.send(JSON.stringify({ id: 5, method: 'thread/read', params: { threadId: 't' } }));
-  await vi.waitFor(() => expect(messages).toContainEqual({ method: 'mobile/readSnapshot/status', params: { request: { id: 5, method: 'thread/read', params: { threadId: 't' } }, updatedAt: 100, refreshing: false, failed: true } }));
-  expect(messages.filter(value => value.id === 5)).toEqual([{ id: 5, result: { thread: { id: 't' } } }]); expect(messages.some(value => value.method === 'mobile/readSnapshot/updated')).toBe(false);
-});
-
-
-it('Remote已有导航快照不等待前台慢RPC释放浏览器调度队列', async () => {
-  vi.spyOn(gatewayOutbox, 'list').mockResolvedValue([]);
-  let release!: () => void;
-  let started!: () => void;
-  const startedRpc = new Promise<void>(resolve => { started = resolve; });
-  const held = new Promise<void>(resolve => { release = resolve; });
-  const messages: any[] = [];
-  const paths: string[] = [];
-  const transport = new HttpRpcTransport({ id: 'snapshot-lane', baseUrl: 'http://snapshot-lane.test', token: 'test', gatewayMode: 'remote', remoteTarget: { mode: 'remote', gatewayId: 'g', account: { accountId: 'a', accountUserId: 'u' }, target: { environmentId: 'e', installationId: 'i' } } }, { fetch: (async (input) => {
-    const path = new URL(String(input)).pathname; paths.push(path);
-    if (path === '/api/rpc') { started(); await held; return new Response(JSON.stringify({ result: {} })); }
-    return new Response(JSON.stringify({ message: { result: { data: [{ id: 'cached' }], nextCursor: null } }, updatedAt: Date.now(), refreshing: false }));
-  }) as typeof fetch }); transports.push(transport);
-  transport.addEventListener('message', event => messages.push(JSON.parse((event as MessageEvent).data)));
-  await new Promise<void>(resolve => transport.addEventListener('open', () => resolve()));
-  const slow = transport.send(JSON.stringify({ id: 1, method: 'model/list', params: {} }));
-  await startedRpc;
-  const navigation = transport.send(JSON.stringify({ id: 2, method: 'thread/list', params: { limit: 5 } }), 10000, 'background');
-  try {
-    await vi.waitFor(() => expect(messages).toContainEqual({ id: 2, result: { data: [{ id: 'cached' }], nextCursor: null } }), { timeout: 200 });
-    expect(paths).toEqual(['/api/rpc', '/api/read-snapshot']);
-  } finally { release(); await Promise.allSettled([slow, navigation]); }
-});
-
-
-it('手动刷新只等待调用时的列表快照，详情及之后的定时同步不能延长本轮', async () => {
-  vi.spyOn(gatewayOutbox, 'list').mockResolvedValue([]);
-  const finishes = new Map<string, (response: Response) => void>();
-  const transport = new HttpRpcTransport({ id: 'snapshot-manual-round', baseUrl: 'http://snapshot-manual.test', token: '', gatewayMode: 'remote', remoteTarget: { mode: 'remote', gatewayId: 'g', account: { accountId: 'a', accountUserId: 'u' }, target: { environmentId: 'e', installationId: 'i' } } }, { fetch: (async (input, init) => {
-    const url = new URL(String(input)); const request = JSON.parse(String(init?.body)).message;
-    const key = request.params.threadId ?? request.params.cwd;
-    if (url.searchParams.has('refresh')) return new Promise<Response>(resolve => { finishes.set(key, resolve); });
-    return new Response(JSON.stringify({ message: { result: { data: [] } }, updatedAt: 100, refreshing: true }));
-  }) as typeof fetch }); transports.push(transport);
-  await new Promise<void>(resolve => transport.addEventListener('open', () => resolve()));
-  const client = new AppServerClient(transport);
-  await client.request('thread/list', { cwd: '/first' });
-  await client.request('thread/list', { cwd: '/second' });
-  await client.request('thread/read', { threadId: 'detail' });
-  let settled = false;
-  const round = client.waitForListSnapshotRefresh().then(() => { settled = true; });
-  await client.request('thread/list', { cwd: '/later' });
-  const fresh = () => new Response(JSON.stringify({ message: { result: { data: [] } }, updatedAt: 200, refreshing: false }));
-  await vi.waitFor(() => expect(finishes.has('/second')).toBe(true));
-  finishes.get('/first')!(fresh());
-  await Promise.resolve();
-  expect(settled).toBe(false);
-  finishes.get('/second')!(new Response('{}', { status: 503 }));
-  await round;
-  expect(settled).toBe(true);
-  await vi.waitFor(() => expect(finishes.has('/later') && finishes.has('detail')).toBe(true));
-  finishes.get('/later')!(fresh()); finishes.get('detail')!(fresh());
 });

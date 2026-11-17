@@ -129,7 +129,7 @@ describe("HTTP前台会话优先于后台刷新", () => {
     expect(await Promise.all(refreshing)).toEqual(Array(4).fill({ method: "thread/read" }));
   });
 
-  it("排队时间不消耗网络超时，开始派发后仍执行原超时", async () => {
+  it("只读排队消耗原请求预算，预算耗尽后不再派发", async () => {
     const { calls, create, request } = harness();
     const { client } = create("queue-timeout");
     await vi.advanceTimersByTimeAsync(0);
@@ -142,8 +142,7 @@ describe("HTTP前台会话优先于后台刷新", () => {
     expect(calls).toHaveLength(2);
     calls[0].finish();
     await vi.advanceTimersByTimeAsync(0);
-    expect(calls).toHaveLength(3);
-    await vi.advanceTimersByTimeAsync(101);
+    expect(calls).toHaveLength(2);
     expect(await queued).toBeInstanceOf(Error);
   });
 
@@ -270,7 +269,7 @@ describe("HTTP前台会话优先于后台刷新", () => {
     await vi.advanceTimersByTimeAsync(0);
     const project = () => fetchBackendProjectState({ id: "timeout-project", name: "Mac", baseUrl: origin, token: "test", enabled: true, order: 0 }, "background", client.signal).catch((error: Error) => error);
     const first = project(), second = project();
-    const queued = request(client, "thread/read", { priority: "background" });
+    const queued = request(client, "thread/read", { priority: "background", timeoutMs: 60_000 });
     try {
       expect(calls).toHaveLength(2);
       await vi.advanceTimersByTimeAsync(10_001);

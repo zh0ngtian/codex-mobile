@@ -40,6 +40,40 @@ it('直连导航快照未命中在同次请求读取，命中不重复请求上�
   }
 }, 15000);
 
+it('Remote普通导航RPC忽略旧快照并逐次交付最新结果，撤权后不能继续读取', async () => {
+  let revision = 0;
+  const f = await gatewayRemote(message => message.method === 'thread/read' ? { thread: { id: 't', revision: ++revision } } : undefined);
+  let services: GatewayRemoteServices | undefined;
+  const scheduler = new OperationScheduler({ directory: join(f.gatewayHome, 'ledger'), gatewayId: 'gateway', gatewayCodexHome: f.gatewayHome,
+    directRequests: true, resolver: f.resolver, upstreamUrl: 'ws://127.0.0.1:1', remoteConsumers: async (_context, target, call) => {
+      services ??= await GatewayRemoteServices.create(target, f.gatewayHome, call.signal);
+      return { projections: services.projections, sidechatReplay: services.sidechatReplay };
+    } });
+  const rpc = new GatewayRpc(f.resolver, scheduler);
+  const server = createServer((req, res) => { void rpc.handle(req, res, new URL(req.url!, 'http://test'), f.reference); });
+  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+  const origin = `http://127.0.0.1:${(server.address() as any).port}`, sessionId = randomUUID();
+  const post = async (message: unknown) => {
+    const response = await fetch(`${origin}/api/rpc?sessionId=${sessionId}`, { method: 'POST', body: JSON.stringify({ requestId: randomUUID(), message }) });
+    return { status: response.status, body: await response.json() as any };
+  };
+  try {
+    await post({ id: 1, method: 'initialize', params: { clientInfo: { name: 'direct-navigation', version: '1' } } });
+    await post({ method: 'initialized' });
+    const context = await f.resolver.operationContext(f.reference);
+    const message = { id: 2, method: 'thread/read', params: { threadId: 't' } };
+    scheduler.snapshots.put(context, message, { result: { thread: { id: 't', revision: -1 } } });
+    expect(await post(message)).toMatchObject({ status: 200, body: { id: 2, result: { thread: { revision: 1 } } } });
+    expect(await post({ ...message, id: 3 })).toMatchObject({ status: 200, body: { id: 3, result: { thread: { revision: 2 } } } });
+    expect(f.frames.filter(frame => frame.method === 'thread/read')).toHaveLength(2);
+    await f.runtime.close();
+    expect((await post({ ...message, id: 4 })).status).not.toBe(200);
+    expect(f.frames.filter(frame => frame.method === 'thread/read')).toHaveLength(2);
+  } finally {
+    server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())); await scheduler.close(); await services?.close();
+  }
+}, 15000);
+
 it('公开 HTTP 请求经唯一耐久队列；查询原 UUID 不重复发送且不可跨 Session 读取', async () => {
   const f = await gatewayRemote(); let services: GatewayRemoteServices | undefined;
   const scheduler = new OperationScheduler({ directory: join(f.gatewayHome, 'ledger'), gatewayId: 'gateway', gatewayCodexHome: f.gatewayHome,

@@ -41,12 +41,11 @@ export interface AppServerSocket {
   readyState: number;
   managesHttpTimeout?: boolean;
   addEventListener(type: string, listener: (event: any) => void): void;
-  send(data: string, timeoutMs?: number, priority?: HttpRequestPriority, operationKey?: string, refreshSnapshot?: boolean): void | Promise<void>;
+  send(data: string, timeoutMs?: number, priority?: HttpRequestPriority, operationKey?: string): void | Promise<void>;
   close(code?: number, reason?: string): void;
   openRealtime?: () => Promise<void>;
   closeRealtime?: () => void;
   pendingErrorForRequest?: (id: number | string) => Error | undefined;
-  waitForListSnapshotRefresh?: () => Promise<void>;
 }
 
 export interface AppServerRequestOptions {
@@ -54,8 +53,6 @@ export interface AppServerRequestOptions {
   priority?: HttpRequestPriority;
   /** 同一逻辑操作的重试共用此标识；独立操作不能仅按相同参数合并。仅用于本机 HTTP 对账。 */
   operationKey?: string;
-  /** 后台通知回填投影时读取已有快照，避免再次触发上游更新。默认仍刷新。 */
-  refreshSnapshot?: boolean;
 }
 
 export class AppServerRpcError extends Error {
@@ -152,7 +149,7 @@ export class AppServerClient {
       };
       this.pending.set(id, pending);
       try {
-        const sending = this.send({ id, method, params }, options.timeoutMs ?? this.requestTimeoutMs, options.priority, options.operationKey, options.refreshSnapshot);
+        const sending = this.send({ id, method, params }, options.timeoutMs ?? this.requestTimeoutMs, options.priority, options.operationKey);
         if (sending) void sending.catch((reason) => {
           if (!this.pending.delete(id)) return;
           clearTimeout(timeout);
@@ -196,17 +193,13 @@ export class AppServerClient {
     return () => this.threadMetadataListeners.delete(listener);
   }
 
-  async waitForListSnapshotRefresh() {
-    await this.socket.waitForListSnapshotRefresh?.();
-  }
-
-  private send(message: RpcMessage, timeoutMs?: number, priority?: HttpRequestPriority, operationKey?: string, refreshSnapshot?: boolean) {
+  private send(message: RpcMessage, timeoutMs?: number, priority?: HttpRequestPriority, operationKey?: string) {
     const payload = JSON.stringify(message);
     const bytes = new TextEncoder().encode(payload).byteLength;
     if (bytes > MAX_APP_SERVER_MESSAGE_BYTES) {
       throw new Error(messageTooLarge(bytes, MAX_APP_SERVER_MESSAGE_BYTES));
     }
-    return this.socket.send(payload, timeoutMs, priority, operationKey, refreshSnapshot);
+    return this.socket.send(payload, timeoutMs, priority, operationKey);
   }
 
   private publishTurnAcceptance(request: { method?: string; params?: any }, response: RpcMessage) {

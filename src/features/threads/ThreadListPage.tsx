@@ -49,7 +49,6 @@ const LONG_PRESS_MOVE_TOLERANCE_PX = 10;
 
 export function ThreadListPage({
   sidebarOpen = true,
-  readSnapshotStatus,
   onCloseSidebar,
   backends,
   summaries,
@@ -81,7 +80,6 @@ export function ThreadListPage({
   onToggleProject,
   onToggleProjectCollapsed,
 }: {
-  readSnapshotStatus?: string;
   sidebarOpen?: boolean;
   onCloseSidebar?: () => void;
   backends: BackendConfig[];
@@ -366,7 +364,6 @@ export function ThreadListPage({
             </button>
           </div>
         </header>
-        {readSnapshotStatus && <small className="read-snapshot-status" role="status">{readSnapshotStatus}</small>}
         <BackendSwitcher
           backends={backends}
           summaries={summaries}
