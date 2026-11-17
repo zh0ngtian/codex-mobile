@@ -97,7 +97,8 @@ describe("多后端连接池", () => {
     const socket = new DelayedSocket();
     const manager = new BackendConnectionManager({ createSocket: () => socket, onConnection: (_id, state) => statuses.push(state) });
     try {
-      manager.sync([{ ...backend('mini', 'http://gateway.test'), gatewayMode }]); socket.open();
+      manager.sync([{ ...backend('mini', 'http://gateway.test'), gatewayMode,
+        ...(gatewayMode === 'remote' ? { remoteTarget: { mode: 'remote' as const, gatewayId: 'gateway', account: { accountId: 'account', accountUserId: 'user' }, target: { environmentId: 'env', installationId: 'install' } } } : {}) }]); socket.open();
       await vi.advanceTimersByTimeAsync(12_001);
       if (gatewayMode === 'remote') { expect(statuses).toContain('online'); expect(socket.closed).toBe(false); }
       else { expect(statuses).toContain('offline'); expect(socket.closed).toBe(true); }
