@@ -1,8 +1,8 @@
-# Remote 网关 Mac 管理（源码及本地验证完成，官方长期验收待完成）
+# Remote 网关 Mac 管理（网关和网页已部署，Remote授权与官方长期验收待完成）
 
-本页说明源码中的 Mac 管理入口；现役网关和手机尚未部署这些改动。目标业务路由、共享队列、会话观察及手机模式选择已实现且本地回归、开发构建及iPhone17Pro表单验收通过；官方完整功能与长期稳定性尚待验收，不能据此认为现役手机已能使用 Remote。阶段状态和收据见[实施计划](superpowers/plans/2026-11-13-remote-gateway.md)。
+2026-11-17现役网关及配套 WebUI 已部署这些改动，成功批次 `48f7578a-d8f4-407e-9d24-4820c08336f1`，冻结 `1fd52ff969d373dbdba281bcff41eb3bc6c69a6b`；本次未发布手机安装包。实际网页已连接本地网关，模式选择与 URL 同表单，Remote v1 能力可读取；当前常驻实例的身份状态为 `unconfigured`，须为该实例完成首次 Remote 授权及本机配对，不能把网页上线当作 Remote 已连通。官方完整功能、长期稳定性与 P95 仍待验收。见[本次部署收据](superpowers/plans/evidence/2026-11-17-remote-gateway-deploy.json)及[实施计划](superpowers/plans/2026-11-13-remote-gateway.md)。
 
-从源码验证时先执行 `npm run build:server`，再以 `node bin/codex-mobile.mjs remote …` 调用本工作区编译产物。下列 `codex-mobile remote …` 写法指同一套已编译入口，不代表现役安装版本已包含这些命令。
+现役入口为 `node ~/.local/share/codex-mobile-gateway/node_modules/codex-mobile/bin/codex-mobile.mjs remote …`；下列 `codex-mobile remote …` 为该入口的简写。从源码验证时先执行 `npm run build:server`，再用 `node bin/codex-mobile.mjs remote …` 调用本工作区编译产物。
 
 ## 手机连接与模式
 
@@ -75,4 +75,4 @@ codex-mobile remote reassociate --previous-environment-id OLD_ENV_ID --previous-
 
 候选源码 `700c7c7d96c5fc7cadf58913d5f855d1c731ed5a` 的31文件相关回归已有717项通过、7项按配置跳过，源码及含测试的两种严格服务端类型检查、服务端构建通过。先前质量审查复现的root整体替换归属断链已补充同一证明、失效取消和实际收尾回归；规格复审另确认的5处最终期限缺口已逐项红绿修复。QUALITY后续确认的六处过期资源创建边界也已统一保留原父操作及短阶段预算，原独立脚本均触发延迟后验证连接、原生请求或helper创建为零；成功交付后的Relay挑战、零流保活与重连继续通过。最终固定源码的独立规格与质量复审均已通过，见[隔离验收记录](superpowers/plans/evidence/2026-11-13-remote-admin-isolated-validation.json)。同一冻结源码的[官方Remote实际OS入口探针](superpowers/plans/evidence/2026-11-13-remote-admin-product-probe.json)已通过：三次进程各完成只读RPC及CLI状态/真实端口核验，正常退出后重启和SIGKILL后恢复成功，健康owner下第二个进程在Runtime启动前被拒绝。关闭逻辑流25秒后新增RPC成功，认证准备次数保持1。三次启动至RPC和CLI就绪分别为11789、14244、10065ms；这些是完整保留的单次冷启动样本，不能作为P95或8小时验收。
 
-真实 OAuth、授权撤销与重新登记未在现役服务上执行；当前没有发布客户端、部署生产网关或操作 launchd。正式 Remote 已有只读 RPC、同流恢复、零流短时保活与持久暂停的隔离收据；手机模式和公开队列已完成本轮源码接线；本地验证详见[本轮收据](superpowers/plans/evidence/2026-11-17-remote-gateway-completion-validation.json)，完整首失败和修复后补跑口径均保留。官方全功能、P95、跨刷新和连续8小时验收仍待后续任务。
+上述正式 Remote RPC 和进程探针是部署前的隔离验证，不代表现役 Remote 身份已配置。2026-11-17已通过协调器更新实际 launchd 网关和网页，部署时保留原启动配置与 token；未发布手机安装包。手机模式和公开队列的本地验证详见[源码收据](superpowers/plans/evidence/2026-11-17-remote-gateway-completion-validation.json)，完整首失败和修复后补跑口径均保留。现役首次授权及官方全功能、P95、跨刷新和连续8小时验收仍待完成。

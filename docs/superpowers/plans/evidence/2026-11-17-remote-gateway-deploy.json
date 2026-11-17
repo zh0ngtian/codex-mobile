@@ -1,0 +1,83 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-11-17",
+  "scope": "gateway-webui",
+  "taskId": "remote-gateway-web-test-20261117",
+  "sourceCommit": "1e9917729082e1b1f6755335988f8375a4314613",
+  "batchId": "48f7578a-d8f4-407e-9d24-4820c08336f1",
+  "frozenCommit": "1fd52ff969d373dbdba281bcff41eb3bc6c69a6b",
+  "status": "complete",
+  "webUi": true,
+  "gateway": {
+    "frontendDigest": "32d1b144ad27cc56c2ff508185bb56026c18f1b589a990cb2a690ab2ace4eabd",
+    "serverDigest": "bc42d7dde7f6f54ce60489458a7e7e2f2428124afa68e71b3272b651e7055937",
+    "binDigest": "e1658eb973cdbe2001d9c12c6f1413c98abed6e7ce060ffddb0e00ace46935f5",
+    "manifestDigest": "932d4dc980f60916dd4972f4e6f3b7db6b943d73b73be7e1259c657eec170233",
+    "archiveSha256": "76fc9485505e3c934446fcfacc2db3dfdab381da42905ac96b64e35eea1ed1b4",
+    "pid": 59896,
+    "oldPid": 92116
+  },
+  "verification": {
+    "persistedReceiptMatches": true,
+    "liveFrontendAndServerMatchFrozenOutput": true,
+    "startupAndEnvironmentUnchanged": true,
+    "originalWorkspaceMainAndIndexPreserved": true,
+    "authenticatedHealth": "passed",
+    "webAndEntryAssetsHttp200": true,
+    "browserLocalConnected": true,
+    "browserGatewayModeFormVisible": true,
+    "developmentCi": {
+      "attempt": 1,
+      "runId": 44000253551,
+      "sourceCommit": "1fd52ff969d373dbdba281bcff41eb3bc6c69a6b"
+    }
+  },
+  "remote": {
+    "version": 1,
+    "supported": true,
+    "state": "unconfigured",
+    "configured": false,
+    "authorized": false,
+    "paired": false
+  },
+  "localChecks": [
+    {
+      "name": "adapter-regression",
+      "status": "passed",
+      "result": "284 tests, OK (1 skipped)"
+    },
+    {
+      "name": "build-contract",
+      "status": "passed",
+      "result": "22 files, 164 tests passed"
+    },
+    {
+      "name": "typecheck",
+      "status": "passed",
+      "result": "tsc -b --pretty false, exit 0"
+    },
+    {
+      "name": "coordinator-recovery",
+      "status": "passed",
+      "result": "59 tests, OK"
+    }
+  ],
+  "regressionRepair": {
+    "file": "tests/ci/agent-session-smoke.swift",
+    "redRuns": 2,
+    "cause": "旧表单夹具缺少现行gatewayMode字段，保存被按预期拒绝",
+    "greenTests": 164,
+    "productCodeChanged": false
+  },
+  "limits": {
+    "testChatsCreated": 0,
+    "clientReleasePublished": false,
+    "androidPackageBuilt": false,
+    "iosPackageBuilt": false,
+    "softwareSourceUpdated": false,
+    "officialRemoteFullMatrixVerified": false,
+    "eightHourSoakVerified": false,
+    "reconnectP95Verified": false
+  },
+  "verifiedAt": "2026-11-17T02:07:19.453185+00:00"
+}

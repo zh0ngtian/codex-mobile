@@ -267,3 +267,7 @@ APK 为4,755,355字节，未签名IPA为5,030,497字节；两端独立完整下�
 ## 2026-11-15 WebUI 正文图片修复部署
 
 用户明确要求更新并允许增加任务级 WebUI 开关后，`web-markdown-images-update-20261115` 通过现役网关目标完成，成功批次 `2df6c58f-70f6-4186-9bc7-4398702bd9cd`，来源 `b66ad5369511ce3e085b06afa1ef533326489ef7`、冻结 `ac6132c2668e4de2490905f9ad785de0095e4a38`。回执 `webUi=true`，实际 dist 与冻结构建摘要一致；原启动文件与环境散列保持，新PID与认证健康状态核对通过。原对话九张正文图、总览原图预览与下载路径完成真实网页验收。默认网关部署仍保留旧前端；本次未构建／发布 APK或IPA、未更新软件源。公共记录见[验收凭证](superpowers/plans/evidence/2026-11-15-webui-image-deploy.json)。
+
+## 2026-11-17 Remote 网关及测试网页部署
+
+用户明确要求部署网关并提供测试网页。任务 `remote-gateway-web-test-20261117` 以来源 `1e9917729082e1b1f6755335988f8375a4314613`、`scope=gateway-only`、`webUi=true` 通过成功批次 `48f7578a-d8f4-407e-9d24-4820c08336f1` 的 main/gateway/verify。冻结 `1fd52ff969d373dbdba281bcff41eb3bc6c69a6b`，开发 CI `44000253551` attempt 1 成功；同一持久 receipt 已核对。实际前端与服务端摘要、新 PID 和监听、认证健康接口、网页及入口资产、本地连接和同表单模式选择已验证，启动配置与 token 保持。四项本地门禁通过；旧原生 ACK 夹具因缺少现行 gatewayMode 的两次 RED 保留，补齐夹具后完整164项构建契约通过，未修改产品代码。常驻实例当前 Remote `unconfigured`，首次授权与本机配对仍待完成，不能将部署成功等同于官方 Remote RPC 或长期验收通过。本次未发布客户端、更新软件源或启用历史 LAN／OTA。见[公共部署收据](superpowers/plans/evidence/2026-11-17-remote-gateway-deploy.json)和[部署计划](superpowers/plans/2026-11-17-remote-gateway-deploy.md)。
