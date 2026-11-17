@@ -272,6 +272,7 @@ interface QueuedFollowUp extends QueuedFollowUpPreview {
   referencePrefix?: string;
   hosted?: boolean;
   gatewayRpc?: boolean;
+  legacyPaused?: boolean;
   revision?: number;
   threadId: string;
   draftContext: number;
@@ -2345,7 +2346,7 @@ function BackendWorkspace({
             next = [{ id: row.threadId, cwd: row.cwd,
             gatewayPendingCreation: true, gatewayOperationId: row.id, gatewayOperationRevision: row.revision,
             gatewayOperationState: row.state,
-            name: t(row.state === 'uncertain' ? '创建结果待确认' : row.state === 'failed' ? '会话创建失败' : '待创建'), status: { type: 'idle' } }, ...next];
+            name: t(row.legacyPaused ? '旧版创建已暂停' : row.state === 'uncertain' ? '创建结果待确认' : row.state === 'failed' ? '会话创建失败' : '待创建'), status: { type: 'idle' } }, ...next];
           }
         }
         return next;
@@ -3720,7 +3721,7 @@ function BackendWorkspace({
       });
       return;
     }
-    if (followUp.gatewayRpc) { setError(t('此消息由网关持有，恢复连接后自动发送；结果待确认时请勿重复提交')); return; }
+    if (followUp.gatewayRpc) { setError(t(followUp.legacyPaused ? '旧版操作已暂停自动补发，请先核对会话状态' : '此消息由网关持有，恢复连接后自动发送；结果待确认时请勿重复提交')); return; }
     if (followUp.state === "sending" || followUp.state === "uncertain") return;
     setSteering(true);
     setError("");

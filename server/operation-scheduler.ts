@@ -22,6 +22,7 @@ export interface QueuedRpcInput {
   message: RpcMessage; settings: unknown; attachmentRefs: string[]; epoch?: string; control?: OperationControl;
 }
 interface Options {
+  directRequests?: boolean; messagePending?: (context: OperationContext, threadId: string) => boolean;
   directory: string; gatewayId: string; gatewayCodexHome: string; resolver: TargetResolver; upstreamUrl: string;
   remoteConsumers: (context: Readonly<OperationContext>, target: ResolvedRemoteTarget, call: SessionCallOptions) =>
     RemoteSessionConsumers | Promise<RemoteSessionConsumers>;
@@ -53,7 +54,7 @@ function isBackground(record: Readonly<OperationRecord>): boolean { return isRea
 // 仅已放弃执行的精确未发送claim清理事实；无正文、无新耐久owner，同进程重建可接续原授权CAS。
 const abandonedClaims = new Map<string, { directory: string; gatewayId: string; claim: OperationClaim; pending?: Promise<void> }>();
 
-/** 公开 RPC、托管业务和追问共用的唯一耐久调度 owner。 */
+/** Session/授权/快照装配与历史账本兼容。现行公开装配使用 directRequests，旧调度仅供历史恢复验证。 */
 export class OperationScheduler {
   readonly snapshots = new RemoteReadSnapshots();
   readonly #options: Options;
@@ -72,6 +73,7 @@ export class OperationScheduler {
   readonly #resuming = new Map<string, { epoch: string; promise: Promise<void> }>();
   readonly #hostedReads = new Map<string, Promise<RpcMessage>>();
   readonly #operationWaiters = new Map<string, Set<() => void>>();
+  #legacyIds?: Set<string>;
   readonly #hostedQueued = new Map<string, string>();
   #closed = false;
   #running?: Promise<void>;
@@ -102,7 +104,40 @@ export class OperationScheduler {
       return pending; // 返回原入口Promise，不在最终交付fence后添加新的await包装。
     } catch (error) { done(); return Promise.reject(error); }
   }
-  submit(input: QueuedRpcInput, call?: SessionCallOptions): Promise<OperationReceipt> { return this.own(() => this.submitRpc(input, call)); }
+  get directRequests() { return this.#options.directRequests === true; }
+  async restorationSnapshot() {
+    const snapshot = await this.#queue.restorationSnapshot();
+    this.#legacyIds = new Set(snapshot.legacyIds);
+    return { records: snapshot.records, imported: snapshot.imported };
+  }
+  hasLegacyOperation(id: string) { return this.#legacyIds?.has(id) ?? true; }
+  directRpc(context: OperationContext, sessionId: string, envelope: PublicRpcEnvelope, original: SessionCallOptions): Promise<RpcMessage> {
+    return this.own(() => this.budget(async call => {
+      const sessions = await this.sessions(context, call);
+      const response = await sessions.publicRpc(sessionId, envelope, call);
+      this.snapshots.put(context, envelope.message, response);
+      if (response.error == null) await this.#options.onResponse?.(context, envelope.message, response, sessionId);
+      const fence = await this.#options.resolver.authorizeOperation(context, 'read', call.signal); fence();
+      return response;
+    }, original));
+  }
+  directHosted(context: OperationContext, message: RpcMessage, id: string, original?: SessionCallOptions): Promise<RpcMessage> {
+    return this.own(() => this.budget(async call => {
+      const response = await (await this.sessions(context, call)).hostedRpc(message, id, call);
+      this.snapshots.put(context, message, response);
+      const fence = await this.#options.resolver.authorizeOperation(context, 'read', call.signal); fence();
+      return response;
+    }, original));
+  }
+  submit(input: QueuedRpcInput, call?: SessionCallOptions): Promise<OperationReceipt> {
+    if (this.directRequests) return this.own(async () => {
+      try { return (await this.operation(input.id, input.context, input.sessionId, call, { message: input.message })).operation; }
+      catch (error) { if (!(error instanceof OperationQueueError) || error.status !== 404) throw error; }
+      const response = await this.directHosted(input.context, input.message, input.id, call);
+      return { id: input.id, revision: 1, receiveOrder: 0, state: response.error == null ? 'succeeded' : 'failed' };
+    });
+    return this.own(() => this.submitRpc(input, call));
+  }
   protocol(input: { context: OperationContext; sessionId: string; requestId: string; message: RpcMessage }, original?: SessionCallOptions) { return this.own(() => this.protocolRpc(input, original)); }
   events(context: OperationContext, sessionId: string, after: number, original?: SessionCallOptions) { return this.own(() => this.sessionEvents(context, sessionId, after, original)); }
   result(id: string, original?: SessionCallOptions): Promise<SessionDispatchResult> { return this.own(() => this.readResult(id, original)); }
@@ -127,7 +162,18 @@ export class OperationScheduler {
     return this.own(async () => {
       let delivery = () => {};
       const value = await this.budget(async call => {
-        const context = await this.#queue.locate(id);
+        let context: OperationContext;
+        try { if (this.directRequests && !this.hasLegacyOperation(id)) throw new OperationQueueError('not-found', 404); context = await this.#queue.locate(id); }
+        catch (error) {
+          if (!this.directRequests || !(error instanceof OperationQueueError) || error.status !== 404) throw error;
+          try { const stored = await readOriginalOperation({ gatewayCodexHome: this.#options.gatewayCodexHome, resolver: this.#options.resolver,
+            context: routeContext, sessionId, requestId: id, call, ...(expected ? { expected } : {}) });
+            const fence = await this.#options.resolver.authorizeOperation(routeContext, 'read', call.signal);
+            delivery = () => { fence(); this.assertOpen(); if (call.signal?.aborted || performance.now() >= call.deadline) throw new Error('操作查询预算已结束'); };
+            delivery();
+            return { ...stored, operation: { id, revision: 1, receiveOrder: 0, state: stored.status === 'completed' ? 'succeeded' as const : 'uncertain' as const } }; }
+          catch (lookup) { if ((lookup as any)?.status === 404) throw new OperationQueueError('not-found', 404); throw lookup; }
+        }
         const route = (value: OperationContext) => value.mode === 'local' ? value :
           { mode: value.mode, gatewayId: value.gatewayId, businessKey: value.businessKey, managed: value.managed, target: value.target };
         if (key(route(context)) !== key(route(routeContext))) throw new OperationQueueError('rpc-binding-conflict', 409);
@@ -149,7 +195,7 @@ export class OperationScheduler {
         if (record.state === 'cancelled') response = { error: { code: -32800, message: '未发送的操作已取消' } };
         const fence = await this.#options.resolver.authorizeOperation(context, 'read', call.signal);
         delivery = () => { fence(); this.assertOpen(); if (call.signal?.aborted || performance.now() >= call.deadline) throw new Error('操作查询预算已结束'); };
-        const value = { status: response ? 'completed' : ['queued', 'claimed'].includes(record.state) || dispatching ? 'pending' : 'uncertain',
+        const value = { status: response ? 'completed' : this.directRequests ? 'uncertain' : ['queued', 'claimed'].includes(record.state) || dispatching ? 'pending' : 'uncertain',
           operation: { id: record.id, revision: record.revision, state: record.state, receiveOrder: record.receiveOrder },
           ...(response ? { message: response } : {}) };
         delivery(); return value;
@@ -163,7 +209,10 @@ export class OperationScheduler {
     const binding = key([context, { ...message, id: undefined }]);
     const current = this.#hostedReads.get(binding); if (current) return current;
     const work = this.own(() => this.budget(async call => {
-      if (context.mode === 'local') return (await this.sessions(context, call)).hostedRpc(message, randomUUID(), call);
+      if (context.mode === 'local' || this.directRequests) {
+        const response = await (await this.sessions(context, call)).hostedRpc(message, randomUUID(), call);
+        this.snapshots.put(context, message, response); return response;
+      }
       let id = this.#hostedQueued.get(binding);
       if (!id) {
         const groups = await this.#queue.inventory();
@@ -221,6 +270,7 @@ export class OperationScheduler {
   private wakeOperation(id: string) { for (const wake of this.#operationWaiters.get(id) ?? []) wake(); }
   hasPending(context: OperationContext, threadId: string, original?: SessionCallOptions): Promise<boolean> {
     return this.own(() => this.budget(async call => {
+      if (this.directRequests) return this.#options.messagePending?.(context, threadId) ?? false;
       const groups = await this.#queue.inventory();
       const contexts = groups.filter(group => group.context.businessKey === context.businessKey && group.conversationId === threadId).map(group => group.context);
       // 只交付责任布尔值，不读取其他授权组的正文。
@@ -275,6 +325,7 @@ export class OperationScheduler {
       return { items: records.filter(record => !record.followUp && ((record.settings as any)?.source === 'public-rpc-v1' || record.createdThreadId)).map(record => {
         const rpc = body(record);
         return { id: record.id, revision: record.revision, receiveOrder: record.receiveOrder, state: record.state,
+          ...(this.directRequests && record.state !== 'succeeded' ? { legacyPaused: true } : {}),
           threadId: record.createdThreadId ?? record.conversationId, method: rpc?.message.method ?? record.rpcReceipt?.method,
           ...(rpc ? { params: rpc.message.params } : {}), ...(record.createdThreadId ? { pendingId: record.conversationId } : {}) };
       }) };
@@ -472,7 +523,7 @@ export class OperationScheduler {
     const snapshot = structuredClone(input); const parents = captureRemoteOperation(); let delivery = () => {};
     if (snapshot.sessionId === SIDECHAT || !UUID.test(snapshot.sessionId) || !['initialize', 'initialized'].includes(snapshot.message.method ?? '')) throw new TypeError('仅允许原Session初始化协议');
     const result = await this.budget(async call => {
-      if (snapshot.context.mode === 'remote') {
+      if (snapshot.context.mode === 'remote' && !this.directRequests) {
         const fence = await this.#options.resolver.authorizeOperation(snapshot.context, 'submit', call.signal);
         const target = await this.#options.resolver.resolve({ mode: 'remote', gatewayId: snapshot.context.gatewayId,
           account: { accountId: snapshot.context.managed.accountId, accountUserId: snapshot.context.managed.accountUserId,
@@ -514,12 +565,12 @@ export class OperationScheduler {
     delivery(); assertRemoteOperation(); return result;
   }
   start(): void {
-    this.assertOpen(); if (this.#timer) return;
+    this.assertOpen(); if (this.directRequests || this.#timer) return;
     const tick = () => { void this.runOnce().catch(error => { this.lastError = error; }); };
     this.#timer = setInterval(tick, this.#options.scanIntervalMs ?? 1000); this.#timer.unref(); tick();
   }
   runOnce(): Promise<void> {
-    this.assertOpen(); if (this.#running) { this.#wakeup?.(); return this.#running; }
+    this.assertOpen(); if (this.directRequests) return Promise.resolve(); if (this.#running) { this.#wakeup?.(); return this.#running; }
     const pending = withIndependentRemoteOperation(() => this.assertOpen(), () => this.scan());
     this.#running = pending.finally(() => { this.#running = undefined; }); return this.#running;
   }

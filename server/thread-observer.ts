@@ -160,7 +160,7 @@ export class ThreadObserver {
   }
   private async submitRelease(record: Observation, call: { deadline: number; signal: AbortSignal }) {
     const id = record.releaseOperationId!;
-    // 重交同一 UUID 只做 ledger 幂等受理；崩溃落在 intent 与受理之间也不会生成第二个上游操作。
+    // 释放复用原 UUID 的 Session/WAL；旧账本收据只查不重放，不创建新的普通离线队列。
     await this.options.scheduler.submit({ id, context: record.context, conversationId: record.threadId,
       sessionId: 'c0dec000-0000-4000-8000-000000000001', requestId: id,
       message: { id, method: 'thread/unsubscribe', params: { threadId: record.threadId } },

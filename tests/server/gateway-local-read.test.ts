@@ -77,7 +77,7 @@ it.each(['HTTP', 'WebSocket'])('%s 本地打开会话不等待 Remote 账本锁�
     const directory = join(f.gatewayHome, 'codex-mobile-operations');
     lock = new PrivateStore(directory).withInitialization('operation-queue', async () => { entered.release(); await unlocked.promise; });
     await entered.promise;
-    const before = await readFile(join(directory, 'operations.json'), 'utf8');
+    const before = await readFile(join(directory, 'operations.json'), 'utf8').catch(error => { if (error.code !== 'ENOENT') throw error; return undefined; });
     for (const [method, params] of [
       ['thread/read', { threadId: 'thread', includeTurns: false }],
       ['thread/resume', { threadId: 'thread', excludeTurns: true, initialTurnsPage: { limit: 1, itemsView: 'summary' } }],
@@ -86,6 +86,9 @@ it.each(['HTTP', 'WebSocket'])('%s 本地打开会话不等待 Remote 账本锁�
       const response = await promptly(rpc(method, params));
       expect(response.status).toBe(200); expect(response.body.error).toBeUndefined();
     }
+    // 普通写也恢复直接Session路径，不能为了旧账本查重而等待共享队列锁。
+    const renamed = await promptly(rpc('thread/name/set', { threadId: 'thread', name: 'direct write' }));
+    expect(renamed.status).toBe(200); expect(renamed.body.error).toBeUndefined();
     if (transport === 'HTTP') {
       const id = randomUUID(); const message = { id: 99, method: 'thread/read', params: { threadId: 'thread' } };
       cachedReadId = id;
@@ -98,7 +101,7 @@ it.each(['HTTP', 'WebSocket'])('%s 本地打开会话不等待 Remote 账本锁�
       expect((await promptly(conflict)).status).toBe(409);
       expect(upstream.frames.filter(frame => frame.method === 'thread/read')).toHaveLength(readsBefore + 1);
     }
-    expect(await readFile(join(directory, 'operations.json'), 'utf8')).toBe(before);
+    expect(await readFile(join(directory, 'operations.json'), 'utf8').catch(error => { if (error.code !== 'ENOENT') throw error; return undefined; })).toBe(before);
     expect(f.frames).toHaveLength(0);
     unlocked.release(); await lock;
     if (transport === 'HTTP') {

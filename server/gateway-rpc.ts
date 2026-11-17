@@ -10,18 +10,23 @@ const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const SIDECHAT = 'c0dec000-0000-4000-8000-000000000002';
 function reject(status: number, message: string): never { throw Object.assign(new Error(message), { status }); }
 
-/** 公共 RPC 只负责协议及受理；真正业务派发唯一归 OperationScheduler。 */
+/** 公共 RPC 复用 Session/WAL；历史账本只供原 UUID 对账，现行请求不离线入队。 */
 export class GatewayRpc {
   private readonly sessions = new Map<string, HttpSessions>();
   constructor(private resolver: TargetResolver, private scheduler: OperationScheduler) {}
   async hosted(context: OperationContext, id: string, message: import('./http-session.js').RpcMessage, call: SessionCallOptions, queryOnly = false) {
     if (!UUID.test(id)) reject(400, '请求 UUID 无效');
+    if (this.scheduler.directRequests && !queryOnly && !this.scheduler.hasLegacyOperation(id)) return { status: 200, body: await this.scheduler.directHosted(context, message, id, call) };
     let original;
     try { original = await this.scheduler.operation(id, context, HOSTED_SESSION_ID, call, { message }); }
     catch (error) {
       if (!(error instanceof OperationQueueError) || error.status !== 404 || queryOnly) throw error;
-      await this.scheduler.submit({ id, context, conversationId: String(message.params?.threadId ?? '__gateway__'),
+      if (!this.scheduler.directRequests) await this.scheduler.submit({ id, context, conversationId: String(message.params?.threadId ?? '__gateway__'),
         sessionId: HOSTED_SESSION_ID, requestId: id, message, settings: { source: 'gateway-http-v1' }, attachmentRefs: [] }, call);
+    }
+    if (this.scheduler.directRequests) {
+      if (original) return { status: original.message ? 200 : 202, body: original.message ?? { accepted: true, ...original } };
+      return { status: 200, body: await this.scheduler.directHosted(context, message, id, call) };
     }
     void this.scheduler.runOnce().catch(() => {});
     const until = Math.min(call.deadline, performance.now() + 1500);
@@ -48,13 +53,17 @@ export class GatewayRpc {
       sessions ??= await this.scheduler.sessionsForTarget(context, call);
       return { status: 200, body: await sessions.publicRpc(sessionId, envelope, call) };
     }
+    if (this.scheduler.directRequests && isReadOnlyRpc(message)) return { status: 200, body: context.mode === 'local'
+      ? await this.scheduler.localRead(context, sessionId, envelope, call) : await this.scheduler.directRpc(context, sessionId, envelope, call) };
     if (context.mode === 'local' && isReadOnlyRpc(message)) {
       return { status: 200, body: await this.scheduler.localRead(context, sessionId, envelope, call) };
     }
+    if (this.scheduler.directRequests && !this.scheduler.hasLegacyOperation(envelope.requestId)) return { status: 200, body: await this.scheduler.directRpc(context, sessionId, envelope, call) };
     try {
       const original = await this.scheduler.operation(envelope.requestId, context, sessionId, call, envelope);
       return original.message ? { status: 200, body: original.message } : { status: 202, body: { accepted: true, ...original } };
     } catch (error) { if (!(error instanceof OperationQueueError) || error.status !== 404) throw error; }
+    if (this.scheduler.directRequests) return { status: 200, body: await this.scheduler.directRpc(context, sessionId, envelope, call) };
     const conversationId = sessions?.conversationFor(sessionId, message) ??
       (typeof message.params?.threadId === 'string' ? message.params.threadId : message.method === 'thread/start' ? `pending:${envelope.requestId}` : '__gateway__');
     const control = sessions?.controlFor(sessionId, message, envelope.epoch, Math.floor(Date.now() + Math.max(1, call.deadline - performance.now())));

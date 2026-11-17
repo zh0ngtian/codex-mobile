@@ -26,7 +26,7 @@ const pendingWrites = new Map<string, Map<string, PendingWrite>>();
 
 export class HttpOperationPendingError extends Error {
   constructor(readonly requestId: string, readonly request: RpcMessage, cause?: unknown, readonly submissionState: 'pending' | 'not-submitted' = 'pending') {
-    super(t(submissionState === 'not-submitted' ? '待提交：操作已保存在本机，网络恢复后提交原网关' : "请求结果待确认，请刷新会话后检查，勿重复发送"), { cause });
+    super(t(submissionState === 'not-submitted' ? '旧版待提交操作已暂停，请先核对会话，勿重复提交' : "请求结果待确认，请刷新会话后检查，勿重复发送"), { cause });
     this.name = "HttpOperationPendingError";
   }
 }
@@ -255,7 +255,7 @@ export class HttpRpcTransport extends EventTarget {
       ? (message.method ? JSON.stringify({ method: message.method, params: message.params, ...(operationKey ? { operationKey } : {}) }) : responseSignature(message, this.epoch)) : null;
     if (signature && !this.writes.has(signature) && this.writes.size >= 32) throw new Error(t("请求结果待确认，请刷新会话后检查，勿重复发送"));
     const existing = signature ? this.writes.get(signature) : undefined;
-    if (existing?.queryOnly || (existing && this.config.gatewayMode === 'remote')) {
+    if (existing?.queryOnly || existing?.retained) {
       // 重启后没有回复正文，绝不能把元数据当作回复重发或为同一审批生成新 UUID。
       this.scheduleOperations(0);
       throw new HttpOperationPendingError(existing.requestId, existing.message, undefined, existing.retained ? 'not-submitted' : 'pending');
@@ -268,14 +268,8 @@ export class HttpRpcTransport extends EventTarget {
       ? { ...original, method: "mobile/turns/details", params: { ...params, itemsView: undefined, limit: Math.min(5, Math.max(1, Number(params.limit) || 5)), sortDirection: "desc" } }
       : original;
     let wireOperation = { ...operation, message: wireMessage };
+    if (signature && !existing && globalThis.navigator?.onLine === false) throw new Error(t('设备尚未连接，请稍后重试'));
     if (signature) {
-      const durable = this.config.gatewayMode === 'remote' && message.method !== 'mobile/sidechat/rpc';
-      if (durable) await gatewayOutbox.put({ id: operation.requestId, kind: 'rpc', route: { ...this.config }, state: 'retained',
-        sessionId: this.sessionId, signature, message: persistentWrite(operation).message, epoch: operation.epoch });
-      if (durable && message.method && globalThis.navigator?.onLine === false) {
-        operation.retained = true; this.writes.set(signature, operation); this.saveWrites(); this.scheduleOperations();
-        throw new HttpOperationPendingError(operation.requestId, operation.message, undefined, 'not-submitted');
-      }
       this.writes.set(signature, operation); this.saveWrites();
     }
     let response: RpcMessage | undefined;
@@ -301,11 +295,7 @@ export class HttpRpcTransport extends EventTarget {
     try {
       for (let attempt = 0; (attempt < 3 || !signature && Date.now() < deadline) && this.readyState === 1; attempt++) {
         try {
-          if (attempt === 0 || this.config.gatewayMode !== 'remote') {
-            if (signature && this.config.gatewayMode === 'remote' && message.method !== 'mobile/sidechat/rpc') {
-              await gatewayOutbox.put({ id: operation.requestId, kind: 'rpc', route: { ...this.config }, state: 'submitted',
-                sessionId: this.sessionId, signature, message: persistentWrite(operation).message, epoch: operation.epoch });
-            }
+          if (attempt === 0 || !existing?.queryOnly) {
             const accepted = await this.fetchJson("/api/rpc", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(wireOperation) }, {}, remainingReadBudget());
             if (accepted?.accepted !== true) { response = accepted; await fallbackDetails(); break; }
             mayHaveBeenAccepted = true;
@@ -389,18 +379,9 @@ export class HttpRpcTransport extends EventTarget {
         if (!operation.message.method && !this.epoch) continue;
         try {
           let result;
-          if (operation.retained) {
-            if (globalThis.navigator?.onLine === false) continue;
-            const entry = await gatewayOutbox.get(operation.requestId);
-            if (!entry || entry.state !== 'retained') { delete operation.retained; operation.queryOnly = true; continue; }
-            if (this.readyState !== 1 || !isClientForeground()) return;
-            await gatewayOutbox.put({ ...entry, state: 'submitted' });
-            delete operation.retained; operation.queryOnly = true; this.saveWrites();
-            // 耐久标记在首次 POST 之前；丢 ACK 后所有轮次只能查询原 UUID。
-            const accepted = await this.fetchJson('/api/rpc', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ requestId: operation.requestId, message: operation.message, epoch: operation.epoch }) }, {}, 10000);
-            result = accepted?.accepted ? { status: 'pending' } : { status: 'completed', message: accepted };
-            this.emit({ method: 'mobile/operation/submitted', params: { requestId: operation.requestId } });
-          } else result = await this.fetchJson("/api/operations", {}, { requestId: operation.requestId }, 5_000);
+          // 历史上未提交的普通操作保留供核对，恢复连接不得自动发送。
+          if (operation.retained) continue;
+          result = await this.fetchJson("/api/operations", {}, { requestId: operation.requestId }, 5_000);
           if (this.readyState !== 1 || !isClientForeground()) return;
           if (result.status !== "completed" || !result.message || this.inflightWrites.has(operation.requestId) || this.writes.get(signature) !== operation) continue;
           this.writes.delete(signature);

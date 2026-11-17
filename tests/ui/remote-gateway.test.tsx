@@ -132,7 +132,7 @@ it('附件 ACK 丢失后重建上传调用只查原 UUID，bytes 和目标已耐
   expect(await gatewayOutbox.list()).toEqual(old);
 });
 
-it('手机明确离线时保留待提交正文，重建后仅首次提交原 UUID，随后只对账', async () => {
+it('手机离线普通操作直接失败，重建和恢复网络不会生成待提交请求', async () => {
   vi.stubGlobal('indexedDB', new IDBFactory());
   const online = vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
   const calls: { path: string; body?: any }[] = [];
@@ -145,13 +145,13 @@ it('手机明确离线时保留待提交正文，重建后仅首次提交原 UUI
   const sessionId = 'cd881129-8e36-4d94-8181-2573dcd989ae';
   const open = async () => { const transport = new HttpRpcTransport(remote, { sessionId, fetch: fetcher as typeof fetch }); transports.push(transport); await new Promise(resolve => transport.addEventListener('open', resolve, { once: true })); return transport; };
   const first = await open();
-  await expect(first.send(JSON.stringify({ id: 11, method: 'turn/start', params: { threadId: 'thread', input: [{ type: 'text', text: 'offline body' }] } }))).rejects.toMatchObject({ submissionState: 'not-submitted' });
-  expect(calls).toHaveLength(0); const [saved] = await gatewayOutbox.list(); expect(saved).toMatchObject({ state: 'retained', message: { params: { input: [{ text: 'offline body' }] } } });
+  await expect(first.send(JSON.stringify({ id: 11, method: 'turn/start', params: { threadId: 'thread', input: [{ type: 'text', text: 'offline body' }] } }))).rejects.toThrow('设备尚未连接');
+  expect(calls).toHaveLength(0); expect(await gatewayOutbox.list()).toHaveLength(0);
   first.close(); online.mockReturnValue(true);
   const second = await open(); await second.send(JSON.stringify({ id: 1, method: 'initialize', params: { clientInfo: { name: 'test', version: '1' } } })); await second.send(JSON.stringify({ method: 'initialized' }));
   const until = Date.now() + 3000;
   do { if (!(await gatewayOutbox.list()).length) break; await new Promise(resolve => setTimeout(resolve, 20)); } while (Date.now() < until);
-  const posts = calls.filter(call => call.body?.message?.method === 'turn/start'); expect(posts).toHaveLength(1); expect(posts[0].body.requestId).toBe(saved.id);
+  const posts = calls.filter(call => call.body?.message?.method === 'turn/start'); expect(posts).toHaveLength(0);
   expect(await gatewayOutbox.list()).toHaveLength(0);
 });
 
@@ -189,7 +189,7 @@ it('待创建会话仅 queued 可取消，结果未知时不显示真实会话�
   expect(screen.queryByRole('button', { name: '重命名' })).toBeNull();
 });
 
-it('托管追问丢 ACK 后从耐久正文恢复，只查原接收收据，包括已发送的终态', async () => {
+it('历史托管追问丢 ACK 的待确认项仍只查原接收收据，包括已发送的终态', async () => {
   vi.stubGlobal('indexedDB', new IDBFactory()); const calls: { method?: string; id: string | null }[] = [];
   const action = { action: 'enqueue' as const, id: 'c756518e-e2b8-4ffc-aea7-cc326b4c7a90', threadId: 'thread', inputText: 'body', text: 'body', attachmentCount: 0, extraInput: [], settings: { model: 'frozen-model' } };
   const fetcher = async (input: any, init?: RequestInit) => {
@@ -198,7 +198,9 @@ it('托管追问丢 ACK 后从耐久正文恢复，只查原接收收据，包�
     return new Response(JSON.stringify(url.searchParams.has('requestId') ? { accepted: true, operation: { id: action.id, state: 'succeeded' } } : { items: [] }));
   };
   await expect(followUpRequest(remote, action, fetcher as typeof fetch)).rejects.toThrow('lost follow-up ACK');
-  expect((await gatewayOutbox.list())[0]).toMatchObject({ kind: 'follow-up', state: 'submitted', message: action, route: { remoteTarget: target.reference } });
+  expect(await gatewayOutbox.list()).toHaveLength(0);
+  // 升级前已提交的旧项继续只对账；新入队复用本地模式的直接HTTP路径。
+  await gatewayOutbox.put({ id: action.id, kind: 'follow-up', state: 'submitted', message: action, route: remote });
   expect((await followUpRequest(remote, undefined, fetcher as typeof fetch)).items).toEqual([]);
   expect(calls.filter(call => call.method === 'POST')).toHaveLength(1); expect(calls[1].id).toBe(action.id);
   expect(await gatewayOutbox.list()).toHaveLength(0);
@@ -213,4 +215,22 @@ it('Remote 事件暂时 503 保持手机提交连接并标记过期，不因上�
   const until = Date.now() + 1000;
   while (!stale && Date.now() < until) await new Promise(resolve => setTimeout(resolve, 10));
   expect(transport.readyState).toBe(1); expect(stale).toBe(true);
+});
+
+it('历史未提交普通RPC保留原记录，在线恢复只读不自动POST', async () => {
+  vi.stubGlobal('indexedDB', new IDBFactory());
+  const id = 'cd881129-8e36-4d94-8181-2573dcd989a0'; const sessionId = 'cd881129-8e36-4d94-8181-2573dcd989a1';
+  const message = { id: 11, method: 'turn/start', params: { threadId: 'thread', input: [{ type: 'text', text: 'old retained body' }] } };
+  await gatewayOutbox.put({ id, kind: 'rpc', route: remote, state: 'retained', sessionId, message, signature: JSON.stringify({ method: message.method, params: message.params }) });
+  const posts: string[] = [];
+  const transport = new HttpRpcTransport(remote, { sessionId, fetch: (async (input, options) => {
+    const url = new URL(String(input)); if (options?.method === 'POST') posts.push(JSON.parse(String(options.body)).message?.method);
+    if (url.pathname === '/api/events') return new Response(JSON.stringify({ epoch: 'epoch', cursor: 0, messages: [], requests: [], active: false, updatedAt: Date.now(), reset: false }));
+    return new Response(JSON.stringify({ result: {} }));
+  }) as typeof fetch }); transports.push(transport);
+  await new Promise(resolve => transport.addEventListener('open', resolve, { once: true }));
+  await transport.send(JSON.stringify({ id: 1, method: 'initialize', params: {} })); await transport.send(JSON.stringify({ method: 'initialized' }));
+  window.dispatchEvent(new Event('online'));
+  await expect(transport.send(JSON.stringify(message))).rejects.toThrow('旧版待提交操作已暂停');
+  expect(posts).not.toContain('turn/start'); expect(await gatewayOutbox.get(id)).toMatchObject({ state: 'retained', message });
 });

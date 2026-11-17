@@ -7,6 +7,7 @@ import { transportUuid } from './http-transport';
 export type HostedFollowUp = {
   id: string;
   gatewayRpc?: boolean;
+  legacyPaused?: boolean;
   threadId: string;
   inputText: string;
   text: string;
@@ -24,7 +25,7 @@ export class HostedQueueError extends Error {
   constructor(message: string, readonly status: number) { super(message); }
 }
 
-export type GatewayCreation = { id: string; threadId: string; pendingId?: string; state: string; revision: number; cwd?: string };
+export type GatewayCreation = { id: string; threadId: string; pendingId?: string; state: string; revision: number; cwd?: string; legacyPaused?: boolean };
 export type FollowUpResult = { items: HostedFollowUp[]; turnId?: string; creations?: GatewayCreation[] };
 
 /** 独立于对话传输方式，HTTP 和 WebSocket 客户端共用网关队列。 */
@@ -38,13 +39,6 @@ export async function followUpRequest(
     for (const entry of await gatewayOutbox.list()) if (entry.kind === 'follow-up' && transportNamespace(entry.route) === transportNamespace(backend)) {
       await handoffFollowUp(entry, fetcher).catch(() => {});
     }
-  }
-  if (backend.gatewayMode === 'remote' && action?.action === 'enqueue') {
-    let entry = await gatewayOutbox.get(action.id);
-    if (entry && (entry.kind !== 'follow-up' || transportNamespace(entry.route) !== transportNamespace(backend) || JSON.stringify(entry.message) !== JSON.stringify(action))) throw new Error(t('待发送操作与原请求不一致'));
-    if (!entry) { entry = { id: action.id, kind: 'follow-up', route: structuredClone(backend), state: 'retained', message: action }; await gatewayOutbox.put(entry); }
-    await handoffFollowUp(entry, fetcher);
-    return followUpRequest(backend, undefined, fetcher);
   }
   const ordinary = action?.gatewayRpc === true;
   const url = gatewayUrl(backend, ordinary ? '/api/queue' : '/api/follow-ups');
@@ -79,14 +73,15 @@ export async function followUpRequest(
     result.creations = [];
     for (const row of shared.items) {
       if (row.method === 'thread/start' && typeof row.id === 'string' && typeof row.threadId === 'string' && Number.isSafeInteger(row.revision)) {
-        result.creations.push({ id: row.id, threadId: row.threadId, pendingId: row.pendingId, state: row.state, revision: row.revision,
+        result.creations.push({ id: row.id, threadId: row.threadId, pendingId: row.pendingId, state: row.state, revision: row.revision, ...(row.legacyPaused === true ? { legacyPaused: true } : {}),
           ...(typeof row.params?.cwd === 'string' ? { cwd: row.params.cwd } : {}) });
       }
       if (row.method !== 'turn/start' || !Array.isArray(row.params?.input) || !['queued', 'claimed', 'uncertain', 'failed'].includes(row.state)) continue;
       const inputText = row.params.input.filter((part: any) => part.type === 'text').map((part: any) => String(part.text ?? '')).join('\n');
       result.items.push({ id: row.id, gatewayRpc: true, threadId: row.threadId, inputText, text: inputText || t('附件消息'),
         attachmentCount: row.params.input.filter((part: any) => ['file', 'image', 'localImage'].includes(part.type)).length,
-        revision: row.revision, state: row.state === 'claimed' ? 'sending' : row.state });
+        revision: row.revision, state: row.state === 'claimed' ? 'sending' : row.state,
+        ...(row.legacyPaused === true ? { legacyPaused: true, error: t('旧版操作已暂停自动补发，请先核对会话状态') } : {}) });
     }
   }
   return result;

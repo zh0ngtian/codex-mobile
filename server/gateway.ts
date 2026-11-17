@@ -14,7 +14,7 @@ import { MessageWebCitations } from "./web-citations.js";
 import { MessageTimestamps } from "./message-timestamps.js";
 import { compactTurnDetails, compactTurnCommentary, turnCommentaryRequest, validTurnCommentaryParams } from "./turn-details.js";
 import { FollowUps } from "./follow-ups.js";
-import { HttpSessions, HOSTED_SESSION_ID, validateRpcEnvelope } from "./http-session.js";
+import { HttpSessions, HOSTED_SESSION_ID, readOriginalOperation, validateRpcEnvelope } from "./http-session.js";
 import { BarkNotifications } from "./bark-notifications.js";
 import { FollowedThreadNotifications } from "./followed-thread-notifications.js";
 import { ImagePreviews } from "./image-preview.js";
@@ -202,8 +202,10 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
       const bundle = await getBundle(target, context, signal); fence.assertCurrent(); return bundle.services;
     },
   }) : undefined;
+  let restoredFollowUps: FollowUps | undefined;
   let conversationObserver: ThreadObserver | undefined;
   const scheduler = resolver ? new OperationScheduler({ directory: join(home, 'codex-mobile-operations'), gatewayId: (await resolver.operationContext()).gatewayId,
+    directRequests: true, messagePending: (context, threadId) => restoredFollowUps?.hasPending(context, threadId) ?? false,
     gatewayCodexHome: home, upstreamUrl: options.upstreamUrl, resolver, localSessions: httpSessions, attachments,
     remoteConsumers: async (context, target, call) => {
       const bundle = await getBundle(target, context, call.signal);
@@ -256,7 +258,15 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
   }) : undefined;
   conversationObserver?.start();
   const queuedRpc = resolver && scheduler ? new GatewayRpc(resolver, scheduler) : undefined;
-  const followUps = await FollowUps.open(home, httpSessions, scheduler ? { scheduler } : undefined);
+  const followUps = await FollowUps.open(home, httpSessions, scheduler && resolver ? {
+    context: await resolver.operationContext(),
+    sessions: context => scheduler.sessionsForTarget(context, { deadline: performance.now() + 60000 }),
+    authorize: (context, action) => resolver.authorizeOperation(context, action),
+    migrate: () => scheduler.restorationSnapshot(),
+    operation: item => readOriginalOperation({ gatewayCodexHome: home, resolver, context: item.context!, sessionId: HOSTED_SESSION_ID,
+      requestId: item.operationId, call: { deadline: performance.now() + 60000 } }),
+  } : undefined);
+  restoredFollowUps = followUps;
   scheduler?.start();
   const localContext = resolver ? await resolver.operationContext() : undefined;
   const localBackground = { hostedRpc: (message: import('./http-session.js').RpcMessage) => scheduler && localContext ? scheduler.hostedRpc(localContext, message) : httpSessions.hostedRpc(message) };
@@ -362,7 +372,7 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
       await queuedRpc.handle(request, response, url, reference); return;
     }
     if (queuedRpc && context && url.pathname === '/api/threads/title-summary' && (context.mode === 'remote' || request.headers['x-codex-operation-id'] || request.method === 'GET')) {
-      const id = String(request.headers['x-codex-operation-id'] ?? url.searchParams.get('requestId') ?? '');
+      const id = String(request.headers['x-codex-operation-id'] ?? url.searchParams.get('requestId') ?? randomUUID());
       let input: any;
       if (request.method === 'POST') {
         const chunks: Buffer[] = []; let size = 0;
@@ -390,24 +400,12 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
       response.setHeader('content-type', 'application/json; charset=utf-8'); response.setHeader('cache-control', 'no-store');
       delivery(); response.end(JSON.stringify(value)); return;
     }
-    if (scheduler && context?.mode === 'remote' && url.pathname === '/api/follow-ups') {
-      let value: unknown;
-      if (request.method === 'GET') value = url.searchParams.has('requestId')
-        ? await scheduler.followUpSubmission(context, url.searchParams.get('requestId')!, fence => { delivery = fence; })
-        : await scheduler.listFollowUps(context, fence => { delivery = fence; });
-      else if (request.method === 'POST') {
-        const chunks: Buffer[] = []; let size = 0;
-        for await (const chunk of request) { size += chunk.length; if (size > MAX_APP_SERVER_MESSAGE_BYTES) throw Object.assign(new Error(), { status: 413 }); chunks.push(Buffer.from(chunk)); }
-        let body: unknown; try { body = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch { throw Object.assign(new Error(), { status: 400 }); }
-        value = await scheduler.mutateFollowUp(context, body, fence => { delivery = fence; });
-      } else throw Object.assign(new Error(), { status: 405 });
-      response.setHeader('content-type', 'application/json; charset=utf-8'); response.setHeader('cache-control', 'no-store');
-      delivery(); response.end(JSON.stringify(value)); return;
+    if (context && url.pathname === '/api/follow-ups') {
+      await followUps.handle(request, response, context); return;
     }
     if (scheduler && attachments && context?.mode === 'remote' && ['/api/uploads/file', '/api/uploads/operations'].includes(url.pathname)) {
       const rawId = url.pathname === '/api/uploads/file' ? request.headers['x-codex-upload-id'] ?? randomUUID() : url.searchParams.get('requestId');
       if (typeof rawId !== 'string' || !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(rawId)) throw Object.assign(new Error(), { status: 400 });
-      const call = { deadline: performance.now() + 60000 };
       if (url.pathname === '/api/uploads/file') {
         if (request.method !== 'POST') throw Object.assign(new Error(), { status: 405 });
         let name = String(request.headers['x-codex-file-name'] ?? 'attachment'); try { name = decodeURIComponent(name); } catch { /* 保留既有文件名。 */ }
@@ -428,21 +426,17 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
             response.end(JSON.stringify({ path: uploaded.path, name, type, size: uploaded.size })); return;
           } finally { request.removeListener('aborted', abort); clearTimeout(timer); }
         }
-        const retained = await attachments.retain(rawId, context, request, { name, type });
-        await scheduler.submit({ id: rawId, context, conversationId: '__uploads__', sessionId: HOSTED_SESSION_ID, requestId: rawId,
-          message: { id: rawId, method: 'mobile/attachments/upload', params: { attachmentId: rawId } },
-          settings: { name: retained.name, type: retained.type, size: retained.size }, attachmentRefs: [rawId] }, call);
-        void scheduler.runOnce().catch(() => {});
-      } else if (request.method !== 'GET') throw Object.assign(new Error(), { status: 405 });
-      let state = await scheduler.operation(rawId, context, HOSTED_SESSION_ID, call);
-      const until = performance.now() + (url.pathname === '/api/uploads/file' ? 1500 : 0);
-      while (state.status !== 'completed' && performance.now() < until) {
-        await new Promise(resolve => setTimeout(resolve, 25)); state = await scheduler.operation(rawId, context, HOSTED_SESSION_ID, call);
+        const fence = await resolver!.authorizeOperationExecution(context); fence.assertLive();
+        await attachments.retain(rawId, context, request, { name, type });
+        const uploaded = await attachments.upload(rawId, context); fence.assertLive();
+        response.setHeader('content-type', 'application/json; charset=utf-8'); response.statusCode = 201;
+        delivery(); response.end(JSON.stringify(uploaded)); return;
       }
+      if (request.method !== 'GET') throw Object.assign(new Error(), { status: 405 });
+      const uploaded = await attachments.reconcile(rawId, context);
       response.setHeader('content-type', 'application/json; charset=utf-8'); response.setHeader('cache-control', 'no-store');
-      if (state.message?.error != null) throw Object.assign(new Error(), { status: 503 });
-      response.statusCode = state.status === 'completed' ? 201 : 202;
-      delivery(); response.end(JSON.stringify(state.status === 'completed' ? state.message!.result : { accepted: true, requestId: rawId, ...state })); return;
+      response.statusCode = uploaded ? 201 : 202;
+      delivery(); response.end(JSON.stringify(uploaded ?? { accepted: true, requestId: rawId, status: 'uncertain' })); return;
     }
     if (context?.mode === 'remote' && url.pathname === '/api/status') {
       response.setHeader('content-type', 'application/json; charset=utf-8');

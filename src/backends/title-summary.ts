@@ -7,6 +7,7 @@ import { t } from '../i18n';
 export class TitleSummaryUnavailableError extends Error {}
 
 export async function summarizeThreadTitle(backend: BackendConfig, threadId: string, options: { automatic?: boolean } = {}, fetcher: typeof fetch = fetch): Promise<string> {
+  if (globalThis.navigator?.onLine === false) throw new Error(t('设备尚未连接，请稍后重试'));
   let operation: OutboxEntry | undefined;
   if (backend.gatewayMode === 'remote') {
     const sourceId = JSON.stringify([threadId, options.automatic === true]);
@@ -24,7 +25,6 @@ export async function summarizeThreadTitle(backend: BackendConfig, threadId: str
   let response: Response;
   if (operation?.state === 'submitted') response = await query();
   else {
-    if (operation && globalThis.navigator?.onLine === false) throw new Error(t('待提交：标题总结请求已保存在本机，请在网络恢复后重试'));
     if (operation) { operation.state = 'submitted'; await gatewayOutbox.put(operation); }
     response = await fetcher(url.toString(), { method: 'POST', credentials: 'include', cache: 'no-store',
       headers: { 'content-type': 'application/json', ...(operation ? { 'x-codex-operation-id': operation.id } : {}) }, body: JSON.stringify({ threadId, ...(options.automatic ? { automatic: true } : {}) }), signal: AbortSignal.timeout(125_000) });
@@ -32,7 +32,7 @@ export async function summarizeThreadTitle(backend: BackendConfig, threadId: str
   if (operation && response.status === 202) {
     const until = Date.now() + 125000;
     do { await new Promise(resolve => setTimeout(resolve, 1000)); response = await query(); } while (response.status === 202 && Date.now() < until);
-    if (response.status === 202) throw new Error(t('标题总结已排队，连接恢复后处理，请稍后查看'));
+    if (response.status === 202) throw new Error(t('请求结果待确认，请刷新会话后检查，勿重复发送'));
   }
   if ([404, 405, 501].includes(response.status)) throw new TitleSummaryUnavailableError(t('请升级网关服务器以使用会话名称总结功能'));
   const result = await response.json().catch(() => null);

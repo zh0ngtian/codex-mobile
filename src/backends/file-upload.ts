@@ -44,6 +44,7 @@ export async function uploadFile(
   fetcher: Fetcher = fetch,
   options: { sourceId?: string; memoryOnly?: boolean } = {},
 ): Promise<UploadedFile> {
+  if (globalThis.navigator?.onLine === false) throw new Error(t('设备尚未连接，请稍后重试'));
   const url = gatewayUrl(backend, "/api/uploads/file");
   if (backend.token) url.searchParams.set("token", backend.token);
   let operation: OutboxEntry | undefined;
@@ -71,7 +72,6 @@ export async function uploadFile(
   let result: any;
   if (operation?.state === 'submitted') result = await query();
   else {
-  if (operation && globalThis.navigator?.onLine === false) throw new Error(t('待提交：附件已保存在本机，请在网络恢复后发送'));
   if (operation) { operation.state = 'submitted'; await gatewayOutbox.put(operation); }
   const response = await fetcher(url.toString(), {
     method: "POST",
@@ -94,7 +94,7 @@ export async function uploadFile(
     // ACK 只证明网关已耐久受理；手机只查询原 UUID，不再次上传。
     const until = Date.now() + 15000;
     do { await new Promise(resolve => setTimeout(resolve, 500)); result = await query(); } while (result?.accepted === true && Date.now() < until);
-    if (result?.accepted === true) throw new Error(t('附件已排队，连接恢复后上传，请稍后重试'));
+    if (result?.accepted === true) throw new Error(t('附件上传结果待确认，请稍后重试'));
   }
   if (
     typeof result.path !== "string" ||

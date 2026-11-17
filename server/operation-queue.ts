@@ -58,7 +58,7 @@ function shape(value: unknown, keys: string[]): value is Record<string, unknown>
     Reflect.ownKeys(value).every(key => typeof key === 'string' && keys.includes(key)) &&
     Object.values(Object.getOwnPropertyDescriptors(value)).every(item => 'value' in item);
 }
-function contextValid(value: unknown): value is OperationContext {
+export function contextValid(value: unknown): value is OperationContext {
   if (!object(value) || !['gatewayId', 'businessKey', 'authorizationKey'].every(key => text(value[key]))) return false;
   if (value.mode === 'local') return shape(value, ['mode', 'gatewayId', 'businessKey', 'authorizationKey', 'localHostId']) && text(value.localHostId);
   if (value.mode !== 'remote' || !shape(value, ['mode', 'gatewayId', 'businessKey', 'authorizationKey', 'managed', 'target', 'generation']) || !text(value.generation) ||
@@ -307,6 +307,10 @@ export class OperationQueue {
   /** 仅可信调度器可取授权定位；不交付正文。 */
   async contexts(businessKey: string): Promise<OperationContext[]> {
     return this.transaction(async ledger => ({ value: clone([...new Map(ledger.records.filter(record => record.context.businessKey === businessKey).map(record => [canonical(record.context), record.context])).values()]) }));
+  }
+  /** 仅启动迁移读取经完整校验的历史快照；不领取、不修改、不执行旧操作。 */
+  async restorationSnapshot() {
+    return this.transaction(async ledger => ({ value: clone({ records: ledger.records.filter(record => record.followUp).sort((a, b) => a.receiveOrder - b.receiveOrder), legacyIds: ledger.records.map(record => record.id), imported: !!ledger.followUpsImport }) }));
   }
   async publicRecords(businessKey: string, conversationId?: string): Promise<OperationRecord[]> {
     return this.transaction(async (ledger, authorize) => {
