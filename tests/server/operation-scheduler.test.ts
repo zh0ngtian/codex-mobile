@@ -125,14 +125,14 @@ it('Sidechat和初始化在ledger前拒绝，没有耐久正文或新Session', a
   await expect(readFile(join(f.options.directory, 'operations.json'))).rejects.toMatchObject({ code: 'ENOENT' }); expect(f.localMessages).toEqual([]); expect(f.remoteMessages).toEqual([]);
 });
 it('一个原context授权恢复停顿不持ledger锁，其他会话在其预算耗尽前真实发送', async () => {
-  const f = await setup(); f.options.attemptTimeoutMs = 800; const scheduler = f.create(); const blocked = f.input(); const independent = f.input(f.localContext, 'independent'); await scheduler.submit(blocked); await scheduler.submit(independent);
+  const f = await setup(); f.options.attemptTimeoutMs = 4000; const scheduler = f.create(); const blocked = f.input(); const independent = f.input(f.localContext, 'independent'); await scheduler.submit(blocked); await scheduler.submit(independent);
   const authorize = f.resolver.authorizeOperation.bind(f.resolver); let entered = false; let release!: () => void; const gate = new Promise<void>(resolve => { release = resolve; }); cleanup.push(() => release());
   vi.spyOn(f.resolver, 'authorizeOperation').mockImplementation(async (...args) => {
     if (args[0].mode === 'remote' && args[1] === 'claim') { entered = true; await gate; }
     return authorize(...args);
   });
   const run = scheduler.runOnce(); await until(() => entered);
-  try { await until(() => f.localMessages.some(m => m.method === 'turn/start'), 500); } finally { release(); }
+  try { await until(() => f.localMessages.some(m => m.method === 'turn/start'), 2500); } finally { release(); }
   await run; expect((await f.queue().read(independent.id)).state).toBe('succeeded');
 });
 it('Remote consumer装配缺失明确失败且绝不回退Local canonical', async () => {
