@@ -652,7 +652,7 @@ struct AgentSessionSmoke {
             commands.append(command)
             switch command.name {
             case "device.add":
-                state.panel = NativePanel(id: "devices", title: "添加设备", items: [NativePanelItem(id: "name", kind: "textField", value: "", command: NativeCommand(name: "device.change", params: ["field": .string("name"), "draftId": .string("form:opaque")])), NativePanelItem(id: "gatewayUrl", kind: "secureField", value: "", command: NativeCommand(name: "device.change", params: ["field": .string("gatewayUrl"), "draftId": .string("form:opaque")]))])
+                state.panel = NativePanel(id: "devices", title: "添加设备", items: [NativePanelItem(id: "name", kind: "textField", value: "", command: NativeCommand(name: "device.change", params: ["field": .string("name"), "draftId": .string("form:opaque")])), NativePanelItem(id: "gatewayUrl", kind: "secureField", value: "", command: NativeCommand(name: "device.change", params: ["field": .string("gatewayUrl"), "draftId": .string("form:opaque")])), NativePanelItem(id: "gatewayMode", kind: "select", value: "local", command: NativeCommand(name: "device.change", params: ["field": .string("gatewayMode"), "draftId": .string("form:opaque")]))])
                 state.commandResults = [NativeCommandResult(id: command.id, name: command.name, ok: true)]
             case "device.change":
                 state.commandResults = [NativeCommandResult(id: command.id, name: command.name, ok: true)]
@@ -673,6 +673,9 @@ struct AgentSessionSmoke {
         let saved = await saving.value
         precondition(cancelled && !saved && !session.deviceTesting && session.devices.isEmpty, "真实取消ACK后不得保留后台保存或伪造成功")
         precondition(commands.filter { $0.name == "device.change" }.allSatisfy { $0.params["draftId"] == .string("form:opaque") }, "保存表单必须携带真实draft身份")
+        let changes = commands.filter { $0.name == "device.change" }
+        precondition(changes.map { $0.params["field"] } == [.string("name"), .string("gatewayUrl"), .string("gatewayMode")], "保存须提交同一表单的名称、地址和模式")
+        precondition(changes.last?.params["value"] == .string("local"), "旧设备默认使用本地模式")
         let file = AttachmentItem(name: "尚未导入.txt", data: Data("真实数据".utf8), mimeType: "text/plain")
         let imported = await session.importAttachmentsAndWait([file])
         precondition(!imported && session.composer.attachments.isEmpty && file.data != nil && session.lastErrorMessage == "网关拒绝附件", "附件导入失败要保留调用者文件并等待真实确认")
