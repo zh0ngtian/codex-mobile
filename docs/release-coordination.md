@@ -305,3 +305,10 @@ APK 为4,755,355字节，未签名IPA为5,030,497字节；两端独立完整下�
 ## 2026-11-17 Remote列表后台刷新循环修复部署
 
 任务remote-refresh-loop-20261117以来源14f9c427d962a25e63bfe312863f8e8d8773fa9b、scope=gateway-only、webUi=true完成批次7ee5a223-720f-421e-8609-d2ca613ada0f，冻结5013564ca0d427c9bb7217f83dc18dddfb10f8c3。main/gateway/verify及持久receipt、实际server/frontend/bin/manifest摘要、原配置/token和身份配对均核对，Remote online且pendingResume为空。202项UI及传输回归、6项服务端兼容回归、290项适配器、164项构建契约、59项协调器、类型/strict和Web/服务端构建通过；整合冻结提交后202项与类型复验通过。真实网页三次完整刷新5877/7441/8353ms、重启后首次详情正文和输入就绪3317ms，60.5秒空闲无目录重读或项目上游刷新。只更新现有网关和网页；手机安装包、LAN、签名/OTA均未发布。最后仅文档收尾，核对运行代码未变及来源祖先关系后复用本次成功部署。见[脱敏凭证](superpowers/plans/evidence/2026-11-17-remote-refresh-loop.json)。
+
+
+### 2026-11-17 首页刷新按钮与自动同步隔离部署
+
+任务remote-refresh-spinner-20261117，来源8f2f0fca8cb048797d2d61e2023a4cd4eb3d94ab，scope=gateway-only、webUi=true，成功批次f9a86e54-a0a3-434c-a197-53d2e45dfa53，冻结de86215cffe7d05c3ae5e26c36ac449365fe1557。main/gateway/verify、持久receipt及实际server/frontend/bin/manifest摘要均一致；部署前最新6份私有文件保全，保留并行已授权新增Mac的controller-binding变化，Remote online且pendingResume为空。定向RED→GREEN、整合及冻结后235项相关回归、290项适配器、164项构建契约、59项协调器、类型/strict与Web/服务端构建通过。
+
+真实网页同时连接两台Remote，自动同步时按钮空闲，手动点击忙碌后能停止；86.5秒内三次采样均空闲，网络截断缓冲中至少11次后台刷新200。手动刷新仅有97.1秒后已结束的观察上界，多设备慢请求及精确性能待验收，不使用历史单机数字替代。本批更新现有网关和网页，未发消息或创建测试会话，未发布APK／IPA、LAN、签名/OTA或软件源；仅文档收尾复用本批部署。见[脱敏凭证](superpowers/plans/evidence/2026-11-17-remote-refresh-spinner.json)。
