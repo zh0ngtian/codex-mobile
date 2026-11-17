@@ -674,6 +674,7 @@ it('Remote导航先交付网关共享快照，后台更新另发通知且不重�
   await transport.send(JSON.stringify({ id: 3, method: 'thread/read', params: { threadId: 't' } }));
   expect(messages.find(value => value.id === 3)).toMatchObject({ result: { thread: { name: 'saved' } } });
   expect(calls).not.toContain('/api/rpc');
+  expect(messages.find(value => value.method === 'mobile/readSnapshot/status')).toMatchObject({ params: { request: { method: 'thread/read', params: { threadId: 't' } } } });
   finish(new Response(JSON.stringify({ message: { result: { thread: { id: 't', name: 'fresh' } } }, updatedAt: 200, refreshing: false })));
   await vi.waitFor(() => expect(messages.find(value => value.method === 'mobile/readSnapshot/updated')).toMatchObject({ params: { response: { result: { thread: { name: 'fresh' } } }, updatedAt: 200 } }));
 });
@@ -695,6 +696,6 @@ it('后台快照失败保留已交付内容并通知失败，不发伪造更新'
   await new Promise<void>(resolve => transport.addEventListener('open', () => resolve()));
   const messages: any[] = []; transport.addEventListener('message', event => messages.push(JSON.parse((event as MessageEvent).data)));
   await transport.send(JSON.stringify({ id: 5, method: 'thread/read', params: { threadId: 't' } }));
-  await vi.waitFor(() => expect(messages).toContainEqual({ method: 'mobile/readSnapshot/status', params: { updatedAt: 100, refreshing: false, failed: true } }));
+  await vi.waitFor(() => expect(messages).toContainEqual({ method: 'mobile/readSnapshot/status', params: { request: { id: 5, method: 'thread/read', params: { threadId: 't' } }, updatedAt: 100, refreshing: false, failed: true } }));
   expect(messages.filter(value => value.id === 5)).toEqual([{ id: 5, result: { thread: { id: 't' } } }]); expect(messages.some(value => value.method === 'mobile/readSnapshot/updated')).toBe(false);
 });

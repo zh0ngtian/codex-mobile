@@ -66,6 +66,7 @@ export class OperationScheduler {
   readonly #sessionOpenings = new Map<string, Promise<HttpSessions>>();
   readonly #initializations = new Map<string, RpcInitialization>();
   readonly #results = new Map<string, SessionDispatchResult>();
+  readonly #readReconciliations = new Map<string, { revision: number; after: number }>();
   readonly #diagnostics = new Map<string, unknown>();
   readonly #resumed = new Map<string, string>();
   readonly #resuming = new Map<string, { epoch: string; promise: Promise<void> }>();
@@ -511,6 +512,8 @@ export class OperationScheduler {
       for (let round = 0; round < 1024; round++) {
         this.assertOpen(); if (fatal) throw fatal; const groups = await this.#queue.inventory(); this.assertOpen();
         const inventoryRevision = key(groups);
+        const pendingIds = new Set(groups.flatMap(group => group.operations.map(receipt => receipt.id)));
+        for (const id of this.#readReconciliations.keys()) if (!pendingIds.has(id)) this.#readReconciliations.delete(id);
         const jobs: { binding: string; control: boolean; background?: boolean; work: () => Promise<void> }[] = [];
         for (const [binding, recovery] of recoveries) {
           const jobKey = key(['cleanup', binding]);
@@ -522,7 +525,10 @@ export class OperationScheduler {
         for (const group of groups) {
           for (const receipt of group.operations) {
             const binding = key(['reconcile', receipt]);
-            if (['uncertain', 'failed'].includes(receipt.state) && !dispatching.has(receipt.id) && !seen.has(binding)) jobs.push({ binding, control: false, work: () => this.reconcile(group.context, receipt) });
+            const previousRead = this.#readReconciliations.get(receipt.id);
+            const sameRead = previousRead?.revision === receipt.revision;
+            if (sameRead && performance.now() < previousRead.after) continue;
+            if (['uncertain', 'failed'].includes(receipt.state) && !dispatching.has(receipt.id) && !seen.has(binding)) jobs.push({ binding, control: false, background: sameRead, work: () => this.reconcile(group.context, receipt) });
           }
           if (!group.operations.some(receipt => receipt.state === 'queued' || receipt.state === 'claimed')) continue;
           for (const kind of ['control', 'foreground', 'background'] as const) {
@@ -588,6 +594,11 @@ export class OperationScheduler {
         return;
       }
       const rpc = body(record); if (!rpc) return;
+      // 只在按原context实际授权读取后确认只读；不改变原WAL、状态或未知写屏障。
+      if (isRead(record)) {
+        this.#readReconciliations.set(record.id, { revision: record.revision, after: performance.now() + 30_000 });
+        if (this.#readReconciliations.size > 256) this.#readReconciliations.delete(this.#readReconciliations.keys().next().value!);
+      }
       const completedRead = isRead(record) ? this.#results.get(record.id) : undefined;
       let result = completedRead?.outcome === 'response' ? { status: 'completed' as const, message: completedRead.message } : await readOriginalOperation({ gatewayCodexHome: this.#options.gatewayCodexHome, resolver: this.#options.resolver, context,
         sessionId: rpc.sessionId, requestId: rpc.requestId, expected: { message: rpc.message, epoch: rpc.epoch }, expectedSignature: record.rpcReceipt?.signature, call });
