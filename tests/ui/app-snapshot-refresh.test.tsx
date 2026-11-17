@@ -2,13 +2,13 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { afterEach, expect, it, vi } from 'vitest';
 import { AppBootstrap } from '../../src/App';
 
-const boundary = vi.hoisted(() => ({ options: null as any, client: null as any, rows: [] as any[], reads: [] as any[], pageBarrier: null as Promise<void> | null }));
+const boundary = vi.hoisted(() => ({ options: null as any, client: null as any, rows: [] as any[], reads: [] as any[], pageBarrier: null as Promise<void> | null, snapshotBarrier: null as Promise<void> | null, snapshotWaits: 0 }));
 vi.mock('../../src/backends/connection-manager', () => ({ BackendConnectionManager: class {
   constructor(options: any) { boundary.options = options; }
   client() { return boundary.client; } socket() { return null; } close() {} reconnect() {}
   sync(backends: any[]) {
     if (!backends.length) return;
-    boundary.client = { sidebarIndex: true, onNotification() { return () => {}; }, onThreadMetadata() { return () => {}; }, request: async (method: string, params: any, options: any) => {
+    boundary.client = { sidebarIndex: true, waitForListSnapshotRefresh: async () => { boundary.snapshotWaits++; await boundary.snapshotBarrier; }, onNotification() { return () => {}; }, onThreadMetadata() { return () => {}; }, request: async (method: string, params: any, options: any) => {
       boundary.reads.push({ method, params, options });
       if (method === 'threadSection/list') return { data: [{ id: '01984de2-8f74-7c91-a3b2-5c5e937cf318' }], nextCursor: null };
       if (method === 'thread/list' && params.sectionId) return { data: [], nextCursor: null };
@@ -22,10 +22,10 @@ vi.mock('../../src/backends/connection-manager', () => ({ BackendConnectionManag
     queueMicrotask(() => { boundary.options.onConnection(backends[0].id, 'online'); boundary.options.onReady(backends[0].id, boundary.client); });
   }
 } }));
-afterEach(() => { cleanup(); boundary.reads = []; boundary.rows = []; boundary.client = null; boundary.pageBarrier = null; vi.unstubAllGlobals(); });
+afterEach(() => { cleanup(); boundary.reads = []; boundary.rows = []; boundary.client = null; boundary.pageBarrier = null; boundary.snapshotBarrier = null; boundary.snapshotWaits = 0; vi.unstubAllGlobals(); });
 
 async function setup() {
-  const values = new Map<string, string>();
+  const values = new Map<string, string>([['codex-mobile:collapsed-projects', '[]']]);
   vi.stubGlobal('localStorage', { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => values.set(key, value), removeItem: (key: string) => values.delete(key) });
   const fetcher = vi.fn(async (_url: string) => new Response(JSON.stringify({ projects: ['/project'], projectlessThreadIds: [], items: [] })));
   vi.stubGlobal('fetch', fetcher);
@@ -56,17 +56,17 @@ it('真实App收到列表快照变化后从缓存投影新增和移除，不再�
   expect(directories()).toBe(beforeDirectories);
 });
 
-it('并行列表更新全部收尾后同步提示与刷新按钮立即结束，单个完成不能掩盖其他在途读取', async () => {
+it('自动列表更新只改变同步提示，不能启动首页刷新按钮', async () => {
   await setup();
   const status = (method: string, refreshing: boolean, extra = {}) => boundary.options.onNotification('a', { method: 'mobile/readSnapshot/status', params: {
     request: { method, params: {} }, updatedAt: 200, refreshing, ...extra,
   } }, boundary.client);
   const refresh = () => screen.getByRole('button', { name: '刷新会话列表' });
   await act(async () => { status('thread/list', true); status('mobile/sidebar/summaries', true); });
-  expect(refresh()).toHaveAttribute('aria-busy', 'true');
+  expect(refresh()).toHaveAttribute('aria-busy', 'false');
   expect(screen.getByRole('status')).toHaveTextContent('正在后台更新');
   await act(async () => status('mobile/sidebar/summaries', false));
-  expect(refresh()).toHaveAttribute('aria-busy', 'true');
+  expect(refresh()).toHaveAttribute('aria-busy', 'false');
   await act(async () => status('thread/list', false));
   expect(refresh()).toHaveAttribute('aria-busy', 'false');
   expect(screen.getByRole('status')).toHaveTextContent('已同步');
@@ -92,4 +92,33 @@ it('原列表读取挂起时收到新快照，必须等旧页收尾再回填而�
   await screen.findByRole('button', { name: /^晚到快照/ });
   expect(screen.queryByRole('button', { name: /旧会话/ })).toBeNull();
   expect(boundary.reads.some(read => read.options?.refreshSnapshot === false)).toBe(true);
+});
+
+
+it('手动刷新等本轮列表快照收尾，后续自动同步不延长按钮状态', async () => {
+  await setup();
+  let release!: () => void;
+  boundary.snapshotBarrier = new Promise<void>(done => { release = done; });
+  const refresh = () => screen.getByRole('button', { name: '刷新会话列表' });
+  fireEvent.click(refresh());
+  await waitFor(() => expect(boundary.snapshotWaits).toBe(1));
+  expect(refresh()).toHaveAttribute('aria-busy', 'true');
+  await act(async () => boundary.options.onNotification('a', { method: 'mobile/readSnapshot/status', params: {
+    request: { method: 'threadSection/list', params: {} }, updatedAt: 500, refreshing: true,
+  } }, boundary.client));
+  await act(async () => release());
+  await waitFor(() => expect(refresh()).toHaveAttribute('aria-busy', 'false'));
+  expect(screen.getByRole('status')).toHaveTextContent('正在后台更新');
+});
+
+it('本轮列表快照等待失败也能结束手动刷新按钮', async () => {
+  await setup();
+  let fail!: (reason: unknown) => void;
+  boundary.snapshotBarrier = new Promise<void>((_, reject) => { fail = reject; });
+  const refresh = () => screen.getByRole('button', { name: '刷新会话列表' });
+  fireEvent.click(refresh());
+  await waitFor(() => expect(boundary.snapshotWaits).toBe(1));
+  expect(refresh()).toHaveAttribute('aria-busy', 'true');
+  await act(async () => fail(new Error('connection closed')));
+  await waitFor(() => expect(refresh()).toHaveAttribute('aria-busy', 'false'));
 });
